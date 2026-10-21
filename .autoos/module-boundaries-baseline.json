@@ -1,14 +1,14 @@
 {
-  "base_revision": "ab5dce3b432ad6df853d48118f3f09944d114453",
-  "config_sha256": "23da7d1e5c32fee6ddd5adc095ffc17cacf881a784494534f30c7e8027dca14c",
+  "base_revision": "f6005ed3a671b8cbc7062ffb7e389faa9af9e7fe",
+  "config_sha256": "d2d8974a498042130f09b02c6109e2ae693df5319c5e1c02fdd04f6cd090e82c",
   "declared_edges": [
     {
-      "dep_key": "auto-lang",
+      "dep_key": "auto-lang-core",
       "from": "a2r-actor-tests",
       "kind": "normal",
       "optional": false,
       "target": null,
-      "to": "auto-lang",
+      "to": "auto-lang-core",
       "to_scope": "member"
     },
     {
@@ -183,12 +183,12 @@
       "to_scope": "member"
     },
     {
-      "dep_key": "auto-lang",
+      "dep_key": "auto-lang-core",
       "from": "auto-gen",
       "kind": "normal",
       "optional": false,
       "target": null,
-      "to": "auto-lang",
+      "to": "auto-lang-core",
       "to_scope": "member"
     },
     {
@@ -370,15 +370,6 @@
       "target": null,
       "to": "auto-val",
       "to_scope": "member"
-    },
-    {
-      "dep_key": "autodown-core",
-      "from": "auto-lang",
-      "kind": "normal",
-      "optional": true,
-      "target": null,
-      "to": "autodown-core",
-      "to_scope": "external"
     },
     {
       "dep_key": "shim-metadata",
@@ -768,12 +759,12 @@
       "to_scope": "member"
     },
     {
-      "dep_key": "auto-lang",
+      "dep_key": "auto-lang-core",
       "from": "auto-playground",
       "kind": "normal",
       "optional": false,
       "target": null,
-      "to": "auto-lang",
+      "to": "auto-lang-core",
       "to_scope": "member"
     },
     {
@@ -921,12 +912,48 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "a2r-std",
+      "from": "auto-ui-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "a2r-std",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-lang-core",
       "from": "auto-ui-runtime",
       "kind": "normal",
       "optional": false,
       "target": null,
       "to": "auto-lang-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-media-core",
+      "from": "auto-ui-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-media-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-terminal-core",
+      "from": "auto-ui-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-terminal-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-text-core",
+      "from": "auto-ui-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-text-core",
       "to_scope": "member"
     },
     {
@@ -937,6 +964,24 @@
       "target": null,
       "to": "auto-ui-compiler",
       "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-ui-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "autodown-core",
+      "from": "auto-ui-runtime",
+      "kind": "normal",
+      "optional": true,
+      "target": null,
+      "to": "autodown-core",
+      "to_scope": "external"
     },
     {
       "dep_key": "auto-api-gen",
@@ -1011,20 +1056,29 @@
       "to_scope": "member"
     },
     {
-      "dep_key": "auto-lang",
+      "dep_key": "auto-lang-core",
       "from": "shell-pack",
       "kind": "normal",
       "optional": false,
       "target": null,
-      "to": "auto-lang",
+      "to": "auto-lang-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-ui-runtime",
+      "from": "shell-pack",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-ui-runtime",
       "to_scope": "member"
     }
   ],
   "generated_by": "scripts/modularity-audit.py --refresh-baseline",
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
-    "core_to_ui": 842,
+    "core_to_ui": 250,
     "man_to_language": 119,
-    "ui_to_language": 23
+    "ui_to_language": 0
   }
 }
