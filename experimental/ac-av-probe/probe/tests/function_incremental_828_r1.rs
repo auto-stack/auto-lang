@@ -1435,3 +1435,81 @@ fn r13a_complete_numeric_source_endpoints_matrix() {
         failures
     );
 }
+
+/// r14a-check F04-u: the historical helper — a re-embedding edit inside
+/// ONE segment is interval surgery on that segment: BOTH surviving sides
+/// stay mapped (the tail resumes at the end of the FULL replacement
+/// output), asserted against the public `SpanSegments` oracle.
+#[test]
+fn r15a_embedding_inside_one_segment_keeps_both_surviving_sides() {
+    let mut m = auto_av_core::span_map::SpanSegments::identity_range(29, 70, 29);
+    m.apply_aligned(53, 54, b"2", b" 2 ");
+    assert_eq!(m.map_span(63, 68), (65, 70));
+}
+
+/// r14a-check F04-u: the three replacement boundaries — tail with both
+/// sides surviving, tail-only starting after ALL replacement bytes, and
+/// head-only keeping the preceding span untouched.
+#[test]
+fn r15a_replacement_boundaries_head_tail_and_both_sides() {
+    let mut both = auto_av_core::span_map::SpanSegments::identity_range(0, 20, 0);
+    both.apply_aligned(8, 9, b"2", b" 2 ");
+    assert_eq!(
+        both.map_span(15, 20),
+        (17, 22),
+        "tail after the complete three-byte replacement"
+    );
+    let mut tail_only = auto_av_core::span_map::SpanSegments::identity_range(8, 20, 8);
+    tail_only.apply_aligned(8, 9, b"2", b" 2 ");
+    assert_eq!(
+        tail_only.map_span(15, 20),
+        (17, 22),
+        "tail starts after ALL replacement bytes, not just past the re-embedded token"
+    );
+    let mut head_only = auto_av_core::span_map::SpanSegments::identity_range(0, 9, 0);
+    head_only.apply_aligned(8, 9, b"2", b" 2 ");
+    assert_eq!(head_only.map_span(2, 6), (2, 6));
+}
+
+/// r14a-check F04-v: composing an edit that deletes the extended spelling
+/// digits RETIRES the end extension — the public composed map never
+/// reports a token end past the current text.
+#[test]
+fn r15a_trim_numeric_extension_updates_composed_public_map() {
+    let mut m =
+        auto_av_core::span_map::SpanSegments::from_texts(0, 5, 0, b"1 / 0", b"1 / 00").unwrap();
+    assert_eq!(m.map_span(0, 5), (0, 6), "new extension control");
+    m.apply_aligned(5, 6, b"0", b"");
+    assert_eq!(
+        m.map_span(0, 5),
+        (0, 5),
+        "removing the extra current digit must retire its end extension"
+    );
+}
+
+/// r14a-check F04-v sibling states: an extension SURVIVES edits that do
+/// not touch its token (a shift before the anchor moves the whole token
+/// intact), and surgery on the anchor token itself retires it.
+#[test]
+fn r15a_end_extension_survives_shift_but_not_token_surgery() {
+    let mut m =
+        auto_av_core::span_map::SpanSegments::from_texts(0, 5, 0, b"1 / 0", b"1 / 00").unwrap();
+    // Insert two bytes at current 0 (entirely before the anchor segment):
+    // the whole token including its extension shifts right by 2.
+    m.apply(0, 0, 2);
+    assert_eq!(
+        m.map_span(0, 5),
+        (2, 8),
+        "unrelated shift keeps the extension"
+    );
+    // Replacing the anchor token's byte with a DIFFERENT value ('0'→'5')
+    // is surgery inside the token: the spelling analysis no longer holds,
+    // so the extension retires and the token end clamps to the surviving
+    // boundary instead of extending past reality.
+    m.apply_aligned(6, 7, b"0", b"5");
+    assert_eq!(
+        m.map_span(0, 5),
+        (2, 6),
+        "surgery on the anchor token drops the extension"
+    );
+}
