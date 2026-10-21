@@ -56,10 +56,34 @@ impl SpanSegments {
             (false, Some(k)) => {
                 segs.push((mid_m0, mid_m1, c_base + p as u64 + k as u64));
             }
-            // The middle has no correspondence with the new text: a
-            // full-text rebuild would collapse it — the caller should
-            // keep its accumulated geometric map instead.
-            (false, None) => return None,
+            (false, None) => {
+                // Token-run fallback: the middles may differ only in
+                // INTERNAL whitespace (equivalent rewrite with internal
+                // trivia). Align the non-whitespace runs; whitespace
+                // between them becomes blob content.
+                let old_runs = runs(mid_old);
+                let new_runs = runs(mid_new);
+                if old_runs.is_empty()
+                    || new_runs.is_empty()
+                    || old_runs.len() != new_runs.len()
+                    || old_runs
+                        .iter()
+                        .zip(new_runs.iter())
+                        .any(|((a, _), (b, _))| a != b)
+                {
+                    // No correspondence: a full-text rebuild would
+                    // collapse the middle — keep the geometric map.
+                    return None;
+                }
+                let mid_base_c = c_base + p as u64;
+                for ((_, os), (_, ns)) in old_runs.iter().zip(new_runs.iter()) {
+                    segs.push((
+                        mid_m0 + os.0 as u64,
+                        mid_m0 + os.1 as u64,
+                        mid_base_c + ns.0 as u64,
+                    ));
+                }
+            }
         }
         if m1 > mid_m1 {
             segs.push((mid_m1, m1, c_base + p as u64 + mid_new.len() as u64));
@@ -288,4 +312,22 @@ fn find_subslice(hay: &[u8], needle: &[u8]) -> Option<usize> {
         return None;
     }
     hay.windows(needle.len()).position(|w| w == needle)
+}
+
+/// Non-whitespace runs of a byte string: (bytes, (start, end)) in order.
+fn runs(bytes: &[u8]) -> Vec<(&[u8], (usize, usize))> {
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i].is_ascii_whitespace() {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < bytes.len() && !bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        out.push((&bytes[start..i], (start, i)));
+    }
+    out
 }

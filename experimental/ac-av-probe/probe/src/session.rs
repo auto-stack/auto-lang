@@ -1279,11 +1279,10 @@ impl FunctionIncrementalSession {
         // The deposited map is the POST-commit one (installed baseline
         // composed with this edit) — captured after the origin loop.
         let deposit_map = changed_rec.span_map.clone();
-        let (td0, td1) = self
-            .parse
+        let (td0, td1) = new_parse
             .tree
-            .abs_range(self.parse.tree.decls[changed_idx].node);
-        let mint_text = self.src[td0 as usize..td1 as usize].to_string();
+            .abs_range(new_parse.tree.decls[changed_idx].node);
+        let mint_text = new_src[td0 as usize..td1 as usize].to_string();
         Self::history_insert(
             changed_rec,
             content_version,

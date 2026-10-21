@@ -1018,3 +1018,109 @@ fn r8a_restored_history_seed_map_tracks_first_equivalent_edit() {
         "restored history-hit alignment tracks the first edit"
     );
 }
+
+/// r9a-check: equivalent rewrite with INTERNAL and external trivia keeps
+/// anchors (token-run alignment, not contiguous substring).
+#[test]
+fn r9a_equivalent_rewrite_with_internal_and_external_trivia() {
+    let mut s = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find("1 / 0").unwrap();
+    let out = s
+        .edit(at as u64, (at + 5) as u64, b"  1  /  0  ".to_vec())
+        .unwrap();
+    assert!(out.ok, "{out:?}");
+    assert!(s.counters().stage_of("reuse_hit", "main") > 0);
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "same HIR does not require old expression bytes to be a contiguous substring"
+    );
+}
+
+/// r9a-check: remint then equivalent earlier-literal rewrite keeps BOTH
+/// head and tail of the re-embedded segment.
+#[test]
+fn r9a_reminted_then_equivalent_literal_rewrite_keeps_tail() {
+    let src = "fn helper() int { return 1 }
+fn main() int { var y = 1; return 1 / 0 }
+fn tail() int { return 9 }
+";
+    let mut s = warmup(src, "d_main", &[]).unwrap();
+    let at = s.src().find("var y = 1").unwrap() + 8;
+    let out = s.edit(at as u64, (at + 1) as u64, b"2".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(trap_span(&s), trap_span(&cold), "new code B control");
+    let out = s.edit(at as u64, (at + 1) as u64, b" 2 ".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    assert!(s.counters().stage_of("reuse_hit", "main") > 0);
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "substring re-embedding must keep BOTH head and tail"
+    );
+}
+
+/// r9a-check: repeated equivalent whole-expression rewrites never rebase
+/// the mint text.
+#[test]
+fn r9a_repeated_equivalent_rewrites_do_not_rebase_mint_text() {
+    let mut s = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find("1 / 0").unwrap();
+    let mut old_len = 5usize;
+    for pad in [2usize, 4, 6] {
+        let replacement = format!("{}1 / 0{}", " ".repeat(pad), " ".repeat(pad));
+        let out = s
+            .edit(
+                at as u64,
+                (at + old_len) as u64,
+                replacement.as_bytes().to_vec(),
+            )
+            .unwrap();
+        assert!(out.ok, "{out:?}");
+        let cold = warmup(s.src(), "d_main", &[]).unwrap();
+        assert_eq!(
+            trap_span(&s),
+            trap_span(&cold),
+            "equivalent rewrite padding {pad}"
+        );
+        old_len = replacement.len();
+    }
+}
+
+/// r9a-check: reminted-longer-literal then byte-identical edit keeps its
+/// OWN mint source (the deposit stores the NEW text, not the previous).
+#[test]
+fn r9a_reminted_longer_literal_then_identical_edit() {
+    let src = "fn helper() int { return 1 }
+fn main() int { var y = 1; return 1 / 0 }
+fn tail() int { return 9 }
+";
+    let mut s = warmup(src, "d_main", &[]).unwrap();
+    let at = s.src().find("var y = 1").unwrap() + 8;
+    let out = s.edit(at as u64, (at + 1) as u64, b"21".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "longer newly minted code control"
+    );
+    let code = s.current().find_code("d_main").unwrap().clone();
+    let before = s.src().to_string();
+    let out = s.edit(at as u64, (at + 2) as u64, b"21".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    assert_eq!(s.src(), before, "byte-identical current source control");
+    assert!(
+        Arc::ptr_eq(&code, s.current().find_code("d_main").unwrap()),
+        "same minted code reused"
+    );
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "B code was minted from B text, not previous A text"
+    );
+}
