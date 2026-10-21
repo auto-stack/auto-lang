@@ -1562,3 +1562,35 @@ fn r16a_partial_extension_deletion_keeps_remaining_extension() {
     trivia.apply_aligned(7, 7, b"", b" ");
     assert_eq!(trivia.map_span(0, 5), (0, 7));
 }
+
+/// PLAN-828 F-10 restore span sidecar: the persisted unit payload is
+/// spanless by design; its mint span table rides a unit-bound sidecar
+/// row and is re-attached at restore, so the session's FIRST run
+/// reports the mapped trap span (equal to the cold control) — never
+/// `span: None`. A subsequent edit then tracks the shifted span.
+#[test]
+fn r17a_restored_session_first_run_maps_trap_span() {
+    let src = "fn helper() int { return 1 }\nfn main() int { var x = helper(); return 1 / 0 }\nfn tail() int { return 9 }\n";
+    let dir = std::env::temp_dir().join(format!("plan828-r17a-sidecar-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let seed = warmup_persisted(src, "d_main", &[], &dir, "r17a").unwrap();
+    drop(seed);
+    let mut s = restore(src, "d_main", &[], &dir, "r17a").unwrap();
+    assert!(
+        s.counters().get("restore_units_admitted") > 0,
+        "actual disk restore"
+    );
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&warmup(src, "d_main", &[]).unwrap()),
+        "restored first run maps the trap span like the cold control"
+    );
+    // An equivalent-trivia edit after restore composes on the restored
+    // identity seed and keeps agreeing with a cold compile.
+    let at = s.src().find("return 1 / 0").unwrap();
+    let out = s.edit(at as u64, at as u64, vec![b' '; 32]).unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(trap_span(&s), trap_span(&cold));
+    let _ = std::fs::remove_dir_all(&dir);
+}

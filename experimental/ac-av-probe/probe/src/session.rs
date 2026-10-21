@@ -18,8 +18,9 @@
 //! persistence (warm session only — restore/GC arrive with T-07).
 
 use crate::cache::{
-    abc_unit_key, canonical_hir_function, caps_fingerprint, get_enveloped_opt, open_store,
-    payload_fingerprint, put_enveloped, split_units, EnvelopeIdentity,
+    abc_unit_key, canonical_hir_function, caps_fingerprint, decode_sidecar, encode_sidecar,
+    get_enveloped_opt, merge_spans, open_store, payload_fingerprint, put_enveloped,
+    sidecar_applicable, split_units, unit_span_sidecar_key, EnvelopeIdentity,
 };
 use crate::driver::front_door_admit;
 use crate::function_queries::FnEnv;
@@ -463,9 +464,10 @@ pub fn warmup(
 }
 
 /// COLD warm-up + persistent backing (PLAN-828 T-07): after the one
-/// whole-module compile, every function's spanless ABC unit and the
-/// session manifest are deposited in the store under the same identity
-/// scheme the 798 driver uses — a later [`restore`] re-admits them.
+/// whole-module compile, every function's ABC unit (spanless payload +
+/// unit-bound span sidecar, PLAN-828 F-10) and the session manifest are
+/// deposited in the store under the same identity scheme the 798 driver
+/// uses — a later [`restore`] re-admits them.
 pub fn warmup_persisted(
     src: &str,
     entry_def_id: &str,
@@ -525,10 +527,30 @@ pub fn restore(
             Ok(Some(b)) => b,
             _ => return cold(),
         };
-        let decoded = match auto_av_core::abc::decode_abc(&payload) {
+        let mut decoded = match auto_av_core::abc::decode_abc(&payload) {
             Ok(d) => d,
             Err(_) => return cold(),
         };
+        // Re-attach the unit's mint span table (PLAN-828 F-10): the
+        // payload row is spanless BY DESIGN; without its sidecar a
+        // restored session's runs would publish `span: None` — fail
+        // closed to the cold path instead of restoring span-blind.
+        let skey = unit_span_sidecar_key(&owner, &rec.def_id, &body_cv);
+        let sid = EnvelopeIdentity::unit_span_sidecar(&owner, &rec.def_id, &body_cv);
+        let spans = match get_enveloped_opt(&store, &skey, "A09", &sid) {
+            Ok(Some(sp)) => match decode_sidecar(&sp) {
+                Ok(s) => s,
+                Err(_) => return cold(),
+            },
+            _ => return cold(),
+        };
+        merge_spans(&mut decoded.module, &spans);
+        // F798-R15-03 applicability, shared with the 798 restore face: a
+        // decodable-but-non-covering table loses provenance exactly like
+        // a missing one — refuse it.
+        if sidecar_applicable(&decoded.module.funcs[0]).is_err() {
+            return cold();
+        }
         let unit_owner = decoded.module.owner.clone();
         let loaded = match verify_abc(decoded, &unit_owner) {
             Ok(l) => l,
@@ -548,23 +570,36 @@ pub fn restore(
     // Swap in the RESTORED code (the cold compile's units are discarded —
     // only their content versions/bodies seed the history).
     let codes: Vec<Arc<FunctionCode>> = restored;
-    let snapshot = match ProgramSnapshot::link(codes.clone(), entry_def_id, 0) {
-        Ok(sn) => Arc::new(sn),
-        Err(_) => return cold(),
-    };
+    // Restored code aligns to the CURRENT source (its content version
+    // keys match it): identity over each decl range — never an empty map
+    // (F-828-R1-04/R8a-check). The SAME maps back the snapshot the
+    // restored session serves, so the first run after restore maps
+    // through its own snapshot instead of the empty-map accident of bare
+    // `link` (PLAN-828 F-10).
+    let maps: Vec<auto_av_core::span_map::SpanSegments> = (0..codes.len())
+        .map(|i| {
+            let (d0, d1) = session
+                .parse
+                .tree
+                .abs_range(session.parse.tree.decls[i].node);
+            auto_av_core::span_map::SpanSegments::identity_range(d0, d1, d0)
+        })
+        .collect();
+    let snapshot =
+        match ProgramSnapshot::link_with_maps(codes.clone(), entry_def_id, 0, maps.clone()) {
+            Ok(sn) => Arc::new(sn),
+            Err(_) => return cold(),
+        };
     // F-828-R1-07: the RESTORED code objects become the resident ones —
     // records AND the content-history entries — so a later commit keeps
     // every unchanged function's restored object identity instead of
     // swapping back to the cold-compiled ones.
     for (i, code) in codes.iter().enumerate() {
-        // Restored code aligns to the CURRENT source (its content version
-        // keys match it): identity over the decl range — never an empty
-        // map (F-828-R1-04/R8a-check).
         let (d0, d1) = session
             .parse
             .tree
             .abs_range(session.parse.tree.decls[i].node);
-        let ident = auto_av_core::span_map::SpanSegments::identity_range(d0, d1, d0);
+        let ident = maps[i].clone();
         let rec = &mut session.fns[i];
         let body = rec.hir_body.clone();
         rec.span_map = ident.clone();
@@ -720,8 +755,12 @@ impl FunctionIncrementalSession {
             .map(|(cv, _)| cv.clone())
     }
 
-    /// Persist every function's spanless ABC unit under its content
-    /// version (same identity scheme as the 798 driver's A09 rows).
+    /// Persist every function's ABC unit under its content version (same
+    /// identity scheme as the 798 driver's A09 rows). The payload row is
+    /// SPANLESS by design — byte-equal to the 798 scheme — and the unit's
+    /// mint span table rides a separate unit-bound sidecar row
+    /// (PLAN-828 F-10), so a later [`restore`] re-attaches it instead of
+    /// publishing `span: None` runs.
     fn persist_all_units(&self) -> Result<(), String> {
         let Some((store, project)) = self.store.as_ref() else {
             return Err("no store".to_string());
@@ -733,7 +772,7 @@ impl FunctionIncrementalSession {
                 continue;
             };
             let mut spanless = rec.code.unit().module().clone();
-            std::mem::take(&mut spanless.funcs[0].spans);
+            let spans = std::mem::take(&mut spanless.funcs[0].spans);
             let bytes = auto_av_core::abc::encode_abc(&spanless)
                 .map_err(|e| format!("encode {}: {e:?}", rec.def_id))?
                 .to_flat();
@@ -750,6 +789,19 @@ impl FunctionIncrementalSession {
                 if format!("{e:?}").contains("Conflict") {
                 } else {
                     return Err(format!("put {}: {e:?}", rec.def_id));
+                }
+            }
+            let skey = unit_span_sidecar_key(&owner, &rec.def_id, &cv);
+            let sid = EnvelopeIdentity::unit_span_sidecar(&owner, &rec.def_id, &cv);
+            let spayload = encode_sidecar(&spans);
+            if let Err(e) =
+                put_enveloped(store, &skey, "A09", &sid, &spayload, vec![], Some(project))
+            {
+                // Pairing tolerance mirrors the unit row: a conflicting
+                // survivor still pairs with the surviving unit row.
+                if format!("{e:?}").contains("Conflict") {
+                } else {
+                    return Err(format!("put sidecar {}: {e:?}", rec.def_id));
                 }
             }
         }

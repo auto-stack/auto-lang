@@ -158,6 +158,24 @@ pub fn sidecar_key(owner: &str, unit: &str, snapshot: u64) -> QueryKey {
     )
 }
 
+/// PLAN-828 F-10 unit-span sidecar key: the MINT span table of one
+/// persisted ABC unit. Keyed on the unit's own content axes (owner,
+/// unit, body fingerprint) so it travels with the unit row — unlike the
+/// 798 [`sidecar_key`], which re-binds per source snapshot.
+pub fn unit_span_sidecar_key(owner: &str, unit: &str, body_fp: &str) -> QueryKey {
+    QueryKey::new(
+        &ABC_LAYER,
+        vec![
+            ("producer".into(), PRODUCER_ID.into()),
+            ("owner".into(), owner.into()),
+            ("kind".into(), "unit-span-sidecar".into()),
+            ("unit".into(), unit.into()),
+            ("body-sig".into(), body_fp.into()),
+            ("sidecar-format".into(), "1".into()),
+        ],
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Inner envelope
 // ---------------------------------------------------------------------------
@@ -291,6 +309,25 @@ impl EnvelopeIdentity<'_> {
             snapshot,
             unit: "",
             body_fp: "",
+        }
+    }
+
+    /// PLAN-828 F-10 unit-span sidecar identity: the diagnostics-only
+    /// span track OF one ABC unit, bound to the exact (owner, unit, body
+    /// fingerprint) of the unit row it belongs to — a sidecar stored
+    /// under another body's key fails admission.
+    pub fn unit_span_sidecar<'a>(
+        owner: &'a str,
+        unit: &'a str,
+        body_fp: &'a str,
+    ) -> EnvelopeIdentity<'a> {
+        EnvelopeIdentity {
+            kind: EnvelopeKind::SourceSidecar,
+            schema: ABC_SCHEMA,
+            stage: 2,
+            unit,
+            body_fp,
+            ..Self::sidecar(owner, 0)
         }
     }
 }
