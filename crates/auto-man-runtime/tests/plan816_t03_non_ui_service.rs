@@ -32,8 +32,8 @@ fn vm_service_without_ui_ops_reaches_language_not_ui_missing() {
     assert!(
         err.to_lowercase().contains("bind")
             || err.to_lowercase().contains("address")
-            || err.to_lowercase().contains("failed"),
-        "应到达真实语言/bind 路径：{err}"
+            || err.to_lowercase().contains("10048"),
+        "应到达真实 bind/address 失败路径：{err}"
     );
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -53,9 +53,13 @@ fn rust_workspace_helpers_work_without_ui_ops() {
     let ws = auto_api_gen::rust_workspace::ensure_shared_workspace(&root);
     let back = auto_api_gen::rust_workspace::back_member_name(&root);
     assert!(!ws.as_os_str().is_empty(), "workspace 路径不得为空");
+    assert!(
+        ws.is_absolute() || ws.exists(),
+        "workspace 应为真实路径：{ws:?}"
+    );
     assert!(!back.is_empty(), "back member 名不得为空");
     assert!(
-        back.contains("back") || back.contains("f02ws") || !back.is_empty(),
+        back.contains("back") || back.contains("f02ws"),
         "back member 应为真实命名：{back}"
     );
     let _ = std::fs::remove_dir_all(&root);

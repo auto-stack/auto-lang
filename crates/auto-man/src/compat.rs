@@ -13,9 +13,11 @@ use auto_man_runtime::ui_ops::UiOps;
 use auto_project_model::GenerationRequest;
 use auto_val::AutoResult;
 
-/// 安装默认（compat）UI 操作集——幂等；CLI 入口调用。
+/// 安装默认（compat）UI 操作集——写入**默认兜底槽**，不抢占调用方
+/// 已有的显式 [`auto_man_runtime::ui_ops::install`]；幂等。CLI 入口与
+/// 链接自举均走此入口。
 pub fn install_default_ui_ops() {
-    auto_man_runtime::ui_ops::install(Arc::new(CompatUiOps));
+    auto_man_runtime::ui_ops::install_default(Arc::new(CompatUiOps));
 }
 
 struct CompatUiOps;
@@ -208,10 +210,10 @@ impl UiOps for CompatUiOps {
     }
 }
 
-/// PLAN-816 T-03 F-01：旧公开入口默认合同——链接本 crate 的进程在启动时
-/// 安装 CompatUiOps，`auto_man::Automan::create_jet` 等无需调用方显式
-/// 安装。runtime-only 消费者不链本 crate，UI seam 仍具名失败（闭包零 UI）。
-/// 显式 [`install_default_ui_ops`] 仍是合法正控（幂等）。
+/// PLAN-816 T-03 F-01/R2-01：旧公开入口默认合同——链接本 crate 的进程在
+/// 启动时登记 CompatUiOps 为**默认兜底**，`auto_man::Automan::create_jet`
+/// 等无需调用方显式安装；不占用显式注入槽，调用方首次 `ui_ops::install`
+/// 仍被采用。runtime-only 消费者不链本 crate，UI seam 仍具名失败。
 #[ctor::ctor]
 fn auto_install_compat_ui_ops() {
     install_default_ui_ops();

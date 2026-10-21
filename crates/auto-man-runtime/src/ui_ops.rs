@@ -262,17 +262,26 @@ impl UiOps for NotInstalledUiOps {
     }
 }
 
-static INSTALLED: std::sync::OnceLock<Arc<dyn UiOps>> = std::sync::OnceLock::new();
+static EXPLICIT: std::sync::OnceLock<Arc<dyn UiOps>> = std::sync::OnceLock::new();
+static DEFAULT_OPS: std::sync::OnceLock<Arc<dyn UiOps>> = std::sync::OnceLock::new();
 
-/// 安装 UI 操作集（幂等；由 auto-man compat 在 CLI 入口调用）。
+/// 调用方**显式**注入 UI 操作集：先装先得；重复安装不覆盖已有显式 provider。
+///
+/// 这是公开依赖倒置点——测试替身/自定义实现必须能先于任何默认兜底被采用。
 pub fn install(ops: Arc<dyn UiOps>) {
-    let _ = INSTALLED.set(ops);
+    let _ = EXPLICIT.set(ops);
 }
 
-/// 当前 UI 操作集（未安装=NotInstalledUiOps——UI 臂具名失败）。
+/// 默认兜底实现（compat）。不抢占显式注入；[`current`] 仅在无显式 provider 时采用。
+pub fn install_default(ops: Arc<dyn UiOps>) {
+    let _ = DEFAULT_OPS.set(ops);
+}
+
+/// 当前 UI 操作集：显式注入优先，其次默认兜底，否则 [`NotInstalledUiOps`]。
 pub fn current() -> Arc<dyn UiOps> {
-    INSTALLED
+    EXPLICIT
         .get()
+        .or_else(|| DEFAULT_OPS.get())
         .cloned()
         .unwrap_or_else(|| Arc::new(NotInstalledUiOps))
 }

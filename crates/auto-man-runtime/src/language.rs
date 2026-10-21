@@ -8,9 +8,13 @@ use crate::AutoResult;
 
 /// 在大栈线程中按源路径执行 `.at`（模块解析与历史 `run_file` 同语义）。
 ///
-/// 与外层 `auto_lang::run_with_path` 同构：`execute_autovm_with_path`
-/// + 32MB 栈；stdout 非空时原样打印，返回语言结果字符串。
+/// 与旧 `run_file_with_args(path, Vec::new())` 同入口语义：**先**复位
+/// 脚本 argv（读文件失败出口也不残留），再读源并执行；stdout 非空时
+/// 原样打印。执行体与外层 `auto_lang::run_with_path` 同构：
+/// `execute_autovm_with_path` + 32MB 栈。
 pub fn run_language_file(path: &str) -> AutoResult<String> {
+    // 旧入口每次覆盖前值，同进程串行运行不残留（PLAN-816 T-03 R2-02）。
+    auto_lang_core::set_script_args(Vec::new());
     let code =
         std::fs::read_to_string(path).map_err(|e| format!("Failed to read file {path}: {e}"))?;
     let path_owned = path.to_string();
@@ -35,5 +39,52 @@ pub fn run_language_file(path: &str) -> AutoResult<String> {
         Ok(Ok(r)) => Ok(r),
         Ok(Err(e)) => Err(e.into()),
         Err(_) => Err("language execution thread panicked".into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// R2-02 串行覆盖：成功/读失败出口 argv 复位 + VM 内无泄漏哨兵。
+    /// （`SCRIPT_ARGS` 为进程全局，多测并行会互相污染，故合并为单测。）
+    #[test]
+    fn run_language_file_resets_script_args_like_legacy_run_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let ok = dir.path().join("ok.at");
+        std::fs::write(&ok, "return 1\n").unwrap();
+
+        auto_lang_core::set_script_args(vec!["previous-invocation-only".into()]);
+        assert_eq!(
+            auto_lang_core::script_args(),
+            vec!["previous-invocation-only".to_string()]
+        );
+        run_language_file(ok.to_str().unwrap()).expect("valid source runs");
+        assert!(
+            auto_lang_core::script_args().is_empty(),
+            "成功出口不得残留先前 argv"
+        );
+
+        // 有效源在 VM 内可见 argv 不得含泄漏哨兵。
+        let argv_src = dir.path().join("argv.at");
+        std::fs::write(&argv_src, "use auto.process\nreturn process.args().len()\n").unwrap();
+        auto_lang_core::set_script_args(vec!["previous-invocation-only".into()]);
+        let result = run_language_file(argv_src.to_str().unwrap()).expect("valid source runs");
+        assert!(
+            auto_lang_core::script_args().is_empty(),
+            "执行后 argv 表复位"
+        );
+        let rendered = result.trim().trim_start_matches('[').trim_end_matches(']');
+        let n = rendered.split(',').filter(|s| !s.trim().is_empty()).count();
+        assert_eq!(n, 1, "VM 内 argv 不得含泄漏哨兵，got {result}");
+
+        // 读失败出口同样复位。
+        auto_lang_core::set_script_args(vec!["previous-invocation-only".into()]);
+        let missing = dir.path().join("missing.at");
+        assert!(run_language_file(missing.to_str().unwrap()).is_err());
+        assert!(
+            auto_lang_core::script_args().is_empty(),
+            "读失败出口不得残留先前 argv"
+        );
     }
 }
