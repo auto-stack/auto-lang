@@ -3968,6 +3968,25 @@
      "assignee": null,
      "test_file": null,
      "milestone": "M816-A"
+    },
+    {
+     "id": "P814-B-MERGE",
+     "title": "PLAN-814 M814-B merge 沉淀收据（B 发布）",
+     "content": "rebase组合:app_registry/i18n_lookup单源compiler(815先落+DAG约束)+runtime pub use;probe门/tests_seam双计划同修合并;T-05断言随迁auto-ui-tools;canonical沉淀SD-01..08(SD-03新建runtime spec,SD-08保留M815-A/M816-A章节增补)+INDEX 57;777并集重采样119边strict 0违规;ff-only合入93a25c924;ledger经guarded offline projection写入(store不可达,备份+外科范围+回读校验),version 63→64",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/plans/archive/814-language-sdk-ui-package-separation.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-814:r3",
+      "delivery:93a25c924",
+      "ledger:offline-projection"
+     ]
     }
    ],
    "section_type": "Reports",
@@ -14108,6 +14127,44 @@
      "assignee": null,
      "test_file": null,
      "milestone": "M816-A"
+    },
+    {
+     "id": "P814-UIR",
+     "title": "auto-ui-runtime UI 运行/renderer/宿主域独立包（PLAN-814 M814-B）",
+     "content": "原 auto-lang src/ui/ 全树~20.4万行+host_adapters+back_proxy+assets+UI动态构建管线单源迁入;DAG: UIR→{SDK,UIC}不反依赖旧包,不被SDK/compiler反依赖;旧auto-lang依赖边default-features=false(no-UI缺席语义);feature面ui/ui-interpreter/ui-iced/ui-headless等与旧组合逐项保持(R9-F03六形态0错);装配单点install_ui_host_capabilities+零inventory submit(r3登记权);777 ui_to_language=0围栏;canonical import与生成工程双直依赖合同;并集归属:app_registry/i18n_lookup单源compiler+本包pub use。完整规则见 docs/specs/auto-ui-runtime/project.md",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/specs/auto-ui-runtime/project.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-814:r3",
+      "source_commit:93a25c924",
+      "phase:M814-B"
+     ]
+    },
+    {
+     "id": "P814-CMP-TYPING",
+     "title": "比较位值投影完整表达式类型感知（PLAN-814 R9-R14 终局）",
+     "content": "dot访问处于值比较位(六比较符两方向完整消费/字段自身透明分组/调用括号判别保truthy)不得truthy包裹,投影按另一操作数完整表达式类型分流:形状已知shaped访问器/字面量/已声明引用(state_types宽度跟随float=f32,u32/i64/u64)/四则宽度合并(float支配,字面量弹性跟随声明侧)/布尔取反传播/括号内逻辑组合/比较子表达式结果bool(字符串字面量外);任意一侧分组剥壳递归,左右位对称;默认str语义保持。反例矩阵112组真实编译,规则见 docs/specs/auto-ui-compiler/project.md B增量节",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/specs/auto-ui-compiler/project.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-814:r3",
+      "source_commit:93a25c924",
+      "reviews:R9..R15"
+     ]
     }
    ],
    "section_type": "Designs",
@@ -17258,6 +17315,24 @@
      "created_at": 1792500947,
      "modified_at": 1792500947,
      "completed_at": 1792500947
+    },
+    {
+     "id": "P814-UIR-T",
+     "title": "auto-ui-runtime 消费者 fixture 与比较类型探针族",
+     "content": "ui-runtime-consumer(canonical双直依赖5/5+fresh+locked,闭包零旧包);r9-r15比较类型探针族(review-r9..r15冻结+各closeout工作副本,112组真实编译);六provider缺席臂哨兵43测;九档选择面别名含-p auto-ui-runtime(t07-closeout逐ID核销)",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "test/fixtures/modularity/ui-runtime-consumer/",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-814:r3",
+      "source_commit:93a25c924"
+     ]
     }
    ],
    "section_type": "Tests",
@@ -23270,6 +23345,26 @@
      "created_at": 1792500947,
      "modified_at": 1792500947,
      "completed_at": 1792500947
+    },
+    {
+     "id": "P814-B-REL",
+     "title": "PLAN-814 B 阶段最终审查（R15 pass）",
+     "content": "R15完整T-10 pass绑定6f1cac8cb(R9-01闭合,合同内112/112编译;三项AURA引号转义探索诊断另登记D814-R15-01既有债务非阻断);merge rebase后证据链range-diff全等价(R8-R14补丁 identical,6f1cac8cb→a3f50d15b),delivery=93a25c924;冻结门:t 5327/tv 163/tu 868/tt 5699/tb 5303/777 strict 0违规;主检出consumer读回5/5+4/4+5/5。报告:docs/plans/attachments/814/review-r15/review.md",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/plans/attachments/814/review-r15/review.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-814:r3",
+      "review:R15",
+      "reviewed_commit:6f1cac8cb",
+      "delivery:93a25c924"
+     ]
     }
    ],
    "section_type": "Reviews",
@@ -23282,5 +23377,5 @@
   }
  ],
  "project": "auto-lang",
- "version": 63
+ "version": 64
 }
