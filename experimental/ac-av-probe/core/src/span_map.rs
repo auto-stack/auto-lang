@@ -17,6 +17,12 @@
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SpanSegments {
     segs: Vec<(u64, u64, u64)>,
+    /// Token-end extensions keyed by MINT end position: a value-equal
+    /// numeric token whose spelling LENGTHENED ('0'→'00') keeps its old
+    /// mint bytes as one segment, but the token END (one past the last
+    /// byte) must move by the spelling-length difference — expression
+    /// ends land on token ends (F-828-R1-04/R13a).
+    end_ext: Vec<(u64, i64)>,
 }
 
 impl SpanSegments {
@@ -24,6 +30,7 @@ impl SpanSegments {
     pub fn new(mint_len: u64) -> Self {
         SpanSegments {
             segs: vec![(0, mint_len, 0)],
+            end_ext: Vec::new(),
         }
     }
 
@@ -43,6 +50,13 @@ impl SpanSegments {
         {
             q += 1;
         }
+        // Byte-level prefix matching can split a digit token the same
+        // way ('0 }' vs '00 }': the shared '0' joins the prefix, leaving
+        // an after-token insertion). Absorb prefix bytes that continue a
+        // digit run in BOTH texts so the mids hold whole tokens.
+        while p > 0 && p < new.len() && old[p - 1].is_ascii_digit() && new[p].is_ascii_digit() {
+            p -= 1;
+        }
         // Byte-level suffix matching can split a NEW-side digit token
         // ('1' old vs '01' new: the '1' suffix-matches, leaving mid_new a
         // bare '0'). Absorb suffix bytes that continue a digit run in the
@@ -60,16 +74,46 @@ impl SpanSegments {
         let mid_m0 = m0 + p as u64;
         let mid_m1 = m1 - q as u64;
         let mut segs: Vec<(u64, u64, u64)> = Vec::new();
+        let mut exts: Vec<(u64, i64)> = Vec::new();
         if mid_m0 > m0 {
             segs.push((m0, mid_m0, c_base));
         }
-        match (mid_old.is_empty(), find_subslice(mid_new, mid_old)) {
-            (true, _) => {}
-            (false, Some(k)) => {
+        let run_seqs_equal = {
+            let a = runs(mid_old);
+            let b = runs(mid_new);
+            !a.is_empty()
+                && a.len() == b.len()
+                && a.iter()
+                    .zip(b.iter())
+                    .all(|((x, _), (y, _))| token_eq(x, y))
+        };
+        match (
+            mid_old.is_empty(),
+            run_seqs_equal,
+            find_subslice(mid_new, mid_old),
+        ) {
+            (true, _, _) => {}
+            (false, false, Some(k)) => {
                 segs.push((mid_m0, mid_m1, c_base + p as u64 + k as u64));
+                // A digit run continuing PAST the match extends the last
+                // token ('1 / 0' is a prefix of '1 / 00'): the token end
+                // moves by the trailing extra digits.
+                if mid_old.last().is_some_and(|c| c.is_ascii_digit()) {
+                    let mut e = k + mid_old.len();
+                    while e < mid_new.len()
+                        && mid_new[e].is_ascii_digit()
+                        && mid_new[e - 1].is_ascii_digit()
+                    {
+                        e += 1;
+                    }
+                    let extra = (e - k - mid_old.len()) as i64;
+                    if extra > 0 {
+                        exts.push((mid_m1, extra));
+                    }
+                }
             }
-            (false, None) => {
-                // Token-run fallback: the middles may differ only in
+            (false, _, _) => {
+                // Token-run alignment: the middles may differ only in
                 // INTERNAL whitespace (equivalent rewrite with internal
                 // trivia). Align the non-whitespace runs; whitespace
                 // between them becomes blob content.
@@ -88,19 +132,28 @@ impl SpanSegments {
                     return None;
                 }
                 let mid_base_c = c_base + p as u64;
-                for ((_, os), (_, ns)) in old_runs.iter().zip(new_runs.iter()) {
+                for ((ob, os), (nb, ns)) in old_runs.iter().zip(new_runs.iter()) {
                     segs.push((
                         mid_m0 + os.0 as u64,
                         mid_m0 + os.1 as u64,
                         mid_base_c + ns.0 as u64,
                     ));
+                    let d_old = (os.1 - os.0) as i64;
+                    let d_new = (ns.1 - ns.0) as i64;
+                    if ob != nb && d_new != d_old {
+                        // Same value, longer spelling: the token end moves.
+                        exts.push((mid_m0 + os.1 as u64, d_new - d_old));
+                    }
                 }
             }
         }
         if m1 > mid_m1 {
             segs.push((mid_m1, m1, c_base + p as u64 + mid_new.len() as u64));
         }
-        Some(SpanSegments { segs })
+        Some(SpanSegments {
+            segs,
+            end_ext: exts,
+        })
     }
 
     /// An identity map for one ABSOLUTE mint range `[m0, m1)` whose
@@ -108,6 +161,7 @@ impl SpanSegments {
     pub fn identity_range(m0: u64, m1: u64, c0: u64) -> Self {
         SpanSegments {
             segs: vec![(m0, m1, c0)],
+            end_ext: Vec::new(),
         }
     }
 
@@ -182,18 +236,34 @@ impl SpanSegments {
     }
 
     fn map_token_end(&self, x: u64) -> u64 {
-        for &(m0, m1, s0) in self.segs.iter() {
-            if m0 <= x && x < m1 {
-                return s0 + (x - m0);
+        let base = {
+            let mut r = None;
+            for &(m0, m1, s0) in self.segs.iter() {
+                if m0 <= x && x < m1 {
+                    r = Some(s0 + (x - m0));
+                    break;
+                }
+                if m0 > x {
+                    break;
+                }
+                if m1 == x {
+                    r = Some(s0 + (m1 - m0));
+                    break;
+                }
             }
-            if m0 > x {
-                break;
+            match r {
+                Some(v) => v,
+                None => return self.map(x),
             }
-            if m1 == x {
-                return s0 + (m1 - m0);
-            }
-        }
-        self.map(x)
+        };
+        // A lengthened same-value token's END moves by the spelling delta.
+        let extra: i64 = self
+            .end_ext
+            .iter()
+            .filter(|&&(k, _)| k == x)
+            .map(|&(_, d)| d)
+            .sum();
+        (base as i64 + extra) as u64
     }
 
     /// Content-aware composition (F-828-R1-04/R8a-check): like [`apply`],

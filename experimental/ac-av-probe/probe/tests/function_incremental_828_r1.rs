@@ -1373,3 +1373,65 @@ fn r12a_equivalent_decimal_spelling_matrix() {
     }
     assert!(failures.is_empty(), "{failures:#?}");
 }
+
+/// r13a-check: same-value digit insertion extends the token endpoint.
+#[test]
+fn r13a_denominator_extension_updates_whole_expression_end() {
+    let mut s = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find("1 / 0").unwrap() + 4;
+    let candidate = R6A_SRC.replacen("1 / 0", "1 / 00", 1);
+    let cold = warmup(&candidate, "d_main", &[]).unwrap();
+    let code = s.current().find_code("d_main").unwrap().clone();
+    let out = s.edit(at as u64, (at + 1) as u64, b"00".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    assert_eq!(s.src(), candidate);
+    assert!(Arc::ptr_eq(&code, s.current().find_code("d_main").unwrap()));
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "same-value digit insertion extends the token endpoint"
+    );
+}
+
+/// r13a-check: the complete numeric source-endpoints matrix (72 cells).
+#[test]
+fn r13a_complete_numeric_source_endpoints_matrix() {
+    let mut failures = Vec::new();
+    for old in ["1 / 0", "01 / 00"] {
+        let source = R6A_SRC.replacen("1 / 0", old, 1);
+        for left in ["1", "01", "001"] {
+            for right in ["0", "00", "000"] {
+                for pad in ["", " "] {
+                    for gap in ["", " "] {
+                        let target = format!("{pad}{left}{gap}/{gap}{right}{pad}");
+                        let mut s = warmup(&source, "d_main", &[]).unwrap();
+                        let at = s.src().find(old).unwrap();
+                        let candidate = source.replacen(old, &target, 1);
+                        let cold = warmup(&candidate, "d_main", &[]).unwrap();
+                        let out = s
+                            .edit(
+                                at as u64,
+                                (at + old.len()) as u64,
+                                target.as_bytes().to_vec(),
+                            )
+                            .unwrap();
+                        assert!(out.ok, "{old:?}->{target:?}: {out:?}");
+                        assert_eq!(s.src(), candidate);
+                        let (actual, expected) = (trap_span(&s), trap_span(&cold));
+                        if actual != expected {
+                            failures
+                                .push(format!("{old:?}->{target:?}: {actual:?} != {expected:?}"));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    eprintln!("numeric_matrix failed={}", failures.len());
+    assert!(
+        failures.is_empty(),
+        "{}/72 fail: {:#?}",
+        failures.len(),
+        failures
+    );
+}
