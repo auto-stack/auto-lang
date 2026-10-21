@@ -1,9 +1,9 @@
 # PLAN-816 M816-A 阶段候选（T-12 交付，待 T-13 独立阶段审查冻结）
 
-> 状态：**R5 修复后候选**（R4 pass 被独立 R5 推翻：writer 未真停 +
-> stop 排空丢错误；两项已修复 @`a972286fd`，见 §11。R1/R2/R5 三
-> replay 全过。T-13 R6 审查绑定 `a972286fd`。本阶段 ≠ 整 Plan 交付：
-> T-03..T-11 未开，Plan 保持 `executing`。
+> 状态：**R6 修复后候选**（R6 判 R5-01 CLOSED、R3-02 取消时序 OPEN、
+> R6-01 Linux 编译回归；两项已修复 @`05d3940c6`，见 §12。R6 两
+> replay + R1/R2/R5 全过。T-13 R7 审查绑定 `05d3940c6`。本阶段 ≠ 整
+> Plan 交付：T-03..T-11 未开，Plan 保持 `executing`。
 
 ## 1. 身份
 
@@ -128,3 +128,14 @@ R2（reviewed 4372d56d9）判定 01/02/04 CLOSED；三残项修复（+1166/−26
 | F-816-R5-01（stop 排空丢读错/半帧终态） | 设施 `drain_readable`→`DrainEnd{Empty,Eof,Io}` 结构化（Io 具名传播、Eof 真实终态）；client reader stop 分支：排空后按"EOF 或 owned_closed"判流终——**半帧保留 `TruncatedEof` 证据**（适配审方 Cursor 型就绪源），读错 `Violation(Io)`；`stderr_session` 排空读错具名 `Err` | R5 replay 三个确定性注入全过（设施 stop 读错=Io / client stderr=Err / 半帧=TruncatedEof）；新增永久回归：直驱生产 `drain_readable` 的确定性读错测试 |
 
 机械适配：R5 replay 复制清单补 `win_stdin.rs`（新增平台模块；probe 语义=production 源+追审测试，不变）。验证矩阵（@a972286fd）：设施 9+18、client 15、fixture 16/16（压力 8/8）；R1 5/R2 4/R5 全 contract_pass；clippy/rustdoc/fmt 0、verify-deps/777 strict/check 全绿。
+
+## 12. R6 修复轮记录（T-13 R6 needs_fix 两项 → work 修复，@05d3940c6）
+
+| Finding | 修复 | 验证 |
+|---|---|---|
+| F-816-R3-02（取消时序残项：取消先于写入核） | **三序闭合**：①stop 先到且写未入核——Windows `StdinPipe::write_stoppable` 入口拒写（`Ok(0)`=停止语义，写永不进入内核——迟到写在取消凭证已关闭后仍被拒）；②写已挂起——停止侧 take→cancel→drop（cancel-then-close 实测中止）；③写已完成——正常字节。`stop_and_join` 改 `is_finished` 轮询+join 收割：不消费 `done` 通知，outcome 经 `JoinHandle<WriterOutcome>` 返回（`wait()` 同步改造）——真停判定以线程结束为准，完成通知留给外部等待方 | R6 cancel-race replay：栅栏注入（Worker 读 stop=false 后、真实写前暂停；取消槽消费关闭后放行）→ **outcome=Ok(Stopped{written:0})、writer_still_in_write=false**（R6 实测 3s PipesHeld+writer 活） |
+| F-816-R6-01（Linux cfg 类型泄漏） | 平台类型隔离：设施 `CancelSlot`（windows=`Arc<Mutex<Option<CancelHandle>>>` / unix=无操作哨兵槽）与 `CancelCredential`（windows=CancelHandle / unix=无操作哨兵）**平台中立别名**；`spawn_with` 统一签名；`cancel_handle` 平台分支；client `writer_cancel` 改中立类型；移除 `win_stdin_reexport` | R6 platform replay exit0：Linux 目标（x86_64-unknown-linux-gnu）真实两包 + 独立 consumer `cargo check` 全过（R6 实测 exit101 / 上一提交基线 exit0） |
+
+同步清理编排补齐（R6 源码证据残项）：client `shutdown` 的 `wait_writer_done` 早退与 `wait_deadline Err` 均改走 `cleanup_then_error`（cancel+drain 全收集后传播）；`OwnedProcess::drop` 有界收尸（terminate 失败路径不再无界 `child.wait`）。
+
+验证矩阵（@05d3940c6）：设施 9+18、client 15、fixture 16/16（压力 6/6）；R6 两 replay + R1 5 + R2 4 + R5 全过；clippy/rustdoc/fmt 0、verify-deps/777 strict/check 全绿。
