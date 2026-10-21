@@ -2175,3 +2175,199 @@ fn r20a_legacy_in_frame_false_span_is_rejected_control() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// r20a-check shared seeding: a REAL unit plus a sidecar whose spans
+/// mutate exactly one CONSUMED identity field — the function index
+/// (`func`) or the instruction index (duplicated) — optionally with a
+/// fully valid repair row behind it (mirrors the reviewer's
+/// binding-controls harness verbatim, including the mutation asserts).
+fn r21a_seed(dir: &std::path::Path, mode: &str, good_repair: bool) {
+    use auto_av_probe::cache as scache;
+    let s = warmup(R18A_TRAP, "d_main", &[]).unwrap();
+    let mut unit = s
+        .current()
+        .find_code("d_main")
+        .unwrap()
+        .unit()
+        .module()
+        .clone();
+    let good = std::mem::take(&mut unit.funcs[0].spans);
+    let mut bad = good.clone();
+    match mode {
+        "func" | "legacy-func" => {
+            for (_, sp) in &mut bad {
+                sp.func = u32::MAX;
+            }
+        }
+        "instr" => {
+            assert!(bad.len() >= 2);
+            bad[0].0 = bad[1].0;
+        }
+        "good" => (),
+        other => panic!("bad mode {other}"),
+    }
+    if mode != "good" {
+        assert_ne!(bad, good, "actual mutation");
+    }
+    let mk = |table: &[(u32, auto_av_core::contract::SpanInfo)]| {
+        if mode == "legacy-func" {
+            scache::encode_sidecar(table)
+        } else {
+            let text = R18A_TRAP.trim_end().as_bytes().to_vec();
+            scache::encode_unit_sidecar(&scache::UnitSidecar {
+                spans: table.to_vec(),
+                mint: Some((0, text.len() as u64, text)),
+            })
+        }
+    };
+    let payload = mk(&bad);
+    let (owner, cv) = r18a_axes();
+    let store = scache::open_store(dir).unwrap();
+    let bytes = auto_av_core::abc::encode_abc(&unit).unwrap().to_flat();
+    scache::put_enveloped(
+        &store,
+        &scache::abc_unit_key(&owner, "d_main", &cv, &scache::caps_fingerprint(&[])),
+        "A09",
+        &scache::EnvelopeIdentity::abc_bound(&owner, "d_main", &cv),
+        &bytes,
+        vec![],
+        Some("r21a"),
+    )
+    .unwrap();
+    let id = scache::EnvelopeIdentity::unit_span_sidecar(&owner, "d_main", &cv);
+    scache::put_enveloped(
+        &store,
+        &scache::unit_span_sidecar_key(&owner, "d_main", &cv),
+        "A09",
+        &id,
+        &payload,
+        vec![],
+        Some("r21a"),
+    )
+    .unwrap();
+    if good_repair {
+        scache::put_enveloped(
+            &store,
+            &scache::unit_span_sidecar_repair_key(&owner, "d_main", &cv),
+            "A09",
+            &id,
+            &mk(&good),
+            vec![],
+            Some("r21a"),
+        )
+        .unwrap();
+    }
+}
+
+/// F11-S01/function-id: a foreign `func` number bypasses the snapshot's
+/// per-code source map at run time and leaks old absolute coordinates —
+/// the source proof must bind function identity, not only endpoints.
+#[test]
+fn r21a_v2_wrong_function_must_not_bypass_source_map() {
+    let dir = std::env::temp_dir().join(format!("plan828-r21a-func-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r21a_seed(&dir, "func", false);
+    let moved = R18A_TRAP.replacen("return", "                return", 1);
+    let s = restore(&moved, "d_main", &[], &dir, "r21a").unwrap();
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&warmup(&moved, "d_main", &[]).unwrap()),
+        "source proof must bind function identity as well as byte endpoints"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// F11-S01/function-id: the same wrong-func primary must not shadow a
+/// fully valid repair.
+#[test]
+fn r21a_v2_wrong_function_must_not_hide_good_repair() {
+    let dir = std::env::temp_dir().join(format!("plan828-r21a-funcrp-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r21a_seed(&dir, "func", true);
+    let moved = R18A_TRAP.replacen("return", "                return", 1);
+    let s = restore(&moved, "d_main", &[], &dir, "r21a").unwrap();
+    assert_eq!(s.counters().get("restore_units_admitted"), 1);
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&warmup(&moved, "d_main", &[]).unwrap())
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// F10-S02/instruction-id: a duplicated instruction index is not the
+/// same provenance — candidate selection rejects it BEFORE the
+/// downstream verifier, so a valid repair is used.
+#[test]
+fn r21a_duplicate_instruction_must_not_hide_good_repair() {
+    let dir = std::env::temp_dir().join(format!("plan828-r21a-instrrp-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r21a_seed(&dir, "instr", true);
+    let s = restore(R18A_TRAP, "d_main", &[], &dir, "r21a").unwrap();
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&warmup(R18A_TRAP, "d_main", &[]).unwrap())
+    );
+    assert_eq!(
+        s.counters().get("restore_units_admitted"),
+        1,
+        "invalid primary must not shadow a fully valid repair"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// F10-S02/instruction-id: without a repair, the cold recovery's
+/// write-back must judge the survivor with the SAME standard and
+/// publish usable provenance — the SECOND restore admits.
+#[test]
+fn r21a_duplicate_instruction_must_heal_future_restore() {
+    let dir = std::env::temp_dir().join(format!("plan828-r21a-instrhl-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r21a_seed(&dir, "instr", false);
+    let first = restore(R18A_TRAP, "d_main", &[], &dir, "r21a").unwrap();
+    assert_eq!(first.counters().get("restore_units_admitted"), 0);
+    drop(first);
+    let second = restore(R18A_TRAP, "d_main", &[], &dir, "r21a").unwrap();
+    assert_eq!(
+        second.counters().get("restore_units_admitted"),
+        1,
+        "cold recovery must publish usable provenance"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// F11-S01 control: the same wrong func in the LEGACY format is
+/// rejected by the exact span-table evidence.
+#[test]
+fn r21a_legacy_wrong_function_is_rejected_control() {
+    let dir = std::env::temp_dir().join(format!("plan828-r21a-legfunc-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r21a_seed(&dir, "legacy-func", false);
+    let s = restore(R18A_TRAP, "d_main", &[], &dir, "r21a").unwrap();
+    assert_eq!(s.counters().get("restore_units_admitted"), 0);
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&warmup(R18A_TRAP, "d_main", &[]).unwrap())
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Control: honest v2 rows keep hot-hitting both the SAME and the
+/// relocated source with current coordinates.
+#[test]
+fn r21a_good_v2_identity_and_relocation_control() {
+    let dir = std::env::temp_dir().join(format!("plan828-r21a-good-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r21a_seed(&dir, "good", false);
+    for source in [
+        R18A_TRAP.to_string(),
+        R18A_TRAP.replacen("return", "                return", 1),
+    ] {
+        let s = restore(&source, "d_main", &[], &dir, "r21a").unwrap();
+        assert_eq!(s.counters().get("restore_units_admitted"), 1);
+        assert_eq!(
+            trap_span(&s),
+            trap_span(&warmup(&source, "d_main", &[]).unwrap())
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

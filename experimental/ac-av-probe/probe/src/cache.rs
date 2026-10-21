@@ -308,14 +308,23 @@ pub fn unit_sidecar_usable_for_current(
             // same instruction stream). Frame membership alone is not
             // provenance — a structurally valid span naming the wrong
             // expression must not be admitted or shadow a valid repair.
+            // r20a-check: the proof binds EVERY consumed field — the
+            // INSTRUCTION index the executor looks the span up by (a
+            // duplicated/shifted table like [1,1,2] is not the same
+            // provenance) and the FUNCTION index that selects the
+            // snapshot's per-code source map at run time (a foreign func
+            // number would bypass that map and leak old absolute
+            // coordinates), not just the byte endpoints.
             sc.spans.len() == cur.spans.len()
                 && sc
                     .spans
                     .iter()
                     .zip(cur.spans.iter())
-                    .all(|((_, sp), (_, c))| {
-                        let (s, e) = map.map_span(sp.start as u64, sp.end as u64);
-                        s == c.start as u64 && e == c.end as u64
+                    .all(|((i, sp), (ci, c))| {
+                        i == ci && sp.func == c.func && {
+                            let (s, e) = map.map_span(sp.start as u64, sp.end as u64);
+                            s == c.start as u64 && e == c.end as u64
+                        }
                     })
         }
         None => sc.spans == cur.spans,
