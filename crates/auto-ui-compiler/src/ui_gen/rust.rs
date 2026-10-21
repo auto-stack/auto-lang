@@ -8674,11 +8674,18 @@ impl RustGenerator {
         false
     }
 
-    /// 比较位另一操作数的字面量类型（PLAN-814 R9-F01/R10：比较投影按
+    /// 比较位另一操作数的类型（PLAN-814 R9-F01/R10/R11：比较投影按
     /// 真实类型分流——`p.dirty == true`→bool、`p.rank > 3`→int、
     /// `p.score > 0.5`→float、`p.rank > -1`（负数同型）→int、
-    /// `p.running == "1"`→str；形状已知字段不走此路径）。
-    fn comparison_operand_type(bytes: &[u8], ident_start: usize, field_end: usize) -> &'static str {
+    /// `p.running == "1"`→str；R11 起已声明状态引用 `.limit` 按
+    /// state_types 声明型分流、透明分组括号不改变类型；形状已知字段
+    /// 不走此路径）。
+    fn comparison_operand_type(
+        &self,
+        bytes: &[u8],
+        ident_start: usize,
+        field_end: usize,
+    ) -> &'static str {
         // 取访问另一侧的操作数 token（跳过比较运算符与空白；含符号位
         // `-`/`+` 与小数点，R10 反例：负整数/浮点不是 str）。
         let is_token_char = |c: u8| {
@@ -8709,6 +8716,14 @@ impl RustGenerator {
                 }
                 while k > 0 && (bytes[k - 1] == b' ' || bytes[k - 1] == b'\t') {
                     k -= 1;
+                }
+                // R11（R9-01 收口）：透明分组——`)` 包裹不改变操作数类型，
+                // 跨过（含嵌套与内部空白）再回扫 token。
+                while k > 0 && bytes[k - 1] == b')' {
+                    k -= 1;
+                    while k > 0 && (bytes[k - 1] == b' ' || bytes[k - 1] == b'\t') {
+                        k -= 1;
+                    }
                 }
                 let mut m = k;
                 while m > 0 && is_token_char(bytes[m - 1]) {
@@ -8749,13 +8764,21 @@ impl RustGenerator {
                 while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
                     j += 1;
                 }
+                // R11（R9-01 收口）：透明分组——`(` 包裹不改变操作数类型，
+                // 跨过（含嵌套与内部空白）再取 token。
+                while j < bytes.len() && bytes[j] == b'(' {
+                    j += 1;
+                    while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                        j += 1;
+                    }
+                }
                 while j < bytes.len() && is_token_char(bytes[j]) {
                     fwd.push(bytes[j]);
                     j += 1;
                 }
                 // R10：AST 下形的一元负号与数字间可含空白（`- 1`）——
                 // 符号单独成 token 时继续跨空白收数字部分。
-                if (fwd == b"-" || fwd == b"+") {
+                if fwd == b"-" || fwd == b"+" {
                     while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
                         j += 1;
                     }
@@ -8778,6 +8801,12 @@ impl RustGenerator {
         if t == b"true" || t == b"false" {
             return "bool";
         }
+        // R11（R9-01 收口）：已声明状态引用（`.limit` 形）按声明型分流，
+        // 不再回落 str（R10 数字收窄把点前缀 token 从旧 int 分类挤出的
+        // 修复回归）。未声明或 String/Value 等不命中，继续字面量分流。
+        if let Some(cls) = self.declared_operand_class(t) {
+            return cls;
+        }
         // 数字（含符号/小数点）：含小数点 → float，否则 int。
         let digits: &[u8] = if t[0] == b'-' || t[0] == b'+' {
             &t[1..]
@@ -8792,6 +8821,27 @@ impl RustGenerator {
             };
         }
         "str"
+    }
+
+    /// 比较操作数 token 是已声明状态引用（`.limit` 形）时，按 state_types
+    /// 声明型返回比较类别（PLAN-814 R11：i32→"int"（与字面量 int 同域，
+    /// 投影 as i32）、f64→"float"（与字面量 float 同域，投影 as_f64）、
+    /// bool→"bool"；**非默认宽度** f32/u32/i64/u64 原样返回宽度名——投影
+    /// 跟随声明宽度，否则定宽投影与声明侧 E0308）。未声明、String、Value
+    /// 或其他复合型返回 None——由字面量分流接管，默认 str 语义保持
+    /// （`.wanted` 字符串状态比较不受影响）。
+    fn declared_operand_class(&self, token: &[u8]) -> Option<&'static str> {
+        let name = std::str::from_utf8(token).ok()?.strip_prefix('.')?;
+        match self.state_types.get(name).map(|s| s.as_str()) {
+            Some("bool") => Some("bool"),
+            Some("i32") => Some("int"),
+            Some("f64") => Some("float"),
+            Some("f32") => Some("f32"),
+            Some("u32") => Some("u32"),
+            Some("i64") => Some("i64"),
+            Some("u64") => Some("u64"),
+            _ => None,
+        }
     }
 
     /// Convert AURA condition to Rust expression
@@ -8870,7 +8920,7 @@ impl RustGenerator {
                                 if Self::comparison_context(&bytes, ident_start, field_end)
                                     && elem_shape.is_none()
                                 {
-                                    match Self::comparison_operand_type(
+                                    match self.comparison_operand_type(
                                         &bytes,
                                         ident_start,
                                         field_end,
@@ -8888,6 +8938,17 @@ impl RustGenerator {
                                         "float" => format!(
                                             "({}[\"{}\"].as_f64().unwrap_or(0.0))",
                                             output_var_name, field_name
+                                        ),
+                                        // R11：声明宽度非默认时投影跟随声明型
+                                        //（语言 float=f32；u32/i64/u64 显式声明），
+                                        // 否则与声明侧 E0308。
+                                        "f32" => format!(
+                                            "({}[\"{}\"].as_f64().unwrap_or(0.0) as f32)",
+                                            output_var_name, field_name
+                                        ),
+                                        w @ ("u32" | "i64" | "u64") => format!(
+                                            "({}[\"{}\"].as_i64().unwrap_or(0) as {})",
+                                            output_var_name, field_name, w
                                         ),
                                         _ => format!(
                                             "{}[\"{}\"].as_str().unwrap_or_default()",
@@ -8932,8 +8993,7 @@ impl RustGenerator {
                             // 值比较位改走类型感知值投影（同 loop 分支——
                             // 另一操作数字面量分流 bool/int/str）。
                             if Self::comparison_context(&bytes, ident_start, field_end) {
-                                match Self::comparison_operand_type(&bytes, ident_start, field_end)
-                                {
+                                match self.comparison_operand_type(&bytes, ident_start, field_end) {
                                     "bool" => output.push_str(&format!(
                                         "(self.{}[\"{}\"].as_bool().unwrap_or(false))",
                                         var_name, field_name
@@ -8946,6 +9006,16 @@ impl RustGenerator {
                                     "float" => output.push_str(&format!(
                                         "(self.{}[\"{}\"].as_f64().unwrap_or(0.0))",
                                         var_name, field_name
+                                    )),
+                                    // R11：声明宽度非默认时投影跟随声明型
+                                    //（语言 float=f32；u32/i64/u64 显式声明）。
+                                    "f32" => output.push_str(&format!(
+                                        "(self.{}[\"{}\"].as_f64().unwrap_or(0.0) as f32)",
+                                        var_name, field_name
+                                    )),
+                                    w @ ("u32" | "i64" | "u64") => output.push_str(&format!(
+                                        "(self.{}[\"{}\"].as_i64().unwrap_or(0) as {})",
+                                        var_name, field_name, w
                                     )),
                                     _ => output.push_str(&format!(
                                         "self.{}[\"{}\"].as_str().unwrap_or_default()",
