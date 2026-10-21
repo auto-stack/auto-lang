@@ -193,6 +193,10 @@ T-01在D门后先完成有界全路径首例，冻结 `attachments/828/contract-
 
 ## 9. 复审记录
 
+2026-10-21 stage:work(repair r11a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(av-core): lexical token alignment in source-map re-anchoring" | r10a-check两类失败（同根）闭合并收编回归(r1回归套件47/47=44前+3r10a含12格词法间距矩阵)：
+F-04/R10a→from_texts回退的对齐单位改为词法token（数字串/标识符/单字符运算符，空白跳过；"非空白run不是token——1/0是一个run三个token"）：'1 / 0'→' 1/0 ' 按token对齐保留每个运算符/操作数锚；不相交trivia编辑的丢尾段(66..67)同根消除（先行间距重写正确重锚后，后续回退路径头尾都存活）；12组合词法间距矩阵为永久回归
+已知开放不变：恢复载荷无span。回归面：r1套件47/47、core 22、主17、scalar差分6、vertical/cache/binding绿；r10a-check材料自C盘复制入分支(attachments/828/r10a-check/) | OPEN不变：F-01真·函数级前端；F-02安装payload重建；F-05b取消/关闭态；F-09剩余资源预算轴；F-10 A07/依赖查询/GC（+恢复span sidecar）；F-11 changed-only持久化+manifest驱动恢复；F-12正式worker/IPC/双线内存门（含时延归因）；F-14文档重整+SD文本 | next_responsible_role:work(继续，同一树)
+
 2026-10-21 stage:work(repair r10a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(av-core): token-run re-anchoring and correct mint-text deposits" | r9a-check三例反例闭合并收编回归(r1回归套件44/44=40前+4r9a)：
 F-04/R9a类1内外trivia同改→from_texts增加token-run回退：中段非连续子串时按非空白run序列对齐（run间空白为blob）——'1 / 0'→'  1  /  0  '保留全部语义锚
 F-04/R9a类2重铸造条目存上一版文本→deposite改从prepared.new_parse/new_src取声明区间与文本（原在会话状态推进前读旧self.parse/self.src）——重铸造后紧接的同一/等价编辑按代码自身mint文本对齐；该陈旧文本bug同时是类3丢尾段(55..55)根因，由remint+等价字面量回归覆盖
