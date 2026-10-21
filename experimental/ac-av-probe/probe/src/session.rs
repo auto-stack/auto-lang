@@ -35,10 +35,13 @@ use ac_syntax_rt::outline::outline;
 use ac_syntax_rt::parse::{parse_snapshot, ParseOutput};
 use ac_syntax_rt::program::{Budget, GrammarProgram};
 use ac_syntax_rt::snapshot::{Edit, EditRequest, PageStore, Snapshot};
-use auto_ac_prototype::atom_text::{Diagnostic, Span};
+use auto_ac_prototype::atom_text::Diagnostic;
 use auto_ac_prototype::hir;
-use auto_ac_prototype::source::ast::{Block, FnItem, Item, Program as AstProgram};
-use auto_ac_prototype::source::{compile_program_parts, compile_scalar_source, SourceProfile};
+use auto_ac_prototype::source::ast::{FnItem, Item};
+use auto_ac_prototype::source::{
+    compile_scalar_source, parse_program_with, prepare_candidate_document, resolve_env, CheckedEnv,
+    FnCandidate, SourceProfile,
+};
 use auto_ac_prototype::verify::{verify_function, CheckedFunction};
 use auto_av_core::abc::{decode_abc, encode_abc};
 use auto_av_core::abc_verify::verify_abc;
@@ -138,10 +141,6 @@ struct FnRecord {
     def_id: String,
     /// The source-level function name (e.g. `main`).
     name: String,
-    /// Signature-only stub item for the synth program: the projected fn item
-    /// with an empty body and all spans zeroed (stubs carry no real source
-    /// positions; re-anchoring never sees out-of-range stub spans).
-    stub_item: Item,
     /// The verified HIR body object — same `Arc` across revisions unless
     /// this function itself changed.
     hir_body: Arc<hir::Body>,
@@ -215,6 +214,11 @@ pub struct PreparedEdit {
     /// MINTING session's identity — a candidate handed to another session
     /// is refused even at equal revision numbers (F-828-R1-05).
     session_id: u64,
+    /// PLAN-828 T-02: the ac-core candidate transaction object. The
+    /// PreparedEdit OWNS the candidate — the environment slot publishes
+    /// only at [`FunctionIncrementalSession::commit`], together with the
+    /// root/source/revision advance (D-03 single publication point).
+    candidate: FnCandidate,
     /// Re-minted (miss) vs reused-from-history (content hit): span
     /// baselines reset only on a mint (F-828-R1-04/R2a F04-b).
     reminted: bool,
@@ -260,6 +264,12 @@ pub struct FunctionIncrementalSession {
     /// Interface environment of the accepted revision (signatures + def
     /// ids + owner scope; PLAN-828 T-03).
     env: FnEnv,
+    /// PLAN-828 T-02: the RETAINED checked environment (ac-core
+    /// `CheckedEnv`). The hot edit path runs the real single-body
+    /// re-check/emission transaction against it
+    /// ([`prepare_candidate_document`]); its slot publishes only at commit
+    /// (D-03) and close() releases it explicitly.
+    env_core: CheckedEnv,
     /// The ac-core declaration-context fingerprint the outstanding body
     /// credentials were verified under; a drift invalidates them.
     context_revision: String,
@@ -345,6 +355,13 @@ pub fn warmup(
         let cf = verify_function(bundle.clone(), entry_idx).map_err(|ds| render_diags(src, &ds))?;
         cf.context_revision().to_string()
     };
+    // PLAN-828 T-02: the RETAINED checked environment — the hot edit path's
+    // single-body re-check/emission transaction runs against it. Built once
+    // at warm-up (cold path) and published only through candidate commits.
+    let core_program =
+        parse_program_with(src, SourceProfile::Scalar).map_err(|d| d.render("probe.at", src))?;
+    let env_core = resolve_env(&core_program, caps, SourceProfile::Scalar)
+        .map_err(|ds| render_diags(src, &ds))?;
     let projected = project_strict(&grammar, &kinds, &parse.tree, &snap)
         .map_err(|e| format!("project: {e:?}"))?;
     let ast_fns: Vec<(String, FnItem)> = projected
@@ -407,7 +424,6 @@ pub fn warmup(
         fns.push(FnRecord {
             def_id: d.id_text.clone(),
             name: name.clone(),
-            stub_item: Item::Fn(stubify(item.1)),
             hir_body: body_arc,
             code: code.clone(),
             origin: 0,
@@ -424,6 +440,15 @@ pub fn warmup(
     if def_order != ast_order {
         return Err(format!(
             "first-case contract: def order {def_order:?} != source decl order {ast_order:?}"
+        ));
+    }
+    // ...and with the retained checked environment's slots: the edit path
+    // addresses env slots by declaration index (T-02 binding, verified
+    // once here; the re-check's own name guard is the runtime backstop).
+    let env_order = auto_ac_prototype::source::env_fn_names(&env_core);
+    if env_order != def_order {
+        return Err(format!(
+            "checked-env slot order {env_order:?} != declaration order {def_order:?}"
         ));
     }
 
@@ -459,6 +484,7 @@ pub fn warmup(
         parse,
         fns,
         env,
+        env_core,
         context_revision,
         current: snapshot,
         revision: 0,
@@ -776,6 +802,9 @@ impl FunctionIncrementalSession {
             return;
         }
         self.closed = true;
+        // PLAN-828 T-02/D-03: EXPLICIT release of the retained checked
+        // environment's owned body entries (never implied by field drops).
+        self.env_core.close();
         self.store = None;
         self.fns.clear();
         self.current = Arc::new(ProgramSnapshot::vacant(&self.entry_def_id, self.revision));
@@ -1067,30 +1096,22 @@ impl FunctionIncrementalSession {
         self.session_id
     }
 
-    /// The miss path of the content cache: verify the changed body
-    /// (verifier-constructed credential, currency-checked), lower the
-    /// single-function unit, admit it through the ABC admission and wrap
-    /// the resident code handle. Counters bump at each real entry.
-    /// Inner `Err` = candidate rejection (diagnostics); outer `Err` =
-    /// infrastructure failure.
+    /// The miss path of the content cache (T-02: verification itself runs
+    /// at the caller, deferred by the candidate-document prepare so a
+    /// content hit reuses without re-verifying): take the ALREADY-VERIFIED
+    /// credential, currency-check it against the resident interface
+    /// environment, lower the single-function unit, admit it through the
+    /// ABC admission and wrap the resident code handle. Counters bump at
+    /// each real entry. Inner `Err` = candidate rejection (diagnostics);
+    /// outer `Err` = infrastructure failure.
     #[allow(clippy::type_complexity)]
-    fn compile_and_admit_changed(
+    fn lower_and_admit(
         &mut self,
         bundle: &hir::Bundle,
-        def_idx: usize,
+        checked_fn: CheckedFunction,
         changed_name: &str,
-        new_src: &str,
         new_src_hash: u64,
     ) -> Result<Result<(Arc<hir::Body>, Arc<FunctionCode>), Vec<String>>, String> {
-        let checked_fn: CheckedFunction = match verify_function(bundle.clone(), def_idx) {
-            Ok(c) => c,
-            Err(ds) => {
-                return Ok(Err(ds
-                    .iter()
-                    .map(|d| d.render("probe.at", new_src))
-                    .collect()));
-            }
-        };
         // Credential currency: the body was verified under the SAME
         // declaration context as the outstanding ones — a drift here means
         // the interface gate above missed a context change (defense in
@@ -1100,8 +1121,12 @@ impl FunctionIncrementalSession {
                 "body credential minted under a different declaration context".to_string(),
             ]));
         }
-        self.counters.bump(&format!("verify_hir:{changed_name}"));
 
+        let def_idx = bundle.modules[0]
+            .defs
+            .iter()
+            .position(|d| d.id_text == checked_fn.def_id_text())
+            .ok_or_else(|| "verified def missing in candidate bundle".to_string())?;
         let def_id = bundle.modules[0].defs[def_idx].id_text.clone();
         let unit = lower_function_unit(bundle, &def_id, &self.caps, new_src_hash)
             .map_err(|e| format!("lower: {e:?}"))?;
@@ -1262,31 +1287,34 @@ impl FunctionIncrementalSession {
         }
         self.counters.bump(&format!("project:{changed_name}"));
 
-        // Synth program: the changed fn's projected item plus the unchanged
-        // fns' signature-only stubs (O(1) per function — no parse, no
-        // projection, no body work for them).
-        let mut items: Vec<Item> = Vec::with_capacity(self.fns.len());
-        for (i, rec) in self.fns.iter().enumerate() {
-            if i == changed_idx {
-                items.push(Item::Fn(projected_fn.clone()));
-            } else {
-                items.push(rec.stub_item.clone());
-            }
-        }
-        let synth = AstProgram { items };
-
-        // Per-function frontend over the synth program: the REAL resolve /
-        // typecheck / emit+bind entries, carrying real work only for the
-        // changed function.
-        let parts = match compile_program_parts(
-            &synth,
+        // PLAN-828 T-02: the hot path runs the REAL single-body transaction
+        // against the retained checked environment — re-check (resolve +
+        // typecheck of ONE body) and single-body emission with body-less
+        // callee scaffolds. No synth program, no whole-program frontend:
+        // unchanged functions contribute no body work (the producer window
+        // gate proves it). Current is restored before the candidate is
+        // returned; the environment slot publishes only at commit (D-03).
+        let candidate = match prepare_candidate_document(
+            &mut self.env_core,
+            &projected_fn,
+            changed_idx,
             &new_src,
             "probe.at",
-            &self.caps,
-            SourceProfile::Scalar,
         ) {
-            Ok(p) => p,
+            Ok(c) => c,
             Err(ds) => {
+                // The re-check's signature-drift guard (`source.incremental`)
+                // IS the session's explicit non-fast path — an interface
+                // edit, never silently re-checked. Anything else is a
+                // candidate rejection carrying real diagnostics.
+                if ds.iter().any(|d| d.code == "source.incremental") {
+                    return Ok(Err(EditOutcome::rejected(
+                        self.revision,
+                        "non-fast-path: signature change refused by the retained environment's interface gate"
+                            .to_string(),
+                        Vec::new(),
+                    )));
+                }
                 return Ok(Err(EditOutcome::rejected(
                     self.revision,
                     "candidate rejected: frontend diagnostics".to_string(),
@@ -1297,19 +1325,19 @@ impl FunctionIncrementalSession {
         for stage in ["resolve", "typecheck", "hir_build"] {
             self.counters.bump(&format!("{stage}:{changed_name}"));
         }
-        self.counters.bump("synth_stub_walks");
 
-        let def_idx = parts
+        let def_idx = candidate
+            .parts()
             .bundle
             .modules
             .first()
-            .ok_or_else(|| "synth bundle has no module".to_string())?
+            .ok_or_else(|| "candidate bundle has no module".to_string())?
             .defs
             .iter()
             .position(|d| d.id_text == self.fns[changed_idx].def_id)
             .ok_or_else(|| {
                 format!(
-                    "def {} missing in synth bundle",
+                    "def {} missing in candidate bundle",
                     self.fns[changed_idx].def_id
                 )
             })?;
@@ -1317,7 +1345,7 @@ impl FunctionIncrementalSession {
         // Fast-path gate through the interface environment (T-03): the
         // changed function's interface AND the whole declaration context
         // must be identical to the resident environment.
-        let candidate_env = FnEnv::from_bundle(&parts.bundle)?;
+        let candidate_env = FnEnv::from_bundle(&candidate.parts().bundle)?;
         if !self.env.interface_unchanged(&candidate_env, &changed_name) {
             return Ok(Err(EditOutcome::rejected(
                 self.revision,
@@ -1332,16 +1360,17 @@ impl FunctionIncrementalSession {
         // already bound it to this exact declaration context — with zero
         // re-verification, re-lowering or re-admission. A miss runs the
         // full per-function chain and deposits the new immutable pair.
-        let synth_m = parts
+        let cand_m = candidate
+            .parts()
             .bundle
             .modules
             .first()
-            .ok_or_else(|| "synth bundle has no module".to_string())?;
-        let def_body = match &synth_m.defs[def_idx].kind {
+            .ok_or_else(|| "candidate bundle has no module".to_string())?;
+        let def_body = match &cand_m.defs[def_idx].kind {
             hir::DefKind::Function { body, .. } => *body,
             _ => return Err("internal: changed def is not a function".to_string()),
         };
-        let cv = content_version_of(&canonical_hir_function(synth_m, def_body));
+        let cv = content_version_of(&canonical_hir_function(cand_m, def_body));
         let mut was_hit = false;
         let mut candidate_mint_origin: u64 = 0;
         let mut candidate_span_map = auto_av_core::span_map::SpanSegments::default();
@@ -1379,11 +1408,25 @@ impl FunctionIncrementalSession {
                 }
                 None => {
                     let new_src_hash = fnv64(new_src.as_bytes());
-                    match self.compile_and_admit_changed(
-                        &parts.bundle,
-                        def_idx,
+                    // The miss path verifies the candidate body NOW: the
+                    // document prepare defers verification so a content HIT
+                    // can reuse the stored pair with zero re-verify (T-04).
+                    let checked_fn =
+                        match verify_function(candidate.parts().bundle.clone(), def_idx) {
+                            Ok(c) => c,
+                            Err(ds) => {
+                                return Ok(Err(EditOutcome::rejected(
+                                    self.revision,
+                                    "candidate rejected: verification diagnostics".to_string(),
+                                    ds.iter().map(|d| d.render("probe.at", &new_src)).collect(),
+                                )));
+                            }
+                        };
+                    self.counters.bump(&format!("verify_hir:{changed_name}"));
+                    match self.lower_and_admit(
+                        &candidate.parts().bundle,
+                        checked_fn,
                         &changed_name,
-                        &new_src,
                         new_src_hash,
                     )? {
                         Ok(pair) => pair,
@@ -1402,6 +1445,7 @@ impl FunctionIncrementalSession {
             candidate_mint_origin = inc.tree.abs_range(inc.tree.decls[changed_idx].node).0;
         }
         Ok(Ok(PreparedEdit {
+            candidate,
             edit_region: (start, end.saturating_sub(start), edit.insert.len() as u64),
             edit_bytes: edit.insert.clone(),
             session_id: self.session_id,
@@ -1526,6 +1570,7 @@ impl FunctionIncrementalSession {
             }
         };
         let PreparedEdit {
+            candidate,
             session_id,
             base_revision,
             changed_name,
@@ -1538,6 +1583,25 @@ impl FunctionIncrementalSession {
             ..
         } = prepared;
         let _ = (session_id, base_revision);
+        // D-03 single publication point: the environment slot publishes
+        // TOGETHER with the root/source/revision advance — the candidate's
+        // commit validates owner/base/closed and installs its own entry.
+        // A refusal is unreachable by construction (this session is the
+        // env's sole publisher and the base-revision guard above matches
+        // the env base); surface it honestly rather than ignore.
+        if let Err(ds) = candidate.commit(&mut self.env_core) {
+            return EditOutcome::rejected(
+                self.revision,
+                format!(
+                    "env install refused: {}",
+                    ds.iter()
+                        .map(|d| d.render("probe.at", &self.src))
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                ),
+                Vec::new(),
+            );
+        }
         let changed_rec = &mut self.fns[changed_idx];
         // The deposited map is the POST-commit one (installed baseline
         // composed with this edit) — captured after the origin loop.
@@ -1590,26 +1654,6 @@ impl FunctionIncrementalSession {
             non_fast_path_reason: None,
         }
     }
-}
-
-/// Signature-only stub for the synth program: empty body, all spans zeroed
-/// (stubs carry no real source positions — their spans are never consumed
-/// and re-anchoring never sees out-of-range stub spans).
-fn stubify(mut f: FnItem) -> FnItem {
-    let zero = Span { start: 0, end: 0 };
-    f.name.span = zero;
-    for p in &mut f.params {
-        p.name.span = zero;
-        p.ty.span = zero;
-        p.span = zero;
-    }
-    f.ret.span = zero;
-    f.body = Block {
-        stmts: Vec::new(),
-        span: zero,
-    };
-    f.span = zero;
-    f
 }
 
 fn render_diags(src: &str, ds: &[Diagnostic]) -> String {

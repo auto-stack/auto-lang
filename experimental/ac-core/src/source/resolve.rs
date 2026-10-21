@@ -784,6 +784,13 @@ pub fn env_fn_count(env: &CheckedEnv) -> usize {
     env.program.fns.len()
 }
 
+/// The resolved function names in environment order (D-01/D-03): a
+/// consumer binds its declaration indices to the environment's slots and
+/// verifies the mapping once at construction.
+pub fn env_fn_names(env: &CheckedEnv) -> Vec<&str> {
+    env.program.fns.iter().map(|f| f.name.as_str()).collect()
+}
+
 /// PLAN-828 D-01: record the COLD baseline walks (the whole-module
 /// resolve + typecheck each walked every function once). Called by the
 /// consumer that ran the cold typecheck pass.

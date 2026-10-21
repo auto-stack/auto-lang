@@ -657,6 +657,135 @@ fn contract_828_admission_scaffold_still_legal_at_function_level() {
 }
 
 // ---------------------------------------------------------------------------
+// T-02 hot-path wiring (`contract_828_hotpath`): the PRODUCTION session
+// entry runs the single-body candidate-document transaction against the
+// retained checked environment — the producer body-work window over the
+// real `s.edit()` shows exactly the changed function working, and the
+// forcibly-executed old whole-stub pipeline in the same kind of window is
+// still detected as extra work by the same gate.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn contract_828_hotpath_real_session_edit_is_single_body_window() {
+    use auto_ac_prototype::body_work::{capture_body_work, BodyWork};
+    use std::collections::BTreeMap;
+    let src = "fn helper() int { return 1 }\nfn main() int { var x = helper(); return x + 1 }\nfn tail() int { return 9 }\n";
+    let mut s = warmup(src, "d_main", &[]).unwrap();
+    assert_eq!(value_of(&s), 2);
+
+    // The REAL production entry, observed by the PRODUCER window: within
+    // one edit only the changed function accumulates resolve/typecheck/
+    // plan/bind — the retained-environment seam contributes no body work
+    // for unchanged functions (no synth program, no whole-program
+    // frontend).
+    let gate = |window: &BTreeMap<String, BodyWork>, changed: &str| {
+        window.get(changed).map_or(false, |w| {
+            *w == BodyWork {
+                resolve: 1,
+                typecheck: 1,
+                plan: 1,
+                bind: 1,
+            }
+        }) && window
+            .iter()
+            .all(|(n, w)| n == changed || *w == BodyWork::default())
+    };
+    let at = s.src().find("return 1").unwrap() + 7;
+    let (out, window) =
+        capture_body_work(|| s.edit(at as u64, (at + 1) as u64, b"2".to_vec()).unwrap());
+    assert!(out.ok, "{out:?}");
+    eprintln!("session_edit_window={window:?}");
+    assert!(
+        gate(&window, "helper"),
+        "the production session edit is single-body: {window:?}"
+    );
+    // Outer counters agree: unchanged functions and whole-module axes stay
+    // zero; the removed synth pipeline leaves no trace.
+    for (stage, count) in s.counters().stages_of("main").iter() {
+        assert_eq!(*count, 0, "main stage `{stage}`");
+    }
+    for (stage, count) in s.counters().whole_module().iter() {
+        assert_eq!(*count, 0, "{stage}");
+    }
+    assert_eq!(s.counters().get("synth_stub_walks"), 0);
+    assert_eq!(value_of(&s), 3, "the edit really installed");
+}
+
+/// The distinguishing negative: the OLD whole-stub pipeline (the F-01 gap
+/// this wiring removed), actually executed in its own producer window,
+/// still shows up as extra body work — the same gate that is green on the
+/// session entry goes red on it.
+#[test]
+fn contract_828_hotpath_old_synth_pipeline_same_window_is_red() {
+    use auto_ac_prototype::body_work::{capture_body_work, BodyWork};
+    use auto_ac_prototype::source as ac;
+    use std::collections::BTreeMap;
+    let src = "fn helper() int { return 1 }\nfn main() int { var x = helper(); return x + 1 }\nfn tail() int { return 9 }\n";
+    let edited = src.replace("return 1", "return 2");
+
+    let gate = |window: &BTreeMap<String, BodyWork>, changed: &str| {
+        window.get(changed).map_or(false, |w| {
+            *w == BodyWork {
+                resolve: 1,
+                typecheck: 1,
+                plan: 1,
+                bind: 1,
+            }
+        }) && window
+            .iter()
+            .all(|(n, w)| n == changed || *w == BodyWork::default())
+    };
+    let mut synth = ac::parse_program_with(&edited, ac::SourceProfile::Scalar).unwrap();
+    for item in &mut synth.items {
+        if let ac::ast::Item::Fn(f) = item {
+            if f.name.name != "helper" {
+                f.body.stmts.clear();
+            }
+        }
+    }
+    let (old_parts, old_window) = capture_body_work(|| {
+        ac::compile_program_parts(&synth, &edited, "probe.at", &[], ac::SourceProfile::Scalar)
+            .unwrap()
+    });
+    assert_eq!(old_parts.planned_fns, 3, "the old pipeline plans every fn");
+    eprintln!("old_pipeline_window={old_window:?}");
+    assert!(
+        !gate(&old_window, "helper"),
+        "the old whole-stub pipeline is producer-observed and red: {old_window:?}"
+    );
+}
+
+/// D-03 wiring through the session: a prepared-but-uncommitted candidate
+/// leaves the session's current revision running the OLD semantics, and
+/// close() explicitly releases the retained environment (post-close edits
+/// are rejections; the env's owned entries are gone).
+#[test]
+fn contract_828_hotpath_prepare_then_close_transaction_wiring() {
+    let src = "fn helper() int { return 1 }\nfn main() int { var x = helper(); return x + 1 }\n";
+    let mut s = warmup(src, "d_main", &[]).unwrap();
+    assert_eq!(value_of(&s), 2);
+
+    let prepared = match s.prepare_edit(0, 0, Vec::new()) {
+        Err(e) => panic!("prepare infrastructure failure: {e}"),
+        // A zero-width edit at 0 is a legitimate no-op candidate only if it
+        // meets one decl; here it meets `fn helper` — proceed.
+        Ok(Err(outcome)) => panic!("unexpected rejection: {outcome:?}"),
+        Ok(Ok(p)) => p,
+    };
+    // Uncommitted: current still runs the old semantics.
+    assert_eq!(value_of(&s), 2);
+    assert_eq!(s.revision(), 0);
+
+    // Terminal close with an outstanding candidate: the environment is
+    // explicitly released; the disposed candidate never publishes.
+    s.close();
+    assert!(s.closed());
+    let out = s.commit(prepared);
+    assert!(!out.ok, "closed commit is a rejection: {out:?}");
+    assert_eq!(s.revision(), 0);
+}
+
+// ---------------------------------------------------------------------------
 // T01-C05 transaction cases (`contract_828_transaction`): the frozen D-03
 // candidate model — the CANDIDATE owns the new entry plus owner/base facts;
 // a successful prepare restores current BEFORE returning; commit is the

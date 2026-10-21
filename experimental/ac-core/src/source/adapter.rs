@@ -443,18 +443,16 @@ impl FnCandidate {
     pub fn cancel(self) {}
 }
 
-/// PLAN-828 D-03 (T01-C05): the minimal transactional single-function
-/// prepare. Within one exclusive-access bounded transaction the candidate
-/// body is temporarily grafted so the REAL single-body resolve/typecheck,
-/// emission and function-level verification all run against it — then,
-/// BEFORE returning, the current entry is restored and the CANDIDATE
-/// carries the new entry (moved) plus its owner/base facts. The
-/// environment therefore never publishes at prepare time: a successful
-/// prepare leaves current semantics byte-identical; a failure at ANY
-/// stage restores the current entry first. No environment clone — the
-/// transaction's whole bounded state is the one moved entry plus the
-/// candidate's artifacts.
-pub fn prepare_function_candidate(
+/// PLAN-828 T-02: the PRODUCTION candidate document transaction — recheck
+/// + single-body emission, WITHOUT verification: the consuming session
+/// decides between content-addressed reuse of a stored, already-verified
+/// pair (no re-verify) and the full verify/lower/admit chain before
+/// publishing. Identical D-03 invariants to
+/// [`prepare_function_candidate`]: the bounded temporary graft is restored
+/// BEFORE returning (current is never published at prepare time), the
+/// candidate owns the new entry (moved) plus owner/base facts and its own
+/// artifacts; commit installs once, cancel/drop touch nothing.
+pub fn prepare_candidate_document(
     env: &mut super::resolve::CheckedEnv,
     item: &super::ast::FnItem,
     fn_index: usize,
@@ -464,20 +462,7 @@ pub fn prepare_function_candidate(
     // Bounded temporary graft (exclusive access): the re-check grafts the
     // candidate body and hands back the displaced CURRENT entry.
     let current = super::resolve::recheck_swap(env, item, fn_index)?;
-    let prepared =
-        emit_function_body(env, fn_index, src, module_path).and_then(|(parts, receipt)| {
-            let def = format!("d_{}", item.name.name);
-            let def_idx = parts.bundle.modules[0]
-                .defs
-                .iter()
-                .position(|d| d.id_text == def)
-                .unwrap_or(fn_index);
-            match crate::verify::verify_function(parts.bundle.clone(), def_idx) {
-                Ok(_) => Ok((parts, receipt)),
-                Err(ds) => Err(ds),
-            }
-        });
-    match prepared {
+    match emit_function_body(env, fn_index, src, module_path) {
         Ok((parts, receipt)) => {
             // Restore current and take the candidate BEFORE returning —
             // publication happens only at FnCandidate::commit.
@@ -496,6 +481,39 @@ pub fn prepare_function_candidate(
             env.program.fns[fn_index] = current;
             Err(ds)
         }
+    }
+}
+
+/// PLAN-828 D-03 (T01-C05): the minimal transactional single-function
+/// prepare. Within one exclusive-access bounded transaction the candidate
+/// body is temporarily grafted so the REAL single-body resolve/typecheck,
+/// emission and function-level verification all run against it — then,
+/// BEFORE returning, the current entry is restored and the CANDIDATE
+/// carries the new entry (moved) plus its owner/base facts. The
+/// environment therefore never publishes at prepare time: a successful
+/// prepare leaves current semantics byte-identical; a failure at ANY
+/// stage restores the current entry first. No environment clone — the
+/// transaction's whole bounded state is the one moved entry plus the
+/// candidate's artifacts.
+pub fn prepare_function_candidate(
+    env: &mut super::resolve::CheckedEnv,
+    item: &super::ast::FnItem,
+    fn_index: usize,
+    src: &str,
+    module_path: &str,
+) -> Result<FnCandidate, Vec<Diagnostic>> {
+    let candidate = prepare_candidate_document(env, item, fn_index, src, module_path)?;
+    let def = format!("d_{}", item.name.name);
+    let def_idx = candidate.parts().bundle.modules[0]
+        .defs
+        .iter()
+        .position(|d| d.id_text == def)
+        .unwrap_or(fn_index);
+    // The document prepare already restored current; a verify failure just
+    // discards the candidate (drop is inert).
+    match crate::verify::verify_function(candidate.parts().bundle.clone(), def_idx) {
+        Ok(_) => Ok(candidate),
+        Err(ds) => Err(ds),
     }
 }
 
@@ -2336,6 +2354,20 @@ impl<'p> Emitter<'p> {
                 nl!(12);
             }
         }
+        // PLAN-828 T-02: in single-function scope, every span NOT belonging
+        // to the scoped function is inert interface metadata — its anchor is
+        // the RETAINED environment's own source, not the src passed to this
+        // emission, so it may legitimately fall outside the (re-written)
+        // current source. Such spans emit as zero (never consumed; same
+        // rationale as the old zeroed stub items) so re-anchoring only ever
+        // validates spans that really anchor the passed source.
+        let meta_span = |fi: usize| -> Span {
+            if self.scope.is_some_and(|s| s != fi) {
+                Span { start: 0, end: 0 }
+            } else {
+                self.program.fns[fi].item_span
+            }
+        };
         for (fi, f) in self.program.fns.iter().enumerate() {
             let params: Vec<String> = f
                 .params
@@ -2347,6 +2379,7 @@ impl<'p> Emitter<'p> {
             } else {
                 format!("t_f{}_{}", fi, f.name)
             };
+            let span = meta_span(fi);
             frag!(
                 &format!(
                     "type {} function {{ params: [{}]; result: \"{}\" }}",
@@ -2354,9 +2387,9 @@ impl<'p> Emitter<'p> {
                     params.join(", "),
                     self.ty_name(f.result)
                 ),
-                f.item_span
+                span
             );
-            spans.types.push(f.item_span);
+            spans.types.push(span);
             nl!(12);
         }
         for sym in &use_intrinsics {
@@ -2400,6 +2433,14 @@ impl<'p> Emitter<'p> {
                 } else {
                     format!("; body: \"b_{}\"", f.name)
                 };
+                // T-02: a scaffold declaration's span is inert metadata
+                // (see the types section note) — zero, never the retained
+                // entry's stale source span.
+                let span = if scaffold {
+                    Span { start: 0, end: 0 }
+                } else {
+                    f.item_span
+                };
                 frag!(
                     &format!(
                         "function d_{} t_f_{} {{ name: \"sf_{}\"{} }}",
@@ -2408,34 +2449,36 @@ impl<'p> Emitter<'p> {
                         Self::esc(&f.name),
                         body_field
                     ),
-                    f.item_span
+                    span
                 );
-            } else {
-                let rec_name = f
-                    .owner_rec
-                    .map(|ri| self.program.records[ri].name.clone())
-                    .unwrap_or_default();
-                let recv_word = match f.receiver {
-                    crate::source::ast::Receiver::Static => "static",
-                    _ => "view",
-                };
-                frag!(
-                    &format!(
-                        "method d_f{}_{} t_f{}_{} {{ name: \"sm_{}_{}\"; body: \"b_f{}_{}\"; record: t_rec_{}; receiver: {} }}",
-                        fi,
-                        f.name,
-                        fi,
-                        f.name,
-                        rec_name,
-                        f.name,
-                        fi,
-                        f.name,
-                        rec_name,
-                        recv_word
-                    ),
-                    f.item_span
-                );
+                spans.defs.push(span);
+                nl!(12);
+                continue;
             }
+            let rec_name = f
+                .owner_rec
+                .map(|ri| self.program.records[ri].name.clone())
+                .unwrap_or_default();
+            let recv_word = match f.receiver {
+                crate::source::ast::Receiver::Static => "static",
+                _ => "view",
+            };
+            frag!(
+                &format!(
+                    "method d_f{}_{} t_f{}_{} {{ name: \"sm_{}_{}\"; body: \"b_f{}_{}\"; record: t_rec_{}; receiver: {} }}",
+                    fi,
+                    f.name,
+                    fi,
+                    f.name,
+                    rec_name,
+                    f.name,
+                    fi,
+                    f.name,
+                    rec_name,
+                    recv_word
+                ),
+                f.item_span
+            );
             spans.defs.push(f.item_span);
             nl!(12);
         }
