@@ -1090,5 +1090,52 @@ fn t03_a07_fn_hir_tampered_row_is_skipped_not_trusted() {
     let (out, _) = r.run(&ExecLimits::default(), &cancel);
     assert_i32(&out, 23, "cold body keeps serving");
     let _ = std::fs::remove_dir_all(&dir);
+
+    // Distinguishing negative #2: a row that decodes CLEANLY, carries the
+    // right body/content/spans/caps — and WRONG dependency facts (a forged
+    // declaration-context fingerprint). Content alone must not adopt it.
+    use auto_av_probe::fn_hir_codec::{encode_fn_hir, fn_hir_span_digest, FnHirArtifact};
+    let dir = std::env::temp_dir().join(format!("p828-t03-ctx-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let forged = FnHirArtifact {
+        def_id: "d_helper".to_string(),
+        content_version: cv.clone(),
+        span_digest: fn_hir_span_digest(&m.bodies[body.0 as usize]),
+        context_fingerprint: "0000000000000000".to_string(), // forged context
+        caps_fp: caps_fp.clone(),
+        intrinsics: Vec::new(),
+        body: m.bodies[body.0 as usize].clone(),
+    };
+    let forged_bytes = encode_fn_hir(&forged).expect("the forged row encodes cleanly");
+    assert!(
+        decode_fn_hir(&forged_bytes).is_ok(),
+        "it is a VALID artifact payload — only the context is wrong"
+    );
+    {
+        let store = open_store(&dir).expect("open");
+        put_enveloped(
+            &store,
+            &key,
+            "A07",
+            &expect,
+            &forged_bytes,
+            vec![],
+            Some("p828"),
+        )
+        .expect("pre-write forged row");
+    }
+    let s = warmup_persisted(SRC, "d_main", &[], &dir, "p828").expect("warmup-persisted");
+    assert_eq!(s.counters().get("hir_artifacts_deposited"), 1);
+    drop(s);
+    let mut r = restore(SRC, "d_main", &[], &dir, "p828").expect("restore");
+    assert_eq!(
+        r.counters().get("restore_hir_adopted"),
+        1,
+        "a clean-decoding row with WRONG dependency facts is not adopted"
+    );
+    let (out, _) = r.run(&ExecLimits::default(), &cancel);
+    assert_i32(&out, 23, "cold body keeps serving");
+    let _ = std::fs::remove_dir_all(&dir);
     let _ = SourceProfile::Scalar;
 }
