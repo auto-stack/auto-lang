@@ -1633,55 +1633,18 @@ impl FunctionIncrementalSession {
         let next_revision = self.revision + 1;
         let changed_idx = prepared.changed_idx;
         let reminted = prepared.reminted;
-        // Refresh per-function origins BEFORE linking: only a RE-MINTED
-        // function resets its span baseline; a content hit keeps the
-        // original mint baseline and gains a body-region refinement when
-        // its body text moved internally (F-828-R1-04/R2a F04-b/c).
+        // T-06 / C02-04 install atomicity: the post-commit span maps and
+        // the code set are computed READ-ONLY first; the session's records
+        // are touched only AFTER the link succeeds, so a link failure
+        // leaves every record, the current root and the revision exactly
+        // as they were (a rejected candidate never half-installs).
+        // Only a RE-MINTED function resets its span baseline; a content
+        // hit keeps the re-anchored map from prepare (F-828-R1-04/R2a).
         let old_src = self.src.clone();
+        let (c, old_len, _new_len) = prepared.edit_region;
+        let old_bytes = old_src.as_bytes()[c as usize..(c + old_len) as usize].to_vec();
         let mut span_maps: Vec<auto_av_core::span_map::SpanSegments> =
             Vec::with_capacity(self.fns.len());
-        for (i, d) in prepared.new_parse.tree.decls.iter().enumerate() {
-            let o = prepared.new_parse.tree.abs_range(d.node).0;
-            let rec = &mut self.fns[i];
-            rec.origin = o;
-            span_maps.push(auto_av_core::span_map::SpanSegments::default()); // replaced below
-            if i == changed_idx {
-                rec.mint_origin = prepared.mint_origin;
-                rec.span_map = prepared.span_map.clone();
-            }
-            let changed_hit = !reminted && i == changed_idx;
-            let (c, old_len, new_len) = prepared.edit_region;
-            if reminted && i == changed_idx {
-                // Fresh code mints against the NEW source: identity over
-                // its own decl range.
-                let (d0, d1) = prepared
-                    .new_parse
-                    .tree
-                    .abs_range(prepared.new_parse.tree.decls[i].node);
-                rec.span_map = auto_av_core::span_map::SpanSegments::identity_range(d0, d1, d0);
-            } else if changed_hit {
-                // A content hit's map was re-anchored to the NEW text at
-                // prepare time — applying the edit again would double it.
-            } else {
-                // Content-aware: equivalent rewrites keep their mint
-                // anchors (F-828-R1-04/R8a-check).
-                let old_bytes = old_src.as_bytes()[c as usize..(c + old_len) as usize].to_vec();
-                rec.span_map
-                    .apply_aligned(c, c + old_len, &old_bytes, &prepared.edit_bytes);
-                for e in rec.history.values_mut() {
-                    e.3.apply_aligned(c, c + old_len, &old_bytes, &prepared.edit_bytes);
-                }
-                continue;
-            }
-            // EVERY stored code object of this function (history entries)
-            // experiences the same source change; the deposited current
-            // entry is overwritten below with the post-edit map.
-            for e in rec.history.values_mut() {
-                let old_bytes = old_src.as_bytes()[c as usize..(c + old_len) as usize].to_vec();
-                e.3.apply_aligned(c, c + old_len, &old_bytes, &prepared.edit_bytes);
-            }
-        }
-        span_maps = self.fns.iter().map(|r| r.span_map.clone()).collect();
         let mut codes: Vec<Arc<FunctionCode>> = Vec::with_capacity(self.fns.len());
         for (i, rec) in self.fns.iter().enumerate() {
             if i == changed_idx {
@@ -1689,12 +1652,35 @@ impl FunctionIncrementalSession {
             } else {
                 codes.push(rec.code.clone());
             }
+            if i == changed_idx {
+                let m = if reminted {
+                    // Fresh code mints against the NEW source: identity
+                    // over its own decl range.
+                    let (d0, d1) = prepared
+                        .new_parse
+                        .tree
+                        .abs_range(prepared.new_parse.tree.decls[i].node);
+                    auto_av_core::span_map::SpanSegments::identity_range(d0, d1, d0)
+                } else {
+                    // A content hit's map was re-anchored to the NEW text
+                    // at prepare time — applying the edit again would
+                    // double it.
+                    prepared.span_map.clone()
+                };
+                span_maps.push(m);
+            } else {
+                // Content-aware: equivalent rewrites keep their mint
+                // anchors (F-828-R1-04/R8a-check).
+                let mut m = rec.span_map.clone();
+                m.apply_aligned(c, c + old_len, &old_bytes, &prepared.edit_bytes);
+                span_maps.push(m);
+            }
         }
         let next = match ProgramSnapshot::link_with_maps(
             codes,
             &self.entry_def_id,
             next_revision,
-            span_maps,
+            span_maps.clone(),
         ) {
             Ok(s) => Arc::new(s),
             Err(e) => {
@@ -1705,6 +1691,30 @@ impl FunctionIncrementalSession {
                 );
             }
         };
+        // Link succeeded — NOW apply the per-record updates: origins, the
+        // changed function's mint baseline and post-commit span map, and
+        // the same source shift across every stored history entry.
+        for (i, rec) in self.fns.iter_mut().enumerate() {
+            let o = prepared
+                .new_parse
+                .tree
+                .abs_range(prepared.new_parse.tree.decls[i].node)
+                .0;
+            rec.origin = o;
+            if i == changed_idx {
+                rec.mint_origin = prepared.mint_origin;
+                rec.span_map = span_maps[i].clone();
+            } else {
+                rec.span_map = span_maps[i].clone();
+                for e in rec.history.values_mut() {
+                    e.3.apply_aligned(c, c + old_len, &old_bytes, &prepared.edit_bytes);
+                }
+                continue;
+            }
+            for e in rec.history.values_mut() {
+                e.3.apply_aligned(c, c + old_len, &old_bytes, &prepared.edit_bytes);
+            }
+        }
         let PreparedEdit {
             candidate,
             session_id,

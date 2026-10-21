@@ -75,7 +75,7 @@ pub struct FnHirArtifact {
 /// FNV-1a over every span in the body, in stable order.
 pub fn fn_hir_span_digest(body: &hir::Body) -> u64 {
     let mut h: u64 = 0xcbf29ce484222325;
-    let mut mix = |h: &mut u64, part: u64| {
+    let mix = |h: &mut u64, part: u64| {
         *h ^= part;
         *h = h.wrapping_mul(0x100000001b3);
     };

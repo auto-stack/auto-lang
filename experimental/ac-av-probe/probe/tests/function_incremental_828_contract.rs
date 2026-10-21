@@ -298,35 +298,22 @@ fn contract_828_dispatch_payload_identity_axes() {
         "identity gate RED on the forced copy — copies are detectable"
     );
 
-    // Axis 2 — dispatch payload (measured current state): what AV
-    // actually consumes for the unchanged function is the per-snapshot
-    // MERGED copy, so the object-identity observation is red today — and
-    // (the vertical slice's second real finding) even the merged CONTENT
-    // drifts, because the changed function's growth re-indexes the
-    // merged type/const space under later functions. The UNIT payload —
-    // the immutable FunctionCode AV must come to dispatch directly —
-    // stays content-identical. T-05/06 close this with link-time binding
-    // tables over unit-local payloads.
+    // Axis 2 — dispatch payload (T-05 measured state): the DEFAULT
+    // execution path consumes each function's ORIGINAL immutable unit
+    // payload through the link-time binding table (no merged
+    // re-materialization), so the dispatched-payload identity observation
+    // is GREEN for unchanged functions across revisions — and a forced
+    // same-content COPY still turns it red (the C02-05 negative). Before
+    // T-05 this axis was red on the merged copy (and even content drifted
+    // via merged-space re-indexing); the flip is the F-02 closure.
     let main_idx = 1usize;
     assert!(
-        !snap_a.dispatched_payload_same_object(&snap_b, main_idx),
-        "dispatched payload identity is RED on today's merged view (F-02 measured)"
+        snap_a.dispatched_payload_same_object(&snap_b, main_idx),
+        "dispatched payload identity is GREEN on the unit path (F-02 closed by T-05)"
     );
     assert!(
-        !snap_a.dispatched_payload_same_content(&snap_b, main_idx),
-        "merged content ALSO drifts for unchanged fns (merged-space re-index)"
-    );
-    let unit_a = format!(
-        "{:?}",
-        snap_a.find_code("d_main").unwrap().unit().module().funcs[0]
-    );
-    let unit_b = format!(
-        "{:?}",
-        snap_b.find_code("d_main").unwrap().unit().module().funcs[0]
-    );
-    assert_eq!(
-        unit_a, unit_b,
-        "the immutable unit payload is content-identical"
+        snap_a.dispatched_payload_same_content(&snap_b, main_idx),
+        "dispatched unit payload content is identical across revisions"
     );
 }
 
@@ -433,6 +420,70 @@ fn contract_828_dispatch_unit_view_first_case() {
     let (merged_run, _) =
         auto_av_core::av::execute_program(&snap, &ExecLimits::default(), &CancelFlag::new(false));
     assert!(matches!(merged_run, ExecOutcome::Success { .. }));
+}
+
+/// T-05 default path: ALL THREE public execution entries consume the unit
+/// view (link-time binding table over immutable unit payloads) — the plain
+/// and stepped/resumed chains agree with the units entry on the value, and
+/// a paused chain PINS its revision: an install that lands while parked
+/// never mixes callee versions into the resumed chain (C02-03 seed).
+#[test]
+fn contract_828_dispatch_default_three_entries_unit_consistency() {
+    let src = "fn helper() int { return 1 }
+fn main() int { var x = helper(); return x + 1 }
+";
+    let mut s = warmup(src, "d_main", &[]).unwrap();
+    // Step-pause mid-chain, install a new helper, then resume vs re-run.
+    let snap0 = s.current();
+    let paused = match auto_av_core::av::execute_program_steps(
+        &snap0,
+        &ExecLimits::default(),
+        &CancelFlag::new(false),
+        1,
+    ) {
+        auto_av_core::av::SteppedOutcome::Paused(p) => p,
+        _ => panic!("expected a paused run after 1 step"),
+    };
+    let at = src.find("return 1").unwrap() + 7;
+    let out = s.edit(at as u64, (at + 1) as u64, b"2".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    let snap1 = s.current();
+    // The resumed OLD chain completes on the OLD revision's payloads.
+    let (resumed, _) = match auto_av_core::av::resume_program(paused, &CancelFlag::new(false), None)
+    {
+        auto_av_core::av::SteppedOutcome::Finished(o, t) => (o, t),
+        _ => panic!("expected completion"),
+    };
+    assert!(
+        matches!(
+            resumed,
+            ExecOutcome::Success {
+                value: auto_av_core::contract::Value::I32(2),
+                ..
+            }
+        ),
+        "the resumed chain pins its snapshot (helper()=1): {resumed:?}"
+    );
+    // The three entries agree on the NEW revision.
+    let (plain, _) =
+        auto_av_core::av::execute_program(&snap1, &ExecLimits::default(), &CancelFlag::new(false));
+    let (units, _) = auto_av_core::av::execute_program_units(
+        &snap1,
+        &ExecLimits::default(),
+        &CancelFlag::new(false),
+    );
+    assert!(
+        matches!(
+            plain,
+            ExecOutcome::Success {
+                value: auto_av_core::contract::Value::I32(3),
+                ..
+            }
+        ),
+        "plain entry: {plain:?}"
+    );
+    assert_eq!(format!("{plain:?}"), format!("{units:?}"));
+    snap1.unit_binding_complete().unwrap();
 }
 
 /// D-02 (adopted from the r3 T-01 review control): the only way a public

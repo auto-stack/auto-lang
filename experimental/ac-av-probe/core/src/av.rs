@@ -149,15 +149,8 @@ pub fn execute_program(
     cancel: &CancelFlag,
 ) -> (ExecOutcome, ExecTrace) {
     let mut st = LoopState::default();
-    let out = dispatch(
-        &MergedView(prog.merged()),
-        limits,
-        cancel,
-        &[],
-        &mut st,
-        None,
-    )
-    .expect("no budget: the loop always terminates with an outcome");
+    let out = dispatch(&prog.unit_view(), limits, cancel, &[], &mut st, None)
+        .expect("no budget: the loop always terminates with an outcome");
     (map_span(prog, out), st.trace)
 }
 
@@ -217,7 +210,7 @@ pub fn execute_program_steps(
 ) -> SteppedOutcome {
     let mut st = LoopState::default();
     match dispatch(
-        &MergedView(prog.merged()),
+        &prog.unit_view(),
         limits,
         cancel,
         &[],
@@ -247,7 +240,7 @@ pub fn resume_program(
     } = paused;
     let prog_for_map = prog.clone();
     match dispatch(
-        &MergedView(prog.merged()),
+        &prog.unit_view(),
         &limits,
         cancel,
         &[],

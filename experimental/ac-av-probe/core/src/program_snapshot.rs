@@ -1,35 +1,44 @@
 //! Program snapshot: the transactional install root (PLAN-828 T-01 first
-//! case).
+//! case; T-05 unit dispatch).
 //!
 //! A `ProgramSnapshot` holds one revision's resident function-code set and
-//! an internally LINKED execution view of it. Construction ([`link`]) is the
+//! the LINK-TIME BINDING TABLE over it. Construction ([`link`]) is the
 //! checked linking environment: every cross-function call site (`fn:<name>`
-//! unit import) must resolve to another admitted unit with a structurally
-//! equal signature (interned-type equality in the merged table). This is
+//! unit import) resolves to another admitted unit's code slot with a
+//! structurally equal signature (checked through a scratch interned type
+//! table — the same content equality the merged space used). This is
 //! signature-checked binding over ALREADY-VERIFIED units — no whole-closure
 //! codec roundtrip and no whole-module re-verification runs here; unchanged
 //! functions enter by `Arc` identity from the previous snapshot.
 //!
-//! Snapshots are immutable once linked: a new revision is a new snapshot
-//! object, in-flight executions keep the old one alive, and a failed
-//! candidate never becomes one (the caller simply keeps the previous root).
+//! T-05: the snapshot no longer materializes a merged execution payload
+//! (blocks/slots/spans copies per revision). Execution reads each
+//! function's ORIGINAL immutable unit payload through [`UnitView`], with
+//! cross-function calls resolved by the link-time binding table. Snapshots
+//! stay immutable once linked: a new revision is a new snapshot object,
+//! in-flight executions keep the old one alive, and a failed candidate
+//! never becomes one.
 
 use crate::contract::MIR_SCHEMA;
 use crate::function_code::FunctionCode;
-use crate::mir::{CalleeRef, FnSig, MirImport, MirInstr, MirModule, MirType};
+use crate::mir::{CalleeRef, FnSig, MirModule, MirType};
 use std::sync::Arc;
 
-/// One immutable program revision: resident code set + linked dispatch view.
+/// One immutable program revision: resident code set + link-time bindings.
 #[derive(Debug)]
 pub struct ProgramSnapshot {
     revision: u64,
     entry: String,
+    /// The entry's code slot (link-computed). `u32::MAX` on a vacant root —
+    /// dispatch's entry guard turns it into a controlled `Infra`.
+    entry_slot: u32,
     code: Vec<Arc<FunctionCode>>,
-    /// Linked execution view: single merged module, all call sites resolved
-    /// to `CalleeRef::Func`. Built ONLY by [`ProgramSnapshot::link`] from
-    /// admitted units with signature-checked bindings — never re-verified as
-    /// a whole, never exposed mutable.
-    merged: MirModule,
+    /// LINK-TIME BINDING TABLE (T-05): per code slot, per import index →
+    /// the resolved target code slot. Built ONLY by
+    /// [`ProgramSnapshot::link_with_maps`] with signature checks; `None` =
+    /// an unresolved import (a non-`fn:` import — a dispatch-time
+    /// admission violation, exactly as unresolved imports always were).
+    bindings: Vec<Vec<Option<u32>>>,
     /// Per-code-slot diagnostics-only source maps: sorted edit regions
     /// `(start, len, delta)` in the CURRENT source's coordinates; a
     /// position x maps to x + Σ delta of regions with `start < x`.
@@ -54,33 +63,28 @@ impl ProgramSnapshot {
         Self::link_with_maps(code, entry, revision, span_maps)
     }
 
-    /// Link with per-code-slot source maps (see the field docs).
+    /// Link with per-code-slot source maps (see the field docs). This is
+    /// the checked linking environment: it interns every unit's types into
+    /// a SCRATCH table solely to check call-site↔callee signature equality
+    /// (interned equality is content equality), resolves each unit's
+    /// `fn:<name>` imports to code slots, and stores the binding table.
+    /// NO blocks, slots, spans or instruction payloads are copied — the
+    /// execution view is the units themselves.
     pub fn link_with_maps(
         code: Vec<Arc<FunctionCode>>,
         entry: &str,
         revision: u64,
         span_maps: Vec<crate::span_map::SpanSegments>,
     ) -> Result<ProgramSnapshot, String> {
-        let mut merged = MirModule::new(crate::mir::OwnerScope {
+        // Scratch interned type space: used ONLY for signature equality
+        // checks (content equality), never retained.
+        let mut scratch = MirModule::new(crate::mir::OwnerScope {
             schema: MIR_SCHEMA.to_string(),
-            module: format!("snap-{revision}"),
+            module: format!("snap-{revision}-types"),
         });
-        merged.capabilities = code
-            .iter()
-            .flat_map(|c| c.unit().module().capabilities.iter().cloned())
-            .collect::<Vec<_>>();
-        merged.capabilities.sort();
-        merged.capabilities.dedup();
-
-        struct Fused {
-            name: String,
-            idx: u32,
-            sig: u32,
-        }
-        let mut fused: Vec<Fused> = Vec::new();
-        // (func index, block, instr, target name, merged-space sig)
-        let mut patches: Vec<(usize, usize, usize, String, u32)> = Vec::new();
-        let mut names: Vec<String> = Vec::new();
+        // (unit sig mapped into the scratch space, unit function name)
+        let mut sigs: Vec<(u32, String)> = Vec::with_capacity(code.len());
+        let mut ty_maps: Vec<Vec<u32>> = Vec::with_capacity(code.len());
         for c in &code {
             let u = c.unit().module();
             if u.funcs.len() != 1 {
@@ -89,130 +93,84 @@ impl ProgramSnapshot {
                     c.name()
                 ));
             }
-            let ty_map = merge_types(&mut merged, u);
-            let c_map = merge_consts(&mut merged, u);
-            let mut blocks = u.funcs[0].blocks.clone();
-            for (bi, b) in blocks.iter_mut().enumerate() {
-                for (ii, instr) in b.instrs.iter_mut().enumerate() {
-                    match instr {
-                        MirInstr::Const { value, .. } => *value = c_map[*value as usize],
-                        MirInstr::Call { callee, .. } => {
-                            if let CalleeRef::Import(impo) = *callee {
-                                let imp = &u.imports[impo as usize];
-                                let sig_merged = ty_map[imp.sig as usize];
-                                if let Some(fname) = imp.symbol.strip_prefix("fn:") {
-                                    // Deferred resolution: mutual/recursive
-                                    // callees link after all units merged.
-                                    patches.push((
-                                        merged.funcs.len(),
-                                        bi,
-                                        ii,
-                                        fname.to_string(),
-                                        sig_merged,
-                                    ));
-                                    *callee = CalleeRef::Func(u32::MAX);
-                                } else {
-                                    let idx = merged.intern_import(MirImport {
-                                        symbol: imp.symbol.clone(),
-                                        effect: imp.effect,
-                                        sig: sig_merged,
-                                    });
-                                    *callee = CalleeRef::Import(idx);
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            let slots = u.funcs[0]
-                .slots
-                .iter()
-                .map(|s| crate::mir::MirSlot {
-                    kind: s.kind,
-                    ty: ty_map[s.ty as usize],
-                    name: s.name.clone(),
-                })
-                .collect();
+            let ty_map = merge_types(&mut scratch, u);
             let sig = ty_map[u.funcs[0].sig as usize];
-            if !matches!(merged.types.get(sig as usize), Some(MirType::Fn(_))) {
+            if !matches!(scratch.types.get(sig as usize), Some(MirType::Fn(_))) {
                 return Err(format!("code `{}` sig is not a function type", c.name()));
             }
-            fused.push(Fused {
-                name: u.funcs[0].name.clone(),
-                idx: merged.funcs.len() as u32,
-                sig,
-            });
-            names.push(u.funcs[0].name.clone());
-            merged.funcs.push(crate::mir::MirFunction {
-                owner: merged.owner.clone(),
-                name: u.funcs[0].name.clone(),
-                sig,
-                slots,
-                blocks,
-                entry: u.funcs[0].entry,
-                source_snapshot: u.funcs[0].source_snapshot,
-                spans: u.funcs[0].spans.clone(),
-            });
+            sigs.push((sig, u.funcs[0].name.clone()));
+            ty_maps.push(ty_map);
         }
         {
-            let mut sorted = names.clone();
-            sorted.sort();
+            let mut sorted: Vec<&str> = sigs.iter().map(|(_, n)| n.as_str()).collect();
+            sorted.sort_unstable();
             sorted.dedup();
-            if sorted.len() != names.len() {
+            if sorted.len() != sigs.len() {
                 return Err("duplicate function names in snapshot".to_string());
             }
         }
-        // Patch deferred callees; interned-type equality is content equality.
-        for (fi, bi, ii, target, sig_merged) in patches {
-            let t = fused.iter().find(|f| f.name == target).ok_or_else(|| {
-                format!("snapshot import `fn:{target}` does not resolve to any function")
-            })?;
-            if t.sig != sig_merged {
-                return Err(format!(
-                    "snapshot signature mismatch for `fn:{target}`: call site type #{sig_merged} != unit type #{}",
-                    t.sig
-                ));
+        // The binding table: each unit's `fn:<name>` imports resolve to a
+        // code slot with an interned-equal (content-equal) signature.
+        let mut bindings: Vec<Vec<Option<u32>>> = Vec::with_capacity(code.len());
+        for (si, c) in code.iter().enumerate() {
+            let u = c.unit().module();
+            let mut slot_binds = Vec::with_capacity(u.imports.len());
+            for imp in u.imports.iter() {
+                let bound = match imp_target(imp.symbol.as_str()) {
+                    Some(target) => {
+                        let tslot =
+                            code.iter()
+                                .position(|c| c.name() == target)
+                                .ok_or_else(|| {
+                                    format!(
+                                    "snapshot import `fn:{target}` does not resolve to any function"
+                                )
+                                })?;
+                        let call_site_sig = ty_maps[si][imp.sig as usize];
+                        if sigs[tslot].0 != call_site_sig {
+                            return Err(format!(
+                                "snapshot signature mismatch for `fn:{target}`: call site type #{} != unit type #{}",
+                                call_site_sig, sigs[tslot].0
+                            ));
+                        }
+                        Some(tslot as u32)
+                    }
+                    // A non-`fn:` import stays unbound: dispatch refuses it
+                    // as an admission violation (the same contract an
+                    // unresolved import always had).
+                    None => None,
+                };
+                slot_binds.push(bound);
             }
-            merged.funcs[fi].blocks[bi].instrs[ii] = match &merged.funcs[fi].blocks[bi].instrs[ii] {
-                MirInstr::Call { dst, args, .. } => MirInstr::Call {
-                    callee: CalleeRef::Func(t.idx),
-                    dst: *dst,
-                    args: args.clone(),
-                },
-                other => unreachable!("patch site is a call: {other:?}"),
-            };
+            bindings.push(slot_binds);
         }
-        let entry_idx = merged
-            .funcs
+        let entry_slot = code
             .iter()
-            .position(|f| f.name == entry)
-            .ok_or_else(|| format!("entry function `{entry}` not among code units"))?;
-        merged.entry = entry_idx as u32;
+            .position(|c| c.name() == entry)
+            .ok_or_else(|| format!("entry function `{entry}` not among code units"))?
+            as u32;
         Ok(ProgramSnapshot {
             revision,
             entry: entry.to_string(),
+            entry_slot,
             code,
-            merged,
+            bindings,
             span_maps,
         })
     }
 
     /// A terminal VACANT root for a CLOSED session (PLAN-828 F-05b):
-    /// owns no code, span maps or merged payload. Direct execution is a
-    /// CONTROLLED `Infra` (dispatch's entry guard), so a closed session's
+    /// owns no code, bindings, span maps or payloads. Direct execution is
+    /// a CONTROLLED `Infra` (dispatch's entry guard), so a closed session's
     /// `current` accessor stays total — it never hands back the released
     /// program and never panics.
     pub fn vacant(entry: &str, revision: u64) -> ProgramSnapshot {
-        let merged = MirModule::new(crate::mir::OwnerScope {
-            schema: MIR_SCHEMA.to_string(),
-            module: format!("snap-{revision}-vacant"),
-        });
         ProgramSnapshot {
             revision,
             entry: entry.to_string(),
+            entry_slot: u32::MAX,
             code: Vec::new(),
-            merged,
+            bindings: Vec::new(),
             span_maps: Vec::new(),
         }
     }
@@ -222,25 +180,29 @@ impl ProgramSnapshot {
         &self.span_maps
     }
 
-    /// PLAN-828 D-02 first case: the UNIT dispatch view over this
-    /// snapshot's ORIGINAL code payloads — blocks/slots/PC/consts/types
-    /// are read unit-locally (the immutable `FunctionCode` objects the
-    /// F-02 identity gate requires), and cross-function calls resolve
-    /// through the link-time name table instead of a merged copy.
+    /// PLAN-828 D-02/T-05: the UNIT dispatch view over this snapshot's
+    /// ORIGINAL code payloads — blocks/slots/PC/consts/types are read
+    /// unit-locally (the immutable `FunctionCode` objects the F-02
+    /// identity gate requires), and cross-function calls resolve through
+    /// the LINK-TIME binding table (no runtime name lookup, no merged
+    /// copy).
     pub fn unit_view(&self) -> UnitView<'_> {
         UnitView { snap: self }
     }
 
     /// PLAN-828 D-02 binding-rejection control: every code slot holds a
-    /// unit payload, and every unit's imports resolve to a slot by name
-    /// with matching signatures checked at link time. A snapshot whose
-    /// unit bindings are incomplete refuses unit dispatch.
+    /// unit payload, every unit's imports carry a link-time binding, and
+    /// the entry slot resolves. A snapshot whose unit bindings are
+    /// incomplete refuses unit dispatch.
     pub fn unit_binding_complete(&self) -> Result<(), String> {
-        if self.code.is_empty() {
+        if self.code.is_empty() || self.entry_slot == u32::MAX {
             return Err(format!(
                 "entry function `{}` not among code units (0 units)",
                 self.entry
             ));
+        }
+        if self.entry_slot as usize >= self.code.len() {
+            return Err(format!("entry slot {} out of range", self.entry_slot));
         }
         for (i, c) in self.code.iter().enumerate() {
             let u = c.unit().module();
@@ -254,16 +216,20 @@ impl ProgramSnapshot {
                     f.name
                 ));
             }
-            for (ix, imp) in u.imports.iter().enumerate() {
-                let Some(target) = imp_target(imp.symbol.as_str()) else {
-                    continue;
-                };
-                if !self.code.iter().any(|c| c.name() == target) {
+            let binds = self
+                .bindings
+                .get(i)
+                .ok_or_else(|| format!("code slot {i} has no binding row"))?;
+            if binds.len() != u.imports.len() {
+                return Err(format!("code slot {i} binding row is incomplete"));
+            }
+            for (ix, b) in binds.iter().enumerate() {
+                if b.is_none() {
                     return Err(format!(
-                        "unit `{}` import #{} `fn:{}` does not resolve to any function",
+                        "unit `{}` import #{} `{}` is unbound",
                         c.name(),
                         ix,
-                        imp.symbol
+                        u.imports[ix].symbol
                     ));
                 }
             }
@@ -271,37 +237,34 @@ impl ProgramSnapshot {
         Ok(())
     }
 
-    /// PLAN-828 D-02 observation, reported by the merged-view
-    /// PRODUCER itself: whether the payload AV actually consumes for
-    /// function `fn_index` is the SAME OBJECT across two snapshots
-    /// (per-unit dispatch) or a per-snapshot COPY (today's merged
-    /// execution view — unchanged functions are re-materialized per
-    /// snapshot, the F-02 gap this gate makes measurable).
+    /// PLAN-828 D-02/T-05 observation: whether the payload AV actually
+    /// CONSUMES for function `fn_index` (the dispatched unit payload, the
+    /// DEFAULT path since T-05) is the SAME OBJECT across two snapshots.
+    /// Green by construction on the unit path — unchanged functions enter
+    /// by `Arc` identity; any copy turns it red.
     pub fn dispatched_payload_same_object(&self, other: &ProgramSnapshot, fn_index: usize) -> bool {
-        match (
-            self.merged().funcs.get(fn_index),
-            other.merged().funcs.get(fn_index),
-        ) {
-            (Some(x), Some(y)) => std::ptr::eq(x, y),
+        match (self.code.get(fn_index), other.code.get(fn_index)) {
+            (Some(x), Some(y)) => Arc::ptr_eq(x, y),
             _ => false,
         }
     }
 
     /// Same-slot CONTENT view of the D-02 observation: the dispatched
-    /// payloads of unchanged functions must at least be content-equal
-    /// across snapshots even while the identity gate is red.
+    /// unit payloads must be content-equal across snapshots even where an
+    /// identity comparison is red (a forced same-content copy).
     pub fn dispatched_payload_same_content(
         &self,
         other: &ProgramSnapshot,
         fn_index: usize,
     ) -> bool {
-        match (
-            self.merged().funcs.get(fn_index),
-            other.merged().funcs.get(fn_index),
-        ) {
+        match (self.unit_function(fn_index), other.unit_function(fn_index)) {
             (Some(x), Some(y)) => format!("{x:?}") == format!("{y:?}"),
             _ => false,
         }
+    }
+
+    fn unit_function(&self, fn_index: usize) -> Option<&crate::mir::MirFunction> {
+        self.code.get(fn_index)?.unit().module().funcs.first()
     }
 
     /// This snapshot's revision counter.
@@ -331,12 +294,6 @@ impl ProgramSnapshot {
     /// THIS snapshot; unchanged functions report an unchanged generation.
     pub fn generation_of(&self, def_id: &str) -> Option<u64> {
         self.find_code(def_id).map(|c| c.generation())
-    }
-
-    /// The linked execution view (crate-internal: dispatch goes through
-    /// [`crate::av::execute_program`]).
-    pub(crate) fn merged(&self) -> &MirModule {
-        &self.merged
     }
 }
 
@@ -384,38 +341,24 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<u32> {
     map
 }
 
-fn merge_consts(merged: &mut MirModule, u: &MirModule) -> Vec<u32> {
-    let mut map = vec![u32::MAX; u.consts.len()];
-    for (i, c) in u.consts.iter().enumerate() {
-        map[i] = merged.intern_const(c.clone());
-    }
-    map
-}
-
 /// The link-time import-name convention: `fn:<name>` targets the code
-/// slot whose unit function is `<name>` (the same convention
-/// `link_with_maps` patches into merged-space Func refs).
+/// slot whose unit function is `<name>`.
 fn imp_target(symbol: &str) -> Option<&str> {
     symbol.strip_prefix("fn:")
 }
 
-/// PLAN-828 D-02: the unit-local dispatch view (see
+/// PLAN-828 D-02/T-05: the unit-local dispatch view (see
 /// [`ProgramSnapshot::unit_view`]). Lifetime-bound to the snapshot; the
 /// payloads it hands the interpreter are the SAME immutable objects the
-/// identity gate observes — no merged re-materialization.
+/// identity gate observes, and cross-function calls resolve through the
+/// snapshot's link-time binding table.
 pub struct UnitView<'a> {
     snap: &'a ProgramSnapshot,
 }
 
 impl crate::av::ModuleView for UnitView<'_> {
     fn fn_at(&self, idx: u32) -> Option<&crate::mir::MirFunction> {
-        self.snap
-            .code
-            .get(idx as usize)?
-            .unit()
-            .module()
-            .funcs
-            .first()
+        self.snap.unit_function(idx as usize)
     }
     fn const_at(&self, func: u32, idx: u32) -> Option<crate::mir::MirConst> {
         let u = self.snap.code.get(func as usize)?.unit().module();
@@ -424,31 +367,25 @@ impl crate::av::ModuleView for UnitView<'_> {
     fn zero_of(&self, func: u32, ty: u32) -> crate::contract::Value {
         let u = self.snap.code.get(func as usize).unwrap().unit().module();
         match u.types.get(ty as usize) {
-            Some(crate::mir::MirType::Bool) => crate::contract::Value::Bool(false),
+            Some(MirType::Bool) => crate::contract::Value::Bool(false),
             _ => crate::contract::Value::I32(0),
         }
     }
     fn type_is_bool(&self, func: u32, ty: u32) -> Option<bool> {
         let u = self.snap.code.get(func as usize)?.unit().module();
         match u.types.get(ty as usize) {
-            Some(crate::mir::MirType::Bool) => Some(true),
-            Some(crate::mir::MirType::I32) => Some(false),
+            Some(MirType::Bool) => Some(true),
+            Some(MirType::I32) => Some(false),
             _ => None,
         }
     }
-    fn resolve_callee(&self, _func: u32, callee: &crate::mir::CalleeRef) -> Option<u32> {
+    fn resolve_callee(&self, func: u32, callee: &crate::mir::CalleeRef) -> Option<u32> {
         match callee {
-            // Unit payloads carry their calls as imports; the link-time
-            // name table resolves `fn:<name>` to the owning code slot.
+            // Unit payloads carry their calls as imports; the LINK-TIME
+            // binding table resolves each import to its target code slot.
             CalleeRef::Import(ix) => {
-                let caller = self.snap.code.get(_func as usize)?.unit().module();
-                let imp = caller.imports.get(*ix as usize)?;
-                let target = imp_target(imp.symbol.as_str())?;
-                self.snap
-                    .code
-                    .iter()
-                    .position(|c| c.name() == target)
-                    .map(|p| p as u32)
+                let binds = self.snap.bindings.get(func as usize)?;
+                *binds.get(*ix as usize)?
             }
             // Unit-local instructions never carry merged-space Func
             // indices; one showing up is a foreign index space.
@@ -456,8 +393,6 @@ impl crate::av::ModuleView for UnitView<'_> {
         }
     }
     fn entry(&self) -> u32 {
-        // The merged entry index equals the code-slot order (link
-        // concatenates in code order).
-        self.snap.merged().entry
+        self.snap.entry_slot
     }
 }
