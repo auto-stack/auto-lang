@@ -193,6 +193,11 @@ T-01在D门后先完成有界全路径首例，冻结 `attachments/828/contract-
 
 ## 9. 复审记录
 
+2026-10-21 stage:work(repair r12a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(av-core): comment-aware expression anchoring in source maps" | r11a-check两类失败（同根）闭合并收编回归(r1回归套件50/50=47前+3r11a含4格括号行注释矩阵)：
+F-04/R11a→重锚机制把行注释文本当代码：comment_ranges()标记//..EOL区间；词法token化跳过注释（注释字节不是表达式锚点）、find_subslice拒绝与注释重叠的匹配——' 1 // 1 / 0
+ / 0 '锚定可执行token（注释前的1、注释后的/ 0）而非注释内首个文本子串'1 / 0'；注释后字面量重写的丢尾段同根消除（先行注释编辑正确重锚→后续回退保头尾）
+已知开放不变：恢复载荷无span。回归面：r1套件50/50、core 22、主17、scalar差分6、vertical/cache/binding绿；r11a-check材料自C盘复制入分支(attachments/828/r11a-check/) | OPEN不变：F-01真·函数级前端；F-02安装payload重建；F-05b取消/关闭态；F-09剩余资源预算轴；F-10 A07/依赖查询/GC（+恢复span sidecar）；F-11 changed-only持久化+manifest驱动恢复；F-12正式worker/IPC/双线内存门（含时延归因）；F-14文档重整+SD文本 | next_responsible_role:work(继续，同一树)
+
 2026-10-21 stage:work(repair r11a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(av-core): lexical token alignment in source-map re-anchoring" | r10a-check两类失败（同根）闭合并收编回归(r1回归套件47/47=44前+3r10a含12格词法间距矩阵)：
 F-04/R10a→from_texts回退的对齐单位改为词法token（数字串/标识符/单字符运算符，空白跳过；"非空白run不是token——1/0是一个run三个token"）：'1 / 0'→' 1/0 ' 按token对齐保留每个运算符/操作数锚；不相交trivia编辑的丢尾段(66..67)同根消除（先行间距重写正确重锚后，后续回退路径头尾都存活）；12组合词法间距矩阵为永久回归
 已知开放不变：恢复载荷无span。回归面：r1套件47/47、core 22、主17、scalar差分6、vertical/cache/binding绿；r10a-check材料自C盘复制入分支(attachments/828/r10a-check/) | OPEN不变：F-01真·函数级前端；F-02安装payload重建；F-05b取消/关闭态；F-09剩余资源预算轴；F-10 A07/依赖查询/GC（+恢复span sidecar）；F-11 changed-only持久化+manifest驱动恢复；F-12正式worker/IPC/双线内存门（含时延归因）；F-14文档重整+SD文本 | next_responsible_role:work(继续，同一树)
