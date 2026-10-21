@@ -452,3 +452,27 @@ fn deadline_covers_blocked_stdin_with_unowned_holder() {
         "writer must truly stop via cancel (elapsed={elapsed:?})"
     );
 }
+
+/// F-816-R9 负控（真实消费入口）：run 的准入失败家族——stdin_data 存在
+/// 而 stdin 未管道化 → validate 即具名拒绝（早于任何线程/进程创建）。
+/// 创建/复制失败分支的同等出口由准入顺序修复保证（R9 方向②：先准入
+/// 后建线程——失败时无 reader/writer 存在,宿主由 OwnedProcess::drop
+/// 回收）;R9 admission 回放（分配边界注入）验证线程 4→4。
+#[test]
+fn run_admission_failure_is_named_and_threadless() {
+    let mut spec = with_args(child_spec("sleep"), "2", None);
+    spec.stdin = StdioPolicy::Inherit;
+    spec.stdin_data = Some(vec![b'x'; 16]);
+    spec.stdout = StdioPolicy::Null;
+    spec.stderr = StdioPolicy::Null;
+    let started = Instant::now();
+    let err = run(&spec).expect_err("admission must reject");
+    assert!(
+        matches!(
+            err,
+            ExecutionError::InvalidSpec(ref m) if m.contains("stdin_data requires stdin")
+        ),
+        "{err:?}"
+    );
+    assert!(started.elapsed() < Duration::from_secs(2));
+}

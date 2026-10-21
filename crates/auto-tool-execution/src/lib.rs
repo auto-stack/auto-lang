@@ -1012,26 +1012,6 @@ impl WriterWorker {
         }
         let deadline = Instant::now() + grace;
         while self.join.as_ref().is_some_and(|h| !h.is_finished()) {
-            // F-816-R8 防御：写者**未结束**而凭证缺失/无效——重发取消
-            // 依赖有效凭证,立即具名失败,不以 3s PipesHeld 冒充已清理
-            //（写者自然完成路径会自行置空槽,retained=None 属正常——
-            // 由本 is_finished 判定区分）。
-            #[cfg(windows)]
-            match &retained {
-                None => {
-                    return Err(ExecutionError::Io {
-                        stage: "stdin cancel credential missing at stop",
-                        source: io::Error::other("credential was not created"),
-                    })
-                }
-                Some(h) if h.is_null() => {
-                    return Err(ExecutionError::Io {
-                        stage: "stdin cancel credential invalid at stop",
-                        source: io::Error::other("credential is a null handle"),
-                    })
-                }
-                Some(_) => {}
-            }
             if Instant::now() >= deadline {
                 return Err(ExecutionError::PipesHeld { after: grace });
             }
@@ -1156,6 +1136,38 @@ pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
     let deadline_at = spec.deadline.map(|limit| start + limit);
     let mut proc = spawn(spec)?;
 
+    // F-816-R9：写端准入（凭证创建/复制）先于任何自有线程——失败时
+    // 无 reader/writer 需要收尾（宿主进程由 OwnedProcess::drop 有界
+    // 终止回收），不再出现"已启动 readers 遗漏清理"的出口。
+    let mut stdin_admitted: Option<(StdinPipe, Option<CancelSlot>)> = None;
+    if spec.stdin_data.is_some() {
+        let stdin = proc.take_stdin().map_err(|e| match e {
+            StdinTakeError::Missing => ExecutionError::InvalidSpec("stdin pipe missing".into()),
+            StdinTakeError::Credential(source) => ExecutionError::Io {
+                stage: "create stdin cancel credential",
+                source,
+            },
+        })?;
+        #[cfg(windows)]
+        let slot = stdin
+            .cancel_handle()
+            .map(|h| Some(Arc::new(Mutex::new(Some(h)))) as Option<CancelSlot>)
+            .map_err(|source| ExecutionError::Io {
+                stage: "clone stdin cancel credential",
+                source,
+            })?;
+        #[cfg(not(windows))]
+        let slot: Option<CancelSlot> =
+            stdin
+                .cancel_handle()
+                .map(|_| None)
+                .map_err(|source| ExecutionError::Io {
+                    stage: "clone stdin cancel credential",
+                    source,
+                })?;
+        stdin_admitted = Some((stdin, slot));
+    }
+
     // reader 先于任何写入启动:双向大流量不会因对方先写满而互等。
     let mut stdout_w = proc
         .take_stdout()
@@ -1164,39 +1176,10 @@ pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
         .take_stderr()
         .map(|r| CaptureWorker::spawn("stderr", r));
 
-    let mut writer_w = match spec.stdin_data.clone() {
-        Some(data) => {
-            // F-816-R8：凭证创建/复制失败在启动 writer 前具名拒绝并
-            // 清理（readers 已启动 → finish_early）。
-            let stdin = proc.take_stdin().map_err(|e| match e {
-                StdinTakeError::Missing => ExecutionError::InvalidSpec("stdin pipe missing".into()),
-                StdinTakeError::Credential(source) => ExecutionError::Io {
-                    stage: "create stdin cancel credential",
-                    source,
-                },
-            })?;
-            #[cfg(windows)]
-            let slot = stdin
-                .cancel_handle()
-                .map(|h| Some(Arc::new(Mutex::new(Some(h)))) as Option<CancelSlot>)
-                .map_err(|source| ExecutionError::Io {
-                    stage: "clone stdin cancel credential",
-                    source,
-                })?;
-            #[cfg(not(windows))]
-            let slot: Option<CancelSlot> =
-                stdin
-                    .cancel_handle()
-                    .map(|_| None)
-                    .map_err(|source| ExecutionError::Io {
-                        stage: "clone stdin cancel credential",
-                        source,
-                    })?;
-            let w = WriterWorker::spawn_with(stdin, data, slot);
-            Some(w)
-        }
-        None => None,
-    };
+    let mut writer_w = stdin_admitted.map(|(stdin, slot)| {
+        let data = spec.stdin_data.clone().unwrap_or_default();
+        WriterWorker::spawn_with(stdin, data, slot)
+    });
 
     let mut timed_out = false;
     let status = match deadline_at {
