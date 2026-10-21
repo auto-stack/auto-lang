@@ -1,9 +1,10 @@
 # PLAN-816 M816-A 阶段候选（T-12 交付，待 T-13 独立阶段审查冻结）
 
-> 状态：**R6 修复后候选**（R6 判 R5-01 CLOSED、R3-02 取消时序 OPEN、
-> R6-01 Linux 编译回归；两项已修复 @`05d3940c6`，见 §12。R6 两
-> replay + R1/R2/R5 全过。T-13 R7 审查绑定 `05d3940c6`。本阶段 ≠ 整
-> Plan 交付：T-03..T-11 未开，Plan 保持 `executing`。
+> 状态：**R7 修复后候选**（R7 判 R6-01/R5-01 CLOSED、R3-02 检查后
+> 漏取消窗口 OPEN、R7-01 Linux 净新增告警 OPEN；两项已修复 @`2d21cff8c`，
+> 见 §13。R7 after-check + R1/R2/R5/R6 全 replay 过。T-13 R8 审查绑定
+> `2d21cff8c`。本阶段 ≠ 整 Plan 交付：T-03..T-11 未开，Plan 保持
+> `executing`。
 
 ## 1. 身份
 
@@ -139,3 +140,14 @@ R2（reviewed 4372d56d9）判定 01/02/04 CLOSED；三残项修复（+1166/−26
 同步清理编排补齐（R6 源码证据残项）：client `shutdown` 的 `wait_writer_done` 早退与 `wait_deadline Err` 均改走 `cleanup_then_error`（cancel+drain 全收集后传播）；`OwnedProcess::drop` 有界收尸（terminate 失败路径不再无界 `child.wait`）。
 
 验证矩阵（@05d3940c6）：设施 9+18、client 15、fixture 16/16（压力 6/6）；R6 两 replay + R1 5 + R2 4 + R5 全过；clippy/rustdoc/fmt 0、verify-deps/777 strict/check 全绿。
+
+## 13. R7 修复轮记录（T-13 R7 needs_fix 两项 → work 修复，@2d21cff8c）
+
+| Finding | 修复 | 验证 |
+|---|---|---|
+| F-816-R3-02（内层检查后到入核的漏取消窗口） | 停止侧从槽取出凭证（**槽置 None**——R6 消费 oracle 保持）后**本地保留并每轮询切片重发 `CancelIoEx`**，直到观察到线程结束（`is_finished`+join 收割）才关闭——写者任意时刻进入内核的阻塞写都被随后的重发中止；写者死后的关闭不影响 EOF。client `wait_writer_done` 同构重发。terminate 失败有界化：新增 `OwnedProcess::cancel_within`（两轮终止+有界收尸+具名错误），`bounded_cancel` 收敛为其薄封装，client abort 与 shutdown 宽限分支接入 | R7 after-check replay：内层检查后栅栏（凭证槽消费关闭后放行真实写）→ **outcome=Ok(Stopped{written:0})、writer_alive_at_return=false、100ms**（R7 实测 3000ms PipesHeld+writer 活）；R6 双栅栏、R5 两入口、R1/R2 保持 |
+| F-816-R7-01（Linux 净新增两条告警） | `WriterWorker.cancel` 字段与 run() 的 `cancel` 局部 `cfg(windows)` 隔离；`spawn_with` 参数显式消费 | Linux 目标两包告警回到 6e03 基线三条（unused_mut/POLLIN/POLLOUT，R7 明示不计）；client Linux 零新告警 |
+
+R7 注记如实记录：取消凭证初始化失败（`.ok()`/Clone 空句柄）未改——在重发设计下凭证是**非承力冗余**（真停由重发取消+写侧入口拒写承担），init 失败仅损失一层冗余、不再构成取消能力丢失。
+
+验证矩阵（@2d21cff8c）：设施 9+18、client 15、fixture 16/16（压力 6/6）；R7/R6/R5/R2/R1 全 replay；clippy/rustdoc/fmt 0、verify-deps/777 strict/check 全绿。
