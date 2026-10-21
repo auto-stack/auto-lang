@@ -1,5 +1,5 @@
 {
-  "base_revision": "c73a9fe48a0bee270d8eb112e17593275510462d",
+  "base_revision": "2f2b54888587b4ec0f620a778232a8adb8060b20",
   "config_sha256": "615dd4fee609d800cea732ce932c218965145d5fead9f3cebb330cc913792cbb",
   "declared_edges": [
     {
@@ -1195,7 +1195,7 @@
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
     "core_to_ui": 250,
-    "man_to_language": 30,
+    "man_to_language": 29,
     "ui_to_language": 0
   }
 }
