@@ -1991,3 +1991,187 @@ fn r19a_v2_mint_frame_must_cover_the_actual_trap_span() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// r19a-check shared seeding: publish a REAL unit plus primary/repair
+/// sidecar rows built from one named mode (mirrors the reviewer's
+/// applicability-controls harness verbatim, including the in-frame
+/// wrong-span mutation 23..28→22..27).
+fn r20a_seed(dir: &std::path::Path, primary: &str, repair: Option<&str>) {
+    use auto_av_probe::cache as scache;
+    let s = warmup(R18A_TRAP, "d_main", &[]).unwrap();
+    let mut unit = s
+        .current()
+        .find_code("d_main")
+        .unwrap()
+        .unit()
+        .module()
+        .clone();
+    let spans = std::mem::take(&mut unit.funcs[0].spans);
+    let bytes = auto_av_core::abc::encode_abc(&unit).unwrap().to_flat();
+    let (owner, cv) = r18a_axes();
+    let store = scache::open_store(dir).unwrap();
+    scache::put_enveloped(
+        &store,
+        &scache::abc_unit_key(&owner, "d_main", &cv, &scache::caps_fingerprint(&[])),
+        "A09",
+        &scache::EnvelopeIdentity::abc_bound(&owner, "d_main", &cv),
+        &bytes,
+        vec![],
+        Some("r20a"),
+    )
+    .unwrap();
+    let make = |mode: &str| {
+        let mut table = spans.clone();
+        let mut text = R18A_TRAP.trim_end().as_bytes().to_vec();
+        let mut base = 0u64;
+        match mode {
+            "invalid-utf8" => text[0] = 0xff,
+            "unalignable" => text[0] = b'X',
+            "wrong-frame" => base = 100,
+            "wrong-span-inside-frame" | "legacy-wrong-span-inside-frame" => {
+                let mut changed = 0;
+                for (_, sp) in table.iter_mut() {
+                    if sp.start == 23 && sp.end == 28 {
+                        sp.start = 22;
+                        sp.end = 27;
+                        changed += 1;
+                    }
+                }
+                assert!(changed > 0, "mutation actually changed the trap provenance");
+            }
+            "empty" => table.clear(),
+            "good" | "legacy" => (),
+            other => panic!("unknown mode {other}"),
+        }
+        if mode == "legacy" || mode == "legacy-wrong-span-inside-frame" {
+            scache::encode_sidecar(&table)
+        } else {
+            scache::encode_unit_sidecar(&scache::UnitSidecar {
+                spans: table,
+                mint: Some((base, base + text.len() as u64, text)),
+            })
+        }
+    };
+    let id = scache::EnvelopeIdentity::unit_span_sidecar(&owner, "d_main", &cv);
+    scache::put_enveloped(
+        &store,
+        &scache::unit_span_sidecar_key(&owner, "d_main", &cv),
+        "A09",
+        &id,
+        &make(primary),
+        vec![],
+        Some("r20a"),
+    )
+    .unwrap();
+    if let Some(mode) = repair {
+        scache::put_enveloped(
+            &store,
+            &scache::unit_span_sidecar_repair_key(&owner, "d_main", &cv),
+            "A09",
+            &id,
+            &make(mode),
+            vec![],
+            Some("r20a"),
+        )
+        .unwrap();
+    }
+}
+
+/// F10-S02 full selection matrix: 4 invalid states × moved/unmoved ×
+/// good-primary/good-repair — every combination restores from disk with
+/// the cold-compile span.
+#[test]
+fn r20a_primary_repair_applicability_matrix() {
+    let mut cases = 0;
+    for bad in ["invalid-utf8", "unalignable", "wrong-frame", "empty"] {
+        for moved in [false, true] {
+            for good_is_primary in [false, true] {
+                let dir = std::env::temp_dir().join(format!(
+                    "plan828-r20a-matrix-{}-{moved}-{good_is_primary}-{}",
+                    bad.replace('-', "_"),
+                    std::process::id()
+                ));
+                let _ = std::fs::remove_dir_all(&dir);
+                if good_is_primary {
+                    r20a_seed(&dir, "good", Some(bad));
+                } else {
+                    r20a_seed(&dir, bad, Some("good"));
+                }
+                let src = if moved {
+                    R18A_TRAP.replacen("return", "                return", 1)
+                } else {
+                    R18A_TRAP.to_string()
+                };
+                let s = restore(&src, "d_main", &[], &dir, "r20a").unwrap();
+                assert_eq!(
+                    s.counters().get("restore_units_admitted"),
+                    1,
+                    "bad={bad}, moved={moved}, good_primary={good_is_primary}"
+                );
+                assert_eq!(
+                    trap_span(&s),
+                    trap_span(&warmup(&src, "d_main", &[]).unwrap())
+                );
+                let _ = std::fs::remove_dir_all(&dir);
+                cases += 1;
+            }
+        }
+    }
+    assert_eq!(cases, 16);
+}
+
+/// F11-S01: a v2 span INSIDE the valid frame but naming the WRONG source
+/// expression is not provenance — mapped-source evidence must reject it
+/// (cold fallback yields the current coordinates).
+#[test]
+fn r20a_v2_in_frame_span_must_match_current_source() {
+    let dir = std::env::temp_dir().join(format!("plan828-r20a-inframe-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r20a_seed(&dir, "wrong-span-inside-frame", None);
+    let moved = R18A_TRAP.replacen("return", "                return", 1);
+    let s = restore(&moved, "d_main", &[], &dir, "r20a").unwrap();
+    let expected = trap_span(&warmup(&moved, "d_main", &[]).unwrap());
+    assert_eq!(
+        trap_span(&s),
+        expected,
+        "valid mint frame membership is not evidence that the trap span names the right expression"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// F11-S01: the same in-frame wrong span must not SHADOW a proven valid
+/// repair row — the current-source proof is checked before choosing.
+#[test]
+fn r20a_bad_v2_span_does_not_hide_valid_repair() {
+    let dir = std::env::temp_dir().join(format!("plan828-r20a-shadow-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r20a_seed(&dir, "wrong-span-inside-frame", Some("good"));
+    let moved = R18A_TRAP.replacen("return", "                return", 1);
+    let s = restore(&moved, "d_main", &[], &dir, "r20a").unwrap();
+    assert_eq!(
+        s.counters().get("restore_units_admitted"),
+        1,
+        "a proven valid repair is already present"
+    );
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&warmup(&moved, "d_main", &[]).unwrap())
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// F11-S01 control: the SAME in-frame wrong span in the legacy format is
+/// rejected (exact span-table evidence), cold result correct.
+#[test]
+fn r20a_legacy_in_frame_false_span_is_rejected_control() {
+    let dir = std::env::temp_dir().join(format!("plan828-r20a-legacy-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r20a_seed(&dir, "legacy-wrong-span-inside-frame", None);
+    let s = restore(R18A_TRAP, "d_main", &[], &dir, "r20a").unwrap();
+    assert_eq!(s.counters().get("restore_units_admitted"), 0);
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&warmup(R18A_TRAP, "d_main", &[]).unwrap())
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -566,7 +566,7 @@ pub fn restore(
         let skey = unit_span_sidecar_key(&owner, &rec.def_id, &body_cv);
         let rkey = unit_span_sidecar_repair_key(&owner, &rec.def_id, &body_cv);
         let row_usable = |b: &[u8]| match &cur_fn {
-            Some(cur) => unit_sidecar_usable_for_current(b, &shape, cur, cur_decl),
+            Some(cur) => unit_sidecar_usable_for_current(b, &shape, cur, d0, cur_decl),
             None => false,
         };
         let sidecar_bytes = match get_enveloped_opt(&store, &skey, "A09", &sid) {
@@ -880,11 +880,36 @@ impl FunctionIncrementalSession {
                 // current-source compile's own span table).
                 let (cd0, cd1) = self.parse.tree.abs_range(self.parse.tree.decls[idx].node);
                 let cur_decl = &self.src[cd0 as usize..cd1 as usize];
+                // The survivor standard is the SAME mapped-source evidence
+                // restore selects with: the resident's spans expressed in
+                // CURRENT coordinates — through the session's live span
+                // map (identity on a fresh cold compile, the composed map
+                // after edits).
                 let resident_f = rec.code.unit().module().funcs.first();
-                let row_usable = |b: &[u8]| {
-                    resident_f.is_some_and(|f| {
-                        unit_sidecar_usable_for_current(b, f, f, cur_decl.as_bytes())
-                    })
+                let cur_ev = resident_f.map(|f| {
+                    let mut ev = f.clone();
+                    ev.spans = f
+                        .spans
+                        .iter()
+                        .map(|(i, sp)| {
+                            let (s, e) = rec.span_map.map_span(sp.start as u64, sp.end as u64);
+                            (
+                                *i,
+                                auto_av_core::contract::SpanInfo {
+                                    func: sp.func,
+                                    start: s as u32,
+                                    end: e as u32,
+                                },
+                            )
+                        })
+                        .collect();
+                    ev
+                });
+                let row_usable = |b: &[u8]| match (resident_f, &cur_ev) {
+                    (Some(f), Some(ev)) => {
+                        unit_sidecar_usable_for_current(b, f, ev, cd0, cur_decl.as_bytes())
+                    }
+                    _ => false,
                 };
                 let survivor_usable = matches!(
                     get_enveloped_opt(store, &skey, "A09", &sid),

@@ -269,6 +269,7 @@ pub fn unit_sidecar_usable_for_current(
     bytes: &[u8],
     f: &MirFunction,
     cur: &MirFunction,
+    cur_decl_origin: u64,
     cur_decl_text: &[u8],
 ) -> bool {
     let sc = match decode_unit_sidecar(bytes) {
@@ -292,8 +293,30 @@ pub fn unit_sidecar_usable_for_current(
             {
                 return false;
             }
-            auto_av_core::span_map::SpanSegments::from_texts(m_d0, m_d1, 0, &m_text, cur_decl_text)
-                .is_some()
+            let Some(map) = auto_av_core::span_map::SpanSegments::from_texts(
+                m_d0,
+                m_d1,
+                cur_decl_origin,
+                &m_text,
+                cur_decl_text,
+            ) else {
+                return false;
+            };
+            // F11-S01/r19a-check mapped-source evidence: every stored
+            // span, re-anchored into CURRENT coordinates, must equal the
+            // current-source compile's own table (same content version ⇒
+            // same instruction stream). Frame membership alone is not
+            // provenance — a structurally valid span naming the wrong
+            // expression must not be admitted or shadow a valid repair.
+            sc.spans.len() == cur.spans.len()
+                && sc
+                    .spans
+                    .iter()
+                    .zip(cur.spans.iter())
+                    .all(|((_, sp), (_, c))| {
+                        let (s, e) = map.map_span(sp.start as u64, sp.end as u64);
+                        s == c.start as u64 && e == c.end as u64
+                    })
         }
         None => sc.spans == cur.spans,
     }
