@@ -1,9 +1,9 @@
 # PLAN-816 M816-A 阶段候选（T-12 交付，待 T-13 独立阶段审查冻结）
 
-> 状态：**R8 修复后候选**（R8 唯一残项=凭证初始化/复制失败静默降级；
-> 已按其指定方向①"启动前具名拒绝并清理"修复 @`89b0b33ef`，见 §14。
-> R8 credential 反例的旧故障出口经构造不可达。T-13 R9 审查绑定
-> `89b0b33ef`。本阶段 ≠ 整 Plan 交付：T-03..T-11 未开，Plan 保持
+> 状态：**R9 修复后候选**（R9 判 run 拒绝出口漏 reader 清理 + R9-01
+> 正常清槽误报；两项已修复 @`255146777`，见 §15。R9 admission 四例
+> threads 4→4、completion-race 恢复 R8 基线语义。T-13 R10 审查绑定
+> `255146777`。本阶段 ≠ 整 Plan 交付：T-03..T-11 未开，Plan 保持
 > `executing`。
 
 ## 1. 身份
@@ -163,3 +163,12 @@ R7 注记如实记录：取消凭证初始化失败（`.ok()`/Clone 空句柄）
 R8 注入反例的旧故障出口（`pipe.cancel=None` / NULL-Clone）对修复后代码**不可编译**——编译级证明旧出口已消除；其边界强制绕过构造守卫，与审方自身裁定的修复方向（"启动 writer 前具名拒绝并清理"）一致地使状态不可达。R6/R7 探针装配行机械适配新 API（`cancel_handle()`→Result；断言与栅栏语义不变）。
 
 验证矩阵（@89b0b33ef）：设施 11+18、client 15、fixture 16/16（压力 6/6）；R1/R2/R5/R6 双/R7/R8-termination 全 replay；clippy/rustdoc/fmt 0、Linux 告警回基线、verify-deps/777 strict/check 全绿。
+
+## 15. R9 修复轮记录（T-13 R9 needs_fix 两项 → work 修复，@255146777）
+
+| Finding | 修复 | 验证 |
+|---|---|---|
+| F-816-R3-02（run 拒绝出口漏 reader 清理） | 采用 R9 指定方向②"调整启动顺序避免尚未取得停止能力就创建线程"：**写端准入（凭证创建/复制）移至 readers 之前**——失败出口无任何自有线程存在（宿主进程由 `OwnedProcess::drop` 有界终止回收）；具名分类保持（create/clone 两 stage 不变） | R9 admission 回放：run/create、run/clone、client/create、client/clone 四例**具名即时返回 + own_threads 4→4**（R9 实测 run 两例 4→6）；真实入口负控 `run_admission_failure_is_named_and_threadless`（validate 分支具名即时） |
+| F-816-R9-01（正常清槽误报凭证缺失） | **删除 stop_and_join 的 R8 防御块**——写者正常收尾序列（drop stdin→清槽→通知→返回）中"槽空+线程未返回"是合法窗口，与初始化失败不可区分；凭证存在性不变量已在准入阶段建立，停止期不再从运行时槽状态拼接初始化诊断（retained=None 仅意味着无取消可发，等待循环照常以 is_finished/join 或有界 PipesHeld 收尾） | R9 completion-race 回放：**outcome=Ok(Done{written:20})、writer_alive_at_return=false、returned_before_release=false**（R9 实测误报 credential missing + writer 活 + 提前返回；R8 基线同例通过语义恢复） |
+
+验证矩阵（@255146777）：设施 11+19、client 15、fixture 16/16（压力 6/6）；R9 双 replay + R1/R2/R5/R6/R7/R8-termination 全 replay；clippy/rustdoc/fmt 0、Linux 告警回基线、verify-deps/777 strict/check 全绿。
