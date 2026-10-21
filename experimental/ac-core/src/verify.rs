@@ -1165,7 +1165,21 @@ impl Verifier {
                 hir::DefKind::Intrinsic { .. } => continue,
             };
             let Some(b) = m.bodies.get(def_body.0 as usize) else {
-                continue; // binder rejects dangling body refs
+                // T01-C04: a body-less declaration (the binder's extern
+                // scaffold, sentinel BodyId) or a mutated bundle's dangling
+                // ref must not receive the WHOLE-MODULE credential — the
+                // native backend indexes every def's body, so u32::MAX
+                // would panic. Body-less scaffolds stay legal ONLY inside
+                // function-level `verify_function` (single-body documents).
+                self.error(
+                    "verify.missing-body",
+                    format!(
+                        "declaration `{}` carries no body; whole-module verification requires a real body for every function (body-less declarations are function-level scaffolds only)",
+                        d.id_text
+                    ),
+                    d.span,
+                );
+                continue;
             };
             if b.owner.0 as usize != di {
                 let owner = m

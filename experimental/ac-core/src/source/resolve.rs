@@ -701,6 +701,29 @@ pub struct CheckedEnv {
     /// Producer walk counters (D-01 observation; see [`env_walk_stats`]).
     pub(crate) resolve_walks: u64,
     pub(crate) check_walks: u64,
+    /// D-03 (T01-C05): set by the explicit [`CheckedEnv::close`] — after it
+    /// every recheck/emit/prepare is a controlled `source.closed`
+    /// rejection. Release is never implied by "the field lives in the
+    /// session".
+    pub(crate) closed: bool,
+}
+
+impl CheckedEnv {
+    /// PLAN-828 D-03 (T01-C05): EXPLICIT release of the environment's
+    /// owned body entries (the resolved `fns` and the record/method
+    /// registries). The session's close calls this — dropping the session
+    /// struct is not the mechanism. Retained for post-close diagnostics:
+    /// the signature/record indexes, profile and walk counters. Idempotent.
+    pub fn close(&mut self) {
+        self.program.fns = Vec::new();
+        self.program.records = Vec::new();
+        self.closed = true;
+    }
+
+    /// Whether [`CheckedEnv::close`] already ran (D-03).
+    pub fn closed(&self) -> bool {
+        self.closed
+    }
 }
 
 /// PLAN-828 D-01: cold resolve that ALSO retains the checked environment
@@ -720,6 +743,7 @@ pub fn resolve_env(
         profile: surface,
         resolve_walks: 0,
         check_walks: 0,
+        closed: false,
     })
 }
 
@@ -753,6 +777,26 @@ pub fn recheck_function(
     item: &ast::FnItem,
     fn_index: usize,
 ) -> Result<(), Vec<Diagnostic>> {
+    recheck_swap(env, item, fn_index).map(|_| ())
+}
+
+/// Core re-check: the same guarded walk as [`recheck_function`], returning
+/// the DISPLACED previous entry (moved — nothing is cloned) so a
+/// transactional caller can hold "current" across the candidate's
+/// post-recheck stages (D-03 single-slot transaction).
+fn recheck_swap(
+    env: &mut CheckedEnv,
+    item: &ast::FnItem,
+    fn_index: usize,
+) -> Result<ResolvedFn, Vec<Diagnostic>> {
+    if env.closed {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.closed",
+            "the checked environment is closed; rechecks are rejected",
+            item.name.span,
+        )]);
+    }
     if fn_index >= env.program.fns.len() || env.program.fns[fn_index].name != item.name.name {
         return Err(vec![Diagnostic::new(
             Stage::Bind,
@@ -818,7 +862,97 @@ pub fn recheck_function(
         env.program.fns[fn_index] = previous;
         return Err(check_diags);
     }
-    Ok(())
+    Ok(previous)
+}
+
+/// PLAN-828 D-03 (T01-C05): the bounded single-slot save of one
+/// transactional re-check — the displaced CURRENT entry (moved out of the
+/// environment, never a clone of it). The environment's slot holds the
+/// grafted candidate while this save exists; disposition is explicit:
+/// [`FnSlotSave::restore`] cancels (current semantics re-published),
+/// [`FnSlotSave::commit`] publishes the candidate, and both are rejections
+/// on a closed environment. Holding a save is bounded to ONE `ResolvedFn`
+/// per open transaction — the no-whole-env-clone rule is structural.
+pub struct FnSlotSave {
+    fn_index: usize,
+    slot_name: String,
+    entry: ResolvedFn,
+}
+
+impl FnSlotSave {
+    /// The environment slot this save belongs to.
+    pub fn fn_index(&self) -> usize {
+        self.fn_index
+    }
+
+    /// The function name the slot must still hold for a valid restore.
+    pub fn slot_name(&self) -> &str {
+        &self.slot_name
+    }
+
+    /// Cancel/rollback: identity-guarded swap of the saved CURRENT entry
+    /// back into its slot. A closed environment or a slot that no longer
+    /// holds this function is a controlled rejection (the candidate stays
+    /// uncommitted).
+    pub fn restore(self, env: &mut CheckedEnv) -> Result<(), Vec<Diagnostic>> {
+        if env.closed {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.closed",
+                "the checked environment is closed; cancelling a candidate is a rejection",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        if env.program.fns.get(self.fn_index).map(|f| f.name.as_str())
+            != Some(self.slot_name.as_str())
+        {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.incremental",
+                format!(
+                    "slot {} no longer holds `{}`; foreign disposition is rejected",
+                    self.fn_index, self.slot_name
+                ),
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        env.program.fns[self.fn_index] = self.entry;
+        Ok(())
+    }
+
+    /// Commit: publish the grafted candidate as current by disposing the
+    /// save. The session calls this at its single commit point — together
+    /// with the root/source/revision publication — never at prepare time.
+    pub fn commit(self, env: &CheckedEnv) -> Result<(), Vec<Diagnostic>> {
+        if env.closed {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.closed",
+                "the checked environment is closed; committing a candidate is a rejection",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        Ok(())
+    }
+}
+
+/// PLAN-828 D-03 (T01-C05): transactional re-check — [`recheck_function`]
+/// semantics plus the displaced current entry returned as a bounded
+/// single-slot save. Failure leaves the environment untouched (the core
+/// recheck already restores); success leaves the candidate grafted with
+/// "current" held ONLY by the returned save.
+pub fn recheck_transactional(
+    env: &mut CheckedEnv,
+    item: &ast::FnItem,
+    fn_index: usize,
+) -> Result<FnSlotSave, Vec<Diagnostic>> {
+    let slot_name = item.name.name.clone();
+    let entry = recheck_swap(env, item, fn_index)?;
+    Ok(FnSlotSave {
+        fn_index,
+        slot_name,
+        entry,
+    })
 }
 
 /// PLAN-828 D-01 observation, producer-reported: cumulative body walks

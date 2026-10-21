@@ -270,6 +270,14 @@ pub fn emit_function_body(
     src: &str,
     module_path: &str,
 ) -> Result<(SourceParts, BodyEmitReceipt), Vec<Diagnostic>> {
+    if env.closed() {
+        return Err(vec![Diagnostic::new(
+            Stage::Text,
+            "source.closed",
+            "the checked environment is closed; emission is rejected",
+            Span { start: 0, end: 0 },
+        )]);
+    }
     let profile = env.profile;
     let mut em = Emitter::new(&env.program, src.len(), profile);
     em.scope = Some(fn_index);
@@ -315,6 +323,53 @@ pub fn emit_function_body(
         },
         receipt,
     ))
+}
+
+/// PLAN-828 D-03 (T01-C05): the minimal transactional single-function
+/// prepare. Runs the candidate pipeline in one bounded transaction —
+/// transactional re-check (the displaced current entry becomes the
+/// single-slot save), single-body emission, function-level verification —
+/// and hands the LIVE save back with the artifacts. Disposition is the
+/// caller's: `save.commit(env)` at the session's single commit point
+/// (together with root/source/revision publication) or
+/// `save.restore(env)` on cancel. A failure at ANY stage restores the
+/// previous entry FIRST, so the environment always reflects the last
+/// published semantics — never a rejected candidate. No environment
+/// clone: the transaction's whole bounded state is one saved entry.
+pub fn prepare_function_candidate(
+    env: &mut super::resolve::CheckedEnv,
+    item: &super::ast::FnItem,
+    fn_index: usize,
+    src: &str,
+    module_path: &str,
+) -> Result<(SourceParts, BodyEmitReceipt, super::resolve::FnSlotSave), Vec<Diagnostic>> {
+    let save = super::resolve::recheck_transactional(env, item, fn_index)?;
+    let prepared =
+        emit_function_body(env, fn_index, src, module_path).and_then(|(parts, receipt)| {
+            let def = format!("d_{}", item.name.name);
+            let def_idx = parts.bundle.modules[0]
+                .defs
+                .iter()
+                .position(|d| d.id_text == def)
+                .unwrap_or(fn_index);
+            match crate::verify::verify_function(parts.bundle.clone(), def_idx) {
+                Ok(_) => Ok((parts, receipt)),
+                Err(ds) => Err(ds),
+            }
+        });
+    match prepared {
+        Ok((parts, receipt)) => Ok((parts, receipt, save)),
+        Err(ds) => match save.restore(env) {
+            Ok(()) => Err(ds),
+            // Unreachable in practice (we just grafted this slot in this
+            // same open environment); surface both rather than mask.
+            Err(rd) => {
+                let mut all = ds;
+                all.extend(rd);
+                Err(all)
+            }
+        },
+    }
 }
 
 fn compile_program_observed(
