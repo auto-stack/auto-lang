@@ -65,18 +65,24 @@ impl CancelHandle {
     pub fn cancel(&self) -> bool {
         unsafe { CancelIoEx(self.0, std::ptr::null_mut()) != 0 }
     }
+
+    /// 凭证是否为空（防御性检查;公开构造路径不产生空句柄）。
+    pub fn is_null(&self) -> bool {
+        self.0.is_null()
+    }
 }
 
-impl Clone for CancelHandle {
-    fn clone(&self) -> Self {
+impl CancelHandle {
+    /// 复制凭证（F-816-R8：复制失败**具名返回**——不得以 NULL 句柄
+    /// 静默降级停止能力）。
+    pub fn try_clone(&self) -> io::Result<Self> {
         unsafe {
             let mut dup: Handle = std::ptr::null_mut();
             let this = GetCurrentProcess();
             if DuplicateHandle(this, self.0, this, &mut dup, 0, 0, DUPLICATE_SAME_ACCESS) == 0 {
-                // 复制失败:空句柄(取消调用将无操作)。
-                return CancelHandle(std::ptr::null_mut());
+                return Err(io::Error::last_os_error());
             }
-            CancelHandle(dup)
+            Ok(CancelHandle(dup))
         }
     }
 }

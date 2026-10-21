@@ -318,11 +318,35 @@ impl ToolClient {
         let mut proc = spawn_owned(&esp)?;
 
         // ---- stdin writer 线程 ----
-        let stdin = proc
-            .take_stdin()
-            .ok_or_else(|| ClientError::InvalidSpec("tool host stdin was not piped".into()))?;
+        // F-816-R8：凭证创建/复制失败在启动任何自有线程前具名拒绝
+        //（宿主进程由 OwnedProcess::drop 终止回收,不泄漏）。
+        let stdin = proc.take_stdin().map_err(|e| match e {
+            auto_tool_execution::StdinTakeError::Missing => {
+                ClientError::InvalidSpec("tool host stdin was not piped".into())
+            }
+            auto_tool_execution::StdinTakeError::Credential(source) => ClientError::Io {
+                stage: "create stdin cancel credential",
+                source: Box::new(source),
+            },
+        })?;
         // 写端取消凭证副本（Windows:停止侧取消挂起的同步写——R5 真停）。
-        let writer_cancel = stdin.cancel_handle();
+        let writer_cancel = stdin
+            .cancel_handle()
+            .map(|credential| {
+                #[cfg(windows)]
+                {
+                    Some(credential)
+                }
+                #[cfg(not(windows))]
+                {
+                    let _ = credential; // 平台中立签名:Unix 哨兵恒 None
+                    None
+                }
+            })
+            .map_err(|source| ClientError::Io {
+                stage: "clone stdin cancel credential",
+                source: Box::new(source),
+            })?;
         let (jobs_tx, jobs_rx) = std::sync::mpsc::channel::<serde_json::Value>();
         let (ack_tx, writer_ack) = std::sync::mpsc::channel::<Result<(), FrameError>>();
         let (wdone_tx, writer_done) = std::sync::mpsc::channel::<Result<(), std::io::Error>>();
@@ -613,7 +637,7 @@ impl ToolClient {
         self.writer_stop.store(true, Ordering::Relaxed);
         drop(self.jobs_tx.take());
         if let Some(h) = &self.writer_cancel {
-            h.cancel();
+            let _ = h.cancel();
         }
         let cancel_result = self.proc.cancel_within(TEARDOWN_GRACE).map(|_| ());
         self.stderr_closed.store(true, Ordering::Relaxed);
@@ -730,7 +754,7 @@ impl ToolClient {
                 }
                 Err(RecvTimeoutError::Timeout) => {
                     if let Some(h) = &self.writer_cancel {
-                        h.cancel();
+                        let _ = h.cancel();
                     }
                     if Instant::now() >= deadline {
                         return Err(ClientError::PipesHeld { after: grace });

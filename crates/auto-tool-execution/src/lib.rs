@@ -386,8 +386,30 @@ pub const PIPE_POLL_SLICE: Duration = Duration::from_millis(50);
 pub struct StdinPipe {
     inner: ChildStdin,
     #[cfg(windows)]
-    cancel: Option<win_stdin::CancelHandle>,
+    cancel: win_stdin::CancelHandle,
 }
+
+/// `take_stdin` 的具名失败（F-816-R8：凭证创建失败不再静默降级）。
+#[derive(Debug)]
+pub enum StdinTakeError {
+    /// spec 未管道化 stdin。
+    Missing,
+    /// 取消凭证创建失败（Windows DuplicateHandle;具名 io 错误）。
+    Credential(io::Error),
+}
+
+impl std::fmt::Display for StdinTakeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StdinTakeError::Missing => write!(f, "stdin pipe missing (not piped by spec)"),
+            StdinTakeError::Credential(source) => {
+                write!(f, "create stdin cancel credential failed: {source}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for StdinTakeError {}
 
 /// Unix 取消凭证占位（`cancel_handle` 的平台中立签名;恒为 None）。
 #[cfg(not(windows))]
@@ -397,21 +419,32 @@ impl StdinPipe {
     /// 取消写线程挂起的同步写（Windows；Unix 无操作——轮询本身可停）。
     pub fn cancel_blocked_write(&self) {
         #[cfg(windows)]
-        if let Some(h) = &self.cancel {
-            h.cancel();
-        }
+        self.cancel.cancel();
     }
 
-    /// 取消凭证副本（Windows;Unix 返回 None——非阻塞轮询本身可停）。
-    /// 写端被移交给写线程后，停止侧仍可经副本取消挂起的同步写。
+    /// 取消凭证副本（F-816-R8：复制失败**具名返回**——调用方须在启动
+    /// writer 前拒绝并清理，不得静默降级停止能力）。
     #[cfg(windows)]
-    pub fn cancel_handle(&self) -> Option<win_stdin::CancelHandle> {
-        self.cancel.clone()
+    pub fn cancel_handle(&self) -> io::Result<win_stdin::CancelHandle> {
+        Self::map_credential_clone(self.cancel.try_clone())
     }
 
     #[cfg(not(windows))]
-    pub fn cancel_handle(&self) -> Option<CancelCredential> {
-        None
+    pub fn cancel_handle(&self) -> io::Result<CancelCredential> {
+        Ok(CancelCredential)
+    }
+
+    /// 复制失败的统一映射（负控测试的公共边界）。
+    #[cfg(windows)]
+    fn map_credential_clone(
+        r: io::Result<win_stdin::CancelHandle>,
+    ) -> io::Result<win_stdin::CancelHandle> {
+        r.map_err(|source| {
+            io::Error::new(
+                source.kind(),
+                format!("clone stdin cancel credential failed: {source}"),
+            )
+        })
     }
 }
 
@@ -979,6 +1012,26 @@ impl WriterWorker {
         }
         let deadline = Instant::now() + grace;
         while self.join.as_ref().is_some_and(|h| !h.is_finished()) {
+            // F-816-R8 防御：写者**未结束**而凭证缺失/无效——重发取消
+            // 依赖有效凭证,立即具名失败,不以 3s PipesHeld 冒充已清理
+            //（写者自然完成路径会自行置空槽,retained=None 属正常——
+            // 由本 is_finished 判定区分）。
+            #[cfg(windows)]
+            match &retained {
+                None => {
+                    return Err(ExecutionError::Io {
+                        stage: "stdin cancel credential missing at stop",
+                        source: io::Error::other("credential was not created"),
+                    })
+                }
+                Some(h) if h.is_null() => {
+                    return Err(ExecutionError::Io {
+                        stage: "stdin cancel credential invalid at stop",
+                        source: io::Error::other("credential is a null handle"),
+                    })
+                }
+                Some(_) => {}
+            }
             if Instant::now() >= deadline {
                 return Err(ExecutionError::PipesHeld { after: grace });
             }
@@ -1113,15 +1166,33 @@ pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
 
     let mut writer_w = match spec.stdin_data.clone() {
         Some(data) => {
-            let stdin = proc
-                .take_stdin()
-                .ok_or_else(|| ExecutionError::InvalidSpec("stdin pipe missing".into()))?;
+            // F-816-R8：凭证创建/复制失败在启动 writer 前具名拒绝并
+            // 清理（readers 已启动 → finish_early）。
+            let stdin = proc.take_stdin().map_err(|e| match e {
+                StdinTakeError::Missing => ExecutionError::InvalidSpec("stdin pipe missing".into()),
+                StdinTakeError::Credential(source) => ExecutionError::Io {
+                    stage: "create stdin cancel credential",
+                    source,
+                },
+            })?;
             #[cfg(windows)]
-            let slot = stdin.cancel_handle().map(|h| Arc::new(Mutex::new(Some(h))));
-            #[cfg(windows)]
-            let w = WriterWorker::spawn_with(stdin, data, slot);
+            let slot = stdin
+                .cancel_handle()
+                .map(|h| Some(Arc::new(Mutex::new(Some(h)))) as Option<CancelSlot>)
+                .map_err(|source| ExecutionError::Io {
+                    stage: "clone stdin cancel credential",
+                    source,
+                })?;
             #[cfg(not(windows))]
-            let w = WriterWorker::spawn_with(stdin, data, None);
+            let slot: Option<CancelSlot> =
+                stdin
+                    .cancel_handle()
+                    .map(|_| None)
+                    .map_err(|source| ExecutionError::Io {
+                        stage: "clone stdin cancel credential",
+                        source,
+                    })?;
+            let w = WriterWorker::spawn_with(stdin, data, slot);
             Some(w)
         }
         None => None,
@@ -1326,11 +1397,12 @@ impl OwnedProcess {
 
     /// 移交 stdin 写端所有权(取出后 drop 即向子进程发 EOF;shutdown 语义
     /// 由消费方拥有)。T-12 客户端消费:长运行协议宿主的生命期归调用方。
-    pub fn take_stdin(&mut self) -> Option<StdinPipe> {
-        let inner = self.child.stdin.take()?;
+    pub fn take_stdin(&mut self) -> Result<StdinPipe, StdinTakeError> {
+        let inner = self.child.stdin.take().ok_or(StdinTakeError::Missing)?;
         #[cfg(windows)]
-        let cancel = win_stdin::CancelHandle::from_stdin(&inner).ok();
-        Some(StdinPipe {
+        let cancel =
+            win_stdin::CancelHandle::from_stdin(&inner).map_err(StdinTakeError::Credential)?;
+        Ok(StdinPipe {
             inner,
             #[cfg(windows)]
             cancel,
@@ -1675,6 +1747,39 @@ mod tests {
         assert!(matches!(out.end, WriterEnd::Stopped));
         assert!(out.written < data.len());
         drop(keeper);
+    }
+
+    /// F-816-R8 负控①（创建失败状态）：`StdinTakeError::Credential`
+    /// 的具名传播——take_stdin 的公开失败出口,run/client 均映射为
+    /// Io{stage:"create stdin cancel credential"} 后拒绝（真实
+    /// DuplicateHandle 失败不可物理诱发——与 R8 注入同为边界级）。
+    #[test]
+    fn credential_creation_failure_is_named_rejection() {
+        let e = io::Error::other("injected DuplicateHandle failure");
+        let take_err = StdinTakeError::Credential(e);
+        assert!(
+            take_err.to_string().contains("cancel credential"),
+            "{take_err}"
+        );
+        assert!(matches!(take_err, StdinTakeError::Credential(_)));
+    }
+
+    /// F-816-R8 负控②（复制失败状态）：try_clone 失败经统一映射具名
+    /// 返回——不再产生 NULL 凭证（Clone 静默兜底已删除,类型层不存在
+    /// NULL 构造路径）。
+    #[cfg(windows)]
+    #[test]
+    fn credential_clone_failure_maps_named_error() {
+        let r: io::Result<win_stdin::CancelHandle> =
+            Err(io::Error::other("injected DuplicateHandle failure"));
+        let mapped = StdinPipe::map_credential_clone(r);
+        match mapped {
+            Err(e) => assert!(
+                e.to_string().contains("clone stdin cancel credential"),
+                "{e}"
+            ),
+            Ok(_) => panic!("clone failure must not yield a credential"),
+        }
     }
 
     #[test]
