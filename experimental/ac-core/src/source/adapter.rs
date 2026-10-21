@@ -252,9 +252,9 @@ pub fn compile_program_parts(
 pub struct BodyEmitReceipt {
     /// REAL bodies planned and rendered (the changed function — 1).
     pub real_body_plans: usize,
-    /// Empty-body signature scaffolds planned for the other functions
+    /// BODY-LESS declaration scaffolds emitted for the other functions
     /// (the interface-directory traversal §5.6 allows; both the old
-    /// stub pipeline and this seam pay it).
+    /// no body is planned, rendered or bound for them).
     pub scaffold_fns: usize,
 }
 
@@ -272,7 +272,8 @@ pub fn emit_function_body(
 ) -> Result<(SourceParts, BodyEmitReceipt), Vec<Diagnostic>> {
     let profile = env.profile;
     let mut em = Emitter::new(&env.program, src.len(), profile);
-    em.plan_module_scoped(fn_index);
+    em.scope = Some(fn_index);
+    em.plan_indexed(fn_index);
     let atom_text = em.render(module_path);
     let receipt = BodyEmitReceipt {
         real_body_plans: 1,
@@ -616,6 +617,7 @@ struct PlanCtx<'p> {
 
 impl PlanCtx<'_> {
     fn plan_fn(&mut self, f: &ResolvedFn) -> FnPlan {
+        crate::body_work::record_plan(&f.name);
         // r3 R3-04: a `move Str` parameter is a CLEANUP obligation (its
         // exit frees lower to ac_rt_own_free) even with zero text
         // operations in the body — such a function needs the runtime too.
@@ -1947,6 +1949,11 @@ struct Emitter<'p> {
     /// Filled by [`Emitter::render`]: token-level fallback map.
     frags: Vec<(Span, Span)>,
     spans: Option<EmitSpans>,
+    /// PLAN-828 D-01 single-function scope: when set, exactly this
+    /// function's BODY is planned/rendered; every other function emits a
+    /// BODY-LESS declaration scaffold. The types section stays the full
+    /// interface directory.
+    scope: Option<usize>,
 }
 
 impl<'p> Emitter<'p> {
@@ -1959,6 +1966,7 @@ impl<'p> Emitter<'p> {
             intrinsic_first_use: BTreeMap::new(),
             frags: Vec::new(),
             spans: None,
+            scope: None,
         }
     }
 
@@ -1978,17 +1986,15 @@ impl<'p> Emitter<'p> {
     /// cross-function references in the document bind against the
     /// scaffolds (the interface-directory traversal §5.6 allows), and no
     /// unchanged body is walked.
-    fn plan_module_scoped(&mut self, real_idx: usize) {
-        for (i, f) in self.program.fns.iter().enumerate() {
-            let stub = super::resolve::stub_resolved(f);
-            let target: &crate::source::resolve::ResolvedFn = if i == real_idx { f } else { &stub };
-            let mut ctx = PlanCtx {
-                program: self.program,
-                intrinsic_first_use: &mut self.intrinsic_first_use,
-            };
-            let plan = ctx.plan_fn(target);
-            self.plans.push(plan);
-        }
+    /// PLAN-828 D-01: plan exactly ONE function's body (the changed
+    /// one); every other function never enters planning at all.
+    fn plan_indexed(&mut self, idx: usize) {
+        let mut ctx = PlanCtx {
+            program: self.program,
+            intrinsic_first_use: &mut self.intrinsic_first_use,
+        };
+        let plan = ctx.plan_fn(&self.program.fns[idx]);
+        self.plans.push(plan);
     }
 
     fn ty_name(&self, vt: VT) -> String {
@@ -2201,14 +2207,24 @@ impl<'p> Emitter<'p> {
             // the CLI's entry-by-name lookup are unaffected. Methods
             // (record profile) carry index-qualified ids: a free function
             // and a method may share a source name (PLAN-771).
+            // PLAN-828 D-01: in single-function scope every OTHER
+            // function emits a BODY-LESS declaration scaffold — the def
+            // exists for cross-function references without any body
+            // document.
+            let scaffold = self.scope.is_some() && self.scope != Some(fi);
             if f.receiver == crate::source::ast::Receiver::Free {
+                let body_field = if scaffold {
+                    String::new()
+                } else {
+                    format!("; body: \"b_{}\"", f.name)
+                };
                 frag!(
                     &format!(
-                        "function d_{} t_f_{} {{ name: \"sf_{}\"; body: \"b_{}\" }}",
+                        "function d_{} t_f_{} {{ name: \"sf_{}\"{} }}",
                         f.name,
                         f.name,
                         Self::esc(&f.name),
-                        f.name
+                        body_field
                     ),
                     f.item_span
                 );
@@ -2263,8 +2279,14 @@ impl<'p> Emitter<'p> {
         t.push(' ');
         frag!("{", program_span);
         nl!(12);
-        for (fi, f) in self.program.fns.iter().enumerate() {
-            let plan = &self.plans[fi];
+        for (fi, f) in self
+            .program
+            .fns
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| self.scope.is_none() || self.scope == Some(*i))
+        {
+            let plan = &self.plans[if self.scope.is_some() { 0 } else { fi }];
             let mut bs = BodySpans {
                 span: f.name_span,
                 locals: Vec::new(),

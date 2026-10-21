@@ -143,7 +143,7 @@ descriptor(schema: "auto.hir.record.draft", revision: 1u32, profile: "record-i32
         branch(key: "type.function") { require: [params, result]; forbid: [fields] }
         branch(key: "type.record") { require: [fields]; forbid: [params, result] }
         branch(key: "function") {
-            require: [name, body]
+            require: [name]
             forbid: [symbol, effect, record, receiver]
         }
         branch(key: "method") {

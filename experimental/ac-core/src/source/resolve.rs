@@ -404,7 +404,6 @@ impl Drop for RBlock {
     }
 }
 
-#[derive(Clone)]
 pub struct ResolvedFn {
     pub name: String,
     pub name_span: Span,
@@ -474,7 +473,7 @@ pub fn param_position(idx: usize, arg: &ResolvedArg, callee: &ResolvedFn) -> Opt
     }
 }
 
-struct FnSig {
+pub(crate) struct FnSig {
     param_names: Vec<String>,
     params: Vec<VT>,
     result: VT,
@@ -657,6 +656,7 @@ fn resolve_detailed(
     // Pass 2: per-function body resolution.
     let mut fns = Vec::new();
     for (i, f) in flat.iter().enumerate() {
+        crate::body_work::record_resolve(&f.name.name);
         fns.push(resolve_fn(
             f,
             &sigs,
@@ -793,6 +793,7 @@ pub fn recheck_function(
     }
     let mut diags = Vec::new();
     env.resolve_walks += 1;
+    crate::body_work::record_resolve(&item.name.name);
     let resolved = resolve_fn(
         item,
         &env.sigs,
@@ -818,23 +819,6 @@ pub fn recheck_function(
         return Err(check_diags);
     }
     Ok(())
-}
-
-/// PLAN-828 D-01: the SIGNATURE-SCAFFOLD view of one retained entry —
-/// the entry with an EMPTY body (param locals only, no loops, no
-/// intrinsics). A single-function document needs callee defs to exist
-/// for cross-function references to bind; the scaffold is a field-level
-/// stub of the RETAINED entry (no re-resolution, no body walk).
-pub(crate) fn stub_resolved(entry: &ResolvedFn) -> ResolvedFn {
-    let mut stub = entry.clone();
-    stub.body = RBlock {
-        stmts: Vec::new(),
-        span: Span { start: 0, end: 0 },
-    };
-    stub.locals.retain(|l| l.is_param);
-    stub.loop_count = 0;
-    stub.used_intrinsics.clear();
-    stub
 }
 
 /// PLAN-828 D-01 observation, producer-reported: cumulative body walks

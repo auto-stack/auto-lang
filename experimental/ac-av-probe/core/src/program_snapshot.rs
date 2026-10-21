@@ -222,7 +222,56 @@ impl ProgramSnapshot {
         &self.span_maps
     }
 
-    /// PLAN-828 F-02/D-02 observation, reported by the merged-view
+    /// PLAN-828 D-02 first case: the UNIT dispatch view over this
+    /// snapshot's ORIGINAL code payloads — blocks/slots/PC/consts/types
+    /// are read unit-locally (the immutable `FunctionCode` objects the
+    /// F-02 identity gate requires), and cross-function calls resolve
+    /// through the link-time name table instead of a merged copy.
+    pub fn unit_view(&self) -> UnitView<'_> {
+        UnitView { snap: self }
+    }
+
+    /// PLAN-828 D-02 binding-rejection control: every code slot holds a
+    /// unit payload, and every unit's imports resolve to a slot by name
+    /// with matching signatures checked at link time. A snapshot whose
+    /// unit bindings are incomplete refuses unit dispatch.
+    pub fn unit_binding_complete(&self) -> Result<(), String> {
+        if self.code.is_empty() {
+            return Err(format!(
+                "entry function `{}` not among code units (0 units)",
+                self.entry
+            ));
+        }
+        for (i, c) in self.code.iter().enumerate() {
+            let u = c.unit().module();
+            let Some(f) = u.funcs.first() else {
+                return Err(format!("code slot {i} (`{}`) has no function", c.name()));
+            };
+            if f.name != c.name() {
+                return Err(format!(
+                    "code slot {i} name `{}` != unit function `{}`",
+                    c.name(),
+                    f.name
+                ));
+            }
+            for (ix, imp) in u.imports.iter().enumerate() {
+                let Some(target) = imp_target(imp.symbol.as_str()) else {
+                    continue;
+                };
+                if !self.code.iter().any(|c| c.name() == target) {
+                    return Err(format!(
+                        "unit `{}` import #{} `fn:{}` does not resolve to any function",
+                        c.name(),
+                        ix,
+                        imp.symbol
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// PLAN-828 D-02 observation, reported by the merged-view
     /// PRODUCER itself: whether the payload AV actually consumes for
     /// function `fn_index` is the SAME OBJECT across two snapshots
     /// (per-unit dispatch) or a per-snapshot COPY (today's merged
@@ -341,4 +390,74 @@ fn merge_consts(merged: &mut MirModule, u: &MirModule) -> Vec<u32> {
         map[i] = merged.intern_const(c.clone());
     }
     map
+}
+
+/// The link-time import-name convention: `fn:<name>` targets the code
+/// slot whose unit function is `<name>` (the same convention
+/// `link_with_maps` patches into merged-space Func refs).
+fn imp_target(symbol: &str) -> Option<&str> {
+    symbol.strip_prefix("fn:")
+}
+
+/// PLAN-828 D-02: the unit-local dispatch view (see
+/// [`ProgramSnapshot::unit_view`]). Lifetime-bound to the snapshot; the
+/// payloads it hands the interpreter are the SAME immutable objects the
+/// identity gate observes — no merged re-materialization.
+pub struct UnitView<'a> {
+    snap: &'a ProgramSnapshot,
+}
+
+impl crate::av::ModuleView for UnitView<'_> {
+    fn fn_at(&self, idx: u32) -> Option<&crate::mir::MirFunction> {
+        self.snap
+            .code
+            .get(idx as usize)?
+            .unit()
+            .module()
+            .funcs
+            .first()
+    }
+    fn const_at(&self, func: u32, idx: u32) -> Option<crate::mir::MirConst> {
+        let u = self.snap.code.get(func as usize)?.unit().module();
+        u.consts.get(idx as usize).copied()
+    }
+    fn zero_of(&self, func: u32, ty: u32) -> crate::contract::Value {
+        let u = self.snap.code.get(func as usize).unwrap().unit().module();
+        match u.types.get(ty as usize) {
+            Some(crate::mir::MirType::Bool) => crate::contract::Value::Bool(false),
+            _ => crate::contract::Value::I32(0),
+        }
+    }
+    fn type_is_bool(&self, func: u32, ty: u32) -> Option<bool> {
+        let u = self.snap.code.get(func as usize)?.unit().module();
+        match u.types.get(ty as usize) {
+            Some(crate::mir::MirType::Bool) => Some(true),
+            Some(crate::mir::MirType::I32) => Some(false),
+            _ => None,
+        }
+    }
+    fn resolve_callee(&self, _func: u32, callee: &crate::mir::CalleeRef) -> Option<u32> {
+        match callee {
+            // Unit payloads carry their calls as imports; the link-time
+            // name table resolves `fn:<name>` to the owning code slot.
+            CalleeRef::Import(ix) => {
+                let caller = self.snap.code.get(_func as usize)?.unit().module();
+                let imp = caller.imports.get(*ix as usize)?;
+                let target = imp_target(imp.symbol.as_str())?;
+                self.snap
+                    .code
+                    .iter()
+                    .position(|c| c.name() == target)
+                    .map(|p| p as u32)
+            }
+            // Unit-local instructions never carry merged-space Func
+            // indices; one showing up is a foreign index space.
+            CalleeRef::Func(_) => None,
+        }
+    }
+    fn entry(&self) -> u32 {
+        // The merged entry index equals the code-slot order (link
+        // concatenates in code order).
+        self.snap.merged().entry
+    }
 }

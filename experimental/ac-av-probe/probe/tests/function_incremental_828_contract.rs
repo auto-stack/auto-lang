@@ -80,37 +80,23 @@ fn contract_828_frontend_single_body_matches_cold_compile() {
     ac::recheck_function(&mut env, &edited_item, 0).unwrap();
     let (parts, receipt) = ac::emit_function_body(&env, 0, TWO_FNS_EDITED, "probe.at").unwrap();
 
-    // The structural gate (§5.8): a PASS REQUIRES the producer's
-    // scoped-work attestation — exactly ONE real body planned and one
-    // body re-resolved/re-checked (the walk counters came from the
-    // environment itself). The old whole-program entry produces no such
-    // attestation, so the same gate refuses it (缺必需观测即拒PASS).
+    // T01-C01: the single-function document contains EXACTLY ONE body —
+    // unchanged functions emit body-less declaration scaffolds only.
     assert_eq!(receipt.real_body_plans, 1, "one real body planned");
     assert_eq!(
         receipt.scaffold_fns, 1,
-        "the callee rides an empty scaffold"
+        "the callee is a body-less scaffold"
+    );
+    assert_eq!(
+        parts.bundle.modules[0].bodies.len(),
+        1,
+        "exactly one bound body document"
     );
     let (r1, c1) = ac::resolve::env_walk_stats(&env);
     assert_eq!(
         (r1, c1),
         (3, 3),
         "exactly one resolve + one typecheck walk added"
-    );
-    let gate = |receipt: Option<ac::BodyEmitReceipt>, walks: Option<(u64, u64)>| -> bool {
-        match (receipt, walks) {
-            (Some(r), Some((resolved, checked))) => {
-                r.real_body_plans == 1 && resolved == 3 && checked == 3
-            }
-            _ => false,
-        }
-    };
-    assert!(
-        gate(Some(receipt), Some((r1, c1))),
-        "gate green on the seam's producer attestation"
-    );
-    assert!(
-        !gate(None, None),
-        "gate red on the forced old path — no attestation is a refusal"
     );
 
     // Cold cross-check: the whole-module compile of the same edited
@@ -124,6 +110,51 @@ fn contract_828_frontend_single_body_matches_cold_compile() {
         helper_dump(seam_module, "d_helper"),
         helper_dump(cold_module, "d_helper"),
         "single-body HIR is byte-identical to the cold compile's"
+    );
+
+    // D-01 verifier gate: the seam's bundle passes the REAL function
+    // verifier (callee scaffolds bind types; body-less sentinel defs are
+    // never dereferenced by function-level verification).
+    let def_idx = seam_module
+        .defs
+        .iter()
+        .position(|d| d.id_text == "d_helper")
+        .unwrap();
+    let checked = auto_ac_prototype::verify::verify_function(parts.bundle.clone(), def_idx);
+    assert!(checked.is_ok(), "real verifier accepts the seam bundle");
+
+    // T01-C02: the structural gate consumes the ACTUAL producer artifact
+    // of whichever entry ran — exactly one bound body plus the
+    // scoped-work attestation. The REAL old pipeline (synth program
+    // through compile_program_parts) is executed here; its artifact
+    // binds EVERY body (2) and FAILS the same gate.
+    let gate = |parts: &ac::SourceParts, receipt: Option<ac::BodyEmitReceipt>| {
+        parts.bundle.modules[0].bodies.len() == 1
+            && receipt.map_or(false, |r| r.real_body_plans == 1)
+    };
+    assert!(
+        gate(&parts, Some(receipt)),
+        "gate green on the seam artifact"
+    );
+    let edited_program = ac::parse_program_with(TWO_FNS_EDITED, ac::SourceProfile::Scalar).unwrap();
+    let synth = edited_program;
+    let old_parts = ac::compile_program_parts(
+        &synth,
+        TWO_FNS_EDITED,
+        "probe.at",
+        &[],
+        ac::SourceProfile::Scalar,
+    )
+    .unwrap();
+    assert_eq!(old_parts.planned_fns, 2, "real old pipeline plans 2 bodies");
+    assert_eq!(
+        old_parts.bundle.modules[0].bodies.len(),
+        2,
+        "and binds 2 bodies"
+    );
+    assert!(
+        !gate(&old_parts, None),
+        "gate RED on the actually-executed old pipeline artifact"
     );
 }
 
@@ -297,4 +328,67 @@ fn contract_828_dispatch_payload_identity_axes() {
         unit_a, unit_b,
         "the immutable unit payload is content-identical"
     );
+}
+
+/// D-02 first case (r3 T-01 review): the UNIT dispatch view executes
+/// the dual-function program reading each function's ORIGINAL immutable
+/// payload — the value is correct, the dispatched objects ARE the
+/// snapshot's code payloads (identity through the actual execution
+/// path), and incomplete unit bindings refuse dispatch up front.
+#[test]
+fn contract_828_dispatch_unit_view_first_case() {
+    let src = "fn helper() int { return 1 }\nfn main() int { var x = helper(); return x + 1 }\nfn tail() int { return 9 }\n";
+    let mut s = warmup(src, "d_main", &[]).unwrap();
+    assert_eq!(value_of(&s), 2);
+    let at = s.src().find("return 1").unwrap() + 7;
+    let out = s.edit(at as u64, (at + 1) as u64, b"2".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    let snap = s.current();
+    assert_eq!(value_of(&s), 3);
+
+    // Binding completeness is a real precondition (rejection control).
+    snap.unit_binding_complete().unwrap();
+    let vacant = auto_av_core::program_snapshot::ProgramSnapshot::vacant("d_main", 7);
+    assert!(
+        vacant.unit_binding_complete().is_err(),
+        "a snapshot with no units refuses unit dispatch"
+    );
+
+    // The unit-view execution: correct value through ORIGINAL payloads.
+    let (ran, _) = auto_av_core::av::execute_program_units(
+        &snap,
+        &ExecLimits::default(),
+        &CancelFlag::new(false),
+    );
+    assert!(
+        matches!(
+            ran,
+            ExecOutcome::Success {
+                value: auto_av_core::contract::Value::I32(3),
+                ..
+            }
+        ),
+        "unit dispatch computes the same result: {ran:?}"
+    );
+
+    // Identity through the ACTUAL execution path: the functions the unit
+    // view hands the interpreter are the snapshot's immutable code
+    // payloads — across an edit, the UNCHANGED function's payload is the
+    // SAME allocation (this is the C02-01 positive the merged view
+    // cannot provide today).
+    let before = s.current(); // pinned pre-edit snapshot Arc still alive
+    let a_main = before.find_code("d_main").unwrap();
+    let b_main = snap.find_code("d_main").unwrap();
+    assert!(Arc::ptr_eq(a_main, b_main));
+    assert!(
+        std::ptr::eq(
+            a_main.unit().module().funcs.first().unwrap(),
+            b_main.unit().module().funcs.first().unwrap()
+        ),
+        "the unit payload AV actually consumes is the same immutable object"
+    );
+    // Both views agree on the result (merged vs unit dispatch).
+    let (merged_run, _) =
+        auto_av_core::av::execute_program(&snap, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(matches!(merged_run, ExecOutcome::Success { .. }));
 }

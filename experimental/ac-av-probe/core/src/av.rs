@@ -116,7 +116,7 @@ pub fn execute_entry(
         );
     }
     let mut st = LoopState::default();
-    let out = dispatch(m, limits, cancel, args, &mut st, None)
+    let out = dispatch(&MergedView(m), limits, cancel, args, &mut st, None)
         .expect("no budget: the loop always terminates with an outcome");
     (out, st.trace)
 }
@@ -127,14 +127,37 @@ pub fn execute_entry(
 /// bindings, so no whole-closure credential exists or is needed here. A new
 /// top-level call captures the snapshot it wants to see; the immutable
 /// snapshot keeps in-flight chains on their own revision.
+/// PLAN-828 D-02 first case: execute the entry through the UNIT view —
+/// the original per-function payloads with link-time call resolution
+/// (no merged re-materialization). This prototype and the three merged
+/// entries share the ONE `dispatch`; T-05/06 switch the snapshot link
+/// to binding tables and make this the default path.
+pub fn execute_program_units(
+    prog: &crate::program_snapshot::ProgramSnapshot,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+) -> (ExecOutcome, ExecTrace) {
+    let mut st = LoopState::default();
+    let out = dispatch(&prog.unit_view(), limits, cancel, &[], &mut st, None)
+        .expect("no budget: the loop always terminates with an outcome");
+    (map_span(prog, out), st.trace)
+}
+
 pub fn execute_program(
     prog: &crate::program_snapshot::ProgramSnapshot,
     limits: &ExecLimits,
     cancel: &CancelFlag,
 ) -> (ExecOutcome, ExecTrace) {
     let mut st = LoopState::default();
-    let out = dispatch(prog.merged(), limits, cancel, &[], &mut st, None)
-        .expect("no budget: the loop always terminates with an outcome");
+    let out = dispatch(
+        &MergedView(prog.merged()),
+        limits,
+        cancel,
+        &[],
+        &mut st,
+        None,
+    )
+    .expect("no budget: the loop always terminates with an outcome");
     (map_span(prog, out), st.trace)
 }
 
@@ -193,7 +216,14 @@ pub fn execute_program_steps(
     max_steps: u64,
 ) -> SteppedOutcome {
     let mut st = LoopState::default();
-    match dispatch(prog.merged(), limits, cancel, &[], &mut st, Some(max_steps)) {
+    match dispatch(
+        &MergedView(prog.merged()),
+        limits,
+        cancel,
+        &[],
+        &mut st,
+        Some(max_steps),
+    ) {
         Some(out) => SteppedOutcome::Finished(map_span(prog, out), st.trace),
         None => SteppedOutcome::Paused(PausedRun {
             prog: prog.clone(),
@@ -216,7 +246,14 @@ pub fn resume_program(
         mut state,
     } = paused;
     let prog_for_map = prog.clone();
-    match dispatch(prog.merged(), &limits, cancel, &[], &mut state, max_steps) {
+    match dispatch(
+        &MergedView(prog.merged()),
+        &limits,
+        cancel,
+        &[],
+        &mut state,
+        max_steps,
+    ) {
         Some(out) => SteppedOutcome::Finished(map_span(&prog_for_map, out), state.trace),
         None => SteppedOutcome::Paused(PausedRun {
             prog,
@@ -240,8 +277,67 @@ struct LoopState {
 /// root budgets); non-empty state resumes the chain untouched. Returns
 /// `None` when the step budget pauses the chain; the wall budget applies
 /// per call (per execution segment).
-fn dispatch(
-    m: &MirModule,
+/// PLAN-828 D-02: the ONE dispatch consumption seam over a program's
+/// functions. `MergedView` reads the snapshot's merged module (all three
+/// public entries today); the unit view (program_snapshot.rs) reads each
+/// function's ORIGINAL unit payload — blocks/slots/PC/consts/types stay
+/// UNIT-LOCAL — and resolves cross-function calls through the link-time
+/// binding table instead of a re-materialized merged copy.
+pub(crate) trait ModuleView {
+    /// The function payload execution reads (blocks/slots/spans).
+    fn fn_at(&self, idx: u32) -> Option<&MirFunction>;
+    /// A constant by the index space function `func`'s instructions use
+    /// (merged: global; unit: fn-local).
+    fn const_at(&self, func: u32, idx: u32) -> Option<crate::mir::MirConst>;
+    /// The typed zero for a slot type index in `func`'s type space.
+    fn zero_of(&self, func: u32, ty: u32) -> Value;
+    /// `Some(true)`=bool, `Some(false)`=i32, `None`=not a builtin type
+    /// (entry admission fails on None).
+    fn type_is_bool(&self, func: u32, ty: u32) -> Option<bool>;
+    /// Resolve a call site's callee to a function slot (None = an
+    /// admission violation: unresolved import or foreign index space).
+    fn resolve_callee(&self, func: u32, callee: &CalleeRef) -> Option<u32>;
+    /// The entry function slot.
+    fn entry(&self) -> u32;
+}
+
+/// The whole-module view over the merged MirModule (today's behavior,
+/// unchanged).
+pub(crate) struct MergedView<'a>(pub &'a MirModule);
+
+impl ModuleView for MergedView<'_> {
+    fn fn_at(&self, idx: u32) -> Option<&MirFunction> {
+        self.0.funcs.get(idx as usize)
+    }
+    fn const_at(&self, _func: u32, idx: u32) -> Option<crate::mir::MirConst> {
+        self.0.consts.get(idx as usize).copied()
+    }
+    fn zero_of(&self, _func: u32, ty: u32) -> Value {
+        match self.0.types.get(ty as usize) {
+            Some(MirType::Bool) => Value::Bool(false),
+            _ => Value::I32(0),
+        }
+    }
+    fn type_is_bool(&self, _func: u32, ty: u32) -> Option<bool> {
+        match self.0.types.get(ty as usize) {
+            Some(MirType::Bool) => Some(true),
+            Some(MirType::I32) => Some(false),
+            _ => None,
+        }
+    }
+    fn resolve_callee(&self, _func: u32, callee: &CalleeRef) -> Option<u32> {
+        match callee {
+            CalleeRef::Func(idx) => self.0.funcs.get(*idx as usize).map(|_| *idx),
+            CalleeRef::Import(_) => None,
+        }
+    }
+    fn entry(&self) -> u32 {
+        self.0.entry
+    }
+}
+
+fn dispatch<V: ModuleView>(
+    v: &V,
     limits: &ExecLimits,
     cancel: &CancelFlag,
     args: &[Value],
@@ -249,14 +345,14 @@ fn dispatch(
     budget: Option<u64>,
 ) -> Option<ExecOutcome> {
     let started = Instant::now();
-    let zero = typed_zero(m);
+    let entry_slot = v.entry();
     if st.frames.is_empty() {
-        let entry_fn = match m.funcs.get(m.entry as usize) {
+        let entry_fn = match v.fn_at(entry_slot) {
             Some(f) => f,
             None => {
                 return Some(ExecOutcome::Infra(format!(
                     "entry function #{} missing",
-                    m.entry
+                    entry_slot
                 )))
             }
         };
@@ -274,10 +370,10 @@ fn dispatch(
         // is an admission violation, never a silently executing coercion.
         for (i, &arg) in args.iter().enumerate() {
             let slot_ty = entry_fn.slots[entry_fn.param_slots()[i] as usize].ty;
-            let ok = match m.types.get(slot_ty as usize) {
-                Some(MirType::I32) => matches!(arg, Value::I32(_)),
-                Some(MirType::Bool) => matches!(arg, Value::Bool(_)),
-                _ => false,
+            let ok = match v.type_is_bool(entry_slot, slot_ty) {
+                Some(true) => matches!(arg, Value::Bool(_)),
+                Some(false) => matches!(arg, Value::I32(_)),
+                None => false,
             };
             if !ok {
                 return Some(ExecOutcome::Infra(format!(
@@ -312,7 +408,7 @@ fn dispatch(
         }
         // Root frame.
         let mut frame = Frame {
-            func: m.entry,
+            func: entry_slot,
             block: entry_fn.entry,
             ip: 0,
             slots: Vec::with_capacity(entry_fn.slots.len()),
@@ -323,7 +419,7 @@ fn dispatch(
             frame.slots.push(if s.kind == crate::mir::SlotKind::Param {
                 arg_iter.next().expect("count checked above")
             } else {
-                zero(s.ty)
+                v.zero_of(entry_slot, s.ty)
             });
         }
         st.slot_bytes += frame.slots.len() * SLOT_CELL_BYTES;
@@ -366,7 +462,7 @@ fn dispatch(
             };
             (fr.func, fr.block, fr.ip)
         };
-        let func = match m.funcs.get(func_idx as usize) {
+        let func = match v.fn_at(func_idx) {
             Some(f) => f,
             None => {
                 return Some(ExecOutcome::Infra(format!(
@@ -393,12 +489,21 @@ fn dispatch(
             let flat = func.block_base(block_idx) + ip as u32;
             match instr {
                 MirInstr::Const { dst, value } => {
-                    let v = match m.consts[*value as usize] {
+                    let cv = match v.const_at(func_idx, *value) {
+                        Some(cv) => cv,
+                        None => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "const #{} of func #{} missing",
+                                value, func_idx
+                            )))
+                        }
+                    };
+                    let val = match cv {
                         crate::mir::MirConst::I32(v) => Value::I32(v),
                         crate::mir::MirConst::Bool(b) => Value::Bool(b),
                     };
                     let fr = st.frames.last_mut().expect("frame present");
-                    fr.slots[*dst as usize] = v;
+                    fr.slots[*dst as usize] = val;
                 }
                 MirInstr::Copy { dst, src } => {
                     let v = {
@@ -447,21 +552,17 @@ fn dispatch(
                     }
                 }
                 MirInstr::Call { callee, dst, args } => {
-                    let target = match callee {
-                        CalleeRef::Func(idx) => match m.funcs.get(*idx as usize) {
-                            Some(_) => *idx,
-                            None => {
-                                return Some(ExecOutcome::Infra(format!("callee #{} missing", idx)))
-                            }
-                        },
-                        CalleeRef::Import(idx) => {
-                            // v1 executable closures lower test-mark imports
-                            // to TRACE instructions at closure assembly; a
-                            // CALL on an import is an admission violation.
+                    // v1 executable closures lower test-mark imports to
+                    // TRACE instructions at closure assembly; an
+                    // unresolved callee (import or foreign index space) is
+                    // an admission violation in every view.
+                    let target = match v.resolve_callee(func_idx, callee) {
+                        Some(t) => t,
+                        None => {
                             return Some(ExecOutcome::Infra(format!(
-                                "call to unresolved import #{}",
-                                idx
-                            )));
+                                "callee resolution failed in func #{}: {:?}",
+                                func_idx, callee
+                            )))
                         }
                     };
                     if st.frames.len() >= limits.max_frames {
@@ -470,7 +571,9 @@ fn dispatch(
                             message: format!("guest frames exceeded {}", limits.max_frames),
                         });
                     }
-                    let callee_fn = &m.funcs[target as usize];
+                    let callee_fn = v
+                        .fn_at(target)
+                        .expect("resolve_callee only returns slots with a payload");
                     // Slot budget BEFORE the callee frame is allocated
                     // (F798-R3-04): the check used to run after the push.
                     let prospective = st.slot_bytes + callee_fn.slots.len() * SLOT_CELL_BYTES;
@@ -499,7 +602,7 @@ fn dispatch(
                         nf.slots.push(if s.kind == crate::mir::SlotKind::Param {
                             ai.next().expect("arity verified at admission")
                         } else {
-                            zero(s.ty)
+                            v.zero_of(target, s.ty)
                         });
                     }
                     st.slot_bytes = prospective;
@@ -566,13 +669,6 @@ fn dispatch(
                 }
             }
         }
-    }
-}
-
-fn typed_zero(m: &MirModule) -> impl Fn(u32) -> Value + '_ {
-    move |ty| match m.types.get(ty as usize) {
-        Some(MirType::Bool) => Value::Bool(false),
-        _ => Value::I32(0),
     }
 }
 

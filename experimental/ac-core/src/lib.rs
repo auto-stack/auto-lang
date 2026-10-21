@@ -25,6 +25,72 @@ pub mod verify;
 /// The versioned core descriptor this build accepts (PLAN-741). Any document
 /// claiming a different schema/revision/profile identity is rejected at bind
 /// time.
+/// PLAN-828 §5.8/D-01 producer observation: per-function BODY-work
+/// counts recorded at the REAL resolve/typecheck/plan/bind entries.
+/// Recording is opt-in per [`capture_body_work`] window; a structural
+/// gate reads the producer's own counts (by function name) instead of
+/// reconstructing work from a caller. The interface directory (types /
+/// body-less declaration scaffolds) is deliberately NOT counted — only
+/// body passes are.
+pub mod body_work {
+    use std::cell::RefCell;
+    use std::collections::BTreeMap;
+
+    /// One function's body-work counts within an observation window.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct BodyWork {
+        pub resolve: u64,
+        pub typecheck: u64,
+        pub plan: u64,
+        pub bind: u64,
+    }
+
+    thread_local! {
+        static COUNTS: RefCell<Option<BTreeMap<String, BodyWork>>> =
+            RefCell::new(None);
+    }
+
+    fn record(kind: u8, name: &str) {
+        COUNTS.with(|c| {
+            if let Some(m) = c.borrow_mut().as_mut() {
+                let e = m.entry(name.to_string()).or_default();
+                match kind {
+                    0 => e.resolve += 1,
+                    1 => e.typecheck += 1,
+                    2 => e.plan += 1,
+                    _ => e.bind += 1,
+                }
+            }
+        });
+    }
+
+    /// Public producer hook (kind 0 = resolve walk of one body).
+    pub fn record_resolve(name: &str) {
+        record(0, name);
+    }
+    /// Public producer hook (kind 1 = typecheck walk of one body).
+    pub fn record_typecheck(name: &str) {
+        record(1, name);
+    }
+    /// Public producer hook (kind 2 = emit plan of one body).
+    pub fn record_plan(name: &str) {
+        record(2, name);
+    }
+    /// Public producer hook (kind 3 = bind of one body document).
+    pub fn record_bind(name: &str) {
+        record(3, name);
+    }
+
+    /// Run `f` inside a body-work observation window and return its
+    /// result plus the producer-recorded per-function counts.
+    pub fn capture_body_work<T>(f: impl FnOnce() -> T) -> (T, BTreeMap<String, BodyWork>) {
+        COUNTS.with(|c| *c.borrow_mut() = Some(BTreeMap::new()));
+        let out = f();
+        let m = COUNTS.with(|c| c.borrow_mut().take()).unwrap_or_default();
+        (out, m)
+    }
+}
+
 pub const DESCRIPTOR_SCHEMA: &str = include_str!("../schema/core-i32.atom");
 
 /// The versioned scalar descriptor this build accepts (PLAN-767): the

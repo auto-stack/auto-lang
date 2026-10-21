@@ -1243,18 +1243,25 @@ impl<'d> Binder<'d> {
                         .get("name")
                         .and_then(|f| self.text_of(&f.value))
                         .unwrap_or_default();
-                    let Some((t, span)) = self.text_ref(&dfields, "body") else {
-                        continue;
-                    };
-                    let body = match self.resolve_in(
-                        &t,
-                        span,
-                        "BodyRef",
-                        &tables.bodies,
-                        &[("type", &tables.types), ("declaration", &tables.defs)],
-                    ) {
-                        Some(b) => hir::BodyId(b),
-                        None => continue,
+                    // PLAN-828 D-01: a BODY-LESS function declaration is a
+                    // checked EXTERN scaffold — the def binds its name/type
+                    // so cross-function references in a single-function
+                    // document resolve, WITHOUT producing or re-binding any
+                    // body. The sentinel BodyId is never dereferenced:
+                    // function-level verification reads callee TYPES only,
+                    // and whole-module documents always carry real bodies.
+                    let body = match self.text_ref(&dfields, "body") {
+                        Some((t, span)) => match self.resolve_in(
+                            &t,
+                            span,
+                            "BodyRef",
+                            &tables.bodies,
+                            &[("type", &tables.types), ("declaration", &tables.defs)],
+                        ) {
+                            Some(b) => hir::BodyId(b),
+                            None => continue,
+                        },
+                        None => hir::BodyId(u32::MAX),
                     };
                     hir::DefKind::Function { name, ty, body }
                 }
@@ -1359,6 +1366,11 @@ impl<'d> Binder<'d> {
             .slot_text(node, &fields, 0, "id", "body")
             .map(|(t, _)| t)
             .unwrap_or_default();
+        // PLAN-828 §5.8/D-01 producer observation: one body document
+        // bound, recorded by its function name (`b_<name>` bodies).
+        if let Some(name) = id_text.strip_prefix("b_") {
+            crate::body_work::record_bind(name);
+        }
         self.branch_and_check(
             "body",
             &node.primary,

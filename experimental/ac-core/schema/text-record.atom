@@ -156,7 +156,7 @@ descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-
         branch(key: "type.function") { require: [params, result]; forbid: [fields] }
         branch(key: "type.record") { require: [fields]; forbid: [params, result] }
         branch(key: "function") {
-            require: [name, body]
+            require: [name]
             forbid: [symbol, effect, record, receiver]
         }
         branch(key: "method") {

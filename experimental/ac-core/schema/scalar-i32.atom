@@ -114,7 +114,7 @@ descriptor(schema: "auto.hir.scalar.draft", revision: 1u32, profile: "scalar-i32
         branch(key: "type.i32") { forbid: [params, result] }
         branch(key: "type.bool") { forbid: [params, result] }
         branch(key: "type.function") { require: [params, result] }
-        branch(key: "function") { require: [name, body]; forbid: [symbol, effect] }
+        branch(key: "function") { require: [name]; forbid: [symbol, effect] }
         branch(key: "intrinsic") { require: [symbol, effect]; forbid: [name, body] }
         branch(key: "body") { require: [owner, entry] }
         branch(key: "local.param") { require: [name, role, index]; forbid: [mutable] }
