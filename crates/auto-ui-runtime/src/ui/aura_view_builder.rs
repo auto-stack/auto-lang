@@ -4315,6 +4315,9 @@ impl<'a> AuraViewBuilder<'a> {
         // 左栏编辑器的高亮开关；sync_anchor_target 属右栏 autodown 元素
         //（锚槽与 scroll_top 写臂所在）。有 target prop 即注册（字段名
         // 字符串字面量，剥前导点）。
+        // PLAN-814 R9-03：anchor_slot 是 iced 布局期槽（ui-iced 门）——
+        // headless 构建无同步目标（缺席=不注册）。
+        #[cfg(feature = "ui-iced")]
         if let Some(field) = self.extract_string_with(props, "sync_anchor_target", bindings) {
             eprintln!("[P063-SINK] registered");
             crate::ui::anchor_slot::set_target_sink(Some(
@@ -5606,7 +5609,9 @@ impl<'a> AuraViewBuilder<'a> {
                         .collect();
                     CATEGORY_COLOR.with(|c| *c.borrow_mut() = prev_color);
                     // Plan 409 §10 续 11: 响应式列数(对齐 vue sm/lg/xl 断点)。
-                    let win_w = crate::ui::style_iced_adapter::window_width();
+                    // PLAN-814 R9-03：window_width 单源在 compiler theme
+                    // （thread_local 纯函数）——直连，绕开 iced 门面。
+                    let win_w = crate::ui::style::theme::window_width();
                     let cols = if win_w < 640.0 {
                         1
                     } else if win_w < 1024.0 {
@@ -8545,6 +8550,9 @@ impl<'a> AuraViewBuilder<'a> {
             props,
             events,
         );
+        // PLAN-814 R9-03：count_keyed_loops_free 在 ui-iced 门内——诊断
+        // 输出随同门（headless 构建无 iced 布局诊断面）。
+        #[cfg(feature = "ui-iced")]
         if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
             eprintln!(
                 "[MEMO-DIAG] child_widget={} keyed_loops={}",
@@ -16264,7 +16272,10 @@ fn rederive_layout(style: Option<&crate::ui::style::Style>) -> Option<RederivedL
 /// Plan 409 §10 续 5: 读 View 的 style,若 position:absolute 返回其
 /// top/right/bottom/left offset(用于 Overlay 浮层定位)。
 fn extract_absolute_position(v: &View<DynamicMessage>) -> Option<crate::ui::view::OverlayPosition> {
-    use crate::ui::style_iced_adapter::{IcedPosition, IcedStyle};
+    // PLAN-814 R9-03：改为直接消费 compiler StyleClass IR 的纯扫描
+    // （headless 构建同轨；与 style_iced_adapter 同一单源输入，仅取
+    // overlay 相关四族变体——解析单源在 compiler，双消费不构成第二解析）。
+    use crate::ui::style::StyleClass;
     let style = match v {
         View::Row { style, .. } | View::Column { style, .. } | View::Container { style, .. } => {
             style.as_ref()?
@@ -16274,10 +16285,35 @@ fn extract_absolute_position(v: &View<DynamicMessage>) -> Option<crate::ui::view
         View::Button { style, .. } | View::MouseArea { style, .. } => style.as_ref()?,
         _ => return None,
     };
-    let is = IcedStyle::from_style(style);
+    let mut is_abs = false;
+    let mut has_z = false;
+    let (mut top_px, mut right_px, mut bottom_px, mut left_px) = (None, None, None, None::<f32>);
+    let (mut top_pct, mut right_pct, mut bottom_pct, mut left_pct) =
+        (None, None, None, None::<f32>);
+    for c in &style.classes {
+        match c {
+            StyleClass::Absolute => is_abs = true,
+            StyleClass::ZIndex(_) => has_z = true,
+            StyleClass::Inset(px) => {
+                top_px = Some(*px);
+                bottom_px = Some(*px);
+                right_px = Some(*px);
+                left_px = Some(*px);
+            }
+            StyleClass::TopOffset(v) => top_px = Some(*v),
+            StyleClass::RightOffset(v) => right_px = Some(*v),
+            StyleClass::BottomOffset(v) => bottom_px = Some(*v),
+            StyleClass::LeftOffset(v) => left_px = Some(*v),
+            StyleClass::TopPercent(v) => top_pct = Some(*v),
+            StyleClass::RightPercent(v) => right_pct = Some(*v),
+            StyleClass::BottomPercent(v) => bottom_pct = Some(*v),
+            StyleClass::LeftPercent(v) => left_pct = Some(*v),
+            _ => {}
+        }
+    }
     // 只 hoist popup-like:absolute + z-N(如主题色板 z-50)。Home hero 的
     // absolute 装饰背景(渐变 div,无 z)留在流式,不破坏 hero 结构。
-    if !matches!(is.position, Some(IcedPosition::Absolute)) || is.z_index.is_none() {
+    if !is_abs || !has_z {
         return None;
     }
     let px_or_pct = |px: Option<f32>, pct: Option<f32>| match (px, pct) {
@@ -16286,10 +16322,10 @@ fn extract_absolute_position(v: &View<DynamicMessage>) -> Option<crate::ui::view
         (None, None) => None,
     };
     Some(crate::ui::view::OverlayPosition {
-        top: px_or_pct(is.top_offset, is.top_percent),
-        right: px_or_pct(is.right_offset, is.right_percent),
-        bottom: px_or_pct(is.bottom_offset, is.bottom_percent),
-        left: px_or_pct(is.left_offset, is.left_percent),
+        top: px_or_pct(top_px, top_pct),
+        right: px_or_pct(right_px, right_pct),
+        bottom: px_or_pct(bottom_px, bottom_pct),
+        left: px_or_pct(left_px, left_pct),
     })
 }
 

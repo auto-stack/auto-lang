@@ -318,3 +318,52 @@ pub fn type_hint(v: &Value) -> &'static str {
         _ => "unknown",
     }
 }
+
+// ============================================================================
+// PLAN-814 R9-03：以下三项自 iced 模块上移的单源定义（纯数据/纯函数，
+// 无 iced 类型）——headless 构建的 mcp_server 消费面；iced 侧
+// （renderer.rs / scroll_state_reader.rs）经再导出保持旧路径与类型身份。
+// ============================================================================
+
+/// typed onclick payload 在 `event` String 中的分隔符（原 iced/renderer
+/// 单源上移——iced Send 边界与 decode_payload（dynamic.rs）配对）。
+pub(crate) const PAYLOAD_SEP: char = '\u{1F}';
+
+/// 事件参数编码（原 iced/renderer 单源上移；纯 string 构建，无 iced）。
+pub(crate) fn encode_payload(event_name: &str, args: &[auto_val::Value]) -> String {
+    if args.is_empty() {
+        return event_name.to_string();
+    }
+    let mut out = String::from(event_name);
+    for v in args {
+        let (tc, val) = match v {
+            auto_val::Value::Int(i) => ("i", i.to_string()),
+            auto_val::Value::Uint(u) => ("u", u.to_string()),
+            auto_val::Value::Bool(b) => ("b", (if *b { "1" } else { "0" }).to_string()),
+            auto_val::Value::Float(f) => ("f", f.to_string()),
+            auto_val::Value::Double(d) => ("d", d.to_string()),
+            auto_val::Value::Str(s) => ("s", s.as_str().to_string()),
+            _ => continue,
+        };
+        out.push(PAYLOAD_SEP);
+        out.push_str(tc);
+        out.push(PAYLOAD_SEP);
+        out.push_str(&val);
+    }
+    out
+}
+
+/// pane 几何读回条目（原 iced/scroll_state_reader 单源上移；纯数据）。
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub struct ScrollStateEntry {
+    /// viewport 矩形 [x, y, w, h]（窗口坐标，pane 的可见裁剪区）。
+    pub viewport: [f32; 4],
+    /// 滚动 offset [ox, oy]（正向滚动为正；overscroll 瞬态 clamp 0）。
+    pub offset: [f32; 2],
+    /// content extent [w, h]。
+    pub content: [f32; 2],
+}
+
+/// 读回结果：widget id 串 → pane 几何（键形如 `scroll_ctl_<controller>`
+/// / `vnode_<hash>` / `aura_N`——renderer 句柄派生稳定 id）。
+pub type ScrollStateMap = std::collections::HashMap<String, ScrollStateEntry>;

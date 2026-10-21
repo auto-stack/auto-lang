@@ -166,7 +166,7 @@ pub struct SharedState {
     /// origin + offset + content extent), keyed by raw iced widget id
     /// (`scroll_ctl_<controller>` / `vnode_<hash>` / `aura_N`). Published by
     /// the iced thread in the same needs_bounds batch as layout_bounds.
-    scroll_states: HashMap<String, crate::ui::iced::scroll_state_reader::ScrollStateEntry>,
+    scroll_states: HashMap<String, crate::ui::mcp_types::ScrollStateEntry>,
     /// PLAN-781 T-11: 布局测量代数——每次 bounds 发布 +1。工具响应携带该值；
     /// 驱动协议 = action 后须观察到 frame 增加才能把几何当新证据。
     layout_frame: u64,
@@ -494,7 +494,7 @@ impl SharedState {
     /// 每次发布 scroll_tick +1（offset 新鲜度代数）。
     pub fn set_scroll_states(
         &mut self,
-        map: HashMap<String, crate::ui::iced::scroll_state_reader::ScrollStateEntry>,
+        map: HashMap<String, crate::ui::mcp_types::ScrollStateEntry>,
     ) {
         self.scroll_states = map;
         self.scroll_tick = self.scroll_tick.saturating_add(1);
@@ -508,7 +508,7 @@ impl SharedState {
     /// PLAN-781 T-11：pane 几何快照（克隆）。
     pub fn get_scroll_states_cloned(
         &self,
-    ) -> HashMap<String, crate::ui::iced::scroll_state_reader::ScrollStateEntry> {
+    ) -> HashMap<String, crate::ui::mcp_types::ScrollStateEntry> {
         self.scroll_states.clone()
     }
 
@@ -1851,10 +1851,7 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         if !ok {
             return error_result("Action 'scroll' requires a Scrollable element (vnode_N)");
         }
-        let payload = format!(
-            "{scroll_target_id}{}{y}",
-            crate::ui::iced::renderer::PAYLOAD_SEP
-        );
+        let payload = format!("{scroll_target_id}{}{y}", crate::ui::mcp_types::PAYLOAD_SEP);
         let msg = ActionMessage {
             target: ActionTarget::Event {
                 widget: String::new(),
@@ -1917,8 +1914,8 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         };
         let payload = format!(
             "{table_key}{}{col}{}{width}",
-            crate::ui::iced::renderer::PAYLOAD_SEP,
-            crate::ui::iced::renderer::PAYLOAD_SEP
+            crate::ui::mcp_types::PAYLOAD_SEP,
+            crate::ui::mcp_types::PAYLOAD_SEP
         );
         let msg = ActionMessage {
             target: ActionTarget::Event {
@@ -2011,7 +2008,7 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
                 "Action 'drag' requires a string 'value' = \"Widget␟DownHandler␟MoveHandler␟UpHandler␟x0,y0;x1,y1;...\"",
             ),
         };
-        let parts: Vec<&str> = spec.split(crate::ui::iced::renderer::PAYLOAD_SEP).collect();
+        let parts: Vec<&str> = spec.split(crate::ui::mcp_types::PAYLOAD_SEP).collect();
         if parts.len() != 5 || parts.iter().any(|p| p.is_empty()) {
             return error_result(
                 "Action 'drag' value must be 5 payload fields: widget, down, move, up, points",
@@ -2060,7 +2057,7 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
                 "Action 'pen' requires a string 'value' = \"Widget␟Start␟Move␟End␟x0,y0;x1,y1;...\"",
             ),
         };
-        let parts: Vec<&str> = spec.split(crate::ui::iced::renderer::PAYLOAD_SEP).collect();
+        let parts: Vec<&str> = spec.split(crate::ui::mcp_types::PAYLOAD_SEP).collect();
         if parts.len() != 5 || parts.iter().any(|p| p.is_empty()) {
             return error_result(
                 "Action 'pen' value must be 5 payload fields: widget, start, move, end, points",
@@ -2144,7 +2141,7 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
                 _ => return error_result("Action 'click' targets autodown_editor elements only"),
             }
         };
-        let payload = format!("{}{}{}", key, crate::ui::iced::renderer::PAYLOAD_SEP, xy);
+        let payload = format!("{}{}{}", key, crate::ui::mcp_types::PAYLOAD_SEP, xy);
         let msg = ActionMessage {
             target: ActionTarget::Event {
                 widget: String::new(),
@@ -3951,7 +3948,7 @@ fn extract_dyn_msg(msg: &DynamicMessage) -> Option<(String, String)> {
             event_name,
             args,
         } => {
-            let encoded = crate::ui::iced::encode_payload(event_name, args);
+            let encoded = crate::ui::mcp_types::encode_payload(event_name, args);
             Some((widget_name.clone(), encoded))
         }
         DynamicMessage::String(name) => Some((String::new(), name.clone())),
@@ -4056,7 +4053,7 @@ fn view_kind_str(view: &View<DynamicMessage>) -> &'static str {
 ///（text_changed 发布步需要，拦截事件名占了 event 槽故随载荷传），
 /// spec = keyspec（key_press）或坐标序列（editor_drag）。
 fn editor_synthesis_payload(sk: &str, widget: &str, event: &str, spec: &str) -> String {
-    let sep = crate::ui::iced::renderer::PAYLOAD_SEP;
+    let sep = crate::ui::mcp_types::PAYLOAD_SEP;
     format!("{sk}{sep}{widget}{sep}{event}{sep}{spec}")
 }
 
@@ -5123,9 +5120,9 @@ struct Rect4AndViewport {
 fn resolve_pane_chain_structural(
     vnode_id: crate::ui::vnode::VNodeId,
     vtree: &crate::ui::vnode::VTree,
-    panes: &HashMap<String, crate::ui::iced::scroll_state_reader::ScrollStateEntry>,
+    panes: &HashMap<String, crate::ui::mcp_types::ScrollStateEntry>,
 ) -> Vec<(String, Rect4AndViewport)> {
-    let step_of = |e: &crate::ui::iced::scroll_state_reader::ScrollStateEntry| Rect4AndViewport {
+    let step_of = |e: &crate::ui::mcp_types::ScrollStateEntry| Rect4AndViewport {
         viewport: Rect4 {
             x: e.viewport[0],
             y: e.viewport[1],
@@ -5195,9 +5192,9 @@ fn resolve_pane_chain_structural(
 /// 投影歧义）。
 fn resolve_pane_chain(
     target: Rect4,
-    panes: &HashMap<String, crate::ui::iced::scroll_state_reader::ScrollStateEntry>,
+    panes: &HashMap<String, crate::ui::mcp_types::ScrollStateEntry>,
 ) -> Vec<(String, Rect4AndViewport)> {
-    let step_of = |e: &crate::ui::iced::scroll_state_reader::ScrollStateEntry| Rect4AndViewport {
+    let step_of = |e: &crate::ui::mcp_types::ScrollStateEntry| Rect4AndViewport {
         viewport: Rect4 {
             x: e.viewport[0],
             y: e.viewport[1],
@@ -5263,7 +5260,7 @@ fn resolve_pane_chain(
     chain
 }
 
-fn viewport_area(e: &crate::ui::iced::scroll_state_reader::ScrollStateEntry) -> f32 {
+fn viewport_area(e: &crate::ui::mcp_types::ScrollStateEntry) -> f32 {
     e.viewport[2].max(0.0) * e.viewport[3].max(0.0)
 }
 
@@ -5286,10 +5283,7 @@ fn tool_scroll_state(shared: &SharedStateHandle, args: serde_json::Value) -> ser
         )
     };
     let filter = args.get("pane").and_then(|v| v.as_str());
-    let mut items: Vec<(
-        &String,
-        &crate::ui::iced::scroll_state_reader::ScrollStateEntry,
-    )> = panes.iter().collect();
+    let mut items: Vec<(&String, &crate::ui::mcp_types::ScrollStateEntry)> = panes.iter().collect();
     if let Some(f) = filter {
         items.retain(|(k, _)| {
             k.as_str() == f || k.as_str() == format!("scroll_ctl_{}", f) || k.contains(f)
@@ -6160,7 +6154,7 @@ mod tests_plan057 {
 
     #[test]
     fn plan057_editor_synthesis_payload_contract() {
-        let sep = crate::ui::iced::renderer::PAYLOAD_SEP;
+        let sep = crate::ui::mcp_types::PAYLOAD_SEP;
         // key_press 形态：storage_key␟widget␟event␟keyspec
         let p = editor_synthesis_payload("ade:demo", "App", "Edit", "c:h");
         let parts: Vec<&str> = p.split(sep).collect();
@@ -6249,8 +6243,8 @@ mod tests_plan781_t11 {
         viewport: [f32; 4],
         offset: [f32; 2],
         content: [f32; 2],
-    ) -> crate::ui::iced::scroll_state_reader::ScrollStateEntry {
-        crate::ui::iced::scroll_state_reader::ScrollStateEntry {
+    ) -> crate::ui::mcp_types::ScrollStateEntry {
+        crate::ui::mcp_types::ScrollStateEntry {
             viewport,
             offset,
             content,

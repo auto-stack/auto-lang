@@ -95,8 +95,9 @@ pub use dynamic_build::{build_dynamic_component, has_ui_keywords, run_file_dynam
 /// 在 ui 门内=三分），缺席槽=false/VMError 同旧。
 #[cfg(any(feature = "ui", feature = "ui-dialog"))]
 pub fn install_ui_host_capabilities() {
-    // PLAN-814: i18n lookup 钩子注册（原 shim_i18n_t 的 ui 直连边收口）。
-    #[cfg(feature = "ui")]
+    // PLAN-814: i18n lookup 钩子注册（原 shim_i18n_t 的 ui 直连边收口；
+    // i18n_lookup 模块在 ui-interpreter 门——钩子注册随同门，R9-03 补齐）。
+    #[cfg(feature = "ui-interpreter")]
     auto_lang_core::set_i18n_lookup_hook(crate::ui::i18n_lookup::lookup);
     #[cfg(feature = "ui")]
     {

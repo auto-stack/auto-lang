@@ -109,7 +109,9 @@ chrono = { workspace = true }
 lazy_static = "1.4"
 futures = "0.3"
 base64 = "0.22"
-log = { workspace = true }
+# PLAN-814 R9-03：syslog set_boxed_logger 需 log std（→alloc）——headless
+# 形态无 iced 传递者时显式钉住（旧巨树经 ui-iced 默认链传递获得）。
+log = { workspace = true, features = ["std"] }
 miette = { workspace = true }
 dirs = { workspace = true }
 urlencoding = { workspace = true }

@@ -4040,8 +4040,10 @@ impl RustGenerator {
                         .get("summary")
                         .map(|v| self.autodown_panel_prop_expr(v))
                         .unwrap_or_else(|| "\"Details\".to_string()".to_string());
-                    let mut item =
-                        format!("auto_ui_runtime::ui::view::AccordionItem::new({})", summary_expr);
+                    let mut item = format!(
+                        "auto_ui_runtime::ui::view::AccordionItem::new({})",
+                        summary_expr
+                    );
                     if !children.is_empty() {
                         let kids: Vec<String> = children
                             .iter()
@@ -8659,7 +8661,10 @@ impl RustGenerator {
         }
         if k >= 2
             && (bytes[k - 1] == b'=')
-            && (bytes[k - 2] == b'=' || bytes[k - 2] == b'!' || bytes[k - 2] == b'<' || bytes[k - 2] == b'>')
+            && (bytes[k - 2] == b'='
+                || bytes[k - 2] == b'!'
+                || bytes[k - 2] == b'<'
+                || bytes[k - 2] == b'>')
         {
             return true;
         }
@@ -8669,8 +8674,95 @@ impl RustGenerator {
         false
     }
 
+    /// 比较位另一操作数的字面量类型（PLAN-814 R9-F01：比较投影按真实
+    /// 类型分流——`p.dirty == true`→bool、`p.rank > 3`→int、
+    /// `p.running == "1"`→str；形状已知字段不走此路径）。
+    fn comparison_operand_type(bytes: &[u8], ident_start: usize, field_end: usize) -> &'static str {
+        // 取访问另一侧的操作数 token（跳过比较运算符与空白）。
+        let token: Vec<u8> = {
+            // RHS 侧（比较符在访问之前）：先跳过运算符，再向前取 token。
+            let mut back = Vec::new();
+            let mut k = ident_start;
+            while k > 0 && (bytes[k - 1] == b' ' || bytes[k - 1] == b'\t') {
+                k -= 1;
+            }
+            if k >= 1
+                && (bytes[k - 1] == b'='
+                    || bytes[k - 1] == b'!'
+                    || bytes[k - 1] == b'<'
+                    || bytes[k - 1] == b'>')
+            {
+                // 跳过运算符（1..2 字符，如 `==`/`!=`/`<=`/`>=`）。
+                k -= 1;
+                if k >= 1 && matches!(bytes[k - 1], b'=' | b'!' | b'<' | b'>') {
+                    k -= 1;
+                }
+                while k > 0 && (bytes[k - 1] == b' ' || bytes[k - 1] == b'\t') {
+                    k -= 1;
+                }
+                let mut m = k;
+                while m > 0
+                    && (bytes[m - 1].is_ascii_alphanumeric()
+                        || bytes[m - 1] == b'_'
+                        || bytes[m - 1] == b'"'
+                        || bytes[m - 1] == b'.')
+                {
+                    m -= 1;
+                }
+                if m < k {
+                    back.extend_from_slice(&bytes[m..k]);
+                }
+            }
+            // LHS 侧（比较符在访问之后）：向后取 token。
+            let mut fwd = Vec::new();
+            let mut j = field_end;
+            while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                j += 1;
+            }
+            if j < bytes.len()
+                && (bytes[j] == b'=' || bytes[j] == b'!' || bytes[j] == b'<' || bytes[j] == b'>')
+            {
+                // 跳过运算符（1..2 字符）。
+                j += 1;
+                if j < bytes.len() && bytes[j] == b'=' {
+                    j += 1;
+                }
+                while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                    j += 1;
+                }
+                while j < bytes.len()
+                    && (bytes[j].is_ascii_alphanumeric()
+                        || bytes[j] == b'_'
+                        || bytes[j] == b'"'
+                        || bytes[j] == b'.')
+                {
+                    fwd.push(bytes[j]);
+                    j += 1;
+                }
+            }
+            if !back.is_empty() {
+                back
+            } else {
+                fwd
+            }
+        };
+        if token.is_empty() {
+            return "str";
+        }
+        let t = token.as_slice();
+        if t == b"true" || t == b"false" {
+            return "bool";
+        }
+        let first = t[0];
+        if first.is_ascii_digit() || (first == b'.' && t.len() > 1) {
+            return "int";
+        }
+        "str"
+    }
+
     /// Convert AURA condition to Rust expression
-    fn convert_condition(&self, condition: &str) -> String {        let result = condition.trim().to_string();
+    fn convert_condition(&self, condition: &str) -> String {
+        let result = condition.trim().to_string();
 
         // Replace state-ref dots like ".notes" → "self.notes", but NOT method call dots
         // like ".len()" or ".to_string()". A state-ref dot is one where the previous
@@ -8734,30 +8826,47 @@ impl RustGenerator {
                             // as_str → 条件位 E0308「expected bool found
                             // String」株——auto-edit diff 视图 ix_*/e_*/sx_*
                             // 字段族，018 普查误并档「类型推断塌方」）。
-                            // PLAN-814 T-08：值比较位（前导/后随比较运算符）
-                            // 改走 as_str 值投影，纯条件位保持 truthy。
-                            let bracket_access = if Self::comparison_context(
-                                &bytes,
-                                ident_start,
-                                field_end,
-                            ) {
-                                format!(
-                                    "{}[\"{}\"].as_str().unwrap_or_default()",
-                                    output_var_name, field_name
-                                )
-                            } else {
-                                match elem_shape.as_ref() {
-                                    Some(shape) => self.value_field_access_shaped(
-                                        &output_var_name,
-                                        field_name,
-                                        Some(shape),
-                                    ),
-                                    None => format!(
-                                        "auto_lang_core::a2r_std::json::truthy(&({}[\"{}\"]))",
-                                        output_var_name, field_name
-                                    ),
-                                }
-                            };
+                            // PLAN-814 R9-F01：值比较位（前导/后随比较运算
+                            // 符）改走**类型感知**值投影——形状已知仍走
+                            // shaped 访问器（bool/int/list 比较语义保持）；
+                            // 形状未知按另一操作数字面量分流
+                            // （bool→as_bool/int→as_i64/默认 str），纯条件
+                            // 位保持 truthy。
+                            let bracket_access =
+                                if Self::comparison_context(&bytes, ident_start, field_end)
+                                    && elem_shape.is_none()
+                                {
+                                    match Self::comparison_operand_type(
+                                        &bytes,
+                                        ident_start,
+                                        field_end,
+                                    ) {
+                                        "bool" => format!(
+                                            "({}[\"{}\"].as_bool().unwrap_or(false))",
+                                            output_var_name, field_name
+                                        ),
+                                        "int" => format!(
+                                            "({}[\"{}\"].as_i64().unwrap_or(0) as i32)",
+                                            output_var_name, field_name
+                                        ),
+                                        _ => format!(
+                                            "{}[\"{}\"].as_str().unwrap_or_default()",
+                                            output_var_name, field_name
+                                        ),
+                                    }
+                                } else {
+                                    match elem_shape.as_ref() {
+                                        Some(shape) => self.value_field_access_shaped(
+                                            &output_var_name,
+                                            field_name,
+                                            Some(shape),
+                                        ),
+                                        None => format!(
+                                            "auto_lang_core::a2r_std::json::truthy(&({}[\"{}\"]))",
+                                            output_var_name, field_name
+                                        ),
+                                    }
+                                };
                             // Remove the already-pushed var name and replace with bracket access
                             output.truncate(output.len() - var_name.len());
                             output.push_str(&bracket_access);
@@ -8779,13 +8888,25 @@ impl RustGenerator {
                             let field_name = &result[i + 1..field_end];
                             output.truncate(output.len() - var_name.len());
                             // PLAN-710 D-6：条件位 truthy 投影（同上——形状
-                            // 表外字段不再落 as_str 猜型）。PLAN-814 T-08：值
-                            // 比较位改走 as_str（比较语义保持）。
+                            // 表外字段不再落 as_str 猜型）。PLAN-814 R9-F01：
+                            // 值比较位改走类型感知值投影（同 loop 分支——
+                            // 另一操作数字面量分流 bool/int/str）。
                             if Self::comparison_context(&bytes, ident_start, field_end) {
-                                output.push_str(&format!(
-                                    "self.{}[\"{}\"].as_str().unwrap_or_default()",
-                                    var_name, field_name
-                                ));
+                                match Self::comparison_operand_type(&bytes, ident_start, field_end)
+                                {
+                                    "bool" => output.push_str(&format!(
+                                        "(self.{}[\"{}\"].as_bool().unwrap_or(false))",
+                                        var_name, field_name
+                                    )),
+                                    "int" => output.push_str(&format!(
+                                        "(self.{}[\"{}\"].as_i64().unwrap_or(0) as i32)",
+                                        var_name, field_name
+                                    )),
+                                    _ => output.push_str(&format!(
+                                        "self.{}[\"{}\"].as_str().unwrap_or_default()",
+                                        var_name, field_name
+                                    )),
+                                }
                             } else {
                                 output.push_str(&format!(
                                     "auto_lang_core::a2r_std::json::truthy(&(self.{}[\"{}\"]))",
@@ -11268,7 +11389,9 @@ impl RustGenerator {
                 int_default(format!("-{}", Self::int_literal_value(inner).unwrap()))
             }
             Expr::Bool(b) => {
-                format!("auto_lang_core::a2r_std::json::get_bool_or(&({subject}), &[{keys_str}], {b})")
+                format!(
+                    "auto_lang_core::a2r_std::json::get_bool_or(&({subject}), &[{keys_str}], {b})"
+                )
             }
             Expr::Array(_) => {
                 format!("auto_lang_core::a2r_std::json::get_array_or(&({subject}), &[{keys_str}])")
@@ -13306,9 +13429,15 @@ fn scalar_to_auto_value_expr(receiver: &str, field: &str, ty: &str) -> String {
         "bool" => format!("auto_ui_runtime::ui::auto_val::Value::Bool({})", val_expr),
         "i32" | "u32" => format!("auto_ui_runtime::ui::auto_val::Value::Int({})", val_expr),
         "i8" | "i16" | "u8" | "u16" | "isize" | "usize" | "i64" | "u64" => {
-            format!("auto_ui_runtime::ui::auto_val::Value::Int({} as i32)", val_expr)
+            format!(
+                "auto_ui_runtime::ui::auto_val::Value::Int({} as i32)",
+                val_expr
+            )
         }
-        "f32" | "f64" => format!("auto_ui_runtime::ui::auto_val::Value::Float({} as f64)", val_expr),
+        "f32" | "f64" => format!(
+            "auto_ui_runtime::ui::auto_val::Value::Float({} as f64)",
+            val_expr
+        ),
         _ => "auto_ui_runtime::ui::auto_val::Value::Nil".to_string(),
     }
 }

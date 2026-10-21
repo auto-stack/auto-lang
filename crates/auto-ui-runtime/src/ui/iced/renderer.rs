@@ -8776,7 +8776,9 @@ pub struct IcedMessage {
 /// survives iced's `Send` boundary. Pair with `decode_payload` in
 /// `dynamic.rs`. `\u{1F}` (ASCII unit separator) cannot appear in a handler
 /// name. Format: `{event}\u{1F}{typechar}\u{1F}{value}`.
-pub(crate) const PAYLOAD_SEP: char = '\u{1F}';
+// PLAN-814 R9-03：单源定义上移 ui::mcp_types（headless 同轨）；此处再
+// 导出保旧路径与 const 值单源。
+pub(crate) use crate::ui::mcp_types::PAYLOAD_SEP;
 
 /// PLAN-765 T-02（纪要三附注，F-5）：update 通用路径的事件名推导——`.`
 /// 前缀剥离 + 路径装饰 `::` 尾段截取。关键修正：`::` 截取**只作用于首个
@@ -8865,28 +8867,8 @@ fn write_table_width_state(
 /// `{tc}{SEP}{val}` appended after the event name. Multi-arg handlers like
 /// `.Reveal(cell.x, cell.y)` need both args; previously only the first was
 /// encoded (Plan 402 bug 4). See `decode_payload`.
-pub(crate) fn encode_payload(event_name: &str, args: &[auto_val::Value]) -> String {
-    if args.is_empty() {
-        return event_name.to_string();
-    }
-    let mut out = String::from(event_name);
-    for v in args {
-        let (tc, val) = match v {
-            auto_val::Value::Int(i) => ("i", i.to_string()),
-            auto_val::Value::Uint(u) => ("u", u.to_string()),
-            auto_val::Value::Bool(b) => ("b", (if *b { "1" } else { "0" }).to_string()),
-            auto_val::Value::Float(f) => ("f", f.to_string()),
-            auto_val::Value::Double(d) => ("d", d.to_string()),
-            auto_val::Value::Str(s) => ("s", s.as_str().to_string()),
-            _ => continue,
-        };
-        out.push(PAYLOAD_SEP);
-        out.push_str(tc);
-        out.push(PAYLOAD_SEP);
-        out.push_str(&val);
-    }
-    out
-}
+// PLAN-814 R9-03：单源上移 ui::mcp_types；此处再导出保旧路径。
+pub(crate) use crate::ui::mcp_types::encode_payload;
 
 impl IcedMessage {
     /// Convert a `DynamicMessage` reference into an `IcedMessage`.

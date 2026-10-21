@@ -123,11 +123,24 @@ pub mod anchor_slot;
 pub mod app;
 pub mod debug;
 pub mod node_converter;
-// PLAN-814 T-03：style DSL 分析/模型单源迁 auto-ui-compiler；iced 后端
-// 适配器是运行时件，留本包 style_iced_adapter（旧 style::IcedStyle 用户
-// 已改指）。旧路径 crate::ui::style 经再导出保持。
-pub use auto_ui_compiler::style;
+// PLAN-814 T-03：style DSL 分析/模型单源迁 auto-ui-compiler。
+// PLAN-814 R9-02/R9-03：style 从整体别名改为门面模块——①compiler DSL 面
+// 经 glob 再导出（旧 style::* 路径保持）；②旧公开 iced 路径恢复
+// （style::IcedStyle / style::iced_adapter::*——同一类型单源=
+// style_iced_adapter，不复制实现）；③适配器与再导出同上 ui-iced 门
+// （headless 构建零 iced 引用——203e2ce91 同款门）。
+pub mod style {
+    #[cfg(feature = "ui-iced")]
+    pub use crate::ui::style_iced_adapter::IcedStyle;
+    pub use auto_ui_compiler::style::*;
+    #[cfg(feature = "ui-iced")]
+    pub mod iced_adapter {
+        pub use crate::ui::style_iced_adapter::*;
+    }
+}
+#[cfg(feature = "ui-iced")]
 pub mod style_iced_adapter;
+#[cfg(feature = "ui-iced")]
 pub use style_iced_adapter::IcedStyle;
 pub mod vnode;
 pub mod vnode_converter;
@@ -137,6 +150,10 @@ pub mod widget;
 pub mod handler_codegen;
 #[cfg(feature = "ui-interpreter")]
 pub mod selection;
+// PLAN-814 R9-03：vm_bridge 类型面依赖 interpreter（dynamic/memo 字段族
+// 与 ui::dynamic 消费）——随 ui-interpreter 门（旧巨树 bare-ui 同为预存
+// 缺门，本批补齐声明面）。
+#[cfg(feature = "ui-interpreter")]
 pub mod vm_bridge;
 // PLAN-045：VM 渲染组件级 memo（菜单族四件 + sidebar nav 块；opt-in，
 // 缺省原始路径逐字节不变）。类型面依赖 interpreter 的 View/DynamicMessage，

@@ -2258,7 +2258,12 @@ impl Component for DynamicComponent {
         };
 
         // 通道文本单次读面（两消费臂共用：绑定字段回写 + 单参注入）。
+        // PLAN-814 R9-03：INPUT_TEXT 通道是 iced renderer 专属态——headless
+        // 构建无通道（None 语义=无文本可读，与缺席臂一致）。
+        #[cfg(feature = "ui-iced")]
         let channel_text = crate::ui::iced::renderer::last_input_text();
+        #[cfg(not(feature = "ui-iced"))]
+        let channel_text: String = String::new();
 
         // PLAN-033 T-03①（D1=A）：input_state_map 绑定字段回写——native
         // 投影臂（INPUT_TEXT 通道代写后经 on() 派发）下零参内联闭包
