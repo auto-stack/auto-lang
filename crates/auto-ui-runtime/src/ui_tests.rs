@@ -1,6 +1,8 @@
 // PLAN-814 T-04：随 ui/ 迁入的 UI 域测试树（原 auto-lang src/tests/ 中
 // 引用 runtime 私有测试钩子的子集；挂载门与原 tests.rs 逐项一致，
 // crate:: 路径经 runtime 根再导出面保持。
+// PLAN-814 F814-MERGE-01 修复：app_registry 启动端到端测试随单源组合
+// 归位本包（compiler 侧 ui-iced 门永假 → 选择面 5327 的缺口闭合）。
 #[cfg(test)]
 mod musk_vm_track_tests;
 #[cfg(test)]
@@ -99,6 +101,8 @@ mod plan794_scroll_host_provider;
 mod plan802_code_editor_provider;
 mod plan807_text_core;
 mod plan811_media_runtime;
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan814_app_registry_launch_tests;
 
 // PLAN-814 T-07：dev-deps 消费面随 owner 迁入（auto-lang 侧测试期
 // UI 依赖清零）。
