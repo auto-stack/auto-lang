@@ -53,6 +53,17 @@ pub fn typecheck_with(
     }
 }
 
+/// PLAN-828 D-01: typecheck ONE function body against the retained
+/// (grafted) environment — the same `check_block` walk the whole-module
+/// pass runs per function; every other entry is consulted, never
+/// re-walked.
+pub fn check_body_in(program: &ResolvedProgram, fn_index: usize) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    let f = &program.fns[fn_index];
+    check_block(&f.body, program, f, &mut diags);
+    diags
+}
+
 fn mismatch(diags: &mut Vec<Diagnostic>, expected: VT, found: VT, span: Span) {
     diags.push(Diagnostic::new(
         Stage::Verify,

@@ -222,6 +222,39 @@ impl ProgramSnapshot {
         &self.span_maps
     }
 
+    /// PLAN-828 F-02/D-02 observation, reported by the merged-view
+    /// PRODUCER itself: whether the payload AV actually consumes for
+    /// function `fn_index` is the SAME OBJECT across two snapshots
+    /// (per-unit dispatch) or a per-snapshot COPY (today's merged
+    /// execution view — unchanged functions are re-materialized per
+    /// snapshot, the F-02 gap this gate makes measurable).
+    pub fn dispatched_payload_same_object(&self, other: &ProgramSnapshot, fn_index: usize) -> bool {
+        match (
+            self.merged().funcs.get(fn_index),
+            other.merged().funcs.get(fn_index),
+        ) {
+            (Some(x), Some(y)) => std::ptr::eq(x, y),
+            _ => false,
+        }
+    }
+
+    /// Same-slot CONTENT view of the D-02 observation: the dispatched
+    /// payloads of unchanged functions must at least be content-equal
+    /// across snapshots even while the identity gate is red.
+    pub fn dispatched_payload_same_content(
+        &self,
+        other: &ProgramSnapshot,
+        fn_index: usize,
+    ) -> bool {
+        match (
+            self.merged().funcs.get(fn_index),
+            other.merged().funcs.get(fn_index),
+        ) {
+            (Some(x), Some(y)) => format!("{x:?}") == format!("{y:?}"),
+            _ => false,
+        }
+    }
+
     /// This snapshot's revision counter.
     pub fn revision(&self) -> u64 {
         self.revision

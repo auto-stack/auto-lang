@@ -25,11 +25,13 @@ pub mod typecheck;
 pub use adapter::{
     compile_parts, compile_parts_with, compile_program_parts, compile_record_source,
     compile_scalar_source, compile_source, compile_text_record_source, compile_text_source,
-    CompiledSource, SourceParts, RUNTIME_TEXT_CAPABILITY,
+    emit_function_body, BodyEmitReceipt, CompiledSource, SourceParts, RUNTIME_TEXT_CAPABILITY,
 };
 pub use parser::{parse_program, parse_program_with};
-pub use resolve::resolve_with;
-pub use typecheck::typecheck_with;
+pub use resolve::{
+    env_fn_count, env_note_cold_walks, recheck_function, resolve_env, resolve_with, CheckedEnv,
+};
+pub use typecheck::{check_body_in, typecheck_with};
 
 /// The core source profile (PLAN-745): `+ * <`, negative literals only as
 /// `-` before digits, `while` conditional loops.

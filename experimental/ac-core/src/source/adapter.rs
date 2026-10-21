@@ -244,6 +244,78 @@ pub fn compile_program_parts(
     compile_program_observed(program, src, module_path, capabilities, profile, None)
 }
 
+/// PLAN-828 D-01 observation: what a single-body emission actually
+/// walked, reported by the PRODUCER (not reconstructed by a caller).
+/// A PASS under the §5.8 F-01 gate REQUIRES this attestation — the old
+/// whole-program entry produces none ("缺必需观测也应拒绝出PASS证据").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BodyEmitReceipt {
+    /// REAL bodies planned and rendered (the changed function — 1).
+    pub real_body_plans: usize,
+    /// Empty-body signature scaffolds planned for the other functions
+    /// (the interface-directory traversal §5.6 allows; both the old
+    /// stub pipeline and this seam pay it).
+    pub scaffold_fns: usize,
+}
+
+/// PLAN-828 D-01: emit + bind ONE function against the RETAINED checked
+/// environment ([`super::resolve::CheckedEnv`] with the re-checked body
+/// already grafted at `fn_index`). The single-def document renders with
+/// the SAME Emitter rules as the whole-module pipeline — callee/type
+/// lookups consult the full environment — and binds to exactly the HIR
+/// def the whole-module compile produces for that function.
+pub fn emit_function_body(
+    env: &super::resolve::CheckedEnv,
+    fn_index: usize,
+    src: &str,
+    module_path: &str,
+) -> Result<(SourceParts, BodyEmitReceipt), Vec<Diagnostic>> {
+    let profile = env.profile;
+    let mut em = Emitter::new(&env.program, src.len(), profile);
+    em.plan_module_scoped(fn_index);
+    let atom_text = em.render(module_path);
+    let receipt = BodyEmitReceipt {
+        real_body_plans: 1,
+        scaffold_fns: env.program.fns.len().saturating_sub(1),
+    };
+    let descriptor = match profile.hir_domain() {
+        crate::hir::HirDomain::Core => crate::descriptor(),
+        crate::hir::HirDomain::Scalar => crate::scalar_descriptor(),
+        crate::hir::HirDomain::Text => crate::text_descriptor(),
+        crate::hir::HirDomain::Record => crate::record_descriptor(),
+        crate::hir::HirDomain::TextRecord => crate::text_record_descriptor(),
+    };
+    let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
+        Ok(b) => b,
+        Err(ds) => {
+            let detail: Vec<String> = ds.iter().map(|d| d.render("atom", &atom_text)).collect();
+            return Err(vec![Diagnostic::new(
+                Stage::Text,
+                "source.internal",
+                format!(
+                    "internal adapter error: generated Atom text failed to bind\n{}",
+                    detail.join("\n")
+                ),
+                Span { start: 0, end: 0 },
+            )]);
+        }
+    };
+    match em.reanchor_spans(&mut bundle, src) {
+        Ok(()) => {}
+        Err(d) => return Err(vec![d]),
+    }
+    Ok((
+        SourceParts {
+            profile: profile.as_str(),
+            input_hash: fnv1a_hex(src.as_bytes()),
+            atom_text,
+            bundle,
+            planned_fns: em.plans.len(),
+        },
+        receipt,
+    ))
+}
+
 fn compile_program_observed(
     program: &super::ast::Program,
     src: &str,
@@ -332,6 +404,7 @@ fn compile_program_observed(
         input_hash: fnv1a_hex(src.as_bytes()),
         atom_text,
         bundle,
+        planned_fns: em.plans.len(),
     })
 }
 
@@ -354,6 +427,9 @@ pub struct SourceParts {
     pub atom_text: String,
     /// The bound, span-projected bundle; verify it before any use.
     pub bundle: crate::hir::Bundle,
+    /// PLAN-828 F-01 observation: how many functions this emission
+    /// planned and rendered — from the producer itself.
+    pub planned_fns: usize,
 }
 
 fn fnv1a_hex(bytes: &[u8]) -> String {
@@ -1893,6 +1969,24 @@ impl<'p> Emitter<'p> {
                 intrinsic_first_use: &mut self.intrinsic_first_use,
             };
             let plan = ctx.plan_fn(f);
+            self.plans.push(plan);
+        }
+    }
+
+    /// PLAN-828 D-01: plan the ONE real changed body plus SIGNATURE
+    /// SCAFFOLDS (empty-body stubs) for every other function —
+    /// cross-function references in the document bind against the
+    /// scaffolds (the interface-directory traversal §5.6 allows), and no
+    /// unchanged body is walked.
+    fn plan_module_scoped(&mut self, real_idx: usize) {
+        for (i, f) in self.program.fns.iter().enumerate() {
+            let stub = super::resolve::stub_resolved(f);
+            let target: &crate::source::resolve::ResolvedFn = if i == real_idx { f } else { &stub };
+            let mut ctx = PlanCtx {
+                program: self.program,
+                intrinsic_first_use: &mut self.intrinsic_first_use,
+            };
+            let plan = ctx.plan_fn(target);
             self.plans.push(plan);
         }
     }

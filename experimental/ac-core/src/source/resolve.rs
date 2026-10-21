@@ -404,6 +404,7 @@ impl Drop for RBlock {
     }
 }
 
+#[derive(Clone)]
 pub struct ResolvedFn {
     pub name: String,
     pub name_span: Span,
@@ -506,6 +507,26 @@ pub fn resolve_with(
     capabilities: &[String],
     surface: SourceProfile,
 ) -> Result<ResolvedProgram, Vec<Diagnostic>> {
+    let (fns, records, _) = resolve_detailed(program, capabilities, surface)?;
+    Ok(ResolvedProgram { fns, records })
+}
+
+/// PLAN-828 D-01: the retained checked-environment indexes of one cold
+/// resolve — what a later single-body re-check consults.
+struct DeclIndexes {
+    rec_index: BTreeMap<String, usize>,
+    sigs: BTreeMap<String, FnSig>,
+    trace_enabled: bool,
+}
+
+/// The declaration passes + per-function resolve shared by the
+/// whole-module entry ([`resolve_with`]) and the retained-environment
+/// cold entry ([`resolve_env`]).
+fn resolve_detailed(
+    program: &ast::Program,
+    capabilities: &[String],
+    surface: SourceProfile,
+) -> Result<(Vec<ResolvedFn>, Vec<ResolvedRecord>, DeclIndexes), Vec<Diagnostic>> {
     let trace_enabled = capabilities.iter().any(|c| c == TRACE_CAPABILITY);
     let mut diags = Vec::new();
 
@@ -603,46 +624,8 @@ pub fn resolve_with(
             ));
             continue;
         }
-        let mut seen: BTreeSet<&str> = BTreeSet::new();
-        for p in &f.params {
-            if !seen.insert(p.name.name.as_str()) {
-                // N33: span joins both same-named param phrases.
-                let first = f
-                    .params
-                    .iter()
-                    .find(|q| q.name.name == p.name.name)
-                    .unwrap();
-                diags.push(Diagnostic::new(
-                    Stage::Bind,
-                    "source.duplicate",
-                    format!("parameter `{}` is declared more than once", p.name.name),
-                    first.span.join(p.span),
-                ));
-            }
-        }
-        // PLAN-771: a view receiver occupies param 0; the visible param
-        // names/types below are the written ones.
-        let recv = fn_receiver[i];
-        let mut param_names: Vec<String> = Vec::new();
-        let mut params: Vec<VT> = Vec::new();
-        if recv == ast::Receiver::View {
-            param_names.push("self".to_string());
-            params.push(VT::Rec(fn_owner[i].unwrap_or(usize::MAX)));
-        }
-        for p in &f.params {
-            param_names.push(p.name.name.clone());
-            params.push(vt_of_ann(&p.ty, &rec_index, &mut diags));
-        }
-        let result = vt_of_ann(&f.ret, &rec_index, &mut diags);
-        sigs.insert(
-            sig_key.clone(),
-            FnSig {
-                param_names,
-                params,
-                result,
-                index: i,
-            },
-        );
+        let sig = fn_sig_of(f, fn_receiver[i], fn_owner[i], &rec_index, &mut diags, i);
+        sigs.insert(sig_key.clone(), sig);
         // method-side registry on the owning record
         if let Some(oi) = fn_owner[i] {
             // PLAN-782 §6.2: on the combination surface the builtin
@@ -664,7 +647,7 @@ pub fn resolve_with(
             }
             records[oi].methods.push(ResolvedMethod {
                 name: f.name.name.clone(),
-                is_static: recv == ast::Receiver::Static,
+                is_static: fn_receiver[i] == ast::Receiver::Static,
                 fn_index: i,
                 span: f.span,
             });
@@ -688,9 +671,226 @@ pub fn resolve_with(
     }
 
     if diags.is_empty() {
-        Ok(ResolvedProgram { fns, records })
+        Ok((
+            fns,
+            records,
+            DeclIndexes {
+                rec_index,
+                sigs,
+                trace_enabled,
+            },
+        ))
     } else {
         Err(diags)
+    }
+}
+
+/// PLAN-828 D-01: the RETAINED checked environment of one cold resolve —
+/// every function's resolved entry, the signature/record indexes, and
+/// the profile/trace facts the resolver consulted. A later single-body
+/// re-check ([`recheck_function`]) grafts its result into `program.fns`
+/// by O(1) slot swap; unchanged entries are never re-walked. The fields
+/// are crate-visible: consumers drive the environment through
+/// [`recheck_function`] and the emit seam, never by rebuilding it.
+pub struct CheckedEnv {
+    pub(crate) program: ResolvedProgram,
+    pub(crate) rec_index: BTreeMap<String, usize>,
+    pub(crate) sigs: BTreeMap<String, FnSig>,
+    pub(crate) trace_enabled: bool,
+    pub(crate) profile: SourceProfile,
+    /// Producer walk counters (D-01 observation; see [`env_walk_stats`]).
+    pub(crate) resolve_walks: u64,
+    pub(crate) check_walks: u64,
+}
+
+/// PLAN-828 D-01: cold resolve that ALSO retains the checked environment
+/// for later single-body re-checks. [`resolve_with`] stays
+/// allocation-identical for whole-module consumers.
+pub fn resolve_env(
+    program: &ast::Program,
+    capabilities: &[String],
+    surface: SourceProfile,
+) -> Result<CheckedEnv, Vec<Diagnostic>> {
+    let (fns, records, ix) = resolve_detailed(program, capabilities, surface)?;
+    Ok(CheckedEnv {
+        program: ResolvedProgram { fns, records },
+        rec_index: ix.rec_index,
+        sigs: ix.sigs,
+        trace_enabled: ix.trace_enabled,
+        profile: surface,
+        resolve_walks: 0,
+        check_walks: 0,
+    })
+}
+
+/// The number of resolved function entries in the environment (D-01
+/// observation: unchanged entries are retained, not rebuilt).
+pub fn env_fn_count(env: &CheckedEnv) -> usize {
+    env.program.fns.len()
+}
+
+/// PLAN-828 D-01: record the COLD baseline walks (the whole-module
+/// resolve + typecheck each walked every function once). Called by the
+/// consumer that ran the cold typecheck pass.
+pub fn env_note_cold_walks(env: &mut CheckedEnv) {
+    let n = env.program.fns.len() as u64;
+    env.resolve_walks = n;
+    env.check_walks = n;
+}
+
+/// PLAN-828 D-01: re-check ONE function body against the retained
+/// environment. The item's SIGNATURE must be unchanged — a drift is a
+/// controlled rejection (signature edits are the session's explicit
+/// non-fast path, never silently re-checked). The body runs the REAL
+/// [`resolve_fn`] with the environment's signatures/records, then
+/// typechecks just this body against the grafted environment (the same
+/// `check_block` walk the whole-module pass runs per function). On
+/// success the entry is swapped into `env.program.fns[fn_index]` (the
+/// environment stays current for later edits and the emit seam reads it
+/// from there); on failure the previous entry is restored untouched.
+pub fn recheck_function(
+    env: &mut CheckedEnv,
+    item: &ast::FnItem,
+    fn_index: usize,
+) -> Result<(), Vec<Diagnostic>> {
+    if fn_index >= env.program.fns.len() || env.program.fns[fn_index].name != item.name.name {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.incremental",
+            format!(
+                "function `{}` is not the retained entry at slot {fn_index}",
+                item.name.name
+            ),
+            item.name.span,
+        )]);
+    }
+    // Signature drift guard: rebuild the item's signature with the cold
+    // pass's exact rules; any difference is a controlled rejection.
+    let mut guard_diags = Vec::new();
+    let rebuilt = fn_sig_of(
+        item,
+        ast::Receiver::Free,
+        None,
+        &env.rec_index,
+        &mut guard_diags,
+        fn_index,
+    );
+    let expected = &env.sigs[&item.name.name];
+    if !guard_diags.is_empty()
+        || rebuilt.param_names != expected.param_names
+        || rebuilt.params != expected.params
+        || rebuilt.result != expected.result
+    {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.incremental",
+            format!(
+                "function `{}` changed its signature; that is the non-fast path",
+                item.name.name
+            ),
+            item.name.span,
+        )]);
+    }
+    let mut diags = Vec::new();
+    env.resolve_walks += 1;
+    let resolved = resolve_fn(
+        item,
+        &env.sigs,
+        env.trace_enabled,
+        env.profile,
+        &mut diags,
+        ast::Receiver::Free,
+        None,
+        &env.program.records,
+        &env.rec_index,
+    );
+    if !diags.is_empty() {
+        return Err(diags);
+    }
+    // Graft, then typecheck the ONE body against the grafted environment
+    // (self-recursion sees the new entry); restore the old entry on
+    // failure so a rejected body never pollutes the environment.
+    let previous = std::mem::replace(&mut env.program.fns[fn_index], resolved);
+    env.check_walks += 1;
+    let check_diags = super::typecheck::check_body_in(&env.program, fn_index);
+    if !check_diags.is_empty() {
+        env.program.fns[fn_index] = previous;
+        return Err(check_diags);
+    }
+    Ok(())
+}
+
+/// PLAN-828 D-01: the SIGNATURE-SCAFFOLD view of one retained entry —
+/// the entry with an EMPTY body (param locals only, no loops, no
+/// intrinsics). A single-function document needs callee defs to exist
+/// for cross-function references to bind; the scaffold is a field-level
+/// stub of the RETAINED entry (no re-resolution, no body walk).
+pub(crate) fn stub_resolved(entry: &ResolvedFn) -> ResolvedFn {
+    let mut stub = entry.clone();
+    stub.body = RBlock {
+        stmts: Vec::new(),
+        span: Span { start: 0, end: 0 },
+    };
+    stub.locals.retain(|l| l.is_param);
+    stub.loop_count = 0;
+    stub.used_intrinsics.clear();
+    stub
+}
+
+/// PLAN-828 D-01 observation, producer-reported: cumulative body walks
+/// this environment has performed — the cold resolve walks every
+/// function once; each later [`recheck_function`] adds exactly one
+/// resolve walk and one typecheck walk. (resolved_walks, checked_walks)
+pub fn env_walk_stats(env: &CheckedEnv) -> (u64, u64) {
+    (env.resolve_walks, env.check_walks)
+}
+
+/// PLAN-828 D-01: one function's signature value under the cold pass's
+/// exact rules (duplicate-param diagnostics included) — shared by the
+/// signature registry and the single-body drift guard.
+fn fn_sig_of(
+    f: &ast::FnItem,
+    recv: ast::Receiver,
+    owner_rec: Option<usize>,
+    rec_index: &BTreeMap<String, usize>,
+    diags: &mut Vec<Diagnostic>,
+    index: usize,
+) -> FnSig {
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for p in &f.params {
+        if !seen.insert(p.name.name.as_str()) {
+            // N33: span joins both same-named param phrases.
+            let first = f
+                .params
+                .iter()
+                .find(|q| q.name.name == p.name.name)
+                .unwrap();
+            diags.push(Diagnostic::new(
+                Stage::Bind,
+                "source.duplicate",
+                format!("parameter `{}` is declared more than once", p.name.name),
+                first.span.join(p.span),
+            ));
+        }
+    }
+    // PLAN-771: a view receiver occupies param 0; the visible param
+    // names/types below are the written ones.
+    let mut param_names: Vec<String> = Vec::new();
+    let mut params: Vec<VT> = Vec::new();
+    if recv == ast::Receiver::View {
+        param_names.push("self".to_string());
+        params.push(VT::Rec(owner_rec.unwrap_or(usize::MAX)));
+    }
+    for p in &f.params {
+        param_names.push(p.name.name.clone());
+        params.push(vt_of_ann(&p.ty, rec_index, diags));
+    }
+    let result = vt_of_ann(&f.ret, rec_index, diags);
+    FnSig {
+        param_names,
+        params,
+        result,
+        index,
     }
 }
 
