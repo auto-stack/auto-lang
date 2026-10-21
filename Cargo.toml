@@ -87,6 +87,19 @@ members = [
     # (config.rs/mapper.rs/templates.rs); auto-man keeps the am.at loading,
     # PATH/disk/process resolution and Ninja execution as upper layers.
     "crates/auto-toolchain-core",
+    # PLAN-816 T-02: unified owned subprocess execution facility (argv/cwd/env/
+    # stdio policy/exit classification/deadline/cancel with owned reaping/
+    # reader termination/child-tree exit). std-only closure; the scattered
+    # spawn sites (main.rs run_command_live, pkg.rs run_script_live, git.rs,
+    # http_service.rs serve_rust) migrate onto it in T-03/T-05/T-06.
+    "crates/auto-tool-execution",
+    # PLAN-816 T-12 (M816-A): real I-TOOL client — spawns actual tool host
+    # processes through auto-tool-execution and speaks the auto-tool-protocol
+    # single-source framing (describe/validate_project, version/capability
+    # rejections as data, per-request deadline with owned-tree reaping and
+    # reader joins). Closure = protocol/project-model (data) + execution
+    # (man-ecosystem); no tool-host static linking, no discovery (T-04).
+    "crates/auto-tool-client",
     # PLAN-808: terminal host-domain core (owned cell/color/geometry contract,
     # runtime autoterm_core.dll engine service + 34-method terminal capability
     # port); auto-lang keeps the VM codec, UI view/input adapter and assembly.
@@ -294,6 +307,14 @@ exclude = [
     # cargo build -p auto-ui-tools && AUTO_UI_TOOL_BIN=... cargo test --manifest-path test/fixtures/modularity/ui-tool-consumer/Cargo.toml
     # 依赖闭包断言：bash test/fixtures/modularity/ui-tool-consumer/verify-deps.sh
     "test/fixtures/modularity/ui-tool-consumer",
+    # PLAN-816 T-12: 外部 I-TOOL 客户端消费方探针——独立 fixture crate
+    # （依赖仅 auto-tool-client/auto-project-model，证明 M816-A 客户端闭包
+    # 无 auto-ui-tools 静态链接、无 auto-man/auto-lang/auto-vm/auto-gen；
+    # 经 AUTO_UI_TOOL_BIN 真实子进程消费 M815-A 窄能力，TE_CHILD_BIN 补
+    # 长运行/孙进程/reader 真停/流污染寿命反例），门禁经
+    # cargo build -p auto-ui-tools -p auto-tool-execution && AUTO_UI_TOOL_BIN=... cargo test --manifest-path test/fixtures/modularity/tool-client-consumer/Cargo.toml
+    # 依赖闭包断言：bash test/fixtures/modularity/tool-client-consumer/verify-deps.sh
+    "test/fixtures/modularity/tool-client-consumer",
 ]
 resolver = "2"
 

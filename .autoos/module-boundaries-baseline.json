@@ -1,6 +1,6 @@
 {
-  "base_revision": "eea682150a78349b484d1b5cbfa371b15e67e94d",
-  "config_sha256": "cd626de3468aded8a70226ef0f352f83e5941bfa741b675e113dce66297d3a3d",
+  "base_revision": "ab5dce3b432ad6df853d48118f3f09944d114453",
+  "config_sha256": "23da7d1e5c32fee6ddd5adc095ffc17cacf881a784494534f30c7e8027dca14c",
   "declared_edges": [
     {
       "dep_key": "auto-lang",
@@ -811,6 +811,33 @@
       "target": null,
       "to": "autodown-test-parser",
       "to_scope": "nonmember-in-root"
+    },
+    {
+      "dep_key": "auto-project-model",
+      "from": "auto-tool-client",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-project-model",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-tool-execution",
+      "from": "auto-tool-client",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-tool-execution",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-tool-protocol",
+      "from": "auto-tool-client",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-tool-protocol",
+      "to_scope": "member"
     },
     {
       "dep_key": "auto-project-model",

@@ -1,0 +1,42 @@
+# PLAN-816 T-12 I-TOOL 客户端独立消费方探针（fixture crate）
+#
+# 角色：模拟"外部 crate / 未来薄 CLI 执行器"——
+#  (1) 仅依赖 auto-tool-client（+ 构造请求所需的 auto-project-model），
+#      证明 M816-A 客户端闭包 = 协议/数据 + owned 执行设施，无
+#      auto-ui-tools 静态链接、无 auto-man/auto-lang/auto-vm/auto-gen/
+#      auto-media-core（"Core 无 UI 安装可消费"；闭包断言 = verify-deps.sh
+#      cargo tree）；
+#  (2) 以真实子进程消费已发布 M815-A 的 auto-ui-tool 二进制（V-05：
+#      describe/validate 窄能力正控、版本/能力拒绝零副作用、cancel 诚实
+#      语义、EOF 优雅关闭、控制流/日志流隔离）；
+#  (3) 以具名测试子进程 te-child 补长运行/孙进程/reader 真停/流污染
+#      寿命反例（§5.5：真实窄 tool 不能代替寿命反例，fake 仅异常控制）。
+#
+# 显式脱离根 workspace：根 Cargo.toml exclude 内，此处空 [workspace] 表
+# 使其成为独立解析单元。门禁入口（二进制先构建再测试）：
+#   cargo build -p auto-ui-tools -p auto-tool-execution
+#   AUTO_UI_TOOL_BIN=<repo>/target/debug/auto-ui-tool(.exe) \
+#     cargo test --manifest-path test/fixtures/modularity/tool-client-consumer/Cargo.toml
+# 依赖闭包断言（V-05 oracle）：
+#   bash test/fixtures/modularity/tool-client-consumer/verify-deps.sh
+
+[package]
+name = "tool-client-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-tool-client = { path = "../../../../crates/auto-tool-client" }
+auto-project-model = { path = "../../../../crates/auto-project-model" }
+# 协议类型仅用于解释回答（ErrorKind/PROTOCOL_VERSION/帧错误）；工具实现
+# （auto-ui-tools）不在闭包内——消费只经真实进程。
+auto-tool-protocol = { path = "../../../../crates/auto-tool-protocol" }
+# 仅测试需要 TreeScope（DirectChildOnly 对照;已在闭包内,非新增边）。
+auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
+# 测试体在 lib 目标内(#[test] 函数随非 test cfg 的 lib 一同编译,dev-deps
+# 在该目标不可用——与既有 modularity fixture 同口径),按探针 crate 直挂。
+tempfile = "3.14"
+
+# 独立 workspace（见上）；无锁文件、无成员。
+[workspace]

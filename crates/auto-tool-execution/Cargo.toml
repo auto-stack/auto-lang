@@ -1,0 +1,18 @@
+[package]
+name = "auto-tool-execution"
+version = "0.1.0"
+edition = "2021"
+
+# PLAN-816 T-02: 统一 owned 子进程执行设施(argv/cwd/env/stdio/退出分类/
+# deadline/cancel/owned 收尸/reader 真终止/子进程树退出)。
+# 依赖闭包 = 仅 std(777 域 man-ecosystem,与 auto-toolchain-core 同层;
+# 闭包由 test/fixtures/modularity/tool-execution-consumer(T-07)钉住)。
+# 消费方:T-03 管理服务、T-12 协议客户端独立 consumer、T-05/T-06 迁移的
+# 既有调用点——本设施是唯一 owned 子进程原语,不与分散站点永远并存。
+[dependencies]
+
+# 具名测试子进程(PLAN-816 §5.5:寿命反例用自带截止的具名测试子进程;
+# 经 integration test 的 CARGO_BIN_EXE_te-child 引用,不经 libtest argv)。
+[[bin]]
+name = "te-child"
+path = "src/bin/te-child.rs"
