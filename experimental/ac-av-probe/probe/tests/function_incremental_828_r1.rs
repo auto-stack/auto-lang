@@ -1602,8 +1602,12 @@ fn r17a_restored_session_first_run_maps_trap_span() {
 const R18A_TRAP: &str = "fn main() int { return 1 / 0 }\n";
 
 fn r18a_axes() -> (String, String) {
+    r18a_axes_of(R18A_TRAP)
+}
+
+fn r18a_axes_of(src: &str) -> (String, String) {
     use auto_av_probe::cache as scache;
-    let c = auto_ac_prototype::source::compile_scalar_source(R18A_TRAP, "probe.at", &[]).unwrap();
+    let c = auto_ac_prototype::source::compile_scalar_source(src, "probe.at", &[]).unwrap();
     let h = &c.checked.bundle().modules[0];
     let body = h
         .defs
@@ -1767,6 +1771,223 @@ fn r18a_persisted_prefix_edit_restores_current_coordinates() {
         trap_span(&restored),
         expected,
         "restored coordinates track the current source, not the mint"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// r18a-check shared seeding: a REAL unit plus a generation-2 sidecar
+/// whose mint text's first byte is optionally corrupted (or whose mint
+/// frame is shifted), optionally with a GOOD repair row behind it
+/// (mirrors the reviewer's sidecar-generations harness verbatim).
+fn r19a_seed_v2(
+    dir: &std::path::Path,
+    replacement: Option<u8>,
+    with_good_repair: bool,
+    mint_base: u64,
+) {
+    use auto_av_probe::cache as scache;
+    let cold = warmup(R18A_TRAP, "d_main", &[]).unwrap();
+    let mut unit = cold
+        .current()
+        .find_code("d_main")
+        .unwrap()
+        .unit()
+        .module()
+        .clone();
+    let spans = std::mem::take(&mut unit.funcs[0].spans);
+    let bytes = auto_av_core::abc::encode_abc(&unit).unwrap().to_flat();
+    let (owner, cv) = r18a_axes();
+    let store = scache::open_store(dir).unwrap();
+    let key = scache::abc_unit_key(&owner, "d_main", &cv, &scache::caps_fingerprint(&[]));
+    scache::put_enveloped(
+        &store,
+        &key,
+        "A09",
+        &scache::EnvelopeIdentity::abc_bound(&owner, "d_main", &cv),
+        &bytes,
+        vec![],
+        Some("r19a"),
+    )
+    .unwrap();
+    let mint = R18A_TRAP.trim_end().as_bytes().to_vec();
+    let good = scache::encode_unit_sidecar(&scache::UnitSidecar {
+        spans: spans.clone(),
+        mint: Some((mint_base, mint_base + mint.len() as u64, mint.clone())),
+    });
+    let payload = if let Some(byte) = replacement {
+        let mut invalid = mint;
+        invalid[0] = byte;
+        scache::encode_unit_sidecar(&scache::UnitSidecar {
+            spans,
+            mint: Some((mint_base, mint_base + invalid.len() as u64, invalid)),
+        })
+    } else {
+        good.clone()
+    };
+    let id = scache::EnvelopeIdentity::unit_span_sidecar(&owner, "d_main", &cv);
+    scache::put_enveloped(
+        &store,
+        &scache::unit_span_sidecar_key(&owner, "d_main", &cv),
+        "A09",
+        &id,
+        &payload,
+        vec![],
+        Some("r19a"),
+    )
+    .unwrap();
+    if with_good_repair {
+        scache::put_enveloped(
+            &store,
+            &scache::unit_span_sidecar_repair_key(&owner, "d_main", &cv),
+            "A09",
+            &id,
+            &good,
+            vec![],
+            Some("r19a"),
+        )
+        .unwrap();
+    }
+}
+
+/// F10-S02: a v2 sidecar whose mint text is INVALID UTF-8 fails the FULL
+/// applicability check, and the cold recovery repairs it — the second
+/// restore admits.
+#[test]
+fn r19a_invalid_v2_mint_is_repaired_for_next_restore() {
+    let dir = std::env::temp_dir().join(format!("plan828-r19a-badutf8-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r19a_seed_v2(&dir, Some(0xff), false, 0);
+    let first = restore(R18A_TRAP, "d_main", &[], &dir, "r19a").unwrap();
+    assert_eq!(first.counters().get("restore_units_admitted"), 0);
+    assert_eq!(
+        trap_span(&first),
+        trap_span(&warmup(R18A_TRAP, "d_main", &[]).unwrap())
+    );
+    drop(first);
+    let next = restore(R18A_TRAP, "d_main", &[], &dir, "r19a").unwrap();
+    assert_eq!(
+        next.counters().get("restore_units_admitted"),
+        1,
+        "v2 applicability rejection must heal just like an empty span table"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// F10-S02 sibling: valid UTF-8 but UNALIGNABLE mint text is the same
+/// applicability failure — repaired for the next restore.
+#[test]
+fn r19a_utf8_but_unalignable_mint_is_also_repaired() {
+    let dir = std::env::temp_dir().join(format!("plan828-r19a-unalign-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r19a_seed_v2(&dir, Some(b'X'), false, 0);
+    let first = restore(R18A_TRAP, "d_main", &[], &dir, "r19a").unwrap();
+    assert_eq!(first.counters().get("restore_units_admitted"), 0);
+    drop(first);
+    let next = restore(R18A_TRAP, "d_main", &[], &dir, "r19a").unwrap();
+    assert_eq!(next.counters().get("restore_units_admitted"), 1);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// F10-S02: an unusable primary must not SHADOW a good repair row — the
+/// repair candidate is tried after the full primary check fails.
+#[test]
+fn r19a_invalid_v2_primary_does_not_hide_good_repair() {
+    let dir = std::env::temp_dir().join(format!("plan828-r19a-shadow-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r19a_seed_v2(&dir, Some(0xff), true, 0);
+    let restored = restore(R18A_TRAP, "d_main", &[], &dir, "r19a").unwrap();
+    assert_eq!(
+        trap_span(&restored),
+        trap_span(&warmup(R18A_TRAP, "d_main", &[]).unwrap())
+    );
+    assert_eq!(restored.counters().get("restore_units_admitted"), 1);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// F10-S02 positive control: BOTH rows invalid — the recovery surfaces
+/// an explicit error instead of silently accepting a broken sidecar.
+#[test]
+fn r19a_both_invalid_rows_report_explicit_error() {
+    use auto_av_probe::cache as scache;
+    let dir = std::env::temp_dir().join(format!("plan828-r19a-bothbad-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r18a_seed(&dir, "empty");
+    let (owner, cv) = r18a_axes();
+    let store = scache::open_store(&dir).unwrap();
+    scache::put_enveloped(
+        &store,
+        &scache::unit_span_sidecar_repair_key(&owner, "d_main", &cv),
+        "A09",
+        &scache::EnvelopeIdentity::unit_span_sidecar(&owner, "d_main", &cv),
+        &scache::encode_sidecar(&[]),
+        vec![],
+        Some("r19a"),
+    )
+    .unwrap();
+    drop(store);
+    let result = restore(R18A_TRAP, "d_main", &[], &dir, "r19a");
+    let Err(error) = result else {
+        panic!("both invalid immutable rows must report their failed recovery")
+    };
+    assert!(
+        error.contains("primary and repair rows both hold invalid payloads"),
+        "{error}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// F11-S01: a LEGACY spans-only row carries no mint frame — identity is
+/// not proof of current-source applicability. A same-value but
+/// RELOCATED source must not hot-hit stale absolute coordinates.
+#[test]
+fn r19a_legacy_sidecar_with_relocated_source_needs_current_coordinates() {
+    let dir = std::env::temp_dir().join(format!("plan828-r19a-legacy-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r18a_seed(&dir, "honest"); // exactly the spans-only generation
+    let moved = R18A_TRAP.replacen("return", "                return", 1);
+    assert_eq!(r18a_axes(), r18a_axes_of(&moved), "same cv across the move");
+    let expected = trap_span(&warmup(&moved, "d_main", &[]).unwrap());
+    let restored = restore(&moved, "d_main", &[], &dir, "r19a").unwrap();
+    assert_eq!(
+        trap_span(&restored),
+        expected,
+        "legacy spans carry no mint frame; identity is not proof of current-source applicability"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// F11-S01 positive control: a GOOD generation-2 sidecar still hot-hits
+/// a relocated source with CURRENT coordinates (mint re-anchoring).
+#[test]
+fn r19a_v2_relocation_control() {
+    let dir = std::env::temp_dir().join(format!("plan828-r19a-v2move-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r19a_seed_v2(&dir, None, false, 0);
+    let moved = R18A_TRAP.replacen("return", "                return", 1);
+    let restored = restore(&moved, "d_main", &[], &dir, "r19a").unwrap();
+    assert_eq!(restored.counters().get("restore_units_admitted"), 1);
+    assert_eq!(
+        trap_span(&restored),
+        trap_span(&warmup(&moved, "d_main", &[]).unwrap())
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// F11-S01: a v2 mint FRAME that does not cover the unit's actual spans
+/// is not provenance — the restore must not silently keep old absolute
+/// coordinates through an unrelated alignment table.
+#[test]
+fn r19a_v2_mint_frame_must_cover_the_actual_trap_span() {
+    let dir = std::env::temp_dir().join(format!("plan828-r19a-frame-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r19a_seed_v2(&dir, None, false, 100);
+    let moved = R18A_TRAP.replacen("return", "                return", 1);
+    let expected = trap_span(&warmup(&moved, "d_main", &[]).unwrap());
+    let restored = restore(&moved, "d_main", &[], &dir, "r19a").unwrap();
+    assert_eq!(
+        trap_span(&restored),
+        expected,
+        "an advertised mint frame that does not contain the trap span is inapplicable"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -250,19 +250,53 @@ pub fn decode_unit_sidecar(bytes: &[u8]) -> Result<UnitSidecar, CacheError> {
     })
 }
 
-/// F10-S02 survivor/repair validation: a stored unit-sidecar payload is
-/// USABLE for a unit whose function shape is `f` when it decodes (either
-/// payload generation) and its merged span table is APPLICABLE — a
-/// decodable-but-empty or non-covering survivor loses provenance exactly
-/// like a missing row (F798-R15-03).
-pub fn unit_sidecar_payload_usable(bytes: &[u8], f: &MirFunction) -> bool {
+/// F10-S02/F11-S01 FULL sidecar applicability — the ONE standard both
+/// restore candidate selection and the persist survivor/repair
+/// write-back apply. A stored unit-sidecar row serves a restore into
+/// the CURRENT source only when:
+/// * it decodes (either payload generation) and its merged span table
+///   is APPLICABLE — coverage of every trap-capable instruction, no
+///   inverted ranges (F798-R15-03);
+/// * generation 2: the mint text is valid UTF-8, the declared mint
+///   FRAME covers every actual span (a plausible-but-unrelated frame
+///   must not silently keep old absolute coordinates), and the mint
+///   text re-anchors onto the current decl slice (`from_texts`);
+/// * generation 1 (spans-only legacy): NO mint basis is recorded, so
+///   provenance is proven by exact EVIDENCE — the row's span table
+///   must equal the current-source compile's own table (`cur.spans`),
+///   never an identity assumption.
+pub fn unit_sidecar_usable_for_current(
+    bytes: &[u8],
+    f: &MirFunction,
+    cur: &MirFunction,
+    cur_decl_text: &[u8],
+) -> bool {
     let sc = match decode_unit_sidecar(bytes) {
         Ok(sc) => sc,
         Err(_) => return false,
     };
     let mut probe = f.clone();
-    probe.spans = sc.spans;
-    sidecar_applicable(&probe).is_ok()
+    probe.spans = sc.spans.clone();
+    if sidecar_applicable(&probe).is_err() {
+        return false;
+    }
+    match sc.mint {
+        Some((m_d0, m_d1, m_text)) => {
+            if std::str::from_utf8(&m_text).is_err() {
+                return false;
+            }
+            if !sc
+                .spans
+                .iter()
+                .all(|(_, sp)| m_d0 <= sp.start as u64 && sp.end as u64 <= m_d1)
+            {
+                return false;
+            }
+            auto_av_core::span_map::SpanSegments::from_texts(m_d0, m_d1, 0, &m_text, cur_decl_text)
+                .is_some()
+        }
+        None => sc.spans == cur.spans,
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -20,7 +20,7 @@
 use crate::cache::{
     abc_unit_key, canonical_hir_function, caps_fingerprint, decode_unit_sidecar,
     encode_unit_sidecar, get_enveloped_opt, merge_spans, open_store, payload_fingerprint,
-    put_enveloped, split_units, unit_sidecar_payload_usable, unit_span_sidecar_key,
+    put_enveloped, split_units, unit_sidecar_usable_for_current, unit_span_sidecar_key,
     unit_span_sidecar_repair_key, EnvelopeIdentity, UnitSidecar,
 };
 use crate::driver::front_door_admit;
@@ -543,18 +543,36 @@ pub fn restore(
         let Some(shape) = decoded.module.funcs.first().cloned() else {
             return cold();
         };
+        // F11-S01 provenance evidence: the session's own cold compile of
+        // the CURRENT source (the resident code until the swap below) —
+        // its span table and decl slice are exactly what a same-source
+        // row must agree with.
+        let (d0, d1) = session
+            .parse
+            .tree
+            .abs_range(session.parse.tree.decls[idx].node);
+        let cur_decl = src[d0 as usize..d1 as usize].as_bytes();
+        let cur_fn = rec.code.unit().module().funcs.first().cloned();
         // Re-attach the unit's mint span table (PLAN-828 F-10): the
         // payload row is spanless BY DESIGN. The sidecar is probed
-        // primary → repair (F10-S02); a row that is missing, undecodable
-        // or inapplicable (F798-R15-03) fails closed to the cold path —
-        // never a span-blind restore.
+        // primary → repair (F10-S02) under the FULL applicability
+        // standard — decode, span coverage, and provenance binding to
+        // the CURRENT source (mint UTF-8/frame/re-anchoring for
+        // generation 2; exact span-table equality with the current
+        // compile for the legacy spans-only generation) — a row failing
+        // ANY of it is skipped, and only then does the restore fail
+        // closed; never a span-blind or stale-coordinate restore.
         let sid = EnvelopeIdentity::unit_span_sidecar(&owner, &rec.def_id, &body_cv);
         let skey = unit_span_sidecar_key(&owner, &rec.def_id, &body_cv);
         let rkey = unit_span_sidecar_repair_key(&owner, &rec.def_id, &body_cv);
+        let row_usable = |b: &[u8]| match &cur_fn {
+            Some(cur) => unit_sidecar_usable_for_current(b, &shape, cur, cur_decl),
+            None => false,
+        };
         let sidecar_bytes = match get_enveloped_opt(&store, &skey, "A09", &sid) {
-            Ok(Some(b)) if unit_sidecar_payload_usable(&b, &shape) => b,
+            Ok(Some(b)) if row_usable(&b) => b,
             _ => match get_enveloped_opt(&store, &rkey, "A09", &sid) {
-                Ok(Some(b)) if unit_sidecar_payload_usable(&b, &shape) => b,
+                Ok(Some(b)) if row_usable(&b) => b,
                 _ => return cold(),
             },
         };
@@ -566,25 +584,22 @@ pub fn restore(
         // F11-S01: re-anchor the unit's MINT spans to the CURRENT decl —
         // a generation-2 sidecar carries its mint range/text (a
         // repositioned source still restores CURRENT coordinates); the
-        // legacy spans-only generation has no mint basis and is taken as
-        // CURRENT-source coordinates (identity).
-        let (d0, d1) = session
-            .parse
-            .tree
-            .abs_range(session.parse.tree.decls[idx].node);
+        // legacy spans-only generation passed the exact span-table
+        // evidence check above, so its coordinates ARE current-source
+        // coordinates (identity).
         let (map, mint_origin, mint_text) = match sc.mint {
             Some((m_d0, m_d1, m_text)) => {
-                let cur = src[d0 as usize..d1 as usize].as_bytes();
-                match auto_av_core::span_map::SpanSegments::from_texts(m_d0, m_d1, d0, &m_text, cur)
-                {
+                match auto_av_core::span_map::SpanSegments::from_texts(
+                    m_d0, m_d1, d0, &m_text, cur_decl,
+                ) {
                     Some(m) => (m, m_d0, m_text),
-                    None => return cold(),
+                    None => return cold(), // usable implies re-anchorable; fail closed anyway
                 }
             }
             None => (
                 auto_av_core::span_map::SpanSegments::identity_range(d0, d1, d0),
                 d0,
-                src[d0 as usize..d1 as usize].as_bytes().to_vec(),
+                cur_decl.to_vec(),
             ),
         };
         // The mint text seeds future content-hit re-anchoring — it must
@@ -801,7 +816,7 @@ impl FunctionIncrementalSession {
         };
         let owner = self.fns_owner();
         let caps_fp = caps_fingerprint(&self.caps);
-        for rec in self.fns.iter() {
+        for (idx, rec) in self.fns.iter().enumerate() {
             // The resident entry keys the row AND carries the code's true
             // mint range/text — the F11-S01 re-anchoring basis.
             let Some((cv, mint_d0, mint_text)) = rec
@@ -857,10 +872,20 @@ impl FunctionIncrementalSession {
                 // repaired by publishing the re-derived payload under the
                 // repair identity, which restore probes after the primary
                 // key — the same rederive-AND-rewrite contract as the 798
-                // source sidecar (cache-and-conformance §11).
+                // source sidecar (cache-and-conformance §11). The
+                // survivor is held to the SAME full applicability
+                // standard restore selects with — decode, coverage, and
+                // provenance binding to the CURRENT source (mint
+                // UTF-8/frame/re-anchoring; legacy rows must equal the
+                // current-source compile's own span table).
+                let (cd0, cd1) = self.parse.tree.abs_range(self.parse.tree.decls[idx].node);
+                let cur_decl = &self.src[cd0 as usize..cd1 as usize];
                 let resident_f = rec.code.unit().module().funcs.first();
-                let row_usable =
-                    |b: &[u8]| resident_f.is_some_and(|f| unit_sidecar_payload_usable(b, f));
+                let row_usable = |b: &[u8]| {
+                    resident_f.is_some_and(|f| {
+                        unit_sidecar_usable_for_current(b, f, f, cur_decl.as_bytes())
+                    })
+                };
                 let survivor_usable = matches!(
                     get_enveloped_opt(store, &skey, "A09", &sid),
                     Ok(Some(b)) if row_usable(&b)
