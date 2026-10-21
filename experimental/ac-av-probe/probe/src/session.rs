@@ -675,6 +675,10 @@ pub fn restore(
 impl FunctionIncrementalSession {
     /// The current program snapshot (clone the `Arc` to pin a revision for
     /// a top-level run).
+    /// The current program snapshot (clone the `Arc` to pin a revision for
+    /// a top-level run). After [`Self::close`] this is a lightweight
+    /// VACANT root — the closed session's real program was released
+    /// (F05b-C01); holders that pinned a revision keep their own Arc.
     pub fn current(&self) -> Arc<ProgramSnapshot> {
         self.current.clone()
     }
@@ -758,16 +762,23 @@ impl FunctionIncrementalSession {
 
     /// CLOSE the session (PLAN-828 T-06/F-05b): a terminal, idempotent
     /// state. New runs/edits/prepares/commits/cancels are refused, and the
-    /// bounded content history plus the store handle are released — a
-    /// closed session holds no reuse state. Snapshots pinned elsewhere
-    /// keep running correctly on their own revision (V-05: in-flight
-    /// chains are never yanked).
+    /// session drops its OWNED strong references — every function's
+    /// current HIR body and code object (plus their bounded histories),
+    /// the store handle, and the current execution root. WITHOUT an
+    /// external pin those resources die HERE, not at `drop(session)`
+    /// (F05b-C01); snapshots pinned elsewhere and PausedRuns keep
+    /// themselves alive and correct (V-05: in-flight chains are never
+    /// yanked). `current()` afterwards hands back a lightweight VACANT
+    /// root (never the released program, never a panic); `resident()`
+    /// returns None.
     pub fn close(&mut self) {
+        if self.closed {
+            return;
+        }
         self.closed = true;
         self.store = None;
-        for rec in self.fns.iter_mut() {
-            rec.history.clear();
-        }
+        self.fns.clear();
+        self.current = Arc::new(ProgramSnapshot::vacant(&self.entry_def_id, self.revision));
     }
 
     /// Whether this session has been closed (terminal state, F-05b).

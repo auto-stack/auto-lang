@@ -2627,3 +2627,56 @@ fn f05b_close_refuses_new_work_and_releases_history() {
         "a pinned snapshot is never yanked by close"
     );
 }
+
+/// F05b-C01 (r22a-check): a terminal close drops the session's OWNED
+/// strong references. Without an external pin the current execution
+/// root AND the resident HIR/code objects die AT CLOSE — not at
+/// drop(session); a pinned root keeps itself alive; post-close
+/// current() is a VACANT root (controlled Infra on direct execution,
+/// never the released program).
+#[test]
+fn f05b_close_releases_unpinned_owned_resources() {
+    let src = "fn helper() int { return 1 }\nfn main() int { var x = helper(); return 1 / 0 }\nfn tail() int { return 9 }\n";
+    // Unpinned current root dies at close.
+    let mut a = warmup(src, "d_main", &[]).unwrap();
+    let unpinned_root = Arc::downgrade(&a.current());
+    a.close();
+    assert!(
+        unpinned_root.upgrade().is_none(),
+        "terminal close must release its unpinned program root"
+    );
+    // Unpinned resident HIR/code die at close (temporaries dropped first).
+    let mut b = warmup(src, "d_main", &[]).unwrap();
+    let (weak_hir, weak_code) = {
+        let (_, hir, code) = b.resident("helper").unwrap();
+        (Arc::downgrade(&hir), Arc::downgrade(&code))
+    };
+    b.close();
+    assert!(
+        weak_hir.upgrade().is_none() && weak_code.upgrade().is_none(),
+        "close must release session-owned current HIR/code"
+    );
+    // A pinned root survives close and keeps its own coordinates; the
+    // closed session's current() is a VACANT root, not the released one.
+    let mut c = warmup(src, "d_main", &[]).unwrap();
+    let pinned = c.current();
+    let before = trap_span(&c);
+    c.close();
+    assert!(
+        Arc::downgrade(&pinned).upgrade().is_some(),
+        "an externally pinned root keeps itself alive across close"
+    );
+    let (old, _) =
+        auto_av_core::av::execute_program(&pinned, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(matches!(&old, ExecOutcome::Trap { span: Some(sp), .. } if *sp == before));
+    let (vacant_out, _) = auto_av_core::av::execute_program(
+        &c.current(),
+        &ExecLimits::default(),
+        &CancelFlag::new(false),
+    );
+    assert!(
+        matches!(&vacant_out, ExecOutcome::Infra(m) if m.contains("missing")),
+        "vacant root is a controlled Infra, never the released program: {vacant_out:?}"
+    );
+    assert!(c.resident("helper").is_none());
+}

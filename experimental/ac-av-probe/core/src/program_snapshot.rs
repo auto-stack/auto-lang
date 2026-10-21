@@ -198,6 +198,25 @@ impl ProgramSnapshot {
         })
     }
 
+    /// A terminal VACANT root for a CLOSED session (PLAN-828 F-05b):
+    /// owns no code, span maps or merged payload. Direct execution is a
+    /// CONTROLLED `Infra` (dispatch's entry guard), so a closed session's
+    /// `current` accessor stays total — it never hands back the released
+    /// program and never panics.
+    pub fn vacant(entry: &str, revision: u64) -> ProgramSnapshot {
+        let merged = MirModule::new(crate::mir::OwnerScope {
+            schema: MIR_SCHEMA.to_string(),
+            module: format!("snap-{revision}-vacant"),
+        });
+        ProgramSnapshot {
+            revision,
+            entry: entry.to_string(),
+            code: Vec::new(),
+            merged,
+            span_maps: Vec::new(),
+        }
+    }
+
     /// The per-slot source maps this snapshot maps through.
     pub fn span_maps(&self) -> &[crate::span_map::SpanSegments] {
         &self.span_maps
