@@ -29,7 +29,8 @@ const SRC: &str = "fn helper(x int) int { let r = x * 3; return r + 7 }\nfn main
 fn assert_i32(out: &ExecOutcome, want: i32, ctx: &str) {
     match out {
         ExecOutcome::Success {
-            value: Value::I32(v), ..
+            value: Value::I32(v),
+            ..
         } => assert_eq!(*v, want, "{ctx}"),
         other => panic!("{ctx}: expected Success(I32({want})), got {other:?}"),
     }
@@ -221,9 +222,14 @@ fn t02_frozen_load_projection_parity() {
     let cs = ac_syntax_rt::lexer::CompiledScanner::compile(&p).unwrap();
     let load = load256::generate_revision(0);
     let load_edited = load256::generate_revision(3);
-    for (tag, src) in [("base", load.source.as_str()), ("rev3", load_edited.source.as_str())] {
-        let snap =
-            ac_syntax_rt::snapshot::Snapshot::from_text(&std::rc::Rc::new(ac_syntax_rt::snapshot::PageStore::new()), src);
+    for (tag, src) in [
+        ("base", load.source.as_str()),
+        ("rev3", load_edited.source.as_str()),
+    ] {
+        let snap = ac_syntax_rt::snapshot::Snapshot::from_text(
+            &std::rc::Rc::new(ac_syntax_rt::snapshot::PageStore::new()),
+            src,
+        );
         let out = ac_syntax_rt::parse::parse_snapshot(
             &p,
             &cs,
@@ -233,8 +239,7 @@ fn t02_frozen_load_projection_parity() {
         .unwrap();
         assert!(out.tree.diags.is_empty(), "{tag}: syntax diags");
         let k = ac_syntax_core_adapter::CoreKinds::from_program(&p);
-        let projected =
-            ac_syntax_core_adapter::project_strict(&p, &k, &out.tree, &snap).unwrap();
+        let projected = ac_syntax_core_adapter::project_strict(&p, &k, &out.tree, &snap).unwrap();
         let oracle = auto_ac_prototype::source::parse_program_with(
             src,
             auto_ac_prototype::source::SourceProfile::Scalar,
@@ -261,9 +266,7 @@ fn t02_syntax_error_candidate_rejected_keeps_old() {
     // Break the body: `x * 3` -> `x *` (dangling operator).
     let star3 = SRC.find("x * 3").expect("target");
     let pos = (star3 + 4) as u64;
-    let outcome = s
-        .edit(pos, pos + 1, b"".to_vec())
-        .expect("edit applies");
+    let outcome = s.edit(pos, pos + 1, b"".to_vec()).expect("edit applies");
     assert!(!outcome.ok, "syntax-broken candidate must be rejected");
     assert!(outcome.install_set.is_empty());
     assert_eq!(s.revision(), 0);
@@ -287,7 +290,11 @@ fn t03_signature_change_is_non_fast_path_and_keeps_old() {
     // code — the interface-environment gate must refuse it as non-fast-path.
     let sig_pos = SRC.find("(x int)").expect("sig");
     let outcome = s
-        .edit(sig_pos as u64, (sig_pos + 7) as u64, b"(x int, y int)".to_vec())
+        .edit(
+            sig_pos as u64,
+            (sig_pos + 7) as u64,
+            b"(x int, y int)".to_vec(),
+        )
         .expect("edit applies");
     assert!(!outcome.ok, "signature edit must not take the fast path");
     let reason = outcome.non_fast_path_reason.unwrap_or_default();
@@ -414,13 +421,20 @@ fn t04_unit_admission_negatives() {
     // FunctionCode must refuse.
     let mut whole = MirModule::new(owner.clone());
     let ti = whole.intern_type(MirType::I32);
-    let sig = whole.intern_type(MirType::Fn(FnSig { params: vec![], result: ti }));
+    let sig = whole.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: ti,
+    }));
     let c7 = whole.intern_const(MirConst::I32(7));
     whole.funcs.push(MirFunction {
         owner: owner.clone(),
         name: "d_main".into(),
         sig,
-        slots: vec![MirSlot { kind: auto_av_core::mir::SlotKind::Local, ty: ti, name: None }],
+        slots: vec![MirSlot {
+            kind: auto_av_core::mir::SlotKind::Local,
+            ty: ti,
+            name: None,
+        }],
         blocks: vec![MirBlock {
             instrs: vec![MirInstr::Const { dst: 0, value: c7 }],
             term: Terminator::Return { value: 0 },
@@ -442,22 +456,39 @@ fn t04_unit_admission_negatives() {
     // unit B (the only d_b) exports (i32)->i32 — link must refuse.
     let mut unit_a = MirModule::unit(owner.clone());
     let ti_a = unit_a.intern_type(MirType::I32);
-    let wrong_sig = unit_a.intern_type(MirType::Fn(FnSig { params: vec![], result: ti_a }));
-    let call_sig = unit_a.intern_type(MirType::Fn(FnSig { params: vec![], result: ti_a }));
+    let wrong_sig = unit_a.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: ti_a,
+    }));
+    let call_sig = unit_a.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: ti_a,
+    }));
     let imp = unit_a.intern_import(auto_av_core::mir::MirImport {
         symbol: "fn:d_b".to_string(),
         effect: auto_av_core::mir::Effect::Pure,
         sig: wrong_sig,
     });
     let _ = call_sig;
-    let sig_a = unit_a.intern_type(MirType::Fn(FnSig { params: vec![], result: ti_a }));
+    let sig_a = unit_a.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: ti_a,
+    }));
     unit_a.funcs.push(MirFunction {
         owner: owner.clone(),
         name: "d_main".into(),
         sig: sig_a,
-        slots: vec![MirSlot { kind: auto_av_core::mir::SlotKind::Local, ty: ti_a, name: None }],
+        slots: vec![MirSlot {
+            kind: auto_av_core::mir::SlotKind::Local,
+            ty: ti_a,
+            name: None,
+        }],
         blocks: vec![MirBlock {
-            instrs: vec![MirInstr::Call { callee: auto_av_core::mir::CalleeRef::Import(imp), dst: 0, args: vec![] }],
+            instrs: vec![MirInstr::Call {
+                callee: auto_av_core::mir::CalleeRef::Import(imp),
+                dst: 0,
+                args: vec![],
+            }],
             term: Terminator::Return { value: 0 },
         }],
         entry: 0,
@@ -467,18 +498,32 @@ fn t04_unit_admission_negatives() {
     unit_a.entry = 0;
     let mut unit_b = MirModule::unit(owner.clone());
     let ti_b = unit_b.intern_type(MirType::I32);
-    let sig_b = unit_b.intern_type(MirType::Fn(FnSig { params: vec![ti_b], result: ti_b }));
+    let sig_b = unit_b.intern_type(MirType::Fn(FnSig {
+        params: vec![ti_b],
+        result: ti_b,
+    }));
     let cb = unit_b.intern_const(MirConst::I32(1));
     unit_b.funcs.push(MirFunction {
         owner: owner.clone(),
         name: "d_b".into(),
         sig: sig_b,
         slots: vec![
-            MirSlot { kind: auto_av_core::mir::SlotKind::Param, ty: ti_b, name: None },
-            MirSlot { kind: auto_av_core::mir::SlotKind::Local, ty: ti_b, name: None },
+            MirSlot {
+                kind: auto_av_core::mir::SlotKind::Param,
+                ty: ti_b,
+                name: None,
+            },
+            MirSlot {
+                kind: auto_av_core::mir::SlotKind::Local,
+                ty: ti_b,
+                name: None,
+            },
         ],
         blocks: vec![MirBlock {
-            instrs: vec![MirInstr::Copy { dst: 1, src: 0 }, MirInstr::Const { dst: 1, value: cb }],
+            instrs: vec![
+                MirInstr::Copy { dst: 1, src: 0 },
+                MirInstr::Const { dst: 1, value: cb },
+            ],
             term: Terminator::Return { value: 1 },
         }],
         entry: 0,
@@ -528,7 +573,11 @@ fn t05_generations_and_stable_ids_across_revisions() {
     assert!(out1.ok);
     let snap1 = s.current();
     assert_eq!(snap1.generation_of("d_main"), Some(0), "main generation");
-    assert_eq!(snap1.generation_of("d_helper"), Some(1), "helper generation");
+    assert_eq!(
+        snap1.generation_of("d_helper"),
+        Some(1),
+        "helper generation"
+    );
     // The warm-up snapshot is unaffected (immutable history).
     assert_eq!(snap0.generation_of("d_helper"), Some(0));
 
@@ -537,7 +586,11 @@ fn t05_generations_and_stable_ids_across_revisions() {
     let out2 = s.edit(pos, pos + 1, b"3".to_vec()).expect("edit");
     assert!(out2.ok);
     let snap2 = s.current();
-    assert_eq!(snap2.generation_of("d_helper"), Some(0), "content hit keeps the original generation");
+    assert_eq!(
+        snap2.generation_of("d_helper"),
+        Some(0),
+        "content hit keeps the original generation"
+    );
     assert_eq!(snap2.generation_of("d_main"), Some(0));
     let (r, _) = s.run(&ExecLimits::default(), &cancel);
     assert_i32(&r, 23, "reverted run");
@@ -588,8 +641,16 @@ fn t06_v06_stale_candidate_never_overwrites_newer_result() {
     let pos = (star3 + 4) as u64;
 
     // r1 (slow): 3 -> 4 ; r2: 3 -> 5. Both prepared on revision 0.
-    let r1 = s.prepare_edit(pos, pos + 1, b"4".to_vec()).unwrap().ok().unwrap();
-    let r2 = s.prepare_edit(pos, pos + 1, b"5".to_vec()).unwrap().ok().unwrap();
+    let r1 = s
+        .prepare_edit(pos, pos + 1, b"4".to_vec())
+        .unwrap()
+        .ok()
+        .unwrap();
+    let r2 = s
+        .prepare_edit(pos, pos + 1, b"5".to_vec())
+        .unwrap()
+        .ok()
+        .unwrap();
 
     let out2 = s.commit(r2);
     assert!(out2.ok);
@@ -599,13 +660,20 @@ fn t06_v06_stale_candidate_never_overwrites_newer_result() {
     let out1 = s.commit(r1);
     assert!(!out1.ok);
     assert!(
-        out1.non_fast_path_reason.as_deref().unwrap_or_default().contains("stale"),
+        out1.non_fast_path_reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("stale"),
         "{}",
         out1.non_fast_path_reason.unwrap_or_default()
     );
     assert_eq!(s.revision(), 1, "stale commit does not bump the revision");
     let (r, _) = s.run(&ExecLimits::default(), &cancel);
-    assert_i32(&r, 33, "r2 result survives the late r1 (helper(5)=5*5+7=32, +1)");
+    assert_i32(
+        &r,
+        33,
+        "r2 result survives the late r1 (helper(5)=5*5+7=32, +1)",
+    );
 
     // Fuel exhaustion is a run-level outcome, not an install: the snapshot
     // stays runnable under normal limits.
@@ -649,8 +717,8 @@ fn t07_restore_readmits_and_miss_falls_back() {
 
     // Warm restart over the same store + source.
     {
-        let mut s = auto_av_probe::session::restore(SRC, "d_main", &[], &dir, "p828")
-            .expect("restore");
+        let mut s =
+            auto_av_probe::session::restore(SRC, "d_main", &[], &dir, "p828").expect("restore");
         assert_eq!(
             s.counters().get("restore_units_admitted"),
             2,
@@ -731,7 +799,10 @@ fn main() int { return helper(6) }
     let mut s = warmup(src_t, "d_main", &[]).expect("warm-up");
     let cancel = CancelFlag::new(false);
     let (out, _) = s.run(&ExecLimits::default(), &cancel);
-    let ExecOutcome::Trap { span: Some(sp1), .. } = out else {
+    let ExecOutcome::Trap {
+        span: Some(sp1), ..
+    } = out
+    else {
         panic!("expected a trap with a span, got {out:?}")
     };
     let (l1, c1) = s.line_col(sp1.start as u64);
@@ -746,11 +817,18 @@ fn main() int { return helper(6) }
         .expect("edit");
     assert!(out_edit.ok, "{:?}", out_edit.non_fast_path_reason);
     let (out2, _) = s.run(&ExecLimits::default(), &cancel);
-    let ExecOutcome::Trap { span: Some(sp2), .. } = out2 else {
+    let ExecOutcome::Trap {
+        span: Some(sp2), ..
+    } = out2
+    else {
         panic!("expected trap after edit, got {out2:?}")
     };
     let (l2, c2) = s.line_col(sp2.start as u64);
-    assert_eq!((l2, c2), (1, c1 + 11), "trap span shifts with the edit ('var b = 2; ' is 11 bytes)");
+    assert_eq!(
+        (l2, c2),
+        (1, c1 + 11),
+        "trap span shifts with the edit ('var b = 2; ' is 11 bytes)"
+    );
 }
 
 /// T-08 / V-08: the formal dual gate on the frozen load — 30 distinct
@@ -776,7 +854,9 @@ fn t08_v08_formal_p95_and_structural_dual_gate() {
     assert!(
         failures.is_empty(),
         "dual gate failures: {failures:?} (p50={:.1} p95={:.1} p99={:.1}ms)",
-        report.p50_ms, report.p95_ms, report.p99_ms
+        report.p50_ms,
+        report.p95_ms,
+        report.p99_ms
     );
 }
 
@@ -786,7 +866,9 @@ fn t08_v08_formal_p95_and_structural_dual_gate() {
 /// stage work) must each fail the gate.
 #[test]
 fn t08_v09_gate_negatives_redden_independently() {
-    use auto_av_probe::formal_828::{validate_and_gate, FormalReport, FormalSample, StructuralSnapshot};
+    use auto_av_probe::formal_828::{
+        validate_and_gate, FormalReport, FormalSample, StructuralSnapshot,
+    };
     // A minimal clean report.
     let clean = |unaffected: u64, samples: usize| -> FormalReport {
         FormalReport {
@@ -822,7 +904,9 @@ fn t08_v09_gate_negatives_redden_independently() {
     // though timing is green (a timing pass can never cover granularity).
     let failures = validate_and_gate(&clean(7, 30), 1000.0, 30);
     assert!(
-        failures.iter().any(|f| f.contains("unaffected stage total")),
+        failures
+            .iter()
+            .any(|f| f.contains("unaffected stage total")),
         "{failures:?}"
     );
     // (d) timing axis alone: a slow-but-granular run still fails its P95.
@@ -851,4 +935,160 @@ fn main() int { return mid(5) }
         .edit(at as u64, (at + 1) as u64, b"3".to_vec())
         .expect("edit");
     assert!(out.ok, "{:?}", out.non_fast_path_reason);
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-828 T-03: function-level HIR artifacts (A07 function units)
+// ---------------------------------------------------------------------------
+
+/// T-03 roundtrip: warm-up deposits every function's HIR artifact; one
+/// edit deposits exactly ONE new row (only the changed unit produces new
+/// products — unchanged content conflicts and is not counted); a warm
+/// restart re-admits the ABC units AND adopts the function-HIR artifacts
+/// after re-verification, and the restored body objects serve later
+/// content hits by IDENTITY.
+#[test]
+fn t03_a07_fn_hir_roundtrip_deposit_and_adopt() {
+    use auto_av_probe::session::{restore, warmup_persisted};
+    let dir = std::env::temp_dir().join(format!("p828-t03-rr-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let cancel = CancelFlag::new(false);
+
+    let mut s = warmup_persisted(SRC, "d_main", &[], &dir, "p828").expect("warmup-persisted");
+    assert_eq!(
+        s.counters().get("hir_artifacts_deposited"),
+        2,
+        "cold deposit writes every function's HIR artifact"
+    );
+    let (r0, _) = s.run(&ExecLimits::default(), &cancel);
+    assert_i32(&r0, 23, "warm-up run");
+
+    // One body edit: exactly ONE new HIR artifact (the changed unit).
+    let star3 = SRC.find("x * 3").expect("target");
+    let pos = (star3 + 4) as u64;
+    let out = s.edit(pos, pos + 1, b"4".to_vec()).expect("edit");
+    assert!(out.ok, "{:?}", out.non_fast_path_reason);
+    assert_eq!(
+        s.counters().get("hir_artifacts_deposited"),
+        3,
+        "only the changed unit produces a new HIR artifact"
+    );
+    let edited_src = s.src().to_string();
+
+    // Warm restart over the EDITED source: units re-admitted AND both HIR
+    // artifacts adopted after re-verification.
+    let mut r = restore(&edited_src, "d_main", &[], &dir, "p828").expect("restore");
+    assert_eq!(r.counters().get("restore_units_admitted"), 2);
+    assert_eq!(r.counters().get("restore_hir_adopted"), 2);
+    let (rr, _) = r.run(&ExecLimits::default(), &cancel);
+    assert_i32(&rr, 28, "restored run");
+    // Unchanged functions stayed untouched by the restore+run.
+    for (stage, count) in r.counters().stages_of("main") {
+        assert_eq!(count, 0, "main stage `{stage}` after restore");
+    }
+
+    // The ADOPTED body object serves a later content hit by identity:
+    // helper 4 -> 5 (miss), then back to 4 (hit on the restored content)
+    // reuses the very object the artifact decoded into.
+    let (_, hir_restored, _) = r.resident("helper").expect("resident");
+    let pos4 = edited_src.find("x * 4").expect("edited target") + 4;
+    let out5 = r
+        .edit(pos4 as u64, (pos4 + 1) as u64, b"5".to_vec())
+        .expect("edit 4->5");
+    assert!(out5.ok, "{:?}", out5.non_fast_path_reason);
+    let src5 = r.src().to_string();
+    let pos5 = src5.find("x * 5").expect("target") + 4;
+    let out4 = r
+        .edit(pos5 as u64, (pos5 + 1) as u64, b"4".to_vec())
+        .expect("edit 5->4");
+    assert!(out4.ok, "{:?}", out4.non_fast_path_reason);
+    let (_, hir_now, _) = r.resident("helper").expect("resident");
+    assert!(
+        Arc::ptr_eq(&hir_restored, &hir_now),
+        "the content hit reuses the artifact-adopted body object"
+    );
+    let (rfinal, _) = r.run(&ExecLimits::default(), &cancel);
+    assert_i32(&rfinal, 28, "final run");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// T-03 trust boundary: a pre-existing garbage row under the exact HIR
+/// key survives (the store has no rewrite; the session's own deposit
+/// conflicts and is tolerated) — restore must treat it as an UNTRUSTED
+/// description, fail the decode, skip the artifact and keep the cold
+/// body. ABC admission is unaffected. Codec-level negatives included.
+#[test]
+fn t03_a07_fn_hir_tampered_row_is_skipped_not_trusted() {
+    use auto_ac_prototype::source::{compile_scalar_source, SourceProfile};
+    use auto_av_probe::cache::{
+        canonical_hir_function, caps_fingerprint, open_store, put_enveloped, EnvelopeIdentity,
+    };
+    use auto_av_probe::fn_hir_codec::{decode_fn_hir, fn_hir_key};
+    use auto_av_probe::function_queries::FnEnv;
+    use auto_av_probe::semrefs::content_version_of;
+    use auto_av_probe::session::{restore, warmup_persisted};
+
+    // Codec negatives first: untrusted bytes never decode.
+    assert!(decode_fn_hir(b"").is_err(), "empty payload");
+    assert!(decode_fn_hir(b"XXXX  ").is_err(), "bad magic");
+    let mut trunc = Vec::new();
+    trunc.extend_from_slice(b"FNH1");
+    trunc.extend_from_slice(&1u32.to_le_bytes());
+    assert!(decode_fn_hir(&trunc).is_err(), "truncated header");
+
+    // Learn the exact HIR key for d_helper's cold content (owner is the
+    // module id — deterministic for this source).
+    let compiled = compile_scalar_source(SRC, "probe.at", &[]).expect("compile");
+    let bundle = compiled.checked.bundle();
+    let m = bundle.modules.first().expect("module");
+    let owner = FnEnv::from_bundle(bundle).expect("fn env").owner;
+    let def_idx = m.defs.iter().position(|d| d.id_text == "d_helper").unwrap();
+    let body = match &m.defs[def_idx].kind {
+        auto_ac_prototype::hir::DefKind::Function { body, .. } => *body,
+        _ => panic!("not a function"),
+    };
+    let cv = content_version_of(&canonical_hir_function(m, body));
+    let caps_fp = caps_fingerprint(&[]);
+    let key = fn_hir_key(&owner, "d_helper", &cv, &caps_fp);
+    let expect = EnvelopeIdentity::fn_hir_bound(&owner, "d_helper", &cv);
+
+    // A fresh store with GARBAGE pre-written under that exact key.
+    let dir = std::env::temp_dir().join(format!("p828-t03-tamper-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    {
+        let store = open_store(&dir).expect("open");
+        put_enveloped(
+            &store,
+            &key,
+            "A07",
+            &expect,
+            b"definitely-not-a-fnhir-payload",
+            vec![],
+            Some("p828"),
+        )
+        .expect("pre-write garbage");
+    }
+
+    // The session's own deposit for d_helper conflicts (tolerated): only
+    // d_main's HIR artifact lands.
+    let s = warmup_persisted(SRC, "d_main", &[], &dir, "p828").expect("warmup-persisted");
+    assert_eq!(s.counters().get("hir_artifacts_deposited"), 1);
+    drop(s);
+
+    // Restore: the garbage row decodes to nothing — skipped, never
+    // trusted; the cold body keeps serving; ABC admission is unaffected.
+    let cancel = CancelFlag::new(false);
+    let mut r = restore(SRC, "d_main", &[], &dir, "p828").expect("restore");
+    assert_eq!(r.counters().get("restore_units_admitted"), 2);
+    assert_eq!(
+        r.counters().get("restore_hir_adopted"),
+        1,
+        "the tampered HIR row is skipped; main's clean row adopted"
+    );
+    let (out, _) = r.run(&ExecLimits::default(), &cancel);
+    assert_i32(&out, 23, "cold body keeps serving");
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = SourceProfile::Scalar;
 }

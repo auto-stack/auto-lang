@@ -352,6 +352,10 @@ pub enum EnvelopeKind {
     /// position changes share code units and only re-bind the sidecar
     /// (PLAN-798 §5.4).
     SourceSidecar = 4,
+    /// PLAN-828 T-03: function-level HIR artifacts (A07 function units) —
+    /// a separate track from code-content artifacts; restored only as
+    /// untrusted descriptions that re-verify before adoption.
+    FnHirUnit = 5,
 }
 
 #[derive(Clone, Debug)]
@@ -420,6 +424,28 @@ impl EnvelopeIdentity<'_> {
 
     /// Production ABC-unit identity: bound to the exact unit + body
     /// fingerprint (F798-R6-01).
+    /// PLAN-828 T-03: function-HIR artifact identity, bound to the unit
+    /// (def id) and the span-free content version it claims.
+    pub fn fn_hir_bound<'a>(
+        owner: &'a str,
+        unit: &'a str,
+        body_cv: &'a str,
+    ) -> EnvelopeIdentity<'a> {
+        EnvelopeIdentity {
+            kind: EnvelopeKind::FnHirUnit,
+            producer: PRODUCER_ID,
+            schema: "ac828/a07-fnhir/v1",
+            owner_module: owner,
+            stage: 0,
+            mir_sem: 1,
+            abc_sem: 1,
+            av_sem: 1,
+            snapshot: 0,
+            unit,
+            body_fp: body_cv,
+        }
+    }
+
     pub fn abc_bound<'a>(owner: &'a str, unit: &'a str, body_fp: &'a str) -> EnvelopeIdentity<'a> {
         EnvelopeIdentity {
             unit,

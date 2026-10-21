@@ -24,6 +24,9 @@ use crate::cache::{
     unit_span_sidecar_repair_key, EnvelopeIdentity, UnitSidecar,
 };
 use crate::driver::front_door_admit;
+use crate::fn_hir_codec::{
+    decode_fn_hir, encode_fn_hir, fn_hir_key, fn_hir_span_digest, FnHirArtifact,
+};
 use crate::function_queries::FnEnv;
 use crate::hir_adapter::{lower_checked, lower_function_unit};
 use crate::semrefs::content_version_of;
@@ -147,6 +150,14 @@ struct FnRecord {
     /// Admitted execution code — same `Arc` across revisions unless this
     /// function itself changed.
     code: Arc<FunctionCode>,
+    /// The body's span-free canonical dump (the content-version basis) —
+    /// kept resident for the T-03 function-HIR artifact deposit and the
+    /// restore path's re-verification.
+    canonical: Vec<u8>,
+    /// T-03: the content version whose HIR artifact this session already
+    /// PRODUCED — a repeated persist of unchanged content is skipped, so
+    /// `hir_artifacts_deposited` counts new products only.
+    persisted_hir_cv: Option<String>,
     /// Current-source declaration origin (byte offset) of this function.
     origin: u64,
     /// Declaration origin in the source revision this function's UNIT
@@ -236,6 +247,9 @@ pub struct PreparedEdit {
     changed_idx: usize,
     changed_name: String,
     content_version: String,
+    /// The changed body's canonical dump (T-03: becomes the resident
+    /// canonical on commit).
+    content_dump: Vec<u8>,
     hir_body: Arc<hir::Body>,
     code: Arc<FunctionCode>,
     new_src: String,
@@ -273,6 +287,14 @@ pub struct FunctionIncrementalSession {
     /// The ac-core declaration-context fingerprint the outstanding body
     /// credentials were verified under; a drift invalidates them.
     context_revision: String,
+    /// PLAN-828 T-03: intrinsic def index → symbol (the dependency facts
+    /// the function-HIR artifacts carry; the def set is cold-minted and
+    /// the fast path never changes it).
+    intrinsic_symbols: BTreeMap<u32, String>,
+    /// PLAN-828 T-03: the cold bundle's module (type/def tables) — the
+    /// restore path's re-verification context for function-HIR artifacts.
+    /// Counts toward the resident F-09 budget.
+    cold_module: hir::Module,
     current: Arc<ProgramSnapshot>,
     revision: u64,
     /// Unique session identity bound into every prepared candidate.
@@ -426,6 +448,8 @@ pub fn warmup(
             name: name.clone(),
             hir_body: body_arc,
             code: code.clone(),
+            canonical: warm_dump.clone(),
+            persisted_hir_cv: None,
             origin: 0,
             mint_origin: 0,
             span_map: auto_av_core::span_map::SpanSegments::default(),
@@ -451,6 +475,18 @@ pub fn warmup(
             "checked-env slot order {env_order:?} != declaration order {def_order:?}"
         ));
     }
+    // PLAN-828 T-03: the intrinsic symbol map and the cold module (the
+    // restore path's re-verification context for HIR artifacts).
+    let intrinsic_symbols = m
+        .defs
+        .iter()
+        .enumerate()
+        .filter_map(|(i, d)| match &d.kind {
+            hir::DefKind::Intrinsic { symbol, .. } => Some((i as u32, symbol.clone())),
+            _ => None,
+        })
+        .collect();
+    let cold_module = m.clone();
 
     // Per-function declaration origins of the accepted source (span
     // mapping baseline; decl order == fn order was asserted above).
@@ -486,6 +522,8 @@ pub fn warmup(
         env,
         env_core,
         context_revision,
+        intrinsic_symbols,
+        cold_module,
         current: snapshot,
         revision: 0,
         session_id,
@@ -689,6 +727,59 @@ pub fn restore(
         }
         rec.code = code.clone();
     }
+    // PLAN-828 T-03: function-HIR artifact adoption. Every row is an
+    // UNTRUSTED description: it must decode under the bounded codec AND
+    // re-verify against the CURRENT context — def identity, caps, the
+    // declaration-context fingerprint, the span-free canonical content
+    // equal to the freshly compiled truth, and the span-layout digest —
+    // before the reconstructed body may become the resident/history
+    // object. Any miss or mismatch skips the artifact: the cold body is
+    // already correct, so a skip only loses store provenance, never
+    // correctness. The verification CREDENTIAL never persisted: adoption
+    // re-establishes trust only through the fresh context checks above.
+    let cvs: Vec<Option<String>> = session
+        .fns
+        .iter()
+        .map(|r| session.resident_content_version(&r.name))
+        .collect();
+    let mut hir_adopted: u64 = 0;
+    for (i, rec) in session.fns.iter_mut().enumerate() {
+        let Some(cv) = &cvs[i] else { continue };
+        let key = fn_hir_key(&owner, &rec.def_id, cv, &caps_fp);
+        let expect = EnvelopeIdentity::fn_hir_bound(&owner, &rec.def_id, cv);
+        let Ok(Some(bytes)) = get_enveloped_opt(&store, &key, "A07", &expect) else {
+            continue;
+        };
+        let Ok(a) = decode_fn_hir(&bytes) else {
+            continue;
+        };
+        if a.def_id != rec.def_id
+            || a.content_version != *cv
+            || a.caps_fp != caps_fp
+            || a.context_fingerprint != session.context_revision
+        {
+            continue;
+        }
+        // Content re-verification against the current context's own truth:
+        // the reconstructed body's canonical dump must equal the resident
+        // (freshly compiled) canonical, dumped through the SAME type/def
+        // tables (the fast path's table layout is the cold one).
+        let mut shim = session.cold_module.clone();
+        shim.bodies = vec![a.body.clone()];
+        if canonical_hir_function(&shim, hir::BodyId(0)) != rec.canonical {
+            continue;
+        }
+        if a.span_digest != fn_hir_span_digest(&rec.hir_body) {
+            continue;
+        }
+        let adopted = std::sync::Arc::new(a.body);
+        if let Some(entry) = rec.history.iter_mut().find(|(k, _)| *k == cv) {
+            entry.1 .0 = adopted.clone();
+        }
+        rec.hir_body = adopted;
+        hir_adopted += 1;
+    }
+    session.counters.set("restore_hir_adopted", hir_adopted);
     session.current = snapshot;
     session
         .counters
@@ -907,13 +998,14 @@ impl FunctionIncrementalSession {
     /// unit-bound sidecar row (PLAN-828 F-10/F11-S01), so a later
     /// [`restore`] re-attaches and RE-ANCHORS it instead of publishing
     /// `span: None` or stale absolute positions.
-    fn persist_all_units(&self) -> Result<(), String> {
+    fn persist_all_units(&mut self) -> Result<(), String> {
         let Some((store, project)) = self.store.as_ref() else {
             return Err("no store".to_string());
         };
         let owner = self.fns_owner();
         let caps_fp = caps_fingerprint(&self.caps);
-        for (idx, rec) in self.fns.iter().enumerate() {
+        let mut hir_deposits: u64 = 0;
+        for (idx, rec) in self.fns.iter_mut().enumerate() {
             // The resident entry keys the row AND carries the code's true
             // mint range/text — the F11-S01 re-anchoring basis.
             let Some((cv, mint_d0, mint_text)) = rec
@@ -945,6 +1037,47 @@ impl FunctionIncrementalSession {
                 if format!("{e:?}").contains("Conflict") {
                 } else {
                     return Err(format!("put {}: {e:?}", rec.def_id));
+                }
+            }
+            // PLAN-828 T-03: the function-HIR artifact (A07 function unit),
+            // content-addressed like the ABC row above — only a function
+            // whose content changed produces a NEW row (same content
+            // version → Conflict tolerated). A body outside the bounded
+            // scalar codec simply has no artifact (the cold compile stays
+            // the truth); the VERIFIER credential never persists.
+            let mut intrinsics: Vec<String> = Vec::new();
+            for e in &rec.hir_body.exprs {
+                if let hir::ExprKind::Call { callee, .. } = &e.kind {
+                    if let Some(sym) = self.intrinsic_symbols.get(&callee.0) {
+                        if !intrinsics.iter().any(|s| s == sym) {
+                            intrinsics.push(sym.clone());
+                        }
+                    }
+                }
+            }
+            if rec.persisted_hir_cv.as_deref() == Some(cv.as_str()) {
+                // Already produced by THIS session — unchanged content
+                // never re-deposits (new products only).
+            } else if let Ok(hbytes) = encode_fn_hir(&FnHirArtifact {
+                def_id: rec.def_id.clone(),
+                content_version: cv.clone(),
+                span_digest: fn_hir_span_digest(&rec.hir_body),
+                context_fingerprint: self.context_revision.clone(),
+                caps_fp: caps_fp.clone(),
+                intrinsics,
+                body: (*rec.hir_body).clone(),
+            }) {
+                let hkey = fn_hir_key(&owner, &rec.def_id, &cv, &caps_fp);
+                let hid = EnvelopeIdentity::fn_hir_bound(&owner, &rec.def_id, &cv);
+                if let Err(e) =
+                    put_enveloped(store, &hkey, "A07", &hid, &hbytes, vec![], Some(project))
+                {
+                    if !format!("{e:?}").contains("Conflict") {
+                        return Err(format!("put fn-hir {}: {e:?}", rec.def_id));
+                    }
+                } else {
+                    hir_deposits += 1;
+                    rec.persisted_hir_cv = Some(cv.clone());
                 }
             }
             let skey = unit_span_sidecar_key(&owner, &rec.def_id, &cv);
@@ -1039,6 +1172,7 @@ impl FunctionIncrementalSession {
                 }
             }
         }
+        self.counters.add("hir_artifacts_deposited", hir_deposits);
         Ok(())
     }
 
@@ -1370,7 +1504,8 @@ impl FunctionIncrementalSession {
             hir::DefKind::Function { body, .. } => *body,
             _ => return Err("internal: changed def is not a function".to_string()),
         };
-        let cv = content_version_of(&canonical_hir_function(cand_m, def_body));
+        let content_dump = canonical_hir_function(cand_m, def_body);
+        let cv = content_version_of(&content_dump);
         let mut was_hit = false;
         let mut candidate_mint_origin: u64 = 0;
         let mut candidate_span_map = auto_av_core::span_map::SpanSegments::default();
@@ -1456,6 +1591,7 @@ impl FunctionIncrementalSession {
             changed_idx,
             changed_name,
             content_version: cv,
+            content_dump,
             hir_body: new_hir_body,
             code: new_code,
             new_src,
@@ -1575,6 +1711,7 @@ impl FunctionIncrementalSession {
             base_revision,
             changed_name,
             content_version,
+            content_dump,
             hir_body,
             code,
             new_src,
@@ -1622,6 +1759,7 @@ impl FunctionIncrementalSession {
             ),
         );
         changed_rec.hir_body = hir_body;
+        changed_rec.canonical = content_dump;
         changed_rec.code = code;
 
         // T-07: durable deposit of the installed revision (units + the

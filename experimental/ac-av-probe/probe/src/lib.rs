@@ -8,6 +8,7 @@
 pub mod bench;
 pub mod cache;
 pub mod driver;
+pub mod fn_hir_codec;
 pub mod formal_828;
 pub mod function_queries;
 pub mod hir_adapter;
