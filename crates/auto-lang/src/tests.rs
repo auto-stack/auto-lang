@@ -10,6 +10,10 @@ mod ac_case_tests;
 // PLAN-796: probe adapter integration (real sema worker + restart boundary)
 #[cfg(feature = "test-cases")]
 mod ac_av_probe_tests;
+// PLAN-815 T-04 合并门归因修复：probe_adapter_tests 消费 test-cases
+// feature 门内的 auto_test_case（兄弟模块同款门控），裸 ui-iced 面
+// （cargo tu）此前 44 编译错=master 预存（M814-A 合入前即缺门）。
+#[cfg(feature = "test-cases")]
 mod probe_adapter_tests;
 // PLAN-796 R4: turnaround hard gate over the REAL adapter/IPC path
 #[cfg(feature = "test-cases")]
@@ -31,21 +35,21 @@ mod plan785_clipboard_provider;
 mod plan790_clipboard_media_provider;
 // PLAN-794: scroll controller/子锚点 9900..9905+9922/9923 host provider——
 // core 剪断/降级契约/装配身份/真实 UI adapter 接线回归锚
-mod plan794_scroll_host_provider;
-mod plan656_scroll_controller_pipeline; // PLAN-814 T-02 上移：scroll natives 全管线（SDK 死门勘误）
+#[cfg(feature = "code-editor")]
+mod plan413_code_editor_natives;
 #[cfg(feature = "native-clipboard")]
 mod plan485_clipboard_natives; // PLAN-814 T-02 上移：clipboard natives 四件套实剪贴板往返（SDK 死门勘误）
+mod plan656_scroll_controller_pipeline; // PLAN-814 T-02 上移：scroll natives 全管线（SDK 死门勘误）
 #[cfg(feature = "ui-iced")]
 mod plan712_back_prefix_route_fetch; // PLAN-814 T-02 上移：routes 页前缀化端到端（SDK 死门勘误）
-#[cfg(feature = "code-editor")]
-mod plan413_code_editor_natives; // PLAN-814 T-02 上移：code editor payload natives 端到端（SDK 死门勘误）
-// PLAN-802: code editor 22 native host provider——core 剪断/装配身份/
-// 真实 adapter 注册表往返/滚动投影链/OS 剪贴板回归锚
+mod plan794_scroll_host_provider; // PLAN-814 T-02 上移：code editor payload natives 端到端（SDK 死门勘误）
+                                  // PLAN-802: code editor 22 native host provider——core 剪断/装配身份/
+                                  // 真实 adapter 注册表往返/滚动投影链/OS 剪贴板回归锚
 mod plan802_code_editor_provider;
 mod plan807_text_core; // PLAN-807: 文本基础抽取（剪断锚/快照端口/类型身份/真编辑器路径/资源退出）
 mod plan811_media_runtime; // PLAN-811: 媒体宿主域抽取（剪断锚/native 冻结/同一 service/17 shim 真实调用）
-                       // PLAN-804: dialog 2927/2928 + dnd 2938 host provider——core 剪断/缺席
-                       // 契约（dialog VMError+dnd false）/槽独立/重入/装配身份回归锚
+                           // PLAN-804: dialog 2927/2928 + dnd 2938 host provider——core 剪断/缺席
+                           // 契约（dialog VMError+dnd false）/槽独立/重入/装配身份回归锚
 mod plan804_dialog_dnd_provider;
 // PLAN-808: terminal 34 native host-domain extraction——codec 剪断/34 形状/
 // 装配身份/缺席矩阵/真实 DLL 会话生命周期与 UI 投影回归锚
@@ -159,13 +163,13 @@ mod aavm_at_mode_tests; // Plan 531: aavm.at a2r 模式入口(位置参数)验�
 mod conformance_tests; // AutoVM output regression tests (golden-file); VM↔a2r parity is in test/parity/
 mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
 pub use auto_lang_core::heavy_gate;
-mod plan814_recipe_extraction_tests;
-mod plan569_py_dispatch_tests; // Plan 569 D2: py 返回值方法分派动态化——codegen 决策核单测（无 pyo3 依赖）// ============================================================
-                               // PLAN-691 T-04: 顶层散测试文件归位（src/*_tests.rs → src/tests/，2026-09-22）。
-                               // 以下 mod 声明自 lib.rs 迁入，cfg 门与溯源注释原样保留；
-                               // 文件本体对应 git mv 至 src/tests/<name>.rs（rename 纯 move）。
-                               // test_runner 例外留在 lib.rs——VM native auto.test.* 生产依赖（Plan 263）。
-                               // ============================================================
+mod plan569_py_dispatch_tests;
+mod plan814_recipe_extraction_tests; // Plan 569 D2: py 返回值方法分派动态化——codegen 决策核单测（无 pyo3 依赖）// ============================================================
+                                     // PLAN-691 T-04: 顶层散测试文件归位（src/*_tests.rs → src/tests/，2026-09-22）。
+                                     // 以下 mod 声明自 lib.rs 迁入，cfg 门与溯源注释原样保留；
+                                     // 文件本体对应 git mv 至 src/tests/<name>.rs（rename 纯 move）。
+                                     // test_runner 例外留在 lib.rs——VM native auto.test.* 生产依赖（Plan 263）。
+                                     // ============================================================
 
 #[cfg(test)]
 mod test_util; // Plan 266 Phase 4: Differential testing utilities

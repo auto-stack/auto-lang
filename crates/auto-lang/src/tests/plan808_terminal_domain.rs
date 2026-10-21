@@ -84,7 +84,10 @@ mod plan808_core_cut {
         // cfg(test) 窗口投影读 helper 死副本（SDK 无 ui 模块，声明即
         // 编译红）——合法面 2 → 1 → 0。codec-only 性质只强不弱。
         let ui_refs: Vec<&str> = src.lines().filter(|l| l.contains("crate::ui::")).collect();
-        assert!(ui_refs.is_empty(), "term_engine must be codec-only: {ui_refs:?}");
+        assert!(
+            ui_refs.is_empty(),
+            "term_engine must be codec-only: {ui_refs:?}"
+        );
     }
 
     #[test]

@@ -31,7 +31,9 @@ fn p748_compile(code: &str) -> crate::vm::engine::AutoVM {
 fn p748_spawn_server(body: &'static str) -> (std::thread::JoinHandle<()>, u16) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
     let port = listener.local_addr().unwrap().port();
-    listener.set_nonblocking(true).expect("nonblocking listener");
+    listener
+        .set_nonblocking(true)
+        .expect("nonblocking listener");
     let server = std::thread::spawn(move || {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         let mut stream = loop {
@@ -248,10 +250,7 @@ store SelStore {
 
 /// PLAN-759 T-02：TempDir 随返回值持有至测试结束（替代 `mem::forget`
 /// 测试资源泄漏——F-05 顺手项），生命周期与组件同界。
-fn build_p748_t00() -> (
-    crate::ui::dynamic::DynamicComponent,
-    tempfile::TempDir,
-) {
+fn build_p748_t00() -> (crate::ui::dynamic::DynamicComponent, tempfile::TempDir) {
     let dir = tempfile::TempDir::new().unwrap();
     let base = dir.path();
     for (rel, src) in [("host.at", P748_T00_HOST), ("sel_store.at", P748_T00_STORE)] {

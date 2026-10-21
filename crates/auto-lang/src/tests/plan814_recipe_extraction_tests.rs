@@ -148,7 +148,8 @@ fn plan635_source(base: &std::path::Path, file: &str) -> String {
 fn plan635_load(base: &std::path::Path) {
     let code = plan635_source(base, "app.at");
     let imports = prepare_style_recipe_imports(base, &code).unwrap();
-    let mut p = Parser::from(code.as_str()).with_session(auto_lang_core::session::CompilerSession::ui());
+    let mut p =
+        Parser::from(code.as_str()).with_session(auto_lang_core::session::CompilerSession::ui());
     let ast = p.parse().unwrap();
     load_and_validate_style_recipes_with_imports(&imports, &ast.stmts).unwrap();
 }
@@ -158,7 +159,8 @@ fn plan635_load_err(base: &std::path::Path) -> StyleRecipeError {
     match prepare_style_recipe_imports(base, &code) {
         Err(e) => e,
         Ok(imports) => {
-            let mut p = Parser::from(code.as_str()).with_session(auto_lang_core::session::CompilerSession::ui());
+            let mut p = Parser::from(code.as_str())
+                .with_session(auto_lang_core::session::CompilerSession::ui());
             let ast = p.parse().unwrap();
             load_and_validate_style_recipes_with_imports(&imports, &ast.stmts).unwrap_err()
         }
@@ -166,7 +168,6 @@ fn plan635_load_err(base: &std::path::Path) -> StyleRecipeError {
 }
 
 #[test]
-
 
 fn test_plan635_vue_chain_expands_imported_recipe() {
     // PLAN-635 T-04: production Vue chain (ui_build_shadcn -> generate_

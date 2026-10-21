@@ -22,7 +22,12 @@ fn aavm_at_dir() -> PathBuf {
 /// 剥除 use 行的临时目录(stripped lib + aavm.at)——merge 输入。
 /// 镜像 vm_file_tests::build_aavm_rust_bin 的剥离规则。
 fn stripped_merge_dir() -> PathBuf {
-    let root = aavm_at_dir().parent().unwrap().parent().unwrap().to_path_buf();
+    let root = aavm_at_dir()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
     let stripped =
         std::env::temp_dir().join(format!("p531-aavm-at-stripped-p{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&stripped);

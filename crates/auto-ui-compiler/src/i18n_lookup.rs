@@ -140,7 +140,9 @@ mod tests {
         let dir = std::env::var("CARGO_MANIFEST_DIR")
             .map(std::path::PathBuf::from)
             .expect("manifest")
-            .join("test/ui/plan050_stub_nil/src/front");
+            // PLAN-815 T-04：夹具单源留在 auto-lang 测试树（plan442 族共
+            // 用），本 crate 经相对路径跨包读取。
+            .join("../auto-lang/test/ui/plan050_stub_nil/src/front");
         load_from_dir(&dir);
         assert_eq!(lookup("settings.title").as_deref(), Some("设置"));
         assert_eq!(lookup("no.such.key"), None);

@@ -137,14 +137,19 @@ fn plan781_v16_park_resume_cumulative_not_reset() {
     // 共用本端口，逐连接应答（受控 200ms 延迟逐次生效）。
     let server = std::thread::spawn(move || {
         for _ in 0..8 {
-            let Ok((mut stream, _)) = listener.accept() else { break };
+            let Ok((mut stream, _)) = listener.accept() else {
+                break;
+            };
             let mut buf = [0u8; 4096];
             let mut read_total = 0usize;
             loop {
                 let n = std::io::Read::read(&mut stream, &mut buf).unwrap_or(0);
                 read_total += n;
                 if read_total >= 4
-                    && buf[..read_total].windows(4).position(|w| w == b"\r\n\r\n").is_some()
+                    && buf[..read_total]
+                        .windows(4)
+                        .position(|w| w == b"\r\n\r\n")
+                        .is_some()
                 {
                     break;
                 }
@@ -286,7 +291,10 @@ fn plan781_v14_default_is_byte_identical_legacy() {
 #[test]
 fn plan781_drive_budget_variants_shape() {
     assert!(matches!(DriveBudget::Legacy, DriveBudget::Legacy));
-    assert!(matches!(DriveBudget::LegacyHttp(10), DriveBudget::LegacyHttp(_)));
+    assert!(matches!(
+        DriveBudget::LegacyHttp(10),
+        DriveBudget::LegacyHttp(_)
+    ));
     assert!(matches!(
         DriveBudget::CpuSlice(crate::vm::engine::CpuSliceBudget::d2_default()),
         DriveBudget::CpuSlice(_)

@@ -652,7 +652,12 @@ fn ac_native_suite_full_run_and_ledger_reconcile() {
             _ => false,
         };
         if !ok {
-            fails.push((r.case_id.clone(), r.check_id.clone(), r.status, r.detail.clone()));
+            fails.push((
+                r.case_id.clone(),
+                r.check_id.clone(),
+                r.status,
+                r.detail.clone(),
+            ));
         }
     }
     assert!(
@@ -671,14 +676,14 @@ fn ac_native_suite_full_run_and_ledger_reconcile() {
         }
         let cols: Vec<&str> = line.split('\t').collect();
         assert!(cols.len() >= 9, "ledger row {} column count", i);
-        assert!(!cols[0].is_empty() && !cols[4].is_empty(), "ledger row {} source/gate", i);
+        assert!(
+            !cols[0].is_empty() && !cols[4].is_empty(),
+            "ledger row {} source/gate",
+            i
+        );
         mapped.insert(cols[5].to_string());
     }
-    let suite_cases: BTreeSet<String> = report
-        .results
-        .iter()
-        .map(|r| r.case_id.clone())
-        .collect();
+    let suite_cases: BTreeSet<String> = report.results.iter().map(|r| r.case_id.clone()).collect();
     let unmapped: Vec<_> = suite_cases.difference(&mapped).cloned().collect();
     assert!(
         unmapped.is_empty(),
