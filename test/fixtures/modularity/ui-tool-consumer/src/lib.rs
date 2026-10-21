@@ -275,9 +275,13 @@ fn parse_next(tool: &mut Tool) -> Option<serde_json::Value> {
 #[test]
 fn consumer_rejects_unserved_render_with_zero_side_effects() {
     let dir = tempfile::tempdir().expect("tempdir");
-    std::fs::write(dir.path().join("pac.at"), "name: \"x\"
+    std::fs::write(
+        dir.path().join("pac.at"),
+        "name: \"x\"
 render: \"jet\"
-").unwrap();
+",
+    )
+    .unwrap();
     let request = GenerationRequest::from_descriptor(
         &parse_document(
             "name: \"x\"

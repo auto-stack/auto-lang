@@ -3120,8 +3120,10 @@ pub fn desktop_service_tick(ms: u64) -> iced::Subscription<DesktopMessage> {
 /// PLAN-815 T-05（F03）：宿主退出请求轮询订阅（23ms 空拍；置位时产
 /// [`DesktopEvent::HostExitRequested`] 一次后流终止——消费臂 iced::exit
 /// 随即收口会话）。CLI 形态无人置位，零消息零行为变化。
-pub fn host_exit_poll_subscription() -> iced::Subscription<DesktopMessage> {
-    struct HostExitRecipe;
+pub fn host_exit_poll_subscription(since: u64) -> iced::Subscription<DesktopMessage> {
+    struct HostExitRecipe {
+        since: u64,
+    }
 
     /// unfold 载荷包装：空拍需要携带 Option<DesktopMessage> 但 unfold 的
     /// 产出类型固定为 DesktopMessage——用哨兵包一层再 map 开。
@@ -3130,6 +3132,7 @@ pub fn host_exit_poll_subscription() -> iced::Subscription<DesktopMessage> {
     impl std::hash::Hash for HostExitRecipe {
         fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
             "auto-runtime-host-exit".hash(state);
+            self.since.hash(state);
         }
     }
 
@@ -3145,12 +3148,13 @@ pub fn host_exit_poll_subscription() -> iced::Subscription<DesktopMessage> {
             _input: iced_futures::subscription::EventStream,
         ) -> iced_futures::BoxStream<Self::Output> {
             use iced_futures::futures::stream::StreamExt;
-            iced_futures::futures::stream::unfold(false, |requested| async move {
+            let since = self.since;
+            iced_futures::futures::stream::unfold(false, move |requested| async move {
                 if requested {
                     // 已产出过一枚 HostExitRequested：流终止（消费臂 exit）。
                     return None;
                 }
-                if crate::ui::iced::renderer::host_exit_requested() {
+                if crate::ui::iced::renderer::host_exit_generation() > since {
                     return Some((
                         Sentinel(Some(DesktopMessage::Desktop(
                             DesktopEvent::HostExitRequested,
@@ -3169,7 +3173,7 @@ pub fn host_exit_poll_subscription() -> iced::Subscription<DesktopMessage> {
         }
     }
 
-    iced_futures::subscription::from_recipe(HostExitRecipe)
+    iced_futures::subscription::from_recipe(HostExitRecipe { since })
 }
 
 /// Plan 473 T6：原生窗口槽位事件泵——首帧惰性启动 WinEventHook 钩子线程

@@ -140,6 +140,17 @@ pub fn run_report(request: &GenerationRequest) -> Result<RunReport, ToolError> {
             }
         }
     };
+    // F01/R2: a named teardown failure (reader/writer that could not be
+    // stopped within the bound) is disclosed on the final report even when
+    // the outcome itself is Cancelled.
+    let error = match (
+        error,
+        proc_host::current().and_then(|io| io.teardown_error.lock().unwrap().clone()),
+    ) {
+        (None, Some(teardown)) => Some(teardown),
+        (Some(error), Some(teardown)) => Some(format!("{error}; teardown: {teardown}")),
+        (error, None) => error,
+    };
     Ok(RunReport {
         profile,
         outcome,

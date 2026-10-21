@@ -1186,3 +1186,145 @@ fn run_ui_single_flight_input_busy_then_cancel() {
     let (code, _) = tool.close_stdin_and_wait();
     assert_eq!(code, 0);
 }
+
+/// A real minimal VM UI project (render vm): pac.at + src/front/app.at.
+fn vm_ui_project() -> (tempfile::TempDir, GenerationRequest) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("src").join("front")).unwrap();
+    std::fs::write(
+        dir.path().join("pac.at"),
+        "name: \"t05vm\"\nrender: \"vm\"\nwindow: \"480x360\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("src").join("front").join("app.at"),
+        "widget App {\n    model {\n        var count int = 0\n    }\n    view {\n        col {\n            text `Count: ${.count}`\n            button \"+\" { onclick: () => {.count += 1} }\n        }\n    }\n}\n",
+    )
+    .unwrap();
+    let request = GenerationRequest::from_descriptor(
+        &parse_document(
+            "name: \"t05vm\"\nrender: \"vm\"\nwindow: \"480x360\"\n",
+            SourceInfo::from_path(dir.path().join("pac.at")),
+        )
+        .expect("parse"),
+    );
+    (dir, request)
+}
+
+/// R2-03: the REAL interactive success path. A real VM session in the
+/// isolated child process: the tool reports `Launched` with the session's
+/// ACCURATE MCP endpoint URL (sniffed from the child's real stderr
+/// banner), `Input` with `q` REALLY quits the running UI (the child's
+/// stdin watcher -> runtime host-exit -> iced closes), the final report is
+/// `completed`, the tool keeps serving, and a SECOND VM session (R2-01)
+/// runs and cancels cleanly in the same host process. Environment: opens
+/// real (brief) UI windows; needs the local runtime only.
+#[test]
+#[ignore = "heavy: real iced VM sessions (two windows, brief); serial evidence run via --ignored"]
+fn run_ui_vm_real_session_launched_input_quit_and_restart() {
+    let (dir, request) = vm_ui_project();
+    let mut tool = ToolProcess::spawn();
+
+    // --- Session 1: Launched with the accurate URL, then Input-driven
+    // interactive quit.
+    tool.send(&envelope(
+        90,
+        ClientBody::RunUi {
+            request: WireRequest(request),
+        },
+    ));
+    let (launched, seen) = next_until(&mut tool, |e| {
+        matches!(
+            &e.body,
+            ServerBody::Event {
+                event: auto_tool_protocol::ToolEvent::Launched { .. }
+            }
+        )
+    });
+    assert_eq!(launched.id, 90);
+    let url = match launched.body {
+        ServerBody::Event {
+            event: auto_tool_protocol::ToolEvent::Launched { url },
+        } => url,
+        other => panic!("expected Launched, got {other:?}"),
+    };
+    assert!(
+        url.starts_with("http://127.0.0.1:"),
+        "accurate MCP endpoint URL from the real session: {url}"
+    );
+    assert!(
+        seen.iter().any(|e| matches!(
+            &e.body,
+            ServerBody::Event {
+                event: auto_tool_protocol::ToolEvent::Progress { .. }
+            }
+        )),
+        "progress before launch: {seen:?}"
+    );
+    // The real interactive quit: `q` over the Input channel ends the
+    // actually-running UI session.
+    tool.send(&json!({
+        "protocol_version": 1,
+        "id": 91,
+        "body": {"op": "input", "target_id": 90, "data": [113, 10]}
+    }));
+    let (final_run, _) = next_until(&mut tool, |e| matches!(e.body, ServerBody::RunOk { .. }));
+    match final_run.body {
+        ServerBody::RunOk { report } => {
+            assert_eq!(report.outcome, auto_tool_protocol::RunOutcome::Completed);
+            assert_eq!(report.profile, "vm");
+            assert!(report.error.is_none(), "teardown clean: {report:?}");
+            assert_eq!(report.launch.as_deref(), Some(url.as_str()));
+        }
+        other => panic!("expected RunOk(completed), got {other:?}"),
+    }
+
+    // --- Session 2 (R2-01): a second VM run in the SAME host process
+    // works (process isolation), and cancel still closes the window.
+    let (dir2, request2) = vm_ui_project();
+    tool.send(&envelope(
+        92,
+        ClientBody::RunUi {
+            request: WireRequest(request2),
+        },
+    ));
+    let _ = next_until(&mut tool, |e| {
+        matches!(
+            &e.body,
+            ServerBody::Event {
+                event: auto_tool_protocol::ToolEvent::Launched { .. }
+            }
+        )
+    });
+    tool.send(&envelope(93, ClientBody::Cancel { target_id: 92 }));
+    let (cancelled_receipt, _) = next_until(&mut tool, |e| {
+        matches!(e.body, ServerBody::Cancelled { .. })
+    });
+    match cancelled_receipt.body {
+        ServerBody::Cancelled { target_id } => assert_eq!(target_id, 92),
+        other => panic!("expected Cancelled, got {other:?}"),
+    }
+    let (final_run2, _) = next_until(&mut tool, |e| matches!(e.body, ServerBody::RunOk { .. }));
+    match final_run2.body {
+        ServerBody::RunOk { report } => {
+            assert_eq!(report.outcome, auto_tool_protocol::RunOutcome::Cancelled);
+        }
+        other => panic!("expected RunOk(cancelled), got {other:?}"),
+    }
+
+    // The tool keeps serving A requests; clean EOF exit 0.
+    tool.send(&envelope(94, ClientBody::Describe));
+    assert!(matches!(
+        parse_response(&tool.next_response()).body,
+        ServerBody::DescribeOk { .. }
+    ));
+    let (code, stderr) = tool.close_stdin_and_wait();
+    assert_eq!(code, 0);
+    assert!(
+        stderr.contains("AutoUI MCP: listening on"),
+        "real MCP banner on the log stream: {}",
+        stderr.lines().take(6).collect::<Vec<_>>().join(" | ")
+    );
+    let _ = dir;
+    let _ = dir2;
+}

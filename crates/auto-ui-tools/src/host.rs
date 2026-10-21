@@ -76,21 +76,10 @@ pub fn tool_descriptor() -> ToolDescriptor {
     }
 }
 
-/// A job for the OS main thread (iced requirement).
-enum MainJob {
-    RunVm {
-        code: String,
-        path: Option<String>,
-        done: mpsc::Sender<auto_lang_core::AutoResult<String>>,
-    },
-}
-
 struct InFlight {
     id: u64,
     operation: &'static str,
     io: Arc<proc_host::RunIo>,
-    /// Last announced service URL (also mirrored into the final report).
-    launched: Arc<Mutex<Option<String>>>,
 }
 
 #[derive(Default)]
@@ -124,7 +113,13 @@ struct HostShared<W: Write, L: Write> {
     log: Mutex<L>,
     max_frame_bytes: usize,
     ops: Mutex<Registry>,
-    main_tx: Mutex<mpsc::Sender<MainJob>>,
+    /// Shutdown signal: held by every HostShared Arc (loop thread +
+    /// workers); the main run_tool frame waits on its receiver until every
+    /// holder drops (T-05 R2: the VM session itself runs in an isolated
+    /// child process — no main-thread executor jobs remain). Never sent
+    /// to — the Sender's lifetime IS the signal.
+    #[allow(dead_code)]
+    shutdown_tx: Mutex<mpsc::Sender<()>>,
     exit_code: Arc<AtomicI32>,
 }
 
@@ -158,11 +153,26 @@ impl<W: Write, L: Write> HostShared<W, L> {
             })
     }
 
-    /// Respond and record fatal failures (non-zero exit precedence).
+    /// Respond and treat fatal failures as host-fatal (F04, R2): the
+    /// control stream is broken — record the non-zero code AND terminate
+    /// the process immediately (a client that keeps stdin open must not
+    /// keep a dead-on-paper host alive).
     fn respond_recorded(&self, envelope: &ServerEnvelope) {
         if let Err(code) = self.respond(envelope) {
             self.record_exit(code);
+            self.fatal_shutdown(code);
         }
+    }
+
+    /// Host-fatal shutdown (F04): cancel in-flight work, record, exit —
+    /// no further serving is possible once the control stream rejected a
+    /// write.
+    fn fatal_shutdown(&self, code: i32) {
+        if let Some(flight) = self.ops.lock().unwrap().in_flight.take() {
+            flight.io.cancel();
+        }
+        eprintln!("auto-ui-tool exiting with code {code}");
+        std::process::exit(code);
     }
 
     /// Enqueue an event envelope for an in-flight operation's id.
@@ -189,14 +199,14 @@ where
     W: Write + Send + 'static,
     L: Write + Send + 'static,
 {
-    let (main_tx, main_rx) = mpsc::channel::<MainJob>();
+    let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
     let exit_code = Arc::new(AtomicI32::new(EXIT_CODE_OK));
     let host = Arc::new(HostShared {
         control: Mutex::new(control),
         log: Mutex::new(log),
         max_frame_bytes,
         ops: Mutex::new(Registry::default()),
-        main_tx: Mutex::new(main_tx),
+        shutdown_tx: Mutex::new(shutdown_tx),
         exit_code: Arc::clone(&exit_code),
     });
 
@@ -222,15 +232,11 @@ where
     // main_tx clone) drops — keeping one alive here would deadlock at EOF.
     drop(host);
 
-    // The OS main thread is the UI executor (iced constraint).
-    for job in main_rx {
-        match job {
-            MainJob::RunVm { code, path, done } => {
-                let result = auto_ui_runtime::run_file_dynamic_ui(&code, path.as_deref());
-                let _ = done.send(result);
-            }
-        }
-    }
+    // Shutdown signal: ends when every HostShared holder (loop thread +
+    // workers) drops. The VM session itself runs in an isolated
+    // `--internal-vm-exec` child process (T-05 R2 / R2-01) — iced/winit's
+    // one-event-loop-per-process constraint is satisfied by construction.
+    while shutdown_rx.recv().is_ok() {}
     // Channel closed: loop thread and all workers finished.
     let code = exit_code.load(Ordering::SeqCst);
     let _ = loop_thread.join();
@@ -424,6 +430,7 @@ fn start_work_op<W: Write + Send + 'static, L: Write + Send + 'static>(
                         ToolError::budget_exceeded("max_progress_bytes_per_op", limit, observed),
                     )) {
                         host.record_exit(code);
+                        host.fatal_shutdown(code);
                     }
                     // Abort like a cancel: trees die, flow checkpoints
                     // return Cancelled.
@@ -434,6 +441,7 @@ fn start_work_op<W: Write + Send + 'static, L: Write + Send + 'static>(
             if let Err(code) = host.respond(&envelope) {
                 host.record_exit(code);
                 hook_io.cancel();
+                host.fatal_shutdown(code);
             }
         });
         *io.on_progress.lock().unwrap() = Some(progress_hook);
@@ -452,6 +460,7 @@ fn start_work_op<W: Write + Send + 'static, L: Write + Send + 'static>(
                 },
             ) {
                 host.record_exit(code);
+                host.fatal_shutdown(code);
             }
         }));
     }
@@ -493,7 +502,7 @@ fn start_work_op<W: Write + Send + 'static, L: Write + Send + 'static>(
             ));
         }
         let writer_host = Arc::clone(host);
-        std::thread::Builder::new()
+        let writer_handle = std::thread::Builder::new()
             .name(format!("work-input:{id}"))
             .spawn(move || {
                 for (request_id, target_id, data) in input_rx {
@@ -512,46 +521,54 @@ fn start_work_op<W: Write + Send + 'static, L: Write + Send + 'static>(
                     };
                     if let Err(code) = writer_host.respond(&response) {
                         writer_host.record_exit(code);
+                        writer_host.fatal_shutdown(code);
                     }
                 }
             })
             .expect("spawn input writer thread");
+        *io.input_writer.lock().unwrap() = Some(writer_handle);
     }
 
-    // Terminate extra (F-815-T05-R1-03): cancel/EOF requests the runtime's
-    // iced host exit, unblocking the main-thread VM session so the worker
-    // can finish with a consistent Cancelled outcome.
+    // VM session hook (R2-01): every VM run executes in an ISOLATED child
+    // process of this very binary (`--internal-vm-exec`) — iced/winit
+    // allows one event loop per process, so process isolation is what
+    // makes serial VM sessions (cancel → run again → …) work without
+    // RecreationAttempt. The child is an owned tracked tree: cancel/EOF
+    // kills it, its stdout forwards to the log stream (URL sniffing
+    // announces the session's MCP endpoint), and its stdin is fed by the
+    // `Input` channel (`q` quits the session for real).
     {
-        let extra: Arc<dyn Fn() + Send + Sync> = Arc::new(|| {
-            auto_ui_runtime::ui::iced::renderer::request_host_exit();
-        });
-        io.on_terminate.lock().unwrap().push(extra);
-    }
-
-    // VM main-thread hand-off hook (run_ui only reaches it).
-    {
-        let main_tx = host.main_tx.lock().unwrap().clone();
         *io.on_vm_main.lock().unwrap() = Some(Arc::new(move |code: &str, path: Option<&str>| {
-            let (done_tx, done_rx) = mpsc::channel();
-            main_tx
-                .send(MainJob::RunVm {
-                    code: code.to_string(),
-                    path: path.map(str::to_string),
-                    done: done_tx,
-                })
-                .map_err(|_| {
-                    auto_lang_core::error::AutoError::Msg(
-                        "main-thread UI executor unavailable".to_string(),
-                    )
-                })?;
-            done_rx
-                .recv()
-                .map_err(|_| {
-                    auto_lang_core::error::AutoError::Msg(
-                        "main-thread UI executor dropped the job".to_string(),
-                    )
-                })
-                .and_then(|inner| inner)
+            let _ = code; // the child reads the entry from disk itself
+            let entry = path
+                .map(str::to_string)
+                .unwrap_or_else(|| "src/front/app.at".to_string());
+            let exe = std::env::current_exe().map_err(|e| {
+                auto_lang_core::error::AutoError::Msg(format!(
+                    "vm session exe resolution failed: {e}"
+                ))
+            })?;
+            let mut spec = crate::proc_host::TrackedSpawn::new(
+                exe.to_string_lossy(),
+                vec!["--internal-vm-exec".to_string(), entry],
+            );
+            // Pipe the child's stderr too: the session's real MCP endpoint
+            // banner is a stderr eprintln in the runtime — forwarding and
+            // sniffing it is R2-03's accurate-URL source.
+            spec.pipe_stderr = true;
+            let tracked = crate::proc_host::spawn_tracked(spec, "vm-session").map_err(|e| {
+                auto_lang_core::error::AutoError::Msg(format!("vm session spawn failed: {e}"))
+            })?;
+            let status = crate::proc_host::wait_tracked(&tracked).map_err(|e| {
+                auto_lang_core::error::AutoError::Msg(format!("vm session wait failed: {e}"))
+            })?;
+            if status.success() {
+                Ok("vm session closed".to_string())
+            } else {
+                Err(auto_lang_core::error::AutoError::Msg(format!(
+                    "vm session exited with {status}"
+                )))
+            }
         }));
     }
 
@@ -562,7 +579,6 @@ fn start_work_op<W: Write + Send + 'static, L: Write + Send + 'static>(
             id,
             operation,
             io: Arc::clone(&io),
-            launched: Arc::clone(&launched),
         });
     }
 

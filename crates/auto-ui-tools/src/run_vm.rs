@@ -22,7 +22,9 @@ use crate::rust_ui::{probe_service_ready, start_api_server, stop_api_server, Pac
 /// UI 入口走动态 UI 管线（iced），否则走通用解释器执行（#[api] serve
 /// 检测在执行器内）。32MB 栈线程承载（扁平化 api.at+db.at+types.at 超
 /// 1MB 默认栈）。
-fn run_entry_file(path: &str) -> auto_lang_core::AutoResult<String> {
+/// T-05 R2（R2-01）：内部 VM 会话执行臂的入口（bin --internal-vm-exec
+/// 消费）；legacy CLI 与宿主钩子同走本口。
+pub fn run_entry_file(path: &str) -> auto_lang_core::AutoResult<String> {
     let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
     if auto_ui_runtime::has_ui_keywords(&code) {
         return execute_vm_entry(&code, Some(path));

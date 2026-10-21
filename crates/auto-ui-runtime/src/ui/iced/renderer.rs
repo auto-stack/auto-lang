@@ -10044,24 +10044,32 @@ fn is_panic_probe_event(event: &str) -> bool {
     event.to_ascii_lowercase().replace('_', "") == "panicprobe"
 }
 
-/// PLAN-815 T-05（F03）：宿主退出请求（进程级单例）。嵌入式宿主
-/// （auto-ui-tool）在取消/EOF 时置位；`run_session` 的订阅轮询到后以
-/// `DesktopEvent::HostExitRequested` 收口事件循环（`iced::exit`）。CLI
-/// 直跑形态无人置位——零行为变化。每次 `run_session` 启动清零，陈旧
-/// 请求不会杀死新会话。
-static HOST_EXIT_REQUESTED: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+/// PLAN-815 T-05（F03，R2 根修）：宿主退出请求代数（进程级单调计数）。
+/// 嵌入式宿主（如 vm 会话子进程的 stdin 退出通道）调用
+/// [`request_host_exit`] 递增；`run_session` 启动时快照当前代数，其订阅
+/// 只在代数 **大于快照** 时收口事件循环（`iced::exit`）。代数单调递增、
+/// 永不清零：会话启动前/初始化期间已到达的请求（代数 > 快照）不会丢，
+/// 上一会话的陈旧请求（代数 ≤ 快照）不会误杀下一会话——R2 实测的
+/// “启动清零吞掉本次请求”竞态在结构上不存在。CLI 直跑形态无人递增，
+/// 零行为变化。
+static HOST_EXIT_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// 请求当前 iced 会话退出（PLAN-815 T-05；宿主取消/EOF 收口入口）。
-/// 返回请求前的状态。会话未运行时置位会在下一次 `run_session` 启动时
-/// 被清零（不跨会话滞留）。
-pub fn request_host_exit() -> bool {
-    HOST_EXIT_REQUESTED.swap(true, std::sync::atomic::Ordering::SeqCst)
+/// 请求当前 iced 会话退出（递增退出请求代数；返回新代数）。
+pub fn request_host_exit() -> u64 {
+    HOST_EXIT_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
 }
 
-/// 宿主退出请求当前是否置位。
-pub fn host_exit_requested() -> bool {
-    HOST_EXIT_REQUESTED.load(std::sync::atomic::Ordering::SeqCst)
+/// 当前退出请求代数（`run_session` 启动快照用）。
+pub fn host_exit_generation() -> u64 {
+    HOST_EXIT_GENERATION.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// 当前会话的启动快照（iced 每进程单事件循环——同一时刻仅一会话，
+/// 无并发写竞态；`run_session` 启动时写入）。
+static CURRENT_SESSION_SINCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn current_host_exit_since() -> u64 {
+    CURRENT_SESSION_SINCE.load(std::sync::atomic::Ordering::SeqCst)
 }
 
 /// Global MCP action channel receiver (Plan 278).
@@ -18936,9 +18944,11 @@ fn run_session(
     mode: RunMode,
     opts: DesktopOptions,
 ) -> AppResult<String> {
-    // PLAN-815 T-05（F03）：新会话从零开始——陈旧的宿主退出请求（会话
-    // 未运行时置位）不得杀死本次运行；消费（iced::exit）后自然不再置位。
-    HOST_EXIT_REQUESTED.store(false, std::sync::atomic::Ordering::SeqCst);
+    // PLAN-815 T-05（F03，R2 根修）：新会话快照退出请求代数——本会话只
+    // 响应快照之后的新请求（初始化期间到达的取消不丢、上一会话的陈旧
+    // 请求不误杀；订阅经 host_exit_poll_subscription(since) 消费）。
+    let host_exit_since = host_exit_generation();
+    CURRENT_SESSION_SINCE.store(host_exit_since, std::sync::atomic::Ordering::SeqCst);
     // Stage B P-7：宿主显式 shell pack 注入（OnceLock 首值胜；后续幂等）。
     if let Some(pack_dir) = &opts.shell_pack {
         crate::ui::shell::set_shell_pack_override(pack_dir.clone());
@@ -25411,8 +25421,11 @@ fn run_session(
             use crate::ui::session::DesktopMessage as DM;
             let mut subs: Vec<iced::Subscription<DM>> = Vec::new();
             // PLAN-815 T-05（F03）：宿主退出请求轮询——无条件订阅（CLI 形态
-            // 无人置位，空拍零消息；不依赖 primary app 存在）。
-            subs.push(crate::ui::session::host_exit_poll_subscription());
+            // 无人递增，空拍零消息；不依赖 primary app 存在）。`since` =
+            // run_session 启动快照（见 F03 R2 根修注记）。
+            subs.push(crate::ui::session::host_exit_poll_subscription(
+                current_host_exit_since(),
+            ));
             for (app_id, app) in state.apps.iter() {
                 let app_id = *app_id;
                 // PLAN-650 E-3：hot_reload 降频/门控——AUTOUI_HOT_RELOAD=0 全关；
