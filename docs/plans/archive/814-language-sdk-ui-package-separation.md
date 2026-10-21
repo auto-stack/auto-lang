@@ -1189,6 +1189,14 @@ stage: merge；mode: archived recovery-only；plan_id: PLAN-814；plan_revision:
 
 原B已实际交付/归档事实不回滚，archived及原15/15作为既有流程历史保留；**本次不再授全部收尾pass**，不以归档状态掩盖发现。按技能“report blocked for reconciliation rather than routing an archive into work”，代码由独立后续修复承接；本次仅完成清理/文档恢复并准确记录阻断，未改实现/默认分支历史。新文档提交不触发新的批量回归；原批量收据保持。
 
+### F814-MERGE-01 独立闭环（2026-10-21）：收尾核验 pass
+
+stage: merge；mode: archived recovery-only；plan_revision: 3；outcome: **pass**；reviewer: 本聊天Codex，未实施修复。受验修复`f97a9e2a964198b366105cad68b246360a9c5211`已ff合入master，核对基线`e4f655be17116ea3596d99d3b83e22465e502c64`。
+
+[独立复核与实际执行收据](../attachments/814/merge-recovery-20261021.md)：原三App启动测试去模块缩进后函数体完全一致，迁至runtime测试层并经真实ui-iced门挂载，消费compiler单源注册表再导出。当前t选择面逐ID核对old5328/current5328、missing=[]/added=[]，恢复的runtime新ID明确matches；不是仅比总数。独立定向运行该测试exit0、1/1 PASS（0.507s，run ID ff5133c2-7955-4359-9b5f-7f6943a65859），三触面文件fmt通过；原计划组与修复组/分支/worktree无残留。
+
+**F814-MERGE-01 CLOSED，先前恢复blocked判定关闭，PLAN-814收尾核验pass。** archived/15/15终态保持，不重新实施/合入、不改canonical或ledger。原批量回归收据75b26c253仍按其旧窗口保留，不冒称覆盖后续修复；本次未运行整档，仅定向执行、逐ID枚举及文档核验。
+
 ## 10. 待澄清事项
 
 **R4-01 合同裁定（已决，2026-10-20）**：用户批准 R6 复审整理的两项窄增量

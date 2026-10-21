@@ -1,5 +1,7 @@
 # PLAN-814 合入恢复核对（2026-10-21）
 
+**最新独立核验：pass，F814-MERGE-01 CLOSED。** 修复 `f97a9e2a9` 已在master；5328项逐ID无缺失/无新增，迁移测试真实执行1/1 PASS。下文blocked为修复前历史，独立闭环证据见末节。
+
 stage: merge；mode: archived recovery-only；plan_revision: 3；outcome: **blocked（测试选择缺口待对账/后续修复）**。
 
 ## 已验证交付与恢复范围
@@ -71,3 +73,14 @@ compiler清单只声明`ui`/`ui-headless`，没有`ui-iced`，也不应反向依
   AC-05/T-07 选择面零丢失）恢复，收尾核验可判 pass。未触发整档
   （测试迁移 scoped 验证即 L0 门禁）；批量回归收据 75b26c253 覆盖
   窗口不含本提交，下次到期判定按新 last_covered 顺延。
+
+## 独立闭环复核（2026-10-21，pass）
+
+stage: merge；mode: archived recovery-only；reviewer: 本聊天Codex，未实施该修复；outcome: **pass**。受验修复 `f97a9e2a964198b366105cad68b246360a9c5211`，核对主库基线 `e4f655be17116ea3596d99d3b83e22465e502c64`；两者间仅本报告簿记，无实施漂移。
+
+- 与`6ec93ed61`中compiler原件比对，去除模块层级带来的缩进后，迁移测试整个函数（含三个真实App、窗口数、标题与焦点断言）完全一致。新模块经runtime真实`all(test, feature = "ui-iced")`门挂载，消费compiler注册表的runtime再导出，没有新增compiler feature或反向依赖。
+- 独立运行当前t别名的`nextest list`，以修复前同一5328项冻结集合逐ID对账：使用app_registry/i18n owner迁移、store_deps迁移及此测试的明确新路径映射，**old=5328/current=5328/missing=[]/added=[]**。恢复ID `auto-ui-runtime ui_tests::plan814_app_registry_launch_tests::launch_three_real_apps_via_registry_resolver` 确实为matches，不只核对总数。
+- 独立执行 `cargo nextest run --offline --locked -p auto-ui-runtime --lib --features ui-iced -E 'test(launch_three_real_apps_via_registry_resolver)'`：exit0，run ID `ff5133c2-7955-4359-9b5f-7f6943a65859`，**1 test run /1 passed**，单测0.507s、测试段0.516s（另有本机构建时间）。1887 skipped是该定向命令未选择的其它测试，恢复测试本身实际执行。
+- 三个改动Rust文件rustfmt检查exit0；修复是当前master祖先。Plan814原组与fix-p814-launch-test组、相关分支/worktree注册均不存在。compiler25/25及双包check保留work的验证记录，本轮不冒称重跑。
+
+**F814-MERGE-01与本恢复报告的blocked判定正式闭合，PLAN-814收尾核验pass。** 归档终态与15/15保持，未重开计划，未重复合入或改canonical/ledger。批量收据75b26c253保持其原覆盖窗口，不声称已覆盖本修复；本轮只做定向执行、选择面与文档核验，没有运行整档。
