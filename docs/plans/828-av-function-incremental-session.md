@@ -193,6 +193,10 @@ T-01在D门后先完成有界全路径首例，冻结 `attachments/828/contract-
 
 ## 9. 复审记录
 
+2026-10-21 stage:work(repair r13a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(av-core): numeric-token identity in re-anchoring" | r12a-check两例（同根）闭合并收编回归(r1回归套件53/53=50前+3r12a含9格十进制拼写矩阵)：
+F-04/R12a→字节级对齐看不见'1'与'01'是同一token的不同拼写。三处协同修复：token_eq十进制token按数值相等；find_subslice命中落在数字run内部时向左吸附到token起点（'01'的后缀'1'不是token起点）；from_texts吸收在NEW侧延续数字run的后缀字节使两个中段持有完整token（朴素后缀修剪把'01'剪成裸'0'）。同值字面量编辑+后续trivia重写的交错丢尾段同根消除
+已知开放不变：恢复载荷无span。回归面：r1套件53/53、core 22、主17、scalar差分6、vertical/cache/binding绿；r12a-check材料自C盘复制入分支(attachments/828/r12a-check/) | OPEN不变：F-01真·函数级前端；F-02安装payload重建；F-05b取消/关闭态；F-09剩余资源预算轴；F-10 A07/依赖查询/GC（+恢复span sidecar）；F-11 changed-only持久化+manifest驱动恢复；F-12正式worker/IPC/双线内存门（含时延归因）；F-14文档重整+SD文本 | next_responsible_role:work(继续，同一树)
+
 2026-10-21 stage:work(repair r12a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(av-core): comment-aware expression anchoring in source maps" | r11a-check两类失败（同根）闭合并收编回归(r1回归套件50/50=47前+3r11a含4格括号行注释矩阵)：
 F-04/R11a→重锚机制把行注释文本当代码：comment_ranges()标记//..EOL区间；词法token化跳过注释（注释字节不是表达式锚点）、find_subslice拒绝与注释重叠的匹配——' 1 // 1 / 0
  / 0 '锚定可执行token（注释前的1、注释后的/ 0）而非注释内首个文本子串'1 / 0'；注释后字面量重写的丢尾段同根消除（先行注释编辑正确重锚→后续回退保头尾）
