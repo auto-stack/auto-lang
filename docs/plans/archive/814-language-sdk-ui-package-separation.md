@@ -1165,6 +1165,14 @@ auto-lang` | branch: `codex/plan-814-dev` | reviewed: R15 pass 绑 `6f1cac8cb`
   `P814-B-MERGE`、tests `P814-UIR-T`。
 - **815 交接**：SDK/UI 出口已发布（A/B 两阶段均在 master），815 B 期
   可重建 worktree 继续（其 T-04 并集已含本批组合）。
+- **cleaned（含一项精确 pending）**：wt-guard 双 worktree clean；tmp-814-base
+  与 auto-down 兄弟 worktree、codex/plan-814-dev 分支（was 93a25c924）、
+  组内全部证据/scratch 目录（事故 diff 已保全入 attachments/
+  t04-incident-archive）均移除；**残项**：`D:/autostack/.wt/lang-814/
+  auto-lang/` 目录剩 examples/ui/002-counter 生成产物+node_modules 被
+  存活 node/esbuild 进程锁（git worktree 注册已清零、分支已删、无源码/
+  无登记——纯未注册残留目录），持有进程无法安全归属（可能属其他会话）
+  不盲杀；待占用进程退出后 `rm -rf` 即收口，不影响任何已验证交付面。
 - **后续项**：tf 批量回归到期判定（收据核查）；本仓无 backend/bundle
   生产件（landing≠deployment 观察项：无——语言仓交付面=crates+792
   消费，consumer 读回已执行）。
