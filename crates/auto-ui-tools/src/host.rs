@@ -1,4 +1,4 @@
-//! PLAN-815 T-05: the threaded tool host.
+//! PLAN-815 T-05: the threaded tool host (R1 rework).
 //!
 //! Architecture (M815-B):
 //!
@@ -8,19 +8,26 @@
 //!   onto worker threads;
 //! - the **OS main thread** becomes the UI executor: the in-process VM UI
 //!   (iced) must run there, so `run_ui` hands the entry off through
-//!   [`MainJob`] and waits for the session result;
+//!   [`MainJob`] and waits for the session result; cancel/EOF terminate
+//!   the iced loop via the runtime's host-exit request
+//!   (F-815-T05-R1-03), so the session returns and the worker finishes;
 //! - one **work operation in flight at a time** (process-global run paths
 //!   and env channels make this the honest concurrency contract; a second
 //!   concurrent work op gets a named busy error before any side effect);
-//! - `run_ui` is cancellable (owned children are killed; wait loops and
-//!   step boundaries observe the flag) and interactive (the `Input`
-//!   protocol message forwards bytes to the foreground child's stdin —
-//!   Vite genuinely quits on `q` + Enter);
+//! - `run_ui` is cancellable (owned child TREES are terminated and reaped
+//!   before the final receipt, F-815-T05-R1-01) and interactive (the
+//!   `Input` protocol message queues bytes for the foreground child's
+//!   stdin; the blocking write runs on a dedicated writer thread, so the
+//!   protocol loop stays responsive to cancel/describe/EOF no matter how
+//!   un-readingly the child behaves, F-815-T05-R1-02);
 //! - child stdout is forwarded to the host **log** stream; the control
 //!   stream stays framed JSON by construction;
 //! - the per-op progress budget is enforced host-side before anything
 //!   reaches the control stream (overflow emits `BudgetExceeded` and
-//!   aborts the operation like a cancel).
+//!   aborts the operation like a cancel);
+//! - control-write failures anywhere (loop, workers, hooks, input writer)
+//!   record the internal exit code, and a later clean EOF cannot override
+//!   a recorded non-zero status (F-815-T05-R1-04).
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -93,11 +100,7 @@ struct Registry {
 }
 
 enum Lookup {
-    InFlight(
-        &'static str,
-        Arc<proc_host::RunIo>,
-        Arc<Mutex<Option<String>>>,
-    ),
+    InFlight(&'static str, Arc<proc_host::RunIo>),
     Served(&'static str),
     Unknown,
 }
@@ -106,11 +109,7 @@ impl Registry {
     fn lookup(&self, id: u64) -> Lookup {
         if let Some(flight) = &self.in_flight {
             if flight.id == id {
-                return Lookup::InFlight(
-                    flight.operation,
-                    Arc::clone(&flight.io),
-                    Arc::clone(&flight.launched),
-                );
+                return Lookup::InFlight(flight.operation, Arc::clone(&flight.io));
             }
         }
         match self.served.get(&id) {
@@ -134,8 +133,18 @@ impl<W: Write, L: Write> HostShared<W, L> {
         let _ = writeln!(self.log.lock().unwrap(), "{message}");
     }
 
+    /// Record an exit status (F-815-T05-R1-04): **non-zero wins** — a clean
+    /// EOF (0) recorded after a worker/hook control-write failure must not
+    /// downgrade the process exit to success.
+    fn record_exit(&self, code: i32) {
+        if code != EXIT_CODE_OK {
+            self.exit_code.store(code, Ordering::SeqCst);
+        }
+    }
+
     /// Serialize and write one envelope on the control stream. Frame-level
-    /// write failures are fatal (internal) — the caller decides the exit.
+    /// write failures are fatal (internal) and are recorded so the final
+    /// exit code reflects them even when the loop later ends on clean EOF.
     fn respond(&self, envelope: &ServerEnvelope) -> Result<(), i32> {
         let json = serde_json::to_value(envelope).map_err(|e| {
             self.log_line(&format!("fatal: response serialization failed: {e}"));
@@ -147,6 +156,13 @@ impl<W: Write, L: Write> HostShared<W, L> {
                 self.log_line(&format!("fatal: control stream write failed: {e}"));
                 EXIT_CODE_INTERNAL
             })
+    }
+
+    /// Respond and record fatal failures (non-zero exit precedence).
+    fn respond_recorded(&self, envelope: &ServerEnvelope) {
+        if let Err(code) = self.respond(envelope) {
+            self.record_exit(code);
+        }
     }
 
     /// Enqueue an event envelope for an in-flight operation's id.
@@ -164,7 +180,9 @@ impl<W: Write, L: Write> HostShared<W, L> {
 ///
 /// - control stream (`control`) carries framed JSON only;
 /// - `log` receives free-form human diagnostics and forwarded child output;
-/// - exit codes follow the frozen contract (0 EOF / 1 internal / 2 stream).
+/// - exit codes follow the frozen contract (0 EOF / 1 internal / 2 stream),
+///   with any recorded non-zero status taking precedence over a later
+///   clean EOF (F-815-T05-R1-04).
 pub fn run_tool<R, W, L>(input: R, control: W, log: L, max_frame_bytes: usize) -> i32
 where
     R: Read + Send + 'static,
@@ -187,20 +205,15 @@ where
         .name("i-tool-loop".into())
         .spawn(move || {
             let code = serve_loop(input, Arc::clone(&loop_host));
-            // EOF/fatal shutdown: cancel any in-flight work (kills owned
-            // children) so workers finish; their final envelopes may still
-            // write before the process goes away.
+            // EOF/fatal shutdown: cancel any in-flight work (terminates
+            // owned trees + requests the VM iced exit) so workers finish;
+            // their final envelopes may still write before the process
+            // goes away.
             if let Some(flight) = loop_host.ops.lock().unwrap().in_flight.take() {
                 flight.io.cancel();
-                // Break the hook Arc cycle (see proc_host::uninstall) so
-                // EOF shutdown cannot leak the shared channel state.
-                let io = flight.io;
-                *io.on_progress.lock().unwrap() = None;
-                *io.on_launched.lock().unwrap() = None;
-                *io.on_log_chunk.lock().unwrap() = None;
-                *io.on_vm_main.lock().unwrap() = None;
             }
-            loop_host.exit_code.store(code, Ordering::SeqCst);
+            // A clean EOF only sticks when nothing recorded a failure.
+            loop_host.record_exit(code);
         })
         .expect("spawn protocol loop thread");
 
@@ -232,9 +245,7 @@ fn serve_loop<R: Read, W: Write + Send + 'static, L: Write + Send + 'static>(
         let frame = match auto_tool_protocol::framing::read_frame(&mut input, host.max_frame_bytes)
         {
             Ok(Some(frame)) => frame,
-            Ok(None) => {
-                return EXIT_CODE_OK;
-            }
+            Ok(None) => return EXIT_CODE_OK,
             Err(e) => {
                 host.log_line(&format!("fatal: stream violation: {e}"));
                 return EXIT_CODE_FATAL_STREAM;
@@ -245,7 +256,7 @@ fn serve_loop<R: Read, W: Write + Send + 'static, L: Write + Send + 'static>(
             Err(error) => {
                 let id = frame.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
                 if let Err(e) = host.respond(&ServerEnvelope::error(id, error)) {
-                    host.exit_code.store(e, Ordering::SeqCst);
+                    host.record_exit(e);
                     return e;
                 }
                 continue;
@@ -253,18 +264,20 @@ fn serve_loop<R: Read, W: Write + Send + 'static, L: Write + Send + 'static>(
         };
         host.log_line(&format!("accepted request id={id} op={}", body.operation()));
 
-        let response = match body {
+        // Input may defer its receipt to the writer thread (F02): None
+        // means queued — the writer responds with InputAck/Error later.
+        let deferred_response: Option<ServerEnvelope> = match body {
             ClientBody::Describe => {
                 // Bounded inline ops are recorded as served so later
                 // cancel/input target them honestly (NotCancellable /
                 // already-completed) instead of "unknown target".
                 host.ops.lock().unwrap().served.insert(id, "describe");
-                ServerEnvelope {
+                Some(ServerEnvelope {
                     id,
                     body: ServerBody::DescribeOk {
                         descriptor: tool_descriptor(),
                     },
-                }
+                })
             }
             ClientBody::ValidateProject { request } => {
                 let report = validate::validate_request(&request.0);
@@ -273,33 +286,35 @@ fn serve_loop<R: Read, W: Write + Send + 'static, L: Write + Send + 'static>(
                     .unwrap()
                     .served
                     .insert(id, "validate_project");
-                ServerEnvelope {
+                Some(ServerEnvelope {
                     id,
                     body: ServerBody::ValidateOk { report },
-                }
+                })
             }
             ClientBody::GenerateUi { request } => {
                 match start_work_op(&host, id, "generate_ui") {
                     Ok(worker) => {
                         worker.spawn_generate(request);
-                        continue; // response comes from the worker
+                        None // response comes from the worker
                     }
-                    Err(error) => ServerEnvelope::error(id, error),
+                    Err(error) => Some(ServerEnvelope::error(id, error)),
                 }
             }
             ClientBody::RunUi { request } => match start_work_op(&host, id, "run_ui") {
                 Ok(worker) => {
                     worker.spawn_run(request);
-                    continue; // response comes from the worker
+                    None // response comes from the worker
                 }
-                Err(error) => ServerEnvelope::error(id, error),
+                Err(error) => Some(ServerEnvelope::error(id, error)),
             },
             ClientBody::Input { target_id, data } => handle_input(&host, id, target_id, data),
-            ClientBody::Cancel { target_id } => handle_cancel(&host, id, target_id),
+            ClientBody::Cancel { target_id } => Some(handle_cancel(&host, id, target_id)),
         };
-        if let Err(e) = host.respond(&response) {
-            host.exit_code.store(e, Ordering::SeqCst);
-            return e;
+        if let Some(response) = deferred_response {
+            if let Err(e) = host.respond(&response) {
+                host.record_exit(e);
+                return e;
+            }
         }
     }
 }
@@ -380,7 +395,8 @@ fn start_work_op<W: Write + Send + 'static, L: Write + Send + 'static>(
     let io = proc_host::current().expect("RunIo just installed");
     let launched = Arc::new(Mutex::new(None));
 
-    // Progress hook with host-side budget enforcement.
+    // Progress hook with host-side budget enforcement; a control-write
+    // failure here records the internal exit and cancels the op (F04).
     {
         let host = Arc::clone(host);
         let budget = Arc::new(AtomicU64::new(0));
@@ -403,17 +419,22 @@ fn start_work_op<W: Write + Send + 'static, L: Write + Send + 'static>(
             let limit = Budgets::contract().max_progress_bytes_per_op as u64;
             if observed > limit {
                 if !overflow.swap(true, Ordering::SeqCst) {
-                    let _ = host.respond(&ServerEnvelope::error(
+                    if let Err(code) = host.respond(&ServerEnvelope::error(
                         id,
                         ToolError::budget_exceeded("max_progress_bytes_per_op", limit, observed),
-                    ));
-                    // Abort like a cancel: children die, flow checkpoints
+                    )) {
+                        host.record_exit(code);
+                    }
+                    // Abort like a cancel: trees die, flow checkpoints
                     // return Cancelled.
                     hook_io.cancel();
                 }
                 return;
             }
-            let _ = host.respond(&envelope);
+            if let Err(code) = host.respond(&envelope) {
+                host.record_exit(code);
+                hook_io.cancel();
+            }
         });
         *io.on_progress.lock().unwrap() = Some(progress_hook);
     }
@@ -422,16 +443,16 @@ fn start_work_op<W: Write + Send + 'static, L: Write + Send + 'static>(
     {
         let host = Arc::clone(host);
         let launched = Arc::clone(&launched);
-        let io = Arc::clone(&io);
         *io.on_launched.lock().unwrap() = Some(Box::new(move |url| {
             *launched.lock().unwrap() = Some(url.to_string());
-            let _ = host.emit_event(
+            if let Err(code) = host.emit_event(
                 id,
                 ToolEvent::Launched {
                     url: url.to_string(),
                 },
-            );
-            let _ = io; // keep the io alive for the hook lifetime
+            ) {
+                host.record_exit(code);
+            }
         }));
     }
 
@@ -443,6 +464,68 @@ fn start_work_op<W: Write + Send + 'static, L: Write + Send + 'static>(
             let _ = log.write_all(bytes);
             let _ = log.flush();
         }));
+    }
+
+    // Input enqueue hook (F-815-T05-R1-02): a bounded queue feeds a
+    // dedicated writer thread — the protocol loop never blocks on a
+    // non-reading child's stdin, and the InputAck/Error receipt comes
+    // from the writer after the real (cancellable) write.
+    {
+        let (input_tx, input_rx) =
+            mpsc::sync_channel::<(u64, u64, Vec<u8>)>(proc_host::INPUT_QUEUE_DEPTH);
+        {
+            let enqueue_io = Arc::clone(&io);
+            *io.on_input_enqueue.lock().unwrap() = Some(Box::new(
+                move |request_id: u64, target_id: u64, data: Vec<u8>| {
+                    // Keep the enqueue honest about the current foreground.
+                    if enqueue_io.cancelled() {
+                        return Err("operation is being cancelled".to_string());
+                    }
+                    input_tx
+                        .try_send((request_id, target_id, data))
+                        .map_err(|_| {
+                            format!(
+                                "input queue full ({} pending writes); retry after the child drains",
+                                proc_host::INPUT_QUEUE_DEPTH
+                            )
+                        })
+                },
+            ));
+        }
+        let writer_host = Arc::clone(host);
+        std::thread::Builder::new()
+            .name(format!("work-input:{id}"))
+            .spawn(move || {
+                for (request_id, target_id, data) in input_rx {
+                    let response = match proc_host::write_input_stoppable(&data) {
+                        Ok(()) => ServerEnvelope {
+                            id: request_id,
+                            body: ServerBody::InputAck {
+                                target_id,
+                                bytes: data.len() as u64,
+                            },
+                        },
+                        Err(reason) => ServerEnvelope::error(
+                            request_id,
+                            ToolError::invalid_field("data", reason),
+                        ),
+                    };
+                    if let Err(code) = writer_host.respond(&response) {
+                        writer_host.record_exit(code);
+                    }
+                }
+            })
+            .expect("spawn input writer thread");
+    }
+
+    // Terminate extra (F-815-T05-R1-03): cancel/EOF requests the runtime's
+    // iced host exit, unblocking the main-thread VM session so the worker
+    // can finish with a consistent Cancelled outcome.
+    {
+        let extra: Arc<dyn Fn() + Send + Sync> = Arc::new(|| {
+            auto_ui_runtime::ui::iced::renderer::request_host_exit();
+        });
+        io.on_terminate.lock().unwrap().push(extra);
     }
 
     // VM main-thread hand-off hook (run_ui only reaches it).
@@ -504,7 +587,8 @@ impl<W: Write + Send + 'static, L: Write + Send + 'static> WorkStarter<W, L> {
             .spawn(move || {
                 let started = std::time::Instant::now();
                 let result = crate::tool_ops::generate_report(&request.0);
-                // Uninstall first: leftover children die, hooks go quiet.
+                // Uninstall first: leftover trees die, hooks go quiet
+                // (which also ends the input writer).
                 proc_host::uninstall();
                 let response = match result {
                     Ok(mut report) => {
@@ -516,7 +600,7 @@ impl<W: Write + Send + 'static, L: Write + Send + 'static> WorkStarter<W, L> {
                     }
                     Err(error) => ServerEnvelope::error(id, error),
                 };
-                let _ = host.respond(&response);
+                host.respond_recorded(&response);
                 finish_op(&host, id);
             })
             .expect("spawn work thread");
@@ -546,7 +630,7 @@ impl<W: Write + Send + 'static, L: Write + Send + 'static> WorkStarter<W, L> {
                     }
                     Err(error) => ServerEnvelope::error(id, error),
                 };
-                let _ = host.respond(&response);
+                host.respond_recorded(&response);
                 finish_op(&host, id);
             })
             .expect("spawn work thread");
@@ -561,48 +645,47 @@ fn finish_op<W: Write, L: Write>(host: &Arc<HostShared<W, L>>, id: u64) {
     }
 }
 
+/// Queue input bytes for the target's foreground child (F02). None = the
+/// writer thread will deliver the receipt; Some = immediate named error.
 fn handle_input<W: Write, L: Write>(
     host: &Arc<HostShared<W, L>>,
     id: u64,
     target_id: u64,
     data: Vec<u8>,
-) -> ServerEnvelope {
+) -> Option<ServerEnvelope> {
     match host.ops.lock().unwrap().lookup(target_id) {
-        Lookup::InFlight(operation, _io, _launched) => {
+        Lookup::InFlight(operation, _io) => {
             if operation != "run_ui" {
-                return ServerEnvelope::error(
+                return Some(ServerEnvelope::error(
                     id,
                     ToolError::invalid_field(
                         "data",
                         format!("operation '{operation}' has no interactive child process"),
                     ),
-                );
+                ));
             }
-            match proc_host::write_input(&data) {
-                Ok(()) => ServerEnvelope {
+            match proc_host::enqueue_input(id, target_id, data) {
+                Ok(()) => None, // receipt comes from the writer thread
+                Err(reason) => Some(ServerEnvelope::error(
                     id,
-                    body: ServerBody::InputAck {
-                        target_id,
-                        bytes: data.len() as u64,
-                    },
-                },
-                Err(reason) => ServerEnvelope::error(id, ToolError::invalid_field("data", reason)),
+                    ToolError::invalid_field("data", reason),
+                )),
             }
         }
-        Lookup::Served(_) => ServerEnvelope::error(
+        Lookup::Served(_) => Some(ServerEnvelope::error(
             id,
             ToolError::invalid_field(
                 "target_id",
                 format!("operation {target_id} already completed"),
             ),
-        ),
-        Lookup::Unknown => ServerEnvelope::error(
+        )),
+        Lookup::Unknown => Some(ServerEnvelope::error(
             id,
             ToolError::invalid_field(
                 "target_id",
                 format!("no in-flight or completed operation with id {target_id}"),
             ),
-        ),
+        )),
     }
 }
 
@@ -612,8 +695,10 @@ fn handle_cancel<W: Write, L: Write>(
     target_id: u64,
 ) -> ServerEnvelope {
     match host.ops.lock().unwrap().lookup(target_id) {
-        Lookup::InFlight(operation, io, _launched) => {
+        Lookup::InFlight(operation, io) => {
             if operation == "run_ui" {
+                // Terminates owned trees, stops in-flight input writes,
+                // and requests the VM iced exit (F01/F03).
                 io.cancel();
                 ServerEnvelope {
                     id,

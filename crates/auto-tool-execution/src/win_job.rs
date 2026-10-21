@@ -92,6 +92,11 @@ extern "system" {
 
 pub(crate) struct JobHandle(Handle);
 
+// PLAN-815 T-05 R1：内核 Job 句柄本身线程无关（Win32 句柄可由任意线程
+// 使用/关闭）；跨线程移动包装是 sound 的——同步由消费方（如 Mutex 串行
+// 化 terminate/reap）承担。816 原消费单线程持有，未触发本 impl。
+unsafe impl Send for JobHandle {}
+
 impl JobHandle {
     /// 终止 job 内全部进程（树）；退出码统一为 1（调用方以上下文分类，
     /// 不读 code）。

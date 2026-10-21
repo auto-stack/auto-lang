@@ -1142,7 +1142,12 @@ fn run_ui_single_flight_input_busy_then_cancel() {
         "id": 82,
         "body": {"op": "input", "target_id": 80, "data": [113, 10]}
     }));
-    match parse_response(&tool.next_response()).body {
+    // F02 rework: the receipt comes from the dedicated writer thread —
+    // progress events may interleave, so wait for the receipt by kind.
+    let (receipt, _) = next_until(&mut tool, |e| {
+        matches!(e.body, ServerBody::InputAck { .. }) || matches!(e.body, ServerBody::Error { .. })
+    });
+    match receipt.body {
         ServerBody::InputAck { target_id, bytes } => {
             assert_eq!(target_id, 80);
             assert_eq!(bytes, 2);

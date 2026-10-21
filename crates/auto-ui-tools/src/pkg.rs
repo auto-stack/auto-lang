@@ -127,7 +127,15 @@ pub fn run_command_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), Stri
     command.args(args);
     command.current_dir(cwd).env("CI", "true");
     if crate::proc_host::current().is_some() {
-        let tracked = crate::proc_host::spawn_tracked(command, "install")
+        let mut spec =
+            crate::proc_host::TrackedSpawn::new(cmd, args.iter().map(|a| a.to_string()).collect())
+                .with_cwd(cwd)
+                .with_env("CI", "true");
+        #[cfg(windows)]
+        {
+            spec.windows_cmd_shim = true;
+        }
+        let tracked = crate::proc_host::spawn_tracked(spec, "install")
             .map_err(|e| format!("Failed to run {cmd}: {e}"))?;
         let status =
             crate::proc_host::wait_tracked(&tracked).map_err(|e| format!("Failed to wait: {e}"))?;
@@ -237,7 +245,14 @@ pub fn run_script_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), Strin
     // announces the launch spec), its stdin is fed by the protocol `Input`
     // channel (Vite really does quit on `q` + Enter), and cancel kills it.
     if crate::proc_host::current().is_some() {
-        let tracked = crate::proc_host::spawn_tracked(command, "dev-server")
+        let mut spec =
+            crate::proc_host::TrackedSpawn::new(cmd, args.iter().map(|a| a.to_string()).collect())
+                .with_cwd(cwd);
+        #[cfg(windows)]
+        {
+            spec.windows_cmd_shim = true;
+        }
+        let tracked = crate::proc_host::spawn_tracked(spec, "dev-server")
             .map_err(|e| format!("Failed to run {cmd}: {e}"))?;
         let status =
             crate::proc_host::wait_tracked(&tracked).map_err(|e| format!("Failed to wait: {e}"))?;

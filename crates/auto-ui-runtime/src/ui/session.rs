@@ -2887,6 +2887,10 @@ pub enum DesktopEvent {
     /// 焦点进出（Design 23 §2 焦点策略底座；T4c 仅记录 focused_window）。
     WindowFocused(iced::window::Id),
     WindowUnfocused(iced::window::Id),
+    /// PLAN-815 T-05（F03）：宿主请求退出——嵌入式宿主（auto-ui-tool 的
+    /// OS 主线程执行器）经 `renderer::request_host_exit` 从外部收口正在
+    /// 运行的 iced 事件循环；CLI 直跑形态永不产生本变体（零行为变化）。
+    HostExitRequested,
     /// Plan 462：desktop 模式的低频帧泵（空闲时驱动 update→view 重算，
     /// 让 MCP 截图等"view 侧投递 / update 侧消费"的异步请求有机会被
     /// 处理；独立模式不订——保持空闲零开销）。
@@ -3111,6 +3115,61 @@ pub fn live_input_from_wheel(delta: &iced::mouse::ScrollDelta) -> Option<LiveInp
 pub fn desktop_service_tick(ms: u64) -> iced::Subscription<DesktopMessage> {
     iced::time::every(std::time::Duration::from_millis(ms))
         .map(|_| DesktopMessage::Desktop(DesktopEvent::ServiceTick))
+}
+
+/// PLAN-815 T-05（F03）：宿主退出请求轮询订阅（23ms 空拍；置位时产
+/// [`DesktopEvent::HostExitRequested`] 一次后流终止——消费臂 iced::exit
+/// 随即收口会话）。CLI 形态无人置位，零消息零行为变化。
+pub fn host_exit_poll_subscription() -> iced::Subscription<DesktopMessage> {
+    struct HostExitRecipe;
+
+    /// unfold 载荷包装：空拍需要携带 Option<DesktopMessage> 但 unfold 的
+    /// 产出类型固定为 DesktopMessage——用哨兵包一层再 map 开。
+    struct Sentinel(Option<DesktopMessage>);
+
+    impl std::hash::Hash for HostExitRecipe {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            "auto-runtime-host-exit".hash(state);
+        }
+    }
+
+    impl iced_futures::subscription::Recipe for HostExitRecipe {
+        type Output = DesktopMessage;
+
+        fn hash(&self, state: &mut iced_futures::subscription::Hasher) {
+            std::hash::Hash::hash(self, state);
+        }
+
+        fn stream(
+            self: Box<Self>,
+            _input: iced_futures::subscription::EventStream,
+        ) -> iced_futures::BoxStream<Self::Output> {
+            use iced_futures::futures::stream::StreamExt;
+            iced_futures::futures::stream::unfold(false, |requested| async move {
+                if requested {
+                    // 已产出过一枚 HostExitRequested：流终止（消费臂 exit）。
+                    return None;
+                }
+                if crate::ui::iced::renderer::host_exit_requested() {
+                    return Some((
+                        Sentinel(Some(DesktopMessage::Desktop(
+                            DesktopEvent::HostExitRequested,
+                        ))),
+                        true,
+                    ));
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(23)).await;
+                // 空拍：产出哨兵 None 经 filter_map 剔除（直接 yield None
+                // = 流终止，NativeDockEventRecipe/459 同款教训）。
+                Some((Sentinel(None), false))
+            })
+            .map(|Sentinel(msg)| msg)
+            .filter_map(|msg: Option<DesktopMessage>| async move { msg })
+            .boxed()
+        }
+    }
+
+    iced_futures::subscription::from_recipe(HostExitRecipe)
 }
 
 /// Plan 473 T6：原生窗口槽位事件泵——首帧惰性启动 WinEventHook 钩子线程

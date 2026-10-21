@@ -113,12 +113,28 @@ impl Tool {
 }
 
 /// Compile-time face: the descriptor is buildable from the lib alone.
+/// PLAN-815 T-05/F07: the B-stage capability superset (generate_ui/run_ui)
+/// is a legal protocol increment — the A ops stay; the descriptor now
+/// offers all four with honest lifecycle flags.
 #[test]
 fn consumer_reads_tool_descriptor_from_lib() {
     let descriptor = auto_ui_tools::tool_descriptor();
     assert_eq!(descriptor.tool_name, "auto-ui-tool");
     assert_eq!(descriptor.protocol_version, PROTOCOL_VERSION);
-    assert!(!descriptor.offers("generate_ui"));
+    assert!(descriptor.offers("generate_ui"));
+    assert!(descriptor.offers("run_ui"));
+    // A-stage compatibility surface unchanged.
+    assert!(descriptor.offers("describe"));
+    assert!(descriptor.offers("validate_project"));
+    for capability in &descriptor.capabilities {
+        match capability.operation.as_str() {
+            "run_ui" => assert!(capability.cancellable && capability.interactive),
+            other => {
+                assert!(!capability.cancellable, "{other}");
+                assert!(!capability.interactive, "{other}");
+            }
+        }
+    }
 }
 
 /// V-05: describe over a real process, clean EOF shutdown, logs on stderr.
@@ -139,7 +155,7 @@ fn consumer_describes_real_process() {
                     .iter()
                     .map(|c| c.operation.as_str())
                     .collect::<Vec<_>>(),
-                vec!["describe", "validate_project"]
+                vec!["describe", "validate_project", "generate_ui", "run_ui"]
             );
         }
         other => panic!("expected DescribeOk, got {other:?}"),
@@ -251,4 +267,44 @@ fn parse_next(tool: &mut Tool) -> Option<serde_json::Value> {
         }
         tool.buffer.extend_from_slice(&chunk[..n]);
     }
+}
+
+/// PLAN-815 T-05/F07: the B-stage negative over a real process — an
+/// unserved render is rejected by name BEFORE any side effect (the temp
+/// project never gains a gen/ tree), and the stream keeps serving.
+#[test]
+fn consumer_rejects_unserved_render_with_zero_side_effects() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(dir.path().join("pac.at"), "name: \"x\"
+render: \"jet\"
+").unwrap();
+    let request = GenerationRequest::from_descriptor(
+        &parse_document(
+            "name: \"x\"
+render: \"jet\"
+",
+            SourceInfo::from_path(dir.path().join("pac.at")),
+        )
+        .expect("parse"),
+    );
+    let mut tool = Tool::spawn();
+    let response = tool.request(&ClientEnvelope {
+        protocol_version: PROTOCOL_VERSION,
+        id: 7,
+        body: ClientBody::GenerateUi {
+            request: WireRequest(request),
+        },
+    });
+    match response.body {
+        ServerBody::Error { error } => {
+            assert!(
+                matches!(error.kind, ErrorKind::InvalidField { ref field, .. } if field == "request"),
+                "named rejection: {error:?}"
+            );
+        }
+        other => panic!("expected Error, got {other:?}"),
+    }
+    assert!(!dir.path().join("gen").exists(), "zero side effects");
+    let (code, _) = tool.finish();
+    assert_eq!(code, 0);
 }

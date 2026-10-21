@@ -129,7 +129,11 @@ pub fn run_report(request: &GenerationRequest) -> Result<RunReport, ToolError> {
         Ok(FlowEnd::Cancelled) => (RunOutcome::Cancelled, None),
         Err(e) => {
             let text = e.to_string();
-            if proc_host::cancelled_err(&text) {
+            // F-815-T05-R1-05: a cancelled flow is Cancelled regardless of
+            // which sentinel surfaced (rust kill path maps in cargo_status;
+            // vue/vm bail with the exact sentinel) — a plain failure stays
+            // Failed.
+            if proc_host::cancelled() || proc_host::cancelled_err(&text) {
                 (RunOutcome::Cancelled, None)
             } else {
                 (RunOutcome::Failed, Some(text))

@@ -3844,7 +3844,7 @@ pub fn generate_shell_pack_lib(output_dir: &Path) -> AutoResult<()> {
 
 /// 交付闭包内受管源码 crate（相对 crates/；含 auto-lang 全库——语言源码
 /// 尚未拆完，属如实披露的受管包含，非"纯 core/独立 UI 仓"）。
-pub const DELIVERY_CRATES: [&str; 25] = [
+pub const DELIVERY_CRATES: [&str; 26] = [
     "auto-lang",
     "auto-val",
     "auto-atom",
@@ -3899,6 +3899,9 @@ pub const DELIVERY_CRATES: [&str; 25] = [
     // 交付根 fresh metadata/lock 即红（闭包完备性由 delivery 测试静态钉住）。
     "auto-tool-protocol",
     "auto-ui-tools",
+    // PLAN-815 T-05 R1（F01）：owned 子进程执行设施（std-only）——工具
+    // 托管 spawn 的树终止/收尸原语，交付根复算生成/运行闭包必需。
+    "auto-tool-execution",
     "auto-api-gen",
     "auto-man-core",
     "auto-project-model",
@@ -5497,9 +5500,15 @@ pub fn start_api_server(project_dir: &Path) -> Result<Option<std::process::Child
     let mut tracked: Option<std::sync::Arc<crate::proc_host::TrackedChild>> = None;
     let api_server: Result<Option<std::process::Child>, String> =
         if crate::proc_host::current().is_some() {
-            let mut command = std::process::Command::new("cargo");
-            command.args(["run", "--manifest-path", cargo_toml.to_str().unwrap_or(".")]);
-            tracked = crate::proc_host::spawn_tracked(command, "api-server")
+            let spec = crate::proc_host::TrackedSpawn::new(
+                "cargo",
+                vec![
+                    "run".to_string(),
+                    "--manifest-path".to_string(),
+                    cargo_toml.to_string_lossy().to_string(),
+                ],
+            );
+            tracked = crate::proc_host::spawn_tracked(spec, "api-server")
                 .map_err(|e| format!("Failed to start API server: {e}"))
                 .ok();
             Ok(None)
@@ -5599,13 +5608,32 @@ pub fn start_api_server(project_dir: &Path) -> Result<Option<std::process::Child
     }
 }
 
-/// PLAN-815 T-05: hosted-aware cargo invocation — tracked child with
-/// cancel-aware wait when a RunIo is installed, plain `.status()` otherwise
+/// PLAN-815 T-05 R1: hosted-aware cargo invocation — owned tree with
+/// cancel-aware reap when a RunIo is installed (cancelled waits surface
+/// the [`crate::proc_host::CANCELLED_ERR`] sentinel so the final report
+/// classifies Cancelled, F-815-T05-R1-05), plain `.status()` otherwise
 /// (legacy behavior frozen).
-fn cargo_status(mut command: std::process::Command) -> std::io::Result<std::process::ExitStatus> {
+fn cargo_status(
+    program: &str,
+    args: &[String],
+    envs: &[(&str, String)],
+) -> std::io::Result<std::process::ExitStatus> {
     if crate::proc_host::current().is_some() {
-        let tracked = crate::proc_host::spawn_tracked(command, "cargo")?;
-        return crate::proc_host::wait_tracked(&tracked);
+        let mut spec = crate::proc_host::TrackedSpawn::new(program, args.to_vec());
+        for (key, value) in envs {
+            spec = spec.with_env(key, value);
+        }
+        let tracked = crate::proc_host::spawn_tracked(spec, "cargo")?;
+        let status = crate::proc_host::wait_tracked(&tracked)?;
+        if !status.success() && crate::proc_host::cancelled() {
+            return Err(std::io::Error::other(crate::proc_host::CANCELLED_ERR));
+        }
+        return Ok(status);
+    }
+    let mut command = std::process::Command::new(program);
+    command.args(args);
+    for (key, value) in envs {
+        command.env(key, value);
     }
     command.status()
 }
@@ -5683,15 +5711,17 @@ fn build_rust_ui_inner(project_dir: &Path, source: &PacSource) -> AutoResult<()>
         "{}",
         "Building Rust UI project (backend: rust-ui)".bright_cyan()
     );
-    let mut build_command = std::process::Command::new("cargo");
-    build_command
-        .args([
-            "build",
-            "--manifest-path",
-            cargo_toml.to_str().unwrap_or("."),
-        ])
-        .env("CARGO_TARGET_DIR", shared_cargo_target_dir(project_dir));
-    let status = cargo_status(build_command)?;
+    let build_args = vec![
+        "build".to_string(),
+        "--manifest-path".to_string(),
+        cargo_toml.to_string_lossy().to_string(),
+    ];
+    let target_dir = shared_cargo_target_dir(project_dir);
+    let status = cargo_status(
+        "cargo",
+        &build_args,
+        &[("CARGO_TARGET_DIR", target_dir.to_string_lossy().to_string())],
+    )?;
 
     if !status.success() {
         return Err(format!("Cargo build failed with status: {}", status).into());
@@ -5783,24 +5813,30 @@ fn run_rust_ui_inner(project_dir: &Path, args: Vec<String>, source: &PacSource) 
     let original_dir = std::env::current_dir().ok();
     let _ = std::env::set_current_dir(&front_dir);
 
-    let mut cmd = std::process::Command::new("cargo");
-    cmd.args(["run", "--manifest-path", cargo_toml.to_str().unwrap_or(".")]);
+    let mut run_args = vec![
+        "run".to_string(),
+        "--manifest-path".to_string(),
+        cargo_toml.to_string_lossy().to_string(),
+    ];
     // PLAN-031 T-06：`--` 分隔符——以 `-` 开头的透传参数（如 rqhost 注入
     // 的 --autodesk-* 旗标）不加分隔符会被 cargo 自身吞掉报错；无参时
     // 不加（保持既有命令行形状）。
     if !args.is_empty() {
-        cmd.arg("--");
+        run_args.push("--".to_string());
     }
     for arg in &args {
-        cmd.arg(arg);
+        run_args.push(arg.clone());
     }
     // Pin the shared repo target (see build_rust_ui): CWD is src/front for
     // runtime asset resolution, so the workspace's .cargo/config.toml is
     // NOT discovered from here and a cold local target would recompile the
     // whole tree (onig_sys included).
-    cmd.env("CARGO_TARGET_DIR", shared_cargo_target_dir(project_dir));
-
-    let status = cargo_status(cmd)?;
+    let target_dir = shared_cargo_target_dir(project_dir);
+    let status = cargo_status(
+        "cargo",
+        &run_args,
+        &[("CARGO_TARGET_DIR", target_dir.to_string_lossy().to_string())],
+    )?;
 
     // Restore original CWD
     if let Some(dir) = original_dir {
@@ -5810,6 +5846,11 @@ fn run_rust_ui_inner(project_dir: &Path, args: Vec<String>, source: &PacSource) 
     stop_api_server(&mut _api_child);
 
     if !status.success() {
+        // F-815-T05-R1-05: a cancel-killed cargo tree is a cancellation,
+        // not a cargo failure — the sentinel keeps the final report honest.
+        if crate::proc_host::cancelled() {
+            return Err(crate::proc_host::CANCELLED_ERR.into());
+        }
         return Err(format!("Cargo run failed with status: {}", status).into());
     }
 

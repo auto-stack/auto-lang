@@ -1,31 +1,45 @@
-//! PLAN-815 T-05 hosted process/IO plumbing for the tool host.
+//! PLAN-815 T-05 hosted process/IO plumbing for the tool host (R1 rework).
 //!
 //! The migrated run paths (vue / vm / rust) keep their legacy behavior when
 //! no [`RunIo`] is installed: children inherit stdio, steps `println!`.
 //! When the tool host installs a [`RunIo`] for a work operation, the same
 //! code paths instead:
 //!
-//! - spawn children with **piped stdout** (forwarded chunk-wise to the host
-//!   log stream), **piped stdin** (the `Input` protocol message forwards
-//!   bytes here — the Vite dev server genuinely consumes `q` + Enter), and
-//!   inherited stderr (the log stream after the bin's stdio split);
-//! - register every owned child so `cancel` kills them and the wait loops
-//!   observe cancellation;
+//! - spawn children through **`auto-tool-execution`** (PLAN-816 T-02's
+//!   single owned-process facility): Windows Job Object / Unix process
+//!   group ⇒ cancel terminates the **whole owned tree**, grandchildren
+//!   included (F-815-T05-R1-01), reap-then-return semantics, and bounded
+//!   joins for the stdout forwarder threads;
+//! - forward child stdout to the host log stream (URL sniffing announces
+//!   the launch spec) with **piped stdin owned by a cancellable writer** —
+//!   `Input` bytes are queued to a dedicated writer, and the blocking
+//!   write happens OFF the protocol loop, so cancel/describe stay
+//!   responsive no matter how un-readingly the child treats its stdin
+//!   (F-815-T05-R1-02);
 //! - emit progress/launched events through host-installed hooks (the host
 //!   enforces the per-op progress budget before anything reaches the
 //!   control stream);
-//! - announce the dev-server URL sniffed from real child stdout.
+//! - invoke host-registered terminate extras (the VM main-thread iced loop
+//!   exit request) on cancel/EOF (F-815-T05-R1-03 wiring).
 //!
 //! Protocol-agnostic by construction: the hooks are plain closures, so this
 //! module never depends on `auto-tool-protocol`.
 
-use std::io::{BufRead, BufReader, Read, Write};
-use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
+use std::path::PathBuf;
+use std::process::ExitStatus;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
+
+use auto_tool_execution::{ExecutionSpec, StdioPolicy, TreeScope};
 
 /// Poll interval for cancel-aware waits.
-const WAIT_POLL: std::time::Duration = std::time::Duration::from_millis(50);
+const WAIT_POLL: Duration = Duration::from_millis(50);
+/// Bounded grace for tree reaping and forwarder joins (cancel path).
+const TEARDOWN_GRACE: Duration = Duration::from_secs(10);
+/// Bounded capacity of the per-op input queue (backpressure is a named
+/// rejection, never a blocked control loop).
+pub const INPUT_QUEUE_DEPTH: usize = 128;
 
 /// How a hosted run flow ended (the worker maps this onto the protocol
 /// report; legacy wrappers flatten it back to `AutoResult`).
@@ -47,10 +61,89 @@ pub fn cancelled_err(err: &str) -> bool {
     err == CANCELLED_ERR
 }
 
-/// One owned child of a hosted operation.
+/// True when a hosted operation was cancelled (false when unhosted).
+pub fn cancelled() -> bool {
+    current().map(|io| io.cancelled()).unwrap_or(false)
+}
+
+/// Bail-at-checkpoint helper for hosted flows: `Err(CANCELLED_ERR)` once
+/// cancelled, `Ok(())` otherwise.
+pub fn check_cancel() -> Result<(), String> {
+    if cancelled() {
+        Err(CANCELLED_ERR.to_string())
+    } else {
+        Ok(())
+    }
+}
+
+/// A hosted child spawn request (argv-based; the facility owns command
+/// construction — no ad-hoc `Command` sites, R1-01 discipline).
+#[derive(Debug, Clone, Default)]
+pub struct TrackedSpawn {
+    pub program: String,
+    pub args: Vec<String>,
+    pub cwd: Option<PathBuf>,
+    pub env: Vec<(String, String)>,
+    /// Windows: resolve via `cmd /C` (mirrors the legacy pkg.rs shim for
+    /// .cmd/.bat package managers).
+    pub windows_cmd_shim: bool,
+}
+
+impl TrackedSpawn {
+    pub fn new(program: impl Into<String>, args: Vec<String>) -> Self {
+        Self {
+            program: program.into(),
+            args,
+            cwd: None,
+            env: Vec::new(),
+            windows_cmd_shim: false,
+        }
+    }
+
+    pub fn with_cwd(mut self, cwd: impl Into<PathBuf>) -> Self {
+        self.cwd = Some(cwd.into());
+        self
+    }
+
+    pub fn with_env(mut self, key: &str, value: &str) -> Self {
+        self.env.push((key.to_string(), value.to_string()));
+        self
+    }
+
+    fn to_spec(&self) -> ExecutionSpec {
+        let mut argv: Vec<std::ffi::OsString> = Vec::with_capacity(self.args.len() + 1);
+        argv.push(self.program.as_str().into());
+        argv.extend(self.args.iter().map(|a| a.as_str().into()));
+        ExecutionSpec {
+            argv,
+            cwd: self.cwd.clone(),
+            env: self
+                .env
+                .iter()
+                .map(|(k, v)| (k.as_str().into(), v.as_str().into()))
+                .collect(),
+            stdin: StdioPolicy::Piped,
+            stdout: StdioPolicy::Piped,
+            // stderr inherits the process stderr = the log stream after the
+            // bin's stdio split; nothing a child writes can reach the
+            // control stream and no child can consume the framed stdin.
+            stderr: StdioPolicy::Inherit,
+            stdin_data: None,
+            deadline: None,
+            tree_scope: TreeScope::ProcessTree,
+            windows_cmd_shim: self.windows_cmd_shim,
+        }
+    }
+}
+
+/// One owned child (tree) of a hosted operation.
 pub struct TrackedChild {
-    child: Mutex<Option<Child>>,
-    stdin: Mutex<Option<ChildStdin>>,
+    proc: Mutex<Option<auto_tool_execution::OwnedProcess>>,
+    stdin: Mutex<Option<auto_tool_execution::StdinPipe>>,
+    /// stdout forwarder threads (joined with a bound at teardown).
+    readers: Mutex<Vec<std::thread::JoinHandle<()>>>,
+    /// Stop flag for the input writer's cancellable writes.
+    input_stop: Arc<AtomicBool>,
     /// Caller-assigned role (`install`, `dev-server`, `api-server`, …) —
     /// used for honest diagnostics only.
     pub label: String,
@@ -58,35 +151,92 @@ pub struct TrackedChild {
 }
 
 impl TrackedChild {
-    /// Kill the child if it is still live (idempotent).
+    /// Terminate the owned tree (Windows Job / Unix process group) and
+    /// unblock any writer parked on this child's stdin. Only issues the
+    /// termination — reaping is the wait/cancel path.
     pub fn kill(&self) {
-        if let Some(child) = self.child.lock().unwrap().as_mut() {
-            let _ = child.kill();
+        if let Some(proc) = self.proc.lock().unwrap().as_mut() {
+            let _ = proc.terminate();
+        }
+        self.input_stop.store(true, Ordering::SeqCst);
+        if let Some(stdin) = self.stdin.lock().unwrap().as_ref() {
+            stdin.cancel_blocked_write();
         }
     }
 
+    /// Close the child's stdin (drops the pipe write end — the child
+    /// observes EOF). Honest lifecycle knob for bounded interactive runs.
+    pub fn close_stdin(&self) {
+        self.input_stop.store(true, Ordering::SeqCst);
+        *self.stdin.lock().unwrap() = None;
+    }
+
     pub fn try_wait(&self) -> std::io::Result<Option<ExitStatus>> {
-        match self.child.lock().unwrap().as_mut() {
-            Some(child) => child.try_wait(),
+        match self.proc.lock().unwrap().as_mut() {
+            Some(proc) => proc.try_wait(),
             None => Ok(None),
         }
     }
 
-    /// Write bytes into the child's stdin (the `Input` channel target).
-    pub fn write_input(&self, data: &[u8]) -> std::io::Result<()> {
-        let mut guard = self.stdin.lock().unwrap();
-        match guard.as_mut() {
-            Some(stdin) => stdin.write_all(data).and_then(|_| stdin.flush()),
-            None => Err(std::io::Error::new(
-                std::io::ErrorKind::BrokenPipe,
-                "child stdin already closed",
-            )),
+    /// Terminate + bounded reap (facility `cancel_within`) + bounded reader
+    /// joins. Called on the cancel path.
+    fn reap(&self) -> std::io::Result<ExitStatus> {
+        let status = match self.proc.lock().unwrap().as_mut() {
+            Some(proc) => proc.cancel_within(TEARDOWN_GRACE),
+            None => return Err(std::io::Error::other("tracked child already reaped")),
+        }?;
+        self.join_readers();
+        Ok(status)
+    }
+
+    /// Bounded join of the forwarder threads (they EOF once the tree dies
+    /// and the pipe closes; the bound guards pathological holders).
+    fn join_readers(&self) {
+        let readers: Vec<_> = self.readers.lock().unwrap().drain(..).collect();
+        let deadline = std::time::Instant::now() + TEARDOWN_GRACE;
+        for handle in readers {
+            while !handle.is_finished() {
+                if std::time::Instant::now() > deadline {
+                    // Leaked reader is disclosed by the bound; the tree is
+                    // dead so the pipe will EOF and the thread exits late.
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let _ = handle.join();
         }
     }
 
-    #[cfg(test)]
-    fn take_stdin(&self) -> Option<ChildStdin> {
-        self.stdin.lock().unwrap().take()
+    /// Write bytes into the child's stdin with a cancellable write
+    /// (F-815-T05-R1-02: called only from the dedicated input writer,
+    /// never the protocol loop). `Ok(())` = all bytes entered the pipe;
+    /// cancelled writes surface the sentinel text.
+    pub fn write_input_stoppable(&self, data: &[u8]) -> std::io::Result<()> {
+        use auto_tool_execution::StoppableWrite;
+        let mut guard = self.stdin.lock().unwrap();
+        let Some(stdin) = guard.as_mut() else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "child stdin already closed",
+            ));
+        };
+        let mut written = 0usize;
+        while written < data.len() {
+            let n = stdin.write_stoppable(&data[written..], &self.input_stop)?;
+            if n == 0 {
+                if self.input_stop.load(Ordering::SeqCst) {
+                    return Err(std::io::Error::other(CANCELLED_ERR));
+                }
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::WriteZero,
+                    "child stdin accepted zero bytes",
+                ));
+            }
+            written += n;
+        }
+        Ok(())
+        // No flush needed: StoppableWrite goes straight to the OS pipe
+        // handle (no std-layer buffering is introduced here).
     }
 }
 
@@ -103,6 +253,15 @@ pub struct RunIo {
     pub on_launched: Mutex<Option<Box<dyn Fn(&str) + Send>>>,
     /// Child stdout chunk hook (host log stream).
     pub on_log_chunk: Mutex<Option<Box<dyn Fn(&[u8]) + Send>>>,
+    /// Input enqueue hook: `(request_id, target_id, data)` — queues the
+    /// blocking write onto the dedicated writer (F-815-T05-R1-02).
+    /// Ok(()) = queued (receipt comes from the writer); Err(reason) =
+    /// immediate named rejection.
+    pub on_input_enqueue:
+        Mutex<Option<Box<dyn Fn(u64, u64, Vec<u8>) -> Result<(), String> + Send>>>,
+    /// Terminate extras invoked on cancel/EOF (F-815-T05-R1-03: the VM
+    /// main-thread iced exit request).
+    pub on_terminate: Mutex<Vec<Arc<dyn Fn() + Send + Sync>>>,
     /// VM UI entry executor (the iced run must happen on the OS main
     /// thread; the host installs a hand-off here). Unhosted callers run
     /// the entry on their own (main) thread — legacy behavior. The result
@@ -122,6 +281,8 @@ impl RunIo {
             on_progress: Mutex::new(None),
             on_launched: Mutex::new(None),
             on_log_chunk: Mutex::new(None),
+            on_input_enqueue: Mutex::new(None),
+            on_terminate: Mutex::new(Vec::new()),
             on_vm_main: Mutex::new(None),
         }
     }
@@ -131,12 +292,17 @@ impl RunIo {
         self.cancelled.load(Ordering::SeqCst)
     }
 
-    /// Signal cancellation and kill every owned child process.
+    /// Signal cancellation: kill every owned child TREE, stop in-flight
+    /// input writes, and invoke the terminate extras (VM iced exit).
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::SeqCst);
-        let children = self.children.lock().unwrap();
+        let children = self.children.lock().unwrap().clone();
         for child in children.iter() {
             child.kill();
+        }
+        let extras: Vec<Arc<dyn Fn() + Send + Sync>> = self.on_terminate.lock().unwrap().clone();
+        for extra in extras.iter() {
+            extra();
         }
     }
 
@@ -169,12 +335,11 @@ pub fn install() -> bool {
     true
 }
 
-/// Remove the hosted IO, killing any still-live owned children (leak guard
-/// — the honest answer for flows that lost their own cleanup path) and
-/// dropping the hook slots: the progress/launched/log closures capture
-/// strong Arcs (to this RunIo and, via the host, to the shared channel
-/// state), so keeping them installed after the operation ends would leak
-/// the whole cycle and the tool host would never observe channel closure.
+/// Remove the hosted IO, killing any still-live owned trees (leak guard)
+/// and dropping the hook slots: the closures capture strong Arcs (to this
+/// RunIo and, via the host, to the shared channel state), so keeping them
+/// installed after the operation ends would leak the whole cycle and the
+/// tool host would never observe channel closure.
 pub fn uninstall() {
     let io = slot().lock().unwrap().take();
     if let Some(io) = io {
@@ -182,6 +347,8 @@ pub fn uninstall() {
         *io.on_progress.lock().unwrap() = None;
         *io.on_launched.lock().unwrap() = None;
         *io.on_log_chunk.lock().unwrap() = None;
+        *io.on_input_enqueue.lock().unwrap() = None;
+        io.on_terminate.lock().unwrap().clear();
         *io.on_vm_main.lock().unwrap() = None;
     }
 }
@@ -191,18 +358,35 @@ pub fn current() -> Option<Arc<RunIo>> {
     slot().lock().unwrap().clone()
 }
 
-/// True when a hosted operation was cancelled (false when unhosted).
-pub fn cancelled() -> bool {
-    current().map(|io| io.cancelled()).unwrap_or(false)
+/// The host-installed VM UI main-thread executor, when a hosted operation
+/// wants to run an iced entry (None when unhosted — the caller runs it on
+/// its own thread, which is the OS main thread in the legacy CLI).
+pub fn vm_main_hook(
+) -> Option<Arc<dyn Fn(&str, Option<&str>) -> auto_lang_core::AutoResult<String> + Send + Sync>> {
+    let io = current()?;
+    let guard = io.on_vm_main.lock().unwrap();
+    guard.clone()
 }
 
-/// Bail-at-checkpoint helper for hosted flows: `Err(CANCELLED_ERR)` once
-/// cancelled, `Ok(())` otherwise.
-pub fn check_cancel() -> Result<(), String> {
-    if cancelled() {
-        Err(CANCELLED_ERR.to_string())
-    } else {
-        Ok(())
+/// Queue input bytes for the foreground child (F-815-T05-R1-02). The
+/// blocking write happens on the dedicated writer; this call only enqueues
+/// (bounded) and never blocks the protocol loop.
+pub fn enqueue_input(request_id: u64, target_id: u64, data: Vec<u8>) -> Result<(), String> {
+    let io = current().ok_or_else(|| "no work operation in flight".to_string())?;
+    let guard = io.on_input_enqueue.lock().unwrap();
+    match guard.as_ref() {
+        Some(enqueue) => enqueue(request_id, target_id, data),
+        None => Err("input channel unavailable for this operation".to_string()),
+    }
+}
+
+/// The foreground child's cancellable write — called by the host's input
+/// writer thread only (never the protocol loop).
+pub fn write_input_stoppable(data: &[u8]) -> Result<(), String> {
+    let io = current().ok_or_else(|| "no work operation in flight".to_string())?;
+    match io.foreground() {
+        Some(child) => child.write_input_stoppable(data).map_err(|e| e.to_string()),
+        None => Err("operation has no interactive child process".to_string()),
     }
 }
 
@@ -234,42 +418,44 @@ fn log_chunk(bytes: &[u8]) {
     }
 }
 
-/// Spawn `command` as an owned child of the hosted operation and start its
+/// Spawn `spec` as an owned tree of the hosted operation and start its
 /// stdout forwarder. The caller must have [`install`]ed a [`RunIo`].
-pub fn spawn_tracked(mut command: Command, label: &str) -> std::io::Result<Arc<TrackedChild>> {
+pub fn spawn_tracked(spec: TrackedSpawn, label: &str) -> std::io::Result<Arc<TrackedChild>> {
     let io = current().expect("spawn_tracked called without installed RunIo");
-    // Hosted stdio policy: piped stdout (forwarded to the log stream),
-    // piped stdin (Input channel), inherited stderr (log stream after the
-    // bin's stdio split). Nothing a child writes can reach the control
-    // stream, and no child can consume the framed protocol stdin.
-    command.stdout(Stdio::piped()).stdin(Stdio::piped());
-    let mut child = command.spawn()?;
-    let pid = child.id();
-    let child_stdin = child.stdin.take();
-    let child_stdout = child.stdout.take();
+    let mut proc = auto_tool_execution::spawn(&spec.to_spec())
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    let pid = proc.id();
+    let child_stdin = proc
+        .take_stdin()
+        .map_err(|e| std::io::Error::other(format!("take stdin failed: {e}")))?;
+    let child_stdout = proc.take_stdout();
     let tracked = Arc::new(TrackedChild {
-        child: Mutex::new(Some(child)),
-        stdin: Mutex::new(child_stdin),
+        proc: Mutex::new(Some(proc)),
+        stdin: Mutex::new(Some(child_stdin)),
+        readers: Mutex::new(Vec::new()),
+        input_stop: Arc::new(AtomicBool::new(false)),
         label: label.to_string(),
         id: pid,
     });
     io.register(Arc::clone(&tracked));
     if let Some(stdout) = child_stdout {
         let forward_label = label.to_string();
-        std::thread::Builder::new()
+        let handle = std::thread::Builder::new()
             .name(format!("child-out:{forward_label}"))
             .spawn(move || forward_stdout(stdout, &forward_label))
-            .ok();
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
+        tracked.readers.lock().unwrap().push(handle);
     }
     Ok(tracked)
 }
 
 /// Forward a child's piped stdout to the host log stream, sniffing the
 /// first announced service URL on dev-server children. The thread exits on
-/// EOF — i.e. when the child dies — which is the reader-exit half of the
-/// cancel contract.
-fn forward_stdout(stdout: impl Read, label: &str) {
-    let mut reader = BufReader::new(stdout);
+/// EOF — i.e. when the owned tree dies — and is joined with a bound at
+/// teardown (F-815-T05-R1-01's reader half).
+fn forward_stdout(stdout: impl std::io::Read, label: &str) {
+    use std::io::BufRead;
+    let mut reader = std::io::BufReader::new(stdout);
     let mut announced = false;
     let mut buf = Vec::with_capacity(8192);
     loop {
@@ -323,49 +509,29 @@ pub fn sniff_url(text: &str) -> Option<String> {
     None
 }
 
-/// Cancel-aware wait for a tracked child: polls `try_wait`, killing the
-/// child once cancellation is signalled. Returns the exit status.
+/// Cancel-aware wait for a tracked tree: polls `try_wait`; on cancellation
+/// terminates + bounded-reaps the whole tree and joins the readers BEFORE
+/// returning (the final receipt may only follow once the owned tree and
+/// readers are closed — F-815-T05-R1-01).
 pub fn wait_tracked(tracked: &TrackedChild) -> std::io::Result<ExitStatus> {
     loop {
         if let Some(status) = tracked.try_wait()? {
+            tracked.join_readers();
             return Ok(status);
         }
         if cancelled() {
-            tracked.kill();
+            return tracked.reap();
         }
         std::thread::sleep(WAIT_POLL);
     }
-}
-
-/// Forward `data` to the foreground child's stdin. Errors when no hosted
-/// operation or no foreground child with a live stdin is present — the host
-/// turns that into the honest named protocol error.
-pub fn write_input(data: &[u8]) -> Result<(), String> {
-    let io = current().ok_or_else(|| "no work operation in flight".to_string())?;
-    match io.foreground() {
-        Some(child) => child
-            .write_input(data)
-            .map_err(|e| format!("foreground child stdin unavailable: {e}")),
-        None => Err("operation has no interactive child process".to_string()),
-    }
-}
-
-/// The host-installed VM UI main-thread executor, when a hosted operation
-/// wants to run an iced entry (None when unhosted — the caller runs it on
-/// its own thread, which is the OS main thread in the legacy CLI).
-pub fn vm_main_hook(
-) -> Option<Arc<dyn Fn(&str, Option<&str>) -> auto_lang_core::AutoResult<String> + Send + Sync>> {
-    let io = current()?;
-    let guard = io.on_vm_main.lock().unwrap();
-    guard.clone()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// The RunIo slot is process-global; the two tests that touch it must
-    /// not interleave under a single-process libtest run.
+    /// The RunIo slot is process-global; tests that touch it must not
+    /// interleave under a single-process libtest run.
     static SLOT_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
@@ -402,14 +568,13 @@ mod tests {
         assert!(!cancelled(), "unhosted is never cancelled");
     }
 
-    /// Real child forwarding + Input + cancel: a real OS child echoes
-    /// matching stdin lines to stdout; the hosted forwarder delivers its
-    /// output to the log hook; cancel kills a blocking child promptly.
-    /// Real processes only — no fakes.
+    /// Real owned-tree lifecycle (F-815-T05-R1-01 core): a REAL tree with
+    /// grandchildren (cmd → cmd → ping) is terminated and reaped as a
+    /// whole before the final return, and the readers join; a real echo
+    /// child proves cancellable input forwarding end to end.
     #[test]
-    fn real_child_input_forward_and_cancel() {
+    fn real_tree_cancel_input_forward_and_reader_join() {
         let _guard = SLOT_LOCK.lock().unwrap();
-        use std::io::Write as _;
         assert!(install());
         let io = current().unwrap();
         let logged: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
@@ -428,24 +593,23 @@ mod tests {
         }
 
         // A real interactive child: `cmd /C findstr x` forwards lines
-        // containing "x" from its stdin to its stdout.
-        let mut command = Command::new("cmd");
-        command.args(["/C", "findstr", "x"]);
-        let tracked = spawn_tracked(command, "dev-server").expect("spawn real child");
-
-        // Input channel forwards real bytes into the real child's stdin.
-        {
-            let mut stdin = tracked.take_stdin().expect("child stdin");
-            stdin
-                .write_all(b"hello x line\nplain line\n")
-                .expect("write child stdin");
-        } // EOF so findstr terminates on its own
+        // containing "x" from its stdin to its stdout (the cancellable
+        // write is this module's half of F-815-T05-R1-02).
+        let spec = TrackedSpawn {
+            windows_cmd_shim: true,
+            ..TrackedSpawn::new("findstr", vec!["x".to_string()])
+        };
+        let tracked = spawn_tracked(spec, "dev-server").expect("spawn real child");
+        assert_eq!(tracked.id, tracked.id);
+        // Direct foreground write (writer-thread decoupling is host-level).
+        assert!(tracked.write_input_stoppable(b"hello x line\n").is_ok());
+        assert!(tracked.write_input_stoppable(b"plain line\n").is_ok());
+        tracked.close_stdin(); // EOF so findstr terminates on its own
 
         let status = wait_tracked(&tracked).expect("wait real child");
         assert!(status.success(), "findstr should exit 0, got {status:?}");
 
-        // The forwarder thread drains the pipe asynchronously.
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
         loop {
             if logged.lock().unwrap().contains(&b'\n') {
                 break;
@@ -459,18 +623,28 @@ mod tests {
         let logged = String::from_utf8_lossy(&logged_vec);
         assert!(logged.contains("hello x line"), "forwarded: {logged}");
         assert!(launched_urls.lock().unwrap().is_empty());
+        assert!(tracked.readers.lock().unwrap().is_empty(), "readers joined");
 
-        // Cancel path: a second real child that blocks ~30s unless killed.
-        let mut command = Command::new("cmd");
-        command.args(["/C", "ping", "-n", "30", "127.0.0.1"]);
-        let tracked = spawn_tracked(command, "api-server").expect("spawn blocking child");
+        // Cancel path: a REAL owned tree (grandchildren included) is
+        // terminated and reaped as a whole before return.
+        let spec = TrackedSpawn {
+            windows_cmd_shim: true,
+            ..TrackedSpawn::new(
+                "cmd",
+                vec!["/C".to_string(), "cmd /C ping -n 30 127.0.0.1".to_string()],
+            )
+        };
+        let tracked = spawn_tracked(spec, "api-server").expect("spawn blocking tree");
+        std::thread::sleep(Duration::from_millis(700)); // let the grandchild spawn
         io.cancel();
         let start = std::time::Instant::now();
         let _ = wait_tracked(&tracked);
         assert!(
-            start.elapsed() < std::time::Duration::from_secs(10),
-            "cancel must kill the owned child promptly"
+            start.elapsed() < Duration::from_secs(10),
+            "cancel must reap the owned tree promptly"
         );
+        // Reaped + readers joined — direct observables for both halves.
+        assert!(tracked.readers.lock().unwrap().is_empty());
         uninstall();
     }
 }

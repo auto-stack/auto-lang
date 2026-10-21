@@ -10044,6 +10044,26 @@ fn is_panic_probe_event(event: &str) -> bool {
     event.to_ascii_lowercase().replace('_', "") == "panicprobe"
 }
 
+/// PLAN-815 T-05（F03）：宿主退出请求（进程级单例）。嵌入式宿主
+/// （auto-ui-tool）在取消/EOF 时置位；`run_session` 的订阅轮询到后以
+/// `DesktopEvent::HostExitRequested` 收口事件循环（`iced::exit`）。CLI
+/// 直跑形态无人置位——零行为变化。每次 `run_session` 启动清零，陈旧
+/// 请求不会杀死新会话。
+static HOST_EXIT_REQUESTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// 请求当前 iced 会话退出（PLAN-815 T-05；宿主取消/EOF 收口入口）。
+/// 返回请求前的状态。会话未运行时置位会在下一次 `run_session` 启动时
+/// 被清零（不跨会话滞留）。
+pub fn request_host_exit() -> bool {
+    HOST_EXIT_REQUESTED.swap(true, std::sync::atomic::Ordering::SeqCst)
+}
+
+/// 宿主退出请求当前是否置位。
+pub fn host_exit_requested() -> bool {
+    HOST_EXIT_REQUESTED.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 /// Global MCP action channel receiver (Plan 278).
 /// Set once at startup by `run_dynamic_iced`, polled by `mcp_action_subscription`.
 static MCP_ACTION_RX: std::sync::OnceLock<
@@ -18916,6 +18936,9 @@ fn run_session(
     mode: RunMode,
     opts: DesktopOptions,
 ) -> AppResult<String> {
+    // PLAN-815 T-05（F03）：新会话从零开始——陈旧的宿主退出请求（会话
+    // 未运行时置位）不得杀死本次运行；消费（iced::exit）后自然不再置位。
+    HOST_EXIT_REQUESTED.store(false, std::sync::atomic::Ordering::SeqCst);
     // Stage B P-7：宿主显式 shell pack 注入（OnceLock 首值胜；后续幂等）。
     if let Some(pack_dir) = &opts.shell_pack {
         crate::ui::shell::set_shell_pack_override(pack_dir.clone());
@@ -23235,6 +23258,16 @@ fn run_session(
                             return iced::exit();
                         }
                     }
+                    DesktopEvent::HostExitRequested => {
+                        // PLAN-815 T-05（F03）：嵌入式宿主外部收口——镜像
+                        // 全窗关闭的退出收尾（broker 停机 + daemon 退出），
+                        // run_dynamic_iced 正常返回。
+                        eprintln!(
+                            "[session] host exit requested — closing the session (PLAN-815 T-05)"
+                        );
+                        state.shutdown_broker();
+                        return iced::exit();
+                    }
                     DesktopEvent::WindowFocused(id) => {
                         *state.focused_window.borrow_mut() = Some(id);
                     }
@@ -25377,6 +25410,9 @@ fn run_session(
             //   listen_with 事件带窗口上下文走 DM::Window（update 现场解析）。
             use crate::ui::session::DesktopMessage as DM;
             let mut subs: Vec<iced::Subscription<DM>> = Vec::new();
+            // PLAN-815 T-05（F03）：宿主退出请求轮询——无条件订阅（CLI 形态
+            // 无人置位，空拍零消息；不依赖 primary app 存在）。
+            subs.push(crate::ui::session::host_exit_poll_subscription());
             for (app_id, app) in state.apps.iter() {
                 let app_id = *app_id;
                 // PLAN-650 E-3：hot_reload 降频/门控——AUTOUI_HOT_RELOAD=0 全关；
