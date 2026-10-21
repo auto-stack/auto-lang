@@ -66,6 +66,8 @@ mod tests {
         );
 
         // 有效源在 VM 内可见 argv 不得含泄漏哨兵。
+        // `process.args().len()` 返回**标量长度**（正确="1"，泄漏="2"），
+        // 必须解析为整数并断言 ==1；按逗号数片段会把 1 与 2 都判绿。
         let argv_src = dir.path().join("argv.at");
         std::fs::write(&argv_src, "use auto.process\nreturn process.args().len()\n").unwrap();
         auto_lang_core::set_script_args(vec!["previous-invocation-only".into()]);
@@ -74,9 +76,16 @@ mod tests {
             auto_lang_core::script_args().is_empty(),
             "执行后 argv 表复位"
         );
-        let rendered = result.trim().trim_start_matches('[').trim_end_matches(']');
-        let n = rendered.split(',').filter(|s| !s.trim().is_empty()).count();
-        assert_eq!(n, 1, "VM 内 argv 不得含泄漏哨兵，got {result}");
+        let len: usize = result
+            .trim()
+            .trim_matches(|c| c == '"' || c == '[' || c == ']')
+            .trim()
+            .parse()
+            .unwrap_or_else(|e| panic!("argv 长度须为标量整数，got {:?}: {e}", result));
+        assert_eq!(
+            len, 1,
+            "VM 内 argv 仅程序路径（长度 1）；泄漏前次哨兵会得到 2，got {result}"
+        );
 
         // 读失败出口同样复位。
         auto_lang_core::set_script_args(vec!["previous-invocation-only".into()]);
