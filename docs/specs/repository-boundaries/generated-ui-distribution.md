@@ -133,3 +133,16 @@ delivery commit 须为 master 祖先且 consumer 实际解析验证。阶段 rev
 阶段不归档 Plan、不清理唯一树。冻结门及实际发布/Spec/ledger 来源收据齐备后,
 才可放行 816 消费 A 能力;完整 UI 能力继续依 M815-B(生成主体迁移时 DELIVERY
 表增补 auto-tool-protocol/auto-ui-tools)。
+
+## M816-A:工具消费方式与发行闭包不变(PLAN-816 SD-05-A)
+
+自 M816-A 起,`auto-ui-tool` 及后续 I-TOOL 工具宿主只能经**真实子进程 +
+auto-tool-protocol 帧**消费:客户端 `crates/auto-tool-client`(经
+auto-tool-execution owned 设施 spawn,取消/超时/reader 收尾由该设施统一承担);
+消费闭包**不得静态链接工具实现**——由
+`test/fixtures/modularity/tool-client-consumer/verify-deps.sh` 钉住(无
+auto-ui-tools/auto-man/auto-lang/auto-vm/auto-gen)。M816-A **不改变任何发行/
+安装闭包**:792 `DELIVERY 表`与生成 UI 分发清单维持 M815-A 现状——客户端是
+workspace 库,供后续薄 CLI 组合(M816-B T-05+)消费,不作为独立发行件;独立安装
+profile 的闭包增补(DELIVERY_CRATES 增补等)属 M816-B,定稿门为 M814-A 后的
+整链 probe。
