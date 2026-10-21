@@ -1,9 +1,9 @@
 # PLAN-816 M816-A 阶段候选（T-12 交付，待 T-13 独立阶段审查冻结）
 
-> 状态：**R7 修复后候选**（R7 判 R6-01/R5-01 CLOSED、R3-02 检查后
-> 漏取消窗口 OPEN、R7-01 Linux 净新增告警 OPEN；两项已修复 @`2d21cff8c`，
-> 见 §13。R7 after-check + R1/R2/R5/R6 全 replay 过。T-13 R8 审查绑定
-> `2d21cff8c`。本阶段 ≠ 整 Plan 交付：T-03..T-11 未开，Plan 保持
+> 状态：**R8 修复后候选**（R8 唯一残项=凭证初始化/复制失败静默降级；
+> 已按其指定方向①"启动前具名拒绝并清理"修复 @`89b0b33ef`，见 §14。
+> R8 credential 反例的旧故障出口经构造不可达。T-13 R9 审查绑定
+> `89b0b33ef`。本阶段 ≠ 整 Plan 交付：T-03..T-11 未开，Plan 保持
 > `executing`。
 
 ## 1. 身份
@@ -151,3 +151,15 @@ R2（reviewed 4372d56d9）判定 01/02/04 CLOSED；三残项修复（+1166/−26
 R7 注记如实记录：取消凭证初始化失败（`.ok()`/Clone 空句柄）未改——在重发设计下凭证是**非承力冗余**（真停由重发取消+写侧入口拒写承担），init 失败仅损失一层冗余、不再构成取消能力丢失。
 
 验证矩阵（@2d21cff8c）：设施 9+18、client 15、fixture 16/16（压力 6/6）；R7/R6/R5/R2/R1 全 replay；clippy/rustdoc/fmt 0、verify-deps/777 strict/check 全绿。
+
+## 14. R8 修复轮记录（T-13 R8 needs_fix 唯一残项 → work 修复，@89b0b33ef）
+
+| 子项 | 修复 | 验证 |
+|---|---|---|
+| 创建失败（`.ok()`→None） | `take_stdin` → `Result<StdinPipe, StdinTakeError{Missing, Credential}>`：DuplicateHandle 失败经 `Credential(具名 io)` 传播。run() 在启动 writer 前映射 `Io{stage:"create stdin cancel credential"}` 拒绝并 `finish_early` 清理已启动 readers；client 在启动任何自有线程前拒绝（宿主进程由 OwnedProcess::drop 有界终止回收，不泄漏） | 负控测试①：`StdinTakeError::Credential` 具名传播；两消费方映射源码核验 |
+| 复制失败（Clone→NULL） | `CancelHandle` 删除 NULL 兜底 `Clone`，新增 `try_clone -> io::Result`；`cancel_handle() -> io::Result<CancelCredential>` 经统一映射——**类型层不存在 NULL 凭证构造路径** | 负控测试②：复制失败→Err（含 stage 文本），不再产生凭证 |
+| 停止期防御 | `stop_and_join` 等待循环：写者**未结束**（is_finished=false）而凭证缺失/NULL → 立即具名 `Io{stage:"stdin cancel credential missing/invalid at stop"}`，不以 3s PipesHeld 冒充；写者自然完成路径自行置空槽（retained=None 属正常）由 is_finished 区分 | 既有 18 集成测试全绿（含 timeout 路径写者自然完成场景） |
+
+R8 注入反例的旧故障出口（`pipe.cancel=None` / NULL-Clone）对修复后代码**不可编译**——编译级证明旧出口已消除；其边界强制绕过构造守卫，与审方自身裁定的修复方向（"启动 writer 前具名拒绝并清理"）一致地使状态不可达。R6/R7 探针装配行机械适配新 API（`cancel_handle()`→Result；断言与栅栏语义不变）。
+
+验证矩阵（@89b0b33ef）：设施 11+18、client 15、fixture 16/16（压力 6/6）；R1/R2/R5/R6 双/R7/R8-termination 全 replay；clippy/rustdoc/fmt 0、Linux 告警回基线、verify-deps/777 strict/check 全绿。
