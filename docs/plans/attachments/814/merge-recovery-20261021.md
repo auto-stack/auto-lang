@@ -1,0 +1,52 @@
+# PLAN-814 合入恢复核对（2026-10-21）
+
+stage: merge；mode: archived recovery-only；plan_revision: 3；outcome: **blocked（测试选择缺口待对账/后续修复）**。
+
+## 已验证交付与恢复范围
+
+- 当前主库核对基线 `75b26c2536c3956305ac28fbb070366de163cc03`；实际B交付 `93a25c924d1beafab130588bad4d1041dc86e48c` 是其祖先。master reflog明确记录 `merge codex/plan-814-dev: Fast-forward`。
+- 原review `6f1cac8cbe618e509bf85d5c000fa0c26f35df6e` 因rebase不是主库祖先；映射到 `a3f50d15b`。独立重建range-diff：20旧提交→17新提交，13个 `=`、4个 `!`、3个基线提交丢弃（不是原粘贴摘要所说的2个）。R8至R14全部修复提交为 `=`，当前RustGenerator文件与原review逐字节一致。
+- 四个 `!` 为T04主体、T04收口、fmt与T05组合；app_registry/i18n_lookup当前单源在compiler，runtime pub use，符合现有主库815消费者和DAG。但“补丁相同的类型修复”不覆盖这些语义组合的测试归属，发现一项遗漏如下。
+- canonical Spec、归档计划均已跟踪；ledger v64的五项P814条目存在，file/tags齐。未重复写Spec/ledger、未再次合入、未重跑已完成整档。
+- 原收据的t5327/tv163/tu868/tt5699/tb5303与主库consumer5+4+5结果作为历史记录保留；批量回归提交75b26c253及其收据确实存在（tf6277/6278、唯一已知ffi_dual_019 flake solo绿；tt/tb全绿、无新红）。本次没有冒称重新执行这些门禁。
+
+## F814-MERGE-01 / P2：合入组合后静默丢失一项会话启动测试
+
+影响原AC05/T07选择面零丢失与T11并集变更验收。原受审代码的
+`auto-ui-runtime ui::app_registry::tests::launch_three_real_apps_via_registry_resolver`
+会实际运行。合入时app_registry移回compiler，测试体也原样迁入
+`crates/auto-ui-compiler/src/app_registry.rs:1681`，仍为：
+
+```rust
+#[cfg(feature = "ui-iced")]
+#[test]
+fn launch_three_real_apps_via_registry_resolver() {
+    use crate::ui::session::{DesktopSession, LaunchSpec};
+```
+
+compiler清单只声明`ui`/`ui-headless`，没有`ui-iced`，也不应反向依赖runtime的session。这一测试在compiler中无法被正常feature集合编译，不能靠完整测试档全绿证明它仍在执行。全仓同名测试仅此一份，没有runtime替代测试。
+
+本次只枚举、没有执行测试：按当前`.cargo/config.toml`的t参数，将`cargo nextest run`改为`cargo nextest list --offline --locked --message-format json`，读取filter-match=matches的逐ID集合。与R10/R15沿用的5328项冻结集合相比：
+
+| 项目 | 结果 |
+|---|---|
+| 原集合 | 5328 |
+| 当前实际选择 | 5327 |
+| 明确owner重写 | runtime `ui::app_registry`/`ui::i18n_lookup`→compiler根模块，共28项 |
+| 另一个明确迁移 | old auto-lang `store_deps_scan_tests::extract_store_deps_ignores_comment_examples`→compiler `store_deps::store_deps_scan_tests::extract_store_deps_ignores_comment_examples`，已核销 |
+| 最终未匹配 | 仅 `launch_three_real_apps_via_registry_resolver` 一项 |
+| 无解释新增 | 0 |
+
+测试数少一项已得到具体ID与失效门控解释，不是仅按总数猜测。建议后续修复将这项依赖runtime会话的测试迁到runtime测试层，使用compiler单源注册表；不要给compiler虚设ui-iced门或引入反向依赖。恢复测试后需独立审查、定向执行与相应冻结门，保持原三真实App/session断言，不将其删除或降为文档。
+
+原R15 pass仍准确绑定旧受审提交；问题发生在后续 `!` 并集归属变化，不能声称原pass已覆盖它。B实际合入与canonical发布事实不回滚，但本次不能再确认“全部收尾验收通过”。遵循[auto-plan-merge](C:/Users/zhaop/.codex/skills/auto-plan-merge/SKILL.md)归档恢复边界："report blocked for reconciliation rather than routing an archive into work"。保留archived终态与原15/15历史记录，不把归档Plan重新送work；代码应由独立后续修复承接。本次不修实现、不建新计划、不重写默认分支历史。
+
+## 已完成清理与归档文档修复
+
+- 未注册残留 `D:/autostack/.wt/lang-814/auto-lang` 实查文件数为0；根及组无reparse point，fresh wt-guard clean。
+- 仅结束明确归属该路径的旧验证进程：counter Vite PID39196（port33197、strictPort）、其子esbuild PID54876。首次删除仍受退出过程锁影响，进程退出后重跑fresh guard再删除成功；未停止任何其它会话进程。
+- `D:/autostack/.wt/lang-814` 整组已移除；原开发分支、临时基线与兄弟worktree注册均不存在。旧收据的“残锁目录pending”现在已关闭。
+- 原归档移动遗漏相对链接层级，50个唯一目标/65次引用无法从archive目录解析；原目标全部存在。仅给这些链接补一层`../`，不改历史证据内容，全部目标复核可达。
+- 归档状态仍archived、原任务历史15/15；追加本恢复记录说明清理完成及新增对账阻断，避免覆盖历史实际交付。其它会话脏文档、未跟踪冻结证据及ledger备份均保留。
+
+本次仅提交本报告和归档计划的链接/恢复簿记，不改canonical、liveledger或实现。新提交为纯文档，不触发整档、docs_gen或再次批量回归；既有批量收据保留。

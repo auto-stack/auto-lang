@@ -23,7 +23,7 @@ depends_on: [PLAN-807, PLAN-808, PLAN-810, PLAN-811]
 
 不搬Man的UI工程工具/资源（815），不接完整CLI工具协议（816），不搬Git仓/切旧默认分支，不在本期删除UI兼容AST/TokenKind（R10）。纯SDK不等于原名auto-lang同一包既重导出完整UI又保持纯Core。
 
-本次r2按M814-A真实阶段发布、M814-B完整交付组织，不增加Plan编号、不降低原最终AC。执行与审查修复并行规则见[阶段交付与并行审查修复合同](reports/staged-delivery-review-814-816.md)；阶段pass不等于整Plan交付。
+本次r2按M814-A真实阶段发布、M814-B完整交付组织，不增加Plan编号、不降低原最终AC。执行与审查修复并行规则见[阶段交付与并行审查修复合同](../reports/staged-delivery-review-814-816.md)；阶段pass不等于整Plan交付。
 
 ## 1. 目标
 
@@ -44,11 +44,11 @@ UI compiler可使用SDK，runtime可使用SDK与必要UI编译公开面；compil
 
 ## 4. 需求分析与背景调查
 
-用户2026-10-20明确要求修订现有814/815/816，允许阶段交付及接口合入后放行下游、并行审查验证修复，不增加编号。原目标/最终AC/支持面不变；本轮只改主检出规划文档，不改实现树、canonical Specs或远端。 来源与当前hash见[本轮输入](attachments/sdk-tools-r2-20261020/inputs.json)。
+用户2026-10-20明确要求修订现有814/815/816，允许阶段交付及接口合入后放行下游、并行审查验证修复，不增加编号。原目标/最终AC/支持面不变；本轮只改主检出规划文档，不改实现树、canonical Specs或远端。 来源与当前hash见[本轮输入](../attachments/sdk-tools-r2-20261020/inputs.json)。
 
-授权：用户要求建立下一批较大计划并明确合入前置；本轮仅auto-lang仓内规划，不实施/创建agent或工作树、不写相邻仓/远端。来源：[总路线](reports/v06-extraction-execution-roadmap.md)、[批次调度](reports/sdk-tools-parallel-order-814-816.md)、[输入hash](attachments/sdk-tools-batch-20261019/inputs.json)。
+授权：用户要求建立下一批较大计划并明确合入前置；本轮仅auto-lang仓内规划，不实施/创建agent或工作树、不写相邻仓/远端。来源：[总路线](../reports/v06-extraction-execution-roadmap.md)、[批次调度](../reports/sdk-tools-parallel-order-814-816.md)、[输入hash](../attachments/sdk-tools-batch-20261019/inputs.json)。
 
-权威输入：[语言现状](../specs/auto-lang/project.md)、[frontend](../specs/auto-lang/frontend/overview.md)、[VM](../specs/auto-lang/vm/overview.md)、[UI](../specs/auto-lang/ui/overview.md)、[方言](../specs/auto-ui-dialect/project.md)、[交付](../specs/repository-boundaries/generated-ui-distribution.md)。807/808/810/811均已归档交付；810=f0ec8a91f，811=d06cdc6f6，实际master祖先已核实。旧r1等待状态保存在Git历史；本轮不重做这些Plan验收。
+权威输入：[语言现状](../../specs/auto-lang/project.md)、[frontend](../../specs/auto-lang/frontend/overview.md)、[VM](../../specs/auto-lang/vm/overview.md)、[UI](../../specs/auto-lang/ui/overview.md)、[方言](../../specs/auto-ui-dialect/project.md)、[交付](../../specs/repository-boundaries/generated-ui-distribution.md)。807/808/810/811均已归档交付；810=f0ec8a91f，811=d06cdc6f6，实际master祖先已核实。旧r1等待状态保存在Git历史；本轮不重做这些Plan验收。
 
 实际写面：`crates/auto-lang/{Cargo.toml,build.rs,src/lib.rs}`（build输入以T-01存在性/引用核实）、`src/{parser,parser_bridge,compile,config,a2r_std,back_proxy}.rs`、`src/{ui,ui_gen,aura,a2ui,design_tokens,vm,trans}/`、`crates/auto-vm`、根Cargo与`.cargo/config.toml`/`.config/nextest*.toml`。当前默认带ui-iced，`Parser`有pub scope/cur/infer_ctx等，lib全局STORE_EXTRA_FILES/USE_DIAGS及UI辅助也混在旧根；无环拆分必须处理身份/装配/生命周期，不能仅关default-features伪装。
 
@@ -71,7 +71,7 @@ UI compiler可使用SDK，runtime可使用SDK与必要UI编译公开面；compil
 
 ### 5.3 r3 合同修订（2026-10-20 用户批准）
 
-本节为 r2→r3 的具名增量（来源=[R6 复审草案](attachments/814/review-r6/contract-r3-draft.md)，用户于 2026-10-20 批准；仅修订以下两项，其余原 AC、旧 API/类型/单份状态与 A/B 交付要求保持）。
+本节为 r2→r3 的具名增量（来源=[R6 复审草案](../attachments/814/review-r6/contract-r3-draft.md)，用户于 2026-10-20 批准；仅修订以下两项，其余原 AC、旧 API/类型/单份状态与 A/B 交付要求保持）。
 
 **1. 具名的上层兼容注册例外**（替换 r2 AC-02/V-02/§5.2 中"无隐式链接装配"的绝对约束）：
 
@@ -133,7 +133,7 @@ work只定向check/新包测试/相关反例及新consumer；T-01在合入门后
 
 实施者先修齐本轮已知findings，定向回放共享反例集/相邻状态组合及必要check，再提交新SHA送审。同Plan同一权威树冻结交接，不能边改边让review读工作区；不同Plan独立scope的读审、定向验证、修复可并行。缺上游的真实集成明确pending，不每轮重复算新finding、不用fake补绿。
 
-A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。阶段和最终的裸t/触面整档均归merge冻结后统一排队，资源独占项串行；tf仅主检出到期单实例。接口修复由owner发布，影响方重放受影响scope，未变且适用证据可复用。具体失效/收据/单写者规则见[阶段交付与并行审查修复合同](reports/staged-delivery-review-814-816.md) §2–5。
+A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。阶段和最终的裸t/触面整档均归merge冻结后统一排队，资源独占项串行；tf仅主检出到期单实例。接口修复由owner发布，影响方重放受影响scope，未变且适用证据可复用。具体失效/收据/单写者规则见[阶段交付与并行审查修复合同](../reports/staged-delivery-review-814-816.md) §2–5。
 
 ## 7. 验收标准
 
@@ -157,24 +157,24 @@ A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。�
 | 状态 | ID | owner_stage | 依赖/启动门 | 文件/交付、验证 | AC |
 |---|---|---|---|---|---|
 | [x] | T-01 | work | 现在；807/808/810/811已交付 | 新attachments/814/contract-baseline.md：所有者DAG/旧API构造/状态/测试族/资源/真实消费者清单与候选布局；前置合入后整链编译probe冻结SDK/默认UI兼容方案，不可行先重规划。[✅ 已完成 2026-10-20：基线 14 节 + probe 记录 §15；切片 `be10024ab`（唯一树，基面 `203e2ce91`）冻结包名 `auto-lang-core`/`auto-ui-compiler`/`auto-ui-runtime`+DAG+再导出机制+别名多 -p 机制；全部消费者编译/日常档 5303 绿/777 pass；无 needs_replan] | AC-01..05 |
-| [x] | T-02 | work | T-01可行性决策 | 真实纯SDK/上层兼容、单份Core/状态与公开出口；立即清除阻碍纯SDK的全部反向边，保旧默认API；迁出测试/资源/非UIconsumer及V-01/02当期证据 | AC-01,02 [✅ 已完成 2026-10-20 R3 会话：主迁移 `edb78b2ef`（soft-reset 吸收 WIP）+ 残项收口 `43366c989`——auto-vm 切 SDK（V-01 真实非 UI 消费者，闭包零旧包/UI，冒烟执行过）+ a2r frame 经 PLAN-779 FrameProvider 进程默认端口单源（plan716 帧探针全过）+ F814-R1-02 整改 `ac2882a0d`（SDK auto-ui-dialect 改非默认 `ui-dialect` 显式组合 feature；上层 default 转发保旧行为；normal/build/dev 三边闭包验证无 UI 文法；86 UI 文法测试按 feature 门控选择面不变）+ 迁移死门清偿（i18n 路由/diff code-editor 转发/4 组滞留 UI 测试上移 plan656/485/712/413）；SDK off 1627/1627、on 1713/1713；777 strict pass ×2] [✅ R3-03b 收口 2026-10-20：SDK 删 `ui-dialect` feature 与 optional auto-ui-dialect 清单边（R3-03 唯一余 P1 关闭）——UiParseContext 迁 auto-parser-api（re-export 保旧路径/类型身份）+ SDK UiGrammar 函数表端口 + UiGrammarSource inventory 装配（与 R3-01 同机制）；no-UI 源码快照 cargo metadata exit 0（reviewer 探针口径适配复跑 PROBE PASS）；86 文法测试随迁 auto-ui-dialect（86/86 绿）；777 strict pass（基线 `6418f99ef`）] [✅ R4 批收口 2026-10-20：R3-02 指纹身份语义（RwLock None→Some 升级+save 按出生身份落盘，四反例回放全绿+单测回钉）+ R3-03 SDK build 输入具名清单收窄（17-crate 编译闭包，BUILD_INPUTS 429 项零 UI/Man，双负控测试）+ R4-01 显式装配优先（安装器/生成入口显式 set_ui_grammar，inventory 兜底边界对账 [附件](attachments/814/r4-01-assembly-contract.md)）；代码 `81c8a5743`+`189ca0f77`（777 基线）] | AC-01,02 |
-| [x] | T-03 | work | T-02 | 真实UI compiler、aura/a2ui/design_tokens/registry与生成路径迁移；A当期真实runtime产物消费、无环公开面、资源/测试选择与V-03/05当期证据 | AC-03 [✅ 已完成 2026-10-20 R3（B1 `b907a89eb` + B2 `59b9c7673` + 消费批 `b02a10772` + SD-08 `abe9c9900`）：style/action_config/lucide/aura/a2ui/ui_gen 四生成器/registry/bp/route ≈11.3 万行迁 auto-ui-compiler 单源+旧路径全再导出；ui-package-consumer 独立 fixture 真实生成 4/4；语料资产随 owner 迁；指纹机制迁 compiler build.rs；交付合同更新至新包图（792 driver 25/25）；SD-02 事实底稿=m814-a-candidate §2（正文随 T-14/T-15 受管沉淀）] [✅ R3-06 收口 2026-10-20：T-03 迁移残留 cfg 门归位——compiler 声明 `ui`/`ui-headless` 空 feature + 旧包转发，pac.at ui_config 装载实臂与 plan571 生成器测试选择面恢复（T-03 起静默丢失，[归因表](attachments/814/r3-06-warning-attribution.md)）；unexpected_cfgs=0] [✅ R4 批收口 2026-10-20：fmt 全清（macros 测试/src、ui_cache、新增片段）+ `image_surface_rust_codegen` ui-iced 残门归位 + T-02 被丢测试 `test_style_recipe_in_widget_extraction` 恢复（compiler style，203e2ce91 在册）+ aavm 档 T-02 编译红修复（remap_string_indices 跨 crate）] | AC-03 |
+| [x] | T-02 | work | T-01可行性决策 | 真实纯SDK/上层兼容、单份Core/状态与公开出口；立即清除阻碍纯SDK的全部反向边，保旧默认API；迁出测试/资源/非UIconsumer及V-01/02当期证据 | AC-01,02 [✅ 已完成 2026-10-20 R3 会话：主迁移 `edb78b2ef`（soft-reset 吸收 WIP）+ 残项收口 `43366c989`——auto-vm 切 SDK（V-01 真实非 UI 消费者，闭包零旧包/UI，冒烟执行过）+ a2r frame 经 PLAN-779 FrameProvider 进程默认端口单源（plan716 帧探针全过）+ F814-R1-02 整改 `ac2882a0d`（SDK auto-ui-dialect 改非默认 `ui-dialect` 显式组合 feature；上层 default 转发保旧行为；normal/build/dev 三边闭包验证无 UI 文法；86 UI 文法测试按 feature 门控选择面不变）+ 迁移死门清偿（i18n 路由/diff code-editor 转发/4 组滞留 UI 测试上移 plan656/485/712/413）；SDK off 1627/1627、on 1713/1713；777 strict pass ×2] [✅ R3-03b 收口 2026-10-20：SDK 删 `ui-dialect` feature 与 optional auto-ui-dialect 清单边（R3-03 唯一余 P1 关闭）——UiParseContext 迁 auto-parser-api（re-export 保旧路径/类型身份）+ SDK UiGrammar 函数表端口 + UiGrammarSource inventory 装配（与 R3-01 同机制）；no-UI 源码快照 cargo metadata exit 0（reviewer 探针口径适配复跑 PROBE PASS）；86 文法测试随迁 auto-ui-dialect（86/86 绿）；777 strict pass（基线 `6418f99ef`）] [✅ R4 批收口 2026-10-20：R3-02 指纹身份语义（RwLock None→Some 升级+save 按出生身份落盘，四反例回放全绿+单测回钉）+ R3-03 SDK build 输入具名清单收窄（17-crate 编译闭包，BUILD_INPUTS 429 项零 UI/Man，双负控测试）+ R4-01 显式装配优先（安装器/生成入口显式 set_ui_grammar，inventory 兜底边界对账 [附件](../attachments/814/r4-01-assembly-contract.md)）；代码 `81c8a5743`+`189ca0f77`（777 基线）] | AC-01,02 |
+| [x] | T-03 | work | T-02 | 真实UI compiler、aura/a2ui/design_tokens/registry与生成路径迁移；A当期真实runtime产物消费、无环公开面、资源/测试选择与V-03/05当期证据 | AC-03 [✅ 已完成 2026-10-20 R3（B1 `b907a89eb` + B2 `59b9c7673` + 消费批 `b02a10772` + SD-08 `abe9c9900`）：style/action_config/lucide/aura/a2ui/ui_gen 四生成器/registry/bp/route ≈11.3 万行迁 auto-ui-compiler 单源+旧路径全再导出；ui-package-consumer 独立 fixture 真实生成 4/4；语料资产随 owner 迁；指纹机制迁 compiler build.rs；交付合同更新至新包图（792 driver 25/25）；SD-02 事实底稿=m814-a-candidate §2（正文随 T-14/T-15 受管沉淀）] [✅ R3-06 收口 2026-10-20：T-03 迁移残留 cfg 门归位——compiler 声明 `ui`/`ui-headless` 空 feature + 旧包转发，pac.at ui_config 装载实臂与 plan571 生成器测试选择面恢复（T-03 起静默丢失，[归因表](../attachments/814/r3-06-warning-attribution.md)）；unexpected_cfgs=0] [✅ R4 批收口 2026-10-20：fmt 全清（macros 测试/src、ui_cache、新增片段）+ `image_surface_rust_codegen` ui-iced 残门归位 + T-02 被丢测试 `test_style_recipe_in_widget_extraction` 恢复（compiler style，203e2ce91 在册）+ aavm 档 T-02 编译红修复（remap_string_indices 跨 crate）] | AC-03 |
 | [x] | T-04 | work | T-15/M814-A已发布 | UI runtime/renderer/宿主adapter与资源迁移，VM依轻能力；保持真实编辑器/终端/媒体与跨端 | AC-03,04 [✅ 已完成 2026-10-21 work 批（V-03 跨端双跑=环境资源待跑，其余面已验；详见 §9 T-04 记录）：ui/ 全树+host_adapters+back_proxy+assets+UI 动态构建管线（lib.rs 689-2588 区=dynamic_build.rs）+plan370 支持件迁 auto-ui-runtime；装配扇入收敛 `auto_ui_runtime::install_ui_host_capabilities` 单点（文法装配留旧兼容包，r3 §5.3 不变量）；61 个 UI 域测试随 owner 迁 ui_tests/（plan370 消费族/私钩族/019/042/058）；auto-ui-runtime 1875 测全绿（2 例语料路径+4 例 e2e 显式装配修复）；SDK 三边闭包 0 UI 保持；777 strict pass（ui_to_language=0 入基线）；t/tf 别名扩 -p auto-ui-runtime 防丢面；预存红修复 3 件（probe_adapter 门控断点/extract_autovm_result 再导出/tests_seam 可见性）；T-15 遗留 777 重采样随批完成] | AC-03,04 |
 | [x] | T-05 | work | T-04；补齐B默认组合，A兼容不得先破坏 | 默认Parser/VM/新SDK显式UI装配、旧auto-lang字段/方法/feature/旧路径兼容；真实import及外部consumer V-02 | AC-02 [✅ 已完成 2026-10-21 work 批（详见 §9 T-05 记录）：生成代码 import 路径策略单源 canonical 化（import_policy.rs 新旧映射表+负控 pin——rust 生成器 136 处发射全迁 auto_ui_runtime/auto_lang_core，A 期"指向当期真实实现"过渡形态收口）；auto-man 模板/manifest/792 投影 spec 随包图（含 shell-pack canonical 再生+runtime 投影 spec 新增）；e2e 生成工程双直依赖真编译 2/2；V-02 旧公开面编译 pin 4 测试（Parser 17 字段/构造/方言族、桥 17 方法、VM/NativeInterface 注册族、门控根再导出+新旧类型身份同一）] | AC-02 |
 | [x] | T-06 | work | T-05；A纯SDK禁止边已在T-02清除 | i18n/a2r frame/config等残边、全局/TLS/registry单源和退出验证；必要非UI消费者切SDK，V-01/04 | AC-01,04 [✅ 已完成 2026-10-21（26b8b33bd）：勘察确认 SDK 生产码零 UI 引用/compat 仅再导出（T-02/T-04 已清 i18n hook/frame 779 端口/photo_service 随迁归 runtime）；test_code/test_file 族下沉 SDK；**三非 UI 消费者切 SDK**（auto-gen/auto-playground/a2r-actor-tests——闭包零 UI 零旧包，playground 基线预存红一并修复）；V-04 provider/frame/i18n/theme/mem_guard 族 91/91；SDK 三边纯净保持 1631/1631] | AC-01,04 |
-| [x] | T-07 | work | T-06 | 测试源码/别名/nextest选择面按owner迁移，全部旧族逐项映射，移除旧实现；V-05选择清单 | AC-05 [✅ 已完成 2026-10-21（257e02454）：6 个 dev-deps 消费测试迁 runtime→auto-lang 测试期 UI 依赖清零（T-04 临时兜住收口）；tt/tb/taa/ta/t3 别名扩 -p auto-ui-runtime（否则 ~1900 例静默丢面）；T-04 三模块漏挂载勘误（验证器逐 ID 捕获）；r5 验证器 62 条显式重写扩展——**九档 missing=0/unresolved=0 全核销+selftest 删除负控过**（t 5303→5328/tf 6270→6279/tv 163=163/tt 5675→5700/tb 5296→5304/tu 867→868/taa 6266→6275/ta 6720→6729/t3 6721→6730；[t07-closeout](attachments/814/t07-closeout/)）；新码面零警告（迁移码既有警告随迁，203e2ce91 同形态 auto-lang 637→479 净-158）] | AC-05 |
+| [x] | T-07 | work | T-06 | 测试源码/别名/nextest选择面按owner迁移，全部旧族逐项映射，移除旧实现；V-05选择清单 | AC-05 [✅ 已完成 2026-10-21（257e02454）：6 个 dev-deps 消费测试迁 runtime→auto-lang 测试期 UI 依赖清零（T-04 临时兜住收口）；tt/tb/taa/ta/t3 别名扩 -p auto-ui-runtime（否则 ~1900 例静默丢面）；T-04 三模块漏挂载勘误（验证器逐 ID 捕获）；r5 验证器 62 条显式重写扩展——**九档 missing=0/unresolved=0 全核销+selftest 删除负控过**（t 5303→5328/tf 6270→6279/tv 163=163/tt 5675→5700/tb 5296→5304/tu 867→868/taa 6266→6275/ta 6720→6729/t3 6721→6730；[t07-closeout](../attachments/814/t07-closeout/)）；新码面零警告（迁移码既有警告随迁，203e2ce91 同形态 auto-lang 637→479 净-158）] | AC-05 |
 | [x] | T-08 | work | T-07 | 新consumer/上层定向矩阵V-01..05、777/792新闭包、fresh/locked/重定位与负控 | AC-01..05 [✅ 已完成 2026-10-21（463fd029c/8afba8d01/e1c0f4770/780415083）：**缺席语义回归捕获**（auto-lang→runtime 依赖边漏关 default-features——no-UI 消费者经路径边拖入 ui-iced+inventory 链装配破坏缺席臂；provider fixture 哨兵发现，修复后六 fixture 43 测绿+闭包零 iced）；ui-runtime-consumer 新 fixture（canonical 双直依赖 5/5+fresh/locked+旧包缺席）；**792 driver 24/24 EXIT=0**（V01 fresh 真构建/V02 重定位 locked/V03a..j 负控/V04 dev 路由——断言随 canonical 更新）；生成器两缺陷修复（truthy 过投射/on_click 兜底——shell-pack 再生暴露，tu 870/870 保持）；777 strict pass（基线重采样@463fd029c，shell-pack→auto-lang 豁免边消除 4→3，ui_to_language=0 保持）；V-03：VM 端真渲染实据（auto run -r vm MCP snapshot 树可读）+tu e2e 真编译 2/2；Vue/Playwright 端环境栈未跑=pending] | AC-01..05 |
-| [x] | T-09 | work | T-08 | SD-01..08备稿、真实API/包源/资源/测试归属及compat退出清单，新增attachments/814/handoff.md绑定SHA/结果，提交送审 | AC-05 [✅ 已完成 2026-10-21：[handoff.md](attachments/814/handoff.md)——B 提交链 11 枚/V-01..05 终态矩阵/兼容退出清单（再导出面+auto-man 自身+a2r 泳道+inventory 例外四项保持）/资产测试归属/SD-03 全文与 SD-01/02/04/08 增量备稿（§5）/merge 门 pending 清单（§6）；树 clean@780415083] | AC-05 |
+| [x] | T-09 | work | T-08 | SD-01..08备稿、真实API/包源/资源/测试归属及compat退出清单，新增attachments/814/handoff.md绑定SHA/结果，提交送审 | AC-05 [✅ 已完成 2026-10-21：[handoff.md](../attachments/814/handoff.md)——B 提交链 11 枚/V-01..05 终态矩阵/兼容退出清单（再导出面+auto-man 自身+a2r 泳道+inventory 例外四项保持）/资产测试归属/SD-03 全文与 SD-01/02/04/08 增量备稿（§5）/merge 门 pending 清单（§6）；树 clean@780415083] | AC-05 |
 | [x] | T-10 | review | T-09 | 同树独立完整DAG/公开兼容/生产/寿命/测试选择与SD审查，merge门pending | AC-06 |
 | [x] | T-11 | merge | T-10 pass | master并集/变化复审，最终冻结提交统一§6门，失败修复后重审重冻 | AC-07 |
 | [x] | T-12 | merge | T-11 | 规范/ledger沉淀、归档、已合入SDK/UI出口交815，guard clean后清理、终态计数 | AC-07 |
-| [x] | T-13 | work | T-02/T-03 | 冻结A API/版本/源码与支持清单；V-06及A涉及V-01..05、777/792/独立fresh/locked/负控完成，新增attachments/814/m814-a-candidate.md，准备实际Spec子集 | AC-08 [✅ 已完成 2026-10-20：候选冻结 @ `abe9c9900`（[m814-a-candidate.md](attachments/814/m814-a-candidate.md)——§2 A 事实清单/§3 证据矩阵/§5 诚实限制）；消费者 fixture 双绿（language-sdk-consumer 5/5 + ui-package-consumer 4/4，`b02a10772`）；777 strict pass（域登记+窄豁免，基线 `d91948ee1`）；fresh+`--locked` 消费跑通；**792 driver 25/25（EXIT=0）**——首轮受管红暴露新包图三接缝（投影 test-cases 新形态/ui_gen 源根/auto-ui-runtime 未 vendored），SD-08 修复于 `abe9c9900`（DELIVERY_CRATES 19、投影分 spec、指纹路径）；auto-man delivery 单测 9/9。**AC-08 判定归 T-14 独立审查**（本勾选=work 交付完成，非审查 pass）] [✅ R3 全 findings 修齐 2026-10-20：批 3 `6f9daa680`+`6418f99ef` 关闭 R3-03b/05/06（映射表全文 [r3-05](attachments/814/r3-05-test-selection-mapping.md)、告警归因 [r3-06](attachments/814/r3-06-warning-attribution.md)、探针复跑 [收口证据](attachments/814/r3-03b-closeout/)）；R3-01..04 批 1/2 已关（§9 前录）；候选 SHA 待 T-14 重冻=分支头] [✅ R4 批 2026-10-20：R3-05 档位选择面 203e2ce91 基面全量回溯——九档（t/tf/tv/tt/tb/tu/taa/ta/t3）未匹配 0/选择缺口 0（[映射表 R4 修订](attachments/814/r3-05-test-selection-mapping.md)）；别名 tb/taa/ta/t3 扩四包、tt 补 compiler；告警归因 [203e2ce91 口径](attachments/814/r3-06-warning-attribution.md)（净新增≈14 条全归因 T-02/T-03 残留+B 清偿域）；候选 SHA=分支头 `16cc4f14a`（R4 批+追修）] | AC-08 |
+| [x] | T-13 | work | T-02/T-03 | 冻结A API/版本/源码与支持清单；V-06及A涉及V-01..05、777/792/独立fresh/locked/负控完成，新增attachments/814/m814-a-candidate.md，准备实际Spec子集 | AC-08 [✅ 已完成 2026-10-20：候选冻结 @ `abe9c9900`（[m814-a-candidate.md](../attachments/814/m814-a-candidate.md)——§2 A 事实清单/§3 证据矩阵/§5 诚实限制）；消费者 fixture 双绿（language-sdk-consumer 5/5 + ui-package-consumer 4/4，`b02a10772`）；777 strict pass（域登记+窄豁免，基线 `d91948ee1`）；fresh+`--locked` 消费跑通；**792 driver 25/25（EXIT=0）**——首轮受管红暴露新包图三接缝（投影 test-cases 新形态/ui_gen 源根/auto-ui-runtime 未 vendored），SD-08 修复于 `abe9c9900`（DELIVERY_CRATES 19、投影分 spec、指纹路径）；auto-man delivery 单测 9/9。**AC-08 判定归 T-14 独立审查**（本勾选=work 交付完成，非审查 pass）] [✅ R3 全 findings 修齐 2026-10-20：批 3 `6f9daa680`+`6418f99ef` 关闭 R3-03b/05/06（映射表全文 [r3-05](../attachments/814/r3-05-test-selection-mapping.md)、告警归因 [r3-06](../attachments/814/r3-06-warning-attribution.md)、探针复跑 [收口证据](../attachments/814/r3-03b-closeout/)）；R3-01..04 批 1/2 已关（§9 前录）；候选 SHA 待 T-14 重冻=分支头] [✅ R4 批 2026-10-20：R3-05 档位选择面 203e2ce91 基面全量回溯——九档（t/tf/tv/tt/tb/tu/taa/ta/t3）未匹配 0/选择缺口 0（[映射表 R4 修订](../attachments/814/r3-05-test-selection-mapping.md)）；别名 tb/taa/ta/t3 扩四包、tt 补 compiler；告警归因 [203e2ce91 口径](../attachments/814/r3-06-warning-attribution.md)（净新增≈14 条全归因 T-02/T-03 残留+B 清偿域）；候选 SHA=分支头 `16cc4f14a`（R4 批+追修）] | AC-08 |
 | [x] | T-14 | review | T-13提交冻结 | 独立阶段AC-08/API/类型状态/资源/Spec审查，绑定r3/M814-A SHA；全Plan未reviewed、merge门pending [✅ R7 phase pass：256613936，见§9及review-r7；仅A阶段，T-15实际发布仍pending] | AC-09 |
-| [x] | T-15 | merge | T-14 pass | 串行冻结门/实际master合入/Spec子集与受管ledger增量、版本来源consumer读回发布收据；保原树/分支继续B，不归档 [✅ M814-A 发布完成 2026-10-20：冻结门（分支 e47d85c7b）=裸 t 5307/5307（plan808 term_engine UI 引用计数 1→0 + schema_drift 六路径两围栏随迁修复，生产零改动）+tv 163+tu 867+tt 5679/5679（plan485 剪贴板并行 flake 归因复跑绿）；taa 用户裁定豁免（aavm 拟退役，两红仅记录）。master 合入 `f6e07acee`（合并解析：master 侧 test_cases/{abi,ac_av} 新增跟随目录迁移至 SDK 新路径；plan796 指标工件清道提交）+分支同步（B 继续）。Spec 子集落库：新 language-sdk/auto-ui-compiler project.md + auto-lang project/frontend/vm/ui overview A 子集 + r3 两处 canonical（parser-api/full-grammar）；ledger v62（P814-A 收据）+spec-index 55 projects。consumer 读回（合入后 master）：language-sdk-consumer 5/5 + ui-package-consumer 4/4 + no-ui 源码快照 fresh+locked + **792 driver 25/25**（首轮红=master 树 ffi_dual build_a2r 忽略态生成残留触发交付外部 path 守卫——环境清理后复跑绿，投影 ignore 感知缺失记 KNOWN-DEBT）。777 master 重采样被并发会话脏文档阻塞（后续跟进项）。证据=[t15-closeout/](attachments/814/t15-closeout/)] | AC-10 |
+| [x] | T-15 | merge | T-14 pass | 串行冻结门/实际master合入/Spec子集与受管ledger增量、版本来源consumer读回发布收据；保原树/分支继续B，不归档 [✅ M814-A 发布完成 2026-10-20：冻结门（分支 e47d85c7b）=裸 t 5307/5307（plan808 term_engine UI 引用计数 1→0 + schema_drift 六路径两围栏随迁修复，生产零改动）+tv 163+tu 867+tt 5679/5679（plan485 剪贴板并行 flake 归因复跑绿）；taa 用户裁定豁免（aavm 拟退役，两红仅记录）。master 合入 `f6e07acee`（合并解析：master 侧 test_cases/{abi,ac_av} 新增跟随目录迁移至 SDK 新路径；plan796 指标工件清道提交）+分支同步（B 继续）。Spec 子集落库：新 language-sdk/auto-ui-compiler project.md + auto-lang project/frontend/vm/ui overview A 子集 + r3 两处 canonical（parser-api/full-grammar）；ledger v62（P814-A 收据）+spec-index 55 projects。consumer 读回（合入后 master）：language-sdk-consumer 5/5 + ui-package-consumer 4/4 + no-ui 源码快照 fresh+locked + **792 driver 25/25**（首轮红=master 树 ffi_dual build_a2r 忽略态生成残留触发交付外部 path 守卫——环境清理后复跑绿，投影 ignore 感知缺失记 KNOWN-DEBT）。777 master 重采样被并发会话脏文档阻塞（后续跟进项）。证据=[t15-closeout/](../attachments/814/t15-closeout/)] | AC-10 |
 
 唯一树`D:/autostack/.wt/lang-814/auto-lang`、分支`codex/plan-814-dev`；work/review顺序交接同树，先核实实际tree/base并读取主检出r2。A发布后保留原树/分支同步master继续B，不创建第二审查树、不归档/清理。A期间Plan保持executing，只有B全部原AC完成后才依标准流程execution_done→reviewed→archived。
 
-阶段发布是用户本轮明确授权的有界例外：按共用合同独立阶段review、冻结门、人工Git合入及非归档Spec/ledger受管增量与收据组织；**不调用会自动归档整Plan的完整merge流程冒充phase支持**。B按原最终review/merge/归档任务完成。无WIP依赖，无junction/symlink，最终清理必须guard clean。跨Plan审查/修复与共享窗口见[阶段交付与并行审查修复合同](reports/staged-delivery-review-814-816.md)。
+阶段发布是用户本轮明确授权的有界例外：按共用合同独立阶段review、冻结门、人工Git合入及非归档Spec/ledger受管增量与收据组织；**不调用会自动归档整Plan的完整merge流程冒充phase支持**。B按原最终review/merge/归档任务完成。无WIP依赖，无junction/symlink，最终清理必须guard clean。跨Plan审查/修复与共享窗口见[阶段交付与并行审查修复合同](../reports/staged-delivery-review-814-816.md)。
 
 ## 9. 复审记录
 
@@ -182,13 +182,13 @@ r1以下记录为历史合同预检，旧启动门由r2替代；不是当前调�
 
 2026-10-19 / stage: new / revision: 1 / outcome: pass（合同预检，非实现/独立验收pass）/ next: work T-01只读；代码probe和T-02起等待810/811实际合入 / changed: T-01..12、AC-01..07、SD-01..08。未执行未来Cargo/fixture、未创建工作树/agent或搬仓。
 
-2026-10-20 / stage: new / revision: 2 / outcome: pass（文档合同预检，非实现/独立验收pass）/ next: 按§4阶段门work；814先确认已登记唯一树并读取本r2。changed: 阶段A/B与新增T/AC/V、Spec分阶段沉淀、并行审查修复；原目标、原T/AC/SD ID保留。r1证据仅历史，不自动覆盖新范围。未执行实现/未来fixture/门禁。见[预检](attachments/sdk-tools-r2-20261020/preflight.md)。
+2026-10-20 / stage: new / revision: 2 / outcome: pass（文档合同预检，非实现/独立验收pass）/ next: 按§4阶段门work；814先确认已登记唯一树并读取本r2。changed: 阶段A/B与新增T/AC/V、Spec分阶段沉淀、并行审查修复；原目标、原T/AC/SD ID保留。r1证据仅历史，不自动覆盖新范围。未执行实现/未来fixture/门禁。见[预检](../attachments/sdk-tools-r2-20261020/preflight.md)。
 
 2026-10-20 / stage: work / revision: 2 / outcome: T-01 完成（M814-A 第一步；work 继续 T-02，非阶段/整Plan pass）/
 worktree: `D:/autostack/.wt/lang-814/auto-lang` | branch: `codex/plan-814-dev` | base:
 master `203e2ce91`（811 收口；唯一树与 r2 §8 登记一致）| code: `be10024ab`（T-01 probe
 切片）| 依赖: 组内 auto-down 兄弟 detached@c39ac7f（autodown-core 解析，零源改动）。
-交付 [attachments/814/contract-baseline.md](attachments/814/contract-baseline.md)（§1-14 盘点
+交付 [attachments/814/contract-baseline.md](../attachments/814/contract-baseline.md)（§1-14 盘点
 + §15 probe 记录）：包名/DAG/兼容机制冻结；use_scanner 机制切片迁 SDK（旧路径
 `auto_lang::use_scanner::*` 再导出保类型身份，auto-lsp 等六消费者零 error）；别名
 t/tf 扩多 -p+包前缀 feature（迁移族 `use_scanner::tests::` 27/27+doctest 2/2 保持选中）；
@@ -228,9 +228,9 @@ outcome: **needs_fix** / worktree_path: `D:/autostack/.wt/lang-814/auto-lang` /
 branch: `codex/plan-814-dev` / reviewed_commit: `03d983ae9a654d06963b2ad56a04a3adb3bf8e6e` /
 base_commit: `203e2ce91302ff1ebd48cbd0a8365d76abb89009` / dependency_revisions:
 组内auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。
-详见[报告/AC逐项与证据边界](attachments/814/review-r1/review.md)、
-[输入hash](attachments/814/review-r1/input-hashes.txt)、
-[冻结SD](attachments/814/review-r1/sd-frozen.md)。实施树clean，但HEAD与§9自述均为不可编译、
+详见[报告/AC逐项与证据边界](../attachments/814/review-r1/review.md)、
+[输入hash](../attachments/814/review-r1/input-hashes.txt)、
+[冻结SD](../attachments/814/review-r1/sd-frozen.md)。实施树clean，但HEAD与§9自述均为不可编译、
 不得送审的WIP；本轮不反复启动完整最终验收。
 **F814-R1-01(P1)**：T-02根项级联仍缺、compiler/runtime新包仅文档注释，auto-vm未切SDK、
 A消费者/候选/资源证据未交付；**F814-R1-02(P1)**：SDK仍无条件依赖auto-ui-dialect并直接调用
@@ -256,7 +256,7 @@ outcome: **needs_fix** / worktree_path: `D:/autostack/.wt/lang-814/auto-lang` /
 branch: `codex/plan-814-dev` / reviewed_commit: `edb78b2efbdcadb1994d4065b9cb341b3d71497f` /
 base_commit: `203e2ce91302ff1ebd48cbd0a8365d76abb89009` / dependency_revisions:
 auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。
-[R2报告/闭合边界/原始check](attachments/814/review-r2/review.md)：独立locked/offline
+[R2报告/闭合边界/原始check](../attachments/814/review-r2/review.md)：独立locked/offline
 SDK+auto-lang定向check退出0（22.49s），**R1-01的不可编译子项已关闭**；原F814-R1-01整体
 仍OPEN（auto-vm/frame provider、compiler与A消费者/候选/发行未交付），F814-R1-02仍OPEN
 （SDK normal依赖UI文法实现、默认装配未上移）。迁移后frame的无效ui feature门在check报告
@@ -361,7 +361,7 @@ outcome: **needs_fix** / worktree_path: `D:/autostack/.wt/lang-814/auto-lang` /
 branch: `codex/plan-814-dev` / reviewed_commit: `abe9c99002fe7bafb49a9f86c5867f68d796d65a` /
 base_commit: `203e2ce91302ff1ebd48cbd0a8365d76abb89009` / dependency_revisions:
 auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。
-[R3报告/逐项反例与正控/冻结SD](attachments/814/review-r3/review.md)：独立SDK消费者5/5、
+[R3报告/逐项反例与正控/冻结SD](../attachments/814/review-r3/review.md)：独立SDK消费者5/5、
 compiler消费者4/4通过，原不可编译/auto-vm旧依赖/compiler骨架/默认无条件编译UI文法等
 原例均已修；完整A不变量仍失败。**F814-R3-01(P1)**旧create_vm_from_source等再导出入口
 丢宿主自动装配（独立进程false，run包装正控true）；**R3-02(P1)**缓存load早于指纹注入，
@@ -423,10 +423,10 @@ current_step=4/15（T-02/T-03/T-13 复勾）。
   auto-ui-dialect `src/regression/`（dev-dep auto-lang-core 驱动真 Parser，
   `setup()` 注入表；语料路径 `../auto-lang/test/a2gd` 同深成立；本地 helper
   5 组与 plan778 双 dialect struct 随迁/复制，SDK 侧死代码清除）。
-- **R3-05 关闭**：[映射表全文](attachments/814/r3-05-test-selection-mapping.md)
+- **R3-05 关闭**：[映射表全文](../attachments/814/r3-05-test-selection-mapping.md)
   ——86/86 逐项映射无丢失无新增；t/tf/tt 别名扩 `-p auto-ui-dialect`；档位
   对照与计数核对（原始清单随附 closeout 目录）。
-- **R3-06 关闭**：[告警归因表](attachments/814/r3-06-warning-attribution.md)
+- **R3-06 关闭**：[告警归因表](../attachments/814/r3-06-warning-attribution.md)
   ——基线 296 == 迁后 296（0 新增）；迁移残留 cfg 门清偿四点（含**附带行为
   修复**：compiler `ui` feature 缺声明致 pac.at ui_config 装载自 T-03 静默走
   None 桩 + plan571 生成器测试从 tu 档静默丢失——均恢复并实录验证）；
@@ -436,13 +436,13 @@ current_step=4/15（T-02/T-03/T-13 复勾）。
   恢复运行（单包 4/4、tu 形态 3 过）；四 modularity fixtures 5/5+4/4+7/7+10/10；
   language-sdk-consumer 负控随新拒绝文案更新（"not assembled"显式拒绝不变量
   保持）；reviewer 三探针（host/cache/autodown）+ no-ui 源码快照探针
-  （[收口证据](attachments/814/r3-03b-closeout/)）全 PASS；777 strict pass
+  （[收口证据](../attachments/814/r3-03b-closeout/)）全 PASS；777 strict pass
   violations=0（ownership 焊点路径 10 处随迁移归位；基线重采样
   `6418f99ef`）；`git diff --check` 0；触面文件 fmt 过。
 - **预存不动**：auto-cache/shim-metadata 测试红（基线同在，非本 Plan 迁移面）；
   296 告警集合内既有项按归因表存档。
 - **next_responsible_role: review（T-14 具名 M814-A 阶段审查）**——绑定分支头
-  `6418f99ef` + r2 §5.1 阶段性质 + [m814-a-candidate.md](attachments/814/m814-a-candidate.md)
+  `6418f99ef` + r2 §5.1 阶段性质 + [m814-a-candidate.md](../attachments/814/m814-a-candidate.md)
   （§3 证据矩阵需按本轮更新重核：777 基线 SHA/no-ui 探针/映射表/告警表为新增
   绑定；§6 增量附录已补）。**792 driver 复跑 25/25（EXIT=0，收据
   worktree scratch-consumer/driver-receipt.json）**——SDK/compiler 清单变化
@@ -455,7 +455,7 @@ outcome: **needs_fix** / worktree_path: `D:/autostack/.wt/lang-814/auto-lang` /
 branch: `codex/plan-814-dev` / reviewed_commit: `6418f99efe0af2432a652212e98d39b973515cd9` /
 base_commit: `203e2ce91302ff1ebd48cbd0a8365d76abb89009` / dependency_revisions:
 auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。
-[R4六项闭合表/原例与相邻正反控/冻结SD](attachments/814/review-r4/review.md)：原host/cache/
+[R4六项闭合表/原例与相邻正反控/冻结SD](../attachments/814/review-r4/review.md)：原host/cache/
 autodown三探针全过，非UI源码快照新锁+locked消费者5/5；显式frame默认/VM快照、autodown
 往返与错误分支、Parser-only直达均通过。**R3-01/04原行为CLOSED**；**R3-02仍OPEN**
 （None先占位锁死真实身份；晚注入保存旧cache给未失效条目重盖新指纹，两个反例exit101）；
@@ -499,7 +499,7 @@ auto-down `c39ac7f`（未变）。current_step=4/15（T-02/T-03/T-13 复勾）�
   （`crate::remap_string_indices` 跨 crate 失联——该族短期不跑未暴露）
   修复；`image_surface_rust_codegen` ui-iced 残门归位；T-02 被丢测试
   `test_style_recipe_in_widget_extraction` 恢复（compiler style，语义
-  逐字保持）。[映射表 R4 修订全文](attachments/814/r3-05-test-selection-mapping.md)。
+  逐字保持）。[映射表 R4 修订全文](../attachments/814/r3-05-test-selection-mapping.md)。
 - **R3-06 关闭**：reviewer 点名 fmt 项全清（ui_cache.rs:371/
   auto-macros tests 导入序+src lib.rs）；告警归因表补 **203e2ce91 基线
   口径**（净新增≈14 条逐条归因 T-02/T-03 残留→B 清偿域；净消失≈4 条；
@@ -509,7 +509,7 @@ auto-down `c39ac7f`（未变）。current_step=4/15（T-02/T-03/T-13 复勾）�
   生成入口（经 assemble_ui_grammar）**显式 set_ui_grammar 优先**；
   UiGrammarSource inventory 保留为直达 `Parser::from(..).with_session(UI)`
   构造的兜底——SDK 侧注记改写为与 R3-01 已验收 UiCompatInstaller 同构
-  的语义边界。[合同修订提案+SD 增量正文](attachments/814/r4-01-assembly-contract.md)
+  的语义边界。[合同修订提案+SD 增量正文](../attachments/814/r4-01-assembly-contract.md)
   （AC-02"无隐式链接装配"的澄清案+auto-parser-api 归属变更理由+缓存
   时序规范），供 T-14/T-15 裁定；若不接受则 needs_replan 变更已具名
   （直达构造硬错误=旧 API 行为破坏，需授权）。
@@ -536,7 +536,7 @@ branch: `codex/plan-814-dev` / reviewed_commit: `16cc4f14a732f593244f4b60377dd6f
 base_commit: `203e2ce91302ff1ebd48cbd0a8365d76abb89009` / dependency_revisions:
 auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`（初末clean且未变）。
 
-[R5完整闭合表/合同逐项对账/验证器负控/冻结SD](attachments/814/review-r5/review.md)。
+[R5完整闭合表/合同逐项对账/验证器负控/冻结SD](../attachments/814/review-r5/review.md)。
 **CLOSED**：R3-02身份升级/晚装配失效四例；R3-03实际SDK build输入428项禁止项0、
 无UI源码fresh+locked消费者5/5；R3-01/04原host/autodown行为保持通过。R3-05原别名
 漏选与三个代表项已修且实际3/3；**余项仍OPEN**：完整映射原始旧清单未留存，exact
@@ -571,7 +571,7 @@ AC-02/08 合同面未闭，不复勾）。
   PathBuf+doc/**HttpBaseEnvGuard Drop cfg(test) 真缺陷修复**（跨 crate
   测试恢复语义失效）/可见性一致化（6 类型提 pub）。对照 203e2ce91
   复测：**净新增 0、净消失 7**（归因表 R5 修订节）。
-- **R3-05 关闭（验证器+工件）**：[r5-closeout/](attachments/814/r5-closeout/)
+- **R3-05 关闭（验证器+工件）**：[r5-closeout/](../attachments/814/r5-closeout/)
   ——九档（含 tu）新旧完整 `(package, full_test_path)` 清单 18 件持久
   入库 + 健全验证器（显式三段映射/唯一叶名多候选=UNRESOLVED/new 侧每
   ID 至多一次消费/逐 ID 报缺失）+ `--selftest` 删除负控九档全 DETECTS
@@ -596,7 +596,7 @@ outcome: **needs_replan（仅余合同批准及正式落文）** / reviewed_comm
 `D:/autostack/.wt/lang-814/auto-lang` / branch: `codex/plan-814-dev` /
 dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`，初末clean。
 
-[R6报告/九档显式逐ID证明/警告复核/精确合同草案](attachments/814/review-r6/review.md)。
+[R6报告/九档显式逐ID证明/警告复核/精确合同草案](../attachments/814/review-r6/review.md)。
 **R3-05 CLOSED**：十八件清单持久存在；工作验证器已修原删除盲区但唯一叶名回退仍
 不能证明身份，本次review把仅余四条实际源码迁移固定为显式映射，禁用叶名推断后九档
 全部核销、删除/同名替换负控均检出，逐ID结果冻结。tu真实869描述符=867唯一ID（两项
@@ -606,7 +606,7 @@ dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`，初
 及diff check过。不是全仓零warning，也不是批准延期B。
 **R4-01事实/提案准备子项CLOSED，授权/生效仍OPEN**：已纠正启动构造器、旧host行为
 关闭不授权机制及trait取舍说法；未找到用户批准，plan_revision仍2，r2原AC/V/§5.2
-仍有效。本次准备[精确拟议r3增量](attachments/814/review-r6/contract-r3-draft.md)，明确
+仍有效。本次准备[精确拟议r3增量](../attachments/814/review-r6/contract-r3-draft.md)，明确
 登记可修改inventory自身表、不得启动UI业务/I/O，纯SDK零UI实现与旧API保持，同时
 具名UiParseContext/UiGrammar轻端口归属变更；只是可审阅草案，不是已生效合同。
 
@@ -647,7 +647,7 @@ outcome: **pass（仅M814-A阶段）** / reviewed_commit:
 `D:/autostack/.wt/lang-814/auto-lang` / branch: `codex/plan-814-dev` /
 dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`（初末clean）。
 
-[R7完整收据/AC-SD矩阵/复用边界/冻结证据](attachments/814/review-r7/review.md)。
+[R7完整收据/AC-SD矩阵/复用边界/冻结证据](../attachments/814/review-r7/review.md)。
 用户指定按r3与上述冻结实现重审，§5.3/§5.2/V-02/AC-02和SD已同步；AC-09/T-14
 遗留r2标签本次仅作绑定引用勘误。**F814-R4-01 CLOSED（r3下）**：上层三个登记项
 载荷为函数指针、SDK只collect；启动登记只改inventory自身表，显式入口优先、直达
@@ -695,8 +695,8 @@ taa，不将R6 list视为运行；tf仅主检出到期单实例。门红须归�
   AU 冲突=test_cases/{abi,ac_av}.rs——master 侧 PLAN 系新增于旧路径、
   分支整目录迁移，按迁移语义恢复至新路径并入 mod.rs 引用一致）。
 - **Spec 子集受管沉淀**（A 事实，SD-03 不发布）：新
-  [language-sdk](../specs/language-sdk/project.md)、
-  [auto-ui-compiler](../specs/auto-ui-compiler/project.md)；auto-lang
+  [language-sdk](../../specs/language-sdk/project.md)、
+  [auto-ui-compiler](../../specs/auto-ui-compiler/project.md)；auto-lang
   project/frontend/vm/ui overview A 子集；r3 两处 canonical（auto-parser-api
   project"允许 UI opt-in 轻端口"、auto-ui-dialect full-grammar"定义归
   parser-api+ui_grammar 构造器"）。ledger v62（P814-A 发布收据）+
@@ -836,7 +836,7 @@ code: `a75c616f5`（T-05 全批）| 依赖: auto-down `c39ac7f`（未变）。
 （B 阶段 work 面收口；非 review pass）**/ worktree:
 `D:/autostack/.wt/lang-814/auto-lang` | branch: `codex/plan-814-dev` | base:
 f6e07acee | code: B 提交链 11 枚（终端头 `780415083`，详见
-[handoff.md](attachments/814/handoff.md) §1）| 依赖: auto-down `c39ac7f`。
+[handoff.md](../attachments/814/handoff.md) §1）| 依赖: auto-down `c39ac7f`。
 
 - **T-08 关键捕获**：auto-lang→runtime 依赖边漏关 default-features——
   no-UI 消费者经路径边拖入 ui-iced，链接期 inventory 链装配破坏 provider
@@ -857,7 +857,7 @@ base_commit: `f6e07aceeeea3cb12698c747d61db5be43f7458c` / worktree_path:
 `D:/autostack/.wt/lang-814/auto-lang` / branch: `codex/plan-814-dev` /
 dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`（初末clean）。
 
-[R8就绪核查/原合同与证据/限定构建及清单核对](attachments/814/review-r8/review.md)。
+[R8就绪核查/原合同与证据/限定构建及清单核对](../attachments/814/review-r8/review.md)。
 当前已承认的work-owned oracle未完成，未展开整轮最终验收，也未重跑整档。
 **F814-R8-01(P2)**：V-03标“✅（Vue端pending）”，handoff§4又把双端对照列非本Plan面；
 原B合同要求未获准取消，VM快照/生成工程build不能替代Vue/VM运行对照，T-08不应全勾。
@@ -888,7 +888,7 @@ handoff“tt按需”默改主计划门禁，现有aavm豁免按用户裁定范�
 stage: review；review_scope: final；reviewer_identity: 本聊天 Codex 复审上下文，未参与 B 实现、未创建 agent/额外 checkout；plan_revision: 3。
 受审原唯一树 `D:/autostack/.wt/lang-814/auto-lang` / `codex/plan-814-dev`，commit `6063b7a94159026cd5876c1ad918e7a2e527597a`，tree `08bdc88381af60e06b0e7ac250a344f6ba8f1963`；base=A 发布 `f6e07aceeeea3cb12698c747d61db5be43f7458c`，auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。终验 HEAD/依赖/洁净状态未漂移。
 
-[完整报告、稳定反例、原始结果摘要、冻结计划/交接/SD/Spec及哈希](attachments/814/review-r9/review.md)。R8-01 双端代表性 oracle、R8-02 规范正文/来源结构、R8-03 两告警与 fixture 格式原例关闭；SD 最终语义须随新修复同步。新 OPEN：F814-R9-01 P2 比较位统一 as_str 覆盖 bool/int 形状，三反例真实生成组件 E0277（字符串/纯条件正控 exit0）；02 P2 旧 `ui::style::IcedStyle`/`iced_adapter` 公开路径丢失，真实 consumer E0425/E0433；03 P2 新 runtime 公开 headless 形态仍编译 Iced/桌面引用，check exit101；04 P3 生成器 rust.rs 新增格式六处 diff。
+[完整报告、稳定反例、原始结果摘要、冻结计划/交接/SD/Spec及哈希](../attachments/814/review-r9/review.md)。R8-01 双端代表性 oracle、R8-02 规范正文/来源结构、R8-03 两告警与 fixture 格式原例关闭；SD 最终语义须随新修复同步。新 OPEN：F814-R9-01 P2 比较位统一 as_str 覆盖 bool/int 形状，三反例真实生成组件 E0277（字符串/纯条件正控 exit0）；02 P2 旧 `ui::style::IcedStyle`/`iced_adapter` 公开路径丢失，真实 consumer E0425/E0433；03 P2 新 runtime 公开 headless 形态仍编译 Iced/桌面引用，check exit101；04 P3 生成器 rust.rs 新增格式六处 diff。
 
 独立通过：SDK 无 UI/Man 实体源码 fresh+locked consumer 5/5、新 runtime consumer 5/5、旧 API pin4/4、canonical import1/1、六 provider43/43、runtime44/44、777 strict0。counter Vue/VM 三状态一致。九档当前 ID 与冻结 B 全集合一致；复用 R6/R8 strict 路径证明再执行九档 missing0/ambiguous0，没有整档执行。792 work receipt24/24 冻结限定复用，未伪报本轮重跑。
 
@@ -901,7 +901,7 @@ T-04/T-05 重开；T-08/T-09 继续开放；T-07 测试选择/健康旧例已核
 stage: review；review_scope: final；reviewer_identity: 本聊天 Codex 独立复审上下文，未参与实施、未创建 agent/另一 checkout；plan_revision: 3。
 受审 `236827f1c43dfa991e5a047a0eaa3e0ac0d07a38` / tree `3ff79459fc69be4777419d97903d10bb206e1c90`，原树 `D:/autostack/.wt/lang-814/auto-lang` / `codex/plan-814-dev`；修复 base=R9 `6063b7a94`，B base=A 发布 `f6e07acee`，auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。初末 clean/身份未漂移。
 
-[报告、稳定正反控、原始结果摘要、冻结 SD/Spec 与哈希](attachments/814/review-r10/review.md)。R9-02 旧样式路径/类型身份、R9-03 六构建形态、R9-04 手写格式 CLOSED；**R9-01 PARTIAL/OPEN**：已知形状原例通过，未知形状 loop/Value prop 的负数右位落 as_str、浮点落 as_i64，五组合真实编译 E0277/E0308。新 **F814-R10-01 P2**：替换浮层扫描只见 Absolute 置位、未处理后继 Relative/Fixed/Sticky，真实 view 两组合误 hoist（5 组合正反控，mismatches2/exit1）；**02 P2**：777 strict 实际 exit2，唯一 stale_baseline=runtime Cargo.toml log std 变化未重采样，非新增禁向边；**03 P3**：ScrollStateEntry 移走 derive 后原文件 serde 两导入未用，matching runtime235→236，未把历史警告判新增。
+[报告、稳定正反控、原始结果摘要、冻结 SD/Spec 与哈希](../attachments/814/review-r10/review.md)。R9-02 旧样式路径/类型身份、R9-03 六构建形态、R9-04 手写格式 CLOSED；**R9-01 PARTIAL/OPEN**：已知形状原例通过，未知形状 loop/Value prop 的负数右位落 as_str、浮点落 as_i64，五组合真实编译 E0277/E0308。新 **F814-R10-01 P2**：替换浮层扫描只见 Absolute 置位、未处理后继 Relative/Fixed/Sticky，真实 view 两组合误 hoist（5 组合正反控，mismatches2/exit1）；**02 P2**：777 strict 实际 exit2，唯一 stale_baseline=runtime Cargo.toml log std 变化未重采样，非新增禁向边；**03 P3**：ScrollStateEntry 移走 derive 后原文件 serde 两导入未用，matching runtime235→236，未把历史警告判新增。
 
 独立通过：四包+六 feature 形态 check、原例/相邻比较正控及旧路径编译、runtime consumer5/5、六 provider43/43、事件/滚动/浮层定向65/65；t/tu 当前 ID5328/868集合与R9一致。其他七档 strict 身份证明、纯SDK隔离5/5、counter三状态/792旧收据按未变源/依赖/配置/输入边界复用，未冒称本轮整档/双端/792重跑。11个canonical源未变，SD-02数字分流/SD-03精确无UI装配边界须随修复审定；不以交接tt按需削减主合同。
 
@@ -913,7 +913,7 @@ next_responsible_role: work，原树同批修齐旧一项+新三项，更新 SD/
 stage: review；review_scope: final；reviewer_identity: 本聊天 Codex 复审上下文，未参与实施，未创建 agent/新 checkout；plan_revision: 3。
 受审原树 `D:/autostack/.wt/lang-814/auto-lang` / `codex/plan-814-dev`，commit `49206c6992b177cc02e84f35be34a885a2ebd817` / tree `5c7321ec8ab94cf12c41c347a5e22ea59a2fa21d`；修复base=R10 `236827f1c`，B base=A发布 `f6e07acee`，auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。初末身份/clean复核无漂移。
 
-[报告/表达式正反控/冻结SD、Spec与哈希](attachments/814/review-r11/review.md)。R10-01浮层八组合mismatches0、02当前777 strict violations0、03原serde warning消失均CLOSED。**R9-01仍OPEN**：原R10五负数/浮点feature和原正控实际编译全0，新增负浮点左右位/整数算式/字符串状态正控也过；但相同0.5加分组、声明int/bool/float状态作另一操作数及Value prop声明int共七组合E0277/E0308。classifier仍只取紧邻字面token、未用已有state_types且不透明处理分组；不另造类型finding、不接受以默认str削减已有类型支持。新 **F814-R11-01 P3**：数字扫描新if条件多余括号@rust.rs:8758，matching compiler36→37；与runtime236→235净相抵不等于零新增。其他同类旧warning不重开。
+[报告/表达式正反控/冻结SD、Spec与哈希](../attachments/814/review-r11/review.md)。R10-01浮层八组合mismatches0、02当前777 strict violations0、03原serde warning消失均CLOSED。**R9-01仍OPEN**：原R10五负数/浮点feature和原正控实际编译全0，新增负浮点左右位/整数算式/字符串状态正控也过；但相同0.5加分组、声明int/bool/float状态作另一操作数及Value prop声明int共七组合E0277/E0308。classifier仍只取紧邻字面token、未用已有state_types且不透明处理分组；不另造类型finding、不接受以默认str削减已有类型支持。新 **F814-R11-01 P3**：数字扫描新if条件多余括号@rust.rs:8758，matching compiler36→37；与runtime236→235净相抵不等于零新增。其他同类旧warning不重开。
 
 四包check、手写fmt通过；bare-ui/headless重放绿，65相关runtime测试通过；原旧路径身份pin再次编译过。SDK隔离5/5、provider43/43、其他feature、九档strict身份、counter三状态及792收据按未变代码/依赖/配置/输入边界复用，未冒称新执行或整档。11canonical输入未变，SD03精确no-op与position仲裁匹配；SD02完整类型仍待修复审定。AC01复用pass、AC02所验保持，AC03 fail、AC04所验pass、AC05规范partial、AC06 needs_fix，AC07 merge pending；A的AC08..10与既闭R5/R6/R7保留。
 
@@ -941,7 +941,7 @@ T04独立验收复勾，T05/T08/T09开放，T10..12未完成；实际完成T01/0
   多重集**恰移除该项、零新增**（基线 if-paren ×2→修复 ×1，余为 12859
   历史位行号平移）；四包 matching check 收据：**compiler 36**（复审带
   bug=37）、runtime 235 保持、exit0、if/block-paren 各剩历史 1 处。
-- **覆盖矩阵**（[r11-closeout](attachments/814/r11-closeout/)，探针复制
+- **覆盖矩阵**（[r11-closeout](../attachments/814/r11-closeout/)，探针复制
   自 review-r11 未覆盖冻结快照）：字面量/声明/分组 × loop/prop × 左右位
   × int/float/bool/str 代表组合 + i64 宽度 = **26 feature + 无 feature
   正控 27/27 真实编译 exit0**（含 R9/R10 全部旧反例与正控保持；新增 10
@@ -968,7 +968,7 @@ T04独立验收复勾，T05/T08/T09开放，T10..12未完成；实际完成T01/0
 stage: review；review_scope: final；reviewer_identity: 本聊天 Codex 独立复审上下文，未参与实施，未创建 agent/新 checkout；plan_id: PLAN-814；plan_revision: 3。
 原树 `D:/autostack/.wt/lang-814/auto-lang` / `codex/plan-814-dev`；reviewed_commit `1bbf986208b2486e4e899dd58209aecacc3a0608` / tree `7de5a0e12a009f88aa310a07179b4db3e3ab683f`；修复 base=R11 `49206c699`，B base=A发布 `f6e07acee`；auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。初末clean/HEAD/依赖与44输入复核，只有RustGenerator改动；11 canonical输入未变，计划/SD/handoff冻结。
 
-[完整报告、36组编译结果、反例与冻结哈希](attachments/814/review-r12/review.md)。**F814-R11-01 CLOSED**：新if多余括号清除，四包匹配check exit0、compiler37→36，runtime235保持。**F814-R9-01仍OPEN/P2**：work的26feature+原正控经独立再生真实编译27/27绿，原七失败均已修；新增9组1过8败——字段自身分组 `(p.rank) > .limit` / `.limit < (p.rank)`、浮点左右位/双侧嵌套/Value prop仍误进truthy→bool与数值E0308；`(.threshold + 0.5) < p.score`及prop按尾字面量发射f64，与threshold声明f32算式E0308，而反向比较正确投影f32。comparison_context未跨字段分组、operand_type仍是紧邻token分类，没有完整操作数类型。沿用原finding，不增加新范围或削减已有类型能力。
+[完整报告、36组编译结果、反例与冻结哈希](../attachments/814/review-r12/review.md)。**F814-R11-01 CLOSED**：新if多余括号清除，四包匹配check exit0、compiler37→36，runtime235保持。**F814-R9-01仍OPEN/P2**：work的26feature+原正控经独立再生真实编译27/27绿，原七失败均已修；新增9组1过8败——字段自身分组 `(p.rank) > .limit` / `.limit < (p.rank)`、浮点左右位/双侧嵌套/Value prop仍误进truthy→bool与数值E0308；`(.threshold + 0.5) < p.score`及prop按尾字面量发射f64，与threshold声明f32算式E0308，而反向比较正确投影f32。comparison_context未跨字段分组、operand_type仍是紧邻token分类，没有完整操作数类型。沿用原finding，不增加新范围或削减已有类型能力。
 
 四包check/手写fmt/diff-check/当前777 strict均过（violations0/grandfathered3）；overlay真实八组合再放mismatches0。旧API/typepin再次编译绿；SDK隔离5/5、六provider43/43、runtime65、六feature、九档strict身份、counter双端及792真实收据按未变代码/依赖/配置/输入限定复用，未冒称重跑或整档。AC01复用pass；AC02所验保持；AC03 fail；AC04复用pass；AC05选择/发行所验pass、SD02 partial；AC06 needs_fix；AC07 merge pending；AC08..10保留A已发布边界。SD02“完整类型/透明分组”仍与实际冲突，待修后同步审定；其它SD保留，影响元数据无需变更。
 
@@ -1008,7 +1008,7 @@ T04保持闭合；**重开T05/T08/T09**，T10..12未完成，实际完成T01/02/
   **调用实参括号判别**：闭括号回扫配对 `(`，前邻是标识符（`len(`）/
   开括号前邻是标识符 → 调用非分组 → 保持 truthy（实参位非值比较位）。
   已知 shape 访问器与纯条件 truthy 语义不动。
-- **覆盖矩阵**（[r12-closeout](attachments/814/r12-closeout/)，复制自
+- **覆盖矩阵**（[r12-closeout](../attachments/814/r12-closeout/)，复制自
   review-r12 冻结件）：R12 八败全修 + R9/R10/R11 全反例正控 + overlay
   八组合 = **38 feature + 无 feature 正控 + overlay 40/40 exit0**；
   新增 3 fixture：group-field-bool（字段分组×声明 bool）、arith-int-lhs
@@ -1030,7 +1030,7 @@ T04保持闭合；**重开T05/T08/T09**，T10..12未完成，实际完成T01/02/
 stage: review；review_scope: final；reviewer_identity: 本聊天 Codex 独立复审上下文，未参与实施，未创建 agent/新 checkout；plan_id: PLAN-814；plan_revision: 3。
 原树 `D:/autostack/.wt/lang-814/auto-lang` / `codex/plan-814-dev`；reviewed_commit `feae28e0f16beba7637f81c9499a4ed62fe40282` / tree `034f49985eaca1e67ab1e30b99e20d32dc5264cf`；修复base=R12 `1bbf98620`、B base=A发布`f6e07acee`；auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。初末clean/身份/44输入复核，只有RustGenerator变化；计划/handoff/SD/当前Spec冻结。
 
-[完整报告、57组真实编译、正反控与冻结指纹](attachments/814/review-r13/review.md)。两连败诊断及区间/类型解析设计调整已实质实施；**R12八败全部关闭**，work原38feature+默认正控39组真实编译全0，overlay八组合mismatches0，即原40检查均独立重放绿。**F814-R9-01仍OPEN/P2**：新增18个代表组合9过9败——operand_span_after把<=/>=只消费1字节，留下“= .limit”或“= 算式”，Unknown→str，loop/prop/分组六例E0277，而前向交换位置正确；classify_operand_expr未传播bool取反类型，`p.dirty == (!.allowed)`及反向/prop三例E0277。相同>=/bool取反在已知shape正控均实际编译绿，非新增语言要求。仍沿用原类型保持finding，不增加独立finding。
+[完整报告、57组真实编译、正反控与冻结指纹](../attachments/814/review-r13/review.md)。两连败诊断及区间/类型解析设计调整已实质实施；**R12八败全部关闭**，work原38feature+默认正控39组真实编译全0，overlay八组合mismatches0，即原40检查均独立重放绿。**F814-R9-01仍OPEN/P2**：新增18个代表组合9过9败——operand_span_after把<=/>=只消费1字节，留下“= .limit”或“= 算式”，Unknown→str，loop/prop/分组六例E0277，而前向交换位置正确；classify_operand_expr未传播bool取反类型，`p.dirty == (!.allowed)`及反向/prop三例E0277。相同>=/bool取反在已知shape正控均实际编译绿，非新增语言要求。仍沿用原类型保持finding，不增加独立finding。
 
 四包check/手写fmt/diff-check/777 strict绿（violations0/grandfathered3）；新解析器段无新增告警，compiler36/runtime235保持，R11-01及R10各项不重开。SDK隔离5/5、provider43/43、runtime65、六feature、九档strict身份、双端counter与792真实收据按未变工作树代码/依赖/配置/输入限定复用。AC01 pass复用、AC02所验保持、AC03 fail、AC04 pass复用、AC05选择/发行所验pass且SD02 partial、AC06 needs_fix、AC07 merge pending、AC08..10保留A已发布。未用整档或旧e2e掩盖新失败。
 
@@ -1058,7 +1058,7 @@ T04保持闭合；重开T05/T08/T09，T10..12未完成；实际完成T01/02/03/0
   补 `!=` 两方向/prop、`>=`×float 算式前向、逻辑组合、取反×逻辑
   六 fixture（ne-loop[-rhs]/prop-ne/ge-float-arith/logical-bool/
   not-logical），逐项真实编译绿。
-- **覆盖矩阵**（[r13-closeout](attachments/814/r13-closeout/)，复制自
+- **覆盖矩阵**（[r13-closeout](../attachments/814/r13-closeout/)，复制自
   review-r13 冻结件）：R13 九败全修 + R9-R12 全反例正控 + overlay =
   **62 feature + 无 feature 正控 + overlay 64/64 exit0**（fmt 后重建
   复放同结果）。关键形态：`(p["score"].as_f64().unwrap_or(0.0) as f32)
@@ -1080,7 +1080,7 @@ T04保持闭合；重开T05/T08/T09，T10..12未完成；实际完成T01/02/03/0
 stage: review；review_scope: final；reviewer_identity: 本聊天 Codex 独立复审上下文，未参与实施，未创建agent/新checkout；plan_id: PLAN-814；plan_revision: 3。
 原树 `D:/autostack/.wt/lang-814/auto-lang` / `codex/plan-814-dev`；reviewed_commit `42a4ef792e522d0b30e81f42f6fb25e254148ac1` / tree `abce0e2b0af2406b0a8ceb1687b97359b5673b91`；修复base=R13 `feae28e0f`，B base=A发布`f6e07acee`；auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。初末clean/HEAD/依赖/44输入复核，只有RustGenerator变化；11 canonical输入与R13相同，计划/SD/handoff冻结。
 
-[完整报告、96编译/24组六符双向矩阵/正反控与冻结哈希](attachments/814/review-r14/review.md)。**R13两项具体缺口均CLOSED**：原九败全部变绿，work原62feature+默认正控63编译全0，overlay八组合mismatches0，即原64检查独立重放全绿；额外六比较符×两方向×loop/prop24/24实际编译全过。**F814-R9-01仍OPEN/P2**：classify_operand_expr没有既有比较表达式节点的bool结果类型；`p.dirty == (.limit > 3)`、反向、Value prop及再包! /&&共五组合错误as_str对bool，E0277。完全相同的比较/逻辑式在已知shape bool正控均真实编译绿，声明bool嵌套逻辑/双取反及prop反向控制也绿；非新增语法承诺。106输入全生成，96编译91过5败，沿用原类型保持finding，不增加独立finding。
+[完整报告、96编译/24组六符双向矩阵/正反控与冻结哈希](../attachments/814/review-r14/review.md)。**R13两项具体缺口均CLOSED**：原九败全部变绿，work原62feature+默认正控63编译全0，overlay八组合mismatches0，即原64检查独立重放全绿；额外六比较符×两方向×loop/prop24/24实际编译全过。**F814-R9-01仍OPEN/P2**：classify_operand_expr没有既有比较表达式节点的bool结果类型；`p.dirty == (.limit > 3)`、反向、Value prop及再包! /&&共五组合错误as_str对bool，E0277。完全相同的比较/逻辑式在已知shape bool正控均真实编译绿，声明bool嵌套逻辑/双取反及prop反向控制也绿；非新增语法承诺。106输入全生成，96编译91过5败，沿用原类型保持finding，不增加独立finding。
 
 四包check/fmt/diff-check/777 strict绿（violations0/grandfathered3），compiler36/runtime235保持无新段告警；旧API/typepin再次编译绿。SDK隔离5/5、六provider43、runtime65、feature面、九档strict身份、counter双端及792真实收据按未变工作树代码/依赖/配置/输入限定复用。AC01 pass复用、AC02所验保持、AC03 fail、AC04 pass复用、AC05选择/发行所验pass而SD02 partial、AC06 needs_fix、AC07 merge pending、AC08..10保留A已发布。SD02完整表达式类型仍待修后审定；其余SD与R13当前Spec对账保持，SD08按de5e9d4a增补并保留M815/M816章节；影响元数据不变。
 
@@ -1101,7 +1101,7 @@ T-10 判定；非自判 pass）/ worktree:
   保型。按复审"同一递归规则"指示实现，非逐条替换产物字符串，
   Unknown 不一律当 bool（比较节点按语法事实取 bool，非数值混型
   仍默认 str）。
-- **覆盖矩阵**（[r14-closeout](attachments/814/r14-closeout/)，复制自
+- **覆盖矩阵**（[r14-closeout](../attachments/814/r14-closeout/)，复制自
   review-r14 冻结件）：R14 五败全修 + R9-R13 全反例正控（95
   feature）+ overlay = **97 feature + 正控 + overlay 99/99 exit0**
   （fmt 后重建复放同结果）；新增边界审计 2 fixture：bool-cmp-arith
@@ -1122,7 +1122,7 @@ T-10 判定；非自判 pass）/ worktree:
 stage: review；review_scope: final；reviewer_identity: 本聊天 Codex 独立复审上下文，未参与实施，未创建agent/新checkout；plan_id: PLAN-814；plan_revision: 3；outcome: **pass**。
 原树 `D:/autostack/.wt/lang-814/auto-lang` / `codex/plan-814-dev`；reviewed_commit `6f1cac8cbe618e509bf85d5c000fa0c26f35df6e` / tree `f98330d91b665566876d36a330361f770503fd81`；修复base=R14 `42a4ef792`，B base=A实际发布`f6e07acee`；auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。初末clean/身份/依赖稳定，44输入仅RustGenerator变化；十一canonical与R14一致，计划/SD/handoff及原例冻结。
 
-[完整报告、112有效编译/三项独立探索诊断/AC逐项/冻结哈希](attachments/814/review-r15/review.md)。**F814-R9-01 CLOSED**：R14五败全部实际编译绿，原97feature+默认正控98编译全过、overlay八组合mismatches0（原99检查全绿）；六符×两方向×loop/prop24矩阵保持；新增六种比较子树×两方向取反/逻辑12组、prop复合bool及字符串普通符号正控通过。Plan受验112/112编译绿，无Plan内未闭finding；R11/R10及更早闭合边界保持。
+[完整报告、112有效编译/三项独立探索诊断/AC逐项/冻结哈希](../attachments/814/review-r15/review.md)。**F814-R9-01 CLOSED**：R14五败全部实际编译绿，原97feature+默认正控98编译全过、overlay八组合mismatches0（原99检查全绿）；六符×两方向×loop/prop24矩阵保持；新增六种比较子树×两方向取反/逻辑12组、prop复合bool及字符串普通符号正控通过。Plan受验112/112编译绿，无Plan内未闭finding；R11/R10及更早闭合边界保持。
 
 原始矩阵115编译112过3败不隐藏：新增escaped-quote探索在known/unknown均E0765，AURA把解码引号直接拼回条件；owner extract.rs与A发布整文件Git blob同为c0f7ab6f1e076308fecce29d143a9ec700025a90，未变且基线原件冻结。D814-R15-01单独登记为非阻断既有字面量编码债务候选，非R9合法下形条件的值类型保持失败；不以该失败正控宣称输入已受支持或把尚未完成合同项延期。未运行旧A完整二进制；边界/归因证据详报告。
 
@@ -1138,7 +1138,7 @@ auto-lang` | branch: `codex/plan-814-dev` | reviewed: R15 pass 绑 `6f1cac8cb`
 `c39ac7f9`（未变）。
 
 - **prepared**：SD-01..08 canonical 落库（SD-03 新建
-  [auto-ui-runtime/project.md](../specs/auto-ui-runtime/project.md) 全文；
+  [auto-ui-runtime/project.md](../../specs/auto-ui-runtime/project.md) 全文；
   SD-02/04 B 增量；SD-01 增量；SD-08 在当前版（含 M815-A/M816-A 章节）
   增补；SD-05/06/07 B 事实注记；INDEX 57 projects）。
 - **rebase 组合（记录性调整，非静默）**：master 自 B 基点新增 815 T-04/
@@ -1177,15 +1177,27 @@ auto-lang` | branch: `codex/plan-814-dev` | reviewed: R15 pass 绑 `6f1cac8cb`
   生产件（landing≠deployment 观察项：无——语言仓交付面=crates+792
   消费，consumer 读回已执行）。
 
+### 合入恢复复核（2026-10-21）：cleanup 已完成，选择面缺口待对账
+
+stage: merge；mode: archived recovery-only；plan_id: PLAN-814；plan_revision: 3；outcome: **blocked（F814-MERGE-01 待独立后续修复/对账）**。本聊天 Codex 按 auto-plan-merge 核实原交付，不重做合入、不重开归档Plan。
+
+[恢复报告/具体遗漏ID与门控/清理与链接核验](../attachments/814/merge-recovery-20261021.md)。实际delivery `93a25c924d1beafab130588bad4d1041dc86e48c` 是当前75b26c253基线祖先，master reflog明确ff-only；R15 `6f1cac8cb` 映射 `a3f50d15b`，R8-R14修复range-diff均为=，当前RustGenerator与原受审文件相同。原20提交映为17：13等价/4组合/3基线丢弃（非粘贴摘要的2个）。canonical、ledger v64五项与归档已跟踪、批量收据75b26c253存在，未重写Specs/ledger或重跑整档。
+
+**cleaned 已实结**：残留文件数0、fresh wt-guard clean；仅结束路径明确属于814 counter旧验证的Vite39196及其子esbuild54876，退出后再跑guard并成功删除整个`D:/autostack/.wt/lang-814`空组。开发分支/临时基线/兄弟worktree注册均无残留。旧记录“残锁目录pending”现已关闭。归档移动遗漏的50个唯一链接目标（65次引用）补齐../层级，原证据未改、现均可达；本报告及链接修复提交主库，其他会话WIP及冻结快照保留。
+
+**F814-MERGE-01/P2**：合入组合把app_registry单源迁compiler时，真实三App会话启动测试仍带`#[cfg(feature = "ui-iced")]`，compiler仅声明ui/ui-headless，测试被永久编译排除。当前只枚举t不执行，5328旧集合经28个app_registry/i18n owner重写及1个store_deps明确重写核销后，唯独`launch_three_real_apps_via_registry_resolver`缺失（当前5327，无未解释新增）。完整门全绿不能证明未选择的测试仍被执行；违反原AC05/T07零丢失与T11并集验收边界。建议独立后续修复将runtime session测试移至runtime测试层，保持compiler注册表单源，不给compiler虚设ui-iced或引入反向依赖。
+
+原B已实际交付/归档事实不回滚，archived及原15/15作为既有流程历史保留；**本次不再授全部收尾pass**，不以归档状态掩盖发现。按技能“report blocked for reconciliation rather than routing an archive into work”，代码由独立后续修复承接；本次仅完成清理/文档恢复并准确记录阻断，未改实现/默认分支历史。新文档提交不触发新的批量回归；原批量收据保持。
+
 ## 10. 待澄清事项
 
 **R4-01 合同裁定（已决，2026-10-20）**：用户批准 R6 复审整理的两项窄增量
-（[contract-r3-draft.md](attachments/814/review-r6/contract-r3-draft.md) 全文）——
+（[contract-r3-draft.md](../attachments/814/review-r6/contract-r3-draft.md) 全文）——
 ①上层兼容包/compiler 经 inventory 启动构造器登记轻量函数表（只登记、不执行
 业务初始化/I/O）；②UiParseContext/UiGrammar 定义归属改轻 auto-parser-api、方言
 保留实现与旧路径再导出。主计划已升 **r3**（§5.3 全文落文；§2/V-02/AC-02 同步
 amend；SD-01/02/04/05 补语义）。受影响正反控按新合同重验（§9 续 7）。背景对账
-见 [r4-01-assembly-contract.md](attachments/814/r4-01-assembly-contract.md)。
+见 [r4-01-assembly-contract.md](../attachments/814/r4-01-assembly-contract.md)。
 
 没有需用户重复授权的其他当前问题；前置合入是客观门，不能超时推定放行。T-01有界证明旧公开类型/默认装配及SDK布局可行；若必须删旧API/改变支持/复制状态或新增兼容退役范围，具体needs_replan，不自行降低AC。包组仍留语言仓，Git承接后续R08。
 
@@ -1199,11 +1211,11 @@ pass）/ worktree 同上 | code 追加：`6063b7a94`（R8-F03 健康批）。
   imports 保持无条件（back_proxy/dynamic_build 生产消费在案）。consumer
   fixture fmt（skip_children 口径 exit0）。四包 offline-locked 复验 0 错
   /R8 点名目标警告 0。
-- **R8-F02 关闭**：[sd-b-proposals.md](attachments/814/sd-b-proposals.md)
+- **R8-F02 关闭**：[sd-b-proposals.md](../attachments/814/sd-b-proposals.md)
   ——SD-03 可审定全文（拟落库正文逐节）+SD-01/02/04/08 增量（逐目标
   before-hash/保留新增规则/理由/AC）+生成器两修复具名反例；handoff §5
   T-14/T-15 误指已纠（→T-11/T-12）。
-- **R8-F01 关闭**：[v03-dual-run](attachments/814/v03-dual-run/)——同源
+- **R8-F01 关闭**：[v03-dual-run](../attachments/814/v03-dual-run/)——同源
   002-counter，Vue（Playwright/localhost IPv6）与 VM（MCP press_sequence）
   **三状态两操作逐点一致**（0→-1→1；DOM/snapshot 双文本 oracle+截图在
   档）；vite 仅监听 ::1 的访问要点记录。覆盖口径=合同"有代表性"（单示
@@ -1256,7 +1268,7 @@ pass）/ worktree 同上 | code 追加：`236827f1c`（R9 修复批）。
   float 臂。reviewer r10 探针（r10-generate+check 五 feature
   unknown-negative/unknown-float/unknown-rhs-float/prop-negative/
   prop-float+无 feature 正控）**全 exit0**
-  （[r10-closeout](attachments/814/r10-closeout/)）。
+  （[r10-closeout](../attachments/814/r10-closeout/)）。
 - **R10-01 关闭（浮层仲裁）**：extract_absolute_position 纯扫描补
   position 族**后继覆盖**（Relative/Fixed/Sticky 清 absolute——与
   IcedStyle::from_style 同一按声明序覆盖语义）；reviewer
