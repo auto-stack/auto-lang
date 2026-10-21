@@ -278,7 +278,7 @@ pub struct ToolClient {
     writer_done: Receiver<Result<(), std::io::Error>>,
     writer_stop: Arc<AtomicBool>,
     /// 写端取消凭证（停止侧经此取消挂起的同步分片写）。
-    writer_cancel: Option<auto_tool_execution::win_stdin_reexport::CancelHandle>,
+    writer_cancel: Option<auto_tool_execution::CancelCredential>,
     rx: Receiver<FromReader>,
     reader_stop: Arc<AtomicBool>,
     reader_closed: Arc<AtomicBool>,
@@ -763,7 +763,9 @@ impl ToolClient {
         let writer_grace = deadline
             .saturating_duration_since(Instant::now())
             .min(TEARDOWN_GRACE);
-        self.wait_writer_done(writer_grace)?;
+        if let Err(e) = self.wait_writer_done(writer_grace) {
+            return Err(self.cleanup_then_error(e));
+        }
         drop(self.writer_cancel.take());
         // 2. 宿主退出（自然=真实分类保留;宽限尽=cancel）。
         let natural_exit;
@@ -796,11 +798,10 @@ impl ToolClient {
                 }
             }
             Err(source) => {
-                self.stop_all();
-                return Err(ClientError::Io {
+                return Err(self.cleanup_then_error(ClientError::Io {
                     stage: "wait for host shutdown",
                     source: Box::new(source),
-                });
+                }));
             }
         };
         // 3. owned 写端已全关 → reader 的 EOF 判定;停止并确认三条线程。
