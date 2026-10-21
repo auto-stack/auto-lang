@@ -311,28 +311,63 @@ fn find_subslice(hay: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || needle.len() > hay.len() {
         return None;
     }
-    hay.windows(needle.len()).position(|w| w == needle)
+    let comments = comment_ranges(hay);
+    hay.windows(needle.len()).enumerate().find_map(|(i, w)| {
+        if w == needle && !comments.iter().any(|&(a, b)| a < i + needle.len() && i < b) {
+            Some(i)
+        } else {
+            None
+        }
+    })
+}
+
+/// Comment regions of the text: from `//` to end of line (excluded from
+/// expression anchoring — comment TEXT is not code, F-828-R1-04/R11a).
+fn in_ranges(ranges: &[(usize, usize)], i: usize) -> bool {
+    ranges.iter().any(|&(a, b)| i >= a && i < b)
+}
+
+fn comment_ranges(bytes: &[u8]) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b'/' && bytes[i + 1] == b'/' {
+            let start = i;
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            out.push((start, i.min(bytes.len())));
+        } else {
+            i += 1;
+        }
+    }
+    out
 }
 
 /// LEXICAL tokens of a byte string: numbers, identifiers, and single-
 /// character operators, skipping whitespace (F-828-R1-04/R10a: a
 /// non-whitespace RUN is not a token — `1/0` is three tokens).
 fn runs(bytes: &[u8]) -> Vec<(&[u8], (usize, usize))> {
+    let comments = comment_ranges(bytes);
+    let skip = |i: usize| bytes[i].is_ascii_whitespace() || in_ranges(&comments, i);
     let mut out = Vec::new();
     let mut i = 0usize;
     while i < bytes.len() {
         let b = bytes[i];
-        if b.is_ascii_whitespace() {
+        if skip(i) {
             i += 1;
         } else if b.is_ascii_digit() {
             let start = i;
-            while i < bytes.len() && bytes[i].is_ascii_digit() {
+            while i < bytes.len() && bytes[i].is_ascii_digit() && !skip(i) {
                 i += 1;
             }
             out.push((&bytes[start..i], (start, i)));
         } else if b.is_ascii_alphabetic() || b == b'_' {
             let start = i;
-            while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+            while i < bytes.len()
+                && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_')
+                && !skip(i)
+            {
                 i += 1;
             }
             out.push((&bytes[start..i], (start, i)));

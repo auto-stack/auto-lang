@@ -1208,3 +1208,90 @@ fn r10a_lexical_spacing_matrix() {
         failures
     );
 }
+
+/// r11a-check: line-comment TEXT is never an expression anchor.
+#[test]
+fn r11a_valid_line_comment_text_cannot_mint_expression_anchors() {
+    let src = R6A_SRC.replacen("return 1 / 0", "return (1 / 0)", 1);
+    let mut s = warmup(&src, "d_main", &[]).unwrap();
+    let at = s.src().find("1 / 0").unwrap();
+    let replacement = " 1 // 1 / 0
+ / 0 ";
+    let candidate = src.replacen("1 / 0", replacement, 1);
+    let cold = warmup(&candidate, "d_main", &[]).expect("cold control");
+    let out = s
+        .edit(at as u64, (at + 5) as u64, replacement.as_bytes().to_vec())
+        .unwrap();
+    assert!(out.ok, "{out:?}");
+    assert!(s.counters().stage_of("reuse_hit", "main") > 0);
+    assert_eq!(s.src(), candidate);
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "first textual substring is inside a line comment, not executable expression tokens"
+    );
+}
+
+/// r11a-check: valid comment then literal rewrite keeps head AND tail.
+#[test]
+fn r11a_valid_comment_then_literal_rewrite_keeps_tail() {
+    let src = "fn helper() int { return 1 }
+fn main() int { var y = (1 + 2); return 1 / 0 }
+fn tail() int { return 9 }
+";
+    let mut s = warmup(src, "d_main", &[]).unwrap();
+    let at = s.src().find("1 + 2").unwrap();
+    let replacement = "1 // note
++ 2";
+    let candidate = src.replacen("1 + 2", replacement, 1);
+    let cold = warmup(&candidate, "d_main", &[]).expect("cold control");
+    let out = s
+        .edit(at as u64, (at + 5) as u64, replacement.as_bytes().to_vec())
+        .unwrap();
+    assert!(out.ok, "{out:?}");
+    assert_eq!(trap_span(&s), trap_span(&cold), "comment edit control");
+    let at = s.src().find("1 / 0").unwrap();
+    let candidate = s.src().replacen("1 / 0", " 1  / 0", 1);
+    let cold = warmup(&candidate, "d_main", &[]).unwrap();
+    let out = s.edit(at as u64, (at + 1) as u64, b" 1 ".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    assert!(s.counters().stage_of("reuse_hit", "main") > 0);
+    assert_eq!(s.src(), candidate);
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "valid lexical trivia still reaches head/tail branches"
+    );
+}
+
+/// r11a-check: the parenthesized line-comment re-anchoring matrix.
+#[test]
+fn r11a_valid_parenthesized_line_comment_matrix() {
+    let src = R6A_SRC.replacen("return 1 / 0", "return (1 / 0)", 1);
+    let mut failures = Vec::new();
+    for replacement in [
+        " 1 // note
+ / 0 ",
+        " 1 / // note
+ 0 ",
+        " 1 // 1 / 0
+ / 0 ",
+        " 1 // source
+ / 0 ",
+    ] {
+        let mut s = warmup(&src, "d_main", &[]).unwrap();
+        let at = s.src().find("1 / 0").unwrap();
+        let candidate = src.replacen("1 / 0", replacement, 1);
+        let cold = warmup(&candidate, "d_main", &[]).expect("cold control");
+        let out = s
+            .edit(at as u64, (at + 5) as u64, replacement.as_bytes().to_vec())
+            .unwrap();
+        assert!(out.ok, "{replacement:?}: {out:?}");
+        assert_eq!(s.src(), candidate);
+        let (actual, expected) = (trap_span(&s), trap_span(&cold));
+        if actual != expected {
+            failures.push(format!("{replacement:?}: {actual:?} != {expected:?}"));
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
