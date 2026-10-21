@@ -1,0 +1,28 @@
+# PLAN-815 T-07 纯协议消费者独立探针（fixture crate）
+#
+# 角色：模拟"仅消费协议数据面的外部 crate"——
+#  (1) 仅依赖 auto-tool-protocol（+ 构造请求所需的 auto-project-model），
+#      证明 data crate 闭包 = 纯协议数据 + 单源请求类型，无 UI 工具实现、
+#      无 runtime/man/编译器（data-stays-bottom；闭包断言 = verify-deps.sh）；
+#  (2) 全部消息类型的 wire 往返正控（v1 完整面：describe/validate/
+#      generate/build/run/input/cancel + 全部回执/事件）；
+#  (3) 帧边界负控（超深/超限帧的具名拒绝——消费者侧 framing 一致性）。
+#
+# 显式脱离根 workspace：根 Cargo.toml exclude 内，此处空 [workspace] 表
+# 使其成为独立解析单元。门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/tool-protocol-consumer/Cargo.toml
+# 依赖闭包断言（V-01 oracle）：
+#   bash test/fixtures/modularity/tool-protocol-consumer/verify-deps.sh
+
+[package]
+name = "tool-protocol-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-tool-protocol = { path = "../../../../crates/auto-tool-protocol" }
+auto-project-model = { path = "../../../../crates/auto-project-model", features = ["wire"] }
+serde_json = "1.0"
+
+[workspace]
