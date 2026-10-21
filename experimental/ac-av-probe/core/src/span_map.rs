@@ -22,8 +22,10 @@ pub struct SpanSegments {
     /// mint bytes as one segment, but the token END (one past the last
     /// byte) must move by the spelling-length difference — expression
     /// ends land on token ends (F-828-R1-04/R13a). Created only by
-    /// text-level analysis in [`SpanSegments::from_texts`]; edits retire
-    /// any extension they invalidate (F-828-R1-04/R14a-check F04-v).
+    /// text-level analysis in [`SpanSegments::from_texts`]; edits evolve
+    /// them — exact for pure deletions confined to the extension bytes,
+    /// retired for unknowable content (F-828-R1-04/R14a-/r15a-check
+    /// F04-v).
     end_ext: Vec<(u64, i64)>,
 }
 
@@ -172,10 +174,11 @@ impl SpanSegments {
     /// text is gone); a straddling segment is split, keeping the part
     /// outside the range; segments after the range shift by the length
     /// delta; the replacement text itself is an unbacked blob. End
-    /// extensions the edit invalidates are retired (see
-    /// [`retire_touched_exts`]).
+    /// extensions evolve with the surgery — exact for pure deletions
+    /// confined to the extension bytes, retired otherwise (see
+    /// [`evolve_touched_exts`]).
     pub fn apply(&mut self, c0: u64, c1: u64, new_len: u64) {
-        self.retire_touched_exts(c0, c1, new_len);
+        self.evolve_touched_exts(c0, c1, new_len);
         let cur_len = c1.saturating_sub(c0);
         let delta = new_len as i64 - cur_len as i64;
         let mut out: Vec<(u64, u64, u64)> = Vec::with_capacity(self.segs.len() + 2);
@@ -277,7 +280,7 @@ impl SpanSegments {
     /// content hit), the mint bytes keep their anchor at the re-embedded
     /// position instead of collapsing into an unbacked blob. Falls back
     /// to geometric surgery when no re-embedding exists. End extensions
-    /// the edit invalidates are retired (see [`retire_touched_exts`]).
+    /// evolve with the surgery (see [`evolve_touched_exts`]).
     pub fn apply_aligned(&mut self, c0: u64, c1: u64, old: &[u8], new: &[u8]) {
         // Trim the common prefix/suffix: those bytes never moved.
         let mut p = 0usize;
@@ -305,7 +308,7 @@ impl SpanSegments {
             // replacement: keep them anchored at the re-embedded position
             // when the middle covers ONE contiguous mint run.
             if let Some((m0, m1)) = self.contiguous_mint_range(mid_c0, mid_c1) {
-                self.retire_touched_exts(mid_c0, mid_c1, mid_new.len() as u64);
+                self.evolve_touched_exts(mid_c0, mid_c1, mid_new.len() as u64);
                 let delta = new.len() as i64 - old.len() as i64;
                 let tail_c0 = mid_c0 + mid_new.len() as u64;
                 let mut out: Vec<(u64, u64, u64)> = Vec::with_capacity(self.segs.len() + 2);
@@ -351,43 +354,68 @@ impl SpanSegments {
         None
     }
 
-    /// Retire end-extensions that an edit at current range [c0, c1)
-    /// (replacement length `new_len`) invalidated
-    /// (F-828-R1-04/R14a-check F04-v). Extensions record whole-token
-    /// SPELLING analysis from [`from_texts`], which sees the texts;
-    /// `apply`/`apply_aligned` see only byte ranges, so they
-    /// conservatively drop any extension whose anchor segment or
-    /// extension bytes the edit touches — never silently keeping a
-    /// stale range past the current text. Exact extensions are rebuilt
-    /// by re-anchoring through `from_texts` on the next content hit.
-    /// Must run BEFORE the segment surgery (it anchors on pre-edit
-    /// segments); edits entirely before the anchor shift the whole
-    /// token intact and keep their extension.
-    fn retire_touched_exts(&mut self, c0: u64, c1: u64, new_len: u64) {
+    /// Evolve or retire end-extensions for an edit at current range
+    /// [c0, c1) with replacement length `new_len`
+    /// (F-828-R1-04/R14a- & r15a-check F04-v). Extensions record
+    /// whole-token SPELLING analysis from [`from_texts`], which sees
+    /// the texts; the composition APIs see only byte ranges:
+    /// - a pure deletion confined to the extension bytes leaves an
+    ///   exactly countable remainder — the extension SHRINKS to it,
+    ///   agreeing with a `from_texts` rebuild of the same resulting
+    ///   text;
+    /// - any other touch (the anchor segment, replacement content, or
+    ///   an insertion inside the spelling) has unknowable byte
+    ///   content, so the extension retires — the map then reports the
+    ///   conservative segment end, never a stale range past the
+    ///   current text.
+    /// Exact extensions are rebuilt by re-anchoring through
+    /// `from_texts` on the next content hit. Must run BEFORE the
+    /// segment surgery (it anchors on pre-edit segments); edits
+    /// entirely before the anchor shift the whole token intact and
+    /// keep their extension.
+    fn evolve_touched_exts(&mut self, c0: u64, c1: u64, new_len: u64) {
         if self.end_ext.is_empty() {
             return;
         }
-        self.end_ext.retain(|&(k, d)| {
+        let mut out: Vec<(u64, i64)> = Vec::with_capacity(self.end_ext.len());
+        for &(k, d) in self.end_ext.iter() {
             let Some(&(m0, m1, s0)) = self.segs.iter().find(|&&(_, m1, _)| m1 == k) else {
-                return false; // dangling anchor: the token's mint range is gone
+                continue; // dangling anchor: the token's mint range is gone
             };
+            // The spelling analysis zone: the anchor segment plus any
+            // extension bytes ([e, e+d) for lengthened spellings); for
+            // shortened ones (d < 0) the correction lives inside the
+            // segment itself.
             let e = s0 + (m1 - m0); // anchor segment's current end
-                                    // The spelling analysis covers the anchor segment plus any
-                                    // extension bytes ([e, e+d) for lengthened spellings); for
-                                    // shortened ones (d < 0) the correction lives inside the
-                                    // segment itself. Touching either side invalidates it.
             let ext_end = (e as i64 + d.max(0)) as u64;
-            if c0 == c1 {
+            let kept = if c0 == c1 {
                 if new_len == 0 {
-                    return true; // no-op edit changes nothing
+                    Some(d) // no-op edit changes nothing
+                } else if c0 <= s0 || c0 >= ext_end {
+                    // Pure insertion: at/before the segment start shifts
+                    // the whole token intact; at/after the token end it
+                    // does not extend the token. Between them it splits
+                    // the spelling.
+                    Some(d)
+                } else {
+                    None
                 }
-                // Pure insertion: at/before the segment start shifts the
-                // whole token intact; at/after the token end it does not
-                // extend the token. Between them it splits the spelling.
-                return c0 <= s0 || c0 >= ext_end;
+            } else if c1 <= s0 || c0 >= ext_end {
+                Some(d) // entirely outside the zone
+            } else if d > 0 && new_len == 0 && c0 >= e {
+                // Pure deletion confined to the extension bytes: the
+                // surviving extension digits are exactly the ones
+                // outside the deleted range (the prefix and suffix
+                // digits, contiguous again after the deletion).
+                Some((c0 - e + ext_end.saturating_sub(c1)) as i64)
+            } else {
+                None // the spelling basis no longer holds: retire
+            };
+            if let Some(d) = kept.filter(|&d| d != 0) {
+                out.push((k, d));
             }
-            c1 <= s0 || c0 >= ext_end
-        });
+        }
+        self.end_ext = out;
     }
 
     /// The count of surviving segments (diagnostics).

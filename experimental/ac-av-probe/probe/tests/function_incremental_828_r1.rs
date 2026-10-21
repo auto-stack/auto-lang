@@ -1513,3 +1513,52 @@ fn r15a_end_extension_survives_shift_but_not_token_surgery() {
         "surgery on the anchor token drops the extension"
     );
 }
+
+/// r15a-check F04-v: PARTIAL deletion of the extension digits evolves
+/// the remaining extension exactly — a wholesale retire under-reports
+/// the token end. The composed result must agree with a `from_texts`
+/// rebuild of the same resulting text.
+#[test]
+fn r16a_partial_extension_deletion_keeps_remaining_extension() {
+    let expanded = || {
+        let m = auto_av_core::span_map::SpanSegments::from_texts(0, 5, 0, b"1 / 0", b"1 / 000")
+            .unwrap();
+        assert_eq!(m.map_span(0, 5), (0, 7), "two-digit extension control");
+        m
+    };
+    // Delete the LAST added digit ('000'→'00'): one extension digit
+    // survives; the composed map agrees with rebuilding from the same
+    // texts.
+    let mut m = expanded();
+    m.apply_aligned(6, 7, b"0", b"");
+    let rebuilt =
+        auto_av_core::span_map::SpanSegments::from_texts(0, 5, 0, b"1 / 0", b"1 / 00").unwrap();
+    assert_eq!(
+        m.map_span(0, 5),
+        rebuilt.map_span(0, 5),
+        "composed partial deletion equals a from_texts rebuild"
+    );
+    assert_eq!(m.map_span(0, 5), (0, 6));
+    // Delete the FIRST added digit instead: the surviving suffix digit
+    // counts the same way.
+    let mut n = expanded();
+    n.apply_aligned(5, 6, b"0", b"");
+    assert_eq!(n.map_span(0, 5), (0, 6));
+    // The same deletion through the geometric API evolves identically.
+    let mut g = expanded();
+    g.apply(6, 7, 0);
+    assert_eq!(g.map_span(0, 5), (0, 6), "geometric composition agrees");
+    // After the partial deletion, an unrelated shift before the anchor
+    // keeps the remaining extension.
+    m.apply_aligned(0, 0, b"", b"  ");
+    assert_eq!(m.map_span(0, 5), (2, 8));
+    // Full-deletion control: removing ALL extension digits retires the
+    // extension entirely.
+    let mut full = expanded();
+    full.apply_aligned(5, 7, b"00", b"");
+    assert_eq!(full.map_span(0, 5), (0, 5));
+    // Trivia inserted exactly at the token end does not extend it.
+    let mut trivia = expanded();
+    trivia.apply_aligned(7, 7, b"", b" ");
+    assert_eq!(trivia.map_span(0, 5), (0, 7));
+}
