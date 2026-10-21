@@ -1,6 +1,6 @@
 {
-  "base_revision": "d039f23995cb7763787b86cd27f4144627d69d3d",
-  "config_sha256": "d2d8974a498042130f09b02c6109e2ae693df5319c5e1c02fdd04f6cd090e82c",
+  "base_revision": "c73a9fe48a0bee270d8eb112e17593275510462d",
+  "config_sha256": "615dd4fee609d800cea732ce932c218965145d5fead9f3cebb330cc913792cbb",
   "declared_edges": [
     {
       "dep_key": "auto-lang-core",
@@ -572,7 +572,7 @@
     {
       "dep_key": "auto-cache",
       "from": "auto-man",
-      "kind": "normal",
+      "kind": "dev",
       "optional": false,
       "target": null,
       "to": "auto-cache",
@@ -581,7 +581,7 @@
     {
       "dep_key": "auto-gen",
       "from": "auto-man",
-      "kind": "normal",
+      "kind": "dev",
       "optional": false,
       "target": null,
       "to": "auto-gen",
@@ -606,21 +606,21 @@
       "to_scope": "member"
     },
     {
-      "dep_key": "auto-man-assets",
-      "from": "auto-man",
-      "kind": "normal",
-      "optional": false,
-      "target": null,
-      "to": "auto-man-assets",
-      "to_scope": "member"
-    },
-    {
       "dep_key": "auto-man-core",
       "from": "auto-man",
-      "kind": "normal",
+      "kind": "dev",
       "optional": false,
       "target": null,
       "to": "auto-man-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-man-runtime",
+      "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-man-runtime",
       "to_scope": "member"
     },
     {
@@ -635,7 +635,7 @@
     {
       "dep_key": "auto-package-lock",
       "from": "auto-man",
-      "kind": "normal",
+      "kind": "dev",
       "optional": false,
       "target": null,
       "to": "auto-package-lock",
@@ -644,7 +644,7 @@
     {
       "dep_key": "auto-package-resolver",
       "from": "auto-man",
-      "kind": "normal",
+      "kind": "dev",
       "optional": false,
       "target": null,
       "to": "auto-package-resolver",
@@ -662,7 +662,7 @@
     {
       "dep_key": "auto-toolchain-core",
       "from": "auto-man",
-      "kind": "normal",
+      "kind": "dev",
       "optional": false,
       "target": null,
       "to": "auto-toolchain-core",
@@ -716,6 +716,123 @@
     {
       "dep_key": "auto-val",
       "from": "auto-man-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-api-gen",
+      "from": "auto-man-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-api-gen",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-cache",
+      "from": "auto-man-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-cache",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-gen",
+      "from": "auto-man-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-gen",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang-core",
+      "from": "auto-man-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-man-assets",
+      "from": "auto-man-runtime",
+      "kind": "dev",
+      "optional": false,
+      "target": null,
+      "to": "auto-man-assets",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-man-assets",
+      "from": "auto-man-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-man-assets",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-man-core",
+      "from": "auto-man-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-man-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-package-lock",
+      "from": "auto-man-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-package-lock",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-package-resolver",
+      "from": "auto-man-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-package-resolver",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-project-model",
+      "from": "auto-man-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-project-model",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-tool-execution",
+      "from": "auto-man-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-tool-execution",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-toolchain-core",
+      "from": "auto-man-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-toolchain-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-man-runtime",
       "kind": "normal",
       "optional": false,
       "target": null,
@@ -1020,15 +1137,6 @@
       "to_scope": "member"
     },
     {
-      "dep_key": "auto-tool-execution",
-      "from": "auto-ui-tools",
-      "kind": "normal",
-      "optional": false,
-      "target": null,
-      "to": "auto-tool-execution",
-      "to_scope": "member"
-    },
-    {
       "dep_key": "auto-tool-protocol",
       "from": "auto-ui-tools",
       "kind": "normal",
@@ -1044,15 +1152,6 @@
       "optional": false,
       "target": null,
       "to": "auto-ui-compiler",
-      "to_scope": "member"
-    },
-    {
-      "dep_key": "auto-ui-runtime",
-      "from": "auto-ui-tools",
-      "kind": "normal",
-      "optional": false,
-      "target": null,
-      "to": "auto-ui-runtime",
       "to_scope": "member"
     },
     {
@@ -1096,7 +1195,7 @@
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
     "core_to_ui": 250,
-    "man_to_language": 94,
+    "man_to_language": 30,
     "ui_to_language": 0
   }
 }
