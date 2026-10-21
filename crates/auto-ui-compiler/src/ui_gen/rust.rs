@@ -8850,8 +8850,17 @@ impl RustGenerator {
             }
             break;
         }
+        // R13：双字符 `<=`/`>=` 必须整体消费（残留前导 `=` 污染操作数
+        // 区间致 Unknown→str——`p.rank <= .limit` 回归）；六比较符前向
+        // 全集：`==`/`!=`/`<=`/`>=` 二字符、`<`/`>` 一字符。
         let op_len = match bytes.get(j).copied() {
-            Some(b'<') | Some(b'>') => 1,
+            Some(b'<') | Some(b'>') => {
+                if j + 1 < bytes.len() && bytes[j + 1] == b'=' {
+                    2
+                } else {
+                    1
+                }
+            }
             Some(b'=') if j + 1 < bytes.len() && bytes[j + 1] == b'=' => 2,
             Some(b'!') if j + 1 < bytes.len() && bytes[j + 1] == b'=' => 2,
             _ => return None,
@@ -8887,10 +8896,11 @@ impl RustGenerator {
         Some((start, end))
     }
 
-    /// 操作数表达式的类型解析（R12）：透明分组剥壳 → 一元符号（数值型
-    /// 保持宽度）→ 顶层四则合并 → 单项（bool/str 字面量、`.name` 声明
-    /// 引用、数字字面量）。非数值混型/未识别形态 → Unknown（默认 str
-    /// 投影，与旧默认语义一致）。
+    /// 操作数表达式的类型解析（R12/R13）：透明分组剥壳 → 一元符号（数值
+    /// 型保持宽度）/布尔取反（bool 保持）→ 括号内顶层逻辑组合（bool⊕bool
+    /// →bool）→ 顶层四则合并 → 单项（bool/str 字面量、`.name` 声明引用、
+    /// 数字字面量）。非数值混型/未识别形态 → Unknown（默认 str 投影，与
+    /// 旧默认语义一致）。
     fn classify_operand_expr(&self, s: &str) -> OperandTy {
         let s = s.trim();
         if s.is_empty() {
@@ -8904,6 +8914,24 @@ impl RustGenerator {
             return match self.classify_operand_expr(&s[1..]) {
                 OperandTy::Int(w) => OperandTy::Int(w),
                 OperandTy::Float(w) => OperandTy::Float(w),
+                _ => OperandTy::Unknown,
+            };
+        }
+        // R13：布尔取反的类型传播——`! .allowed` 剥 `!` 后仍按声明环境
+        // 取 bool（`(!.allowed) == p.dirty` 两方向/prop 不再降 str）；
+        // 非 bool 操作数取反不是既有支持形态 → Unknown。
+        if b[0] == b'!' {
+            return match self.classify_operand_expr(&s[1..]) {
+                OperandTy::Bool => OperandTy::Bool,
+                _ => OperandTy::Unknown,
+            };
+        }
+        // R13（同不变量补齐）：括号内逻辑组合作操作数——bool⊕bool→bool。
+        if let Some((l, r)) = Self::split_top_logical(s) {
+            let lt = self.classify_operand_expr(l);
+            let rt = self.classify_operand_expr(r);
+            return match (lt, rt) {
+                (OperandTy::Bool, OperandTy::Bool) => OperandTy::Bool,
                 _ => OperandTy::Unknown,
             };
         }
@@ -9036,6 +9064,26 @@ impl RustGenerator {
                 }
                 _ => {}
             }
+        }
+        None
+    }
+
+    /// 顶层（括号外）`&&`/`||` 分隔（R13）：仅在括号内逻辑组合作操作数
+    /// 时可达（span 提取已在顶层截断 `&&`/`||`）；双字符整体匹配。
+    fn split_top_logical(s: &str) -> Option<(&str, &str)> {
+        let b = s.as_bytes();
+        let mut depth = 0usize;
+        let mut i = 0usize;
+        while i < b.len() {
+            match b[i] {
+                b'(' => depth += 1,
+                b')' => depth = depth.saturating_sub(1),
+                b'&' | b'|' if depth == 0 && i + 1 < b.len() && b[i + 1] == b[i] => {
+                    return Some((&s[..i], &s[i + 2..]));
+                }
+                _ => {}
+            }
+            i += 1;
         }
         None
     }
