@@ -146,3 +146,20 @@ auto-ui-tools/auto-man/auto-lang/auto-vm/auto-gen)。M816-A **不改变任何发
 workspace 库,供后续薄 CLI 组合(M816-B T-05+)消费,不作为独立发行件;独立安装
 profile 的闭包增补(DELIVERY_CRATES 增补等)属 M816-B,定稿门为 M814-A 后的
 整链 probe。
+
+## M814-B:canonical 双直依赖与投影随包图(PLAN-814 SD-08)
+
+M814-B（PLAN-814 T-05/T-08）在 M815-A/M816-A 章节基础上增补：
+
+- 生成工程（app/成员/workspace 三 manifest 模板）canonical **双直
+  依赖**：`auto-ui-runtime`（含 ui-iced）+ `auto-lang-core`；feature
+  转发随 runtime。旧 `auto-lang` 组合依赖形态经映射表对照在档。
+- 投影 spec 随包图重构：`PROJECTION_AUTO_LANG` 收窄（test-case 两项，
+  autodown 边迁出）；新增 `PROJECTION_AUTO_UI_RUNTIME`（跨仓
+  autodown 边剥除 owner=runtime；receipt 增 `projection_edits_
+  auto_ui_runtime` 台账）。
+- 792 driver V04 断言随 canonical；**24/24 EXIT=0 为 B 基线**
+  （V01 fresh 真构建/V02 重定位 locked/V03a..j 负控/V04 dev 同源）。
+- 交付闭包 DELIVERY_CRATES 含 auto-ui-runtime；ui_to_language=0
+  不变量入 777 基线（runtime+compiler 源根零 `auto_lang::` 文本
+  命中）。

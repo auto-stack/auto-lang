@@ -245,3 +245,6 @@ auto-ui-dialect，内建方言与外部方言同样只经端口面）；生产�
 r3）。86 项 UI 文法回归测试随文法 owner 迁 auto-ui-dialect
 `src/regression/`（dev-dep 驱动真 Parser；选择面经 t/tf/tt 别名保持，
 映射证据=PLAN-814 r5-closeout 18 件清单+strict proof）。
+
+> **PLAN-814 B 事实注记（M814-B）**：Parser 公开面/装配语义 B 期未变；
+> 唯一新增消费面为 UI 特性族经 runtime 转发组合（feature 逐项保持）。

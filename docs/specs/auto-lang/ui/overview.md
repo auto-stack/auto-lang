@@ -1928,3 +1928,10 @@ registry 构建税与 tu 档单进程机制不变。缓存身份时序（PLAN-69
 精确化）：指纹槽 None→Some 升级、首装优先；save 按出生身份、load
 比对失效。真实 runtime/renderer/editor/terminal/宿本 adapter **仍在
 本 crate**——B 阶段 T-04 迁 auto-ui-runtime，A 不宣称其完成。
+
+> **PLAN-814 B 事实注记（M814-B，T-04 落地）**：runtime/renderer/
+> editor/terminal/宿主 adapter/动态构建管线已单源迁
+> [auto-ui-runtime](../../auto-ui-runtime/project.md)；本目录为上层
+> 再导出兼容面（`auto_lang::ui::*`/back_proxy/host_adapters 全路径，
+> V-02 pin 锁面）。canonical 生成物 import 与生成工程双直依赖合同见
+> 该 spec。

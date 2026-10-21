@@ -56,3 +56,15 @@
 `with-file-history`（default）、`code-editor`（a2r diff 双轨门）、
 `python`、`streaming-http`、`mem-profile`、`test-cases`。UI 特性族
 （ui-iced/ui/autodown 等）留上层兼容包转发。
+
+---
+
+## PLAN-814 B 增量（T-06；M814-B 发布落库）
+
+- `use_diag`/`take_use_diags` 下沉 SDK 单源（与 `STORE_EXTRA_FILES`
+  同族 thread_local 带外通道；auto-lang 旧路径再导出）。
+- `test_code`/`test_code_with_deadline_and_input`/
+  `test_code_with_path_deadline_and_input`/`test_file` 执行族下沉
+  （纯 Core 面；宿主装配经本 crate 钩子分发器——无 UI 实现时 no-op）。
+- 非 UI 消费者基线升至四枚：auto-vm（A 期）+ auto-gen/
+  auto-playground/a2r-actor-tests（B 期；闭包零 UI 零旧包）。

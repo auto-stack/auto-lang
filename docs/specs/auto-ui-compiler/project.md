@@ -36,3 +36,56 @@ ui-iced→ui→本包转发恢复恒开语义。
 
 `ui`（UI 门面装配族）、`ui-headless`（headless 样式适配器）——均为
 空门（实现依赖恒在），由旧 auto-lang feature 转发。
+
+---
+
+## PLAN-814 B 增量（T-05/T-08/R9-R14；M814-B 发布落库）
+
+### canonical import 路径策略（单源 `ui_gen::import_policy`）
+
+- canonical 规则：UI 面 `auto_ui_runtime::ui::*`、语言/VM 面
+  `auto_lang_core::*`；新旧路径显式映射表在档（view/code_editor/
+  scroll/style/auto_val/action_config/frame_bench/dialog/iced→
+  runtime::ui；vm/a2r_std→core）。rust 生成器发射统一切换；vue/jet/
+  ark 不发射 Rust import 不在射面；**a2r trans 泳道发射明确不在本
+  策略内**（消费者仍依赖旧包，后续批次）。负控 pin：生成物含
+  canonical 头且零 `auto_lang::` 残留。
+
+### 生成器行为规则（预存缺陷修复，shell-pack 再生暴露）
+
+1. **比较位值投影的完整表达式类型感知**（PLAN-710 D-6 扩展，
+   R9-F01→R14 复修收口）：dot 访问处于值比较位（前导/后随六种比较符
+   `==`/`!=`/`<`/`>`/`<=`/`>=`，含字段自身透明分组括号；调用实参
+   括号如 `len( p.tags )` 非分组，实参位保持 truthy；比较符两方向
+   完整消费——前向双字符 `<=`/`>=` 整体跳过）时不得 truthy 包裹；
+   投影按另一操作数**完整表达式类型**分流——形状已知走 shaped 访问
+   器（bool→as_bool/int→as_i64 as i32，循环形状语义保持）；形状
+   未知按操作数区间解析：bool 字面量→as_bool/整数（含负号）→
+   as_i64 as i32/浮点→as_f64/已声明状态引用（`.limit` 形）按
+   state_types 声明环境分流（i32/f64/bool 与同名字面量域一致；
+   非默认声明宽度 float=f32、u32/i64/u64 投影跟随声明宽度）/
+   四则算式按宽度合并（float 支配：任一 f64→f64、仅 f32 声明→f32、
+   纯字面量→f64 默认，与 Rust 无类型字面量推断同源；int 取更宽）/
+   布尔取反 `!` 传播（剥 `!` 递归保 bool）/括号内 `&&`/`||` 逻辑
+   组合（bool⊕bool→bool）/比较子表达式结果是 bool（六符全集、
+   括号外、字符串字面量外——`"a<b"` 不误报）；任意一侧透明分组
+   剥壳递归不改型、左右位对称。String/Value/未声明引用/非数值混型
+   不命中，默认 str 语义保持（`p.running == .wanted` 不变）。
+   反例矩阵（r9..r15 全集 112 组真实编译）见
+   docs/plans/archive 计划附件 r9-r15 各 closeout。
+2. **on_click 单元兜底**：点击族消息承载事件（onclick/
+   oncontextmenu[.prevent]→on_right_click/ondoubleclick）在场时跳过
+   `on_click (|_| ())` 兜底（E0308 反例：shell 语料按钮带
+   oncontextmenu.prevent）。
+
+### e2e 生成工程 manifest 合同
+
+双直依赖（`auto-ui-runtime`[ui-iced]+`auto-lang-core`）真编译门
+（2/2，#[ignore] 档 harness）。
+
+### 并集归属增补（PLAN-814 T-11 merge，2026-10-21）
+
+`app_registry`/`i18n_lookup` 单源定于本包（PLAN-815 T-04 先落，
+auto-ui-tools 消费 `auto_ui_compiler::app_registry`；DAG 禁
+compiler→runtime）；auto-ui-runtime 经 `pub use` 再导出，旧
+`auto_lang::ui::{app_registry,i18n_lookup}` 路径全保持。
