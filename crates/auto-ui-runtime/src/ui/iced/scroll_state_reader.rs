@@ -20,17 +20,15 @@
 
 use std::collections::HashMap;
 
-use iced::advanced::widget::operation::{Outcome, Scrollable};
-use iced::advanced::widget::Operation;
-use iced::widget::Id;
-use iced::{Rectangle, Vector};
-use serde::{Deserialize, Serialize};
-
 /// PLAN-781 T-11：单个 scroll-pane 的完整几何读回（原六测量 + viewport
 /// 窗口坐标原点）。窗口逻辑 px；offset 与 absolute_offset 同号。
 // PLAN-814 R9-03：单源定义上移 ui::mcp_types（headless 同轨）；此处再
 // 导出保旧路径与类型身份。
 pub use crate::ui::mcp_types::ScrollStateEntry;
+use iced::advanced::widget::operation::{Outcome, Scrollable};
+use iced::advanced::widget::Operation;
+use iced::widget::Id;
+use iced::{Rectangle, Vector};
 
 /// 读回结果：widget id 串 → pane 几何。键为 iced Id 原始串——controller
 /// pane 为 `scroll_ctl_<controller>`（renderer.rs:3034 句柄派生稳定 id），

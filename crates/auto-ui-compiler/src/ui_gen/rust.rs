@@ -8674,11 +8674,21 @@ impl RustGenerator {
         false
     }
 
-    /// 比较位另一操作数的字面量类型（PLAN-814 R9-F01：比较投影按真实
-    /// 类型分流——`p.dirty == true`→bool、`p.rank > 3`→int、
+    /// 比较位另一操作数的字面量类型（PLAN-814 R9-F01/R10：比较投影按
+    /// 真实类型分流——`p.dirty == true`→bool、`p.rank > 3`→int、
+    /// `p.score > 0.5`→float、`p.rank > -1`（负数同型）→int、
     /// `p.running == "1"`→str；形状已知字段不走此路径）。
     fn comparison_operand_type(bytes: &[u8], ident_start: usize, field_end: usize) -> &'static str {
-        // 取访问另一侧的操作数 token（跳过比较运算符与空白）。
+        // 取访问另一侧的操作数 token（跳过比较运算符与空白；含符号位
+        // `-`/`+` 与小数点，R10 反例：负整数/浮点不是 str）。
+        let is_token_char = |c: u8| {
+            c.is_ascii_alphanumeric()
+                || c == b'_'
+                || c == b'"'
+                || c == b'.'
+                || c == b'-'
+                || c == b'+'
+        };
         let token: Vec<u8> = {
             // RHS 侧（比较符在访问之前）：先跳过运算符，再向前取 token。
             let mut back = Vec::new();
@@ -8701,16 +8711,25 @@ impl RustGenerator {
                     k -= 1;
                 }
                 let mut m = k;
-                while m > 0
-                    && (bytes[m - 1].is_ascii_alphanumeric()
-                        || bytes[m - 1] == b'_'
-                        || bytes[m - 1] == b'"'
-                        || bytes[m - 1] == b'.')
-                {
+                while m > 0 && is_token_char(bytes[m - 1]) {
                     m -= 1;
                 }
                 if m < k {
                     back.extend_from_slice(&bytes[m..k]);
+                }
+                // R10：一元负号与数字间可含空白（`- 1`）——符号单独成
+                // token 时继续向前跨空白收数字部分。
+                if back == b"-" || back == b"+" {
+                    let mut m2 = m;
+                    while m2 > 0 && (bytes[m2 - 1] == b' ' || bytes[m2 - 1] == b'\t') {
+                        m2 -= 1;
+                    }
+                    while m2 > 0 && is_token_char(bytes[m2 - 1]) {
+                        m2 -= 1;
+                    }
+                    if m2 < m {
+                        back.extend_from_slice(&bytes[m2..m]);
+                    }
                 }
             }
             // LHS 侧（比较符在访问之后）：向后取 token。
@@ -8730,14 +8749,20 @@ impl RustGenerator {
                 while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
                     j += 1;
                 }
-                while j < bytes.len()
-                    && (bytes[j].is_ascii_alphanumeric()
-                        || bytes[j] == b'_'
-                        || bytes[j] == b'"'
-                        || bytes[j] == b'.')
-                {
+                while j < bytes.len() && is_token_char(bytes[j]) {
                     fwd.push(bytes[j]);
                     j += 1;
+                }
+                // R10：AST 下形的一元负号与数字间可含空白（`- 1`）——
+                // 符号单独成 token 时继续跨空白收数字部分。
+                if (fwd == b"-" || fwd == b"+") {
+                    while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                        j += 1;
+                    }
+                    while j < bytes.len() && is_token_char(bytes[j]) {
+                        fwd.push(bytes[j]);
+                        j += 1;
+                    }
                 }
             }
             if !back.is_empty() {
@@ -8753,9 +8778,18 @@ impl RustGenerator {
         if t == b"true" || t == b"false" {
             return "bool";
         }
-        let first = t[0];
-        if first.is_ascii_digit() || (first == b'.' && t.len() > 1) {
-            return "int";
+        // 数字（含符号/小数点）：含小数点 → float，否则 int。
+        let digits: &[u8] = if t[0] == b'-' || t[0] == b'+' {
+            &t[1..]
+        } else {
+            t
+        };
+        if !digits.is_empty() && digits.iter().all(|c| c.is_ascii_digit() || *c == b'.') {
+            return if digits.contains(&b'.') {
+                "float"
+            } else {
+                "int"
+            };
         }
         "str"
     }
@@ -8849,6 +8883,12 @@ impl RustGenerator {
                                             "({}[\"{}\"].as_i64().unwrap_or(0) as i32)",
                                             output_var_name, field_name
                                         ),
+                                        // R10：浮点操作数走 f64 投影（as_f64，
+                                        // 不截断成整数）。
+                                        "float" => format!(
+                                            "({}[\"{}\"].as_f64().unwrap_or(0.0))",
+                                            output_var_name, field_name
+                                        ),
                                         _ => format!(
                                             "{}[\"{}\"].as_str().unwrap_or_default()",
                                             output_var_name, field_name
@@ -8900,6 +8940,11 @@ impl RustGenerator {
                                     )),
                                     "int" => output.push_str(&format!(
                                         "(self.{}[\"{}\"].as_i64().unwrap_or(0) as i32)",
+                                        var_name, field_name
+                                    )),
+                                    // R10：浮点操作数走 f64 投影。
+                                    "float" => output.push_str(&format!(
+                                        "(self.{}[\"{}\"].as_f64().unwrap_or(0.0))",
                                         var_name, field_name
                                     )),
                                     _ => output.push_str(&format!(

@@ -16292,7 +16292,11 @@ fn extract_absolute_position(v: &View<DynamicMessage>) -> Option<crate::ui::view
         (None, None, None, None::<f32>);
     for c in &style.classes {
         match c {
+            // R10-F01：position 族后继覆盖仲裁——与 IcedStyle::from_style
+            // 同一字段按声明序覆盖的语义一致（后出现的 position 类覆盖
+            // 前者：`absolute relative` 终态=relative，不 hoist）。
             StyleClass::Absolute => is_abs = true,
+            StyleClass::Relative | StyleClass::Fixed | StyleClass::Sticky => is_abs = false,
             StyleClass::ZIndex(_) => has_z = true,
             StyleClass::Inset(px) => {
                 top_px = Some(*px);
