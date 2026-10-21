@@ -1139,3 +1139,46 @@ fn t03_a07_fn_hir_tampered_row_is_skipped_not_trusted() {
     let _ = std::fs::remove_dir_all(&dir);
     let _ = SourceProfile::Scalar;
 }
+
+/// T-07 / V-07 flagship: 512 REAL body edits on the frozen load — every
+/// revision's current result matches its independent expectation, the
+/// structural gate stays green on every single revision (unchanged
+/// functions do zero stage work; no whole-module axis moves), and the
+/// resident content history stays BOUNDED (HISTORY_CAP per function —
+/// the watermark converges instead of growing with the edit count).
+#[test]
+fn t07_v07_512_revisions_bounded_history_stable_watermark() {
+    use auto_av_probe::formal_828::run_formal_series_retained;
+    let (report, s) = run_formal_series_retained(512).expect("the 512-revision formal series");
+    assert_eq!(report.samples.len(), 512);
+    assert!(
+        report.all_correct,
+        "every revision verified against its own expectation"
+    );
+    for x in &report.samples {
+        assert_eq!(
+            x.structural.unaffected_stage_total, 0,
+            "revision {}: unchanged functions must do zero stage work",
+            x.revision
+        );
+        assert_eq!(
+            x.structural.whole_module_total, 0,
+            "revision {}: no whole-module axis may move",
+            x.revision
+        );
+        assert_eq!(x.structural.reparsed_decls, 1, "revision {}", x.revision);
+    }
+    // Watermark: 115 functions × HISTORY_CAP(32) is the structural bound;
+    // the changed function's own history is capped (≈114×1 + 32 ≪ 513 —
+    // eviction really ran, the history did NOT grow with the edit count).
+    assert!(
+        s.history_len() <= 32 * 115,
+        "resident history bounded: {}",
+        s.history_len()
+    );
+    assert!(
+        s.history_len() < 513,
+        "the 512 edits did NOT accumulate 512+ history entries (eviction ran): {}",
+        s.history_len()
+    );
+}

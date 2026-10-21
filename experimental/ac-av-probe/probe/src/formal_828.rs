@@ -70,6 +70,15 @@ fn percentile(sorted: &[f64], p: f64) -> f64 {
 /// timing each edit→verified result and snapshotting the structural gate
 /// deltas (counters are cumulative; deltas are taken between edits).
 pub fn run_formal_series(revisions: u32) -> Result<FormalReport, String> {
+    run_formal_series_retained(revisions).map(|(r, _)| r)
+}
+
+/// PLAN-828 T-07/V-07: the formal series, RETAINING the session so the
+/// caller can assert the resident watermark (bounded content history)
+/// after the full run.
+pub fn run_formal_series_retained(
+    revisions: u32,
+) -> Result<(FormalReport, FunctionIncrementalSession), String> {
     let base = load256::generate_revision(0);
     let mut session: FunctionIncrementalSession = warmup(&base.source, "d_main", &[])?;
     let cancel = CancelFlag::new(false);
@@ -129,14 +138,15 @@ pub fn run_formal_series(revisions: u32) -> Result<FormalReport, String> {
     }
     let mut times: Vec<f64> = samples.iter().map(|s| s.edit_to_result_ms).collect();
     times.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    Ok(FormalReport {
+    let report = FormalReport {
         p50_ms: percentile(&times, 0.50),
         p95_ms: percentile(&times, 0.95),
         p99_ms: percentile(&times, 0.99),
         all_correct: true,
         samples,
         peak_slot_bytes,
-    })
+    };
+    Ok((report, session))
 }
 
 /// Cumulative (function → stage-total, whole-module-total, syntax counters).
