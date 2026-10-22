@@ -7,7 +7,7 @@
 
 - 基面 `ab56c32ec4cb28e01fbcca74e9861164ffad43f0`（autographics-dev）。
 - review R2 冻结 `dbaea29e122d2fa2a18d18ce3f09444583098efd`；本修复提交
-  **`e8d551a2b`**（`agp_commit=e8d551a2bb1a`，见各 report `fingerprints`）。
+  **`5aec0a634`**（`agp_commit=5aec0a63429d`，见各 report `fingerprints`）。
 - AGP `Cargo.lock` sha256 `c3df168e7234b8bfa876dfbab8afa71af8773d1d7241ac010ad5d8054930b3bf`
   （未变）；依赖仍为 stock iced 0.14.0 / iced_widget 0.14.2 / wgpu 27.0.1。
 - 计划 `plan_revision: 3`，状态 `executing → execution_done`（8/10，T-04..T-08 重开后再完成）。
