@@ -209,17 +209,21 @@ fn t03_a07_admission_exercise(mode: &str, expected_adopted: u64, expect_skip: Op
 
 #[test]
 fn t03_a07_artifact_admission_controls() {
-    // (mode, expected adopted, expected rejecting gate)
+    // (mode, expected adopted, expected rejecting gate). Since can3 the
+    // canonical renders the owner's def id TEXT and the locals' slot
+    // indices — owner/param tampering is caught at the CONTENT gate
+    // (earlier than, never weaker than, the R1 verify-gate rejection
+    // proven by the verifier premise below).
     let cases: &[(&str, u64, Option<&str>)] = &[
         ("clean", 2, None),
         ("nonzero_owner", 2, None),
         ("context", 1, Some("header")),
         ("literal", 1, Some("canonical")),
         ("entry_oob", 1, Some("codec")),
-        ("owner", 1, Some("verify")),
-        ("owner_inrange", 1, Some("verify")),
+        ("owner", 1, Some("canonical")),
+        ("owner_inrange", 1, Some("canonical")),
         ("span", 1, Some("span")),
-        ("param_index", 1, Some("verify")),
+        ("param_index", 1, Some("canonical")),
         ("intrinsics", 1, Some("intrinsics")),
     ];
     for (mode, adopted, skip) in cases {
@@ -357,18 +361,19 @@ fn t03_a07_roundtrip_plain_and_mixed_intrinsic_adoption() {
     );
 }
 
-/// C01-03 body-fact query core: a consumer that READ another function's
-/// body fact is invalidated exactly when THAT body changes — an
-/// identical-content hit is forced onto the full re-verify chain; a
-/// re-minted artifact (which reads no body facts) and UNREAD functions'
-/// changes never invalidate. Interface-only callers keep identity and
-/// zero stage work throughout (the already-proven half of C01-03).
+/// C01-03/R2 body-fact query core: dependencies belong to the PRODUCED
+/// ARTIFACT (its history entry), not to a consumer-global slot. A read
+/// binds the consumer's CURRENT entry (first-read-wins); a re-read
+/// returns the fresh fact value but never refreshes the recorded
+/// credential; a content hit checks THE TARGET ENTRY's own snapshot — a
+/// read callee body going stale refuses exactly that entry's reuse (full
+/// re-verify, then a fresh pair replaces the cached one); sibling
+/// artifacts without the read stay reusable; unread functions' changes
+/// and interface-only callers are never affected. A closed session
+/// refuses the query outright (B1-R2-02).
 #[test]
 fn t03_body_fact_query_dependency_invalidation() {
     use auto_av_probe::session::warmup;
-    // `extra` keeps `tail` off the file END: an edit in the LAST
-    // declaration hits the frozen splice's explicit NoConvergence
-    // fallback (contracted non-fast-path, not this test's subject).
     let src = "fn helper(x int) int { let r = x * 3; return r + 7 }\nfn main() int { let a = helper(5); return a + 1 }\nfn tail() int { return 9 }\nfn extra() int { return 6 }\n";
     let mut s = warmup(src, "d_main", &[]).expect("warm-up");
     let cancel = CancelFlag::new(false);
@@ -387,83 +392,115 @@ fn t03_body_fact_query_dependency_invalidation() {
     assert!(Arc::ptr_eq(&main_h0, &main_h1));
     let _ = s.edit(x3, x3 + 1, b"3".to_vec()).unwrap(); // back to x*3
 
-    // Populate main's content history FIRST (a re-mint commit CLEARS the
-    // consumer's records, so the recorded read must come after this):
-    // main 1→2 (miss) then 2→1 (hit on the original content).
+    // Populate main's content history: main 1→2 mints B (no body-fact
+    // reads), 2→1 hits the warm entry A. Capture A's pair while A is
+    // CURRENT (the artifact whose credential the read below attaches to).
     let out = s.edit(plus1, plus1 + 1, b"2".to_vec()).unwrap();
     assert!(out.ok);
     let out = s.edit(plus1, plus1 + 1, b"1".to_vec()).unwrap();
     assert!(out.ok);
     assert_eq!(s.counters().get("reuse_hit:main"), 1);
     assert_eq!(s.counters().get("verify_hir:main"), 1);
+    let (a_hir, a_code) = {
+        let (_, h, c) = s.resident("main").unwrap();
+        (h, c)
+    };
 
-    // Body-fact read: main consumes helper's CURRENT body fact through
-    // the production query core.
+    // Body-fact read: binds main's CURRENT entry (A = "+ 1").
     let (hdef, _v) = s
         .query_body_fact("main", "helper")
         .expect("helper's body fact");
     assert_eq!(hdef, "d_helper");
     assert_eq!(s.counters().get("body_fact_query:helper"), 1);
 
-    // helper's body changes → main's recorded read is STALE. The next
-    // edit lands on content ALREADY in history (2), yet must NOT hit:
-    // the stale body-fact read forces the full re-verify chain.
+    // A's read does NOT leak onto B: main 1→2 hits B (its own snapshot
+    // has no reads) even though A carries a dependency.
+    let out = s.edit(plus1, plus1 + 1, b"2".to_vec()).unwrap();
+    assert!(out.ok);
+    assert_eq!(s.counters().get("reuse_hit:main"), 2);
+    assert_eq!(s.counters().get("body_fact_invalidated:main"), 0);
+
+    // helper's body changes → A's recorded fact goes stale. Returning to
+    // A's content must NOT reuse A's cached pair: the hit is refused and
+    // the full re-verify chain runs; the fresh pair REPLACES the cached
+    // entry (its credential is superseded).
     let out = s.edit(x3, x3 + 1, b"4".to_vec()).unwrap();
     assert!(out.ok);
-    let out = s.edit(plus1, plus1 + 1, b"2".to_vec()).unwrap();
+    let out = s.edit(plus1, plus1 + 1, b"1".to_vec()).unwrap();
     assert!(out.ok, "{:?}", out.diagnostics);
     assert_eq!(s.counters().get("body_fact_invalidated:main"), 1);
     assert_eq!(
         s.counters().get("reuse_hit:main"),
-        1,
-        "the stale-read content hit was refused"
+        2,
+        "the stale entry's content hit was refused"
     );
-    assert_eq!(s.counters().get("verify_hir:main"), 2);
+    let (_, fresh_hir, fresh_code) = s.resident("main").unwrap();
+    assert!(!Arc::ptr_eq(&a_hir, &fresh_hir));
+    assert!(
+        !Arc::ptr_eq(&a_code, &fresh_code),
+        "a re-verified content gets a fresh pair, never the stale cache"
+    );
 
-    // The re-mint clears main's records: reverting now HITS again (the
-    // re-minted artifact's check reads interfaces only).
+    // The re-verified entry has no reads: alternating back to B and the
+    // re-verified content again hits BOTH (artifact-owned snapshots).
+    let out = s.edit(plus1, plus1 + 1, b"2".to_vec()).unwrap();
+    assert!(out.ok);
     let out = s.edit(plus1, plus1 + 1, b"1".to_vec()).unwrap();
     assert!(out.ok);
-    assert_eq!(s.counters().get("reuse_hit:main"), 2);
+    assert_eq!(s.counters().get("reuse_hit:main"), 4);
+    assert_eq!(s.counters().get("body_fact_invalidated:main"), 1);
 
-    // helper changing again no longer invalidates the re-minted main.
+    // Re-read does not refresh: attach helper@v4 to the current entry;
+    // helper moves on; a re-query returns the NEW fact while the entry's
+    // credential stays at v4 — the next return to this content is
+    // refused exactly because the OLD credential is stale.
+    s.query_body_fact("main", "helper").expect("attach v4");
     let out = s.edit(x3, x3 + 1, b"5".to_vec()).unwrap();
+    assert!(out.ok);
+    let _re_read = s.query_body_fact("main", "helper").expect("re-read");
+    let out = s.edit(plus1, plus1 + 1, b"2".to_vec()).unwrap();
+    assert!(out.ok);
+    let out = s.edit(plus1, plus1 + 1, b"1".to_vec()).unwrap();
+    assert!(out.ok, "{:?}", out.diagnostics);
+    assert_eq!(s.counters().get("body_fact_invalidated:main"), 2);
+    assert_eq!(s.counters().get("reuse_hit:main"), 5);
+
+    // Unread axis: after the re-verify, re-attach helper@v5, edit TAIL
+    // (never read) — the hits survive.
+    s.query_body_fact("main", "helper").expect("attach v5");
+    let t9 = src.find("9").unwrap() as u64;
+    let out = s.edit(t9, t9 + 1, b"8".to_vec()).unwrap();
     assert!(out.ok);
     let out = s.edit(plus1, plus1 + 1, b"2".to_vec()).unwrap();
     assert!(out.ok);
-    assert_eq!(
-        s.counters().get("reuse_hit:main"),
-        3,
-        "helper's later change does not invalidate the re-minted consumer"
-    );
-    assert_eq!(s.counters().get("body_fact_invalidated:main"), 1);
-
-    // Unread axis: re-read helper's fact, then edit TAIL — main's read
-    // stays current and the content hit survives.
-    s.query_body_fact("main", "helper").expect("re-read");
-    let t9 = src.find("9").unwrap() as u64;
-    let out = s.edit(t9, t9 + 1, b"8".to_vec()).unwrap();
-    assert!(
-        out.ok,
-        "tail edit: {:?} {:?}",
-        out.non_fast_path_reason, out.diagnostics
-    );
     let out = s.edit(plus1, plus1 + 1, b"1".to_vec()).unwrap();
-    assert!(
-        out.ok,
-        "main revert: {:?} {:?}",
-        out.non_fast_path_reason, out.diagnostics
-    );
+    assert!(out.ok);
     assert_eq!(
         s.counters().get("reuse_hit:main"),
-        4,
+        7,
         "an unread function's body change never invalidates the consumer"
     );
-    assert_eq!(s.counters().get("body_fact_invalidated:main"), 1);
+    assert_eq!(s.counters().get("body_fact_invalidated:main"), 2);
 
     // End state: helper x*5, main +1, tail 8 — independently expected.
     let (out, _) = s.run(&ExecLimits::default(), &cancel);
     assert_i32(&out, 5 * 5 + 7 + 1, "final value helper(5)=5*5+7, main +1");
+
+    // B1-R2-02: a closed session refuses the query — no result, no new
+    // dependency work, no counter movement.
+    s.close();
+    let queries = s.counters().get("body_fact_query:helper");
+    assert!(s.query_body_fact("main", "helper").is_none());
+    assert_eq!(
+        s.counters().get("body_fact_query:helper"),
+        queries,
+        "a closed query core accepts no new work"
+    );
+    let (out, _) = s.run(&ExecLimits::default(), &cancel);
+    assert!(
+        matches!(out, ExecOutcome::Infra(_)),
+        "closed run is refused"
+    );
 }
 
 /// B1-C05: the cold HIR bundle owned by the session (defs, types and
@@ -493,4 +530,256 @@ fn t03_close_releases_cold_bundle_owner() {
     assert_i32(&out, 23, "pinned snapshot keeps its program");
     s.close();
     assert_eq!(s.resident_cold_hir_nodes(), 0);
+}
+
+/// B1-R2-01 P1 (collected from the R2 review's adjacent-controls.rs, same
+/// inputs/oracles): changing an assignment's WRITE TARGET (`x = 3` →
+/// `y = 3`) is a legal edit that changes the program's semantics — the
+/// content identity must distinguish it (the pre-R2 canonical omitted
+/// `Place.local`, so the edit hit the old code and served the WRONG
+/// result 3 while the same source cold-compiles to 1). The value-control
+/// sibling (3→4) proves the input reaches the real path.
+#[test]
+fn t03_r2_assignment_target_change_is_new_content_not_old_code() {
+    use auto_av_probe::session::warmup;
+    let src = "fn helper() int { var x = 1; var y = 2; x = 3; return x }\nfn main() int { return helper() }\nfn tail() int { return 9 }\n";
+    let mut s = warmup(src, "d_main", &[]).expect("warm-up");
+    let cancel = CancelFlag::new(false);
+    let run = |s: &auto_av_probe::session::FunctionIncrementalSession| match s
+        .run(&ExecLimits::default(), &CancelFlag::new(false))
+        .0
+    {
+        ExecOutcome::Success {
+            value: Value::I32(v),
+            ..
+        } => v,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(run(&s), 3);
+    let (_, old_hir, old_code) = s.resident("helper").unwrap();
+    let at = src.find("x = 3").unwrap() as u64;
+    let out = s.edit(at, at + 1, b"y".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).expect("cold compile");
+    assert_eq!(run(&cold), 1, "cold expectation");
+    assert_eq!(run(&s), 1, "the incremental result equals the cold compile");
+    assert_eq!(
+        s.counters().get("reuse_hit:helper"),
+        0,
+        "a different write target is different content — no hit"
+    );
+    let (_, h, code) = s.resident("helper").unwrap();
+    assert!(!Arc::ptr_eq(&old_hir, &h));
+    assert!(!Arc::ptr_eq(&old_code, &code));
+    let _ = cancel;
+}
+
+/// Value sibling of the write-target control: editing the assigned VALUE
+/// is genuinely new content, no hit, cold-equal result.
+#[test]
+fn t03_r2_assignment_value_change_positive() {
+    use auto_av_probe::session::warmup;
+    let src = "fn helper() int { var x = 1; var y = 2; x = 3; return x }\nfn main() int { return helper() }\nfn tail() int { return 9 }\n";
+    let mut s = warmup(src, "d_main", &[]).expect("warm-up");
+    let run = |s: &auto_av_probe::session::FunctionIncrementalSession| match s
+        .run(&ExecLimits::default(), &CancelFlag::new(false))
+        .0
+    {
+        ExecOutcome::Success {
+            value: Value::I32(v),
+            ..
+        } => v,
+        other => panic!("{other:?}"),
+    };
+    let at = src.find("x = 3").unwrap() as u64 + 4;
+    assert!(s.edit(at, at + 1, b"4".to_vec()).unwrap().ok);
+    assert_eq!(run(&s), 4);
+    assert_eq!(run(&warmup(s.src(), "d_main", &[]).unwrap()), 4);
+    assert_eq!(s.counters().get("reuse_hit:helper"), 0);
+}
+
+/// B1-C03/R2 (collected from the R2 review's adjacent-controls.rs): a
+/// re-read between the dependency going stale and the consumer's edit
+/// must NOT renew the OLD artifact's recorded dependency — the same
+/// content edit still re-verifies.
+#[test]
+fn t03_r2_reread_does_not_refresh_old_dependency() {
+    use auto_av_probe::session::warmup;
+    let src = "fn helper() int { return 1 }\nfn main() int { return helper() + 1 }\nfn tail() int { return 9 }\n";
+    let mut s = warmup(src, "d_main", &[]).expect("warm-up");
+    let at = src.find("return 1").unwrap() as u64 + 7;
+    let plus = src.find("+ 1").unwrap() as u64 + 2;
+    let first = s.query_body_fact("main", "helper").unwrap();
+    assert!(s.edit(at, at + 1, b"2".to_vec()).unwrap().ok);
+    let second = s.query_body_fact("main", "helper").unwrap();
+    assert_ne!(first.1, second.1);
+    assert!(s.edit(plus, plus + 1, b"1".to_vec()).unwrap().ok);
+    assert_eq!(
+        s.counters().get("body_fact_invalidated:main"),
+        1,
+        "a reread before rebuilding cannot renew an old artifact's recorded dependency"
+    );
+}
+
+/// B1-C03/R2 (collected from the R2 review's adjacent-controls.rs):
+/// reminting B cannot erase the dependencies of the still-cached A —
+/// returning to A's content re-verifies instead of reusing A's pair.
+#[test]
+fn t03_r2_history_retains_its_own_body_dependencies() {
+    use auto_av_probe::session::warmup;
+    let src = "fn helper() int { return 1 }\nfn main() int { return helper() + 1 }\nfn tail() int { return 9 }\n";
+    let mut s = warmup(src, "d_main", &[]).expect("warm-up");
+    let h = src.find("return 1").unwrap() as u64 + 7;
+    let m = src.find("+ 1").unwrap() as u64 + 2;
+    let (_, old_hir, old_code) = s.resident("main").unwrap();
+    let _original_read = s.query_body_fact("main", "helper").unwrap();
+    assert!(s.edit(m, m + 1, b"2".to_vec()).unwrap().ok); // B: no body-fact reads.
+    assert!(s.edit(h, h + 1, b"2".to_vec()).unwrap().ok); // A's read goes stale.
+    assert!(s.edit(m, m + 1, b"1".to_vec()).unwrap().ok); // Back to A, not B.
+    let (_, new_hir, new_code) = s.resident("main").unwrap();
+    assert_eq!(s.counters().get("body_fact_invalidated:main"), 1);
+    assert!(!Arc::ptr_eq(&old_hir, &new_hir));
+    assert!(
+        !Arc::ptr_eq(&old_code, &new_code),
+        "reminting B cannot erase dependencies of the still-cached historical A"
+    );
+}
+
+/// B1-R2-01 restore-side sibling (collected from the R2 review's
+/// semantic-artifact-controls.rs, premises updated to the FIXED
+/// behavior): a legally-verifiable HIR that writes a DIFFERENT target
+/// (`Place.local` x→y) or enters at another block is NOT the current
+/// source's content — the can3 canonical distinguishes it and the
+/// artifact is skipped at the canonical gate; the cold body serves.
+#[test]
+fn t03_r2_semantic_wrong_target_or_entry_not_adopted() {
+    use auto_ac_prototype::hir;
+    use auto_ac_prototype::source::compile_scalar_source;
+    use auto_ac_prototype::verify::{declaration_context_fingerprint, verify_function};
+    use auto_av_probe::cache::{caps_fingerprint, open_store, put_enveloped, EnvelopeIdentity};
+    use auto_av_probe::fn_hir_codec::{
+        encode_fn_hir, fn_hir_key, fn_hir_span_digest, normalize_fn_hir_body, FnHirArtifact,
+    };
+    use auto_av_probe::semrefs::content_version_of;
+    use auto_av_probe::session::{restore, warmup_persisted};
+
+    fn exercise(mode: &str) {
+        let src: &str = if mode == "entry" {
+            "fn helper(x int) int { if x > 0 { return 11 } else { return 22 } }\nfn main() int { return helper(0) }\nfn tail() int { return 9 }\n"
+        } else {
+            "fn helper() int { var x = 1; var y = 2; x = 3; return x }\nfn main() int { return helper() }\nfn tail() int { return 9 }\n"
+        };
+        let c = compile_scalar_source(src, "probe.at", &[]).unwrap();
+        let bundle = c.checked.bundle();
+        let m = &bundle.modules[0];
+        let di = m.defs.iter().position(|d| d.id_text == "d_helper").unwrap();
+        let bid = match m.defs[di].kind {
+            hir::DefKind::Function { body, .. } => body,
+            _ => panic!(),
+        };
+        let original = &m.bodies[bid.0 as usize];
+        let mut changed = original.clone();
+        if mode == "entry" {
+            let entry = original
+                .blocks
+                .iter()
+                .position(|b| {
+                    b.stmts.iter().any(|st| match st {
+                        hir::Stmt::Return { value } => matches!(
+                            original.exprs[value.0 as usize].kind,
+                            hir::ExprKind::Constant { value: 11 }
+                        ),
+                        _ => false,
+                    })
+                })
+                .unwrap();
+            changed.entry = hir::BlockId(entry as u32);
+            assert_ne!(changed.entry, original.entry);
+        } else {
+            let y = original.locals.iter().position(|l| l.name == "y").unwrap();
+            assert!(!original.places.is_empty());
+            changed.places[0].local = hir::LocalId(y as u32);
+        }
+        let mut altered_module = m.clone();
+        altered_module.bodies[bid.0 as usize] = changed.clone();
+        // FIXED premise: the can3 canonical DOES distinguish the altered
+        // body (it renders Place.local and the entry block).
+        assert_ne!(
+            auto_av_probe::cache::canonical_hir_function(m, bid),
+            auto_av_probe::cache::canonical_hir_function(&altered_module, bid),
+            "can3 must distinguish a different write target / entry block"
+        );
+        let mut v = bundle.clone();
+        v.modules[0] = altered_module;
+        let verifier = verify_function(v, di);
+        assert_eq!(
+            verifier.is_ok(),
+            mode != "entry",
+            "entry mutation is a verifier-rejected negative; place mutation stays legal HIR"
+        );
+        let (body, callee_table, type_table) = normalize_fn_hir_body(
+            &m.defs.iter().map(|d| d.id_text.clone()).collect::<Vec<_>>(),
+            &m.types
+                .iter()
+                .map(|t| t.id_text.clone())
+                .collect::<Vec<_>>(),
+            &changed,
+        )
+        .unwrap();
+        let cv = content_version_of(&auto_av_probe::cache::canonical_hir_function(m, bid));
+        let caps = caps_fingerprint(&[]);
+        let a = FnHirArtifact {
+            def_id: "d_helper".into(),
+            content_version: cv.clone(),
+            span_digest: fn_hir_span_digest(original),
+            context_fingerprint: declaration_context_fingerprint(m),
+            caps_fp: caps.clone(),
+            intrinsics: vec![],
+            callee_table,
+            type_table,
+            body,
+        };
+        let dir = std::env::temp_dir().join(format!("p828-r2-sem-{mode}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        {
+            let st = open_store(&dir).unwrap();
+            put_enveloped(
+                &st,
+                &fn_hir_key(&m.id_text, "d_helper", &cv, &caps),
+                "A07",
+                &EnvelopeIdentity::fn_hir_bound(&m.id_text, "d_helper", &cv),
+                &encode_fn_hir(&a).unwrap(),
+                vec![],
+                Some("p828-r2"),
+            )
+            .unwrap();
+        }
+        drop(warmup_persisted(src, "d_main", &[], &dir, "p828-r2").unwrap());
+        let s = restore(src, "d_main", &[], &dir, "p828-r2").unwrap();
+        let (_, body, _) = s.resident("helper").unwrap();
+        let execution = s.run(&ExecLimits::default(), &CancelFlag::new(false)).0;
+        let expected = if mode == "entry" { 22 } else { 3 };
+        assert!(
+            matches!(execution, ExecOutcome::Success { value: Value::I32(v), .. } if v == expected)
+        );
+        assert_eq!(
+            s.counters().get("restore_hir_skip:canonical"),
+            1,
+            "the semantically-different body is rejected at the content gate"
+        );
+        assert_eq!(
+            s.counters().get("restore_hir_adopted"),
+            2,
+            "the wrong-content artifact is skipped; the cold body serves"
+        );
+        if mode == "entry" {
+            assert_eq!(body.entry, original.entry);
+        } else {
+            assert_eq!(body.places[0].local, original.places[0].local);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    exercise("place");
+    exercise("entry");
 }

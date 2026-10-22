@@ -674,25 +674,60 @@ pub fn envelope_unwrap(bytes: &[u8], expect: &EnvelopeIdentity) -> Result<Vec<u8
 
 use auto_ac_prototype::hir;
 
-/// Deterministic canonical dump of one function's verified HIR content:
-/// locals, places, expressions, blocks/stmts and loop order, plus the
-/// SIGNATURE content of every distinct callee (so a callee signature change
-/// re-keys its callers while a body-only change does not). Spans and
-/// cosmetic fields are excluded.
+/// Deterministic canonical dump of one function's verified HIR content —
+/// the CONTENT-IDENTITY basis (history keys, store content versions).
+///
+/// Field policy (B1-R2-01): every field that participates in HIR semantic
+/// equality (`hir` PartialEq — the same rule the verifier admits) is
+/// rendered; spans and cosmetic fields (`mutable_explicit`) are not.
+/// Locals render id/name/role/index/mutability/param-mode/type; places
+/// render id/kind/`local`/type/access; exprs and blocks render their ids;
+/// the body renders its id, owner (by the owner def's stable id TEXT —
+/// never a table slot) and entry block. Cross-table references resolve to
+/// stable content (names/shapes), so a dump is table-independent. The
+/// `can3` format tag re-keys every content version once: all store
+/// products (HIR artifacts, ABC units, sidecars) written under the
+/// pre-R2 dump are unreachable under their old keys — never silently
+/// reused or overwritten in place.
 pub fn canonical_hir_function(module: &hir::Module, body_id: hir::BodyId) -> Vec<u8> {
     let body = &module.bodies[body_id.0 as usize];
     let mut c = CanonBuf {
         out: Vec::with_capacity(1024),
     };
+    // Format tag + body identity/entry (semantic equality fields).
+    c.w("can3[id ");
+    c.w(&body.id_text);
+    c.w(" o");
+    c.w(&module
+        .defs
+        .get(body.owner.0 as usize)
+        .map(|d| d.id_text.as_str())
+        .unwrap_or("?"));
+    c.w(" e");
+    c.w(&body.entry.0.to_string());
+    c.w("]");
     // Locals.
     c.w("[loc");
     for l in &body.locals {
+        c.w(" ");
+        c.w(&l.id_text);
+        c.w(" ");
+        c.w(&l.name);
         c.w(" ");
         c.w(match l.role {
             hir::LocalRole::Param => "p",
             hir::LocalRole::Binding => "b",
         });
         c.b(l.mutable);
+        match l.index {
+            Some(i) => {
+                c.w("@");
+                c.w(&i.to_string());
+            }
+            None => c.w("@-"),
+        }
+        c.w(" ");
+        c.w(l.param_mode.as_str());
         c.w(":");
         c.w(&shape_of_use(&l.ty, module));
     }
@@ -700,6 +735,14 @@ pub fn canonical_hir_function(module: &hir::Module, body_id: hir::BodyId) -> Vec
     // Places.
     c.w("[pl");
     for p in &body.places {
+        c.w(" ");
+        c.w(&p.id_text);
+        c.w(" ");
+        c.w(match &p.kind {
+            hir::PlaceKind::Local => "l",
+            hir::PlaceKind::FieldPath(_) => "f",
+        });
+        c.w(&p.local.0.to_string());
         c.w(" ");
         c.w(&shape_of_use(&p.ty, module));
         c.b(matches!(p.access, hir::Access::Mutable));
@@ -709,6 +752,8 @@ pub fn canonical_hir_function(module: &hir::Module, body_id: hir::BodyId) -> Vec
     c.w("[ex");
     for e in &body.exprs {
         c.w(" (");
+        c.w(&e.id_text);
+        c.w(" ");
         c.w(&shape_of_use(&e.ty, module));
         c.w(" ");
         match &e.kind {
@@ -787,6 +832,8 @@ pub fn canonical_hir_function(module: &hir::Module, body_id: hir::BodyId) -> Vec
     // Blocks/stmts.
     c.w("[bl");
     for b in &body.blocks {
+        c.w(" ");
+        c.w(&b.id_text);
         c.w(" {");
         for s in &b.stmts {
             match s {

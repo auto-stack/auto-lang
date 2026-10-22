@@ -173,9 +173,13 @@ struct FnRecord {
     span_map: auto_av_core::span_map::SpanSegments,
     /// In-session content-addressed reuse (PLAN-828 T-04): content version
     /// → (verified body, code, mint origin, the code's OWN accumulated
-    /// span map). A body edited back to prior content reuses the SAME
+    /// span map, mint text, the artifact's OWN body-fact dependency
+    /// snapshot). A body edited back to prior content reuses the SAME
     /// objects and their OWN mint baseline AND source map
-    /// (F-828-R1-04/R3a).
+    /// (F-828-R1-04/R3a). The dependency snapshot is FROZEN per produced
+    /// artifact (B1-C03/R2): a content hit is admitted only while every
+    /// recorded fact of THE TARGET ENTRY is still current — re-reads
+    /// never refresh it and other artifacts' reads never touch it.
     history: BTreeMap<
         String,
         (
@@ -184,6 +188,7 @@ struct FnRecord {
             u64,
             auto_av_core::span_map::SpanSegments,
             String,
+            Vec<BodyFactRead>,
         ),
     >,
     /// B1-C04: the def/type tables (id TEXTS, index-aligned) that
@@ -297,13 +302,6 @@ pub struct FunctionIncrementalSession {
     /// The ac-core declaration-context fingerprint the outstanding body
     /// credentials were verified under; a drift invalidates them.
     context_revision: String,
-    /// PLAN-828 T-03 / C01-03: recorded BODY-FACT reads, keyed by the
-    /// CONSUMER's source name. An entry stays current only while the read
-    /// fact's version still matches the env's published body fact; a
-    /// stale read forces the consumer's next content hit onto the full
-    /// re-verify chain (never a silent reuse of an artifact that embedded
-    /// an outdated callee body).
-    body_reads: BTreeMap<String, Vec<BodyFactRead>>,
     /// PLAN-828 T-03: the cold-compiled bundle (type/def tables + the
     /// declaration context) — the restore path's re-verification context
     /// for function-HIR artifacts. Owned body payload counts toward the
@@ -538,7 +536,6 @@ pub fn warmup(
         env,
         env_core,
         context_revision,
-        body_reads: BTreeMap::new(),
         cold_bundle,
         current: snapshot,
         revision: 0,
@@ -739,7 +736,11 @@ pub fn restore(
             let Ok(text) = String::from_utf8(mint_text) else {
                 return cold();
             };
-            *entry.1 = (body.clone(), code.clone(), mint_d0, map, text);
+            // Restored pairs carry no body-fact dependencies — the
+            // verification credential never persists (R2: dependencies
+            // belong to produced artifacts; a restored artifact was
+            // re-verified against the current context, reading nothing).
+            *entry.1 = (body.clone(), code.clone(), mint_d0, map, text, Vec::new());
         }
         rec.code = code.clone();
     }
@@ -931,14 +932,22 @@ impl FunctionIncrementalSession {
     }
 
     /// C01-03 body-fact query (the production query core): read ANOTHER
-    /// function's CURRENT body content fact on behalf of `consumer` —
-    /// the dependency a body-reading consumer records before embedding
-    /// callee-body-derived facts. The read is RECORDED: the consumer's
-    /// later content hits are admitted only while every recorded fact is
-    /// still current (a callee body edit invalidates the consumer's
-    /// reuse; edits of unread functions never do). The query counter
-    /// bumps at this real entry — never self-reported by the caller.
+    /// function's CURRENT body content fact on behalf of `consumer`. The
+    /// RESULT is always the current truth; separately, the read binds
+    /// the CONSUMER'S CURRENT ARTIFACT: if that entry has not yet
+    /// recorded a dependency on this callee, the fact's current version
+    /// is FROZEN into the entry's own dependency snapshot
+    /// (first-read-wins). A later re-read returns the fresh fact value
+    /// but NEVER refreshes the recorded credential — applicability of the
+    /// recorded artifact is checked against ITS OWN snapshot at hit time
+    /// (B1-C03/R2: dependencies belong to the produced artifact, not to
+    /// a consumer-global slot). The query counter bumps at this real
+    /// entry. A CLOSED session refuses: no new dependency work, no state
+    /// (B1-R2-02).
     pub fn query_body_fact(&mut self, consumer: &str, callee: &str) -> Option<(String, String)> {
+        if self.closed {
+            return None;
+        }
         let def = self.env.def_id_of(callee)?.to_string();
         let version = self.env.body_fact_of(&def)?.to_string();
         let read = BodyFactRead {
@@ -947,10 +956,16 @@ impl FunctionIncrementalSession {
             def_id: def.clone(),
             version: version.clone(),
         };
-        let reads = self.body_reads.entry(consumer.to_string()).or_default();
-        match reads.iter_mut().find(|r| r.def_id == def) {
-            Some(slot) => *slot = read,
-            None => reads.push(read),
+        let rec = self.fns.iter_mut().find(|f| f.name == consumer)?;
+        if let Some(entry) = rec
+            .history
+            .iter_mut()
+            .find(|(_, v)| Arc::ptr_eq(&v.1, &rec.code))
+            .map(|(_, v)| v)
+        {
+            if !entry.5.iter().any(|r| r.def_id == def) {
+                entry.5.push(read);
+            }
         }
         self.counters.bump(&format!("body_fact_query:{callee}"));
         Some((def, version))
@@ -1054,14 +1069,13 @@ impl FunctionIncrementalSession {
         // B1-C05: the T-03 cold bundle (deep HIR copy — defs, types and
         // every body's locals/places/exprs/blocks) is session-OWNED with
         // no external pin; close releases it HERE, not at drop(session).
-        // Recorded body-fact reads die with the closed query core too.
-        // `resident_cold_hir_nodes()` is the observable oracle.
+        // The per-entry dependency snapshots die with `fns.clear()`
+        // below; `resident_cold_hir_nodes()` is the observable oracle.
         self.cold_bundle = hir::Bundle {
             domain: hir::HirDomain::Scalar,
             requires: Vec::new(),
             modules: Vec::new(),
         };
-        self.body_reads.clear();
         self.store = None;
         self.fns.clear();
         self.current = Arc::new(ProgramSnapshot::vacant(&self.entry_def_id, self.revision));
@@ -1072,29 +1086,13 @@ impl FunctionIncrementalSession {
         self.closed
     }
 
-    /// Bounded content-history insert (V-07): never evict the resident
-    /// revision's own entry; evict an arbitrary oldest-ordered key when
-    /// over the cap.
-    #[allow(clippy::type_complexity)]
-    fn history_entry(
-        body: Arc<hir::Body>,
-        code: Arc<FunctionCode>,
-    ) -> (
-        Arc<hir::Body>,
-        Arc<FunctionCode>,
-        u64,
-        auto_av_core::span_map::SpanSegments,
-        String,
-    ) {
-        (
-            body,
-            code,
-            0,
-            auto_av_core::span_map::SpanSegments::default(),
-            String::new(),
-        )
-    }
-
+    /// Content-history insert at COMMIT (V-07 bound + R2 ownership): the
+    /// freshly produced pair REPLACES any cached entry for the same
+    /// content. Only a dependency-stale forced re-verify reaches here
+    /// with an existing key — the old pair's credential is superseded
+    /// (its recorded body facts moved on), so keeping it would poison
+    /// every future hit on this content. Normal content hits never
+    /// re-mint and never touch the cached entry.
     #[allow(clippy::type_complexity)]
     fn history_insert(
         rec: &mut FnRecord,
@@ -1105,6 +1103,7 @@ impl FunctionIncrementalSession {
             u64,
             auto_av_core::span_map::SpanSegments,
             String,
+            Vec<BodyFactRead>,
         ),
     ) {
         if rec.history.len() >= HISTORY_CAP && !rec.history.contains_key(&cv) {
@@ -1122,7 +1121,7 @@ impl FunctionIncrementalSession {
                 rec.history.remove(&victim);
             }
         }
-        rec.history.entry(cv).or_insert(entry);
+        rec.history.insert(cv, entry);
     }
 
     /// Resident function source-names in declaration order.
@@ -1685,15 +1684,17 @@ impl FunctionIncrementalSession {
         };
         let content_dump = canonical_hir_function(cand_m, def_body);
         let cv = content_version_of(&content_dump);
-        // C01-03 body-fact currency: the changed function's recorded reads
-        // must still be current. A read callee body that changed since the
-        // pair was minted means the stored pair may embed an outdated body
-        // fact — the content hit is FORCED onto the full re-verify chain
-        // (never a silent reuse). Unread functions' edits never land here.
-        let deps_stale = self
-            .body_reads
-            .get(&self.fns[changed_idx].name)
-            .map(|reads| reads.iter().any(|r| !self.env.body_fact_current(r)))
+        // C01-03/R2 body-fact currency: the TARGET ENTRY's own dependency
+        // snapshot decides. A recorded fact whose body changed since the
+        // pair was minted means THAT pair may embed an outdated fact — the
+        // hit on it is refused and the full re-verify chain runs (never a
+        // silent reuse). Entries without reads for the changed fact —
+        // including sibling artifacts of the same consumer — stay
+        // reusable (dependencies belong to the artifact, not the name).
+        let deps_stale = self.fns[changed_idx]
+            .history
+            .get(&cv)
+            .map(|e| e.5.iter().any(|r| !self.env.body_fact_current(r)))
             .unwrap_or(false);
         if deps_stale {
             self.counters
@@ -1707,7 +1708,7 @@ impl FunctionIncrementalSession {
         } else {
             self.fns[changed_idx].history.get(&cv)
         } {
-            Some((body, code, mint_o, map, mint_text)) => {
+            Some((body, code, mint_o, map, mint_text, _deps)) => {
                 self.counters.bump(&format!("reuse_hit:{changed_name}"));
                 was_hit = true;
                 candidate_mint_origin = *mint_o;
@@ -1971,17 +1972,28 @@ impl FunctionIncrementalSession {
             .tree
             .abs_range(new_parse.tree.decls[changed_idx].node);
         let mint_text = new_src[td0 as usize..td1 as usize].to_string();
-        Self::history_insert(
-            changed_rec,
-            content_version.clone(),
-            (
-                hir_body.clone(),
-                code.clone(),
-                prepared.mint_origin,
-                deposit_map,
-                mint_text,
-            ),
-        );
+        if reminted {
+            Self::history_insert(
+                changed_rec,
+                content_version.clone(),
+                (
+                    hir_body.clone(),
+                    code.clone(),
+                    prepared.mint_origin,
+                    deposit_map,
+                    mint_text,
+                    // The scalar re-check reads interfaces only — the
+                    // fresh pair carries no body-fact dependency. Reads
+                    // issued later attach to THIS entry via
+                    // `query_body_fact`.
+                    Vec::new(),
+                ),
+            );
+        }
+        // A content HIT keeps the CACHED entry untouched: its own mint
+        // baseline, span map and mint text remain exactly what later
+        // hits re-anchor through (only a remint — a fresh pair for this
+        // content — may replace them).
         changed_rec.hir_body = hir_body;
         changed_rec.canonical = content_dump;
         changed_rec.code = code;
@@ -1991,13 +2003,6 @@ impl FunctionIncrementalSession {
         // query core's current truth for this function's body fact.
         self.env
             .set_body_fact(&changed_rec.def_id, &content_version);
-        // A re-minted artifact's dependency set holds no recorded
-        // body-fact reads (the scalar re-check reads interfaces only);
-        // records of the superseded artifact are void. A future
-        // body-reading check re-records through `query_body_fact`.
-        if reminted {
-            self.body_reads.remove(&changed_rec.name);
-        }
 
         // T-07: durable deposit of the installed revision (units + the
         // session manifest). A store failure is recorded but never
@@ -2047,6 +2052,7 @@ fn history_entry(
     u64,
     auto_av_core::span_map::SpanSegments,
     String,
+    Vec<BodyFactRead>,
 ) {
     (
         body,
@@ -2054,6 +2060,10 @@ fn history_entry(
         0,
         auto_av_core::span_map::SpanSegments::default(),
         String::new(),
+        // Warm-up pairs are produced by the whole-module cold compile —
+        // the scalar check reads no callee bodies, so no body-fact
+        // dependency exists (reads attach later via `query_body_fact`).
+        Vec::new(),
     )
 }
 
