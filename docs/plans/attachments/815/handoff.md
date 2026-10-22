@@ -1,6 +1,8 @@
 # PLAN-815 I-TOOL / auto-ui-tool 交接文档
 
-> T-08 定稿版（2026-10-22，T-07 子批3 R2 定向 pass 后）。对象：816 CLI 客户端
+> T-08 定稿版·T-09 R1 修复轮刷新（2026-10-22；生产冻结位随 F-815-T09-01
+> shell-pack 再生器修复推进至 0f2858e35，见
+> [t09-fix/fixes.md](t09-fix/fixes.md)）。对象：816 CLI 客户端
 > （M816-B 消费 B 能力）及后续消费者。本版与修复后实现逐项对账，身份表按
 > **实际冻结产物**刷新（review-t07-batch3-r1 §冻结注记裁定）；字段消费语义
 > 详对账见 [t07-acceptance/batch3/field-profile-matrix.md](t07-acceptance/batch3/field-profile-matrix.md)。
@@ -10,9 +12,9 @@
 | 项 | 值 |
 |---|---|
 | 工具名 | `auto-ui-tool` |
-| 源提交（**生产冻结位**） | `e22fc75924a7f058a5df8150956b2d66268c5ecd`（branch `codex/plan-815-dev`，基线 M814-B `93a25c924` 之后）——生产 src 自此未变（子批3 两轮复审冻结核验：后续提交改动均在 `cfg(test)`/验收文档），协议/wire/预算/能力面以此为界 |
-| 源提交（验收终态） | `afd1a66bff2584879687d2016eefe2f8153eb726`（T-07 子批3 R1 修正轮=review-t07-batch3-r2 pass 对象）+ T-08 本定稿提交（docs 叠加，不触生产） |
-| **二进制（release 参考 artifact）SHA256** | `1626cec1087e8ba8dec4aede5f24e75ba12245e5b40c40705326ccbfab661696`（`target/release/auto-ui-tool.exe`，85,116,928 字节；源=生产冻结位 e22fc7592；`cargo build --release -p auto-ui-tools`；rustc 1.98.0 (88d9e12ae 2026-08-18)；`--version` 自证 `auto-ui-tool 0.1.0`） |
+| 源提交（**生产冻结位**） | `0f2858e35cb220964d8c23c8d77afce6839db491`（branch `codex/plan-815-dev`，基线 M814-B `93a25c924` 之后）——F-815-T09-01 shell-pack 再生器 canonical 修复（T-09 R1）；此前生产位 `e22fc7592`（子批3 两轮复审冻结核验），本提交为同链唯一增量（shell 壳层模板五处+清单模板+sanctioned 再生快照），协议/wire/预算/能力面不变 |
+| 源提交（验收终态） | `0f2858e35`（生产修复=T-09 R1 修复轮）+ T-09 修复轮 docs 提交（本表/fixes 记录叠加，不触生产）；历史验收位 `afd1a66bf`（T-07 子批3 终态）与 `a67f114fd`（T-08 首版定稿） |
+| **二进制（release 参考 artifact）SHA256** | `a73b117ff384bb347911e9a1c105bbd46146244626766e10c0368d52cb572781`（`target/release/auto-ui-tool.exe`，85,116,928 字节；源=生产冻结位 0f2858e35；`cargo build --release -p auto-ui-tools`；rustc 1.98.0 (88d9e12ae 2026-08-18)；`--version` 自证 `auto-ui-tool 0.1.0`。前参考 `1626cec1…`（源 e22fc7592）随生产位推进废止） |
 | 二进制复现性披露（诚实边界） | 本工具链无 reproducible-builds 配置，**任何形态都不承诺逐字节复现**：debug 多轮实测互异（e319c536/3e1c500d/753b1d71/d2d0054c/6d8427f7/b040c820——复审多轮各构建各哈希）；上表 release SHA256 是带 provenance 的**参考产物指纹**，非"每次重建同字节"承诺。**确定性身份锚 = 冻结源 SHA + 792 delivery-manifest**（逐文件 blake3 + `producer.git_head` + `ui_gen_fingerprint`，`auto gen --delivery-root` 再生成可复验——driver V03e 再交付幂等在案） |
 | 交付形态 | 792 **源码包** workspace（members=app+26 受管源 crate+根级输入，[详表](t07-acceptance/batch3/resource-audit-closure.md)）；工具由包内 `cargo build --locked -p auto-ui-tools` 构建（driver V05a/V05b 实证 fresh/locked/重定位三形态）；消费身份不以源码路径冒充二进制身份，也不以某次构建哈希冒充源身份 |
 | 二进制入口源 | `crates/auto-ui-tools/src/bin/auto_ui_tool.rs`（路径仅为导航；消费身份以上述锚为准） |
