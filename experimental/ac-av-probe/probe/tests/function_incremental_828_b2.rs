@@ -499,3 +499,67 @@ fn execution_real_link_rejections_and_unit_cannot_execute() {
         .contains("signature mismatch"));
     run(&p, 32);
 }
+
+/// B2-C03 residual (collected from the R2 review's projection-controls.rs,
+/// same input/oracle): two REAL same-owner units — each lowered from its
+/// own producer module — can place their distinct functions at the SAME
+/// numeric producer slot. A projection keyed by the raw payload number
+/// crosses their source maps (259..264 instead of 159..164); the fixed
+/// mapping goes through the EXECUTING frame's code slot, which is unique.
+#[test]
+fn projection_distinct_admitted_functions_sharing_producer_slot_cannot_cross_maps() {
+    use auto_av_core::span_map::SpanSegments;
+    use auto_av_probe::session::warmup as session_warmup;
+    let a = "fn helper() int { return 7 / 0 }\nfn main() int { return helper() }\nfn tail() int { return 9 }\n";
+    let b = "fn main() int { return helper() }\nfn helper() int { return 7 / 0 }\nfn tail() int { return 9 }\n";
+    let sa = session_warmup(a, "d_main", &[]).unwrap().current();
+    let sb = session_warmup(b, "d_main", &[]).unwrap().current();
+    let helper = sb.find_code("d_helper").unwrap().clone();
+    let main = sa.find_code("d_main").unwrap().clone();
+    assert_eq!(helper.unit().module().owner, main.unit().module().owner);
+    let helper_id = helper.unit().module().funcs[0].spans[0].1.func;
+    let main_id = main.unit().module().funcs[0].spans[0].1.func;
+    assert_eq!(
+        helper_id, main_id,
+        "actual producer modules place distinct functions at the same numeric slot"
+    );
+    let expected = match execute_program(&sb, &ExecLimits::default(), &CancelFlag::new(false)).0 {
+        ExecOutcome::Trap { span: Some(sp), .. } => (sp.start + 100, sp.end + 100),
+        o => panic!("{o:?}"),
+    };
+    // Helper at slot 0 (its map +100), main at slot 1 (+200): the trap
+    // runs in HELPER's frame and must map through helper's own map.
+    let q = Arc::new(
+        ProgramSnapshot::link_with_maps(
+            vec![helper, main, sa.find_code("d_tail").unwrap().clone()],
+            "d_main",
+            1,
+            vec![
+                SpanSegments::identity_range(0, b.len() as u64, 100),
+                SpanSegments::identity_range(0, a.len() as u64, 200),
+                SpanSegments::default(),
+            ],
+        )
+        .unwrap(),
+    );
+    let plain = execute_program(&q, &ExecLimits::default(), &CancelFlag::new(false)).0;
+    let resumed =
+        match execute_program_steps(&q, &ExecLimits::default(), &CancelFlag::new(false), 1) {
+            SteppedOutcome::Paused(p) => resume_program(p, &CancelFlag::new(false), None),
+            x => x,
+        };
+    let resumed = match resumed {
+        SteppedOutcome::Finished(o, _) => o,
+        _ => panic!(),
+    };
+    for o in [plain, resumed] {
+        let ExecOutcome::Trap { span: Some(sp), .. } = o else {
+            panic!("{o:?}")
+        };
+        assert_eq!(
+            (sp.start, sp.end),
+            expected,
+            "the executing frame's slot selects its own map — never another function's"
+        );
+    }
+}

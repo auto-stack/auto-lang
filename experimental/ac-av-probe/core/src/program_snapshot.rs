@@ -45,13 +45,6 @@ pub struct ProgramSnapshot {
     /// Executor span-bearing outcomes map through this immutable
     /// snapshot-owned view (F-828-R1-04/R3a).
     span_maps: Vec<crate::span_map::SpanSegments>,
-    /// B2-C03 source projection: PAYLOAD func index (the producing
-    /// module's slot an original span carries — immutable in the shared
-    /// unit payload) → THIS snapshot's execution code slot. Span-bearing
-    /// outcomes map through the span map of the code object that OWNS the
-    /// payload, so reordering the code set never crosses two functions'
-    /// source maps. Empty on a vacant root.
-    func_slots: std::collections::BTreeMap<u32, u32>,
 }
 
 impl ProgramSnapshot {
@@ -201,16 +194,6 @@ impl ProgramSnapshot {
                 }
             }
         }
-        // B2-C03 source projection: payload func index → execution slot,
-        // derived from each unit's OWN span table (the payload's spans
-        // carry their producing module's func index; two units can never
-        // share one).
-        let mut func_slots = std::collections::BTreeMap::new();
-        for (si, c) in code.iter().enumerate() {
-            for (_, sp) in c.unit().module().funcs[0].spans.iter() {
-                func_slots.insert(sp.func, si as u32);
-            }
-        }
         let entry_slot = code
             .iter()
             .position(|c| c.name() == entry)
@@ -223,7 +206,6 @@ impl ProgramSnapshot {
             code,
             bindings,
             span_maps,
-            func_slots,
         })
     }
 
@@ -240,20 +222,12 @@ impl ProgramSnapshot {
             code: Vec::new(),
             bindings: Vec::new(),
             span_maps: Vec::new(),
-            func_slots: std::collections::BTreeMap::new(),
         }
     }
 
     /// The per-slot source maps this snapshot maps through.
     pub fn span_maps(&self) -> &[crate::span_map::SpanSegments] {
         &self.span_maps
-    }
-
-    /// B2-C03: the EXECUTION slot whose code owns the payload func index
-    /// an original span carries. `None` on a vacant root or an unknown
-    /// payload index (the caller keeps the raw coordinates).
-    pub fn slot_of_payload_func(&self, func: u32) -> Option<u32> {
-        self.func_slots.get(&func).copied()
     }
 
     /// PLAN-828 D-02/T-05: the UNIT dispatch view over this snapshot's
@@ -470,5 +444,24 @@ impl crate::av::ModuleView for UnitView<'_> {
     }
     fn entry(&self) -> u32 {
         self.snap.entry_slot
+    }
+
+    /// B2-C03: a trap span of the function executing in frame slot
+    /// `func` maps through THAT slot's source map — payload func numbers
+    /// are per-producer coordinates (two real same-owner units may share
+    /// one), the executing slot is unique. The published `func` field
+    /// keeps the payload's stable identity axis.
+    fn map_span(&self, func: u32, span: crate::contract::SpanInfo) -> crate::contract::SpanInfo {
+        match self.snap.span_maps.get(func as usize) {
+            Some(segs) => {
+                let (s, e) = segs.map_span(span.start as u64, span.end as u64);
+                crate::contract::SpanInfo {
+                    func: span.func,
+                    start: s as u32,
+                    end: e as u32,
+                }
+            }
+            None => span,
+        }
     }
 }

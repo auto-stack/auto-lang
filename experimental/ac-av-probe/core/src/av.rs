@@ -140,7 +140,7 @@ pub fn execute_program_units(
     let mut st = LoopState::default();
     let out = dispatch(&prog.unit_view(), limits, cancel, &[], &mut st, None)
         .expect("no budget: the loop always terminates with an outcome");
-    (map_span(prog, out), st.trace)
+    (out, st.trace)
 }
 
 pub fn execute_program(
@@ -151,40 +151,7 @@ pub fn execute_program(
     let mut st = LoopState::default();
     let out = dispatch(&prog.unit_view(), limits, cancel, &[], &mut st, None)
         .expect("no budget: the loop always terminates with an outcome");
-    (map_span(prog, out), st.trace)
-}
-
-/// Map a span-bearing outcome through the SNAPSHOT's own immutable span
-/// shifts (F-828-R1-04/R2a F04-a: every public execution path maps, not
-/// only the session wrapper).
-fn map_span(prog: &crate::program_snapshot::ProgramSnapshot, out: ExecOutcome) -> ExecOutcome {
-    if let ExecOutcome::Trap {
-        kind,
-        span: Some(sp),
-    } = out
-    {
-        // B2-C03: the payload span's `func` is the PRODUCING module's
-        // index — the map to apply is the one owned by the code slot that
-        // HOLDS that payload, not the raw number (code sets can be
-        // reordered relative to the payload layout).
-        let map_slot = prog.slot_of_payload_func(sp.func).unwrap_or(sp.func) as usize;
-        let (start, end) = match prog.span_maps().get(map_slot) {
-            Some(segs) => {
-                let (s, e) = segs.map_span(sp.start as u64, sp.end as u64);
-                (s as u32, e as u32)
-            }
-            None => (sp.start, sp.end),
-        };
-        return ExecOutcome::Trap {
-            kind,
-            span: Some(SpanInfo {
-                func: sp.func,
-                start,
-                end,
-            }),
-        };
-    }
-    out
+    (out, st.trace)
 }
 
 /// A paused in-flight execution (PLAN-828 T-06): the live call chain plus
@@ -231,7 +198,7 @@ pub fn execute_program_steps(
         &mut st,
         Some(max_steps),
     ) {
-        Some(out) => SteppedOutcome::Finished(map_span(prog, out), st.trace),
+        Some(out) => SteppedOutcome::Finished(out, st.trace),
         None => SteppedOutcome::Paused(PausedRun {
             prog: prog.clone(),
             limits: *limits,
@@ -252,7 +219,6 @@ pub fn resume_program(
         limits,
         mut state,
     } = paused;
-    let prog_for_map = prog.clone();
     match dispatch(
         &prog.unit_view(),
         &limits,
@@ -261,7 +227,7 @@ pub fn resume_program(
         &mut state,
         max_steps,
     ) {
-        Some(out) => SteppedOutcome::Finished(map_span(&prog_for_map, out), state.trace),
+        Some(out) => SteppedOutcome::Finished(out, state.trace),
         None => SteppedOutcome::Paused(PausedRun {
             prog,
             limits,
@@ -304,6 +270,15 @@ pub(crate) trait ModuleView {
     /// Resolve a call site's callee to a function slot (None = an
     /// admission violation: unresolved import or foreign index space).
     fn resolve_callee(&self, func: u32, callee: &CalleeRef) -> Option<u32>;
+
+    /// Project a TRAP span of the EXECUTING function (frame slot `func`)
+    /// into the outcome's published coordinates. The default is the
+    /// identity — module-level views publish their own payload
+    /// coordinates; the snapshot UNIT view maps through ITS OWN
+    /// per-code-slot source map (B2-C03).
+    fn map_span(&self, _func: u32, span: SpanInfo) -> SpanInfo {
+        span
+    }
     /// The entry function slot.
     fn entry(&self) -> u32;
 }
@@ -535,29 +510,42 @@ fn dispatch<V: ModuleView>(
                             fr.slots[*dst as usize] = v;
                         }
                         Err(EvalErr::Trap(kind)) => {
+                            // B2-C03: the span maps through the view of
+                            // the EXECUTING frame's code slot — payload
+                            // func numbers are per-producer coordinates
+                            // and may collide across real same-owner
+                            // units; the frame's slot never does.
                             return Some(ExecOutcome::Trap {
                                 kind,
-                                span: span_of(func, flat),
-                            })
+                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                            });
                         }
                         Err(EvalErr::Infra(msg)) => return Some(ExecOutcome::Infra(msg)),
                     }
                 }
                 MirInstr::Un { op, dst, operand } => {
-                    let v = {
+                    // (do not shadow `v` — the ModuleView — with the
+                    // operand value; the trap arm needs the view for the
+                    // per-frame span projection.)
+                    let operand_val = {
                         let fr = st.frames.last().expect("frame present");
                         fr.slots[*operand as usize]
                     };
-                    match eval_un(*op, v) {
+                    match eval_un(*op, operand_val) {
                         Ok(v) => {
                             let fr = st.frames.last_mut().expect("frame present");
                             fr.slots[*dst as usize] = v;
                         }
                         Err(EvalErr::Trap(kind)) => {
+                            // B2-C03: the span maps through the view of
+                            // the EXECUTING frame's code slot — payload
+                            // func numbers are per-producer coordinates
+                            // and may collide across real same-owner
+                            // units; the frame's slot never does.
                             return Some(ExecOutcome::Trap {
                                 kind,
-                                span: span_of(func, flat),
-                            })
+                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                            });
                         }
                         Err(EvalErr::Infra(msg)) => return Some(ExecOutcome::Infra(msg)),
                     }

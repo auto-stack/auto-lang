@@ -19,9 +19,9 @@
 
 use crate::cache::{
     abc_unit_key, canonical_hir_function, caps_fingerprint, decode_unit_sidecar,
-    encode_unit_sidecar, get_enveloped_opt, merge_spans, open_store, payload_fingerprint,
-    put_enveloped, split_units, unit_sidecar_usable_for_current, unit_span_sidecar_key,
-    unit_span_sidecar_repair_key, EnvelopeIdentity, UnitSidecar,
+    encode_unit_sidecar, get_enveloped_opt, get_enveloped_with_id, merge_spans, open_store,
+    payload_fingerprint, put_enveloped, split_units, unit_sidecar_usable_for_current,
+    unit_span_sidecar_key, unit_span_sidecar_repair_key, EnvelopeIdentity, UnitSidecar,
 };
 use crate::driver::front_door_admit;
 use crate::fn_hir_codec::{
@@ -590,11 +590,11 @@ pub fn warmup_persisted(
     let mut session = warmup(src, entry_def_id, caps)?;
     let store = open_store(store_root).map_err(|e| format!("store open: {e:?}"))?;
     session.store = Some((store, project.to_string()));
-    session
+    let edges = session
         .persist_all_units()
         .map_err(|e| format!("persist units: {e:?}"))?;
     session
-        .persist_manifest()
+        .persist_manifest(&edges)
         .map_err(|e| format!("persist manifest: {e:?}"))?;
     Ok(session)
 }
@@ -623,7 +623,7 @@ fn manifest_describes_program(
         return Ok(None);
     }
     let expect = EnvelopeIdentity::manifest(owner, 0);
-    for id in &roots {
+    'candidates: for id in &roots {
         let Ok(body) = crate::cache::get_by_artifact_id(store, id, &expect) else {
             continue;
         };
@@ -640,25 +640,40 @@ fn manifest_describes_program(
         if m_owner != owner || m_entry != entry || m_caps != caps_fp {
             continue;
         }
+        // T07-R2-01: an unknown format is not this program's directory —
+        // a future manifest must not authorize a warm restore.
+        match v.get("format").and_then(|x| x.as_u64()) {
+            Some(1) => {}
+            _ => continue,
+        }
         let Some(units) = v.get("units").and_then(|x| x.as_array()) else {
             continue;
         };
-        let listed: Vec<(String, String)> = units
+        // T07-R2-01: STRICT row parsing and SET equality — a malformed
+        // row rejects the candidate (never silently skipped), and a
+        // DUPLICATE entry cannot mask a missing function.
+        let mut listed: Vec<(String, String)> = Vec::with_capacity(units.len());
+        for u in units {
+            let (Some(d), Some(c)) = (
+                u.get("def_id").and_then(|x| x.as_str()),
+                u.get("cv").and_then(|x| x.as_str()),
+            ) else {
+                continue 'candidates;
+            };
+            listed.push((d.to_string(), c.to_string()));
+        }
+        let listed_set: std::collections::BTreeSet<(&str, &str)> = listed
             .iter()
-            .filter_map(|u| {
-                Some((
-                    u.get("def_id")?.as_str()?.to_string(),
-                    u.get("cv")?.as_str()?.to_string(),
-                ))
-            })
+            .map(|(d, c)| (d.as_str(), c.as_str()))
             .collect();
-        // Order-independent exact comparison with the freshly computed
-        // per-function content versions.
-        if listed.len() == expect_units.len()
-            && listed
-                .iter()
-                .all(|(d, cv)| expect_units.iter().any(|(ed, ecv)| ed == d && ecv == cv))
-        {
+        if listed_set.len() != listed.len() {
+            continue 'candidates; // duplicates — not an exact directory
+        }
+        let expect_set: std::collections::BTreeSet<(&str, &str)> = expect_units
+            .iter()
+            .map(|(d, c)| (d.as_str(), c.as_str()))
+            .collect();
+        if listed_set == expect_set {
             return Ok(Some(true));
         }
     }
@@ -1344,13 +1359,19 @@ impl FunctionIncrementalSession {
     /// unit-bound sidecar row (PLAN-828 F-10/F11-S01), so a later
     /// [`restore`] re-attaches and RE-ANCHORS it instead of publishing
     /// `span: None` or stale absolute positions.
-    fn persist_all_units(&mut self) -> Result<(), String> {
+    fn persist_all_units(
+        &mut self,
+    ) -> Result<Vec<(String, ac_artifact_probe::identity::RefKind)>, String> {
         let Some((store, project)) = self.store.as_ref() else {
             return Err("no store".to_string());
         };
         let owner = self.fns_owner();
         let caps_fp = caps_fingerprint(&self.caps);
         let mut hir_deposits: u64 = 0;
+        // T07-R2-02: the manifest's REQUIRED references — every current
+        // unit's ABC row and span sidecar (restore fails closed without
+        // either). HIR artifacts stay soft-pinned regenerable cache.
+        let mut edges: Vec<(String, ac_artifact_probe::identity::RefKind)> = Vec::new();
         for (idx, rec) in self.fns.iter_mut().enumerate() {
             // The resident entry keys the row AND carries the code's true
             // mint range/text — the F11-S01 re-anchoring basis.
@@ -1372,19 +1393,25 @@ impl FunctionIncrementalSession {
                 .to_flat();
             let key = abc_unit_key(&owner, &rec.def_id, &cv, &caps_fp);
             let expect = EnvelopeIdentity::abc_bound(&owner, &rec.def_id, &cv);
-            if let Err(e) =
-                put_enveloped(store, &key, "A09", &expect, &bytes, vec![], Some(project))
-            {
-                // Same tolerance as the 798 driver's stale-rebuild path
-                // (F798-R12-03): the unit payload embeds source_snapshot,
-                // so the same content version re-persisted across source
-                // revisions can collide; the surviving row still serves
-                // future restores (its own admission re-verifies).
-                if format!("{e:?}").contains("Conflict") {
-                } else {
-                    return Err(format!("put {}: {e:?}", rec.def_id));
+            // T07-R2-02: the ABC row is STORE-INTERNAL (no soft root) —
+            // its liveness rides the manifest's required edge, so
+            // retiring per-artifact soft pins can never drop the current
+            // restore closure while superseded contents become
+            // collectable once the manifest root retires. Same Conflict
+            // tolerance as the 798 stale-rebuild path (F798-R12-03); on
+            // conflict the SURVIVING artifact's id is resolved for the
+            // edge.
+            let abc_id = match put_enveloped(store, &key, "A09", &expect, &bytes, vec![], None) {
+                Ok(id) => id,
+                Err(e) if format!("{e:?}").contains("Conflict") => {
+                    match get_enveloped_with_id(store, &key, "A09", &expect) {
+                        Ok(Some((id, _))) => id,
+                        _ => return Err(format!("put {}: conflicting row unreadable", rec.def_id)),
+                    }
                 }
-            }
+                Err(e) => return Err(format!("put {}: {e:?}", rec.def_id)),
+            };
+            edges.push((abc_id, ac_artifact_probe::identity::RefKind::RequiredData));
             // PLAN-828 T-03: the function-HIR artifact (A07 function unit),
             // content-addressed like the ABC row above — only a function
             // whose content changed produces a NEW row (same content
@@ -1449,9 +1476,15 @@ impl FunctionIncrementalSession {
                     mint_text.as_bytes().to_vec(),
                 )),
             });
-            if let Err(e) =
-                put_enveloped(store, &skey, "A09", &sid, &spayload, vec![], Some(project))
-            {
+            // T07-R2-02: the sidecar is store-internal + a required
+            // edge; on Conflict the surviving row's id resolves for it.
+            let mut sidecar_edge: Option<String> = None;
+            let sidecar_put = put_enveloped(store, &skey, "A09", &sid, &spayload, vec![], None);
+            let sidecar_put_id = match &sidecar_put {
+                Ok(id) => id.clone(),
+                Err(_) => String::new(),
+            };
+            if let Err(e) = sidecar_put {
                 if !format!("{e:?}").contains("Conflict") {
                     return Err(format!("put sidecar {}: {e:?}", rec.def_id));
                 }
@@ -1504,42 +1537,64 @@ impl FunctionIncrementalSession {
                     get_enveloped_opt(store, &skey, "A09", &sid),
                     Ok(Some(b)) if row_usable(&b)
                 );
-                if !survivor_usable {
-                    let rkey = unit_span_sidecar_repair_key(&owner, &rec.def_id, &cv);
-                    if let Err(e) =
-                        put_enveloped(store, &rkey, "A09", &sid, &spayload, vec![], Some(project))
-                    {
-                        if !format!("{e:?}").contains("Conflict") {
-                            return Err(format!("put sidecar repair {}: {e:?}", rec.def_id));
-                        }
-                        // The repair row is held too: a VALID holder still
-                        // serves future restores; an invalid one means the
-                        // store is genuinely stuck on this unit — surface
-                        // the error instead of accepting a permanently
-                        // broken sidecar.
-                        let repair_usable = matches!(
-                            get_enveloped_opt(store, &rkey, "A09", &sid),
-                            Ok(Some(b)) if row_usable(&b)
-                        );
-                        if !repair_usable {
-                            return Err(format!(
-                                "sidecar `{}`: primary and repair rows both hold invalid payloads",
-                                rec.def_id
-                            ));
-                        }
+                if survivor_usable {
+                    if let Ok(Some((id, _))) = get_enveloped_with_id(store, &skey, "A09", &sid) {
+                        sidecar_edge = Some(id);
                     }
+                } else {
+                    let rkey = unit_span_sidecar_repair_key(&owner, &rec.def_id, &cv);
+                    match put_enveloped(store, &rkey, "A09", &sid, &spayload, vec![], None) {
+                        Ok(id) => sidecar_edge = Some(id),
+                        Err(e) if format!("{e:?}").contains("Conflict") => {
+                            // The repair row is held too: a VALID holder
+                            // still serves future restores; an invalid one
+                            // means the store is genuinely stuck on this
+                            // unit — surface the error instead of
+                            // accepting a permanently broken sidecar.
+                            let repair_usable = matches!(
+                                get_enveloped_opt(store, &rkey, "A09", &sid),
+                                Ok(Some(b)) if row_usable(&b)
+                            );
+                            if !repair_usable {
+                                return Err(format!(
+                                    "sidecar `{}`: primary and repair rows both hold invalid payloads",
+                                    rec.def_id
+                                ));
+                            }
+                            if let Ok(Some((id, _))) =
+                                get_enveloped_with_id(store, &rkey, "A09", &sid)
+                            {
+                                sidecar_edge = Some(id);
+                            }
+                        }
+                        Err(e) => return Err(format!("put sidecar repair {}: {e:?}", rec.def_id)),
+                    }
+                }
+            } else {
+                sidecar_edge = Some(sidecar_put_id);
+            }
+            match sidecar_edge {
+                Some(id) => edges.push((id, ac_artifact_probe::identity::RefKind::RequiredData)),
+                None => {
+                    return Err(format!(
+                        "sidecar `{}`: no protected row after persist",
+                        rec.def_id
+                    ))
                 }
             }
         }
         self.counters.add("hir_artifacts_deposited", hir_deposits);
-        Ok(())
+        Ok(edges)
     }
 
     /// Persist the session manifest (the per-function directory a
     /// [`restore`] consults). Integrity is fail-closed downstream: units
     /// are re-verified against their own content-bound identities, and a
     /// wrong row name is a miss.
-    fn persist_manifest(&self) -> Result<(), String> {
+    fn persist_manifest(
+        &self,
+        required_edges: &[(String, ac_artifact_probe::identity::RefKind)],
+    ) -> Result<(), String> {
         let Some((store, project)) = self.store.as_ref() else {
             return Err("no store".to_string());
         };
@@ -1579,17 +1634,44 @@ impl FunctionIncrementalSession {
             ],
         );
         let expect = EnvelopeIdentity::manifest(&owner, 0);
-        let artifact = put_enveloped(store, &key, "A09", &expect, &body, vec![], Some(project))
-            .map_err(|e| format!("manifest put: {e:?}"))?;
+        // T07-R2-02: the manifest carries REQUIRED-DATA edges to every
+        // current unit's ABC row and span sidecar — its root protects
+        // the whole current restore closure (register_root's liveness
+        // check extends through required edges), independently of any
+        // per-artifact soft pins.
+        let artifact = put_enveloped(
+            store,
+            &key,
+            "A09",
+            &expect,
+            &body,
+            required_edges.to_vec(),
+            None,
+        )
+        .map_err(|e| format!("manifest put: {e:?}"))?;
         // F-11: the manifest is the store's REQUIRED-REFERENCE root for
         // this session's program — `restore` discovers it through the
         // project's roots (never a key guess) and consumes it as the
-        // warm-restore gate. Registration is idempotent per artifact id;
-        // successive revisions accumulate and the reader matches by
-        // content, so no rewrite or eviction is implied.
+        // warm-restore gate.
         store
             .register_root(project, &artifact, "session-manifest")
             .map_err(|e| format!("manifest root: {e:?}"))?;
+        // T07-R2-02: superseded manifest roots retire HERE (register
+        // first, then drop the old rows — a failed registration never
+        // loses the old root). Retiring the old manifest drops its
+        // required edges, so SUPERSEDED unit payloads become
+        // GC-collectable: the store's stable watermark does not rely on
+        // keeping every historical revision rooted forever.
+        for old in store
+            .root_artifacts(project, "session-manifest")
+            .map_err(|e| format!("manifest roots: {e:?}"))?
+        {
+            if old != artifact {
+                store
+                    .remove_root(project, "session-manifest", &old)
+                    .map_err(|e| format!("manifest root retire: {e:?}"))?;
+            }
+        }
         Ok(())
     }
 
@@ -2200,7 +2282,7 @@ impl FunctionIncrementalSession {
         if self.store.is_some() {
             let persist = self
                 .persist_all_units()
-                .and_then(|()| self.persist_manifest());
+                .and_then(|edges| self.persist_manifest(&edges));
             if let Err(e) = persist {
                 self.counters.set("persist_error", 1);
                 self.counters.bump(&format!("persist_error_log:{e}"));

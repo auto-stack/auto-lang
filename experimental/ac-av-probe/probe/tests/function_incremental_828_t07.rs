@@ -536,3 +536,221 @@ fn t07_f09_resident_inventory_bounded_watermark_and_close_release() {
     assert_eq!(closed.history_entries, 0);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// T07-R2-01/R2-02 (collected from the R2 review's t07-controls.rs, same
+/// inputs/oracles): manifest STRICTNESS — a duplicate entry cannot
+/// authorize a missing function, an unknown format is not this program's
+/// directory — and REQUIRED REFERENCES — the manifest's edges protect
+/// the current restore closure through real GC, independently of
+/// per-artifact soft pins.
+#[test]
+fn t07_r2_manifest_strictness_and_required_references() {
+    use ac_artifact_probe::identity::QueryKey;
+    use ac_artifact_probe::store::{run_gc, GcConfig};
+    use auto_av_probe::cache::{
+        get_by_artifact_id, open_store, put_enveloped, EnvelopeIdentity, ABC_LAYER,
+    };
+    use auto_av_probe::session::restore;
+    use serde_json::Value;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    const R2SRC: &str = "fn helper() int { return 7 }\nfn main() int { return helper() + 2 }\nfn tail() int { return 9 }\n";
+    const PROJECT: &str = "p828-r2-perm";
+    fn dir(tag: &str) -> std::path::PathBuf {
+        let p = std::env::temp_dir().join(format!(
+            "p828-r2perm-{tag}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+    fn seed(tag: &str) -> (std::path::PathBuf, String, Value) {
+        let path = dir(tag);
+        let s = warmup_persisted(R2SRC, "d_main", &[], &path, PROJECT).unwrap();
+        let owner = s.current().code()[0].unit().module().owner.module.clone();
+        drop(s);
+        let st = open_store(&path).unwrap();
+        let roots = st.root_artifacts(PROJECT, "session-manifest").unwrap();
+        assert_eq!(roots.len(), 1, "exactly one live manifest root");
+        let body =
+            get_by_artifact_id(&st, &roots[0], &EnvelopeIdentity::manifest(&owner, 0)).unwrap();
+        let v = serde_json::from_slice(&body).unwrap();
+        (path, owner, v)
+    }
+    fn replace(path: &std::path::PathBuf, owner: &str, v: &Value, tag: &str) {
+        let st = open_store(path).unwrap();
+        st.remove_roots(PROJECT, "session-manifest").unwrap();
+        let key = QueryKey::new(&ABC_LAYER, vec![("kind".into(), format!("perm-{tag}"))]);
+        let id = put_enveloped(
+            &st,
+            &key,
+            "A09",
+            &EnvelopeIdentity::manifest(owner, 0),
+            &serde_json::to_vec(v).unwrap(),
+            vec![],
+            Some(PROJECT),
+        )
+        .unwrap();
+        st.register_root(PROJECT, &id, "session-manifest").unwrap();
+    }
+
+    // Valid manifest warms.
+    {
+        let (p, _, _) = seed("valid");
+        let s = restore(R2SRC, "d_main", &[], &p, PROJECT).unwrap();
+        assert_eq!(s.counters().get("restore_manifest_matched"), 1);
+        assert_eq!(s.counters().get("restore_units_admitted"), 3);
+    }
+    // A duplicate entry cannot hide a missing function.
+    {
+        let (p, owner, mut v) = seed("duplicate");
+        let units = v["units"].as_array_mut().unwrap();
+        assert_eq!(units.len(), 3);
+        units[1] = units[0].clone();
+        replace(&p, &owner, &v, "duplicate");
+        let s = restore(R2SRC, "d_main", &[], &p, PROJECT).unwrap();
+        assert_eq!(
+            s.counters().get("restore_manifest_rejected"),
+            1,
+            "missing function cannot be authorized by a duplicate listed pair"
+        );
+    }
+    // Unknown format is not the current directory.
+    {
+        let (p, owner, mut v) = seed("format");
+        v["format"] = Value::from(999);
+        replace(&p, &owner, &v, "future");
+        let s = restore(R2SRC, "d_main", &[], &p, PROJECT).unwrap();
+        assert_eq!(s.counters().get("restore_manifest_rejected"), 1);
+    }
+    // A legal REORDERED directory still matches (set equality, not order).
+    {
+        let (p, owner, mut v) = seed("reorder");
+        let units = v["units"].as_array_mut().unwrap();
+        units.reverse();
+        replace(&p, &owner, &v, "reorder");
+        let s = restore(R2SRC, "d_main", &[], &p, PROJECT).unwrap();
+        assert_eq!(s.counters().get("restore_manifest_matched"), 1);
+        assert_eq!(s.counters().get("restore_units_admitted"), 3);
+    }
+    // The live manifest's required closure survives REAL GC.
+    {
+        let (p, owner, _) = seed("gc");
+        let st = open_store(&p).unwrap();
+        let roots = st.root_artifacts(PROJECT, "session-manifest").unwrap();
+        let receipt = run_gc(&st, GcConfig { high: 1, low: 0 }).unwrap();
+        let root_present =
+            get_by_artifact_id(&st, &roots[0], &EnvelopeIdentity::manifest(&owner, 0)).is_ok();
+        assert!(receipt.ran && root_present);
+        drop(st);
+        let s = restore(R2SRC, "d_main", &[], &p, PROJECT).unwrap();
+        assert_eq!(
+            s.counters().get("restore_units_admitted"),
+            3,
+            "a retained live manifest keeps its required current ABC/sidecar closure"
+        );
+    }
+    // Retiring every per-artifact soft pin still leaves the closure
+    // alive through the manifest's required edges.
+    {
+        let (p, owner, _) = seed("required");
+        let st = open_store(&p).unwrap();
+        let roots = st.root_artifacts(PROJECT, "session-manifest").unwrap();
+        let retired = st.remove_roots(PROJECT, "soft").unwrap();
+        assert!(retired > 0, "the regenerable HIR cache carries soft pins");
+        assert_eq!(
+            st.root_artifacts(PROJECT, "session-manifest").unwrap(),
+            roots
+        );
+        let receipt = run_gc(&st, GcConfig { high: 1, low: 0 }).unwrap();
+        let root_present =
+            get_by_artifact_id(&st, &roots[0], &EnvelopeIdentity::manifest(&owner, 0)).is_ok();
+        assert!(receipt.ran && root_present);
+        drop(st);
+        let s = restore(R2SRC, "d_main", &[], &p, PROJECT).unwrap();
+        assert_eq!(
+            s.counters().get("restore_units_admitted"),
+            3,
+            "manifest's required edges protect the current units independently of soft pins"
+        );
+    }
+}
+
+/// T07-R2-02 stable watermark: after a revision superseded by a new
+/// manifest, the OLD unit payloads lose their required edges (the old
+/// manifest root retired) and real GC reclaims them, while a user-owned
+/// row under its own root survives untouched.
+#[test]
+fn t07_r2_superseded_units_reclaimed_and_user_row_survives_gc() {
+    use ac_artifact_probe::identity::{QueryKey, RefKind};
+    use ac_artifact_probe::store::{run_gc, GcConfig};
+    use auto_av_probe::cache::{
+        get_enveloped_opt, open_store, put_enveloped, EnvelopeIdentity, ABC_LAYER,
+    };
+
+    const R2SRC: &str = "fn helper() int { return 7 }\nfn main() int { return helper() + 2 }\nfn tail() int { return 9 }\n";
+    const PROJECT: &str = "p828-r2-reclaim";
+    let dir = std::env::temp_dir().join(format!("p828-r2reclaim-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let mut s = warmup_persisted(R2SRC, "d_main", &[], &dir, PROJECT).unwrap();
+    // A user-owned row pinned by its OWN root (shared project).
+    let user_key = QueryKey::new(
+        &ABC_LAYER,
+        vec![("owner".into(), "user-reclaim-sentinel".into())],
+    );
+    let user_payload = b"user-row-payload".to_vec();
+    {
+        let st = open_store(&dir).unwrap();
+        let id = put_enveloped(
+            &st,
+            &user_key,
+            "A09",
+            &EnvelopeIdentity::abc_bound("user-reclaim-sentinel", "d_user", "v1"),
+            &user_payload,
+            vec![],
+            Some(PROJECT),
+        )
+        .unwrap();
+        st.register_root(PROJECT, &id, "user-row").unwrap();
+    }
+    // Revise helper: the OLD ABC payload keeps serving the warm history
+    // until the new manifest retires the old root.
+    let at = R2SRC.find("return 7").unwrap() as u64 + 7;
+    assert!(s.edit(at, at + 1, b"8".to_vec()).unwrap().ok);
+    let edited = s.src().to_string();
+    drop(s);
+    {
+        let st = open_store(&dir).unwrap();
+        assert_eq!(
+            st.root_artifacts(PROJECT, "session-manifest")
+                .unwrap()
+                .len(),
+            1,
+            "the superseded manifest root retired at publish"
+        );
+        let receipt = run_gc(&st, GcConfig { high: 1, low: 0 }).unwrap();
+        assert!(receipt.ran);
+        assert!(receipt.deleted_chunks > 0, "superseded payloads reclaimed");
+        // The user row survived byte-identical under its own root.
+        let loaded = get_enveloped_opt(
+            &st,
+            &user_key,
+            "A09",
+            &EnvelopeIdentity::abc_bound("user-reclaim-sentinel", "d_user", "v1"),
+        )
+        .expect("user read")
+        .expect("user row alive");
+        assert_eq!(loaded, user_payload);
+        let _ = RefKind::RequiredData;
+    }
+    // The CURRENT closure still restores warm.
+    let r = auto_av_probe::session::restore(&edited, "d_main", &[], &dir, PROJECT).unwrap();
+    assert_eq!(r.counters().get("restore_units_admitted"), 3);
+    let _ = std::fs::remove_dir_all(&dir);
+}
