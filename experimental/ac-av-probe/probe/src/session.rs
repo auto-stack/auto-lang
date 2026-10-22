@@ -202,6 +202,18 @@ struct FnRecord {
     producing_types: Vec<String>,
 }
 
+/// The session's resident-structure inventory (F-09 observability):
+/// counts only — the real-peak byte attribution belongs to T-08's
+/// formal measurement, which samples these axes inside its budget
+/// windows.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ResidentInventory {
+    pub functions: usize,
+    pub hir_body_nodes: usize,
+    pub cold_bundle_nodes: usize,
+    pub history_entries: usize,
+}
+
 /// Outcome of one edit request.
 #[derive(Clone, Debug)]
 pub struct EditOutcome {
@@ -1101,6 +1113,27 @@ impl FunctionIncrementalSession {
             .iter()
             .find(|f| f.name == name)
             .map(|f| (Arc::downgrade(&f.hir_body), Arc::downgrade(&f.code)))
+    }
+
+    /// F-09 resident accounting: the axes §5.5 names — per-function HIR
+    /// bodies, the cold re-verification bundle, and the bounded content
+    /// history (body+code pairs). These are the RESIDENT structures whose
+    /// real-peak attribution T-08's formal measurement samples; the
+    /// inventory itself is the bounded-watermark oracle (V-07).
+    pub fn resident_inventory(&self) -> ResidentInventory {
+        ResidentInventory {
+            functions: self.fns.len(),
+            hir_body_nodes: self
+                .fns
+                .iter()
+                .map(|f| {
+                    let b = &f.hir_body;
+                    b.locals.len() + b.places.len() + b.exprs.len() + b.blocks.len() + 1
+                })
+                .sum(),
+            cold_bundle_nodes: self.resident_cold_hir_nodes(),
+            history_entries: self.history_len(),
+        }
     }
 
     /// Owned cold-HIR payload this session retains (B1-C05 oracle): the

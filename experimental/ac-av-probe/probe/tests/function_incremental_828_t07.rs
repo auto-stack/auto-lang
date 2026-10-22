@@ -487,3 +487,52 @@ fn t07_f11_manifest_matched_absent_and_rejected_paths() {
     let _ = std::fs::remove_dir_all(&dir2);
     let _ = std::fs::remove_dir_all(&dir3);
 }
+
+/// F-09/V-07: the resident inventory is a bounded watermark — it does
+/// not grow with the edit count (per-function history cap; the cold
+/// bundle is fixed), and close() releases every session-owned axis.
+#[test]
+fn t07_f09_resident_inventory_bounded_watermark_and_close_release() {
+    let dir = std::env::temp_dir().join(format!("p828-t07-inv-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut s = warmup_persisted(SRC, "d_main", &[], &dir, "p828-t07").unwrap();
+
+    let base = s.resident_inventory();
+    assert!(base.functions == 4 && base.cold_bundle_nodes > 0 && base.history_entries == 4);
+
+    // Soak well past the per-function cap.
+    let mut k = 1u32;
+    let mut distinct = 0usize;
+    while distinct < HISTORY_CAP + 10 {
+        if k != 3 {
+            edit_factor(&mut s, k);
+            distinct += 1;
+        }
+        k += 1;
+    }
+    let soaked = s.resident_inventory();
+    assert!(
+        soaked.history_entries <= HISTORY_CAP * soaked.functions,
+        "history watermark bounded: {:?}",
+        soaked
+    );
+    // More edits do NOT move the watermark (eviction really runs).
+    for extra in [100u32, 101, 102, 103, 104, 105, 106, 107] {
+        edit_factor(&mut s, extra);
+    }
+    let after = s.resident_inventory();
+    assert_eq!(
+        after, soaked,
+        "the resident watermark converged — it does not grow with edits"
+    );
+
+    // close() releases every session-owned axis of the inventory.
+    s.close();
+    let closed = s.resident_inventory();
+    assert_eq!(closed.functions, 0);
+    assert_eq!(closed.hir_body_nodes, 0);
+    assert_eq!(closed.cold_bundle_nodes, 0);
+    assert_eq!(closed.history_entries, 0);
+    let _ = std::fs::remove_dir_all(&dir);
+}
