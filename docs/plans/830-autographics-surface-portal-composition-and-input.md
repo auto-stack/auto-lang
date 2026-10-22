@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-830
-status: execution_done
+status: reviewed
 feature_name: AutoGraphics可组合Surface/Portal与嵌套输入原型
 plan_revision: 3
 author: [Codex]
 created_at: 2026-10-21
 updated_at: 2026-10-22
-current_step: 8
+current_step: 9
 total_steps: 10
 depends_on: [PLAN-829]
 supersedes_spec_components:
@@ -236,7 +236,7 @@ Surface内容依赖图负责更新/合成；Shader内部计算/调用图由未�
 | T-06 [x] | work | T-05 | `AGP/src/host/iced_surface_input.rs`（新），Iced真实控件/host桥 | 焦点/键盘/text_input、实际OS IME锚点/提交取消、失焦/销毁捕获取消；V-05/反控；AC-05。[✅ 2026-10-22 work] 实现并入 `host/composition_input.rs`（无独立文件，职责等价）：焦点唯一目标随点击迁移、键盘/IME 只投递焦点面、IME Opened/Preedit/Commit/Closed 经真实 text_input（preedit 不写值、commit 生效、A=ab / B=cd你 不串写）、IME 锚点按挂载链投影到窗口且落在平面包围盒内；销毁/失焦取消捕获并递增 generation（迟到 release 不再命中）。**OS 级 IME 已补证**（2026-10-22 后续）：新增 `surface-ime-os` 用例在真实窗口中启用系统中文 IME，真实键盘产生 preedit 并提交 CJK（`text="爱彼此你好你好"`，7/7 门禁含 `os_ime_commit`）；期间修复两处实缺陷（slot 与 iced 双纹理导致内容恒空、`text_input` 缺 `on_input` 导致"看得见打不了字"），详见 §9 与 `research/surface-result.md` §6；[✅ 2026-10-22 work r3] F06/F07 修复：无焦点不 fallback、Focused(false)/CursorLeft 清焦点+unfocus iced、IME 锚点用活跃焦点/捕获挂载路径（根面空路径、共享内容选第二挂载）；surface-ime-os 11/11（真实 CJK `abc你好你好`、anchor_tracks_the_active_mount、锚点在投影区、无焦点 IME 丢弃、产品失败 exit1 vs 环境 exit4）；提交 dbaea29e1；[✅ 2026-10-22 work r4] R2 F03 修复：adapter 保留 `UserInterface::update` 的 State，每帧注入 `RedrawRequested` 取真实 `InputMethod::Enabled.cursor`；锚点=真实 caret 投影、每帧跟随输入/选择/滚动，正式门禁用投影 caret 矩形（远小于平面）；surface-ime-os 14/14（真实 CJK、caret 20→37→20、锚点在 caret 矩形内）；提交 5aec0a634；[✅ 2026-10-22 work r5] R3-01/02 同一焦点权威接入 IME 宿主：真实窗口每次事件后由 runtime 的唯一目标决定投递面，失焦后两个真实控件均无残留；R3 真实 IME 14/14 保持；提交 5cd03b861；[✅ 2026-10-22 work r6] R4-01 同源：真实窗口宿主的 blur/卸载路径接入三态取消语义；surface-ime-os 14/14 与 surface-input 18/18 保持；提交 764e87559 |
 | T-07 [x] | work | T-04/05/06 | `AGP/src/host/cases/surface_*.rs`（新），既有game drivers | S-01..03与两游戏复用、多挂载单tick/共享与独立实例；V-03/04/06和旧游戏回放，AC-04/07；不改829golden。[✅ 2026-10-22 work] `surface-scenarios` 8/8：S-02 复用**冻结** Breakout 驱动（非新玩法）经真实 iced 按钮暂停/恢复，每帧单次 tick、暂停即停、恢复续跑、面板纹理含游戏色；S-03 两独立 iced 实例＋同一游戏面两个挂载：每帧恰一次内容穿透、实例计数不串（ui1=1/ui2=0）；提交 def56b81b；[✅ 2026-10-22 work r3] F08 补全：S-01 全链路 UI→3D→UI（真实点击/焦点/DPI2/resize/像素）、S-02 reset/文本-游戏焦点切换/双 tick 负控（全部经完整挂载链）、S-03 改用共享 **Squash**（两挂载 5 点同像素 + 与共享源匹配 + 每挂载一次输入）；surface-scenarios 14/14；提交 dbaea29e1；[✅ 2026-10-22 work r4] R2 F06 同源出口：S-01/S-02/S-03 全部改为消费 router 输出（含 local 边界与往返断言），S-02 文本↔游戏焦点切换实际发送按键并按 router 目标派发；scenarios 15/15、compose 17/17；提交 5aec0a634；[✅ 2026-10-22 work r5] R3-01 同源：S-01/S-02/S-03 的合批点击/按键路径与真实宿主一致，焦点最终态由 router 决定（反向合批 B→A 亦有永久回归）；提交 5cd03b861；[✅ 2026-10-22 work r6] R4-01 同源：S-01/S-02/S-03 的点击/焦点路径在取消后不再复活编辑态；scenarios 15/15、compose 17/17；提交 764e87559 |
 | T-08 [x] | work | T-01..07 | 既有probe runner/gates，`tests/surface_*.rs`、`research/surface-result.md`、`surface-integration-handoff.md`（新） | V-07..10、负控与20轮生命周期、计量/独立locked消费与重定位；当前SD/IH与§5.6资源/布局/错误/producer-consumer交接、AutoShader/CAP及生产pending清单；V-10对当前代码；AC-01/06/07/08。[✅ 2026-10-22 work] `surface-lifecycle` 10/10：20 轮卸载/重挂/拒绝变更（20/20 保留未挂载子内容、图稳定、target 重建仅来自显式 resize、稳态 0 readback、无关面脏跳过 108/60 帧）；4 项负控均「正控过＋反例被抓」（clip 内外判别、双渲染检测、alpha `[188,138,138]` vs 不透明 `[137,0,0]`、渲染路径零设备构造）；V-10 交接文档落 `research/surface-integration-handoff.md`（producer/consumer、§5.6 布局/绑定/错误、缺口与 pending 清单）；SD-01/SD-02 草稿落 `docs/specs/auto-graphics/`；V-09 计量（CPU p50/p95、穿透/合成/脏跳过/readback/重建）在报告内，GPU timing 明确 false；AC-01 直接证据 `git diff --name-only ab56c32ec` 在 AGP 外**零文件**；829 两游戏+iced spike 复跑 exit=0；提交 35e1936be；[✅ 2026-10-22 work r3] F09/F10/F11 修复：真实 build_seq/target_creations/target_drops 计量、7 项生产路径故障负控全部被捕获（scissor/opaque blend/重复事件/双渲染/readback/第二设备/依赖顺序）、independent-consumer 基线改钉 ab56c32ec（A→B 29 字段 0 差异、根生产 0 改动、SD 草稿单列）、SD-01/02/handoff/result 按修复后代码重写、零 warnings + cargo fmt 通过；surface-lifecycle 14/14；829 三案复跑 exit=0；提交 dbaea29e1；[✅ 2026-10-22 work r4] R2 F04/F05 补强：surface-lifecycle 15/15（2D/iced/3D 外设备逐一拒绝 + raw 不可验证拒绝 + 同设备三类型正控；resize 替换/丢弃准备/slot 删除 drop 守恒）；新增 surface_review_r2 5/5 永久回归；AGP 151/151；829 三案 exit=0；independent-consumer（A→B 29 字段 0 差异）pass；提交 5aec0a634；[✅ 2026-10-22 work r5] R3-03 修复：两条组合管线真实上传记账 + `SurfaceRuntime::{upload_stats,composition_upload_stats}` + `owned_target_bytes`；surface-lifecycle 19/19（上传=合成数×固定字节、平面计数器活控制、内存三类事实分离）；新增 surface_review_r3 6/6；AGP 157/157；829 三案 exit=0；independent-consumer pass；提交 5cd03b861；[✅ 2026-10-22 work r6] R4-02 修复：上传门禁改为分管线精确（plane/quad 各自 == composite 数 ×128/160）、总量严格等于三项之和、内容适配器 64B 精确活控，并加 V-08 省略计数负控；surface-lifecycle 23/23；AGP 162/162；829 三案 exit=0；independent-consumer pass；提交 764e87559 |
-| T-09 [ ] | review | work T-01..08完成、冻结代码/输入、作者停写 | 本Plan§9与同树证据 | 独立final review逐项验AC-01..09、SD-01..04，不代修；AC-09；正式merge-owned门pending |
+| T-09 [x] | review | work T-01..08完成、冻结代码/输入、作者停写 | 本Plan§9与同树证据 | 独立final review逐项验AC-01..09、SD-01..04，不代修；AC-09；正式merge-owned门pending |
 | T-10 [ ] | merge | T-09 pass；核G829及autographics-dev集成来源/冲突 | 实验实现合入autographics-dev、Spec/ledger/归档与清理收据 | 冻结实验workspace测试/探针、受控集成/沉淀与guard clean后清理；AC-10。不将实验代码合入master；仅实验Rust改动不触根t/tv/tu/docs_gen；扩大触面先回new，tf仍主检出到期单实例 |
 
 拟实施树 `D:/autostack/.wt/lang-830/auto-lang`、分支 `plan-830-dev`，一Plan一仓一树；从 `autographics-dev@ab56c32ec4cb28e01fbcca74e9861164ffad43f0` 冻结来源起步，不从master起步，不复制其他树WIP。开工时读取主检出本r3（它可能尚不在该历史代码基面），将合同来源/hash写入T-01，不用旧基面里的Plan文本覆盖主检出当前计划。当前核源会话不建树/分支。
@@ -244,6 +244,18 @@ Surface内容依赖图负责更新/合成；Shader内部计算/调用图由未�
 T-02可行性与T-03共同合同先行；renderer与输入的独立模块可按交接接口交错推进，公共core/manifest/锁/GUI输入单owner串行。此依赖图不自动授权多agent。work完成8项后可进入execution_done（8/10），review/merge未完成保持未勾选；review后按既定合同集成到autographics-dev，生产master回合仍须等迁移放行。
 
 ## 9. 复审记录
+
+### 2026-10-22 final review R5：pass，R4两项CLOSED；merge-owned门pending
+
+stage: review；review_scope: final；reviewer_identity: 当前Codex独立审核上下文（与实施独立，未获知独立模型/会话ID）；plan_id: PLAN-830；plan_revision: 3；outcome: pass。
+
+- **绑定输入**：进场execution_done 8/10、r3；主计划最近提交`473acf318668f10b567aa258d029d8db9c22b462`；[冻结计划](attachments/830/review-r5/plan-input.md) SHA256 `06cb4c1167315a698a9bd3d07355b8904d050ae9db7093eb2dc73f663993a9bc`。原树`D:/autostack/.wt/lang-830/auto-lang`、`plan-830-dev`，`reviewed_commit: 764e87559cff016d9e0d6b2141e5f1f9903398c5`，`base_commit: ab56c32ec4cb28e01fbcca74e9861164ffad43f0`，修复差异基面`5cd03b861832b9de49e2f04637a7fce130b1e7dd`。进/出场clean、HEAD/依赖锁/配置无漂移，AGP锁SHA256仍`c3df168e7234b8bfa876dfbab8afa71af8773d1d7241ac010ad5d8054930b3bf`。完整[独立报告/源码/负控/原始JSON/冻结SD](attachments/830/review-r5/review.md)；本次不改变语义revision。
+- **独立执行**：contract29+r2五例+r3六例+r4五例合计45/45；R4原focus-exits同字节6/6（含R3原三例）、R2原四holdout4/4；独立三态组合9/9（原6+同批取消后新press/取消后非法focus并持续空帧/离窗取消3例）。locked check/fmt/release build均通过、产品零warning。六surface release：offscreen6/compose17/input18/scenarios15/lifecycle23/IME14全部首轮exit0，真实OS CJK commit=`爱彼此你好你好`与caret/滚动/挂载投影过；829三案exit0；本轮consumer A→B29字段0差异、根生产0collateral。场景源与原冻结副本同hash，真实9999变异仍8门红/exit1。作者162/162未冒记本轮独立全套，未根整档。
+- **R4-01 CLOSED**：`Unset/Target/Cancelled`区分未路由与取消；取消先于pending渲染、正确revalidate卸载均保持widgets=(false,false)，取消后新合法press/公开widget focus可恢复，非法focus不解除Cancelled，后续空帧无caret。原合批动作不丢/正常唯一焦点、真实IME保持。r6诊断与覆盖调整已核，没有靠丢事件或强制每点击单独frame回避。
+- **R4-02 CLOSED**：plane/quad/content分项读取与总量精确守恒、空canvas1次64B精确活控成立。当前提交正式lifecycle源同字节重新冻结（SHA256 `665f2b816045e12e64b7d3b3e8d4c2ed0bee2956394556f0bec93b1a4c21f68a`），未复用R4旧oracle；外部持续漏plane计数或漏content汇总均使对应正式gate红、整体exit1，合法23/23 exit0。当前实测quad66/10560B、content18/1056B、total84/11616B，plane活控1/128B；owned4目标1511424B、RSS236.4→236.6MB、GPU/驱动驻留具名不可用。真实写入保留，不是改报告布尔值。
+- **AC/规范**：AC01..09 pass于批准Windows实验profile，AC10 pending；无开放阻塞finding。SD01/02当前草稿已冻结并核对，SD01 SHA256 `e68bba42d91e76feea78fe0c57bd6bc01468c09658c268f9c2b428f118a95d5b`、SD02 `68b3b38fda584254923be56476299f3709c2733eb3e45365afd2074503d6c5c1`；SD03/04以当前829 canonical Spec为modify来源，目标/前后规则、supersedes/new/touched_goals已核。AutoShader/CAP及I1–I3原层级pending，未发布canonical/ledger。有效参数区域24B与实际quad上传160B须在沉淀表述中区分，按真实160B计量事实保留。此前已闭成果/协议边界/历史失败证据不删。
+- **状态/下一步**：`reviewed` **9/10**，T01..08保持完成，T09完成、T10未完成；只表示代码/验收/规范审查通过，**不是交付完成**。下一责任阶段merge，在本冻结提交先统一AGP locked全套test/release、六surface真实OS输入/IME、829兼容/consumer重定位/正式负控与资源门，全部通过后才合入autographics-dev（不合master实现）、Spec/ledger/index沉淀、归档与guard清树。代码/依赖/输入/配置若变化须受影响复核再在新冻结执行门，不以本pass覆盖后续实现。
+- 本轮未改实现、未合入/归档/清树、未跑根t/tv/tt/tb/tu/taa/tf/docs_gen；tf仍主检出到期单实例，其他根档不因仅experimental改动自动触发。
 
 ### 2026-10-22 work r6：review R4 F-830-R4-01..02 修复与重新冻结（execution_done）
 
