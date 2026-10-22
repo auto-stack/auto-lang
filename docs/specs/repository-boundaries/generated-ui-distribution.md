@@ -163,3 +163,20 @@ M814-B（PLAN-814 T-05/T-08）在 M815-A/M816-A 章节基础上增补：
 - 交付闭包 DELIVERY_CRATES 含 auto-ui-runtime；ui_to_language=0
   不变量入 777 基线（runtime+compiler 源根零 `auto_lang::` 文本
   命中）。
+
+## M815-B:tool/协议/source/embed/producer 闭包与身份语义(PLAN-815 SD-06)
+
+新 tool/协议/source/embed/producer 闭包(DELIVERY_CRATES 26+app+根级输入
+stdlib//docs/schema/aura.at)与适用失败矩阵(构建失败具名/产物 oracle/
+取消树终止/中断恢复按 profile 精确;资源负控四态/漏 patch/坏 pin/外来
+目录/失败保留恢复=792 driver 33/33 在案)。消费交接以**冻结源 SHA+二进制
+SHA256+支持指纹**为身份,不以源码路径冒充二进制身份。发行形态=792 源码包
+workspace(工具由包内 `cargo build --locked -p auto-ui-tools` 可复现建出,
+fresh/重定位三形态实证);**确定性身份锚=冻结源 SHA+delivery-manifest
+(逐文件 rel/len/blake3 汇总的目录 digest+producer.git_head/
+ui_gen_fingerprint,再生成可复验)**;二进制 SHA256 为带 provenance 的
+参考产物指纹(release 形态)——无 reproducible-builds 配置,不以某次构建
+哈希承诺逐字节复现,也不以互异的 debug 哈希充当身份。交付闭包编译期/
+embed 资源完整盘点(Inter 三字重+OFL/壁纸/桌面壳/gallery/wm/drawlist/
+shadcn/根级输入):
+`docs/plans/attachments/815/t07-acceptance/batch3/resource-audit-closure.md`。（PLAN-815 M815-B，T-09 R2 pass @ 生产冻结位 0f2858e35；终稿正文与证据：attachments/815/handoff.md §规范增量）

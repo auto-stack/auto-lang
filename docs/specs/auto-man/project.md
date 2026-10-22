@@ -385,3 +385,13 @@ routes 外无其余内嵌否决（vm-only/ext/locales/i18n；`vp` None → false
 - I-PROJECT：生成器（vue/jet/ark/rust_ui/tauri）项目读取经 generation_request（`_with_request` 全入口）；gen/run/build/open 生产分派经 generation_request_adapter::request_of（automan+main 零遗留 legacy 分派调用，grep 审计）。legacy 自扫路径保留为行为冻结 oracle，R04 迁移退役。
 - 未迁面（如实）：语言执行/AutoConfig 求值、Git/索引下载执行、三 Builder 进程执行、exporter、UI 生成算法本体（R04）、dep pac.at 跨文件/sidecar spec/resolve_back_dir 读取（R04 收编）。
 - 777：auto-man-core 入 man-ecosystem 域；基线重采样收据 attachments/809/t07-777-strict-pass.json（verdict=pass violations=0 grandfathered=2 R5 退出项）。
+
+## M815-B:UI 生产算法退出 Man(PLAN-815 SD-03)
+
+UI 生产算法(vue/rust_ui/jet/ark/tauri/vscode/shadcn/gallery/wm 等)已全部
+迁出 Man(PLAN-815 T-04);Man 门面为纯转发(六兼容/媒体/请求缝定向验证,
+语义冻结)。非 UI adapter(api_gen 语言服务桥/rust_workspace 等)归属
+`auto-api-gen`(owner=lang-service-adapter)不随 UI 域。协议侧不得以旧 CLI
+的提示性吞错语义为由掩盖构建失败(R4-06 教训入规:构建失败/缺工具在旧公开
+入口打印提示后 Ok 的返回语义只属 legacy CLI 直跑形态;托管/协议形态为
+具名失败)。（PLAN-815 M815-B，T-09 R2 pass @ 生产冻结位 0f2858e35；终稿正文与证据：attachments/815/handoff.md §规范增量）

@@ -112,3 +112,14 @@
   `ui::style::iced_adapter::*`（R9-F02 恢复——style 门面模块内
   compiler DSL glob+iced 适配器旧路径，同一类型单源=
   style_iced_adapter，reviewer pin 编译过）。
+
+## M815-B:宿主退出请求与会话生命周期公开面(PLAN-815 SD-07)
+
+新增 `request_host_exit`/`host_exit_requested`(代计数器)/
+`host_exit_window_begin|end`(幂等窗口)公开面——CLI 直跑形态零行为变化
+(无人置位);会话只响应窗口内到达的新代请求(初始化期请求不丢、跨会话
+陈旧请求不误杀,run_session 启动清零)。实际可重入边界=每 VM 会话一个
+隔离子进程(`--internal-vm-exec`,iced/winit 每进程单事件循环约束的
+进程级解法;宿主经 RunIo 每请求精确 env 传会话上下文,行 `q` 经
+request_host_exit 干净收口)。托管形态取消/EOF 终止整 owned 树并
+有界收尸。（PLAN-815 M815-B，T-09 R2 pass @ 生产冻结位 0f2858e35；终稿正文与证据：attachments/815/handoff.md §规范增量）

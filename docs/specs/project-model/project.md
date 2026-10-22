@@ -104,3 +104,13 @@ TypeMismatch 诊断 payload 保留 field,members/defines 在编解码两侧采�
 
 消费证据:协议 crate 与工具经同源 codec 交换请求;外部消费门
 `test/fixtures/modularity/ui-tool-consumer/`(闭包含 auto-project-model/wire)。
+
+## M815-B:生产入口单源请求全量规则(PLAN-815 SD-04)
+
+所有 UI 工具生产入口(generate/build/run 三操作×七 profile)消费 809 已
+交付的 I-PROJECT 单源请求(字段/源交接);静态准入不扩大;`arkts`/`ark`
+等同源名在工具边界规范化(`normalize_profile`)。主声明磁盘修改/移除不
+改变已求值请求快照字段(vue/vscode 等字段来源随测试锚定;删 pac.at 后
+同请求再生逐字节一致为在案 oracle)。逐字段适用性/消费点/携带面边界:
+`docs/plans/attachments/815/t07-acceptance/batch3/field-profile-matrix.md`
+(携带字段=交接保真非缺陷;后续接线新消费须同步该表)。（PLAN-815 M815-B，T-09 R2 pass @ 生产冻结位 0f2858e35；终稿正文与证据：attachments/815/handoff.md §规范增量）

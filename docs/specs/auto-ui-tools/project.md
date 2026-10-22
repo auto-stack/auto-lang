@@ -1,6 +1,7 @@
 # auto-ui-tools — UI 工程工具包(M815-A 阶段子集)
 
-> 状态:PLAN-815 M815-A 已发布子集(2026-10-20,R4 阶段审查通过,delivery `e609caf1a`)。
+> 状态:PLAN-815 已完成 B 面全量收口(2026-10-22,T-09 R2 终审 pass,生产冻结位 `0f2858e35`);
+> M815-A 已发布子集(2026-10-20,R4 阶段审查通过,delivery `e609caf1a`)事实保留于下文。
 > 本文件只陈述已发布窄工具与来源登记;完整生成/build/run、生产资产迁移与旧 Man 兼容退出属于 M815-B,不在本子集中。
 
 ## 当前行为(SD-01-A,AC-07)
@@ -39,3 +40,20 @@ auto-man 原处,本阶段未复制/搬走资源。完整生成/build/run 及生�
 - 独立消费门:`bash test/fixtures/modularity/ui-tool-consumer/verify-deps.sh`
   与 `AUTO_UI_TOOL_BIN=<binary> cargo test --manifest-path
   test/fixtures/modularity/ui-tool-consumer/Cargo.toml`(真实子进程)。
+
+## M815-B:UI 工程工具唯一 owner 全量规则(PLAN-815 SD-01)
+
+`auto-ui-tools` 是 UI 工程工具唯一 owner——生成/构建/运行/资产全闭包脱 Man
+(normal/build/dev 无 auto-man/legacy auto-lang 大包反向依赖);旧 Man 入口为
+薄转发门面(语义冻结,六兼容/媒体/请求缝定向验证)。生产入口全部消费已求值
+I-PROJECT 请求(`*_with_request` 家族),不得回读主 pac.at 形成第二真源
+(请求在场即权威:值或缺席都由请求定,legacy 臂才读盘——external_backend/
+exe_name/window/title/api/dep_roots 等 PacSource 请求臂消费链随测试锚定)。
+外部命令经统一 owned 子进程设施;构建失败/缺工具/产物缺失为具名失败;
+多目标请求完整生成并诚实聚合(输出根=真实布局,不按 output_root 重定向)。
+字段×profile×操作消费矩阵与适用边界:
+`docs/plans/attachments/815/t07-acceptance/batch3/field-profile-matrix.md`。
+shell-pack 公开再生器(`generate_shell_pack_lib(_sources)`)同受 canonical
+import 规则约束(生成清单含 auto-ui-runtime+auto-lang-core 双直依赖;
+freshness 字节对拍门 `test_shell_pack_lib_freshness`)——F-815-T09-01 修复
+后为在案规则。（PLAN-815 M815-B，T-09 R2 pass @ 生产冻结位 0f2858e35；终稿正文与证据：attachments/815/handoff.md §规范增量）

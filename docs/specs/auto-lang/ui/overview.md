@@ -1935,3 +1935,13 @@ registry 构建税与 tu 档单进程机制不变。缓存身份时序（PLAN-69
 > 再导出兼容面（`auto_lang::ui::*`/back_proxy/host_adapters 全路径，
 > V-02 pin 锁面）。canonical 生成物 import 与生成工程双直依赖合同见
 > 该 spec。
+
+## M815-B:工程工具消费公开包与 owned 子进程(PLAN-815 SD-05)
+
+UI 工程工具/资产消费 814 公开包(auto-ui-compiler/auto-lang-core/
+auto-ui-runtime;canonical import 规则——生成物 import `auto_ui_runtime::ui`
+/`auto_lang_core`,生成工程 manifest 双直依赖,import_policy.rs 单源);
+不回抓语言私有面或 Man。子进程所有权覆盖所有已声明 cancellable/
+interactive 路径的实际外部命令(直接 `Command::status` 绕过 owned 设施
+=违约);生成代码的 canonical import 由 import_policy 单源约束,模板
+发射方(含 shell-pack 再生器等公开生成器)随策略同步。（PLAN-815 M815-B，T-09 R2 pass @ 生产冻结位 0f2858e35；终稿正文与证据：attachments/815/handoff.md §规范增量）

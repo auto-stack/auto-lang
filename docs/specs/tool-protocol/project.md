@@ -1,6 +1,7 @@
 # tool-protocol — I-TOOL 轻工具协议(M815-A 阶段子集)
 
-> 状态:PLAN-815 M815-A 已发布子集(2026-10-20,R4 阶段审查通过,delivery `e609caf1a`)。
+> 状态:PLAN-815 已完成 B 面全量收口(2026-10-22,T-09 R2 终审 pass,生产冻结位 `0f2858e35`);
+> M815-A 已发布子集(2026-10-20,R4 阶段审查通过,delivery `e609caf1a`)事实保留于下文。
 > 本文件陈述协议版本 1 的 A 面;progress 事件实际发射、交互 stdin、运行进程寿命等完整 B 面合同未发布。
 
 ## 当前协议与预算(SD-02-A,AC-03 当期/AC-07)
@@ -33,3 +34,18 @@ invalid_field / budget_exceeded / not_cancellable / internal——全部可序�
 
 816 执行器依赖 `auto-tool-protocol` + `auto-project-model`(wire),经子进程协议
 调用 `auto-ui-tool` 二进制;不得静态链接 auto-ui-tools 实现进 CLI。
+
+## M815-B:I-TOOL v1 完整生命周期合同(PLAN-815 SD-02)
+
+I-TOOL v1 完整面——版本/能力(五操作 describe/validate_project/generate_ui/
+build_ui/run_ui × cancellable/interactive 真实语义:run_ui 二者皆真,
+build_ui cancellable 非交互,describe/validate/generate 有界非取消)/
+I-PROJECT wire 载荷(数据 owner 同源 codec)/framing 预算(u32 大端长度前缀
++UTF-8 JSON;帧深/字节双向预算)/错误分类(具名 kind,无字符串化协议错误)/
+日志与控制流分离(stderr 仅日志,control 恒 framed JSON)/输入有界队列/
+取消与 EOF 的 owned 树终止(Windows Job Object/Unix 进程组,reader 可停读
++有界 join)/退出码合同(坏帧流致命非零,EOF 干净 exit0)。取消回执
+(`Cancelled`)与工作终态(`RunOk`/`BuildOk` outcome=cancelled)分离;
+单飞工作操作(busy 具名拒绝);能力/版本拒绝先于任何副作用。
+非 Windows 清理不变量(reader 可停/有界 join)为平台承诺,不得以
+Windows 结果外推。（PLAN-815 M815-B，T-09 R2 pass @ 生产冻结位 0f2858e35；终稿正文与证据：attachments/815/handoff.md §规范增量）
