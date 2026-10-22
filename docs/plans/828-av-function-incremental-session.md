@@ -5,8 +5,8 @@ feature_name: 源码到AV安装的全链路函数级增量
 plan_revision: 3
 author: [Codex]
 created_at: 2026-10-20
-updated_at: 2026-10-21
-current_step: 0
+updated_at: 2026-10-22
+current_step: 8
 total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-hir/stage-contract.md
@@ -282,11 +282,11 @@ V-01..09原合同继续有效。已有真实入口：probe/tests/function_increm
 
 **后继交接说明（2026-10-21）**：用户已确认D828后优先817/818、827和820功能线，825/826择机插入，详见[共同排期/单写合同](reports/ace-execution-order-and-incremental-compatibility-2026-10-20.md)。现有T-09的“817/818及820–827接缝”交付映射需指向实际函数查询/变更集/受检代码/装载/snapshot API、已交付版本和兼容消费者证据；merge补实际合入及核心窗口释放，后继核验接受。本段解释既有T-09交接内容，不增加任务或验收、不改变r3修复合同/状态/标记，不因T-01或局部PASS提前满足D828，也不等待后继实现才能交付828。
 
-下表是唯一当前任务表；稳定T/AC/V/SD ID与11项计数保持。已有子项PASS不自动勾整任务，当前0/11；历史实施细节已移至r2快照/§9链接。F-05b作为已闭合保留项，不另造重复任务。
+下表是唯一当前任务表；稳定T/AC/V/SD ID与11项计数保持。已有子项PASS不自动勾整任务；T-10现已按整份证据核销T-01..08，当前8/11（T-09格式收尾待修、T-10最终PASS未授、T-11待merge）；历史实施细节已移至r2快照/§9链接。F-05b作为已闭合保留项，不另造重复任务。
 
 **复审节奏裁定（2026-10-22，用户A案）**：包级受影响面复审按依赖边界分三批，不再逐任务送审——第一批=T-02（85cbebea4已冻结）+T-03+T-04；第二批=T-05+T-06；第三批=T-07+T-08+T-09。每批在冻结提交上做一次受影响面复审（后批不在未审前批接口上叠加）；T-10整份最终验收与T-11 merge门禁不变，合同/验收语义不变。
 
-**当前执行入口（2026-10-22，C04单项窄复审 PASS，冻结 a030427fe；下一步T-10）**：B3-C04/P2 CLOSED，无新增finding，第三批已登记finding全部闭。即时计量删除局部累加器，ABC/HIR/sidecar主行/repair及manifest每个Ok当场记入phase_io，任何后续Err保留此前接受字节，接受一次口径不变。原真实store逐写故障4/4（0/173/425/497全部相等）、原903/no-store2/2、握手4/4、C03 judge6/consumer2/identity3/trace1保持；官方t08 5/5，独立正式30样本P95=219.4917ms/同798双线预算过，完整raw保存。下一责任review/T-10在同冻结根做整份AC/V/C/SD、遗漏/延期与证据版本审计；本轮只是phase PASS，不自动reviewed/合入。r3/executing0/11按当前流程保留，整份及merge-owned门pending。详见[PASS报告](attachments/828/review-c04-r5-a030427fe/review.md)与[T-10入口](attachments/828/review-c04-r5-a030427fe/next-step.md)。历史一次战役失败缺具体诊断，本轮不独立确认“机器负载”归因；T-10如实保留限制，后续按次留完整失败raw，不用重跑绿替代归因。
+**当前执行入口（2026-10-22，T10-H01 格式收尾完成，冻结 5e8e550fa 待 T-10 窄复审授予最终 PASS）**：T-10（[报告](attachments/828/review-t10-a030427fe/review.md)）仅余 T10-H01/P3——`ac-syntax/adapters/core/src/projection_engine.rs` 与 `adapters/core/tests/scalar_projection_.rs` 两文件 rustfmt 不洁（828 触及行，非 shim 既有债）；本批同树单一提交 `5e8e550fa`（基面 a030427fe，树 clean）纯格式修复——按复审冻结的 rustfmt 调用（`--edition 2021 --config skip_children=true`）格式化，两文件过 `--check` 且与复审 `.formatted.txt` 期望**逐字节一致**（唯一非空白变换=scalar_projection_.rs 一处超长 match 臂的默认块包裹，语义等价；projection_engine.rs 去空白后 token 等价）；定向验证 scalar_projection_ 6/6、ac-syntax-core-adapter --all-targets 零错零警；未重跑重负载（纯格式收尾，复审明示等价性复用）。下一责任 review：T-10 窄复审（冻结 5e8e550fa，仅格式等价确认）→ 授最终 PASS/reviewed；此后 T-11 merge-owned 门禁（裸 t+tv/触面档/tf 主检单实例/沉淀/归档/guard）。executing 8/11 保持，尚未 merge。
 
 **0b612fda1 同提交T-01独立复审结果：needs_fix**（历史，仅窄残项）：prepare返回前恢复current、FnCandidate自持新body+owner/基面、commit真实安装并核owner、cancel/drop零env访问均通过；原六失败不重开。反例为当前1→prepare候选2(base0)→公开recheck成功发布3(generation仍0)→旧候选commit返回Ok覆盖成2。完整[本轮报告](attachments/828/review-t01-0b612fda1/review.md)与[窄修复指示](attachments/828/review-t01-0b612fda1/glm-next-round.md)；[de4cba702包](attachments/828/review-t01-de4cba702/review.md)、[23a6包](attachments/828/review-t01-23a6b35a0/review.md)、[3e60包](attachments/828/review-t01-3e60af2c8/review.md)保留为历史。
 
@@ -302,19 +302,23 @@ V-01..09原合同继续有效。已有真实入口：probe/tests/function_increm
 
 | ID / 状态 | owner_stage | 依赖 | 文件/符号与当前交付 | AC / 关闭检查 |
 |---|---|---|---|---|
-| [ ] T-01 | work | D798已满足；r3授权已有 | 在现有core/source/syntax/probe上完成§5.6 D-01..03接口决策与真实双函数竖切；主检出维护现有contract-r3/interface-decision.md，实施树提交代码/实际API/观测映射。冻结schema/授权/资源接缝与新测试选择表 | AC-01..07；C01-01/C02-01最小正控及真实旧管线/副本负控；未解决设计先有界诊断，不广泛改造或降低要求 |
-| [ ] T-02 | work | T-01前端/来源决策 | ac-syntax既有局部投影复用，ac-core/source抽取受检接口环境与单body resolve/typecheck，session不再构造全部stub Program；生产入口观测落在真正工作处 | AC-02/05；C01-01/02/04/05，scalar_projection_差分及旧支持面 |
-| [ ] T-03 | work | T-01/D-01、T-02 | verify.rs/function_queries：函数HIR producer/私有凭证、真实依赖读取/失效、上下文绑定；A07有界codec/生产及当前上下文恢复重验与T-07实际接通 | AC-01/02/05；C01-01..05/V-03/04/07；F01前端子项闭合不代表A07任务整项完成 |
-| [ ] T-04 | work | T-03相关函数接口 | hir_adapter/cache/mir_verify：CheckedFunction直接单函数lower/验证/ABC；适用上下文内存hit复用，保留内容历史与各自mint来源 | AC-01/03/05；V-01/03/04及C02-02；未改lower/emit/decode/verify/load=0 |
-| [ ] T-05 | work | T-01/D-02、T-04 | function_code/program_snapshot/av：无merged执行payload重建的不可变单元、受检绑定及实际派发；局部const/type/slot/PC消费与稳定函数身份 | AC-01/04/05；C02-01/02/04/05，强制实际副本反控必红；单元不可直接执行等旧准入保持 |
-| [ ] T-06 | work | T-05；F05b证据可先复用 | session/AV事务：prepare仅候选、成功后原子更新根及来源/绑定；新旧snapshot可见性、三执行入口共用派发；取消/close/vacant/最后拥有者兼容 | AC-01/04/06；C02-03/04、C05-01..04；F05b在r23a已闭，相关重构后按影响重放 |
-| [ ] T-07 | work | T-03产物、T-06生命周期 | store/A07实际恢复消费者、changed-only持久化、manifest required引用/恢复与lease/GC；驻留/候选/旧代预算与失败释放；512修订及哨兵 | AC-05/06/08；原V-02/05/06/07/09和C05-02/03；F09/10/11保留，无必需skip |
-| [ ] T-08 | work | T-07 | 正式持续worker/IPC/父侧judge、ready/edit/result及observations/raw/双线内存；真实全量/副本/坏actual/缺样本/越界反控 | AC-07/08；V-08/09+C02-05，≥30新修订、P95<1000ms且结构门同轮过；进程内测试不代正式门 |
+| [x] T-01 | work | D798已满足；r3授权已有 | 在现有core/source/syntax/probe上完成§5.6 D-01..03接口决策与真实双函数竖切；主检出维护现有contract-r3/interface-decision.md，实施树提交代码/实际API/观测映射。冻结schema/授权/资源接缝与新测试选择表 | AC-01..07；C01-01/C02-01最小正控及真实旧管线/副本负控；未解决设计先有界诊断，不广泛改造或降低要求 |
+| [x] T-02 | work | T-01前端/来源决策 | ac-syntax既有局部投影复用，ac-core/source抽取受检接口环境与单body resolve/typecheck，session不再构造全部stub Program；生产入口观测落在真正工作处 | AC-02/05；C01-01/02/04/05，scalar_projection_差分及旧支持面 |
+| [x] T-03 | work | T-01/D-01、T-02 | verify.rs/function_queries：函数HIR producer/私有凭证、真实依赖读取/失效、上下文绑定；A07有界codec/生产及当前上下文恢复重验与T-07实际接通 | AC-01/02/05；C01-01..05/V-03/04/07；F01前端子项闭合不代表A07任务整项完成 |
+| [x] T-04 | work | T-03相关函数接口 | hir_adapter/cache/mir_verify：CheckedFunction直接单函数lower/验证/ABC；适用上下文内存hit复用，保留内容历史与各自mint来源 | AC-01/03/05；V-01/03/04及C02-02；未改lower/emit/decode/verify/load=0 |
+| [x] T-05 | work | T-01/D-02、T-04 | function_code/program_snapshot/av：无merged执行payload重建的不可变单元、受检绑定及实际派发；局部const/type/slot/PC消费与稳定函数身份 | AC-01/04/05；C02-01/02/04/05，强制实际副本反控必红；单元不可直接执行等旧准入保持 |
+| [x] T-06 | work | T-05；F05b证据可先复用 | session/AV事务：prepare仅候选、成功后原子更新根及来源/绑定；新旧snapshot可见性、三执行入口共用派发；取消/close/vacant/最后拥有者兼容 | AC-01/04/06；C02-03/04、C05-01..04；F05b在r23a已闭，相关重构后按影响重放 |
+| [x] T-07 | work | T-03产物、T-06生命周期 | store/A07实际恢复消费者、changed-only持久化、manifest required引用/恢复与lease/GC；驻留/候选/旧代预算与失败释放；512修订及哨兵 | AC-05/06/08；原V-02/05/06/07/09和C05-02/03；F09/10/11保留，无必需skip |
+| [x] T-08 | work | T-07 | 正式持续worker/IPC/父侧judge、ready/edit/result及observations/raw/双线内存；真实全量/副本/坏actual/缺样本/越界反控 | AC-07/08；V-08/09+C02-05，≥30新修订、P95<1000ms且结构门同轮过；进程内测试不代正式门 |
 | [ ] T-09 | work | T-08；可随各包维护映射 | 当前case→入口/fixture/断言/原始证据→AC/SD/版本清单、旧消费者兼容、817/818及820–827接缝、具体规范增量文本/告警清理；更正旧完成/延期措辞 | AC-01..08；全矩阵有owner及实际结果，无OPEN必需项才execution_done；各包冻结提交，禁止只交测试总数 |
 | [ ] T-10 | review | T-09完成 | 同一clean冻结树独立逐AC/V/C/SD审核；复核实际生产路径、负控和遗漏/绕过；受影响旧证据复用理由明确 | AC-09；最终pass才reviewed，merge-owned整档pending显式；不借局部PASS授整份通过 |
 | [ ] T-11 | merge | T-10最终pass | 冻结裸t+tv/必要触面及consumer门、Spec/ledger/归档/guard；tf到期主检出单实例 | AC-10；实际收尾完成才交付/11项全完成，不在review或开发阶段提前整档 |
 
 ## 9. 复审记录
+
+2026-10-22 stage:work(T-10 needs_fix 唯一项 T10-H01 格式收尾) | PLAN-828 r3 | outcome:pass(格式修复完成待 T-10 窄复审；executing 8/11 不变) | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | base_commit:a030427fe15dc043871d3253101f209653cabd9c | code_commit:5e8e550fa2c68c0e4e7b44187877e8b46469c22f(单一提交纯格式，树clean) | dependency:auto-down 未消费 | task_ids:T10-H01（两 ac-syntax 文件 rustfmt） | 机制=按复审冻结的 rustfmt 调用格式化 projection_engine.rs+scalar_projection_.rs；两文件 --check 过且与复审 .formatted.txt 逐字节一致；唯一非空白变换=一处超长 match 臂默认块包裹（语义等价）；projection_engine 去空白 token 等价 | 验证:scalar_projection_ 6/6、ac-syntax-core-adapter --all-targets 零错零警、fmt --check exit0；未重跑重负载（复审明示等价性复用，勿改语义/oracle/历史raw） | blockers:无 | next_responsible_role:review(T-10 窄复审,冻结 5e8e550fa;PASS 授 reviewed 后 T-11 merge)
+
+2026-10-22 stage:review | review_scope:final(T-10整份AC/V/C/SD验收) | reviewer_identity:本Codex审核上下文，未实施冻结修复/未启代理，不编造未暴露身份 | PLAN-828 r3 | outcome:needs_fix | worktree_path:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | reviewed_commit:a030427fe15dc043871d3253101f209653cabd9c | base_commit:f79b1b83591310b45b3828dd300e6d368987d6c0(整份实施/merge-base) | dependency:auto-down=c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8未消费 | spec_inputs:521项冻结输入结束一致/实施树clean；同根R5共同518输入、137运行产物、92证据hash全等，证据复用逐项说明 | acceptance_results:AC01..07功能PASS，AC08功能/兼容/映射通过但健康partial；AC09最终PASS未授；AC10 pending；本轮三512 3/3(275.43s)、core22/probe组件1、798cache20/mir8/abc15/binding4/vertical3/native11/trace1/case5/resources17、ac-core111/scalar差分6/原close9全过；R5同根permanent与正式30样本P95=219.4917ms/双线硬预算等经hash核对复用，未冒充本轮重跑 | findings:T10-H01/P3唯一新项，整份修改Rust格式检查exit1，仅本计划projection_engine.rs/scalar_projection_.rs新增排版；源码diffcheck0，历史raw空白不改写 | state:executing8/11(T01..08已核销；T09健康待修/T10最终PASS未授/T11待merge)，前批finding与功能结论保持 | spec_delta:SD01..06审查通过，核定proposed文本见T10 spec-delta-reviewed/spec-review，未沉淀canonical/ledger，未改验收/plan_revision | evidence_limit:历史work单次战役失败无具体诊断，归因未确证，不因重跑绿删除；未来每次独立目录留失败raw | pending_closeout_gates:格式修复新冻结窄复审后才reviewed；T11 merge-owned裸t+tv/实际consumer触面、tf到期主检单实例、Spec/ledger/归档/guard均pending | evidence:[整份报告/逐AC-V-C映射/冻结与原始日志](attachments/828/review-t10-a030427fe/review.md) | next:work仅T10-H01两文件rustfmt+scalar6/全改动格式门，提交后窄复审；纯格式等价/依赖配置输入未变可复用重负载证据，不重做候选/派发/C04机制，不跑整档。
 
 2026-10-22 stage:review | review_scope:phase(C04唯一残项单项窄复审，非T10整份最终) | reviewer_identity:本Codex审核上下文，未实施/未启代理、不编造未暴露身份 | PLAN-828 r3 | outcome:pass | worktree_path:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | reviewed_commit:a030427fe15dc043871d3253101f209653cabd9c | base_commit:d16af9cb3956921c523074ec0a60316a7b79d8a0 | dependency:auto-down=c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8未消费 | spec_inputs:baseline/final-state含520源码锁配置/Specs/Design43/冻结主Plan接口技能，入口结束clean且matches_baseline=true；三交付文档/delta/raw/原控hash见evidence-index | closure:B3-C04/P2 CLOSED（旧反例+接受计量完整失败出口均闭），无新增finding；C01/C02/C03/C05及前两批保持，第三批已登记finding全闭 | acceptance_results:原真实store逐写故障4/4（0/173/425/497）、原IO2/2（903及no-store）、握手4/4、原judge6/consumer-copy2/identity3/四入口旧pin trace1全过；官方t08 5/5，独立30样本P50/P95/P99=212.6478/219.4917/221.9354ms、init1300.2778ms、同798双线硬预算过且raw完整；permanent mig9/t078/b214/b111/session18(skip三512)/contract22/t01r4/r186全过；单改动Rustfmt0/diffcheck0 | evidence_limit:未重跑512/整档/全core，不把work总数冒充独立复现；仅计量落点变化，不改put参数/顺序/根/执行拥有关系，未变机制证据在明确输入边界延续；历史一次战役失败缺具体诊断，不独立确认“机器负载”归因，本轮独立正式战役一次通过并保存raw，T10保留该限制 | spec_delta:相关完成声明不再受C04缺口阻塞，完整SD01..06仍由T10核，不给整份delta最终PASS，canonical/ledger未改 | state:executing0/11，允许进入T10，未改reviewed或合入 | pending_closeout_gates:T10/AC09整份最终及T11/AC10 merge-owned裸t+tv/必要consumer触面档、tf到期主检单实例、Spec/ledger沉淀/归档/guard均pending | evidence:[C04 PASS/原控逐值/正式raw/冻结输入](attachments/828/review-c04-r5-a030427fe/review.md) | next:review/T10按同冻结主Plan逐AC/V/C/SD完成整份最终验收；不再安排C04修复轮。
 
@@ -426,6 +430,6 @@ D-03→§5.7所有权表与3e60af2c8代码逐项对应+F-01/F-02改动后重放�
 
 ## 10. 待澄清事项
 
-目标、支持面、P95、预算、单仓范围与执行顺序均已授权，无待用户决定的缩面/增额事项。C04单项窄复审冻结a030427fe PASS，B3-C04 CLOSED，第三批已登记finding全部闭；C03及其他旧闭合保持。下一责任review/T10做整份AC/V/C/SD与证据版本核对，无须再修C04。该phase PASS不替代整份AC09，不授权合入；T11/AC10 merge-owned门及沉淀收尾pending。实施提及一次未保留具体诊断的战役失败，“机器负载”归因未获本轮独立确认；本轮正式30样本一次通过且raw完整，T10如实记录限制，后续逐次留存失败证据，不能用重跑绿抹掉失败记录，也不追造丢失日志。
+无待用户决定的缩面/增额事项。T-10整份审查已完成，唯一待修T10-H01/P3为本计划两文件格式，具体命令、行号、原始exit1及精确formatter期望见[报告](attachments/828/review-t10-a030427fe/review.md)。下一责任work：只格式化、scalar_projection_6/6及整份修改Rust格式门、提交新冻结后窄复审；核等价后可复用本次重负载/正式门，不新增功能轮。T-01..08完成，T-09健康收尾未闭，T-10未授最终PASS，状态executing8/11；T-11/AC10 merge-owned门及规范沉淀收尾仍pending，当前不能合入或宣称D828交付。
 
-F-05b在本次关闭6＋3原控件范围保持；真实commit linkErr原子性已证，无需重做候选模型。若后续确需改变共同存储身份、公共ABI/原支持面或资源上限，应提出具体语义修订；不能由实现反推放宽owner/import准入、来源或有限resume预算判据。本轮未代为启动实施/发送GLM消息或合入。
+F05b及所有前批finding闭合保持；SD01..06已核定proposed审校文本，canonical/ledger未动。历史一次战役失败缺具体诊断，“机器负载”归因未独立确证；同冻结正式30样本一次通过且raw完整，不用重跑绿抹去失败或追造日志。后续逐次独立目录保存完整成功/失败证据。若修复夹带语义变化、依赖/配置/输入变化，须重新冻结并按实际触面重验；不准借纯格式窄复审覆盖语义变化。
