@@ -700,6 +700,11 @@ fn build_ark_project_inner(
         "Building ArkTS/HarmonyOS project (backend: ark)".bright_cyan()
     );
 
+    // PLAN-815 R5（F-815-T05-R5-01）：协议严格失败语义只在**托管形态**
+    // （工具宿主 RunIo 在装）生效；旧公开门面（CLI 直跑/Man 转发）保持
+    // 基线返回语义——缺 wrapper/构建失败打印提示后 Ok，不静默升级为 Err。
+    let strict = crate::proc_host::current().is_some();
+
     // Step 1: Generate code
     println!();
     println!("{}", "▶ Step 1: Generating ArkTS code...".bright_cyan());
@@ -721,12 +726,18 @@ fn build_ark_project_inner(
     };
 
     if !hvigorw.exists() {
-        // PLAN-815 R4-06（F-815-T05-R4-06）：缺构建 wrapper=具名失败——
-        // 未真正执行过构建就不能回报成功（协议层 build_ui 诚实边界）。
-        return Err(format!(
-            "Hvigor wrapper not found at {} — open the project in DevEco Studio to build (no build was executed)",
-            hvigorw.display()
-        ).into());
+        // PLAN-815 R4-06/R5-01：托管/协议形态缺构建 wrapper=具名失败
+        // （未真正执行过构建就不能回报成功）；legacy 基线=提示后 Ok。
+        if strict {
+            return Err(format!(
+                "Hvigor wrapper not found at {} — open the project in DevEco Studio to build (no build was executed)",
+                hvigorw.display()
+            ).into());
+        }
+        println!("  ⚠ Hvigor wrapper not found.");
+        println!("  Please open the project in DevEco Studio to build.");
+        println!("  Project location: {}", ark_dir.display());
+        return Ok(());
     }
 
     println!("  ✓ Hvigor wrapper found");
@@ -743,9 +754,9 @@ fn build_ark_project_inner(
 
     let hap = ark_dir.join("entry/build/default/outputs/default/entry-default-signed.hap");
     if build_result.success() {
-        // PLAN-815 R4-06：产物 oracle——退出码 0 但 HAP 缺失=未真正构建，
-        // 具名失败（假 wrapper 反例的区分点）。
-        if !hap.is_file() {
+        // PLAN-815 R4-06/R5-01：产物 oracle 仅托管/协议形态（legacy 基线
+        // 保持成功打印语义）。
+        if strict && !hap.is_file() {
             return Err(format!(
                 "hvigorw assembleHap exited 0 but the HAP artifact is missing at {} — the build did not really run",
                 hap.display()
@@ -757,11 +768,17 @@ fn build_ark_project_inner(
         println!("HAP location:");
         println!("  {}", hap.display().to_string().bright_cyan());
     } else {
-        // PLAN-815 R4-06：真实构建失败=具名 Err（不再打印后吞掉返回 Ok）。
-        return Err(format!(
-            "ark build failed (hvigorw assembleHap exited with {build_result}); try manually: cd {} && ./hvigorw assembleHap",
-            ark_dir.display()
-        ).into());
+        // PLAN-815 R4-06/R5-01：托管/协议形态真实构建失败=具名 Err；
+        // legacy 基线=打印提示后 Ok（旧公开入口返回语义不静默改）。
+        if strict {
+            return Err(format!(
+                "ark build failed (hvigorw assembleHap exited with {build_result}); try manually: cd {} && ./hvigorw assembleHap",
+                ark_dir.display()
+            ).into());
+        }
+        println!();
+        println!("  ⚠ Build failed. Try running manually:");
+        println!("    cd {} && ./hvigorw assembleHap", ark_dir.display());
     }
 
     Ok(())

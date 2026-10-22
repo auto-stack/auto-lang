@@ -947,18 +947,28 @@ fn run_jet_project_inner(
             capture_stdout: true,
             ..crate::proc_host::TrackedSpawn::new("adb", vec!["devices".to_string()])
         };
-        crate::proc_host::spawn_tracked(spec, "jet-adb")
-            .and_then(|tracked| {
-                let out = crate::proc_host::drain_captured_stdout(&tracked);
-                let _ = crate::proc_host::wait_tracked(&tracked)?;
-                Ok::<_, std::io::Error>(out)
-            })
-            .map(|stdout| {
-                String::from_utf8_lossy(&stdout)
-                    .lines()
-                    .any(|line| line.contains("\tdevice"))
-            })
-            .unwrap_or(false)
+        match crate::proc_host::spawn_tracked(spec, "jet-adb") {
+            Ok(tracked) => {
+                let (stdout, end) = crate::proc_host::drain_captured_stdout(&tracked);
+                let exited_ok = crate::proc_host::wait_tracked(&tracked)
+                    .map(|status| status.success())
+                    .unwrap_or(false);
+                // PLAN-815 R5（F-815-T05-R4-05-P1）：排水必须应答本操作的
+                // 取消/EOF——被取消的操作在这里以取消哨兵收口（终态由
+                // map_flow 映射 Cancelled），不再把取消后的 Ok 当 completed。
+                if crate::proc_host::cancelled() {
+                    return Err(crate::proc_host::CANCELLED_ERR.into());
+                }
+                // 只有自然 EOF + 干净退出的完整输出才可用于设备判定；
+                // 停止/超限/读错误的部分输出不冒充完整探测结果。
+                matches!(end, crate::proc_host::DrainEnd::Eof)
+                    && exited_ok
+                    && String::from_utf8_lossy(&stdout)
+                        .lines()
+                        .any(|line| line.contains("\tdevice"))
+            }
+            Err(_) => false,
+        }
     } else {
         std::process::Command::new("adb")
             .args(&["devices"])
@@ -1067,6 +1077,11 @@ fn build_jet_project_inner(
         "Building Jetpack Compose project (backend: jet)".bright_cyan()
     );
 
+    // PLAN-815 R5（F-815-T05-R5-01）：协议严格失败语义只在**托管形态**
+    // （工具宿主 RunIo 在装）生效；旧公开门面（CLI 直跑/Man 转发）保持
+    // 基线返回语义——构建失败打印提示后 Ok，不静默升级为 Err 合同。
+    let strict = crate::proc_host::current().is_some();
+
     // Step 1: Generate code (always, incremental)
     println!();
     println!("{}", "▶ Step 1: Generating Kotlin code...".bright_cyan());
@@ -1132,8 +1147,9 @@ fn build_jet_project_inner(
     let apk = jet_dir.join("app/build/outputs/apk/debug/app-debug.apk");
     if build_result.success() {
         // PLAN-815 R4-06（F-815-T05-R4-06）：产物 oracle——退出码 0 但产物
-        // 缺失（假 wrapper/未真正执行）按具名失败回报，不冒称成功。
-        if !apk.is_file() {
+        // 缺失（假 wrapper/未真正执行）按具名失败回报，不冒称成功
+        // （仅托管/协议形态；legacy 基线保持成功打印语义——R5-01）。
+        if strict && !apk.is_file() {
             return Err(format!(
                 "gradlew assembleDebug exited 0 but the APK artifact is missing at {} — the build did not really run",
                 apk.display()
@@ -1145,11 +1161,17 @@ fn build_jet_project_inner(
         println!("APK location:");
         println!("  {}", apk.display().to_string().bright_cyan());
     } else {
-        // PLAN-815 R4-06：真实构建失败=具名 Err（不再打印后吞掉返回 Ok）。
-        return Err(format!(
-            "jet build failed (gradlew assembleDebug exited with {build_result}); try manually: cd {} && ./gradlew assembleDebug",
-            jet_dir.display()
-        ).into());
+        // PLAN-815 R4-06/R5-01：托管/协议形态真实构建失败=具名 Err；
+        // legacy 基线=打印提示后 Ok（旧公开入口返回语义不静默改）。
+        if strict {
+            return Err(format!(
+                "jet build failed (gradlew assembleDebug exited with {build_result}); try manually: cd {} && ./gradlew assembleDebug",
+                jet_dir.display()
+            ).into());
+        }
+        println!();
+        println!("  ⚠ Build failed. Try running manually:");
+        println!("    cd {} && ./gradlew assembleDebug", jet_dir.display());
     }
 
     Ok(())

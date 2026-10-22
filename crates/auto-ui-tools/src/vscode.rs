@@ -427,6 +427,11 @@ fn build_vscode_project_inner(
 ) -> AutoResult<()> {
     println!("{}", "Building VSCode extension project".bright_cyan());
 
+    // PLAN-815 R5（F-815-T05-R5-01）：协议严格失败语义只在**托管形态**
+    // （工具宿主 RunIo 在装）生效；旧公开门面（CLI 直跑/Man 转发）保持
+    // 基线返回语义——缺构建工具/编译失败打印提示后 Ok，不静默升级为 Err。
+    let strict = crate::proc_host::current().is_some();
+
     // Step 1: Ensure gen/vue is built (webview prerequisite)
     let vue_dir = root_dir.join("gen").join("front").join("vue");
     let vue_dist = vue_dir.join("dist");
@@ -494,14 +499,24 @@ fn build_vscode_project_inner(
     let has_npm = { crate::pkg::command_exists(crate::pkg::install_cmd()) };
 
     if !has_npm {
-        // PLAN-815 R4-06（F-815-T05-R4-06）：缺构建工具=具名失败，不再
-        // 打印提示后伪成功（协议层 build_ui 必须诚实回报未真正构建）。
         let pm = crate::pkg::display_name();
-        return Err(format!(
-            "{pm} not found — cannot build the VSCode extension automatically; install Node.js (project at {})",
-            vscode_dir.display()
-        )
-        .into());
+        // PLAN-815 R4-06/R5-01：托管/协议形态缺构建工具=具名失败（不
+        // 打印提示后伪成功）；legacy 基线=提示后 Ok（返回语义不静默改）。
+        if strict {
+            return Err(format!(
+                "{pm} not found — cannot build the VSCode extension automatically; install Node.js (project at {})",
+                vscode_dir.display()
+            )
+            .into());
+        }
+        println!(
+            "  {} {} not found. Cannot build automatically.",
+            "Warning:".bright_yellow(),
+            pm
+        );
+        println!("  Please install Node.js or bun.");
+        println!("  Project location: {}", vscode_dir.display());
+        return Ok(());
     }
 
     // Step 4: Install extension dependencies
@@ -528,17 +543,25 @@ fn build_vscode_project_inner(
     println!();
     println!("{}", "  Step 5: Compiling extension...".bright_cyan());
 
-    // PLAN-815 R4-06（F-815-T05-R4-06）：编译失败=具名 Err 传播，不再
-    // 打印后吞掉继续 Ok（成功与失败只差退出码的反例正是此分支）。
-    crate::pkg::run_script("build", &[], &vscode_dir)
-        .map_err(|e| format!("VSCode extension build failed: {e}"))?;
-    println!();
-    println!(
-        "{}",
-        "  VSCode extension built successfully!"
-            .bright_green()
-            .bold()
-    );
+    // PLAN-815 R4-06/R5-01：托管/协议形态编译失败=具名 Err 传播（成功
+    // 与失败只差退出码的反例正是此分支）；legacy 基线=打印后继续 Ok。
+    match crate::pkg::run_script("build", &[], &vscode_dir) {
+        Ok(()) => {
+            println!();
+            println!(
+                "{}",
+                "  VSCode extension built successfully!"
+                    .bright_green()
+                    .bold()
+            );
+        }
+        Err(e) if strict => {
+            return Err(format!("VSCode extension build failed: {e}").into());
+        }
+        Err(e) => {
+            println!("  {} Build failed: {}", "Error:".bright_red(), e);
+        }
+    }
 
     // Step 6: Copy Vue dist into extension directory for webview access
     // VSCode webviews cannot load resources from outside the extension dir,

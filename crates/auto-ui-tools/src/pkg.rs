@@ -33,8 +33,47 @@ impl PkgManagerKind {
     }
 }
 
-/// Process-wide cached package manager.
+/// Process-wide cached package manager (LEGACY path only — see
+/// [`set_tool_pm_for_request`]; the tool path resolves per-request and
+/// must not cache across operations).
 static CACHED_PM: OnceLock<PkgManagerKind> = OnceLock::new();
+
+/// PLAN-815 R5（F-815-T05-R4-04）：工具协议路径的包管理器单源状态。
+/// 外层 `None` = legacy 形态（未设置——CLI 直跑，全链含磁盘 pac.at 自扫，
+/// 语义冻结）；`Some(inner)` = 工具工作操作在飞：`inner=Some(kind)` =
+/// 当前请求声明了 `pkg:`（raw 保真字段，生产执行必须消费它）；
+/// `inner=None` = 请求无该字段——**跳过磁盘主 pac.at**（无第二真源），
+/// 只走外部全局配置/自动探测。每操作设置、guard 清理，不跨操作缓存。
+static TOOL_PM_STATE: std::sync::Mutex<Option<Option<PkgManagerKind>>> =
+    std::sync::Mutex::new(None);
+
+/// Set the tool-path package-manager state from the CURRENT request and
+/// return a guard that restores the legacy state on drop (covers early
+/// error returns). `pkg` is taken from the request's verbatim `raw` props.
+pub fn set_tool_pm_for_request(
+    request: &auto_project_model::generation_request::GenerationRequest,
+) -> ToolPmGuard {
+    let declared = request.raw.iter().find_map(|prop| {
+        if prop.key != "pkg" {
+            return None;
+        }
+        prop.value
+            .as_ref()
+            .map(|v| v.to_astr().trim().to_string())
+            .and_then(|s| PkgManagerKind::from_str(&s))
+    });
+    *TOOL_PM_STATE.lock().unwrap() = Some(declared);
+    ToolPmGuard
+}
+
+/// Restores the legacy resolution state when the work operation ends.
+pub struct ToolPmGuard;
+
+impl Drop for ToolPmGuard {
+    fn drop(&mut self) {
+        *TOOL_PM_STATE.lock().unwrap() = None;
+    }
+}
 
 fn auto_detect() -> PkgManagerKind {
     if command_exists("pnpm") {
@@ -55,10 +94,36 @@ pub fn command_exists(cmd: &str) -> bool {
     check.map(|o| o.status.success()).unwrap_or(false)
 }
 
-/// Resolve the package manager. Checks project config, then global config,
-/// then auto-detects. Result is cached process-wide.
+/// Resolve the package manager. Tool path (per-request, never cached
+/// across operations): request `pkg:` > global config > auto-detect —
+/// the disk main pac.at is NEVER consulted (no second truth source,
+/// PLAN-815 R5 / F-815-T05-R4-04). Legacy path (config-based selection,
+/// cached process-wide): project pac.at > global config > auto-detect.
 pub fn resolve() -> PkgManagerKind {
+    // Tool path: honor the CURRENT request exactly (serial requests with
+    // different `pkg:` declarations each get their own manager).
+    if let Some(state) = TOOL_PM_STATE.lock().unwrap().clone() {
+        return match state {
+            Some(kind) => kind,
+            None => resolve_global_then_detect(),
+        };
+    }
     *CACHED_PM.get_or_init(resolve_impl)
+}
+
+/// External-only chain (no disk main declaration): global config, then
+/// auto-detect — the tool path's fallback when the request declares no
+/// `pkg:` field.
+fn resolve_global_then_detect() -> PkgManagerKind {
+    if let Some(home) = dirs::home_dir() {
+        let global_path = home.join(".auto").join("auto-man").join("am.at");
+        if let Ok(content) = std::fs::read_to_string(&global_path) {
+            if let Some(pm) = parse_pkg_from_at(&content) {
+                return pm;
+            }
+        }
+    }
+    auto_detect()
 }
 
 fn resolve_impl() -> PkgManagerKind {
@@ -70,17 +135,7 @@ fn resolve_impl() -> PkgManagerKind {
     }
 
     // 2. Try global config: ~/.auto/auto-man/am.at `pkg: "bun"`
-    if let Some(home) = dirs::home_dir() {
-        let global_path = home.join(".auto").join("auto-man").join("am.at");
-        if let Ok(content) = std::fs::read_to_string(&global_path) {
-            if let Some(pm) = parse_pkg_from_at(&content) {
-                return pm;
-            }
-        }
-    }
-
-    // 3. Auto-detect
-    auto_detect()
+    resolve_global_then_detect()
 }
 
 /// Try to extract `pkg: "bun"` from .at file content.
@@ -349,6 +404,94 @@ pub fn add_packages(packages: &[&str], dev: bool, cwd: &Path) -> Result<(), Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// These tests mutate process-global state (cwd, TOOL_PM_STATE) —
+    /// serialize them within this binary (single-process libtest runner).
+    static PM_STATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// A request carrying `pkg: "x"` in its verbatim raw props.
+    fn request_with_pkg(pkg: Option<&str>) -> auto_project_model::GenerationRequest {
+        let pac = match pkg {
+            Some(value) => format!(
+                "name: \"pmx\"
+render: \"vue\"
+pkg: \"{value}\"
+"
+            ),
+            None => "name: \"pmx\"
+render: \"vue\"
+"
+            .to_string(),
+        };
+        let descriptor = auto_project_model::parse_document(
+            &pac,
+            auto_project_model::descriptor::SourceInfo::from_path("P:/pm-inline/pac.at"),
+        )
+        .expect("parse");
+        auto_project_model::GenerationRequest::from_descriptor(&descriptor)
+    }
+
+    /// PLAN-815 R5（F-815-T05-R4-04）：工具路径的包管理器单源矩阵。
+    /// - legacy（无工具状态）：磁盘 pac.at 仍是源（语义冻结）；
+    /// - 工具+请求 pkg 字段：请求值赢（磁盘冲突负控）；
+    /// - 工具+请求无字段：跳过磁盘（外部链兜底）；
+    /// - guard 丢弃恢复 legacy（串行下一请求不残留）。
+    #[test]
+    fn tool_pm_state_matrix() {
+        let _guard = PM_STATE_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("pac.at"),
+            "name: \"diskx\"
+pkg: \"bun\"
+",
+        )
+        .unwrap();
+        let original = std::env::current_dir().expect("cwd");
+        std::env::set_current_dir(dir.path()).expect("chdir");
+
+        // legacy: disk wins (frozen behavior).
+        assert_eq!(resolve(), PkgManagerKind::Bun, "legacy reads disk pac");
+
+        // tool + request declares pnpm: request wins over disk bun.
+        {
+            let _tool = set_tool_pm_for_request(&request_with_pkg(Some("pnpm")));
+            assert_eq!(
+                resolve(),
+                PkgManagerKind::Pnpm,
+                "request pkg must beat the disk main declaration"
+            );
+        }
+
+        // tool + request WITHOUT the field: the disk main pac.at is NOT a
+        // source — resolution must not come from disk (bun); it falls to
+        // the external chain (global config > auto-detect).
+        {
+            let _tool = set_tool_pm_for_request(&request_with_pkg(None));
+            let resolved = resolve();
+            assert_ne!(
+                resolved,
+                PkgManagerKind::Bun,
+                "tool path must skip the disk main declaration"
+            );
+            if !command_exists("pnpm") {
+                // On a machine without pnpm the external chain may land on
+                // bun via auto-detect — the disk-independence claim is then
+                // proven by the pnpm-present branch above/below.
+                eprintln!("pnpm absent: auto-detect = {resolved:?}");
+            }
+        }
+
+        // guard dropped: legacy state restored (serial next request sees
+        // the frozen chain again).
+        assert_eq!(
+            resolve(),
+            PkgManagerKind::Bun,
+            "guard drop must restore the legacy resolution state"
+        );
+
+        std::env::set_current_dir(original).expect("restore cwd");
+    }
 
     #[test]
     fn test_from_str() {

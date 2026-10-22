@@ -50,6 +50,9 @@ pub fn generate_report(request: &GenerationRequest) -> Result<GenerationReport, 
     }
     gate_on_validation(request)?;
     let root = project_root(request)?;
+    // PLAN-815 R5（F-815-T05-R4-04）：本操作的包管理器单源=当前请求
+    // （raw `pkg:` 字段）——guard 在操作结束/早退时恢复 legacy 形态。
+    let _pm_guard = crate::pkg::set_tool_pm_for_request(request);
 
     // Unique profiles in declared order (a repeated frontend generates once;
     // `frontends` on the report echoes the declaration verbatim).
@@ -184,6 +187,9 @@ pub fn build_report(request: &GenerationRequest) -> Result<BuildReport, ToolErro
     };
     gate_on_validation(request)?;
     let root = project_root(request)?;
+    // PLAN-815 R5（F-815-T05-R4-04）：包管理器单源=当前请求（见
+    // set_tool_pm_for_request；guard 恢复 legacy 形态）。
+    let _pm_guard = crate::pkg::set_tool_pm_for_request(request);
 
     // ---- Real build ----
     proc_host::progress(1, Some(2), "build project");
@@ -234,6 +240,9 @@ pub fn run_report(request: &GenerationRequest) -> Result<RunReport, ToolError> {
     };
     gate_on_validation(request)?;
     let root = project_root(request)?;
+    // PLAN-815 R5（F-815-T05-R4-04）：包管理器单源=当前请求（见
+    // set_tool_pm_for_request；guard 恢复 legacy 形态）。
+    let _pm_guard = crate::pkg::set_tool_pm_for_request(request);
 
     // ---- Real run (dispatch by profile) ----
     let flow: Result<proc_host::FlowEnd, auto_val::AutoError> = match profile.as_str() {
@@ -284,7 +293,16 @@ pub fn run_report(request: &GenerationRequest) -> Result<RunReport, ToolError> {
 /// Map a flow result to (outcome, error), recognizing cancellations.
 fn map_flow(flow: Result<proc_host::FlowEnd, auto_val::AutoError>) -> (RunOutcome, Option<String>) {
     match flow {
-        Ok(proc_host::FlowEnd::Completed) => (RunOutcome::Completed, None),
+        Ok(proc_host::FlowEnd::Completed) => {
+            // PLAN-815 R5（F-815-T05-R4-05-P1）：取消/EOF 之后到达的 Ok
+            // 不是 completed——操作的执行已被取消打断（例如捕获排水在
+            // 停止后返回的 Ok 路径），终态必须诚实为 cancelled。
+            if proc_host::cancelled() {
+                (RunOutcome::Cancelled, None)
+            } else {
+                (RunOutcome::Completed, None)
+            }
+        }
         Ok(proc_host::FlowEnd::Cancelled) => (RunOutcome::Cancelled, None),
         Err(e) => {
             let text = e.to_string();

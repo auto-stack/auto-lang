@@ -1006,23 +1006,76 @@ impl TrackedChild {
     }
 }
 
-/// Drain a captured stdout to EOF with the same stop-aware polling read
-/// the forwarders use (R4-05: `adb devices`-style output parsing under
-/// hosted ownership — cancel closes the tree, hence the pipe, hence this
-/// loop). Unhosted callers use the legacy `Command::output()` directly.
-pub fn drain_captured_stdout(tracked: &TrackedChild) -> Vec<u8> {
+/// How a caller-drained capture ended (PLAN-815 R5 /
+/// F-815-T05-R4-05-P1): EVERY actual reader — the forwarder threads AND
+/// the caller-drained capture pipes — must respond to the operation's
+/// cancel/EOF (truly stop, or end with a named bounded failure); captured
+/// bytes are never collected unbounded and an interrupted/error drain is
+/// never presented as complete output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DrainEnd {
+    /// The pipe reached EOF on its own (complete output).
+    Eof,
+    /// The stop flag / cancellation ended the drain (output may be
+    /// partial — a non-owned holder may still hold the pipe).
+    Stopped,
+    /// The collection cap was hit (output truncated; the pipe is dropped).
+    Truncated,
+    /// The read failed (output may be partial).
+    IoError(String),
+    /// The drain did not end within the hard bound (named failure — the
+    /// stop flag remains set, the pipe is dropped).
+    BoundOverrun,
+}
+
+/// Hard bound for a caller-drained capture: same shape as the forwarder
+/// teardown bound — no reader, drained or forwarded, may block an
+/// operation's teardown indefinitely.
+const DRAIN_HARD_BOUND: Duration = TEARDOWN_GRACE;
+/// Collection cap for captured output (`adb devices`-style probes are
+/// tiny; unbounded collection is a leak vector on a chatty child).
+const DRAIN_MAX_BYTES: usize = 1024 * 1024;
+
+/// Drain a captured stdout with the same stop-aware polling read the
+/// forwarders use, PLUS the operation's cancel/stop flags and a hard
+/// bound: the loop checks `reader_stop` (set by kill/teardown) and
+/// `cancelled()` (cancel AND host-EOF both set it) every tick, so even a
+/// NON-owned process holding the pipe cannot pin the drain past the
+/// operation's lifecycle (PLAN-815 R5 / F-815-T05-R4-05-P1 — the R4
+/// version looped on empty chunks with no stop check at all).
+pub fn drain_captured_stdout(tracked: &TrackedChild) -> (Vec<u8>, DrainEnd) {
     let Some(stdout) = tracked.take_captured_stdout() else {
-        return Vec::new();
+        // No pipe was captured (spawn without capture_stdout or already
+        // drained): nothing observable, nothing collected.
+        return (Vec::new(), DrainEnd::Eof);
     };
     let mut reader = std::io::BufReader::new(stdout);
     let mut collected = Vec::new();
+    let deadline = std::time::Instant::now() + DRAIN_HARD_BOUND;
     loop {
+        if tracked.reader_stop.load(Ordering::SeqCst) || cancelled() {
+            return (collected, DrainEnd::Stopped);
+        }
+        if std::time::Instant::now() > deadline {
+            return (collected, DrainEnd::BoundOverrun);
+        }
         match read_available(&mut reader) {
-            ReadOutcome::Chunk(bytes) => collected.extend_from_slice(&bytes),
-            ReadOutcome::Eof | ReadOutcome::Err(_) => break,
+            ReadOutcome::Chunk(bytes) => {
+                if bytes.is_empty() {
+                    // Nothing available this tick: back off (never busy
+                    // spin) — the loop head re-checks the stop flags.
+                    std::thread::sleep(Duration::from_millis(10));
+                    continue;
+                }
+                collected.extend_from_slice(&bytes);
+                if collected.len() >= DRAIN_MAX_BYTES {
+                    return (collected, DrainEnd::Truncated);
+                }
+            }
+            ReadOutcome::Eof => return (collected, DrainEnd::Eof),
+            ReadOutcome::Err(reason) => return (collected, DrainEnd::IoError(reason)),
         }
     }
-    collected
 }
 
 /// Record a named teardown failure on the installed RunIo (if any) —
@@ -1211,6 +1264,69 @@ mod tests {
             vm_session_fatal().as_deref(),
             Some("external backend load failed: dll missing")
         );
+        uninstall();
+    }
+
+    /// PLAN-815 R5（F-815-T05-R4-05-P1）：caller-drained 捕获管道同样应答
+    /// 本操作的取消——取消后排水在停止标志处立即返回（有界、非忙等），
+    /// 自然 EOF 正控保持完整输出语义。跨平台：Unix 用 sh 等价命令。
+    #[test]
+    fn captured_drain_answers_cancel_and_natural_eof() {
+        let _guard = SLOT_LOCK.lock().unwrap();
+        assert!(install());
+        let io = current().unwrap();
+
+        // Natural-EOF positive: `echo` closes its end — the drain collects
+        // the output and classifies Eof.
+        #[cfg(windows)]
+        let echo_spec = TrackedSpawn {
+            windows_cmd_shim: true,
+            capture_stdout: true,
+            ..TrackedSpawn::new("cmd", vec!["/C".to_string(), "echo drain-ok".to_string()])
+        };
+        #[cfg(not(windows))]
+        let echo_spec = TrackedSpawn {
+            capture_stdout: true,
+            ..TrackedSpawn::new("sh", vec!["-c".to_string(), "echo drain-ok".to_string()])
+        };
+        let tracked = spawn_tracked(echo_spec, "capture-eof").expect("spawn echo");
+        let (out, end) = drain_captured_stdout(&tracked);
+        let _ = wait_tracked(&tracked);
+        assert!(matches!(end, DrainEnd::Eof), "end: {end:?}");
+        assert!(String::from_utf8_lossy(&out).contains("drain-ok"));
+
+        // Cancel positive: a long-running tree with a captured stdout —
+        // cancel (kill sets reader_stop) must end the drain promptly
+        // instead of looping on empty polls (the R4 bug shape).
+        #[cfg(windows)]
+        let sleeper_spec = TrackedSpawn {
+            windows_cmd_shim: true,
+            capture_stdout: true,
+            ..TrackedSpawn::new(
+                "cmd",
+                vec!["/C".to_string(), "ping -n 30 127.0.0.1".to_string()],
+            )
+        };
+        #[cfg(not(windows))]
+        let sleeper_spec = TrackedSpawn {
+            capture_stdout: true,
+            ..TrackedSpawn::new("sh", vec!["-c".to_string(), "sleep 30".to_string()])
+        };
+        let tracked = spawn_tracked(sleeper_spec, "capture-cancel").expect("spawn sleeper");
+        std::thread::sleep(Duration::from_millis(500));
+        io.cancel();
+        let started = std::time::Instant::now();
+        let (_out, end) = drain_captured_stdout(&tracked);
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "drain must answer cancel promptly (took {:?}, end {end:?})",
+            started.elapsed()
+        );
+        assert!(
+            matches!(end, DrainEnd::Stopped | DrainEnd::Eof),
+            "cancelled drain ends Stopped (flag) or Eof (tree died): {end:?}"
+        );
+        let _ = wait_tracked(&tracked);
         uninstall();
     }
 
