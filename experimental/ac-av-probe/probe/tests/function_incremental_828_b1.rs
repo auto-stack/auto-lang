@@ -783,3 +783,148 @@ fn t03_r2_semantic_wrong_target_or_entry_not_adopted() {
     exercise("place");
     exercise("entry");
 }
+
+/// B1-R3-01 (collected from the R3 review's canonical-controls.rs, same
+/// input/mutation/oracle): flipping a call binding's `.move` marker is a
+/// SEMANTIC change (hir PartialEq) that the verifier ACCEPTS as legal
+/// HIR — the can4 content identity must distinguish it before adoption
+/// (the pre-R3 dump omitted `CallBinding.moved`, so the wrong-flag HIR
+/// was adopted as the current source's content).
+#[test]
+fn t03_r3_call_binding_moved_distinguished_at_restore() {
+    use auto_ac_prototype::hir;
+    use auto_ac_prototype::source::compile_scalar_source;
+    use auto_ac_prototype::verify::declaration_context_fingerprint;
+    use auto_av_probe::cache::{caps_fingerprint, open_store, put_enveloped, EnvelopeIdentity};
+    use auto_av_probe::fn_hir_codec::{
+        encode_fn_hir, fn_hir_key, fn_hir_span_digest, normalize_fn_hir_body, FnHirArtifact,
+    };
+    use auto_av_probe::semrefs::content_version_of;
+    use auto_av_probe::session::{restore, warmup_persisted};
+
+    let src = "fn helper(x int) int { return x + 1 }\nfn main() int { return helper(5) }\nfn tail() int { return 9 }\n";
+    let c = compile_scalar_source(src, "probe.at", &[]).unwrap();
+    let bundle = c.checked.bundle();
+    let m = &bundle.modules[0];
+    let di = m.defs.iter().position(|d| d.id_text == "d_main").unwrap();
+    let bid = match m.defs[di].kind {
+        hir::DefKind::Function { body, .. } => body,
+        _ => panic!(),
+    };
+    let original = &m.bodies[bid.0 as usize];
+    let mut changed = original.clone();
+    let call = changed
+        .exprs
+        .iter_mut()
+        .find_map(|e| match &mut e.kind {
+            hir::ExprKind::Call { bindings, .. } => Some(bindings),
+            _ => None,
+        })
+        .unwrap();
+    assert!(!call[0].moved);
+    call[0].moved = true;
+    assert_ne!(original, &changed, "moved participates in hir PartialEq");
+    let mut v = bundle.clone();
+    v.modules[0].bodies[bid.0 as usize] = changed.clone();
+    // FIXED premise: can4 distinguishes the semantic marker.
+    assert_ne!(
+        auto_av_probe::cache::canonical_hir_function(m, bid),
+        auto_av_probe::cache::canonical_hir_function(&v.modules[0], bid),
+        "the .move marker must enter content identity"
+    );
+    let (body, callee_table, type_table) = normalize_fn_hir_body(
+        &m.defs.iter().map(|d| d.id_text.clone()).collect::<Vec<_>>(),
+        &m.types
+            .iter()
+            .map(|t| t.id_text.clone())
+            .collect::<Vec<_>>(),
+        &changed,
+    )
+    .unwrap();
+    let cv = content_version_of(&auto_av_probe::cache::canonical_hir_function(m, bid));
+    let caps = caps_fingerprint(&[]);
+    let a = FnHirArtifact {
+        def_id: "d_main".into(),
+        content_version: cv.clone(),
+        span_digest: fn_hir_span_digest(original),
+        context_fingerprint: declaration_context_fingerprint(m),
+        caps_fp: caps.clone(),
+        intrinsics: vec![],
+        callee_table,
+        type_table,
+        body,
+    };
+    let dir = std::env::temp_dir().join(format!("p828-r3-moved-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    {
+        let st = open_store(&dir).unwrap();
+        put_enveloped(
+            &st,
+            &fn_hir_key(&m.id_text, "d_main", &cv, &caps),
+            "A07",
+            &EnvelopeIdentity::fn_hir_bound(&m.id_text, "d_main", &cv),
+            &encode_fn_hir(&a).unwrap(),
+            vec![],
+            Some("p828-r3"),
+        )
+        .unwrap();
+    }
+    drop(warmup_persisted(src, "d_main", &[], &dir, "p828-r3").unwrap());
+    let s = restore(src, "d_main", &[], &dir, "p828-r3").unwrap();
+    let (_, restored, _) = s.resident("main").unwrap();
+    let moved = restored
+        .exprs
+        .iter()
+        .find_map(|e| match &e.kind {
+            hir::ExprKind::Call { bindings, .. } => Some(bindings[0].moved),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(
+        s.counters().get("restore_hir_skip:canonical"),
+        1,
+        "the wrong-move artifact is rejected at the content gate"
+    );
+    assert_eq!(
+        s.counters().get("restore_hir_adopted"),
+        2,
+        "the clean rows adopt; the wrong-flag row is skipped"
+    );
+    assert!(!moved, "resident main keeps the cold source's moved=false");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// B1-C03 sibling control (collected from the R3 review's
+/// canonical-controls.rs): a CANCELLED candidate and a LATE (stale-base)
+/// commit never refresh or bypass the recorded dependency — the history
+/// entry's own snapshot still forces the re-verify on the next return.
+#[test]
+fn t03_r3_dependencies_cancel_and_late_do_not_refresh_history() {
+    use auto_av_probe::session::warmup;
+    let src = "fn helper() int { return 1 }\nfn main() int { return helper() + 1 }\nfn tail() int { return 9 }\n";
+    let mut s = warmup(src, "d_main", &[]).unwrap();
+    let hp = src.find("return 1").unwrap() as u64 + 7;
+    let mp = src.find("+ 1").unwrap() as u64 + 2;
+    s.query_body_fact("main", "helper").unwrap();
+    let prepared = s
+        .prepare_edit(mp, mp + 1, b"2".to_vec())
+        .unwrap()
+        .ok()
+        .unwrap();
+    let cancelled = s.cancel_prepared(prepared);
+    assert!(!cancelled.ok);
+    assert!(s.edit(hp, hp + 1, b"2".to_vec()).unwrap().ok);
+    assert!(s.edit(mp, mp + 1, b"1".to_vec()).unwrap().ok);
+    assert_eq!(s.counters().get("body_fact_invalidated:main"), 1);
+    s.query_body_fact("main", "helper").unwrap();
+    let late = s
+        .prepare_edit(mp, mp + 1, b"2".to_vec())
+        .unwrap()
+        .ok()
+        .unwrap();
+    assert!(s.edit(hp, hp + 1, b"3".to_vec()).unwrap().ok);
+    assert!(!s.commit(late).ok, "the stale-base candidate is refused");
+    assert!(s.edit(mp, mp + 1, b"1".to_vec()).unwrap().ok);
+    assert_eq!(s.counters().get("body_fact_invalidated:main"), 2);
+}

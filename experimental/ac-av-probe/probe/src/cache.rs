@@ -677,25 +677,26 @@ use auto_ac_prototype::hir;
 /// Deterministic canonical dump of one function's verified HIR content —
 /// the CONTENT-IDENTITY basis (history keys, store content versions).
 ///
-/// Field policy (B1-R2-01): every field that participates in HIR semantic
-/// equality (`hir` PartialEq — the same rule the verifier admits) is
-/// rendered; spans and cosmetic fields (`mutable_explicit`) are not.
-/// Locals render id/name/role/index/mutability/param-mode/type; places
-/// render id/kind/`local`/type/access; exprs and blocks render their ids;
-/// the body renders its id, owner (by the owner def's stable id TEXT —
-/// never a table slot) and entry block. Cross-table references resolve to
-/// stable content (names/shapes), so a dump is table-independent. The
-/// `can3` format tag re-keys every content version once: all store
-/// products (HIR artifacts, ABC units, sidecars) written under the
-/// pre-R2 dump are unreachable under their old keys — never silently
-/// reused or overwritten in place.
+/// Field policy (B1-R2-01/R3-01): every field that participates in HIR
+/// semantic equality (`hir` PartialEq — the same rule the verifier
+/// admits) is rendered; spans and cosmetic fields (`mutable_explicit`)
+/// are not. Locals render id/name/role/index/mutability/param-mode/type;
+/// places render id/kind/`local`/type/access; call bindings render
+/// param/arg/`moved`; binaries render their overflow policy; exprs and
+/// blocks render their ids; the body renders its id, owner (by the owner
+/// def's stable id TEXT — never a table slot) and entry block.
+/// Cross-table references resolve to stable content (names/shapes), so a
+/// dump is table-independent. The `can4` format tag re-keys every content
+/// version once: all store products (HIR artifacts, ABC units, sidecars)
+/// written under the pre-R3 dump are unreachable under their old keys —
+/// never silently reused or overwritten in place.
 pub fn canonical_hir_function(module: &hir::Module, body_id: hir::BodyId) -> Vec<u8> {
     let body = &module.bodies[body_id.0 as usize];
     let mut c = CanonBuf {
         out: Vec::with_capacity(1024),
     };
     // Format tag + body identity/entry (semantic equality fields).
-    c.w("can3[id ");
+    c.w("can4[id ");
     c.w(&body.id_text);
     c.w(" o");
     c.w(&module
@@ -765,9 +766,21 @@ pub fn canonical_hir_function(module: &hir::Module, body_id: hir::BodyId) -> Vec
                 c.w("k ");
                 c.w(&value.to_string());
             }
-            hir::ExprKind::Binary { op, lhs, rhs, .. } => {
+            hir::ExprKind::Binary {
+                op,
+                overflow,
+                lhs,
+                rhs,
+            } => {
                 c.w("b ");
                 c.w(op.as_str());
+                // Overflow policy is a semantic field — rendered even
+                // though Trap is currently its only variant, so a future
+                // variant cannot enter content identity through a gap.
+                c.w(" ");
+                c.w(match overflow {
+                    hir::OverflowPolicy::Trap => "trap",
+                });
                 c.w(" ");
                 c.w(&lhs.0.to_string());
                 c.w(" ");
@@ -819,6 +832,11 @@ pub fn canonical_hir_function(module: &hir::Module, body_id: hir::BodyId) -> Vec
                     c.w(&b.param.to_string());
                     c.w(":");
                     c.w(&b.arg.to_string());
+                    // The `.move` ownership marker is SEMANTIC (hir
+                    // PartialEq; B1-R3-01) — it enters content identity.
+                    if b.moved {
+                        c.w("!");
+                    }
                 }
             }
             other => {
