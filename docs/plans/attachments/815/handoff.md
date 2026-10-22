@@ -1,17 +1,21 @@
 # PLAN-815 I-TOOL / auto-ui-tool 交接文档
 
-> T-08 交付物（T-05 R7/T-06..08 提前 R2 修复后版）。对象：816 CLI 客户端（M816-B 消费 B
-> 能力）及后续消费者。本版与修复后实现（T-06/T-07 提前 R1 修复轮）逐项对账；
-> 送审冻结身份见下表。
+> T-08 定稿版（2026-10-22，T-07 子批3 R2 定向 pass 后）。对象：816 CLI 客户端
+> （M816-B 消费 B 能力）及后续消费者。本版与修复后实现逐项对账，身份表按
+> **实际冻结产物**刷新（review-t07-batch3-r1 §冻结注记裁定）；字段消费语义
+> 详对账见 [t07-acceptance/batch3/field-profile-matrix.md](t07-acceptance/batch3/field-profile-matrix.md)。
 
 ## 工具身份与冻结指纹
 
 | 项 | 值 |
 |---|---|
 | 工具名 | `auto-ui-tool` |
-| 源提交（冻结 SHA） | `e22fc7592`（branch `codex/plan-815-dev`，基线 M814-B `93a25c924` 之后；T-07 子批2 修复提交——历史指纹 `e351cb2a73a78f353457e56ea20cb82f61c1ac88` 的交付/dev 清单缺 canonical 双直依赖，见 [t07-acceptance/batch2.md](t07-acceptance/batch2.md)） |
-| 二进制（debug 构建）SHA256 | `e319c5364523dbfac0c61d61ecb087b11a8d0261cdfc767bd1dfacc1b4b803f2`（`target/debug/auto-ui-tool.exe`，由上述源提交构建；协议/wire/预算/能力面与 `f21db181…` 时代一致，改动=生成器发射的清单/壳层文本+vue 请求路径门） |
-| 二进制入口源 | `crates/auto-ui-tools/src/bin/auto_ui_tool.rs`（路径仅为导航；消费身份以上两行为准） |
+| 源提交（**生产冻结位**） | `e22fc75924a7f058a5df8150956b2d66268c5ecd`（branch `codex/plan-815-dev`，基线 M814-B `93a25c924` 之后）——生产 src 自此未变（子批3 两轮复审冻结核验：后续提交改动均在 `cfg(test)`/验收文档），协议/wire/预算/能力面以此为界 |
+| 源提交（验收终态） | `afd1a66bff2584879687d2016eefe2f8153eb726`（T-07 子批3 R1 修正轮=review-t07-batch3-r2 pass 对象）+ T-08 本定稿提交（docs 叠加，不触生产） |
+| **二进制（release 参考 artifact）SHA256** | `1626cec1087e8ba8dec4aede5f24e75ba12245e5b40c40705326ccbfab661696`（`target/release/auto-ui-tool.exe`，85,116,928 字节；源=生产冻结位 e22fc7592；`cargo build --release -p auto-ui-tools`；rustc 1.98.0 (88d9e12ae 2026-08-18)；`--version` 自证 `auto-ui-tool 0.1.0`） |
+| 二进制复现性披露（诚实边界） | 本工具链无 reproducible-builds 配置，**任何形态都不承诺逐字节复现**：debug 多轮实测互异（e319c536/3e1c500d/753b1d71/d2d0054c/6d8427f7/b040c820——复审多轮各构建各哈希）；上表 release SHA256 是带 provenance 的**参考产物指纹**，非"每次重建同字节"承诺。**确定性身份锚 = 冻结源 SHA + 792 delivery-manifest**（逐文件 blake3 + `producer.git_head` + `ui_gen_fingerprint`，`auto gen --delivery-root` 再生成可复验——driver V03e 再交付幂等在案） |
+| 交付形态 | 792 **源码包** workspace（members=app+26 受管源 crate+根级输入，[详表](t07-acceptance/batch3/resource-audit-closure.md)）；工具由包内 `cargo build --locked -p auto-ui-tools` 构建（driver V05a/V05b 实证 fresh/locked/重定位三形态）；消费身份不以源码路径冒充二进制身份，也不以某次构建哈希冒充源身份 |
+| 二进制入口源 | `crates/auto-ui-tools/src/bin/auto_ui_tool.rs`（路径仅为导航；消费身份以上述锚为准） |
 | 协议 crate | `crates/auto-tool-protocol`（纯数据，无 AST/VM/renderer） |
 | 协议版本 | `PROTOCOL_VERSION = 1` |
 | 交付闭包 | `DELIVERY_CRATES` 26 项（`rust_ui.rs` 常量） |
@@ -225,7 +229,11 @@ ServerEnvelope{id, body}
 - **after**：新 tool/协议/source/embed/producer 闭包（DELIVERY_CRATES 26）
   与适用失败矩阵（构建失败具名/产物 oracle/取消树终止/中断恢复按
   profile 精确）；消费交接以**冻结源 SHA+二进制 SHA256+支持指纹**为身份
-  （见本文首表），不以源码路径冒充二进制身份。
+  （见本文首表），不以源码路径冒充二进制身份。发行形态=792 源码包
+  workspace（工具由包内 locked 构建可复现建出）；**确定性身份锚=冻结源
+  SHA+delivery-manifest（逐文件 blake3）**，二进制 SHA256 为带 provenance
+  的参考产物指纹（release 形态）——无 reproducible-builds 配置，不以某次
+  构建哈希承诺逐字节复现，也不以互异的 debug 哈希充当身份。
 - 验收：AC-04。
 
 ### SD-07（modify）`docs/specs/auto-ui-runtime/project.md`
