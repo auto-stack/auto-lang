@@ -933,8 +933,8 @@ fn run_ark_project_inner(
     // Step 6: launch (bundle from the generated AppScope/app.json5 — the
     // generated output is the single source; ability defaults to the
     // scaffold's EntryAbility unless module.json5 names another).
-    let bundle = read_generated_bundle_name(&ark_dir);
-    let ability = read_generated_main_ability(&ark_dir);
+    let bundle = read_generated_bundle_name(&ark_dir)?;
+    let ability = read_generated_main_ability(&ark_dir)?;
     println!();
     println!("{}", "▶ Step 6: Launching app...".bright_cyan());
     let start = crate::proc_host::run_external_status(
@@ -960,42 +960,91 @@ fn run_ark_project_inner(
     Ok(())
 }
 
-/// The generated AppScope/app.json5 `bundleName` (single source = the
-/// generated output; defaults to a normalized project name shape).
-fn read_generated_bundle_name(ark_dir: &Path) -> String {
-    let path = ark_dir.join("AppScope").join("app.json5");
-    if let Ok(text) = fs::read_to_string(&path) {
-        for line in text.lines() {
-            let trimmed = line.trim();
-            if let Some(rest) = trimmed.strip_prefix("\"bundleName\":") {
-                let value = rest.trim().trim_matches('"').trim();
-                if !value.is_empty() {
-                    return value.to_string();
-                }
-            }
-        }
-    }
-    "com.example.arkapp".to_string()
+/// One `"key": "value",` line's string value with JSON5 punctuation
+/// handled by construction (PLAN-815 T-06 R2 / F-815-T06-R1-02：行尾逗号
+/// 与收尾引号必须剥净——`trim_matches('"')` 对 `"...",` 留下 `...",`）。
+fn json5_string_value(line: &str, key: &str) -> Option<String> {
+    let prefix = format!("\"{key}\":");
+    let rest = line.trim().strip_prefix(&prefix)?;
+    let rest = rest.trim().trim_end_matches(',').trim();
+    let rest = rest.strip_prefix('"')?.strip_suffix('"')?;
+    let value = rest.trim();
+    (!value.is_empty()).then(|| value.to_string())
 }
 
-/// The generated entry module's `mainElement` ability name (default
-/// EntryAbility — the scaffold's shape).
-fn read_generated_main_ability(ark_dir: &Path) -> String {
+/// The generated AppScope/app.json5 `bundleName` (single source = the
+/// generated output; missing/unparsable = NAMED failure — no default-ID
+/// guess may silently launch the wrong app).
+fn read_generated_bundle_name(ark_dir: &Path) -> AutoResult<String> {
+    let path = ark_dir.join("AppScope").join("app.json5");
+    let text = fs::read_to_string(&path).map_err(|e| {
+        format!(
+            "generated AppScope/app.json5 unreadable ({e}) — cannot determine the launch bundle"
+        )
+    })?;
+    for line in text.lines() {
+        if let Some(value) = json5_string_value(line, "bundleName") {
+            return Ok(value);
+        }
+    }
+    Err("generated AppScope/app.json5 carries no bundleName — cannot launch".into())
+}
+
+/// The generated entry module's `mainElement` ability name (missing/
+/// unparsable = named failure, same no-guess rule).
+fn read_generated_main_ability(ark_dir: &Path) -> AutoResult<String> {
     let path = ark_dir
         .join("entry")
         .join("src")
         .join("main")
         .join("module.json5");
-    if let Ok(text) = fs::read_to_string(&path) {
-        for line in text.lines() {
-            let trimmed = line.trim();
-            if let Some(rest) = trimmed.strip_prefix("\"mainElement\":") {
-                let value = rest.trim().trim_matches('"').trim();
-                if !value.is_empty() {
-                    return value.to_string();
-                }
-            }
+    let text = fs::read_to_string(&path).map_err(|e| {
+        format!(
+            "generated entry/src/main/module.json5 unreadable ({e}) — cannot determine the launch ability"
+        )
+    })?;
+    for line in text.lines() {
+        if let Some(value) = json5_string_value(line, "mainElement") {
+            return Ok(value);
         }
     }
-    "EntryAbility".to_string()
+    Err("generated module.json5 carries no mainElement — cannot launch".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::json5_string_value;
+
+    /// PLAN-815 T-06 R2（F-815-T06-R1-02）：生成器真实输出形状的 ID 解析
+    /// ——行尾逗号+收尾引号剥净；缺引号/空值/其他键不误取。
+    #[test]
+    fn json5_string_value_strips_trailing_comma_and_quotes() {
+        // The exact generated shapes.
+        assert_eq!(
+            json5_string_value("  \"bundleName\": \"com.example.t05probe\",", "bundleName"),
+            Some("com.example.t05probe".to_string())
+        );
+        assert_eq!(
+            json5_string_value("      \"mainElement\": \"EntryAbility\",", "mainElement"),
+            Some("EntryAbility".to_string())
+        );
+        // Last entry of an object (no trailing comma).
+        assert_eq!(
+            json5_string_value("\"bundleName\": \"x.y.z\"", "bundleName"),
+            Some("x.y.z".to_string())
+        );
+        // Not the key we asked for / non-string / empty → None (no guesses).
+        assert_eq!(
+            json5_string_value("\"versionCode\": 100,", "bundleName"),
+            None
+        );
+        assert_eq!(
+            json5_string_value("\"bundleName\": \"\",", "bundleName"),
+            None
+        );
+        assert_eq!(
+            json5_string_value("\"bundleName\": 42,", "bundleName"),
+            None
+        );
+    }
 }

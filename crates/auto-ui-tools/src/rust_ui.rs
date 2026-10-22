@@ -37,6 +37,15 @@ pub use auto_api_gen::api_gen::backend_generation_is_fresh;
 /// Generate Rust UI code from .at files in a project directory.
 ///
 /// Resolve the front/ source directory for a project.
+/// Front dir for a given source (PLAN-815 T-06 R2 / F-815-T06-R1-01):
+/// the request's declaration wins (node form > prop form); legacy and
+/// undeclared requests keep the multi-location probe chain.
+fn front_dir_for(project_dir: &Path, source: &PacSource) -> PathBuf {
+    source
+        .declared_front_dir(project_dir)
+        .unwrap_or_else(|| find_front_dir(project_dir))
+}
+
 fn find_front_dir(project_dir: &Path) -> PathBuf {
     if project_dir.join("src").join("front").exists() {
         project_dir.join("src").join("front")
@@ -51,7 +60,7 @@ fn find_front_dir(project_dir: &Path) -> PathBuf {
 
 /// Check if the generated Rust project needs to be regenerated.
 /// Returns (needs_full_regen, needs_code_regen).
-fn needs_regeneration(project_dir: &Path, rust_dir: &Path) -> (bool, bool) {
+fn needs_regeneration(project_dir: &Path, rust_dir: &Path, source: &PacSource) -> (bool, bool) {
     let cargo_toml = rust_dir.join("Cargo.toml");
     let main_rs = rust_dir.join("src").join("main.rs");
 
@@ -60,7 +69,7 @@ fn needs_regeneration(project_dir: &Path, rust_dir: &Path) -> (bool, bool) {
     }
 
     // Check if any .at source file is newer than main.rs
-    let front_dir = find_front_dir(project_dir);
+    let front_dir = front_dir_for(project_dir, source);
     if let Ok(at_files) = collect_at_files(&front_dir) {
         if let Ok(main_meta) = fs::metadata(&main_rs) {
             if let Ok(main_time) = main_meta.modified() {
@@ -420,7 +429,7 @@ fn scan_written_props(
 
 /// Regenerate only main.rs (skip Cargo.toml to preserve cargo cache).
 fn regenerate_code_only(project_dir: &Path, rust_dir: &Path, src_: &PacSource) -> AutoResult<()> {
-    let front_dir = find_front_dir(project_dir);
+    let front_dir = front_dir_for(project_dir, src_);
     // PLAN-681 T-05（F2 bps 依赖解析面）：widget 补集进编译集 + fn 模块
     // 内嵌（resolve_bps_dependencies 头注）。
     let (bps_widget_files, bps_fn_code) = {
@@ -644,7 +653,7 @@ pub(crate) fn compile_rust_ui_app(
     project_dir: &Path,
     src_: &PacSource,
 ) -> AutoResult<Option<CompiledRustUiApp>> {
-    let front_dir = find_front_dir(project_dir);
+    let front_dir = front_dir_for(project_dir, src_);
 
     if !front_dir.exists() {
         return Err(format!("Front directory not found: {}", front_dir.display()).into());
@@ -5089,7 +5098,7 @@ fn generate_rust_ui_delivery_inner(
     );
 
     let producer_root = delivery_producer_root()?;
-    let front_dir = find_front_dir(project_dir);
+    let front_dir = front_dir_for(project_dir, source);
     if !front_dir.exists() {
         return Err(format!("Front directory not found: {}", front_dir.display()).into());
     }
@@ -5684,7 +5693,7 @@ fn build_rust_ui_inner(project_dir: &Path, source: &PacSource) -> AutoResult<()>
     let ws_dir = resolve_rust_workspace_dir(project_dir);
     let member_name = front_member_name(project_dir);
     let rust_dir = ws_dir.join(&member_name);
-    let (full, code) = needs_regeneration(project_dir, &rust_dir);
+    let (full, code) = needs_regeneration(project_dir, &rust_dir, source);
 
     if full {
         println!("{}", "Generating Rust UI project...".bright_cyan());
@@ -5766,7 +5775,7 @@ fn run_rust_ui_inner(project_dir: &Path, args: Vec<String>, source: &PacSource) 
     let ws_dir = resolve_rust_workspace_dir(project_dir);
     let member_name = front_member_name(project_dir);
     let rust_dir = ws_dir.join(&member_name);
-    let (full, code) = needs_regeneration(project_dir, &rust_dir);
+    let (full, code) = needs_regeneration(project_dir, &rust_dir, source);
 
     if full {
         println!("{}", "Generating Rust UI project...".bright_cyan());
@@ -5826,7 +5835,8 @@ fn run_rust_ui_inner(project_dir: &Path, args: Vec<String>, source: &PacSource) 
         })
     };
 
-    let front_dir = project_dir.join("src").join("front");
+    // PLAN-815 T-06 R2：运行 CWD 消费请求声明的前端目录。
+    let front_dir = front_dir_for(project_dir, source);
     let original_dir = std::env::current_dir().ok();
     let _ = std::env::set_current_dir(&front_dir);
 

@@ -537,11 +537,18 @@ render: \"vue\"
         std::fs::write(dir.path().join("pac.at"), "name: \"diskx\"\npkg: \"bun\"\n").unwrap();
         std::env::set_current_dir(dir.path()).expect("chdir");
 
-        // legacy: the disk main pac.at IS the source (frozen behavior).
+        // Legacy (frozen behavior): the source is the disk chain. The
+        // VALUE is process-cached (OnceLock) once ANY test resolved
+        // legacy — in-process we assert source + cache stability; the
+        // disk-READ proof runs in a FRESH child process at the end
+        // (PLAN-815 T-05 R7 / F-815-T05-R7-01: the old value-pinned
+        // assert was order-dependent under the module test run).
+        let legacy_baseline = resolve_with_source();
+        assert_eq!(legacy_baseline.1, PmSource::DiskLegacy);
         assert_eq!(
             resolve_with_source(),
-            (PkgManagerKind::Bun, PmSource::DiskLegacy),
-            "legacy reads disk pac"
+            legacy_baseline,
+            "legacy resolution is frozen per process (cached)"
         );
 
         // tool + request declares pnpm: the request is the source and its
@@ -587,13 +594,56 @@ render: \"vue\"
             std::fs::write(dir.path().join("pac.at"), "name: \"diskx\"\npkg: \"bun\"\n").unwrap();
         }
 
-        // guard dropped: legacy state restored (serial next request sees
-        // the frozen chain again — the disk source).
+        // guard dropped: legacy state restored — source back to the disk
+        // chain (value: the process-cached legacy baseline).
         assert_eq!(
             resolve_with_source(),
-            (PkgManagerKind::Bun, PmSource::DiskLegacy),
+            legacy_baseline,
             "guard drop must restore the legacy (disk) resolution state"
         );
+
+        // FRESH-PROCESS disk-read proof: a child test binary with cwd =
+        // the disk pac dir resolves legacy from the disk (no prior cache
+        // exists there) — deterministic on every machine and order
+        // (PLAN-815 T-05 R7 / F-815-T05-R7-01).
+        let disk = tempfile::tempdir().expect("disk dir");
+        std::fs::write(
+            disk.path().join("pac.at"),
+            "name: \"diskfresh\"
+pkg: \"bun\"
+",
+        )
+        .unwrap();
+        let out = std::process::Command::new(std::env::current_exe().expect("test exe"))
+            .args([
+                "pkg::tests::pkg_legacy_disk_probe".to_string(),
+                "--exact".to_string(),
+                "--nocapture".to_string(),
+            ])
+            .current_dir(disk.path())
+            .env("PLAN815_LEGACY_DISK_PROBE", "1")
+            .output()
+            .expect("spawn probe");
+        let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+        assert!(
+            stdout.contains("LEGACY_DISK_PROBE_OK(Bun, DiskLegacy)"),
+            "fresh-process legacy disk read: rc={} stdout={stdout} stderr={}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    /// Fresh-process legacy disk-read probe: the parent spawns this single
+    /// test with cwd = a disk pac dir; the child process has NO prior
+    /// CACHED_PM, so the legacy chain genuinely reads the disk.
+    #[test]
+    fn pkg_legacy_disk_probe() {
+        if std::env::var_os("PLAN815_LEGACY_DISK_PROBE").is_none() {
+            return; // plain module run: no-op (only the child proves it)
+        }
+        let resolved = resolve_with_source();
+        println!("LEGACY_DISK_PROBE_OK({:?}, {:?})", resolved.0, resolved.1);
+        assert_eq!(resolved, (PkgManagerKind::Bun, PmSource::DiskLegacy));
     }
 
     /// The auto-detect chain's own oracle under a deterministic stubbed
@@ -647,6 +697,7 @@ render: \"vue\"
 
     #[test]
     fn test_resolve_is_cached() {
+        let _guard = PM_STATE_LOCK.lock().unwrap();
         let a = resolve();
         let b = resolve();
         assert_eq!(a, b);
@@ -654,6 +705,7 @@ render: \"vue\"
 
     #[test]
     fn test_command_names_are_consistent() {
+        let _guard = PM_STATE_LOCK.lock().unwrap();
         let pm = resolve();
         match pm {
             PkgManagerKind::Bun => {

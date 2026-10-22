@@ -25,6 +25,9 @@ const BIN: &str = env!("CARGO_BIN_EXE_auto-ui-tool");
 /// Bounded wait for any control-stream answer (the tool answers framed
 /// requests in well under a second; 30s covers cold generation).
 const ANSWER_BOUND: Duration = Duration::from_secs(30);
+/// Bounded wait for the child's exit after EOF-close (T-06..08 R2:
+/// close/清理路径同样有界).
+const CLOSE_BOUND: Duration = Duration::from_secs(10);
 
 struct Tool {
     child: Child,
@@ -157,21 +160,49 @@ impl Tool {
         lines[n.saturating_sub(12)..].join(" | ")
     }
 
+    /// Close stdin and wait for the exit, BOUNDED (PLAN-815 T-06..08 R2 /
+    /// F-815-T07-R1-02：close 路径不再无界 Child::wait——EOF 后不退出的
+    /// 被测对象由辅助器自身收口并携带诊断，不依赖外部强杀）。
     fn close_and_wait(mut self) -> i32 {
         drop(self.child.stdin.take());
-        // Drain the remainder with a bound (the reader threads end at EOF).
-        let status = self.child.wait().expect("wait");
-        std::thread::sleep(Duration::from_millis(50));
-        status.code().unwrap_or(-1)
+        let deadline = Instant::now() + CLOSE_BOUND;
+        loop {
+            match self.child.try_wait().expect("try_wait") {
+                Some(status) => {
+                    // Give the drain threads a moment to finish.
+                    std::thread::sleep(Duration::from_millis(50));
+                    return status.code().unwrap_or(-1);
+                }
+                None => {
+                    if Instant::now() > deadline {
+                        let tail = self.stderr_tail();
+                        let _ = self.child.kill();
+                        let _ = self.child.wait();
+                        panic!(
+                            "tool did not exit within {CLOSE_BOUND:?} after EOF; stderr tail: {tail}"
+                        );
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+            }
+        }
     }
 }
 
 impl Drop for Tool {
     fn drop(&mut self) {
         // Reliable cleanup for the owned child on ANY exit path (assert
-        // failure included).
+        // failure included), with a bounded post-kill reap — the cleanup
+        // path itself never blocks forever either.
         let _ = self.child.kill();
-        let _ = self.child.wait();
+        let deadline = Instant::now() + CLOSE_BOUND;
+        while self.child.try_wait().map(|s| s.is_none()).unwrap_or(false) {
+            if Instant::now() > deadline {
+                eprintln!("lifecycle Tool Drop: child did not reap within {CLOSE_BOUND:?}");
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 }
 
@@ -382,8 +413,11 @@ fn lifecycle_build_produces_dist() {
         html.contains("<script") || html.contains("<div id"),
         "index.html is a real entry document: {html}"
     );
-    // Content oracle: dist carries real bundles AND the entry document
-    // references them (any assets/ reference whose file exists on disk).
+    // Content oracle (PLAN-815 T-06..08 R2 / F-815-T07-R1-01 强化):
+    // success = real bundles on disk AND the entry document REALLY
+    // references them — EVERY assets/ reference must resolve to an
+    // existing file and at least one must exist. A broken reference or a
+    // reference-free entry FAILS the success oracle (no `||` fallback).
     let assets_dir = dist.join("assets");
     let mut bundles = 0u32;
     if let Ok(entries) = std::fs::read_dir(&assets_dir) {
@@ -399,22 +433,28 @@ fn lifecycle_build_produces_dist() {
         "dist/assets carries real JS bundles: {}",
         tool.stderr_tail()
     );
-    let mut referenced = 0u32;
-    for token in html.split(['"', '\'']) {
+    let mut references = 0u32;
+    for token in html.split(['"', '\'', '(', ')', ' ']) {
         let Some(pos) = token.find("assets/") else {
             continue;
         };
-        let name = token[pos..]
+        let name = token[pos + "assets/".len()..]
             .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
+            .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '/'))
             .collect::<String>();
-        if !name.is_empty() && assets_dir.join(&name).is_file() {
-            referenced += 1;
+        if name.is_empty() {
+            // A bare "assets/" dir reference carries no file claim.
+            continue;
         }
+        assert!(
+            assets_dir.join(&name).is_file(),
+            "entry references a MISSING dist asset: {name} (broken build output): {html}"
+        );
+        references += 1;
     }
     assert!(
-        referenced > 0 || (html.contains("<div id") && bundles > 0),
-        "index.html references the dist bundles: {html}"
+        references > 0,
+        "entry document references at least one real dist bundle: {html}"
     );
 
     let code = tool.close_and_wait();
