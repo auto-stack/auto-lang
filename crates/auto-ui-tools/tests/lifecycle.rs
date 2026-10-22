@@ -434,6 +434,7 @@ fn lifecycle_build_produces_dist() {
         tool.stderr_tail()
     );
     let mut references = 0u32;
+    let mut js_references = 0u32;
     for token in html.split(['"', '\'', '(', ')', ' ']) {
         let Some(pos) = token.find("assets/") else {
             continue;
@@ -451,10 +452,21 @@ fn lifecycle_build_produces_dist() {
             "entry references a MISSING dist asset: {name} (broken build output): {html}"
         );
         references += 1;
+        if name.ends_with(".js") {
+            js_references += 1;
+        }
     }
     assert!(
         references > 0,
         "entry document references at least one real dist bundle: {html}"
+    );
+    // The entry must actually LOAD the application JS — a CSS-only entry
+    // (or any no-JS-load shape) is not a consumable bundle success
+    // (PLAN-815 T-05 R8 / F-815-T07-R1-01: "some .js exists in the dir" +
+    // "some asset referenced" were two unlinked checks).
+    assert!(
+        js_references > 0,
+        "entry document loads the application JS (a .js asset reference): {html}"
     );
 
     let code = tool.close_and_wait();
