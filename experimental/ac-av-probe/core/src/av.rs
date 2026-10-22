@@ -163,7 +163,12 @@ fn map_span(prog: &crate::program_snapshot::ProgramSnapshot, out: ExecOutcome) -
         span: Some(sp),
     } = out
     {
-        let (start, end) = match prog.span_maps().get(sp.func as usize) {
+        // B2-C03: the payload span's `func` is the PRODUCING module's
+        // index — the map to apply is the one owned by the code slot that
+        // HOLDS that payload, not the raw number (code sets can be
+        // reordered relative to the payload layout).
+        let map_slot = prog.slot_of_payload_func(sp.func).unwrap_or(sp.func) as usize;
+        let (start, end) = match prog.span_maps().get(map_slot) {
             Some(segs) => {
                 let (s, e) = segs.map_span(sp.start as u64, sp.end as u64);
                 (s as u32, e as u32)
@@ -190,6 +195,15 @@ pub struct PausedRun {
     prog: std::sync::Arc<crate::program_snapshot::ProgramSnapshot>,
     limits: ExecLimits,
     state: LoopState,
+}
+
+impl PausedRun {
+    /// Cumulative guest instruction steps executed so far across all
+    /// segments of this chain (B2-C04 observability: a zero-budget
+    /// resume must not move it).
+    pub fn step_count(&self) -> u64 {
+        self.state.steps
+    }
 }
 
 /// Result of a possibly-paused program execution.
@@ -338,6 +352,10 @@ fn dispatch<V: ModuleView>(
     budget: Option<u64>,
 ) -> Option<ExecOutcome> {
     let started = Instant::now();
+    // B2-C04: the step budget is PER SEGMENT (this dispatch call's own
+    // budget — `resume(.., Some(n))` grants n MORE steps); the cumulative
+    // hard fuel (`limits.max_steps`) below still spans the whole chain.
+    let seg_start = st.steps;
     let entry_slot = v.entry();
     if st.frames.is_empty() {
         let entry_fn = match v.fn_at(entry_slot) {
@@ -424,7 +442,7 @@ fn dispatch<V: ModuleView>(
 
     loop {
         if let Some(budget) = budget {
-            if st.steps >= budget {
+            if st.steps - seg_start >= budget {
                 return None;
             }
         }

@@ -817,7 +817,17 @@ pub fn restore(
         if std::str::from_utf8(&mint_text).is_err() {
             return cold();
         }
-        let unit_owner = decoded.module.owner.clone();
+        // B2-C01 owner fidelity: the ABC wire never carries owner
+        // authority (`verify_abc` re-stamps the CALLER's scope) — restore
+        // stamps the SESSION's owner context (the live compile's module
+        // id under the MIR schema), exactly like the fresh lower path, so
+        // restored and freshly minted units share one owner scope and the
+        // checked link's owner gate compares a uniform, meaningful
+        // context instead of the decode placeholder.
+        let unit_owner = auto_av_core::mir::OwnerScope {
+            schema: auto_av_core::contract::MIR_SCHEMA.to_string(),
+            module: owner.clone(),
+        };
         let loaded = match verify_abc(decoded, &unit_owner) {
             Ok(l) => l,
             Err(_) => return cold(),
@@ -2248,4 +2258,101 @@ fn fnv64(bytes: &[u8]) -> u64 {
         h = h.wrapping_mul(0x100000001b3);
     }
     h
+}
+
+/// PLAN-828 batch-2 component control (collected from the review's
+/// session-consumer projection): a REAL `commit` link failure preserves
+/// every installed-state axis (root, source, revision, env generation,
+/// full records image incl. history/deps/origin/maps/canonicals/mints,
+/// and the old trap) and a previously prepared GOOD candidate still
+/// commits afterwards. In-component `#[cfg(test)]` replaces the review's
+/// include assembly; the consumer under test is the production commit.
+#[cfg(test)]
+mod batch2_commit_link_failure {
+    use super::*;
+
+    fn image(s: &FunctionIncrementalSession) -> String {
+        format!(
+            "{:?}",
+            s.fns
+                .iter()
+                .map(|r| {
+                    (
+                        &r.name,
+                        r.origin,
+                        r.mint_origin,
+                        &r.span_map,
+                        &r.canonical,
+                        r.history
+                            .iter()
+                            .map(|(cv, v)| (cv, v.2, &v.3, &v.4, &v.5))
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        )
+    }
+
+    #[test]
+    fn component_link_failure_keeps_all_installed_state_then_accepts_good_candidate() {
+        let src = "fn helper() int { return 1 }\nfn main() int { var x = helper(); return 1 / 0 }\nfn tail() int { return 9 }\n";
+        let mut s = warmup(src, "d_main", &[]).unwrap();
+        let old_root = s.current();
+        let old_image = image(&s);
+        let old_gen = s.env_core.generation();
+        let original = s.run(&ExecLimits::default(), &CancelFlag::new(false)).0;
+        let at = src.find("return 1").unwrap() as u64 + 7;
+        let good = s
+            .prepare_edit(at, at + 1, b"3".to_vec())
+            .unwrap()
+            .ok()
+            .unwrap();
+        let mut bad = s
+            .prepare_edit(at, at + 1, b"222".to_vec())
+            .unwrap()
+            .ok()
+            .unwrap();
+        // The permitted component-level fault injection: swap the
+        // candidate's code for a REAL admitted unit whose actually-called
+        // import does not resolve (`fn:missing_target`) — the production
+        // commit's link then fails after the T-06 read-only phase.
+        let mut m = bad.code.unit().module().clone();
+        let imp = m
+            .imports
+            .iter_mut()
+            .find(|i| i.symbol == "fn:d_main")
+            .unwrap();
+        imp.symbol = "fn:missing_target".into();
+        let loaded = verify_abc(
+            decode_abc(&encode_abc(&m).unwrap().to_flat()).unwrap(),
+            &m.owner,
+        )
+        .unwrap();
+        bad.code = Arc::new(FunctionCode::admit_unit(loaded, 1).unwrap());
+        let rejected = s.commit(bad);
+        assert!(!rejected.ok);
+        assert!(rejected
+            .non_fast_path_reason
+            .as_ref()
+            .unwrap()
+            .contains("link failure"));
+        assert_eq!(s.revision(), 0);
+        assert_eq!(s.src(), src);
+        assert_eq!(s.env_core.generation(), old_gen);
+        assert!(Arc::ptr_eq(&old_root, &s.current()));
+        assert_eq!(image(&s), old_image);
+        assert_eq!(
+            format!(
+                "{:?}",
+                s.run(&ExecLimits::default(), &CancelFlag::new(false)).0
+            ),
+            format!("{original:?}")
+        );
+        assert!(
+            s.commit(good).ok,
+            "a real failed link must not stale a previously prepared good candidate"
+        );
+        assert_eq!(s.revision(), 1);
+        assert_eq!(s.env_core.generation(), old_gen + 1);
+    }
 }

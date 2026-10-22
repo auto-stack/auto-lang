@@ -45,6 +45,13 @@ pub struct ProgramSnapshot {
     /// Executor span-bearing outcomes map through this immutable
     /// snapshot-owned view (F-828-R1-04/R3a).
     span_maps: Vec<crate::span_map::SpanSegments>,
+    /// B2-C03 source projection: PAYLOAD func index (the producing
+    /// module's slot an original span carries — immutable in the shared
+    /// unit payload) → THIS snapshot's execution code slot. Span-bearing
+    /// outcomes map through the span map of the code object that OWNS the
+    /// payload, so reordering the code set never crosses two functions'
+    /// source maps. Empty on a vacant root.
+    func_slots: std::collections::BTreeMap<u32, u32>,
 }
 
 impl ProgramSnapshot {
@@ -85,8 +92,26 @@ impl ProgramSnapshot {
         // (unit sig mapped into the scratch space, unit function name)
         let mut sigs: Vec<(u32, String)> = Vec::with_capacity(code.len());
         let mut ty_maps: Vec<Vec<u32>> = Vec::with_capacity(code.len());
+        // B2-C01 owner context: a snapshot is ONE module's program — every
+        // unit's admission owner (schema + module id) must be the SAME
+        // owner. A unit verified for another owner — however matching its
+        // name and signature — is a foreign callee and is refused here,
+        // before any dispatch could run it.
+        let mut snapshot_owner: Option<(String, String)> = None;
         for c in &code {
             let u = c.unit().module();
+            let owner = (u.owner.schema.clone(), u.owner.module.clone());
+            match &snapshot_owner {
+                None => snapshot_owner = Some(owner),
+                Some(expected) => {
+                    if &owner != expected {
+                        return Err(format!(
+                            "owner mismatch for code `{}`: unit owner `{}::{}` != snapshot owner `{}::{}` (foreign unit refused)",
+                            c.name(), owner.1, owner.0, expected.1, expected.0
+                        ));
+                    }
+                }
+            }
             if u.funcs.len() != 1 {
                 return Err(format!(
                     "code `{}` does not hold exactly one function",
@@ -144,6 +169,48 @@ impl ProgramSnapshot {
             }
             bindings.push(slot_binds);
         }
+        // B2-C02 call closure: an import that a unit's instructions
+        // ACTUALLY CALL must carry a link-time binding BEFORE the
+        // snapshot becomes executable. Import METADATA that is never
+        // called may stay unbound (a dispatch-time admission violation,
+        // as before) — but a called-but-unbound import used to surface
+        // only at the Call itself, AFTER earlier guest instructions had
+        // already produced side effects. The real frontend lowers test
+        // marks to Trace instructions, so a Call on an unbound import is
+        // a foreign payload shape; refuse it at the checked link.
+        for (si, c) in code.iter().enumerate() {
+            let u = c.unit().module();
+            for b in u.funcs[0].blocks.iter() {
+                for instr in b.instrs.iter() {
+                    if let crate::mir::MirInstr::Call { callee, .. } = instr {
+                        if let CalleeRef::Import(ix) = callee {
+                            let bound = bindings[si].get(*ix as usize).and_then(|b| *b);
+                            if bound.is_none() {
+                                return Err(format!(
+                                    "code `{}` calls import #{} (`{}`), which has no link-time binding — the call closure is unresolvable",
+                                    c.name(),
+                                    ix,
+                                    u.imports
+                                        .get(*ix as usize)
+                                        .map(|i| i.symbol.as_str())
+                                        .unwrap_or("?")
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // B2-C03 source projection: payload func index → execution slot,
+        // derived from each unit's OWN span table (the payload's spans
+        // carry their producing module's func index; two units can never
+        // share one).
+        let mut func_slots = std::collections::BTreeMap::new();
+        for (si, c) in code.iter().enumerate() {
+            for (_, sp) in c.unit().module().funcs[0].spans.iter() {
+                func_slots.insert(sp.func, si as u32);
+            }
+        }
         let entry_slot = code
             .iter()
             .position(|c| c.name() == entry)
@@ -156,6 +223,7 @@ impl ProgramSnapshot {
             code,
             bindings,
             span_maps,
+            func_slots,
         })
     }
 
@@ -172,12 +240,20 @@ impl ProgramSnapshot {
             code: Vec::new(),
             bindings: Vec::new(),
             span_maps: Vec::new(),
+            func_slots: std::collections::BTreeMap::new(),
         }
     }
 
     /// The per-slot source maps this snapshot maps through.
     pub fn span_maps(&self) -> &[crate::span_map::SpanSegments] {
         &self.span_maps
+    }
+
+    /// B2-C03: the EXECUTION slot whose code owns the payload func index
+    /// an original span carries. `None` on a vacant root or an unknown
+    /// payload index (the caller keeps the raw coordinates).
+    pub fn slot_of_payload_func(&self, func: u32) -> Option<u32> {
+        self.func_slots.get(&func).copied()
     }
 
     /// PLAN-828 D-02/T-05: the UNIT dispatch view over this snapshot's
