@@ -4007,10 +4007,30 @@
       "frozen:ddbde3e62857",
       "ledger:offline-projection"
      ]
-    }
-   ,
-{"id": "OS050-MERGE", "title": "PLAN-050 目录迁移合入记录", "content": "已线性合入 AutoOS 和 AutoUI 主线。24 个目录完成实际迁移，24 gitlink 原 pin 保持；Explorer 43 文件及 detached 状态保留。逐项复核与归档收尾状态见合入收据；归档计划 docs/plans/archive/050-app-directory-product-names.md。", "status": "verified", "depends_on": [], "related": [], "priority": null, "assignee": null, "test_file": null, "file": "../auto-os/docs/plans/attachments/050/merge-receipt.json", "milestone": null, "module": null, "tags": ["PLAN-050:r4", "source_commit:ce055a5194649ad7c6251dbc46d0666bde08cfb6", "archive:docs/plans/archive/050-app-directory-product-names.md", "source_sha256:3ae4e469cd028746a96711d22ecd0800047dcd81ae656cf0e6b5d319827eb371"], "created_at": 1792644036, "modified_at": 1792644036, "completed_at": 1792644036}
-,
+    },
+    {
+     "id": "OS050-MERGE",
+     "title": "PLAN-050 目录迁移合入记录",
+     "content": "已线性合入 AutoOS 和 AutoUI 主线。24 个目录完成实际迁移，24 gitlink 原 pin 保持；Explorer 43 文件及 detached 状态保留。逐项复核与归档收尾状态见合入收据；归档计划 docs/plans/archive/050-app-directory-product-names.md。",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "../auto-os/docs/plans/attachments/050/merge-receipt.json",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-050:r4",
+      "source_commit:ce055a5194649ad7c6251dbc46d0666bde08cfb6",
+      "archive:docs/plans/archive/050-app-directory-product-names.md",
+      "source_sha256:3ae4e469cd028746a96711d22ecd0800047dcd81ae656cf0e6b5d319827eb371"
+     ],
+     "created_at": 1792644036,
+     "modified_at": 1792644036,
+     "completed_at": 1792644036
+    },
     {
      "id": "P830-MERGE",
      "title": "PLAN-830 merge 沉淀与归档收据",
@@ -4030,56 +4050,83 @@
       "branch:autographics-dev@764e87559"
      ]
     },
-{
- "id": "P815-B-REL",
- "title": "M815-B 最终发布收据（PLAN-815 整 Plan 交付）",
- "content": "delivery 33c9451fbe667dde2412d71036a19ac334b03691（master ff-only，rebase range-diff 全等价；生产冻结位 885aebbd0/0f2858e35，release 参考 artifact a73b117ff384…85,116,928B）；SD-01..07 已落 canonical（A 子集事实保留）；冻结门全绿（裸 t 5331/5331+tu 868+包门 195+tools 183/185 归因+fixtures 双门+777 strict）；M815-A/L 阶段收据在案（ledger v57/v59）。816 可消费完整 I-TOOL v1 五操作+auto-ui-tool；预存债归因：plan734/plan593（非阻断排版金样）、merged_api（P751-D2 在案）。Plan 归档；批量回归档（815%5=0）由 regress 收口。",
- "status": "verified",
- "file": "docs/plans/attachments/815/handoff.md",
- "tags": [
-  "PLAN-815",
-  "stage:M815-B",
-  "delivery:33c9451fbe667dde2412d71036a19ac334b03691",
-  "receipt:release",
-  "guarded-offline-projection",
-  "source-sha256:5a7d249213c1b3d101f41826048502c775e0f326fb5d9b1e87766104c48267b2"
- ],
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "milestone": "M815-B",
- "module": "auto-ui-tools",
- "created_at": 1792668085,
- "modified_at": 1792668085,
- "completed_at": 1792668085
-},
-{
- "id": "P833-MERGE",
- "title": "PLAN-833 delivered consolidation",
- "content": "Source fast-forward to autographics-dev; master docs/specs/ledger only; full T-10 gate evidence and cleanup receipts in archived Plan.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/plans/archive/833-autographics-auto-source-minimal-loop.md",
- "milestone": null,
- "module": null,
- "tags": [
-  "PLAN-833",
-  "r2",
-  "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
-  "source-sha256:820a631e5c7c089a473246dacd6b8c3606313be6e6414c8176b2eee2cd45c14e",
-  "source-path:docs/specs/auto-graphics/auto-source-driver.md"
- ],
- "created_at": 1792685069,
- "modified_at": 1792685069,
- "completed_at": 1792685069
-}
-],
+    {
+     "id": "P815-B-REL",
+     "title": "M815-B 最终发布收据（PLAN-815 整 Plan 交付）",
+     "content": "delivery 33c9451fbe667dde2412d71036a19ac334b03691（master ff-only，rebase range-diff 全等价；生产冻结位 885aebbd0/0f2858e35，release 参考 artifact a73b117ff384…85,116,928B）；SD-01..07 已落 canonical（A 子集事实保留）；冻结门全绿（裸 t 5331/5331+tu 868+包门 195+tools 183/185 归因+fixtures 双门+777 strict）；M815-A/L 阶段收据在案（ledger v57/v59）。816 可消费完整 I-TOOL v1 五操作+auto-ui-tool；预存债归因：plan734/plan593（非阻断排版金样）、merged_api（P751-D2 在案）。Plan 归档；批量回归档（815%5=0）由 regress 收口。",
+     "status": "verified",
+     "file": "docs/plans/attachments/815/handoff.md",
+     "tags": [
+      "PLAN-815",
+      "stage:M815-B",
+      "delivery:33c9451fbe667dde2412d71036a19ac334b03691",
+      "receipt:release",
+      "guarded-offline-projection",
+      "source-sha256:5a7d249213c1b3d101f41826048502c775e0f326fb5d9b1e87766104c48267b2"
+     ],
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": "M815-B",
+     "module": "auto-ui-tools",
+     "created_at": 1792668085,
+     "modified_at": 1792668085,
+     "completed_at": 1792668085
+    },
+    {
+     "id": "P833-MERGE",
+     "title": "PLAN-833 delivered consolidation",
+     "content": "Source fast-forward to autographics-dev; master docs/specs/ledger only; full T-10 gate evidence and cleanup receipts in archived Plan.",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/plans/archive/833-autographics-auto-source-minimal-loop.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-833",
+      "r2",
+      "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
+      "source-sha256:820a631e5c7c089a473246dacd6b8c3606313be6e6414c8176b2eee2cd45c14e",
+      "source-path:docs/specs/auto-graphics/auto-source-driver.md"
+     ],
+     "created_at": 1792685069,
+     "modified_at": 1792685069,
+     "completed_at": 1792685069
+    },
+    {
+     "id": "P828-MERGE",
+     "title": "PLAN-828:r3 交付收据（源码到AV安装全链路函数级增量）",
+     "content": "T-01..T-11=11/11 交付：函数级增量全链路（受检环境前端/单函数 MIR-ABC/事务安装/512-GC-存储轴/正式双门战役）落 master；canonical=auto-ac/function-incremental-source.md+auto-mir/function-incremental.md+auto-av/resident-function-install.md（SD-01..06）；merge 门禁：裸 t 5331/5331+tv 163/163+probe 消费面全绿（rebased 交付态 adeea2043）；实验探针工作区代码，无生产二进制消费面。",
+     "file": "docs/plans/archive/828-av-function-incremental-session.md",
+     "related": [
+      "PLAN-828",
+      "GOAL-002"
+     ],
+     "status": "verified",
+     "depends_on": [],
+     "tags": [
+      "PLAN-828:r3",
+      "reviewed_commit:5e8e550fa(rebased:a3bf5def6)",
+      "final-pass:T10-R2",
+      "guarded-offline-projection",
+      "delivery:adeea2043"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": null,
+     "module": null,
+     "created_at": 1792686169,
+     "modified_at": 1792686169,
+     "completed_at": 1792686169
+    }
+   ],
    "section_type": "Reports",
    "title": "📊 Reports",
    "status": "empty",
@@ -12706,7 +12753,7 @@
     {
      "id": "P743-2",
      "title": "公共HIR阶段与Checked/pass边界",
-     "content": "S0仅auto.source.core-i32.draft接入；生成Atom/来源表→bind→全Bundle来源投影→verify→Checked。HIR三重身份/Schema/运算面/pass状态不扩面；阶段与效果/trap合同见canonical。",
+     "content": "S0仅auto.source.core-i32.draft接入；生成Atom/来源表→bind→全Bundle来源投影→verify→Checked。HIR三重身份/Schema/运算面/pass状态不扩面；阶段与效果/trap合同见canonical。\nPLAN-828 增设函数级私有凭证通道（verify_function 单 def 凭证/check_module 缺 body 拒绝/A07 五门恢复重验，凭证不落盘）——S1–S4 完整模块入口保持。",
      "file": "docs/specs/auto-hir/stage-contract.md",
      "related": [
       "P745-3"
@@ -12720,10 +12767,11 @@
      "module": null,
      "tags": [
       "plan-745",
-      "derived-reference"
+      "derived-reference",
+      "PLAN-828:r3"
      ],
      "created_at": 1791072000,
-     "modified_at": 1791452507,
+     "modified_at": 1792686169,
      "completed_at": 1791452507
     },
     {
@@ -12813,14 +12861,15 @@
      "tags": [
       "plan-773",
       "derived-reference",
-      "commit-39e2ecafd"
+      "commit-39e2ecafd",
+      "PLAN-828:r3"
      ],
      "id": "P773-2",
      "title": "TestCase 裁判来源、依赖方向与类型化阶段通道",
-     "content": "vendored autodown-test-parser 三文件快照（指纹守卫+报告 toolchain 指纹）；树↔raw fence 双向校验、载荷永远取原始 bytes；依赖单向 auto-lang→auto-test-case（核心零 GUI 依赖，tree 仅 vendor）；VM 侧 run_with_capture_and_path_staged 类型化 trap 通道（engine 陷阱点 VMError 变体名中继，旧 API 原样）+单文件 a2r 发射 parse/CTEE 错误保持类型化；MultipleErrors 全递归；I/O/panic/超时=Infrastructure ERROR 永不满足语言负例（F-773-R2-01：project 模式入口仍无名 Msg=已知 fail-safe 债）。双轨边界（emit≠compile）沉淀 docs/specs/auto-lang/trans/design/test-convention.md 双轨节 + vm/overview pilot 行。",
+     "content": "vendored autodown-test-parser 三文件快照（指纹守卫+报告 toolchain 指纹）；树↔raw fence 双向校验、载荷永远取原始 bytes；依赖单向 auto-lang→auto-test-case（核心零 GUI 依赖，tree 仅 vendor）；VM 侧 run_with_capture_and_path_staged 类型化 trap 通道（engine 陷阱点 VMError 变体名中继，旧 API 原样）+单文件 a2r 发射 parse/CTEE 错误保持类型化；MultipleErrors 全递归；I/O/panic/超时=Infrastructure ERROR 永不满足语言负例（F-773-R2-01：project 模式入口仍无名 Msg=已知 fail-safe 债）。双轨边界（emit≠compile）沉淀 docs/specs/auto-lang/trans/design/test-convention.md 双轨节 + vm/overview pilot 行。\nPLAN-828 正式持续会话入口（session-serve worker+父侧 judge 全校验终点测量窗/修订-目标-目录-身份-驻留-序配对门/write_evidence 先落盘后断言）；one-shot recipe 保留。",
      "file": "docs/specs/auto-test-case/architecture.md",
      "created_at": 1791936000,
-     "modified_at": 1791936000,
+     "modified_at": 1792686169,
      "completed_at": null
     },
     {
@@ -13627,12 +13676,13 @@
     {
      "id": "P787-D3",
      "title": "auto-syntax snapshot & CST 合同（坐标/词法/无损树/增量/恢复）",
-     "content": "16KiB 内容寻址快照页+Rc 保活；UTF-8 边界/UTF-16 floor/CRLF 行内策略/分页行索引（跨页续行回溯）。CST=不可变共享内容块+长度目录+根孩子目录（块内边局部下标、块跨树 Rc 共享、封块即 shrink_to_fit）；声明单元相对跨度；无损逐字节重建断言；全路径迭代无爆栈、无固定深度上限。零宽坐标合同：epsilon 放已消费 token 终点（与伪造 start=0 占位可区分）。checkpoint=scanner 实际状态（mid token 含原始起始行；终态按末 token 拼写重放）；增量=嫁接共享采纳（1MiB 中部编辑节点复用≥99.99%/真实读取≤48KiB）+200 轮 fresh 等价；迟到/取消会话域仲裁。",
+     "content": "16KiB 内容寻址快照页+Rc 保活；UTF-8 边界/UTF-16 floor/CRLF 行内策略/分页行索引（跨页续行回溯）。CST=不可变共享内容块+长度目录+根孩子目录（块内边局部下标、块跨树 Rc 共享、封块即 shrink_to_fit）；声明单元相对跨度；无损逐字节重建断言；全路径迭代无爆栈、无固定深度上限。零宽坐标合同：epsilon 放已消费 token 终点（与伪造 start=0 占位可区分）。checkpoint=scanner 实际状态（mid token 含原始起始行；终态按末 token 拼写重放）；增量=嫁接共享采纳（1MiB 中部编辑节点复用≥99.99%/真实读取≤48KiB）+200 轮 fresh 等价；迟到/取消会话域仲裁。\nPLAN-828 会话驻留消费：incremental_reparse+project_decl_strict 为唯一编辑热路径，未改声明零重投影（syntax_reparsed_decls 恰一证据轴）。",
      "file": "docs/specs/auto-syntax/snapshot-cst.md",
      "tags": [
       "PLAN-787",
       "stage:merge",
-      "delivery:44d3b7e8d"
+      "delivery:44d3b7e8d",
+      "PLAN-828:r3"
      ],
      "status": "stable",
      "depends_on": [],
@@ -13643,7 +13693,7 @@
      "milestone": null,
      "module": null,
      "created_at": 0,
-     "modified_at": 0,
+     "modified_at": 1792686169,
      "completed_at": null
     },
     {
@@ -14238,32 +14288,56 @@
       "phase:M814-B"
      ]
     },
-    {"id": "P814-CMP-TYPING", "title": "比较位值投影完整表达式类型感知（PLAN-814 R9-R14 终局）", "content": "dot访问处于值比较位(六比较符两方向完整消费/字段自身透明分组/调用括号判别保truthy)不得truthy包裹,投影按另一操作数完整表达式类型分流:形状已知shaped访问器/字面量/已声明引用(state_types宽度跟随float=f32,u32/i64/u64)/四则宽度合并(float支配,字面量弹性跟随声明侧)/布尔取反传播/括号内逻辑组合/比较子表达式结果bool(字符串字面量外);任意一侧分组剥壳递归,左右位对称;默认str语义保持。反例矩阵112组真实编译,规则见 docs/specs/auto-ui-compiler/project.md B增量节\n\nPLAN-050:r4：物理产品目录使用 apps/auto-*，稳定 manifest ID、应用 pin、端口保持；相邻清单按真实路径提供 ID，Vue/VM 共用容器展开。24 个对应远端与固定提交可取回，branch=main；syslog 经用户确认保留内部组件。", "status": "verified", "depends_on": [], "related": [], "priority": null, "assignee": null, "test_file": null, "file": "docs/specs/auto-ui-compiler/project.md", "milestone": null, "module": null, "tags": ["PLAN-814:r3", "source_commit:93a25c924", "reviews:R9..R15", "PLAN-050:r4", "source_commit:ce055a5194649ad7c6251dbc46d0666bde08cfb6", "archive:docs/plans/archive/050-app-directory-product-names.md", "source_sha256:4d37cd6032c7c1031f1e8f6cab99c51bd9a14cb3d4e1ae103a89c560f4a578a5"], "created_at": 1792644036, "modified_at": 1792644036, "completed_at": 1792644036},
     {
- "id": "P829-AGP",
- "title": "AutoGraphics project",
- "content": "Canonical module contract; PLAN-829/830 retained, PLAN-833 delivers real Auto SDK/VM scene and Breakout slice, resource provenance and exact text uploads. I1 only first slice; production migration pending.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-graphics/project.md",
- "milestone": null,
- "module": null,
- "tags": [
-  "PLAN-833",
-  "r2",
-  "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
-  "source-sha256:51c4a3be1ede7e789416291dd9ec363c8622e0851204ae4e9ec76f5188d0f838",
-  "source-path:docs/specs/auto-graphics/project.md"
- ],
- "created_at": 1792685069,
- "modified_at": 1792685069,
- "completed_at": 1792685069
-}
-   ,
+     "id": "P814-CMP-TYPING",
+     "title": "比较位值投影完整表达式类型感知（PLAN-814 R9-R14 终局）",
+     "content": "dot访问处于值比较位(六比较符两方向完整消费/字段自身透明分组/调用括号判别保truthy)不得truthy包裹,投影按另一操作数完整表达式类型分流:形状已知shaped访问器/字面量/已声明引用(state_types宽度跟随float=f32,u32/i64/u64)/四则宽度合并(float支配,字面量弹性跟随声明侧)/布尔取反传播/括号内逻辑组合/比较子表达式结果bool(字符串字面量外);任意一侧分组剥壳递归,左右位对称;默认str语义保持。反例矩阵112组真实编译,规则见 docs/specs/auto-ui-compiler/project.md B增量节\n\nPLAN-050:r4：物理产品目录使用 apps/auto-*，稳定 manifest ID、应用 pin、端口保持；相邻清单按真实路径提供 ID，Vue/VM 共用容器展开。24 个对应远端与固定提交可取回，branch=main；syslog 经用户确认保留内部组件。",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/specs/auto-ui-compiler/project.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-814:r3",
+      "source_commit:93a25c924",
+      "reviews:R9..R15",
+      "PLAN-050:r4",
+      "source_commit:ce055a5194649ad7c6251dbc46d0666bde08cfb6",
+      "archive:docs/plans/archive/050-app-directory-product-names.md",
+      "source_sha256:4d37cd6032c7c1031f1e8f6cab99c51bd9a14cb3d4e1ae103a89c560f4a578a5"
+     ],
+     "created_at": 1792644036,
+     "modified_at": 1792644036,
+     "completed_at": 1792644036
+    },
+    {
+     "id": "P829-AGP",
+     "title": "AutoGraphics project",
+     "content": "Canonical module contract; PLAN-829/830 retained, PLAN-833 delivers real Auto SDK/VM scene and Breakout slice, resource provenance and exact text uploads. I1 only first slice; production migration pending.",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/specs/auto-graphics/project.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-833",
+      "r2",
+      "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
+      "source-sha256:51c4a3be1ede7e789416291dd9ec363c8622e0851204ae4e9ec76f5188d0f838",
+      "source-path:docs/specs/auto-graphics/project.md"
+     ],
+     "created_at": 1792685069,
+     "modified_at": 1792685069,
+     "completed_at": 1792685069
+    },
     {
      "id": "P830-SURF",
      "title": "auto-graphics Surface/Portal 组合与 GPU 合成合同（PLAN-830 SD-01）",
@@ -14303,103 +14377,184 @@
      ]
     },
     {
- "id": "P830-PROFILE",
- "title": "AutoGraphics prototype-profile",
- "content": "Canonical module contract; PLAN-829/830 retained, PLAN-833 delivers real Auto SDK/VM scene and Breakout slice, resource provenance and exact text uploads. I1 only first slice; production migration pending.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-graphics/prototype-profile.md",
- "milestone": null,
- "module": null,
- "tags": [
-  "PLAN-833",
-  "r2",
-  "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
-  "source-sha256:4526cd91004cff3106638f3172703642f848af820cd55aa2aaaaa7a056d9e260",
-  "source-path:docs/specs/auto-graphics/prototype-profile.md"
- ],
- "created_at": 1792685069,
- "modified_at": 1792685069,
- "completed_at": 1792685069
-},
+     "id": "P830-PROFILE",
+     "title": "AutoGraphics prototype-profile",
+     "content": "Canonical module contract; PLAN-829/830 retained, PLAN-833 delivers real Auto SDK/VM scene and Breakout slice, resource provenance and exact text uploads. I1 only first slice; production migration pending.",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/specs/auto-graphics/prototype-profile.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-833",
+      "r2",
+      "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
+      "source-sha256:4526cd91004cff3106638f3172703642f848af820cd55aa2aaaaa7a056d9e260",
+      "source-path:docs/specs/auto-graphics/prototype-profile.md"
+     ],
+     "created_at": 1792685069,
+     "modified_at": 1792685069,
+     "completed_at": 1792685069
+    },
     {
- "id": "P830-IH",
- "title": "AutoGraphics integration-contract",
- "content": "Canonical module contract; PLAN-829/830 retained, PLAN-833 delivers real Auto SDK/VM scene and Breakout slice, resource provenance and exact text uploads. I1 only first slice; production migration pending.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-graphics/integration-contract.md",
- "milestone": null,
- "module": null,
- "tags": [
-  "PLAN-833",
-  "r2",
-  "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
-  "source-sha256:123b9022e1b12cf5d58987ae9eea9e14d9e4658e23b8e581f46dafb1f6280f3b",
-  "source-path:docs/specs/auto-graphics/integration-contract.md"
- ],
- "created_at": 1792685069,
- "modified_at": 1792685069,
- "completed_at": 1792685069
-},
-{
- "id": "P815-B-D1",
- "title": "UI 工程工具唯一 owner 全量交付（PLAN-815 M815-B，SD-01..07）",
- "content": "auto-ui-tools=UI 工程工具唯一 owner：vue/rust/jet/ark/tauri/vscode 生成/build/run与 gallery/wm/shadcn 资产全闭包脱 Man（normal/build/dev 无反向大包依赖）；旧 Man 入口薄转发门面；生产入口全消费已求值 I-PROJECT 请求（请求在场即权威，无第二真源）；外部命令经 owned 子进程设施；多目标完整生成、输出根=真实布局。I-TOOL v1 完整生命周期（五操作×cancellable/interactive、framing/预算、具名错误、日志控制流分离、取消/EOF owned 树终止、Cancelled 与 outcome=cancelled 分离、能力拒绝先于副作用、非 Windows 平台承诺）。发行身份语义：确定性锚=冻结源 SHA+792 delivery-manifest（逐文件 rel/len/blake3 汇总目录 digest）；release SHA256 为带 provenance 参考产物指纹（无 reproducible-builds，不以互异 debug 哈希充当身份）；发行形态=源码包 workspace、工具包内 locked 构建三形态实证。runtime 宿主退出/会话生命周期公开面（SD-07）。shell-pack 公开再生器同受 canonical import 约束（F-815-T09-01 修复后规则）。canonical: docs/specs/auto-ui-tools/project.md + tool-protocol/project.md + auto-man/project.md + project-model/project.md + auto-lang/ui/overview.md + repository-boundaries/generated-ui-distribution.md + auto-ui-runtime/project.md",
- "status": "verified",
- "file": "docs/specs/auto-ui-tools/project.md",
- "tags": [
-  "PLAN-815",
-  "stage:M815-B",
-  "delivery:33c9451fbe667dde2412d71036a19ac334b03691",
-  "freeze:885aebbd0",
-  "guarded-offline-projection",
-  "source-sha256:b8a01318774b4fe50c486902154576c2fccd16589ff43d3c9e4de63113474e89"
- ],
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "milestone": "M815-B",
- "module": "auto-ui-tools",
- "created_at": 1792668085,
- "modified_at": 1792668085,
- "completed_at": 1792668085
-},
-{
- "id": "P833-AUTO-SOURCE",
- "title": "AutoGraphics auto-source-driver",
- "content": "Canonical module contract; PLAN-829/830 retained, PLAN-833 delivers real Auto SDK/VM scene and Breakout slice, resource provenance and exact text uploads. I1 only first slice; production migration pending.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-graphics/auto-source-driver.md",
- "milestone": null,
- "module": null,
- "tags": [
-  "PLAN-833",
-  "r2",
-  "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
-  "source-sha256:820a631e5c7c089a473246dacd6b8c3606313be6e6414c8176b2eee2cd45c14e",
-  "source-path:docs/specs/auto-graphics/auto-source-driver.md"
- ],
- "created_at": 1792685069,
- "modified_at": 1792685069,
- "completed_at": 1792685069
-}
-],
+     "id": "P830-IH",
+     "title": "AutoGraphics integration-contract",
+     "content": "Canonical module contract; PLAN-829/830 retained, PLAN-833 delivers real Auto SDK/VM scene and Breakout slice, resource provenance and exact text uploads. I1 only first slice; production migration pending.",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/specs/auto-graphics/integration-contract.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-833",
+      "r2",
+      "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
+      "source-sha256:123b9022e1b12cf5d58987ae9eea9e14d9e4658e23b8e581f46dafb1f6280f3b",
+      "source-path:docs/specs/auto-graphics/integration-contract.md"
+     ],
+     "created_at": 1792685069,
+     "modified_at": 1792685069,
+     "completed_at": 1792685069
+    },
+    {
+     "id": "P815-B-D1",
+     "title": "UI 工程工具唯一 owner 全量交付（PLAN-815 M815-B，SD-01..07）",
+     "content": "auto-ui-tools=UI 工程工具唯一 owner：vue/rust/jet/ark/tauri/vscode 生成/build/run与 gallery/wm/shadcn 资产全闭包脱 Man（normal/build/dev 无反向大包依赖）；旧 Man 入口薄转发门面；生产入口全消费已求值 I-PROJECT 请求（请求在场即权威，无第二真源）；外部命令经 owned 子进程设施；多目标完整生成、输出根=真实布局。I-TOOL v1 完整生命周期（五操作×cancellable/interactive、framing/预算、具名错误、日志控制流分离、取消/EOF owned 树终止、Cancelled 与 outcome=cancelled 分离、能力拒绝先于副作用、非 Windows 平台承诺）。发行身份语义：确定性锚=冻结源 SHA+792 delivery-manifest（逐文件 rel/len/blake3 汇总目录 digest）；release SHA256 为带 provenance 参考产物指纹（无 reproducible-builds，不以互异 debug 哈希充当身份）；发行形态=源码包 workspace、工具包内 locked 构建三形态实证。runtime 宿主退出/会话生命周期公开面（SD-07）。shell-pack 公开再生器同受 canonical import 约束（F-815-T09-01 修复后规则）。canonical: docs/specs/auto-ui-tools/project.md + tool-protocol/project.md + auto-man/project.md + project-model/project.md + auto-lang/ui/overview.md + repository-boundaries/generated-ui-distribution.md + auto-ui-runtime/project.md",
+     "status": "verified",
+     "file": "docs/specs/auto-ui-tools/project.md",
+     "tags": [
+      "PLAN-815",
+      "stage:M815-B",
+      "delivery:33c9451fbe667dde2412d71036a19ac334b03691",
+      "freeze:885aebbd0",
+      "guarded-offline-projection",
+      "source-sha256:b8a01318774b4fe50c486902154576c2fccd16589ff43d3c9e4de63113474e89"
+     ],
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": "M815-B",
+     "module": "auto-ui-tools",
+     "created_at": 1792668085,
+     "modified_at": 1792668085,
+     "completed_at": 1792668085
+    },
+    {
+     "id": "P833-AUTO-SOURCE",
+     "title": "AutoGraphics auto-source-driver",
+     "content": "Canonical module contract; PLAN-829/830 retained, PLAN-833 delivers real Auto SDK/VM scene and Breakout slice, resource provenance and exact text uploads. I1 only first slice; production migration pending.",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/specs/auto-graphics/auto-source-driver.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-833",
+      "r2",
+      "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
+      "source-sha256:820a631e5c7c089a473246dacd6b8c3606313be6e6414c8176b2eee2cd45c14e",
+      "source-path:docs/specs/auto-graphics/auto-source-driver.md"
+     ],
+     "created_at": 1792685069,
+     "modified_at": 1792685069,
+     "completed_at": 1792685069
+    },
+    {
+     "id": "P828-SRC",
+     "title": "auto-ac 函数级增量源前端合同",
+     "content": "canonical docs/specs/auto-ac/function-incremental-source.md：受检接口环境（CheckedEnv）+prepare_candidate_document 单 body 事务+内容版本 hit/miss+can4 内容身份+FnCandidate 候选事务+body 事实查询核心（凭据属具体产物）；整模块入口保留为 truth 源。",
+     "file": "docs/specs/auto-ac/function-incremental-source.md",
+     "related": [
+      "PLAN-828",
+      "GOAL-002"
+     ],
+     "status": "verified",
+     "depends_on": [],
+     "tags": [
+      "PLAN-828:r3",
+      "reviewed_commit:5e8e550fa(rebased:a3bf5def6)",
+      "final-pass:T10-R2",
+      "guarded-offline-projection",
+      "sha256:11fc67da58272be43e563fb10dd99003b752b8d7a86a8ec3fea72ca520226337"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": null,
+     "module": null,
+     "created_at": 1792686169,
+     "modified_at": 1792686169,
+     "completed_at": 1792686169
+    },
+    {
+     "id": "P828-MIR",
+     "title": "auto-mir 函数级增量合同",
+     "content": "canonical docs/specs/auto-mir/function-incremental.md：lower_function_unit 直接单函数 lower/verify（不经 whole lower/split）、单元局部常量/类型/槽/PC、稳定 def id 跨单元引用、内容命中复用不可变对象与 mint 代际。",
+     "file": "docs/specs/auto-mir/function-incremental.md",
+     "related": [
+      "PLAN-828",
+      "GOAL-002"
+     ],
+     "status": "verified",
+     "depends_on": [],
+     "tags": [
+      "PLAN-828:r3",
+      "reviewed_commit:5e8e550fa(rebased:a3bf5def6)",
+      "final-pass:T10-R2",
+      "guarded-offline-projection",
+      "sha256:c77673637a8684a34127352aca99e69f61e2d1545e5592340daaae3f002cda2d"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": null,
+     "module": null,
+     "created_at": 1792686169,
+     "modified_at": 1792686169,
+     "completed_at": 1792686169
+    },
+    {
+     "id": "P828-AV",
+     "title": "auto-av 常驻函数安装与事务快照合同",
+     "content": "canonical docs/specs/auto-av/resident-function-install.md：link_with_maps 单一 owner/调用闭包门+无 merged 执行载荷（UnitView 三入口共用派发）、PreparedEdit 事务与 base_generation/env_id 守卫、旧代 pin/PausedRun 寿命与 Weak 回收、HISTORY_CAP=32 有界历史。",
+     "file": "docs/specs/auto-av/resident-function-install.md",
+     "related": [
+      "PLAN-828",
+      "GOAL-002"
+     ],
+     "status": "verified",
+     "depends_on": [],
+     "tags": [
+      "PLAN-828:r3",
+      "reviewed_commit:5e8e550fa(rebased:a3bf5def6)",
+      "final-pass:T10-R2",
+      "guarded-offline-projection",
+      "sha256:3761eccf8f9d678341ab6a9759fcf05c3cb4c12f676de1115f3c60e62d248c35"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": null,
+     "module": null,
+     "created_at": 1792686169,
+     "modified_at": 1792686169,
+     "completed_at": 1792686169
+    }
+   ],
    "section_type": "Designs",
    "title": "🎨 Designs",
    "status": "empty",
@@ -17530,7 +17685,7 @@
     {
      "id": "P798-T",
      "title": "MIR/AV正确性与受管生命周期覆盖",
-     "content": "冻结原始测试与资源/恢复/周转证据；最终四档5320/163/105/30通过，真函数增量结构验收归828。",
+     "content": "冻结原始测试与资源/恢复/周转证据；最终四档5320/163/105/30通过，真函数增量结构验收归828。\nPLAN-828 增量覆盖：probe function_incremental_828 全族（主 21/三件 512、r1 86、contract 22、t01r 4、b1 11、b2 14、t07 8、t08 5、mig 9）+cache_tier 20 兼容面——冻结负载正式双门战役（P95<1000ms ∧ 结构门 ∧ 双线预算）与完整存储轴 512（persist/GC 水位/重启/哨兵）为永久断言。",
      "status": "verified",
      "depends_on": [],
      "related": [],
@@ -17543,10 +17698,11 @@
      "tags": [
       "PLAN-798:r7",
       "source_commit:216d139aba888760963d12a5f2cbe693489b06c4",
-      "sha256:f1a9c0826738be4881cd0e35f7cdbd5a5a23923ce554675a6149a56e4f1e4b40"
+      "sha256:f1a9c0826738be4881cd0e35f7cdbd5a5a23923ce554675a6149a56e4f1e4b40",
+      "PLAN-828:r3"
      ],
      "created_at": 1792500947,
-     "modified_at": 1792500947,
+     "modified_at": 1792686169,
      "completed_at": 1792500947
     },
     {
@@ -17585,10 +17741,30 @@
       "source_commit:ddbde3e62857",
       "branch:autographics-dev"
      ]
-    }
-   ,
-{"id": "OS050-TESTS", "title": "产品路径注册与实际 Vue 生成回归", "content": "注册表 28/28、实际 Vue 生成 1/1、三轨发现一致性 1/1；旧 ID 拼目录负对照拒绝。完整日常门 5329/5331，两个已复现基线剪贴板失败经用户明确授权非阻塞，测试规则未改。", "status": "verified", "depends_on": [], "related": [], "priority": null, "assignee": null, "test_file": "crates/auto-ui-compiler/src/app_registry.rs", "file": "docs/specs/auto-ui-compiler/project.md", "milestone": null, "module": null, "tags": ["PLAN-050:r4", "source_commit:ce055a5194649ad7c6251dbc46d0666bde08cfb6", "archive:docs/plans/archive/050-app-directory-product-names.md", "source_sha256:4d37cd6032c7c1031f1e8f6cab99c51bd9a14cb3d4e1ae103a89c560f4a578a5"], "created_at": 1792644036, "modified_at": 1792644036, "completed_at": 1792644036}
-,
+    },
+    {
+     "id": "OS050-TESTS",
+     "title": "产品路径注册与实际 Vue 生成回归",
+     "content": "注册表 28/28、实际 Vue 生成 1/1、三轨发现一致性 1/1；旧 ID 拼目录负对照拒绝。完整日常门 5329/5331，两个已复现基线剪贴板失败经用户明确授权非阻塞，测试规则未改。",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": "crates/auto-ui-compiler/src/app_registry.rs",
+     "file": "docs/specs/auto-ui-compiler/project.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-050:r4",
+      "source_commit:ce055a5194649ad7c6251dbc46d0666bde08cfb6",
+      "archive:docs/plans/archive/050-app-directory-product-names.md",
+      "source_sha256:4d37cd6032c7c1031f1e8f6cab99c51bd9a14cb3d4e1ae103a89c560f4a578a5"
+     ],
+     "created_at": 1792644036,
+     "modified_at": 1792644036,
+     "completed_at": 1792644036
+    },
     {
      "id": "P830-TESTS",
      "title": "PLAN-830 组合契约与 R2/R3/R4 永久回归",
@@ -17608,55 +17784,55 @@
       "branch:autographics-dev@764e87559"
      ]
     },
-{
- "id": "P815-B-T",
- "title": "M815-B 工具/协议/发行测试资产（PLAN-815）",
- "content": "tool_process 22 快速+9 重串行（真实进程：生成/安装链/取消树/交互/字段矩阵+删 pac逐字节一致+output_root 布局钉）；lifecycle 4 重串行（Unicode/空格真实 pnpm build dist oracle）；rust_ui 请求权威/四读取面壳层钉；vue default_classes 三态钉；shell_pack freshness 字节门（T09 修复后绿）；792 driver V01..V05 33/33（含随包工具 fresh/locked/重定位构建+framed I-TOOL 外部消费八例）；fixtures：tool-protocol-consumer 7/7+闭包门、ui-tool-consumer 5/5（AUTO_UI_TOOL_BIN 真进程）+闭包门。冻结门（T-10）：裸 cargo t 5331/5331、tu 868/868、man/protocol/execution 195/195、tools lib 183/185（二预存红已归因裁定）、777 strict pass 0v/3g。",
- "status": "verified",
- "file": "docs/specs/auto-ui-tools/project.md",
- "tags": [
-  "PLAN-815",
-  "stage:M815-B",
-  "delivery:33c9451fbe667dde2412d71036a19ac334b03691",
-  "guarded-offline-projection",
-  "source-sha256:b8a01318774b4fe50c486902154576c2fccd16589ff43d3c9e4de63113474e89"
- ],
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "milestone": "M815-B",
- "module": "auto-ui-tools",
- "created_at": 1792668085,
- "modified_at": 1792668085,
- "completed_at": 1792668085
-},
-{
- "id": "P833-TESTS",
- "title": "PLAN-833 real Auto acceptance",
- "content": "17 driver tests; complete frozen AGP/native/resource/negative/relocation closeout gates. Exact results in archived PLAN-833 merge receipt.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-graphics/auto-source-driver.md",
- "milestone": null,
- "module": null,
- "tags": [
-  "PLAN-833",
-  "r2",
-  "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
-  "source-sha256:820a631e5c7c089a473246dacd6b8c3606313be6e6414c8176b2eee2cd45c14e",
-  "source-path:docs/specs/auto-graphics/auto-source-driver.md"
- ],
- "created_at": 1792685069,
- "modified_at": 1792685069,
- "completed_at": 1792685069
-}
-],
+    {
+     "id": "P815-B-T",
+     "title": "M815-B 工具/协议/发行测试资产（PLAN-815）",
+     "content": "tool_process 22 快速+9 重串行（真实进程：生成/安装链/取消树/交互/字段矩阵+删 pac逐字节一致+output_root 布局钉）；lifecycle 4 重串行（Unicode/空格真实 pnpm build dist oracle）；rust_ui 请求权威/四读取面壳层钉；vue default_classes 三态钉；shell_pack freshness 字节门（T09 修复后绿）；792 driver V01..V05 33/33（含随包工具 fresh/locked/重定位构建+framed I-TOOL 外部消费八例）；fixtures：tool-protocol-consumer 7/7+闭包门、ui-tool-consumer 5/5（AUTO_UI_TOOL_BIN 真进程）+闭包门。冻结门（T-10）：裸 cargo t 5331/5331、tu 868/868、man/protocol/execution 195/195、tools lib 183/185（二预存红已归因裁定）、777 strict pass 0v/3g。",
+     "status": "verified",
+     "file": "docs/specs/auto-ui-tools/project.md",
+     "tags": [
+      "PLAN-815",
+      "stage:M815-B",
+      "delivery:33c9451fbe667dde2412d71036a19ac334b03691",
+      "guarded-offline-projection",
+      "source-sha256:b8a01318774b4fe50c486902154576c2fccd16589ff43d3c9e4de63113474e89"
+     ],
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": "M815-B",
+     "module": "auto-ui-tools",
+     "created_at": 1792668085,
+     "modified_at": 1792668085,
+     "completed_at": 1792668085
+    },
+    {
+     "id": "P833-TESTS",
+     "title": "PLAN-833 real Auto acceptance",
+     "content": "17 driver tests; complete frozen AGP/native/resource/negative/relocation closeout gates. Exact results in archived PLAN-833 merge receipt.",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/specs/auto-graphics/auto-source-driver.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-833",
+      "r2",
+      "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
+      "source-sha256:820a631e5c7c089a473246dacd6b8c3606313be6e6414c8176b2eee2cd45c14e",
+      "source-path:docs/specs/auto-graphics/auto-source-driver.md"
+     ],
+     "created_at": 1792685069,
+     "modified_at": 1792685069,
+     "completed_at": 1792685069
+    }
+   ],
    "section_type": "Tests",
    "title": "🧪 Tests",
    "status": "empty",
@@ -23706,10 +23882,30 @@
       "review:R18",
       "reviewed_commit:ddbde3e62857"
      ]
-    }
-   ,
-{"id": "OS050-R4", "title": "PLAN-050 r4 最终复审", "content": "同一执行会话基于冻结源码、实际验收和规范哈希重建，final pass；非独立上下文。重放提交 range-diff 等价；源码、依赖、测试配置未改变。两项基线剪贴板失败的非阻塞处理由用户直接授权。", "status": "verified", "depends_on": [], "related": [], "priority": null, "assignee": null, "test_file": null, "file": "../auto-os/docs/plans/attachments/050/final-review.md", "milestone": null, "module": null, "tags": ["PLAN-050:r4", "source_commit:ce055a5194649ad7c6251dbc46d0666bde08cfb6", "archive:docs/plans/archive/050-app-directory-product-names.md", "source_sha256:260c7141b6793e85a5acb83ff0c060958c60b0ad05533ffe4aab97143882a0d9"], "created_at": 1792644036, "modified_at": 1792644036, "completed_at": 1792644036}
-,
+    },
+    {
+     "id": "OS050-R4",
+     "title": "PLAN-050 r4 最终复审",
+     "content": "同一执行会话基于冻结源码、实际验收和规范哈希重建，final pass；非独立上下文。重放提交 range-diff 等价；源码、依赖、测试配置未改变。两项基线剪贴板失败的非阻塞处理由用户直接授权。",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "../auto-os/docs/plans/attachments/050/final-review.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-050:r4",
+      "source_commit:ce055a5194649ad7c6251dbc46d0666bde08cfb6",
+      "archive:docs/plans/archive/050-app-directory-product-names.md",
+      "source_sha256:260c7141b6793e85a5acb83ff0c060958c60b0ad05533ffe4aab97143882a0d9"
+     ],
+     "created_at": 1792644036,
+     "modified_at": 1792644036,
+     "completed_at": 1792644036
+    },
     {
      "id": "P830-R5",
      "title": "PLAN-830 R5 final review pass（764e87559）",
@@ -23729,56 +23925,83 @@
       "branch:autographics-dev@764e87559"
      ]
     },
-{
- "id": "P815-B-R",
- "title": "PLAN-815 M815-B 审查链（T05 R1..R8/T06..08 联合/T07 三子批/T09 R1..R2 终审 pass）",
- "content": "T-05 R1..R8（取消/输入/EOF/错误传播/PM 单源/Unix 平台/PM 缓存干扰逐轮关闭）；T-06..08 提前 R1..R3 联合修复（front 贯穿/Ark ID/dist oracle/闭包门）；T-07 子批1定向 pass（协议四回执/帧深度/Linux real_tree）→子批2 needs_fix（两实修复+三 P2）→子批3 R1 修正（矩阵四误标行纠正+两钉）→R2 pass（33/33 独立、377 文件对账、release身份 4/4）；T-05..08 联合收口 pass（14/17）；T-09 终审 R1 needs_fix（唯一 P2=F-815-T09-01 shell-pack 再生器缺 canonical 双直依赖、实际消费 107 E0433、不可预存豁免；plan734 裁定非阻断排版债）→修复轮（壳层五处+清单模板+sanctioned regen、freshness 红→绿、原生清单消费 exit0）→R2 终审 pass：F CLOSED 无新增，T06..08 复勾、T09 完成（15/17 reviewed）。终审绑定 0f2858e35cb220964d8c23c8d77afce6839db491（rebase 等价 885aebbd0）。",
- "status": "verified",
- "file": "docs/plans/attachments/815/review-t09-r2/review.md",
- "tags": [
-  "PLAN-815",
-  "stage:M815-B",
-  "review:T09-R2-pass",
-  "reviewed:0f2858e35cb220964d8c23c8d77afce6839db491",
-  "guarded-offline-projection",
-  "source-sha256:ce207b05e7e390606a8cf614f7496ea2dab99611194fdca3d9d4f14fd4a71501"
- ],
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "milestone": "M815-B",
- "module": "auto-ui-tools",
- "created_at": 1792668085,
- "modified_at": 1792668085,
- "completed_at": 1792668085
-},
-{
- "id": "P833-R2",
- "title": "PLAN-833 final R2 PASS",
- "content": "Independent final PASS at77302d855; both R1 findings closed, no new finding; merge gates executed separately.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/plans/attachments/833/review-r2/review.md",
- "milestone": null,
- "module": null,
- "tags": [
-  "PLAN-833",
-  "r2",
-  "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
-  "source-sha256:1259bc4529ffb3990ef979623dd9de551502078cc6be7893dcb4a232daa6a61b",
-  "source-path:docs/plans/attachments/833/review-r2/review.md"
- ],
- "created_at": 1792685069,
- "modified_at": 1792685069,
- "completed_at": 1792685069
-}
-],
+    {
+     "id": "P815-B-R",
+     "title": "PLAN-815 M815-B 审查链（T05 R1..R8/T06..08 联合/T07 三子批/T09 R1..R2 终审 pass）",
+     "content": "T-05 R1..R8（取消/输入/EOF/错误传播/PM 单源/Unix 平台/PM 缓存干扰逐轮关闭）；T-06..08 提前 R1..R3 联合修复（front 贯穿/Ark ID/dist oracle/闭包门）；T-07 子批1定向 pass（协议四回执/帧深度/Linux real_tree）→子批2 needs_fix（两实修复+三 P2）→子批3 R1 修正（矩阵四误标行纠正+两钉）→R2 pass（33/33 独立、377 文件对账、release身份 4/4）；T-05..08 联合收口 pass（14/17）；T-09 终审 R1 needs_fix（唯一 P2=F-815-T09-01 shell-pack 再生器缺 canonical 双直依赖、实际消费 107 E0433、不可预存豁免；plan734 裁定非阻断排版债）→修复轮（壳层五处+清单模板+sanctioned regen、freshness 红→绿、原生清单消费 exit0）→R2 终审 pass：F CLOSED 无新增，T06..08 复勾、T09 完成（15/17 reviewed）。终审绑定 0f2858e35cb220964d8c23c8d77afce6839db491（rebase 等价 885aebbd0）。",
+     "status": "verified",
+     "file": "docs/plans/attachments/815/review-t09-r2/review.md",
+     "tags": [
+      "PLAN-815",
+      "stage:M815-B",
+      "review:T09-R2-pass",
+      "reviewed:0f2858e35cb220964d8c23c8d77afce6839db491",
+      "guarded-offline-projection",
+      "source-sha256:ce207b05e7e390606a8cf614f7496ea2dab99611194fdca3d9d4f14fd4a71501"
+     ],
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": "M815-B",
+     "module": "auto-ui-tools",
+     "created_at": 1792668085,
+     "modified_at": 1792668085,
+     "completed_at": 1792668085
+    },
+    {
+     "id": "P833-R2",
+     "title": "PLAN-833 final R2 PASS",
+     "content": "Independent final PASS at77302d855; both R1 findings closed, no new finding; merge gates executed separately.",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/plans/attachments/833/review-r2/review.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-833",
+      "r2",
+      "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
+      "source-sha256:1259bc4529ffb3990ef979623dd9de551502078cc6be7893dcb4a232daa6a61b",
+      "source-path:docs/plans/attachments/833/review-r2/review.md"
+     ],
+     "created_at": 1792685069,
+     "modified_at": 1792685069,
+     "completed_at": 1792685069
+    },
+    {
+     "id": "P828-R",
+     "title": "PLAN-828:r3 审查链 R1..R5+T-10 最终（pass）",
+     "content": "PLAN-828 第三批 needs_fix 逐轮闭合（R1 五项/R2 两组/R3 两处/R4 一处/R5+C04 PASS）；T-10 整份 AC/V/C/SD 验收 PASS（T10-H01 格式收口后 R2 授最终 pass）。功能/信任/存储/资源/正式双门无新阻断缺陷；三项 512 长链 3/3。冻结 5e8e550fa（rebase 后 a3bf5def6，range-diff 62/62 等价）。",
+     "file": "docs/plans/attachments/828/review-t10-r2-5e8e550fa/review.md",
+     "related": [
+      "PLAN-828",
+      "GOAL-002"
+     ],
+     "status": "verified",
+     "depends_on": [],
+     "tags": [
+      "PLAN-828:r3",
+      "reviewed_commit:5e8e550fa(rebased:a3bf5def6)",
+      "final-pass:T10-R2",
+      "guarded-offline-projection",
+      "sha256:92a5b8b7fe7139f421fa28a0c6806511f11411fed2aa1b21765083449eb14abf"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": null,
+     "module": null,
+     "created_at": 1792686169,
+     "modified_at": 1792686169,
+     "completed_at": 1792686169
+    }
+   ],
    "section_type": "Reviews",
    "title": "🔍 Reviews",
    "status": "empty",
@@ -23789,5 +24012,5 @@
   }
  ],
  "project": "auto-lang",
- "version": 69
+ "version": 70
 }
