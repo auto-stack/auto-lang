@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-828
-status: executing
+status: reviewed
 feature_name: 源码到AV安装的全链路函数级增量
 plan_revision: 3
 author: [Codex]
 created_at: 2026-10-20
 updated_at: 2026-10-22
-current_step: 8
+current_step: 10
 total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-hir/stage-contract.md
@@ -282,11 +282,11 @@ V-01..09原合同继续有效。已有真实入口：probe/tests/function_increm
 
 **后继交接说明（2026-10-21）**：用户已确认D828后优先817/818、827和820功能线，825/826择机插入，详见[共同排期/单写合同](reports/ace-execution-order-and-incremental-compatibility-2026-10-20.md)。现有T-09的“817/818及820–827接缝”交付映射需指向实际函数查询/变更集/受检代码/装载/snapshot API、已交付版本和兼容消费者证据；merge补实际合入及核心窗口释放，后继核验接受。本段解释既有T-09交接内容，不增加任务或验收、不改变r3修复合同/状态/标记，不因T-01或局部PASS提前满足D828，也不等待后继实现才能交付828。
 
-下表是唯一当前任务表；稳定T/AC/V/SD ID与11项计数保持。已有子项PASS不自动勾整任务；T-10现已按整份证据核销T-01..08，当前8/11（T-09格式收尾待修、T-10最终PASS未授、T-11待merge）；历史实施细节已移至r2快照/§9链接。F-05b作为已闭合保留项，不另造重复任务。
+下表是唯一当前任务表；稳定T/AC/V/SD ID与11项计数保持。已有子项PASS不自动勾整任务；T-10现已按整份证据及格式窄复审核销T-01..10，当前10/11（T-09格式收尾已闭、T-10最终PASS、T-11待merge）；历史实施细节已移至r2快照/§9链接。F-05b作为已闭合保留项，不另造重复任务。
 
 **复审节奏裁定（2026-10-22，用户A案）**：包级受影响面复审按依赖边界分三批，不再逐任务送审——第一批=T-02（85cbebea4已冻结）+T-03+T-04；第二批=T-05+T-06；第三批=T-07+T-08+T-09。每批在冻结提交上做一次受影响面复审（后批不在未审前批接口上叠加）；T-10整份最终验收与T-11 merge门禁不变，合同/验收语义不变。
 
-**当前执行入口（2026-10-22，T10-H01 格式收尾完成，冻结 5e8e550fa 待 T-10 窄复审授予最终 PASS）**：T-10（[报告](attachments/828/review-t10-a030427fe/review.md)）仅余 T10-H01/P3——`ac-syntax/adapters/core/src/projection_engine.rs` 与 `adapters/core/tests/scalar_projection_.rs` 两文件 rustfmt 不洁（828 触及行，非 shim 既有债）；本批同树单一提交 `5e8e550fa`（基面 a030427fe，树 clean）纯格式修复——按复审冻结的 rustfmt 调用（`--edition 2021 --config skip_children=true`）格式化，两文件过 `--check` 且与复审 `.formatted.txt` 期望**逐字节一致**（唯一非空白变换=scalar_projection_.rs 一处超长 match 臂的默认块包裹，语义等价；projection_engine.rs 去空白后 token 等价）；定向验证 scalar_projection_ 6/6、ac-syntax-core-adapter --all-targets 零错零警；未重跑重负载（纯格式收尾，复审明示等价性复用）。下一责任 review：T-10 窄复审（冻结 5e8e550fa，仅格式等价确认）→ 授最终 PASS/reviewed；此后 T-11 merge-owned 门禁（裸 t+tv/触面档/tf 主检单实例/沉淀/归档/guard）。executing 8/11 保持，尚未 merge。
+**当前执行入口（2026-10-22，T-10最终PASS，冻结5e8e550fa；下一步T-11 merge）**：T10-H01/P3 CLOSED、无新增finding。两个文件与审核格式期望逐字节一致，整份改动Rust格式门/源码diffcheck均exit0，新冻结scalar_projection_6/6、adapter all-targets检查零告警。519共同输入仅这两文件变化且等于审核格式输出；上一轮47份证据hash核验通过，三512/兼容/资源/关闭/正式双门及SD按纯格式等价明确复用。AC01..09 PASS，r3/**reviewed10/11**，T-01..10完成，T-11/AC10仍merge-owned pending。详见[最终PASS报告](attachments/828/review-t10-r2-5e8e550fa/review.md)及[等价/复用证明](attachments/828/review-t10-r2-5e8e550fa/equivalence-and-reuse.json)。规范沉淀使用[核定delta](attachments/828/review-t10-r2-5e8e550fa/spec-delta-reviewed.md)，当前仍proposed、canonical/ledger未改。下一责任merge须先通过冻结根裸t+tv/实际触面与consumer/独立workspace门，再沉淀合入归档guard；tf到期主检单实例。当前未合入，不宣称D828已交付；历史单次战役失败丢诊断/未确证归因限制保留。
 
 **0b612fda1 同提交T-01独立复审结果：needs_fix**（历史，仅窄残项）：prepare返回前恢复current、FnCandidate自持新body+owner/基面、commit真实安装并核owner、cancel/drop零env访问均通过；原六失败不重开。反例为当前1→prepare候选2(base0)→公开recheck成功发布3(generation仍0)→旧候选commit返回Ok覆盖成2。完整[本轮报告](attachments/828/review-t01-0b612fda1/review.md)与[窄修复指示](attachments/828/review-t01-0b612fda1/glm-next-round.md)；[de4cba702包](attachments/828/review-t01-de4cba702/review.md)、[23a6包](attachments/828/review-t01-23a6b35a0/review.md)、[3e60包](attachments/828/review-t01-3e60af2c8/review.md)保留为历史。
 
@@ -310,11 +310,13 @@ V-01..09原合同继续有效。已有真实入口：probe/tests/function_increm
 | [x] T-06 | work | T-05；F05b证据可先复用 | session/AV事务：prepare仅候选、成功后原子更新根及来源/绑定；新旧snapshot可见性、三执行入口共用派发；取消/close/vacant/最后拥有者兼容 | AC-01/04/06；C02-03/04、C05-01..04；F05b在r23a已闭，相关重构后按影响重放 |
 | [x] T-07 | work | T-03产物、T-06生命周期 | store/A07实际恢复消费者、changed-only持久化、manifest required引用/恢复与lease/GC；驻留/候选/旧代预算与失败释放；512修订及哨兵 | AC-05/06/08；原V-02/05/06/07/09和C05-02/03；F09/10/11保留，无必需skip |
 | [x] T-08 | work | T-07 | 正式持续worker/IPC/父侧judge、ready/edit/result及observations/raw/双线内存；真实全量/副本/坏actual/缺样本/越界反控 | AC-07/08；V-08/09+C02-05，≥30新修订、P95<1000ms且结构门同轮过；进程内测试不代正式门 |
-| [ ] T-09 | work | T-08；可随各包维护映射 | 当前case→入口/fixture/断言/原始证据→AC/SD/版本清单、旧消费者兼容、817/818及820–827接缝、具体规范增量文本/告警清理；更正旧完成/延期措辞 | AC-01..08；全矩阵有owner及实际结果，无OPEN必需项才execution_done；各包冻结提交，禁止只交测试总数 |
-| [ ] T-10 | review | T-09完成 | 同一clean冻结树独立逐AC/V/C/SD审核；复核实际生产路径、负控和遗漏/绕过；受影响旧证据复用理由明确 | AC-09；最终pass才reviewed，merge-owned整档pending显式；不借局部PASS授整份通过 |
+| [x] T-09 | work | T-08；可随各包维护映射 | 当前case→入口/fixture/断言/原始证据→AC/SD/版本清单、旧消费者兼容、817/818及820–827接缝、具体规范增量文本/告警清理；更正旧完成/延期措辞 | AC-01..08；全矩阵有owner及实际结果，无OPEN必需项才execution_done；各包冻结提交，禁止只交测试总数 |
+| [x] T-10 | review | T-09完成 | 同一clean冻结树独立逐AC/V/C/SD审核；复核实际生产路径、负控和遗漏/绕过；受影响旧证据复用理由明确 | AC-09；最终pass才reviewed，merge-owned整档pending显式；不借局部PASS授整份通过 |
 | [ ] T-11 | merge | T-10最终pass | 冻结裸t+tv/必要触面及consumer门、Spec/ledger/归档/guard；tf到期主检出单实例 | AC-10；实际收尾完成才交付/11项全完成，不在review或开发阶段提前整档 |
 
 ## 9. 复审记录
+
+2026-10-22 stage:review | review_scope:final(T10格式窄复审收口，与上轮整份AC/V/C/SD合并授最终PASS) | reviewer_identity:本Codex审核上下文，未实施本冻结修复/未启代理，不编造未暴露身份 | PLAN-828 r3 | outcome:pass | worktree_path:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | reviewed_commit:5e8e550fa2c68c0e4e7b44187877e8b46469c22f | base_commit:a030427fe15dc043871d3253101f209653cabd9c(窄修复)，整份基面f79b1b83591310b45b3828dd300e6d368987d6c0 | dependency:auto-down=c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8未消费 | spec_inputs:521项baseline/final-state一致/实施树clean；对上轮519共同输入仅两文件变、与审核格式期望逐字节一致；47份上轮证据hash完整 | findings:T10-H01/P3 CLOSED，无新增；全部既有finding保持闭合 | acceptance_results:整份改动Rust格式exit0/源码diffcheck0；新根scalar_projection_6/6、adapter all-targets check0零告警；原三512 3/3(275.43s)、兼容/资源/生命周期/原独立反控/正式30轮P95=219.4917ms及双线硬预算/SD结论按纯格式等价明确复用，未冒充本轮重跑；AC01..09 PASS，AC10 pending | state:reviewed10/11，T01..10完成，T11待merge | spec_delta:SD01..06核定proposed文本见本轮spec-delta-reviewed，frontmatter exact paths/GOAL-002保持，canonical/ledger未改，plan_revision仍3 | evidence_limit:历史work一次战役失败无具体诊断，归因未确证；记录保留，未来逐次独立目录留完整失败raw | pending_closeout_gates:merge-owned冻结裸t+tv/实际触面与consumer/独立workspace、tf到期主检单实例、Spec-ledger沉淀/合入/归档/wt-guard均pending；reviewed非D828已交付 | evidence:[最终PASS/格式逐字节期望/复用核验/新根定向日志](attachments/828/review-t10-r2-5e8e550fa/review.md) | next:merge/T11，以5e8e550fa为受审冻结根完成门禁后合入沉淀归档guard；门禁若引起语义修复须新冻结受影响复审。本轮未整档/改实现/合入/清树。
 
 2026-10-22 stage:work(T-10 needs_fix 唯一项 T10-H01 格式收尾) | PLAN-828 r3 | outcome:pass(格式修复完成待 T-10 窄复审；executing 8/11 不变) | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | base_commit:a030427fe15dc043871d3253101f209653cabd9c | code_commit:5e8e550fa2c68c0e4e7b44187877e8b46469c22f(单一提交纯格式，树clean) | dependency:auto-down 未消费 | task_ids:T10-H01（两 ac-syntax 文件 rustfmt） | 机制=按复审冻结的 rustfmt 调用格式化 projection_engine.rs+scalar_projection_.rs；两文件 --check 过且与复审 .formatted.txt 逐字节一致；唯一非空白变换=一处超长 match 臂默认块包裹（语义等价）；projection_engine 去空白 token 等价 | 验证:scalar_projection_ 6/6、ac-syntax-core-adapter --all-targets 零错零警、fmt --check exit0；未重跑重负载（复审明示等价性复用，勿改语义/oracle/历史raw） | blockers:无 | next_responsible_role:review(T-10 窄复审,冻结 5e8e550fa;PASS 授 reviewed 后 T-11 merge)
 
@@ -430,6 +432,6 @@ D-03→§5.7所有权表与3e60af2c8代码逐项对应+F-01/F-02改动后重放�
 
 ## 10. 待澄清事项
 
-无待用户决定的缩面/增额事项。T-10整份审查已完成，唯一待修T10-H01/P3为本计划两文件格式，具体命令、行号、原始exit1及精确formatter期望见[报告](attachments/828/review-t10-a030427fe/review.md)。下一责任work：只格式化、scalar_projection_6/6及整份修改Rust格式门、提交新冻结后窄复审；核等价后可复用本次重负载/正式门，不新增功能轮。T-01..08完成，T-09健康收尾未闭，T-10未授最终PASS，状态executing8/11；T-11/AC10 merge-owned门及规范沉淀收尾仍pending，当前不能合入或宣称D828交付。
+无待用户决定的缩面/增额事项，无必需work-owned残项。T10-H01已在5e8e550fa窄复审关闭；与上轮整份审核合并授最终PASS，Plan r3/reviewed10/11。下一责任merge/T11：受审冻结根5e8e550fa先跑merge-owned裸t+tv及实际触面/consumer/独立workspace门；tf到期主检单实例；通过后Spec/ledger沉淀、合入、归档与wt-guard收尾，实际完成才D828交付。当前未执行门禁/合入/清树，不能据reviewed宣称已交付。
 
-F05b及所有前批finding闭合保持；SD01..06已核定proposed审校文本，canonical/ledger未动。历史一次战役失败缺具体诊断，“机器负载”归因未独立确证；同冻结正式30样本一次通过且raw完整，不用重跑绿抹去失败或追造日志。后续逐次独立目录保存完整成功/失败证据。若修复夹带语义变化、依赖/配置/输入变化，须重新冻结并按实际触面重验；不准借纯格式窄复审覆盖语义变化。
+核定规范增量使用[T10最终审校文本](attachments/828/review-t10-r2-5e8e550fa/spec-delta-reviewed.md)，canonical/ledger尚未写入。三512/正式双门/兼容与资源证据在格式等价、依赖配置输入未变边界延续；后续若有语义改动须重新冻结并受影响复审。历史work单次战役失败丢失具体诊断，归因未确证的限制保留；后续逐次独立目录保存完整失败raw，不补造日志或以重跑绿抹去记录。
