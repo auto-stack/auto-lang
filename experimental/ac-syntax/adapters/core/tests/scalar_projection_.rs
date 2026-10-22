@@ -33,10 +33,7 @@ fn project_scalar(
     let snap = Snapshot::from_text(&Rc::new(PageStore::new()), src);
     let out = parse_snapshot(p, cs, &snap, &Budget::default()).unwrap();
     if !out.tree.diags.is_empty() {
-        return Err(ProjectionError::HasErrors(format!(
-            "{:?}",
-            out.tree.diags
-        )));
+        return Err(ProjectionError::HasErrors(format!("{:?}", out.tree.diags)));
     }
     let k = CoreKinds::from_program(p);
     let program = project_strict(p, &k, &out.tree, &snap)?;
@@ -77,8 +74,12 @@ fn differential(cases: &[(&str, &str)]) {
                 }
             }
             (Err(_), Err(_)) => {}
-            (Ok(_), Err(e)) => panic!("case `{name}`: parser accepts, projection rejects: {e:?}\nsource: {src}"),
-            (Err(e), Ok(_)) => panic!("case `{name}`: parser rejects, projection accepts: {e:?}\nsource: {src}"),
+            (Ok(_), Err(e)) => {
+                panic!("case `{name}`: parser accepts, projection rejects: {e:?}\nsource: {src}")
+            }
+            (Err(e), Ok(_)) => {
+                panic!("case `{name}`: parser rejects, projection accepts: {e:?}\nsource: {src}")
+            }
         }
     }
 }
@@ -86,8 +87,14 @@ fn differential(cases: &[(&str, &str)]) {
 #[test]
 fn scalar_projection_operator_surface_parity() {
     differential(&[
-        ("arith all", "fn main() int { return 1 + 2 - 3 * 4 / 5 % 6 }"),
-        ("precedence chain", "fn f(a int, b int) int { return a + b * 2 - a / b % 3 }"),
+        (
+            "arith all",
+            "fn main() int { return 1 + 2 - 3 * 4 / 5 % 6 }",
+        ),
+        (
+            "precedence chain",
+            "fn f(a int, b int) int { return a + b * 2 - a / b % 3 }",
+        ),
         ("relational", "fn f(a int, b int) bool { return a < b }"),
         ("relational le", "fn f(a int, b int) bool { return a <= b }"),
         ("relational gt", "fn f(a int, b int) bool { return a > b }"),
@@ -114,9 +121,18 @@ fn scalar_projection_unary_and_literal_parity() {
     differential(&[
         ("unary neg ident", "fn f(x int) int { return -x }"),
         ("unary not", "fn f(b bool) bool { return !b }"),
-        ("unary neg group", "fn f(a int, b int) int { return -(a + b) }"),
-        ("unary not group", "fn f(a bool, b bool) bool { return !(a && b) }"),
-        ("unary neg call", "fn g() int { return 3 }\nfn main() int { return -g() }"),
+        (
+            "unary neg group",
+            "fn f(a int, b int) int { return -(a + b) }",
+        ),
+        (
+            "unary not group",
+            "fn f(a bool, b bool) bool { return !(a && b) }",
+        ),
+        (
+            "unary neg call",
+            "fn g() int { return 3 }\nfn main() int { return -g() }",
+        ),
         ("unary double neg", "fn f(x int) int { return - -x }"),
         ("neg literal tight", "fn f() int { return -5 }"),
         ("neg literal space", "fn f() int { return - 5 }"),
@@ -220,11 +236,27 @@ fn main() int { return mid(5) }
     let snap = Snapshot::from_text(&store, src);
     let out = parse_snapshot(&p, &cs, &snap, &Budget::default()).unwrap();
     let at = src.find("* 2").unwrap();
-    let e = ac_syntax_rt::snapshot::Edit { start: at as u64, end: (at + 3) as u64, insert: b"* 3".to_vec() };
+    let e = ac_syntax_rt::snapshot::Edit {
+        start: at as u64,
+        end: (at + 3) as u64,
+        insert: b"* 3".to_vec(),
+    };
     let ns = snap
-        .edit(&ac_syntax_rt::snapshot::EditRequest { base_revision: snap.revision(), edits: vec![e.clone()] })
+        .edit(&ac_syntax_rt::snapshot::EditRequest {
+            base_revision: snap.revision(),
+            edits: vec![e.clone()],
+        })
         .unwrap();
-    let inc = ac_syntax_rt::edit::incremental_reparse(&p, &cs, &out, &snap, &ns, &[e], &Budget::default()).unwrap();
+    let inc = ac_syntax_rt::edit::incremental_reparse(
+        &p,
+        &cs,
+        &out,
+        &snap,
+        &ns,
+        &[e],
+        &Budget::default(),
+    )
+    .unwrap();
     let fresh = parse_snapshot(&p, &cs, &ns, &Budget::default()).unwrap();
     assert!(inc.fallback.is_none(), "{:?}", inc.fallback);
     assert_eq!(

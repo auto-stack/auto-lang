@@ -723,9 +723,7 @@ fn step_expr(cx: &mut Cx, stack: &mut Vec<Frame>, vals: &mut Vec<Val>, node: u32
         // 一致——不含前缀符本身）。
         let kids = cx.tree.children(node);
         let has_minus = kids.iter().any(|&c| cx.tree.kind(c) == cx.k.tok_minus);
-        let has_bang = kids
-            .iter()
-            .any(|&c| Some(cx.tree.kind(c)) == cx.k.tok_bang);
+        let has_bang = kids.iter().any(|&c| Some(cx.tree.kind(c)) == cx.k.tok_bang);
         if has_minus || has_bang {
             let operand_n = *kids
                 .iter()
