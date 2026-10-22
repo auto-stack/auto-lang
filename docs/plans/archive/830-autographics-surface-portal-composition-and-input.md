@@ -254,6 +254,7 @@ T-02可行性与T-03共同合同先行；renderer与输入的独立模块可按�
 - **ledger_refreshed**：`.autoos/specs.json` 由 v66→v67 的 guarded offline projection（备份 `.autoos/specs.json.bak-p830-merge`；脚本化 read-modify-write；六 section 校验；读回核对 7 条：designs×4、tests×1、reviews×1、reports×1；其余条目与顶层字段不变）；`python scripts/spec-index.py` 重生成 INDEX。
 - **archived**：本文件移至 `docs/plans/archive/`，`status: archived`，T-01..T-10 全勾；`docs/specs/auto-graphics/plans.md` 增加 830 行、`overview.md` 模块行更新；LEDGER/INDEX 指向本归档。
 - **cleaned**：`bash /d/autostack/wt-guard.sh /d/autostack/.wt/lang-830/auto-lang` → `clean`（无 reparse point）；`git worktree remove` 成功、`plan-830-dev` 经 ancestry 核验（764e87559 是 `autographics-dev` 祖先、与 tip 同）后 `-D` 删除、空组目录 `.wt/lang-830` 已移除；`git worktree list` 不再包含该树。
+- **批量回归（830 %5 触发，merge 收尾）**：主检出单实例串行 tf→tt→tb，收据 `docs/plans/.last-batch-regression.json` 覆盖 830（covers `5685d3a1f`）：tf 6282/6282（518 skip）、tt 5703/5703（1800 skip）、tb 5307/5307（1548 skip）；首轮 tt 被 Windows OS 1224（文件映射冲突）中断该 leg，目标测试 solo 复跑绿后 `--no-fail-fast` 完整重跑全绿，列入 `known_reds_seen`，无新红；窗口无 aavm 触发故未跑 taa。
 - `outcome: pass`；生产面向产物（后台/前端 bundle）不受本 Plan 影响（仅 experimental + docs）。
 ## 9. 复审记录
 
