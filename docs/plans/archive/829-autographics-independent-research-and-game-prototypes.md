@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-829
-status: reviewed
+status: archived
 feature_name: AutoGraphics独立调研与2D/3D游戏原型
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-21
 updated_at: 2026-10-22
-current_step: 10
+current_step: 11
 total_steps: 11
 supersedes_spec_components: []
 new_spec_components:
@@ -212,7 +212,7 @@ T-02 以实际样本确定支持的模型/纹理格式与规模、视图/帧/资
 | T-08 [x] | work | T-02；独立Iced消费可用 | `AGP/src/bin/iced_spike.rs`、`research/integration-handoff.md`（新） | V-06及反控、IH-01..05与I1–I3后继验收合同；可提前研究，不等两游戏/迁移完成；不改生产UI；AC-07/08。[✅ 2026-10-21 work：commit b812222b5；iced 0.14.0/iced_wgpu 0.14.0 与 wgpu 27.0.1 同实例入 AGP 锁；V-06 windowed exit 0：真实 OS 点击走 iced 真实事件路径改变图形目标、同 Device/Queue 渲染合成、逐类视图 target（发现并修单 pipeline 共享缺陷）、DPI 2.0/resize/干净退出、空帧+第二 Device 反控必捕（wgpu27 跨设备 API 层不报错的事实如实记录，门以 token+架构守住）；交接文档 IH-01..05 全含 owner/入场门/已交证据/缺项，I1–I3 显式 PENDING；9 probe case 全 exit 0，73 测试全过。r2：F09 去 vendoring 后接线更新（1fc3f6116）；F10 handoff :23 伪称更正（1fc3f6116）] |
 | T-09 [x] | work | T-01..08 | `AGP/README.md`、`research/result.md`（新），主检出本Plan与附件证据 | V-09、完整独立交付/重定位重放，能力/差异/原型完成与生产pending清单及Spec增量提案；AC-01/08。[✅ 2026-10-21 work：commit f7ea95f3b；V-09 四门全绿（依赖闭包机械扫描零越界、--locked 构建、A→B 重定位真实冷构建重放 26 个机器无关字段 0 差异+快照哈希 bit-identical、根 diff 为空/无链接/核心零 GPU 依赖）；README/result.md 交付（AC-01..08 逐条证据绑定、P0–P2 done/I1–I3 pending、E1–E11 偏差总账）；SD-01..03 提案稿落 AGP/research/spec-delta/（未写 docs/specs/）；73 测试全过，10/10 probe case exit 0。r2：全文档与实测事实对齐（E12/E13），闭合矩阵 F01–F11 全录，锁随去 vendoring 再生（1fc3f6116）] |
 | T-10 [x] | review | T-01..09完成、冻结提交/树、作者停止写实现 | 本Plan §9、同树验收证据 | 独立final review核AC-01..09/SD-01..03；不运行根整档来替代验收、不直接修实现；AC-09。[✅ 2026-10-21 终审链：R1 nf(11项)→r2三批修复→R2 nf(5)→r3+E15→R3 PASS→**R4 nf(5，完整不变量缺口)**→r4(b84c6d91e,E16)→R5 PASS→**R6 nf(3：源生成高度y=0误读/截图门3D越界+错位/金帧manifest未入库)**→r5(814f9bf01,E17)→**R7 PASS**（逐项 throwaway 回退+复审者亲跑纯提交导出重放，104/104 测试，AC-01..09 全 PASS）。非阻塞债务：R5-01 无界点击等待、R5-02 僵尸手册、R5-03 SD-03 IH-01 措辞、R7-01 旧计数标注、Godot 角色级对比 deferred。merge-owned：交互会话 iced case 级双跑（唯一活证据缺口）+ 迁移交接放行授权 pending] |
-| T-11 [ ] | merge | T-10 pass；迁移完成交接门已明确放行合入 | 实验代码合入、Spec/ledger/归档与清理收据 | 冻结提交上跑独立workspace全适用测试/探针及真实consumer；未触根Rust/UI不触发根t/tv/tu/docs_gen，若新增触面须先修订合同。沉淀仅experimental事实、I1–I3仍pending；wt-guard clean后清理；AC-10 |
+| T-11 [x] | merge | T-10 pass；**2026-10-22 用户裁定**：以 `autographics-dev` 集成分支承接，替代原"迁移完成交接门已明确放行合入 master"前置 | 实验代码合入、Spec/ledger/归档与清理收据 | 冻结提交上跑独立workspace全适用测试/探针及真实consumer；未触根Rust/UI不触发根t/tv/tu/docs_gen，若新增触面须先修订合同。沉淀仅experimental事实、I1–I3仍pending；wt-guard clean后清理；AC-10。[✅ 2026-10-22 merge：门禁冻结 `ddbde3e62` 全绿（fmt/check 零 warning、117/117、十探针 10/10 exit0、consumer 真实重定位 mismatches=[]，证据 [merge-t11/gates.md](attachments/829/merge-t11/gates.md)）；**landed=merge `ab56c32ec`** 落 `autographics-dev`（基于 master tip，merge 保留原哈希不 rebase，AGP 子树与 `ddbde3e62` 逐字节一致 diff=0）；SD-01..03 沉淀 `docs/specs/auto-graphics/`（含 R5-03 counter/content 双门措辞修正）+overview/goals/INDEX 回写；ledger v64→v65 guarded offline projection（P829-AGP/R18/MERGE/AGP-TESTS 四条）；归档+wt-guard 清理收据见 §9 终收据；master 合入待 814/815/816 系迁移全部完成（用户裁定，非本计划范围）] | |
 
 计划实施树：`D:/autostack/.wt/lang-829/auto-lang`，分支 `plan-829-dev`；基面由 work 核对届时 master 冻结提交，不复制当前其他WIP。当前不创建树/分支；root target 与实验 target 分开，不创建 junction/symlink、不写外仓。
 
@@ -221,7 +221,21 @@ T-02 以实际样本确定支持的模型/纹理格式与规模、视图/帧/资
 
 ## 9. 复审记录
 
-### 2026-10-22 merge T-11 门禁执行收据 `PLAN-829:r1` — blocked 于迁移交接放行（当前）
+### 2026-10-22 merge 终收据 `PLAN-829:r1` — pass / delivered（autographics-dev 承接；当前）
+
+- `stage: merge`；merge 会话按 auto-plan-merge 技能范式执行；未建 agent/聊天。前一条"blocked 于迁移交接放行"收据已被下述**用户裁定**取代。
+- **dated 用户裁定（2026-10-22）**：AutoGraphics 不合入 master、不等待迁移完成——与 AC/AAC（ACE）路线同款开**长期集成分支 `autographics-dev`** 承接：PLAN-829 内容合并入该分支后即清理 worktree；后续 AutoGraphics 计划（830+）沿用此模式；**待 814/815/816 系列（及后续）迁移工作全部完成后再考虑合回 master**。此裁定替代 T-11 原"迁移完成交接门已明确放行合入"前置（对 master 合入而言仍保留等待语义）。
+- **checkpoint `prepared` ✅**：R18 PASS 基线 `ddbde3e62857`、SD-01..03 冻结提案、锁 `6cd34576…`、资产 `983a78f540…`（同前收据）。
+- **merge-owned 门禁 ✅（冻结 `ddbde3e62857` 实跑全绿）**：fmt/check 零 warning；全适用测试 **117/117**；十探针 **10/10 exit 0**（iced-shared-device 真窗口 composite ok=true；窗口用例前残留进程计数 0）；independent-consumer 真实 A→B 重定位冷构建 `ok=true/mismatches=[]`。证据 [merge-t11/gates.md](attachments/829/merge-t11/gates.md)（10 report+.json.txt 规避 `*.json` 忽略规则、30 关键帧）。
+- **checkpoint `landed` ✅（目标=`autographics-dev`）**：`git checkout -b autographics-dev master` + `git merge plan-829-dev` → merge commit **`ab56c32ec4cb28e01fbcca74e9861164ffad43f0`**（parents=master tip+`ddbde3e62`；**merge 保留原哈希不 rebase**，`ddbde3e62` 为祖先；`git diff ddbde3e62 autographics-dev -- experimental/autographics-prototype/` **零行**=AGP 子树与复审提交逐字节一致）；合并树 `cargo check --all-targets --locked --offline` 绿。**master 零代码合入**（裁定），master tip 保持迁移系列簿记流。
+- **checkpoint `ledger_refreshed` ✅（channel=guarded offline projection，store DOWN 已核实）**：`.autoos/specs.json` 备份 `.autoos/specs.json.bak-v65-829pre` → 外科投影（round-trip 格式锁定 indent=1/无尾换行，git diff 78+/1- 恰为新增条目+版本行）→ 回读校验（六段集合、+4 条、旧条目逐字段零变更）。version **64→65**；条目 `P829-AGP`（designs→docs/specs/auto-graphics/project.md）、`P829-R18`（reviews→attachments/829/review-r18/review.md）、`P829-MERGE`（reports→archive 本文件）、`P829-AGP-TESTS`（tests→experimental/autographics-prototype/tests/，tag 注明 branch:autographics-dev）。
+- **canonical 沉淀 ✅（master，文档层）**：`docs/specs/auto-graphics/{project,prototype-profile,integration-contract}.md`（SD-01..03 落稿，含 R5-03 裁定措辞：counter 门=漏画检测、content 门=透明片元检测，两门并列不可互替，附当前三时刻证据）+`plans.md`；overview.md 外围实验表新增行、goals.md GOAL-008 关联补 829、INDEX.md 再生（spec-index.py GROUPS 登记"实验/沙盒"，58 projects）；spec-lint 1 error=预存 design/ 缺卡，21 warnings 均预存，本次零新增。知识文档显式记录：**代码在 `autographics-dev` 分支，master 侧仅文档**。
+- **checkpoint `archived` ✅**：本文件 `git mv` 至 `docs/plans/archive/`，`status: archived`、T-01..11 全勾、`current_step: 11/11`；`completion_kind: delivered`（交付目标=autographics-dev 集成分支 + master 知识沉淀，**非 master 代码合入**）；plan/docs 工件随本收据提交 master（无未跟踪 docs/ 遗留）。文末 spec-sync 回写记录已附。
+- **checkpoint `cleaned`**：wt-guard → worktree/分支/组目录清理，收据随后续提交补记（见本节末"cleaned 补记"）。
+- **landing≠deployment 附注**：本计划为实验原型，无生产构件（backend release/daemon/web bundle）消费其代码；AGP 自有构建随分支。批量回归到期判定：收据 `last_covered_plan_id=817` @2026-10-21T06:27Z（<48h）且其后无计划落地（815–828 在途、829 非整 5 号且落集成分支）→ **不到期**。
+- `outcome: pass`（delivered to autographics-dev；I1–I3 生产集成 pending 由 IH 合同承接；master 合回时机由迁移系列收口后再议）。
+
+### 2026-10-22 merge T-11 门禁执行收据 `PLAN-829:r1` — blocked 于迁移交接放行（历史；已被同日用户裁定取代）
 
 - `stage: merge`；merge 会话按 auto-plan-merge 技能范式执行；未建 agent/聊天。
 - 基线：worktree `D:/autostack/.wt/lang-829/auto-lang`、分支 `plan-829-dev`、HEAD=`ddbde3e62857e6bbfc8b780c6182ee1bb7d4ef74`（=R18 reviewed_commit）、基面 `fdb1fad2c`；执行前后树均 clean；diff 127 文件全限 `experimental/autographics-prototype/`（纯 experimental 触面，按 T-11/R18 裁定不触发根 t/tv/tt/tb/tu/taa/tf/docs_gen）。窗口用例前 `graphics-probe`/`iced_spike` 残留进程计数 0。
@@ -437,3 +451,10 @@ T-02 以实际样本确定支持的模型/纹理格式与规模、视图/帧/资
 2. T-02：局部ECS/组件存储、模型/碰撞/文本/音频库、wgpu/Iced依赖与patch、资源预算/失败分类；如果不可行，回new修订而不砍验收。
 3. T-08：迁移后公开SDK/renderer/protocol的实际版本与符号、接口owner和迁移完成收据；目前不能编造不存在的生产API或承诺日期。
 4. 真正多人并发实现需要另外确认模块owner和后继Plan分解；本轮未请求创建agent或chat，不默认分派。
+
+## 11. spec-sync 回写记录（2026-10-22 merge）
+
+- 新建 `docs/specs/auto-graphics/`：project.md（SD-01，含分支归属裁定事实）、prototype-profile.md（SD-02 实测支持面）、integration-contract.md（SD-03，含 R5-03 counter/content 双门措辞修正与 I2=master 合回裁定前提）、plans.md（本计划行）。
+- 全局件：overview.md 外围与实验表 +auto-graphics 行；goals.md GOAL-008 关联 +829；INDEX.md 再生（spec-index.py GROUPS 登记"实验/沙盒"）。
+- ledger：.autoos/specs.json v64→v65 guarded offline projection，P829-AGP / P829-R18 / P829-MERGE / P829-AGP-TESTS 四条（file/tags 全带，branch:autographics-dev 溯源）。
+- 知识边界：代码唯一落点=`autographics-dev` 分支（merge `ab56c32ec`）；master 侧仅文档；I1–I3 pending 以 integration-contract.md 为准，后继计划只能以绑定收据替换 pending。

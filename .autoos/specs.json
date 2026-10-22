@@ -3987,6 +3987,26 @@
       "delivery:93a25c924",
       "ledger:offline-projection"
      ]
+    },
+    {
+     "id": "P829-MERGE",
+     "title": "PLAN-829 merge 收据（autographics-dev 集成分支承接；2026-10-22 用户裁定）",
+     "content": "2026-10-22用户裁定:AutoGraphics不进master、开autographics-dev长期集成分支承接(829先落,830+沿用),待814/815/816系(及后续)迁移全部完成再议合回master——替代原T-11迁移交接放行前置。merge-owned门禁冻结ddbde3e62全绿:fmt/check零warning、全适用测试117/117(lib29+prototype16+squash17+composite17+seam5+delivery2+breakout11+threed10+cache3+verifier7)、十探针10/10 exit0(iced真窗口composite ok,consumer真实A→B重定位冷构建ok/mismatches=[]),证据docs/plans/attachments/829/merge-t11/;landed=merge ab56c32ec(master tip+ddbde3e62,AGP子树与复审提交逐字节一致,merge保留原哈希不rebase);canonical沉淀docs/specs/auto-graphics/{project,prototype-profile,integration-contract,plans}(SD-01..03+R5-03 counter/content双门措辞)+overview/goals回写+INDEX58;纯experimental触面零根档;计划归档+worktree清理收据见归档计划§9;ledger经guarded offline projection写入(store不可达,备份+外科范围+回读校验),version 64→65",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/plans/archive/829-autographics-independent-research-and-game-prototypes.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-829:r1",
+      "delivery:ab56c32ec",
+      "frozen:ddbde3e62857",
+      "ledger:offline-projection"
+     ]
     }
    ],
    "section_type": "Reports",
@@ -14165,6 +14185,25 @@
       "source_commit:93a25c924",
       "reviews:R9..R15"
      ]
+    },
+    {
+     "id": "P829-AGP",
+     "title": "auto-graphics AGP 原型支持面与验证矩阵（PLAN-829）",
+     "content": "AGP=experimental/autographics-prototype 独立wgpu workspace(wgpu27.0.1/winit0.30/iced+iced_wgpu0.14同实例,stock iced_widget 0.14.2零path依赖,V-09根workspace零附带);实测支持面:win+离屏同device/queue、2D quads/fontdue文本、3D光照网格+2048阴影+GLB变换烘焙、kira音频、固定步长(60/120Hz)冻结回放与独立参考bit-exact;身份代际/有界缓存零重上传/局部编辑/失败八分类不覆盖last-good/20×重启witness基线/teardown后采样;合成双门=counter门(漏画,blank-blit反控)+content门(三时刻截图像素,transparent_blit反控;R4-05实测counter绿而内容全红,不可互替);十探针矩阵+117契约测试;代码在autographics-dev集成分支(ab56c32ec,AGP子树与ddbde3e62逐字节一致)不进master,2026-10-22用户裁定待814/815/816系迁移完成议合;I1-I3生产集成pending",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/specs/auto-graphics/project.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-829:r1",
+      "source_commit:ddbde3e62857",
+      "branch:autographics-dev@ab56c32ec"
+     ]
     }
    ],
    "section_type": "Designs",
@@ -17332,6 +17371,25 @@
      "tags": [
       "PLAN-814:r3",
       "source_commit:93a25c924"
+     ]
+    },
+    {
+     "id": "P829-AGP-TESTS",
+     "title": "AGP 契约测试族与十探针验证矩阵（autographics-dev 分支）",
+     "content": "独立workspace内117契约测试(12目标:lib/prototype/squash/composite_gate/iced_seam/delivery_closure/breakout/threed/cache/verifier,0 fail)+graphics-probe十case矩阵(gpu-foundation/shared-runtime/ag2d-breakout/ag3d-risk-slice/ag3d-squash/lifecycle/metrics/verifier-negative-controls/iced-shared-device/independent-consumer);反控五门(漏计分/错误踩踏/空帧/第二Device/迟到事件)+blank-blit/transparent_blit/mem::forget永久红控,破坏验证器exit1实证;双游戏golden trace独立Python参考bit-exact(10800/3600 tick);T-11冻结提交复跑全绿,报告指纹ddbde3e62857;代码位置=autographics-dev分支experimental/autographics-prototype/(master无此树)",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "experimental/autographics-prototype/tests/",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-829:r1",
+      "source_commit:ddbde3e62857",
+      "branch:autographics-dev"
      ]
     }
    ],
@@ -23365,6 +23423,25 @@
       "reviewed_commit:6f1cac8cb",
       "delivery:93a25c924"
      ]
+    },
+    {
+     "id": "P829-R18",
+     "title": "PLAN-829 受影响最终复审 R18 pass（F829-R14-01/02 关闭）",
+     "content": "受影响final review pass绑定ddbde3e62857(前审ae40d6052):缺window-ID超时后finalizer正常返回exit1无panic(原生扣留Resize反例native_loop_returned+verdict1),known-ID兄弟close保持;result.md:117-121 E21历史dated CORRECTED一致,旧raw保留;58定向全过+fmt/check零warning;当前原CLI正控三时刻content true/透明负控重跑三时刻全拒(首轮点击未送达记录保留不计完整负控);analyzer与ae40逐字归一化相同,R16的19外围腐坏及R8/R10/真实resize按未变输入hash限定复用;AC-01..09 pass,AC-10 merge-owned;SD-01..03语义PASS冻结",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/plans/attachments/829/review-r18/review.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-829:r1",
+      "review:R18",
+      "reviewed_commit:ddbde3e62857"
+     ]
     }
    ],
    "section_type": "Reviews",
@@ -23377,5 +23454,5 @@
   }
  ],
  "project": "auto-lang",
- "version": 64
+ "version": 65
 }

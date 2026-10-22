@@ -482,6 +482,7 @@
 | auto-abi | candidate（`autoabi.win-x64.v0.1-candidate`，PLAN-797 | 10 | [auto-abi/project.md](auto-abi/project.md) |
 | auto-mir | experimental | 0 | [auto-mir/project.md](auto-mir/project.md) |
 | auto-av | experimental | 0 | [auto-av/project.md](auto-av/project.md) |
+| auto-graphics | experimental | 0 | [auto-graphics/project.md](auto-graphics/project.md) |
 
 <details><summary>auto-cosmic 模块明细</summary>
 
