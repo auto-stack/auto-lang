@@ -1,5 +1,5 @@
 {
-  "base_revision": "2f2b54888587b4ec0f620a778232a8adb8060b20",
+  "base_revision": "3abde3f1ff66a630ad0cd7a019491a1112daf5bd",
   "config_sha256": "615dd4fee609d800cea732ce932c218965145d5fead9f3cebb330cc913792cbb",
   "declared_edges": [
     {
@@ -1137,6 +1137,15 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-tool-execution",
+      "from": "auto-ui-tools",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-tool-execution",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-tool-protocol",
       "from": "auto-ui-tools",
       "kind": "normal",
@@ -1152,6 +1161,15 @@
       "optional": false,
       "target": null,
       "to": "auto-ui-compiler",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-ui-runtime",
+      "from": "auto-ui-tools",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-ui-runtime",
       "to_scope": "member"
     },
     {
@@ -1195,7 +1213,7 @@
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
     "core_to_ui": 250,
-    "man_to_language": 29,
+    "man_to_language": 4,
     "ui_to_language": 0
   }
 }
