@@ -115,3 +115,48 @@ auto(CLI,clap+显示/路由)
 
 - 整链 probe 定稿(§8 T-01 尾项):814/815 接口发布后,按 §5 候选做一次真实构建/消费 probe,冻结 bootstrap 布局与 profile 闭包清单,回写本文件附录。
 - T-07 fixture `tool-execution-consumer/`(目录已留名,§6 闭包钉住)与 CLI 真实进程 driver。
+
+## 8. 门后整链 probe 定稿（M814-B/M815-B 发布后冻结；T-05 依据）
+
+冻结时点：M814-B（delivery `93a25c924`）、M815-A+M815-B（815 归档，生产位
+`0f2858e35`）均已发布；816 树同步 master `f6b99189a`（merge `3abde3f1f`）。
+Probe 结论（CLI 消费面逐符号盘点 + 工具能力矩阵核对）：
+
+### 8.1 CLI 依赖拓扑（目标态）
+
+| 层 | 依赖 | 说明 |
+|---|---|---|
+| 基座（Core 形态=基座） | `auto-lang-core`（语言 SDK）+ `auto-man-runtime`（管理服务）+ `auto-tool-client`（I-TOOL 客户端）+ `shell-pack` + `auto-val` + clap/miette/serde 等 | 旧 `auto-lang` 兼容大包与 `auto-man` compat 门面**退出 CLI 闭包**；语言 wrapper 局部入口家族（`run_file_with_args`/`dump_lowered`/`debug_file(_agent)`/`trans_*` 文件入口族）随迁 `auto-lang-core` 单源 |
+| `ui-extra` feature（default on） | `auto-ui-compiler` + `auto-ui-runtime` + `auto-ui-dialect` | **五操作协议面之外**的 UI 静态面：`auto ui`/`bp`（ui_gen 注册表/蓝图）、`rqhost`/`autodesk -q`（desktop_protocol）、docs 的 UI 文档生成、`new -t jet` 脚手架（`ui_gen::jet::JetProjectConfig`——实测在 compiler 域非 tools 域）、裸脚本动态 UI 宿主（`has_ui_keywords`→`run_file_dynamic_ui`）、UI 文法/宿主能力装配（镜像 wrapper `install_ui_host_capabilities`：文法表+provider 装配+SDK 钩子） |
+| UI 工程 build/run/gen | 经 `auto-tool-client` → 真实 `auto-ui-tool` 进程（I-TOOL v1 五操作） | **任何形态都不静态链接 `auto-ui-tools`**（SD-05-A）；runtime 服务编排的 UI 臂经 `ui_ops` seam 注入 **ToolUiOps**（适配器=纯委托：UiOps 方法→wire 请求→工具进程，算法零复制）；Core 形态下工具缺失=具名失败（T-04 discovery 负控），无静态 fallback |
+| `python` | `auto-lang-core/python` | 同旧 |
+| `autodown` | `ui-extra` + `auto-ui-runtime/autodown` | VM 真渲染依赖 UI runtime（旧 feature 转发即 `["ui-iced", "auto-ui-runtime/autodown"]`）；Core 形态不可开（诚实降级 textarea=旧无 autodown 行为） |
+
+### 8.2 Profile 语义（显式区分，§5.3）
+
+- **完整 profile（default features）**：全部 33 命令支持面保持；UI 工程命令经
+  工具进程，桌面协议/注册表/裸脚本 UI 宿主经 `ui-extra` 静态面（compiler/
+  runtime 域，非 auto-ui-tools）。交付=CLI 二进制 + `auto-ui-tool` + 资源/锁
+  （792 DELIVERY 闭包，815 交付形态）。
+- **Core profile（`--no-default-features --features core`）**：闭包
+  normal/build/dev 无 UI 实现（ui-compiler/ui-runtime/ui-tools/ui-dialect）、
+  无旧 auto-lang 兼容大包、无 auto-man compat。裸脚本/透传/REPL/语言 trans/
+  docs/stdlib/管理命令全可用；UI 命令（build/run/gen UI 后端、ui/bp/rqhost/
+  autodesk UI 面）具名失败。V-01 的闭包 oracle 以此形态钉住。
+
+### 8.3 实测依据（probe 证据要点）
+
+- 工具能力矩阵（815 handoff）：generate_ui=vue/rust/jet/ark/tauri/vscode；
+  build_ui=vue/rust/jet/ark/vscode（vm 具名拒绝）；run_ui=vue/vm/rust/jet/
+  ark/tauri/vscode，run 交互/取消真实链——UiOps 全部 generate/build/run 臂
+  可映射五操作；`request.output_root` 字段即 delivery root 通道。
+- runtime `ui_ops` 生产调用面（automan.rs 全量盘点）：vue/rust/vm/jet/ark/
+  vscode/tauri × generate/build/run + `create_jet_project`；
+  `pkg_run_script`/`pkg_display_name` 无 runtime 生产调用方（trait 预留面，
+  ToolUiOps 具名拒绝实现，不假成功）。
+- CLI 活面消费（排除 orphan cmd_vue/cmd_tauri）：`ui_build_shadcn*` 仅
+  orphan 消费（不需迁移）；`aura/route/ui_gen/ui::*` 归 compiler/runtime 域
+  可 `ui-extra` 门控；语言面符号全部在 core（入口家族迁移后）。
+- wrapper `install_ui_host_capabilities` 三件套（文法表/钩子/inventory）在
+  Core 形态由 core 自身 no-op 钩子承担（814 R3-01 语义），CLI `ui-extra`
+  形态镜像装配。
