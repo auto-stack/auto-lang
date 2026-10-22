@@ -1503,13 +1503,14 @@ impl FunctionIncrementalSession {
         // unit's ABC row and span sidecar (restore fails closed without
         // either). HIR artifacts stay soft-pinned regenerable cache.
         let mut edges: Vec<(String, ac_artifact_probe::identity::RefKind)> = Vec::new();
-        // B3-C04: logical payload bytes of ACCEPTED store writes in this
-        // persist pass — every put_enveloped that returns Ok counts its
-        // payload exactly once (fresh write or idempotent republication
-        // of identical content); a Conflict resolved to a surviving row
-        // wrote nothing and counts nothing; failed puts count nothing
-        // (nothing landed). Envelope/framing overhead is not fabricated.
-        let mut store_write_bytes: u64 = 0;
+        // B3-C04/R4: logical payload bytes of ACCEPTED store writes are
+        // booked INTO phase_io IMMEDIATELY at each Ok site — every
+        // put_enveloped that returns Ok counts its payload exactly once
+        // (fresh write or idempotent republication); a Conflict resolved
+        // to a surviving row wrote nothing and counts nothing; a FAILED
+        // put counts nothing. Immediate booking means an early-return
+        // error on a LATER put keeps every earlier accepted byte (已发生
+        // 计量不丢) — no local accumulator to lose on the error path.
         for (idx, rec) in self.fns.iter_mut().enumerate() {
             // The resident entry keys the row AND carries the code's true
             // mint range/text — the F11-S01 re-anchoring basis.
@@ -1573,7 +1574,7 @@ impl FunctionIncrementalSession {
                     Err(e) => return Err(format!("put {}: {e:?}", rec.def_id)),
                 };
             if abc_written {
-                store_write_bytes += bytes.len() as u64;
+                *self.phase_io.entry("store_write_bytes".into()).or_insert(0) += bytes.len() as u64;
             }
             edges.push((
                 abc_id.clone(),
@@ -1634,7 +1635,8 @@ impl FunctionIncrementalSession {
                     match put_enveloped(store, &hkey, "A07", &hid, &hbytes, vec![], Some(project)) {
                         Ok(_) => {
                             hir_deposits += 1;
-                            store_write_bytes += hbytes.len() as u64;
+                            *self.phase_io.entry("store_write_bytes".into()).or_insert(0) +=
+                                hbytes.len() as u64;
                         }
                         Err(e) if format!("{e:?}").contains("Conflict") => {
                             // Content revisit: the identical row already
@@ -1690,7 +1692,8 @@ impl FunctionIncrementalSession {
                 Err(_) => String::new(),
             };
             if sidecar_put.is_ok() {
-                store_write_bytes += spayload.len() as u64;
+                *self.phase_io.entry("store_write_bytes".into()).or_insert(0) +=
+                    spayload.len() as u64;
             }
             if let Err(e) = sidecar_put {
                 if !format!("{e:?}").contains("Conflict") {
@@ -1753,7 +1756,8 @@ impl FunctionIncrementalSession {
                     let rkey = unit_span_sidecar_repair_key(&owner, &rec.def_id, &cv);
                     match put_enveloped(store, &rkey, "A09", &sid, &spayload, vec![], None) {
                         Ok(id) => {
-                            store_write_bytes += spayload.len() as u64;
+                            *self.phase_io.entry("store_write_bytes".into()).or_insert(0) +=
+                                spayload.len() as u64;
                             sidecar_edge = Some(id);
                         }
                         Err(e) if format!("{e:?}").contains("Conflict") => {
@@ -1801,7 +1805,6 @@ impl FunctionIncrementalSession {
             }
         }
         self.counters.add("hir_artifacts_deposited", hir_deposits);
-        *self.phase_io.entry("store_write_bytes".into()).or_insert(0) += store_write_bytes;
         Ok(edges)
     }
 
