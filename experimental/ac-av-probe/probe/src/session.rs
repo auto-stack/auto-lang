@@ -1628,7 +1628,17 @@ impl FunctionIncrementalSession {
                 ),
                 ("owner".into(), owner.clone()),
                 ("kind".into(), "session-manifest".into()),
-                ("format".into(), "1".into()),
+                // T07-R3-01 KEY IDENTITY: the shared store's artifact id
+                // includes the edge set, and one layer+key admits exactly
+                // one artifact identity — a required-edge manifest can
+                // never reuse the pre-R2 edge-free key (format "1"): the
+                // same body with different edges is a DIFFERENT artifact
+                // and republishing onto the legacy row is a Conflict, not
+                // a self-heal. New writes take the "2" key; legacy rows
+                // stay readable through their ROOT ids (the matcher reads
+                // bodies by artifact id, never by key), still gate warm
+                // restores, and retire when the new graph registers.
+                ("format".into(), "2".into()),
                 ("entry".into(), self.entry_def_id.clone()),
                 ("fp".into(), fp),
             ],
