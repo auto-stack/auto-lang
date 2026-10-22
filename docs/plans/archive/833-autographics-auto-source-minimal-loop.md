@@ -87,7 +87,7 @@ profile：Windows x64、单原生窗口、键鼠；沿用830最终wgpu/Iced/Port
 
 2026-10-22 r1授权为SDK调查与草案、等待830交付。当前用户已告知830验收合入，明确要求核对前置、冻结833实施基线并确认可否交另一agent；本r2据此完成来源与交接放行。未指定实施/审核人或模型，本会话不代开聊天/agent或实施，不扩大生产集成/上游写面。
 
-从[overview](../../specs/overview.md)、[SDK Spec](../../specs/language-sdk/project.md)、[图形project](../../specs/auto-graphics/project.md)/[profile](../../specs/auto-graphics/prototype-profile.md)/[交接](../../specs/auto-graphics/integration-contract.md)、[Design45](../../design/45-autographics-wgpu-engine-and-game-prototypes.md)取材。r1的[接口/缺口调查](../attachments/833/planning/sdk-interface-investigation.md)与[观察指纹](../attachments/833/planning/source-observation.json.txt)保留为历史。本次再核[830归档/收据](830-autographics-surface-portal-composition-and-input.md)、当前surface/nested-input规范与SDK代码，证据见[r2交接](../attachments/833/planning/handoff-r2.md)/[冻结清单](../attachments/833/baseline-r2/baseline.json.txt)。仅复用既有冻结门证据，没有重跑实现验收。设计章和部分SD标题仍带旧draft字样，以已发布版本/hash、R5和merge终态为当前来源，不修改其原生产迁移门。
+从[overview](../../specs/overview.md)、[SDK Spec](../../specs/language-sdk/project.md)、[图形project](../../specs/auto-graphics/project.md)/[profile](../../specs/auto-graphics/prototype-profile.md)/[交接](../../specs/auto-graphics/integration-contract.md)、Design45（规划时的主检出只读背景文件，未受Git跟踪；不作为本次规范发布物）取材。r1的[接口/缺口调查](../attachments/833/planning/sdk-interface-investigation.md)与[观察指纹](../attachments/833/planning/source-observation.json.txt)保留为历史。本次再核[830归档/收据](830-autographics-surface-portal-composition-and-input.md)、当前surface/nested-input规范与SDK代码，证据见[r2交接](../attachments/833/planning/handoff-r2.md)/[冻结清单](../attachments/833/baseline-r2/baseline.json.txt)。仅复用既有冻结门证据，没有重跑实现验收。设计章和部分SD标题仍带旧draft字样，以已发布版本/hash、R5和merge终态为当前来源，不修改其原生产迁移门。
 
 ### 4.2 调查结论
 
@@ -317,3 +317,6 @@ T-01..08及独立复审T-09已完成（R1两finding经R2确认关闭）；T-10�
 ## spec-sync 回写记录
 
 SD-01新增auto-graphics/auto-source-driver.md；SD-02 integration-contract.md；SD-03 project.md/prototype-profile.md。新增模块overview，plans索引与GOAL-007/008/global overview回写，INDEX由spec-index.py从main-current规范快照+本次覆盖再生。ledger仅派生摘要/引用，canonical仍为docs/specs；全部源码只在autographics-dev。
+
+
+归档实际状态门修正：首次检查发现历史Design45背景链接指向主检出既有未跟踪文档。本次保留其取材身份为文字说明，发布知识只引用已提交的auto-graphics规范；未将其他会话WIP纳入提交。重新核验归档链接、已跟踪证据和任务计数后再清理；此为文档closeout修正，不改受审实现。
