@@ -889,11 +889,31 @@ fn run_jet_project_inner(
     if !gradlew.exists() {
         println!("  ⚠ Gradle wrapper not found, generating...");
         // Generate gradle wrapper if needed
-        std::process::Command::new("gradle")
-            .args(&["wrapper"])
-            .current_dir(&jet_dir)
-            .output()
-            .map_err(|e| format!("Failed to generate gradle wrapper: {}. Please install Gradle or Android Studio.", e))?;
+        // PLAN-815 R4-05：托管形态经 owned 树设施（输出仅用于存在性判断，
+        // 托管臂 stdout 转发日志流后以退出码裁决）；legacy 保持 output()。
+        if crate::proc_host::current().is_some() {
+            let status = crate::proc_host::run_external_status(
+                std::path::Path::new("gradle"),
+                &["wrapper"],
+                &jet_dir,
+                "jet-gradle-wrapper",
+            )
+            .map_err(|e| {
+                format!("Failed to generate gradle wrapper: {e}. Please install Gradle or Android Studio.")
+            })?;
+            if !status.success() {
+                return Err(
+                    "Failed to generate gradle wrapper. Please install Gradle or Android Studio."
+                        .into(),
+                );
+            }
+        } else {
+            std::process::Command::new("gradle")
+                .args(&["wrapper"])
+                .current_dir(&jet_dir)
+                .output()
+                .map_err(|e| format!("Failed to generate gradle wrapper: {}. Please install Gradle or Android Studio.", e))?;
+        }
     } else {
         println!("  ✓ Gradle wrapper found");
     }
@@ -902,11 +922,10 @@ fn run_jet_project_inner(
     println!();
     println!("{}", "▶ Step 3: Building Android project...".bright_cyan());
 
-    let build_result = std::process::Command::new(&gradlew)
-        .args(&["assembleDebug"])
-        .current_dir(&jet_dir)
-        .status()
-        .map_err(|e| format!("Failed to run gradlew assembleDebug: {}", e))?;
+    // PLAN-815 R4-05（F-815-T05-R4-05）：构建是 owned 树——取消/EOF 真终止。
+    let build_result =
+        crate::proc_host::run_external_status(&gradlew, &["assembleDebug"], &jet_dir, "jet-build")
+            .map_err(|e| format!("Failed to run gradlew assembleDebug: {}", e))?;
 
     if !build_result.success() {
         return Err("Build failed. Check the error messages above.".into());
@@ -921,38 +940,69 @@ fn run_jet_project_inner(
     );
 
     // Check for connected devices
-    let adb_devices = std::process::Command::new("adb")
-        .args(&["devices"])
-        .output();
-
-    let has_device = match adb_devices {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            // Check if there's at least one device (excluding header line)
-            stdout.lines().any(|line| line.contains("\tdevice"))
-        }
-        Err(_) => false,
+    // PLAN-815 R4-05：托管形态=owned 树+捕获排水（取消真终止）；legacy
+    // 保持 output()。
+    let has_device = if crate::proc_host::current().is_some() {
+        let spec = crate::proc_host::TrackedSpawn {
+            capture_stdout: true,
+            ..crate::proc_host::TrackedSpawn::new("adb", vec!["devices".to_string()])
+        };
+        crate::proc_host::spawn_tracked(spec, "jet-adb")
+            .and_then(|tracked| {
+                let out = crate::proc_host::drain_captured_stdout(&tracked);
+                let _ = crate::proc_host::wait_tracked(&tracked)?;
+                Ok::<_, std::io::Error>(out)
+            })
+            .map(|stdout| {
+                String::from_utf8_lossy(&stdout)
+                    .lines()
+                    .any(|line| line.contains("\tdevice"))
+            })
+            .unwrap_or(false)
+    } else {
+        std::process::Command::new("adb")
+            .args(&["devices"])
+            .output()
+            .ok()
+            .and_then(|output| {
+                let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+                Some(stdout.lines().any(|line| line.contains("\tdevice")))
+            })
+            .unwrap_or(false)
     };
 
     if has_device {
         // Install the APK
-        let install_result = std::process::Command::new(&gradlew)
-            .args(&["installDebug"])
-            .current_dir(&jet_dir)
-            .status()
-            .map_err(|e| format!("Failed to install: {}", e))?;
+        // PLAN-815 R4-05：安装命令同为 owned 树。
+        let install_result = crate::proc_host::run_external_status(
+            &gradlew,
+            &["installDebug"],
+            &jet_dir,
+            "jet-install",
+        )
+        .map_err(|e| format!("Failed to install: {}", e))?;
 
         if install_result.success() {
-            // Read project name from pac.at
-            let pac_path = root_dir.join("pac.at");
-            let project_name = if pac_path.exists() {
-                if let Ok(content) = fs::read_to_string(&pac_path) {
-                    parse_pac_name(&content).unwrap_or_else(|| "MyApp".to_string())
-                } else {
-                    "MyApp".to_string()
+            // PLAN-815 R4-04：包名显示消费请求字段（req 形态）——不再
+            // 回读主 pac.at；legacy 保持自扫。
+            let project_name = match req {
+                Some(r) => r
+                    .identity
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| "MyApp".to_string()),
+                None => {
+                    let pac_path = root_dir.join("pac.at");
+                    if pac_path.exists() {
+                        if let Ok(content) = fs::read_to_string(&pac_path) {
+                            parse_pac_name(&content).unwrap_or_else(|| "MyApp".to_string())
+                        } else {
+                            "MyApp".to_string()
+                        }
+                    } else {
+                        "MyApp".to_string()
+                    }
                 }
-            } else {
-                "MyApp".to_string()
             };
 
             println!("  ✓ App installed successfully!");
@@ -1046,11 +1096,15 @@ fn build_jet_project_inner(
         match gradle_cmd {
             Some(gradle_path) => {
                 println!("  Using Gradle from: {}", gradle_path.display());
-                let result = std::process::Command::new(&gradle_path)
-                    .args(&["wrapper"])
-                    .current_dir(&jet_dir)
-                    .status()
-                    .map_err(|e| format!("Failed to generate gradle wrapper: {}", e))?;
+                // PLAN-815 R4-05（F-815-T05-R4-05）：托管形态经 owned 树
+                // 设施（取消/EOF 终止整树）；legacy 直跑保持原 Command 形态。
+                let result = crate::proc_host::run_external_status(
+                    &gradle_path,
+                    &["wrapper"],
+                    &jet_dir,
+                    "jet-gradle-wrapper",
+                )
+                .map_err(|e| format!("Failed to generate gradle wrapper: {}", e))?;
 
                 if !result.success() {
                     return Err("Failed to generate gradle wrapper. Please run 'gradle wrapper' manually in the jet directory.".into());
@@ -1069,29 +1123,33 @@ fn build_jet_project_inner(
     println!();
     println!("{}", "▶ Step 3: Building APK...".bright_cyan());
 
-    let build_result = std::process::Command::new(&gradlew)
-        .args(&["assembleDebug"])
-        .current_dir(&jet_dir)
-        .status()
-        .map_err(|e| format!("Failed to build: {}", e))?;
+    // PLAN-815 R4-05：同上——gradle 构建是 owned 树（取消真终止，不是
+    // 只置标志等 status 返回）。
+    let build_result =
+        crate::proc_host::run_external_status(&gradlew, &["assembleDebug"], &jet_dir, "jet-build")
+            .map_err(|e| format!("Failed to build: {}", e))?;
 
+    let apk = jet_dir.join("app/build/outputs/apk/debug/app-debug.apk");
     if build_result.success() {
+        // PLAN-815 R4-06（F-815-T05-R4-06）：产物 oracle——退出码 0 但产物
+        // 缺失（假 wrapper/未真正执行）按具名失败回报，不冒称成功。
+        if !apk.is_file() {
+            return Err(format!(
+                "gradlew assembleDebug exited 0 but the APK artifact is missing at {} — the build did not really run",
+                apk.display()
+            ).into());
+        }
         println!();
         println!("{}", "✓ Build successful!".bright_green());
         println!();
         println!("APK location:");
-        println!(
-            "  {}",
-            jet_dir
-                .join("app/build/outputs/apk/debug/app-debug.apk")
-                .display()
-                .to_string()
-                .bright_cyan()
-        );
+        println!("  {}", apk.display().to_string().bright_cyan());
     } else {
-        println!();
-        println!("  ⚠ Build failed. Try running manually:");
-        println!("    cd {} && ./gradlew assembleDebug", jet_dir.display());
+        // PLAN-815 R4-06：真实构建失败=具名 Err（不再打印后吞掉返回 Ok）。
+        return Err(format!(
+            "jet build failed (gradlew assembleDebug exited with {build_result}); try manually: cd {} && ./gradlew assembleDebug",
+            jet_dir.display()
+        ).into());
     }
 
     Ok(())

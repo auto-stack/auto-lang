@@ -359,22 +359,42 @@ pub fn run_vm_ui_flow(
     // ABI 校验 + 注册进宿主桥(vm::host_bridge,与 ash-runner 同表)。
     // 无 back.project 配置时零行为变化(本地 back/ 现状)。
     let mut _backend_keepalive: Option<auto_lang_core::vm::backend_abi::LoadedBackend> = None;
-    // T-05 R3（R3-01）：托管形态下后端装配在**执行进程**（internal-vm-exec
-    // 子进程）进行——父进程仅把请求衍生的绝对后端根经 env 传递（见下），
-    // 不在本进程装载（跨进程非 env 状态不迁移）。
-    if !split_mode && proc_host::current().is_some() {
-        if let Ok(Some(backend_rel)) = source.external_backend(project_dir) {
-            let backend_dir = project_dir
-                .join(backend_rel.as_str())
-                .canonicalize()
-                .unwrap_or_else(|_| project_dir.join(backend_rel.as_str()));
-            if backend_dir.join("api.at").is_file() {
-                // SAFETY: edition 2021; set before the child spawns.
-                unsafe {
-                    std::env::set_var("AUTO_UI_TOOL_VM_BACK_ROOT", &backend_dir);
+    // T-05 R4（F-815-T05-R4-01）：托管形态下后端/主题上下文不再写宿主
+    // 进程全局 env（None/无效根不清理 → 串行下一请求沿用上一后端的
+    // 根因），改为**每请求精确条目**经 RunIo 传给会话子进程 spawn：
+    // 请求未衍生该键时它被从继承环境移除——第二个请求只获得自己的
+    // 上下文；装载本身仍在执行进程（internal-vm-exec 子进程）进行。
+    if proc_host::current().is_some() {
+        let mut session_env: Vec<(String, String)> = Vec::new();
+        if !split_mode {
+            match source.external_backend(project_dir) {
+                Ok(Some(backend_rel)) => {
+                    let backend_dir = project_dir
+                        .join(backend_rel.as_str())
+                        .canonicalize()
+                        .unwrap_or_else(|_| project_dir.join(backend_rel.as_str()));
+                    session_env.push((
+                        "AUTO_UI_TOOL_VM_BACK_ROOT".to_string(),
+                        backend_dir.to_string_lossy().to_string(),
+                    ));
                 }
+                Ok(None) => {}
+                Err(e) => eprintln!("  {} pac.at parse failed: {}", "⚠".bright_yellow(), e),
             }
         }
+        if let Some(lite) = source.theme_decl_lite() {
+            // 字段皆简单标量/字符串对偶——手写 JSON 组装（project-model 无
+            // serde 依赖，wire 为手写编解码，同族做法）。
+            let json = serde_json::json!({
+                "name": lite.name,
+                "extends": lite.extends,
+                "mode": lite.mode,
+                "colors": lite.colors,
+            })
+            .to_string();
+            session_env.push(("AUTO_UI_TOOL_VM_THEME_DECL".to_string(), json));
+        }
+        proc_host::set_vm_session_env(session_env);
     } else if !split_mode {
         match source.external_backend(project_dir) {
             Ok(Some(backend_rel)) => {
@@ -488,32 +508,20 @@ pub fn run_vm_ui_flow(
     // T-06 双端同源）。在 env 种子**之后**执行：声明只换 ACTIVE_THEME 色板
     // 槽,不清写 DARK_MODE/ACCENT_NAME——优先级链
     // CLI env > os-config/宿主 > pac.at 声明 > 内置缺省 语义成文。
-    if proc_host::current().is_some() {
-        // T-05 R3（R3-01）：托管形态把请求衍生的 theme{} lite 声明整体
-        // （JSON）传给执行子进程，子进程同链 compose 激活——组合主题不
-        // 是内置名，只传名字会退回缺省；声明即单源请求数据，无第二真源。
-        if let Some(lite) = source.theme_decl_lite() {
-            // 字段皆简单标量/字符串对偶——手写 JSON 组装（project-model 无
-            // serde 依赖，wire 为手写编解码，同族做法）。
-            let json = serde_json::json!({
-                "name": lite.name,
-                "extends": lite.extends,
-                "mode": lite.mode,
-                "colors": lite.colors,
-            })
-            .to_string();
-            // SAFETY: edition 2021; set before the child spawns.
-            unsafe {
-                std::env::set_var("AUTO_UI_TOOL_VM_THEME_DECL", json);
-            }
+    // PLAN-609 T-A1: pac.at `theme: {}` 声明色板激活（VM 腿 boot,与 vue 腿
+    // T-06 双端同源）。在 env 种子**之后**执行：声明只换 ACTIVE_THEME 色板
+    // 槽,不清写 DARK_MODE/ACCENT_NAME——优先级链
+    // CLI env > os-config/宿主 > pac.at 声明 > 内置缺省 语义成文。
+    // T-05 R4（F-815-T05-R4-01）：托管形态的主题经会话子进程 env 激活
+    // （见上方 session_env 装配）——父进程不再全局应用，避免跨请求残留。
+    if proc_host::current().is_none() {
+        if let Some(name) = source.apply_theme_decl(project_dir) {
+            println!(
+                "  {} theme declaration activated: {}",
+                "✓".bright_green(),
+                name
+            );
         }
-    }
-    if let Some(name) = source.apply_theme_decl(project_dir) {
-        println!(
-            "  {} theme declaration activated: {}",
-            "✓".bright_green(),
-            name
-        );
     }
 
     // PLAN-080 §10-9 足迹桩（CLI 调试遗留）：仅在未托管（CLI 直跑）形态

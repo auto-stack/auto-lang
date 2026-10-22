@@ -37,6 +37,13 @@ use auto_tool_execution::{ExecutionSpec, StdioPolicy, TreeScope};
 const WAIT_POLL: Duration = Duration::from_millis(50);
 /// Bounded grace for tree reaping and forwarder joins (cancel path).
 const TEARDOWN_GRACE: Duration = Duration::from_secs(10);
+/// Natural-drain window before the join forces the reader stop flag: once
+/// the child (tree) is finished the pipes close and a reader ends ITSELF
+/// with a natural EOF within a poll tick — preempting it with the stop
+/// flag would misclassify a normal completion as a teardown failure and
+/// drop trailing output (observed on fast-exiting build wrappers,
+/// PLAN-815 R4 replay).
+const READER_DRAIN_GRACE: Duration = Duration::from_secs(2);
 /// Bounded capacity of the per-op input queue (backpressure is a named
 /// rejection, never a blocked control loop).
 pub const INPUT_QUEUE_DEPTH: usize = 128;
@@ -99,6 +106,10 @@ pub struct TrackedSpawn {
     pub args: Vec<String>,
     pub cwd: Option<PathBuf>,
     pub env: Vec<(String, String)>,
+    /// Keys to REMOVE from the inherited environment before `env` is
+    /// applied (PLAN-815 R4-01): a per-request child context must not
+    /// leak a stale same-named variable from the host process env.
+    pub env_remove: Vec<String>,
     /// Windows: resolve via `cmd /C` (mirrors the legacy pkg.rs shim for
     /// .cmd/.bat package managers).
     pub windows_cmd_shim: bool,
@@ -107,6 +118,10 @@ pub struct TrackedSpawn {
     /// session child: its real MCP endpoint banner lands on stderr
     /// (R2-03's accurate-URL Launched source).
     pub pipe_stderr: bool,
+    /// Keep stdout for the CALLER to drain (no forwarder thread is
+    /// started) — for hosted external commands whose output the run path
+    /// itself parses (e.g. `adb devices`). R4-05: still an owned tree.
+    pub capture_stdout: bool,
 }
 
 impl TrackedSpawn {
@@ -116,8 +131,10 @@ impl TrackedSpawn {
             args,
             cwd: None,
             env: Vec::new(),
+            env_remove: Vec::new(),
             windows_cmd_shim: false,
             pipe_stderr: false,
+            capture_stdout: false,
         }
     }
 
@@ -128,6 +145,11 @@ impl TrackedSpawn {
 
     pub fn with_env(mut self, key: &str, value: &str) -> Self {
         self.env.push((key.to_string(), value.to_string()));
+        self
+    }
+
+    pub fn without_env(mut self, key: &str) -> Self {
+        self.env_remove.push(key.to_string());
         self
     }
 
@@ -143,6 +165,7 @@ impl TrackedSpawn {
                 .iter()
                 .map(|(k, v)| (k.as_str().into(), v.as_str().into()))
                 .collect(),
+            env_remove: self.env_remove.iter().map(|k| k.as_str().into()).collect(),
             stdin: StdioPolicy::Piped,
             stdout: StdioPolicy::Piped,
             // stderr inherits the process stderr = the log stream after the
@@ -171,6 +194,9 @@ pub struct TrackedChild {
     /// NaturalEof / Stopped / IoError — a forced stop is NEVER reported as
     /// a natural EOF; joined with a real-finish oracle at teardown).
     readers: Mutex<Vec<(std::thread::JoinHandle<()>, Arc<Mutex<ReaderEnd>>)>>,
+    /// When the spawn requested `capture_stdout`: the undrained pipe,
+    /// handed to the caller (no forwarder was started for it).
+    captured_stdout: Mutex<Option<std::process::ChildStdout>>,
     /// Stop flag for the input writer's cancellable writes.
     input_stop: Arc<AtomicBool>,
     /// Stop flag for the forwarder's polling read loop (F01/R2: the reader
@@ -227,27 +253,53 @@ impl TrackedChild {
     }
 
     /// Bounded join of the forwarder threads with a REAL finish oracle
-    /// (F01/R2): teardown SIGNALS the stop flag first — the polling
-    /// readers observe it within one 10ms tick and truly stop even when a
-    /// NON-owned process holds the pipe's write end and no EOF can ever
-    /// arrive. A reader that stopped WITHOUT a natural pipe EOF is a NAMED
-    /// teardown failure (disclosed on the final report); a bound overrun is
-    /// likewise named, never silently detached.
+    /// (F01/R2). Two phases (PLAN-815 R4): first a SHORT natural-drain
+    /// window — the join only runs after the child (tree) finished, and a
+    /// closing pipe ends a reader on its own with a natural EOF within a
+    /// poll tick; preempting it with the stop flag would misclassify a
+    /// normal completion as a teardown stop and drop trailing output.
+    /// Readers still running after the drain (a NON-owned process holds
+    /// the write end; no EOF can ever arrive) are then SIGNALLED with the
+    /// stop flag — the polling readers observe it within one tick and
+    /// truly stop; a reader stopped WITHOUT a natural pipe EOF is a NAMED
+    /// teardown failure (disclosed on the final report); a bound overrun
+    /// is likewise named — and the thread is NOT joined past the bound
+    /// (the join itself must stay bounded; an overrun thread is disclosed,
+    /// not silently detached as if it had stopped, R1-01).
     fn join_readers(&self) -> Result<(), String> {
-        self.reader_stop.store(true, Ordering::SeqCst);
         let readers: Vec<_> = self.readers.lock().unwrap().drain(..).collect();
         let mut failures = Vec::new();
         for (handle, reached_eof) in readers {
-            let deadline = std::time::Instant::now() + TEARDOWN_GRACE;
+            // Phase 1: natural drain (no stop signal).
+            let drain = std::time::Instant::now() + READER_DRAIN_GRACE;
             while !handle.is_finished() {
-                if std::time::Instant::now() > deadline {
-                    failures.push(format!(
-                        "reader thread for `{}` did not stop within {TEARDOWN_GRACE:?} of teardown",
-                        self.label
-                    ));
+                if std::time::Instant::now() > drain {
                     break;
                 }
-                std::thread::sleep(Duration::from_millis(10));
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            // Phase 2: force the stop flag for stragglers.
+            let mut overran = false;
+            if !handle.is_finished() {
+                self.reader_stop.store(true, Ordering::SeqCst);
+                let deadline = std::time::Instant::now() + TEARDOWN_GRACE;
+                while !handle.is_finished() {
+                    if std::time::Instant::now() > deadline {
+                        failures.push(format!(
+                            "reader thread for `{}` did not stop within {TEARDOWN_GRACE:?} of teardown",
+                            self.label
+                        ));
+                        overran = true;
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
+            if overran {
+                // The stop flag stays set; the polling loop ends the thread
+                // on its next tick. The join stays bounded — never block
+                // the teardown path on a wedged reader.
+                continue;
             }
             let _ = handle.join();
             if !failures.is_empty() {
@@ -324,6 +376,18 @@ pub struct RunIo {
     /// The input writer thread (joined with a bound at uninstall — the
     /// writer must truly stop before the operation completes).
     pub input_writer: Mutex<Option<std::thread::JoinHandle<()>>>,
+    /// Per-request context for the VM session child (PLAN-815 R4-01): the
+    /// EXACT env entries derived from the CURRENT request only — the
+    /// `on_vm_main` spawn applies them to the child (plus removal of the
+    /// internal context keys from the inherited env). Set by the run flow
+    /// right before the session child spawns; a request without an
+    /// external backend / theme simply carries no entries.
+    pub vm_session_env: Mutex<Vec<(String, String)>>,
+    /// First `VM_SESSION_FATAL: <reason>` line the vm-session child wrote
+    /// to its stderr (R4-02): the structured, named failure reason for a
+    /// child that exited fatally (e.g. required external backend cdylib
+    /// missing) — surfaced into the final RunReport error.
+    pub vm_session_fatal: Mutex<Option<String>>,
     /// `(done, total, message)` progress hook (host enforces budgets).
     pub on_progress: Mutex<Option<Box<dyn Fn(u64, Option<u64>, &str) + Send>>>,
     /// Launched-spec hook (service URL).
@@ -354,6 +418,8 @@ impl RunIo {
             foreground: Mutex::new(None),
             teardown_error: Mutex::new(None),
             input_writer: Mutex::new(None),
+            vm_session_env: Mutex::new(Vec::new()),
+            vm_session_fatal: Mutex::new(None),
             on_progress: Mutex::new(None),
             on_launched: Mutex::new(None),
             on_log_chunk: Mutex::new(None),
@@ -421,12 +487,17 @@ pub fn uninstall() {
         *io.on_input_enqueue.lock().unwrap() = None; // writer drains & exits
         *io.on_vm_main.lock().unwrap() = None;
         // The input writer must truly stop before the operation completes
-        // (F01/R2 oracle): bounded join, named failure on timeout.
+        // (F01/R2 oracle): bounded wait; on overrun the failure is named
+        // and the join itself stays bounded (R1-01 — same rule as the
+        // readers; the stop signal remains set, the writer ends on its
+        // next cancellable-write tick).
         let writer = io.input_writer.lock().unwrap().take();
         if let Some(handle) = writer {
             let deadline = std::time::Instant::now() + TEARDOWN_GRACE;
+            let mut overran = false;
             while !handle.is_finished() {
                 if std::time::Instant::now() > deadline {
+                    overran = true;
                     let mut slot = io.teardown_error.lock().unwrap();
                     if slot.is_none() {
                         *slot = Some(
@@ -438,7 +509,9 @@ pub fn uninstall() {
                 }
                 std::thread::sleep(Duration::from_millis(10));
             }
-            let _ = handle.join();
+            if !overran {
+                let _ = handle.join();
+            }
         }
     }
 }
@@ -528,12 +601,19 @@ pub fn spawn_tracked(spec: TrackedSpawn, label: &str) -> std::io::Result<Arc<Tra
         proc: Mutex::new(Some(proc)),
         stdin: Mutex::new(Some(child_stdin)),
         readers: Mutex::new(Vec::new()),
+        captured_stdout: Mutex::new(None),
         input_stop: Arc::new(AtomicBool::new(false)),
         reader_stop: Arc::new(AtomicBool::new(false)),
         label: label.to_string(),
         id: pid,
     });
     io.register(Arc::clone(&tracked));
+    if spec.capture_stdout {
+        // Caller-drained stdout: hand the pipe over instead of starting a
+        // forwarder (the caller drains it before/alongside wait_tracked).
+        *tracked.captured_stdout.lock().unwrap() = child_stdout;
+        return Ok(tracked);
+    }
     if let Some(stdout) = child_stdout {
         let forward_label = label.to_string();
         let reader_stop = Arc::clone(&tracked.reader_stop);
@@ -585,6 +665,11 @@ fn forward_stderr(
     forward_pipe(stderr, label, stop, end_slot)
 }
 
+/// Marker prefix the internal VM session child writes to stderr right
+/// before exiting fatally (R4-02): the first occurrence is captured into
+/// the installed RunIo and surfaces as the named failure reason.
+pub const VM_SESSION_FATAL_PREFIX: &str = "VM_SESSION_FATAL: ";
+
 fn forward_pipe(
     pipe: impl std::io::Read + PipeAvailability,
     label: &str,
@@ -601,6 +686,9 @@ fn forward_pipe(
         match read_available(&mut reader) {
             ReadOutcome::Chunk(bytes) if !bytes.is_empty() => {
                 log_chunk(&bytes);
+                if label == "vm-session" {
+                    sniff_vm_session_fatal(&bytes);
+                }
                 if !announced
                     && (label == "dev-server" || label == "api-server" || label == "vm-session")
                 {
@@ -676,19 +764,13 @@ mod peek {
     }
 }
 
-/// Availability probe abstraction: ChildStdout/ChildStder both expose
-/// AsRawHandle on Windows; the generic fallback is the bounded line read.
+/// Availability probe abstraction: ChildStdout/ChildStderr expose a
+/// zero-blocking readiness probe on both platforms — Windows via
+/// PeekNamedPipe, Unix via poll(2) with a 10ms tick (R1-01: the loop
+/// never sits in a blocking read, so the stop flag is honored between
+/// ticks even when a NON-owned process holds the pipe's write end).
 trait PipeAvailability {
     fn available(&self) -> std::io::Result<u32>;
-}
-
-#[cfg(not(windows))]
-impl<T: std::io::Read> PipeAvailability for T {
-    fn available(&self) -> std::io::Result<u32> {
-        // Non-Windows fallback: no peek — the bounded line read drives the
-        // loop and teardown relies on the bound + named failure disclosure.
-        Err(std::io::Error::other("availability probe unsupported here"))
-    }
 }
 
 #[cfg(windows)]
@@ -705,44 +787,84 @@ impl PipeAvailability for std::process::ChildStderr {
     }
 }
 
-/// Read whatever is currently available (Windows: peek-driven, stop-flag
-/// aware between polls; Unix: line read — the stop path then relies on the
-/// teardown bound + named failure disclosure).
+/// Unix readiness probe: poll(2) with a 10ms timeout — the stop flag is
+/// observable every tick; POLLHUP still reports readable so a final
+/// `read()` can drain leftovers and return the natural 0-byte EOF.
+#[cfg(not(windows))]
+mod upoll {
+    use std::os::unix::io::AsRawFd;
+
+    pub fn available<R: std::io::Read + AsRawFd>(reader: &R) -> std::io::Result<u32> {
+        let mut pfd = libc::pollfd {
+            fd: reader.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: single well-formed pollfd; poll does not mutate the fd.
+        let rc = unsafe { libc::poll(&mut pfd, 1, 10) };
+        if rc < 0 {
+            let err = std::io::Error::last_os_error();
+            // EINTR: transient — report "nothing available" so the loop
+            // head re-checks the stop flag and polls again.
+            if err.raw_os_error() == Some(libc::EINTR) {
+                return Ok(0);
+            }
+            return Err(err);
+        }
+        if rc == 0 {
+            return Ok(0); // timed out: nothing readable within the tick
+        }
+        if pfd.revents & (libc::POLLERR | libc::POLLNVAL) != 0 {
+            return Err(std::io::Error::other("poll reported POLLERR/POLLNVAL"));
+        }
+        // POLLIN (data or EOF-signalled peer) and POLLHUP both leave the
+        // subsequent read() non-blocking with a definitive answer.
+        Ok(1)
+    }
+}
+
+#[cfg(not(windows))]
+impl PipeAvailability for std::process::ChildStdout {
+    fn available(&self) -> std::io::Result<u32> {
+        upoll::available(self)
+    }
+}
+
+#[cfg(not(windows))]
+impl PipeAvailability for std::process::ChildStderr {
+    fn available(&self) -> std::io::Result<u32> {
+        upoll::available(self)
+    }
+}
+
+/// Read whatever is currently available (peek/poll-driven on BOTH
+/// platforms, stop-flag aware between polls; buffered bytes from an
+/// earlier read win over a fresh probe).
 fn read_available(
     reader: &mut std::io::BufReader<impl std::io::Read + PipeAvailability>,
 ) -> ReadOutcome {
-    #[cfg(windows)]
-    {
-        use std::io::Read as _;
-        let avail = match reader.get_ref().available() {
-            Ok(n) => n,
-            Err(e) => return classify_pipe_error(e),
-        };
-        if avail == 0 {
-            // No data right now: yield an empty chunk so the caller's loop
-            // head can re-check the stop flag and poll again.
-            return ReadOutcome::Chunk(Vec::new());
-        }
-        let mut chunk = vec![0u8; avail as usize];
-        let mut filled = 0usize;
-        while filled < chunk.len() {
-            match reader.read(&mut chunk[filled..]) {
-                Ok(0) => return ReadOutcome::Eof,
-                Ok(n) => filled += n,
-                Err(e) => return classify_pipe_error(e),
-            }
-        }
-        ReadOutcome::Chunk(chunk)
+    use std::io::{BufRead as _, Read as _};
+    // Bytes already buffered by an earlier larger read are returned first
+    // (a poll/peek on the fd cannot see them).
+    if !reader.buffer().is_empty() {
+        let buffered = reader.buffer().to_vec();
+        reader.consume(buffered.len());
+        return ReadOutcome::Chunk(buffered);
     }
-    #[cfg(not(windows))]
-    {
-        use std::io::BufRead;
-        let mut buf = Vec::with_capacity(8192);
-        match reader.read_until(b'\n', &mut buf) {
-            Ok(0) => ReadOutcome::Eof,
-            Ok(_) => ReadOutcome::Chunk(buf),
-            Err(e) => ReadOutcome::Err(e.to_string()),
-        }
+    let avail = match reader.get_ref().available() {
+        Ok(n) => n,
+        Err(e) => return classify_pipe_error(e),
+    };
+    if avail == 0 {
+        // No data right now: yield an empty chunk so the caller's loop
+        // head can re-check the stop flag and poll again.
+        return ReadOutcome::Chunk(Vec::new());
+    }
+    let mut chunk = [0u8; 8192];
+    match reader.read(&mut chunk) {
+        Ok(0) => ReadOutcome::Eof,
+        Ok(n) => ReadOutcome::Chunk(chunk[..n].to_vec()),
+        Err(e) => classify_pipe_error(e),
     }
 }
 
@@ -807,6 +929,100 @@ pub fn wait_tracked(tracked: &TrackedChild) -> std::io::Result<ExitStatus> {
         }
         std::thread::sleep(WAIT_POLL);
     }
+}
+
+/// Set the per-request VM session child context (R4-01): EXACT entries for
+/// the CURRENT request — applied to the session child's spawn; entries the
+/// request does not derive are simply absent (never inherited from the
+/// host process env).
+pub fn set_vm_session_env(entries: Vec<(String, String)>) {
+    if let Some(io) = current() {
+        *io.vm_session_env.lock().unwrap() = entries;
+    }
+}
+
+/// The vm-session child's named fatal reason, when it wrote one (R4-02).
+pub fn vm_session_fatal() -> Option<String> {
+    current()
+        .and_then(|io| io.vm_session_fatal.lock().unwrap().clone())
+        .filter(|s| !s.is_empty())
+}
+
+/// Capture the first `VM_SESSION_FATAL:` line from forwarded vm-session
+/// stderr chunks (R4-02). Line-split tolerant: the marker may arrive in a
+/// chunk that carries earlier output before it.
+fn sniff_vm_session_fatal(bytes: &[u8]) {
+    let text = String::from_utf8_lossy(bytes);
+    let Some(pos) = text.find(VM_SESSION_FATAL_PREFIX) else {
+        return;
+    };
+    if let Some(io) = current() {
+        let mut slot = io.vm_session_fatal.lock().unwrap();
+        if slot.is_some() {
+            return;
+        }
+        let rest = &text[pos + VM_SESSION_FATAL_PREFIX.len()..];
+        let reason: String = rest
+            .lines()
+            .next()
+            .unwrap_or("unspecified fatal error")
+            .trim()
+            .to_string();
+        *slot = Some(reason);
+    }
+}
+
+/// Hosted external command of a build/run path (R4-05: jet/ark/vscode
+/// gradle/hvigor/code invocations): when a RunIo is installed the command
+/// runs as an owned tree of the operation — cancel/EOF terminate the whole
+/// tree before the final receipt — with stdout forwarded to the log
+/// stream. Legacy CLI (no RunIo) keeps the frozen direct
+/// `Command::status` behavior.
+pub fn run_external_status(
+    program: &std::path::Path,
+    args: &[&str],
+    cwd: &std::path::Path,
+    label: &str,
+) -> std::io::Result<ExitStatus> {
+    if current().is_some() {
+        let spec = TrackedSpawn::new(
+            program.to_string_lossy().to_string(),
+            args.iter().map(|a| a.to_string()).collect(),
+        )
+        .with_cwd(cwd);
+        let tracked = spawn_tracked(spec, label)?;
+        return wait_tracked(&tracked);
+    }
+    std::process::Command::new(program)
+        .args(args)
+        .current_dir(cwd)
+        .status()
+}
+
+impl TrackedChild {
+    /// Take the caller-drained stdout pipe (spawn with `capture_stdout`).
+    pub fn take_captured_stdout(&self) -> Option<std::process::ChildStdout> {
+        self.captured_stdout.lock().unwrap().take()
+    }
+}
+
+/// Drain a captured stdout to EOF with the same stop-aware polling read
+/// the forwarders use (R4-05: `adb devices`-style output parsing under
+/// hosted ownership — cancel closes the tree, hence the pipe, hence this
+/// loop). Unhosted callers use the legacy `Command::output()` directly.
+pub fn drain_captured_stdout(tracked: &TrackedChild) -> Vec<u8> {
+    let Some(stdout) = tracked.take_captured_stdout() else {
+        return Vec::new();
+    };
+    let mut reader = std::io::BufReader::new(stdout);
+    let mut collected = Vec::new();
+    loop {
+        match read_available(&mut reader) {
+            ReadOutcome::Chunk(bytes) => collected.extend_from_slice(&bytes),
+            ReadOutcome::Eof | ReadOutcome::Err(_) => break,
+        }
+    }
+    collected
 }
 
 /// Record a named teardown failure on the installed RunIo (if any) —
@@ -939,6 +1155,138 @@ mod tests {
         );
         // Reaped + readers joined — direct observables for both halves.
         assert!(tracked.readers.lock().unwrap().is_empty());
+        uninstall();
+    }
+
+    /// PLAN-815 R4-01: the VM session child context is per-request EXACT —
+    /// the second request's entries REPLACE the first's (a request without
+    /// an external backend/theme carries none; nothing accumulates).
+    #[test]
+    fn vm_session_env_is_replaced_per_request() {
+        let _guard = SLOT_LOCK.lock().unwrap();
+        assert!(install());
+        let io = current().unwrap();
+        assert!(
+            io.vm_session_env.lock().unwrap().is_empty(),
+            "fresh RunIo starts with no session context"
+        );
+        set_vm_session_env(vec![(
+            "AUTO_UI_TOOL_VM_BACK_ROOT".to_string(),
+            "D:/does/not/matter".to_string(),
+        )]);
+        assert_eq!(
+            io.vm_session_env.lock().unwrap().as_slice(),
+            [(
+                "AUTO_UI_TOOL_VM_BACK_ROOT".to_string(),
+                "D:/does/not/matter".to_string()
+            )]
+        );
+        // Second request (no backend, no theme): the exact-empty set — the
+        // spawn applies env_remove for the internal keys and adds NOTHING.
+        set_vm_session_env(Vec::new());
+        assert!(
+            io.vm_session_env.lock().unwrap().is_empty(),
+            "a None-request must replace, not retain, the previous context"
+        );
+        assert!(vm_session_fatal().is_none(), "no fatal before any child");
+        uninstall();
+    }
+
+    /// PLAN-815 R4-02: the `VM_SESSION_FATAL:` marker on forwarded
+    /// vm-session stderr chunks is captured (first line wins).
+    #[test]
+    fn vm_session_fatal_marker_is_captured_once() {
+        let _guard = SLOT_LOCK.lock().unwrap();
+        assert!(install());
+        sniff_vm_session_fatal(
+            b"some log line\nVM_SESSION_FATAL: external backend load failed: dll missing\nmore\n",
+        );
+        assert_eq!(
+            vm_session_fatal().as_deref(),
+            Some("external backend load failed: dll missing")
+        );
+        // A later marker does not overwrite the first.
+        sniff_vm_session_fatal(b"VM_SESSION_FATAL: second failure\n");
+        assert_eq!(
+            vm_session_fatal().as_deref(),
+            Some("external backend load failed: dll missing")
+        );
+        uninstall();
+    }
+
+    /// R1-01 non-Windows arm: a NON-owned process holds the pipe's write
+    /// end (no data, no EOF can ever arrive) — the poll-based reader still
+    /// TRULY stops on the stop flag within the bound (no unbounded
+    /// read_until, no unbounded join) and the end cause is the named
+    /// `Stopped` disclosure. A natural-EOF positive control keeps the
+    /// three-way classification honest. Runs on the declared supported
+    /// non-Windows platforms (Linux CI / review environments).
+    #[cfg(not(windows))]
+    #[test]
+    fn unix_reader_truly_stops_when_non_owned_process_holds_pipe() {
+        use std::io::Write as _;
+        use std::process::{Command, Stdio};
+        let _guard = SLOT_LOCK.lock().unwrap();
+        assert!(install());
+        let _ = current().unwrap();
+
+        // Held pipe: `sh -c 'sleep 30 & exit 0'` — the direct child exits
+        // immediately, the backgrounded sleep (outside any owned tree of
+        // ours) inherits the piped stdout write end and holds it.
+        let mut holder = Command::new("sh")
+            .arg("-c")
+            .arg("sleep 30 & exit 0")
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("spawn sh holder");
+        let held_stdout = holder.stdout.take().expect("piped stdout");
+        let _ = holder.wait();
+        let stop = Arc::new(AtomicBool::new(false));
+        let end_slot = Arc::new(Mutex::new(ReaderEnd::Running));
+        let slot_clone = Arc::clone(&end_slot);
+        let stop_clone = Arc::clone(&stop);
+        let handle = std::thread::Builder::new()
+            .name("held-reader-unix".into())
+            .spawn(move || {
+                forward_pipe(held_stdout, "held", &stop_clone, &slot_clone);
+            })
+            .expect("spawn reader");
+
+        std::thread::sleep(Duration::from_millis(300)); // reader is parked in poll
+        let started = std::time::Instant::now();
+        stop.store(true, Ordering::SeqCst);
+        while !handle.is_finished() {
+            assert!(
+                std::time::Instant::now() - started < Duration::from_secs(5),
+                "poll-based reader must stop on the flag, not block in read"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let _ = handle.join();
+        assert_eq!(*end_slot.lock().unwrap(), ReaderEnd::Stopped);
+
+        // Natural-EOF positive: an echo child closes its end → NaturalEof.
+        let mut echo = Command::new("sh")
+            .arg("-c")
+            .arg("echo held-reader-eof")
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("spawn echo");
+        let echo_stdout = echo.stdout.take().expect("piped stdout");
+        let _ = echo.wait();
+        let stop = Arc::new(AtomicBool::new(false));
+        let end_slot = Arc::new(Mutex::new(ReaderEnd::Running));
+        let slot_clone = Arc::clone(&end_slot);
+        let stop_clone = Arc::clone(&stop);
+        let handle = std::thread::Builder::new()
+            .name("eof-reader-unix".into())
+            .spawn(move || {
+                forward_pipe(echo_stdout, "held", &stop_clone, &slot_clone);
+            })
+            .expect("spawn reader");
+        let _ = handle.join();
+        assert_eq!(*end_slot.lock().unwrap(), ReaderEnd::NaturalEof);
+
         uninstall();
     }
 }

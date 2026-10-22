@@ -93,6 +93,36 @@ impl VscodeConfig {
 
         config
     }
+
+    /// 请求路径（PLAN-815 R4-04）：`vscode {}` 块数据来自已求值请求的
+    /// `raw_nodes`（原样保留的未建模节点）——不重读主 pac.at。
+    pub fn from_request(
+        req: &auto_project_model::generation_request::GenerationRequest,
+        project_name: &str,
+    ) -> Self {
+        let mut config = Self::with_defaults(project_name);
+        for node in &req.raw_nodes {
+            let is_vscode = node.name.as_deref() == Some("vscode") || node.head.trim() == "vscode";
+            if !is_vscode {
+                continue;
+            }
+            for prop in &node.props {
+                let value = prop.value.to_astr().trim().to_string();
+                if value.is_empty() {
+                    continue;
+                }
+                match prop.key.as_str() {
+                    "panel" => config.panel = value,
+                    "command" => config.command = value,
+                    "title" => config.title = value,
+                    "icon" => config.icon = Some(value),
+                    _ => {}
+                }
+            }
+            break;
+        }
+        config
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -114,7 +144,8 @@ pub struct VscodeProject {
 }
 
 impl VscodeProject {
-    /// Create a new VscodeProject from a workspace directory.
+    /// Create a new VscodeProject from a workspace directory
+    /// （legacy 自扫路径——测试/旧调用；生产走 from_workspace_with_request）。
     pub fn from_workspace(root_dir: &Path) -> AutoResult<Self> {
         let pac_path = root_dir.join("pac.at");
         if !pac_path.exists() {
@@ -130,7 +161,28 @@ impl VscodeProject {
         // Parse vscode config block
         let config = VscodeConfig::parse_from_pac(&pac_content, &name);
 
-        // Determine front directory
+        Self::assemble(root_dir, name, config)
+    }
+
+    /// 请求路径（PLAN-815 R4-04，F-815-T05-R4-04）：pac.at 数据全部来自
+    /// 已求值请求——name ← `request.identity.name`，`vscode {}` 块 ←
+    /// `request.raw_nodes`；主 pac.at 的修改/移除不改变生成字段（无
+    /// 第二真源）。
+    pub fn from_workspace_with_request(
+        root_dir: &Path,
+        req: &auto_project_model::generation_request::GenerationRequest,
+    ) -> AutoResult<Self> {
+        let name = req
+            .identity
+            .name
+            .clone()
+            .unwrap_or_else(|| "my-extension".to_string());
+        let config = VscodeConfig::from_request(req, &name);
+        Self::assemble(root_dir, name, config)
+    }
+
+    fn assemble(root_dir: &Path, name: String, config: VscodeConfig) -> AutoResult<Self> {
+        // Determine front directory (filesystem layout — not pac data)
         let front_dir = if root_dir.join("src").join("front").exists() {
             root_dir.join("src").join("front")
         } else if root_dir.join("source").join("front").exists() {
@@ -308,9 +360,32 @@ pub fn generate_vscode_project(
     output_dir: Option<&Path>,
     project: bool,
 ) -> AutoResult<()> {
+    generate_vscode_project_inner(root_dir, output_dir, project, None)
+}
+
+/// 请求路径（PLAN-815 R4-04，F-815-T05-R4-04）：生产入口——上下文全部
+/// 来自已求值请求，不重读主 pac.at。
+pub fn generate_vscode_project_with_request(
+    root_dir: &Path,
+    output_dir: Option<&Path>,
+    project: bool,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    generate_vscode_project_inner(root_dir, output_dir, project, Some(req))
+}
+
+fn generate_vscode_project_inner(
+    root_dir: &Path,
+    output_dir: Option<&Path>,
+    project: bool,
+    req: Option<&auto_project_model::generation_request::GenerationRequest>,
+) -> AutoResult<()> {
     println!("{}", "Generating VSCode extension project".bright_cyan());
 
-    let project_ctx = VscodeProject::from_workspace(root_dir)?;
+    let project_ctx = match req {
+        Some(r) => VscodeProject::from_workspace_with_request(root_dir, r)?,
+        None => VscodeProject::from_workspace(root_dir)?,
+    };
 
     let output = output_dir
         .map(|p| p.to_path_buf())
@@ -334,6 +409,22 @@ pub fn generate_vscode_project(
 
 /// Build the VSCode extension project (auto build command).
 pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
+    build_vscode_project_inner(root_dir, None)
+}
+
+/// 请求路径（PLAN-815 R4-04，F-815-T05-R4-04）：build 全链消费已求值
+/// 请求（Vue webview 依赖 + 扩展脚手架），不重读主 pac.at。
+pub fn build_vscode_project_with_request(
+    root_dir: &Path,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    build_vscode_project_inner(root_dir, Some(req))
+}
+
+fn build_vscode_project_inner(
+    root_dir: &Path,
+    req: Option<&auto_project_model::generation_request::GenerationRequest>,
+) -> AutoResult<()> {
     println!("{}", "Building VSCode extension project".bright_cyan());
 
     // Step 1: Ensure gen/vue is built (webview prerequisite)
@@ -348,7 +439,10 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
         );
 
         // Generate Vue project first
-        crate::vue::build_vue_project(root_dir)?;
+        match req {
+            Some(r) => crate::vue::build_vue_project_with_request(root_dir, r)?,
+            None => crate::vue::build_vue_project(root_dir)?,
+        }
 
         // Install Vue dependencies
         match crate::pkg::install(&vue_dir) {
@@ -389,7 +483,7 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
         "{}",
         "  Step 2: Generating VSCode extension code...".bright_cyan()
     );
-    generate_vscode_project(root_dir, None, false)?;
+    generate_vscode_project_inner(root_dir, None, false, req)?;
 
     let vscode_dir = root_dir.join("gen").join("front").join("vscode");
 
@@ -400,15 +494,14 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
     let has_npm = { crate::pkg::command_exists(crate::pkg::install_cmd()) };
 
     if !has_npm {
+        // PLAN-815 R4-06（F-815-T05-R4-06）：缺构建工具=具名失败，不再
+        // 打印提示后伪成功（协议层 build_ui 必须诚实回报未真正构建）。
         let pm = crate::pkg::display_name();
-        println!(
-            "  {} {} not found. Cannot build automatically.",
-            "Warning:".bright_yellow(),
-            pm
-        );
-        println!("  Please install Node.js or bun.");
-        println!("  Project location: {}", vscode_dir.display());
-        return Ok(());
+        return Err(format!(
+            "{pm} not found — cannot build the VSCode extension automatically; install Node.js (project at {})",
+            vscode_dir.display()
+        )
+        .into());
     }
 
     // Step 4: Install extension dependencies
@@ -435,22 +528,17 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
     println!();
     println!("{}", "  Step 5: Compiling extension...".bright_cyan());
 
-    let npm_result = crate::pkg::run_script("build", &[], &vscode_dir);
-
-    match npm_result {
-        Ok(()) => {
-            println!();
-            println!(
-                "{}",
-                "  VSCode extension built successfully!"
-                    .bright_green()
-                    .bold()
-            );
-        }
-        Err(e) => {
-            println!("  {} Build failed: {}", "Error:".bright_red(), e);
-        }
-    }
+    // PLAN-815 R4-06（F-815-T05-R4-06）：编译失败=具名 Err 传播，不再
+    // 打印后吞掉继续 Ok（成功与失败只差退出码的反例正是此分支）。
+    crate::pkg::run_script("build", &[], &vscode_dir)
+        .map_err(|e| format!("VSCode extension build failed: {e}"))?;
+    println!();
+    println!(
+        "{}",
+        "  VSCode extension built successfully!"
+            .bright_green()
+            .bold()
+    );
 
     // Step 6: Copy Vue dist into extension directory for webview access
     // VSCode webviews cannot load resources from outside the extension dir,
@@ -474,10 +562,32 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
 
 /// Run the VSCode extension in development mode (auto run command).
 pub fn run_vscode_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
+    run_vscode_project_inner(root_dir, None)
+}
+
+/// 请求路径（PLAN-815 R4-04，F-815-T05-R4-04）。
+pub fn run_vscode_project_with_request(
+    root_dir: &Path,
+    args: Vec<String>,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    run_vscode_project_inner(root_dir, Some((args, req)))
+}
+
+fn run_vscode_project_inner(
+    root_dir: &Path,
+    req: Option<(
+        Vec<String>,
+        &auto_project_model::generation_request::GenerationRequest,
+    )>,
+) -> AutoResult<()> {
     println!("{}", "Running VSCode extension project".bright_cyan());
 
     // Step 1: Build first (generates + installs deps + compiles)
-    build_vscode_project(root_dir)?;
+    match req {
+        Some((_, r)) => build_vscode_project_with_request(root_dir, r)?,
+        None => build_vscode_project(root_dir)?,
+    }
 
     let vscode_dir = root_dir.join("gen").join("front").join("vscode");
 
@@ -490,16 +600,24 @@ pub fn run_vscode_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()>
 
     let vscode_path = vscode_dir.to_string_lossy().to_string();
 
-    // On Windows, `code` is a .cmd script so must be invoked via cmd /C
+    // On Windows, `code` is a .cmd script so must be invoked via cmd /C.
+    // PLAN-815 R4-05（F-815-T05-R4-05）：托管形态下 `code` 经 owned 树
+    // 设施 spawn（取消/EOF 终止整树）；legacy 直跑保持原 Command 形态。
     #[cfg(windows)]
-    let result = std::process::Command::new("cmd")
-        .args(&["/C", "code", "--extensionDevelopmentPath", &vscode_path])
-        .status();
+    let result = crate::proc_host::run_external_status(
+        std::path::Path::new("cmd"),
+        &["/C", "code", "--extensionDevelopmentPath", &vscode_path],
+        root_dir,
+        "vscode-launch",
+    );
 
     #[cfg(not(windows))]
-    let result = std::process::Command::new("code")
-        .args(&["--extensionDevelopmentPath", &vscode_path])
-        .status();
+    let result = crate::proc_host::run_external_status(
+        std::path::Path::new("code"),
+        &["--extensionDevelopmentPath", &vscode_path],
+        root_dir,
+        "vscode-launch",
+    );
 
     match result {
         Ok(status) if status.success() => {

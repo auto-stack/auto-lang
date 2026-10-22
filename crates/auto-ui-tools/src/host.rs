@@ -570,6 +570,18 @@ fn start_work_op<W: Write + Send + 'static, L: Write + Send + 'static>(
                 exe.to_string_lossy(),
                 vec!["--internal-vm-exec".to_string(), entry],
             );
+            // T-05 R4（F-815-T05-R4-01）：会话子进程只获得**本请求**的
+            // 上下文——内部上下文键先从继承环境移除，再应用当前请求
+            // 衍生的条目（外部后端 None → 本地、主题 Some → None、失败
+            // 后新会话均不沿用上一请求）。
+            spec = spec
+                .without_env("AUTO_UI_TOOL_VM_BACK_ROOT")
+                .without_env("AUTO_UI_TOOL_VM_THEME_DECL");
+            if let Some(io) = crate::proc_host::current() {
+                for (key, value) in io.vm_session_env.lock().unwrap().iter() {
+                    spec = spec.with_env(key, value);
+                }
+            }
             // Pipe the child's stderr too: the session's real MCP endpoint
             // banner is a stderr eprintln in the runtime — forwarding and
             // sniffing it is R2-03's accurate-URL source.
@@ -583,9 +595,14 @@ fn start_work_op<W: Write + Send + 'static, L: Write + Send + 'static>(
             if status.success() {
                 Ok("vm session closed".to_string())
             } else {
-                Err(auto_lang_core::error::AutoError::Msg(format!(
-                    "vm session exited with {status}"
-                )))
+                // R4-02: a required external backend load failure (or any
+                // other child-fatal) is named — the child writes a
+                // `VM_SESSION_FATAL:` line its stderr forwarder captured.
+                let reason = crate::proc_host::vm_session_fatal();
+                Err(auto_lang_core::error::AutoError::Msg(match reason {
+                    Some(reason) => format!("vm session failed: {reason}"),
+                    None => format!("vm session exited with {status}"),
+                }))
             }
         }));
     }

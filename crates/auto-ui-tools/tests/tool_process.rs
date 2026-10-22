@@ -10,7 +10,7 @@ use auto_tool_protocol::framing::write_frame;
 use auto_tool_protocol::message::{
     ClientBody, ClientEnvelope, ServerBody, ServerEnvelope, WireRequest,
 };
-use auto_tool_protocol::report::Severity;
+use auto_tool_protocol::report::{RunOutcome, Severity};
 use auto_tool_protocol::{Budgets, ErrorKind};
 use serde_json::{json, Value as Json};
 use std::io::{Read, Write};
@@ -930,7 +930,11 @@ fn walk_files(root: &std::path::Path) -> u64 {
 fn generate_ui_rejects_unserved_render_before_side_effects() {
     let dir = tempfile::tempdir().expect("tempdir");
     std::fs::create_dir_all(dir.path().join("front")).unwrap();
-    std::fs::write(dir.path().join("pac.at"), "name: \"x\"\nrender: \"unreal-engine\"\n").unwrap();
+    std::fs::write(
+        dir.path().join("pac.at"),
+        "name: \"x\"\nrender: \"unreal-engine\"\n",
+    )
+    .unwrap();
     let request = GenerationRequest::from_descriptor(
         &parse_document(
             "name: \"x\"\nrender: \"unreal-engine\"\n",
@@ -1336,4 +1340,426 @@ fn run_ui_vm_real_session_launched_input_quit_and_restart() {
     );
     let _ = dir;
     let _ = dir2;
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-815 R4 distinguishing matrix (F-815-T05-R4-03/04/06/07):
+// multi-profile generation, REAL output roots, request-vs-disk field
+// source, honest build failure, and owned-tree build cancellation.
+// ---------------------------------------------------------------------------
+
+/// Pure layout oracle (default face): the reported roots are the SAME
+/// constants the generators write to — jet/ark/vscode under
+/// `gen/front/<profile>` (R4-03's counterexample: the old report claimed
+/// `android`/`ohos`/`gen/vscode`, none of which exist); tauri covers BOTH
+/// halves (front + gen/back/rust); the aggregate root is the deepest
+/// shared ancestor.
+#[test]
+fn generation_layout_roots_match_real_generator_dirs() {
+    let root = std::path::Path::new("D:/proj");
+    let dirs = |profile: &str| auto_ui_tools::tool_ops::profile_output_dirs(root, profile);
+    assert_eq!(dirs("vue"), vec![root.join("gen/front/vue")]);
+    assert_eq!(
+        dirs("jet"),
+        vec![root.join("gen/front/jet")],
+        "not android/"
+    );
+    assert_eq!(dirs("ark"), vec![root.join("gen/front/ark")], "not ohos/");
+    assert_eq!(
+        dirs("vscode"),
+        vec![root.join("gen/front/vscode")],
+        "not gen/vscode"
+    );
+    assert_eq!(
+        dirs("tauri"),
+        vec![root.join("gen/front/vue"), root.join("gen/back/rust")],
+        "tauri covers the Vue front AND the tauri backend"
+    );
+    // Shared-ancestor aggregation: tauri -> gen/, [vue, jet] -> gen/front,
+    // single dir -> itself.
+    let (t_root, _) = auto_ui_tools::tool_ops::aggregate_output_root(root, &dirs("tauri"));
+    assert_eq!(t_root, root.join("gen"));
+    let mut multi = dirs("vue");
+    multi.extend(dirs("jet"));
+    let (m_root, _) = auto_ui_tools::tool_ops::aggregate_output_root(root, &multi);
+    assert_eq!(m_root, root.join("gen/front"));
+    let (s_root, _) = auto_ui_tools::tool_ops::aggregate_output_root(root, &dirs("vue"));
+    assert_eq!(s_root, root.join("gen/front/vue"));
+}
+
+/// R4-07: a Multi [vue, jet] request generates EVERY declared target (the
+/// old code took frontends[0] and reported the full set); the report's
+/// output_root is the real shared root and files_written matches a real
+/// walk over BOTH per-profile roots. Real generation chain — serial.
+#[test]
+#[ignore = "heavy: real cold generation (vue+jet); serial evidence run via --ignored"]
+fn generate_ui_multi_profile_generates_every_declared_target() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("src").join("front")).unwrap();
+    let pac = "name: \"multi\"\nrender: [\"vue\", \"jet\"]\nwindow: \"640x480\"\nfront: \"./src/front\"\n";
+    std::fs::write(dir.path().join("pac.at"), pac).unwrap();
+    std::fs::write(
+        dir.path().join("src").join("front").join("app.at"),
+        "widget App {\n    model {\n        var count int = 0\n    }\n    view {\n        col {\n            text `Count: ${.count}`\n            button \"+\" { onclick: () => {.count += 1} }\n        }\n    }\n}\n",
+    )
+    .unwrap();
+    let request = GenerationRequest::from_descriptor(
+        &parse_document(pac, SourceInfo::from_path(dir.path().join("pac.at"))).expect("parse"),
+    );
+    assert_eq!(request.frontend_names(), vec!["vue", "jet"]);
+
+    let mut tool = ToolProcess::spawn();
+    tool.send(&envelope(
+        60,
+        ClientBody::GenerateUi {
+            request: WireRequest(request),
+        },
+    ));
+    let (final_response, _) = next_until(&mut tool, |e| {
+        matches!(e.body, ServerBody::GenerateOk { .. })
+            || matches!(e.body, ServerBody::Error { .. })
+    });
+    match final_response.body {
+        ServerBody::GenerateOk { report } => {
+            assert_eq!(report.frontends, vec!["vue".to_string(), "jet".to_string()]);
+            // BOTH real roots exist with real files (jet previously missing).
+            let vue_root = dir.path().join("gen/front/vue");
+            let jet_root = dir.path().join("gen/front/jet");
+            assert!(vue_root.is_dir(), "vue root missing");
+            assert!(
+                jet_root.is_dir(),
+                "jet root missing (R4-07: only the first target ran)"
+            );
+            assert!(walk_files(&vue_root) > 5);
+            assert!(walk_files(&jet_root) > 5);
+            // The reported root is the REAL shared root; the count is a
+            // real walk over the union.
+            assert!(report.output_root.replace('\\', "/").ends_with("gen/front"));
+            assert_eq!(
+                report.files_written,
+                walk_files(&vue_root) + walk_files(&jet_root),
+                "report counts the union of both real roots"
+            );
+        }
+        other => panic!("expected GenerateOk, got {other:?}"),
+    }
+    let (code, _) = tool.close_stdin_and_wait();
+    assert_eq!(code, 0);
+}
+
+/// R4-04: vscode fields come from the EVALUATED REQUEST, not a re-read of
+/// the disk pac.at (the review's frozen counterexample: request name
+/// `request-name`, disk pac `disk-name` — the old chain used disk-name).
+#[test]
+#[ignore = "heavy: real cold generation (vscode scaffold); serial evidence run via --ignored"]
+fn generate_ui_vscode_fields_come_from_request_not_disk_pac() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("src").join("front")).unwrap();
+    std::fs::write(
+        dir.path().join("pac.at"),
+        "name: \"disk-name\"\nrender: \"vscode\"\nfront: \"./src/front\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("src").join("front").join("app.at"),
+        "widget App {\n    view {\n        col { text `hello` }\n    }\n}\n",
+    )
+    .unwrap();
+    // The request is evaluated from a DIFFERENT declaration snapshot than
+    // the disk pac (identity.name = request-name).
+    let request = GenerationRequest::from_descriptor(
+        &parse_document(
+            "name: \"request-name\"\nrender: \"vscode\"\nfront: \"./src/front\"\n",
+            SourceInfo::from_path(dir.path().join("pac.at")),
+        )
+        .expect("parse"),
+    );
+    let mut tool = ToolProcess::spawn();
+    tool.send(&envelope(
+        61,
+        ClientBody::GenerateUi {
+            request: WireRequest(request),
+        },
+    ));
+    let (final_response, _) = next_until(&mut tool, |e| {
+        matches!(e.body, ServerBody::GenerateOk { .. })
+            || matches!(e.body, ServerBody::Error { .. })
+    });
+    match final_response.body {
+        ServerBody::GenerateOk { report } => {
+            let package = std::fs::read_to_string(dir.path().join("gen/front/vscode/package.json"))
+                .expect("generated package.json");
+            assert!(
+                package.contains("request-name"),
+                "package.json must use the REQUEST identity: {package}"
+            );
+            assert!(
+                !package.contains("disk-name"),
+                "package.json must not re-read the disk pac: {package}"
+            );
+            assert!(report.files_written > 5);
+        }
+        other => panic!("expected GenerateOk, got {other:?}"),
+    }
+    let (code, _) = tool.close_stdin_and_wait();
+    assert_eq!(code, 0);
+}
+
+/// R4-06: a jet build whose wrapper exits 7 is a NAMED failure (the old
+/// chain printed "Build failed" and returned Ok -> BuildOk.completed); a
+/// wrapper that exits 0 without producing the APK fails the artifact
+/// oracle. Both use a real generated jet project with a controlled
+/// wrapper — the honest distinguishing pair from the review.
+#[test]
+#[ignore = "heavy: real cold generation (jet); serial evidence run via --ignored"]
+fn build_ui_jet_reports_real_failure_and_missing_artifact() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("src").join("front")).unwrap();
+    let pac = "name: \"jetbuild\"\nrender: \"jet\"\nwindow: \"640x480\"\nfront: \"./src/front\"\n";
+    std::fs::write(dir.path().join("pac.at"), pac).unwrap();
+    std::fs::write(
+        dir.path().join("src").join("front").join("app.at"),
+        "widget App {\n    model {\n        var count int = 0\n    }\n    view {\n        col {\n            text `Count: ${.count}`\n            button \"+\" { onclick: () => {.count += 1} }\n        }\n    }\n}\n",
+    )
+    .unwrap();
+    let request = GenerationRequest::from_descriptor(
+        &parse_document(pac, SourceInfo::from_path(dir.path().join("pac.at"))).expect("parse"),
+    );
+    let mut tool = ToolProcess::spawn();
+
+    // Generate the real jet project first.
+    tool.send(&envelope(
+        62,
+        ClientBody::GenerateUi {
+            request: WireRequest(request.clone()),
+        },
+    ));
+    let (response, _) = next_until(&mut tool, |e| {
+        matches!(e.body, ServerBody::GenerateOk { .. })
+            || matches!(e.body, ServerBody::Error { .. })
+    });
+    assert!(
+        matches!(response.body, ServerBody::GenerateOk { .. }),
+        "jet generation must succeed: {:?}",
+        response.body
+    );
+    let jet_dir = dir.path().join("gen/front/jet");
+    assert!(jet_dir.is_dir());
+    // The fresh scaffold ships no wrapper: create the CONTROLLED wrapper
+    // the build path will execute.
+    let gradlew = if cfg!(windows) {
+        jet_dir.join("gradlew.bat")
+    } else {
+        jet_dir.join("gradlew")
+    };
+
+    // Case 1: exit 7 -> named failed (never completed).
+    if cfg!(windows) {
+        std::fs::write(&gradlew, "@echo off\r\n@exit /b 7\r\n").unwrap();
+    } else {
+        std::fs::write(&gradlew, "#!/bin/sh\nexit 7\n").unwrap();
+        make_executable(&gradlew);
+    }
+    tool.send(&envelope(
+        63,
+        ClientBody::BuildUi {
+            request: WireRequest(request.clone()),
+        },
+    ));
+    let (response, _) = next_until(&mut tool, |e| {
+        matches!(e.body, ServerBody::BuildOk { .. }) || matches!(e.body, ServerBody::Error { .. })
+    });
+    match response.body {
+        ServerBody::BuildOk { report } => {
+            assert_eq!(
+                report.outcome,
+                RunOutcome::Failed,
+                "exit 7 must not complete: {report:?}"
+            );
+            assert!(
+                report.error.as_deref().is_some_and(|e| e.contains('7')),
+                "named failure carries the exit code: {report:?}"
+            );
+        }
+        other => panic!("expected BuildOk, got {other:?}"),
+    }
+
+    // Case 2: exit 0 but no APK -> the artifact oracle fails it by name.
+    if cfg!(windows) {
+        std::fs::write(&gradlew, "@echo off\r\n@exit /b 0\r\n").unwrap();
+    } else {
+        std::fs::write(&gradlew, "#!/bin/sh\nexit 0\n").unwrap();
+        make_executable(&gradlew);
+    }
+    tool.send(&envelope(
+        64,
+        ClientBody::BuildUi {
+            request: WireRequest(request),
+        },
+    ));
+    let (response, _) = next_until(&mut tool, |e| {
+        matches!(e.body, ServerBody::BuildOk { .. }) || matches!(e.body, ServerBody::Error { .. })
+    });
+    match response.body {
+        ServerBody::BuildOk { report } => {
+            assert_eq!(
+                report.outcome,
+                RunOutcome::Failed,
+                "exit 0 without the artifact must not complete: {report:?}"
+            );
+            assert!(
+                report
+                    .error
+                    .as_deref()
+                    .is_some_and(|e| e.contains("artifact is missing")),
+                "the artifact oracle is named: {report:?}"
+            );
+        }
+        other => panic!("expected BuildOk, got {other:?}"),
+    }
+
+    let (code, _) = tool.close_stdin_and_wait();
+    assert_eq!(code, 0);
+}
+
+#[cfg(unix)]
+fn make_executable(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = std::fs::metadata(path).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(path, perms).unwrap();
+}
+
+#[cfg(windows)]
+fn make_executable(_path: &std::path::Path) {}
+
+/// R4-05: the jet build subprocess is an OWNED tree — cancel terminates
+/// the wrapper AND its descendant (a real sleeper that outlives the
+/// wrapper), the final receipt arrives promptly, and a SERIAL next build
+/// works on the same host. The wrapper launches a PowerShell sleeper that
+/// records its own PID; after cancel the PID must be gone.
+#[test]
+#[cfg(windows)]
+#[ignore = "heavy: real generation + owned tree cancel; serial evidence run via --ignored"]
+fn build_ui_cancel_terminates_owned_build_tree() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("src").join("front")).unwrap();
+    let pac = "name: \"jetcancel\"\nrender: \"jet\"\nwindow: \"640x480\"\nfront: \"./src/front\"\n";
+    std::fs::write(dir.path().join("pac.at"), pac).unwrap();
+    std::fs::write(
+        dir.path().join("src").join("front").join("app.at"),
+        "widget App {\n    view {\n        col { text `x` }\n    }\n}\n",
+    )
+    .unwrap();
+    let request = GenerationRequest::from_descriptor(
+        &parse_document(pac, SourceInfo::from_path(dir.path().join("pac.at"))).expect("parse"),
+    );
+    let mut tool = ToolProcess::spawn();
+    tool.send(&envelope(
+        70,
+        ClientBody::GenerateUi {
+            request: WireRequest(request.clone()),
+        },
+    ));
+    let (response, _) = next_until(&mut tool, |e| {
+        matches!(e.body, ServerBody::GenerateOk { .. })
+            || matches!(e.body, ServerBody::Error { .. })
+    });
+    assert!(matches!(response.body, ServerBody::GenerateOk { .. }));
+
+    // Controlled wrapper: launches a 30s PowerShell sleeper that records
+    // its PID, and the wrapper waits on it (a real owned descendant).
+    let jet_dir = dir.path().join("gen/front/jet");
+    let pid_file = dir.path().join("sleeper.pid");
+    let pid_str = pid_file.to_string_lossy().replace('\\', "/");
+    let script = format!("$PID | Out-File -Encoding ascii '{pid_str}'; Start-Sleep -Seconds 30");
+    let wrapper = format!("@echo off\r\npowershell -NoProfile -Command \"{script}\"\r\n");
+    std::fs::write(jet_dir.join("gradlew.bat"), wrapper).unwrap();
+
+    let build_started = std::time::Instant::now();
+    tool.send(&envelope(
+        71,
+        ClientBody::BuildUi {
+            request: WireRequest(request.clone()),
+        },
+    ));
+    // Wait until the sleeper has recorded its PID (the build reached the
+    // wrapper and spawned the descendant).
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    let sleeper_pid: u32 = loop {
+        if let Ok(text) = std::fs::read_to_string(&pid_file) {
+            if let Ok(pid) = text.trim().parse::<u32>() {
+                break pid;
+            }
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "sleeper never started; stderr: {}",
+            tool.stderr_so_far()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+
+    // Cancel: the whole owned tree (wrapper + powershell descendant) dies
+    // and the final receipt arrives promptly.
+    tool.send(&envelope(72, ClientBody::Cancel { target_id: 71 }));
+    let _ = next_until(&mut tool, |e| {
+        matches!(e.body, ServerBody::BuildOk { .. })
+            || matches!(e.body, ServerBody::Cancelled { .. })
+    });
+    let (final_response, _) =
+        next_until(&mut tool, |e| matches!(e.body, ServerBody::BuildOk { .. }));
+    assert!(
+        build_started.elapsed() < std::time::Duration::from_secs(25),
+        "cancel must not wait out the 30s sleeper"
+    );
+    match final_response.body {
+        ServerBody::BuildOk { report } => {
+            assert_eq!(report.outcome, RunOutcome::Cancelled, "{report:?}");
+        }
+        other => panic!("expected BuildOk(cancelled), got {other:?}"),
+    }
+    // The sleeper PID is really gone (tree ownership, not a receipt flag).
+    let mut gone = false;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while std::time::Instant::now() < deadline {
+        let out = std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {sleeper_pid}")])
+            .output()
+            .expect("tasklist");
+        if !String::from_utf8_lossy(&out.stdout).contains(&sleeper_pid.to_string()) {
+            gone = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    assert!(
+        gone,
+        "the owned build tree must kill the sleeper descendant"
+    );
+
+    // The host keeps serving and a SERIAL next build works.
+    tool.send(&envelope(73, ClientBody::Describe));
+    assert!(matches!(
+        parse_response(&tool.next_response()).body,
+        ServerBody::DescribeOk { .. }
+    ));
+    std::fs::write(jet_dir.join("gradlew.bat"), "@echo off\r\n@exit /b 7\r\n").unwrap();
+    tool.send(&envelope(
+        74,
+        ClientBody::BuildUi {
+            request: WireRequest(request),
+        },
+    ));
+    let (response, _) = next_until(&mut tool, |e| {
+        matches!(e.body, ServerBody::BuildOk { .. }) || matches!(e.body, ServerBody::Error { .. })
+    });
+    match response.body {
+        ServerBody::BuildOk { report } => {
+            assert_eq!(report.outcome, RunOutcome::Failed, "{report:?}");
+        }
+        other => panic!("expected BuildOk, got {other:?}"),
+    }
+    let (code, _) = tool.close_stdin_and_wait();
+    assert_eq!(code, 0);
 }

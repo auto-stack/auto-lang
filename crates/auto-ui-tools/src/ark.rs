@@ -721,10 +721,12 @@ fn build_ark_project_inner(
     };
 
     if !hvigorw.exists() {
-        println!("  ⚠ Hvigor wrapper not found.");
-        println!("  Please open the project in DevEco Studio to build.");
-        println!("  Project location: {}", ark_dir.display());
-        return Ok(());
+        // PLAN-815 R4-06（F-815-T05-R4-06）：缺构建 wrapper=具名失败——
+        // 未真正执行过构建就不能回报成功（协议层 build_ui 诚实边界）。
+        return Err(format!(
+            "Hvigor wrapper not found at {} — open the project in DevEco Studio to build (no build was executed)",
+            hvigorw.display()
+        ).into());
     }
 
     println!("  ✓ Hvigor wrapper found");
@@ -733,29 +735,33 @@ fn build_ark_project_inner(
     println!();
     println!("{}", "▶ Step 3: Building HAP...".bright_cyan());
 
-    let build_result = std::process::Command::new(&hvigorw)
-        .args(&["assembleHap"])
-        .current_dir(&ark_dir)
-        .status()
-        .map_err(|e| format!("Failed to build: {}", e))?;
+    // PLAN-815 R4-05（F-815-T05-R4-05）：hvigorw 经 owned 树设施——取消/
+    // EOF 真终止整树（不再只置标志等 status 返回）。
+    let build_result =
+        crate::proc_host::run_external_status(&hvigorw, &["assembleHap"], &ark_dir, "ark-build")
+            .map_err(|e| format!("Failed to build: {}", e))?;
 
+    let hap = ark_dir.join("entry/build/default/outputs/default/entry-default-signed.hap");
     if build_result.success() {
+        // PLAN-815 R4-06：产物 oracle——退出码 0 但 HAP 缺失=未真正构建，
+        // 具名失败（假 wrapper 反例的区分点）。
+        if !hap.is_file() {
+            return Err(format!(
+                "hvigorw assembleHap exited 0 but the HAP artifact is missing at {} — the build did not really run",
+                hap.display()
+            ).into());
+        }
         println!();
         println!("{}", "✓ Build successful!".bright_green());
         println!();
         println!("HAP location:");
-        println!(
-            "  {}",
-            ark_dir
-                .join("entry/build/default/outputs/default/entry-default-signed.hap")
-                .display()
-                .to_string()
-                .bright_cyan()
-        );
+        println!("  {}", hap.display().to_string().bright_cyan());
     } else {
-        println!();
-        println!("  ⚠ Build failed. Try running manually:");
-        println!("    cd {} && ./hvigorw assembleHap", ark_dir.display());
+        // PLAN-815 R4-06：真实构建失败=具名 Err（不再打印后吞掉返回 Ok）。
+        return Err(format!(
+            "ark build failed (hvigorw assembleHap exited with {build_result}); try manually: cd {} && ./hvigorw assembleHap",
+            ark_dir.display()
+        ).into());
     }
 
     Ok(())

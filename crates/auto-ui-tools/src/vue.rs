@@ -6381,8 +6381,24 @@ export default router
 /// 6. npm run build
 pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
     println!("{}", "Building Vue project (backend: vue)".bright_cyan());
-    let project = prepare_vue_sources(root_dir)?;
+    let project = prepare_vue_sources(root_dir, None)?;
+    build_vue_project_with_project(root_dir, project)
+}
 
+/// 请求路径（PLAN-815 R4-04，F-815-T05-R4-04）：build 链消费已求值请求
+/// ——项目上下文经 `VueProject::from_workspace_with_request`（pac.at 数据
+/// 全部来自请求），不再走 legacy 主 pac 自扫。
+pub fn build_vue_project_with_request(
+    root_dir: &Path,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    println!("{}", "Building Vue project (backend: vue)".bright_cyan());
+    let project = prepare_vue_sources(root_dir, Some(req))?;
+    build_vue_project_with_project(root_dir, project)
+}
+
+/// Shared tail of the two build entries above (steps after source prep).
+fn build_vue_project_with_project(root_dir: &Path, project: VueProject) -> AutoResult<()> {
     // PLAN-668 R-22（SD-02，P657-D2① 阶段序根修）：src/auto-sources.ts
     // 此前仅 `auto run` 驱动写入（write_auto_sources_ts 的 run 路径调用
     // 点），build 阶段缺位——`auto build` 的 vue-tsc 面上 overlay.ts 的
@@ -6446,7 +6462,7 @@ pub fn gen_vue_project(root_dir: &Path) -> AutoResult<()> {
         "{}",
         "Generating Vue project (backend: vue, gen-only)".bright_cyan()
     );
-    let project = prepare_vue_sources(root_dir)?;
+    let project = prepare_vue_sources(root_dir, None)?;
 
     // PLAN-682 F4: gen-only wrapper materialization. Detection + materialize
     // were only wired on the full build path; `--gen-only` wrote dep-leg SFCs
@@ -6508,7 +6524,10 @@ pub fn gen_vue_project(root_dir: &Path) -> AutoResult<()> {
 /// SFCs (running the ui_gen validators), write/regenerate the project
 /// sources under gen/front/vue, and copy handmade/style/use-block assets.
 /// Returns the loaded project so callers can continue with npm steps.
-fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
+fn prepare_vue_sources(
+    root_dir: &Path,
+    req: Option<&auto_project_model::generation_request::GenerationRequest>,
+) -> AutoResult<VueProject> {
     // Pre-load API function names BEFORE creating VueProject (which instantiates VueGenerator)
     let api_fns_path = root_dir.join("dist").join(".api_functions");
     if api_fns_path.exists() {
@@ -6523,8 +6542,12 @@ fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
         }
     }
 
-    // Load project context
-    let project = VueProject::from_workspace(root_dir)?;
+    // Load project context (request path: no legacy main-pac re-read —
+    // PLAN-815 R4-04 / F-815-T05-R4-04)
+    let project = match req {
+        Some(r) => VueProject::from_workspace_with_request(root_dir, r)?,
+        None => VueProject::from_workspace(root_dir)?,
+    };
 
     // Plan 351: drain stashed store composable files and write them
     for (filename, content) in auto_lang_core::drain_store_extra_files() {

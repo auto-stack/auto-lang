@@ -61,11 +61,19 @@ fn main() {
 /// 与 dev-server 的 `q` 语义同族）；入口在本（主）线程运行动态 UI。
 ///
 /// T-05 R3（R3-01）：执行进程自行装配会话上下文——父进程把**单源请求
-/// 衍生**的外部后端根/主题名经 env 传入（本进程不重读主 pac，无第二
-/// 真源）；`AUTO_SOURCE_DIRS`/cwd 等随进程继承。keepalive 持有到会话
+/// 衍生**的外部后端根/主题名经 env 传入（本进程不重读主 pac，无第二真
+/// 源）；`AUTO_SOURCE_DIRS`/cwd 等随进程继承。keepalive 持有到会话
 /// 结束（cdylib 注册表的宿主桥身份）。
+///
+/// T-05 R4（F-815-T05-R4-02）：请求声明的外部后端是**会话的前置依赖**
+/// ——装载失败（缺 cdylib/ABI 不匹配）不再是告警后照跑，而是写
+/// `VM_SESSION_FATAL: <reason>` 到 stderr（宿主转发捕获）并以专用退出码
+/// 3 终止；宿主把它映射为具名 failed，不启动依赖它的会话。
 fn run_internal_vm_session(entry: &str) -> i32 {
     use std::io::BufRead;
+    /// Dedicated exit code: required external backend failed to load
+    /// (distinct from 1 = entry execution failure).
+    const EXIT_VM_BACKEND_LOAD: i32 = 3;
     // R3-02：退出请求窗口在本进程的最早边界开启——此后任何时刻的 q
     //（含组件构建/初始化期间）都不会被快照吸收。
     auto_ui_runtime::ui::iced::renderer::host_exit_window_begin();
@@ -87,7 +95,13 @@ fn run_internal_vm_session(entry: &str) -> i32 {
                 );
                 backend_keepalive = Some(loaded);
             }
-            Err(e) => eprintln!("  {} external backend load failed (vm child): {e}", "⚠"),
+            Err(e) => {
+                eprintln!(
+                    "{}external backend load failed (vm child): {e}",
+                    auto_ui_tools::proc_host::VM_SESSION_FATAL_PREFIX
+                );
+                return EXIT_VM_BACKEND_LOAD;
+            }
         }
     }
     if let Ok(json) = std::env::var("AUTO_UI_TOOL_VM_THEME_DECL") {

@@ -39,6 +39,12 @@ sha2 = "0.10"
 toml = { workspace = true }
 dirs = { workspace = true }
 
+# PLAN-815 R4（F-815-T05-R1-01 非Windows臂）：reader 可停读的 poll(2)
+# 可用性探测（与 Windows PeekNamedPipe 同语义——停止标志在轮询刻间
+# 恒可观察，非 owned 持管道者不能把 reader 钉死在阻塞读上）。
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 tempfile = { workspace = true }
 

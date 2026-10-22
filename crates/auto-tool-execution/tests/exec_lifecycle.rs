@@ -145,6 +145,41 @@ fn env_additive_and_override() {
     );
 }
 
+/// PLAN-815 R4-01（F-815-T05-R4-01）：`env_remove` 先于 `env` 应用——
+/// 宿主进程环境里的陈旧同名变量不漏进子进程（"每个子进程只获得本次
+/// 调用的上下文"隔离合同）。正控=显式对在场；负控=继承值被移除。
+#[test]
+fn env_remove_strips_inherited_key_before_env_adds() {
+    const PROBE: &str = "TE816_REMOVE_PROBE";
+    // SAFETY: nextest 单测单进程;测试尾恢复。
+    unsafe {
+        std::env::set_var(PROBE, "stale-host-value");
+    }
+
+    // 正控:显式 env 对(移除同名继承值后)在场。
+    let mut spec = with_args(child_spec("env"), PROBE, None);
+    spec.env_remove.push(PROBE.into());
+    spec.env.push((PROBE.into(), "per-request".into()));
+    let result = run(&spec).expect("run env remove+add");
+    assert_eq!(result.kind, ExitKind::Success);
+    assert_eq!(result.stdout_lossy().unwrap().trim(), "per-request");
+
+    // 负控:仅移除——子进程看不到宿主继承值(te-child env 模式缺失=exit 3)。
+    let mut spec = with_args(child_spec("env"), PROBE, None);
+    spec.env_remove.push(PROBE.into());
+    let result = run(&spec).expect("run env remove-only");
+    assert!(
+        matches!(result.kind, ExitKind::Failure(3)),
+        "inherited value must be stripped, got {:?}",
+        result.kind
+    );
+
+    // SAFETY: 恢复测试进程环境。
+    unsafe {
+        std::env::remove_var(PROBE);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 退出 / 错误分类
 // ---------------------------------------------------------------------------

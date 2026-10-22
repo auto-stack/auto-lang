@@ -87,6 +87,10 @@ pub struct ExecutionSpec {
     /// 在继承环境之上追加/覆盖(显式对;不提供清空基线——需要环境
     /// 隔离的上层自管)。
     pub env: Vec<(OsString, OsString)>,
+    /// 从**继承环境**中先行移除的键(在 `env` 追加之前应用)。用于
+    /// 上层"每个子进程只获得本次调用的上下文"的隔离合同——宿主
+    /// 进程环境里的陈旧同名变量不漏进子进程(PLAN-815 R4-01)。
+    pub env_remove: Vec<OsString>,
     pub stdin: StdioPolicy,
     pub stdout: StdioPolicy,
     pub stderr: StdioPolicy,
@@ -286,6 +290,9 @@ fn build_command(spec: &ExecutionSpec) -> Command {
     }
     if let Some(cwd) = &spec.cwd {
         cmd.current_dir(cwd);
+    }
+    for key in &spec.env_remove {
+        cmd.env_remove(key);
     }
     for (k, v) in &spec.env {
         cmd.env(k, v);

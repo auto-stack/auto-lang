@@ -18971,13 +18971,13 @@ fn run_session(
     mode: RunMode,
     opts: DesktopOptions,
 ) -> AppResult<String> {
-    // PLAN-815 T-05（F03，R2 根修）：新会话快照退出请求代数——本会话只
-    // 响应快照之后的新请求（初始化期间到达的取消不丢、上一会话的陈旧
-    // 请求不误杀；订阅经 host_exit_poll_subscription(since) 消费）。
+    // PLAN-815 T-05（F03，R2 根修）：新会话退出请求代数——本会话只响应
+    // 快照之后的新请求（初始化期间到达的取消不丢、上一会话的陈旧请求
+    // 不误杀；订阅经 host_exit_poll_subscription(since) 消费——since 在
+    // iced 构建订阅时读取当前代数）。
     // R3-02：优先沿用执行边界已开启的窗口（初始化/构建期间的退出请求
-    /// 因此 > 快照而不被吸收）；无窗口（桌面直入口）则在此开启。
+    // 因此 > 会话起始代数而不被吸收）；无窗口（桌面直入口）则在此开启。
     host_exit_window_begin();
-    let host_exit_since = current_host_exit_since();
     // Stage B P-7：宿主显式 shell pack 注入（OnceLock 首值胜；后续幂等）。
     if let Some(pack_dir) = &opts.shell_pack {
         crate::ui::shell::set_shell_pack_override(pack_dir.clone());

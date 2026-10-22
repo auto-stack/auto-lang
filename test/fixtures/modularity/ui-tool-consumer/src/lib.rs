@@ -128,8 +128,17 @@ fn consumer_reads_tool_descriptor_from_lib() {
     assert!(descriptor.offers("describe"));
     assert!(descriptor.offers("validate_project"));
     for capability in &descriptor.capabilities {
+        // PLAN-815 R4（F-815-T05-R1-07 重开修复）：T-06 起 build_ui 与
+        // run_ui 同为 cancellable（真实构建/运行外部级命令是 owned 树，
+        // 取消真终止）；run_ui 独有 interactive（Input 通道）。A 阶段三操作
+        // 与非交互生成保持既定不可取消语义（合法支持正控——能力超集断言
+        // 不删除）。
         match capability.operation.as_str() {
             "run_ui" => assert!(capability.cancellable && capability.interactive),
+            "build_ui" => {
+                assert!(capability.cancellable, "build_ui is cancellable");
+                assert!(!capability.interactive, "build_ui is non-interactive");
+            }
             other => {
                 assert!(!capability.cancellable, "{other}");
                 assert!(!capability.interactive, "{other}");
@@ -279,20 +288,26 @@ fn parse_next(tool: &mut Tool) -> Option<serde_json::Value> {
 /// PLAN-815 T-05/F07: the B-stage negative over a real process — an
 /// unserved render is rejected by name BEFORE any side effect (the temp
 /// project never gains a gen/ tree), and the stream keeps serving.
+///
+/// PLAN-815 R4（F-815-T05-R1-07 重开修复）：T-06 起 jet/ark/vscode 等已入
+/// generate 服务集——负控必须瞄准**真实不服务**目标（vm 仅 run 面服务，
+/// generate 面具名拒绝），否则读到 Progress 而非 Error。合法支持正控在
+/// 上方 descriptor 测试（五操作超集 + build_ui/run_ui cancellable）与
+/// 拒绝消息中的服务集披露双点保留。
 #[test]
 fn consumer_rejects_unserved_render_with_zero_side_effects() {
     let dir = tempfile::tempdir().expect("tempdir");
     std::fs::write(
         dir.path().join("pac.at"),
         "name: \"x\"
-render: \"jet\"
+render: \"vm\"
 ",
     )
     .unwrap();
     let request = GenerationRequest::from_descriptor(
         &parse_document(
             "name: \"x\"
-render: \"jet\"
+render: \"vm\"
 ",
             SourceInfo::from_path(dir.path().join("pac.at")),
         )
@@ -311,6 +326,17 @@ render: \"jet\"
             assert!(
                 matches!(error.kind, ErrorKind::InvalidField { ref field, .. } if field == "request"),
                 "named rejection: {error:?}"
+            );
+            // 支持集披露（正控信号）：vm 缺席、vue/jet 在场——证明拒绝的
+            // 是不服务目标本身，而非能力面整体缺失。
+            let text = format!("{error:?}");
+            assert!(
+                text.contains("vm"),
+                "rejection names the unserved target: {text}"
+            );
+            assert!(
+                text.contains("vue"),
+                "rejection discloses the served set: {text}"
             );
         }
         other => panic!("expected Error, got {other:?}"),
