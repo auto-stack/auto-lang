@@ -359,6 +359,12 @@ pub fn ensure_shared_workspace(project_dir: &Path) -> PathBuf {
     // PLAN-811：媒体基础与 auto-lang 同根（crates/auto-media-core）——生成
     // 物的 viewer 桥/媒体 HTTP 直接消费 `auto_media_core::` 公开入口。
     let auto_media_core_rel = auto_lang_rel.replace("crates/auto-lang", "crates/auto-media-core");
+    // PLAN-814 T-05 canonical 双直依赖（import_policy.rs；PLAN-815 T-07 子批2
+    // 接线）：rust 生成组件只 import `auto_ui_runtime::ui`/`auto_lang_core`，
+    // dev 成员经 workspace 继承直接依赖两包（同 auto-media-core 先例同根
+    // 窄接线；缺此两行则生成工程 cargo build E0433）。
+    let auto_ui_runtime_rel = auto_lang_rel.replace("crates/auto-lang", "crates/auto-ui-runtime");
+    let auto_lang_core_rel = auto_lang_rel.replace("crates/auto-lang", "crates/auto-lang-core");
     let target_rel = compute_target_rel_path(project_dir, &ws_dir);
 
     let members_toml = members
@@ -382,6 +388,10 @@ a2r-std = {{ path = "{a2r_std_rel}" }}
 # PLAN-811：媒体基础（图像资产管线/媒体文件服务）——生成后端的
 # `auto_media_core::` 公开入口调用需此 dep。
 auto-media-core = {{ path = "{auto_media_core_rel}" }}
+# PLAN-814 T-05 canonical 双直依赖（import_policy.rs）——rust 生成组件的
+# `auto_ui_runtime::ui`/`auto_lang_core` import 需成员直依赖两包。
+auto-ui-runtime = {{ path = "{auto_ui_runtime_rel}" }}
+auto-lang-core = {{ path = "{auto_lang_core_rel}" }}
 serde_json = "1"
 ureq = {{ version = "2", features = ["json"] }}
 tokio = {{ version = "1", features = ["rt"] }}

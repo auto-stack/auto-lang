@@ -2750,7 +2750,7 @@ fn wrap_example(
     format!(
         r#"// Auto-generated from Auto language by a2rust-ui
 
-use auto_lang::ui::{{Component, View}};
+use auto_ui_runtime::ui::{{Component, View}};
 
 // 014 内存哨兵:记账分配器(存活字节 + 大块分配点回溯;超限冻结时
 // 自动落盘分配报告到 %TEMP%/auto-term-mem-report.txt)。
@@ -3449,6 +3449,13 @@ default = ["ui-iced", "auto-lang/default"]
 
 [dependencies]
 auto-lang.workspace = true
+# PLAN-814 T-05 canonical 双直依赖（import_policy.rs；PLAN-815 T-07 子批2
+# 接线）：rust 生成组件只 import `auto_ui_runtime::ui`/`auto_lang_core`，
+# 成员须直依赖两包（auto-ui-runtime default 含 ui-iced）。legacy 壳层
+# （wrap_example 头/mem_guard/内建 shim）仍发射 auto_lang::，auto-lang
+# 直依赖保留至壳层发射 canonical 化。
+auto-ui-runtime.workspace = true
+auto-lang-core.workspace = true
 # PLAN-811：viewer 桥函数直调媒体基础公开入口（auto_media_core::）。
 auto-media-core.workspace = true
 serde_json.workspace = true
@@ -3471,9 +3478,14 @@ iced.workspace = true
 /// （文件级扫描 `pub fn NAME(&self)` → `self.NAME()` 调用点改写——跨
 /// widget computed 同捕）。
 fn prepare_generated_components(components: &str) -> String {
-    // Strip duplicate imports — RustGenerator already emits them
+    // Strip duplicate imports — RustGenerator already emits them. Both the
+    // canonical header (PLAN-814 T-05: `auto_ui_runtime::ui`) and the legacy
+    // facade form are stripped: the shell header (wrap_example) provides the
+    // single import, and a leftover per-block copy collides as E0252.
     let mut cleaned = components
         .trim()
+        .replace("use auto_ui_runtime::ui::{Component, View};\n", "")
+        .replace("use auto_ui_runtime::ui::{Component, View};", "")
         .replace("use auto_lang::ui::{Component, View};\n", "")
         .replace("use auto_lang::ui::{Component, View};", "");
 
@@ -4353,6 +4365,13 @@ default = ["ui-iced", "auto-lang/default"]
 
 [dependencies]
 auto-lang = {{ path = "../crates/auto-lang" }}
+# PLAN-814 T-05 canonical 双直依赖（import_policy.rs；PLAN-815 T-07 子批2
+# 接线）：交付 app 的生成组件只 import `auto_ui_runtime::ui`/
+# `auto_lang_core`——直接依赖同交付根内两包（闭包成员 814 T-02/T-03 已
+# 随包；缺此两行则 fresh/locked 真实构建 E0433，792 driver V01 在案）。
+# auto-ui-runtime default 含 ui-iced，无需 feature 转发。
+auto-ui-runtime = {{ path = "../crates/auto-ui-runtime" }}
+auto-lang-core = {{ path = "../crates/auto-lang-core" }}
 # PLAN-811：viewer 桥函数直接消费媒体基础公开入口（同交付根内源闭包）。
 auto-media-core = {{ path = "../crates/auto-media-core" }}
 serde_json = "1"
@@ -8067,11 +8086,35 @@ pub fn create_item(name str) str {
     fn generated_ui_cargo_uses_canonical_double_dependency() {
         // PLAN-814 T-05（union 迁移自 auto-man api_gen 测试——rust_ui 归属
         // auto-ui-tools 后断言随迁）：UI 工程 manifest canonical 双直依赖。
+        // PLAN-815 T-07 子批2 补强：SDK 包（auto-lang-core）与交付 app 清单
+        // 同钉——792 driver V01 曾以缺两行红（fresh/locked 真实构建 E0433）。
         let ui_cargo = crate::rust_ui::generate_cargo_toml(
             "image-ui",
             std::path::Path::new("."),
             &crate::rust_ui::PacSource::legacy(),
         );
         assert!(ui_cargo.contains("auto-ui-runtime"));
+        assert!(
+            ui_cargo.contains("auto-ui-runtime.workspace = true"),
+            "canonical 双直依赖须 workspace 继承形态: {ui_cargo}"
+        );
+        assert!(
+            ui_cargo.contains("auto-lang-core.workspace = true"),
+            "SDK 直依赖（auto_lang_core:: import）: {ui_cargo}"
+        );
+        let delivery_cargo = generate_delivery_app_manifest(
+            "image-ui",
+            std::path::Path::new("."),
+            &[],
+            &PacSource::legacy(),
+        );
+        assert!(
+            delivery_cargo.contains("auto-ui-runtime = { path = \"../crates/auto-ui-runtime\" }"),
+            "交付 app 直依赖 canonical runtime: {delivery_cargo}"
+        );
+        assert!(
+            delivery_cargo.contains("auto-lang-core = { path = \"../crates/auto-lang-core\" }"),
+            "交付 app 直依赖 canonical SDK: {delivery_cargo}"
+        );
     }
 }

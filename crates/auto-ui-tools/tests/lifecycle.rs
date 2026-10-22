@@ -580,6 +580,119 @@ fn lifecycle_build_install_failure_is_named_failed_no_dist() {
     assert_eq!(code, 0);
 }
 
+/// T-07 子批2 V-04：Unicode+空格工程（目录 "示例 app"、包名 "示例应用"、
+/// zh 标题）走真实 install+build 链——成功面 oracle 是可消费 dist（真实
+/// JS bundle 且入口真实引用，与 lifecycle_build_produces_dist 同标准），
+/// 且 dist 入口携带 zh 标题。Unicode/空格路径是一等工程形态。
+#[test]
+#[ignore = "heavy+env: real pnpm install + build under unicode/space paths; serial evidence run via --ignored"]
+fn lifecycle_unicode_space_project_builds_dist() {
+    let dir = tempfile_dir();
+    // Unicode + space project directory as the real project root.
+    let root = dir.path().join("示例 app");
+    write_vue_project(
+        &root,
+        "示例应用",
+        "name: \"示例应用\"\ntitle_zh: \"中文标题示例\"\nrender: \"vue\"\nwindow: \"480x360\"\nfront: \"./src/front\"\n",
+    );
+
+    let request = GenerationRequest::from_descriptor(
+        &parse_document(
+            "name: \"示例应用\"\ntitle_zh: \"中文标题示例\"\nrender: \"vue\"\nwindow: \"480x360\"\nfront: \"./src/front\"\n",
+            SourceInfo::from_path(root.join("pac.at")),
+        )
+        .expect("parse"),
+    );
+
+    let mut tool = Tool::spawn();
+
+    // Generate first (real chain), then the REAL install+build in one op.
+    tool.send(&envelope(
+        30,
+        ClientBody::GenerateUi {
+            request: WireRequest(request.clone()),
+        },
+    ));
+    let (gen_final, _) = wait_for(&mut tool, |e| {
+        matches!(e.body, ServerBody::GenerateOk { .. })
+            || matches!(e.body, ServerBody::Error { .. })
+    });
+    match gen_final.body {
+        ServerBody::GenerateOk { report } => {
+            assert!(report.files_written > 5, "real artifacts: {report:?}");
+        }
+        other => panic!("expected GenerateOk, got {other:?}"),
+    }
+
+    tool.send(&envelope(
+        31,
+        ClientBody::BuildUi {
+            request: WireRequest(request),
+        },
+    ));
+    let (build_final, _) = wait_for(&mut tool, |e| {
+        matches!(e.body, ServerBody::BuildOk { .. }) || matches!(e.body, ServerBody::Error { .. })
+    });
+    match build_final.body {
+        ServerBody::BuildOk { report } => {
+            assert_eq!(
+                report.outcome,
+                RunOutcome::Completed,
+                "unicode/space project must complete the real build: {report:?} stderr: {}",
+                tool.stderr_tail()
+            );
+            assert_eq!(report.error, None);
+            assert_eq!(report.profile, "vue");
+        }
+        ServerBody::Error { error } => {
+            panic!(
+                "build_ui rejected by name for the unicode/space project: {error:?} stderr: {}",
+                tool.stderr_tail()
+            );
+        }
+        other => panic!("expected BuildOk, got {other:?}"),
+    }
+
+    // Consumable-dist oracle (same standard as the ASCII lifecycle build):
+    // dist/index.html exists, carries the zh title, and REALLY loads the
+    // application JS — every referenced assets/ file exists on disk.
+    let dist = root.join("gen").join("front").join("vue").join("dist");
+    let html = std::fs::read_to_string(dist.join("index.html"))
+        .unwrap_or_else(|e| panic!("dist/index.html missing ({e}): {}", tool.stderr_tail()));
+    assert!(
+        html.contains("<title>中文标题示例</title>"),
+        "zh title travels into the built dist: {html}"
+    );
+    let assets_dir = dist.join("assets");
+    let mut references = 0u32;
+    let mut js_references = 0u32;
+    for token in html.split(['"', '\'', '(', ')', ' ']) {
+        let Some(pos) = token.find("assets/") else {
+            continue;
+        };
+        let name = token[pos + "assets/".len()..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '/'))
+            .collect::<String>();
+        if name.is_empty() {
+            continue;
+        }
+        assert!(
+            assets_dir.join(&name).is_file(),
+            "entry references a MISSING dist asset: {name}: {html}"
+        );
+        references += 1;
+        if name.ends_with(".js") {
+            js_references += 1;
+        }
+    }
+    assert!(references > 0, "entry references real bundles: {html}");
+    assert!(js_references > 0, "entry loads the application JS: {html}");
+
+    let code = tool.close_and_wait();
+    assert_eq!(code, 0);
+}
+
 fn wait_for(
     tool: &mut Tool,
     mut predicate: impl FnMut(&ServerEnvelope) -> bool,

@@ -3677,17 +3677,16 @@ export default router
     /// 请求路径（PLAN-809 T-06c 生产入口）：pac.at 数据全部来自请求，
     /// 本方法不读 pac.at 文本（pac_content 仅用于错误信息与既有注释语
     /// 义位——由调用方持有的求值产物，非生成器回读）。
+    /// T-07 子批2（V-02）：主声明的磁盘移除不改变已求值请求快照——
+    /// 旧实现的 pac.at 存在性门是遗留残留（jet/ark/vscode 请求路径均无），
+    /// 删除；字段矩阵测试以删除 pac.at 后再生成逐字节一致钉住。
     pub fn from_workspace_with_request(
         root_dir: &Path,
         req: &auto_project_model::generation_request::GenerationRequest,
     ) -> AutoResult<Self> {
-        let pac_path = root_dir.join("pac.at");
-        if !pac_path.exists() {
-            return Err("pac.at not found in workspace".into());
-        }
         let reads = VueReads::from_request(req);
         // 请求路径无 pac_content；空串占位（reads 已承载全部数据）。
-        Self::from_workspace_reads(root_dir, &pac_path, "", reads)
+        Self::from_workspace_reads(root_dir, &root_dir.join("pac.at"), "", reads)
     }
 
     fn from_workspace_reads(

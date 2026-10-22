@@ -117,3 +117,52 @@ fn historic_auto_man_copies_stay_removed() {
     }
     assert!(!root.join("packages/drawlist-renderer").exists());
 }
+
+/// T-07 子批2 资源审计钉扎：manifest 登记的生产源就是三个 embed 结构
+/// 实际消费的文件夹——每组 embed 面非空且锚文件在面内；shadcn 组的 MIT
+/// LICENSE + SNAPSHOT.md 随组进入 embed（许可随发行面旅行——按组件
+/// materialize 只拷组件文件，组级许可文件不进用户工程，留在二进制与
+/// 仓内组源，见 attachments/815/t07-acceptance/batch2/resource-audit.md）。
+#[test]
+fn embed_consumption_matches_registered_sources() {
+    use auto_ui_tools::{gallery_assets, vue_shadcn, wm_assets};
+
+    // gallery → materialize <output>/src/gallery/ (RustEmbed over the
+    // registered source dir; anchor file present in the embed surface)
+    let gallery = gallery_assets::bundled_files();
+    assert!(!gallery.is_empty(), "gallery embed surface is non-empty");
+    assert!(
+        gallery
+            .iter()
+            .any(|f| f.replace('\\', "/") == "AppViewport.vue"),
+        "gallery anchor missing from embed surface: {gallery:?}"
+    );
+
+    // wm → materialize <output>/src/wm/ (+ drawlist renderer inputs, which
+    // the manifest records as external_inputs of the group)
+    let wm = wm_assets::bundled_files();
+    assert!(!wm.is_empty(), "wm embed surface is non-empty");
+    assert!(
+        wm.iter()
+            .any(|f| f.replace('\\', "/") == "VirtualWindow.vue"),
+        "wm anchor missing from embed surface: {wm:?}"
+    );
+
+    // shadcn-ui → per-component materialize into src/components/ui/<name>/
+    let components = vue_shadcn::bundled_components();
+    assert!(
+        components.len() >= 10,
+        "shadcn snapshot unexpectedly thin: {components:?}"
+    );
+    // The MIT license + snapshot provenance travel with the group into the
+    // embed surface (they live at the group root, outside <component>/ dirs,
+    // so per-component materialize does not copy them into user projects).
+    assert!(
+        vue_shadcn::ShadcnUiAssets::get("LICENSE").is_some(),
+        "MIT LICENSE is part of the shadcn embed surface"
+    );
+    assert!(
+        vue_shadcn::ShadcnUiAssets::get("SNAPSHOT.md").is_some(),
+        "snapshot provenance is part of the shadcn embed surface"
+    );
+}

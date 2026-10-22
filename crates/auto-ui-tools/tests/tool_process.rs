@@ -13,6 +13,7 @@ use auto_tool_protocol::message::{
 use auto_tool_protocol::report::{RunOutcome, Severity};
 use auto_tool_protocol::{Budgets, ErrorKind};
 use serde_json::{json, Value as Json};
+use std::hash::{Hash, Hasher};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -1501,6 +1502,228 @@ fn generate_ui_vscode_fields_come_from_request_not_disk_pac() {
         }
         other => panic!("expected GenerateOk, got {other:?}"),
     }
+    let (code, _) = tool.close_stdin_and_wait();
+    assert_eq!(code, 0);
+}
+
+/// T-07 子批2 V-02/V-04 字段矩阵：一个全字段请求——Unicode+空格工程根与
+/// 名称、zh-only 标题链、`theme{}`、npm_deps、styles、i18n locale 文件、
+/// 本地 dep 根（带独立 front）、front 节点形态——经真实 tool 生成，逐字段
+/// 断言落在生成物上。随后删除主 pac.at，用**同一请求**再生成，输出必须
+/// 逐字节一致：请求快照是唯一数据源，无第二次主声明读取（V-02 oracle）。
+#[test]
+#[ignore = "heavy: real generation chain; serial evidence run via --ignored"]
+fn generate_ui_field_matrix_and_pac_snapshot_independence() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    // V-04: Unicode + space project directory is a first-class project root.
+    let root = dir.path().join("示例 app");
+    std::fs::create_dir_all(root.join("ui").join("front")).unwrap();
+    std::fs::create_dir_all(root.join("vendor").join("matrixdep").join("front")).unwrap();
+    std::fs::create_dir_all(root.join("src").join("i18n").join("locales")).unwrap();
+    let pac = concat!(
+        "name: \"示例应用\"\n",
+        "title: \"English Fallback\"\n",
+        "title_zh: \"中文标题示例\"\n",
+        "render: \"vue\"\n",
+        "window: \"640x480\"\n",
+        "npm_deps: [\"dayjs@^1.11.10\"]\n",
+        "styles: [\"./src/extra.css\"]\n",
+        "i18n: [\"src/i18n/locales/zh.json\"]\n",
+        "theme: { name: \"matrix-theme\", mode: \"dark\", colors: { primary: \"#2050c0\" } }\n",
+        "dep \"matrixdep\" { path: \"./vendor/matrixdep\" }\n",
+    );
+    std::fs::write(root.join("pac.at"), pac).unwrap();
+    std::fs::write(
+        root.join("ui").join("front").join("app.at"),
+        "widget App {\n    view {\n        col { text `matrix-field-probe` }\n    }\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("vendor")
+            .join("matrixdep")
+            .join("front")
+            .join("dep.at"),
+        "widget MatrixDepWidget {\n    view {\n        col { text `dep-widget-ok` }\n    }\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("src").join("extra.css"),
+        "/* matrix style */ .extra { color: red; }\n",
+    )
+    .unwrap();
+    let zh_locale = "{\n  \"greeting\": \"你好，字段矩阵\"\n}\n";
+    std::fs::write(
+        root.join("src")
+            .join("i18n")
+            .join("locales")
+            .join("zh.json"),
+        zh_locale,
+    )
+    .unwrap();
+
+    let mut request = GenerationRequest::from_descriptor(
+        &parse_document(pac, SourceInfo::from_path(root.join("pac.at"))).expect("parse"),
+    );
+    // Adapter-shaped snapshot: the front NODE form (`app("front")` family) is
+    // carried by the request (the wire round-trips it) and wins over the prop
+    // form — this project declares NO `front:` prop and has NO src/front, so
+    // honoring anything else fails loudly instead of silently probing disk.
+    request.front_node_form = Some("./ui/front".into());
+
+    let mut tool = ToolProcess::spawn();
+    let send_generate = |tool: &mut ToolProcess, id: u64| {
+        tool.send(&envelope(
+            id,
+            ClientBody::GenerateUi {
+                request: WireRequest(request.clone()),
+            },
+        ));
+        let (final_response, _) = next_until(tool, |e| {
+            matches!(e.body, ServerBody::GenerateOk { .. })
+                || matches!(e.body, ServerBody::Error { .. })
+        });
+        match final_response.body {
+            ServerBody::GenerateOk { report } => {
+                assert_eq!(report.frontends, vec!["vue".to_string()]);
+                assert!(report.files_written > 10, "real artifacts: {report:?}");
+            }
+            other => panic!("expected GenerateOk (id {id}), got {other:?}"),
+        }
+    };
+
+    send_generate(&mut tool, 70);
+
+    // ---- Per-field oracle: every request field lands in the artifacts. ----
+    let vue_root = root.join("gen").join("front").join("vue");
+    assert!(
+        vue_root.is_dir(),
+        "generation root under the unicode/space path"
+    );
+    let package =
+        std::fs::read_to_string(vue_root.join("package.json")).expect("generated package.json");
+    // identity.name (Unicode, verbatim — frozen legacy emission shape)
+    assert!(
+        package.contains("\"name\": \"示例应用\""),
+        "unicode project name lands verbatim: {package}"
+    );
+    // npm_deps (request array form "pkg@spec")
+    assert!(
+        package.contains("\"dayjs\": \"^1.11.10\""),
+        "npm_deps land in package.json: {package}"
+    );
+    // i18n enables the vue-i18n dependency
+    assert!(
+        package.contains("\"vue-i18n\""),
+        "i18n declaration lands in package.json: {package}"
+    );
+    // zh-only title chain: AUTO_LOCALE defaults to zh → title_zh wins, and a
+    // zh-only project (title_zh without relying on title) is not lost.
+    let index_html =
+        std::fs::read_to_string(vue_root.join("index.html")).expect("generated index.html");
+    assert!(
+        index_html.contains("<title>中文标题示例</title>"),
+        "zh title chain lands in index.html: {index_html}"
+    );
+    // theme{} composes and publishes the declared palette
+    assert!(
+        index_html.contains("__AUTO_COMPOSED_THEME__"),
+        "theme bootstrap present: {index_html}"
+    );
+    assert!(
+        index_html.contains("matrix-theme"),
+        "declared theme name published: {index_html}"
+    );
+    assert!(
+        vue_root
+            .join("src")
+            .join("assets")
+            .join("index.css")
+            .is_file(),
+        "composed theme renders into src/assets/index.css"
+    );
+    // styles: copied verbatim into src/styles/ and imported from main.ts
+    let extra_css = std::fs::read(vue_root.join("src").join("styles").join("extra.css"))
+        .expect("style file copied into src/styles");
+    assert_eq!(
+        extra_css,
+        std::fs::read(root.join("src").join("extra.css")).unwrap(),
+        "style file copied byte-for-byte"
+    );
+    let main_ts =
+        std::fs::read_to_string(vue_root.join("src").join("main.ts")).expect("generated main.ts");
+    assert!(
+        main_ts.contains("./styles/extra.css"),
+        "style import lands in main.ts: {main_ts}"
+    );
+    // i18n: locale file copied byte-for-byte + instance module
+    assert_eq!(
+        std::fs::read(vue_root.join("src").join("locales").join("zh.json")).unwrap(),
+        zh_locale.as_bytes(),
+        "locale file copied byte-for-byte"
+    );
+    assert!(
+        vue_root.join("src").join("i18n-instance.ts").is_file(),
+        "i18n instance module lands next to main.ts"
+    );
+    // dep root: the dep's own front .at is compiled into the app (cross-file
+    // input via the declared dep root, never a main-pac re-read)
+    let mut generated = String::new();
+    let mut stack = vec![vue_root.clone()];
+    while let Some(d) = stack.pop() {
+        for entry in std::fs::read_dir(&d).unwrap().flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if let Ok(text) = std::fs::read_to_string(&p) {
+                generated.push_str(&text);
+            }
+        }
+    }
+    assert!(
+        generated.contains("MatrixDepWidget"),
+        "declared dep root's widget is compiled into the app"
+    );
+    assert!(
+        generated.contains("matrix-field-probe"),
+        "front NODE form dir is the compiled front source"
+    );
+
+    // ---- Snapshot, delete the main pac.at, regenerate the SAME request. ----
+    let snapshot_tree = |base: &std::path::Path| -> std::collections::BTreeMap<String, u64> {
+        let mut out = std::collections::BTreeMap::new();
+        let mut stack = vec![base.to_path_buf()];
+        while let Some(d) = stack.pop() {
+            for entry in std::fs::read_dir(&d).unwrap().flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else {
+                    let bytes = std::fs::read(&p).unwrap();
+                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                    bytes.hash(&mut hasher);
+                    let rel = p
+                        .strip_prefix(base)
+                        .unwrap()
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    out.insert(rel, hasher.finish());
+                }
+            }
+        }
+        out
+    };
+    let before = snapshot_tree(&root.join("gen"));
+    std::fs::remove_file(root.join("pac.at"))
+        .expect("remove the main declaration after the request snapshot");
+    send_generate(&mut tool, 71);
+    let after = snapshot_tree(&root.join("gen"));
+    assert_eq!(
+        before, after,
+        "regeneration with the same request after deleting pac.at must be byte-identical \
+         (the request snapshot is the only source; any diff is a second main-pac read \
+         or nondeterministic emission)"
+    );
+
     let (code, _) = tool.close_stdin_and_wait();
     assert_eq!(code, 0);
 }
