@@ -47,6 +47,14 @@
 - 迟到/取消：修订仲裁适用域=编辑会话（见 artifact-contract 发布仲裁）；
   旧 revision 任务晚完成只入库不覆盖当前根/诊断；显式事件屏障复现逆序完成。
 
+## 会话驻留消费（PLAN-828）
+
+增量编辑/重扫（`incremental_reparse`+`project_decl_strict` 单声明严格投影）被 828
+会话作为唯一编辑热路径消费：未改声明不重新投影（计数 `syntax_reparsed_decls` 恰一
+为证据轴）；树/快照/页合同不变。scalar 表面由 `grammars/auto-scalar.at` 版本化承载，
+与 ac-core scalar parser 的 AST+span 全等由 `scalar_projection_` 差分钉死——投影差分
+是准入面，不支持面不减。
+
 ## 验证锚
 
 snapshot_/generation_/lossless_/recovery_/core_projection_/depth_/

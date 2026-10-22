@@ -13,3 +13,4 @@
   master（677e84771/129c4474f 祖先）；773 本体含 R1 修复轮与永久控制。
 - Design 35（docs/design/35-autodown-test-cases.md）定义 A/B/C 阶段边界：B =
   真编译消费/deadline/进程隔离，C = 编辑矩阵——均未在本模块启动。
+| 828 | av-function-incremental-session | ✅（delivered，T-10 最终 PASS） | [计划](../../plans/archive/828-av-function-incremental-session.md) | 正式持续会话入口（session-serve worker+父侧 judge 测量窗/三门/证据先落盘）；one-shot recipe 保留 |

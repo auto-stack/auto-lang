@@ -12,3 +12,4 @@
 | 770 | ac-text-char-native | ✅（delivered，r11；R2..R10 十轮反例修复清偿后 pass） | [770-ac-text-char-native.md](../../plans/archive/770-ac-text-char-native.md) | 第四身份域 text-i32-draft：StrSlice/StrOwned/Char 类型+12 文本节点+Drop+moved 绑定+ParamMode 三态（与 771 统一枚举）；verify_text 分域入口+TextResourcePlan 资源前门；stage-contract text 域 S0-S6 责任（experimental） |
 
 | 782 | ac-text-record-owned | ✅（delivered，r3） | [782-ac-text-record-owned.md](../../plans/archive/782-ac-text-record-owned.md) | 第五身份域 text-record-i32-draft：组合 descriptor（text∪record+record_clone/move 包装）、派生资源分类不信自称、结构界检先于语义规则（畸形引用受控拒）、合并 lowering 阶段责任（统一 LIFO/存在标记/回滚）实证 |
+| 828 | av-function-incremental-session | ✅（delivered，T-10 最终 PASS） | [计划](../../plans/archive/828-av-function-incremental-session.md) | 函数级私有凭证通道（verify_function/check_module 缺 body 拒绝/A07 五门恢复重验），S1–S4 完整模块入口保持 |

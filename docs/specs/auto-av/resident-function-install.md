@@ -1,0 +1,26 @@
+# auto-av 常驻函数安装与事务快照（PLAN-828）
+
+> Status: active（实现=`core/src/{function_code,program_snapshot,av}.rs` +
+> `probe/src/session.rs`）。
+
+## 单元派发（无 merged 载荷）
+
+- `ProgramSnapshot::link_with_maps`：单一 owner 上下文门（schema+module 全一致）+
+  实际调用 import 闭包门（每个被执行的 Call 必须有链接期绑定）+ `fn:<name>` 签名
+  等值绑定表（scratch interned 类型表仅作内容等值校验）。**不复制未改 blocks/
+  instrs/slots/spans**——执行视图是单元本身（`UnitView`/`ModuleView`）。
+- 三公开入口（`execute_program`/`execute_program_steps`/`resume_program`）共用同一
+  单元派发；嵌套/递归沿捕获 snapshot 选 callee；分段 resume 预算（段内增量比较，
+  累计硬限额跨段）。
+- 来源投影：payload span 经帧执行槽投影映射（payload func 号不参与键控）；强制
+  复制未改执行 payload 且实际使用时结构门必红（副本负控）。
+
+## 安装事务与寿命
+
+- prepare 仅构造候选（PreparedEdit 自持候选 HIR/code/来源/绑定）；成功 commit 在
+  同一发布点原子更新 root/source/revision/env 槽位；失败/取消/迟到/foreign 不覆盖
+  当前可用版（base_generation/env_id 守卫）。
+- 新顶层调用取新 snapshot；在途调用链（PausedRun/pin）固定旧 snapshot 至退出；
+  旧代码在 snapshot/frame/lease 引用期间保活，最后 owner 释放即回收（Weak oracle）；
+  close 幂等、释放 env/store 拥有引用，外 pin 存活、vacant 执行受控 Infra。
+- 每函数内容历史有界（HISTORY_CAP=32，真实淘汰；驻留当前条目永不逐出）。

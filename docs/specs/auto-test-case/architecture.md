@@ -87,3 +87,14 @@ crates/auto-lang（adapters/orchestration/CLI）──▶  auto-test-case
 ## PLAN-798：已实现的AV消费边界
 
 probe/run新增注册recipe ac-av/core-run-v1，av绑定entry/caps/可选session及run/edit-source步骤；case不能命名任意exe，跨recipe字段/步骤拒绝。保持sema/query-v1、abi/interop-v1和原v1/ac/syntax支持；ABI拒绝AV专用Run，混合报告身份按三recipe独立惰性解析，行顺序不影响结果，篡改某worker只使该recipe stale。AV worker avworker/1协议、avworker/1.0/av.core-i32/1镜像和nonce/request/source/产物身份由父侧准入后判定。worker准备/运行受限启动、Job杀树、双流cap和单截止，超时/截断/错actual为infra/失败，不把expected发给worker。技术计时和驻留增量的边界见[AV缓存验收](../auto-av/cache-and-conformance.md)。
+
+PLAN-828 正式持续会话入口：`av_probe_worker session-serve`（一进程一会话：init/ready
+恒定身份+初始派发身份基线、编辑流发布已验证当前值+分相计时+计数快照+派发载荷身份
+（对象地址+代际）+worker 线内存峰值、close），父侧 judge 拥有测量窗（编辑入队→
+父侧**全部校验完成后**为终点，IPC 与逐请求校验在窗内）与独立期望；每发布绑定期望
+修订（revision==req_id）与确切安装目标（`expected_install`），未改函数派发身份跨修订
+稳定；双门=P95<gate ∧ 全对 ∧ 结构（未改零阶段/零整模块/恰一确切安装 ∧ 修订/目标/身份
+门）∧ 完整性，gate=0 必红；worker 中途死→缺样本红完整性，不静默缩战役；初始化排除
+单列（init_ms）、ready 先判；完整观测（逐样本计数差分/诊断/身份/worker 相位与
+输入/二进制身份）经 `JudgeReport::write_evidence` 落盘留存（成功与失败同留）；
+`frontend-attribution` 子命令为双线预算 A 线隔离测量口。one-shot run/recipe 保留不变。

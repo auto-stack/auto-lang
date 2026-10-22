@@ -37,6 +37,14 @@ R3 效果分析与效果语义两分——分析自保守侧出发（未知 effe
 反例 X9 见"Pass 合同模板"节；R4 失败=显式诊断；R5 显式 Dynamic 与推导失败不同态；
 R6 多模块装配不改变 verify 全或无语义。
 
+## 函数级私有凭证（PLAN-828）
+
+S1–S4 完整模块入口保持；828 增设函数级私有通道：`verify_function` 对单个 def 产出
+`CheckedFunction`（body 检查+全 def 签名上下文，缺 body 的混合/未调用 def 在整模块
+`check_module` 走查被拒——`verify.missing-body`；函数级脚手架成对合法）。凭证绑定
+`context_revision`（内容规范化）与实际依赖，不从旧 CheckedModule 切片盖章；恢复走
+A07 五门重验（见 [../auto-ac/function-incremental-source.md](../auto-ac/function-incremental-source.md)），凭证不落盘。
+
 ## Pass 合同模板
 
 id/version、input/output stage、profiles、pre/postconditions、order、

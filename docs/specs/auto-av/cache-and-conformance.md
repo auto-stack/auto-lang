@@ -19,7 +19,17 @@
 | ABC缓存 | body编辑通常1 emit、114 hit；hit仍读盘decode/verify |
 | 装载/执行 | 完整closure组装、编解码/准入，再执行入口；Driver不保留上次代码 |
 
-因此函数产物命中≠全链路函数增量。828负责source到函数代码安装的完整切片；未改HIR/MIR/代码identity/代际不变，未改生产阶段/产物IO为0，结构与时间双门。798不交付在线热替换、CTE、AJ、DLL loader/状态迁移；native_admission仅真实COFF引用/内容/target/ABI/版本准入的有限合同，不执行新native/JIT。
+因此函数产物命中≠全链路函数增量。828 已交付 source→函数代码安装完整切片：常驻会话内未改函数 HIR/MIR/代码 identity/
+代际不变、未改生产阶段/产物 IO 为 0；结构与时间双门（正式战役=常驻 worker+IPC+父侧
+judge，计时窗=编辑入队→父侧全部校验完成为终点，n≥30，P95<1000ms 且全对且结构绿——
+结构含修订进度/确切安装目标/目录完整（functions 交叉+entry 锚）/未改函数派发载荷身份稳定（地址+代际+内容，观测由执行器采进 trace）/驻留对象绑定（resident 活地址对比，run 内真实副本执行必红）/执行序配对（record seq==current seq，冗余副本执行必红）；逐样本阶段 wall（真实生产接缝 µs）与真实 IO 字节（无 store=结构零盘 IO）随观测上报；完整观测与逐样本 raw 经 write_evidence **先落盘后断言**留存，成功失败同留）。
+资源按 798 §5.9 双线预算硬门：A 线前端编译瞬态隔离测量 ≤224MiB；B 线探针残差
+（总峰值−A 归因）≤128MiB，缺归因整峰计 B。存储轴：manifest format=2 双指纹键
+（body+规范化 required 闭包）；单元 ABC/sidecar store-internal 挂 required 边，
+superseded 根发布点退役；A07 HIR soft root 有界（每函数至多一个当前 cv root，
+supersession 退役/回访重挂/restore 按行存在置归属追踪器——与 untrusted HIR 可采纳性
+分轴）；512 真实修订+周期 GC 存储水位有界（不随编辑数增长），恢复重验、旧 pin
+保活/释放回收、用户哨兵不动。详见 [resident-function-install.md](resident-function-install.md)。798不交付在线热替换、CTE、AJ、DLL loader/状态迁移；native_admission仅真实COFF引用/内容/target/ABI/版本准入的有限合同，不执行新native/JIT。
 
 ## 资源与计量
 
