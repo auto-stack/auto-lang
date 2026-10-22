@@ -4029,7 +4029,32 @@
       "source_commit:764e87559",
       "branch:autographics-dev@764e87559"
      ]
-    }],
+    },
+{
+ "id": "P815-B-REL",
+ "title": "M815-B 最终发布收据（PLAN-815 整 Plan 交付）",
+ "content": "delivery 33c9451fbe667dde2412d71036a19ac334b03691（master ff-only，rebase range-diff 全等价；生产冻结位 885aebbd0/0f2858e35，release 参考 artifact a73b117ff384…85,116,928B）；SD-01..07 已落 canonical（A 子集事实保留）；冻结门全绿（裸 t 5331/5331+tu 868+包门 195+tools 183/185 归因+fixtures 双门+777 strict）；M815-A/L 阶段收据在案（ledger v57/v59）。816 可消费完整 I-TOOL v1 五操作+auto-ui-tool；预存债归因：plan734/plan593（非阻断排版金样）、merged_api（P751-D2 在案）。Plan 归档；批量回归档（815%5=0）由 regress 收口。",
+ "status": "verified",
+ "file": "docs/plans/attachments/815/handoff.md",
+ "tags": [
+  "PLAN-815",
+  "stage:M815-B",
+  "delivery:33c9451fbe667dde2412d71036a19ac334b03691",
+  "receipt:release",
+  "guarded-offline-projection",
+  "source-sha256:5a7d249213c1b3d101f41826048502c775e0f326fb5d9b1e87766104c48267b2"
+ ],
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "milestone": "M815-B",
+ "module": "auto-ui-tools",
+ "created_at": 1792668085,
+ "modified_at": 1792668085,
+ "completed_at": 1792668085
+}],
    "section_type": "Reports",
    "title": "📊 Reports",
    "status": "empty",
@@ -14284,7 +14309,32 @@
       "source_commit:764e87559",
       "branch:autographics-dev@764e87559"
      ]
-    }],
+    },
+{
+ "id": "P815-B-D1",
+ "title": "UI 工程工具唯一 owner 全量交付（PLAN-815 M815-B，SD-01..07）",
+ "content": "auto-ui-tools=UI 工程工具唯一 owner：vue/rust/jet/ark/tauri/vscode 生成/build/run与 gallery/wm/shadcn 资产全闭包脱 Man（normal/build/dev 无反向大包依赖）；旧 Man 入口薄转发门面；生产入口全消费已求值 I-PROJECT 请求（请求在场即权威，无第二真源）；外部命令经 owned 子进程设施；多目标完整生成、输出根=真实布局。I-TOOL v1 完整生命周期（五操作×cancellable/interactive、framing/预算、具名错误、日志控制流分离、取消/EOF owned 树终止、Cancelled 与 outcome=cancelled 分离、能力拒绝先于副作用、非 Windows 平台承诺）。发行身份语义：确定性锚=冻结源 SHA+792 delivery-manifest（逐文件 rel/len/blake3 汇总目录 digest）；release SHA256 为带 provenance 参考产物指纹（无 reproducible-builds，不以互异 debug 哈希充当身份）；发行形态=源码包 workspace、工具包内 locked 构建三形态实证。runtime 宿主退出/会话生命周期公开面（SD-07）。shell-pack 公开再生器同受 canonical import 约束（F-815-T09-01 修复后规则）。canonical: docs/specs/auto-ui-tools/project.md + tool-protocol/project.md + auto-man/project.md + project-model/project.md + auto-lang/ui/overview.md + repository-boundaries/generated-ui-distribution.md + auto-ui-runtime/project.md",
+ "status": "verified",
+ "file": "docs/specs/auto-ui-tools/project.md",
+ "tags": [
+  "PLAN-815",
+  "stage:M815-B",
+  "delivery:33c9451fbe667dde2412d71036a19ac334b03691",
+  "freeze:885aebbd0",
+  "guarded-offline-projection",
+  "source-sha256:b8a01318774b4fe50c486902154576c2fccd16589ff43d3c9e4de63113474e89"
+ ],
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "milestone": "M815-B",
+ "module": "auto-ui-tools",
+ "created_at": 1792668085,
+ "modified_at": 1792668085,
+ "completed_at": 1792668085
+}],
    "section_type": "Designs",
    "title": "🎨 Designs",
    "status": "empty",
@@ -17492,7 +17542,31 @@
       "source_commit:764e87559",
       "branch:autographics-dev@764e87559"
      ]
-    }],
+    },
+{
+ "id": "P815-B-T",
+ "title": "M815-B 工具/协议/发行测试资产（PLAN-815）",
+ "content": "tool_process 22 快速+9 重串行（真实进程：生成/安装链/取消树/交互/字段矩阵+删 pac逐字节一致+output_root 布局钉）；lifecycle 4 重串行（Unicode/空格真实 pnpm build dist oracle）；rust_ui 请求权威/四读取面壳层钉；vue default_classes 三态钉；shell_pack freshness 字节门（T09 修复后绿）；792 driver V01..V05 33/33（含随包工具 fresh/locked/重定位构建+framed I-TOOL 外部消费八例）；fixtures：tool-protocol-consumer 7/7+闭包门、ui-tool-consumer 5/5（AUTO_UI_TOOL_BIN 真进程）+闭包门。冻结门（T-10）：裸 cargo t 5331/5331、tu 868/868、man/protocol/execution 195/195、tools lib 183/185（二预存红已归因裁定）、777 strict pass 0v/3g。",
+ "status": "verified",
+ "file": "docs/specs/auto-ui-tools/project.md",
+ "tags": [
+  "PLAN-815",
+  "stage:M815-B",
+  "delivery:33c9451fbe667dde2412d71036a19ac334b03691",
+  "guarded-offline-projection",
+  "source-sha256:b8a01318774b4fe50c486902154576c2fccd16589ff43d3c9e4de63113474e89"
+ ],
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "milestone": "M815-B",
+ "module": "auto-ui-tools",
+ "created_at": 1792668085,
+ "modified_at": 1792668085,
+ "completed_at": 1792668085
+}],
    "section_type": "Tests",
    "title": "🧪 Tests",
    "status": "empty",
@@ -23564,7 +23638,32 @@
       "source_commit:764e87559",
       "branch:autographics-dev@764e87559"
      ]
-    }],
+    },
+{
+ "id": "P815-B-R",
+ "title": "PLAN-815 M815-B 审查链（T05 R1..R8/T06..08 联合/T07 三子批/T09 R1..R2 终审 pass）",
+ "content": "T-05 R1..R8（取消/输入/EOF/错误传播/PM 单源/Unix 平台/PM 缓存干扰逐轮关闭）；T-06..08 提前 R1..R3 联合修复（front 贯穿/Ark ID/dist oracle/闭包门）；T-07 子批1定向 pass（协议四回执/帧深度/Linux real_tree）→子批2 needs_fix（两实修复+三 P2）→子批3 R1 修正（矩阵四误标行纠正+两钉）→R2 pass（33/33 独立、377 文件对账、release身份 4/4）；T-05..08 联合收口 pass（14/17）；T-09 终审 R1 needs_fix（唯一 P2=F-815-T09-01 shell-pack 再生器缺 canonical 双直依赖、实际消费 107 E0433、不可预存豁免；plan734 裁定非阻断排版债）→修复轮（壳层五处+清单模板+sanctioned regen、freshness 红→绿、原生清单消费 exit0）→R2 终审 pass：F CLOSED 无新增，T06..08 复勾、T09 完成（15/17 reviewed）。终审绑定 0f2858e35cb220964d8c23c8d77afce6839db491（rebase 等价 885aebbd0）。",
+ "status": "verified",
+ "file": "docs/plans/attachments/815/review-t09-r2/review.md",
+ "tags": [
+  "PLAN-815",
+  "stage:M815-B",
+  "review:T09-R2-pass",
+  "reviewed:0f2858e35cb220964d8c23c8d77afce6839db491",
+  "guarded-offline-projection",
+  "source-sha256:ce207b05e7e390606a8cf614f7496ea2dab99611194fdca3d9d4f14fd4a71501"
+ ],
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "milestone": "M815-B",
+ "module": "auto-ui-tools",
+ "created_at": 1792668085,
+ "modified_at": 1792668085,
+ "completed_at": 1792668085
+}],
    "section_type": "Reviews",
    "title": "🔍 Reviews",
    "status": "empty",
@@ -23575,5 +23674,5 @@
   }
  ],
  "project": "auto-lang",
- "version": 67
+ "version": 68
 }
