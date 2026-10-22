@@ -458,3 +458,11 @@ T-02 以实际样本确定支持的模型/纹理格式与规模、视图/帧/资
 - 全局件：overview.md 外围与实验表 +auto-graphics 行；goals.md GOAL-008 关联 +829；INDEX.md 再生（spec-index.py GROUPS 登记"实验/沙盒"）。
 - ledger：.autoos/specs.json v64→v65 guarded offline projection，P829-AGP / P829-R18 / P829-MERGE / P829-AGP-TESTS 四条（file/tags 全带，branch:autographics-dev 溯源）。
 - 知识边界：代码唯一落点=`autographics-dev` 分支（merge `ab56c32ec`）；master 侧仅文档；I1–I3 pending 以 integration-contract.md 为准，后继计划只能以绑定收据替换 pending。
+
+### cleaned 补记（2026-10-22）
+
+- `bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-829/auto-lang` → **clean**（无 reparse point）；worktree 树 0 脏文件、全部提交已含于 `autographics-dev`（`git merge-base --is-ancestor plan-829-dev autographics-dev` 实证后才 `git branch -D`，删除值=ddbde3e62）。
+- worktree 注销+目录删除+组目录 `D:/autostack/.wt/lang-829/` 移除；`git worktree list` 仅余主检出与 815/816/817/818/828 在途组。分支清单仅余 `autographics-dev`（829 相关）。
+- 备注（终合并时注意）：`autographics-dev` 基于的 master 祖先含 f9f0cf04c（本计划 gate 簿记版计划文件于 docs/plans/），master 现已将计划文件改至 archive/ 并增终收据——终合并时按 rename 处理即可（分支侧未再改动该文件）。
+- 批量回归到期复核：收据 last_covered_plan_id=817 @2026-10-21T06:27Z，<48h 且其后无计划落地（829 非整 5 号、落集成分支）→ 不到期，无需 /auto-plan:regress。
+- `checkpoint cleaned` ✅；merge 五 checkpoint 全闭，`outcome: pass`。
