@@ -272,6 +272,17 @@ pub struct PreparedEdit {
     new_parse: ParseOutput,
 }
 
+impl PreparedEdit {
+    /// Weak view of the candidate's code object (C05-03 observability):
+    /// the candidate OWNS its never-installed pair until commit/cancel/
+    /// drop consumes it — a control captures this and asserts the object
+    /// dies exactly at consumption (a refused/closed commit consumes too).
+    /// Diagnostics-only.
+    pub fn code_weak(&self) -> std::sync::Weak<FunctionCode> {
+        Arc::downgrade(&self.code)
+    }
+}
+
 /// Process-wide session counter for unforgeable cross-session candidate
 /// binding (F-828-R1-05): a `PreparedEdit` minted by one session is
 /// refused by another even at equal revision numbers.
@@ -969,6 +980,22 @@ impl FunctionIncrementalSession {
         }
         self.counters.bump(&format!("body_fact_query:{callee}"));
         Some((def, version))
+    }
+
+    /// Weak views of one function's CURRENT resident pair (V-07/C05-02
+    /// observability): a control captures these while the pair is
+    /// resident and later asserts `Weak::upgrade` — an evicted/retired
+    /// object dies with its last owner (the session's records, a pinned
+    /// snapshot or a live PreparedEdit), never before. Diagnostics-only:
+    /// no ownership is created or extended here.
+    pub fn resident_weak(
+        &self,
+        name: &str,
+    ) -> Option<(std::sync::Weak<hir::Body>, std::sync::Weak<FunctionCode>)> {
+        self.fns
+            .iter()
+            .find(|f| f.name == name)
+            .map(|f| (Arc::downgrade(&f.hir_body), Arc::downgrade(&f.code)))
     }
 
     /// Owned cold-HIR payload this session retains (B1-C05 oracle): the
