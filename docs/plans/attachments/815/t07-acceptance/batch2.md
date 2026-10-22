@@ -66,6 +66,14 @@
 
 ### 勘误：handoff.md 来源清单 "Inter 字体" 行与实际内容不符
 
+> **子批3 纠正（2026-10-22，F-815-T07-B2-R1-02）**：本节原结论**错误**。
+> Inter 三字重与 OFL 许可文本实际存在且随包——owner=auto-ui-runtime
+> （`src/ui/iced/assets/`，renderer.rs:1850-1852 include_bytes；复审
+> inter-resource-audit.json.txt 四文件字节核对通过）。原勘误的"全仓无
+> Inter/OFL"源于检索面只覆盖 UI 工具域 + 忽略规则误判。Inter 行已按
+> 正确 owner/位置/许可恢复进 handoff.md；资源审计与完整闭包盘点见
+> [batch3/](batch3/)。以下原文仅作勘误链历史保留。
+
 全仓核实无任何 Inter 字体资产、无 @font-face/woff/ttf/base64 内嵌、无
 OFL 许可文本（SIL/OFL 命中全为 SILENT/EPSILON 误匹配）。该行已删并在
 handoff.md 原位留勘误注记；逐源对账见

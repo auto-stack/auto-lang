@@ -148,12 +148,20 @@ ServerEnvelope{id, body}
 | gallery 资产 | `crates/auto-ui-tools/assets/gallery/`（1 文件：AppViewport.vue） | 本仓自著 |
 | wm 资产 | `crates/auto-ui-tools/assets/wm/`（9 文件）+ `drawlist-renderer/src`（5 文件，组的外部构建输入） | 本仓自著 |
 | shadcn-vue 快照 | `crates/auto-ui-tools/assets/shadcn-ui/`（346 文件，含组级 LICENSE+SNAPSHOT.md） | MIT（上游 registry 快照 2026-08-27，SNAPSHOT.md 记录） |
+| Inter 字体（三字重） | `crates/auto-ui-runtime/src/ui/iced/assets/`（Inter-Regular/Medium/SemiBold.ttf + INTER-OFL.txt） | SIL OFL 1.1（许可全文同目录随包） |
+| iced 壁纸 + 桌面壳 UI 声明 | `crates/auto-ui-runtime/src/ui/iced/assets/`（wallpaper-*.jpg ×2）+ `crates/auto-ui-runtime/assets/`（shell/switcher/notification_center/dashboard/desktop.at ×5） | 本仓自著 |
 
-> T-07 子批2 资源审计（2026-10-22）修正：此前此处列有 "Inter 字体 \| vue.rs
-> 内嵌（三字重）\| SIL OFL 1.1" 一行——全仓核实**无任何 Inter 字体资产、
-> 无 OFL 许可文本**（vue.rs 无 @font-face/woff/ttf/base64 内嵌），该行与
-> 实际发行内容不符，删除。逐源对账与发行面消费映射见
-> [t07-acceptance/batch2/resource-audit.md](t07-acceptance/batch2/resource-audit.md)。
+> T-07 来源清单勘误链（2026-10-22，F-815-T07-B2-R1-02 终态）：本表 Inter
+> 行最初误写为 "vue.rs 内嵌（三字重）"；子批2 勘误又以"全仓无 Inter/
+> OFL"为由错误删行（检索面只覆盖 UI 工具域+忽略规则误判，漏
+> auto-ui-runtime 真实命中）；子批3 按实物恢复——**owner=auto-ui-runtime
+> iced 渲染器（renderer.rs:1850-1852 include_bytes 三字重；OFL 全文
+> INTER-OFL.txt 同目录），随 crate 源进 792 交付包且字节一致**（复审
+> inter-resource-audit.json.txt）。vue 生成物不含字体内嵌（浏览器系统
+> 字体栈），Inter 仅属 iced 桌面渲染面。逐源对账与完整交付闭包 embed
+> 盘点见
+> [t07-acceptance/batch3/resource-audit-closure.md](t07-acceptance/batch3/resource-audit-closure.md)
+> （batch2/resource-audit.md 已同步纠正）。
 
 ## 规范增量（SD-01..07 正文草案，送 T-09 终审）
 

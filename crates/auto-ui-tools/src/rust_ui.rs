@@ -6075,6 +6075,85 @@ fn type_to_rust_str(ty: &auto_lang_core::ast::Type) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// T-07 子批3（F-815-T07-B2-R1-03）`external_backend` 字段消费钉：
+    /// 请求在场即权威——值**或缺席**都由请求定，不回读磁盘主声明（无第
+    /// 二真源）；legacy 臂（无请求）才读 pac.at `back: { project }`。
+    /// run 面会话消费（backend 根=project_root.join(值)，托管形态经
+    /// `AUTO_UI_TOOL_VM_BACK_ROOT` 每请求精确条目传 VM 会话子进程）见
+    /// run_vm.rs 装配段与 proc_host
+    /// `vm_session_env_is_replaced_per_request`（R4-01）。
+    #[test]
+    fn external_backend_request_is_authoritative_over_disk_decl() {
+        use auto_project_model::descriptor::SourceInfo;
+        use auto_project_model::{parse_document, GenerationRequest};
+        let dir = tempfile::tempdir().expect("tempdir");
+        // 磁盘主声明：back -> ./disk-back、exe_name -> disk-bin（与请求
+        // 快照不同值，区分性 oracle）。
+        std::fs::write(
+            dir.path().join("pac.at"),
+            "name: \"back-demo\"\nrender: \"vue\"\nexe_name: \"disk-bin\"\nback: { project: \"./disk-back\" }\n",
+        )
+        .unwrap();
+        let parse = |text: &str| {
+            GenerationRequest::from_descriptor(
+                &parse_document(text, SourceInfo::from_path(dir.path().join("pac.at")))
+                    .expect("parse"),
+            )
+        };
+        let with_request_back =
+            parse("name: \"back-demo\"\nrender: \"vue\"\nback: { project: \"./request-back\" }\n");
+        assert_eq!(
+            with_request_back.external_backend.as_deref(),
+            Some("./request-back")
+        );
+        let without_back = parse("name: \"back-demo\"\nrender: \"vue\"\n");
+        // 请求在场：值即请求值；请求未声明=缺席（不落回磁盘读取）。
+        assert_eq!(
+            PacSource::from_request(&with_request_back)
+                .external_backend(dir.path())
+                .unwrap()
+                .as_deref(),
+            Some("./request-back")
+        );
+        assert_eq!(
+            PacSource::from_request(&without_back)
+                .external_backend(dir.path())
+                .unwrap(),
+            None,
+            "evaluated request is authoritative — no disk fallback read"
+        );
+        // legacy 臂（无请求）：读磁盘主声明。
+        assert_eq!(
+            PacSource::legacy()
+                .external_backend(dir.path())
+                .unwrap()
+                .as_deref(),
+            Some("./disk-back")
+        );
+        // 同款请求权威模式钉（T-07 子批3 矩阵 §exe_name）：rust [[bin]]
+        // 命名经 PacSource::exe_name（rust_ui.rs:3250）——请求在场即权威。
+        let with_exe_name = parse(
+            "name: \"back-demo\"\nrender: \"vue\"\nexe_name: \"req-bin\"\nback: { project: \"./x\" }\n",
+        );
+        assert_eq!(with_exe_name.exe_name.as_deref(), Some("req-bin"));
+        let pac_file = dir.path().join("pac.at"); // exe_name 取 pac 文件路径
+        assert_eq!(
+            PacSource::from_request(&with_exe_name)
+                .exe_name(&pac_file)
+                .as_deref(),
+            Some("req-bin")
+        );
+        assert_eq!(
+            PacSource::from_request(&without_back).exe_name(&pac_file),
+            None,
+            "request arm carries the request's absence — no disk fallback"
+        );
+        assert_eq!(
+            PacSource::legacy().exe_name(&pac_file).as_deref(),
+            Some("disk-bin")
+        );
+    }
+
     /// PLAN-815 T-04 R1-F01 永久反例：交付闭包完备性静态钉——对
     /// DELIVERY_CRATES 中每个 crate，读其 Cargo.toml 的 [dependencies]/
     /// [build-dependencies] path 项；凡指向本 workspace 兄弟 crate 的

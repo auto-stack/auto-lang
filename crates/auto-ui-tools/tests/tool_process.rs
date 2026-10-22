@@ -306,6 +306,94 @@ fn validate_reports_missing_paths_and_run_constraint() {
     tool.kill();
 }
 
+/// T-07 子批3（F-815-T07-B2-R1-03）字段×规则矩阵补齐：`output_root` /
+/// `input_sources` 的逐项消费对照经真实 tool 的 validate_project——每条
+/// 规则成对正/负控；相对路径锚定=project_root（非工具 cwd：`front/main.at`
+/// 只在工程内存在，cwd 侧解析必产 input-source-missing——区分性 oracle）。
+/// 与 `validate_reports_missing_paths_and_run_constraint`（三负控）互补：
+/// 本测试补 run 模式正控（output_root 在位）、output-root-is-file、
+/// input-source-is-directory、相对 input_source 按请求根解析。
+#[test]
+fn validate_field_rules_output_root_and_input_sources_boundary() {
+    fn validate(
+        tool: &mut ToolProcess,
+        id: u64,
+        request: &GenerationRequest,
+    ) -> auto_tool_protocol::report::ValidateProjectReport {
+        tool.send(&envelope(
+            id,
+            ClientBody::ValidateProject {
+                request: WireRequest(request.clone()),
+            },
+        ));
+        let response = parse_response(&tool.next_response());
+        match response.body {
+            ServerBody::ValidateOk { report } => report,
+            other => panic!("expected ValidateOk (id {id}), got {other:?}"),
+        }
+    }
+    fn codes(report: &auto_tool_protocol::report::ValidateProjectReport) -> Vec<&str> {
+        report.findings.iter().map(|f| f.code.as_str()).collect()
+    }
+
+    let (dir, base) = temp_project();
+    let root = dir.path().to_path_buf();
+    let out_dir = root.join("out-target");
+    std::fs::create_dir(&out_dir).unwrap();
+    let out_file = root.join("out-file.txt");
+    std::fs::write(&out_file, "regular file").unwrap();
+
+    let mut tool = ToolProcess::spawn();
+
+    // (1) run 模式正控：output_root（绝对、目录、在盘）满足约束；相对
+    // input_source 按请求根解析命中工程内真实文件（cwd 侧不存在）。
+    let mut run_request = base.clone();
+    run_request.mode = RequestMode::Run;
+    run_request.output_root = Some(out_dir.clone());
+    run_request
+        .input_sources
+        .push(PathBuf::from("front/main.at"));
+    let report = validate(&mut tool, 10, &run_request);
+    let finding_codes = codes(&report);
+    assert!(report.ok, "positive control stays green: {finding_codes:?}");
+    assert!(!finding_codes.contains(&"run-without-output-root"));
+    assert!(!finding_codes.contains(&"output-root-is-file"));
+    assert!(!finding_codes.iter().any(|c| c.starts_with("input-source")));
+    assert!(report.summary.has_output_root);
+    assert_eq!(report.summary.input_sources, 1);
+
+    // (2) output_root 角色负控：指向普通文件 → 具名 Error；generate 模式
+    // 不触发 run-without-output-root（约束是 run-only）。
+    let mut file_root_request = base.clone();
+    file_root_request.output_root = Some(out_file.clone());
+    let report = validate(&mut tool, 11, &file_root_request);
+    let finding_codes = codes(&report);
+    assert!(!report.ok);
+    assert!(finding_codes.contains(&"output-root-is-file"));
+    assert!(!finding_codes.contains(&"run-without-output-root"));
+    assert_eq!(
+        report
+            .findings
+            .iter()
+            .find(|f| f.code == "output-root-is-file")
+            .expect("finding present")
+            .severity,
+        Severity::Error
+    );
+
+    // (3) input_source 角色负控：声明目录 → 具名 Error（按请求根解析到
+    // 工程内真实目录 front/）。
+    let mut dir_source_request = base.clone();
+    dir_source_request
+        .input_sources
+        .push(PathBuf::from("front"));
+    let report = validate(&mut tool, 12, &dir_source_request);
+    assert!(!report.ok);
+    assert!(codes(&report).contains(&"input-source-is-directory"));
+
+    tool.kill();
+}
+
 #[test]
 fn validate_flags_static_unsupported_without_faking_evaluation() {
     let descriptor =
@@ -1569,6 +1657,12 @@ fn generate_ui_field_matrix_and_pac_snapshot_independence() {
     // form — this project declares NO `front:` prop and has NO src/front, so
     // honoring anything else fails loudly instead of silently probing disk.
     request.front_node_form = Some("./ui/front".into());
+    // T-07 子批3（F-815-T07-B2-R1-03）output_root 适用性边界钉：请求声明的
+    // 交付目标根是 validate 面（角色/run 约束）与消费方交接元数据，
+    // generate_ui 的落盘布局是冻结的 project_root 布局（gen/front/<profile>）
+    // ——不按 output_root 静默重定向；报告 output_root 如实回实际根。
+    let declared_output_root = root.join("elsewhere-delivery");
+    request.output_root = Some(declared_output_root.clone());
 
     let mut tool = ToolProcess::spawn();
     let send_generate = |tool: &mut ToolProcess, id: u64| {
@@ -1586,6 +1680,19 @@ fn generate_ui_field_matrix_and_pac_snapshot_independence() {
             ServerBody::GenerateOk { report } => {
                 assert_eq!(report.frontends, vec!["vue".to_string()]);
                 assert!(report.files_written > 10, "real artifacts: {report:?}");
+                // 布局不被 output_root 重定向（冻结语义）；报告根=实际根。
+                assert!(
+                    report
+                        .output_root
+                        .replace('\\', "/")
+                        .ends_with("gen/front/vue"),
+                    "report root is the real layout root: {}",
+                    report.output_root
+                );
+                assert!(
+                    !declared_output_root.exists(),
+                    "declared output_root must not become a silent redirect target"
+                );
             }
             other => panic!("expected GenerateOk (id {id}), got {other:?}"),
         }

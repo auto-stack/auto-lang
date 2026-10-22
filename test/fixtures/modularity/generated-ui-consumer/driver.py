@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PLAN-792 generated-ui-consumer 交付验收 driver（V01..V04）。
+"""PLAN-792 generated-ui-consumer 交付验收 driver（V01..V05）。
 
 用正式生成入口（`auto gen --delivery-root`）在受管 scratch 生成可搬动交付
 bundle，然后以无开发根环境覆盖的独立消费者身份完成真实构建与失败控制：
@@ -12,6 +12,11 @@ bundle，然后以无开发根环境覆盖的独立消费者身份完成真实�
        外来目录显式拒绝；正常输入恢复复绿
   V04  开发模式保持：同一工程 dev 生成走 rust-workspace 路由 + workspace
        继承清单；main.rs 与交付产物逐字节同源（同一编译相位）
+  V05  随包新 tool 发行面（PLAN-815 F-815-T07-B2-R1-01）：交付包 A/重定位
+       包 B 内 fresh/locked 构建 auto-ui-tools；B 的 auto-ui-tool.exe 以
+       framed I-TOOL v1 真实外部消费（describe/validate/generate + shadcn
+       资源物化字节=包内源）；未知版本/不服务 profile 零副作用拒绝、坏帧
+       流致命退出
 
 用法：
   python test/fixtures/modularity/generated-ui-consumer/driver.py \
@@ -23,12 +28,15 @@ bundle，然后以无开发根环境覆盖的独立消费者身份完成真实�
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import platform
 import shutil
+import struct
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -99,6 +107,104 @@ def run_verify_entry(bundle: Path) -> subprocess.CompletedProcess:
         [sys.executable, str(bundle / "verify.py")],
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
     )
+
+
+# ---- framed I-TOOL v1 client（PLAN-815 T-01：u32 大端长度前缀 + UTF-8 JSON） ----
+# V05 外部消费面：不链接任何实现 crate，仅按已公布 wire 合同驱动随包
+# auto-ui-tool 的 stdio。请求载荷形状镜像 auto-project-model wire v1 的
+# `request_fields_to_wire`（严格解码拒绝未知/缺失键——此处给出全集，
+# null = 未声明）。
+
+
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def tool_wire_request(project_root: Path, name: str, **overrides) -> dict:
+    request = {
+        "origin": {
+            "kind": "static",
+            "source": {"path": (project_root / "pac.at").as_posix()},
+            "unsupported": [],
+        },
+        "project_root": project_root.as_posix(),
+        "identity": {"name": name, "version": None, "lang": None},
+        "display": {
+            k: None
+            for k in (
+                "title", "title_zh", "icon", "category", "opens", "theme",
+                "accent", "desktop_render", "daemon", "desktop", "desktop_exe",
+                "ui_config",
+            )
+        },
+        "runtime": {
+            "api": None, "scene": None, "front_port": None, "back_port": None,
+            "media_root": None, "photo_root": None,
+            "window": {"kind": "fit"},
+        },
+        "scene": "ui",
+        "members": [],
+        "render": {
+            "render": {"kind": "single", "name": "vue"},
+            "legacy_backend": None,
+            "effective_backend": None,
+        },
+        "external_backend": None,
+        "toggles": {
+            "shadcn": {"kind": "unset"},
+            "default_classes": {"kind": "unset"},
+        },
+        "theme_decl": None,
+        "dep_roots": [],
+        "package_assets": {"npm_deps": None, "styles": None, "i18n": None},
+        "exe_name": None,
+        "has_rust_sidecar": False,
+        "front_decl": None,
+        "front_node_form": "./ui/front",
+        "input_sources": [],
+        "output_root": None,
+        "mode": "generate",
+        "raw": [],
+        "raw_nodes": [],
+    }
+    request.update(overrides)
+    return {"wire": 1, "request": request}
+
+
+def tool_send(proc: subprocess.Popen, envelope: dict) -> None:
+    payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
+    proc.stdin.write(struct.pack(">I", len(payload)) + payload)
+    proc.stdin.flush()
+
+
+def tool_read_exact(stream, count: int) -> bytes:
+    buffer = b""
+    while len(buffer) < count:
+        chunk = stream.read(count - len(buffer))
+        if not chunk:
+            raise EOFError("tool closed the control stream")
+        buffer += chunk
+    return buffer
+
+
+def tool_next_response(proc: subprocess.Popen) -> dict:
+    (length,) = struct.unpack(">I", tool_read_exact(proc.stdout, 4))
+    return json.loads(tool_read_exact(proc.stdout, length))
+
+
+def tool_roundtrip(proc: subprocess.Popen, envelope: dict) -> dict:
+    """发送并等待同 id 的终态回执（progress/launched 事件先行跳过）。"""
+    tool_send(proc, envelope)
+    while True:
+        response = tool_next_response(proc)
+        if response.get("body", {}).get("type") == "event":
+            continue
+        if response.get("id") == envelope["id"]:
+            return response
 
 
 def verify_delivery(bundle: Path) -> tuple[bool, str]:
@@ -603,6 +709,205 @@ def main() -> int:
         same,
         "dev/交付 main.rs 逐字节同源；UI 类型跨面编译由 V01/V02 真实 build 证明",
     )
+
+    # ================= V05：随包新 tool 构建 + 真实外部消费 =================
+    # F-815-T07-B2-R1-01（review-t07-batch2-r1）：旧 25 项只构建
+    # default-member app（uiminimal），从未构建/启动/消费交付包中的
+    # auto-ui-tool。本节在既有约定发行形态（源码包 workspace：members =
+    # app + 26 受管源 crate）上扩面，不新增未约定安装布局：
+    #   V05a/b 交付包 A（V01 fresh 锁）与重定位包 B 内 locked 构建
+    #          auto-ui-tools —— 新 tool 从受管交付来源可建
+    #   V05c..e B 的 auto-ui-tool.exe 真实外部消费（framed I-TOOL v1 over
+    #          stdio，剥离开发根环境）：describe / validate_project /
+    #          generate_ui 真实工程 + shadcn 组件从工具资源面物化、字节=
+    #          包内 vendored 源（资源控制）
+    #   V05f..h 失败控制：未知协议版本（零副作用、流仍服务）、不服务
+    #          profile（副作用前拒绝）、坏帧（流致命非零退出）
+    t0 = time.time()
+    r = run(
+        ["cargo", "build", "--locked", "-p", "auto-ui-tools"],
+        bundle_a, consumer_env(), timeout=4800,
+    )
+    tool_a = bundle_a / "target" / "debug" / "auto-ui-tool.exe"
+    record(
+        "V05a-tool-fresh-locked-build",
+        r.returncode == 0 and tool_a.is_file(),
+        f"包 A 内 cargo build --locked -p auto-ui-tools（{time.time() - t0:.0f}s），"
+        f"auto-ui-tool.exe {'在位' if tool_a.is_file() else '缺失'}"
+        + ("" if r.returncode == 0 else " stderr: " + r.stderr[-600:]),
+    )
+    if r.returncode != 0:
+        return 1
+
+    t0 = time.time()
+    r = run(
+        ["cargo", "build", "--locked", "-p", "auto-ui-tools"],
+        bundle_b, consumer_env(), timeout=4800,
+    )
+    tool_b = bundle_b / "target" / "debug" / "auto-ui-tool.exe"
+    record(
+        "V05b-tool-relocated-locked-build",
+        r.returncode == 0 and tool_b.is_file(),
+        f"重定位包 B 内 locked 构建（{time.time() - t0:.0f}s），"
+        f"auto-ui-tool.exe {'在位' if tool_b.is_file() else '缺失'}"
+        + ("" if r.returncode == 0 else " stderr: " + r.stderr[-600:]),
+    )
+    if not tool_b.is_file():
+        return 1
+
+    # 真实外部消费者工程（独立于 fixture；button 节点 → 转译产物 import
+    # @/components/ui/button → 触发 shadcn 资源物化——embed 消费面）。
+    tool_proj = scratch / "tool-consumer"
+    (tool_proj / "ui" / "front").mkdir(parents=True)
+    (tool_proj / "pac.at").write_text(
+        'name: "tool-consumer"\nversion: "1.0.0"\nscene: "ui"\nrender: "vue"\n',
+        encoding="utf-8",
+    )
+    (tool_proj / "ui" / "front" / "app.at").write_text(
+        "widget App {\n"
+        "    view {\n"
+        "        col {\n"
+        "            button {\n"
+        "                text \"交付工具资源面\" { style: \"text-sm font-medium\" }\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    tool_stderr_path = scratch / "delivered-tool-stderr.log"
+    tool_log = open(tool_stderr_path, "wb")
+    tool = subprocess.Popen(
+        [str(tool_b)],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=tool_log,
+        env=consumer_env(),
+    )
+    # 看门狗：整个会话有界（卡死则击杀，阻塞读以 EOF 失败并记 FAIL）。
+    def _tool_watchdog() -> None:
+        time.sleep(600)
+        if tool.poll() is None:
+            tool.kill()
+    threading.Thread(target=_tool_watchdog, daemon=True).start()
+
+    try:
+        # (c) describe：真实身份与操作集
+        resp = tool_roundtrip(tool, {"protocol_version": 1, "id": 101, "body": {"op": "describe"}})
+        desc = resp.get("body", {}).get("descriptor", {})
+        ops = {c.get("operation") for c in desc.get("capabilities", [])}
+        record(
+            "V05c-tool-describe",
+            resp.get("body", {}).get("type") == "describe_ok"
+            and desc.get("tool_name") == "auto-ui-tool"
+            and {"describe", "validate_project", "generate_ui"} <= ops,
+            f"name={desc.get('tool_name')} version={desc.get('tool_version')} "
+            f"protocol={desc.get('protocol_version')} "
+            f"operations={sorted(str(o) for o in ops)}",
+        )
+
+        # (d) validate_project：合法请求 → ok
+        resp = tool_roundtrip(
+            tool,
+            {"protocol_version": 1, "id": 102,
+             "body": {"op": "validate_project", "request": tool_wire_request(tool_proj, "tool-consumer")}},
+        )
+        report = resp.get("body", {}).get("report", {})
+        record(
+            "V05d-tool-validate-project",
+            resp.get("body", {}).get("type") == "validate_ok" and report.get("ok") is True,
+            f"validate_ok ok={report.get('ok')} findings={report.get('findings')}",
+        )
+
+        # (e) generate_ui：真实生成 + 资源控制（embed 面物化字节=包内源）
+        resp = tool_roundtrip(
+            tool,
+            {"protocol_version": 1, "id": 103,
+             "body": {"op": "generate_ui", "request": tool_wire_request(tool_proj, "tool-consumer")}},
+        )
+        gen_report = resp.get("body", {}).get("report", {})
+        vue_root = tool_proj / "gen" / "front" / "vue"
+        package_json = vue_root / "package.json"
+        button_dir = vue_root / "src" / "components" / "ui" / "button"
+        button_src = bundle_b / "crates" / "auto-ui-tools" / "assets" / "shadcn-ui" / "button"
+        materialized = sorted(p.relative_to(button_dir).as_posix() for p in button_dir.rglob("*") if p.is_file())
+        byte_mismatch = [
+            rel for rel in materialized
+            if (button_dir / rel).read_bytes() != (button_src / rel).read_bytes()
+        ]
+        record(
+            "V05e-tool-generate-real",
+            resp.get("body", {}).get("type") == "generate_ok"
+            and gen_report.get("frontends") == ["vue"]
+            and isinstance(gen_report.get("files_written"), int)
+            and gen_report["files_written"] > 0
+            and package_json.is_file()
+            and materialized
+            and not byte_mismatch,
+            f"generate_ok frontends={gen_report.get('frontends')} "
+            f"files_written={gen_report.get('files_written')}；"
+            f"shadcn button 物化 {len(materialized)} 文件"
+            f"（字节=包内 vendored 源，mismatch={byte_mismatch or '无'}）",
+        )
+
+        # (f) 未知协议版本：具名拒绝、零副作用、流仍服务（后续 describe 可答）
+        resp = tool_roundtrip(tool, {"protocol_version": 99, "id": 104, "body": {"op": "describe"}})
+        kind = resp.get("body", {}).get("error", {}).get("kind", {})
+        followup = tool_roundtrip(tool, {"protocol_version": 1, "id": 105, "body": {"op": "describe"}})
+        record(
+            "V05f-tool-unknown-version-rejected",
+            resp.get("body", {}).get("type") == "error"
+            and kind.get("kind") == "unknown_protocol_version"
+            and kind.get("client") == 99
+            and followup.get("body", {}).get("type") == "describe_ok",
+            f"error kind=unknown_protocol_version client=99；"
+            f"随后 describe 同流可答（{followup.get('body', {}).get('type')}）",
+        )
+
+        # (g) 不服务 profile：副作用前具名拒绝（unserved 检查先于验证/落盘）
+        unserved_root = scratch / "tool-unserved"
+        unserved_root.mkdir()
+        bad_render = {"render": {"render": {"kind": "single", "name": "plan9"},
+                                 "legacy_backend": None, "effective_backend": None}}
+        resp = tool_roundtrip(
+            tool,
+            {"protocol_version": 1, "id": 106,
+             "body": {"op": "generate_ui",
+                      "request": tool_wire_request(unserved_root, "tool-unserved", **bad_render)}},
+        )
+        error = resp.get("body", {}).get("error", {})
+        record(
+            "V05g-tool-unserved-profile-zero-side-effect",
+            resp.get("body", {}).get("type") == "error"
+            and error.get("kind", {}).get("kind") == "invalid_field"
+            and not (unserved_root / "gen").exists(),
+            f"error kind=invalid_field reason={error.get('kind', {}).get('reason')}"
+            f"；消费根零生成输出={not (unserved_root / 'gen').exists()}",
+        )
+
+        # (h) 坏帧：流致命（非零退出）——帧内非 JSON 载荷
+        garbage = b"this is not a json payload at all"
+        tool.stdin.write(struct.pack(">I", len(garbage)) + garbage)
+        tool.stdin.flush()
+        tool.stdin.close()
+        code = tool.wait(timeout=120)
+        record(
+            "V05h-tool-bad-frame-stream-fatal",
+            code != 0,
+            f"exit={code}（坏帧流致命，非零退出）",
+        )
+    except (EOFError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        record("V05-tool-session", False, f"外部消费会话异常: {exc!r}")
+    finally:
+        if tool.poll() is None:
+            tool.kill()
+            tool.wait()
+        tool_log.close()
+        receipt["delivered_tool"] = {
+            "binary": str(tool_b),
+            "sha256": sha256_file(tool_b),
+            "stderr_log": str(tool_stderr_path),
+            "source_crate": "crates/auto-ui-tools (bundle B, relocated)",
+        }
 
     receipt["results"] = RESULTS
     receipt["scratch"] = str(scratch)
