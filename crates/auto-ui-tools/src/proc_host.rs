@@ -1205,22 +1205,26 @@ mod tests {
             }));
         }
 
-        // A real interactive child: `cmd /C findstr x` forwards lines
-        // containing "x" from its stdin to its stdout (the cancellable
-        // write is this module's half of F-815-T05-R1-02).
+        // A real interactive child forwards lines containing "x" from its
+        // stdin to its stdout (the cancellable write is this module's
+        // half of F-815-T05-R1-02). Cross-platform (PLAN-815 T-07 已披露
+        // 可移植缺口收口): Windows `findstr x`, Unix `grep x`.
+        #[cfg(windows)]
         let spec = TrackedSpawn {
             windows_cmd_shim: true,
             ..TrackedSpawn::new("findstr", vec!["x".to_string()])
         };
+        #[cfg(not(windows))]
+        let spec = TrackedSpawn::new("grep", vec!["x".to_string()]);
         let tracked = spawn_tracked(spec, "dev-server").expect("spawn real child");
         assert_eq!(tracked.id, tracked.id);
         // Direct foreground write (writer-thread decoupling is host-level).
         assert!(tracked.write_input_stoppable(b"hello x line\n").is_ok());
         assert!(tracked.write_input_stoppable(b"plain line\n").is_ok());
-        tracked.close_stdin(); // EOF so findstr terminates on its own
+        tracked.close_stdin(); // EOF so the filter terminates on its own
 
         let status = wait_tracked(&tracked).expect("wait real child");
-        assert!(status.success(), "findstr should exit 0, got {status:?}");
+        assert!(status.success(), "filter should exit 0, got {status:?}");
 
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         loop {
@@ -1239,7 +1243,9 @@ mod tests {
         assert!(tracked.readers.lock().unwrap().is_empty(), "readers joined");
 
         // Cancel path: a REAL owned tree (grandchildren included) is
-        // terminated and reaped as a whole before return.
+        // terminated and reaped as a whole before return. Cross-platform:
+        // Windows nested cmd ping, Unix sh with a backgrounded sleeper.
+        #[cfg(windows)]
         let spec = TrackedSpawn {
             windows_cmd_shim: true,
             ..TrackedSpawn::new(
@@ -1247,6 +1253,11 @@ mod tests {
                 vec!["/C".to_string(), "cmd /C ping -n 30 127.0.0.1".to_string()],
             )
         };
+        #[cfg(not(windows))]
+        let spec = TrackedSpawn::new(
+            "sh",
+            vec!["-c".to_string(), "sleep 30 & exec sleep 30".to_string()],
+        );
         let tracked = spawn_tracked(spec, "api-server").expect("spawn blocking tree");
         std::thread::sleep(Duration::from_millis(700)); // let the grandchild spawn
         io.cancel();
