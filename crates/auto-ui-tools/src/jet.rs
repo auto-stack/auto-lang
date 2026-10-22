@@ -950,24 +950,57 @@ fn run_jet_project_inner(
         match crate::proc_host::spawn_tracked(spec, "jet-adb") {
             Ok(tracked) => {
                 let (stdout, end) = crate::proc_host::drain_captured_stdout(&tracked);
-                let exited_ok = crate::proc_host::wait_tracked(&tracked)
-                    .map(|status| status.success())
-                    .unwrap_or(false);
                 // PLAN-815 R5（F-815-T05-R4-05-P1）：排水必须应答本操作的
                 // 取消/EOF——被取消的操作在这里以取消哨兵收口（终态由
                 // map_flow 映射 Cancelled），不再把取消后的 Ok 当 completed。
                 if crate::proc_host::cancelled() {
                     return Err(crate::proc_host::CANCELLED_ERR.into());
                 }
-                // 只有自然 EOF + 干净退出的完整输出才可用于设备判定；
-                // 停止/超限/读错误的部分输出不冒充完整探测结果。
-                matches!(end, crate::proc_host::DrainEnd::Eof)
-                    && exited_ok
+                // PLAN-815 R6（F-815-T05-R4-05-P2）：非自然捕获结束
+                // （BoundOverrun/Truncated/IoError/无取消的 Stopped）与非零
+                // 退出是**具名失败**——不完整的探测不是"无设备"，不得把
+                // 分类抹成 bool 后误报 completed。探测树先终止+有界收尸
+                // （界限触发后 owned ADB 仍活时，后续 wait 也有实际收尾
+                // 边界），再带分类返回。
+                let exited_ok = if end.is_natural_eof() {
+                    match crate::proc_host::wait_tracked(&tracked) {
+                        Ok(status) if status.success() => true,
+                        Ok(status) => {
+                            return Err(format!(
+                                "adb devices probe failed (adb exited with {status}) — device detection unavailable"
+                            )
+                            .into());
+                        }
+                        Err(reason) => {
+                            return Err(format!(
+                                "adb devices probe wait failed: {reason} — device detection unavailable"
+                            )
+                            .into());
+                        }
+                    }
+                } else {
+                    tracked.kill();
+                    let teardown = crate::proc_host::wait_tracked(&tracked);
+                    return Err(format!(
+                        "adb devices probe did not complete ({end:?}; owned tree teardown {teardown:?}) — device detection unavailable"
+                    )
+                    .into());
+                };
+                // 自然 EOF + 干净退出的完整输出才用于设备判定（空列表=
+                // 合法"无设备"）。
+                exited_ok
                     && String::from_utf8_lossy(&stdout)
                         .lines()
                         .any(|line| line.contains("\tdevice"))
             }
-            Err(_) => false,
+            Err(spawn_reason) => {
+                // 探测进程未能启动同样是具名失败（此前 spawn Err 也被吞成
+                // "无设备"→completed——R6 同因 sibling）。
+                return Err(format!(
+                    "adb devices probe failed to start: {spawn_reason} — device detection unavailable"
+                )
+                .into());
+            }
         }
     } else {
         std::process::Command::new("adb")

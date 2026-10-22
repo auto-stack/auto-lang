@@ -94,36 +94,57 @@ pub fn command_exists(cmd: &str) -> bool {
     check.map(|o| o.status.success()).unwrap_or(false)
 }
 
-/// Resolve the package manager. Tool path (per-request, never cached
-/// across operations): request `pkg:` > global config > auto-detect —
-/// the disk main pac.at is NEVER consulted (no second truth source,
-/// PLAN-815 R5 / F-815-T05-R4-04). Legacy path (config-based selection,
-/// cached process-wide): project pac.at > global config > auto-detect.
-pub fn resolve() -> PkgManagerKind {
+/// Where a resolution came from (PLAN-815 R6 / F-815-T05-R6-01: the
+/// single-source oracle observes the SOURCE, not the value — bun is a
+/// legal external fallback, so "not bun" can never prove disk
+/// independence).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PmSource {
+    /// The current request's `pkg:` field (tool path only).
+    Request,
+    /// The external global config (`~/.auto/auto-man/am.at`).
+    Global,
+    /// PATH auto-detection (pnpm > bun > npm).
+    AutoDetect,
+    /// The LEGACY chain reading the disk main pac.at (CLI direct runs).
+    DiskLegacy,
+}
+
+/// Resolve the package manager WITH its source. Tool path (per-request,
+/// never cached across operations): request `pkg:` > global config >
+/// auto-detect — the disk main pac.at is NEVER consulted (no second
+/// truth source, PLAN-815 R5 / F-815-T05-R4-04). Legacy path
+/// (config-based selection, cached process-wide): project pac.at >
+/// global config > auto-detect.
+pub fn resolve_with_source() -> (PkgManagerKind, PmSource) {
     // Tool path: honor the CURRENT request exactly (serial requests with
     // different `pkg:` declarations each get their own manager).
     if let Some(state) = TOOL_PM_STATE.lock().unwrap().clone() {
         return match state {
-            Some(kind) => kind,
-            None => resolve_global_then_detect(),
+            Some(kind) => (kind, PmSource::Request),
+            None => resolve_global_then_detect_sourced(),
         };
     }
-    *CACHED_PM.get_or_init(resolve_impl)
+    (*CACHED_PM.get_or_init(resolve_impl), PmSource::DiskLegacy)
 }
 
-/// External-only chain (no disk main declaration): global config, then
-/// auto-detect — the tool path's fallback when the request declares no
-/// `pkg:` field.
-fn resolve_global_then_detect() -> PkgManagerKind {
+/// External-only chain (no disk main declaration) with source
+/// classification: global config, then auto-detect — the tool path's
+/// fallback when the request declares no `pkg:` field.
+fn resolve_global_then_detect_sourced() -> (PkgManagerKind, PmSource) {
     if let Some(home) = dirs::home_dir() {
         let global_path = home.join(".auto").join("auto-man").join("am.at");
         if let Ok(content) = std::fs::read_to_string(&global_path) {
             if let Some(pm) = parse_pkg_from_at(&content) {
-                return pm;
+                return (pm, PmSource::Global);
             }
         }
     }
-    auto_detect()
+    (auto_detect(), PmSource::AutoDetect)
+}
+
+pub fn resolve() -> PkgManagerKind {
+    resolve_with_source().0
 }
 
 fn resolve_impl() -> PkgManagerKind {
@@ -135,7 +156,7 @@ fn resolve_impl() -> PkgManagerKind {
     }
 
     // 2. Try global config: ~/.auto/auto-man/am.at `pkg: "bun"`
-    resolve_global_then_detect()
+    resolve_global_then_detect_sourced().0
 }
 
 /// Try to extract `pkg: "bun"` from .at file content.
@@ -431,66 +452,175 @@ render: \"vue\"
         auto_project_model::GenerationRequest::from_descriptor(&descriptor)
     }
 
-    /// PLAN-815 R5（F-815-T05-R4-04）：工具路径的包管理器单源矩阵。
-    /// - legacy（无工具状态）：磁盘 pac.at 仍是源（语义冻结）；
-    /// - 工具+请求 pkg 字段：请求值赢（磁盘冲突负控）；
-    /// - 工具+请求无字段：跳过磁盘（外部链兜底）；
+    /// RAII restore for the process-global state this matrix mutates
+    /// (cwd + PATH) — an assert failure must not poison the rest of the
+    /// single-process libtest run (PLAN-815 R6-01).
+    struct EnvGuard {
+        saved_cwd: std::path::PathBuf,
+        saved_path: Option<std::ffi::OsString>,
+    }
+    impl EnvGuard {
+        fn capture() -> Self {
+            Self {
+                saved_cwd: std::env::current_dir().expect("cwd"),
+                saved_path: std::env::var_os("PATH"),
+            }
+        }
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            // SAFETY: tests run under PM_STATE_LOCK (single writer).
+            unsafe {
+                std::env::set_current_dir(&self.saved_cwd).ok();
+                match self.saved_path.take() {
+                    Some(v) => std::env::set_var("PATH", v),
+                    None => std::env::remove_var("PATH"),
+                }
+            }
+        }
+    }
+
+    /// A temp PATH dir containing ONLY the given manager stubs (+ the
+    /// system dir so `where`/`which` itself still resolves) — the
+    /// deterministic auto-detect isolation for the direct `auto_detect`
+    /// oracle (the fallback chain's own priority semantics).
+    fn stub_path(managers: &[&str]) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("stub path dir");
+        for name in managers {
+            #[cfg(windows)]
+            std::fs::write(dir.path().join(format!("{name}.cmd")), b"").unwrap();
+            #[cfg(not(windows))]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let stub = dir.path().join(name);
+                std::fs::write(&stub, b"").unwrap();
+                let mut perms = std::fs::metadata(&stub).unwrap().permissions();
+                perms.set_mode(0o755);
+                std::fs::set_permissions(&stub, perms).unwrap();
+            }
+        }
+        dir
+    }
+
+    /// SAFETY: single writer under PM_STATE_LOCK.
+    unsafe fn set_stub_path(stub: &std::path::Path) {
+        let system = if cfg!(windows) {
+            std::env::var_os("SystemRoot")
+                .map(|root| std::path::PathBuf::from(root).join("System32"))
+                .unwrap_or_default()
+        } else {
+            std::path::PathBuf::from("/usr/bin")
+        };
+        let mut combined = std::ffi::OsString::from(stub);
+        combined.push(if cfg!(windows) { ";" } else { ":" });
+        combined.push(system.as_os_str());
+        std::env::set_var("PATH", combined);
+    }
+
+    /// PLAN-815 R6（F-815-T05-R6-01）重写：工具路径包管理器单源矩阵。
+    /// 判定观察**来源**（`resolve_with_source`），不是值——bun 是外部链
+    /// 的合法回退，"不等于 bun"永远证明不了磁盘独立性：
+    /// - legacy（无工具状态）：来源=磁盘 pac（语义冻结）；
+    /// - 工具+请求 pkg 字段：来源=请求（磁盘冲突负控）；
+    /// - 工具+无字段：相同外部环境下改变/移除磁盘主 pac，(值,来源) 不变
+    ///   且来源 ∈ {Global, AutoDetect}（磁盘独立性正反控——外部值随
+    ///   机器合法变化，包括 bun）；
+    /// - auto_detect 直接 oracle（stub PATH）：bun-only→Bun（合法回退）、
+    ///   bun+pnpm→Pnpm（优先级）；
     /// - guard 丢弃恢复 legacy（串行下一请求不残留）。
     #[test]
     fn tool_pm_state_matrix() {
         let _guard = PM_STATE_LOCK.lock().unwrap();
+        let _env = EnvGuard::capture();
+
         let dir = tempfile::tempdir().expect("tempdir");
-        std::fs::write(
-            dir.path().join("pac.at"),
-            "name: \"diskx\"
-pkg: \"bun\"
-",
-        )
-        .unwrap();
-        let original = std::env::current_dir().expect("cwd");
+        std::fs::write(dir.path().join("pac.at"), "name: \"diskx\"\npkg: \"bun\"\n").unwrap();
         std::env::set_current_dir(dir.path()).expect("chdir");
 
-        // legacy: disk wins (frozen behavior).
-        assert_eq!(resolve(), PkgManagerKind::Bun, "legacy reads disk pac");
+        // legacy: the disk main pac.at IS the source (frozen behavior).
+        assert_eq!(
+            resolve_with_source(),
+            (PkgManagerKind::Bun, PmSource::DiskLegacy),
+            "legacy reads disk pac"
+        );
 
-        // tool + request declares pnpm: request wins over disk bun.
+        // tool + request declares pnpm: the request is the source and its
+        // value wins over the disk bun.
         {
             let _tool = set_tool_pm_for_request(&request_with_pkg(Some("pnpm")));
             assert_eq!(
-                resolve(),
-                PkgManagerKind::Pnpm,
+                resolve_with_source(),
+                (PkgManagerKind::Pnpm, PmSource::Request),
                 "request pkg must beat the disk main declaration"
             );
         }
 
-        // tool + request WITHOUT the field: the disk main pac.at is NOT a
-        // source — resolution must not come from disk (bun); it falls to
-        // the external chain (global config > auto-detect).
+        // tool + request WITHOUT the field: the external chain answers —
+        // same external environment, disk flipped/removed: the (value,
+        // source) pair must not move, and the source is never the disk.
         {
             let _tool = set_tool_pm_for_request(&request_with_pkg(None));
-            let resolved = resolve();
-            assert_ne!(
-                resolved,
-                PkgManagerKind::Bun,
-                "tool path must skip the disk main declaration"
+            let baseline = resolve_with_source();
+            assert!(
+                baseline.1 == PmSource::Global || baseline.1 == PmSource::AutoDetect,
+                "no-field tool path resolves from the external chain: {baseline:?}"
             );
-            if !command_exists("pnpm") {
-                // On a machine without pnpm the external chain may land on
-                // bun via auto-detect — the disk-independence claim is then
-                // proven by the pnpm-present branch above/below.
-                eprintln!("pnpm absent: auto-detect = {resolved:?}");
+            for disk in ["pnpm", "bun"] {
+                std::fs::write(
+                    dir.path().join("pac.at"),
+                    format!("name: \"diskx\"\npkg: \"{disk}\"\n"),
+                )
+                .unwrap();
+                assert_eq!(
+                    resolve_with_source(),
+                    baseline,
+                    "disk main pac change ({disk}) must not affect the tool path"
+                );
             }
+            std::fs::remove_file(dir.path().join("pac.at")).unwrap();
+            assert_eq!(
+                resolve_with_source(),
+                baseline,
+                "disk main pac removal must not affect the tool path"
+            );
+            // Restore the disk pac for the legacy checks below.
+            std::fs::write(dir.path().join("pac.at"), "name: \"diskx\"\npkg: \"bun\"\n").unwrap();
         }
 
         // guard dropped: legacy state restored (serial next request sees
-        // the frozen chain again).
+        // the frozen chain again — the disk source).
         assert_eq!(
-            resolve(),
-            PkgManagerKind::Bun,
-            "guard drop must restore the legacy resolution state"
+            resolve_with_source(),
+            (PkgManagerKind::Bun, PmSource::DiskLegacy),
+            "guard drop must restore the legacy (disk) resolution state"
         );
+    }
 
-        std::env::set_current_dir(original).expect("restore cwd");
+    /// The auto-detect chain's own oracle under a deterministic stubbed
+    /// PATH: bun-only environments LEGITIMATELY resolve bun (R6-01 — the
+    /// old matrix wrongly rejected this), and pnpm wins when both exist.
+    #[test]
+    fn auto_detect_fallback_priority_matrix() {
+        let _guard = PM_STATE_LOCK.lock().unwrap();
+        let _env = EnvGuard::capture();
+        let bun_only = stub_path(&["bun"]);
+        // SAFETY: single writer under PM_STATE_LOCK.
+        unsafe { set_stub_path(bun_only.path()) };
+        assert!(!command_exists("pnpm"), "stub isolation: no pnpm");
+        assert!(command_exists("bun"), "stub isolation: bun present");
+        assert_eq!(
+            auto_detect(),
+            PkgManagerKind::Bun,
+            "bun-only fallback environment legitimately resolves bun"
+        );
+        let bun_pnpm = stub_path(&["bun", "pnpm"]);
+        // SAFETY: single writer under PM_STATE_LOCK.
+        unsafe { set_stub_path(bun_pnpm.path()) };
+        assert_eq!(
+            auto_detect(),
+            PkgManagerKind::Pnpm,
+            "pnpm is preferred over bun in auto-detect"
+        );
     }
 
     #[test]

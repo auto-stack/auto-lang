@@ -1028,6 +1028,16 @@ pub enum DrainEnd {
     BoundOverrun,
 }
 
+impl DrainEnd {
+    /// True only for the natural, complete end (PLAN-815 R6 /
+    /// F-815-T05-R4-05-P2): every other classification is an INCOMPLETE
+    /// capture that consumers must surface as a named failure — never
+    /// silently downgrade to "no data" semantics.
+    pub fn is_natural_eof(&self) -> bool {
+        matches!(self, DrainEnd::Eof)
+    }
+}
+
 /// Hard bound for a caller-drained capture: same shape as the forwarder
 /// teardown bound — no reader, drained or forwarded, may block an
 /// operation's teardown indefinitely.
@@ -1326,6 +1336,97 @@ mod tests {
             matches!(end, DrainEnd::Stopped | DrainEnd::Eof),
             "cancelled drain ends Stopped (flag) or Eof (tree died): {end:?}"
         );
+        let _ = wait_tracked(&tracked);
+        uninstall();
+    }
+
+    /// PLAN-815 R6（F-815-T05-R4-05-P2）代表对照：Truncated——子进程输出
+    /// 超过 1MiB 收集上限，drain 以 Truncated 结束（部分输出，不冒充
+    /// 完整）；随后树终止+有界收尸（消费者契约见 jet adb 臂）。
+    #[test]
+    fn captured_drain_truncates_at_collection_cap() {
+        let _guard = SLOT_LOCK.lock().unwrap();
+        assert!(install());
+        // A real child that writes ~1.2 MiB to stdout then exits 0.
+        let spill = tempfile::tempdir().expect("tempdir");
+        let big = spill.path().join("big.txt");
+        let chunk = "0123456789abcdef".repeat(64); // 1 KiB per line-ish
+        let mut content = String::with_capacity(1024 * 1200);
+        for _ in 0..1200 {
+            content.push_str(&chunk);
+            content.push('\n');
+        }
+        std::fs::write(&big, content).unwrap();
+        #[cfg(windows)]
+        let spec = TrackedSpawn {
+            windows_cmd_shim: true,
+            capture_stdout: true,
+            ..TrackedSpawn::new(
+                "cmd",
+                vec!["/C".to_string(), format!("type {}", big.display())],
+            )
+        };
+        #[cfg(not(windows))]
+        let spec = TrackedSpawn {
+            capture_stdout: true,
+            ..TrackedSpawn::new("cat", vec![big.display().to_string()])
+        };
+        let tracked = spawn_tracked(spec, "capture-cap").expect("spawn writer");
+        let started = std::time::Instant::now();
+        let (out, end) = drain_captured_stdout(&tracked);
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "a fast writer must hit the cap quickly"
+        );
+        assert_eq!(end, DrainEnd::Truncated, "cap hit: {end:?}");
+        assert!(
+            out.len() >= DRAIN_MAX_BYTES,
+            "collected up to the cap: {}",
+            out.len()
+        );
+        // The abandoned tree is torn down and reaped with a bound.
+        tracked.kill();
+        let _ = wait_tracked(&tracked);
+        uninstall();
+    }
+
+    /// PLAN-815 R6（F-815-T05-R4-05-P2）代表对照：BoundOverrun——一个
+    /// 静默子进程持有捕获管道（无数据、不退出），drain 在硬界限处具名
+    /// 返回（本测试约 10s，归重串行档）。
+    #[test]
+    #[ignore = "slow: ~10s hard-bound wait; serial evidence run via --ignored"]
+    fn captured_drain_overruns_hard_bound_when_silent_holder_keeps_pipe() {
+        let _guard = SLOT_LOCK.lock().unwrap();
+        assert!(install());
+        #[cfg(windows)]
+        let spec = TrackedSpawn {
+            capture_stdout: true,
+            ..TrackedSpawn::new(
+                "powershell",
+                vec![
+                    "-NoProfile".to_string(),
+                    "-Command".to_string(),
+                    "Start-Sleep -Seconds 60".to_string(),
+                ],
+            )
+        };
+        #[cfg(not(windows))]
+        let spec = TrackedSpawn {
+            capture_stdout: true,
+            ..TrackedSpawn::new("sh", vec!["-c".to_string(), "sleep 60".to_string()])
+        };
+        let tracked = spawn_tracked(spec, "capture-bound").expect("spawn silent holder");
+        let started = std::time::Instant::now();
+        let (out, end) = drain_captured_stdout(&tracked);
+        let elapsed = started.elapsed();
+        assert_eq!(end, DrainEnd::BoundOverrun, "hard bound fired: {end:?}");
+        assert!(
+            elapsed >= DRAIN_HARD_BOUND && elapsed < DRAIN_HARD_BOUND + Duration::from_secs(5),
+            "bound fires at the limit, not later: {elapsed:?}"
+        );
+        assert!(out.is_empty(), "silent holder produced no output");
+        // The abandoned tree is torn down and reaped with a bound.
+        tracked.kill();
         let _ = wait_tracked(&tracked);
         uninstall();
     }
