@@ -107,12 +107,12 @@ mod launcher_rewrite {
     fn build_launcher() -> Option<crate::ui::dynamic::DynamicComponent> {
         let sibling_base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
         let path = crate::os_paths::resolve_os_top_dir(&sibling_base, "apps")
-            .map(|apps| apps.join("028-launcher/src/front/app.at"));
+            .map(|apps| apps.join("auto-launcher/src/front/app.at"));
         let code = match path.map(|p| std::fs::read_to_string(&p)) {
             Some(Ok(code)) => code,
             _ => {
                 eprintln!(
-                    "plan503 launcher_rewrite: SKIPPED — auto-os/apps/028-launcher\
+                    "plan503 launcher_rewrite: SKIPPED — auto-os/apps/auto-launcher\
                      未解析(solo 检出;设 AUTO_OS_ROOT 或并置 auto-os 兄弟检出可启用)"
                 );
                 return None;

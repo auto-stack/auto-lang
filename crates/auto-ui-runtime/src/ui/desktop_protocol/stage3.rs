@@ -1091,10 +1091,10 @@ mod tests {
         use crate::ui::desktop_protocol::shell_client::ShellGeometry;
         use crate::ui::session::{DesktopSession, ShellModel};
 
-        // launcher 注册表源（auto-os/apps/028-launcher；兄弟/主检出解析）。
+        // launcher 注册表源（auto-os/apps/auto-launcher；兄弟/主检出解析）。
         let launcher_entry = auto_lang_core::os_paths::resolve_os_top_dir(
             &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.."),
-            "apps/028-launcher/src/front",
+            "apps/auto-launcher/src/front",
         )
         .map(|d| d.join("app.at"))
         .filter(|p| p.is_file())

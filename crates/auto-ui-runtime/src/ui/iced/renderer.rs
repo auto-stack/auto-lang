@@ -39587,7 +39587,7 @@ mod tests {
     }
 
     /// PLAN-042 T-09（AC-05/AC-06 headless 实证；#[ignore] + P042_APPS_DIR
-    /// env 门——apps/039-syslog 源在跨仓 auto-os 工作树，CI 不依赖）：
+    /// env 门——apps/auto-syslog 源在跨仓 auto-os 工作树，CI 不依赖）：
     /// 注册表 launch → 窗在册 registry_id=="039-syslog" → 注入泵 seq 门 +
     /// 500ms 节流 + 平行列表下行 + 显式 Rebuild。
     /// 运行：P042_APPS_DIR=<auto-os>/apps cargo nextest run -p auto-lang

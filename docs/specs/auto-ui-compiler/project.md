@@ -89,3 +89,23 @@ ui-iced→ui→本包转发恢复恒开语义。
 auto-ui-tools 消费 `auto_ui_compiler::app_registry`；DAG 禁
 compiler→runtime）；auto-ui-runtime 经 `pub use` 再导出，旧
 `auto_lang::ui::{app_registry,i18n_lookup}` 路径全保持。
+
+## AutoOS 产品路径与稳定注册 ID（OS PLAN-050）
+
+`app_registry::scan_apps` 与公开的 `expand_apps_container` 按容器父级的
+`apps.manifest` 中 active `repo`/`local` 条目的真实目录路径匹配稳定 ID；
+例如 `apps/auto-notes` 仍注册 `015-notes`。路径比较先 canonicalize，支持
+清单中的 `./` 等等价路径。ID 不跟随产品目录改名，pac 名称/展示名不改。
+未匹配、无/坏清单时回退原来的目录名；非活跃/未知 kind/空 ID 不提供别名。
+匹配只读取相邻清单，不用全局 AUTO_OS_ROOT 改写其他扫描根的身份。
+
+Vue `auto-ui-tools::vue::desktop_extra_app_roots` 共用此容器展开，保持主根、
+VM/iced extra 根和 manifest 聚合时去重；空子模块继续按无入口/pac 跳过。
+存储里的快捷方式、图标映射、launch/daemon lookup 仍按原 ID，不迁移用户值。
+`AppRegistryEntry::app_root()` 从发现入口还原物理应用根；Vue 桌面生成读取该根，
+不再按稳定 ID 拼目录，生成后的路由/组件命名仍使用稳定 ID。
+
+回归：`product_directory_names_*` 覆盖改名/路径匹配/local、无效/缺失清单、
+空子模块、显式 extra 优先及聚合去重；Vue `extra_roots_three_track_parity`
+覆盖正式目录 `auto-notes`→稳定 `015-notes` 且没有第二个新名入口。
+物理迁移归 [AutoOS PLAN-050](../../../../auto-os/docs/plans/050-app-directory-product-names.md)。

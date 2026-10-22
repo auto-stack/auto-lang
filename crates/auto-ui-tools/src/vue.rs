@@ -5496,6 +5496,14 @@ export default router
     /// (registered limitation; see plan §3.3 known-limits approach).
     pub fn generate_desktop_host(&self) -> AutoResult<()> {
         let apps_dir = desktop_apps_dir(&self.root_dir)?;
+        self.generate_desktop_host_from_roots(apps_dir, desktop_extra_app_roots(&self.root_dir))
+    }
+
+    fn generate_desktop_host_from_roots(
+        &self,
+        apps_dir: PathBuf,
+        extra_dirs: Vec<(String, PathBuf)>,
+    ) -> AutoResult<()> {
         let scan_opts = auto_ui_compiler::app_registry::ScanOptions {
             render: Some("vue".to_string()),
         };
@@ -5507,7 +5515,7 @@ export default router
         // app_registry::host_extra_roots/aggregate_scan; the Plan 529 group
         // worktree layout resolves it in dev too.
         let mut extra_roots: HashMap<String, PathBuf> = HashMap::new();
-        for (id, root) in desktop_extra_app_roots(&self.root_dir) {
+        for (id, root) in extra_dirs {
             if entries.iter().any(|e| e.id == id) {
                 continue;
             }
@@ -5557,7 +5565,7 @@ export default router
             let app_root = extra_roots
                 .get(&e.id)
                 .cloned()
-                .unwrap_or_else(|| apps_dir.join(&e.id));
+                .unwrap_or_else(|| e.app_root());
             let vp = match VueProject::from_workspace(&app_root) {
                 Ok(v) => v,
                 Err(err) => {
@@ -10100,23 +10108,7 @@ fn desktop_extra_app_roots(root_dir: &Path) -> Vec<(String, PathBuf)> {
         // expand_apps_container (sorted, pac.at-gated, id-deduped, missing
         // container silently skipped).
         let container = parent.join("auto-os").join("apps");
-        if let Ok(rd) = fs::read_dir(&container) {
-            let mut subdirs: Vec<std::fs::DirEntry> =
-                rd.flatten().filter(|e| e.path().is_dir()).collect();
-            subdirs.sort_by_key(|e| e.file_name());
-            for entry in subdirs {
-                let dir = entry.path();
-                if !dir.join("pac.at").is_file() {
-                    continue;
-                }
-                let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
-                    continue;
-                };
-                if !out.iter().any(|(existing, _)| existing == name) {
-                    out.push((name.to_string(), dir));
-                }
-            }
-        }
+        auto_ui_compiler::app_registry::expand_apps_container(&container, &mut out);
         // Stage B P-3: apps.manifest repo entries — framework-side read per
         // the 2026-09-07 ruling; registered as extra roots (native mount),
         // vm-track parity with app_registry::manifest_repo_roots. Env
@@ -10559,7 +10551,7 @@ mod tests {
         std::fs::create_dir_all(&os_config).unwrap();
         std::fs::write(os_config.join("pac.at"), "name: \"osc\"\n").unwrap();
         let os_root = tmp.path().join("auto-os");
-        for name in ["alpha", "beta"] {
+        for name in ["auto-notes", "beta"] {
             let dir = os_root.join("apps").join(name);
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(dir.join("pac.at"), "name: \"x\"\n").unwrap();
@@ -10574,7 +10566,7 @@ mod tests {
         std::fs::write(fake_repo.join("pac.at"), "name: \"fk\"\n").unwrap();
         std::fs::write(
             os_root.join("apps.manifest"),
-            r#"{ "apps": [ { "id": "repoapp", "repo": "../fake-repo", "kind": "repo" } ] }"#,
+            r#"{ "apps": [ { "id": "repoapp", "repo": "../fake-repo", "kind": "repo" }, { "id": "015-notes", "repo": "apps/auto-notes", "kind": "repo" } ] }"#,
         )
         .unwrap();
         let project = tmp.path().join("project");
@@ -10582,6 +10574,8 @@ mod tests {
 
         // vue 轨（探测 + 容器 + manifest 一体）。
         let vue_roots = desktop_extra_app_roots(&project);
+        assert_eq!(vue_roots.iter().filter(|(id, _)| id == "015-notes").count(), 1);
+        assert!(!vue_roots.iter().any(|(id, _)| id == "auto-notes"));
         // vm/iced 轨组合面（host_extra_roots 的纯函数形态，CWD 无关重演）。
         let front = tmp.path().join("auto-os-config").join("auto");
         let apps = os_root.join("apps");
@@ -10622,7 +10616,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![
                 "os-config",
-                "alpha",
+                "015-notes",
                 "beta",
                 "repoapp",
                 "ui-gallery",
@@ -10877,6 +10871,35 @@ import { AlertDialogAction } from '@/components/ui/alert-dialog'
     /// Plan 465 T3: build-time desktop registry — the render:"vue" filter
     /// passes only vue-declared apps, and every entry's dynamic import path
     /// is a string literal (vite-analyzable).
+    #[test]
+    fn product_directory_names_generate_real_desktop_apps() {
+        let tmp = tempfile::tempdir().unwrap();
+        let apps = tmp.path().join("apps");
+        let notes = apps.join("auto-notes");
+        fs::create_dir_all(notes.join("src/front")).unwrap();
+        fs::write(notes.join("pac.at"), "name: \"notes\"\nscene: \"ui\"\nrender: \"vue\"\n").unwrap();
+        fs::write(notes.join("src/front/app.at"), "widget App { view { text \"formal-notes-content\" } }\n").unwrap();
+        let syslog = apps.join("auto-syslog");
+        fs::create_dir_all(syslog.join("src/front")).unwrap();
+        fs::write(syslog.join("pac.at"), "name: \"syslog\"\nscene: \"ui\"\nrender: \"vue\"\n").unwrap();
+        fs::write(syslog.join("src/front/app.at"), "widget App { view { text \"formal-syslog-content\" } }\n").unwrap();
+        fs::write(tmp.path().join("apps.manifest"), r#"{"apps":[
+            {"id":"015-notes","repo":"apps/auto-notes","kind":"repo"},
+            {"id":"039-syslog","repo":"apps/auto-syslog","kind":"local"}
+        ]}"#).unwrap();
+        let project = VueProject::from_workspace(&notes).unwrap();
+        project.generate_desktop_host_from_roots(apps, Vec::new()).unwrap();
+        let generated = project.output_dir.join("src");
+        let registry = fs::read_to_string(generated.join("apps-registry.ts")).unwrap();
+        assert!(registry.contains("015-notes"));
+        assert!(registry.contains("039-syslog"));
+        assert!(!registry.contains("auto-notes"));
+        let notes_vue = fs::read_to_string(generated.join("apps/015-notes/App.vue")).unwrap();
+        let syslog_vue = fs::read_to_string(generated.join("apps/039-syslog/App.vue")).unwrap();
+        assert!(notes_vue.contains("formal-notes-content"));
+        assert!(syslog_vue.contains("formal-syslog-content"));
+    }
+
     #[test]
     fn desktop_registry_maps_vue_apps_only() {
         let tmp = std::env::temp_dir().join(format!("auto465-reg-{}", std::process::id()));

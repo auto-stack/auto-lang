@@ -31,7 +31,7 @@ use crate::i18n_lookup::locale_prefers_zh;
 /// 一个可启动 App 的注册表条目（R10 最小面）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct AppRegistryEntry {
-    /// 启动 id（`DesktopCommand::LaunchApp` 参数）= 目录名。
+    /// 启动 id：AutoOS manifest 路径对应的稳定 ID，否则回退目录名。
     pub id: String,
     /// 显示标题（pac `title:` → `name:` → 目录名）。
     pub title: String,
@@ -114,6 +114,21 @@ pub struct ScanOptions {
 }
 
 impl AppRegistryEntry {
+    /// The physical application root is derived from the discovered entry,
+    /// never from the stable registry ID (which may outlive directory renames).
+    pub fn app_root(&self) -> PathBuf {
+        let parent = self.entry.parent().unwrap_or(Path::new("."));
+        if !parent.join("pac.at").is_file() && parent.ends_with(Path::new("src").join("front")) {
+            parent
+                .parent()
+                .and_then(Path::parent)
+                .unwrap_or(parent)
+                .to_path_buf()
+        } else {
+            parent.to_path_buf()
+        }
+    }
+
     /// PLAN-015：展示名解析链（AUTO_LOCALE，缺省 zh）——zh 取 `title_zh →
     /// title`，en 取 `title`（title 字段已是 pac title→name→目录名兜底产物，
     /// 链路在此之上不断）。未声明 title_zh 时两 locale 输出一致（零配置
@@ -232,10 +247,12 @@ pub fn scan_apps(dir: &Path, opts: &ScanOptions) -> Vec<AppRegistryEntry> {
         .collect();
     dirs.sort();
     let mut out = Vec::new();
+    let manifest_ids = manifest_ids_for_container(dir);
     for d in dirs {
         let Some(id) = d.file_name().map(|n| n.to_string_lossy().to_string()) else {
             continue;
         };
+        let id = stable_directory_id(&d, id, &manifest_ids);
         if let Some(entry) = entry_for_dir(&d, id, opts, false) {
             out.push(entry);
         }
@@ -443,11 +460,52 @@ pub fn extra_roots_from(
     out
 }
 
+/// Read only the manifest adjacent to this container, never an unrelated global
+/// AUTO_OS_ROOT. Missing/broken manifests preserve ordinary directory discovery.
+fn manifest_ids_for_container(container: &Path) -> std::collections::HashMap<PathBuf, String> {
+    let mut ids = std::collections::HashMap::new();
+    let Some(root) = container.parent() else {
+        return ids;
+    };
+    let Ok(raw) = std::fs::read_to_string(root.join("apps.manifest")) else {
+        return ids;
+    };
+    let Ok(manifest) = serde_json::from_str::<OsManifestFile>(&raw) else {
+        return ids;
+    };
+    for app in manifest.apps {
+        if app.id.trim().is_empty()
+            || app.status != "active"
+            || !matches!(app.kind.as_str(), "repo" | "local")
+        {
+            continue;
+        }
+        let Some(repo) = app.repo else { continue };
+        if let Ok(path) = root.join(repo).canonicalize() {
+            ids.entry(path).or_insert(app.id);
+        }
+    }
+    ids
+}
+
+fn stable_directory_id(
+    dir: &Path,
+    fallback: String,
+    ids: &std::collections::HashMap<PathBuf, String>,
+) -> String {
+    dir.canonicalize()
+        .ok()
+        .and_then(|path| ids.get(&path).cloned())
+        .unwrap_or(fallback)
+}
+
 /// Stage B P-3：apps 容器展开——每个含 pac.at 的直接子目录 = 一个 local
-/// app root（id = 子目录名，排序保确定性；缺容器/无 pac.at 子目录静默
+/// app root（id 优先取相邻 manifest 的路径匹配，排序保确定性；缺容器/无 pac.at 子目录静默
 /// 跳过——solo 检出不炸）。vue 轨同律镜像见 auto-man vue.rs
 /// `desktop_extra_app_roots`（三轨 parity）。
-fn expand_apps_container(container: &Path, out: &mut Vec<(String, PathBuf)>) {
+/// Shared by VM discovery and Vue desktop generation. Product directory names
+/// may change while manifest IDs remain stable for stored shortcuts and launch.
+pub fn expand_apps_container(container: &Path, out: &mut Vec<(String, PathBuf)>) {
     if !container.is_dir() {
         return;
     }
@@ -456,6 +514,7 @@ fn expand_apps_container(container: &Path, out: &mut Vec<(String, PathBuf)>) {
     };
     let mut subdirs: Vec<std::fs::DirEntry> = rd.flatten().filter(|e| e.path().is_dir()).collect();
     subdirs.sort_by_key(|e| e.file_name());
+    let manifest_ids = manifest_ids_for_container(container);
     for entry in subdirs {
         let dir = entry.path();
         if !dir.join("pac.at").is_file() {
@@ -464,8 +523,9 @@ fn expand_apps_container(container: &Path, out: &mut Vec<(String, PathBuf)>) {
         let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        if !out.iter().any(|(existing, _)| existing == name) {
-            out.push((name.to_string(), dir));
+        let id = stable_directory_id(&dir, name.to_string(), &manifest_ids);
+        if !out.iter().any(|(existing, _)| existing == &id) {
+            out.push((id, dir));
         }
     }
 }
@@ -791,6 +851,107 @@ pub fn parse_pac_fields(source: &str) -> std::collections::HashMap<String, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn renamed_product_fixture() -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        let apps = tmp.path().join("apps");
+        for name in ["auto-notes", "auto-syslog"] {
+            let root = apps.join(name);
+            std::fs::create_dir_all(root.join("src/front")).unwrap();
+            std::fs::write(root.join("pac.at"), "name: \"product\"\n").unwrap();
+            std::fs::write(root.join("src/front/app.at"), "widget App {}\n").unwrap();
+        }
+        // A default uninitialized submodule remains an empty directory.
+        std::fs::create_dir_all(apps.join("auto-reader")).unwrap();
+        std::fs::write(
+            tmp.path().join("apps.manifest"),
+            r#"{"apps":[
+            {"id":"015-notes","repo":"apps/./auto-notes","kind":"repo"},
+            {"id":"039-syslog","repo":"apps/auto-syslog","kind":"local"},
+            {"id":"018-book-reader","repo":"apps/auto-reader","kind":"repo"}
+        ]}"#,
+        )
+        .unwrap();
+        tmp
+    }
+
+    #[test]
+    fn product_directory_names_preserve_ids_and_deduplicate() {
+        let tmp = renamed_product_fixture();
+        let apps = tmp.path().join("apps");
+        let opts = ScanOptions::default();
+        let main = scan_apps(&apps, &opts);
+        assert_eq!(
+            main.iter().map(|x| x.id.as_str()).collect::<Vec<_>>(),
+            vec!["015-notes", "039-syslog"]
+        );
+        let mut extra = Vec::new();
+        expand_apps_container(&apps, &mut extra);
+        assert_eq!(
+            extra.iter().map(|x| x.0.as_str()).collect::<Vec<_>>(),
+            vec!["015-notes", "039-syslog"]
+        );
+        for (id, path) in manifest_repo_roots(tmp.path()) {
+            if !extra.iter().any(|x| x.0 == id) {
+                extra.push((id, path));
+            }
+        }
+        let combined = aggregate_scan(&apps, &extra, &opts);
+        assert_eq!(
+            combined, main,
+            "renamed directory must not duplicate manifest entry"
+        );
+        assert!(combined[0].entry.starts_with(apps.join("auto-notes")));
+        assert_eq!(combined[0].app_root(), apps.join("auto-notes"));
+        let mut plain = combined[0].clone();
+        plain.entry = apps.join("auto-notes/app.at");
+        assert_eq!(plain.app_root(), apps.join("auto-notes"));
+        let custom = PathBuf::from("custom-notes-root");
+        let mut roots = vec![("015-notes".to_string(), custom.clone())];
+        expand_apps_container(&apps, &mut roots);
+        assert_eq!(roots.len(), 2);
+        assert_eq!(roots[0].1, custom, "explicit root retains priority");
+    }
+
+    #[test]
+    fn product_directory_names_fall_back_without_valid_manifest() {
+        let tmp = renamed_product_fixture();
+        let apps = tmp.path().join("apps");
+        for invalid in ["{bad json", r#"{"apps":[]}"#] {
+            std::fs::write(tmp.path().join("apps.manifest"), invalid).unwrap();
+            let rows = scan_apps(&apps, &ScanOptions::default());
+            assert_eq!(rows[0].id, "auto-notes");
+            let mut extra = Vec::new();
+            expand_apps_container(&apps, &mut extra);
+            assert_eq!(extra[0].0, "auto-notes");
+        }
+        std::fs::remove_file(tmp.path().join("apps.manifest")).unwrap();
+        assert_eq!(
+            scan_apps(&apps, &ScanOptions::default())[0].id,
+            "auto-notes"
+        );
+    }
+
+    #[test]
+    fn product_directory_names_match_path_and_active_kind() {
+        let tmp = renamed_product_fixture();
+        let apps = tmp.path().join("apps");
+        std::fs::create_dir_all(tmp.path().join("elsewhere/auto-notes")).unwrap();
+        std::fs::write(
+            tmp.path().join("apps.manifest"),
+            r#"{"apps":[
+            {"id":"other","repo":"elsewhere/auto-notes","kind":"repo"},
+            {"id":"inactive","repo":"apps/auto-notes","status":"disabled"},
+            {"id":"unsupported","repo":"apps/auto-notes","kind":"invalid"},
+            {"id":"","repo":"apps/auto-notes","kind":"repo"}
+        ]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            scan_apps(&apps, &ScanOptions::default())[0].id,
+            "auto-notes"
+        );
+    }
 
     /// 仓库 examples/ui 绝对路径（crate 目录两层上）。
     fn repo_examples_ui() -> PathBuf {
