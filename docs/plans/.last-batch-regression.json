@@ -1,9 +1,9 @@
 {
   "last_covered_plan_id": 830,
-  "timestamp": "2026-10-22T09:31:26Z",
-  "covered_commit": "5685d3a1f6bdccf6e39f4fff3243566c86602389",
-  "covered_note": "tf/tt/tb executed on the main checkout at 5685d3a1f (trigger: PLAN-830, id %5==0, landed on autographics-dev and archived on master). Docs-only commits landed during the ~10 min run (ac6934263 PLAN-830 evidence, cff6bd78a/d5ed49cf8 PLAN-828 bookkeeping) and touch no code/tests/verification config.",
-  "window": "44a27a02bc2a68cda599c2b5f1915a8c9f40516b..5685d3a1f6bdccf6e39f4fff3243566c86602389",
+  "timestamp": "2026-10-22T11:38:09Z",
+  "covered_commit": "6336ab95b4a7470cab0fa323051c9fe1ad1d5131",
+  "covered_note": "trigger: PLAN-815 (id %5==0, M815-B 30-commit merge landed after the previous receipt's covered_commit 5685d3a1f — numeric max landed id remains 830). Window 5685d3a1f..6336ab95b4a7470cab0fa323051c9fe1ad1d5131 contains the PLAN-815 B-phase code delta (auto-ui-tools/auto-man/auto-ui-runtime/auto-tool-*/auto-api-gen/shell-pack). Docs-only bookkeeping commits in the window touch no code.",
+  "window": "5685d3a1f6bdccf6e39f4fff3243566c86602389..6336ab95b4a7470cab0fa323051c9fe1ad1d5131",
   "legs": [
     "tf",
     "tt",
@@ -11,37 +11,32 @@
   ],
   "leg_results": {
     "tf": {
-      "seconds": 102.3,
-      "wall_seconds": 137.8,
+      "seconds": 111.7,
       "run": 6282,
       "passed": 6282,
       "failed": 0,
       "skipped": 518,
-      "note": "完整轮全绿（含 1M churn、语料族与画廊围栏面内）；nextest Summary 102.292s"
+      "note": "完整轮全绿；含 815 合入后的 shell_pack freshness（T09 修复红→绿）与全量选择面"
     },
     "tt": {
-      "seconds": 126.8,
-      "wall_seconds": 128.3,
+      "seconds": 126.5,
       "run": 5703,
       "passed": 5703,
       "failed": 0,
       "skipped": 1800,
-      "note": "首次尝试在 1335/5703 处由 Windows OS 1224（用户映射区文件冲突）中断该 leg（plan738 t07 core_matrix_complete_and_report_written 写报告时）；该测试 solo 复跑绿（0.09s），随后 --no-fail-fast 完整重跑 5703/5703 全绿"
+      "note": "完整轮全绿"
     },
     "tb": {
-      "seconds": 97.6,
-      "wall_seconds": 107.8,
+      "seconds": 93.6,
       "run": 5307,
       "passed": 5307,
       "failed": 0,
       "skipped": 1548,
-      "note": "完整轮全绿"
+      "note": "首跑 auto-lang-core state_file::tests::lock_serializes_critical_sections 1 红（0.355s）——隔离复跑 0.125s 绿+--no-fail-fast 完整重跑 5307/5307 全绿，判文件锁环境 flake 不归因产品回归（同 PLAN-830 收据 OS 1224 先例族）"
     }
   },
   "new_reds": [],
-  "known_reds_seen": [
-    "plan738_stdlib_assembly_tests::t07_witness_and_matrix::core_matrix_complete_and_report_written —— 首轮 Windows OS error 1224（文件被用户映射区占用）环境冲突；solo 复跑绿、完整 tt 重跑绿，不归因产品回归"
-  ],
-  "taa": "not_triggered: window 44a27a02b..5685d3a1f touches zero aavm trigger paths (checked 2026-10-22)",
-  "environment": "主检出单实例串行 tf→tt→tb；同时存在其他 plan worktree 的 scoped cargo（815 debt check、828 function_incremental/734 tauri fixture）但无并发全量档；heavy gate 未触发。main checkout 仅共享簿记 dirty（其他 task 的 docs/plans），未参与构建输入。"
+  "known_reds_seen": [],
+  "taa": "not_triggered: window touches zero aavm trigger paths (checked 2026-10-22)",
+  "environment": "主检出单实例串行 tf→tt→tb（tf 前观察到两枚瞬时 cargo 进程退出后方启动）；本批 tf 未见已知预存红——shell_pack freshness 已随 F-815-T09-01 修复转绿，plan593/merged_api 两裁定预存红不在本 tf 选择面红名单（0 failed）"
 }
