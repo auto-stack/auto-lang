@@ -102,7 +102,15 @@ fn consumer_describes_real_tool_via_client() {
             .iter()
             .map(|c| c.operation.as_str())
             .collect::<Vec<_>>(),
-        vec!["describe", "validate_project"]
+        // M815-B 发布 I-TOOL v1 五操作全集（A 期为 describe/validate_project
+        // 窄集）；816 消费交接=五操作，此处钉已发布全集。
+        vec![
+            "describe",
+            "validate_project",
+            "generate_ui",
+            "build_ui",
+            "run_ui"
+        ]
     );
     // stderr 与 stdout 是两条异步流:describe 返回不保证 stderr 快照已
     // 含日志行——以 shutdown 后（drain 完成）的日志断言为准。
