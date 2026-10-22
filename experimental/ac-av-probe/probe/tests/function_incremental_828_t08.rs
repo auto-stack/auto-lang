@@ -169,3 +169,54 @@ fn t08_ready_with_wrong_initial_expectation_fails_before_edits() {
         report.failures
     );
 }
+
+/// V-08 FORMAL CAMPAIGN over the persistent worker: the frozen
+/// 273 575 B / 115-function load, 30 REAL body edits at fn_037's frozen
+/// multiplier site, the judged window = edit ENQUEUE (IPC included) →
+/// parent-verified publication. The dual gate: P95 < 1000 ms AND all
+/// correct AND structural green. Initialization is excluded (single
+/// listed in the report), the ready value is judged independently, and
+/// the raw stream covers every sample. Dual-line memory peaks are
+/// reported (counts into the F-09 budget evidence, not a gate here).
+#[test]
+fn t08_formal_campaign_v08_dual_gate_30_revisions() {
+    use auto_av_probe::formal_campaign::{
+        run_formal_campaign, CampaignConfig, FORMAL_GATE_MS, FORMAL_MIN_REVISIONS,
+    };
+    let cfg = CampaignConfig {
+        revisions: FORMAL_MIN_REVISIONS,
+        gate_ms: FORMAL_GATE_MS,
+    };
+    let report = run_formal_campaign(&worker_exe(), &cfg).expect("the formal campaign completes");
+    let raw = report.raw_jsonl();
+    assert!(
+        raw.lines().count() >= FORMAL_MIN_REVISIONS as usize,
+        "every sample preserved: {}",
+        raw.lines().count()
+    );
+    assert!(report.failures.is_empty(), "{:?}", report.failures);
+    assert!(
+        report.all_correct,
+        "every revision matched its independent expectation"
+    );
+    assert!(report.structural_ok);
+    assert!(
+        report.p95_ms < FORMAL_GATE_MS,
+        "P95 {:.1} ms must be < {:.0} ms",
+        report.p95_ms,
+        FORMAL_GATE_MS
+    );
+    assert!(report.gate_pass);
+    assert!(report.worker_peak_bytes > 0 && report.parent_peak_bytes > 0);
+    // p50 <= p95 <= p99 sanity over the same samples.
+    assert!(report.p50_ms <= report.p95_ms && report.p95_ms <= report.p99_ms);
+    println!(
+        "formal: n={}, p50={:.1}ms p95={:.1}ms p99={:.1}ms, worker_peak={}MB parent_peak={}MB",
+        report.samples.len(),
+        report.p50_ms,
+        report.p95_ms,
+        report.p99_ms,
+        report.worker_peak_bytes / (1024 * 1024),
+        report.parent_peak_bytes / (1024 * 1024),
+    );
+}
