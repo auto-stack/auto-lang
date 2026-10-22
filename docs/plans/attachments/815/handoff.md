@@ -1,7 +1,7 @@
 # PLAN-815 I-TOOL / auto-ui-tool 交接文档
 
-> T-08 交付物（R5 修复后版）。对象：816 CLI 客户端（M816-B 消费 B
-> 能力）及后续消费者。本版与修复后实现（R5 修复轮）逐项对账；
+> T-08 交付物（R6 修复后版）。对象：816 CLI 客户端（M816-B 消费 B
+> 能力）及后续消费者。本版与修复后实现（R6 修复轮）逐项对账；
 > 送审冻结身份见下表。
 
 ## 工具身份与冻结指纹
@@ -9,8 +9,8 @@
 | 项 | 值 |
 |---|---|
 | 工具名 | `auto-ui-tool` |
-| 源提交（冻结 SHA） | `c6fdaaaf1ecc2799d5ad225db3922a121c90c383`（branch `codex/plan-815-dev`，基线 M814-B `93a25c924` 之后） |
-| 二进制（debug 构建）SHA256 | `c95748c80b512215d89d6c987d3b8b708f697d102a24a62333f7666051c42b61`（`target/debug/auto-ui-tool.exe`，由上述源提交构建） |
+| 源提交（冻结 SHA） | `9291a7ee3ee79c64f27d1ad191f82281f5dae99a`（branch `codex/plan-815-dev`，基线 M814-B `93a25c924` 之后） |
+| 二进制（debug 构建）SHA256 | `1b9387becf9de172b632e70838111c9c9590dd13e9a1dacc2ca2421e12638569`（`target/debug/auto-ui-tool.exe`，由上述源提交构建） |
 | 二进制入口源 | `crates/auto-ui-tools/src/bin/auto_ui_tool.rs`（路径仅为导航；消费身份以上两行为准） |
 | 协议 crate | `crates/auto-tool-protocol`（纯数据，无 AST/VM/renderer） |
 | 协议版本 | `PROTOCOL_VERSION = 1` |
@@ -75,6 +75,12 @@ ServerEnvelope{id, body}
    （顺序保留）；`GenerateOk.frontends` 是实际生成集合，`output_root`
    是各 profile 真实输出根的最深公共祖先（tauri=`gen/`——前端
    `gen/front/vue` + 后端 `gen/back/rust` 双根聚合）。
+9. 捕获探测的失败披露（R6）：内部捕获式探测（如 jet run 的
+   `adb devices`）超时/截断/读错误/非零退出/未能启动都以
+   `RunOk{outcome:"failed"}` + 具名 error（含 DrainEnd 分类与 owned
+   树 teardown 收据）披露——不完整的探测不是"无设备"，客户端不得把
+   completed 当探测成功的证据；自然 EOF+干净退出的空设备列表才是合法
+   "无设备"。
 
 ## 运行架构（内部）
 

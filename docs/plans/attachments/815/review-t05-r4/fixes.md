@@ -67,3 +67,24 @@ R5 四项（R4-05-P1/R4-04-P2/R1-01-P2/R5-01-P2）全部修复；逐项 closure�
   R4 build-lifecycle 三例/profile-contracts 四根保持。
 - Unix 平台面：WSL 真实冻结源码编译+具名测试 1+4 全绿（上表）。
 - 测试时序裁定遵守：未整档；merge 门 pending。
+
+---
+
+# R6 修复轮（2026-10-22，code `9291a7ee3`）
+
+R6 两项 P2 全部修复；逐项 closure：
+
+| Finding | 修复与永久反例 | 当期结果 |
+|---|---|---|
+| F-815-T05-R4-05（P2 捕获失败终态吞没） | jet adb 臂（jet.rs 托管臂）：非自然捕获结束（BoundOverrun/Truncated/IoError/无取消 Stopped）→ 先 `tracked.kill()`+`wait_tracked` 有界收尸，再返回具名 Err（含 `DrainEnd` 分类与 teardown 收据）；非零退出/等待失败/spawn 失败同具名 Err（spawn 失败为同因 sibling，此前也吞成"无设备"）；`DrainEnd::is_natural_eof()` 消费者契约化。永久反例：`captured_drain_truncates_at_collection_cap`（真 1.2MiB 写手 0.2s 触上限→Truncated+kill 收尸）+`captured_drain_overruns_hard_bound_when_silent_holder_keeps_pipe`（静默持有者 10.1s 精确在硬界限→BoundOverrun，#[ignore] 重串行档）；自然 EOF 空列表=合法无设备、取消=cancelled 保持（既有测试+回放） | 回放 adb-drain-exits：bound-overrun **10.3s failed**（"probe did not complete (BoundOverrun; owned tree teardown Ok)"，原 10.6s completed/error=None）；truncated **0.37s failed**（"did not complete (Truncated; …)"，原 completed）；非 owned holder 不被越权杀（holder_alive 保持），owned 树收尸有界 |
+| F-815-T05-R6-01（P2 PM 矩阵误拒 bun 回退） | oracle 重构为**来源观测**：`resolve_with_source()` 暴露 `PmSource{Request,Global,AutoDetect,DiskLegacy}`（resolve() 同语义委托，产品行为零变化）；矩阵断言来源——legacy=(Bun,DiskLegacy)；请求=(Pnpm,Request)；无字段=外部链来源（值随机器合法变化**包括 bun**）+ 相同外部环境下磁盘 bun/pnpm/移除翻转 (值,来源) 不变（磁盘独立性正反控）；guard 恢复=(Bun,DiskLegacy)；RAII `EnvGuard` 断言失败也恢复 cwd/PATH。`auto_detect` 用 stub PATH 直测：bun-only→**Bun（合法回退正控）**、bun+pnpm→Pnpm（优先级）。不再有任何"值排除"断言 | 回放 pm-fallback-environment：继承环境 exit0 + **合法 bun 回退环境（私有 PATH 仅 bun+空 HOME/USERPROFILE）同测试 exit0**（原 exit101）；真实工具同环境 wire 无 pkg+disk npm→实际执行 **bun**（产品回退正确，非 R4-04 重开） |
+
+## 当期验证账（R6 轮）
+
+- scoped：proc_host+pkg+auto_detect 定向 **11/11**（新增 Truncated/BoundOverrun/矩阵重写/回退优先级）、
+  tool_process 默认 **21/21**+重串行 **8/8**、legacy **2/2**、lib **175/179**（4 预存在案）、
+  consumer **5/5**；净改 .rs rustfmt 0 diff。
+- Linux（WSL Ubuntu-22.04，冻结源码 --locked）：新面 **4/4**
+  （tool_pm_state_matrix/auto_detect_fallback/captured_drain_truncates/captured_drain_answers）。
+- 回放：R6 两反例脚本全闭（上表）+ 既有面保持。
+- 测试时序裁定遵守：未整档；merge 门 pending。
