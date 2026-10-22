@@ -117,3 +117,5 @@
 - 知识库生命周期：[Design 27](../design/27-knowledge-base-lifecycle.md)
 - 仓库布局与临时资产规则：[repository-layout](design/repository-layout.md)（PLAN-761）
 - 开发范式：[docs/specs/README.md](README.md)（v2.1 兼容期）+ [Design 26](../design/autoplan-spec-ledger.md)
+
+AutoGraphics 实验增量（PLAN-833）：[真实 Auto source driver](auto-graphics/auto-source-driver.md) 已交付 autographics-dev；I1 仅首片，Auto Squash 与生产 I2/I3/Shader/CAP 仍 pending。

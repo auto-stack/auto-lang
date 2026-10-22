@@ -90,3 +90,8 @@
   发行仍 pending；AutoShader/CAP 未实现。
 - 云/多窗口/跨平台、曲面或任意网格 Portal、逐平面深度遮挡、iced 内部上传与
   驱动驻留内存计量、组合管线 error scope：均未支持/未测，见 prototype-profile。
+## PLAN-833 delivered experimental slice
+
+Adds a finite real Auto SDK/AutoVM driver for 2D/3D object control and Auto-owned Breakout, with checked output/event admission and original Surface/Portal consumption. See [auto-source-driver.md](auto-source-driver.md). This is only I1's first slice: Auto Squash and the original two-game denominator remain pending. IH-03, production I2/RQHost, I3/Forge/distribution, AutoShader/CAP and the migration gate for merging graphics code into master remain pending. PLAN-830 composition/input facts above are retained.
+
+Delivery provenance: [PLAN-833](../../plans/archive/833-autographics-auto-source-minimal-loop.md), reviewed code 77302d855; production boundaries above remain unchanged.

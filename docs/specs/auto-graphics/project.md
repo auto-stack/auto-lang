@@ -34,3 +34,9 @@ Module identity：实验性 wgpu 图形/游戏研究（AGP）。独立 workspace
 
 Godot/Bevy 引擎兼容、第二渲染后端、生产 RQHost 接线、完整物理/动画编辑器、
 Tilemap/骨骼/联网/XR。
+
+## PLAN-833 Auto source consumer
+
+Independent `experimental/autographics-auto-driver` consumes pinned pure SDK source and AGP's neutral scene/renderer interfaces. Real Auto owns the basic scene and frozen Breakout simulation; Rust owns rendering, fonts/audio and window routing. No production crate/root manifest/lock or SDK source is modified. Independent R2 and frozen merge gates passed; source lands only on autographics-dev. Profile and limitations: [auto-source-driver.md](auto-source-driver.md).
+
+Delivery provenance: [PLAN-833](../../plans/archive/833-autographics-auto-source-minimal-loop.md), reviewed code 77302d855; production boundaries above remain unchanged.

@@ -1,0 +1,31 @@
+# PLAN-833 R1 repair readiness — work only
+
+Outcome: pass for work-owned repair; independent final review pending. Plan revision 2, execution_done 8/10. No contract change. Implementation commit `6c47b79b13352eef44bf7e65084d2a8827a0b8a5`; receipt HEAD `77302d8552f074ebedd53e757acfcf3db0bde230`. Same authoritative tree `D:/autostack/.wt/lang-833/auto-lang`, branch plan-833-dev; base 764e87559cff016d9e0d6b2141e5f1f9903398c5. SDK/three locks unchanged; 30 LF-normalized implementation hashes refreshed in code-identity.json. Clean implementation tree at handoff. Main preflight contained docs/plan bookkeeping only, no production-code WIP.
+
+## Current finding closure
+
+| Finding / invariant | Paths and states / durable input | Fix and permanent assertions | Observed result / gap |
+|---|---|---|---|
+| F-833-R1-01 / each GPU resource must match host | review-r1 provenance-probe.rs and --replacement; add_surface and frame_with_cursors; local/local, local/foreign, foreign/local, foreign/foreign, raw/local and absent-overlay controls | validate_device checks quad then text independently; device_ordinal reports None for heterogeneous content. graphics_loop::overlay_provenance_matrix_admission_and_replacement_preserves_target: 8 combinations × 2 entry states; classified errors, no admission target allocation or frame advance; replacement upload delta zero and last-good capture unchanged. Other adapters Iced/Scene3d retain existing single-resource checks; only two device admission call sites exist. | Baseline replay reproduced masked foreign quad, real panic101 and independent replacement Ok. Fixed durable replay rejects both directions with DeviceMismatch, raw control DeviceUnverifiable; replacement frame count unchanged, glyph image hash unchanged. No remaining contract gap. |
+| F-833-R1-02 / counters equal actual write payloads | review-r1 upload-probe.rs; TextRenderer camera/render, per-content/content aggregate/runtime total; absent/5/empty glyphs, clean/warm dirty, shared/single mounts | Two actual write_buffer sites record bytes; one content helper includes text in both aggregation entrypoints. graphics_loop::overlay_upload_payloads_are_counted_once_in_all_aggregates asserts exact rewrites/bytes, glyph pixels, zero clean-frame writes, shared/single text difference exactly2/304. | Baseline 1/64 both cases; fixed 5 glyph3/368, absent1/64, empty2/128. Deliberately omitted both counters: same formal gate fails101 (1/64 vs3/368), restored source then six GPU tests pass. No remaining gap. |
+
+## Executed repair verification
+
+All product commands ran in the authoritative tree, explicit manifests, locked/offline; logs in this directory. No concurrent writer/build and no whole root tiers.
+
+- Prior durable replay copied without editing input/control: baseline-replay.txt; final fixed-replay.txt. Actual linked AGP rlib path printed by replay script.
+- `cargo test --manifest-path experimental/autographics-auto-driver/Cargo.toml --locked --offline --test graphics_loop -- --nocapture`: **6/6**, zero skipped, repair-graphics.txt. Actual scene pixels/mesh/source-change/mutation controls, independent/shared VM, bounded fault,20 resets retained. New matrix16 executed states plus existing graphics controls. Original non-graphics11 acceptance cases reused from independent R1: SDK/VM/protocol/Auto source/golden inputs and implementation unchanged; only GPU provenance/accounting and graphics tests changed. Thus current acceptance inventory17, **6 rerun +11 reused**, not17 newly rerun.
+- Counter omission negative: repair-upload-negative.txt; intentional failure101. Current restored code hash bound; no mutation left.
+- `cargo check --manifest-path experimental/autographics-auto-driver/Cargo.toml --locked --offline --all-targets`: pass, repair-check.txt. Frozen SDK146 baseline warnings; no authored new warnings.
+- AGP `cargo test --manifest-path experimental/autographics-prototype/Cargo.toml --target-dir experimental/autographics-auto-driver/target --locked --offline --test breakout_contract --test squash_contract --test surface_contract`, dev debug0: **11+17+29=57/57**, repair-compatibility.txt.
+- Both manifests `cargo fmt --check`: pass; git diff --check pass. verify_source.py:680 pinned inputs,17 local packages/29edges,479 closure packages, forbidden0, all locks retained (repair-source.txt).
+
+## Measurements and evidence reuse
+
+V-07 final six-test scenario: cold compile25069us; shared P50/P95 2281/2988us, single2333/3483us; owned targets5 /9109600B; warm extra pipelines0; upload total**150720B**. Prior89280B undercount is invalidated. Five-glyph standalone overlay increment304B/2 writes, total368B/3 writes. Counters exclude creation/atlas uploads, Iced internal traffic, driver copies; GPU timestamp/residency remain unavailable. Process working set before/after20reset436543488/436752384B is not GPU memory.
+
+Native routing/focus/audio evidence from independent R1 remains applicable: host/input/script/audio code, source, assets/dependencies unchanged; device checks now accept the same valid same-device content and counters only observe existing writes. Current six-test GPU replay validates these valid renders after repair. SDK/source-only dependency closure and isolation tools unchanged; reuse their SDK-only evidence. Historical external package AGP and old upload totals are superseded and are **not** current repair graphics evidence; current source tree contains the repair. No claim of rerunning external fresh build or native window in this repair.
+
+AC-01..05: unaffected source/SDK/golden/native evidence reused with above boundaries plus fresh affected graphics replay; AC-06 now closes both invariant gaps; AC-07 updated README/handoff and proposed SD-01/03 in worktree. AC-08 independent review and AC-09 merge remain pending. Open in-contract findings, mandatory work-owned gaps, unresolved decisions: **none**. This implementation-session check cannot replace independent final review.
+
+Next: independent review same committed tree; no implementation writes during review. Merge-owned full driver test/build, applicable AGP native/content/resource/full compatibility gates remain pending until review pass; no root t/tv/tt/tb/tu/taa/tf/docs_gen run; not merged, not archived, tree retained. One failed final review so far; this is repair iteration1, not a new final review.

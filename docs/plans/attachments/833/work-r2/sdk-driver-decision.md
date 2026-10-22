@@ -1,0 +1,18 @@
+# T-02 SDK driver decision (r2 execution)
+
+Selected approach (b): one retained AutoVM/AutoTask, scalar typed callbacks and queries; the Auto instance owns globals, lists, gameplay and output/event calculations. Approach (a) compound-return transport was not needed (the bounded probe allowed at most two candidates). Internal container retention and final-owner release are nevertheless tested by the real Breakout lists and weak heap/string witnesses. No stdout transport, interpreter replacement, native graphics registration or Rust gameplay fallback.
+
+Path: `create_vm_from_source` → public AutoTask arguments (left-to-right) → `call_fn_by_name_cpu_slice` / `resume_fn_by_name_cpu_slice` → checked stack value/tag → `Script` staged queries → `Publication` whole-snapshot admission → AGP Scene / DrawCmd / MeshInstance / TextOverlay and Kira requests → original SurfaceRuntime/wgpu. `Parser` public AST supplies the callback type/count contract; the VM is compiled once per instance. High-level `VmInterpreter::call` remains untouched and unused.
+
+`mix(7 int, 1.25 float)=68.75`; changing source multiplier 10→20 gives 138.75. Repeated updates return 1.5, 3.5, 4.0 in one VM; independent VM state stays independent. Explicit wrong args/count, wrong/missing return/function and nonfinite output are rejected. Return stack is checked against its pre-call position. Long loops actually reach Runnable, then budget/cancel destroys task and VM; owner oracles distinguish an intentionally retained external pin from last-owner release.
+
+Feasibility corrections, without weakening the contract:
+
+* SDK Math.sqrt returns double; `as float` did not provide the required f32 result in the isolated probe. The frozen normalization uses eight finite Newton f32 steps inside Auto, with explicit float intermediates, plus Auto conditional abs. Its initial velocity is bit-equal to the original f32 computation and the entire unmodified golden passes. This is not a generic replacement for SDK math/conversion support; the SDK issue remains owned upstream.
+* The frozen paddle bound is ±375 from the actual formula/source/golden; the old sim comment says ±390. Auto follows actual frozen behavior, never the stale comment.
+* `AutoTask.cpu_steps_total` is per callback, not per instance; the adapter resets it only at first dispatch. Replay across 10,800 callbacks covers the previously exposed accumulation failure.
+* A first pump version returned to the OS after every 1,000-step slice, underusing its 8ms round and filling the queue. It now resumes within the same bounded round. A full-output query version was replaced with Auto `changed(slot)` flags and bridge-retained validated slots. All individual callback outputs/events remain queued until consumed. Original failing window receipts are retained as historical, not current passes.
+
+Current finite profile/budgets and schema are in README and proposed Spec. New output resources or other value types require extending the boundary and tests; this Plan does not alter SDK/VM semantics. Cold/warm, single/shared GPU targets, resets, working set, native input and relocation receipts identify actual measurements; GPU timestamps are unavailable. Review-owned and merge-owned gates are not replaced by work self-checks.
+
+Transient collision/destruction event arrays are cleared by every non-tick input callback. Consumer replay injects pointer and key callbacks immediately after contacts; retaining the previous tick events would replay sound ordinals and must fail admission. Pure tick replay and event-free scene input alone did not cover this lifetime state.

@@ -86,3 +86,12 @@
 - 候选窗逐像素模板比对不在本 profile 证据范围；Null 剪贴板；组合管线创建尚未
   安装 wgpu error scope（缺口具名保留）。
 - 生产 AutoUI/RQHost/Forge 接线、AutoShader/CAP、I1–I3 仍 pending。
+## PLAN-833 Auto source profile
+
+Windows x64 single-window keyboard/mouse; original GPU/Iced/stock widget/font/audio resource versions. Two retained thread-confined SDK instances; two Portal mounts share the first instance and advance it once per fixed tick. Auto output/event/scalar limits, slice/round budgets and error/close behavior are explicit in [auto-source-driver.md](auto-source-driver.md). GPU pixels/3D hashes, source changes, golden replay, actual OS-input focus control and reset/owner witnesses supplement the inherited 829/830 evidence; independent R2 and T-10 closeout bind the delivered experimental slice. Main Plan receipts bind exact device, compile/pump timings, memory/upload/target/pipeline counts. GPU timestamps are unavailable. Full engine, Auto Squash, production RQHost/AutoUI and Shader/CAP stay pending.
+
+PLAN-833 R1 repair: content-upload accounting includes TextRenderer camera/glyph writes (64B + 48B/glyph, empty glyphs omit instance write). Counts follow child renders, not mount count; five glyphs add 304B / two rewrites. All quad/text resources must independently match the runtime at admission and each frame before any allocation/frame/GPU side effect. See auto-source-driver.md and the current repair receipt for exact controls and revised measurements.
+
+Delivery provenance: [PLAN-833](../../plans/archive/833-autographics-auto-source-minimal-loop.md), reviewed code 77302d855; production boundaries above remain unchanged.
+
+Standalone Windows source consumers must explicitly retain the frozen 32MB main-thread stack profile; this is not inherited outside the repository. Build with `cargo rustc --locked --offline --bin autographics-auto-driver -- -C link-arg=/STACK:33554432`, then run the built executable. The default external stack overflowed; the same32MB profile passed isolated native replay without source changes.
