@@ -108,4 +108,4 @@ VM/iced extra 根和 manifest 聚合时去重；空子模块继续按无入口/p
 回归：`product_directory_names_*` 覆盖改名/路径匹配/local、无效/缺失清单、
 空子模块、显式 extra 优先及聚合去重；Vue `extra_roots_three_track_parity`
 覆盖正式目录 `auto-notes`→稳定 `015-notes` 且没有第二个新名入口。
-物理迁移归 [AutoOS PLAN-050](../../../../auto-os/docs/plans/050-app-directory-product-names.md)。
+物理迁移归 [AutoOS PLAN-050](../../../../auto-os/docs/plans/archive/050-app-directory-product-names.md)。
