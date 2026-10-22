@@ -178,19 +178,37 @@ impl VscodeProject {
             .clone()
             .unwrap_or_else(|| "my-extension".to_string());
         let config = VscodeConfig::from_request(req, &name);
-        Self::assemble(root_dir, name, config)
+        // T-06 R1（F-815-T06-R1-01）：前端目录消费请求声明（节点形式
+        // 优先，无声明回退布局探测链）。
+        let front_override = crate::util::request_front_dir(root_dir, req);
+        Self::assemble_front(root_dir, name, config, front_override.as_deref())
     }
 
     fn assemble(root_dir: &Path, name: String, config: VscodeConfig) -> AutoResult<Self> {
-        // Determine front directory (filesystem layout — not pac data)
-        let front_dir = if root_dir.join("src").join("front").exists() {
-            root_dir.join("src").join("front")
-        } else if root_dir.join("source").join("front").exists() {
-            root_dir.join("source").join("front")
-        } else if root_dir.join("front").exists() {
-            root_dir.join("front")
-        } else {
-            root_dir.join("src").join("front")
+        Self::assemble_front(root_dir, name, config, None)
+    }
+
+    fn assemble_front(
+        root_dir: &Path,
+        name: String,
+        config: VscodeConfig,
+        front_override: Option<&Path>,
+    ) -> AutoResult<Self> {
+        // Determine front directory (layout — not pac data): the request's
+        // declaration wins; legacy keeps the multi-location probe chain.
+        let front_dir = match front_override {
+            Some(declared) => declared.to_path_buf(),
+            None => {
+                if root_dir.join("src").join("front").exists() {
+                    root_dir.join("src").join("front")
+                } else if root_dir.join("source").join("front").exists() {
+                    root_dir.join("source").join("front")
+                } else if root_dir.join("front").exists() {
+                    root_dir.join("front")
+                } else {
+                    root_dir.join("src").join("front")
+                }
+            }
         };
 
         let output_dir = root_dir.join("gen").join("front").join("vscode");

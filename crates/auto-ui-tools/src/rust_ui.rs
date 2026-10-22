@@ -3210,6 +3210,15 @@ impl<'a> PacSource<'a> {
         self.req.is_some()
     }
 
+    /// PLAN-815 T-06 R1（F-815-T06-R1-01）：请求声明的前端源目录
+    /// （`app("front")` 节点形式优先于 `front:` prop——镜像
+    /// parse_workspace_path；无声明返回 None=调用方默认 src/front）。
+    /// legacy 臂无请求 → None（默认布局语义冻结）。
+    pub fn declared_front_dir(&self, project_dir: &Path) -> Option<std::path::PathBuf> {
+        let req = self.req?;
+        crate::util::request_front_dir(project_dir, req)
+    }
+
     /// T-05 R3（R3-01）：请求携带的 theme{} lite 声明（单源数据——供
     /// internal-vm-exec 执行子进程同链 compose 激活；legacy 返回 None）。
     pub fn theme_decl_lite(

@@ -174,30 +174,51 @@ impl JetProject {
         Self::build(root_dir, reads)
     }
 
-    /// 请求路径（PLAN-809 T-06c 生产入口）：pac.at 数据全部来自请求。
+    /// 请求路径（PLAN-809 T-06c 生产入口）：pac.at 数据全部来自请求；
+    /// 前端目录消费请求声明（T-06 R1/F-815-T06-R1-01——节点形式优先，
+    /// 无声明回退布局探测链）。
     pub fn from_workspace_with_request(
         root_dir: &Path,
         req: &auto_project_model::generation_request::GenerationRequest,
     ) -> AutoResult<Self> {
-        Self::build(root_dir, JetReads::from_request(req))
+        let front_override = crate::util::request_front_dir(root_dir, req);
+        Self::build_front(
+            root_dir,
+            JetReads::from_request(req),
+            front_override.as_deref(),
+        )
     }
 
     fn build(root_dir: &Path, reads: JetReads) -> AutoResult<Self> {
+        Self::build_front(root_dir, reads, None)
+    }
+
+    fn build_front(
+        root_dir: &Path,
+        reads: JetReads,
+        front_override: Option<&Path>,
+    ) -> AutoResult<Self> {
         if !reads.gate_ok {
             return Err("Backend 'jet' not found in pac.at. Add 'jet' to backend list.".into());
         }
 
         let name = reads.name;
 
-        // Determine front directory - check multiple locations
-        let front_dir = if root_dir.join("src").join("front").exists() {
-            root_dir.join("src").join("front")
-        } else if root_dir.join("source").join("front").exists() {
-            root_dir.join("source").join("front")
-        } else if root_dir.join("front").exists() {
-            root_dir.join("front")
-        } else {
-            root_dir.join("src").join("front")
+        // Determine front directory: the request's declaration wins;
+        // legacy keeps the multi-location probe chain.
+        let front_dir = match front_override {
+            Some(declared) => declared.to_path_buf(),
+            None => {
+                if root_dir.join("src").join("front").exists() {
+                    root_dir.join("src").join("front")
+                } else if root_dir.join("source").join("front").exists() {
+                    root_dir.join("source").join("front")
+                } else if root_dir.join("front").exists() {
+                    root_dir.join("front")
+                } else {
+                    root_dir.join("src").join("front")
+                }
+            }
         };
 
         // Output directory

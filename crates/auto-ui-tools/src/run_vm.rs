@@ -62,7 +62,7 @@ fn execute_vm_entry(code: &str, path: Option<&str>) -> auto_lang_core::AutoResul
 /// thread runs for the process lifetime (cleaned up when the process exits).
 ///
 /// Returns true if the server became ready, false on timeout / missing api.at.
-pub fn start_vm_server(project_dir: &Path) -> bool {
+pub fn start_vm_server(project_dir: &Path, front_dir: Option<&Path>) -> bool {
     let api_path = project_dir.join("src").join("back").join("api.at");
     if !api_path.exists() {
         eprintln!(
@@ -83,14 +83,14 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
 
     let api_str = api_path.to_string_lossy().to_string();
     // Seed extra module search dirs for the standalone api.at run. A split-mode
-    // api.at imports `types` from src/front/types.at, but the entry only seeds
+    // api.at imports `types` from <front>/types.at, but the entry only seeds
     // the source file's own directory (src/back) — without this, `use types`
-    // fails with "Module not found". Inject src/ + src/front via AUTO_SOURCE_DIRS.
-    let src_dir = project_dir.join("src");
-    let mut extra_dirs: Vec<std::path::PathBuf> = vec![src_dir.join("front")];
-    if !extra_dirs[0].exists() {
-        extra_dirs = Vec::new();
-    }
+    // fails with "Module not found". Inject the (request-declared) front dir
+    // via AUTO_SOURCE_DIRS (PLAN-815 T-06 R1: front_decl is honored).
+    let extra_dirs: Vec<std::path::PathBuf> = match front_dir {
+        Some(dir) if dir.exists() => vec![dir.to_path_buf()],
+        _ => Vec::new(),
+    };
     if !extra_dirs.is_empty() {
         let joined = extra_dirs
             .iter()
@@ -290,6 +290,9 @@ pub fn run_vm_ui_flow(
     // （VM+VM split）或 a2r 转译的 Rust axum server（VM+Rust）。
     // AUTO_BACKEND_IMPL=rust → Rust 后端（start_api_server）
     step(1, "resolve backend");
+    // PLAN-815 T-06 R1：split 模式 api.at 的模块搜索种子同样消费请求
+    // 声明的前端目录（在 split 分支前求值一次）。
+    let front_seed = source.declared_front_dir(project_dir);
     let pac_path = project_dir.join("pac.at");
     let has_rust_api = source.api_is_rust(&pac_path);
     let backend_impl = std::env::var("AUTO_BACKEND_IMPL").unwrap_or_else(|_| {
@@ -326,7 +329,7 @@ pub fn run_vm_ui_flow(
         } else {
             // VM+VM split: AutoVM HTTP server as backend.
             // PLAN-026 T-05: ready 失败显式中止(不进组件构建/Init)。
-            if !start_vm_server(project_dir) {
+            if !start_vm_server(project_dir, front_seed.as_deref()) {
                 if proc_host::cancelled() {
                     return Ok(FlowEnd::Cancelled);
                 }
@@ -458,7 +461,13 @@ pub fn run_vm_ui_flow(
         );
     }
 
-    let entry = project_dir.join("src").join("front").join("app.at");
+    // PLAN-815 T-06 R1（F-815-T06-R1-01）：前端源目录消费请求声明
+    // （app("front") 节点形式优先、front: prop 次之——镜像
+    // parse_workspace_path；无声明=默认 src/front 正控保持）。
+    let front_dir = source
+        .declared_front_dir(project_dir)
+        .unwrap_or_else(|| project_dir.join("src").join("front"));
+    let entry = front_dir.join("app.at");
     if !entry.exists() {
         stop_api_server(&mut _api_child);
         return Err(format!("Frontend entry not found: {}", entry.display()).into());
@@ -481,8 +490,8 @@ pub fn run_vm_ui_flow(
         }
     );
 
-    // Change CWD to src/front/ so `use` imports resolve correctly
-    let front_dir = project_dir.join("src").join("front");
+    // Change CWD to the (request-declared) front dir so `use` imports
+    // resolve correctly.
     let original_dir = std::env::current_dir().ok();
     let _ = std::env::set_current_dir(&front_dir);
 

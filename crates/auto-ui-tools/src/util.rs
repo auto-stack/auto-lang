@@ -165,6 +165,29 @@ pub fn http_base_url() -> String {
     format!("http://127.0.0.1:{}", http_port())
 }
 
+/// The request's DECLARED front source dir (PLAN-815 T-06 R1 /
+/// F-815-T06-R1-01): `app("front")` node form wins over the `front:`
+/// prop form — mirroring parse_workspace_path — resolved against the
+/// project root. None when the request declares no front (callers keep
+/// their default `src/front` / legacy chain).
+pub fn request_front_dir(
+    root: &std::path::Path,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> Option<std::path::PathBuf> {
+    let declared = req
+        .front_node_form
+        .as_deref()
+        .or(req.front_decl.as_deref())?;
+    let trimmed = declared
+        .trim_start_matches("./")
+        .trim_start_matches(".\\")
+        .trim_matches('/');
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(root.join(trimmed))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3,15 +3,37 @@
 //! full v1 message surface round-tripping losslessly and the framing
 //! boundaries enforcing named rejections on the consumer side.
 
+// All code here is test-only (the fixture proves CONSUMABILITY, not a
+// product API) — imports stay under cfg(test) so the lib target is
+// warning-free (PLAN-815 T-06..08 R1 / F-815-T07-R1-04).
+#[cfg(test)]
 use auto_project_model::descriptor::SourceInfo;
-use auto_project_model::{parse_document, GenerationRequest, RequestMode};
-use auto_tool_protocol::budget::Budgets;
+#[cfg(test)]
+use auto_project_model::{parse_document, GenerationRequest};
+#[cfg(test)]
 use auto_tool_protocol::framing::{parse_frame, write_frame, FrameParse};
+#[cfg(test)]
 use auto_tool_protocol::message::{
     ClientBody, ClientEnvelope, ServerBody, ServerEnvelope, ToolEvent, WireRequest,
 };
+#[cfg(test)]
 use auto_tool_protocol::report::{RunOutcome, Severity};
-use auto_tool_protocol::{Capability, ErrorKind, ToolError, PROTOCOL_VERSION};
+#[cfg(test)]
+use auto_tool_protocol::{Capability, ToolError, PROTOCOL_VERSION};
+
+/// A minimal valid request for the wire round-trips.
+#[cfg(test)]
+fn test_request() -> GenerationRequest {
+    GenerationRequest::from_descriptor(
+        &parse_document(
+            "name: \"consumer\"
+render: \"vue\"
+",
+            SourceInfo::inline(),
+        )
+        .expect("parse"),
+    )
+}
 
 /// Compile-time face: the descriptor type is buildable from the protocol
 /// crate alone — no UI dependency for the capability surface.
@@ -33,7 +55,9 @@ fn consumer_builds_descriptor_from_protocol() {
         },
     ];
     assert_eq!(caps.len(), 5);
-    assert!(caps.iter().any(|c| c.operation == "build_ui" && c.cancellable));
+    assert!(caps
+        .iter()
+        .any(|c| c.operation == "build_ui" && c.cancellable));
 }
 
 /// Full v1 client message surface round-trips losslessly: every operation
@@ -67,7 +91,13 @@ fn consumer_full_client_surface_round_trips() {
             },
             "run_ui",
         ),
-        (ClientBody::Input { target_id: 1, data: vec![113, 10] }, "input"),
+        (
+            ClientBody::Input {
+                target_id: 1,
+                data: vec![113, 10],
+            },
+            "input",
+        ),
         (ClientBody::Cancel { target_id: 1 }, "cancel"),
     ];
     for (body, op_name) in bodies {
@@ -78,8 +108,7 @@ fn consumer_full_client_surface_round_trips() {
         };
         let json = serde_json::to_value(&envelope).expect("serialize");
         assert_eq!(json["body"]["op"], op_name, "op name for {op_name}");
-        let back: ClientEnvelope =
-            serde_json::from_value(json).expect("deserialize");
+        let back: ClientEnvelope = serde_json::from_value(json).expect("deserialize");
         assert_eq!(back, envelope);
         assert_eq!(back.body.operation(), op_name);
     }
@@ -140,8 +169,7 @@ fn consumer_full_server_surface_round_trips() {
     ];
     for envelope in envelopes {
         let json = serde_json::to_value(&envelope).expect("serialize");
-        let back: ServerEnvelope =
-            serde_json::from_value(json).expect("deserialize");
+        let back: ServerEnvelope = serde_json::from_value(json).expect("deserialize");
         assert_eq!(back, envelope);
     }
 }
@@ -156,8 +184,7 @@ fn consumer_framing_boundaries() {
         body: ClientBody::Describe,
     };
     let mut buf = Vec::new();
-    write_frame(&mut buf, &serde_json::to_value(&envelope).unwrap(), 8 << 20)
-        .expect("frameable");
+    write_frame(&mut buf, &serde_json::to_value(&envelope).unwrap(), 8 << 20).expect("frameable");
     match parse_frame(&buf, 8 << 20) {
         FrameParse::Complete { message, consumed } => {
             assert_eq!(consumed, buf.len());
@@ -177,16 +204,6 @@ fn consumer_framing_boundaries() {
     }
 }
 
-fn test_request() -> GenerationRequest {
-    GenerationRequest::from_descriptor(
-        &parse_document(
-            "name: \"consumer\"\nrender: \"vue\"\n",
-            SourceInfo::inline(),
-        )
-        .expect("parse"),
-    )
-}
-
 /// The `Severity` and error taxonomy types are constructible from the
 /// protocol crate alone (consumer-side error rendering).
 #[test]
@@ -200,8 +217,7 @@ fn consumer_error_taxonomy() {
         ToolError::internal("boom"),
     ];
     for e in &errors {
-        let round: ToolError =
-            serde_json::from_value(serde_json::to_value(e).unwrap()).unwrap();
+        let round: ToolError = serde_json::from_value(serde_json::to_value(e).unwrap()).unwrap();
         assert_eq!(round, *e);
     }
     let _ = Severity::Warning; // Severity is importable + usable

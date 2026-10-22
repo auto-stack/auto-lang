@@ -126,44 +126,59 @@ impl ArkProject {
         Self::build(root_dir, reads)
     }
 
-    /// 请求路径（PLAN-809 T-06c 生产入口）。
+    /// 请求路径（PLAN-809 T-06c 生产入口）；前端目录消费请求声明
+    /// （T-06 R1/F-815-T06-R1-01——节点形式优先，无声明回退探测链）。
     pub fn from_workspace_with_request(
         root_dir: &Path,
         req: &auto_project_model::generation_request::GenerationRequest,
     ) -> AutoResult<Self> {
-        Self::build(root_dir, ArkReads::from_request(req))
+        let front_override = crate::util::request_front_dir(root_dir, req);
+        Self::build_front(
+            root_dir,
+            ArkReads::from_request(req),
+            front_override.as_deref(),
+        )
     }
 
     fn build(root_dir: &Path, reads: ArkReads) -> AutoResult<Self> {
+        Self::build_front(root_dir, reads, None)
+    }
+
+    fn build_front(
+        root_dir: &Path,
+        reads: ArkReads,
+        front_override: Option<&Path>,
+    ) -> AutoResult<Self> {
         if !reads.gate_ok {
             return Err("Backend 'ark' not found in pac.at. Add 'ark' to backend list.".into());
         }
 
         let name = reads.name;
 
-        // Determine front/source directory
-        // Supports multiple directory structures:
-        // 1. source/front/ (standard)
-        // 2. front/ (alternative)
-        // 3. pages/ or widgets/ directly in root (quickstart tutorials)
-        // 4. aura/ subdirectory (alternative quickstart)
+        // Determine front/source directory: the request's declaration
+        // wins; legacy keeps the multi-structure probe chain:
+        // 1. source/front/ (standard)  2. front/ (alternative)
+        // 3. pages/ or widgets/ in root (quickstart)  4. aura/
         // 5. app.at directly in root (simple single-file projects)
-        let front_dir = if root_dir.join("src").join("front").exists() {
-            root_dir.join("src").join("front")
-        } else if root_dir.join("source").join("front").exists() {
-            root_dir.join("source").join("front")
-        } else if root_dir.join("front").exists() {
-            root_dir.join("front")
-        } else if root_dir.join("pages").exists() || root_dir.join("widgets").exists() {
-            // Quickstart structure: pages/ and widgets/ directly in root
-            root_dir.to_path_buf()
-        } else if root_dir.join("aura").exists() {
-            root_dir.join("aura")
-        } else if root_dir.join("app.at").exists() {
-            // Simple single-file project: app.at directly in root
-            root_dir.to_path_buf()
-        } else {
-            root_dir.join("src").join("front")
+        let front_dir = match front_override {
+            Some(declared) => declared.to_path_buf(),
+            None if root_dir.join("src").join("front").exists() => {
+                root_dir.join("src").join("front")
+            }
+            None if root_dir.join("source").join("front").exists() => {
+                root_dir.join("source").join("front")
+            }
+            None if root_dir.join("front").exists() => root_dir.join("front"),
+            None if root_dir.join("pages").exists() || root_dir.join("widgets").exists() => {
+                // Quickstart structure: pages/ and widgets/ directly in root
+                root_dir.to_path_buf()
+            }
+            None if root_dir.join("aura").exists() => root_dir.join("aura"),
+            None if root_dir.join("app.at").exists() => {
+                // Simple single-file project: app.at directly in root
+                root_dir.to_path_buf()
+            }
+            None => root_dir.join("src").join("front"),
         };
 
         // Output directory
@@ -714,7 +729,15 @@ fn build_ark_project_inner(
     }
 
     let ark_dir = root_dir.join("gen").join("front").join("ark");
+    let _hap = assemble_hap(&ark_dir, strict)?;
+    Ok(())
+}
 
+/// Shared HAP assembly (wrapper check → owned `hvigorw assembleHap` →
+/// artifact oracle). PLAN-815 T-06 R1（F-815-T06-R1-02 抽取共享）：
+/// `strict`（托管/协议形态）下缺 wrapper/构建失败/退出 0 但产物缺失均
+/// 具名 `Err`；legacy 基线=打印提示后 `Ok(None)`（未真正构建）。
+fn assemble_hap(ark_dir: &Path, strict: bool) -> AutoResult<Option<std::path::PathBuf>> {
     // Step 2: Check for hvigorw
     println!();
     println!("{}", "▶ Step 2: Checking Hvigor wrapper...".bright_cyan());
@@ -732,12 +755,13 @@ fn build_ark_project_inner(
             return Err(format!(
                 "Hvigor wrapper not found at {} — open the project in DevEco Studio to build (no build was executed)",
                 hvigorw.display()
-            ).into());
+            )
+            .into());
         }
         println!("  ⚠ Hvigor wrapper not found.");
         println!("  Please open the project in DevEco Studio to build.");
         println!("  Project location: {}", ark_dir.display());
-        return Ok(());
+        return Ok(None);
     }
 
     println!("  ✓ Hvigor wrapper found");
@@ -749,7 +773,7 @@ fn build_ark_project_inner(
     // PLAN-815 R4-05（F-815-T05-R4-05）：hvigorw 经 owned 树设施——取消/
     // EOF 真终止整树（不再只置标志等 status 返回）。
     let build_result =
-        crate::proc_host::run_external_status(&hvigorw, &["assembleHap"], &ark_dir, "ark-build")
+        crate::proc_host::run_external_status(&hvigorw, &["assembleHap"], ark_dir, "ark-build")
             .map_err(|e| format!("Failed to build: {}", e))?;
 
     let hap = ark_dir.join("entry/build/default/outputs/default/entry-default-signed.hap");
@@ -760,13 +784,15 @@ fn build_ark_project_inner(
             return Err(format!(
                 "hvigorw assembleHap exited 0 but the HAP artifact is missing at {} — the build did not really run",
                 hap.display()
-            ).into());
+            )
+            .into());
         }
         println!();
         println!("{}", "✓ Build successful!".bright_green());
         println!();
         println!("HAP location:");
         println!("  {}", hap.display().to_string().bright_cyan());
+        Ok(Some(hap))
     } else {
         // PLAN-815 R4-06/R5-01：托管/协议形态真实构建失败=具名 Err；
         // legacy 基线=打印提示后 Ok（旧公开入口返回语义不静默改）。
@@ -774,14 +800,14 @@ fn build_ark_project_inner(
             return Err(format!(
                 "ark build failed (hvigorw assembleHap exited with {build_result}); try manually: cd {} && ./hvigorw assembleHap",
                 ark_dir.display()
-            ).into());
+            )
+            .into());
         }
         println!();
         println!("  ⚠ Build failed. Try running manually:");
         println!("    cd {} && ./hvigorw assembleHap", ark_dir.display());
+        Ok(None)
     }
-
-    Ok(())
 }
 
 /// Run ArkTS project (auto run command for ark backend)
@@ -808,6 +834,12 @@ fn run_ark_project_inner(
         "Running ArkTS/HarmonyOS project (backend: ark)".bright_cyan()
     );
 
+    // PLAN-815 T-06 R1（F-815-T06-R1-02）：托管/协议形态的 run 是**真实
+    // 执行链**——生成 → 构建 HAP → hdc 安装 → aa start 启动；任一前置
+    // 缺失（wrapper/hdc/设备）都是具名失败，手工准备不冒充运行完成。
+    // legacy CLI 直跑保持手工指导语义（基线返回 Ok，兼容边界）。
+    let strict = crate::proc_host::current().is_some();
+
     // Step 1: Generate code
     println!();
     println!("{}", "▶ Step 1: Generating ArkTS code...".bright_cyan());
@@ -818,19 +850,152 @@ fn run_ark_project_inner(
 
     let ark_dir = root_dir.join("gen").join("front").join("ark");
 
-    println!();
-    println!("{}", "═══════════════════════════════════".bright_green());
-    println!("{}", "  ArkTS/HarmonyOS project ready!".bright_green());
-    println!("{}", "═══════════════════════════════════".bright_green());
-    println!();
-    println!("To run the app:");
-    println!("  1. Open DevEco Studio");
-    println!(
-        "  2. Open the project at: {}",
-        ark_dir.display().to_string().bright_cyan()
-    );
-    println!("  3. Connect a HarmonyOS device or start an emulator");
-    println!("  4. Click Run or use: ./hvigorw installHap");
+    if !strict {
+        // Legacy manual guidance (frozen baseline).
+        println!();
+        println!("{}", "═══════════════════════════════════".bright_green());
+        println!("{}", "  ArkTS/HarmonyOS project ready!".bright_green());
+        println!("{}", "═══════════════════════════════════".bright_green());
+        println!();
+        println!("To run the app:");
+        println!("  1. Open DevEco Studio");
+        println!(
+            "  2. Open the project at: {}",
+            ark_dir.display().to_string().bright_cyan()
+        );
+        println!("  3. Connect a HarmonyOS device or start an emulator");
+        println!("  4. Click Run or use: ./hvigorw installHap");
+        return Ok(());
+    }
 
+    // Step 2: Assemble the HAP (strict: named failure on any missing
+    // prerequisite — wrapper/toolchain included).
+    let Some(hap) = assemble_hap(&ark_dir, true)? else {
+        // Unreachable in strict mode (assemble_hap errors instead).
+        return Err("ark run did not produce a HAP artifact".into());
+    };
+
+    // Step 3: hdc toolchain gate.
+    println!();
+    println!("{}", "▶ Step 3: Checking hdc toolchain...".bright_cyan());
+    if !crate::pkg::command_exists("hdc") {
+        return Err(
+            "hdc not found — install DevEco Studio / the HarmonyOS SDK and put hdc on PATH; manual fallback: open the project in DevEco Studio and Run"
+                .into(),
+        );
+    }
+
+    // Step 4: device probe (owned capture; incomplete probes are named
+    // failures per the R6 capture contract).
+    println!();
+    println!(
+        "{}",
+        "▶ Step 4: Checking HarmonyOS devices...".bright_cyan()
+    );
+    let targets = crate::proc_host::run_capture_probe(
+        std::path::Path::new("hdc"),
+        &["list", "targets"],
+        &ark_dir,
+        "ark-hdc",
+    )?;
+    let device = targets
+        .as_deref()
+        .unwrap_or("")
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty() && !line.eq_ignore_ascii_case("[empty]"));
+    let Some(device) = device else {
+        return Err(
+            "no HarmonyOS device or emulator connected (hdc list targets is empty) — connect a device or start an emulator; manual fallback: DevEco Studio Run"
+                .into(),
+        );
+    };
+    println!("  ✓ device: {device}");
+
+    // Step 5: install the HAP (owned tree).
+    println!();
+    println!("{}", "▶ Step 5: Installing HAP...".bright_cyan());
+    let install = crate::proc_host::run_external_status(
+        std::path::Path::new("hdc"),
+        &["-t", device, "install", "-r", &hap.to_string_lossy()],
+        &ark_dir,
+        "ark-install",
+    )
+    .map_err(|e| format!("hdc install failed to start: {e}"))?;
+    if !install.success() {
+        return Err(format!(
+            "hdc install exited with {install} — HAP at {}",
+            hap.display()
+        )
+        .into());
+    }
+
+    // Step 6: launch (bundle from the generated AppScope/app.json5 — the
+    // generated output is the single source; ability defaults to the
+    // scaffold's EntryAbility unless module.json5 names another).
+    let bundle = read_generated_bundle_name(&ark_dir);
+    let ability = read_generated_main_ability(&ark_dir);
+    println!();
+    println!("{}", "▶ Step 6: Launching app...".bright_cyan());
+    let start = crate::proc_host::run_external_status(
+        std::path::Path::new("hdc"),
+        &[
+            "-t", device, "shell", "aa", "start", "-b", &bundle, "-a", &ability,
+        ],
+        &ark_dir,
+        "ark-launch",
+    )
+    .map_err(|e| format!("hdc shell aa start failed to start: {e}"))?;
+    if !start.success() {
+        return Err(format!(
+            "hdc shell aa start exited with {start} (bundle {bundle}, ability {ability})"
+        )
+        .into());
+    }
+    println!();
+    println!(
+        "{}",
+        format!("✓ App launched on {device} (bundle {bundle})").bright_green()
+    );
     Ok(())
+}
+
+/// The generated AppScope/app.json5 `bundleName` (single source = the
+/// generated output; defaults to a normalized project name shape).
+fn read_generated_bundle_name(ark_dir: &Path) -> String {
+    let path = ark_dir.join("AppScope").join("app.json5");
+    if let Ok(text) = fs::read_to_string(&path) {
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("\"bundleName\":") {
+                let value = rest.trim().trim_matches('"').trim();
+                if !value.is_empty() {
+                    return value.to_string();
+                }
+            }
+        }
+    }
+    "com.example.arkapp".to_string()
+}
+
+/// The generated entry module's `mainElement` ability name (default
+/// EntryAbility — the scaffold's shape).
+fn read_generated_main_ability(ark_dir: &Path) -> String {
+    let path = ark_dir
+        .join("entry")
+        .join("src")
+        .join("main")
+        .join("module.json5");
+    if let Ok(text) = fs::read_to_string(&path) {
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("\"mainElement\":") {
+                let value = rest.trim().trim_matches('"').trim();
+                if !value.is_empty() {
+                    return value.to_string();
+                }
+            }
+        }
+    }
+    "EntryAbility".to_string()
 }

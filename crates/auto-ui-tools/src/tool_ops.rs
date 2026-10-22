@@ -254,11 +254,18 @@ pub fn run_report(request: &GenerationRequest) -> Result<RunReport, ToolError> {
         ),
         "rust" => {
             // automan's rule: a rust-render project is a UI project iff it
-            // has src/front; plain rust projects are not UI execution.
-            if !root.join("src").join("front").exists() {
+            // has a front source dir; plain rust projects are not UI
+            // execution. PLAN-815 T-06 R1（F-815-T06-R1-01）：判定消费
+            // 请求声明的前端目录（无声明=默认 src/front 正控保持）。
+            let front_dir = crate::util::request_front_dir(&root, request)
+                .unwrap_or_else(|| root.join("src").join("front"));
+            if !front_dir.exists() {
                 return Err(ToolError::invalid_field(
                     "request",
-                    "render 'rust' without src/front is not a UI project",
+                    format!(
+                        "render 'rust' without a front source dir ({}) is not a UI project",
+                        front_dir.display()
+                    ),
                 ));
             }
             crate::rust_ui::run_rust_ui_with_request(&root, Vec::new(), request)

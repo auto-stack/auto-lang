@@ -383,7 +383,11 @@ pub fn run_vue_flow(
     let backend_impl = std::env::var("AUTO_BACKEND_IMPL").unwrap_or_else(|_| "rust".to_string());
     if backend_impl == "vm" {
         // Vue+VM: AutoVM HTTP server as backend.
-        crate::run_vm::start_vm_server(root_dir);
+        crate::run_vm::start_vm_server(
+            root_dir,
+            req.and_then(|r| crate::util::request_front_dir(root_dir, r))
+                .as_deref(),
+        );
     } else {
         // Vue+Rust: a2r-generated Rust axum server.
         // PLAN-026 T-05: ready 失败显式中止(不进 dev-server 步)。

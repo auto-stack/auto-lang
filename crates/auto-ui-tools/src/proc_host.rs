@@ -999,6 +999,46 @@ pub fn run_external_status(
         .status()
 }
 
+/// Owned capture probe with the full R6 consumer contract (PLAN-815
+/// T-06 R1）：natural EOF + exit 0 → `Ok(Some(complete_stdout))`（空输出
+/// 是合法完整结果）；取消 → `Err(CANCELLED_ERR)`；非自然捕获结束
+/// （BoundOverrun/Truncated/IoError/无取消 Stopped）→ 先 kill+有界收尸
+/// 再 `Err(具名)`；非零退出/等待失败/spawn 失败同具名。部分输出永不
+/// 冒充完整探测结果。
+pub fn run_capture_probe(
+    program: &std::path::Path,
+    args: &[&str],
+    cwd: &std::path::Path,
+    label: &str,
+) -> Result<Option<String>, String> {
+    let spec = TrackedSpawn {
+        capture_stdout: true,
+        ..TrackedSpawn::new(
+            program.to_string_lossy().to_string(),
+            args.iter().map(|a| a.to_string()).collect(),
+        )
+        .with_cwd(cwd)
+    };
+    let tracked =
+        spawn_tracked(spec, label).map_err(|e| format!("{label} probe failed to start: {e}"))?;
+    let (stdout, end) = drain_captured_stdout(&tracked);
+    if cancelled() {
+        return Err(CANCELLED_ERR.to_string());
+    }
+    if !end.is_natural_eof() {
+        tracked.kill();
+        let teardown = wait_tracked(&tracked);
+        return Err(format!(
+            "{label} probe did not complete ({end:?}; owned tree teardown {teardown:?})"
+        ));
+    }
+    match wait_tracked(&tracked) {
+        Ok(status) if status.success() => Ok(Some(String::from_utf8_lossy(&stdout).into_owned())),
+        Ok(status) => Err(format!("{label} probe exited with {status}")),
+        Err(reason) => Err(format!("{label} probe wait failed: {reason}")),
+    }
+}
+
 impl TrackedChild {
     /// Take the caller-drained stdout pipe (spawn with `capture_stdout`).
     pub fn take_captured_stdout(&self) -> Option<std::process::ChildStdout> {
