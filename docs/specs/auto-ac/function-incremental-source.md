@@ -6,7 +6,7 @@
 ## 受检接口环境与单 body 检查
 
 - 冷初始化走完整前端（`compile_scalar_source`：parse→resolve→typecheck→Atom
-  render/bind→verify），产 `CheckedEnv`（驻留受检接口环境：每函数签名/owner 域/
+  render/bind→verify），结合 `resolve_env` 保留 `CheckedEnv`（驻留受检接口环境：每函数签名/owner 域/
   generation）——整模块入口原样保留，作为 truth 源与冷启动路径。
 - 编辑热路径**不再构造全部 stub Program**：ac-syntax 增量重扫（`incremental_reparse`）
   →单声明严格投影（`project_decl_strict`）→`prepare_candidate_document`（真单 body

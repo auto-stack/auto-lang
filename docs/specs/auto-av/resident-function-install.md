@@ -19,7 +19,7 @@
 
 - prepare 仅构造候选（PreparedEdit 自持候选 HIR/code/来源/绑定）；成功 commit 在
   同一发布点原子更新 root/source/revision/env 槽位；失败/取消/迟到/foreign 不覆盖
-  当前可用版（base_generation/env_id 守卫）。
+  当前可用版（session_id/base_revision 守卫；内部 FnCandidate 另核 env_id/base_generation）。
 - 新顶层调用取新 snapshot；在途调用链（PausedRun/pin）固定旧 snapshot 至退出；
   旧代码在 snapshot/frame/lease 引用期间保活，最后 owner 释放即回收（Weak oracle）；
   close 幂等、释放 env/store 拥有引用，外 pin 存活、vacant 执行受控 Infra。

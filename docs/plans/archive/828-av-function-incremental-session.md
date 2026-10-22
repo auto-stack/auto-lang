@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-828
-status: reviewed
+status: archived
 feature_name: 源码到AV安装的全链路函数级增量
 plan_revision: 3
 author: [Codex]
 created_at: 2026-10-20
 updated_at: 2026-10-22
-current_step: 10
+current_step: 11
 total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-hir/stage-contract.md
@@ -312,9 +312,11 @@ V-01..09原合同继续有效。已有真实入口：probe/tests/function_increm
 | [x] T-08 | work | T-07 | 正式持续worker/IPC/父侧judge、ready/edit/result及observations/raw/双线内存；真实全量/副本/坏actual/缺样本/越界反控 | AC-07/08；V-08/09+C02-05，≥30新修订、P95<1000ms且结构门同轮过；进程内测试不代正式门 |
 | [x] T-09 | work | T-08；可随各包维护映射 | 当前case→入口/fixture/断言/原始证据→AC/SD/版本清单、旧消费者兼容、817/818及820–827接缝、具体规范增量文本/告警清理；更正旧完成/延期措辞 | AC-01..08；全矩阵有owner及实际结果，无OPEN必需项才execution_done；各包冻结提交，禁止只交测试总数 |
 | [x] T-10 | review | T-09完成 | 同一clean冻结树独立逐AC/V/C/SD审核；复核实际生产路径、负控和遗漏/绕过；受影响旧证据复用理由明确 | AC-09；最终pass才reviewed，merge-owned整档pending显式；不借局部PASS授整份通过 |
-| [ ] T-11 | merge | T-10最终pass | 冻结裸t+tv/必要触面及consumer门、Spec/ledger/归档/guard；tf到期主检出单实例 | AC-10；实际收尾完成才交付/11项全完成，不在review或开发阶段提前整档 |
+| [x] T-11 | merge | T-10最终pass | [2026-10-22 完成 @delivery 944403b50（master ff-only；rebase 后 range-diff 62/62 等价，5e8e550fa→a3bf5def6/8f343bb22）]：门禁（rebased 交付态）=裸 t **5331/5331** 全绿 67.1s（前置随机红四例全部同冻结隔离绿+master 对照全绿+非 828 面：state_file 锁 flake/plan484 VM-park 并行时序/abi_worker 探针/旧位 plan484=base 后 814 T-04 已迁移；815 合并先例）+tv 163/163+probe 消费面 t08 5/t07 8/mig 9/cache_tier 20/core 22/主 18/scalar_projection 6；Spec=核定 delta（review-t10-r2 spec-delta-reviewed.md）六目标逐字落地+六模块 plans.md 索引；ledger v69→v70 守则式离线投影（原序列化保留，手术式 20 hunks）；归档+guard 清理；无生产二进制消费面；tf 未到期（828%5=3；收据 2026-10-22T11:38Z 覆盖 830，同日无 %5 触发） | AC-10 ✓ |
 
 ## 9. 复审记录
+
+2026-10-22 stage:merge | PLAN-828:r3 | outcome:pass(交付/投影/归档/清理全验证；11/11) | prepared:reviewed=5e8e550fa（T-10 R2 最终 PASS），canonical delta=核定 spec-delta-reviewed.md，delivery=文档后代提交（实现零改动） | rebase:master 期间两次前进（833 合并）→63 提交重放零冲突，range-diff **62/62 全等**（安全重写：5e8e550fa→a3bf5def6、c5fe767b7→8f343bb22→944403b50；哈希映射已记录） | gates(rebased 交付态):裸 cargo t **5331/5331**（67.1s；前置四跑随机红逐例归因=同冻结隔离绿[0.19-22.5s]+master 对照 5331/5331 全绿+零触及 828 主工作区改动面[shim 注释+docs]：state_file 文件锁 flake（815 批收据同款）、plan484 图表 VM-park 并行时序、abi_worker 探针 spawn、旧位 plan484=base 后 814 T-04 迁移已修；815 合并先例=归因+全绿复跑）、cargo tv 163/163、probe 消费面 t08 5+t07 8+mig 9+cache_tier 20+core 22+主 18（skip 三 512：T-10 3/3+range-diff 等价复用）+scalar_projection 6 | landed:master **ff-only → 944403b50** 无合并提交；主检出他方 docs/design WIP 与 828 零重叠未受影响 | spec-landing:六目标（SD-01..06）与核定 delta **逐字一致**（等价性 sweep ALL EXACT；SD-05 段尾附加一行 resident-function-install 导航链接，不改合同）+六模块 plans.md 索引行 | ledger_refreshed:**守则式离线投影**（本会话无 store 服务），.autoos/specs.json v69→v70，1-space 原序列化保留（20 hunks 手术式），新增 P828-SRC/P828-MIR/P828-AV/P828-R/P828-MERGE+更新 P743-2/P773-2/P787-D3/P798-T，读回校验六节/版本/ID 通过；备份 .autoos/specs.json.bak-p828-merge（worktree 内） | archived:docs/plans/archive/828-av-function-incremental-session.md，status=archived，T-01..11=11/11，attachments 留 docs/plans/attachments/828/（复审包/历史收据） | artifacts:828 全部代码在 experimental/（ac-av-probe 独立 workspace+ac-core+ac-syntax）+shim 注释——主 workspace 生产构建不含 experimental，无 release 二进制/web bundle 消费面，无需重建重启（非 auto-musk 类消费） | batch-regression:**未到期**（828%5=3；收据 last_covered_plan_id=830 @2026-10-22T11:38Z 同日、无新 %5 触发、<48h）| cleaned:guard clean→worktree/branch/组目录移除（见收据尾注）
 
 2026-10-22 stage:review | review_scope:final(T10格式窄复审收口，与上轮整份AC/V/C/SD合并授最终PASS) | reviewer_identity:本Codex审核上下文，未实施本冻结修复/未启代理，不编造未暴露身份 | PLAN-828 r3 | outcome:pass | worktree_path:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | reviewed_commit:5e8e550fa2c68c0e4e7b44187877e8b46469c22f | base_commit:a030427fe15dc043871d3253101f209653cabd9c(窄修复)，整份基面f79b1b83591310b45b3828dd300e6d368987d6c0 | dependency:auto-down=c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8未消费 | spec_inputs:521项baseline/final-state一致/实施树clean；对上轮519共同输入仅两文件变、与审核格式期望逐字节一致；47份上轮证据hash完整 | findings:T10-H01/P3 CLOSED，无新增；全部既有finding保持闭合 | acceptance_results:整份改动Rust格式exit0/源码diffcheck0；新根scalar_projection_6/6、adapter all-targets check0零告警；原三512 3/3(275.43s)、兼容/资源/生命周期/原独立反控/正式30轮P95=219.4917ms及双线硬预算/SD结论按纯格式等价明确复用，未冒充本轮重跑；AC01..09 PASS，AC10 pending | state:reviewed10/11，T01..10完成，T11待merge | spec_delta:SD01..06核定proposed文本见本轮spec-delta-reviewed，frontmatter exact paths/GOAL-002保持，canonical/ledger未改，plan_revision仍3 | evidence_limit:历史work一次战役失败无具体诊断，归因未确证；记录保留，未来逐次独立目录留完整失败raw | pending_closeout_gates:merge-owned冻结裸t+tv/实际触面与consumer/独立workspace、tf到期主检单实例、Spec-ledger沉淀/合入/归档/wt-guard均pending；reviewed非D828已交付 | evidence:[最终PASS/格式逐字节期望/复用核验/新根定向日志](attachments/828/review-t10-r2-5e8e550fa/review.md) | next:merge/T11，以5e8e550fa为受审冻结根完成门禁后合入沉淀归档guard；门禁若引起语义修复须新冻结受影响复审。本轮未整档/改实现/合入/清树。
 
