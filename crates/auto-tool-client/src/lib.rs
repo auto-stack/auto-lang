@@ -39,9 +39,13 @@ use auto_tool_execution::{
     PIPE_POLL_SLICE,
 };
 use auto_tool_protocol::framing::{parse_frame, FrameError, FrameParse};
-use auto_tool_protocol::message::{ClientBody, ClientEnvelope, ServerEnvelope, WireRequest};
+use auto_tool_protocol::message::{
+    ClientBody, ClientEnvelope, ServerBody, ServerEnvelope, WireRequest,
+};
+use auto_tool_protocol::report::BuildReport;
 use auto_tool_protocol::{
-    Budgets, ToolDescriptor, ToolError, ToolEvent, ValidateProjectReport, PROTOCOL_VERSION,
+    Budgets, GenerationReport, RunReport, ToolDescriptor, ToolError, ToolEvent,
+    ValidateProjectReport, PROTOCOL_VERSION,
 };
 
 // 消费方经本 crate 组装 spec/读结果，底层设施类型在此再导出，消费闭包
@@ -56,7 +60,7 @@ pub use discovery::{discover, resolve_existing, DiscoveredTool, DiscoveryError, 
 const TEARDOWN_GRACE: Duration = Duration::from_secs(3);
 
 /// 一次工具宿主连接的完整请求。
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ToolClientSpec {
     /// 工具宿主二进制的显式路径（无隐式发现——发现归 T-04）。
     pub tool_path: PathBuf,
@@ -79,7 +83,14 @@ pub struct ToolClientSpec {
     pub tree_scope: TreeScope,
     /// 优雅关闭（EOF 后）等待宿主退出的宽限；到期 cancel 收尸。
     pub shutdown_timeout: Duration,
+    /// 活日志回调：宿主 stderr 每排空一段即同步调用（None=只收集）。
+    /// 长运行操作（run_ui dev-server）的人读 parity 通道——转发到本进程
+    /// stderr 即恢复旧直跑形态的实时输出。回调里不得再调用本客户端。
+    pub live_log: Option<LiveLogFn>,
 }
+
+/// 活日志回调类型（宿主 stderr 段级转发；见 [`ToolClientSpec::live_log`]）。
+pub type LiveLogFn = Arc<dyn Fn(&[u8]) + Send + Sync>;
 
 impl ToolClientSpec {
     pub fn new(tool_path: impl Into<PathBuf>) -> Self {
@@ -93,6 +104,7 @@ impl ToolClientSpec {
             frame_budget: Budgets::contract().max_frame_bytes,
             tree_scope: TreeScope::ProcessTree,
             shutdown_timeout: Duration::from_secs(10),
+            live_log: None,
         }
     }
 }
@@ -106,6 +118,10 @@ pub enum Reply {
     /// 宿主按协议拒绝/报错（版本/能力/字段/预算/内部）——调用方数据，
     /// 不是客户端故障。
     Host(ToolError),
+    /// M815-B 扩展回执（GenerateOk/RunOk/BuildOk/Cancelled/InputAck）——
+    /// 本客户端当期消费面未发起对应操作，原文保留；落到未期待它的调用
+    /// 侧由既有 `other` 臂以 [`ClientError::MalformedReply`] 具名拒绝。
+    Other(ServerBody),
 }
 
 /// 连接的终态原因（首个终态错误由触发它的那次调用原样返回；这里只
@@ -276,8 +292,8 @@ enum FromReader {
 /// 与一个真实工具宿主进程的连接。
 pub struct ToolClient {
     proc: OwnedProcess,
-    jobs_tx: Option<Sender<serde_json::Value>>,
-    writer_ack: Receiver<Result<(), FrameError>>,
+    jobs_tx: Option<Sender<(u64, serde_json::Value)>>,
+    writer_ack: Receiver<(u64, Result<(), FrameError>)>,
     writer_done: Receiver<Result<(), std::io::Error>>,
     writer_stop: Arc<AtomicBool>,
     /// 写端取消凭证（停止侧经此取消挂起的同步分片写）。
@@ -285,11 +301,14 @@ pub struct ToolClient {
     rx: Receiver<FromReader>,
     reader_stop: Arc<AtomicBool>,
     reader_closed: Arc<AtomicBool>,
-    logs: Arc<Mutex<Vec<u8>>>,
+    logs: Arc<LogSink>,
     stderr_done: Receiver<Result<(), std::io::Error>>,
     stderr_stop: Arc<AtomicBool>,
     stderr_closed: Arc<AtomicBool>,
     next_id: u64,
+    /// 长运行操作终回执之前到达的同 id 事件（Launched/Progress）——
+    /// `wait_reply` 驻留，`take_events` 一次取空。
+    parked_events: Vec<ToolEvent>,
     spec: ToolClientSpec,
     broken: Option<BrokenReason>,
     collected: bool,
@@ -350,8 +369,8 @@ impl ToolClient {
                 stage: "clone stdin cancel credential",
                 source: Box::new(source),
             })?;
-        let (jobs_tx, jobs_rx) = std::sync::mpsc::channel::<serde_json::Value>();
-        let (ack_tx, writer_ack) = std::sync::mpsc::channel::<Result<(), FrameError>>();
+        let (jobs_tx, jobs_rx) = std::sync::mpsc::channel::<(u64, serde_json::Value)>();
+        let (ack_tx, writer_ack) = std::sync::mpsc::channel::<(u64, Result<(), FrameError>)>();
         let (wdone_tx, writer_done) = std::sync::mpsc::channel::<Result<(), std::io::Error>>();
         let writer_stop = Arc::new(AtomicBool::new(false));
         let wflag = Arc::clone(&writer_stop);
@@ -359,7 +378,7 @@ impl ToolClient {
         std::thread::spawn(move || {
             let mut stdin = stdin;
             loop {
-                let job = match jobs_rx.recv_timeout(PIPE_POLL_SLICE) {
+                let (job_id, job) = match jobs_rx.recv_timeout(PIPE_POLL_SLICE) {
                     Ok(job) => job,
                     Err(RecvTimeoutError::Timeout) => {
                         if wflag.load(Ordering::Relaxed) {
@@ -375,7 +394,7 @@ impl ToolClient {
                 //（经 done 传播,连接此时已在收尾）。
                 let fatal_io =
                     matches!(&result, Err(FrameError::Io(_))) && !wflag.load(Ordering::Relaxed);
-                let _ = ack_tx.send(result);
+                let _ = ack_tx.send((job_id, result));
                 if fatal_io {
                     break;
                 }
@@ -401,7 +420,10 @@ impl ToolClient {
         }
 
         // ---- stderr 日志 reader 线程（结束方式具名：EOF 或 I/O 错误）----
-        let logs = Arc::new(Mutex::new(Vec::new()));
+        let logs = Arc::new(LogSink {
+            buf: Mutex::new(Vec::new()),
+            live: spec.live_log.clone(),
+        });
         let (sdone_tx, stderr_done) = std::sync::mpsc::channel::<Result<(), std::io::Error>>();
         let stderr_stop = Arc::new(AtomicBool::new(false));
         let stderr_closed = Arc::new(AtomicBool::new(false));
@@ -433,6 +455,7 @@ impl ToolClient {
             stderr_stop,
             stderr_closed,
             next_id: 1,
+            parked_events: Vec::new(),
             spec,
             broken: None,
             collected: false,
@@ -447,7 +470,7 @@ impl ToolClient {
 
     /// 日志流（stderr）快照——控制流之外的独立通道。
     pub fn logs(&self) -> String {
-        String::from_utf8_lossy(&self.logs.lock().unwrap()).into_owned()
+        String::from_utf8_lossy(&self.logs.buf.lock().unwrap()).into_owned()
     }
 
     /// 宿主工具的版本/能力/生命周期描述（M815-A 窄能力正控入口）。
@@ -491,6 +514,150 @@ impl ToolClient {
         }
     }
 
+    /// 取走本次连接驻留的全部操作事件（Launched/Progress）——终回执之前
+    /// 到达的同 id 事件按到达序在此交付（M816-B）。
+    pub fn take_events(&mut self) -> Vec<ToolEvent> {
+        std::mem::take(&mut self.parked_events)
+    }
+
+    /// generate_ui（M815-B 五操作）：请求工程生成到其声明输出根。有界
+    /// 操作——与 describe 同构的请求/回执往返；宿主结构化拒绝作为内层
+    /// `Err` 数据返回。
+    pub fn generate_ui(
+        &mut self,
+        request: auto_project_model::GenerationRequest,
+    ) -> Result<Result<GenerationReport, ToolError>, ClientError> {
+        match self.request(ClientBody::GenerateUi {
+            request: WireRequest(request),
+        })? {
+            Reply::Other(ServerBody::GenerateOk { report }) => Ok(Ok(report)),
+            Reply::Host(e) => Ok(Err(e)),
+            other => Err(ClientError::MalformedReply {
+                reason: format!("unexpected reply to generate_ui: {other:?}"),
+            }),
+        }
+    }
+
+    /// build_ui（M815-B 五操作）：生产构建。可取消的长运行操作；事件经
+    /// [`ToolClient::take_events`] 交付。
+    pub fn build_ui(
+        &mut self,
+        request: auto_project_model::GenerationRequest,
+    ) -> Result<Result<BuildReport, ToolError>, ClientError> {
+        match self.request(ClientBody::BuildUi {
+            request: WireRequest(request),
+        })? {
+            Reply::Other(ServerBody::BuildOk { report }) => Ok(Ok(report)),
+            Reply::Host(e) => Ok(Err(e)),
+            other => Err(ClientError::MalformedReply {
+                reason: format!("unexpected reply to build_ui: {other:?}"),
+            }),
+        }
+    }
+
+    /// run_ui（M815-B 五操作）：真实运行链（dev-server/VM 会话/cargo/
+    /// jet/ark/...）。可取消、可交互。
+    ///
+    /// `forward_stdin=true` 时启动**本进程 stdin 泵**：逐行读取宿主进程
+    /// 自身 stdin 并以 Input 帧转发到操作的交互子进程（Vite/VM 会话的
+    /// `q` 语义）。泵线程读的是本进程 stdin——OS 层不可取消，只能随
+    /// 进程生命周期终结（run 返回后 CLI 立即退出）；它不是 owned 设施
+    /// 的自有线程，不参与收尾纪律，但持有 jobs 通道克隆——EOF 优雅
+    /// 关闭因此依赖 [`ToolClient::shutdown`] 的 writer_stop 置位而非仅
+    /// 通道关闭。
+    pub fn run_ui(
+        &mut self,
+        request: auto_project_model::GenerationRequest,
+        forward_stdin: bool,
+    ) -> Result<Result<RunReport, ToolError>, ClientError> {
+        let id = self.next_id;
+        let pump = if forward_stdin {
+            Some(self.spawn_stdin_pump(id)?)
+        } else {
+            None
+        };
+        let result = match self.request(ClientBody::RunUi {
+            request: WireRequest(request),
+        }) {
+            Ok(reply) => match reply {
+                Reply::Other(ServerBody::RunOk { report }) => Ok(Ok(report)),
+                Reply::Host(e) => Ok(Err(e)),
+                other => Err(ClientError::MalformedReply {
+                    reason: format!("unexpected reply to run_ui: {other:?}"),
+                }),
+            },
+            Err(e) => Err(e),
+        };
+        if let Some(stop) = pump {
+            stop.store(true, Ordering::Relaxed);
+        }
+        result
+    }
+
+    /// 显式 Input 发送（协议控制消息）：转发原始字节到具名操作的交互
+    /// 子进程 stdin；宿主对无交互子的操作具名拒绝（内层 `Err` 数据）。
+    pub fn send_input(
+        &mut self,
+        target_id: u64,
+        data: Vec<u8>,
+    ) -> Result<Result<(), ToolError>, ClientError> {
+        match self.request(ClientBody::Input { target_id, data })? {
+            Reply::Other(ServerBody::InputAck { .. }) => Ok(Ok(())),
+            Reply::Host(e) => Ok(Err(e)),
+            other => Err(ClientError::MalformedReply {
+                reason: format!("unexpected reply to input: {other:?}"),
+            }),
+        }
+    }
+
+    /// 本进程 stdin 泵：逐行读取并投递 Input 帧（带操作 id）。返回泵的
+    /// 停止标志（run 终回执后置位——阻塞中的读只能随进程退出解除，
+    /// 见 [`ToolClient::run_ui`] 的生命周期注记）。
+    fn spawn_stdin_pump(&mut self, op_id: u64) -> Result<Arc<AtomicBool>, ClientError> {
+        let tx = self
+            .jobs_tx
+            .clone()
+            .ok_or_else(|| ClientError::InvalidSpec("writer already closed".into()))?;
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&stop);
+        let version = self.spec.protocol_version;
+        std::thread::Builder::new()
+            .name("tool-client-stdin-pump".into())
+            .spawn(move || {
+                let stdin = std::io::stdin();
+                let locked = stdin.lock();
+                for line in std::io::BufRead::lines(locked) {
+                    if flag.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    let Ok(line) = line else { break };
+                    let mut data = line.into_bytes();
+                    data.push(b'\n');
+                    let envelope = ClientEnvelope {
+                        protocol_version: version,
+                        id: op_id,
+                        body: ClientBody::Input {
+                            target_id: op_id,
+                            data,
+                        },
+                    };
+                    let Ok(json) = serde_json::to_value(&envelope) else {
+                        break;
+                    };
+                    // 只投递不确认（send_deadline(wait_ack=false) 语义；
+                    // 此处直接走通道，ack 由请求发送方按 id 滤弃）。
+                    if tx.send((op_id, json)).is_err() {
+                        break;
+                    }
+                }
+            })
+            .map_err(|e| ClientError::Io {
+                stage: "spawn stdin pump",
+                source: Box::new(e),
+            })?;
+        Ok(stop)
+    }
+
     /// 发送一个类型化请求并等待镜像回答。
     pub fn request(&mut self, body: ClientBody) -> Result<Reply, ClientError> {
         self.round_trip(self.spec.protocol_version, body)
@@ -521,7 +688,7 @@ impl ToolClient {
         });
         let started = Instant::now();
         let limit = self.spec.request_timeout;
-        self.send_deadline(&raw, started, limit, id)?;
+        self.send_deadline(&raw, started, limit, id, true)?;
         let reply = self.wait_reply(id, limit, started)?;
         Ok(typed_reply(reply))
     }
@@ -543,7 +710,7 @@ impl ToolClient {
         })?;
         let started = Instant::now();
         let limit = self.spec.request_timeout;
-        self.send_deadline(&json, started, limit, id)?;
+        self.send_deadline(&json, started, limit, id, true)?;
         let reply = self.wait_reply(id, limit, started)?;
         Ok(typed_reply(reply))
     }
@@ -556,36 +723,57 @@ impl ToolClient {
         started: Instant,
         limit: Option<Duration>,
         id: u64,
+        wait_ack: bool,
     ) -> Result<(), ClientError> {
         let tx = self
             .jobs_tx
             .as_ref()
             .ok_or_else(|| ClientError::InvalidSpec("writer already closed".into()))?;
-        tx.send(json.clone()).map_err(|_| ClientError::Panicked {
-            which: "stdin writer",
-        })?;
-        let wait = limit.map(|l| (started + l).saturating_duration_since(Instant::now()));
-        let ack = match wait {
-            Some(w) => self.writer_ack.recv_timeout(w),
-            None => self
-                .writer_ack
-                .recv()
-                .map_err(|_| RecvTimeoutError::Disconnected),
-        };
-        match ack {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(e)) => {
-                if matches!(e, FrameError::Io(_)) {
-                    self.broken = Some(BrokenReason::WriterFailed);
-                }
-                Err(ClientError::SendFrame(e))
-            }
-            Err(RecvTimeoutError::Timeout) => {
-                Err(self.abort_for_timeout(id, limit.unwrap_or_default()))
-            }
-            Err(RecvTimeoutError::Disconnected) => Err(ClientError::Panicked {
+        tx.send((id, json.clone()))
+            .map_err(|_| ClientError::Panicked {
                 which: "stdin writer",
-            }),
+            })?;
+        if !wait_ack {
+            // 交互 pump 的 Input 帧只投递不确认——确认语义只属请求发送方。
+            return Ok(());
+        }
+        // 按 id 过滤的确认：pump 帧的 ack 在此被丢弃，等待只属于本请求。
+        let deadline = limit.map(|l| started + l);
+        loop {
+            let wait = deadline.map(|d| d.saturating_duration_since(Instant::now()));
+            let (ack_id, result) = match wait {
+                Some(w) => match self.writer_ack.recv_timeout(w) {
+                    Ok(pair) => pair,
+                    Err(RecvTimeoutError::Timeout) => {
+                        return Err(self.abort_for_timeout(id, limit.unwrap_or_default()))
+                    }
+                    Err(RecvTimeoutError::Disconnected) => {
+                        return Err(ClientError::Panicked {
+                            which: "stdin writer",
+                        })
+                    }
+                },
+                None => match self.writer_ack.recv() {
+                    Ok(pair) => pair,
+                    Err(_) => {
+                        return Err(ClientError::Panicked {
+                            which: "stdin writer",
+                        })
+                    }
+                },
+            };
+            if ack_id != id {
+                continue;
+            }
+            return match result {
+                Ok(()) => Ok(()),
+                Err(e) => {
+                    if matches!(e, FrameError::Io(_)) {
+                        self.broken = Some(BrokenReason::WriterFailed);
+                    }
+                    Err(ClientError::SendFrame(e))
+                }
+            };
         }
     }
 
@@ -614,14 +802,19 @@ impl ToolClient {
         match msg {
             FromReader::Frame(envelope) => {
                 let envelope = *envelope;
-                if envelope.id == id {
-                    Ok(envelope)
-                } else {
-                    Err(ClientError::IdMismatch {
+                if envelope.id != id {
+                    return Err(ClientError::IdMismatch {
                         sent: id,
                         received: envelope.id,
-                    })
+                    });
                 }
+                // 长运行操作的事件（Progress/Launched）先于终回执到达且与
+                // 请求同 id——驻留后继续等终回执（M816-B 五操作面）。
+                if let ServerBody::Event { event } = envelope.body {
+                    self.parked_events.push(event);
+                    return self.wait_reply(id, limit, started);
+                }
+                Ok(envelope)
             }
             FromReader::Violation(e) => {
                 self.broken = Some(BrokenReason::StreamViolated);
@@ -846,6 +1039,9 @@ impl ToolClient {
             }
         };
         // 3. owned 写端已全关 → reader 的 EOF 判定;停止并确认三条线程。
+        // writer 先置停止位再弃通道克隆：交互 pump 可能仍持有一个 jobs
+        // 克隆（阻塞读不可弃），EOF 不能只靠通道关闭达成（M816-B）。
+        self.writer_stop.store(true, Ordering::Relaxed);
         self.reader_closed.store(true, Ordering::Relaxed);
         self.stderr_closed.store(true, Ordering::Relaxed);
         self.reader_stop.store(true, Ordering::Relaxed);
@@ -872,6 +1068,7 @@ fn typed_reply(envelope: ServerEnvelope) -> Reply {
         ServerBody::ValidateOk { report } => Reply::Validate(report),
         ServerBody::Event { event } => Reply::Event(event),
         ServerBody::Error { error } => Reply::Host(error),
+        other => Reply::Other(other),
     }
 }
 
@@ -928,9 +1125,24 @@ fn write_frame_chunked<W: auto_tool_execution::StoppableWrite>(
 
 /// stderr 日志 reader 会话：结束方式具名（干净 EOF / I/O 错误 / 停止）。
 /// stop 语义=先排空已可读日志再退出（F-816-R3-01：日志不得缺字）。
+/// stderr 收集槽：缓冲 + 可选活转发（长运行操作的实时人读通道）。
+struct LogSink {
+    buf: Mutex<Vec<u8>>,
+    live: Option<LiveLogFn>,
+}
+
+impl LogSink {
+    fn push(&self, chunk: &[u8]) {
+        self.buf.lock().unwrap().extend_from_slice(chunk);
+        if let Some(live) = &self.live {
+            live(chunk);
+        }
+    }
+}
+
 fn stderr_session<R>(
     mut r: R,
-    sink: &Mutex<Vec<u8>>,
+    sink: &LogSink,
     stop: &AtomicBool,
     owned_closed: &AtomicBool,
 ) -> Result<(), std::io::Error>
@@ -952,7 +1164,7 @@ where
                 }
                 match r.read(&mut chunk) {
                     Ok(0) => return Ok(()),
-                    Ok(n) => sink.lock().unwrap().extend_from_slice(&chunk[..n]),
+                    Ok(n) => sink.push(&chunk[..n]),
                     Err(e) => return Err(e),
                 }
             }
@@ -965,7 +1177,7 @@ where
         }
         match r.read(&mut chunk) {
             Ok(0) => return Ok(()),
-            Ok(n) => sink.lock().unwrap().extend_from_slice(&chunk[..n]),
+            Ok(n) => sink.push(&chunk[..n]),
             Err(e)
                 if e.kind() == std::io::ErrorKind::WouldBlock
                     || e.kind() == std::io::ErrorKind::Interrupted =>
@@ -1627,7 +1839,10 @@ mod tests {
     fn stderr_stop_drain_read_error_is_named() {
         let (stop, closed) = flags();
         stop.store(true, Ordering::Relaxed);
-        let sink = Mutex::new(Vec::new());
+        let sink = LogSink {
+            buf: Mutex::new(Vec::new()),
+            live: None,
+        };
         let reader = Chunked {
             idle_ready: true,
             chunks: vec![b"partial-log".to_vec()],
@@ -1638,7 +1853,7 @@ mod tests {
             Err(e) => assert!(e.to_string().contains("stderr kernel gone")),
             Ok(()) => panic!("expected named error from stop-drain, got Ok"),
         }
-        let logs = String::from_utf8(sink.into_inner().unwrap()).unwrap();
+        let logs = String::from_utf8(sink.buf.into_inner().unwrap()).unwrap();
         assert!(logs.contains("partial-log"), "bytes before the error kept");
     }
 
@@ -1648,7 +1863,10 @@ mod tests {
     fn stderr_stop_drains_preset_bytes() {
         let (stop, closed) = flags();
         stop.store(true, Ordering::Relaxed);
-        let sink = Mutex::new(Vec::new());
+        let sink = LogSink {
+            buf: Mutex::new(Vec::new()),
+            live: None,
+        };
         let reader = Chunked {
             idle_ready: true,
             chunks: vec![b"accepted request id=1 op=describe
@@ -1658,7 +1876,7 @@ mod tests {
         };
         let end = stderr_session(reader, &sink, &stop, &closed);
         assert!(end.is_ok());
-        let logs = String::from_utf8(sink.into_inner().unwrap()).unwrap();
+        let logs = String::from_utf8(sink.buf.into_inner().unwrap()).unwrap();
         assert!(logs.contains("accepted request id=1"), "logs: {logs:?}");
     }
 

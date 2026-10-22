@@ -1,4 +1,4 @@
-use auto_lang::{
+use auto_lang_core::{
     parser::Parser,
     trans::{c::CTrans, Sink, Trans},
 };

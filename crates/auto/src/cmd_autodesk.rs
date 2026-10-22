@@ -26,11 +26,9 @@
 // 三态裁决，行为零变化；native 轨 a2r exe 客户端臂复用同一 client_entry
 // 骨架）。
 
-use auto_lang::ui::desktop_protocol::broker::BROKER_PIPE;
-use auto_lang::ui::desktop_protocol::client_entry::{
-    self, ClientOpts, ClientTarget,
-};
-use auto_lang::ui::desktop_protocol::coverage::{self, RenderMode};
+use auto_ui_runtime::ui::desktop_protocol::broker::BROKER_PIPE;
+use auto_ui_runtime::ui::desktop_protocol::client_entry::{self, ClientOpts, ClientTarget};
+use auto_ui_runtime::ui::desktop_protocol::coverage::{self, RenderMode};
 
 /// Run 分支入口裁决：孵化标记在册 → 协议 client 循环（走完即返回）；
 /// `None` = ③ 独立形态，调用方继续现行 Run 流程。
@@ -74,7 +72,9 @@ fn run_client_entry(args: &[String]) -> Result<(), String> {
     if launcher_entry {
         // launcher 单面 exe（broker 管道必填；源 = AUTO_LAUNCHER_ENTRY env
         ///——宿主 spawn 注入，v1 解释装载）。
-        return auto_lang::ui::desktop_protocol::shell_client::run_launcher_outproc(&broker_pipe);
+        return auto_ui_runtime::ui::desktop_protocol::shell_client::run_launcher_outproc(
+            &broker_pipe,
+        );
     }
     if shell_entry {
         // PLAN-036 T-03（D4）：outproc child 缺省**编译轨**（auto.exe 链入
@@ -86,16 +86,23 @@ fn run_client_entry(args: &[String]) -> Result<(), String> {
             .map(|p| std::path::Path::new(&p).is_dir())
             .unwrap_or(false);
         if interpreted {
-            return auto_lang::ui::desktop_protocol::shell_client::run_shell_outproc(&broker_pipe);
+            return auto_ui_runtime::ui::desktop_protocol::shell_client::run_shell_outproc(
+                &broker_pipe,
+            );
         }
-        return auto_lang::ui::desktop_protocol::shell_client::run_shell_outproc_with(
+        return auto_ui_runtime::ui::desktop_protocol::shell_client::run_shell_outproc_with(
             &broker_pipe,
             |g| {
                 let mut faces = Vec::new();
-                use auto_lang::ui::desktop_protocol::message::shell_face;
+                use auto_ui_runtime::ui::desktop_protocol::message::shell_face;
                 for (id, face_id, w, h) in [
                     ("shell", shell_face::SHELL, g.viewport_w, g.band_h),
-                    ("desktop", shell_face::DESKTOP_SURFACE, g.viewport_w, g.viewport_h),
+                    (
+                        "desktop",
+                        shell_face::DESKTOP_SURFACE,
+                        g.viewport_w,
+                        g.viewport_h,
+                    ),
                     // PLAN-036 T-04：overlay 两面预装（懒装免——首推送即达）。
                     ("switcher", shell_face::SWITCHER, g.viewport_w, g.viewport_h),
                     (
@@ -109,9 +116,11 @@ fn run_client_entry(args: &[String]) -> Result<(), String> {
                         .ok_or_else(|| format!("编译壳面（{id}）装载失败（覆盖门拒收）"))?;
                     faces.push((face_id, face));
                 }
-                Ok(auto_lang::ui::desktop_protocol::shell_client::ShellFaces::from_faces(
-                    g, faces,
-                ))
+                Ok(
+                    auto_ui_runtime::ui::desktop_protocol::shell_client::ShellFaces::from_faces(
+                        g, faces,
+                    ),
+                )
             },
         );
     }
@@ -123,19 +132,16 @@ fn run_client_entry(args: &[String]) -> Result<(), String> {
     let root = std::env::var("AUTO_386_APP_ROOT").unwrap_or_else(|_| "examples/ui".to_string());
     let app_dir = std::path::Path::new(&root).join(&app_name);
     let path = app_dir.join("src/front/app.at");
-    let src = std::fs::read_to_string(&path)
-        .map_err(|e| format!("装载 {}: {e}", path.display()))?;
-    let component = auto_lang::build_dynamic_component(&src, Some(&path.to_string_lossy()))
+    let src =
+        std::fs::read_to_string(&path).map_err(|e| format!("装载 {}: {e}", path.display()))?;
+    let component = auto_ui_runtime::build_dynamic_component(&src, Some(&path.to_string_lossy()))
         .map_err(|e| format!("编译 {}: {e}", path.display()))?;
 
     // 三态裁决：spawn 参数 > pac.at desktop_render > auto 探测
     //（与进程形态裁决 adjudicate() 正交——那条链定 Client/Broker/
     // Standalone，本链定帧载荷形态）。
     let manifest = read_manifest_render(&app_dir);
-    let mode = RenderMode::resolve(
-        render_arg.as_deref(),
-        manifest.as_deref(),
-    );
+    let mode = RenderMode::resolve(render_arg.as_deref(), manifest.as_deref());
     if let Some(arg) = render_arg.as_deref() {
         if RenderMode::parse(arg).is_none() {
             eprintln!(

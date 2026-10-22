@@ -39,7 +39,12 @@ struct WatchCache {
 /// `project_dir` is the workspace root (where pac.at lives).
 pub fn run_watch(project_dir: &Path) -> Result<(), String> {
     let front_dir = find_front_dir(project_dir)?;
-    let output_dir = project_dir.join("gen").join("front").join("vue").join("src").join("components");
+    let output_dir = project_dir
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("components");
     let cache_path = project_dir.join(".auto").join("build").join("cache.json");
 
     // Backend directory (optional)
@@ -76,11 +81,7 @@ pub fn run_watch(project_dir: &Path) -> Result<(), String> {
         at_files.len(),
         front_dir.display()
     );
-    println!(
-        "{} Output → {}",
-        "▸".bright_cyan(),
-        output_dir.display()
-    );
+    println!("{} Output → {}", "▸".bright_cyan(), output_dir.display());
     println!("{} Vite HMR will reload on .vue changes", "▸".bright_cyan());
 
     // Backend info
@@ -125,7 +126,10 @@ pub fn run_watch(project_dir: &Path) -> Result<(), String> {
     let debounce = Duration::from_millis(100);
     let mut pending: HashMap<PathBuf, EventKind> = HashMap::new();
 
-    println!("{} Ready. Edit an .at file to trigger rebuild.", "✓".bright_green());
+    println!(
+        "{} Ready. Edit an .at file to trigger rebuild.",
+        "✓".bright_green()
+    );
 
     loop {
         match rx.recv_timeout(Duration::from_secs(1)) {
@@ -152,7 +156,8 @@ pub fn run_watch(project_dir: &Path) -> Result<(), String> {
                                     }
                                 }
                             }
-                            Err(RecvTimeoutError::Timeout) | Err(RecvTimeoutError::Disconnected) => {
+                            Err(RecvTimeoutError::Timeout)
+                            | Err(RecvTimeoutError::Disconnected) => {
                                 break;
                             }
                         }
@@ -160,7 +165,8 @@ pub fn run_watch(project_dir: &Path) -> Result<(), String> {
 
                     // Process the batch
                     for (path, _kind) in pending.drain() {
-                        let is_back = back_dir.as_ref()
+                        let is_back = back_dir
+                            .as_ref()
                             .map(|bd| path.starts_with(bd))
                             .unwrap_or(false);
 
@@ -255,7 +261,14 @@ fn collect_at_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
 /// Rebuild a single .at file: parse → generate → write .vue SFC.
 ///
 /// Returns Ok(true) if regeneration happened, Ok(false) if skipped (cache hit).
-fn rebuild_single_file(at_path: &Path, output_dir: &Path, cache: &mut WatchCache) -> Result<bool, String> {
+// PLAN-816 T-05：SFC 增量再生=UI 编译域（ui-extra）；Core 形态具名失败
+//（watch 的设施化接线归 T-06）。
+#[cfg(feature = "ui-extra")]
+fn rebuild_single_file(
+    at_path: &Path,
+    output_dir: &Path,
+    cache: &mut WatchCache,
+) -> Result<bool, String> {
     let path_key = at_path.to_string_lossy().to_string();
 
     // Compute content hash
@@ -277,8 +290,8 @@ fn rebuild_single_file(at_path: &Path, output_dir: &Path, cache: &mut WatchCache
         .unwrap_or_else(|| "unknown.at".to_string());
 
     // Use the unified generate_component_from_file from Plan 361
-    let opts = auto_lang::ui_gen::ComponentGenOptions::default();
-    let result = auto_lang::ui_gen::generate_component_from_file(at_path, opts)
+    let opts = auto_ui_compiler::ui_gen::ComponentGenOptions::default();
+    let result = auto_ui_compiler::ui_gen::generate_component_from_file(at_path, opts)
         .map_err(|e| format!("{}", e))?;
 
     // Ensure output directory exists
@@ -315,7 +328,8 @@ fn rebuild_single_file(at_path: &Path, output_dir: &Path, cache: &mut WatchCache
     // Print validation warnings if any
     let warn_count = result.validation_warnings.len();
     if warn_count > 0 {
-        let warn_text = auto_lang::ui_gen::validators::format_warnings(&result.validation_warnings);
+        let warn_text =
+            auto_ui_compiler::ui_gen::validators::format_warnings(&result.validation_warnings);
         eprintln!("{}", warn_text);
     }
 
@@ -368,8 +382,7 @@ fn save_cache(path: &Path, cache: &WatchCache) -> Result<(), String> {
     }
     let json = serde_json::to_string_pretty(cache)
         .map_err(|e| format!("Failed to serialize cache: {}", e))?;
-    std::fs::write(path, json)
-        .map_err(|e| format!("Failed to write cache: {}", e))?;
+    std::fs::write(path, json).map_err(|e| format!("Failed to write cache: {}", e))?;
     Ok(())
 }
 
@@ -399,7 +412,7 @@ fn rebuild_backend_file(at_path: &Path, cache: &mut WatchCache) -> Result<(), St
 
     // Transpile .at → Rust using a2r
     let path_str = at_path.to_string_lossy().to_string();
-    let rust_code = auto_lang::trans_rust(&path_str)
+    let rust_code = auto_lang_core::trans_rust(&path_str)
         .map_err(|e| format!("Failed to transpile {}: {}", at_path.display(), e))?;
 
     // Write to gen/back/ matching the .at file structure
@@ -424,7 +437,10 @@ fn rebuild_backend_file(at_path: &Path, cache: &mut WatchCache) -> Result<(), St
         "{} {} → {}.rs ({:.0}ms) — restart backend to apply",
         "✓".bright_green(),
         rel_path,
-        out_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+        out_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default(),
         elapsed.as_secs_f64() * 1000.0,
     );
 
@@ -474,3 +490,12 @@ fn parse_workspace_path(pac_content: &str, app_name: &str) -> Option<String> {
 }
 
 use colored::Colorize;
+
+#[cfg(not(feature = "ui-extra"))]
+fn rebuild_single_file(
+    _at_path: &Path,
+    _output_dir: &Path,
+    _cache: &mut WatchCache,
+) -> Result<bool, String> {
+    Err("watch SFC regeneration requires the full profile (ui-extra): ui_gen is not linked in core builds".into())
+}

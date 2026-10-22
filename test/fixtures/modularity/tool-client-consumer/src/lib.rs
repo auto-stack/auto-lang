@@ -144,6 +144,45 @@ fn consumer_validates_real_request_via_client() {
     client.shutdown().expect("shutdown");
 }
 
+/// M816-B 五操作正控：generate_ui 经真实进程——合成 vue 工程在声明
+/// 输出根下真实生成（文件数>0、frontends 含 vue），事件面无虚假。
+#[test]
+fn consumer_generates_real_project_via_client() {
+    let out_root = tempfile::tempdir().expect("tempdir");
+    let project = tempfile::tempdir().expect("tempdir");
+    // 真实工程布局：工具 vue 生成消费 src/front/app.at 入口（裸 pac
+    // 无 front 目录=具名拒绝——本测试要的是生成正控）。
+    std::fs::create_dir_all(project.path().join("src").join("front")).expect("front dir");
+    std::fs::write(
+        project.path().join("src").join("front").join("app.at"),
+        "widget App {
+    view {
+        col {
+            text \"gen smoke\" {}
+        }
+    }
+}
+",
+    )
+    .expect("app.at");
+    let mut client = real_client();
+    let report = client
+        .generate_ui(sample_request(project.path(), Some(out_root.path())))
+        .expect("client round trip")
+        .expect("host generates a well-formed request");
+    assert!(report.files_written > 0, "report: {report:?}");
+    assert!(report.frontends.contains(&"vue".to_string()), "{report:?}");
+    // 815 字段矩阵：output_root 声明不重定向生成布局——产物落工程
+    // gen/front/<profile>（报告 output_root 即真实布局根）。
+    let _ = out_root;
+    let real_root = std::path::PathBuf::from(&report.output_root);
+    assert!(
+        std::fs::read_dir(&real_root).expect("dir").count() > 0,
+        "reported output root must hold real artifacts: {real_root:?}"
+    );
+    client.shutdown().expect("shutdown");
+}
+
 /// V-05 负控：未知协议版本在副作用前具名拒绝，流保持可用。
 #[test]
 fn version_rejected_before_side_effects_stream_alive() {

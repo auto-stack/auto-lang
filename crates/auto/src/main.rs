@@ -1,4 +1,4 @@
-use auto_lang::error::AutoError;
+use auto_lang_core::error::AutoError;
 use clap::{Parser, Subcommand, ValueEnum};
 use colored::Colorize;
 use log::info;
@@ -7,13 +7,37 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 
 mod cmd_a2c_stdlib;
+// PLAN-816 T-05：UI 域子命令模块（ui-extra）——Core 形态缺席，分发臂
+// 具名失败；cmd_autodesk 在 Core 形态以桌面协议缺席 stub 提供（孵化
+// 标记永不认领 / -q 具名失败），Run 臂调用面保持编译。
+#[cfg(feature = "ui-extra")]
 mod cmd_autodesk;
+#[cfg(not(feature = "ui-extra"))]
+mod cmd_autodesk {
+    //! Core 形态 stub：桌面协议宿主面不链接——run_if_client_entry 永不
+    //! 认领（③ 独立形态现行行为），render-queue 具名失败。
+    pub fn run_if_client_entry(_args: &[String]) -> Option<Result<(), String>> {
+        None
+    }
+    pub fn rqhost_gate_validate(render: Option<&str>, _args: &[String]) -> Result<(), String> {
+        Err(format!(
+            "render-queue (-q) requires the full profile (ui-extra): desktop protocol host is not linked (render={render:?})"
+        ))
+    }
+    pub fn rqhost_injected_args(_wellknown: &str, args: &[String]) -> Vec<String> {
+        args.to_vec()
+    }
+}
+#[cfg(feature = "ui-extra")]
 mod cmd_bp;
 mod cmd_docs;
 mod cmd_service;
 mod cmd_stdlib;
+// PLAN-816 T-05：runtime ui_ops seam 的工具进程实现（I-TOOL 五操作臂）。
+#[cfg(feature = "ui-extra")]
 mod cmd_ui;
 mod cmd_watch;
+mod tool_ui_ops;
 
 // Helper to convert AutoError to miette Report - this preserves all diagnostic info
 fn to_miette_err(err: AutoError) -> miette::Report {
@@ -188,8 +212,8 @@ fn init_logger() {
     .unwrap();
 }
 
-fn load_am_config() -> Option<auto_man::AmConfig> {
-    auto_man::load_am_config()
+fn load_am_config() -> Option<auto_man_runtime::AmConfig> {
+    auto_man_runtime::load_am_config()
 }
 
 #[derive(Subcommand, Debug)]
@@ -950,7 +974,9 @@ fn run_command_live(cmd: &str, args: &[&str], cwd: &std::path::Path) -> Result<(
 fn main() -> Result<()> {
     // PLAN-816 T-03: 安装管理服务的 UI seam（runtime 编排的 UI 臂经 compat
     // 门面回调 auto-ui-tools/残留;未安装时 UI 臂具名失败,非 UI 路径不受影响）。
-    auto_man::compat::install_default_ui_ops();
+    // PLAN-816 T-05：UI 臂改经真实工具进程（I-TOOL 五操作；无静态 UI
+    // 大库 fallback）。惰性发现——非 UI 命令不触达工具。
+    tool_ui_ops::install();
 
     let cli = Cli::parse();
 
@@ -962,28 +988,45 @@ fn main() -> Result<()> {
     // 与外部终止在 exit-audit.log 上一刀切开（Err 有 main_err 行，外部终止
     // 无任何行）。
     if let Err(ref e) = result {
-        auto_lang::vm::ffi::stdlib::exit_audit(1, "main_err");
+        auto_lang_core::vm::ffi::stdlib::exit_audit(1, "main_err");
         eprintln!("[X9] main Err: {e:?}");
     }
     result
 }
 
+/// ui-extra 形态的 UI 宿主装配（PLAN-816 T-05，镜像 auto-lang 兼容包的
+/// install_ui_host_capabilities 三件套）：UI 文法表（auto-ui-dialect 单源）
+/// + SDK 钩子注册 + provider 实装（auto-ui-runtime 单点）。Core 形态无
+/// 本调用——SDK 侧 no-op（文法表缺席=UI 文法不可用，provider 未装）。
+#[cfg(feature = "ui-extra")]
+fn install_ui_host_capabilities() {
+    let _ = auto_lang_core::set_ui_grammar(auto_ui_dialect::ui_grammar());
+    auto_lang_core::set_ui_host_install_hook(|| {
+        let _ = auto_lang_core::set_ui_grammar(auto_ui_dialect::ui_grammar());
+        auto_ui_runtime::install_ui_host_capabilities();
+    });
+    auto_ui_runtime::install_ui_host_capabilities();
+}
+
 fn real_main(cli: Cli) -> Result<()> {
+    // PLAN-816 T-05：UI 宿主装配先行（ui-extra 形态；见函数注记）。
+    #[cfg(feature = "ui-extra")]
+    install_ui_host_capabilities();
     // PLAN-779: 宿主能力装配——UI host 启动即注册 frame provider 进程默认
-    //（frame_bench adapter；幂等）。auto bin 默认带 ui-iced；无 UI 构建下
+    //（frame_bench adapter；幂等）。auto bin 默认带 ui-extra；无 UI 构建下
     // 本调用随 feature 一起缺席（core 缺席语义=未捕获 0，不损失行为——
     // 无渲染泵进程的 frame 读数本就恒 0）。
-    #[cfg(feature = "ui-iced")]
-    auto_lang::ui::frame_provider::install_process_default();
+    #[cfg(feature = "ui-extra")]
+    auto_ui_runtime::ui::frame_provider::install_process_default();
     // PLAN-785: clipboard text adapter 同点装配（if-absent 兼容默认；auto
     // 的 ui-iced 传递开启 auto-lang/ui-iced ⇒ ui-clipboard，门控随形）。
-    #[cfg(feature = "ui-iced")]
-    auto_lang::ui::clipboard_provider::install_process_default();
+    #[cfg(feature = "ui-extra")]
+    auto_ui_runtime::ui::clipboard_provider::install_process_default();
     // PLAN-790: clipboard media adapter 同点装配（if-absent 兼容默认；
     // ui-iced 传递开启 native-clipboard，windows × native-clipboard 双门控
     // 与 adapter 模块一致——非 Windows 不装配）。
     #[cfg(all(windows, feature = "ui-iced"))]
-    auto_lang::ui::clipboard_media_provider::install_process_default();
+    auto_ui_runtime::ui::clipboard_media_provider::install_process_default();
 
     // Determine AI mode: -ai flag or --format json
     let ai_mode = cli.ai || matches!(cli.format, Some(OutputFormat::Json));
@@ -995,19 +1038,19 @@ fn real_main(cli: Cli) -> Result<()> {
 
     // Set error limit from CLI if provided
     if let Some(limit) = cli.error_limit {
-        auto_lang::set_error_limit(limit);
+        auto_lang_core::set_error_limit(limit);
     }
 
     // Enable VM debug logging if requested
     if cli.debug {
-        auto_lang::set_vm_debug(true);
+        auto_lang_core::set_vm_debug(true);
     }
 
     // Plan 555 T08: `auto <file> --dump-lowered`——展示 s2s 改写产物
     // （模式头 + W1 passthrough 源），不执行（审查面，AI 生成-验证循环）。
     if let Some(path) = &cli.file.clone() {
         if cli.dump_lowered {
-            let lowered = auto_lang::dump_lowered(path).map_err(to_miette_err)?;
+            let lowered = auto_lang_core::dump_lowered(path).map_err(to_miette_err)?;
             println!("{}", lowered);
             return Ok(());
         }
@@ -1020,8 +1063,30 @@ fn real_main(cli: Cli) -> Result<()> {
             println!("Running Auto {} ", path);
             println!("----------------------");
         }
-        // Plan 524: CLI 透传（`auto <file> [args...]`）→ process.args() 表
-        let result = auto_lang::run_file_with_args(&path, cli.script_args).map_err(|e| {
+        // Plan 524: CLI 透传（`auto <file> [args...]`）→ process.args() 表。
+        // PLAN-816 T-05：动态 UI 分岔（Plan 227）属宿主装配面——ui-extra
+        // 形态经 auto-ui-runtime 直跑（旧行为冻结）；Core 形态恒走纯语言
+        // 执行（等价旧无 ui-iced 构建）。
+        #[cfg(feature = "ui-extra")]
+        if let Ok(code) = std::fs::read_to_string(&path) {
+            if auto_ui_runtime::has_ui_keywords(&code) {
+                auto_lang_core::set_script_args(cli.script_args.clone());
+                let result =
+                    auto_ui_runtime::run_file_dynamic_ui(&code, Some(&path)).map_err(|e| {
+                        if ai_mode {
+                            eprintln!("{}", format_error_json(&e));
+                            std::process::exit(1);
+                        }
+                        to_miette_err(e)
+                    })?;
+                output_success(ai_mode, &result);
+                if !ai_mode {
+                    println!();
+                }
+                return Ok(());
+            }
+        }
+        let result = auto_lang_core::run_file_with_args(&path, cli.script_args).map_err(|e| {
             if ai_mode {
                 eprintln!("{}", format_error_json(&e));
                 std::process::exit(1);
@@ -1044,7 +1109,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 info!("Creating new project: {}", name);
             }
             if let Some(t) = template {
-                auto_man::Automan::create_by_template(&name, &t).map_err(|e| {
+                auto_man_runtime::Automan::create_by_template(&name, &t).map_err(|e| {
                     if ai_mode {
                         eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                         std::process::exit(1);
@@ -1052,7 +1117,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     miette::miette!("{}", e)
                 })?;
             } else {
-                auto_man::Automan::create_app(&name).map_err(|e| {
+                auto_man_runtime::Automan::create_app(&name).map_err(|e| {
                     if ai_mode {
                         eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                         std::process::exit(1);
@@ -1074,7 +1139,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 info!("Initializing Auto project in current directory");
             }
             if let Some(t) = template {
-                auto_man::Automan::create_by_template(".", &t).map_err(|e| {
+                auto_man_runtime::Automan::create_by_template(".", &t).map_err(|e| {
                     if ai_mode {
                         eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                         std::process::exit(1);
@@ -1082,7 +1147,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     miette::miette!("{}", e)
                 })?;
             } else {
-                auto_man::Automan::create_app(".").map_err(|e| {
+                auto_man_runtime::Automan::create_app(".").map_err(|e| {
                     if ai_mode {
                         eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                         std::process::exit(1);
@@ -1117,12 +1182,17 @@ fn real_main(cli: Cli) -> Result<()> {
             // Plan 015 P0#1: strict validation is the DEFAULT for `auto build`
             // (silent stale-SFC success classes). --lenient restores the old
             // behavior; --strict stays accepted as a no-op for compatibility.
+            // PLAN-816 T-05：validators 全局属 UI 编译域（ui-extra）；工具
+            // 进程路径的 strict 语义由工具侧请求规则承担（已知边界：CLI
+            // --lenient 对工具内生成的传导待协议字段，见 T-05 交接注记）。
+            #[cfg(feature = "ui-extra")]
             if strict || !lenient {
-                auto_lang::ui_gen::validators::set_strict(true);
+                auto_ui_compiler::ui_gen::validators::set_strict(true);
             }
+            let _ = (&strict, &lenient);
             let dir = dir.unwrap_or_else(|| ".".to_string());
             let config = load_am_config().unwrap_or_default();
-            let mut am = auto_man::Automan::new(&dir, config).map_err(|e| {
+            let mut am = auto_man_runtime::Automan::new(&dir, config).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                     std::process::exit(1);
@@ -1203,16 +1273,30 @@ fn real_main(cli: Cli) -> Result<()> {
             bridge_ws,
             bridge_token,
         }) => {
-            let wellknown =
-                pipe.unwrap_or_else(|| auto_lang::ui::desktop_protocol::rqhost::wellknown_pipe());
-            if !ai_mode {
-                init_logger();
-                println_logo();
+            // PLAN-816 T-05：rqhost=桌面协议宿主（UI runtime 域）——Core
+            // 形态具名失败（不静默 no-op）。
+            #[cfg(not(feature = "ui-extra"))]
+            {
+                let _ = (&pipe, &bridge_ws, &bridge_token);
+                return Err(miette::miette!(
+                    "rqhost requires the full profile (ui-extra): desktop protocol host is not linked in core builds"
+                ));
             }
-            // PLAN-102 D-1：bridge 宿主分岔（去窗 + WS 桥）。
-            if let Some(port) = bridge_ws {
-                let token = bridge_token.as_deref().unwrap_or_default().to_string();
-                auto_lang::ui::desktop_protocol::rqhost::run_bridge(&wellknown, port, &token)
+            #[cfg(feature = "ui-extra")]
+            {
+                let wellknown = pipe.unwrap_or_else(|| {
+                    auto_ui_runtime::ui::desktop_protocol::rqhost::wellknown_pipe()
+                });
+                if !ai_mode {
+                    init_logger();
+                    println_logo();
+                }
+                // PLAN-102 D-1：bridge 宿主分岔（去窗 + WS 桥）。
+                if let Some(port) = bridge_ws {
+                    let token = bridge_token.as_deref().unwrap_or_default().to_string();
+                    auto_ui_runtime::ui::desktop_protocol::rqhost::run_bridge(
+                        &wellknown, port, &token,
+                    )
                     .map_err(|e| {
                         if ai_mode {
                             eprintln!("{}", format_error_json(&AutoError::Msg(e)));
@@ -1220,19 +1304,22 @@ fn real_main(cli: Cli) -> Result<()> {
                         }
                         miette::miette!("{e}")
                     })?;
+                    return Ok(());
+                }
+                auto_ui_runtime::ui::desktop_protocol::rqhost::run_daemon(&wellknown).map_err(
+                    |e| {
+                        if ai_mode {
+                            eprintln!("{}", format_error_json(&AutoError::Msg(e)));
+                            std::process::exit(1);
+                        }
+                        miette::miette!("{e}")
+                    },
+                )?;
+                if !ai_mode {
+                    println!("------------- end --------------");
+                }
                 return Ok(());
             }
-            auto_lang::ui::desktop_protocol::rqhost::run_daemon(&wellknown).map_err(|e| {
-                if ai_mode {
-                    eprintln!("{}", format_error_json(&AutoError::Msg(e)));
-                    std::process::exit(1);
-                }
-                miette::miette!("{e}")
-            })?;
-            if !ai_mode {
-                println!("------------- end --------------");
-            }
-            return Ok(());
         }
         Some(Commands::Service {
             dir,
@@ -1243,8 +1330,8 @@ fn real_main(cli: Cli) -> Result<()> {
         }) => {
             // PLAN-781 T-15: 宿主可信预算配置 fail-fast——非法值指名报错 +
             // 非零退出，先于任何业务 dispatch（决策报告 D-1；serve 面）。
-            if let Err(e) = auto_lang::vm::budget_policy::parse_http_step_budget(
-                std::env::var(auto_lang::vm::budget_policy::HTTP_STEP_BUDGET_ENV)
+            if let Err(e) = auto_lang_core::vm::budget_policy::parse_http_step_budget(
+                std::env::var(auto_lang_core::vm::budget_policy::HTTP_STEP_BUDGET_ENV)
                     .ok()
                     .as_deref(),
             ) {
@@ -1280,8 +1367,8 @@ fn real_main(cli: Cli) -> Result<()> {
             // PLAN-781 T-15: 宿主可信预算配置 fail-fast——非法值指名报错 +
             // 非零退出，先于任何业务 dispatch/窗口/服务启动（决策报告 D-1；
             // run 面覆盖 vm/vue/desktop 全形态）。
-            if let Err(e) = auto_lang::vm::budget_policy::parse_http_step_budget(
-                std::env::var(auto_lang::vm::budget_policy::HTTP_STEP_BUDGET_ENV)
+            if let Err(e) = auto_lang_core::vm::budget_policy::parse_http_step_budget(
+                std::env::var(auto_lang_core::vm::budget_policy::HTTP_STEP_BUDGET_ENV)
                     .ok()
                     .as_deref(),
             ) {
@@ -1308,7 +1395,7 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             let dir = dir.unwrap_or_else(|| ".".to_string());
             let config = load_am_config().unwrap_or_default();
-            let mut am = auto_man::Automan::new(&dir, config).map_err(|e| {
+            let mut am = auto_man_runtime::Automan::new(&dir, config).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                     std::process::exit(1);
@@ -1487,19 +1574,29 @@ fn real_main(cli: Cli) -> Result<()> {
             // (-r vm, same process) and the vue index.html generator read
             // the same effective value.
             let osc_app = am.pac_name();
+            #[cfg(feature = "ui-extra")]
             let (osc_theme, osc_accent) = osc_app
                 .as_deref()
-                .map(auto_lang::ui::osconfig_apps::read_app_theme_accent)
+                .map(auto_ui_runtime::ui::osconfig_apps::read_app_theme_accent)
                 .unwrap_or((None, None));
+            // Core 形态：os-config 读取属 UI 域（ui-extra）——CLI>pac.at
+            // 两级仍解析，os-config 层缺席（与 --theme 显式值语义正交）。
+            #[cfg(not(feature = "ui-extra"))]
+            let (osc_theme, osc_accent) = (None, None);
+            #[cfg(feature = "ui-extra")]
             let theme_from_osc = osc_theme.is_some();
+            #[cfg(feature = "ui-extra")]
             let accent_from_osc = osc_accent.is_some();
+            #[cfg(not(feature = "ui-extra"))]
+            let _ = (&osc_theme, &osc_accent);
             let theme_eff = theme
                 .as_deref()
                 .map(str::to_lowercase)
                 .or(osc_theme)
                 .or_else(|| am.pac_theme());
+            #[cfg(feature = "ui-extra")]
             match theme_eff.as_deref() {
-                Some(t) if auto_lang::ui::style::theme::THEME_PREFS.contains(&t) => {
+                Some(t) if auto_ui_runtime::ui::style::theme::THEME_PREFS.contains(&t) => {
                     std::env::set_var("AUTO_UI_THEME", t);
                     let via = if theme.is_some() {
                         " (from cli)"
@@ -1517,6 +1614,13 @@ fn real_main(cli: Cli) -> Result<()> {
                     );
                 }
                 None => {}
+            }
+            // Core 形态：主题名校验表属 UI 域——显式值原样透传（下游
+            // 工具进程/生成器自行校验），不做 CLI 侧白名单拦截。
+            #[cfg(not(feature = "ui-extra"))]
+            if let Some(t) = theme_eff.as_deref() {
+                std::env::set_var("AUTO_UI_THEME", t);
+                println!("  UI theme: {} (passed through; core profile)", t);
             }
             // Plan 465: desktop host mode + apps dir for the vue registry.
             // Env-injection idiom shared with AUTO_UI_THEME so both the vue
@@ -1538,8 +1642,9 @@ fn real_main(cli: Cli) -> Result<()> {
                 .map(str::to_lowercase)
                 .or(osc_accent)
                 .or_else(|| am.pac_accent());
+            #[cfg(feature = "ui-extra")]
             match accent_eff.as_deref() {
-                Some(a) if auto_lang::ui::style::theme::ACCENT_PRESETS.contains(&a) => {
+                Some(a) if auto_ui_runtime::ui::style::theme::ACCENT_PRESETS.contains(&a) => {
                     std::env::set_var("AUTO_UI_ACCENT", a);
                     let via = if accent.is_some() {
                         " (from cli)"
@@ -1554,10 +1659,15 @@ fn real_main(cli: Cli) -> Result<()> {
                     println!(
                         "  UI accent: {} unknown (want {}) — using default indigo",
                         a,
-                        auto_lang::ui::style::theme::ACCENT_PRESETS.join("|")
+                        auto_ui_runtime::ui::style::theme::ACCENT_PRESETS.join("|")
                     );
                 }
                 None => {}
+            }
+            #[cfg(not(feature = "ui-extra"))]
+            if let Some(a) = accent_eff.as_deref() {
+                std::env::set_var("AUTO_UI_ACCENT", a);
+                println!("  UI accent: {} (passed through; core profile)", a);
             }
             // Plan 418: UI action/binding config (Action declaration layer).
             // Resolved against the project dir (auto run's cwd) so the
@@ -1590,6 +1700,8 @@ fn real_main(cli: Cli) -> Result<()> {
             // 认领）；rust 轨信号 = 前注 args（cargo `--` 透传 → 生成 gate
             // 消费）。两信号并发注入，各轨只认各的；vue/jet/arkts/tauri
             // 前端 = 出界显式报错（--rq-host 预留未实现）。
+            // PLAN-816 T-05：-q 渲染队列=桌面协议域（ui-extra）——Core
+            // 形态具名失败（stub 内实现）。
             if render_queue {
                 cmd_autodesk::rqhost_gate_validate(render.as_deref(), &args).map_err(|e| {
                     if ai_mode {
@@ -1598,28 +1710,41 @@ fn real_main(cli: Cli) -> Result<()> {
                     }
                     miette::miette!("{e}")
                 })?;
-                auto_lang::ui::desktop_protocol::rqhost::ensure_rqhost_ready().map_err(|e| {
-                    if ai_mode {
-                        eprintln!("{}", format_error_json(&AutoError::Msg(e.clone())));
-                        std::process::exit(1);
+                #[cfg(feature = "ui-extra")]
+                auto_ui_runtime::ui::desktop_protocol::rqhost::ensure_rqhost_ready().map_err(
+                    |e| {
+                        if ai_mode {
+                            eprintln!("{}", format_error_json(&AutoError::Msg(e.clone())));
+                            std::process::exit(1);
+                        }
+                        miette::miette!("{e}")
+                    },
+                )?;
+                // Core 形态在上方 rqhost_gate_validate 已具名返回；此块
+                // 仅 ui-extra 编译（桌面协议面）。
+                #[cfg(feature = "ui-extra")]
+                {
+                    let wellknown = auto_ui_runtime::ui::desktop_protocol::rqhost::wellknown_pipe();
+                    std::env::set_var("AUTO_RQHOST_PIPE", &wellknown);
+                    args = cmd_autodesk::rqhost_injected_args(&wellknown, &args);
+                    // PLAN-683（remote 模式）：pac `desktop_render: remote` /
+                    // `--render=remote` → vm 轨分岔信号（AUTO_VM_RENDER env——
+                    // AUTO_RQHOST_PIPE 同位缝；run_vm_rqhost_client 消费）。
+                    let render_mode =
+                        auto_ui_runtime::ui::desktop_protocol::coverage::RenderMode::resolve(
+                            render.as_deref(),
+                            am.pac_desktop_render().as_deref(),
+                        );
+                    if render_mode
+                        == auto_ui_runtime::ui::desktop_protocol::coverage::RenderMode::Remote
+                    {
+                        std::env::set_var("AUTO_VM_RENDER", "remote");
+                        println!(
+                            "  render-queue: remote mode (headless iced host, DisplayList v2)"
+                        );
                     }
-                    miette::miette!("{e}")
-                })?;
-                let wellknown = auto_lang::ui::desktop_protocol::rqhost::wellknown_pipe();
-                std::env::set_var("AUTO_RQHOST_PIPE", &wellknown);
-                args = cmd_autodesk::rqhost_injected_args(&wellknown, &args);
-                // PLAN-683（remote 模式）：pac `desktop_render: remote` /
-                // `--render=remote` → vm 轨分岔信号（AUTO_VM_RENDER env——
-                // AUTO_RQHOST_PIPE 同位缝；run_vm_rqhost_client 消费）。
-                let render_mode = auto_lang::ui::desktop_protocol::coverage::RenderMode::resolve(
-                    render.as_deref(),
-                    am.pac_desktop_render().as_deref(),
-                );
-                if render_mode == auto_lang::ui::desktop_protocol::coverage::RenderMode::Remote {
-                    std::env::set_var("AUTO_VM_RENDER", "remote");
-                    println!("  render-queue: remote mode (headless iced host, DisplayList v2)");
+                    println!("  render-queue: rqhost shared compositor ({wellknown})");
                 }
-                println!("  render-queue: rqhost shared compositor ({wellknown})");
             }
             if !ai_mode {
                 info!("Running project ...");
@@ -1631,7 +1756,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                     // PLAN-765 T-03（纪要三 F-7）：进程内唯一未审计的静默
                     // exit(1) 臂补挂——与 main_err 挂点（下方 951 行）同册。
-                    auto_lang::vm::ffi::stdlib::exit_audit(1, "main_err_ai_mode");
+                    auto_lang_core::vm::ffi::stdlib::exit_audit(1, "main_err_ai_mode");
                     std::process::exit(1);
                 }
                 miette::miette!("{}", e)
@@ -1680,13 +1805,13 @@ fn real_main(cli: Cli) -> Result<()> {
             };
 
             let start = std::time::Instant::now();
-            let mut all_results = auto_lang::test_runner::TestResult::default();
+            let mut all_results = auto_lang_core::test_runner::TestResult::default();
             let mut test_files = 0;
             let mut failed_files = 0;
             let multi_file = files.len() > 1;
 
             for file in &files {
-                match auto_lang::test_file(file) {
+                match auto_lang_core::test_file(file) {
                     Ok(result) => {
                         // Skip files with no tests
                         if result.reports.is_empty() {
@@ -1712,8 +1837,10 @@ fn real_main(cli: Cli) -> Result<()> {
                                 println!("{}", report.stdout);
                             }
                             match &report.outcome {
-                                auto_lang::test_runner::TestOutcome::Passed => {}
-                                auto_lang::test_runner::TestOutcome::Failed(_) => file_failed += 1,
+                                auto_lang_core::test_runner::TestOutcome::Passed => {}
+                                auto_lang_core::test_runner::TestOutcome::Failed(_) => {
+                                    file_failed += 1
+                                }
                             }
                             all_results.reports.push(report.clone());
                         }
@@ -1735,7 +1862,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let elapsed = start.elapsed().as_millis();
             print!(
                 "{}",
-                auto_lang::test_runner::format_test_report(&all_results, elapsed)
+                auto_lang_core::test_runner::format_test_report(&all_results, elapsed)
             );
 
             if multi_file {
@@ -1870,7 +1997,7 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             let dir = dir.unwrap_or_else(|| ".".to_string());
             let config = load_am_config().unwrap_or_default();
-            let mut am = auto_man::Automan::new(&dir, config).map_err(|e| {
+            let mut am = auto_man_runtime::Automan::new(&dir, config).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                     std::process::exit(1);
@@ -1936,7 +2063,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 info!("Fetching dependencies...");
             }
             let config = load_am_config().unwrap_or_default();
-            let mut am = auto_man::Automan::new(".", config).map_err(|e| {
+            let mut am = auto_man_runtime::Automan::new(".", config).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                     std::process::exit(1);
@@ -1970,7 +2097,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 println_logo();
             }
             let config = load_am_config().unwrap_or_default();
-            auto_man::Automan::list_deps(&config).map_err(|e| {
+            auto_man_runtime::Automan::list_deps(&config).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                     std::process::exit(1);
@@ -1988,7 +2115,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let config = load_am_config().unwrap_or_default();
             match action {
                 DeviceAction::List => {
-                    auto_man::Automan::list_devices(&config).map_err(|e| {
+                    auto_man_runtime::Automan::list_devices(&config).map_err(|e| {
                         if ai_mode {
                             eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                             std::process::exit(1);
@@ -1997,7 +2124,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     })?;
                 }
                 DeviceAction::Select { port } => {
-                    let mut am = auto_man::Automan::new(".", config).map_err(|e| {
+                    let mut am = auto_man_runtime::Automan::new(".", config).map_err(|e| {
                         if ai_mode {
                             eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                             std::process::exit(1);
@@ -2029,7 +2156,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 println_logo();
             }
             let config = load_am_config().unwrap_or_default();
-            let mut am = auto_man::Automan::new(".", config).map_err(|e| {
+            let mut am = auto_man_runtime::Automan::new(".", config).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                     std::process::exit(1);
@@ -2060,7 +2187,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 println_logo();
             }
             let config = load_am_config().unwrap_or_default();
-            let am = auto_man::Automan::new(".", config).map_err(|e| {
+            let am = auto_man_runtime::Automan::new(".", config).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                     std::process::exit(1);
@@ -2081,7 +2208,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 println_logo();
             }
             let config = load_am_config().unwrap_or_default();
-            let mut am = auto_man::Automan::new(".", config).map_err(|e| {
+            let mut am = auto_man_runtime::Automan::new(".", config).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                     std::process::exit(1);
@@ -2107,7 +2234,7 @@ fn real_main(cli: Cli) -> Result<()> {
         //         init_logger();
         //         println_logo();
         //     }
-        //     auto_man::upgrade().map_err(|e| {
+        //     auto_man_runtime::upgrade().map_err(|e| {
         //         if ai_mode {
         //             eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
         //             std::process::exit(1);
@@ -2125,7 +2252,7 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             match action {
                 EnvAction::Reset => {
-                    auto_man::Automan::reset_index().map_err(|e| {
+                    auto_man_runtime::Automan::reset_index().map_err(|e| {
                         if ai_mode {
                             eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                             std::process::exit(1);
@@ -2137,7 +2264,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     }
                 }
                 EnvAction::Install { file } => {
-                    auto_man::Automan::install_config(&file).map_err(|e| {
+                    auto_man_runtime::Automan::install_config(&file).map_err(|e| {
                         if ai_mode {
                             eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                             std::process::exit(1);
@@ -2155,7 +2282,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
                 EnvAction::Cache { command } => {
                     let config = load_am_config().unwrap_or_default();
-                    let mut am = auto_man::Automan::new(".", config).map_err(|e| {
+                    let mut am = auto_man_runtime::Automan::new(".", config).map_err(|e| {
                         if ai_mode {
                             eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                             std::process::exit(1);
@@ -2270,7 +2397,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 println_logo();
             }
             let config = load_am_config().unwrap_or_default();
-            let mut am = auto_man::Automan::new(".", config).map_err(|e| {
+            let mut am = auto_man_runtime::Automan::new(".", config).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                     std::process::exit(1);
@@ -2308,16 +2435,46 @@ fn real_main(cli: Cli) -> Result<()> {
 
         // ========== AutoUI Widget Library (Plan 331) ==========
         Some(Commands::Ui { action }) => {
-            cmd_ui::run(action)?;
+            #[cfg(feature = "ui-extra")]
+            {
+                cmd_ui::run(action)?;
+            }
+            #[cfg(not(feature = "ui-extra"))]
+            {
+                let _ = action;
+                return Err(miette::miette!(
+                    "`auto ui` requires the full profile (ui-extra): widget registry tooling is not linked in core builds"
+                ));
+            }
         }
 
         // ========== AutoUI Blueprints (Plan 343, Design 17; PLAN-639 rename) ==========
         Some(Commands::Bp { action }) => {
-            cmd_bp::run(action, cli.format)?;
+            #[cfg(feature = "ui-extra")]
+            {
+                cmd_bp::run(action, cli.format)?;
+            }
+            #[cfg(not(feature = "ui-extra"))]
+            {
+                let _ = (action, &cli.format);
+                return Err(miette::miette!(
+                    "`auto bp` requires the full profile (ui-extra): blueprint registry is not linked in core builds"
+                ));
+            }
         }
         Some(Commands::Block { action }) => {
             eprintln!("warning: `auto block` is deprecated (renamed by PLAN-639); use `auto bp`");
-            cmd_bp::run(action, cli.format)?;
+            #[cfg(feature = "ui-extra")]
+            {
+                cmd_bp::run(action, cli.format)?;
+            }
+            #[cfg(not(feature = "ui-extra"))]
+            {
+                let _ = (action, &cli.format);
+                return Err(miette::miette!(
+                    "`auto block` requires the full profile (ui-extra): blueprint registry is not linked in core builds"
+                ));
+            }
         }
 
         // ========== Schema Docs (Plan 435 P8-1) ==========
@@ -2335,7 +2492,7 @@ fn real_main(cli: Cli) -> Result<()> {
             if !ai_mode {
                 println!("Parsing Auto {} to JSON", code);
             }
-            let json = auto_lang::run(&code).map_err(|e| {
+            let json = auto_lang_core::run(&code).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&e));
                     std::process::exit(1);
@@ -2345,7 +2502,7 @@ fn real_main(cli: Cli) -> Result<()> {
             output_success(ai_mode, &json);
         }
         Some(Commands::Eval { code }) => {
-            let result = auto_lang::run(&code).map_err(|e| {
+            let result = auto_lang_core::run(&code).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&e));
                     std::process::exit(1);
@@ -2355,7 +2512,7 @@ fn real_main(cli: Cli) -> Result<()> {
             output_success(ai_mode, &result);
         }
         Some(Commands::OldRepl) => {
-            auto_lang::autovm_repl::main_loop().map_err(|e| miette::miette!("{}", e))?;
+            auto_lang_core::autovm_repl::main_loop().map_err(|e| miette::miette!("{}", e))?;
         }
         Some(Commands::Config { path }) => {
             let code = std::fs::read_to_string(path.as_str()).map_err(|e| {
@@ -2369,7 +2526,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 miette::miette!("Failed to read file: {}", e)
             })?;
             let args = auto_val::Obj::new();
-            let c = auto_lang::eval_config_with_vm(code.as_str(), &args).map_err(|e| {
+            let c = auto_lang_core::eval_config_with_vm(code.as_str(), &args).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&e));
                     std::process::exit(1);
@@ -2386,7 +2543,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     std::env::set_var("AUTO_TARGET", target_val);
                 }
             }
-            let c = auto_lang::trans_c(path.as_str()).map_err(|e| {
+            let c = auto_lang_core::trans_c(path.as_str()).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&e));
                     std::process::exit(1);
@@ -2396,7 +2553,7 @@ fn real_main(cli: Cli) -> Result<()> {
             output_success(ai_mode, &c);
         }
         Some(Commands::Rust { path }) => {
-            let r = auto_lang::trans_rust(path.as_str()).map_err(|e| {
+            let r = auto_lang_core::trans_rust(path.as_str()).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&e));
                     std::process::exit(1);
@@ -2406,7 +2563,7 @@ fn real_main(cli: Cli) -> Result<()> {
             output_success(ai_mode, &r);
         }
         Some(Commands::Python { path }) => {
-            let py = auto_lang::trans_python(path.as_str()).map_err(|e| {
+            let py = auto_lang_core::trans_python(path.as_str()).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&e));
                     std::process::exit(1);
@@ -2416,7 +2573,7 @@ fn real_main(cli: Cli) -> Result<()> {
             output_success(ai_mode, &py);
         }
         Some(Commands::JavaScript { path }) => {
-            let js = auto_lang::trans_javascript(path.as_str()).map_err(|e| {
+            let js = auto_lang_core::trans_javascript(path.as_str()).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&e));
                     std::process::exit(1);
@@ -2426,7 +2583,7 @@ fn real_main(cli: Cli) -> Result<()> {
             output_success(ai_mode, &js);
         }
         Some(Commands::GDScript { path }) => {
-            let gd = auto_lang::trans_gdscript(path.as_str()).map_err(|e| {
+            let gd = auto_lang_core::trans_gdscript(path.as_str()).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&e));
                     std::process::exit(1);
@@ -2444,7 +2601,7 @@ fn real_main(cli: Cli) -> Result<()> {
                         .to_string_lossy()
                         .into_owned()
                 });
-                let msg = auto_lang::trans_typescript_to(&path, &out_path).map_err(|e| {
+                let msg = auto_lang_core::trans_typescript_to(&path, &out_path).map_err(|e| {
                     if ai_mode {
                         eprintln!("{}", format_error_json(&e));
                         std::process::exit(1);
@@ -2454,7 +2611,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("{}", msg);
             }
             TransTarget::C { output } => {
-                let c = auto_lang::trans_c(path.as_str()).map_err(|e| {
+                let c = auto_lang_core::trans_c(path.as_str()).map_err(|e| {
                     if ai_mode {
                         eprintln!("{}", format_error_json(&e));
                         std::process::exit(1);
@@ -2471,7 +2628,7 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             TransTarget::Rust { output, merge } => {
                 if merge {
-                    let merged = auto_lang::trans_rust_merged(path.as_str()).map_err(|e| {
+                    let merged = auto_lang_core::trans_rust_merged(path.as_str()).map_err(|e| {
                         if ai_mode {
                             eprintln!("{}", format_error_json(&e));
                             std::process::exit(1);
@@ -2487,7 +2644,7 @@ fn real_main(cli: Cli) -> Result<()> {
                         output_success(ai_mode, &content);
                     }
                 } else {
-                    let r = auto_lang::trans_rust(path.as_str()).map_err(|e| {
+                    let r = auto_lang_core::trans_rust(path.as_str()).map_err(|e| {
                         if ai_mode {
                             eprintln!("{}", format_error_json(&e));
                             std::process::exit(1);
@@ -2502,7 +2659,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             }
             TransTarget::Python { output } => {
-                let py = auto_lang::trans_python(path.as_str()).map_err(|e| {
+                let py = auto_lang_core::trans_python(path.as_str()).map_err(|e| {
                     if ai_mode {
                         eprintln!("{}", format_error_json(&e));
                         std::process::exit(1);
@@ -2518,7 +2675,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             }
             TransTarget::Js { output } => {
-                let js = auto_lang::trans_javascript(path.as_str()).map_err(|e| {
+                let js = auto_lang_core::trans_javascript(path.as_str()).map_err(|e| {
                     if ai_mode {
                         eprintln!("{}", format_error_json(&e));
                         std::process::exit(1);
@@ -2534,7 +2691,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             }
             TransTarget::Gd { output } => {
-                let gd = auto_lang::trans_gdscript(path.as_str()).map_err(|e| {
+                let gd = auto_lang_core::trans_gdscript(path.as_str()).map_err(|e| {
                     if ai_mode {
                         eprintln!("{}", format_error_json(&e));
                         std::process::exit(1);
@@ -2550,7 +2707,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             }
             TransTarget::Tscn { output } => {
-                let tscn = auto_lang::trans_tscn(path.as_str()).map_err(|e| {
+                let tscn = auto_lang_core::trans_tscn(path.as_str()).map_err(|e| {
                     if ai_mode {
                         eprintln!("{}", format_error_json(&e));
                         std::process::exit(1);
@@ -2567,7 +2724,7 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             TransTarget::Godot { output: _ } => {
                 // trans_godot writes <base>.tscn and <base>.gd next to the source.
-                let msg = auto_lang::trans_godot(path.as_str()).map_err(|e| {
+                let msg = auto_lang_core::trans_godot(path.as_str()).map_err(|e| {
                     if ai_mode {
                         eprintln!("{}", format_error_json(&e));
                         std::process::exit(1);
@@ -2578,7 +2735,7 @@ fn real_main(cli: Cli) -> Result<()> {
             }
             // Plan 555 T07: Auto → Auto（s2s 改写器；W1 identity passthrough）
             TransTarget::Auto { output } => {
-                let lowered = auto_lang::trans_auto_s2s(path.as_str()).map_err(|e| {
+                let lowered = auto_lang_core::trans_auto_s2s(path.as_str()).map_err(|e| {
                     if ai_mode {
                         eprintln!("{}", format_error_json(&e));
                         std::process::exit(1);
@@ -2595,7 +2752,7 @@ fn real_main(cli: Cli) -> Result<()> {
             }
         },
         Some(Commands::R2a { path, output }) => {
-            let r = auto_lang::transpile_r2a_file(path.as_str()).map_err(|e| {
+            let r = auto_lang_core::transpile_r2a_file(path.as_str()).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&e));
                     std::process::exit(1);
@@ -2618,7 +2775,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let headers = ["string.h", "math.h", "stdio.h", "stdlib.h", "time.h"];
             if let Some(h) = header {
                 // Show functions for a specific header
-                match auto_lang::vm::ffi::c_ffi::load_builtin_manifest(&h) {
+                match auto_lang_core::vm::ffi::c_ffi::load_builtin_manifest(&h) {
                     Some(manifest) => {
                         println!("=== C FFI: {} ===", manifest.header);
                         println!("Library: {}", manifest.library);
@@ -2648,7 +2805,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("=== C FFI Bindings (Plan 216) ===");
                 println!();
                 for h in &headers {
-                    match auto_lang::vm::ffi::c_ffi::load_builtin_manifest(h) {
+                    match auto_lang_core::vm::ffi::c_ffi::load_builtin_manifest(h) {
                         Some(manifest) => {
                             println!("  {} — {} functions", h, manifest.functions.len());
                         }
@@ -2662,7 +2819,7 @@ fn real_main(cli: Cli) -> Result<()> {
 
         // ========== MCP Server (Plan 265) ==========
         Some(Commands::Mcp) => {
-            let mut server = auto_lang::mcp::McpServer::new();
+            let mut server = auto_lang_core::mcp::McpServer::new();
             server.run();
         }
 
@@ -2675,7 +2832,7 @@ fn real_main(cli: Cli) -> Result<()> {
             timeout,
         }) => {
             let mut daemon =
-                auto_lang::autovm_daemon::AutovmDaemon::new_with_config(max_sessions, timeout);
+                auto_lang_core::autovm_daemon::AutovmDaemon::new_with_config(max_sessions, timeout);
             if stdio {
                 daemon.run_stdio();
             } else if foreground {
@@ -2715,7 +2872,7 @@ fn real_main(cli: Cli) -> Result<()> {
             json,
             code,
         }) => {
-            use auto_lang::autovm_client::AutovmClient;
+            use auto_lang_core::autovm_client::AutovmClient;
 
             let mut client =
                 AutovmClient::connect(&pipe_name).map_err(|e| miette::miette!("{}", e))?;
@@ -2744,7 +2901,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 None => {
                     // Anonymous mode: create temp session, eval, delete
                     if let Some(code) = &code {
-                        let (value, ok) = auto_lang::autovm_client::eval_one_shot(code);
+                        let (value, ok) = auto_lang_core::autovm_client::eval_one_shot(code);
                         if json {
                             let status = if ok { "ok" } else { "error" };
                             println!("{}", serde_json::json!({"status": status, "value": value}));
@@ -2831,18 +2988,18 @@ fn real_main(cli: Cli) -> Result<()> {
         // ========== Debug (Plan 199) ==========
         Some(Commands::Debug { file, agent }) => {
             if agent {
-                auto_lang::debug_file_agent(&file).map_err(to_miette_err)?;
+                auto_lang_core::debug_file_agent(&file).map_err(to_miette_err)?;
             } else {
                 println!("----------------------");
                 println!("Debugging Auto {}", file);
                 println!("----------------------");
-                auto_lang::debug_file(&file).map_err(to_miette_err)?;
+                auto_lang_core::debug_file(&file).map_err(to_miette_err)?;
             }
         }
 
         None => {
             // Default: Use BigVM REPL
-            auto_lang::autovm_repl::main_loop().map_err(|e| miette::miette!("{}", e))?;
+            auto_lang_core::autovm_repl::main_loop().map_err(|e| miette::miette!("{}", e))?;
         }
     }
 

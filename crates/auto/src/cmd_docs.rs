@@ -23,24 +23,35 @@ pub enum DocsAction {
 }
 
 pub fn run(action: DocsAction) -> Result<()> {
+    // PLAN-816 T-05：schema 文档生成=UI 编译域（ui-extra）；Core 形态具名
+    // 失败（clap 面/参数解析保持全形态可用）。
+    #[cfg(not(feature = "ui-extra"))]
+    {
+        let _ = action;
+        return Err(miette::miette!(
+            "`auto docs` requires the full profile (ui-extra): schema docs generation (ui_gen::docs_gen) is not linked in core builds"
+        ));
+    }
+    #[cfg(feature = "ui-extra")]
     match action {
         DocsAction::Gen { only } => {
             let want = |name: &str| only.as_deref().map_or(true, |o| o == name);
             let mut written: Vec<String> = Vec::new();
             if want("core") {
                 let path = "docs/components/core.md";
-                let text = auto_lang::ui_gen::docs_gen::generate_core_reference(std::path::Path::new("."));
+                let text = auto_ui_compiler::ui_gen::docs_gen::generate_core_reference(
+                    std::path::Path::new("."),
+                );
                 std::fs::create_dir_all("docs/components")
                     .map_err(|e| miette::miette!("create docs dir: {e}"))?;
-                std::fs::write(path, text)
-                    .map_err(|e| miette::miette!("write {path}: {e}"))?;
+                std::fs::write(path, text).map_err(|e| miette::miette!("write {path}: {e}"))?;
                 written.push(path.to_string());
             }
             if want("kitchen-sink") || want("kitchen_sink") {
                 // PLAN-590:画廊已迁 auto-os 顶层——落点经解析序定位,未解析
                 // (solo 检出)即报错引导,不落回 CWD 相对旧路径(避免在本仓
                 // 复活已迁目录)。
-                let gallery = auto_lang::os_paths::resolve_os_top_dir(
+                let gallery = auto_lang_core::os_paths::resolve_os_top_dir(
                     std::path::Path::new(".."),
                     "widgets-gallery",
                 )
@@ -51,7 +62,7 @@ pub fn run(action: DocsAction) -> Result<()> {
                     )
                 })?;
                 let path = gallery.join("src/front/pages/kitchen-sink.at");
-                let text = auto_lang::ui_gen::docs_gen::generate_kitchen_sink();
+                let text = auto_ui_compiler::ui_gen::docs_gen::generate_kitchen_sink();
                 std::fs::create_dir_all(path.parent().unwrap())
                     .map_err(|e| miette::miette!("create pages dir: {e}"))?;
                 let path_display = path.display().to_string();
@@ -60,9 +71,7 @@ pub fn run(action: DocsAction) -> Result<()> {
                 written.push(path_display);
             }
             if written.is_empty() {
-                return Err(miette::miette!(
-                    "--only 仅支持 core | kitchen-sink"
-                ));
+                return Err(miette::miette!("--only 仅支持 core | kitchen-sink"));
             }
             println!(
                 "wrote {} artifact{} —— 复核 diff;kitchen-sink 变更需重采样 gallery golden",

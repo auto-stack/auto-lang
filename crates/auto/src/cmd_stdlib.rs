@@ -20,10 +20,10 @@
 use clap::Subcommand;
 use serde_json::{json, Value};
 
-use auto_lang::stdlib_assembly::loader;
-use auto_lang::stdlib_assembly::model::{AssemblyDiagnostic, AssemblyTarget, Environment};
-use auto_lang::stdlib_assembly::providers;
-use auto_lang::stdlib_assembly::validate;
+use auto_lang_core::stdlib_assembly::loader;
+use auto_lang_core::stdlib_assembly::model::{AssemblyDiagnostic, AssemblyTarget, Environment};
+use auto_lang_core::stdlib_assembly::providers;
+use auto_lang_core::stdlib_assembly::validate;
 
 pub const EXIT_OK: i32 = 0;
 pub const EXIT_CHECK_FAILED: i32 = 1;
@@ -108,21 +108,21 @@ fn normalize_module(m: &str) -> String {
 /// Production registration and inventory share the explicit stdlib root.
 fn production_surfaces() -> Result<
     (
-        auto_lang::stdlib_assembly::model::StdlibInventory,
-        std::sync::MutexGuard<'static, auto_lang::vm::native_registry::AutoVMNativeRegistry>,
-        auto_lang::vm::native::NativeInterface,
+        auto_lang_core::stdlib_assembly::model::StdlibInventory,
+        std::sync::MutexGuard<'static, auto_lang_core::vm::native_registry::AutoVMNativeRegistry>,
+        auto_lang_core::vm::native::NativeInterface,
     ),
     String,
 > {
     let stdlib_root = loader::repo_stdlib_root().map_err(|e| e.to_string())?;
-    auto_lang::vm::native_registry::register_builtin_natives();
+    auto_lang_core::vm::native_registry::register_builtin_natives();
 
-    let shims = auto_lang::vm::native::NativeInterface::production();
+    let shims = auto_lang_core::vm::native::NativeInterface::production();
 
     let inv = loader::scan_inventory(&stdlib_root);
     Ok((
         inv,
-        auto_lang::vm::native_registry::BIGVM_NATIVES
+        auto_lang_core::vm::native_registry::BIGVM_NATIVES
             .lock()
             .unwrap(),
         shims,
@@ -208,7 +208,7 @@ fn inspect_actual(
         Ok(s) => s,
         Err(e) => return error_value(EXIT_ERROR, &format!("cannot read {path}: {e}")),
     };
-    let mut session = auto_lang::compile::CompileSession::new();
+    let mut session = auto_lang_core::compile::CompileSession::new();
     session.set_assembly_target(target).ok();
     session.assembly.environment = environment;
     if let Some(parent) = std::path::Path::new(path).parent() {
@@ -280,7 +280,7 @@ fn inspect_actual(
         "diagnostics": [],
     });
 
-    let references = match auto_lang::stdlib_assembly::reference::compile_actual_references(
+    let references = match auto_lang_core::stdlib_assembly::reference::compile_actual_references(
         &session,
         &source,
         std::path::Path::new(path),
@@ -304,7 +304,7 @@ fn inspect_actual(
         Ok(root) => root,
         Err(error) => return error_value(EXIT_ERROR, &error.to_string()),
     };
-    let assembly = auto_lang::stdlib_assembly::manifest::AssemblyManifest::freeze(
+    let assembly = auto_lang_core::stdlib_assembly::manifest::AssemblyManifest::freeze(
         session.assembly,
         "stdlib-inspect",
         std::path::Path::new(path)
@@ -339,9 +339,9 @@ fn check_core(
     target: AssemblyTarget,
     environment: Environment,
     requested: Option<&[&str]>,
-    inv: &auto_lang::stdlib_assembly::model::StdlibInventory,
-    registry: &auto_lang::vm::native_registry::AutoVMNativeRegistry,
-    shims: &auto_lang::vm::native::NativeInterface,
+    inv: &auto_lang_core::stdlib_assembly::model::StdlibInventory,
+    registry: &auto_lang_core::vm::native_registry::AutoVMNativeRegistry,
+    shims: &auto_lang_core::vm::native::NativeInterface,
 ) -> (i32, Value) {
     let module_filter: Option<Vec<String>> = module
         .map(|m| vec![normalize_module(m)])

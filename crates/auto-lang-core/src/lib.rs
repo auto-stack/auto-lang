@@ -28,6 +28,14 @@ pub mod use_scanner;
 
 pub mod ast;
 pub mod error;
+// PLAN-816 T-05：脚本/调试/转译文件入口族单源（自 auto-lang 兼容包迁入；
+// 旧 auto_lang::* 路径经兼容包转发保持）。
+pub mod script_entry;
+pub use script_entry::{
+    debug_file, debug_file_agent, dump_lowered, run_file, run_file_with_args, trans_auto_s2s,
+    trans_gdscript, trans_godot, trans_javascript, trans_python, trans_rust_merged, trans_tscn,
+    trans_typescript, trans_typescript_to, transpile_r2a_file,
+};
 pub mod lexer;
 pub mod scope;
 pub mod scope_manager;

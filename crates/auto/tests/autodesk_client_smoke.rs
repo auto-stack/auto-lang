@@ -1,3 +1,6 @@
+// PLAN-816 T-05：桌面协议 client 冒烟=UI 域——ui-extra 门控（Core 形态
+// 编译跳过；optional 正则依赖 auto-ui-runtime 对集成测试按 feature 可见）。
+#![cfg(feature = "ui-extra")]
 // Plan 480 S2 —— 双模 exe 两进程 smoke：spawn 真实 `auto` 二进制
 // （`run --autodesk-client=<pipe> --app386=<name>`）+ 测试侧 host。
 //
@@ -6,10 +9,10 @@
 // 主循环。断言：孵化落地（462 AppSession + 虚拟窗）、共享内存帧随协议
 // 点击递增、L2Detach 后子进程以 exit=L2Detached 标记退出（stdout）。
 
-use auto_lang::ui::desktop_protocol::host::ProtocolHost;
-use auto_lang::ui::desktop_protocol::message::{DrawOp, MouseButton};
-use auto_lang::ui::desktop_protocol::transport::{self, Transport};
-use auto_lang::ui::session::{AppId, DesktopSession};
+use auto_ui_runtime::ui::desktop_protocol::host::ProtocolHost;
+use auto_ui_runtime::ui::desktop_protocol::message::{DrawOp, MouseButton};
+use auto_ui_runtime::ui::desktop_protocol::transport::{self, Transport};
+use auto_ui_runtime::ui::session::{AppId, DesktopSession};
 
 const APP_NAME: &str = "smoke-counter";
 const COUNTER_SRC: &str = "widget SmokeCounter {\n    model { var count int = 0 }\n    view {\n        button \"+\" { onclick: () => {.count += 1} }\n        text `count: ${.count}`\n    }\n}\n";
@@ -47,7 +50,7 @@ fn autodesk_client_two_process_smoke() {
     let src = COUNTER_SRC;
     let mut ph = ProtocolHost::new(&mut session, move |name: &str| {
         if name == APP_NAME {
-            auto_lang::build_dynamic_component(src, None).map_err(|e| format!("{e}"))
+            auto_ui_runtime::build_dynamic_component(src, None).map_err(|e| format!("{e}"))
         } else {
             Err(format!("unknown app {name}"))
         }
@@ -79,19 +82,25 @@ fn autodesk_client_two_process_smoke() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     let wid = wid.expect("真实 auto 二进制已孵化");
-    assert!(ph.session.apps.contains_key(&AppId(1)), "462 AppSession 落地");
+    assert!(
+        ph.session.apps.contains_key(&AppId(1)),
+        "462 AppSession 落地"
+    );
 
     // ---- 协议点击 ×2 → 帧递增 ----
     for expect in 1..=2i64 {
-        let injected = ph.pointer_down(60.0, 40.0, MouseButton::Left).expect("窗内命中");
+        let injected = ph
+            .pointer_down(60.0, 40.0, MouseButton::Left)
+            .expect("窗内命中");
         server_end.send(&injected).unwrap();
         let mut seen = false;
         for _ in 0..300 {
             pump(&mut server_end, &mut ph);
             if let Some(list) = ph.composed(wid.0) {
-                if list.ops.iter().any(|op| matches!(op,
-                    DrawOp::Text { text, .. } if text == &format!("count: {expect}")))
-                {
+                if list.ops.iter().any(|op| {
+                    matches!(op,
+                    DrawOp::Text { text, .. } if text == &format!("count: {expect}"))
+                }) {
                     seen = true;
                     break;
                 }
@@ -109,7 +118,10 @@ fn autodesk_client_two_process_smoke() {
         if let Some(status) = child.try_wait().expect("try_wait") {
             break status;
         }
-        assert!(start.elapsed() < std::time::Duration::from_secs(30), "子进程 30s 未退出");
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(30),
+            "子进程 30s 未退出"
+        );
         std::thread::sleep(std::time::Duration::from_millis(50));
     };
     assert!(status.success(), "子进程退出码 {status}");

@@ -7,7 +7,7 @@
 //! 不启动 Vue/Vite/桌面 UI/webview；两轨（vm/rust）消费同一份解析后的
 //! [HttpServiceConfig]。错误以 miette 报告上抛（main 层 Err = 非零退出）。
 
-use auto_man::http_service::{resolve_config, serve_project, HttpConfigSource};
+use auto_man_runtime::http_service::{resolve_config, serve_project, HttpConfigSource};
 use miette::Result;
 use std::path::PathBuf;
 
