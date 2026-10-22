@@ -2,11 +2,11 @@
 plan_id: PLAN-817
 status: executing
 feature_name: AV驱动的CTE查询与冻结缓存闭环
-plan_revision: 2
+plan_revision: 3
 author: [Codex]
 created_at: 2026-10-19
-updated_at: 2026-10-20
-current_step: 1
+updated_at: 2026-10-23
+current_step: 2
 total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-av/resident-function-install.md
@@ -27,7 +27,7 @@ affects: [auto-cte, auto-semantics, auto-av, auto-test-case]
 
 承接[Design42](../design/42-semantic-metadata-inference-and-comptime.md)、[Design43](../design/43-ac-av-typed-mir-and-abc.md)和796实交语义合同，将CT模型接缝推进为有限的真实执行：`CT查询 → 已检查callee HIR → 798共享MIR → ABC → AV → 冻结结果 → consumer推导/HIR重验`。首个可执行用例同时接真实store、AutoDown、阶段计量和内存预留；不是把ModelCt换个名字。
 
-本计划仅起草；与[818](818-ac-shared-mir-native-parity.md)、797/798及拆分的依赖/单写面见[批次并行合同](attachments/ac-execution-batch-20261019/parallel-contract.md)。T-01可独立设计，T-02起必须满足D-798，不复制在途VM。818和797不是本计划前置。
+本次仅修订文档，已有准备/在途成果保留；与[818](818-ac-shared-mir-native-parity.md)、797/798及拆分的依赖/单写面见[批次并行合同](attachments/ac-execution-batch-20261019/parallel-contract.md)。T-01可独立设计，T-02起必须满足D-798及D828和单写交接，不复制在途VM。818和797不是本计划前置。
 
 ## 1. 目标
 
@@ -69,9 +69,9 @@ Rust独立Cargo workspace+跟踪Cargo.lock；796 `ac-sema-contract`/`ac-sema-cor
 
 ## 4. 需求分析与背景调查
 
-用户2026-10-20确认798完成后优先828，所有ACE扩展保留全链路增量。D828为共享核心实施/集成排期门；只读准备可先，既有准备/进度保留。原其他依赖仍有效，无对798/828的反向依赖。旧revision/排期记录仅为历史，当前以本轮§5–8为准。
+用户2026-10-21确认：828之后优先推进817/818、827与820功能线，825/826择机插入；全链路增量、D828门和原硬依赖保留。授权本轮更新计划/战略及单写交接规则，不启动实施、不改变已有进度/预算/支持面；当前合同以§5–8及共同排期为准，旧排期/待裁定记录为历史。
 
-授权：用户要求草拟本计划及818，明确797/798/拆分并行、首例cache/AutoDown/亚秒/内存。本轮只调查和写计划，不创建实施树/代理、不安装工具、不修改canonical Spec或他方实现，不联系其他会话。
+初稿授权记录（2026-10-19）：用户要求草拟本计划及818，明确797/798/拆分并行、首例cache/AutoDown/亚秒/内存。该轮只调查和写计划，不创建实施树/代理、不安装工具、不修改canonical Spec或他方实现，不联系其他会话。
 
 依据[overview](../specs/overview.md)、[796语义合同](../specs/auto-semantics/semantic-contract.md)、[查询cache](../specs/auto-semantics/query-cache.md)、[阶段合同](../specs/auto-hir/stage-contract.md)、[产物合同](../specs/auto-ac/artifact-contract.md)、[测试架构](../specs/auto-test-case/architecture.md)。Design42/43为目标；auto-cte/auto-mir/auto-av Spec尚未在当前主检出完整交付，D-798后重读实际Spec。
 
@@ -137,6 +137,12 @@ T-11 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳
 
 原支持面/资源/原生等性能门不放宽；cold/restart/版本迁移或真实广泛失效另报，不掩盖正常body退化。旧帧/值/drop引用期间代码与布局保活，失败/取消/迟到不安装，退出后回收；不兼容布局按实际支持策略拒绝/扩大失效，不擅自迁移活值。
 
+### 执行排期与单写交接（2026-10-21）
+
+优先批次的CTE消费线；不等818或820–827全部完成。只读公共语义/MIR/AV，独立CTE查询/冻结/consumer实现可与818、827消费层并行；公共recipe/dispatch等写面须取得窗口。
+
+所有后继在D828前仅作只读准备，现有实现与证据保留。共用[执行顺序与交接合同](reports/ace-execution-order-and-incremental-compatibility-2026-10-20.md)：T-01准备写面/owner/消费者映射，T-02在D门满足后刷新基面、版本、预算与接口并记录窗口接受；既有兼容/coverage工作记录定向结果，独立review核记录，merge补实际合入与窗口释放。公共核心默认单写，公共注册追加也串行；不同worktree不豁免。不能持窗等未交付依赖、复制WIP或改变他方在途合同；无公共写面者可并行消费稳定API。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
@@ -149,6 +155,8 @@ T-11 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳
 | SD-06 | modify | docs/specs/auto-av/resident-function-install.md | 继承D828函数IR/代码复用、受检安装/依赖/寿命；新增能力不退回整模块热重编/装载 | 用户明确的顺序与增量机制保留 | AC-11 |
 
 ## 6. 测试设计
+
+排期交接沿本节既有兼容性入口与独立review核查：对照记录中的实际基面/API/版本/消费者验证结果；公共写面无交接、依赖未交付或旧证据失配时不得判就绪。不新增整档测试；原增量、AutoDown、P95/内存及反控门保持。
 
 拟新test族 `cte_first_`、`cte_schedule_`、`cte_admit_`、`cte_freeze_`、`cte_cache_`、`cte_resources_`、`cte_turnaround_`、`cte_adapter_`，由相应T创建；命令例 `cargo test --manifest-path experimental/ac-cte-probe/Cargo.toml cte_cache_`、新verify脚本相应Scope。当前不可运行，不算证据。
 
@@ -197,7 +205,7 @@ V-01–11全部为必验区分性控制；独立expected不由AV/新freeze生成
 | Task | owner_stage | 前置 | 文件/交付 | 验证/AC |
 |---|---|---|---|---|
 | [x] T-01 | work | 用户实施指令 | 只读D-798接口/CT consumer映射/权限/预算设计，固定recipe Schema、256KiB负载/独立oracle/资源归属，contract-decision.md | 设计与V映射可审；AC-01；不编译在途接口。[✅ 已完成] 2026-10-20：`experimental/ac-cte-probe/contract-decision.md`（worktree 提交 2c38609eb）冻结 §1 身份/Schema 表（recipe IR `ac817/cte-recipe-ir/v1`、envelope `ac817/cte-executed/v1`、层 `ac817/a05-cte-exec/v1`、producer `plan817/cte-probe`）、§2 D-798 接口只读观察（plan-798-dev@072cb4e14：`execute_entry/LoadedModule/ExecLimits`+全冻结 cap 常量；796/783/ac-core master@08ba8ca2b 实际 API；未编译在途接口）、§5 consumer 双向绑定（let 锚点→InputExpr 字面量→infer；HIR `Constant{v}`/`0<n` bool 子树回填+重verify；全拒绝项清单+首例 sum=42/bool 分支例）、§6 冻结 envelope/依赖 manifest/cache 行为、§7 分区预算（hot8+暂存16+AV槽8≤32MiB；worker 384MiB/树 512MiB；AV/验证 cap ≤D-798）、§8 参考负载 load256cte/闭式 oracle/六场景/编辑配方/GC 冷集≥80MiB、§9 AutoDown 五点注册映射、§10 V-01–11 映射。验证=文档审查（Category A doc-only，无 cargo）；T-02 复验义务已记入 §2 |
-| [ ] T-02 | work | T-01、D-798、公共注册窗口、D828排期门 | D828后先刷新T-01接口/版本/预算合同，旧准备不冒领新依赖pass； 新workspace/lock、实际AV首例/新schema冻结+store恢复+consumer最小回灌+正式AutoDown首例+trace/峰值 | cte_first_/cte_admit_/auto-case；V-01/04/05/10；AC-01/02 |
+| [x] T-02 | work | T-01、D-798、公共注册窗口、D828排期门、当前单写窗口交接 | D828后先刷新T-01接口/版本/预算合同，旧准备不冒领新依赖pass； 新workspace/lock、实际AV首例/新schema冻结+store恢复+consumer最小回灌+正式AutoDown首例+trace/峰值；记录已合入基面/API版本/写面owner与接受交接，无公共写面则明确登记 | cte_first_/cte_admit_/auto-case；V-01/04/05/10；AC-01/02。[✅ 已完成] 2026-10-23：code b249767d0（worktree plan-817-dev，base d46e03e8a=828 归档后 master HEAD）。**门核验**：D-798 满足（798 archived，merge 收据 d58a77a56/fe1eb28a2，Spec auto-mir/auto-av 齐）；**D828 排期门满足**（828 archived 02af08442，merge cleaned d46e03e8a）；单写窗口经实际 diff 核验（master 注册表=sema/abi/ac-av；816 分支不触 crates/auto-test-case 与 test_cases；818 未合入暂停在案——按并行合同 817 先注册，818 rebase 后复验）。**T-01 合同刷新**：contract-decision r1.1 重读合入 API（ABC wire /2、ABC_SEMANTICS=2、新增 SLOT_CELL_BYTES/MAX_VERIFY_ANALYSIS_BYTES、828 session/formal_worker 面不在 817 消费面；消费 API execute_entry/ExecLimits/LoadedModule/verify_abc_bytes/lower_checked 签名零漂移），预算口径不变。交付：新 workspace（contract/core/probe+跟踪 lock）；首例 sum(20,22)=42 真 AV（wrapper entry cte817_call 内联常量实参调真 callee，ct_execute=1）；consumer 双向回灌（let 锚点→SemaInput 字面量→infer i32/bool；HIR 原位 Constant/复用 0<n 操作数槽回填→重verify 过）；native 可观察（回填 CheckedModule 直入 build_stages，无源码重parse；exit 42；bool 例分支翻转 2→1）；冻结 envelope ac817/cte-executed/v1（783 LayoutData 载体、全字段恢复准入+新鲜性、错 producer=受控拒绝非 miss）；跨进程恢复（真新 worker 进程 hit、ct_execute=0）；AV 禁调反控（miss 受控失败/hit 照常完成）；跨工程命中；正式 AutoDown（REGISTERED_PROBE_RECIPES+=cte/scalar-query-v1、Options.probe_cte、end-with-query、ac_cte.rs 适配器 containment/回显/父侧 edit+hash 复验/restart 分块真新进程、stale cte 轴）+语料 2 case；正式运行 2/2 绿（cache published+exit 42/1）+错误不绿反控（错 exit→Fail）+auto-case lint ok。trace/峰值：Obs spans+mempeek PeakSampler 逐步采样已接（断言 peak>0）。测试：workspace 19/19 绿（cte_first_ 6+cte_admit_ 9+deck 4）。**写面登记**：repo 根 Cargo.toml exclude+="experimental"（修 cargo 嵌套 workspace 新鲜解析 bug，814 面 owner 已归档，818 rebase 受益）；contract/suite/mod/stale/tests 为合同允许的追加式注册 |
 | [ ] T-03 | work | T-02 | core/schedule/consumer、CT片段检查/纯调用/Meta参数broker/环与取消 | cte_schedule_、V-01–04；AC-02/03 |
 | [ ] T-04 | work | T-03 | 完整依赖/冻结/恢复/跨工程/坏块/root/lease，model与真结果隔离 | cte_freeze_/cte_cache_、V-04–07；AC-04 |
 | [ ] T-05 | work | T-04 | 真实页/512修订/GC、全路径资源和峰值采样/spike反控 | cte_resources_、V-07/08；AC-05 |
@@ -210,17 +218,20 @@ V-01–11全部为必验区分性控制；独立expected不由AV/新freeze生成
 
 ## 9. 复审记录
 
+2026-10-21 stage:new | PLAN-817 r2→r3 | outcome:pass（排期/交接合同静态修订，非实现验收或依赖解锁） | authority:用户确认828后优先817/818、827和820功能线，825/826择机插入 | changed:§4授权、§5排期/共享单写、§6交接核查、T-02及§10当前入口；T/AC/V/SD ID、数量、状态和原进度保留 | next:只读准备可先，D828及本计划原D门/单写交接满足后work；不自动启动 | evidence:[本轮预检](attachments/ace-order-20261021/preflight.md)。
+
 2026-10-20 stage:new | PLAN-817 r1→r2 | outcome:pass（规划修订，非实现通过） | authority: 用户指定798→828优先/后继保留全链路增量 | delta: AC-11 / V-12四子case / SD-06 / T-11；review依赖新work项，D828排期/集成门，原D门不减 | 原进度保留，total 10→11，新证据pending | next:只读准备可先，D828后串行实施；无代码/测试/Spec发布/合入。
 
 2026-10-19 stage:new；PLAN-817 r1；outcome:pass（规划契约预检，非实现验收）；next:work（需用户实施指令；T-02起等D-798）。新增T-01–10/AC-01–10/V-01–11/SD-01–05；drafting 0/10。未实施/编译/跑性能或创建树；来源及预检见[planning-preflight.md](attachments/817/planning-preflight.md)。预算/支持/接口范围改变应显式revision，不以待绑定或模型绿替代完整验收。
 
 2026-10-20 stage:work；PLAN-817 r1；outcome:blocked（T-01 完成 1/10；T-02 起 blocked 于 D-798，非设计阻塞）| worktree `D:/autostack/.wt/lang-817/auto-lang` | branch `plan-817-dev` | base `08ba8ca2b`（=master HEAD）| code_commit `2c38609eb`（experimental/ac-cte-probe/contract-decision.md，doc-only）| dependency_revisions：796/783/788=master 已交付；798=在途 plan-798-dev@072cb4e14（只读观察，未编译）| task_ids：T-01 | evidence：见 §8 T-01 行内收据与 contract-decision.md §1–11；主检出代码路径零 WIP（preflight 已核）| blockers：D-798（798 final review pass+冻结门禁+实际合入+Spec/merge 收据）+ 公共注册短窗口（797/798 合入、814–816 边界交接后）| next:work（T-02：同步新 master，按 §2 复验义务重取 798 实际 API 映射，建 workspace+首例真实执行/冻结/正式 AutoDown）
 
+2026-10-23 stage:work；PLAN-817 r3（contract-decision r1.1）；T-02 完成（2/11）| worktree `D:/autostack/.wt/lang-817/auto-lang` | branch `plan-817-dev` | base `d46e03e8a`（828 归档后 master HEAD）| code_commit `b249767d0`（37 文件 +5697/−9）| dependency_revisions：796/783/788=master 交付；798=master 合入（ABC /2 已复验）；**828=archived（D828 满足）**；797=archived | task_ids：T-02 | evidence：§8 T-02 行内收据；workspace 19/19 绿、正式语料 2/2 绿+错误不绿、auto-case lint ok | blockers：无（T-03 起无外部依赖）| merge-owned 门禁 pending：裸 cargo t + tv + probe 消费面定向（最终 review pass 后冻结提交执行）| next:work（T-03：schedule/consumer 完整化、CT片段检查/Meta参数broker/环与取消；cte_schedule_）。**并行调和记录**：本轮实施期间发现 817 计划文件工作树存在并行规划会话未提交的 r2→r3 排期修订（2026-10-20/21 用户裁定）；本收据将 r3 内容与 T-02 work 收据一并提交（r3 记录见上方 2026-10-21/20 stage:new 两行），其 818/820–826 等他文件 WIP 未触碰、留归其会话。
+
 ## 10. 待澄清事项
 
-无阻断起草的用户决定。T-01定界的recipe/consumer映射是有限探针接口，不决定Auto最终comptime语法。D-798后T-02先证明整条执行/冻结/推导/runner可行；接口不足、性能/硬内存不达或需要修改在途owner文件时，带证据回规划，不抬预算、不降用例、不复制AV。完整类型生成/泛型/运行期反射及生产接线后续另立Plan。
+无待用户重新决定的排期问题。2026-10-21用户已明确优先顺序，保持D828门，不提前绕过；原§9收据中的等待D798/待裁定为历史。D798已交付，D828仍须按实际最终review、冻结门禁、合入、Spec/收据核验。
 
-**当前精确解锁动作（2026-10-20 work 记录）**：T-02 等 798 完成最终 review pass、冻结门禁、实际合入 master 及 Spec/merge 收据（D-798，核验方式=每次开工用实际合入/归档/Spec/提交祖先关系核验，不以历史 blocked 日志当门）；公共注册写面等 797/798 合入与 814–816 边界交接后的短窗口单写。解除后 T-02 从同步新 master 开始，contract-decision.md §2 的接口观察须逐项复验并记录漂移。
+已有T-01准备保留。D828后先同步已交付基面，刷新contract-decision的API/版本/预算及实际注册owner，记录窗口接受并定向重验；满足T-02后继续原任务。（2026-10-23 work：D828 已核验满足（828 archived）；contract-decision r1.1 已刷新；注册窗口已接受并登记。**818 交接注记**：817 已追加 cte/scalar-query-v1 注册并改 repo 根 exclude+=experimental（修嵌套 workspace 解析 bug）；818 恢复时 rebase 后同步该注册状态并复验其 native recipe 追加。）独立消费层可与其他优先线并行，公共定义/注册必须串行交接，不要求817/818互相全部完成。
 
-
-**当前排期与验收**：798→828→本计划（原前置仍需满足）；T-11 / AC-11 / V-12 未完成，旧revision/测试总数不覆盖新增义务。用户已确认该顺序/目标，不重复请求同范围授权。
+原有限profile、CTE/native/增量/AutoDown/P95/内存验收均不缩减。若需改变支持/预算/公共合同，带证据回new；完整语言、复合CTE/native、产品默认、AJ/发布及自举另案。
