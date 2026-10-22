@@ -1,7 +1,7 @@
 # PLAN-815 I-TOOL / auto-ui-tool 交接文档
 
-> T-08 交付物（R6 修复后版）。对象：816 CLI 客户端（M816-B 消费 B
-> 能力）及后续消费者。本版与修复后实现（R6 修复轮）逐项对账；
+> T-08 交付物（T-06..08 提前 R1 修复后版）。对象：816 CLI 客户端（M816-B 消费 B
+> 能力）及后续消费者。本版与修复后实现（T-06/T-07 提前 R1 修复轮）逐项对账；
 > 送审冻结身份见下表。
 
 ## 工具身份与冻结指纹
@@ -9,8 +9,8 @@
 | 项 | 值 |
 |---|---|
 | 工具名 | `auto-ui-tool` |
-| 源提交（冻结 SHA） | `9291a7ee3ee79c64f27d1ad191f82281f5dae99a`（branch `codex/plan-815-dev`，基线 M814-B `93a25c924` 之后） |
-| 二进制（debug 构建）SHA256 | `1b9387becf9de172b632e70838111c9c9590dd13e9a1dacc2ca2421e12638569`（`target/debug/auto-ui-tool.exe`，由上述源提交构建） |
+| 源提交（冻结 SHA） | `d039f23995cb7763787b86cd27f4144627d69d3d`（branch `codex/plan-815-dev`，基线 M814-B `93a25c924` 之后） |
+| 二进制（debug 构建）SHA256 | `385ffef8f131e08a08fcc41487881f54ba4a4815cbaebe0968284116ad696f16`（`target/debug/auto-ui-tool.exe`，由上述源提交构建） |
 | 二进制入口源 | `crates/auto-ui-tools/src/bin/auto_ui_tool.rs`（路径仅为导航；消费身份以上两行为准） |
 | 协议 crate | `crates/auto-tool-protocol`（纯数据，无 AST/VM/renderer） |
 | 协议版本 | `PROTOCOL_VERSION = 1` |
@@ -26,6 +26,22 @@
 | `generate_ui` | `vue` `rust` `jet` `ark` `tauri` `vscode`（多目标全生成；声明 `arkts` 规范化为 `ark`） | ✗ | ✗ |
 | `build_ui` | `vue` `rust` `jet` `ark` `vscode`（vm 解释型无构建步=具名拒绝） | ✓ | ✗ |
 | `run_ui` | `vue` `vm` `rust` `jet` `ark` `tauri` `vscode` | ✓ | ✓ |
+
+### run 前置与执行语义（诚实边界）
+
+- **所有 served run 都是真实执行链**（T-06 R1/F-815-T06-R1-02 后）：vue
+  =dev-server（Launched URL）；vm=隔离子进程会话（Input q）；rust=cargo
+  run；jet=gradle 构建+adb 安装/启动（设备探测=owned 捕获，R6 契约）；
+  **ark=构建 HAP→hdc 安装→aa start 启动**（bundle/ability 读生成产物）；
+  tauri=exec_local dev；vscode=code 启动。
+- **前置缺失=具名 failed**：jet 缺 adb/设备、ark 缺 hvigorw/hdc/设备等
+  均返回具名 error（含手动回退指引），不冒充运行完成；自然完成的空结果
+  才是合法终态。取消=cancelled。
+- **front 声明贯穿**（T-06 R1/F-815-T06-R1-01 后）：请求 `app("front")`
+  节点形式（优先）或 `front:` prop 贯穿 VM entry/CWD/模块种子、rust UI
+  判定、jet/ark/vscode 生成布局（`request_front_dir`，镜像
+  parse_workspace_path）；无声明=默认 `src/front` 正控保持；legacy CLI
+  直跑保持冻结探测链。
 
 ## 协议消息（v1 完整面）
 
