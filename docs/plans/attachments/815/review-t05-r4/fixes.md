@@ -43,3 +43,27 @@ debug 二进制 SHA256 `ab88ccb4…` + 支持×profile 指纹矩阵）；Cancel 
   ui-tools 告警保持 22 条既有基线。
 - 测试时序裁定遵守：未整档 t/tv/tt/tb/tu/taa/tf；merge 门（裸 t+触面档）
   pending 归 merge 冻结后统一执行。
+
+---
+
+# R5 修复轮（2026-10-22，code `c6fdaaaf1`）
+
+R5 四项（R4-05-P1/R4-04-P2/R1-01-P2/R5-01-P2）全部修复；逐项 closure：
+
+| Finding | 修复与永久反例 | 当期结果 |
+|---|---|---|
+| F-815-T05-R4-05（P1 捕获排水） | `drain_captured_stdout` 重写：reader_stop/cancelled 每刻检查+10s 硬界+1MiB 收集上限+`DrainEnd` 五分类（Eof/Stopped/Truncated/IoError/BoundOverrun）；jet adb 臂取消哨兵收口、非 Eof 部分输出不冒充完整探测；`map_flow` 取消后到达的 Ok 改判 Cancelled。永久反例：`captured_drain_answers_cancel_and_natural_eof`（跨平台，Windows+Linux 双跑） | 回放 adb-held-pipe：持管道取消 **263ms 内 cancelled**（原 14s 无果+释放后假 completed）、`exit_before_holder_release=0`（宿主 EOF 在 holder 释放前干净退出）；自然 EOF 正控 completed 保持 |
+| F-815-T05-R4-04（P2 包管理器主配置） | `pkg::TOOL_PM_STATE` 三态单源：请求 raw `pkg:` 字段 > 外部全局配置/自动探测（**跳过磁盘主 pac.at**）> legacy 冻结全链（磁盘 pac > 全局 > 探测）；每操作 guard（tool_ops 三入口）设置/清理、不跨操作缓存。永久反例：`pkg::tests::tool_pm_state_matrix`（legacy 磁盘/请求字段赢磁盘/无字段跳磁盘/guard 恢复四态） | 回放 package-source：wire npm+disk pnpm 冲突例实际执行 **npm**（原 pnpm）；正控 npm/npm 保持 |
+| F-815-T05-R1-01（P2 Unix 平台证据） | 无代码变更（R4 修复成立）；**平台实测补齐**：WSL Ubuntu-22.04（rustc 1.97.1，系统 xkbcommon/wayland dev 在）对冻结源码 `--locked` 全量编译+具名测试执行 | `unix_reader_truly_stops`（非 owned 持管道真停/Stopped + 自然 EOF 正控）**PASS**；captured_drain/vm_session 两单测 Linux 面 **4/4**。详 [unix-platform-evidence.md](../fix-evidence/unix-platform-evidence.md)（含环境/命令/边界绑定与 real_tree 预存可移植缺口披露） |
+| F-815-T05-R5-01（P2 旧入口语义回归） | jet/ark/vscode build 内层 `strict = RunIo 在装`：非零退出/缺工具/产物 oracle 仅托管（协议）形态具名 Err；legacy 公开门面恢复基线（打印提示后 Ok）。永久反例：`legacy_build_semantics` 新集成档（unhosted jet exit7→Ok、ark 缺 wrapper→Ok） | 回放 legacy-build：**REVIEW_LEGACY_RESULT:Ok(())**（原 Err）；协议路径严格面由既有 tool_process 测试保持 8/8 |
+
+## 当期验证账（R5 轮）
+
+- scoped：proc_host **9/9**（新增捕获排水，Windows+Linux 双跑）、pkg 矩阵 1/1、
+  lib **173/177**（4 红全为在案预存）、tool_process 默认 **21/21**+重串行 **8/8**、
+  legacy_build_semantics **2/2**（新）、tool-execution **31/31**、协议 **19/19**、
+  man **6/6**、consumer **5/5**；净改 .rs rustfmt --check 0 diff。
+- 回放：R5 三反例脚本（adb-held-pipe/package-source/legacy-build）全闭 +
+  R4 build-lifecycle 三例/profile-contracts 四根保持。
+- Unix 平台面：WSL 真实冻结源码编译+具名测试 1+4 全绿（上表）。
+- 测试时序裁定遵守：未整档；merge 门 pending。

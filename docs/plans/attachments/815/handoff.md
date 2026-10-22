@@ -1,7 +1,7 @@
 # PLAN-815 I-TOOL / auto-ui-tool 交接文档
 
-> T-08 交付物（R4 修复后重写版）。对象：816 CLI 客户端（M816-B 消费 B
-> 能力）及后续消费者。本版与修复后实现（R4 十项修复轮）逐项对账；
+> T-08 交付物（R5 修复后版）。对象：816 CLI 客户端（M816-B 消费 B
+> 能力）及后续消费者。本版与修复后实现（R5 修复轮）逐项对账；
 > 送审冻结身份见下表。
 
 ## 工具身份与冻结指纹
@@ -9,8 +9,8 @@
 | 项 | 值 |
 |---|---|
 | 工具名 | `auto-ui-tool` |
-| 源提交（冻结 SHA） | `8a08e84fe25ec81e164ba50b9f9e970e705505e0`（branch `codex/plan-815-dev`，基线 M814-B `93a25c924` 之后） |
-| 二进制（debug 构建）SHA256 | `ab88ccb440e007ad4ac243e28f693f05b431d809e4ef8f4e66ec3e9d0583d775`（`target/debug/auto-ui-tool.exe`，由上述源提交构建） |
+| 源提交（冻结 SHA） | `c6fdaaaf1ecc2799d5ad225db3922a121c90c383`（branch `codex/plan-815-dev`，基线 M814-B `93a25c924` 之后） |
+| 二进制（debug 构建）SHA256 | `c95748c80b512215d89d6c987d3b8b708f697d102a24a62333f7666051c42b61`（`target/debug/auto-ui-tool.exe`，由上述源提交构建） |
 | 二进制入口源 | `crates/auto-ui-tools/src/bin/auto_ui_tool.rs`（路径仅为导航；消费身份以上两行为准） |
 | 协议 crate | `crates/auto-tool-protocol`（纯数据，无 AST/VM/renderer） |
 | 协议版本 | `PROTOCOL_VERSION = 1` |
@@ -87,6 +87,11 @@ ServerEnvelope{id, body}
   衍生的 env 条目（外部后端根/主题声明 JSON）；两个内部键先从继承环境
   移除（`env_remove`）再按请求追加——串行第二个请求（外部→本地、主题
   Some→None、失败后新会话）不沿用上一请求上下文；子进程不重读主 pac。
+- **包管理器单源**（R5 / F-815-T05-R4-04 根修）：工具工作操作期间
+  `pkg::resolve` 消费**当前请求**的 raw `pkg:` 字段（未建模字段经请求
+  原样传递）；请求无该字段时跳过磁盘主 pac.at，只走外部全局配置
+  （`~/.auto/auto-man/am.at`）→自动探测；legacy CLI 直跑保持"磁盘
+  pac > 全局 > 自动探测"冻结链。每操作 guard 设置/清理，不跨操作缓存。
 - **owned 树统一设施**（R4-05 收口，`auto-tool-execution`：Windows Job
   Object / Unix 进程组——取消/EOF 终止整树+有界收尸+reader join）：
   - vue：install/dev/build（pkg `run_command_live`/`run_script_live` 托管臂）；
@@ -98,8 +103,15 @@ ServerEnvelope{id, body}
   - vscode：`code --extensionDevelopmentPath` 启动；
   - tauri：dev 链经 pkg `exec_local` 托管臂。
   上述均只在**托管形态**（RunIo 在装）走 owned 设施；legacy CLI 直跑保持
-  冻结的直接 Command 行为（`run_external_status` 双形态）。真终态 oracle：
-  reader 三分类 NaturalEof/Stopped/IoError，非自然 EOF 具名披露。
+  冻结的直接 Command 行为（`run_external_status` 双形态）**与基线返回
+  语义**（R5-01：构建失败/缺工具在旧公开入口打印提示后 Ok——严格具名
+  Err 只属托管/协议形态）。真终态 oracle：reader 三分类
+  NaturalEof/Stopped/IoError，非自然 EOF 具名披露。
+- **捕获排水同约束**（R5 / F-815-T05-R4-05-P1）：caller-drained 捕获
+  管道与 forwarder 同样应答本操作的取消/EOF（停止标志/取消标志每刻
+  检查+硬界限+1MiB 收集上限）；终态分类 Eof/Stopped/Truncated/IoError/
+  BoundOverrun——部分输出不冒充完整探测结果；被取消操作的终态恒为
+  cancelled（`map_flow` 对取消后到达的 Ok 改判 Cancelled）。
 - reader 可停读双平台同构：Windows PeekNamedPipe / Unix `poll(2)`（10ms
   轮询刻，停止标志恒可观察；非 owned 持管道者不能把 reader 钉死在阻塞读）；
   join 两阶段=短自然收尾窗（正常完成不被误分类为 teardown 停止）+强制
