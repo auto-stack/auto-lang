@@ -210,6 +210,34 @@ fn t08_formal_campaign_v08_dual_gate_30_revisions() {
     assert!(report.worker_peak_bytes > 0 && report.parent_peak_bytes > 0);
     // p50 <= p95 <= p99 sanity over the same samples.
     assert!(report.p50_ms <= report.p95_ms && report.p95_ms <= report.p99_ms);
+
+    // PLAN-828 T-07 dual-line budget verdict (798 r5 §5.9 口径, now
+    // HARD-gated on the campaign's own measurements): Line A = the
+    // frontend compile transient, measured in ISOLATION on the frozen
+    // load in a fresh worker process (≤ 224 MiB, ac-core owned); Line B
+    // = the probe-owned residual, overall worker sampled peak MINUS the
+    // Line-A attribution (≤ 128 MiB — a missing attribution would
+    // conservatively charge the whole peak to this line).
+    let attribution = std::process::Command::new(worker_exe())
+        .arg("frontend-attribution")
+        .output()
+        .expect("spawn frontend-attribution");
+    assert!(attribution.status.success(), "attribution compile failed");
+    let attr: serde_json::Value =
+        serde_json::from_slice(&attribution.stdout).expect("attribution JSON line");
+    let line_a = attr["frontend_peak_bytes"].as_u64().expect("peak bytes");
+    assert_eq!(attr["ok"].as_bool(), Some(true));
+    let line_a_budget = auto_av_probe::bench::BUDGET_FRONTEND_TRANSIENT_PEAK_BYTES;
+    let line_b_budget = auto_av_probe::bench::BUDGET_WORKER_PRIVATE_PEAK_BYTES;
+    assert!(
+        line_a <= line_a_budget,
+        "Line A (frontend transient) {line_a} > {line_a_budget}"
+    );
+    let line_b = report.worker_peak_bytes.saturating_sub(line_a);
+    assert!(
+        line_b <= line_b_budget,
+        "Line B (probe-owned residual) {line_b} > {line_b_budget}"
+    );
     println!(
         "formal: n={}, p50={:.1}ms p95={:.1}ms p99={:.1}ms, worker_peak={}MB parent_peak={}MB",
         report.samples.len(),
@@ -218,5 +246,12 @@ fn t08_formal_campaign_v08_dual_gate_30_revisions() {
         report.p99_ms,
         report.worker_peak_bytes / (1024 * 1024),
         report.parent_peak_bytes / (1024 * 1024),
+    );
+    println!(
+        "dual-line verdict: Line A (frontend transient, isolated)={}MB <= {}MB, Line B (probe residual)={}MB <= {}MB",
+        line_a / (1024 * 1024),
+        line_a_budget / (1024 * 1024),
+        line_b / (1024 * 1024),
+        line_b_budget / (1024 * 1024),
     );
 }

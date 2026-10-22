@@ -1080,7 +1080,7 @@ fn t03_a07_fn_hir_tampered_row_is_skipped_not_trusted() {
     // Restore: the garbage row decodes to nothing — skipped, never
     // trusted; the cold body keeps serving; ABC admission is unaffected.
     let cancel = CancelFlag::new(false);
-    let mut r = restore(SRC, "d_main", &[], &dir, "p828").expect("restore");
+    let r = restore(SRC, "d_main", &[], &dir, "p828").expect("restore");
     assert_eq!(r.counters().get("restore_units_admitted"), 2);
     assert_eq!(
         r.counters().get("restore_hir_adopted"),
@@ -1140,7 +1140,7 @@ fn t03_a07_fn_hir_tampered_row_is_skipped_not_trusted() {
     let s = warmup_persisted(SRC, "d_main", &[], &dir, "p828").expect("warmup-persisted");
     assert_eq!(s.counters().get("hir_artifacts_deposited"), 1);
     drop(s);
-    let mut r = restore(SRC, "d_main", &[], &dir, "p828").expect("restore");
+    let r = restore(SRC, "d_main", &[], &dir, "p828").expect("restore");
     assert_eq!(
         r.counters().get("restore_hir_adopted"),
         1,
@@ -1193,4 +1193,169 @@ fn t07_v07_512_revisions_bounded_history_stable_watermark() {
         "the 512 edits did NOT accumulate 512+ history entries (eviction ran): {}",
         s.history_len()
     );
+}
+
+/// T-07 / V-07 COMPLETE storage axis (512 real edits + GC + restart on
+/// the frozen load): a PERSISTED session runs the frozen 512-edit series,
+/// every revision persisted changed-only and every value verified against
+/// its independent expectation. Periodic REAL GC reclaims each superseded
+/// revision's closure — the store's live-set watermark stays BOUNDED (it
+/// does not grow with the edit count; the per-function HIR soft root
+/// retires at supersession, and a restart seeds the tracker so the first
+/// post-restart supersession still retires). Two mid-series warm
+/// restarts re-verify and re-admit every unit from the store. The pinned
+/// revision-0 snapshot stays runnable for the whole series and dies on
+/// release; a user sentinel row survives every GC byte-identical.
+#[test]
+fn t07_v07_full_storage_axis_512_edits_gc_restart_sentinel() {
+    use ac_artifact_probe::identity::QueryKey;
+    use ac_artifact_probe::store::{run_gc, GcConfig, PutRequest};
+    use auto_av_probe::cache::{open_store, ABC_LAYER};
+    use auto_av_probe::formal_828::diff_edit;
+    use auto_av_probe::session::{restore, warmup_persisted, HISTORY_CAP};
+
+    const PROJECT: &str = "p828-t07-full-axis";
+    let dir = std::env::temp_dir().join(format!("p828-t07-full512-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // A user-owned row outside the session's key space, pinned by its
+    // OWN root kind — it must survive every GC byte-identical.
+    let sentinel_key = QueryKey::new(
+        &ABC_LAYER,
+        vec![
+            ("owner".into(), "user-cache-sentinel".into()),
+            ("kind".into(), "user-row".into()),
+            ("fp".into(), "v1".into()),
+        ],
+    );
+    let sentinel_payload = b"user-sentinel-payload-v1".to_vec();
+    {
+        let st = open_store(&dir).unwrap();
+        let id = st
+            .put_artifact(PutRequest {
+                layer: "A09",
+                key: sentinel_key.clone(),
+                kind: ac_artifact_probe::codec::ChunkKind::LayoutData,
+                payload: sentinel_payload.clone(),
+                edges: vec![],
+                project: None,
+            })
+            .unwrap();
+        st.register_root(PROJECT, &id, "user-row").unwrap();
+    }
+
+    let base = load256::generate_revision(0);
+    let mut s = warmup_persisted(&base.source, "d_main", &[], &dir, PROJECT).unwrap();
+    let pinned = s.current();
+    let pinned_weak = Arc::downgrade(&pinned);
+    let cancel = CancelFlag::new(false);
+
+    // The live-set reference point: the initial closure (per-unit ABC +
+    // sidecar + HIR, the manifest, and the sentinel).
+    let initial_live = {
+        let st = open_store(&dir).unwrap();
+        run_gc(&st, GcConfig { high: 1, low: 0 })
+            .unwrap()
+            .live_chunks
+    };
+
+    let mut prev_src = base.source.clone();
+    let mut live_watermark = initial_live;
+    let mut max_soft_roots = 0usize;
+    let mut total_deleted = 0usize;
+    let mut restarts = 0usize;
+    let functions = s.function_names().len();
+    for n in 1..=512u32 {
+        let rev = load256::generate_revision(n);
+        let (start, end, insert) = diff_edit(&prev_src, &rev.source).unwrap();
+        let out = s.edit(start, end, insert).unwrap();
+        assert!(out.ok, "revision {n}: {:?}", out.non_fast_path_reason);
+        assert_eq!(out.install_set.len(), 1, "revision {n}");
+        assert!(
+            out.install_set[0].ends_with("fn_037"),
+            "revision {n}: {:?}",
+            out.install_set
+        );
+        let (exec, _) = s.run(&ExecLimits::default(), &cancel);
+        assert_i32(&exec, rev.expected_main, "revision {n}");
+        prev_src = rev.source;
+
+        if n % 64 == 0 {
+            let st = open_store(&dir).unwrap();
+            let receipt = run_gc(&st, GcConfig { high: 1, low: 0 }).unwrap();
+            assert!(receipt.ran, "revision {n}: forced GC ran");
+            total_deleted += receipt.deleted_chunks;
+            live_watermark = live_watermark.max(receipt.live_chunks);
+            let soft = st.root_artifacts(PROJECT, "soft").unwrap().len();
+            max_soft_roots = max_soft_roots.max(soft);
+        }
+        if n == 171 || n == 342 {
+            // Mid-series warm restart: the manifest gate matches, every
+            // unit re-verifies and re-admits from the store, and the
+            // series continues on the restored session.
+            let src_now = s.src().to_string();
+            drop(s);
+            let r = restore(&src_now, "d_main", &[], &dir, PROJECT).unwrap();
+            assert_eq!(
+                r.counters().get("restore_manifest_matched"),
+                1,
+                "warm restart at {n}"
+            );
+            assert_eq!(
+                r.counters().get("restore_units_admitted") as usize,
+                functions,
+                "every unit warm-admitted at {n}"
+            );
+            s = r;
+            restarts += 1;
+        }
+    }
+    assert_eq!(restarts, 2, "two mid-series restarts happened");
+
+    // Bounded store: real GC reclaimed the superseded closures and the
+    // live watermark stayed at the initial closure's scale — never a
+    // growth linear in the 512 edits.
+    assert!(total_deleted > 0, "periodic GC actually reclaimed payloads");
+    assert!(
+        live_watermark <= initial_live + 8,
+        "live watermark {live_watermark} vs initial closure {initial_live}"
+    );
+    // Bounded HIR soft roots: at most one live root per function (its
+    // current content version) across all 512 supersessions.
+    assert!(
+        max_soft_roots <= functions,
+        "HIR soft roots bounded by the function count: {max_soft_roots}"
+    );
+    // Bounded resident history (the in-memory axis of the same series).
+    assert!(
+        s.history_len() <= HISTORY_CAP * functions && s.history_len() < 513,
+        "resident history {}",
+        s.history_len()
+    );
+
+    // The pinned revision-0 snapshot stayed runnable for the whole
+    // series (old code available while held) and dies on release.
+    let (exec, _) = execute_program(&pinned, &ExecLimits::default(), &cancel);
+    assert_i32(
+        &exec,
+        base.expected_main,
+        "pinned revision-0 after the series",
+    );
+    drop(pinned);
+    assert!(
+        pinned_weak.upgrade().is_none(),
+        "releasing the pin reclaims the old snapshot"
+    );
+
+    // The sentinel survived every GC byte-identical.
+    {
+        let st = open_store(&dir).unwrap();
+        let loaded = st
+            .get_artifact("A09", &sentinel_key)
+            .unwrap()
+            .expect("user sentinel alive after every GC");
+        assert_eq!(loaded.payload, sentinel_payload);
+    }
+    let _ = std::fs::remove_dir_all(&dir);
 }

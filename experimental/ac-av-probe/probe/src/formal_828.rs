@@ -259,7 +259,7 @@ pub fn validate_and_gate(report: &FormalReport, gate_ms: f64, min_samples: usize
 /// First/last differing region between two sources → an Edit (old-source
 /// coordinates). The frozen generator's revisions differ in one localized
 /// multiplier; a prefix/suffix diff recovers it generically.
-fn diff_edit(cur: &str, next: &str) -> Result<(u64, u64, Vec<u8>), String> {
+pub fn diff_edit(cur: &str, next: &str) -> Result<(u64, u64, Vec<u8>), String> {
     let (a, b) = (cur.as_bytes(), next.as_bytes());
     let mut start = 0usize;
     while start < a.len() && start < b.len() && a[start] == b[start] {

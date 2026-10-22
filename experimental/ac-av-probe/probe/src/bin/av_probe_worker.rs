@@ -32,6 +32,7 @@ fn main() {
         "case-serve" => case_serve(),
         "load-revision" => load_revision(&args[1..]),
         "bench-turnaround" => bench_turnaround(&args[1..]),
+        "frontend-attribution" => frontend_attribution(),
         "session-serve" => session_serve(),
         "native-build" => native_build(&args[1..]),
         "native-run" => native_run(&args[1..]),
@@ -47,6 +48,7 @@ fn usage() -> ! {
     eprintln!("       av_probe_worker request --store DIR --src-file FILE --entry FN [--project P] [--caps C1,C2]");
     eprintln!("       av_probe_worker gc-loop --store DIR --stop-file FILE [--interval-ms N]");
     eprintln!("       av_probe_worker bench-turnaround --samples N --gate-ms MS --out FILE");
+    eprintln!("       av_probe_worker frontend-attribution  (PLAN-828 T-07: Line-A frontend transient, isolated, one JSON line)");
     eprintln!("       av_probe_worker session-serve  (PLAN-828 T-08: persistent formal-session worker, JSON-lines on stdio)");
     eprintln!(
         "       av_probe_worker case-serve  (PLAN-798 T-07: AutoDown probe envelope on stdin)"
@@ -487,6 +489,28 @@ fn load_revision(args: &[String]) -> ! {
     exit(0)
 }
 
+/// PLAN-828 T-07 dual-line budget verdict, Line A: the LANDED scalar
+/// frontend's own transient peak on the frozen load, measured in
+/// ISOLATION in this fresh process — the same attribution 口径 as
+/// `bench-turnaround`'s `frontend_peak_bytes` (798 r5 §5.9). One JSON
+/// line on stdout; the caller (the T-08 campaign test) gates Line A at
+/// 224 MiB and computes Line B (probe-owned residual = worker sampled
+/// peak − Line A) at 128 MiB.
+fn frontend_attribution() -> ! {
+    let load = auto_av_probe::load256::generate_revision(0);
+    let sampler = auto_av_probe::mempeek::PeakSampler::start(5);
+    let compiled =
+        auto_ac_prototype::source::compile_scalar_source(&load.source, "attribution.at", &[]);
+    let frontend_peak = sampler.stop();
+    let ok = compiled.is_ok();
+    let line = serde_json::json!({
+        "ok": ok,
+        "frontend_peak_bytes": frontend_peak,
+    });
+    println!("{line}");
+    exit(if ok { 0 } else { 5 })
+}
+
 fn bench_turnaround(args: &[String]) -> ! {
     let samples: usize = flag(args, "--samples")
         .and_then(|s| s.parse().ok())
@@ -677,7 +701,7 @@ fn session_serve() -> ! {
     use auto_av_core::av::{CancelFlag, ExecLimits};
     use auto_av_core::contract::{ExecOutcome, Value};
     use auto_av_probe::formal_worker::{
-        CloseOp, ClosedMsg, EditOp, EditResultMsg, InitOp, ReadyMsg, WorkerReply, WorkerRequest,
+        ClosedMsg, EditOp, EditResultMsg, ReadyMsg, WorkerReply, WorkerRequest,
     };
     use auto_av_probe::session::{warmup, FunctionIncrementalSession};
     use std::io::BufRead as _;

@@ -50,7 +50,7 @@ use auto_ac_prototype::verify::{verify_function, CheckedFunction};
 use auto_av_core::abc::{decode_abc, encode_abc};
 use auto_av_core::abc_verify::verify_abc;
 use auto_av_core::av::{execute_program, CancelFlag, ExecLimits, ExecTrace};
-use auto_av_core::contract::{ExecOutcome, SpanInfo};
+use auto_av_core::contract::ExecOutcome;
 use auto_av_core::function_code::FunctionCode;
 use auto_av_core::mir_verify::verify_mir;
 use auto_av_core::program_snapshot::ProgramSnapshot;
@@ -165,6 +165,15 @@ struct FnRecord {
     /// PRODUCED — a repeated persist of unchanged content is skipped, so
     /// `hir_artifacts_deposited` counts new products only.
     persisted_hir_cv: Option<String>,
+    /// F-11 changed-only persistence (T-07 storage axis): the content
+    /// version whose ABC unit + span sidecar rows this session already
+    /// put, with the exact artifact ids the CURRENT manifest's required
+    /// edges need. An unchanged unit does zero store traffic on later
+    /// persists — its rows are store-internal and stay alive through the
+    /// current manifest's edges; a session fresh from `restore` carries
+    /// no tracker and does ONE idempotent full pass. `None`/cv mismatch =
+    /// full put path (also the self-heal for externally deleted rows).
+    persisted_unit_edges: Option<(String, String, String)>,
     /// Current-source declaration origin (byte offset) of this function.
     origin: u64,
     /// Declaration origin in the source revision this function's UNIT
@@ -498,6 +507,7 @@ pub fn warmup(
             code: code.clone(),
             canonical: warm_dump.clone(),
             persisted_hir_cv: None,
+            persisted_unit_edges: None,
             origin: 0,
             mint_origin: 0,
             span_map: auto_av_core::span_map::SpanSegments::default(),
@@ -1044,6 +1054,11 @@ pub fn restore(
         rec.hir_body = adopted;
         rec.producing_defs = cold_def_names.clone();
         rec.producing_types = cold_type_names.clone();
+        // The adopted row IS this content version's current store
+        // deposit — seeding the tracker keeps the T-07 bounded soft-root
+        // policy exact across restarts (the next supersession retires
+        // THIS cv's root, not none).
+        rec.persisted_hir_cv = Some(cv.clone());
         hir_adopted += 1;
     }
     session.counters.set("restore_hir_adopted", hir_adopted);
@@ -1383,6 +1398,23 @@ impl FunctionIncrementalSession {
             else {
                 continue;
             };
+            // F-11 changed-only persistence: a unit this session already
+            // put at this exact content version does ZERO store traffic —
+            // the recorded ids re-enter the manifest's required edges and
+            // the rows stay alive through the current manifest. (A fresh
+            // `restore` session has no tracker and does one idempotent
+            // full pass below; a tracker/row mismatch from external
+            // tampering surfaces as the manifest put's TargetMissing.)
+            if let Some((p_cv, abc_id, sidecar_id)) = rec.persisted_unit_edges.clone() {
+                if p_cv == cv {
+                    edges.push((abc_id, ac_artifact_probe::identity::RefKind::RequiredData));
+                    edges.push((
+                        sidecar_id,
+                        ac_artifact_probe::identity::RefKind::RequiredData,
+                    ));
+                    continue;
+                }
+            }
             let mut spanless = rec.code.unit().module().clone();
             let Some(f) = spanless.funcs.first_mut() else {
                 continue;
@@ -1411,7 +1443,10 @@ impl FunctionIncrementalSession {
                 }
                 Err(e) => return Err(format!("put {}: {e:?}", rec.def_id)),
             };
-            edges.push((abc_id, ac_artifact_probe::identity::RefKind::RequiredData));
+            edges.push((
+                abc_id.clone(),
+                ac_artifact_probe::identity::RefKind::RequiredData,
+            ));
             // PLAN-828 T-03: the function-HIR artifact (A07 function unit),
             // content-addressed like the ABC row above — only a function
             // whose content changed produces a NEW row (same content
@@ -1454,16 +1489,53 @@ impl FunctionIncrementalSession {
                 }) {
                     let hkey = fn_hir_key(&owner, &rec.def_id, &cv, &caps_fp);
                     let hid = EnvelopeIdentity::fn_hir_bound(&owner, &rec.def_id, &cv);
-                    if let Err(e) =
-                        put_enveloped(store, &hkey, "A07", &hid, &hbytes, vec![], Some(project))
-                    {
-                        if !format!("{e:?}").contains("Conflict") {
+                    // T-07 bounded HIR soft-root policy (512/GC/storage
+                    // axis): each function keeps at most ONE live HIR
+                    // soft root — its CURRENT content version. Publishing
+                    // a new cv retires the function's superseded root, so
+                    // a long revision series cannot grow the store's live
+                    // set without bound. HIR rows are a regenerable
+                    // cache: retirement only turns a future restore miss
+                    // into the cold-compile truth path — never a
+                    // correctness change.
+                    let superseded_hir_cv = rec.persisted_hir_cv.clone();
+                    match put_enveloped(store, &hkey, "A07", &hid, &hbytes, vec![], Some(project)) {
+                        Ok(_) => {
+                            hir_deposits += 1;
+                        }
+                        Err(e) if format!("{e:?}").contains("Conflict") => {
+                            // Content revisit: the identical row already
+                            // exists — possibly root-retired by an earlier
+                            // supersession. Re-root it so the CURRENT
+                            // program's HIR artifacts stay pinned (rooting
+                            // is idempotent).
+                            if let Ok(Some((id, _))) =
+                                get_enveloped_with_id(store, &hkey, "A07", &hid)
+                            {
+                                if store.register_root(project, &id, "soft").is_ok() {
+                                    self.counters.bump("hir_soft_root_rerooted");
+                                }
+                            }
+                        }
+                        Err(e) => {
                             return Err(format!("put fn-hir {}: {e:?}", rec.def_id));
                         }
-                    } else {
-                        hir_deposits += 1;
-                        rec.persisted_hir_cv = Some(cv.clone());
                     }
+                    if let Some(old_cv) = superseded_hir_cv.as_deref() {
+                        if old_cv != cv {
+                            let okey = fn_hir_key(&owner, &rec.def_id, old_cv, &caps_fp);
+                            if let Ok(Some(loaded)) = store.get_artifact("A07", &okey) {
+                                if store
+                                    .remove_root(project, "soft", &loaded.artifact_id)
+                                    .unwrap_or(0)
+                                    > 0
+                                {
+                                    self.counters.bump("hir_soft_root_retired");
+                                }
+                            }
+                        }
+                    }
+                    rec.persisted_hir_cv = Some(cv.clone());
                 }
             }
             let skey = unit_span_sidecar_key(&owner, &rec.def_id, &cv);
@@ -1574,7 +1646,13 @@ impl FunctionIncrementalSession {
                 sidecar_edge = Some(sidecar_put_id);
             }
             match sidecar_edge {
-                Some(id) => edges.push((id, ac_artifact_probe::identity::RefKind::RequiredData)),
+                Some(id) => {
+                    edges.push((
+                        id.clone(),
+                        ac_artifact_probe::identity::RefKind::RequiredData,
+                    ));
+                    rec.persisted_unit_edges = Some((cv.clone(), abc_id, id));
+                }
                 None => {
                     return Err(format!(
                         "sidecar `{}`: no protected row after persist",
