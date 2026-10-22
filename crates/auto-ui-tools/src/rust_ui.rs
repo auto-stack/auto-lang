@@ -3671,7 +3671,7 @@ fn collect_shell_face_infos(pack_dir: &Path) -> AutoResult<Vec<ShellFaceInfo>> {
 fn gen_shell_state_access(info: &ShellFaceInfo) -> String {
     let mut code = format!("\nimpl ShellStateAccess for {} {{\n", info.widget);
     // shell_write：标量键 → 类型化字段赋值（auto_val → 字段类型反序列化）。
-    code.push_str("    fn shell_write(&mut self, key: &str, value: auto_lang::ui::auto_val::Value) -> bool {\n");
+    code.push_str("    fn shell_write(&mut self, key: &str, value: auto_ui_runtime::ui::auto_val::Value) -> bool {\n");
     code.push_str("        match key {\n");
     for (field, ty) in &info.states {
         let arm = match ty.as_str() {
@@ -3689,7 +3689,7 @@ fn gen_shell_state_access(info: &ShellFaceInfo) -> String {
     }
     code.push_str("            _ => false,\n        }\n    }\n");
     // shell_write_vec：数组键 → Vec<serde_json::Value> 字段。
-    code.push_str("    fn shell_write_vec(&mut self, key: &str, values: Vec<auto_lang::ui::auto_val::Value>) -> bool {\n");
+    code.push_str("    fn shell_write_vec(&mut self, key: &str, values: Vec<auto_ui_runtime::ui::auto_val::Value>) -> bool {\n");
     code.push_str("        match key {\n");
     for (field, ty) in &info.states {
         if ty == "Vec<serde_json::Value>" {
@@ -3768,12 +3768,12 @@ pub fn generate_shell_pack_lib_sources(pack_dir: &Path) -> AutoResult<(String, S
     );
     lib.push_str("//（#[ignore] 测试）重生成 + 提交）。\n");
     lib.push_str("#![allow(dead_code, non_snake_case, non_camel_case_types, unused_imports, unused_variables, unused_mut, clippy::all)]\n\n");
-    lib.push_str("use auto_lang::ui::{Component, View};\n");
-    lib.push_str("use auto_lang::ui::desktop_protocol::shell_client::{FaceProjector, ShellStateAccess, ShellSurface};\n\n");
+    lib.push_str("use auto_ui_runtime::ui::{Component, View};\n");
+    lib.push_str("use auto_ui_runtime::ui::desktop_protocol::shell_client::{FaceProjector, ShellStateAccess, ShellSurface};\n\n");
     lib.push_str(&cleaned);
     lib.push_str("\n// —— SHELL_MANIFEST（shell_projection 同形装配清单——D5）——\n");
     lib.push_str(
-        "pub use auto_lang::ui::shell_projection::{ShellFace, ShellManifest, ShellMount};\n\n",
+        "pub use auto_ui_runtime::ui::shell_projection::{ShellFace, ShellManifest, ShellMount};\n\n",
     );
     lib.push_str("pub const SHELL_MANIFEST: ShellManifest = ShellManifest {\n    crate_name: \"shell-pack\",\n    faces: &[\n");
     for info in &infos {
@@ -3815,7 +3815,9 @@ edition = "2021"
 # boot 时延度量行——T-03）。
 
 [dependencies]
-auto-lang = { path = "../auto-lang", features = ["ui-iced"] }
+# PLAN-814 T-05：shell-pack 生成物 canonical import（lib.rs 同步再生）。
+auto-ui-runtime = { path = "../auto-ui-runtime", features = ["ui-iced"] }
+auto-lang-core = { path = "../auto-lang-core" }
 serde_json.workspace = true
 # a2r 全局 List 字面量（once_cell::Lazy 形态——generate_cargo_toml 同注）。
 once_cell = "1"
