@@ -289,3 +289,11 @@ session 20/20（含 512 旗舰 202s——can3 换键后 hit 机制全矩阵仍�
 - **B3-C04 R3-B（存储字节重复计量）关闭**：根因=A07 put 前与 Ok 后各累计一遍 hbytes.len——一次真实新 HIR 行（252B）统计两次（4 put 903B 上报 1155B）。机制=`store_write_bytes` 统一『接受口径』并写明语义：每个返回 Ok 的 put 恰计其逻辑载荷一次（新写或幂等重发布同计一次）；Conflict 解析到幸存行=零写入不计；失败 put 不计（未落盘）。ABC（Ok 臂）/HIR（仅 Ok 臂，删 put 前重复）/sidecar 主行（仅 Ok）/sidecar 修复（Ok）/manifest（put 成功后）五处一致。原反例转绿：fresh 四成功 put 173+252+72+406=903 恰报 903（io-controls 2/2，extra=0）；无 store 编辑结构零盘 IO 正控保持。余界=口径为逻辑载荷字节（不含 envelope/SQLite/WAL 物理开销，任务单认可），已发生计量不丢。
 
 回归（d16af9cb3，全部定向）：handshake 4/4、io 2/2、judge 6/6、consumer-copy 2/2、identity 3/3、hit（clean 绿/copyhit 红——R3 已裁定方向）、wrongvalue 失败落盘控制（report+raw 先存）、t08 5/5（n=30 p50=374.3/p95=382.7/p99=397.7ms、A=201MB≤224MiB/B=0MB≤128MiB）、512 完整存储轴最终冻结一次（303.8s）、t07 8/8、mig 9/9、b1 11/11、b2 14/14、contract 22/22、t01r 4/4、r1 86/86、cache_tier 20/20、core 22/22、主套件 18、r23a close 6/6+3/3、rustfmt 0、零告警；coverage `_t08` 校准 5。
+
+## C04 R4 唯一残项修复（a030427fe，待 C04 单项窄复审）
+
+冻结 `a030427fe15dc043871d3253101f209653cabd9c`（基面 d16af9cb3，单一提交，树 clean）。[R4 报告与控制](attachments/828/review-c04-r4-d16af9cb3/review.md)。
+
+- **一行关闭表（B3-C04 R4）**：共因=接受字节存局部变量 `store_write_bytes`、仅成功末尾合并 phase_io——任一后续 put 失败（HIR/sidecar/manifest）提前 return Err 即丢前序 Ok 字节（HIR 失败丢 173B、sidecar 失败丢 425B，上报皆 0）。机制=计量落点改**即时记账**：局部累加器删除，每个返回 Ok 的 put 当场记入 `self.phase_io["store_write_bytes"]`（ABC/HIR/sidecar 主行/sidecar 修复各自 Ok 臂；manifest 原已 Ok 后记账）——接受一次口径（Ok 恰一次；Conflict 解析/失败零计）冻结不变，『已发生计量不丢』对所有早退结构性成立，非两处特判。原控结果=io-failure 控件 **4/4**：fail@1（ABC 失败）0=0；fail@2（HIR 失败）**173 保留**（原 0）；fail@3（sidecar 失败）**425 保留**（原 0）；fail@4（manifest 失败）497=497。原 io 2/2（903=903、no-store）保持。余界=无。
+
+回归（a030427fe，全部定向）：io-failure 4/4、io 2/2、handshake 4/4、judge 6/6、consumer-copy 2/2、identity 3/3、hir-roots 2/2、t08 5/5（n=30 p95=514.4ms、A=201MB≤224MiB/B=0MB≤128MiB；一次机器负载下战役瞬时失败后连续三跑全绿）、t07 8/8、mig 9/9、b2 14/14、主套件 18（显式跳三 512）、rustfmt 0、零告警。未重跑 512（任务单明示无需；persist 计量路径断言不依赖 io 字节值）。
