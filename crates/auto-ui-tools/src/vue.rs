@@ -10517,6 +10517,47 @@ mod tests {
 
     use super::*;
 
+    /// T-07 子批3 R1（F-815-T07-B2-R1-03 收口）：`toggles.default_classes`
+    /// 的**请求臂消费**钉——VueReads::from_request（vue.rs:2783）读
+    /// req.default_classes() 进 vue 生成/转译算法（transpile 调用传参）；
+    /// legacy 臂 parse_default_classes 读盘。归一语义=Unset→on（809
+    /// ToggleValue::normalized）。生效差异（on：文本节点带
+    /// text-muted-foreground 等文档主题缺省类；off：裸 span）见复审 holdout
+    /// default-classes.diff.txt。
+    #[test]
+    fn vue_reads_default_classes_comes_from_request_toggle() {
+        use auto_project_model::descriptor::SourceInfo;
+        use auto_project_model::{parse_document, GenerationRequest};
+        let mk = |pac: &str| {
+            VueReads::from_request(&GenerationRequest::from_descriptor(
+                &parse_document(pac, SourceInfo::inline()).expect("parse"),
+            ))
+        };
+        let on = mk("name: \"dc\"
+render: \"vue\"
+default_classes: true
+");
+        let off = mk("name: \"dc\"
+render: \"vue\"
+default_classes: off
+");
+        let unset = mk("name: \"dc\"
+render: \"vue\"
+");
+        assert!(
+            on.default_classes,
+            "explicit on toggle reaches the generation algorithm"
+        );
+        assert!(
+            !off.default_classes,
+            "explicit off toggle reaches the generation algorithm"
+        );
+        assert!(
+            unset.default_classes,
+            "Unset normalizes to the documented default-on semantics"
+        );
+    }
+
     /// Stage B P-3: apps 容器展开（vue 轨）——`../auto-os/apps` 下每个含
     /// pac.at 的直接子目录 = 一个 local root（id = 子目录名，排序）；
     /// no-pac 子目录与缺容器静默跳过；AUTO_DESKTOP_APPS_EXTRA 仍全额覆盖。

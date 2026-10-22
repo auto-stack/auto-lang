@@ -1,5 +1,20 @@
 # PLAN-815 T-07 完整验收 子批3（复审 review-t07-batch2-r1 三项 P2 修复）
 
+> **R1 修正轮（2026-10-22，[review-t07-batch3-r1](../../review-t07-batch3-r1/review.md)
+> needs_fix 收口）**：B2-R1-01（发行覆盖）/B2-R1-02（资源审计）独立核验
+> **CLOSED**（33/33、377 文件逐字节一致）；B2-R1-03 PARTIAL——矩阵四行
+> 误标"携带"（display.title/title_zh 与 runtime.window 的 rust 生成面、
+> runtime.api 的 vm run 后端选择、toggles.default_classes 的 vue 面）+
+> dep_roots 漏 rust 面。本轮修正：六行按实际消费链纠正（PacSource
+> window_env/title_env/api_is_rust/dep_roots 请求臂 + VueReads
+> default_classes，代码位与生效差异证据逐行入表）、theme_decl 补 vm run
+> apply_theme_decl、raw_nodes/raw 补 vscode 节点与 sidecar_spec 载荷
+> 消费、其余携带行逐字段请求臂重审（§5 清单）；新增两枚永久钉测试
+> `pac_source_window_title_api_dep_roots_request_arms`、
+> `vue_reads_default_classes_comes_from_request_toggle`（全绿）。T-08
+> 指纹定稿注意：handoff 首表 e319… 为历史源构建指纹，定稿须按实际冻结
+> 产物刷新（复审 §冻结注记）。
+
 2026-10-22，work 阶段交付。基线=子批2 复审对象（docs `503c9f67f` /
 code `e22fc7592`）。本批 = 复审
 [review-t07-batch2-r1](../../review-t07-batch2-r1/review.md) 三项 P2 的

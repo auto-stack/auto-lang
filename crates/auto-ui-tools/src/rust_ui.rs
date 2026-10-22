@@ -6154,6 +6154,66 @@ mod tests {
         );
     }
 
+    /// T-07 子批3 R1 复审修正（F-815-T07-B2-R1-03 收口）：
+    /// `runtime.window` / `display.title_zh|title` / `runtime.api` /
+    /// `dep_roots` 四个 PacSource 读取面的**请求臂消费**钉——生成/运行
+    /// 链消费点 = wrap_example（rust_ui.rs:2727-2728 → 生成 main.rs 的
+    /// AUTO_VM_WINDOW/AUTO_VM_TITLE 初始化）、run_vm.rs:297（api_is_rust →
+    /// VM/Rust 后端默认与 split 分支 → generate_api("rust")+start_api_server）、
+    /// resolve_bps_dependencies（rust_ui.rs:2940 → rust 轨 dep 源补充）。
+    /// 请求在场即权威（值或缺席都不落盘读）；legacy 臂才读盘。
+    #[test]
+    fn pac_source_window_title_api_dep_roots_request_arms() {
+        use auto_project_model::descriptor::SourceInfo;
+        use auto_project_model::{parse_document, GenerationRequest};
+        let dir = tempfile::tempdir().expect("tempdir");
+        // 盘上声明与请求快照不同值（区分性 oracle）
+        std::fs::write(
+            dir.path().join("pac.at"),
+            "name: \"env-demo\"\nrender: \"rust\"\nwindow: \"640x480\"\ntitle: \"DISK-TITLE\"\napi: \"rust\"\ndep \"disk-dep\" { path: \"./disk-deps\" }\n",
+        )
+        .unwrap();
+        let parse = |text: &str| {
+            GenerationRequest::from_descriptor(
+                &parse_document(text, SourceInfo::from_path(dir.path().join("pac.at")))
+                    .expect("parse"),
+            )
+        };
+        let pac_file = dir.path().join("pac.at");
+        let req = parse(
+            "name: \"env-demo\"\nrender: \"rust\"\nwindow: \"901x617\"\ntitle_zh: \"REQUEST-ZH\"\ntitle: \"REQUEST-EN\"\ndep \"req-dep\" { path: \"./req-deps\" }\n",
+        );
+        let src = PacSource::from_request(&req);
+        // runtime.window（Size→"WxH"）；display 链 title_zh 优先于 title
+        assert_eq!(src.window_env(&pac_file).as_deref(), Some("901x617"));
+        assert_eq!(src.title_env(&pac_file).as_deref(), Some("REQUEST-ZH"));
+        // 请求未声明 api → false（权威缺席，不落盘读盘上 api:"rust"）
+        assert!(!src.api_is_rust(&pac_file));
+        // dep_roots 请求臂：相对路径按 project_dir 锚定
+        let deps = src.dep_roots(&pac_file, dir.path());
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].0, "req-dep");
+        assert_eq!(deps[0].1, dir.path().join("req-deps"));
+        // 无 path 的 dep 默认锚 deps/<name>
+        let bare = parse("name: \"env-demo\"\nrender: \"rust\"\ndep \"bare\" {}\n");
+        let deps2 = PacSource::from_request(&bare).dep_roots(&pac_file, dir.path());
+        assert_eq!(deps2.len(), 1);
+        assert_eq!(deps2[0].1, dir.path().join("deps").join("bare"));
+        // Fit 窗口归一
+        let fit = parse("name: \"env-demo\"\nrender: \"rust\"\nwindow: \"fit\"\n");
+        assert_eq!(
+            PacSource::from_request(&fit)
+                .window_env(&pac_file)
+                .as_deref(),
+            Some("fit")
+        );
+        // legacy 臂读盘（行为冻结对照）
+        let legacy = PacSource::legacy();
+        assert_eq!(legacy.window_env(&pac_file).as_deref(), Some("640x480"));
+        assert_eq!(legacy.title_env(&pac_file).as_deref(), Some("DISK-TITLE"));
+        assert!(legacy.api_is_rust(&pac_file));
+    }
+
     /// PLAN-815 T-04 R1-F01 永久反例：交付闭包完备性静态钉——对
     /// DELIVERY_CRATES 中每个 crate，读其 Cargo.toml 的 [dependencies]/
     /// [build-dependencies] path 项；凡指向本 workspace 兄弟 crate 的
