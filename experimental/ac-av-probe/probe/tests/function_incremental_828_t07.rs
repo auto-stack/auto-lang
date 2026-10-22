@@ -323,3 +323,167 @@ fn t07_v07_user_sentinel_row_untouched_by_soak_and_restore() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// F-11: the session manifest is a STORE ROOT that restore CONSUMES. A
+/// matching root admits the warm path (counter `restore_manifest_matched`);
+/// a store whose registered roots do NOT describe the current program
+/// falls back cold (self-healing: the cold path re-persists a matching
+/// manifest); a store with NO registered manifest roots is a partial/
+/// legacy store served by the per-unit content-addressed path exactly as
+/// before (`restore_manifest_absent`).
+#[test]
+fn t07_f11_manifest_matched_absent_and_rejected_paths() {
+    use auto_av_probe::cache::{caps_fingerprint, open_store, put_enveloped, EnvelopeIdentity};
+    use auto_av_probe::session::restore;
+
+    let dir = std::env::temp_dir().join(format!("p828-t07-man-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let cancel = CancelFlag::new(false);
+
+    // Matched: a session store restores warm through its manifest root.
+    let mut s = warmup_persisted(SRC, "d_main", &[], &dir, "p828-t07").unwrap();
+    let at = SRC.find("x * 3").unwrap() as u64 + 4;
+    assert!(s.edit(at, at + 1, b"4".to_vec()).unwrap().ok);
+    let edited = s.src().to_string();
+    drop(s);
+    let r = restore(&edited, "d_main", &[], &dir, "p828-t07").unwrap();
+    assert_eq!(r.counters().get("restore_manifest_matched"), 1);
+    assert!(
+        r.counters().get("restore_units_admitted") > 0,
+        "warm restore"
+    );
+    let (out, _) = r.run(&ExecLimits::default(), &cancel);
+    assert!(matches!(
+        out,
+        ExecOutcome::Success {
+            value: Value::I32(28),
+            ..
+        }
+    ));
+    drop(r);
+
+    // Absent roots: a partial store (all manifest roots removed) is
+    // served by the per-unit content-addressed path — same warm units.
+    {
+        let st = open_store(&dir).unwrap();
+        let removed = st
+            .remove_roots("p828-t07", "session-manifest")
+            .expect("remove roots");
+        assert!(removed >= 1);
+    }
+    let r = restore(&edited, "d_main", &[], &dir, "p828-t07").unwrap();
+    assert_eq!(
+        r.counters().get("restore_manifest_absent"),
+        1,
+        "no registered manifest roots — partial-store path"
+    );
+    assert!(
+        r.counters().get("restore_units_admitted") > 0,
+        "per-unit admission still serves the partial store"
+    );
+    let (out, _) = r.run(&ExecLimits::default(), &cancel);
+    assert!(matches!(
+        out,
+        ExecOutcome::Success {
+            value: Value::I32(28),
+            ..
+        }
+    ));
+    drop(r);
+    // (The cold path never ran, so the roots stay absent — restore again
+    // keeps taking the partial-store path.)
+    let r = restore(&edited, "d_main", &[], &dir, "p828-t07").unwrap();
+    assert_eq!(r.counters().get("restore_manifest_absent"), 1);
+    drop(r);
+
+    // Rejected: registered roots that do NOT describe this program force
+    // the cold fallback — the store describes the OLD source. The cold
+    // path re-persists a matching manifest, so the NEXT restore warms.
+    let dir2 = std::env::temp_dir().join(format!("p828-t07-man2-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir2);
+    std::fs::create_dir_all(&dir2).unwrap();
+    drop(warmup_persisted(SRC, "d_main", &[], &dir2, "p828-t07").unwrap());
+    let r = restore(&edited, "d_main", &[], &dir2, "p828-t07").unwrap();
+    assert_eq!(
+        r.counters().get("restore_manifest_rejected"),
+        1,
+        "the store's manifest describes another program"
+    );
+    assert_eq!(
+        r.counters().get("restore_units_admitted"),
+        0,
+        "rejected manifest → cold fallback"
+    );
+    let (out, _) = r.run(&ExecLimits::default(), &cancel);
+    assert!(matches!(
+        out,
+        ExecOutcome::Success {
+            value: Value::I32(28),
+            ..
+        }
+    ));
+    drop(r);
+    let r = restore(&edited, "d_main", &[], &dir2, "p828-t07").unwrap();
+    assert_eq!(
+        r.counters().get("restore_manifest_matched"),
+        1,
+        "the cold fallback re-persisted a matching manifest (self-heal)"
+    );
+    assert!(r.counters().get("restore_units_admitted") > 0);
+    drop(r);
+
+    // Garbage root: a registered but undecodable manifest root is a
+    // non-candidate; with no other root it REJECTS (units alone do not
+    // authorize the warm path past a registered manifest), and the cold
+    // path heals by adding a real root.
+    let dir3 = std::env::temp_dir().join(format!("p828-t07-man3-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir3);
+    std::fs::create_dir_all(&dir3).unwrap();
+    drop(warmup_persisted(SRC, "d_main", &[], &dir3, "p828-t07").unwrap());
+    {
+        let st = open_store(&dir3).unwrap();
+        // A foreign-owner manifest envelope: registered as a root of the
+        // kind but never unwrappable for this module — a non-candidate.
+        let gkey = ac_artifact_probe::identity::QueryKey::new(
+            &auto_av_probe::cache::ABC_LAYER,
+            vec![("kind".into(), "garbage-manifest".into())],
+        );
+        let gid = EnvelopeIdentity::manifest("garbage-owner", 0);
+        let garbage = put_enveloped(
+            &st,
+            &gkey,
+            "A09",
+            &gid,
+            b"not-json",
+            vec![],
+            Some("p828-t07"),
+        )
+        .unwrap();
+        assert!(st.remove_roots("p828-t07", "session-manifest").unwrap() >= 1);
+        st.register_root("p828-t07", &garbage, "session-manifest")
+            .unwrap();
+    }
+    let r = restore(SRC, "d_main", &[], &dir3, "p828-t07").unwrap();
+    assert_eq!(
+        r.counters().get("restore_manifest_rejected"),
+        1,
+        "a garbage-only manifest root rejects the warm path"
+    );
+    assert_eq!(r.counters().get("restore_units_admitted"), 0);
+    let (out, _) = r.run(&ExecLimits::default(), &cancel);
+    assert!(matches!(
+        out,
+        ExecOutcome::Success {
+            value: Value::I32(23),
+            ..
+        }
+    ));
+    drop(r);
+    let r = restore(SRC, "d_main", &[], &dir3, "p828-t07").unwrap();
+    assert_eq!(r.counters().get("restore_manifest_matched"), 1, "healed");
+    let _ = caps_fingerprint;
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&dir2);
+    let _ = std::fs::remove_dir_all(&dir3);
+}

@@ -581,6 +581,72 @@ pub fn warmup_persisted(
     Ok(session)
 }
 
+/// F-11: do the REGISTERED session-manifest roots describe EXACTLY this
+/// program (owner identity, entry def, caps fingerprint, and every
+/// function's content version)? Unwrapping under the owner's manifest
+/// identity already rejects other modules' manifests; a decode/format
+/// failure on one root never trusts OR condemns the rest. `None` = no
+/// roots registered (partial/legacy store — the caller serves it via the
+/// per-unit path); `Some(true)` = a valid root describes this exact
+/// program; `Some(false)` = roots exist but none does — the store
+/// actively describes a different program, the caller falls back cold.
+fn manifest_describes_program(
+    store: &ac_artifact_probe::store::ManagedStore,
+    project: &str,
+    owner: &str,
+    entry: &str,
+    caps_fp: &str,
+    expect_units: &[(String, String)],
+) -> Result<Option<bool>, String> {
+    let roots = store
+        .root_artifacts(project, "session-manifest")
+        .map_err(|e| format!("manifest roots: {e:?}"))?;
+    if roots.is_empty() {
+        return Ok(None);
+    }
+    let expect = EnvelopeIdentity::manifest(owner, 0);
+    for id in &roots {
+        let Ok(body) = crate::cache::get_by_artifact_id(store, id, &expect) else {
+            continue;
+        };
+        let Ok(v) = serde_json::from_slice::<serde_json::Value>(&body) else {
+            continue;
+        };
+        let (Some(m_owner), Some(m_entry), Some(m_caps)) = (
+            v.get("owner").and_then(|x| x.as_str()),
+            v.get("entry").and_then(|x| x.as_str()),
+            v.get("caps_fp").and_then(|x| x.as_str()),
+        ) else {
+            continue;
+        };
+        if m_owner != owner || m_entry != entry || m_caps != caps_fp {
+            continue;
+        }
+        let Some(units) = v.get("units").and_then(|x| x.as_array()) else {
+            continue;
+        };
+        let listed: Vec<(String, String)> = units
+            .iter()
+            .filter_map(|u| {
+                Some((
+                    u.get("def_id")?.as_str()?.to_string(),
+                    u.get("cv")?.as_str()?.to_string(),
+                ))
+            })
+            .collect();
+        // Order-independent exact comparison with the freshly computed
+        // per-function content versions.
+        if listed.len() == expect_units.len()
+            && listed
+                .iter()
+                .all(|(d, cv)| expect_units.iter().any(|(ed, ecv)| ed == d && ecv == cv))
+        {
+            return Ok(Some(true));
+        }
+    }
+    Ok(Some(false))
+}
+
 /// WARM RESTART (PLAN-828 T-07 / V-07): re-admit every function's code from
 /// the store — each unit's envelope identity and payload name are
 /// re-verified (`verify_abc`), nothing is trusted from disk — and link the
@@ -606,6 +672,45 @@ pub fn restore(
     };
     let owner = session.fns_owner();
     let caps_fp = caps_fingerprint(caps);
+    // F-11: the session manifest is the store's REQUIRED-REFERENCE
+    // directory — restore CONSUMES it before anything warm: some
+    // registered manifest root must decode under this owner's identity
+    // and describe EXACTLY the freshly compiled program (entry, caps and
+    // every function's content version). Absent, unreadable or stale →
+    // the store does not describe this program: cold fallback. Every
+    // unit's own admission below stays content-addressed and fail-closed
+    // regardless — the gate never ADDS trust, it only refuses to warm.
+    let expect_units: Vec<(String, String)> = session
+        .fns
+        .iter()
+        .map(|r| {
+            (
+                r.def_id.clone(),
+                session
+                    .resident_content_version(&r.name)
+                    .unwrap_or_default(),
+            )
+        })
+        .collect();
+    match manifest_describes_program(
+        &store,
+        project,
+        &owner,
+        entry_def_id,
+        &caps_fp,
+        &expect_units,
+    ) {
+        // Absent roots = a partial/legacy store (hand-seeded rows, older
+        // sessions): the content-addressed per-unit path below serves it
+        // exactly as before — every unit admission is fail-closed anyway.
+        Ok(None) => session.counters.set("restore_manifest_absent", 1),
+        Ok(Some(true)) => session.counters.set("restore_manifest_matched", 1),
+        Ok(Some(false)) | Err(_) => {
+            let mut c = cold()?;
+            c.counters.set("restore_manifest_rejected", 1);
+            return Ok(c);
+        }
+    }
     // Restore candidates keyed by the CURRENT source's content versions —
     // a source that changed since the units were written simply misses.
     // `anchors` collects each unit's mint→current SPAN MAP plus its true
@@ -1425,8 +1530,17 @@ impl FunctionIncrementalSession {
             ],
         );
         let expect = EnvelopeIdentity::manifest(&owner, 0);
-        put_enveloped(store, &key, "A09", &expect, &body, vec![], Some(project))
+        let artifact = put_enveloped(store, &key, "A09", &expect, &body, vec![], Some(project))
             .map_err(|e| format!("manifest put: {e:?}"))?;
+        // F-11: the manifest is the store's REQUIRED-REFERENCE root for
+        // this session's program — `restore` discovers it through the
+        // project's roots (never a key guess) and consumes it as the
+        // warm-restore gate. Registration is idempotent per artifact id;
+        // successive revisions accumulate and the reader matches by
+        // content, so no rewrite or eviction is implied.
+        store
+            .register_root(project, &artifact, "session-manifest")
+            .map_err(|e| format!("manifest root: {e:?}"))?;
         Ok(())
     }
 
