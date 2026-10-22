@@ -2881,3 +2881,7 @@ Plan815 r3 @bb4f0a1ca（codec6fdaaaf1），用户明确请求扩查，phase need
 ## D-829-MERGE：PLAN-829 收口（delivered to autographics-dev；2026-10-22 用户裁定）
 
 PLAN-829 r1 终收据 pass：R18 PASS 基线 `ddbde3e62857` 上 merge 门禁全绿（117/117+十探针 10/10+consumer 重定位 mismatches=[]，证据 attachments/829/merge-t11/gates.md）；**用户裁定不合 master**——代码落 `autographics-dev` 长期集成分支（merge `ab56c32ec`，AGP 子树与复审提交逐字节一致；830+ 沿用），master 侧仅知识文档（docs/specs/auto-graphics/ + ledger v65）。**遗留（非阻断，随 AG 路线后继计划）**：① `autographics-dev` 合回 master 的时机=814/815/816 系列（及后续）迁移全部完成后裁定（I2 迁移收据同时是裁定前提）；② Godot 角色级引擎画面对比 deferred（R2/R3 裁定，headless 导入限制，golden 以独立 Python 参考+常量+官方引擎轨迹语义为替代 oracle）；③ iced 窗口用例运行手册：同标题僵尸窗口会毒化 FindWindow，重跑前预检/taskkill 残留 graphics-probe/iced_spike 进程（T-11 门禁已内置预检）。计划已归档 docs/plans/archive/829-*。
+
+## D-828-T09：shim-metadata既有dead-code告警（2026-10-22登记）
+
+PLAN-828 T-09 告警清理时发现：`crates/shim-metadata`（PLAN-596 面）bin 目标存在 4 个 dead-code 告警（`classify_all_third_party_mono`/`fingerprint`/`fingerprint_parts`/`SelfHandle`）与 98 处既有 rustfmt 漂移，均为 master 既有债、828 分支零触及（本批仅按 R3 复审点名修复 classify.rs:213 的 match 臂 `///` 文档注释告警）。归 shim owner 处置，不属 828 验收面。
