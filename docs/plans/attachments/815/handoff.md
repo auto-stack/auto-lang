@@ -9,8 +9,8 @@
 | 项 | 值 |
 |---|---|
 | 工具名 | `auto-ui-tool` |
-| 源提交（冻结 SHA） | `e351cb2a73a78f353457e56ea20cb82f61c1ac88`（branch `codex/plan-815-dev`，基线 M814-B `93a25c924` 之后） |
-| 二进制（debug 构建）SHA256 | `f21db18136403d1124ecbc1338f61c5603544401c434e7d12fad20a60c37dfb5`（`target/debug/auto-ui-tool.exe`，由上述源提交构建） |
+| 源提交（冻结 SHA） | `e22fc7592`（branch `codex/plan-815-dev`，基线 M814-B `93a25c924` 之后；T-07 子批2 修复提交——历史指纹 `e351cb2a73a78f353457e56ea20cb82f61c1ac88` 的交付/dev 清单缺 canonical 双直依赖，见 [t07-acceptance/batch2.md](t07-acceptance/batch2.md)） |
+| 二进制（debug 构建）SHA256 | `e319c5364523dbfac0c61d61ecb087b11a8d0261cdfc767bd1dfacc1b4b803f2`（`target/debug/auto-ui-tool.exe`，由上述源提交构建；协议/wire/预算/能力面与 `f21db181…` 时代一致，改动=生成器发射的清单/壳层文本+vue 请求路径门） |
 | 二进制入口源 | `crates/auto-ui-tools/src/bin/auto_ui_tool.rs`（路径仅为导航；消费身份以上两行为准） |
 | 协议 crate | `crates/auto-tool-protocol`（纯数据，无 AST/VM/renderer） |
 | 协议版本 | `PROTOCOL_VERSION = 1` |
@@ -145,10 +145,15 @@ ServerEnvelope{id, body}
 
 | 来源 | 位置 | 许可 |
 |---|---|---|
-| gallery 资产 | `crates/auto-ui-tools/assets/gallery/` | 本仓自著 |
-| wm 资产 | `crates/auto-ui-tools/assets/wm/` + drawlist 输入 | 本仓自著 |
-| shadcn-vue 快照 | `crates/auto-ui-tools/assets/shadcn-ui/`（345 文件） | MIT（上游 registry 快照 2026-08-27，SNAPSHOT.md 记录） |
-| Inter 字体 | vue.rs 内嵌（三字重） | SIL OFL 1.1 |
+| gallery 资产 | `crates/auto-ui-tools/assets/gallery/`（1 文件：AppViewport.vue） | 本仓自著 |
+| wm 资产 | `crates/auto-ui-tools/assets/wm/`（9 文件）+ `drawlist-renderer/src`（5 文件，组的外部构建输入） | 本仓自著 |
+| shadcn-vue 快照 | `crates/auto-ui-tools/assets/shadcn-ui/`（346 文件，含组级 LICENSE+SNAPSHOT.md） | MIT（上游 registry 快照 2026-08-27，SNAPSHOT.md 记录） |
+
+> T-07 子批2 资源审计（2026-10-22）修正：此前此处列有 "Inter 字体 \| vue.rs
+> 内嵌（三字重）\| SIL OFL 1.1" 一行——全仓核实**无任何 Inter 字体资产、
+> 无 OFL 许可文本**（vue.rs 无 @font-face/woff/ttf/base64 内嵌），该行与
+> 实际发行内容不符，删除。逐源对账与发行面消费映射见
+> [t07-acceptance/batch2/resource-audit.md](t07-acceptance/batch2/resource-audit.md)。
 
 ## 规范增量（SD-01..07 正文草案，送 T-09 终审）
 
