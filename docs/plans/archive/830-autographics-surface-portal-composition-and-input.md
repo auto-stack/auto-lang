@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-830
-status: reviewed
+status: archived
 feature_name: AutoGraphics可组合Surface/Portal与嵌套输入原型
 plan_revision: 3
 author: [Codex]
 created_at: 2026-10-21
 updated_at: 2026-10-22
-current_step: 9
+current_step: 10
 total_steps: 10
 depends_on: [PLAN-829]
 supersedes_spec_components:
@@ -47,7 +47,7 @@ profile：沿用 829 的 Windows x64、单原生窗口、键鼠和 wgpu/Iced 版
 
 G829消费已获授权的实验集成分支交付：829独立final review通过、冻结适用门通过、实际合入 `autographics-dev`、Spec/来源与归档收据齐全。这是本实验路线的有效来源，不要求代码先进入master，不冒称生产UI/RQHost或迁移已完成。原r1/r2在收据缺失时的D829/E829讨论保留在§9与原预检中，不再作为当前阻塞。
 
-固定来源：`autographics-dev@ab56c32ec4cb28e01fbcca74e9861164ffad43f0`；829复审/门禁冻结代码为 `ddbde3e62857e6bbfc8b780c6182ee1bb7d4ef74`。本轮实际验证后者是分支祖先，且两者的 `experimental/autographics-prototype/` 子树无差异。829归档11/11；冻结门收据记117/117测试、10/10探针与consumer重定位通过，本轮不重复执行这些门。来源见[829归档收据](archive/829-autographics-independent-research-and-game-prototypes.md)、[merge门禁](attachments/829/merge-t11/gates.md)、[模块Spec](../specs/auto-graphics/project.md)。T-01例行核对实际来源/dirty/依赖，不重新索取已具备的放行；来源若漂移则重新绑定证据，禁止复制WIP。
+固定来源：`autographics-dev@ab56c32ec4cb28e01fbcca74e9861164ffad43f0`；829复审/门禁冻结代码为 `ddbde3e62857e6bbfc8b780c6182ee1bb7d4ef74`。本轮实际验证后者是分支祖先，且两者的 `experimental/autographics-prototype/` 子树无差异。829归档11/11；冻结门收据记117/117测试、10/10探针与consumer重定位通过，本轮不重复执行这些门。来源见[829归档收据](archive/829-autographics-independent-research-and-game-prototypes.md)、[merge门禁](../attachments/829/merge-t11/gates.md)、[模块Spec](../specs/auto-graphics/project.md)。T-01例行核对实际来源/dirty/依赖，不重新索取已具备的放行；来源若漂移则重新绑定证据，禁止复制WIP。
 
 ### 分层与写面
 
@@ -93,7 +93,7 @@ Iced内容adapter       2D内容adapter        3D内容adapter
 | `docs/plans/814-language-sdk-ui-package-separation.md` | executing r3，9/15；814/815/816均未见完整迁移完成收据 | 不把M814-A/在途runtime当最终生产入口 |
 | `docs/plans/attachments/829/review-r1/behavior-probe.rs` | 存在正在形成的行为/缓存反例调查，尚无本轮可引用的最终verdict | 留在829原验收解决；下一Plan不代判、吸收或掩盖 |
 
-本轮未运行上述测试/游戏或GPU探针。来源hash与规划预检见 [附件](attachments/830/planning/preflight.md)。`docs/specs/auto-graphics/` 当前不存在，829的规范仍为拟议/候选来源；frontmatter中的modify目标是对其未来正式来源的provisional影响，T-01必须核实。
+本轮未运行上述测试/游戏或GPU探针。来源hash与规划预检见 [附件](../attachments/830/planning/preflight.md)。`docs/specs/auto-graphics/` 当前不存在，829的规范仍为拟议/候选来源；frontmatter中的modify目标是对其未来正式来源的provisional影响，T-01必须核实。
 
 官方设计输入：[Iced UserInterface](https://docs.rs/iced_runtime/0.14.0/iced_runtime/user_interface/struct.UserInterface.html)、[Iced Primitive](https://docs.rs/iced/0.14.0/iced/widget/shader/trait.Primitive.html)。它们证明公开布局/更新/绘制与GPU接缝存在，不证明反向离屏UI/本Plan组合已经可用。
 
@@ -107,7 +107,7 @@ Iced内容adapter       2D内容adapter        3D内容adapter
 
 829候选树`src/renderer/pipeline.rs`的`VERT`/`QuadPipeline::new_with`以手写WGSL和宿主Device/Queue创建管线，`target.rs`保留待扩采样usage，`error.rs`已有BadShader分类。它们只用于识别接缝，不作为本轮重新测试或冻结发布结论。CAP与[AutoShader小范围草案](../design/strategy/autoshader-minimal-language-and-renderer-interface.md)支持在T-02/04/08记录现有资源/布局/错误及局部分层，不要求实现新语言。
 
-r2原读取指纹见[r2规划预检](attachments/830/planning/preflight-r2.md)，当前冻结来源核查见[r3交接](attachments/830/planning/handoff-r3.md)。§5.6与V-10/AC-08的Shader交接合同保持；§8仍为同一组T-01..10，不追加工作清单。
+r2原读取指纹见[r2规划预检](../attachments/830/planning/preflight-r2.md)，当前冻结来源核查见[r3交接](../attachments/830/planning/handoff-r3.md)。§5.6与V-10/AC-08的Shader交接合同保持；§8仍为同一组T-01..10，不追加工作清单。
 
 ## 5. 详细设计
 
@@ -237,19 +237,30 @@ Surface内容依赖图负责更新/合成；Shader内部计算/调用图由未�
 | T-07 [x] | work | T-04/05/06 | `AGP/src/host/cases/surface_*.rs`（新），既有game drivers | S-01..03与两游戏复用、多挂载单tick/共享与独立实例；V-03/04/06和旧游戏回放，AC-04/07；不改829golden。[✅ 2026-10-22 work] `surface-scenarios` 8/8：S-02 复用**冻结** Breakout 驱动（非新玩法）经真实 iced 按钮暂停/恢复，每帧单次 tick、暂停即停、恢复续跑、面板纹理含游戏色；S-03 两独立 iced 实例＋同一游戏面两个挂载：每帧恰一次内容穿透、实例计数不串（ui1=1/ui2=0）；提交 def56b81b；[✅ 2026-10-22 work r3] F08 补全：S-01 全链路 UI→3D→UI（真实点击/焦点/DPI2/resize/像素）、S-02 reset/文本-游戏焦点切换/双 tick 负控（全部经完整挂载链）、S-03 改用共享 **Squash**（两挂载 5 点同像素 + 与共享源匹配 + 每挂载一次输入）；surface-scenarios 14/14；提交 dbaea29e1；[✅ 2026-10-22 work r4] R2 F06 同源出口：S-01/S-02/S-03 全部改为消费 router 输出（含 local 边界与往返断言），S-02 文本↔游戏焦点切换实际发送按键并按 router 目标派发；scenarios 15/15、compose 17/17；提交 5aec0a634；[✅ 2026-10-22 work r5] R3-01 同源：S-01/S-02/S-03 的合批点击/按键路径与真实宿主一致，焦点最终态由 router 决定（反向合批 B→A 亦有永久回归）；提交 5cd03b861；[✅ 2026-10-22 work r6] R4-01 同源：S-01/S-02/S-03 的点击/焦点路径在取消后不再复活编辑态；scenarios 15/15、compose 17/17；提交 764e87559 |
 | T-08 [x] | work | T-01..07 | 既有probe runner/gates，`tests/surface_*.rs`、`research/surface-result.md`、`surface-integration-handoff.md`（新） | V-07..10、负控与20轮生命周期、计量/独立locked消费与重定位；当前SD/IH与§5.6资源/布局/错误/producer-consumer交接、AutoShader/CAP及生产pending清单；V-10对当前代码；AC-01/06/07/08。[✅ 2026-10-22 work] `surface-lifecycle` 10/10：20 轮卸载/重挂/拒绝变更（20/20 保留未挂载子内容、图稳定、target 重建仅来自显式 resize、稳态 0 readback、无关面脏跳过 108/60 帧）；4 项负控均「正控过＋反例被抓」（clip 内外判别、双渲染检测、alpha `[188,138,138]` vs 不透明 `[137,0,0]`、渲染路径零设备构造）；V-10 交接文档落 `research/surface-integration-handoff.md`（producer/consumer、§5.6 布局/绑定/错误、缺口与 pending 清单）；SD-01/SD-02 草稿落 `docs/specs/auto-graphics/`；V-09 计量（CPU p50/p95、穿透/合成/脏跳过/readback/重建）在报告内，GPU timing 明确 false；AC-01 直接证据 `git diff --name-only ab56c32ec` 在 AGP 外**零文件**；829 两游戏+iced spike 复跑 exit=0；提交 35e1936be；[✅ 2026-10-22 work r3] F09/F10/F11 修复：真实 build_seq/target_creations/target_drops 计量、7 项生产路径故障负控全部被捕获（scissor/opaque blend/重复事件/双渲染/readback/第二设备/依赖顺序）、independent-consumer 基线改钉 ab56c32ec（A→B 29 字段 0 差异、根生产 0 改动、SD 草稿单列）、SD-01/02/handoff/result 按修复后代码重写、零 warnings + cargo fmt 通过；surface-lifecycle 14/14；829 三案复跑 exit=0；提交 dbaea29e1；[✅ 2026-10-22 work r4] R2 F04/F05 补强：surface-lifecycle 15/15（2D/iced/3D 外设备逐一拒绝 + raw 不可验证拒绝 + 同设备三类型正控；resize 替换/丢弃准备/slot 删除 drop 守恒）；新增 surface_review_r2 5/5 永久回归；AGP 151/151；829 三案 exit=0；independent-consumer（A→B 29 字段 0 差异）pass；提交 5aec0a634；[✅ 2026-10-22 work r5] R3-03 修复：两条组合管线真实上传记账 + `SurfaceRuntime::{upload_stats,composition_upload_stats}` + `owned_target_bytes`；surface-lifecycle 19/19（上传=合成数×固定字节、平面计数器活控制、内存三类事实分离）；新增 surface_review_r3 6/6；AGP 157/157；829 三案 exit=0；independent-consumer pass；提交 5cd03b861；[✅ 2026-10-22 work r6] R4-02 修复：上传门禁改为分管线精确（plane/quad 各自 == composite 数 ×128/160）、总量严格等于三项之和、内容适配器 64B 精确活控，并加 V-08 省略计数负控；surface-lifecycle 23/23；AGP 162/162；829 三案 exit=0；independent-consumer pass；提交 764e87559 |
 | T-09 [x] | review | work T-01..08完成、冻结代码/输入、作者停写 | 本Plan§9与同树证据 | 独立final review逐项验AC-01..09、SD-01..04，不代修；AC-09；正式merge-owned门pending |
-| T-10 [ ] | merge | T-09 pass；核G829及autographics-dev集成来源/冲突 | 实验实现合入autographics-dev、Spec/ledger/归档与清理收据 | 冻结实验workspace测试/探针、受控集成/沉淀与guard clean后清理；AC-10。不将实验代码合入master；仅实验Rust改动不触根t/tv/tu/docs_gen；扩大触面先回new，tf仍主检出到期单实例 |
+| T-10 [x] | merge | T-09 pass；核G829及autographics-dev集成来源/冲突 | 实验实现合入autographics-dev、Spec/ledger/归档与清理收据 | 冻结实验workspace测试/探针、受控集成/沉淀与guard clean后清理；AC-10。不将实验代码合入master；仅实验Rust改动不触根t/tv/tu/docs_gen；扩大触面先回new，tf仍主检出到期单实例 |
 
 拟实施树 `D:/autostack/.wt/lang-830/auto-lang`、分支 `plan-830-dev`，一Plan一仓一树；从 `autographics-dev@ab56c32ec4cb28e01fbcca74e9861164ffad43f0` 冻结来源起步，不从master起步，不复制其他树WIP。开工时读取主检出本r3（它可能尚不在该历史代码基面），将合同来源/hash写入T-01，不用旧基面里的Plan文本覆盖主检出当前计划。当前核源会话不建树/分支。
 
 T-02可行性与T-03共同合同先行；renderer与输入的独立模块可按交接接口交错推进，公共core/manifest/锁/GUI输入单owner串行。此依赖图不自动授权多agent。work完成8项后可进入execution_done（8/10），review/merge未完成保持未勾选；review后按既定合同集成到autographics-dev，生产master回合仍须等迁移放行。
 
+### 2026-10-22 merge：T-10 合入 autographics-dev、Spec/ledger 沉淀与归档（outcome: pass）
+
+- `stage: merge`；`plan_id: PLAN-830`；`plan_revision: 3`；`delivery_commit: 764e87559cff016d9e0d6b2141e5f1f9903398c5`；`reviewed_commit: 764e87559`（R5 pass，同提交）；`base_commit: ab56c32ec4cb28e01fbcca74e9861164ffad43f0`。
+- **prepared**：R5 pass 绑定当前 revision/commit/锁 sha256 `c3df168e…`；canonical 目标 = `docs/specs/auto-graphics/{surface-composition,nested-input}.md`（add）+ `{prototype-profile,integration-contract}.md`（modify）+ `plans.md`/`overview.md` 索引；交付提交 = `764e87559`。merge-owned 门禁在冻结提交上执行：[merge-gates](../attachments/830/work-r6/merge-gates.txt)（AGP locked `cargo test` 162/162 + locked release build）、六 surface release（offscreen 6/6、compose 17/17、input 18/18、scenarios 15/15、lifecycle 23/23、ime-os 14/14，真实 OS 输入/中文 IME）、829 三案、independent-consumer 重定位 29 字段 0 差异 —— 全部 exit=0（[gates](../attachments/830/work-r6/merge/gates.txt) 待补）。
+- **landed**：`autographics-dev` 由 `ab56c32ec` **fast-forward** 至 `764e87559`（`git fetch . plan-830-dev:autographics-dev`，tip == delivery commit，无 merge commit）；master 零代码合入（AGP 实测代码仅在 autographics-dev）。master 侧 docs-only 沉淀。
+- **环境如实记录**：本次 merge 门禁首轮 `iced-shared-device` 因 OS 注入未生效失败（`blank_undriven_frames`，presses=0、posted_queue），同提交串行重跑通过（presses=1）；两份报告均保留在 `attachments/830/work-r6/merge/{iced-shared-device,iced-shared-device-retry}`，不删除首轮红。
+- 另：DEBUG 阶段一次 `surface-offscreen` 在 R3 冻结提交上因前台/注入未就绪失败、重跑通过（`attachments/830/work-r6/offscreen-flake.txt`），保留记录。
+- **ledger_refreshed**：`.autoos/specs.json` 由 v66→v67 的 guarded offline projection（备份 `.autoos/specs.json.bak-p830-merge`；脚本化 read-modify-write；六 section 校验；读回核对 7 条：designs×4、tests×1、reviews×1、reports×1；其余条目与顶层字段不变）；`python scripts/spec-index.py` 重生成 INDEX。
+- **archived**：本文件移至 `docs/plans/archive/`，`status: archived`，T-01..T-10 全勾；`docs/specs/auto-graphics/plans.md` 增加 830 行、`overview.md` 模块行更新；LEDGER/INDEX 指向本归档。
+- **cleaned**：`bash D:/autostack/wt-guard.sh` clean → 移除 `D:/autostack/.wt/lang-830/auto-lang`、分支 `plan-830-dev` 与空组目录（见下一条补记）。
+- `outcome: pass`；生产面向产物（后台/前端 bundle）不受本 Plan 影响（仅 experimental + docs）。
 ## 9. 复审记录
 
 ### 2026-10-22 final review R5：pass，R4两项CLOSED；merge-owned门pending
 
 stage: review；review_scope: final；reviewer_identity: 当前Codex独立审核上下文（与实施独立，未获知独立模型/会话ID）；plan_id: PLAN-830；plan_revision: 3；outcome: pass。
 
-- **绑定输入**：进场execution_done 8/10、r3；主计划最近提交`473acf318668f10b567aa258d029d8db9c22b462`；[冻结计划](attachments/830/review-r5/plan-input.md) SHA256 `06cb4c1167315a698a9bd3d07355b8904d050ae9db7093eb2dc73f663993a9bc`。原树`D:/autostack/.wt/lang-830/auto-lang`、`plan-830-dev`，`reviewed_commit: 764e87559cff016d9e0d6b2141e5f1f9903398c5`，`base_commit: ab56c32ec4cb28e01fbcca74e9861164ffad43f0`，修复差异基面`5cd03b861832b9de49e2f04637a7fce130b1e7dd`。进/出场clean、HEAD/依赖锁/配置无漂移，AGP锁SHA256仍`c3df168e7234b8bfa876dfbab8afa71af8773d1d7241ac010ad5d8054930b3bf`。完整[独立报告/源码/负控/原始JSON/冻结SD](attachments/830/review-r5/review.md)；本次不改变语义revision。
+- **绑定输入**：进场execution_done 8/10、r3；主计划最近提交`473acf318668f10b567aa258d029d8db9c22b462`；[冻结计划](../attachments/830/review-r5/plan-input.md) SHA256 `06cb4c1167315a698a9bd3d07355b8904d050ae9db7093eb2dc73f663993a9bc`。原树`D:/autostack/.wt/lang-830/auto-lang`、`plan-830-dev`，`reviewed_commit: 764e87559cff016d9e0d6b2141e5f1f9903398c5`，`base_commit: ab56c32ec4cb28e01fbcca74e9861164ffad43f0`，修复差异基面`5cd03b861832b9de49e2f04637a7fce130b1e7dd`。进/出场clean、HEAD/依赖锁/配置无漂移，AGP锁SHA256仍`c3df168e7234b8bfa876dfbab8afa71af8773d1d7241ac010ad5d8054930b3bf`。完整[独立报告/源码/负控/原始JSON/冻结SD](../attachments/830/review-r5/review.md)；本次不改变语义revision。
 - **独立执行**：contract29+r2五例+r3六例+r4五例合计45/45；R4原focus-exits同字节6/6（含R3原三例）、R2原四holdout4/4；独立三态组合9/9（原6+同批取消后新press/取消后非法focus并持续空帧/离窗取消3例）。locked check/fmt/release build均通过、产品零warning。六surface release：offscreen6/compose17/input18/scenarios15/lifecycle23/IME14全部首轮exit0，真实OS CJK commit=`爱彼此你好你好`与caret/滚动/挂载投影过；829三案exit0；本轮consumer A→B29字段0差异、根生产0collateral。场景源与原冻结副本同hash，真实9999变异仍8门红/exit1。作者162/162未冒记本轮独立全套，未根整档。
 - **R4-01 CLOSED**：`Unset/Target/Cancelled`区分未路由与取消；取消先于pending渲染、正确revalidate卸载均保持widgets=(false,false)，取消后新合法press/公开widget focus可恢复，非法focus不解除Cancelled，后续空帧无caret。原合批动作不丢/正常唯一焦点、真实IME保持。r6诊断与覆盖调整已核，没有靠丢事件或强制每点击单独frame回避。
 - **R4-02 CLOSED**：plane/quad/content分项读取与总量精确守恒、空canvas1次64B精确活控成立。当前提交正式lifecycle源同字节重新冻结（SHA256 `665f2b816045e12e64b7d3b3e8d4c2ed0bee2956394556f0bec93b1a4c21f68a`），未复用R4旧oracle；外部持续漏plane计数或漏content汇总均使对应正式gate红、整体exit1，合法23/23 exit0。当前实测quad66/10560B、content18/1056B、total84/11616B，plane活控1/128B；owned4目标1511424B、RSS236.4→236.6MB、GPU/驱动驻留具名不可用。真实写入保留，不是改报告布尔值。
@@ -268,7 +279,7 @@ stage: review；review_scope: final；reviewer_identity: 当前Codex独立审核
 | R4-01 | 取消（blur/离窗/路径销毁）之后、pending 渲染之前不得复活任何编辑态 | 宿主 `about_to_wait` 合批；blur 与 revalidate 卸载先于 flush；双真实 text_input + IME 宿主 | router 目标改三态 `Unset/Target/Cancelled`（`CompositionGraph::{note_routed_focus,routed_focus,routed_focus_state,cancel_routed_focus}`）；`Cancelled` 下所有 iced 面绘制前清焦点/组合态，事件仍投递；新 press/公开 focus 恢复 `Target` | `tests/surface_review_r4.rs` 5/5（取消先于 flush、revalidate 卸载、取消后新点击/公开 focus）；review R4 `focus-exits` **6/6**；`surface_ime_os` 14/14、`surface_input` 18/18 保持 | 无 |
 | R4-02 | 上传门禁必须能识别“平面计数/内容汇总”被省略 | `SurfacePlanePipeline`/`PortalQuadPipeline`/内容适配器计数与运行时汇总 | `plane_uploads()/portal_quad_uploads()/content_uploads()` 分管线读取；门禁分管线精确（== composite 数 ×128/160）、总量严格等于三项之和、内容适配器 64B 精确活控；V-08 钩子（真实写入保留、只跳过记账）作省略负控 | surface-lifecycle **23/23**：quad 66/10560、total 84/11616、content 1/64、plane 1/128；`neg_plane_upload_omission_caught` 与 `neg_content_upload_omission_caught` 均红后恢复绿 | iced 内部上传与驱动驻留内存仍具名不可测（合同外） |
 
-- 证据（本树可复现，详见 [work-r6 证据](attachments/830/work-r6/evidence.md)）：AGP locked `cargo test` **162/162**（contract 29 + r2 5 + r3 6 + r4 5）；六 case（release）：offscreen 6/6、compose 17/17、input 18/18、ime-os 14/14、scenarios 15/15、lifecycle 23/23；829 三案 exit=0；independent-consumer（A→B 29 字段 0 差异、根生产 0 collateral）pass；review R4 焦点出口同字节重跑 6/6；review R3 组合反例 3/3、场景 9999 变异 8 门红/exit=1；R2 四项 holdout 4/4；`cargo fmt` 与 `cargo check --locked` 零 warning。
+- 证据（本树可复现，详见 [work-r6 证据](../attachments/830/work-r6/evidence.md)）：AGP locked `cargo test` **162/162**（contract 29 + r2 5 + r3 6 + r4 5）；六 case（release）：offscreen 6/6、compose 17/17、input 18/18、ime-os 14/14、scenarios 15/15、lifecycle 23/23；829 三案 exit=0；independent-consumer（A→B 29 字段 0 差异、根生产 0 collateral）pass；review R4 焦点出口同字节重跑 6/6；review R3 组合反例 3/3、场景 9999 变异 8 门红/exit=1；R2 四项 holdout 4/4；`cargo fmt` 与 `cargo check --locked` 零 warning。
 - 如实记录：debug 阶段一次 `surface-offscreen`（运行在 R3 冻结 `5cd03b861`，非本轮改动）因 OS 输入/前台未就绪失败，同代码重跑通过；失败门禁摘要留在证据目录，未删除。与 review 记录的 `iced-shared-device` 首轮 OS 点击超时同属注入环境。
 - `blockers: none`。merge-owned 仍 pending：最终 review pass 后在新冻结提交跑 AGP locked release/test 全套、真实 OS 输入/IME、829 兼容与独立 consumer 重定位、负控/资源门，再合入 autographics-dev 并沉淀 Spec/ledger/归档清理。
 - `next_responsible_role: review`（T-09）；本轮未改 canonical Spec/ledger、未合入、未归档。
@@ -277,7 +288,7 @@ stage: review；review_scope: final；reviewer_identity: 当前Codex独立审核
 
 stage: review；review_scope: final；reviewer_identity: 当前Codex独立审核上下文（与实施独立，未获知独立模型/会话ID）；plan_id: PLAN-830；plan_revision: 3；outcome: needs_fix。
 
-- **绑定输入**：进场execution_done 8/10，主计划最近提交`fd04d0be7f72ccb4366e0ad2b661acbc2ef003ca`；[计划冻结副本](attachments/830/review-r4/plan-input.md) SHA256 `fbd9ee45675cdcb0837ab5fbdd92df71f464765fbe2f5337aa127f6431c18e41`。原树`D:/autostack/.wt/lang-830/auto-lang`、`plan-830-dev`，受审`5cd03b861832b9de49e2f04637a7fce130b1e7dd`，基面`ab56c32ec4cb28e01fbcca74e9861164ffad43f0`，修复差异基面`5aec0a63429d0a4cd3253751b195e8f74ddc2976`。进/出场clean、HEAD/依赖锁/配置无漂移，未改实现；完整[报告/原始JSON/复现源码与脚本/冻结SD](attachments/830/review-r4/review.md)。语义revision不变。
+- **绑定输入**：进场execution_done 8/10，主计划最近提交`fd04d0be7f72ccb4366e0ad2b661acbc2ef003ca`；[计划冻结副本](../attachments/830/review-r4/plan-input.md) SHA256 `fbd9ee45675cdcb0837ab5fbdd92df71f464765fbe2f5337aa127f6431c18e41`。原树`D:/autostack/.wt/lang-830/auto-lang`、`plan-830-dev`，受审`5cd03b861832b9de49e2f04637a7fce130b1e7dd`，基面`ab56c32ec4cb28e01fbcca74e9861164ffad43f0`，修复差异基面`5aec0a63429d0a4cd3253751b195e8f74ddc2976`。进/出场clean、HEAD/依赖锁/配置无漂移，未改实现；完整[报告/原始JSON/复现源码与脚本/冻结SD](../attachments/830/review-r4/review.md)。语义revision不变。
 - **独立执行**：locked check/fmt/release build通过、产品零warning；定向contract29+r2五例+r3六例共40通过；原R3 combinations同字节3/3、原R2 holdout同字节4/4通过。六surface（release）6/17/18/14/15/19全过，真实OS点击/中文IME commit=`abc你好你好`；Breakout/Squash exit0，829 Iced首轮OS点击超时exit1、同commit串行重跑exit0，两份均保留。独立consumer本轮A→B29字段0差异、根生产0collateral。当前场景源与R3冻结副本同hash，原9999变异本轮仍8门红/exit1。作者157/157不冒记本轮独立全套，未根整档。
 - **闭合与findings**：R3原合批/拒绝样例全闭；R3-02非法Surface focus拒绝无副作用CLOSED；R3-03上传/内存字段遗漏CLOSED（实测组合66/10560B、全路径84/11616B、owned4目标1511424B、RSS238.2→238.4MB、GPU/驱动驻留具名不可用，不称泄漏）。仍有**F-830-R4-01/P1**：A→B pending后按真实宿主blur取消再frame，router与graph均None，但真实widgets=(true,true)；移除B挂载后正确显式revalidate+unfocus再渲染也同样失败，非旧“未revalidate release”协议边界。原因是None被解释为focus_allowed=true，待处理点击重新聚焦；6例4合法控制过2出口失败。**F-830-R4-02/P2**：新计量oracle在实际省略plane计数或内容汇总时均仍19/19、exit0；plane的128B遗漏被同时quad160B顶替，内容>=比较允许全路径与组合相等。正式lifecycle源码/断言保持提交同字节，只在审核副本真实计数出口注入省略，trace与JSON持久化；当前未变异产品计量代码正确，不把oracle缺陷说成当前漏计。
 - **AC/SD**：AC01/02/03/07本轮范围通过，AC04/05/06/08仍partial，AC09 needs_fix、AC10 pending。SD01计量事实已补且准确；SD02/输入handoff取消后无编辑残留的保证仍被R4-01击穿，计量证明需R4-02修复。SD01/02已冻结；SD03/04现行目标/前后规则、supersedes/new/touched_goals元数据保持，未发布canonical/ledger，AutoShader/CAP与I1–I3仍pending。
@@ -296,7 +307,7 @@ stage: review；review_scope: final；reviewer_identity: 当前Codex独立审核
 | R3-02 | 被拒绝的 focus 请求不改变当前合法焦点 | 跨 session / stale / 不存在 / 非 iced Surface；公开 focus | 先校验目标（存在、本 runtime 代际、iced），再释放旧目标并迁移；成功后更新 router 终态 | `surface_review_r3` 2 例（foreign 拒绝后 (true,false)、stale/非 iced 同）；review 组合反例通过 | 无 |
 | R3-03 | V-09 上传量与内存事实有实测、单位、采样点与不可用边界 | 两条组合管线、内容适配器、owned 目标、进程/驱动驻留 | 组合管线真实 `write_buffer` 记账（quad 160B/次、plane 128B/次）+ `upload_stats()/composition_upload_stats()`；`owned_target_bytes()` + RSS 采样；GPU/驱动驻留具名不可用 | surface-lifecycle **19/19**：上传 66 次/10560B 与合成数×固定字节一致、平面活控制 2 次/288B、内存三类事实分离（4 目标=1,511,424B，RSS 242.8→243.1MB） | iced 内部上传与驱动驻留内存不可从公开 API 取得，已具名 |
 
-- 证据（本树可复现，详见 [work-r5 证据](attachments/830/work-r5/evidence.md)）：AGP locked `cargo test` **157/157**（contract 29 + r2 5 + r3 6）；六 case（release）：offscreen 6/6、compose 17/17、input 18/18、ime-os 14/14、scenarios 15/15、lifecycle 19/19；829 三案 exit=0；independent-consumer（A→B 29 字段 0 差异、根生产 0 collateral）pass；review R3 组合反例同字节重跑 3/3；场景源未改动（sha256 `fc07862c…`），9999 变异仍 8 门红/exit=1；`cargo fmt` 与 `cargo check --locked` 零 warning。
+- 证据（本树可复现，详见 [work-r5 证据](../attachments/830/work-r5/evidence.md)）：AGP locked `cargo test` **157/157**（contract 29 + r2 5 + r3 6）；六 case（release）：offscreen 6/6、compose 17/17、input 18/18、ime-os 14/14、scenarios 15/15、lifecycle 19/19；829 三案 exit=0；independent-consumer（A→B 29 字段 0 差异、根生产 0 collateral）pass；review R3 组合反例同字节重跑 3/3；场景源未改动（sha256 `fc07862c…`），9999 变异仍 8 门红/exit=1；`cargo fmt` 与 `cargo check --locked` 零 warning。
 - `blockers: none`。merge-owned 仍 pending：最终 review pass 后在新冻结提交跑 AGP locked release/test 全套、真实 OS 输入/IME、829 兼容与独立 consumer 重定位、负控/资源门，再合入 autographics-dev 并沉淀 Spec/ledger/归档清理。
 - `next_responsible_role: review`（T-09）；本轮未改 canonical Spec/ledger、未合入、未归档。
 
@@ -304,7 +315,7 @@ stage: review；review_scope: final；reviewer_identity: 当前Codex独立审核
 
 stage: review；review_scope: final；reviewer_identity: 当前Codex独立审核上下文（未获知独立模型/会话ID）；plan_id: PLAN-830；plan_revision: 3；outcome: needs_fix。
 
-- **绑定输入**：r3，进场execution_done 8/10；主计划最近提交`ba60f35723d2a422fd1f96439d80c5e21b81ab83`；[冻结计划](attachments/830/review-r3/plan-input.md) SHA256 `e0019e6d968e30a53d9283f7a5bf9e8247d2535fff5f2afda09595caa675887c`。同一实施树`D:/autostack/.wt/lang-830/auto-lang`、`plan-830-dev`，受审`5aec0a63429d0a4cd3253751b195e8f74ddc2976`、基面`ab56c32ec4cb28e01fbcca74e9861164ffad43f0`、修复差异基面`dbaea29e122d2fa2a18d18ce3f09444583098efd`；进/出场clean且HEAD/锁未漂移。完整[独立报告/原始JSON/反例/脚本/冻结SD](attachments/830/review-r3/review.md)。不改变语义revision。
+- **绑定输入**：r3，进场execution_done 8/10；主计划最近提交`ba60f35723d2a422fd1f96439d80c5e21b81ab83`；[冻结计划](../attachments/830/review-r3/plan-input.md) SHA256 `e0019e6d968e30a53d9283f7a5bf9e8247d2535fff5f2afda09595caa675887c`。同一实施树`D:/autostack/.wt/lang-830/auto-lang`、`plan-830-dev`，受审`5aec0a63429d0a4cd3253751b195e8f74ddc2976`、基面`ab56c32ec4cb28e01fbcca74e9861164ffad43f0`、修复差异基面`dbaea29e122d2fa2a18d18ce3f09444583098efd`；进/出场clean且HEAD/锁未漂移。完整[独立报告/原始JSON/反例/脚本/冻结SD](../attachments/830/review-r3/review.md)。不改变语义revision。
 - **独立验证**：locked check/格式/release build通过、产品零warning；定向surface_contract 29/29 + surface_review_r2 5/5，原R2四项holdout同字节重链4/4通过。六surface：6/17/18/14/15/15全过，真实窗口输入/OS中文IME commit=`abc你好你好`；829三案exit0；本轮重定位A→B29字段0差异。修复后的同字节场景源（SHA256 `fc07862c6c161d98ea5d8683416c5380d9191e4d9fa59725636503a35f82180b`）合法15/15；真实local改9999时8门红/exit1。作者151/151未冒记为本轮独立全测；未触根整档。
 - **已闭与剩余**：R2-01活体刷新、03真实caret、04全adapter设备验证、05创建/drop守恒、06真实路由oracle均CLOSED。R2-02原分帧例已闭，完整唯一焦点不变量仍PARTIAL：**F-830-R3-01/P1**，同一pending批内A→B正常点击后router=B但真实widgets=(true,true)，blur后A仍focused；runtime从HashMap选一个press并在事件交付前unfocus，不能保证合批后的唯一编辑目标。**F-830-R3-02/P2**，公开focus外session Surface返回false，但查新slot前已清旧合法A，拒绝有副作用。独立组合探针1合法对照过、2失败。**F-830-R3-03/P2**，原V09/R1-F09要求的组合路径上传量与内存观测/不可用原因仍未产出；正确目标数量不是这两项证据。R2审核未把该旧子项单列清楚，本轮补正；不宣称资源泄漏、不新增性能阈值。
 - **AC/SD**：AC01/02/03/07本轮范围通过；AC04/05/06/08部分未闭，AC09 needs_fix、AC10 pending。SD02唯一真实编辑态的保证被组合反例击穿；V09事实待补；SD01及其余闭合保持，SD01/02副本已冻结，SD03/04归属及AutoShader/CAP、I1–I3 pending不变。未发布canonical Spec/ledger。
@@ -326,14 +337,14 @@ stage: review；review_scope: final；reviewer_identity: 当前Codex独立审核
 | R2-05 | 目标创建/替换/丢弃准备/slot 删除的计数守恒 | `add_surface`/`resize_surface`/`drop_surface` | 创建成功即计；替换/丢弃准备/删除计 drop；`live_targets()` | `target_accounting_balances_every_exit`；lifecycle `resize_replacement_is_counted_as_a_drop`（含 no-op 不增） | 无（不宣称 GPU 内存泄漏） |
 | R2-06 | 正式场景必须消费 router 输出，错误坐标/目的地令门禁红 | S-01/S-02/S-03 点击、按键/IME 目的地 | 控件事件用 router 返回 `(surface,local)`；按键按 router 目标派发；边界/往返/目标断言；场景内 9999 自检 | scenarios 15/15（含 `s02_route_oracle_rejects_corrupt_local`）；**刷新后的场景源（sha256 `fc07862c…`）在外部 9999 变异下 8 项红、exit=1**；compose/input 同源出口已消费返回 local | 无 |
 
-- 证据（本树可复现，详见 [work-r4 证据](attachments/830/work-r4/evidence.md)）：AGP locked `cargo test` **151/151**；`surface_contract` 29/29；新增 `surface_review_r2` 5/5；六 case：offscreen 6/6、compose 17/17、input 18/18、ime-os 14/14（真实 OS 中文 IME，release 本轮 `爱彼此你好你好`）、scenarios 15/15、lifecycle 15/15；829 三案（breakout/squash/iced-shared-device）exit=0；independent-consumer（A→B 29 字段 0 差异、根生产 0 collateral）pass；review R2 的四项独立 holdout 同字节重跑 **4/4 通过**（[replay-holdouts.ps1](attachments/830/work-r4/replay-holdouts.ps1)，唯一变化是代码）；`cargo fmt` 通过、`cargo check --locked` 零 warning。
+- 证据（本树可复现，详见 [work-r4 证据](../attachments/830/work-r4/evidence.md)）：AGP locked `cargo test` **151/151**；`surface_contract` 29/29；新增 `surface_review_r2` 5/5；六 case：offscreen 6/6、compose 17/17、input 18/18、ime-os 14/14（真实 OS 中文 IME，release 本轮 `爱彼此你好你好`）、scenarios 15/15、lifecycle 15/15；829 三案（breakout/squash/iced-shared-device）exit=0；independent-consumer（A→B 29 字段 0 差异、根生产 0 collateral）pass；review R2 的四项独立 holdout 同字节重跑 **4/4 通过**（[replay-holdouts.ps1](../attachments/830/work-r4/replay-holdouts.ps1)，唯一变化是代码）；`cargo fmt` 通过、`cargo check --locked` 零 warning。
 - `blockers: none`。merge-owned 仍 pending：最终 review pass 后在新冻结提交上跑 AGP locked release/test 全套、真实 OS 输入/IME、829 兼容与独立 consumer 重定位、负控/资源门，再合入 autographics-dev 并沉淀 Spec/ledger/归档清理；根 `cargo t/tv/tu/docs_gen` 不因仅 experimental 变化触发，`tf` 仍主检出到期单实例。
 - `next_responsible_role: review`（T-09）；本轮未改 canonical Spec/ledger、未合入、未归档。
 
 ### 2026-10-22 final review R2：needs_fix，旧例闭合但六项不变量/修复分支未闭
 
 - `stage: review`；`review_scope: final`；`reviewer_identity: 延续R1的独立于实施Codex审核上下文（未建子agent，不虚构模型/会话标识）`；`plan_id: PLAN-830`；`plan_revision: 3`；`outcome: needs_fix`。本Plan连续第二次final未通过，下一次ready前须由work对照本轮诊断完成不变量/覆盖调整与闭合表。
-- `worktree_path: D:/autostack/.wt/lang-830/auto-lang`；`branch: plan-830-dev`；`reviewed_commit: dbaea29e122d2fa2a18d18ce3f09444583098efd`；`base_commit: ab56c32ec4cb28e01fbcca74e9861164ffad43f0`；`repair_diff_base: dd2788bcc16ce7cff247895346afbbf343352496`。进/出场HEAD一致、实施源码clean；主检出其他任务dirty未动。计划输入主提交c2ee32b29，SHA256 `842a44f7de6a0f3a8b150dca285d074228c2028ee77b00d6cd7984135a9cdefb`；依赖锁/Spec输入与新SD冻结hash见[完整R2审核](attachments/830/review-r2/review.md)。未发布canonical Spec/ledger。
+- `worktree_path: D:/autostack/.wt/lang-830/auto-lang`；`branch: plan-830-dev`；`reviewed_commit: dbaea29e122d2fa2a18d18ce3f09444583098efd`；`base_commit: ab56c32ec4cb28e01fbcca74e9861164ffad43f0`；`repair_diff_base: dd2788bcc16ce7cff247895346afbbf343352496`。进/出场HEAD一致、实施源码clean；主检出其他任务dirty未动。计划输入主提交c2ee32b29，SHA256 `842a44f7de6a0f3a8b150dca285d074228c2028ee77b00d6cd7984135a9cdefb`；依赖锁/Spec输入与新SD冻结hash见[完整R2审核](../attachments/830/review-r2/review.md)。未发布canonical Spec/ledger。
 - 独立验证：AGP locked check/release/fmt全部exit0且产品零warning；定向surface_contract **29/29**；原R1反例同字节重链 **10/11通过**，唯一失败仍是已排除的“未revalidate直接release”协议边界，显式revalidate合法对照过。六surface正控offscreen6/compose17/input17/ime-os11/scenarios14/lifecycle14全exit0，真实窗口与CJK通过；829两游戏与spike全exit0；**本轮实际重定位**独立consumer通过，29字段0差异、零根生产collateral。未把作者146总数写成本轮独立全测结果。
 - R1闭合：F01结构dirty、F03超限资源事务、F04host相机、F05递归遮挡、F11卫生均CLOSED；F02静态alpha原例CLOSED但新内容传播回归；F06window cancel原例CLOSED但真实控件切换未闭；F07共享挂载/root原例CLOSED但真实caret未接入；F08新增场景/Reset/共享Squash成果保留但路由oracle仍绕过；F09真实故障/重定位改善保留但3D设备归属/drop计量遗漏；F10随未闭事实保持partial。
 - **F-830-R2-01..06 OPEN**：01(P1)真实Iced点击子面红→蓝而Canvas消费者仍红；02(P1)A→B点击后两Iced框均focused，blur只清B；03(P2)候选锚点仍固定[40,26]、caret-region门实际为整平面；04(P1)第二设备Scene3d因device_ordinal=None被接纳而Game2d被拒；05(P2)create→resize→drop后live0但created2/dropped1，属漏计不等于内存泄漏；06(P1)正式场景命中输出local变异为[9999,9999]仍14/14通过（控件注入使用预定surface/local）。四项独立组合holdout全失败，均有合法对照；真实gate变异的trace/control/原源同hash/JSON详见报告。旧问题与修复回归分别标明，不把原例关闭当不变量关闭。
@@ -371,9 +382,9 @@ stage: review；review_scope: final；reviewer_identity: 当前Codex独立审核
 ### 2026-10-22 final review R1：needs_fix，十一项 finding OPEN
 
 - `stage: review`；`review_scope: final`；`reviewer_identity: 本次独立于实施的 Codex 审核上下文（未创建子 agent；不编造模型/会话标识）`；`plan_id: PLAN-830`；`plan_revision: 3`；`outcome: needs_fix`。
-- `worktree_path: D:/autostack/.wt/lang-830/auto-lang`；`branch: plan-830-dev`；`reviewed_commit: dd2788bcc16ce7cff247895346afbbf343352496`；`base_commit: ab56c32ec4cb28e01fbcca74e9861164ffad43f0`。实施树进场/出场 clean、HEAD未漂移；主检出其他任务预存dirty未动。计划输入主提交547e9dbda，输入SHA256 `77d5bd186a7bba974e19a774b3d1eec434dc719f743919e1d8c4b8041f855cf4`；依赖/Spec/技能指纹及冻结SD副本见[完整审核与原始证据](attachments/830/review-r1/review.md)。未改canonical Spec或ledger。
+- `worktree_path: D:/autostack/.wt/lang-830/auto-lang`；`branch: plan-830-dev`；`reviewed_commit: dd2788bcc16ce7cff247895346afbbf343352496`；`base_commit: ab56c32ec4cb28e01fbcca74e9861164ffad43f0`。实施树进场/出场 clean、HEAD未漂移；主检出其他任务预存dirty未动。计划输入主提交547e9dbda，输入SHA256 `77d5bd186a7bba974e19a774b3d1eec434dc719f743919e1d8c4b8041f855cf4`；依赖/Spec/技能指纹及冻结SD副本见[完整审核与原始证据](../attachments/830/review-r1/review.md)。未改canonical Spec或ledger。
 - 独立复跑：AGP locked check/release通过；AGP test **135/135**（surface_contract 18/18）；六surface case各6/10/14/7/8/10门通过，真实OS中文IME commit=`爱彼此你好你好`；829 Breakout/Squash/iced-shared-device均exit0。以上正控不覆盖下述反例；check有17条lib warning及集测另1条warning，rustfmt check exit1。
-- 独立反例[源码/复跑脚本/输出](attachments/830/review-r1/review.md)：11 tests=1 pass/10 fail；包含显式revalidate合法对照。确认卸载残影、resize空白、结构dirty遗漏、半透明逐帧累积、GPU坏资源panic后半提交、多父相机随机错映射、嵌套遮挡回落父面、共享挂载IME锚点选错与失焦取消不完整。未revalidate的直接release仅记录调用顺序边界，不单列为正确调用仍失败。
+- 独立反例[源码/复跑脚本/输出](../attachments/830/review-r1/review.md)：11 tests=1 pass/10 fail；包含显式revalidate合法对照。确认卸载残影、resize空白、结构dirty遗漏、半透明逐帧累积、GPU坏资源panic后半提交、多父相机随机错映射、嵌套遮挡回落父面、共享挂载IME锚点选错与失焦取消不完整。未revalidate的直接release仅记录调用顺序边界，不单列为正确调用仍失败。
 - Findings：**F-830-R1-01..11 OPEN**（代码01..07、场景遗漏08、门禁09、文档10、卫生11）；详见完整报告逐条绑定AC/task、file:line、输入/实际/期望、同源路径与闭合oracle。AC01/02/07/08 partial，AC03/04/05/06/09 fail，AC10 merge pending。SD01/02与现行代码/证据有冲突，SD03/04须等修复事实再冻结，当前不授规范pass。AutoShader/CAP、I1–I3仍pending的分层保持。
 - 状态回 `executing`，**T-03..T-08重开，current_step=2/10**，保留T-01/T-02完成及所有历史work记录（旧勾选/绿色申报不再代表当前验收结论）；T-09/T-10未完成。全部为既有合同内必修，风险记录不授权缩面或延期。
 - `pending_closeout_gates`：最终复审pass后的新冻结AGP locked test/release、surface完整路径/真实OS输入与IME、829兼容/independent-consumer重定位、真实负控与资源生命周期门；合入autographics-dev、Spec/ledger/index沉淀、归档与guard清树。仅experimental Rust不触根t/tv/tu/docs_gen；tf依旧主检出到期批量。本轮未执行merge-owned门、不合入、不称交付。
@@ -412,7 +423,7 @@ stage: review；review_scope: final；reviewer_identity: 当前Codex独立审核
 - `stage: new`；`plan_revision: 3`；`status: drafting`；`current_step: 0/10`；`outcome: pass`（来源与规划交接预检）；`next: 用户另开agent执行work，从T-01进入`。
 - 依据829 archived 11/11、R18/冻结merge门/清理收据及current Spec，核G829已满足；autographics-dev冻结ab56c32ec的AGP子树与ddbde3e62无差异，祖先检查通过。具体原始门禁为前序收据，本轮未重跑。
 - r3仅更新源门、实际stock依赖、当前Spec及开工/合入分支；组合/输入、S/V案例与r2 CAP/AutoShader交接验收保持。T-01/10与AC-10按用户已裁定的集成分支承接；任务仍10项全部未勾选。
-- 主检出维护计划，代码从冻结autographics-dev起步，审毕合回该分支；生产master/真实UI/RQHost迁移门不变。证据见[r3交接](attachments/830/planning/handoff-r3.md)。本轮不创建agent/树，不启动实现，不改829归档合同或current Spec。
+- 主检出维护计划，代码从冻结autographics-dev起步，审毕合回该分支；生产master/真实UI/RQHost迁移门不变。证据见[r3交接](../attachments/830/planning/handoff-r3.md)。本轮不创建agent/树，不启动实现，不改829归档合同或current Spec。
 
 ### 2026-10-22 new r2：CAP/AutoShader接缝补充
 
@@ -420,7 +431,7 @@ stage: review；review_scope: final；reviewer_identity: 当前Codex独立审核
 - `outcome: blocked`（仅未来实施来源G829尚未核得有效消费收据；r2规划预检通过）；`next: 本轮文档交付结束，未来取得启动授权与有效D829或获准E829后，由work从T-01核源进入`。不重复要求确认已授权的文档范围，不把外部来源门当本次文档未完成。
 - 改动：T-01更新r2/实际开工授权；T-02/04/08补§5.6资源布局与分层/交接；V-10/AC-08及SD-04补当前Shader接缝。AC-01..07、AC-09/10、S-01..04、V-01..09及T-03/05/06/07/09/10合同保持，十任务不增项，全部未勾选。原Windows/单窗/真实Iced/IME、游戏兼容、G829与迁移门保持。
 - 829已由r1观察时execution_done更新到reviewed，最新R18所记ddbde3e6只用于来源定位；本轮未执行其review/merge门、未发布E829或代认D829。r1旧f7候选及调查/预检保留为历史，不再指示当前基面。
-- 验证：来源/链接/任务AC映射及r1→r2差异预检见[preflight-r2](attachments/830/planning/preflight-r2.md)；静态结构检查不代替实现验收，未跑Cargo、GPU/窗口或IME测试。AutoShader样例仍是设计，未来测试未运行。未指定实现/复审人或模型，未建agent/chat。
+- 验证：来源/链接/任务AC映射及r1→r2差异预检见[preflight-r2](../attachments/830/planning/preflight-r2.md)；静态结构检查不代替实现验收，未跑Cargo、GPU/窗口或IME测试。AutoShader样例仍是设计，未来测试未运行。未指定实现/复审人或模型，未建agent/chat。
 
 ### 2026-10-21 new r1（历史；当前合同为r2）
 
@@ -428,7 +439,7 @@ stage: review；review_scope: final；reviewer_identity: 当前Codex独立审核
 - `outcome: blocked`（仅实施来源前置尚缺；计划合同预检通过）；`next: 原owner完成829验收及G829冻结交接，再进入work`。计划编制已完成，状态仍drafting；当前允许只读准备，不表示已放行依赖实现。
 - 任务T-01..10、AC-01..10、SD-01..04；source/review/merge与实验/生产分层明确。当前不改829进度或其验收发现。
 - 未知公共Iced离屏/IME实施路线归T-02整链探针和T-06真实验证；无法满足原目标时回new，不以假UI或跳过输入绕过。
-- 预检及来源hash见 [附件](attachments/830/planning/preflight.md)；本次未跑Cargo、原游戏、GPU或IME验收，也不是独立final review。
+- 预检及来源hash见 [附件](../attachments/830/planning/preflight.md)；本次未跑Cargo、原游戏、GPU或IME验收，也不是独立final review。
 
 ## 10. 待澄清事项
 

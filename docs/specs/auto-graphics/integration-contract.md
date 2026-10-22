@@ -49,3 +49,44 @@
 - I3 Forge 与发行：需 I2 + 编辑闭环设计收据。
 
 后继计划必须引用本文件，且只能以绑定收据的证据替换 "pending"。
+
+## PLAN-830 实验增量（组合 Surface/Portal 与嵌套输入）
+
+> 代码落 `autographics-dev`（交付提交 `764e87559`）；证据
+> `docs/plans/attachments/830/work-r6/merge/`。以下**只**扩充 IH-01/IH-04 的
+> 实验事实，不改变 IH-02/03/05 与 I1–I3 的 pending 状态，也不表示生产接线完成。
+
+**IH-01 增量（同设备/离屏内容采样）**
+
+- 真实 iced 控件内容以离屏采样目标被 3D 平面与 2D 四边形消费；预乘 alpha
+  over、线性/sRGB 一致；2D 用 scissor 裁剪、3D 平面用挂载 host Surface 相机；
+  DAG 顺序（子先于父）由运行时检查（`DependencyOrder`）。
+- 同设备归属对 Iced/2D/3D adapter 逐一记录并校验；外设备内容具名拒绝
+  （`DeviceMismatch`），无法验证归属的 raw-device 内容 `DeviceUnverifiable`。
+- 失败事务：目标超限/尺寸非法先分类后提交，保持 last-good；resize 替换/丢弃
+  准备/slot 删除的真实目标生命周期计数守恒。
+- 计量：两条组合管线与内容 adapter 的真实 `write_buffer` 计数（portal 160B/
+  次、平面 128B/次）；验收 oracle 要求分管线精确、总量=分项之和；省略计数的
+  变异必须令门禁红（V-08 钩子）。
+
+**IH-04 增量（嵌套输入）**
+
+- 双向嵌套均实测：UI→3D→UI 全链路点击/焦点/DPI2/resize；3D→UI→2D（冻结
+  Breakout 暂停/reset/键盘焦点）；共享 Squash 内容两 Portal 同像素、单 tick、
+  每挂载一次输入。
+- 命中：2D clip/仿射反算、3D 射线+UV（按 host 相机）、递归非交互遮挡吞掉、
+  捕获绑挂载路径、销毁/失焦/离窗取消。
+- 焦点：唯一真实编辑目标；宿主合批与“取消先于 pending 渲染”均由 router 三态
+  （`Unset/Target/Cancelled`）贯通到真实 widget 缓存；新合法点击/公开 focus
+  可恢复。非法 Surface（foreign/stale/非 iced）的 focus 请求拒绝且无副作用。
+- IME：真实 `text_input` 的 `InputMethod::Enabled.cursor` 作为 caret，沿活跃
+  挂载链投影为 OS 候选锚点并随输入/选择/滚动更新；真实 OS 中文 IME 提交已取证。
+  候选窗逐像素模板比对不在本版证据范围。
+
+**仍 pending（不得读作已交付）**
+
+- IH-02 Auto SDK 入口、IH-03 RQHost GPU 协议、IH-05 生产发行边界保持原状；
+  I1 真实 Auto 源码入口、I2 生产 AutoUI/嵌套/RQHost（迁移完成收据）、I3 Forge
+  发行仍 pending；AutoShader/CAP 未实现。
+- 云/多窗口/跨平台、曲面或任意网格 Portal、逐平面深度遮挡、iced 内部上传与
+  驱动驻留内存计量、组合管线 error scope：均未支持/未测，见 prototype-profile。

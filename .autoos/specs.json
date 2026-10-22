@@ -4010,7 +4010,26 @@
     }
    ,
 {"id": "OS050-MERGE", "title": "PLAN-050 目录迁移合入记录", "content": "已线性合入 AutoOS 和 AutoUI 主线。24 个目录完成实际迁移，24 gitlink 原 pin 保持；Explorer 43 文件及 detached 状态保留。逐项复核与归档收尾状态见合入收据；归档计划 docs/plans/archive/050-app-directory-product-names.md。", "status": "verified", "depends_on": [], "related": [], "priority": null, "assignee": null, "test_file": null, "file": "../auto-os/docs/plans/attachments/050/merge-receipt.json", "milestone": null, "module": null, "tags": ["PLAN-050:r4", "source_commit:ce055a5194649ad7c6251dbc46d0666bde08cfb6", "archive:docs/plans/archive/050-app-directory-product-names.md", "source_sha256:3ae4e469cd028746a96711d22ecd0800047dcd81ae656cf0e6b5d319827eb371"], "created_at": 1792644036, "modified_at": 1792644036, "completed_at": 1792644036}
-],
+,
+    {
+     "id": "P830-MERGE",
+     "title": "PLAN-830 merge 沉淀与归档收据",
+     "content": "delivery_commit 764e87559 fast-forward 落 autographics-dev（tip==delivery，无 merge commit；master 零代码合入）；master 侧 docs-only 沉淀 SD-01/02（新增 surface-composition/nested-input）与 SD-03/04（prototype-profile/integration-contract 的 830 增量）、plans.md/overview.md 索引、ledger v66→v67 guarded offline projection（designs×4/tests×1/reviews×1/reports×1）、spec-index 重生成；计划归档 docs/plans/archive/，T-01..T-10 全勾；merge-owned 门在冻结提交执行（AGP locked test 162/162 + release build + 六 case + 829 + consumer；iced-shared-device 首轮 OS 注入 flake 与同提交重跑通过两份记录均保留）；wt-guard clean 后移除实施树/分支/组目录。",
+     "status": "published",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/plans/archive/830-autographics-surface-portal-composition-and-input.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-830:r3",
+      "source_commit:764e87559",
+      "branch:autographics-dev@764e87559"
+     ]
+    }],
    "section_type": "Reports",
    "title": "📊 Reports",
    "status": "empty",
@@ -14189,7 +14208,83 @@
       "branch:autographics-dev@ab56c32ec"
      ]
     }
-   ],
+   ,
+    {
+     "id": "P830-SURF",
+     "title": "auto-graphics Surface/Portal 组合与 GPU 合成合同（PLAN-830 SD-01）",
+     "content": "契约=docs/specs/auto-graphics/surface-composition.md：Surface/View/Portal 身份（复用 core::id 代际）、整批校验→整状态提交（失败零副作用）、结构变更与内容适配器本帧输出变化同帧级联消费者、循环/深度预算具名拒绝；GPU 侧每 Surface 一个采样目标（Rgba8UnormSrgb 预乘 alpha、RENDER_ATTACHMENT|COPY_SRC|TEXTURE_BINDING）、2D scissor / 3D 平面（host Surface 相机）、子先于父的 DAG 提交与 DependencyOrder 检查；Iced/2D/3D 三 adapter 记录并校验同一 device ordinal，外设备 DeviceMismatch、无法证明归属 DeviceUnverifiable（fail closed）；目标生命周期计数守恒（创建/替换/丢弃准备/slot 删除）、同尺寸 resize no-op；上传=真实 write_buffer 计量（portal 160B/次、平面 128B/次、内容 adapter 另计），验收要求分管线精确+总量=分项之和+省略计数负控；owned 目标 payload 与进程工作集分开、GPU/驱动驻留具名不可测。窗口/平面组合范围与未支持面见 prototype-profile。",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/specs/auto-graphics/surface-composition.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-830:r3",
+      "source_commit:764e87559",
+      "branch:autographics-dev@764e87559"
+     ]
+    },
+    {
+     "id": "P830-NESTED",
+     "title": "auto-graphics 嵌套输入/焦点/IME 合同（PLAN-830 SD-02）",
+     "content": "契约=docs/specs/auto-graphics/nested-input.md：窗口→视图→挂载链（2D 仿射/裁剪、3D 射线+UV 按 host 相机）→子内容像素；命中逆声明序、非交互遮挡沿整链吞掉、捕获绑挂载路径、销毁/失焦/离窗取消且迟到 release 不命中；焦点为唯一真实编辑目标，router 目标三态 Unset/Target/Cancelled 贯通到真实 widget 缓存（合批 A→B/B→A 以最后一次 routed press 为准；取消先于 pending 渲染时不复活任何编辑态，新合法点击/公开 focus 可恢复）；公开 focus 对 foreign/stale/非 iced Surface 拒绝且无副作用；真实 text_input 的 InputMethod::Enabled.cursor 作为 caret，沿活跃挂载链投影为 OS 候选锚点并随输入/选择/滚动更新；真实 OS 中文 IME 组合/提交已取证；候选窗逐像素模板比对不在本版范围。",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/specs/auto-graphics/nested-input.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-830:r3",
+      "source_commit:764e87559",
+      "branch:autographics-dev@764e87559"
+     ]
+    },
+    {
+     "id": "P830-PROFILE",
+     "title": "auto-graphics 原型 profile 的 PLAN-830 扩展（Windows 单窗/平面 Portal）",
+     "content": "docs/specs/auto-graphics/prototype-profile.md 增加 830 实测支持面：有限无环多层组合、双向嵌套（UI→3D→UI、3D→UI→2D）、共享内容两 Portal（单 tick/同像素/每挂载一次输入）、预乘 over + scissor/平面相机、唯一焦点与三态取消、真实 caret OS IME、全 adapter 同设备、真实上传/owned 内存计量（PortalQuad 160B 为真实 write_buffer 传输长度：有效字段 24B+对齐，不按 24B 折算）；边界：单窗/平面挂载、无曲面/任意网格、画家序无逐平面深度、iced/3D 每帧重绘、iced 内部上传与驱动驻留不可测、GPU timing=false、Null 剪贴板、组合管线无 error scope；生产 AutoUI/RQHost/Forge/AutoShader/CAP/I1–I3 仍 pending。",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/specs/auto-graphics/prototype-profile.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-830:r3",
+      "source_commit:764e87559",
+      "branch:autographics-dev@764e87559"
+     ]
+    },
+    {
+     "id": "P830-IH",
+     "title": "integration-contract 的 PLAN-830 实验增量（IH-01/IH-04）",
+     "content": "docs/specs/auto-graphics/integration-contract.md 增补：IH-01 增加离屏 iced 内容被 3D 平面/2D 四边形采样（预乘 alpha、DAG 顺序、全 adapter 同设备归属、失败事务与目标计数守恒、真实上传计量 oracle）；IH-04 增加双向嵌套、平面 picking、捕获、唯一焦点/三态取消、非法引用拒绝无副作用、真实 caret IME 锚点与真实 OS 中文提交。IH-02 Auto SDK、IH-03 RQHost、IH-05 生产发行边界与 I1–I3 仍 pending，AutoShader/CAP 未实现；不把实验 API 当生产 ABI。",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/specs/auto-graphics/integration-contract.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-830:r3",
+      "source_commit:764e87559",
+      "branch:autographics-dev@764e87559"
+     ]
+    }],
    "section_type": "Designs",
    "title": "🎨 Designs",
    "status": "empty",
@@ -17378,7 +17473,26 @@
     }
    ,
 {"id": "OS050-TESTS", "title": "产品路径注册与实际 Vue 生成回归", "content": "注册表 28/28、实际 Vue 生成 1/1、三轨发现一致性 1/1；旧 ID 拼目录负对照拒绝。完整日常门 5329/5331，两个已复现基线剪贴板失败经用户明确授权非阻塞，测试规则未改。", "status": "verified", "depends_on": [], "related": [], "priority": null, "assignee": null, "test_file": "crates/auto-ui-compiler/src/app_registry.rs", "file": "docs/specs/auto-ui-compiler/project.md", "milestone": null, "module": null, "tags": ["PLAN-050:r4", "source_commit:ce055a5194649ad7c6251dbc46d0666bde08cfb6", "archive:docs/plans/archive/050-app-directory-product-names.md", "source_sha256:4d37cd6032c7c1031f1e8f6cab99c51bd9a14cb3d4e1ae103a89c560f4a578a5"], "created_at": 1792644036, "modified_at": 1792644036, "completed_at": 1792644036}
-],
+,
+    {
+     "id": "P830-TESTS",
+     "title": "PLAN-830 组合契约与 R2/R3/R4 永久回归",
+     "content": "AGP tests：surface_contract 29（身份/共享/DAG/环/深度预算/原子批次/结构脏传播/跨帧 alpha/坏资源/多相机/嵌套遮挡/焦点取消/锚点）；surface_review_r2 5（活体内容同帧刷新消费者、三 adapter 设备归属、目标释放计量、焦点迁移释放旧控件、真实 caret 锚点）；surface_review_r3 6（合批 A→B/B→A 唯一焦点、先前动作不丢、foreign/stale/非 iced focus 拒绝无副作用、分帧对照）；surface_review_r4 5（取消先于 pending、revalidate 卸载、取消后新点击/公开 focus）。正式 case（release）：offscreen 6、compose 17、input 18、scenarios 15、lifecycle 23（含分管线精确上传与省略计数负控）、ime-os 14（真实 OS 中文 IME）；另 829 三案与 independent-consumer 重定位。冻结 764e87559，AGP 全测 162/162。",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "experimental/autographics-prototype/tests/surface_review_r4.rs",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-830:r3",
+      "source_commit:764e87559",
+      "branch:autographics-dev@764e87559"
+     ]
+    }],
    "section_type": "Tests",
    "title": "🧪 Tests",
    "status": "empty",
@@ -23431,7 +23545,26 @@
     }
    ,
 {"id": "OS050-R4", "title": "PLAN-050 r4 最终复审", "content": "同一执行会话基于冻结源码、实际验收和规范哈希重建，final pass；非独立上下文。重放提交 range-diff 等价；源码、依赖、测试配置未改变。两项基线剪贴板失败的非阻塞处理由用户直接授权。", "status": "verified", "depends_on": [], "related": [], "priority": null, "assignee": null, "test_file": null, "file": "../auto-os/docs/plans/attachments/050/final-review.md", "milestone": null, "module": null, "tags": ["PLAN-050:r4", "source_commit:ce055a5194649ad7c6251dbc46d0666bde08cfb6", "archive:docs/plans/archive/050-app-directory-product-names.md", "source_sha256:260c7141b6793e85a5acb83ff0c060958c60b0ad05533ffe4aab97143882a0d9"], "created_at": 1792644036, "modified_at": 1792644036, "completed_at": 1792644036}
-],
+,
+    {
+     "id": "P830-R5",
+     "title": "PLAN-830 R5 final review pass（764e87559）",
+     "content": "独立 final review（R1–R5 连续轮次，R5 为 pass）：冻结 764e87559，45 项定向契约/回归全过；原 R2/R3/R4 反例与合法对照通过；六 surface release（6/17/18/15/23/14）、真实 OS 中文 IME、829 三案、independent-consumer 重定位 29 字段 0 差异；两种上传漏记账外部变异均 exit=1。R4 两项（取消先于 pending 渲染的焦点复活、上传活控可被顶替）CLOSED，无开放阻塞 finding；AC01–AC09 pass、AC10 pending merge。merge-owned 门在最终 pass 后于冻结提交执行。",
+     "status": "verified",
+     "depends_on": [],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/plans/attachments/830/review-r5/review.md",
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "PLAN-830:r3",
+      "source_commit:764e87559",
+      "branch:autographics-dev@764e87559"
+     ]
+    }],
    "section_type": "Reviews",
    "title": "🔍 Reviews",
    "status": "empty",
@@ -23442,5 +23575,5 @@
   }
  ],
  "project": "auto-lang",
- "version": 66
+ "version": 67
 }

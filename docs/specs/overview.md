@@ -62,7 +62,7 @@
 | [auto-syntax](auto-syntax/project.md) | Atom 语法实验（PLAN-787 起）：增量词法+无损 CST+双 profile 配置驱动语法服务（experimental/ac-syntax 独立 workspace；A01/A02/A03 真实生产者接入 783 store） | experimental |
 | [auto-ac](auto-ac/project.md) | AC 原生 AOT 闭环：Checked HIR → Cranelift COFF → PE（Windows x64；capability 门/溢出 trap/入口包装器；PLAN-741/745；HIR与显式core-i32源码profile→exe完成，完整语言与自举仍open） | experimental |
 | [auto-acc](auto-acc/project.md) | ACC 自举目标态合同：主体清单（adapt/reference/新建分层）+ 能力现状四态（required/implemented/unknown/not-required）+ Gen1–3 代际判据（PLAN-743 盘点；合同未冻结，实施计划按节认领） | planned |
-| [auto-graphics](auto-graphics/project.md) | AutoGraphics 原型（PLAN-829）：AGP 独立 wgpu workspace——Bevy Breakout/Godot Squash 双冻结样本 bit-exact 原型 + Iced 同设备合成探针 + 十探针验证矩阵；**代码在 `autographics-dev` 集成分支不进 master**（2026-10-22 裁定，待 814/815/816 系迁移完成议合），master 侧仅知识文档；I1–I3 生产集成 pending | experimental |
+| [auto-graphics](auto-graphics/project.md) | AutoGraphics 原型（PLAN-829/830）：AGP 独立 wgpu workspace——双冻结游戏 bit-exact 原型与十探针矩阵；830 增加可组合 Surface/Portal（UI→3D→UI、3D→UI→2D 双向嵌套、离屏 iced 合成、共享多挂载、捕获/唯一焦点/三态取消、真实 caret OS IME、全 adapter 同设备归属、真实上传/owned 内存计量）；**代码在 `autographics-dev` 集成分支不进 master**（2026-10-22 裁定，待 814/815/816 系迁移完成议合），master 侧仅知识文档；I1–I3 生产集成 pending | experimental |
 | [auto-cosmic](auto-cosmic/project.md) | COSMIC 桌面复刻实验（4 子 crate，Linux 向）+ **Smithay 合成宿主线**（509 起：host-smithay crate，smithay 0.7.0 路线 B——桌面协议宿主消费帧，宿主无 iced；骨架+shell 首帧已落地） | active（509 线内） |
 | examples/ | 51 项示例（ui 应用轨道 0xx 系列/godot/http/charts gallery…） | active |
 | docs/schema/ | `aura.at`——AURA 内置组件唯一声明源（Plan 435） | active |
