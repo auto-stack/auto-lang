@@ -108,6 +108,12 @@ impl SessionCounters {
         self.map.get(key).copied().unwrap_or(0)
     }
 
+    /// The full counter map (T-08 formal-worker publication: the parent
+    /// judge computes per-sample deltas from cumulative snapshots).
+    pub fn snapshot(&self) -> BTreeMap<String, u64> {
+        self.map.clone()
+    }
+
     /// A stage's count for one function (0 = untouched).
     pub fn stage_of(&self, stage: &str, function: &str) -> u64 {
         self.get(&format!("{stage}:{function}"))

@@ -32,6 +32,7 @@ fn main() {
         "case-serve" => case_serve(),
         "load-revision" => load_revision(&args[1..]),
         "bench-turnaround" => bench_turnaround(&args[1..]),
+        "session-serve" => session_serve(),
         "native-build" => native_build(&args[1..]),
         "native-run" => native_run(&args[1..]),
         other => {
@@ -46,6 +47,7 @@ fn usage() -> ! {
     eprintln!("       av_probe_worker request --store DIR --src-file FILE --entry FN [--project P] [--caps C1,C2]");
     eprintln!("       av_probe_worker gc-loop --store DIR --stop-file FILE [--interval-ms N]");
     eprintln!("       av_probe_worker bench-turnaround --samples N --gate-ms MS --out FILE");
+    eprintln!("       av_probe_worker session-serve  (PLAN-828 T-08: persistent formal-session worker, JSON-lines on stdio)");
     eprintln!(
         "       av_probe_worker case-serve  (PLAN-798 T-07: AutoDown probe envelope on stdin)"
     );
@@ -659,5 +661,150 @@ fn native_run(args: &[String]) -> ! {
     line.push('\n');
     use std::io::Write;
     std::io::stdout().write_all(line.as_bytes()).ok();
+    exit(0)
+}
+
+/// PLAN-828 T-08 (F-12): the PERSISTENT formal-session worker. One
+/// process, ONE resident session: `init` warms it up once (the ready
+/// handshake carries the CONSTANT worker identity — session id —
+/// verified once per §5.5), then a stream of real body edits. Each
+/// publication carries the verified CURRENT result, the worker-internal
+/// phase timings (attribution only — the judge owns the measured
+/// window), the cumulative counter snapshot (the judge takes deltas) and
+/// the sampled worker-line memory peak. EOF or `close` terminates. This
+/// side never decides the verdict.
+fn session_serve() -> ! {
+    use auto_av_core::av::{CancelFlag, ExecLimits};
+    use auto_av_core::contract::{ExecOutcome, Value};
+    use auto_av_probe::formal_worker::{
+        CloseOp, ClosedMsg, EditOp, EditResultMsg, InitOp, ReadyMsg, WorkerReply, WorkerRequest,
+    };
+    use auto_av_probe::session::{warmup, FunctionIncrementalSession};
+    use std::io::BufRead as _;
+    use std::time::Instant;
+
+    let stdin = std::io::stdin();
+    let mut out = std::io::BufWriter::new(std::io::stdout().lock());
+    let peak = auto_av_probe::mempeek::PeakSampler::start(20);
+    let mut session: Option<FunctionIncrementalSession> = None;
+    let cancel = CancelFlag::new(false);
+
+    for line in stdin.lock().lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+        if line.trim().is_empty() {
+            continue;
+        }
+        let req: WorkerRequest = match serde_json::from_str(line.trim()) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("session-serve: bad request line: {e}");
+                break;
+            }
+        };
+        match req {
+            WorkerRequest::Init(op) => {
+                if session.is_some() {
+                    eprintln!("session-serve: double init refused");
+                    break;
+                }
+                let s = match warmup(&op.src, &op.entry, &op.caps) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("session-serve: warm-up failed: {e}");
+                        std::process::exit(3);
+                    }
+                };
+                let (exec, _) = s.run(&ExecLimits::default(), &cancel);
+                let value = match exec {
+                    ExecOutcome::Success {
+                        value: Value::I32(v),
+                        ..
+                    } => v,
+                    other => {
+                        eprintln!("session-serve: initial run is not a success: {other:?}");
+                        std::process::exit(3);
+                    }
+                };
+                let reply = WorkerReply::Ready(ReadyMsg {
+                    session_id: s.session_id(),
+                    functions: s.function_names().len(),
+                    revision: s.revision(),
+                    value,
+                });
+                let _ = session.insert(s);
+                writeln!(out, "{}", serde_json::to_string(&reply).unwrap()).unwrap();
+                out.flush().unwrap();
+            }
+            WorkerRequest::Edit(op) => {
+                let Some(s) = session.as_mut() else {
+                    eprintln!("session-serve: edit before init refused");
+                    break;
+                };
+                let EditOp {
+                    req_id,
+                    start,
+                    end,
+                    insert,
+                } = op;
+                let t0 = Instant::now();
+                let outcome = s.edit(start, end, insert.into_bytes());
+                let worker_edit_us = t0.elapsed().as_micros() as u64;
+                let msg = match outcome {
+                    Ok(o) => {
+                        let (exec, _) = s.run(&ExecLimits::default(), &cancel);
+                        let total = t0.elapsed().as_micros() as u64;
+                        let value = match exec {
+                            ExecOutcome::Success {
+                                value: Value::I32(v),
+                                ..
+                            } => Some(v),
+                            _ => None,
+                        };
+                        EditResultMsg {
+                            req_id,
+                            ok: o.ok,
+                            revision: s.revision(),
+                            value,
+                            changed_fn: o.changed_fn.clone(),
+                            install_set: o.install_set.clone(),
+                            diagnostics: o.diagnostics.clone(),
+                            non_fast_path_reason: o.non_fast_path_reason.clone(),
+                            worker_edit_us,
+                            worker_edit_to_result_us: total,
+                            counters: s.counters().snapshot(),
+                            worker_peak_bytes: peak.current_peak(),
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("session-serve: edit infrastructure failure: {e}");
+                        std::process::exit(4);
+                    }
+                };
+                writeln!(
+                    out,
+                    "{}",
+                    serde_json::to_string(&WorkerReply::EditResult(msg)).unwrap()
+                )
+                .unwrap();
+                out.flush().unwrap();
+            }
+            WorkerRequest::Close(_) => {
+                if let Some(s) = session.as_mut() {
+                    s.close();
+                }
+                writeln!(
+                    out,
+                    "{}",
+                    serde_json::to_string(&WorkerReply::Closed(ClosedMsg {})).unwrap()
+                )
+                .unwrap();
+                out.flush().unwrap();
+                break;
+            }
+        }
+    }
     exit(0)
 }
