@@ -6,7 +6,7 @@ plan_revision: 2
 author: [Codex]
 created_at: 2026-10-22
 updated_at: 2026-10-23
-current_step: 9
+current_step: 10
 total_steps: 10
 completion_kind: delivered
 depends_on: [PLAN-830]
@@ -24,7 +24,7 @@ affects: [auto-graphics, language-sdk-consumer]
 
 ## 0. 变更摘要
 
-**T-10门禁、源码合入与知识沉淀已完成；归档检查点，清理待完成（9/10）。** 独立R2绑定77302d855；完整driver17/17、AGP162/162、16项release探针、原生窗口正反控/160帧Breakout及当前源码隔离搬迁门通过。代码fast-forward至`autographics-dev@540c1e70f`，master仅规范/ledger/计划知识；完整关闭需下方cleaned收据。详[合入门禁汇总](../attachments/833/merge-r2/gates-summary.json)。
+**计划833已交付归档：`archived / 10 of 10`，merge outcome: pass。** 独立R2绑定77302d855；完整driver17/17、AGP162/162、16项release探针与当前源码隔离搬迁门均通过。源码fast-forward至`autographics-dev@540c1e70f`；master仅沉淀规范/ledger/计划证据，ledger v68→69。fresh wt-guard clean后，唯一工作树、plan分支和空组目录已移除。独立Windows包运行须保留原受审32MB栈profile，完整命令见README与profile。详[门禁汇总](../attachments/833/merge-r2/gates-summary.json)与[清理收据](../attachments/833/merge-r2/cleaned.json.txt)。
 
 承接829的游戏基础与830的组合/输入，新增独立语言消费桥：真实 `.at` 经已交付 `auto-lang-core` 编译成AutoVM程序，持续接收窗口动作/固定tick，输出图形状态与事件。先做小场景，再使Breakout的运动、碰撞、消砖和计分在Auto中执行；Rust保留宿主、renderer、资源和音频。
 
@@ -194,7 +194,7 @@ Breakout底墙反弹、无生命/掉球/game-over，reset为宿主扩展，沿�
 
 ## 8. 执行步骤
 
-T-01..08及独立复审T-09已完成（R1两finding经R2确认关闭）；T-10仍由merge拥有。唯一树与实现证据在§9及R2报告汇总。task路径以新workspace为根，已存在AGP/SDK符号见调查及r2交接；新路径均标“新”。
+T-01..10已全部完成（R1两finding经R2确认关闭；T-10完整门禁、源码合入、知识沉淀、实际归档与guard清理均完成）。唯一树与实现证据在§9及R2报告汇总。task路径以新workspace为根，已存在AGP/SDK符号见调查及r2交接；新路径均标“新”。
 
 | 完成 | Task | owner_stage | 依赖 | 路径/产出与验证 | AC |
 |---|---|---|---|---|---|
@@ -207,9 +207,17 @@ T-01..08及独立复审T-09已完成（R1两finding经R2确认关闭）；T-10�
 | [x] | T-07 | work | T-06 | 接830最终composition_input/内容出口，A-03/V-05；V-06/07失败/20次reset/兼容/测量与永久反例；R1重开：F-833-R1-01叠层/quad全资源归属，F-833-R1-02文字真实上传计量与反控；迭代只定向test/check | AC-05,06 |
 | [x] | T-08 | work | T-07 | 新README/research handoff/SD草稿；实际符号/命令/测量/限制/债务归属，V-08与AC全映射；R1依赖重开：随两finding刷新计量/交接/SD证据后提交冻结→独立review | AC-07 |
 | [x] | T-09 | review | T-08 | 同树独立核AC/SD/冻结SHA/调用图/反控及遗漏；R2 pass，两finding独立关闭；pass只表示审查通过，门禁仍pending | AC-08 |
-| [ ] | T-10 | merge | T-09 pass | 冻结提交统一driver全测/build+AGP适用兼容/真窗口/反控/资源门；合autographics-dev，Spec/module plans/ledger/index沉淀、归档，wt-guard clean后清树 | AC-09 |
+| [x] | T-10 | merge | T-09 pass | 冻结提交统一driver全测/build+AGP适用兼容/真窗口/反控/资源门；合autographics-dev，Spec/module plans/ledger/index沉淀、归档，wt-guard clean后清树 | AC-09 |
 
 ## 9. 复审记录
+
+### 2026-10-23 merge PLAN-833:r2：pass / cleaned / delivered 10 of10
+
+- stage:merge | outcome:pass | completion_kind:delivered | plan_revision:2 | status:archived | current_step:10/10 | reviewed_commit:77302d8552f074ebedd53e757acfcf3db0bde230 | delivery_commit:540c1e70f0a4682af245191ffb36fa0d8a636665。
+- landed/ledger/archived检查点已完成：master规范与归档提交8e41a0911，历史引用边界修正提交c51c852fe；只含docs/.autoos，无图形源码。actual archive gate重新核验所有本计划Markdown链接目标存在且已跟踪、module plans指向833真实归档、10个稳定task以及canonical/ledger读回均通过。下方9/10是清理前历史checkpoint，不代表当前状态。
+- **cleaned**：移除前同树clean、所有提交均为autographics-dev祖先；使用Git Bash/MSYS执行fresh `wt-guard.sh`，报告clean、无reparse。`git worktree remove`成功；plan-833-dev按已验证的本地upstream autographics-dev用`branch -d`安全删除（master不承接源码，故“merged upstream but not HEAD”是预期提醒）；确认worktree/branch/空组D:/autostack/.wt/lang-833均不存在。[守护](../attachments/833/merge-r2/final-wt-guard.txt)与[清理读回](../attachments/833/merge-r2/cleaned.json.txt)。其他工作树/主检出预存docs WIP均保留。
+- **batch_due_check**：[实际收据](../attachments/833/merge-r2/batch-due-check.json.txt)：833非5倍数，最近批量收据仅4.56h，covered commit后master无生产代码变化；未到期，不触发tf，不改批量收据。无剩余merge gate/cleanup blocker；下一责任none（本计划完成），生产迁移仍另行合同。
+
 
 ### 2026-10-23 merge PLAN-833:r2：landed / ledger_refreshed / archive checkpoint，cleanup pending
 
@@ -311,7 +319,7 @@ T-01..08及独立复审T-09已完成（R1两finding经R2确认关闭）；T-10�
 1. **来源已冻结**：G830/GSDK均已满足，具体完整SHA、锁和输入见§2.1与baseline附件；T-01重核固定版本并准备消费，不重新等待830或整体迁移。
 2. 已实证：T-02选择公开标量接法，状态/参数/返回、所用f32/容器RC与pump/预算已通过；通用SDK数学转换为具名后继候选，本次有限f32算法保持原数值分母。
 3. 范围已明确：首个Auto游戏Breakout；Squash真实Auto/生产I2/I3另选后继；本次SDK/AutoVM host入口不自动证明新版ACE或Shader/CAP具备。
-4. 当前没有需要用户补充的来源/范围决定；两finding经独立R2确认关闭，计划reviewed 9/10。下一责任T-10/merge执行冻结门禁；审核未代执行merge，生产迁移/主分支代码合入边界保持。
+4. 当前无待澄清/交付阻塞：T-10已完成，计划archived10/10；生产迁移、Auto Squash、I2/I3与Shader/CAP边界保持。
 
 
 ## spec-sync 回写记录
