@@ -19,7 +19,7 @@
 | `counters()` / `STAGES` | 11 轴 per-fn 计数 + `reuse_hit` + `whole_module_*` 结构零 + `syntax_*` 证据 + `hir_soft_root_retired/rerooted`/`persist_error` 等存储轴 |
 | `query_body_fact(consumer, callee)` | body 事实查询（闭会话拒；凭据属具体受检产物，重读不刷新） |
 | `resident(name)` / `resident_weak(name)` / `resident_inventory()` / `resident_cold_hir_nodes()` | 身份/Weak 观测/驻留盘点（水位轴）；`resident_weak(name)` 观测**当前驻留对**，返回 `Option<(Weak<Body>, Weak<FunctionCode>)>`（B3-C05 更正：无 generation 参数） |
-| `last_run_dispatched_identities()` | B3-C03（F-02 轴在真实消费处）：**最近一次 `run` 实际执行的快照**逐函数派发载荷身份（对象地址+代际）`Vec<(def_id, ptr, generation)>`——记录发生在 `run` 内部（观测不可与实际执行脱钩），正式父侧 judge 以跨修订稳定性+目标必须换对象或记录 reuse_hit 判决 |
+| `last_run_publication()` | B3-C03（F-02 轴在真实消费处）：**最近一次 `run` 的发布对**——身份观测取自该次执行返回的 trace（`ExecTrace.dispatched`：av-core 执行器在四入口采集 def_id/对象地址/代际/内容摘要+`execution_seq`），并含**同一次调用**发布的值；每条身份另带 `resident` 布尔（活地址对比驻留 `Arc`——深副本不可能冒充驻留对象，堆地址回收不可欺骗）。返回 `(Vec<(def_id, ptr, gen, content, resident)>, Option<i32>, seq)`；worker 的值与身份同源于此单一访问器 |
 | `close()` / `closed()` / `session_id()` / `function_names()` / `history_len()` / `line_col(off)` / `src()` / `revision()` | 终态与来源查询；close 释放 env/store 拥有引用（幂等；外 pin 存活） |
 | `HISTORY_CAP=32` | **每函数**内容历史上界（r3 更正 r2 表述）：有界历史真实淘汰运行（512 编辑不随编辑数增长）；驻留当前修订条目永不逐出 |
 

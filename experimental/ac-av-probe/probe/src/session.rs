@@ -50,7 +50,7 @@ use auto_ac_prototype::verify::{verify_function, CheckedFunction};
 use auto_av_core::abc::{decode_abc, encode_abc};
 use auto_av_core::abc_verify::verify_abc;
 use auto_av_core::av::{execute_program, CancelFlag, ExecLimits, ExecTrace};
-use auto_av_core::contract::ExecOutcome;
+use auto_av_core::contract::{ExecOutcome, Value};
 use auto_av_core::function_code::FunctionCode;
 use auto_av_core::mir_verify::verify_mir;
 use auto_av_core::program_snapshot::ProgramSnapshot;
@@ -359,14 +359,31 @@ pub struct FunctionIncrementalSession {
     /// store handle; snapshots pinned elsewhere stay alive and correct.
     closed: bool,
     /// B3-C03 (F-02 axis AT THE REAL CONSUMER): the dispatched-payload
-    /// identities (object address + generation per function) of the
-    /// snapshot the LAST `run` actually executed. Recording happens inside
-    /// `run` itself, so the observation cannot drift from what the AV
-    /// consumed: a caller that executes some OTHER program (e.g. a deep
-    /// copy) without going through `run` leaves this at the previous
-    /// revision — which the formal judge's target-must-change-or-reuse
-    /// rule catches.
-    last_run_identities: std::cell::RefCell<Vec<(String, u64, u64)>>,
+    /// evidence of the LAST `run`, taken from THE trace that execution
+    /// returned — the identities the executor actually dispatched for
+    /// the program it ran (name, object address, generation, content
+    /// digest) — paired with the SAME call's published value. A caller
+    /// that executes some OTHER program (e.g. a deep copy) without going
+    /// through `run` cannot influence this record; a copy executed
+    /// THROUGH `run` IS this record (its trace describes the copy).
+    last_run_publication:
+        std::cell::RefCell<(Vec<(String, u64, u64, u64, bool)>, Option<i32>, u64)>,
+    /// B3-C04 (§5.5 phase walls/IO): per-edit wall microseconds at the
+    /// REAL production seams of the warm edit path — reset at each
+    /// `prepare_edit`, read after the edit completes. Keys mirror the
+    /// stage axes: syntax_rescan/project/frontend_body/verify_hir/
+    /// mir_lower/verify_mir/abc_emit/decode/verify_abc/load/link/persist.
+    phase_walls: BTreeMap<String, u64>,
+    /// B3-C04: per-edit real IO bytes (rescan bytes actually rescanned;
+    /// store payload bytes written when a store is attached — a warm
+    /// edit without a store does NO disk IO, and the map simply has no
+    /// store key: absent = not performed, never fabricated zeros).
+    phase_io: BTreeMap<String, u64>,
+}
+
+/// B3-C04: elapsed wall microseconds for a phase-timing segment.
+fn elapsed_us(t: std::time::Instant) -> u64 {
+    t.elapsed().as_micros() as u64
 }
 
 /// Warm-up: the one whole-module compile of the session's life (cold path;
@@ -591,7 +608,9 @@ pub fn warmup(
         counters: SessionCounters::default(),
         store: None,
         closed: false,
-        last_run_identities: std::cell::RefCell::new(Vec::new()),
+        last_run_publication: std::cell::RefCell::new((Vec::new(), None, 0)),
+        phase_walls: BTreeMap::new(),
+        phase_io: BTreeMap::new(),
     })
 }
 
@@ -1183,16 +1202,37 @@ impl FunctionIncrementalSession {
     /// history (body+code pairs). These are the RESIDENT structures whose
     /// real-peak attribution T-08's formal measurement samples; the
     /// inventory itself is the bounded-watermark oracle (V-07).
-    /// B3-C03 (F-02 axis at the real consumer): the identity — object
-    /// address + generation — of every function's dispatched payload as
-    /// recorded by the LAST `run` (the snapshot the AV actually executed
-    /// through this session). A revision that deep-copies an unchanged
-    /// function's payload and executes the copy WITHOUT going through
-    /// `run` leaves this at the previous revision, which the formal
-    /// judge's target-must-change-or-reuse rule catches even though
-    /// values and stage counters stay correct.
-    pub fn last_run_dispatched_identities(&self) -> Vec<(String, u64, u64)> {
-        self.last_run_identities.borrow().clone()
+    /// B3-C03 (F-02 axis at the real consumer): the LAST `run`'s
+    /// publication pair — the dispatched-payload identities (name,
+    /// object address, generation, content digest) THE EXECUTOR recorded
+    /// in that run's trace, and the SAME call's published value. The
+    /// formal worker publishes all fields of its report from this one
+    /// accessor, so identities, value and the execution sequence number
+    /// share a single-execution origin by construction.
+    pub fn last_run_publication(&self) -> (Vec<(String, u64, u64, u64, bool)>, Option<i32>, u64) {
+        self.last_run_publication.borrow().clone()
+    }
+
+    /// B3-C04 (§5.5 phase walls): the last edit's per-phase wall times in
+    /// MICROSECONDS, recorded at the real production seams of the warm
+    /// edit path (absent key = that phase did not run for this edit —
+    /// e.g. a content hit performs no lower/emit/admit work).
+    pub fn phase_walls(&self) -> &BTreeMap<String, u64> {
+        &self.phase_walls
+    }
+
+    /// B3-C04 (§5.5 phase IO): the last edit's real IO bytes — syntax
+    /// rescan bytes actually rescanned; store payload bytes written when
+    /// a store is attached. A warm edit without a store performs NO
+    /// disk IO: no store key appears (absent = not performed).
+    pub fn phase_io(&self) -> &BTreeMap<String, u64> {
+        &self.phase_io
+    }
+
+    /// B3-C04: whether the session persists through a backing store (the
+    /// warm no-store edit path's zero-disk-IO 口径 anchor).
+    pub fn has_store(&self) -> bool {
+        self.store.is_some()
     }
 
     /// F-09 resident accounting: the axes §5.5 names — per-function HIR
@@ -1250,16 +1290,46 @@ impl FunctionIncrementalSession {
                 ExecTrace::default(),
             );
         }
-        // B3-C03: record WHAT THIS RUN DISPATCHES — the observation is
-        // taken at the real consumer, so it can never describe a program
-        // the AV did not just execute through this call.
-        *self.last_run_identities.borrow_mut() = self
-            .current
-            .code()
+        let (out, trace) = execute_program(&self.current, limits, cancel);
+        // B3-C03: the publication record comes from THE trace this
+        // execution returned — identities AND value are one call's
+        // artifacts, so a report built from this record can never mix
+        // one execution's identities with another's result.
+        let value = match &out {
+            ExecOutcome::Success {
+                value: Value::I32(v),
+                ..
+            } => Some(*v),
+            _ => None,
+        };
+        // B3-C03 resident-object binding: each dispatched payload must
+        // BE the session's resident code object — the address of a LIVE
+        // resident cannot equal a different (copied) allocation, so a
+        // deep copy executed through `run` is resident=false here
+        // regardless of allocator address recycling.
+        let resident_ptrs: std::collections::BTreeMap<&str, u64> = self
+            .fns
             .iter()
-            .map(|c| (c.name().to_string(), Arc::as_ptr(c) as u64, c.generation()))
+            .map(|f| (f.def_id.as_str(), Arc::as_ptr(&f.code) as u64))
             .collect();
-        execute_program(&self.current, limits, cancel)
+        *self.last_run_publication.borrow_mut() = (
+            trace
+                .dispatched
+                .iter()
+                .map(|d| {
+                    (
+                        d.name.clone(),
+                        d.ptr,
+                        d.generation,
+                        d.content,
+                        resident_ptrs.get(d.name.as_str()) == Some(&d.ptr),
+                    )
+                })
+                .collect(),
+            value,
+            trace.execution_seq,
+        );
+        (out, trace)
     }
 
     /// Apply one source edit (old-source byte coordinates) and, if it is a
@@ -1430,6 +1500,9 @@ impl FunctionIncrementalSession {
         // unit's ABC row and span sidecar (restore fails closed without
         // either). HIR artifacts stay soft-pinned regenerable cache.
         let mut edges: Vec<(String, ac_artifact_probe::identity::RefKind)> = Vec::new();
+        // B3-C04: REAL store write bytes for this persist pass (payload
+        // bytes only; framing/envelope overhead is not fabricated).
+        let mut store_write_bytes: u64 = 0;
         for (idx, rec) in self.fns.iter_mut().enumerate() {
             // The resident entry keys the row AND carries the code's true
             // mint range/text — the F11-S01 re-anchoring basis.
@@ -1486,6 +1559,7 @@ impl FunctionIncrementalSession {
                 }
                 Err(e) => return Err(format!("put {}: {e:?}", rec.def_id)),
             };
+            store_write_bytes += bytes.len() as u64;
             edges.push((
                 abc_id.clone(),
                 ac_artifact_probe::identity::RefKind::RequiredData,
@@ -1530,6 +1604,7 @@ impl FunctionIncrementalSession {
                     type_table,
                     body: norm_body,
                 }) {
+                    store_write_bytes += hbytes.len() as u64;
                     let hkey = fn_hir_key(&owner, &rec.def_id, &cv, &caps_fp);
                     let hid = EnvelopeIdentity::fn_hir_bound(&owner, &rec.def_id, &cv);
                     // T-07 bounded HIR soft-root policy (512/GC/storage
@@ -1545,6 +1620,7 @@ impl FunctionIncrementalSession {
                     match put_enveloped(store, &hkey, "A07", &hid, &hbytes, vec![], Some(project)) {
                         Ok(_) => {
                             hir_deposits += 1;
+                            store_write_bytes += hbytes.len() as u64;
                         }
                         Err(e) if format!("{e:?}").contains("Conflict") => {
                             // Content revisit: the identical row already
@@ -1594,6 +1670,7 @@ impl FunctionIncrementalSession {
             // T07-R2-02: the sidecar is store-internal + a required
             // edge; on Conflict the surviving row's id resolves for it.
             let mut sidecar_edge: Option<String> = None;
+            store_write_bytes += spayload.len() as u64;
             let sidecar_put = put_enveloped(store, &skey, "A09", &sid, &spayload, vec![], None);
             let sidecar_put_id = match &sidecar_put {
                 Ok(id) => id.clone(),
@@ -1705,6 +1782,7 @@ impl FunctionIncrementalSession {
             }
         }
         self.counters.add("hir_artifacts_deposited", hir_deposits);
+        *self.phase_io.entry("store_write_bytes".into()).or_insert(0) += store_write_bytes;
         Ok(edges)
     }
 
@@ -1713,7 +1791,7 @@ impl FunctionIncrementalSession {
     /// are re-verified against their own content-bound identities, and a
     /// wrong row name is a miss.
     fn persist_manifest(
-        &self,
+        &mut self,
         required_edges: &[(String, ac_artifact_probe::identity::RefKind)],
     ) -> Result<(), String> {
         let Some((store, project)) = self.store.as_ref() else {
@@ -1739,6 +1817,10 @@ impl FunctionIncrementalSession {
             "units": units,
         }))
         .map_err(|e| e.to_string())?;
+        self.phase_io
+            .entry("store_write_bytes".into())
+            .and_modify(|b| *b += body.len() as u64)
+            .or_insert(body.len() as u64);
         let fp = payload_fingerprint(&body);
         // T07-R3-01 residual (R4): the persistent identity binds the
         // ACTUAL REQUIRED CLOSURE, not a fixed format slot. The edges are
@@ -1868,23 +1950,38 @@ impl FunctionIncrementalSession {
             .position(|d| d.id_text == checked_fn.def_id_text())
             .ok_or_else(|| "verified def missing in candidate bundle".to_string())?;
         let def_id = bundle.modules[0].defs[def_idx].id_text.clone();
+        let t = std::time::Instant::now();
         let unit = lower_function_unit(bundle, &def_id, &self.caps, new_src_hash)
             .map_err(|e| format!("lower: {e:?}"))?;
+        self.phase_walls
+            .insert("mir_lower_us".into(), elapsed_us(t));
         self.counters.bump(&format!("mir_lower:{changed_name}"));
+        let t = std::time::Instant::now();
         let _verified = verify_mir(&unit).map_err(|e| format!("mir verify: {e:?}"))?;
+        self.phase_walls
+            .insert("verify_mir_us".into(), elapsed_us(t));
         self.counters.bump(&format!("verify_mir:{changed_name}"));
+        let t = std::time::Instant::now();
         let flat = encode_abc(&unit)
             .map_err(|e| format!("abc encode: {e:?}"))?
             .to_flat();
+        self.phase_walls.insert("abc_emit_us".into(), elapsed_us(t));
         self.counters.bump(&format!("abc_emit:{changed_name}"));
+        let t = std::time::Instant::now();
         let decoded = decode_abc(&flat).map_err(|e| format!("abc decode: {e:?}"))?;
+        self.phase_walls.insert("decode_us".into(), elapsed_us(t));
         self.counters.bump(&format!("decode:{changed_name}"));
+        let t = std::time::Instant::now();
         let loaded = verify_abc(decoded, &unit.owner).map_err(|e| format!("abc verify: {e:?}"))?;
+        self.phase_walls
+            .insert("verify_abc_us".into(), elapsed_us(t));
         self.counters.bump(&format!("verify_abc:{changed_name}"));
+        let t = std::time::Instant::now();
         let code = Arc::new(
             FunctionCode::admit_unit(loaded, self.revision + 1)
                 .map_err(|e| format!("function code: {e}"))?,
         );
+        self.phase_walls.insert("load_us".into(), elapsed_us(t));
         self.counters.bump(&format!("load:{changed_name}"));
         Ok(Ok((Arc::new(checked_fn.into_body()), code)))
     }
@@ -1904,6 +2001,10 @@ impl FunctionIncrementalSession {
         if self.closed {
             return Err("session closed".to_string());
         }
+        // B3-C04: per-edit phase walls/IO start fresh (absent key = the
+        // phase did not run for this edit).
+        self.phase_walls.clear();
+        self.phase_io.clear();
         let edit = Edit { start, end, insert };
         let new_snap = self
             .snap
@@ -1916,6 +2017,7 @@ impl FunctionIncrementalSession {
         // Local rescan + declaration graft. A recorded fallback is an
         // explicit non-fast-path edit: refused (recorded), never silently
         // degraded to whole-module recompute.
+        let t_rescan = std::time::Instant::now();
         let inc = incremental_reparse(
             &self.grammar,
             &self.scanner,
@@ -1926,6 +2028,10 @@ impl FunctionIncrementalSession {
             &Budget::default(),
         )
         .map_err(|e| format!("incremental reparse: {e:?}"))?;
+        self.phase_walls
+            .insert("syntax_rescan_us".into(), elapsed_us(t_rescan));
+        self.phase_io
+            .insert("syntax_rescan_bytes".into(), inc.rescan_bytes);
         self.counters.add("syntax_rescan_bytes", inc.rescan_bytes);
         self.counters
             .add("syntax_reparsed_decls", inc.reparsed_decls as u64);
@@ -2003,6 +2109,7 @@ impl FunctionIncrementalSession {
         // incremental CST is the source of truth and unchanged declarations
         // are never re-projected. Spans come out in absolute new-source
         // coordinates.
+        let t_project = std::time::Instant::now();
         let projected_fn = match project_decl_strict(
             &self.grammar,
             &self.kinds,
@@ -2025,6 +2132,8 @@ impl FunctionIncrementalSession {
                 projected_fn.name.name, self.fns[changed_idx].name
             ));
         }
+        self.phase_walls
+            .insert("project_us".into(), elapsed_us(t_project));
         self.counters.bump(&format!("project:{changed_name}"));
 
         // PLAN-828 T-02: the hot path runs the REAL single-body transaction
@@ -2034,13 +2143,19 @@ impl FunctionIncrementalSession {
         // unchanged functions contribute no body work (the producer window
         // gate proves it). Current is restored before the candidate is
         // returned; the environment slot publishes only at commit (D-03).
-        let candidate = match prepare_candidate_document(
-            &mut self.env_core,
-            &projected_fn,
-            changed_idx,
-            &new_src,
-            "probe.at",
-        ) {
+        let candidate = match {
+            let t_front = std::time::Instant::now();
+            let r = prepare_candidate_document(
+                &mut self.env_core,
+                &projected_fn,
+                changed_idx,
+                &new_src,
+                "probe.at",
+            );
+            self.phase_walls
+                .insert("frontend_body_us".into(), elapsed_us(t_front));
+            r
+        } {
             Ok(c) => c,
             Err(ds) => {
                 // The re-check's signature-drift guard (`source.incremental`)
@@ -2171,7 +2286,11 @@ impl FunctionIncrementalSession {
                 // The miss path verifies the candidate body NOW: the
                 // document prepare defers verification so a content HIT
                 // can reuse the stored pair with zero re-verify (T-04).
-                let checked_fn = match verify_function(candidate.parts().bundle.clone(), def_idx) {
+                let t_verify = std::time::Instant::now();
+                let checked = verify_function(candidate.parts().bundle.clone(), def_idx);
+                self.phase_walls
+                    .insert("verify_hir_us".into(), elapsed_us(t_verify));
+                let checked_fn = match checked {
                     Ok(c) => c,
                     Err(ds) => {
                         return Ok(Err(EditOutcome::rejected(
@@ -2300,6 +2419,7 @@ impl FunctionIncrementalSession {
                 span_maps.push(m);
             }
         }
+        let t_link = std::time::Instant::now();
         let next = match ProgramSnapshot::link_with_maps(
             codes,
             &self.entry_def_id,
@@ -2315,6 +2435,8 @@ impl FunctionIncrementalSession {
                 );
             }
         };
+        self.phase_walls
+            .insert("link_us".into(), elapsed_us(t_link));
         // Link succeeded — NOW apply the per-record updates: origins, the
         // changed function's mint baseline and post-commit span map, and
         // the same source shift across every stored history entry.
@@ -2436,9 +2558,12 @@ impl FunctionIncrementalSession {
         // session manifest). A store failure is recorded but never
         // rolls the installed revision back — memory state is primary.
         if self.store.is_some() {
+            let t_persist = std::time::Instant::now();
             let persist = self
                 .persist_all_units()
                 .and_then(|edges| self.persist_manifest(&edges));
+            self.phase_walls
+                .insert("persist_us".into(), elapsed_us(t_persist));
             if let Err(e) = persist {
                 self.counters.set("persist_error", 1);
                 self.counters.bump(&format!("persist_error_log:{e}"));

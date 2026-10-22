@@ -53,12 +53,79 @@ impl CancelCheck {
     }
 }
 
+/// B3-C03: the process-wide AV execution sequence — every entry-point
+/// execution takes the next number. A publication whose dispatched-
+/// payload record carries seq N while the CURRENT seq is > N describes
+/// an execution that is not the latest one (e.g. a redundant deep-copy
+/// execution ran after the recorded run) — the formal judge refuses it.
+static EXECUTION_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The current process-wide AV execution sequence (see [`EXECUTION_SEQ`]).
+pub fn execution_seq() -> u64 {
+    EXECUTION_SEQ.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct ExecTrace {
     pub events: Vec<TraceEvent>,
+    /// This execution's process-wide sequence number (B3-C03).
+    pub execution_seq: u64,
     /// High-water live slot data across all frames during execution (the
     /// execution partition of the managed 32 MiB budget, §3).
     pub peak_slot_bytes: u64,
+    /// B3-C03 (F-02 axis AT THE EXECUTOR): the payload identities the
+    /// executor dispatched for THE program passed to this execution —
+    /// object address, mint generation, and a content digest over the
+    /// same Debug view `ProgramSnapshot::dispatched_payload_same_content`
+    /// compares. Collected inside the execution entries, so this evidence
+    /// always describes the program that produced the trace — never a
+    /// wrapper's view of some other snapshot it chose not to execute.
+    pub dispatched: Vec<DispatchedPayload>,
+}
+
+/// One dispatched payload's identity evidence (see [`ExecTrace::dispatched`]).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DispatchedPayload {
+    /// The function's stable def-id name (`d_main`).
+    pub name: String,
+    /// The `FunctionCode` Arc object address — the identity axis
+    /// (`Arc::ptr_eq` semantics).
+    pub ptr: u64,
+    /// The code object's mint generation.
+    pub generation: u64,
+    /// FNV-1a over the unit payload's Debug view (the content axis —
+    /// equal digests ⇔ `dispatched_payload_same_content` equality).
+    pub content: u64,
+}
+
+/// Collect the dispatch identity evidence for the program THIS execution
+/// is about to run (all four public entries route through here).
+fn observe_dispatched(prog: &crate::program_snapshot::ProgramSnapshot) -> Vec<DispatchedPayload> {
+    use std::sync::Arc;
+    prog.code()
+        .iter()
+        .map(|c| DispatchedPayload {
+            name: c.name().to_string(),
+            ptr: Arc::as_ptr(c) as u64,
+            generation: c.generation(),
+            content: c
+                .unit()
+                .module()
+                .funcs
+                .first()
+                .map(|f| fnv64(format!("{f:?}").as_bytes()))
+                .unwrap_or(0),
+        })
+        .collect()
+}
+
+fn fnv64(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in bytes {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
 }
 
 struct Frame {
@@ -138,6 +205,8 @@ pub fn execute_program_units(
     cancel: &CancelFlag,
 ) -> (ExecOutcome, ExecTrace) {
     let mut st = LoopState::default();
+    st.trace.execution_seq = EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    st.trace.dispatched = observe_dispatched(prog);
     let out = dispatch(&prog.unit_view(), limits, cancel, &[], &mut st, None)
         .expect("no budget: the loop always terminates with an outcome");
     (out, st.trace)
@@ -149,6 +218,8 @@ pub fn execute_program(
     cancel: &CancelFlag,
 ) -> (ExecOutcome, ExecTrace) {
     let mut st = LoopState::default();
+    st.trace.execution_seq = EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    st.trace.dispatched = observe_dispatched(prog);
     let out = dispatch(&prog.unit_view(), limits, cancel, &[], &mut st, None)
         .expect("no budget: the loop always terminates with an outcome");
     (out, st.trace)
@@ -190,6 +261,8 @@ pub fn execute_program_steps(
     max_steps: u64,
 ) -> SteppedOutcome {
     let mut st = LoopState::default();
+    st.trace.execution_seq = EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    st.trace.dispatched = observe_dispatched(prog);
     match dispatch(
         &prog.unit_view(),
         limits,
@@ -219,6 +292,14 @@ pub fn resume_program(
         limits,
         mut state,
     } = paused;
+    // The resumed segment keeps the ORIGINAL chain's dispatch evidence —
+    // the pinned snapshot it actually continues to execute — and takes
+    // its own sequence number (each entry-point execution is one).
+    state.trace.execution_seq =
+        EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    if state.trace.dispatched.is_empty() {
+        state.trace.dispatched = observe_dispatched(&prog);
+    }
     match dispatch(
         &prog.unit_view(),
         &limits,

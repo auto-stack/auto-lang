@@ -699,7 +699,7 @@ fn native_run(args: &[String]) -> ! {
 /// side never decides the verdict.
 fn session_serve() -> ! {
     use auto_av_core::av::{CancelFlag, ExecLimits};
-    use auto_av_core::contract::{ExecOutcome, Value};
+    use auto_av_core::contract::ExecOutcome;
     use auto_av_probe::formal_worker::{
         ClosedMsg, DispatchedIdentity, EditOp, EditResultMsg, ReadyMsg, WorkerReply, WorkerRequest,
     };
@@ -742,33 +742,36 @@ fn session_serve() -> ! {
                     }
                 };
                 let (exec, _) = s.run(&ExecLimits::default(), &cancel);
-                let value = match exec {
-                    ExecOutcome::Success {
-                        value: Value::I32(v),
-                        ..
-                    } => v,
-                    other => {
-                        eprintln!("session-serve: initial run is not a success: {other:?}");
-                        std::process::exit(3);
-                    }
-                };
+                if !matches!(exec, ExecOutcome::Success { .. }) {
+                    eprintln!("session-serve: initial run is not a success: {exec:?}");
+                    std::process::exit(3);
+                }
+                // B3-C03: the published value AND the dispatched
+                // identities come from the SAME execution's record (one
+                // `run` call — the executor's own trace evidence).
+                let (dispatched_record, value, run_seq) = s.last_run_publication();
+                let value = value.expect("checked Success above");
                 let reply = WorkerReply::Ready(ReadyMsg {
                     session_id: s.session_id(),
                     functions: s.function_names().len(),
                     revision: s.revision(),
                     value,
-                    // B3-C03: the dispatched-payload identities of the
-                    // snapshot THIS run executed — the parent's stability
-                    // baseline (recorded inside `run`, at the consumer).
-                    dispatched: s
-                        .last_run_dispatched_identities()
+                    // B3-C03: the ready baseline directory — identities
+                    // from the initial run's own trace evidence.
+                    dispatched: dispatched_record
                         .into_iter()
-                        .map(|(name, ptr, generation)| DispatchedIdentity {
-                            name,
-                            ptr,
-                            generation,
-                        })
+                        .map(
+                            |(name, ptr, generation, content, resident)| DispatchedIdentity {
+                                name,
+                                ptr,
+                                generation,
+                                content,
+                                resident,
+                            },
+                        )
                         .collect(),
+                    run_seq,
+                    av_seq: auto_av_core::av::execution_seq(),
                 });
                 let _ = session.insert(s);
                 writeln!(out, "{}", serde_json::to_string(&reply).unwrap()).unwrap();
@@ -792,18 +795,12 @@ fn session_serve() -> ! {
                     Ok(o) => {
                         let (exec, _) = s.run(&ExecLimits::default(), &cancel);
                         let total = t0.elapsed().as_micros() as u64;
-                        let value = match exec {
-                            ExecOutcome::Success {
-                                value: Value::I32(v),
-                                ..
-                            } => Some(v),
-                            _ => None,
-                        };
+                        let _ = &exec; // non-success outcomes surface via the record below
+                        let (dispatched_record, value, run_seq) = s.last_run_publication();
                         EditResultMsg {
                             req_id,
                             ok: o.ok,
                             revision: s.revision(),
-                            value,
                             changed_fn: o.changed_fn.clone(),
                             install_set: o.install_set.clone(),
                             diagnostics: o.diagnostics.clone(),
@@ -812,19 +809,27 @@ fn session_serve() -> ! {
                             worker_edit_to_result_us: total,
                             counters: s.counters().snapshot(),
                             worker_peak_bytes: peak.current_peak(),
-                            // B3-C03: what the LAST `run` actually
-                            // dispatched — recorded at the consumer, so
-                            // the report can never describe a program the
-                            // AV did not just execute through the session.
-                            dispatched: s
-                                .last_run_dispatched_identities()
+                            // B3-C03: value AND identities from the
+                            // SAME run's record — the executor's trace
+                            // evidence, never a wrapper's view.
+                            value,
+                            dispatched: dispatched_record
                                 .into_iter()
-                                .map(|(name, ptr, generation)| DispatchedIdentity {
-                                    name,
-                                    ptr,
-                                    generation,
+                                .map(|(name, ptr, generation, content, resident)| {
+                                    DispatchedIdentity {
+                                        name,
+                                        ptr,
+                                        generation,
+                                        content,
+                                        resident,
+                                    }
                                 })
                                 .collect(),
+                            phase_walls: s.phase_walls().clone(),
+                            phase_io: s.phase_io().clone(),
+                            store_attached: s.has_store(),
+                            run_seq,
+                            av_seq: auto_av_core::av::execution_seq(),
                         }
                     }
                     Err(e) => {

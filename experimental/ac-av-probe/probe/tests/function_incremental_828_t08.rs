@@ -18,6 +18,7 @@ fn worker_exe() -> std::path::PathBuf {
 fn small_config(gate_ms: f64) -> JudgeConfig {
     let x3 = SRC.find("x * 3").unwrap() as u64 + 4;
     let t9 = SRC.find("9").unwrap() as u64;
+    let sp = SRC.find("+ 7").unwrap() as u64 + 1; // the space inside `+ 7`
     JudgeConfig {
         src: SRC.to_string(),
         entry: "d_main".to_string(),
@@ -54,6 +55,16 @@ fn small_config(gate_ms: f64) -> JudgeConfig {
                 expected: 23,
                 expected_install: "d_tail".into(),
             },
+            // B3-C03 legal content hit: a whitespace-only body change
+            // keeps the SAME verified payload object (`reuse_hit:helper`
+            // moves) — the identity gate must accept exactly this.
+            JudgeEdit {
+                start: sp,
+                end: sp + 1,
+                insert: "  ".into(),
+                expected: 23,
+                expected_install: "d_helper".into(),
+            },
         ],
         gate_ms,
     }
@@ -72,7 +83,7 @@ fn t08_judge_small_fixture_passes_over_real_ipc() {
     assert!(report.failures.is_empty(), "{:?}", report.failures);
     assert!(report.all_correct);
     assert!(report.structural_ok);
-    assert_eq!(report.samples.len(), 4, "one sample per scripted edit");
+    assert_eq!(report.samples.len(), 5, "one sample per scripted edit");
     assert!(report.gate_pass);
     assert!(
         report.session_id > 0,
@@ -93,7 +104,7 @@ fn t08_judge_small_fixture_passes_over_real_ipc() {
     }
     // Raw observations: one JSONL line per sample, failures included.
     let raw = report.raw_jsonl();
-    assert_eq!(raw.lines().count(), 4);
+    assert_eq!(raw.lines().count(), 5);
     assert!(raw.contains("\"req_id\":4"));
 }
 
@@ -193,6 +204,28 @@ fn t08_formal_campaign_v08_dual_gate_30_revisions() {
         gate_ms: FORMAL_GATE_MS,
     };
     let report = run_formal_campaign(&worker_exe(), &cfg).expect("the formal campaign completes");
+    // B3-C04: EVIDENCE FIRST — whatever the verdict turns out to be,
+    // this run's full report and every raw sample line (success and
+    // failure alike) hit disk BEFORE any judgement assert can panic.
+    let evidence_dir = std::env::var_os("PLAN828_FORMAL_EVIDENCE")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("target")
+                .join("828-formal-evidence")
+        });
+    let report_path = report
+        .write_evidence(&evidence_dir)
+        .expect("evidence written");
+    let samples_path = evidence_dir.join("formal-samples.jsonl");
+    assert!(report_path.is_file() && samples_path.is_file());
+    let persisted = std::fs::read_to_string(&samples_path).expect("samples readable");
+    assert_eq!(
+        persisted.lines().count(),
+        report.samples.len(),
+        "every raw sample line persisted"
+    );
+    println!("formal evidence: {}", evidence_dir.display());
     let raw = report.raw_jsonl();
     assert!(
         raw.lines().count() >= FORMAL_MIN_REVISIONS as usize,
@@ -228,29 +261,6 @@ fn t08_formal_campaign_v08_dual_gate_30_revisions() {
     assert!(report.worker_peak_bytes > 0 && report.parent_peak_bytes > 0);
     // p50 <= p95 <= p99 sanity over the same samples.
     assert!(report.p50_ms <= report.p95_ms && report.p95_ms <= report.p99_ms);
-
-    // B3-C04: the formal entry never generates-and-drops its raw — the
-    // full report and every sample line (success and failure alike) are
-    // written to a durable evidence directory and asserted.
-    let evidence_dir = std::env::var_os("PLAN828_FORMAL_EVIDENCE")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("target")
-                .join("828-formal-evidence")
-        });
-    let report_path = report
-        .write_evidence(&evidence_dir)
-        .expect("evidence written");
-    let samples_path = evidence_dir.join("formal-samples.jsonl");
-    assert!(report_path.is_file() && samples_path.is_file());
-    let persisted = std::fs::read_to_string(&samples_path).expect("samples readable");
-    assert_eq!(
-        persisted.lines().count(),
-        report.samples.len(),
-        "every raw sample line persisted"
-    );
-    println!("formal evidence: {}", evidence_dir.display());
 
     // PLAN-828 T-07 dual-line budget verdict (798 r5 §5.9 口径, now
     // HARD-gated on the campaign's own measurements): Line A = the
@@ -295,4 +305,77 @@ fn t08_formal_campaign_v08_dual_gate_30_revisions() {
         line_b / (1024 * 1024),
         line_b_budget / (1024 * 1024),
     );
+}
+
+/// B3-C03 permanent component controls over the judge's PURE gate
+/// functions (the same functions `run_formal_session_judge` applies to
+/// every real publication): a missing observation refuses PASS, a real
+/// payload copy on an unchanged function reddens, a stale identity
+/// record (target unchanged, no content hit) reddens, and the LEGAL
+/// same-object content hit is accepted.
+#[test]
+fn t08_identity_and_directory_gate_components() {
+    use auto_av_probe::formal_worker::{
+        edit_identity_gate, ready_directory_gate, DispatchedIdentity,
+    };
+    use std::collections::BTreeMap;
+
+    let id = |name: &str, ptr: u64, gen: u64, content: u64| DispatchedIdentity {
+        name: name.into(),
+        ptr,
+        generation: gen,
+        content,
+        resident: true,
+    };
+    let dir = vec![
+        id("d_helper", 1, 0, 11),
+        id("d_main", 2, 0, 22),
+        id("d_tail", 3, 0, 33),
+    ];
+    // Directory: complete + entry present passes; an omitted entry (the
+    // review's omitmain shape) and duplicates refuse.
+    assert!(ready_directory_gate(&dir, 3, "d_main").is_ok());
+    assert!(ready_directory_gate(&dir[..2], 3, "d_main").is_err());
+    assert!(ready_directory_gate(&dir, 3, "d_missing").is_err());
+    let dup = vec![dir[0].clone(), dir[0].clone(), dir[1].clone()];
+    assert!(ready_directory_gate(&dup, 3, "d_main").is_err());
+
+    let prev: BTreeMap<String, (u64, u64, u64)> = dir
+        .iter()
+        .map(|d| (d.name.clone(), (d.ptr, d.generation, d.content)))
+        .collect();
+    let mut cur = prev.clone();
+
+    // Legal progress: the target takes a NEW payload; unchanged fns keep
+    // theirs.
+    cur.insert("d_helper".into(), (9, 5, 99));
+    assert!(edit_identity_gate(&prev, &cur, 3, "d_helper", 0).is_ok());
+
+    // Legal content hit: the target KEEPS its payload object — accepted
+    // exactly when the producer's per-function reuse counter moved.
+    assert!(edit_identity_gate(&prev, &prev.clone(), 3, "d_helper", 1).is_ok());
+    assert!(edit_identity_gate(&prev, &prev.clone(), 3, "d_helper", 0).is_err());
+
+    // Real copy of an UNCHANGED function (executed payload changed
+    // address AND content): must redden even with everything else equal.
+    let mut copied = cur.clone();
+    copied.insert("d_main".into(), (42, 7, 222)); // new object, new content
+    assert!(edit_identity_gate(&cur, &copied, 3, "d_helper", 0).is_err());
+
+    // Name-set change refuses.
+    let mut renamed = cur.clone();
+    renamed.remove("d_tail");
+    renamed.insert("d_extra".into(), (3, 0, 33));
+    assert!(edit_identity_gate(&cur, &renamed, 3, "d_helper", 0).is_err());
+
+    // Resident-object binding (the judge loop's own rule): a dispatched
+    // payload that is NOT the resident object — e.g. an allocator-
+    // recycled deep copy whose address coincides with the previous
+    // revision's copy — reddens the structural gate (any non-resident
+    // entry ⇒ resident_ok=false ⇒ gate red; mirrored here on the exact
+    // predicate the judge applies).
+    let mut nonresident = dir.clone();
+    nonresident[1].resident = false; // d_main executed as a copy
+    assert!(ready_directory_gate(&nonresident, 3, "d_main").is_ok()); // directory alone passes
+    assert!(!nonresident.iter().all(|d| d.resident)); // the judge's resident predicate reddens
 }

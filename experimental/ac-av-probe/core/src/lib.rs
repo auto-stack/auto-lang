@@ -29,8 +29,8 @@ pub mod span_map;
 pub use abc::{decode_abc, encode_abc, AbcDecodeError, DecodedAbc};
 pub use abc_verify::{verify_abc, verify_abc_bytes, AbcAdmissionError, LoadedModule};
 pub use av::{
-    execute, execute_entry, execute_program, execute_program_steps, resume_program,
-    CancelCheck, CancelFlag, ExecLimits, ExecTrace, PausedRun, SteppedOutcome,
+    execute, execute_entry, execute_program, execute_program_steps, resume_program, CancelCheck,
+    CancelFlag, ExecLimits, ExecTrace, PausedRun, SteppedOutcome,
 };
 pub use contract::{
     AvSemanticsVersion, ExecOutcome, MirSemanticsVersion, ResourceKind, SpanInfo, TrapKind, Value,

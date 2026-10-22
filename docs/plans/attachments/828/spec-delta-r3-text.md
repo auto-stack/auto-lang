@@ -139,8 +139,7 @@ snapshot-cst.md 在"增量"相关节后追加：
 828 已交付 source→函数代码安装完整切片：常驻会话内未改函数 HIR/MIR/代码 identity/
 代际不变、未改生产阶段/产物 IO 为 0；结构与时间双门（正式战役=常驻 worker+IPC+父侧
 judge，计时窗=编辑入队→父侧全部校验完成为终点，n≥30，P95<1000ms 且全对且结构绿——
-结构含修订进度/确切安装目标/未改函数派发载荷身份稳定三门；完整观测与逐样本 raw 经
-write_evidence 落盘留存，成功失败同留）。
+结构含修订进度/确切安装目标/目录完整（functions 交叉+entry 锚）/未改函数派发载荷身份稳定（地址+代际+内容，观测由执行器采进 trace）/驻留对象绑定（resident 活地址对比，run 内真实副本执行必红）/执行序配对（record seq==current seq，冗余副本执行必红）；逐样本阶段 wall（真实生产接缝 µs）与真实 IO 字节（无 store=结构零盘 IO）随观测上报；完整观测与逐样本 raw 经 write_evidence **先落盘后断言**留存，成功失败同留）。
 资源按 798 §5.9 双线预算硬门：A 线前端编译瞬态隔离测量 ≤224MiB；B 线探针残差
 （总峰值−A 归因）≤128MiB，缺归因整峰计 B。存储轴：manifest format=2 双指纹键
 （body+规范化 required 闭包）；单元 ABC/sidecar store-internal 挂 required 边，

@@ -67,18 +67,35 @@ pub struct ReadyMsg {
     /// INITIAL snapshot — the parent's cross-revision stability baseline.
     #[serde(default)]
     pub dispatched: Vec<DispatchedIdentity>,
+    /// B3-C03: the record's AV execution sequence vs the process-current
+    /// one at publication — equal ⇒ the published record IS the latest
+    /// execution; a later redundant execution (e.g. a deep copy run
+    /// after the recorded one) makes them differ and the gate reddens.
+    #[serde(default)]
+    pub run_seq: u64,
+    #[serde(default)]
+    pub av_seq: u64,
 }
 
 /// B3-C03 (F-02 axis at the real consumer): one function's dispatched
-/// payload identity — the object address and generation of the
-/// `FunctionCode` Arc the AV's unit dispatch actually reads. An
-/// unchanged function must keep the SAME (address, generation) across
-/// revisions; only the install target may change.
+/// payload identity — the object address, generation, and content digest
+/// of the `FunctionCode` the AV's unit dispatch actually read, taken
+/// from THE execution's trace. An unchanged function must keep the SAME
+/// (address, generation, content) across revisions; only the install
+/// target may change (or legitimately reuse on a content hit).
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DispatchedIdentity {
     pub name: String,
     pub ptr: u64,
     pub generation: u64,
+    #[serde(default)]
+    pub content: u64,
+    /// B3-C03 resident-object binding: the dispatched payload IS the
+    /// session's resident code object (live-address identity — a deep
+    /// copy can never claim this). Absent (old payloads) = false =
+    /// fail-closed.
+    #[serde(default)]
+    pub resident: bool,
 }
 
 /// Worker → parent: one publication — the applied edit, the CURRENT
@@ -103,6 +120,25 @@ pub struct EditResultMsg {
     pub worker_peak_bytes: u64,
     #[serde(default)]
     pub dispatched: Vec<DispatchedIdentity>,
+    /// B3-C04 (§5.5 phase walls): the edit's per-phase wall times in µs
+    /// at the session's real production seams (absent key = the phase
+    /// did not run — e.g. a content hit performs no lower/emit work).
+    #[serde(default)]
+    pub phase_walls: BTreeMap<String, u64>,
+    /// B3-C04 (§5.5 phase IO): the edit's real IO bytes — rescan bytes;
+    /// store payload bytes when a store is attached (absent = not
+    /// performed; `store_attached=false` ⇒ the warm edit did NO disk
+    /// IO, structurally).
+    #[serde(default)]
+    pub phase_io: BTreeMap<String, u64>,
+    #[serde(default)]
+    pub store_attached: bool,
+    /// B3-C03: same record-vs-current AV execution pairing as the ready
+    /// message — the published identities must be the LATEST execution's.
+    #[serde(default)]
+    pub run_seq: u64,
+    #[serde(default)]
+    pub av_seq: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -147,6 +183,16 @@ pub struct JudgeSample {
     pub counters_delta: BTreeMap<String, u64>,
     pub worker_peak_bytes: u64,
     pub dispatched: Vec<DispatchedIdentity>,
+    /// B3-C04: the edit's per-phase walls (µs) and real IO bytes.
+    pub phase_walls: BTreeMap<String, u64>,
+    pub phase_io: BTreeMap<String, u64>,
+    pub store_attached: bool,
+    /// B3-C03: the publication's record-vs-current AV execution pairing.
+    pub run_seq: u64,
+    pub av_seq: u64,
+    pub seq_ok: bool,
+    /// B3-C03: every dispatched payload was the RESIDENT object.
+    pub resident_ok: bool,
     /// Structural deltas over the UNCHANGED functions (stage sums,
     /// whole-module axes, install-set size, rescan evidence) computed by
     /// the judge from cumulative counter snapshots — excluding by the
@@ -213,6 +259,73 @@ pub struct JudgeConfig {
     pub gate_ms: f64,
 }
 
+/// B3-C03 directory gate (pure — component-testable): the ready phase's
+/// dispatched-identity list must be a COMPLETE directory — one entry per
+/// function the worker reports (`functions`), no duplicates, and the
+/// entry function present. A missing observation (e.g. an omitted
+/// `d_main`) must refuse PASS, not silently compare a truncated set.
+pub fn ready_directory_gate(
+    dispatched: &[DispatchedIdentity],
+    functions: usize,
+    entry: &str,
+) -> Result<(), String> {
+    if dispatched.len() != functions {
+        return Err(format!(
+            "dispatched directory incomplete: {} identities for {functions} functions",
+            dispatched.len()
+        ));
+    }
+    let mut names: Vec<&str> = dispatched.iter().map(|d| d.name.as_str()).collect();
+    names.sort_unstable();
+    if names.windows(2).any(|w| w[0] == w[1]) {
+        return Err("duplicate dispatched identities".to_string());
+    }
+    if !names.contains(&entry) {
+        return Err(format!(
+            "entry `{entry}` missing from the dispatched directory"
+        ));
+    }
+    Ok(())
+}
+
+/// B3-C03 identity gate (pure — component-testable): across one
+/// publication, every function OTHER than the install target must keep
+/// its dispatched (address, generation, content); the name set must be
+/// unchanged; and the target must have taken a DIFFERENT payload
+/// (address/generation/content) unless this revision was a legitimate
+/// content hit (`reuse_hit` moved for the target's source-name key).
+pub fn edit_identity_gate(
+    prev: &BTreeMap<String, (u64, u64, u64)>,
+    cur: &BTreeMap<String, (u64, u64, u64)>,
+    raw_len: usize,
+    expected_install: &str,
+    reuse_hit_delta: u64,
+) -> Result<(), String> {
+    if cur.len() != raw_len {
+        return Err("duplicate dispatched identities".to_string());
+    }
+    if cur.len() != prev.len() || !cur.keys().zip(prev.keys()).all(|(a, b)| a == b) {
+        return Err("dispatched directory changed between revisions".to_string());
+    }
+    for (name, id) in cur {
+        if name.as_str() == expected_install {
+            continue;
+        }
+        if prev.get(name) != Some(id) {
+            return Err(format!(
+                "dispatched payload identity changed for `{name}` (not the install target)"
+            ));
+        }
+    }
+    let target_unchanged = cur.get(expected_install) == prev.get(expected_install);
+    if target_unchanged && reuse_hit_delta == 0 {
+        return Err(format!(
+            "the install target `{expected_install}` dispatched the PREVIOUS revision's payload with no recorded content hit — the identities did not come from this revision's real execution"
+        ));
+    }
+    Ok(())
+}
+
 /// Spawn the persistent worker and run the judged series. Every axis —
 /// correctness, revision progression, install target, dispatched-payload
 /// identity, structure, sample completeness, gate — is evaluated from
@@ -237,7 +350,7 @@ pub fn run_formal_session_judge(
     let mut failures: Vec<String> = Vec::new();
     let mut samples: Vec<JudgeSample> = Vec::with_capacity(cfg.edits.len());
     let mut prev_counters: BTreeMap<String, u64> = BTreeMap::new();
-    let mut prev_identity: BTreeMap<String, (u64, u64)>;
+    let mut prev_identity: BTreeMap<String, (u64, u64, u64)>;
     let mut worker_peak = 0u64;
     let session_id: Option<u64>;
 
@@ -263,16 +376,40 @@ pub fn run_formal_session_judge(
                     r.value, cfg.expected_initial
                 ));
             }
+            // B3-C03: the ready directory must be COMPLETE — identities
+            // for every reported function, no duplicates, entry present.
+            if let Err(e) = ready_directory_gate(&r.dispatched, r.functions, &cfg.entry) {
+                failures.push(format!("ready: {e}"));
+            }
+            // B3-C03 resident-object binding: every dispatched payload
+            // must BE the session's resident object.
+            if let Some(bad) = r.dispatched.iter().find(|d| !d.resident) {
+                failures.push(format!(
+                    "ready: dispatched payload `{}` is not the resident object (a copy cannot claim residency)",
+                    bad.name
+                ));
+            }
+            // B3-C03: the ready record must be the LATEST AV execution.
+            if r.run_seq != r.av_seq {
+                failures.push(format!(
+                    "ready: published record seq {} != current AV seq {} — a later execution is not the published one",
+                    r.run_seq, r.av_seq
+                ));
+            }
             prev_identity = r
                 .dispatched
                 .iter()
-                .map(|d| (d.name.clone(), (d.ptr, d.generation)))
+                .map(|d| (d.name.clone(), (d.ptr, d.generation, d.content)))
                 .collect();
-            if prev_identity.len() != r.dispatched.len() {
-                failures.push("ready: duplicate dispatched identities".into());
-            }
         }
-        other => return Err(format!("expected ready, got {other:?}")),
+        // B3-C04: an abnormal ready reply still yields a REPORT (with
+        // the failure and zero samples) so the caller can persist
+        // evidence — never a bare Err that drops everything.
+        other => {
+            failures.push(format!("ready: expected a ready reply, got {other:?}"));
+            session_id = Some(0);
+            prev_identity = BTreeMap::new();
+        }
     }
     let init_ms = init_started.elapsed().as_secs_f64() * 1000.0;
 
@@ -300,8 +437,14 @@ pub fn run_formal_session_judge(
                 break;
             }
         };
+        // B3-C04: an abnormal reply type records the failure and keeps
+        // the already-collected samples — the report (and the caller's
+        // evidence write) still happens.
         let WorkerReply::EditResult(r) = reply else {
-            return Err(format!("edit {req_id}: expected a result, got {reply:?}"));
+            failures.push(format!(
+                "edit {req_id}: expected a result reply, got {reply:?}"
+            ));
+            break;
         };
         if r.req_id != req_id {
             failures.push(format!("edit {req_id}: reply carried req_id {}", r.req_id));
@@ -360,51 +503,68 @@ pub fn run_formal_session_judge(
             })
             .collect();
         // B3-C03: dispatched-payload identity stability, observed at the
-        // real consumer (the identities `run` recorded). Every function
-        // OTHER than the expected install target must dispatch the SAME
-        // (object address, generation) as the previous publication; the
-        // name set must be stable; and the install target itself must
-        // have TAKEN A NEW OBJECT unless this revision was a legitimate
-        // content hit (`reuse_hit` moved). A caller that executes some
-        // other program (e.g. a deep copy) without going through the
-        // session's `run` leaves the record at the PREVIOUS revision —
-        // caught here by the target rule even though values and stage
-        // counters stay correct.
-        let cur_identity: BTreeMap<String, (u64, u64)> = r
+        // real consumer (the identities THE execution's trace recorded —
+        // address, generation AND content digest). Every function other
+        // than the parent's expected target must dispatch the SAME
+        // payload; the name set must be unchanged; the target must have
+        // taken a DIFFERENT payload unless this revision was a legal
+        // content hit (`reuse_hit:{owner}` — the producer's real
+        // per-function key — moved).
+        let cur_identity: BTreeMap<String, (u64, u64, u64)> = r
             .dispatched
             .iter()
-            .map(|d| (d.name.clone(), (d.ptr, d.generation)))
+            .map(|d| (d.name.clone(), (d.ptr, d.generation, d.content)))
             .collect();
-        let reuse_hit_delta = counters_delta.get("reuse_hit").copied().unwrap_or(0);
-        let identity_ok = r.ok
-            && cur_identity.len() == r.dispatched.len()
-            && cur_identity.len() == prev_identity.len()
-            && cur_identity
+        // B3-C03 resident-object binding: the executed payloads must BE
+        // the session's resident code objects (live-address identity —
+        // a deep copy can never claim residency, however its heap
+        // address recycles).
+        let resident_ok = r.ok && r.dispatched.iter().all(|d| d.resident);
+        if r.ok && !resident_ok {
+            let bad = r
+                .dispatched
                 .iter()
-                .zip(prev_identity.iter())
-                .all(|(a, b)| a.0 == b.0)
-            && cur_identity.iter().all(|(name, id)| {
-                name.as_str() == e.expected_install.as_str() || prev_identity.get(name) == Some(id)
-            })
-            && (cur_identity.get(&e.expected_install) != prev_identity.get(&e.expected_install)
-                || reuse_hit_delta >= 1);
-        if r.ok && !identity_ok {
-            let target_stale = cur_identity.get(&e.expected_install)
-                == prev_identity.get(&e.expected_install)
-                && reuse_hit_delta == 0;
+                .find(|d| !d.resident)
+                .map(|d| d.name.clone())
+                .unwrap_or_default();
             failures.push(format!(
-                "edit {req_id}: dispatched payload identity gate red ({}; expected target {} {})",
-                if target_stale {
-                    "the target's dispatched object is the PREVIOUS revision's — the reported identities did not come from this revision's real run"
-                } else {
-                    "a function other than the install target changed its dispatched payload object"
-                },
-                e.expected_install,
-                if reuse_hit_delta >= 1 {
-                    "(content hit)"
-                } else {
-                    "(new object required)"
-                }
+                "edit {req_id}: dispatched payload `{bad}` is not the resident object — the executed program is not the session's own code"
+            ));
+        }
+        // B3-C03: the published record must be the LATEST AV execution —
+        // a redundant later execution (e.g. a deep copy run after the
+        // recorded one) leaves the sequence numbers unequal.
+        let seq_ok = r.ok && r.run_seq == r.av_seq;
+        if r.ok && !seq_ok {
+            failures.push(format!(
+                "edit {req_id}: published record seq {} != current AV seq {} — the identities did not come from the latest real execution",
+                r.run_seq, r.av_seq
+            ));
+        }
+        let reuse_hit_delta = counters_delta
+            .get(&format!("reuse_hit:{expected_owner}"))
+            .copied()
+            .unwrap_or(0);
+        let identity_ok = r.ok
+            && edit_identity_gate(
+                &prev_identity,
+                &cur_identity,
+                r.dispatched.len(),
+                &e.expected_install,
+                reuse_hit_delta,
+            )
+            .is_ok();
+        if r.ok && !identity_ok {
+            failures.push(format!(
+                "edit {req_id}: {}",
+                edit_identity_gate(
+                    &prev_identity,
+                    &cur_identity,
+                    r.dispatched.len(),
+                    &e.expected_install,
+                    reuse_hit_delta
+                )
+                .unwrap_err()
             ));
         }
         // Structural deltas over the UNCHANGED functions, from cumulative
@@ -421,6 +581,8 @@ pub fn run_formal_session_judge(
             && revision_ok
             && install_ok
             && identity_ok
+            && resident_ok
+            && seq_ok
             && unaffected_stage_total == 0
             && whole_module_total == 0;
         if r.ok && !structural_ok_here {
@@ -456,6 +618,13 @@ pub fn run_formal_session_judge(
             counters_delta,
             worker_peak_bytes: r.worker_peak_bytes,
             dispatched: r.dispatched.clone(),
+            phase_walls: r.phase_walls.clone(),
+            phase_io: r.phase_io.clone(),
+            store_attached: r.store_attached,
+            run_seq: r.run_seq,
+            av_seq: r.av_seq,
+            seq_ok,
+            resident_ok,
             unaffected_stage_total,
             whole_module_total,
             install_set_len: r.install_set.len(),
@@ -484,6 +653,8 @@ pub fn run_formal_session_judge(
         s.ok && s.revision_ok
             && s.install_ok
             && s.identity_ok
+            && s.resident_ok
+            && s.seq_ok
             && s.unaffected_stage_total == 0
             && s.whole_module_total == 0
             && s.install_set.len() == 1
@@ -508,9 +679,9 @@ pub fn run_formal_session_judge(
     if !positive_gate {
         failures.push(format!("gate-ms {} is not a positive bound", cfg.gate_ms));
     }
-    let Some(session_id) = session_id else {
-        return Err("ready handshake never completed".to_string());
-    };
+    // B3-C04: even an aborted handshake yields a report (session_id 0)
+    // so the caller's evidence write always has this run's artifacts.
+    let session_id = session_id.unwrap_or(0);
     Ok(JudgeReport {
         session_id,
         samples,
