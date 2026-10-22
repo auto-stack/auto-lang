@@ -231,3 +231,126 @@ fn migration_legacy_to_new_graph_through_gc_then_restore() {
         }
     ));
 }
+
+/// T07-R3-01 residual (collected from the R4 review's
+/// rebuilt-closure-controls.rs, same premises/oracles): a MISSING cache
+/// block passed through the real store `recover` is a normal cold-fallback
+/// input. The positive keeps the source unchanged; the negative inserts
+/// five spaces into `return 7` — same content semantics, same CVs, a
+/// fresh reference store's manifest body is BYTE-IDENTICAL — but the
+/// rebuilt primary sidecar has a DIFFERENT artifact id, so the required
+/// closure differs: the manifest key must fingerprint the ACTUAL closure
+/// (a fixed format slot cannot), the new graph publishes its own
+/// identity, the old row is never overwritten, and cold self-healing
+/// succeeds.
+fn rebuilt_closure_check(reposition: bool) {
+    use ac_artifact_probe::store::recover;
+    use auto_av_probe::cache::unit_span_sidecar_key;
+    fn manifest(p: &PathBuf, owner: &str) -> Vec<u8> {
+        let st = open_store(p).unwrap();
+        let id = st
+            .root_artifacts(P, "session-manifest")
+            .unwrap()
+            .pop()
+            .unwrap();
+        get_by_artifact_id(&st, &id, &EnvelopeIdentity::manifest(owner, 0)).unwrap()
+    }
+    let p = dir("owned-store");
+    let s = warmup_persisted(SRC, "d_main", &[], &p, P).unwrap();
+    let owner = s.current().code()[0].unit().module().owner.module.clone();
+    drop(s);
+    let before = manifest(&p, &owner);
+    let v: serde_json::Value = serde_json::from_slice(&before).unwrap();
+    let cv = v["units"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|u| u["def_id"] == "d_helper")
+        .unwrap()["cv"]
+        .as_str()
+        .unwrap();
+    // Delete exactly one blob ONLY inside this test-created,
+    // canonicalized scratch root (never an arbitrary user cache).
+    let st = open_store(&p).unwrap();
+    let row = st
+        .get_artifact("A09", &unit_span_sidecar_key(&owner, "d_helper", cv))
+        .unwrap()
+        .unwrap();
+    let file = p
+        .join("blocks")
+        .join("blobs")
+        .join(&row.chunk_id[..2])
+        .join(&row.chunk_id);
+    let actual = std::fs::canonicalize(&file).unwrap();
+    let own = std::fs::canonicalize(&p).unwrap();
+    assert!(actual.starts_with(&own));
+    std::fs::remove_file(&actual).unwrap();
+    let _ = recover(&st, true).unwrap();
+    drop(st);
+    let current = if reposition {
+        SRC.replacen("return 7", "return      7", 1)
+    } else {
+        SRC.to_string()
+    };
+    // Premise: the repositioned source yields a BYTE-IDENTICAL manifest
+    // body (same CVs/directory) — only the required sidecar identity
+    // changes.
+    let reference = dir("fresh-reference");
+    drop(warmup_persisted(&current, "d_main", &[], &reference, P).unwrap());
+    assert_eq!(
+        manifest(&reference, &owner),
+        before,
+        "premise: same body directory; only required sidecar identity changes"
+    );
+    let result = restore(&current, "d_main", &[], &p, P);
+    if reposition {
+        let st = open_store(&p).unwrap();
+        let rebuilt = st
+            .get_artifact("A09", &unit_span_sidecar_key(&owner, "d_helper", cv))
+            .unwrap()
+            .unwrap();
+        assert_ne!(
+            row.artifact_id, rebuilt.artifact_id,
+            "premise: the missing primary was genuinely rebuilt before any manifest publish"
+        );
+    }
+    assert!(
+        result.is_ok(),
+        "a changed required closure must publish a distinct identity instead of conflicting"
+    );
+    drop(result);
+    let again = restore(&current, "d_main", &[], &p, P).unwrap();
+    assert_eq!(again.counters().get("restore_units_admitted"), 3);
+}
+
+#[test]
+fn rebuild_same_source_missing_sidecar_recovers_positive() {
+    rebuilt_closure_check(false);
+}
+
+#[test]
+fn rebuild_repositioned_source_same_body_new_sidecar_does_not_conflict() {
+    rebuilt_closure_check(true);
+}
+
+/// Distinguishing control through the REAL publisher: the same closure
+/// reopens IDEMPOTENTLY (one manifest root, no conflict, persist_error
+/// stays 0) — the fingerprint is over the normalized SET, not the
+/// enumeration order.
+#[test]
+fn rebuild_same_closure_reopens_idempotently_through_publisher() {
+    let p = dir("idempotent");
+    drop(warmup_persisted(SRC, "d_main", &[], &p, P).unwrap());
+    let mut s = warmup_persisted(SRC, "d_main", &[], &p, P).unwrap();
+    {
+        let st = open_store(&p).unwrap();
+        assert_eq!(
+            st.root_artifacts(P, "session-manifest").unwrap().len(),
+            1,
+            "the identical closure keeps one manifest root"
+        );
+    }
+    let at = SRC.find("return 7").unwrap() as u64 + 7;
+    assert!(s.edit(at, at, b"  ".to_vec()).unwrap().ok);
+    assert_eq!(s.counters().get("persist_error"), 0);
+}

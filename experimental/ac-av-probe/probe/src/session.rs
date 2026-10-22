@@ -1619,6 +1619,38 @@ impl FunctionIncrementalSession {
         }))
         .map_err(|e| e.to_string())?;
         let fp = payload_fingerprint(&body);
+        // T07-R3-01 residual (R4): the persistent identity binds the
+        // ACTUAL REQUIRED CLOSURE, not a fixed format slot. The edges are
+        // CANONICALIZED once — sorted, deduplicated (id, ref-kind) pairs
+        // — and that normalized set is BOTH what gets published and what
+        // the key fingerprints: the same closure (any enumeration order)
+        // reopens idempotently under the same key, a DIFFERENT closure
+        // (e.g. a rebuilt primary sidecar after a cache miss) takes its
+        // own key and never conflicts with the old row. The `format: 2`
+        // component still separates these from pre-R2 edge-free rows.
+        let mut normalized_edges: Vec<(String, String)> = required_edges
+            .iter()
+            .map(|(id, kind)| (id.clone(), format!("{kind:?}")))
+            .collect();
+        normalized_edges.sort();
+        normalized_edges.dedup();
+        let edges: Vec<(String, ac_artifact_probe::identity::RefKind)> = normalized_edges
+            .iter()
+            .map(|(id, kind)| {
+                (
+                    id.clone(),
+                    match kind.as_str() {
+                        "RequiredData" => ac_artifact_probe::identity::RefKind::RequiredData,
+                        "Recomputable" => ac_artifact_probe::identity::RefKind::Recomputable,
+                        "InvalidationFingerprint" => {
+                            ac_artifact_probe::identity::RefKind::InvalidationFingerprint
+                        }
+                        _ => ac_artifact_probe::identity::RefKind::Provenance,
+                    },
+                )
+            })
+            .collect();
+        let required_fp = payload_fingerprint(&serde_json::to_vec(&normalized_edges).unwrap());
         let key = ac_artifact_probe::identity::QueryKey::new(
             &crate::cache::ABC_LAYER,
             vec![
@@ -1641,6 +1673,7 @@ impl FunctionIncrementalSession {
                 ("format".into(), "2".into()),
                 ("entry".into(), self.entry_def_id.clone()),
                 ("fp".into(), fp),
+                ("required-fp".into(), required_fp),
             ],
         );
         let expect = EnvelopeIdentity::manifest(&owner, 0);
@@ -1649,16 +1682,8 @@ impl FunctionIncrementalSession {
         // the whole current restore closure (register_root's liveness
         // check extends through required edges), independently of any
         // per-artifact soft pins.
-        let artifact = put_enveloped(
-            store,
-            &key,
-            "A09",
-            &expect,
-            &body,
-            required_edges.to_vec(),
-            None,
-        )
-        .map_err(|e| format!("manifest put: {e:?}"))?;
+        let artifact = put_enveloped(store, &key, "A09", &expect, &body, edges, None)
+            .map_err(|e| format!("manifest put: {e:?}"))?;
         // F-11: the manifest is the store's REQUIRED-REFERENCE root for
         // this session's program — `restore` discovers it through the
         // project's roots (never a key guess) and consumes it as the
