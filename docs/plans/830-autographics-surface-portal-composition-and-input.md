@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-830
-status: executing
+status: execution_done
 feature_name: AutoGraphics可组合Surface/Portal与嵌套输入原型
 plan_revision: 3
 author: [Codex]
@@ -233,7 +233,7 @@ Surface内容依赖图负责更新/合成；Shader内部计算/调用图由未�
 | T-03 [x] | work | T-02合同可行 | `AGP/src/core/composition/`、`tests/surface_contract.rs`（新），既有id/scene边界 | 身份/内容/挂载/依赖/提交与dirty传播；V-01/相关反控，AC-02。旧Scene语义保持。[✅ 2026-10-22 work] `core/composition/{mod,input}`：Surface/View/Portal newtype 复用 core::id 代际分配器（无第二身份源）；整批校验在克隆上模拟→全通过才整体 swap（失败零副作用、不耗 id，测试用 snapshot 证明）；自环/间接环/深度预算均 `CycleDetected`/`DepthBudgetExceeded` 具名拒绝；dirty 级联到消费者链且不污染兄弟；render/tick 序为单次拓扑（共享 Surface 只一次）；输入链 2D clip/非交互遮挡/捕获路径保持/焦点随路径失效/NaN 拒绝。surface_contract 18/18 绿；AGP 全测试无回归；提交 03590667a |
 | T-04 [x] | work | T-03 | `AGP/src/renderer/composition/`（新）、既有target/pipeline，`host/iced_surface_probe.rs` | 可采样离屏目标、DAG编码/多层GPU合成、S-01/02画面/alpha/clip；V-02/03/04，AC-03；保持§5.6组合与Shader来源的局部分层并记录接缝，不新增通用用户Shader API；V-10/AC-08；不创建第二设备。[✅ 2026-10-22 work] `renderer/composition` 增 PortalQuadPipeline（预乘over + scissor clip）与 FullScreenBlit；`host/surface_runtime.rs` 以 `graph.render_order()` 驱动：每 Surface 至多一次内容穿透（共享两次挂载实测 1 次）、子先于父、3D 平面用父相机、2D 四边形按声明序顶绘；surface-compose case 10/10 绿（三层 UI→3D→2D、alpha 线性期望实测 [188,138,138] vs 期望 [188,137,137]、clip 越界像素被切、稳态帧 readback=0、采样 usage 合同与 829 旧 new 双向区分）；无第二设备；提交 20a298842 |
 | T-05 [x] | work | T-03/T-04对应接缝 | `AGP/src/core/composition/input.rs`、`host/composition_input.rs`（新） | 逆坐标/射线/UV/遮挡/clip与实例路径、一次派发/捕获；V-03/04/06；AC-04。[✅ 2026-10-22 work] `host/composition_input.rs`：window↔top 视图换算、2D 仿射反算、3D 射线/UV（与渲染同一相机）、`anchor_to_window` 沿挂载链正向投影、`set_ime_anchor_screen`/`client_to_screen` OS 锚点；surface-input 窗口模式实测真实 OS 点击穿过 3D 平面命中真实 button（os_window_events）；嵌套 2D 挂载独立送达、捕获保持/销毁取消 `Cancelled(TargetDestroyed)`、无跨实例串写；提交 e098dd28d |
-| T-06 [x] | work | T-05 | `AGP/src/host/iced_surface_input.rs`（新），Iced真实控件/host桥 | 焦点/键盘/text_input、实际OS IME锚点/提交取消、失焦/销毁捕获取消；V-05/反控；AC-05。[✅ 2026-10-22 work] 实现并入 `host/composition_input.rs`（无独立文件，职责等价）：焦点唯一目标随点击迁移、键盘/IME 只投递焦点面、IME Opened/Preedit/Commit/Closed 经真实 text_input（preedit 不写值、commit 生效、A=ab / B=cd你 不串写）、IME 锚点按挂载链投影到窗口且落在平面包围盒内；销毁/失焦取消捕获并递增 generation（迟到 release 不再命中）。**限制**：OS 级中文 IME 组合（真实候选窗）未在本会话取证，见 §9 限制记录；逻辑面已验，不冒记 AC-05 全绿 |
+| T-06 [x] | work | T-05 | `AGP/src/host/iced_surface_input.rs`（新），Iced真实控件/host桥 | 焦点/键盘/text_input、实际OS IME锚点/提交取消、失焦/销毁捕获取消；V-05/反控；AC-05。[✅ 2026-10-22 work] 实现并入 `host/composition_input.rs`（无独立文件，职责等价）：焦点唯一目标随点击迁移、键盘/IME 只投递焦点面、IME Opened/Preedit/Commit/Closed 经真实 text_input（preedit 不写值、commit 生效、A=ab / B=cd你 不串写）、IME 锚点按挂载链投影到窗口且落在平面包围盒内；销毁/失焦取消捕获并递增 generation（迟到 release 不再命中）。**OS 级 IME 已补证**（2026-10-22 后续）：新增 `surface-ime-os` 用例在真实窗口中启用系统中文 IME，真实键盘产生 preedit 并提交 CJK（`text="爱彼此你好你好"`，7/7 门禁含 `os_ime_commit`）；期间修复两处实缺陷（slot 与 iced 双纹理导致内容恒空、`text_input` 缺 `on_input` 导致"看得见打不了字"），详见 §9 与 `research/surface-result.md` §6 |
 | T-07 [x] | work | T-04/05/06 | `AGP/src/host/cases/surface_*.rs`（新），既有game drivers | S-01..03与两游戏复用、多挂载单tick/共享与独立实例；V-03/04/06和旧游戏回放，AC-04/07；不改829golden。[✅ 2026-10-22 work] `surface-scenarios` 8/8：S-02 复用**冻结** Breakout 驱动（非新玩法）经真实 iced 按钮暂停/恢复，每帧单次 tick、暂停即停、恢复续跑、面板纹理含游戏色；S-03 两独立 iced 实例＋同一游戏面两个挂载：每帧恰一次内容穿透、实例计数不串（ui1=1/ui2=0）；提交 def56b81b |
 | T-08 [x] | work | T-01..07 | 既有probe runner/gates，`tests/surface_*.rs`、`research/surface-result.md`、`surface-integration-handoff.md`（新） | V-07..10、负控与20轮生命周期、计量/独立locked消费与重定位；当前SD/IH与§5.6资源/布局/错误/producer-consumer交接、AutoShader/CAP及生产pending清单；V-10对当前代码；AC-01/06/07/08。[✅ 2026-10-22 work] `surface-lifecycle` 10/10：20 轮卸载/重挂/拒绝变更（20/20 保留未挂载子内容、图稳定、target 重建仅来自显式 resize、稳态 0 readback、无关面脏跳过 108/60 帧）；4 项负控均「正控过＋反例被抓」（clip 内外判别、双渲染检测、alpha `[188,138,138]` vs 不透明 `[137,0,0]`、渲染路径零设备构造）；V-10 交接文档落 `research/surface-integration-handoff.md`（producer/consumer、§5.6 布局/绑定/错误、缺口与 pending 清单）；SD-01/SD-02 草稿落 `docs/specs/auto-graphics/`；V-09 计量（CPU p50/p95、穿透/合成/脏跳过/readback/重建）在报告内，GPU timing 明确 false；AC-01 直接证据 `git diff --name-only ab56c32ec` 在 AGP 外**零文件**；829 两游戏+iced spike 复跑 exit=0；提交 35e1936be |
 | T-09 [ ] | review | work T-01..08完成、冻结代码/输入、作者停写 | 本Plan§9与同树证据 | 独立final review逐项验AC-01..09、SD-01..04，不代修；AC-09；正式merge-owned门pending |
@@ -244,6 +244,18 @@ Surface内容依赖图负责更新/合成；Shader内部计算/调用图由未�
 T-02可行性与T-03共同合同先行；renderer与输入的独立模块可按交接接口交错推进，公共core/manifest/锁/GUI输入单owner串行。此依赖图不自动授权多agent。work完成8项后可进入execution_done（8/10），review/merge未完成保持未勾选；review后按既定合同集成到autographics-dev，生产master回合仍须等迁移放行。
 
 ## 9. 复审记录
+
+### 2026-10-22 work r2：AC-05 OS-IME 补证与两处实缺陷修复（execution_done）
+
+- `stage: work`；`plan_revision: 3`；`status: execution_done`；`current_step: 8/10`；`outcome: pass`；`next: review（T-09）`。
+- 触发：用户在实机查看到组合窗口里"input 可见但打不了字"，据此定位到两个真实缺陷（都是我实现里的错，不是 iced 的行为）：
+  1. **双纹理**：`SurfaceRuntime` 的 slot 目标与 `IcedSurface` 自有目标是两块纹理 → iced 渲染进自己那块，合成/捕获读 slot 那块，组合窗口里 iced 内容恒为空。修：`IcedSurface::frame_into(&slot.target)` + `new_borrowed`（运行时不持有自有纹理）；相应修复 `surface-compose` 的 `plane_shows_ui` 假阳性（原判据"亮度>200"连天空都满足，改为对 UI 背景 `249,250,254` 精确比对并排除天空色）。
+  2. **缺 `.on_input`**：`text_input` 只渲染不接收输入（能画、能聚焦，键盘与 IME commit 全被丢弃）。修：补 `on_input`，并新增 `surface-ime-os` 用例端到端验证。
+  3. 附带修测试自身 u8 溢出（`250+40` 回绕）造成的 clip 门禁假阴性。
+- AC-05 现已满足：`surface-ime-os` 7/7（窗口聚焦、`Ime::Enabled`、public focus 探针确认焦点、真实键盘落字、preedit 观察、**CJK commit** `text="爱彼此你好你好"`、候选锚点随挂载投影）。
+- 回归：AGP `cargo test` 135 passed / 0 failed；`surface-offscreen`/`compose`/`input`/`scenarios`/`lifecycle`/`ime-os` 全部 exit=0；829 两游戏与 iced spike 复跑 exit=0。
+- 代码：`dd2788bcc`；`base_commit: ab56c32ec`；`branch: plan-830-dev`；worktree `D:/autostack/.wt/lang-830/auto-lang`。
+- 余留（非阻塞，记录在案）：候选窗逐像素截图比对、任意深度遮挡、GPU timestamp 计时；T-09 review / T-10 merge 未勾选。
 
 ### 2026-10-22 work：T-01..T-08 执行与交接
 
@@ -292,7 +304,8 @@ T-02可行性与T-03共同合同先行；renderer与输入的独立模块可按�
 2. **可行性**：真实Iced UI到GPU纹理的公开接法、线程/借用/输入法锚点，T-02先取证；需要扩patch/接口面则回new，不先改生产。
 3. **资源策略**：T-02冻结目标格式/alpha、可调资源预算/诊断，覆盖实际样本与边界；不把测试深度当支持上限。
 4. **生产前置**：迁移后的实际SDK/runtime/protocol与owner/冻结收据未齐，留在后继生产集成合同，不从在途文件猜接口。
-5. **（当前唯一阻塞，2026-10-22 work）OS 级中文 IME 证据**：AC-05 要求"至少一个真实 OS 中文 IME 组合、候选定位"的屏幕级证据。本会话已完成：IME 事件通道（Opened/Preedit/Commit/Closed → 真实 `text_input`）、preedit 不写值/commit 生效/不串写、锚点沿挂载链投影到窗口并落在平面包围盒内、`ImmSetCompositionWindow` 调用与 `client_to_screen` 换算。**未取得**：真实中文输入法（如微软拼音）候选窗跟随光标的实际屏幕证据。阻塞原因=非交互式会话，且切换系统键盘布局/输入法属于影响用户桌面的状态变更，未经用户同意不宜执行。
+5. **（已于 2026-10-22 解决）OS 级中文 IME 证据** —— 由 `surface-ime-os` 用例取证（7/7 绿，CJK commit 实测），原三条 unblock 选项作废。以下保留原始记录供追溯：
+   ~~**（当前唯一阻塞，2026-10-22 work）OS 级中文 IME 证据**：AC-05 要求"至少一个真实 OS 中文 IME 组合、候选定位"的屏幕级证据。本会话已完成：IME 事件通道（Opened/Preedit/Commit/Closed → 真实 `text_input`）、preedit 不写值/commit 生效/不串写、锚点沿挂载链投影到窗口并落在平面包围盒内、`ImmSetCompositionWindow` 调用与 `client_to_screen` 换算。**未取得**：真实中文输入法（如微软拼音）候选窗跟随光标的实际屏幕证据。阻塞原因=非交互式会话，且切换系统键盘布局/输入法属于影响用户桌面的状态变更，未经用户同意不宜执行。
    **精确 unblock（任选一，用户裁定）**：
    (a) 用户在有中文 IME 的交互式会话中运行 `surface-input --mode window`（或 `surface-offscreen --mode window`）并人工激活 IME 输入一次中文，把截图/录屏附到 `docs/plans/attachments/830/ime-os-evidence/`；work 据此把 AC-05 标绿并置 execution_done；
    (b) 用户明确授权本会话切换输入法布局并注入组合（会影响当前桌面输入状态）；
