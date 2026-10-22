@@ -5,7 +5,7 @@
 > 继承：[Design 32](32-autoui-repo-extraction.md) 的双缝方向；本提案补充真实反向类型依赖、auto-man 独立交付、语言内部拆分与实际删减。历史裁定不在原文中抹除。
 > 当前行为以 [Specs overview](../specs/overview.md)、各模块 Specs 与代码为准；下文都是目标态，未沉淀为现行 Spec。
 > 2026-10-13 补充：已核查既有 `../auto-ui` 与 `../auto-man`。推荐复用原仓身份与 URL，保留 legacy 引用，在迁移分支准备新代码后以新提交推进默认分支；下文“独立仓”不再意味着重新创建这两个仓。
-> 2026-10-22 调度更新：用户已确定后续采用较大的模块交付粒度，统一路线见[剩余迁移总路线图](../plans/reports/v06-extraction-execution-roadmap.md)。§8.0–8.12保留历史批次依据；当前状态与近期合同以§8.13及总路线图v7为准，当前行为仍以各模块Spec为准。
+> 2026-10-22 调度更新：用户已确定后续采用较大的模块交付粒度，统一路线见[剩余迁移总路线图](../plans/reports/v06-extraction-execution-roadmap.md)。§8.0–8.12保留历史批次依据；当前状态与近期合同以§8.13及总路线图v8为准，当前行为仍以各模块Spec为准。
 
 ## 1. 目标与边界
 
@@ -330,17 +330,17 @@ A必须完成明确scope的work正反例/独立审查/冻结合入门、实际ma
 
 ### 8.13 两个完整仓库交付合同831/832（2026-10-22，当前）
 
-用户明确授权建立[831 auto-ui独立仓交付](../plans/831-auto-ui-independent-repository-delivery.md)与[832 auto-man独立仓及三仓组合交付](../plans/832-auto-man-three-repository-delivery.md)。R07发行验收按UI/Man profile纳入这两份，分别完成R08/R09，不另拆资源/接口小计划。两份drafting 0/12，本轮只规划，不实施/创建树/agent或写旧仓/远端。
+用户明确授权建立[831 auto-ui独立仓交付](../plans/831-auto-ui-independent-repository-delivery.md)与[832 auto-man独立仓及三仓组合交付](../plans/832-auto-man-three-repository-delivery.md)。R07发行验收按UI/Man profile纳入这两份，分别完成R08/R09，不另拆资源/接口小计划。两份现为r2/drafting 0/12，本轮只规划，不实施/创建树/agent或写旧仓/远端。
 
 814 r3已归档15/15，UI编译/运行和纯SDK真实单源分离；815 r3 executing 10/17（A已发布、生成主体阶段pass、完整运行/兼容/发行仍修复），816 r2 executing 7/14（A已发布、管理/窄发现阶段pass，完整CLI仍待815）。实际状态/源hash以[输入快照](../plans/attachments/repo-delivery-batch-20261022/inputs.json)为准，不以部分pass代完整B实际合入。
 
-两份T-01..03可并行完成来源/owner/profile设计、784当前状态重新保全/恢复和独立验证设施。831 T-04完整UI目标候选等815-B，允许与816收口并行；生产语言消费切源/原件删除/共享类型改动等815-B+816-B实际交付。832完整Man/CLI候选等815/816实际交付，后半独立包装/审查修复可与831并行，完整UI/三仓验收再等831实际UI发布，不等其归档清理。详细DAG/任务门见[共用交付合同](../plans/reports/repo-delivery-parallel-order-831-832.md)。
+**最新用户裁定（2026-10-22，r2）：严格按815/816整Plan完整交付合入与收尾→831全部任务/交付收尾→832全部任务执行。** G831未满足前不得启动831，G832未满足前不得启动832，包含T-01只读盘点、旧仓保全/恢复、验证driver、建树/认领和实施会话；仅允许读取上游状态与完整交付收据核验启动门。不能以831局部UI发布或T-11合入跳过其完整归档收尾；r1此前所有提前准备/并行开工规则撤销。目标/任务/AC/SD保持，详细证据门见[共用r2合同](../plans/reports/repo-delivery-parallel-order-831-832.md)与[预检](../plans/attachments/repo-delivery-r2-serial-20261022/preflight.md)。
 
 已发现的去边由831内部承担：UI tools和auto-api-gen仍从auto-man-core读取sidecar/theme/external_backend等声明规则。共享数据/纯归一向既有project-model等中立owner收口，旧Man入口再导出/委托保持类型/动态语义；不复制DTO/规则、不把整个Man核心塞回SDK。中立SDK/模型/协议及UI/Man共用的std-only owned执行设施留语言；UI生产及上层compat归UI，管理编排/client/发现/CLI归Man。语言原件真实删除和剩余消费者处置必须有清单，不能只向旧仓复制代码。
 
 两份均交付真实独立clone、固定rev/单source、外部工程、fresh/locked/重定位、工具安装/资源/producer、升级/失败恢复、测试ID/CI与旧仓legacy恢复。local fixed-commit渠道可完成本地独立交付，不以远端push/registry为隐含前置；旧默认分支只在独立review+冻结门后以新提交推进，不清空/reset/orphan/强推，WIP未交接不覆盖。多仓切换非原子，按目标先落→消费者切源→验证收据推进，失败保旧或可执行恢复，不假报全套完成。
 
-独立scope审查/定向验证/修复并行，同Plan同树冻结/单写者；共享manifest/API/777/792/账本/主分支窗口与整档串行，实机/重型资源独占。R10–R12 UiAst/兼容退役/跨仓去重仍保留；两份实际交付且G1–G8齐备才完成M1。
+831/832之间及与其未完成前置不并行开工；其他已获准路线的独立scope审查/修复仍按写面协调。同Plan同树冻结/单写者，共享窗口/整档串行、实机/重型资源独占。R10–R12 UiAst/兼容退役/跨仓去重仍保留；两份实际交付且G1–G8齐备才完成M1。
 
 ## 9. 决策状态
 

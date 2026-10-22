@@ -5,7 +5,7 @@ feature_name: auto-ui 独立仓承接与完整发行交付
 author: [Codex]
 created_at: 2026-10-22
 updated_at: 2026-10-22
-plan_revision: 1
+plan_revision: 2
 current_step: 0
 total_steps: 12
 supersedes_spec_components: [docs/specs/repository-boundaries/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md, docs/specs/auto-ui-compiler/project.md, docs/specs/auto-ui-runtime/project.md, docs/specs/auto-ui-tools/project.md, docs/specs/auto-ui-dialect/project.md, docs/specs/language-sdk/project.md, docs/specs/project-model/project.md, docs/specs/auto-lang/project.md, docs/specs/auto-man-core/project.md, docs/specs/auto-man/project.md]
@@ -17,11 +17,13 @@ depends_on: [PLAN-814, PLAN-815, PLAN-816]
 
 # [PLAN-831] auto-ui 独立仓承接与完整发行交付
 
+> **r2启动锁：G831未满足前，T-01及全部准备/实施任务均禁止开始。** 必须等待815、816整Plan完整交付合入并收尾。 旧r1提前准备/并行规则已撤销；执行前先核验§5.1。
+
 ## 0. 变更摘要
 
 完成R08并吸收R07 UI发行：把814/815已交付UI文法、compiler/runtime/tools及其实际资源/测试/示例/脚本/CI与上层兼容承载迁进**既有auto-ui仓**；切换生产消费者，删除语言仓原实现，以独立clone/第三方工程/安装与失败恢复证明可独立交付。不是把当前crates再复制一份存档。
 
-前置未齐可按§8开展准备；完整UI候选导入等U815，生产共享边界/语言切源等U815+U816。不重做815/816运行合同，不重开814；不在本Plan做UiAst终态/大规模去重/后端退役或远端发布。
+全部准备和实施统一等待815、816完整交付合入及收尾；G831满足后才从T-01开始，不提前盘点/保全/建树/编写验证设施。不重做815/816运行合同，不重开814；不在本Plan做UiAst终态/大规模去重/后端退役或远端发布。
 
 ## 1. 目标
 
@@ -42,6 +44,8 @@ depends_on: [PLAN-814, PLAN-815, PLAN-816]
 
 ## 4. 需求分析与背景调查
 
+用户2026-10-22进一步明确采用保守串行方案：**815/816完整交付合入→831完整交付→832开始**。本r2取代r1提前准备/并行开工授权；目标、原任务/验收/规范增量ID和全部发行范围不变。本轮仅修订调度，未实施；[本轮来源](attachments/repo-delivery-r2-serial-20261022/inputs.json)。
+
 用户2026-10-22明确要求建立两份大模块搬仓合同并包含发行验收、明确与815/816并行。**本轮仅在语言主检出写规划，不执行跨仓修改/保全/建树/推送**；未来work按本合同范围与既有授权开展，外仓权限按执行环境实际授予。本地既有仓追加提交与经审查的默认分支推进是计划交付；远端更名/force/push不是隐含授权。
 
 当前Spec从[全局入口](../specs/overview.md)定位，以[SDK](../specs/language-sdk/project.md)、[compiler](../specs/auto-ui-compiler/project.md)、[runtime](../specs/auto-ui-runtime/project.md)、[tools](../specs/auto-ui-tools/project.md)、[旧仓治理](../specs/repository-boundaries/project.md)、[发行](../specs/repository-boundaries/generated-ui-distribution.md)为准。总览部分数量/旧描述滞后，以模块Spec+代码/收据为证。814 B=93a25c924及后继丢测修复f97a9e2a9已合入；815仍executing、B运行与验收修复，816仍executing、完整CLI待门，未当成已交付。
@@ -54,9 +58,13 @@ depends_on: [PLAN-814, PLAN-815, PLAN-816]
 
 ### 5.1 启动门与下一任务入口
 
-整项depends_on为最终摘要；**现在T-01可只读开始，T-02/03在独立组可与815/816实施/审查并行**，不得让粗粒度自动依赖把它们一并堵住。现有Runner未新增阶段调度，按Markdown任务门组织。U815/U816定义与当前已闭/未闭前置见本批合同§1。T-04只等U815且只在目标候选工作，不改在途816输入；T-05起等U816。每个门须读回master祖先/Spec/实际版本，不用WIP分支或阶段pass替代。
+**启动门是整Plan硬门，覆盖T-01..T-12及所有准备工作。** U815/U816/U831均指对应整Plan全部约定验收与最终独立审查通过、merge-owned冻结门通过、实现/Spec/ledger实际合入、完整版本/来源交接收据读回且归档收尾闭环；必须查真实交付与归档记录，不能只看状态字样或勾选数。阶段A/B局部发布、某项pass、分支HEAD或仅T-11代码落地均不代替整项完整交付。
 
-T-01的关闭件为新增`attachments/831/contract-baseline.md`：逐包/输入/测试/旧消费者owner与DAG、profile支持面、来源版本/授权写面、legacy当前状态、兼容布局及共享声明切口可行性（只用已交付接口）；未知项标observed/hypothesis，具名阻断后续步骤。T-01完成的是当前已知范围的可执行设计和未知项归属，未来B源码/probe的重采归T-04、共享切口实编归T-05，不让T-01又隐性等待U815/U816。无需用户再批准已经授权的常规布局选择。
+**G831 = U815且U816；G832 = G831且U831。** 前者未满足，831不得开始；后者未满足，832不得开始。等待期间只允许读上游计划状态、归档/合入与交付收据以核实启动门，或用户授权的计划簿记；不能开展本Plan T-01实质盘点、保全/恢复演练、fixture/driver编写、候选导入、测试、分支/工作树创建或认领。不得以“只读准备”“不改共享文件”或旧r1允许并行为例外。
+
+启动时先在主检出核实G和完整源版本，将上游Plan revision、实际delivery commit、Spec/ledger与归档/交接收据记录到本Plan基线，再进入T-01。门未满足时保持drafting/current_step 0（如误建树则保全停止写入并如实报告，不自行删除），只报告等待上游，不标实施开始、不勾任何任务、不启动work agent。现有depends_on现在也是全Plan启动依赖，不只是终验摘要；这是Markdown合同/调度规则，未新增后端状态或自动检查能力。
+
+G831满足后，T-01以815/816完整交付后的实际源码为基线，新增attachments/831/contract-baseline.md：逐包/输入/测试/消费者owner与DAG、profile、当前legacy状态、兼容与共享声明切口可行性。不得沿用r1候选或未合入接口当最终source；必要未知项具名交后继任务，不缩小原AC。门内T-02/03可按各自依赖推进，但不与832实施并行。
 
 ### 5.2 数据流与归属约束
 
@@ -73,7 +81,7 @@ T-04按冻结源commit/path/hash导入目标候选和完整输入，映射rename
 
 UI安装/发行profile包含编译库、runtime、tool实际二进制和运行必需资产；生成应用Rust canonical双直依赖、Vue与各现行生成后端支持保持。源码仓独立clone与生成bundle分别fresh/locked/重定位实测；纯SDK的无UI消费是反向控制。auto-down等现行optional源码也必须固定依赖/显式profile处理，Cargo仍读取optional path，不能留不存在的兄弟路径。环境缺口不可当绿，也不自动批准停用后端。
 
-发行/安装事务复用792，其保旧字节/owned清理/误删保护按原精确合同；升级/坏版本/半复制/取消/producer漂移有反例。三仓切换按本批§4 prepared→landed→switched→verified收据，无跨Git原子假设。下游832只消费本PlanT-11实际发布的固定版本，不因UI候选能跑就切正式来源。
+发行/安装事务复用792，其保旧字节/owned清理/误删保护按原精确合同；升级/坏版本/半复制/取消/producer漂移有反例。三仓切换按本批§4 prepared→landed→switched→verified收据，无跨Git原子假设。832只能在本PlanT-12全部收尾闭环构成U831后开始，再消费T-11已发布且T-12复核的固定版本，不能仅凭UI候选或代码发布提前开工。
 
 ### 规范增量
 
@@ -112,34 +120,40 @@ UI安装/发行profile包含编译库、runtime、tool实际二进制和运行�
 | AC-04 | work | 资源/锁/producer拒绝、升级/安装/生成/切换失败与取消保护有真实正反控；V-04 |
 | AC-05 | work | 旧仓当前状态保全/恢复/来源映射/本地切换恢复演练有效，未做远端如实记；V-05 |
 | AC-06 | work | 测试ID/门选择及跨仓CI入口完整、777/792受影响面通过，SD/来源/profile/handoff完整；V-06 |
-| AC-07 | review | 独立final review绑定r1与全部仓冻结SHA/依赖输入，AC/SD/遗漏/告警/格式/debug审查通过；merge门pending |
+| AC-07 | review | 独立final review绑定r2与全部仓冻结SHA/依赖输入，AC/SD/遗漏/告警/格式/debug审查通过；merge门pending |
 | AC-08 | merge | 冻结门通过、目标本地分支及语言消费者实际交付/来源读回与Spec/受管ledger齐备；给832版本收据，guard后清理归档 |
 
 ## 8. 执行步骤
 
-12项，按依赖列；U815/U816必须实际落地。T-01准备不是已授权自动执行后续搬仓；本轮交付合同后交work按用户执行指令开始。
+12项；**本表每一行都先满足G831，包括T-01/T-02/T-03准备**。既有任务ID/AC/SD和工作内容保留；依赖列不能解释成允许跳过全Plan启动锁。
 
 | 状态 | ID | owner_stage | 依赖/启动门 | 写面/交付与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 现在可只读；仅用已发布输入 | 冻结attachments/831/contract-baseline.md，逐包/资源/测试/兼容/DAG与源码版本、共享声明切口可行性，未闭决策阻断对应生产任务 | AC-01..06 |
-| [ ] | T-02 | work | T-01旧仓事实；可与815/816并行 | 重采旧UI仓指令/refs/WIP/ignored、保全快照/锚与恢复演练，建立或认领本Plan唯一隔离树，新增preservation.md | AC-05 |
-| [ ] | T-03 | work | T-01；与T-02/815/816独立 | 新ui-repository-consumer及发行/失败/source/type/测试ID driver，基于已交付814/A做有效控制；不改生产热点 | AC-01,03,04,06 |
-| [ ] | T-04 | work | T-02/T-03+U815；不等U816 | 冻结815完整来源，UI包组/资源/测试/许可/兼容候选导入旧UI仓迁移分支；只改目标候选/清单，保持语言权威与816输入 | AC-01,02,05 |
-| [ ] | T-05 | work | T-04+U816，已完成共享写面交接 | tools/API生成共享声明最小单源去Man边，旧Man API再导出；冻结compat/剩余消费者/包版本owner，定向V-01/02 | AC-01,02 |
-| [ ] | T-06 | work | T-05 | 目标独立workspace/build/manifest/锁/固定源；语言生产消费者切源/旧UI实现删除、别名/测试ID与777/792源根更新，V-01/06 | AC-01,02,06 |
-| [ ] | T-07 | work | T-06 | 真目标clone/外部工程/安装tool与资源完整profile，fresh/locked/重定位/默认兼容、双端实机V-02/03/06 | AC-02,03,06 |
-| [ ] | T-08 | work | T-07 | 792受管升级/缺源/坏hash/漏patch/取消/交换恢复及多仓切换失败控制V-04/05，owned残留与恢复演练 | AC-04,05 |
-| [ ] | T-09 | work | T-08 | 按最终来源复核全部V/支持面/净迁移非净删、SD-01..07与实际CI入口，attachments/831/handoff.md冻结交付候选 | AC-01..06 |
-| [ ] | T-10 | review | T-09冻结提交 | 独立三仓输入/AC/SD/真实消费与恢复审查，发现遗漏/降级归因，final pass后merge门pending | AC-07 |
-| [ ] | T-11 | merge | T-10 pass；共享发布窗口 | master并集影响复审，冻结统一适用门；本地目标分支/语言消费有序落地，生产source/版本/工具hash/Spec来源读回，新增ui-release.md放行832 | AC-08 |
-| [ ] | T-12 | merge | T-11全部收据 | canonical Specs/受管ledger及索引沉淀、归档；保留legacy/恢复/已交付分支，wt-guard clean逐树清理本Plan临时树/分支/组 | AC-08 |
+| [ ] | T-01 | work | G831完整核验 | 冻结attachments/831/contract-baseline.md，逐包/资源/测试/兼容/DAG与源码版本、共享声明切口可行性，未闭决策阻断对应生产任务 | AC-01..06 |
+| [ ] | T-02 | work | G831；T-01旧仓事实 | 重采旧UI仓指令/refs/WIP/ignored、保全快照/锚与恢复演练，建立或认领本Plan唯一隔离树，新增preservation.md | AC-05 |
+| [ ] | T-03 | work | G831；T-01 | 新ui-repository-consumer及发行/失败/source/type/测试ID driver，基于已交付814/A做有效控制；不改生产热点 | AC-01,03,04,06 |
+| [ ] | T-04 | work | G831；T-02/T-03 | 冻结815完整来源，UI包组/资源/测试/许可/兼容候选导入旧UI仓迁移分支；只改目标候选/清单，保持语言权威与816输入 | AC-01,02,05 |
+| [ ] | T-05 | work | G831；T-04及共享写面交接 | tools/API生成共享声明最小单源去Man边，旧Man API再导出；冻结compat/剩余消费者/包版本owner，定向V-01/02 | AC-01,02 |
+| [ ] | T-06 | work | G831；T-05 | 目标独立workspace/build/manifest/锁/固定源；语言生产消费者切源/旧UI实现删除、别名/测试ID与777/792源根更新，V-01/06 | AC-01,02,06 |
+| [ ] | T-07 | work | G831；T-06 | 真目标clone/外部工程/安装tool与资源完整profile，fresh/locked/重定位/默认兼容、双端实机V-02/03/06 | AC-02,03,06 |
+| [ ] | T-08 | work | G831；T-07 | 792受管升级/缺源/坏hash/漏patch/取消/交换恢复及多仓切换失败控制V-04/05，owned残留与恢复演练 | AC-04,05 |
+| [ ] | T-09 | work | G831；T-08 | 按最终来源复核全部V/支持面/净迁移非净删、SD-01..07与实际CI入口，attachments/831/handoff.md冻结交付候选 | AC-01..06 |
+| [ ] | T-10 | review | G831；T-09冻结提交 | 独立三仓输入/AC/SD/真实消费与恢复审查，发现遗漏/降级归因，final pass后merge门pending | AC-07 |
+| [ ] | T-11 | merge | G831；T-10 pass；共享发布窗口 | master并集影响复审，冻结统一适用门；本地目标分支/语言消费有序落地，生产source/版本/工具hash/Spec来源读回，新增ui-release.md；此时尚不放行832 | AC-08 |
+| [ ] | T-12 | merge | G831；T-11全部收据 | canonical Specs/受管ledger及索引沉淀、归档；保留legacy/恢复/已交付分支，wt-guard clean逐树清理本Plan临时树/分支/组；最终交付/归档/清理收据全部读回后更新ui-release.md，构成U831才放行832 | AC-08 |
+
+**G831未满足前不得创建/认领下述组、分支或实施会话；路径只登记未来执行位置。**
 
 执行组`D:/autostack/.wt/lang-831/{auto-lang,auto-ui}`，分支各`codex/plan-831-dev`（属于各自仓）；必要auto-down兄弟依既有解析补detached，**不修改其实现**。784树如已有owner不得抢占，确认保全后另建本Plan分支或经明确owner交接认领，始终每仓仅一个权威树。review不建第二checkout。主检出只簿记，树内禁junction/symlink；移除前逐树wt-guard clean，不删legacy或恢复载荷。
 
 ## 9. 复审记录
 
+r1以下记录为历史合同预检，其提前准备/并行放行和pass仅适用于旧合同，已由r2启动锁取代，不是当前执行授权。
+
 2026-10-22 / stage: new / plan_id: PLAN-831 / revision: 1 / outcome: pass（规划合同预检，非实现验收）/ next: work T-01及门内T-02/03准备；T-04等U815，T-05起等U816 / changed: T-01..12、AC-01..08、SD-01..07、V-01..06。见[预检](attachments/repo-delivery-batch-20261022/preflight.md)。当前无任务完成、未运行未来driver/Cargo/搬仓。
+
+2026-10-22 / stage: new / plan_id: PLAN-831 / revision: 2 / outcome: blocked（仅执行启动门；r2文档合同预检通过）/ next: 等待G831真实满足后重新核验完整交付/归档与源版本，再work T-01 / changed: T-01..12全局启动依赖、§0/4/5/6/8/10调度；原目标、AC/SD/V ID与发行验收保留。当前815/816仍executing、831尚未交付，故不启动实现/准备/建树/agent；Plan保持drafting 0/12。见[预检](attachments/repo-delivery-r2-serial-20261022/preflight.md)。
 
 ## 10. 待澄清事项
 
-无须用户重复授权的当前规划问题。T-01有界解决package/compat/source/共享声明布局与实际支持环境；机制选择可等价，但不能以固定package名字、默认feature或GUI环境未知为由偷偷缩面。若必须改变现行公开兼容/支持、复制状态或引入新仓/远端动作，具体needs_replan后只暂停受影响任务。832最终UI消费等待本计划T-11实际交付，不等待本Plan归档清理。
+调度已明确，无须重复确认；启动锁是用户本轮要求，不能用早期并行建议覆盖。T-01有界解决package/compat/source/共享声明布局与实际支持环境；机制选择可等价，但不能以固定package名字、默认feature或GUI环境未知为由偷偷缩面。若必须改变现行公开兼容/支持、复制状态或引入新仓/远端动作，具体needs_replan后只暂停受影响任务。832全部准备/实施必须等待本计划整Plan完整交付及归档收尾，不能以T-11局部发布提前放行。
