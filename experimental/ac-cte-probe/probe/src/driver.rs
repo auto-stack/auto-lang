@@ -14,6 +14,7 @@ use ac_sema_core::SemaInput;
 use auto_ac_prototype::native;
 use auto_ac_prototype::source::SourceProfile;
 use auto_ac_prototype::verify::CheckedModule;
+use auto_av_core::CancelFlag;
 use auto_av_probe::{mempeek, native_reference};
 use auto_cte_contract::{
     CteAdmissionError, CteCode, CteDepsManifestV1, CteExecutedV1, CteExpectType,
@@ -99,6 +100,11 @@ fn expect_name(e: CteExpectType) -> &'static str {
 pub struct CteDriver {
     store: Option<CteStore>,
     forbid_av: bool,
+    /// Per-REQUEST cancellation (V-03): set before or during a query
+    /// step; the step surfaces the isolated `Cancelled` state (never a
+    /// language verdict), publishes nothing, and the flag auto-clears
+    /// for the next request.
+    cancel: std::sync::Arc<CancelFlag>,
 }
 
 impl CteDriver {
@@ -106,6 +112,7 @@ impl CteDriver {
         CteDriver {
             store: None,
             forbid_av: false,
+            cancel: std::sync::Arc::new(CancelFlag::new(false)),
         }
     }
 
@@ -113,6 +120,7 @@ impl CteDriver {
         Ok(CteDriver {
             store: Some(CteStore::open(root, project)?),
             forbid_av: false,
+            cancel: std::sync::Arc::new(CancelFlag::new(false)),
         })
     }
 
@@ -123,16 +131,49 @@ impl CteDriver {
         self.forbid_av = v;
     }
 
+    /// Fire the per-request cancellation flag.
+    pub fn cancel(&self) {
+        self.cancel
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// The shared flag (a test thread can hold it mid-flight).
+    pub fn cancel_flag(&self) -> std::sync::Arc<CancelFlag> {
+        self.cancel.clone()
+    }
+
     pub fn store(&self) -> Option<&CteStore> {
         self.store.as_ref()
     }
 
     /// Run one query step over the CURRENT deck text.
     pub fn query_step(&mut self, deck_text: &str, native_workdir: Option<&Path>) -> CteStepOutcome {
+        // A pre-set flag cancels THIS request outright (consume it);
+        // the request itself starts with a clear flag.
+        let pre_cancelled = self
+            .cancel
+            .swap(false, std::sync::atomic::Ordering::Relaxed);
+        if pre_cancelled {
+            let obs = Obs::new();
+            let e = CteAdmissionError::new(CteCode::Cancelled, "request cancelled before start");
+            return CteStepOutcome::diag(&e, None, &obs);
+        }
         let mut obs = Obs::new();
         let sampler = mempeek::PeakSampler::start(20);
         let out = self.query_step_inner(deck_text, native_workdir, &mut obs);
         let peak = sampler.stop();
+        let cancelled = self
+            .cancel
+            .swap(false, std::sync::atomic::Ordering::Relaxed);
+        if cancelled && out.status == StepStatus::Ok {
+            // The flag fired after the last poll but before completion —
+            // surface the isolated state; nothing was published late.
+            return CteStepOutcome::diag(
+                &CteAdmissionError::new(CteCode::Cancelled, "request cancelled before completion"),
+                out.cache,
+                &obs,
+            );
+        }
         CteStepOutcome {
             peak_private_bytes: Some(peak),
             ..out
@@ -150,15 +191,19 @@ impl CteDriver {
             Err(e) => return CteStepOutcome::diag(&e, None, obs),
         };
         obs.set_counter("query_nodes", req.queries.len() as u64);
+        if self.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            let e = CteAdmissionError::new(CteCode::Cancelled, "request cancelled");
+            return CteStepOutcome::diag(&e, None, obs);
+        }
 
-        // Projection of the ORIGINAL source (consumer + callee decls).
+        // Projection of the ORIGINAL source (consumer + callee decls),
+        // under the deck's declared profile.
+        let ac_profile = match req.profile {
+            auto_cte_contract::CteSourceProfile::Core => SourceProfile::Core,
+            auto_cte_contract::CteSourceProfile::Record => SourceProfile::Record,
+        };
         let input = match obs.span("project", |_| {
-            parse_into_input_typed(
-                &req.source,
-                CTE_SEMA_PACKAGE,
-                &req.module,
-                SourceProfile::Core,
-            )
+            parse_into_input_typed(&req.source, CTE_SEMA_PACKAGE, &req.module, ac_profile)
         }) {
             Ok(i) => i,
             Err(e) => {
@@ -192,7 +237,22 @@ impl CteDriver {
         let mut cache_verdict: Option<&'static str> = None;
         let mut values_by_query: BTreeMap<String, CteValue> = plan.values.clone();
         for call in &plan.av_calls {
-            let manifest = match build_manifest(&input, &call.callee, &req.caps) {
+            // RAW args concretize NOW — every earlier call's value is
+            // present by execution order (legal DAG deps).
+            let mut concrete: Vec<CteValue> = Vec::with_capacity(call.args.len());
+            for a in &call.args {
+                match auto_cte_core::schedule::concretize(a, &values_by_query, &call.callee) {
+                    Ok(v) => concrete.push(v),
+                    Err(e) => return CteStepOutcome::diag(&e, cache_verdict, obs),
+                }
+            }
+            let manifest = match build_manifest(
+                &input,
+                &call.callee,
+                &req.caps,
+                &plan.meta_records,
+                &plan.meta_probes,
+            ) {
                 Ok(m) => m,
                 Err(m) => {
                     let e = CteAdmissionError::new(
@@ -207,7 +267,7 @@ impl CteDriver {
                 module: req.module.clone(),
                 package: CTE_SEMA_PACKAGE.into(),
                 callee: call.callee.clone(),
-                args_canonical: store::args_canonical(&call.args),
+                args_canonical: store::args_canonical(&concrete),
                 query_algo: CTE_QUERY_ALGO_ID.into(),
                 caps: req.caps.clone(),
                 engine: engine.clone(),
@@ -240,7 +300,14 @@ impl CteDriver {
                     if cache_verdict.is_none() {
                         cache_verdict = Some("stale");
                     }
-                    let exec = match self.execute_call(obs, &req, &input, call, cache_verdict) {
+                    let exec = match self.execute_call(
+                        obs,
+                        &req,
+                        &input,
+                        call,
+                        &concrete,
+                        cache_verdict,
+                    ) {
                         Ok(x) => x,
                         Err(out) => return out,
                     };
@@ -254,10 +321,11 @@ impl CteDriver {
                 if cache_verdict.is_none() {
                     cache_verdict = Some("miss");
                 }
-                let exec = match self.execute_call(obs, &req, &input, call, cache_verdict) {
-                    Ok(x) => x,
-                    Err(out) => return out,
-                };
+                let exec =
+                    match self.execute_call(obs, &req, &input, call, &concrete, cache_verdict) {
+                        Ok(x) => x,
+                        Err(out) => return out,
+                    };
                 let env = self.mint_envelope(&req, &identity, &exec, manifest);
                 if let Err(e) = obs.span("freeze_publish", |_| self.publish_env(&env)) {
                     return CteStepOutcome::diag(&e, cache_verdict, obs);
@@ -324,7 +392,7 @@ impl CteDriver {
 
         // ---- consumer: HIR backfill + re-verify -------------------------
         let (checked, hir_proof) = match obs.span("hir_backfill", |_| {
-            backfill_and_verify(&req.source, &req.module, &resolved, &ct_values)
+            backfill_and_verify(&req.source, &req.module, &resolved, &ct_values, req.profile)
         }) {
             Ok(x) => x,
             Err(e) => return CteStepOutcome::diag(&e, cache_verdict, obs),
@@ -367,17 +435,20 @@ impl CteDriver {
         req: &CteRequestV1,
         input: &SemaInput,
         call: &auto_cte_core::schedule::AvCall,
+        concrete: &[CteValue],
         cache_verdict: Option<&'static str>,
     ) -> Result<AvExecResult, CteStepOutcome> {
         let forbid = self.forbid_av;
+        let cancel = self.cancel.clone();
         let out = obs.span("av_execute", |_| {
             av_driver::execute_call(
                 &req.source,
                 &req.module,
                 input,
                 &call.callee,
-                &call.args,
+                concrete,
                 forbid,
+                &cancel,
             )
         });
         match out {
@@ -385,7 +456,18 @@ impl CteDriver {
                 obs.counter("ct_execute", 1);
                 Ok(x)
             }
-            Err(e) => Err(CteStepOutcome::diag(&e, cache_verdict, obs)),
+            Err(e) => {
+                // A trap/resource/cancelled outcome still REACHED the AV:
+                // the execution fact counts (admission/pipeline faults
+                // before the executor do not).
+                if matches!(
+                    e.code,
+                    CteCode::Trap(_) | CteCode::Resource(_) | CteCode::Cancelled
+                ) {
+                    obs.counter("ct_execute", 1);
+                }
+                Err(CteStepOutcome::diag(&e, cache_verdict, obs))
+            }
         }
     }
 

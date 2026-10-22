@@ -5,9 +5,9 @@
 //! body validation (never the .ad case format itself).
 
 use auto_cte_contract::{
-    CteAdmissionError, CteBindingV1, CteCode, CteExpectType, CteRequestV1, CteScalar, CteValue,
-    QueryNodeKind, QueryNodeV1, CTE_META_CAP, CTE_RECIPE, CTE_REQUEST_SCHEMA,
-    MAX_REQUEST_INPUT_BYTES,
+    CteAdmissionError, CteBindingV1, CteCode, CteExpectType, CteRequestV1, CteScalar,
+    CteSourceProfile, CteValue, QueryNodeKind, QueryNodeV1, CTE_META_CAP, CTE_RECIPE,
+    CTE_REQUEST_SCHEMA, MAX_REQUEST_INPUT_BYTES,
 };
 
 /// Parsed deck (identical shape to `CteRequestV1`).
@@ -97,6 +97,7 @@ fn parse_inner(text: &str) -> Result<Deck, DeckError> {
     idx += 1;
 
     let mut module: Option<String> = None;
+    let mut profile = CteSourceProfile::Core;
     let mut source: Option<String> = None;
     let mut entry: Option<String> = None;
     let mut native = true;
@@ -162,6 +163,10 @@ fn parse_inner(text: &str) -> Result<Deck, DeckError> {
                     }
                     caps.push(c.to_string());
                 }
+            }
+            "profile" => {
+                profile = CteSourceProfile::parse(rest)
+                    .ok_or_else(|| DeckError(format!("`profile {rest}` must be core|record")))?;
             }
             "native" => match rest {
                 "on" => native = true,
@@ -301,6 +306,7 @@ fn parse_inner(text: &str) -> Result<Deck, DeckError> {
         entry,
         caps,
         native,
+        profile,
     })
 }
 

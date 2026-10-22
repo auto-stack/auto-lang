@@ -12,6 +12,8 @@ pub enum CteCode {
     UnknownRecipe,
     InputTooLarge,
     TooManyQueries,
+    QueryDepth,
+    ConsumerFrontend,
     UnknownCapability,
     MetaNotGranted,
     UnknownQueryRef,
@@ -37,6 +39,8 @@ impl CteCode {
             CteCode::UnknownRecipe => "cte.request.recipe",
             CteCode::InputTooLarge => "cte.resource.input-size",
             CteCode::TooManyQueries => "cte.resource.query-nodes",
+            CteCode::QueryDepth => "cte.resource.query-depth",
+            CteCode::ConsumerFrontend => "cte.consumer.frontend",
             CteCode::UnknownCapability => "cte.capability.unknown",
             CteCode::MetaNotGranted => "cte.capability.meta",
             CteCode::UnknownQueryRef => "cte.query.unknown-ref",
@@ -49,7 +53,7 @@ impl CteCode {
             CteCode::BindingTypeMismatch => "cte.consumer.type-mismatch",
             CteCode::EntryMissing => "cte.request.entry",
             CteCode::CapabilityDenied => "cte.capability.denied",
-            CteCode::Trap(k) => match k.as_str() {
+            CteCode::Trap(k) => match k.trim_start_matches("av.trap.") {
                 "int-overflow" => "cte.trap.int-overflow",
                 "div-by-zero" => "cte.trap.div-by-zero",
                 "div-overflow" => "cte.trap.div-overflow",
@@ -103,6 +107,7 @@ impl CteAdmissionError {
                 | CteCode::BindingTypeMismatch
                 | CteCode::EntryMissing
                 | CteCode::CapabilityDenied
+                | CteCode::ConsumerFrontend
                 | CteCode::Trap(_)
         )
     }

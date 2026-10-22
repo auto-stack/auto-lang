@@ -12,6 +12,8 @@ pub fn build_manifest(
     input: &SemaInput,
     callee: &str,
     caps: &[String],
+    meta_records: &[String],
+    meta_probes: &[(String, String)],
 ) -> Result<CteDepsManifestV1, String> {
     let Some(start) = input.fns.iter().find(|f| f.name == callee) else {
         return Err(format!("callee `{callee}` is not in the projected input"));
@@ -61,16 +63,46 @@ pub fn build_manifest(
             .flat_map(|s| s.as_bytes().to_vec())
             .collect::<Vec<u8>>(),
     );
+    let meta_facts = derive_meta_facts(input, meta_records, meta_probes)?;
+    let mut meta_records = meta_records.to_vec();
+    meta_records.sort();
+    let mut meta_probes = meta_probes.to_vec();
+    meta_probes.sort();
     Ok(CteDepsManifestV1 {
         granularity: CteDepsGranularity::ClosureBodies,
         callee: start_name,
         closure,
         fn_fingerprints,
-        meta_records: Vec::new(),
+        meta_records,
+        meta_probes,
+        meta_facts,
         fn_candidates_fp,
         record_candidates_fp,
         caps: caps.to_vec(),
     })
+}
+
+/// Re-derive the canonical meta facts for the probed sets against the
+/// CURRENT input ("Pair#2", "Pair.zzz=false").
+pub fn derive_meta_facts(
+    input: &SemaInput,
+    meta_records: &[String],
+    meta_probes: &[(String, String)],
+) -> Result<Vec<String>, String> {
+    let mut facts = Vec::new();
+    for record in meta_records {
+        let fields = ac_sema_core::reflect::list_fields(input, record)
+            .ok_or_else(|| format!("meta record `{record}` no longer exists"))?;
+        facts.push(format!("{record}#{}", fields.len()));
+        for (r, f) in meta_probes {
+            if r == record {
+                let has = fields.iter().any(|x| x == f);
+                facts.push(format!("{r}.{f}={has}"));
+            }
+        }
+    }
+    facts.sort();
+    Ok(facts)
 }
 
 /// Stable short fingerprint of canonical bytes.
@@ -96,7 +128,7 @@ fn serde_json_fmt(m: &CteDepsManifestV1) -> String {
 /// A helper body/signature change, a candidate-set change (negative
 /// deps) or a caps change all invalidate.
 pub fn manifest_fresh(m: &CteDepsManifestV1, input: &SemaInput, caps: &[String]) -> bool {
-    match build_manifest(input, &m.callee, caps) {
+    match build_manifest(input, &m.callee, caps, &m.meta_records, &m.meta_probes) {
         Ok(current) => current == *m,
         Err(_) => false,
     }

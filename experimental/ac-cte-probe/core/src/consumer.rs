@@ -366,19 +366,25 @@ pub fn backfill_and_verify(
     module_path: &str,
     resolved: &[ResolvedBinding],
     values: &BTreeMap<String, CteValue>,
+    profile: auto_cte_contract::CteSourceProfile,
 ) -> Result<(CheckedModule, BTreeMap<String, String>), CteAdmissionError> {
-    let parts =
-        compile_parts_with(source, module_path, &[], SourceProfile::Core).map_err(|ds| {
-            let d = ds.first().cloned();
-            CteAdmissionError::new(
-                CteCode::Infra("frontend".into()),
-                format!(
-                    "consumer frontend: {}",
-                    d.map(|x| format!("{} {}", x.code, x.message))
-                        .unwrap_or_else(|| "failed".into())
-                ),
-            )
-        })?;
+    let ac_profile = match profile {
+        auto_cte_contract::CteSourceProfile::Core => SourceProfile::Core,
+        auto_cte_contract::CteSourceProfile::Record => SourceProfile::Record,
+    };
+    let parts = compile_parts_with(source, module_path, &[], ac_profile).map_err(|ds| {
+        let d = ds.first().cloned();
+        // A consumer-side source failure is a LANGUAGE diagnostic
+        // (parse/resolve stage) — never infra, never silently green.
+        CteAdmissionError::new(
+            CteCode::ConsumerFrontend,
+            format!(
+                "consumer frontend: {}",
+                d.map(|x| format!("{} {}", x.code, x.message))
+                    .unwrap_or_else(|| "failed".into())
+            ),
+        )
+    })?;
     let mut bundle = parts.bundle;
     let mut proof: BTreeMap<String, String> = BTreeMap::new();
 
@@ -446,10 +452,14 @@ pub fn backfill_and_verify(
         proof.insert(r.binding.ct_ref.clone(), render);
     }
 
-    let checked = verify::verify(bundle).map_err(|ds| {
+    let verify_result = match profile {
+        auto_cte_contract::CteSourceProfile::Core => verify::verify(bundle),
+        auto_cte_contract::CteSourceProfile::Record => verify::verify_record(bundle),
+    };
+    let checked = verify_result.map_err(|ds| {
         let d = ds.first().cloned();
         CteAdmissionError::new(
-            CteCode::Infra("verify".into()),
+            CteCode::ConsumerFrontend,
             format!(
                 "backfilled HIR re-verify failed: {}",
                 d.map(|x| format!("{} {}", x.code, x.message))

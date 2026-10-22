@@ -87,6 +87,7 @@ pub fn execute_call(
     callee: &str,
     args: &[CteValue],
     forbid_av: bool,
+    cancel: &CancelFlag,
 ) -> Result<AvExecResult, CteAdmissionError> {
     if forbid_av {
         return Err(CteAdmissionError::new(
@@ -180,7 +181,6 @@ pub fn execute_call(
         )
     })?;
 
-    let cancel = CancelFlag::new(false);
     let started = std::time::Instant::now();
     let (outcome, trace) = execute(&loaded, &ExecLimits::default(), &cancel);
     let wall_ms = started.elapsed().as_millis() as u64;
@@ -201,7 +201,12 @@ pub fn execute_call(
         }
         ExecOutcome::Trap { kind, .. } => Err(CteAdmissionError::new(
             CteCode::Trap(kind.code().to_string()),
-            format!("compiletime-executed callee trapped: {}", kind.code()),
+            // The CT call chain's call SOURCE rides the diagnostic (V-02).
+            format!(
+                "compiletime-executed callee `{callee}`({}) trapped: {}",
+                args.iter().map(lit).collect::<Vec<_>>().join(", "),
+                kind.code()
+            ),
         )),
         ExecOutcome::Resource { kind, message } => Err(CteAdmissionError::new(
             CteCode::Resource(format!("{kind:?}")),

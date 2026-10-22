@@ -14,6 +14,28 @@ pub const CTE_META_CAP: &str = "cte.meta.fields/v1";
 /// Fixed sema package domain for probe identities (module comes per deck).
 pub const CTE_SEMA_PACKAGE: &str = "cte817";
 
+/// Projection profile of the embedded source. `core` (default) is the
+/// i32/bool fn surface; `record` additionally allows `type` blocks so
+/// Meta queries have a record domain to read (T-03). The AV execution
+/// surface stays scalar either way — a record-profile deck may not carry
+/// `call` queries (admission rejects the mix).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, Default)]
+pub enum CteSourceProfile {
+    #[default]
+    Core,
+    Record,
+}
+
+impl CteSourceProfile {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "core" => Some(CteSourceProfile::Core),
+            "record" => Some(CteSourceProfile::Record),
+            _ => None,
+        }
+    }
+}
+
 /// Request-scoped budget ceilings (contract-decision §7; the AV/verify
 /// engine caps themselves are the D-798 frozen constants and are never
 /// restated here).
@@ -138,6 +160,8 @@ pub struct CteRequestV1 {
     /// Whether the native observable runs for query steps (default on;
     /// the turnaround tier turns it off — native is reported separately).
     pub native: bool,
+    /// Projection profile of the embedded source (default core).
+    pub profile: CteSourceProfile,
 }
 
 impl CteRequestV1 {

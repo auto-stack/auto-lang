@@ -177,7 +177,7 @@ fn cte_first_store_restore_new_process() {
 fn cte_first_av_forbidden_counter_control() {
     let tmp = tempfile::tempdir().unwrap();
     let store = tmp.path().join("store");
-    let work = tmp.path().join("native");
+    let _work = tmp.path().join("native");
 
     // With AV forbidden a miss CANNOT complete — controlled infra error.
     let mut d = CteDriver::with_store(&store, "cc").unwrap();

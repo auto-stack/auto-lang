@@ -250,6 +250,8 @@ fn fake_envelope(
             closure: vec!["f".into()],
             fn_fingerprints: vec![],
             meta_records: vec![],
+            meta_probes: vec![],
+            meta_facts: vec![],
             fn_candidates_fp: "x".into(),
             record_candidates_fp: "y".into(),
             caps: vec![],

@@ -52,6 +52,14 @@ pub struct CteDepsManifestV1 {
     /// Meta read sets (empty unless meta nodes executed): sorted record
     /// names whose FieldCount/HasField participated.
     pub meta_records: Vec<String>,
+    /// HasField probes: (record, field) pairs actually consulted — the
+    /// negative-dependency set (a probed-absent field APPEARING must
+    /// invalidate).
+    pub meta_probes: Vec<(String, String)>,
+    /// Derived meta facts rendered canonically ("Pair#2", "Pair.zzz=false")
+    /// — freshness re-derives them against the CURRENT input; any field
+    /// add/remove flips a fact and invalidates the frozen value.
+    pub meta_facts: Vec<String>,
     /// Negative-dependency candidate-set fingerprints (fn domain, record
     /// domain) — a candidate-set change invalidates negative deps.
     pub fn_candidates_fp: String,

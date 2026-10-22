@@ -15,6 +15,24 @@
 > 816 分支不触 `crates/auto-test-case/**` 与 `test_cases/**`（diff 空）、
 > 818 暂停未合入——按并行合同 817 为下一位注册者，818 后续同步复验。
 
+> **r1.2（2026-10-23，T-03 实施修订）**：三处增量，均为实现面而非
+> 冻结值变更——(1) recipe IR 增 `profile core|record` 字段（默认
+> core）：Core/Scalar 源码文法无 record 声明（`type` 块仅 Record
+> profile，且 scalar AV 面拒绝 `type`），Meta 查询的 record 域经
+> record-profile 纯 Meta deck 走通（AV 调用查询在 record deck 上
+> admission 拒绝——"Meta-as-AV-arg" 的源级组合由负依赖事实入
+> manifest 间接覆盖，单元级直接覆盖）；(2) 依赖 manifest 增
+> `meta_probes`/`meta_facts`（HasField 探针负依赖集 + 派生事实
+> "Pair#2"/"Pair.zzz=false"），新鲜性重导出比较——字段增删/探针
+> 缺席字段出现均失效；(3) 诊断码增 `cte.resource.query-depth`（引
+> 用链深度 ≤128，与节点上限 128 同值时为不变量后备）与
+> `cte.consumer.frontend`（consumer 侧源码失败=语言类诊断，非
+> infra）。调度语义细化：AV 调用参数保持 RAW、按声明序在执行点
+> 具体化（对已完成调用的引用=合法 DAG 依赖，非环）；环诊断走
+> 全链回溯命名闭合边；`ct_execute` 对到达 AV 的 trap/resource/
+> cancelled 结果同样计数（执行事实）。
+
+
 2026-10-20，work stage T-01。本文件冻结 `cte/scalar-query-v1` 探针的逻辑
 Schema、请求/查询 IR、consumer 双向绑定映射、权限、预算口径与资源归属、
 参考负载与独立 oracle、AutoDown 注册映射。T-02..T-08 在此基础上实现并验收；
