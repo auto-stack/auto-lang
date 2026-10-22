@@ -701,7 +701,7 @@ fn session_serve() -> ! {
     use auto_av_core::av::{CancelFlag, ExecLimits};
     use auto_av_core::contract::{ExecOutcome, Value};
     use auto_av_probe::formal_worker::{
-        ClosedMsg, EditOp, EditResultMsg, ReadyMsg, WorkerReply, WorkerRequest,
+        ClosedMsg, DispatchedIdentity, EditOp, EditResultMsg, ReadyMsg, WorkerReply, WorkerRequest,
     };
     use auto_av_probe::session::{warmup, FunctionIncrementalSession};
     use std::io::BufRead as _;
@@ -757,6 +757,18 @@ fn session_serve() -> ! {
                     functions: s.function_names().len(),
                     revision: s.revision(),
                     value,
+                    // B3-C03: the dispatched-payload identities of the
+                    // snapshot THIS run executed — the parent's stability
+                    // baseline (recorded inside `run`, at the consumer).
+                    dispatched: s
+                        .last_run_dispatched_identities()
+                        .into_iter()
+                        .map(|(name, ptr, generation)| DispatchedIdentity {
+                            name,
+                            ptr,
+                            generation,
+                        })
+                        .collect(),
                 });
                 let _ = session.insert(s);
                 writeln!(out, "{}", serde_json::to_string(&reply).unwrap()).unwrap();
@@ -800,6 +812,19 @@ fn session_serve() -> ! {
                             worker_edit_to_result_us: total,
                             counters: s.counters().snapshot(),
                             worker_peak_bytes: peak.current_peak(),
+                            // B3-C03: what the LAST `run` actually
+                            // dispatched — recorded at the consumer, so
+                            // the report can never describe a program the
+                            // AV did not just execute through the session.
+                            dispatched: s
+                                .last_run_dispatched_identities()
+                                .into_iter()
+                                .map(|(name, ptr, generation)| DispatchedIdentity {
+                                    name,
+                                    ptr,
+                                    generation,
+                                })
+                                .collect(),
                         }
                     }
                     Err(e) => {

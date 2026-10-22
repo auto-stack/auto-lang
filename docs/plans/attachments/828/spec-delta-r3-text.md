@@ -24,8 +24,10 @@
 - 编辑热路径**不再构造全部 stub Program**：ac-syntax 增量重扫（`incremental_reparse`）
   →单声明严格投影（`project_decl_strict`）→`prepare_candidate_document`（真单 body
   resolve/typecheck/emit 事务：接口目录脚手架、恰一 body 发射、返回前恢复 current）
-  →`prepare_function_candidate`（verify_function 凭证门）→ miss 全链
-  （lower/mir_verify/abc/decode/admit）或内容命中复用已验对象（零重验证）。
+  →FnEnv 接口门→**内容版本判 hit/miss**——hit 复用已验对象（零重验证）；miss 才
+  `verify_function` 凭证门→全链（lower/mir_verify/abc/decode/admit）。会话生产
+  consumer 不经 `prepare_function_candidate`（那是 ac-core 的组合公开接缝=document
+  +verify；B3-C05 更正早期把两者顺序写反的表述）。
 - 结构门：生产者窗口内改函恰 +1×4 阶段（project/resolve/typecheck/hir_build）、
   其余函数全零、整模块轴零；强制走旧整 Program 管线时同门必红（永久负控）。
 
@@ -136,13 +138,16 @@ snapshot-cst.md 在"增量"相关节后追加：
 ```markdown
 828 已交付 source→函数代码安装完整切片：常驻会话内未改函数 HIR/MIR/代码 identity/
 代际不变、未改生产阶段/产物 IO 为 0；结构与时间双门（正式战役=常驻 worker+IPC+父侧
-judge，计时窗=编辑入队→父侧校验发布，n≥30，P95<1000ms 且全对且结构绿且 raw 全留）。
+judge，计时窗=编辑入队→父侧全部校验完成为终点，n≥30，P95<1000ms 且全对且结构绿——
+结构含修订进度/确切安装目标/未改函数派发载荷身份稳定三门；完整观测与逐样本 raw 经
+write_evidence 落盘留存，成功失败同留）。
 资源按 798 §5.9 双线预算硬门：A 线前端编译瞬态隔离测量 ≤224MiB；B 线探针残差
 （总峰值−A 归因）≤128MiB，缺归因整峰计 B。存储轴：manifest format=2 双指纹键
 （body+规范化 required 闭包）；单元 ABC/sidecar store-internal 挂 required 边，
 superseded 根发布点退役；A07 HIR soft root 有界（每函数至多一个当前 cv root，
-supersession 退役/回访重挂/restart 采纳置追踪器）；512 真实修订+周期 GC 存储水位
-有界（不随编辑数增长），恢复重验、旧 pin 保活/释放回收、用户哨兵不动。
+supersession 退役/回访重挂/restore 按行存在置归属追踪器——与 untrusted HIR 可采纳性
+分轴）；512 真实修订+周期 GC 存储水位有界（不随编辑数增长），恢复重验、旧 pin
+保活/释放回收、用户哨兵不动。
 ```
 
 ## SD-06（modify）`docs/specs/auto-test-case/architecture.md`
@@ -151,9 +156,13 @@ supersession 退役/回访重挂/restart 采纳置追踪器）；512 真实修�
 
 ```markdown
 PLAN-828 正式持续会话入口：`av_probe_worker session-serve`（一进程一会话：init/ready
-恒定身份、编辑流发布已验证当前值+分相计时+计数快照+worker 线内存峰值、close），
-父侧 judge 拥有测量窗（编辑入队→父侧校验发布，IPC 在窗内）与独立期望；双门=P95<
-gate ∧ 全对 ∧ 结构（未改零阶段/零整模块/恰一安装）∧ 完整性，gate=0 必红；worker
-中途死→缺样本红完整性，不静默缩战役；初始化排除单列、ready 先判；`frontend-
-attribution` 子命令为双线预算 A 线隔离测量口。one-shot run/recipe 保留不变。
+恒定身份+初始派发身份基线、编辑流发布已验证当前值+分相计时+计数快照+派发载荷身份
+（对象地址+代际）+worker 线内存峰值、close），父侧 judge 拥有测量窗（编辑入队→
+父侧**全部校验完成后**为终点，IPC 与逐请求校验在窗内）与独立期望；每发布绑定期望
+修订（revision==req_id）与确切安装目标（`expected_install`），未改函数派发身份跨修订
+稳定；双门=P95<gate ∧ 全对 ∧ 结构（未改零阶段/零整模块/恰一确切安装 ∧ 修订/目标/身份
+门）∧ 完整性，gate=0 必红；worker 中途死→缺样本红完整性，不静默缩战役；初始化排除
+单列（init_ms）、ready 先判；完整观测（逐样本计数差分/诊断/身份/worker 相位与
+输入/二进制身份）经 `JudgeReport::write_evidence` 落盘留存（成功与失败同留）；
+`frontend-attribution` 子命令为双线预算 A 线隔离测量口。one-shot run/recipe 保留不变。
 ```

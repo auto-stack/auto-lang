@@ -358,6 +358,15 @@ pub struct FunctionIncrementalSession {
     /// refuses new work and has released its bounded content history and
     /// store handle; snapshots pinned elsewhere stay alive and correct.
     closed: bool,
+    /// B3-C03 (F-02 axis AT THE REAL CONSUMER): the dispatched-payload
+    /// identities (object address + generation per function) of the
+    /// snapshot the LAST `run` actually executed. Recording happens inside
+    /// `run` itself, so the observation cannot drift from what the AV
+    /// consumed: a caller that executes some OTHER program (e.g. a deep
+    /// copy) without going through `run` leaves this at the previous
+    /// revision — which the formal judge's target-must-change-or-reuse
+    /// rule catches.
+    last_run_identities: std::cell::RefCell<Vec<(String, u64, u64)>>,
 }
 
 /// Warm-up: the one whole-module compile of the session's life (cold path;
@@ -582,6 +591,7 @@ pub fn warmup(
         counters: SessionCounters::default(),
         store: None,
         closed: false,
+        last_run_identities: std::cell::RefCell::new(Vec::new()),
     })
 }
 
@@ -960,6 +970,15 @@ pub fn restore(
         let Ok(Some(bytes)) = get_enveloped_opt(&store, &key, "A07", &expect) else {
             continue;
         };
+        // B3-C01: root OWNERSHIP is established by the row's EXISTENCE
+        // under this store/project identity — INDEPENDENT of whether the
+        // untrusted HIR payload itself passes adoption. The retirement
+        // tracker and the cache's adoptability are separate concerns: a
+        // legal span rejection (repositioned source, byte-identical
+        // content version) used to leave the tracker unset, so the next
+        // supersession published a new row without retiring this one —
+        // the per-function soft-root bound leaked on every such restore.
+        rec.persisted_hir_cv = Some(cv.clone());
         let Ok(a) = decode_fn_hir(&bytes) else {
             session.counters.bump("restore_hir_skip:codec");
             continue;
@@ -1054,11 +1073,9 @@ pub fn restore(
         rec.hir_body = adopted;
         rec.producing_defs = cold_def_names.clone();
         rec.producing_types = cold_type_names.clone();
-        // The adopted row IS this content version's current store
-        // deposit — seeding the tracker keeps the T-07 bounded soft-root
-        // policy exact across restarts (the next supersession retires
-        // THIS cv's root, not none).
-        rec.persisted_hir_cv = Some(cv.clone());
+        // B3-C01: the ownership tracker was already seeded at the row
+        // READ above (existence, not adoptability); adoption only swaps
+        // the resident HIR body object.
         hir_adopted += 1;
     }
     session.counters.set("restore_hir_adopted", hir_adopted);
@@ -1166,6 +1183,23 @@ impl FunctionIncrementalSession {
     /// history (body+code pairs). These are the RESIDENT structures whose
     /// real-peak attribution T-08's formal measurement samples; the
     /// inventory itself is the bounded-watermark oracle (V-07).
+    /// B3-C03 (F-02 axis at the real consumer): the identity — object
+    /// address + generation — of every function's dispatched payload as
+    /// recorded by the LAST `run` (the snapshot the AV actually executed
+    /// through this session). A revision that deep-copies an unchanged
+    /// function's payload and executes the copy WITHOUT going through
+    /// `run` leaves this at the previous revision, which the formal
+    /// judge's target-must-change-or-reuse rule catches even though
+    /// values and stage counters stay correct.
+    pub fn last_run_dispatched_identities(&self) -> Vec<(String, u64, u64)> {
+        self.last_run_identities.borrow().clone()
+    }
+
+    /// F-09 resident accounting: the axes §5.5 names — per-function HIR
+    /// bodies, the cold re-verification bundle, and the bounded content
+    /// history (body+code pairs). These are the RESIDENT structures whose
+    /// real-peak attribution T-08's formal measurement samples; the
+    /// inventory itself is the bounded-watermark oracle (V-07).
     pub fn resident_inventory(&self) -> ResidentInventory {
         ResidentInventory {
             functions: self.fns.len(),
@@ -1216,6 +1250,15 @@ impl FunctionIncrementalSession {
                 ExecTrace::default(),
             );
         }
+        // B3-C03: record WHAT THIS RUN DISPATCHES — the observation is
+        // taken at the real consumer, so it can never describe a program
+        // the AV did not just execute through this call.
+        *self.last_run_identities.borrow_mut() = self
+            .current
+            .code()
+            .iter()
+            .map(|c| (c.name().to_string(), Arc::as_ptr(c) as u64, c.generation()))
+            .collect();
         execute_program(&self.current, limits, cancel)
     }
 

@@ -44,6 +44,9 @@ fn formal_edits(revisions: u32) -> Result<Vec<JudgeEdit>, String> {
             end,
             insert: String::from_utf8(insert).map_err(|e| e.to_string())?,
             expected: rev.expected_main,
+            // B3-C02: the parent's independent install-target expectation
+            // — the frozen generator only ever edits fn_037's multiplier.
+            expected_install: "d_fn_037".to_string(),
         });
         prev = rev;
     }

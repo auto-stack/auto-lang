@@ -13,12 +13,13 @@
 |---|---|
 | `warmup(src, entry_def_id, caps)` | 冷启动：一次整模块编译 + 单元准入 + `link_with_maps` 快照 revision 0。`entry` 用 def id 约定（`d_main`） |
 | `warmup_persisted(src, entry, caps, store_root, project)` | 冷启动 + A09 单元/sidecar/会话 manifest 落盘（798 同一身份方案，与 Driver 写入的 store 互通） |
-| `restore(src, entry, caps, store_root, project)` | 温恢复：先消费 manifest 根（`restore_manifest_matched/absent/rejected`），再逐单元 decode+verify_abc+载荷名核对+sidecar 适用性（primary→repair），任何 miss fail-closed 回冷；恢复会话继续持有 store（后续编辑 changed-only 再持久化），A07 HIR 采纳成功时置 `persisted_hir_cv` 追踪器 |
+| `restore(src, entry, caps, store_root, project)` | 温恢复：先消费 manifest 根（`restore_manifest_matched/absent/rejected`），再逐单元 decode+verify_abc+载荷名核对+sidecar 适用性（primary→repair），任何 miss fail-closed 回冷；恢复会话继续持有 store（后续编辑 changed-only 再持久化）；A07 行**存在**即置 `persisted_hir_cv` 归属追踪器（B3-C01：root 归属与 untrusted HIR 可采纳性分轴——合法 span 拒绝不漏退役） |
 | `prepare_edit(start,end,insert)` / `commit(PreparedEdit)` / `cancel_prepared(PreparedEdit)` / `edit(...)` | 编辑坐标=旧源字节；`prepare_edit` 产 `PreparedEdit`（候选自持新 body/owner/基面；不动当前修订；`code_weak()` 观测口）；commit=owner/基面/stale/closed 守卫后**同一发布点**原子更新 root/source/revision/env 槽位；`edit`=prepare+commit 直通 |
 | `run(limits, cancel)` / `current()` | 顶层调用捕获当前快照；`execute_program(&pinned)` 固定任意旧快照 |
 | `counters()` / `STAGES` | 11 轴 per-fn 计数 + `reuse_hit` + `whole_module_*` 结构零 + `syntax_*` 证据 + `hir_soft_root_retired/rerooted`/`persist_error` 等存储轴 |
 | `query_body_fact(consumer, callee)` | body 事实查询（闭会话拒；凭据属具体受检产物，重读不刷新） |
-| `resident(name)` / `resident_weak(name, gen)` / `resident_inventory()` / `resident_cold_hir_nodes()` | 身份/Weak 观测/驻留盘点（水位轴） |
+| `resident(name)` / `resident_weak(name)` / `resident_inventory()` / `resident_cold_hir_nodes()` | 身份/Weak 观测/驻留盘点（水位轴）；`resident_weak(name)` 观测**当前驻留对**，返回 `Option<(Weak<Body>, Weak<FunctionCode>)>`（B3-C05 更正：无 generation 参数） |
+| `last_run_dispatched_identities()` | B3-C03（F-02 轴在真实消费处）：**最近一次 `run` 实际执行的快照**逐函数派发载荷身份（对象地址+代际）`Vec<(def_id, ptr, generation)>`——记录发生在 `run` 内部（观测不可与实际执行脱钩），正式父侧 judge 以跨修订稳定性+目标必须换对象或记录 reuse_hit 判决 |
 | `close()` / `closed()` / `session_id()` / `function_names()` / `history_len()` / `line_col(off)` / `src()` / `revision()` | 终态与来源查询；close 释放 env/store 拥有引用（幂等；外 pin 存活） |
 | `HISTORY_CAP=32` | **每函数**内容历史上界（r3 更正 r2 表述）：有界历史真实淘汰运行（512 编辑不随编辑数增长）；驻留当前修订条目永不逐出 |
 

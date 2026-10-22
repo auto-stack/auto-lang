@@ -29,18 +29,21 @@ fn small_config(gate_ms: f64) -> JudgeConfig {
                 end: x3 + 1,
                 insert: "4".into(),
                 expected: 28,
+                expected_install: "d_helper".into(),
             },
             JudgeEdit {
                 start: x3,
                 end: x3 + 1,
                 insert: "5".into(),
                 expected: 33,
+                expected_install: "d_helper".into(),
             },
             JudgeEdit {
                 start: x3,
                 end: x3 + 1,
                 insert: "3".into(),
                 expected: 23,
+                expected_install: "d_helper".into(),
             },
             // An edit of a DIFFERENT function: main's own result is
             // unchanged; the install set stays exactly that function.
@@ -49,6 +52,7 @@ fn small_config(gate_ms: f64) -> JudgeConfig {
                 end: t9 + 1,
                 insert: "8".into(),
                 expected: 23,
+                expected_install: "d_tail".into(),
             },
         ],
         gate_ms,
@@ -133,6 +137,7 @@ fn t08_judge_gate_negatives_each_axis_red() {
         end: (1 << 40) + 4,
         insert: "x".into(),
         expected: 23,
+        expected_install: "d_helper".into(),
     };
     let report = run_formal_session_judge(&worker_exe(), &cfg).expect("judge survives the loss");
     assert!(!report.gate_pass);
@@ -200,6 +205,19 @@ fn t08_formal_campaign_v08_dual_gate_30_revisions() {
         "every revision matched its independent expectation"
     );
     assert!(report.structural_ok);
+    // B3-C02/C03: every publication bound to its expected revision and
+    // install target, and every unchanged function dispatched the SAME
+    // payload object across the whole campaign.
+    assert!(report
+        .samples
+        .iter()
+        .all(|s| s.revision_ok && s.install_ok && s.identity_ok));
+    assert!(report
+        .samples
+        .iter()
+        .all(|s| s.expected_install == "d_fn_037"));
+    // B3-C04: the initialization window is single-listed and excluded.
+    assert!(report.init_ms > 0.0);
     assert!(
         report.p95_ms < FORMAL_GATE_MS,
         "P95 {:.1} ms must be < {:.0} ms",
@@ -210,6 +228,29 @@ fn t08_formal_campaign_v08_dual_gate_30_revisions() {
     assert!(report.worker_peak_bytes > 0 && report.parent_peak_bytes > 0);
     // p50 <= p95 <= p99 sanity over the same samples.
     assert!(report.p50_ms <= report.p95_ms && report.p95_ms <= report.p99_ms);
+
+    // B3-C04: the formal entry never generates-and-drops its raw — the
+    // full report and every sample line (success and failure alike) are
+    // written to a durable evidence directory and asserted.
+    let evidence_dir = std::env::var_os("PLAN828_FORMAL_EVIDENCE")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("target")
+                .join("828-formal-evidence")
+        });
+    let report_path = report
+        .write_evidence(&evidence_dir)
+        .expect("evidence written");
+    let samples_path = evidence_dir.join("formal-samples.jsonl");
+    assert!(report_path.is_file() && samples_path.is_file());
+    let persisted = std::fs::read_to_string(&samples_path).expect("samples readable");
+    assert_eq!(
+        persisted.lines().count(),
+        report.samples.len(),
+        "every raw sample line persisted"
+    );
+    println!("formal evidence: {}", evidence_dir.display());
 
     // PLAN-828 T-07 dual-line budget verdict (798 r5 §5.9 口径, now
     // HARD-gated on the campaign's own measurements): Line A = the
