@@ -150,6 +150,16 @@ members = [
     # "crates/xdm-gen",  # Temporarily disabled: broken dependency paths + gitignored
 ]
 exclude = [
+    # PLAN-817: every experimental/ probe tree is an INDEPENDENT Cargo
+    # workspace (ac-core/ac-syntax/ac-artifact-probe/ac-semantics/
+    # ac-av-probe/auto-abi-probe/ac-case-worker/ac-mir-native/
+    # ac-cte-probe). Without this exclusion, cargo associates their
+    # nested-workspace path dependencies with THIS root during fresh
+    # resolution, breaking workspace-inheritance manifests (observed:
+    # ac-syntax members under a graph containing auto-av-probe +
+    # ac-artifact-probe, cargo 1.98). Same pattern as
+    # examples/rust-workspace below.
+    "experimental",
     # Generated Rust UI examples live in their own workspace with a shared
     # target-dir pointing back at the main workspace target/.
     "examples/rust-workspace",

@@ -1,5 +1,20 @@
 # PLAN-817 contract-decision.md — T-01 冻结决策（CTE 查询/冻结缓存合同）
 
+> **r1.1（2026-10-23，T-02 开工复验）**：D-798 已满足（798 archived、
+> merge 收据 `d58a77a56`/`fe1eb28a2`、Spec `docs/specs/auto-mir/`+`auto-av/`
+> 齐全）。按 §2 复验义务重读合入 API，漂移三处，其余零漂移：
+> (1) `ABC_SCHEMA="auto.abc.av-probe/2"`、`ABC_SEMANTICS=2`（798 交付期
+> wire 升 /2；MIR `/1`、`AV_PROFILE`、全部 `MAX_*` cap 不变）；
+> (2) 新增常量 `SLOT_CELL_BYTES`、`MAX_VERIFY_ANALYSIS_BYTES=16MiB`（r3
+> 内存守卫常量化，入 §7 暂存台账口径）；
+> (3) 828 合入新增 `probe/src/{session,formal_worker}.rs` 函数级增量
+> 会话面（不在 817 消费面，不引用）。消费 API
+> `execute_entry/ExecLimits/LoadedModule/verify_abc_bytes/lower_checked`
+> 签名与 T-01 观察一致。注册窗口核验：797/798 已合入（master 表=
+> `sema/query-v1, abi/interop-v1, ac-av/core-run-v1`）、814/815 归档、
+> 816 分支不触 `crates/auto-test-case/**` 与 `test_cases/**`（diff 空）、
+> 818 暂停未合入——按并行合同 817 为下一位注册者，818 后续同步复验。
+
 2026-10-20，work stage T-01。本文件冻结 `cte/scalar-query-v1` 探针的逻辑
 Schema、请求/查询 IR、consumer 双向绑定映射、权限、预算口径与资源归属、
 参考负载与独立 oracle、AutoDown 注册映射。T-02..T-08 在此基础上实现并验收；

@@ -41,6 +41,7 @@ pub mod a2r;
 pub mod abi;
 pub mod ac;
 pub mod ac_av;
+pub mod ac_cte;
 mod ac_protocol;
 pub mod avm;
 pub mod materialize;
@@ -737,6 +738,19 @@ fn dispatch_check(
         // dispatch to their recipe module; judgement is entirely
         // parent-side. PLAN-797 T-06 appends abi/interop-v1 under the
         // same contract (never a second runner).
+        // PLAN-817: cte/scalar-query-v1 routes to its own adapter.
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref() == Some(ac_cte::CTE_RECIPE) =>
+        {
+            ac_cte::run_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
         (Adapter::Probe, auto_test_case::contract::Action::Run)
             if check.options.probe_recipe.as_deref() == Some(ac_av::AV_RECIPE) =>
         {

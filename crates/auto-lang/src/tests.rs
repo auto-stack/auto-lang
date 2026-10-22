@@ -11,6 +11,7 @@ mod ac_case_tests;
 // adapter 同族，PLAN-814 T-04 归属勘误)。
 #[cfg(feature = "test-cases")]
 mod ac_av_probe_tests;
+mod ac_cte_probe_tests;
 // PLAN-796: probe adapter integration (real sema worker + restart boundary)
 // probe_adapter_tests 门控（815 T-04/814 T-04 两计划同款修复，两侧独立
 // 落地）：消费 test-cases feature 门内的 auto_test_case（兄弟模块同款

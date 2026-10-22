@@ -1,0 +1,20 @@
+# PLAN-817 first vertical deck (bool): cte_flag(9) -> true backfilled
+# into main.gate; the branch flips (native exit 2 -> 1).
+deck cte817/1
+module main
+source <<
+fn cte_flag(x int) bool {
+    return x < 10
+}
+
+fn main() int {
+    let gate = false
+    if gate {
+        return 1
+    }
+    return 2
+}
+>>
+query q1 = call cte_flag(9)
+bind main.gate = q1 expect bool placeholder false
+entry main

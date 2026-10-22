@@ -1,0 +1,14 @@
+# PLAN-817 ac-cte probe suite — formal AutoDown execution (T-02 minimal
+# registration; the full positive/negative matrix arrives with T-06).
+#
+# Recipe cte/scalar-query-v1 on the unified probe/run seam (PLAN-796
+# T-06 seam; PLAN-788 TestCase v2 runner). Worker: cte_probe_worker
+# case-serve (cteworker/1). All judgement parent-side; independent
+# oracles are hand-computed (20+22=42).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ac-cte", include: [
+  "cte-first-sum42.case.ad",
+  "cte-first-bool-branch.case.ad",
+] }
+```

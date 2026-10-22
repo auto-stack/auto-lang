@@ -164,6 +164,7 @@ pub fn check_with_families(
     let mut current_ac: Option<BTreeMap<String, String>> = ac_axes;
     let mut current_probe_abi: Option<std::collections::BTreeMap<String, String>> = None;
     let mut current_probe_av: Option<BTreeMap<String, String>> = None;
+    let mut current_probe_cte: Option<BTreeMap<String, String>> = None;
     let mut current_probe: Option<BTreeMap<String, String>> = probe_axes;
     let current = current_identities(suite_path, &limits)?;
     let new_toolchain = toolchain_axes(&limits);
@@ -283,13 +284,28 @@ pub fn check_with_families(
                         })
                     })
                     .unwrap_or(false);
-            // F-797-R4-11: the two probe recipes have DIFFERENT identity
-            // maps; caching them in ONE slot made mixed suites
+            let cte_probe_row = is_probe
+                && r.get("native")
+                    .and_then(|n| n.get("toolchain"))
+                    .and_then(|t| t.as_array())
+                    .map(|arr| {
+                        arr.iter().any(|p| {
+                            p[0].as_str() == Some("recipe")
+                                && p[1].as_str()
+                                    == Some(crate::test_cases::ac_cte::CTE_RECIPE)
+                        })
+                    })
+                    .unwrap_or(false);
+            // F-797-R4-11: probe recipes have DIFFERENT identity maps;
+            // caching them in ONE slot made mixed suites
             // order-dependent (first recipe's map served the other's
             // rows). Separate lazies keep each family exact.
             let current = if abi_probe_row {
                 current_probe_abi
                     .get_or_insert_with(crate::test_cases::abi::current_toolchain_identity)
+            } else if cte_probe_row {
+                current_probe_cte
+                    .get_or_insert_with(crate::test_cases::ac_cte::current_toolchain_identity)
             } else if av_probe_row {
                 current_probe_av
                     .get_or_insert_with(crate::test_cases::ac_av::current_toolchain_identity)

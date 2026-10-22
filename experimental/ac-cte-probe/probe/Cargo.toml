@@ -1,0 +1,22 @@
+[package]
+name = "auto-cte-probe"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-817 CTE probe: AV driver over the merged 798 execution services, frozen-value store over the PLAN-783 ManagedStore, consumer driver, cteworker/1 worker and observations."
+publish = false
+
+[dependencies]
+auto-cte-contract = { path = "../contract" }
+auto-cte-core = { path = "../core" }
+auto-av-core = { path = "../../ac-av-probe/core" }
+auto-av-probe = { path = "../../ac-av-probe/probe" }
+auto-ac-prototype = { path = "../../ac-core" }
+ac-sema-core = { path = "../../ac-semantics/core", features = ["core-ast"] }
+ac-sema-contract = { path = "../../ac-semantics/contract" }
+ac-artifact-probe = { path = "../../ac-artifact-probe" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+
+[dev-dependencies]
+tempfile = "3"

@@ -255,6 +255,8 @@ pub struct Options {
     pub probe_abi: Option<ProbeAbiSpec>,
     /// probe only (PLAN-798): ac-av/core-run-v1 binding.
     pub probe_av: Option<ProbeAvSpec>,
+    /// probe only (PLAN-817): cte/scalar-query-v1 binding.
+    pub probe_cte: Option<ProbeCteSpec>,
 }
 
 impl Default for Options {
@@ -275,6 +277,7 @@ impl Default for Options {
             probe_sema: None,
             probe_abi: None,
             probe_av: None,
+            probe_cte: None,
         }
     }
 }
@@ -1079,7 +1082,7 @@ fn decode_options(
         Adapter::Syntax => &["grammar", "edits"],
         // PLAN-796 T-06 frozen probe options: the registered recipe id,
         // the declarative step sequence, and the sema/query-v1 binding.
-        Adapter::Probe => &["recipe", "steps", "sema", "abi", "av"],
+        Adapter::Probe => &["recipe", "steps", "sema", "abi", "av", "cte"],
     };
     let f = Fields::new(path, pairs, known)?;
     let module_name = opt_str(&f, "module_name")?;
@@ -1355,8 +1358,8 @@ fn decode_options(
         (None, None)
     };
 
-    let (probe_recipe, probe_steps, probe_sema, probe_abi, probe_av) = if adapter == Adapter::Probe
-    {
+    let (probe_recipe, probe_steps, probe_sema, probe_abi, probe_av, probe_cte) =
+        if adapter == Adapter::Probe {
         let recipe = req_str(&f, "recipe")?;
         if !REGISTERED_PROBE_RECIPES.contains(&recipe.as_str()) {
             return Err(err(
@@ -1470,6 +1473,14 @@ fn decode_options(
                     if out.is_empty() {
                         return Err(err(&f.path_of("steps"), "steps must not be empty"));
                     }
+                }
+                if recipe == "cte/scalar-query-v1"
+                    && !matches!(out.last(), Some(ProbeStep::Query))
+                {
+                    return Err(err(
+                        &f.path_of("steps"),
+                        "cte/scalar-query-v1 step sequences must end with a query step (the judged step)",
+                    ));
                 }
                 out
             }
@@ -1610,9 +1621,72 @@ fn decode_options(
                 })
             }
         };
-        (Some(recipe), Some(steps), sema, abi, av)
+        // PLAN-817: the cte binding (entry/caps/session — the query and
+        // binding tables live in the atom-data deck the worker owns).
+        let cte = match f.sub("cte") {
+            None => {
+                if recipe == "cte/scalar-query-v1" {
+                    return Err(err(
+                        &f.path_of("cte"),
+                        "cte/scalar-query-v1 requires a cte binding",
+                    ));
+                }
+                None
+            }
+            Some(v) => {
+                if recipe != "cte/scalar-query-v1" {
+                    return Err(err(
+                        &f.path_of("cte"),
+                        format!(
+                            "the cte binding belongs to cte/scalar-query-v1; it is not valid for recipe {:?}",
+                            recipe
+                        ),
+                    ));
+                }
+                let cpath = f.path_of("cte");
+                let pairs = as_obj(v, &cpath)?;
+                let sf = Fields::new(&cpath, pairs, &["entry", "caps", "session"])?;
+                let entry = req_str(&sf, "entry")?;
+                let session = match sf.sub("session") {
+                    None => None,
+                    Some(v) => {
+                        let sid = as_str(v, &sf.path_of("session"))?.to_string();
+                        if sid.is_empty()
+                            || sid.len() > 64
+                            || !sid
+                                .chars()
+                                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                        {
+                            return Err(err(
+                                &sf.path_of("session"),
+                                "cte session id must be 1-64 chars of [A-Za-z0-9_-]",
+                            ));
+                        }
+                        Some(sid)
+                    }
+                };
+                let caps = match sf.sub("caps") {
+                    None => Vec::new(),
+                    Some(v) => {
+                        let list = as_list(v, &sf.path_of("caps"))?;
+                        let mut out = Vec::new();
+                        for (i, item) in list.iter().enumerate() {
+                            let cpath = format!("{}.caps[{}]", cpath, i);
+                            out.push(as_str(item, &cpath)?.to_string());
+                        }
+                        out
+                    }
+                };
+                Some(ProbeCteSpec {
+                    entry,
+                    caps,
+                    session,
+                })
+            }
+        };
+        (Some(recipe), Some(steps), sema, abi, av, cte)
     } else {
-        (None, None, None, None, None)
+        (None, None, None, None, None, None)
     };
 
     Ok(Options {
@@ -1631,6 +1705,7 @@ fn decode_options(
         probe_sema,
         probe_abi,
         probe_av,
+        probe_cte,
     })
 }
 
@@ -1646,8 +1721,14 @@ pub struct SyntaxEdit {
 /// Registered probe recipes (PLAN-796 T-06 freeze). A case may only name
 /// one of these — never an executable, path or shell. 797 appends its ABI
 /// recipe here under the same contract (single writer per window).
-pub const REGISTERED_PROBE_RECIPES: &[&str] =
-    &["sema/query-v1", "abi/interop-v1", "ac-av/core-run-v1"];
+pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
+    "sema/query-v1",
+    "abi/interop-v1",
+    "ac-av/core-run-v1",
+    // PLAN-817: AV-driven CTE query + frozen cache. Appended in the
+    // post-797/798 single-writer window; same seam contract.
+    "cte/scalar-query-v1",
+];
 /// Probe step-count cap (frozen with the seam; mirrors the syntax edit cap).
 pub const PROBE_MAX_STEPS: usize = 64;
 /// One declarative probe step. `EditSource` replaces a LITERAL substring
@@ -1681,6 +1762,16 @@ pub struct ProbeAvSpec {
     /// primitive): requests sharing a session id share the worker's
     /// persistent per-session store across calls; absent = a private
     /// per-request store (cleaned up by the worker).
+    pub session: Option<String>,
+}
+
+/// cte/scalar-query-v1 binding (PLAN-817 T-02): the consumer entry
+/// function, optional capability list and cross-request session id.
+/// The query/binding tables live in the atom-data deck (worker-owned).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeCteSpec {
+    pub entry: String,
+    pub caps: Vec<String>,
     pub session: Option<String>,
 }
 

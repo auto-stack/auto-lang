@@ -1,0 +1,24 @@
+# PLAN-817 first vertical: cte_sum(20,22)=42 through the REAL AV, the
+# frozen value backfilled into main.ct (796 inference + HIR Constant +
+# re-verify), observed natively. Independent oracle: hand-computed
+# 20+22=42 -> native exit 42. Fresh store per run (published = miss).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "cte.first.sum42"
+  tags: ["ac-cte", "probe"]
+  links: ["PLAN-817"]
+  source: { file: "cte/first-sum42.atomdata", syntax: "atom-data", path: "deck.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "query-sum42", adapter: "probe", action: "run",
+      options: {
+        recipe: "cte/scalar-query-v1",
+        cte: { entry: "main" },
+        steps: [ { op: "query" } ]
+      },
+      expect: { completion: "success", exit: 42, probe: [ { cache: "published" } ] } }
+  ]
+}
+```

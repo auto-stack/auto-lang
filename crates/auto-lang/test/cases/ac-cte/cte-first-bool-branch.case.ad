@@ -1,0 +1,24 @@
+# PLAN-817 first vertical (bool branch): cte_flag(9) -> true through the
+# REAL AV; the backfilled bool flips main's branch (native exit 2 -> 1).
+# The counter-case (flag(99) -> false, exit 2) lives in the workspace
+# cte_first_ family; this case pins the true leg.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "cte.first.bool-branch"
+  tags: ["ac-cte", "probe"]
+  links: ["PLAN-817"]
+  source: { file: "cte/first-bool-branch.atomdata", syntax: "atom-data", path: "deck.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "query-bool-branch", adapter: "probe", action: "run",
+      options: {
+        recipe: "cte/scalar-query-v1",
+        cte: { entry: "main" },
+        steps: [ { op: "query" } ]
+      },
+      expect: { completion: "success", exit: 1, probe: [ { cache: "published" } ] } }
+  ]
+}
+```
