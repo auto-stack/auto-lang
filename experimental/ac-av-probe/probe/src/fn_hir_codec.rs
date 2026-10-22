@@ -19,10 +19,16 @@ use auto_av_core::contract::{AV_PROFILE, PRODUCER_ID};
 /// The function-HIR artifact layer (A07, function units). Distinct
 /// versioned identity from the 783 module-bundle A07 (`ac783/a07-hir/v1`)
 /// — no key or payload is shared with it.
+///
+/// Codec v2 (B1-C04): the persisted body's cross-table references (call
+/// callees, `TypeUse::Ref`) are indices into the artifact's OWN
+/// `callee_table`/`type_table` of stable id TEXTS — never the producing
+/// module's array slots. v1 rows (raw producing-table slots) are not
+/// readable under the v2 key and are never rewritten in place.
 pub const HIR_LAYER: LayerSpec = LayerSpec {
     id: "A07",
     name: "public-hir function units (plan828 function-level HIR artifacts)",
-    schema_id: "ac828/a07-fnhir/v1",
+    schema_id: "ac828/a07-fnhir/v2",
     producer: PRODUCER_ID,
     consumers: &["session warm restore (re-verified, never trusted)"],
     key_inputs: &[
@@ -67,9 +73,129 @@ pub struct FnHirArtifact {
     /// The declaration-context fingerprint this body was verified under.
     pub context_fingerprint: String,
     pub caps_fp: String,
-    /// Intrinsic symbols this body actually reads (dependency facts).
+    /// Intrinsic symbols this body actually reads (dependency facts);
+    /// restore cross-checks the field against the REBOUND body's actual
+    /// reads (B1-C01) — a forged list is a skipped artifact.
     pub intrinsics: Vec<String>,
+    /// Stable cross-table identity (B1-C04): def id TEXTS the body's calls
+    /// reference, first-use order. The persisted body's `Call.callee`
+    /// DefIds are indices into THIS table, not any module's def array.
+    pub callee_table: Vec<String>,
+    /// Type id TEXTS for the body's `TypeUse::Ref`s, first-use order;
+    /// persisted `TypeId`s index this table.
+    pub type_table: Vec<String>,
+    /// The body in ARTIFACT-LOCAL coordinates (see `callee_table`).
     pub body: hir::Body,
+}
+
+/// Normalize one body's cross-table references from the PRODUCING tables
+/// (index → id text, e.g. a single-function candidate bundle's def table
+/// or the cold module's) into artifact-local indices over stable id texts.
+/// Array slots are never the cross-product identity — the id TEXT is
+/// (B1-C04). `Err` = a reference outside the producing tables (no
+/// artifact is deposited; the cold compile stays the truth).
+pub fn normalize_fn_hir_body(
+    producing_defs: &[String],
+    producing_types: &[String],
+    body: &hir::Body,
+) -> Result<(hir::Body, Vec<String>, Vec<String>), String> {
+    let mut callee_table: Vec<String> = Vec::new();
+    let mut type_table: Vec<String> = Vec::new();
+    let mut def_of = |raw: u32| -> Result<u32, String> {
+        let name = producing_defs
+            .get(raw as usize)
+            .ok_or_else(|| format!("callee DefId({raw}) outside the producing def table"))?;
+        let idx = callee_table
+            .iter()
+            .position(|n| n == name)
+            .unwrap_or_else(|| {
+                callee_table.push(name.clone());
+                callee_table.len() - 1
+            });
+        Ok(idx as u32)
+    };
+    let mut ty_of = |u: &hir::TypeUse| -> Result<hir::TypeUse, String> {
+        match u {
+            hir::TypeUse::Builtin(_) => Ok(u.clone()),
+            hir::TypeUse::Ref(t) => {
+                let name = producing_types
+                    .get(t.0 as usize)
+                    .ok_or_else(|| format!("TypeId({}) outside the producing type table", t.0))?;
+                let idx = type_table
+                    .iter()
+                    .position(|n| n == name)
+                    .unwrap_or_else(|| {
+                        type_table.push(name.clone());
+                        type_table.len() - 1
+                    });
+                Ok(hir::TypeUse::Ref(hir::TypeId(idx as u32)))
+            }
+        }
+    };
+    let mut out = body.clone();
+    for l in &mut out.locals {
+        l.ty = ty_of(&l.ty)?;
+    }
+    for p in &mut out.places {
+        p.ty = ty_of(&p.ty)?;
+    }
+    for e in &mut out.exprs {
+        e.ty = ty_of(&e.ty)?;
+        if let hir::ExprKind::Call { callee, .. } = &mut e.kind {
+            *callee = hir::DefId(def_of(callee.0)?);
+        }
+    }
+    Ok((out, callee_table, type_table))
+}
+
+/// Re-bind a decoded artifact body from artifact-local table indices into
+/// the CURRENT module's tables, by stable id text (B1-C04). Any name that
+/// does not resolve in the current module fails — the artifact is then
+/// skipped, never trusted.
+pub fn rebind_fn_hir_body(a: &FnHirArtifact, current: &hir::Module) -> Result<hir::Body, String> {
+    let mut out = a.body.clone();
+    let def_of = |local: u32| -> Result<u32, String> {
+        let name = a
+            .callee_table
+            .get(local as usize)
+            .ok_or_else(|| format!("callee table index {local} out of bounds"))?;
+        current
+            .defs
+            .iter()
+            .position(|d| &d.id_text == name)
+            .map(|i| i as u32)
+            .ok_or_else(|| format!("callee `{name}` not present in the current module"))
+    };
+    let ty_of = |u: &hir::TypeUse| -> Result<hir::TypeUse, String> {
+        match u {
+            hir::TypeUse::Builtin(_) => Ok(u.clone()),
+            hir::TypeUse::Ref(t) => {
+                let name = a
+                    .type_table
+                    .get(t.0 as usize)
+                    .ok_or_else(|| format!("type table index {} out of bounds", t.0))?;
+                current
+                    .types
+                    .iter()
+                    .position(|d| &d.id_text == name)
+                    .map(|i| hir::TypeUse::Ref(hir::TypeId(i as u32)))
+                    .ok_or_else(|| format!("type `{name}` not present in the current module"))
+            }
+        }
+    };
+    for l in &mut out.locals {
+        l.ty = ty_of(&l.ty)?;
+    }
+    for p in &mut out.places {
+        p.ty = ty_of(&p.ty)?;
+    }
+    for e in &mut out.exprs {
+        e.ty = ty_of(&e.ty)?;
+        if let hir::ExprKind::Call { callee, .. } = &mut e.kind {
+            *callee = hir::DefId(def_of(callee.0)?);
+        }
+    }
+    Ok(out)
 }
 
 /// FNV-1a over every span in the body, in stable order.
@@ -161,14 +287,17 @@ impl FnHirEnc {
     }
 }
 
-/// Encode one artifact. `Err` = the body carries constructs outside the
-/// bounded scalar surface (the artifact is simply not deposited).
+/// Encode one artifact (codec v2). `Err` = the body carries constructs
+/// outside the bounded scalar surface (the artifact is simply not
+/// deposited). The body must already be in ARTIFACT-LOCAL coordinates
+/// (see [`normalize_fn_hir_body`]) — encode writes the reference tables
+/// and the body's callee/type ids index into them.
 pub fn encode_fn_hir(a: &FnHirArtifact) -> Result<Vec<u8>, String> {
     let mut e = FnHirEnc {
         out: Vec::with_capacity(1024),
     };
     e.out.extend_from_slice(b"FNH1");
-    e.u32(1); // codec version
+    e.u32(2); // codec version (v2: artifact-local reference tables)
     e.s(&a.def_id)?;
     e.s(&a.content_version)?;
     e.u64(a.span_digest);
@@ -177,6 +306,14 @@ pub fn encode_fn_hir(a: &FnHirArtifact) -> Result<Vec<u8>, String> {
     e.count(a.intrinsics.len())?;
     for i in &a.intrinsics {
         e.s(i)?;
+    }
+    e.count(a.callee_table.len())?;
+    for c in &a.callee_table {
+        e.s(c)?;
+    }
+    e.count(a.type_table.len())?;
+    for t in &a.type_table {
+        e.s(t)?;
     }
     let b = &a.body;
     e.s(&b.id_text)?;
@@ -411,14 +548,16 @@ impl<'a> FnHirDec<'a> {
         }
         Ok(Span { start, end })
     }
-    fn ty(&mut self) -> Result<hir::TypeUse, String> {
+    fn ty(&mut self, type_table_len: usize) -> Result<hir::TypeUse, String> {
         match self.u8()? {
             0 => match self.s()?.as_str() {
                 "i32" => Ok(hir::TypeUse::Builtin(hir::BuiltinType::I32)),
                 "bool" => Ok(hir::TypeUse::Builtin(hir::BuiltinType::Bool)),
                 _ => Err("unknown builtin type".into()),
             },
-            1 => Ok(hir::TypeUse::Ref(hir::TypeId(self.u32()?))),
+            1 => Ok(hir::TypeUse::Ref(hir::TypeId(
+                self.idx(type_table_len, "type-table")?,
+            ))),
             _ => Err("unknown type-use tag".into()),
         }
     }
@@ -431,9 +570,10 @@ impl<'a> FnHirDec<'a> {
     }
 }
 
-/// Decode one artifact from untrusted bytes. Every length, count and index
-/// is bounds-checked; any violation is an `Err` (the artifact is skipped,
-/// never trusted). Trailing bytes are rejected.
+/// Decode one artifact from untrusted bytes (codec v2 only — a v1 payload
+/// is a decode error and the row is skipped). Every length, count and
+/// index is bounds-checked; any violation is an `Err` (the artifact is
+/// skipped, never trusted). Trailing bytes are rejected.
 pub fn decode_fn_hir(bytes: &[u8]) -> Result<FnHirArtifact, String> {
     if bytes.len() > FN_HIR_MAX_PAYLOAD {
         return Err("payload over codec bound".into());
@@ -442,7 +582,7 @@ pub fn decode_fn_hir(bytes: &[u8]) -> Result<FnHirArtifact, String> {
     if d.take(4)? != b"FNH1" {
         return Err("bad magic".into());
     }
-    if d.u32()? != 1 {
+    if d.u32()? != 2 {
         return Err("unknown codec version".into());
     }
     let def_id = d.s()?;
@@ -453,6 +593,15 @@ pub fn decode_fn_hir(bytes: &[u8]) -> Result<FnHirArtifact, String> {
     let mut intrinsics = Vec::new();
     for _ in 0..d.count()? {
         intrinsics.push(d.s()?);
+    }
+    let mut callee_table = Vec::new();
+    for _ in 0..d.count()? {
+        callee_table.push(d.s()?);
+    }
+    let type_table_len = d.count()?;
+    let mut type_table = Vec::with_capacity(type_table_len);
+    for _ in 0..type_table_len {
+        type_table.push(d.s()?);
     }
     let id_text = d.s()?;
     let owner = d.u32()?;
@@ -466,7 +615,7 @@ pub fn decode_fn_hir(bytes: &[u8]) -> Result<FnHirArtifact, String> {
     let n_locals = d.count()?;
     for _ in 0..n_locals {
         let id_text = d.s()?;
-        let ty = d.ty()?;
+        let ty = d.ty(type_table_len)?;
         let name = d.s()?;
         let role = match d.u8()? {
             0 => hir::LocalRole::Param,
@@ -508,7 +657,7 @@ pub fn decode_fn_hir(bytes: &[u8]) -> Result<FnHirArtifact, String> {
             _ => return Err("unknown place kind".into()),
         };
         let local = d.idx(n_locals, "local")?;
-        let ty = d.ty()?;
+        let ty = d.ty(type_table_len)?;
         let access = match d.u8()? {
             0 => hir::Access::Mutable,
             1 => hir::Access::ReadOnly,
@@ -528,7 +677,7 @@ pub fn decode_fn_hir(bytes: &[u8]) -> Result<FnHirArtifact, String> {
     let n_exprs = d.count()?;
     for _ in 0..n_exprs {
         let id_text = d.s()?;
-        let ty = d.ty()?;
+        let ty = d.ty(type_table_len)?;
         let kind = match d.u8()? {
             0 => hir::ExprKind::ReadLocal {
                 local: hir::LocalId(d.idx(n_locals, "local")?),
@@ -572,7 +721,7 @@ pub fn decode_fn_hir(bytes: &[u8]) -> Result<FnHirArtifact, String> {
                 }
             }
             5 => {
-                let callee = d.u32()?;
+                let callee = d.idx(callee_table.len(), "callee-table")?;
                 let mut eval_args = Vec::new();
                 for _ in 0..d.count()? {
                     eval_args.push(hir::ExprId(d.idx(n_exprs, "expr")?));
@@ -670,6 +819,8 @@ pub fn decode_fn_hir(bytes: &[u8]) -> Result<FnHirArtifact, String> {
         context_fingerprint,
         caps_fp,
         intrinsics,
+        callee_table,
+        type_table,
         body: hir::Body {
             id_text,
             owner: hir::DefId(owner),
@@ -721,7 +872,7 @@ pub fn fn_hir_key(owner: &str, unit: &str, body_cv: &str, caps_fp: &str) -> Quer
             ("profile".into(), AV_PROFILE.into()),
             ("hir-domain".into(), "scalar-i32-draft".into()),
             ("hir-schema".into(), "1".into()),
-            ("hir-codec".into(), "ac828/a07-fnhir/v1".into()),
+            ("hir-codec".into(), "ac828/a07-fnhir/v2".into()),
             ("caps".into(), caps_fp.into()),
             ("body-content".into(), body_cv.into()),
         ],

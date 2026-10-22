@@ -33,6 +33,20 @@ impl FnInterface {
     }
 }
 
+/// One recorded BODY-FACT READ (PLAN-828 T-03 / C01-03): a consumer's
+/// dependency on ANOTHER function's body content (a fact beyond the
+/// interface — what an inliner/body-reading consumer would embed). The
+/// fact's identity is (owner, domain, def, body content version); the
+/// consumer's reuse stays valid only while [`FnEnv::body_fact_current`]
+/// holds for every recorded read.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BodyFactRead {
+    pub owner: String,
+    pub domain: HirDomain,
+    pub def_id: String,
+    pub version: String,
+}
+
 /// The owner-scoped interface environment of one resident module.
 #[derive(Clone, Debug)]
 pub struct FnEnv {
@@ -60,6 +74,12 @@ pub struct FnEnv {
     /// identity (F-828-R1-06/R4a: def indices shift across synth
     /// programs; id texts do not).
     intrinsics: BTreeMap<String, (String, bool, String)>,
+    /// Body content versions (C01-03 body-fact axis): def id text → the
+    /// content version of the body CURRENTLY installed for that def.
+    /// Maintained by the session owner (set at warm-up and at each
+    /// commit); a consumer's recorded read stays current only while the
+    /// version matches.
+    body_facts: BTreeMap<String, String>,
 }
 
 impl FnEnv {
@@ -152,7 +172,41 @@ impl FnEnv {
             fns,
             by_name,
             intrinsics,
+            body_facts: BTreeMap::new(),
         })
+    }
+
+    /// Publish a function's CURRENT body content version (the session
+    /// owner's commit point calls this; the bundle a fresh env was built
+    /// from does not imply any body fact — facts are declared, never
+    /// guessed from scaffold bodies).
+    pub fn set_body_fact(&mut self, def_id: &str, version: &str) {
+        self.body_facts
+            .insert(def_id.to_string(), version.to_string());
+    }
+
+    /// The body content version currently installed for `def_id`
+    /// (the body-fact query result; `None` = no fact published).
+    pub fn body_fact_of(&self, def_id: &str) -> Option<&str> {
+        self.body_facts.get(def_id).map(|s| s.as_str())
+    }
+
+    /// Whether a recorded body-fact read is still CURRENT under this
+    /// environment: same owner, same domain, same def, and the def's
+    /// installed body still carries the version the consumer read. A
+    /// body edit of the read def flips the version and invalidates the
+    /// consumer's reuse (C01-03); edits of UNREAD defs never touch it.
+    pub fn body_fact_current(&self, read: &BodyFactRead) -> bool {
+        self.owner == read.owner
+            && self.domain == read.domain
+            && self.body_facts.get(&read.def_id).map(|s| s.as_str()) == Some(read.version.as_str())
+    }
+
+    /// Intrinsic declaration facts of one def, by def id text (stable
+    /// identity axis; the T-03 artifact persist/admit path consumes this
+    /// instead of any module's array slots — B1-C04).
+    pub fn intrinsic_facts_of(&self, def_id_text: &str) -> Option<&(String, bool, String)> {
+        self.intrinsics.get(def_id_text)
     }
 
     /// THIS environment's declaration-context fingerprint (self-derived

@@ -1094,10 +1094,20 @@ fn t03_a07_fn_hir_tampered_row_is_skipped_not_trusted() {
     // Distinguishing negative #2: a row that decodes CLEANLY, carries the
     // right body/content/spans/caps — and WRONG dependency facts (a forged
     // declaration-context fingerprint). Content alone must not adopt it.
-    use auto_av_probe::fn_hir_codec::{encode_fn_hir, fn_hir_span_digest, FnHirArtifact};
+    use auto_av_probe::fn_hir_codec::{
+        encode_fn_hir, fn_hir_span_digest, normalize_fn_hir_body, FnHirArtifact,
+    };
     let dir = std::env::temp_dir().join(format!("p828-t03-ctx-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
+    // codec v2: the forged row's body must be normalized through the
+    // producing (cold) tables so it DECODES cleanly — the only wrong
+    // thing is the context fingerprint.
+    let cold_defs: Vec<String> = m.defs.iter().map(|d| d.id_text.clone()).collect();
+    let cold_types: Vec<String> = m.types.iter().map(|t| t.id_text.clone()).collect();
+    let (norm_body, callee_table, type_table) =
+        normalize_fn_hir_body(&cold_defs, &cold_types, &m.bodies[body.0 as usize])
+            .expect("normalize");
     let forged = FnHirArtifact {
         def_id: "d_helper".to_string(),
         content_version: cv.clone(),
@@ -1105,7 +1115,9 @@ fn t03_a07_fn_hir_tampered_row_is_skipped_not_trusted() {
         context_fingerprint: "0000000000000000".to_string(), // forged context
         caps_fp: caps_fp.clone(),
         intrinsics: Vec::new(),
-        body: m.bodies[body.0 as usize].clone(),
+        callee_table,
+        type_table,
+        body: norm_body,
     };
     let forged_bytes = encode_fn_hir(&forged).expect("the forged row encodes cleanly");
     assert!(

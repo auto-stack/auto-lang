@@ -25,9 +25,10 @@ use crate::cache::{
 };
 use crate::driver::front_door_admit;
 use crate::fn_hir_codec::{
-    decode_fn_hir, encode_fn_hir, fn_hir_key, fn_hir_span_digest, FnHirArtifact,
+    decode_fn_hir, encode_fn_hir, fn_hir_key, fn_hir_span_digest, normalize_fn_hir_body,
+    rebind_fn_hir_body, FnHirArtifact,
 };
-use crate::function_queries::FnEnv;
+use crate::function_queries::{BodyFactRead, FnEnv};
 use crate::hir_adapter::{lower_checked, lower_function_unit};
 use crate::semrefs::content_version_of;
 use ac_syntax_core_adapter::{project_decl_strict, project_strict, CoreKinds};
@@ -185,6 +186,15 @@ struct FnRecord {
             String,
         ),
     >,
+    /// B1-C04: the def/type tables (id TEXTS, index-aligned) that
+    /// `hir_body`'s cross-table references are expressed in — the cold
+    /// module's tables for warm-up/adopted bodies, the candidate
+    /// document's own tables for a committed edit's body. The HIR
+    /// artifact persist path normalizes through THESE names; array slots
+    /// are never the cross-product identity.
+    producing_defs: Vec<String>,
+    /// The producing module's TYPE table id texts (same coordinate basis).
+    producing_types: Vec<String>,
 }
 
 /// Outcome of one edit request.
@@ -287,14 +297,18 @@ pub struct FunctionIncrementalSession {
     /// The ac-core declaration-context fingerprint the outstanding body
     /// credentials were verified under; a drift invalidates them.
     context_revision: String,
-    /// PLAN-828 T-03: intrinsic def index → symbol (the dependency facts
-    /// the function-HIR artifacts carry; the def set is cold-minted and
-    /// the fast path never changes it).
-    intrinsic_symbols: BTreeMap<u32, String>,
-    /// PLAN-828 T-03: the cold bundle's module (type/def tables) — the
-    /// restore path's re-verification context for function-HIR artifacts.
-    /// Counts toward the resident F-09 budget.
-    cold_module: hir::Module,
+    /// PLAN-828 T-03 / C01-03: recorded BODY-FACT reads, keyed by the
+    /// CONSUMER's source name. An entry stays current only while the read
+    /// fact's version still matches the env's published body fact; a
+    /// stale read forces the consumer's next content hit onto the full
+    /// re-verify chain (never a silent reuse of an artifact that embedded
+    /// an outdated callee body).
+    body_reads: BTreeMap<String, Vec<BodyFactRead>>,
+    /// PLAN-828 T-03: the cold-compiled bundle (type/def tables + the
+    /// declaration context) — the restore path's re-verification context
+    /// for function-HIR artifacts. Owned body payload counts toward the
+    /// resident F-09 budget and is RELEASED at [`Self::close`] (B1-C05).
+    cold_bundle: hir::Bundle,
     current: Arc<ProgramSnapshot>,
     revision: u64,
     /// Unique session identity bound into every prepared candidate.
@@ -367,7 +381,7 @@ pub fn warmup(
     // per-function credentials bind to (T-03). The context revision is
     // minted by ONE warm-up function verification against the same bundle —
     // every later edit must reproduce it or its credentials are stale.
-    let env = FnEnv::from_bundle(bundle)?;
+    let mut env = FnEnv::from_bundle(bundle)?;
     let context_revision = {
         let entry_idx = m
             .defs
@@ -397,6 +411,10 @@ pub fn warmup(
 
     let mut fns: Vec<FnRecord> = Vec::new();
     let mut codes: Vec<Arc<FunctionCode>> = Vec::new();
+    // B1-C04: the cold module's def/type tables are the warm-up bodies'
+    // coordinate basis (id texts, index-aligned).
+    let cold_def_names: Vec<String> = m.defs.iter().map(|d| d.id_text.clone()).collect();
+    let cold_type_names: Vec<String> = m.types.iter().map(|t| t.id_text.clone()).collect();
     let mut ast_i = 0usize;
     for (di, d) in m.defs.iter().enumerate() {
         // Intrinsic declarations (trace marks) are part of the preserved
@@ -442,6 +460,9 @@ pub fn warmup(
         // a later content hit must return the very same object.
         let body_arc = Arc::new(body_ref.clone());
         let mut history = BTreeMap::new();
+        // C01-03: publish this function's body-fact version (the query
+        // core's current truth for its body content).
+        env.set_body_fact(&d.id_text, &warm_cv);
         history.insert(warm_cv, history_entry(body_arc.clone(), code.clone()));
         fns.push(FnRecord {
             def_id: d.id_text.clone(),
@@ -454,6 +475,8 @@ pub fn warmup(
             mint_origin: 0,
             span_map: auto_av_core::span_map::SpanSegments::default(),
             history,
+            producing_defs: cold_def_names.clone(),
+            producing_types: cold_type_names.clone(),
         });
         codes.push(code);
     }
@@ -475,18 +498,11 @@ pub fn warmup(
             "checked-env slot order {env_order:?} != declaration order {def_order:?}"
         ));
     }
-    // PLAN-828 T-03: the intrinsic symbol map and the cold module (the
-    // restore path's re-verification context for HIR artifacts).
-    let intrinsic_symbols = m
-        .defs
-        .iter()
-        .enumerate()
-        .filter_map(|(i, d)| match &d.kind {
-            hir::DefKind::Intrinsic { symbol, .. } => Some((i as u32, symbol.clone())),
-            _ => None,
-        })
-        .collect();
-    let cold_module = m.clone();
+    // PLAN-828 T-03: the cold bundle (the restore path's re-verification
+    // context for HIR artifacts). Replaces the v1 intrinsic index map —
+    // intrinsic dependency facts now resolve by def id TEXT through the
+    // resident env (B1-C04: array slots are never cross-table identity).
+    let cold_bundle = bundle.clone();
 
     // Per-function declaration origins of the accepted source (span
     // mapping baseline; decl order == fn order was asserted above).
@@ -522,8 +538,8 @@ pub fn warmup(
         env,
         env_core,
         context_revision,
-        intrinsic_symbols,
-        cold_module,
+        body_reads: BTreeMap::new(),
+        cold_bundle,
         current: snapshot,
         revision: 0,
         session_id,
@@ -728,21 +744,45 @@ pub fn restore(
         rec.code = code.clone();
     }
     // PLAN-828 T-03: function-HIR artifact adoption. Every row is an
-    // UNTRUSTED description: it must decode under the bounded codec AND
-    // re-verify against the CURRENT context — def identity, caps, the
-    // declaration-context fingerprint, the span-free canonical content
-    // equal to the freshly compiled truth, and the span-layout digest —
-    // before the reconstructed body may become the resident/history
-    // object. Any miss or mismatch skips the artifact: the cold body is
-    // already correct, so a skip only loses store provenance, never
-    // correctness. The verification CREDENTIAL never persisted: adoption
-    // re-establishes trust only through the fresh context checks above.
+    // UNTRUSTED description; adoption is a FIVE-gate chain against the
+    // CURRENT context, in order (each gate's failure skips the artifact —
+    // the cold body is already correct, so a skip only loses store
+    // provenance, never correctness):
+    //   1. bounded decode (codec v2) + header identity (def/cv/caps/
+    //      context fingerprint);
+    //   2. B1-C04 re-binding: the body's callee/type references resolve
+    //      from the artifact's STABLE id-text tables into the CURRENT
+    //      cold module's tables — never producing-table array slots;
+    //   3. content identity: the re-bound body's canonical dump (through
+    //      the current cold tables) equals the freshly compiled truth;
+    //   4. B1-C02 span layout: the ACTUAL DECODED body's span digest —
+    //      not a self-reported field — equals the current truth's, and
+    //      the reported field matches the decoded object;
+    //   5. B1-C01 full semantic admission: the production `verify_function`
+    //      runs on the current cold bundle with this body installed at
+    //      its def slot (owner/param/binding/etc. rules all apply), AND
+    //      the declared `intrinsics` dependency facts equal the set the
+    //      re-bound body actually reads in the current context.
+    // The verification CREDENTIAL never persists: adoption re-establishes
+    // trust only through the fresh checks above.
     let cvs: Vec<Option<String>> = session
         .fns
         .iter()
         .map(|r| session.resident_content_version(&r.name))
         .collect();
+    let cold = &session.cold_bundle;
+    let cold_def_names: Vec<String> = cold.modules[0]
+        .defs
+        .iter()
+        .map(|d| d.id_text.clone())
+        .collect();
+    let cold_type_names: Vec<String> = cold.modules[0]
+        .types
+        .iter()
+        .map(|t| t.id_text.clone())
+        .collect();
     let mut hir_adopted: u64 = 0;
+    let mut hir_verified: u64 = 0;
     for (i, rec) in session.fns.iter_mut().enumerate() {
         let Some(cv) = &cvs[i] else { continue };
         let key = fn_hir_key(&owner, &rec.def_id, cv, &caps_fp);
@@ -751,6 +791,7 @@ pub fn restore(
             continue;
         };
         let Ok(a) = decode_fn_hir(&bytes) else {
+            session.counters.bump("restore_hir_skip:codec");
             continue;
         };
         if a.def_id != rec.def_id
@@ -758,28 +799,95 @@ pub fn restore(
             || a.caps_fp != caps_fp
             || a.context_fingerprint != session.context_revision
         {
+            session.counters.bump("restore_hir_skip:header");
             continue;
         }
+        // B1-C04: stable-identity re-binding into the CURRENT context.
+        let body = match rebind_fn_hir_body(&a, &cold.modules[0]) {
+            Ok(b) => b,
+            Err(_) => {
+                session.counters.bump("restore_hir_skip:rebind");
+                continue;
+            }
+        };
         // Content re-verification against the current context's own truth:
-        // the reconstructed body's canonical dump must equal the resident
+        // the re-bound body's canonical dump must equal the resident
         // (freshly compiled) canonical, dumped through the SAME type/def
-        // tables (the fast path's table layout is the cold one).
-        let mut shim = session.cold_module.clone();
-        shim.bodies = vec![a.body.clone()];
+        // tables.
+        let mut shim = cold.modules[0].clone();
+        shim.bodies = vec![body.clone()];
         if canonical_hir_function(&shim, hir::BodyId(0)) != rec.canonical {
+            session.counters.bump("restore_hir_skip:canonical");
             continue;
         }
-        if a.span_digest != fn_hir_span_digest(&rec.hir_body) {
+        // B1-C02: the spans of the ACTUAL DECODED body — both against the
+        // current truth and against the artifact's self-reported field.
+        let truth_digest = fn_hir_span_digest(&rec.hir_body);
+        if fn_hir_span_digest(&body) != truth_digest || a.span_digest != truth_digest {
+            session.counters.bump("restore_hir_skip:span");
             continue;
         }
-        let adopted = std::sync::Arc::new(a.body);
+        // B1-C01: REAL semantic admission — the production verifier over
+        // the current cold bundle, with this body installed at its own
+        // def slot (module/body/def/type tables all correspond).
+        let def_idx = cold.modules[0]
+            .defs
+            .iter()
+            .position(|d| d.id_text == rec.def_id);
+        let Some(def_idx) = def_idx else {
+            session.counters.bump("restore_hir_skip:def");
+            continue;
+        };
+        let bid = match &cold.modules[0].defs[def_idx].kind {
+            hir::DefKind::Function { body, .. } => *body,
+            _ => {
+                session.counters.bump("restore_hir_skip:def");
+                continue;
+            }
+        };
+        let mut v = cold.clone();
+        let Some(slot) = v.modules[0].bodies.get_mut(bid.0 as usize) else {
+            session.counters.bump("restore_hir_skip:def");
+            continue;
+        };
+        *slot = body.clone();
+        if verify_function(v, def_idx).is_err() {
+            session.counters.bump("restore_hir_skip:verify");
+            continue;
+        }
+        hir_verified += 1;
+        // B1-C01/C04: the declared dependency facts must equal the set
+        // the re-bound body actually reads in the current context.
+        let mut actual: Vec<&str> = Vec::new();
+        for e in &body.exprs {
+            if let hir::ExprKind::Call { callee, .. } = &e.kind {
+                if let Some(name) = cold_def_names.get(callee.0 as usize) {
+                    if let Some((sym, ..)) = session.env.intrinsic_facts_of(name) {
+                        if !actual.iter().any(|s| s == sym) {
+                            actual.push(sym);
+                        }
+                    }
+                }
+            }
+        }
+        let mut declared: Vec<&str> = a.intrinsics.iter().map(|s| s.as_str()).collect();
+        declared.sort_unstable();
+        actual.sort_unstable();
+        if declared != actual {
+            session.counters.bump("restore_hir_skip:intrinsics");
+            continue;
+        }
+        let adopted = std::sync::Arc::new(body);
         if let Some(entry) = rec.history.iter_mut().find(|(k, _)| *k == cv) {
             entry.1 .0 = adopted.clone();
         }
         rec.hir_body = adopted;
+        rec.producing_defs = cold_def_names.clone();
+        rec.producing_types = cold_type_names.clone();
         hir_adopted += 1;
     }
     session.counters.set("restore_hir_adopted", hir_adopted);
+    session.counters.set("restore_hir_verified", hir_verified);
     session.current = snapshot;
     session
         .counters
@@ -820,6 +928,53 @@ impl FunctionIncrementalSession {
             .iter()
             .find(|f| f.name == name)
             .map(|f| (f.name.clone(), f.hir_body.clone(), f.code.clone()))
+    }
+
+    /// C01-03 body-fact query (the production query core): read ANOTHER
+    /// function's CURRENT body content fact on behalf of `consumer` —
+    /// the dependency a body-reading consumer records before embedding
+    /// callee-body-derived facts. The read is RECORDED: the consumer's
+    /// later content hits are admitted only while every recorded fact is
+    /// still current (a callee body edit invalidates the consumer's
+    /// reuse; edits of unread functions never do). The query counter
+    /// bumps at this real entry — never self-reported by the caller.
+    pub fn query_body_fact(&mut self, consumer: &str, callee: &str) -> Option<(String, String)> {
+        let def = self.env.def_id_of(callee)?.to_string();
+        let version = self.env.body_fact_of(&def)?.to_string();
+        let read = BodyFactRead {
+            owner: self.env.owner.clone(),
+            domain: self.env.domain(),
+            def_id: def.clone(),
+            version: version.clone(),
+        };
+        let reads = self.body_reads.entry(consumer.to_string()).or_default();
+        match reads.iter_mut().find(|r| r.def_id == def) {
+            Some(slot) => *slot = read,
+            None => reads.push(read),
+        }
+        self.counters.bump(&format!("body_fact_query:{callee}"));
+        Some((def, version))
+    }
+
+    /// Owned cold-HIR payload this session retains (B1-C05 oracle): the
+    /// cold bundle's owned nodes (defs, types, and every body's
+    /// locals/places/exprs/blocks). Zero after [`Self::close`] — the
+    /// release is observable WITHOUT dropping the session.
+    pub fn resident_cold_hir_nodes(&self) -> usize {
+        self.cold_bundle
+            .modules
+            .iter()
+            .map(|m| {
+                m.defs.len()
+                    + m.types.len()
+                    + m.bodies
+                        .iter()
+                        .map(|b| {
+                            b.locals.len() + b.places.len() + b.exprs.len() + b.blocks.len() + 1
+                        })
+                        .sum::<usize>()
+            })
+            .sum()
     }
 
     /// Run the CURRENT snapshot's entry. Span-bearing outcomes (traps)
@@ -896,6 +1051,17 @@ impl FunctionIncrementalSession {
         // PLAN-828 T-02/D-03: EXPLICIT release of the retained checked
         // environment's owned body entries (never implied by field drops).
         self.env_core.close();
+        // B1-C05: the T-03 cold bundle (deep HIR copy — defs, types and
+        // every body's locals/places/exprs/blocks) is session-OWNED with
+        // no external pin; close releases it HERE, not at drop(session).
+        // Recorded body-fact reads die with the closed query core too.
+        // `resident_cold_hir_nodes()` is the observable oracle.
+        self.cold_bundle = hir::Bundle {
+            domain: hir::HirDomain::Scalar,
+            requires: Vec::new(),
+            modules: Vec::new(),
+        };
+        self.body_reads.clear();
         self.store = None;
         self.fns.clear();
         self.current = Arc::new(ProgramSnapshot::vacant(&self.entry_def_id, self.revision));
@@ -1042,15 +1208,22 @@ impl FunctionIncrementalSession {
             // PLAN-828 T-03: the function-HIR artifact (A07 function unit),
             // content-addressed like the ABC row above — only a function
             // whose content changed produces a NEW row (same content
-            // version → Conflict tolerated). A body outside the bounded
-            // scalar codec simply has no artifact (the cold compile stays
-            // the truth); the VERIFIER credential never persists.
+            // version → Conflict tolerated). B1-C04: dependency facts and
+            // the persisted body go through STABLE id texts — intrinsics
+            // resolve via the resident env by def id text (the body's raw
+            // slots are the PRODUCING tables', never the warm-up's), and
+            // the body is NORMALIZED into artifact-local reference tables
+            // before encoding. A body outside the bounded scalar codec
+            // simply has no artifact (the cold compile stays the truth);
+            // the VERIFIER credential never persists.
             let mut intrinsics: Vec<String> = Vec::new();
             for e in &rec.hir_body.exprs {
                 if let hir::ExprKind::Call { callee, .. } = &e.kind {
-                    if let Some(sym) = self.intrinsic_symbols.get(&callee.0) {
-                        if !intrinsics.iter().any(|s| s == sym) {
-                            intrinsics.push(sym.clone());
+                    if let Some(name) = rec.producing_defs.get(callee.0 as usize) {
+                        if let Some((sym, ..)) = self.env.intrinsic_facts_of(name) {
+                            if !intrinsics.iter().any(|s| s == sym) {
+                                intrinsics.push(sym.clone());
+                            }
                         }
                     }
                 }
@@ -1058,26 +1231,32 @@ impl FunctionIncrementalSession {
             if rec.persisted_hir_cv.as_deref() == Some(cv.as_str()) {
                 // Already produced by THIS session — unchanged content
                 // never re-deposits (new products only).
-            } else if let Ok(hbytes) = encode_fn_hir(&FnHirArtifact {
-                def_id: rec.def_id.clone(),
-                content_version: cv.clone(),
-                span_digest: fn_hir_span_digest(&rec.hir_body),
-                context_fingerprint: self.context_revision.clone(),
-                caps_fp: caps_fp.clone(),
-                intrinsics,
-                body: (*rec.hir_body).clone(),
-            }) {
-                let hkey = fn_hir_key(&owner, &rec.def_id, &cv, &caps_fp);
-                let hid = EnvelopeIdentity::fn_hir_bound(&owner, &rec.def_id, &cv);
-                if let Err(e) =
-                    put_enveloped(store, &hkey, "A07", &hid, &hbytes, vec![], Some(project))
-                {
-                    if !format!("{e:?}").contains("Conflict") {
-                        return Err(format!("put fn-hir {}: {e:?}", rec.def_id));
+            } else if let Ok((norm_body, callee_table, type_table)) =
+                normalize_fn_hir_body(&rec.producing_defs, &rec.producing_types, &rec.hir_body)
+            {
+                if let Ok(hbytes) = encode_fn_hir(&FnHirArtifact {
+                    def_id: rec.def_id.clone(),
+                    content_version: cv.clone(),
+                    span_digest: fn_hir_span_digest(&norm_body),
+                    context_fingerprint: self.context_revision.clone(),
+                    caps_fp: caps_fp.clone(),
+                    intrinsics,
+                    callee_table,
+                    type_table,
+                    body: norm_body,
+                }) {
+                    let hkey = fn_hir_key(&owner, &rec.def_id, &cv, &caps_fp);
+                    let hid = EnvelopeIdentity::fn_hir_bound(&owner, &rec.def_id, &cv);
+                    if let Err(e) =
+                        put_enveloped(store, &hkey, "A07", &hid, &hbytes, vec![], Some(project))
+                    {
+                        if !format!("{e:?}").contains("Conflict") {
+                            return Err(format!("put fn-hir {}: {e:?}", rec.def_id));
+                        }
+                    } else {
+                        hir_deposits += 1;
+                        rec.persisted_hir_cv = Some(cv.clone());
                     }
-                } else {
-                    hir_deposits += 1;
-                    rec.persisted_hir_cv = Some(cv.clone());
                 }
             }
             let skey = unit_span_sidecar_key(&owner, &rec.def_id, &cv);
@@ -1506,75 +1685,91 @@ impl FunctionIncrementalSession {
         };
         let content_dump = canonical_hir_function(cand_m, def_body);
         let cv = content_version_of(&content_dump);
+        // C01-03 body-fact currency: the changed function's recorded reads
+        // must still be current. A read callee body that changed since the
+        // pair was minted means the stored pair may embed an outdated body
+        // fact — the content hit is FORCED onto the full re-verify chain
+        // (never a silent reuse). Unread functions' edits never land here.
+        let deps_stale = self
+            .body_reads
+            .get(&self.fns[changed_idx].name)
+            .map(|reads| reads.iter().any(|r| !self.env.body_fact_current(r)))
+            .unwrap_or(false);
+        if deps_stale {
+            self.counters
+                .bump(&format!("body_fact_invalidated:{changed_name}"));
+        }
         let mut was_hit = false;
         let mut candidate_mint_origin: u64 = 0;
         let mut candidate_span_map = auto_av_core::span_map::SpanSegments::default();
-        let (new_hir_body, new_code): (Arc<hir::Body>, Arc<FunctionCode>) =
-            match self.fns[changed_idx].history.get(&cv) {
-                Some((body, code, mint_o, map, mint_text)) => {
-                    self.counters.bump(&format!("reuse_hit:{changed_name}"));
-                    was_hit = true;
-                    candidate_mint_origin = *mint_o;
-                    // Prefer a full-text re-anchoring when the entry's
-                    // mint text re-embeds in the new text (recovers
-                    // rewritten anchors a geometric chain cannot);
-                    // otherwise keep the accumulated map and compose this
-                    // edit into it.
-                    let (nd0, nd1) = inc.tree.abs_range(inc.tree.decls[changed_idx].node);
-                    let new_text = &new_src[nd0 as usize..nd1 as usize];
-                    candidate_span_map = match auto_av_core::span_map::SpanSegments::from_texts(
-                        *mint_o,
-                        *mint_o + mint_text.len() as u64,
-                        nd0,
-                        mint_text.as_bytes(),
-                        new_text.as_bytes(),
-                    ) {
-                        Some(m) => m,
-                        None => {
-                            let mut m = map.clone();
-                            let old_bytes = self.src[edit.start as usize..edit.end as usize]
-                                .as_bytes()
-                                .to_vec();
-                            m.apply_aligned(edit.start, edit.end, &old_bytes, &edit.insert);
-                            m
-                        }
-                    };
-                    (body.clone(), code.clone())
-                }
-                None => {
-                    let new_src_hash = fnv64(new_src.as_bytes());
-                    // The miss path verifies the candidate body NOW: the
-                    // document prepare defers verification so a content HIT
-                    // can reuse the stored pair with zero re-verify (T-04).
-                    let checked_fn =
-                        match verify_function(candidate.parts().bundle.clone(), def_idx) {
-                            Ok(c) => c,
-                            Err(ds) => {
-                                return Ok(Err(EditOutcome::rejected(
-                                    self.revision,
-                                    "candidate rejected: verification diagnostics".to_string(),
-                                    ds.iter().map(|d| d.render("probe.at", &new_src)).collect(),
-                                )));
-                            }
-                        };
-                    self.counters.bump(&format!("verify_hir:{changed_name}"));
-                    match self.lower_and_admit(
-                        &candidate.parts().bundle,
-                        checked_fn,
-                        &changed_name,
-                        new_src_hash,
-                    )? {
-                        Ok(pair) => pair,
-                        Err(diags) => {
-                            return Ok(Err(EditOutcome::rejected(
-                                self.revision,
-                                "candidate rejected: verification diagnostics".to_string(),
-                                diags,
-                            )));
-                        }
+        let (new_hir_body, new_code): (Arc<hir::Body>, Arc<FunctionCode>) = match if deps_stale {
+            None
+        } else {
+            self.fns[changed_idx].history.get(&cv)
+        } {
+            Some((body, code, mint_o, map, mint_text)) => {
+                self.counters.bump(&format!("reuse_hit:{changed_name}"));
+                was_hit = true;
+                candidate_mint_origin = *mint_o;
+                // Prefer a full-text re-anchoring when the entry's
+                // mint text re-embeds in the new text (recovers
+                // rewritten anchors a geometric chain cannot);
+                // otherwise keep the accumulated map and compose this
+                // edit into it.
+                let (nd0, nd1) = inc.tree.abs_range(inc.tree.decls[changed_idx].node);
+                let new_text = &new_src[nd0 as usize..nd1 as usize];
+                candidate_span_map = match auto_av_core::span_map::SpanSegments::from_texts(
+                    *mint_o,
+                    *mint_o + mint_text.len() as u64,
+                    nd0,
+                    mint_text.as_bytes(),
+                    new_text.as_bytes(),
+                ) {
+                    Some(m) => m,
+                    None => {
+                        let mut m = map.clone();
+                        let old_bytes = self.src[edit.start as usize..edit.end as usize]
+                            .as_bytes()
+                            .to_vec();
+                        m.apply_aligned(edit.start, edit.end, &old_bytes, &edit.insert);
+                        m
+                    }
+                };
+                (body.clone(), code.clone())
+            }
+            None => {
+                let new_src_hash = fnv64(new_src.as_bytes());
+                // The miss path verifies the candidate body NOW: the
+                // document prepare defers verification so a content HIT
+                // can reuse the stored pair with zero re-verify (T-04).
+                let checked_fn = match verify_function(candidate.parts().bundle.clone(), def_idx) {
+                    Ok(c) => c,
+                    Err(ds) => {
+                        return Ok(Err(EditOutcome::rejected(
+                            self.revision,
+                            "candidate rejected: verification diagnostics".to_string(),
+                            ds.iter().map(|d| d.render("probe.at", &new_src)).collect(),
+                        )));
+                    }
+                };
+                self.counters.bump(&format!("verify_hir:{changed_name}"));
+                match self.lower_and_admit(
+                    &candidate.parts().bundle,
+                    checked_fn,
+                    &changed_name,
+                    new_src_hash,
+                )? {
+                    Ok(pair) => pair,
+                    Err(diags) => {
+                        return Ok(Err(EditOutcome::rejected(
+                            self.revision,
+                            "candidate rejected: verification diagnostics".to_string(),
+                            diags,
+                        )));
                     }
                 }
-            };
+            }
+        };
 
         if !was_hit {
             candidate_mint_origin = inc.tree.abs_range(inc.tree.decls[changed_idx].node).0;
@@ -1730,6 +1925,25 @@ impl FunctionIncrementalSession {
             ..
         } = prepared;
         let _ = (session_id, base_revision);
+        // B1-C04: the committed body's cross-table references are in the
+        // CANDIDATE document's own def/type tables — capture their id
+        // texts before the candidate is consumed; the artifact persist
+        // path normalizes through these names, never through slots.
+        let (producing_defs, producing_types) = candidate
+            .parts()
+            .bundle
+            .modules
+            .first()
+            .map(|m| {
+                (
+                    m.defs.iter().map(|d| d.id_text.clone()).collect::<Vec<_>>(),
+                    m.types
+                        .iter()
+                        .map(|t| t.id_text.clone())
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .unwrap_or_default();
         // D-03 single publication point: the environment slot publishes
         // TOGETHER with the root/source/revision advance — the candidate's
         // commit validates owner/base/closed and installs its own entry.
@@ -1759,7 +1973,7 @@ impl FunctionIncrementalSession {
         let mint_text = new_src[td0 as usize..td1 as usize].to_string();
         Self::history_insert(
             changed_rec,
-            content_version,
+            content_version.clone(),
             (
                 hir_body.clone(),
                 code.clone(),
@@ -1771,6 +1985,19 @@ impl FunctionIncrementalSession {
         changed_rec.hir_body = hir_body;
         changed_rec.canonical = content_dump;
         changed_rec.code = code;
+        changed_rec.producing_defs = producing_defs;
+        changed_rec.producing_types = producing_types;
+        // C01-03: publish the INSTALLED body's content version — the
+        // query core's current truth for this function's body fact.
+        self.env
+            .set_body_fact(&changed_rec.def_id, &content_version);
+        // A re-minted artifact's dependency set holds no recorded
+        // body-fact reads (the scalar re-check reads interfaces only);
+        // records of the superseded artifact are void. A future
+        // body-reading check re-records through `query_body_fact`.
+        if reminted {
+            self.body_reads.remove(&changed_rec.name);
+        }
 
         // T-07: durable deposit of the installed revision (units + the
         // session manifest). A store failure is recorded but never
