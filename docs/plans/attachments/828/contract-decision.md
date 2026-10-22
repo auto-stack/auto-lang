@@ -1,6 +1,14 @@
 # PLAN-828 T-01 合同冻结（有界全路径首例）
 
-日期：2026-10-20 ｜ 状态：T-01 交付冻结 ｜ 基线：`plan-828-dev` @ master `f79b1b835`
+> **r3 措辞更正（2026-10-22，T-09 回写）**：本文为 **r2 时代历史冻结**，仅描述
+> T-01 首例时点的接缝决策。当前权威合同 = 主检出
+> `docs/plans/attachments/828/contract-r3/interface-decision.md`（含历轮修复机制）
+> 与计划 r3 本体（§5.6–5.8/§6 矩阵）；本文中的完成/延期措辞（如 §7 递归风险核查、
+> 各"归 T-0X"后置项）一律以 r3 合同与当前代码为准——未被 r3 或后续复审关闭的
+> 表述不构成当前授权。接口现状以
+> `successor-interface-contract.md`（r3 回写版）为准。
+
+日期：2026-10-20 ｜ 状态：T-01 交付冻结（r2 历史） ｜ 基线：`plan-828-dev` @ master `f79b1b835`
 工作树：`D:/autostack/.wt/lang-828/auto-lang` ｜ 验证入口：`cargo test --manifest-path
 experimental/ac-av-probe/Cargo.toml --test function_incremental_828 -- --test-threads=1`
 

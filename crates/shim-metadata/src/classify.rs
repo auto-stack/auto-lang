@@ -210,7 +210,7 @@ fn classify_one(m: &ShimMethod, third_party: bool) -> Result<MarshalPlan, String
             }
             Ty::Opaque(_) => ArgPlan::OpaqueHandle,
             // PLAN-596 T5:Box<dyn Fn(..)> 形参 → Callback 通道(ABI 'l' 槽传
-            /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+            // 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
             Ty::OpaqueOwned(n) if n.contains("Fn") => {
                 args.push(ArgPlan::Callback);
                 continue;
