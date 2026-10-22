@@ -60,7 +60,7 @@ oracle 与提交版本**；r2 版的"开放项 3（V-08 双线内存）"已由�
 
 - 828 面：`function_incremental_828` 21（含三件 512：soak/旗舰/完整存储轴，日常重放显式
   skip、里程碑全跑）、`_r1` 86、`_contract` 22、`_contract_t01r` 4、`_b1` 11、`_b2` 14、
-  `_t07` 8、`_t08` 4、`_mig` 9、probe lib 组件 1。
+  `_t07` 8、`_t08` 5（脚手架 3+正式战役+组件门控）、`_mig` 9、probe lib 组件 1。
 - 798 面（整模块入口/LayerSpec/A09 身份原样保留的回归）：`cache_tier` 20、`mir_tier` 8、
   `abc_semantics_tier` 15、`binding_tier` 4、`vertical` 3、`native_admission_tier` 11、
   `native_trace_parity` 1、`case_binding` 5、auto-av-core 22。

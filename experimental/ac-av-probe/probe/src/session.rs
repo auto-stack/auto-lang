@@ -1222,9 +1222,12 @@ impl FunctionIncrementalSession {
     }
 
     /// B3-C04 (§5.5 phase IO): the last edit's real IO bytes — syntax
-    /// rescan bytes actually rescanned; store payload bytes written when
-    /// a store is attached. A warm edit without a store performs NO
-    /// disk IO: no store key appears (absent = not performed).
+    /// rescan bytes actually rescanned; store LOGICAL PAYLOAD bytes of
+    /// accepted puts (each Ok put counts its payload once: fresh write
+    /// or idempotent republication; Conflict-resolved and failed puts
+    /// wrote nothing and count nothing) when a store is attached. A
+    /// warm edit without a store performs NO disk IO: no store key
+    /// appears (absent = not performed).
     pub fn phase_io(&self) -> &BTreeMap<String, u64> {
         &self.phase_io
     }
@@ -1500,8 +1503,12 @@ impl FunctionIncrementalSession {
         // unit's ABC row and span sidecar (restore fails closed without
         // either). HIR artifacts stay soft-pinned regenerable cache.
         let mut edges: Vec<(String, ac_artifact_probe::identity::RefKind)> = Vec::new();
-        // B3-C04: REAL store write bytes for this persist pass (payload
-        // bytes only; framing/envelope overhead is not fabricated).
+        // B3-C04: logical payload bytes of ACCEPTED store writes in this
+        // persist pass — every put_enveloped that returns Ok counts its
+        // payload exactly once (fresh write or idempotent republication
+        // of identical content); a Conflict resolved to a surviving row
+        // wrote nothing and counts nothing; failed puts count nothing
+        // (nothing landed). Envelope/framing overhead is not fabricated.
         let mut store_write_bytes: u64 = 0;
         for (idx, rec) in self.fns.iter_mut().enumerate() {
             // The resident entry keys the row AND carries the code's true
@@ -1549,17 +1556,25 @@ impl FunctionIncrementalSession {
             // tolerance as the 798 stale-rebuild path (F798-R12-03); on
             // conflict the SURVIVING artifact's id is resolved for the
             // edge.
-            let abc_id = match put_enveloped(store, &key, "A09", &expect, &bytes, vec![], None) {
-                Ok(id) => id,
-                Err(e) if format!("{e:?}").contains("Conflict") => {
-                    match get_enveloped_with_id(store, &key, "A09", &expect) {
-                        Ok(Some((id, _))) => id,
-                        _ => return Err(format!("put {}: conflicting row unreadable", rec.def_id)),
+            let (abc_id, abc_written) =
+                match put_enveloped(store, &key, "A09", &expect, &bytes, vec![], None) {
+                    Ok(id) => (id, true),
+                    Err(e) if format!("{e:?}").contains("Conflict") => {
+                        match get_enveloped_with_id(store, &key, "A09", &expect) {
+                            Ok(Some((id, _))) => (id, false),
+                            _ => {
+                                return Err(format!(
+                                    "put {}: conflicting row unreadable",
+                                    rec.def_id
+                                ))
+                            }
+                        }
                     }
-                }
-                Err(e) => return Err(format!("put {}: {e:?}", rec.def_id)),
-            };
-            store_write_bytes += bytes.len() as u64;
+                    Err(e) => return Err(format!("put {}: {e:?}", rec.def_id)),
+                };
+            if abc_written {
+                store_write_bytes += bytes.len() as u64;
+            }
             edges.push((
                 abc_id.clone(),
                 ac_artifact_probe::identity::RefKind::RequiredData,
@@ -1604,7 +1619,6 @@ impl FunctionIncrementalSession {
                     type_table,
                     body: norm_body,
                 }) {
-                    store_write_bytes += hbytes.len() as u64;
                     let hkey = fn_hir_key(&owner, &rec.def_id, &cv, &caps_fp);
                     let hid = EnvelopeIdentity::fn_hir_bound(&owner, &rec.def_id, &cv);
                     // T-07 bounded HIR soft-root policy (512/GC/storage
@@ -1670,12 +1684,14 @@ impl FunctionIncrementalSession {
             // T07-R2-02: the sidecar is store-internal + a required
             // edge; on Conflict the surviving row's id resolves for it.
             let mut sidecar_edge: Option<String> = None;
-            store_write_bytes += spayload.len() as u64;
             let sidecar_put = put_enveloped(store, &skey, "A09", &sid, &spayload, vec![], None);
             let sidecar_put_id = match &sidecar_put {
                 Ok(id) => id.clone(),
                 Err(_) => String::new(),
             };
+            if sidecar_put.is_ok() {
+                store_write_bytes += spayload.len() as u64;
+            }
             if let Err(e) = sidecar_put {
                 if !format!("{e:?}").contains("Conflict") {
                     return Err(format!("put sidecar {}: {e:?}", rec.def_id));
@@ -1736,7 +1752,10 @@ impl FunctionIncrementalSession {
                 } else {
                     let rkey = unit_span_sidecar_repair_key(&owner, &rec.def_id, &cv);
                     match put_enveloped(store, &rkey, "A09", &sid, &spayload, vec![], None) {
-                        Ok(id) => sidecar_edge = Some(id),
+                        Ok(id) => {
+                            store_write_bytes += spayload.len() as u64;
+                            sidecar_edge = Some(id);
+                        }
                         Err(e) if format!("{e:?}").contains("Conflict") => {
                             // The repair row is held too: a VALID holder
                             // still serves future restores; an invalid one
@@ -1817,10 +1836,6 @@ impl FunctionIncrementalSession {
             "units": units,
         }))
         .map_err(|e| e.to_string())?;
-        self.phase_io
-            .entry("store_write_bytes".into())
-            .and_modify(|b| *b += body.len() as u64)
-            .or_insert(body.len() as u64);
         let fp = payload_fingerprint(&body);
         // T07-R3-01 residual (R4): the persistent identity binds the
         // ACTUAL REQUIRED CLOSURE, not a fixed format slot. The edges are
@@ -1887,6 +1902,7 @@ impl FunctionIncrementalSession {
         // per-artifact soft pins.
         let artifact = put_enveloped(store, &key, "A09", &expect, &body, edges, None)
             .map_err(|e| format!("manifest put: {e:?}"))?;
+        *self.phase_io.entry("store_write_bytes".into()).or_insert(0) += body.len() as u64;
         // F-11: the manifest is the store's REQUIRED-REFERENCE root for
         // this session's program — `restore` discovers it through the
         // project's roots (never a key guess) and consumes it as the

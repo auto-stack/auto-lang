@@ -359,13 +359,23 @@ pub fn run_formal_session_judge(
     // init window is SINGLE-LISTED (init_ms) and excluded from the edit
     // statistics (§5.5 initialization is not a sample).
     let init_started = Instant::now();
-    link.send(&WorkerRequest::Init(InitOp {
-        src: cfg.src.clone(),
-        entry: cfg.entry.clone(),
-        caps: cfg.caps.clone(),
-    }))?;
-    match link.recv()? {
-        WorkerReply::Ready(r) => {
+    // B3-C04 R3: handshake SEND/RECEIVE/PARSE failures feed the SAME
+    // failure-report path as every other failure — the caller always
+    // gets a report (0 samples, the handshake reason, input and worker
+    // identity) it can persist before any verdict. Only a spawn failure
+    // stays Err: nothing ran, there is no session to report.
+    let handshake: Result<WorkerReply, String> = (|| {
+        link.send(&WorkerRequest::Init(InitOp {
+            src: cfg.src.clone(),
+            entry: cfg.entry.clone(),
+            caps: cfg.caps.clone(),
+        }))
+        .map_err(|e| format!("init send failed: {e}"))?;
+        link.recv().map_err(|e| format!("init receive failed: {e}"))
+    })();
+    let mut handshake_failed = false;
+    match handshake {
+        Ok(WorkerReply::Ready(r)) => {
             session_id = Some(r.session_id);
             if r.functions == 0 || r.revision != 0 {
                 failures.push(format!("ready: not a fresh session (rev {})", r.revision));
@@ -405,15 +415,29 @@ pub fn run_formal_session_judge(
         // B3-C04: an abnormal ready reply still yields a REPORT (with
         // the failure and zero samples) so the caller can persist
         // evidence — never a bare Err that drops everything.
-        other => {
+        Ok(other) => {
             failures.push(format!("ready: expected a ready reply, got {other:?}"));
             session_id = Some(0);
             prev_identity = BTreeMap::new();
+            handshake_failed = true;
+        }
+        // B3-C04 R3: EOF / bad JSON / send failure on the handshake —
+        // the same reportable failure, with the stream's own reason.
+        Err(e) => {
+            failures.push(format!("ready: {e}"));
+            session_id = Some(0);
+            prev_identity = BTreeMap::new();
+            handshake_failed = true;
         }
     }
     let init_ms = init_started.elapsed().as_secs_f64() * 1000.0;
 
     for (i, e) in cfg.edits.iter().enumerate() {
+        if handshake_failed {
+            // Nothing to judge — the completeness failure above owns the
+            // verdict; the report keeps the handshake reason.
+            break;
+        }
         let req_id = (i + 1) as u64;
         // The judged window opens at ENQUEUE (IPC included) and closes at
         // the parent's COMPLETED verification of the publication.
