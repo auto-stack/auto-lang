@@ -1,14 +1,16 @@
 //! PLAN-817 CTE probe crate: the executable side of the frozen contract.
-//! `av_driver` runs real AV calls through the merged 798 services,
+//! `av_driver` runs real AV calls through the merged 798 execution services,
 //! `store` persists frozen envelopes in the 783 ManagedStore, `driver`
 //! orchestrates one query step end-to-end, `deck` is the strict
-//! `cte817/1` atom-data deck parser and `worker` speaks `cteworker/1`.
+//! `cte817/1` atom-data deck parser, `worker` speaks `cteworker/1` and
+//! `procmem` aggregates parent+children process-tree memory.
 
 pub mod av_driver;
 pub mod bench;
 pub mod deck;
 pub mod driver;
 pub mod observe;
+pub mod procmem;
 pub mod store;
 pub mod worker;
 
@@ -29,13 +31,4 @@ pub fn fnv1a64(bytes: &[u8]) -> u64 {
 
 pub fn fnv1a64_hex(bytes: &[u8]) -> String {
     format!("{:016x}", fnv1a64(bytes))
-}
-
-pub mod bench_pub {
-    pub fn big_meta_deck_pub(fields: usize) -> String {
-        crate::bench::big_meta_deck(fields)
-    }
-    pub fn big_deck_pub(rev: i64) -> String {
-        crate::bench::big_deck(rev)
-    }
 }

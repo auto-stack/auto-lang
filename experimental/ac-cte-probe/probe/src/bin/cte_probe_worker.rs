@@ -66,6 +66,7 @@ fn bench_turnaround(args: &[String]) -> ! {
     let mut inject = 0u64;
     let mut inject_rebuild = false;
     let mut out: Option<std::path::PathBuf> = None;
+    let mut only: Vec<String> = Vec::new();
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
@@ -95,6 +96,16 @@ fn bench_turnaround(args: &[String]) -> ! {
                 i += 1;
                 out = args.get(i).map(std::path::PathBuf::from);
             }
+            // F-817-R5: restrict the run to named scenarios (comma
+            // separated). The formal gate runs ALL scenarios (no flag);
+            // the memory/admission counter-controls use this to reach
+            // ONE gate cheaply through the very same machinery.
+            "--only" => {
+                i += 1;
+                if let Some(list) = args.get(i) {
+                    only = list.split(',').map(|s| s.trim().to_string()).collect();
+                }
+            }
             other => {
                 eprintln!("unknown bench flag {other}");
                 std::process::exit(2);
@@ -102,12 +113,14 @@ fn bench_turnaround(args: &[String]) -> ! {
         }
         i += 1;
     }
+    let only_refs: Vec<&str> = only.iter().map(|s| s.as_str()).collect();
     let root = std::env::temp_dir().join(format!("cte817-bench-{}", std::process::id()));
     let (code, summary) = auto_cte_probe::bench::run_bench_ext(
         samples,
         gate_ms,
         inject,
         inject_rebuild,
+        &only_refs,
         out.as_deref(),
         &root,
     );

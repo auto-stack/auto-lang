@@ -113,10 +113,156 @@ pub fn serve_request(req: &WorkerRequest, _native_root: &Path) -> WorkerResponse
     serve_request_with(req, &mut driver)
 }
 
+// ---- bench counter-control seams (F-817-R5-01/03) ----------------------
+//
+// All three are env-gated and read PER REQUEST (never cached): they are
+// set only by the bench/turnaround controls that spawn this worker, so
+// the production runner path (auto-case) never trips them. They exist
+// so the FORMAL bench regression can prove the parent-side gates go red
+// on a real child memory transient, a real managed overage, real
+// sampling unavailability and real wire mutations — not on source-level
+// stand-ins.
+
+/// Hold a transient child allocation of `AUTO_CTE_BENCH_INJECT_ALLOC_MIB`
+/// MiB for the request's lifetime (pages touched so the commit is real);
+/// the child's own 1ms sampler folds it into
+/// `worker_private_bytes_peak`.
+fn bench_inject_hold() -> Option<Vec<u8>> {
+    let mib: usize = std::env::var("AUTO_CTE_BENCH_INJECT_ALLOC_MIB")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    if mib == 0 {
+        return None;
+    }
+    let mut buf = vec![0u8; mib * 1024 * 1024];
+    // Touch every page: PrivateUsage counts commit, but touching keeps
+    // the spike immune to lazy-zero accounting surprises.
+    let last = buf.len() - 1;
+    for off in (0..buf.len()).step_by(4096) {
+        buf[off] = 1;
+    }
+    buf[last] = 1;
+    Some(buf)
+}
+
+/// Shrink the managed staging partition to
+/// `AUTO_CTE_BENCH_SHRINK_STAGING_KIB` KiB so the next request's
+/// reservations spike the ledger (managed_target_met=false on the wire).
+fn bench_shrink_managed(driver: &mut CteDriver) {
+    if let Ok(v) = std::env::var("AUTO_CTE_BENCH_SHRINK_STAGING_KIB") {
+        if let Ok(kib) = v.parse::<u64>() {
+            driver.set_managed_caps(crate::observe::BudgetCaps {
+                hot: 8 * 1024 * 1024,
+                staging: kib * 1024,
+                av_slots: 8 * 1024 * 1024,
+            });
+        }
+    }
+}
+
+/// Mutate the outgoing response per `AUTO_CTE_BENCH_MUTATE` — a REAL
+/// wire mutation (the bytes this process actually emits), so the
+/// parent-side admission oracle is proven against actual bad responses,
+/// not source-level comparisons.
+fn apply_bench_mutation(resp: &mut WorkerResponse) {
+    let Ok(mode) = std::env::var("AUTO_CTE_BENCH_MUTATE") else {
+        return;
+    };
+    let Some(ok) = resp.ok.as_mut() else {
+        return;
+    };
+    let last = ok.steps.len().saturating_sub(1);
+    let first_query = ok
+        .steps
+        .iter()
+        .position(|st| st.op == "query")
+        .unwrap_or(last);
+    match mode.as_str() {
+        "wrong-value" => {
+            if let Some(st) = ok.steps.get_mut(last) {
+                if let Some(vals) = st.values.as_mut() {
+                    for v in vals.values_mut() {
+                        *v = "i32:0".into();
+                    }
+                }
+            }
+        }
+        "wrong-hir" => {
+            if let Some(st) = ok.steps.get_mut(last) {
+                if let Some(hir) = st.hir.as_mut() {
+                    for v in hir.values_mut() {
+                        *v = "0".into();
+                    }
+                }
+            }
+        }
+        "wrong-key" => {
+            if let Some(st) = ok.steps.get_mut(last) {
+                if let Some(vals) = st.values.as_mut() {
+                    if let Some((k, v)) = vals.pop_first() {
+                        vals.insert(format!("{k}x"), v);
+                    }
+                }
+            }
+        }
+        "wrong-type" => {
+            if let Some(st) = ok.steps.get_mut(last) {
+                if let Some(ct) = st.consumer_types.as_mut() {
+                    for v in ct.values_mut() {
+                        *v = "bool".into();
+                    }
+                }
+            }
+        }
+        "wrong-first-value" => {
+            if let Some(st) = ok.steps.get_mut(first_query) {
+                if let Some(vals) = st.values.as_mut() {
+                    for v in vals.values_mut() {
+                        *v = "i32:0".into();
+                    }
+                }
+            }
+        }
+        "diag" => {
+            if let Some(st) = ok.steps.get_mut(last) {
+                st.outcome = "diag".into();
+                st.language_class = true;
+                st.code = Some("cte.bench.mutated".into());
+                st.message = Some("bench mutation: diag inside a valid envelope".into());
+            }
+        }
+        "no-hir" => {
+            if let Some(st) = ok.steps.get_mut(last) {
+                st.hir = None;
+            }
+        }
+        "extra-step" => {
+            if let Some(tail) = ok.steps.last().cloned() {
+                ok.steps.push(tail);
+            }
+        }
+        "missing-step" => {
+            ok.steps.pop();
+        }
+        "bad-hash" => {
+            if let Some(st) = ok.steps.get_mut(last) {
+                st.source_hash = "00000000deadbeef".into();
+            }
+        }
+        "omit-peak" => {
+            ok.worker_private_bytes_peak = 0;
+        }
+        _ => {}
+    }
+}
+
 /// The driver-sharing core: same protocol, caller-owned driver (the
 /// stream mode keeps ONE driver per store root so the resident snapshot
 /// lane and store handle stay warm across requests).
 pub fn serve_request_with(req: &WorkerRequest, driver: &mut CteDriver) -> WorkerResponse {
+    // Held across the whole serve (F-817-R5-01 child-spike control).
+    let _hold = bench_inject_hold();
     // Process-wide peak across the serve (1ms quantization).
     let sampler = auto_av_probe::mempeek::PeakSampler::start(1);
     let resp = |ok: Option<WorkerOk>, error: Option<WorkerError>| WorkerResponse {
@@ -165,6 +311,7 @@ pub fn serve_request_with(req: &WorkerRequest, driver: &mut CteDriver) -> Worker
             );
         }
     }
+    bench_shrink_managed(driver);
     let mut steps_out: Vec<WorkerStepOut> = Vec::new();
     for (i, step) in req.steps.iter().enumerate() {
         match step {
@@ -214,7 +361,7 @@ pub fn serve_request_with(req: &WorkerRequest, driver: &mut CteDriver) -> Worker
         .iter()
         .filter(|st| st.managed.is_some())
         .all(|st| st.managed == Some(true));
-    resp(
+    let mut out = resp(
         Some(WorkerOk {
             recipe: req.recipe.clone(),
             worker_version: crate::driver::probe_version().to_string(),
@@ -230,7 +377,9 @@ pub fn serve_request_with(req: &WorkerRequest, driver: &mut CteDriver) -> Worker
             worker_pid: std::process::id(),
         }),
         None,
-    )
+    );
+    apply_bench_mutation(&mut out);
+    out
 }
 
 fn to_wire(op: &str, deck: &str, o: CteStepOutcome) -> WorkerStepOut {

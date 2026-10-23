@@ -4,6 +4,12 @@
 //! P95 < 1000ms), every row bound to its input hash; the gate-ms-0 and
 //! injected-spike controls turn the SAME machinery deterministically
 //! red. Independent expectations: 42+pad and 2+extra_fields.
+//!
+//! F-817-R5 closures: the REAL wire-mutation matrix (actual mutated
+//! worker responses through the shared admission), the child memory
+//! transient / tree aggregation / managed overage / sampling
+//! unavailability counter-controls — each turns the same formal gates
+//! red, and a legal positive control stays green.
 
 use std::process::{Command, Stdio};
 
@@ -263,5 +269,307 @@ fn cte_turnaround_resident_degrade_gate_and_control() {
     assert!(
         !failures.contains("resident-edit degraded"),
         "with the detector disabled the degrade red is gone (the gate was load-bearing): {failures}"
+    );
+}
+
+// ---- F-817-R5-03: the REAL wire-mutation matrix ------------------------
+//
+// Every mode below makes the WORKER emit actually-mutated response
+// bytes (env seam inside the worker, never active in production); the
+// shared parent admission must REJECT each one with a named reason —
+// no panic, no swallow — and the legal control stays green.
+
+fn serve_one_with_env(envs: &[(&str, &str)], store: &std::path::Path) -> (String, bool) {
+    let kind = auto_cte_probe::bench::DeckKind::EditRev(0);
+    let req =
+        auto_cte_probe::bench::build_worker_request_line("mut", "rh-mut", store, "mut", &kind);
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"));
+    cmd.arg("case-serve")
+        .envs(envs.iter().copied())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = cmd.spawn().expect("worker spawn");
+    use std::io::Write as _;
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(req.as_bytes())
+        .unwrap();
+    let out = child.wait_with_output().expect("worker completes");
+    (
+        String::from_utf8_lossy(&out.stdout).to_string(),
+        out.status.success(),
+    )
+}
+
+fn admit_edit_rev(raw: &str, exit_ok: bool) -> auto_cte_probe::bench::AdmissionOutcome {
+    let kind = auto_cte_probe::bench::DeckKind::EditRev(0);
+    let (deck, _) = kind.materialize();
+    auto_cte_probe::bench::admit_response(raw, "mut", "rh-mut", &deck, &kind.expects(), exit_ok)
+}
+
+#[test]
+fn cte_turnaround_wire_mutations_rejected_no_panic() {
+    // (mode, a substring the rejection reason must carry)
+    let modes: &[(&str, &str)] = &[
+        ("wrong-value", "wrong key/set or wrong value"),
+        ("wrong-hir", "hir[main.ct] != constant"),
+        ("wrong-key", "values[binding main.ct] wrong key/set"),
+        ("wrong-type", "consumer_types[main.ct] != i32"),
+        // The FIRST query's value (a PRIOR step, not the final one).
+        ("wrong-first-value", "step 0:"),
+        ("diag", "inside a valid envelope"),
+        ("no-hir", "hir[main.ct]"),
+        ("extra-step", "step count 4 != expected 3"),
+        ("missing-step", "step count 2 != expected 3"),
+        ("bad-hash", "source_hash mismatch"),
+        ("omit-peak", "peak sampling unavailable"),
+    ];
+    for (mode, needle) in modes {
+        let store = tempfile::tempdir().unwrap();
+        let (raw, exit_ok) = serve_one_with_env(&[("AUTO_CTE_BENCH_MUTATE", mode)], store.path());
+        let adm = admit_edit_rev(&raw, exit_ok);
+        assert!(
+            !adm.ok,
+            "{mode} must be REJECTED (raw: {})",
+            &raw[..raw.len().min(400)]
+        );
+        let all = adm.failures.join("; ");
+        assert!(
+            all.contains(needle),
+            "{mode} rejection names the cause ({needle}): {all}"
+        );
+        // The bad response's raw bytes exist for the failure report.
+        assert!(raw.contains("cteworker/1"), "{mode} kept real wire bytes");
+    }
+    // Legal positive control: no mutation env -> green.
+    let store = tempfile::tempdir().unwrap();
+    let (raw, exit_ok) = serve_one_with_env(&[], store.path());
+    let adm = admit_edit_rev(&raw, exit_ok);
+    assert!(adm.ok, "legal response stays green: {:?}", adm.failures);
+    assert!(adm.worker_peak.unwrap_or(0) > 0, "real child peak present");
+}
+
+/// The WARM path (case-serve-stream) speaks the same wire and feeds
+/// the same admission — representative stream mutations reject too.
+#[test]
+fn cte_turnaround_stream_mutations_share_admission() {
+    for (mode, needle) in [
+        ("wrong-key", "values[binding main.ct] wrong key/set"),
+        ("missing-step", "step count"),
+    ] {
+        let store = tempfile::tempdir().unwrap();
+        let kind = auto_cte_probe::bench::DeckKind::EditRev(0);
+        let req = auto_cte_probe::bench::build_worker_request_line(
+            "sm",
+            "rh-sm",
+            store.path(),
+            "sm",
+            &kind,
+        );
+        let mut child = Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"))
+            .arg("case-serve-stream")
+            .env("AUTO_CTE_BENCH_MUTATE", mode)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("stream worker spawn");
+        use std::io::{BufRead as _, BufReader, Write as _};
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(format!("{req}\n").as_bytes()).unwrap();
+        stdin.flush().unwrap();
+        let mut reader = BufReader::new(child.stdout.take().unwrap());
+        let mut line = String::new();
+        reader.read_line(&mut line).expect("stream response");
+        let adm = admit_edit_rev(&line, true);
+        assert!(!adm.ok, "{mode} rejected on the stream path");
+        assert!(adm.failures.join("; ").contains(needle), "{mode}: {needle}");
+        drop(stdin);
+        let _ = child.wait();
+    }
+}
+
+// ---- F-817-R5-01: the memory counter-controls --------------------------
+
+/// A REAL child memory transient (the worker holds 420MiB for the
+/// request's lifetime, self-reported through its own 1ms sampler)
+/// must turn the SAME formal worker gate red via the bench.
+#[test]
+fn cte_turnaround_child_memory_spike_control_is_red() {
+    let out = Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"))
+        .args([
+            "bench-turnaround",
+            "--samples",
+            "2",
+            "--gate-ms",
+            "100000",
+            "--only",
+            "restart",
+        ])
+        .env("AUTO_CTE_BENCH_INJECT_ALLOC_MIB", "420")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("control spawns");
+    assert_ne!(out.status.code().unwrap_or(0), 0, "the spike is red");
+    let v: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+    assert_eq!(v["target_met"], serde_json::json!(false));
+    let failures = serde_json::to_string(&v["hard_gate_failures"]).unwrap_or_default();
+    assert!(
+        failures.contains("restart worker peak") && failures.contains("> 384MiB gate"),
+        "the failure names the child's self-reported peak: {failures}"
+    );
+    // The child really reported an elevated peak (>420MiB committed).
+    let peak = v["scenario_peaks"]["restart"]["bytes"]
+        .as_u64()
+        .unwrap_or(0);
+    assert!(
+        peak > 420 * 1024 * 1024,
+        "the recorded peak is the CHILD's own reading: {:.1}MiB",
+        peak as f64 / 1048576.0
+    );
+}
+
+/// The tree gate sees the SIMULTANEOUS sum: two children each under
+/// the 384MiB worker gate (a small real spike on top of the debug
+/// baseline keeps them distinguishable from an unspiked run), together
+/// with the parent over the 512MiB tree cap — aggregation, not
+/// per-process maxima.
+#[test]
+fn cte_turnaround_tree_gate_aggregates_concurrent_children() {
+    use std::io::Write as _;
+    let sampler = auto_cte_probe::procmem::TreeSampler::start(5);
+    let mut children = Vec::new();
+    for k in 0..2 {
+        let store = tempfile::tempdir().unwrap();
+        let kind = auto_cte_probe::bench::DeckKind::QueryBig { rev: 0 };
+        let req = auto_cte_probe::bench::build_worker_request_line(
+            "tree",
+            &format!("rh-tree-{k}"),
+            store.path(),
+            "tree",
+            &kind,
+        );
+        let mut child = Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"))
+            .arg("case-serve")
+            .env("AUTO_CTE_BENCH_INJECT_ALLOC_MIB", "10")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("tree child spawn");
+        sampler.register(child.id());
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(req.as_bytes())
+            .unwrap();
+        children.push(child);
+    }
+    let mut child_peaks = Vec::new();
+    for child in children {
+        let out = child.wait_with_output().expect("tree child completes");
+        let v: serde_json::Value =
+            serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+        child_peaks.push(v["ok"]["worker_private_bytes_peak"].as_u64().unwrap_or(0));
+    }
+    let tree = sampler.stop();
+    for (k, p) in child_peaks.iter().enumerate() {
+        assert!(
+            *p > 300 * 1024 * 1024 && *p < 384 * 1024 * 1024,
+            "child {k} carries a real workload peak UNDER the worker gate: {:.1}MiB",
+            *p as f64 / 1048576.0
+        );
+    }
+    assert!(
+        tree.tree_peak > 512 * 1024 * 1024,
+        "the tree gate's input sees the SUM (each child <384MiB, together >512MiB): {:.1}MiB",
+        tree.tree_peak as f64 / 1048576.0
+    );
+    assert!(
+        tree.tree_peak - tree.parent_peak > child_peaks.iter().copied().max().unwrap_or(0),
+        "the children's summed contribution exceeds the largest single child — aggregation, not a per-process maximum (tree {:.1}MiB, parent {:.1}MiB)",
+        tree.tree_peak as f64 / 1048576.0,
+        tree.parent_peak as f64 / 1048576.0
+    );
+}
+
+/// A real managed-budget overage inside the warm worker (staging
+/// partition shrunk below the request size) must turn the same bench
+/// red through the wire's managed verdict.
+#[test]
+fn cte_turnaround_managed_budget_control_is_red() {
+    let out = Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"))
+        .args([
+            "bench-turnaround",
+            "--samples",
+            "2",
+            "--gate-ms",
+            "100000",
+            "--only",
+            "body-edit",
+        ])
+        .env("AUTO_CTE_BENCH_SHRINK_STAGING_KIB", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("control spawns");
+    assert_ne!(out.status.code().unwrap_or(0), 0, "the overage is red");
+    let v: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+    assert_eq!(v["target_met"], serde_json::json!(false));
+    let failures = serde_json::to_string(&v["hard_gate_failures"]).unwrap_or_default();
+    assert!(
+        failures.contains("managed budget exceeded"),
+        "the failure names the managed verdict: {failures}"
+    );
+}
+
+/// Sampling unavailability (the worker reports peak 0 / omits it) is a
+/// RED, never a silent green — and the failed raw row carries the
+/// response excerpt + failure reasons (the failure report travels).
+#[test]
+fn cte_turnaround_sampling_unavailable_control_is_red() {
+    let tmp = tempfile::tempdir().unwrap();
+    let raw = tmp.path().join("omit.jsonl");
+    let out = Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"))
+        .args([
+            "bench-turnaround",
+            "--samples",
+            "2",
+            "--gate-ms",
+            "100000",
+            "--only",
+            "restart",
+            "--out",
+            raw.to_str().unwrap(),
+        ])
+        .env("AUTO_CTE_BENCH_MUTATE", "omit-peak")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("control spawns");
+    assert_ne!(out.status.code().unwrap_or(0), 0, "unavailable is red");
+    let v: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+    let failures = serde_json::to_string(&v["hard_gate_failures"]).unwrap_or_default();
+    assert!(
+        failures.contains("sampling unavailable"),
+        "the failure names unavailability: {failures}"
+    );
+    // The failed rows preserve the raw response excerpt + reasons.
+    let text = std::fs::read_to_string(&raw).unwrap();
+    let failed_row = text
+        .lines()
+        .find(|l| l.contains("\"ok\":false"))
+        .expect("a failed row is present in the report");
+    assert!(
+        failed_row.contains("peak sampling unavailable") && failed_row.contains("cteworker/1"),
+        "the row carries the failure report and the raw bytes: {failed_row}"
     );
 }
