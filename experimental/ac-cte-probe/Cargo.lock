@@ -203,6 +203,7 @@ dependencies = [
  "auto-cte-contract",
  "auto-cte-core",
  "base64",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",

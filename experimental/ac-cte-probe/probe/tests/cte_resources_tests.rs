@@ -879,6 +879,101 @@ fn cte_resources_restore_reserve_before_alloc_order() {
     assert_eq!(out5.cache, Some("hit"));
 }
 
+/// F-817-R7-01: an OVERSIZED carrier under a REAL request identity is
+/// rejected at the READ bound, BEFORE any reassembly allocation. The
+/// identity comes from a REAL execution (publish -> read the envelope
+/// back); a fresh store then carries a 2MiB LayoutData payload under
+/// that exact key via the PUBLIC put API (the review's probe shape);
+/// the driver's zero-allocation size probe sees the real framed size
+/// and rejects — the loader NEVER RUNS (no load attempt counter, no
+/// load reservation, nothing published), and the probe's numbers are
+/// independently checked against the planted truth.
+#[test]
+fn cte_resources_oversized_restore_rejected_before_load() {
+    use ac_artifact_probe::codec::ChunkKind;
+    use ac_artifact_probe::store::PutRequest;
+    use auto_cte_contract::{CteExecutedV1, CTE_FROZEN_LAYER};
+
+    let root_a = tempfile::tempdir().unwrap();
+    let deck = small_query_deck();
+    // (1) A REAL execution publishes a real envelope at the REAL identity.
+    let mut d = CteDriver::with_store(root_a.path(), "r7").unwrap();
+    assert_eq!(d.query_step(&deck, None).status, StepStatus::Ok);
+    let art_id = d.last_published_artifact().expect("published").to_string();
+    let st_a = auto_cte_probe::store::CteStore::open(root_a.path(), "r7").unwrap();
+    let loaded = st_a
+        .raw()
+        .get_artifact_by_id(&art_id)
+        .expect("artifact read")
+        .expect("artifact present");
+    let env: CteExecutedV1 = serde_json::from_slice(&loaded.payload).expect("decodes");
+    let identity = env.request_identity;
+    // (2) A FRESH store carrying a 2MiB payload under that exact key
+    // (public put; the review counterexample's shape).
+    let root_b = tempfile::tempdir().unwrap();
+    let st_b = auto_cte_probe::store::CteStore::open(root_b.path(), "r7").unwrap();
+    st_b.raw()
+        .put_artifact(PutRequest {
+            layer: CTE_FROZEN_LAYER,
+            key: auto_cte_probe::store::envelope_key(&identity),
+            kind: ChunkKind::LayoutData,
+            payload: vec![b' '; 2 * 1024 * 1024],
+            edges: Vec::new(),
+            project: Some("r7".into()),
+        })
+        .expect("plant");
+    // The probe reports the REAL planted size (independent check).
+    let probed = auto_cte_probe::store::probe_frozen_size(&st_b, &identity)
+        .expect("probe")
+        .expect("present");
+    assert_eq!(
+        probed,
+        (
+            2 * 1024 * 1024 + ac_artifact_probe::codec::CHUNK_HEADER_LEN as u64,
+            2 * 1024 * 1024
+        ),
+        "the zero-allocation probe returns the true framed/payload sizes"
+    );
+    // (3) The driver request REJECTS at the read bound BEFORE the load.
+    let mut d2 = CteDriver::with_store(root_b.path(), "r7").unwrap();
+    let out = d2.query_step(&deck, None);
+    assert_eq!(out.status, StepStatus::Diag);
+    let msg = out.message.as_deref().unwrap_or_default();
+    assert!(
+        msg.contains("reassembly bound") && msg.contains("BEFORE load"),
+        "the rejection names the read bound: {msg}"
+    );
+    // The loader NEVER ran: probe yes, load no.
+    assert_eq!(out.counters.get("frozen_probes"), Some(&1));
+    assert!(
+        out.counters.get("frozen_load_attempts").is_none(),
+        "no reassembly was attempted (counters: {:?})",
+        out.counters
+    );
+    // No load reservation either — the rejection precedes the ledger.
+    assert!(
+        event_index(
+            d2.last_budget_events(),
+            is_reserve_what("frozen payload load", false)
+        )
+        .is_none()
+            && event_index(
+                d2.last_budget_events(),
+                is_reserve_what("frozen payload load", true)
+            )
+            .is_none(),
+        "no load reservation was reached: {:?}",
+        d2.last_budget_events()
+    );
+    assert!(d2.last_published_artifact().is_none());
+    // (4) The planted store row is INTACT (a normal smaller envelope at
+    // a DIFFERENT identity still serves fine on store A).
+    let mut d3 = CteDriver::with_store(root_a.path(), "r7").unwrap();
+    let out3 = d3.query_step(&deck, None);
+    assert_eq!(out3.status, StepStatus::Ok);
+    assert_eq!(out3.cache, Some("hit"), "the good entry still hits");
+}
+
 /// The wire/input path: a base64 payload over the 4MiB deck bound is
 /// refused at the PRE-CHECK (before the decode allocates); a request
 /// over the 6MiB wire bound is refused by the BOUNDED READ itself.

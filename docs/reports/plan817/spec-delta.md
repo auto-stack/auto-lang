@@ -25,10 +25,13 @@
   成功）、自有层 `ac817/a05-cte-exec/v1`（LayoutData 载体）、全字段恢复准入+新鲜性
   （闭包 body/签名、meta 探针/事实负依赖、caps、engine 三元版本）、hit 零 AV 且
   consumer 逐次重准入、坏块受控拒绝（非 miss）、lease/root/GC 按水位。
-- **预留顺序（F-817-R6-02）**：编解码/恢复路径分配前预留——envelope 编码
+- **预留顺序（F-817-R6-02/R7-01）**：编解码/恢复路径分配前预留——envelope 编码
   先经计数 writer 得精确字节数、预留 Staging 后再序列化（payload 按值入 store，
-  无二次未预留副本）；恢复分段（载入前预留重组界、以载荷长度为界先留 Hot 再
-  decode）；worker wire 读入有界（6MiB）且 base64 预检先于解码；预算事件日志
+  无二次未预留副本）；恢复四段有序（F-817-R7-01）：**零分配大小探测**（经公共 `ManagedStore::db()` 只读 SQL
+  `chunks.size`，framed=48B 帧头+载荷）在读取/重组上限处先行拒绝超界载体（加载器零调用）；
+  载入预留=loader 真实瞬态足迹（framed Vec+unframed 拷贝）；加载长度须与探测一致（内容
+  寻址漂移=异质写窗口受控拒）；decode 以保守 2× 载荷留 Hot（serde 结构/容量开销+与载荷
+  同时存活，撤销"JSON 文本≥结构"假设）；worker wire 读入有界（6MiB）且 base64 预检先于解码；预算事件日志
   （Reserve/Alloc/Release 顺序）使"拒绝先于大分配"可观测。
 - **请求累计墙钟（F-817-R6-01）**：单 CTE 请求（调度/缓存/编译执行/consumer/
   必要等待）累计 ≤10s；看门狗经取消旗标中断在途 AV 调用，超限为受控资源态

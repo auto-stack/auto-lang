@@ -531,13 +531,13 @@ impl CteDriver {
         let mut values_by_query: BTreeMap<String, CteValue> = plan.values.clone();
 
         // The frozen envelope carrier is one REASSEMBLED LayoutData
-        // artifact (the store chunks pages and get_artifact joins
-        // them). Legit envelopes are fingerprint manifests (~87B per
+        // artifact. Legit envelopes are fingerprint manifests (~87B per
         // closure member, ≈3.2× the source — structurally under the
-        // 4× projection reserve), so 1MiB covers every reachable
-        // envelope; a larger payload is foreign/corrupt — a controlled
-        // infra rejection (F-817-R6-02: reserve BEFORE get_artifact
-        // allocates).
+        // 4× projection reserve), so a 1MiB payload bound covers every
+        // reachable envelope; a larger payload is foreign/corrupt —
+        // and (F-817-R7-01) it is rejected at the READ bound, BEFORE
+        // the loader allocates: a zero-allocation size probe over the
+        // store's own `chunks.size` metadata gates `get_artifact`.
         const FROZEN_PAYLOAD_BOUND: u64 = 1024 * 1024;
 
         for call in &plan.av_calls {
@@ -581,69 +581,111 @@ impl CteDriver {
                 manifest_fp: mfp,
             };
             // Cache lookup first — a hit must never touch the AV. The
-            // load and decode are budget-gated IN ORDER (F-817-R6-02):
-            // the codec-page bound is reserved BEFORE get_artifact
-            // allocates the payload; the payload length (a sound upper
-            // bound for the decoded structure) is reserved Hot BEFORE
-            // from_slice allocates the envelope.
+            // restore is bounded IN ORDER (F-817-R7-01):
+            //   0. a ZERO-ALLOCATION size probe (the store's own
+            //      `chunks.size` metadata) — an oversized/foreign
+            //      carrier is rejected BEFORE any reassembly happens;
+            //   1. the reservation covers the loader's TRUE transient
+            //      footprint (the framed Vec + the unframed payload
+            //      copy = framed + payload bytes);
+            //   2. the loaded length must equal the probe (chunks are
+            //      content-addressed; a drift is a foreign-write
+            //      window — controlled infra rejection);
+            //   3. the decode reserves Hot at a conservative 2× the
+            //      payload (serde structures — BTreeMap nodes, String
+            //      capacities — plus the payload alive alongside).
             let (cached, held_hot): (Option<CteExecutedV1>, u64) = match self.store.as_ref() {
                 Some(st) => {
-                    if let Err(m) = budget.reserve(
-                        crate::observe::Partition::Staging,
-                        FROZEN_PAYLOAD_BOUND,
-                        "frozen payload load",
-                    ) {
-                        let e =
-                            CteAdmissionError::new(CteCode::Resource("managed-staging".into()), m);
-                        return CteStepOutcome::diag(&e, cache_verdict, obs);
-                    }
-                    match obs.span("cache_lookup", |_| {
-                        store::load_frozen_payload(st, &identity)
+                    let probed = match obs.span("cache_size_probe", |_| {
+                        store::probe_frozen_size(st, &identity)
                     }) {
-                        Ok(Some(payload)) => {
-                            if (payload.len() as u64) > FROZEN_PAYLOAD_BOUND {
+                        Ok(p) => p,
+                        Err(e) => return CteStepOutcome::diag(&e, cache_verdict, obs),
+                    };
+                    obs.counter("frozen_probes", 1);
+                    match probed {
+                        // Clean miss: NO reservation, NO allocation.
+                        None => (None, 0u64),
+                        Some((framed_len, payload_len)) => {
+                            if payload_len > FROZEN_PAYLOAD_BOUND {
                                 let e = CteAdmissionError::new(
                                     CteCode::Infra("store".into()),
                                     format!(
-                                        "frozen artifact payload {}B exceeds the {}B codec page bound",
-                                        payload.len(),
-                                        FROZEN_PAYLOAD_BOUND
+                                        "frozen artifact payload {payload_len}B exceeds the {FROZEN_PAYLOAD_BOUND}B reassembly bound — rejected at the read bound BEFORE load (foreign/corrupt carrier)"
                                     ),
                                 );
                                 return CteStepOutcome::diag(&e, cache_verdict, obs);
                             }
-                            budget.record_alloc("frozen-payload", payload.len() as u64);
+                            // The loader's real transient: fs::read returns the
+                            // framed Vec, unframe slices it, the payload is
+                            // copied out — framed + payload bytes coexist.
                             if let Err(m) = budget.reserve(
-                                crate::observe::Partition::Hot,
-                                payload.len() as u64,
-                                "restored envelope decode",
+                                crate::observe::Partition::Staging,
+                                framed_len + payload_len,
+                                "frozen payload load",
                             ) {
                                 let e = CteAdmissionError::new(
-                                    CteCode::Resource("managed-hot".into()),
+                                    CteCode::Resource("managed-staging".into()),
                                     m,
                                 );
                                 return CteStepOutcome::diag(&e, cache_verdict, obs);
                             }
-                            match obs.span("cache_restore_decode", |_| {
-                                store::decode_envelope(&payload, &identity)
+                            obs.counter("frozen_load_attempts", 1);
+                            match obs.span("cache_lookup", |_| {
+                                store::load_frozen_payload(st, &identity)
                             }) {
-                                Ok(env) => {
-                                    budget.record_alloc("restore-decode", payload.len() as u64);
+                                Ok(Some(payload)) => {
+                                    if (payload.len() as u64) != payload_len {
+                                        let e = CteAdmissionError::new(
+                                            CteCode::Infra("store".into()),
+                                            format!(
+                                                "frozen artifact length drifted from the probed size ({}B vs {payload_len}B) — content-addressed chunks make this a foreign-write window",
+                                                payload.len()
+                                            ),
+                                        );
+                                        return CteStepOutcome::diag(&e, cache_verdict, obs);
+                                    }
+                                    budget.record_alloc("frozen-payload", payload.len() as u64);
+                                    if let Err(m) = budget.reserve(
+                                        crate::observe::Partition::Hot,
+                                        payload_len.saturating_mul(2),
+                                        "restored envelope decode",
+                                    ) {
+                                        let e = CteAdmissionError::new(
+                                            CteCode::Resource("managed-hot".into()),
+                                            m,
+                                        );
+                                        return CteStepOutcome::diag(&e, cache_verdict, obs);
+                                    }
+                                    match obs.span("cache_restore_decode", |_| {
+                                        store::decode_envelope(&payload, &identity)
+                                    }) {
+                                        Ok(env) => {
+                                            budget.record_alloc(
+                                                "restore-decode",
+                                                payload_len.saturating_mul(2),
+                                            );
+                                            budget.release(
+                                                crate::observe::Partition::Staging,
+                                                framed_len + payload_len,
+                                            );
+                                            (Some(env), payload_len.saturating_mul(2))
+                                        }
+                                        Err(e) => {
+                                            return CteStepOutcome::diag(&e, cache_verdict, obs)
+                                        }
+                                    }
+                                }
+                                Ok(None) => {
                                     budget.release(
                                         crate::observe::Partition::Staging,
-                                        FROZEN_PAYLOAD_BOUND,
+                                        framed_len + payload_len,
                                     );
-                                    (Some(env), payload.len() as u64)
+                                    (None, 0)
                                 }
                                 Err(e) => return CteStepOutcome::diag(&e, cache_verdict, obs),
                             }
                         }
-                        Ok(None) => {
-                            budget
-                                .release(crate::observe::Partition::Staging, FROZEN_PAYLOAD_BOUND);
-                            (None, 0)
-                        }
-                        Err(e) => return CteStepOutcome::diag(&e, cache_verdict, obs),
                     }
                 }
                 None => (None, 0),

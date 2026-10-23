@@ -123,6 +123,41 @@ pub fn lookup_frozen(
     decode_envelope(&payload, identity).map(Some)
 }
 
+/// Stage 0 of the reserved restore (F-817-R7-01): the ZERO-ALLOCATION
+/// size probe. Reads the store's OWN chunk metadata (`chunks.size`,
+/// recorded at put time as the FRAMED byte length = 48B header +
+/// payload) through the public `ManagedStore::db()` handle — a single
+/// indexed SQL lookup, no blob read, no reassembly. Returns
+/// `(framed_len, payload_len)`; `None` = clean miss. The caller bounds
+/// the load at these REAL numbers BEFORE `get_artifact` allocates its
+/// framed Vec + unframed payload copy.
+pub fn probe_frozen_size(
+    st: &CteStore,
+    identity: &CteRequestIdentityV1,
+) -> Result<Option<(u64, u64)>, CteAdmissionError> {
+    let conn = st.raw().db();
+    let framed: Option<u64> = conn
+        .query_row(
+            "SELECT c.size FROM artifacts a JOIN chunks c ON c.chunk_id = a.payload_chunk              WHERE a.layer = ?1 AND a.key_hash = ?2",
+            rusqlite::params![
+                CTE_FROZEN_LAYER,
+                envelope_key(identity).hash()
+            ],
+            |r| r.get(0),
+        )
+        .map_err(|e| {
+            CteAdmissionError::new(
+                CteCode::Infra("store".into()),
+                format!("frozen size probe failed: {e}"),
+            )
+        })
+        .ok();
+    Ok(framed.map(|f| {
+        let payload = f.saturating_sub(ac_artifact_probe::codec::CHUNK_HEADER_LEN as u64);
+        (f, payload)
+    }))
+}
+
 /// Stage 1 of the reserved restore (F-817-R6-02): load the payload
 /// bytes. The caller must have reserved a covering bound BEFORE this
 /// call — the `Vec` allocation happens here. `None` = clean miss.
