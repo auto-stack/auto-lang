@@ -103,6 +103,12 @@ pub fn run_watch(project_dir: &Path) -> Result<(), String> {
     // Channel for file events
     let (tx, rx) = mpsc::channel();
 
+    // PLAN-816 T-06：终止原语接线——Ctrl+C/SIGTERM 落到设施进程级标志，
+    // 主循环在既有 1s 唤醒粒度内观察并干净退出（watcher 常规 Drop 回收，
+    // 缓存已存盘；契约基线 §3"watcher 寿命归 T-06 接线"）。失败时保持
+    // 旧行为（默认终止）——不假称已安装。
+    let signal_installed = auto_tool_execution::terminate::install();
+
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
         if let Ok(event) = res {
             let _ = tx.send(event);
@@ -132,6 +138,15 @@ pub fn run_watch(project_dir: &Path) -> Result<(), String> {
     );
 
     loop {
+        // 终止观察先于事件处理（退出路径不清尾批：已处理批次的缓存
+        // 当场落盘，终止时未决事件弃置属操作员意图）。
+        if signal_installed && auto_tool_execution::terminate::requested() {
+            println!(
+                "\n{} Terminate requested — stopping watch.",
+                "✓".bright_green()
+            );
+            break;
+        }
         match rx.recv_timeout(Duration::from_secs(1)) {
             Ok(event) => {
                 // Collect changed .at paths

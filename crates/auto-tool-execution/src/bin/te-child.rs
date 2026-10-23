@@ -212,6 +212,19 @@ fn main() {
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
         }
+        // 安装设施终止原语后等待真实终止信号（Ctrl+C/SIGTERM/SIGINT）：
+        // 收到即干净退出码 42；10s 未收到=7（截止自守）。
+        "terminate-wait" => {
+            assert!(auto_tool_execution::terminate::install(), "install failed");
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while !auto_tool_execution::terminate::requested() {
+                if std::time::Instant::now() >= deadline {
+                    std::process::exit(7);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            std::process::exit(42);
+        }
         _ => {
             eprintln!("te-child: unknown or missing {MODE}");
             std::process::exit(64);

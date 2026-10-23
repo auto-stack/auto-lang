@@ -225,38 +225,125 @@ fn serve_rust(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, Stri
     );
     println!("  cargo run --manifest-path {}", cargo_toml.display());
 
-    // 配置注入：子进程 re-resolve 规范形（决策 §3.1：env 注入，非文件散落）。
+    // PLAN-816 T-06：cargo run 子进程经 owned 执行设施承载（契约基线 §3
+    // serve_rust 行——"ready/健康轮询归 T-06，用设施重写"）。树归属=
+    // ProcessTree（cargo run 派生的真实服务二进制一并 owned；Job 挂起
+    // 启动保证早派生后代入树）；stdout 管道化由 reader 线程逐行转发并
+    // 观测子进程自打的 `AUTO_SERVICE_READY`（不假 ready：未见行=未就绪，
+    // spec §5"旧实例/生成失败不得 ready"）；stderr 继承（cargo 构建进度
+    // 语义保持）。配置注入：AUTO_HTTP_SERVICE_JSON（决策 §3.1：env 注入）；
+    // cwd=workspace 落点（cargo 从 CWD 发现 .cargo/config.toml——shared
+    // target-dir+MSVC 栈 rustflags，冷编指纹才一致）。
     let service_json = config.to_json();
-    let mut cmd = std::process::Command::new("cargo");
-    // cwd = workspace 落点：cargo 从 CWD（非 manifest 目录）发现
-    // .cargo/config.toml（shared target-dir + MSVC 栈 rustflags）——从项目
-    // 目录 spawn 会拿不到配置 → 不同指纹 → 全量冷编（onig_sys C1083 链）。
-    cmd.args([
-        "run",
-        "--release",
-        "--manifest-path",
-        cargo_toml.to_str().unwrap_or("."),
-    ])
-    .env("AUTO_HTTP_SERVICE_JSON", &service_json)
-    .current_dir(&ws_dir)
-    .stdout(std::process::Stdio::inherit())
-    .stderr(std::process::Stdio::inherit());
-
-    let mut child = cmd
-        .spawn()
+    let mut spec = auto_tool_execution::ExecutionSpec::new([
+        "cargo".into(),
+        "run".into(),
+        "--release".into(),
+        "--manifest-path".into(),
+        cargo_toml.clone().into_os_string(),
+    ]);
+    spec.cwd = Some(ws_dir.clone());
+    spec.env = vec![("AUTO_HTTP_SERVICE_JSON".into(), service_json.into())];
+    spec.stdin = auto_tool_execution::StdioPolicy::Null;
+    spec.stdout = auto_tool_execution::StdioPolicy::Piped;
+    spec.stderr = auto_tool_execution::StdioPolicy::Inherit;
+    spec.tree_scope = auto_tool_execution::TreeScope::ProcessTree;
+    let mut proc = auto_tool_execution::spawn(&spec)
         .map_err(|e| format!("failed to spawn backend cargo run: {e}"))?;
     println!(
         "  ✓ backend spawning (PID: {}); Ctrl+C stops the service",
-        child.id()
+        proc.id()
     );
 
-    // 子进程 ready/身份判定（health 轮询）在 T-05 接管；T-02 以子进程退出码
-    // 为准：bind 冲突/配置错误 = 子进程非零 → 本进程同样非零。
-    let status = child
-        .wait()
-        .map_err(|e| format!("backend wait failed: {e}"))?;
+    // READY 观测：reader 线程逐行转发 stdout 并捕获 AUTO_SERVICE_READY
+    // 行（生成服务 bind+初始化后自打，api_gen——就绪只认真实上报；
+    // 窗口尽未见行=具名失败并取消树，不把"还在构建"误报为就绪也不无限
+    // 等）。窗口默认 600s：rust 轨的窗口覆盖 cargo build（冷 release 构建
+    // 是真实常态，与 vm 轨 120s 纯启动窗不同源）；AUTO_SERVICE_READY_
+    // TIMEOUT_SECS 显式覆盖（预算正反控）。
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel::<String>();
+    let stdout = proc
+        .take_stdout()
+        .ok_or_else(|| "backend stdout was not piped".to_string())?;
+    let reader = std::thread::Builder::new()
+        .name("service-rust-stdout".into())
+        .spawn(move || {
+            use std::io::BufRead;
+            let reader = std::io::BufReader::new(stdout);
+            let mut ready_sent = false;
+            for line in reader.lines() {
+                let Ok(line) = line else { break };
+                println!("{line}");
+                if !ready_sent && line.starts_with("AUTO_SERVICE_READY ") {
+                    ready_sent = true;
+                    let _ = ready_tx.send(line);
+                }
+            }
+        })
+        .map_err(|e| format!("failed to spawn backend stdout reader: {e}"))?;
+
+    let ready_window = std::time::Duration::from_secs(
+        std::env::var("AUTO_SERVICE_READY_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .unwrap_or(600),
+    );
+    let ready = ready_rx.recv_timeout(ready_window);
+    match ready {
+        Ok(line) => println!("  ✓ Rust HTTP service ready ({line})"),
+        Err(_) => {
+            // 未在窗口内就绪：取消 owned 树（bounded）并等待 reader 真停
+            // （EOF 随树终止到来），随后按失败源报告——不假 ready。
+            let cancel = proc
+                .cancel_within(std::time::Duration::from_secs(5))
+                .map(|_| ())
+                .map_err(|e| format!("cancel after ready window: {e}"));
+            let _ = reader.join();
+            return match (proc.wait(), cancel) {
+                (Ok(status), _) if !status.success() => Err(format!(
+                    "backend exited with {} before ready (bind conflict or startup failure)",
+                    status.code().unwrap_or(1)
+                )),
+                (_, Err(e)) => Err(e),
+                _ => Err(format!(
+                    "Rust HTTP service did not report AUTO_SERVICE_READY within {ready_window:?}"
+                )),
+            };
+        }
+    }
+
+    // Ctrl+C（spec §7 受控关闭）：子进程与 CLI 同控制台、自行收到事件并
+    // 优雅排空（drain 默认 10s）；本进程先等待自然退出（有界排空窗），
+    // 超窗或有界等待失败则 cancel owned 树（terminate+收尸）——"rust 子
+    // 进程有界排空后 parent 退出；端口与自己创建的子进程零残留"。
+    let terminate_installed = auto_tool_execution::terminate::install();
+    let drain_window = std::time::Duration::from_secs(15);
+    let status = loop {
+        if terminate_installed && auto_tool_execution::terminate::requested() {
+            match proc.wait_deadline(drain_window) {
+                Ok(Some(status)) => break status,
+                _ => {
+                    let status = proc
+                        .cancel_within(std::time::Duration::from_secs(5))
+                        .map_err(|e| format!("cancel after drain window: {e}"))?;
+                    break status;
+                }
+            }
+        }
+        match proc.wait_deadline(std::time::Duration::from_millis(200)) {
+            Ok(Some(status)) => break status,
+            Ok(None) => continue,
+            Err(e) => return Err(format!("backend wait failed: {e}")),
+        }
+    };
+    // reader 真停（树终止 → stdout 写端全关 → EOF；有界 join）。
+    let _ = reader.join();
     if status.success() {
         println!("  ✓ Rust HTTP service stopped cleanly");
+        Ok(0)
+    } else if terminate_installed && auto_tool_execution::terminate::requested() {
+        // 操作员终止路径的树取消：退出码来自我方终止，不计为服务失败。
+        println!("  ✓ Rust HTTP service stopped (terminate)");
         Ok(0)
     } else {
         let code = status.code().unwrap_or(1);

@@ -2842,22 +2842,24 @@ fn real_main(cli: Cli) -> Result<()> {
             } else if foreground {
                 daemon.run_pipe(&pipe_name);
             } else {
-                // Background mode: spawn self with --foreground to listen on named pipe
+                // Background mode: spawn self with --foreground to listen on named pipe.
+                // PLAN-816 T-06：daemon 化 spawn 走设施 spawn_detached（分离
+                // 语义=不持有归属，CREATE_NO_WINDOW 经 windows_creation_flags
+                // 透传；协议/管道语义不动——契约基线 §3）。
                 let exe = std::env::current_exe()
                     .map_err(|e| miette::miette!("Cannot find auto executable: {}", e))?;
-                #[cfg(target_family = "windows")]
-                {
-                    use std::os::windows::process::CommandExt;
-                    std::process::Command::new(exe)
-                        .args(["serve", "--foreground", "--pipe-name", &pipe_name])
-                        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-                        .spawn()
-                        .map_err(|e| miette::miette!("Failed to start daemon: {}", e))?;
-                }
-                #[cfg(target_family = "unix")]
-                std::process::Command::new(exe)
-                    .args(["serve", "--foreground", "--pipe-name", &pipe_name])
-                    .spawn()
+                let mut spec = auto_tool_execution::ExecutionSpec::new([
+                    exe.as_os_str().to_os_string(),
+                    "serve".into(),
+                    "--foreground".into(),
+                    "--pipe-name".into(),
+                    pipe_name.clone().into(),
+                ]);
+                spec.stdin = auto_tool_execution::StdioPolicy::Inherit;
+                spec.stdout = auto_tool_execution::StdioPolicy::Inherit;
+                spec.stderr = auto_tool_execution::StdioPolicy::Inherit;
+                spec.windows_creation_flags = 0x0800_0000; // CREATE_NO_WINDOW
+                auto_tool_execution::spawn_detached(&spec)
                     .map_err(|e| miette::miette!("Failed to start daemon: {}", e))?;
                 println!("AutoVM daemon started (pipe: {})", pipe_name);
             }

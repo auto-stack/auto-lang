@@ -511,3 +511,110 @@ fn run_admission_failure_is_named_and_threadless() {
     );
     assert!(started.elapsed() < Duration::from_secs(2));
 }
+
+// ---- PLAN-816 T-06：spawn_detached（daemon 分离）与 terminate 原语 ----
+
+/// 分离 spawn 后子进程**不被本端持有**：句柄即弃，心跳子进程在无任何
+/// 归属的情况下继续推进（daemon 语义；bounded 自退出 2s）。
+#[test]
+fn detached_child_outlives_spawn_caller_handle() {
+    let scratch = TempDir::new("detach");
+    let beat = scratch.path().join("beat.txt");
+    let spec = with_args(child_spec("heartbeat"), "2", Some(&beat.to_string_lossy()));
+    #[cfg(windows)]
+    let mut spec = spec;
+    #[cfg(windows)]
+    {
+        spec.windows_creation_flags = 0x0800_0000; // CREATE_NO_WINDOW（serve 形态）
+    }
+    let pid = auto_tool_execution::spawn_detached(&spec).expect("detached spawn");
+    assert!(pid > 0);
+    // 观察窗口：本端已无句柄；心跳推进=子进程自立存活。
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let mut ticks = 0u32;
+    while Instant::now() < deadline {
+        if let Ok(content) = std::fs::read_to_string(&beat) {
+            ticks = content.lines().filter(|l| !l.is_empty()).count() as u32;
+            if ticks >= 3 {
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(
+        ticks >= 3,
+        "detached child must keep living (ticks={ticks})"
+    );
+}
+
+/// 非零 creation flags 在非 Windows 拒绝（InvalidSpec；Windows 本机恒可
+/// 配置，负控走 cfg 分支编译面）。
+#[cfg(not(windows))]
+#[test]
+fn creation_flags_are_windows_only() {
+    let mut spec = child_spec("exit");
+    with_args(&mut spec, "0", None);
+    spec.windows_creation_flags = 1;
+    let err = auto_tool_execution::spawn_detached(&spec).unwrap_err();
+    assert!(matches!(err, ExecutionError::InvalidSpec(_)), "{err:?}");
+}
+
+/// 终止原语：安装后 OS 真实信号（Windows 控制台 CTRL_C / Unix SIGINT）
+/// 投递到子进程组 → 子进程观察到标志干净退出码 42（不是被强杀）。
+#[test]
+fn terminate_flag_observes_real_os_signal() {
+    let mut cmd = std::process::Command::new(TE_CHILD);
+    cmd.env(MODE, "terminate-wait");
+    cmd.stdin(std::process::Stdio::null());
+    cmd.stdout(std::process::Stdio::null());
+    cmd.stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x200;
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP);
+    }
+    let mut child = cmd.spawn().expect("spawn terminate-wait child");
+    // 稍等安装完成（信号早到=子进程未装处理器=默认终止,测试红即线索）。
+    std::thread::sleep(Duration::from_millis(300));
+    #[cfg(windows)]
+    {
+        const CTRL_C_EVENT: u32 = 0;
+        extern "system" {
+            fn GenerateConsoleCtrlEvent(event: u32, pgid: u32) -> i32;
+        }
+        let sent = unsafe { GenerateConsoleCtrlEvent(CTRL_C_EVENT, child.id()) };
+        assert_ne!(sent, 0, "GenerateConsoleCtrlEvent failed");
+    }
+    #[cfg(unix)]
+    {
+        extern "C" {
+            fn kill(pid: i32, sig: i32) -> i32;
+        }
+        let sent = unsafe {
+            kill(child.id() as i32, 2 /* SIGINT */)
+        };
+        assert_eq!(sent, 0, "kill(SIGINT) failed");
+    }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match child.try_wait().expect("try_wait") {
+            Some(st) => {
+                assert_eq!(st.code(), Some(42), "clean observe-and-exit, not a kill");
+                break;
+            }
+            None => {
+                assert!(Instant::now() < deadline, "child did not exit in 5s");
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+    }
+}
+
+/// 终止原语程序化面：request 置位 requested 观察（同一标志;嵌入方路径）。
+#[test]
+fn terminate_programmatic_request_sets_flag() {
+    assert!(!auto_tool_execution::terminate::requested());
+    auto_tool_execution::terminate::request();
+    assert!(auto_tool_execution::terminate::requested());
+}

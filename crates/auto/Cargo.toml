@@ -24,6 +24,9 @@ auto-val = { path = "../auto-val" }
 auto-man-runtime = { path = "../auto-man-runtime" }
 # I-TOOL v1 客户端（M816-A 发布面 + M816-B 五操作）：spawn 真实工具进程。
 auto-tool-client = { path = "../auto-tool-client" }
+# owned 执行设施（PLAN-816 T-06：serve 分离 spawn/watch 终止原语/service
+# rust 轨树归属——CLI 自身不重造子进程原语）。
+auto-tool-execution = { path = "../auto-tool-execution" }
 # 协议数据面（RunOutcome 等结果类型；只消费 815 单源协议声明）。
 auto-tool-protocol = { path = "../auto-tool-protocol" }
 # I-PROJECT 请求单源（基请求构造/交付根通道；只消费 815/809 声明）。

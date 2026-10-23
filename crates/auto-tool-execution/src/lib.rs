@@ -105,6 +105,11 @@ pub struct ExecutionSpec {
     /// (镜像现行 run_command_live/pkg.rs;参数原样拼接,/C 后引号
     /// 规则归 cmd.exe)。非 Windows 配置 true 报 InvalidSpec。
     pub windows_cmd_shim: bool,
+    /// Windows 专属创建标志(仅 [`spawn_detached`] 消费;PLAN-816 T-06
+    /// serve 后台自身 spawn 的 CREATE_NO_WINDOW 等 daemon 语义)。
+    /// 与 owned `spawn` 互不相干——后者树归属由 Job 挂起启动保证,混入
+    /// 调用方标志会破坏该时序。非 Windows 配置非 0 报 InvalidSpec。
+    pub windows_creation_flags: u32,
 }
 
 impl ExecutionSpec {
@@ -269,6 +274,12 @@ fn validate(spec: &ExecutionSpec) -> Result<(), ExecutionError> {
             "windows_cmd_shim is Windows-only".into(),
         ));
     }
+    #[cfg(not(windows))]
+    if spec.windows_creation_flags != 0 {
+        return Err(ExecutionError::InvalidSpec(
+            "windows_creation_flags is Windows-only".into(),
+        ));
+    }
     Ok(())
 }
 
@@ -363,6 +374,130 @@ pub fn spawn(spec: &ExecutionSpec) -> Result<OwnedProcess, ExecutionError> {
         }
     }
     Ok(proc)
+}
+
+/// 长运行循环的终止原语（PLAN-816 T-06：`auto watch`/`auto service` 的
+/// Ctrl+C 干净退出——设施提供 cancel 原语,契约基线 §3 watch 行）。
+///
+/// `install` 安装 OS 处理器（Windows 控制台 ctrl 事件 / Unix SIGINT+
+/// SIGTERM）把"操作员终止"落到一个进程级标志；主循环在自身唤醒粒度内
+/// 观察该标志并干净退出（watcher/owned 子进程随常规 Drop/收尾回收）。
+/// 处理器返回"已处理"（Windows TRUE / Unix 不重设默认）——进程不再被
+/// 默认终止,退出责任在本循环。`request` 为同一标志的程序化置位（嵌入
+/// 方/测试）。注意:与进程内其它 ctrl 处理器（如 VM serve_async 的
+/// tokio ctrl_c）互斥使用——后注册者先收到且短路先注册者,需要既有
+/// 优雅关闭的入口（如 `service -s vm`）**不得**安装本原语。
+pub mod terminate {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static FLAG: AtomicBool = AtomicBool::new(false);
+    static INSTALLED: AtomicBool = AtomicBool::new(false);
+
+    /// 安装终止处理器（幂等；返回是否已生效——重复安装或 OS 拒绝都返回
+    /// 当前安装态）。
+    pub fn install() -> bool {
+        if INSTALLED.load(Ordering::Acquire) {
+            return true;
+        }
+        let ok = imp::install();
+        INSTALLED.store(ok, Ordering::Release);
+        ok
+    }
+
+    /// 是否收到过终止请求（OS 信号或程序化 `request`；置位后保持）。
+    pub fn requested() -> bool {
+        FLAG.load(Ordering::Acquire)
+    }
+
+    /// 程序化置位同一标志（嵌入方/测试；不发送 OS 信号）。
+    pub fn request() {
+        FLAG.store(true, Ordering::Release)
+    }
+
+    #[cfg(windows)]
+    mod imp {
+        use super::Ordering;
+        const CTRL_C_EVENT: u32 = 0;
+        const CTRL_BREAK_EVENT: u32 = 1;
+        const CTRL_CLOSE_EVENT: u32 = 2;
+        const CTRL_LOGOFF_EVENT: u32 = 5;
+        const CTRL_SHUTDOWN_EVENT: u32 = 6;
+        type HandlerFn = extern "system" fn(u32) -> i32;
+        extern "system" {
+            fn SetConsoleCtrlHandler(handler: Option<HandlerFn>, add: i32) -> i32;
+        }
+        extern "system" fn on_ctrl(kind: u32) -> i32 {
+            if matches!(
+                kind,
+                CTRL_C_EVENT
+                    | CTRL_BREAK_EVENT
+                    | CTRL_CLOSE_EVENT
+                    | CTRL_LOGOFF_EVENT
+                    | CTRL_SHUTDOWN_EVENT
+            ) {
+                super::FLAG.store(true, Ordering::Release);
+                return 1; // TRUE=已处理:退出责任在主循环
+            }
+            0
+        }
+        pub fn install() -> bool {
+            // SAFETY: handler 为静态 fn;进程生命周期内不注销。经
+            // CREATE_NEW_PROCESS_GROUP 创建的进程默认禁用 Ctrl+C——
+            // 先以 (NULL, FALSE) 重启用,再挂自定义处理器。
+            unsafe {
+                SetConsoleCtrlHandler(None, 0);
+                SetConsoleCtrlHandler(Some(on_ctrl), 1) != 0
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    mod imp {
+        use super::Ordering;
+        const SIGINT: i32 = 2;
+        const SIGTERM: i32 = 15;
+        const SIG_ERR: usize = usize::MAX;
+        extern "C" {
+            fn signal(signum: i32, handler: usize) -> usize;
+        }
+        extern "C" fn on_signal(_kind: i32) {
+            // async-signal-safe:仅原子置位。
+            super::FLAG.store(true, Ordering::Release);
+        }
+        pub fn install() -> bool {
+            // SAFETY: handler 为静态 fn;不恢复默认处置。经显式 fn
+            // 指针类型中转再做整数转换（fn item 直转触发编译告警）。
+            let handler: extern "C" fn(i32) = on_signal;
+            unsafe {
+                signal(SIGINT, handler as usize) != SIG_ERR
+                    && signal(SIGTERM, handler as usize) != SIG_ERR
+            }
+        }
+    }
+}
+
+/// 分离(daemon)spawn:启动后**不持有任何归属**——返回 pid,调用方不
+/// kill、不收尸,子进程生命周期自立(镜像现行 `auto serve` 后台自身
+/// spawn 契约,PLAN-816 T-06;Job/进程组语义不适用,tree_scope 保持
+/// DirectChildOnly)。Windows 经 `windows_creation_flags` 透传创建标志
+/// (如 CREATE_NO_WINDOW=0x0800_0000)。stdio 按策略设置;Piped 的管道
+/// 端在本函数结束时关闭(子进程读到 EOF/写端破裂由其自行处理——daemon
+/// 场景应使用 Inherit/Null)。
+pub fn spawn_detached(spec: &ExecutionSpec) -> Result<u32, ExecutionError> {
+    validate(spec)?;
+    let mut cmd = build_command(spec);
+    #[cfg(windows)]
+    if spec.windows_creation_flags != 0 {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(spec.windows_creation_flags);
+    }
+    let child = cmd.spawn().map_err(|source| ExecutionError::Spawn {
+        program: spec.argv[0].clone(),
+        source,
+    })?;
+    let pid = child.id();
+    drop(child); // std Child drop 不终止不收尸——分离语义即此
+    Ok(pid)
 }
 
 /// reader 结束方式（具名；干净 EOF、I/O 错误与设施主动停止分开——
