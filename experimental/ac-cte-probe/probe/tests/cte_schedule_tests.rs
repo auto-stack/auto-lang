@@ -320,6 +320,7 @@ fn unit_request(queries: Vec<QueryNodeV1>) -> CteRequestV1 {
         native: false,
         profile: CteSourceProfile::Core,
         exec: auto_cte_contract::CteExecMode::Closure,
+        meta_source: None,
     }
 }
 
@@ -510,4 +511,77 @@ native off
         Some("i32:2".into())
     );
     assert_eq!(out.hir_proof.get("main.n").map(String::as_str), Some("2"));
+}
+
+// ---------------------------------------------------------------------------
+// F-817-R1-05: the contracted Meta → REAL-AV-argument path (meta block)
+// ---------------------------------------------------------------------------
+
+fn meta_arg_deck(fields: usize, sentinel_field: bool) -> String {
+    let mut fields_txt = String::from("    left int\n    right bool\n");
+    for i in 0..fields {
+        fields_txt.push_str(&format!("    extra{i} int\n"));
+    }
+    if sentinel_field {
+        fields_txt.push_str("    zzz int\n");
+    }
+    let mut d = String::new();
+    d.push_str("deck cte817/1\nmodule main\ncaps cte.meta.fields/v1\nmeta <<\ntype Pair {\n");
+    d.push_str(&fields_txt);
+    d.push_str("}\n>>\nsource <<\nfn scale(n int) int {\n    return n * 100\n}\n\nfn main() int {\n    let v = 0\n    let h = false\n    if h {\n        return v + 1\n    }\n    return v\n}\n>>\nquery n = field_count Pair\nquery h = has_field Pair zzz\nquery q = call scale(n)\nbind main.v = q expect i32 placeholder 0\nbind main.h = h expect bool placeholder false\nentry main\nnative off\n");
+    d
+}
+
+#[test]
+fn cte_schedule_meta_argument_real_av_execution() {
+    let mut drv = CteDriver::ephemeral();
+    let out = drv.query_step(&meta_arg_deck(0, false), None);
+    assert_eq!(out.status, StepStatus::Ok, "{:?}", out.message);
+    assert_eq!(out.meta_query, 2, "FieldCount + HasField");
+    assert_eq!(out.ct_execute, 1, "the meta result fed a REAL AV call");
+    assert_eq!(
+        out.values.get("main.v").map(|v| v.render()),
+        Some("i32:200".into()),
+        "scale(field_count=2) = 200 (hand-computed)"
+    );
+    assert_eq!(
+        out.values.get("main.h").map(|v| v.render()),
+        Some("bool:false".into())
+    );
+    assert_eq!(out.hir_proof.get("main.v").map(String::as_str), Some("200"));
+}
+
+#[test]
+fn cte_schedule_meta_argument_invalidates_precisely() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("store");
+    let mut d = CteDriver::with_store(&root, "meta-arg").unwrap();
+    let base = meta_arg_deck(0, false);
+    assert_eq!(d.query_step(&base, None).cache, Some("miss"));
+
+    // Field-set change: FieldCount flips 2→3 AND the absent field zzz
+    // APPEARS (negative dependency) — the value recomputes for real.
+    let grown = meta_arg_deck(1, false);
+    let out = d.query_step(&grown, None);
+    assert_eq!(out.status, StepStatus::Ok, "{:?}", out.message);
+    assert_eq!(
+        out.cache,
+        Some("miss"),
+        "the meta fact change invalidated the frozen value"
+    );
+    assert_eq!(
+        out.values.get("main.v").map(|v| v.render()),
+        Some("i32:300".into())
+    );
+    // Absent-field flip: zzz appears → HasField true (consumer branch!).
+    let flipped = meta_arg_deck(0, true);
+    let out = d.query_step(&flipped, None);
+    assert_eq!(out.status, StepStatus::Ok, "{:?}", out.message);
+    assert_eq!(out.cache, Some("miss"));
+    assert_eq!(
+        out.values.get("main.h").map(|v| v.render()),
+        Some("bool:true".into())
+    );
+    // The ORIGINAL deck still hits its own untouched entry.
+    assert_eq!(d.query_step(&base, None).cache, Some("hit"));
 }

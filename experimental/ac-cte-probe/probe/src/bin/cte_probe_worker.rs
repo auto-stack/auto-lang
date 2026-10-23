@@ -64,7 +64,14 @@ fn bench_turnaround(args: &[String]) -> ! {
         match args[i].as_str() {
             "--samples" => {
                 i += 1;
-                samples = args.get(i).and_then(|v| v.parse().ok()).unwrap_or(samples);
+                // Parse SIGNED so negative counts reach run_bench's
+                // validation instead of silently keeping the default
+                // (F-817-R1-04: never a green run on malformed input).
+                samples = args
+                    .get(i)
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .map(|v| v.max(-1) as usize)
+                    .unwrap_or(samples);
             }
             "--gate-ms" => {
                 i += 1;

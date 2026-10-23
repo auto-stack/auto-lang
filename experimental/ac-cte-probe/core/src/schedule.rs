@@ -153,9 +153,13 @@ pub fn resolve_queries(
             }
             QueryNodeKind::Call { callee, args } => {
                 if req.profile == auto_cte_contract::CteSourceProfile::Record {
+                    // Pure-meta restricted mode. The CONTRACTED Meta→AV
+                    // argument path runs on CORE decks carrying a `meta`
+                    // block (F-817-R1-05): record declarations live in
+                    // req.meta_source, the executable source stays core.
                     return Err(CteAdmissionError::new(
                         CteCode::CapabilityDenied,
-                        "record-profile decks have no AV-call surface (the scalar executor rejects `type` blocks) — Meta queries only",
+                        "record-profile decks are Meta-only; Meta-as-argument calls run on core decks with a `meta << ... >>` block",
                     ));
                 }
                 let d = args

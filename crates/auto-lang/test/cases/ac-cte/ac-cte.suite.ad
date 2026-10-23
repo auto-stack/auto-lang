@@ -13,5 +13,6 @@ suite { schema: "autolang.suite/2", id: "ac-cte", include: [
   "cte-warm-session-edit.case.ad",
   "cte-restart-cross-process.case.ad",
   "cte-trap-diags.case.ad",
+  "cte-meta-arg.case.ad",
 ] }
 ```

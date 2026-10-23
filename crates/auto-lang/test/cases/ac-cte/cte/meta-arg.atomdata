@@ -1,0 +1,36 @@
+# PLAN-817 contracted Meta -> REAL AV argument path (F-817-R1-05):
+# field_count Pair (3) feeds scale(n) as a LIVE AV argument; has_field
+# Pair extra0 rides the negative dependency into the consumer branch.
+# Independent oracle: scale(3)=300, extra0 present -> 300+1 = 301; the
+# single-line field rename flips the probe (extra9 replaces extra0) ->
+# recomputes to 300.
+deck cte817/1
+module main
+caps cte.meta.fields/v1
+meta <<
+type Pair {
+    left int
+    right bool
+    extra0 int
+}
+>>
+source <<
+fn scale(n int) int {
+    return n * 100
+}
+
+fn main() int {
+    let v = 0
+    let h = false
+    if h {
+        return v + 1
+    }
+    return v
+}
+>>
+query n = field_count Pair
+query h = has_field Pair extra0
+query q = call scale(n)
+bind main.v = q expect i32 placeholder 0
+bind main.h = h expect bool placeholder false
+entry main

@@ -19,6 +19,12 @@ impl Obs {
             ..Default::default()
         }
     }
+    /// Record a manually-timed span (for paths that cannot lend the
+    /// closure (borrow conflicts)).
+    pub fn record_span(&mut self, name: &str, ms: f64) {
+        *self.spans.entry(name.to_string()).or_insert(0.0) += ms;
+    }
+
     pub fn span<T>(&mut self, name: &str, f: impl FnOnce(&mut Self) -> T) -> T {
         let t = Instant::now();
         let out = f(self);

@@ -7,8 +7,13 @@
 - before：无 auto-cte Spec；CT 仅 796 模型接缝（CtRequest/CtResult/model_compute）。
 - after：有限真实 AV 查询（i32/bool、纯 callee、查询节点
   Literal/QueryRef/Call/FieldCount/HasField、`cte.meta.fields/v1` 显式授予）、
-  consumer 双向绑定（let 锚点→SemaInput 字面量→infer；HIR 原位回填+重verify）、
-  profile core|record 源级分界（record 面 AV 调用准入拒绝）。
+  consumer 双向绑定（let 锚点→SemaInput 字面量→infer；HIR 原位回填+重verify）。
+  **Meta→AV 实参（F-817-R1-05 修复）**：deck `meta << ... >>` 块携带 record
+  声明（record-profile 源文本），投影合并进 core 输入的 record 域——
+  FieldCount/HasField 结果作为**真实 AV 调用实参**（合同 §5.1 原文路径），
+  字段集/缺席字段变化经 manifest meta 事实精确失效；纯 record-profile deck
+  （无 meta 块）保持 Meta-only 受限模式。r1 工作收据中"源级组合不可达"的
+  表述作废。
 - 不声称：全语言 comptime/类型生成/泛型/runtime 反射。
 - 证据：AC-01/02/03；cte_first_/cte_schedule_。
 

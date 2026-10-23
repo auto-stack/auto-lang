@@ -103,6 +103,13 @@ fn expect_name(e: CteExpectType) -> &'static str {
     }
 }
 
+/// The driver-resident snapshot lane (source-synced, F-817-R1-02).
+pub struct ResidentLane {
+    pub lane: av_driver::SnapshotLane,
+    /// The session source the lane was last synced to.
+    pub src: String,
+}
+
 /// The driver over one optional store root.
 pub struct CteDriver {
     store: Option<CteStore>,
@@ -121,6 +128,15 @@ pub struct CteDriver {
     last_publish: Option<String>,
     /// Byte length of the last serialized envelope (spike sizing).
     last_envelope_bytes: Option<u64>,
+    /// The RESIDENT snapshot lane (F-817-R1-02): the PLAN-828 session
+    /// survives ACROSS requests — unchanged functions keep their code
+    /// objects and generations; source changes sync via single-hunk
+    /// incremental edits, and only a rejected edit re-warms the whole
+    /// module (counted, never silent).
+    resident: Option<ResidentLane>,
+    /// Whole-module re-warms of the resident lane (the forced-rebuild
+    /// counter; 0 across pure incremental traffic).
+    snapshot_rewarms: u64,
 }
 
 impl CteDriver {
@@ -132,6 +148,8 @@ impl CteDriver {
             caps: crate::observe::BudgetCaps::default(),
             last_publish: None,
             last_envelope_bytes: None,
+            resident: None,
+            snapshot_rewarms: 0,
         }
     }
 
@@ -143,6 +161,8 @@ impl CteDriver {
             caps: crate::observe::BudgetCaps::default(),
             last_publish: None,
             last_envelope_bytes: None,
+            resident: None,
+            snapshot_rewarms: 0,
         })
     }
 
@@ -151,6 +171,16 @@ impl CteDriver {
     /// hits never execute the AV.
     pub fn set_forbid_av(&mut self, v: bool) {
         self.forbid_av = v;
+    }
+
+    /// The resident snapshot lane (observations for the V-12 oracle).
+    pub fn snapshot_lane(&self) -> Option<&ResidentLane> {
+        self.resident.as_ref()
+    }
+
+    /// Whole-module re-warms of the resident lane (forced-rebuild count).
+    pub fn snapshot_rewarms(&self) -> u64 {
+        self.snapshot_rewarms
     }
 
     /// The artifact id of the last successful frozen publish (None when
@@ -265,7 +295,7 @@ impl CteDriver {
             auto_cte_contract::CteSourceProfile::Core => SourceProfile::Core,
             auto_cte_contract::CteSourceProfile::Record => SourceProfile::Record,
         };
-        let input = match obs.span("project", |_| {
+        let mut input = match obs.span("project", |_| {
             parse_into_input_typed(&req.source, CTE_SEMA_PACKAGE, &req.module, ac_profile)
         }) {
             Ok(i) => i,
@@ -280,6 +310,33 @@ impl CteDriver {
                 return CteStepOutcome::diag(&err, None, obs);
             }
         };
+        // The meta block (F-817-R1-05): record declarations project under
+        // the RECORD profile and merge into the core input's record
+        // domain — FieldCount/HasField read them and their results feed
+        // as REAL AV arguments, with freshness riding the manifest.
+        if let Some(meta_src) = &req.meta_source {
+            let meta_input = match obs.span("project_meta", |_| {
+                parse_into_input_typed(
+                    meta_src,
+                    CTE_SEMA_PACKAGE,
+                    &req.module,
+                    SourceProfile::Record,
+                )
+            }) {
+                Ok(i) => i,
+                Err(e) => {
+                    let msg = match &e {
+                        LanguageDiagnostic::Parse { code, message } => {
+                            format!("meta parse: {message} ({code})")
+                        }
+                        LanguageDiagnostic::Projection(m) => format!("meta projection: {m}"),
+                    };
+                    let err = CteAdmissionError::new(CteCode::ConsumerFrontend, msg);
+                    return CteStepOutcome::diag(&err, None, obs);
+                }
+            };
+            input.records.extend(meta_input.records);
+        }
 
         // Binding resolution against the projection (placeholder drift,
         // unknown owners, ambiguous anchors all reject here).
@@ -301,9 +358,7 @@ impl CteDriver {
         let engine = av_driver::current_engine_for(req.exec.axis());
         let mut cache_verdict: Option<&'static str> = None;
         let mut values_by_query: BTreeMap<String, CteValue> = plan.values.clone();
-        // The snapshot lane (T-11): warmed ONCE per request; per-call
-        // argument changes are incremental wrapper edits.
-        let mut lane: Option<av_driver::SnapshotLane> = None;
+
         for call in &plan.av_calls {
             // RAW args concretize NOW — every earlier call's value is
             // present by execution order (legal DAG deps).
@@ -410,18 +465,12 @@ impl CteDriver {
                 if cache_verdict.is_none() {
                     cache_verdict = Some("miss");
                 }
-                let exec = match self.perform_execution(
-                    obs,
-                    &req,
-                    &input,
-                    call,
-                    &concrete,
-                    &mut lane,
-                    cache_verdict,
-                ) {
-                    Ok(x) => x,
-                    Err(out) => return out,
-                };
+                let exec =
+                    match self.perform_execution(obs, &req, &input, call, &concrete, cache_verdict)
+                    {
+                        Ok(x) => x,
+                        Err(out) => return out,
+                    };
                 budget.settle(crate::observe::Partition::AvSlots, exec.peak_slot_bytes);
                 let env = self.mint_envelope(&req, &identity, &exec, manifest);
                 if let Err(e) = self.publish_env(&env, budget) {
@@ -537,7 +586,6 @@ impl CteDriver {
         input: &SemaInput,
         call: &auto_cte_core::schedule::AvCall,
         concrete: &[CteValue],
-        lane: &mut Option<av_driver::SnapshotLane>,
         cache_verdict: Option<&'static str>,
     ) -> Result<AvExecResult, CteStepOutcome> {
         if self.forbid_av {
@@ -547,40 +595,69 @@ impl CteDriver {
             );
             return Err(CteStepOutcome::diag(&e, cache_verdict, obs));
         }
-        let out = obs.span("av_execute", |_| {
-            if req.exec == auto_cte_contract::CteExecMode::Snapshot {
-                match lane {
-                    None => match av_driver::SnapshotLane::warm(
-                        &req.source,
-                        input,
-                        &call.callee,
-                        concrete,
-                    ) {
-                        Ok(l) => {
-                            let r = l.run(&self.cancel);
-                            *lane = Some(l);
-                            r
-                        }
-                        Err(e) => Err(e),
-                    },
-                    Some(l) => match l.retarget(&call.callee, concrete) {
-                        Ok(()) => l.run(&self.cancel),
-                        Err(e) => Err(e),
-                    },
-                }
-            } else {
-                let cancel = self.cancel.clone();
-                av_driver::execute_call(
-                    &req.source,
-                    &req.module,
-                    input,
-                    &call.callee,
-                    concrete,
-                    self.forbid_av,
-                    &cancel,
-                )
+        let exec_started = std::time::Instant::now();
+        let out_res: Result<AvExecResult, CteAdmissionError> = if req.exec
+            == auto_cte_contract::CteExecMode::Snapshot
+        {
+            let is_bool = av_driver::callee_returns_bool(input, &call.callee);
+            // F-817-R1-02: sync the RESIDENT lane to this call's
+            // wrapper source (single-hunk incremental edit; a
+            // rejected edit re-warms the whole module, counted).
+            let desired = av_driver::wrapper_source(&req.source, &call.callee, concrete, is_bool);
+            let mut fresh_warm = false;
+            let mut warm_err: Option<CteAdmissionError> = None;
+            match self.resident.as_mut() {
+                Some(r) if r.src == desired => {}
+                Some(r) => match sync_lane_source(&mut r.lane, &r.src, &desired) {
+                    Ok(()) => {
+                        r.src = desired.clone();
+                        obs.counter("snapshot_incremental_syncs", 1);
+                    }
+                    Err(_) => {
+                        self.snapshot_rewarms += 1;
+                        self.resident = None;
+                        obs.counter("snapshot_rewarms", 1);
+                    }
+                },
+                None => {}
             }
-        });
+            if self.resident.is_none() {
+                match av_driver::SnapshotLane::warm(&req.source, &call.callee, concrete) {
+                    Ok(l) => {
+                        self.resident = Some(ResidentLane {
+                            lane: l,
+                            src: desired,
+                        });
+                        fresh_warm = true;
+                    }
+                    Err(e) => warm_err = Some(e),
+                }
+            }
+            if let Some(e) = warm_err {
+                Err(e)
+            } else {
+                // The lane was either freshly warmed on THIS call or
+                // synced to it — its wrapper already carries the
+                // callee/args/shape, so run DIRECTLY (a redundant
+                // whole-body retarget after a sync is an identity
+                // edit the incremental engine rightly refuses).
+                let r = self.resident.as_ref().expect("resident lane");
+                r.lane.run(is_bool, &self.cancel)
+            }
+        } else {
+            let cancel = self.cancel.clone();
+            av_driver::execute_call(
+                &req.source,
+                &req.module,
+                input,
+                &call.callee,
+                concrete,
+                self.forbid_av,
+                &cancel,
+            )
+        };
+        obs.record_span("av_execute", exec_started.elapsed().as_secs_f64() * 1000.0);
+        let out = out_res;
         match out {
             Ok(x) => {
                 obs.counter("ct_execute", 1);
@@ -740,4 +817,34 @@ fn run_native(
 /// Probe version surfaced by the worker handshake.
 pub fn probe_version() -> &'static str {
     CTE_PROBE_VERSION
+}
+
+/// Sync a resident lane's session source to `desired` via ONE single-
+/// hunk incremental edit (common prefix/suffix trim). A rejected edit is
+/// an Err — the caller re-warms and counts it (never a silent rebuild).
+fn sync_lane_source(
+    lane: &mut av_driver::SnapshotLane,
+    old_src: &str,
+    desired: &str,
+) -> Result<(), String> {
+    let old = old_src.as_bytes();
+    let new = desired.as_bytes();
+    let mut p = 0usize;
+    while p < old.len() && p < new.len() && old[p] == new[p] {
+        p += 1;
+    }
+    let mut suf = 0usize;
+    while suf < old.len() - p
+        && suf < new.len() - p
+        && old[old.len() - 1 - suf] == new[new.len() - 1 - suf]
+    {
+        suf += 1;
+    }
+    let start = p as u64;
+    let end = (old.len() - suf) as u64;
+    let insert = new[p..new.len() - suf].to_vec();
+    if start == end && insert.is_empty() {
+        return Ok(());
+    }
+    lane.edit(start, end, insert)
 }

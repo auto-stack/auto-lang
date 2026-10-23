@@ -26,6 +26,10 @@ fn err<T>(msg: impl Into<String>) -> Result<T, DeckError> {
     Err(DeckError(msg.into()))
 }
 
+fn chr_newline() -> char {
+    0x0A as u8 as char
+}
+
 fn parse_scalar(s: &str) -> Result<CteScalar, DeckError> {
     let s = s.trim();
     if s == "true" {
@@ -99,6 +103,7 @@ fn parse_inner(text: &str) -> Result<Deck, DeckError> {
     let mut module: Option<String> = None;
     let mut profile = CteSourceProfile::Core;
     let mut exec = CteExecMode::Closure;
+    let mut meta_source: Option<String> = None;
     let mut source: Option<String> = None;
     let mut entry: Option<String> = None;
     let mut native = true;
@@ -110,6 +115,31 @@ fn parse_inner(text: &str) -> Result<Deck, DeckError> {
         let line = lines[idx].trim();
         if line.is_empty() || line.starts_with('#') {
             idx += 1;
+            continue;
+        }
+        if line == "meta <<" {
+            idx += 1;
+            let mut buf: Vec<&str> = Vec::new();
+            loop {
+                if idx >= lines.len() {
+                    return err("unterminated `meta <<` block (missing `>>`)");
+                }
+                if lines[idx].trim() == ">>" {
+                    idx += 1;
+                    break;
+                }
+                buf.push(lines[idx]);
+                idx += 1;
+            }
+            if meta_source.is_some() {
+                return err("duplicate `meta` block");
+            }
+            let mut m = buf.join(
+                "
+",
+            );
+            m.push(chr_newline());
+            meta_source = Some(m);
             continue;
         }
         if line == "source <<" {
@@ -164,6 +194,9 @@ fn parse_inner(text: &str) -> Result<Deck, DeckError> {
                     }
                     caps.push(c.to_string());
                 }
+            }
+            "meta" => {
+                return err("`meta` takes a `<< ... >>` block, not arguments");
             }
             "exec" => {
                 exec = CteExecMode::parse(rest)
@@ -313,6 +346,7 @@ fn parse_inner(text: &str) -> Result<Deck, DeckError> {
         native,
         profile,
         exec,
+        meta_source,
     })
 }
 

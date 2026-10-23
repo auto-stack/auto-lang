@@ -1,0 +1,30 @@
+# PLAN-817 official Meta -> AV argument case (F-817-R1-05): the first
+# query executes scale(field_count Pair = 3) = 300 for real with
+# has_field extra0 = true (exit 301); the single-line edit renames the
+# field (extra0 -> extra9): the negative-dependency probe flips, the
+# value invalidates and recomputes (count still 3 -> 300, probe now
+# false -> exit 300). Hand-computed oracles.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "cte.meta.arg"
+  tags: ["ac-cte", "probe"]
+  links: ["PLAN-817"]
+  source: { file: "cte/meta-arg.atomdata", syntax: "atom-data", path: "deck.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "query-meta-arg", adapter: "probe", action: "run",
+      options: {
+        recipe: "cte/scalar-query-v1",
+        cte: { entry: "main" },
+        steps: [
+          { op: "query" },
+          { op: "edit-source", from: "extra0 int", to: "extra9 int" },
+          { op: "query" }
+        ]
+      },
+      expect: { completion: "success", exit: 300, probe: [ { cache: "published" } ] } }
+  ]
+}
+```

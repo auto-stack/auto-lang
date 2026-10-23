@@ -191,6 +191,11 @@ pub struct CteRequestV1 {
     pub profile: CteSourceProfile,
     /// AV execution lane (default closure).
     pub exec: CteExecMode,
+    /// Record declarations for Meta queries (`meta << ... >>` block;
+    /// record-profile source text). Merged into the projection's record
+    /// domain: FieldCount/HasField read HERE, their results feed as REAL
+    /// AV call arguments — the contracted §5.1 path (F-817-R1-05).
+    pub meta_source: Option<String>,
 }
 
 impl CteRequestV1 {

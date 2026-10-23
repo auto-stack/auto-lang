@@ -52,10 +52,10 @@ pub fn current_engine() -> CteEngineId {
 /// recompile ONLY the wrapper function.
 pub struct SnapshotLane {
     session: FunctionIncrementalSession,
-    is_bool: bool,
-    /// The wrapper's argument-literal span in the session source (the
-    /// incremental edit target between calls).
-    args_span: (u64, u64),
+    /// The wrapper's BODY span — retargets rewrite the whole body so a
+    /// callee switch (different function, arity AND return class) is
+    /// honored wholesale (F-817-R1-01).
+    body_span: (u64, u64),
     /// Lane-level degrade detector (V-12 failure control): the 828
     /// session never silently degrades (its whole_module counters are
     /// structurally 0); the only whole-module path is the EXPLICIT
@@ -64,32 +64,59 @@ pub struct SnapshotLane {
     incremental_edits: u64,
 }
 
+/// Locate the wrapper's BODY span (between the wrapper's opening brace
+/// and its closing brace, exclusive). Retargets rewrite the WHOLE body:
+/// a callee switch may change the return class, and the body shape must
+/// follow (i32 → `return callee(args)`; bool → the if-projection).
+fn locate_body_span(src: &str) -> Result<(u64, u64), CteAdmissionError> {
+    let header = format!("fn {CTE_CALL_ENTRY}() int {{");
+    let h = src.rfind(&header).ok_or_else(|| {
+        CteAdmissionError::new(
+            CteCode::Infra("snapshot".into()),
+            "wrapper header not found",
+        )
+    })?;
+    let body_start = (h + header.len()) as u64;
+    let anchor = src.rfind("fn cte817_anchor").ok_or_else(|| {
+        CteAdmissionError::new(CteCode::Infra("snapshot".into()), "anchor not found")
+    })?;
+    // The closing brace of the wrapper = the last '}' before the anchor.
+    let close = src[..anchor].rfind('}').ok_or_else(|| {
+        CteAdmissionError::new(CteCode::Infra("snapshot".into()), "wrapper close not found")
+    })? as u64;
+    Ok((body_start, close))
+}
+
+/// The wrapper body for one call, by the callee's return class.
+fn wrapper_body(callee: &str, args: &[CteValue], is_bool: bool) -> String {
+    let args_txt = args.iter().map(lit).collect::<Vec<_>>().join(", ");
+    if is_bool {
+        format!(
+            "
+    if {callee}({args_txt}) {{
+        return 1
+    }}
+    return 0
+"
+        )
+    } else {
+        format!(
+            "
+    return {callee}({args_txt})
+"
+        )
+    }
+}
+
 impl SnapshotLane {
     /// Warm the lane over the wrapper source for the FIRST call.
     pub fn warm(
         source: &str,
-        input: &ac_sema_core::SemaInput,
         callee: &str,
         args: &[CteValue],
     ) -> Result<SnapshotLane, CteAdmissionError> {
-        let is_bool = returns_bool(input, callee);
-        let src = wrapper_source(source, callee, args, is_bool);
-        // Locate the args span: the single `(` ... `)` inside the wrapper
-        // call line (the callee name followed by the literal list).
-        let call_txt = format!("{callee}(");
-        let line_start = src.rfind(&call_txt).ok_or_else(|| {
-            CteAdmissionError::new(CteCode::Infra("snapshot".into()), "wrapper call not found")
-        })?;
-        let open = line_start + call_txt.len() - 1;
-        let close = src[open..]
-            .find(')')
-            .map(|i| (open + i) as u64)
-            .ok_or_else(|| {
-                CteAdmissionError::new(
-                    CteCode::Infra("snapshot".into()),
-                    "wrapper call unterminated",
-                )
-            })?;
+        let src = wrapper_source(source, callee, args, false);
+        let body_span = locate_body_span(&src)?;
         let session =
             auto_av_probe::session::warmup(&src, CTE_CALL_ENTRY_ID, &[]).map_err(|m| {
                 // The 828 warm-up front door reports source diagnostics
@@ -106,22 +133,27 @@ impl SnapshotLane {
             })?;
         Ok(SnapshotLane {
             session,
-            is_bool,
-            args_span: (open as u64 + 1, close),
+            body_span,
             whole_module_events: 1,
             incremental_edits: 0,
         })
     }
 
-    /// Point the wrapper at a different argument list (incremental edit:
-    /// ONLY the wrapper function recompiles; every other resident unit
-    /// keeps its generation).
-    pub fn retarget(&mut self, callee: &str, args: &[CteValue]) -> Result<(), CteAdmissionError> {
-        let txt: String = args.iter().map(lit).collect::<Vec<_>>().join(", ");
-        let bytes = txt.into_bytes();
+    /// Point the wrapper at a DIFFERENT call — the callee, its arguments
+    /// AND the body shape (return-class projection) are replaced
+    /// WHOLESALE (F-817-R1-01: replacing only the arguments silently
+    /// kept the first callee AND the first return class). Only the
+    /// wrapper function recompiles.
+    pub fn retarget(
+        &mut self,
+        callee: &str,
+        args: &[CteValue],
+        is_bool: bool,
+    ) -> Result<(), CteAdmissionError> {
+        let bytes = wrapper_body(callee, args, is_bool).into_bytes();
         let out = self
             .session
-            .edit(self.args_span.0, self.args_span.1, bytes)
+            .edit(self.body_span.0, self.body_span.1, bytes)
             .map_err(|m| CteAdmissionError::new(CteCode::Infra("snapshot-edit".into()), m))?;
         if !out.ok {
             let mut detail = out.diagnostics.join("; ");
@@ -140,22 +172,7 @@ impl SnapshotLane {
             ));
         }
         // Refresh the span for the next retarget (length may change).
-        let src = self.session.src();
-        let call_txt = format!("{callee}(");
-        let line_start = src.rfind(&call_txt).ok_or_else(|| {
-            CteAdmissionError::new(CteCode::Infra("snapshot".into()), "wrapper call lost")
-        })?;
-        let open = line_start + call_txt.len() - 1;
-        let close = src[open..]
-            .find(')')
-            .map(|i| (open + i) as u64)
-            .ok_or_else(|| {
-                CteAdmissionError::new(
-                    CteCode::Infra("snapshot".into()),
-                    "wrapper call unterminated",
-                )
-            })?;
-        self.args_span = (open as u64 + 1, close);
+        self.body_span = locate_body_span(self.session.src())?;
         self.incremental_edits += 1;
         Ok(())
     }
@@ -180,14 +197,21 @@ impl SnapshotLane {
         }
     }
 
-    /// Run the current snapshot (real AV execution through the unit view).
-    pub fn run(&self, cancel: &CancelFlag) -> Result<AvExecResult, CteAdmissionError> {
+    /// Run the current snapshot (real AV execution through the unit
+    /// view). `is_bool` is the CURRENT callee's return class — retargets
+    /// may switch callees, so the projection is per-run, never cached
+    /// from the first call (F-817-R1-01).
+    pub fn run(
+        &self,
+        is_bool: bool,
+        cancel: &CancelFlag,
+    ) -> Result<AvExecResult, CteAdmissionError> {
         let started = std::time::Instant::now();
         let (outcome, trace) = self.session.run(&ExecLimits::default(), cancel);
         let wall_ms = started.elapsed().as_millis() as u64;
         match outcome {
             ExecOutcome::Success { value, steps } => {
-                let cv = match (&value, self.is_bool) {
+                let cv = match (&value, is_bool) {
                     (auto_av_core::Value::I32(x), true) => CteValue::Bool(*x != 0),
                     (auto_av_core::Value::I32(x), false) => CteValue::I32(*x),
                     (auto_av_core::Value::Bool(b), _) => CteValue::Bool(*b),
@@ -263,7 +287,7 @@ fn lit(v: &CteValue) -> String {
 /// Synthesize the wrapper entry source for one call. The scalar profile
 /// grammar is statement-per-line, no semicolons, `name type` params
 /// (matching the landed corpus: `fn score(a int, b int) int { ... }`).
-fn wrapper_source(source: &str, callee: &str, args: &[CteValue], returns_bool: bool) -> String {
+pub fn wrapper_source(source: &str, callee: &str, args: &[CteValue], returns_bool: bool) -> String {
     let args_txt = args.iter().map(lit).collect::<Vec<_>>().join(", ");
     let body = if returns_bool {
         format!("    if {callee}({args_txt}) {{\n        return 1\n    }}\n    return 0\n")
@@ -280,6 +304,10 @@ fn wrapper_source(source: &str, callee: &str, args: &[CteValue], returns_bool: b
 
 /// Whether the callee's declared return is bool, per the projected 796
 /// input (`input` is the projection of the ORIGINAL source).
+pub fn callee_returns_bool(input: &ac_sema_core::SemaInput, callee: &str) -> bool {
+    returns_bool(input, callee)
+}
+
 fn returns_bool(input: &ac_sema_core::SemaInput, callee: &str) -> bool {
     input
         .fns
