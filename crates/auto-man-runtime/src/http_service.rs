@@ -286,9 +286,7 @@ fn serve_rust(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, Stri
                         }
                     }
                     Err(e) => {
-                        *err_slot.lock().unwrap() = Some(format!(
-                            "backend stdout reader: {e}"
-                        ));
+                        *err_slot.lock().unwrap() = Some(format!("backend stdout reader: {e}"));
                         break;
                     }
                 }
@@ -300,34 +298,35 @@ fn serve_rust(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, Stri
     // 退出时，仍持 stdout 写端的后代在被终止前不会给 EOF；A 阶段"根
     // 退出≠管道 EOF"的教训在新 service adapter 保持）。宽限尽=具名失败，
     // panic=具名失败，读错=具名传播；不无限 join、不吞 panic。
-    let reclaim_reader = |reader: std::thread::JoinHandle<()>,
-                          grace: std::time::Duration|
-     -> Result<(), String> {
-        let deadline = std::time::Instant::now() + grace;
-        while !reader.is_finished() && std::time::Instant::now() < deadline {
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        if !reader.is_finished() {
-            return Err(format!(
+    let reclaim_reader =
+        |reader: std::thread::JoinHandle<()>, grace: std::time::Duration| -> Result<(), String> {
+            let deadline = std::time::Instant::now() + grace;
+            while !reader.is_finished() && std::time::Instant::now() < deadline {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            if !reader.is_finished() {
+                return Err(format!(
                 "backend stdout reader still running after {grace:?} (pipe holder in owned tree?)"
             ));
-        }
-        match reader.join() {
-            Ok(()) => {}
-            Err(_) => return Err("backend stdout reader panicked".to_string()),
-        }
-        if let Some(e) = reader_err.lock().unwrap().take() {
-            return Err(e);
-        }
-        Ok(())
-    };
+            }
+            match reader.join() {
+                Ok(()) => {}
+                Err(_) => return Err("backend stdout reader panicked".to_string()),
+            }
+            if let Some(e) = reader_err.lock().unwrap().take() {
+                return Err(e);
+            }
+            Ok(())
+        };
     let tree_grace = std::time::Duration::from_secs(5);
 
     // F-816-B-R1-07（budget 语义明确）：单位=秒；非法值不静默采用默认
     // ——stderr 具名诊断后按默认 600s 继续（显式拒绝会让拼写错误把长
     // 冷构建误杀；诊断让人可见）。
     let budget_raw = std::env::var("AUTO_SERVICE_READY_TIMEOUT_SECS").ok();
-    let budget_secs = budget_raw.as_deref().and_then(|v| v.trim().parse::<u64>().ok());
+    let budget_secs = budget_raw
+        .as_deref()
+        .and_then(|v| v.trim().parse::<u64>().ok());
     if budget_raw.is_some() && budget_secs.is_none() {
         eprintln!(
             "warning: AUTO_SERVICE_READY_TIMEOUT_SECS={:?} is not a non-negative integer of seconds; using default 600s",

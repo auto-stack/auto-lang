@@ -184,12 +184,8 @@ fn run_bounded(
         }
     };
     // 进程已退：排水线程随 EOF 结束，有界 join。
-    let out = out_handle
-        .and_then(|h| h.join().ok())
-        .unwrap_or_default();
-    let err = err_handle
-        .and_then(|h| h.join().ok())
-        .unwrap_or_default();
+    let out = out_handle.and_then(|h| h.join().ok()).unwrap_or_default();
+    let err = err_handle.and_then(|h| h.join().ok()).unwrap_or_default();
     (code, out, err)
 }
 
@@ -200,9 +196,13 @@ fn run_bounded(
 /// ③所有失败出口先 kill 收尾再 panic（不残留子进程）。
 #[test]
 fn watch_regenerates_sfc_on_change() {
-    let proj = TempProj::new("watch", "name: \"wdriver\"
+    let proj = TempProj::new(
+        "watch",
+        "name: \"wdriver\"
 render: \"vue\"
-", APP);
+",
+        APP,
+    );
     let mut watch = Command::new(AUTO)
         .args(["watch"])
         .current_dir(proj.path())
@@ -243,9 +243,7 @@ render: \"vue\"
             }
         }};
     }
-    let recv_bounded = |limit: Duration| -> Option<String> {
-        lines_rx.recv_timeout(limit).ok()
-    };
+    let recv_bounded = |limit: Duration| -> Option<String> { lines_rx.recv_timeout(limit).ok() };
 
     let mut ready = false;
     let deadline = Duration::from_secs(20);
@@ -287,15 +285,16 @@ render: \"vue\"
     }
     // 内容身份：再生产物必须携带变更后的文案——保留旧字节的故障在此红。
     let sfc_path = proj.path().join("gen/front/vue/src/components/App.vue");
-    let sfc = std::fs::read_to_string(&sfc_path)
-        .unwrap_or_else(|e| {
-            finish_watch!();
-            panic!("regenerated SFC must exist at {}: {e}", sfc_path.display())
-        });
+    let sfc = std::fs::read_to_string(&sfc_path).unwrap_or_else(|e| {
+        finish_watch!();
+        panic!("regenerated SFC must exist at {}: {e}", sfc_path.display())
+    });
     if !sfc.contains("driver v2 marker-9f3a") {
         finish_watch!();
-        panic!("regenerated SFC must carry the changed text, got:
-{sfc}");
+        panic!(
+            "regenerated SFC must carry the changed text, got:
+{sfc}"
+        );
     }
     finish_watch!();
 }
