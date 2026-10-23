@@ -14,7 +14,6 @@
 //! 字节/无 EOF 时永远观察不到停止标志）。宽限尽未停的 JoinHandle 移入
 //! 进程级残留登记（归属保留），不随局部 Vec 销毁、不伪称已回收。
 
-use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -54,6 +53,7 @@ mod stoppable_drain {
     /// 宽限尽仍活线程的归属登记（进程级；测试进程结束前不丢弃）。
     static RESIDUE: Mutex<Vec<std::thread::JoinHandle<()>>> = Mutex::new(Vec::new());
 
+    #[allow(dead_code)]
     pub struct Drain {
         handle: Option<std::thread::JoinHandle<()>>,
         stop: Arc<AtomicBool>,
@@ -61,6 +61,7 @@ mod stoppable_drain {
         pub buf: Arc<Mutex<String>>,
         #[cfg(windows)]
         cancel_target: isize,
+        /// Unix 轮询 fd（诊断身份；泵线程闭包另持同一 fd 数字与管道对象）。
         #[cfg(unix)]
         fd: i32,
     }
@@ -157,7 +158,12 @@ mod stoppable_drain {
         {
             let _ = win_raw;
             let handle = std::thread::Builder::new()
-                .spawn(move || pump_unix(unix_fd, sink, flag, None))
+                .spawn(move || {
+                    // F-816-B-R6-04：持有管道读端对象——fd 数字不保活，
+                    // 对象被 drop 即关闭读端（线程随后 read=EBADF/exit120）。
+                    let _hold_pipe = r;
+                    pump_unix(unix_fd, sink, flag, None)
+                })
                 .expect("spawn drain");
             Drain {
                 handle: Some(handle),
@@ -218,6 +224,8 @@ mod stoppable_drain {
             let _ = win_raw;
             let handle = std::thread::Builder::new()
                 .spawn(move || {
+                    // F-816-B-R6-04：同上——行泵也须持有管道对象。
+                    let _hold_pipe = r;
                     pump_unix(unix_fd, Arc::new(Mutex::new(String::new())), flag, Some(tx))
                 })
                 .expect("spawn line pump");
@@ -661,11 +669,4 @@ fn gen_runs_through_real_tool_process() {
             || proj.path().join("gen/front/vue/package.json").exists(),
         "real tool must generate the vue layout"
     );
-}
-
-#[allow(dead_code)]
-fn _kept_imports() {
-    // BufRead/BufReader 仍被 future 行泵诊断使用位；保留导入合法性。
-    let _: Option<BufReader<std::io::Empty>> = None;
-    let _ = std::io::empty();
 }
