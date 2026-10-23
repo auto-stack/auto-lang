@@ -27,7 +27,7 @@ affects: [auto-graphics, authoring-experimental]
 
 835已完成final R2、冻结合入门、归档、清理及批量回归收尾。本Plan在其独立创作窗口上补齐下一段用户路径：**点击实际画面选对象 → 2D直接拖动／3D世界轴平移手柄 → 真实Auto预览 → 一次撤销／重做 → 保存重开**。
 
-这是AutoForge前置的有限交互原型，源码继续落`autographics-dev`。当前work已完成并保留唯一实施树，已执行定向及原生验收，final review/merge仍待后续角色执行；835前置已满足，不再等待其merge。源观察和实施冻结分别记录，见§2及[来源清单](attachments/836/planning/source-observation.json.txt)。
+这是AutoForge前置的有限交互原型，源码继续落`autographics-dev`。当前final R1为needs_fix：原生验收工具未完成可成功退出（F-836-R1-01），T-07/T-08重开，保留唯一实施树；既有定向与原生work证据保留，merge仍pending；835前置已满足，不再等待其merge。源观察和实施冻结分别记录，见§2及[来源清单](attachments/836/planning/source-observation.json.txt)。
 
 ## 1. 目标
 
@@ -96,7 +96,7 @@ winit真实按下/移动/释放/取消
 
 ### 5.1 下一执行入口与有界可行性探针
 
-依赖就绪入口为T-01，然后T-02；T-03..08不可跳过探针。835开放任务为零；836当前T-01..08完成，T-09/10待最终审查及实际合入。执行者先读主检出合同/附件，确认唯一树、基面/SDK/锁/资产；旧基面不带本Plan不构成另建合同副本的理由。
+依赖就绪入口为T-01，然后T-02；T-03..08不可跳过探针。835开放任务为零；836当前T-01..06完成，T-07/T-08因final R1重开；T-09未通过、T-10待实际合入。执行者先读主检出合同/附件，确认唯一树、基面/SDK/锁/资产；旧基面不带本Plan不构成另建合同副本的理由。
 
 T-02在该树建立`research/viewport-feasibility.md`（新）：一个2D拖动和一个原3D模型轴移，走真实OS事件→实际Surface/local→真实Auto候选→可见画面→release一条历史→undo。另做取消和最终端点失败反例，证明临时呈现可恢复且不会误提交。
 
@@ -188,7 +188,7 @@ Idle下列表/画布选择同步，换选丢弃旧属性draft并释放旧文本�
 
 ## 8. 执行步骤
 
-当前work T-01..08完成（8/10），已提交冻结87fb0b051，状态execution_done；T-09最终复审、T-10合入收尾未完成。work T-01..08完成且无in-contract finding才execution_done（8/10）；T-09通过为reviewed（9/10，merge门pending）；T-10实际完成才归档交付10/10。
+当前R1修复work完成（8/10），冻结5f3e218ba；T-01..06保留证据，T-07/T-08修复后重新完成，状态execution_done；T-09待受影响复审，T-10合入收尾未完成。work T-01..08完成且无in-contract finding才execution_done（8/10）；T-09通过为reviewed（9/10，merge门pending）；T-10实际完成才归档交付10/10。
 
 | task_id | owner_stage | 依赖 | 已验证触点／新增路径与动作 | 可执行关闭条件；AC |
 |---|---|---|---|---|
@@ -198,12 +198,16 @@ Idle下列表/画布选择同步，换选丢弃旧属性draft并释放旧文本�
 | T-04 | work | T-03 | session.rs/preview.rs/host.rs及新增gesture类型 | [x] V-04/05、原authoring_session定向通过，token/合并/Auto临时/最后端点/一次history成立；AC-04/06；证据见§9 work-final |
 | T-05 | work | T-04 | interaction/host.rs覆盖层、2D拖动、三轴、公开MeshStore | [x] V-04每轴/非目标字段、代理轮廓/手柄命中通过，warm mesh复用；AC-03/04/06；证据见§9 work-final |
 | T-06 | work | T-05 | bin::window_event、Host::key/blur/resize/dispatch/request_close、Panel；Storage协议不改 | [x] V-06及原host/storage受影响定向通过，busy/cancel/焦点/文件正确；AC-02/05/06；证据见§9 work-final |
-| T-07 | work | T-06 | 新interaction-probe及tools/research回放，原window-probe/inspect | [x] V-07/09原生正/错目标与漏释放负门、新进程重开；同版本截图/数据，无环境gap；AC-02..06；证据见§9 work-final |
-| T-08 | work | T-07 | 相关测试、README、新research/viewport-handoff.md、树内拟议Spec | [x] V-01/08/10及fmt/check/受影响定向case通过，证据/源身份/merge命令清单完整，未跑merge整档；AC-01/06/07；证据见§9 work-final |
+| T-07 | work | T-06 | 新interaction-probe及tools/research回放，原window-probe/inspect | [x] F-836-R1-01修复：所有self-check事件循环未完成出口统一非零，报告提前写最终错误；永久截断/观察/启动失败与完整原生正负门、部分帧、新进程重开通过；AC-02..06；见§9 work-repair-r1 |
+| T-08 | work | T-07 | 相关测试、README、新research/viewport-handoff.md、树内拟议Spec | [x] 修复冻结5f3e218ba；来源227/SDK680/closure479、反控及独立打包check通过，fmt/check及SD04/交接已刷新；AC-01/06/07；见§9 work-repair-r1 |
 | T-09 | review | T-08 | 同树独立审查冻结code/Plan修订/Spec，主检出review附件 | AC-01..07逐条核、定向反例/遗漏/延后/workaround/健康；版本绑定pass或needs_fix/replan；AC-08 |
 | T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出知识/ledger/archive→guard清理 | 实际门/落点/知识/归档/清理/批量到期收据；失败修复后复审影响面并重冻重跑；AC-09 |
 
 ## 9. 复审记录
+
+2026-10-23：stage: work（R1 needs_fix修复）；PLAN-836 revision1；outcome: pass；status execution_done8/10。同树plan-836-dev，baseline87fb0b051，修复提交 `5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1`，SDK9576b4d；写面限native bin/fixture/永久CLI回归和文档/身份，Host/session/storage/geometry/Auto样本、AGP/原资源/锁未改。**F-836-R1-01已闭合**：[finding→不变量→兄弟出口→实际断言/结果/边界](attachments/836/work-repair-r1/viewport-repair-r1.md)，[身份及readiness收据](attachments/836/work-repair-r1/receipt.json.txt)。原3反例先复现exit0/false/null/0records，永久CLI先红后绿；2完成性单测+1CLI测试含7子进程通过，涵盖三种frame1截断、legacy截断、观察/普通窗合法有界退出、Host前初始化失败，并审查全部正常提前返回的共同守卫。完成性在report前统一判定；旧错误保留。完整native r3 exit0/passed=true/phase27/6required records，wrong-target原phase1及drop-release原phase4均exit1；部分执行frames52在phase3/1record时exit1且报告incomplete；新进程重开hash/空history/空selection/clean通过。两次完整正门失败保留：r2日志确认down后真实CursorLeft取消；精确OS来源仅推断。夹具改为Idle期准备自身焦点/指针并等待一轮事件消化，不屏蔽任何生产取消，r3才计通过。source227/SDK680/closure479/17local/29edges及源码/fixture/原GLB反控通过；独立新打包副本同门及all-targets check通过，fmt/check通过，SDK146既有warnings无新增作者warning。R1的22定向+4holdout仅在不变库输入范围复用，不替代新binary证据。T-07/T-08重新完成；work finding/必需gap/待决语义为空；[SD04澄清后提案](attachments/836/work-repair-r1/viewport-spec-delta.md)已刷新，需final重新冻结。不是最终审查pass；T-09/T-10及完整merge-owned门仍pending，未跑整档/合入/沉淀/归档。树已提交clean并暂停实施写入，next responsible role: review，同树受影响复审。
+
+2026-10-23：stage: review；review_scope: final；reviewer_identity: Codex独立审查上下文（本聊天未参与实施；无子agent/另模型声明）；PLAN-836 revision1；outcome: **needs_fix**。同树D:/autostack/.wt/lang-836/auto-lang / plan-836-dev，reviewed_commit `87fb0b051d8ab9b17fba0fcfe2580c774a79d058`，base及autographics-dev `2a7b10250245332f46b7867dc140da1a4f9d0969`；SDK9576b4d/锁/来源/Spec输入指纹见[baseline](attachments/836/review-r1/baseline.json)。**F-836-R1-01/P2**：新self-check模式提前结束没有完成性保护，普通/错目标/漏release三个`--interaction-check --frames 1`都exit0、passed=false、0records，旧window-probe同设置exit1。原合同AC-05/07、V-09/10未闭；T-07及依赖T-08重开，T-01..06保持，current_step6/10、status executing，T-09未通过。22定向+4独立holdout通过；来源225/SDK680/closure479、fmt/check通过（SDK146既有warning，无新增作者warning）。实际物理鼠标dx40/dy20及一次Undo通过；新进程保存重开hash/空history/空selection/clean通过。完整自动原生正门本轮受额外桌面输入干扰未闭，原始失败保留，不冒称产品取消回归或pass。Spec delta SHA256 `76b1201dde4b2088cd78431eeb3629316e3b8daccf76a3d2254364712025d84f`已冻结，canonical/ledger未改；完整merge-owned门pending，未合入/归档/清树。详[复审、反例及关闭oracle](attachments/836/review-r1/review.md)。next: work在原树修F01并提交、刷新T07/T08，受影响复审；本轮不修实施。
 
 2026-10-23：stage: work；PLAN-836 revision1；outcome: pass；status execution_done，current_step8/10。唯一树D:/autostack/.wt/lang-836/auto-lang / plan-836-dev；base2a7b10250，code_commit87fb0b051d8ab9b17fba0fcfe2580c774a79d058，SDK9576b4d，AGP/原资源/锁/root生产源码不变。T-01..08及work-owned AC-01..07完成；[结构化AC/身份/交接收据](attachments/836/work-final/receipt.json.txt)、[完整交接](attachments/836/work-final/viewport-handoff.md)、[拟议规范](attachments/836/work-final/viewport-spec-delta.md)。22定向测试+2原游戏数值回放通过，fmt/check通过；独立打包副本同225来源/680SDK/479closure/17local/29edges及check通过。实际原生中间帧/accepted不变、最终端点、Undo/Redo/Esc、原GLB各轴、最终失败恢复、Save/新进程reopen、resize/2xDPI路径正门exit0；wrong-target和drop-release同门负控exit1。几何NDC/首mesh、候选保留/重复模型上传实际源码变异均达到断言并红，恢复正控绿；初始未达到测试的构建失败不计证据。20轮真实VM弱owner/外部GPU pin/上传及Arc身份验证释放与复用。未完成finding/所需work覆盖gap/待决支持语义均为空；这是实施会话自查，不冒充独立最终复审。T-09/AC-08及T-10/AC-09明确pending，未跑root全档或完整driver/AGP合入档，未合入/归档/发布canonical或ledger。实施树已提交clean、保留并暂停写入；next responsible role: review，同树冻结基面逐项复核。
 
@@ -218,11 +222,11 @@ Idle下列表/画布选择同步，换选丢弃旧属性draft并释放旧文本�
 
 2026-10-23：stage: new；PLAN-836 revision1；outcome: pass（规划交接）。依835正式源码、R2和合入收据起草；G835满足，GSOURCE由T-01在实施树冻结。next: work，从T-01/T-02开始；本轮未启动实施。
 
-规划历史：当时0/10，所有AC/task/case/SD尚未执行；以§9最新work-final收据为准。文档preflight见[检查记录](attachments/836/planning/preflight.md)。internal/final review及merge未发生，完整门pending；若两轮final同因不收敛，先记录根因/漏测/兄弟路径再修，保留轮次。
+规划历史：当时0/10，所有AC/task/case/SD尚未执行；以§9最新work-final收据为准。文档preflight见[检查记录](attachments/836/planning/preflight.md)。final R1已发生、needs_fix；merge未发生，完整门pending；若两轮final同因不收敛，先记录根因/漏测/兄弟路径再修，保留轮次。
 
 ## 10. 待澄清事项
 
-T-01来源及T-02窗口授权阻塞均已解决。work T-01..08完成，无未决产品范围或实施finding；当前待T-09独立最终复审，完整merge-owned门未运行。
+历史来源/窗口授权阻塞已解决；F-836-R1-01已在5f3e218ba修复并刷新T-07/T-08，当前execution_done8/10，无未决实施finding或产品决定。待同树受影响final复审；完整merge-owned门未运行。
 
 
 无阻塞草案的产品决定。用户启动work后可按T-01/T-02推进，例行等价实现选择无需再审批。OBB精度、固定相机/三轴、不变schema已明示。若需逐三角形拾取、相机漫游、层级/多选、生产仓写面、SDK/AGP接口扩展或改变失败/资源支持保证，回new提出具体修订，不边实施边静默扩面。
