@@ -2981,3 +2981,7 @@ PLAN-815 / AC02/04 / T07/T08 / reviewed9aee8659d：子批3定向复审needs_fix�
 ### D-828 第三批R3：C03关闭，仅C04两处窄残项（2026-10-22）
 
 冻结d5a4f3147 needs_fix：C03/P1已独立关闭，其他旧闭合保持；仅C04/P2剩ready前EOF/坏JSON由`?`提前Err无可保存report，以及store_write_bytes对HIR载荷重复加数（fresh四Ok实际903B、上报1155B，多252B）。原错值失败落盘与阶段wall已交付，不再重开。两处都是原收据/真实IO合同的残项，非延期许可；同树窄修、一批冻结后C04窄复审，通过才T10。[R3报告/两处关闭oracle](attachments/828/review-batch3-r3-d5a4f3147/review.md)。整份及merge-owned门pending。
+
+### PLAN-837 F-837-R1-01 — CLOSED / delivered
+
+2026-10-23：独立final R2在2ffc92d34关闭原合成像素门漏检，无新增阻断；冻结完整driver80/AGP162、16官方case、七状态像素、真实透明/残影GPU反控及全新consumer门通过。源码已落autographics-dev cf2e99f50，规范/ledger74及归档、guard清理完成，archived10/10。先前WORK-FIXED待复审记录作为历史保留；本项无后续债务。见[合入收据](attachments/837/merge-r1/receipt.md)。

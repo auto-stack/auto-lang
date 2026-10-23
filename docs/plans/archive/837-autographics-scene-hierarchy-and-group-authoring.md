@@ -7,7 +7,7 @@ plan_revision: 1
 author: [Codex]
 created_at: 2026-10-23
 updated_at: 2026-10-23
-current_step: 9
+current_step: 10
 total_steps: 10
 depends_on: [PLAN-836]
 supersedes_spec_components:
@@ -34,7 +34,7 @@ R2历史快照：**reviewed 9/10，final R2 PASS，F-837-R1-01/P2 CLOSED**。受
 
 范围为L1独立authoring模块特性；不重构AGP Scene/CompositionGraph、核心运行时协议或生产架构。源码仍仅合autographics-dev。若实现需要这些架构写面，回new并按L2先补正式架构设计，不能藏在本Plan局部任务中。
 
-当前合入状态：archived9/10，完整冻结门、autographics-dev源码快进、canonical与ledger已验证；T-10仅归档提交及guard清理待完成。详[合入收据](../attachments/837/merge-r1/receipt.md)。下文各阶段pending为历史交接。
+当前合入状态：archived10/10，完整冻结门、autographics-dev源码快进、canonical与ledger、归档提交及guard清理全部完成。详[合入收据](../attachments/837/merge-r1/receipt.md)。下文各阶段pending为历史交接。
 
 ## 1. 目标
 
@@ -107,7 +107,7 @@ v1旧文件 / v2层级文件 → 有界严格decode / 版本映射
 
 ### 5.1 入口与有界whole-path探针
 
-当前T-01..09完成，final R2在2ffc92d34独立确认F-837-R1-01已关闭；下一环节为T-10冻结完整门及实际合入收口，原树保留。工作侧历史结果及实际触点见§9 work-r1/work-repair-r1，当前审查见§9 review-r2。G836实际交付SHA/SDK/锁/原资源均已重新核验，未在旧候选基面分叉。T-02从scratch的Iced/Auto/GPU探针延伸为同树真实Document/Building/Editor/Host/v2新进程whole-path，在前置可行性闭合后继续hardening；只需一种driver-local接法，无SDK/AGP/生产写面。下面§5.1探针条款保留为原合同，实际结果见research/hierarchy-feasibility.md。
+当前T-01..10全部完成；final R2在2ffc92d34独立关闭finding，T-10完整门与实际交付收口已验证，原树已guard清理。工作侧历史结果及实际触点见§9 work-r1/work-repair-r1，当前审查见§9 review-r2。G836实际交付SHA/SDK/锁/原资源均已重新核验，未在旧候选基面分叉。T-02从scratch的Iced/Auto/GPU探针延伸为同树真实Document/Building/Editor/Host/v2新进程whole-path，在前置可行性闭合后继续hardening；只需一种driver-local接法，无SDK/AGP/生产写面。下面§5.1探针条款保留为原合同，实际结果见research/hierarchy-feasibility.md。
 
 T-02建立新`research/hierarchy-feasibility.md`：2D一个组两叶子、3D一个嵌套组及原GLB，经真实Auto求world/effective；真实Iced树控件改父/组平移→画面与拾取→一次undo→v2保存/新进程重开；再测加环、错误Auto parent累加、准备失败恢复。用最小scratch数据闭合协议/状态owner，不要求后续正式codec/UI已实现。最多比较两种driver-local接法，记录输出布局/拓扑排序/ID映射/数值规则/时延和故障恢复。需要SDK、AGP、生产UI扩面或无法保全836手势合同则回new，后续相关任务不开始。
 
@@ -222,22 +222,24 @@ Reparent仅有明确的**保持世界位置**模式：new local=old world−new 
 
 ## 8. 执行步骤
 
-当前reviewed9/10：final R2独立确认2ffc92d34修复有效，F-837-R1-01 CLOSED且无新增阻断；T-01..09完成。最终review历史为R1 needs_fix、R2 pass，work自查不计作独立review。T-10完整冻结门和实际合入/知识/归档/清理仍pending，实际完成T-10才交付10/10。
+当前archived10/10：final R2、完整冻结门、源码合入、知识与台账、归档提交、guard清理及批量到期检查均完成。R1 needs_fix→R2 pass历史保留，work自查不计作独立review。
 
 | task_id | owner_stage | 依赖 | 实际触点/新路径和动作 | 可执行关闭条件；AC |
 |---|---|---|---|---|
-| T-01 | work | GSTART/G836 | 主检出合同/836正式收据；唯一837树；tools/prepare_sdk.py、verify_source.py及锁/资源 | [x] 固定实际交付SHA/SDK/closure/hash，prepare/verify及反控；写实施冻结，不用候选；AC-01；当前结果见§9 work-r1/收据AC矩阵 |
-| T-02 | work | T-01 | document/preview/session/interaction/host/bin；新research/hierarchy-feasibility.md及scratch profile | [x] §5.1真实whole-path+取消/错误parent/准备失败恢复可跑；协议/排序/数值/owner/资源决策闭合，否则回new；AC-02, AC-03, AC-04, AC-06；当前结果见§9 work-r1/收据AC矩阵 |
-| T-03 | work | T-02 | document.rs；新hierarchy.rs/new tests/authoring_hierarchy.rs；Storage有界decode入口 | [x] V-02及V-07的codec/迁移部分定向通过，完整拒绝分类/ID/深链/legacy映射，无写盘副作用；新进程部分由T-07关闭；AC-02, AC-06；当前结果见§9 work-r1/收据AC矩阵 |
-| T-04 | work | T-03 | 新samples/authoring_hierarchy/main.at；preview.rs及SDK bridge调用/受检consumer | [x] V-03及V-08/09的preview/owner部分通过，真实world/effective/全输出准入/变异反控/预算；Host故障及整轮资源分别由T-06/T-08关闭；AC-03, AC-07；当前结果见§9 work-r1/收据AC矩阵 |
-| T-05 | work | T-04 | session.rs::Edit/Editor、hierarchy.rs、Host命令准入 | [x] V-05/06/08，完整结构事务、keep-world/visible/删除/历史/失败恢复/旧parent拒绝；AC-04, AC-06；当前结果见§9 work-r1/收据AC矩阵 |
-| T-06 | work | T-05 | Panel/Host::prepare/publish、interaction::Gesture及presented快照 | [x] V-04/08，真实树/属性/组选中/手柄、世界局部转换/末端/取消与受影响旧interaction测试；AC-04, AC-05, AC-06；当前结果见§9 work-r1/收据AC矩阵 |
-| T-07 | work | T-06 | bin新hierarchy-check及原inspect/完成性；新fixtures/tools/research | [x] F-837-R1-01工作侧修复：7状态实际top像素断言、真实透明/原位置残影故障及原审查反例正确拒绝，正常/parent/release/partial/reopen保留；AC-02/05/06；见§9 work-repair-r1 |
-| T-08 | work | T-07 | README/new research/hierarchy-handoff.md、身份/打包与定向测试，树内Spec proposal | [x] 247项来源/SDK680/closure479与来源反控、独立consumer核验及定向check/fmt通过；README/handoff/SD-05/旧覆盖主张已纠正并冻结；AC-01/07/08；见§9 work-repair-r1 |
-| T-09 | review | T-08 | 同树冻结code/Plan r1/Spec proposal，主检出独立review记录 | [x] final R2 PASS@2ffc92d34，原R1反例/透明与残影GPU故障正确拒绝、正常7状态/旧负控/reopen/定向3项/check/fmt/source通过；AC01..09 pass，F-837-R1-01 CLOSED，无新增finding；[独立R2](../attachments/837/review-r2/review.md)，完整merge门pending；AC-09 |
-| T-10 | merge | T-09 pass | 同树冻结完整门→autographics-dev；主检出知识/ledger/archive/guard | AC-10全流程实际收据；改代码先复审再重冻重跑受影响门，不提前交付 |
+| T-01 | [✅] work | GSTART/G836 | 主检出合同/836正式收据；唯一837树；tools/prepare_sdk.py、verify_source.py及锁/资源 | [x] 固定实际交付SHA/SDK/closure/hash，prepare/verify及反控；写实施冻结，不用候选；AC-01；当前结果见§9 work-r1/收据AC矩阵 |
+| T-02 | [✅] work | T-01 | document/preview/session/interaction/host/bin；新research/hierarchy-feasibility.md及scratch profile | [x] §5.1真实whole-path+取消/错误parent/准备失败恢复可跑；协议/排序/数值/owner/资源决策闭合，否则回new；AC-02, AC-03, AC-04, AC-06；当前结果见§9 work-r1/收据AC矩阵 |
+| T-03 | [✅] work | T-02 | document.rs；新hierarchy.rs/new tests/authoring_hierarchy.rs；Storage有界decode入口 | [x] V-02及V-07的codec/迁移部分定向通过，完整拒绝分类/ID/深链/legacy映射，无写盘副作用；新进程部分由T-07关闭；AC-02, AC-06；当前结果见§9 work-r1/收据AC矩阵 |
+| T-04 | [✅] work | T-03 | 新samples/authoring_hierarchy/main.at；preview.rs及SDK bridge调用/受检consumer | [x] V-03及V-08/09的preview/owner部分通过，真实world/effective/全输出准入/变异反控/预算；Host故障及整轮资源分别由T-06/T-08关闭；AC-03, AC-07；当前结果见§9 work-r1/收据AC矩阵 |
+| T-05 | [✅] work | T-04 | session.rs::Edit/Editor、hierarchy.rs、Host命令准入 | [x] V-05/06/08，完整结构事务、keep-world/visible/删除/历史/失败恢复/旧parent拒绝；AC-04, AC-06；当前结果见§9 work-r1/收据AC矩阵 |
+| T-06 | [✅] work | T-05 | Panel/Host::prepare/publish、interaction::Gesture及presented快照 | [x] V-04/08，真实树/属性/组选中/手柄、世界局部转换/末端/取消与受影响旧interaction测试；AC-04, AC-05, AC-06；当前结果见§9 work-r1/收据AC矩阵 |
+| T-07 | [✅] work | T-06 | bin新hierarchy-check及原inspect/完成性；新fixtures/tools/research | [x] F-837-R1-01工作侧修复：7状态实际top像素断言、真实透明/原位置残影故障及原审查反例正确拒绝，正常/parent/release/partial/reopen保留；AC-02/05/06；见§9 work-repair-r1 |
+| T-08 | [✅] work | T-07 | README/new research/hierarchy-handoff.md、身份/打包与定向测试，树内Spec proposal | [x] 247项来源/SDK680/closure479与来源反控、独立consumer核验及定向check/fmt通过；README/handoff/SD-05/旧覆盖主张已纠正并冻结；AC-01/07/08；见§9 work-repair-r1 |
+| T-09 | [✅] review | T-08 | 同树冻结code/Plan r1/Spec proposal，主检出独立review记录 | [x] final R2 PASS@2ffc92d34，原R1反例/透明与残影GPU故障正确拒绝、正常7状态/旧负控/reopen/定向3项/check/fmt/source通过；AC01..09 pass，F-837-R1-01 CLOSED，无新增finding；[独立R2](../attachments/837/review-r2/review.md)，完整merge门pending；AC-09 |
+| T-10 | [✅] merge | T-09 pass | 同树冻结完整门→autographics-dev；主检出知识/ledger/archive/guard | AC-10全流程实际收据；改代码先复审再重冻重跑受影响门，不提前交付 |
 
 ## 9. 复审记录
+
+2026-10-23：stage: merge；PLAN-837:r1；outcome: **pass**；completion_kind: delivered，archived10/10。delivery cf2e99f50ee2a70b70ca2cfc23a5af56b405638b 已在autographics-dev；主分支归档/知识提交1f2f2f7ee29cd483ae47d797bad18ec2f54d7e1e已验证，未带入图形源码。最新final-guard clean后实际移除唯一工作树，并以预期SHA删除已落地开发分支；路径/分支均不存在。三个独立consumer副本保留作复现产物，组非空保留。批量收据覆盖835、未满48h且无后续%5落地，not due。无生产backend/daemon/web消费者需要重建或重启。详[最终核验](../attachments/837/merge-r1/final-state.json.txt)、[合入收据](../attachments/837/merge-r1/receipt.md)。下列pending均为历史阶段记录。
 
 2026-10-23：stage: merge；PLAN-837:r1；prepared/landed/ledger_refreshed/archived，cleanup pending。final R2 2ffc92d34；纯规范/台账后继delivery cf2e99f50ee2a70b70ca2cfc23a5af56b405638b，实施/依赖/配置/输入diff为空。完整driver80/AGP162零失败忽略，官方16case、双游戏与835/836原生正反、hierarchy7状态/新进程重开/真实透明残影反控、counter与content双门及全新consumer检查均通过。主检出仅知识；台账离线保护73→74。归档提交后才能guard清理。详[收据](../attachments/837/merge-r1/receipt.md)、[门禁审计](../attachments/837/merge-r1/validated.json.txt)。
 
@@ -263,4 +265,4 @@ Reparent仅有明确的**保持世界位置**模式：new local=old world−new 
 
 ## 10. 待澄清事项
 
-当前无开放finding/工作侧必需覆盖gap/产品决定。F-837-R1-01/P2已由final R2在2ffc92d34独立确认CLOSED，无新增阻断；T-01..09完成，T-10完整门及实际合入收口仍pending。原R1 needs_fix和work修复交接保留历史，以R2为当前审查结论。首版同维平移组、keep-world位置、v1导入/v2保存、共享128节点预算及不含生产集成已明确。若要完整TRS/剪切、跨维/多父/Prefab、任意Portal/UI树、改SDK/AGP/生产仓或改变数值/失败/资源保证，回new提出具体范围变更；架构扩面按L2先补正式设计。
+当前无开放finding/工作侧必需覆盖gap/产品决定。F-837-R1-01/P2已由final R2在2ffc92d34独立确认CLOSED；T-01..10完成，完整门与实际合入收口已验证。原R1 needs_fix和work修复交接保留历史，以R2为当前审查结论。首版同维平移组、keep-world位置、v1导入/v2保存、共享128节点预算及不含生产集成已明确。若要完整TRS/剪切、跨维/多父/Prefab、任意Portal/UI树、改SDK/AGP/生产仓或改变数值/失败/资源保证，回new提出具体范围变更；架构扩面按L2先补正式设计。
