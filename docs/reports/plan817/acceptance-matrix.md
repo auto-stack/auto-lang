@@ -24,3 +24,5 @@ T-04 `6d5e44ac3`、T-05 `6c92decfb`、T-06 `fa4f39c25`、T-07 `5b8abb004`（含�
 
 AC 绑定：AC-01=V-01/05/10、AC-02=V-01/02/04、AC-03=V-02/03、AC-04=V-04..07、
 AC-05=V-07/08、AC-06=V-09、AC-07=V-10、AC-08=V-11、AC-11=V-12（SD-06）。
+
+| R4 修复 | owner≠entry 回归（owner∪entry∪闭包保留）；内存门采 worker 报告峰值+managed 入 gate（缺采样/超标必红）；编辑窗口含逐样本生成+完整父判（逐步骤 source_hash/values/HIR/闭式值）；oracle 全面变异可红 | snapshot/turnaround | workspace 78/78；正式 30 样本 target_met=true（body 274ms/meta 14ms/resident 234ms；全场景峰值≤346.3MiB）；R4-04 反例重放 PASS |

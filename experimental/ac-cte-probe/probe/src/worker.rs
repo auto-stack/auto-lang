@@ -64,6 +64,9 @@ pub struct WorkerStepOut {
     pub wall_ms: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub peak_private_bytes: Option<u64>,
+    /// The managed-ledger gate verdict for this step (F-817-R4-01).
+    #[serde(default)]
+    pub managed: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -76,6 +79,10 @@ pub struct WorkerOk {
     /// serve (the 384 MiB worker hard gate's input).
     #[serde(default)]
     pub worker_private_bytes_peak: u64,
+    /// The managed-budget gate verdict (all steps within the 32MiB
+    /// ledger); false when any step over-reserved (F-817-R4-01).
+    #[serde(default)]
+    pub managed_target_met: bool,
     /// The worker PROCESS id (restart scenarios assert PIDs differ).
     #[serde(default)]
     pub worker_pid: u32,
@@ -197,11 +204,16 @@ pub fn serve_request_with(req: &WorkerRequest, driver: &mut CteDriver) -> Worker
                     message: None,
                     wall_ms: None,
                     peak_private_bytes: None,
+                    managed: None,
                 });
             }
         }
     }
     let peak = sampler.stop();
+    let managed_ok = steps_out
+        .iter()
+        .filter(|st| st.managed.is_some())
+        .all(|st| st.managed == Some(true));
     resp(
         Some(WorkerOk {
             recipe: req.recipe.clone(),
@@ -214,6 +226,7 @@ pub fn serve_request_with(req: &WorkerRequest, driver: &mut CteDriver) -> Worker
             ),
             steps: steps_out,
             worker_private_bytes_peak: peak,
+            managed_target_met: managed_ok,
             worker_pid: std::process::id(),
         }),
         None,
@@ -247,6 +260,7 @@ fn to_wire(op: &str, deck: &str, o: CteStepOutcome) -> WorkerStepOut {
         message: o.message,
         wall_ms: Some(o.wall_ms),
         peak_private_bytes: o.peak_private_bytes,
+        managed: Some(o.managed_target_met),
     }
 }
 

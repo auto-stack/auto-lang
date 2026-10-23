@@ -30,3 +30,12 @@ pub fn fnv1a64(bytes: &[u8]) -> u64 {
 pub fn fnv1a64_hex(bytes: &[u8]) -> String {
     format!("{:016x}", fnv1a64(bytes))
 }
+
+pub mod bench_pub {
+    pub fn big_meta_deck_pub(fields: usize) -> String {
+        crate::bench::big_meta_deck(fields)
+    }
+    pub fn big_deck_pub(rev: i64) -> String {
+        crate::bench::big_deck(rev)
+    }
+}

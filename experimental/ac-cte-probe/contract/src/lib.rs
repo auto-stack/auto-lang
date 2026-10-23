@@ -17,8 +17,7 @@ pub use frozen::{
     CTE_EXECUTED_SCHEMA, CTE_FROZEN_LAYER, CTE_PROBE_VERSION, CTE_PRODUCER, CTE_QUERY_ALGO_ID,
 };
 pub use request::{
-    CteBindingV1, CteExecMode, CteExpectType, CteRequestV1, CteScalar, CteSourceProfile,
-    CteValue,
+    CteBindingV1, CteExecMode, CteExpectType, CteRequestV1, CteScalar, CteSourceProfile, CteValue,
     QueryNodeKind, QueryNodeV1, CTE_META_CAP, CTE_RECIPE, CTE_REQUEST_SCHEMA, CTE_SEMA_PACKAGE,
     MAX_QUERY_NODES_PER_REQUEST, MAX_QUERY_REF_DEPTH, MAX_REQUEST_INPUT_BYTES,
 };

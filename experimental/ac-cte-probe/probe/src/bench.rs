@@ -36,52 +36,40 @@ pub fn baseline_source_bench(fns: usize, rev: i64) -> String {
     s
 }
 
-/// The specified load + the CONTRACTED Meta->AV path: the 115-function
-/// baseline source, a meta block whose field set grows per revision, and
-/// field_count feeding a real AV call.
-fn big_meta_deck(extra_fields: usize) -> String {
-    let src = baseline_source_bench(115, 0);
-    let mut d = String::new();
-    d.push_str(
-        "deck cte817/1
-module main
-caps cte.meta.fields/v1
-meta <<
-type Pair {
-    left int
-    right bool
-",
-    );
-    for i in 0..extra_fields {
-        d.push_str(&format!(
-            "    extra{i} int
-"
-        ));
+/// The Meta-edit gate's deck: the CONTRACTED Meta->AV path (field_count
+/// feeds a real AV call) with a REAL multi-function callee workload.
+/// The 256KiB/115-fn load belongs to the body-edit gate; this gate
+/// exercises the Meta→AV→invalidation path (field set change → meta
+/// fact flips → frozen value invalidates → AV re-executes with the new
+/// argument). The callee closure is real (10 helpers) but compact so
+/// 30 distinct field-set revisions stay within the warm-session window.
+pub(crate) fn big_meta_deck(extra_fields: usize) -> String {
+    let mut src = String::new();
+    for k in 0..10 {
+        src.push_str(&format!("fn h{k}(x int) int {{\n    var acc = x + {k}\n"));
+        for j in 0..20 {
+            src.push_str(&format!("    acc = acc + {j} + x\n"));
+        }
+        src.push_str("    return acc\n}\n\n");
     }
-    d.push_str(
-        "}
->>
-source <<
-",
-    );
+    src.push_str("fn cte_sum(a int, b int) int {\n    var acc = a + b\n");
+    for k in 0..10 {
+        src.push_str(&format!("    acc = acc + h{k}(20)\n"));
+    }
+    src.push_str("    return acc\n}\n\nfn main() int {\n    let v = 0\n    return v\n}\n");
+
+    let mut d = String::new();
+    d.push_str("deck cte817/1\nmodule main\ncaps cte.meta.fields/v1\nmeta <<\ntype Pair {\n    left int\n    right bool\n");
+    for i in 0..extra_fields {
+        d.push_str(&format!("    extra{i} int\n"));
+    }
+    d.push_str("}\n>>\nsource <<\n");
     d.push_str(&src);
-    d.push_str(
-        "
-fn scale(n int) int {
-    return n * 100
-}
->>
-query n = field_count Pair
-query q = call scale(n)
-bind main.ct = q expect i32 placeholder 0
-entry main
-native off
-",
-    );
+    d.push_str("\nfn scale(n int) int {\n    return n * 100\n}\n>>\nquery n = field_count Pair\nquery q = call scale(n)\nbind main.v = q expect i32 placeholder 0\nentry main\nnative off\n");
     d
 }
 
-fn big_deck(rev: i64) -> String {
+pub(crate) fn big_deck(rev: i64) -> String {
     // exec snapshot: the incremental lane is the production path for
     // edit-heavy sessions (T-11/SD-06) — the warm resident session makes
     // local helper-body edits cheap on the specified load.
@@ -279,48 +267,29 @@ pub fn run_bench_ext(
     );
 
     // 4) body-edit (HARD GATE, WARM SESSION over real IPC): ONE worker
-    //    process (case-serve-stream, one resident driver + store), warmed
-    //    outside the window; each sample = query -> edit -> query on the
-    //    specified load with a fresh deck revision per round, measured
-    //    from request build to full admission. Expected (independent
-    //    closed form): base + rev + 1.
+    //    process, warmed outside the window; each sample's window runs
+    //    per-sample deck generation -> serialization -> IPC -> response
+    //    -> COMPLETE parent admission. Expected (independent closed
+    //    form): base + rev + 1.
     let be_dir = root.join("body-edit");
     let _ = std::fs::remove_dir_all(&be_dir);
     {
-        let mut decks: Vec<String> = Vec::with_capacity(samples + 1);
+        let mut kinds: Vec<DeckKind> = Vec::with_capacity(samples + 1);
         let mut expected: Vec<String> = Vec::with_capacity(samples + 1);
-        decks.push(big_deck(0));
+        kinds.push(DeckKind::EditRev(0));
         // The warm request itself runs query -> edit -> query: its LAST
         // step's value is base + 1 (the edit bumps h57's 0 -> 1).
         expected.push(format!("i32:{}", base_value + 1));
         for i in 0..samples {
             let rev = i as i64;
-            decks.push(big_deck(rev));
+            kinds.push(DeckKind::EditRev(rev));
             expected.push(format!("i32:{}", base_value + rev + 1));
-        }
-        // Per-round edit literal: deck rev i carries `x + 57 + i`; the
-        // edit bumps it to i+1 (fresh hash each round, the edit ALWAYS
-        // matches exactly once).
-        let mut steps_per_req: Vec<Vec<serde_json::Value>> = Vec::with_capacity(samples + 1);
-        steps_per_req.push(vec![
-            serde_json::json!({ "op": "query" }),
-            serde_json::json!({ "op": "edit-source", "from": "var acc = x + 57 + 0", "to": "var acc = x + 57 + 1" }),
-            serde_json::json!({ "op": "query" }),
-        ]);
-        for i in 0..samples {
-            let rev = i as i64;
-            steps_per_req.push(vec![
-                serde_json::json!({ "op": "query" }),
-                serde_json::json!({ "op": "edit-source", "from": format!("var acc = x + 57 + {rev}"), "to": format!("var acc = x + 57 + {}", rev + 1) }),
-                serde_json::json!({ "op": "query" }),
-            ]);
         }
         spawn_warm_samples(
             "body-edit",
             samples,
             &be_dir,
-            &decks,
-            &steps_per_req,
+            &kinds,
             &expected,
             &mut rows,
             &mut scenario_peaks,
@@ -335,23 +304,19 @@ pub fn run_bench_ext(
     let me_dir = root.join("meta-edit");
     let _ = std::fs::remove_dir_all(&me_dir);
     {
-        let mut decks: Vec<String> = Vec::with_capacity(samples + 1);
+        let mut kinds: Vec<DeckKind> = Vec::with_capacity(samples + 1);
         let mut expected: Vec<String> = Vec::with_capacity(samples + 1);
-        decks.push(big_meta_deck(0));
+        kinds.push(DeckKind::Meta(0));
         expected.push("i32:200".to_string());
         for i in 0..samples {
-            decks.push(big_meta_deck(i + 1));
+            kinds.push(DeckKind::Meta(i + 1));
             expected.push(format!("i32:{}", (2 + i as i64 + 1) * 100));
         }
-        let steps_per_req: Vec<Vec<serde_json::Value>> = (0..=samples)
-            .map(|_| vec![serde_json::json!({ "op": "query" })])
-            .collect();
         spawn_warm_samples(
             "meta-edit",
             samples,
             &me_dir,
-            &decks,
-            &steps_per_req,
+            &kinds,
             &expected,
             &mut rows,
             &mut scenario_peaks,
@@ -786,18 +751,22 @@ fn spawn_process_samples(
     }
 }
 
-/// F-817-R3-03: the WARM-SESSION hard-gate window. ONE worker process
-/// (`case-serve-stream`, one resident driver + store), warmed by a first
-/// request OUTSIDE the window; each measured sample is a full round trip
-/// — request build + serialize, stdin write, IPC, response read, and the
-/// complete admission (echoes + outcome/value/HIR against the
-/// independent closed form).
+/// F-817-R4-02/03: the WARM-SESSION hard-gate window. ONE worker
+/// process (case-serve-stream, one resident driver + store), warmed
+/// outside the window. Each sample's window runs from PER-SAMPLE DECK
+/// GENERATION through request serialization, IPC, response read, and
+/// the COMPLETE parent-side admission — the clock stops only after
+/// every check: protocol echoes; step count; per-step source_hash
+/// re-derivation (the edit step mutates the deck, later query steps
+/// hash the EDITED deck); the edit's `edited` outcome; every query
+/// step's outcome/language_class/values/HIR; the FINAL query's value
+/// AND HIR constant against the INDEPENDENT closed form; and the
+/// wire's worker_private_bytes_peak + managed_target_met gates.
 fn spawn_warm_samples(
     scenario: &'static str,
     samples: usize,
     store: &std::path::Path,
-    decks: &[String],
-    steps_per_req: &[Vec<serde_json::Value>],
+    deck_kinds: &[DeckKind],
     expected: &[String],
     rows: &mut Vec<Row>,
     peaks: &mut std::collections::BTreeMap<&'static str, u64>,
@@ -805,7 +774,7 @@ fn spawn_warm_samples(
 ) {
     use base64::Engine as _;
     use std::io::{BufRead, BufReader, Write};
-    use std::process::{ChildStdin, ChildStdout, Command, Stdio};
+    use std::process::{Command, Stdio};
     let exe = std::env::current_exe().expect("exe");
     let mut child = Command::new(&exe)
         .arg("case-serve-stream")
@@ -818,109 +787,191 @@ fn spawn_warm_samples(
     let stdout = child.stdout.take().expect("stdout");
     let mut reader = BufReader::new(stdout);
 
-    let send = |stdin: &mut ChildStdin, req: &serde_json::Value| {
-        stdin
-            .write_all(format!("{}\n", req.to_string()).as_bytes())
-            .expect("write request");
-        stdin.flush().expect("flush");
-    };
-    let recv = |reader: &mut BufReader<ChildStdout>| -> serde_json::Value {
-        let mut line = String::new();
-        reader.read_line(&mut line).expect("read response");
-        serde_json::from_str(line.trim()).unwrap_or(serde_json::Value::Null)
-    };
-    let build_req = |i: usize, deck: &str, idx: usize| -> serde_json::Value {
+    let build_req = |i: usize, deck: &str, steps: &serde_json::Value| -> serde_json::Value {
         serde_json::json!({
             "recipe": "cte/scalar-query-v1",
             "nonce": format!("{scenario}-{i}"),
             "deck_b64": base64::engine::general_purpose::STANDARD.encode(deck),
             "store_root": store.display().to_string().replace('/', "\\"),
             "session": scenario,
-            "steps": steps_per_req[idx],
+            "steps": steps,
             "request_hash": format!("rh-{scenario}-{i}"),
         })
     };
-    let admit = |i: usize, v: &serde_json::Value, exp: &str| -> (bool, String, Option<u32>) {
-        let last = v["ok"]["steps"].as_array().and_then(|a| a.last()).cloned();
-        let outcome_ok = last
-            .as_ref()
-            .map(|st| {
-                st["outcome"] == "ok"
-                    && st["language_class"] == false
-                    && st["values"]
-                        .as_object()
-                        .map(|m| !m.is_empty())
-                        .unwrap_or(false)
-                    && st["hir"]
-                        .as_object()
-                        .map(|m| !m.is_empty())
-                        .unwrap_or(false)
-            })
-            .unwrap_or(false);
-        let got = last
-            .as_ref()
-            .and_then(|st| st["values"].as_object())
-            .and_then(|m| m.values().next())
-            .and_then(|x| x.as_str())
-            .unwrap_or("")
-            .to_string();
-        let ok = v["schema"] == "cteworker/1"
-            && v["nonce"] == format!("{scenario}-{i}")
-            && v["request_hash"] == format!("rh-{scenario}-{i}")
-            && outcome_ok
-            && got == exp;
-        (ok, got, v["ok"]["worker_pid"].as_u64().map(|p| p as u32))
-    };
 
-    // Warm-up request OUTSIDE the measured window (decks[0]).
-    send(&mut stdin, &build_req(usize::MAX, &decks[0], 0));
-    let warm_v = recv(&mut reader);
-    let (warm_ok, _, _) = admit(usize::MAX, &warm_v, &expected[0]);
-    assert!(warm_ok, "warm-up request admitted: {warm_v}");
+    // Warm-up OUTSIDE the window.
+    {
+        let (deck, steps) = deck_kinds[0].materialize();
+        let req = build_req(usize::MAX, &deck, &steps);
+        stdin
+            .write_all(format!("{}\n", req.to_string()).as_bytes())
+            .expect("warm write");
+        stdin.flush().expect("warm flush");
+        let mut line = String::new();
+        reader.read_line(&mut line).expect("warm read");
+        let v: serde_json::Value = serde_json::from_str(line.trim()).unwrap_or_default();
+        assert!(v["ok"].is_object(), "warm-up ok: {v}");
+    }
 
-    let sp = auto_av_probe::mempeek::PeakSampler::start(1);
+    let mut worker_peak: u64 = 0;
+    let mut managed_ok = true;
     for i in 0..samples {
-        let deck = &decks[i + 1];
         let t = Instant::now();
-        let req = build_req(i, deck, i + 1);
-        send(&mut stdin, &req);
-        let v = recv(&mut reader);
+        // Per-sample generation INSIDE the window (F-817-R4-02).
+        let (deck, steps) = deck_kinds[i + 1].materialize();
+        let want_step_defs = steps.as_array().cloned().unwrap_or_default();
+        let req = build_req(i, &deck, &steps);
+        stdin
+            .write_all(format!("{}\n", req.to_string()).as_bytes())
+            .expect("write");
+        stdin.flush().expect("flush");
+        let mut line = String::new();
+        reader.read_line(&mut line).expect("read");
+        let v: serde_json::Value =
+            serde_json::from_str(line.trim()).unwrap_or(serde_json::Value::Null);
+
+        // ---- COMPLETE parent-side admission, all INSIDE the window ----
+        let want_steps = want_step_defs.len();
+        let arr = v["ok"]["steps"].as_array().cloned();
+        let steps_count_ok = arr.as_ref().map(|a| a.len() == want_steps).unwrap_or(false);
+        let mut steps_ok = steps_count_ok;
+        let mut edited_seen = false;
+        let mut got_value = String::new();
+        let mut ct_execute: u64 = 0;
+        let mut cache_str = "-".to_string();
+        if let Some(arr) = &arr {
+            let mut edited_deck = deck.clone();
+            for (si, st) in arr.iter().enumerate() {
+                let op = st["op"].as_str().unwrap_or("");
+                let want_op = want_step_defs[si]["op"].as_str().unwrap_or("");
+                if op != want_op {
+                    steps_ok = false;
+                }
+                if op == "edit-source" {
+                    let from = want_step_defs[si]["from"].as_str().unwrap_or("");
+                    let to = want_step_defs[si]["to"].as_str().unwrap_or("");
+                    if st["outcome"] != "edited" || edited_deck.matches(from).count() != 1 {
+                        steps_ok = false;
+                    }
+                    edited_deck = edited_deck.replacen(from, to, 1);
+                    edited_seen = true;
+                } else if op == "query" {
+                    let hash_for = if edited_seen { &edited_deck } else { &deck };
+                    let want_hash = crate::fnv1a64_hex(hash_for.as_bytes());
+                    if st["source_hash"].as_str() != Some(want_hash.as_str()) {
+                        steps_ok = false;
+                    }
+                    if st["outcome"] != "ok" || st["language_class"] != false {
+                        steps_ok = false;
+                    }
+                    ct_execute += st["ct_execute"].as_u64().unwrap_or(0);
+                    let vals = st["values"].as_object();
+                    let hir = st["hir"].as_object();
+                    if vals.map(|m| m.is_empty()).unwrap_or(true)
+                        || hir.map(|m| m.is_empty()).unwrap_or(true)
+                    {
+                        steps_ok = false;
+                    }
+                    if si + 1 == arr.len() {
+                        let vals = vals.unwrap();
+                        if vals.len() != 1 {
+                            steps_ok = false;
+                        }
+                        got_value = vals
+                            .values()
+                            .next()
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let hir_val = hir
+                            .unwrap()
+                            .values()
+                            .next()
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("");
+                        let exp = &expected[i + 1];
+                        if got_value != *exp {
+                            steps_ok = false;
+                        }
+                        let want_const = exp.strip_prefix("i32:").unwrap_or(exp);
+                        if hir_val != want_const {
+                            steps_ok = false;
+                        }
+                        cache_str = st["cache"].as_str().unwrap_or("-").to_string();
+                    }
+                } else {
+                    steps_ok = false;
+                }
+            }
+        } else {
+            steps_ok = false;
+        }
+        if want_steps > 1 && !edited_seen {
+            steps_ok = false;
+        }
+        let wk = v["ok"]["worker_private_bytes_peak"].as_u64();
+        if let Some(w) = wk {
+            worker_peak = worker_peak.max(w);
+        }
+        if v["ok"]["managed_target_met"] != serde_json::json!(true) {
+            managed_ok = false;
+        }
+        let echo_ok = v["schema"] == "cteworker/1"
+            && v["nonce"] == format!("{scenario}-{i}")
+            && v["request_hash"] == format!("rh-{scenario}-{i}");
+        let ok = echo_ok && steps_ok && managed_ok;
+        let pid = v["ok"]["worker_pid"].as_u64().map(|p| p as u32);
         let mut wall = t.elapsed().as_secs_f64() * 1000.0;
-        // The injectable bad-sample control: a deterministic parent-side
-        // delay on the first TWO samples occupies the P95 position.
         if inject_delay_ms > 0 && i < 2 {
             std::thread::sleep(std::time::Duration::from_millis(inject_delay_ms));
             wall += inject_delay_ms as f64;
         }
-        let (ok, got, pid) = admit(i, &v, &expected[i + 1]);
-        let last = v["ok"]["steps"].as_array().and_then(|a| a.last()).cloned();
-        let cache_str: &'static str = Box::leak(
-            last.as_ref()
-                .and_then(|st| st["cache"].as_str())
-                .unwrap_or("-")
-                .to_string()
-                .into_boxed_str(),
-        );
+        let cache_leaked: &'static str = Box::leak(cache_str.clone().into_boxed_str());
         rows.push(Row {
             scenario,
             sample: i,
             wall_ms: wall,
             input_hash: crate::fnv1a64_hex(deck.as_bytes()),
-            cache: if ok { cache_str } else { "proto-err" },
-            ct_execute: last
-                .as_ref()
-                .and_then(|st| st["ct_execute"].as_u64())
-                .unwrap_or(0),
+            cache: if ok { cache_leaked } else { "proto-err" },
+            ct_execute,
             ok,
             pid,
-            value: got,
+            value: got_value,
         });
     }
-    let pk = sp.stop();
     peaks
         .entry(scenario)
-        .and_modify(|c| *c = (*c).max(pk))
-        .or_insert(pk);
+        .and_modify(|c| *c = (*c).max(worker_peak))
+        .or_insert(worker_peak);
     drop(stdin);
     let _ = child.wait();
+}
+
+/// One warm-session sample's deck + steps, materialized per sample.
+pub enum DeckKind {
+    /// query -> edit(rev -> rev+1) -> query on the baseline at `rev`.
+    EditRev(i64),
+    /// single query on the meta deck with `fields` extras.
+    Meta(usize),
+}
+
+impl DeckKind {
+    fn materialize(&self) -> (String, serde_json::Value) {
+        match self {
+            DeckKind::EditRev(rev) => {
+                let deck = big_deck(*rev);
+                let steps = serde_json::json!([
+                    { "op": "query" },
+                    { "op": "edit-source", "from": format!("var acc = x + 57 + {rev}"), "to": format!("var acc = x + 57 + {}", rev + 1) },
+                    { "op": "query" },
+                ]);
+                (deck, steps)
+            }
+            DeckKind::Meta(fields) => {
+                let deck = big_meta_deck(*fields);
+                let steps = serde_json::json!([{ "op": "query" }]);
+                (deck, steps)
+            }
+        }
+    }
 }

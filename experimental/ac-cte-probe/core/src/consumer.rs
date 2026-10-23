@@ -367,6 +367,7 @@ pub fn backfill_and_verify(
     resolved: &[ResolvedBinding],
     values: &BTreeMap<String, CteValue>,
     profile: auto_cte_contract::CteSourceProfile,
+    entry: &str,
 ) -> Result<(CheckedModule, BTreeMap<String, String>), CteAdmissionError> {
     let ac_profile = match profile {
         auto_cte_contract::CteSourceProfile::Core => SourceProfile::Core,
@@ -385,7 +386,7 @@ pub fn backfill_and_verify(
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();
-    if let Some(reduced) = extract_owner_functions(source, &owners) {
+    if let Some(reduced) = extract_owner_functions(source, &owners, entry) {
         if let Ok(parts) = compile_parts_with(&reduced, module_path, &[], ac_profile) {
             if let Ok(out) = patch_and_verify(parts.bundle, resolved, values, profile) {
                 return Ok(out);
@@ -422,7 +423,10 @@ fn patch_and_verify(
         let Some(value) = values.get(&r.binding.ct_ref) else {
             return Err(CteAdmissionError::new(
                 CteCode::Infra("missing-value".into()),
-                format!("internal: backfill without a value for `{}`", r.binding.ct_ref),
+                format!(
+                    "internal: backfill without a value for `{}`",
+                    r.binding.ct_ref
+                ),
             ));
         };
         let anchor = locate_hir_anchor(&bundle, &r.binding.owner_fn, &r.binding.binding_name)?;
@@ -497,42 +501,107 @@ fn patch_and_verify(
     Ok((checked, proof))
 }
 
-/// Extract the named functions from an Auto source into a reduced
-/// program source. `None` when any owner cannot be extracted cleanly.
-fn extract_owner_functions(source: &str, owners: &[String]) -> Option<String> {
+/// Extract a REDUCED program source keeping OWNER ∪ ENTRY ∪ the call
+/// closure linking them (F-817-R4-04): the native observable runs
+/// `entry`, so an owner that is not the entry must never delete the
+/// entry's call chain. The reduced set only ever ADDS functions to the
+/// owner set — never drops a verified dependency.
+fn extract_owner_functions(source: &str, owners: &[String], entry: &str) -> Option<String> {
     if owners.is_empty() {
         return None;
     }
-    let mut out = String::new();
-    for want in owners {
-        // Function items are top-level `fn NAME(` ... matching braces.
-        let needle = format!("fn {want}(");
-        let mut from = 0usize;
-        let mut found: Option<(usize, usize)> = None;
-        while let Some(idx) = source[from..].find(&needle) {
-            let start = from + idx;
-            // Must be at a top-level boundary (start of line).
-            let line_start = source[..start].rfind('\n').map(|i| i + 1).unwrap_or(0);
-            if source[line_start..start].trim().is_empty() {
-                // Find the matching closing brace at column 0.
-                if let Some(rel) = source[start..].find("\n}") {
-                    let end = start + rel + 2;
-                    found = Some((start, end));
-                    break;
-                }
+    let mut keep: std::collections::BTreeSet<String> = owners.iter().cloned().collect();
+    keep.insert(entry.to_string());
+    // Worklist closure over `callee(` call sites found inside kept
+    // functions' text (conservative: identifier + '(' anywhere in the
+    // body; declarations inside comments cannot exist in this grammar).
+    let mut frontier: Vec<String> = keep.iter().cloned().collect();
+    while let Some(f) = frontier.pop() {
+        let Some(text) = extract_fn_text(source, &f) else {
+            // A wanted function that does not extract cleanly (odd
+            // formatting): refuse the fast path entirely.
+            return None;
+        };
+        for callee in all_fn_names(source) {
+            if callee != f && text.contains(&format!("{callee}(")) && keep.insert(callee.clone()) {
+                frontier.push(callee);
             }
-            from = start + needle.len();
         }
-        let (s, e) = found?;
-        out.push_str(&source[s..e]);
+    }
+    // Emit in SOURCE ORDER (stable, readable diagnostics).
+    let order: Vec<(usize, String)> = all_fn_names_with_pos(source)
+        .into_iter()
+        .filter(|(_, n)| keep.contains(n.as_str()))
+        .collect();
+    if order.is_empty() {
+        return None;
+    }
+    let mut out = String::new();
+    for (_, name) in order {
+        let text = extract_fn_text(source, name.as_str())?;
+        out.push_str(&text);
         out.push('\n');
     }
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
+    Some(out)
 }
+
+/// One function's full text (from `fn NAME(` to its column-0 closing
+/// brace, inclusive). `None` when it cannot be found cleanly.
+fn extract_fn_text(source: &str, name: &str) -> Option<String> {
+    let needle = format!("fn {name}(");
+    let mut from = 0usize;
+    while let Some(idx) = source[from..].find(&needle) {
+        let start = from + idx;
+        let line_start = source[..start].rfind('\n').map(|i| i + 1).unwrap_or(0);
+        if source[line_start..start].trim().is_empty() {
+            if let Some(rel) = source[start..].find("\n}") {
+                return Some(source[start..start + rel + 2].to_string());
+            }
+        }
+        from = start + needle.len();
+    }
+    None
+}
+
+/// All top-level function names in declaration order.
+fn all_fn_names(source: &str) -> Vec<String> {
+    all_fn_names_with_pos(source)
+        .into_iter()
+        .map(|(_, n)| n)
+        .collect()
+}
+
+/// All top-level function names with their byte positions.
+fn all_fn_names_with_pos(source: &str) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    let mut rest = source;
+    let mut base = 0usize;
+    while let Some(idx) = rest.find("fn ") {
+        let at = base + idx;
+        let after = at + 3;
+        let name: String = source[after..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if !name.is_empty() && source[after..].starts_with(&name) {
+            out.push((at, name));
+        }
+        let skip = idx + 3;
+        rest = &rest[skip..];
+        base += skip;
+    }
+    out
+}
+
+/// Splice the CT constants into one compiled bundle's anchors and
+
+/// Extract the named functions from an Auto source into a reduced
+/// program source. `None` when any owner cannot be extracted cleanly.
+///
+/// The reduced set is OWNER ∪ ENTRY ∪ the entry's transitive CALL
+/// closure (F-817-R4-04): the native observable runs `entry`, and an
+/// owner that is NOT the entry (or an owner the entry calls through)
+/// must not silently delete the entry's call chain — the reduced module
 
 /// Expected-type comparison used by the driver.
 pub fn type_matches(expect: CteExpectType, derived: &str) -> bool {

@@ -547,7 +547,14 @@ impl CteDriver {
 
         // ---- consumer: HIR backfill + re-verify -------------------------
         let (checked, hir_proof) = match obs.span("hir_backfill", |_| {
-            backfill_and_verify(&req.source, &req.module, &resolved, &ct_values, req.profile)
+            backfill_and_verify(
+                &req.source,
+                &req.module,
+                &resolved,
+                &ct_values,
+                req.profile,
+                &req.entry,
+            )
         }) {
             Ok(x) => x,
             Err(e) => return CteStepOutcome::diag(&e, cache_verdict, obs),
