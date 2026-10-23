@@ -1,5 +1,5 @@
 {
-  "base_revision": "3abde3f1ff66a630ad0cd7a019491a1112daf5bd",
+  "base_revision": "7ce08b5cfc46b6ebae978c1fa1ea4c02579d13c4",
   "config_sha256": "615dd4fee609d800cea732ce932c218965145d5fead9f3cebb330cc913792cbb",
   "declared_edges": [
     {
@@ -12,21 +12,84 @@
       "to_scope": "member"
     },
     {
-      "dep_key": "auto-lang",
+      "dep_key": "auto-lang-core",
       "from": "auto",
       "kind": "normal",
       "optional": false,
       "target": null,
-      "to": "auto-lang",
+      "to": "auto-lang-core",
       "to_scope": "member"
     },
     {
-      "dep_key": "auto-man",
+      "dep_key": "auto-man-runtime",
       "from": "auto",
       "kind": "normal",
       "optional": false,
       "target": null,
-      "to": "auto-man",
+      "to": "auto-man-runtime",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-project-model",
+      "from": "auto",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-project-model",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-tool-client",
+      "from": "auto",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-tool-client",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-tool-execution",
+      "from": "auto",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-tool-execution",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-tool-protocol",
+      "from": "auto",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-tool-protocol",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-ui-compiler",
+      "from": "auto",
+      "kind": "normal",
+      "optional": true,
+      "target": null,
+      "to": "auto-ui-compiler",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-ui-dialect",
+      "from": "auto",
+      "kind": "normal",
+      "optional": true,
+      "target": null,
+      "to": "auto-ui-dialect",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-ui-runtime",
+      "from": "auto",
+      "kind": "normal",
+      "optional": true,
+      "target": null,
+      "to": "auto-ui-runtime",
       "to_scope": "member"
     },
     {
@@ -42,7 +105,7 @@
       "dep_key": "shell-pack",
       "from": "auto",
       "kind": "normal",
-      "optional": false,
+      "optional": true,
       "target": null,
       "to": "shell-pack",
       "to_scope": "member"

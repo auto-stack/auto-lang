@@ -1,0 +1,25 @@
+# PLAN-816 T-07：owned 执行设施独立消费方探针（fixture crate）。
+#
+# 角色：钉住 auto-tool-execution 的依赖闭包=仅 std（契约基线 §1"零依赖
+# 闭包"、777 域 man-ecosystem）——本 crate 只依赖设施本身，verify-deps.sh
+# 以 cargo tree 断言闭包内不出现任何 workspace/auto-lang/auto-man/UI
+# crate 与三方依赖；并以真实子进程（te-child 具名模式）消费设施的
+# run/spawn/deadline/cancel/树退出/分离 spawn/终止原语面（V-02 当期
+# 独立消费证据——管理服务/CLI 之外的第三消费方）。
+#
+# 显式脱离根 workspace（根 Cargo.toml exclude 内，空 [workspace] 表）。
+# 门禁入口（先构建再测试）：
+#   cargo build -p auto-tool-execution
+#   cargo test --manifest-path test/fixtures/modularity/tool-execution-consumer/Cargo.toml
+# 闭包断言：bash test/fixtures/modularity/tool-execution-consumer/verify-deps.sh
+
+[package]
+name = "tool-execution-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
+
+[workspace]

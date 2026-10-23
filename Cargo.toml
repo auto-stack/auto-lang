@@ -157,6 +157,8 @@ exclude = [
     # standalone via --manifest-path to prove the model has no compiler/VM
     # dependency (V-01); must stay outside workspace membership.
     "test/fixtures/modularity/project-model/consumer",
+    # PLAN-816 T-07：owned 执行设施闭包钉（std-only）——独立解析单元。
+    "test/fixtures/modularity/tool-execution-consumer",
     # Plan 768: pinned parser snapshot — frozen outside workspace settings;
     # see vendor/autodown-test-parser/PROVENANCE.md.
     "vendor/autodown-test-parser",
