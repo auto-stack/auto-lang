@@ -862,6 +862,120 @@ impl ManagedStore {
         Ok(Some(bytes))
     }
 
+    /// Hard-bounded chunk read (PLAN-817 F-817-R8-01, append-only
+    /// dependency adaptation): identical admission to
+    /// [`read_chunk_gated`] except the CONTENT read is constrained by
+    /// the caller's granted budget: the opened file's REAL length is
+    /// checked via handle metadata FIRST (an oversized/replaced file is
+    /// a `ResourceExhausted` rejection with ZERO content allocation),
+    /// and the actual read runs through `Read::take(max_bytes)` so the
+    /// returned Vec can never exceed the bound even if the file grows
+    /// or is swapped between the check and the read. Database size
+    /// metadata is a hint; the filesystem is the truth at read time.
+    pub fn read_chunk_gated_bounded(
+        &self,
+        chunk_id: &str,
+        max_bytes: u64,
+    ) -> Result<Option<Vec<u8>>, StoreError> {
+        let gate = FileGuard::try_lock(&self.lock_path(&format!("gate-{}", chunk_id)), false)?
+            .ok_or_else(|| StoreError::Internal("gate lock unavailable".into()))?;
+        let state: Option<String> = self
+            .db
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT state FROM chunks WHERE chunk_id=?1",
+                params![chunk_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        match state.as_deref() {
+            None => return Ok(None), // unknown chunk = miss
+            Some("deleted") => return Ok(None),
+            Some("tombstoned") => return Err(StoreError::TombstonedMiss(chunk_id.into())),
+            Some("live") => {}
+            Some(other) => return Err(StoreError::Internal(format!("bad chunk state {}", other))),
+        }
+        let Some(path) = self.blobs.get(chunk_id) else {
+            return Ok(None);
+        };
+        drop(gate);
+        let mut file = fs::File::open(&path).map_err(|e| StoreError::Io(e.to_string()))?;
+        let real_len = file
+            .metadata()
+            .map_err(|e| StoreError::Io(e.to_string()))?
+            .len();
+        if real_len > max_bytes {
+            return Err(StoreError::ResourceExhausted(format!(
+                "chunk {} is {real_len}B on disk, over the {max_bytes}B granted read budget (metadata/file drift — corrupt or foreign-written blob)",
+                chunk_id
+            )));
+        }
+        let mut bytes = Vec::new();
+        use std::io::Read as _;
+        (&mut file)
+            .take(max_bytes)
+            .read_to_end(&mut bytes)
+            .map_err(|e| StoreError::Io(e.to_string()))?;
+        // Admission: recompute the framed-byte content identity.
+        let actual = ChunkId::from_parts(&[bytes.as_slice()]).0;
+        if actual != chunk_id {
+            return Err(StoreError::ChunkAddressMismatch {
+                requested: chunk_id.to_string(),
+                actual,
+            });
+        }
+        Ok(Some(bytes))
+    }
+
+    /// Hard-bounded artifact read (PLAN-817 F-817-R8-01): same lookup
+    /// and admission as [`get_artifact`], but the chunk content read is
+    /// bounded by `max_framed_bytes` (see
+    /// [`read_chunk_gated_bounded`]) — a corrupt/replaced blob larger
+    /// than the granted budget is rejected BEFORE its bytes are read.
+    pub fn get_artifact_bounded(
+        &self,
+        layer: &str,
+        key: &QueryKey,
+        max_framed_bytes: u64,
+    ) -> Result<Option<LoadedArtifact>, StoreError> {
+        let row: Option<(String, String, u8)> = self
+            .db
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT a.artifact_id, a.payload_chunk, c.kind FROM artifacts a JOIN chunks c ON c.chunk_id = a.payload_chunk WHERE a.layer=?1 AND a.key_hash=?2",
+                params![layer, key.hash()],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
+        let Some((art_id, chunk_id, kind_byte)) = row else {
+            return Ok(None);
+        };
+        let kind = ChunkKind::from_code(kind_byte)
+            .ok_or_else(|| StoreError::Internal("bad kind".into()))?;
+        match self.read_chunk_gated_bounded(&chunk_id, max_framed_bytes) {
+            Ok(Some(bytes)) => {
+                let (k, payload) = unframe_chunk(&bytes)?;
+                if k != kind {
+                    return Err(StoreError::Internal(format!(
+                        "kind mismatch for {}",
+                        chunk_id
+                    )));
+                }
+                Ok(Some(LoadedArtifact {
+                    artifact_id: art_id,
+                    chunk_id,
+                    kind,
+                    payload: payload.to_vec(),
+                }))
+            }
+            Ok(None) => Ok(None),
+            Err(StoreError::TombstonedMiss(_)) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     // -- roots / pins / leases ------------------------------------------------
 
     pub fn register_root(

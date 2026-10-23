@@ -14,6 +14,47 @@ use ac_artifact_probe::store::{GcConfig, GC_HIGH, GC_LOW};
 use auto_cte_probe::driver::{CteDriver, StepStatus};
 use auto_cte_probe::{BudgetCaps, Partition};
 
+// ---- F-817-R8-01: REAL-allocation observation ---------------------------
+//
+// A global allocator wrapper records the LARGEST single allocation
+// since the last reset — the review's oracle class (the physical read,
+// not upper-layer event logs). Tests reset the counter and assert the
+// window's max against the granted budget.
+
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+
+static MAX_SINGLE_ALLOC: AtomicUsize = AtomicUsize::new(0);
+
+struct TrackingAlloc;
+
+unsafe impl GlobalAlloc for TrackingAlloc {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let p = System.alloc(layout);
+        if !p.is_null() {
+            MAX_SINGLE_ALLOC.fetch_max(layout.size(), AtomicOrdering::Relaxed);
+        }
+        p
+    }
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        System.dealloc(ptr, layout)
+    }
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        let p = System.realloc(ptr, layout, new_size);
+        if !p.is_null() {
+            MAX_SINGLE_ALLOC.fetch_max(new_size, AtomicOrdering::Relaxed);
+        }
+        p
+    }
+}
+
+#[global_allocator]
+static GLOBAL: TrackingAlloc = TrackingAlloc;
+
+fn reset_alloc_window() -> usize {
+    MAX_SINGLE_ALLOC.swap(0, AtomicOrdering::Relaxed)
+}
+
 fn deck_with(src: &str, tail: &str) -> String {
     format!("deck cte817/1\nmodule main\nsource <<\n{src}\n>>\n{tail}entry main\n")
 }
@@ -1023,4 +1064,161 @@ fn cte_resources_wire_input_bounded() {
         msg2.contains("wire bound"),
         "the bounded read names itself: {msg2}"
     );
+}
+
+// ---- F-817-R8-01 / R8-02: the corruption/SQL counter-controls ------------
+
+/// The review's REAL-allocation counterexample, replayed: a legit 512B
+/// payload is published (framed 560B, granted read budget 1072B), then
+/// the blob FILE on disk is replaced by 2MiB garbage while the db
+/// metadata still says 560 — the bounded loader must reject at the
+/// granted read budget with the window's LARGEST single allocation
+/// staying within the budget (the 2MiB is never read). The undamaged
+/// positive control first proves the same loader path's allocation
+/// stays in budget on a normal hit.
+#[test]
+fn cte_resources_corrupt_blob_read_bounded() {
+    let root = tempfile::tempdir().unwrap();
+    let deck = small_query_deck();
+    let mut d = CteDriver::with_store(root.path(), "r8").unwrap();
+    assert_eq!(d.query_step(&deck, None).status, StepStatus::Ok);
+
+    // (a) In-budget positive control: a normal hit's largest single
+    // allocation stays under the granted restore budget.
+    {
+        reset_alloc_window();
+        let mut h = CteDriver::with_store(root.path(), "r8").unwrap();
+        let out = h.query_step(&deck, None);
+        assert_eq!(out.status, StepStatus::Ok);
+        assert_eq!(out.cache, Some("hit"));
+        let max = reset_alloc_window();
+        assert!(
+            max <= 512 * 1024,
+            "normal restore window max single alloc {max} stays modest (no payload-sized copies)"
+        );
+    }
+
+    // (b) The probed sizes (metadata still correct here).
+    let mut d2 = CteDriver::with_store(root.path(), "r8").unwrap();
+    // Re-derive the identity from the last published envelope.
+    let art_id = d2
+        .last_published_artifact()
+        .map(str::to_string)
+        .or_else(|| d.last_published_artifact().map(str::to_string))
+        .expect("published");
+    let st = auto_cte_probe::store::CteStore::open(root.path(), "r8").unwrap();
+    let loaded = st
+        .raw()
+        .get_artifact_by_id(&art_id)
+        .expect("read")
+        .expect("present");
+    let env: auto_cte_contract::CteExecutedV1 =
+        serde_json::from_slice(&loaded.payload).expect("decodes");
+    let probed = auto_cte_probe::store::probe_frozen_size(&st, &env.request_identity)
+        .expect("probe")
+        .expect("present");
+    assert_eq!(probed.1, loaded.payload.len() as u64);
+
+    // (c) Replace the blob FILE with 2MiB garbage (db metadata intact).
+    let mut blobs: Vec<std::path::PathBuf> = Vec::new();
+    fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        if let Ok(rd) = std::fs::read_dir(dir) {
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(&p, out);
+                } else {
+                    out.push(p);
+                }
+            }
+        }
+    }
+    walk(&root.path().join("blocks"), &mut blobs);
+    assert!(!blobs.is_empty(), "blob files found under blocks/");
+    let blob = blobs
+        .iter()
+        .max_by_key(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+        .expect("largest blob");
+    std::fs::write(blob, vec![0xABu8; 2 * 1024 * 1024]).expect("corrupt the blob");
+
+    // (d) The bounded loader rejects at the granted budget — the 2MiB
+    // is NEVER read: the window's max single allocation stays at the
+    // small-allocation scale, far below the 2MiB corruption.
+    {
+        reset_alloc_window();
+        let mut d3 = CteDriver::with_store(root.path(), "r8").unwrap();
+        let out = d3.query_step(&deck, None);
+        assert_eq!(out.status, StepStatus::Diag);
+        let msg = out.message.as_deref().unwrap_or_default();
+        assert!(
+            msg.contains("granted read budget"),
+            "the rejection names the physical read bound: {msg}"
+        );
+        assert!(
+            !out.language_class,
+            "a corrupt blob is infra, never a language verdict"
+        );
+        assert!(d3.last_published_artifact().is_none());
+        let max = reset_alloc_window();
+        assert!(
+            max < 2 * 1024 * 1024,
+            "the 2MiB corrupted blob was NEVER read into memory (window max single alloc = {max}B)"
+        );
+        assert!(
+            max <= 512 * 1024,
+            "the rejection window's max allocation stays at small scale: {max}B"
+        );
+    }
+}
+
+/// F-817-R8-02: ONLY a genuinely absent row is a miss. A real SQL error
+/// (schema damage — the chunks table renamed away) propagates as a
+/// controlled infra rejection: the driver NEVER treats it as a miss
+/// (no AV execution, nothing published). The empty-store control
+/// (a genuine miss) still executes normally.
+#[test]
+fn cte_resources_probe_sql_error_not_miss() {
+    let root = tempfile::tempdir().unwrap();
+    let deck = small_query_deck();
+    // (a) Genuine-miss control: an empty store executes normally.
+    let mut miss = CteDriver::with_store(root.path(), "empty").unwrap();
+    let out = miss.query_step(&deck, None);
+    assert_eq!(out.status, StepStatus::Ok);
+    assert_eq!(out.cache, Some("miss"));
+    assert_eq!(out.ct_execute, 1, "a genuine miss executes");
+
+    // (b) Damage the schema in an ISOLATED store that already carries
+    // a good entry (the error must fire, not the miss path). The
+    // rename runs on THE DRIVER'S OWN open connection — the store's
+    // schema init (`CREATE TABLE IF NOT EXISTS`) would silently
+    // recreate an empty chunks table on a fresh open, hiding the error.
+    let root2 = tempfile::tempdir().unwrap();
+    let mut seed = CteDriver::with_store(root2.path(), "r8b").unwrap();
+    assert_eq!(seed.query_step(&deck, None).status, StepStatus::Ok);
+    let mut d = CteDriver::with_store(root2.path(), "r8b").unwrap();
+    d.store()
+        .expect("store attached")
+        .raw()
+        .db()
+        .execute_batch("ALTER TABLE chunks RENAME TO chunks_saved")
+        .expect("rename for the error control");
+
+    // (c) The probe surfaces the SQL error — the driver refuses with
+    // the infra state and NEVER starts an AV recomputation.
+    let out = d.query_step(&deck, None);
+    assert_eq!(out.status, StepStatus::Diag, "refused: {:?}", out.message);
+    let msg = out.message.as_deref().unwrap_or_default();
+    assert!(
+        msg.contains("size probe failed"),
+        "the rejection names the probe error: {msg}"
+    );
+    assert!(
+        msg.contains("no such table"),
+        "the underlying SQL cause is preserved: {msg}"
+    );
+    assert_eq!(
+        out.ct_execute, 0,
+        "an infra probe failure NEVER becomes a silent AV recompute"
+    );
+    assert!(d.last_published_artifact().is_none());
 }

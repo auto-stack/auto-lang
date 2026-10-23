@@ -631,8 +631,17 @@ impl CteDriver {
                                 return CteStepOutcome::diag(&e, cache_verdict, obs);
                             }
                             obs.counter("frozen_load_attempts", 1);
+                            // The loader is HARD-BOUNDED by the granted
+                            // budget (F-817-R8-01): a blob whose real file
+                            // size exceeds the reservation is rejected
+                            // BEFORE any content read (metadata/file drift,
+                            // foreign writes, truncation all covered).
                             match obs.span("cache_lookup", |_| {
-                                store::load_frozen_payload(st, &identity)
+                                store::load_frozen_payload_bounded(
+                                    st,
+                                    &identity,
+                                    framed_len + payload_len,
+                                )
                             }) {
                                 Ok(Some(payload)) => {
                                     if (payload.len() as u64) != payload_len {

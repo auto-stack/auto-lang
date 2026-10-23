@@ -135,7 +135,12 @@ pub fn probe_frozen_size(
     st: &CteStore,
     identity: &CteRequestIdentityV1,
 ) -> Result<Option<(u64, u64)>, CteAdmissionError> {
+    use rusqlite::OptionalExtension as _;
     let conn = st.raw().db();
+    // F-817-R8-02: ONLY a genuinely absent row is a miss. SQL execution
+    // errors (busy, I/O, schema damage, type conversion) propagate as
+    // controlled infra rejections — never silently treated as a miss
+    // that would recompute and publish.
     let framed: Option<u64> = conn
         .query_row(
             "SELECT c.size FROM artifacts a JOIN chunks c ON c.chunk_id = a.payload_chunk              WHERE a.layer = ?1 AND a.key_hash = ?2",
@@ -145,22 +150,60 @@ pub fn probe_frozen_size(
             ],
             |r| r.get(0),
         )
+        .optional()
         .map_err(|e| {
             CteAdmissionError::new(
                 CteCode::Infra("store".into()),
                 format!("frozen size probe failed: {e}"),
             )
-        })
-        .ok();
+        })?;
     Ok(framed.map(|f| {
         let payload = f.saturating_sub(ac_artifact_probe::codec::CHUNK_HEADER_LEN as u64);
         (f, payload)
     }))
 }
 
+/// Stage 1 of the reserved restore (F-817-R8-01): the HARD-BOUNDED
+/// load. The store checks the blob file's REAL length against
+/// `max_framed_bytes` BEFORE any content is read (zero content
+/// allocation on rejection), and the read itself runs through
+/// `Read::take(max_framed_bytes)` — the returned Vec can never exceed
+/// the caller's granted budget even under file growth, replacement or
+/// metadata/file drift. `None` = clean miss.
+pub fn load_frozen_payload_bounded(
+    st: &CteStore,
+    identity: &CteRequestIdentityV1,
+    max_framed_bytes: u64,
+) -> Result<Option<Vec<u8>>, CteAdmissionError> {
+    let loaded: Option<LoadedArtifact> = st
+        .store
+        .get_artifact_bounded(CTE_FROZEN_LAYER, &envelope_key(identity), max_framed_bytes)
+        .map_err(|e| {
+            CteAdmissionError::new(
+                CteCode::Infra("store".into()),
+                format!("frozen bounded lookup failed: {e}"),
+            )
+        })?;
+    let Some(loaded) = loaded else {
+        return Ok(None);
+    };
+    if loaded.kind != ChunkKind::LayoutData {
+        return Err(CteAdmissionError::new(
+            CteCode::Infra("store".into()),
+            format!(
+                "frozen artifact {} carries kind {:?}, expected the LayoutData carrier",
+                loaded.artifact_id, loaded.kind
+            ),
+        ));
+    }
+    Ok(Some(loaded.payload))
+}
+
 /// Stage 1 of the reserved restore (F-817-R6-02): load the payload
 /// bytes. The caller must have reserved a covering bound BEFORE this
 /// call — the `Vec` allocation happens here. `None` = clean miss.
+/// (Test/seed convenience — the production driver path uses the
+/// hard-bounded variant above.)
 pub fn load_frozen_payload(
     st: &CteStore,
     identity: &CteRequestIdentityV1,
