@@ -97,6 +97,97 @@ impl Drop for WatchGuard {
     }
 }
 
+/// 可停止排水线程（F-816-B-R4-04 残项）：镜像 auto-tool-client 泵语义
+/// ——停止侧置标志后**重发 CancelIoEx 直至线程真停**（外部进程经
+/// DuplicateHandle 持有写端时，杀 owned 树关不掉该写端，取消我方挂起
+/// 读是唯一有界手段）；JoinHandle 只在确认停止后收割，任何返回路径不
+/// 丢弃仍活线程。
+mod stoppable_drain {
+    use std::io::Read;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    pub struct Drain {
+        pub handle: Option<std::thread::JoinHandle<()>>,
+        pub stop: Arc<AtomicBool>,
+        pub buf: Arc<Mutex<String>>,
+        #[cfg(windows)]
+        pub raw: isize,
+        #[cfg(unix)]
+        pub fd: i32,
+    }
+
+    pub fn spawn<R: Read + Send + 'static>(r: R, raw_fd: i32, win_raw: isize) -> Drain {
+        let buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = stop.clone();
+        let sink = buf.clone();
+        let handle = std::thread::Builder::new()
+            .spawn(move || pump(r, sink, flag))
+            .expect("spawn drain");
+        Drain {
+            handle: Some(handle),
+            stop,
+            buf,
+            #[cfg(windows)]
+            raw: win_raw,
+            #[cfg(unix)]
+            fd: raw_fd,
+        }
+    }
+
+    /// 有界停止：置标志 → 切片重发取消直至真停 → join 收割。
+    /// false=宽限尽仍活（JoinHandle 留在 handle 字段，归属不丢弃）。
+    pub fn stop_bounded(d: &mut Drain, grace: Duration) -> bool {
+        d.stop.store(true, Ordering::Relaxed);
+        if let Some(join) = d.handle.as_ref() {
+            let deadline = Instant::now() + grace;
+            while !join.is_finished() && Instant::now() < deadline {
+                cancel_pending(d);
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            if !join.is_finished() {
+                return false;
+            }
+        }
+        if let Some(join) = d.handle.take() {
+            join.join().is_ok()
+        } else {
+            true
+        }
+    }
+
+    #[cfg(windows)]
+    fn cancel_pending(d: &Drain) {
+        extern "system" {
+            fn CancelIoEx(h: isize, overlapped: *const u8) -> i32;
+        }
+        unsafe {
+            CancelIoEx(d.raw, std::ptr::null());
+        }
+    }
+
+    #[cfg(unix)]
+    fn cancel_pending(_d: &Drain) {} // 分片读天然可停（停止观察在每次读前）
+
+    fn pump<R: Read>(mut r: R, buf: Arc<Mutex<String>>, stop: Arc<AtomicBool>) {
+        loop {
+            if stop.load(Ordering::Relaxed) {
+                break;
+            }
+            let mut chunk = [0u8; 4096];
+            match r.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => buf
+                    .lock()
+                    .unwrap()
+                    .push_str(&String::from_utf8_lossy(&chunk[..n])),
+            }
+        }
+    }
+}
+
 const APP: &str = "widget App {\n    view {\n        col {\n            text \"driver\" {}\n        }\n    }\n}\n";
 
 /// V-01：裸脚本执行 + `--` 后 argv 强制透传（脚本读到 3 个参数；旧
@@ -195,34 +286,31 @@ fn run_bounded(
     spec.tree_scope = auto_tool_execution::TreeScope::ProcessTree;
     let mut proc =
         auto_tool_execution::spawn(&spec).unwrap_or_else(|e| panic!("spawn auto {:?}: {e}", args));
-    let out_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
-    let err_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
-    fn drain_into<R: Read>(mut r: R, buf: Arc<Mutex<String>>) {
-        let mut chunk = [0u8; 4096];
-        loop {
-            match r.read(&mut chunk) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => {
-                    buf.lock()
-                        .unwrap()
-                        .push_str(&String::from_utf8_lossy(&chunk[..n]));
-                }
-            }
+    let mut drains: Vec<stoppable_drain::Drain> = Vec::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::AsRawFd;
+        if let Some(r) = proc.take_stdout() {
+            let fd = r.as_raw_fd();
+            drains.push(stoppable_drain::spawn(r, fd, 0));
+        }
+        if let Some(r) = proc.take_stderr() {
+            let fd = r.as_raw_fd();
+            drains.push(stoppable_drain::spawn(r, fd, 0));
         }
     }
-    let drains: Vec<_> = [
-        proc.take_stdout().map(|r| {
-            let b = out_buf.clone();
-            std::thread::spawn(move || drain_into(r, b))
-        }),
-        proc.take_stderr().map(|r| {
-            let b = err_buf.clone();
-            std::thread::spawn(move || drain_into(r, b))
-        }),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        if let Some(r) = proc.take_stdout() {
+            let raw = r.as_raw_handle() as isize;
+            drains.push(stoppable_drain::spawn(r, 0, raw));
+        }
+        if let Some(r) = proc.take_stderr() {
+            let raw = r.as_raw_handle() as isize;
+            drains.push(stoppable_drain::spawn(r, 0, raw));
+        }
+    }
     let deadline = Instant::now() + limit;
     let left = |deadline: Instant| -> Duration {
         deadline
@@ -232,22 +320,39 @@ fn run_bounded(
     // 等待根退出（绝对到期判定：预算尽→终止树→未完回收分类）。
     let code = loop {
         if Instant::now() >= deadline {
-            if let Err(e) = proc.cancel_within(left(deadline)) {
-                let partial_out = out_buf.lock().unwrap().clone();
-                return (
-                    -1,
-                    partial_out,
-                    format!("timeout after {limit:?}; cancel failed: {e}"),
-                );
+            let cancel_err = proc.cancel_within(left(deadline)).err();
+            // 排水先真停（停止协议：置停+重发取消+收割；归属不丢弃）。
+            let mut stopped = true;
+            for d in drains.iter_mut() {
+                if !stoppable_drain::stop_bounded(d, left(deadline)) {
+                    stopped = false;
+                }
             }
-            let partial_out = out_buf.lock().unwrap().clone();
-            return (-1, partial_out, format!("timeout after {limit:?}"));
+            let partial_out = drains
+                .first()
+                .map(|d| d.buf.lock().unwrap().clone())
+                .unwrap_or_default();
+            let mut msg = format!("timeout after {limit:?}");
+            if let Some(e) = cancel_err {
+                msg.push_str(&format!("; cancel failed: {e}"));
+            }
+            if !stopped {
+                msg.push_str("; drain threads still alive (ownership retained)");
+            }
+            return (-1, partial_out, msg);
         }
         match proc.wait_deadline(Duration::from_millis(20)) {
             Ok(Some(status)) => break status.code().unwrap_or(-1),
             Ok(None) => {}
             Err(e) => {
-                let partial_out = out_buf.lock().unwrap().clone();
+                let _ = proc.cancel_within(left(deadline));
+                for d in drains.iter_mut() {
+                    stoppable_drain::stop_bounded(d, left(deadline));
+                }
+                let partial_out = drains
+                    .first()
+                    .map(|d| d.buf.lock().unwrap().clone())
+                    .unwrap_or_default();
                 return (-1, partial_out, format!("wait failed: {e}"));
             }
         }
@@ -256,42 +361,47 @@ fn run_bounded(
     //（持管道后代）——终止整棵 owned 树（EOF 确定性、心跳冻结），并
     // **分类为 timeout 回收**而非沿根退出码报成功（R3 残项 A：持有者
     // 在场即非干净成功；正常短命令排水即刻 EOF，不受影响）。
-    let join_bounded = |h: std::thread::JoinHandle<()>, budget: Duration| -> bool {
-        let end = Instant::now() + budget;
-        while !h.is_finished() && Instant::now() < end {
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        h.is_finished() && h.join().is_ok()
-    };
-    // 排水宽限：无持有者时 EOF 在根退出瞬间到达。
+    // 排水宽限：无持有者时 EOF 在根退出瞬间到达（不主动停）。
     let grace_end = Instant::now() + Duration::from_millis(150);
-    while Instant::now() < grace_end && drains.iter().any(|h| !h.is_finished()) {
+    let alive =
+        |d: &stoppable_drain::Drain| d.handle.as_ref().map(|h| !h.is_finished()).unwrap_or(false);
+    while Instant::now() < grace_end && drains.iter().any(alive) {
         std::thread::sleep(Duration::from_millis(5));
     }
-    let holders_present = drains.iter().any(|h| !h.is_finished());
-    if holders_present {
+    if drains.iter().any(alive) {
         let tree_reclaim = proc.cancel_within(left(deadline));
-        let _ = proc.cancel_within(left(deadline));
+        // 真停协议：置停+重发取消直至收割（外部持有者的写端杀树关
+        // 不掉——取消我方挂起读是唯一有界手段）；JoinHandle 不丢弃。
         let drains_done: Vec<bool> = drains
-            .into_iter()
-            .map(|h| join_bounded(h, left(deadline)))
+            .iter_mut()
+            .map(|d| stoppable_drain::stop_bounded(d, left(deadline)))
             .collect();
-        let out = out_buf.lock().unwrap().clone();
+        let out = drains
+            .first()
+            .map(|d| d.buf.lock().unwrap().clone())
+            .unwrap_or_default();
         return (
             -1,
             out,
             format!(
-                "timeout reclaim: owned pipe holders survived root exit; tree terminated (tree={:?}, drains={drains_done:?})",
+                "timeout reclaim: pipe holders survived root exit; tree terminated, readers stopped (tree={:?}, drains={drains_done:?})",
                 tree_reclaim.map(|_| "ok").map_err(|e| e.to_string())
             ),
         );
     }
+    // 正常路径：EOF 已到——统一收割（清 JoinHandle 归属）。
     let drains_done: Vec<bool> = drains
-        .into_iter()
-        .map(|h| join_bounded(h, left(deadline)))
+        .iter_mut()
+        .map(|d| stoppable_drain::stop_bounded(d, left(deadline)))
         .collect();
-    let out = out_buf.lock().unwrap().clone();
-    let err = err_buf.lock().unwrap().clone();
+    let out = drains
+        .first()
+        .map(|d| d.buf.lock().unwrap().clone())
+        .unwrap_or_default();
+    let err = drains
+        .get(1)
+        .map(|d| d.buf.lock().unwrap().clone())
+        .unwrap_or_default();
     if drains_done.iter().any(|d| !d) {
         return (
             -1,
@@ -301,7 +411,6 @@ fn run_bounded(
     }
     (code, out, err)
 }
-
 /// V-04：watch 就绪横幅 + 变更触发 SFC 再生。F-816-B-R1-04 残项闭合：
 /// ①产物**内容身份**（App.vue 必含变更后文案——保留旧字节/不再再生的
 /// 故障宿主必红）；②**单一总预算 20s**：等行/断言/收尾共用同一剩余量

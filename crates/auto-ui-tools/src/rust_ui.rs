@@ -4108,9 +4108,12 @@ fn delivery_dir_digest(records: &[DeliveryFileRecord]) -> String {
 }
 
 /// 交付模式 producer 源根解析序（仅用于定位**待拷贝源**，解析结果不进入
-/// 生成物）：AUTO_DELIVERY_SOURCE_ROOT → AUTO_LANG_ROOT → CWD 仓库漫步
-///（既有 find_lang_repo_root，兄弟/主检出）→ 编译期 CARGO_MANIFEST_DIR
-/// 上溯。候选必须含 crates/auto-lang 与根 Cargo.toml，否则受管判红。
+/// 生成物）：AUTO_DELIVERY_SOURCE_ROOT → AUTO_LANG_ROOT → **CLI 可执行
+/// 文件邻接 sdk/**（PLAN-816 B-R4-07：安装形态默认接线——安装目录随附
+/// SDK 闭包（双二进制+sdk/ 布局，install-manifest），生产链不借实施树；
+/// 显式 env 覆盖保持开发优先）→ CWD 仓库漫步（既有 find_lang_repo_root，
+/// 兄弟/主检出）→ 编译期 CARGO_MANIFEST_DIR 上溯。候选必须含
+/// crates/auto-lang 与根 Cargo.toml，否则受管判红。
 fn delivery_producer_root() -> AutoResult<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
     if let Some(p) = std::env::var_os("AUTO_DELIVERY_SOURCE_ROOT") {
@@ -4118,6 +4121,11 @@ fn delivery_producer_root() -> AutoResult<PathBuf> {
     }
     if let Some(p) = std::env::var_os("AUTO_LANG_ROOT") {
         candidates.push(PathBuf::from(p));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join("sdk"));
+        }
     }
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     if let Some(root) = find_lang_repo_root(&cwd) {
