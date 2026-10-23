@@ -7,7 +7,7 @@ plan_revision: 1
 author: [Codex]
 created_at: 2026-10-23
 updated_at: 2026-10-23
-current_step: 9
+current_step: 10
 total_steps: 10
 depends_on: [PLAN-834]
 supersedes_spec_components:
@@ -224,7 +224,7 @@ T-01～08已实施、定向验收并提交；T-09独立复审/T-10合入门禁�
 | [x] | T-07 | work | T-06 | 更新本模块打包/来源身份工具的真实新输入，不改前序冻结收据；V-01/08/09独立A→B/旧两游戏/组合定向兼容、精确资源计量与永久反控 | AC-01,06,07 |
 | [x] | T-08 | work | T-07 | README/Auto样例/研究交接与SD-01..04全文；真实CLI/符号/数据/状态/失败及生产边界，自检提交冻结→review | AC-07 |
 | [x] | T-09 | review | T-08 | 独立逐AC/SD/冻结SHA/全链与反控，扫描遗漏/延期，pass只指审查、merge门pending | AC-08 |
-| [ ] | T-10 | merge | T-09 pass | 冻结提交完整driver/AGP适用门+创作保存/失败/真窗口/资源门；合autographics-dev、知识沉淀/归档、wt-guard clean后清树 | AC-09 |
+| [x] | T-10 | merge | T-09 pass | 冻结提交完整driver/AGP适用门+创作保存/失败/真窗口/资源门；合autographics-dev、知识沉淀/归档、wt-guard clean后清树 | AC-09 |
 
 ## 9. 复审记录
 
@@ -302,3 +302,9 @@ Merge前置：请恢复Windows可交互前台桌面；原Iced真实鼠标门未�
 ## spec-sync 回写记录
 
 SD-01 scene-document、SD-02 authoring-session新增；SD-03 auto-source-driver及SD-04 project/prototype-profile/integration-contract沉淀，module overview/plans与GOAL-007/008/global overview回写，spec-index再生。派生ledger v71→72，6 designs/1 tests/1 reviews/1 reports，canonical仍为docs/specs；来源/审查/门禁/原始失败与恢复归因见835附件。
+
+### 2026-10-23 merge收尾：delivered10/10，guard清理完成
+
+- 最终delivery2a7b10250245332f46b7867dc140da1a4f9d0969已在autographics-dev；main知识/归档提交b294fefe3、实际归档检查a98950ab2。源/Spec/ledger读回通过，真实archive全部20个本地链接均存在且跟踪。
+- 即时Git Bash wt-guard clean后移除唯一835树，已检查其全部提交在autographics-dev；分支设其为upstream再用无force的git branch -d删除，空组删除。9个本任务临时consumer逐一绝对路径校验+guard clean后删除，未触其他会话文件。见cleaned.json/final-guard.txt/consumer-guards.txt。
+- T-10/AC-09完成，status archived/completion_kind delivered/current_step10 of10。无剩余835实施/复审/合入/知识/归档/清理任务；生产I2/I3不外推。批量回归%5 due在主检出单实例继续，属于归档后统一回归收据，不在计划树内运行。
