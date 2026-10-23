@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-831
-status: drafting
+status: executing
 feature_name: auto-ui 独立仓承接与完整发行交付
 author: [Codex]
 created_at: 2026-10-22
-updated_at: 2026-10-22
+updated_at: 2026-10-24
 plan_revision: 2
-current_step: 0
+current_step: 1
 total_steps: 12
 supersedes_spec_components: [docs/specs/repository-boundaries/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md, docs/specs/auto-ui-compiler/project.md, docs/specs/auto-ui-runtime/project.md, docs/specs/auto-ui-tools/project.md, docs/specs/auto-ui-dialect/project.md, docs/specs/language-sdk/project.md, docs/specs/project-model/project.md, docs/specs/auto-lang/project.md, docs/specs/auto-man-core/project.md, docs/specs/auto-man/project.md]
 new_spec_components: [docs/specs/auto-ui/project.md, docs/specs/repository-boundaries/ui-repository-delivery.md, docs/specs/auto-api-gen/project.md]
@@ -129,7 +129,7 @@ UI安装/发行profile包含编译库、runtime、tool实际二进制和运行�
 
 | 状态 | ID | owner_stage | 依赖/启动门 | 写面/交付与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | G831完整核验 | 冻结attachments/831/contract-baseline.md，逐包/资源/测试/兼容/DAG与源码版本、共享声明切口可行性，未闭决策阻断对应生产任务 | AC-01..06 |
+| [x] | T-01 | work | G831完整核验 | [✅ 已完成] [contract-baseline.md](attachments/831/contract-baseline.md) @源 a61209cc0：逐包迁移映射（迁入五包+留仓清单+C2 adapter）、兼容面（C4）、C2 切点实测定位（api-gen/sidecar.rs:54-60、tools/rust_ui.rs:3367/5931/5951→project-model 单源）、跨仓 autodown-core optional 路径处理要求、fixture/测试档/777/792 影响面、旧仓现状（f7d92ee+WIP，不承接 GPUI）、profile/发行面；5 项未闭决策具名交 T-05/T-06/T-09/T-11 | AC-01..06 |
 | [ ] | T-02 | work | G831；T-01旧仓事实 | 重采旧UI仓指令/refs/WIP/ignored、保全快照/锚与恢复演练，建立或认领本Plan唯一隔离树，新增preservation.md | AC-05 |
 | [ ] | T-03 | work | G831；T-01 | 新ui-repository-consumer及发行/失败/source/type/测试ID driver，基于已交付814/A做有效控制；不改生产热点 | AC-01,03,04,06 |
 | [ ] | T-04 | work | G831；T-02/T-03 | 冻结815完整来源，UI包组/资源/测试/许可/兼容候选导入旧UI仓迁移分支；只改目标候选/清单，保持语言权威与816输入 | AC-01,02,05 |
@@ -147,6 +147,8 @@ UI安装/发行profile包含编译库、runtime、tool实际二进制和运行�
 执行组`D:/autostack/.wt/lang-831/{auto-lang,auto-ui}`，分支各`codex/plan-831-dev`（属于各自仓）；必要auto-down兄弟依既有解析补detached，**不修改其实现**。784树如已有owner不得抢占，确认保全后另建本Plan分支或经明确owner交接认领，始终每仓仅一个权威树。review不建第二checkout。主检出只簿记，树内禁junction/symlink；移除前逐树wt-guard clean，不删legacy或恢复载荷。
 
 ## 9. 复审记录
+2026-10-24 / stage: work(G831 启动门核验+T-01 开始) / plan_id: PLAN-831 / revision: 2 / outcome: **G831 满足，启动锁解除，进入 T-01** / gate_evidence: U815=archive/815（delivery `33c9451fb` git merge-base --is-ancestor master ✓，status archived，17/17，五检查点闭环收据 6336ab95b，ledger v68）；U816=archive/816（delivery `ac7c1369c` master 祖先 ✓，status archived，14/14，五检查点收据在 §9 续 14/15，ledger v76）；无误建 lang-831 树；目标仓 D:/autostack/auto-ui 在场 / baseline: 源版本=master@a61209cc0（含他 session 簿记）（815+816 合入后实际源）；上游 revision：815 r?/delivery 33c9451fb、816 r2/delivery ac7c1369c；Spec/ledger=v76 / next: T-01 契约基线审计（attachments/831/contract-baseline.md）
+
 
 r1以下记录为历史合同预检，其提前准备/并行放行和pass仅适用于旧合同，已由r2启动锁取代，不是当前执行授权。
 
