@@ -101,7 +101,15 @@ pub struct WorkerResponse {
 /// Serve one full request (the case-serve entry used by the runner and
 /// the workspace tests). `native_root` hosts per-request native build
 /// dirs.
-pub fn serve_request(req: &WorkerRequest, native_root: &Path) -> WorkerResponse {
+pub fn serve_request(req: &WorkerRequest, _native_root: &Path) -> WorkerResponse {
+    let mut driver = CteDriver::ephemeral();
+    serve_request_with(req, &mut driver)
+}
+
+/// The driver-sharing core: same protocol, caller-owned driver (the
+/// stream mode keeps ONE driver per store root so the resident snapshot
+/// lane and store handle stay warm across requests).
+pub fn serve_request_with(req: &WorkerRequest, driver: &mut CteDriver) -> WorkerResponse {
     // Process-wide peak across the serve (1ms quantization).
     let sampler = auto_av_probe::mempeek::PeakSampler::start(1);
     let resp = |ok: Option<WorkerOk>, error: Option<WorkerError>| WorkerResponse {
@@ -136,26 +144,27 @@ pub fn serve_request(req: &WorkerRequest, native_root: &Path) -> WorkerResponse 
             .display()
             .to_string()
     });
-    let mut driver = match CteDriver::with_store(
-        Path::new(&store_root),
-        req.session.as_deref().unwrap_or("cte817"),
-    ) {
-        Ok(d) => d,
-        Err(e) => {
+    if driver.store().is_none() {
+        if let Err(e) = driver.attach_store(
+            Path::new(&store_root),
+            req.session.as_deref().unwrap_or("cte817"),
+        ) {
             return resp(
                 None,
                 Some(WorkerError {
                     code: "cte.worker.store".into(),
                     message: e,
                 }),
-            )
+            );
         }
-    };
+    }
     let mut steps_out: Vec<WorkerStepOut> = Vec::new();
     for (i, step) in req.steps.iter().enumerate() {
         match step {
             WorkerStep::Query => {
-                let workdir = native_root.join(format!("step-{i}"));
+                let workdir = std::env::temp_dir()
+                    .join(format!("cte817-worker-{}", std::process::id()))
+                    .join(format!("step-{i}"));
                 let out: CteStepOutcome = driver.query_step(&deck, Some(&workdir));
                 steps_out.push(to_wire("query", &deck, out));
             }
@@ -238,5 +247,59 @@ fn to_wire(op: &str, deck: &str, o: CteStepOutcome) -> WorkerStepOut {
         message: o.message,
         wall_ms: Some(o.wall_ms),
         peak_private_bytes: o.peak_private_bytes,
+    }
+}
+
+/// `case-serve-stream`: the WARM-SESSION serve mode (F-817-R3-03). One
+/// process, one resident driver per store root; JSON-line requests on
+/// stdin until EOF, one JSON response line each. The first request warms
+/// (cold start amortized); subsequent edit requests measure the warm
+/// window through real IPC with the driver (and its resident snapshot
+/// lane) alive across requests.
+pub fn serve_stream(stdin: &mut dyn std::io::BufRead, stdout: &mut dyn std::io::Write) {
+    use std::collections::BTreeMap;
+    let mut drivers: BTreeMap<String, CteDriver> = BTreeMap::new();
+    let mut line = String::new();
+    loop {
+        line.clear();
+        if stdin.read_line(&mut line).unwrap_or(0) == 0 {
+            break;
+        }
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        let Ok(req) = serde_json::from_str::<WorkerRequest>(t) else {
+            let resp = WorkerResponse {
+                schema: CTE_WORKER_PROTOCOL.to_string(),
+                nonce: String::new(),
+                request_hash: String::new(),
+                ok: None,
+                error: Some(WorkerError {
+                    code: "cte.worker.protocol".into(),
+                    message: "stream request does not decode".into(),
+                }),
+            };
+            let _ = writeln!(
+                stdout,
+                "{}",
+                serde_json::to_string(&resp).unwrap_or_default()
+            );
+            let _ = stdout.flush();
+            continue;
+        };
+        let root = req
+            .store_root
+            .clone()
+            .unwrap_or_else(|| "ephemeral".to_string());
+        let key = format!("{}|{}", root, req.session.clone().unwrap_or_default());
+        let driver = drivers.entry(key).or_insert_with(|| CteDriver::ephemeral());
+        let resp = serve_request_with(&req, driver);
+        let _ = writeln!(
+            stdout,
+            "{}",
+            serde_json::to_string(&resp).unwrap_or_default()
+        );
+        let _ = stdout.flush();
     }
 }

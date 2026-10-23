@@ -195,6 +195,15 @@ impl CteDriver {
         self.last_envelope_bytes
     }
 
+    /// Attach (or keep) the store on this driver — the stream worker
+    /// builds a driver once and attaches per request root.
+    pub fn attach_store(&mut self, root: &Path, project: &str) -> Result<(), String> {
+        if self.store.is_none() {
+            self.store = Some(CteStore::open(root, project)?);
+        }
+        Ok(())
+    }
+
     /// Test-only: shrink the managed partitions (counter-control seam).
     pub fn set_managed_caps(&mut self, caps: crate::observe::BudgetCaps) {
         self.caps = caps;

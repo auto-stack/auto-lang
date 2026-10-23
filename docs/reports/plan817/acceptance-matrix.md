@@ -19,7 +19,8 @@ T-04 `6d5e44ac3`、T-05 `6c92decfb`、T-06 `fa4f39c25`、T-07 `5b8abb004`（含�
 | V-11 | 边界审计：零他方写面/注册只追加/无 reparse point | closeout | verify 脚本 closeout scope（git diff 审计） |
 | V-12 | 828 snapshot 车道四子case：生产观测/身份/依赖/失败控制（R1 修复后） | snapshot | cte_snapshot_ 9（含 115 函数/≥256KiB 驻留基线 30 修订：main 零重编译/无重整/P95 门；强制重建反控非零；**F-01 多 callee 正确性**） |
 | R1 修复 | 复审反例重放 | — | two-callees 重放 x=2,y=12 ✓；--samples 0 → exit 2/target_met=false ✓；worker-edit 真进程全窗口；Meta→AV 官方用例绿 |
-| R2 修复 | 冷 bool 反例重放 main.g=bool:true/0<1 ✓（warm 接收 is_bool）；基线代际独立比较（唯一波改函数变代际、其余全零重编译+全阶段零+IO=0）+逐修订闭式值；退化反控接入正式门禁（resident-edit 场景 rewarms 硬门 + --inject-rebuild 红 exit 5）；八场景全规定负载（fresh/hot/gc/worker-edit/resident-edit 115 函数基线、meta-edit 大源+meta 块）+ deck 构建入窗 + restart PID 逐样本不同（raw 行含 pid/value）；meta 负控（无 cap/缺 record/解析错语言类/4MiB 界） | snapshot/turnaround/schedule | cte_snapshot_ 13、cte_turnaround_ 5、cte_schedule_ 19、正式 30 样本报告 target_met=true（编辑硬门 525.8/906.7ms） |
+| R2 修复 | 冷 bool 反例重放 main.g=bool:true/0<1 ✓（warm 接收 is_bool）；基线代际独立比较（唯一波改函数变代际、其余全零重编译+全阶段零+IO=0）+逐修订闭式值；八场景全规定负载 + deck 构建入窗 + restart PID 逐样本不同；meta 负控（无 cap/缺 record/解析错语言类/4MiB 界） | snapshot/turnaround/schedule | cte_snapshot_ 13、cte_turnaround_ 5、cte_schedule_ 19 |
+| R3 修复 | 内存硬门接入正式 gate（逐场景峰值+进程树，超标必红；consumer HIR 腿改 owner-only 编译：请求峰值 402→83MiB、594→85ms）；resident-edit P95 入正式硬门（97ms@30）；两编辑硬门改**暖会话真 IPC**（case-serve-stream 单驻留进程，窗口=请求构建→序列化→IPC→完整父判含独立闭式值校验：body 139ms/meta 506ms@30）；oracle 全核（spawn/warm 校验 outcome/values/hir/cache+独立闭式 base=42+115·4780+81·6555）；退化反控重构（无标记恒红：检测器值触发普通门红+AUTO_CTE_DISABLE_RESIDENT_GATE 禁用对照红消失证明闸门承载） | turnaround | 正式 30 样本 target_met=true、全场景峰值 ≤346.6MiB、workspace 78/78、R2-01 反例终版重放绿 |
 
 AC 绑定：AC-01=V-01/05/10、AC-02=V-01/02/04、AC-03=V-02/03、AC-04=V-04..07、
 AC-05=V-07/08、AC-06=V-09、AC-07=V-10、AC-08=V-11、AC-11=V-12（SD-06）。

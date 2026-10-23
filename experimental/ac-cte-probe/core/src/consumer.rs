@@ -372,6 +372,26 @@ pub fn backfill_and_verify(
         auto_cte_contract::CteSourceProfile::Core => SourceProfile::Core,
         auto_cte_contract::CteSourceProfile::Record => SourceProfile::Record,
     };
+    // Fast path (R3-01/R3-02): the consumer HIR leg verifies the OWNER
+    // functions — the anchors live there, and helper bodies are not part
+    // of the consumer deliverable. Compiling only the owner source
+    // avoids the whole-source Atom-emit frontend on 256KiB baselines
+    // (~0.5s and a ~400MiB transient PER REQUEST). A reduced module that
+    // does not compile/verify (e.g. an owner calling a dropped helper)
+    // falls back to the FULL source — never a silent scope reduction.
+    let owners: Vec<String> = resolved
+        .iter()
+        .map(|r| r.binding.owner_fn.clone())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    if let Some(reduced) = extract_owner_functions(source, &owners) {
+        if let Ok(parts) = compile_parts_with(&reduced, module_path, &[], ac_profile) {
+            if let Ok(out) = patch_and_verify(parts.bundle, resolved, values, profile) {
+                return Ok(out);
+            }
+        }
+    }
     let parts = compile_parts_with(source, module_path, &[], ac_profile).map_err(|ds| {
         let d = ds.first().cloned();
         // A consumer-side source failure is a LANGUAGE diagnostic
@@ -385,17 +405,24 @@ pub fn backfill_and_verify(
             ),
         )
     })?;
-    let mut bundle = parts.bundle;
+    patch_and_verify(parts.bundle, resolved, values, profile)
+}
+
+/// Splice the CT constants into one compiled bundle's anchors and
+/// re-verify it.
+fn patch_and_verify(
+    mut bundle: Bundle,
+    resolved: &[ResolvedBinding],
+    values: &BTreeMap<String, CteValue>,
+    profile: auto_cte_contract::CteSourceProfile,
+) -> Result<(CheckedModule, BTreeMap<String, String>), CteAdmissionError> {
     let mut proof: BTreeMap<String, String> = BTreeMap::new();
 
     for r in resolved {
         let Some(value) = values.get(&r.binding.ct_ref) else {
             return Err(CteAdmissionError::new(
                 CteCode::Infra("missing-value".into()),
-                format!(
-                    "internal: backfill without a value for `{}`",
-                    r.binding.ct_ref
-                ),
+                format!("internal: backfill without a value for `{}`", r.binding.ct_ref),
             ));
         };
         let anchor = locate_hir_anchor(&bundle, &r.binding.owner_fn, &r.binding.binding_name)?;
@@ -468,6 +495,43 @@ pub fn backfill_and_verify(
         )
     })?;
     Ok((checked, proof))
+}
+
+/// Extract the named functions from an Auto source into a reduced
+/// program source. `None` when any owner cannot be extracted cleanly.
+fn extract_owner_functions(source: &str, owners: &[String]) -> Option<String> {
+    if owners.is_empty() {
+        return None;
+    }
+    let mut out = String::new();
+    for want in owners {
+        // Function items are top-level `fn NAME(` ... matching braces.
+        let needle = format!("fn {want}(");
+        let mut from = 0usize;
+        let mut found: Option<(usize, usize)> = None;
+        while let Some(idx) = source[from..].find(&needle) {
+            let start = from + idx;
+            // Must be at a top-level boundary (start of line).
+            let line_start = source[..start].rfind('\n').map(|i| i + 1).unwrap_or(0);
+            if source[line_start..start].trim().is_empty() {
+                // Find the matching closing brace at column 0.
+                if let Some(rel) = source[start..].find("\n}") {
+                    let end = start + rel + 2;
+                    found = Some((start, end));
+                    break;
+                }
+            }
+            from = start + needle.len();
+        }
+        let (s, e) = found?;
+        out.push_str(&source[s..e]);
+        out.push('\n');
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
 }
 
 /// Expected-type comparison used by the driver.

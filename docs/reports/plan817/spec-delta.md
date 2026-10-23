@@ -55,6 +55,7 @@
   warm 为唯一整模块事件）由 lane 退化计数器与 828 计数器双重观测。
 - 不退回整模块热重编/装载；新能力为追加车道，默认 closure 保持。
 - R2 补充：冷启动首调用即 bool callee 属正常支持面（warm 按 callee 返回类生成 wrapper 形状）；resident 会话跨请求驻留（单 hunk 增量同步、拒绝则显式重整并计数）；退化反控为正式硬门（resident-edit 场景 rewarms≠0 即红）。
+- R3 补充：编辑硬门为暖会话真 IPC 窗口（单驻留 worker 进程，请求构建→序列化→IPC→完整父判）；内存硬门（worker 384MiB/树 512MiB）为正式 gate 组成部分，超标必红；consumer HIR 腿按 owner-only 源编译（锚点所在 owner 函数），verify 失败回退全源——非缩小验证范围。
 - 证据：AC-11；cte_snapshot_ 13/13（含 115 函数基线 30 修订全阶段/IO 观测与强制重建反控）。
 
 ## 覆盖

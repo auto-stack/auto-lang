@@ -10,6 +10,12 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(|s| s.as_str()) {
         Some("bench-turnaround") => bench_turnaround(&args[2..]),
+        Some("case-serve-stream") => {
+            let mut stdin = std::io::BufReader::new(std::io::stdin());
+            let mut stdout = std::io::BufWriter::new(std::io::stdout());
+            auto_cte_probe::worker::serve_stream(&mut stdin, &mut stdout);
+            std::process::exit(0);
+        }
         Some("case-serve") => case_serve(),
         _ => {
             eprintln!("usage: cte_probe_worker case-serve < request.json");

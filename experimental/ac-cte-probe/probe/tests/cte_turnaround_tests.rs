@@ -194,18 +194,32 @@ fn cte_turnaround_malformed_inputs_all_red() {
 #[test]
 fn cte_turnaround_resident_degrade_gate_and_control() {
     let samples = if cfg!(debug_assertions) { "3" } else { "10" };
-    // Normal: green (debug tier runs under the smoke gate).
     let gate = if cfg!(debug_assertions) {
         "5000"
     } else {
         "1000"
     };
+    let exe = env!("CARGO_BIN_EXE_cte_probe_worker");
+
+    // (a) Normal incremental traffic: green, zero re-warms.
     let (code, s, _) = run_bench(&["--samples", samples, "--gate-ms", gate]);
     assert_eq!(code, 0, "normal resident traffic green: {s}");
     assert_eq!(s["resident_edit_rewarms"], serde_json::json!(0));
-    // Control: red, re-warm counted, marker failure present.
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_cte_probe_worker"))
-        .args(["bench-turnaround", "--samples", samples, "--inject-rebuild"])
+    assert!(!serde_json::to_string(&s["hard_gate_failures"])
+        .unwrap_or_default()
+        .contains("resident-edit degraded"));
+
+    // (b) Forced structural change: the DETECTOR VALUE fires the normal
+    // gate (no marker) — the failure names the re-warm count.
+    let out = std::process::Command::new(exe)
+        .args([
+            "bench-turnaround",
+            "--samples",
+            samples,
+            "--gate-ms",
+            gate,
+            "--inject-rebuild",
+        ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -213,17 +227,41 @@ fn cte_turnaround_resident_degrade_gate_and_control() {
     assert_ne!(out.status.code().unwrap_or(0), 0, "the control is red");
     let v: serde_json::Value =
         serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
-    assert_eq!(v["target_met"], serde_json::json!(false));
     assert!(
         v["resident_edit_rewarms"].as_u64().unwrap_or(0) > 0,
         "the forced rebuild is counted: {}",
         v["resident_edit_rewarms"]
     );
+    let failures = serde_json::to_string(&v["hard_gate_failures"]).unwrap_or_default();
     assert!(
-        v["hard_gate_failures"].as_array().unwrap().iter().any(|f| f
-            .as_str()
-            .unwrap_or_default()
-            .contains("degrade gate is red")),
-        "the marker failure names the gate: {v}"
+        failures.contains("resident-edit degraded"),
+        "the DETECTOR message fires (not a marker): {failures}"
+    );
+
+    // (c) Detector-disabled control (env): the forced input is present,
+    // but the degrade-specific red VANISHES — proving the gate failure
+    // comes from the detector, never from the inject flag itself. (An
+    // independent memory-gate failure may legitimately remain: a forced
+    // rebuild while resident does exceed the worker peak gate.)
+    let out = std::process::Command::new(exe)
+        .args([
+            "bench-turnaround",
+            "--samples",
+            samples,
+            "--gate-ms",
+            gate,
+            "--inject-rebuild",
+        ])
+        .env("AUTO_CTE_DISABLE_RESIDENT_GATE", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("disabled control spawns");
+    let v: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+    let failures = serde_json::to_string(&v["hard_gate_failures"]).unwrap_or_default();
+    assert!(
+        !failures.contains("resident-edit degraded"),
+        "with the detector disabled the degrade red is gone (the gate was load-bearing): {failures}"
     );
 }
