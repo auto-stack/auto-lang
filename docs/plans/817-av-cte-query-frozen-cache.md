@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-817
-status: executing
+status: execution_done
 feature_name: AV驱动的CTE查询与冻结缓存闭环
 plan_revision: 3
 author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-23
-current_step: 8
+current_step: 9
 total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-av/resident-function-install.md
@@ -212,7 +212,7 @@ V-01–11全部为必验区分性控制；独立expected不由AV/新freeze生成
 | [x] T-06 | work | T-05、公共单写窗口 | AutoDown完整suite/worker/兼容与身份/stale、ERROR反控 | cte_adapter_、V-10；AC-07。[✅ 已完成] 2026-10-23：code fa4f39c25。裁定补齐：outcome admission 先行——judged 步骤上的隔离 resource/cancel/infra 态=ERROR 行（永非语言裁决）；语言类 diag 对照声明的 error completion（cte.*→parse/verify/capability/run stage 投影+message matcher），期望 success 时默认 FAIL；language_class 上 cteworker/1 线协议。语料 5 case：warm-session 区分编辑（query→edit(22→23)→query：重键 miss+手算 43）、跨进程 restart（query→restart→query：新 worker 进程恢复 hit+零执行）、已执行 trap completion（run 阶段 cte.trap.int-overflow 含调用来源）；修复：edit 仅在 restart 分块边界折入下一块基面（worker 自应用 chunk 内编辑）。控制：未注册 recipe lint 拒（列注册集）；坏 worker 工具身份→ERROR 行不绿（env 覆盖改为逐次读取不毒化进程缓存）；stale 适用集登记 cte-worker 轴族（配方分支外的第二登记点）——混合 cte/av 行序独立+漂移即红。cte_adapter_ 族：协议回显准入/不可解码=协议错/未知 op 拒/restart 分块跨真进程共享 store（miss→跨进程 hit+身份恒定+进程峰值上报）/edit 恰一次（已编辑 deck+同 edit=0 匹配错）。证据：正式语料 5/5 case+4 控制（官测 5/5）；cte_adapter_ 3/3；lint ok |
 | [x] T-07 | work | T-06 | 正式runner六场景及两编辑硬门、raw报告/反控 | cte_turnaround_、V-09；AC-06。[✅ 已完成] 2026-10-23：code（见 git log）。worker `bench-turnaround` 子命令：fresh/同进程hot/restart(disk-hot 重开)/helper-body编辑/Meta集编辑/gc并发 ×N 真实驱动路径（native 另报、bench 内 off）；两编辑硬门（warm store、P95<1000ms）实测 4.3ms/1.5ms（30 样本）；raw JSONL 每行绑定其执行 deck 文本的 fnv hash（编辑场景 30 样本 30 个不同 hash）；summary 含逐场景 p95/max/样本数/值正确、worker 峰值与门裁定（失败 exit 5）。反控：`--gate-ms 0` 恒红（failure 命名 counter-control）；`--inject-delay-ms` 确定性注入前两个 body-edit 样本使 P95 位被占据→同一门机制真红。证据：cte_turnaround_ 3/3 |
 | [x] T-08 | work | T-07 | 新verify全Scope、coverage/SD、docs/reports/plan817、边界审计 | acceptance V-01–11；AC-01–08。[✅ 已完成] 2026-10-23：`scripts/verify-ac-cte-817.ps1` 全 Scope（first-case…closeout|all；resources 走 release、turnaround 再生 raw 报告）；`docs/reports/plan817/`：acceptance-matrix.md（V-01..11→scope/证据/提交+AC 绑定）、spec-delta.md（SD-01..05 合入终稿文本，canonical 落地归 merge）、turnaround.jsonl（30 样本 raw：编辑硬门 P95 4.6/1.5ms vs 1000ms 门、六场景全值对、worker 峰 3.0MB）；closeout 边界审计（V-11）绿：只读消费零 diff、注册按条目语义追加审计、reparse-point 扫描、覆盖矩阵；SCOPE acceptance 全链 PASS |
-| [ ] T-11 | work | D828及本计划其他work实现完成 | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-12 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage | AC-11；共同基线+新增能力兼容定向验收，未实测不勾；送审前不跑整档 |
+| [x] T-11 | work | D828及本计划其他work实现完成 | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-12 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage | AC-11。[✅ 已完成] 2026-10-23：code 4288147ff。`exec snapshot` 车道：828 warm-up 一次装载全部单元+link ProgramSnapshot；逐调用实参=wrapper 增量编辑（尾部锚点函数提供增量重扫对齐跑道——末函数内编辑无法收敛，实测定位）；单元视图执行；车道为缓存身份轴（engine.exec 入 envelope key——closure/snapshot 永不共享条目）。SnapshotLane 面：warm/run/retarget/edit/src+观测（按源名的 mir_lower 计数、驻留代际、车道退化探测器）；828 编辑拒绝以 Ok(outcome{ok:false}) 表达（非 Err）——lane 透传渲染 diagnostics+non-fast-path 理由。V-12 四子case（cte_snapshot_ 4/4）：生产观测（单 session 30 实参修订：仅 wrapper 重编译、helper/无关函数零重编译且代际不变、无新整模块事件、逐值手算）；身份（车道键隔离、各自命中）；依赖（deck 级 helper body 失效 + session 级仅重编该函数、wrapper 代际不变）；失败控制（坏编辑受控拒绝+最后好版本存活；强制冷路径退化探测器恰 1 而 30 编辑保持平坦——828 静默退化为设计外）。脚本/矩阵/SD：verify `snapshot` scope+acceptance 接线、V-12 矩阵行、SD-06 终稿。workspace 64 测试绿（16 二进制）零警告 |
 | [ ] T-09 | review | T-08冻结提交、T-11 完成 | 同树独立review/规范及遗漏审查，反控可重放 | AC-09；reviewed=10/11，merge pending |
 | [ ] T-10 | merge | T-09 pass | 冻结提交门禁/Spec/ledger/归档合入/批量到期判定/wt-guard后清理 | AC-10；实际11/11 |
 
@@ -239,6 +239,8 @@ V-01–11全部为必验区分性控制；独立expected不由AV/新freeze生成
 2026-10-23 stage:work；PLAN-817 r3；T-07 完成（7/11）| branch `plan-817-dev` | task_ids：T-07 | evidence：§8 T-07 行内收据；cte_turnaround_ 3/3 | blockers：无 | merge-owned 门禁 pending | next:work（T-08：verify 脚本全 Scope/coverage/SD/docs/reports/plan817/边界审计）
 
 2026-10-23 stage:work；PLAN-817 r3；T-08 完成（8/11）| branch `plan-817-dev` | task_ids：T-08 | evidence：§8 T-08 行内收据；SCOPE acceptance/closeout PASS | blockers：无 | merge-owned 门禁 pending | next:work（T-11：828 snapshot 接入+V-12 四子case；完成后 execution_done=9/11 → review T-09）
+
+2026-10-23 stage:work；PLAN-817 r3；T-11 完成 → 全部 work 任务完成（9/11：T-01..T-08+T-11；T-09 review、T-10 merge 未属 work）| worktree `D:/autostack/.wt/lang-817/auto-lang` | branch `plan-817-dev` | code_commit `4288147ff` | task_ids：T-11 | evidence：§8 T-11 行内收据；cte_snapshot_ 4/4、workspace 64 绿、verify snapshot/acceptance PASS | blockers：无 | merge-owned 门禁 pending（裸 cargo t + tv + probe 消费面定向，最终 review pass 后冻结提交执行）| next:review（T-09：同树独立上下文逐 AC/V/SD 及遗漏审查；冻结提交、暂停写入）
 
 ## 10. 待澄清事项
 
