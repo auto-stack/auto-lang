@@ -60,35 +60,40 @@ impl Drop for TempProj {
     }
 }
 
-/// watch 子进程 RAII 守卫（F-816-B-R1-04 残项）：任何出口（含 panic
-/// 与 `write.unwrap` 类失败）都 kill 子进程并收割 reader 线程——替代
-/// 手动 finish 宏。
+/// watch 子进程 RAII 守卫（F-816-B-R1-04/R3 残项）：经设施 ProcessTree
+/// 承载——任何出口（含 panic 与 unwrap 失败）都先 `cancel_within` 终止
+/// **整棵 owned 树**（持管道后代一并死→EOF→reader 真停），再有界 join
+/// reader 线程；守卫不再无限期等待超出预算的后代。
 struct WatchGuard {
-    child: Option<std::process::Child>,
+    proc: Option<auto_tool_execution::OwnedProcess>,
     pump: Option<std::thread::JoinHandle<()>>,
 }
 
 impl WatchGuard {
     fn release(mut self) {
-        if let Some(mut w) = self.child.take() {
-            let _ = w.kill();
-            let _ = w.wait();
+        self.stop_bounded();
+    }
+    fn stop_bounded(&mut self) {
+        if let Some(mut proc) = self.proc.take() {
+            let _ = proc.cancel_within(Duration::from_secs(5));
         }
         if let Some(p) = self.pump.take() {
-            let _ = p.join();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !p.is_finished() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            if p.is_finished() {
+                let _ = p.join();
+            }
+            // 未完：树已终止、EOF 已确定——残余只可能是非拥有持有者，
+            // 不再无限期等待（R3 残项 B 的 23s 后代即在此被切断）。
         }
     }
 }
 
 impl Drop for WatchGuard {
     fn drop(&mut self) {
-        if let Some(mut w) = self.child.take() {
-            let _ = w.kill();
-            let _ = w.wait();
-        }
-        if let Some(p) = self.pump.take() {
-            let _ = p.join();
-        }
+        self.stop_bounded();
     }
 }
 
@@ -161,9 +166,13 @@ fn serve_daemon_and_req_roundtrip() {
     let _ = daemon.wait();
 }
 
-/// 有界 run（F-816-B-R1-04 残项闭合）：**单一总预算**覆盖进程等待、
-/// 超时终止与排水线程回收——持写端后代不能把 join 拖出预算（根退出
-/// ≠管道 EOF）；预算尽即返回超时结果，排水线程随管道关闭自然结束。
+/// 有界 run（F-816-B-R1-04/R3 残项闭合）：经 owned 执行设施以
+/// **ProcessTree** 承载 CLI 子进程——超时/根退出后 `cancel_within` 终止
+/// **整棵 owned 树**（持管道后代一并死→管道 EOF→排水线程真停），再在
+/// 剩余预算内有界 join；排水写入**共享缓冲**（线程卡住也不丢已收字节）；
+/// 回收未完成时**不映射为成功**——分类为超时/未完回收（code=-1）并保留
+/// 部分输出。单一总预算覆盖等待/终止/回收。
+#[allow(clippy::type_complexity)]
 fn run_bounded(
     args: &[&str],
     cwd: &Path,
@@ -171,66 +180,125 @@ fn run_bounded(
     limit: Duration,
 ) -> (i32, String, String) {
     use std::io::Read;
-    let mut cmd = Command::new(AUTO);
-    cmd.args(args).current_dir(cwd).stdin(Stdio::null());
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
-    for (k, v) in env {
-        cmd.env(k, v);
-    }
-    let mut child = cmd
-        .spawn()
-        .unwrap_or_else(|e| panic!("spawn auto {:?}: {e}", args));
-    fn drain(mut r: std::process::ChildStdout) -> String {
-        let mut b = String::new();
-        let _ = r.read_to_string(&mut b);
-        b
-    }
-    fn drain_err(mut r: std::process::ChildStderr) -> String {
-        let mut b = String::new();
-        let _ = r.read_to_string(&mut b);
-        b
-    }
-    fn join_bounded<T>(h: Option<std::thread::JoinHandle<T>>, budget: Duration) -> Option<T> {
-        let h = h?;
-        let deadline = Instant::now() + budget;
-        while !h.is_finished() && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        if h.is_finished() {
-            h.join().ok()
-        } else {
-            None
+    use std::sync::{Arc, Mutex};
+    let mut argv: Vec<std::ffi::OsString> = vec![AUTO.into()];
+    argv.extend(args.iter().map(|a| (*a).into()));
+    let mut spec = auto_tool_execution::ExecutionSpec::new(argv);
+    spec.cwd = Some(cwd.to_path_buf());
+    spec.env = env
+        .iter()
+        .map(|(k, v)| ((*k).into(), v.clone().into()))
+        .collect();
+    spec.stdin = auto_tool_execution::StdioPolicy::Null;
+    spec.stdout = auto_tool_execution::StdioPolicy::Piped;
+    spec.stderr = auto_tool_execution::StdioPolicy::Piped;
+    spec.tree_scope = auto_tool_execution::TreeScope::ProcessTree;
+    let mut proc =
+        auto_tool_execution::spawn(&spec).unwrap_or_else(|e| panic!("spawn auto {:?}: {e}", args));
+    let out_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    let err_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    fn drain_into<R: Read>(mut r: R, buf: Arc<Mutex<String>>) {
+        let mut chunk = [0u8; 4096];
+        loop {
+            match r.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    buf.lock()
+                        .unwrap()
+                        .push_str(&String::from_utf8_lossy(&chunk[..n]));
+                }
+            }
         }
     }
-    let out_handle = child
-        .stdout
-        .take()
-        .map(|r| std::thread::spawn(move || drain(r)));
-    let err_handle = child
-        .stderr
-        .take()
-        .map(|r| std::thread::spawn(move || drain_err(r)));
+    let drains: Vec<_> = [
+        proc.take_stdout().map(|r| {
+            let b = out_buf.clone();
+            std::thread::spawn(move || drain_into(r, b))
+        }),
+        proc.take_stderr().map(|r| {
+            let b = err_buf.clone();
+            std::thread::spawn(move || drain_into(r, b))
+        }),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
     let deadline = Instant::now() + limit;
     let left = |deadline: Instant| -> Duration {
         deadline
             .saturating_duration_since(Instant::now())
             .max(Duration::from_millis(1))
     };
+    // 等待根退出（绝对到期判定：预算尽→终止树→未完回收分类）。
     let code = loop {
         if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            return (-1, String::new(), format!("timeout after {limit:?}"));
+            if let Err(e) = proc.cancel_within(left(deadline)) {
+                let partial_out = out_buf.lock().unwrap().clone();
+                return (
+                    -1,
+                    partial_out,
+                    format!("timeout after {limit:?}; cancel failed: {e}"),
+                );
+            }
+            let partial_out = out_buf.lock().unwrap().clone();
+            return (-1, partial_out, format!("timeout after {limit:?}"));
         }
-        match child.try_wait().expect("try_wait") {
-            Some(status) => break status.code().unwrap_or(-1),
-            None => std::thread::sleep(Duration::from_millis(20)),
+        match proc.wait_deadline(Duration::from_millis(20)) {
+            Ok(Some(status)) => break status.code().unwrap_or(-1),
+            Ok(None) => {}
+            Err(e) => {
+                let partial_out = out_buf.lock().unwrap().clone();
+                return (-1, partial_out, format!("wait failed: {e}"));
+            }
         }
     };
-    // 进程已退：剩余预算内回收排水（持写端后代不拖出总预算）。
-    let out = join_bounded(out_handle, left(deadline)).unwrap_or_default();
-    let err = join_bounded(err_handle, left(deadline)).unwrap_or_default();
+    // 根已退出≠树已空：短宽限内未 EOF 的排水=根外仍有 owned 持有者
+    //（持管道后代）——终止整棵 owned 树（EOF 确定性、心跳冻结），并
+    // **分类为 timeout 回收**而非沿根退出码报成功（R3 残项 A：持有者
+    // 在场即非干净成功；正常短命令排水即刻 EOF，不受影响）。
+    let join_bounded = |h: std::thread::JoinHandle<()>, budget: Duration| -> bool {
+        let end = Instant::now() + budget;
+        while !h.is_finished() && Instant::now() < end {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        h.is_finished() && h.join().is_ok()
+    };
+    // 排水宽限：无持有者时 EOF 在根退出瞬间到达。
+    let grace_end = Instant::now() + Duration::from_millis(150);
+    while Instant::now() < grace_end && drains.iter().any(|h| !h.is_finished()) {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let holders_present = drains.iter().any(|h| !h.is_finished());
+    if holders_present {
+        let tree_reclaim = proc.cancel_within(left(deadline));
+        let _ = proc.cancel_within(left(deadline));
+        let drains_done: Vec<bool> = drains
+            .into_iter()
+            .map(|h| join_bounded(h, left(deadline)))
+            .collect();
+        let out = out_buf.lock().unwrap().clone();
+        return (
+            -1,
+            out,
+            format!(
+                "timeout reclaim: owned pipe holders survived root exit; tree terminated (tree={:?}, drains={drains_done:?})",
+                tree_reclaim.map(|_| "ok").map_err(|e| e.to_string())
+            ),
+        );
+    }
+    let drains_done: Vec<bool> = drains
+        .into_iter()
+        .map(|h| join_bounded(h, left(deadline)))
+        .collect();
+    let out = out_buf.lock().unwrap().clone();
+    let err = err_buf.lock().unwrap().clone();
+    if drains_done.iter().any(|d| !d) {
+        return (
+            -1,
+            out,
+            format!("reclaim incomplete after {limit:?} (drains={drains_done:?})"),
+        );
+    }
     (code, out, err)
 }
 
@@ -248,16 +316,16 @@ render: \"vue\"
 ",
         APP,
     );
-    let mut watch = Command::new(AUTO)
-        .args(["watch"])
-        .current_dir(proj.path())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("spawn watch");
+    let mut watch_spec =
+        auto_tool_execution::ExecutionSpec::new([std::ffi::OsString::from(AUTO), "watch".into()]);
+    watch_spec.cwd = Some(proj.path().to_path_buf());
+    watch_spec.stdin = auto_tool_execution::StdioPolicy::Null;
+    watch_spec.stdout = auto_tool_execution::StdioPolicy::Piped;
+    watch_spec.stderr = auto_tool_execution::StdioPolicy::Null;
+    watch_spec.tree_scope = auto_tool_execution::TreeScope::ProcessTree;
+    let mut watch = auto_tool_execution::spawn(&watch_spec).expect("spawn watch (owned tree)");
     let (lines_tx, lines_rx) = std::sync::mpsc::channel::<String>();
-    let stdout = watch.stdout.take().expect("piped stdout");
+    let stdout = watch.take_stdout().expect("piped stdout");
     let pump = std::thread::spawn(move || {
         let mut reader = BufReader::new(stdout);
         loop {
@@ -272,8 +340,8 @@ render: \"vue\"
             }
         }
     });
-    let mut guard = WatchGuard {
-        child: Some(watch),
+    let guard = WatchGuard {
+        proc: Some(watch),
         pump: Some(pump),
     };
     let total = Instant::now() + Duration::from_secs(20);
@@ -284,7 +352,10 @@ render: \"vue\"
     };
 
     let mut ready = false;
-    while let Ok(line) = lines_rx.recv_timeout(left(total)) {
+    while Instant::now() < total {
+        let Ok(line) = lines_rx.recv_timeout(left(total)) else {
+            break;
+        };
         if line.contains("Ready. Edit an .at file") {
             ready = true;
             break;
@@ -307,7 +378,10 @@ render: \"vue\"
     .expect("write changed app.at");
     let mut regen = false;
     let mut last = String::new();
-    while let Ok(line) = lines_rx.recv_timeout(left(total)) {
+    while Instant::now() < total {
+        let Ok(line) = lines_rx.recv_timeout(left(total)) else {
+            break;
+        };
         last = line;
         if last.contains("SFC") && last.contains("app.at") {
             regen = true;

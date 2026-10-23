@@ -146,6 +146,22 @@ fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> String {
             }
         }
     }
+    // PLAN-816 B-R3-07：安装形态 SDK 闭包——CLI 可执行文件邻接 sdk/
+    // 目录（install manifest 随附框架源闭包）优先于仓库漫步/主检出回退：
+    // 安装机器无实施仓检出，路径不得借用开发树。env 覆盖仍是第一档
+    //（开发口子）；sdk/crates/auto-lang 与 sdk/auto-lang 两种布局都认。
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for cand in [
+                dir.join("sdk").join("crates").join("auto-lang"),
+                dir.join("sdk").join("auto-lang"),
+            ] {
+                if cand.exists() {
+                    return compute_relative_path(ws_dir, &cand);
+                }
+            }
+        }
+    }
     // Walk up from project_dir to find the workspace root (has crates/auto-lang).
     // Also check sibling directories at each level — auto-lang may live in a
     // sibling repo (e.g. auto-shell and auto-lang are both under autostack/).
