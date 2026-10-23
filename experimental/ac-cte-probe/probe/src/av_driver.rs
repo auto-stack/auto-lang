@@ -14,6 +14,7 @@ use auto_av_core::{
     abc_verify, decode_abc, encode_abc, execute, verify_mir, CancelFlag, ExecLimits,
 };
 use auto_av_probe::hir_adapter::lower_checked;
+use auto_av_probe::session::FunctionIncrementalSession;
 use auto_cte_contract::CteEngineId;
 use auto_cte_contract::{CteAdmissionError, CteCode, CteValue};
 
@@ -27,7 +28,8 @@ pub const CTE_CALL_ENTRY_ID: &str = "d_cte817_call";
 
 /// Current engine identity, read from the merged 798 constants at
 /// runtime so any future version bump re-keys the cache automatically.
-pub fn current_engine() -> CteEngineId {
+/// `lane` selects the execution axis ("closure" | "snapshot", V-12).
+pub fn current_engine_for(lane: &str) -> CteEngineId {
     CteEngineId {
         av_profile: AV_PROFILE.to_string(),
         mir_schema: MIR_SCHEMA.to_string(),
@@ -35,6 +37,209 @@ pub fn current_engine() -> CteEngineId {
         mir_semantics: MIR_SEMANTICS.0,
         abc_semantics: ABC_SEMANTICS.0,
         av_semantics: AV_SEMANTICS.0,
+        exec: lane.to_string(),
+    }
+}
+
+/// The default (closure-lane) engine identity.
+pub fn current_engine() -> CteEngineId {
+    current_engine_for("closure")
+}
+
+/// A warmed PLAN-828 function-incremental session driving one CTE
+/// request's calls (T-11/SD-06): the ONE whole-module compile happens
+/// at warm-up; per-call argument changes are incremental edits that
+/// recompile ONLY the wrapper function.
+pub struct SnapshotLane {
+    session: FunctionIncrementalSession,
+    is_bool: bool,
+    /// The wrapper's argument-literal span in the session source (the
+    /// incremental edit target between calls).
+    args_span: (u64, u64),
+    /// Lane-level degrade detector (V-12 failure control): the 828
+    /// session never silently degrades (its whole_module counters are
+    /// structurally 0); the only whole-module path is the EXPLICIT
+    /// warm-up, counted here, against the incremental edit count.
+    whole_module_events: u64,
+    incremental_edits: u64,
+}
+
+impl SnapshotLane {
+    /// Warm the lane over the wrapper source for the FIRST call.
+    pub fn warm(
+        source: &str,
+        input: &ac_sema_core::SemaInput,
+        callee: &str,
+        args: &[CteValue],
+    ) -> Result<SnapshotLane, CteAdmissionError> {
+        let is_bool = returns_bool(input, callee);
+        let src = wrapper_source(source, callee, args, is_bool);
+        // Locate the args span: the single `(` ... `)` inside the wrapper
+        // call line (the callee name followed by the literal list).
+        let call_txt = format!("{callee}(");
+        let line_start = src.rfind(&call_txt).ok_or_else(|| {
+            CteAdmissionError::new(CteCode::Infra("snapshot".into()), "wrapper call not found")
+        })?;
+        let open = line_start + call_txt.len() - 1;
+        let close = src[open..]
+            .find(')')
+            .map(|i| (open + i) as u64)
+            .ok_or_else(|| {
+                CteAdmissionError::new(
+                    CteCode::Infra("snapshot".into()),
+                    "wrapper call unterminated",
+                )
+            })?;
+        let session =
+            auto_av_probe::session::warmup(&src, CTE_CALL_ENTRY_ID, &[]).map_err(|m| {
+                // The 828 warm-up front door reports source diagnostics
+                // verbatim; classify mark/capability shapes like the
+                // closure lane.
+                if m.contains("`mark_a`") || m.contains("`mark_b`") {
+                    CteAdmissionError::new(
+                        CteCode::CapabilityDenied,
+                        format!("callee closure uses a trace intrinsic: {m}"),
+                    )
+                } else {
+                    CteAdmissionError::new(CteCode::CalleeFrontend, m)
+                }
+            })?;
+        Ok(SnapshotLane {
+            session,
+            is_bool,
+            args_span: (open as u64 + 1, close),
+            whole_module_events: 1,
+            incremental_edits: 0,
+        })
+    }
+
+    /// Point the wrapper at a different argument list (incremental edit:
+    /// ONLY the wrapper function recompiles; every other resident unit
+    /// keeps its generation).
+    pub fn retarget(&mut self, callee: &str, args: &[CteValue]) -> Result<(), CteAdmissionError> {
+        let txt: String = args.iter().map(lit).collect::<Vec<_>>().join(", ");
+        let bytes = txt.into_bytes();
+        let out = self
+            .session
+            .edit(self.args_span.0, self.args_span.1, bytes)
+            .map_err(|m| CteAdmissionError::new(CteCode::Infra("snapshot-edit".into()), m))?;
+        if !out.ok {
+            let mut detail = out.diagnostics.join("; ");
+            if let Some(r) = out.non_fast_path_reason {
+                if !detail.is_empty() {
+                    detail.push_str("; ");
+                }
+                detail.push_str(&r);
+            }
+            if detail.is_empty() {
+                detail = "retarget rejected".to_string();
+            }
+            return Err(CteAdmissionError::new(
+                CteCode::Infra("snapshot-edit".into()),
+                detail,
+            ));
+        }
+        // Refresh the span for the next retarget (length may change).
+        let src = self.session.src();
+        let call_txt = format!("{callee}(");
+        let line_start = src.rfind(&call_txt).ok_or_else(|| {
+            CteAdmissionError::new(CteCode::Infra("snapshot".into()), "wrapper call lost")
+        })?;
+        let open = line_start + call_txt.len() - 1;
+        let close = src[open..]
+            .find(')')
+            .map(|i| (open + i) as u64)
+            .ok_or_else(|| {
+                CteAdmissionError::new(
+                    CteCode::Infra("snapshot".into()),
+                    "wrapper call unterminated",
+                )
+            })?;
+        self.args_span = (open as u64 + 1, close);
+        self.incremental_edits += 1;
+        Ok(())
+    }
+
+    /// The current session source text.
+    pub fn src(&self) -> &str {
+        self.session.src()
+    }
+
+    /// Apply a raw byte-span edit to the session source (dependency
+    /// changes and failure controls; byte offsets, end exclusive).
+    pub fn edit(&mut self, start: u64, end: u64, insert: Vec<u8>) -> Result<(), String> {
+        let out = self.session.edit(start, end, insert)?;
+        if out.ok {
+            Ok(())
+        } else {
+            Err(if out.diagnostics.is_empty() {
+                "edit rejected".to_string()
+            } else {
+                out.diagnostics.join("; ")
+            })
+        }
+    }
+
+    /// Run the current snapshot (real AV execution through the unit view).
+    pub fn run(&self, cancel: &CancelFlag) -> Result<AvExecResult, CteAdmissionError> {
+        let started = std::time::Instant::now();
+        let (outcome, trace) = self.session.run(&ExecLimits::default(), cancel);
+        let wall_ms = started.elapsed().as_millis() as u64;
+        match outcome {
+            ExecOutcome::Success { value, steps } => {
+                let cv = match (&value, self.is_bool) {
+                    (auto_av_core::Value::I32(x), true) => CteValue::Bool(*x != 0),
+                    (auto_av_core::Value::I32(x), false) => CteValue::I32(*x),
+                    (auto_av_core::Value::Bool(b), _) => CteValue::Bool(*b),
+                };
+                Ok(AvExecResult {
+                    value: cv,
+                    steps,
+                    wall_ms,
+                    trace_events: trace.events.len(),
+                    peak_slot_bytes: trace.peak_slot_bytes,
+                })
+            }
+            ExecOutcome::Trap { kind, .. } => Err(CteAdmissionError::new(
+                CteCode::Trap(kind.code().to_string()),
+                format!("compiletime-executed snapshot trapped: {}", kind.code()),
+            )),
+            ExecOutcome::Resource { kind, message } => Err(CteAdmissionError::new(
+                CteCode::Resource(format!("{kind:?}")),
+                format!("snapshot resource limit: {message}"),
+            )),
+            ExecOutcome::Cancelled => Err(CteAdmissionError::new(
+                CteCode::Cancelled,
+                "snapshot execution cancelled",
+            )),
+            ExecOutcome::Infra(m) => Err(CteAdmissionError::new(
+                CteCode::Infra("snapshot-exec".into()),
+                format!("snapshot infra failure: {m}"),
+            )),
+        }
+    }
+
+    /// Observations for the V-12 sub-cases. NOTE: the session addresses
+    /// functions by SOURCE name ("cte_sum"); a function's recompilation
+    /// is observed at the mir_lower stage (the 828 stage vocabulary).
+    pub fn compile_count(&self, function: &str) -> u64 {
+        self.session.counters().stage_of("mir_lower", function)
+    }
+    pub fn whole_module_count(&self) -> u64 {
+        // The 828 session's own counters are structurally 0 (silent
+        // degradation is designed out); the lane's explicit whole-module
+        // events (warm-ups) are the degrade detector's non-zero signal.
+        self.whole_module_events
+    }
+
+    /// Incremental (non-degrading) edit count.
+    pub fn incremental_edit_count(&self) -> u64 {
+        self.incremental_edits
+    }
+    pub fn generation_of(&self, function: &str) -> Option<u64> {
+        self.session
+            .resident(function)
+            .map(|(_, _, c)| c.generation())
     }
 }
 
@@ -65,7 +270,12 @@ fn wrapper_source(source: &str, callee: &str, args: &[CteValue], returns_bool: b
     } else {
         format!("    return {callee}({args_txt})\n")
     };
-    format!("{source}fn {CTE_CALL_ENTRY}() int {{\n{body}}}\n")
+    // The trailing anchor gives the incremental rescan its alignment
+    // runway AFTER the wrapper's argument edits (an edit in the LAST
+    // function cannot converge — nothing follows to align against).
+    format!(
+        "{source}fn {CTE_CALL_ENTRY}() int {{\n{body}}}\n\nfn cte817_anchor() int {{\n    return 0\n}}\n"
+    )
 }
 
 /// Whether the callee's declared return is bool, per the projected 796

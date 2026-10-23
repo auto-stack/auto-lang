@@ -296,9 +296,14 @@ impl CteDriver {
         obs.set_counter("meta_query", plan.meta.len() as u64);
 
         // ---- AV calls: cache lookup or real execution -------------------
-        let engine = av_driver::current_engine();
+        // The engine identity carries the EXECUTION LANE (V-12): closure
+        // and snapshot requests never share cache entries.
+        let engine = av_driver::current_engine_for(req.exec.axis());
         let mut cache_verdict: Option<&'static str> = None;
         let mut values_by_query: BTreeMap<String, CteValue> = plan.values.clone();
+        // The snapshot lane (T-11): warmed ONCE per request; per-call
+        // argument changes are incremental wrapper edits.
+        let mut lane: Option<av_driver::SnapshotLane> = None;
         for call in &plan.av_calls {
             // RAW args concretize NOW — every earlier call's value is
             // present by execution order (legal DAG deps).
@@ -405,11 +410,18 @@ impl CteDriver {
                 if cache_verdict.is_none() {
                     cache_verdict = Some("miss");
                 }
-                let exec =
-                    match self.execute_call(obs, &req, &input, call, &concrete, cache_verdict) {
-                        Ok(x) => x,
-                        Err(out) => return out,
-                    };
+                let exec = match self.perform_execution(
+                    obs,
+                    &req,
+                    &input,
+                    call,
+                    &concrete,
+                    &mut lane,
+                    cache_verdict,
+                ) {
+                    Ok(x) => x,
+                    Err(out) => return out,
+                };
                 budget.settle(crate::observe::Partition::AvSlots, exec.peak_slot_bytes);
                 let env = self.mint_envelope(&req, &identity, &exec, manifest);
                 if let Err(e) = self.publish_env(&env, budget) {
@@ -513,6 +525,76 @@ impl CteDriver {
             managed_target_met: budget.target_met(),
             counters: obs.counters().clone(),
             spans: obs.spans().clone(),
+        }
+    }
+
+    /// Execute one call through the request's lane. The closure lane
+    /// compiles per call; the snapshot lane warms once and retargets.
+    fn perform_execution(
+        &mut self,
+        obs: &mut Obs,
+        req: &CteRequestV1,
+        input: &SemaInput,
+        call: &auto_cte_core::schedule::AvCall,
+        concrete: &[CteValue],
+        lane: &mut Option<av_driver::SnapshotLane>,
+        cache_verdict: Option<&'static str>,
+    ) -> Result<AvExecResult, CteStepOutcome> {
+        if self.forbid_av {
+            let e = CteAdmissionError::new(
+                CteCode::Infra("av-forbidden".into()),
+                "AV execution is forbidden by the counter-control flag (a cache miss cannot complete)",
+            );
+            return Err(CteStepOutcome::diag(&e, cache_verdict, obs));
+        }
+        let out = obs.span("av_execute", |_| {
+            if req.exec == auto_cte_contract::CteExecMode::Snapshot {
+                match lane {
+                    None => match av_driver::SnapshotLane::warm(
+                        &req.source,
+                        input,
+                        &call.callee,
+                        concrete,
+                    ) {
+                        Ok(l) => {
+                            let r = l.run(&self.cancel);
+                            *lane = Some(l);
+                            r
+                        }
+                        Err(e) => Err(e),
+                    },
+                    Some(l) => match l.retarget(&call.callee, concrete) {
+                        Ok(()) => l.run(&self.cancel),
+                        Err(e) => Err(e),
+                    },
+                }
+            } else {
+                let cancel = self.cancel.clone();
+                av_driver::execute_call(
+                    &req.source,
+                    &req.module,
+                    input,
+                    &call.callee,
+                    concrete,
+                    self.forbid_av,
+                    &cancel,
+                )
+            }
+        });
+        match out {
+            Ok(x) => {
+                obs.counter("ct_execute", 1);
+                Ok(x)
+            }
+            Err(e) => {
+                if matches!(
+                    e.code,
+                    CteCode::Trap(_) | CteCode::Resource(_) | CteCode::Cancelled
+                ) {
+                    obs.counter("ct_execute", 1);
+                }
+                Err(CteStepOutcome::diag(&e, cache_verdict, obs))
+            }
         }
     }
 

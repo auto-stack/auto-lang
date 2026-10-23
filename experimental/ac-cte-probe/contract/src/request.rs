@@ -14,6 +14,33 @@ pub const CTE_META_CAP: &str = "cte.meta.fields/v1";
 /// Fixed sema package domain for probe identities (module comes per deck).
 pub const CTE_SEMA_PACKAGE: &str = "cte817";
 
+/// AV execution lane for `call` queries (T-11): `closure` (default) is
+/// the whole-module ABC roundtrip; `snapshot` routes through the
+/// PLAN-828 function-incremental session (per-function units, link,
+/// ProgramSnapshot execution, incremental edits between calls).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, Default)]
+pub enum CteExecMode {
+    #[default]
+    Closure,
+    Snapshot,
+}
+
+impl CteExecMode {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "closure" => Some(CteExecMode::Closure),
+            "snapshot" => Some(CteExecMode::Snapshot),
+            _ => None,
+        }
+    }
+    pub fn axis(self) -> &'static str {
+        match self {
+            CteExecMode::Closure => "closure",
+            CteExecMode::Snapshot => "snapshot",
+        }
+    }
+}
+
 /// Projection profile of the embedded source. `core` (default) is the
 /// i32/bool fn surface; `record` additionally allows `type` blocks so
 /// Meta queries have a record domain to read (T-03). The AV execution
@@ -162,6 +189,8 @@ pub struct CteRequestV1 {
     pub native: bool,
     /// Projection profile of the embedded source (default core).
     pub profile: CteSourceProfile,
+    /// AV execution lane (default closure).
+    pub exec: CteExecMode,
 }
 
 impl CteRequestV1 {

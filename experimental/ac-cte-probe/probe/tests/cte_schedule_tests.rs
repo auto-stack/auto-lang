@@ -319,6 +319,7 @@ fn unit_request(queries: Vec<QueryNodeV1>) -> CteRequestV1 {
         caps: Vec::new(),
         native: false,
         profile: CteSourceProfile::Core,
+        exec: auto_cte_contract::CteExecMode::Closure,
     }
 }
 

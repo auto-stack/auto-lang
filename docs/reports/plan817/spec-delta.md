@@ -40,5 +40,14 @@
   旧 recipe 行为零修改。
 - 证据：AC-07；官测+cte_adapter_。
 
+## SD-06 modify docs/specs/auto-av/resident-function-install.md（T-11）
+- before：828 交付的函数级增量 session/ProgramSnapshot 仅供 828 自己的 recipe。
+- after：817 消费面接入——`exec snapshot` 车道（deck 指令）：一次 warm-up 装载全部单元，
+  逐调用实参经 wrapper 增量编辑（对齐锚点保证收敛）、ProgramSnapshot 单元视图执行；
+  车道为缓存身份轴（closure/snapshot 不共享条目）；增量纯度（未改函数零重编译/代际不变、
+  warm 为唯一整模块事件）由 lane 退化计数器与 828 计数器双重观测。
+- 不退回整模块热重编/装载；新能力为追加车道，默认 closure 保持。
+- 证据：AC-11；cte_snapshot_ 4/4。
+
 ## 覆盖
 见 [acceptance-matrix.md](acceptance-matrix.md)（V-01..11 → scope/证据/提交）。

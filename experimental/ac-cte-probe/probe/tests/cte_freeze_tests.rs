@@ -47,6 +47,7 @@ fn current_engine() -> CteEngineId {
         mir_semantics: 1,
         abc_semantics: 2,
         av_semantics: 1,
+        exec: "closure".into(),
     }
 }
 

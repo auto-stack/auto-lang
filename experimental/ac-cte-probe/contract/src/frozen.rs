@@ -29,6 +29,11 @@ pub struct CteEngineId {
     pub mir_semantics: u32,
     pub abc_semantics: u32,
     pub av_semantics: u32,
+    /// Execution lane (T-11/SD-06): "closure" = the whole-module ABC
+    /// roundtrip; "snapshot" = the PLAN-828 incremental session (per-
+    /// function units + ProgramSnapshot). A lane change re-keys the
+    /// cache (V-12 identity).
+    pub exec: String,
 }
 
 /// Declared dependency granularity. The first profile is conservative:

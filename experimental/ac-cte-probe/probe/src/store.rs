@@ -86,13 +86,14 @@ pub fn envelope_key(id: &CteRequestIdentityV1) -> QueryKey {
             (
                 "engine".into(),
                 format!(
-                    "{}/{}/{}/{}-{}-{}",
+                    "{}/{}/{}/{}-{}-{}/{}",
                     id.engine.av_profile,
                     id.engine.mir_schema,
                     id.engine.abc_schema,
                     id.engine.mir_semantics,
                     id.engine.abc_semantics,
-                    id.engine.av_semantics
+                    id.engine.av_semantics,
+                    id.engine.exec
                 ),
             ),
             ("manifest-fp".into(), id.manifest_fp.clone()),

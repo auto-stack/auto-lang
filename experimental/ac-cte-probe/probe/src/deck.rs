@@ -5,7 +5,7 @@
 //! body validation (never the .ad case format itself).
 
 use auto_cte_contract::{
-    CteAdmissionError, CteBindingV1, CteCode, CteExpectType, CteRequestV1, CteScalar,
+    CteAdmissionError, CteBindingV1, CteCode, CteExecMode, CteExpectType, CteRequestV1, CteScalar,
     CteSourceProfile, CteValue, QueryNodeKind, QueryNodeV1, CTE_META_CAP, CTE_RECIPE,
     CTE_REQUEST_SCHEMA, MAX_REQUEST_INPUT_BYTES,
 };
@@ -98,6 +98,7 @@ fn parse_inner(text: &str) -> Result<Deck, DeckError> {
 
     let mut module: Option<String> = None;
     let mut profile = CteSourceProfile::Core;
+    let mut exec = CteExecMode::Closure;
     let mut source: Option<String> = None;
     let mut entry: Option<String> = None;
     let mut native = true;
@@ -163,6 +164,10 @@ fn parse_inner(text: &str) -> Result<Deck, DeckError> {
                     }
                     caps.push(c.to_string());
                 }
+            }
+            "exec" => {
+                exec = CteExecMode::parse(rest)
+                    .ok_or_else(|| DeckError(format!("`exec {rest}` must be closure|snapshot")))?;
             }
             "profile" => {
                 profile = CteSourceProfile::parse(rest)
@@ -307,6 +312,7 @@ fn parse_inner(text: &str) -> Result<Deck, DeckError> {
         caps,
         native,
         profile,
+        exec,
     })
 }
 

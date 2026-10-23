@@ -47,6 +47,9 @@ function Test-Scope([string]$s) {
                 & $exe bench-turnaround --samples 30 --out $out
             }
         }
+        "snapshot" {
+            Run-Step "workspace cte_snapshot_" { cargo test --manifest-path $ws --offline cte_snapshot_ 2>&1 | Select-Object -Last 3 }
+        }
         "autodown" {
             Run-Step "official corpus tests" {
                 cargo test -p auto-lang --features test-cases --lib ac_cte_probe -- --test-threads=1 2>&1 | Select-Object -Last 5
@@ -56,7 +59,7 @@ function Test-Scope([string]$s) {
             }
         }
         "acceptance" {
-            foreach ($s2 in @("first-case","admission","schedule","cache","freeze","turnaround","autodown")) { Test-Scope $s2 }
+            foreach ($s2 in @("first-case","admission","schedule","cache","freeze","snapshot","turnaround","autodown")) { Test-Scope $s2 }
             Run-Step "workspace full" { cargo test --manifest-path $ws --offline --workspace 2>&1 | Select-String "test result" | Select-Object -Last 12 }
         }
         "closeout" {

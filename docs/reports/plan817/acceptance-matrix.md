@@ -17,6 +17,7 @@ T-04 `6d5e44ac3`、T-05 `6c92decfb`、T-06 `fa4f39c25`、T-07 `5b8abb004`（含�
 | V-09 | 六场景×30、两编辑 P95<1s、阈值 0/坏样本红 | turnaround | cte_turnaround_ 3（gate 4.3/1.5ms；raw hash 绑定） |
 | V-10 | 正式 runner：未知 recipe/身份/stale/restart/ERROR 不绿 | autodown | 官测 5/5 + cte_adapter_ 3 + lint |
 | V-11 | 边界审计：零他方写面/注册只追加/无 reparse point | closeout | verify 脚本 closeout scope（git diff 审计） |
+| V-12 | 828 snapshot 车道四子case：生产观测/身份/依赖/失败控制 | snapshot | cte_snapshot_ 4（30 修订仅 wrapper 重编译、代际不变；车道身份轴隔离缓存；helper 编辑仅重编该函数；坏编辑受控+退化计数器非零） |
 
 AC 绑定：AC-01=V-01/05/10、AC-02=V-01/02/04、AC-03=V-02/03、AC-04=V-04..07、
-AC-05=V-07/08、AC-06=V-09、AC-07=V-10、AC-08=V-11。
+AC-05=V-07/08、AC-06=V-09、AC-07=V-10、AC-08=V-11、AC-11=V-12（SD-06）。

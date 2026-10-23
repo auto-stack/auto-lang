@@ -224,6 +224,7 @@ fn fake_identity(producer: &str) -> auto_cte_contract::CteRequestIdentityV1 {
             mir_semantics: 1,
             abc_semantics: 2,
             av_semantics: 1,
+            exec: "closure".into(),
         },
         manifest_fp: "fp".into(),
     }
