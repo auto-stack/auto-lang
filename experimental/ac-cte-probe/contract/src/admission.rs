@@ -14,6 +14,7 @@ pub enum CteCode {
     TooManyQueries,
     QueryDepth,
     ConsumerFrontend,
+    CalleeFrontend,
     UnknownCapability,
     MetaNotGranted,
     UnknownQueryRef,
@@ -41,6 +42,7 @@ impl CteCode {
             CteCode::TooManyQueries => "cte.resource.query-nodes",
             CteCode::QueryDepth => "cte.resource.query-depth",
             CteCode::ConsumerFrontend => "cte.consumer.frontend",
+            CteCode::CalleeFrontend => "cte.callee.frontend",
             CteCode::UnknownCapability => "cte.capability.unknown",
             CteCode::MetaNotGranted => "cte.capability.meta",
             CteCode::UnknownQueryRef => "cte.query.unknown-ref",
@@ -108,6 +110,7 @@ impl CteAdmissionError {
                 | CteCode::EntryMissing
                 | CteCode::CapabilityDenied
                 | CteCode::ConsumerFrontend
+                | CteCode::CalleeFrontend
                 | CteCode::Trap(_)
         )
     }

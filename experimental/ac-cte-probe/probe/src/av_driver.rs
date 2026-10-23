@@ -130,7 +130,10 @@ pub fn execute_call(
                 format!("callee closure requires a capability the CTE profile never grants: {msg}"),
             )
         } else {
-            CteAdmissionError::new(CteCode::Infra("frontend".into()), format!("{code} {msg}"))
+            // A callee-side source failure (parse/type/unknown-callee —
+            // the profile has no imports, an undeclared name is exactly
+            // this) is a LANGUAGE diagnostic, never infra.
+            CteAdmissionError::new(CteCode::CalleeFrontend, format!("{code} {msg}"))
         }
     })?;
     let checked = &compiled.checked;

@@ -65,6 +65,11 @@ impl CteStore {
     pub fn project(&self) -> &str {
         &self.project
     }
+
+    /// The underlying 783 store (lifecycle tests drive GC/roots/leases).
+    pub fn raw(&self) -> &ManagedStore {
+        &self.store
+    }
 }
 
 /// Build the store key for one request identity.
