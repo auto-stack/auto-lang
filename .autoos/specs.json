@@ -4201,6 +4201,31 @@
  "modified_at": 1792738768,
  "completed_at": 1792738768
 }
+,
+{
+ "id": "P837-MERGE",
+ "title": "PLAN-837 delivered consolidation",
+ "content": "Source fast-forward to autographics-dev only; canonical specs, guarded derived projection, delivered archive and guarded cleanup. Main receives knowledge only. I2/I3 and production migration remain pending.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/archive/837-autographics-scene-hierarchy-and-group-authoring.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-837",
+  "r1",
+  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
+  "source-sha256:a3f6eaab3502fae33a5c83e189341e165d0578a0ec833be8739e59a690c3efdf",
+  "source-path:docs/specs/auto-graphics/scene-hierarchy.md"
+ ],
+ "created_at": 1792759600,
+ "modified_at": 1792759600,
+ "completed_at": 1792759600
+}
 ],
    "section_type": "Reports",
    "title": "📊 Reports",
@@ -14392,7 +14417,7 @@
     {
  "id": "P829-AGP",
  "title": "AutoGraphics project",
- "content": "Canonical finite viewport picking/translation contract: actual Auto profile3/stock Iced, exact 2D/OBB3D support, bounded candidate preview, final endpoint single history, accepted-only save and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite scene hierarchy: actual Auto profile4, same-dimension translation/visibility groups, strict v1 import/v2 save, atomic subtree/reparent transactions, world-position precision and bounded gestures; seven-state composition pixel oracle with real transparent/ghost controls. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14403,15 +14428,15 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-836",
+  "PLAN-837",
   "r1",
-  "reviewed:5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1",
-  "source-sha256:12cbd812d65d4ef22c5bce41e9176702e4c6dc79db6df48fab34f0d17c81fe95",
+  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
+  "source-sha256:a55a38d872929bae978818f59ad98100449d82e9b5ff72accd3c70bcfa712351",
   "source-path:docs/specs/auto-graphics/project.md"
  ],
  "created_at": 1792685069,
- "modified_at": 1792738768,
- "completed_at": 1792738768
+ "modified_at": 1792759600,
+ "completed_at": 1792759600
 },
     {
      "id": "P830-SURF",
@@ -14454,7 +14479,7 @@
     {
  "id": "P830-PROFILE",
  "title": "AutoGraphics prototype-profile",
- "content": "Canonical finite viewport picking/translation contract: actual Auto profile3/stock Iced, exact 2D/OBB3D support, bounded candidate preview, final endpoint single history, accepted-only save and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite scene hierarchy: actual Auto profile4, same-dimension translation/visibility groups, strict v1 import/v2 save, atomic subtree/reparent transactions, world-position precision and bounded gestures; seven-state composition pixel oracle with real transparent/ghost controls. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14465,20 +14490,20 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-836",
+  "PLAN-837",
   "r1",
-  "reviewed:5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1",
-  "source-sha256:400d96acd30b310bf0520a7f05b94eec0b17169951a60dae450e8045104eeb8a",
+  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
+  "source-sha256:967a519b7aff2325b1f83602b57c31cefcf202a7c324d0f8511600dfe77deb27",
   "source-path:docs/specs/auto-graphics/prototype-profile.md"
  ],
  "created_at": 1792685069,
- "modified_at": 1792738768,
- "completed_at": 1792738768
+ "modified_at": 1792759600,
+ "completed_at": 1792759600
 },
     {
  "id": "P830-IH",
  "title": "AutoGraphics integration-contract",
- "content": "Canonical finite viewport picking/translation contract: actual Auto profile3/stock Iced, exact 2D/OBB3D support, bounded candidate preview, final endpoint single history, accepted-only save and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite scene hierarchy: actual Auto profile4, same-dimension translation/visibility groups, strict v1 import/v2 save, atomic subtree/reparent transactions, world-position precision and bounded gestures; seven-state composition pixel oracle with real transparent/ghost controls. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14489,15 +14514,15 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-836",
+  "PLAN-837",
   "r1",
-  "reviewed:5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1",
-  "source-sha256:03aa758870d6c15d0bbcfab9b080b769bef486aebdc73bae86d32e5e96aaab3a",
+  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
+  "source-sha256:39e9d4d9c8933a6a6b17011f5f7003daf483198d2b0bd65dcb908812bb8ba60f",
   "source-path:docs/specs/auto-graphics/integration-contract.md"
  ],
  "created_at": 1792685069,
- "modified_at": 1792738768,
- "completed_at": 1792738768
+ "modified_at": 1792759600,
+ "completed_at": 1792759600
 },
     {
      "id": "P815-B-D1",
@@ -14527,7 +14552,7 @@
     {
  "id": "P833-AUTO-SOURCE",
  "title": "AutoGraphics auto-source-driver",
- "content": "Canonical finite scene authoring contract: actual Auto profile3/stock Iced, stable document identity, transactional preview/history/dirty, owned local save/reopen and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite scene hierarchy: actual Auto profile4, same-dimension translation/visibility groups, strict v1 import/v2 save, atomic subtree/reparent transactions, world-position precision and bounded gestures; seven-state composition pixel oracle with real transparent/ghost controls. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14538,15 +14563,15 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-835",
+  "PLAN-837",
   "r1",
-  "reviewed:0c29fa2a7cfb0dbc08a906542c511bd20f34ebed",
-  "source-sha256:f9999d7e66163d40c9c7413f82af246844c5c33674adcfa052323eea8b2e8b2c",
+  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
+  "source-sha256:55496216eb0ce8881b16e2210441d3972837d44fa157ee7b5dc4f75f98ce0ee8",
   "source-path:docs/specs/auto-graphics/auto-source-driver.md"
  ],
  "created_at": 1792685069,
- "modified_at": 1792720163,
- "completed_at": 1792720163
+ "modified_at": 1792759600,
+ "completed_at": 1792759600
 },
     {
      "id": "P828-SRC",
@@ -14658,7 +14683,7 @@
 {
  "id": "P835-DOCUMENT",
  "title": "AutoGraphics scene-document",
- "content": "Canonical finite viewport picking/translation contract: actual Auto profile3/stock Iced, exact 2D/OBB3D support, bounded candidate preview, final endpoint single history, accepted-only save and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite scene hierarchy: actual Auto profile4, same-dimension translation/visibility groups, strict v1 import/v2 save, atomic subtree/reparent transactions, world-position precision and bounded gestures; seven-state composition pixel oracle with real transparent/ghost controls. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14669,20 +14694,20 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-836",
+  "PLAN-837",
   "r1",
-  "reviewed:5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1",
-  "source-sha256:0903c5285b13007acb048148ceb8d9ab895cd8265f69d15e03c6ce0c08149ba4",
+  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
+  "source-sha256:fcaa9bab9c0e579b5d68339c858715e623ad46d38c7ac3a9c3d6712366820b58",
   "source-path:docs/specs/auto-graphics/scene-document.md"
  ],
  "created_at": 1792720163,
- "modified_at": 1792738768,
- "completed_at": 1792738768
+ "modified_at": 1792759600,
+ "completed_at": 1792759600
 },
 {
  "id": "P835-SESSION",
  "title": "AutoGraphics authoring-session",
- "content": "Canonical finite viewport picking/translation contract: actual Auto profile3/stock Iced, exact 2D/OBB3D support, bounded candidate preview, final endpoint single history, accepted-only save and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite scene hierarchy: actual Auto profile4, same-dimension translation/visibility groups, strict v1 import/v2 save, atomic subtree/reparent transactions, world-position precision and bounded gestures; seven-state composition pixel oracle with real transparent/ghost controls. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14693,21 +14718,21 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-836",
+  "PLAN-837",
   "r1",
-  "reviewed:5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1",
-  "source-sha256:a034378ce9c1df928ce4745255e0a5baf03edb372a4c1c89fa7c3f04b7da71ae",
+  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
+  "source-sha256:3154d4c52af3664ebf9f696e0a84261d1ce5928313ddd1330cc21a3d7f5e2872",
   "source-path:docs/specs/auto-graphics/authoring-session.md"
  ],
  "created_at": 1792720163,
- "modified_at": 1792738768,
- "completed_at": 1792738768
+ "modified_at": 1792759600,
+ "completed_at": 1792759600
 }
 ,
 {
  "id": "P836-VIEWPORT",
  "title": "AutoGraphics viewport-interaction",
- "content": "Canonical finite viewport picking/translation contract: actual Auto profile3/stock Iced, exact 2D/OBB3D support, bounded candidate preview, final endpoint single history, accepted-only save and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite scene hierarchy: actual Auto profile4, same-dimension translation/visibility groups, strict v1 import/v2 save, atomic subtree/reparent transactions, world-position precision and bounded gestures; seven-state composition pixel oracle with real transparent/ghost controls. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14718,15 +14743,40 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-836",
+  "PLAN-837",
   "r1",
-  "reviewed:5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1",
-  "source-sha256:d55fd11e223e168f6b3b9b52b7939bd540a7a945b93aa100add832307be40758",
+  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
+  "source-sha256:c11e97d0b7091e5a688f41980e3cad2a989509d8e6a023843bb34dae59667e11",
   "source-path:docs/specs/auto-graphics/viewport-interaction.md"
  ],
  "created_at": 1792738768,
- "modified_at": 1792738768,
- "completed_at": 1792738768
+ "modified_at": 1792759600,
+ "completed_at": 1792759600
+}
+,
+{
+ "id": "P837-HIERARCHY",
+ "title": "AutoGraphics scene-hierarchy",
+ "content": "Canonical finite scene hierarchy: actual Auto profile4, same-dimension translation/visibility groups, strict v1 import/v2 save, atomic subtree/reparent transactions, world-position precision and bounded gestures; seven-state composition pixel oracle with real transparent/ghost controls. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/scene-hierarchy.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-837",
+  "r1",
+  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
+  "source-sha256:a3f6eaab3502fae33a5c83e189341e165d0578a0ec833be8739e59a690c3efdf",
+  "source-path:docs/specs/auto-graphics/scene-hierarchy.md"
+ ],
+ "created_at": 1792759600,
+ "modified_at": 1792759600,
+ "completed_at": 1792759600
 }
 ],
    "section_type": "Designs",
@@ -18080,6 +18130,31 @@
  "created_at": 1792738768,
  "modified_at": 1792738768,
  "completed_at": 1792738768
+}
+,
+{
+ "id": "P837-TESTS",
+ "title": "PLAN-837 viewport interaction gates",
+ "content": "Strict forest/v1-v2 codec and budgets, Auto output mutations, atomic graph/gesture/storage transactions,20 hierarchy owner/mesh cycles and actual retention/upload controls. Seven-state final pixels and transparent/ghost negative controls; frozen full driver/AGP/native/consumer gates in archived837 receipt.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/authoring-session.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-837",
+  "r1",
+  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
+  "source-sha256:3154d4c52af3664ebf9f696e0a84261d1ce5928313ddd1330cc21a3d7f5e2872",
+  "source-path:docs/specs/auto-graphics/authoring-session.md"
+ ],
+ "created_at": 1792759600,
+ "modified_at": 1792759600,
+ "completed_at": 1792759600
 }
 ],
    "section_type": "Tests",
@@ -24325,6 +24400,31 @@
  "modified_at": 1792738768,
  "completed_at": 1792738768
 }
+,
+{
+ "id": "P837-R2",
+ "title": "PLAN-837 final R2 PASS",
+ "content": "Final R2 pass at2ffc92d34143bc97a98f2684406160b183fd2ff3; independent affected review closes F-837-R1-01. Seven-state pixels, actual transparent/ghost GPU controls, original counterexample and new-process reconstruction verified; no new findings. Merge gates separately executed.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/attachments/837/review-r2/review.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-837",
+  "r1",
+  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
+  "source-sha256:39b6422eb3d1f87e7aa8f4bbdb0a6286a5c488064045f047657593c72597ea79",
+  "source-path:docs/plans/attachments/837/review-r2/review.md"
+ ],
+ "created_at": 1792759600,
+ "modified_at": 1792759600,
+ "completed_at": 1792759600
+}
 ],
    "section_type": "Reviews",
    "title": "🔍 Reviews",
@@ -24336,5 +24436,5 @@
   }
  ],
  "project": "auto-lang",
- "version": 73
+ "version": 74
 }

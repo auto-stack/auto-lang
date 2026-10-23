@@ -11,3 +11,5 @@
 - [scene-document](scene-document.md) / [authoring-session](authoring-session.md): PLAN-835 independent stock-Iced/real-Auto scene authoring, save/undo/redo/reopen and failure recovery delivered experimentally; I2/I3 production migration unchanged.
 
 - [Viewport interaction](viewport-interaction.md): PLAN-836 finite picking/translation with real Auto preview, single history publication and accepted-only persistence.
+
+- [Scene hierarchy](scene-hierarchy.md): PLAN-837 finite same-dimension translation/visibility groups, v2 persistence and actual Auto profile4.

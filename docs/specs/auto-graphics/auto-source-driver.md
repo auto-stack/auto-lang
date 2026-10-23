@@ -55,3 +55,31 @@ Delivery provenance: [PLAN-834](../../plans/archive/834-autographics-auto-squash
 Delivered experimental authoring entry `autographics-authoring` in the existing driver workspace. See [scene-document](scene-document.md) for finite schema/resources/local save/reopen and [authoring-session](authoring-session.md) for real stock-Iced commands, explicit Auto profile3, transactional preview/history/dirty, failures and tests. Profile1/2, original game goldens/GLB/audio and shared composition/input contracts retain their meaning. One same-device window, two fixed2D/3D views, bounded document/history, local same-volume single writer; no production UI/compiler/SDK expansion. I1 dual-game delivery remains; I2 AutoUI/RQHost and I3 Forge/production distribution remain pending. Final R2 and frozen driver/AGP/native/source gates passed; source lands on autographics-dev only.
 
 Delivery: [PLAN-835](../../plans/archive/835-autographics-scene-authoring-save-and-undo.md), [review R2](../../plans/attachments/835/review-r2/review.md), [merge receipt](../../plans/attachments/835/merge-r1/receipt.md). Production I2/I3 remain pending.
+
+## PLAN-837 current finite hierarchy profile
+
+Document explicit profile4, current v2 finite forest and exact experimental CLI:
+--hierarchy-check, --wrong-parent, --drop-release, --frames 1 incomplete, --inspect.
+Self-check completion is resolved before serialization; incomplete/fault exits nonzero
+and passed=false, full positive exits0/passed=true. New-process reconstruction stays independently checked.
+Actual final-composition endpoint/origin pixels are compared to independent initial
+leaf-color/background controls at temporary/move/undo/redo/hidden/show/saved states;
+missing readback rejects. Native failure is serialized before nonzero exit and the
+aggregate requires all seven state records. A test-only native copy injecting real
+transparent endpoint or an old-position ghost must fail that same gate despite
+valid Auto/state/commands, before paired reopen hashes can hide shared rendering
+faults. These are finite2D fixture controls, not a whole-image/3D pixel-equivalence
+claim. F-837-R1-01 corrected the earlier unimplemented visible-state oracle claim. Source identity is
+plan837-identity.json; tools/verify_plan837.py --controls, check_hierarchy.py, check_hierarchy_pixel_faults.py and
+package_consumer.py provide reproducible inputs. Fixed SDK9576b4d, locks, original
+profile1/2 games, AGP/assets/goldens unchanged.7 resident meshes/14 initial writes
+136952B, target/pipeline/mesh warm reuse; actual20 hierarchy rounds and retained-owner/
+fresh-upload controls. CPU compile/frame/working-set measurements explicitly exclude
+GPU timestamps, driver residency and Iced internal allocations. Source integration
+only autographics-dev; master knowledge after reviewed landing. I1 remains delivered,
+I2 production AutoUI/RQHost and I3 formal Forge/distribution remain pending. Finite
+scene organization does not establish general TRS/Prefab/assets/game editing, public
+stable engine APIs, production migration, Linux/Shader/CAP/ACE or full engine completion.
+Final complete driver/AGP/native/composite/source/consumer gate results and actual T-10 closeout are recorded in the merge receipt.
+
+Provenance: [PLAN-837](../../plans/archive/837-autographics-scene-hierarchy-and-group-authoring.md), [final R2](../../plans/attachments/837/review-r2/review.md), [merge receipt](../../plans/attachments/837/merge-r1/receipt.md). Source integration remains autographics-dev; production I2/I3 pending.

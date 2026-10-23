@@ -2,11 +2,11 @@
 
 Status: delivered experimentally after final R2 and frozen closeout gates; independent Windows authoring experiment on autographics-dev. I1 real Auto games stay delivered; I2 production AutoUI/RQHost and I3 Forge remain pending.
 
-`authoring::document::Document` uses strict UTF-8 JSON with schema `autographics.scene/1`, nonempty document_id (≤128 Unicode chars), fixed ordered resources `[circle,quad,cylinder,player,mob]`, and an ordered objects array. Object fields: positive unique u64 id, name≤128 Unicode chars, lowercase kind, translation[3], scale[3], yaw, pitch, rgba[4], visible boolean. The resource kind is a fixed registration identity, never an arbitrary file path.
+`authoring::document::Document` original PLAN-835 schema used strict UTF-8 JSON `autographics.scene/1`; the current schema is v2 as specified below, retaining nonempty document_id (≤128 Unicode chars), fixed ordered resources `[circle,quad,cylinder,player,mob]`, and an ordered objects array. Object fields: positive unique u64 id, name≤128 Unicode chars, lowercase kind, translation[3], scale[3], yaw, pitch, rgba[4], visible boolean. The resource kind is a fixed registration identity, never an arbitrary file path.
 
 Supported kinds: circle/quad (2D); cylinder/player/mob (3D; original procedural cylinder or unchanged original GLBs/all meshes/materials). Finite transform values have magnitude≤100000; scale>0; RGBA0..1. 2D requires z0, scale-z1 and yaw/pitch0; 3D retains fixed rgba `[0.9,0.3,0.2,1]` placeholder and original model material. Canonical encoding is serde struct field order with finite f32 values. Equivalent whitespace is accepted on input; semantic equality and canonical-content SHA256, not input byte formatting, define document/dirty identity.
 
-Max128 objects; encoded file≤1MiB, input bounded before parse. Duplicate JSON keys (including nested objects), duplicate/zero object IDs, unknown schema/fields/kinds, type mismatch, bad numbers, invalid fixed resource manifest, illegal dimensions or limits fail before consumer use. No silent truncation. Document decode/validate/encode have durable accepted/invalid controls in `authoring_document`.
+Max128 total groups and objects; encoded file≤1MiB, input bounded before parse. Duplicate JSON keys (including nested objects), duplicate/zero object IDs, unknown schema/fields/kinds, type mismatch, bad numbers, invalid fixed resource manifest, illegal dimensions or limits fail before consumer use. No silent truncation. Document decode/validate/encode have durable accepted/invalid controls in `authoring_document`.
 
 Persistent IDs are distinct from current epoch/revision and VM/runtime/resource ownership. Selection, drafts, focus, history, GPU pointers, session IDs, callbacks and game state never persist. New/Open rebuild current runtime data; no old message may mutate the new epoch. Same-session created IDs use a monotonic high-water mark; deleting/undoing does not revive old VM/target ownership.
 
@@ -20,6 +20,22 @@ Delivery: [PLAN-835](../../plans/archive/835-autographics-scene-authoring-save-a
 
 ## PLAN-836 viewport extension
 
-Schema autographics.scene/1 and every existing field/limit remain unchanged. Pointer/camera/gizmo/gesture/sample/candidate ownership never persists. Save only consumes accepted Idle content; active gesture Save is rejected before Storage. Successful gesture is one before/after history step with ordinary hash-based dirty/Undo/Redo. Cancel/failure does not modify saved bytes. Reopen reconstructs saved content with clean dirty, no selection or history.
+Historical PLAN-836 retained schema1. PLAN-837 below supersedes the save schema and node budget; the remaining persistence rules continue. Pointer/camera/gizmo/gesture/sample/candidate ownership never persists. Save only consumes accepted Idle content; active gesture Save is rejected before Storage. Successful gesture is one before/after history step with ordinary hash-based dirty/Undo/Redo. Cancel/failure does not modify saved bytes. Reopen reconstructs saved content with clean dirty, no selection or history.
 
 Provenance: [PLAN-836](../../plans/archive/836-autographics-viewport-picking-and-translation.md), [final R2](../../plans/attachments/836/review-r2/review.md), [merge receipt](../../plans/attachments/836/merge-r1/receipt.md). Source integration is autographics-dev only; production I2/I3 remain pending.
+
+## PLAN-837 current hierarchy contract
+
+Current save schema autographics.scene/2 adds groups plus explicit nullable parent
+to each group/object. Group fields id/name/dimension(2d|3d)/parent/translation/visible;
+leaf fields unchanged plus parent. Unknown/missing/duplicate fields and invalid
+forest fail before consumers. v1 strictly migrates into root leaves/empty groups,
+same IDs/local fields/order, without rewriting the source. Storage retains raw
+original bytes for conflicts; saved canonical v2 semantic hash makes import clean.
+Explicit Save/Save As writes v2, derived values and UI/history/runtime never persist.
+Old readers do not read v2. New-process inspect rebuilds profile4, clean with no
+history/selection.1MiB/128 Unicode/64 history steps/16MiB budgets retain meaning,
+but the128 budget now includes groups and leaves. No old leaf is dropped to add groups.
+Original local single-writer owned lock/temp/commit/readback recovery remains.
+
+Provenance: [PLAN-837](../../plans/archive/837-autographics-scene-hierarchy-and-group-authoring.md), [final R2](../../plans/attachments/837/review-r2/review.md), [merge receipt](../../plans/attachments/837/merge-r1/receipt.md). Source integration remains autographics-dev; production I2/I3 pending.

@@ -125,3 +125,5 @@ AutoGraphics当前实验增量（PLAN-834）：[Auto 3D game profile](auto-graph
 PLAN-835：[场景文档](auto-graphics/scene-document.md)与[创作会话](auto-graphics/authoring-session.md)完成独立有限保存/撤销/真实Auto预览实验；源码仅autographics-dev，生产AutoUI/RQHost/Forge I2/I3仍pending。
 
 PLAN-836 extends the independent graphics experiment with [finite viewport picking and translation](auto-graphics/viewport-interaction.md); source remains on autographics-dev and production AutoUI/RQHost/Forge I2/I3 remain pending.
+
+PLAN-837 extends the independent graphics experiment with [finite scene hierarchy](auto-graphics/scene-hierarchy.md), real Auto profile4 and v2 authoring persistence; production AutoUI/RQHost/Forge I2/I3 remain pending.

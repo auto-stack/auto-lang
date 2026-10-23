@@ -25,3 +25,22 @@ Delivery: [PLAN-835](../../plans/archive/835-autographics-scene-authoring-save-a
 Idle/armed/dragging/finishing lifecycle binds gesture token, target, epoch/revision, captured Surface/path, press position and actual camera. A gesture owns1 inflight Building,1 latest coordinate,1 displayed private Preview; Editor retains accepted Preview. Full candidate document flows through real Auto profile3 and exact checked output/resource admission before any temporary renderer publish. Accepted Document/hash/history/revision stays unchanged until successful last release endpoint, which uses ordinary history publication once. Repeated release and final noop never add history. Candidate fault/invalid/stale/cancel restores accepted Auto output without recompilation/model upload; following legal gesture can recover. Late up/move/results cannot commit to a new target. Esc/blur/leave/resize/DPI/zero-size or camera changes cancel capture. Busy commands/drafts are discarded rather than queued; Close cancels then reuses the existing accepted-content unsaved decision. Inherited8ms pump/cumulative call budgets remain; compile is synchronous. Finishing deadline30s is a controlled rollback, not a UI frame latency promise. Fixed7 mesh resources are prepared once on this device; per-gesture candidate publication never recreates store/pipeline/target. Actual weak VM owners, unchanged GPU Arc identity/upload writes, target identity and external last-owner pins establish lifetime bounds; metric exclusions stay explicit.
 
 Provenance: [PLAN-836](../../plans/archive/836-autographics-viewport-picking-and-translation.md), [final R2](../../plans/attachments/836/review-r2/review.md), [merge receipt](../../plans/attachments/836/merge-r1/receipt.md). Source integration is autographics-dev only; production I2/I3 remain pending.
+
+## PLAN-837 current hierarchy contract
+
+Replace/CreateGroup/Reparent/Delete-subtree are stamped transactions. Target identity,
+selection and expected old parent gate structure commands. Reparent preserves only
+world position: old world minus new parent world, unchanged descendant local fields
+and own visible; effective visibility recomputed. Reject cycle/cross-dimension/leaf
+parent/missing/bad numeric candidate. Recompute target+descendants and reject if
+any coordinate moves beyond max(1e-3,8*f32EPSILON*max(1,abs(before),abs(after))).
+No descendant compensation, clamping or relaxed precision. Group delete UI shows
+descendant count and confirms; cancellation changes nothing. Undo/redo restore exact
+subtree IDs/local fields/order in one before/after step. New edit clears redo;
+created ID high-water does not retreat on delete/undo and exhaustion only prevents
+new creation. Selection/drafts reset as before; stale target/parent/epoch/revision
+or pending structure commands cannot mutate current content. Source profile3 remains
+available as the unchanged original sample; current new/import editing explicitly
+uses profile4. It never guesses profiles from payload shape.
+
+Provenance: [PLAN-837](../../plans/archive/837-autographics-scene-hierarchy-and-group-authoring.md), [final R2](../../plans/attachments/837/review-r2/review.md), [merge receipt](../../plans/attachments/837/merge-r1/receipt.md). Source integration remains autographics-dev; production I2/I3 pending.
