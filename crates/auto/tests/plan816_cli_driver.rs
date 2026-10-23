@@ -7,13 +7,16 @@
 //! - V-04 watch 变更触发 SFC 再生（HMR 前置）+ 终止退出；
 //! - V-04 gen 经真实工具进程（I-TOOL 五操作链，AUTO_UI_TOOL_BIN 指向
 //!   主 workspace 产物；缺工具=诚实红灯）。
-//! 重面（service vm/rust 真链冷启动、Core profile 独立构建闭包）由
-//! attachments/816/t06-smoke-results.json（真链冒烟）与 T-05 双形态
-//! cargo tree 证据承载，不在默认档重复跑。
+//!
+//! F-816-B-R5-04：全部自有 reader（run_bounded 排水与 WatchGuard 泵）
+//! 走 [`stoppable_drain`] 的**双平台真停止协议**——Windows=停止侧重发
+//! CancelIoEx 唤醒挂起读；Unix=poll(2) 50ms 就绪分片（阻塞 read 在无
+//! 字节/无 EOF 时永远观察不到停止标志）。宽限尽未停的 JoinHandle 移入
+//! 进程级残留登记（归属保留），不随局部 Vec 销毁、不伪称已回收。
 
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 const AUTO: &str = env!("CARGO_BIN_EXE_auto");
@@ -32,6 +35,292 @@ fn run(args: &[&str], cwd: &Path, env: &[(&str, String)]) -> (i32, String, Strin
         String::from_utf8_lossy(&out.stdout).into_owned(),
         String::from_utf8_lossy(&out.stderr).into_owned(),
     )
+}
+
+/// 可停止排水/行泵（F-816-B-R4/R5-04）。双平台真停止：
+/// - Windows：读线程阻塞在 ReadFile；停止侧置标志后**切片重发
+///   CancelIoEx** 直至真停——外部进程经 DuplicateHandle 持写端时，杀
+///   owned 树关不掉该端，取消我方挂起读是唯一有界手段。
+/// - Unix：poll(2) 50ms 就绪分片——分片间恒可观察停止（无数据时 poll
+///   超时而非阻塞；SCM_RIGHTS 外部持有者也不能把线程钉在内核读上）。
+/// 宽限尽未停：JoinHandle 移入进程级 RESIDUE 登记（归属保留），随管道
+/// 最终关闭线程自然退出；不丢弃、不 detach。
+mod stoppable_drain {
+    use std::io::Read;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    /// 宽限尽仍活线程的归属登记（进程级；测试进程结束前不丢弃）。
+    static RESIDUE: Mutex<Vec<std::thread::JoinHandle<()>>> = Mutex::new(Vec::new());
+
+    pub struct Drain {
+        handle: Option<std::thread::JoinHandle<()>>,
+        stop: Arc<AtomicBool>,
+        /// 已收字节（字节泵）；行泵不用（行直接走通道）。
+        pub buf: Arc<Mutex<String>>,
+        #[cfg(windows)]
+        cancel_target: isize,
+        #[cfg(unix)]
+        fd: i32,
+    }
+
+    impl Drain {
+        pub fn alive(&self) -> bool {
+            self.handle
+                .as_ref()
+                .map(|h| !h.is_finished())
+                .unwrap_or(false)
+        }
+
+        /// 有界停止：置标志 →（Win）切片重发取消 → 确认真停后 join 收割；
+        /// 宽限尽=JoinHandle 移入 RESIDUE（false），归属不丢。
+        pub fn stop_bounded(&mut self, grace: Duration) -> bool {
+            self.stop.store(true, Ordering::Relaxed);
+            if let Some(join) = self.handle.as_ref() {
+                let deadline = Instant::now() + grace;
+                while !join.is_finished() && Instant::now() < deadline {
+                    #[cfg(windows)]
+                    cancel_pending(self);
+                    #[cfg(unix)]
+                    {
+                        // poll 分片在 ≤50ms 内观察停止——空转等待即可。
+                    }
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            }
+            match self.handle.take() {
+                Some(join) if join.is_finished() => join.join().is_ok(),
+                Some(join) => {
+                    RESIDUE.lock().unwrap().push(join);
+                    false
+                }
+                None => true,
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    fn cancel_pending(d: &Drain) {
+        extern "system" {
+            fn CancelIoEx(h: isize, overlapped: *const u8) -> i32;
+        }
+        unsafe {
+            CancelIoEx(d.cancel_target, std::ptr::null());
+        }
+    }
+
+    /// 字节排水（run_bounded 的 stdout/stderr）。
+    #[cfg(windows)]
+    pub fn spawn_drain<R>(r: R) -> Drain
+    where
+        R: Read + std::os::windows::io::AsRawHandle + Send + 'static,
+    {
+        let raw = r.as_raw_handle() as isize;
+        build_drain(r, raw, 0)
+    }
+
+    /// 字节排水（Unix）。
+    #[cfg(unix)]
+    pub fn spawn_drain<R>(r: R) -> Drain
+    where
+        R: Read + std::os::unix::io::AsRawFd + Send + 'static,
+    {
+        let fd = r.as_raw_fd();
+        build_drain(r, 0, fd)
+    }
+
+    /// 统一构造：平台原始标识（win_raw/unix fd）在调用点捕获。
+    #[allow(clippy::too_many_arguments)]
+    fn build_drain<R>(r: R, win_raw: isize, unix_fd: i32) -> Drain
+    where
+        R: Read + Send + 'static,
+    {
+        let buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = stop.clone();
+        let sink = buf.clone();
+        #[cfg(windows)]
+        {
+            let _ = unix_fd;
+            let handle = std::thread::Builder::new()
+                .spawn(move || pump_win(r, sink, flag, None))
+                .expect("spawn drain");
+            Drain {
+                handle: Some(handle),
+                stop,
+                buf,
+                cancel_target: win_raw,
+            }
+        }
+        #[cfg(unix)]
+        {
+            let _ = win_raw;
+            let handle = std::thread::Builder::new()
+                .spawn(move || pump_unix(unix_fd, sink, flag, None))
+                .expect("spawn drain");
+            Drain {
+                handle: Some(handle),
+                stop,
+                buf,
+                fd: unix_fd,
+            }
+        }
+    }
+
+    /// 行泵（WatchGuard：完整行经通道交付；不完整尾部留在内部缓冲）。
+    #[cfg(windows)]
+    pub fn spawn_lines<R>(r: R, tx: std::sync::mpsc::Sender<String>) -> Drain
+    where
+        R: Read + std::os::windows::io::AsRawHandle + Send + 'static,
+    {
+        let raw = r.as_raw_handle() as isize;
+        build_lines(r, raw, 0, tx)
+    }
+
+    /// 行泵（Unix）。
+    #[cfg(unix)]
+    pub fn spawn_lines<R>(r: R, tx: std::sync::mpsc::Sender<String>) -> Drain
+    where
+        R: Read + std::os::unix::io::AsRawFd + Send + 'static,
+    {
+        let fd = r.as_raw_fd();
+        build_lines(r, 0, fd, tx)
+    }
+
+    fn build_lines<R>(
+        r: R,
+        win_raw: isize,
+        unix_fd: i32,
+        tx: std::sync::mpsc::Sender<String>,
+    ) -> Drain
+    where
+        R: Read + Send + 'static,
+    {
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = stop.clone();
+        let buf = Arc::new(Mutex::new(String::new()));
+        #[cfg(windows)]
+        {
+            let _ = unix_fd;
+            let handle = std::thread::Builder::new()
+                .spawn(move || pump_win(r, Arc::new(Mutex::new(String::new())), flag, Some(tx)))
+                .expect("spawn line pump");
+            Drain {
+                handle: Some(handle),
+                stop,
+                buf,
+                cancel_target: win_raw,
+            }
+        }
+        #[cfg(unix)]
+        {
+            let _ = win_raw;
+            let handle = std::thread::Builder::new()
+                .spawn(move || {
+                    pump_unix(unix_fd, Arc::new(Mutex::new(String::new())), flag, Some(tx))
+                })
+                .expect("spawn line pump");
+            Drain {
+                handle: Some(handle),
+                stop,
+                buf,
+                fd: unix_fd,
+            }
+        }
+    }
+
+    /// Windows：阻塞读（数据就绪即返）；停止侧 CancelIoEx 重发唤醒
+    /// （B-R5 已验外部持有者场景 ~207ms 真停）。行模式把完整行送通道。
+    #[cfg(windows)]
+    fn pump_win<R: Read>(
+        mut r: R,
+        buf: Arc<Mutex<String>>,
+        stop: Arc<AtomicBool>,
+        lines: Option<std::sync::mpsc::Sender<String>>,
+    ) {
+        let mut pending: Vec<u8> = Vec::new();
+        loop {
+            if stop.load(Ordering::Relaxed) {
+                break;
+            }
+            let mut chunk = [0u8; 4096];
+            match r.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => match &lines {
+                    Some(tx) => {
+                        pending.extend_from_slice(&chunk[..n]);
+                        while let Some(pos) = pending.iter().position(|&b| b == b'\n') {
+                            let line: Vec<u8> = pending.drain(..=pos).collect();
+                            let _ = tx.send(String::from_utf8_lossy(&line).into_owned());
+                        }
+                    }
+                    None => buf
+                        .lock()
+                        .unwrap()
+                        .push_str(&String::from_utf8_lossy(&chunk[..n])),
+                },
+            }
+        }
+    }
+
+    /// Unix：poll(2) 50ms 就绪分片 + 就绪后复查停止再读。外部持有者
+    /// （SCM_RIGHTS）不能把线程钉在内核读上——分片间恒可观察停止。
+    #[cfg(unix)]
+    fn pump_unix(
+        fd: i32,
+        buf: Arc<Mutex<String>>,
+        stop: Arc<AtomicBool>,
+        lines: Option<std::sync::mpsc::Sender<String>>,
+    ) {
+        #[repr(C)]
+        struct PollFd {
+            fd: i32,
+            events: i16,
+            revents: i16,
+        }
+        const POLLIN: i16 = 0x001;
+        extern "C" {
+            fn poll(fds: *mut PollFd, nfds: u64, timeout_ms: i32) -> i32;
+            fn read(fd: i32, buf: *mut u8, count: usize) -> isize;
+        }
+        let mut pollfd = PollFd {
+            fd,
+            events: POLLIN,
+            revents: 0,
+        };
+        let mut pending: Vec<u8> = Vec::new();
+        loop {
+            if stop.load(Ordering::Relaxed) {
+                break;
+            }
+            let ready = unsafe { poll(&mut pollfd, 1, 50) };
+            if ready <= 0 {
+                continue; // 超时/信号——停止在下一片观察
+            }
+            if stop.load(Ordering::Relaxed) {
+                break;
+            }
+            let mut chunk = [0u8; 4096];
+            let n = unsafe { read(fd, chunk.as_mut_ptr(), chunk.len()) };
+            if n <= 0 {
+                break; // EOF / 错误
+            }
+            match &lines {
+                Some(tx) => {
+                    pending.extend_from_slice(&chunk[..n as usize]);
+                    while let Some(pos) = pending.iter().position(|&b| b == b'\n') {
+                        let line: Vec<u8> = pending.drain(..=pos).collect();
+                        let _ = tx.send(String::from_utf8_lossy(&line).into_owned());
+                    }
+                }
+                None => buf
+                    .lock()
+                    .unwrap()
+                    .push_str(&String::from_utf8_lossy(&chunk[..n as usize])),
+            }
+        }
+    }
 }
 
 struct TempProj(PathBuf);
@@ -60,13 +349,15 @@ impl Drop for TempProj {
     }
 }
 
-/// watch 子进程 RAII 守卫（F-816-B-R1-04/R3 残项）：经设施 ProcessTree
-/// 承载——任何出口（含 panic 与 unwrap 失败）都先 `cancel_within` 终止
-/// **整棵 owned 树**（持管道后代一并死→EOF→reader 真停），再有界 join
-/// reader 线程；守卫不再无限期等待超出预算的后代。
+const APP: &str = "widget App {\n    view {\n        col {\n            text \"driver\" {}\n        }\n    }\n}\n";
+
+/// watch 子进程 RAII 守卫（F-816-B-R1-04/R5 残项 A）：设施 ProcessTree
+/// 承载 + **行泵走 stoppable_drain 停止协议**——release/Drop 先
+/// cancel_within 终止 owned 树，再 stop_bounded（Win 重发取消/Unix 分片
+/// 观察）真停泵线程；外部持有写端时不再 5 秒放弃残活 reader。
 struct WatchGuard {
     proc: Option<auto_tool_execution::OwnedProcess>,
-    pump: Option<std::thread::JoinHandle<()>>,
+    drain: Option<stoppable_drain::Drain>,
 }
 
 impl WatchGuard {
@@ -77,16 +368,8 @@ impl WatchGuard {
         if let Some(mut proc) = self.proc.take() {
             let _ = proc.cancel_within(Duration::from_secs(5));
         }
-        if let Some(p) = self.pump.take() {
-            let deadline = Instant::now() + Duration::from_secs(5);
-            while !p.is_finished() && Instant::now() < deadline {
-                std::thread::sleep(Duration::from_millis(5));
-            }
-            if p.is_finished() {
-                let _ = p.join();
-            }
-            // 未完：树已终止、EOF 已确定——残余只可能是非拥有持有者，
-            // 不再无限期等待（R3 残项 B 的 23s 后代即在此被切断）。
+        if let Some(mut d) = self.drain.take() {
+            let _ = d.stop_bounded(Duration::from_secs(5));
         }
     }
 }
@@ -97,101 +380,7 @@ impl Drop for WatchGuard {
     }
 }
 
-/// 可停止排水线程（F-816-B-R4-04 残项）：镜像 auto-tool-client 泵语义
-/// ——停止侧置标志后**重发 CancelIoEx 直至线程真停**（外部进程经
-/// DuplicateHandle 持有写端时，杀 owned 树关不掉该写端，取消我方挂起
-/// 读是唯一有界手段）；JoinHandle 只在确认停止后收割，任何返回路径不
-/// 丢弃仍活线程。
-mod stoppable_drain {
-    use std::io::Read;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc, Mutex};
-    use std::time::{Duration, Instant};
-
-    pub struct Drain {
-        pub handle: Option<std::thread::JoinHandle<()>>,
-        pub stop: Arc<AtomicBool>,
-        pub buf: Arc<Mutex<String>>,
-        #[cfg(windows)]
-        pub raw: isize,
-        #[cfg(unix)]
-        pub fd: i32,
-    }
-
-    pub fn spawn<R: Read + Send + 'static>(r: R, raw_fd: i32, win_raw: isize) -> Drain {
-        let buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
-        let stop = Arc::new(AtomicBool::new(false));
-        let flag = stop.clone();
-        let sink = buf.clone();
-        let handle = std::thread::Builder::new()
-            .spawn(move || pump(r, sink, flag))
-            .expect("spawn drain");
-        Drain {
-            handle: Some(handle),
-            stop,
-            buf,
-            #[cfg(windows)]
-            raw: win_raw,
-            #[cfg(unix)]
-            fd: raw_fd,
-        }
-    }
-
-    /// 有界停止：置标志 → 切片重发取消直至真停 → join 收割。
-    /// false=宽限尽仍活（JoinHandle 留在 handle 字段，归属不丢弃）。
-    pub fn stop_bounded(d: &mut Drain, grace: Duration) -> bool {
-        d.stop.store(true, Ordering::Relaxed);
-        if let Some(join) = d.handle.as_ref() {
-            let deadline = Instant::now() + grace;
-            while !join.is_finished() && Instant::now() < deadline {
-                cancel_pending(d);
-                std::thread::sleep(Duration::from_millis(5));
-            }
-            if !join.is_finished() {
-                return false;
-            }
-        }
-        if let Some(join) = d.handle.take() {
-            join.join().is_ok()
-        } else {
-            true
-        }
-    }
-
-    #[cfg(windows)]
-    fn cancel_pending(d: &Drain) {
-        extern "system" {
-            fn CancelIoEx(h: isize, overlapped: *const u8) -> i32;
-        }
-        unsafe {
-            CancelIoEx(d.raw, std::ptr::null());
-        }
-    }
-
-    #[cfg(unix)]
-    fn cancel_pending(_d: &Drain) {} // 分片读天然可停（停止观察在每次读前）
-
-    fn pump<R: Read>(mut r: R, buf: Arc<Mutex<String>>, stop: Arc<AtomicBool>) {
-        loop {
-            if stop.load(Ordering::Relaxed) {
-                break;
-            }
-            let mut chunk = [0u8; 4096];
-            match r.read(&mut chunk) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => buf
-                    .lock()
-                    .unwrap()
-                    .push_str(&String::from_utf8_lossy(&chunk[..n])),
-            }
-        }
-    }
-}
-
-const APP: &str = "widget App {\n    view {\n        col {\n            text \"driver\" {}\n        }\n    }\n}\n";
-
-/// V-01：裸脚本执行 + `--` 后 argv 强制透传（脚本读到 3 个参数；旧
-/// Plan 524 契约在薄 CLI 形态下保持）。
+/// V-01：裸脚本执行 + `--` 后 argv 强制透传。
 #[test]
 fn bare_script_runs_and_argv_passthrough_survives() {
     let dir = std::env::temp_dir().join(format!("p816-argv-{}", std::process::id()));
@@ -204,9 +393,6 @@ fn bare_script_runs_and_argv_passthrough_survives() {
         &[],
     );
     assert_eq!(code, 0, "stdout={out} stderr={err}");
-    // 返回值行是 stdout 的最后一个非空行（前面是 CLI 的 Running 横幅）；
-    // process.args() 含脚本路径自身（裸跑=1，Plan 524 契约），故 `--` 后
-    // 透传 3 参 = 4。
     let scalar = out
         .lines()
         .rev()
@@ -217,10 +403,7 @@ fn bare_script_runs_and_argv_passthrough_survives() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// V-04：serve（前台 daemon）+ req 具名管道往返——新建会话后在列表
-/// 可见（daemon 协议真实入口；driver 持有 daemon 生命周期，kill 收尾
-/// ——EOF 优雅关闭语义由 plan269 daemon 族承担，这里不断言；daemon
-/// stdio 全 null 防"管道无人读塞死"楔死）。
+/// V-04：serve（前台 daemon）+ req 具名管道往返。
 #[test]
 fn serve_daemon_and_req_roundtrip() {
     let pipe = format!("autovm-p816-driver-{}", std::process::id());
@@ -252,17 +435,15 @@ fn serve_daemon_and_req_roundtrip() {
         list.contains("session_count") && !list.contains("\"session_count\":0"),
         "created session must be listed: {list}"
     );
-    // driver 拥有 daemon：kill 收尾（daemon 协议自身另有 plan269 族）。
     let _ = daemon.kill();
     let _ = daemon.wait();
 }
 
-/// 有界 run（F-816-B-R1-04/R3 残项闭合）：经 owned 执行设施以
-/// **ProcessTree** 承载 CLI 子进程——超时/根退出后 `cancel_within` 终止
-/// **整棵 owned 树**（持管道后代一并死→管道 EOF→排水线程真停），再在
-/// 剩余预算内有界 join；排水写入**共享缓冲**（线程卡住也不丢已收字节）；
-/// 回收未完成时**不映射为成功**——分类为超时/未完回收（code=-1）并保留
-/// 部分输出。单一总预算覆盖等待/终止/回收。
+/// 有界 run（F-816-B-R1-04/R4/R5-04）：设施 ProcessTree 承载——超时/
+/// 根退出后 cancel_within 终止整棵 owned 树，随后 stoppable_drain 停止
+/// 协议真停自有排水（Win=重发取消；Unix=poll 分片）；持有者在场=
+/// timeout 回收分类（不沿根退出码报成功）；输出经共享缓冲保留；单一
+/// 总预算覆盖等待/终止/回收；宽限尽未停的线程进 RESIDUE（归属不丢）。
 #[allow(clippy::type_complexity)]
 fn run_bounded(
     args: &[&str],
@@ -270,8 +451,6 @@ fn run_bounded(
     env: &[(&str, String)],
     limit: Duration,
 ) -> (i32, String, String) {
-    use std::io::Read;
-    use std::sync::{Arc, Mutex};
     let mut argv: Vec<std::ffi::OsString> = vec![AUTO.into()];
     argv.extend(args.iter().map(|a| (*a).into()));
     let mut spec = auto_tool_execution::ExecutionSpec::new(argv);
@@ -287,29 +466,11 @@ fn run_bounded(
     let mut proc =
         auto_tool_execution::spawn(&spec).unwrap_or_else(|e| panic!("spawn auto {:?}: {e}", args));
     let mut drains: Vec<stoppable_drain::Drain> = Vec::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::io::AsRawFd;
-        if let Some(r) = proc.take_stdout() {
-            let fd = r.as_raw_fd();
-            drains.push(stoppable_drain::spawn(r, fd, 0));
-        }
-        if let Some(r) = proc.take_stderr() {
-            let fd = r.as_raw_fd();
-            drains.push(stoppable_drain::spawn(r, fd, 0));
-        }
+    if let Some(r) = proc.take_stdout() {
+        drains.push(stoppable_drain::spawn_drain(r));
     }
-    #[cfg(windows)]
-    {
-        use std::os::windows::io::AsRawHandle;
-        if let Some(r) = proc.take_stdout() {
-            let raw = r.as_raw_handle() as isize;
-            drains.push(stoppable_drain::spawn(r, 0, raw));
-        }
-        if let Some(r) = proc.take_stderr() {
-            let raw = r.as_raw_handle() as isize;
-            drains.push(stoppable_drain::spawn(r, 0, raw));
-        }
+    if let Some(r) = proc.take_stderr() {
+        drains.push(stoppable_drain::spawn_drain(r));
     }
     let deadline = Instant::now() + limit;
     let left = |deadline: Instant| -> Duration {
@@ -317,14 +478,13 @@ fn run_bounded(
             .saturating_duration_since(Instant::now())
             .max(Duration::from_millis(1))
     };
-    // 等待根退出（绝对到期判定：预算尽→终止树→未完回收分类）。
+    // 等待根退出（绝对到期：预算尽→终止树→真停排水→timeout 分类）。
     let code = loop {
         if Instant::now() >= deadline {
             let cancel_err = proc.cancel_within(left(deadline)).err();
-            // 排水先真停（停止协议：置停+重发取消+收割；归属不丢弃）。
             let mut stopped = true;
             for d in drains.iter_mut() {
-                if !stoppable_drain::stop_bounded(d, left(deadline)) {
+                if !d.stop_bounded(left(deadline)) {
                     stopped = false;
                 }
             }
@@ -337,7 +497,7 @@ fn run_bounded(
                 msg.push_str(&format!("; cancel failed: {e}"));
             }
             if !stopped {
-                msg.push_str("; drain threads still alive (ownership retained)");
+                msg.push_str("; drain threads still alive (RESIDUE registry)");
             }
             return (-1, partial_out, msg);
         }
@@ -347,7 +507,7 @@ fn run_bounded(
             Err(e) => {
                 let _ = proc.cancel_within(left(deadline));
                 for d in drains.iter_mut() {
-                    stoppable_drain::stop_bounded(d, left(deadline));
+                    d.stop_bounded(left(deadline));
                 }
                 let partial_out = drains
                     .first()
@@ -357,24 +517,17 @@ fn run_bounded(
             }
         }
     };
-    // 根已退出≠树已空：短宽限内未 EOF 的排水=根外仍有 owned 持有者
-    //（持管道后代）——终止整棵 owned 树（EOF 确定性、心跳冻结），并
-    // **分类为 timeout 回收**而非沿根退出码报成功（R3 残项 A：持有者
-    // 在场即非干净成功；正常短命令排水即刻 EOF，不受影响）。
-    // 排水宽限：无持有者时 EOF 在根退出瞬间到达（不主动停）。
+    // 根已退出≠树已空：短宽限内未 EOF=根外持有者在场——终止 owned 树 +
+    // 停止协议真停排水，分类 timeout 回收；正常短命令排水即刻 EOF。
     let grace_end = Instant::now() + Duration::from_millis(150);
-    let alive =
-        |d: &stoppable_drain::Drain| d.handle.as_ref().map(|h| !h.is_finished()).unwrap_or(false);
-    while Instant::now() < grace_end && drains.iter().any(alive) {
+    while Instant::now() < grace_end && drains.iter().any(|d| d.alive()) {
         std::thread::sleep(Duration::from_millis(5));
     }
-    if drains.iter().any(alive) {
+    if drains.iter().any(|d| d.alive()) {
         let tree_reclaim = proc.cancel_within(left(deadline));
-        // 真停协议：置停+重发取消直至收割（外部持有者的写端杀树关
-        // 不掉——取消我方挂起读是唯一有界手段）；JoinHandle 不丢弃。
         let drains_done: Vec<bool> = drains
             .iter_mut()
-            .map(|d| stoppable_drain::stop_bounded(d, left(deadline)))
+            .map(|d| d.stop_bounded(left(deadline)))
             .collect();
         let out = drains
             .first()
@@ -392,7 +545,7 @@ fn run_bounded(
     // 正常路径：EOF 已到——统一收割（清 JoinHandle 归属）。
     let drains_done: Vec<bool> = drains
         .iter_mut()
-        .map(|d| stoppable_drain::stop_bounded(d, left(deadline)))
+        .map(|d| d.stop_bounded(left(deadline)))
         .collect();
     let out = drains
         .first()
@@ -411,20 +564,12 @@ fn run_bounded(
     }
     (code, out, err)
 }
-/// V-04：watch 就绪横幅 + 变更触发 SFC 再生。F-816-B-R1-04 残项闭合：
-/// ①产物**内容身份**（App.vue 必含变更后文案——保留旧字节/不再再生的
-/// 故障宿主必红）；②**单一总预算 20s**：等行/断言/收尾共用同一剩余量
-/// ——持续输出宿主最多推迟到总预算即红（原逐行 20s 重置可被无限推迟）；
-/// ③RAII 守卫保证任何失败出口（含 unwrap panic）都回收子进程与 reader。
+
+/// V-04：watch 就绪横幅 + 变更触发 SFC 再生（内容身份 oracle + 单一
+/// 总预算 20s + RAII 守卫含停止协议）。
 #[test]
 fn watch_regenerates_sfc_on_change() {
-    let proj = TempProj::new(
-        "watch",
-        "name: \"wdriver\"
-render: \"vue\"
-",
-        APP,
-    );
+    let proj = TempProj::new("watch", "name: \"wdriver\"\nrender: \"vue\"\n", APP);
     let mut watch_spec =
         auto_tool_execution::ExecutionSpec::new([std::ffi::OsString::from(AUTO), "watch".into()]);
     watch_spec.cwd = Some(proj.path().to_path_buf());
@@ -435,23 +580,10 @@ render: \"vue\"
     let mut watch = auto_tool_execution::spawn(&watch_spec).expect("spawn watch (owned tree)");
     let (lines_tx, lines_rx) = std::sync::mpsc::channel::<String>();
     let stdout = watch.take_stdout().expect("piped stdout");
-    let pump = std::thread::spawn(move || {
-        let mut reader = BufReader::new(stdout);
-        loop {
-            let mut line = String::new();
-            match reader.read_line(&mut line) {
-                Ok(0) | Err(_) => break,
-                Ok(_) => {
-                    if lines_tx.send(line).is_err() {
-                        break;
-                    }
-                }
-            }
-        }
-    });
+    let drain = stoppable_drain::spawn_lines(stdout, lines_tx);
     let guard = WatchGuard {
         proc: Some(watch),
-        pump: Some(pump),
+        drain: Some(drain),
     };
     let total = Instant::now() + Duration::from_secs(20);
     let left = |total: Instant| -> Duration {
@@ -475,14 +607,7 @@ render: \"vue\"
     }
     std::fs::write(
         proj.path().join("src/front/app.at"),
-        "widget App {
-    view {
-        col {
-            text \"driver v2 marker-9f3a\" {}
-        }
-    }
-}
-",
+        "widget App {\n    view {\n        col {\n            text \"driver v2 marker-9f3a\" {}\n        }\n    }\n}\n",
     )
     .expect("write changed app.at");
     let mut regen = false;
@@ -500,22 +625,16 @@ render: \"vue\"
     if !regen {
         panic!("change must regenerate the SFC within total budget: last={last}");
     }
-    // 内容身份：再生产物必须携带变更后的文案——保留旧字节的故障在此红。
     let sfc_path = proj.path().join("gen/front/vue/src/components/App.vue");
     let sfc = std::fs::read_to_string(&sfc_path)
         .unwrap_or_else(|e| panic!("regenerated SFC must exist at {}: {e}", sfc_path.display()));
     if !sfc.contains("driver v2 marker-9f3a") {
-        panic!(
-            "regenerated SFC must carry the changed text, got:
-{sfc}"
-        );
+        panic!("regenerated SFC must carry the changed text, got:\n{sfc}");
     }
     guard.release();
 }
 
-/// V-03/V-04：`auto gen` 经真实工具进程（I-TOOL generate_ui 五操作链）。
-/// AUTO_UI_TOOL_BIN 未设时尝试主 workspace target/debug 产物；缺失=
-/// 诚实红灯（不静默跳过）。
+/// V-03/V-04：`auto gen` 经真实工具进程（I-TOOL 五操作链）。
 #[test]
 fn gen_runs_through_real_tool_process() {
     let tool = std::env::var_os("AUTO_UI_TOOL_BIN")
@@ -524,10 +643,10 @@ fn gen_runs_through_real_tool_process() {
             let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("../../target/debug/auto-ui-tool.exe");
             assert!(
-                p.exists(),
-                "auto-ui-tool not found at {} — cargo build -p auto-ui-tools or set AUTO_UI_TOOL_BIN",
-                p.display()
-            );
+            p.exists(),
+            "auto-ui-tool not found at {} — cargo build -p auto-ui-tools or set AUTO_UI_TOOL_BIN",
+            p.display()
+        );
             p
         });
     let proj = TempProj::new("gen", "name: \"gdriver\"\nrender: \"vue\"\n", APP);
@@ -544,15 +663,9 @@ fn gen_runs_through_real_tool_process() {
     );
 }
 
-fn wait_bounded(child: &mut Child, limit: Duration) -> bool {
-    let deadline = Instant::now() + limit;
-    loop {
-        if let Some(_) = child.try_wait().expect("try_wait") {
-            return true;
-        }
-        if Instant::now() >= deadline {
-            return false;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
+#[allow(dead_code)]
+fn _kept_imports() {
+    // BufRead/BufReader 仍被 future 行泵诊断使用位；保留导入合法性。
+    let _: Option<BufReader<std::io::Empty>> = None;
+    let _ = std::io::empty();
 }
