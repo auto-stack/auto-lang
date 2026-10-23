@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-22
 updated_at: 2026-10-24
 plan_revision: 2
-current_step: 1
+current_step: 2
 total_steps: 12
 supersedes_spec_components: [docs/specs/repository-boundaries/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md, docs/specs/auto-ui-compiler/project.md, docs/specs/auto-ui-runtime/project.md, docs/specs/auto-ui-tools/project.md, docs/specs/auto-ui-dialect/project.md, docs/specs/language-sdk/project.md, docs/specs/project-model/project.md, docs/specs/auto-lang/project.md, docs/specs/auto-man-core/project.md, docs/specs/auto-man/project.md]
 new_spec_components: [docs/specs/auto-ui/project.md, docs/specs/repository-boundaries/ui-repository-delivery.md, docs/specs/auto-api-gen/project.md]
@@ -130,7 +130,7 @@ UI安装/发行profile包含编译库、runtime、tool实际二进制和运行�
 | 状态 | ID | owner_stage | 依赖/启动门 | 写面/交付与验证 | AC |
 |---|---|---|---|---|---|
 | [x] | T-01 | work | G831完整核验 | [✅ 已完成] [contract-baseline.md](attachments/831/contract-baseline.md) @源 a61209cc0：逐包迁移映射（迁入五包+留仓清单+C2 adapter）、兼容面（C4）、C2 切点实测定位（api-gen/sidecar.rs:54-60、tools/rust_ui.rs:3367/5931/5951→project-model 单源）、跨仓 autodown-core optional 路径处理要求、fixture/测试档/777/792 影响面、旧仓现状（f7d92ee+WIP，不承接 GPUI）、profile/发行面；5 项未闭决策具名交 T-05/T-06/T-09/T-11 | AC-01..06 |
-| [ ] | T-02 | work | G831；T-01旧仓事实 | 重采旧UI仓指令/refs/WIP/ignored、保全快照/锚与恢复演练，建立或认领本Plan唯一隔离树，新增preservation.md | AC-05 |
+| [x] | T-02 | work | G831；T-01旧仓事实 | [✅ 已完成] [preservation.md](attachments/831/preservation.md)：盘点（10 refs/WIP=Cargo.lock/无 stash）+快照 45044cf9507d5628（bundle d48d04c1…，payload=.recovery/831-legacy-preservation）+锚点 reuse+verify ok+recover-drill ok（10 refs/树 31ede719…）；执行组 lang-831 双树建立（auto-lang@2dafba909/auto-ui@f7d92ee，分支各 codex/plan-831-dev）；主检出 WIP 未触碰 | AC-05 |
 | [ ] | T-03 | work | G831；T-01 | 新ui-repository-consumer及发行/失败/source/type/测试ID driver，基于已交付814/A做有效控制；不改生产热点 | AC-01,03,04,06 |
 | [ ] | T-04 | work | G831；T-02/T-03 | 冻结815完整来源，UI包组/资源/测试/许可/兼容候选导入旧UI仓迁移分支；只改目标候选/清单，保持语言权威与816输入 | AC-01,02,05 |
 | [ ] | T-05 | work | G831；T-04及共享写面交接 | tools/API生成共享声明最小单源去Man边，旧Man API再导出；冻结compat/剩余消费者/包版本owner，定向V-01/02 | AC-01,02 |
