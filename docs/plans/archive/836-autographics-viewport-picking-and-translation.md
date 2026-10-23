@@ -7,7 +7,7 @@ plan_revision: 1
 author: [Codex]
 created_at: 2026-10-23
 updated_at: 2026-10-23
-current_step: 9
+current_step: 10
 total_steps: 10
 depends_on: [PLAN-835]
 supersedes_spec_components:
@@ -28,7 +28,7 @@ affects: [auto-graphics, authoring-experimental]
 
 835已完成final R2、冻结合入门、归档、清理及批量回归收尾。本Plan在其独立创作窗口上补齐下一段用户路径：**点击实际画面选对象 → 2D直接拖动／3D世界轴平移手柄 → 真实Auto预览 → 一次撤销／重做 → 保存重开**。
 
-这是AutoForge前置的有限交互原型。final R2及完整冻结门通过，源码已快进合入`autographics-dev`的52ec4c7c1；master仅接收canonical/ledger/归档证据。F-836-R1-01已关闭；当前archived9/10，T-10仅guard清理待完成；835前置已满足。源观察和实施冻结分别记录，见§2及[来源清单](../attachments/836/planning/source-observation.json.txt)。
+这是AutoForge前置的有限交互原型。final R2及完整冻结门通过，源码已快进合入`autographics-dev`的52ec4c7c1；master仅接收canonical/ledger/归档证据。F-836-R1-01已关闭；当前archived10/10，T-10已完成；835前置已满足。源观察和实施冻结分别记录，见§2及[来源清单](../attachments/836/planning/source-observation.json.txt)。
 
 ## 1. 目标
 
@@ -97,7 +97,7 @@ winit真实按下/移动/释放/取消
 
 ### 5.1 下一执行入口与有界可行性探针
 
-依赖就绪入口为T-01，然后T-02；T-03..08不可跳过探针。835开放任务为零；836当前T-01..09完成，final R2已通过；T-10的完整冻结门/源码合入/知识沉淀已完成，仅guard清理待完成。执行者先读主检出合同/附件，确认唯一树、基面/SDK/锁/资产；旧基面不带本Plan不构成另建合同副本的理由。
+依赖就绪入口为T-01，然后T-02；T-03..08不可跳过探针。835开放任务为零；836当前T-01..09完成，final R2已通过；T-10的完整冻结门/源码合入/知识沉淀/归档及guard清理已完成。执行者先读主检出合同/附件，确认唯一树、基面/SDK/锁/资产；旧基面不带本Plan不构成另建合同副本的理由。
 
 T-02在该树建立`research/viewport-feasibility.md`（新）：一个2D拖动和一个原3D模型轴移，走真实OS事件→实际Surface/local→真实Auto候选→可见画面→release一条历史→undo。另做取消和最终端点失败反例，证明临时呈现可恢复且不会误提交。
 
@@ -189,7 +189,7 @@ Idle下列表/画布选择同步，换选丢弃旧属性draft并释放旧文本�
 
 ## 8. 执行步骤
 
-当前archived9/10；final R2冻结5f3e218ba，delivery52ec4c7c1及完整门/实际合入/知识/ledger/归档均已验证；T-10仅清理收尾pending。work T-01..08完成且无in-contract finding才execution_done（8/10）；T-09通过为reviewed（9/10，merge门pending）；T-10实际完成才归档交付10/10。
+当前archived10/10；final R2冻结5f3e218ba，delivery52ec4c7c1及完整门/实际合入/知识/ledger/归档/工作树和分支清理均已验证。原历史进度保留在§9。work T-01..08完成且无in-contract finding才execution_done（8/10）；T-09通过为reviewed（9/10，merge门pending）；T-10实际完成才归档交付10/10。
 
 | task_id | owner_stage | 依赖 | 已验证触点／新增路径与动作 | 可执行关闭条件；AC |
 |---|---|---|---|---|
@@ -202,9 +202,11 @@ Idle下列表/画布选择同步，换选丢弃旧属性draft并释放旧文本�
 | T-07 | work | T-06 | 新interaction-probe及tools/research回放，原window-probe/inspect | [x] F-836-R1-01修复：所有self-check事件循环未完成出口统一非零，报告提前写最终错误；永久截断/观察/启动失败与完整原生正负门、部分帧、新进程重开通过；AC-02..06；见§9 work-repair-r1 |
 | T-08 | work | T-07 | 相关测试、README、新research/viewport-handoff.md、树内拟议Spec | [x] 修复冻结5f3e218ba；来源227/SDK680/closure479、反控及独立打包check通过，fmt/check及SD04/交接已刷新；AC-01/06/07；见§9 work-repair-r1 |
 | T-09 | review | T-08 | 同树独立审查冻结code/Plan修订/Spec，主检出review附件 | [x] final R2 pass，F-836-R1-01 CLOSED、无新增finding；AC-01..07及SD复核通过，版本绑定5f3e218ba，完整merge-owned门显式pending；AC-08；见[review-r2](../attachments/836/review-r2/review.md) |
-| T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出知识/ledger/archive→guard清理 | [ ] 完整门/落点/知识/ledger/归档通过；guard清理和批量到期检查待完成，见§9 merge收据；AC-09 |
+| T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出知识/ledger/archive→guard清理 | [x] 完整门/落点/知识/ledger/实际归档提交/guard清理通过；批量未到期，见§9 merge收据；AC-09 |
 
 ## 9. 复审记录
+
+2026-10-23：stage: merge；PLAN-836:r1；outcome: **pass**；completion_kind delivered，archived10/10，T-01..10全关闭。源码autographics-dev52ec4c7c1；归档/知识提交060724160已验证。final-guard clean后移除唯一工作树，确认源分支已落到autographics-dev后按预期SHA删除plan-836-dev；实际目录/分支均不存在。非空组内3个独立consumer副本保留：自动审批拒绝递归删除（blocked by policy，未提供更具体原因），未绕过；它们是保留的复现产物，不是未合入worktree。外部native保存也经新进程重开验证。批量收据覆盖835且不足48h，无后续%5落地，未到期；生产backend/daemon/web无本实验消费者，I2/I3仍pending。完整结果见[收据](../attachments/836/merge-r1/receipt.md)、[清理核验](../attachments/836/merge-r1/cleaned.json.txt)、[批量到期](../attachments/836/merge-r1/batch-due-check.json.txt)。其他会话master文档WIP保持原状。
 
 2026-10-23：stage: merge；PLAN-836:r1；checkpoint prepared/landed/ledger_refreshed/archived，cleanup pending。review5f3e218ba，文档/台账后继delivery52ec4c7c13b337992278b343ef89d8aa17102ff6，implementation/dependencies精确不变。完整driver69/AGP162全测零失败忽略，构建、16AGP场景、双游戏/835原生正负、新interaction正负/截断/观察/保存重开、counter与content正反控、来源227/SDK680/closure479及外部consumer全链通过。autographics-dev从2a7b10250本地no-force FF到交付提交；master无graphics源码。canonical SD01..04及索引已读回；离线guarded ledger72→73，9相关条目、1146无关raw条目保留。所有原始失败和等输入重试边界保留。详[合入收据](../attachments/836/merge-r1/receipt.md)、[冻结核验](../attachments/836/merge-r1/prepared.json.txt)。归档提交后再guard清理；当前不宣称T-10完成。
 
@@ -231,7 +233,7 @@ Idle下列表/画布选择同步，换选丢弃旧属性draft并释放旧文本�
 
 ## 10. 待澄清事项
 
-历史来源/窗口授权阻塞和F-836-R1-01均已关闭；final R2及完整冻结门通过，delivery52ec4c7c1已合入autographics-dev，canonical/ledger已沉淀、实际归档；当前9/10仅清理pending。
+历史来源/窗口授权阻塞和F-836-R1-01均已关闭；final R2及完整冻结门通过，delivery52ec4c7c1已合入autographics-dev，canonical/ledger已沉淀、实际归档；当前archived10/10，guard清理完成，批量未到期，无836实施/复审/合入待办。
 
 
 无阻塞草案的产品决定。用户启动work后可按T-01/T-02推进，例行等价实现选择无需再审批。OBB精度、固定相机/三轴、不变schema已明示。若需逐三角形拾取、相机漫游、层级/多选、生产仓写面、SDK/AGP接口扩展或改变失败/资源支持保证，回new提出具体修订，不边实施边静默扩面。

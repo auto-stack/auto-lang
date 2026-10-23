@@ -1,6 +1,6 @@
 # PLAN-836:r1 consolidation receipt
 
-stage: merge; checkpoint: landed / ledger_refreshed / archived on disk; archive commit and guarded cleanup pending.
+stage: merge; outcome: PASS; checkpoints prepared / landed / ledger_refreshed / archived / cleaned verified. Plan archived10/10.
 
 Final independent R2 PASS: 5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1. Delivery: 52ec4c7c13b337992278b343ef89d8aa17102ff6, a canonical documentation / tracked-ledger-only descendant. Exact implementation/dependency diff is empty. Source target autographics-dev advanced locally without force, 2a7b10250245332f46b7867dc140da1a4f9d0969 → delivery; master receives only knowledge/evidence. No graphics code, SDK, root workspace or original AGP/assets/goldens changed on master.
 
@@ -12,6 +12,8 @@ Earlier failures retained: initial Iced button timeout (no observed click), Comp
 
 Approved SD01..04 deposited under docs/specs/auto-graphics/{viewport-interaction,authoring-session,scene-document,project,prototype-profile,integration-contract}. Module/global overview, goals and plan navigation updated; derived INDEX regeneration produced no semantic index change. Source hashes and expected main hashes guard concurrent publication. Regime B HTTP probe localhost8080/api/specs timed out after3s; guarded offline projection used with byte-exact ledger-before.json.txt, version72→73,9 affected IDs,1146 unrelated raw items preserved, full six-section schema/readback checks; no live-store success is claimed.
 
-Archive: docs/plans/archive/836-autographics-viewport-picking-and-translation.md. Full gates and knowledge are delivered; T-10 remains pending only until archive commit and safe cleanup. Unrelated master documentation WIP is preserved.
+Archive: docs/plans/archive/836-autographics-viewport-picking-and-translation.md. Full gates, knowledge, actual archive commit060724160 and guarded source worktree/branch cleanup are verified; T-10 is complete. Unrelated master documentation WIP is preserved.
 
-No production backend/daemon/web consumer uses these independent experimental binaries; no production service rebuild/restart or I2/I3/Forge/RQHost migration is claimed. Batch due and cleanup results will be appended after actual removal.
+No production backend/daemon/web consumer uses these independent experimental binaries; no production service rebuild/restart or I2/I3/Forge/RQHost migration is claimed. Batch is not due; final cleanup and retained export details are below.
+
+Final closeout: outcome PASS, archived10/10. Actual archive/knowledge commit060724160 verified before fresh wt-guard clean and source worktree/branch removal. Source remains autographics-dev52ec4c7c1. Group retained with three independent source consumers because automatic approval rejected their recursive deletion (blocked by policy, no specific reason returned); no bypass attempted. They are retained reproduction artifacts, not pending implementation worktrees. External native Save also freshly reopened with matching hash/empty history/selection/clean dirty. Batch receipt covers835 and is less than48h old, no subsequent divisible-by5 Plan landed, so not due. No836-owned implementation/review/merge gate remains. See cleaned.json.txt, final-state.json.txt and batch-due-check.json.txt.
