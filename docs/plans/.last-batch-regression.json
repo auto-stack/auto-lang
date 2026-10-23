@@ -1,9 +1,9 @@
 {
-  "last_covered_plan_id": 830,
-  "timestamp": "2026-10-22T11:38:09Z",
-  "covered_commit": "6336ab95b4a7470cab0fa323051c9fe1ad1d5131",
-  "covered_note": "trigger: PLAN-815 (id %5==0, M815-B 30-commit merge landed after the previous receipt's covered_commit 5685d3a1f — numeric max landed id remains 830). Window 5685d3a1f..6336ab95b4a7470cab0fa323051c9fe1ad1d5131 contains the PLAN-815 B-phase code delta (auto-ui-tools/auto-man/auto-ui-runtime/auto-tool-*/auto-api-gen/shell-pack). Docs-only bookkeeping commits in the window touch no code.",
-  "window": "5685d3a1f6bdccf6e39f4fff3243566c86602389..6336ab95b4a7470cab0fa323051c9fe1ad1d5131",
+  "last_covered_plan_id": 835,
+  "timestamp": "2026-10-23T03:01:52.941262+00:00",
+  "covered_commit": "6991731ab3e6fb7f64865a2962b9cbd2e2a3bab5",
+  "covered_note": "PLAN-835 modulo5 postlanding batch, main-only single instance. Prior window contains knowledge bookkeeping and one shim doc-comment marker change; no runtime semantics changes. Full tf and complete tt/tb retries collected; only previously recorded D-762-1 chart Init helper debt remains in tt.",
+  "window": "6336ab95b4a7470cab0fa323051c9fe1ad1d5131..6991731ab3e6fb7f64865a2962b9cbd2e2a3bab5",
   "legs": [
     "tf",
     "tt",
@@ -11,32 +11,80 @@
   ],
   "leg_results": {
     "tf": {
-      "seconds": 111.7,
+      "seconds": 113.536,
       "run": 6282,
       "passed": 6282,
       "failed": 0,
       "skipped": 518,
-      "note": "完整轮全绿；含 815 合入后的 shell_pack freshness（T09 修复红→绿）与全量选择面"
+      "exit": 0,
+      "evidence": "tf.txt"
     },
     "tt": {
-      "seconds": 126.5,
+      "seconds": 106.981,
       "run": 5703,
-      "passed": 5703,
-      "failed": 0,
+      "passed": 5702,
+      "failed": 1,
       "skipped": 1800,
-      "note": "完整轮全绿"
+      "exit": 100,
+      "evidence": "tt-retry.txt"
     },
     "tb": {
-      "seconds": 93.6,
+      "seconds": 75.264,
       "run": 5307,
       "passed": 5307,
       "failed": 0,
       "skipped": 1548,
-      "note": "首跑 auto-lang-core state_file::tests::lock_serializes_critical_sections 1 红（0.355s）——隔离复跑 0.125s 绿+--no-fail-fast 完整重跑 5307/5307 全绿，判文件锁环境 flake 不归因产品回归（同 PLAN-830 收据 OS 1224 先例族）"
+      "exit": 0,
+      "evidence": "tb-retry.txt"
     }
   },
+  "verdict": "known-reds-only",
   "new_reds": [],
-  "known_reds_seen": [],
-  "taa": "not_triggered: window touches zero aavm trigger paths (checked 2026-10-22)",
-  "environment": "主检出单实例串行 tf→tt→tb（tf 前观察到两枚瞬时 cargo 进程退出后方启动）；本批 tf 未见已知预存红——shell_pack freshness 已随 F-815-T09-01 修复转绿，plan593/merged_api 两裁定预存红不在本 tf 选择面红名单（0 failed）"
+  "known_reds_seen": [
+    {
+      "test": "auto-ui-runtime ui_tests::plan484_chart_component_tests::plan484_smoke::plan484_024_charts_streaming_recompute",
+      "debt": "D-762-1",
+      "leg": "tt",
+      "evidence": "committed KNOWN-DEBT baseline + current helper progressed predicate + chart call and CpuRunnable trace"
+    }
+  ],
+  "initial_failures_cleared_on_complete_replay": [
+    "abi_worker_overflow_then_hang_is_infra_error_fast",
+    "probe_adapter_descendant_held_pipes_bounded_by_parent_containment",
+    "probe_adapter_descendant_reaped_by_worker_self_containment"
+  ],
+  "initial_attempts": [
+    {
+      "leg": "tf",
+      "exit": 0,
+      "seconds": 113.536006
+    },
+    {
+      "leg": "tt",
+      "exit": 100,
+      "seconds": 135.5084165
+    },
+    {
+      "leg": "tb",
+      "exit": 100,
+      "seconds": 81.1664444
+    }
+  ],
+  "replay_attempts": [
+    {
+      "leg": "tt",
+      "exit": 100,
+      "seconds": 106.9808204,
+      "reason": "same four original assertions passed isolated; now repeat complete scope on warmed worker/cache inputs, no code or thresholds changed"
+    },
+    {
+      "leg": "tb",
+      "exit": 0,
+      "seconds": 75.2636062,
+      "reason": "same four original assertions passed isolated; now repeat complete scope on warmed worker/cache inputs, no code or thresholds changed"
+    }
+  ],
+  "aavm_trigger_paths": [],
+  "single_instance": true,
+  "evidence": "docs/plans/attachments/835/batch-r1"
 }

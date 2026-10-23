@@ -308,3 +308,8 @@ SD-01 scene-document、SD-02 authoring-session新增；SD-03 auto-source-driver�
 - 最终delivery2a7b10250245332f46b7867dc140da1a4f9d0969已在autographics-dev；main知识/归档提交b294fefe3、实际归档检查a98950ab2。源/Spec/ledger读回通过，真实archive全部20个本地链接均存在且跟踪。
 - 即时Git Bash wt-guard clean后移除唯一835树，已检查其全部提交在autographics-dev；分支设其为upstream再用无force的git branch -d删除，空组删除。9个本任务临时consumer逐一绝对路径校验+guard clean后删除，未触其他会话文件。见cleaned.json/final-guard.txt/consumer-guards.txt。
 - T-10/AC-09完成，status archived/completion_kind delivered/current_step10 of10。无剩余835实施/复审/合入/知识/归档/清理任务；生产I2/I3不外推。批量回归%5 due在主检出单实例继续，属于归档后统一回归收据，不在计划树内运行。
+
+### 2026-10-23 postlanding batch：known-reds-only，最终闭合
+
+- /auto-plan:regress 主检出单实例：tf6282/6282；完整tt复跑5702/5703，唯一红为既有D-762-1图表Init helper早退；完整tb复跑5307/5307。初跑3个worker计时红定向及完整tt复跑均通过，未改代码/阈值；原始红/重放/归因全部保留。[批量回执](../attachments/835/batch-r1/receipt.md)。
+- .last-batch-regression.json更新覆盖835，verdict known-reds-only/new_reds空；未将剩余已知红记绿，不擅自修改需另行裁定的生产helper。AAVM触发diff为空，不跑taa/t3。835所有实施/复审/冻结全门/合入/知识/ledger/归档/清理与逢5回归任务完成；最终archived/delivered10/10。其他会话WIP保持，生产I2/I3未启动。
