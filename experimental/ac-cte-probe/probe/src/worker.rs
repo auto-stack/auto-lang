@@ -54,6 +54,10 @@ pub struct WorkerStepOut {
     pub exit: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
+    /// Language-class diag vs isolated resource/cancel/infra state —
+    /// the runner's outcome admission reads this.
+    #[serde(default)]
+    pub language_class: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -177,6 +181,7 @@ pub fn serve_request(req: &WorkerRequest, native_root: &Path) -> WorkerResponse 
                     hir: None,
                     exit: None,
                     code: None,
+                    language_class: false,
                     message: None,
                     wall_ms: None,
                     peak_private_bytes: None,
@@ -225,6 +230,7 @@ fn to_wire(op: &str, deck: &str, o: CteStepOutcome) -> WorkerStepOut {
         hir: Some(o.hir_proof.clone()),
         exit: o.native_exit,
         code: o.code,
+        language_class: o.language_class,
         message: o.message,
         wall_ms: Some(o.wall_ms),
         peak_private_bytes: o.peak_private_bytes,

@@ -6,8 +6,8 @@
 //! chunk runs in a FRESH worker process against the same store root
 //! (the real cross-process persistence path).
 
-use crate::test_cases::sema::containment;
 use super::avm::Verdict;
+use crate::test_cases::sema::containment;
 use auto_test_case::compare::Mismatch;
 use auto_test_case::contract::{CheckSpec, ProbeStep, Syntax};
 use auto_test_case::ir::{ResolvedCase, ResolvedOracle};
@@ -66,8 +66,24 @@ fn worker_file_sha256(path: &Path) -> Result<String, String> {
 /// `-p auto-cte-probe --bin cte_probe_worker` (release) from the repo
 /// root above this crate.
 pub fn worker_binary() -> Result<PathBuf, String> {
+    // The env override is re-read EVERY call (never cached): a test that
+    // pins a broken tool identity must not poison the process-wide
+    // built-binary cache for later checks.
+    if let Ok(env_path) = std::env::var("AC_CTE_CASE_WORKER") {
+        let p = PathBuf::from(&env_path);
+        if p.is_file() {
+            return Ok(p);
+        }
+        return Err(format!(
+            "AC_CTE_CASE_WORKER points at a missing file: {env_path}"
+        ));
+    }
     static CACHE: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
-    CACHE.get_or_init(locate_worker).clone()
+    CACHE.get_or_init(locate_worker_without_env).clone()
+}
+
+fn locate_worker_without_env() -> Result<PathBuf, String> {
+    locate_worker()
 }
 
 fn locate_worker() -> Result<PathBuf, String> {
@@ -88,7 +104,10 @@ fn locate_worker() -> Result<PathBuf, String> {
                     .to_string(),
             );
         };
-        let m = d.join("experimental").join("ac-cte-probe").join("Cargo.toml");
+        let m = d
+            .join("experimental")
+            .join("ac-cte-probe")
+            .join("Cargo.toml");
         if m.is_file() {
             break m;
         }
@@ -124,7 +143,10 @@ fn locate_worker() -> Result<PathBuf, String> {
         ));
     }
     if !exe.is_file() {
-        return Err(format!("cte worker build produced no exe at {}", exe.display()));
+        return Err(format!(
+            "cte worker build produced no exe at {}",
+            exe.display()
+        ));
     }
     Ok(exe)
 }
@@ -159,6 +181,23 @@ fn worker_exe_sha256() -> Result<String, String> {
     worker_binary().and_then(|p| worker_file_sha256(&p))
 }
 
+/// Map a cte.* code to the runner's supported stage vocabulary (the
+/// same projection the sema recipe uses — no unknown stages).
+fn stage_of(code: &str) -> &'static str {
+    if code.starts_with("cte.request.") || code.starts_with("cte.callee.") {
+        "parse"
+    } else if code.starts_with("cte.consumer.")
+        || code.starts_with("cte.query.")
+        || code.starts_with("cte.schedule.")
+    {
+        "verify"
+    } else if code.starts_with("cte.capability.") || code.starts_with("cte.meta.") {
+        "capability"
+    } else {
+        "run"
+    }
+}
+
 // ---------------------------------------------------------------------------
 // protocol
 // ---------------------------------------------------------------------------
@@ -179,6 +218,8 @@ struct WorkerStepOut {
     exit: Option<i64>,
     #[serde(default)]
     code: Option<String>,
+    #[serde(default)]
+    language_class: bool,
     #[serde(default)]
     message: Option<String>,
 }
@@ -246,8 +287,7 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
     let mut child = cmd.spawn().map_err(|e| format!("cte worker spawn: {e}"))?;
     let _job = containment::JobGuard::for_child(&child);
     #[cfg(windows)]
-    containment::resume_suspended_process(&child)
-        .map_err(|e| format!("cte worker resume: {e}"))?;
+    containment::resume_suspended_process(&child).map_err(|e| format!("cte worker resume: {e}"))?;
 
     // Request writer thread (dropped handle closes stdin → EOF).
     let mut stdin = child.stdin.take().expect("piped stdin");
@@ -329,7 +369,11 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
         ));
     }
     let text = String::from_utf8_lossy(&stdout);
-    let line = text.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("");
+    let line = text
+        .lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("");
     serde_json::from_str(line.trim())
         .map_err(|e| format!("cte worker response does not decode: {e}"))
 }
@@ -437,7 +481,10 @@ pub fn run_check(
             format!(
                 "cte worker error: {} {}",
                 resp.error.as_ref().map(|e| e.code.as_str()).unwrap_or("?"),
-                resp.error.as_ref().map(|e| e.message.as_str()).unwrap_or("")
+                resp.error
+                    .as_ref()
+                    .map(|e| e.message.as_str())
+                    .unwrap_or("")
             )
         })?;
         if ok.worker_version != EXPECTED_CTE_WORKER_VERSION {
@@ -500,16 +547,26 @@ pub fn run_check(
                 if result.is_err() {
                     break;
                 }
+                // Fold THIS chunk's edits into the base the next chunk
+                // (a fresh worker process) starts from.
+                for st in chunk.iter() {
+                    if let ProbeStep::EditSource { from, to } = st {
+                        let hits = current_deck.matches(from.as_str()).count();
+                        if hits == 1 {
+                            current_deck = current_deck.replacen(from.as_str(), to.as_str(), 1);
+                        }
+                    }
+                }
                 chunk.clear();
                 consumed_restart += 1;
                 let _ = consumed_restart;
             }
             ProbeStep::EditSource { from, to } => {
-                // Apply parent-side too (the next chunk's deck input).
-                let hits = current_deck.matches(from.as_str()).count();
-                if hits == 1 {
-                    current_deck = current_deck.replacen(from.as_str(), to.as_str(), 1);
-                }
+                // NO pre-application here: the worker applies edits to
+                // the chunk's BASE deck itself. The base only advances
+                // at restart boundaries (below), where this chunk's
+                // edits fold into the next chunk's starting deck.
+                let _ = (from, to);
                 chunk.push(step);
             }
             _ => chunk.push(step),
@@ -548,8 +605,7 @@ pub fn run_check(
     // The judged step's declared expectations come from the LAST probe
     // step expect row (same face as the sema/av recipes).
     let last_expect = oracle.probe.as_deref().unwrap_or(&[]).last().cloned();
-    let cache_expect: Option<String> =
-        last_expect.as_ref().and_then(|e| e.cache.clone());
+    let cache_expect: Option<String> = last_expect.as_ref().and_then(|e| e.cache.clone());
     if let Some(want) = cache_expect {
         let coarse = match judged.cache.as_deref() {
             Some("miss") | Some("stale") => "published",
@@ -573,26 +629,81 @@ pub fn run_check(
                 observation: "exit".into(),
                 kind: "exit".into(),
                 expected: format!("{want_exit}"),
-                actual: other.map(|v| v.to_string()).unwrap_or_else(|| "none".into()),
+                actual: other
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "none".into()),
                 first_diff: None,
             }),
         }
     }
-    // A diag outcome on the judged step is a language FAIL (expected
-    // diags are declared through the same expect face; the resource /
-    // infra classes surfaced as Error above).
+    // Outcome admission FIRST (the sema discipline): an isolated
+    // resource/cancel/infra state is an ERROR row — never a language
+    // verdict; a language-class diag is judged against the declared
+    // completion (stage + message contain), defaulting to FAIL when the
+    // case expected success.
     if judged.outcome == "diag" {
-        mismatches.push(Mismatch {
-            observation: "query".into(),
-            kind: "diag".into(),
-            expected: "a completed query".into(),
-            actual: format!(
-                "{} {}",
-                judged.code.as_deref().unwrap_or("?"),
-                judged.message.as_deref().unwrap_or("")
-            ),
-            first_diff: None,
-        });
+        let detail = format!(
+            "{} {}",
+            judged.code.as_deref().unwrap_or("?"),
+            judged.message.as_deref().unwrap_or("")
+        );
+        if !judged.language_class {
+            return Ok(Verdict {
+                status: Status::Error,
+                mismatches: vec![Mismatch {
+                    observation: "query".into(),
+                    kind: "infra".into(),
+                    expected: "a completed query (isolated state)".into(),
+                    actual: detail,
+                    first_diff: None,
+                }],
+                detail: Some(format!("{CTE_RECIPE}: isolated state on the judged step")),
+                artifacts: vec![],
+                native: None,
+            });
+        }
+        match &oracle.completion {
+            auto_test_case::contract::Completion::Error { stage, message, .. } => {
+                let got_stage = stage_of(judged.code.as_deref().unwrap_or(""));
+                let want_stage = stage.as_str();
+                if got_stage != want_stage {
+                    mismatches.push(Mismatch {
+                        observation: "completion.stage".into(),
+                        kind: "text".into(),
+                        expected: want_stage.to_string(),
+                        actual: got_stage.to_string(),
+                        first_diff: None,
+                    });
+                }
+                if let Some(matcher) = message {
+                    let got_msg = judged.message.as_deref().unwrap_or("");
+                    let matched = match matcher {
+                        auto_test_case::contract::MessageMatcher::Contains(sub) => {
+                            got_msg.contains(sub.as_str())
+                        }
+                        auto_test_case::contract::MessageMatcher::Exact(sub) => got_msg == sub,
+                    };
+                    if !matched {
+                        mismatches.push(Mismatch {
+                            observation: "completion.message".into(),
+                            kind: "text".into(),
+                            expected: format!("{matcher:?}"),
+                            actual: got_msg.to_string(),
+                            first_diff: None,
+                        });
+                    }
+                }
+            }
+            auto_test_case::contract::Completion::Success => {
+                mismatches.push(Mismatch {
+                    observation: "query".into(),
+                    kind: "diag".into(),
+                    expected: "a completed query".into(),
+                    actual: detail,
+                    first_diff: None,
+                });
+            }
+        }
     }
 
     // Receipt (evidence file; never judged).

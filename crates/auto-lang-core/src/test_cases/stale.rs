@@ -291,8 +291,7 @@ pub fn check_with_families(
                     .map(|arr| {
                         arr.iter().any(|p| {
                             p[0].as_str() == Some("recipe")
-                                && p[1].as_str()
-                                    == Some(crate::test_cases::ac_cte::CTE_RECIPE)
+                                && p[1].as_str() == Some(crate::test_cases::ac_cte::CTE_RECIPE)
                         })
                     })
                     .unwrap_or(false);
@@ -361,6 +360,12 @@ pub fn check_with_families(
                             "abi-worker-exe-sha256",
                             "abi-worker-version",
                             "abi-protocol",
+                            "recipe",
+                        ],
+                        Some(false) if cte_probe_row => vec![
+                            "cte-worker-exe-sha256",
+                            "cte-worker-version",
+                            "cte-protocol",
                             "recipe",
                         ],
                         Some(false) if av_probe_row => vec![

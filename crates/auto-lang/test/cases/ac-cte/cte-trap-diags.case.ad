@@ -1,0 +1,23 @@
+# PLAN-817 executed-trap completion: the CT callee really executes and
+# traps (int overflow) — a LANGUAGE diagnostic (run stage, message names
+# the callee), never an infra error and never green.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "cte.trap.overflow-diag"
+  tags: ["ac-cte", "probe"]
+  links: ["PLAN-817"]
+  source: { file: "cte/trap-overflow.atomdata", syntax: "atom-data", path: "deck.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "query-trap-diag", adapter: "probe", action: "run",
+      options: {
+        recipe: "cte/scalar-query-v1",
+        cte: { entry: "main" },
+        steps: [ { op: "query" } ]
+      },
+      expect: { completion: { stage: "run", message: { contains: "cte.trap.int-overflow" } }, probe: [ { cache: "published" } ] } }
+  ]
+}
+```
