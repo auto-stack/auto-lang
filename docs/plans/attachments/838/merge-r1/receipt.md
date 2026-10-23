@@ -2,7 +2,7 @@
 
 Implementation/review/frozen full-gate commit: `eddf13ee6e5a9296bf11b0622561a669e7498b56` (independent final R2 pass, four findings CLOSED). Prepared canonical/derived-ledger-only delivery: `37fd1a9cfe22d3d3471202ad4a8dbfe2103f9a5c`. No implementation, dependency, test configuration or source input changed in that descendant. Source destination is autographics-dev; master receives knowledge only.
 
-Current checkpoint: complete frozen gates and final delivery metadata consumer PASSED; source fast-forward, archive commit and guard cleanup are still pending. This receipt does not claim final delivery before those checkpoints.
+Current checkpoint: **PASS — delivered, archived10/10**. Source fast-forward, canonical/ledger readback, tracked master archive, fresh guard and actual worktree/branch removal, batch-not-due and postlanding relocated-scene smoke are all verified.
 
 ## Complete frozen gates
 
@@ -24,8 +24,10 @@ SD01 adds [scene-assets](../../../../specs/auto-graphics/scene-assets.md); SD02.
 
 [Publication map](evidence-publication-map.json.txt) records original hashes and committed report/excerpt forms. Raw runtime JSON/log paths use .json.txt/.log.txt text representations without force-adding ignored files. Repeated SDK146 compiler warnings are omitted from committed text; no authored warnings were introduced. Two review prose files only change links to those durable representations; their exact pre-publication bytes remain as `.pre-publication.txt` with original hash, preserving the independent verdict and signed-input provenance. Meaningful controls, generated input files, screenshots and structured reports remain reproducible.
 
-## Pending final checkpoint
+## Final checkpoint completed
 
-Final delivery-metadata AGP consumer → guarded source ff-only → canonical/ledger readback → actual archive and scoped master commit → fresh wt-guard clean → remove only owned worktree/merged branch, retain independent consumer evidence copies → batch due and production artifact applicability check → final receipt commit. No production backend/daemon/web consumer uses this experimental profile; no production rebuild/restart is implied.
+Completed: final delivery-metadata AGP consumer → guarded source ff-only → canonical/ledger readback → actual archive and scoped master commit → fresh wt-guard clean → remove owned worktree/merged branch and retain standalone reproduction exports → batch due/artifact checks → final receipt bookkeeping. No production backend/daemon/web consumer uses this experimental profile; no production rebuild/restart is implied.
 
 Delivery Git-identity gate: PASS. AGP probe rebuilt, complete independent-consumer relocation/release builds/collateral rerun with AGP_BASE_COMMIT=37fd1a9cfe22d3d3471202ad4a8dbfe2103f9a5c. See [delivery-consumer](delivery-consumer.json.txt) and [actual report](agp-independent-consumer-delivery/report.json.txt).
+
+Final verified source tip `37fd1a9cfe22d3d3471202ad4a8dbfe2103f9a5c`; master archive/knowledge commit `3cad6f34cd16ffce482c34737044102bba665a23`. Worktree and plan-838-dev removed only after fresh clean guard and landed-ancestry/expected-SHA verification. Three standalone consumer exports retained; group stays nonempty. No source rebase or merge commit was needed. Batch not due; production artifact applicability checked. [Final-state receipt](final-state.json.txt), [cleanup](cleaned.json.txt), [batch](batch-due-check.json.txt), [smoke](postlanding-smoke.json.txt).

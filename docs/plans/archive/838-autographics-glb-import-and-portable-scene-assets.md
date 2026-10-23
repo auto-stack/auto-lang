@@ -7,7 +7,7 @@ plan_revision: 1
 author: [Codex]
 created_at: 2026-10-23
 updated_at: 2026-10-24
-current_step: 9
+current_step: 10
 total_steps: 10
 depends_on: [PLAN-837]
 supersedes_spec_components:
@@ -33,9 +33,9 @@ affects: [auto-graphics, authoring-experimental, agp-resource-adapter]
 
 首版聚焦现有无贴图、固定颜色光照渲染能力，不扩材质/动画/纹理管线。新增内容寻址资产、有限资源注册及场景目录保存；不是通用资产管理平台或正式Forge产品。
 
-837正式交付`cf2e99f50ee2a70b70ca2cfc23a5af56b405638b`为基面。final R1发现2P1+2P2；原树修复后冻结`eddf13ee6e5a9296bf11b0622561a669e7498b56`，2026-10-24独立final R2确认四项关闭、无新finding，当前reviewed9/10。T-10完整merge门/实际合入仍pending，用户“先不要合入”继续有效；[当前独立R2](../attachments/838/review-r2/review.md)、[修复交接](../attachments/838/work-repair-r1/readiness.md)，[原复审](../attachments/838/review-r1/review.md)保留历史。
+PLAN-838已完成交付并归档10/10。独立R2在`eddf13ee6e5a9296bf11b0622561a669e7498b56`确认四finding关闭；完整冻结门与最终Git身份消费门通过后，`autographics-dev`快进至`37fd1a9cfe22d3d3471202ad4a8dbfe2103f9a5c`。规范/台账75、主分支归档提交`3cad6f34cd16ffce482c34737044102bba665a23`、fresh guard与工作树/分支移除、批量not-due和重开smoke均已核验。master仅沉淀知识，生产I2/I3仍pending；[合入收据](../attachments/838/merge-r1/receipt.md)。
 
-当前合入状态：archived9/10；冻结完整门、autographics-dev快进与规范/台账已验证。T10仅归档提交及guard清理/到期收据待完成；下文pending是历史阶段记录。详[合入收据](../attachments/838/merge-r1/receipt.md)。
+当前合入状态：archived10/10；冻结完整门、源码快进、规范/台账、归档提交、guard清理与到期判定全部完成；下文pending是历史阶段记录。详[合入收据](../attachments/838/merge-r1/receipt.md)。
 
 ## 1. 目标
 
@@ -229,7 +229,7 @@ Open分阶段有界读entry→严格图/资源表准入→按固定路径读/核
 
 ## 8. 执行步骤
 
-当前reviewed9/10：final R2独立确认F-838-R1-01..04关闭，AC01..09通过，T-01..09完成。T-10及merge完整门pending，未合入/交付；[独立报告/AC映射/反例与复用边界](../attachments/838/review-r2/review.md)、[收据](../attachments/838/review-r2/receipt.json.txt)。T-10实际完毕才归档交付10/10。
+当前archived10/10，T-01..10全部完成。R1 needs_fix→修复→独立R2 pass历史保留；T10完整门、autographics-dev实际快进、规范/台账、归档提交与guard移树/删分支及batch not-due已实际核验；没有本Plan待完成项。
 
 | task_id | owner_stage | 依赖 | 实际触点／新增路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -242,9 +242,11 @@ Open分阶段有界读entry→严格图/资源表准入→按固定路径读/核
 | T-07 | [✅] work | T-06 | 新asset-check/aggregate/自有fixture及原inspect；原probe完成性保留 | [x] review持久path4/glb9/host5前红后绿；新增3个永久测试覆盖四finding及兄弟路径/合法控制；当前native7案聚合pass，保存/搬迁异cwd子进程通过；AC-05/06。 见[work-repair-r1](../attachments/838/work-repair-r1/readiness.md)。 |
 | T-08 | [✅] work | T-07 | README/new research/scene-assets-handoff.md、身份/consumer/资源计量、树内Spec proposal | [x] 新冻结source264/SDK680/closure479/17local/29edge，四来源反控及独立consumer当前assets17+storage3/check通过；README/SD-01..04/当前closure与merge矩阵完整；AC-01/07/08。 见[work-repair-r1](../attachments/838/work-repair-r1/readiness.md)。 |
 | T-09 | [✅] review | T-08 | 同838树冻结code/Plan r1/Spec，主检出独立review记录 | [x] final R2独立pass，四finding关闭/无新finding；assets17+Host7+Storage3、R1 path4/glb9/Host5、新13GLB及4路径组合、native7、source正反/check/fmt通过，规范与AC01..08核验；完整merge门pending；AC-09。见[review-r2](../attachments/838/review-r2/review.md)。 |
-| T-10 | merge | T-09 pass | 同树冻结完整门→autographics-dev；主检出知识/ledger/archive→guard | AC-10实际门/落点/沉淀/清理/到期收据；改代码先受影响复审再重冻，不提前交付 |
+| T-10 | [✅] merge | T-09 pass | 同树冻结完整门→autographics-dev；主检出知识/ledger/archive→guard | [x] 完整冻结门55入口与最终delivery metadata消费门通过；源码autographics-dev/规范与台账75/主分支归档提交/fresh guard清理及batch not-due完成，AC-10。见[最终状态](../attachments/838/merge-r1/final-state.json.txt)。 |
 
 ## 9. 复审记录
+
+2026-10-24：stage: merge | PLAN-838:r1 | outcome: **pass** | completion_kind: delivered | checkpoints: prepared/landed/ledger_refreshed/archived/cleaned verified | delivery_commit: 37fd1a9cfe22d3d3471202ad4a8dbfe2103f9a5c | archive_commit: 3cad6f34cd16ffce482c34737044102bba665a23 | archived10/10。独立R2、冻结55入口及delivery身份门全过；台账74→75仅12目标、无关1151原项保护；主分支归档/证据提交不含图形源码。fresh final-guard clean后实际移除唯一实现树，以预期SHA删除已落地开发分支，路径/分支均不存在；非空组保留3份独立源码消费方复现产物。批量覆盖835仅18h且无后续%5落地，not due；无生产backend/daemon/web消费方需重建/重启。重开smoke匹配实际像素/hash、clean/history/selection。详[final-state](../attachments/838/merge-r1/final-state.json.txt)、[receipt](../attachments/838/merge-r1/receipt.md)。下列阶段pending是历史，不覆盖当前完成状态。
 
 2026-10-24：stage: merge | PLAN-838:r1 | checkpoint: landed/ledger_refreshed/archived | reviewed_commit: eddf13ee6e5a9296bf11b0622561a669e7498b56 | delivery_commit: 37fd1a9cfe22d3d3471202ad4a8dbfe2103f9a5c（仅规范/投影后继，实施/依赖/配置未改）| 完整冻结门55个入口/官方16case/原双游戏及创作/层级/新资产/owner正反/全新consumer通过，最终delivery独立AGP消费重建亦通过；四次OS输入早期失败保留并在同冻结代码重放命中真实oracle；规范/台账已校验落地。归档提交及guard清理仍pending，尚不声明最终merge pass。详[receipt](../attachments/838/merge-r1/receipt.md)和[gate audit](../attachments/838/merge-r1/validated.json.txt)。
 
@@ -266,7 +268,7 @@ Open分阶段有界读entry→严格图/资源表准入→按固定路径读/核
 
 ## 10. 待澄清事项
 
-当前无work/review阻塞。F-838-R1-01..04经独立final R2确认CLOSED，没有新增finding、必需gap或待决合同问题；未降约或扩产品范围。T01..09完成，reviewed9/10；T10完整冻结门/实际autographics-dev交付/知识与清理保持pending。用户“先不要合入”继续有效，同一实施树保留且clean；本轮独立pass不等于已交付。[当前R2报告](../attachments/838/review-r2/review.md)；修复readiness、原R1及work-r1保留历史。第二次final为pass，没有触发两次final失败后的work诊断义务。
+当前无本Plan开放finding、必需覆盖gap、待决产品问题或未完成任务。T01..10已关闭，archived10/10；所有合入与清理检查点已完成。生产I2/I3是既有非目标，不冒认为本Plan交付。[最终状态](../attachments/838/merge-r1/final-state.json.txt)。
 
 ## spec-sync 回写记录
 
