@@ -322,7 +322,7 @@ pub fn run_vm_ui_flow(
             if child.is_some() && std::env::var_os("AUTO_HTTP_BASE").is_none() {
                 std::env::set_var(
                     "AUTO_HTTP_BASE",
-                    format!("http://127.0.0.1:{}", crate::ui_port_util::http_port()),
+                    format!("http://127.0.0.1:{}", crate::util::http_port()),
                 );
             }
             child
@@ -338,7 +338,7 @@ pub fn run_vm_ui_flow(
             if std::env::var_os("AUTO_HTTP_BASE").is_none() {
                 std::env::set_var(
                     "AUTO_HTTP_BASE",
-                    format!("http://127.0.0.1:{}", crate::ui_port_util::http_port()),
+                    format!("http://127.0.0.1:{}", crate::util::http_port()),
                 );
             }
             None

@@ -13,8 +13,8 @@
 //! [`ui_ops`] 未安装时 UI 臂具名失败，非 UI 路径不受影响。
 //!
 //! 旧 `auto-man` crate 是本包的纯 re-export 门面（Pac/Target/Automan
-//! 类型**单源**在本包）+ UI 门面转发 + M814-B 门残留（vue_run_compat/
-//! rust_ui_vm_compat）。业务算法不复制。
+//! 类型**单源**在本包）+ UI 门面转发（run 家族随 815-T05 迁
+//! auto-ui-tools::run_vue/run_vm，M814-B 门解除）。业务算法不复制。
 
 pub mod error;
 pub mod resolver;

@@ -2,8 +2,8 @@
 //!
 //! 服务层（automan/http_service/builder）的 UI 操作臂不直接链接任何 UI
 //! 实现——经 [`UiOps`] trait 由上层 compat（auto-man）注入：compat 用
-//! auto-ui-tools 公开面 + M814-B 门残留（vue_run_compat/rust_ui_vm_compat）
-//! 实现本 trait，并在 CLI 入口安装（[`install`]）。未安装时 [`current`]
+//! auto-ui-tools 公开面（run 家族随 815-T05 迁入）实现本 trait，并在
+//! CLI 入口安装（[`install`]）。未安装时 [`current`]
 //! 返回 [`NotInstalledUiOps`]——UI 臂具名失败（"UI ops not installed"），
 //! 非路径不受影响；服务包的依赖闭包因此不含 UI 实现。
 

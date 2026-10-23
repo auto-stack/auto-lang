@@ -1,7 +1,6 @@
 //! UI seam 的 compat 实现（PLAN-816 T-03）：把 runtime 服务编排的 UI 臂
-//! 接回本 crate 的公开面——auto-ui-tools（生成/构建/run 算法单源）+
-//! M814-B 门残留（vue_run_compat / rust_ui_vm_compat）+ 外层 auto-lang
-//! 的 `run_file`（语言执行兼容面）。纯委托，零算法复制。
+//! 接回 auto-ui-tools（生成/构建/run 算法单源，run 家族随 815-T05 迁入）+
+//! 外层 auto-lang 的 `run_file`（语言执行兼容面）。纯委托，零算法复制。
 //!
 //! CLI 入口（`auto` main）在启动时调用一次 [`install_default_ui_ops`]；
 //! runtime 未安装时 UI 臂具名失败，非 UI 路径不受影响。
@@ -46,7 +45,7 @@ impl UiOps for CompatUiOps {
         args: Vec<String>,
         request: &GenerationRequest,
     ) -> AutoResult<()> {
-        crate::vue_run_compat::run_vue_project_with_request(root_dir, args, request)
+        crate::vue::run_vue_project_with_request(root_dir, args, request)
     }
 
     fn rust_build(&self, root_dir: &Path, request: &GenerationRequest) -> AutoResult<()> {
@@ -87,7 +86,7 @@ impl UiOps for CompatUiOps {
         args: Vec<String>,
         request: &GenerationRequest,
     ) -> AutoResult<()> {
-        crate::rust_ui_vm_compat::run_vm_ui_with_request(root_dir, args, request)
+        crate::rust_ui::run_vm_ui_with_request(root_dir, args, request)
     }
 
     fn jet_generate(
