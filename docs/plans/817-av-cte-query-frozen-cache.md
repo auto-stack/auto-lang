@@ -6,7 +6,7 @@ plan_revision: 3
 author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-23
-current_step: 7
+current_step: 8
 total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-av/resident-function-install.md
@@ -211,7 +211,7 @@ V-01–11全部为必验区分性控制；独立expected不由AV/新freeze生成
 | [x] T-05 | work | T-04 | 真实页/512修订/GC、全路径资源和峰值采样/spike反控 | cte_resources_、V-07/08；AC-05。[✅ 已完成] 2026-10-23：code 6c92decfb（worktree plan-817-dev）。受管台账：三分区（hot 8/暂存 16/AV 槽 8=32MiB）预留在 deck 解析、源投影、envelope 序列化/解码（store 恢复路径带 16MiB 深解码界限）与发布之前；AV 槽以 trace 活槽峰值 settle；spike 反控（测试 seam 缩分区）确定性真红——超限保留绝不 target_met=true，spike 运行零发布；采样间隔 1ms（20ms join 为每步固定税，已修）。规模（V-08）：流式生成 ≥32MiB 真实冻结页（100-helper 闭包，逐锚点闭式值断言）+ 512 不同输入修订（各为新键真执行+正确值）；造数每请求均在台账内。真实水位 GC（V-07）：同 store 推过真实 64MiB 高水位（300-helper 生成器）；pass 1 物理删除 544 块/释放 14.5MB 并收敛至 48MiB 低水位以下；lease 保活最老 pin 跨 pass、释放后下一真实水位 pass 以 oldest-first 首先回收（pin 先于冷质量发布以正序验证）；外部哨兵逐 pass 字节不变；无输入 unavailable。硬门（V-08）：worker 每响应上报进程采样 private bytes 峰值；定向门测试真 worker 进程跑 40 查询生成请求——384MiB worker / 512MiB 树门内（单报）。证据：cte_resources_ 6/6；workspace 54/54 绿（debug 标准档，资源族 255s） |
 | [x] T-06 | work | T-05、公共单写窗口 | AutoDown完整suite/worker/兼容与身份/stale、ERROR反控 | cte_adapter_、V-10；AC-07。[✅ 已完成] 2026-10-23：code fa4f39c25。裁定补齐：outcome admission 先行——judged 步骤上的隔离 resource/cancel/infra 态=ERROR 行（永非语言裁决）；语言类 diag 对照声明的 error completion（cte.*→parse/verify/capability/run stage 投影+message matcher），期望 success 时默认 FAIL；language_class 上 cteworker/1 线协议。语料 5 case：warm-session 区分编辑（query→edit(22→23)→query：重键 miss+手算 43）、跨进程 restart（query→restart→query：新 worker 进程恢复 hit+零执行）、已执行 trap completion（run 阶段 cte.trap.int-overflow 含调用来源）；修复：edit 仅在 restart 分块边界折入下一块基面（worker 自应用 chunk 内编辑）。控制：未注册 recipe lint 拒（列注册集）；坏 worker 工具身份→ERROR 行不绿（env 覆盖改为逐次读取不毒化进程缓存）；stale 适用集登记 cte-worker 轴族（配方分支外的第二登记点）——混合 cte/av 行序独立+漂移即红。cte_adapter_ 族：协议回显准入/不可解码=协议错/未知 op 拒/restart 分块跨真进程共享 store（miss→跨进程 hit+身份恒定+进程峰值上报）/edit 恰一次（已编辑 deck+同 edit=0 匹配错）。证据：正式语料 5/5 case+4 控制（官测 5/5）；cte_adapter_ 3/3；lint ok |
 | [x] T-07 | work | T-06 | 正式runner六场景及两编辑硬门、raw报告/反控 | cte_turnaround_、V-09；AC-06。[✅ 已完成] 2026-10-23：code（见 git log）。worker `bench-turnaround` 子命令：fresh/同进程hot/restart(disk-hot 重开)/helper-body编辑/Meta集编辑/gc并发 ×N 真实驱动路径（native 另报、bench 内 off）；两编辑硬门（warm store、P95<1000ms）实测 4.3ms/1.5ms（30 样本）；raw JSONL 每行绑定其执行 deck 文本的 fnv hash（编辑场景 30 样本 30 个不同 hash）；summary 含逐场景 p95/max/样本数/值正确、worker 峰值与门裁定（失败 exit 5）。反控：`--gate-ms 0` 恒红（failure 命名 counter-control）；`--inject-delay-ms` 确定性注入前两个 body-edit 样本使 P95 位被占据→同一门机制真红。证据：cte_turnaround_ 3/3 |
-| [ ] T-08 | work | T-07 | 新verify全Scope、coverage/SD、docs/reports/plan817、边界审计 | acceptance V-01–11；AC-01–08；execution_done=8/10 |
+| [x] T-08 | work | T-07 | 新verify全Scope、coverage/SD、docs/reports/plan817、边界审计 | acceptance V-01–11；AC-01–08。[✅ 已完成] 2026-10-23：`scripts/verify-ac-cte-817.ps1` 全 Scope（first-case…closeout|all；resources 走 release、turnaround 再生 raw 报告）；`docs/reports/plan817/`：acceptance-matrix.md（V-01..11→scope/证据/提交+AC 绑定）、spec-delta.md（SD-01..05 合入终稿文本，canonical 落地归 merge）、turnaround.jsonl（30 样本 raw：编辑硬门 P95 4.6/1.5ms vs 1000ms 门、六场景全值对、worker 峰 3.0MB）；closeout 边界审计（V-11）绿：只读消费零 diff、注册按条目语义追加审计、reparse-point 扫描、覆盖矩阵；SCOPE acceptance 全链 PASS |
 | [ ] T-11 | work | D828及本计划其他work实现完成 | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-12 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage | AC-11；共同基线+新增能力兼容定向验收，未实测不勾；送审前不跑整档 |
 | [ ] T-09 | review | T-08冻结提交、T-11 完成 | 同树独立review/规范及遗漏审查，反控可重放 | AC-09；reviewed=10/11，merge pending |
 | [ ] T-10 | merge | T-09 pass | 冻结提交门禁/Spec/ledger/归档合入/批量到期判定/wt-guard后清理 | AC-10；实际11/11 |
@@ -237,6 +237,8 @@ V-01–11全部为必验区分性控制；独立expected不由AV/新freeze生成
 2026-10-23 stage:work；PLAN-817 r3；T-06 完成（6/11）| worktree `D:/autostack/.wt/lang-817/auto-lang` | branch `plan-817-dev` | base `6c92decfb` | code_commit `fa4f39c25` | task_ids：T-06 | evidence：§8 T-06 行内收据；官测 5/5、cte_adapter_ 3/3、lint ok | blockers：无 | merge-owned 门禁 pending | next:work（T-07：正式runner六场景及两编辑硬门、raw报告/反控；cte_turnaround_、V-09）
 
 2026-10-23 stage:work；PLAN-817 r3；T-07 完成（7/11）| branch `plan-817-dev` | task_ids：T-07 | evidence：§8 T-07 行内收据；cte_turnaround_ 3/3 | blockers：无 | merge-owned 门禁 pending | next:work（T-08：verify 脚本全 Scope/coverage/SD/docs/reports/plan817/边界审计）
+
+2026-10-23 stage:work；PLAN-817 r3；T-08 完成（8/11）| branch `plan-817-dev` | task_ids：T-08 | evidence：§8 T-08 行内收据；SCOPE acceptance/closeout PASS | blockers：无 | merge-owned 门禁 pending | next:work（T-11：828 snapshot 接入+V-12 四子case；完成后 execution_done=9/11 → review T-09）
 
 ## 10. 待澄清事项
 
