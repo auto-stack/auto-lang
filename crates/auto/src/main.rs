@@ -2858,7 +2858,14 @@ fn real_main(cli: Cli) -> Result<()> {
                 spec.stdin = auto_tool_execution::StdioPolicy::Inherit;
                 spec.stdout = auto_tool_execution::StdioPolicy::Inherit;
                 spec.stderr = auto_tool_execution::StdioPolicy::Inherit;
-                spec.windows_creation_flags = 0x0800_0000; // CREATE_NO_WINDOW
+                // F-816-B-R1-03：创建标志按平台消费——Windows 保持
+                // CREATE_NO_WINDOW（旧行为），Unix 分离 spawn 不设标志
+                //（旧代码在 Unix 本就不传 creation_flags；设施对非
+                // Windows 非零值保持 InvalidSpec 负控）。
+                #[cfg(windows)]
+                {
+                    spec.windows_creation_flags = 0x0800_0000; // CREATE_NO_WINDOW
+                }
                 auto_tool_execution::spawn_detached(&spec)
                     .map_err(|e| miette::miette!("Failed to start daemon: {}", e))?;
                 println!("AutoVM daemon started (pipe: {})", pipe_name);

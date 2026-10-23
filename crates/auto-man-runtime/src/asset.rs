@@ -28,7 +28,10 @@ impl Templates {
         let pac_name = path.file_name().unwrap().to_str().unwrap();
         for planned in plan_template_family(template, pac_name) {
             let sub_path = planned.output_rel;
-            println!("Copying {}", sub_path);
+            // F-816-B-R1-05：框架诊断/模板进度走 stderr——stdout 在
+            // `--format json` 下必须只承载机器输出（内容保持 803 冻结
+            // 臂原样，仅换流）。
+            eprintln!("Copying {}", sub_path);
             let (dir, _) = split_last(sub_path.as_ref(), '/');
             // 创建对应的文件夹
             create_dir_all(path.join(dir))?;
@@ -42,7 +45,7 @@ impl Templates {
             let auto_code = interp.eval_template("", &code);
             let result = auto_code.unwrap();
             let code = result.repr();
-            println!("code: {}", code);
+            eprintln!("code: {}", code);
             // 写入文件
             f.write_all(code.as_bytes())?;
         }

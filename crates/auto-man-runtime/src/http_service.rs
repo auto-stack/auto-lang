@@ -265,6 +265,11 @@ fn serve_rust(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, Stri
     let stdout = proc
         .take_stdout()
         .ok_or_else(|| "backend stdout was not piped".to_string())?;
+    // F-816-B-R1-02：reader 的首个 I/O 错误具名留存（旧 lines() Err=
+    // 静默 break，被当普通 EOF 吞掉）。
+    let reader_err: std::sync::Arc<std::sync::Mutex<Option<String>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(None));
+    let err_slot = reader_err.clone();
     let reader = std::thread::Builder::new()
         .name("service-rust-stdout".into())
         .spawn(move || {
@@ -272,39 +277,83 @@ fn serve_rust(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, Stri
             let reader = std::io::BufReader::new(stdout);
             let mut ready_sent = false;
             for line in reader.lines() {
-                let Ok(line) = line else { break };
-                println!("{line}");
-                if !ready_sent && line.starts_with("AUTO_SERVICE_READY ") {
-                    ready_sent = true;
-                    let _ = ready_tx.send(line);
+                match line {
+                    Ok(line) => {
+                        println!("{line}");
+                        if !ready_sent && line.starts_with("AUTO_SERVICE_READY ") {
+                            ready_sent = true;
+                            let _ = ready_tx.send(line);
+                        }
+                    }
+                    Err(e) => {
+                        *err_slot.lock().unwrap() = Some(format!(
+                            "backend stdout reader: {e}"
+                        ));
+                        break;
+                    }
                 }
             }
         })
         .map_err(|e| format!("failed to spawn backend stdout reader: {e}"))?;
 
-    let ready_window = std::time::Duration::from_secs(
-        std::env::var("AUTO_SERVICE_READY_TIMEOUT_SECS")
-            .ok()
-            .and_then(|v| v.trim().parse::<u64>().ok())
-            .unwrap_or(600),
-    );
+    // F-816-B-R1-02：reader 有界回收——调用前**先终止 owned 树**（根已
+    // 退出时，仍持 stdout 写端的后代在被终止前不会给 EOF；A 阶段"根
+    // 退出≠管道 EOF"的教训在新 service adapter 保持）。宽限尽=具名失败，
+    // panic=具名失败，读错=具名传播；不无限 join、不吞 panic。
+    let reclaim_reader = |reader: std::thread::JoinHandle<()>,
+                          grace: std::time::Duration|
+     -> Result<(), String> {
+        let deadline = std::time::Instant::now() + grace;
+        while !reader.is_finished() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        if !reader.is_finished() {
+            return Err(format!(
+                "backend stdout reader still running after {grace:?} (pipe holder in owned tree?)"
+            ));
+        }
+        match reader.join() {
+            Ok(()) => {}
+            Err(_) => return Err("backend stdout reader panicked".to_string()),
+        }
+        if let Some(e) = reader_err.lock().unwrap().take() {
+            return Err(e);
+        }
+        Ok(())
+    };
+    let tree_grace = std::time::Duration::from_secs(5);
+
+    // F-816-B-R1-07（budget 语义明确）：单位=秒；非法值不静默采用默认
+    // ——stderr 具名诊断后按默认 600s 继续（显式拒绝会让拼写错误把长
+    // 冷构建误杀；诊断让人可见）。
+    let budget_raw = std::env::var("AUTO_SERVICE_READY_TIMEOUT_SECS").ok();
+    let budget_secs = budget_raw.as_deref().and_then(|v| v.trim().parse::<u64>().ok());
+    if budget_raw.is_some() && budget_secs.is_none() {
+        eprintln!(
+            "warning: AUTO_SERVICE_READY_TIMEOUT_SECS={:?} is not a non-negative integer of seconds; using default 600s",
+            budget_raw.unwrap_or_default()
+        );
+    }
+    let ready_window = std::time::Duration::from_secs(budget_secs.unwrap_or(600));
     let ready = ready_rx.recv_timeout(ready_window);
     match ready {
         Ok(line) => println!("  ✓ Rust HTTP service ready ({line})"),
         Err(_) => {
-            // 未在窗口内就绪：取消 owned 树（bounded）并等待 reader 真停
-            // （EOF 随树终止到来），随后按失败源报告——不假 ready。
+            // 未在窗口内就绪：先取消 owned 树（终止仍持 stdout 的后代→
+            // EOF 确定性到达），再有界回收 reader（F-816-B-R1-02），随后
+            // 按失败源报告——不假 ready。
             let cancel = proc
-                .cancel_within(std::time::Duration::from_secs(5))
+                .cancel_within(tree_grace)
                 .map(|_| ())
                 .map_err(|e| format!("cancel after ready window: {e}"));
-            let _ = reader.join();
-            return match (proc.wait(), cancel) {
-                (Ok(status), _) if !status.success() => Err(format!(
+            let reader_reclaim = reclaim_reader(reader, tree_grace);
+            return match (proc.wait(), cancel, reader_reclaim) {
+                (Ok(status), _, _) if !status.success() => Err(format!(
                     "backend exited with {} before ready (bind conflict or startup failure)",
                     status.code().unwrap_or(1)
                 )),
-                (_, Err(e)) => Err(e),
+                (_, Err(e), _) => Err(e),
+                (_, _, Err(e)) => Err(e),
                 _ => Err(format!(
                     "Rust HTTP service did not report AUTO_SERVICE_READY within {ready_window:?}"
                 )),
@@ -336,21 +385,33 @@ fn serve_rust(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, Stri
             Err(e) => return Err(format!("backend wait failed: {e}")),
         }
     };
-    // reader 真停（树终止 → stdout 写端全关 → EOF；有界 join）。
-    let _ = reader.join();
+    // F-816-B-R1-02：根已退出≠树已空——先终止 owned 树内仍持 stdout
+    // 写端的后代（EOF 确定性到达），再有界回收 reader（panic/读错具名）。
+    let tree_reclaim = proc
+        .cancel_within(tree_grace)
+        .map(|_| ())
+        .map_err(|e| format!("cancel after backend exit: {e}"));
+    let reader_reclaim = reclaim_reader(reader, tree_grace);
     if status.success() {
+        tree_reclaim?;
+        reader_reclaim?;
         println!("  ✓ Rust HTTP service stopped cleanly");
-        Ok(0)
-    } else if terminate_installed && auto_tool_execution::terminate::requested() {
-        // 操作员终止路径的树取消：退出码来自我方终止，不计为服务失败。
-        println!("  ✓ Rust HTTP service stopped (terminate)");
-        Ok(0)
-    } else {
-        let code = status.code().unwrap_or(1);
-        Err(format!(
-            "backend exited with {code} — bind conflict or startup failure (see output above)"
-        ))
+        return Ok(0);
     }
+    if terminate_installed && auto_tool_execution::terminate::requested() {
+        // 操作员终止路径的树取消：退出码来自我方终止，不计为服务失败。
+        tree_reclaim?;
+        reader_reclaim?;
+        println!("  ✓ Rust HTTP service stopped (terminate)");
+        return Ok(0);
+    }
+    // 失败路径：回收错误具名带回，退出分类保持（后端退出码优先呈现）。
+    let _ = tree_reclaim;
+    let _ = reader_reclaim;
+    let code = status.code().unwrap_or(1);
+    Err(format!(
+        "backend exited with {code} — bind conflict or startup failure (see output above)"
+    ))
 }
 
 #[cfg(test)]

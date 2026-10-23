@@ -182,6 +182,9 @@ impl TrackedSpawn {
             deadline: None,
             tree_scope: TreeScope::ProcessTree,
             windows_cmd_shim: self.windows_cmd_shim,
+            // F-816-B-R1-01：结构体加法字段（spawn_detached 的 daemon
+            // 创建语义）同步本全字段构造点——owned 子进程不消费该标志。
+            windows_creation_flags: 0,
         }
     }
 }

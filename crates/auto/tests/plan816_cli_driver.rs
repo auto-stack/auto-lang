@@ -129,7 +129,9 @@ fn serve_daemon_and_req_roundtrip() {
     let _ = daemon.wait();
 }
 
-/// 有界 run：超时 kill 并按超时失败报告（防 req 对楔死目标悬挂）。
+/// 有界 run（F-816-B-R1-04）：stdout/stderr 由**并发排水线程**持续收
+/// 集（先等退出再读管道会被写满管道的子进程死锁）；超时 kill 并按超时
+/// 失败报告——所有失败出口都保证子进程收尾。
 fn run_bounded(
     args: &[&str],
     cwd: &Path,
@@ -147,35 +149,60 @@ fn run_bounded(
     let mut child = cmd
         .spawn()
         .unwrap_or_else(|e| panic!("spawn auto {:?}: {e}", args));
+    fn drain(mut r: std::process::ChildStdout) -> String {
+        let mut b = String::new();
+        let _ = r.read_to_string(&mut b);
+        b
+    }
+    fn drain_err(mut r: std::process::ChildStderr) -> String {
+        let mut b = String::new();
+        let _ = r.read_to_string(&mut b);
+        b
+    }
+    let out_handle = child
+        .stdout
+        .take()
+        .map(|r| std::thread::spawn(move || drain(r)));
+    let err_handle = child
+        .stderr
+        .take()
+        .map(|r| std::thread::spawn(move || drain_err(r)));
     let deadline = Instant::now() + limit;
-    loop {
+    let code = loop {
         match child.try_wait().expect("try_wait") {
-            Some(status) => {
-                let mut out = String::new();
-                let mut err = String::new();
-                if let Some(mut r) = child.stdout.take() {
-                    let _ = r.read_to_string(&mut out);
-                }
-                if let Some(mut r) = child.stderr.take() {
-                    let _ = r.read_to_string(&mut err);
-                }
-                return (status.code().unwrap_or(-1), out, err);
-            }
+            Some(status) => break status.code().unwrap_or(-1),
             None if Instant::now() >= deadline => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return (-1, String::new(), format!("timeout after {limit:?}"));
+                return (
+                    -1,
+                    out_handle.and_then(|h| h.join().ok()).unwrap_or_default(),
+                    format!("timeout after {limit:?}"),
+                );
             }
             None => std::thread::sleep(Duration::from_millis(50)),
         }
-    }
+    };
+    // 进程已退：排水线程随 EOF 结束，有界 join。
+    let out = out_handle
+        .and_then(|h| h.join().ok())
+        .unwrap_or_default();
+    let err = err_handle
+        .and_then(|h| h.join().ok())
+        .unwrap_or_default();
+    (code, out, err)
 }
 
-/// V-04：watch 就绪横幅 + 变更触发 SFC 再生（Vite HMR 的前置产物）+
-/// 进程终止退出（V-02 watch 变更切片的真 CLI 面）。
+/// V-04：watch 就绪横幅 + 变更触发 SFC 再生。F-816-B-R1-04 的区分性
+/// oracle：①不只看进度文本——**产物内容身份**（App.vue 必须含变更后的
+/// 文案，"保留旧字节/不再再生"的故障宿主必须红）；②阻塞读经行通道
+/// `recv_timeout` 包住（deadline 真正生效，read_line 不再裸阻塞）；
+/// ③所有失败出口先 kill 收尾再 panic（不残留子进程）。
 #[test]
 fn watch_regenerates_sfc_on_change() {
-    let proj = TempProj::new("watch", "name: \"wdriver\"\nrender: \"vue\"\n", APP);
+    let proj = TempProj::new("watch", "name: \"wdriver\"
+render: \"vue\"
+", APP);
     let mut watch = Command::new(AUTO)
         .args(["watch"])
         .current_dir(proj.path())
@@ -184,47 +211,93 @@ fn watch_regenerates_sfc_on_change() {
         .stderr(Stdio::null())
         .spawn()
         .expect("spawn watch");
-    let mut stdout = BufReader::new(watch.stdout.take().expect("piped stdout"));
-    let mut line = String::new();
-    let deadline = Instant::now() + Duration::from_secs(20);
-    let mut ready = false;
-    while Instant::now() < deadline {
-        line.clear();
-        if stdout.read_line(&mut line).unwrap_or(0) == 0 {
-            break;
+    // 行通道：reader 线程搬运，主循环 recv_timeout=真截止。
+    let (lines_tx, lines_rx) = std::sync::mpsc::channel::<String>();
+    let stdout = watch.stdout.take().expect("piped stdout");
+    let pump = std::thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        loop {
+            let mut line = String::new();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    if lines_tx.send(line).is_err() {
+                        break;
+                    }
+                }
+            }
         }
+    });
+    // 收尾 guard：任何失败出口先 kill 子进程（pump 经 Option 单次取用，
+    // 宏展开多处调用不重复 move）。
+    let mut pump = Some(pump);
+    let mut watch = Some(watch);
+    macro_rules! finish_watch {
+        () => {{
+            if let Some(mut w) = watch.take() {
+                let _ = w.kill();
+                let _ = w.wait();
+            }
+            if let Some(p) = pump.take() {
+                let _ = p.join();
+            }
+        }};
+    }
+    let recv_bounded = |limit: Duration| -> Option<String> {
+        lines_rx.recv_timeout(limit).ok()
+    };
+
+    let mut ready = false;
+    let deadline = Duration::from_secs(20);
+    while let Some(line) = recv_bounded(deadline) {
         if line.contains("Ready. Edit an .at file") {
             ready = true;
             break;
         }
     }
-    assert!(ready, "watch ready banner expected");
+    if !ready {
+        finish_watch!();
+        panic!("watch ready banner expected within 20s");
+    }
+    // 变更：文案 v1 → v2（内容身份的载体）。
     std::fs::write(
         proj.path().join("src/front/app.at"),
-        "widget App {\n    view {\n        col {\n            text \"driver v2\" {}\n        }\n    }\n}\n",
+        "widget App {
+    view {
+        col {
+            text \"driver v2 marker-9f3a\" {}
+        }
+    }
+}
+",
     )
     .unwrap();
     let mut regen = false;
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while Instant::now() < deadline {
-        line.clear();
-        if stdout.read_line(&mut line).unwrap_or(0) == 0 {
-            break;
-        }
-        if line.contains("SFC") && line.contains("app.at") {
+    let mut last = String::new();
+    while let Some(line) = recv_bounded(Duration::from_secs(20)) {
+        last = line;
+        if last.contains("SFC") && last.contains("app.at") {
             regen = true;
             break;
         }
     }
-    assert!(regen, "change must regenerate the SFC: last={line}");
-    assert!(
-        proj.path()
-            .join("gen/front/vue/src/components/App.vue")
-            .exists(),
-        "regenerated SFC artifact must exist"
-    );
-    let _ = watch.kill();
-    let _ = watch.wait();
+    if !regen {
+        finish_watch!();
+        panic!("change must regenerate the SFC: last={last}");
+    }
+    // 内容身份：再生产物必须携带变更后的文案——保留旧字节的故障在此红。
+    let sfc_path = proj.path().join("gen/front/vue/src/components/App.vue");
+    let sfc = std::fs::read_to_string(&sfc_path)
+        .unwrap_or_else(|e| {
+            finish_watch!();
+            panic!("regenerated SFC must exist at {}: {e}", sfc_path.display())
+        });
+    if !sfc.contains("driver v2 marker-9f3a") {
+        finish_watch!();
+        panic!("regenerated SFC must carry the changed text, got:
+{sfc}");
+    }
+    finish_watch!();
 }
 
 /// V-03/V-04：`auto gen` 经真实工具进程（I-TOOL generate_ui 五操作链）。
