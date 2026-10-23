@@ -680,6 +680,13 @@ fn generate_ark_project_with_project(
     project: ArkProject,
 ) -> AutoResult<()> {
     // Determine output directory
+    // PLAN-816 T-05 R2（F-R2-02/04）：显式 output 对全工程生成同样生效
+    //（覆盖工程上下文的默认落点——镜像 vscode；此前 full_project 分支
+    // 静默忽略 output_dir，选项被丢而产物落在默认布局）。
+    let mut project = project;
+    if let Some(out) = output_dir {
+        project.output_dir = out.to_path_buf();
+    }
     let output = output_dir.unwrap_or(&project.output_dir);
 
     if full_project || !project.exists() {

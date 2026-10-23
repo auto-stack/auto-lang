@@ -50,3 +50,7 @@ path = "src/bin/t04_discovery_host.rs"
 [[bin]]
 name = "t05-pump-probe"
 path = "src/bin/t05_pump_probe.rs"
+
+[[bin]]
+name = "t05-option-gate-host"
+path = "src/bin/t05_option_gate_host.rs"

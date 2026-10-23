@@ -955,11 +955,11 @@ fn generate_ui_reports_real_artifacts_with_progress() {
         50,
         ClientBody::GenerateUi {
             request: WireRequest(request),
-                output: None,
-                project: None,
-                delivery_root: None,
-                strict: None,
-            },
+            output: None,
+            project: None,
+            delivery_root: None,
+            strict: None,
+        },
     ));
     let (final_envelope, seen) = next_until(&mut tool, |e| {
         matches!(e.body, ServerBody::GenerateOk { .. })
@@ -1040,11 +1040,11 @@ fn generate_ui_rejects_unserved_render_before_side_effects() {
         52,
         ClientBody::GenerateUi {
             request: WireRequest(request),
-                output: None,
-                project: None,
-                delivery_root: None,
-                strict: None,
-            },
+            output: None,
+            project: None,
+            delivery_root: None,
+            strict: None,
+        },
     ));
     match parse_response(&tool.next_response()).body {
         ServerBody::Error { error } => {
@@ -1125,8 +1125,8 @@ fn run_ui_reports_real_failure_for_broken_source() {
         63,
         ClientBody::RunUi {
             request: WireRequest(request),
-                args: Vec::new(),
-            },
+            args: Vec::new(),
+        },
     ));
     let (envelope, _) = next_until(&mut tool, |e| {
         matches!(e.body, ServerBody::RunOk { .. }) || matches!(e.body, ServerBody::Error { .. })
@@ -1159,8 +1159,8 @@ fn run_ui_real_install_chain_then_honest_backend_failure() {
         70,
         ClientBody::RunUi {
             request: WireRequest(request),
-                args: Vec::new(),
-            },
+            args: Vec::new(),
+        },
     ));
     // Progress events stream while the real install child runs; the run
     // then fails honestly at the backend step (the fixture declares no
@@ -1220,8 +1220,8 @@ fn run_ui_single_flight_input_busy_then_cancel() {
         80,
         ClientBody::RunUi {
             request: WireRequest(request.clone()),
-                args: Vec::new(),
-            },
+            args: Vec::new(),
+        },
     ));
     let _ = next_until(&mut tool, |e| match &e.body {
         ServerBody::Event {
@@ -1234,8 +1234,8 @@ fn run_ui_single_flight_input_busy_then_cancel() {
         81,
         ClientBody::RunUi {
             request: WireRequest(request),
-                args: Vec::new(),
-            },
+            args: Vec::new(),
+        },
     ));
     match parse_response(&tool.next_response()).body {
         ServerBody::Error { error } => {
@@ -1345,8 +1345,8 @@ fn run_ui_vm_real_session_launched_input_quit_and_restart() {
         90,
         ClientBody::RunUi {
             request: WireRequest(request),
-                args: Vec::new(),
-            },
+            args: Vec::new(),
+        },
     ));
     let (launched, seen) = next_until(&mut tool, |e| {
         matches!(
@@ -1401,8 +1401,8 @@ fn run_ui_vm_real_session_launched_input_quit_and_restart() {
         92,
         ClientBody::RunUi {
             request: WireRequest(request2),
-                args: Vec::new(),
-            },
+            args: Vec::new(),
+        },
     ));
     let _ = next_until(&mut tool, |e| {
         matches!(
@@ -1516,11 +1516,11 @@ fn generate_ui_multi_profile_generates_every_declared_target() {
         60,
         ClientBody::GenerateUi {
             request: WireRequest(request),
-                output: None,
-                project: None,
-                delivery_root: None,
-                strict: None,
-            },
+            output: None,
+            project: None,
+            delivery_root: None,
+            strict: None,
+        },
     ));
     let (final_response, _) = next_until(&mut tool, |e| {
         matches!(e.body, ServerBody::GenerateOk { .. })
@@ -1586,11 +1586,11 @@ fn generate_ui_vscode_fields_come_from_request_not_disk_pac() {
         61,
         ClientBody::GenerateUi {
             request: WireRequest(request),
-                output: None,
-                project: None,
-                delivery_root: None,
-                strict: None,
-            },
+            output: None,
+            project: None,
+            delivery_root: None,
+            strict: None,
+        },
     ));
     let (final_response, _) = next_until(&mut tool, |e| {
         matches!(e.body, ServerBody::GenerateOk { .. })
@@ -1888,11 +1888,11 @@ fn build_ui_jet_reports_real_failure_and_missing_artifact() {
         62,
         ClientBody::GenerateUi {
             request: WireRequest(request.clone()),
-                output: None,
-                project: None,
-                delivery_root: None,
-                strict: None,
-            },
+            output: None,
+            project: None,
+            delivery_root: None,
+            strict: None,
+        },
     ));
     let (response, _) = next_until(&mut tool, |e| {
         matches!(e.body, ServerBody::GenerateOk { .. })
@@ -1924,8 +1924,8 @@ fn build_ui_jet_reports_real_failure_and_missing_artifact() {
         63,
         ClientBody::BuildUi {
             request: WireRequest(request.clone()),
-                strict: None,
-            },
+            strict: None,
+        },
     ));
     let (response, _) = next_until(&mut tool, |e| {
         matches!(e.body, ServerBody::BuildOk { .. }) || matches!(e.body, ServerBody::Error { .. })
@@ -1956,8 +1956,8 @@ fn build_ui_jet_reports_real_failure_and_missing_artifact() {
         64,
         ClientBody::BuildUi {
             request: WireRequest(request),
-                strict: None,
-            },
+            strict: None,
+        },
     ));
     let (response, _) = next_until(&mut tool, |e| {
         matches!(e.body, ServerBody::BuildOk { .. }) || matches!(e.body, ServerBody::Error { .. })
@@ -2021,11 +2021,11 @@ fn build_ui_cancel_terminates_owned_build_tree() {
         70,
         ClientBody::GenerateUi {
             request: WireRequest(request.clone()),
-                output: None,
-                project: None,
-                delivery_root: None,
-                strict: None,
-            },
+            output: None,
+            project: None,
+            delivery_root: None,
+            strict: None,
+        },
     ));
     let (response, _) = next_until(&mut tool, |e| {
         matches!(e.body, ServerBody::GenerateOk { .. })
@@ -2047,8 +2047,8 @@ fn build_ui_cancel_terminates_owned_build_tree() {
         71,
         ClientBody::BuildUi {
             request: WireRequest(request.clone()),
-                strict: None,
-            },
+            strict: None,
+        },
     ));
     // Wait until the sleeper has recorded its PID (the build reached the
     // wrapper and spawned the descendant).
@@ -2116,8 +2116,8 @@ fn build_ui_cancel_terminates_owned_build_tree() {
         74,
         ClientBody::BuildUi {
             request: WireRequest(request),
-                strict: None,
-            },
+            strict: None,
+        },
     ));
     let (response, _) = next_until(&mut tool, |e| {
         matches!(e.body, ServerBody::BuildOk { .. }) || matches!(e.body, ServerBody::Error { .. })

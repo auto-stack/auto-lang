@@ -33,8 +33,8 @@ pub mod version;
 
 pub use budget::{Budgets, DEFAULT_BUDGETS};
 pub use descriptor::{
-    Capability, LifecyclePolicy, ToolDescriptor, EXIT_CODE_FATAL_STREAM, EXIT_CODE_INTERNAL,
-    EXIT_CODE_OK,
+    op_options, Capability, LifecyclePolicy, ToolDescriptor, EXIT_CODE_FATAL_STREAM,
+    EXIT_CODE_INTERNAL, EXIT_CODE_OK,
 };
 pub use error::{ErrorKind, ToolError};
 pub use framing::{read_frame, write_frame, FrameError};

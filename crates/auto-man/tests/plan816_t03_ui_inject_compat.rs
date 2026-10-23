@@ -17,10 +17,10 @@ impl InjectedUiOps {
 }
 
 impl UiOps for InjectedUiOps {
-    fn vue_build(&self, _: &Path) -> AutoResult<()> {
+    fn vue_build(&self, _: &Path, _: &GenerationRequest) -> AutoResult<()> {
         Self::unavailable()
     }
-    fn vue_generate(&self, _: &Path) -> AutoResult<()> {
+    fn vue_generate(&self, _: &Path, _: &GenerationRequest) -> AutoResult<()> {
         Self::unavailable()
     }
     fn vue_generate_workspace(&self, _: &Path, _: &GenerationRequest) -> AutoResult<()> {
@@ -80,13 +80,19 @@ impl UiOps for InjectedUiOps {
     fn ark_run(&self, _: &Path, _: Vec<String>, _: &GenerationRequest) -> AutoResult<()> {
         Self::unavailable()
     }
-    fn vscode_generate(&self, _: &Path, _: Option<&Path>, _: bool) -> AutoResult<()> {
+    fn vscode_generate(
+        &self,
+        _: &Path,
+        _: Option<&Path>,
+        _: bool,
+        _: &GenerationRequest,
+    ) -> AutoResult<()> {
         Self::unavailable()
     }
-    fn vscode_build(&self, _: &Path) -> AutoResult<()> {
+    fn vscode_build(&self, _: &Path, _: &GenerationRequest) -> AutoResult<()> {
         Self::unavailable()
     }
-    fn vscode_run(&self, _: &Path, _: Vec<String>) -> AutoResult<()> {
+    fn vscode_run(&self, _: &Path, _: Vec<String>, _: &GenerationRequest) -> AutoResult<()> {
         Self::unavailable()
     }
     fn tauri_run(&self, _: &Path, _: Vec<String>, _: &GenerationRequest) -> AutoResult<()> {

@@ -129,11 +129,20 @@ pub fn generate_report_with(
             &format!("generate {profile}"),
         );
         generate_profile(&root, request, profile, options)?;
+        // F-816-T05-R2-02：走查锚点绑定**本次生成实际落点**。显式
+        // output 重定向时四个可重定向 profile（rust/jet/ark/vscode——
+        // vue/tauri 已在上臂具名拒绝）的产物都落在重定向目录本身；
+        // 旧聚合按默认布局计数会把真实产物报成 "0 files under <默认根>"
+        //（该默认根可能根本未创建）。
+        let anchors: Vec<PathBuf> = match options.output.as_deref() {
+            Some(out) => vec![out.to_path_buf()],
+            None => profile_output_dirs(&root, profile),
+        };
         // The walk anchor is each profile's REAL layout root (the same
         // constants the generators write to — never a guessed dir,
         // PLAN-815 R4-03 / F-815-T05-R4-03), deduped across profiles
         // (tauri shares gen/front/vue with a plain vue target).
-        for dir in profile_output_dirs(&root, profile) {
+        for dir in anchors {
             if !output_dirs.contains(&dir) {
                 output_dirs.push(dir);
             }

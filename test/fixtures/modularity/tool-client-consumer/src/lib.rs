@@ -264,16 +264,17 @@ fn run_input_interleave_and_pump_reclaim_are_clean() {
             stdout.contains("shutdown=Ok(Shutdown { kind: Success"),
             "[{mode}] {stdout}"
         );
-        let m = (|| {
-            let a = stdout.find("threads_before=")?;
-            let b = stdout.find("; threads_after=")?;
-            let before: u32 = stdout[a + 15..b].trim().parse().ok()?;
-            let c = stdout.find("threads_after=")?;
-            let after: u32 = stdout[c + 14..].trim().parse().ok()?;
-            Some((before, after))
-        })()
-        .unwrap_or_else(|| panic!("[{mode}] thread counters missing: {stdout}"));
-        assert_eq!(m.0, m.1, "[{mode}] pump must be reclaimed: {stdout}");
+        // F-816-T05-R2-03：探针单行 verdict（无 spawn 后新增持久线程 +
+        // ≥3 条客户端线程已退）——进程级线程计数含负载相关 OS 瞬态，
+        // 计数相等 oracle 在满载下假红（见探针内注记）。
+        let verdict = stdout
+            .lines()
+            .find(|l| l.starts_with("PROBE_VERDICT"))
+            .unwrap_or_else(|| panic!("[{mode}] probe verdict missing: {stdout}"));
+        assert!(
+            verdict.contains(" ok "),
+            "[{mode}] pump/client threads must be reclaimed: {stdout}"
+        );
         if mode == "input" {
             assert!(
                 stdout.contains("receipts=1"),
@@ -857,4 +858,310 @@ fn discovery_teardown_failures_are_named_not_ok() {
         }
         other => panic!("expected TeardownFailed, got {other}"),
     }
+}
+
+// ---- F-816-T05-R2-04：op 级执行选项协商（旧 v1 宿主负控 + 真工具广播）----
+
+#[cfg(test)]
+fn t05_gate_host_bin() -> std::path::PathBuf {
+    let exe = if cfg!(windows) {
+        "t05-option-gate-host.exe"
+    } else {
+        "t05-option-gate-host"
+    };
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target/debug")
+        .join(exe);
+    assert!(
+        path.exists(),
+        "t05-option-gate-host not found at {} — cargo build --manifest-path this fixture",
+        path.display()
+    );
+    path
+}
+
+/// 旧 v1 宿主（describe 无 options 广播，与升级前完整工具同形）：携带
+/// 执行选项的请求必须在**发送前**具名拒绝（零工作帧到达=零副作用）；
+/// 同一宿主上无选项基础请求照常工作（旧工具不一刀切拒绝）。
+#[test]
+fn option_gate_rejects_unadvertised_options_before_side_effects() {
+    let scratch = std::env::temp_dir().join(format!("p816-gate-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let marker = scratch.join("leak.marker");
+
+    let mut spec = ToolClientSpec::new(t05_gate_host_bin());
+    spec.env = vec![("T05_GATE_MARKER".into(), marker.clone().into_os_string())];
+    let mut client = ToolClient::spawn(spec).expect("spawn gate host");
+
+    // 基线钉住：宿主 describe 为 v1 形（能力项全部无 options 广播）。
+    let descriptor = client.describe().expect("describe from gate host");
+    assert!(
+        descriptor.capabilities.iter().all(|c| c.options.is_empty()),
+        "gate host must look exactly like a pre-upgrade v1 tool"
+    );
+
+    let base = scratch.join("proj");
+    std::fs::create_dir_all(base.join("src/front")).unwrap();
+    let request = sample_request(&base, None);
+
+    // 负控①：generate 携带 output——发送前具名拒绝。
+    let opts = auto_tool_client::GenerateUiOpts {
+        output: Some(scratch.join("out")),
+        ..Default::default()
+    };
+    let err = client
+        .generate_ui_opts(request.clone(), &opts)
+        .expect_err("output option must be rejected against v1 host");
+    match &err {
+        ClientError::UnsupportedOption {
+            option, operation, ..
+        } => {
+            assert_eq!(option, "output");
+            assert_eq!(*operation, "generate_ui");
+        }
+        other => panic!("expected UnsupportedOption, got {other:?}"),
+    }
+    // 负控②：build 显式 strict。
+    let err = client
+        .build_ui_opts(request.clone(), Some(true))
+        .expect_err("strict must be rejected against v1 host");
+    match &err {
+        ClientError::UnsupportedOption {
+            option, operation, ..
+        } => {
+            assert_eq!(option, "strict");
+            assert_eq!(*operation, "build_ui");
+        }
+        other => panic!("expected UnsupportedOption, got {other:?}"),
+    }
+    // 负控③：run 透传 args。
+    let err = client
+        .run_ui_opts(request.clone(), vec!["x".into()], false)
+        .expect_err("run args must be rejected against v1 host");
+    match &err {
+        ClientError::UnsupportedOption {
+            option, operation, ..
+        } => {
+            assert_eq!(option, "args");
+            assert_eq!(*operation, "run_ui");
+        }
+        other => panic!("expected UnsupportedOption, got {other:?}"),
+    }
+    // 零副作用：宿主未收到任何携带选项的工作帧。
+    assert!(
+        !marker.exists(),
+        "no option-carrying request may reach the host (side-effect window)"
+    );
+    // 正控：同一旧宿主上无选项基础请求照常成功。
+    client
+        .generate_ui(request)
+        .expect("basic request still works against v1 host")
+        .expect("basic generate succeeds");
+    assert!(!marker.exists(), "basic request is not a leak");
+
+    client.shutdown().expect("clean shutdown");
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// F-816-T05-R2-04 正控面：真实工具按操作广播兑现的执行选项（客户端
+/// 协商依据——广告缺席即拒绝；此测试钉住广播本身不回退）。
+#[test]
+fn real_tool_advertises_op_options_for_negotiation() {
+    let mut client = real_client();
+    let descriptor = client.describe().expect("describe real tool");
+    let generate = descriptor
+        .capability("generate_ui")
+        .expect("generate_ui capability");
+    for option in ["output", "project", "delivery_root", "strict"] {
+        assert!(
+            generate.honors(option),
+            "generate_ui must advertise {option}"
+        );
+    }
+    assert!(descriptor
+        .capability("build_ui")
+        .expect("build_ui capability")
+        .honors("strict"));
+    assert!(descriptor
+        .capability("run_ui")
+        .expect("run_ui capability")
+        .honors("args"));
+}
+
+// ---- F-816-T05-R2-02：生成报告绑定实际落点（真实工具进程 oracle）----
+
+#[cfg(test)]
+fn count_files_real(dir: &std::path::Path) -> u64 {
+    fn walk(dir: &std::path::Path, n: &mut u64) {
+        for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                walk(&p, n);
+            } else {
+                *n += 1;
+            }
+        }
+    }
+    let mut n = 0u64;
+    walk(dir, &mut n);
+    n
+}
+
+#[cfg(test)]
+fn render_project(base: &std::path::Path, render: &str) -> GenerationRequest {
+    std::fs::create_dir_all(base.join("src").join("front")).expect("front dir");
+    std::fs::write(
+        base.join("src").join("front").join("app.at"),
+        "widget App {
+    view {
+        col {
+            text \"report oracle\" {}
+        }
+    }
+}
+",
+    )
+    .expect("app.at");
+    let pac = base.join("pac.at");
+    let text = format!("name: \"report oracle\"\nrender: \"{render}\"\n");
+    std::fs::write(&pac, &text).expect("pac");
+    GenerationRequest::from_descriptor(
+        &parse_document(&text, SourceInfo::from_path(&pac)).expect("parse"),
+    )
+}
+
+/// F-816-T05-R2-02：显式 output 重定向下，报告 `output_root` = 重定向
+/// 目录本身、`files_written` = 对真实文件的走查计数（错误根/默认根不
+/// 被报成产物）。覆盖可重定向四 profile 同族（rust/jet/ark/vscode）。
+#[test]
+fn generate_report_binds_redirected_output_for_all_profiles() {
+    let mut client = real_client();
+    for profile in ["rust", "jet", "ark", "vscode"] {
+        let project = tempfile::tempdir().expect("project tempdir");
+        let out = tempfile::tempdir().expect("output tempdir");
+        let request = render_project(project.path(), profile);
+        let opts = auto_tool_client::GenerateUiOpts {
+            output: Some(out.path().to_path_buf()),
+            ..Default::default()
+        };
+        let report = client
+            .generate_ui_opts(request, &opts)
+            .unwrap_or_else(|e| panic!("{profile}: client error {e}"))
+            .unwrap_or_else(|e| panic!("{profile}: host rejected {e}"));
+        assert_eq!(
+            std::path::Path::new(&report.output_root),
+            out.path(),
+            "{profile}: report output_root must be the redirect dir"
+        );
+        let real = count_files_real(out.path());
+        assert!(
+            real > 0,
+            "{profile}: real artifacts must exist under redirect"
+        );
+        assert_eq!(
+            report.files_written, real,
+            "{profile}: files_written must equal the real walk count"
+        );
+    }
+    client.shutdown().expect("shutdown");
+}
+
+/// F-816-T05-R2-02（delivery 正控）：792 显式交付的报告同样绑定
+/// delivery 根与真实计数，delivery-manifest 真实存在。
+#[test]
+fn generate_report_binds_delivery_root() {
+    let project = tempfile::tempdir().expect("project tempdir");
+    let delivery = tempfile::tempdir().expect("delivery tempdir");
+    let request = render_project(project.path(), "rust");
+    let opts = auto_tool_client::GenerateUiOpts {
+        delivery_root: Some(delivery.path().to_path_buf()),
+        ..Default::default()
+    };
+    let mut client = real_client();
+    let report = client
+        .generate_ui_opts(request, &opts)
+        .expect("client round trip")
+        .expect("delivery generates");
+    assert_eq!(
+        std::path::Path::new(&report.output_root),
+        delivery.path(),
+        "delivery report root must be the delivery dir"
+    );
+    let real = count_files_real(delivery.path());
+    assert!(real > 0, "delivery bundle must hold real files");
+    assert_eq!(report.files_written, real);
+    assert!(
+        delivery.path().join("delivery-manifest.json").exists(),
+        "delivery manifest must exist"
+    );
+    client.shutdown().expect("shutdown");
+}
+
+/// F-816-T05-R2-02（错误根不被报成成功产物）：vue 携带显式 output 是
+/// 具名拒绝（内层 ToolError），不返回任何成功报告。
+#[test]
+fn vue_explicit_output_is_rejected_not_reported() {
+    let project = tempfile::tempdir().expect("project tempdir");
+    let out = tempfile::tempdir().expect("output tempdir");
+    let request = render_project(project.path(), "vue");
+    let opts = auto_tool_client::GenerateUiOpts {
+        output: Some(out.path().to_path_buf()),
+        ..Default::default()
+    };
+    let mut client = real_client();
+    let err = client
+        .generate_ui_opts(request, &opts)
+        .expect("client round trip")
+        .expect_err("vue+output must be rejected by the host");
+    assert!(err.to_string().contains("output"), "{err}");
+    client.shutdown().expect("shutdown");
+}
+
+/// F-816-T05-R2-04 端到端核实（relay-lie 宿主）：describe 广播选项、
+/// 回"成功"但落点在默认布局——同构旧 wire 中间人剥掉请求选项。客户端
+/// 落点核对必须具名 `OptionIgnored`（外层 ClientError），不把被丢选项
+/// 的产物当成功。
+#[test]
+fn option_ignored_by_lying_relay_is_named_failure() {
+    let scratch = std::env::temp_dir().join(format!("p816-lie-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let marker = scratch.join("leak.marker");
+
+    let mut spec = ToolClientSpec::new(t05_gate_host_bin());
+    spec.env = vec![
+        ("T05_GATE_MARKER".into(), marker.clone().into_os_string()),
+        ("T05_GATE_ADVERTISE".into(), "1".into()),
+    ];
+    let mut client = ToolClient::spawn(spec).expect("spawn relay-lie host");
+
+    // 基线：该宿主 describe 广播 generate_ui 选项（协商放行的前提）。
+    let descriptor = client.describe().expect("describe");
+    assert!(
+        descriptor
+            .capability("generate_ui")
+            .expect("generate_ui")
+            .honors("output"),
+        "relay-lie host must advertise output"
+    );
+
+    let base = scratch.join("proj");
+    std::fs::create_dir_all(base.join("src/front")).unwrap();
+    let request = sample_request(&base, None);
+    let opts = auto_tool_client::GenerateUiOpts {
+        output: Some(scratch.join("requested-out")),
+        ..Default::default()
+    };
+    match client.generate_ui_opts(request, &opts) {
+        Err(ClientError::OptionIgnored {
+            option, reported, ..
+        }) => {
+            assert_eq!(option, "output");
+            assert_eq!(reported, "C:/lie/default-layout-root");
+        }
+        other => panic!("expected OptionIgnored, got {other:?}"),
+    }
+    client.shutdown().expect("shutdown");
+    let _ = std::fs::remove_dir_all(&scratch);
 }

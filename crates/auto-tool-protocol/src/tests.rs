@@ -12,7 +12,7 @@ use crate::report::{
     Finding, GenerationReport, RequestSummary, RunOutcome, RunReport, Severity,
     ValidateProjectReport,
 };
-use crate::{Capability, LifecyclePolicy, ToolDescriptor, PROTOCOL_VERSION};
+use crate::{op_options, Capability, LifecyclePolicy, ToolDescriptor, PROTOCOL_VERSION};
 use auto_project_model::descriptor::SourceInfo;
 use auto_project_model::{parse_document, GenerationRequest};
 use serde_json::{json, Value as Json};
@@ -279,6 +279,44 @@ fn descriptor_offers_and_lifecycle_contract() {
     let lifecycle = descriptor.lifecycle;
     assert!(lifecycle.shutdown_on_eof && lifecycle.logs_on_stderr_only);
     assert_eq!(lifecycle.exit_codes.len(), 3);
+}
+
+/// F-816-T05-R2-04：`options` 是 serde 加法字段——旧 v1 描述符（无该
+/// 字段）反序列化为空 options（v1 基线=不兑现任何执行选项），带 options
+/// 的描述符往返保序去译码。
+#[test]
+fn capability_options_wire_is_additive_v1_baseline() {
+    let v1_json = serde_json::json!({
+        "operation": "generate_ui",
+        "cancellable": false,
+        "interactive": false
+    });
+    let v1: Capability = serde_json::from_value(v1_json).expect("v1 capability decodes");
+    assert!(v1.options.is_empty(), "absent options = v1 baseline");
+    assert!(!v1.honors(op_options::OUTPUT));
+
+    let advertised = Capability::with_options(
+        "generate_ui",
+        false,
+        false,
+        &[
+            op_options::OUTPUT,
+            op_options::PROJECT,
+            op_options::DELIVERY_ROOT,
+            op_options::STRICT,
+        ],
+    );
+    let round: Capability =
+        serde_json::from_value(serde_json::to_value(&advertised).unwrap()).unwrap();
+    assert_eq!(round, advertised);
+    for option in [
+        op_options::OUTPUT,
+        op_options::PROJECT,
+        op_options::DELIVERY_ROOT,
+        op_options::STRICT,
+    ] {
+        assert!(round.honors(option), "advertised {option}");
+    }
 }
 
 #[test]

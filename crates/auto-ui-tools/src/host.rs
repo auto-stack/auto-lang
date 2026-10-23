@@ -39,7 +39,7 @@ use auto_tool_protocol::message::{
     ClientBody, ClientEnvelope, ServerBody, ServerEnvelope, ToolEvent, WireRequest,
 };
 use auto_tool_protocol::{
-    Capability, LifecyclePolicy, ToolDescriptor, ToolError, EXIT_CODE_FATAL_STREAM,
+    op_options, Capability, LifecyclePolicy, ToolDescriptor, ToolError, EXIT_CODE_FATAL_STREAM,
     EXIT_CODE_INTERNAL, EXIT_CODE_OK, PROTOCOL_VERSION,
 };
 
@@ -71,17 +71,22 @@ pub fn tool_descriptor() -> ToolDescriptor {
         capabilities: vec![
             Capability::non_interactive("describe", false),
             Capability::non_interactive("validate_project", false),
-            Capability::non_interactive("generate_ui", false),
-            Capability {
-                operation: "build_ui".to_string(),
-                cancellable: true,
-                interactive: false,
-            },
-            Capability {
-                operation: "run_ui".to_string(),
-                cancellable: true,
-                interactive: true,
-            },
+            // F-816-T05-R2-04：generate_ui/build_ui/run_ui 广播各自兑现
+            // 的 op 级执行选项（op_options 单源）——消费方据此对旧 v1
+            // 工具（无此广播）携带选项的请求在副作用前具名拒绝。
+            Capability::with_options(
+                "generate_ui",
+                false,
+                false,
+                &[
+                    op_options::OUTPUT,
+                    op_options::PROJECT,
+                    op_options::DELIVERY_ROOT,
+                    op_options::STRICT,
+                ],
+            ),
+            Capability::with_options("build_ui", true, false, &[op_options::STRICT]),
+            Capability::with_options("run_ui", true, true, &[op_options::ARGS]),
         ],
         lifecycle: LifecyclePolicy::contract(),
     }

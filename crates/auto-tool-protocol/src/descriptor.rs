@@ -22,6 +22,29 @@ pub struct Capability {
     /// Whether the operation may read interactive input from stdin beyond
     /// framed protocol messages.
     pub interactive: bool,
+    /// PLAN-816 T-05 R2（F-816-T05-R2-04）：该操作**兑现**的 op 级执行
+    /// 选项名（与 [`crate::message::ClientBody`] 各操作的
+    /// `#[serde(default)]` 字段名一致，见 [`op_options`]）。缺席/空 =
+    /// v1 基线（无执行选项语义）。消费方在携带这些选项发请求前按本
+    /// 广播核对：未广播即在**任何副作用前**具名拒绝——serde 对未知
+    /// 字段的静默忽略是解码兼容，不等于语义兑现（旧 v1 工具会丢掉
+    /// `output`/`strict` 等选项继续生成）。
+    #[serde(default)]
+    pub options: Vec<String>,
+}
+
+/// op 级执行选项名单源（F-816-T05-R2-04 协商载体；客户端与工具共用）。
+pub mod op_options {
+    /// `generate_ui`：显式输出目录（旧 `gen -o`；rust/jet/ark/vscode）。
+    pub const OUTPUT: &str = "output";
+    /// `generate_ui`：工程脚手架开关（旧 `gen -p`）。
+    pub const PROJECT: &str = "project";
+    /// `generate_ui`：792 显式交付模式根（仅 rust）。
+    pub const DELIVERY_ROOT: &str = "delivery_root";
+    /// `generate_ui`/`build_ui`：严格校验信号（旧 build 默认严格）。
+    pub const STRICT: &str = "strict";
+    /// `run_ui`：命令行透传参数（旧 `auto run -- <args>`）。
+    pub const ARGS: &str = "args";
 }
 
 impl Capability {
@@ -30,7 +53,29 @@ impl Capability {
             operation: operation.into(),
             cancellable,
             interactive: false,
+            options: Vec::new(),
         }
+    }
+
+    /// 带兑现的 op 级执行选项的能力项（F-816-T05-R2-04 广播面）。
+    pub fn with_options(
+        operation: impl Into<String>,
+        cancellable: bool,
+        interactive: bool,
+        options: &[&str],
+    ) -> Self {
+        Self {
+            operation: operation.into(),
+            cancellable,
+            interactive,
+            options: options.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    /// True when this operation honors the named op-level execution option
+    /// ([`op_options`] names; absent = v1 baseline without the semantics).
+    pub fn honors(&self, option: &str) -> bool {
+        self.options.iter().any(|o| o == option)
     }
 }
 
@@ -82,5 +127,11 @@ impl ToolDescriptor {
     /// True when `operation` is listed in the capabilities.
     pub fn offers(&self, operation: &str) -> bool {
         self.capabilities.iter().any(|c| c.operation == operation)
+    }
+
+    /// The capability entry for `operation`（F-816-T05-R2-04 选项协商
+    /// 查询面；None = 未提供该操作）。
+    pub fn capability(&self, operation: &str) -> Option<&Capability> {
+        self.capabilities.iter().find(|c| c.operation == operation)
     }
 }

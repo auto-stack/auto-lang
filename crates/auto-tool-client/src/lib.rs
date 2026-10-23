@@ -44,7 +44,7 @@ use auto_tool_protocol::message::{
 };
 use auto_tool_protocol::report::BuildReport;
 use auto_tool_protocol::{
-    Budgets, GenerationReport, RunReport, ToolDescriptor, ToolError, ToolEvent,
+    op_options, Budgets, GenerationReport, RunReport, ToolDescriptor, ToolError, ToolEvent,
     ValidateProjectReport, PROTOCOL_VERSION,
 };
 
@@ -194,6 +194,31 @@ pub enum ClientError {
     Panicked {
         which: &'static str,
     },
+    /// 交互 stdin 泵在回收宽限内未确认真停（F-816-T05-R2-03）：取消已
+    /// 按切片重发仍未见线程结束；泵句柄保留在客户端槽内（residue），
+    /// shutdown 会再有界重试——返回本错误时**不**声称泵已回收。
+    PumpStuck {
+        after: Duration,
+    },
+    /// 请求携带的 op 级执行选项未被宿主 describe 广播兑现
+    /// （F-816-T05-R2-04）：在任何帧写出（=任何副作用）之前拒绝。
+    /// 旧 v1 工具对新增字段是 serde 静默忽略——"可解码"不等于"已执行"，
+    /// 不能把选项被丢掉的生成当成功。
+    UnsupportedOption {
+        operation: &'static str,
+        option: String,
+        tool_version: String,
+    },
+    /// 宿主广播了选项、也回了成功报告，但**报告落点与请求选项不符**
+    /// （F-816-T05-R2-04 端到端核实）：典型为旧 wire 中间人剥掉请求
+    /// 选项后工具按默认布局生成——describe 广播拦不住说谎的中继，
+    /// 落点核对是最后一道保险，具名失败而非静默接受被丢选项的产物。
+    OptionIgnored {
+        operation: &'static str,
+        option: &'static str,
+        requested: String,
+        reported: String,
+    },
     /// 连接已因先前的超时/控制流违规/writer 失败终止，后续请求不可用
     /// （首个终态错误已由触发调用返回）。
     Broken(BrokenReason),
@@ -241,6 +266,31 @@ impl std::fmt::Display for ClientError {
             ClientError::Panicked { which } => {
                 write!(f, "{which} panicked; connection state is unreliable")
             }
+            ClientError::PumpStuck { after } => write!(
+                f,
+                "interactive stdin pump did not stop within {after:?} despite \
+                 re-issued cancellations; a residue reader may remain"
+            ),
+            ClientError::UnsupportedOption {
+                operation,
+                option,
+                tool_version,
+            } => write!(
+                f,
+                "tool (version {tool_version}) does not advertise `{operation}` option \
+                 `{option}`; request NOT sent — upgrade the tool or drop the option \
+                 (an old v1 host silently ignores unknown options)"
+            ),
+            ClientError::OptionIgnored {
+                operation,
+                option,
+                requested,
+                reported,
+            } => write!(
+                f,
+                "`{operation}` option `{option}` was silently ignored: requested \
+                 {requested} but the report says artifacts landed under {reported}"
+            ),
             ClientError::Broken(BrokenReason::TimedOut) => {
                 write!(f, "client connection broken by a prior request timeout")
             }
@@ -306,6 +356,33 @@ struct PumpHandle {
     join: Option<std::thread::JoinHandle<()>>,
 }
 
+/// 单个泵句柄的有界回收（`ToolClient::reclaim_pump` 的可测内核，
+/// F-816-T05-R2-03）：置停 → 等待期间每 5ms **重发**取消（覆盖就绪
+/// 判定后才进入内核的挂起读——单发取消对"取消先于读入核"的时序无效）
+/// → 真停后 join 收割。宽限尽=句柄放回 `pump.join` 并返回具名
+/// `PumpStuck`（调用方保留归属供后续重试）；join panic=具名 `Panicked`。
+fn reclaim_pump_handle(pump: &mut PumpHandle, grace: Duration) -> Result<(), ClientError> {
+    pump.stop.store(true, Ordering::Relaxed);
+    let Some(join) = pump.join.take() else {
+        return Ok(()); // 无线程归属（先前已收割）
+    };
+    let deadline = std::time::Instant::now() + grace;
+    while !join.is_finished() && std::time::Instant::now() < deadline {
+        pump_io::cancel_stdin_read();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    if !join.is_finished() {
+        pump.join = Some(join); // residue：归属保留，不静默丢线程
+        return Err(ClientError::PumpStuck { after: grace });
+    }
+    match join.join() {
+        Ok(()) => Ok(()),
+        Err(_) => Err(ClientError::Panicked {
+            which: "stdin pump",
+        }),
+    }
+}
+
 #[cfg(windows)]
 mod pump_io {
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -343,6 +420,12 @@ mod pump_io {
                 }
                 if WaitForSingleObject(h, 50) != 0 {
                     continue; // timeout slice — stop re-checked
+                }
+                // 就绪→入核前复查停止（F-816-T05-R2-03：就绪判定与
+                // ReadFile 入核之间的窗口内落地的停止不再消费输入；窗口
+                // 尾部（复查后、入核前）由回收侧重发取消覆盖）。
+                if stop.load(Ordering::Relaxed) {
+                    break;
                 }
                 let mut n = 0u32;
                 if ReadFile(
@@ -397,6 +480,22 @@ mod pump_io {
     use std::sync::mpsc::Sender;
     use std::sync::Arc;
 
+    // 零依赖 FFI（F-816-T05-R2-01：先前直接引用 libc:: 而本 crate 无该
+    // 依赖，Linux target check E0433。镜像 auto-tool-execution/unix_pg
+    // 的显式 extern 声明风格；ABI 按 glibc/musl 与 macOS 的共同子集——
+    // nfds_t=unsigned long(64 位平台 u64)、events/revents=short)。
+    #[repr(C)]
+    struct PollFd {
+        fd: i32,
+        events: i16,
+        revents: i16,
+    }
+    const POLLIN: i16 = 0x001;
+    extern "C" {
+        fn poll(fds: *mut PollFd, nfds: u64, timeout_ms: i32) -> i32;
+        fn read(fd: i32, buf: *mut u8, count: usize) -> isize;
+    }
+
     /// 就绪分片读（poll(2) 50ms 切片——与 Windows WaitForSingleObject
     /// 同语义：停止标志在切片间恒可观察，非 owned 持读者不能把泵钉死
     /// 在阻塞读上；镜像 815 R4 的双平台承诺）。
@@ -407,9 +506,9 @@ mod pump_io {
         stop: Arc<AtomicBool>,
     ) {
         use auto_tool_protocol::message::{ClientBody, ClientEnvelope};
-        let mut pollfd = libc::pollfd {
+        let mut pollfd = PollFd {
             fd: 0,
-            events: libc::POLLIN,
+            events: POLLIN,
             revents: 0,
         };
         let mut line_buf: Vec<u8> = Vec::new();
@@ -418,11 +517,16 @@ mod pump_io {
             if stop.load(Ordering::Relaxed) {
                 break;
             }
-            let r = unsafe { libc::poll(&mut pollfd, 1, 50) };
+            let r = unsafe { poll(&mut pollfd, 1, 50) };
             if r <= 0 {
                 continue; // timeout / signal — stop re-checked
             }
-            let n = unsafe { libc::read(0, chunk.as_mut_ptr() as *mut _, chunk.len()) };
+            // 就绪→入核前复查停止（F-816-T05-R2-03：就绪判定与读入核
+            // 之间的窗口内落地的停止不再消费后续输入）。
+            if stop.load(Ordering::Relaxed) {
+                break;
+            }
+            let n = unsafe { read(0, chunk.as_mut_ptr(), chunk.len()) };
             if n <= 0 {
                 break; // EOF / error
             }
@@ -478,6 +582,9 @@ pub struct ToolClient {
     /// 交互 stdin 泵归属（F-816-T05-R1-03）：run 终态/关闭路径统一
     /// 有界回收（置停+取消挂起读+join），不残留读取者。
     pump: Option<PumpHandle>,
+    /// 宿主 describe 缓存（F-816-T05-R2-04 选项协商：携带 op 级执行
+    /// 选项的请求发送前按此核对工具广播；None = 尚未查询）。
+    descriptor: Option<ToolDescriptor>,
     spec: ToolClientSpec,
     broken: Option<BrokenReason>,
     collected: bool,
@@ -627,6 +734,7 @@ impl ToolClient {
             parked_events: Vec::new(),
             parked_receipts: Vec::new(),
             pump: None,
+            descriptor: None,
             spec,
             broken: None,
             collected: false,
@@ -655,6 +763,50 @@ impl ToolClient {
                 reason: format!("unexpected reply to describe: {other:?}"),
             }),
         }
+    }
+
+    /// 取缓存的宿主描述（F-816-T05-R2-04：无缓存时先真实 describe 一次
+    /// 并缓存——同一连接上后续选项核对零额外往返）。
+    fn ensure_descriptor(&mut self) -> Result<ToolDescriptor, ClientError> {
+        if let Some(d) = &self.descriptor {
+            return Ok(d.clone());
+        }
+        let d = self.describe()?;
+        self.descriptor = Some(d.clone());
+        Ok(d)
+    }
+
+    /// op 级执行选项协商（F-816-T05-R2-04）：`requested` 中任一选项未被
+    /// 宿主能力广播兑现即在**任何帧写出前**具名拒绝——旧 v1 工具对
+    /// 新增字段静默忽略（serde 兼容），若放行会丢掉 `output`/`strict`
+    /// 等语义继续产生副作用。能力项缺失（操作未提供）同样拒绝。
+    fn require_op_options(
+        &mut self,
+        operation: &'static str,
+        requested: &[&str],
+    ) -> Result<(), ClientError> {
+        if requested.is_empty() {
+            return Ok(());
+        }
+        let descriptor = self.ensure_descriptor()?;
+        let capability =
+            descriptor
+                .capability(operation)
+                .ok_or_else(|| ClientError::UnsupportedOption {
+                    operation,
+                    option: requested[0].to_string(),
+                    tool_version: descriptor.tool_version.clone(),
+                })?;
+        for option in requested {
+            if !capability.honors(option) {
+                return Err(ClientError::UnsupportedOption {
+                    operation,
+                    option: option.to_string(),
+                    tool_version: descriptor.tool_version.clone(),
+                });
+            }
+        }
+        Ok(())
     }
 
     /// 校验一个 I-PROJECT 请求（M815-A 第二个窄能力）。宿主的结构化
@@ -715,6 +867,22 @@ impl ToolClient {
         request: auto_project_model::GenerationRequest,
         opts: &GenerateUiOpts,
     ) -> Result<Result<GenerationReport, ToolError>, ClientError> {
+        // F-816-T05-R2-04：携带的执行选项先经 describe 广播协商——任何
+        // 帧写出（=副作用）之前对未广播选项具名拒绝。
+        let mut requested: Vec<&str> = Vec::new();
+        if opts.output.is_some() {
+            requested.push(op_options::OUTPUT);
+        }
+        if opts.project.is_some() {
+            requested.push(op_options::PROJECT);
+        }
+        if opts.delivery_root.is_some() {
+            requested.push(op_options::DELIVERY_ROOT);
+        }
+        if opts.strict.is_some() {
+            requested.push(op_options::STRICT);
+        }
+        self.require_op_options("generate_ui", &requested)?;
         match self.round_trip_park(
             self.spec.protocol_version,
             ClientBody::GenerateUi {
@@ -726,7 +894,32 @@ impl ToolClient {
             },
             false,
         )? {
-            Reply::Other(ServerBody::GenerateOk { report }) => Ok(Ok(report)),
+            Reply::Other(ServerBody::GenerateOk { report }) => {
+                // F-816-T05-R2-04 端到端核实：显式 output/delivery_root 的
+                // 成功报告必须落在请求落点（R2-02 修复后真实工具保证该
+                // 不变量；不符=选项被中间人/宿主静默丢弃，具名失败）。
+                if let Some(out) = &opts.output {
+                    if std::path::Path::new(&report.output_root) != out.as_path() {
+                        return Err(ClientError::OptionIgnored {
+                            operation: "generate_ui",
+                            option: op_options::OUTPUT,
+                            requested: out.display().to_string(),
+                            reported: report.output_root.clone(),
+                        });
+                    }
+                }
+                if let Some(root) = &opts.delivery_root {
+                    if std::path::Path::new(&report.output_root) != root.as_path() {
+                        return Err(ClientError::OptionIgnored {
+                            operation: "generate_ui",
+                            option: op_options::DELIVERY_ROOT,
+                            requested: root.display().to_string(),
+                            reported: report.output_root.clone(),
+                        });
+                    }
+                }
+                Ok(Ok(report))
+            }
             Reply::Host(e) => Ok(Err(e)),
             other => Err(ClientError::MalformedReply {
                 reason: format!("unexpected reply to generate_ui: {other:?}"),
@@ -749,6 +942,11 @@ impl ToolClient {
         request: auto_project_model::GenerationRequest,
         strict: Option<bool>,
     ) -> Result<Result<BuildReport, ToolError>, ClientError> {
+        // F-816-T05-R2-04：显式 strict 信号先协商（旧 v1 工具会静默丢
+        // 严格校验继续生成——副作用前具名拒绝）。
+        if strict.is_some() {
+            self.require_op_options("build_ui", &[op_options::STRICT])?;
+        }
         match self.round_trip_park(
             self.spec.protocol_version,
             ClientBody::BuildUi {
@@ -791,6 +989,11 @@ impl ToolClient {
         args: Vec<String>,
         forward_stdin: bool,
     ) -> Result<Result<RunReport, ToolError>, ClientError> {
+        // F-816-T05-R2-04：透传参数先协商（旧 v1 工具会静默丢 args 运
+        // 行——副作用前具名拒绝）。
+        if !args.is_empty() {
+            self.require_op_options("run_ui", &[op_options::ARGS])?;
+        }
         if forward_stdin {
             self.spawn_stdin_pump()?;
         }
@@ -811,9 +1014,13 @@ impl ToolClient {
             },
             Err(e) => Err(e),
         };
-        // F-816-T05-R1-03：泵有界回收（置停+取消挂起读+join）先于返回。
-        self.reclaim_pump();
-        result
+        // F-816-T05-R1-03/R2-03：泵有界回收（置停+重发取消+真停 join）
+        // 先于返回；回收失败具名传播——不拿运行成功掩盖残留读者。
+        let reclaim = self.reclaim_pump();
+        match (result, reclaim) {
+            (r, Ok(())) => r,
+            (_, Err(e)) => Err(e),
+        }
     }
 
     /// 显式 Input 发送（协议控制消息）：转发原始字节到具名操作的交互
@@ -865,26 +1072,23 @@ impl ToolClient {
         Ok(())
     }
 
-    /// 泵的有界回收：置停止 → 取消挂起读（Windows CancelIoEx；Unix
-    /// poll 切片天然可停）→ 有界 join（宽限=shutdown_timeout 与
-    /// TEARDOWN_GRACE 取小）。join 内线程退出即归还其 jobs 克隆。
-    fn reclaim_pump(&mut self) {
+    /// 泵的有界回收（F-816-T05-R1-03/R2-03）：置停 → **切片重发取消直至
+    /// 线程真停**（覆盖"取消先于 ReadFile 入核、之后才进入的挂起读"窗口，
+    /// 镜像设施 F-R3-02 的凭证重发语义）→ join 收割。宽限尽线程未停 =
+    /// 具名 [`ClientError::PumpStuck`]，**句柄保留在槽内**（residue——
+    /// 后续 shutdown 再有界重试，不因槽空误判已处理）；join panic = 具名
+    /// [`ClientError::Panicked`]。
+    fn reclaim_pump(&mut self) -> Result<(), ClientError> {
+        let grace = self.spec.shutdown_timeout.min(TEARDOWN_GRACE);
         let Some(mut pump) = self.pump.take() else {
-            return;
+            return Ok(());
         };
-        pump.stop.store(true, Ordering::Relaxed);
-        pump_io::cancel_stdin_read();
-        if let Some(join) = pump.join.take() {
-            let grace = self.spec.shutdown_timeout.min(TEARDOWN_GRACE);
-            let deadline = std::time::Instant::now() + grace;
-            // 有界 join（stable API：is_finished 轮询 + 到期即弃句柄——
-            // 句柄 drop 不 detach 线程，但宽限尽即具名暴露由调用语境
-            // 承担；正常路径（管道就绪读/取消读）线程先于宽限退出）。
-            while !join.is_finished() && std::time::Instant::now() < deadline {
-                std::thread::sleep(Duration::from_millis(5));
-            }
-            if join.is_finished() {
-                let _ = join.join();
+        match reclaim_pump_handle(&mut pump, grace) {
+            Ok(()) => Ok(()), // 已 join 收割——槽保持空
+            Err(e) => {
+                // residue：归属不静默丢弃（F-816-T05-R2-03），错误具名传播。
+                self.pump = Some(pump);
+                Err(e)
             }
         }
     }
@@ -1082,8 +1286,9 @@ impl ToolClient {
     /// owned 树（解除任何管道阻塞）、请求 reader 停止并确认**真停**；随后
     /// 取消失败、stderr 读错、缓冲坏帧具名传播，全部完成才返回 Timeout。
     fn abort_for_timeout(&mut self, id: u64, limit: Duration) -> ClientError {
-        // 泵先行回收（其 jobs 克隆消亡——writer 终止不再被保活）。
-        self.reclaim_pump();
+        // 泵先行回收（其 jobs 克隆消亡——writer 终止不再被保活）；
+        // 回收失败具名进入聚合（取消失败 > 泵残留 > 收尾 drain > Timeout）。
+        let pump_err = self.reclaim_pump().err();
         self.writer_stop.store(true, Ordering::Relaxed);
         drop(self.jobs_tx.take());
         if let Some(h) = &self.writer_cancel {
@@ -1100,6 +1305,9 @@ impl ToolClient {
                 stage: "cancel after timeout",
                 source: Box::new(source),
             };
+        }
+        if let Some(e) = pump_err {
+            return e;
         }
         if let Err(e) = drained {
             return e;
@@ -1243,11 +1451,13 @@ impl ToolClient {
     /// 认真停；宽限到期则 cancel 收尸。返回退出分类与完整日志。
     pub fn shutdown(mut self) -> Result<Shutdown, ClientError> {
         let deadline = Instant::now() + self.spec.shutdown_timeout;
-        // 0.（F-816-T05-R1-03）先有界回收交互泵（置停+取消挂起读
-        //    +join）：泵的 jobs 克隆先消亡；随后 writer 停止位**先于**
+        // 0.（F-816-T05-R1-03/R2-03）先有界回收交互泵（置停+重发取消
+        //    +真停 join）：泵的 jobs 克隆先消亡；随后 writer 停止位**先于**
         //    任何等待置上——writer 经标志位或通道关闭任一终止，EOF
-        //    语义双保险（不再被泵克隆保活拖到宽限尽）。
-        self.reclaim_pump();
+        //    语义双保险（不再被泵克隆保活拖到宽限尽）。回收失败时句柄
+        //    留在槽内（residue），其余关闭步骤照常完成后尾部重试并具名
+        //    传播——不以槽空误判已处理。
+        let pump_first_err = self.reclaim_pump().err();
         self.writer_stop.store(true, Ordering::Relaxed);
         // 1. 结束 writer（jobs 通道关闭 → 分片写完成 → drop stdin）后,
         //    立即关闭取消凭证副本——EOF 不被副本延迟（R5 探针证实:
@@ -1307,6 +1517,15 @@ impl ToolClient {
         self.reader_stop.store(true, Ordering::Relaxed);
         self.stderr_stop.store(true, Ordering::Relaxed);
         self.drain_until_done(TEARDOWN_GRACE, natural_exit)?;
+        // 4.（F-816-T05-R2-03）泵 residue 终验：步骤 0 未能确认真停的泵
+        //    在其余关闭全部完成后重试一次（新一轮重发取消宽限）；仍未
+        //    停则具名传播——不宣称干净 Shutdown。
+        if self.reclaim_pump().is_err() {
+            let e = pump_first_err.unwrap_or(ClientError::PumpStuck {
+                after: TEARDOWN_GRACE,
+            });
+            return Err(e);
+        }
         Ok(Shutdown {
             kind: ExitKind::from_status(&status),
             logs: self.logs(),
@@ -2091,6 +2310,81 @@ mod tests {
             other => panic!("expected named Io violation, got {other:?}"),
         }
         assert!(matches!(rx.try_recv().unwrap(), FromReader::Done));
+    }
+
+    // ---- F-816-T05-R2-03：泵回收真停 / 残留归属 / 具名传播 ----
+
+    /// 宽限内不观察停止位的"挂起读"线程：回收具名 `PumpStuck`（不静默
+    /// 返回）、JoinHandle 保留在句柄内（residue 归属不丢）；线程随后
+    /// 结束（审方早取消→释放时序的晚侧）时重试回收真停+join 收割。
+    /// 对应审方 pump-race 探针的 cancel-before-read 态：原缺陷=回收
+    /// 静默返回 () 且槽已空、线程残活；修复后=具名 Err+归属保留，释放
+    /// 后可收敛。
+    #[test]
+    fn pump_reclaim_failure_is_named_and_ownership_kept() {
+        let gate = Arc::new(AtomicBool::new(false));
+        let g = gate.clone();
+        let stop = Arc::new(AtomicBool::new(false));
+        let join = std::thread::Builder::new()
+            .spawn(move || {
+                // 模拟晚入核的挂起读：既不观察 stop，也在 gate 置位前
+                // 不结束（重发取消对"尚未入核"的读无效的同构替身）。
+                while !g.load(Ordering::SeqCst) {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            })
+            .unwrap();
+        let mut pump = PumpHandle {
+            stop,
+            join: Some(join),
+        };
+        let err = reclaim_pump_handle(&mut pump, Duration::from_millis(120)).unwrap_err();
+        assert!(
+            matches!(err, ClientError::PumpStuck { .. }),
+            "named PumpStuck, got {err:?}"
+        );
+        assert!(
+            pump.join.is_some(),
+            "residue ownership kept — join handle not silently dropped"
+        );
+        // 释放（审方探针的 PUMP_RELEASE）：线程退出后重试回收必须在
+        // 宽限内确认真停并 join 收割（残留收敛，不再依赖进程退出）。
+        gate.store(true, Ordering::SeqCst);
+        let retry_deadline = std::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            if reclaim_pump_handle(&mut pump, Duration::from_secs(2)).is_ok() {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < retry_deadline,
+                "released pump must reclaim within grace"
+            );
+        }
+        assert!(pump.join.is_none(), "join reaped on success");
+    }
+
+    /// 泵线程 panic：回收以具名 `Panicked` 传播，不吞掉。
+    #[test]
+    fn pump_reclaim_panicked_thread_is_named() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let join = std::thread::Builder::new()
+            .spawn(|| panic!("pump boom"))
+            .unwrap();
+        let mut pump = PumpHandle {
+            stop,
+            join: Some(join),
+        };
+        let err = reclaim_pump_handle(&mut pump, Duration::from_secs(2)).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                ClientError::Panicked {
+                    which: "stdin pump"
+                }
+            ),
+            "named Panicked, got {err:?}"
+        );
+        assert!(pump.join.is_none(), "panicked handle joined (not residue)");
     }
 
     /// F-816-R5-01（stderr 面）——stop 排空遇读错：具名 Err，不抹成
