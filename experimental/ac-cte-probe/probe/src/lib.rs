@@ -5,6 +5,7 @@
 //! `cte817/1` atom-data deck parser and `worker` speaks `cteworker/1`.
 
 pub mod av_driver;
+pub mod bench;
 pub mod deck;
 pub mod driver;
 pub mod observe;
