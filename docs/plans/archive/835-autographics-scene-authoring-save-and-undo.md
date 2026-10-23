@@ -26,7 +26,7 @@ affects: [auto-graphics, authoring-experimental]
 
 ## 0. 变更摘要
 
-**实施及final R2、完整冻结合入门已通过，已交付独立实验。** 834已归档交付，835固定其交付基线实施；冻结SHA与实际验收见§9及work-r1收据。T-09复审/T-10完整合入门禁仍pending，未合入或宣称正式交付。
+**实施及final R2、完整冻结合入门已通过，已交付独立实验。** 834已归档交付，835固定其交付基线实施；冻结SHA与实际验收见§9及work-r1收据。T-09 final R2及T-10完整冻结门已通过，源码已合autographics-dev；清理与批量回归收据见末尾。
 
 双游戏之后，下一步把既有Auto/图形能力变成一个可操作的创作闭环：打开场景→列表选择对象→修改属性/创建删除→真实Auto预览→保存→撤销/重做→重开一致。它是**AutoForge前置的独立场景创作实验**，不是生产Forge产品/仓库、生产AutoUI或RQHost接线，不抵扣I2/I3。
 
@@ -84,7 +84,7 @@ profile：Windows x64、单原生窗口、键鼠；128个对象总额，64步撤
 
 2026-10-23用户说明834实施完成、正在merge，要求提前规划下一计划。授权仅调查/草案；不合834、不改其代码/规范、不提前执行835，不创建agent/聊天或指定模型/审核人。
 
-从[overview](../../specs/overview.md)、[图形project](../../specs/auto-graphics/project.md)/[profile](../../specs/auto-graphics/prototype-profile.md)/[交接](../../specs/auto-graphics/integration-contract.md)/[Auto入口](../../specs/auto-graphics/auto-source-driver.md)、[组合](../../specs/auto-graphics/surface-composition.md)/[输入](../../specs/auto-graphics/nested-input.md)、[Design45](../../design/45-autographics-wgpu-engine-and-game-prototypes.md)、[v0.6创作目标](../../design/strategy/autographics-forge-v06.md)取材。既有目标要求可选择/修改/实时预览/保存/撤销/重开，不要求先做完整编辑器。
+从[overview](../../specs/overview.md)、[图形project](../../specs/auto-graphics/project.md)/[profile](../../specs/auto-graphics/prototype-profile.md)/[交接](../../specs/auto-graphics/integration-contract.md)/[Auto入口](../../specs/auto-graphics/auto-source-driver.md)、[组合](../../specs/auto-graphics/surface-composition.md)/[输入](../../specs/auto-graphics/nested-input.md)、Design45（主检出既有未跟踪背景材料，不纳入835交付）、[v0.6创作目标](../../design/strategy/autographics-forge-v06.md)取材。既有目标要求可选择/修改/实时预览/保存/撤销/重开，不要求先做完整编辑器。
 
 [834合同](834-autographics-auto-squash-and-dual-game-sdk.md)及[独立R1](../attachments/834/review-r1/review.md)说明两款Auto游戏已过代码/验收审查，完整门禁/落分支仍pending。候选源码仅只读定位，不替代G834。
 
