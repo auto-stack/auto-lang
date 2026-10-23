@@ -23,11 +23,11 @@ pub fn install_default_ui_ops() {
 struct CompatUiOps;
 
 impl UiOps for CompatUiOps {
-    fn vue_build(&self, root_dir: &Path) -> AutoResult<()> {
+    fn vue_build(&self, root_dir: &Path, _request: &GenerationRequest) -> AutoResult<()> {
         crate::vue::build_vue_project(root_dir)
     }
 
-    fn vue_generate(&self, root_dir: &Path) -> AutoResult<()> {
+    fn vue_generate(&self, root_dir: &Path, _request: &GenerationRequest) -> AutoResult<()> {
         crate::vue::gen_vue_project(root_dir)
     }
 
@@ -141,15 +141,21 @@ impl UiOps for CompatUiOps {
         root_dir: &Path,
         output: Option<&Path>,
         project: bool,
+        _request: &GenerationRequest,
     ) -> AutoResult<()> {
         crate::vscode::generate_vscode_project(root_dir, output, project)
     }
 
-    fn vscode_build(&self, root_dir: &Path) -> AutoResult<()> {
+    fn vscode_build(&self, root_dir: &Path, _request: &GenerationRequest) -> AutoResult<()> {
         crate::vscode::build_vscode_project(root_dir)
     }
 
-    fn vscode_run(&self, root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
+    fn vscode_run(
+        &self,
+        root_dir: &Path,
+        args: Vec<String>,
+        _request: &GenerationRequest,
+    ) -> AutoResult<()> {
         crate::vscode::run_vscode_project(root_dir, args)
     }
 

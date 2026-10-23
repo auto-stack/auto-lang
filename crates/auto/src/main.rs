@@ -24,6 +24,7 @@ mod cmd_autodesk {
             "render-queue (-q) requires the full profile (ui-extra): desktop protocol host is not linked (render={render:?})"
         ))
     }
+    #[allow(dead_code)]
     pub fn rqhost_injected_args(_wellknown: &str, args: &[String]) -> Vec<String> {
         args.to_vec()
     }
@@ -1025,7 +1026,7 @@ fn real_main(cli: Cli) -> Result<()> {
     // PLAN-790: clipboard media adapter 同点装配（if-absent 兼容默认；
     // ui-iced 传递开启 native-clipboard，windows × native-clipboard 双门控
     // 与 adapter 模块一致——非 Windows 不装配）。
-    #[cfg(all(windows, feature = "ui-iced"))]
+    #[cfg(all(windows, feature = "ui-extra"))]
     auto_ui_runtime::ui::clipboard_media_provider::install_process_default();
 
     // Determine AI mode: -ai flag or --format json
@@ -1182,14 +1183,15 @@ fn real_main(cli: Cli) -> Result<()> {
             // Plan 015 P0#1: strict validation is the DEFAULT for `auto build`
             // (silent stale-SFC success classes). --lenient restores the old
             // behavior; --strict stays accepted as a no-op for compatibility.
-            // PLAN-816 T-05：validators 全局属 UI 编译域（ui-extra）；工具
-            // 进程路径的 strict 语义由工具侧请求规则承担（已知边界：CLI
-            // --lenient 对工具内生成的传导待协议字段，见 T-05 交接注记）。
+            // PLAN-816 T-05 R1（F-05）：strict 经显式登记**穿进程边界**到
+            // 工具（build_ui/generate_ui 的 op 级字段），不以本进程全局
+            // 冒充跨进程传递；ui-extra 下的本地全局仅为同进程旧面保持。
+            let strict_on = strict || !lenient;
+            tool_ui_ops::set_generation_strict(Some(strict_on));
             #[cfg(feature = "ui-extra")]
-            if strict || !lenient {
+            if strict_on {
                 auto_ui_compiler::ui_gen::validators::set_strict(true);
             }
-            let _ = (&strict, &lenient);
             let dir = dir.unwrap_or_else(|| ".".to_string());
             let config = load_am_config().unwrap_or_default();
             let mut am = auto_man_runtime::Automan::new(&dir, config).map_err(|e| {
@@ -1362,6 +1364,7 @@ fn real_main(cli: Cli) -> Result<()> {
             gallery,
             apps,
             merged,
+            #[cfg_attr(not(feature = "ui-extra"), allow(unused_mut))]
             mut args,
         }) => {
             // PLAN-781 T-15: 宿主可信预算配置 fail-fast——非法值指名报错 +
@@ -1573,6 +1576,7 @@ fn real_main(cli: Cli) -> Result<()> {
             // pac.at > default. Injected via env so the iced renderer
             // (-r vm, same process) and the vue index.html generator read
             // the same effective value.
+            #[cfg_attr(not(feature = "ui-extra"), allow(unused_variables))]
             let osc_app = am.pac_name();
             #[cfg(feature = "ui-extra")]
             let (osc_theme, osc_accent) = osc_app
@@ -3148,6 +3152,7 @@ mod cli_service_tests {
     }
 }
 
+#[cfg(test)]
 mod cli_passthrough_tests {
     use super::Cli;
     use clap::Parser;

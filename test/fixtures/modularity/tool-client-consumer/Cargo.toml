@@ -46,3 +46,7 @@ path = "src/bin/t04_discovery_host.rs"
 
 # 独立 workspace（见上）；无锁文件、无成员。
 [workspace]
+
+[[bin]]
+name = "t05-pump-probe"
+path = "src/bin/t05_pump_probe.rs"

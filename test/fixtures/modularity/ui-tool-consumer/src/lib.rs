@@ -319,7 +319,11 @@ render: \"vm\"
         id: 7,
         body: ClientBody::GenerateUi {
             request: WireRequest(request),
-        },
+                output: None,
+                project: None,
+                delivery_root: None,
+                strict: None,
+            },
     });
     match response.body {
         ServerBody::Error { error } => {

@@ -21,10 +21,35 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use auto_man_runtime::ui_ops::UiOps;
-use auto_project_model::{parse_document, GenerationRequest};
+use auto_project_model::GenerationRequest;
 use auto_tool_client::discovery::{self, DiscoverySpec};
 use auto_tool_client::ToolClient;
 use auto_val::AutoResult;
+
+/// 生成/构建的 strict 信号（PLAN-816 T-05 R1 F-05：旧 CLI build 默认
+/// 严格校验——CLI 命令臂在此登记，适配器在 op 时刻读取并**显式穿进程
+/// 边界**给工具；不用本进程全局状态冒充跨进程传递）。None=命令未声明
+/// （工具默认）。
+static GENERATION_STRICT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static GENERATION_STRICT_SET: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// 登记本次进程生命周期的 strict 语义（CLI build/gen 臂调用）。
+pub fn set_generation_strict(strict: Option<bool>) {
+    GENERATION_STRICT.store(
+        strict.unwrap_or(false),
+        std::sync::atomic::Ordering::Relaxed,
+    );
+    GENERATION_STRICT_SET.store(strict.is_some(), std::sync::atomic::Ordering::Relaxed);
+}
+
+fn generation_strict() -> Option<bool> {
+    if GENERATION_STRICT_SET.load(std::sync::atomic::Ordering::Relaxed) {
+        Some(GENERATION_STRICT.load(std::sync::atomic::Ordering::Relaxed))
+    } else {
+        None
+    }
+}
 
 /// 安装 ToolUiOps 到 runtime 的显式槽（CLI 启动时调用一次；幂等顺序上
 /// 先于任何管理编排）。本函数**不发现工具**——惰性到首个 UI 臂调用。
@@ -65,30 +90,7 @@ impl ToolUiOps {
         f(client)
     }
 
-    /// 无 request 臂的基请求：从工程 pac.at 构造（fixture 同构构造面）。
-    /// pac 缺失/不可解析时以最小合成描述符构造——工具侧 validate/generate
-    /// 按请求规则给出精确具名诊断，适配器不自行编造错误。
-    fn base_request(root_dir: &Path) -> GenerationRequest {
-        let root_buf = if root_dir.is_absolute() {
-            root_dir.to_path_buf()
-        } else if root_dir == Path::new(".") {
-            std::env::current_dir().unwrap_or_else(|_| root_dir.to_path_buf())
-        } else {
-            std::env::current_dir()
-                .map(|c| c.join(root_dir))
-                .unwrap_or_else(|_| root_dir.to_path_buf())
-        };
-        let root_dir = &root_buf;
-        let pac = root_dir.join("pac.at");
-        let minimal = "name: \"project\"
-";
-        let text = std::fs::read_to_string(&pac).unwrap_or_else(|_| minimal.to_string());
-        let info = auto_project_model::descriptor::SourceInfo::from_path(&pac);
-        let descriptor = parse_document(&text, info.clone())
-            .unwrap_or_else(|_| parse_document(minimal, info).expect("minimal descriptor parses"));
-        GenerationRequest::from_descriptor(&descriptor)
-    }
-
+    //（R1-04 后所有生产臂消费传入的有效请求，无回读 pac 的基请求构造。）
     /// 工具合同要求绝对 project_root（work ops 的路径锚）。runtime 侧
     /// root_dir 可能相对（Automan::new(".")）——以 cwd join 绝对化
     /// （不用 canonicalize：避免 Windows verbatim `\?\` 前缀扰动
@@ -114,8 +116,21 @@ impl ToolUiOps {
     }
 
     fn generate(&self, request: GenerationRequest) -> AutoResult<()> {
+        self.generate_opts(request, auto_tool_client::GenerateUiOpts::default())
+    }
+
+    /// PLAN-816 T-05 R1 F-01/F-05：执行选项（output/project/delivery/
+    /// strict）显式跨进程传递；strict 未显式声明时读 CLI 登记。
+    fn generate_opts(
+        &self,
+        request: GenerationRequest,
+        mut opts: auto_tool_client::GenerateUiOpts,
+    ) -> AutoResult<()> {
+        if opts.strict.is_none() {
+            opts.strict = generation_strict();
+        }
         let request = self.absolutized(request);
-        self.with_client(|c| match c.generate_ui(request) {
+        self.with_client(|c| match c.generate_ui_opts(request, &opts) {
             Ok(Ok(report)) => {
                 println!(
                     "  [tool] generated {} files under {} (frontends: {})",
@@ -132,8 +147,9 @@ impl ToolUiOps {
     }
 
     fn build(&self, request: GenerationRequest) -> AutoResult<()> {
+        let strict = generation_strict();
         let request = self.absolutized(request);
-        self.with_client(|c| match c.build_ui(request) {
+        self.with_client(|c| match c.build_ui_opts(request, strict) {
             Ok(Ok(report)) => {
                 println!("  [tool] build {} ({:?})", report.profile, report.outcome);
                 if let Some(err) = &report.error {
@@ -150,9 +166,10 @@ impl ToolUiOps {
         .map_err(|e| -> auto_val::AutoError { e.into() })
     }
 
-    fn run(&self, request: GenerationRequest) -> AutoResult<()> {
+    /// run 臂的透传参数（F-05：`auto run -- <args>` 旧语义穿边界）。
+    fn run_with_args(&self, request: GenerationRequest, args: Vec<String>) -> AutoResult<()> {
         let request = self.absolutized(request);
-        self.with_client(|c| match c.run_ui(request, true) {
+        self.with_client(|c| match c.run_ui_opts(request, args, true) {
             Ok(Ok(report)) => {
                 if let Some(url) = &report.launch {
                     println!("  [tool] service launched at {url}");
@@ -171,12 +188,15 @@ impl ToolUiOps {
 }
 
 impl UiOps for ToolUiOps {
-    fn vue_build(&self, root_dir: &Path) -> AutoResult<()> {
-        self.build(Self::base_request(root_dir))
+    fn vue_build(&self, root_dir: &Path, request: &GenerationRequest) -> AutoResult<()> {
+        // F-816-T05-R1-04：消费本次有效请求（render 覆盖在场即权威）。
+        let _ = root_dir;
+        self.build(request.clone())
     }
 
-    fn vue_generate(&self, root_dir: &Path) -> AutoResult<()> {
-        self.generate(Self::base_request(root_dir))
+    fn vue_generate(&self, root_dir: &Path, request: &GenerationRequest) -> AutoResult<()> {
+        let _ = root_dir;
+        self.generate(request.clone())
     }
 
     fn vue_generate_workspace(
@@ -194,8 +214,8 @@ impl UiOps for ToolUiOps {
         args: Vec<String>,
         request: &GenerationRequest,
     ) -> AutoResult<()> {
-        let _ = (root_dir, args);
-        self.run(request.clone())
+        let _ = root_dir;
+        self.run_with_args(request.clone(), args)
     }
 
     fn rust_build(&self, root_dir: &Path, request: &GenerationRequest) -> AutoResult<()> {
@@ -210,8 +230,13 @@ impl UiOps for ToolUiOps {
         project: bool,
         request: &GenerationRequest,
     ) -> AutoResult<()> {
-        let _ = (root_dir, output, project);
-        self.generate(request.clone())
+        let _ = root_dir;
+        let opts = auto_tool_client::GenerateUiOpts {
+            output: output.map(|p| p.to_path_buf()),
+            project: Some(project),
+            ..Default::default()
+        };
+        self.generate_opts(request.clone(), opts)
     }
 
     fn rust_generate_delivery(
@@ -221,10 +246,14 @@ impl UiOps for ToolUiOps {
         request: &GenerationRequest,
     ) -> AutoResult<()> {
         let _ = root_dir;
-        let mut req = request.clone();
-        // delivery root 经请求 output_root 通道（I-PROJECT 字段矩阵）。
-        req.output_root = Some(delivery_root.to_path_buf());
-        self.generate(req)
+        // F-816-T05-R1-01：792 显式交付模式是**独立 op 选项**（生成可
+        // 搬移 bundle + delivery-manifest），不是请求 output_root 字段
+        // （该字段不重定向生成布局——815 字段矩阵已钉）。
+        let opts = auto_tool_client::GenerateUiOpts {
+            delivery_root: Some(delivery_root.to_path_buf()),
+            ..Default::default()
+        };
+        self.generate_opts(request.clone(), opts)
     }
 
     fn rust_run(
@@ -233,8 +262,8 @@ impl UiOps for ToolUiOps {
         args: Vec<String>,
         request: &GenerationRequest,
     ) -> AutoResult<()> {
-        let _ = (root_dir, args);
-        self.run(request.clone())
+        let _ = root_dir;
+        self.run_with_args(request.clone(), args)
     }
 
     fn vm_run(
@@ -243,8 +272,8 @@ impl UiOps for ToolUiOps {
         args: Vec<String>,
         request: &GenerationRequest,
     ) -> AutoResult<()> {
-        let _ = (root_dir, args);
-        self.run(request.clone())
+        let _ = root_dir;
+        self.run_with_args(request.clone(), args)
     }
 
     fn jet_generate(
@@ -254,11 +283,13 @@ impl UiOps for ToolUiOps {
         project: bool,
         request: &GenerationRequest,
     ) -> AutoResult<()> {
-        let _ = (output, project);
-        let mut req = request.clone();
-        req.output_root = output.map(|p| p.to_path_buf()).or(req.output_root);
         let _ = root_dir;
-        self.generate(req)
+        let opts = auto_tool_client::GenerateUiOpts {
+            output: output.map(|p| p.to_path_buf()),
+            project: Some(project),
+            ..Default::default()
+        };
+        self.generate_opts(request.clone(), opts)
     }
 
     fn jet_build(&self, root_dir: &Path, request: &GenerationRequest) -> AutoResult<()> {
@@ -272,8 +303,8 @@ impl UiOps for ToolUiOps {
         args: Vec<String>,
         request: &GenerationRequest,
     ) -> AutoResult<()> {
-        let _ = (root_dir, args);
-        self.run(request.clone())
+        let _ = root_dir;
+        self.run_with_args(request.clone(), args)
     }
 
     fn ark_generate(
@@ -283,11 +314,13 @@ impl UiOps for ToolUiOps {
         project: bool,
         request: &GenerationRequest,
     ) -> AutoResult<()> {
-        let _ = (output, project);
-        let mut req = request.clone();
-        req.output_root = output.map(|p| p.to_path_buf()).or(req.output_root);
         let _ = root_dir;
-        self.generate(req)
+        let opts = auto_tool_client::GenerateUiOpts {
+            output: output.map(|p| p.to_path_buf()),
+            project: Some(project),
+            ..Default::default()
+        };
+        self.generate_opts(request.clone(), opts)
     }
 
     fn ark_build(&self, root_dir: &Path, request: &GenerationRequest) -> AutoResult<()> {
@@ -301,8 +334,8 @@ impl UiOps for ToolUiOps {
         args: Vec<String>,
         request: &GenerationRequest,
     ) -> AutoResult<()> {
-        let _ = (root_dir, args);
-        self.run(request.clone())
+        let _ = root_dir;
+        self.run_with_args(request.clone(), args)
     }
 
     fn vscode_generate(
@@ -310,18 +343,30 @@ impl UiOps for ToolUiOps {
         root_dir: &Path,
         output: Option<&Path>,
         project: bool,
+        request: &GenerationRequest,
     ) -> AutoResult<()> {
-        let _ = (output, project);
-        self.generate(Self::base_request(root_dir))
+        let opts = auto_tool_client::GenerateUiOpts {
+            output: output.map(|p| p.to_path_buf()),
+            project: Some(project),
+            ..Default::default()
+        };
+        let _ = root_dir;
+        self.generate_opts(request.clone(), opts)
     }
 
-    fn vscode_build(&self, root_dir: &Path) -> AutoResult<()> {
-        self.build(Self::base_request(root_dir))
+    fn vscode_build(&self, root_dir: &Path, request: &GenerationRequest) -> AutoResult<()> {
+        let _ = root_dir;
+        self.build(request.clone())
     }
 
-    fn vscode_run(&self, root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
-        let _ = args;
-        self.run(Self::base_request(root_dir))
+    fn vscode_run(
+        &self,
+        root_dir: &Path,
+        args: Vec<String>,
+        request: &GenerationRequest,
+    ) -> AutoResult<()> {
+        let _ = root_dir;
+        self.run_with_args(request.clone(), args)
     }
 
     fn tauri_run(
@@ -330,8 +375,8 @@ impl UiOps for ToolUiOps {
         args: Vec<String>,
         request: &GenerationRequest,
     ) -> AutoResult<()> {
-        let _ = (root_dir, args);
-        self.run(request.clone())
+        let _ = root_dir;
+        self.run_with_args(request.clone(), args)
     }
 
     fn create_jet_project(&self, name: &str) -> AutoResult<()> {

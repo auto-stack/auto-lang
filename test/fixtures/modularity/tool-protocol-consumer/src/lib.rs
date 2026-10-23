@@ -80,18 +80,24 @@ fn consumer_full_client_surface_round_trips() {
         (
             ClientBody::GenerateUi {
                 request: WireRequest(request.clone()),
+                output: None,
+                project: None,
+                delivery_root: None,
+                strict: None,
             },
             "generate_ui",
         ),
         (
             ClientBody::BuildUi {
                 request: WireRequest(request.clone()),
+                strict: None,
             },
             "build_ui",
         ),
         (
             ClientBody::RunUi {
                 request: WireRequest(request),
+                args: Vec::new(),
             },
             "run_ui",
         ),

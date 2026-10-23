@@ -261,7 +261,11 @@ fn lifecycle_generate_validate_run() {
         1,
         ClientBody::GenerateUi {
             request: WireRequest(request.clone()),
-        },
+                output: None,
+                project: None,
+                delivery_root: None,
+                strict: None,
+            },
     ));
     let (gen_final, _) = wait_for(&mut tool, |e| {
         matches!(e.body, ServerBody::GenerateOk { .. })
@@ -303,7 +307,8 @@ fn lifecycle_generate_validate_run() {
         3,
         ClientBody::RunUi {
             request: WireRequest(request),
-        },
+                args: Vec::new(),
+            },
     ));
     let (run_final, _) = wait_for(&mut tool, |e| {
         matches!(e.body, ServerBody::RunOk { .. }) || matches!(e.body, ServerBody::Error { .. })
@@ -363,7 +368,8 @@ fn lifecycle_build_produces_dist() {
         10,
         ClientBody::RunUi {
             request: WireRequest(request.clone()),
-        },
+                args: Vec::new(),
+            },
     ));
     let (run_final, _) = wait_for(&mut tool, |e| matches!(&e.body, ServerBody::RunOk { .. }));
     match &run_final.body {
@@ -378,7 +384,8 @@ fn lifecycle_build_produces_dist() {
         11,
         ClientBody::BuildUi {
             request: WireRequest(request),
-        },
+                strict: None,
+            },
     ));
     let (build_final, _) = wait_for(&mut tool, |e| {
         matches!(e.body, ServerBody::BuildOk { .. }) || matches!(e.body, ServerBody::Error { .. })
@@ -542,7 +549,8 @@ fn lifecycle_build_install_failure_is_named_failed_no_dist() {
         20,
         ClientBody::BuildUi {
             request: WireRequest(request),
-        },
+                strict: None,
+            },
     ));
     let (build_final, _) = wait_for(&mut tool, |e| {
         matches!(e.body, ServerBody::BuildOk { .. }) || matches!(e.body, ServerBody::Error { .. })
@@ -611,7 +619,11 @@ fn lifecycle_unicode_space_project_builds_dist() {
         30,
         ClientBody::GenerateUi {
             request: WireRequest(request.clone()),
-        },
+                output: None,
+                project: None,
+                delivery_root: None,
+                strict: None,
+            },
     ));
     let (gen_final, _) = wait_for(&mut tool, |e| {
         matches!(e.body, ServerBody::GenerateOk { .. })
@@ -628,7 +640,8 @@ fn lifecycle_unicode_space_project_builds_dist() {
         31,
         ClientBody::BuildUi {
             request: WireRequest(request),
-        },
+                strict: None,
+            },
     ));
     let (build_final, _) = wait_for(&mut tool, |e| {
         matches!(e.body, ServerBody::BuildOk { .. }) || matches!(e.body, ServerBody::Error { .. })

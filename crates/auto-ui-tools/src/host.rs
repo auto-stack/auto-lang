@@ -308,25 +308,31 @@ fn serve_loop<R: Read, W: Write + Send + 'static, L: Write + Send + 'static>(
                     body: ServerBody::ValidateOk { report },
                 })
             }
-            ClientBody::GenerateUi { request } => {
+            ClientBody::GenerateUi {
+                request,
+                output,
+                project,
+                delivery_root,
+                strict,
+            } => {
                 match start_work_op(&host, id, "generate_ui") {
                     Ok(worker) => {
-                        worker.spawn_generate(request);
+                        worker.spawn_generate(request, output, project, delivery_root, strict);
                         None // response comes from the worker
                     }
                     Err(error) => Some(ServerEnvelope::error(id, error)),
                 }
             }
-            ClientBody::RunUi { request } => match start_work_op(&host, id, "run_ui") {
+            ClientBody::RunUi { request, args } => match start_work_op(&host, id, "run_ui") {
                 Ok(worker) => {
-                    worker.spawn_run(request);
+                    worker.spawn_run(request, args);
                     None // response comes from the worker
                 }
                 Err(error) => Some(ServerEnvelope::error(id, error)),
             },
-            ClientBody::BuildUi { request } => match start_work_op(&host, id, "build_ui") {
+            ClientBody::BuildUi { request, strict } => match start_work_op(&host, id, "build_ui") {
                 Ok(worker) => {
-                    worker.spawn_build(request);
+                    worker.spawn_build(request, strict);
                     None // response comes from the worker
                 }
                 Err(error) => Some(ServerEnvelope::error(id, error)),
@@ -626,7 +632,14 @@ fn start_work_op<W: Write + Send + 'static, L: Write + Send + 'static>(
 }
 
 impl<W: Write + Send + 'static, L: Write + Send + 'static> WorkStarter<W, L> {
-    fn spawn_generate(self, request: WireRequest) {
+    fn spawn_generate(
+        self,
+        request: WireRequest,
+        output: Option<std::path::PathBuf>,
+        project: Option<bool>,
+        delivery_root: Option<std::path::PathBuf>,
+        strict: Option<bool>,
+    ) {
         let WorkStarter {
             host,
             id,
@@ -637,7 +650,13 @@ impl<W: Write + Send + 'static, L: Write + Send + 'static> WorkStarter<W, L> {
             .name(format!("work:{operation}"))
             .spawn(move || {
                 let started = std::time::Instant::now();
-                let result = crate::tool_ops::generate_report(&request.0);
+                let options = crate::tool_ops::GenerateOptions {
+                    output,
+                    project,
+                    delivery_root,
+                    strict,
+                };
+                let result = crate::tool_ops::generate_report_with(&request.0, &options);
                 // Uninstall first: leftover trees die, hooks go quiet
                 // (which also ends the input writer).
                 proc_host::uninstall();
@@ -657,7 +676,7 @@ impl<W: Write + Send + 'static, L: Write + Send + 'static> WorkStarter<W, L> {
             .expect("spawn work thread");
     }
 
-    fn spawn_build(self, request: WireRequest) {
+    fn spawn_build(self, request: WireRequest, strict: Option<bool>) {
         let WorkStarter {
             host,
             id,
@@ -668,7 +687,7 @@ impl<W: Write + Send + 'static, L: Write + Send + 'static> WorkStarter<W, L> {
             .name(format!("work:{operation}"))
             .spawn(move || {
                 let started = std::time::Instant::now();
-                let result = crate::tool_ops::build_report(&request.0);
+                let result = crate::tool_ops::build_report_with(&request.0, strict);
                 proc_host::uninstall();
                 let response = match result {
                     Ok(mut report) => {
@@ -686,7 +705,7 @@ impl<W: Write + Send + 'static, L: Write + Send + 'static> WorkStarter<W, L> {
             .expect("spawn work thread");
     }
 
-    fn spawn_run(self, request: WireRequest) {
+    fn spawn_run(self, request: WireRequest, args: Vec<String>) {
         let WorkStarter {
             host,
             id,
@@ -697,7 +716,7 @@ impl<W: Write + Send + 'static, L: Write + Send + 'static> WorkStarter<W, L> {
             .name(format!("work:{operation}"))
             .spawn(move || {
                 let started = std::time::Instant::now();
-                let result = crate::tool_ops::run_report(&request.0);
+                let result = crate::tool_ops::run_report_with(&request.0, args);
                 proc_host::uninstall();
                 let response = match result {
                     Ok(mut report) => {

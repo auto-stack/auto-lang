@@ -54,18 +54,52 @@ pub enum ClientBody {
     ValidateProject { request: WireRequest },
     /// Generate the UI project for the request into its declared output
     /// root (PLAN-815 T-05). Bounded operation: runs to completion.
-    GenerateUi { request: WireRequest },
+    ///
+    /// PLAN-816 T-05 R1（F-01/F-05，复审指派的 owner 衔接）：执行选项
+    /// 作为 op 级可选字段加入（wire 向后兼容——`serde(default)` 缺席=
+    /// 旧行为；PROTOCOL_VERSION/能力集不变）。这些是**执行选项**，不是
+    /// I-PROJECT 工程声明的再声明：`output`/`project` 对应旧
+    /// `gen -o/-p` 落点（rust/jet/ark/vscode 生成算法既有形参）；
+    /// `delivery_root` 对应 792 显式交付模式（独立可搬移 bundle +
+    /// delivery-manifest，仅 rust）；`strict` 对应旧 build 默认严格
+    /// 校验（None=工具默认）。
+    GenerateUi {
+        request: WireRequest,
+        #[serde(default)]
+        output: Option<std::path::PathBuf>,
+        #[serde(default)]
+        project: Option<bool>,
+        #[serde(default)]
+        delivery_root: Option<std::path::PathBuf>,
+        #[serde(default)]
+        strict: Option<bool>,
+    },
     /// Run the UI project for the request through the real run path
     /// (PLAN-815 T-05): generation steps, owned child processes
     /// (package manager / dev server / API server) or the in-process
     /// VM UI on the OS main thread. Long-running and cancellable;
     /// the dev-server URL is announced via
     /// [`ToolEvent::Launched`] once the foreground child is up.
-    RunUi { request: WireRequest },
+    ///
+    /// PLAN-816 T-05 R1（F-05）：`args` = 旧 run 命令行透传参数（`auto
+    /// run -- <args>`），穿进程边界到真实运行链（dev server/cargo/
+    /// jet/ark 的既有 args 形参）。
+    RunUi {
+        request: WireRequest,
+        #[serde(default)]
+        args: Vec<String>,
+    },
     /// Build the UI project for the request (PLAN-815 T-06): production
     /// build through the profile's real build path. Bounded but
     /// potentially long-running; cancellable like `run_ui`.
-    BuildUi { request: WireRequest },
+    ///
+    /// PLAN-816 T-05 R1（F-05）：`strict` = 旧 build 默认严格校验信号
+    /// （None=工具默认）。
+    BuildUi {
+        request: WireRequest,
+        #[serde(default)]
+        strict: Option<bool>,
+    },
     /// Forward raw bytes to the stdin of the operation's foreground owned
     /// child (PLAN-815 T-05 interactive channel). The Vite dev server
     /// genuinely consumes this — `q` + Enter terminates it. Protocol-level

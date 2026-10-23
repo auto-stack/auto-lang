@@ -18,8 +18,11 @@ use auto_val::AutoResult;
 /// auto-ui-tools/compat 公开面一一对应，不复制算法（compat 侧纯委托）。
 pub trait UiOps: Send + Sync {
     // ---- vue ----
-    fn vue_build(&self, root_dir: &Path) -> AutoResult<()>;
-    fn vue_generate(&self, root_dir: &Path) -> AutoResult<()>;
+    /// PLAN-816 T-05 R1（F-04）：vue/vscode 臂与 jet/ark 同型消费**本次
+    /// 有效请求**（render 覆盖/动态求值在场即权威——不再让实现侧回读
+    /// 主 pac 形成第二真源）。
+    fn vue_build(&self, root_dir: &Path, request: &GenerationRequest) -> AutoResult<()>;
+    fn vue_generate(&self, root_dir: &Path, request: &GenerationRequest) -> AutoResult<()>;
     /// `VueProject::from_workspace_with_request(..)?.generate()` 的收敛形态
     /// （vue/tauri 前端臂共用）。
     fn vue_generate_workspace(
@@ -96,9 +99,15 @@ pub trait UiOps: Send + Sync {
         root_dir: &Path,
         output: Option<&Path>,
         project: bool,
+        request: &GenerationRequest,
     ) -> AutoResult<()>;
-    fn vscode_build(&self, root_dir: &Path) -> AutoResult<()>;
-    fn vscode_run(&self, root_dir: &Path, args: Vec<String>) -> AutoResult<()>;
+    fn vscode_build(&self, root_dir: &Path, request: &GenerationRequest) -> AutoResult<()>;
+    fn vscode_run(
+        &self,
+        root_dir: &Path,
+        args: Vec<String>,
+        request: &GenerationRequest,
+    ) -> AutoResult<()>;
     fn tauri_run(
         &self,
         root_dir: &Path,
@@ -127,10 +136,10 @@ impl NotInstalledUiOps {
 }
 
 impl UiOps for NotInstalledUiOps {
-    fn vue_build(&self, _root_dir: &Path) -> AutoResult<()> {
+    fn vue_build(&self, _root_dir: &Path, _request: &GenerationRequest) -> AutoResult<()> {
         Self::unavailable()
     }
-    fn vue_generate(&self, _root_dir: &Path) -> AutoResult<()> {
+    fn vue_generate(&self, _root_dir: &Path, _request: &GenerationRequest) -> AutoResult<()> {
         Self::unavailable()
     }
     fn vue_generate_workspace(
@@ -229,13 +238,19 @@ impl UiOps for NotInstalledUiOps {
         _root_dir: &Path,
         _output: Option<&Path>,
         _project: bool,
+        _request: &GenerationRequest,
     ) -> AutoResult<()> {
         Self::unavailable()
     }
-    fn vscode_build(&self, _root_dir: &Path) -> AutoResult<()> {
+    fn vscode_build(&self, _root_dir: &Path, _request: &GenerationRequest) -> AutoResult<()> {
         Self::unavailable()
     }
-    fn vscode_run(&self, _root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
+    fn vscode_run(
+        &self,
+        _root_dir: &Path,
+        _args: Vec<String>,
+        _request: &GenerationRequest,
+    ) -> AutoResult<()> {
         Self::unavailable()
     }
     fn tauri_run(

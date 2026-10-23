@@ -29,7 +29,42 @@ fn normalize_profile(name: &str) -> &str {
 /// generation root — EVERY declared (served) frontend, in declared order
 /// (PLAN-815 R4-07 / F-815-T05-R4-07: a multi-profile request generates
 /// all targets; the report never claims a frontend that did not run).
+/// PLAN-816 T-05 R1（F-01/F-05）：generate_ui 的执行选项（op 级，非
+/// I-PROJECT 声明）。`output`/`project` = 旧 `gen -o/-p`；`delivery_root`
+/// = 792 显式交付模式（仅 rust）；`strict` = 旧 build 默认严格校验信号。
+#[derive(Debug, Clone, Default)]
+pub struct GenerateOptions {
+    pub output: Option<std::path::PathBuf>,
+    pub project: Option<bool>,
+    pub delivery_root: Option<std::path::PathBuf>,
+    pub strict: Option<bool>,
+}
+
+/// strict 全局的 per-op 守卫：Some(v) 时生效，op 结束恢复 false（工具
+/// 默认）。None 不触碰（既有行为）。
+struct StrictGuard;
+impl StrictGuard {
+    fn on(v: Option<bool>) -> Option<Self> {
+        v.map(|strict| {
+            auto_ui_compiler::ui_gen::validators::set_strict(strict);
+            StrictGuard
+        })
+    }
+}
+impl Drop for StrictGuard {
+    fn drop(&mut self) {
+        auto_ui_compiler::ui_gen::validators::set_strict(false);
+    }
+}
+
 pub fn generate_report(request: &GenerationRequest) -> Result<GenerationReport, ToolError> {
+    generate_report_with(request, &GenerateOptions::default())
+}
+
+pub fn generate_report_with(
+    request: &GenerationRequest,
+    options: &GenerateOptions,
+) -> Result<GenerationReport, ToolError> {
     // ---- Gates (before any side effect) ----
     let frontends: Vec<String> = request
         .frontend_names()
@@ -53,6 +88,7 @@ pub fn generate_report(request: &GenerationRequest) -> Result<GenerationReport, 
     // PLAN-815 R5（F-815-T05-R4-04）：本操作的包管理器单源=当前请求
     // （raw `pkg:` 字段）——guard 在操作结束/早退时恢复 legacy 形态。
     let _pm_guard = crate::pkg::set_tool_pm_for_request(request);
+    let _strict_guard = StrictGuard::on(options.strict);
 
     // Unique profiles in declared order (a repeated frontend generates once;
     // `frontends` on the report echoes the declaration verbatim).
@@ -64,6 +100,26 @@ pub fn generate_report(request: &GenerationRequest) -> Result<GenerationReport, 
     }
     let total = ordered.len() as u64;
 
+    // ---- 792 explicit delivery mode (PLAN-816 T-05 R1 F-01) ----
+    if let Some(delivery_root) = &options.delivery_root {
+        if ordered.iter().any(|p| p != "rust") || ordered.is_empty() {
+            return Err(ToolError::invalid_field(
+                "delivery_root",
+                format!("delivery mode serves rust only; request declares {ordered:?}"),
+            ));
+        }
+        proc_host::progress(1, Some(2), "generate rust delivery");
+        crate::rust_ui::generate_rust_ui_delivery_with_request(&root, delivery_root, request)
+            .map_err(|e| ToolError::internal(format!("rust delivery failed: {e}")))?;
+        let (output_root, files_written) = aggregate_output_root(&root, &[delivery_root.clone()]);
+        return Ok(GenerationReport {
+            output_root: output_root.to_string_lossy().to_string(),
+            frontends: ordered,
+            files_written,
+            duration_ms: 0,
+        });
+    }
+
     // ---- Real generation (dispatch by profile) ----
     let mut output_dirs: Vec<PathBuf> = Vec::new();
     for (idx, profile) in ordered.iter().enumerate() {
@@ -72,7 +128,7 @@ pub fn generate_report(request: &GenerationRequest) -> Result<GenerationReport, 
             Some(total + 1),
             &format!("generate {profile}"),
         );
-        generate_profile(&root, request, profile)?;
+        generate_profile(&root, request, profile, options)?;
         // The walk anchor is each profile's REAL layout root (the same
         // constants the generators write to — never a guessed dir,
         // PLAN-815 R4-03 / F-815-T05-R4-03), deduped across profiles
@@ -103,9 +159,21 @@ fn generate_profile(
     root: &Path,
     request: &GenerationRequest,
     profile: &str,
+    options: &GenerateOptions,
 ) -> Result<(), ToolError> {
+    let output = options.output.as_deref();
+    let project = options.project.unwrap_or(true);
     match profile {
         "vue" => {
+            if let Some(out) = output {
+                return Err(ToolError::invalid_field(
+                    "output",
+                    format!(
+                        "explicit output redirect is not served for vue (writes the project's gen/front/vue layout); got {}",
+                        out.display()
+                    ),
+                ));
+            }
             crate::vue::incremental_compile_changed(root, Some(request))
                 .map_err(|e| ToolError::internal(format!("incremental compile failed: {e}")))?;
             let project = crate::vue::VueProject::from_workspace_with_request(root, request)
@@ -124,15 +192,15 @@ fn generate_profile(
             }
         }
         "rust" => {
-            crate::rust_ui::generate_rust_ui_with_request(root, None, true, request)
+            crate::rust_ui::generate_rust_ui_with_request(root, output, project, request)
                 .map_err(|e| ToolError::internal(format!("rust_ui generation failed: {e}")))?;
         }
         "jet" => {
-            crate::jet::generate_jet_project_with_request(root, None, true, request)
+            crate::jet::generate_jet_project_with_request(root, output, project, request)
                 .map_err(|e| ToolError::internal(format!("jet generation failed: {e}")))?;
         }
         "ark" => {
-            crate::ark::generate_ark_project_with_request(root, None, true, request)
+            crate::ark::generate_ark_project_with_request(root, output, project, request)
                 .map_err(|e| ToolError::internal(format!("ark generation failed: {e}")))?;
         }
         "tauri" => {
@@ -154,7 +222,7 @@ fn generate_profile(
         "vscode" => {
             // PLAN-815 R4-04（F-815-T05-R4-04）：消费已求值请求——不再经
             // legacy 主 pac 自扫（vscode 第二真源反例的根修）。
-            crate::vscode::generate_vscode_project_with_request(root, None, true, request)
+            crate::vscode::generate_vscode_project_with_request(root, output, project, request)
                 .map_err(|e| ToolError::internal(format!("vscode generation failed: {e}")))?;
         }
         other => {
@@ -170,6 +238,15 @@ fn generate_profile(
 /// `build_ui` (T-06): dispatch the request's render profile onto the real
 /// build path.
 pub fn build_report(request: &GenerationRequest) -> Result<BuildReport, ToolError> {
+    build_report_with(request, None)
+}
+
+/// PLAN-816 T-05 R1（F-05）：build 的 strict 信号（旧 CLI build 默认严格
+/// 校验——跨进程显式传递，不用工具进程的全局状态冒充）。
+pub fn build_report_with(
+    request: &GenerationRequest,
+    strict: Option<bool>,
+) -> Result<BuildReport, ToolError> {
     // ---- Gates ----
     let frontends = request.frontend_names();
     let profile = frontends
@@ -190,6 +267,7 @@ pub fn build_report(request: &GenerationRequest) -> Result<BuildReport, ToolErro
     // PLAN-815 R5（F-815-T05-R4-04）：包管理器单源=当前请求（见
     // set_tool_pm_for_request；guard 恢复 legacy 形态）。
     let _pm_guard = crate::pkg::set_tool_pm_for_request(request);
+    let _strict_guard = StrictGuard::on(strict);
 
     // ---- Real build ----
     proc_host::progress(1, Some(2), "build project");
@@ -223,6 +301,15 @@ pub fn build_report(request: &GenerationRequest) -> Result<BuildReport, ToolErro
 
 /// The `run_ui` dispatch (T-06: full matrix): every profile's real run path.
 pub fn run_report(request: &GenerationRequest) -> Result<RunReport, ToolError> {
+    run_report_with(request, Vec::new())
+}
+
+/// PLAN-816 T-05 R1（F-05）：run 的命令行透传参数（`auto run -- <args>`
+/// 旧语义）——穿进程边界到各 profile 真实运行链的既有 args 形参。
+pub fn run_report_with(
+    request: &GenerationRequest,
+    args: Vec<String>,
+) -> Result<RunReport, ToolError> {
     // ---- Gates (before any side effect) ----
     let frontends = request.frontend_names();
     let profile = frontends
@@ -246,10 +333,10 @@ pub fn run_report(request: &GenerationRequest) -> Result<RunReport, ToolError> {
 
     // ---- Real run (dispatch by profile) ----
     let flow: Result<proc_host::FlowEnd, auto_val::AutoError> = match profile.as_str() {
-        "vue" => crate::run_vue::run_vue_flow(&root, Vec::new(), Some(request)),
+        "vue" => crate::run_vue::run_vue_flow(&root, args.clone(), Some(request)),
         "vm" => crate::run_vm::run_vm_ui_flow(
             &root,
-            Vec::new(),
+            args.clone(),
             &crate::rust_ui::PacSource::from_request(request),
         ),
         "rust" => {
@@ -268,16 +355,16 @@ pub fn run_report(request: &GenerationRequest) -> Result<RunReport, ToolError> {
                     ),
                 ));
             }
-            crate::rust_ui::run_rust_ui_with_request(&root, Vec::new(), request)
+            crate::rust_ui::run_rust_ui_with_request(&root, args.clone(), request)
                 .map(|_| proc_host::FlowEnd::Completed)
         }
-        "jet" => crate::jet::run_jet_project_with_request(&root, Vec::new(), request)
+        "jet" => crate::jet::run_jet_project_with_request(&root, args.clone(), request)
             .map(|_| proc_host::FlowEnd::Completed),
-        "ark" => crate::ark::run_ark_project_with_request(&root, Vec::new(), request)
+        "ark" => crate::ark::run_ark_project_with_request(&root, args.clone(), request)
             .map(|_| proc_host::FlowEnd::Completed),
-        "tauri" => crate::tauri::run_tauri_project_with_request(&root, Vec::new(), request)
+        "tauri" => crate::tauri::run_tauri_project_with_request(&root, args.clone(), request)
             .map(|_| proc_host::FlowEnd::Completed),
-        "vscode" => crate::vscode::run_vscode_project_with_request(&root, Vec::new(), request)
+        "vscode" => crate::vscode::run_vscode_project_with_request(&root, args.clone(), request)
             .map(|_| proc_host::FlowEnd::Completed),
         other => {
             return Err(ToolError::invalid_field(

@@ -1072,7 +1072,10 @@ impl Automan {
     fn build_vue(&mut self) -> AutoResult<()> {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
-        crate::ui_ops::current().vue_build(&root_dir)
+        {
+            let req = self.gen_request()?;
+            crate::ui_ops::current().vue_build(&root_dir, &req)
+        }
     }
 
     /// Build Jetpack Compose project (full workflow: generate, gradle build)
@@ -1099,7 +1102,10 @@ impl Automan {
     fn build_vscode(&mut self) -> AutoResult<()> {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
-        crate::ui_ops::current().vscode_build(&root_dir)
+        {
+            let req = self.gen_request()?;
+            crate::ui_ops::current().vscode_build(&root_dir, &req)
+        }
     }
 
     /// Build with multiple backends - let user select one
@@ -1110,7 +1116,10 @@ impl Automan {
                 if self.gen_only {
                     let root_dir = std::env::current_dir()
                         .map_err(|e| format!("Failed to get current directory: {}", e))?;
-                    crate::ui_ops::current().vue_generate(&root_dir)?;
+                    {
+                        let req = self.gen_request()?;
+                        crate::ui_ops::current().vue_generate(&root_dir, &req)?;
+                    }
                 } else {
                     println!("Building Vue project (backend: vue)");
                     self.build_vue()?;
@@ -1433,12 +1442,14 @@ impl Automan {
                                     &member_dir,
                                     Some(out.as_path()),
                                     project,
+                                    &member_req,
                                 )?;
                             } else {
                                 crate::ui_ops::current().vscode_generate(
                                     &member_dir,
                                     None,
                                     project,
+                                    &member_req,
                                 )?;
                             }
                         }
@@ -1610,14 +1621,19 @@ impl Automan {
                         output.as_ref().map(|o| std::path::PathBuf::from(o))
                     };
 
-                    if let Some(ref out) = output_path {
-                        crate::ui_ops::current().vscode_generate(
-                            &root_dir,
-                            Some(out.as_path()),
-                            project,
-                        )?;
-                    } else {
-                        crate::ui_ops::current().vscode_generate(&root_dir, None, project)?;
+                    {
+                        let req = self.gen_request()?;
+                        if let Some(ref out) = output_path {
+                            crate::ui_ops::current().vscode_generate(
+                                &root_dir,
+                                Some(out.as_path()),
+                                project,
+                                &req,
+                            )?;
+                        } else {
+                            crate::ui_ops::current()
+                                .vscode_generate(&root_dir, None, project, &req)?;
+                        }
                     }
                 }
                 _ => {
@@ -1763,7 +1779,10 @@ impl Automan {
             }
             auto_lang_core::config::BackendType::Vscode => {
                 println!("Running VSCode extension (backend: vscode)");
-                crate::ui_ops::current().vscode_run(&root_dir, args)
+                {
+                    let req = self.gen_request_run()?;
+                    crate::ui_ops::current().vscode_run(&root_dir, args, &req)
+                }
             }
             _ => Err(format!("Backend {:?} does not support run command", backend).into()),
         }
@@ -1841,12 +1860,18 @@ impl Automan {
                         auto_lang_core::config::BackendType::Vue => {
                             println!("  Building Vue frontend");
                             // Pass workspace root (parent of front/) to Vue builder
-                            crate::ui_ops::current().vue_build(&root_dir)?;
+                            {
+                                let req = self.gen_request()?;
+                                crate::ui_ops::current().vue_build(&root_dir, &req)?;
+                            }
                         }
                         auto_lang_core::config::BackendType::Tauri => {
                             println!("  Building Tauri frontend");
                             // Tauri uses Vue as base, then adds Tauri wrapper
-                            crate::ui_ops::current().vue_build(&root_dir)?;
+                            {
+                                let req = self.gen_request()?;
+                                crate::ui_ops::current().vue_build(&root_dir, &req)?;
+                            }
                         }
                         auto_lang_core::config::BackendType::Jet => {
                             println!("  Building Jetpack project");
@@ -1909,7 +1934,7 @@ impl Automan {
             }
             BackendType::Vscode => {
                 println!("  Running VSCode extension");
-                crate::ui_ops::current().vscode_run(root_dir, args)?;
+                crate::ui_ops::current().vscode_run(root_dir, args, req)?;
             }
             _ => {
                 println!("  Unknown frontend type: {:?}", frontend);

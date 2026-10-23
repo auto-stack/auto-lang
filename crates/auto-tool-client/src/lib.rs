@@ -92,6 +92,17 @@ pub struct ToolClientSpec {
 /// 活日志回调类型（宿主 stderr 段级转发；见 [`ToolClientSpec::live_log`]）。
 pub type LiveLogFn = Arc<dyn Fn(&[u8]) + Send + Sync>;
 
+/// generate_ui 的执行选项（PLAN-816 T-05 R1；与协议 op 级字段一一对应，
+/// 缺省=旧发布行为）。`output`/`project`=旧 `gen -o/-p`；
+/// `delivery_root`=792 显式交付（仅 rust）；`strict`=旧 build 默认严格。
+#[derive(Debug, Clone, Default)]
+pub struct GenerateUiOpts {
+    pub output: Option<std::path::PathBuf>,
+    pub project: Option<bool>,
+    pub delivery_root: Option<std::path::PathBuf>,
+    pub strict: Option<bool>,
+}
+
 impl ToolClientSpec {
     pub fn new(tool_path: impl Into<PathBuf>) -> Self {
         Self {
@@ -289,6 +300,158 @@ enum FromReader {
     Done,
 }
 
+/// 交互 stdin 泵的回收归属（F-816-T05-R1-03）。
+struct PumpHandle {
+    stop: Arc<AtomicBool>,
+    join: Option<std::thread::JoinHandle<()>>,
+}
+
+#[cfg(windows)]
+mod pump_io {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc::Sender;
+    use std::sync::Arc;
+
+    extern "system" {
+        fn GetStdHandle(n: u32) -> isize;
+        fn WaitForSingleObject(h: isize, ms: u32) -> u32;
+        fn ReadFile(h: isize, buf: *mut u8, n: u32, read: *mut u32, overlapped: *const u8) -> i32;
+        fn CancelIoEx(h: isize, overlapped: *const u8) -> i32;
+    }
+    const STD_INPUT_HANDLE: u32 = 4294967286; // (u32)-10
+
+    /// 就绪分片读宿主进程 stdin：50ms 可等待切片间检查 stop；字节经行
+    /// 缓冲切成 Input 帧。停止侧 `cancel_stdin_read` 以 CancelIoEx 中止
+    /// 挂起读（泵自持同一 std 句柄，取消可及——管道/控制台同机制）。
+    pub fn pump_loop(
+        op_id: u64,
+        version: u32,
+        tx: Sender<(u64, serde_json::Value)>,
+        stop: Arc<AtomicBool>,
+    ) {
+        use auto_tool_protocol::message::{ClientBody, ClientEnvelope};
+        unsafe {
+            let h = GetStdHandle(STD_INPUT_HANDLE);
+            if h <= 0 {
+                return;
+            }
+            let mut line_buf: Vec<u8> = Vec::new();
+            let mut chunk = [0u8; 1024];
+            loop {
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                if WaitForSingleObject(h, 50) != 0 {
+                    continue; // timeout slice — stop re-checked
+                }
+                let mut n = 0u32;
+                if ReadFile(
+                    h,
+                    chunk.as_mut_ptr(),
+                    chunk.len() as u32,
+                    &mut n,
+                    std::ptr::null(),
+                ) == 0
+                {
+                    break; // error / cancelled read
+                }
+                if n == 0 {
+                    break; // EOF
+                }
+                line_buf.extend_from_slice(&chunk[..n as usize]);
+                while let Some(pos) = line_buf.iter().position(|&b| b == b'\n') {
+                    let data: Vec<u8> = line_buf.drain(..=pos).collect();
+                    let envelope = ClientEnvelope {
+                        protocol_version: version,
+                        id: op_id,
+                        body: ClientBody::Input {
+                            target_id: op_id,
+                            data,
+                        },
+                    };
+                    let Ok(json) = serde_json::to_value(&envelope) else {
+                        return;
+                    };
+                    if tx.send((op_id, json)).is_err() {
+                        return; // writer gone — teardown in progress
+                    }
+                }
+            }
+        }
+    }
+
+    /// 取消泵线程在 std 输入句柄上的挂起读（有界回收的一部分）。
+    pub fn cancel_stdin_read() {
+        unsafe {
+            let h = GetStdHandle(STD_INPUT_HANDLE);
+            if h > 0 {
+                CancelIoEx(h, std::ptr::null());
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+mod pump_io {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc::Sender;
+    use std::sync::Arc;
+
+    /// 就绪分片读（poll(2) 50ms 切片——与 Windows WaitForSingleObject
+    /// 同语义：停止标志在切片间恒可观察，非 owned 持读者不能把泵钉死
+    /// 在阻塞读上；镜像 815 R4 的双平台承诺）。
+    pub fn pump_loop(
+        op_id: u64,
+        version: u32,
+        tx: Sender<(u64, serde_json::Value)>,
+        stop: Arc<AtomicBool>,
+    ) {
+        use auto_tool_protocol::message::{ClientBody, ClientEnvelope};
+        let mut pollfd = libc::pollfd {
+            fd: 0,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        let mut line_buf: Vec<u8> = Vec::new();
+        let mut chunk = [0u8; 1024];
+        loop {
+            if stop.load(Ordering::Relaxed) {
+                break;
+            }
+            let r = unsafe { libc::poll(&mut pollfd, 1, 50) };
+            if r <= 0 {
+                continue; // timeout / signal — stop re-checked
+            }
+            let n = unsafe { libc::read(0, chunk.as_mut_ptr() as *mut _, chunk.len()) };
+            if n <= 0 {
+                break; // EOF / error
+            }
+            line_buf.extend_from_slice(&chunk[..n as usize]);
+            while let Some(pos) = line_buf.iter().position(|&b| b == b'\n') {
+                let data: Vec<u8> = line_buf.drain(..=pos).collect();
+                let envelope = ClientEnvelope {
+                    protocol_version: version,
+                    id: op_id,
+                    body: ClientBody::Input {
+                        target_id: op_id,
+                        data,
+                    },
+                };
+                let Ok(json) = serde_json::to_value(&envelope) else {
+                    return;
+                };
+                if tx.send((op_id, json)).is_err() {
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Unix：poll 切片读天然可停（无不可取消的挂起读）——空实现保持
+    /// 双平台调用面一致。
+    pub fn cancel_stdin_read() {}
+}
+
 /// 与一个真实工具宿主进程的连接。
 pub struct ToolClient {
     proc: OwnedProcess,
@@ -309,6 +472,12 @@ pub struct ToolClient {
     /// 长运行操作终回执之前到达的同 id 事件（Launched/Progress）——
     /// `wait_reply` 驻留，`take_events` 一次取空。
     parked_events: Vec<ToolEvent>,
+    /// 控制流回执（同 id InputAck/Cancelled——F-816-T05-R1-02：与工作
+    /// 终态分离，不误当 run/build 答案也不静默丢弃）；`take_receipts`。
+    parked_receipts: Vec<ServerBody>,
+    /// 交互 stdin 泵归属（F-816-T05-R1-03）：run 终态/关闭路径统一
+    /// 有界回收（置停+取消挂起读+join），不残留读取者。
+    pump: Option<PumpHandle>,
     spec: ToolClientSpec,
     broken: Option<BrokenReason>,
     collected: bool,
@@ -456,6 +625,8 @@ impl ToolClient {
             stderr_closed,
             next_id: 1,
             parked_events: Vec::new(),
+            parked_receipts: Vec::new(),
+            pump: None,
             spec,
             broken: None,
             collected: false,
@@ -520,6 +691,12 @@ impl ToolClient {
         std::mem::take(&mut self.parked_events)
     }
 
+    /// 取走驻留的控制流回执（InputAck/Cancelled）——输入转发确认与
+    /// 取消回执按到达序交付；与工作终态分离（F-816-T05-R1-02）。
+    pub fn take_receipts(&mut self) -> Vec<ServerBody> {
+        std::mem::take(&mut self.parked_receipts)
+    }
+
     /// generate_ui（M815-B 五操作）：请求工程生成到其声明输出根。有界
     /// 操作——与 describe 同构的请求/回执往返；宿主结构化拒绝作为内层
     /// `Err` 数据返回。
@@ -527,9 +704,28 @@ impl ToolClient {
         &mut self,
         request: auto_project_model::GenerationRequest,
     ) -> Result<Result<GenerationReport, ToolError>, ClientError> {
-        match self.request(ClientBody::GenerateUi {
-            request: WireRequest(request),
-        })? {
+        self.generate_ui_opts(request, &GenerateUiOpts::default())
+    }
+
+    /// generate_ui 带执行选项（PLAN-816 T-05 R1 F-01/F-05：旧 `gen
+    /// -o/-p/--delivery-root` 与 strict 信号的跨进程承接——op 级可选
+    /// 字段，非 I-PROJECT 声明）。
+    pub fn generate_ui_opts(
+        &mut self,
+        request: auto_project_model::GenerationRequest,
+        opts: &GenerateUiOpts,
+    ) -> Result<Result<GenerationReport, ToolError>, ClientError> {
+        match self.round_trip_park(
+            self.spec.protocol_version,
+            ClientBody::GenerateUi {
+                request: WireRequest(request),
+                output: opts.output.clone(),
+                project: opts.project,
+                delivery_root: opts.delivery_root.clone(),
+                strict: opts.strict,
+            },
+            false,
+        )? {
             Reply::Other(ServerBody::GenerateOk { report }) => Ok(Ok(report)),
             Reply::Host(e) => Ok(Err(e)),
             other => Err(ClientError::MalformedReply {
@@ -544,9 +740,23 @@ impl ToolClient {
         &mut self,
         request: auto_project_model::GenerationRequest,
     ) -> Result<Result<BuildReport, ToolError>, ClientError> {
-        match self.request(ClientBody::BuildUi {
-            request: WireRequest(request),
-        })? {
+        self.build_ui_opts(request, None)
+    }
+
+    /// build_ui 带 strict 信号（PLAN-816 T-05 R1 F-05）。
+    pub fn build_ui_opts(
+        &mut self,
+        request: auto_project_model::GenerationRequest,
+        strict: Option<bool>,
+    ) -> Result<Result<BuildReport, ToolError>, ClientError> {
+        match self.round_trip_park(
+            self.spec.protocol_version,
+            ClientBody::BuildUi {
+                request: WireRequest(request),
+                strict,
+            },
+            false,
+        )? {
             Reply::Other(ServerBody::BuildOk { report }) => Ok(Ok(report)),
             Reply::Host(e) => Ok(Err(e)),
             other => Err(ClientError::MalformedReply {
@@ -570,15 +780,28 @@ impl ToolClient {
         request: auto_project_model::GenerationRequest,
         forward_stdin: bool,
     ) -> Result<Result<RunReport, ToolError>, ClientError> {
-        let id = self.next_id;
-        let pump = if forward_stdin {
-            Some(self.spawn_stdin_pump(id)?)
-        } else {
-            None
-        };
-        let result = match self.request(ClientBody::RunUi {
-            request: WireRequest(request),
-        }) {
+        self.run_ui_opts(request, Vec::new(), forward_stdin)
+    }
+
+    /// run_ui 带透传参数（PLAN-816 T-05 R1 F-05：`auto run -- <args>`
+    /// 旧语义穿进程边界到真实运行链的既有 args 形参）。
+    pub fn run_ui_opts(
+        &mut self,
+        request: auto_project_model::GenerationRequest,
+        args: Vec<String>,
+        forward_stdin: bool,
+    ) -> Result<Result<RunReport, ToolError>, ClientError> {
+        if forward_stdin {
+            self.spawn_stdin_pump()?;
+        }
+        let result = match self.round_trip_park(
+            self.spec.protocol_version,
+            ClientBody::RunUi {
+                request: WireRequest(request),
+                args,
+            },
+            true,
+        ) {
             Ok(reply) => match reply {
                 Reply::Other(ServerBody::RunOk { report }) => Ok(Ok(report)),
                 Reply::Host(e) => Ok(Err(e)),
@@ -588,9 +811,8 @@ impl ToolClient {
             },
             Err(e) => Err(e),
         };
-        if let Some(stop) = pump {
-            stop.store(true, Ordering::Relaxed);
-        }
+        // F-816-T05-R1-03：泵有界回收（置停+取消挂起读+join）先于返回。
+        self.reclaim_pump();
         result
     }
 
@@ -613,7 +835,14 @@ impl ToolClient {
     /// 本进程 stdin 泵：逐行读取并投递 Input 帧（带操作 id）。返回泵的
     /// 停止标志（run 终回执后置位——阻塞中的读只能随进程退出解除，
     /// 见 [`ToolClient::run_ui`] 的生命周期注记）。
-    fn spawn_stdin_pump(&mut self, op_id: u64) -> Result<Arc<AtomicBool>, ClientError> {
+    /// 启动交互 stdin 泵（行级转发为 Input 帧；op id = 即将发出的 run
+    /// 请求 id——run_ui_opts 单飞语义下先于请求分配）。泵线程持 jobs
+    /// 通道克隆与 std 输入句柄；回收统一走 [`ToolClient::reclaim_pump`]
+    /// （F-816-T05-R1-03：有界、可停、不残留）。
+    fn spawn_stdin_pump(&mut self) -> Result<(), ClientError> {
+        if self.pump.is_some() {
+            return Ok(()); // 已在运行（单飞语义下唯一 run 的泵）
+        }
         let tx = self
             .jobs_tx
             .clone()
@@ -621,46 +850,80 @@ impl ToolClient {
         let stop = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&stop);
         let version = self.spec.protocol_version;
-        std::thread::Builder::new()
+        let op_id = self.next_id; // 即将发出的 run 请求 id（run_ui_opts 单飞）
+        let join = std::thread::Builder::new()
             .name("tool-client-stdin-pump".into())
-            .spawn(move || {
-                let stdin = std::io::stdin();
-                let locked = stdin.lock();
-                for line in std::io::BufRead::lines(locked) {
-                    if flag.load(Ordering::Relaxed) {
-                        break;
-                    }
-                    let Ok(line) = line else { break };
-                    let mut data = line.into_bytes();
-                    data.push(b'\n');
-                    let envelope = ClientEnvelope {
-                        protocol_version: version,
-                        id: op_id,
-                        body: ClientBody::Input {
-                            target_id: op_id,
-                            data,
-                        },
-                    };
-                    let Ok(json) = serde_json::to_value(&envelope) else {
-                        break;
-                    };
-                    // 只投递不确认（send_deadline(wait_ack=false) 语义；
-                    // 此处直接走通道，ack 由请求发送方按 id 滤弃）。
-                    if tx.send((op_id, json)).is_err() {
-                        break;
-                    }
-                }
-            })
+            .spawn(move || pump_io::pump_loop(op_id, version, tx, flag))
             .map_err(|e| ClientError::Io {
                 stage: "spawn stdin pump",
                 source: Box::new(e),
             })?;
-        Ok(stop)
+        self.pump = Some(PumpHandle {
+            stop,
+            join: Some(join),
+        });
+        Ok(())
     }
 
-    /// 发送一个类型化请求并等待镜像回答。
+    /// 泵的有界回收：置停止 → 取消挂起读（Windows CancelIoEx；Unix
+    /// poll 切片天然可停）→ 有界 join（宽限=shutdown_timeout 与
+    /// TEARDOWN_GRACE 取小）。join 内线程退出即归还其 jobs 克隆。
+    fn reclaim_pump(&mut self) {
+        let Some(mut pump) = self.pump.take() else {
+            return;
+        };
+        pump.stop.store(true, Ordering::Relaxed);
+        pump_io::cancel_stdin_read();
+        if let Some(join) = pump.join.take() {
+            let grace = self.spec.shutdown_timeout.min(TEARDOWN_GRACE);
+            let deadline = std::time::Instant::now() + grace;
+            // 有界 join（stable API：is_finished 轮询 + 到期即弃句柄——
+            // 句柄 drop 不 detach 线程，但宽限尽即具名暴露由调用语境
+            // 承担；正常路径（管道就绪读/取消读）线程先于宽限退出）。
+            while !join.is_finished() && std::time::Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            if join.is_finished() {
+                let _ = join.join();
+            }
+        }
+    }
+
+    /// 发送一个类型化请求并等待镜像回答（控制请求语义：同 id 的
+    /// InputAck/Cancelled 回执即为本请求的终态——不驻留）。
     pub fn request(&mut self, body: ClientBody) -> Result<Reply, ClientError> {
-        self.round_trip(self.spec.protocol_version, body)
+        self.round_trip_park(self.spec.protocol_version, body, false)
+    }
+
+    /// round_trip + 驻留策略：`park_controls=true`（工作操作 run）把
+    /// 同 id 的控制流回执（InputAck/Cancelled）与事件一并驻留，继续等
+    /// 唯一工作终回执（F-816-T05-R1-02：InputAck 不是 run 的答案）；
+    /// false 保持控制请求（input/cancel/负控）以回执为终态的旧语义。
+    fn round_trip_park(
+        &mut self,
+        version: u32,
+        body: ClientBody,
+        park_controls: bool,
+    ) -> Result<Reply, ClientError> {
+        if let Some(reason) = self.broken {
+            return Err(ClientError::Broken(reason));
+        }
+        let id = self.next_id;
+        self.next_id += 1;
+        let envelope = ClientEnvelope {
+            protocol_version: version,
+            id,
+            body,
+        };
+        let json = serde_json::to_value(&envelope).map_err(|e| ClientError::Io {
+            stage: "serialize request",
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e)),
+        })?;
+        let started = Instant::now();
+        let limit = self.spec.request_timeout;
+        self.send_deadline(&json, started, limit, id, true)?;
+        let reply = self.wait_reply(id, limit, started, park_controls)?;
+        Ok(typed_reply(reply))
     }
 
     /// 负控通道 ①：以偏离的协议版本发送类型化请求（宿主须在副作用前
@@ -670,7 +933,7 @@ impl ToolClient {
         version: u32,
         body: ClientBody,
     ) -> Result<Reply, ClientError> {
-        self.round_trip(version, body)
+        self.round_trip_park(version, body, false)
     }
 
     /// 负控通道 ②：发送一个宿主能力表之外的操作名（期望
@@ -689,29 +952,7 @@ impl ToolClient {
         let started = Instant::now();
         let limit = self.spec.request_timeout;
         self.send_deadline(&raw, started, limit, id, true)?;
-        let reply = self.wait_reply(id, limit, started)?;
-        Ok(typed_reply(reply))
-    }
-
-    fn round_trip(&mut self, version: u32, body: ClientBody) -> Result<Reply, ClientError> {
-        if let Some(reason) = self.broken {
-            return Err(ClientError::Broken(reason));
-        }
-        let id = self.next_id;
-        self.next_id += 1;
-        let envelope = ClientEnvelope {
-            protocol_version: version,
-            id,
-            body,
-        };
-        let json = serde_json::to_value(&envelope).map_err(|e| ClientError::Io {
-            stage: "serialize request",
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e)),
-        })?;
-        let started = Instant::now();
-        let limit = self.spec.request_timeout;
-        self.send_deadline(&json, started, limit, id, true)?;
-        let reply = self.wait_reply(id, limit, started)?;
+        let reply = self.wait_reply(id, limit, started, false)?;
         Ok(typed_reply(reply))
     }
 
@@ -782,6 +1023,7 @@ impl ToolClient {
         id: u64,
         limit: Option<Duration>,
         started: Instant,
+        park_controls: bool,
     ) -> Result<ServerEnvelope, ClientError> {
         let wait = limit.map(|l| (started + l).saturating_duration_since(Instant::now()));
         let msg = match wait {
@@ -808,11 +1050,21 @@ impl ToolClient {
                         received: envelope.id,
                     });
                 }
-                // 长运行操作的事件（Progress/Launched）先于终回执到达且与
-                // 请求同 id——驻留后继续等终回执（M816-B 五操作面）。
-                if let ServerBody::Event { event } = envelope.body {
-                    self.parked_events.push(event);
-                    return self.wait_reply(id, limit, started);
+                // 长运行操作的事件（Progress/Launched）与控制流回执
+                // （InputAck/Cancelled——输入转发确认、取消回执）先于
+                // 终回执到达且与请求同 id：工作操作等待中一律驻留并继续
+                // 等唯一终回执（F-816-T05-R1-02：InputAck 不是 run 的
+                // 答案）；控制请求（input/cancel）以回执为终态不驻留。
+                match envelope.body {
+                    ServerBody::Event { event } => {
+                        self.parked_events.push(event);
+                        return self.wait_reply(id, limit, started, park_controls);
+                    }
+                    ServerBody::InputAck { .. } | ServerBody::Cancelled { .. } if park_controls => {
+                        self.parked_receipts.push(envelope.body);
+                        return self.wait_reply(id, limit, started, park_controls);
+                    }
+                    _ => {}
                 }
                 Ok(envelope)
             }
@@ -830,6 +1082,8 @@ impl ToolClient {
     /// owned 树（解除任何管道阻塞）、请求 reader 停止并确认**真停**；随后
     /// 取消失败、stderr 读错、缓冲坏帧具名传播，全部完成才返回 Timeout。
     fn abort_for_timeout(&mut self, id: u64, limit: Duration) -> ClientError {
+        // 泵先行回收（其 jobs 克隆消亡——writer 终止不再被保活）。
+        self.reclaim_pump();
         self.writer_stop.store(true, Ordering::Relaxed);
         drop(self.jobs_tx.take());
         if let Some(h) = &self.writer_cancel {
@@ -989,6 +1243,12 @@ impl ToolClient {
     /// 认真停；宽限到期则 cancel 收尸。返回退出分类与完整日志。
     pub fn shutdown(mut self) -> Result<Shutdown, ClientError> {
         let deadline = Instant::now() + self.spec.shutdown_timeout;
+        // 0.（F-816-T05-R1-03）先有界回收交互泵（置停+取消挂起读
+        //    +join）：泵的 jobs 克隆先消亡；随后 writer 停止位**先于**
+        //    任何等待置上——writer 经标志位或通道关闭任一终止，EOF
+        //    语义双保险（不再被泵克隆保活拖到宽限尽）。
+        self.reclaim_pump();
+        self.writer_stop.store(true, Ordering::Relaxed);
         // 1. 结束 writer（jobs 通道关闭 → 分片写完成 → drop stdin）后,
         //    立即关闭取消凭证副本——EOF 不被副本延迟（R5 探针证实:
         //    副本存活期间宿主收不到 stdin EOF）。

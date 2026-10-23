@@ -183,6 +183,106 @@ fn consumer_generates_real_project_via_client() {
     client.shutdown().expect("shutdown");
 }
 
+/// PLAN-816 T-05 R1（F-02/F-03）永久回归：InputAck→RunOk 合法交错 +
+/// stdin 持有下的泵有界回收。三形态经真实子进程（探针 bin 宿主+消费
+/// 者一体；测试持有其 stdin 管道）：control=非交互正控；held=stdin 持
+/// 有不投输入（shutdown Success+线程数回落）；input=Launched 后注入 q
+/// （InputAck 驻留、run 以 RunOk 终态、线程回落）。
+#[test]
+fn run_input_interleave_and_pump_reclaim_are_clean() {
+    fn probe(mode: &str) -> (String, String, i32) {
+        let mode = mode.to_string();
+        // 门禁入口先构建 bin（镜像 t04-discovery-host 的先建后测形态）：
+        // target/debug/t05-pump-probe.exe。
+        let bin = std::env::current_exe()
+            .expect("test exe")
+            .parent()
+            .and_then(|d| d.parent())
+            .expect("debug dir")
+            .join("t05-pump-probe.exe");
+        assert!(bin.exists(), "probe bin missing — build it first: cargo build --manifest-path test/fixtures/modularity/tool-client-consumer/Cargo.toml");
+        let mut child = std::process::Command::new(bin)
+            .arg(&mode)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn probe");
+        let mut stderr = child.stderr.take().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let mode_for_thread = mode.clone();
+        std::thread::spawn(move || {
+            let mode = &mode_for_thread;
+            let mut buf = [0u8; 512];
+            let mut acc = String::new();
+            use std::io::Read;
+            loop {
+                match stderr.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        acc.push_str(&String::from_utf8_lossy(&buf[..n]));
+                        if acc.contains("HOST_RUN_READY") && mode.as_str() == "input" {
+                            let _ = tx.send(());
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+        if mode.as_str() == "input" {
+            rx.recv_timeout(std::time::Duration::from_secs(5))
+                .expect("host ready");
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            use std::io::Write;
+            let mut stdin = child.stdin.take().unwrap();
+            stdin
+                .write_all(
+                    b"q
+",
+                )
+                .unwrap();
+            stdin.flush().unwrap();
+            drop(stdin);
+        } else {
+            // held：stdin 保持打开（不投输入）——测试进程持有写端。
+        }
+        let out = child.wait_with_output().expect("wait");
+        (
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::new(),
+            out.status.code().unwrap_or(-1),
+        )
+    }
+    for mode in ["control", "held", "input"] {
+        let (stdout, _, code) = probe(mode);
+        assert_eq!(code, 0, "[{mode}] stdout: {stdout}");
+        assert!(
+            stdout.contains("run_result=Ok(Ok(RunReport"),
+            "[{mode}] run must complete with the work terminal: {stdout}"
+        );
+        assert!(
+            stdout.contains("shutdown=Ok(Shutdown { kind: Success"),
+            "[{mode}] {stdout}"
+        );
+        let m = (|| {
+            let a = stdout.find("threads_before=")?;
+            let b = stdout.find("; threads_after=")?;
+            let before: u32 = stdout[a + 15..b].trim().parse().ok()?;
+            let c = stdout.find("threads_after=")?;
+            let after: u32 = stdout[c + 14..].trim().parse().ok()?;
+            Some((before, after))
+        })()
+        .unwrap_or_else(|| panic!("[{mode}] thread counters missing: {stdout}"));
+        assert_eq!(m.0, m.1, "[{mode}] pump must be reclaimed: {stdout}");
+        if mode == "input" {
+            assert!(
+                stdout.contains("receipts=1"),
+                "[{mode}] InputAck parked: {stdout}"
+            );
+        }
+    }
+}
+
 /// V-05 负控：未知协议版本在副作用前具名拒绝，流保持可用。
 #[test]
 fn version_rejected_before_side_effects_stream_alive() {
