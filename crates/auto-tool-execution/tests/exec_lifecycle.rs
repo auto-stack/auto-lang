@@ -552,8 +552,7 @@ fn detached_child_outlives_spawn_caller_handle() {
 #[cfg(not(windows))]
 #[test]
 fn creation_flags_are_windows_only() {
-    let mut spec = child_spec("exit");
-    with_args(&mut spec, "0", None);
+    let mut spec = with_args(child_spec("exit"), "0", None);
     spec.windows_creation_flags = 1;
     let err = auto_tool_execution::spawn_detached(&spec).unwrap_err();
     assert!(matches!(err, ExecutionError::InvalidSpec(_)), "{err:?}");
@@ -617,4 +616,92 @@ fn terminate_programmatic_request_sets_flag() {
     assert!(!auto_tool_execution::terminate::requested());
     auto_tool_execution::terminate::request();
     assert!(auto_tool_execution::terminate::requested());
+}
+
+/// F-816-B-R8-01 永久回归（fd-receiver 握手截止）：无人连接时 receiver
+/// 不再无限阻塞在 accept——握手截止（TE_CHILD_HANDSHAKE_SECS=1）到期
+/// **自退** exit 4 具名，marker 不存在（未收到写 fd）。
+#[cfg(unix)]
+#[test]
+fn fd_receiver_self_exits_without_peer() {
+    let dir = TempDir::new("r801-npeer");
+    let socket = dir.path().join("h.sock");
+    let marker = dir.path().join("h.marker");
+    let mut child = std::process::Command::new(TE_CHILD)
+        .env(MODE, "fd-receiver")
+        .env(ARG1, socket.to_str().unwrap())
+        .env(ARG2, marker.to_str().unwrap())
+        .env("TE_CHILD_ARG3", "1")
+        .env("TE_CHILD_HANDSHAKE_SECS", "1")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn fd-receiver");
+    let ready_by = Instant::now() + Duration::from_secs(2);
+    while !socket.exists() && Instant::now() < ready_by {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(socket.exists(), "receiver must bind socket");
+    // socket 就绪后无人连接——握手截止自退（非测试 kill）。
+    let deadline = Instant::now() + Duration::from_secs(4);
+    loop {
+        match child.try_wait().expect("try_wait") {
+            Some(st) => {
+                assert_eq!(st.code(), Some(4), "handshake-deadline self-exit is named");
+                break;
+            }
+            None => {
+                assert!(Instant::now() < deadline, "no-peer receiver must self-exit");
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+    }
+    assert!(!marker.exists(), "no write fd was ever received");
+}
+
+/// F-816-B-R8-01 永久回归（静默连接）：对端 connect 后不发送任何字节
+/// ——recvmsg 同受握手截止约束，到期具名自退 exit 4，marker 不存在。
+/// 连接全程保持打开（真实静默语义，非 EOF 竞态）。
+#[cfg(unix)]
+#[test]
+fn fd_receiver_self_exits_on_silent_peer() {
+    let dir = TempDir::new("r801-speer");
+    let socket = dir.path().join("h.sock");
+    let marker = dir.path().join("h.marker");
+    let mut child = std::process::Command::new(TE_CHILD)
+        .env(MODE, "fd-receiver")
+        .env(ARG1, socket.to_str().unwrap())
+        .env(ARG2, marker.to_str().unwrap())
+        .env("TE_CHILD_ARG3", "1")
+        .env("TE_CHILD_HANDSHAKE_SECS", "1")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn fd-receiver");
+    let ready_by = Instant::now() + Duration::from_secs(2);
+    while !socket.exists() && Instant::now() < ready_by {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(socket.exists(), "receiver must bind socket");
+    let peer = std::os::unix::net::UnixStream::connect(&socket).expect("connect silent peer");
+    let deadline = Instant::now() + Duration::from_secs(4);
+    loop {
+        match child.try_wait().expect("try_wait") {
+            Some(st) => {
+                assert_eq!(st.code(), Some(4), "handshake-deadline self-exit is named");
+                break;
+            }
+            None => {
+                assert!(
+                    Instant::now() < deadline,
+                    "silent-peer receiver must self-exit"
+                );
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+    }
+    drop(peer);
+    assert!(!marker.exists(), "silent peer sent nothing");
 }

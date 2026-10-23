@@ -456,9 +456,11 @@ fn serve_daemon_and_req_roundtrip() {
 
 /// 收尾保留预算（F-816-B-R7-04）：四个返回出口（超时/wait 失败/根退后
 /// 持有者/正常 EOF）的终止树+真停 reader 共用——镜像生产设施
-/// `TEARDOWN_GRACE` 语义：deadline 只覆盖等待根退出，收尾用独立预算
-/// （Unix poll 分片 ≤50ms + join 需要真实时间；从已耗尽的 deadline 挤
-/// 1ms 会使返回后 reader 残活 ≤100ms）。总时长上界 = limit + 本值。
+/// `TEARDOWN_GRACE` 语义：deadline 只覆盖等待根退出，收尾各操作
+/// （cancel_within 与每个 reader 的 stop_bounded）**分别**以本值为宽限
+/// 上界（顺序执行的最坏总收尾 ≈ (1+readers)×本值，非共享总截止；Unix
+/// poll 分片 ≤50ms + join 需要真实时间，从已耗尽的 deadline 挤 1ms 会使
+/// 返回后 reader 残活 ≤100ms）。断言用宽有限界（1.5s）而非严格和上界。
 const TEARDOWN: Duration = Duration::from_millis(300);
 
 /// 有界 run（F-816-B-R1-04/R4/R5-04/R7-04）：设施 ProcessTree 承载——超时/
@@ -596,19 +598,21 @@ fn run_bounded(
 
 /// PLAN-816 具名测试子进程（寿命反例对端）定位：`AUTO_TE_CHILD_BIN`
 /// 显式覆盖优先；默认主 workspace debug 产物（workspace 级 cargo t/裸 t
-/// 全目标构建产出）。缺失=诚实红灯并给构建指引（镜像 auto-ui-tool
-/// 既有模式）。
+/// 全目标构建产出）。**两条路径都做存在性断言**（F-816-B-R8-01 教训：
+/// env 覆盖指向缺失二进制时，诚实红灯+构建指引，而非下游 spawn 的
+/// 含混 NotFound）。
 fn te_child_bin() -> PathBuf {
-    if let Some(p) = std::env::var_os("AUTO_TE_CHILD_BIN") {
-        return PathBuf::from(p);
-    }
-    #[cfg(windows)]
-    let exe = "te-child.exe";
-    #[cfg(not(windows))]
-    let exe = "te-child";
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/debug")
-        .join(exe);
+    let p = std::env::var_os("AUTO_TE_CHILD_BIN")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            #[cfg(windows)]
+            let exe = "te-child.exe";
+            #[cfg(not(windows))]
+            let exe = "te-child";
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../target/debug")
+                .join(exe)
+        });
     assert!(
         p.exists(),
         "te-child not found at {} — cargo build -p auto-tool-execution --bin te-child or set AUTO_TE_CHILD_BIN",
@@ -617,49 +621,85 @@ fn te_child_bin() -> PathBuf {
     p
 }
 
-/// 外部写端持有者 fixture（F-816-B-R7-04 永久回归共用）：
+/// 外部写端持有者 receiver 的 RAII 守卫（F-816-B-R8-01）：任何出口
+/// （含断言 panic 中止）drop 时 kill+wait 回收自有 receiver 并清理临时
+/// socket/marker 文件——失败测试不遗留 fixture；正控期间不提前释放写端
+/// （drop 只发生在测试作用域收尾，即原尾部清理位置）。Unix 侧另有
+/// te-child 握手截止兜底自退（双保险）。
+struct HolderGuard {
+    child: std::process::Child,
+    socket: Option<PathBuf>,
+    marker: Option<PathBuf>,
+}
+
+impl HolderGuard {
+    fn alive(&mut self) -> bool {
+        self.child.try_wait().unwrap().is_none()
+    }
+}
+
+impl Drop for HolderGuard {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        for p in self.socket.iter().chain(self.marker.iter()) {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+}
+
+/// 外部写端持有者 fixture（F-816-B-R7-04/R8-01 永久回归共用）：
 /// - Unix：`fd-receiver` receiver——bind+listen socket 后 accept 一连接，
 ///   recvmsg 收 SCM_RIGHTS 写 fd、写 marker 确认**真实收到**，随后持有
-///   fd 存活 `hold_secs`（自带截止）；
+///   fd 存活 `hold_secs`（自带截止）；握手期以 `handshake_secs` 为整体
+///   截止（无人连接/静默连接也兜底自退，exit 4）；
 /// - Windows：`sleep` receiver——root 侧经 DuplicateHandle 把 stdout 写
-///   句柄转入其句柄表（持有语义同）。
+///   句柄转入其句柄表（持有语义同；进程期即有界，无握手阶段）。
 ///
 /// 持有者是测试拥有的独立进程，**不在 run_bounded 的 owned 树内**：
 /// 杀树不给 EOF，reader 停止只能靠停止协议（Unix poll 分片/Win 取消
-/// 重发）——不能用"等测试释放 writer"或 EOF 侥幸通过。返回
-/// （receiver, root 的 TE_CHILD_ARG2 值, Unix marker 路径）。
-#[allow(clippy::type_complexity)]
+/// 重发）——不能用"等测试释放 writer"或 EOF 侥幸通过。守卫在 spawn 后
+/// 立即建立（先于任何后续断言）并随测试作用域 drop 统一回收。返回
+/// （守卫, root 的 TE_CHILD_ARG2 值）。
 fn spawn_holder_receiver(
     te: &Path,
     tag: &str,
     hold_secs: u64,
-) -> (std::process::Child, String, Option<PathBuf>) {
+    handshake_secs: u64,
+) -> (HolderGuard, String) {
     #[cfg(unix)]
     {
         let socket = std::env::temp_dir().join(format!("{tag}.sock"));
         let marker = std::env::temp_dir().join(format!("{tag}.marker"));
-        let receiver = Command::new(te)
+        let child = Command::new(te)
             .env("TE_CHILD_MODE", "fd-receiver")
             .env("TE_CHILD_ARG1", socket.to_str().unwrap())
             .env("TE_CHILD_ARG2", marker.to_str().unwrap())
             .env("TE_CHILD_ARG3", hold_secs.to_string())
+            .env("TE_CHILD_HANDSHAKE_SECS", handshake_secs.to_string())
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn fd receiver");
+        // 守卫先于任何后续断言建立——bind 等待失败也回收 receiver。
+        let guard = HolderGuard {
+            child,
+            socket: Some(socket.clone()),
+            marker: Some(marker),
+        };
         // socket 就绪（bind+listen）先于根 spawn——根的 connect 才会成功。
         let until = Instant::now() + Duration::from_secs(10);
         while !socket.exists() && Instant::now() < until {
             std::thread::sleep(Duration::from_millis(10));
         }
         assert!(socket.exists(), "receiver must bind socket within 10s");
-        (receiver, socket.to_str().unwrap().to_string(), Some(marker))
+        (guard, socket.to_str().unwrap().to_string())
     }
     #[cfg(windows)]
     {
-        let _ = tag; // 命名仅 Unix 臂使用（socket/marker 路径）
-        let receiver = Command::new(te)
+        let _ = (tag, handshake_secs); // 命名/握手仅 Unix 臂使用
+        let child = Command::new(te)
             .env("TE_CHILD_MODE", "sleep")
             .env("TE_CHILD_ARG1", hold_secs.to_string())
             .stdin(Stdio::null())
@@ -667,8 +707,15 @@ fn spawn_holder_receiver(
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn holder receiver");
-        let pid = receiver.id().to_string();
-        (receiver, pid, None)
+        let pid = child.id().to_string();
+        (
+            HolderGuard {
+                child,
+                socket: None,
+                marker: None,
+            },
+            pid,
+        )
     }
 }
 
@@ -681,9 +728,8 @@ fn spawn_holder_receiver(
 #[test]
 fn timeout_exit_reaps_own_readers_before_return() {
     let te = te_child_bin();
-    let (mut receiver, holder_arg, marker) =
-        spawn_holder_receiver(&te, &format!("p816-tmo-{}", std::process::id()), 8);
-    let _ = &marker; // Windows 臂无 marker（DuplicateHandle 无需接收侧确认）
+    let (mut receiver, holder_arg) =
+        spawn_holder_receiver(&te, &format!("p816-tmo-{}", std::process::id()), 8, 10);
     let start = Instant::now();
     let (code, out, err) = run_bounded_prog(
         te.as_os_str(),
@@ -699,11 +745,11 @@ fn timeout_exit_reaps_own_readers_before_return() {
     let elapsed = start.elapsed();
     #[cfg(unix)]
     assert!(
-        marker.as_ref().unwrap().exists(),
+        receiver.marker.as_ref().unwrap().exists(),
         "receiver must confirm actual write-fd transfer"
     );
     assert!(
-        receiver.try_wait().unwrap().is_none(),
+        receiver.alive(),
         "holder must stay alive across the return (no writer release)"
     );
     assert_eq!(
@@ -728,9 +774,8 @@ fn timeout_exit_reaps_own_readers_before_return() {
         elapsed < Duration::from_millis(1500),
         "bounded total (limit + teardown): {elapsed:?}"
     );
-    // 探针自清理（receiver 为测试拥有的独立进程）。
-    let _ = receiver.kill();
-    let _ = receiver.wait();
+    // 收尾交守卫 drop：回收 receiver + 清理临时 socket/marker——所有
+    // 失败出口同样回收（F-816-B-R8-01），不再依赖尾部显式 kill。
 }
 
 /// F-816-B-R7-04 永久回归②（姊妹分支）：根早退 + 外部持有者 + 期限近
@@ -741,9 +786,8 @@ fn timeout_exit_reaps_own_readers_before_return() {
 #[test]
 fn holder_root_exit_near_deadline_reaps_readers() {
     let te = te_child_bin();
-    let (mut receiver, holder_arg, marker) =
-        spawn_holder_receiver(&te, &format!("p816-hold-{}", std::process::id()), 8);
-    let _ = &marker;
+    let (mut receiver, holder_arg) =
+        spawn_holder_receiver(&te, &format!("p816-hold-{}", std::process::id()), 8, 10);
     let start = Instant::now();
     let (code, out, err) = run_bounded_prog(
         te.as_os_str(),
@@ -759,7 +803,7 @@ fn holder_root_exit_near_deadline_reaps_readers() {
     let elapsed = start.elapsed();
     #[cfg(unix)]
     assert!(
-        marker.as_ref().unwrap().exists(),
+        receiver.marker.as_ref().unwrap().exists(),
         "receiver must confirm actual write-fd transfer"
     );
     assert!(
@@ -782,15 +826,84 @@ fn holder_root_exit_near_deadline_reaps_readers() {
         "own readers must be reaped, not registered"
     );
     assert!(
-        receiver.try_wait().unwrap().is_none(),
+        receiver.alive(),
         "holder must stay alive across the return (no writer release)"
     );
     assert!(
         elapsed < Duration::from_millis(1500),
         "bounded total (limit + teardown): {elapsed:?}"
     );
-    let _ = receiver.kill();
-    let _ = receiver.wait();
+    // 收尾交守卫 drop（所有失败出口同样回收）。
+}
+
+/// F-816-B-R8-01 永久回归③：根在转交前失败——根指向从未 bind 的
+/// socket，打印 marker 行后 connect 失败 panic 退出 101（真实子进程
+/// 失败出口，无外部 wrapper）；run_bounded 如实传播根失败码，receiver
+/// 未收到写 fd（marker 不存在）。Unix 侧 receiver 在握手窗口内靠
+/// **握手截止自退**（exit 4 具名，本测试调短为 2s）；测试任何出口由
+/// 守卫回收自有进程与临时文件——失败/正常出口均不遗留 fixture。
+#[test]
+fn root_failure_before_transfer_still_reclaims_receiver() {
+    let te = te_child_bin();
+    let (mut receiver, _holder_arg) =
+        spawn_holder_receiver(&te, &format!("p816-prefail-{}", std::process::id()), 8, 2);
+    let start = Instant::now();
+    let bogus =
+        std::env::temp_dir().join(format!("p816-prefail-{}-missing.sock", std::process::id()));
+    let (code, out, err) = run_bounded_prog(
+        te.as_os_str(),
+        &[],
+        &std::env::temp_dir(),
+        &[
+            ("TE_CHILD_MODE", "stdout-holdout".to_string()),
+            ("TE_CHILD_ARG1", "0".to_string()),
+            ("TE_CHILD_ARG2", bogus.to_str().unwrap().to_string()),
+        ],
+        Duration::from_secs(3),
+    );
+    let elapsed = start.elapsed();
+    assert_eq!(
+        code, 101,
+        "root pre-transfer failure must propagate its exit code: out={out} err={err}"
+    );
+    assert!(
+        out.contains("holdout output before sleep"),
+        "root output must be preserved: {out}"
+    );
+    assert!(elapsed < Duration::from_secs(2), "bounded: {elapsed:?}");
+    #[cfg(unix)]
+    {
+        // 转交未发生 + receiver 仍在握手窗口 → 靠握手截止自退（非测试
+        // kill）：exit 4 具名、marker 不存在。
+        assert!(
+            !receiver.marker.as_ref().unwrap().exists(),
+            "transfer must not have happened"
+        );
+        assert!(receiver.alive(), "receiver is in bounded handshake window");
+        let until = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(status) = receiver.child.try_wait().unwrap() {
+                assert_eq!(
+                    status.code(),
+                    Some(4),
+                    "receiver must self-exit at handshake deadline (named)"
+                );
+                break;
+            }
+            assert!(
+                Instant::now() < until,
+                "receiver must self-exit by handshake deadline"
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+    #[cfg(windows)]
+    {
+        // Windows 臂持有经 receiver 句柄表（无握手阶段）；转交失败根
+        // exit 101，receiver 由守卫 drop 回收（bounded sleep 兜底）。
+        assert!(receiver.alive());
+    }
+    // 收尾交守卫 drop。
 }
 
 /// V-04：watch 就绪横幅 + 变更触发 SFC 再生（内容身份 oracle + 单一

@@ -136,11 +136,26 @@ fn main() {
         // ARG1 = socket 路径;ARG2 = marker 文件;ARG3 = 持有秒数(Unix)。
         // bind+listen 后 accept 一连接,recvmsg 收 SCM_RIGHTS 写 fd,写
         // marker 确认真实收到,随后持有 fd 存活 ARG3 秒(自带截止)。
+        // 握手(accept+recvmsg)自有真实截止(F-816-B-R8-01):无人连接/
+        // 静默连接时**整体有界退出**(exit 4 具名),"持有 N 秒"只在握手
+        // 成功后开始。默认 10s,可经 TE_CHILD_HANDSHAKE_SECS 调短(≤30)。
         "fd-receiver" => {
             #[cfg(unix)]
             {
                 let secs: u64 = arg3().trim().parse().unwrap_or(5).min(30);
-                holdout_unix::receive_fd(&arg1(), &arg2()).expect("receive write fd");
+                let handshake_secs: u64 = std::env::var("TE_CHILD_HANDSHAKE_SECS")
+                    .ok()
+                    .and_then(|v| v.trim().parse().ok())
+                    .unwrap_or(10)
+                    .min(30);
+                if let Err(e) = holdout_unix::receive_fd(
+                    &arg1(),
+                    &arg2(),
+                    std::time::Duration::from_secs(handshake_secs),
+                ) {
+                    eprintln!("te-child fd-receiver: {e}");
+                    std::process::exit(4);
+                }
                 std::thread::sleep(std::time::Duration::from_secs(secs));
             }
         }
@@ -316,6 +331,16 @@ mod holdout_unix {
         flags: i32,
     }
 
+    #[repr(C)]
+    struct PollFd {
+        fd: i32,
+        events: i16,
+        revents: i16,
+    }
+
+    const POLLIN: i16 = 0x001;
+    const EINTR: i32 = 4;
+
     extern "C" {
         fn socket(domain: i32, ty: i32, protocol: i32) -> i32;
         fn connect(fd: i32, addr: *const SockAddrUn, len: u32) -> i32;
@@ -324,7 +349,39 @@ mod holdout_unix {
         fn listen(fd: i32, backlog: i32) -> i32;
         fn accept(fd: i32, addr: *mut u8, len: *mut u32) -> i32;
         fn recvmsg(fd: i32, msg: *mut MsgHdr, flags: i32) -> isize;
+        fn poll(fds: *mut PollFd, nfds: u64, timeout_ms: i32) -> i32;
         fn close(fd: i32) -> i32;
+    }
+
+    /// 等待 fd 可读,最迟 `deadline`(F-816-B-R8-01:握手期无真实截止会
+    /// 在无人连接/静默连接时无限阻塞)。EINTR 重试;到期返回具名错误。
+    fn wait_readable(fd: i32, deadline: std::time::Instant, stage: &str) -> io::Result<()> {
+        let mut pfd = PollFd {
+            fd,
+            events: POLLIN,
+            revents: 0,
+        };
+        loop {
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                return Err(io::Error::other(format!(
+                    "handshake deadline exceeded at {stage}"
+                )));
+            }
+            let timeout_ms = ((deadline - now).as_millis().min(i32::MAX as u128)) as i32;
+            let ready = unsafe { poll(&mut pfd, 1, timeout_ms) };
+            if ready < 0 {
+                let e = io::Error::last_os_error();
+                if e.raw_os_error() == Some(EINTR) {
+                    continue;
+                }
+                return Err(e);
+            }
+            if ready > 0 {
+                return Ok(());
+            }
+            // ready == 0:超时,下一轮循环的 deadline 检查具名退出。
+        }
     }
 
     fn sun_addr(path: &str) -> io::Result<(SockAddrUn, u32)> {
@@ -390,8 +447,15 @@ mod holdout_unix {
     /// bind+listen `socket_path`,accept 一连接并 recvmsg 收 SCM_RIGHTS
     /// 写 fd;marker 写入"真实收到"确认(含 fd 号)。fd 故意不关闭:持有
     /// 该写端直到进程退出(持有者语义——root 被杀后管道仍无 EOF)。
-    pub fn receive_fd(socket_path: &str, marker: &str) -> io::Result<()> {
+    /// `handshake` 为 accept+recvmsg 的整体真实截止(F-816-B-R8-01):
+    /// 无人连接/静默连接时到期具名退出,不再无限阻塞在内核等待点。
+    pub fn receive_fd(
+        socket_path: &str,
+        marker: &str,
+        handshake: std::time::Duration,
+    ) -> io::Result<()> {
         let (addr, addr_len) = sun_addr(socket_path)?;
+        let deadline = std::time::Instant::now() + handshake;
         unsafe {
             let fd = socket(AF_UNIX, SOCK_STREAM, 0);
             if fd < 0 {
@@ -402,9 +466,18 @@ mod holdout_unix {
                 close(fd);
                 return Err(e);
             }
+            if let Err(e) = wait_readable(fd, deadline, "accept") {
+                close(fd);
+                return Err(e);
+            }
             let conn = accept(fd, std::ptr::null_mut(), std::ptr::null_mut());
             if conn < 0 {
                 let e = io::Error::last_os_error();
+                close(fd);
+                return Err(e);
+            }
+            if let Err(e) = wait_readable(conn, deadline, "recvmsg") {
+                close(conn);
                 close(fd);
                 return Err(e);
             }
