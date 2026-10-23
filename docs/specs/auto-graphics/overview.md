@@ -9,3 +9,5 @@
 - [plans](plans.md)：已交付历史；[834](../../plans/archive/834-autographics-auto-squash-and-dual-game-sdk.md)。
 
 - [scene-document](scene-document.md) / [authoring-session](authoring-session.md): PLAN-835 independent stock-Iced/real-Auto scene authoring, save/undo/redo/reopen and failure recovery delivered experimentally; I2/I3 production migration unchanged.
+
+- [Viewport interaction](viewport-interaction.md): PLAN-836 finite picking/translation with real Auto preview, single history publication and accepted-only persistence.

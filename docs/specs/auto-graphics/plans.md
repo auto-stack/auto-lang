@@ -10,3 +10,5 @@
 | 834 | 真实 Auto 驱动 Squash 与双游戏 SDK 闭环 | archived | [archive/834](../../plans/archive/834-autographics-auto-squash-and-dual-game-sdk.md) | 同一公开 SDK/Session 驱动真实 Auto Breakout+Squash，原轨迹/音画/输入/寿命/精确计量与正反控通过；I1实验双游戏分母交付，源码仅autographics-dev，I2/I3/Shader/CAP/生产迁移仍pending |
 
 | 835 | 场景创作保存与撤销原型 | archived | [archive/835](../../plans/archive/835-autographics-scene-authoring-save-and-undo.md) | 独立stock Iced+真实Auto profile3的有限2D/3D文档、编辑事务、保存/撤销/重开与失败恢复；源码仅autographics-dev，I2/I3/生产Forge仍pending |
+
+| 836 | 视口选择与平移交互原型 | archived | [archive/836](../../plans/archive/836-autographics-viewport-picking-and-translation.md) | 有限2D几何/3D OBB与世界轴平移，真实Auto临时预览、一次历史、失败恢复；源码autographics-dev，生产I2/I3 pending |

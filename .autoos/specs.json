@@ -4176,6 +4176,31 @@
  "modified_at": 1792720163,
  "completed_at": 1792720163
 }
+,
+{
+ "id": "P836-MERGE",
+ "title": "PLAN-836 delivered consolidation",
+ "content": "Source fast-forward to autographics-dev only; canonical specs, guarded derived projection, delivered archive and guarded cleanup. Main receives knowledge only. I2/I3 and production migration remain pending.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/archive/836-autographics-viewport-picking-and-translation.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-836",
+  "r1",
+  "reviewed:5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1",
+  "source-sha256:d55fd11e223e168f6b3b9b52b7939bd540a7a945b93aa100add832307be40758",
+  "source-path:docs/specs/auto-graphics/viewport-interaction.md"
+ ],
+ "created_at": 1792738768,
+ "modified_at": 1792738768,
+ "completed_at": 1792738768
+}
 ],
    "section_type": "Reports",
    "title": "📊 Reports",
@@ -14367,7 +14392,7 @@
     {
  "id": "P829-AGP",
  "title": "AutoGraphics project",
- "content": "Canonical finite scene authoring contract: actual Auto profile3/stock Iced, stable document identity, transactional preview/history/dirty, owned local save/reopen and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite viewport picking/translation contract: actual Auto profile3/stock Iced, exact 2D/OBB3D support, bounded candidate preview, final endpoint single history, accepted-only save and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14378,15 +14403,15 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-835",
+  "PLAN-836",
   "r1",
-  "reviewed:0c29fa2a7cfb0dbc08a906542c511bd20f34ebed",
-  "source-sha256:3391c70adaa44a62362c809268771c896587d18c63d92110a3cbbac9e1204b25",
+  "reviewed:5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1",
+  "source-sha256:12cbd812d65d4ef22c5bce41e9176702e4c6dc79db6df48fab34f0d17c81fe95",
   "source-path:docs/specs/auto-graphics/project.md"
  ],
  "created_at": 1792685069,
- "modified_at": 1792720163,
- "completed_at": 1792720163
+ "modified_at": 1792738768,
+ "completed_at": 1792738768
 },
     {
      "id": "P830-SURF",
@@ -14429,7 +14454,7 @@
     {
  "id": "P830-PROFILE",
  "title": "AutoGraphics prototype-profile",
- "content": "Canonical finite scene authoring contract: actual Auto profile3/stock Iced, stable document identity, transactional preview/history/dirty, owned local save/reopen and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite viewport picking/translation contract: actual Auto profile3/stock Iced, exact 2D/OBB3D support, bounded candidate preview, final endpoint single history, accepted-only save and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14440,20 +14465,20 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-835",
+  "PLAN-836",
   "r1",
-  "reviewed:0c29fa2a7cfb0dbc08a906542c511bd20f34ebed",
-  "source-sha256:65372201e6a9dd75b42b5d079be1dd1a682d28ca6dac7b536f517ee404a8f76f",
+  "reviewed:5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1",
+  "source-sha256:400d96acd30b310bf0520a7f05b94eec0b17169951a60dae450e8045104eeb8a",
   "source-path:docs/specs/auto-graphics/prototype-profile.md"
  ],
  "created_at": 1792685069,
- "modified_at": 1792720163,
- "completed_at": 1792720163
+ "modified_at": 1792738768,
+ "completed_at": 1792738768
 },
     {
  "id": "P830-IH",
  "title": "AutoGraphics integration-contract",
- "content": "Canonical finite scene authoring contract: actual Auto profile3/stock Iced, stable document identity, transactional preview/history/dirty, owned local save/reopen and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite viewport picking/translation contract: actual Auto profile3/stock Iced, exact 2D/OBB3D support, bounded candidate preview, final endpoint single history, accepted-only save and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14464,15 +14489,15 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-835",
+  "PLAN-836",
   "r1",
-  "reviewed:0c29fa2a7cfb0dbc08a906542c511bd20f34ebed",
-  "source-sha256:18ea0b289b08300451800a23e25fdc0491a60178928256067b9dbcb2ae41ecdc",
+  "reviewed:5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1",
+  "source-sha256:03aa758870d6c15d0bbcfab9b080b769bef486aebdc73bae86d32e5e96aaab3a",
   "source-path:docs/specs/auto-graphics/integration-contract.md"
  ],
  "created_at": 1792685069,
- "modified_at": 1792720163,
- "completed_at": 1792720163
+ "modified_at": 1792738768,
+ "completed_at": 1792738768
 },
     {
      "id": "P815-B-D1",
@@ -14633,7 +14658,7 @@
 {
  "id": "P835-DOCUMENT",
  "title": "AutoGraphics scene-document",
- "content": "Canonical finite scene authoring contract: actual Auto profile3/stock Iced, stable document identity, transactional preview/history/dirty, owned local save/reopen and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite viewport picking/translation contract: actual Auto profile3/stock Iced, exact 2D/OBB3D support, bounded candidate preview, final endpoint single history, accepted-only save and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14644,20 +14669,20 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-835",
+  "PLAN-836",
   "r1",
-  "reviewed:0c29fa2a7cfb0dbc08a906542c511bd20f34ebed",
-  "source-sha256:5cd8cf49d35b84ad65f0ed283754c97f2eba6d5d569e514b1237a5e460d0d281",
+  "reviewed:5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1",
+  "source-sha256:0903c5285b13007acb048148ceb8d9ab895cd8265f69d15e03c6ce0c08149ba4",
   "source-path:docs/specs/auto-graphics/scene-document.md"
  ],
  "created_at": 1792720163,
- "modified_at": 1792720163,
- "completed_at": 1792720163
+ "modified_at": 1792738768,
+ "completed_at": 1792738768
 },
 {
  "id": "P835-SESSION",
  "title": "AutoGraphics authoring-session",
- "content": "Canonical finite scene authoring contract: actual Auto profile3/stock Iced, stable document identity, transactional preview/history/dirty, owned local save/reopen and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite viewport picking/translation contract: actual Auto profile3/stock Iced, exact 2D/OBB3D support, bounded candidate preview, final endpoint single history, accepted-only save and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14668,15 +14693,40 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-835",
+  "PLAN-836",
   "r1",
-  "reviewed:0c29fa2a7cfb0dbc08a906542c511bd20f34ebed",
-  "source-sha256:fba03306b52789b20a025edd267651f4f1b99b645ada6c33d104ef11798612c3",
+  "reviewed:5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1",
+  "source-sha256:a034378ce9c1df928ce4745255e0a5baf03edb372a4c1c89fa7c3f04b7da71ae",
   "source-path:docs/specs/auto-graphics/authoring-session.md"
  ],
  "created_at": 1792720163,
- "modified_at": 1792720163,
- "completed_at": 1792720163
+ "modified_at": 1792738768,
+ "completed_at": 1792738768
+}
+,
+{
+ "id": "P836-VIEWPORT",
+ "title": "AutoGraphics viewport-interaction",
+ "content": "Canonical finite viewport picking/translation contract: actual Auto profile3/stock Iced, exact 2D/OBB3D support, bounded candidate preview, final endpoint single history, accepted-only save and failure recovery. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/viewport-interaction.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-836",
+  "r1",
+  "reviewed:5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1",
+  "source-sha256:d55fd11e223e168f6b3b9b52b7939bd540a7a945b93aa100add832307be40758",
+  "source-path:docs/specs/auto-graphics/viewport-interaction.md"
+ ],
+ "created_at": 1792738768,
+ "modified_at": 1792738768,
+ "completed_at": 1792738768
 }
 ],
    "section_type": "Designs",
@@ -18005,6 +18055,31 @@
  "created_at": 1792720163,
  "modified_at": 1792720163,
  "completed_at": 1792720163
+}
+,
+{
+ "id": "P836-TESTS",
+ "title": "PLAN-836 viewport interaction gates",
+ "content": "Strict codec/identity/capacity, actual widget->Auto->GPU, history/dirty, staged save failure/recovery, native positive/negative, standalone consumer,20 actual owner/pin cycles and upload omission controls. Full frozen driver/AGP gates in archived836 receipt.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/authoring-session.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-836",
+  "r1",
+  "reviewed:5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1",
+  "source-sha256:a034378ce9c1df928ce4745255e0a5baf03edb372a4c1c89fa7c3f04b7da71ae",
+  "source-path:docs/specs/auto-graphics/authoring-session.md"
+ ],
+ "created_at": 1792738768,
+ "modified_at": 1792738768,
+ "completed_at": 1792738768
 }
 ],
    "section_type": "Tests",
@@ -24225,6 +24300,31 @@
  "modified_at": 1792720163,
  "completed_at": 1792720163
 }
+,
+{
+ "id": "P836-R2",
+ "title": "PLAN-836 final R2 PASS",
+ "content": "Final R2 pass at5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1; independent affected review closes F-836-R1-01. Native completion/report/exit, truncation, observation and full positive/negative controls replayed; no new findings. Merge gates separately executed.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/attachments/836/review-r2/review.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-836",
+  "r1",
+  "reviewed:5f3e218ba5d605cfb3e007d1c9bade5a5fe399a1",
+  "source-sha256:d967d80d28cb68525286bca2ef022c49fcd23c95c8496fd9c1c8464f08cc742f",
+  "source-path:docs/plans/attachments/836/review-r2/review.md"
+ ],
+ "created_at": 1792738768,
+ "modified_at": 1792738768,
+ "completed_at": 1792738768
+}
 ],
    "section_type": "Reviews",
    "title": "🔍 Reviews",
@@ -24236,5 +24336,5 @@
   }
  ],
  "project": "auto-lang",
- "version": 72
+ "version": 73
 }

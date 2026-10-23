@@ -17,3 +17,9 @@ An exclusive owned create_new sidecar rejects occupied files without stale-lock 
 Scope: local Windows same-volume single writer; no guarantees for power loss, arbitrary network filesystems, or noncooperating writers after the final comparison. Tests `authoring_storage` cover real precommit failures, committed-but-unverified retry, external mutation, actual Windows deny-share occupancy/recovery, foreign paths and old snapshots. `autographics-authoring --inspect file.agscene` reconstructs and renders in a new process.
 
 Delivery: [PLAN-835](../../plans/archive/835-autographics-scene-authoring-save-and-undo.md), [review R2](../../plans/attachments/835/review-r2/review.md), [merge receipt](../../plans/attachments/835/merge-r1/receipt.md). Production I2/I3 remain pending.
+
+## PLAN-836 viewport extension
+
+Schema autographics.scene/1 and every existing field/limit remain unchanged. Pointer/camera/gizmo/gesture/sample/candidate ownership never persists. Save only consumes accepted Idle content; active gesture Save is rejected before Storage. Successful gesture is one before/after history step with ordinary hash-based dirty/Undo/Redo. Cancel/failure does not modify saved bytes. Reopen reconstructs saved content with clean dirty, no selection or history.
+
+Provenance: [PLAN-836](../../plans/archive/836-autographics-viewport-picking-and-translation.md), [final R2](../../plans/attachments/836/review-r2/review.md), [merge receipt](../../plans/attachments/836/merge-r1/receipt.md). Source integration is autographics-dev only; production I2/I3 remain pending.
