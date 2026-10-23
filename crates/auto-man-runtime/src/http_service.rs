@@ -319,6 +319,22 @@ fn serve_rust(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, Stri
             Ok(())
         };
     let tree_grace = std::time::Duration::from_secs(5);
+    // F-816-B-R2-02 残项：失败出口不覆盖确已发生的 reader/回收错误——
+    // 后端退出信息保持优先呈现，读错/回收错**追加**具名（不是吞掉、也不
+    // 把读错解释成 bind/startup 失败）。
+    let compose_failure = |lead: String,
+                           cancel: &Result<(), String>,
+                           reader_reclaim: &Result<(), String>|
+     -> String {
+        let mut msg = lead;
+        if let Err(e) = cancel {
+            msg.push_str(&format!("; {e}"));
+        }
+        if let Err(e) = reader_reclaim {
+            msg.push_str(&format!("; {e}"));
+        }
+        msg
+    };
 
     // F-816-B-R1-07（budget 语义明确）：单位=秒；非法值不静默采用默认
     // ——stderr 具名诊断后按默认 600s 继续（显式拒绝会让拼写错误把长
@@ -346,15 +362,30 @@ fn serve_rust(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, Stri
                 .map(|_| ())
                 .map_err(|e| format!("cancel after ready window: {e}"));
             let reader_reclaim = reclaim_reader(reader, tree_grace);
-            return match (proc.wait(), cancel, reader_reclaim) {
-                (Ok(status), _, _) if !status.success() => Err(format!(
-                    "backend exited with {} before ready (bind conflict or startup failure)",
-                    status.code().unwrap_or(1)
+            let waited = proc.wait();
+            return match (&waited, &cancel, &reader_reclaim) {
+                (Ok(status), _, _) if !status.success() => Err(compose_failure(
+                    format!(
+                        "backend exited with {} before ready (bind conflict or startup failure)",
+                        status.code().unwrap_or(1)
+                    ),
+                    &cancel,
+                    &reader_reclaim,
                 )),
-                (_, Err(e), _) => Err(e),
-                (_, _, Err(e)) => Err(e),
-                _ => Err(format!(
+                (Ok(_), Err(_), _) | (Ok(_), _, Err(_)) => Err(compose_failure(
+                    format!(
+                        "Rust HTTP service did not report AUTO_SERVICE_READY within {ready_window:?}"
+                    ),
+                    &cancel,
+                    &reader_reclaim,
+                )),
+                (Ok(_), Ok(()), Ok(())) => Err(format!(
                     "Rust HTTP service did not report AUTO_SERVICE_READY within {ready_window:?}"
+                )),
+                (Err(_), _, _) => Err(compose_failure(
+                    "backend wait failed after ready window".to_string(),
+                    &cancel,
+                    &reader_reclaim,
                 )),
             };
         }
@@ -366,8 +397,18 @@ fn serve_rust(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, Stri
     // 进程有界排空后 parent 退出；端口与自己创建的子进程零残留"。
     let terminate_installed = auto_tool_execution::terminate::install();
     let drain_window = std::time::Duration::from_secs(15);
+    // F-816-B-R2-01：Unix 下 ProcessTree 子进程在新进程组——终端 Ctrl+C
+    // 不直达；父进程观察到终止意图后**先向 owned 组转发 SIGINT**
+    //（子进程汇入自身优雅关闭，spec §7/plan736 关闭 watch），再等排空，
+    // 超窗才 cancel 兜底。Windows 控制台事件本就独立送达，interrupt 为
+    // no-op。
+    let mut interrupt_sent = false;
     let status = loop {
         if terminate_installed && auto_tool_execution::terminate::requested() {
+            if !interrupt_sent {
+                let _ = proc.interrupt();
+                interrupt_sent = true;
+            }
             match proc.wait_deadline(drain_window) {
                 Ok(Some(status)) => break status,
                 _ => {
@@ -404,12 +445,13 @@ fn serve_rust(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, Stri
         println!("  ✓ Rust HTTP service stopped (terminate)");
         return Ok(0);
     }
-    // 失败路径：回收错误具名带回，退出分类保持（后端退出码优先呈现）。
-    let _ = tree_reclaim;
-    let _ = reader_reclaim;
+    // 失败路径：后端退出码优先呈现，确已发生的回收/读错追加具名
+    //（F-816-B-R2-02 残项：原实现在此丢弃 tree/reader 回收错误）。
     let code = status.code().unwrap_or(1);
-    Err(format!(
-        "backend exited with {code} — bind conflict or startup failure (see output above)"
+    Err(compose_failure(
+        format!("backend exited with {code} — bind conflict or startup failure (see output above)"),
+        &tree_reclaim,
+        &reader_reclaim,
     ))
 }
 

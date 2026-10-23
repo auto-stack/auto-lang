@@ -1545,6 +1545,19 @@ impl OwnedProcess {
         self.child.stderr.take()
     }
 
+    /// 受控关闭信号（F-816-B-R2-01）：Unix=向 owned 进程组发 SIGINT
+    ///（ProcessTree 子进程经 setpgid 移出父前台组——终端 Ctrl+C 不再
+    /// 直达；父进程收到终止意图后须**显式转发**给 owned 组，子进程才能
+    /// 汇入自身优雅关闭，随后再排空/强杀兜底）；Windows=控制台事件本就
+    /// 独立送达同控制台子进程，无需转发，成功 no-op。
+    pub fn interrupt(&mut self) -> io::Result<()> {
+        #[cfg(unix)]
+        if self.tree_scope == TreeScope::ProcessTree {
+            return unix_pg::signal_group(self.child.id(), 2 /* SIGINT */);
+        }
+        Ok(())
+    }
+
     /// 终止 owned 进程(树):Windows job 树 / Unix 进程组 / 直接 kill。
     /// 只发出终止,不收尸(收尸见 [`OwnedProcess::wait`])。
     pub fn terminate(&mut self) -> io::Result<()> {

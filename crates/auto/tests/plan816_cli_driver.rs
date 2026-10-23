@@ -60,6 +60,38 @@ impl Drop for TempProj {
     }
 }
 
+/// watch 子进程 RAII 守卫（F-816-B-R1-04 残项）：任何出口（含 panic
+/// 与 `write.unwrap` 类失败）都 kill 子进程并收割 reader 线程——替代
+/// 手动 finish 宏。
+struct WatchGuard {
+    child: Option<std::process::Child>,
+    pump: Option<std::thread::JoinHandle<()>>,
+}
+
+impl WatchGuard {
+    fn release(mut self) {
+        if let Some(mut w) = self.child.take() {
+            let _ = w.kill();
+            let _ = w.wait();
+        }
+        if let Some(p) = self.pump.take() {
+            let _ = p.join();
+        }
+    }
+}
+
+impl Drop for WatchGuard {
+    fn drop(&mut self) {
+        if let Some(mut w) = self.child.take() {
+            let _ = w.kill();
+            let _ = w.wait();
+        }
+        if let Some(p) = self.pump.take() {
+            let _ = p.join();
+        }
+    }
+}
+
 const APP: &str = "widget App {\n    view {\n        col {\n            text \"driver\" {}\n        }\n    }\n}\n";
 
 /// V-01：裸脚本执行 + `--` 后 argv 强制透传（脚本读到 3 个参数；旧
@@ -129,9 +161,9 @@ fn serve_daemon_and_req_roundtrip() {
     let _ = daemon.wait();
 }
 
-/// 有界 run（F-816-B-R1-04）：stdout/stderr 由**并发排水线程**持续收
-/// 集（先等退出再读管道会被写满管道的子进程死锁）；超时 kill 并按超时
-/// 失败报告——所有失败出口都保证子进程收尾。
+/// 有界 run（F-816-B-R1-04 残项闭合）：**单一总预算**覆盖进程等待、
+/// 超时终止与排水线程回收——持写端后代不能把 join 拖出预算（根退出
+/// ≠管道 EOF）；预算尽即返回超时结果，排水线程随管道关闭自然结束。
 fn run_bounded(
     args: &[&str],
     cwd: &Path,
@@ -159,6 +191,18 @@ fn run_bounded(
         let _ = r.read_to_string(&mut b);
         b
     }
+    fn join_bounded<T>(h: Option<std::thread::JoinHandle<T>>, budget: Duration) -> Option<T> {
+        let h = h?;
+        let deadline = Instant::now() + budget;
+        while !h.is_finished() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        if h.is_finished() {
+            h.join().ok()
+        } else {
+            None
+        }
+    }
     let out_handle = child
         .stdout
         .take()
@@ -168,32 +212,33 @@ fn run_bounded(
         .take()
         .map(|r| std::thread::spawn(move || drain_err(r)));
     let deadline = Instant::now() + limit;
+    let left = |deadline: Instant| -> Duration {
+        deadline
+            .saturating_duration_since(Instant::now())
+            .max(Duration::from_millis(1))
+    };
     let code = loop {
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return (-1, String::new(), format!("timeout after {limit:?}"));
+        }
         match child.try_wait().expect("try_wait") {
             Some(status) => break status.code().unwrap_or(-1),
-            None if Instant::now() >= deadline => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return (
-                    -1,
-                    out_handle.and_then(|h| h.join().ok()).unwrap_or_default(),
-                    format!("timeout after {limit:?}"),
-                );
-            }
-            None => std::thread::sleep(Duration::from_millis(50)),
+            None => std::thread::sleep(Duration::from_millis(20)),
         }
     };
-    // 进程已退：排水线程随 EOF 结束，有界 join。
-    let out = out_handle.and_then(|h| h.join().ok()).unwrap_or_default();
-    let err = err_handle.and_then(|h| h.join().ok()).unwrap_or_default();
+    // 进程已退：剩余预算内回收排水（持写端后代不拖出总预算）。
+    let out = join_bounded(out_handle, left(deadline)).unwrap_or_default();
+    let err = join_bounded(err_handle, left(deadline)).unwrap_or_default();
     (code, out, err)
 }
 
-/// V-04：watch 就绪横幅 + 变更触发 SFC 再生。F-816-B-R1-04 的区分性
-/// oracle：①不只看进度文本——**产物内容身份**（App.vue 必须含变更后的
-/// 文案，"保留旧字节/不再再生"的故障宿主必须红）；②阻塞读经行通道
-/// `recv_timeout` 包住（deadline 真正生效，read_line 不再裸阻塞）；
-/// ③所有失败出口先 kill 收尾再 panic（不残留子进程）。
+/// V-04：watch 就绪横幅 + 变更触发 SFC 再生。F-816-B-R1-04 残项闭合：
+/// ①产物**内容身份**（App.vue 必含变更后文案——保留旧字节/不再再生的
+/// 故障宿主必红）；②**单一总预算 20s**：等行/断言/收尾共用同一剩余量
+/// ——持续输出宿主最多推迟到总预算即红（原逐行 20s 重置可被无限推迟）；
+/// ③RAII 守卫保证任何失败出口（含 unwrap panic）都回收子进程与 reader。
 #[test]
 fn watch_regenerates_sfc_on_change() {
     let proj = TempProj::new(
@@ -211,7 +256,6 @@ render: \"vue\"
         .stderr(Stdio::null())
         .spawn()
         .expect("spawn watch");
-    // 行通道：reader 线程搬运，主循环 recv_timeout=真截止。
     let (lines_tx, lines_rx) = std::sync::mpsc::channel::<String>();
     let stdout = watch.stdout.take().expect("piped stdout");
     let pump = std::thread::spawn(move || {
@@ -228,36 +272,27 @@ render: \"vue\"
             }
         }
     });
-    // 收尾 guard：任何失败出口先 kill 子进程（pump 经 Option 单次取用，
-    // 宏展开多处调用不重复 move）。
-    let mut pump = Some(pump);
-    let mut watch = Some(watch);
-    macro_rules! finish_watch {
-        () => {{
-            if let Some(mut w) = watch.take() {
-                let _ = w.kill();
-                let _ = w.wait();
-            }
-            if let Some(p) = pump.take() {
-                let _ = p.join();
-            }
-        }};
-    }
-    let recv_bounded = |limit: Duration| -> Option<String> { lines_rx.recv_timeout(limit).ok() };
+    let mut guard = WatchGuard {
+        child: Some(watch),
+        pump: Some(pump),
+    };
+    let total = Instant::now() + Duration::from_secs(20);
+    let left = |total: Instant| -> Duration {
+        total
+            .saturating_duration_since(Instant::now())
+            .max(Duration::from_millis(1))
+    };
 
     let mut ready = false;
-    let deadline = Duration::from_secs(20);
-    while let Some(line) = recv_bounded(deadline) {
+    while let Ok(line) = lines_rx.recv_timeout(left(total)) {
         if line.contains("Ready. Edit an .at file") {
             ready = true;
             break;
         }
     }
     if !ready {
-        finish_watch!();
-        panic!("watch ready banner expected within 20s");
+        panic!("watch ready banner expected within total budget (20s)");
     }
-    // 变更：文案 v1 → v2（内容身份的载体）。
     std::fs::write(
         proj.path().join("src/front/app.at"),
         "widget App {
@@ -269,10 +304,10 @@ render: \"vue\"
 }
 ",
     )
-    .unwrap();
+    .expect("write changed app.at");
     let mut regen = false;
     let mut last = String::new();
-    while let Some(line) = recv_bounded(Duration::from_secs(20)) {
+    while let Ok(line) = lines_rx.recv_timeout(left(total)) {
         last = line;
         if last.contains("SFC") && last.contains("app.at") {
             regen = true;
@@ -280,23 +315,19 @@ render: \"vue\"
         }
     }
     if !regen {
-        finish_watch!();
-        panic!("change must regenerate the SFC: last={last}");
+        panic!("change must regenerate the SFC within total budget: last={last}");
     }
     // 内容身份：再生产物必须携带变更后的文案——保留旧字节的故障在此红。
     let sfc_path = proj.path().join("gen/front/vue/src/components/App.vue");
-    let sfc = std::fs::read_to_string(&sfc_path).unwrap_or_else(|e| {
-        finish_watch!();
-        panic!("regenerated SFC must exist at {}: {e}", sfc_path.display())
-    });
+    let sfc = std::fs::read_to_string(&sfc_path)
+        .unwrap_or_else(|e| panic!("regenerated SFC must exist at {}: {e}", sfc_path.display()));
     if !sfc.contains("driver v2 marker-9f3a") {
-        finish_watch!();
         panic!(
             "regenerated SFC must carry the changed text, got:
 {sfc}"
         );
     }
-    finish_watch!();
+    guard.release();
 }
 
 /// V-03/V-04：`auto gen` 经真实工具进程（I-TOOL generate_ui 五操作链）。

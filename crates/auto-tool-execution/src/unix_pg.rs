@@ -26,6 +26,23 @@ pub(crate) fn child_setpgid() -> io::Result<()> {
     }
 }
 
+/// 向整个进程组发送指定信号(group leader pid == pgid)。信号只达组内
+/// 成员;ESRCH=组空,视为成功(收尾场景无成员即无事可做)。
+pub(crate) fn signal_group(pgid: u32, sig: i32) -> io::Result<()> {
+    unsafe {
+        if kill(pgid as i32, sig) == -1 {
+            let err = io::Error::last_os_error();
+            if err.raw_os_error() == Some(3) {
+                Ok(())
+            } else {
+                Err(err)
+            }
+        } else {
+            Ok(())
+        }
+    }
+}
+
 /// 终止整个进程组(group leader pid == pgid)。
 ///
 /// 组已空(ESRCH)视为成功:调用场景含"根已退出、仅剩/已无后代"的
