@@ -110,6 +110,112 @@ pub struct ResidentLane {
     pub src: String,
 }
 
+/// Contract §7 (F-817-R6-01): one CTE request's CUMULATIVE wall clock —
+/// scheduling, cache, compile/execution, consumer and the necessary
+/// waits — is bounded at 10 seconds. Per-AV-call caps stay untouched;
+/// this is the request-total deadline.
+pub const REQUEST_WALL_LIMIT: std::time::Duration = std::time::Duration::from_millis(10_000);
+
+/// The per-request deadline state: ONE clock started at request
+/// preparation; every phase checks it; the AV receives the remaining
+/// wall as its per-call budget; a watchdog fires the cancel flag at the
+/// limit so a running AV call aborts at its 1024-step poll.
+pub(crate) struct RequestDeadline {
+    at: std::time::Instant,
+    limit_ms: u64,
+    hit: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl RequestDeadline {
+    pub(crate) fn exceeded(&self) -> bool {
+        self.hit.load(std::sync::atomic::Ordering::Relaxed) || std::time::Instant::now() >= self.at
+    }
+
+    fn diag(&self, cache: Option<&'static str>, obs: &mut Obs) -> CteStepOutcome {
+        let e = CteAdmissionError::new(
+            CteCode::Resource("request-deadline".into()),
+            format!(
+                "request wall clock {:.0}ms exceeded the {}ms cumulative limit (resource state; nothing published)",
+                obs.request_wall_ms(),
+                self.limit_ms
+            ),
+        );
+        CteStepOutcome::diag(&e, cache, obs)
+    }
+
+    /// The AV call's wall budget: never above the D-798 per-call cap,
+    /// never past the request deadline.
+    fn av_wall_budget(&self) -> std::time::Duration {
+        let remaining = self.at.saturating_duration_since(std::time::Instant::now());
+        remaining.min(av_driver::MAX_CALL_WALL)
+    }
+}
+
+/// The deadline watchdog: sleeps the limit, then (unless the request
+/// finished) marks the hit and fires the cancel flag.
+pub(crate) struct DeadlineWatch {
+    hit: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    done: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl DeadlineWatch {
+    fn start(
+        limit: std::time::Duration,
+        cancel: std::sync::Arc<CancelFlag>,
+    ) -> (RequestDeadline, DeadlineWatch) {
+        let hit = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let hit2 = hit.clone();
+        let done2 = done.clone();
+        let handle = std::thread::Builder::new()
+            .name("cte-request-deadline".into())
+            .spawn(move || {
+                // Tick-sleep (never a full-limit sleep): `stop()` joins
+                // this thread, so it must observe `done` within one
+                // tick — a request that finishes early never waits for
+                // its own deadline.
+                let at = std::time::Instant::now() + limit;
+                while !done2.load(std::sync::atomic::Ordering::Relaxed) {
+                    let now = std::time::Instant::now();
+                    if now >= at {
+                        if !done2.load(std::sync::atomic::Ordering::Relaxed) {
+                            hit2.store(true, std::sync::atomic::Ordering::Relaxed);
+                            cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                        }
+                        break;
+                    }
+                    let remaining = at - now;
+                    std::thread::sleep(remaining.min(std::time::Duration::from_millis(20)));
+                }
+            })
+            .expect("deadline watchdog thread");
+        let limit_ms = limit.as_millis() as u64;
+        (
+            RequestDeadline {
+                at: std::time::Instant::now() + limit,
+                limit_ms,
+                hit: hit.clone(),
+            },
+            DeadlineWatch {
+                hit,
+                done,
+                handle: Some(handle),
+            },
+        )
+    }
+
+    /// Disarm (the request ended) and report whether the deadline fired.
+    fn stop(mut self) -> bool {
+        self.done.store(true, std::sync::atomic::Ordering::Relaxed);
+        let fired = self.hit.load(std::sync::atomic::Ordering::Relaxed);
+        if let Some(h) = self.handle.take() {
+            let _ = h.join();
+        }
+        fired
+    }
+}
+
 /// The driver over one optional store root.
 pub struct CteDriver {
     store: Option<CteStore>,
@@ -123,6 +229,13 @@ pub struct CteDriver {
     /// the frozen defaults; the resources tier shrinks partitions to
     /// make over-budget/spike shapes deterministic.
     caps: crate::observe::BudgetCaps,
+    /// Per-request wall limit. `None` = the frozen 10s contract default
+    /// (F-817-R6-01); the resources tier shortens it for fast
+    /// classification controls — never in production.
+    request_wall: Option<std::time::Duration>,
+    /// The last request's ordered budget events (reservation/allocation
+    /// order evidence, F-817-R6-02).
+    last_budget_events: Vec<crate::observe::BudgetEvent>,
     /// Artifact id of the LAST successful frozen publish on this driver
     /// (lifecycle tests lease/pin real published entries).
     last_publish: Option<String>,
@@ -146,6 +259,8 @@ impl CteDriver {
             forbid_av: false,
             cancel: std::sync::Arc::new(CancelFlag::new(false)),
             caps: crate::observe::BudgetCaps::default(),
+            request_wall: None,
+            last_budget_events: Vec::new(),
             last_publish: None,
             last_envelope_bytes: None,
             resident: None,
@@ -159,6 +274,8 @@ impl CteDriver {
             forbid_av: false,
             cancel: std::sync::Arc::new(CancelFlag::new(false)),
             caps: crate::observe::BudgetCaps::default(),
+            request_wall: None,
+            last_budget_events: Vec::new(),
             last_publish: None,
             last_envelope_bytes: None,
             resident: None,
@@ -209,6 +326,23 @@ impl CteDriver {
         self.caps = caps;
     }
 
+    /// Test-only: override the per-request cumulative wall limit
+    /// (F-817-R6-01 counter-control seam). Production always runs the
+    /// frozen 10s contract default. Tests shorten it for fast
+    /// classification controls; the debug scale tier (multi-call
+    /// requests at unoptimized speed) lengthens it so the reference
+    /// RELEASE bound is not misattributed to debug timing — the frozen
+    /// default itself is proven by the real-10s replay.
+    pub fn set_request_wall_limit(&mut self, limit: std::time::Duration) {
+        self.request_wall = Some(limit);
+    }
+
+    /// The last request's ordered budget events — reservation before
+    /// allocation is observable here, not just claimed (F-817-R6-02).
+    pub fn last_budget_events(&self) -> &[crate::observe::BudgetEvent] {
+        &self.last_budget_events
+    }
+
     /// Fire the per-request cancellation flag.
     pub fn cancel(&self) {
         self.cancel
@@ -239,18 +373,39 @@ impl CteDriver {
         let mut obs = Obs::new();
         let mut budget = crate::observe::ManagedBudget::new(self.caps);
         let sampler = mempeek::PeakSampler::start(1);
-        let out = self.query_step_inner(deck_text, native_workdir, &mut obs, &mut budget);
+        // F-817-R6-01: ONE cumulative request deadline — from request
+        // preparation through scheduling, cache, execution, consumer
+        // and publish. A watchdog interrupts a running AV call via the
+        // cancel flag; phase checks reject past the limit.
+        let limit = self.request_wall.unwrap_or(REQUEST_WALL_LIMIT);
+        let (dl, watch) = DeadlineWatch::start(limit, self.cancel.clone());
+        let mut out = self.query_step_inner(deck_text, native_workdir, &mut obs, &mut budget, &dl);
+        let deadline_fired = watch.stop();
+        self.last_budget_events = budget.events().to_vec();
         let peak = sampler.stop();
         let cancelled = self
             .cancel
             .swap(false, std::sync::atomic::Ordering::Relaxed);
-        if cancelled && out.status == StepStatus::Ok {
+        if deadline_fired && out.status == StepStatus::Ok {
+            // Slipped past the deadline at the boundary — the resource
+            // state wins over success (in-loop checks gate publishes;
+            // this completion is never reported green).
+            let e = CteAdmissionError::new(
+                CteCode::Resource("request-deadline".into()),
+                format!(
+                    "request wall clock {:.0}ms exceeded the {}ms cumulative limit (resource state; late completion not admitted)",
+                    obs.request_wall_ms(),
+                    limit.as_millis()
+                ),
+            );
+            out = CteStepOutcome::diag(&e, out.cache, &mut obs);
+        } else if cancelled && out.status == StepStatus::Ok {
             // The flag fired after the last poll but before completion —
             // surface the isolated state; nothing was published late.
-            return CteStepOutcome::diag(
+            out = CteStepOutcome::diag(
                 &CteAdmissionError::new(CteCode::Cancelled, "request cancelled before completion"),
                 out.cache,
-                &obs,
+                &mut obs,
             );
         }
         CteStepOutcome {
@@ -267,6 +422,7 @@ impl CteDriver {
         native_workdir: Option<&Path>,
         obs: &mut Obs,
         budget: &mut crate::observe::ManagedBudget,
+        dl: &RequestDeadline,
     ) -> CteStepOutcome {
         // The request text itself is the first staging reservation —
         // BEFORE any parse/clone.
@@ -277,6 +433,9 @@ impl CteDriver {
         ) {
             let e = CteAdmissionError::new(CteCode::Resource("managed-staging".into()), m);
             return CteStepOutcome::diag(&e, None, obs);
+        }
+        if dl.exceeded() {
+            return dl.diag(None, obs);
         }
         let req = match obs.span("deck_parse", |_| crate::deck::parse_deck(deck_text)) {
             Ok(r) => r,
@@ -360,6 +519,9 @@ impl CteDriver {
             Err(e) => return CteStepOutcome::diag(&e, None, obs),
         };
         obs.set_counter("meta_query", plan.meta.len() as u64);
+        if dl.exceeded() {
+            return dl.diag(None, obs);
+        }
 
         // ---- AV calls: cache lookup or real execution -------------------
         // The engine identity carries the EXECUTION LANE (V-12): closure
@@ -368,7 +530,20 @@ impl CteDriver {
         let mut cache_verdict: Option<&'static str> = None;
         let mut values_by_query: BTreeMap<String, CteValue> = plan.values.clone();
 
+        // The frozen envelope carrier is one REASSEMBLED LayoutData
+        // artifact (the store chunks pages and get_artifact joins
+        // them). Legit envelopes are fingerprint manifests (~87B per
+        // closure member, ≈3.2× the source — structurally under the
+        // 4× projection reserve), so 1MiB covers every reachable
+        // envelope; a larger payload is foreign/corrupt — a controlled
+        // infra rejection (F-817-R6-02: reserve BEFORE get_artifact
+        // allocates).
+        const FROZEN_PAYLOAD_BOUND: u64 = 1024 * 1024;
+
         for call in &plan.av_calls {
+            if dl.exceeded() {
+                return dl.diag(cache_verdict, obs);
+            }
             // RAW args concretize NOW — every earlier call's value is
             // present by execution order (legal DAG deps).
             let mut concrete: Vec<CteValue> = Vec::with_capacity(call.args.len());
@@ -405,36 +580,75 @@ impl CteDriver {
                 engine: engine.clone(),
                 manifest_fp: mfp,
             };
-            // Cache lookup first — a hit must never touch the AV.
-            let cached = match self.store.as_ref() {
+            // Cache lookup first — a hit must never touch the AV. The
+            // load and decode are budget-gated IN ORDER (F-817-R6-02):
+            // the codec-page bound is reserved BEFORE get_artifact
+            // allocates the payload; the payload length (a sound upper
+            // bound for the decoded structure) is reserved Hot BEFORE
+            // from_slice allocates the envelope.
+            let (cached, held_hot): (Option<CteExecutedV1>, u64) = match self.store.as_ref() {
                 Some(st) => {
-                    match obs.span("cache_lookup", |_| store::lookup_frozen(st, &identity)) {
-                        Ok(opt) => {
-                            // The restored envelope is retained (hot) for
-                            // its freshness check, then released.
-                            if let Some(env) = &opt {
-                                let held = store::serialize_envelope(env)
-                                    .map(|p| p.len() as u64)
-                                    .unwrap_or(0);
-                                if let Err(m) = budget.reserve(
-                                    crate::observe::Partition::Hot,
-                                    held,
-                                    "restored envelope",
-                                ) {
-                                    let e = CteAdmissionError::new(
-                                        CteCode::Resource("managed-hot".into()),
-                                        m,
-                                    );
-                                    return CteStepOutcome::diag(&e, cache_verdict, obs);
-                                }
+                    if let Err(m) = budget.reserve(
+                        crate::observe::Partition::Staging,
+                        FROZEN_PAYLOAD_BOUND,
+                        "frozen payload load",
+                    ) {
+                        let e =
+                            CteAdmissionError::new(CteCode::Resource("managed-staging".into()), m);
+                        return CteStepOutcome::diag(&e, cache_verdict, obs);
+                    }
+                    match obs.span("cache_lookup", |_| {
+                        store::load_frozen_payload(st, &identity)
+                    }) {
+                        Ok(Some(payload)) => {
+                            if (payload.len() as u64) > FROZEN_PAYLOAD_BOUND {
+                                let e = CteAdmissionError::new(
+                                    CteCode::Infra("store".into()),
+                                    format!(
+                                        "frozen artifact payload {}B exceeds the {}B codec page bound",
+                                        payload.len(),
+                                        FROZEN_PAYLOAD_BOUND
+                                    ),
+                                );
+                                return CteStepOutcome::diag(&e, cache_verdict, obs);
                             }
-                            opt
+                            budget.record_alloc("frozen-payload", payload.len() as u64);
+                            if let Err(m) = budget.reserve(
+                                crate::observe::Partition::Hot,
+                                payload.len() as u64,
+                                "restored envelope decode",
+                            ) {
+                                let e = CteAdmissionError::new(
+                                    CteCode::Resource("managed-hot".into()),
+                                    m,
+                                );
+                                return CteStepOutcome::diag(&e, cache_verdict, obs);
+                            }
+                            match obs.span("cache_restore_decode", |_| {
+                                store::decode_envelope(&payload, &identity)
+                            }) {
+                                Ok(env) => {
+                                    budget.record_alloc("restore-decode", payload.len() as u64);
+                                    budget.release(
+                                        crate::observe::Partition::Staging,
+                                        FROZEN_PAYLOAD_BOUND,
+                                    );
+                                    (Some(env), payload.len() as u64)
+                                }
+                                Err(e) => return CteStepOutcome::diag(&e, cache_verdict, obs),
+                            }
+                        }
+                        Ok(None) => {
+                            budget
+                                .release(crate::observe::Partition::Staging, FROZEN_PAYLOAD_BOUND);
+                            (None, 0)
                         }
                         Err(e) => return CteStepOutcome::diag(&e, cache_verdict, obs),
                     }
                 }
-                None => None,
+                None => (None, 0),
             };
+            let restored_held = held_hot;
             let value = if let Some(env) = cached {
                 let fresh = obs.span("freshness", |_| {
                     store::frozen_is_fresh(&env, &input, &req.caps)
@@ -452,6 +666,7 @@ impl CteDriver {
                     if cache_verdict.is_none() {
                         cache_verdict = Some("stale");
                     }
+                    let wall = dl.av_wall_budget();
                     let exec = match self.execute_call(
                         obs,
                         &req,
@@ -459,13 +674,18 @@ impl CteDriver {
                         call,
                         &concrete,
                         cache_verdict,
+                        wall,
+                        dl,
                     ) {
                         Ok(x) => x,
                         Err(out) => return out,
                     };
                     budget.settle(crate::observe::Partition::AvSlots, exec.peak_slot_bytes);
+                    if dl.exceeded() {
+                        return dl.diag(cache_verdict, obs);
+                    }
                     let env = self.mint_envelope(&req, &identity, &exec, manifest);
-                    if let Err(e) = self.publish_env(&env, budget) {
+                    if let Err(e) = self.publish_env(&env, budget, dl) {
                         return CteStepOutcome::diag(&e, cache_verdict, obs);
                     }
                     exec.value
@@ -474,25 +694,46 @@ impl CteDriver {
                 if cache_verdict.is_none() {
                     cache_verdict = Some("miss");
                 }
-                let exec =
-                    match self.perform_execution(obs, &req, &input, call, &concrete, cache_verdict)
-                    {
-                        Ok(x) => x,
-                        Err(out) => return out,
-                    };
+                let wall = dl.av_wall_budget();
+                if wall.is_zero() {
+                    return dl.diag(cache_verdict, obs);
+                }
+                let exec = match self.perform_execution(
+                    obs,
+                    &req,
+                    &input,
+                    call,
+                    &concrete,
+                    cache_verdict,
+                    wall,
+                    dl,
+                ) {
+                    Ok(x) => x,
+                    Err(out) => return out,
+                };
                 budget.settle(crate::observe::Partition::AvSlots, exec.peak_slot_bytes);
+                if dl.exceeded() {
+                    return dl.diag(cache_verdict, obs);
+                }
                 let env = self.mint_envelope(&req, &identity, &exec, manifest);
-                if let Err(e) = self.publish_env(&env, budget) {
+                if let Err(e) = self.publish_env(&env, budget, dl) {
                     return CteStepOutcome::diag(&e, cache_verdict, obs);
                 }
                 exec.value
             };
+            // The restored envelope is consumed — return its Hot bytes.
+            if restored_held > 0 {
+                budget.release(crate::observe::Partition::Hot, restored_held);
+            }
             for qid in &call.query_ids {
                 values_by_query.insert(qid.clone(), value);
             }
         }
 
         // ---- binding values + expected-type checks ----------------------
+        if dl.exceeded() {
+            return dl.diag(cache_verdict, obs);
+        }
         let mut ct_values: BTreeMap<String, CteValue> = BTreeMap::new();
         for b in &req.bindings {
             let Some(v) = values_by_query.get(&b.source_query) else {
@@ -546,6 +787,9 @@ impl CteDriver {
         }
 
         // ---- consumer: HIR backfill + re-verify -------------------------
+        if dl.exceeded() {
+            return dl.diag(cache_verdict, obs);
+        }
         let (checked, hir_proof) = match obs.span("hir_backfill", |_| {
             backfill_and_verify(
                 &req.source,
@@ -595,6 +839,8 @@ impl CteDriver {
 
     /// Execute one call through the request's lane. The closure lane
     /// compiles per call; the snapshot lane warms once and retargets.
+    /// `wall_budget` is the deadline-derived per-call AV wall budget;
+    /// `dl` reclassifies deadline-driven aborts precisely.
     fn perform_execution(
         &mut self,
         obs: &mut Obs,
@@ -603,6 +849,8 @@ impl CteDriver {
         call: &auto_cte_core::schedule::AvCall,
         concrete: &[CteValue],
         cache_verdict: Option<&'static str>,
+        wall_budget: std::time::Duration,
+        dl: &RequestDeadline,
     ) -> Result<AvExecResult, CteStepOutcome> {
         if self.forbid_av {
             let e = CteAdmissionError::new(
@@ -656,7 +904,7 @@ impl CteDriver {
                 // whole-body retarget after a sync is an identity
                 // edit the incremental engine rightly refuses).
                 let r = self.resident.as_ref().expect("resident lane");
-                r.lane.run(is_bool, &self.cancel)
+                r.lane.run(is_bool, &self.cancel, wall_budget)
             }
         } else {
             let cancel = self.cancel.clone();
@@ -668,6 +916,7 @@ impl CteDriver {
                 concrete,
                 self.forbid_av,
                 &cancel,
+                wall_budget,
             )
         };
         obs.record_span("av_execute", exec_started.elapsed().as_secs_f64() * 1000.0);
@@ -684,6 +933,12 @@ impl CteDriver {
                 ) {
                     obs.counter("ct_execute", 1);
                 }
+                // A deadline-driven abort (the watchdog fired the cancel
+                // flag / the wall budget closed) reports as the request
+                // deadline resource state, precisely.
+                if dl.exceeded() {
+                    return Err(dl.diag(cache_verdict, obs));
+                }
                 Err(CteStepOutcome::diag(&e, cache_verdict, obs))
             }
         }
@@ -697,6 +952,8 @@ impl CteDriver {
         call: &auto_cte_core::schedule::AvCall,
         concrete: &[CteValue],
         cache_verdict: Option<&'static str>,
+        wall_budget: std::time::Duration,
+        dl: &RequestDeadline,
     ) -> Result<AvExecResult, CteStepOutcome> {
         let forbid = self.forbid_av;
         let cancel = self.cancel.clone();
@@ -709,6 +966,7 @@ impl CteDriver {
                 concrete,
                 forbid,
                 &cancel,
+                wall_budget,
             )
         });
         match out {
@@ -725,6 +983,9 @@ impl CteDriver {
                     CteCode::Trap(_) | CteCode::Resource(_) | CteCode::Cancelled
                 ) {
                     obs.counter("ct_execute", 1);
+                }
+                if dl.exceeded() {
+                    return Err(dl.diag(cache_verdict, obs));
                 }
                 Err(CteStepOutcome::diag(&e, cache_verdict, obs))
             }
@@ -761,28 +1022,29 @@ impl CteDriver {
         &mut self,
         env: &CteExecutedV1,
         budget: &mut crate::observe::ManagedBudget,
+        dl: &RequestDeadline,
     ) -> Result<(), CteAdmissionError> {
         let Some(st) = self.store.as_ref() else {
             return Ok(());
         };
-        // Serialize once; reserve the staging bytes BEFORE the payload
-        // enters ledger terms; publish; release the temporary.
-        let payload = store::serialize_envelope(env)?;
-        if let Err(m) = budget.reserve(
-            crate::observe::Partition::Staging,
-            payload.len() as u64,
-            "envelope encode",
-        ) {
+        // F-817-R6-02: reserve BEFORE the encode allocation — count the
+        // bytes WITHOUT allocating, reserve the exact count, then
+        // serialize; the payload MOVES into the store (no second
+        // unreserved copy). A late completion past the deadline never
+        // publishes.
+        if dl.exceeded() {
             return Err(CteAdmissionError::new(
-                CteCode::Resource("managed-staging".into()),
-                m,
+                CteCode::Resource("request-deadline".into()),
+                "request deadline reached before publish (nothing published)".to_string(),
             ));
         }
+        let payload = store::serialize_envelope_reserved(env, budget)?;
         self.last_envelope_bytes = Some(payload.len() as u64);
-        let out = store::publish_frozen_payload(st, env, &payload).map(|id| {
+        let n = payload.len() as u64;
+        let out = store::publish_frozen_payload(st, env, payload).map(|id| {
             self.last_publish = Some(id);
         });
-        budget.release(crate::observe::Partition::Staging, payload.len() as u64);
+        budget.release(crate::observe::Partition::Staging, n);
         out
     }
 }

@@ -8,8 +8,14 @@
 
 use auto_ac_prototype::source::compile_scalar_source;
 use auto_av_core::contract::{
-    ExecOutcome, ABC_SCHEMA, ABC_SEMANTICS, AV_PROFILE, AV_SEMANTICS, MIR_SCHEMA, MIR_SEMANTICS,
+    ExecOutcome, ABC_SCHEMA, ABC_SEMANTICS, AV_PROFILE, AV_SEMANTICS, MAX_AV_WALL, MIR_SCHEMA,
+    MIR_SEMANTICS,
 };
+
+/// The D-798 per-call AV wall cap — an upper bound the request deadline
+/// narrows per call (F-817-R6-01: the 10s REQUEST total dominates; the
+/// per-call cap is never raised).
+pub const MAX_CALL_WALL: std::time::Duration = MAX_AV_WALL;
 use auto_av_core::{
     abc_verify, decode_abc, encode_abc, execute, verify_mir, CancelFlag, ExecLimits,
 };
@@ -209,9 +215,16 @@ impl SnapshotLane {
         &self,
         is_bool: bool,
         cancel: &CancelFlag,
+        wall_budget: std::time::Duration,
     ) -> Result<AvExecResult, CteAdmissionError> {
         let started = std::time::Instant::now();
-        let (outcome, trace) = self.session.run(&ExecLimits::default(), cancel);
+        let (outcome, trace) = self.session.run(
+            &ExecLimits {
+                wall: wall_budget,
+                ..Default::default()
+            },
+            cancel,
+        );
         let wall_ms = started.elapsed().as_millis() as u64;
         match outcome {
             ExecOutcome::Success { value, steps } => {
@@ -344,6 +357,7 @@ pub fn execute_call(
     args: &[CteValue],
     forbid_av: bool,
     cancel: &CancelFlag,
+    wall_budget: std::time::Duration,
 ) -> Result<AvExecResult, CteAdmissionError> {
     if forbid_av {
         return Err(CteAdmissionError::new(
@@ -441,7 +455,14 @@ pub fn execute_call(
     })?;
 
     let started = std::time::Instant::now();
-    let (outcome, trace) = execute(&loaded, &ExecLimits::default(), &cancel);
+    let (outcome, trace) = execute(
+        &loaded,
+        &ExecLimits {
+            wall: wall_budget,
+            ..Default::default()
+        },
+        &cancel,
+    );
     let wall_ms = started.elapsed().as_millis() as u64;
     match outcome {
         ExecOutcome::Success { value, steps } => {

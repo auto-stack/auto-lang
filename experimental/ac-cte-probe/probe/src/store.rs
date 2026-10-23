@@ -109,13 +109,27 @@ pub fn args_canonical(args: &[auto_cte_contract::CteValue]) -> String {
         .join(",")
 }
 
-/// Look up one envelope. `None` = clean miss. A found row that fails
-/// identity validation (wrong schema/producer/engine/request identity)
-/// is a CONTROLLED REJECTION — never a miss, never a rebuild-in-place.
+/// Look up one envelope (test/seed convenience — composes the staged
+/// API below). `None` = clean miss. A found row that fails identity
+/// validation (wrong schema/producer/engine/request identity) is a
+/// CONTROLLED REJECTION — never a miss, never a rebuild-in-place.
 pub fn lookup_frozen(
     st: &CteStore,
     identity: &CteRequestIdentityV1,
 ) -> Result<Option<CteExecutedV1>, CteAdmissionError> {
+    let Some(payload) = load_frozen_payload(st, identity)? else {
+        return Ok(None);
+    };
+    decode_envelope(&payload, identity).map(Some)
+}
+
+/// Stage 1 of the reserved restore (F-817-R6-02): load the payload
+/// bytes. The caller must have reserved a covering bound BEFORE this
+/// call — the `Vec` allocation happens here. `None` = clean miss.
+pub fn load_frozen_payload(
+    st: &CteStore,
+    identity: &CteRequestIdentityV1,
+) -> Result<Option<Vec<u8>>, CteAdmissionError> {
     let loaded: Option<LoadedArtifact> = st
         .store
         .get_artifact(CTE_FROZEN_LAYER, &envelope_key(identity))
@@ -137,7 +151,19 @@ pub fn lookup_frozen(
             ),
         ));
     }
-    let env: CteExecutedV1 = serde_json::from_slice(&loaded.payload).map_err(|e| {
+    Ok(Some(loaded.payload))
+}
+
+/// Stage 2 of the reserved restore (F-817-R6-02): decode + full-field
+/// admission. The caller must have reserved a covering Hot bound BEFORE
+/// this call — the decoded envelope's allocations happen here. The
+/// serialized payload length is a sound upper bound for the decoded
+/// structure (JSON text ≥ decoded content).
+pub fn decode_envelope(
+    payload: &[u8],
+    identity: &CteRequestIdentityV1,
+) -> Result<CteExecutedV1, CteAdmissionError> {
+    let env: CteExecutedV1 = serde_json::from_slice(payload).map_err(|e| {
         CteAdmissionError::new(
             CteCode::Infra("store".into()),
             format!("frozen envelope does not decode: {e}"),
@@ -176,18 +202,19 @@ pub fn lookup_frozen(
             "frozen envelope engine identity does not match the current engine",
         ));
     }
-    Ok(Some(env))
+    Ok(env)
 }
 
-/// Publish one envelope (idempotent for identical content; same-key
-/// different-content is the store's Conflict, surfaced as-is).
+/// Publish one envelope (test/seed convenience — no ledger; the
+/// production request path reserves first, see driver::publish_env).
 pub fn publish_frozen(st: &CteStore, env: &CteExecutedV1) -> Result<String, CteAdmissionError> {
     let payload = serialize_envelope(env)?;
-    publish_frozen_payload(st, env, &payload)
+    publish_frozen_payload(st, env, payload)
 }
 
-/// Serialize once — callers that must reserve ledger bytes first use
-/// [`publish_frozen_payload`] with this payload.
+/// Serialize once — callers that must reserve ledger bytes first count
+/// with [`count_envelope_bytes`] and reserve BEFORE calling this (the
+/// allocation happens here).
 pub fn serialize_envelope(env: &CteExecutedV1) -> Result<Vec<u8>, CteAdmissionError> {
     serde_json::to_vec(env).map_err(|e| {
         CteAdmissionError::new(
@@ -197,19 +224,62 @@ pub fn serialize_envelope(env: &CteExecutedV1) -> Result<Vec<u8>, CteAdmissionEr
     })
 }
 
+/// The reserved encode (F-817-R6-02): COUNT the bytes without
+/// allocating, RESERVE the exact staging amount, then serialize — the
+/// allocation provably happens only after the reservation (the budget
+/// event log records Reserve(ok) BEFORE Alloc("envelope-encode")). A
+/// rejected reservation returns Err with NO payload produced.
+pub fn serialize_envelope_reserved(
+    env: &CteExecutedV1,
+    budget: &mut crate::observe::ManagedBudget,
+) -> Result<Vec<u8>, CteAdmissionError> {
+    let count = count_envelope_bytes(env)?;
+    budget
+        .reserve(crate::observe::Partition::Staging, count, "envelope encode")
+        .map_err(|m| CteAdmissionError::new(CteCode::Resource("managed-staging".into()), m))?;
+    let payload = serialize_envelope(env)?;
+    budget.record_alloc("envelope-encode", payload.len() as u64);
+    Ok(payload)
+}
+
+/// Count the serialized envelope bytes WITHOUT allocating (a counting
+/// writer; serde's internal scratch is O(1)) — the reservation input
+/// for the F-817-R6-02 reserve-before-encode order.
+pub fn count_envelope_bytes(env: &CteExecutedV1) -> Result<u64, CteAdmissionError> {
+    struct Count(u64);
+    impl std::io::Write for Count {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0 += buf.len() as u64;
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut c = Count(0);
+    serde_json::to_writer(&mut c, env).map_err(|e| {
+        CteAdmissionError::new(
+            CteCode::Infra("encode".into()),
+            format!("envelope counting serialization failed: {e}"),
+        )
+    })?;
+    Ok(c.0)
+}
+
 /// Publish a PRE-SERIALIZED envelope (the caller reserved the ledger
-/// bytes before serializing).
+/// bytes before serializing). The payload moves in — the store path
+/// adds NO second unreserved copy (F-817-R6-02).
 pub fn publish_frozen_payload(
     st: &CteStore,
     env: &CteExecutedV1,
-    payload: &[u8],
+    payload: Vec<u8>,
 ) -> Result<String, CteAdmissionError> {
     st.store
         .put_artifact(PutRequest {
             layer: CTE_FROZEN_LAYER,
             key: envelope_key(&env.request_identity),
             kind: ChunkKind::LayoutData,
-            payload: payload.to_vec(),
+            payload,
             edges: Vec::new(),
             project: Some(st.project.clone()),
         })

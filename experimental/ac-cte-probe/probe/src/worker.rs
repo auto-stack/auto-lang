@@ -9,6 +9,15 @@ use std::path::Path;
 
 pub const CTE_WORKER_PROTOCOL: &str = "cteworker/1";
 
+/// F-817-R6-02: the wire bound — one request carries at most a 4MiB
+/// deck as base64 (4/3 expansion) plus the JSON envelope. Larger
+/// inputs are refused BEFORE the read/parse allocates more than the
+/// bound itself (the read is capped; nothing unbounded happens first).
+pub const MAX_REQUEST_WIRE_BYTES: usize = 6 * 1024 * 1024;
+/// Pre-decode bound on `deck_b64`: ceil(4MiB · 4/3) + slack. Checked
+/// BEFORE the base64 decode allocates the deck bytes.
+pub const MAX_DECK_B64_BYTES: usize = (auto_cte_contract::MAX_REQUEST_INPUT_BYTES / 3 + 2) * 4 + 16;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorkerRequest {
     pub recipe: String,
@@ -273,6 +282,22 @@ pub fn serve_request_with(req: &WorkerRequest, driver: &mut CteDriver) -> Worker
         error,
     };
     use base64::Engine as _;
+    // F-817-R6-02: size pre-check BEFORE the base64 decode allocates
+    // the deck bytes (the read itself is wire-capped at the bin).
+    if req.deck_b64.len() > MAX_DECK_B64_BYTES {
+        return resp(
+            None,
+            Some(WorkerError {
+                code: "cte.worker.protocol".into(),
+                message: format!(
+                    "deck_b64 {}B exceeds the {}B bound (the deck input is capped at {}B)",
+                    req.deck_b64.len(),
+                    MAX_DECK_B64_BYTES,
+                    auto_cte_contract::MAX_REQUEST_INPUT_BYTES
+                ),
+            }),
+        );
+    }
     let Ok(deck_bytes) = base64::engine::general_purpose::STANDARD.decode(&req.deck_b64) else {
         return resp(
             None,
@@ -421,12 +446,39 @@ fn to_wire(op: &str, deck: &str, o: CteStepOutcome) -> WorkerStepOut {
 /// lane) alive across requests.
 pub fn serve_stream(stdin: &mut dyn std::io::BufRead, stdout: &mut dyn std::io::Write) {
     use std::collections::BTreeMap;
+    use std::io::BufRead as _;
     let mut drivers: BTreeMap<String, CteDriver> = BTreeMap::new();
     let mut line = String::new();
     loop {
         line.clear();
-        if stdin.read_line(&mut line).unwrap_or(0) == 0 {
+        // F-817-R6-02: the wire read is BOUNDED — a request line larger
+        // than the wire bound is refused without allocating past it.
+        let mut limited = std::io::Read::take(&mut *stdin, (MAX_REQUEST_WIRE_BYTES + 1) as u64);
+        if limited.read_line(&mut line).unwrap_or(0) == 0 {
             break;
+        }
+        if line.len() > MAX_REQUEST_WIRE_BYTES {
+            let resp = WorkerResponse {
+                schema: CTE_WORKER_PROTOCOL.to_string(),
+                nonce: String::new(),
+                request_hash: String::new(),
+                ok: None,
+                error: Some(WorkerError {
+                    code: "cte.worker.protocol".into(),
+                    message: format!(
+                        "stream request {}B exceeds the {}B wire bound",
+                        line.len(),
+                        MAX_REQUEST_WIRE_BYTES
+                    ),
+                }),
+            };
+            let _ = writeln!(
+                stdout,
+                "{}",
+                serde_json::to_string(&resp).unwrap_or_default()
+            );
+            let _ = stdout.flush();
+            continue;
         }
         let t = line.trim();
         if t.is_empty() {

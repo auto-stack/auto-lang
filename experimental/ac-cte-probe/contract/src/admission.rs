@@ -62,7 +62,10 @@ impl CteCode {
                 "rem-overflow" => "cte.trap.rem-overflow",
                 _ => "cte.trap.unknown",
             },
-            CteCode::Resource(_) => "cte.resource.exhausted",
+            CteCode::Resource(k) => match k.as_str() {
+                "request-deadline" => "cte.resource.deadline",
+                _ => "cte.resource.exhausted",
+            },
             CteCode::Cancelled => "cte.cancelled",
             CteCode::Infra(_) => "cte.infra",
         }

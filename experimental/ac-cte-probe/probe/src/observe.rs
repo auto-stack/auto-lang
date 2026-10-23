@@ -89,6 +89,26 @@ pub enum Partition {
     AvSlots,
 }
 
+/// One observable ledger event (F-817-R6-02): every reservation (with
+/// its verdict) and every gated large allocation, in ORDER — the
+/// reservation-before-allocation invariant is testable from the log,
+/// not just from reading the code.
+#[derive(Clone, Debug, PartialEq)]
+pub enum BudgetEvent {
+    Reserve {
+        partition: Partition,
+        bytes: u64,
+        what: String,
+        ok: bool,
+    },
+    /// A budget-gated allocation that ACTUALLY happened (recorded right
+    /// after the allocation, naming what it was).
+    Alloc { tag: &'static str, bytes: u64 },
+    /// Bytes returned when a temporary died (replaying Reserve+Release
+    /// yields the LIVE level at any point).
+    Release { partition: Partition, bytes: u64 },
+}
+
 /// The per-request managed ledger: reservations happen BEFORE the
 /// corresponding clone/decode/encode; releases return bytes when a
 /// temporary dies; the peak of the LIVE total and any rejection feed
@@ -99,7 +119,12 @@ pub struct ManagedBudget {
     now: [u64; 3],
     peak_live_total: u64,
     rejected: bool,
+    /// Ordered reservation/allocation events (capped length — a
+    /// diagnostic log, not an unbounded trace).
+    events: Vec<BudgetEvent>,
 }
+
+const MAX_BUDGET_EVENTS: usize = 256;
 
 impl Default for ManagedBudget {
     fn default() -> Self {
@@ -114,6 +139,7 @@ impl ManagedBudget {
             now: [0; 3],
             peak_live_total: 0,
             rejected: false,
+            events: Vec::new(),
         }
     }
 
@@ -122,6 +148,12 @@ impl ManagedBudget {
             Partition::Hot => 0,
             Partition::Staging => 1,
             Partition::AvSlots => 2,
+        }
+    }
+
+    fn push_event(&mut self, e: BudgetEvent) {
+        if self.events.len() < MAX_BUDGET_EVENTS {
+            self.events.push(e);
         }
     }
 
@@ -143,6 +175,12 @@ impl ManagedBudget {
         };
         if self.now[i].saturating_add(bytes) > cap {
             self.rejected = true;
+            self.push_event(BudgetEvent::Reserve {
+                partition: p,
+                bytes,
+                what: what.to_string(),
+                ok: false,
+            });
             return Err(format!(
                 "managed {what} would push the {:?} partition to {} bytes over the {} byte cap",
                 p,
@@ -152,7 +190,24 @@ impl ManagedBudget {
         }
         self.now[i] += bytes;
         self.touch_peak();
+        self.push_event(BudgetEvent::Reserve {
+            partition: p,
+            bytes,
+            what: what.to_string(),
+            ok: true,
+        });
         Ok(())
+    }
+
+    /// Record a budget-gated allocation that actually happened (right
+    /// AFTER the allocation — the preceding Reserve event is the gate).
+    pub fn record_alloc(&mut self, tag: &'static str, bytes: u64) {
+        self.push_event(BudgetEvent::Alloc { tag, bytes });
+    }
+
+    /// The ordered event log (reservation/allocation order evidence).
+    pub fn events(&self) -> &[BudgetEvent] {
+        &self.events
     }
 
     /// Return bytes when a temporary dies (staging scratch, a decoded
@@ -160,6 +215,10 @@ impl ManagedBudget {
     pub fn release(&mut self, p: Partition, bytes: u64) {
         let i = Self::idx(p);
         self.now[i] = self.now[i].saturating_sub(bytes);
+        self.push_event(BudgetEvent::Release {
+            partition: p,
+            bytes,
+        });
     }
 
     /// Record a FINAL, step-lifetime occupancy (e.g. the AV slot peak

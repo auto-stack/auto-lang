@@ -53,7 +53,9 @@ fn cte_snapshot_production_observation_incremental() {
     let g_sum_before = lane.generation_of("cte_sum");
     let g_other_before = lane.generation_of("other");
     assert!(g_sum_before.is_some(), "units are resident");
-    let r = lane.run(false, &cancel).unwrap();
+    let r = lane
+        .run(false, &cancel, auto_cte_probe::av_driver::MAX_CALL_WALL)
+        .unwrap();
     assert_eq!(r.value.render(), "i32:42", "hand-computed 20+22+0");
     assert!(r.steps > 0, "real AV execution");
 
@@ -66,7 +68,9 @@ fn cte_snapshot_production_observation_incremental() {
             false,
         )
         .unwrap();
-        let r = lane.run(false, &cancel).unwrap();
+        let r = lane
+            .run(false, &cancel, auto_cte_probe::av_driver::MAX_CALL_WALL)
+            .unwrap();
         assert_eq!(r.value.render(), format!("i32:{}", 42 + k), "rev {k}");
     }
     assert_eq!(
@@ -181,7 +185,9 @@ fn cte_snapshot_dependency_invalidates_and_scopes_recompiles() {
         b"return a + b + 5".to_vec(),
     )
     .expect("helper edit");
-    let r = lane.run(false, &cancel).unwrap();
+    let r = lane
+        .run(false, &cancel, auto_cte_probe::av_driver::MAX_CALL_WALL)
+        .unwrap();
     assert_eq!(
         r.value.render(),
         "i32:47",
@@ -219,7 +225,9 @@ fn cte_snapshot_failure_control_edits_and_degrade_counter() {
     }
     // The session still answers with the LAST good program — no wrong
     // result, no half-applied state.
-    let r = lane.run(false, &cancel).unwrap();
+    let r = lane
+        .run(false, &cancel, auto_cte_probe::av_driver::MAX_CALL_WALL)
+        .unwrap();
     assert_eq!(
         r.value.render(),
         "i32:42",

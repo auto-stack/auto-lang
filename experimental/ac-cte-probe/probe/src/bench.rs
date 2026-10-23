@@ -486,12 +486,25 @@ pub fn build_worker_request_line(
     session: &str,
     kind: &DeckKind,
 ) -> String {
-    use base64::Engine as _;
     let (deck, steps) = kind.materialize();
+    build_worker_request_for_deck(nonce, request_hash, store_root, session, &deck, &steps)
+}
+
+/// The same wire format for an arbitrary deck + step plan (the R6
+/// resource replays drive custom multi-query decks).
+pub fn build_worker_request_for_deck(
+    nonce: &str,
+    request_hash: &str,
+    store_root: &std::path::Path,
+    session: &str,
+    deck: &str,
+    steps: &serde_json::Value,
+) -> String {
+    use base64::Engine as _;
     serde_json::json!({
         "recipe": "cte/scalar-query-v1",
         "nonce": nonce,
-        "deck_b64": base64::engine::general_purpose::STANDARD.encode(&deck),
+        "deck_b64": base64::engine::general_purpose::STANDARD.encode(deck),
         "store_root": store_root.display().to_string().replace('/', "\\"),
         "session": session,
         "steps": steps,

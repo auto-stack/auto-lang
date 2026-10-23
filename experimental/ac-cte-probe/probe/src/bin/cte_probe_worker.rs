@@ -26,9 +26,34 @@ fn main() {
 
 fn case_serve() -> ! {
     let mut buf = Vec::new();
-    if std::io::stdin().read_to_end(&mut buf).is_err() {
+    // F-817-R6-02: BOUNDED wire read — a request larger than the wire
+    // bound is refused after at most bound+1 bytes (never an unbounded
+    // read-to-end allocation).
+    let stdin = std::io::stdin();
+    let mut limited = stdin
+        .lock()
+        .take((auto_cte_probe::worker::MAX_REQUEST_WIRE_BYTES + 1) as u64);
+    if limited.read_to_end(&mut buf).is_err() {
         eprintln!("cte worker: stdin read failed");
         std::process::exit(3);
+    }
+    if buf.len() > auto_cte_probe::worker::MAX_REQUEST_WIRE_BYTES {
+        let resp = auto_cte_probe::worker::WorkerResponse {
+            schema: auto_cte_probe::worker::CTE_WORKER_PROTOCOL.into(),
+            nonce: String::new(),
+            request_hash: String::new(),
+            ok: None,
+            error: Some(auto_cte_probe::worker::WorkerError {
+                code: "cte.worker.protocol".into(),
+                message: format!(
+                    "request {}B exceeds the {}B wire bound",
+                    buf.len(),
+                    auto_cte_probe::worker::MAX_REQUEST_WIRE_BYTES
+                ),
+            }),
+        };
+        emit(&resp);
+        std::process::exit(0);
     }
     let req: auto_cte_probe::worker::WorkerRequest = match serde_json::from_slice(&buf) {
         Ok(r) => r,
