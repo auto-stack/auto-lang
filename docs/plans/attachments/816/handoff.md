@@ -46,11 +46,17 @@ T-10/T-11 merge owner 受管执行）。证据基线：分支 `codex/plan-816-de
   `generate_report_binds_delivery_root` 钉报告=delivery 根+真实计数）。
   **DELIVERY_CRATES 表增补（CLI/service 闭包）属发行收口，随 R07 搬仓单独
   决策——本 Plan 不改 792 表**（815 已钉 14 crate 闭包不变）。
-- 777：基线重采样 @7ce08b5cf（141 边 strict pass 0v/3g；auto→
-  auto-tool-execution 等 7 新边入基线）。
-- Profile：完整（default=ui-extra+python+autodown）/Core 双形态交付；
-  完整 profile 交付=CLI 二进制+auto-ui-tool+资源/锁（815 形态）；Core 无
-  UI 安装可消费（tool-client/tool-execution 两 fixture verify-deps 钉）。
+- 777：基线绑定 b61f9cca（B-R1-06 清偿后未再改清单/规则/锁；141 边
+  strict pass 0v/3g——B-R2 独立复验保持）。
+- Profile：完整（default=ui-extra+python+autodown）/Core 双形态交付。
+  **完整 profile 安装闭包（B-R2-07 work-owned 交付）**：
+  [install-manifest.json.txt](install-manifest.json.txt)——双二进制
+  （auto.exe/auto-ui-tool.exe 邻接布局）+Cargo.lock 身份+777 基线 hash；
+  验收矩阵：fresh 清洁源 locked 全量构建（r2fix-fresh-build 83.4s exit0）、
+  首次启动邻接发现真生成（r2fix-install-matrix）、升级失败负控（旧 v1
+  工具+选项=具名拒绝零副作用）、Core 安装形态 UI 具名失败
+  （r2fix-core-profile）。Core 无 UI 安装可消费（两 fixture verify-deps
+  钉）。正式独立安装包资源布局随 R07 搬仓（合同内注记，非本轮验收项）。
 
 ## 4. cli hash/来源读回（B-R1 修复轮重绑）
 
@@ -94,8 +100,12 @@ T-10/T-11 merge owner 受管执行）。证据基线：分支 `codex/plan-816-de
   本 handoff 不以 honest_notes 消掉 work 验收。
 - Rust 真链端到端：B-R1 修复轮已实跑（review-overall-r1-fixround/
   r1fix-rust-chain.json.txt——生成+cargo run+READY+health+api+kill+端口
-  重绑）；Ctrl+C 排空窗语义由审方 service-probe（clean/owned-holder/
-  bad-budget 三态）+F-02 修复重放承载。
+  重绑）。**证据边界更正（B-R2-01）**：clean/owned-holder/bad-budget
+  三态**不发送任何信号**，只证明寿命收尾有界——不是 Ctrl+C 排空证据；
+  B-R2-01 修复（设施 `OwnedProcess::interrupt()`：Unix 向 owned 组转发
+  SIGINT→排空→超窗 SIGKILL 兜底；Windows 控制台独立送达故 no-op）后，
+  受控关闭的 Linux 实机验证归 R3 用审方 unix-signal 探针复核（本轮
+  Windows 环境仅能做 Linux target 编译面核验+源码闭合）。
 - pump-race 审方探针已按新可失败 reclaim 签名机械适配并重放通过
   （review-overall-r1/pump-replay-proof.json——审方完成）。
 - 777 ownership 声明路径漂移 warnings（crates/auto-man/src/builder 等
