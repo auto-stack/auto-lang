@@ -53,6 +53,13 @@ mod stoppable_drain {
     /// 宽限尽仍活线程的归属登记（进程级；测试进程结束前不丢弃）。
     static RESIDUE: Mutex<Vec<std::thread::JoinHandle<()>>> = Mutex::new(Vec::new());
 
+    /// RESIDUE 登记数（F-816-B-R7-04 永久回归 oracle）：返回前自有
+    /// reader 应真停收割（join 清归属），登记数 0；>0 = 有线程只在全局
+    /// 表里"保留归属"而未在返回前真停。
+    pub fn residue_len() -> usize {
+        RESIDUE.lock().unwrap().len()
+    }
+
     #[allow(dead_code)]
     pub struct Drain {
         handle: Option<std::thread::JoinHandle<()>>,
@@ -447,19 +454,28 @@ fn serve_daemon_and_req_roundtrip() {
     let _ = daemon.wait();
 }
 
-/// 有界 run（F-816-B-R1-04/R4/R5-04）：设施 ProcessTree 承载——超时/
+/// 收尾保留预算（F-816-B-R7-04）：四个返回出口（超时/wait 失败/根退后
+/// 持有者/正常 EOF）的终止树+真停 reader 共用——镜像生产设施
+/// `TEARDOWN_GRACE` 语义：deadline 只覆盖等待根退出，收尾用独立预算
+/// （Unix poll 分片 ≤50ms + join 需要真实时间；从已耗尽的 deadline 挤
+/// 1ms 会使返回后 reader 残活 ≤100ms）。总时长上界 = limit + 本值。
+const TEARDOWN: Duration = Duration::from_millis(300);
+
+/// 有界 run（F-816-B-R1-04/R4/R5-04/R7-04）：设施 ProcessTree 承载——超时/
 /// 根退出后 cancel_within 终止整棵 owned 树，随后 stoppable_drain 停止
 /// 协议真停自有排水（Win=重发取消；Unix=poll 分片）；持有者在场=
-/// timeout 回收分类（不沿根退出码报成功）；输出经共享缓冲保留；单一
-/// 总预算覆盖等待/终止/回收；宽限尽未停的线程进 RESIDUE（归属不丢）。
+/// timeout 回收分类（不沿根退出码报成功）；输出经共享缓冲保留；预算
+/// 协调=deadline 管等待 + [`TEARDOWN`] 管终止/真停/收割——返回前自有
+/// reader 已 join 确认真停，宽限尽未停才进 RESIDUE（归属不丢）。
 #[allow(clippy::type_complexity)]
-fn run_bounded(
+fn run_bounded_prog(
+    program: &std::ffi::OsStr,
     args: &[&str],
     cwd: &Path,
     env: &[(&str, String)],
     limit: Duration,
 ) -> (i32, String, String) {
-    let mut argv: Vec<std::ffi::OsString> = vec![AUTO.into()];
+    let mut argv: Vec<std::ffi::OsString> = vec![program.to_os_string()];
     argv.extend(args.iter().map(|a| (*a).into()));
     let mut spec = auto_tool_execution::ExecutionSpec::new(argv);
     spec.cwd = Some(cwd.to_path_buf());
@@ -481,18 +497,13 @@ fn run_bounded(
         drains.push(stoppable_drain::spawn_drain(r));
     }
     let deadline = Instant::now() + limit;
-    let left = |deadline: Instant| -> Duration {
-        deadline
-            .saturating_duration_since(Instant::now())
-            .max(Duration::from_millis(1))
-    };
     // 等待根退出（绝对到期：预算尽→终止树→真停排水→timeout 分类）。
     let code = loop {
         if Instant::now() >= deadline {
-            let cancel_err = proc.cancel_within(left(deadline)).err();
+            let cancel_err = proc.cancel_within(TEARDOWN).err();
             let mut stopped = true;
             for d in drains.iter_mut() {
-                if !d.stop_bounded(left(deadline)) {
+                if !d.stop_bounded(TEARDOWN) {
                     stopped = false;
                 }
             }
@@ -513,9 +524,9 @@ fn run_bounded(
             Ok(Some(status)) => break status.code().unwrap_or(-1),
             Ok(None) => {}
             Err(e) => {
-                let _ = proc.cancel_within(left(deadline));
+                let _ = proc.cancel_within(TEARDOWN);
                 for d in drains.iter_mut() {
-                    d.stop_bounded(left(deadline));
+                    d.stop_bounded(TEARDOWN);
                 }
                 let partial_out = drains
                     .first()
@@ -532,10 +543,10 @@ fn run_bounded(
         std::thread::sleep(Duration::from_millis(5));
     }
     if drains.iter().any(|d| d.alive()) {
-        let tree_reclaim = proc.cancel_within(left(deadline));
+        let tree_reclaim = proc.cancel_within(TEARDOWN);
         let drains_done: Vec<bool> = drains
             .iter_mut()
-            .map(|d| d.stop_bounded(left(deadline)))
+            .map(|d| d.stop_bounded(TEARDOWN))
             .collect();
         let out = drains
             .first()
@@ -553,7 +564,7 @@ fn run_bounded(
     // 正常路径：EOF 已到——统一收割（清 JoinHandle 归属）。
     let drains_done: Vec<bool> = drains
         .iter_mut()
-        .map(|d| d.stop_bounded(left(deadline)))
+        .map(|d| d.stop_bounded(TEARDOWN))
         .collect();
     let out = drains
         .first()
@@ -571,6 +582,215 @@ fn run_bounded(
         );
     }
     (code, out, err)
+}
+
+/// 真实 CLI 入口（原四测试沿用）：程序=真实 `auto` 二进制。
+fn run_bounded(
+    args: &[&str],
+    cwd: &Path,
+    env: &[(&str, String)],
+    limit: Duration,
+) -> (i32, String, String) {
+    run_bounded_prog(std::ffi::OsStr::new(AUTO), args, cwd, env, limit)
+}
+
+/// PLAN-816 具名测试子进程（寿命反例对端）定位：`AUTO_TE_CHILD_BIN`
+/// 显式覆盖优先；默认主 workspace debug 产物（workspace 级 cargo t/裸 t
+/// 全目标构建产出）。缺失=诚实红灯并给构建指引（镜像 auto-ui-tool
+/// 既有模式）。
+fn te_child_bin() -> PathBuf {
+    if let Some(p) = std::env::var_os("AUTO_TE_CHILD_BIN") {
+        return PathBuf::from(p);
+    }
+    #[cfg(windows)]
+    let exe = "te-child.exe";
+    #[cfg(not(windows))]
+    let exe = "te-child";
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/debug")
+        .join(exe);
+    assert!(
+        p.exists(),
+        "te-child not found at {} — cargo build -p auto-tool-execution --bin te-child or set AUTO_TE_CHILD_BIN",
+        p.display()
+    );
+    p
+}
+
+/// 外部写端持有者 fixture（F-816-B-R7-04 永久回归共用）：
+/// - Unix：`fd-receiver` receiver——bind+listen socket 后 accept 一连接，
+///   recvmsg 收 SCM_RIGHTS 写 fd、写 marker 确认**真实收到**，随后持有
+///   fd 存活 `hold_secs`（自带截止）；
+/// - Windows：`sleep` receiver——root 侧经 DuplicateHandle 把 stdout 写
+///   句柄转入其句柄表（持有语义同）。
+///
+/// 持有者是测试拥有的独立进程，**不在 run_bounded 的 owned 树内**：
+/// 杀树不给 EOF，reader 停止只能靠停止协议（Unix poll 分片/Win 取消
+/// 重发）——不能用"等测试释放 writer"或 EOF 侥幸通过。返回
+/// （receiver, root 的 TE_CHILD_ARG2 值, Unix marker 路径）。
+#[allow(clippy::type_complexity)]
+fn spawn_holder_receiver(
+    te: &Path,
+    tag: &str,
+    hold_secs: u64,
+) -> (std::process::Child, String, Option<PathBuf>) {
+    #[cfg(unix)]
+    {
+        let socket = std::env::temp_dir().join(format!("{tag}.sock"));
+        let marker = std::env::temp_dir().join(format!("{tag}.marker"));
+        let receiver = Command::new(te)
+            .env("TE_CHILD_MODE", "fd-receiver")
+            .env("TE_CHILD_ARG1", socket.to_str().unwrap())
+            .env("TE_CHILD_ARG2", marker.to_str().unwrap())
+            .env("TE_CHILD_ARG3", hold_secs.to_string())
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn fd receiver");
+        // socket 就绪（bind+listen）先于根 spawn——根的 connect 才会成功。
+        let until = Instant::now() + Duration::from_secs(10);
+        while !socket.exists() && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(socket.exists(), "receiver must bind socket within 10s");
+        (receiver, socket.to_str().unwrap().to_string(), Some(marker))
+    }
+    #[cfg(windows)]
+    {
+        let _ = tag; // 命名仅 Unix 臂使用（socket/marker 路径）
+        let receiver = Command::new(te)
+            .env("TE_CHILD_MODE", "sleep")
+            .env("TE_CHILD_ARG1", hold_secs.to_string())
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn holder receiver");
+        let pid = receiver.id().to_string();
+        (receiver, pid, None)
+    }
+}
+
+/// F-816-B-R7-04 永久回归①：根运行至**真实超时出口**——run_bounded 返回
+/// 前自有 reader 必须真停并收割（join 确认、RESIDUE 登记 0），总时长有
+/// 界。holdout 根打印 marker 行→转交 stdout 写端→存活 3s（远超 280ms
+/// 期限）；持有者全程在场（Unix marker=receiver 真收到写 fd，返回时刻
+/// receiver 仍活）。旧实现此分支只剩 1ms 清理预算，Unix reader 一个
+/// poll 分片（≤50ms）都盖不住，返回后残活 ≤100ms。
+#[test]
+fn timeout_exit_reaps_own_readers_before_return() {
+    let te = te_child_bin();
+    let (mut receiver, holder_arg, marker) =
+        spawn_holder_receiver(&te, &format!("p816-tmo-{}", std::process::id()), 8);
+    let _ = &marker; // Windows 臂无 marker（DuplicateHandle 无需接收侧确认）
+    let start = Instant::now();
+    let (code, out, err) = run_bounded_prog(
+        te.as_os_str(),
+        &[],
+        &std::env::temp_dir(),
+        &[
+            ("TE_CHILD_MODE", "stdout-holdout".to_string()),
+            ("TE_CHILD_ARG1", "3".to_string()),
+            ("TE_CHILD_ARG2", holder_arg),
+        ],
+        Duration::from_millis(280),
+    );
+    let elapsed = start.elapsed();
+    #[cfg(unix)]
+    assert!(
+        marker.as_ref().unwrap().exists(),
+        "receiver must confirm actual write-fd transfer"
+    );
+    assert!(
+        receiver.try_wait().unwrap().is_none(),
+        "holder must stay alive across the return (no writer release)"
+    );
+    assert_eq!(
+        code, -1,
+        "root-running timeout must classify as failure: out={out} err={err}"
+    );
+    assert!(
+        out.contains("holdout output before sleep"),
+        "root output must be preserved: {out}"
+    );
+    assert!(err.contains("timeout"), "classification: {err}");
+    assert!(
+        !err.contains("still alive"),
+        "own readers must be stopped before return: {err}"
+    );
+    assert_eq!(
+        stoppable_drain::residue_len(),
+        0,
+        "own readers must be reaped, not registered"
+    );
+    assert!(
+        elapsed < Duration::from_millis(1500),
+        "bounded total (limit + teardown): {elapsed:?}"
+    );
+    // 探针自清理（receiver 为测试拥有的独立进程）。
+    let _ = receiver.kill();
+    let _ = receiver.wait();
+}
+
+/// F-816-B-R7-04 永久回归②（姊妹分支）：根早退 + 外部持有者 + 期限近
+/// 尽——根退出后 150ms 排水宽限耗尽时刻压着 deadline，旧实现收尾同样
+/// 从已耗尽的 deadline 挤 1ms。holdout 根转交后立即退 0（ARG1=0），
+/// 200ms 期限下宽限耗尽进 holders 回收分支，reader 收割只能靠独立
+/// [`TEARDOWN`] 预算真停完成（drains 全 true、RESIDUE 0）。
+#[test]
+fn holder_root_exit_near_deadline_reaps_readers() {
+    let te = te_child_bin();
+    let (mut receiver, holder_arg, marker) =
+        spawn_holder_receiver(&te, &format!("p816-hold-{}", std::process::id()), 8);
+    let _ = &marker;
+    let start = Instant::now();
+    let (code, out, err) = run_bounded_prog(
+        te.as_os_str(),
+        &[],
+        &std::env::temp_dir(),
+        &[
+            ("TE_CHILD_MODE", "stdout-holdout".to_string()),
+            ("TE_CHILD_ARG1", "0".to_string()),
+            ("TE_CHILD_ARG2", holder_arg),
+        ],
+        Duration::from_millis(200),
+    );
+    let elapsed = start.elapsed();
+    #[cfg(unix)]
+    assert!(
+        marker.as_ref().unwrap().exists(),
+        "receiver must confirm actual write-fd transfer"
+    );
+    assert!(
+        out.contains("holdout output before sleep"),
+        "root output must be preserved: {out}"
+    );
+    // 根退出码 0 不沿报成功：持有者在场=timeout 回收分类。
+    assert_eq!(
+        code, -1,
+        "holders must classify as timeout reclaim: out={out} err={err}"
+    );
+    assert!(err.contains("timeout reclaim"), "holders branch: {err}");
+    assert!(
+        err.contains("drains=[true, true]"),
+        "readers must be reaped in teardown: {err}"
+    );
+    assert_eq!(
+        stoppable_drain::residue_len(),
+        0,
+        "own readers must be reaped, not registered"
+    );
+    assert!(
+        receiver.try_wait().unwrap().is_none(),
+        "holder must stay alive across the return (no writer release)"
+    );
+    assert!(
+        elapsed < Duration::from_millis(1500),
+        "bounded total (limit + teardown): {elapsed:?}"
+    );
+    let _ = receiver.kill();
+    let _ = receiver.wait();
 }
 
 /// V-04：watch 就绪横幅 + 变更触发 SFC 再生（内容身份 oracle + 单一

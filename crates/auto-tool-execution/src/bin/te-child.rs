@@ -3,8 +3,10 @@
 //!
 //! 行为由环境变量驱动(argv 保留给被测的 argv 透传语义,不混入协议):
 //! - `TE_CHILD_MODE`:echo-args | exit | sleep | pwd | env | stdout-kib |
-//!   stderr-line | stdin-echo | grandchild | heartbeat
+//!   stderr-line | stdin-echo | grandchild | heartbeat | stdout-holdout |
+//!   fd-receiver(Unix)
 //! - `TE_CHILD_ARG1`/`TE_CHILD_ARG2`:模式的参数(见各分支)。
+//!   `TE_CHILD_ARG3`(仅 Unix fd-receiver):持有秒数。
 //!
 //! 所有模式自带截止(sleep 秒数有限),不做无界等待。
 
@@ -14,6 +16,8 @@ use std::process::Command;
 const MODE: &str = "TE_CHILD_MODE";
 const ARG1: &str = "TE_CHILD_ARG1";
 const ARG2: &str = "TE_CHILD_ARG2";
+#[cfg(unix)]
+const ARG3: &str = "TE_CHILD_ARG3";
 
 fn arg1() -> String {
     std::env::var(ARG1).unwrap_or_default()
@@ -21,6 +25,11 @@ fn arg1() -> String {
 
 fn arg2() -> String {
     std::env::var(ARG2).unwrap_or_default()
+}
+
+#[cfg(unix)]
+fn arg3() -> String {
+    std::env::var(ARG3).unwrap_or_default()
 }
 
 fn main() {
@@ -104,6 +113,36 @@ fn main() {
                 .unwrap();
             drop(_child);
             std::thread::sleep(std::time::Duration::from_secs(secs));
+        }
+        // ARG1 = 转交后存活秒数(0=转交后立即退 0);ARG2 = Unix: receiver
+        // 的 unix socket 路径 / Windows: receiver PID。stdout 先打 marker
+        // 行,再把写端转交给**不在本树内**的外部持有者(Unix=SCM_RIGHTS
+        // 经 unix socket / Windows=DuplicateHandle 转入 receiver 句柄表)
+        // ——上层杀 owned 树不给 EOF,reader 停止只能靠停止协议
+        // (PLAN-816 B-R7-04 真实超时出口反例)。
+        "stdout-holdout" => {
+            let secs: u64 = arg1().trim().parse().unwrap_or(0).min(30);
+            println!("holdout output before sleep");
+            let _ = std::io::stdout().flush();
+            #[cfg(unix)]
+            holdout_unix::transfer_stdout(&arg2()).expect("transfer stdout write fd");
+            #[cfg(windows)]
+            holdout_win::transfer_stdout_to(arg2().trim().parse::<u32>().expect("receiver pid"))
+                .expect("transfer stdout write handle");
+            if secs > 0 {
+                std::thread::sleep(std::time::Duration::from_secs(secs));
+            }
+        }
+        // ARG1 = socket 路径;ARG2 = marker 文件;ARG3 = 持有秒数(Unix)。
+        // bind+listen 后 accept 一连接,recvmsg 收 SCM_RIGHTS 写 fd,写
+        // marker 确认真实收到,随后持有 fd 存活 ARG3 秒(自带截止)。
+        "fd-receiver" => {
+            #[cfg(unix)]
+            {
+                let secs: u64 = arg3().trim().parse().unwrap_or(5).min(30);
+                holdout_unix::receive_fd(&arg1(), &arg2()).expect("receive write fd");
+                std::thread::sleep(std::time::Duration::from_secs(secs));
+            }
         }
         // ARG1 = 环境变量名。两行打到 stderr 后小睡 300ms 再退出:
         //   cwd <当前目录>
@@ -228,6 +267,234 @@ fn main() {
         _ => {
             eprintln!("te-child: unknown or missing {MODE}");
             std::process::exit(64);
+        }
+    }
+}
+
+/// stdout 写端 SCM_RIGHTS 转交/接收(PLAN-816 B-R7-04 持有者反例;
+/// 零依赖:libc 符号显式 extern 声明,镜像 unix_pg.rs 模式)。
+#[cfg(unix)]
+mod holdout_unix {
+    use std::io;
+    use std::os::unix::io::AsRawFd;
+
+    const AF_UNIX: i32 = 1;
+    const SOCK_STREAM: i32 = 1;
+    const SOL_SOCKET: i32 = 1;
+    const SCM_RIGHTS: i32 = 1;
+
+    #[repr(C)]
+    struct SockAddrUn {
+        family: u16,
+        path: [u8; 108],
+    }
+
+    #[repr(C)]
+    struct IoVec {
+        base: *mut u8,
+        len: usize,
+    }
+
+    /// cmsg 缓冲:cmsghdr(16B) + 1 个 fd(4B) + 对齐填充 = CMSG_SPACE(int)。
+    #[repr(C)]
+    struct CmsgFd {
+        len: usize,
+        level: i32,
+        kind: i32,
+        fd: i32,
+        pad: i32,
+    }
+
+    #[repr(C)]
+    struct MsgHdr {
+        name: *mut u8,
+        namelen: u32,
+        iov: *mut IoVec,
+        iovlen: usize,
+        control: *mut u8,
+        controllen: usize,
+        flags: i32,
+    }
+
+    extern "C" {
+        fn socket(domain: i32, ty: i32, protocol: i32) -> i32;
+        fn connect(fd: i32, addr: *const SockAddrUn, len: u32) -> i32;
+        fn sendmsg(fd: i32, msg: *const MsgHdr, flags: i32) -> isize;
+        fn bind(fd: i32, addr: *const SockAddrUn, len: u32) -> i32;
+        fn listen(fd: i32, backlog: i32) -> i32;
+        fn accept(fd: i32, addr: *mut u8, len: *mut u32) -> i32;
+        fn recvmsg(fd: i32, msg: *mut MsgHdr, flags: i32) -> isize;
+        fn close(fd: i32) -> i32;
+    }
+
+    fn sun_addr(path: &str) -> io::Result<(SockAddrUn, u32)> {
+        let bytes = path.as_bytes();
+        if bytes.len() >= 108 {
+            return Err(io::Error::other("unix socket path too long"));
+        }
+        let mut addr = SockAddrUn {
+            family: AF_UNIX as u16,
+            path: [0; 108],
+        };
+        addr.path[..bytes.len()].copy_from_slice(bytes);
+        // sockaddr 长度 = family(2) + 路径字节 + NUL。
+        Ok((addr, 2 + bytes.len() as u32 + 1))
+    }
+
+    /// 把自身 stdout 写端经 SCM_RIGHTS 发给 socket 对端(receiver)。
+    pub fn transfer_stdout(socket_path: &str) -> io::Result<()> {
+        let (addr, addr_len) = sun_addr(socket_path)?;
+        unsafe {
+            let fd = socket(AF_UNIX, SOCK_STREAM, 0);
+            if fd < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            if connect(fd, &addr, addr_len) != 0 {
+                let e = io::Error::last_os_error();
+                close(fd);
+                return Err(e);
+            }
+            let stdout_fd = std::io::stdout().as_raw_fd();
+            // 至少 1 字节数据捎带 cmsg(零长度发送不保证携带辅助数据)。
+            let byte = [0u8];
+            let mut iov = IoVec {
+                base: byte.as_ptr() as *mut u8,
+                len: 1,
+            };
+            let mut cmsg = CmsgFd {
+                len: 20, // CMSG_LEN(sizeof(int)) = 头(16) + fd(4)
+                level: SOL_SOCKET,
+                kind: SCM_RIGHTS,
+                fd: stdout_fd,
+                pad: 0,
+            };
+            let msg = MsgHdr {
+                name: std::ptr::null_mut(),
+                namelen: 0,
+                iov: &mut iov,
+                iovlen: 1,
+                control: &mut cmsg as *mut CmsgFd as *mut u8,
+                controllen: 24, // CMSG_SPACE(sizeof(int))
+                flags: 0,
+            };
+            if sendmsg(fd, &msg, 0) < 0 {
+                let e = io::Error::last_os_error();
+                close(fd);
+                return Err(e);
+            }
+            close(fd);
+            Ok(())
+        }
+    }
+
+    /// bind+listen `socket_path`,accept 一连接并 recvmsg 收 SCM_RIGHTS
+    /// 写 fd;marker 写入"真实收到"确认(含 fd 号)。fd 故意不关闭:持有
+    /// 该写端直到进程退出(持有者语义——root 被杀后管道仍无 EOF)。
+    pub fn receive_fd(socket_path: &str, marker: &str) -> io::Result<()> {
+        let (addr, addr_len) = sun_addr(socket_path)?;
+        unsafe {
+            let fd = socket(AF_UNIX, SOCK_STREAM, 0);
+            if fd < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            if bind(fd, &addr, addr_len) != 0 || listen(fd, 1) != 0 {
+                let e = io::Error::last_os_error();
+                close(fd);
+                return Err(e);
+            }
+            let conn = accept(fd, std::ptr::null_mut(), std::ptr::null_mut());
+            if conn < 0 {
+                let e = io::Error::last_os_error();
+                close(fd);
+                return Err(e);
+            }
+            let mut byte = [0u8; 1];
+            let mut iov = IoVec {
+                base: byte.as_mut_ptr(),
+                len: 1,
+            };
+            let mut cmsg: CmsgFd = std::mem::zeroed();
+            let mut msg = MsgHdr {
+                name: std::ptr::null_mut(),
+                namelen: 0,
+                iov: &mut iov,
+                iovlen: 1,
+                control: &mut cmsg as *mut CmsgFd as *mut u8,
+                controllen: 24,
+                flags: 0,
+            };
+            if recvmsg(conn, &mut msg, 0) < 0 {
+                let e = io::Error::last_os_error();
+                close(conn);
+                close(fd);
+                return Err(e);
+            }
+            close(conn);
+            close(fd);
+            if cmsg.level != SOL_SOCKET || cmsg.kind != SCM_RIGHTS || cmsg.len < 20 || cmsg.fd <= 2
+            {
+                return Err(io::Error::other("no SCM_RIGHTS fd received"));
+            }
+            std::fs::write(marker, format!("actual write fd received: {}", cmsg.fd))?;
+            Ok(())
+        }
+    }
+}
+
+/// stdout 写端经 DuplicateHandle 转入 receiver 进程句柄表(PLAN-816
+/// B-R7-04 持有者反例;符号显式 extern "system" 声明,零依赖)。
+#[cfg(windows)]
+mod holdout_win {
+    use std::io;
+
+    const STD_OUTPUT_HANDLE: u32 = 0xFFFF_FFF5; // (DWORD)-11
+    const PROCESS_DUP_HANDLE: u32 = 0x0040;
+    const DUPLICATE_SAME_ACCESS: u32 = 0x0002;
+
+    extern "system" {
+        fn GetCurrentProcess() -> isize;
+        fn GetStdHandle(n_std_handle: u32) -> isize;
+        fn OpenProcess(desired_access: u32, inherit_handle: i32, process_id: u32) -> isize;
+        fn DuplicateHandle(
+            source_process: isize,
+            source_handle: isize,
+            target_process: isize,
+            target_handle: *mut isize,
+            desired_access: u32,
+            inherit_handle: i32,
+            options: u32,
+        ) -> i32;
+        fn CloseHandle(handle: isize) -> i32;
+    }
+
+    /// 把自身 stdout 写句柄复制进 receiver(按 PID)句柄表——receiver 持有
+    /// 该写端,本进程退场/被杀不给 EOF(root 的 owned 树终止不波及它)。
+    pub fn transfer_stdout_to(receiver_pid: u32) -> io::Result<()> {
+        unsafe {
+            let stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+            if stdout_handle == 0 || stdout_handle == -1 {
+                return Err(io::Error::last_os_error());
+            }
+            let receiver = OpenProcess(PROCESS_DUP_HANDLE, 0, receiver_pid);
+            if receiver == 0 {
+                return Err(io::Error::last_os_error());
+            }
+            let mut target: isize = 0;
+            let ok = DuplicateHandle(
+                GetCurrentProcess(),
+                stdout_handle,
+                receiver,
+                &mut target,
+                0,
+                0,
+                DUPLICATE_SAME_ACCESS,
+            );
+            CloseHandle(receiver);
+            if ok == 0 {
+                return Err(io::Error::last_os_error());
+            }
+            // target 位于 receiver 句柄表:本端无法也不需要关闭它。
+            Ok(())
         }
     }
 }
