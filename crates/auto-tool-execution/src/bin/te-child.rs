@@ -4,7 +4,7 @@
 //! 行为由环境变量驱动(argv 保留给被测的 argv 透传语义,不混入协议):
 //! - `TE_CHILD_MODE`:echo-args | exit | sleep | pwd | env | stdout-kib |
 //!   stderr-line | stdin-echo | grandchild | heartbeat | stdout-holdout |
-//!   fd-receiver(Unix)
+//!   fd-receiver(Unix) | signal-tree | terminate-wait
 //! - `TE_CHILD_ARG1`/`TE_CHILD_ARG2`:模式的参数(见各分支)。
 //!   `TE_CHILD_ARG3`(仅 Unix fd-receiver):持有秒数。
 //!
@@ -268,8 +268,14 @@ fn main() {
         }
         // 安装设施终止原语后等待真实终止信号（Ctrl+C/SIGTERM/SIGINT）：
         // 收到即干净退出码 42；10s 未收到=7（截止自守）。
+        // ARG1（可选）= ready marker 路径：安装完成后写文件——供上层
+        // 确定性等到 handler 已挂载再发信号（消除安装/送达竞态）。
         "terminate-wait" => {
             assert!(auto_tool_execution::terminate::install(), "install failed");
+            let ready = arg1();
+            if !ready.is_empty() {
+                std::fs::write(&ready, "handler installed").unwrap();
+            }
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
             while !auto_tool_execution::terminate::requested() {
                 if std::time::Instant::now() >= deadline {
@@ -278,6 +284,38 @@ fn main() {
                 std::thread::sleep(std::time::Duration::from_millis(10));
             }
             std::process::exit(42);
+        }
+        // ARG1 = ready marker 路径（F-816-B-R9-01 组信号送达证明对端）：
+        // 安装终止原语后派生 terminate-wait 后代（同样安装，ARG1 透传为
+        // "<marker>.child"），等待后代 handler 就绪再写自身 marker（双端
+        // 已挂载的确定性握手），随后等待后代退出并传播其退出码——组
+        // SIGINT/SIGTERM 送达整组时后代经 handler 干净退 42；根同在组内
+        // 靠自身 handler 存活以报告。未送达=后代 10s 截止退 7。
+        "signal-tree" => {
+            assert!(auto_tool_execution::terminate::install(), "install failed");
+            let marker = arg1();
+            let child_marker = format!("{marker}.child");
+            let exe = std::env::current_exe().unwrap();
+            let mut child = Command::new(&exe)
+                .env(MODE, "terminate-wait")
+                .env(ARG1, &child_marker)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .unwrap();
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while !std::path::Path::new(&child_marker).exists() && std::time::Instant::now() < until
+            {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            assert!(
+                std::path::Path::new(&child_marker).exists(),
+                "descendant handler must install within 10s"
+            );
+            std::fs::write(&marker, "both handlers installed").unwrap();
+            let status = child.wait().unwrap();
+            std::process::exit(status.code().unwrap_or(-1));
         }
         _ => {
             eprintln!("te-child: unknown or missing {MODE}");

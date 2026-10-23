@@ -26,11 +26,14 @@ pub(crate) fn child_setpgid() -> io::Result<()> {
     }
 }
 
-/// 向整个进程组发送指定信号(group leader pid == pgid)。信号只达组内
-/// 成员;ESRCH=组空,视为成功(收尾场景无成员即无事可做)。
+/// 向整个进程组发送指定信号(group leader pid == pgid)。
+///
+/// F-816-B-R9-01:`kill` 传**正值**只向同号 PID(根)发信号——owned 后代
+/// 收不到;必须传负 PGID 才是组信号(killpg 语义)。信号只达组内成员;
+/// ESRCH=无此进程组,视为成功(收尾场景组空即无事可做)。
 pub(crate) fn signal_group(pgid: u32, sig: i32) -> io::Result<()> {
     unsafe {
-        if kill(pgid as i32, sig) == -1 {
+        if kill(-(pgid as i32), sig) == -1 {
             let err = io::Error::last_os_error();
             if err.raw_os_error() == Some(3) {
                 Ok(())
@@ -45,11 +48,13 @@ pub(crate) fn signal_group(pgid: u32, sig: i32) -> io::Result<()> {
 
 /// 终止整个进程组(group leader pid == pgid)。
 ///
+/// F-816-B-R9-01:负 PGID 组信号——正值只杀根,owned 后代继续运行。
 /// 组已空(ESRCH)视为成功:调用场景含"根已退出、仅剩/已无后代"的
-/// 收尾(F-816-R1-02),无成员即无事可做,不是失败。
+/// 收尾(F-816-R1-02)——组在任一成员存活期间持续存在(根退出/已收尸
+/// 不撤销 PGID),无成员即无事可做,不是失败。
 pub(crate) fn kill_group(pgid: u32) -> io::Result<()> {
     unsafe {
-        if kill(pgid as i32, SIGKILL) == -1 {
+        if kill(-(pgid as i32), SIGKILL) == -1 {
             let err = io::Error::last_os_error();
             if err.raw_os_error() == Some(3) {
                 // ESRCH: 组内已无成员。

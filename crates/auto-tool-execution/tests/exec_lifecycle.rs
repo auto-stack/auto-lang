@@ -705,3 +705,48 @@ fn fd_receiver_self_exits_on_silent_peer() {
     drop(peer);
     assert!(!marker.exists(), "silent peer sent nothing");
 }
+
+/// F-816-B-R9-01 永久回归（signal_group 组内活后代受控送达）：
+/// interrupt() 的 SIGINT 必须到达 owned 组内活后代——terminate-wait 后代
+/// 的受控 handler 观察到信号并干净退 42（非默认致死、非根独吞）；根同
+/// 在组内靠自身 handler 存活传播后代退出码。旧实现（正 PGID）只命中
+/// 根：根 handler 吞掉信号、后代收不到，10s 截止退 7——42/7 双态区分
+/// 送达与未送达。
+#[cfg(unix)]
+#[test]
+fn interrupt_signal_reaches_group_descendants() {
+    let dir = TempDir::new("r901-sigtree");
+    let marker = dir.path().join("ready.marker");
+    let mut spec = with_args(child_spec("signal-tree"), marker.to_str().unwrap(), None);
+    spec.tree_scope = TreeScope::ProcessTree;
+    let mut proc = spawn(&spec).expect("spawn signal-tree (owned group)");
+    // 双端 handler 安装就绪（根在后代 handler 就绪后才写 marker——
+    // 消除安装/送达竞态，无固定睡眠）。
+    let ready_by = Instant::now() + Duration::from_secs(10);
+    while !marker.exists() && Instant::now() < ready_by {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(marker.exists(), "both handlers must install within 10s");
+    proc.interrupt().expect("interrupt owned group");
+    // 根退出码=后代退出码：42=组 SIGINT 送达受控 handler；7=未送达
+    //（后代 10s 截止自守）——有界等待覆盖两态。
+    let deadline = Instant::now() + Duration::from_secs(13);
+    loop {
+        match proc
+            .wait_deadline(Duration::from_millis(200))
+            .expect("wait")
+        {
+            Some(status) => {
+                assert_eq!(
+                    status.code(),
+                    Some(42),
+                    "group SIGINT must reach the descendant handler"
+                );
+                break;
+            }
+            None => {
+                assert!(Instant::now() < deadline, "signal tree did not exit in 13s");
+            }
+        }
+    }
+}
