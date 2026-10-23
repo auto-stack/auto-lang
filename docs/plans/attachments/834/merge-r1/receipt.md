@@ -1,4 +1,4 @@
-# PLAN-834:r1 merge receipt — delivery landed, cleanup pending
+# PLAN-834:r1 merge receipt — PASS, archived10/10
 
 2026-10-23，独立final R1受审`ebeab12d2888b9c9fb7e00e3c24479fb3c028011`；实现`0ea8bdb1582d05e0f39c6e5bfc6d349f9280473b`；交付`19adeebf1b1031554c71acabaa219731b3a28b96`。后继仅canonical/派生账本文档，实际源码/SDK/锁/资产/测试配置与受审版本一致。源已无force快进`autographics-dev`；主检出保持master，仅接收知识/计划簿记，其他会话预存WIP保留。
 
@@ -29,10 +29,10 @@ landed：autographics-dev由540c1e70f0a4682af245191ffb36fa0d8a636665快进至19a
 
 ledger_refreshed：Regime B，在线127.0.0.1:8080无可达store writer，guarded offline projection；原字节备份ledger-before.json.txt，v70→v71，8项upsert（5 designs/1 tests/1 reviews/1 reports），1138个无关原始item字节保留，six-section schema/readback/source hash/file/tags全部验证。main实际ledger hash与投影收据一致。ledger仅派生引用，canonical为docs/specs。
 
-archived：按实际归档状态门记录；cleaned：尚待强制guard和工作树/branch/consumerB/C清理。归档与清理收据另见actual-archive-check/cleaned。I1仅实验分母交付；I2生产AutoUI/RQHost迁移、I3 Forge/发行、Shader/CAP以及graphics源码进master前置保持pending。
+archived：78dc4630f6b2c5f1d137afeb71f0dfb6904de003已提交实际归档与canonical/ledger，62个本地链接及跟踪身份检查通过；cleaned：唯一834树、merged branch、生成consumerB/C与空组已删除，三个精确目标即时wt-guard clean并验证实际消失。归档与清理收据另见actual-archive-check/cleaned。I1仅实验分母交付；I2生产AutoUI/RQHost迁移、I3 Forge/发行、Shader/CAP以及graphics源码进master前置保持pending。
 
 ## Artifact and batch follow-up
 
 本次无生产consumer迁移、默认入口或生产binary/web bundle写面；未宣称部署。driver/AGP原生binary本轮完整build并用于真实验收，临时target按授权cleanup移除，源码可由autographics-dev独立再构建。根backend/daemon/web production artifacts不消费该实验入口，未更改、无需因本Plan重建/重启。
 
-清理后的批量回归due-check仍须记录；不得在plan树跑tf。全部原始失败/正负控/来源/投影与最终checkpoint由本目录证据保存。
+清理后批量回归due-check为not due：834%5=4，覆盖830后无新%5落地且收据不足48h；未跑tf。全部原始失败/正负控/来源/投影与最终checkpoint由本目录证据保存。

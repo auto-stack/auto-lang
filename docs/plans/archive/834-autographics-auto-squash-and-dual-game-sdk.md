@@ -7,7 +7,7 @@ plan_revision: 1
 author: [Codex]
 created_at: 2026-10-22
 updated_at: 2026-10-23
-current_step: 9
+current_step: 10
 total_steps: 10
 depends_on: [PLAN-833]
 supersedes_spec_components:
@@ -25,7 +25,7 @@ affects: [auto-graphics, language-sdk-consumer]
 
 ## 0. 变更摘要
 
-**2026-10-23 交付已落autographics-dev，规范/账本已沉淀；归档9/10，T-10清理待完成。** 独立R1 PASS与完整合入门禁通过，交付提交`19adeebf1b1031554c71acabaa219731b3a28b96`。master仅知识文档，I1实验双游戏分母交付，I2/I3/Shader/CAP/生产迁移仍pending。[最终合入收据](../attachments/834/merge-r1/receipt.md)。
+**2026-10-23 archived / 10 of 10，交付完成。** 独立final R1与冻结完整合入门禁通过，源码快进交付`autographics-dev@19adeebf1b1031554c71acabaa219731b3a28b96`；master仅知识/计划，canonical/ledger v71、归档、强制guard clean与工作树/分支/生成包清理均已核。I1原实验双游戏分母交付，I2/I3/Shader/CAP/生产迁移仍pending。[最终合入收据](../attachments/834/merge-r1/receipt.md)。
 
 源、依赖、样本、容差和生产边界不变；完整门与真实失败/重放、投影/归档/清理实际checkpoint见§9最新merge收据。历史work/review的pending描述保留为阶段记录，不表示当前门禁仍未执行。
 
@@ -209,9 +209,18 @@ modify以833未来实际交付版本为来源。该文件尚无canonical时明�
 | [x] | T-07 | work | T-06 | V-01/08/09双游戏/旧profile兼容、独立包A→B/资源与精确计量/有限负控；冻结测量、永久反例与root collateral | AC-01,06,07 |
 | [x] | T-08 | work | T-07 | README/源码样例/研究交接及SD-01..04拟议全文、真实命令/符号/限制/I1分母与债务归属，自检提交冻结→review | AC-07 |
 | [x] | T-09 | review | T-08 | 同树独立final R1 PASS，逐AC/SD/冻结版本与正反控、遗漏/延期扫描通过；merge门仍pending，见attachments/834/review-r1/review.md | AC-08 |
-| [ ] | T-10 | merge | T-09 pass | 冻结提交统一driver全测/build+AGP适用兼容/六surface/真实音画输入/资源反控门；合autographics-dev、知识沉淀/归档、wt-guard clean清树 | AC-09 |
+| [x] | T-10 | merge | T-09 pass | 冻结提交统一driver全测/build+AGP适用兼容/六surface/真实音画输入/资源反控门；合autographics-dev、知识沉淀/归档、wt-guard clean清树 | AC-09 |
 
 ## 9. 复审记录
+
+### 2026-10-23 merge final：PASS，archived10/10
+
+- stage: merge | key: PLAN-834:r1 | outcome: pass | completion_kind: delivered | reviewed_commit: ebeab12d2888b9c9fb7e00e3c24479fb3c028011 | delivery_commit: 19adeebf1b1031554c71acabaa219731b3a28b96 | integration_ref: autographics-dev | master: knowledge only | ledger: guarded offline projection v71，8项upsert/source/file/tags与1138无关raw items保持 | archive_commit_before_cleanup: 78dc4630f6b2c5f1d137afeb71f0dfb6904de003。
+- prepared / landed / ledger_refreshed / archived / cleaned全部实际核验；[最终收据](../attachments/834/merge-r1/receipt.md)、[实际归档检查](../attachments/834/merge-r1/actual-archive-check.json.txt)、[清理收据](../attachments/834/merge-r1/cleaned.json.txt)、[批量回归到期判断](../attachments/834/merge-r1/batch-due-check.json.txt)。
+- driver42/AGP162/C42完整测试与构建、16/16 AGP/六surface/真实IME、Iced counter+content两独立门/漏画透明反控、双游戏native正负控、音画/资源/寿命/计量及独立搬迁全部pass；锁屏与额外按键失败现场及不改实现的实际重放闭合保留。AC-01..09/T-01..10全部完成，无开放合同finding/必测gap/延期。
+- 唯一834树及merged plan-834-dev、生成consumer-b/c和空lang-834组已移除；三个目标分别在核绝对路径后即时wt-guard clean，永久证据已先提交；其他工作树/其他会话WIP保留。生产入口/二进制/web bundle不消费该实验代码，未部署或冒称已迁移；本次原生binary已实际构建验收，临时target随cleanup删除。
+- 批量回归未到期：834%5=4，收据覆盖830以来无新的%5落地，距离收据不足48h；未跑tf。I1仅原实验双游戏分母完成，生产I2/I3/Shader/CAP/Forge与graphics源码进master前置仍pending。
+
 
 ### 2026-10-23 merge T-10：门禁全部通过，已合入/沉淀，归档清理阶段
 
@@ -290,7 +299,7 @@ modify以833未来实际交付版本为来源。该文件尚无canonical时明�
 ## 10. 待澄清事项
 
 1. 当前无开放合同finding、未决设计或用户决定；历史锁屏/额外输入/预算拒绝的实际重放闭合见最终merge收据，未修改受审实现或放宽验收。
-2. 已合入autographics-dev并投影canonical/ledger；当前仅归档实际状态检查与guard清理待完成，T-10完成前不宣称10/10。
+2. T-10已完成：完整门、合入、canonical/ledger、已提交归档与guard清理全部核验，archived10/10；无待执行834任务。
 3. I1实验分母交付；既有SDK通用数学债务、I2/I3/Shader/CAP/Forge生产边界保持。无生产部署/默认入口迁移。
 
 ## spec-sync 回写记录
