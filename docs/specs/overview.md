@@ -121,3 +121,5 @@
 AutoGraphics 实验增量（PLAN-833）：[真实 Auto source driver](auto-graphics/auto-source-driver.md) 已交付 autographics-dev；I1 仅首片，Auto Squash 与生产 I2/I3/Shader/CAP 仍 pending。
 
 AutoGraphics当前实验增量（PLAN-834）：[Auto 3D game profile](auto-graphics/auto-3d-game-profile.md)与既有Auto Breakout共同完成I1原双游戏分母；源码仅autographics-dev。早期829/830/833行是其阶段历史，I2/I3、生产迁移与Shader/CAP继续pending。
+
+PLAN-835：[场景文档](auto-graphics/scene-document.md)与[创作会话](auto-graphics/authoring-session.md)完成独立有限保存/撤销/真实Auto预览实验；源码仅autographics-dev，生产AutoUI/RQHost/Forge I2/I3仍pending。

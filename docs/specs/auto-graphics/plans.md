@@ -8,3 +8,5 @@
 | 833 | 真实 Auto 源码驱动 AutoGraphics 最小闭环 | archived | [archive/833](../../plans/archive/833-autographics-auto-source-minimal-loop.md) | 纯 SDK 公开 CPU slice 驱动真实 Auto 场景/Breakout，输出准入、共享单 tick、全资源归属与文字真实上传计量；源码在 autographics-dev，I1 首片，Auto Squash/I2/I3/Shader/CAP 仍 pending |
 
 | 834 | 真实 Auto 驱动 Squash 与双游戏 SDK 闭环 | archived | [archive/834](../../plans/archive/834-autographics-auto-squash-and-dual-game-sdk.md) | 同一公开 SDK/Session 驱动真实 Auto Breakout+Squash，原轨迹/音画/输入/寿命/精确计量与正反控通过；I1实验双游戏分母交付，源码仅autographics-dev，I2/I3/Shader/CAP/生产迁移仍pending |
+
+| 835 | 场景创作保存与撤销原型 | archived | [archive/835](../../plans/archive/835-autographics-scene-authoring-save-and-undo.md) | 独立stock Iced+真实Auto profile3的有限2D/3D文档、编辑事务、保存/撤销/重开与失败恢复；源码仅autographics-dev，I2/I3/生产Forge仍pending |
