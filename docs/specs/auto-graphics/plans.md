@@ -14,3 +14,5 @@
 | 836 | 视口选择与平移交互原型 | archived | [archive/836](../../plans/archive/836-autographics-viewport-picking-and-translation.md) | 有限2D几何/3D OBB与世界轴平移，真实Auto临时预览、一次历史、失败恢复；源码autographics-dev，生产I2/I3 pending |
 
 | 837 | 场景层级与组创作原型 | archived | [archive/837](../../plans/archive/837-autographics-scene-hierarchy-and-group-authoring.md) | 有限同维平移/显隐组、真实Auto profile4、v2保存与保持世界位置挂接；源码autographics-dev，生产I2/I3 pending |
+
+| 838 | 静态GLB导入与可携带场景资源 | archived | [archive/838](../../plans/archive/838-autographics-glb-import-and-portable-scene-assets.md) | 严格静态GLB/真实Auto profile5、内容寻址资源/原字节身份、schema3闭包保存/搬迁重开；源码autographics-dev，生产I2/I3 pending |

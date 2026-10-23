@@ -83,3 +83,24 @@ stable engine APIs, production migration, Linux/Shader/CAP/ACE or full engine co
 Final complete driver/AGP/native/composite/source/consumer gate results and actual T-10 closeout are recorded in the merge receipt.
 
 Provenance: [PLAN-837](../../plans/archive/837-autographics-scene-hierarchy-and-group-authoring.md), [final R2](../../plans/attachments/837/review-r2/review.md), [merge receipt](../../plans/attachments/837/merge-r1/receipt.md). Source integration remains autographics-dev; production I2/I3 pending.
+
+## PLAN-838 current static asset extension
+
+Keep profile1/2 games and profile3/4 sample contracts. Asset documents explicitly
+use new samples/authoring_assets/main.at profile5. Auto accepts parent-first
+hierarchy plus candidate-local resource ordinals, derives world/effective state,
+and returns every node's kind/parent/dimension/ordinal and complete fields. Rust
+checks exact count, identity, resource mapping and fields, then consumes the actual
+returned resource/world/effective data for rendering/pick. Wrong resource output
+is a whole-candidate rejection. GLB decode and GPU ownership remain in the host.
+The same pinned SDK9576b4d and independent two workspaces/locks remain, with the
+driver's direct locked gltf1.4 dependency and extras feature recorded in source.
+Current source identity is plan838-identity.json; .agscene text hashes normalize
+LF/CRLF, fixing fresh-checkout reproduction of inherited837 fixture bytes.
+CLI adds --asset-check/--asset-file/--asset-save/--wrong-asset/--asset-gpu-fault
+and retains --drop-release/--frames/--inspect. Native/report/aggregate completeness
+and actual content controls remain mandatory. The slice provides portable finite
+scene/static-model authoring. Production I2/I3, general materials/animation,
+multi-platform/public engine/Forge distribution remain pending.
+
+Provenance: [PLAN-838](../../plans/archive/838-autographics-glb-import-and-portable-scene-assets.md), [independent final R2](../../plans/attachments/838/review-r2/review.md), [merge receipt](../../plans/attachments/838/merge-r1/receipt.md). Source remains autographics-dev; production I2/I3 pending.

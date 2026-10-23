@@ -4226,6 +4226,31 @@
  "modified_at": 1792759600,
  "completed_at": 1792759600
 }
+,
+{
+ "id": "P838-MERGE",
+ "title": "PLAN-838 delivered consolidation",
+ "content": "Frozen implementation fast-forward to autographics-dev; reviewed canonical contracts and guarded derived ledger projection, delivered archive and guarded cleanup. Master receives knowledge only. No production I2/I3 deployment claim.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/archive/838-autographics-glb-import-and-portable-scene-assets.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-838",
+  "r1",
+  "reviewed:eddf13ee6e5a9296bf11b0622561a669e7498b56",
+  "source-sha256:f2d0e4cdf0ba23d6634e66d25c814fc078bec8a9a1cdc4c1a097d2b56e70e3d4",
+  "source-path:docs/specs/auto-graphics/scene-assets.md"
+ ],
+ "created_at": 1792791100,
+ "modified_at": 1792791100,
+ "completed_at": 1792791100
+}
 ],
    "section_type": "Reports",
    "title": "📊 Reports",
@@ -14417,7 +14442,7 @@
     {
  "id": "P829-AGP",
  "title": "AutoGraphics project",
- "content": "Canonical finite scene hierarchy: actual Auto profile4, same-dimension translation/visibility groups, strict v1 import/v2 save, atomic subtree/reparent transactions, world-position precision and bounded gestures; seven-state composition pixel oracle with real transparent/ghost controls. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite static GLB assets: strict typed/declaration admission, original-byte SHA identity and complete multi-part geometry, actual Auto profile5, resource-aware history/owners, schema3 assets-before-entry portable closure with resolved Windows save-target protection. Source autographics-dev; production I2/I3 pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14428,15 +14453,15 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-837",
+  "PLAN-838",
   "r1",
-  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
-  "source-sha256:a55a38d872929bae978818f59ad98100449d82e9b5ff72accd3c70bcfa712351",
+  "reviewed:eddf13ee6e5a9296bf11b0622561a669e7498b56",
+  "source-sha256:9708f7345094b2bffea9b5a49542fb7f5a6499df80ae73346e75bc91579624f8",
   "source-path:docs/specs/auto-graphics/project.md"
  ],
  "created_at": 1792685069,
- "modified_at": 1792759600,
- "completed_at": 1792759600
+ "modified_at": 1792791100,
+ "completed_at": 1792791100
 },
     {
      "id": "P830-SURF",
@@ -14479,7 +14504,7 @@
     {
  "id": "P830-PROFILE",
  "title": "AutoGraphics prototype-profile",
- "content": "Canonical finite scene hierarchy: actual Auto profile4, same-dimension translation/visibility groups, strict v1 import/v2 save, atomic subtree/reparent transactions, world-position precision and bounded gestures; seven-state composition pixel oracle with real transparent/ghost controls. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite static GLB assets: strict typed/declaration admission, original-byte SHA identity and complete multi-part geometry, actual Auto profile5, resource-aware history/owners, schema3 assets-before-entry portable closure with resolved Windows save-target protection. Source autographics-dev; production I2/I3 pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14490,20 +14515,20 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-837",
+  "PLAN-838",
   "r1",
-  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
-  "source-sha256:967a519b7aff2325b1f83602b57c31cefcf202a7c324d0f8511600dfe77deb27",
+  "reviewed:eddf13ee6e5a9296bf11b0622561a669e7498b56",
+  "source-sha256:6cedfbdc737a17934773dba0c168c6f0a10ded66257b698dce3156372784bfca",
   "source-path:docs/specs/auto-graphics/prototype-profile.md"
  ],
  "created_at": 1792685069,
- "modified_at": 1792759600,
- "completed_at": 1792759600
+ "modified_at": 1792791100,
+ "completed_at": 1792791100
 },
     {
  "id": "P830-IH",
  "title": "AutoGraphics integration-contract",
- "content": "Canonical finite scene hierarchy: actual Auto profile4, same-dimension translation/visibility groups, strict v1 import/v2 save, atomic subtree/reparent transactions, world-position precision and bounded gestures; seven-state composition pixel oracle with real transparent/ghost controls. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite static GLB assets: strict typed/declaration admission, original-byte SHA identity and complete multi-part geometry, actual Auto profile5, resource-aware history/owners, schema3 assets-before-entry portable closure with resolved Windows save-target protection. Source autographics-dev; production I2/I3 pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14514,15 +14539,15 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-837",
+  "PLAN-838",
   "r1",
-  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
-  "source-sha256:39e9d4d9c8933a6a6b17011f5f7003daf483198d2b0bd65dcb908812bb8ba60f",
+  "reviewed:eddf13ee6e5a9296bf11b0622561a669e7498b56",
+  "source-sha256:1bc62b9dbd088d0423d875c087bd40b47ed6343d8fcacd30115d99ac89c7094f",
   "source-path:docs/specs/auto-graphics/integration-contract.md"
  ],
  "created_at": 1792685069,
- "modified_at": 1792759600,
- "completed_at": 1792759600
+ "modified_at": 1792791100,
+ "completed_at": 1792791100
 },
     {
      "id": "P815-B-D1",
@@ -14552,7 +14577,7 @@
     {
  "id": "P833-AUTO-SOURCE",
  "title": "AutoGraphics auto-source-driver",
- "content": "Canonical finite scene hierarchy: actual Auto profile4, same-dimension translation/visibility groups, strict v1 import/v2 save, atomic subtree/reparent transactions, world-position precision and bounded gestures; seven-state composition pixel oracle with real transparent/ghost controls. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite static GLB assets: strict typed/declaration admission, original-byte SHA identity and complete multi-part geometry, actual Auto profile5, resource-aware history/owners, schema3 assets-before-entry portable closure with resolved Windows save-target protection. Source autographics-dev; production I2/I3 pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14563,15 +14588,15 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-837",
+  "PLAN-838",
   "r1",
-  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
-  "source-sha256:55496216eb0ce8881b16e2210441d3972837d44fa157ee7b5dc4f75f98ce0ee8",
+  "reviewed:eddf13ee6e5a9296bf11b0622561a669e7498b56",
+  "source-sha256:05a7f977486cd3db1e304d16d5e65ed4cfb7e0a73d51a87f593c61fa52eee9fe",
   "source-path:docs/specs/auto-graphics/auto-source-driver.md"
  ],
  "created_at": 1792685069,
- "modified_at": 1792759600,
- "completed_at": 1792759600
+ "modified_at": 1792791100,
+ "completed_at": 1792791100
 },
     {
      "id": "P828-SRC",
@@ -14683,7 +14708,7 @@
 {
  "id": "P835-DOCUMENT",
  "title": "AutoGraphics scene-document",
- "content": "Canonical finite scene hierarchy: actual Auto profile4, same-dimension translation/visibility groups, strict v1 import/v2 save, atomic subtree/reparent transactions, world-position precision and bounded gestures; seven-state composition pixel oracle with real transparent/ghost controls. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite static GLB assets: strict typed/declaration admission, original-byte SHA identity and complete multi-part geometry, actual Auto profile5, resource-aware history/owners, schema3 assets-before-entry portable closure with resolved Windows save-target protection. Source autographics-dev; production I2/I3 pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14694,20 +14719,20 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-837",
+  "PLAN-838",
   "r1",
-  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
-  "source-sha256:fcaa9bab9c0e579b5d68339c858715e623ad46d38c7ac3a9c3d6712366820b58",
+  "reviewed:eddf13ee6e5a9296bf11b0622561a669e7498b56",
+  "source-sha256:497206f0e28987cea43a4427987a4bb6e4894bce1d2c10bcfe8aa5d2cec6a8fc",
   "source-path:docs/specs/auto-graphics/scene-document.md"
  ],
  "created_at": 1792720163,
- "modified_at": 1792759600,
- "completed_at": 1792759600
+ "modified_at": 1792791100,
+ "completed_at": 1792791100
 },
 {
  "id": "P835-SESSION",
  "title": "AutoGraphics authoring-session",
- "content": "Canonical finite scene hierarchy: actual Auto profile4, same-dimension translation/visibility groups, strict v1 import/v2 save, atomic subtree/reparent transactions, world-position precision and bounded gestures; seven-state composition pixel oracle with real transparent/ghost controls. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite static GLB assets: strict typed/declaration admission, original-byte SHA identity and complete multi-part geometry, actual Auto profile5, resource-aware history/owners, schema3 assets-before-entry portable closure with resolved Windows save-target protection. Source autographics-dev; production I2/I3 pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14718,21 +14743,21 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-837",
+  "PLAN-838",
   "r1",
-  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
-  "source-sha256:3154d4c52af3664ebf9f696e0a84261d1ce5928313ddd1330cc21a3d7f5e2872",
+  "reviewed:eddf13ee6e5a9296bf11b0622561a669e7498b56",
+  "source-sha256:a65c13b3ca1f77a041f7a93d8f4fdb3dd8a2e6b007d3f717bbbae5e9df490610",
   "source-path:docs/specs/auto-graphics/authoring-session.md"
  ],
  "created_at": 1792720163,
- "modified_at": 1792759600,
- "completed_at": 1792759600
+ "modified_at": 1792791100,
+ "completed_at": 1792791100
 }
 ,
 {
  "id": "P836-VIEWPORT",
  "title": "AutoGraphics viewport-interaction",
- "content": "Canonical finite scene hierarchy: actual Auto profile4, same-dimension translation/visibility groups, strict v1 import/v2 save, atomic subtree/reparent transactions, world-position precision and bounded gestures; seven-state composition pixel oracle with real transparent/ghost controls. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite static GLB assets: strict typed/declaration admission, original-byte SHA identity and complete multi-part geometry, actual Auto profile5, resource-aware history/owners, schema3 assets-before-entry portable closure with resolved Windows save-target protection. Source autographics-dev; production I2/I3 pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14743,21 +14768,21 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-837",
+  "PLAN-838",
   "r1",
-  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
-  "source-sha256:c11e97d0b7091e5a688f41980e3cad2a989509d8e6a023843bb34dae59667e11",
+  "reviewed:eddf13ee6e5a9296bf11b0622561a669e7498b56",
+  "source-sha256:47acfe1cf0aad1638488af5a5a15f743388ab492bbce0b72266270f2b302e1b5",
   "source-path:docs/specs/auto-graphics/viewport-interaction.md"
  ],
  "created_at": 1792738768,
- "modified_at": 1792759600,
- "completed_at": 1792759600
+ "modified_at": 1792791100,
+ "completed_at": 1792791100
 }
 ,
 {
  "id": "P837-HIERARCHY",
  "title": "AutoGraphics scene-hierarchy",
- "content": "Canonical finite scene hierarchy: actual Auto profile4, same-dimension translation/visibility groups, strict v1 import/v2 save, atomic subtree/reparent transactions, world-position precision and bounded gestures; seven-state composition pixel oracle with real transparent/ghost controls. Experimental autographics-dev only; production I2/I3/Forge/RQHost pending.",
+ "content": "Canonical finite static GLB assets: strict typed/declaration admission, original-byte SHA identity and complete multi-part geometry, actual Auto profile5, resource-aware history/owners, schema3 assets-before-entry portable closure with resolved Windows save-target protection. Source autographics-dev; production I2/I3 pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14768,15 +14793,40 @@
  "milestone": null,
  "module": null,
  "tags": [
-  "PLAN-837",
+  "PLAN-838",
   "r1",
-  "reviewed:2ffc92d34143bc97a98f2684406160b183fd2ff3",
-  "source-sha256:a3f6eaab3502fae33a5c83e189341e165d0578a0ec833be8739e59a690c3efdf",
+  "reviewed:eddf13ee6e5a9296bf11b0622561a669e7498b56",
+  "source-sha256:1a70f544a1979cac1eaaf9aca015af9ca3888e78fab5f6605becbf4fe6e991c4",
   "source-path:docs/specs/auto-graphics/scene-hierarchy.md"
  ],
  "created_at": 1792759600,
- "modified_at": 1792759600,
- "completed_at": 1792759600
+ "modified_at": 1792791100,
+ "completed_at": 1792791100
+}
+,
+{
+ "id": "P838-ASSETS",
+ "title": "AutoGraphics scene-assets",
+ "content": "Canonical finite static GLB assets: strict typed/declaration admission, original-byte SHA identity and complete multi-part geometry, actual Auto profile5, resource-aware history/owners, schema3 assets-before-entry portable closure with resolved Windows save-target protection. Source autographics-dev; production I2/I3 pending.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/scene-assets.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-838",
+  "r1",
+  "reviewed:eddf13ee6e5a9296bf11b0622561a669e7498b56",
+  "source-sha256:f2d0e4cdf0ba23d6634e66d25c814fc078bec8a9a1cdc4c1a097d2b56e70e3d4",
+  "source-path:docs/specs/auto-graphics/scene-assets.md"
+ ],
+ "created_at": 1792791100,
+ "modified_at": 1792791100,
+ "completed_at": 1792791100
 }
 ],
    "section_type": "Designs",
@@ -18155,6 +18205,31 @@
  "created_at": 1792759600,
  "modified_at": 1792759600,
  "completed_at": 1792759600
+}
+,
+{
+ "id": "P838-TESTS",
+ "title": "PLAN-838 static asset acceptance",
+ "content": "Strict GLB layouts and budgets, exact u16/512 GPU boundaries, four R1 permanent regressions and independent combinations; actual 20-cycle resource ownership, native part/origin pixels and portable new-process closure. Complete frozen driver/AGP/native/composition/fresh-consumer results in archived838 merge receipt.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/scene-assets.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-838",
+  "r1",
+  "reviewed:eddf13ee6e5a9296bf11b0622561a669e7498b56",
+  "source-sha256:f2d0e4cdf0ba23d6634e66d25c814fc078bec8a9a1cdc4c1a097d2b56e70e3d4",
+  "source-path:docs/specs/auto-graphics/scene-assets.md"
+ ],
+ "created_at": 1792791100,
+ "modified_at": 1792791100,
+ "completed_at": 1792791100
 }
 ],
    "section_type": "Tests",
@@ -24425,6 +24500,31 @@
  "modified_at": 1792759600,
  "completed_at": 1792759600
 }
+,
+{
+ "id": "P838-R2",
+ "title": "PLAN-838 independent final R2 PASS",
+ "content": "Independent final R2 pass at eddf13ee6e5a9296bf11b0622561a669e7498b56: F-838-R1-01..04 CLOSED, no new findings; original replays, permanent cases, independent GLB/path combinations and native content verified. Complete merge gates separately executed.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/attachments/838/review-r2/review.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-838",
+  "r1",
+  "reviewed:eddf13ee6e5a9296bf11b0622561a669e7498b56",
+  "source-sha256:3d7d7720d1ee46836518317c4ecc73b4cabc6bca6435f77472f3c23967ffa07c",
+  "source-path:docs/plans/attachments/838/review-r2/review.md"
+ ],
+ "created_at": 1792791100,
+ "modified_at": 1792791100,
+ "completed_at": 1792791100
+}
 ],
    "section_type": "Reviews",
    "title": "🔍 Reviews",
@@ -24436,5 +24536,5 @@
   }
  ],
  "project": "auto-lang",
- "version": 74
+ "version": 75
 }

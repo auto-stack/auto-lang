@@ -127,3 +127,5 @@ PLAN-835：[场景文档](auto-graphics/scene-document.md)与[创作会话](auto
 PLAN-836 extends the independent graphics experiment with [finite viewport picking and translation](auto-graphics/viewport-interaction.md); source remains on autographics-dev and production AutoUI/RQHost/Forge I2/I3 remain pending.
 
 PLAN-837 extends the independent graphics experiment with [finite scene hierarchy](auto-graphics/scene-hierarchy.md), real Auto profile4 and v2 authoring persistence; production AutoUI/RQHost/Forge I2/I3 remain pending.
+
+PLAN-838 adds [bounded static GLB scene assets](auto-graphics/scene-assets.md), real Auto profile5 and portable schema3 resource closure to the independent graphics experiment; source remains autographics-dev and production I2/I3 remain pending.

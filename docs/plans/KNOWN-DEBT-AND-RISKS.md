@@ -1,3 +1,9 @@
+### Plan 838（2026-10-24，R2 pass；源码/规范已合入，归档提交与guard清理pending）
+
+当前：F-838-R1-01..04由独立R2确认CLOSED，无新finding。冻结完整门（driver100/AGP163/fresh consumer37、官方16case、原生/合成/资源正反）与最终delivery Git身份门全部通过；autographics-dev已快进37fd1a9cfe22d3d3471202ad4a8dbfe2103f9a5c，规范/台账75读回已核。归档提交与guard清理后才最终pass；不冒认生产I2/I3。[merge receipt](attachments/838/merge-r1/receipt.md)。以下R1是发现历史，不作为当前OPEN状态：
+
+受审 `8494e06d4056e7f4e0f6dd1925e128bb93a83ea6`、r1；[完整独立报告/可重放反例/冻结Spec](attachments/838/review-r1/review.md)。F-838-R1-01(P1)：Save As保留blob检查在路径规范化前且区分大小写，.GLB/ASSETS/含..三案均覆盖原GLB并Confirmed，原场景无法重开；小写精确路径拒绝正控保持。02(P1)：POSITION/NORMAL accessor语义类型未准入，NORMAL U8经生产Host导入在默认dev的gltf typed reader panic，POSITION U32被按f32 bits误读仍发布。03(P2)：mesh.weights morph声明被忽略；04(P2)：node matrix+TRS互斥声明被接收并静默丢弃TRS；二者实际Host均1asset/1object/1history。资产14/旧32/completion3/AGP1/source正反/owner20轮101+101恢复0均过；native首轮OS点击未入拖拽不冒认透明负控，第二轮完整7案正确oracle通过；check/fmt/diff过，SDK继承146warnings新增0。原合同内必修，不因记债豁免或删Spec降约；当前executing4/10，T03/06/07/08重开，T01/02/04/05不受影响成果保留。同树work一次修齐并补兄弟路径永久正反控，新提交再复审；最终pass后merge-owned完整冻结门/实际autographics-dev落地/规范ledger/归档guard/到期检查仍pending。未改实现/提交/整档/合入/清树，HEAD不变且实施树clean。
+
 ### Plan 830（2026-10-22，final review R5 PASS；R4-01/02 CLOSED，无开放阻塞finding）
 
 受审`764e87559cff016d9e0d6b2141e5f1f9903398c5`、r3，[完整R5/原反例/新三态组合/新源真实遗漏负控/冻结输入](attachments/830/review-r5/review.md)。三态区分未路由/目标/已取消；原focus-exits6/6、扩展状态9/9，取消/正确revalidate先于pending渲染不再复活焦点，合法恢复/非法拒绝/动作不丢保持，R4-01 CLOSED。新分管线精确与总量守恒/内容精确活控通过；从当前提交重新冻结正式源码，真实持续漏plane记账或content汇总都正式gate红、exit1，合法23/23，R4-02 CLOSED。定向45、原R2四holdout、六surface真实OS/中文IME、829三案、实际重定位29字段本轮均过；check/fmt/release零warning。AC01..09通过，reviewed9/10、T09完成、T10 pending；历史needs_fix/OS失败保留但不再是当前OPEN。尚需merge-owned冻结全套AGP门/真实OS/829及consumer/负控资源门通过后合入autographics-dev、Spec-ledger沉淀/归档guard清树；不是交付完成，未改实现/规范ledger、未根整档或合入清树。已批准的error-scope/Null剪贴板/每帧重绘/未测GPU驻留和AutoShader/CAP/I1–I3边界保持。有效参数24B与实际quad传输160B在沉淀表述中区分。当前结论以本R5为准，下方历史保留。
