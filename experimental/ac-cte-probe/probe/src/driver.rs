@@ -604,7 +604,6 @@ impl CteDriver {
             // wrapper source (single-hunk incremental edit; a
             // rejected edit re-warms the whole module, counted).
             let desired = av_driver::wrapper_source(&req.source, &call.callee, concrete, is_bool);
-            let mut fresh_warm = false;
             let mut warm_err: Option<CteAdmissionError> = None;
             match self.resident.as_mut() {
                 Some(r) if r.src == desired => {}
@@ -622,13 +621,12 @@ impl CteDriver {
                 None => {}
             }
             if self.resident.is_none() {
-                match av_driver::SnapshotLane::warm(&req.source, &call.callee, concrete) {
+                match av_driver::SnapshotLane::warm(&req.source, &call.callee, concrete, is_bool) {
                     Ok(l) => {
                         self.resident = Some(ResidentLane {
                             lane: l,
                             src: desired,
                         });
-                        fresh_warm = true;
                     }
                     Err(e) => warm_err = Some(e),
                 }

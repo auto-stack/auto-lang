@@ -76,6 +76,9 @@ pub struct WorkerOk {
     /// serve (the 384 MiB worker hard gate's input).
     #[serde(default)]
     pub worker_private_bytes_peak: u64,
+    /// The worker PROCESS id (restart scenarios assert PIDs differ).
+    #[serde(default)]
+    pub worker_pid: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -202,6 +205,7 @@ pub fn serve_request(req: &WorkerRequest, native_root: &Path) -> WorkerResponse 
             ),
             steps: steps_out,
             worker_private_bytes_peak: peak,
+            worker_pid: std::process::id(),
         }),
         None,
     )

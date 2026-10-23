@@ -58,6 +58,7 @@ fn bench_turnaround(args: &[String]) -> ! {
     let mut samples = auto_cte_probe::bench::DEFAULT_SAMPLES;
     let mut gate_ms = auto_cte_probe::bench::DEFAULT_GATE_MS;
     let mut inject = 0u64;
+    let mut inject_rebuild = false;
     let mut out: Option<std::path::PathBuf> = None;
     let mut i = 0usize;
     while i < args.len() {
@@ -81,6 +82,9 @@ fn bench_turnaround(args: &[String]) -> ! {
                 i += 1;
                 inject = args.get(i).and_then(|v| v.parse().ok()).unwrap_or(inject);
             }
+            "--inject-rebuild" => {
+                inject_rebuild = true;
+            }
             "--out" => {
                 i += 1;
                 out = args.get(i).map(std::path::PathBuf::from);
@@ -93,8 +97,14 @@ fn bench_turnaround(args: &[String]) -> ! {
         i += 1;
     }
     let root = std::env::temp_dir().join(format!("cte817-bench-{}", std::process::id()));
-    let (code, summary) =
-        auto_cte_probe::bench::run_bench(samples, gate_ms, inject, out.as_deref(), &root);
+    let (code, summary) = auto_cte_probe::bench::run_bench_ext(
+        samples,
+        gate_ms,
+        inject,
+        inject_rebuild,
+        out.as_deref(),
+        &root,
+    );
     println!("{summary}");
     std::process::exit(code);
 }

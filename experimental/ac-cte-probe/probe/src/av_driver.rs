@@ -114,8 +114,12 @@ impl SnapshotLane {
         source: &str,
         callee: &str,
         args: &[CteValue],
+        is_bool: bool,
     ) -> Result<SnapshotLane, CteAdmissionError> {
-        let src = wrapper_source(source, callee, args, false);
+        // The warm source must carry the FIRST callee's return-class shape
+        // from the start (F-817-R2-01: a cold bool callee through an i32
+        // wrapper was misreported as a LANGUAGE type error).
+        let src = wrapper_source(source, callee, args, is_bool);
         let body_span = locate_body_span(&src)?;
         let session =
             auto_av_probe::session::warmup(&src, CTE_CALL_ENTRY_ID, &[]).map_err(|m| {
@@ -259,6 +263,20 @@ impl SnapshotLane {
     /// Incremental (non-degrading) edit count.
     pub fn incremental_edit_count(&self) -> u64 {
         self.incremental_edits
+    }
+
+    /// EVERY pipeline stage's count for one function (unchanged => all 0).
+    pub fn stages_of(&self, function: &str) -> std::collections::BTreeMap<String, u64> {
+        self.session.counters().stages_of(function)
+    }
+
+    /// The session's per-function artifact IO (bytes; None = the phase
+    /// never ran — absent, never fabricated zeros).
+    pub fn phase_io_of(&self, function: &str) -> Option<u64> {
+        self.session
+            .phase_io()
+            .get(&format!("persist:{function}"))
+            .copied()
     }
     pub fn generation_of(&self, function: &str) -> Option<u64> {
         self.session

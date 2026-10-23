@@ -585,3 +585,62 @@ fn cte_schedule_meta_argument_invalidates_precisely() {
     // The ORIGINAL deck still hits its own untouched entry.
     assert_eq!(d.query_step(&base, None).cache, Some("hit"));
 }
+
+// ---------------------------------------------------------------------------
+// F-817-R1-05 closure: meta-input negative controls (resource/decode/
+// permission/parse classification for the NEW meta block surface)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn cte_schedule_meta_block_negatives() {
+    // (a) No capability granted: FieldCount is refused BEFORE any AV.
+    let no_cap = meta_arg_deck(0, false).replace("caps cte.meta.fields/v1\n", "");
+    let mut d = CteDriver::ephemeral();
+    let out = d.query_step(&no_cap, None);
+    assert_eq!(out.status, StepStatus::Diag);
+    assert_eq!(out.code.as_deref(), Some("cte.capability.meta"));
+    assert_eq!(out.ct_execute, 0);
+
+    // (b) Missing record in the meta block: a semantic error naming it.
+    let bad_rec =
+        meta_arg_deck(0, false).replace("query n = field_count Pair", "query n = field_count Nope");
+    let out = d.query_step(&bad_rec, None);
+    assert_eq!(out.status, StepStatus::Diag);
+    assert_eq!(
+        out.code.as_deref(),
+        Some("cte.meta.record-not-found"),
+        "{:?}",
+        out.code
+    );
+    assert_eq!(out.ct_execute, 0);
+
+    // (c) A malformed meta block is a LANGUAGE-class diagnostic.
+    let broken = meta_arg_deck(0, false).replace("type Pair {", "type Pair {{{[");
+    let out = d.query_step(&broken, None);
+    assert_eq!(out.status, StepStatus::Diag);
+    assert!(
+        out.code.as_deref().unwrap_or_default().starts_with("cte."),
+        "typed code: {:?}",
+        out.code
+    );
+    assert!(
+        out.language_class,
+        "meta parse failure is a language diagnostic"
+    );
+    assert_eq!(out.ct_execute, 0);
+
+    // (d) The 4MiB deep-input ceiling covers the meta block too.
+    let mut pad = String::from("# meta padding\n");
+    while pad.len() <= 4 * 1024 * 1024 + 64 {
+        pad.push_str("# meta padding padding padding padding\n");
+    }
+    let fat = meta_arg_deck(0, false).replace("deck cte817/1\n", &format!("deck cte817/1\n{pad}"));
+    let out = d.query_step(&fat, None);
+    assert_eq!(out.status, StepStatus::Diag);
+    assert!(
+        out.message.as_deref().unwrap_or_default().contains("input"),
+        "the deep-input ceiling rejects: {:?}",
+        out.message
+    );
+    assert_eq!(out.ct_execute, 0);
+}

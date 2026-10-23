@@ -13,7 +13,9 @@
   FieldCount/HasField 结果作为**真实 AV 调用实参**（合同 §5.1 原文路径），
   字段集/缺席字段变化经 manifest meta 事实精确失效；纯 record-profile deck
   （无 meta 块）保持 Meta-only 受限模式。r1 工作收据中"源级组合不可达"的
-  表述作废。
+  表述作废。meta 输入负控：未授 cap → cte.capability.meta（AV 前）；缺
+  record → cte.meta.record-not-found；meta 块解析失败 → 语言类诊断；
+  含 meta 的 deck 同受 4MiB 深输入界约束。
 - 不声称：全语言 comptime/类型生成/泛型/runtime 反射。
 - 证据：AC-01/02/03；cte_first_/cte_schedule_。
 
@@ -52,7 +54,8 @@
   车道为缓存身份轴（closure/snapshot 不共享条目）；增量纯度（未改函数零重编译/代际不变、
   warm 为唯一整模块事件）由 lane 退化计数器与 828 计数器双重观测。
 - 不退回整模块热重编/装载；新能力为追加车道，默认 closure 保持。
-- 证据：AC-11；cte_snapshot_ 4/4。
+- R2 补充：冷启动首调用即 bool callee 属正常支持面（warm 按 callee 返回类生成 wrapper 形状）；resident 会话跨请求驻留（单 hunk 增量同步、拒绝则显式重整并计数）；退化反控为正式硬门（resident-edit 场景 rewarms≠0 即红）。
+- 证据：AC-11；cte_snapshot_ 13/13（含 115 函数基线 30 修订全阶段/IO 观测与强制重建反控）。
 
 ## 覆盖
 见 [acceptance-matrix.md](acceptance-matrix.md)（V-01..11 → scope/证据/提交）。

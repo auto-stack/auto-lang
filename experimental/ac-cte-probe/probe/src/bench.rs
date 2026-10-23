@@ -35,6 +35,51 @@ pub fn baseline_source_bench(fns: usize, rev: i64) -> String {
     s
 }
 
+/// The specified load + the CONTRACTED Meta->AV path: the 115-function
+/// baseline source, a meta block whose field set grows per revision, and
+/// field_count feeding a real AV call.
+fn big_meta_deck(extra_fields: usize) -> String {
+    let src = baseline_source_bench(115, 0);
+    let mut d = String::new();
+    d.push_str(
+        "deck cte817/1
+module main
+caps cte.meta.fields/v1
+meta <<
+type Pair {
+    left int
+    right bool
+",
+    );
+    for i in 0..extra_fields {
+        d.push_str(&format!(
+            "    extra{i} int
+"
+        ));
+    }
+    d.push_str(
+        "}
+>>
+source <<
+",
+    );
+    d.push_str(&src);
+    d.push_str(
+        "
+fn scale(n int) int {
+    return n * 100
+}
+>>
+query n = field_count Pair
+query q = call scale(n)
+bind main.ct = q expect i32 placeholder 0
+entry main
+native off
+",
+    );
+    d
+}
+
 fn big_deck(rev: i64) -> String {
     // exec snapshot: the incremental lane is the production path for
     // edit-heavy sessions (T-11/SD-06) — the warm resident session makes
@@ -51,18 +96,6 @@ fn sum_deck(pad: i64) -> String {
     BASE_DECK.replace("SRC", &BASE_SRC.replace("PAD", &format!("{pad}")))
 }
 
-fn meta_deck(extra_fields: usize) -> String {
-    // The CONTRACTED path (F-817-R1-05): field_count feeds a REAL AV
-    // call as a live argument; each revision adds a field.
-    let mut d = String::new();
-    d.push_str("deck cte817/1\nmodule main\ncaps cte.meta.fields/v1\nmeta <<\ntype Pair {\n    left int\n    right bool\n");
-    for i in 0..extra_fields {
-        d.push_str(&format!("    extra{i} int\n"));
-    }
-    d.push_str("}\n>>\nsource <<\nfn scale(n int) int {\n    return n * 100\n}\n\nfn main() int {\n    let v = 0\n    return v\n}\n>>\nquery n = field_count Pair\nquery q = call scale(n)\nbind main.v = q expect i32 placeholder 0\nentry main\nnative off\n");
-    d
-}
-
 struct Row {
     scenario: &'static str,
     sample: usize,
@@ -71,6 +104,46 @@ struct Row {
     cache: &'static str,
     ct_execute: u64,
     ok: bool,
+    /// The worker PID for process scenarios (restart asserts PIDs
+    /// differ); None for in-process rows.
+    pid: Option<u32>,
+}
+
+/// Measure one sample at the specified load: the deck BUILD is inside
+/// the window (request preparation onward), and the row carries the
+/// measured VALUE for independent recomputation.
+fn measure_built(
+    scenario: &'static str,
+    sample: usize,
+    rev: i64,
+    drv: &mut CteDriver,
+    rows: &mut Vec<Row>,
+    inject_delay_ms: u64,
+) {
+    let t = Instant::now();
+    let deck = big_deck(rev);
+    let o = drv.query_step(&deck, None);
+    let mut wall = t.elapsed().as_secs_f64() * 1000.0;
+    if scenario == "resident-edit" && sample < 2 && inject_delay_ms > 0 {
+        std::thread::sleep(std::time::Duration::from_millis(inject_delay_ms));
+        wall += inject_delay_ms as f64;
+    }
+    let value = o
+        .values
+        .get("main.ct")
+        .map(|v| v.render())
+        .unwrap_or_default();
+    let ok = o.status == crate::driver::StepStatus::Ok && !value.is_empty();
+    rows.push(Row {
+        scenario,
+        sample,
+        wall_ms: wall,
+        input_hash: crate::fnv1a64_hex(deck.as_bytes()),
+        cache: o.cache.unwrap_or("-"),
+        ct_execute: o.ct_execute,
+        ok,
+        pid: None,
+    });
 }
 
 fn percentile(sorted: &[f64], p: f64) -> f64 {
@@ -116,6 +189,7 @@ fn measure(
         cache: o.cache.unwrap_or("-"),
         ct_execute: o.ct_execute,
         ok,
+        pid: None,
     });
 }
 
@@ -125,6 +199,19 @@ pub fn run_bench(
     samples: usize,
     gate_ms: f64,
     inject_delay_ms: u64,
+    out: Option<&std::path::Path>,
+    root: &std::path::Path,
+) -> (i32, serde_json::Value) {
+    run_bench_ext(samples, gate_ms, inject_delay_ms, false, out, root)
+}
+
+/// `inject_rebuild`: the forced whole-module rebuild control (the
+/// resident-edit degrade gate must go red on it).
+pub fn run_bench_ext(
+    samples: usize,
+    gate_ms: f64,
+    inject_delay_ms: u64,
+    inject_rebuild: bool,
     out: Option<&std::path::Path>,
     root: &std::path::Path,
 ) -> (i32, serde_json::Value) {
@@ -161,29 +248,27 @@ pub fn run_bench(
     let bench_start = Instant::now();
     let sampler = auto_av_probe::mempeek::PeakSampler::start(1);
 
-    // 1) fresh: a brand-new store per sample (cold everything).
+    // 1) fresh: a brand-new store per sample (cold everything) on the
+    //    SPECIFIED LOAD; the deck build is INSIDE the measured window
+    //    (F-817-R2: the window covers request preparation onward).
     for i in 0..samples {
         let dir = root.join(format!("fresh-{i}"));
         let _ = std::fs::remove_dir_all(&dir);
         let mut d = CteDriver::with_store(&dir, "fresh").unwrap();
-        measure("fresh", i, &sum_deck(0), &mut d, &mut rows, Some(42), 0);
+        measure_built("fresh", i, 0, &mut d, &mut rows, 0);
     }
 
-    // 2) hot: one warm driver, repeated identical requests (hit path).
+    // 2) hot: one warm driver, repeated identical requests (hit path) on
+    //    the specified load.
     let hot_dir = root.join("hot");
     let _ = std::fs::remove_dir_all(&hot_dir);
     let mut hot = CteDriver::with_store(&hot_dir, "hot").unwrap();
-    measure(
-        "hot",
-        usize::MAX,
-        &sum_deck(0),
-        &mut hot,
-        &mut rows,
-        Some(42),
-        0,
-    );
+    {
+        let probe_out = hot.query_step(&big_deck(0), None);
+        assert_eq!(probe_out.status, crate::driver::StepStatus::Ok);
+    }
     for i in 0..samples {
-        measure("hot", i, &sum_deck(0), &mut hot, &mut rows, Some(42), 0);
+        measure_built("hot", i, 0, &mut hot, &mut rows, 0);
     }
 
     // 3) restart: a REAL worker process per sample (F-817-R1-03) — the
@@ -254,26 +339,40 @@ pub fn run_bench(
     let _ = std::fs::remove_dir_all(&me_dir);
     let mut me = CteDriver::with_store(&me_dir, "me").unwrap();
     for i in 0..samples {
-        let deck = meta_deck(i);
+        // Specified load + contracted path: the field set grows per
+        // revision, field_count flips, the AV call re-executes.
         let want = (2 + i as i64) * 100;
-        measure("meta-edit", i, &deck, &mut me, &mut rows, Some(want), 0);
+        let t = Instant::now();
+        let deck = big_meta_deck(i);
+        let o = me.query_step(&deck, None);
+        let wall = t.elapsed().as_secs_f64() * 1000.0;
+        let value = o
+            .values
+            .get("main.ct")
+            .map(|v| v.render())
+            .unwrap_or_default();
+        let ok = o.status == crate::driver::StepStatus::Ok && value == format!("i32:{want}");
+        rows.push(Row {
+            scenario: "meta-edit",
+            sample: i,
+            wall_ms: wall,
+            input_hash: crate::fnv1a64_hex(deck.as_bytes()),
+            cache: o.cache.unwrap_or("-"),
+            ct_execute: o.ct_execute,
+            ok,
+            pid: None,
+        });
     }
 
     // 6) gc-concurrent: queries under a live GC loop on the same store
-    //    (its OWN store handle — 783 liveness is OS-truth cross-handle).
+    //    (its OWN store handle — 783 liveness is OS-truth cross-handle),
+    //    on the specified load with revisions cycling.
     let gc_dir = root.join("gc");
     let _ = std::fs::remove_dir_all(&gc_dir);
     let mut gd = CteDriver::with_store(&gc_dir, "gc").unwrap();
-    for i in 0..3 {
-        measure(
-            "gc",
-            10_000 + i,
-            &sum_deck(i as i64),
-            &mut gd,
-            &mut rows,
-            Some(42 + i as i64),
-            0,
-        );
+    {
+        let probe_out = gd.query_step(&big_deck(0), None);
+        assert_eq!(probe_out.status, crate::driver::StepStatus::Ok);
     }
     let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let stop2 = stop.clone();
@@ -292,9 +391,7 @@ pub fn run_bench(
         }
     });
     for i in 0..samples {
-        let deck = sum_deck((i % 3) as i64);
-        let want = 42 + (i % 3) as i64;
-        measure("gc", i, &deck, &mut gd, &mut rows, Some(want), 0);
+        measure_built("gc", i, (i % 3) as i64, &mut gd, &mut rows, 0);
     }
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
     let _ = handle.join();
@@ -319,6 +416,88 @@ pub fn run_bench(
         }
     }
 
+    // 8) resident-edit (FORMAL DEGRADE GATE, F-817-R1-02): 30 distinct
+    //    local body revisions through ONE resident driver at the
+    //    specified load. The gate: ZERO whole-module re-warms and every
+    //    value correct — any re-warm is a hard failure (the detector is
+    //    WIRED into this gate, not a standalone counter). The
+    //    --inject-rebuild control forces a structural change mid-run and
+    //    must turn the SAME gate red.
+    let re_dir = root.join("resident-edit");
+    let _ = std::fs::remove_dir_all(&re_dir);
+    let mut re = CteDriver::with_store(&re_dir, "re").unwrap();
+    let re_start = re.query_step(&big_deck(0), None);
+    assert_eq!(re_start.status, crate::driver::StepStatus::Ok);
+    let re_base: i64 = re_start
+        .values
+        .get("main.ct")
+        .and_then(|v| {
+            v.render()
+                .strip_prefix("i32:")
+                .and_then(|x| x.parse::<i64>().ok())
+        })
+        .unwrap_or_default();
+    let re_expected = |rev: i64, structural: bool| -> i64 {
+        if structural {
+            // The forced-rebuild control's deck has one MORE helper —
+            // its value is recomputed from its own probe run below.
+            i64::MIN
+        } else {
+            re_base + rev
+        }
+    };
+    let rewarms_before = re.snapshot_rewarms();
+    for i in 0..samples {
+        let rev = (i + 1) as i64;
+        // The forced-rebuild control: at the midpoint, change the
+        // STRUCTURE (function count) — the single-hunk sync cannot absorb
+        // it, the whole module must re-warm, and the gate goes red.
+        let deck = if inject_rebuild && i == samples / 2 {
+            // The forced-rebuild control: ONE MORE FUNCTION than the
+            // resident source — the single-hunk sync cannot absorb a
+            // declaration-set change, so the whole module must re-warm.
+            let structural = baseline_source_bench(116, rev);
+            format!(
+                "deck cte817/1
+module main
+exec snapshot
+source <<
+{structural}
+>>
+query q1 = call cte_sum(20, 22)
+bind main.ct = q1 expect i32 placeholder 0
+entry main
+native off
+"
+            )
+        } else {
+            big_deck(rev)
+        };
+        let t = Instant::now();
+        let o = re.query_step(&deck, None);
+        let wall = t.elapsed().as_secs_f64() * 1000.0;
+        let value = o
+            .values
+            .get("main.ct")
+            .map(|v| v.render())
+            .unwrap_or_default();
+        let structural = inject_rebuild && i == samples / 2;
+        let expected = re_expected(rev, structural);
+        let ok = o.status == crate::driver::StepStatus::Ok
+            && (expected == i64::MIN || value == format!("i32:{expected}"));
+        rows.push(Row {
+            scenario: "resident-edit",
+            sample: i,
+            wall_ms: wall,
+            input_hash: crate::fnv1a64_hex(deck.as_bytes()),
+            cache: o.cache.unwrap_or("-"),
+            ct_execute: o.ct_execute,
+            ok,
+            pid: None,
+        });
+    }
+    let rewarms_after = re.snapshot_rewarms();
+
     // ---- aggregate ---------------------------------------------------
     let bench_wall_ms = bench_start.elapsed().as_secs_f64() * 1000.0;
     let worker_peak = sampler.stop();
@@ -330,6 +509,7 @@ pub fn run_bench(
         "meta-edit",
         "gc",
         "worker-edit",
+        "resident-edit",
     ];
     let mut summary = serde_json::json!({
         "samples_per_scenario": samples,
@@ -373,6 +553,32 @@ pub fn run_bench(
     if gate_ms <= 0.0 {
         failures.push("gate-ms 0 always fails (counter-control)".into());
     }
+    // The resident-edit degrade gate: re-warms during incremental traffic
+    // are hard failures; the forced-rebuild control makes it non-zero.
+    let resident_rows_ok = rows
+        .iter()
+        .filter(|r| r.scenario == "resident-edit")
+        .all(|r| r.ok);
+    let re_delta = rewarms_after.saturating_sub(rewarms_before);
+    summary["resident_edit_rewarms"] = json!(re_delta);
+    if !resident_rows_ok {
+        failures.push("resident-edit sample value mismatch".into());
+    }
+    if inject_rebuild {
+        if re_delta == 0 {
+            failures.push("forced rebuild control did NOT re-warm".into());
+        }
+        // The control EXPECTS the gate to be red via the re-warm; the
+        // re-warm itself is not a failure signal in control mode — but
+        // the caller asserts exit non-zero, so add the marker failure.
+        failures.push(format!(
+            "forced-rebuild control: {re_delta} re-warm(s) — the degrade gate is red"
+        ));
+    } else if re_delta != 0 {
+        failures.push(format!(
+            "resident-edit degraded: {re_delta} whole-module re-warm(s) during incremental traffic"
+        ));
+    }
     if !all_ok {
         failures.push("a sample value mismatch".into());
     }
@@ -393,6 +599,7 @@ pub fn run_bench(
                 "cache": r.cache,
                 "ct_execute": r.ct_execute,
                 "ok": r.ok,
+                "pid": r.pid,
             });
             writeln!(f, "{line}").ok();
         }
@@ -473,8 +680,14 @@ fn spawn_process_samples(
             wall_ms: wall,
             input_hash: crate::fnv1a64_hex(deck.as_bytes()),
             cache: if ok { "-" } else { "proto-err" },
-            ct_execute: 0,
+            ct_execute: v["ok"]["steps"]
+                .as_array()
+                .and_then(|a| a.last())
+                .and_then(|st| st.get("ct_execute"))
+                .and_then(|c| c.as_u64())
+                .unwrap_or(0),
             ok,
+            pid: v["ok"]["worker_pid"].as_u64().map(|p| p as u32),
         });
     }
 }

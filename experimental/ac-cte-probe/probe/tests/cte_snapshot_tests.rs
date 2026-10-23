@@ -43,8 +43,13 @@ fn cte_snapshot_production_observation_incremental() {
     let src = src_with(0);
     let _input = input_for(&src);
     let cancel = CancelFlag::new(false);
-    let mut lane =
-        SnapshotLane::warm(&src, "cte_sum", &[CteValue::I32(20), CteValue::I32(22)]).unwrap();
+    let mut lane = SnapshotLane::warm(
+        &src,
+        "cte_sum",
+        &[CteValue::I32(20), CteValue::I32(22)],
+        false,
+    )
+    .unwrap();
     let g_sum_before = lane.generation_of("cte_sum");
     let g_other_before = lane.generation_of("other");
     assert!(g_sum_before.is_some(), "units are resident");
@@ -159,8 +164,13 @@ fn cte_snapshot_dependency_invalidates_and_scopes_recompiles() {
     let src = src_with(0);
     let _input = input_for(&src);
     let cancel = CancelFlag::new(false);
-    let mut lane =
-        SnapshotLane::warm(&src, "cte_sum", &[CteValue::I32(20), CteValue::I32(22)]).unwrap();
+    let mut lane = SnapshotLane::warm(
+        &src,
+        "cte_sum",
+        &[CteValue::I32(20), CteValue::I32(22)],
+        false,
+    )
+    .unwrap();
     let g_wrap = lane.generation_of("cte817_call");
     // Replace `+ 0` in the helper body with `+ 5`.
     let needle = "return a + b + 0";
@@ -192,8 +202,13 @@ fn cte_snapshot_failure_control_edits_and_degrade_counter() {
     let src = src_with(0);
     let _input = input_for(&src);
     let cancel = CancelFlag::new(false);
-    let mut lane =
-        SnapshotLane::warm(&src, "cte_sum", &[CteValue::I32(20), CteValue::I32(22)]).unwrap();
+    let mut lane = SnapshotLane::warm(
+        &src,
+        "cte_sum",
+        &[CteValue::I32(20), CteValue::I32(22)],
+        false,
+    )
+    .unwrap();
     // A broken edit: unterminated garbage replacing the helper body.
     let needle = "return a + b + 0";
     let start = lane.src().find(needle).unwrap() as u64;
@@ -215,8 +230,13 @@ fn cte_snapshot_failure_control_edits_and_degrade_counter() {
     // the lane's degrade detector fires exactly 1, while the 30-edit
     // lane above stayed at 0 (828's silent degradation is designed out;
     // the explicit cold path is the only whole-module event).
-    let lane2 =
-        SnapshotLane::warm(&src, "cte_sum", &[CteValue::I32(20), CteValue::I32(22)]).unwrap();
+    let lane2 = SnapshotLane::warm(
+        &src,
+        "cte_sum",
+        &[CteValue::I32(20), CteValue::I32(22)],
+        false,
+    )
+    .unwrap();
     assert_eq!(
         lane2.whole_module_count(),
         1,
@@ -392,15 +412,33 @@ fn cte_snapshot_resident_lane_baseline_30_revisions() {
     );
 
     let mut d = CteDriver::ephemeral();
-    // Warm on revision 0.
+    // Warm on revision 0; capture the reference value and EVERY
+    // function's generation for independent comparison later.
     let first = d.query_step(&baseline_deck(FNS, 0), None);
     assert_eq!(first.status, StepStatus::Ok, "{:?}", first.message);
     assert_eq!(d.snapshot_rewarms(), 0);
+    let base_value = first
+        .values
+        .get("main.ct")
+        .and_then(|v| {
+            v.render()
+                .strip_prefix("i32:")
+                .and_then(|x| x.parse::<i64>().ok())
+        })
+        .expect("reference value");
     let lane = d.snapshot_lane().expect("resident lane");
-    let g_h0 = lane.lane.generation_of("h0");
-    let g_h114 = lane.lane.generation_of("h114");
-    let g_sum = lane.lane.generation_of("cte_sum");
-    assert!(g_h0.is_some() && g_sum.is_some());
+    let revised_fn = format!("h{}", FNS / 2);
+    let gens_before: Vec<(String, Option<u64>)> = (0..FNS)
+        .map(|k| (format!("h{k}"), lane.lane.generation_of(&format!("h{k}"))))
+        .chain(std::iter::once((
+            "cte_sum".to_string(),
+            lane.lane.generation_of("cte_sum"),
+        )))
+        .collect();
+    assert!(
+        gens_before.iter().all(|(_, g)| g.is_some()),
+        "every function is resident with a generation"
+    );
 
     // 30 DISTINCT body revisions through the resident lane: every
     // request is a real driver round (projection, scheduling, manifest,
@@ -415,9 +453,21 @@ fn cte_snapshot_resident_lane_baseline_30_revisions() {
         assert_eq!(out.status, StepStatus::Ok, "rev {k}: {:?}", out.message);
         assert_eq!(out.ct_execute, 1);
         assert_eq!(out.cache, Some("miss"), "rev {k} re-keys and re-executes");
+        // Independent per-revision VALUE assertion: the revision rides the
+        // ONE revised helper's init line exactly once — value(k) =
+        // value(0) + k (closed form, hand-derived).
+        let got = out
+            .values
+            .get("main.ct")
+            .and_then(|v| {
+                v.render()
+                    .strip_prefix("i32:")
+                    .and_then(|x| x.parse::<i64>().ok())
+            })
+            .unwrap_or_default();
+        assert_eq!(got, base_value + k, "rev {k} value");
     }
     walls.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let p95 = walls[(walls.len() - 1) / 20 * 19.min(walls.len() - 1)];
     let p95 = walls[(((walls.len() as f64 - 1.0) * 0.95).round()) as usize];
     assert!(
         if cfg!(debug_assertions) {
@@ -441,17 +491,44 @@ fn cte_snapshot_resident_lane_baseline_30_revisions() {
         1,
         "warm-up remains the only whole-module event"
     );
-    // Unchanged objects: the revision constant only lives in the helper
-    // BODIES, so EVERY function recompiles per revision in this
-    // generator... instead assert the granularity on the WRAPPER and
-    // consumer fn: they must not have recompiled beyond their edits, and
-    // the untouched `main` keeps its generation throughout.
-    assert_eq!(lane.lane.compile_count("main"), 0, "main never recompiled");
+    // INDEPENDENT generation comparison (R2: the previous form compared a
+    // value with itself): every UNCHANGED function keeps its captured
+    // generation AND its mir_lower count at 0; ONLY the revised helper
+    // advanced (generation changed, compile count == 30).
+    let mut changed = Vec::new();
+    for (name, before) in &gens_before {
+        let now = lane.lane.generation_of(name).expect("still resident");
+        if Some(now) != *before {
+            changed.push(name.clone());
+        }
+    }
     assert_eq!(
-        lane.lane.generation_of("main"),
-        d.snapshot_lane().unwrap().lane.generation_of("main")
+        changed,
+        vec![revised_fn.clone()],
+        "exactly the revised function changed its generation: {changed:?}"
     );
-    let _ = (g_h0, g_h114, g_sum);
+    for (name, _) in &gens_before {
+        if name != &revised_fn {
+            assert_eq!(
+                lane.lane.compile_count(name),
+                0,
+                "{name} never recompiled (mir_lower count)"
+            );
+        }
+    }
+    assert_eq!(lane.lane.compile_count(&revised_fn), 30);
+    // Full-stage observation for one unchanged function: EVERY pipeline
+    // stage stayed at 0 across all 30 revisions.
+    let stages = lane.lane.stages_of("h0");
+    assert!(
+        stages.values().all(|c| *c == 0),
+        "h0 all-stage-zero across 30 revisions: {stages:?}"
+    );
+    assert_eq!(
+        lane.lane.phase_io_of("h0").unwrap_or(0),
+        0,
+        "h0 artifact IO == 0 across 30 revisions"
+    );
 }
 
 #[test]
@@ -475,4 +552,135 @@ fn cte_snapshot_forced_rebuild_control_nonzero() {
     let after = d.query_step(&baseline_deck(FNS + 1, 1), None);
     assert_eq!(after.status, StepStatus::Ok, "{:?}", after.message);
     assert_eq!(after.ct_execute, 1);
+}
+
+// ---------------------------------------------------------------------------
+// F-817-R2-01 closure: the COLD first call to a bool callee
+// ---------------------------------------------------------------------------
+
+fn cold_bool_deck(first_bool: bool, flag_arg: i32) -> String {
+    let mut d = String::from("deck cte817/1\nmodule main\nexec snapshot\nsource <<\nfn flag(a int) bool {\n    return a < 5\n}\n\nfn num(a int) int {\n    return a + 1\n}\n\nfn main() int {\n    let g = false\n    let n = 0\n    if g {\n        return 100\n    }\n    return n\n}\n>>\n");
+    if first_bool {
+        d.push_str(&format!(
+            "query q1 = call flag({flag_arg})\nquery q2 = call num(1)\n"
+        ));
+    } else {
+        d.push_str(&format!(
+            "query q1 = call num(1)\nquery q2 = call flag({flag_arg})\n"
+        ));
+    }
+    d.push_str("bind main.g = q1 expect bool placeholder false\nbind main.n = q2 expect i32 placeholder 0\nentry main\nnative off\n");
+    d
+}
+
+#[test]
+fn cte_snapshot_cold_first_call_bool_true_and_false() {
+    // Cold TRUE: the FIRST snapshot call of the request is a bool callee.
+    let mut d = CteDriver::ephemeral();
+    let out = d.query_step(&cold_bool_deck(true, 3), None);
+    assert_eq!(
+        out.status,
+        StepStatus::Ok,
+        "cold-bool-true: {:?}",
+        out.message
+    );
+    assert_eq!(
+        out.values.get("main.g").map(|v| v.render()),
+        Some("bool:true".into())
+    );
+    assert_eq!(
+        out.values.get("main.n").map(|v| v.render()),
+        Some("i32:2".into())
+    );
+    // Cold FALSE: the same shape on the other branch.
+    let mut d2 = CteDriver::ephemeral();
+    let out2 = d2.query_step(&cold_bool_deck(true, 9), None);
+    assert_eq!(
+        out2.status,
+        StepStatus::Ok,
+        "cold-bool-false: {:?}",
+        out2.message
+    );
+    assert_eq!(
+        out2.values.get("main.g").map(|v| v.render()),
+        Some("bool:false".into())
+    );
+}
+
+#[test]
+fn cte_snapshot_i32_bool_i32_lane_transitions() {
+    // i32 -> bool -> i32 callee transitions inside ONE request (the
+    // warm/sync/shape machinery across return classes).
+    let deck = "deck cte817/1\nmodule main\nexec snapshot\nsource <<\nfn a1(x int) int {\n    return x + 1\n}\n\nfn b1(x int) bool {\n    return x < 5\n}\n\nfn c1(x int) int {\n    return x * 10\n}\n\nfn main() int {\n    let p = 0\n    let q = false\n    let r = 0\n    if q {\n        return p + r\n    }\n    return r\n}\n>>\nquery q1 = call a1(1)\nquery q2 = call b1(2)\nquery q3 = call c1(3)\nbind main.p = q1 expect i32 placeholder 0\nbind main.q = q2 expect bool placeholder false\nbind main.r = q3 expect i32 placeholder 0\nentry main\nnative off\n";
+    let mut d = CteDriver::ephemeral();
+    let out = d.query_step(deck, None);
+    assert_eq!(out.status, StepStatus::Ok, "{:?}", out.message);
+    assert_eq!(
+        out.values.get("main.p").map(|v| v.render()),
+        Some("i32:2".into())
+    );
+    assert_eq!(
+        out.values.get("main.q").map(|v| v.render()),
+        Some("bool:true".into())
+    );
+    assert_eq!(
+        out.values.get("main.r").map(|v| v.render()),
+        Some("i32:30".into())
+    );
+}
+
+#[test]
+fn cte_snapshot_cold_bool_miss_hit_and_retry_after_failure() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("store");
+    // miss then hit for a cold-bool deck.
+    let mut d = CteDriver::with_store(&root, "cb").unwrap();
+    let first = d.query_step(&cold_bool_deck(true, 3), None);
+    assert_eq!(first.status, StepStatus::Ok, "{:?}", first.message);
+    assert_eq!(first.cache, Some("miss"));
+    assert_eq!(first.ct_execute, 2);
+    let second = d.query_step(&cold_bool_deck(true, 3), None);
+    assert_eq!(second.cache, Some("hit"));
+    assert_eq!(second.ct_execute, 0);
+    assert_eq!(
+        second.values.get("main.g").map(|v| v.render()),
+        Some("bool:true".into())
+    );
+    // A trapping retry after the resident lane exists: controlled diag,
+    // then the SAME deck still hits cleanly (no poison, no wrong value).
+    let trap_deck = cold_bool_deck(true, 3)
+        .replace("query q2 = call num(1)", "query q2 = call boom(1)")
+        .replace(
+            "fn num(a int) int {\n    return a + 1\n}",
+            "fn boom(a int) int {\n    return 2147483647 + 1\n}",
+        )
+        .replace("return a + 1\n}", "return 2147483647 + 1\n}");
+    let trap = d.query_step(&trap_deck, None);
+    assert_eq!(trap.status, StepStatus::Diag);
+    assert_eq!(trap.code.as_deref(), Some("cte.trap.int-overflow"));
+    let retry = d.query_step(&cold_bool_deck(true, 3), None);
+    assert_eq!(retry.status, StepStatus::Ok, "{:?}", retry.message);
+    assert_eq!(
+        retry.cache,
+        Some("hit"),
+        "the clean entry survived the failed retry"
+    );
+    assert_eq!(
+        retry.values.get("main.g").map(|v| v.render()),
+        Some("bool:true".into())
+    );
+}
+
+#[test]
+fn cte_snapshot_cold_bool_legal_language_surface_unchanged() {
+    // The closure lane on the SAME cold-bool deck stays green (the
+    // repair must not widen or shrink the language surface).
+    let mut d = CteDriver::ephemeral();
+    let closure = cold_bool_deck(true, 3).replace("exec snapshot", "exec closure");
+    let out = d.query_step(&closure, None);
+    assert_eq!(out.status, StepStatus::Ok, "{:?}", out.message);
+    assert_eq!(
+        out.values.get("main.g").map(|v| v.render()),
+        Some("bool:true".into())
+    );
 }
