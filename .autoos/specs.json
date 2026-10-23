@@ -4126,7 +4126,32 @@
      "modified_at": 1792686169,
      "completed_at": 1792686169
     }
-   ],
+   ,
+{
+ "id": "P834-MERGE",
+ "title": "PLAN-834 delivered consolidation",
+ "content": "Source fast-forward to autographics-dev only; reconciled canonical Specs and guarded derived projection, archive/cleanup bound by T-10 receipts. Master receives knowledge bookkeeping only; production artifacts not changed.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/archive/834-autographics-auto-squash-and-dual-game-sdk.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-834",
+  "r1",
+  "reviewed:ebeab12d2888b9c9fb7e00e3c24479fb3c028011",
+  "source-sha256:6dde75de267683623b7f6409356ed0c2ffcf4e4cdcc7f1b0cec74d8ffeba458c",
+  "source-path:docs/specs/auto-graphics/auto-source-driver.md"
+ ],
+ "created_at": 1792715282,
+ "modified_at": 1792715282,
+ "completed_at": 1792715282
+}
+],
    "section_type": "Reports",
    "title": "📊 Reports",
    "status": "empty",
@@ -14315,29 +14340,29 @@
      "completed_at": 1792644036
     },
     {
-     "id": "P829-AGP",
-     "title": "AutoGraphics project",
-     "content": "Canonical module contract; PLAN-829/830 retained, PLAN-833 delivers real Auto SDK/VM scene and Breakout slice, resource provenance and exact text uploads. I1 only first slice; production migration pending.",
-     "status": "verified",
-     "depends_on": [],
-     "related": [],
-     "priority": null,
-     "assignee": null,
-     "test_file": null,
-     "file": "docs/specs/auto-graphics/project.md",
-     "milestone": null,
-     "module": null,
-     "tags": [
-      "PLAN-833",
-      "r2",
-      "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
-      "source-sha256:51c4a3be1ede7e789416291dd9ec363c8622e0851204ae4e9ec76f5188d0f838",
-      "source-path:docs/specs/auto-graphics/project.md"
-     ],
-     "created_at": 1792685069,
-     "modified_at": 1792685069,
-     "completed_at": 1792685069
-    },
+ "id": "P829-AGP",
+ "title": "AutoGraphics project",
+ "content": "Canonical experimental contract: real Auto Breakout and Squash through pinned public SDK/Session; profile2 staged 3D admission, original resource/input/lifetime and measured bounds. PLAN-834 closes I1 original dual-game denominator on autographics-dev. I2/I3, production migration, Shader/CAP remain pending.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/project.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-834",
+  "r1",
+  "reviewed:ebeab12d2888b9c9fb7e00e3c24479fb3c028011",
+  "source-sha256:69e2eb38785988c7dd17ffa12cddad3b147595394e926a622dc50c4592f7766c",
+  "source-path:docs/specs/auto-graphics/project.md"
+ ],
+ "created_at": 1792685069,
+ "modified_at": 1792715282,
+ "completed_at": 1792715282
+},
     {
      "id": "P830-SURF",
      "title": "auto-graphics Surface/Portal 组合与 GPU 合成合同（PLAN-830 SD-01）",
@@ -14377,53 +14402,53 @@
      ]
     },
     {
-     "id": "P830-PROFILE",
-     "title": "AutoGraphics prototype-profile",
-     "content": "Canonical module contract; PLAN-829/830 retained, PLAN-833 delivers real Auto SDK/VM scene and Breakout slice, resource provenance and exact text uploads. I1 only first slice; production migration pending.",
-     "status": "verified",
-     "depends_on": [],
-     "related": [],
-     "priority": null,
-     "assignee": null,
-     "test_file": null,
-     "file": "docs/specs/auto-graphics/prototype-profile.md",
-     "milestone": null,
-     "module": null,
-     "tags": [
-      "PLAN-833",
-      "r2",
-      "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
-      "source-sha256:4526cd91004cff3106638f3172703642f848af820cd55aa2aaaaa7a056d9e260",
-      "source-path:docs/specs/auto-graphics/prototype-profile.md"
-     ],
-     "created_at": 1792685069,
-     "modified_at": 1792685069,
-     "completed_at": 1792685069
-    },
+ "id": "P830-PROFILE",
+ "title": "AutoGraphics prototype-profile",
+ "content": "Canonical experimental contract: real Auto Breakout and Squash through pinned public SDK/Session; profile2 staged 3D admission, original resource/input/lifetime and measured bounds. PLAN-834 closes I1 original dual-game denominator on autographics-dev. I2/I3, production migration, Shader/CAP remain pending.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/prototype-profile.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-834",
+  "r1",
+  "reviewed:ebeab12d2888b9c9fb7e00e3c24479fb3c028011",
+  "source-sha256:6328567c1d5d1502bc91d35972ef6b44ef9c43414dffecfdbd31a61b91374106",
+  "source-path:docs/specs/auto-graphics/prototype-profile.md"
+ ],
+ "created_at": 1792685069,
+ "modified_at": 1792715282,
+ "completed_at": 1792715282
+},
     {
-     "id": "P830-IH",
-     "title": "AutoGraphics integration-contract",
-     "content": "Canonical module contract; PLAN-829/830 retained, PLAN-833 delivers real Auto SDK/VM scene and Breakout slice, resource provenance and exact text uploads. I1 only first slice; production migration pending.",
-     "status": "verified",
-     "depends_on": [],
-     "related": [],
-     "priority": null,
-     "assignee": null,
-     "test_file": null,
-     "file": "docs/specs/auto-graphics/integration-contract.md",
-     "milestone": null,
-     "module": null,
-     "tags": [
-      "PLAN-833",
-      "r2",
-      "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
-      "source-sha256:123b9022e1b12cf5d58987ae9eea9e14d9e4658e23b8e581f46dafb1f6280f3b",
-      "source-path:docs/specs/auto-graphics/integration-contract.md"
-     ],
-     "created_at": 1792685069,
-     "modified_at": 1792685069,
-     "completed_at": 1792685069
-    },
+ "id": "P830-IH",
+ "title": "AutoGraphics integration-contract",
+ "content": "Canonical experimental contract: real Auto Breakout and Squash through pinned public SDK/Session; profile2 staged 3D admission, original resource/input/lifetime and measured bounds. PLAN-834 closes I1 original dual-game denominator on autographics-dev. I2/I3, production migration, Shader/CAP remain pending.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/integration-contract.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-834",
+  "r1",
+  "reviewed:ebeab12d2888b9c9fb7e00e3c24479fb3c028011",
+  "source-sha256:f2ec356f62556beff59dfa6fef7d72d22c876360cde625f9318895425e0dc6b3",
+  "source-path:docs/specs/auto-graphics/integration-contract.md"
+ ],
+ "created_at": 1792685069,
+ "modified_at": 1792715282,
+ "completed_at": 1792715282
+},
     {
      "id": "P815-B-D1",
      "title": "UI 工程工具唯一 owner 全量交付（PLAN-815 M815-B，SD-01..07）",
@@ -14450,29 +14475,29 @@
      "completed_at": 1792668085
     },
     {
-     "id": "P833-AUTO-SOURCE",
-     "title": "AutoGraphics auto-source-driver",
-     "content": "Canonical module contract; PLAN-829/830 retained, PLAN-833 delivers real Auto SDK/VM scene and Breakout slice, resource provenance and exact text uploads. I1 only first slice; production migration pending.",
-     "status": "verified",
-     "depends_on": [],
-     "related": [],
-     "priority": null,
-     "assignee": null,
-     "test_file": null,
-     "file": "docs/specs/auto-graphics/auto-source-driver.md",
-     "milestone": null,
-     "module": null,
-     "tags": [
-      "PLAN-833",
-      "r2",
-      "reviewed:77302d8552f074ebedd53e757acfcf3db0bde230",
-      "source-sha256:820a631e5c7c089a473246dacd6b8c3606313be6e6414c8176b2eee2cd45c14e",
-      "source-path:docs/specs/auto-graphics/auto-source-driver.md"
-     ],
-     "created_at": 1792685069,
-     "modified_at": 1792685069,
-     "completed_at": 1792685069
-    },
+ "id": "P833-AUTO-SOURCE",
+ "title": "AutoGraphics auto-source-driver",
+ "content": "Canonical experimental contract: real Auto Breakout and Squash through pinned public SDK/Session; profile2 staged 3D admission, original resource/input/lifetime and measured bounds. PLAN-834 closes I1 original dual-game denominator on autographics-dev. I2/I3, production migration, Shader/CAP remain pending.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/auto-source-driver.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-834",
+  "r1",
+  "reviewed:ebeab12d2888b9c9fb7e00e3c24479fb3c028011",
+  "source-sha256:6dde75de267683623b7f6409356ed0c2ffcf4e4cdcc7f1b0cec74d8ffeba458c",
+  "source-path:docs/specs/auto-graphics/auto-source-driver.md"
+ ],
+ "created_at": 1792685069,
+ "modified_at": 1792715282,
+ "completed_at": 1792715282
+},
     {
      "id": "P828-SRC",
      "title": "auto-ac 函数级增量源前端合同",
@@ -14554,7 +14579,32 @@
      "modified_at": 1792686169,
      "completed_at": 1792686169
     }
-   ],
+   ,
+{
+ "id": "P834-3D",
+ "title": "AutoGraphics auto-3d-game-profile",
+ "content": "Canonical experimental contract: real Auto Breakout and Squash through pinned public SDK/Session; profile2 staged 3D admission, original resource/input/lifetime and measured bounds. PLAN-834 closes I1 original dual-game denominator on autographics-dev. I2/I3, production migration, Shader/CAP remain pending.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/auto-3d-game-profile.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-834",
+  "r1",
+  "reviewed:ebeab12d2888b9c9fb7e00e3c24479fb3c028011",
+  "source-sha256:d2153f471c353f4da475631e7724015136f9597ad9973eafacd72d3b1dedc4be",
+  "source-path:docs/specs/auto-graphics/auto-3d-game-profile.md"
+ ],
+ "created_at": 1792715282,
+ "modified_at": 1792715282,
+ "completed_at": 1792715282
+}
+],
    "section_type": "Designs",
    "title": "🎨 Designs",
    "status": "empty",
@@ -17832,7 +17882,32 @@
      "modified_at": 1792685069,
      "completed_at": 1792685069
     }
-   ],
+   ,
+{
+ "id": "P834-TESTS",
+ "title": "PLAN-834 dual Auto game and compatibility gates",
+ "content": "Original Squash3600tick/45spawn/91event and Breakout10800tick/210contact; math/RNG/raw yaw, real GPU/audio/input/owner/accounting counterexamples. Full frozen driver/AGP/native/relocation closeout results in archived PLAN-834 T-10 receipt.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/auto-3d-game-profile.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-834",
+  "r1",
+  "reviewed:ebeab12d2888b9c9fb7e00e3c24479fb3c028011",
+  "source-sha256:d2153f471c353f4da475631e7724015136f9597ad9973eafacd72d3b1dedc4be",
+  "source-path:docs/specs/auto-graphics/auto-3d-game-profile.md"
+ ],
+ "created_at": 1792715282,
+ "modified_at": 1792715282,
+ "completed_at": 1792715282
+}
+],
    "section_type": "Tests",
    "title": "🧪 Tests",
    "status": "empty",
@@ -24001,7 +24076,32 @@
      "modified_at": 1792686169,
      "completed_at": 1792686169
     }
-   ],
+   ,
+{
+ "id": "P834-R1",
+ "title": "PLAN-834 independent final R1 PASS",
+ "content": "Independent final PASS at ebeab12d2888b9c9fb7e00e3c24479fb3c028011, revision1, 27 targeted tests and selected holdouts/native positive+negative; no open contract findings. Merge gates separately executed.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/attachments/834/review-r1/review.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-834",
+  "r1",
+  "reviewed:ebeab12d2888b9c9fb7e00e3c24479fb3c028011",
+  "source-sha256:7f49f737f7ba9ce86c99a82c736c7d20660720b7060c77c72a7e0757215ad71c",
+  "source-path:docs/plans/attachments/834/review-r1/review.md"
+ ],
+ "created_at": 1792715282,
+ "modified_at": 1792715282,
+ "completed_at": 1792715282
+}
+],
    "section_type": "Reviews",
    "title": "🔍 Reviews",
    "status": "empty",
@@ -24012,5 +24112,5 @@
   }
  ],
  "project": "auto-lang",
- "version": 70
+ "version": 71
 }

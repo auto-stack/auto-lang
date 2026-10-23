@@ -1,5 +1,7 @@
 # auto-graphics — integration contract
 
+> Current status (PLAN-834): I1's original real Auto Breakout + Squash denominator is delivered experimentally on autographics-dev. Earlier PLAN-829/830/833 pending statements below record their historical stage. I2 production AutoUI/RQHost migration, I3 Forge/distribution and Shader/CAP remain pending. Master carries knowledge only; graphics source does not enter master.
+
 > Status: experimental（PLAN-829 交接合同；代码在 `autographics-dev` 分支，
 > 见 [project.md](project.md)）。**两道合成检测门必须并列保留，不可互替**
 > （R5-03/R18 裁定，见 IH-01）。
@@ -95,3 +97,12 @@
 Adds a finite real Auto SDK/AutoVM driver for 2D/3D object control and Auto-owned Breakout, with checked output/event admission and original Surface/Portal consumption. See [auto-source-driver.md](auto-source-driver.md). This is only I1's first slice: Auto Squash and the original two-game denominator remain pending. IH-03, production I2/RQHost, I3/Forge/distribution, AutoShader/CAP and the migration gate for merging graphics code into master remain pending. PLAN-830 composition/input facts above are retained.
 
 Delivery provenance: [PLAN-833](../../plans/archive/833-autographics-auto-source-minimal-loop.md), reviewed code 77302d855; production boundaries above remain unchanged.
+
+
+## PLAN-834 delivered I1 dual-game evidence
+
+The delivered experimental slice supplies the original second denominator member: real Auto Squash through the same pinned SDK/Session consumer as Auto Breakout. The exact frozen games, numerical/event tolerances and image/audio resources remain the denominator. Work evidence includes unchanged Breakout 10800 ticks/210 contacts, Squash 3600 ticks/45 spawns/91 events/135 random draws, actual GLB/HUD/Retry images, actual Kira playback and native input/focus/retry controls. Source hashes and the independent source consumer bind the delivered slice; tests that mutate Auto physics/animation and real rendering/input/accounting paths must fail their corresponding formal oracles.
+
+I1 is delivered for its original experimental denominator: both frozen games run from real Auto through the same published SDK symbols. Independent T-09 R1 and frozen T-10 full driver/AGP/native/source-consumer gates passed. This completes I1 only, not a production migration. IH-03/RQHost, production I2, I3/Forge/distribution, AutoShader/CAP and the requirement for a separate authorized production migration before merging graphics source into master remain unchanged. The delivered source targets autographics-dev only. The two original composition counter/content gates remain distinct.
+
+Delivery provenance: [PLAN-834](../../plans/archive/834-autographics-auto-squash-and-dual-game-sdk.md), reviewed ebeab12d2888b9c9fb7e00e3c24479fb3c028011; [full merge receipt](../../plans/attachments/834/merge-r1/receipt.md). Frozen limits and original tolerances remain unchanged.

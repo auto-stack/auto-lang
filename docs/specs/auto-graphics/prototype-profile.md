@@ -1,5 +1,7 @@
 # auto-graphics — prototype profile
 
+> Current status (PLAN-834): I1's original real Auto Breakout + Squash denominator is delivered experimentally on autographics-dev. Earlier PLAN-829/830/833 pending statements below record their historical stage. I2 production AutoUI/RQHost migration, I3 Forge/distribution and Shader/CAP remain pending. Master carries knowledge only; graphics source does not enter master.
+
 > Status: experimental（PLAN-829 实测事实；代码在 `autographics-dev` 分支，
 > 见 [project.md](project.md)）。以下为单机（RTX 4060 Ti / Vulkan / 驱动
 > 617.14 / DPI 2.0）probe 实测值，不外推跨平台。
@@ -95,3 +97,14 @@ PLAN-833 R1 repair: content-upload accounting includes TextRenderer camera/glyph
 Delivery provenance: [PLAN-833](../../plans/archive/833-autographics-auto-source-minimal-loop.md), reviewed code 77302d855; production boundaries above remain unchanged.
 
 Standalone Windows source consumers must explicitly retain the frozen 32MB main-thread stack profile; this is not inherited outside the repository. Build with `cargo rustc --locked --offline --bin autographics-auto-driver -- -C link-arg=/STACK:33554432`, then run the built executable. The default external stack overflowed; the same32MB profile passed isolated native replay without source changes.
+
+
+## PLAN-834 Auto Squash profile
+
+Windows x64, one native window, the same locked SDK/wgpu/Iced/Kira versions. The original player/mob GLBs retain all three meshes, baked child transforms/material colors, orthographic camera, directional light/shadow, ground/cylinders, Montserrat 32px Score/Retry and the single original OGG loop. Auto generates actor translation/yaw/pitch/bob and the complete frozen limited-physics gameplay. Input and fixed 120Hz actions belong to an instance, independent of its one/two mounts. The actual native probe exercises movement, one jump press, text-focus exclusion, both retry keys and repeat isolation; the wrong-focus control must fail the same oracle.
+
+The inherited WindowTarget skips zero-size/minimized presentation. Simulation consumes fixed steps when the host is scheduled; long redraw gaps execute at most four due steps and discard wall-clock debt beyond32ms, rather than freezing the UI with an unbounded catch-up loop. Stock Pause prevents new steps; already accepted work may finish. Unmount revalidates the actual focus path and clears held keys/edges. A retained host instance is not destroyed by removing one view; explicit reset/close governs script ownership. No hard realtime guarantee is claimed under OS preemption or declared CPU-budget refusal.
+
+Frozen work measurement: cold host1.120s; three 60-sample CPU submission wall P50/P95 cases2.940/3.690ms(shared mounts/two instances),4.398/5.198ms(single mounts/two instances),3.842/4.712ms(single mounts/one active instance). These cover consecutive different tick intervals and are not a causal speed comparison. Explicit selected owned payload57,065,320B includes both profile2 content buffers/depth/shadow/font atlases, all five offscreen targets9,109,600B and decoded music8,888,832B. Each instance uploads original mesh payload137,124B once. Process working set304,046,080→309,542,912B is separate. These receipts bind unchanged resource/measurement code and configuration; later implementation changes require new evidence; GPU timestamps/driver residency, Iced internals, swapchain and allocator overhead are not measured. See the Plan and standalone source/stack profile above.
+
+Delivery provenance: [PLAN-834](../../plans/archive/834-autographics-auto-squash-and-dual-game-sdk.md), reviewed ebeab12d2888b9c9fb7e00e3c24479fb3c028011; [full merge receipt](../../plans/attachments/834/merge-r1/receipt.md). Frozen limits and original tolerances remain unchanged.

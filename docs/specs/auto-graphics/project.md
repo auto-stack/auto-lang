@@ -1,5 +1,7 @@
 # auto-graphics
 
+> Current status (PLAN-834): I1's original real Auto Breakout + Squash denominator is delivered experimentally on autographics-dev. Earlier PLAN-829/830/833 pending statements below record their historical stage. I2 production AutoUI/RQHost migration, I3 Forge/distribution and Shader/CAP remain pending. Master carries knowledge only; graphics source does not enter master.
+
 > **Status**: experimental
 > 路径：`experimental/autographics-prototype/`（独立 Cargo workspace，自有 manifest/lock/资产；bin `graphics-probe` / `iced_spike`） | 技术栈：Rust + wgpu 27.0.1 + winit 0.30.13 + iced/iced_wgpu 0.14 + kira 0.9.6 + gltf 1.4.1 + fontdue
 > **代码位置（2026-10-22 用户裁定）**：原型代码在 `autographics-dev` 集成分支（PLAN-829 落点 merge `ab56c32ec`，AGP 子树与复审冻结提交 `ddbde3e62857` 逐字节一致），**不合入 master**——待 814/815/816 系列（及后续）迁移工作全部完成后再议合回 master。master 侧仅沉淀本知识文档。后续 AutoGraphics 计划（830+）沿用同一集成分支承接模式（各自 plan 分支审毕后并入 `autographics-dev`）。
@@ -40,3 +42,10 @@ Tilemap/骨骼/联网/XR。
 Independent `experimental/autographics-auto-driver` consumes pinned pure SDK source and AGP's neutral scene/renderer interfaces. Real Auto owns the basic scene and frozen Breakout simulation; Rust owns rendering, fonts/audio and window routing. No production crate/root manifest/lock or SDK source is modified. Independent R2 and frozen merge gates passed; source lands only on autographics-dev. Profile and limitations: [auto-source-driver.md](auto-source-driver.md).
 
 Delivery provenance: [PLAN-833](../../plans/archive/833-autographics-auto-source-minimal-loop.md), reviewed code 77302d855; production boundaries above remain unchanged.
+
+
+## PLAN-834 delivered second real Auto game
+
+`experimental/autographics-auto-driver --sample squash` adds the original frozen 3D game as a separate explicit profile on the same SDK/Session bridge, alongside unchanged Auto Breakout. Finite 3D data and whole-packet consumer admission expose original models, animation, HUD/music and 120Hz instance-owned input/lifetime; details are in [auto-3d-game-profile.md](auto-3d-game-profile.md). Implementation remains confined to the two experimental workspaces and canonical Specs. SDK/root production crates/manifests/locks are unchanged. Independent R1 and frozen full gates passed, closing I1 experimental dual-game evidence; production I2/I3 and migration remain pending.
+
+Delivery provenance: [PLAN-834](../../plans/archive/834-autographics-auto-squash-and-dual-game-sdk.md), reviewed ebeab12d2888b9c9fb7e00e3c24479fb3c028011; [full merge receipt](../../plans/attachments/834/merge-r1/receipt.md). Frozen limits and original tolerances remain unchanged.

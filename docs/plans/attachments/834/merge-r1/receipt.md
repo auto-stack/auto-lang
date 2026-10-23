@@ -1,30 +1,38 @@
-# PLAN-834:r1 T-10 merge receipt — blocked, 2026-10-23
+# PLAN-834:r1 merge receipt — delivery landed, cleanup pending
 
-受审冻结提交`ebeab12d2888b9c9fb7e00e3c24479fb3c028011`、SDK/两个实验workspace锁/180项源码资产身份未改变。独立R1 PASS保持；计划仍`reviewed / 9 of 10`。本次未修改实现，没有合入、规范发布、ledger投影、归档或删除工作树。
+2026-10-23，独立final R1受审`ebeab12d2888b9c9fb7e00e3c24479fb3c028011`；实现`0ea8bdb1582d05e0f39c6e5bfc6d349f9280473b`；交付`19adeebf1b1031554c71acabaa219731b3a28b96`。后继仅canonical/派生账本文档，实际源码/SDK/锁/资产/测试配置与受审版本一致。源已无force快进`autographics-dev`；主检出保持master，仅接收知识/计划簿记，其他会话预存WIP保留。
 
-## 已执行且通过
+## Gate results
 
-- driver完整`cargo test --locked --offline -- --nocapture`：42 passed /0 failed /0 ignored；完整`cargo build --locked --offline`通过。
-- AGP完整同名test/build（`--target-dir ../autographics-auto-driver/target`）：162 passed /0 failed /0 ignored。
-- 原隔离冷消费包C的完整test：42 passed /0 failed /0 ignored；前后verify_source均通过。原work隔离冷构建/producer不可用收据继续有效，未冒称本轮重做隐藏操作。C显式worker16MB、RUSTFLAGS保留Windows PE32MB。
-- 12/16 AGP原生探针通过：gpu-foundation、shared-runtime、ag2d-breakout、ag3d-risk-slice、ag3d-squash、lifecycle、metrics、verifier-negative-controls、surface-compose、surface-scenarios、surface-lifecycle、independent-consumer。三项Surface含正式像素/资源/输入路由负控，不抵扣待完成的实际窗口输入门。
-- independent-consumer实际从源码导出B、locked release构建、与A确定性回放29字段对比零差异，closure/collateral通过。其AGP_BASE_COMMIT绑定受审SHA；另prepared收据核整Plan仅两实验workspace/拟议Spec写面，无root生产代码/锁变动。
-- 根cargo整档不适用本合同experimental-only写面；未跑t/tv/tt/tb/tu/taa/docs_gen/tf。
+| Gate | Actual result |
+|---|---|
+| driver full test/build | 42 passed /0 failed /0 ignored；build pass |
+| AGP full test/build | 162 passed /0 failed /0 ignored；build pass |
+| standalone C full test | 42 passed /0 failed /0 ignored；前后680 SDK/180 authored hash verify pass；原隔离冷构建证据身份不变 |
+| AGP compatibility | 16/16 named probes pass，含全部六surface、真实Windows Chinese IME、original Breakout/Squash、资源/寿命/像素/计量负控 |
+| source relocation | fresh exported AGP locked release builds；A/B 29 deterministic fields /0 mismatches；closure/collateral pass |
+| Iced actual composite | counter与content三时刻正控pass；blank_blit exit1/counter+content red；transparent_blit exit1/counter仍绿但content red，未将两门互替 |
+| native Breakout | movement/text-focus positive pass；wrong-focus same oracle expected exit1；160frames/161ticks、6 sound requests=6 actual Kira plays |
+| native Squash | isolated exact13-key tape positive phase9/pass/errors空/music1；focus sabotage phase9/expected exit1，实际text-focus keys/session变化；截图已视觉核验 |
+| native scene/Squash no input | 各30frames/pass，Squash music1，无预算拒绝 |
+| health/source | frozen source verify与dirty/diff check通过；两workspace fmt/all-target check引用独立review相同源码/依赖/配置证据；无本次新增源码warning，既有SDK146+1 warning不冒称已修 |
 
-## 未通过与诊断（不豁免）
+原锁屏和一次额外按键现场保留，不隐藏失败。锁屏时Iced点击两次有界超时，前台锁屏/SetForegroundWindow=False；用户解锁后同一源码正式门通过。锁屏下160帧原生Breakout预算拒绝，解锁后相同配置160帧/161ticks/6实际音效正常、errors空。第一次解锁Squash输入记录15个事件，包含额外Space press/release，不符合13事件fixture，retry断言红；其他探针结束、Space/Enter状态未按下的独立条件中，原正式oracle的13事件正控与focus负控通过。额外事件外部来源未断言；没有修改实现/判定/容差或把失败当pass。详见receipt-locked-blocked.md、各原始window.json/native_keys和gates-summary。
 
-`iced-shared-device`首轮和一次具名诊断重跑：实际初始截图及同设备路径成立，但click未观察到；901tick有界退出，缺after_button/resized截图，exit1。原报告与日志保留在agp/iced-shared-device、agp/iced-shared-device-retry。截图已检查按钮位置；实测dpi192/物理2000x1600。外部诊断一次实际按钮点击和队列move/down/up均记录；未修改任何应用/测试oracle。
+根cargo t/tv/tt/tb/tu/taa/docs_gen/tf不适用本Plan约定experimental-only写面，未执行。
 
-[桌面诊断](desktop-diagnosis.txt)和[复查](desktop-recheck.txt)：前台为“Windows 默认锁屏界面”，SetForegroundWindow=False，真实键鼠无法到达探针。请求用户解锁并保持桌面解锁；未以超时或synthetic headless结果替代真实输入。
+## Publication checkpoints
 
-另一次原生Breakout无输入160帧回放exit1：completed tick停留14/50，host ticks628，实际sounds1/1，但errors/failures含`callback budget exhausted`。见[native report](native-breakout-noinput/window.json)。这不是pass，锁屏条件下的预算拒绝尚需在解锁环境重跑归因；若仍出现，回work修复并对受影响内容重新独立复审。未静默豁免，也未把待归因问题宣称为已闭合产品缺陷。
+prepared：revision1、R1 PASS、frozen Spec delta/current canonical inputs和SDK/锁身份已核。受审实现diff为零，文档后继只把candidate改为实验delivered、回写实际测量/模块/goals/index及派生条目。spec-index从main-current规范快照加本次overlay再生；58项目，未分组项目warning是既有索引分组边界，未借机改无关模块。
 
-## checkpoint与续跑
+landed：autographics-dev由540c1e70f0a4682af245191ffb36fa0d8a636665快进至19adeebf1b1031554c71acabaa219731b3a28b96；实际integration tip相等。因该集成分支未挂载且main有其他会话文档WIP，采用`git push . HEAD:refs/heads/autographics-dev`（无force，仅允许FF）并前后验证祖先/目标SHA，不切换main、不产生merge commit、不重写受审SHAs。
 
-prepared：受审身份/写面/当前canonical输入hash、ledger解析与writer探测已记录。在线store不可达、ledger v70可解析；仅准备了guarded offline projection脚本和字节备份，**尚未执行投影或canonical修改**。prepare-specs.py受runtime-gates-complete.txt前置保护，该标记未建立。
+ledger_refreshed：Regime B，在线127.0.0.1:8080无可达store writer，guarded offline projection；原字节备份ledger-before.json.txt，v70→v71，8项upsert（5 designs/1 tests/1 reviews/1 reports），1138个无关原始item字节保留，six-section schema/readback/source hash/file/tags全部验证。main实际ledger hash与投影收据一致。ledger仅派生引用，canonical为docs/specs。
 
-landed / ledger_refreshed / archived / cleaned：全部pending。autographics-dev仍540c1e70f0a4682af245191ffb36fa0d8a636665。唯一worktree、plan-834-dev分支及生成消费包B/C均保留；没有运行清理或删除。预存其他会话docs WIP保留。
+archived：按实际归档状态门记录；cleaned：尚待强制guard和工作树/branch/consumerB/C清理。归档与清理收据另见actual-archive-check/cleaned。I1仅实验分母交付；I2生产AutoUI/RQHost迁移、I3 Forge/发行、Shader/CAP以及graphics源码进master前置保持pending。
 
-解锁后先确认实际桌面条件，再从唯一实施树运行[remaining-window-gates.ps1](remaining-window-gates.ps1)，补Iced counter/content两道正控及blank_blit/transparent_blit反控、surface-offscreen/input/ime-os window、双游戏native正负控；重跑no-input/audio/scene并对预算拒绝归因。不可重跑已通过的完整测试来掩盖待完成输入门。全部实际通过后才准备/核对Spec delta、只ff源码到autographics-dev、master知识投影、归档与wt-guard clean清理；main canonical/ledger若有并发变化先重核快照，不能绕过hash guard。
+## Artifact and batch follow-up
 
-原完整runner与外部诊断脚本仅是证据/续跑辅助，并非实现更改。最终摘要见[gates-summary](gates-summary.json.txt)。
+本次无生产consumer迁移、默认入口或生产binary/web bundle写面；未宣称部署。driver/AGP原生binary本轮完整build并用于真实验收，临时target按授权cleanup移除，源码可由autographics-dev独立再构建。根backend/daemon/web production artifacts不消费该实验入口，未更改、无需因本Plan重建/重启。
+
+清理后的批量回归due-check仍须记录；不得在plan树跑tf。全部原始失败/正负控/来源/投影与最终checkpoint由本目录证据保存。

@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-834
-status: reviewed
+completion_kind: delivered
+status: archived
 feature_name: 真实Auto驱动Squash与双游戏SDK闭环
 plan_revision: 1
 author: [Codex]
@@ -24,9 +25,9 @@ affects: [auto-graphics, language-sdk-consumer]
 
 ## 0. 变更摘要
 
-**2026-10-23 独立final R1 PASS，当前 reviewed / 9 of 10。** T-01..08已实施并提交，T-09逐AC/SD独立验收通过；27项定向测试、两个独立holdout组、真实窗口正负控及A/C源码身份核验通过，无开放合同finding。受审提交`ebeab12d2888b9c9fb7e00e3c24479fb3c028011`，实现提交`0ea8bdb1582d05e0f39c6e5bfc6d349f9280473b`；[独立复审与冻结证据](attachments/834/review-r1/review.md)、[执行交接](attachments/834/work-r1/readiness.md)。T-10完整合入门禁、合autographics-dev与最终交付仍pending。
+**2026-10-23 交付已落autographics-dev，规范/账本已沉淀；归档9/10，T-10清理待完成。** 独立R1 PASS与完整合入门禁通过，交付提交`19adeebf1b1031554c71acabaa219731b3a28b96`。master仅知识文档，I1实验双游戏分母交付，I2/I3/Shader/CAP/生产迁移仍pending。[最终合入收据](../attachments/834/merge-r1/receipt.md)。
 
-源、依赖、样本、容差和写面不变；主检出维护Plan/复审证据，代码/拟议Spec在唯一实施树。本次仅执行独立review；T-10及merge-owned完整门禁仍pending，尚未合入、归档或更新live ledger。I1原双样本分母已通过代码/验收审查，仍须merge门与实际交付后审定；I2/I3/Shader/CAP/Forge生产迁移不外推。下文保留规划和work历史观察，当前结论以§9 final R1收据为准。
+源、依赖、样本、容差和生产边界不变；完整门与真实失败/重放、投影/归档/清理实际checkpoint见§9最新merge收据。历史work/review的pending描述保留为阶段记录，不表示当前门禁仍未执行。
 
 ## 1. 目标
 
@@ -64,7 +65,7 @@ affects: [auto-graphics, language-sdk-consumer]
 | GSOURCE | G833后的driver/AGP/SDK完整SHA、两份依赖锁/源锁/build输入及资产身份重核并冻结；若833未变SDK则继承其已发布精确版本 | 已固定540c1e70f/SDK9576b4dad及原锁/资产；见research/plan834-source.json，独立消费在T-07收口 |
 | GSTART | 用户启动834 | 2026-10-23用户明确授权实施；已创建唯一树，无agent/新聊天 |
 
-观察：833 R1受审候选 `b136129fed9a018f07ea49445868066449eaf5e9`，当次driver锁 `f01c231218b2f1534f971df128b9d188fa19648e5a4399dbe81ce37e5386063d`；autographics-dev仍为830交付 `764e87559cff016d9e0d6b2141e5f1f9903398c5`。候选仅用于只读定位，不是834实施基线。源码对象/hash见[观察清单](attachments/834/planning/source-observation.json.txt)。
+观察：833 R1受审候选 `b136129fed9a018f07ea49445868066449eaf5e9`，当次driver锁 `f01c231218b2f1534f971df128b9d188fa19648e5a4399dbe81ce37e5386063d`；autographics-dev仍为830交付 `764e87559cff016d9e0d6b2141e5f1f9903398c5`。候选仅用于只读定位，不是834实施基线。源码对象/hash见[观察清单](../attachments/834/planning/source-observation.json.txt)。
 
 未来唯一树 `D:/autostack/.wt/lang-834/auto-lang`、分支 `plan-834-dev`，从通过G833的autographics-dev完整SHA明确创建；不要用默认master基面的捷径。work/internal check/final review同树顺序执行，主检出维护Plan。开工必须读主检出当前修订，历史基面未必含当前合同。审毕仍合autographics-dev，master只沉淀知识，原生产迁移门不变。
 
@@ -80,7 +81,7 @@ affects: [auto-graphics, language-sdk-consumer]
 
 2026-10-22用户说明833实施完毕、处于review/修复，要求提前规划下一计划。授权范围为调查和Plan草案，不含启动实现/另开agent/修改833/合入。未指定实施、内部检查、最终review人或模型；不编造角色身份。
 
-从[overview](../specs/overview.md)、[SDK](../specs/language-sdk/project.md)、[图形project](../specs/auto-graphics/project.md)/[profile](../specs/auto-graphics/prototype-profile.md)/[交接](../specs/auto-graphics/integration-contract.md)、[Design45](../design/45-autographics-wgpu-engine-and-game-prototypes.md)取材。[833合同](archive/833-autographics-auto-source-minimal-loop.md)与[R1独立报告](attachments/833/review-r1/review.md)用于判断依赖；不以work自检代替交付。
+从[overview](../../specs/overview.md)、[SDK](../../specs/language-sdk/project.md)、[图形project](../../specs/auto-graphics/project.md)/[profile](../../specs/auto-graphics/prototype-profile.md)/[交接](../../specs/auto-graphics/integration-contract.md)、Design45（规划时背景笔记，主检出既有未跟踪文档；正式知识见上述canonical图形规范）取材。[833合同](833-autographics-auto-source-minimal-loop.md)与[R1独立报告](../attachments/833/review-r1/review.md)用于判断依赖；不以work自检代替交付。
 
 当前canonical尚无833的 `auto-source-driver.md`；这是833拟交付来源，834 frontmatter中的modify为provisional，必须等G833后重核，不能从候选SD提前发布知识。设计中旧状态标题保留历史意义，以实际收据为准。
 
@@ -161,7 +162,7 @@ modify以833未来实际交付版本为来源。该文件尚无canonical时明�
 
 ## 6. 测试设计
 
-下表保留规划验证合同；本轮work已完成V-01..09，实际命令、断言、正反控、版本绑定见[readiness](attachments/834/work-r1/readiness.md)。V-01..09 owner_stage=work，各fixture由task建立，具体新target/CLI由README公布；不得把零选择测试/skip当通过。独立最终review在同一冻结树逐AC/SD核验，自检不代替final review；未建agent。
+下表保留规划验证合同；本轮work已完成V-01..09，实际命令、断言、正反控、版本绑定见[readiness](../attachments/834/work-r1/readiness.md)。V-01..09 owner_stage=work，各fixture由task建立，具体新target/CLI由README公布；不得把零选择测试/skip当通过。独立最终review在同一冻结树逐AC/SD核验，自检不代替final review；未建agent。
 
 | ID | AC / invariant | 入口/输入与使其可运行的task | 可观察oracle/反控与边界 |
 |---|---|---|---|
@@ -212,10 +213,19 @@ modify以833未来实际交付版本为来源。该文件尚无canonical时明�
 
 ## 9. 复审记录
 
+### 2026-10-23 merge T-10：门禁全部通过，已合入/沉淀，归档清理阶段
+
+- stage: merge | key: PLAN-834:r1 | outcome: in_progress（cleanup-owned） | reviewed_commit: ebeab12d2888b9c9fb7e00e3c24479fb3c028011 | delivery_commit: 19adeebf1b1031554c71acabaa219731b3a28b96 | integration_ref: autographics-dev（无force快进，未重写SHAs） | reviewed implementation: unchanged。
+- driver42/AGP162/C独立消费42完整测试及构建pass，零failed/ignored；16/16 AGP探针/六surface/实际OS IME、Iced counter+content两门及漏画/透明反控、双游戏真实窗口输入正负控、原音画/资源/寿命/计量门全部通过。Breakout160frames/161ticks、6请求=6实际音效；Squash独立13事件正控phase9/music1/errors空、focus负控同oracle具名失败。
+- 历史锁屏/预算拒绝及一次15事件额外Space输入现场保留；解锁/无其他探针+键未按住条件下原正式门通过，无实现/SDK/配置/容差修改或豁免，额外事件来源不杜撰。见[完整最终收据](../attachments/834/merge-r1/receipt.md)、[门禁摘要](../attachments/834/merge-r1/gates-summary.json.txt)。
+- canonical五组件+module overview/plans、GOAL-007/008、global overview/INDEX已投影master，仅知识；I1原实验双游戏分母交付，I2/I3/Shader/CAP/生产迁移仍pending。账本guarded offline projection v70→71，8项upsert/1138无关raw items保持，[投影收据](../attachments/834/merge-r1/ledger-projection.json.txt)。
+- landed/ledger_refreshed已核；计划归档后先核实际链接/计数/版本控制，再强制Git Bash wt-guard clean清理唯一树、merged branch及生成包B/C，最后补T-10与10/10。当前9/10仅cleanup pending。
+
+
 ### 2026-10-23 merge T-10：环境阻塞交接，保留reviewed9/10
 
 - stage: merge | key: PLAN-834:r1 | outcome: blocked | reviewed_commit: ebeab12d2888b9c9fb7e00e3c24479fb3c028011 | implementation/dependencies/configuration: unchanged | worktree: D:/autostack/.wt/lang-834/auto-lang | branch: plan-834-dev | integration_ref: autographics-dev仍540c1e70f0a4682af245191ffb36fa0d8a636665。
-- [完整T-10收据/待办与续跑](attachments/834/merge-r1/receipt.md)、[门禁摘要](attachments/834/merge-r1/gates-summary.json.txt)。driver42/AGP162/C消费包42完整测试及构建通过，零fail/ignored；12/16 AGP探针通过，含独立源码导出/locked release/A-B29字段零差异。
+- [完整T-10收据/待办与续跑](../attachments/834/merge-r1/receipt.md)、[门禁摘要](../attachments/834/merge-r1/gates-summary.json.txt)。driver42/AGP162/C消费包42完整测试及构建通过，零fail/ignored；12/16 AGP探针通过，含独立源码导出/locked release/A-B29字段零差异。
 - blocked：两次Iced真实点击有界超时；实测前台Windows默认锁屏界面，SetForegroundWindow=False。需解锁并保持桌面解锁，补真实Iced/六surface剩余window/IME与两游戏窗口正负控。另原生无输入Breakout160帧触发callback budget exhausted，须在解锁条件重跑归因，持续则回work/受影响复审，不能豁免。
 - 未执行合入、canonical发布、ledger投影、归档、工作树/生成包删除；T-10/AC-09仍pending，status reviewed/current_step9不变。review通过不抵扣未通过合入门；保留冻结树、分支与全部正负/失败证据。next_responsible_role: merge，用户解锁后继续实际门禁，不重复已通过全测。
 
@@ -223,20 +233,20 @@ modify以833未来实际交付版本为来源。该文件尚无canonical时明�
 ### 2026-10-23 merge T-10：锁屏输入前置阻塞，其他门继续
 
 - 完整driver42/AGP162测试与构建通过；8个基础AGP运行门及surface-compose/scenarios/lifecycle通过。iced-shared-device初次与诊断重跑均只有初始截图，click未观察到；首轮和诊断报告全部保留，没有把超时当通过。
-- [桌面诊断](attachments/834/merge-r1/desktop-diagnosis.txt)实测前台为Windows默认锁屏界面；一次实测SetForegroundWindow=False，真实OS投递未进入probe。初始图像按钮位置、实际192 DPI与队列投递返回也保留，未修改冻结源码/容差/判定。已请求用户解锁并保持桌面解锁，待前置恢复后重跑同一正式门及真实窗口输入/IME。
+- [桌面诊断](../attachments/834/merge-r1/desktop-diagnosis.txt)实测前台为Windows默认锁屏界面；一次实测SetForegroundWindow=False，真实OS投递未进入probe。初始图像按钮位置、实际192 DPI与队列投递返回也保留，未修改冻结源码/容差/判定。已请求用户解锁并保持桌面解锁，待前置恢复后重跑同一正式门及真实窗口输入/IME。
 - 独立AGP源码搬迁构建继续；未合入/沉淀/归档/清树，T-10仍pending。
 
 ### 2026-10-23 merge T-10：用户授权，冻结门禁进行中
 
 - stage: merge | key: PLAN-834:r1 | outcome: in_progress | reviewed_commit: ebeab12d2888b9c9fb7e00e3c24479fb3c028011 | final_review: R1 pass，当前revision1/依赖/Spec输入一致 | worktree: D:/autostack/.wt/lang-834/auto-lang | branch: plan-834-dev | integration_ref: autographics-dev。
 - 用户授权完整T-10；源码只合autographics-dev，master仅沉淀知识与计划。两独立实验workspace完整driver42/AGP162测试与构建通过（零failed/ignored）；AGP16探针/六surface/真实窗口合成与输入音画反控进行中，尚未合入。根cargo整档不适用原约定experimental-only写面；保留全部其他会话预存docs WIP。
-- [准备收据](attachments/834/merge-r1/prepared.json.txt)、[门禁执行记录](attachments/834/merge-r1/gate-exits.txt)。独立review pass不能抵扣完整运行门；T-10保持pending直到合入、知识投影、归档与guard清理实际完成。
+- [准备收据](../attachments/834/merge-r1/prepared.json.txt)、[门禁执行记录](../attachments/834/merge-r1/gate-exits.txt)。独立review pass不能抵扣完整运行门；T-10保持pending直到合入、知识投影、归档与guard清理实际完成。
 
 
 ### 2026-10-23 final R1：独立复审PASS，9/10
 
 - stage: review | review_scope: final | reviewer_identity: Codex当前独立复审聊天（从work交接重建证据，未参与实施；未创建额外agent，不编造model/session ID） | plan_id: PLAN-834 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-834/auto-lang | branch: plan-834-dev | reviewed_commit: ebeab12d2888b9c9fb7e00e3c24479fb3c028011 | base_commit: 540c1e70f0a4682af245191ffb36fa0d8a636665 | dependency_revisions: SDK9576b4dad5ceb8b201adedd46f9689f25c2dd5f9、两workspace冻结锁/source-lock（hash见baseline）。
-- [独立报告/逐AC任务与实际oracle](attachments/834/review-r1/review.md)、[基线/Spec输入/依赖hash](attachments/834/review-r1/baseline.json)、[冻结拟议Spec全文差异](attachments/834/review-r1/spec-delta-reviewed.diff)。AC-01..08 pass，AC-09 merge-owned pending；T-09勾选，status reviewed / current_step 9 of 10。frontmatter四modify/一add与GOAL-007/008已核；未发布canonical或ledger。
+- [独立报告/逐AC任务与实际oracle](../attachments/834/review-r1/review.md)、[基线/Spec输入/依赖hash](../attachments/834/review-r1/baseline.json)、[冻结拟议Spec全文差异](../attachments/834/review-r1/spec-delta-reviewed.diff)。AC-01..08 pass，AC-09 merge-owned pending；T-09勾选，status reviewed / current_step 9 of 10。frontmatter四modify/一add与GOAL-007/008已核；未发布canonical或ledger。
 - 独立重放27项定向测试（18 staged/numeric/input+2 GPU/audio+7 math/旧兼容，零fail/ignored）、两个组合holdout组；原Squash3600tick/45spawn/91event与Breakout10800tick/210contact不变，五帧原图像及模型/阴影/Auto动画/物理负控通过。实际OGG25.195s wrap、20retry/真实末owner、137124B/16writes与漏计反控通过。
 - 当前冻结入口重建后真实窗口正控phase9/exit0/passed=true，错误焦点负控同oracle phase9/exit1/passed=false，面板均为`z `且errors空。A与保留独立C分别verify 680 SDK/180 authored hash/17 local packages/29 edges/479 metadata closure；36项work证据hash复核。原隔离冷构建/producer不可用操作使用同源码/依赖/配置身份下的冻结原始证据，未冒称本轮重做。
 - 两workspace all-target check/fmt及diff whitespace通过，无本次新增源码warning；未变SDK146条core+1条shim-metadata警告如实披露。遗漏/延期/workaround扫描无开放合同finding或新债务候选；有限Auto数学属于原授权路线，通用SDK债务仍归既有owner。入场/出场实施树clean且HEAD不漂移。
@@ -245,7 +255,7 @@ modify以833未来实际交付版本为来源。该文件尚无canonical时明�
 ### 2026-10-23 work r1：冻结执行交接，8/10
 
 - stage: work | plan_id: PLAN-834 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-834/auto-lang | branch: plan-834-dev | base_commit: 540c1e70f0a4682af245191ffb36fa0d8a636665 | code_commit: ebeab12d2888b9c9fb7e00e3c24479fb3c028011 | implementation_commit: 0ea8bdb1582d05e0f39c6e5bfc6d349f9280473b | dependency_revisions: SDK9576b4dad5ceb8b201adedd46f9689f25c2dd5f9、原两实验workspace锁 | task_ids: T-01..08 | blockers: none | next_responsible_role: independent review。
-- [逐AC/V/SD readiness](attachments/834/work-r1/readiness.md)、[身份](attachments/834/work-r1/handoff.json)、[源码消费/破坏负控/真实窗口收据](attachments/834/work-r1/834-source-consumer-summary-final.json)、[180项源码资产清单](attachments/834/work-r1/plan834-identity.json)。T-03分型整包事务/资源归属、T-04完整Auto玩法及原3600tick/45spawn/91events、T-05原三mesh模型/图像/实际OGG循环、T-06真实路由/120Hz/取消重置/last owner、T-07精确计量/双游戏独立冷消费、T-08拟议Spec与说明全部核验。必测无skip，开放合同finding/coverage gap/未决问题均为空。
+- [逐AC/V/SD readiness](../attachments/834/work-r1/readiness.md)、[身份](../attachments/834/work-r1/handoff.json)、[源码消费/破坏负控/真实窗口收据](../attachments/834/work-r1/834-source-consumer-summary-final.json)、[180项源码资产清单](../attachments/834/work-r1/plan834-identity.json)。T-03分型整包事务/资源归属、T-04完整Auto玩法及原3600tick/45spawn/91events、T-05原三mesh模型/图像/实际OGG循环、T-06真实路由/120Hz/取消重置/last owner、T-07精确计量/双游戏独立冷消费、T-08拟议Spec与说明全部核验。必测无skip，开放合同finding/coverage gap/未决问题均为空。
 - 内部补强：原始yaw的±PI不能仅以矩阵等价验收；先复现红，再以Auto零轴helper及movement/spawn永久回归修复，重跑原轨迹/图像/当前C窗口与源码消费。RNG流事务、出生顺序、consumer使用前检查与init计数均有永久反例。源/SDK/原golden/容差与写面不变；不调用Rust SquashDriver代跑。
 - 两workspace all-target check与本workspace fmt通过；SDK既有警告146条，未引入本次源码警告。180hash verify通过，唯一树交接时tracked/untracked delivery clean。全部实现只在experimental两workspace，5份Spec为worktree拟议文本；未改root crates/锁、SDK或live ledger。
 - AC-01..07/V-01..09 work pass；AC-08/T-09未执行，AC-09/T-10及完整driver/AGP适用门禁pending。未合入、未归档、保留唯一树，停止实施写入供独立review。既有SDK-MATH-CONVERSION为原非目标，不延期本Plan任务；I1候选仍待最终审定，I2/I3/生产门不外推。
@@ -273,12 +283,18 @@ modify以833未来实际交付版本为来源。该文件尚无canonical时明�
 ### 2026-10-22 new r1：下一份计划草案
 
 - stage: new；plan_id: PLAN-834；plan_revision: 1；status: drafting；current_step: 0/10。
-- 依据canonical模块规范与833合同/独立R1，仅只读查看固定候选Git对象定位缺口；已知原golden3600tick/45spawn/91事件来自文件盘点，不是本轮执行成功。来源指纹见[观察清单](attachments/834/planning/source-observation.json.txt)。
+- 依据canonical模块规范与833合同/独立R1，仅只读查看固定候选Git对象定位缺口；已知原golden3600tick/45spawn/91事件来自文件盘点，不是本轮执行成功。来源指纹见[观察清单](../attachments/834/planning/source-observation.json.txt)。
 - outcome: **blocked（仅实施交接）**：G833未交付、最终来源未冻结、用户只要求提前规划；草案编制完成。next: 833 owner继续原review/修复与验收合入；之后重核/冻结834来源，用户启动时由work进入。
-- 合同T-01..10、AC-01..09、V-01..09、SD-01..04全部待实施；[规划预检](attachments/834/planning/preflight.md)。没有改变833、current Spec或代码，没有建立树/分支/agent，没有运行Cargo/游戏/窗口/音频测试。
+- 合同T-01..10、AC-01..09、V-01..09、SD-01..04全部待实施；[规划预检](../attachments/834/planning/preflight.md)。没有改变833、current Spec或代码，没有建立树/分支/agent，没有运行Cargo/游戏/窗口/音频测试。
 
 ## 10. 待澄清事项
 
-1. work-owned开放阻塞/未决问题：无。G833/GSOURCE/GSTART与T-02真实数学/RNG接法均关闭，来源见最终work收据。
-2. T-10实际环境前置：桌面锁屏使真实窗口点击未进入probe（desktop-diagnosis.txt）；需要解锁并保持桌面解锁后重跑Iced/Surface/IME与双游戏窗口门。其他完整测试/构建与不依赖输入的门继续，不能提前宣称合入或I1交付。
-3. 原生无输入Breakout160帧预算拒绝待解锁重跑归因；若持续则回work并复审，不以环境推测豁免。既有SDK通用数学债务、I2/I3/Shader/CAP/Forge仍在原边界；canonical/ledger与源码目标分支均未发布改变。
+1. 当前无开放合同finding、未决设计或用户决定；历史锁屏/额外输入/预算拒绝的实际重放闭合见最终merge收据，未修改受审实现或放宽验收。
+2. 已合入autographics-dev并投影canonical/ledger；当前仅归档实际状态检查与guard清理待完成，T-10完成前不宣称10/10。
+3. I1实验分母交付；既有SDK通用数学债务、I2/I3/Shader/CAP/Forge生产边界保持。无生产部署/默认入口迁移。
+
+## spec-sync 回写记录
+
+SD-01 auto-source-driver、SD-02新增auto-3d-game-profile、SD-03 integration-contract、SD-04 project/prototype-profile按受审增量与实际完整门证据沉淀；module overview/plans、GOAL-007/008/global overview回写，spec-index.py再生INDEX。源码只在autographics-dev；master知识投影。派生ledger guarded offline v70→71，8项upsert，1138无关条目原字节保持；canonical仍为docs/specs，独立review/merge历史指向已提交证据及本归档。
+
+归档实际状态门修正：Design45背景笔记是主检出既有未跟踪材料，保留其规划取材身份为文字说明；不纳入其他会话WIP，发布知识只链接已提交canonical图形规范。此为归档文档修正，不改受审实现/Spec验收。

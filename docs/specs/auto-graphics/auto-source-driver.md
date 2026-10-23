@@ -1,5 +1,7 @@
 # Auto source driver (PLAN-833)
 
+> Current status (PLAN-834): I1's original real Auto Breakout + Squash denominator is delivered experimentally on autographics-dev. Earlier PLAN-829/830/833 pending statements below record their historical stage. I2 production AutoUI/RQHost migration, I3 Forge/distribution and Shader/CAP remain pending. Master carries knowledge only; graphics source does not enter master.
+
 Status: experimental delivered on autographics-dev; independent R2 pass and frozen T-10 gates passed. Production migration remains pending.
 Source workspace: `experimental/autographics-auto-driver`, bin `autographics-auto-driver`.
 Frozen graphics upstream: `764e87559cff016d9e0d6b2141e5f1f9903398c5`.
@@ -36,3 +38,14 @@ See workspace README, research decision and main Plan work receipts for exact co
 Counters are recorded at the actual TextRenderer camera and glyph-instance write_buffer calls: camera 64B per rendered overlay, plus 48B per glyph when nonempty. Five glyphs therefore add two rewrites / 304B; an otherwise empty Game2d totals three / 368B. Empty glyphs still write the camera (one / 64B); a clean warm frame writes neither. Per-content, aggregate content and runtime totals include these counters once per child render, including shared Portal mounts. Creation/atlas uploads, Iced internal uploads and GPU timestamps retain the existing measurement exclusions.
 
 Delivery provenance: [PLAN-833](../../plans/archive/833-autographics-auto-source-minimal-loop.md), reviewed code 77302d855; production boundaries above remain unchanged.
+
+
+## PLAN-834 delivered explicit profile 2
+
+The unchanged `Session` public SDK slice bridge is reused by `SquashScript`; profile 1 remains the original 60Hz protocol. `--sample squash` explicitly selects `profile() == 2`, never a guess based on payload shape. Source `samples/squash/{math,main}.at` owns initial gameplay state, movement/jump/gravity, seeded spawn decisions, two collision channels, score/death, birth ordering, scene bob/pitch/yaw and screen-exit decisions. The host supplies only explicitly requested raw xorshift64* values and the frozen camera matrix. A random candidate commits to the accepted host stream only with successful whole-packet publication; callback failure closes the modified VM and preserves last-good. No Rust SquashDriver is called by this mode.
+
+`Packet3d` contains session/sequence/profile, explicit resource role, slot/generation/game identity, translation/yaw/pitch/roll/scale, score/dead and four-integer spawn/squash/despawn/death events. `Publication3d` independently runs at producer and actual scene consumer. It enforces monotonic spawn ordinals, tombstones, unique live slots/identities, at-most-one squash, event/state/order agreement and finite positive transforms. All fixed mesh keys, every GPU mesh/store/pipeline, HUD and overlay are checked before consumer publication; a rejected packet changes no accepted scene/HUD/audio. The renderer receives only matrices and fixed original resources, never an instruction to calculate gameplay. A bounded event log consumes every accepted packet, independently of display batch/mount count.
+
+See [auto-3d-game-profile.md](auto-3d-game-profile.md) for the complete staged root API, resource and numerical domain, fixed 120Hz/clock/focus/retry behavior, limits and current work evidence. Mesh upload accounting now includes actual vertex/index initialization writes (not just per-frame pipeline writes). The original TextRenderer 64B + 48B/glyph contract is retained; atlas initialization, owned buffers/textures and decoded music bytes have separate actual-object measurements. Historical PLAN-833 upload totals describe that revision only.
+
+Delivery provenance: [PLAN-834](../../plans/archive/834-autographics-auto-squash-and-dual-game-sdk.md), reviewed ebeab12d2888b9c9fb7e00e3c24479fb3c028011; [full merge receipt](../../plans/attachments/834/merge-r1/receipt.md). Frozen limits and original tolerances remain unchanged.
