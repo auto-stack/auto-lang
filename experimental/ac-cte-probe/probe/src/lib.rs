@@ -13,6 +13,7 @@ pub mod worker;
 
 pub use deck::{parse_deck, Deck};
 pub use driver::{CteDriver, CteStepOutcome};
+pub use observe::{BudgetCaps, ManagedBudget, Partition};
 
 /// FNV-1a 64 (same family as the 798 driver's source snapshots — a local
 /// revision binding hash, not a security hash).

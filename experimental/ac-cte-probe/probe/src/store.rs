@@ -181,18 +181,34 @@ pub fn lookup_frozen(
 /// Publish one envelope (idempotent for identical content; same-key
 /// different-content is the store's Conflict, surfaced as-is).
 pub fn publish_frozen(st: &CteStore, env: &CteExecutedV1) -> Result<String, CteAdmissionError> {
-    let payload = serde_json::to_vec(env).map_err(|e| {
+    let payload = serialize_envelope(env)?;
+    publish_frozen_payload(st, env, &payload)
+}
+
+/// Serialize once — callers that must reserve ledger bytes first use
+/// [`publish_frozen_payload`] with this payload.
+pub fn serialize_envelope(env: &CteExecutedV1) -> Result<Vec<u8>, CteAdmissionError> {
+    serde_json::to_vec(env).map_err(|e| {
         CteAdmissionError::new(
             CteCode::Infra("encode".into()),
             format!("envelope serialization failed: {e}"),
         )
-    })?;
+    })
+}
+
+/// Publish a PRE-SERIALIZED envelope (the caller reserved the ledger
+/// bytes before serializing).
+pub fn publish_frozen_payload(
+    st: &CteStore,
+    env: &CteExecutedV1,
+    payload: &[u8],
+) -> Result<String, CteAdmissionError> {
     st.store
         .put_artifact(PutRequest {
             layer: CTE_FROZEN_LAYER,
             key: envelope_key(&env.request_identity),
             kind: ChunkKind::LayoutData,
-            payload,
+            payload: payload.to_vec(),
             edges: Vec::new(),
             project: Some(st.project.clone()),
         })

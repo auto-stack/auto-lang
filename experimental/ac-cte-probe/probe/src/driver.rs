@@ -62,6 +62,11 @@ pub struct CteStepOutcome {
     pub native_exit: Option<i32>,
     pub wall_ms: f64,
     pub peak_private_bytes: Option<u64>,
+    /// Managed-ledger peak of the live total (hot+staging+av slots).
+    pub managed_peak_bytes: u64,
+    /// The managed hard gate (§7): false on ANY over-cap reservation or
+    /// an over-total peak.
+    pub managed_target_met: bool,
     pub counters: BTreeMap<String, u64>,
     pub spans: BTreeMap<String, f64>,
 }
@@ -83,6 +88,8 @@ impl CteStepOutcome {
             native_exit: None,
             wall_ms: obs.request_wall_ms(),
             peak_private_bytes: None,
+            managed_peak_bytes: 0,
+            managed_target_met: true,
             counters: obs.counters().clone(),
             spans: obs.spans().clone(),
         }
@@ -105,6 +112,15 @@ pub struct CteDriver {
     /// language verdict), publishes nothing, and the flag auto-clears
     /// for the next request.
     cancel: std::sync::Arc<CancelFlag>,
+    /// Managed-budget caps. TEST COUNTER-CONTROL SEAM: production keeps
+    /// the frozen defaults; the resources tier shrinks partitions to
+    /// make over-budget/spike shapes deterministic.
+    caps: crate::observe::BudgetCaps,
+    /// Artifact id of the LAST successful frozen publish on this driver
+    /// (lifecycle tests lease/pin real published entries).
+    last_publish: Option<String>,
+    /// Byte length of the last serialized envelope (spike sizing).
+    last_envelope_bytes: Option<u64>,
 }
 
 impl CteDriver {
@@ -113,6 +129,9 @@ impl CteDriver {
             store: None,
             forbid_av: false,
             cancel: std::sync::Arc::new(CancelFlag::new(false)),
+            caps: crate::observe::BudgetCaps::default(),
+            last_publish: None,
+            last_envelope_bytes: None,
         }
     }
 
@@ -121,6 +140,9 @@ impl CteDriver {
             store: Some(CteStore::open(root, project)?),
             forbid_av: false,
             cancel: std::sync::Arc::new(CancelFlag::new(false)),
+            caps: crate::observe::BudgetCaps::default(),
+            last_publish: None,
+            last_envelope_bytes: None,
         })
     }
 
@@ -129,6 +151,23 @@ impl CteDriver {
     /// hits never execute the AV.
     pub fn set_forbid_av(&mut self, v: bool) {
         self.forbid_av = v;
+    }
+
+    /// The artifact id of the last successful frozen publish (None when
+    /// the last step published nothing — a hit, a diag, or no store).
+    pub fn last_published_artifact(&self) -> Option<&str> {
+        self.last_publish.as_deref()
+    }
+
+    /// Byte length of the last serialized envelope (None when the last
+    /// step published nothing).
+    pub fn last_envelope_bytes(&self) -> Option<u64> {
+        self.last_envelope_bytes
+    }
+
+    /// Test-only: shrink the managed partitions (counter-control seam).
+    pub fn set_managed_caps(&mut self, caps: crate::observe::BudgetCaps) {
+        self.caps = caps;
     }
 
     /// Fire the per-request cancellation flag.
@@ -159,8 +198,9 @@ impl CteDriver {
             return CteStepOutcome::diag(&e, None, &obs);
         }
         let mut obs = Obs::new();
-        let sampler = mempeek::PeakSampler::start(20);
-        let out = self.query_step_inner(deck_text, native_workdir, &mut obs);
+        let mut budget = crate::observe::ManagedBudget::new(self.caps);
+        let sampler = mempeek::PeakSampler::start(1);
+        let out = self.query_step_inner(deck_text, native_workdir, &mut obs, &mut budget);
         let peak = sampler.stop();
         let cancelled = self
             .cancel
@@ -176,6 +216,8 @@ impl CteDriver {
         }
         CteStepOutcome {
             peak_private_bytes: Some(peak),
+            managed_peak_bytes: budget.peak_live_total(),
+            managed_target_met: budget.target_met(),
             ..out
         }
     }
@@ -185,11 +227,32 @@ impl CteDriver {
         deck_text: &str,
         native_workdir: Option<&Path>,
         obs: &mut Obs,
+        budget: &mut crate::observe::ManagedBudget,
     ) -> CteStepOutcome {
+        // The request text itself is the first staging reservation —
+        // BEFORE any parse/clone.
+        if let Err(m) = budget.reserve(
+            crate::observe::Partition::Staging,
+            deck_text.len() as u64,
+            "request deck",
+        ) {
+            let e = CteAdmissionError::new(CteCode::Resource("managed-staging".into()), m);
+            return CteStepOutcome::diag(&e, None, obs);
+        }
         let req = match obs.span("deck_parse", |_| crate::deck::parse_deck(deck_text)) {
             Ok(r) => r,
             Err(e) => return CteStepOutcome::diag(&e, None, obs),
         };
+        // The embedded source dominates the projection scratch — reserve
+        // a small multiple before projecting.
+        if let Err(m) = budget.reserve(
+            crate::observe::Partition::Staging,
+            (req.source.len() as u64).saturating_mul(4),
+            "source projection",
+        ) {
+            let e = CteAdmissionError::new(CteCode::Resource("managed-staging".into()), m);
+            return CteStepOutcome::diag(&e, None, obs);
+        }
         obs.set_counter("query_nodes", req.queries.len() as u64);
         if self.cancel.load(std::sync::atomic::Ordering::Relaxed) {
             let e = CteAdmissionError::new(CteCode::Cancelled, "request cancelled");
@@ -277,7 +340,27 @@ impl CteDriver {
             let cached = match self.store.as_ref() {
                 Some(st) => {
                     match obs.span("cache_lookup", |_| store::lookup_frozen(st, &identity)) {
-                        Ok(opt) => opt,
+                        Ok(opt) => {
+                            // The restored envelope is retained (hot) for
+                            // its freshness check, then released.
+                            if let Some(env) = &opt {
+                                let held = store::serialize_envelope(env)
+                                    .map(|p| p.len() as u64)
+                                    .unwrap_or(0);
+                                if let Err(m) = budget.reserve(
+                                    crate::observe::Partition::Hot,
+                                    held,
+                                    "restored envelope",
+                                ) {
+                                    let e = CteAdmissionError::new(
+                                        CteCode::Resource("managed-hot".into()),
+                                        m,
+                                    );
+                                    return CteStepOutcome::diag(&e, cache_verdict, obs);
+                                }
+                            }
+                            opt
+                        }
                         Err(e) => return CteStepOutcome::diag(&e, cache_verdict, obs),
                     }
                 }
@@ -311,8 +394,9 @@ impl CteDriver {
                         Ok(x) => x,
                         Err(out) => return out,
                     };
+                    budget.settle(crate::observe::Partition::AvSlots, exec.peak_slot_bytes);
                     let env = self.mint_envelope(&req, &identity, &exec, manifest);
-                    if let Err(e) = obs.span("freeze_publish", |_| self.publish_env(&env)) {
+                    if let Err(e) = self.publish_env(&env, budget) {
                         return CteStepOutcome::diag(&e, cache_verdict, obs);
                     }
                     exec.value
@@ -326,8 +410,9 @@ impl CteDriver {
                         Ok(x) => x,
                         Err(out) => return out,
                     };
+                budget.settle(crate::observe::Partition::AvSlots, exec.peak_slot_bytes);
                 let env = self.mint_envelope(&req, &identity, &exec, manifest);
-                if let Err(e) = obs.span("freeze_publish", |_| self.publish_env(&env)) {
+                if let Err(e) = self.publish_env(&env, budget) {
                     return CteStepOutcome::diag(&e, cache_verdict, obs);
                 }
                 exec.value
@@ -424,6 +509,8 @@ impl CteDriver {
             native_exit,
             wall_ms: obs.request_wall_ms(),
             peak_private_bytes: None,
+            managed_peak_bytes: budget.peak_live_total(),
+            managed_target_met: budget.target_met(),
             counters: obs.counters().clone(),
             spans: obs.spans().clone(),
         }
@@ -497,11 +584,33 @@ impl CteDriver {
         }
     }
 
-    fn publish_env(&self, env: &CteExecutedV1) -> Result<(), CteAdmissionError> {
+    fn publish_env(
+        &mut self,
+        env: &CteExecutedV1,
+        budget: &mut crate::observe::ManagedBudget,
+    ) -> Result<(), CteAdmissionError> {
         let Some(st) = self.store.as_ref() else {
             return Ok(());
         };
-        store::publish_frozen(st, env).map(|_| ())
+        // Serialize once; reserve the staging bytes BEFORE the payload
+        // enters ledger terms; publish; release the temporary.
+        let payload = store::serialize_envelope(env)?;
+        if let Err(m) = budget.reserve(
+            crate::observe::Partition::Staging,
+            payload.len() as u64,
+            "envelope encode",
+        ) {
+            return Err(CteAdmissionError::new(
+                CteCode::Resource("managed-staging".into()),
+                m,
+            ));
+        }
+        self.last_envelope_bytes = Some(payload.len() as u64);
+        let out = store::publish_frozen_payload(st, env, &payload).map(|id| {
+            self.last_publish = Some(id);
+        });
+        budget.release(crate::observe::Partition::Staging, payload.len() as u64);
+        out
     }
 }
 

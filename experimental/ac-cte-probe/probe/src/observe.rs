@@ -44,3 +44,135 @@ impl Obs {
             .unwrap_or(0.0)
     }
 }
+
+// ---------------------------------------------------------------------------
+// managed budget ledger (contract-decision §7)
+// ---------------------------------------------------------------------------
+
+/// The three managed-memory partitions, in bytes: hot (retained values /
+/// loaded envelopes), staging (request/encode/decode/index temporaries)
+/// and AV slots (the D-798 execution partition). The frozen total cap is
+/// 32 MiB (8 + 16 + 8).
+#[derive(Clone, Copy, Debug)]
+pub struct BudgetCaps {
+    pub hot: u64,
+    pub staging: u64,
+    pub av_slots: u64,
+}
+
+impl Default for BudgetCaps {
+    fn default() -> Self {
+        BudgetCaps {
+            hot: 8 * 1024 * 1024,
+            staging: 16 * 1024 * 1024,
+            av_slots: 8 * 1024 * 1024,
+        }
+    }
+}
+
+impl BudgetCaps {
+    pub fn total(self) -> u64 {
+        self.hot + self.staging + self.av_slots
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Partition {
+    Hot,
+    Staging,
+    AvSlots,
+}
+
+/// The per-request managed ledger: reservations happen BEFORE the
+/// corresponding clone/decode/encode; releases return bytes when a
+/// temporary dies; the peak of the LIVE total and any rejection feed
+/// `managed_target_met`.
+#[derive(Clone, Debug)]
+pub struct ManagedBudget {
+    caps: BudgetCaps,
+    now: [u64; 3],
+    peak_live_total: u64,
+    rejected: bool,
+}
+
+impl Default for ManagedBudget {
+    fn default() -> Self {
+        ManagedBudget::new(BudgetCaps::default())
+    }
+}
+
+impl ManagedBudget {
+    pub fn new(caps: BudgetCaps) -> Self {
+        ManagedBudget {
+            caps,
+            now: [0; 3],
+            peak_live_total: 0,
+            rejected: false,
+        }
+    }
+
+    fn idx(p: Partition) -> usize {
+        match p {
+            Partition::Hot => 0,
+            Partition::Staging => 1,
+            Partition::AvSlots => 2,
+        }
+    }
+
+    fn touch_peak(&mut self) {
+        let total: u64 = self.now.iter().sum();
+        if total > self.peak_live_total {
+            self.peak_live_total = total;
+        }
+    }
+
+    /// Reserve BEFORE the allocation this covers. Over-cap is a resource
+    /// rejection (recorded — the step can never report target_met).
+    pub fn reserve(&mut self, p: Partition, bytes: u64, what: &str) -> Result<(), String> {
+        let i = Self::idx(p);
+        let cap = match p {
+            Partition::Hot => self.caps.hot,
+            Partition::Staging => self.caps.staging,
+            Partition::AvSlots => self.caps.av_slots,
+        };
+        if self.now[i].saturating_add(bytes) > cap {
+            self.rejected = true;
+            return Err(format!(
+                "managed {what} would push the {:?} partition to {} bytes over the {} byte cap",
+                p,
+                self.now[i].saturating_add(bytes),
+                cap
+            ));
+        }
+        self.now[i] += bytes;
+        self.touch_peak();
+        Ok(())
+    }
+
+    /// Return bytes when a temporary dies (staging scratch, a decoded
+    /// envelope that was consumed, ...).
+    pub fn release(&mut self, p: Partition, bytes: u64) {
+        let i = Self::idx(p);
+        self.now[i] = self.now[i].saturating_sub(bytes);
+    }
+
+    /// Record a FINAL, step-lifetime occupancy (e.g. the AV slot peak
+    /// from the execution trace — already capped by D-798).
+    pub fn settle(&mut self, p: Partition, bytes: u64) {
+        let i = Self::idx(p);
+        if bytes > self.now[i] {
+            self.now[i] = bytes;
+        }
+        self.touch_peak();
+    }
+
+    pub fn peak_live_total(&self) -> u64 {
+        self.peak_live_total
+    }
+
+    /// The hard gate: over-budget (or over-cap peak) steps NEVER report
+    /// target met.
+    pub fn target_met(&self) -> bool {
+        !self.rejected && self.peak_live_total <= self.caps.total()
+    }
+}

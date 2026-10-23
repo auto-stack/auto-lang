@@ -68,6 +68,10 @@ pub struct WorkerOk {
     pub worker_version: String,
     pub engine: String,
     pub steps: Vec<WorkerStepOut>,
+    /// The worker PROCESS's sampled private-bytes peak across the whole
+    /// serve (the 384 MiB worker hard gate's input).
+    #[serde(default)]
+    pub worker_private_bytes_peak: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -91,6 +95,8 @@ pub struct WorkerResponse {
 /// the workspace tests). `native_root` hosts per-request native build
 /// dirs.
 pub fn serve_request(req: &WorkerRequest, native_root: &Path) -> WorkerResponse {
+    // Process-wide peak across the serve (1ms quantization).
+    let sampler = auto_av_probe::mempeek::PeakSampler::start(1);
     let resp = |ok: Option<WorkerOk>, error: Option<WorkerError>| WorkerResponse {
         schema: CTE_WORKER_PROTOCOL.to_string(),
         nonce: req.nonce.clone(),
@@ -178,6 +184,7 @@ pub fn serve_request(req: &WorkerRequest, native_root: &Path) -> WorkerResponse 
             }
         }
     }
+    let peak = sampler.stop();
     resp(
         Some(WorkerOk {
             recipe: req.recipe.clone(),
@@ -189,6 +196,7 @@ pub fn serve_request(req: &WorkerRequest, native_root: &Path) -> WorkerResponse 
                 auto_av_core::contract::ABC_SCHEMA
             ),
             steps: steps_out,
+            worker_private_bytes_peak: peak,
         }),
         None,
     )
