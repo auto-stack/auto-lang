@@ -52,16 +52,24 @@ T-10/T-11 merge owner 受管执行）。证据基线：分支 `codex/plan-816-de
   完整 profile 交付=CLI 二进制+auto-ui-tool+资源/锁（815 形态）；Core 无
   UI 安装可消费（tool-client/tool-execution 两 fixture verify-deps 钉）。
 
-## 4. cli hash/来源读回
+## 4. cli hash/来源读回（B-R1 修复轮重绑）
 
 - worktree `D:/autostack/.wt/lang-816/auto-lang`，分支 `codex/plan-816-dev`；
-  T-06 提交 `7ce08b5cf`、T-07 其后（fixture/driver/777）；R2 修复
-  `e73ec6b06`（T-13 R3 受影响复审对象）。master 祖先链以 merge 冻结门
-  （T-10）核对为准。
-- 关键二进制来源：`target/debug/auto.exe`（薄 CLI）、`target/debug/
-  auto-ui-tool.exe`（工具）——均本树重建；证据文件见 attachments/816/
-  review-t05-r2-fixround/（R2 修复重放，不覆写 R2 冻结收据）与
-  t06-smoke-results.json（T-06 真链冒烟）。
+  B-R1 修复提交 `b61f9cca`（+777 基线提交其后）；T-06 `7ce08b5cf`、T-07
+  `75dc3c058`、R2 修复 `e73ec6b06`。master 祖先链以 merge 冻结门（T-10）
+  核对为准。
+- **当前冻结源重建二进制 hash**（B-R1-01 修复后，旧 exe 证据作废）：
+  `auto.exe` SHA256 `22159f4e19e8d933ca118375d1aa6ab3ba94e8b46e36eef26711c437218dde6e`；
+  `auto-ui-tool.exe` SHA256 `fd50fd144455f56cde6eff5e8f1c725761ae2a13ebb5a4c5c950d47dde423b2f`。
+- locked 构建：`cargo build --locked -p auto -p auto-ui-tools
+  -p auto-tool-execution --bins` 通过（Cargo.lock 一致性）。
+- 证据：attachments/816/review-t05-r2-fixround/（T-05 R2 修复重放）、
+  review-overall-r1-fixround/（B-R1 修复重放：service owned-holder 1.16s
+  exit0、json 单 JSON、watch 故障宿主 101 红、Rust 真链）、
+  t06-smoke-results.json.txt（T-06 真链冒烟）。
+- **service ready 预算语义**（B-R1-07）：`AUTO_SERVICE_READY_TIMEOUT_SECS`
+  单位=秒；默认 600s（覆盖冷构建）；非法值=stderr 具名诊断后按默认继续
+  （显式拒绝会误杀长冷构建；诊断可见）。
 
 ## 5. SD 增量候选（T-10/T-11 受管沉淀；R2 复审指派项已含）
 
@@ -74,15 +82,21 @@ T-10/T-11 merge owner 受管执行）。证据基线：分支 `codex/plan-816-de
 | SD-05（B 余量） | repository-boundaries/generated-ui-distribution.md | 双 profile 发行闭包/工具选项协商消费方式 |
 | （R2 指派） | tool-protocol/project.md + auto-ui-tools/project.md | Capability.options 广播/op_options 单源/选项协商与落点核实（UnsupportedOption/OptionIgnored）/真实产物报告规则（output 锚定实际落点、jet/ark full_project 覆盖） |
 
-## 6. 已知边界/未竟（诚实清单）
+## 6. 已知边界/未竟（诚实清单；B-R1 修复轮刷新）
 
-- T-07 余量：完整/Core profile 独立 fresh/locked/重定位**全矩阵**负控未
-  单独成档（relocatable_delivery/fresh43/locked 已有 R1 证据面；Core 独立
-  构建闭包=T-05 cargo tree 证据）——归最终 review 判定是否补独立档。
-- `service --server rust` 真链端到端（生成+cargo run+READY+排空）未在本
-  轮实机跑（重链；设施原语+READY 解析+vm 轨真链已分别钉）——V-04 完整
-  driver 归最终集成（T-09 复审判据之一）。
-- pump-race 审方探针装配需按 R2 修复后的可失败 reclaim 签名机械适配
-  （R3 复审注记；语义已由永久回归钉）。
+- **发行闭包（B-R1-07 核心余量）**：本 Plan 原文承诺"792/安装manifest
+  含新 CLI/service/protocol/tool 全闭包"。当前事实：792 UI-app
+  DELIVERY_CRATES（26 项）不含 auto/auto-tool-client/auto-man-runtime；
+  完整 CLI 安装 profile 的**独立清单/fresh 全矩阵/首次启动/升级失败**
+  负控未在本轮交付（locked ✅、真链 ✅、工具/facility 两 fixture 闭包 ✅、
+  relocatable_delivery ✅）。**这是范围决策点**：要么补做实际安装清单+
+  fresh 矩阵，要么按阶段合同修订明示延期至 R07 搬仓——需用户裁定，
+  本 handoff 不以 honest_notes 消掉 work 验收。
+- Rust 真链端到端：B-R1 修复轮已实跑（review-overall-r1-fixround/
+  r1fix-rust-chain.json.txt——生成+cargo run+READY+health+api+kill+端口
+  重绑）；Ctrl+C 排空窗语义由审方 service-probe（clean/owned-holder/
+  bad-budget 三态）+F-02 修复重放承载。
+- pump-race 审方探针已按新可失败 reclaim 签名机械适配并重放通过
+  （review-overall-r1/pump-replay-proof.json——审方完成）。
 - 777 ownership 声明路径漂移 warnings（crates/auto-man/src/builder 等
   迁移遗留）——预存在，非本 Plan 引入。
