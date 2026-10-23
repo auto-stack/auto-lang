@@ -49,3 +49,24 @@ I-PROJECT wire 载荷(数据 owner 同源 codec)/framing 预算(u32 大端长度
 单飞工作操作(busy 具名拒绝);能力/版本拒绝先于任何副作用。
 非 Windows 清理不变量(reader 可停/有界 join)为平台承诺,不得以
 Windows 结果外推。（PLAN-815 M815-B，T-09 R2 pass @ 生产冻结位 0f2858e35；终稿正文与证据：attachments/815/handoff.md §规范增量）
+
+## M816-B:执行选项协商三层守门(PLAN-816 增量)
+
+I-TOOL v1 增补 op 级执行选项(serde default,**加法兼容**——缺席=v1 基线):
+`GenerateUi{output, project, delivery_root, strict}` / `RunUi{args}` /
+`BuildUi{strict}`。工具按操作在 `Capability.options` 广播所支持选项;客户端
+`op_options` 单源构造与核对。
+
+旧宿主对新字段静默忽略的兼容缺口由客户端三层守门闭合:
+
+1. **发送前广播核对**:请求选项不在 describe 广播内=具名 `UnsupportedOption`
+   (NOT sent,零副作用,不启动后候选);
+2. **端到端落点核实**:请求 `output`/`delivery_root` 与报告实际落点不符=具名
+   `OptionIgnored`——堵"剥选项中继"(describe 广播拦不住的说谎 MITM 由落点
+   核实兜底);
+3. **工具侧 StrictGuard**:strict 语义经 op 级字段到达工具,per-op 置位/恢复,
+   解析错误非零拒绝(不静默降级 lenient)。
+
+证据:升级前完整工具+选项请求=exit1 NOT sent(adjacent MITM/legacy-proxy/
+剥选项中继三态在案);真请求落点双向对照。候选协议语义不加宽 v1 基线。
+（PLAN-816 M816-B,T-05 R2;终稿证据:attachments/816/handoff.md）

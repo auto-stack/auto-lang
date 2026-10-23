@@ -57,3 +57,14 @@ shell-pack 公开再生器(`generate_shell_pack_lib(_sources)`)同受 canonical
 import 规则约束(生成清单含 auto-ui-runtime+auto-lang-core 双直依赖;
 freshness 字节对拍门 `test_shell_pack_lib_freshness`)——F-815-T09-01 修复
 后为在案规则。（PLAN-815 M815-B，T-09 R2 pass @ 生产冻结位 0f2858e35；终稿正文与证据：attachments/815/handoff.md §规范增量）
+
+## M816-B:op 级执行选项与真实分发(PLAN-816 增量)
+
+- `generate_report_with` 家族真实分发请求选项:792 delivery 独立分支产
+  relocatable manifest;rust/jet/ark/vscode profile 传 `output`+`project`;
+  vue+显式 output=具名拒绝(旧静默忽略已诚实化)。报告 `output_root` 为既有
+  聚合语义(canonical 布局根),实际产物落指定目录——重定时锚点=重定向目录
+  本身(负控:四 profile/delivery/vue 拒绝永久 oracle 在案)。
+- StrictGuard:per-op 置位/恢复,strict 解析错误非零拒绝;工具在
+  `Capability.options` 按操作广播所支持选项(见 tool-protocol M816-B 节)。
+（PLAN-816 M816-B,T-05 R2;终稿证据:attachments/816/handoff.md）

@@ -395,3 +395,23 @@ UI 生产算法(vue/rust_ui/jet/ark/tauri/vscode/shadcn/gallery/wm 等)已全部
 的提示性吞错语义为由掩盖构建失败(R4-06 教训入规:构建失败/缺工具在旧公开
 入口打印提示后 Ok 的返回语义只属 legacy CLI 直跑形态;托管/协议形态为
 具名失败)。（PLAN-815 M815-B，T-09 R2 pass @ 生产冻结位 0f2858e35；终稿正文与证据：attachments/815/handoff.md §规范增量）
+
+## M816-B：单源分层与服务化（PLAN-816 SD-03，T-03）
+
+- **auto-man-runtime 单源分层**：非 UI 模块（Pac/Target/Automan/http_service/
+  builder/git/resolver 等类型与算法）全部迁 `auto-man-runtime`；旧 `auto-man`
+  为门面（`pub use auto_man_runtime::*`，全部历史路径兼容，tests 全绿）。
+  runtime 闭包零 auto-lang/auto-ui-tools/auto-ui-compiler/auto-ui-runtime/iced
+  （语言面=auto-lang-core，进程面=auto-tool-execution；777 域 man-ecosystem，
+  man_to_language 文本候选 119→30 为非 UI 析出直接证据）。旧 auto-man 公开
+  UI 模块保旧名上层 compat（UiOps seam），不进 runtime 正常闭包。
+- **语言 adapter**：runtime/服务经 `auto_lang_core::execute_autovm_with_path`
+  （vm 轨不再经 UI seam）；trans_typescript 以 core 公开面同构包装（与外层
+  auto-lang 包装同构非复制算法）。
+- **Git adapter**：git.rs 四站点迁设施 `git_capture`（显式 cwd/
+  DirectChildOnly/退出具名分类）；`check_detached` 语义=stdout 空=detached
+  （attached/detached × clean/dirty 四状态真实对照）。
+- **UiOps 双槽**：`install` 显式先装先得（后装不覆盖），`install_default` 仅
+  兜底，`current` 显式优先——ctor/默认安装走默认槽，显式注入恒胜出；create_jet
+  等旧默认行为经 compat 自举安装保持。
+（PLAN-816 M816-B；终稿证据：attachments/816/handoff.md）

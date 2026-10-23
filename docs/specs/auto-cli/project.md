@@ -1,9 +1,31 @@
 # auto-cli
 
 > **Status**: active
-> 路径：`crates/auto`  | 技术栈：Rust（clap / auto-lang / auto-man / miette）
+> 路径：`crates/auto`  | 技术栈：Rust（clap / auto-lang-core / auto-man-runtime / auto-tool-client）
 
 主 CLI `auto`：脚本执行（AutoVM）/REPL/`auto build|run|fetch` 等命令的统一入口。
+
+## M816-B：薄 CLI 双形态终态（PLAN-816 SD-02，T-05/T-06）
+
+- **基座单源**：`auto` 依赖基座 = auto-lang-core + auto-man-runtime +
+  auto-tool-client（+auto-tool-protocol/auto-project-model/shell-pack/auto-val）；
+  CLI 只保 clap 解析/路由/显示，业务算法单源在各 owner。语言入口家族 15 入口
+  迁 `auto-lang-core::script_entry` 单源，CLI wrapper 纯委托（保留
+  `run_file_with_args` 的 ui-iced 分岔）。
+- **双形态**：`ui-extra`（default）承载五操作协议面之外的 UI 静态面
+  （ui_gen 注册表/蓝图/watch SFC 再生/gen 等，18 处 UI 调用点门控）；纯 Core
+  profile `--no-default-features --features core` 闭包 normal/build/dev 零 UI
+  实现/零旧大库（cargo tree 禁项 0），UI 能力在 Core 具名失败（不静默回退、
+  不拿缺件形态冒充完整）。
+- **机器输出**：`--format json` 输出单 JSON（模板进度走 stderr，内容语义
+  不变）；CLI 正常关闭 0，错误分类非零。
+- **服务/守护命令**：`serve` 后台自身 spawn=设施 `spawn_detached`；`service
+  --server rust`=设施 owned ProcessTree（合同见
+  [stdlib/design/http-service-deployment.md](../stdlib/design/http-service-deployment.md)
+  M816-B 节）；`watch`=notify watcher+终止原语干净退出（SFC 再生=ui-extra
+  静态面，Core 具名失败）。
+- orphan 命令（cmd_vue/cmd_tauri）保持未挂载裁定，新 flags/退役单独决策。
+- 既有透传/service/JSON/stdlib 合同（下文）全部保持。
 
 ## 目标与范围
 

@@ -180,3 +180,21 @@ deadline，无无限形态；release fixture 排除冷编译；同机单实例�
 - auto-man：[project](../../auto-man/project.md)（进程托管/ready 探针）；
   auto-cli：[project](../../auto-cli/project.md)（`auto service` 入口）
 - Design 33 D2b；债与观察项：KNOWN-DEBT-AND-RISKS.md P736-R1..R5
+
+## M816-B：service rust 轨设施化（PLAN-816 SD-04，T-06）
+
+- `service --server rust` 的 `cargo run` 经 auto-tool-execution owned
+  ProcessTree 承载（Windows CREATE_SUSPENDED 入 Job/Unix pre_exec setpgid，
+  cargo 派生的服务二进制全树归属）；stdout 管道化 reader 逐行转发并观测子进程
+  自打 `AUTO_SERVICE_READY`（不假 ready）；ready 窗口默认 600s、
+  `AUTO_SERVICE_READY_TIMEOUT_SECS` 显式覆盖（单位秒，非法值 stderr 诊断拒绝）；
+  窗口尽=取消树+reader 真停+按源具名失败。stderr 继承（cargo 构建进度语义）。
+- Ctrl+C=设施 terminate 标志 → 先转发 SIGINT 给 owned 组（Unix；子进程汇入
+  自身优雅关闭）→ 有界排空窗（15s）候自然退出 → 超窗 cancel_within 树收尸；
+  端口与自己创建的子进程零残留。
+- `service --server vm` 不变（进程内 VM 大栈线程；与设施 terminate 原语互斥，
+  VM serve_async 自持优雅关闭）；`serve`（daemon）后台自身 spawn=设施
+  spawn_detached（CREATE_NO_WINDOW 透传，协议不动）；`req`=具名管道客户端
+  （不动）。
+- 原有 config 优先级/port=0/ready/exit/端口冲突合同全部保持（§2/§7 不变）。
+（PLAN-816 M816-B；终稿证据：attachments/816/handoff.md）

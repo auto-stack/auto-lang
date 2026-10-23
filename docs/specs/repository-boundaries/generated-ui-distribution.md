@@ -180,3 +180,21 @@ ui_gen_fingerprint,再生成可复验)**;二进制 SHA256 为带 provenance 的
 embed 资源完整盘点(Inter 三字重+OFL/壁纸/桌面壳/gallery/wm/drawlist/
 shadcn/根级输入):
 `docs/plans/attachments/815/t07-acceptance/batch3/resource-audit-closure.md`。（PLAN-815 M815-B，T-09 R2 pass @ 生产冻结位 0f2858e35；终稿正文与证据：attachments/815/handoff.md §规范增量）
+
+## M816-B:profile/发现/SDK 闭包终态(PLAN-816 SD-05,T-04/T-05/T-07)
+
+- **默认完整 profile**:含 `ui-extra` 静态面(五操作外 UI 能力:ui_gen 注册表/
+  蓝图/watch SFC 再生/gen 等)——既有 UI 支持面不缩。**纯 Core profile**
+  (`--no-default-features --features core`)显式区分:无 UI 具名失败,不冒充
+  完整交付。工具发现序见 tool-execution(M816-B):env→workspace→邻接安装,
+  缺件/版本/能力具名拒绝,无静态大库偷偷 fallback。
+- **安装 SDK 闭包**:rust_workspace 安装邻接 sdk 解析步(env→`<exe>/sdk`→
+  CWD 漫步→编译期根);`gen --delivery-root` 默认 producer.source_root=安装
+  sdk(零实施树依赖,显式 env 对照同源正确);安装形态 sdk=crates 全集+lock+
+  根级输入,外部项目可 check/locked 构建。
+- **当期身份**:冻结源 SHA+二进制 SHA256(带 provenance 的参考产物指纹);
+  Unix 执行源变化后二进制身份随之刷新,不以旧快照 hash 充当新发行身份
+  (确定性身份锚仍为 792 delivery-manifest 语义,M815-B 节保持)。
+- DELIVERY_CRATES 表增补(CLI/service/protocol/tool)属发行收口,随 R07 搬仓
+  单独定稿(历史注记保持);正式独立安装包资源布局同。
+（PLAN-816 M816-B;终稿证据:attachments/816/handoff.md）
