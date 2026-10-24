@@ -4352,6 +4352,32 @@
  "modified_at": 1792835257,
  "completed_at": 1792835257
 }
+,
+{
+ "id": "P840-R8-MERGE",
+ "title": "PLAN-840 production repair consolidation",
+ "content": "Within original840, adds bounded Windows file-lock contention handling and releases task-registry shard guards before generator execution. Original graphics8b62db5c and SDK932 pin/support preserved. Canonical and guarded ledger deposit; complete merge/batch/cleanup evidence at docs/plans/attachments/840/phase4/merge-r8/receipt.md; Plan docs/plans/archive/840-autographics-public-behavior-api-and-user-scripts.md",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/stdlib/design/http-stream-lifecycle.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-840",
+  "r8",
+  "phase2+phase4",
+  "reviewed:ba6479da53b7999e490dd0e8ac8d701d5ffe86b2",
+  "source-sha256:cdc8e0459a55478311dcd48201e8e3ac1386381e407cfecf2b83869c932737aa",
+  "source-path:docs/specs/stdlib/design/http-stream-lifecycle.md"
+ ],
+ "created_at": 1792838779,
+ "modified_at": 1792838779,
+ "completed_at": 1792838779
+}
 ],
       "section_type": "Reports",
       "title": "📊 Reports",
@@ -11740,29 +11766,35 @@
           "completed_at": null
         },
         {
-          "id": "P724-7",
-          "title": "外部流生命周期：Rust 客户端迁移落地与协议差异明示（PLAN-724 SD-06）",
-          "content": "PLAN-724 交付落账（stdlib 域现行态投影；canonical 唯源=docs/specs/stdlib/design/http-stream-lifecycle.md，delivery 8a7fa3cee）。支持矩阵增\"Rust 客户端已迁移\"：a2r 两 facade 外部流消费收敛到共享 async 内核（有界队列/背压/期限/真取消/SSE 共享解码），707 状态机/预算/单次终结语义以 Rust 形态同构落地于 http-client-runtime；协议差异明示——VM 轨=park/resume 凭据+引擎泵恢复，Rust 轨=async await/通知等待，两者不共享资源表与许可；非目标项移除 a2r-std 迁移（已完成），保留 auto-man 生成服务任意外部流 handler（另案）。",
-          "tags": [
-            "plan-724",
-            "stdlib",
-            "sd-06",
-            "commit:8a7fa3cee",
-            "docsha:9ea9a622fa76d69c"
-          ],
-          "file": "docs/specs/stdlib/design/http-stream-lifecycle.md",
-          "status": "empty",
-          "depends_on": [],
-          "related": [],
-          "priority": null,
-          "assignee": null,
-          "test_file": null,
-          "milestone": null,
-          "module": null,
-          "created_at": 0,
-          "modified_at": 0,
-          "completed_at": null
-        },
+ "id": "P724-7",
+ "title": "HTTP stream lifecycle and generator task registry ownership",
+ "content": "PLAN-724 交付落账（stdlib 域现行态投影；canonical 唯源=docs/specs/stdlib/design/http-stream-lifecycle.md，delivery 8a7fa3cee）。支持矩阵增\"Rust 客户端已迁移\"：a2r 两 facade 外部流消费收敛到共享 async 内核（有界队列/背压/期限/真取消/SSE 共享解码），707 状态机/预算/单次终结语义以 Rust 形态同构落地于 http-client-runtime；协议差异明示——VM 轨=park/resume 凭据+引擎泵恢复，Rust 轨=async await/通知等待，两者不共享资源表与许可；非目标项移除 a2r-std 迁移（已完成），保留 auto-man 生成服务任意外部流 handler（另案）。\n\nPLAN-840 r8: SSE pull and nested generator driving clone task Arcs and release DashMap shard guards before executing instructions that can insert tasks. Forced shard collisions reproduce old deadlocks; real event values, park/spawn bound, nested value/EOF/task cleanup and adjacent cancel/backpressure controls pass. No timeout relaxation or new polling.",
+ "tags": [
+  "plan-724",
+  "stdlib",
+  "sd-06",
+  "commit:8a7fa3cee",
+  "docsha:9ea9a622fa76d69c",
+  "PLAN-840",
+  "r8",
+  "phase2+phase4",
+  "reviewed:ba6479da53b7999e490dd0e8ac8d701d5ffe86b2",
+  "source-sha256:cdc8e0459a55478311dcd48201e8e3ac1386381e407cfecf2b83869c932737aa",
+  "source-path:docs/specs/stdlib/design/http-stream-lifecycle.md"
+ ],
+ "file": "docs/specs/stdlib/design/http-stream-lifecycle.md",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "milestone": null,
+ "module": null,
+ "created_at": 0,
+ "modified_at": 1792838779,
+ "completed_at": 1792838779
+},
         {
           "id": "P727-1",
           "title": "HTTP 文件传输：可取消、增量、原子提交——stdlib 客户端文件传输契约（PLAN-727 SD-01）",
@@ -15033,8 +15065,8 @@
 },
 {
  "id": "P840-SDK",
- "title": "Language SDK optional Case test boundary",
- "content": "Shared dependency_scan code-line lexical state prevents comment/multiline/triple/backtick/escaped string false use/dep declarations, preserving actual forms and ordered parameters. Exact four-file SDK patch; no Parser/VM/UI/Man dependency expansion.\n\nPLAN-840 phase2: Case/AV/CTE/probe registrations share explicit optional test-cases gates; feature-off tests compile and feature-on retains all original real CTE positive/error/identity controls; no default dependency expansion.",
+ "title": "Language SDK lexical, optional Case and state-file contracts",
+ "content": "Shared dependency_scan code-line lexical state prevents comment/multiline/triple/backtick/escaped string false use/dep declarations, preserving actual forms and ordered parameters. Exact four-file SDK patch; no Parser/VM/UI/Man dependency expansion.\n\nPLAN-840 phase2: Case/AV/CTE/probe registrations share explicit optional test-cases gates; feature-off tests compile and feature-on retains all original real CTE positive/error/identity controls; no default dependency expansion.\n\nPLAN-840 r8: Windows transient create_new namespace errors retry only within the existing deadline; hard errors/timeouts retain best-effort exactly-once closure execution. Actual legacy-delete-pending error5, timeout, release, counter100, stale and atomic-write controls pass. Original lexical and optional Case contracts retained.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15048,19 +15080,21 @@
   "PLAN-840",
   "r6",
   "phase2+phase3",
-  "reviewed:00c688867be040aa0f1d3e88d63b2b18a484f675",
-  "source-sha256:eed602f8e690affd0f0ae0542f17d9ecc43200abfb1b4a78abb862801c9405b2",
+  "r8",
+  "phase2+phase4",
+  "reviewed:ba6479da53b7999e490dd0e8ac8d701d5ffe86b2",
+  "source-sha256:b7538f05f34f4b6706eaeae1e21c3316606e13826409c9e67e939997c553a238",
   "source-path:docs/specs/language-sdk/project.md"
  ],
  "created_at": 1792828504,
- "modified_at": 1792835257,
- "completed_at": 1792835257
+ "modified_at": 1792838779,
+ "completed_at": 1792838779
 }
 ,
 {
  "id": "P840-P2-AUTO-LANG",
- "title": "Auto-lang test timing resource contract",
- "content": "PLAN-840 phase2: Two unchanged real wall-clock oracles use shared phase boundaries and reserve num-test-threads in default/full/t3; all existing aliases/filters, inputs, P95<1000ms and tiling bounds retained. Runner-local pool reservation does not claim external machine isolation.",
+ "title": "Auto-lang timing and fixture resource contracts",
+ "content": "PLAN-840 phase2: Two unchanged real wall-clock oracles use shared phase boundaries and reserve num-test-threads in default/full/t3; all existing aliases/filters, inputs, P95<1000ms and tiling bounds retained. Runner-local pool reservation does not claim external machine isolation.\n\nPLAN-840 r8: Explicit full/t3 configuration replaces daily configuration: existing ffi-dual serial group binds all23 real family IDs in both files. No selected tests/features/layout oracles removed. Original timing shared-boundary and pool-reservation contract retained.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15074,13 +15108,15 @@
   "PLAN-840",
   "r6",
   "phase2+phase3",
-  "reviewed:00c688867be040aa0f1d3e88d63b2b18a484f675",
-  "source-sha256:d79a127d92ba85e9a655da285f2ccf7edbaae2091d415ece1054d1e835871d2c",
+  "r8",
+  "phase2+phase4",
+  "reviewed:ba6479da53b7999e490dd0e8ac8d701d5ffe86b2",
+  "source-sha256:55bef47f3ca6de45f026a5f61ea0ac6d637961d4cea4152271d306e8d891f358",
   "source-path:docs/specs/auto-lang/project.md"
  ],
  "created_at": 1792835257,
- "modified_at": 1792835257,
- "completed_at": 1792835257
+ "modified_at": 1792838779,
+ "completed_at": 1792838779
 }
 ],
       "section_type": "Designs",
@@ -18585,6 +18621,32 @@
  "created_at": 1792835257,
  "modified_at": 1792835257,
  "completed_at": 1792835257
+}
+,
+{
+ "id": "P840-R8-TESTS",
+ "title": "PLAN-840 r8 production regression controls",
+ "content": "Real Windows delayed-delete contention and bounded downgrade; deterministic first-pull and nested task-shard collision counterexamples; exact original SSE oracle preserved.34 scoped cases,200 repetitions and4 frozen review replays pass; full merge/batch evidence recorded separately. R7 full/t3 each23 real FFI cases retained and bound.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/stdlib/design/http-stream-lifecycle.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-840",
+  "r8",
+  "phase2+phase4",
+  "reviewed:ba6479da53b7999e490dd0e8ac8d701d5ffe86b2",
+  "source-sha256:cdc8e0459a55478311dcd48201e8e3ac1386381e407cfecf2b83869c932737aa",
+  "source-path:docs/specs/stdlib/design/http-stream-lifecycle.md"
+ ],
+ "created_at": 1792838779,
+ "modified_at": 1792838779,
+ "completed_at": 1792838779
 }
 ],
       "section_type": "Tests",
@@ -24981,6 +25043,32 @@
  "modified_at": 1792835257,
  "completed_at": 1792835257
 }
+,
+{
+ "id": "P840-R8",
+ "title": "PLAN-840 r8 affected final review PASS",
+ "content": "Frozen ba6479da53b7999e490dd0e8ac8d701d5ffe86b2; r7/r8 accepted and original support retained. Same-session independence limitation explicit. Code/acceptance/Spec pass precedes merge-owned gates; original batch-red artifacts and failed fixture diagnosis retained. No new Plan, ignored test or weakened oracle.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/attachments/840/phase4/review.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-840",
+  "r8",
+  "phase2+phase4",
+  "reviewed:ba6479da53b7999e490dd0e8ac8d701d5ffe86b2",
+  "source-sha256:aa0f41a63cddca4de5b19f415c5952a20f4b67e2c9b13c5b67f16e0f68ae312d",
+  "source-path:docs/plans/attachments/840/phase4/review.md"
+ ],
+ "created_at": 1792838779,
+ "modified_at": 1792838779,
+ "completed_at": 1792838779
+}
 ],
       "section_type": "Reviews",
       "title": "🔍 Reviews",
@@ -24992,5 +25080,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 80
+  "version": 81
 }
