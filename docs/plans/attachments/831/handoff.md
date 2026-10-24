@@ -1,19 +1,19 @@
-# PLAN-831 T-09 最终来源核查与候选快照（R5 结构位分类收口版）
+# PLAN-831 T-09 最终来源核查与候选快照（R6 语义位置优先序收口版）
 
-日期：2026-10-25（T-10 R5 needs_fix 后同组修复轮闭合）；Plan revision：3；scope：work/T-09，非 T-10 独立终审。
+日期：2026-10-25（T-10 R6 needs_fix 后同组修复轮闭合）；Plan revision：3；scope：work/T-09，非 T-10 独立终审。
 
-本快照四份材料的内容哈希及三仓输入清单见 [freeze.json](freeze.json)。历轮：R1 needs_fix（F03/F05 REOPEN、F01 PARTIAL、F-R1-01 OPEN）→R1 修复；R2 needs_fix（F03 progress-only 假绿+jet/ark 必需环境面）→R2 修复+r3 合同修订；R3 needs_fix（V06c 吞真实编译失败、V06e 超时当关闭）→R3 修复；R4 needs_fix（无关路径字节误触发环境延期）→R4 修复；R5 needs_fix（完整模板短语在目录名仍误触发）→R5 结构位判定修复。本轮完成 R3 两子面判据收口 + R4 分类不变量收口 + R5 结构位分类收口（见 §5 R3/R4/R5 表——判定最终改读失败形态的结构位，路径字节不可翻转）。**候选结论：T-09 work 面闭合（review-r5 窄残项 CLOSED），可再送 T-10 独立终审**；merge-owned 门显式 pending。Plan 状态 executing（T-09 完成后由簿记推进 execution_done）。（历史注：R1 时 jet/ark 构建面表述为 named-partial，r3 用户裁定移出合同后该表述不再适用，见 §4 修订记录。）
+本快照四份材料的内容哈希及三仓输入清单见 [freeze.json](freeze.json)。历轮：R1 needs_fix（F03/F05 REOPEN、F01 PARTIAL、F-R1-01 OPEN）→R1 修复；R2 needs_fix（F03 progress-only 假绿+jet/ark 必需环境面）→R2 修复+r3 合同修订；R3 needs_fix（V06c 吞真实编译失败、V06e 超时当关闭）→R3 修复；R4 needs_fix（无关路径字节误触发环境延期）→R4 修复；R5 needs_fix（模板短语路径假绿）→R5 结构位修复；R6 needs_fix（缺环境被路径数字误红=修复回归）→R6 语义位置优先序修复。本轮完成 R3..R6 判据收口链（§5 各轮表——判定最终为语义位置优先序：缺席句头优先+执行码仅从原因区提取，路径字节不可翻转任一方向，R5 假绿与 R6 假红双向封闭）。**候选结论：T-09 work 面闭合（review-r6 误红回归 CLOSED），可再送 T-10 独立终审**；merge-owned 门显式 pending。Plan 状态 executing（T-09 完成后由簿记推进 execution_done）。（历史注：R1 时 jet/ark 构建面表述为 named-partial，r3 用户裁定移出合同后该表述不再适用，见 §4 修订记录。）
 
-## 1. 唯一来源与可重建输入（R5 终态）
+## 1. 唯一来源与可重建输入（R6 终态）
 
 | 角色 | 权威树 / 分支 | 完整 SHA |
 |---|---|---|
-| 语言实现 | `D:/autostack/.wt/lang-831/auto-lang` / `codex/plan-831-dev` | `c79d343111b85314b1412570d94ae7f26a1605cf` |
+| 语言实现 | `D:/autostack/.wt/lang-831/auto-lang` / `codex/plan-831-dev` | `2a3e2c4d66490f04f7218688351682b0989ace72` |
 | UI 实现 | `D:/autostack/.wt/lang-831/auto-ui` / `codex/plan-831-dev` | `425088520e402b1efae9479b9d0b5b3d44a56df4` |
 | down 只读依赖 | `D:/autostack/.wt/lang-831/auto-down` / detached | `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` |
 | 搬迁比较基线 | 语言仓 T-04 source | `e199caf8a6cb369b320c02ca144c1e88b7bcef8f` |
 
-两实现树 tracked `git status --porcelain` 干净（lang 唯一 untracked=compile-probe 本地 Cargo.lock，可再生不入库；F05 admission 已明确 untracked 可再生产物不判脏）。默认分支未推进；未修改 canonical Specs 或 ledger；本轮修复全部在 plan 分支提交（**R1 新增**：lang 09307c05e+fe8f3090a、UI 4250885；**R2 新增**：lang 112167c58+2d47e236e；**R3 新增**：lang 3064b3465；**R4 新增**：lang 538e3b8fe；**R5 新增**：lang c79d34311（V06c 分类改结构位判定）。完整提交链见 git log）。
+两实现树 tracked `git status --porcelain` 干净（lang 唯一 untracked=compile-probe 本地 Cargo.lock，可再生不入库；F05 admission 已明确 untracked 可再生产物不判脏）。默认分支未推进；未修改 canonical Specs 或 ledger；本轮修复全部在 plan 分支提交（**R1 新增**：lang 09307c05e+fe8f3090a、UI 4250885；**R2 新增**：lang 112167c58+2d47e236e；**R3 新增**：lang 3064b3465；**R4 新增**：lang 538e3b8fe；**R5 新增**：lang c79d34311；**R6 新增**：lang 2a3e2c4d6（V06c 语义位置优先序，修缺环境误红回归）。完整提交链见 git log）。
 
 本期渠道仍是本地 Git commit/源码包。重新消费本候选必须 checkout 上表 SHA 并核对各锁与源码包哈希；收据身份经 [admission](#5-本轮发现及闭合条件) 核对——R1 起 admission 含 tracked 脏树拒绝（同 HEAD 源码改动后旧收据不可采信），四收据均于上表身份 admitted（RCPT-ID/RCPT-ID-F 双 pass，"tracked 树干净"入收据明细）。尚未生成正式 `ui-release.md`，不得称已发布，未推远端。
 
@@ -34,13 +34,13 @@
 | V-05 / AC-05 | pass（历史+终态） | T-02 保全载荷不变；drill 终态 19/19（R1 重跑收据）；真实仓 prepared/land/switch 归 T-11 合同窗口。 |
 | V-06 / AC-06 | **pass** | 正典 ID 对拍不变（t 面三共享包逐 ID 相等、tu 863=863 ID 级差集空——865/867 对账：865=基线行数，867 叙述误计已撤回，当前侧 @4250885 实测 863 行）；ti 28/28、tn 门可列举；777 双根围栏；跨仓编排入口；V06e vm 真实运行=子应用服务级观测（Launched+探针+收口，见 §5 F03-B）。 |
 
-fixture 全族 R5 终态：`--phase source-switched` = **46 pass/0 fail/1 recorded/1 pending**（收据 t09-r5-all.json；recorded=SRC-P4c 清洁面复核；pending=TYP-PROBE 零 cargo 缺省——专项 24/24 在案）；selftest 全过（含 S17 五臂）。
+fixture 全族 R6 终态：`--phase source-switched` = **46 pass/0 fail/1 recorded/1 pending**（收据 t09-r6-all.json；recorded=SRC-P4c 清洁面复核；pending=TYP-PROBE 零 cargo 缺省——专项 24/24 在案）；selftest 全过（含 S17 五臂）。
 
 ## 4. 真实支持面与发行边界（R1 终态）
 
 | 面 | 终态证据 |
 |---|---|
-| UI 源码组 | R5 终源 5/5（fresh/locked/整组重定位/隔离 SDK）；组布局成立 |
+| UI 源码组 | R6 终源 5/5（fresh/locked/整组重定位/隔离 SDK）；组布局成立 |
 | 外部 Rust bundle | V01/V02 终源绿 + V06a 真实窗口 run；api-gen 双根修复保持 |
 | Vue | V05e 生成+资源字节=源；V06c vue completed（真实 pnpm 链，R2/r3 重跑）；V06d 可区分取消恢复 oracle PASS（19s） |
 | VM/Iced | **V06e R2 终态：Launched(url) 子应用事件（vm-session MCP 实际端口）+端点探活 HTTP 200+协议 cancel 回执+终态 cancelled+同端点收口 ConnectionRefused(10061) 独立观测+宿主 describe 复验**（真实链 PASS 3s）；三族寿命冒烟（窗口/终端/媒体）沿用 |
@@ -51,7 +51,13 @@ fixture 全族 R5 终态：`--phase source-switched` = **46 pass/0 fail/1 record
 
 ## 5. 本轮发现及闭合条件
 
-### R5 轮（review-r5 窄残项 CLOSED）
+### R6 轮（review-r6 误红回归 CLOSED）
+
+| ID | 严重度 | 闭合证据（R6 修复轮） |
+|---|---|---|
+| F831-09-03 A 误红回归（缺环境被路径数字误判真实失败） | P1 | **CLOSED**（lang 2a3e2c4d6）：R5 的执行码正则在整段文本先于缺席句头执行——真缺 wrapper（未执行构建）时路径中的 "exited 1" 被当真实退出码，r3 获准延期被误红。修复为**语义位置优先序**：①缺席句头优先（startswith 位置 0 命中即缺环境，句中/尾部路径字节含 exit 样数字一律不参与）；②执行码仅从**原因区**（首个路径承载尾标记 try manual/missing at/— 之前）提取，仅 9009 获准延期；③未知保守红——R5 假绿与 R6 假红**双向封闭**。**验证**：R6 replay（真实缺 wrapper+目录名含 exited 1）两分类恢复绿 exit 0；R5/R4 真实 exit 1 反例保持红；R3 build-matrix 五控制保持；兄弟控制（未知形态 exited 9009 仅在尾区→红，r6-sibling-check.py）；真实链 V06c=jet/ark env-gated+required 全 completed（39/39）。 |
+
+### R5 轮（review-r5 窄残项 CLOSED，历史）
 
 | ID | 严重度 | 闭合证据（R5 修复轮） |
 |---|---|---|
