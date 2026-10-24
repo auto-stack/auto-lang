@@ -260,7 +260,7 @@ final review后merge冻结提交统一跑完整locked driver/AGP test+build、�
 
 ## 8. 执行步骤
 
-当前archived11/12；T01/01a/01b/T02..09关闭。T10完整门/实际源码与SDK合入/规范台账/归档提交/fresh guard移树与删分支已完成；仅840到期主检出批量回归及最终跟踪提交pending。历史状态不覆盖本段。
+r2阶段历史检查点（并非最终状态）：当时archived11/12，T01/01a/01b/T02..09关闭；T10完整门/源码与SDK合入/规范台账/归档提交/fresh guard移树与删分支已完成，当时仅840到期主检出批量及最终跟踪提交pending。后续Phase2/3/4已补齐，最终为r8 archived/delivered26/26，见文末及phase4/merge-r8/receipt.md。
 
 | task_id | owner_stage | 依赖 | 实际触点／新路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -278,6 +278,8 @@ final review后merge冻结提交统一跑完整locked driver/AGP test+build、�
 | T-10 | [✅] merge | T-09 pass | 冻结完整门→autographics-dev；主检出知识/ledger/archive/guard | AC-10实际门/落点/沉淀/清理/到期，改代码先受影响复审再重冻，不提前交付 |
 
 ## 9. 复审记录
+
+2026-10-24：stage:review | review_scope:final historical delivery/closeout | PLAN-840:r8 | outcome:**pass** | inspected_main:e30b9051cf68639f4278dc2d41f7c168ffc11ae9 | original_reviewed:1f19395254d7e676bd188e43e3d8f734d57aaa12 / graphics8b62db5c | repair_reviewed:ba6479da53b7999e490dd0e8ac8d701d5ffe86b2 / delivery53298cd27 | same-conversation limitation explicitly disclosed；无另起agent/model/context隔离，不冒称新完整测试 | 原始63门/producer与consumer各13native全部业务断言复核，AC01..23/V01..10逐项通过；冻结t5345/tv163/tt5717/tb5316与主检出tf6291/tt5717/tb5316完整raw记录核销；源树/六锁/patch-id/ledger78→81及20来源hash、归档26/26与两树/分支实际消失均核实 | F-840-C01记录歧义已关闭：§8/§10旧“当前11/12”明确标为r2历史检查点，合同/revision/旧证据不变 | pending_closeout_gates:none；open_findings:none | evidence:[最终逐项核验](../attachments/840/postdelivery-review/review.md)、[自动核销](../attachments/840/postdelivery-review/verified-closeout.json.txt) | next:none，保持archived/delivered26/26，不重新开启/合入/清理。
 
 2026-10-24：stage:merge | PLAN-840:r2 | outcome:in_progress | checkpoint:cleaned | source:autographics-dev@8b62db5cb；SDK master0676dc133；archive/knowledge commit e6371606b | final-guard/down-final-guard均clean，lang840两Git树及plan-840-dev开发分支已实际移除（落地祖先验证+expected-SHA CAS）；独立standalone消费者/复现文件保留，组目录非空不删。实际安装入口debug auto.exe已重建并经真实VM注释/backtick假依赖烟测通过；其他production artifacts按路径/构建日期观察，未冒称部署。仅840 modulo5批量回归及最终状态提交待完成，T10仍pending；见[清理](../attachments/840/merge-r1/cleanup-operations.json.txt)与[产物](../attachments/840/merge-r1/production-artifacts.json.txt)。
 
@@ -305,7 +307,7 @@ final review后merge冻结提交统一跑完整locked driver/AGP test+build、�
 
 ## 10. 待澄清事项
 
-当前无待决产品/批准问题。F-840-R1-01..03已完成工作修复及定向验证，T03/T05/T08重新关闭，见work-r3-repair；1f1939525受影响复审已pass，详见review-r2；当前reviewed11/12，完整合入门禁尚未执行，须merge阶段通过后才交付。
+r2受影响复审结束时的历史检查点：当时无待决产品/批准问题，F-840-R1-01..03已修复，T03/T05/T08关闭，见work-r3-repair；1f1939525复审pass，详review-r2；当时reviewed11/12、完整合入门仍待merge。该pending已由后续完整合入与r8最终批量/归档/清理关闭；当前无待决问题，最终archived/delivered26/26。
 
 用户已授权r2的SDK扫描修复、精确依赖重冻及继续实施，无待决产品问题。原支持面/AC-01..10/V-01..10/SD-01..04保持；新增SDK规范增量SD-05。若发现超出此扫描修复的语法/VM/架构变更，再据具体证据修订，不能静默缩减支持。
 
