@@ -4326,6 +4326,32 @@
  "modified_at": 1792828504,
  "completed_at": 1792828504
 }
+,
+{
+ "id": "P840-R6-MERGE",
+ "title": "PLAN-840 in-plan repair consolidation",
+ "content": "Feature boundary, timing measurement/resource and synchronous fixture completion repairs preserve original840 delivery and support. Canonical source and guarded projection accompany linear landing; full merge/batch, archival and cleanup evidence: docs/plans/attachments/840/phase3/merge-r6/receipt.md. Archive: docs/plans/archive/840-autographics-public-behavior-api-and-user-scripts.md",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-ui-runtime/project.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-840",
+  "r6",
+  "phase2+phase3",
+  "reviewed:00c688867be040aa0f1d3e88d63b2b18a484f675",
+  "source-sha256:a83c5df57846fa1b23fa19bbe1b3c0f947a28af7d16b50d263d236eb3e82baa7",
+  "source-path:docs/specs/auto-ui-runtime/project.md"
+ ],
+ "created_at": 1792835257,
+ "modified_at": 1792835257,
+ "completed_at": 1792835257
+}
 ],
       "section_type": "Reports",
       "title": "📊 Reports",
@@ -14482,24 +14508,30 @@
           ]
         },
         {
-          "id": "P814-UIR",
-          "title": "auto-ui-runtime UI 运行/renderer/宿主域独立包（PLAN-814 M814-B）",
-          "content": "原 auto-lang src/ui/ 全树~20.4万行+host_adapters+back_proxy+assets+UI动态构建管线单源迁入;DAG: UIR→{SDK,UIC}不反依赖旧包,不被SDK/compiler反依赖;旧auto-lang依赖边default-features=false(no-UI缺席语义);feature面ui/ui-interpreter/ui-iced/ui-headless等与旧组合逐项保持(R9-F03六形态0错);装配单点install_ui_host_capabilities+零inventory submit(r3登记权);777 ui_to_language=0围栏;canonical import与生成工程双直依赖合同;并集归属:app_registry/i18n_lookup单源compiler+本包pub use。完整规则见 docs/specs/auto-ui-runtime/project.md",
-          "status": "verified",
-          "depends_on": [],
-          "related": [],
-          "priority": null,
-          "assignee": null,
-          "test_file": null,
-          "file": "docs/specs/auto-ui-runtime/project.md",
-          "milestone": null,
-          "module": null,
-          "tags": [
-            "PLAN-814:r3",
-            "source_commit:93a25c924",
-            "phase:M814-B"
-          ]
-        },
+ "id": "P814-UIR",
+ "title": "AutoUI synchronous fixture completion",
+ "content": "原 auto-lang src/ui/ 全树~20.4万行+host_adapters+back_proxy+assets+UI动态构建管线单源迁入;DAG: UIR→{SDK,UIC}不反依赖旧包,不被SDK/compiler反依赖;旧auto-lang依赖边default-features=false(no-UI缺席语义);feature面ui/ui-interpreter/ui-iced/ui-headless等与旧组合逐项保持(R9-F03六形态0错);装配单点install_ui_host_capabilities+零inventory submit(r3登记权);777 ui_to_language=0围栏;canonical import与生成工程双直依赖合同;并集归属:app_registry/i18n_lookup单源compiler+本包pub use。完整规则见 docs/specs/auto-ui-runtime/project.md\n\nPLAN-840 phase2: Test-only shared completion driver uses real render/demand, Init/CPU/I/O pumping and a bounded deadline before geometry assertions. All15 caller oracles retained; original production-helper early-exit control and new multi-slice/deadline controls remain. Production scheduler/helper unchanged; D-762-1 remains separately authorized debt.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-ui-runtime/project.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-840",
+  "r6",
+  "phase2+phase3",
+  "reviewed:00c688867be040aa0f1d3e88d63b2b18a484f675",
+  "source-sha256:a83c5df57846fa1b23fa19bbe1b3c0f947a28af7d16b50d263d236eb3e82baa7",
+  "source-path:docs/specs/auto-ui-runtime/project.md"
+ ],
+ "created_at": 1792835257,
+ "modified_at": 1792835257,
+ "completed_at": 1792835257
+},
         {
           "id": "P814-CMP-TYPING",
           "title": "比较位值投影完整表达式类型感知（PLAN-814 R9-R14 终局）",
@@ -15001,8 +15033,8 @@
 },
 {
  "id": "P840-SDK",
- "title": "Language SDK dependency lexical scan",
- "content": "Shared dependency_scan code-line lexical state prevents comment/multiline/triple/backtick/escaped string false use/dep declarations, preserving actual forms and ordered parameters. Exact four-file SDK patch; no Parser/VM/UI/Man dependency expansion.",
+ "title": "Language SDK optional Case test boundary",
+ "content": "Shared dependency_scan code-line lexical state prevents comment/multiline/triple/backtick/escaped string false use/dep declarations, preserving actual forms and ordered parameters. Exact four-file SDK patch; no Parser/VM/UI/Man dependency expansion.\n\nPLAN-840 phase2: Case/AV/CTE/probe registrations share explicit optional test-cases gates; feature-off tests compile and feature-on retains all original real CTE positive/error/identity controls; no default dependency expansion.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15014,14 +15046,41 @@
  "module": null,
  "tags": [
   "PLAN-840",
-  "r2",
-  "reviewed:1f19395254d7e676bd188e43e3d8f734d57aaa12",
-  "source-sha256:77356b051f1026c28e71c9d75df7a5a542df8949646496b586829ec71eef34f1",
+  "r6",
+  "phase2+phase3",
+  "reviewed:00c688867be040aa0f1d3e88d63b2b18a484f675",
+  "source-sha256:eed602f8e690affd0f0ae0542f17d9ecc43200abfb1b4a78abb862801c9405b2",
   "source-path:docs/specs/language-sdk/project.md"
  ],
  "created_at": 1792828504,
- "modified_at": 1792828504,
- "completed_at": 1792828504
+ "modified_at": 1792835257,
+ "completed_at": 1792835257
+}
+,
+{
+ "id": "P840-P2-AUTO-LANG",
+ "title": "Auto-lang test timing resource contract",
+ "content": "PLAN-840 phase2: Two unchanged real wall-clock oracles use shared phase boundaries and reserve num-test-threads in default/full/t3; all existing aliases/filters, inputs, P95<1000ms and tiling bounds retained. Runner-local pool reservation does not claim external machine isolation.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-lang/project.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-840",
+  "r6",
+  "phase2+phase3",
+  "reviewed:00c688867be040aa0f1d3e88d63b2b18a484f675",
+  "source-sha256:d79a127d92ba85e9a655da285f2ccf7edbaae2091d415ece1054d1e835871d2c",
+  "source-path:docs/specs/auto-lang/project.md"
+ ],
+ "created_at": 1792835257,
+ "modified_at": 1792835257,
+ "completed_at": 1792835257
 }
 ],
       "section_type": "Designs",
@@ -18500,6 +18559,32 @@
  "created_at": 1792828504,
  "modified_at": 1792828504,
  "completed_at": 1792828504
+}
+,
+{
+ "id": "P840-R6-TESTS",
+ "title": "PLAN-840 in-plan repair controls",
+ "content": "Feature-off/on and all original CTE controls retained; unchanged census/real IPC30-sample oracles with shared stage marks; all48 affected UI cases and4 actual RQHost publication/lifecycle controls pass, including deterministic multi-slice completion and pending-deadline negative controls. Original geometric/interaction/window-exit assertions retained; real server pending publication replaces fake endpoint setup. Full frozen and main batch results are in the final closeout receipt.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-ui-runtime/project.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-840",
+  "r6",
+  "phase2+phase3",
+  "reviewed:00c688867be040aa0f1d3e88d63b2b18a484f675",
+  "source-sha256:a83c5df57846fa1b23fa19bbe1b3c0f947a28af7d16b50d263d236eb3e82baa7",
+  "source-path:docs/specs/auto-ui-runtime/project.md"
+ ],
+ "created_at": 1792835257,
+ "modified_at": 1792835257,
+ "completed_at": 1792835257
 }
 ],
       "section_type": "Tests",
@@ -24870,6 +24955,32 @@
  "modified_at": 1792828504,
  "completed_at": 1792828504
 }
+,
+{
+ "id": "P840-R6",
+ "title": "PLAN-840 r6 affected final review PASS",
+ "content": "Frozen00c688867: added Phase2/3 within existing840 by explicit user request, no new Plan. AC17..19 and runtime Spec pass; Phase2 feature/meter evidence retained after unchanged-source checks. Original support preserved; same-session review limitation disclosed; merge gates separately owned.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/attachments/840/phase3/review.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-840",
+  "r6",
+  "phase2+phase3",
+  "reviewed:00c688867be040aa0f1d3e88d63b2b18a484f675",
+  "source-sha256:02dd369f29f08ba227b9c9694c87181ba282a2fef9e1f4eec802870f402dabb4",
+  "source-path:docs/plans/attachments/840/phase3/review.md"
+ ],
+ "created_at": 1792835257,
+ "modified_at": 1792835257,
+ "completed_at": 1792835257
+}
 ],
       "section_type": "Reviews",
       "title": "🔍 Reviews",
@@ -24881,5 +24992,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 79
+  "version": 80
 }
