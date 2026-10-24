@@ -37,3 +37,10 @@ test-group = "mem-md"
 [[profile.default.overrides]]
 filter = 'test(=tests::plan716_supply_probes::plan716_supply::diff_window_census) | test(=tests::probe_adapter_turnaround_ipc::probe_adapter_turnaround_ipc_hard_gate_p95)'
 threads-required = "num-test-threads"
+
+# PLAN-840 Phase 2: --config-file replaces the daily configuration entirely.
+# Bind the already-declared group, mirroring the daily shared-fixture policy.
+# Defining max-threads without assigning ffi_dual tests provides no isolation.
+[[profile.default.overrides]]
+filter = "test(ffi_dual)"
+test-group = "ffi-dual"

@@ -102,3 +102,8 @@ autodown/ui-headless/code-editor 等）在此转发。
 相邻分段共享同一边界，调度停顿也归入某一阶段。完整 wall 与三段之和仅允许
 微秒取整误差（至多 2us），不能由分别调用 elapsed()/now() 留下未测量间隙。
 原真实路径、P95 与窗口 tiling 断言保持；资源隔离不替代计量正确性。
+
+共享 methods-pack fixture 的 ffi_dual 测试沿用既定 max-threads=1 串行资源
+约定；daily/full/t3 均须实际把整族绑定至 ffi-dual 组。显式 config-file
+整体替换配置，仅声明空组不产生隔离；不改变包布局、features 反例、输入、
+测试选择或值断言。该约定约束测试共享资源，不宣称修复生产ABI并发语义。
