@@ -3,7 +3,7 @@ plan_id: PLAN-840
 status: reviewed
 completion_kind: phase1_delivered
 feature_name: AutoGraphics最小公共行为API与用户Auto脚本
-plan_revision: 5
+plan_revision: 6
 author: [Codex]
 created_at: 2026-10-24
 updated_at: 2026-10-24
@@ -362,4 +362,16 @@ V17：原plan498两失败与484/492/499/536共享完成态调用族；V18：437�
 当前executing17/22，Phase2三项修复与原支持面保留；当前复审只覆盖r4既定写面，r5新增载体变更须T-20复审后再跑受影响完整门。不新建846或其他计划。
 
 
-r5 Phase3 work/受影响final review pass：冻结49261f09e747e09a1194726e8a219e38cd1de834；48/48定向通过，15处原assert/逻辑核验保持，生产helper原样。详[关闭表](../attachments/840/phase3/work-closure.md)、[最终受影响复审](../attachments/840/phase3/review.md)。同会话审查限制披露；当前reviewed20/22，T-10/T-16仍待新冻结完整门与主检出批量收尾。
+r5 Phase3 work/受影响final review pass：冻结49261f09e747e09a1194726e8a219e38cd1de834；48/48定向通过，15处原assert/逻辑核验保持，生产helper原样。详[关闭表](../attachments/840/phase3/work-closure.md)、[r5最终受影响复审历史](../attachments/840/phase3/review-r5.md)。同会话审查限制披露；当前reviewed20/22，T-10/T-16仍待新冻结完整门与主检出批量收尾。
+
+
+### r6 / Phase 3 扩展同类“生产者完成再断言”的测试设置修复
+
+r5 bare t5342/5342通过；tt在RQHost末窗测试翻红（实际窗口全关闭后仍有待定，原断言保持），非Init修复回退。原测试持pending锁调用adopt，然后手工插入客户端endpoint；真实服务器peer仍由线程异步发布，可能晚于clear到达。生产退出分支正确拒绝未清空pending，不能改生产逻辑掩盖错误载体。
+
+同一Phase3新增唯一测试触点 `crates/auto-ui-runtime/src/ui/desktop_protocol/rqhost.rs::tests::last_window_close_exits_daemon`：实际adopt一次，持有客户端而不发Hello，等真实服务端gamma入pending（复用现有5s采纳完成界），核验唯一1条，再驱动原双窗/有待定/末窗/boot负控。去掉错误手塞peer，不改RQHost协议、rq_update或生产helper。AC17/18扩展为“Init与真实采纳完成态设置后才断言”；V17追加此真实管道病例及并发采纳/VM fork/rendezvous相邻合法控制；SD-P3-01补充该端点/发布规则。原几何/退出assert与性能阈值不改，支持面保持，不新建计划。
+
+r5复审对原Init写面仍有据，新RQHost修复按T-18/19/20重新执行/定向检查/冻结复审；完整门pending。前序失败/取消数原样保留，不记成通过。
+
+
+r6受影响work/final review pass：冻结00c688867be040aa0f1d3e88d63b2b18a484f675；RQHost真实管道4/4通过，原生产逻辑及窗口/停机assert保持，新增唯一pending控制防止重复设置。详[关闭表](../attachments/840/phase3/work-closure-r6.md)与[最终复审](../attachments/840/phase3/review.md)。当前reviewed20/22，完整新冻结门和主检出批量仍merge-owned pending。
