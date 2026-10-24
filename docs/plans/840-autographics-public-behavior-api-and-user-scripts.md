@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-840
-status: execution_done
+status: reviewed
 feature_name: AutoGraphics最小公共行为API与用户Auto脚本
 plan_revision: 2
 author: [Codex]
 created_at: 2026-10-24
 updated_at: 2026-10-24
-current_step: 10
+current_step: 11
 total_steps: 12
 depends_on: [PLAN-839]
 supersedes_spec_components:
@@ -31,7 +31,7 @@ affects: [auto-graphics, authoring-experimental, user-behavior-api]
 
 本Plan冻结一个有限实验接口`autographics.behavior/1`，首版面向既有节点的局部平移、可见性、层级查询及输入；不同时扩物理/资源/动态结构。提供两个仓外可运行的不同用户行为示例，验证同一runner二进制可复用。
 
-当前r2：用户明确授权先修复SDK依赖扫描对注释与字符串的误判，更新依赖冻结后继续840，原支持面/AC/V不缩减。r1历史已保存在attachments/840/revision-r2/plan-r1.md及work-r1证据。R1三项finding已在1f19395254d7e676bd188e43e3d8f734d57aaa12完成工作修复，T-03/T-05/T-08重新关闭，当前execution_done10/12，待受影响独立复审；SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21保持。T-09独立review、T-10冻结合入仍各自负责，不能把SDK修复提交冒称完整交付。
+当前r2：用户明确授权先修复SDK依赖扫描对注释与字符串的误判，更新依赖冻结后继续840，原支持面/AC/V不缩减。r1历史已保存在attachments/840/revision-r2/plan-r1.md及work-r1证据。R1三项finding已在1f19395254d7e676bd188e43e3d8f734d57aaa12完成工作修复，T-03/T-05/T-08重新关闭，当前reviewed11/12，受影响复审通过、完整merge门pending；SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21保持。T-09独立review、T-10冻结合入仍各自负责，不能把SDK修复提交冒称完整交付。
 
 ## 1. 目标
 
@@ -228,7 +228,7 @@ final review后merge冻结提交统一跑完整locked driver/AGP test+build、�
 
 ## 8. 执行步骤
 
-当前execution_done10/12，R1三项finding的工作修复及相邻控制通过，见[修复关闭表](attachments/840/work-r3-repair/closure.md)。T-03/T-05/T-08工作重新关闭，其他有界结果按未变输入/实际guest身份复用；旧review-r1保留为a1da1a00b的历史needs_fix，不覆盖新提交。T-09 pass为reviewed11/12（完整merge门pending）；T-10实际完成才交付12/12。
+当前reviewed11/12，R1三项finding的受影响复审及相邻控制通过，见[修复关闭表](attachments/840/work-r3-repair/closure.md)。T-03/T-05/T-08工作重新关闭，其他有界结果按未变输入/实际guest身份复用；旧review-r1保留为a1da1a00b的历史needs_fix，不覆盖新提交。T-09 pass为reviewed11/12（完整merge门pending）；T-10实际完成才交付12/12。
 
 | task_id | owner_stage | 依赖 | 实际触点／新路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -242,10 +242,12 @@ final review后merge冻结提交统一跑完整locked driver/AGP test+build、�
 | T-06 | [✅] work | T-05 | Panel/Host正式source UI、bin --behavior/路径准入、双用户示例目录 | V-06及V-07命令/示例部分通过，源仅Editing选择、Save边界/相对root/修源恢复明确；仓外/OS完整证据T-07关；AC-05, AC-06 |
 | T-07 | [✅] work | T-06 | 新behavior-check/aggregate/实际GPU反控、仓外Move/Patrol与source文件修改 | V-07/09同runner/无重编译/搬迁/OS全正反/partial/原生恢复关闭，无环境gap；AC-05, AC-06, AC-08 |
 | T-08 | [✅] work | T-07 | source/独立consumer/owner/计量，README/new research/user-behavior-handoff.md及树内Spec proposal | [x] F-840-R1-03修复：Spec SD01..05和8个canonical目标版本/hash核对通过；源码299/SDK681/两锁原样及定向独立consumer通过，完整合入档仍pending。 原关闭条件：V-01/08/10、全work case/定向check/fmt完成，精确API/例子/merge矩阵可用，不跑完整merge档；AC-01, AC-07, AC-08 |
-| T-09 | review | T-08 | 同树冻结code/Plan r2/Spec/真实双示例，主检出独立review附件 | 核AC-01..08/定向反例/遗漏/延后/workaround/健康，版本绑定结论；AC-09 |
+| T-09 | [✅] review | T-08 | 同树冻结code/Plan r2/Spec/真实双示例，主检出独立review附件 | [x] review-r2：三项finding关闭，原10case/行为12/实际Host恢复1/独立相邻8及Spec5ID/8目标通过，受影响AC与复用边界核实；AC-09 pass，完整merge门pending |
 | T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出知识/ledger/archive/guard | AC-10实际门/落点/沉淀/清理/到期，改代码先受影响复审再重冻，不提前交付 |
 
 ## 9. 复审记录
+
+2026-10-24：stage:review | review_scope:final | reviewer_identity/limitations:Codex当前实施会话，无独立会话/模型隔离；从冻结代码、原反例、独立相邻输入及原始证据重建结论，未建agent/chat | plan_id:PLAN-840 | plan_revision:2 | outcome:**pass** | status:reviewed11/12 | worktree_path:D:/autostack/.wt/lang-840/auto-lang | branch:plan-840-dev | reviewed_commit:1f19395254d7e676bd188e43e3d8f734d57aaa12 | base_commit:a239653365a0c3451c85aa9921189fcf011bd8cf | dependency_revisions:SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21/681/479/17/29、两锁/AGP不变 | spec_inputs:review-r2/baseline.json.txt及冻结spec-delta-reviewed.md绑定5增量/8目标版本 | acceptance_results:AC01..09pass，AC10pending_merge | findings:F-840-R1-01/02/03均review_closed，无新合同内阻塞/未批准缩面/遗漏/延后/workaround | checks:原规范反例10/10、behavior12、实际Host/GPU修源恢复1、独立相邻8、Spec5ID/8目标、package fmt/diff/clean HEAD通过；SDK146既有warnings无新增。未变路径按代码/依赖/配置/输入及实际guest身份有界复用，旧原生不冒称新exe重跑。 | evidence:[受影响复审与逐AC](attachments/840/review-r2/review.md)、[冻结收据](attachments/840/review-r2/receipt.json.txt) | pending_closeout_gates:全部完整driver/AGP/原16case/旧新native/owner/counter+content/sourceconsumer及适用root档仍merge-owned pending，未运行整档/合入/发布canonical或ledger/归档/清树 | next:**merge**须先在冻结提交执行完整门、核对版本；任一代码修复先受影响复审，不以reviewed宣称交付。
 
 2026-10-24：stage:work | plan_id:PLAN-840 | plan_revision:2 | outcome:**pass** | status:execution_done10/12 | worktree_path:D:/autostack/.wt/lang-840/auto-lang | branch:plan-840-dev | base_commit:a239653365a0c3451c85aa9921189fcf011bd8cf | repair_from:a1da1a00b7a239a872702c948cd4722014ee0797 | code_commit:1f19395254d7e676bd188e43e3d8f734d57aaa12 | dependency_revisions:SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21/681/479/17/29，AGP/两锁/运行器/Auto API源及managed装配不变 | task_ids:T03/T05/T08工作重新关闭，T09/T10pending | findings:F-840-R1-01/02/03均work_closed_pending_review；共享AST遍历按词法边界携带Unit规则、immutable const/let及常量FStr/结构值准入且拒动态/可变/赋值/私有/循环依赖、Spec稳定ID/8目标版本对齐 | checks:复审原10case在旧提交6红/新提交10绿；18回调嵌套返回反例、4合法helper/closure/for-in/Unit程序init+tick、4常量真实初始化值及7负控；行为12/Host4/可行性5、all-targetcheck/fmt/source299与8控制均过，SDK146既有warning新增0；独立consumer仅复制精确5变动文件及identity，自有SDK/target行为12/实际GPU修源恢复1通过。原生4正例user/API/bridge/combined/version逐trace与当前实际guest完全一致，未变运行期证据有界复用，不宣称重跑新exe13项。初次for-init正例及consumer漏设既有线程栈失败保留并独立归因；不增SDK写面/不缩支持面。 | evidence:[逐finding关闭/范围与复用](attachments/840/work-r3-repair/closure.md)、[冻结收据](attachments/840/work-r3-repair/receipt.json.txt) | blockers/open_work_findings/required_work_gaps/decisions:none | next_responsible_role:**review**同树对新提交做受影响复审/Spec核验；完整driver/AGP/原16case/旧新native/owner/counter+content/sourceconsumer及适用root档仍merge-owned pending，未执行整档/独立再审/合入/沉淀canonical/ledger/归档/清树。
 
@@ -267,6 +269,6 @@ final review后merge冻结提交统一跑完整locked driver/AGP test+build、�
 
 ## 10. 待澄清事项
 
-当前无待决产品/批准问题。F-840-R1-01..03已完成工作修复及定向验证，T03/T05/T08重新关闭，见work-r3-repair；待对1f1939525受影响独立复审，不以工作关闭冒称review pass。完整门禁仍须最终pass后执行。
+当前无待决产品/批准问题。F-840-R1-01..03已完成工作修复及定向验证，T03/T05/T08重新关闭，见work-r3-repair；1f1939525受影响复审已pass，详见review-r2；当前reviewed11/12，完整合入门禁尚未执行，须merge阶段通过后才交付。
 
 用户已授权r2的SDK扫描修复、精确依赖重冻及继续实施，无待决产品问题。原支持面/AC-01..10/V-01..10/SD-01..04保持；新增SDK规范增量SD-05。若发现超出此扫描修复的语法/VM/架构变更，再据具体证据修订，不能静默缩减支持。

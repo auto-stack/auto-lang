@@ -3146,3 +3146,6 @@ PLAN-818 D828刷新轮（c4819bf58，2026-10-24）：**ac-syntax workspace 跨�
 
 
 PLAN-840 R1修复（2026-10-24；work已关闭，复审待定）：F-840-R1-01/02/03修复提交`1f19395254d7e676bd188e43e3d8f734d57aaa12`；共享AST返回策略/合法常量准入/稳定Spec目标映射和原反例/相邻控制均通过。原R1记录保留为旧提交的缺陷事实；当前execution_done10/12，需受影响独立复审后才可执行完整合入门禁，并非已交付。详[修复关闭证据](attachments/840/work-r3-repair/closure.md)。
+
+
+PLAN-840 R2受影响复审（2026-10-24）：在冻结提交`1f19395254d7e676bd188e43e3d8f734d57aaa12`核验F-840-R1-01/02/03全部关闭，未新增合同内阻塞；原10case、行为12、实际Host/GPU修源恢复1、独立相邻8和Spec5ID/8目标通过。原支持面不减，当前reviewed11/12；完整合入门禁仍merge-owned pending。当前实施会话无独立上下文隔离，限制及未变证据复用边界见[复审报告](attachments/840/review-r2/review.md)。
