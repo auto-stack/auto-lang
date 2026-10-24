@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-827
-status: executing
+status: execution_done
 feature_name: AV真实源码程序验收基线与首个文件执行闭环
 plan_revision: 3
 author: [Codex]
 created_at: 2026-10-20
 updated_at: 2026-10-24
-current_step: 2
+current_step: 7
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-av/resident-function-install.md
@@ -193,17 +193,19 @@ work负责实现与反控；内部检查只表示可送审；最终review须独�
 |---|---|---|---|---|
 | [x] T-01 | work | 本Plan实施授权；只读准备可早于D798 | attachments/827/contract-decision.md r1 冻结：**复用裁定=D798 case-serve/ac-av/core-run-v1 已覆盖 G1 执行面**（不建 av-source-probe workspace/run-source 命令/新 recipe，零公共写面），薄适配面=corpus av-source-827+独立workspace av_source_827 测试+根门测试+脚本；实际API/身份/预算逐项 file:line；分母复现规则+C/AP/EP/G/入口13锚点；Scope/反控/T-09 设计冻结（2026-10-24，基面 369e1c349） | AC-01..06；V-11/12材料就绪，未编译未合入接口 ✅ |
 | [x] T-02 | work | T-01只读材料、D828排期门、当前单写窗口交接 | contract-decision r1 直接写在 D798+D828 合入后基面（无 pre-D828 旧准备需刷新，记录于其头部）；oracle 手审冻结（AP-01/22=success 0、AP-23=av.trap.div-by-zero、overlay return 0→9 恰一次）；SEM-01..08 决策材料 sem-decisions.md（AP-18 保留见证、18 旧 AP .expected=待核输入 gap）；写面登记=无公共写面、注册面在途 owner=820 不相遇（contract-decision §1） | AC-01/03；V-01..03/11/12 材料齐，未决项归后续 G 门 ✅ |
-| [ ] T-03 | work | T-01/02、D798、当前注册/API owner交接 | §2/3薄source worker/API、first-case脚本/recipe/父侧judge，AP-01全路径含store/new-worker | AC-02/04；first-case、V-01/04/07/10首例 |
-| [ ] T-04 | work | T-03 | 原file AP-22/23与源/产物/资源/typed阶段反控，guest结果/执行/cleanup，不复制checker | AC-02..05；semantics/admission/resources定向V-02..06/09 |
-| [ ] T-05 | work | T-04 | 同store cache/restart、overlay0→9/跨根/身份/权限/位置、原consumer兼容 | AC-04/05/06；cache/compatibility V-07/08/11 |
-| [ ] T-06 | work | T-05 | 脚本全Scope/正式AutoDown原固定负载/各反控/raw峰值/汇总；SD候选和源层覆盖实证更新，fmt/check | AC-01..06；acceptance V-01..12 selected/必需清单完整 |
-| [ ] T-09 | work | D828及本计划其他work实现完成 | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-13 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage | AC-09；共同基线+新增能力兼容定向验收，未实测不勾；送审前不跑整档 |
+| [x] T-03 | work | T-01/02、D798、当前注册/API owner交接 | 薄适配落地 @f91215eac：corpus `av-source-827`（AP-01 字节恒等副本+SHA 回执，recipe=既有 ac-av/core-run-v1）；`av_source_827_first_case` 4/4 绿（种子身份双向/真实文件 ephemeral 0+计数/同 store put→hit 仍执行+真新进程 restore-run 0/双单元复验/native 通道 0）；根门 `av_source_827_corpus_green` 正式 recipe 父侧判定 1/1；脚本 first-case 档 selected 非零强制。零公共写面维持 | AC-02/04；first-case、V-01/04首轴/07首轴/10首例 ✅ |
+| [x] T-04 | work | T-03 | @ff1c9a06e：AP-22/23 入 corpus（success 0/精确 div-by-zero trap）；`av_source_827_semantics` 7/7（实参变体改值改果/AP-23 trap+false-only 正控+native exit70 双通道/trace 授权 ABA 精确序+无授权=source.undefined/同路径异 bytes+冻结快照/前门拒 dispatch=0/超尺寸 admission 拒/无限循环=InstrSteps 资源态+预置 cancel=Cancelled）；根门 4/4（UTF-8=infra、缺文件=resolution Error、`../`/绝对/盘符=decode escape 拒）；错 entry 面=probe 侧精确断言（mir-lower:lower.entry），corpus 词表无 verify 面不扩公共词表（记录于案例注释） | AC-02..05；semantics/admission 定向 V-02..06 ✅ |
+| [x] T-05 | work | T-04 | @d7a071763：`av_source_827_cache` 5/5（overlay 恰改一单元/caps 变更全重键/同键异内容 Conflict+好件存活/跨工程=内容寻址复用仍执行/位置平移新身份）；corpus session-overlay 正式面（每 check 新 worker 共享 warm store+父侧判 9）；脚本 cache/compatibility 档接线 | AC-04/05/06；cache/compatibility V-07/08/11 ✅ |
+| [x] T-06 | work | T-05 | @5f4c32e84：根门 7/7（+负oracle 必红/worker 四故障注入=infra/G0 inventory 可复现分母 JSON 回执 23AP+11scalar+47类/517case/661at+8as+43C+10EP+9G+13锚点）；脚本 resources（gate-0 必红反控+30 样本门 970.7ms<1000，首轮 1007.2 瞬态归因=同轮 fresh p50 4904→4784，raw 时间戳留档）/autodown/inventory/incremental/acceptance 全接线；fmt/check 净；raw 证据入库 docs/reports/plan827 | AC-01..06；acceptance V-01..12 必需清单经脚本汇总 ✅ |
+| [x] T-09 | work | D828及本计划其他work实现完成 | @5f4c32e84：`av_source_827_incremental` 4/4——(1.1)D828 冻结基线 273575B/115 函数×30 修订经本消费者双门（结构：恰一安装+无整模块计数器增长+syntax_reused_decls 正证据；P95<1s）(1.2)AP-01 两函数局部 body 更新恰一安装/他函数零阶段 (1.3)签名/未授权能力=记录性拒绝且修订保留 (1.4)退化必被抓（快径零 fallback 记录+体外语句编辑拒绝带原因）；形状边界实测：AP-01 main 尾部 return0 替换=NoConvergence 记录性拒绝（corpus 整源路径不受限，测试内注记） | AC-09；V-13 四子case 无 skip ✅ |
 | [ ] T-07 | review | work-owned完成、同树冻结提交、T-09 完成 | 独立复核实际AC/V/SD、源字节/执行真实性/阶段/gap及健康；记录revision/依赖/证据 | AC-07，merge-owned整档/收尾pending |
 | [ ] T-08 | merge | T-07 pass | 冻结提交门禁→SD/ledger→真实合入/归档→到期批回归→wt-guard清唯一树/分支 | AC-08，实际收据，未达不得称交付完成 |
 
-2026-10-24 起进入 executing（实施授权 + 唯一树已建）；work 完成 2/7（T-01/T-02，2026-10-24），review/merge 未开始。源码/测试/build只在本Plan唯一树；主检出仅簿记，不创建junction/symlink。后续Plan应复用这条source验收路径/登记支持profile，不建各自假runner。
+2026-10-24 起进入 executing（实施授权 + 唯一树已建）；**work 7/7 全清（T-01..T-06、T-09，2026-10-24），status=execution_done**，next=T-07 独立 review（merge-owned 门禁显式 pending：冻结提交上裸 cargo t + 触面档、tf 批量回归到期判定）。源码/测试/build只在本Plan唯一树；主检出仅簿记，不创建junction/symlink。后续Plan应复用这条source验收路径/登记支持profile，不建各自假runner。源码/测试/build只在本Plan唯一树；主检出仅簿记，不创建junction/symlink。后续Plan应复用这条source验收路径/登记支持profile，不建各自假runner。
 
 ## 9. 复审记录
+
+2026-10-24 stage:work | PLAN-827 | plan_revision:3（合同未改，T-01 冻结复用裁定于 attachments/827/contract-decision.md r1） | outcome:pass（work-owned 全清，送审就绪） | worktree:`D:/autostack/.wt/lang-827/auto-lang` | branch:`plan-827-dev` | base:369e1c349（master） | code:5f4c32e84（含 f91215eac/ff1c9a06e/d7a071763/5f4c32e84/bd396d732 + master 侧簿记 52ddab977/f0c0f9dc7） | deps:D798/D828 归档交付，只读消费；无公共写面（注册面在途 owner=PLAN-820 未相遇） | tasks:T-01..T-06,T-09 全勾（7/7） | evidence:probe 4+7+5+4=20 测全绿；根门 7/7（corpus 8 checks 必需清单+3 准入负控+负oracle+4 故障注入+inventory JSON 回执）；resources 档 bench 30 样本 P95=970.7ms<1000（首轮 1007.2 瞬态：同轮 fresh p50 4904→4784，未删样本、未抬门，raw 入库 docs/reports/plan827）+828 正式战役 V-08 1/1+gate-0 必红反控；fmt 净/cargo check -p auto-lang 绿（预存警告未增） | blockers:无 | 记录性发现：①probe 声明式 stage 词表无 verify 面→错 entry 面留 probe 侧精确断言（mir-lower:lower.entry）；②AP-01 main 尾部 return0 会话快径编辑=NoConvergence 记录性拒绝（整源/其他锚点正常，测试内注记，后续 syntax owner 可查）；③2026-10-20 路线图权威文档原为未跟踪态，已原样入库（f0c0f9dc7）并合入计划树 | merge-owned 门禁 pending：冻结提交上裸 cargo t+触面档（无 VM/编译器语义改动，预计 t+tu 不需要）、tf 到期判定、SD-01..06 沉淀 | next:review
 
 2026-10-21 stage:new | PLAN-827 r2→r3 | outcome:pass（排期/交接合同静态修订，非实现验收或依赖解锁） | authority:用户确认828后优先817/818、827和820功能线，825/826择机插入 | changed:§4授权、§5排期/共享单写、§6交接核查、T-02及§10当前入口；T/AC/V/SD ID、数量、状态和原进度保留 | next:只读准备可先，D828及本计划原D门/单写交接满足后work；不自动启动 | evidence:[本轮预检](attachments/ace-order-20261021/preflight.md)。
 

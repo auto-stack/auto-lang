@@ -103,7 +103,7 @@ r1 即刷新后版本。
 | 入口 EP-01..10 | roadmap §5 表 | 10 项 |
 | 门 G0..G8 | roadmap §3 | 9 门 |
 | 程序 AP-01..23 | catalog 表 + program-inputs.json.txt SHA256 逐文件对账 | 23；AC 源域 5 |
-| 超种子 scalar fixtures | `experimental/ac-core/fixtures/scalar-source/*/*.at` 目录扫描 | 13（5 种子+8 超种子，valid 子树） |
+| 超种子 scalar fixtures | `experimental/ac-core/fixtures/scalar-source/*/*.at` 目录扫描 | 11 于 scalar-source/valid（3 种子 AP-01/22/23 + 8 超种子；AP-02/03 分别在 record-source/text-record-source 目录） |
 | VM corpus | `crates/auto-lang/test/vm/` 两级扫描（同 vm_file_tests 规则，数盘上目录/文件含未注册） | 47/517/676+8 |
 | stdlib | `stdlib/assembly-providers.json` 条目 + `stdlib/auto/*.at` 文件数 | 以脚本输出冻结为 r1 基线 |
 | 旧入口 call-site | 冻结锚点清单（13 处：auto main.rs run/eval/old-repl/mcp/rqhost/service/test/ui/stdlib/gen/watch、`auto_lang_core::script_entry`、SDK `run*` 族含 `run_with_capture_and_path_staged`、persistent/daemon/client/repl、test_cases::avm、vm_bridge、vm.rs） | 13（存在性 grep 核验） |
