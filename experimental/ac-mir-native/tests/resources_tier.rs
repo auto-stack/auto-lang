@@ -32,6 +32,12 @@ fn temp_root(tag: &str) -> std::path::PathBuf {
 
 const MIB: u64 = 1024 * 1024;
 
+/// The heavy legs (cold/GC fill ~150 MiB resident) and the spike leg
+/// measure the SAME process's private bytes — running them concurrently
+/// makes the spike leg's endpoint math racy (the fill vector's growth
+/// lands under the spike window). Serialize the two.
+static HEAVY_LEGS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// V-08 / §5.5 frozen reference workload (golden.md §2): ≥256 KiB source,
 /// closed-form mirror expectation, first-request compile, all-hits second
 /// request, the frozen body-edit bit (fn_041 A0 + 1 → exactly one unit
@@ -225,6 +231,7 @@ fn churn_gen(k: i32) -> (String, i32) {
 #[test]
 #[cfg(windows)]
 fn mir_native_resources_cold_set_churn_gc_convergence() {
+    let _heavy = HEAVY_LEGS.lock().unwrap_or_else(|p| p.into_inner());
     if !common::tools_available() {
         eprintln!("infra-blocked: rust-lld/SDK unavailable — skipped");
         return;
@@ -521,6 +528,7 @@ fn mir_native_resources_deep_cfg_budget_sides() {
 #[test]
 #[cfg(windows)]
 fn mir_native_resources_transient_spike_sampler_and_raw_gate() {
+    let _heavy = HEAVY_LEGS.lock().unwrap_or_else(|p| p.into_inner());
     let sampler = TreePeakSampler::start(5);
     let base = auto_av_probe::mempeek::sample_private_bytes();
     let t0 = std::time::Instant::now();
