@@ -148,6 +148,18 @@ selected=0 不得 PASS）；根 workspace 门测试 `av_source_827_*`。
 
 ## 8. 修订
 
+- r3（2026-10-25，review-r2 修复轮）：
+  - **§5 汇总器规则修正（R2 判定 r2 的全域 skipped>0 红为无效解释）**：判别对象是**必需案例**——
+    nextest 的 Starting/Summary 行中 filtered-out 总体 skipped 属过滤排除，不算必需案例跳过；真实跳过信号
+    =nextest `SKIP [` 结果行（被选中而跳过）与 libtest `test result:` 行 ignored 计数；每 scope 绑定
+    **必需测试 ID 清单**（缺失/改名/红即 whole-scope 红）；selftest 永久重放六控制（过滤正例必须绿/
+    真 SKIP 红/缺必需 ID 红/ignored 红/零选择红/真实失败子 scope 同路径红）。
+  - **§4 库存合同补全**：stdlib/auto 文件成员为独立行（逐文件 SHA+layer 分类 public/.vm/.rs/.c，
+    ≥102 行——37 条 provider 声明只声明所有权，不替代成员分母）；vm-corpus-case 行绑定**源码字节
+    SHA**（编辑即换行身份）+oracle sidecar SHA 于 note；入口锚点补 service（cmd_service）与 man
+    （auto-man-runtime）共 15；读失败保留 scan-error 行（负控用 Win32 share_mode(0) 排他句柄真实
+    触发）；源码变更负控=改 prog.at 后行身份必变。
+  - 健康修复：R2 指出的 3 处 unused_mut 清零，本计划测试文件零新警告。
 - r2（2026-10-25，review-r1 修复轮，T-01/T-06/T-09 重开后再冻结）：
   - **§4 升级为逐项库存合同**：分母成员必须是持久化 item 行（`{id,kind,path,sha256,status,owner,note}`，
     工件 `docs/reports/plan827/inventory.json`，当前 714 项：23 AP+14 fixtures+47 类目行+517 case 行+
@@ -164,5 +176,6 @@ selected=0 不得 PASS）；根 workspace 门测试 `av_source_827_*`。
   - **§5 升级汇总器规则**：acceptance 必须串联**全部**已实现 scope 含 resources；`Test-Selected`
     对 skipped/ignored>0 必红（0 选择亦红）；重复 check id 由 corpus 门去重断言拒绝；`selftest` 档
     永久重放五类负控（valid/skipped/ignored/missing/真实失败子 scope 经同一 `Invoke-Scope` 路径）。
+    （r3 修正：全域 skipped>0 红改判为无效——见 r3 节。）
 - r1（2026-10-24，T-01/T-02 刷新合一）：按 D798+D828 合入基面冻结。复用裁定、薄适配面、
   oracle、分母、Scope、T-09 设计如上。无公共写面登记于 §1。
