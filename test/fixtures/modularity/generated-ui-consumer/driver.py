@@ -1085,23 +1085,23 @@ def main() -> int:
             tool6.wait()
 
     # ---- V06c：build 支持矩阵（5 profile 全真实尝试；required=vue/rust/vscode）----
-    # 合同修订（Plan r3，用户 2026-10-24 裁定"正式修订验收合同"）+ R3/R4/R5
-    # 判据收口：判定由**真实失败类别**决定，而非错误文本任意位置的同名片段
-    # （review-r5：目录名含完整模板短语 "Hvigor wrapper not found" 也能让
-    # 已执行的 exit 1 假绿——任何 substring 匹配都无法区分原因与附带路径）。
-    # 分类读 producer 失败形态的结构位（jet.rs/ark.rs 实际模板）：
-    # ①执行失败形态（原因位自带退出码）：`... exited (with) (exit code:) N`
-    #   ——仅 N==9009（Windows 命令未找到=工具链缺席症状）可获准延期，其余
-    #   码（1/2/…，含 HAP 缺失的 exited 0）一律真实失败传播红。退出码在
-    #   原因子句首位（try-manually 路径只能出现在其后），路径字节不能翻转。
-    # ②缺席形态（完整原因句居于 report.error 开头）：ark=hvigorw wrapper
-    #   文件缺席原文（ark.rs:763 "Hvigor wrapper not found at …— open the
-    #   project in DevEco Studio to build (no build was executed)"）；jet=
-    #   gradle/wrapper 缺席原文（jet.rs:930/934/943/1186/1191 "Failed to
-    #   generate gradle wrapper…" / "Gradle not found. Please install…"）——
-    #   以 startswith 锚定语义位置；producer 消息总以原因句开头，路径片段
-    #   只能出现在句中/尾部，不可能占据位置 0。
-    # ③未知形态（既非执行失败也无缺席句头）：保守传播红。
+    # 合同修订（Plan r3，用户 2026-10-24 裁定"正式修订验收合同"）+ R3..R6
+    # 判据收口：判定由**失败类别的语义位置**决定，路径字节不可翻转任一
+    # 方向（R5：已执行 exit 1 不因路径含模板短语假绿；R6：真缺 wrapper 不
+    # 因路径含 "exited 1" 数字被误红）。分类顺序（jet.rs/ark.rs 实际形态）：
+    # ①缺席形态优先——完整原因句居于 report.error 开头（startswith 位置 0
+    #   锚定）：ark="Hvigor wrapper not found…"（ark.rs:763）；jet="Failed
+    #   to generate gradle wrapper…"/"Gradle not found."（jet.rs:930/1186/
+    #   1191）。命中即缺环境（非必需面获准延期）——其句中/尾部路径里的
+    #   任何字节（含 exit 样数字）不参与后续判定。
+    # ②执行失败形态——退出码只在**原因区**提取：原因区=消息中首个路径
+    #   承载尾标记（"try manual"/"missing at"/"—"）之前；producer 把退出
+    #   码置于开头的原因子句（"… build failed (… exited (with) (exit
+    #   code:) N); try manually: cd <路径>"，HAP 缺失形态 "… exited 0 but
+    #   … missing at <路径>"），路径只能出现在尾标记之后。仅 N==9009
+    #   （Windows 命令未找到=工具链缺席症状）可获准延期，其余码一律真实
+    #   失败传播红。
+    # ③未知形态（既非缺席句头、原因区也无退出码）：保守传播红。
     # 五 profile 全部真实尝试逐项记录；rust 构建链另由 V01/V02 cargo build
     # --locked 全量承载。
     BUILD_REQUIRED_PROFILES = ("vue", "rust", "vscode")
@@ -1135,12 +1135,12 @@ def main() -> int:
                 build_results.append((prof, ok, False, detail))
                 continue
             nonrequired = prof not in BUILD_REQUIRED_PROFILES
-            executed = re.search(r"exited (?:with )?(?:exit code: )?(\d+)", err_text)
-            if executed:
-                env_gated = nonrequired and executed.group(1) == "9009"
+            if any(err_text.startswith(head) for head in BUILD_ABSENCE_HEADS.get(prof, ())):
+                env_gated = nonrequired  # ①缺席句头优先：路径字节不再参与
             else:
-                env_gated = nonrequired and any(
-                    err_text.startswith(head) for head in BUILD_ABSENCE_HEADS.get(prof, ()))
+                reason_region = re.split(r"try manual|missing at|—", err_text, maxsplit=1)[0]
+                executed = re.search(r"exited (?:with )?(?:exit code: )?(\d+)", reason_region)
+                env_gated = nonrequired and executed is not None and executed.group(1) == "9009"
             if ok:
                 detail = "outcome=completed（真实构建链完成）"
             elif env_gated:
