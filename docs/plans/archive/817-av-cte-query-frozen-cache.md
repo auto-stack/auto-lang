@@ -308,3 +308,5 @@ V-01–11全部为必验区分性控制；独立expected不由AV/新freeze生成
 - 只追加：`auto-semantics/semantic-contract.md`（SD-03 真实执行域指针，模型合同零修改）、`auto-ac/artifact-contract.md`（SD-04 有限 A05 producer+783 两有界读取 API 收据）、`auto-test-case/architecture.md`（SD-05 cte/scalar-query-v1+cte-worker 轴+outcome admission）、`auto-av/resident-function-install.md`（SD-06 exec snapshot 车道消费）；
 - plans.md：auto-cte（新）+ auto-semantics/auto-ac/auto-test-case/auto-av 各追加 817 行；全局 `overview.md` 增 auto-cte 行；`INDEX.md` 再生；
 - ledger：`.autoos/specs.json` v78（designs/tests/reviews/reports，tags `PLAN-817`+`delivery:ec6a54c5d`）。
+
+**cleaned 落实（2026-10-24）**：wt-guard clean（无 reparse point）→ `git worktree remove D:/autostack/.wt/lang-817/auto-lang`（HEAD=ec6a54c5d 已落地）+ `git branch -d plan-817-dev`（was ec6a54c5d）→ 组内 auto-down 基面钉兄弟（detached c39ac7f，clean）经 auto-down 主检出移除 → 组目录 `.wt/lang-817` 删除。归档态核验：status=archived、11/11、五模块 plans.md 行与 ledger 四条目 file 指向 `docs/plans/archive/817-av-cte-query-frozen-cache.md`（有效）、INDEX 59 projects 含 auto-cte。merge 终态 **pass**。
