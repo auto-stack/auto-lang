@@ -79,10 +79,42 @@ function Test-Scope([string]$s) {
             Run-Step "workspace full" { cargo test --manifest-path $ws --offline --workspace -- --test-threads=1 2>&1 | Select-String "test result" | Select-Object -Last 12 }
         }
         "closeout" {
-            Run-Step "read-only consumption audit (no edits under consumed crates)" {
+            Run-Step "read-only consumption audit (approved 783 append adaptation bound by a pinned diff hash)" {
+                # F-817-R13-01: R8/R9 added the approved APPEND-ONLY
+                # bounded-read APIs to 783's ac-artifact-probe store
+                # (+120 lines, single file; receipts: plan section 9,
+                # R8-fix cb0ba5231 / R9-fix e55b59cae). Bind that
+                # adaptation to an explicit boundary instead of failing
+                # the audit on it:
+                #   - the four strictly read-only dirs: ANY diff vs
+                #     master (or any dirty/untracked file) is a violation;
+                #   - ac-artifact-probe: clean, OR the diff touches
+                #     EXACTLY src/store/mod.rs AND the full diff text
+                #     hashes to the pinned value below. Any other file,
+                #     or ANY change to the approved delta itself (e.g.
+                #     an edit to the old API implementation), changes the
+                #     hash and is a violation.
+                # Git errors are thrown, never swallowed. Re-derive the
+                # pin ONLY through a recorded approval; if master moves
+                # under these dirs the diff changes and this step reds
+                # on purpose (re-bind via a new receipt).
+                $approvedPath = "experimental/ac-artifact-probe/src/store/mod.rs"
+                $approvedDiffSha = "D8A8B3DF054E11015E1D4D5C33F02DAC84C8B753D5CF0AE5FB7BA8C33924E249"
                 foreach ($p in @("experimental/ac-core","experimental/ac-syntax","experimental/ac-artifact-probe","experimental/ac-av-probe","experimental/ac-semantics")) {
-                    git -C $repo diff --quiet master -- $p
-                    if ($LASTEXITCODE -ne 0) { throw "WRITE VIOLATION under $p" }
+                    $status = git -C $repo status --porcelain -- $p
+                    if ($LASTEXITCODE -ne 0) { throw "git status failed for $p" }
+                    if ($status) { throw "WRITE VIOLATION under ${p}: dirty/untracked files [$status]" }
+                    $d = git -C $repo diff master -- $p
+                    if ($LASTEXITCODE -ne 0) { throw "git diff failed for $p" }
+                    if (-not $d) { continue }
+                    if ($p -ne "experimental/ac-artifact-probe") { throw "WRITE VIOLATION under $p" }
+                    $files = (git -C $repo diff --name-only master -- $p) -join ";"
+                    if ($LASTEXITCODE -ne 0) { throw "git diff --name-only failed for $p" }
+                    if ($files -ne $approvedPath) { throw "WRITE VIOLATION under ac-artifact-probe: unexpected changed file set [$files]" }
+                    $diffText = ($d -join "`n")
+                    $sha = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($diffText))) -replace "-",""
+                    if ($sha -ne $approvedDiffSha) { throw "WRITE VIOLATION: ac-artifact-probe delta (sha $sha) does not match the approved 783 append adaptation ($approvedDiffSha)" }
+                    Write-Host "approved 783 append adaptation verified: single file, pinned diff sha"
                 }
                 Write-Host "read-only consumption: clean"
             }
