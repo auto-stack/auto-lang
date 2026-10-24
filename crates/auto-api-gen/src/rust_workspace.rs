@@ -238,6 +238,32 @@ fn compute_relative_path(from: &Path, to: &Path) -> String {
 
 /// Compute the relative path from the workspace dir (ws landing point) to the
 /// auto-lang target/ directory.
+/// PLAN-831 T-06：auto-ui-runtime crate 的实际位解析（dev 形态 workspace
+/// 依赖用）。从已解析的 auto-lang crate 相对路径反推绝对位，沿祖先链取
+/// 首个在场布局：旧同根（`<lang-root>/crates/auto-ui-runtime`，迁移前
+/// 布局兼容）或现行组布局兄弟仓（`<组>/auto-ui/crates/auto-ui-runtime`）。
+/// 均缺席时退化历史字符串派生（错误面与修复前一致，由后续构建暴露）。
+fn compute_auto_ui_runtime_rel_path(auto_lang_rel: &str, ws_dir: &Path) -> String {
+    let lang_crate = ws_dir.join(auto_lang_rel.replace(char::from(92), "/"));
+    let mut ancestors = lang_crate.ancestors().skip(1);
+    while let Some(root) = ancestors.next() {
+        let same_root = root.join("crates").join("auto-ui-runtime");
+        if same_root.is_dir() {
+            return compute_relative_path(ws_dir, &same_root);
+        }
+        if root.file_name().map_or(false, |n| n == "auto-lang") {
+            if let Some(sibling) = root
+                .parent()
+                .map(|p| p.join("auto-ui").join("crates").join("auto-ui-runtime"))
+                .filter(|s| s.is_dir())
+            {
+                return compute_relative_path(ws_dir, &sibling);
+            }
+        }
+    }
+    auto_lang_rel.replace("crates/auto-lang", "crates/auto-ui-runtime")
+}
+
 fn compute_target_rel_path(project_dir: &Path, ws_dir: &Path) -> String {
     let mut dir = project_dir.to_path_buf();
     for _ in 0..10 {
@@ -379,7 +405,12 @@ pub fn ensure_shared_workspace(project_dir: &Path) -> PathBuf {
     // 接线）：rust 生成组件只 import `auto_ui_runtime::ui`/`auto_lang_core`，
     // dev 成员经 workspace 继承直接依赖两包（同 auto-media-core 先例同根
     // 窄接线；缺此两行则生成工程 cargo build E0433）。
-    let auto_ui_runtime_rel = auto_lang_rel.replace("crates/auto-lang", "crates/auto-ui-runtime");
+    // PLAN-831 T-06 起五包在独立 auto-ui 仓——auto-ui-runtime 不再与
+    // auto-lang 同根，字符串派生（replace 同根）会指向不存在的旧布局
+    // （生成工程 cargo build 即红）。按实际在场解析：旧同根布局兼容、
+    // 现行组布局取兄弟 auto-ui/crates/；交付形态不受影响（bundle 应用
+    // manifest 走 rust_ui.rs 包内 ../crates/ 模板，不经本函数）。
+    let auto_ui_runtime_rel = compute_auto_ui_runtime_rel_path(&auto_lang_rel, &ws_dir);
     let auto_lang_core_rel = auto_lang_rel.replace("crates/auto-lang", "crates/auto-lang-core");
     let target_rel = compute_target_rel_path(project_dir, &ws_dir);
 

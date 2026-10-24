@@ -1014,6 +1014,18 @@ def main() -> int:
             (proj / "ui" / "front" / "app.at").write_text(
                 'widget App {\n    view {\n        col {\n            button { text "v06" }\n        }\n    }\n}\n',
                 encoding="utf-8")
+            if prof == "tauri":
+                # tauri 后端生成需要真实 src/back/{api,db}.at（无 back 的纯 UI
+                # 工程不是 tauri 候选——工具具名拒绝是合法前置非缺陷）
+                (proj / "src" / "back").mkdir(parents=True)
+                (proj / "src" / "back" / "api.at").write_text(
+                    '#[api(method = "GET", path = "/api/notes")]\n'
+                    'pub fn list_notes() str {\n    return "[]"\n}\n',
+                    encoding="utf-8")
+                (proj / "src" / "back" / "db.at").write_text(
+                    'type Connection {\n    url str\n}\n\n'
+                    'fn connect() Connection {\n    Connection(url: "localhost")\n}\n',
+                    encoding="utf-8")
             render_ov = {"render": {"render": {"kind": "single", "name": prof},
                                     "legacy_backend": None, "effective_backend": None}}
             try:
@@ -1022,15 +1034,22 @@ def main() -> int:
                     "body": {"op": "generate_ui",
                              "request": tool_wire_request(proj, f"v06-{prof}", **render_ov)}})
                 body = resp.get("body", {})
-                gen_root = proj / "gen" / "front" / prof
+                # rust profile 的落盘形态=共享 rust-workspace/（api-gen
+                # ensure_shared_workspace），其余 profile=gen/front/<prof>
+                gen_root = (proj / "rust-workspace") if prof == "rust" else (proj / "gen" / "front" / prof)
                 files = [p for p in gen_root.rglob("*") if p.is_file()] if gen_root.is_dir() else []
+                marker = ((gen_root / "Cargo.toml").is_file()
+                          and any(gen_root.rglob("main.rs"))) if prof == "rust" else bool(files)
+                err = body.get("error", {}).get("kind", {})
                 ok = (body.get("type") == "generate_ok"
                       and body.get("report", {}).get("files_written", 0) > 0
-                      and files)
+                      and marker)
                 gen_results.append((prof, ok,
                                     f"generate_ok={body.get('type') == 'generate_ok'} "
                                     f"files_written={body.get('report', {}).get('files_written')} "
-                                    f"gen/front/{prof} 实文件={len(files)}"))
+                                    f"输出根实文件={len(files)}"
+                                    + (f"；error={err.get('kind')}/{str(err.get('reason'))[:120]}"
+                                       if err else "")))
             except (EOFError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
                 gen_results.append((prof, False, f"会话异常: {exc!r}"))
         record("V06b-generate-profile-matrix",
@@ -1061,9 +1080,16 @@ def main() -> int:
                              "request": tool_wire_request(proj, f"v06-{prof}", **render_ov)}})
                 body = resp.get("body", {})
                 rep = body.get("report", {}) or {}
-                ok = body.get("type") == "build_ok"
-                detail = (f"build_ok={ok} outcome={rep.get('outcome')} "
-                          f"error={str(rep.get('error'))[:160]}")
+                outcome = rep.get("outcome")
+                err_text = str(rep.get("error"))[:200]
+                # 协议 build_ok ≠ 真实构建成功：outcome==completed 才是通过；
+                # 失败按错误文本具名（工具链缺席=环境阻塞具名红，非默认不适用）
+                env_blocked = any(marker in err_text for marker in (
+                    "9009", "not found", "wrapper not found", "open the project in"))
+                ok = body.get("type") == "build_ok" and outcome == "completed"
+                detail = (f"outcome={outcome}"
+                          + (f"【环境阻塞】{err_text}" if env_blocked and not ok
+                             else f" error={err_text}" if not ok else "（真实构建链完成）"))
             except (EOFError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
                 ok, detail = False, f"会话异常/超时: {exc!r}"
             build_results.append((prof, ok, detail))
@@ -1112,7 +1138,9 @@ def main() -> int:
                     cancel_proj, "v06-cancel",
                     render={"render": {"kind": "single", "name": "vue"},
                             "legacy_backend": None, "effective_backend": None})}})
-            retry_ok = resp.get("body", {}).get("type") == "build_ok"
+            retry_rep = resp.get("body", {}).get("report", {}) or {}
+            retry_ok = (resp.get("body", {}).get("type") == "build_ok"
+                        and retry_rep.get("outcome") == "completed")
         finally:
             if tool9.poll() is None:
                 tool9.kill()
