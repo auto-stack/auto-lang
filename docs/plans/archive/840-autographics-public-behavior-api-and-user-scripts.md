@@ -1,16 +1,17 @@
 ---
 plan_id: PLAN-840
-status: reviewed
+status: executing
 completion_kind: phase1_delivered
 feature_name: AutoGraphics最小公共行为API与用户Auto脚本
-plan_revision: 6
+plan_revision: 8
 author: [Codex]
 created_at: 2026-10-24
 updated_at: 2026-10-24
-current_step: 20
-total_steps: 22
+current_step: 17
+total_steps: 26
 depends_on: [PLAN-839]
 supersedes_spec_components:
+  - docs/specs/stdlib/design/http-stream-lifecycle.md
   - docs/specs/auto-ui-runtime/project.md
   - docs/specs/auto-lang/project.md
   - docs/specs/language-sdk/project.md
@@ -23,7 +24,7 @@ supersedes_spec_components:
 new_spec_components:
   - docs/specs/auto-graphics/behavior-api.md
 touched_goals: [GOAL-007, GOAL-008]
-affects: [auto-graphics, authoring-experimental, user-behavior-api]
+affects: [auto-graphics, authoring-experimental, user-behavior-api, language-sdk, auto-lang, auto-ui-runtime, test-tiering]
 ---
 
 # [PLAN-840] AutoGraphics 最小公共行为 API 与用户 Auto 脚本
@@ -44,9 +45,9 @@ affects: [auto-graphics, authoring-experimental, user-behavior-api]
 |---|---|---|
 | T-11 [x] | work | 核定 feature/off-on/档位 ID、红与合法控制、性能对照和修复机制；AC11..13 |
 | T-12 [x] | work | 最小 feature 修复；off/on no-run 与 CTE/相邻定向病例、选择面核销及删项负控；AC11/12 |
-| T-13 [x] | work | 性能实路径诊断与资源机制修复，原输入/阈值/断言保留；定向实测和机制反控；AC13 |
-| T-14 [x] | work | 同提交定向 check/fmt、关闭表、SD 提案、提交冻结；AC14 |
-| T-15 [x] | review | 核验 AC11..14 与原支持面，绑定 SHA；AC15 |
+| T-13 [ ] | work | 性能实路径诊断与资源机制修复，原输入/阈值/断言保留；定向实测和机制反控；AC13 |
+| T-14 [ ] | work | 同提交定向 check/fmt、关闭表、SD 提案、提交冻结；AC14 |
+| T-15 [ ] | review | 核验 AC11..14 与原支持面，绑定 SHA；AC15 |
 | T-16 [ ] | merge | 审查后 bare cargo t 与必要触面，master 落地、主检出批量三档、规范/台账/收据/最终归档清理；AC16 |
 
 新增验证：V11=默认/tests 与 book-feature 定向 no-run 编译；V12=test-cases on 的 CTE+同族 adapter 定向执行与实际 ID；V13=814 选择面映射复用、各档清单与删除 ID 负控；V14=原 census 与 30 样本真实 IPC 门、原边界控制；V15=逐 AC/SD 冻结复审；V16=review 后 merge 门与主检出完整批量。修复/复审均不运行 whole-tier；先完成全部修复再提交复审。
@@ -375,3 +376,34 @@ r5复审对原Init写面仍有据，新RQHost修复按T-18/19/20重新执行/定
 
 
 r6受影响work/final review pass：冻结00c688867be040aa0f1d3e88d63b2b18a484f675；RQHost真实管道4/4通过，原生产逻辑及窗口/停机assert保持，新增唯一pending控制防止重复设置。详[关闭表](../attachments/840/phase3/work-closure-r6.md)与[最终复审](../attachments/840/phase3/review.md)。当前reviewed20/22，完整新冻结门和主检出批量仍merge-owned pending。
+
+
+### r7 / Phase 2 资源分档绑定补齐（原计划内继续修复）
+
+r6完整冻结门已过并以ede7f5a90线性落master，ledger80已核；原图形8b62交付保持。主检出batch-r2 tf完整6288项：6287过/1红，未取消尾项；红为ffi_dual_019的wide布局值683604832768≠5000000000。匹配REG-2既有共享fixture竞争观察。查证daily已有ffi_dual→ffi-dual串行绑定；full/t3只有max-threads=1组声明，缺该绑定，明确配置缺口。尚不声称生产ABI根因已修。
+
+同一Phase2的T-13/14/15重开：仅补.config/nextest-full.toml与nextest-t3.toml的既有整族绑定，保持输入/布局/features/expected值/选择面；SD-P2-02补充“声明组须实际绑定、config-file整体替换”的规则，不改生产pack/cache/ABI。保持Phase3Init/RQHost修复与全部支持面；不新建Plan。
+
+V14追加full/t3实际test-group成员核验、删除绑定负控与整族ffi_dual定向执行；当前batch-r2 TT/TB继续完成，期间不另启构建/测试。修复提交/受影响review pass后，bare t及已完成TT/TB仅在其实际代码/依赖/默认配置/输入逐项未变时复用（新改的full/t3非其输入），不机械重跑无关全档。受影响tf必须在新冻结落地主检出完整重跑；t3只按本次FFI资源scope定向验证，不运行aavm/塔全档（无触发文件改动）。
+
+当前executing17/22，T-10/T-16最终批量收据/归档清理未关闭。完整旧红及其余legs原样保留，禁止以“已知flake”标签当作新tf通过。工作树为原lang-840，仍保留以完成同计划修复。
+
+
+### r8 / Phase 4：批量回归暴露的生产文件锁与 SSE 等待修复
+
+用户明确授权“继续在 840 内追加 phase，查明并修复生产路径问题”。本次扩展仅覆盖 batch-r2 的 state_file 锁误降级及 plan707 SSE 等待超时及其共享生产路径；不新建计划，不缩减 Phase1 的 API、脚本、原生/GPU/独立消费支持面。生产 UI quiescence helper 的 D-762-1 仍不在本次写面。原 r6 已通过的完整门和已合入事实保留，新代码使受影响门证据失效，修复及复审期间仅执行定向检查。
+
+入口冻结：主检出 ede7f5a90a5b93cdd8cbeec862e4cb8c44ba756a；同一工作树 D:/autostack/.wt/lang-840/auto-lang，plan-840-dev 当前 8edb5c2966ae979fd95d9c609d87845df14019f4；只读 auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8。r7 FFI 实际分组及 full/t3 各23项定向已通过，仍须纳入最终受影响复审。
+
+新增 AC21：文件锁真实竞争时保持互斥；瞬态系统错误与永久错误、真实超时、stale 接管分别有可区分控制，保留 2s 缺省和 best-effort 降级合同。AC22：定位 SSE 超时所在生产链，修复等待/资源生命周期错误；保持首/次事件精确值、5s/3s 界及 600ms 内 spawn<30，合法 EOF/取消和相邻等待有控制。AC23：最终代码/依赖/测试配置冻结、定向反例与合法控制、健康及规范变更完成并受影响复审；完整门明确 merge-owned pending。
+
+| task_id | owner | 关闭条件 |
+|---|---|---|
+| T-21 [ ] | work | 文件锁生产根因、最小修复及真实竞争/瞬态/硬错误/超时/stale 定向控制；AC21 |
+| T-22 [ ] | work | SSE 超时生产链归因、最小修复及事件/park/EOF/取消相邻控制；AC22 |
+| T-23 [ ] | work | 全部修复完成后的共同定向检查、健康、SD-P4 提案、提交冻结；AC23 |
+| T-24 [ ] | review | r7/r8 受影响验收和相邻合法控制复审，核验原支持面；完整门交 merge |
+
+执行链：锁生产者 create_new→持有锁文件→临界区→释放→竞争者获取；禁止把瞬态 namespace 竞争直接视为永久错误，也禁止无限重试。SSE 上游真实 TCP→流资源/队列→VM generator 等待凭据→事件/终结通知→消费者继续；先用有界诊断确定阻塞点，不能凭单次隔离绿关闭。反例须能区分旧错误机制，原批量红日志保留。SD-P4 将在根因确认后落入相应 canonical SDK/runtime/VM 文档；不预先承诺不存在的语义。
+
+总体保持 executing，当前17/26；T-10/T-16最终收尾仍 pending。所有修复完成并复审通过后，在新冻结提交执行裸 cargo t 与实际触面的 tv/tt/tb 等门，落地主检出后单实例完整批量回归，最后规范台账/归档/guard清理。批量红不得用隔离绿替代。
