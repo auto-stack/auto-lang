@@ -1,6 +1,6 @@
 {
-  "base_revision": "61a7f110d3530e973c1690d245bc80f7383d7a9f",
-  "config_sha256": "1c0b812d9653d66b3f49377e9d179f2d5665b0482d47c1c7c153592614a29b62",
+  "base_revision": "77114ec6f532fdad017320d6b567622e28f9eedb",
+  "config_sha256": "ea90ce8600af62984dd5d0c81338a57d4508db7aef8657d471698885fa270e58",
   "declared_edges": [
     {
       "dep_key": "auto-lang-core",
@@ -1049,9 +1049,14 @@
   ],
   "generated_by": "scripts/modularity-audit.py --refresh-baseline",
   "schema": "module-boundaries-baseline/1",
+  "text_scan_code_totals": {
+    "core_to_ui": 166,
+    "man_to_language": 1,
+    "ui_to_language": 0
+  },
   "text_scan_totals": {
     "core_to_ui": 250,
     "man_to_language": 4,
-    "ui_to_language": 0
+    "ui_to_language": 93
   }
 }
