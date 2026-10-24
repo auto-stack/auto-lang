@@ -3172,3 +3172,8 @@ P2原合同缺陷候选，非可延期债务：受审75277a7b7b8d1b43f840c899372
 冻结da43267d4dffe9064d9d95585b7b56416b730d5e，consumer-user Move实际native phase6要求Single Step恰好一tick，但暂停trace54仍54（应55），Paused/error null；生产端同源完整Move通过。尚不能区分原生点击未接收与consumer运行时分发问题，不当作已知flake/可延期债务，不放宽原断言。共享play::Probe phases5/6→native click/post→Host play-step→PlaySession single_step，并影响后续user/project native。原始[失败报告](attachments/845/merge-r1/consumer-user/move/report.json.txt)、[诊断/剩余门](attachments/845/merge-r1/failure-m1-04.json.txt)、[收据](attachments/845/merge-r1/receipt.md)。
 
 producer/consumer完整driver各155、AGP各163和已绿原生门保留身份；消费端user余12/两端project各15与实际UI输出搬迁各2/完整81-call审核未执行。前三次自动修复已独立关闭，默认三轮cap到达；无第四次源修复、未合入/沉淀/归档/清理，保留同一845 clean树。需明确click接收/pending/tick过渡、永久反例控制、同树修复提交与受影响独立复审后补所需完整门。登记不授权合同缩面或豁免。
+
+
+### PLAN-845 R6 — F-845-M1-04 独立关闭（2026-10-25）
+
+冻结944c1c551b524d7d8c7f69519e465831417d21a8，新独立上下文R6 pass。实际正常/36帧延迟Step均phase27；丢点击在原360帧phase6截止拒绝，重复实际+2拒绝；真实Step矩形down/up与36GPU检查保留。独立Patrol120帧绿、361帧超预算拒绝、原交互/丢释放反控保留；实际cursor裁切与任务栏foreign PID护栏均准确拒绝。仅原生probe工作区放置/每点可达性和严格tick+1有界确认，不改Host/VM/正常App/取消/期限，不重发Step。原历史54→54缺事件记录故不虚构唯一根因；两夹具不变量与可区分反控独立闭合。用户上限6，计数4/6；此前blocking历史保留。完整83项merge门仍pending，无合入/交付。[R6](attachments/845/review-r6-step/review.md)、[第4轮工作/边界](attachments/845/work-r4-step/readiness.md)。

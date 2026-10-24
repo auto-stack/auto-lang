@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-845
-status: executing
+status: reviewed
 feature_name: AutoGraphics行为绑定与可搬迁项目闭环
 plan_revision: 2
 author: [Codex]
 created_at: 2026-10-24
 updated_at: 2026-10-25
-current_step: 6
+current_step: 9
 total_steps: 10
 depends_on: [PLAN-840]
 supersedes_spec_components:
@@ -203,7 +203,7 @@ T-08列准确完整合入矩阵；**最终独立review pass后**T-10才在冻结
 
 ## 8. 执行步骤
 
-r2 R5冻结da43267d的受影响独立复审通过，原F01/M1-01..03保持关闭；但完整merge门在consumer-user Move的Single Step恰好推进一tick检查失败（phase6，54未变55），F-845-M1-04阻断。当前executing6/10，T07/08/09重开，T10开放；其余通过证据按输入身份保留。尚未执行consumer用户其余12项、两端各15项目/实际UI产物搬迁及完整81-call审核，未沉淀/合入/归档/清理。三次自动work/review修复上限已达，详§9诊断和merge收据，不能以R5 pass或此前绿色替代未完成完整门。
+r2第4轮修复冻结944c1c55经R6全新独立上下文受影响最终复审pass，F-845-M1-04的异步Step恰好一次确认与真实指针可达性不变量关闭。当前reviewed9/10，T07/08/09关闭；前三轮关闭与原失败历史保留，自动修复计数4/用户上限6。完整合入矩阵保留原81项并增加两端Step回归为83项，T10及全部merge-owned完整门仍pending；门通过前不能合入或宣称交付。
 
 | task_id | owner_stage | 依赖 | 真实触点／拟新增路径及动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -213,9 +213,9 @@ r2 R5冻结da43267d的受影响独立复审通过，原F01/M1-01..03保持关闭
 | T-04 [x] | work | T-03 | session.rs::Edit/Step/Pending/Editor、history/源码owners；新behavior_project_session | 候选绑定/更新/改角色/解绑/Undo/引用失效/预算/stale关闭，V-04/09主体；AC-03, AC-04, AC-07 |
 | T-05 [x] | work | T-04 | storage.rs::Snapshot/load_assets/prepare_closure/verify_locked、源码闭包与新storage tests | V-05/06及原storage/assets故障定向通过、单entry/同root锁/完整Verify；AC-05 |
 | T-06 [x] | work | T-05 | Host/Panel/bin、840正式来源选择与Run、Open/inspect；新host tests | F-845-R1-01工作修复：已存场景新绑定未保存时Run/诊断明确memory/hash；来源生命周期断言及原反例经R2独立验闭；其余V-07证据保留；AC-06 |
-| T-07 [ ] | work | T-06 | 新samples/behavior_projects/{move,patrol}、check_behavior_project.py/真实GPU反控 | V-08/10 OS/仓外/同binary/搬迁/源码更新/错误恢复/partial全证据；AC-06, AC-08 |
-| T-08 [ ] | work | T-07 | 新check_behavior_project_owners.py、source/独立consumer、README/new research/behavior-project-handoff.md/Spec proposal | F-845-R1-01来源状态永久断言/知识说明经R2独立复审关闭；其余V-01/09/10、owner/source/consumer/check/fmt与merge矩阵证据保留；AC-01, AC-07, AC-08 |
-| T-09 [ ] | review | T-08 | 同树冻结code/Plan/Spec与原始报告，主检出独立review附件 | AC-01..08逐项独立审查、遗漏/延后/workaround与健康；AC-09；R5原生指针一致性受影响独立复审通过 |
+| T-07 [x] | work | T-06 | 新samples/behavior_projects/{move,patrol}、check_behavior_project.py/真实GPU反控 | V-08/10 OS/仓外/同binary/搬迁/源码更新/错误恢复/partial全证据；AC-06, AC-08 |
+| T-08 [x] | work | T-07 | 新check_behavior_project_owners.py、source/独立consumer、README/new research/behavior-project-handoff.md/Spec proposal | F-845-R1-01来源状态永久断言/知识说明经R2独立复审关闭；其余V-01/09/10、owner/source/consumer/check/fmt与merge矩阵证据保留；AC-01, AC-07, AC-08 |
+| T-09 [x] | review | T-08 | 同树冻结code/Plan/Spec与原始报告，主检出独立review附件 | AC-01..08逐项独立审查、遗漏/延后/workaround与健康；AC-09；R6异步Step/物理可达性受影响独立复审通过，完整门仍merge-owned pending |
 | T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出知识/ledger/archive/guard | AC-10实际落地/清理/到期，改代码先受影响复审再重新冻结 |
 
 ## 9. 复审记录
@@ -411,6 +411,34 @@ stage: merge | plan_id: PLAN-845 | plan_revision: 2 | outcome: needs_fix | froze
 T07/T08/T09重开、executing6/10，AC08当前red，受影响AC06/07完整门待补；R5和其他关闭历史保留，无新源码改动。consumer其余12user、producer/consumer各15project与实际UI输出搬迁各2、完整81-call oracle审核均未跑；此前通过原始证据按实际身份保留，不称全部完整门绿。需先观察真实OS/widget接收、pending/tick过渡并区分fixture/产品原因，再做同树永久回归/控制与修复提交、受影响独立复审、冻结后补跑所需完整门。
 
 三次自动work/review修复M1-01/02/03已分别独立关闭，达到auto-plan-work默认cap three；本轮不盲目开始第四次修复。按技能交回具体阻断，用户提高自动修复上限后可继续同一树；无需重建树或重跑未变绿色。source HEAD clean da43267d，autographics-dev仍8b62db5c；canonical/ledger未动，所有准备稿未执行；未合入/归档/清理，postlanding批量到期门也未启动。原source/SDK/manifest/锁配置后置核验两端仍通过。故障候选登记KNOWN-DEBT但不授权延期/豁免。
+
+### r2 work 第4轮入口 — F-845-M1-04，上限6
+
+2026-10-25用户将自动work/review修复上限从3提高至6，并授权修复→提交→独立上下文复审→完整合入/沉淀/归档。沿唯一WT plan-845-dev clean da43267d继续，前3轮计数不重置。实际路径是native Step click→OS/Iced widget接收→Host play-step→PlaySession single_step/pending→Auto tick候选→Host GPU准入/accept→Paused新tick；phase5/6目前仅发点击后等固定12frame，不能证明命令接收。先用同消费exe/耐久输入并启用现有--interaction-probe观测真实mouse/widget/error/pending分界，区分错坐标/丢事件与运行时问题；不先放宽tick+1断言或增加盲重试。共享user/builtin/project Play；需原失败/合法控制、恰好一次与拒绝/未接收控制、代表项目/Patrol及必要bin/module检查。完整driver/全部原生矩阵仍merge-owned，定向关闭后提交和全新上下文复审。Spec合同不变，主检出代码WIP预检为空，canonical/ledger保持不动。
+
+### F-845-M1-04 work 第4轮修复交接（上限6）
+
+stage: work | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev | base_commit: da43267d4dffe9064d9d95585b7b56416b730d5e | code_commit: 944c1c551b524d7d8c7f69519e465831417d21a8 | task_ids: T07/T08 | evidence: [逐不变量/边界/原始失败分类](attachments/845/work-r4-step/readiness.md)、[全部raw哈希](attachments/845/work-r4-step/manifest.json.txt) | blockers: none | next_responsible_role: fresh-context independent final review。
+
+Step只投一次实际OS click；phase6等实际Paused/tick+1而非把固定12帧当接收证明，原360帧截止不改，少tick最终超时、多tick即时拒绝。永久normal/delayed/drop/duplicate实跑0/0/1/1，并断言真实Step矩形内down/up、原六阶段36GPU checks、丢失永无新tick、重复实际+2；受控恢复旧early-check使delayed正例按原phase6消息翻红，恢复绿。原生probe专用整窗工作区放置与每点实际坐标/WindowFromPoint同PID验证，正常App不改；受控裁切证明任务栏命中和真实CursorLeft导致后续动作丢失，修复后同类设置明确fixture拒绝。原故障缺历史鼠标事件，不能唯一追溯是延迟还是遮挡；不编造VM缺陷或把单次重跑绿当关闭。两项实际夹具缺口及可区分控制均见readiness。
+
+Patrol/wrong-focus、bound-project Move、legacy interaction27/wrong-target1、completion4/4、fmt/source321/SDK681均通过，锁/产品/Spec proposal不变，仅SDK146旧warning。所有观察/脚本初始错误和无效设置日志保留且不计绿；原耐久反例scene已按Git802bytes恢复，诊断Save的818bytes副本保留。T07/T08关闭、execution_done8/10；T09待独立验闭，T10完整driver/AGP/83项两端原生/项目/实际UI搬迁等门pending。无canonical/ledger/合入/归档/清理。实现clean且冻结，Plan写权移交独立review者。
+
+### 2026-10-25 r2 independent affected final review R6 — pass / reviewed9/10
+
+stage: review | review_scope: final（merge失败后的受影响复审） | reviewer_identity: `/root/review_845_step_gate`（用户授权全新独立上下文，非实现及R1–R5 review，无进一步委派） | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass |
+worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev |
+reviewed_commit: 944c1c551b524d7d8c7f69519e465831417d21a8 | repair_parent: da43267d4dffe9064d9d95585b7b56416b730d5e | base_commit: 8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 |
+dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，三锁/config/16项main canonical Spec/提案未变，见[audit](attachments/845/review-r6-step/audit.json.txt) |
+acceptance_results: AC01..09 pass；AC10 pending | findings: F-845-M1-04在已证fixture不变量边界独立关闭，F-R1-01/M1-01/02/03保持关闭，无新增finding |
+evidence: [独立收据/AC映射/复用边界](attachments/845/review-r6-step/review.md)、[永久四控制实跑](attachments/845/review-r6-step/step-controls-run.txt)、[实际tick/事件](attachments/845/review-r6-step/step-summary.json.txt)、[自选Patrol120/超期限361及legacy交互](attachments/845/review-r6-step/holdout-results.json.txt)、[实际taskbar PID护栏](attachments/845/review-r6-step/occluded-hitpid/observer.json.txt)、[Spec冻结](attachments/845/review-r6-step/spec-delta-frozen.md) |
+next: merge owner在冻结944c1c55执行受影响完整门及83项两端原生/项目/实际UI输出搬迁，通过后才autographics-dev落地/知识归档/guard清理。
+
+独立重建PE32MiB二进制173183e31cd3341c4db645c84e759e92e09b02058218ded5ee0ada6138a8155c；永久normal/delayed/drop/duplicate实际退出0/0/1/1，前两phase27/36GPU checks，缺失无新tick且phase6原期限红，重复实际+2按原oracle红。自选Patrol延迟120帧正例27/36像素，延迟361帧在原360预算下phase6拒绝且零Step事件；无重试/重置期限。真实裁切先证requested2562/actual2559不可达（首次caller仅预期occlusion字符串错误保留），再以可达2518/taskbar PID5416≠runner18048准确触发foreign PID拒绝。legacy interaction27与drop-release phase4红均保原断言，completion4/4、source321 Git对象与文件/SDK681/479packages/17locals/29edges、fmt通过，只有SDK146固定预存warnings。
+
+完整diff仅原生probe/永久回归/README/handoff/manifest七文件；正常App、Host/VM、取消/blur/原GPU/期限断言未改。206项work raw hash逐项核实，实际旧early-check回退使永久delayed正例按原消息翻红；旧裁切/真实CursorLeft及Patrol/wrong-focus/bound Move证据按确切身份复用。原历史54→54缺mouse receipt，不能唯一追溯延迟vs遮挡，不宣称已证VM缺陷/环境flake；关闭的是实际已证的异步确认与物理可达性夹具缺口。生产/owner/storage/SDK/AGP/锁/输入/config未变，其余AC按R2..R5证据边界保留。SD01..04冻结SHA256 `01eaa3e632a062c50bbcd5860df79d5a28e4d56390c881711754fb6416a351c5`保持；无合同缩面/新债务/canonical或ledger发布。
+
+T09关闭、reviewed9/10；T10和全部merge-owned完整门pending：producer/fresh own-SDK own-target consumer完整driver/AGP/build/source/owner、原81调用+两端Step回归=83调用、共享native/user/project/counter AND content与实际UI产物搬迁。未变旧证据仅可身份一致复用，不冒称本轮全包绿。driver-only不触发root整档/docs_gen；tf仍845落地清理后主检出单实例due批量。自动修复计数4of6不重置。最终WT clean944c1c55，本review全部子进程结束且无存活authoring进程，移交Plan写权给merge owner；未合入/沉淀/归档/清树，不宣称交付。
 
 ## 10. 待澄清事项
 
