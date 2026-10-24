@@ -1083,10 +1083,17 @@ def main() -> int:
             tool6.kill()
             tool6.wait()
 
-    # ---- V06c：build 支持矩阵（5 profile 真实构建；环境缺席具名红）----
-    # rust 的真实构建链已由 V01/V02 cargo build --locked 全量承载（同请求
-    # 形态），此处经工具协议 run build_ui 复验一致性；vue/jet/ark/vscode
-    # 走真实 npm/pnpm/cargo 链（工具宿主内建进程管理）。
+    # ---- V06c：build 支持矩阵（5 profile 全真实尝试；required=vue/rust/vscode）----
+    # 合同修订（Plan r3，用户 2026-10-24 R2 裁定"正式修订验收合同"）：
+    # jet/ark 真实构建面自 AC-03/V-03 移出，转后续环境门控渠道承载（本机
+    # 实测无 gradle/java/ANDROID_HOME 与 hvigorw/DEVECO，review-r2 在案）。
+    # 本用例语义：五 profile 仍全部真实尝试并逐项记录结果（不静默跳过、
+    # 不默认不适用）；pass 判据=required 集 {vue,rust,vscode} completed；
+    # jet/ark 环境缺席记【环境门控·转后续】，若工具链在场且构建失败仍判
+    # 红（移出合同不豁免真实失败）。rust 构建链另由 V01/V02 cargo build
+    # --locked 全量承载（同请求形态），此处经工具协议复验一致性；
+    # vue/vscode 走真实 npm/pnpm 链（工具宿主内建进程管理）。
+    BUILD_REQUIRED_PROFILES = ("vue", "rust", "vscode")
     build_results: list[tuple[str, bool, str]] = []
     tool7 = spawn_tool()
     try:
@@ -1105,19 +1112,23 @@ def main() -> int:
                 rep = body.get("report", {}) or {}
                 outcome = rep.get("outcome")
                 err_text = str(rep.get("error"))[:200]
-                # 协议 build_ok ≠ 真实构建成功：outcome==completed 才是通过；
-                # 失败按错误文本具名（工具链缺席=环境阻塞具名红，非默认不适用）
-                env_blocked = any(marker in err_text for marker in (
-                    "9009", "not found", "wrapper not found", "open the project in"))
                 ok = body.get("type") == "build_ok" and outcome == "completed"
-                detail = (f"outcome={outcome}"
-                          + (f"【环境阻塞】{err_text}" if env_blocked and not ok
-                             else f" error={err_text}" if not ok else "（真实构建链完成）"))
+                if prof in BUILD_REQUIRED_PROFILES:
+                    detail = (f"outcome={outcome}"
+                              + (f" error={err_text}" if not ok else "（真实构建链完成）"))
+                else:
+                    env_blocked = any(marker in err_text for marker in (
+                        "9009", "not found", "wrapper not found", "open the project in"))
+                    detail = (f"outcome={outcome}"
+                              + (f"【环境门控·转后续（Plan r3 用户裁定）】{err_text}"
+                                 if env_blocked and not ok
+                                 else f" error={err_text}" if not ok else "（真实构建链完成）"))
             except (EOFError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
                 ok, detail = False, f"会话异常/超时: {exc!r}"
             build_results.append((prof, ok, detail))
+        required_ok = all(ok for p, ok, _ in build_results if p in BUILD_REQUIRED_PROFILES)
         record("V06c-build-profile-matrix",
-               all(ok for _, ok, _ in build_results),
+               required_ok,
                "; ".join(f"{p}={'ok' if ok else 'RED'}({d})" for p, ok, d in build_results))
     finally:
         if tool7.poll() is None:
