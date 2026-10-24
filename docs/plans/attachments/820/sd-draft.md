@@ -74,10 +74,14 @@
   声明集变化走依赖事实计算的精确失效：record mention 嵌套闭包+跨 bundle
   签名形状等价——签名内容变化→全部 unit 重 lower（unit import 表嵌入每个
   def 的签名，link 内 interstate 门拥有该依赖），body 未变函数保留 HIR Arc；
-  helper body 变化不重 lower 调用者（快照按槽位绑定调用）；caps 变化全
-  unit 重 lower/admit 而 HIR 身份不动；跨修订签名失配=link 拒且前快照存活；
-  强制 whole 前端与等内容换对象（只保 hash 却替换对象）双退化反控均使同一
-  结构门非零。验收：V-13（incremental 族 5/5 + 828 标量套件绿=共享基线）。
+  helper body 变化不重 lower 调用者（快照按槽位绑定调用）；caps 变化在
+  同一成功发布点同步三面——全 unit 重 lower/admit（HIR 身份不动）+ 驻留
+  前端环境按新授权重建（grant 后使用新能力的热编辑可解析、被用撤销受控
+  拒且旧值全保、成功撤销后无权热编辑被拒，F820-R5-01）；跨修订签名失配
+  =link 拒且前快照存活；失败/陷阱/trap 编辑零安装（build-aside + 运行先
+  于发布）；强制 whole 前端与等内容换对象（只保 hash 却替换对象）双退化
+  反控均使同一结构门非零。验收：V-13（incremental 族 9/9 + 828 标量套件
+  绿=共享基线）。
 
 ## touched_goals
 
