@@ -32,6 +32,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import struct
 import subprocess
@@ -1084,26 +1085,29 @@ def main() -> int:
             tool6.wait()
 
     # ---- V06c：build 支持矩阵（5 profile 全真实尝试；required=vue/rust/vscode）----
-    # 合同修订（Plan r3，用户 2026-10-24 裁定"正式修订验收合同"）+ R3/R4 判据
-    # 收口：三类状态显式区分——①completed=通过；②env_gated（获准延期）=仅限
-    # 非必需面 jet/ark 且失败文本命中**当前 producer 的具名工具链缺席模板**
-    # （jet=gradle 缺席：9009=Windows 命令未找到退出码/wrapper 生成失败提示；
-    # ark=hvigorw wrapper 文件缺席原文——jet.rs:930/1191、ark.rs:763 模板）；
-    # ③real_fail=其余一切失败（编译错/协议错/会话异常/未知错误）传播红。
-    # review-r4 反例根修：泛化 "not found" 子串对整个 error 文本匹配会把
-    # "wrapper 已执行、exit 1" 的真实失败因项目路径中的无关字节误判为环境
-    # 延期——env 判定只认具名模板，路径/文件名/资源模块缺失/建议命令中的
-    # 通用字串不参与（不做反例黑名单，误差边界=producer 模板原文）。
+    # 合同修订（Plan r3，用户 2026-10-24 裁定"正式修订验收合同"）+ R3/R4/R5
+    # 判据收口：判定由**真实失败类别**决定，而非错误文本任意位置的同名片段
+    # （review-r5：目录名含完整模板短语 "Hvigor wrapper not found" 也能让
+    # 已执行的 exit 1 假绿——任何 substring 匹配都无法区分原因与附带路径）。
+    # 分类读 producer 失败形态的结构位（jet.rs/ark.rs 实际模板）：
+    # ①执行失败形态（原因位自带退出码）：`... exited (with) (exit code:) N`
+    #   ——仅 N==9009（Windows 命令未找到=工具链缺席症状）可获准延期，其余
+    #   码（1/2/…，含 HAP 缺失的 exited 0）一律真实失败传播红。退出码在
+    #   原因子句首位（try-manually 路径只能出现在其后），路径字节不能翻转。
+    # ②缺席形态（完整原因句居于 report.error 开头）：ark=hvigorw wrapper
+    #   文件缺席原文（ark.rs:763 "Hvigor wrapper not found at …— open the
+    #   project in DevEco Studio to build (no build was executed)"）；jet=
+    #   gradle/wrapper 缺席原文（jet.rs:930/934/943/1186/1191 "Failed to
+    #   generate gradle wrapper…" / "Gradle not found. Please install…"）——
+    #   以 startswith 锚定语义位置；producer 消息总以原因句开头，路径片段
+    #   只能出现在句中/尾部，不可能占据位置 0。
+    # ③未知形态（既非执行失败也无缺席句头）：保守传播红。
     # 五 profile 全部真实尝试逐项记录；rust 构建链另由 V01/V02 cargo build
     # --locked 全量承载。
     BUILD_REQUIRED_PROFILES = ("vue", "rust", "vscode")
-    BUILD_ENV_ABSENCE_SIGNATURES = {
-        "jet": ("exit code: 9009", "exited 9009",
-                "Failed to generate gradle wrapper",
-                "Please install Gradle or Android Studio",
-                "Gradle not found."),
-        "ark": ("Hvigor wrapper not found",
-                "open the project in DevEco Studio to build (no build was executed)"),
+    BUILD_ABSENCE_HEADS = {
+        "jet": ("Failed to generate gradle wrapper", "Gradle not found."),
+        "ark": ("Hvigor wrapper not found",),
     }
     build_results: list[tuple[str, bool, bool, str]] = []  # (profile, ok, env_gated, detail)
     tool7 = spawn_tool()
@@ -1130,9 +1134,13 @@ def main() -> int:
                 detail = f"会话异常/超时: {exc!r}"
                 build_results.append((prof, ok, False, detail))
                 continue
-            signatures = BUILD_ENV_ABSENCE_SIGNATURES.get(prof, ())
-            env_gated = (not ok) and prof not in BUILD_REQUIRED_PROFILES and any(
-                sig in err_text for sig in signatures)
+            nonrequired = prof not in BUILD_REQUIRED_PROFILES
+            executed = re.search(r"exited (?:with )?(?:exit code: )?(\d+)", err_text)
+            if executed:
+                env_gated = nonrequired and executed.group(1) == "9009"
+            else:
+                env_gated = nonrequired and any(
+                    err_text.startswith(head) for head in BUILD_ABSENCE_HEADS.get(prof, ()))
             if ok:
                 detail = "outcome=completed（真实构建链完成）"
             elif env_gated:
@@ -1140,7 +1148,7 @@ def main() -> int:
             elif prof in BUILD_REQUIRED_PROFILES:
                 detail = f"outcome={outcome} error={err_text}"
             else:
-                detail = (f"outcome={outcome}【真实失败·传播红：未命中工具链缺席模板】{err_text}")
+                detail = (f"outcome={outcome}【真实失败·传播红：未命中工具链缺席形态】{err_text}")
             build_results.append((prof, ok, env_gated, detail))
         required_ok = all(ok for p, ok, _, _ in build_results
                           if p in BUILD_REQUIRED_PROFILES)
