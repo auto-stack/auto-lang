@@ -935,6 +935,12 @@ fn run_check_impl(
                 Some("typed report on a non-data recipe (protocol violation)".to_string());
             break 'admit;
         }
+        // F820-R8-01: data typed shape is an ORACLE-INDEPENDENT admission
+        // rule — no exit/value oracle match can bypass it.
+        if let Some(v) = data_malformed_typed(&ok.steps) {
+            infra_detail = Some(v);
+            break 'admit;
+        }
         if ok.worker_version != EXPECTED_AV_WORKER_VERSION {
             infra_detail = Some(format!(
                 "av worker version `{}` does not match the admitted `{}`",
@@ -1193,7 +1199,11 @@ fn typed_shape_violation(t: &TypedOut) -> Option<String> {
     let width_ok = match t.kind.as_str() {
         "i64" | "u64" | "f64" => t.bits.len() == 16,
         "f32" => t.bits.len() == 8,
-        "i32" | "bool" => (1..=8).contains(&t.bits.len()),
+        // Canonical UNPADDED hex (contract-decision §3: bool/i32 不补零) —
+        // a leading zero is a non-canonical encoding, and bool is exactly
+        // the two value digits 0/1 (F820-R8-01: `2`/`00` must not pass).
+        "i32" => (1..=8).contains(&t.bits.len()) && !t.bits.starts_with('0'),
+        "bool" => t.bits == "0" || t.bits == "1",
         other => return Some(format!("unknown typed kind `{other}`")),
     };
     if !width_ok
@@ -1213,6 +1223,19 @@ fn typed_shape_violation(t: &TypedOut) -> Option<String> {
 /// Admission rule (F820-R7-01): any typed report on a non-data recipe.
 fn typed_on_non_data(family: RecipeFamily, steps: &[StepOut]) -> bool {
     family != RecipeFamily::Data && steps.iter().any(|s| s.typed.is_some())
+}
+
+/// Admission rule (F820-R8-01): EVERY typed report on a data response is
+/// shape-validated HERE — before and independent of any oracle branch, so
+/// a matching exit expectation (or any other oracle choice) can never let
+/// an illegal bool encoding or an unknown kind tag through.
+fn data_malformed_typed(steps: &[StepOut]) -> Option<String> {
+    steps.iter().find_map(|s| {
+        s.typed
+            .as_ref()
+            .and_then(typed_shape_violation)
+            .map(|v| format!("malformed typed report on step `{}`: {}", s.op, v))
+    })
 }
 
 fn judge_expectation(
@@ -1264,19 +1287,8 @@ fn judge_expectation(
                         first_diff: None,
                     });
                 }
-                if family == RecipeFamily::Data {
-                    if let Some(t) = &step.typed {
-                        if let Some(v) = typed_shape_violation(t) {
-                            mismatches.push(Mismatch {
-                                observation: "typed".into(),
-                                kind: "typed-shape".into(),
-                                expected: "canonical {kind, bits}".into(),
-                                actual: v,
-                                first_diff: None,
-                            });
-                        }
-                    }
-                }
+                // (Typed SHAPE is an admission rule — see
+                // `data_malformed_typed`; nothing here re-validates it.)
             }
         }
         Completion::Error {
@@ -1513,26 +1525,45 @@ mod judge_tests {
 
     #[test]
     fn data_typed_reports_must_have_the_canonical_shape() {
-        // Unknown kind tag.
-        let ms = mismatches(RecipeFamily::Data, &step(None, typed("weird", "1")));
-        assert!(ms.iter().any(|m| m.kind == "typed-shape"), "{ms:?}");
-        // Wrong canonical width for the kind (f32 must be 8 hex digits).
-        let ms = mismatches(RecipeFamily::Data, &step(None, typed("f32", "3f80")));
-        assert!(ms.iter().any(|m| m.kind == "typed-shape"), "{ms:?}");
-        // Non-hex digits.
-        let ms = mismatches(
-            RecipeFamily::Data,
-            &step(None, typed("u64", "zzzzzzzzzzzzzzzz")),
-        );
-        assert!(ms.iter().any(|m| m.kind == "typed-shape"), "{ms:?}");
-        // Canonical shapes pass validation.
+        // The shape rule is an ORACLE-INDEPENDENT admission check
+        // (`data_malformed_typed` takes only the steps): the R8 fault
+        // table — illegal bool encodings, unknown tags — is red even
+        // when a value is present and an exit oracle would match.
         for (kind, bits) in [
-            ("i32", "2a"),
+            ("bool", "2"),               // bool is exactly 0/1 (contract §3)
+            ("bool", "00"),              // non-canonical padded encoding
+            ("i32", "02a"),              // leading zero = non-canonical
+            ("weird", "1"),              // unknown kind tag
+            ("f32", "3f80"),             // wrong fixed width
+            ("u64", "zzzzzzzzzzzzzzzz"), // non-hex
+        ] {
+            assert!(
+                typed_shape_violation(&typed(kind, bits).unwrap()).is_some(),
+                "{kind}/{bits} must be rejected"
+            );
+            // ... and the admission gate reports it with a VALUE present
+            // (the exit-oracle bypass shape from R8: value=42 + matching
+            // exit would have passed the judge — admission still reddens).
+            let steps = [step(Some(42), typed(kind, bits))];
+            assert!(
+                data_malformed_typed(&steps).is_some(),
+                "{kind}/{bits} must be an admission violation regardless of oracle"
+            );
+        }
+        // Legal shapes: bool 0/1 both (success-only asserts no value
+        // semantics), the frozen NaN payload, wide fixed widths, i32.
+        for (kind, bits) in [
+            ("bool", "0"),
             ("bool", "1"),
+            ("i32", "2a"),
             ("f32", "7f80ad00"),
+            ("f32", "3f800000"),
             ("f64", "8000000000000000"),
+            ("u64", "ffffffffffffffff"),
         ] {
             assert!(typed_shape_violation(&typed(kind, bits).unwrap()).is_none());
         }
+        assert!(data_malformed_typed(&[step(None, typed("bool", "1"))]).is_none());
+        assert!(data_malformed_typed(&[step(Some(42), None)]).is_none());
     }
 }
