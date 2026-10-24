@@ -671,6 +671,42 @@ fn mn_formal_call_opts(
     caps: &[&str],
     expect: &str,
 ) -> serde_json::Value {
+    let report = mn_formal_call_report_opts(root, tag, source, steps, session, caps, expect);
+    assert_eq!(
+        status_of(&report, "run"),
+        auto_test_case::report::Status::Pass,
+        "formal call {tag} must be green: {:#?}",
+        report
+            .results
+            .iter()
+            .map(|r| (r.status, r.detail.clone()))
+            .collect::<Vec<_>>()
+    );
+    receipt_of(&root.join(tag))
+}
+
+/// The failure-fixture variant: runs the formal suite WITHOUT the green
+/// assertion and returns the report (the caller asserts the expected
+/// Error/Fail face and the mismatch text).
+fn mn_formal_call_report(
+    root: &Path,
+    tag: &str,
+    source: &str,
+    steps: &str,
+    expect: &str,
+) -> auto_test_case::report::RunReport {
+    mn_formal_call_report_opts(root, tag, source, steps, None, &[], expect)
+}
+
+fn mn_formal_call_report_opts(
+    root: &Path,
+    tag: &str,
+    source: &str,
+    steps: &str,
+    session: Option<&str>,
+    caps: &[&str],
+    expect: &str,
+) -> auto_test_case::report::RunReport {
     let case_dir = root.join(tag);
     let out_dir = root.join(format!("{tag}-out"));
     let _ = std::fs::remove_dir_all(&case_dir);
@@ -703,19 +739,17 @@ fn mn_formal_call_opts(
         "# t07\n```test-suite\nsuite { schema: \"autolang.suite/2\", id: \"s\", include: [\"c.case.ad\"] }\n```\n",
     )
     .unwrap();
-    let report = run_suite(&case_dir.join("s.suite.ad"), &out_dir, &Limits::defaults())
-        .expect("formal suite runs");
-    assert_eq!(
-        status_of(&report, "run"),
-        auto_test_case::report::Status::Pass,
-        "formal call {tag} must be green: {:#?}",
-        report
-            .results
-            .iter()
-            .map(|r| (r.status, r.detail.clone()))
-            .collect::<Vec<_>>()
-    );
-    receipt_of(&case_dir)
+    run_suite(&case_dir.join("s.suite.ad"), &out_dir, &Limits::defaults())
+        .unwrap_or_else(|e| panic!("formal suite {tag} runs: {e}"))
+}
+
+/// Removes an env var when dropped (panic-safe seam hygiene for the
+/// fixture/seam tests below).
+struct EnvGuard(&'static str);
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        std::env::remove_var(self.0);
+    }
 }
 
 /// A [key, value] pair-array counter read from an mn receipt session.
@@ -955,6 +989,11 @@ fn mir_native_turnaround_body_edit_gate() {
             esc(&from_line),
             esc(&to_line)
         );
+        // F-818-R1-01: the observer seam carries THIS revision's
+        // independent expectation so the measured window includes the
+        // comparison (worker never sees it).
+        std::env::set_var("AC_MN_INCREMENTAL_EXPECT_EXITS", rev_exp.to_string());
+        let _seam = EnvGuard("AC_MN_INCREMENTAL_EXPECT_EXITS");
         let measured = mn_formal_call(
             &root,
             &format!("edit-{i}"),
@@ -963,6 +1002,7 @@ fn mir_native_turnaround_body_edit_gate() {
             Some(&session),
             &format!(r#"{{ completion: "success", exit: {} }}"#, rev_exp),
         );
+        drop(_seam);
         // F-818-R1-03/R1-01: the measured call runs the D-828 incremental
         // session through the ROUNDS protocol; the SAMPLE WINDOW is the
         // edit round's PARENT-OBSERVED interval — the parent's own
@@ -985,6 +1025,16 @@ fn mir_native_turnaround_body_edit_gate() {
         assert_eq!(edit_rec["unaffected_stage_delta"].as_u64(), Some(0));
         assert_eq!(edit_rec["whole_module_stage_delta"].as_u64(), Some(0));
         assert_eq!(edit_rec["fallback_whole_lower"].as_u64(), Some(0));
+        assert_eq!(
+            edit_rec["expected_exit"].as_i64(),
+            Some(rev_exp),
+            "rev {i}: the seam carried the independent expectation"
+        );
+        assert_eq!(
+            edit_rec["expected_match"].as_bool(),
+            Some(true),
+            "rev {i}: the independent comparison matched inside the window"
+        );
         let w = edit_rec["wall_ms"].as_f64().unwrap_or(0.0);
         let pw = edit_rec["parent_window_ms"].as_f64().unwrap_or(0.0);
         assert!(
@@ -1396,6 +1446,19 @@ fn mir_native_incremental_series_formal() {
     }
     steps.push_str("{ op: \"run\" }");
     let judged = revs[samples].1;
+    // F-818-R1-01 residual: the OBSERVER SEAM carries the independent
+    // per-edit expectations INTO the adapter — each edit round's real PE
+    // result is compared against its revision's independent expectation
+    // INSIDE the round's continuous parent-observed window (the worker
+    // never sees them); the per-record asserts below re-check what was
+    // already compared in-window.
+    let expect_list = revs[1..=samples]
+        .iter()
+        .map(|(_, exp)| exp.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    std::env::set_var("AC_MN_INCREMENTAL_EXPECT_EXITS", &expect_list);
+    let _seam = EnvGuard("AC_MN_INCREMENTAL_EXPECT_EXITS");
     let r = mn_formal_call(
         &root,
         "series",
@@ -1404,6 +1467,7 @@ fn mir_native_incremental_series_formal() {
         None,
         &format!(r#"{{ completion: "success", exit: {} }}"#, judged),
     );
+    drop(_seam);
     assert_eq!(r["incremental"].as_bool(), Some(true), "one stable session");
     let recs = r["steps"].as_array().expect("step records");
     let edits: Vec<&serde_json::Value> = recs
@@ -1434,9 +1498,20 @@ fn mir_native_incremental_series_formal() {
             Some(revs[n + 1].1),
             "rev {n}: PE result == the revision's independent expectation"
         );
+        assert_eq!(
+            e["expected_exit"].as_i64(),
+            Some(revs[n + 1].1),
+            "rev {n}: the seam carried the independent expectation"
+        );
+        assert_eq!(
+            e["expected_match"].as_bool(),
+            Some(true),
+            "rev {n}: the independent comparison matched INSIDE the window"
+        );
         // The worker's CONTINUOUS edit-entry -> PE window (retained
         // evidence), and the PARENT-OBSERVED gate window that COVERS it
-        // (preparation + IPC + admission are inside the parent window).
+        // (preparation + IPC + admission + the independent comparison are
+        // all inside the parent window).
         let w = e["wall_ms"].as_f64().unwrap_or(0.0);
         assert!(w > 0.0, "rev {n}: real continuous worker window");
         let pw = e["parent_window_ms"].as_f64().unwrap_or(0.0);
@@ -1454,7 +1529,7 @@ fn mir_native_incremental_series_formal() {
     assert_eq!(run_rec["exit_code"].as_i64(), Some(judged));
     let p95 = mn_t07_percentile(&walls, 95.0);
     eprintln!(
-        "t11 v12.1-formal: {samples} revisions in one stable session, PARENT-OBSERVED P50/P95/P99 = {:.1}/{:.1}/{:.1} ms (gate {gate_ms})",
+        "t11 v12.1-formal: {samples} revisions in one stable session, PARENT-OBSERVED (prep -> IPC -> worker -> admission -> independent comparison) P50/P95/P99 = {:.1}/{:.1}/{:.1} ms (gate {gate_ms})",
         mn_t07_percentile(&walls, 50.0),
         p95,
         mn_t07_percentile(&walls, 99.0),
@@ -1467,7 +1542,7 @@ fn mir_native_incremental_series_formal() {
     let report = serde_json::json!({
         "plan": "PLAN-818",
         "tier": "t11-v12.1-formal-series",
-        "window": "parent-observed (preparation -> IPC -> worker -> admission)",
+        "window": "parent-observed (preparation -> IPC -> worker -> admission -> independent comparison)",
         "gate_ms": gate_ms,
         "samples": samples,
         "p50_ms": mn_t07_percentile(&walls, 50.0),
@@ -1762,4 +1837,301 @@ fn mir_native_worker_single_shot_trace_and_prefix() {
         "the accepted prefix is preserved (was executed as 102)"
     );
     let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// F-818-R3-01/R3-02: the rounds boundary is failure-live and cap-bound.
+/// Protocol-aware fixtures (the REAL worker binary, test-only fault seam
+/// `AC_MN_WORKER_FAULT`) drive the actual adapter. Every blocking shape —
+/// a worker that never reads stdin (request beyond pipe capacity), stops
+/// reading after the warmup, answers close but never exits, or ignores
+/// close — must return an infra non-verdict within the configured
+/// absolute budget (AC_MN_ROUNDS_WALL_SECS) with the worker tree GONE
+/// (pid liveness), never a parent hang. Cap shapes — a newline-free
+/// over-cap stream, one oversized newline-terminated line, an unsolicited
+/// line flood, and stderr past its cap WHILE stdout stays valid — must be
+/// rejected as infra promptly; the boundary valid controls (stderr just
+/// under the cap, a response line just under the line cap) stay green.
+#[test]
+#[cfg(windows)]
+fn mir_native_rounds_failure_liveness_and_caps() {
+    let _guard = MN_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let root = mn_t07_root("t11-liveness");
+    let small_src =
+        "fn helper(v int) int {\n    return v + 100\n}\n\nfn main() int {\n    return helper(1)\n}\n";
+    let steps =
+        r#"{ op: "edit-source", from: "return v + 100", to: "return v + 200" }, { op: "run" }"#;
+    let pidfile = root.join("fixture.pid");
+    let fixture_pid = || -> u32 {
+        for _ in 0..100 {
+            if let Ok(text) = std::fs::read_to_string(&pidfile) {
+                if let Ok(p) = text.trim().parse::<u32>() {
+                    return p;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        panic!("the fixture pidfile never appeared");
+    };
+    let pid_alive = |pid: u32| -> bool {
+        let out = std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
+            .stdout(std::process::Stdio::piped())
+            .output();
+        matches!(
+            out,
+            Ok(o) if String::from_utf8_lossy(&o.stdout).contains(&format!("\"{pid}\""))
+        )
+    };
+    let set_seams = |fault: &str| {
+        let _ = std::fs::remove_file(&pidfile);
+        std::env::set_var("AC_MN_WORKER_FAULT", fault);
+        std::env::set_var(
+            "AC_MN_WORKER_FIXTURE_PIDFILE",
+            pidfile.display().to_string(),
+        );
+        std::env::set_var("AC_MN_ROUNDS_WALL_SECS", "3");
+    };
+    let clear_seams = || {
+        std::env::remove_var("AC_MN_WORKER_FAULT");
+        std::env::remove_var("AC_MN_WORKER_FIXTURE_PIDFILE");
+        std::env::remove_var("AC_MN_ROUNDS_WALL_SECS");
+    };
+    let mismatch_text = |report: &auto_test_case::report::RunReport| -> String {
+        report
+            .results
+            .iter()
+            .find(|r| r.check_id == "run")
+            .and_then(|r| r.mismatches.first().map(|m| m.actual.clone()))
+            .unwrap_or_default()
+    };
+
+    // (a) Liveness: infra within the budget, worker tree gone. The
+    // no-stdin fixture needs a request beyond the pipe capacity (the
+    // 273KB frozen load source).
+    let (big_src, _) = mn_fetch_revision(0);
+    for (tag, fault, src) in [
+        ("no-stdin", "no-stdin-read", big_src.as_str()),
+        ("stop-warm", "stop-after-warmup", small_src),
+        ("close-noexit", "close-without-exit", small_src),
+        ("close-ignored", "ignore-close", small_src),
+    ] {
+        let started = std::time::Instant::now();
+        set_seams(fault);
+        let report = mn_formal_call_report(
+            &root,
+            tag,
+            src,
+            steps,
+            r#"{ completion: "success", exit: 201 }"#,
+        );
+        clear_seams();
+        let took = started.elapsed();
+        assert_eq!(
+            status_of(&report, "run"),
+            auto_test_case::report::Status::Error,
+            "{tag}: a blocking worker is an infra non-verdict (took {:.1}s): {}",
+            took.as_secs_f64(),
+            mismatch_text(&report)
+        );
+        assert!(
+            took < std::time::Duration::from_secs(12),
+            "{tag}: returned within the configured budget (took {:.1}s)",
+            took.as_secs_f64()
+        );
+        let pid = fixture_pid();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(!pid_alive(pid), "{tag}: the fixture worker tree is gone");
+    }
+
+    // (b) Stdout caps: prompt infra naming the cap (bounded allocation —
+    // the cap trips DURING accumulation, before any unbounded read).
+    for (tag, fault) in [
+        ("cap-noeol", "stdout-oversize-noeol"),
+        ("cap-line", "stdout-oversize-line"),
+    ] {
+        let started = std::time::Instant::now();
+        set_seams(fault);
+        let report = mn_formal_call_report(
+            &root,
+            tag,
+            small_src,
+            steps,
+            r#"{ completion: "success", exit: 201 }"#,
+        );
+        clear_seams();
+        assert_eq!(
+            status_of(&report, "run"),
+            auto_test_case::report::Status::Error,
+            "{tag}"
+        );
+        let text = mismatch_text(&report);
+        assert!(
+            text.contains("stdout exceeded"),
+            "{tag}: the stdout cap is propagated, got: {text}"
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(12),
+            "{tag}"
+        );
+    }
+
+    // (c) Unsolicited flood: infra promptly (bounded queue — the reader
+    // never allocates without bound); the first bogus line fails
+    // admission instead of queueing the flood.
+    let started = std::time::Instant::now();
+    set_seams("stdout-flood-lines");
+    let report = mn_formal_call_report(
+        &root,
+        "cap-flood",
+        small_src,
+        steps,
+        r#"{ completion: "success", exit: 201 }"#,
+    );
+    clear_seams();
+    assert_eq!(
+        status_of(&report, "run"),
+        auto_test_case::report::Status::Error,
+        "cap-flood: an unsolicited flood is infra"
+    );
+    assert!(started.elapsed() < std::time::Duration::from_secs(12));
+
+    // (d) stderr over the cap WHILE stdout stays valid: the cap is
+    // propagated as infra, never a silently-green run.
+    let started = std::time::Instant::now();
+    set_seams("stderr-overcap");
+    let report = mn_formal_call_report(
+        &root,
+        "stderr-over",
+        small_src,
+        steps,
+        r#"{ completion: "success", exit: 201 }"#,
+    );
+    clear_seams();
+    assert_eq!(
+        status_of(&report, "run"),
+        auto_test_case::report::Status::Error,
+        "stderr-over: a cap-violating worker never yields a valid verdict"
+    );
+    let text = mismatch_text(&report);
+    assert!(
+        text.contains("stderr exceeded"),
+        "stderr-over: the stderr cap is propagated, got: {text}"
+    );
+    assert!(started.elapsed() < std::time::Duration::from_secs(12));
+    let pid = fixture_pid();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(
+        !pid_alive(pid),
+        "stderr-over: the fixture worker tree is gone"
+    );
+
+    // (e) Boundary VALID controls: stderr just under the cap and a
+    // response line just under the line cap both stay green through the
+    // real adapter (a relaxed wall — the multi-megabyte line is the
+    // probe, not the deadline).
+    for (tag, fault) in [
+        ("stderr-under", "stderr-under-cap"),
+        ("line-under", "stdout-line-under-cap"),
+    ] {
+        set_seams(fault);
+        std::env::set_var("AC_MN_ROUNDS_WALL_SECS", "30");
+        let report = mn_formal_call_report(
+            &root,
+            tag,
+            small_src,
+            steps,
+            r#"{ completion: "success", exit: 201 }"#,
+        );
+        clear_seams();
+        assert_eq!(
+            status_of(&report, "run"),
+            auto_test_case::report::Status::Pass,
+            "{tag}: the valid boundary control stays green: {}",
+            mismatch_text(&report)
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// F-818-R1-01 residual: the observer-seam independent comparison is a
+/// VERDICT inside the round's continuous parent-observed window — the
+/// correct expectation rides every edit record (compared in-window), and
+/// a WRONG expectation fails the case (never a silent pass).
+#[test]
+#[cfg(windows)]
+fn mir_native_incremental_expect_seam_controls() {
+    let _guard = MN_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let root = mn_t07_root("t11-seam");
+    let src =
+        "fn helper(v int) int {\n    return v + 100\n}\n\nfn main() int {\n    return helper(1)\n}\n";
+    let steps =
+        r#"{ op: "edit-source", from: "return v + 100", to: "return v + 200" }, { op: "run" }"#;
+
+    // (a) Correct expectation: green, and the comparison is recorded on
+    // the edit record (compared INSIDE the round window).
+    std::env::set_var("AC_MN_INCREMENTAL_EXPECT_EXITS", "201");
+    let _seam = EnvGuard("AC_MN_INCREMENTAL_EXPECT_EXITS");
+    let r = mn_formal_call(
+        &root,
+        "seam-ok",
+        src,
+        steps,
+        None,
+        r#"{ completion: "success", exit: 201 }"#,
+    );
+    drop(_seam);
+    let edit = r["steps"]
+        .as_array()
+        .expect("step records")
+        .iter()
+        .find(|x| x["op"].as_str() == Some("edit-source"))
+        .expect("edit step");
+    assert_eq!(edit["expected_exit"].as_i64(), Some(201));
+    assert_eq!(
+        edit["expected_match"].as_bool(),
+        Some(true),
+        "the independent comparison matched inside the window"
+    );
+
+    // (b) Wrong expectation: the comparison FAILS the case (a real
+    // verdict failure, not infra, not a silent pass).
+    std::env::set_var("AC_MN_INCREMENTAL_EXPECT_EXITS", "999");
+    let _seam = EnvGuard("AC_MN_INCREMENTAL_EXPECT_EXITS");
+    let report = mn_formal_call_report(
+        &root,
+        "seam-bad",
+        src,
+        steps,
+        r#"{ completion: "success", exit: 201 }"#,
+    );
+    drop(_seam);
+    assert_eq!(
+        status_of(&report, "run"),
+        auto_test_case::report::Status::Fail,
+        "a mismatched independent expectation fails the case: {:#?}",
+        report.results
+    );
+    let seam_mismatch = report
+        .results
+        .iter()
+        .find(|r| r.check_id == "run")
+        .and_then(|r| {
+            r.mismatches
+                .iter()
+                .find(|m| m.observation.contains("independent exit"))
+                .cloned()
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "the seam comparison mismatch is recorded, got: {:#?}",
+                report
+                    .results
+                    .iter()
+                    .find(|r| r.check_id == "run")
+                    .map(|r| &r.mismatches)
+            )
+        });
+    assert_eq!(seam_mismatch.expected, "999");
+    assert_eq!(seam_mismatch.actual, "Some(201)");
+    let _ = std::fs::remove_dir_all(&root);
 }

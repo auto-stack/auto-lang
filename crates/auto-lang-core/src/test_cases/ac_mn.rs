@@ -378,8 +378,18 @@ fn replace_once(src: &[u8], from: &str, to: &str) -> Result<Vec<u8>, String> {
 enum RoundRead {
     Line(String),
     Closed,
-    Overflow,
     ReadErr(String),
+}
+
+/// The ROUNDS session's absolute wall: the frozen default, overridable to
+/// a short budget by the liveness fixtures (AC_MN_ROUNDS_WALL_SECS).
+fn rounds_wall() -> Duration {
+    std::env::var("AC_MN_ROUNDS_WALL_SECS")
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .filter(|s| *s >= 1)
+        .map(Duration::from_secs)
+        .unwrap_or(SESSION_WALL)
 }
 
 /// A persistent ROUNDS mn-worker session (F-818-R1-01): the parent writes
@@ -387,22 +397,41 @@ enum RoundRead {
 /// parent observes the CONTINUOUS per-edit interval — its own request
 /// preparation (source copy + literal search/insert + payload
 /// serialization), IPC both ways, the worker's locate/edit/link/run,
-/// response serialization, and its own admission of the round's result.
+/// response serialization, and its own admission of (and independent
+/// comparison for) the round's result.
+///
+/// Failure liveness and IPC bounds (F-818-R3-01/R3-02): every blocking
+/// operation lives on a session-owned thread; the parent only ever
+/// (a) posts a line to the writer's mailbox (bounded by the step count —
+/// a stuck pipe can never block the parent), (b) receives a response
+/// under the ONE absolute session deadline, and (c) reaps via a
+/// deadline-governed poll — never a bare blocking `wait`. Stdout is
+/// capped DURING accumulation (a newline-free or oversized stream trips
+/// the cap before unbounded allocation) and the response queue is
+/// bounded (an unsolicited flood trips the overflow flag). A stderr cap
+/// breach sets a flag checked on every receive and at finish, so a
+/// cap-violating worker can never produce an apparently-valid verdict.
 /// Contained (suspended spawn → Job → resume; the guard is held for the
-/// whole session and kills the tree on drop), one absolute session
-/// deadline, response lines capped.
+/// whole session); teardown kills the tree first, then joins every
+/// session-owned thread — pipes close with the tree, so no handle leaks.
 struct RoundsWorker {
     child: std::process::Child,
     job: Option<containment::JobGuard>,
-    stdin: Option<std::process::ChildStdin>,
+    tx_lines: Option<std::sync::mpsc::Sender<String>>,
+    writer: Option<std::thread::JoinHandle<()>>,
+    reader: Option<std::thread::JoinHandle<()>>,
+    stderr_t: Option<std::thread::JoinHandle<()>>,
+    stderr_done: std::sync::mpsc::Receiver<(bool, Vec<u8>)>,
+    stdout_over: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    stderr_over: std::sync::Arc<std::sync::atomic::AtomicBool>,
     rx: std::sync::mpsc::Receiver<RoundRead>,
     started: Instant,
     deadline: Instant,
 }
 
 impl RoundsWorker {
-    /// Spawn the contained worker, send the initial (rounds) request line,
-    /// and return the session plus the warmup response line.
+    /// Spawn the contained worker and return the session (RAII held from
+    /// BEFORE the first byte is written) plus the warmup response line.
     fn start(request: &str) -> Result<(RoundsWorker, String), String> {
         let exe = worker_binary()?;
         let mut cmd = Command::new(&exe);
@@ -434,80 +463,143 @@ impl RoundsWorker {
         }
         #[cfg(not(windows))]
         let job: Option<containment::JobGuard> = None;
-        // Capped stderr drain (diagnostics only) + line reader thread.
-        fn drain_thread<R: Read + Send + 'static>(
-            pipe: Option<R>,
-        ) -> Option<std::thread::JoinHandle<()>> {
-            pipe.map(|mut s| {
-                std::thread::spawn(move || {
-                    let mut buf = Vec::new();
-                    let mut chunk = [0u8; 8192];
-                    loop {
-                        match s.read(&mut chunk) {
-                            Ok(0) | Err(_) => break,
-                            Ok(n) => {
-                                buf.extend_from_slice(&chunk[..n]);
-                                if buf.len() > STDERR_CAP {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                })
-            })
-        }
-        let err_t = drain_thread(child.stderr.take());
+        // Session-owned threads (joined at teardown — never leaked):
+        // - writer: owns stdin; the parent only posts to its mailbox, so a
+        //   full pipe can never block the parent.
+        // - reader: owns stdout; caps DURING accumulation and posts into a
+        //   BOUNDED queue (unsolicited floods trip the overflow flag).
+        // - stderr: caps at STDERR_CAP and reports the breach on a flag the
+        //   parent checks on every receive and at finish.
+        let mut stdin = child.stdin.take().ok_or("worker stdin pipe")?;
+        let (tx_lines, rx_lines) = std::sync::mpsc::channel::<String>();
+        let writer = std::thread::spawn(move || {
+            while let Ok(payload) = rx_lines.recv() {
+                let flushed = stdin
+                    .write_all(payload.as_bytes())
+                    .and_then(|_| stdin.flush());
+                if flushed.is_err() {
+                    break;
+                }
+            }
+        });
         let out_pipe = child.stdout.take().ok_or("worker stdout pipe")?;
-        let (tx, rx) = std::sync::mpsc::channel::<RoundRead>();
-        let line_t = std::thread::spawn(move || {
-            use std::io::BufRead as _;
-            let mut r = std::io::BufReader::new(out_pipe);
-            let mut s = String::new();
+        let (tx, rx) = std::sync::mpsc::sync_channel::<RoundRead>(8);
+        let stdout_over = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stdout_flag = std::sync::Arc::clone(&stdout_over);
+        let reader = std::thread::spawn(move || {
+            let mut r = out_pipe;
+            let mut pending: Vec<u8> = Vec::new();
+            // The newline scan resumes here (a multi-megabyte valid line
+            // must not be rescanned from zero per chunk).
+            let mut scanned = 0usize;
+            let mut chunk = [0u8; 8192];
             loop {
-                s.clear();
-                match r.read_line(&mut s) {
+                match r.read(&mut chunk) {
                     Ok(0) => {
                         let _ = tx.send(RoundRead::Closed);
                         break;
-                    }
-                    Ok(_) => {
-                        if s.len() > READ_CAP {
-                            let _ = tx.send(RoundRead::Overflow);
-                            break;
-                        }
-                        if s.trim().is_empty() {
-                            continue;
-                        }
-                        if tx.send(RoundRead::Line(s.clone())).is_err() {
-                            break;
-                        }
                     }
                     Err(e) => {
                         let _ = tx.send(RoundRead::ReadErr(format!("{e}")));
                         break;
                     }
+                    Ok(n) => {
+                        pending.extend_from_slice(&chunk[..n]);
+                        // The cap applies DURING accumulation: a
+                        // newline-free or oversized stream trips it before
+                        // the pending buffer can grow past the bound.
+                        if pending.len() > READ_CAP {
+                            stdout_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                            let _ = tx.try_send(RoundRead::Closed);
+                            break;
+                        }
+                        let mut stop = false;
+                        while let Some(rel) = pending[scanned..].iter().position(|&b| b == b'\n') {
+                            let pos = scanned + rel;
+                            let line = String::from_utf8_lossy(&pending[..pos]).into_owned();
+                            pending.drain(..=pos);
+                            scanned = 0;
+                            if line.trim().is_empty() {
+                                continue;
+                            }
+                            // Bounded queue: an unsolicited flood fills the
+                            // channel and trips the flag instead of
+                            // allocating without bound.
+                            if tx.try_send(RoundRead::Line(line)).is_err() {
+                                stdout_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                                stop = true;
+                                break;
+                            }
+                        }
+                        if stop {
+                            break;
+                        }
+                    }
                 }
             }
         });
-        let _ = line_t;
-        let _ = err_t;
-        let mut stdin = child.stdin.take();
-        if let Some(w) = stdin.as_mut() {
-            w.write_all(request.as_bytes())
-                .and_then(|_| w.write_all(b"\n"))
-                .and_then(|_| w.flush())
-                .map_err(|e| format!("write rounds request: {e}"))?;
-        }
-        let worker = RoundsWorker {
+        let err_pipe = child.stderr.take().ok_or("worker stderr pipe")?;
+        let stderr_over = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stderr_flag = std::sync::Arc::clone(&stderr_over);
+        let (tx_err, stderr_done) = std::sync::mpsc::channel::<(bool, Vec<u8>)>();
+        let stderr_t = std::thread::spawn(move || {
+            let mut s = err_pipe;
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 8192];
+            let mut exceeded = false;
+            loop {
+                match s.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        buf.extend_from_slice(&chunk[..n]);
+                        if buf.len() > STDERR_CAP {
+                            exceeded = true;
+                            stderr_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                            break;
+                        }
+                    }
+                }
+            }
+            let _ = tx_err.send((exceeded, buf));
+        });
+        let mut worker = RoundsWorker {
             child,
             job,
-            stdin,
+            tx_lines: Some(tx_lines),
+            writer: Some(writer),
+            reader: Some(reader),
+            stderr_t: Some(stderr_t),
+            stderr_done,
+            stdout_over,
+            stderr_over,
             rx,
             started,
-            deadline: started + SESSION_WALL,
+            deadline: started + rounds_wall(),
         };
+        // RAII is held from here on; the initial write goes through the
+        // session-owned writer (a blocked write cannot block the parent —
+        // the warmup receive under the absolute wall governs it).
+        worker.send_line(request)?;
         let warm = worker.read_line()?;
         Ok((worker, warm))
+    }
+
+    /// Post one line to the writer's mailbox (never blocks on the pipe;
+    /// a stuck writer is caught by the response deadline, not by us).
+    fn send_line(&mut self, line: &str) -> Result<(), String> {
+        if Instant::now() > self.deadline {
+            return Err(
+                "mn rounds session exceeded the session wall (single absolute deadline)".into(),
+            );
+        }
+        let Some(tx) = self.tx_lines.as_ref() else {
+            return Err("mn rounds writer already stopped".into());
+        };
+        let mut payload = String::with_capacity(line.len() + 1);
+        payload.push_str(line);
+        payload.push('\n');
+        tx.send(payload)
+            .map_err(|_| "mn rounds writer already stopped".to_string())
     }
 
     fn read_line(&self) -> Result<String, String> {
@@ -516,12 +608,22 @@ impl RoundsWorker {
                 "mn rounds session exceeded the session wall (single absolute deadline)".into(),
             );
         };
-        match self.rx.recv_timeout(timeout) {
+        let got = self.rx.recv_timeout(timeout);
+        // Cap propagation first: a cap-violating worker never yields an
+        // apparently-valid line, even when stdout itself stays well-formed.
+        if self.stdout_over.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(format!(
+                "mn rounds worker stdout exceeded the {READ_CAP}-byte cap"
+            ));
+        }
+        if self.stderr_over.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(format!(
+                "mn rounds worker stderr exceeded the {STDERR_CAP}-byte cap"
+            ));
+        }
+        match got {
             Ok(RoundRead::Line(l)) => Ok(l),
             Ok(RoundRead::Closed) => Err("mn rounds worker closed its output early".into()),
-            Ok(RoundRead::Overflow) => Err(format!(
-                "mn rounds response line exceeded the {READ_CAP}-byte cap"
-            )),
             Ok(RoundRead::ReadErr(e)) => Err(format!("mn rounds worker stdout read: {e}")),
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                 Err("mn rounds session exceeded the session wall (single absolute deadline)".into())
@@ -532,36 +634,87 @@ impl RoundsWorker {
         }
     }
 
-    /// One round: write the step line, read the response line.
+    /// One round: post the step line, receive the response line.
     fn round(&mut self, line: &str) -> Result<String, String> {
-        if let Some(w) = self.stdin.as_mut() {
-            w.write_all(line.as_bytes())
-                .and_then(|_| w.write_all(b"\n"))
-                .and_then(|_| w.flush())
-                .map_err(|e| format!("write rounds step: {e}"))?;
-        }
+        self.send_line(line)?;
         self.read_line()
     }
 
-    /// The graceful close handshake: close line → close response → reap.
+    /// Deadline-governed reap — never a bare blocking `wait` (a worker
+    /// that answers every round but refuses to exit still hits the wall).
+    fn reap_until_deadline(&mut self) -> Result<std::process::ExitStatus, String> {
+        loop {
+            if Instant::now() > self.deadline {
+                return Err(
+                    "mn rounds worker did not exit within the session wall (single absolute deadline)"
+                        .into(),
+                );
+            }
+            match self.child.try_wait() {
+                Ok(Some(st)) => return Ok(st),
+                Ok(None) => std::thread::sleep(Duration::from_millis(5)),
+                Err(e) => return Err(format!("poll mn rounds worker: {e}")),
+            }
+        }
+    }
+
+    /// The graceful close handshake under the absolute wall: close line →
+    /// close response → deadline-governed reap → stderr cap verdict.
     fn finish(&mut self) -> Result<(), String> {
-        if let Some(w) = self.stdin.as_mut() {
-            let _ = w.write_all(b"{\"op\":\"close\"}\n");
-            let _ = w.flush();
+        let handshake = self
+            .send_line("{\"op\":\"close\"}")
+            .and_then(|_| self.read_line().map(|_| ()));
+        let reap = self.reap_until_deadline().and_then(|st| {
+            if st.success() {
+                Ok(())
+            } else {
+                Err(format!("mn rounds worker exited {st:?}"))
+            }
+        });
+        // The tree is gone (reaped, or teardown below kills it): the
+        // pipes are closed, so the stderr report arrives promptly.
+        let (err_exceeded, err_tail) = self
+            .stderr_done
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap_or((false, Vec::new()));
+        let mut failures = Vec::new();
+        if let Err(e) = &handshake {
+            failures.push(format!("close handshake: {e}"));
         }
-        let _ = self.read_line(); // the close response (best-effort)
-        self.stdin.take();
-        let status = self
-            .child
-            .wait()
-            .map_err(|e| format!("wait mn rounds worker: {e}"))?;
-        // The child has exited; releasing the guard now is safe (its
-        // kill-on-close semantics only matter for a live tree).
+        if let Err(e) = &reap {
+            failures.push(format!("reap: {e}"));
+        }
+        if err_exceeded {
+            failures.push(format!(
+                "worker stderr exceeded the {STDERR_CAP}-byte cap; tail: {:.200}",
+                String::from_utf8_lossy(&err_tail)
+            ));
+        }
+        self.teardown();
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures.join("; "))
+        }
+    }
+
+    /// Kill the tree FIRST (closing every pipe), then join all
+    /// session-owned threads — bounded because the closed pipes end their
+    /// blocking reads/writes. No orphan readers or writers.
+    fn teardown(&mut self) {
+        self.tx_lines.take();
+        let _ = self.child.kill();
+        let _ = self.child.wait();
         drop(self.job.take());
-        if !status.success() {
-            return Err(format!("mn rounds worker exited {status:?}"));
+        if let Some(t) = self.writer.take() {
+            let _ = t.join();
         }
-        Ok(())
+        if let Some(t) = self.reader.take() {
+            let _ = t.join();
+        }
+        if let Some(t) = self.stderr_t.take() {
+            let _ = t.join();
+        }
     }
 
     fn worker_us(&self) -> u64 {
@@ -571,10 +724,7 @@ impl RoundsWorker {
 
 impl Drop for RoundsWorker {
     fn drop(&mut self) {
-        self.stdin.take();
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        drop(self.job.take());
+        self.teardown();
     }
 }
 
@@ -1179,6 +1329,36 @@ fn run_incremental(
     std::fs::create_dir_all(artifact_dir).map_err(|e| format!("mn artifact dir: {e}"))?;
     let workdir = artifact_dir.join("mn-inc-work");
 
+    // F-818-R1-01 residual: the OBSERVER SEAM for independent per-edit
+    // expectations. The worker never sees expected outcomes; when the
+    // observer (the formal test, holding the independent oracle) supplies
+    // them via the environment, the adapter compares each edit round's
+    // real PE result INSIDE the round's continuous parent-observed window
+    // (preparation → IPC → worker → admission → comparison) — a mismatch
+    // is a recorded verdict failure, never a silent admission.
+    let expected_exits: Option<Vec<i64>> = match std::env::var("AC_MN_INCREMENTAL_EXPECT_EXITS") {
+        Err(_) => None,
+        Ok(raw) if raw.trim().is_empty() => None,
+        Ok(raw) => {
+            let list = raw
+                .split(',')
+                .map(|t| t.trim().parse::<i64>())
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| format!("AC_MN_INCREMENTAL_EXPECT_EXITS: {e}"))?;
+            let edits = steps
+                .iter()
+                .filter(|s| matches!(s, auto_test_case::contract::ProbeStep::EditSource { .. }))
+                .count();
+            if list.len() != edits {
+                return Err(format!(
+                    "AC_MN_INCREMENTAL_EXPECT_EXITS carries {} values for {edits} edit steps (observer seam misuse)",
+                    list.len()
+                ));
+            }
+            Some(list)
+        }
+    };
+
     let nonce = hex(&sha256(
         format!("{}|{:?}|mn-inc", std::process::id(), started).as_bytes(),
     ));
@@ -1223,6 +1403,8 @@ fn run_incremental(
     let mut parent_windows_ms: Vec<f64> = Vec::new();
     let mut whole_fallback = false;
     let mut resp_manifest_fp = String::new();
+    // Seam-supplied independent comparisons that FAILED (verdict-level).
+    let mut expect_mismatches: Vec<(usize, i64, Option<i32>)> = Vec::new();
 
     'admit: {
         let warm: serde_json::Value = match serde_json::from_str(&warm_line) {
@@ -1260,6 +1442,11 @@ fn run_incremental(
         step_records.push(warm_ok);
 
         let mut source = input_bytes.clone();
+        // The observer-seam cursor: one expected exit per edit step,
+        // consumed at PREPARATION time (fallback-materialized rounds keep
+        // their slot — the comparison there is null, the case oracle owns
+        // the judged value).
+        let mut expect_idx = 0usize;
         for (i, st) in steps.iter().enumerate() {
             // The parent-observed window opens at the parent's OWN
             // preparation for this round (F-818-R1-01): the exactly-once
@@ -1267,7 +1454,7 @@ fn run_incremental(
             // round payload serialization happen INSIDE it.
             let round_started = Instant::now();
             let round_nonce = hex(&sha256(format!("{nonce}|step{i}").as_bytes()));
-            let (op, round_line) = match st {
+            let (op, round_line, step_expect) = match st {
                 auto_test_case::contract::ProbeStep::EditSource { from, to } => {
                     let next = match replace_once(&source, from, to) {
                         Ok(s) => s,
@@ -1277,6 +1464,8 @@ fn run_incremental(
                         }
                     };
                     source = next;
+                    let step_expect = expected_exits.as_ref().map(|xs| xs[expect_idx]);
+                    expect_idx += 1;
                     (
                         "edit-source",
                         serde_json::json!({
@@ -1286,11 +1475,13 @@ fn run_incremental(
                             "nonce": round_nonce,
                         })
                         .to_string(),
+                        step_expect,
                     )
                 }
                 auto_test_case::contract::ProbeStep::Run => (
                     "run",
                     serde_json::json!({"op": "run", "nonce": round_nonce}).to_string(),
+                    None,
                 ),
                 other => {
                     infra_detail = Some(format!(
@@ -1345,9 +1536,15 @@ fn run_incremental(
                     // on this legal edit; the worker materialized it on the
                     // session's CURRENT source (accepted prefix preserved).
                     // Not an incremental sample; the trailing run executes
-                    // one whole-request pipeline admitted below.
+                    // one whole-request pipeline admitted below. The seam
+                    // slot is kept with a NULL comparison — no per-edit PE
+                    // result exists here; the case oracle judges the run.
                     whole_fallback = true;
                     let mut rec = ok;
+                    if let Some(want) = step_expect {
+                        rec["expected_exit"] = serde_json::json!(want);
+                        rec["expected_match"] = serde_json::Value::Null;
+                    }
                     rec["parent_window_ms"] =
                         serde_json::json!(round_started.elapsed().as_secs_f64() * 1000.0);
                     step_records.push(rec);
@@ -1399,10 +1596,23 @@ fn run_incremental(
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                // The parent-observed window closes here: preparation,
-                // IPC, worker work, response, and admission are all done.
-                let window_ms = round_started.elapsed().as_secs_f64() * 1000.0;
                 let mut rec = ok;
+                // F-818-R1-01 residual: the INDEPENDENT expected-exit
+                // comparison runs INSIDE the window (before it closes) —
+                // the round-owned measurement covers preparation through
+                // admission AND comparison; a mismatch is recorded and
+                // fails the verdict below.
+                if let Some(want) = step_expect {
+                    let matched = round_exit == Some(want as i32);
+                    rec["expected_exit"] = serde_json::json!(want);
+                    rec["expected_match"] = serde_json::json!(matched);
+                    if !matched {
+                        expect_mismatches.push((i, want, round_exit));
+                    }
+                }
+                // The parent-observed window closes here: preparation,
+                // IPC, worker work, response, admission, and comparison.
+                let window_ms = round_started.elapsed().as_secs_f64() * 1000.0;
                 rec["parent_window_ms"] = serde_json::json!(window_ms);
                 parent_windows_ms.push(window_ms);
                 step_records.push(rec);
@@ -1618,6 +1828,18 @@ fn run_incremental(
                 });
             }
         }
+    }
+    // F-818-R1-01 residual: seam-supplied independent comparisons are
+    // verdicts — a mismatched edit round fails the case (never a silent
+    // admission); the comparison already ran inside each round's window.
+    for (i, want, got) in expect_mismatches.drain(..) {
+        mismatches.push(Mismatch {
+            observation: format!("edit round {i} independent exit"),
+            kind: "exit".into(),
+            expected: format!("{want}"),
+            actual: format!("{got:?}"),
+            first_diff: None,
+        });
     }
 
     let request_wall_ms = started.elapsed().as_secs_f64() * 1000.0;

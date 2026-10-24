@@ -22,6 +22,99 @@ mod case_run {
     pub const MN_WORKER_PROTOCOL: &str = "mnworker/1";
     pub const MN_WORKER_VERSION: &str = "mnworker/1.0";
 
+    /// TEST-ONLY fault-injection seam (F-818-R3-01/R3-02 closing oracles):
+    /// the REAL worker binary misbehaves in one protocol-aware way so the
+    /// parent adapter's deadline/cap machinery is exercised against a
+    /// worker that still computes valid echoes. Read once per process;
+    /// production paths never set it. Modes:
+    /// - `no-stdin-read`          never reads stdin (blocks the write path)
+    /// - `stdout-oversize-noeol`  consumes the request, floods a
+    ///                            newline-free stream past the IPC cap
+    /// - `stdout-oversize-line`   consumes the request, floods one
+    ///                            newline-terminated line past the cap
+    /// - `stdout-flood-lines`     consumes the request, floods unsolicited
+    ///                            small lines forever (bounded-queue probe)
+    /// - `stop-after-warmup`      rounds: answers warmup, then never reads
+    /// - `close-without-exit`     rounds: valid close reply, never exits
+    /// - `ignore-close`           rounds: never answers close
+    /// - `stderr-overcap`         rounds: valid protocol throughout, stderr
+    ///                            floods past the parent's stderr cap
+    /// - `stderr-under-cap`       rounds: same, but just under the cap
+    ///                            (valid control)
+    /// - `stdout-line-under-cap`  rounds: warmup line padded to just under
+    ///                            the parent's line cap (valid control)
+    fn fixture_fault() -> Option<String> {
+        std::env::var("AC_MN_WORKER_FAULT")
+            .ok()
+            .filter(|s| !s.is_empty())
+    }
+
+    /// Writes this fixture process's PID so the test can verify the tree
+    /// is really gone after the parent's teardown.
+    fn fixture_pidfile() {
+        if let Ok(path) = std::env::var("AC_MN_WORKER_FIXTURE_PIDFILE") {
+            if !path.is_empty() {
+                let _ = std::fs::write(&path, format!("{}", std::process::id()));
+            }
+        }
+    }
+
+    fn fixture_sleep() {
+        std::thread::sleep(std::time::Duration::from_secs(600));
+    }
+
+    /// The pre-protocol fault modes (they never reach the real serving
+    /// logic; each consumes the request line where the parent's write
+    /// must complete first).
+    fn serve_fault(mode: &str) -> ExitCode {
+        use std::io::Write as _;
+        let consume_request = || {
+            let mut line = String::new();
+            let _ = std::io::stdin().read_line(&mut line);
+        };
+        match mode {
+            "no-stdin-read" => {
+                fixture_sleep();
+                ExitCode::FAILURE
+            }
+            "stdout-oversize-noeol" => {
+                consume_request();
+                let chunk = "x".repeat(8192);
+                let mut out = std::io::stdout();
+                for _ in 0..780 {
+                    let _ = out.write_all(chunk.as_bytes());
+                }
+                let _ = out.flush();
+                fixture_sleep();
+                ExitCode::FAILURE
+            }
+            "stdout-oversize-line" => {
+                consume_request();
+                let chunk = "x".repeat(8192);
+                let mut out = std::io::stdout();
+                for _ in 0..780 {
+                    let _ = out.write_all(chunk.as_bytes());
+                }
+                let _ = out.write_all(b"\n");
+                let _ = out.flush();
+                fixture_sleep();
+                ExitCode::FAILURE
+            }
+            "stdout-flood-lines" => {
+                consume_request();
+                let mut n: u64 = 0;
+                loop {
+                    n += 1;
+                    println!("{{\"unsolicited\":{n}}}");
+                }
+            }
+            other => {
+                eprintln!("mn-worker: unknown AC_MN_WORKER_FAULT `{other}`");
+                ExitCode::from(2)
+            }
+        }
+    }
+
     /// Locate (and on first use build) the landed ac-trace-support
     /// staticlib through the contained, deadline-bounded executor —
     /// missing tools are infra failures, never silent passes.
@@ -388,9 +481,44 @@ mod case_run {
         warm_ok["recipe"] = serde_json::json!("ac/mir-native-scalar-v1");
         warm_ok["worker_version"] = serde_json::json!(MN_WORKER_VERSION);
         warm_ok["mn_abi"] = serde_json::json!(ac_mn::config::MN_ABI);
+        // Test-only fixture faults that need the REAL serving logic (the
+        // echoes stay valid; only the faulted dimension misbehaves).
+        match fixture_fault().as_deref() {
+            // Valid boundary control: pad the warmup RESPONSE LINE to just
+            // under the parent's line cap (budget covers the echo wrapper
+            // too) — the parent must still admit it.
+            Some("stdout-line-under-cap") => {
+                let base = serde_json::to_string(&warm_ok).unwrap_or_default().len();
+                let pad = 4_131_840usize.saturating_sub(base + 64);
+                warm_ok["fixture_pad"] = serde_json::json!("p".repeat(pad));
+            }
+            _ => {}
+        }
         let mut warm = echo;
         warm["ok"] = warm_ok;
         respond(warm);
+        match fixture_fault().as_deref() {
+            // Liveness fixture: answer warmup, then never read again —
+            // the parent's step receive must hit its absolute wall.
+            Some("stop-after-warmup") => {
+                fixture_sleep();
+                return ExitCode::FAILURE;
+            }
+            // Cap fixtures: the protocol stays valid throughout (stdout
+            // answers every round); stderr floods on a BACKGROUND thread
+            // so the main loop keeps serving — the parent must propagate
+            // the stderr cap even while stdout looks perfectly healthy
+            // (over-cap) / stay green just under the cap (valid control).
+            Some("stderr-overcap") | Some("stderr-under-cap") => {
+                let over = fixture_fault().as_deref() == Some("stderr-overcap");
+                std::thread::spawn(move || {
+                    let size = if over { 2 * 1024 * 1024 } else { 900 * 1024 };
+                    eprint!("{}", "e".repeat(size));
+                    let _ = std::io::Write::flush(&mut std::io::stderr());
+                });
+            }
+            _ => {}
+        }
         // Materialization state after a syntax fallback: the accepted
         // prefix is the session's CURRENT source, the refused edit (and
         // every later edit) materializes exactly once on it.
@@ -421,6 +549,24 @@ mod case_run {
             });
             match st.get("op").and_then(|v| v.as_str()) {
                 Some("close") => {
+                    match fixture_fault().as_deref() {
+                        // Liveness fixtures: a valid close reply without an
+                        // exit, and an ignored close — the parent's reap
+                        // and close-handshake reads must stay under its
+                        // absolute wall.
+                        Some("close-without-exit") => {
+                            session.close();
+                            resp["ok"] = serde_json::json!({"op": "close"});
+                            respond(resp);
+                            fixture_sleep();
+                            return ExitCode::FAILURE;
+                        }
+                        Some("ignore-close") => {
+                            fixture_sleep();
+                            return ExitCode::FAILURE;
+                        }
+                        _ => {}
+                    }
                     session.close();
                     resp["ok"] = serde_json::json!({"op": "close"});
                     respond(resp);
@@ -561,6 +707,22 @@ mod case_run {
     }
 
     pub fn serve() -> ExitCode {
+        fixture_pidfile();
+        if let Some(mode) = fixture_fault() {
+            // Only the PRE-PROTOCOL fixtures hijack serving; the
+            // mid-protocol modes (stop-after-warmup / close faults /
+            // stderr caps / the under-cap line pad) ride the REAL serving
+            // path (serve_rounds injects them at their points).
+            if matches!(
+                mode.as_str(),
+                "no-stdin-read"
+                    | "stdout-oversize-noeol"
+                    | "stdout-oversize-line"
+                    | "stdout-flood-lines"
+            ) {
+                return serve_fault(&mode);
+            }
+        }
         let mut line = String::new();
         {
             let stdin = std::io::stdin();

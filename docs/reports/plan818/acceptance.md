@@ -40,11 +40,12 @@ V-12（AC-11，T-11，R1 修复后）✅：incremental_tier 4/4 + 正式序列�
 
 R2 后回归：incremental_tier 5/5（+新 trace 测）、first_case 3/3、主仓 `test(ac_mn_probe_tests)` 21/21（T-07 五场景+T-06 adapter+四新测+formal_runner_gate+series；sig-rebuild 本轮静默机绿）。复演脚本同请求红→绿对照在 [review-r2 反例复演](../../../plans/attachments/818/review-r2/review.md)（trace/prefix 两反例）。
 
-SD-06 描述（R2 修正后）：
+SD-06 描述（R3 修正后）：
 - 修复后的正式路径：edit-source 步骤→**rounds 协议**增量会话（常驻 worker：单 body 事务/单元级 COFF 重发或历史复用/逐步真 link/run/授权 trace 库全程链接/逐轮原始 PE 字节）；语法 NoConvergence→记录性全请求回退（**从 session 当前源重建，已提交前缀 exactly-once 保留**，warm_edit_fallback 标注；回退后诊断按先诊断后结构准入传播）；接口编辑→拒绝=infra；[run]→全请求（冷/恢复，不标增量）。
+- rounds 边界行为（R3）：全部阻塞 IO 位于会话线程（写=邮箱投递、读=单一绝对墙下接收、回收=截止治理轮询）；stdout 限额在**累积期间**生效（无换行/超长行越界即拒）、行队列有界、stderr 超限在每次接收与收尾传播为 infra；teardown 先杀树再 join 全线程。协议感知夹具（no-stdin/stop-after-warmup/close 两形态/stdout 两越界+洪泛/stderr 越界）全部预算内 infra+进程树消亡，边界有效对照全绿。
 - history-hit 行为：内容命中=cv→fp 映射复用历史单元（零全模块、零重发、fp 回退、代际不跳）；映射不可解析=记录性全模块回退（结构门非零）。
-- 有效计时：V-12.1 门=正式序列**父侧观测连续窗口**（父侧准备→IPC→worker 执行→父侧准入；§5.5 区间；worker 侧连续 wall_ms 保留为被覆盖证据）；debug 镜像报备并附机器负载量化证据。
-接入面：828 会话 PreparedEdit 增 unit_mir/changed_name 消费缝（加法-only，auto-av-probe 回归 17+6+28 全绿）；mn 消费者 src/incremental.rs（D828 驻留模型：resident 工作集+store 持久层；mn 门重验证单元；emission 失败永不提交 revision；**tracelib 会话级持有**）；worker rounds 模式 + mnworker/1 加法协议扩展。
+- 有效计时：V-12.1 门=正式序列**父侧观测连续窗口，含独立期望比较**（观察者缝 AC_MN_INCREMENTAL_EXPECT_EXITS：准备→IPC→worker 执行→父侧准入→独立比较；mismatch=verdict Fail；worker 侧连续 wall_ms 保留为被覆盖证据）；debug 镜像报备并附机器负载量化证据。
+接入面：828 会话 PreparedEdit 增 unit_mir/changed_name 消费缝（加法-only，auto-av-probe 回归 17+6+28 全绿）；mn 消费者 src/incremental.rs（D828 驻留模型：resident 工作集+store 持久层；mn 门重验证单元；emission 失败永不提交 revision；**tracelib 会话级持有**）；worker rounds 模式+测试专用 fault/pidfile 缝+mnworker/1 加法协议扩展。
 
 ## AC 状态（work-owned）
 
@@ -91,6 +92,11 @@ T-06 会话/编辑步骤词表与父侧物化；T-07 会话 store/磁盘工具 m
 
 ## 验证执行记录
 
+- 2026-10-24 R3 修复轮（@本轮提交，四 finding 全闭）：
+  - **R3-01 rounds 阻塞 IO/回收截止治理**：RoundsWorker v2——写线程化（父侧只投递邮箱，满管道永不阻塞父线程；RAII 在首字节写出前持有）；回收改截止治理轮询（拒绝对 `wait()` 裸阻塞）；teardown 先杀树（管道随树关闭）再 join 全部会话线程，无孤儿读写线程。**闭合 oracle**（真实 adapter×协议感知夹具，`AC_MN_WORKER_FAULT` 测试专用缝+`AC_MN_WORKER_FIXTURE_PIDFILE` PID 存活断言+`AC_MN_ROUNDS_WALL_SECS` 短预算）：no-stdin-read（273KB 超 pipe 容量请求）/stop-after-warmup/close-without-exit/ignore-close 四阻塞形态全部在配置预算内返回 infra（3s 墙，实测 ≤12s 断言）且 worker 进程树消亡——`mir_native_rounds_failure_liveness_and_caps` (a)。
+  - **R3-02 限额读中生效+stderr 超限传播**：读线程按 8KiB 块累积、**累积期间**执行 READ_CAP（无换行流/超长行在越界瞬间截断，不做无界 read_line）；行队列改 `sync_channel(8)`+try_send（非请求行洪泛→溢出标志，队列有界）；stderr 线程超 STDERR_CAP 置共享标志，父侧**每次接收与 finish 都检查**——stdout 全程有效+stderr 越界的组合现判 infra（消息点名 cap）。**闭合 oracle**：stdout-oversize-noeol/line（消息含 "stdout exceeded"）、stdout-flood-lines（有界队列快速 infra）、stderr-overcap（协议全程有效+后台线程洪泛 stderr→"stderr exceeded" infra+树消亡）+两个边界**有效对照**（stderr 900KB<1MiB、4MB 响应行<4.06MiB 上限，均真 adapter 全绿）——同测试 (b)-(e)。开发中发现并修复两处实现缺陷：serve() 曾把中途协议 fault 交给 serve_fault 未知臂立退（liveness 断言空洞通过）；大行换行扫描 O(n²)（改游标线性化）。
+  - **R1-01 残余（比较入窗）**：观察者缝 `AC_MN_INCREMENTAL_EXPECT_EXITS`（数量失配=响亮 infra）——adapter 在**每轮连续窗口内**（准备→IPC→worker→准入→**独立期望比较**）比较编辑轮真实 PE 退出与该修订独立期望；mismatch=verdict Fail（`edit round N independent exit`）；记录携带 expected_exit/expected_match。系列门 30 样本**比较入窗后 P95=306.4ms<1000**（P50 297.4；R3 独立重放同窗 444.5）；body-edit 同缝（expected_match 逐轮断言）。反控：错误期望→Fail 且 mismatch 具名期望值——`mir_native_incremental_expect_seam_controls`。
+  - 回归：新增 liveness/caps 25.5s 全绿+seam 控制 2/2+系列 12.7s+body-edit 97.8s+fbdiag/seam fmt 后 2/2；家族跑 22/23（增量路径门全绿：body-edit 401/fresh/restart/冲突/系列+四 R2 测+七 T-06 adapter）；唯 sig-rebuild 翻红=在案环境敏感门（本轮零触码的全请求路径；同跑 restart P50 913 vs 静默 769/828、fresh P95 2320 vs 1446 佐证桌面负载——Everything/ChatGPT/ToDesk 高 CPU 实录；R2 同码静默窗 828ms 绿证据在案，静默窗重放安排不变）。R2 两反例于重建 worker 复演仍绿（12/"61"、202）。fmt 零漂移+两 workspace check 零警告。
 - 2026-10-24 R2 修复轮：复演 R2 两反例（trace：undefined symbol→12/"61"；prefix：102→202）；
   incremental_tier 5/5（43.7s）+first_case 3/3+主仓 `test(ac_mn_probe_tests)` 21/21（256.5s，
   mn-turnaround 串行组）+fmt 零漂移+workspace check 零警告。
