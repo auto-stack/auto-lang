@@ -51,8 +51,13 @@
   经真实准入链（data MIR→AVAD→AV），worker 报告实际产值的规范
   {kind,bits}（i64/u64/f64 十六位、f32 八位、i32/bool 不补零），父侧持
   **独立冻结期望表**逐项比对 tag 与精确 rawbits（worker 之言从非 oracle）；
-  record 源成功同样附 typed 报告（bool/宽标量不再丢失于 i32-only 通道，
-  父侧存在性规则认 value 或 typed）；typed 步骤修订哈希绑定入口身份。
+  record 源成功同样附 typed 报告（bool/宽标量不再丢失于 i32-only 通道）。
+  **family 隔离与形状校验（F820-R7-01）**：typed 存在性规则仅属 data
+  family——core/i32 成功仍必须有旧 value 通道，非 data 响应携带 typed
+  即准入门协议违规（infra 非绿）；data 的 typed 报告须为六 tag 之一且
+  bits 符合 kind 规范宽度（畸形=typed-shape 红，非静默过）。冻结样本含
+  合同 §3 的 f32 NaN payload 0x7F80_AD00（F820-R7-02，1.0 保留为额外
+  合法对照）。typed 步骤修订哈希绑定入口身份。
   V-10 反控（wrong-exit/wrong-diag/未注册 recipe/worker 三故障=ERROR
   /wrong-bits/wrong-type-tag（父侧期望破坏缝 AV820_TYPED_EXPECT_SABOTAGE
   仅测试用）/未知 fixture id=检查错误非绿）。
