@@ -1,16 +1,17 @@
 ---
 plan_id: PLAN-840
-status: executing
+status: reviewed
 completion_kind: phase1_delivered
 feature_name: AutoGraphics最小公共行为API与用户Auto脚本
-plan_revision: 3
+plan_revision: 5
 author: [Codex]
 created_at: 2026-10-24
 updated_at: 2026-10-24
-current_step: 12
-total_steps: 18
+current_step: 20
+total_steps: 22
 depends_on: [PLAN-839]
 supersedes_spec_components:
+  - docs/specs/auto-ui-runtime/project.md
   - docs/specs/auto-lang/project.md
   - docs/specs/language-sdk/project.md
   - docs/specs/auto-graphics/scene-play-session.md
@@ -42,10 +43,10 @@ affects: [auto-graphics, authoring-experimental, user-behavior-api]
 | task_id | owner | 关闭条件 |
 |---|---|---|
 | T-11 [x] | work | 核定 feature/off-on/档位 ID、红与合法控制、性能对照和修复机制；AC11..13 |
-| T-12 [ ] | work | 最小 feature 修复；off/on no-run 与 CTE/相邻定向病例、选择面核销及删项负控；AC11/12 |
-| T-13 [ ] | work | 性能实路径诊断与资源机制修复，原输入/阈值/断言保留；定向实测和机制反控；AC13 |
-| T-14 [ ] | work | 同提交定向 check/fmt、关闭表、SD 提案、提交冻结；AC14 |
-| T-15 [ ] | review | 核验 AC11..14 与原支持面，绑定 SHA；AC15 |
+| T-12 [x] | work | 最小 feature 修复；off/on no-run 与 CTE/相邻定向病例、选择面核销及删项负控；AC11/12 |
+| T-13 [x] | work | 性能实路径诊断与资源机制修复，原输入/阈值/断言保留；定向实测和机制反控；AC13 |
+| T-14 [x] | work | 同提交定向 check/fmt、关闭表、SD 提案、提交冻结；AC14 |
+| T-15 [x] | review | 核验 AC11..14 与原支持面，绑定 SHA；AC15 |
 | T-16 [ ] | merge | 审查后 bare cargo t 与必要触面，master 落地、主检出批量三档、规范/台账/收据/最终归档清理；AC16 |
 
 新增验证：V11=默认/tests 与 book-feature 定向 no-run 编译；V12=test-cases on 的 CTE+同族 adapter 定向执行与实际 ID；V13=814 选择面映射复用、各档清单与删除 ID 负控；V14=原 census 与 30 样本真实 IPC 门、原边界控制；V15=逐 AC/SD 冻结复审；V16=review 后 merge 门与主检出完整批量。修复/复审均不运行 whole-tier；先完成全部修复再提交复审。
@@ -55,13 +56,13 @@ SD-P2-01：language-sdk/project.md 补充可选 test-cases off/on 测试边界�
 当前诊断：tf/tb 五项导入编译错误，CTE 无门控登记来自817；完整 tt 5712 项首次 5710 过、census/IPC 两红，隔离各通过；相同完整选择面 -j6 5711 过、IPC 仍红，不能将降低并发视为修复。原始证据在 ../attachments/840/batch-r1/。当前代码未修复，复审与 merge 门 pending。
 
 
-当前archived11/12：完整63门、root5332/163及最终delivery身份门通过，source/SDK/canonical/ledger79/归档均已提交；840工作树、开发分支和只读auto-down树已fresh guard安全移除。当前仅编号840触发的主检出单实例批量回归及最终收据待完成；未冒称12/12。详[合入收据](../attachments/840/merge-r1/receipt.md)。
+Phase 1历史归档checkpoint（当时archived11/12）：完整63门、root5332/163及最终delivery身份门通过，source/SDK/canonical/ledger79/归档均已提交；840工作树、开发分支和只读auto-down树已fresh guard安全移除。当前仅编号840触发的主检出单实例批量回归及最终收据待完成；未冒称12/12。详[合入收据](../attachments/840/merge-r1/receipt.md)。
 
 839建立“编辑→运行→停止恢复”，但产品只运行内置Auto行为。下一步让开发者**编写自己的单文件`.at`行为，仅调用最小公共API，选择现有场景运行；修改脚本后Stop/Run看到新行为，无需改Rust或复制profile内部协议**。
 
 本Plan冻结一个有限实验接口`autographics.behavior/1`，首版面向既有节点的局部平移、可见性、层级查询及输入；不同时扩物理/资源/动态结构。提供两个仓外可运行的不同用户行为示例，验证同一runner二进制可复用。
 
-当前r2：用户明确授权先修复SDK依赖扫描对注释与字符串的误判，更新依赖冻结后继续840，原支持面/AC/V不缩减。r1历史已保存在attachments/840/revision-r2/plan-r1.md及work-r1证据。R1三项finding已在1f19395254d7e676bd188e43e3d8f734d57aaa12完成工作修复，T-03/T-05/T-08重新关闭，当前reviewed11/12，受影响复审通过、完整merge门pending；SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21保持。T-09独立review、T-10冻结合入仍各自负责，不能把SDK修复提交冒称完整交付。
+r2历史：用户明确授权先修复SDK依赖扫描对注释与字符串的误判，更新依赖冻结后继续840，原支持面/AC/V不缩减。r1历史已保存在attachments/840/revision-r2/plan-r1.md及work-r1证据。R1三项finding已在1f19395254d7e676bd188e43e3d8f734d57aaa12完成工作修复，T-03/T-05/T-08重新关闭，当前reviewed11/12，受影响复审通过、完整merge门pending；SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21保持。T-09独立review、T-10冻结合入仍各自负责，不能把SDK修复提交冒称完整交付。
 
 ## 1. 目标
 
@@ -310,3 +311,55 @@ final review后merge冻结提交统一跑完整locked driver/AGP test+build、�
 ## spec-sync 回写记录
 
 PLAN-840:r2：SD01新增behavior-api；SD02/03更新scene-play/authoring，SD04四个实验/集成合同保留全部旧profiles及生产I2/I3边界，SD05沉淀SDK共享词法依赖扫描。auto-graphics与language-sdk的overview/plans、全局GOAL007/008/overview及INDEX已回写；INDEX按当前canonical59项目再生（包含既有auto-cte卡，不改其合同）。RegimeB无store可达，guarded offline projection备份/六段schema/无关raw项/顶层保护/读回通过，ledger78→79共11目标。原有三条无关断链仅记录，未新引入。源码autographics-dev；master代码仅精确SDK扫描四文件补丁，其余知识/归档。详merge-r1/canonical-audit.json.txt与ledger-projection.json.txt。
+
+
+### 2026-10-24 Phase 2 / r3 工作进度
+
+stage: work | phase:2 | outcome:executing | worktree:D:/autostack/.wt/lang-840/auto-lang | branch:plan-840-dev | base:980a6708dacf843af2a84dd390da6ac4dce1619b | dependency:auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 | current:T-12/T-13 | evidence:../attachments/840/phase2/ | next:work。
+
+T-11已核：CTE 注册缺门控，与邻近 AV/Case/probe 可选依赖边界不一致；原别名 feature 意图不改。
+`cargo check --locked -p auto-lang --tests` 与同命令 `--features test-book` 均通过；CTest-on 当前5项实际 ID 在列。
+历史814九档映射与每档删项负控均通过，且当前所有别名与既有 nextest 配置/筛选逐字段未变，仅新增两项计时测试的全池资源权重。
+此处历史核销不冒称当前九档已执行。初次冷 worker 定向运行中止并保留；已复制原 standalone lock、显式构建 worker 后再回放。
+性能配置待真实定向检查与 review 后完整档确认，不以单项绿替代全档。T-14/15/16及原T-10最终收据仍pending。
+
+
+Phase 2 work pass：T-11..T-14已关闭；冻结7778f3192d801e67ce95dc1f8fc1dfa47b50803d，8/8定向通过（IPC P95=263ms/30样本），off与book编译通过；详[关闭表](../attachments/840/phase2/work-closure.md)。状态execution_done15/18，下一角色review；原T-10与T-15/T-16仍pending。
+
+
+Phase 2 review pass：stage:review | review_scope:final（受影响Phase2；其余复用已核不变证据） | PLAN-840:r3 | reviewed_commit:7778f3192d801e67ce95dc1f8fc1dfa47b50803d | AC11..15及SD-P2-01/02通过；同会话复审独立性限制已披露，详[复审](../attachments/840/phase2/review.md)。完整门merge-owned pending；原T-10、T-16未关闭，不得宣称整体交付完成。
+
+
+### r4 / Phase 2 计时闭合修正（同一 phase，不新建计划）
+
+r3复审遗漏：完整 -j6 原始报告已显示264us未计入间隙；代码核验确认 sema adapter 使用独立 elapsed()/now() 边界，线程抢占可落在任何分段之外。仅全池调度不修复生产计量不变量，因此 r3 AC13/14/15 pass 作废，原报告保留于review-r3-superseded.md，完整门中止保留，未合入7778f3192。
+
+r4在同一已授权修复范围增加精确触点 `crates/auto-lang-core/src/test_cases/sema.rs` 的阶段计量：开始/worker/admit/结束四个共享时间标记，同一标记定义相邻两段，整个原请求准备至准入完成窗口不变；不改协议、编译/VM算法、输入或阈值。仅微秒取整误差至多2us，不再依赖“间隙足够小”的调度假设。T-13补修该不变量；T-14/15重新冻结/受影响复审；T-11/12及原支持面保留有效。SD-P2-02补充共享时钟边界规则。
+
+原 -j6 264us失败是耐久反例，原真实30样本与单样本prep/worker/admit边界控制为永久回放；追加相邻合法/错误expect的真实probe路径。仅跑相关定向验证，复审通过后再执行新冻结完整门。
+
+
+r4 work/受影响final review pass：冻结f181fc47a99d608d0efc4280a0f0da86a8de41a5；实际4/4相关控制、IPC30样本P95=278ms、全部分段差≤2us；原断言/输入不变。详[工作关闭](../attachments/840/phase2/work-closure-r4.md)与[复审](../attachments/840/phase2/review.md)。当前reviewed16/18，原T-10与T-16完整门/收尾pending。同会话复审限制已披露。
+
+
+### r5 / Phase 3：同步测试载体的 Init 完成态（同一840，不另建计划）
+
+r4冻结合入门：bare t 5340/5340、tt5712/5712通过；tb仅5192/5311执行，5190过、2红、119取消，故未合入。两红为plan498 bar/donut几何早读：真实输出含VM-PARKED Init/CpuRunnable。匹配既有D-762-1；其约定“改生产helper先修订确认”继续遵守，本phase不改生产helper或放宽断言，也不把旧债标签当作通过。
+
+新phase仅改test-gated的plan370_test_support与相同Init早读机制的同步UI测试载体（437/484/492/498/499/536）：复用437/502完成态先例，统一为有界截止时间、真实泵与视图重新登记驱动；完成态后才取几何/交互断言。保持多片Init早退的原生产helper负控，增加确定性pending超时负控，原所有图形/交互assert保留。musk Fetch的已有外层8轮非Init专用载体先审计，不盲替换。生产dynamic.rs、CPU/VM调度、原输入/几何阈值/支持面只读。
+
+新增AC17：失败bar/donut及共享Init载体不早读，真实多片Init完成后几何/交互原assert均成立；AC18：有界截止时间对未完成任务必须红，原helper早退负控仍红/生产语义未变；AC19：同族定向病例/格式与精确冻结、Spec增量和受影响复审通过；AC20：完成r5冻结门与原主检出完整批量收据后，方可关闭T-10/T-16并最终归档清理。
+
+| task_id | owner | 关闭条件 |
+|---|---|---|
+| T-17 [x] | work | 按实际tb原始失败与D-762-1核清载体/完成态路径；生产helper不变；AC17/18 |
+| T-18 [x] | work | test-only共享完成态驱动；替换共享原因的Init早读调用；保留所有原assert与负控；AC17/18 |
+| T-19 [x] | work | 同族定向真实病例、deadline反控、格式/Spec/冻结提交；不跑whole-tier；AC19 |
+| T-20 [x] | review | 逐项受影响review及原支持面/未改证据核验；AC17..19通过后交merge |
+
+V17：原plan498两失败与484/492/499/536共享完成态调用族；V18：437确定性跨多片Init早退→新驱动完成几何的正反对照，加pending零截止时间必须失败；V19：源码/断言身份与helper production只读检查；V20：review后merge-owned bare t/tt/tb及主检出tf/tt/tb完整选择面。SD-P3-01：docs/specs/auto-ui-runtime/project.md记录同步测试需驱动真实Init/CPU/IO完成并重建视图，不以单次helper调用等同完成；生产helperD-762-1仍保留为独立已知债，不冒称清偿。
+
+当前executing17/22，Phase2三项修复与原支持面保留；当前复审只覆盖r4既定写面，r5新增载体变更须T-20复审后再跑受影响完整门。不新建846或其他计划。
+
+
+r5 Phase3 work/受影响final review pass：冻结49261f09e747e09a1194726e8a219e38cd1de834；48/48定向通过，15处原assert/逻辑核验保持，生产helper原样。详[关闭表](../attachments/840/phase3/work-closure.md)、[最终受影响复审](../attachments/840/phase3/review.md)。同会话审查限制披露；当前reviewed20/22，T-10/T-16仍待新冻结完整门与主检出批量收尾。
