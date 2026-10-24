@@ -8,7 +8,7 @@
 # and cargo exit codes are passed through.
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("first-case", "semantics", "admission", "cache", "resources", "compatibility", "autodown", "inventory", "acceptance")]
+    [ValidateSet("first-case", "semantics", "admission", "cache", "resources", "compatibility", "autodown", "inventory", "incremental", "acceptance")]
     [string]$Scope
 )
 
@@ -88,7 +88,95 @@ switch ($Scope) {
         Run-Runner-Tests "av_source_827_admission" "admission"
         Run-Runner-Tests "av_source_827_corpus" "admission-corpus"
     }
-    "resources" { Not-Wired $Scope "T-04/T-06" }
+    "resources" {
+        # V-09 heavy tier (single instance, serial):
+        # 1. gate-0 counter-control: bench-turnaround with --gate-ms 0 MUST
+        #    fail (a threshold of 0 can never be green);
+        # 2. the real P95 gate: 30 samples, gate 1000ms, raw JSONL kept;
+        # 3. Line-A frontend attribution + Line-B residual via the frozen
+        #    828 formal-session campaign (V-08 dual gate, >=30 revisions).
+        # Small-file cold data is reported separately by the first-case log.
+        $worker = Join-Path $probeWs "target/release/av_probe_worker.exe"
+        # Every bench run keeps its OWN raw JSONL (failed runs included —
+        # failure samples are never deleted or overwritten).
+        $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+        Write-Host "== resources: bench gate-0 counter-control (must FAIL)"
+        Push-Location $probeWs
+        & $worker bench-turnaround --samples 3 --gate-ms 0 --out "$reportDir/bench-gate0-$stamp.jsonl" 2>&1 | Tee-Object -Variable g0 | Write-Host
+        $g0code = $LASTEXITCODE
+        Pop-Location
+        if ($g0code -eq 0) {
+            Write-Host "FAILED: gate-0 counter-control was green (a 0ms gate must be red)"
+            exit 1
+        }
+        Write-Host "   gate-0 red as required (exit $g0code)"
+        Write-Host "== resources: bench-turnaround 30 samples gate 1000ms"
+        Push-Location $probeWs
+        & $worker bench-turnaround --samples 30 --gate-ms 1000 --out "$reportDir/bench-30-$stamp.jsonl" 2>&1 | Tee-Object -Variable b30 | Write-Host
+        $b30code = $LASTEXITCODE
+        Pop-Location
+        if ($b30code -ne 0) {
+            Write-Host "FAILED: bench-turnaround gate (exit $b30code)"
+            exit 1
+        }
+        Write-Host "== resources: 828 formal-session dual-gate campaign (V-08)"
+        Push-Location $probeWs
+        & cargo test -p auto-av-probe --test function_incremental_828_t08 t08_formal_campaign_v08_dual_gate 2>&1 | Tee-Object -Variable f828 | Write-Host
+        $f828code = $LASTEXITCODE
+        Pop-Location
+        if ($f828code -ne 0) {
+            Write-Host "FAILED: formal campaign (exit $f828code)"
+            exit 1
+        }
+        Assert-Selected ($f828 -join "`n") "resources-formal-828"
+    }
+    "autodown" {
+        # V-10: the formal recipe positives + every parent-side injection:
+        # corpus green (with required population), negative oracle, worker
+        # faults (exit9/extra-frame/wrong-hash/delay = infra).
+        Run-Runner-Tests "av_source_827" "autodown"
+    }
+    "inventory" {
+        # V-11: the G0 denominators re-derived from the real discovery
+        # rules; the JSON summary is the inventory artifact.
+        Run-Runner-Tests "av_source_827_inventory" "inventory"
+    }
+    "acceptance" {
+        # V-01..12 all required sub-cases, selected>0 everywhere, plus the
+        # SEM decision material (SEM-01..08) presence check.
+        $sem = Join-Path $repo "docs/plans/attachments/827/sem-decisions.md"
+        if (!(Test-Path $sem)) {
+            Write-Host "FAILED: SEM decision material missing ($sem)"
+            exit 1
+        }
+        $semRows = (Select-String -Path $sem -Pattern '^\| SEM-\d\d').Count
+        if ($semRows -lt 8) {
+            Write-Host "FAILED: SEM table must carry SEM-01..08 (saw $semRows rows)"
+            exit 1
+        }
+        Write-Host "== acceptance: replaying every implemented scope"
+        & powershell -File $PSCommandPath -Scope first-case
+        if ($LASTEXITCODE -ne 0) { exit 1 }
+        & powershell -File $PSCommandPath -Scope semantics
+        if ($LASTEXITCODE -ne 0) { exit 1 }
+        & powershell -File $PSCommandPath -Scope admission
+        if ($LASTEXITCODE -ne 0) { exit 1 }
+        & powershell -File $PSCommandPath -Scope cache
+        if ($LASTEXITCODE -ne 0) { exit 1 }
+        & powershell -File $PSCommandPath -Scope autodown
+        if ($LASTEXITCODE -ne 0) { exit 1 }
+        & powershell -File $PSCommandPath -Scope inventory
+        if ($LASTEXITCODE -ne 0) { exit 1 }
+        & powershell -File $PSCommandPath -Scope compatibility
+        if ($LASTEXITCODE -ne 0) { exit 1 }
+        & powershell -File $PSCommandPath -Scope incremental
+        if ($LASTEXITCODE -ne 0) { exit 1 }
+        Write-Host "PASS: acceptance (all scopes + SEM material)"
+    }
+    "incremental" {
+        # V-13 (T-09): the 828 session reuse over this plan's source entry.
+        Run-Probe-Tests "av_source_827_incremental" "incremental"
+    }
     "cache" {
         # V-07/V-08: overlay misses only the changed unit; caps re-key;
         # corrupt same-key republish conflicts (good survives); cross-
@@ -105,9 +193,6 @@ switch ($Scope) {
         Run-Runner-Tests "ac_cte_probe" "compatibility-ac-cte"
         Run-Runner-Tests "ac_mn_probe" "compatibility-ac-mn"
     }
-    "autodown" { Not-Wired $Scope "T-06" }
-    "inventory" { Not-Wired $Scope "T-06" }
-    "acceptance" { Not-Wired $Scope "T-06" }
 }
 Write-Host "PASS: scope '$Scope' green"
 exit 0
