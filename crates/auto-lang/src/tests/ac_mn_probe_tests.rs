@@ -578,3 +578,466 @@ fn mir_native_adapter_old_protocol_and_mixed_compat() {
     assert!(failing2.is_empty(), "stale re-run green: {failing2:#?}");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+
+// ---------------------------------------------------------------------------
+// PLAN-818 T-07 — the `mir_native_turnaround_` formal legs (V-09; AC-06):
+// the frozen reference workload through the REAL formal runner — fresh
+// cold, restart/warm store (a real new worker process per call), the
+// body-edit and signature P95 < 1000 ms gates, and the diagnosed
+// signature conflict. Each scenario is its OWN test (nextest terminates
+// at 120 s; the frozen 30 samples per scenario fit one test each) with
+// its own session namespace and raw file. The driver-tier legs
+// (same-process hot / cross-project / concurrent GC) live in the plan
+// workspace (`experimental/ac-mir-native/tests/turnaround_tier.rs`).
+// ---------------------------------------------------------------------------
+
+/// T-07 scratch root: the turnaround windows are disk-sensitive (116
+/// staged objects per link); the reference machine's repo-local target
+/// dir (gitignored, same disk as the build) is the faithful scratch —
+/// NOT the system temp directory.
+fn mn_t07_root(tag: &str) -> std::path::PathBuf {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target")
+        .join(format!("mn818-t07-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn mn_t07_samples() -> usize {
+    std::env::var("MN818_FORMAL_SAMPLES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(30)
+}
+
+fn mn_t07_gate_ms() -> f64 {
+    std::env::var("MN818_FORMAL_GATE_MS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1000.0)
+}
+
+/// One formal mn call: write the case, run the suite, require green,
+/// return the receipt (whose request_wall_ms IS the gate window).
+fn mn_formal_call(
+    root: &Path,
+    tag: &str,
+    source: &str,
+    steps: &str,
+    session: Option<&str>,
+    expect: &str,
+) -> serde_json::Value {
+    let case_dir = root.join(tag);
+    let out_dir = root.join(format!("{tag}-out"));
+    let _ = std::fs::remove_dir_all(&case_dir);
+    let _ = std::fs::remove_dir_all(&out_dir);
+    std::fs::create_dir_all(&case_dir).unwrap();
+    std::fs::write(case_dir.join("main.at"), source).unwrap();
+    let session_field = match session {
+        Some(s) => format!(", session: \"{}\"", s),
+        None => String::new(),
+    };
+    std::fs::write(
+        case_dir.join("c.case.ad"),
+        format!(
+            "# t07 {tag}\n```test-case\ncase {{\n  schema: \"autolang.case/2\",\n  id: \"mn.t07.{tag}\",\n  source: {{ file: \"main.at\", syntax: \"auto\", path: \"main.at\" }},\n  entry: {{ mode: \"program\" }},\n  checks: [\n    {{ id: \"run\", adapter: \"probe\", action: \"run\",\n      options: {{ recipe: \"ac/mir-native-scalar-v1\", mn: {{ entry: \"d_main\"{session_field} }}, steps: [{steps}] }},\n      expect: {expect} }}\n  ]\n}}\n```\n"
+        ),
+    )
+    .unwrap();
+    std::fs::write(
+        case_dir.join("s.suite.ad"),
+        "# t07\n```test-suite\nsuite { schema: \"autolang.suite/2\", id: \"s\", include: [\"c.case.ad\"] }\n```\n",
+    )
+    .unwrap();
+    let report = run_suite(&case_dir.join("s.suite.ad"), &out_dir, &Limits::defaults())
+        .expect("formal suite runs");
+    assert_eq!(
+        status_of(&report, "run"),
+        auto_test_case::report::Status::Pass,
+        "formal call {tag} must be green: {:#?}",
+        report
+            .results
+            .iter()
+            .map(|r| (r.status, r.detail.clone()))
+            .collect::<Vec<_>>()
+    );
+    receipt_of(&case_dir)
+}
+
+/// A [key, value] pair-array counter read from an mn receipt session.
+fn mn_receipt_counter(session: &serde_json::Value, k: &str) -> u64 {
+    session["counters"]
+        .as_array()
+        .and_then(|a| {
+            a.iter().find_map(|p| {
+                let pair = p.as_array()?;
+                if pair.first()?.as_str()? == k {
+                    Some(pair.get(1)?.as_u64().unwrap_or(0))
+                } else {
+                    None
+                }
+            })
+        })
+        .unwrap_or(0)
+}
+
+/// Fetch a reference-workload revision from the plan worker (single
+/// source of truth — the frozen generator lives in the mn workspace).
+fn mn_fetch_revision(rev: u32) -> (String, i64) {
+    let out = std::process::Command::new(
+        crate::test_cases::ac_mn::worker_binary().expect("mn worker located"),
+    )
+    .args(["load-revision", "--rev", &rev.to_string()])
+    .output()
+    .expect("spawn mn-worker load-revision");
+    assert!(out.status.success(), "load-revision ok");
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("revision json");
+    (
+        v["source"].as_str().expect("source").to_string(),
+        v["expected_main"].as_i64().expect("expected"),
+    )
+}
+
+fn mn_t07_percentile(v: &[f64], p: f64) -> f64 {
+    let mut s = v.to_vec();
+    s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    s[((p / 100.0) * (s.len() - 1) as f64).round() as usize % s.len()]
+}
+
+/// Raw admissibility (the T-07 counter-control): zero/NaN/missing
+/// windows never pass; write the scenario raw file.
+fn mn_t07_finish_raw(scenario: &str, note: &str, walls: &[f64]) -> (f64, f64, f64) {
+    assert!(!walls.is_empty(), "{scenario}: no samples (missing raw)");
+    for (i, w) in walls.iter().enumerate() {
+        assert!(w.is_finite(), "{scenario}[{i}]: NaN window");
+        assert!(*w > 0.0, "{scenario}[{i}]: zero window");
+    }
+    let p50 = mn_t07_percentile(walls, 50.0);
+    let p95 = mn_t07_percentile(walls, 95.0);
+    let p99 = mn_t07_percentile(walls, 99.0);
+    let report = serde_json::json!({
+        "plan": "PLAN-818",
+        "tier": "t07-formal-turnaround",
+        "scenario": scenario,
+        "note": note,
+        "count": walls.len(),
+        "p50_ms": p50,
+        "p95_ms": p95,
+        "p99_ms": p99,
+        "max_ms": walls.iter().cloned().fold(0.0f64, f64::max),
+        "windows_ms": walls,
+    });
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(format!("../../docs/reports/plan818/turnaround-mn-{scenario}.json"));
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, serde_json::to_string_pretty(&report).unwrap()).unwrap();
+    (p50, p95, p99)
+}
+
+/// Scenario 1 — fresh真冷store: every call a FRESH session store, the
+/// full 115-unit compile; reported (the hard gates are the edit paths).
+#[test]
+#[cfg(windows)]
+fn mir_native_turnaround_fresh_cold_30() {
+    let _guard = MN_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let samples = mn_t07_samples();
+    let pid = std::process::id();
+    let session_base = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target")
+        .join(format!("mn818-t07-sessions-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&session_base);
+    std::fs::create_dir_all(&session_base).unwrap();
+    std::env::set_var("AC_MN_SESSION_ROOT", &session_base);
+    let root = mn_t07_root("t07-fresh");
+    let (src0, exp0) = mn_fetch_revision(0);
+    let mut walls = Vec::with_capacity(samples);
+    for i in 0..samples {
+        let r = mn_formal_call(
+            &root,
+            &format!("fresh-{i}"),
+            &src0,
+            r#"{ op: "run" }"#,
+            Some(&format!("p{pid}-fresh-{i}")),
+            &format!(r#"{{ completion: "success", exit: {} }}"#, exp0),
+        );
+        let w = r["request_wall_ms"].as_f64().unwrap_or(0.0);
+        let s = &r["sessions"][0];
+        assert_eq!(mn_receipt_counter(s, "codegen_emit_units"), 115, "cold compile");
+        assert_eq!(mn_receipt_counter(s, "cache_hit_coff"), 0, "really cold");
+        walls.push(w);
+        let _ = std::fs::remove_dir_all(
+            std::env::temp_dir().join(format!("mn818-session-p{pid}-fresh-{i}")),
+        );
+    }
+    let (p50, p95, p99) = mn_t07_finish_raw("fresh", "each call a fresh session store; full 115-unit compile; reported (not gated)", &walls);
+    eprintln!("t07 fresh: P50/P95/P99 = {p50:.1}/{p95:.1}/{p99:.1} ms");
+    std::env::remove_var("AC_MN_SESSION_ROOT");
+    let _ = std::fs::remove_dir_all(&session_base);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Scenario 2 — restart/warm store: every call is a REAL new worker
+/// process over ONE shared session store.
+#[test]
+#[cfg(windows)]
+fn mir_native_turnaround_restart_warm_30() {
+    let _guard = MN_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let samples = mn_t07_samples();
+    let pid = std::process::id();
+    let session_base = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target")
+        .join(format!("mn818-t07-sessions-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&session_base);
+    std::fs::create_dir_all(&session_base).unwrap();
+    std::env::set_var("AC_MN_SESSION_ROOT", &session_base);
+    let root = mn_t07_root("t07-restart");
+    let (src0, exp0) = mn_fetch_revision(0);
+    let mut walls = Vec::with_capacity(samples);
+    for i in 0..samples {
+        let r = mn_formal_call(
+            &root,
+            &format!("restart-{i}"),
+            &src0,
+            r#"{ op: "run" }"#,
+            Some(&format!("p{pid}-restart")),
+            &format!(r#"{{ completion: "success", exit: {} }}"#, exp0),
+        );
+        let s = &r["sessions"][0];
+        if i == 0 {
+            assert_eq!(mn_receipt_counter(s, "codegen_emit_units"), 115);
+        } else {
+            assert_eq!(mn_receipt_counter(s, "codegen_emit_units"), 0, "new process, warm store");
+            assert_eq!(mn_receipt_counter(s, "cache_hit_coff"), 115);
+        }
+        walls.push(r["request_wall_ms"].as_f64().unwrap_or(0.0));
+    }
+    let _ = mn_t07_finish_raw("restart", "fresh worker process per call over one shared store", &walls);
+    let _ = std::fs::remove_dir_all(std::env::temp_dir().join(format!("mn818-session-p{pid}-restart")));
+    std::env::remove_var("AC_MN_SESSION_ROOT");
+    let _ = std::fs::remove_dir_all(&session_base);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Scenario 3 — body edit (THE gate): per revision, a warm-up `[run]` on
+/// the previous revision, then the MEASURED `[edit-source, run]` call
+/// applying the frozen fn_041 A0 edit (golden.md §2.3); P95 < gate.
+#[test]
+#[cfg(windows)]
+fn mir_native_turnaround_body_edit_gate() {
+    let _guard = MN_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let samples = mn_t07_samples();
+    let gate_ms = mn_t07_gate_ms();
+    let session_base = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target")
+        .join(format!("mn818-t07-sessions-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&session_base);
+    std::fs::create_dir_all(&session_base).unwrap();
+    std::env::set_var("AC_MN_SESSION_ROOT", &session_base);
+    let pid = std::process::id();
+    let root = mn_t07_root("t07-edit");
+    let session = format!("p{pid}-edit");
+    let (mut prev_src, mut prev_exp) = mn_fetch_revision(0);
+    let mut walls = Vec::with_capacity(samples);
+    for i in 1..=samples {
+        let (rev_src, rev_exp) = mn_fetch_revision(i as u32);
+        // Frozen edit position: fn_041's `var acc = x * A0` line.
+        let extract = |src: &str| -> String {
+            let header = "fn fn_041(x int) int {";
+            let hi = src.find(header).expect("fn_041 present");
+            let rest = &src[hi..];
+            let e1 = rest.find('\n').expect("line1");
+            let e2 = rest[e1 + 1..].find('\n').expect("line2");
+            format!("{}\n{}", header, &rest[e1 + 1..e1 + 1 + e2])
+        };
+        let from_line = extract(&prev_src);
+        let to_line = extract(&rev_src);
+        assert!(from_line != to_line, "revision {i} edits fn_041's A0");
+        assert!(from_line.contains("var acc = x *"), "the edit is fn_041's multiplier");
+        let warm = mn_formal_call(
+            &root,
+            &format!("edit-{i}-warm"),
+            &prev_src,
+            r#"{ op: "run" }"#,
+            Some(&session),
+            &format!(r#"{{ completion: "success", exit: {} }}"#, prev_exp),
+        );
+        let warm_codegen = mn_receipt_counter(&warm["sessions"][0], "codegen_emit_units");
+        if i == 1 {
+            assert_eq!(warm_codegen, 115, "the session's first call is really cold");
+        } else {
+            assert_eq!(warm_codegen, 0, "warm-up {i} is warm");
+        }
+        let esc = |t: &str| t.replace('\\', "\\\\").replace('"', "\\\"");
+        let steps = format!(
+            "{{ op: \"edit-source\", from: \"{}\", to: \"{}\" }}, {{ op: \"run\" }}",
+            esc(&from_line),
+            esc(&to_line)
+        );
+        let measured = mn_formal_call(
+            &root,
+            &format!("edit-{i}"),
+            &prev_src,
+            &steps,
+            Some(&session),
+            &format!(r#"{{ completion: "success", exit: {} }}"#, rev_exp),
+        );
+        let s = &measured["sessions"][0];
+        assert_eq!(mn_receipt_counter(s, "codegen_emit_units"), 1, "one unit recompiles");
+        assert_eq!(mn_receipt_counter(s, "cache_hit_coff"), 114);
+        let w = measured["request_wall_ms"].as_f64().unwrap_or(0.0);
+        eprintln!("t07 body-edit rev {i}: window {w:.1}ms (expected {rev_exp})");
+        walls.push(w);
+        prev_src = rev_src;
+        prev_exp = rev_exp;
+    }
+    let (_, p95, _) = mn_t07_finish_raw(
+        "body-edit",
+        "warm-up outside window; measured [edit-source, run]; 1 miss / 114 hits; P95 GATED",
+        &walls,
+    );
+    assert!(p95 < gate_ms, "body-edit P95 {p95:.1}ms >= gate {gate_ms}ms");
+    let _ = std::fs::remove_dir_all(std::env::temp_dir().join(format!("mn818-session-{session}")));
+    std::env::remove_var("AC_MN_SESSION_ROOT");
+    let _ = std::fs::remove_dir_all(&session_base);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Scenario 4 — legal signature rebuild (THE second gate): fn_leaf_2
+/// gains a parameter USED consistently at every call site (w=0 cancels —
+/// the mirror expectation is unchanged); the signature fp change re-keys
+/// the leaf AND its callers, everything else hits; P95 < gate.
+#[test]
+#[cfg(windows)]
+fn mir_native_turnaround_signature_rebuild_gate() {
+    let _guard = MN_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let samples = mn_t07_samples();
+    let gate_ms = mn_t07_gate_ms();
+    let session_base = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target")
+        .join(format!("mn818-t07-sessions-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&session_base);
+    std::fs::create_dir_all(&session_base).unwrap();
+    std::env::set_var("AC_MN_SESSION_ROOT", &session_base);
+    let pid = std::process::id();
+    let root = mn_t07_root("t07-sig");
+    let session = format!("p{pid}-sig");
+    let sig_rebuild = |src: &str, k: i64| -> String {
+        let out = src.replacen(
+            "fn fn_leaf_2(v int) int {",
+            "fn fn_leaf_2(v int, w int) int {",
+            1,
+        );
+        assert!(out != src, "frozen fn_leaf_2 header present");
+        let out = out.replacen("return v + 2\n", "return v + 2 + w\n", 1);
+        out.replace(
+            "return fn_leaf_2(acc)",
+            &format!("return fn_leaf_2(acc, {k})"),
+        )
+    };
+    let mut walls = Vec::with_capacity(samples);
+    for i in 0..samples {
+        // A DIFFERENT revision each iteration: the rebuilt closure is new
+        // work every time (the frozen fn_041 bit keeps moving the source).
+        let (src_i, exp_i) = mn_fetch_revision(i as u32);
+        let _ = mn_formal_call(
+            &root,
+            &format!("sig-{i}-warm"),
+            &src_i,
+            r#"{ op: "run" }"#,
+            Some(&session),
+            &format!(r#"{{ completion: "success", exit: {} }}"#, exp_i),
+        );
+        if i == 0 {
+            // A second warm-up in ANOTHER fresh process: the session
+            // store's first cross-process reads pay cold page-cache costs
+            // (~5ms/unit x 106) that would otherwise land in the measured
+            // window — warming the OS cache first is warm-session setup,
+            // not measurement.
+            let _ = mn_formal_call(
+                &root,
+                "sig-0-warm2",
+                &src_i,
+                r#"{ op: "run" }"#,
+                Some(&session),
+                &format!(r#"{{ completion: "success", exit: {} }}"#, exp_i),
+            );
+        }
+        // Each iteration passes a DIFFERENT w (K = i): the 8 call sites
+        // re-key every time; the closed-form expectation shifts by 8*K
+        // (each fn_leaf_2 caller's value gains K).
+        let rebuilt = sig_rebuild(&src_i, i as i64);
+        let rebuilt_exp = exp_i + 8 * i as i64;
+        let r = mn_formal_call(
+            &root,
+            &format!("sig-{i}"),
+            &rebuilt,
+            r#"{ op: "run" }"#,
+            Some(&session),
+            &format!(r#"{{ completion: "success", exit: {} }}"#, rebuilt_exp),
+        );
+        let s = &r["sessions"][0];
+        let recompiled = mn_receipt_counter(s, "codegen_emit_units");
+        let hits = mn_receipt_counter(s, "cache_hit_coff");
+        let want_recompiled = if i == 0 { 9 } else { 8 };
+        assert!(
+            recompiled == want_recompiled && hits + recompiled == 115,
+            "signature rebuild re-keys the call sites every iteration (recompiled {recompiled}, want {want_recompiled}, hits {hits})"
+        );
+        walls.push(r["request_wall_ms"].as_f64().unwrap_or(0.0));
+    }
+    let (_, p95, _) = mn_t07_finish_raw(
+        "signature-rebuild",
+        "fn_leaf_2 +w param used consistently (w=0); leaf+8 callers re-key; P95 GATED",
+        &walls,
+    );
+    assert!(p95 < gate_ms, "signature-rebuild P95 {p95:.1}ms >= gate {gate_ms}ms");
+    let _ = std::fs::remove_dir_all(std::env::temp_dir().join(format!("mn818-session-{session}")));
+    std::env::remove_var("AC_MN_SESSION_ROOT");
+    let _ = std::fs::remove_dir_all(&session_base);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Scenario 5 — diagnosed signature conflict (av parity gate): the frozen
+/// conflict edit (fn_leaf_2 gains an UNUSED param — call sites break) is
+/// a green DIAGNOSED negative, window-measured; P95 < gate.
+#[test]
+#[cfg(windows)]
+fn mir_native_turnaround_signature_conflict_gate() {
+    let _guard = MN_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let samples = mn_t07_samples();
+    let gate_ms = mn_t07_gate_ms();
+    let session_base = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target")
+        .join(format!("mn818-t07-sessions-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&session_base);
+    std::fs::create_dir_all(&session_base).unwrap();
+    std::env::set_var("AC_MN_SESSION_ROOT", &session_base);
+    let root = mn_t07_root("t07-conflict");
+    let (src0, _) = mn_fetch_revision(0);
+    let conflicted = src0.replacen(
+        "fn fn_leaf_2(v int) int {",
+        "fn fn_leaf_2(v int, w int) int {",
+        1,
+    );
+    let mut walls = Vec::with_capacity(samples);
+    for i in 0..samples {
+        let r = mn_formal_call(
+            &root,
+            &format!("conflict-{i}"),
+            &conflicted,
+            r#"{ op: "run" }"#,
+            None,
+            r#"{ completion: { stage: "parse", code: "mn.unsupported.frontend" } }"#,
+        );
+        walls.push(r["request_wall_ms"].as_f64().unwrap_or(0.0));
+    }
+    let (_, p95, _) = mn_t07_finish_raw(
+        "signature-conflict",
+        "frozen conflict edit; green diagnosed parse rejection; P95 GATED",
+        &walls,
+    );
+    assert!(p95 < gate_ms, "conflict P95 {p95:.1}ms >= gate {gate_ms}ms");
+    let _ = std::fs::remove_dir_all(&root);
+}

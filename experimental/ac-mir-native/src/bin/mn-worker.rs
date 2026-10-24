@@ -160,6 +160,17 @@ mod case_run {
             },
         };
 
+        // Cross-process tool-discovery memo (T-07 turnaround): the lld/SDK
+        // PATHS are memoized next to the store (short-lived worker
+        // processes of one session share it); tool CONTENT identity is
+        // still re-hashed in-process per request.
+        {
+            let memo = PathBuf::from(&store_root).join("..").join("mn-tool-memo.json");
+            if let Some(parent) = memo.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            ac_mn::link_driver::set_tool_disk_memo(memo);
+        }
         let mut driver =
             match ac_mn::driver::MnDriver::with_store(&PathBuf::from(store_root), "mn-case") {
                 Ok(d) => d,
@@ -218,6 +229,7 @@ fn main() -> ExitCode {
     let Some(mode) = args.first() else {
         eprintln!("usage: mn-worker restore-run --store <dir> --workdir <dir> [--tracelib <path>] (--manifest-id <id> | --owner-module <m> --entry <e> --fps <u:fp,...> --link-inputs <digest>)");
         eprintln!("       mn-worker case-run   (one JSON request line on stdin)");
+        eprintln!("       mn-worker load-revision --rev <n>  (reference workload revision dump)");
         return ExitCode::from(2);
     };
     let mut flag = |name: &str| -> Option<String> {
@@ -228,6 +240,22 @@ fn main() -> ExitCode {
     let _ = &mut flag;
     match mode.as_str() {
         "case-run" => case_run::serve(),
+        // The frozen reference workload (golden.md §2) — single source of
+        // truth for the formal turnaround scenarios (the 798 `load-revision`
+        // form): each revision bumps the frozen fn_041 body-edit bit.
+        "load-revision" => {
+            let rev: i64 = flag("--rev")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0);
+            let wl = ac_mn::workload::generate(rev);
+            let v = serde_json::json!({
+                "rev": rev,
+                "source": wl.src,
+                "expected_main": wl.expected,
+            });
+            println!("{v}");
+            ExitCode::SUCCESS
+        }
         "restore-run" => {
             let Some(store) = flag("--store") else {
                 eprintln!("restore-run: --store is required");

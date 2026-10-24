@@ -65,8 +65,21 @@ pub fn current_toolchain_identity() -> std::collections::BTreeMap<String, String
 
 fn worker_file_sha256(exe: &Path) -> Result<String, String> {
     use sha2::{Digest, Sha256};
+    // Memoized per (path, len): the turnaround path hashes the worker exe
+    // per receipt; a same-process repeat is the same evidence.
+    use std::sync::{Mutex, OnceLock};
+    static MEMO: OnceLock<Mutex<std::collections::HashMap<(PathBuf, u64), String>>> =
+        OnceLock::new();
+    let meta = std::fs::metadata(exe).map_err(|e| format!("stat worker exe: {e}"))?;
+    let key = (exe.to_path_buf(), meta.len());
+    let memo = MEMO.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+    if let Some(h) = memo.lock().unwrap().get(&key) {
+        return Ok(h.clone());
+    }
     let bytes = std::fs::read(exe).map_err(|e| format!("read worker exe: {e}"))?;
-    Ok(hex(&Sha256::digest(&bytes)))
+    let h = hex(&Sha256::digest(&bytes));
+    memo.lock().unwrap().insert(key, h.clone());
+    Ok(h)
 }
 
 /// Locate (and on first use build) the mn worker binary. Env override
@@ -404,7 +417,28 @@ pub fn run_check(
         .first()
         .map(|f| f.bytes.clone())
         .ok_or_else(|| "probe adapter needs the resolved entry input".to_string())?;
-    let store_root = artifact_dir.join("mn-store");
+    // Store root (T-07 turnaround shape, the 798 session form): with an
+    // explicit SESSION id the store lives under a deterministic shared
+    // temp root keyed by that id, so calls of the same session (warm-up +
+    // measured edit) share one warm store across worker processes; the
+    // PARENT owns cleanup. Without a session, the check's own artifact
+    // dir hosts a private per-request store.
+    let store_root = match &mn.session {
+        Some(id) => {
+            // The session scratch's PARENT is the adapter host: the
+            // default is the system temp; AC_MN_SESSION_ROOT (a directory)
+            // relocates session stores (the turnaround host uses the
+            // reference machine's build disk — same evidence, faster
+            // store I/O).
+            match std::env::var("AC_MN_SESSION_ROOT") {
+                Ok(base) if std::path::Path::new(&base).is_dir() => {
+                    std::path::PathBuf::from(base).join(format!("mn818-session-{id}"))
+                }
+                _ => std::env::temp_dir().join(format!("mn818-session-{id}")),
+            }
+        }
+        None => artifact_dir.join("mn-store"),
+    };
     std::fs::create_dir_all(&store_root).map_err(|e| format!("mn store root: {e}"))?;
     std::fs::create_dir_all(artifact_dir).map_err(|e| format!("mn artifact dir: {e}"))?;
     let workdir = artifact_dir.join("mn-work");

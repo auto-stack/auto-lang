@@ -122,9 +122,46 @@ pub fn link_identities() -> Result<(String, String, String), MnError> {
     Ok((lld_sha, sdk_tag, k32_sha))
 }
 
-/// Resolve (rust-lld, SDK um dir): env overrides first (per call — the
-/// sleeping-linker/timeout seams must stay injectable), then the
-/// process-memoized default discovery.
+/// Optional cross-process DISK memo for tool DISCOVERY (path hints only —
+/// content binding still goes through `file_identity`, which re-hashes per
+/// process). Set by short-lived worker processes that share a store root;
+/// env overrides always win and are re-read per call.
+static TOOL_DISK_MEMO: std::sync::Mutex<Option<std::path::PathBuf>> =
+    std::sync::Mutex::new(None);
+
+pub fn set_tool_disk_memo(path: std::path::PathBuf) {
+    *TOOL_DISK_MEMO.lock().unwrap() = Some(path);
+}
+
+fn read_tool_disk_memo() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
+    let guard = TOOL_DISK_MEMO.lock().unwrap();
+    let path = guard.as_ref()?;
+    let text = std::fs::read_to_string(path).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let lld = std::path::PathBuf::from(v.get("lld")?.as_str()?);
+    let sdk = std::path::PathBuf::from(v.get("sdk_um")?.as_str()?);
+    if lld.is_file() && sdk.join("kernel32.lib").is_file() {
+        Some((lld, sdk))
+    } else {
+        None
+    }
+}
+
+fn write_tool_disk_memo(lld: &std::path::Path, sdk: &std::path::Path) {
+    let guard = TOOL_DISK_MEMO.lock().unwrap();
+    if let Some(path) = guard.as_ref() {
+        let v = serde_json::json!({
+            "lld": lld.display().to_string(),
+            "sdk_um": sdk.display().to_string(),
+        });
+        let _ = std::fs::write(path, v.to_string());
+    }
+}
+
+/// Resolve (rust-lld, SDK um dir): env overrides per call (the
+/// sleeping-linker/timeout seams stay injectable), then the disk memo,
+/// then the process-memoized default discovery (which seeds the disk memo
+/// for the next short-lived process).
 fn located_tools() -> Result<(std::path::PathBuf, std::path::PathBuf), MnError> {
     fn memoized_default() -> Result<(std::path::PathBuf, std::path::PathBuf), MnError> {
         use std::sync::OnceLock;
@@ -138,25 +175,31 @@ fn located_tools() -> Result<(std::path::PathBuf, std::path::PathBuf), MnError> 
         .clone()
         .map_err(MnError::Infra)
     }
-    let lld = match std::env::var("AC741_RUST_LLD") {
-        Ok(p) if std::path::Path::new(&p).is_file() => std::path::PathBuf::from(p),
-        _ => memoized_default()?.0,
-    };
-    let sdk = match std::env::var("AC741_SDK_UM_LIB") {
-        Ok(d) if std::path::Path::new(&d).join("kernel32.lib").is_file() => {
-            std::path::PathBuf::from(d)
+    let env_lld = std::env::var("AC741_RUST_LLD")
+        .ok()
+        .filter(|p| std::path::Path::new(p).is_file())
+        .map(std::path::PathBuf::from);
+    let env_sdk = std::env::var("AC741_SDK_UM_LIB")
+        .ok()
+        .filter(|d| std::path::Path::new(d).join("kernel32.lib").is_file())
+        .map(std::path::PathBuf::from);
+    if let (Some(lld), Some(sdk)) = (&env_lld, &env_sdk) {
+        return Ok((lld.clone(), sdk.clone()));
+    }
+    let discovered = match read_tool_disk_memo() {
+        Some(pair) => pair,
+        None => {
+            let pair = memoized_default()?;
+            write_tool_disk_memo(&pair.0, &pair.1);
+            pair
         }
-        _ => memoized_default()?.1,
     };
-    Ok((lld, sdk))
+    Ok((
+        env_lld.unwrap_or(discovered.0),
+        env_sdk.unwrap_or(discovered.1),
+    ))
 }
 
-/// Link the closure into a staged PE, publish it transactionally over any
-/// existing output, then run it under the contained executor. Every object
-/// byte passes through rust-lld — no byte splicing. On failure the owned
-/// staging is reclaimed (blocked reclaims reported) and the previous
-/// output survives byte-identically.
-#[allow(clippy::too_many_arguments)]
 pub fn link_and_run(
     objects: &[ObjectInput],
     entry_wrapper: &[u8],

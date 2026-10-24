@@ -1505,6 +1505,7 @@ fn decode_options(
                         return Err(err(&f.path_of("steps"), "steps must not be empty"));
                     }
                 }
+                }
                 out
             }
         };
@@ -1707,7 +1708,6 @@ fn decode_options(
                     })
                 }
             };
-            // PLAN-818: the mn binding (entry/caps).
             let mn = match f.sub("mn") {
                 None => {
                     if recipe == "ac/mir-native-scalar-v1" {
@@ -1730,7 +1730,7 @@ fn decode_options(
                     }
                     let mpath = f.path_of("mn");
                     let pairs = as_obj(v, &mpath)?;
-                    let mf = Fields::new(&mpath, pairs, &["entry", "caps"])?;
+                    let mf = Fields::new(&mpath, pairs, &["entry", "caps", "session"])?;
                     let entry = req_str(&mf, "entry")?;
                     let caps = match mf.sub("caps") {
                         None => Vec::new(),
@@ -1744,9 +1744,14 @@ fn decode_options(
                             out
                         }
                     };
-                    Some(ProbeMnSpec { entry, caps })
+                    let session = match mf.sub("session") {
+                        None => None,
+                        Some(v) => Some(as_str(v, &mf.path_of("session"))?.to_string()),
+                    };
+                    Some(ProbeMnSpec { entry, caps, session })
                 }
             };
+
             (Some(recipe), Some(steps), sema, abi, av, cte, mn)
         } else {
             (None, None, None, None, None, None, None)
@@ -1850,6 +1855,10 @@ pub struct ProbeCteSpec {
 pub struct ProbeMnSpec {
     pub entry: String,
     pub caps: Vec<String>,
+    /// Optional cross-call session id (PLAN-818 T-07 turnaround shape):
+    /// calls of one session share a warm store across worker processes;
+    /// the PARENT owns the scratch root's cleanup.
+    pub session: Option<String>,
 }
 
 /// sema/query-v1 binding: which semantic query the recipe runs.
