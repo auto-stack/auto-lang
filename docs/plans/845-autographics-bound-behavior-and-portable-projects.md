@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-845
-status: execution_done
+status: executing
 feature_name: AutoGraphics行为绑定与可搬迁项目闭环
 plan_revision: 2
 author: [Codex]
 created_at: 2026-10-24
 updated_at: 2026-10-24
-current_step: 8
+current_step: 6
 total_steps: 10
 depends_on: [PLAN-840]
 supersedes_spec_components:
@@ -203,7 +203,7 @@ T-08列准确完整合入矩阵；**最终独立review pass后**T-10才在冻结
 
 ## 8. 执行步骤
 
-r2 work T-01..08已完成；当前execution_done8/10，T-09/T-10仍pending；work T-01..08全部完成且无合同finding/gap才execution_done8/10，T-09最终pass为reviewed9/10（完整门pending），T-10实际完成才交付10/10。
+r2 final review R1发现F-845-R1-01（P2，未保存绑定源码诊断误标磁盘blob），T-06/T-08重开；当前executing6/10，T-09/T-10仍pending。保留T-01..05/T-07已通过证据；work T-01..08全部完成且无合同finding/gap才execution_done8/10，T-09最终pass为reviewed9/10（完整门pending），T-10实际完成才交付10/10。
 
 | task_id | owner_stage | 依赖 | 真实触点／拟新增路径及动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -212,9 +212,9 @@ r2 work T-01..08已完成；当前execution_done8/10，T-09/T-10仍pending；wor
 | T-03 [x] | work | T-02 | document.rs、新authoring/behavior_project.rs及behavior_project_document tests | scene4/旧版/严格绑定/CodePayload原字节及840统一准入定向通过，V-02/03；AC-02, AC-03 |
 | T-04 [x] | work | T-03 | session.rs::Edit/Step/Pending/Editor、history/源码owners；新behavior_project_session | 候选绑定/更新/改角色/解绑/Undo/引用失效/预算/stale关闭，V-04/09主体；AC-03, AC-04, AC-07 |
 | T-05 [x] | work | T-04 | storage.rs::Snapshot/load_assets/prepare_closure/verify_locked、源码闭包与新storage tests | V-05/06及原storage/assets故障定向通过、单entry/同root锁/完整Verify；AC-05 |
-| T-06 [x] | work | T-05 | Host/Panel/bin、840正式来源选择与Run、Open/inspect；新host tests | V-07/坏Open/临时覆盖/持久角色/忙碌/Stop闭合，原Play/behavior定向保分母；AC-06 |
+| T-06 [ ] | work | T-05 | Host/Panel/bin、840正式来源选择与Run、Open/inspect；新host tests | F-845-R1-01待修：已有保存路径但新绑定未保存时，实际Run/诊断须明确memory/hash来源；其余V-07证据保留；AC-06 |
 | T-07 [x] | work | T-06 | 新samples/behavior_projects/{move,patrol}、check_behavior_project.py/真实GPU反控 | V-08/10 OS/仓外/同binary/搬迁/源码更新/错误恢复/partial全证据；AC-06, AC-08 |
-| T-08 [x] | work | T-07 | 新check_behavior_project_owners.py、source/独立consumer、README/new research/behavior-project-handoff.md/Spec proposal | V-01/09/10、20轮owner/旧定向/check/fmt与准确merge矩阵、SD逐项交接，无完整档抢跑；AC-01, AC-07, AC-08 |
+| T-08 [ ] | work | T-07 | 新check_behavior_project_owners.py、source/独立consumer、README/new research/behavior-project-handoff.md/Spec proposal | F-845-R1-01来源状态永久断言/知识说明待闭；其余V-01/09/10、owner/source/consumer/check/fmt与merge矩阵证据保留；AC-01, AC-07, AC-08 |
 | T-09 | review | T-08 | 同树冻结code/Plan/Spec与原始报告，主检出独立review附件 | AC-01..08逐项独立审查、遗漏/延后/workaround与健康；AC-09 |
 | T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出知识/ledger/archive/guard | AC-10实际落地/清理/到期，改代码先受影响复审再重新冻结 |
 
@@ -281,6 +281,22 @@ T-08已关闭：fresh consumer845-verified持有自己的SDK/target，源码/依
 AC-01..08当前工作证据逐项pass；13新增永久定向case、47旧触面case、owner三反控+restored、native15（未受inspect改动的八负复用）+final正向7+实际UI产物搬迁2、consumer storage5/native2，各自断言/身份/边界见readiness；不把多轮重复相加。不再有work-owned finding/coverage gap/未决合同；无新的work自查债务候选，独立审查仍须自行核验。
 
 T-09/AC-09独立上下文最终review未执行；T-10/AC-10全部完整锁定门、原63+新增项目/消费矩阵、Spec/ledger/归档/autographics-dev落地/guard清理/845到期批量仍pending。未合入、未归档、未清理树、未发布canonical，不宣称最终交付。实现写入冻结，下一角色在同一树复审。
+
+### 2026-10-24 r2 independent final review R1 — needs_fix
+
+stage: review | review_scope: final | reviewer_identity: `/root/review_845`（获用户授权的新独立上下文；父代理后提供来源疑点，复审者独立构造并实跑反例与控制） | plan_id: PLAN-845 | plan_revision: 2 | outcome: needs_fix |
+worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev |
+reviewed_commit: 75277a7b7b8d1b43f840c8993721c02833e5657a | base_commit: 8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 |
+dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21、三锁/配置与Spec输入完整hash见[audit](attachments/845/review-r1/audit.json.txt) |
+evidence: [完整收据/逐AC与SD](attachments/845/review-r1/review.md)、[独立反例](attachments/845/review-r1/source-origin.rs)、[raw](attachments/845/review-r1/source-origin-run.log.txt)、[重放入口](attachments/845/review-r1/replay.ps1) |
+findings: F-845-R1-01 P2（原合同§5.2，AC-03/06/08，T-06/08） |
+next: 同树work修复、永久反例/控制、提交后仅复审受影响来源状态；不改语义合同，不重跑完整矩阵。
+
+已覆盖全部AC-01..08与规范增量：AC-01/02/04/05/07 pass，AC-03/06 fail，AC-08 partial。已有保存路径的场景绑定全新未保存源码后直接Run，SourceSnapshot.path/Last Run/真实Auto app_start错误均指向尚不存在的scripts/<hash>.at，而非明确memory/hash来源；新无路径、已保存旧binding、新binding保存后三个合法控制通过。反例已进入实际回调（API error node999），exit101为来源断言失败，不是setup。源码执行字节正确，未发现fallback/数据丢失。
+
+其余独立H01..06正反通过：旧收据前保留路径拒绝、真实坏code Verify/Open拒绝及恢复、伪造snapshot拒绝、nullable/跨维严格decode、删旧blob SaveAs/Open原CRLF/不执行callback、8源码与第9拒绝/最后owner/合法raw pin。实际Git对象320/SDK681/479packages/17locals/29edges及280原始附件SHA独立校验；定向library/单一authoring binary重建与fmt通过（仅固定SDK146预存warning）。新binary4c975e855ff1344819be16a0c6463f23598811c5765e236303326d9b8ebc3d49上正式move通过phase27/36像素断言，bad-source与partial按阶段失败；旧原生/owner/consumer证据经代码/输入/依赖/config身份比对复用。
+
+T-06/T-08重开，计数executing6/10；T-01..05/T-07与无关pass证据保留。F01已登记KNOWN-DEBT候选，但属于阻断合同缺陷，不授权延期/降级。冻结SD01..04 hash7985c0feed0c105f5bbea0f2ef29843311804f07c3fa2f331846d665a8e04e9a，canonical/ledger未写；最终知识文本须保留未保存来源规则。T-09未pass，全部merge-owned完整门、autographics-dev落地/知识归档/guard清理/到期回归仍pending；未合入/归档/清树，不宣称交付。
 
 ## 10. 待澄清事项
 

@@ -3157,3 +3157,7 @@ PLAN-840 merge（2026-10-24，archived11/12）：R1三finding已复审关闭；�
 ### PLAN-840 r8：批量回归修复关闭（2026-10-24）
 
 原840内追加Phase2/3/4，保留全部原支持面：CTE可选feature注册、真实计量边界/运行池前提、测试载体Init及RQHost真实发布、full/t3 FFI共享fixture分组、Windows延迟删除瞬态锁错误有界重试，以及SSE/嵌套generator任务表guard重入死锁均已修复并保留反例。原批量文件锁日志缺errno，不将所有旧失败强归为错误5；新增真实Windows错误5反例及完整池复验关闭已确认机制，生产诊断保留最近系统错误。冻结ba6479da5完整t5345/tv163/tt5717/tb5316通过；落地53298cd27主检出完整tf6291/tt5717/tb5316全绿，失败与诊断历史均保留于840附件。D-762-1生产UI helper未修改、债务未被关闭；同计划修复仅将相关测试改为等待真实完成态。无新增未处理finding，不以隔离绿豁免完整档。
+
+### PLAN-845 final R1 — F-845-R1-01（2026-10-24，needs_fix）
+
+P2原合同缺陷候选，非可延期债务：受审75277a7b7b8d1b43f840c8993721c02833e5657a/r2。已有保存路径的场景绑定全新未保存源码后Run，实际SourceSnapshot/Last Run/app_start错误误标尚不存在的scripts/<hash>.at，违反§5.2明确memory/hash来源；三个合法来源控制通过，反例实际执行至Auto API错误后在来源断言exit101。[完整finding与最小重放](attachments/845/review-r1/review.md)。T-06/T-08重开、executing6/10；AC03/06 fail、AC08 partial，其他pass保留。修复须提交及受影响独立复审；登记不授权缩面/延期，完整门仍merge-owned pending，未合入/归档/清树。
