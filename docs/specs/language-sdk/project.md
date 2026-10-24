@@ -82,3 +82,15 @@ Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-
 合法 feature-off 的测试构建不得引用该依赖；feature-on 必须保留并执行全部
 既有 CTE 正例、错误退出、未知 recipe、伪 worker 与身份漂移反例。
 本修复不增加默认依赖、不改变既有测试档的 feature 选择。
+
+
+## PLAN-840 Phase 4：状态文件锁的 Windows 瞬态竞争
+
+`state_file::with_lock` 保留独占创建锁文件、2s 缺省截止时间、10s stale 判定和
+best-effort 降级执行合同。Windows 延迟删除的文件名在最后一个句柄关闭前，
+`create_new` 可以返回 ACCESS_DENIED(5)；sharing/lock violation(32/33)及
+DELETE_PENDING(303)同为需在调用方既定截止时间内重试的竞争。错误码5也可能
+表示真实权限拒绝，不能无界等待；截止仍到期后按原合同降级并执行闭包一次。
+只有 AlreadyExists 分支可检查 stale 并尝试接管，其他错误不能据此删除锁。
+非竞争性硬错误仍直接降级，诊断保留最近系统错误。未改变锁文件路径/内容或
+跨仓约定，不宣称超时降级状态下仍提供互斥保证。

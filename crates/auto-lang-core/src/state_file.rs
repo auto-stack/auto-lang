@@ -146,6 +146,14 @@ fn lock_age_ms(path: &Path) -> u128 {
     mtime_age_ms(path).max(epoch_age)
 }
 
+/// Windows delete-pending names can reject create_new with ACCESS_DENIED;
+/// sharing/lock violations are also transient namespace contention. They are
+/// retried within the caller's existing deadline, never treated as stale.
+fn is_lock_contention(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::AlreadyExists
+        || (cfg!(windows) && matches!(error.raw_os_error(), Some(5 | 32 | 33 | 303)))
+}
+
 /// 在 `<target>.lock` 互斥保护下执行 `f`。锁被他人持有时重试至 `timeout`；
 /// 期间发现 stale 锁（龄 > [`STALE_LOCK_AGE`]）则删除接管；超时或硬错误
 /// （权限等）**降级放行**执行 `f` 并返回 [`LockOutcome::Degraded`]。
@@ -156,6 +164,7 @@ pub fn with_lock<T>(target: &Path, timeout: Duration, f: impl FnOnce() -> T) -> 
     }
     let deadline = Instant::now() + timeout;
     let mut acquired = false;
+    let mut last_error = None;
     while Instant::now() < deadline {
         match std::fs::OpenOptions::new()
             .write(true)
@@ -168,15 +177,21 @@ pub fn with_lock<T>(target: &Path, timeout: Duration, f: impl FnOnce() -> T) -> 
                 acquired = true;
                 break;
             }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                if lock_age_ms(&lock) > STALE_LOCK_AGE.as_millis() {
+            Err(e) if is_lock_contention(&e) => {
+                if e.kind() == std::io::ErrorKind::AlreadyExists
+                    && lock_age_ms(&lock) > STALE_LOCK_AGE.as_millis()
+                {
                     // 接管：删后重走 create_new（与并发接管者竞态仍安全）
                     let _ = std::fs::remove_file(&lock);
                     continue;
                 }
+                last_error = Some(e);
                 std::thread::sleep(Duration::from_millis(25));
             }
-            Err(_) => break, // 权限等硬错误 → 降级
+            Err(e) => {
+                last_error = Some(e);
+                break; // 非竞争性硬错误 → 降级
+            }
         }
     }
     if acquired {
@@ -185,7 +200,7 @@ pub fn with_lock<T>(target: &Path, timeout: Duration, f: impl FnOnce() -> T) -> 
         LockOutcome::Executed(out)
     } else {
         eprintln!(
-            "[state_file] lock {} acquire timeout/hard-error, proceeding degraded",
+            "[state_file] lock {} acquire timeout/hard-error ({last_error:?}), proceeding degraded",
             lock.display()
         );
         LockOutcome::Degraded(f())
@@ -196,7 +211,7 @@ pub fn with_lock<T>(target: &Path, timeout: Duration, f: impl FnOnce() -> T) -> 
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     fn tmpdir(name: &str) -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!(
@@ -304,6 +319,95 @@ mod tests {
         }
         assert_eq!(counter.load(Ordering::SeqCst), 100, "lock lost updates");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Windows keeps a deleted name pending until the last shared-delete
+    /// handle closes. create_new returns ACCESS_DENIED, not AlreadyExists.
+    #[cfg(windows)]
+    #[test]
+    fn lock_retries_delete_pending_without_unlocked_execution() {
+        use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn SetFileInformationByHandle(
+                file: *mut std::ffi::c_void,
+                class: i32,
+                info: *const std::ffi::c_void,
+                size: u32,
+            ) -> i32;
+        }
+        let dir = tmpdir("delete-pending");
+        let target = dir.join("f.json");
+        let lock = lock_path_for(&target);
+        let held = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .access_mode(0x40010000)
+            .share_mode(7)
+            .open(&lock)
+            .unwrap();
+        // Legacy disposition retains the name until the handle closes;
+        // modern Rust remove_file may use POSIX unlink instead.
+        let delete: i32 = 1;
+        // SAFETY: live owned file handle and valid BOOL buffer for class 4.
+        assert_ne!(
+            unsafe {
+                SetFileInformationByHandle(
+                    held.as_raw_handle(),
+                    4,
+                    (&delete as *const i32).cast(),
+                    4,
+                )
+            },
+            0,
+            "{}",
+            std::io::Error::last_os_error()
+        );
+        let error = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock)
+            .unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(5), "actual delete-pending state");
+        let started = Instant::now();
+        let timeout = Duration::from_millis(25);
+        let timed_out = with_lock(&target, timeout, || 7);
+        assert_eq!(timed_out, LockOutcome::Degraded(7));
+        assert!(
+            started.elapsed() >= timeout,
+            "transient errors must use the deadline"
+        );
+        let released = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let release_flag = released.clone();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(75));
+            release_flag.store(true, Ordering::SeqCst);
+            drop(held);
+        });
+        let result = with_lock(&target, LOCK_TIMEOUT, || released.load(Ordering::SeqCst));
+        release.join().unwrap();
+        assert_eq!(
+            result,
+            LockOutcome::Executed(true),
+            "must wait for deletion to finish"
+        );
+        assert!(!lock.exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn lock_hard_error_degrades_and_executes_once() {
+        let dir = tmpdir("hard-error");
+        let parent = dir.join("file-as-parent");
+        std::fs::write(&parent, b"block").unwrap();
+        let calls = AtomicUsize::new(0);
+        let result = with_lock(&parent.join("state"), LOCK_TIMEOUT, || {
+            calls.fetch_add(1, Ordering::SeqCst);
+            42
+        });
+        assert_eq!(result, LockOutcome::Degraded(42));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
