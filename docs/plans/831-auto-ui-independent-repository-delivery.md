@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-22
 updated_at: 2026-10-24
 plan_revision: 2
-current_step: 2
+current_step: 3
 total_steps: 12
 supersedes_spec_components: [docs/specs/repository-boundaries/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md, docs/specs/auto-ui-compiler/project.md, docs/specs/auto-ui-runtime/project.md, docs/specs/auto-ui-tools/project.md, docs/specs/auto-ui-dialect/project.md, docs/specs/language-sdk/project.md, docs/specs/project-model/project.md, docs/specs/auto-lang/project.md, docs/specs/auto-man-core/project.md, docs/specs/auto-man/project.md]
 new_spec_components: [docs/specs/auto-ui/project.md, docs/specs/repository-boundaries/ui-repository-delivery.md, docs/specs/auto-api-gen/project.md]
@@ -131,7 +131,7 @@ UI安装/发行profile包含编译库、runtime、tool实际二进制和运行�
 |---|---|---|---|---|---|
 | [x] | T-01 | work | G831完整核验 | [✅ 已完成] [contract-baseline.md](attachments/831/contract-baseline.md) @源 a61209cc0：逐包迁移映射（迁入五包+留仓清单+C2 adapter）、兼容面（C4）、C2 切点实测定位（api-gen/sidecar.rs:54-60、tools/rust_ui.rs:3367/5931/5951→project-model 单源）、跨仓 autodown-core optional 路径处理要求、fixture/测试档/777/792 影响面、旧仓现状（f7d92ee+WIP，不承接 GPUI）、profile/发行面；5 项未闭决策具名交 T-05/T-06/T-09/T-11 | AC-01..06 |
 | [x] | T-02 | work | G831；T-01旧仓事实 | [✅ 已完成] [preservation.md](attachments/831/preservation.md)：盘点（10 refs/WIP=Cargo.lock/无 stash）+快照 45044cf9507d5628（bundle d48d04c1…，payload=.recovery/831-legacy-preservation）+锚点 reuse+verify ok+recover-drill ok（10 refs/树 31ede719…）；执行组 lang-831 双树建立（auto-lang@2dafba909/auto-ui@f7d92ee，分支各 codex/plan-831-dev）；主检出 WIP 未触碰 | AC-05 |
-| [ ] | T-03 | work | G831；T-01 | 新ui-repository-consumer及发行/失败/source/type/测试ID driver，基于已交付814/A做有效控制；不改生产热点 | AC-01,03,04,06 |
+| [x] | T-03 | work | G831；T-01 | [✅ 已完成] `test/fixtures/modularity/ui-repository-consumer/` + `scripts/ui-repository-fixture.py` @lang-831 树 e199caf8a（合入前在 codex/plan-831-dev）：五族 driver（source/type/test-id/distribution/failure）接口冻结 + migration-phases.json 阶段表（pre-migration=五包闭包无 auto-man 大库/无 lang-monolith；source-switched 同断言收紧零 auto-man-core；结构判别+部分导入拒绝）+ 三仓有界入口（解析序 cli>env>组内兄弟>主检出，默认零 cargo）。预迁移态实跑 pass=25/fail=0/recorded=6/pending=12：Man-core 台账=2 条实测边（auto-ui-tools+auto-api-gen→auto-man-core，修正 T-01 单边认知）、legacy auto-ui→auto-lang optional 边记档、autodown 按文档序解析在案、type 16 锚点+C2 声明恰一单源+feature 32 项钉住、test-id 清点（dialect=86 契合契约基线）+档位别名 8/8；selftest 10/10（受控突变区分性 oracle：vendoring/走私边/收紧态红+合法对照绿）；发行/失败族 pending 归 T-07/T-08（现行同构控制 792/815-A）。Category A 无 cargo 门；.gitignore *.json 母规则否定行按 PLAN-793 惯例补入 | AC-01,03,04,06 |
 | [ ] | T-04 | work | G831；T-02/T-03 | 冻结815完整来源，UI包组/资源/测试/许可/兼容候选导入旧UI仓迁移分支；只改目标候选/清单，保持语言权威与816输入 | AC-01,02,05 |
 | [ ] | T-05 | work | G831；T-04及共享写面交接 | tools/API生成共享声明最小单源去Man边，旧Man API再导出；冻结compat/剩余消费者/包版本owner，定向V-01/02 | AC-01,02 |
 | [ ] | T-06 | work | G831；T-05 | 目标独立workspace/build/manifest/锁/固定源；语言生产消费者切源/旧UI实现删除、别名/测试ID与777/792源根更新，V-01/06 | AC-01,02,06 |
@@ -147,6 +147,8 @@ UI安装/发行profile包含编译库、runtime、tool实际二进制和运行�
 执行组`D:/autostack/.wt/lang-831/{auto-lang,auto-ui}`，分支各`codex/plan-831-dev`（属于各自仓）；必要auto-down兄弟依既有解析补detached，**不修改其实现**。784树如已有owner不得抢占，确认保全后另建本Plan分支或经明确owner交接认领，始终每仓仅一个权威树。review不建第二checkout。主检出只簿记，树内禁junction/symlink；移除前逐树wt-guard clean，不删legacy或恢复载荷。
 
 ## 9. 复审记录
+2026-10-24 / stage: work(T-03 验证设施冻结) / plan_id: PLAN-831 / revision: 2 / outcome: **T-03 完成（任务域 handoff，Plan 续 executing）** / worktree_path: D:/autostack/.wt/lang-831/auto-lang / branch: codex/plan-831-dev / base_commit: 2dafba909 / code_commit: e199caf8a / dependency_revisions: auto-ui@f7d92ee（T-02 组树，未触）；auto-down 主检出只读 / task_ids: T-03 / evidence: 预迁移态实跑 `python scripts/ui-repository-fixture.py` = pass 25/fail 0/recorded 6/pending 12（收据 .wt/lang-831/scratch-ui-repo-fixture/run-receipt.json，两次运行字节一致）；selftest 10/10 区分性 oracle（vendoring 守卫/非 legacy 走私边点名/收紧态 SRC-P2 点名 auto-man-core/合法对照绿/部分导入 exit 3）；运行面 py_compile+JSON/TOML 解析过；Category A（无 crates/ 改动）未跑 cargo 门，merge 冻结门 pending 归 T-10/T-11 / 实测修正: Man-core 过渡台账=T-01 记 1 边、实为 2 边（auto-api-gen→auto-man-core 亦在五包闭包内，C2 范围含 tools+API 生成两消费方，contract-baseline §1.3/§3 本就双列）——migration-phases.json 台账按实测冻结 / blockers: 无 / next_responsible_role: work T-04（来源导入旧 UI 仓迁移分支，依赖 T-02/T-03 已满足）
+
 2026-10-24 / stage: work(G831 启动门核验+T-01 开始) / plan_id: PLAN-831 / revision: 2 / outcome: **G831 满足，启动锁解除，进入 T-01** / gate_evidence: U815=archive/815（delivery `33c9451fb` git merge-base --is-ancestor master ✓，status archived，17/17，五检查点闭环收据 6336ab95b，ledger v68）；U816=archive/816（delivery `ac7c1369c` master 祖先 ✓，status archived，14/14，五检查点收据在 §9 续 14/15，ledger v76）；无误建 lang-831 树；目标仓 D:/autostack/auto-ui 在场 / baseline: 源版本=master@a61209cc0（含他 session 簿记）（815+816 合入后实际源）；上游 revision：815 r?/delivery 33c9451fb、816 r2/delivery ac7c1369c；Spec/ledger=v76 / next: T-01 契约基线审计（attachments/831/contract-baseline.md）
 
 
