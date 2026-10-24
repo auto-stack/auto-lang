@@ -119,9 +119,12 @@ pub fn emit_function(
         }
     }
 
-    // Body: blocks in MIR order; seal targets as their last pred emits.
+    // Body: blocks in MIR order; seal a block only when ALL its
+    // predecessors have declared their edges — a block still expecting a
+    // back edge (a loop header whose latch emits later) stays UNSEALED
+    // while being filled; the SSA builder resolves its uses at seal time.
     for (bi, b) in f.blocks.iter().enumerate() {
-        if !sealed[bi] {
+        if !sealed[bi] && remaining[bi] == 0 {
             fx.fb.seal_block(fx.blocks[bi]);
             sealed[bi] = true;
         }

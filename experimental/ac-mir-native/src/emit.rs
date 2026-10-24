@@ -109,6 +109,7 @@ pub fn admit_unit(unit: &MirModule) -> Result<(), MnError> {
 
 /// One emitted unit object: the COFF bytes plus the declared identities
 /// the A10' manifest records (export symbol + resolved import symbols).
+#[derive(Debug)]
 pub struct UnitObject {
     pub symbol: String,
     pub bytes: Vec<u8>,
