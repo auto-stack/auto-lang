@@ -1,0 +1,665 @@
+//! PLAN-820 T-02 first-case tests (`av_data_820` family).
+//!
+//! The frozen first case (contract-decision §11): existing record source →
+//! record-domain Checked HIR → shared Typed MIR → AVAD ABC → AV, nested
+//! field write then return 42, plus the wide-scalar typed-MIR fixtures with
+//! BIT-EXACT round trips (u64::MAX / i64::MIN / negative NaN payload /
+//! −0.0). Negative controls pin the frozen admissions: same-width
+//! different-owner records never interchange, wide scalars have no
+//! arithmetic, records do not cross the entry boundary, and the two wire
+//! families stay isolated.
+//!
+//! Oracles are hand-audited (42; the exact bit patterns below) — never
+//! derived from the layout/copy algorithms under test.
+
+use auto_av_core::abc::{decode_abc, encode_abc};
+use auto_av_core::av::{execute, execute_entry, CancelFlag, ExecLimits};
+use auto_av_core::contract::{
+    ExecOutcome, Value, ABC_DATA_MAGIC, ABC_PROFILE_DATA, AV_DATA_PROFILE, MIR_DATA_SCHEMA,
+};
+use auto_av_core::mir::*;
+use auto_av_core::{abc_verify, mir_verify};
+
+fn data_owner(module: &str) -> OwnerScope {
+    OwnerScope {
+        schema: MIR_DATA_SCHEMA.to_string(),
+        module: module.to_string(),
+    }
+}
+
+/// Compile record source → data MIR → AVAD ABC → admitted LoadedModule.
+fn admit_record_source(src: &str, entry: &str) -> abc_verify::LoadedModule {
+    let compiled = auto_ac_prototype::source::compile_record_source(src, "p.at", &[])
+        .expect("record source compiles");
+    assert_eq!(
+        compiled.checked.domain(),
+        auto_ac_prototype::hir::HirDomain::Record
+    );
+    let mir = auto_av_probe::hir_adapter::lower_checked_data(&compiled.checked, entry, 0x820)
+        .expect("data lowering");
+    assert_eq!(mir.profile, AV_DATA_PROFILE);
+    mir_verify::verify_mir(&mir).expect("data MIR verifies");
+    let wire = encode_abc(&mir).expect("AVAD encode");
+    let flat = wire.to_flat();
+    assert_eq!(&flat[0..4], &ABC_DATA_MAGIC[..], "AVAD magic on the wire");
+    abc_verify::verify_abc_bytes(&flat, &mir.owner).expect("AVAD admits")
+}
+
+// ---------------------------------------------------------------------------
+// First case: nested field write after construction returns 42
+// ---------------------------------------------------------------------------
+
+#[test]
+fn av_data_820_first_case_whole_path() {
+    // Frozen first-case source (contract-decision §11).
+    let src = "\
+type Inner { x int }
+type Outer { inner Inner }
+fn main() int {
+    var o = Outer { inner: Inner { x: 0 } }
+    o.inner.x = 41 + 1
+    return o.inner.x
+}
+";
+    let loaded = admit_record_source(src, "d_main");
+    assert!(loaded.executable(), "complete data module is executable");
+    let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(42),
+                ..
+            }
+        ),
+        "first case must return 42, got {out:?}"
+    );
+    assert!(trace.peak_slot_bytes > 0, "record data enters the ledger");
+}
+
+#[test]
+fn av_data_820_first_case_wire_round_trip() {
+    let src = "\
+type Inner { x int }
+type Outer { inner Inner }
+fn main() int {
+    var o = Outer { inner: Inner { x: 7 } }
+    o.inner.x = o.inner.x + 35
+    return o.inner.x
+}
+";
+    let compiled =
+        auto_ac_prototype::source::compile_record_source(src, "p.at", &[]).expect("compile");
+    let mir = auto_av_probe::hir_adapter::lower_checked_data(&compiled.checked, "d_main", 1)
+        .expect("lower");
+    let wire = encode_abc(&mir).expect("encode").to_flat();
+    let decoded = decode_abc(&flat(&wire)).expect("decode");
+    assert_eq!(decoded.profile, ABC_PROFILE_DATA);
+    assert_eq!(decoded.module.profile, AV_DATA_PROFILE);
+    let loaded = abc_verify::verify_abc(decoded, &mir.owner).expect("re-admit");
+    let (out, _) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(42),
+                ..
+            }
+        ),
+        "decoded-first-case returns 42, got {out:?}"
+    );
+}
+
+fn flat(v: &[u8]) -> Vec<u8> {
+    v.to_vec()
+}
+
+// ---------------------------------------------------------------------------
+// V-02 first cut: copy keeps the original (value semantics)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn av_data_820_record_copy_keeps_original() {
+    let src = "\
+type P { x int }
+fn main() int {
+    let a = P { x: 10 }
+    var b = a
+    b.x = 99
+    if a.x != 10 { return 1 }
+    if b.x != 99 { return 2 }
+    return a.x
+}
+";
+    let loaded = admit_record_source(src, "d_main");
+    let (out, _) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(10),
+                ..
+            }
+        ),
+        "a stays 10 after b mutated, got {out:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// V-03: wide-scalar bit-exact fixtures (typed MIR — untrusted until verify)
+// ---------------------------------------------------------------------------
+
+/// Build a one-function data module `fn id(T) -> T { return arg }` for a
+/// scalar type — the bit-round-trip vehicle for const/param/return/copy.
+fn scalar_identity_module(t: MirType, const_extra: Option<MirConst>) -> MirModule {
+    let mut m = MirModule::new_data(data_owner("bits"));
+    let ti = m.intern_type(t);
+    let sig = m.intern_type(MirType::Fn(FnSig {
+        params: vec![ti],
+        result: ti,
+    }));
+    let mut instrs = vec![MirInstr::Copy { dst: 1, src: 0 }];
+    if let Some(c) = const_extra {
+        // materialize the constant, copy it over the result (const leg)
+        let ci = m.intern_const(c);
+        instrs.insert(0, MirInstr::Const { dst: 2, value: ci });
+        instrs.push(MirInstr::Copy { dst: 1, src: 2 });
+        instrs.push(MirInstr::Copy { dst: 1, src: 0 }); // restore param leg last
+    }
+    m.funcs.push(MirFunction {
+        owner: data_owner("bits"),
+        name: "main".into(),
+        sig,
+        slots: vec![
+            MirSlot {
+                kind: SlotKind::Param,
+                ty: ti,
+                name: None,
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: ti,
+                name: None,
+            },
+            MirSlot {
+                kind: SlotKind::Temp,
+                ty: ti,
+                name: None,
+            },
+        ],
+        blocks: vec![MirBlock {
+            instrs,
+            term: Terminator::Return { value: 1 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+    });
+    m.entry = 0;
+    m
+}
+
+fn run_entry_bits(m: &MirModule, arg: Value) -> Value {
+    mir_verify::verify_mir(m).expect("fixture verifies");
+    let wire = encode_abc(m).expect("encode").to_flat();
+    let loaded = abc_verify::verify_abc_bytes(&wire, &m.owner).expect("admit");
+    let (out, _) = execute_entry(
+        &loaded,
+        &ExecLimits::default(),
+        &CancelFlag::new(false),
+        &[arg],
+    );
+    match out {
+        ExecOutcome::Success { value, .. } => value,
+        other => panic!("expected success, got {other:?}"),
+    }
+}
+
+#[test]
+fn av_data_820_wide_scalar_bit_exact_roundtrip() {
+    // Frozen samples (contract-decision §3).
+    let cases: Vec<(MirType, MirConst, Value)> = vec![
+        (MirType::U64, MirConst::U64(u64::MAX), Value::U64(u64::MAX)),
+        (MirType::I64, MirConst::I64(i64::MIN), Value::I64(i64::MIN)),
+        (
+            MirType::F64,
+            MirConst::F64Bits(0xFFF8_0000_DEAD_BEEF), // negative quiet NaN, payload
+            Value::F64(f64::from_bits(0xFFF8_0000_DEAD_BEEF)),
+        ),
+        (
+            MirType::F64,
+            MirConst::F64Bits(0x8000_0000_0000_0000), // -0.0
+            Value::F64(f64::from_bits(0x8000_0000_0000_0000)),
+        ),
+        (
+            MirType::F32,
+            MirConst::F32Bits(0x7F80_AD00), // +quiet NaN with payload 0xAD00
+            Value::F32(f32::from_bits(0x7F80_AD00)),
+        ),
+    ];
+    for (ty, konst, arg) in cases {
+        let m = scalar_identity_module(ty.clone(), Some(konst));
+        let got = run_entry_bits(&m, arg.clone());
+        assert_eq!(got, arg, "bit-exact round trip for {ty:?}");
+    }
+}
+
+#[test]
+fn av_data_820_entry_rejects_wrong_kind_and_record() {
+    // Wrong-kind arg at the entry seam: a Bool handed to a u64 slot.
+    let m = scalar_identity_module(MirType::U64, None);
+    let wire = encode_abc(&m).expect("encode").to_flat();
+    let loaded = abc_verify::verify_abc_bytes(&wire, &m.owner).expect("admit");
+    let (out, _) = execute_entry(
+        &loaded,
+        &ExecLimits::default(),
+        &CancelFlag::new(false),
+        &[Value::Bool(true)],
+    );
+    assert!(
+        matches!(out, ExecOutcome::Infra(ref m) if m.contains("admission violation")),
+        "wrong-kind entry arg is an admission violation, got {out:?}"
+    );
+
+    // Record-typed entry result never admits (§6: records do not cross the
+    // entry boundary).
+    let mut m = MirModule::new_data(data_owner("rb"));
+    let t_i32 = m.intern_type(MirType::I32);
+    let rec = m.intern_type(MirType::Record(RecordTypeRef {
+        owner_module: "rb".into(),
+        name: "R".into(),
+        fields: vec![MirFieldDef {
+            name: "x".into(),
+            ty: t_i32,
+        }],
+    }));
+    let sig = m.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: rec,
+    }));
+    m.funcs.push(MirFunction {
+        owner: data_owner("rb"),
+        name: "main".into(),
+        sig,
+        slots: vec![MirSlot {
+            kind: SlotKind::Local,
+            ty: rec,
+            name: None,
+        }],
+        blocks: vec![MirBlock {
+            instrs: vec![MirInstr::Aggregate {
+                dst: 0,
+                record_ty: rec,
+                operands: vec![1],
+            }],
+            term: Terminator::Return { value: 0 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+    });
+    m.entry = 0;
+    // Slot 1 (the i32 operand) is never initialized → also invalid, but the
+    // entry contract fires first.
+    let err = mir_verify::verify_mir(&m).unwrap_err();
+    assert!(
+        matches!(err, mir_verify::MirVerifyError::Invalid { ref code, .. } if code == "mir.entry-sig"),
+        "record at the entry boundary rejects with mir.entry-sig, got {err:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// V-01 first cut: same-width different-owner records never interchange
+// ---------------------------------------------------------------------------
+
+#[test]
+fn av_data_820_same_width_owner_mismatch_rejected() {
+    let mut m = MirModule::new_data(data_owner("v1"));
+    let t_i32 = m.intern_type(MirType::I32);
+    let a = m.intern_type(MirType::Record(RecordTypeRef {
+        owner_module: "m1".into(),
+        name: "A".into(),
+        fields: vec![MirFieldDef {
+            name: "x".into(),
+            ty: t_i32,
+        }],
+    }));
+    let b = m.intern_type(MirType::Record(RecordTypeRef {
+        owner_module: "m2".into(),
+        name: "B".into(),
+        fields: vec![MirFieldDef {
+            name: "x".into(),
+            ty: t_i32,
+        }],
+    }));
+    let sig = m.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: t_i32,
+    }));
+    let c0 = m.intern_const(MirConst::I32(1));
+    m.funcs.push(MirFunction {
+        owner: data_owner("v1"),
+        name: "main".into(),
+        sig,
+        slots: vec![
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_i32,
+                name: None,
+            },
+            MirSlot {
+                kind: SlotKind::Temp,
+                ty: a,
+                name: None,
+            },
+            MirSlot {
+                kind: SlotKind::Temp,
+                ty: b,
+                name: None,
+            },
+        ],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::Const { dst: 0, value: c0 },
+                MirInstr::Aggregate {
+                    dst: 1,
+                    record_ty: a,
+                    operands: vec![0],
+                },
+                MirInstr::Aggregate {
+                    dst: 2,
+                    record_ty: b,
+                    operands: vec![0],
+                },
+                // The interchange: copy A-typed slot into B-typed slot.
+                MirInstr::Copy { dst: 2, src: 1 },
+                MirInstr::FieldGet {
+                    dst: 0,
+                    base: 2,
+                    path: vec![0],
+                },
+            ],
+            term: Terminator::Return { value: 0 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+    });
+    m.entry = 0;
+    let err = mir_verify::verify_mir(&m).unwrap_err();
+    assert!(
+        matches!(err, mir_verify::MirVerifyError::Invalid { ref code, .. } if code == "mir.copy-type"),
+        "same-width different-owner copy rejects with mir.copy-type, got {err:?}"
+    );
+
+    // Legal same-owner control verifies and runs to 42.
+    let mut m = MirModule::new_data(data_owner("v1c"));
+    let t_i32 = m.intern_type(MirType::I32);
+    let a = m.intern_type(MirType::Record(RecordTypeRef {
+        owner_module: "m1".into(),
+        name: "A".into(),
+        fields: vec![MirFieldDef {
+            name: "x".into(),
+            ty: t_i32,
+        }],
+    }));
+    let sig = m.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: t_i32,
+    }));
+    let c42 = m.intern_const(MirConst::I32(42));
+    m.funcs.push(MirFunction {
+        owner: data_owner("v1c"),
+        name: "main".into(),
+        sig,
+        slots: vec![
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_i32,
+                name: None,
+            },
+            MirSlot {
+                kind: Local0(),
+                ty: a,
+                name: None,
+            },
+        ],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::Const { dst: 0, value: c42 },
+                MirInstr::Aggregate {
+                    dst: 1,
+                    record_ty: a,
+                    operands: vec![0],
+                },
+                MirInstr::FieldSet {
+                    root: 1,
+                    path: vec![0],
+                    value: 0,
+                },
+                MirInstr::FieldGet {
+                    dst: 0,
+                    base: 1,
+                    path: vec![0],
+                },
+            ],
+            term: Terminator::Return { value: 0 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+    });
+    m.entry = 0;
+    mir_verify::verify_mir(&m).expect("same-owner control verifies");
+    let wire = encode_abc(&m).expect("encode").to_flat();
+    let loaded = abc_verify::verify_abc_bytes(&wire, &m.owner).expect("admit");
+    let (out, _) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(42),
+                ..
+            }
+        ),
+        "legal same-owner field write+read yields 42, got {out:?}"
+    );
+}
+
+fn Local0() -> SlotKind {
+    SlotKind::Local
+}
+
+// ---------------------------------------------------------------------------
+// V-04 first cut: wide-scalar arithmetic and bad shapes reject before run
+// ---------------------------------------------------------------------------
+
+#[test]
+fn av_data_820_wide_scalar_arith_rejected() {
+    let mut m = MirModule::new_data(data_owner("ops"));
+    let t_i64 = m.intern_type(MirType::I64);
+    let t_bool = m.intern_type(MirType::Bool);
+    let _ = t_bool;
+    let sig = m.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: t_i64,
+    }));
+    let c1 = m.intern_const(MirConst::I64(1));
+    let c2 = m.intern_const(MirConst::I64(2));
+    m.funcs.push(MirFunction {
+        owner: data_owner("ops"),
+        name: "main".into(),
+        sig,
+        slots: vec![MirSlot {
+            kind: SlotKind::Local,
+            ty: t_i64,
+            name: None,
+        }],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::Const { dst: 0, value: c1 },
+                MirInstr::Const { dst: 0, value: c2 },
+                MirInstr::Bin {
+                    op: BinOp::AddI32,
+                    dst: 0,
+                    lhs: 0,
+                    rhs: 0,
+                },
+            ],
+            term: Terminator::Return { value: 0 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+    });
+    m.entry = 0;
+    let err = mir_verify::verify_mir(&m).unwrap_err();
+    assert!(
+        matches!(err, mir_verify::MirVerifyError::Invalid { ref code, .. } if code == "mir.type-op"),
+        "i64 arithmetic rejects with mir.type-op, got {err:?}"
+    );
+}
+
+#[test]
+fn av_data_820_type_cycle_and_empty_record_rejected() {
+    // By-value cycle.
+    let mut m = MirModule::new_data(data_owner("cyc"));
+    let t_i32 = m.intern_type(MirType::I32);
+    let _ = t_i32;
+    let a = m.intern_type(MirType::Record(RecordTypeRef {
+        owner_module: "cyc".into(),
+        name: "A".into(),
+        fields: vec![MirFieldDef {
+            name: "b".into(),
+            ty: 1,
+        }],
+    }));
+    let _b = m.intern_type(MirType::Record(RecordTypeRef {
+        owner_module: "cyc".into(),
+        name: "B".into(),
+        fields: vec![MirFieldDef {
+            name: "a".into(),
+            ty: a,
+        }],
+    }));
+    let sig = m.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: a,
+    }));
+    m.funcs.push(MirFunction {
+        owner: data_owner("cyc"),
+        name: "main".into(),
+        sig,
+        slots: vec![],
+        blocks: vec![MirBlock {
+            instrs: vec![],
+            term: Terminator::Return { value: 0 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+    });
+    m.entry = 0;
+    let err = mir_verify::verify_mir(&m).unwrap_err();
+    assert!(
+        matches!(err, mir_verify::MirVerifyError::Invalid { ref code, .. } if code == "mir.type-cycle"),
+        "type cycle rejects with mir.type-cycle, got {err:?}"
+    );
+
+    // Empty record.
+    let mut m = MirModule::new_data(data_owner("emp"));
+    let t_i32 = m.intern_type(MirType::I32);
+    let e = m.intern_type(MirType::Record(RecordTypeRef {
+        owner_module: "emp".into(),
+        name: "E".into(),
+        fields: vec![],
+    }));
+    let _ = e;
+    let sig = m.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: t_i32,
+    }));
+    m.funcs.push(MirFunction {
+        owner: data_owner("emp"),
+        name: "main".into(),
+        sig,
+        slots: vec![MirSlot {
+            kind: SlotKind::Local,
+            ty: t_i32,
+            name: None,
+        }],
+        blocks: vec![MirBlock {
+            instrs: vec![],
+            term: Terminator::Return { value: 0 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+    });
+    m.entry = 0;
+    let err = mir_verify::verify_mir(&m).unwrap_err();
+    assert!(
+        matches!(err, mir_verify::MirVerifyError::Invalid { ref code, .. } if code == "mir.record-empty"),
+        "empty record rejects with mir.record-empty, got {err:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Wire family isolation
+// ---------------------------------------------------------------------------
+
+#[test]
+fn av_data_820_wire_family_isolation() {
+    // A core-i32 module still encodes as AVAB and decodes as profile 1.
+    let mut core = MirModule::new(OwnerScope {
+        schema: auto_av_core::contract::MIR_SCHEMA.to_string(),
+        module: "c".into(),
+    });
+    let ti = core.intern_type(MirType::I32);
+    let sig = core.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: ti,
+    }));
+    let c7 = core.intern_const(MirConst::I32(7));
+    core.funcs.push(MirFunction {
+        owner: core.owner.clone(),
+        name: "main".into(),
+        sig,
+        slots: vec![MirSlot {
+            kind: SlotKind::Local,
+            ty: ti,
+            name: None,
+        }],
+        blocks: vec![MirBlock {
+            instrs: vec![MirInstr::Const { dst: 0, value: c7 }],
+            term: Terminator::Return { value: 0 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+    });
+    core.entry = 0;
+    let core_wire = encode_abc(&core).expect("core encode").to_flat();
+    assert_eq!(&core_wire[0..4], b"AVAB");
+    let decoded = decode_abc(&core_wire).expect("core decode");
+    assert_eq!(decoded.profile, 1);
+
+    // A wire whose magic matches NEITHER family is a magic rejection — the
+    // trailer checksum is re-stamped so the checksum gate (which runs
+    // first) passes and the identity check itself is what fires.
+    let mut data_wire = core_wire.clone();
+    data_wire[0] = b'X';
+    let body_len = data_wire.len() - 8;
+    let fixed = auto_av_core::contract::fnv1a64(&data_wire[..body_len]);
+    data_wire[body_len..].copy_from_slice(&fixed.to_le_bytes());
+    let err = decode_abc(&data_wire).unwrap_err();
+    assert_eq!(err.code(), "abc.decode.magic");
+
+    // AVAD bytes with a corrupted checksum never admit.
+    let m = scalar_identity_module(MirType::F64, None);
+    let mut wire = encode_abc(&m).expect("encode").to_flat();
+    let last = wire.len() - 1;
+    wire[last] ^= 0xFF;
+    let err = decode_abc(&wire).unwrap_err();
+    assert_eq!(err.code(), "abc.decode.checksum");
+}

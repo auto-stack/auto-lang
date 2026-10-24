@@ -119,6 +119,7 @@ pub fn verify_mir_with_deadline(
         steps: 0,
         deadline,
         analysis_bytes: 0,
+        is_data: module.is_data_profile(),
     };
     v.run()?;
     let stats = v.stats_snapshot();
@@ -133,6 +134,10 @@ struct Verifier<'a> {
     steps: u64,
     deadline: Instant,
     analysis_bytes: u64,
+    /// Whether the module declares the `av.data/1` profile (PLAN-820): the
+    /// feature-set gate for types/consts/instructions and the entry
+    /// contract. `false` keeps the frozen core-i32 surface byte-for-byte.
+    is_data: bool,
 }
 
 impl<'a> Verifier<'a> {
@@ -164,13 +169,26 @@ impl<'a> Verifier<'a> {
 
     fn run(&mut self) -> Result<(), MirVerifyError> {
         // ---- identity -------------------------------------------------
-        if self.module.profile != crate::contract::AV_PROFILE {
+        if self.module.profile != crate::contract::AV_PROFILE
+            && self.module.profile != crate::contract::AV_DATA_PROFILE
+        {
             return Err(MirVerifyError::uns(
                 "mir.profile",
                 format!(
-                    "profile `{}` is not the supported `{}`",
+                    "profile `{}` is not one of the supported profiles (`{}` / `{}`)",
                     self.module.profile,
-                    crate::contract::AV_PROFILE
+                    crate::contract::AV_PROFILE,
+                    crate::contract::AV_DATA_PROFILE
+                ),
+            ));
+        }
+        if self.is_data && self.module.owner.schema != crate::contract::MIR_DATA_SCHEMA {
+            return Err(MirVerifyError::inv(
+                "mir.schema-profile",
+                format!(
+                    "data-profile module owner schema `{}` is not `{}`",
+                    self.module.owner.schema,
+                    crate::contract::MIR_DATA_SCHEMA
                 ),
             ));
         }
@@ -267,6 +285,100 @@ impl<'a> Verifier<'a> {
                     ));
                 }
             }
+            // Profile feature gate: the wide scalars and records exist ONLY
+            // in the data profile (contract-decision §2).
+            match t {
+                MirType::I64 | MirType::U64 | MirType::F32 | MirType::F64 | MirType::Record(_)
+                    if !self.is_data =>
+                {
+                    return Err(MirVerifyError::uns(
+                        "mir.profile-type",
+                        format!(
+                            "type #{ti} ({:?} …) exists only in the `{}` profile",
+                            t,
+                            crate::contract::AV_DATA_PROFILE
+                        ),
+                    ));
+                }
+                _ => {}
+            }
+            if let MirType::Record(r) = t {
+                if r.fields.is_empty() {
+                    return Err(MirVerifyError::inv(
+                        "mir.record-empty",
+                        format!(
+                            "record type #{ti} `{}` has no fields (empty records are not a supported capability)",
+                            r.name
+                        ),
+                    ));
+                }
+                if r.fields.len() > crate::contract::MAX_RECORD_FIELDS {
+                    return Err(MirVerifyError::Resource {
+                        kind: ResourceKind::TableEntries,
+                        message: format!(
+                            "record type #{ti} `{}` has {} fields, above the frozen per-record guard {}",
+                            r.name,
+                            r.fields.len(),
+                            crate::contract::MAX_RECORD_FIELDS
+                        ),
+                    });
+                }
+                if r.owner_module.is_empty() || r.name.is_empty() {
+                    return Err(MirVerifyError::inv(
+                        "mir.record-identity",
+                        format!("record type #{ti} has an empty owner module or name"),
+                    ));
+                }
+                let mut seen = std::collections::BTreeSet::new();
+                for f in &r.fields {
+                    if !seen.insert(f.name.as_str()) {
+                        return Err(MirVerifyError::inv(
+                            "mir.record-field-dup",
+                            format!(
+                                "record type #{ti} `{}` declares field `{}` twice",
+                                r.name, f.name
+                            ),
+                        ));
+                    }
+                    match self.module.types.get(f.ty as usize) {
+                        Some(MirType::Fn(_)) => {
+                            return Err(MirVerifyError::inv(
+                                "mir.record-field-type",
+                                format!(
+                                    "record type #{ti} `{}` field `{}` is a function type",
+                                    r.name, f.name
+                                ),
+                            ));
+                        }
+                        Some(_) => {}
+                        None => {
+                            return Err(MirVerifyError::inv(
+                                "mir.type-ref",
+                                format!(
+                                    "record type #{ti} `{}` field `{}` references out-of-range type {}",
+                                    r.name, f.name, f.ty
+                                ),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        // Record type graph must be ACYCLIC (by-value records; iterative
+        // color DFS, work-step charged — contract-decision §2).
+        self.check_record_acyclic()?;
+        // Every record type's logical layout must DERIVE without overflow
+        // (checked arithmetic; the wire never carries a descriptor). Layout
+        // rejections are `mir.layout-*` (contract-decision §6).
+        if self.is_data {
+            for ti in 0..self.module.types.len() {
+                if matches!(self.module.types[ti], MirType::Record(_)) {
+                    self.tick(1)?;
+                    if let Err(e) = crate::layout::compute_layout(self.module, ti as TypeIdx) {
+                        return Err(MirVerifyError::inv(e.code(), format!("{:?}", e)));
+                    }
+                }
+            }
         }
         // ---- shape: imports --------------------------------------------
         // v1 support surface: ONLY the two approved test-trace intrinsics
@@ -357,11 +469,27 @@ impl<'a> Verifier<'a> {
                 "entry function does not reference a function type".to_string(),
             ));
         };
-        // The frozen entry contract (zero-param i32) applies to MODULE
-        // closures; single-function units verify their one function as-is —
+        // The frozen entry contract: MODULE closures — core-i32 requires
+        // zero-param i32; the data profile admits all six scalars for params
+        // and result but NO record at the entry boundary (contract-decision
+        // §6). Single-function units verify their one function as-is —
         // closure assembly selects and re-checks the real module entry.
         if !self.module.is_unit {
-            if !entry_sig.params.is_empty()
+            if self.is_data {
+                let scalar_ok = |t: &FnSig| -> bool {
+                    t.params
+                        .iter()
+                        .all(|p| self.module.type_shape(*p).is_some())
+                        && self.module.type_shape(t.result).is_some()
+                };
+                if !scalar_ok(entry_sig) {
+                    return Err(MirVerifyError::inv(
+                        "mir.entry-sig",
+                        "data-profile module entry params/result must be scalar (records do not cross the entry boundary)"
+                            .to_string(),
+                    ));
+                }
+            } else if !entry_sig.params.is_empty()
                 || self.module.type_shape(entry_sig.result) != Some(ScalarShape::I32)
             {
                 return Err(MirVerifyError::inv(
@@ -391,6 +519,84 @@ impl<'a> Verifier<'a> {
         Ok(())
     }
 
+    /// FROZEN type-equivalence rule (contract-decision §2 / V-11): structural
+    /// `MirType` equality — records compare nominally (owner + name + full
+    /// field list), so equal-width different-owner records never match, while
+    /// a wire table's duplicate-but-equal entries DO match. Every typing
+    /// check in this verifier routes through here; index identity is never
+    /// the rule.
+    fn ty_equiv(&self, a: TypeIdx, b: TypeIdx) -> bool {
+        match (
+            self.module.types.get(a as usize),
+            self.module.types.get(b as usize),
+        ) {
+            (Some(x), Some(y)) => x == y,
+            _ => false,
+        }
+    }
+
+    /// Iterative three-color cycle check over the record type graph. A cycle
+    /// means by-value recursion — rejected before any layout derivation.
+    fn check_record_acyclic(&mut self) -> Result<(), MirVerifyError> {
+        const WHITE: u8 = 0;
+        const GRAY: u8 = 1;
+        const BLACK: u8 = 2;
+        let n = self.module.types.len();
+        let mut color = vec![WHITE; n];
+        // Explicit (node, next-field-cursor) stack — no host recursion.
+        for root in 0..n {
+            if color[root] != WHITE {
+                continue;
+            }
+            let mut stack: Vec<(usize, usize)> = vec![(root, 0)];
+            color[root] = GRAY;
+            while let Some((node, cur)) = stack.last_mut() {
+                self.tick(1)?;
+                let fields = match &self.module.types[*node] {
+                    MirType::Record(r) => &r.fields,
+                    _ => {
+                        color[*node] = BLACK;
+                        stack.pop();
+                        continue;
+                    }
+                };
+                if *cur >= fields.len() {
+                    color[*node] = BLACK;
+                    stack.pop();
+                    continue;
+                }
+                let next = fields[*cur].ty as usize;
+                *cur += 1;
+                if next >= n {
+                    // Out-of-range refs are reported by the shape pass; skip.
+                    continue;
+                }
+                match color[next] {
+                    GRAY => {
+                        let name = match &self.module.types[next] {
+                            MirType::Record(r) => r.name.clone(),
+                            _ => format!("#{}", next),
+                        };
+                        return Err(MirVerifyError::inv(
+                            "mir.type-cycle",
+                            format!(
+                                "record type graph is cyclic (cycle through `{}`); by-value recursion is unsupported",
+                                name
+                            ),
+                        ));
+                    }
+                    WHITE => {
+                        color[next] = GRAY;
+                        stack.push((next, 0));
+                    }
+                    BLACK => {}
+                    _ => unreachable!("color domain is 0..=2"),
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn span_of(&self, f: &MirFunction, flat: u32) -> Option<SpanInfo> {
         let mut lo = 0usize;
         let mut hi = f.spans.len();
@@ -405,6 +611,46 @@ impl<'a> Verifier<'a> {
             Some(f.spans[lo].1)
         } else {
             None
+        }
+    }
+
+    /// Shared FIELD_GET/FIELD_SET path admission: length cap and base/root
+    /// slot must be a record type (segment-by-segment nominal owner checks
+    /// happen via `resolve_field_path` at the instruction arms).
+    fn check_field_path(
+        &mut self,
+        f: &MirFunction,
+        base: SlotId,
+        path: &[u16],
+        sp: Option<SpanInfo>,
+        what: &str,
+    ) -> Result<(), MirVerifyError> {
+        if path.is_empty() {
+            return Err(MirVerifyError::Invalid {
+                code: "mir.field-path".to_string(),
+                message: format!("{} carries an empty field path", what),
+                span: sp,
+            });
+        }
+        if path.len() > crate::contract::MAX_FIELD_PATH_LEN {
+            return Err(MirVerifyError::Resource {
+                kind: ResourceKind::TableEntries,
+                message: format!(
+                    "{} field path depth {} exceeds the frozen guard {}",
+                    what,
+                    path.len(),
+                    crate::contract::MAX_FIELD_PATH_LEN
+                ),
+            });
+        }
+        let bt = slot_ty_of(f, base, sp, &format!("{} base", what))?;
+        match self.module.types.get(bt as usize) {
+            Some(MirType::Record(_)) => Ok(()),
+            _ => Err(MirVerifyError::Invalid {
+                code: "mir.field-path".to_string(),
+                message: format!("{} base slot type {} is not a record", what, bt),
+                span: sp,
+            }),
         }
     }
 
@@ -527,6 +773,10 @@ impl<'a> Verifier<'a> {
                         let want_shape = match self.module.consts.get(*value as usize) {
                             Some(MirConst::I32(_)) => Some(ScalarShape::I32),
                             Some(MirConst::Bool(_)) => Some(ScalarShape::Bool),
+                            Some(MirConst::I64(_)) => Some(ScalarShape::I64),
+                            Some(MirConst::U64(_)) => Some(ScalarShape::U64),
+                            Some(MirConst::F32Bits(_)) => Some(ScalarShape::F32),
+                            Some(MirConst::F64Bits(_)) => Some(ScalarShape::F64),
                             None => {
                                 return Err(err(
                                     "mir.const-ref",
@@ -537,6 +787,18 @@ impl<'a> Verifier<'a> {
                                 ))
                             }
                         };
+                        if let (Some(shape), false) = (want_shape, self.is_data) {
+                            // Wide-scalar constants are data-profile-only.
+                            if !matches!(shape, ScalarShape::I32 | ScalarShape::Bool) {
+                                return Err(err(
+                                    "mir.profile-const",
+                                    format!(
+                                        "constant of shape {:?} exists only in the data profile",
+                                        shape
+                                    ),
+                                ));
+                            }
+                        }
                         // Shape comparison, not index equality: a wire table
                         // may carry duplicate scalar type entries.
                         if self.module.type_shape(dt) != want_shape {
@@ -552,7 +814,7 @@ impl<'a> Verifier<'a> {
                     MirInstr::Copy { dst, src } => {
                         let dt = slot_ty_of(f, *dst, sp, "copy dst")?;
                         let st = slot_ty_of(f, *src, sp, "copy src")?;
-                        if dt != st {
+                        if !self.ty_equiv(dt, st) {
                             return Err(err(
                                 "mir.copy-type",
                                 format!("copy from type {} into type {}", st, dt),
@@ -568,6 +830,27 @@ impl<'a> Verifier<'a> {
                             self.module.type_shape(lt),
                             self.module.type_shape(rt),
                         );
+                        // Wide scalars have NO arithmetic in this profile: a
+                        // Bin touching i64/u64/f32/f64 is an out-of-profile
+                        // operation regardless of shapes otherwise matching
+                        // (contract-decision §4 — no new Bin subcodes).
+                        if self.is_data
+                            && matches!(
+                                shapes.1.or(shapes.2),
+                                Some(ScalarShape::I64)
+                                    | Some(ScalarShape::U64)
+                                    | Some(ScalarShape::F32)
+                                    | Some(ScalarShape::F64)
+                            )
+                        {
+                            return Err(err(
+                                "mir.type-op",
+                                format!(
+                                    "binary {:?} on wide-scalar operands (types {},{}); the data profile has no wide-scalar arithmetic",
+                                    op, lt, rt
+                                ),
+                            ));
+                        }
                         use ScalarShape::*;
                         let ok = if op.result_is_bool() {
                             match op {
@@ -675,7 +958,7 @@ impl<'a> Verifier<'a> {
                         for (ai, (a, want)) in args.iter().zip(callee_sig.params.iter()).enumerate()
                         {
                             let at = slot_ty_of(f, *a, sp, &format!("call arg #{}", ai))?;
-                            if at != *want {
+                            if !self.ty_equiv(at, *want) {
                                 return Err(err(
                                     "mir.call-arg-type",
                                     format!(
@@ -685,7 +968,7 @@ impl<'a> Verifier<'a> {
                                 ));
                             }
                         }
-                        if dt != callee_sig.result {
+                        if !self.ty_equiv(dt, callee_sig.result) {
                             return Err(err(
                                 "mir.call-result-type",
                                 format!(
@@ -696,6 +979,132 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::Trace { .. } => {}
+                    MirInstr::FieldGet { dst, base, path } => {
+                        if !self.is_data {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "FIELD_GET exists only in the data profile".to_string(),
+                            ));
+                        }
+                        self.check_field_path(f, *base, path, sp, "field-get")?;
+                        let dt = slot_ty_of(f, *dst, sp, "field-get dst")?;
+                        let bt = slot_ty_of(f, *base, sp, "field-get base")?;
+                        let Some((final_ty, _owner)) = self.module.resolve_field_path(bt, path)
+                        else {
+                            return Err(err(
+                                "mir.field-path",
+                                format!(
+                                    "field path {:?} does not resolve from base type {}",
+                                    path, bt
+                                ),
+                            ));
+                        };
+                        if !self.ty_equiv(dt, final_ty) {
+                            return Err(err(
+                                "mir.field-type",
+                                format!(
+                                    "field-get dst type {} does not match path final type {}",
+                                    dt, final_ty
+                                ),
+                            ));
+                        }
+                    }
+                    MirInstr::FieldSet { root, path, value } => {
+                        if !self.is_data {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "FIELD_SET exists only in the data profile".to_string(),
+                            ));
+                        }
+                        self.check_field_path(f, *root, path, sp, "field-set")?;
+                        let rt_slot = slot_ty_of(f, *root, sp, "field-set root")?;
+                        let Some((final_ty, _owner)) =
+                            self.module.resolve_field_path(rt_slot, path)
+                        else {
+                            return Err(err(
+                                "mir.field-path",
+                                format!(
+                                    "field path {:?} does not resolve from root type {}",
+                                    path, rt_slot
+                                ),
+                            ));
+                        };
+                        let vt = slot_ty_of(f, *value, sp, "field-set value")?;
+                        if !self.ty_equiv(vt, final_ty) {
+                            return Err(err(
+                                "mir.field-type",
+                                format!(
+                                    "field-set value type {} does not match path final type {}",
+                                    vt, final_ty
+                                ),
+                            ));
+                        }
+                        // The root must be a place the frame owns across the
+                        // write: a named local or a param (temps are lowered
+                        // away by the adapter; a hand-made unit writing a
+                        // temp root is legal-by-shape but pointless — still
+                        // admitted, the rebuild is well-defined).
+                    }
+                    MirInstr::Aggregate {
+                        dst,
+                        record_ty,
+                        operands,
+                    } => {
+                        if !self.is_data {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "AGGREGATE exists only in the data profile".to_string(),
+                            ));
+                        }
+                        let dt = slot_ty_of(f, *dst, sp, "aggregate dst")?;
+                        let want_fields = match self.module.types.get(*record_ty as usize) {
+                            Some(MirType::Record(r)) => r,
+                            _ => {
+                                return Err(err(
+                                    "mir.aggregate-type",
+                                    format!("aggregate references non-record type {}", record_ty),
+                                ))
+                            }
+                        };
+                        if !self.ty_equiv(dt, *record_ty) {
+                            return Err(err(
+                                "mir.aggregate-type",
+                                format!(
+                                    "aggregate dst type {} does not match record type {}",
+                                    dt, record_ty
+                                ),
+                            ));
+                        }
+                        if operands.len() != want_fields.fields.len() {
+                            return Err(err(
+                                "mir.aggregate-arity",
+                                format!(
+                                    "aggregate passes {} operands, record declares {} fields",
+                                    operands.len(),
+                                    want_fields.fields.len()
+                                ),
+                            ));
+                        }
+                        for (fi_, (op_slot, field)) in
+                            operands.iter().zip(want_fields.fields.iter()).enumerate()
+                        {
+                            let ot = slot_ty_of(
+                                f,
+                                *op_slot,
+                                sp,
+                                &format!("aggregate operand #{}", fi_),
+                            )?;
+                            if !self.ty_equiv(ot, field.ty) {
+                                return Err(err(
+                                    "mir.aggregate-field-type",
+                                    format!(
+                                        "aggregate operand #{} has type {}, field `{}` wants {}",
+                                        fi_, ot, field.name, field.ty
+                                    ),
+                                ));
+                            }
+                        }
+                    }
                 }
             }
             // terminator
@@ -734,7 +1143,7 @@ impl<'a> Verifier<'a> {
                 }
                 Terminator::Return { value } => {
                     let vt = slot_ty_of(f, *value, sp, "return value")?;
-                    if vt != sig.result {
+                    if !self.ty_equiv(vt, sig.result) {
                         return Err(err(
                             "mir.return-type",
                             format!(
@@ -1005,7 +1414,10 @@ impl MirInstr {
             | MirInstr::Copy { dst, .. }
             | MirInstr::Bin { dst, .. }
             | MirInstr::Un { dst, .. }
-            | MirInstr::Call { dst, .. } => Some(*dst),
+            | MirInstr::Call { dst, .. }
+            | MirInstr::FieldGet { dst, .. }
+            | MirInstr::Aggregate { dst, .. } => Some(*dst),
+            MirInstr::FieldSet { root, .. } => Some(*root),
             MirInstr::Trace { .. } => None,
         }
     }
@@ -1018,6 +1430,11 @@ impl MirInstr {
             MirInstr::Bin { lhs, rhs, .. } => vec![*lhs, *rhs],
             MirInstr::Un { operand, .. } => vec![*operand],
             MirInstr::Call { args, .. } => args.clone(),
+            MirInstr::FieldGet { base, .. } => vec![*base],
+            // FieldSet READS the root record (structural rebuild source) and
+            // the already-materialized value slot.
+            MirInstr::FieldSet { root, value, .. } => vec![*root, *value],
+            MirInstr::Aggregate { operands, .. } => operands.clone(),
         }
     }
 }

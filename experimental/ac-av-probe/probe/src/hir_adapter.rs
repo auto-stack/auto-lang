@@ -130,7 +130,14 @@ pub fn lower_checked(
                         format!("intrinsic `{}` is not in the av profile", symbol),
                     ));
                 }
-                let sig = fn_type_index(*ty, module, &mut out)?;
+                let sig = fn_type_index(
+                    *ty,
+                    module,
+                    &mut out,
+                    false,
+                    &mut std::collections::BTreeMap::new(),
+                    &mut std::collections::BTreeSet::new(),
+                )?;
                 let idx = out.intern_import(MirImport {
                     symbol: symbol.clone(),
                     effect: match effect {
@@ -147,7 +154,14 @@ pub fn lower_checked(
     // Pass 2: lower bodies.
     let mut entry_idx: Option<u32> = None;
     for (di, ty, body_id, name) in fn_order {
-        let sig = fn_type_index(ty, module, &mut out)?;
+        let sig = fn_type_index(
+            ty,
+            module,
+            &mut out,
+            false,
+            &mut BTreeMap::new(),
+            &mut std::collections::BTreeSet::new(),
+        )?;
         if name == entry_name {
             entry_idx = Some(out.funcs.len() as u32);
         }
@@ -160,6 +174,135 @@ pub fn lower_checked(
             source_snapshot,
             &def_map,
             name.clone(),
+            false,
+        )?;
+        out.funcs.push(mir_fn);
+    }
+    let entry = entry_idx.ok_or_else(|| {
+        AdapterError::inv(
+            "lower.entry",
+            format!("no function named `{}` in module", entry_name),
+        )
+    })?;
+    out.entry = entry;
+    Ok(out)
+}
+
+/// Lower a CHECKED record-domain module to an unchecked data-profile
+/// (`av.data/1`) MIR module (PLAN-820, contract-decision §7). The surface:
+/// free functions (type-bound methods incl. `static fn` are explicitly
+/// unsupported in this first cut), i32/bool arithmetic, nominal records
+/// with named/positional construction (source-order evaluation, then the
+/// binding map projects into declaration order for AGGREGATE), field-path
+/// reads (rvalue copies) and writes (root-local structural rebuild), whole
+/// record copies (let/assign/param/return), and free-function calls with
+/// record params/results. The result must still pass `verify_mir` — the
+/// adapter grants nothing; wide scalars never appear here (the record
+/// source front door has no wide-scalar syntax).
+pub fn lower_checked_data(
+    checked: &CheckedModule,
+    entry_name: &str,
+    source_snapshot: u64,
+) -> Result<MirModule, AdapterError> {
+    match checked.domain() {
+        hir::HirDomain::Record => {}
+        other => {
+            return Err(AdapterError::uns(
+                "lower.domain",
+                format!(
+                    "HIR domain `{}` is outside the av.data/1 profile (expected record)",
+                    other.as_str()
+                ),
+            ));
+        }
+    }
+    if checked.bundle().modules.len() != 1 {
+        return Err(AdapterError::uns(
+            "lower.modules",
+            format!(
+                "expected exactly one module, found {}",
+                checked.bundle().modules.len()
+            ),
+        ));
+    }
+    let module = &checked.bundle().modules[0];
+    let owner = OwnerScope {
+        schema: auto_av_core::contract::MIR_DATA_SCHEMA.to_string(),
+        module: module.id_text.clone(),
+    };
+    let mut out = MirModule::new_data(owner);
+    out.capabilities = checked.required_capabilities().to_vec();
+
+    // Pass 1: defs — intrinsics/imports and function indices first.
+    let mut def_map: BTreeMap<u32, CalleeRef> = BTreeMap::new();
+    let mut fn_order: Vec<(u32, hir::TypeId, hir::BodyId, String)> = Vec::new();
+    let mut next_fn_idx: u32 = 0;
+    for (di, d) in module.defs.iter().enumerate() {
+        match &d.kind {
+            hir::DefKind::Function { ty, body, .. } => {
+                def_map.insert(di as u32, CalleeRef::Func(next_fn_idx));
+                next_fn_idx += 1;
+                fn_order.push((di as u32, *ty, *body, d.id_text.clone()));
+            }
+            hir::DefKind::Method { .. } => {
+                return Err(AdapterError::uns(
+                    "lower.method",
+                    "type-bound methods (incl. static fn) are outside the av.data/1 first cut"
+                        .to_string(),
+                ));
+            }
+            hir::DefKind::Intrinsic { symbol, effect, ty } => {
+                if symbol != "hir.test.mark_a" && symbol != "hir.test.mark_b" {
+                    return Err(AdapterError::uns(
+                        "lower.intrinsic",
+                        format!("intrinsic `{}` is not in the av profile", symbol),
+                    ));
+                }
+                let sig = fn_type_index(
+                    *ty,
+                    module,
+                    &mut out,
+                    true,
+                    &mut BTreeMap::new(),
+                    &mut std::collections::BTreeSet::new(),
+                )?;
+                let idx = out.intern_import(MirImport {
+                    symbol: symbol.clone(),
+                    effect: match effect {
+                        hir::Effect::Observable => Effect::Observable,
+                        hir::Effect::Pure => Effect::Pure,
+                    },
+                    sig,
+                });
+                def_map.insert(di as u32, CalleeRef::Import(idx));
+            }
+        }
+    }
+
+    // Pass 2: lower bodies with the data surface.
+    let mut entry_idx: Option<u32> = None;
+    for (di, ty, body_id, name) in fn_order {
+        let sig = fn_type_index(
+            ty,
+            module,
+            &mut out,
+            true,
+            &mut BTreeMap::new(),
+            &mut std::collections::BTreeSet::new(),
+        )?;
+        if name == entry_name {
+            entry_idx = Some(out.funcs.len() as u32);
+        }
+        let mir_fn = lower_function(
+            module,
+            &mut out,
+            di,
+            body_id,
+            sig,
+            source_snapshot,
+            &def_map,
+            name.clone(),
+            true,
         )?;
         out.funcs.push(mir_fn);
     }
@@ -230,7 +373,14 @@ pub fn lower_function_unit(
                     // when EVERY callee — itself included — is an import;
                     // the snapshot link resolves `fn:<self>` back to this
                     // unit with a signature check.
-                    let self_sig = fn_type_index(*ty, module, &mut out)?;
+                    let self_sig = fn_type_index(
+                        *ty,
+                        module,
+                        &mut out,
+                        false,
+                        &mut std::collections::BTreeMap::new(),
+                        &mut std::collections::BTreeSet::new(),
+                    )?;
                     let imp = out.intern_import(MirImport {
                         symbol: format!("fn:{}", d.id_text),
                         effect: Effect::Pure,
@@ -239,7 +389,14 @@ pub fn lower_function_unit(
                     def_map.insert(di as u32, CalleeRef::Import(imp));
                     target = Some((di as u32, *ty, *body));
                 } else {
-                    let sig = fn_type_index(*ty, module, &mut out)?;
+                    let sig = fn_type_index(
+                        *ty,
+                        module,
+                        &mut out,
+                        false,
+                        &mut std::collections::BTreeMap::new(),
+                        &mut std::collections::BTreeSet::new(),
+                    )?;
                     let idx = out.intern_import(MirImport {
                         symbol: format!("fn:{}", d.id_text),
                         effect: Effect::Pure,
@@ -262,7 +419,14 @@ pub fn lower_function_unit(
                         format!("intrinsic `{symbol}` is not in the av profile"),
                     ));
                 }
-                let sig = fn_type_index(*ty, module, &mut out)?;
+                let sig = fn_type_index(
+                    *ty,
+                    module,
+                    &mut out,
+                    false,
+                    &mut std::collections::BTreeMap::new(),
+                    &mut std::collections::BTreeSet::new(),
+                )?;
                 let idx = out.intern_import(MirImport {
                     symbol: symbol.clone(),
                     effect: match effect {
@@ -281,7 +445,14 @@ pub fn lower_function_unit(
             format!("no function def `{def_id_text}` in module"),
         )
     })?;
-    let sig = fn_type_index(ty, module, &mut out)?;
+    let sig = fn_type_index(
+        ty,
+        module,
+        &mut out,
+        false,
+        &mut BTreeMap::new(),
+        &mut std::collections::BTreeSet::new(),
+    )?;
     let mir_fn = lower_function(
         module,
         &mut out,
@@ -291,6 +462,7 @@ pub fn lower_function_unit(
         source_snapshot,
         &def_map,
         def_id_text.to_string(),
+        false,
     )?;
     out.funcs.push(mir_fn);
     out.entry = 0;
@@ -326,6 +498,87 @@ fn scalar_type_idx_of(
     match scalar_shape_of_use(u, m)? {
         ScalarShape::I32 => Ok(out.intern_type(MirType::I32)),
         ScalarShape::Bool => Ok(out.intern_type(MirType::Bool)),
+        // Unreachable via HIR: the source front doors expose no
+        // wide-scalar syntax (defense for hand-made bundles).
+        _ => Err(AdapterError::uns(
+            "lower.type-use",
+            "wide scalars exist only in typed fixtures, not source".to_string(),
+        )),
+    }
+}
+
+/// Map an HIR type use to a data-profile MIR type index: the six-scalar
+/// surface never appears in record-domain HIR beyond i32/bool (the source
+/// front door has no wide-scalar syntax), and nominal records map with
+/// their full field lists (owner = the HIR module id). Record interning
+/// recurses through the HIR type table with a memo + visiting set —
+/// `verify_record` guarantees acyclicity; the visiting set is defensive.
+fn data_type_idx_of(
+    u: &hir::TypeUse,
+    m: &hir::Module,
+    out: &mut MirModule,
+    memo: &mut std::collections::BTreeMap<hir::TypeId, TypeIdx>,
+    visiting: &mut std::collections::BTreeSet<hir::TypeId>,
+) -> Result<TypeIdx, AdapterError> {
+    match u {
+        hir::TypeUse::Builtin(hir::BuiltinType::I32) => Ok(out.intern_type(MirType::I32)),
+        hir::TypeUse::Builtin(hir::BuiltinType::Bool) => Ok(out.intern_type(MirType::Bool)),
+        hir::TypeUse::Builtin(other) => Err(AdapterError::uns(
+            "lower.type-use",
+            format!("builtin type {:?} is outside the av.data/1 profile", other),
+        )),
+        hir::TypeUse::Ref(tid) => {
+            if let Some(idx) = memo.get(tid) {
+                return Ok(*idx);
+            }
+            if !visiting.insert(*tid) {
+                return Err(AdapterError::inv(
+                    "mir.type-cycle",
+                    format!("record type id {} participates in a type cycle", tid.0),
+                ));
+            }
+            let td = m.types.get(tid.0 as usize).ok_or_else(|| {
+                AdapterError::inv("lower.type-ref", format!("type id {} out of range", tid.0))
+            })?;
+            let mapped = match &td.kind {
+                hir::TypeKind::I32 => Ok(out.intern_type(MirType::I32)),
+                hir::TypeKind::Bool => Ok(out.intern_type(MirType::Bool)),
+                hir::TypeKind::Record(shape) => {
+                    let mut fields = Vec::with_capacity(shape.fields.len());
+                    let mut err = None;
+                    for f in &shape.fields {
+                        match data_type_idx_of(&f.ty, m, out, memo, visiting) {
+                            Ok(t) => fields.push(MirFieldDef {
+                                name: f.name.clone(),
+                                ty: t,
+                            }),
+                            Err(e) => {
+                                err = Some(e);
+                                break;
+                            }
+                        }
+                    }
+                    err.map_or_else(
+                        || {
+                            Ok(out.intern_type(MirType::Record(RecordTypeRef {
+                                owner_module: m.id_text.clone(),
+                                name: td.id_text.clone(),
+                                fields,
+                            })))
+                        },
+                        Err,
+                    )
+                }
+                other => Err(AdapterError::uns(
+                    "lower.type-use",
+                    format!("type kind {:?} is outside the av.data/1 profile", other),
+                )),
+            };
+            visiting.remove(tid);
+            let idx = mapped?;
+            memo.insert(*tid, idx);
+            Ok(idx)
+        }
     }
 }
 
@@ -333,6 +586,9 @@ fn fn_type_index(
     ty: hir::TypeId,
     m: &hir::Module,
     out: &mut MirModule,
+    data: bool,
+    memo: &mut std::collections::BTreeMap<hir::TypeId, TypeIdx>,
+    visiting: &mut std::collections::BTreeSet<hir::TypeId>,
 ) -> Result<TypeIdx, AdapterError> {
     let td = m.types.get(ty.0 as usize).ok_or_else(|| {
         AdapterError::inv("lower.type-ref", format!("type id {} out of range", ty.0))
@@ -341,15 +597,33 @@ fn fn_type_index(
         hir::TypeKind::Function(sig) => {
             let mut params = Vec::with_capacity(sig.params.len());
             for p in &sig.params {
-                params.push(scalar_type_idx_of(p, m, out)?);
+                params.push(type_idx_of_use(p, m, out, data, memo, visiting)?);
             }
-            let result = scalar_type_idx_of(&sig.result, m, out)?;
+            let result = type_idx_of_use(&sig.result, m, out, data, memo, visiting)?;
             Ok(out.intern_type(MirType::Fn(FnSig { params, result })))
         }
         _ => Err(AdapterError::inv(
             "lower.fn-type",
             format!("type `{}` is not a function type", td.id_text),
         )),
+    }
+}
+
+/// Unified HIR→MIR type mapping: the scalar path (core-i32 lowering) keeps
+/// the historic i32/bool-only surface; the data path additionally maps
+/// nominal records with full field lists.
+fn type_idx_of_use(
+    u: &hir::TypeUse,
+    m: &hir::Module,
+    out: &mut MirModule,
+    data: bool,
+    memo: &mut std::collections::BTreeMap<hir::TypeId, TypeIdx>,
+    visiting: &mut std::collections::BTreeSet<hir::TypeId>,
+) -> Result<TypeIdx, AdapterError> {
+    if data {
+        data_type_idx_of(u, m, out, memo, visiting)
+    } else {
+        scalar_type_idx_of(u, m, out)
     }
 }
 
@@ -395,6 +669,11 @@ struct FnLower<'a> {
     extra_slots: Vec<MirSlot>,
     t_i32: TypeIdx,
     t_bool: TypeIdx,
+    /// Data-profile lowering (av.data/1): enables record type mapping and
+    /// the record expression/statement arms.
+    data: bool,
+    ty_memo: BTreeMap<hir::TypeId, TypeIdx>,
+    ty_visiting: std::collections::BTreeSet<hir::TypeId>,
     blocks: Vec<MirBlock>,
     /// Current open MIR block cursor.
     cur: BlockId,
@@ -456,7 +735,13 @@ impl<'a> FnLower<'a> {
         let ty = match shape {
             ScalarShape::I32 => self.t_i32,
             ScalarShape::Bool => self.t_bool,
+            _ => unreachable!("wide-scalar temps only exist in typed fixtures"),
         };
+        self.temp_ty(ty)
+    }
+
+    /// Allocate a temp slot of an arbitrary (possibly record) MIR type.
+    fn temp_ty(&mut self, ty: TypeIdx) -> SlotId {
         let idx = self.base_slots + self.extra_slots.len() as SlotId;
         self.extra_slots.push(MirSlot {
             kind: SlotKind::Temp,
@@ -474,11 +759,21 @@ impl<'a> FnLower<'a> {
         self.out.intern_const(MirConst::Bool(v))
     }
 
-    fn expr_shape(&self, eid: hir::ExprId) -> Result<ScalarShape, AdapterError> {
+    /// The MIR type index of an expression's HIR type (data path maps
+    /// records; the scalar path is unchanged).
+    fn expr_ty(&mut self, eid: hir::ExprId) -> Result<TypeIdx, AdapterError> {
         let e = self.body.exprs.get(eid.0 as usize).ok_or_else(|| {
             AdapterError::inv("lower.expr-ref", format!("expr {} out of range", eid.0))
         })?;
-        scalar_shape_of_use(&e.ty, self.hir_module)
+        let (m, out) = (self.hir_module, &mut *self.out);
+        type_idx_of_use(
+            &e.ty,
+            m,
+            out,
+            self.data,
+            &mut self.ty_memo,
+            &mut self.ty_visiting,
+        )
     }
 
     fn span(&self, eid: hir::ExprId) -> Option<SpanInfo> {
@@ -502,13 +797,13 @@ impl<'a> FnLower<'a> {
                 ),
             ));
         }
-        let shape = self.expr_shape(eid)?;
+        let ty = self.expr_ty(eid)?;
         let sp = self.span(eid);
-        let expr = &self.body.exprs[eid.0 as usize];
-        match &expr.kind {
+        let expr_kind = &self.body.exprs[eid.0 as usize].kind;
+        match expr_kind {
             hir::ExprKind::ReadLocal { local } => Ok(self.slot_of_local[local.0 as usize]),
             hir::ExprKind::Constant { value } => {
-                let dst = self.temp(shape);
+                let dst = self.temp_ty(ty);
                 let c = self.const_i32(*value);
                 self.emit(MirInstr::Const { dst, value: c }, sp);
                 Ok(dst)
@@ -516,7 +811,7 @@ impl<'a> FnLower<'a> {
             hir::ExprKind::Binary { op, lhs, rhs, .. } => {
                 let l = self.eval_expr(*lhs, depth + 1)?;
                 let r = self.eval_expr(*rhs, depth + 1)?;
-                let dst = self.temp(shape);
+                let dst = self.temp_ty(ty);
                 let mop = map_binop(*op)?;
                 self.emit(
                     MirInstr::Bin {
@@ -531,7 +826,7 @@ impl<'a> FnLower<'a> {
             }
             hir::ExprKind::Unary { op, operand } => {
                 let v = self.eval_expr(*operand, depth + 1)?;
-                let dst = self.temp(shape);
+                let dst = self.temp_ty(ty);
                 let mop = match op {
                     hir::UnaryOp::NegI32 => UnOp::NegI32,
                     hir::UnaryOp::NotBool => UnOp::NotBool,
@@ -634,7 +929,7 @@ impl<'a> FnLower<'a> {
                             }
                             actuals[pos] = arg_slots[b.arg as usize];
                         }
-                        let dst = self.temp(shape);
+                        let dst = self.temp_ty(ty);
                         self.emit(
                             MirInstr::Call {
                                 callee: CalleeRef::Import(imp),
@@ -646,7 +941,7 @@ impl<'a> FnLower<'a> {
                         return Ok(dst);
                     }
                     // Test marks: trace event + frozen i32 result.
-                    let dst = self.temp(ScalarShape::I32);
+                    let dst = self.temp_ty(self.t_i32);
                     let (event, value) = match symbol.as_str() {
                         "hir.test.mark_a" => (TraceEvent::MarkA, 1i32),
                         "hir.test.mark_b" => (TraceEvent::MarkB, 2),
@@ -677,7 +972,14 @@ impl<'a> FnLower<'a> {
                             "callee lacks a function type".to_string(),
                         )
                     })?;
-                let sig_idx = fn_type_index(hir_ty, self.hir_module, self.out)?;
+                let sig_idx = fn_type_index(
+                    hir_ty,
+                    self.hir_module,
+                    self.out,
+                    self.data,
+                    &mut self.ty_memo,
+                    &mut self.ty_visiting,
+                )?;
                 let n_params = self
                     .out
                     .sig_of(sig_idx)
@@ -694,7 +996,7 @@ impl<'a> FnLower<'a> {
                     }
                     actuals[pos] = arg_slots[b.arg as usize];
                 }
-                let dst = self.temp(shape);
+                let dst = self.temp_ty(ty);
                 self.emit(
                     MirInstr::Call {
                         callee: callee_ref,
@@ -704,6 +1006,110 @@ impl<'a> FnLower<'a> {
                     sp,
                 );
                 Ok(dst)
+            }
+            // -- PLAN-820 record surface (av.data/1) ----------------------
+            hir::ExprKind::RecordCtor {
+                record,
+                eval_args,
+                bindings,
+            } => {
+                if !self.data {
+                    return Err(AdapterError::uns(
+                        "lower.expr",
+                        "record construction is outside the av.core-i32/1 profile".to_string(),
+                    ));
+                }
+                // Source-order evaluation into temps (side effects as
+                // written — never re-sorted by declaration order), then the
+                // binding map projects into DECLARATION field order for
+                // AGGREGATE (contract-decision §4/§7).
+                let mut arg_slots = Vec::with_capacity(eval_args.len());
+                for a in eval_args {
+                    arg_slots.push(self.eval_expr(*a, depth + 1)?);
+                }
+                let shape = match self.hir_module.types.get(record.0 as usize) {
+                    Some(hir::TypeDef {
+                        kind: hir::TypeKind::Record(s),
+                        ..
+                    }) => s,
+                    _ => {
+                        return Err(AdapterError::inv(
+                            "lower.record-ref",
+                            format!("constructor type id {} is not a record", record.0),
+                        ))
+                    }
+                };
+                let rec_ty = type_idx_of_use(
+                    &hir::TypeUse::Ref(*record),
+                    self.hir_module,
+                    self.out,
+                    self.data,
+                    &mut self.ty_memo,
+                    &mut self.ty_visiting,
+                )?;
+                let nfields = shape.fields.len();
+                if bindings.len() != nfields {
+                    return Err(AdapterError::inv(
+                        "lower.binding",
+                        format!(
+                            "constructor binds {} fields, record declares {}",
+                            bindings.len(),
+                            nfields
+                        ),
+                    ));
+                }
+                let mut operands: Vec<SlotId> = vec![0; nfields];
+                for b in bindings {
+                    if b.field as usize >= nfields {
+                        return Err(AdapterError::inv(
+                            "lower.binding",
+                            format!("constructor field index {} out of range", b.field),
+                        ));
+                    }
+                    if b.arg as usize >= arg_slots.len() {
+                        return Err(AdapterError::inv(
+                            "lower.binding",
+                            format!("constructor arg index {} out of range", b.arg),
+                        ));
+                    }
+                    operands[b.field as usize] = arg_slots[b.arg as usize];
+                }
+                let dst = self.temp_ty(rec_ty);
+                self.emit(
+                    MirInstr::Aggregate {
+                        dst,
+                        record_ty: rec_ty,
+                        operands,
+                    },
+                    sp,
+                );
+                Ok(dst)
+            }
+            hir::ExprKind::FieldGet { base, path } => {
+                if !self.data {
+                    return Err(AdapterError::uns(
+                        "lower.expr",
+                        "field reads are outside the av.core-i32/1 profile".to_string(),
+                    ));
+                }
+                let b = self.eval_expr(*base, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
+                self.emit(
+                    MirInstr::FieldGet {
+                        dst,
+                        base: b,
+                        path: segs,
+                    },
+                    sp,
+                );
+                Ok(dst)
+            }
+            hir::ExprKind::BorrowView { .. } | hir::ExprKind::BorrowMut { .. } => {
+                return Err(AdapterError::uns(
+                    "lower.borrow",
+                    "borrow expressions are outside the av.data/1 profile".to_string(),
+                ));
             }
             other => Err(AdapterError::uns(
                 "lower.expr",
@@ -771,6 +1177,7 @@ fn lower_function(
     source_snapshot: u64,
     def_map: &BTreeMap<u32, CalleeRef>,
     name: String,
+    data: bool,
 ) -> Result<MirFunction, AdapterError> {
     let body = hir_module.bodies.get(body_id.0 as usize).ok_or_else(|| {
         AdapterError::inv("lower.body-ref", format!("body {} out of range", body_id.0))
@@ -783,8 +1190,10 @@ fn lower_function(
     // param locals lead the local table in order), then the other locals.
     let mut slots: Vec<MirSlot> = Vec::with_capacity(body.locals.len());
     let mut slot_of_local = vec![0u32; body.locals.len()];
+    let mut ty_memo = BTreeMap::new();
+    let mut ty_visiting = std::collections::BTreeSet::new();
     for (li, l) in body.locals.iter().enumerate() {
-        let ty = scalar_type_idx_of(&l.ty, hir_module, out)?;
+        let ty = type_idx_of_use(&l.ty, hir_module, out, data, &mut ty_memo, &mut ty_visiting)?;
         let idx = slots.len() as SlotId;
         slots.push(MirSlot {
             kind: if l.role == hir::LocalRole::Param {
@@ -809,6 +1218,9 @@ fn lower_function(
         extra_slots: vec![],
         t_i32,
         t_bool,
+        data,
+        ty_memo,
+        ty_visiting,
         blocks: vec![],
         cur: 0,
         terminated: false,
@@ -875,17 +1287,38 @@ fn lower_function(
                             format!("place {} out of range", place.0),
                         )
                     })?;
-                    if !matches!(p.kind, hir::PlaceKind::Local) {
-                        return Err(AdapterError::uns(
-                            "lower.place-kind",
-                            "field-path assignment is record-domain, outside the av profile"
-                                .to_string(),
-                        ));
+                    match &p.kind {
+                        hir::PlaceKind::Local => {
+                            let dst = lower.slot_of_local[p.local.0 as usize];
+                            let v = lower.eval_expr(*value, 0)?;
+                            let sp = lower.span(*value);
+                            lower.emit(MirInstr::Copy { dst, src: v }, sp);
+                        }
+                        hir::PlaceKind::FieldPath(path) => {
+                            if !lower.data {
+                                return Err(AdapterError::uns(
+                                    "lower.place-kind",
+                                    "field-path assignment is record-domain, outside the av profile"
+                                        .to_string(),
+                                ));
+                            }
+                            // RHS FIRST (materialized in its own slot — the
+                            // overlap invariant), then the structural write
+                            // through the root local (contract-decision §4).
+                            let v = lower.eval_expr(*value, 0)?;
+                            let root = lower.slot_of_local[p.local.0 as usize];
+                            let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
+                            let sp = lower.span(*value);
+                            lower.emit(
+                                MirInstr::FieldSet {
+                                    root,
+                                    path: segs,
+                                    value: v,
+                                },
+                                sp,
+                            );
+                        }
                     }
-                    let dst = lower.slot_of_local[p.local.0 as usize];
-                    let v = lower.eval_expr(*value, 0)?;
-                    let sp = lower.span(*value);
-                    lower.emit(MirInstr::Copy { dst, src: v }, sp);
                 }
                 hir::Stmt::Return { value } => {
                     let v = lower.eval_expr(*value, 0)?;

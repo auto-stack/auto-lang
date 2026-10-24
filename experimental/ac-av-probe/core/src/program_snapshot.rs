@@ -21,7 +21,7 @@
 
 use crate::contract::MIR_SCHEMA;
 use crate::function_code::FunctionCode;
-use crate::mir::{CalleeRef, FnSig, MirModule, MirType};
+use crate::mir::{CalleeRef, FnSig, MirFieldDef, MirModule, MirType, RecordTypeRef};
 use std::sync::Arc;
 
 /// One immutable program revision: resident code set + link-time bindings.
@@ -349,8 +349,8 @@ impl ProgramSnapshot {
 
 fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<u32> {
     let mut map = vec![u32::MAX; u.types.len()];
-    // Scalars intern immediately; Fn sigs intern once their children are
-    // mapped (fixpoint loop, general over nested sigs).
+    // Scalars intern immediately; Fn sigs and record types intern once their
+    // children are mapped (fixpoint loop, general over nested sigs/records).
     loop {
         let mut progress = false;
         for (i, t) in u.types.iter().enumerate() {
@@ -358,9 +358,37 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<u32> {
                 continue;
             }
             match t {
-                MirType::I32 | MirType::Bool => {
+                MirType::I32
+                | MirType::Bool
+                | MirType::I64
+                | MirType::U64
+                | MirType::F32
+                | MirType::F64 => {
                     map[i] = merged.intern_type(t.clone());
                     progress = true;
+                }
+                // Record types intern once every FIELD type is mapped
+                // (PLAN-820): nominal structure (owner+name+fields) interns
+                // by the frozen structural-equality rule.
+                MirType::Record(r) => {
+                    let pending = r.fields.iter().any(|f| map[f.ty as usize] == u32::MAX);
+                    if !pending {
+                        let nr = RecordTypeRef {
+                            owner_module: r.owner_module.clone(),
+                            name: r.name.clone(),
+                            fields: r
+                                .fields
+                                .iter()
+                                .map(|f| MirFieldDef {
+                                    name: f.name.clone(),
+                                    ty: map[f.ty as usize],
+                                })
+                                .collect(),
+                        };
+                        let idx = merged.intern_type(MirType::Record(nr));
+                        map[i] = idx;
+                        progress = true;
+                    }
                 }
                 MirType::Fn(sig) => {
                     let pending = sig
@@ -416,18 +444,11 @@ impl crate::av::ModuleView for UnitView<'_> {
     }
     fn zero_of(&self, func: u32, ty: u32) -> crate::contract::Value {
         let u = self.snap.code.get(func as usize).unwrap().unit().module();
-        match u.types.get(ty as usize) {
-            Some(MirType::Bool) => crate::contract::Value::Bool(false),
-            _ => crate::contract::Value::I32(0),
-        }
+        crate::av::typed_zero(u.types.get(ty as usize))
     }
-    fn type_is_bool(&self, func: u32, ty: u32) -> Option<bool> {
+    fn scalar_shape_of(&self, func: u32, ty: u32) -> Option<crate::mir::ScalarShape> {
         let u = self.snap.code.get(func as usize)?.unit().module();
-        match u.types.get(ty as usize) {
-            Some(MirType::Bool) => Some(true),
-            Some(MirType::I32) => Some(false),
-            _ => None,
-        }
+        u.type_shape(ty)
     }
     fn resolve_callee(&self, func: u32, callee: &crate::mir::CalleeRef) -> Option<u32> {
         match callee {

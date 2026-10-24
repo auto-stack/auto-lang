@@ -38,13 +38,24 @@ pub struct OwnerScope {
     pub module: String,
 }
 
-/// A MIR type. The v1 profile has exactly two value types plus function
-/// signatures for call admission.
+/// A MIR type. The core-i32 profile has exactly two value types plus
+/// function signatures for call admission; the data profile (PLAN-820)
+/// adds the wide scalars and nominal pure-value records.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum MirType {
     I32,
     Bool,
     Fn(FnSig),
+    I64,
+    U64,
+    F32,
+    F64,
+    /// Nominal record type (PLAN-820): identity is (owner_module, name,
+    /// full field list with declaration order and per-field type indices).
+    /// Two records of equal width but different owner/name never compare
+    /// equal — `MirType`'s derived `PartialEq` IS the frozen type-equivalence
+    /// rule applied at every consumption point.
+    Record(RecordTypeRef),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -53,11 +64,34 @@ pub struct FnSig {
     pub result: TypeIdx,
 }
 
-/// Module constants: i32 or bool. Bool constants are `true`/`false` only.
+/// One field of a nominal record type, in declaration order.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct MirFieldDef {
+    pub name: String,
+    pub ty: TypeIdx,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct RecordTypeRef {
+    pub owner_module: String,
+    pub name: String,
+    pub fields: Vec<MirFieldDef>,
+}
+
+/// Module constants. Bool constants are `true`/`false` only. The wide
+/// scalars store their EXACT BIT PATTERN (`to_bits`) — NaN payloads and
+/// signed zeros survive const/copy/call/return round trips; the profile
+/// has no float arithmetic that could canonicalize them.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MirConst {
     I32(i32),
     Bool(bool),
+    I64(i64),
+    U64(u64),
+    /// f32 payload as raw bits.
+    F32Bits(u32),
+    /// f64 payload as raw bits.
+    F64Bits(u64),
 }
 
 /// Effect classification of an import (mirrors the HIR intrinsic effect).
@@ -168,6 +202,36 @@ pub enum MirInstr {
     Trace {
         event: TraceEvent,
     },
+    /// Field-path read (data profile): copies the addressed field value out
+    /// of `base` (an rvalue copy — the record itself is untouched). Each
+    /// path segment is a declaration-order field index within the record
+    /// type of the preceding segment; `verify_mir` checks every segment
+    /// against its actual owner and the destination slot against the final
+    /// field's type.
+    FieldGet {
+        dst: SlotId,
+        base: SlotId,
+        path: Vec<u16>,
+    },
+    /// Field-path write (data profile): rewrites the addressed field of the
+    /// ROOT slot's record value. Pure values are immutable, so the write is
+    /// a structural rebuild along the path into a fresh value that is
+    /// written back to the root slot. `value` is an already-materialized
+    /// slot — the RHS-first materialization of the overlap invariant.
+    FieldSet {
+        root: SlotId,
+        path: Vec<u16>,
+        value: SlotId,
+    },
+    /// Record construction (data profile): builds a fresh record value of
+    /// type `record_ty` from `operands` given in DECLARATION-field order.
+    /// The adapter/fixture has already evaluated the operands in SOURCE
+    /// order; this instruction consumes the mapped slots.
+    Aggregate {
+        dst: SlotId,
+        record_ty: TypeIdx,
+        operands: Vec<SlotId>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -259,13 +323,57 @@ impl MirModule {
         m
     }
 
-    /// Resolve a type to its scalar shape for verification (`None` = Fn).
+    /// A data-profile module (`av.data/1`, PLAN-820). The profile string —
+    /// not the owner — is what `verify_mir` gates feature sets on.
+    pub fn new_data(owner: OwnerScope) -> Self {
+        let mut m = MirModule::new(owner);
+        m.profile = crate::contract::AV_DATA_PROFILE.to_string();
+        m
+    }
+
+    /// A data-profile single-function unit.
+    pub fn data_unit(owner: OwnerScope) -> Self {
+        let mut m = MirModule::new_data(owner);
+        m.is_unit = true;
+        m
+    }
+
+    /// Whether this module declares the data profile.
+    pub fn is_data_profile(&self) -> bool {
+        self.profile == crate::contract::AV_DATA_PROFILE
+    }
+
+    /// Resolve a type to its scalar shape for verification (`None` = Fn or
+    /// Record).
     pub fn type_shape(&self, idx: TypeIdx) -> Option<ScalarShape> {
         match self.types.get(idx as usize)? {
             MirType::I32 => Some(ScalarShape::I32),
             MirType::Bool => Some(ScalarShape::Bool),
-            MirType::Fn(_) => None,
+            MirType::I64 => Some(ScalarShape::I64),
+            MirType::U64 => Some(ScalarShape::U64),
+            MirType::F32 => Some(ScalarShape::F32),
+            MirType::F64 => Some(ScalarShape::F64),
+            MirType::Fn(_) | MirType::Record(_) => None,
         }
+    }
+
+    /// Walk a field path from a record type index, returning the type the
+    /// path ends at (or `None` when a segment's owner record lacks the
+    /// field index). Shared by verification and layout derivation.
+    pub fn resolve_field_path(&self, mut ty: TypeIdx, path: &[u16]) -> Option<(TypeIdx, TypeIdx)> {
+        // (final type index, immediate owner record type index)
+        let mut owner = ty;
+        for seg in path {
+            match self.types.get(ty as usize)? {
+                MirType::Record(r) => {
+                    let f = r.fields.get(*seg as usize)?;
+                    owner = ty;
+                    ty = f.ty;
+                }
+                _ => return None,
+            }
+        }
+        Some((ty, owner))
     }
 }
 
@@ -273,6 +381,10 @@ impl MirModule {
 pub enum ScalarShape {
     I32,
     Bool,
+    I64,
+    U64,
+    F32,
+    F64,
 }
 
 impl MirInstr {
@@ -376,8 +488,22 @@ impl MirModule {
             .types
             .iter()
             .map(|t| match t {
-                MirType::I32 | MirType::Bool => 0, // inline enum, table vec counted below
+                MirType::I32
+                | MirType::Bool
+                | MirType::I64
+                | MirType::U64
+                | MirType::F32
+                | MirType::F64 => 0, // inline enum, table vec counted below
                 MirType::Fn(s) => s.params.len() * std::mem::size_of::<TypeIdx>() + VEC,
+                MirType::Record(r) => {
+                    r.owner_module.len()
+                        + r.name.len()
+                        + STR * 2
+                        + r.fields.len()
+                            * (std::mem::size_of::<TypeIdx>() + std::mem::size_of::<MirFieldDef>())
+                        + r.fields.iter().map(|f| f.name.len() + STR).sum::<usize>()
+                        + VEC
+                }
             })
             .sum::<usize>()
             + self.types.len() * std::mem::size_of::<MirType>()
@@ -403,8 +529,17 @@ impl MirModule {
             b += f.blocks.len() * std::mem::size_of::<MirBlock>() + VEC;
             for blk in &f.blocks {
                 for instr in &blk.instrs {
-                    if let MirInstr::Call { args, .. } = instr {
-                        b += args.len() * std::mem::size_of::<SlotId>() + VEC;
+                    match instr {
+                        MirInstr::Call { args, .. } => {
+                            b += args.len() * std::mem::size_of::<SlotId>() + VEC
+                        }
+                        MirInstr::Aggregate { operands, .. } => {
+                            b += operands.len() * std::mem::size_of::<SlotId>() + VEC
+                        }
+                        MirInstr::FieldGet { path, .. } | MirInstr::FieldSet { path, .. } => {
+                            b += path.len() * std::mem::size_of::<u16>() + VEC
+                        }
+                        _ => {}
                     }
                 }
                 b += blk.instrs.len() * std::mem::size_of::<MirInstr>() + VEC;

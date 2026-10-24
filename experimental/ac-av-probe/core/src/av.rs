@@ -11,7 +11,7 @@
 use crate::abc_verify::LoadedModule;
 use crate::contract::{
     ExecOutcome, ResourceKind, SpanInfo, TrapKind, Value, CANCEL_CHECK_INTERVAL, MAX_AV_FRAMES,
-    MAX_AV_INSTR_STEPS, MAX_AV_SLOT_BYTES, MAX_AV_WALL, MAX_TRACE_BYTES, SLOT_CELL_BYTES,
+    MAX_AV_INSTR_STEPS, MAX_AV_SLOT_BYTES, MAX_AV_WALL, MAX_TRACE_BYTES,
 };
 use crate::mir::{
     BinOp, CalleeRef, MirFunction, MirInstr, MirModule, MirType, Terminator, TraceEvent, UnOp,
@@ -343,11 +343,13 @@ pub(crate) trait ModuleView {
     /// A constant by the index space function `func`'s instructions use
     /// (merged: global; unit: fn-local).
     fn const_at(&self, func: u32, idx: u32) -> Option<crate::mir::MirConst>;
-    /// The typed zero for a slot type index in `func`'s type space.
+    /// The typed zero for a slot type index in `func`'s type space. Record
+    /// slots receive the documented empty-fields placeholder (never read:
+    /// definite initialization gates every read).
     fn zero_of(&self, func: u32, ty: u32) -> Value;
-    /// `Some(true)`=bool, `Some(false)`=i32, `None`=not a builtin type
-    /// (entry admission fails on None).
-    fn type_is_bool(&self, func: u32, ty: u32) -> Option<bool>;
+    /// The scalar shape of a type index in `func`'s type space (`None` =
+    /// not a scalar — Fn or Record; entry-arg admission fails on None).
+    fn scalar_shape_of(&self, func: u32, ty: u32) -> Option<crate::mir::ScalarShape>;
     /// Resolve a call site's callee to a function slot (None = an
     /// admission violation: unresolved import or foreign index space).
     fn resolve_callee(&self, func: u32, callee: &CalleeRef) -> Option<u32>;
@@ -376,17 +378,10 @@ impl ModuleView for MergedView<'_> {
         self.0.consts.get(idx as usize).copied()
     }
     fn zero_of(&self, _func: u32, ty: u32) -> Value {
-        match self.0.types.get(ty as usize) {
-            Some(MirType::Bool) => Value::Bool(false),
-            _ => Value::I32(0),
-        }
+        typed_zero(self.0.types.get(ty as usize))
     }
-    fn type_is_bool(&self, _func: u32, ty: u32) -> Option<bool> {
-        match self.0.types.get(ty as usize) {
-            Some(MirType::Bool) => Some(true),
-            Some(MirType::I32) => Some(false),
-            _ => None,
-        }
+    fn scalar_shape_of(&self, _func: u32, ty: u32) -> Option<crate::mir::ScalarShape> {
+        self.0.type_shape(ty)
     }
     fn resolve_callee(&self, _func: u32, callee: &CalleeRef) -> Option<u32> {
         match callee {
@@ -397,6 +392,115 @@ impl ModuleView for MergedView<'_> {
     fn entry(&self) -> u32 {
         self.0.entry
     }
+}
+
+/// The typed zero / never-read placeholder for a slot type (see
+/// [`ModuleView::zero_of`]). The record placeholder carries `ty: u32::MAX`
+/// and no fields — distinct from any admitted record value (verification
+/// guarantees record slots are written by AGGREGATE/FIELD_SET/Copy/param
+/// before any read).
+pub(crate) fn typed_zero(t: Option<&MirType>) -> Value {
+    match t {
+        Some(MirType::Bool) => Value::Bool(false),
+        Some(MirType::I64) => Value::I64(0),
+        Some(MirType::U64) => Value::U64(0),
+        Some(MirType::F32) => Value::F32(f32::from_bits(0)),
+        Some(MirType::F64) => Value::F64(f64::from_bits(0)),
+        Some(MirType::Record(_)) => Value::Record(std::rc::Rc::new(crate::contract::RecordValue {
+            ty: u32::MAX,
+            fields: Vec::new(),
+        })),
+        // I32 and (unusable) Fn slots keep the historic scalar zero.
+        _ => Value::I32(0),
+    }
+}
+
+// -- value/budget helpers (PLAN-820 deep slot-data accounting) ----------------
+
+/// Σ deep data size of one frame's slot values (the live-data accounting
+/// base; `visited` accumulates field visits so callers charge fuel).
+fn frame_slots_bytes(slots: &[Value], visited: &mut u64) -> usize {
+    slots.iter().map(|s| s.deep_size(visited)).sum()
+}
+
+/// Commit one slot write with deep delta accounting: a positive delta is
+/// checked against the live-data budget BEFORE the write lands (a resource
+/// outcome — the previous value stays in place). Fuel for the traversal is
+/// charged by the caller from `visited`.
+fn commit_slot_write(
+    st: &mut LoopState,
+    slot: usize,
+    val: Value,
+    limits: &ExecLimits,
+) -> Result<(), ExecOutcome> {
+    let mut visited = 0u64;
+    let fr = st.frames.last_mut().expect("frame present");
+    let old = fr.slots[slot].deep_size(&mut visited);
+    let new = val.deep_size(&mut visited);
+    st.steps += visited;
+    if new > old {
+        let delta = new - old;
+        if st.slot_bytes.saturating_add(delta) > limits.max_slot_bytes {
+            return Err(ExecOutcome::Resource {
+                kind: ResourceKind::SlotBytes,
+                message: format!(
+                    "live slot data would reach {} bytes, above budget {}",
+                    st.slot_bytes + delta,
+                    limits.max_slot_bytes
+                ),
+            });
+        }
+        st.slot_bytes += delta;
+        st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
+    }
+    fr.slots[slot] = val;
+    Ok(())
+}
+
+/// Field-path read: walks a record value by declaration indices, cloning
+/// the addressed field out (rvalue copy). `None` = shape mismatch (an
+/// admission violation — verification guarantees this never fires for an
+/// admitted module).
+fn field_get_val(base: &Value, path: &[u16]) -> Option<Value> {
+    let mut cur = base;
+    for (i, seg) in path.iter().enumerate() {
+        let r = match cur {
+            Value::Record(r) => r,
+            _ => return None,
+        };
+        let f = r.fields.get(*seg as usize)?;
+        cur = f;
+        if i + 1 == path.len() {
+            return Some(f.clone());
+        }
+    }
+    None
+}
+
+/// Field-path write (structural rebuild, PLAN-820 §6): pure values are
+/// immutable, so the addressed field is replaced by rebuilding every record
+/// level along the path into fresh values. Recursion depth is bounded by
+/// the verified path-length cap (64). `None` = shape mismatch (admission
+/// violation for an admitted program).
+fn record_set_val(root: &Value, path: &[u16], val: Value) -> Option<Value> {
+    let r = match root {
+        Value::Record(r) => r,
+        _ => return None,
+    };
+    let seg = *path.first()? as usize;
+    let mut fields = r.fields.clone();
+    if path.len() == 1 {
+        if seg >= fields.len() {
+            return None;
+        }
+        fields[seg] = val;
+    } else {
+        let inner = fields.get(seg)?.clone();
+        fields[seg] = record_set_val(&inner, &path[1..], val)?;
+    }
+    Some(Value::Record(std::rc::Rc::new(
+        crate::contract::RecordValue { ty: r.ty, fields },
+    )))
 }
 
 fn dispatch<V: ModuleView>(
@@ -432,14 +536,20 @@ fn dispatch<V: ModuleView>(
             )));
         }
         // Entry-argument admission against the VERIFIED signature
-        // (F798-R6-02): each Value must match its param slot's type shape —
-        // a Bool handed to an i32 slot (or vice versa, or an Fn-typed slot)
-        // is an admission violation, never a silently executing coercion.
-        for (i, &arg) in args.iter().enumerate() {
+        // (F798-R6-02): each Value must match its param slot's scalar shape
+        // — a Bool handed to an i32 slot (or any cross-kind pair, an
+        // Fn/Record-typed slot, or a record value at the entry boundary) is
+        // an admission violation, never a silently executing coercion.
+        for (i, arg) in args.iter().enumerate() {
             let slot_ty = entry_fn.slots[entry_fn.param_slots()[i] as usize].ty;
-            let ok = match v.type_is_bool(entry_slot, slot_ty) {
-                Some(true) => matches!(arg, Value::Bool(_)),
-                Some(false) => matches!(arg, Value::I32(_)),
+            use crate::mir::ScalarShape;
+            let ok = match v.scalar_shape_of(entry_slot, slot_ty) {
+                Some(ScalarShape::I32) => matches!(arg, Value::I32(_)),
+                Some(ScalarShape::Bool) => matches!(arg, Value::Bool(_)),
+                Some(ScalarShape::I64) => matches!(arg, Value::I64(_)),
+                Some(ScalarShape::U64) => matches!(arg, Value::U64(_)),
+                Some(ScalarShape::F32) => matches!(arg, Value::F32(_)),
+                Some(ScalarShape::F64) => matches!(arg, Value::F64(_)),
                 None => false,
             };
             if !ok {
@@ -463,7 +573,27 @@ fn dispatch<V: ModuleView>(
                 ),
             });
         }
-        let root_slot_bytes = entry_fn.slots.len() * SLOT_CELL_BYTES;
+        // Root frame.
+        let mut frame = Frame {
+            func: entry_slot,
+            block: entry_fn.entry,
+            ip: 0,
+            slots: Vec::with_capacity(entry_fn.slots.len()),
+            ret_dst: None,
+        };
+        let mut arg_iter = args.iter().cloned();
+        for s in &entry_fn.slots {
+            frame.slots.push(if s.kind == crate::mir::SlotKind::Param {
+                arg_iter.next().expect("count checked above")
+            } else {
+                v.zero_of(entry_slot, s.ty)
+            });
+        }
+        // Deep live-data budget on the FILLED frame before it commits
+        // (PLAN-820 §6: slots + aggregates share the one 8 MiB line).
+        let mut visited = 0u64;
+        let root_slot_bytes = frame_slots_bytes(&frame.slots, &mut visited);
+        st.steps += visited;
         if root_slot_bytes > limits.max_slot_bytes {
             return Some(ExecOutcome::Resource {
                 kind: ResourceKind::SlotBytes,
@@ -473,23 +603,7 @@ fn dispatch<V: ModuleView>(
                 ),
             });
         }
-        // Root frame.
-        let mut frame = Frame {
-            func: entry_slot,
-            block: entry_fn.entry,
-            ip: 0,
-            slots: Vec::with_capacity(entry_fn.slots.len()),
-            ret_dst: None,
-        };
-        let mut arg_iter = args.iter().copied();
-        for s in &entry_fn.slots {
-            frame.slots.push(if s.kind == crate::mir::SlotKind::Param {
-                arg_iter.next().expect("count checked above")
-            } else {
-                v.zero_of(entry_slot, s.ty)
-            });
-        }
-        st.slot_bytes += frame.slots.len() * SLOT_CELL_BYTES;
+        st.slot_bytes += root_slot_bytes;
         // The peak lives ON the trace: every exit (success, trap, resource,
         // cancel) carries the real high-water (F798-R3-04).
         st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
@@ -566,29 +680,41 @@ fn dispatch<V: ModuleView>(
                         }
                     };
                     let val = match cv {
-                        crate::mir::MirConst::I32(v) => Value::I32(v),
+                        crate::mir::MirConst::I32(x) => Value::I32(x),
                         crate::mir::MirConst::Bool(b) => Value::Bool(b),
+                        crate::mir::MirConst::I64(x) => Value::I64(x),
+                        crate::mir::MirConst::U64(x) => Value::U64(x),
+                        // Bit-exact re-materialization: NaN payloads and
+                        // signed zeros survive the const round trip.
+                        crate::mir::MirConst::F32Bits(bits) => Value::F32(f32::from_bits(bits)),
+                        crate::mir::MirConst::F64Bits(bits) => Value::F64(f64::from_bits(bits)),
                     };
-                    let fr = st.frames.last_mut().expect("frame present");
-                    fr.slots[*dst as usize] = val;
+                    if let Err(out) = commit_slot_write(st, *dst as usize, val, limits) {
+                        return Some(out);
+                    }
                 }
                 MirInstr::Copy { dst, src } => {
-                    let v = {
+                    let val = {
                         let fr = st.frames.last().expect("frame present");
-                        fr.slots[*src as usize]
+                        fr.slots[*src as usize].clone()
                     };
-                    let fr = st.frames.last_mut().expect("frame present");
-                    fr.slots[*dst as usize] = v;
+                    if let Err(out) = commit_slot_write(st, *dst as usize, val, limits) {
+                        return Some(out);
+                    }
                 }
                 MirInstr::Bin { op, dst, lhs, rhs } => {
                     let (l, r) = {
                         let fr = st.frames.last().expect("frame present");
-                        (fr.slots[*lhs as usize], fr.slots[*rhs as usize])
+                        (
+                            fr.slots[*lhs as usize].clone(),
+                            fr.slots[*rhs as usize].clone(),
+                        )
                     };
                     match eval_bin(*op, l, r) {
-                        Ok(v) => {
-                            let fr = st.frames.last_mut().expect("frame present");
-                            fr.slots[*dst as usize] = v;
+                        Ok(res) => {
+                            if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
+                                return Some(out);
+                            }
                         }
                         Err(EvalErr::Trap(kind)) => {
                             // B2-C03: the span maps through the view of
@@ -610,12 +736,13 @@ fn dispatch<V: ModuleView>(
                     // per-frame span projection.)
                     let operand_val = {
                         let fr = st.frames.last().expect("frame present");
-                        fr.slots[*operand as usize]
+                        fr.slots[*operand as usize].clone()
                     };
                     match eval_un(*op, operand_val) {
-                        Ok(v) => {
-                            let fr = st.frames.last_mut().expect("frame present");
-                            fr.slots[*dst as usize] = v;
+                        Ok(res) => {
+                            if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
+                                return Some(out);
+                            }
                         }
                         Err(EvalErr::Trap(kind)) => {
                             // B2-C03: the span maps through the view of
@@ -656,19 +783,11 @@ fn dispatch<V: ModuleView>(
                         .expect("resolve_callee only returns slots with a payload");
                     // Slot budget BEFORE the callee frame is allocated
                     // (F798-R3-04): the check used to run after the push.
-                    let prospective = st.slot_bytes + callee_fn.slots.len() * SLOT_CELL_BYTES;
-                    if prospective > limits.max_slot_bytes {
-                        return Some(ExecOutcome::Resource {
-                            kind: ResourceKind::SlotBytes,
-                            message: format!(
-                                "live slot data would reach {} bytes, above budget {}",
-                                prospective, limits.max_slot_bytes
-                            ),
-                        });
-                    }
+                    // PLAN-820: the prospective is the DEEP size of the
+                    // filled callee frame (params + typed placeholders).
                     let arg_vals: Vec<Value> = {
                         let fr = st.frames.last().expect("frame present");
-                        args.iter().map(|a| fr.slots[*a as usize]).collect()
+                        args.iter().map(|a| fr.slots[*a as usize].clone()).collect()
                     };
                     let mut nf = Frame {
                         func: target,
@@ -683,6 +802,19 @@ fn dispatch<V: ModuleView>(
                             ai.next().expect("arity verified at admission")
                         } else {
                             v.zero_of(target, s.ty)
+                        });
+                    }
+                    let mut visited = 0u64;
+                    let callee_bytes = frame_slots_bytes(&nf.slots, &mut visited);
+                    st.steps += visited;
+                    let prospective = st.slot_bytes + callee_bytes;
+                    if prospective > limits.max_slot_bytes {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::SlotBytes,
+                            message: format!(
+                                "live slot data would reach {} bytes, above budget {}",
+                                prospective, limits.max_slot_bytes
+                            ),
                         });
                     }
                     st.slot_bytes = prospective;
@@ -701,6 +833,68 @@ fn dispatch<V: ModuleView>(
                         });
                     }
                 }
+                MirInstr::FieldGet { dst, base, path } => {
+                    let bv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*base as usize].clone()
+                    };
+                    let picked = match field_get_val(&bv, path) {
+                        Some(x) => x,
+                        None => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "field-get path {:?} does not resolve on the base value (admission violation)",
+                                path
+                            )))
+                        }
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, picked, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::FieldSet { root, path, value } => {
+                    // RHS-first materialization: both operands are read
+                    // from already-materialized slots, then the root is
+                    // rebuilt — the overlap invariant holds by shape.
+                    let (root_val, new_val) = {
+                        let fr = st.frames.last().expect("frame present");
+                        (
+                            fr.slots[*root as usize].clone(),
+                            fr.slots[*value as usize].clone(),
+                        )
+                    };
+                    let rebuilt = match record_set_val(&root_val, path, new_val) {
+                        Some(x) => x,
+                        None => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "field-set path {:?} does not resolve on the root value (admission violation)",
+                                path
+                            )))
+                        }
+                    };
+                    if let Err(out) = commit_slot_write(st, *root as usize, rebuilt, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::Aggregate {
+                    dst,
+                    record_ty,
+                    operands,
+                } => {
+                    let fields: Vec<Value> = {
+                        let fr = st.frames.last().expect("frame present");
+                        operands
+                            .iter()
+                            .map(|s| fr.slots[*s as usize].clone())
+                            .collect()
+                    };
+                    let rv = Value::Record(std::rc::Rc::new(crate::contract::RecordValue {
+                        ty: *record_ty,
+                        fields,
+                    }));
+                    if let Err(out) = commit_slot_write(st, *dst as usize, rv, limits) {
+                        return Some(out);
+                    }
+                }
             }
             continue;
         }
@@ -714,12 +908,13 @@ fn dispatch<V: ModuleView>(
             Terminator::Branch { cond, then, else_ } => {
                 let go = {
                     let fr = st.frames.last().expect("frame present");
-                    match fr.slots[*cond as usize] {
-                        Value::Bool(b) => b,
-                        Value::I32(_) => {
-                            return Some(ExecOutcome::Infra(
-                                "branch condition holds i32 (admission violation)".to_string(),
-                            ))
+                    match &fr.slots[*cond as usize] {
+                        Value::Bool(b) => *b,
+                        other => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "branch condition holds {} (admission violation)",
+                                other.type_name()
+                            )))
                         }
                     }
                 };
@@ -728,21 +923,29 @@ fn dispatch<V: ModuleView>(
                 fr.ip = 0;
             }
             Terminator::Return { value } => {
-                let v = {
+                let (rv, ret_dst) = {
                     let fr = st.frames.last().expect("frame present");
-                    (fr.slots[*value as usize], fr.ret_dst, fr.slots.len())
+                    (fr.slots[*value as usize].clone(), fr.ret_dst)
                 };
-                let (v, ret_dst, len) = v;
-                st.slot_bytes -= len * SLOT_CELL_BYTES;
+                // Deep live-data of the popped frame leaves the ledger.
+                let mut visited = 0u64;
+                let frame_bytes = {
+                    let fr = st.frames.last().expect("frame present");
+                    frame_slots_bytes(&fr.slots, &mut visited)
+                };
+                st.steps += visited;
+                st.slot_bytes = st.slot_bytes.saturating_sub(frame_bytes);
                 st.frames.pop();
                 match (st.frames.last_mut(), ret_dst) {
-                    (Some(caller), Some(dst)) => {
-                        caller.slots[dst as usize] = v;
+                    (Some(_), Some(dst)) => {
+                        if let Err(out) = commit_slot_write(st, dst as usize, rv, limits) {
+                            return Some(out);
+                        }
                     }
                     (Some(_), None) => {}
                     (None, _) => {
                         return Some(ExecOutcome::Success {
-                            value: v,
+                            value: rv,
                             steps: st.steps,
                         })
                     }
@@ -854,7 +1057,7 @@ fn eval_un(op: UnOp, v: Value) -> Result<Value, EvalErr> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::contract::MIR_SCHEMA;
+    use crate::contract::{MIR_SCHEMA, SLOT_CELL_BYTES};
     use crate::mir::*;
 
     fn owner() -> OwnerScope {

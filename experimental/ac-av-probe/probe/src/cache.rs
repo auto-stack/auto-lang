@@ -1270,9 +1270,34 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<TypeIdx> {
                 continue;
             }
             match t {
-                MirType::I32 | MirType::Bool => {
+                MirType::I32
+                | MirType::Bool
+                | MirType::I64
+                | MirType::U64
+                | MirType::F32
+                | MirType::F64 => {
                     map[i] = merged.intern_type(t.clone());
                     progress = true;
+                }
+                MirType::Record(r) => {
+                    let pending = r.fields.iter().any(|f| map[f.ty as usize] == u32::MAX);
+                    if !pending {
+                        let nr = auto_av_core::mir::RecordTypeRef {
+                            owner_module: r.owner_module.clone(),
+                            name: r.name.clone(),
+                            fields: r
+                                .fields
+                                .iter()
+                                .map(|f| auto_av_core::mir::MirFieldDef {
+                                    name: f.name.clone(),
+                                    ty: map[f.ty as usize],
+                                })
+                                .collect(),
+                        };
+                        let idx = merged.intern_type(MirType::Record(nr));
+                        map[i] = idx;
+                        progress = true;
+                    }
                 }
                 MirType::Fn(sig) => {
                     let pending = sig
@@ -1430,7 +1455,12 @@ pub fn render_unit_sig(unit: &MirModule) -> String {
         match m.types.get(idx as usize) {
             Some(MirType::I32) => "i32".to_string(),
             Some(MirType::Bool) => "bool".to_string(),
+            Some(MirType::I64) => "i64".to_string(),
+            Some(MirType::U64) => "u64".to_string(),
+            Some(MirType::F32) => "f32".to_string(),
+            Some(MirType::F64) => "f64".to_string(),
             Some(MirType::Fn(_)) => "fn".to_string(),
+            Some(MirType::Record(r)) => format!("rec:{}", r.name),
             None => "?".to_string(),
         }
     };

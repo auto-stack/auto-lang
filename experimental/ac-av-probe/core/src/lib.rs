@@ -21,6 +21,7 @@ pub mod abc_verify;
 pub mod av;
 pub mod contract;
 pub mod function_code;
+pub mod layout;
 pub mod mir;
 pub mod mir_verify;
 pub mod program_snapshot;

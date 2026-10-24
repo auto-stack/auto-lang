@@ -26,6 +26,33 @@ pub const AV_PROFILE: &str = "av.core-i32/1";
 /// Producer identity used in store envelopes and keys (PLAN-798 §5.4).
 pub const PRODUCER_ID: &str = "plan798/av-probe";
 
+// ---------------------------------------------------------------------------
+// PLAN-820 `av.data/1` identities (contract-decision.md §1, frozen T-01)
+// ---------------------------------------------------------------------------
+
+/// Logical schema identity of the data-profile Typed MIR (independent MIR
+/// schema: the data type table carries tags the core-i32 schema never had).
+pub const MIR_DATA_SCHEMA: &str = "auto.mir.av-data/1";
+/// Wire schema identity of the data-profile ABC format. A SEPARATE magic
+/// family from `AVAB`: neither generation can be read as the other.
+pub const ABC_DATA_SCHEMA: &str = "auto.abc.av-data/1";
+/// The data execution profile: wide scalars (i64/u64/f32/f64, data ops only)
+/// plus pure-value non-recursive nested records with field places.
+pub const AV_DATA_PROFILE: &str = "av.data/1";
+/// Producer identity for data-profile units in store envelopes and keys.
+pub const DATA_PRODUCER_ID: &str = "plan820/av-data";
+/// Wire magic of the data-profile ABC format (`AVAD`).
+pub const ABC_DATA_MAGIC: [u8; 4] = *b"AVAD";
+/// Wire version of the data-profile ABC format (v1; profile id 2).
+pub const ABC_DATA_VERSION: u16 = 1;
+/// Numeric profile id carried in the data wire header.
+pub const ABC_PROFILE_DATA: u16 = 2;
+
+/// Per-record field-count guard (module table family; contract-decision §8).
+pub const MAX_RECORD_FIELDS: usize = 1024;
+/// Field-path depth guard for FIELD_GET/FIELD_SET (u16 domain, explicit cap).
+pub const MAX_FIELD_PATH_LEN: usize = 64;
+
 /// Semantic-version tuple carriers. A change in any of these values must
 /// invalidate previously persisted artifacts of that stage (probe cache key
 /// component; the numeric values are frozen by T-01).
@@ -41,6 +68,13 @@ pub const MIR_SEMANTICS: MirSemanticsVersion = MirSemanticsVersion(1);
 /// kind; 1 = the kind-less generation whose artifacts must miss/reject.
 pub const ABC_SEMANTICS: AbcSemanticsVersion = AbcSemanticsVersion(2);
 pub const AV_SEMANTICS: AvSemanticsVersion = AvSemanticsVersion(1);
+
+/// PLAN-820 data-profile semantic versions — an INDEPENDENT axis from the
+/// core-i32 tuple above (the two profiles' artifacts key separately; a bump
+/// on one axis never invalidates the other). All start at 1.
+pub const MIR_DATA_SEMANTICS: MirSemanticsVersion = MirSemanticsVersion(1);
+pub const ABC_DATA_SEMANTICS: AbcSemanticsVersion = AbcSemanticsVersion(1);
+pub const AV_DATA_SEMANTICS: AvSemanticsVersion = AvSemanticsVersion(1);
 
 /// Capability that admits the closed test-only trace intrinsic set
 /// (same string as the HIR front door, `hir.test.trace.v1`).
@@ -96,34 +130,104 @@ pub const MAX_DECODED_MODULE_BYTES: usize = 16 * 1024 * 1024;
 // Values and traps
 // ---------------------------------------------------------------------------
 
-/// A scalar value of the limited profile. `bool` is not an arbitrary
-/// integer: it keeps its own kind end to end.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// A value of the limited profiles. `bool` is not an arbitrary integer: it
+/// keeps its own kind end to end. The data profile (PLAN-820) adds the wide
+/// scalars `i64`/`u64`/`f32`/`f64` — floats keep their exact bit pattern
+/// end to end (no arithmetic exists in this profile, so NaN payloads and
+/// signed zeros are never canonicalized) — and immutable pure-value records
+/// (shared by `Rc`; structural immutability makes a shallow clone
+/// observationally equal to a deep copy).
+///
+/// `PartialEq`/`Eq` are BIT-EXACT for floats (`to_bits`): two NaNs with the
+/// same payload are equal, `0.0 != -0.0`. The type is `Clone` but not
+/// `Copy` since the record variant owns shared data.
+#[derive(Clone, Debug)]
 pub enum Value {
     I32(i32),
     Bool(bool),
+    I64(i64),
+    U64(u64),
+    F32(f32),
+    F64(f64),
+    Record(std::rc::Rc<RecordValue>),
 }
+
+/// One pure-value record: the owning type-table index plus the field values
+/// in DECLARATION order. Constructed only by AGGREGATE/FIELD_SET rebuilds;
+/// never mutated in place. An uninitialized record SLOT (def-before-use is
+/// forbidden by the definite-initialization analysis) holds a placeholder
+/// with an empty field list — same never-observed guarantee as the i32/bool
+/// typed zero, and structurally distinct from any admitted record value.
+#[derive(Clone, Debug)]
+pub struct RecordValue {
+    pub ty: u32,
+    pub fields: Vec<Value>,
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        use Value::*;
+        match (self, other) {
+            (I32(a), I32(b)) => a == b,
+            (Bool(a), Bool(b)) => a == b,
+            (I64(a), I64(b)) => a == b,
+            (U64(a), U64(b)) => a == b,
+            (F32(a), F32(b)) => a.to_bits() == b.to_bits(),
+            (F64(a), F64(b)) => a.to_bits() == b.to_bits(),
+            (Record(a), Record(b)) => {
+                // Nominal identity first (same type index), then fields.
+                a.ty == b.ty && a.fields == b.fields
+            }
+            _ => false,
+        }
+    }
+}
+impl Eq for Value {}
 
 impl Value {
     pub fn type_name(&self) -> &'static str {
         match self {
             Value::I32(_) => "i32",
             Value::Bool(_) => "bool",
+            Value::I64(_) => "i64",
+            Value::U64(_) => "u64",
+            Value::F32(_) => "f32",
+            Value::F64(_) => "f64",
+            Value::Record(_) => "record",
         }
     }
 
     pub fn as_i32(&self) -> Option<i32> {
         match self {
             Value::I32(v) => Some(*v),
-            Value::Bool(_) => None,
+            _ => None,
         }
     }
 
     pub fn as_bool(&self) -> Option<bool> {
         match self {
             Value::Bool(v) => Some(*v),
-            Value::I32(_) => None,
+            _ => None,
         }
+    }
+
+    /// Deterministic deep data-size estimate (bytes) used by the live
+    /// slot-data budget: every value cell counts `size_of::<Value>()`;
+    /// record levels add their `Vec` header. Shared `Rc`s are counted
+    /// PER REFERENCE — conservative over-counting, never under-counting
+    /// (contract-decision §6). `visited` counts RECORD-NODE visits only —
+    /// the frozen per-instruction fuel already covers scalar writes, so
+    /// scalar-only programs keep their exact historic step counts.
+    pub fn deep_size(&self, visited: &mut u64) -> usize {
+        let mut b = std::mem::size_of::<Value>();
+        if let Value::Record(r) = self {
+            *visited += 1;
+            b += std::mem::size_of::<Vec<Value>>(); // Vec header (len-based)
+            for f in r.fields.iter() {
+                b += f.deep_size(visited);
+            }
+        }
+        b
     }
 }
 

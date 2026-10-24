@@ -8,7 +8,7 @@
 //! pass through here — including bytes this same compiler produced.
 
 use crate::abc::DecodedAbc;
-use crate::contract::{AvSemanticsVersion, AV_SEMANTICS};
+use crate::contract::AvSemanticsVersion;
 use crate::mir::MirModule;
 use crate::mir_verify::{verify_mir_with_deadline, CheckedMir, MirVerifyError};
 
@@ -66,6 +66,9 @@ impl LoadedModule {
 
 /// Admit decoded ABC bytes as an executable module. `expected_owner` is the
 /// owner identity the ENVELOPE demands (the payload cannot self-assert it).
+/// Both wire families admit here: AVAB (core-i32) and AVAD (data, PLAN-820);
+/// the decoded profile id selects the admitted version tuple and the AV
+/// semantics version stamped on the credential.
 pub fn verify_abc(
     decoded: DecodedAbc,
     expected_owner: &crate::mir::OwnerScope,
@@ -73,18 +76,35 @@ pub fn verify_abc(
     // Version/profile re-check on the PUBLIC struct (F798-R3-01): decode
     // rejects unknown values on the wire, but a hand-constructed
     // DecodedAbc must not smuggle them past this constructor.
-    if decoded.version != crate::abc::ABC_VERSION {
+    let (want_version, want_profile, av_semantics) =
+        if decoded.profile == crate::abc::ABC_PROFILE_CORE_I32 {
+            (
+                crate::abc::ABC_VERSION,
+                crate::abc::ABC_PROFILE_CORE_I32,
+                crate::contract::AV_SEMANTICS,
+            )
+        } else if decoded.profile == crate::contract::ABC_PROFILE_DATA {
+            (
+                crate::contract::ABC_DATA_VERSION,
+                crate::contract::ABC_PROFILE_DATA,
+                crate::contract::AV_DATA_SEMANTICS,
+            )
+        } else {
+            return Err(AbcAdmissionError::Identity(format!(
+                "decoded profile id {} is not an admitted profile",
+                decoded.profile
+            )));
+        };
+    if decoded.version != want_version {
         return Err(AbcAdmissionError::Identity(format!(
-            "decoded version {} is not the admitted wire version {}",
-            decoded.version,
-            crate::abc::ABC_VERSION
+            "decoded version {} is not the admitted wire version {} for profile id {}",
+            decoded.version, want_version, decoded.profile
         )));
     }
-    if decoded.profile != crate::abc::ABC_PROFILE_CORE_I32 {
+    if decoded.profile != want_profile {
         return Err(AbcAdmissionError::Identity(format!(
             "decoded profile id {} is not the admitted profile id {}",
-            decoded.profile,
-            crate::abc::ABC_PROFILE_CORE_I32
+            decoded.profile, want_profile
         )));
     }
     let mut module = decoded.module;
@@ -122,7 +142,7 @@ pub fn verify_abc(
         });
     Ok(LoadedModule {
         checked,
-        av_semantics: AV_SEMANTICS,
+        av_semantics,
         executable,
     })
 }

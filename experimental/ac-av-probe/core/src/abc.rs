@@ -35,6 +35,10 @@ pub const ABC_MAGIC: &[u8; 4] = b"AVAB";
 pub const ABC_VERSION: u16 = 2;
 pub const ABC_PROFILE_CORE_I32: u16 = 1;
 
+// PLAN-820 data wire (contract-decision §5): a SEPARATE magic family from
+// AVAB. `ABC_DATA_MAGIC`/`ABC_DATA_VERSION`/`ABC_PROFILE_DATA` come from
+// `contract`; neither generation decodes as the other.
+
 // opcodes
 pub const OP_CONST: u8 = 0x01;
 pub const OP_COPY: u8 = 0x02;
@@ -42,6 +46,9 @@ pub const OP_BIN: u8 = 0x03;
 pub const OP_UN: u8 = 0x04;
 pub const OP_CALL: u8 = 0x05;
 pub const OP_TRACE: u8 = 0x06;
+pub const OP_FIELD_GET: u8 = 0x07;
+pub const OP_FIELD_SET: u8 = 0x08;
+pub const OP_AGGREGATE: u8 = 0x09;
 pub const TERM_JUMP: u8 = 0x10;
 pub const TERM_BRANCH: u8 = 0x11;
 pub const TERM_RETURN: u8 = 0x12;
@@ -65,6 +72,54 @@ pub const UN_NOT: u8 = 2;
 pub const TY_I32: u8 = 0;
 pub const TY_BOOL: u8 = 1;
 pub const TY_FN: u8 = 2;
+pub const TY_I64: u8 = 3;
+pub const TY_U64: u8 = 4;
+pub const TY_F32: u8 = 5;
+pub const TY_F64: u8 = 6;
+pub const TY_RECORD: u8 = 7;
+
+// const tags (data profile adds 2..5)
+pub const CONST_I32: u8 = 0;
+pub const CONST_BOOL: u8 = 1;
+pub const CONST_I64: u8 = 2;
+pub const CONST_U64: u8 = 3;
+pub const CONST_F32_BITS: u8 = 4;
+pub const CONST_F64_BITS: u8 = 5;
+
+/// Which wire family a codec pass handles. The families share the table
+/// and instruction encoding for the common surface; the identity headers,
+/// accepted type/const tags, opcodes and the reconstructed module's
+/// profile/schema differ. `Core` output is byte-identical to the pre-820
+/// codec (V-09 replay).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum WireFamily {
+    Core,
+    Data,
+}
+
+impl WireFamily {
+    fn magic(&self) -> [u8; 4] {
+        match self {
+            WireFamily::Core => *ABC_MAGIC,
+            WireFamily::Data => crate::contract::ABC_DATA_MAGIC,
+        }
+    }
+    fn version(&self) -> u16 {
+        match self {
+            WireFamily::Core => ABC_VERSION,
+            WireFamily::Data => crate::contract::ABC_DATA_VERSION,
+        }
+    }
+    fn profile_id(&self) -> u16 {
+        match self {
+            WireFamily::Core => ABC_PROFILE_CORE_I32,
+            WireFamily::Data => crate::contract::ABC_PROFILE_DATA,
+        }
+    }
+    fn allows_data_tags(&self) -> bool {
+        matches!(self, WireFamily::Data)
+    }
+}
 
 // flags
 pub const FLAG_SOURCE_SIDECAR: u16 = 1;
@@ -161,15 +216,15 @@ impl PageWriter {
         self.total += page.len();
     }
 
-    fn finish(mut self) -> AbcBytes {
+    fn finish(mut self, family: WireFamily) -> AbcBytes {
         if !self.cur.is_empty() {
             let page = std::mem::take(&mut self.cur);
             self.absorb(&page);
             self.pages.push(page);
         }
         AbcBytes {
-            version: ABC_VERSION,
-            profile: ABC_PROFILE_CORE_I32,
+            version: family.version(),
+            profile: family.profile_id(),
             pages: self.pages,
             total_len: self.total,
             checksum: self.checksum,
@@ -224,13 +279,27 @@ fn un_op_code(op: UnOp) -> u8 {
 
 /// Encode an unchecked MIR module to paged ABC bytes. The module must be
 /// structurally encodable (slot/block/arg counts within wire field widths);
-/// encoding performs width checks but NOT semantic verification.
+/// encoding performs width checks but NOT semantic verification. The wire
+/// family follows the module's declared profile: `av.core-i32/1` → AVAB,
+/// `av.data/1` → AVAD (data-only types/consts/opcodes must not appear in a
+/// core-profile module — that mismatch is an encode rejection).
 pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
+    let family = match m.profile.as_str() {
+        crate::contract::AV_PROFILE => WireFamily::Core,
+        crate::contract::AV_DATA_PROFILE => WireFamily::Data,
+        other => {
+            return Err(AbcDecodeError::fmt_err(
+                "abc.encode.profile",
+                format!("module profile `{}` has no wire family", other),
+            ))
+        }
+    };
     let mut w = PageWriter::new();
     // Header.
-    w.push(ABC_MAGIC);
-    put_u16(&mut w, ABC_VERSION);
-    put_u16(&mut w, ABC_PROFILE_CORE_I32);
+    let magic = family.magic();
+    w.push(&magic);
+    put_u16(&mut w, family.version());
+    put_u16(&mut w, family.profile_id());
     let has_sidecar = m
         .funcs
         .iter()
@@ -283,18 +352,134 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                 }
                 put_u32(&mut w, sig.result);
             }
+            MirType::I64 => {
+                if !family.allows_data_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "i64 type in a core-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_I64);
+            }
+            MirType::U64 => {
+                if !family.allows_data_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "u64 type in a core-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_U64);
+            }
+            MirType::F32 => {
+                if !family.allows_data_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "f32 type in a core-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_F32);
+            }
+            MirType::F64 => {
+                if !family.allows_data_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "f64 type in a core-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_F64);
+            }
+            MirType::Record(r) => {
+                if !family.allows_data_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "record type in a core-profile module".to_string(),
+                    ));
+                }
+                let owner_b = r.owner_module.as_bytes();
+                let name_b = r.name.as_bytes();
+                if owner_b.len() > u16::MAX as usize || name_b.len() > u16::MAX as usize {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.record-identity",
+                        format!("record `{}` identity exceeds wire width", r.name),
+                    ));
+                }
+                if r.fields.len() > u16::MAX as usize {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.record-fields",
+                        format!("record `{}` has too many fields for the wire", r.name),
+                    ));
+                }
+                put_u8(&mut w, TY_RECORD);
+                put_u16(&mut w, owner_b.len() as u16);
+                w.push(owner_b);
+                put_u16(&mut w, name_b.len() as u16);
+                w.push(name_b);
+                put_u16(&mut w, r.fields.len() as u16);
+                for f in &r.fields {
+                    let fb = f.name.as_bytes();
+                    if fb.len() > u16::MAX as usize {
+                        return Err(AbcDecodeError::fmt_err(
+                            "abc.encode.record-field",
+                            format!("record field `{}` exceeds wire width", f.name),
+                        ));
+                    }
+                    put_u16(&mut w, fb.len() as u16);
+                    w.push(fb);
+                    put_u32(&mut w, f.ty);
+                }
+            }
         }
     }
     // Consts.
     for c in &m.consts {
         match c {
             MirConst::I32(v) => {
-                put_u8(&mut w, 0);
+                put_u8(&mut w, CONST_I32);
                 put_i32(&mut w, *v);
             }
             MirConst::Bool(b) => {
-                put_u8(&mut w, 1);
+                put_u8(&mut w, CONST_BOOL);
                 put_u8(&mut w, *b as u8);
+            }
+            MirConst::I64(v) => {
+                if !family.allows_data_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "i64 constant in a core-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, CONST_I64);
+                w.push(&v.to_le_bytes());
+            }
+            MirConst::U64(v) => {
+                if !family.allows_data_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "u64 constant in a core-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, CONST_U64);
+                w.push(&v.to_le_bytes());
+            }
+            MirConst::F32Bits(bits) => {
+                if !family.allows_data_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "f32 constant in a core-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, CONST_F32_BITS);
+                w.push(&bits.to_le_bytes());
+            }
+            MirConst::F64Bits(bits) => {
+                if !family.allows_data_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "f64 constant in a core-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, CONST_F64_BITS);
+                w.push(&bits.to_le_bytes());
             }
         }
     }
@@ -405,6 +590,64 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                             },
                         );
                     }
+                    MirInstr::FieldGet { dst, base, path } => {
+                        if !family.allows_data_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "FIELD_GET in a core-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_FIELD_GET);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *base);
+                        put_u16(&mut w, path.len() as u16);
+                        for seg in path {
+                            put_u16(&mut w, *seg);
+                        }
+                    }
+                    MirInstr::FieldSet { root, path, value } => {
+                        if !family.allows_data_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "FIELD_SET in a core-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_FIELD_SET);
+                        put_u32(&mut w, *root);
+                        put_u16(&mut w, path.len() as u16);
+                        for seg in path {
+                            put_u16(&mut w, *seg);
+                        }
+                        put_u32(&mut w, *value);
+                    }
+                    MirInstr::Aggregate {
+                        dst,
+                        record_ty,
+                        operands,
+                    } => {
+                        if !family.allows_data_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "AGGREGATE in a core-profile module".to_string(),
+                            ));
+                        }
+                        if operands.len() > u16::MAX as usize {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.arity",
+                                format!(
+                                    "aggregate with {} operands exceeds wire width",
+                                    operands.len()
+                                ),
+                            ));
+                        }
+                        put_u8(&mut w, OP_AGGREGATE);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *record_ty);
+                        put_u16(&mut w, operands.len() as u16);
+                        for o in operands {
+                            put_u32(&mut w, *o);
+                        }
+                    }
                 }
             }
             match &b.term {
@@ -448,7 +691,7 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
         w.push(&sc);
     }
     // Trailer checksum.
-    let mut out = w.finish();
+    let mut out = w.finish(family);
     let mut trailer = out.checksum.to_le_bytes().to_vec();
     // Trailer rides as one final page (≤ 8 bytes, page budget trivially ok).
     out.total_len += trailer.len();
@@ -566,29 +809,40 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         steps: 0,
     };
     let magic = c.take(4)?;
-    if magic != ABC_MAGIC {
+    let family = if magic == ABC_MAGIC {
+        WireFamily::Core
+    } else if magic == crate::contract::ABC_DATA_MAGIC {
+        WireFamily::Data
+    } else {
         return Err(AbcDecodeError::fmt_err(
             "abc.decode.magic",
-            "not an AVAB stream".to_string(),
+            "neither an AVAB nor an AVAD stream".to_string(),
         ));
-    }
+    };
     let version = c.u16()?;
-    if version != ABC_VERSION {
+    if version != family.version() {
         return Err(AbcDecodeError::fmt_err(
             "abc.decode.version",
             format!(
-                "unknown ABC version {} (this build accepts {})",
-                version, ABC_VERSION
+                "unknown {} wire version {} (this build accepts {})",
+                if family == WireFamily::Core {
+                    "AVAB"
+                } else {
+                    "AVAD"
+                },
+                version,
+                family.version()
             ),
         ));
     }
     let profile = c.u16()?;
-    if profile != ABC_PROFILE_CORE_I32 {
+    if profile != family.profile_id() {
         return Err(AbcDecodeError::fmt_err(
             "abc.decode.profile",
             format!(
-                "unknown ABC profile id {} (this build accepts {})",
-                profile, ABC_PROFILE_CORE_I32
+                "unknown ABC profile id {} (this wire family accepts {})",
+                profile,
+                family.profile_id()
             ),
         ));
     }
@@ -694,7 +948,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     }
 
     let mut module = MirModule {
-        profile: crate::contract::AV_PROFILE.to_string(),
+        profile: match family {
+            WireFamily::Core => crate::contract::AV_PROFILE.to_string(),
+            WireFamily::Data => crate::contract::AV_DATA_PROFILE.to_string(),
+        },
         owner: OwnerScope {
             schema: String::new(),
             module: String::new(),
@@ -736,6 +993,56 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                 let result = c.u32()?;
                 module.types.push(MirType::Fn(FnSig { params, result }));
             }
+            TY_I64 if family.allows_data_tags() => module.types.push(MirType::I64),
+            TY_U64 if family.allows_data_tags() => module.types.push(MirType::U64),
+            TY_F32 if family.allows_data_tags() => module.types.push(MirType::F32),
+            TY_F64 if family.allows_data_tags() => module.types.push(MirType::F64),
+            TY_RECORD if family.allows_data_tags() => {
+                let olen = c.u16()? as usize;
+                decode_mem!(olen + 24, "a record owner module");
+                let owner_b = c.take(olen)?.to_vec();
+                let owner_module = String::from_utf8(owner_b).map_err(|_| {
+                    AbcDecodeError::fmt_err(
+                        "abc.decode.record-utf8",
+                        "record owner module is not UTF-8".to_string(),
+                    )
+                })?;
+                let nlen = c.u16()? as usize;
+                decode_mem!(nlen + 24, "a record name");
+                let name_b = c.take(nlen)?.to_vec();
+                let name = String::from_utf8(name_b).map_err(|_| {
+                    AbcDecodeError::fmt_err(
+                        "abc.decode.record-utf8",
+                        "record name is not UTF-8".to_string(),
+                    )
+                })?;
+                let nfields = c.u16()? as usize;
+                decode_mem!(
+                    nfields * (std::mem::size_of::<MirFieldDef>() + 8) + 24,
+                    "a record field table"
+                );
+                let mut fields = Vec::with_capacity(nfields.min(1024));
+                for _ in 0..nfields {
+                    let flen = c.u16()? as usize;
+                    let fb = c.take(flen)?.to_vec();
+                    let fname = String::from_utf8(fb).map_err(|_| {
+                        AbcDecodeError::fmt_err(
+                            "abc.decode.record-utf8",
+                            "record field name is not UTF-8".to_string(),
+                        )
+                    })?;
+                    let fty = c.u32()?;
+                    fields.push(MirFieldDef {
+                        name: fname,
+                        ty: fty,
+                    });
+                }
+                module.types.push(MirType::Record(RecordTypeRef {
+                    owner_module,
+                    name,
+                    fields,
+                }));
+            }
             other => {
                 return Err(AbcDecodeError::fmt_err(
                     "abc.decode.type-tag",
@@ -748,8 +1055,8 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     for _ in 0..n_consts {
         let tag = c.u8()?;
         match tag {
-            0 => module.consts.push(MirConst::I32(c.i32()?)),
-            1 => {
+            CONST_I32 => module.consts.push(MirConst::I32(c.i32()?)),
+            CONST_BOOL => {
                 let b = c.u8()?;
                 if b > 1 {
                     return Err(AbcDecodeError::fmt_err(
@@ -758,6 +1065,21 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                     ));
                 }
                 module.consts.push(MirConst::Bool(b == 1));
+            }
+            CONST_I64 if family.allows_data_tags() => {
+                let v = c.u64()?;
+                module.consts.push(MirConst::I64(v as i64));
+            }
+            CONST_U64 if family.allows_data_tags() => {
+                module.consts.push(MirConst::U64(c.u64()?));
+            }
+            CONST_F32_BITS if family.allows_data_tags() => {
+                let bits = c.u32()?;
+                module.consts.push(MirConst::F32Bits(bits));
+            }
+            CONST_F64_BITS if family.allows_data_tags() => {
+                let bits = c.u64()?;
+                module.consts.push(MirConst::F64Bits(bits));
             }
             other => {
                 return Err(AbcDecodeError::fmt_err(
@@ -955,6 +1277,43 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                         };
                         MirInstr::Trace { event }
                     }
+                    OP_FIELD_GET if family.allows_data_tags() => {
+                        let dst = c.u32()?;
+                        let base = c.u32()?;
+                        let plen = c.u16()? as usize;
+                        decode_mem!(plen * 2 + 24, "a field path");
+                        let mut path = Vec::with_capacity(plen.min(64));
+                        for _ in 0..plen {
+                            path.push(c.u16()?);
+                        }
+                        MirInstr::FieldGet { dst, base, path }
+                    }
+                    OP_FIELD_SET if family.allows_data_tags() => {
+                        let root = c.u32()?;
+                        let plen = c.u16()? as usize;
+                        decode_mem!(plen * 2 + 24, "a field path");
+                        let mut path = Vec::with_capacity(plen.min(64));
+                        for _ in 0..plen {
+                            path.push(c.u16()?);
+                        }
+                        let value = c.u32()?;
+                        MirInstr::FieldSet { root, path, value }
+                    }
+                    OP_AGGREGATE if family.allows_data_tags() => {
+                        let dst = c.u32()?;
+                        let record_ty = c.u32()?;
+                        let nops = c.u16()? as usize;
+                        decode_mem!(nops * 4 + 24, "an aggregate operand table");
+                        let mut operands = Vec::with_capacity(nops.min(1024));
+                        for _ in 0..nops {
+                            operands.push(c.u32()?);
+                        }
+                        MirInstr::Aggregate {
+                            dst,
+                            record_ty,
+                            operands,
+                        }
+                    }
                     other => {
                         return Err(AbcDecodeError::fmt_err(
                             "abc.decode.opcode",
@@ -1033,7 +1392,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     let _ = sidecar_needed;
 
     let owner = OwnerScope {
-        schema: crate::contract::ABC_SCHEMA.to_string(),
+        schema: match family {
+            WireFamily::Core => crate::contract::ABC_SCHEMA.to_string(),
+            WireFamily::Data => crate::contract::ABC_DATA_SCHEMA.to_string(),
+        },
         module: String::new(),
     };
     module.owner = owner;
