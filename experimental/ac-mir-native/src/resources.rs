@@ -43,9 +43,7 @@ impl ManagedLedger {
         let i = part as usize;
         self.current[i] = self.current[i].saturating_add(bytes);
         self.peak[i] = self.peak[i].max(self.current[i]);
-        self.peak_total = self
-            .peak_total
-            .max(self.current.iter().sum::<u64>());
+        self.peak_total = self.peak_total.max(self.current.iter().sum::<u64>());
         self.charges += 1;
     }
 
@@ -84,8 +82,7 @@ impl ManagedLedger {
             if self.peak[i] > PARTITION_CAPS[i] {
                 out.push(format!(
                     "mn.resource.managed-memory: partition `{name}` peak {} > cap {}",
-                    self.peak[i],
-                    PARTITION_CAPS[i]
+                    self.peak[i], PARTITION_CAPS[i]
                 ));
             }
         }
@@ -230,7 +227,12 @@ pub fn sum_direct_children_private_bytes() -> u64 {
                     if !child.is_null() {
                         let mut counters: PROCESS_MEMORY_COUNTERS_EX = std::mem::zeroed();
                         counters.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32;
-                        if GetProcessMemoryInfo(child, &mut counters as *mut _ as *mut _, counters.cb) != 0 {
+                        if GetProcessMemoryInfo(
+                            child,
+                            &mut counters as *mut _ as *mut _,
+                            counters.cb,
+                        ) != 0
+                        {
                             total += counters.PrivateUsage as u64;
                         }
                         CloseHandle(child);

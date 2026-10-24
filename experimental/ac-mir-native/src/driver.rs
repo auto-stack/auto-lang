@@ -238,12 +238,7 @@ impl MnDriver {
                                         // publications: no project tag (a
                                         // tagged put would auto-soft-root
                                         // them and pin every revision).
-                                        cache::put_unit_coff(
-                                            store,
-                                            None,
-                                            &meta,
-                                            &obj.bytes,
-                                        )
+                                        cache::put_unit_coff(store, None, &meta, &obj.bytes)
                                     },
                                 )
                             })?;
@@ -272,7 +267,8 @@ impl MnDriver {
                         emit::emit_unit_coff(unit)
                     })?;
                     emitted_total += obj.bytes.len();
-                    obs.ledger.charge(Partition::Staging, obj.bytes.len() as u64);
+                    obs.ledger
+                        .charge(Partition::Staging, obj.bytes.len() as u64);
                     entry_row = None;
                     bytes = obj.bytes;
                 }

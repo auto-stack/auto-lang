@@ -23,9 +23,7 @@ struct Lcg {
 
 impl Lcg {
     fn new() -> Lcg {
-        Lcg {
-            state: 0x818_5eed,
-        }
+        Lcg { state: 0x818_5eed }
     }
 
     /// Next draw mapped into `[lo, hi]` (inclusive; frozen ranges).
@@ -132,9 +130,7 @@ pub fn generate(revision: i64) -> Workload {
             acc_steps.push(acc);
         }
         let leaf = i % LEAVES + 1;
-        src.push_str(&format!(
-            "    return fn_leaf_{leaf}(acc)\n}}\n\n"
-        ));
+        src.push_str(&format!("    return fn_leaf_{leaf}(acc)\n}}\n\n"));
         let value = leaf_mirror(acc, leaf);
         audits.push(CallerAudit {
             index: i,

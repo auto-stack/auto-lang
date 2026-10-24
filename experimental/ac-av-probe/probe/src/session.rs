@@ -326,6 +326,13 @@ impl PreparedEdit {
     pub fn unit_mir(&self) -> Option<&MirModule> {
         self.unit.as_deref()
     }
+
+    /// The changed function's NEW content version (the canonical body
+    /// dump's content hash) — on a content HIT this is the HISTORICAL
+    /// version the session reused. PLAN-818 T-11 consumer seam.
+    pub fn content_version(&self) -> &str {
+        &self.content_version
+    }
 }
 
 /// Process-wide session counter for unforgeable cross-session candidate
@@ -1493,7 +1500,9 @@ impl FunctionIncrementalSession {
 
     /// The content version of a function's CURRENT code object (its
     /// history entry), if seeded.
-    fn resident_content_version(&self, name: &str) -> Option<String> {
+    /// PLAN-818 T-11 consumer seam: public read of the RESIDENT content
+    /// version (the history key whose entry IS the resident code).
+    pub fn resident_content_version(&self, name: &str) -> Option<String> {
         let rec = self.fns.iter().find(|f| f.name == name)?;
         rec.history
             .iter()

@@ -126,8 +126,7 @@ pub fn link_identities() -> Result<(String, String, String), MnError> {
 /// content binding still goes through `file_identity`, which re-hashes per
 /// process). Set by short-lived worker processes that share a store root;
 /// env overrides always win and are re-read per call.
-static TOOL_DISK_MEMO: std::sync::Mutex<Option<std::path::PathBuf>> =
-    std::sync::Mutex::new(None);
+static TOOL_DISK_MEMO: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
 
 pub fn set_tool_disk_memo(path: std::path::PathBuf) {
     *TOOL_DISK_MEMO.lock().unwrap() = Some(path);
@@ -219,14 +218,25 @@ pub fn link_and_run(
         .map_err(|e| MnError::Infra(format!("create {}: {e}", workdir.display())))?;
     let tag = std::process::id();
     // ---- stage: owned files of THIS call ------------------------------
+    // Content-stable reuse (PLAN-818 T-11/R1): an object file whose staged
+    // bytes are already on disk (same length AND content hash) is NOT
+    // rewritten — warm incremental rounds only restage the units that
+    // changed plus the wrapper. Cold paths stage everything (no files
+    // exist yet); the byte comparison is exact, not a heuristic.
     let mut owned: Vec<PathBuf> = Vec::new();
     let stage: Vec<PathBuf> = std::iter::once(("mn8-ac-start".to_string(), entry_wrapper))
         .chain(objects.iter().map(|o| (o.name.clone(), o.bytes.as_slice())))
         .enumerate()
         .map(|(i, (name, bytes))| {
             let p = workdir.join(format!("{:02}-{}.obj", i, safe_name(&name)));
-            std::fs::write(&p, bytes)
-                .map_err(|e| MnError::Infra(format!("stage {}: {e}", p.display())))?;
+            let unchanged = std::fs::metadata(&p)
+                .map(|m| m.len() == bytes.len() as u64)
+                .unwrap_or(false)
+                && std::fs::read(&p).map(|prev| prev == bytes).unwrap_or(false);
+            if !unchanged {
+                std::fs::write(&p, bytes)
+                    .map_err(|e| MnError::Infra(format!("stage {}: {e}", p.display())))?;
+            }
             owned.push(p.clone());
             Ok(p)
         })

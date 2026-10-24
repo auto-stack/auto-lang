@@ -13,15 +13,15 @@ pub mod cache;
 pub mod config;
 pub mod driver;
 pub mod emit;
-pub mod incremental;
 pub mod fingerprint;
+pub mod incremental;
 pub mod link_driver;
 pub mod lower;
 pub mod observe;
 pub mod resources;
 pub mod symbols;
-pub mod workload;
 pub mod worker;
+pub mod workload;
 
 /// Error taxonomy of the MIR-native backend (contract-decision §7.3).
 #[derive(Debug, Clone, PartialEq, Eq)]

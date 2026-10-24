@@ -71,6 +71,22 @@ default-filter = "test(vm_file_tests::) or test(cookbook_vm_tests::) or test(con
 filter = "test(mir_native_turnaround)"
 test-group = "mn-turnaround"
 
+# PLAN-818 R1: the whole ac_mn_probe_tests module spawns real workers and
+# link trees; the wall-clock gates must not sample under their storms
+# (batch run: gate P95 blown by parallel corpus/adapter legs, 182s FAIL
+# vs 93s solo PASS). One serial group for the module.
+[[profile.default.overrides]]
+filter = "test(ac_mn_probe_tests)"
+test-group = "mn-turnaround"
+
+# PLAN-818 T-11/R1: the body-edit gate's measured calls each warm one
+# D-828 session in a fresh worker process (initialization, single-listed,
+# outside the sample window) — the test's WALL is ~150-200s. Raise its
+# slow-timeout ceiling (default 60s warn / 120s terminate).
+[[profile.default.overrides]]
+filter = "test(mir_native_turnaround_body_edit_gate)"
+slow-timeout = { period = "120s", terminate-after = 4 }
+
 [[profile.default.overrides]]
 filter = "test(test_aavm2_p532_lib_static_diff) or test(test_aavm2_fourpath_runner) or test(test_aavm2_a2r_is_corpus) or test(test_aavm2_m4_codegen_corpus) or test(test_aavm2_m5_engine_corpus) or test(test_aavm2_m2_parser_corpus) or test(test_aavm2_m5_use_corpus) or test(test_aavm2_m4_use_corpus) or test(test_aavm2_m3_typeinfo_corpus) or test(test_aavm2_m1_lexer_corpus) or test(test_aavm2_m3_milestone_fib) or test(test_aavm2_a2r_probe_smoke)"
 test-group = "mem-xl"

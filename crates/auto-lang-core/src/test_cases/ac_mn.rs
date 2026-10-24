@@ -100,7 +100,9 @@ pub fn worker_binary() -> Result<PathBuf, String> {
         ));
     }
     static CACHE: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
-    CACHE.get_or_init(|| locate_worker_exn().map_err(|e| e)).clone()
+    CACHE
+        .get_or_init(|| locate_worker_exn().map_err(|e| e))
+        .clone()
 }
 
 fn locate_worker_exn() -> Result<PathBuf, String> {
@@ -111,7 +113,10 @@ fn locate_worker_exn() -> Result<PathBuf, String> {
                 "mn worker not located: no experimental/ac-mir-native above the crate and no AC_MN_CASE_WORKER override".to_string(),
             );
         };
-        let m = d.join("experimental").join("ac-mir-native").join("Cargo.toml");
+        let m = d
+            .join("experimental")
+            .join("ac-mir-native")
+            .join("Cargo.toml");
         if m.is_file() {
             break m;
         }
@@ -458,6 +463,21 @@ pub fn run_check(
     if !current.is_empty() {
         sessions.push(current);
     }
+    // F-818-R1-03: warm edit sequences (edits, no restart boundary) run
+    // through the D-828 incremental session INSIDE the worker — single
+    // warm-up, single-body edit transactions, per-step real link/run.
+    // Restart-mixed sequences stay on the whole-request session model
+    // (cross-process = the cold scenario; its warm edits are not
+    // incremental and are not labeled so).
+    let has_edit_step = steps
+        .iter()
+        .any(|s| matches!(s, auto_test_case::contract::ProbeStep::EditSource { .. }));
+    let has_restart = steps
+        .iter()
+        .any(|s| matches!(s, auto_test_case::contract::ProbeStep::Restart));
+    if has_edit_step && !has_restart {
+        return run_incremental(case, check, oracle, artifact_dir, mn, steps);
+    }
     let total_runs = steps
         .iter()
         .filter(|s| matches!(s, auto_test_case::contract::ProbeStep::Run))
@@ -547,8 +567,7 @@ pub fn run_check(
                 break 'admit;
             }
             if resp.get("nonce").and_then(|v| v.as_str()) != Some(nonce.as_str())
-                || resp.get("request_hash").and_then(|v| v.as_str())
-                    != Some(request_hash.as_str())
+                || resp.get("request_hash").and_then(|v| v.as_str()) != Some(request_hash.as_str())
             {
                 infra_detail = Some("mn worker nonce/request_hash echo mismatch".to_string());
                 break 'admit;
@@ -657,8 +676,7 @@ pub fn run_check(
                 .unwrap_or("")
                 .to_string();
             if fp.is_empty() {
-                infra_detail =
-                    Some("mn worker success without a manifest fingerprint".to_string());
+                infra_detail = Some("mn worker success without a manifest fingerprint".to_string());
                 break 'admit;
             }
             if let Some(prev) = manifest_by_source.get(&source_sha) {
@@ -858,9 +876,8 @@ pub fn run_check(
             }
         }
     }
-    let judged_spans: Vec<(String, u64)> = judged_record
-        .map(|r| r.spans.clone())
-        .unwrap_or_default();
+    let judged_spans: Vec<(String, u64)> =
+        judged_record.map(|r| r.spans.clone()).unwrap_or_default();
     let judged_counters: Vec<(String, u32)> = judged_record
         .map(|r| r.counters.clone())
         .unwrap_or_default();
@@ -903,5 +920,407 @@ pub fn run_check(
         )),
         artifacts: vec![],
         native: Some(native),
+    })
+}
+
+/// F-818-R1-03: the formal INCREMENTAL path — the worker warms one D-828
+/// session on the case source and applies the edit steps as single-body
+/// transactions. Parent-side admission beyond the whole-request path:
+/// every edit step must be TRULY incremental (no unaffected-function
+/// stage work, no whole-module stage, no recorded fallback, no refusal)
+/// and every step really links and runs; the judged value is the LAST
+/// step's PE exit. The receipt carries the per-step records (the
+/// identity/stage evidence the review required).
+fn run_incremental(
+    case: &ResolvedCase,
+    _check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    artifact_dir: &Path,
+    mn: &auto_test_case::contract::ProbeMnSpec,
+    steps: &[auto_test_case::contract::ProbeStep],
+) -> Result<Verdict, String> {
+    use auto_test_case::contract::{Completion, Stage};
+
+    let started = Instant::now();
+    if case.spec.source.syntax != auto_test_case::contract::Syntax::Auto {
+        return Err(format!(
+            "{MN_RECIPE} consumes .at sources; syntax {:?} is not accepted",
+            case.spec.source.syntax.as_str()
+        ));
+    }
+    let input_bytes = case
+        .files
+        .first()
+        .map(|f| f.bytes.clone())
+        .ok_or_else(|| "probe adapter needs the resolved entry input".to_string())?;
+    let store_root = match &mn.session {
+        Some(id) => {
+            let base = std::env::var("AC_MN_SESSION_ROOT")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| std::env::temp_dir());
+            std::fs::create_dir_all(&base).map_err(|e| format!("session root: {e}"))?;
+            base.join(format!("mn818-inc-{id}"))
+        }
+        None => artifact_dir.join("mn-inc-store"),
+    };
+    std::fs::create_dir_all(&store_root).map_err(|e| format!("inc store root: {e}"))?;
+    std::fs::create_dir_all(artifact_dir).map_err(|e| format!("mn artifact dir: {e}"))?;
+    let workdir = artifact_dir.join("mn-inc-work");
+
+    let mut steps_json: Vec<serde_json::Value> = Vec::with_capacity(steps.len());
+    for st in steps {
+        match st {
+            auto_test_case::contract::ProbeStep::EditSource { from, to } => {
+                steps_json.push(serde_json::json!({ "op": "edit-source", "from": from, "to": to }));
+            }
+            auto_test_case::contract::ProbeStep::Run => {
+                steps_json.push(serde_json::json!({ "op": "run" }));
+            }
+            other => {
+                return Err(format!(
+                    "{MN_RECIPE} incremental path does not take {other:?} steps"
+                ));
+            }
+        }
+    }
+    let nonce = hex(&sha256(
+        format!("{}|{:?}|mn-inc", std::process::id(), started).as_bytes(),
+    ));
+    let mut request = serde_json::json!({
+        "recipe": MN_RECIPE,
+        "nonce": nonce,
+        "source_b64": b64(&input_bytes),
+        "entry": mn.entry,
+        "caps": mn.caps,
+        "store_root": store_root.display().to_string().replace('/', "\\"),
+        "workdir": workdir.display().to_string().replace('/', "\\"),
+        "steps": steps_json,
+    });
+    let request_hash = hex(&sha256(request.to_string().as_bytes()));
+    request["request_hash"] = serde_json::json!(request_hash);
+
+    let worker_started = Instant::now();
+    let resp_result = call_worker(&request.to_string());
+    let worker_us = worker_started.elapsed().as_micros() as u64;
+    let exe_sha = worker_file_sha256(&worker_binary()?)?;
+
+    let mut infra_detail: Option<String> = None;
+    let mut diag: Option<(String, String)> = None;
+    let mut exit_code: Option<i32> = None;
+    let mut step_records: Vec<serde_json::Value> = Vec::new();
+    let mut whole_fallback = false;
+    let mut resp_manifest_fp = String::new();
+
+    'admit: {
+        let resp = match resp_result {
+            Ok(r) => serde_json::from_str::<serde_json::Value>(&r)
+                .map_err(|e| format!("bad mn worker response ({e}): {r:.200}")),
+            Err(e) => Err(e),
+        };
+        let resp = match resp {
+            Ok(r) => r,
+            Err(e) => {
+                infra_detail = Some(e);
+                break 'admit;
+            }
+        };
+        if resp.get("schema").and_then(|v| v.as_str()) != Some(MN_WORKER_PROTOCOL) {
+            infra_detail = Some("mn worker schema mismatch".to_string());
+            break 'admit;
+        }
+        if resp.get("nonce").and_then(|v| v.as_str()) != Some(nonce.as_str())
+            || resp.get("request_hash").and_then(|v| v.as_str()) != Some(request_hash.as_str())
+        {
+            infra_detail = Some("mn worker nonce/request_hash echo mismatch".to_string());
+            break 'admit;
+        }
+        let Some(ok) = resp.get("ok") else {
+            let e = resp.get("error");
+            infra_detail = Some(format!(
+                "mn worker error: {}",
+                e.map(|v| v.to_string()).unwrap_or_else(|| "missing".into())
+            ));
+            break 'admit;
+        };
+        if ok.get("recipe").and_then(|v| v.as_str()) != Some(MN_RECIPE) {
+            infra_detail = Some("mn worker recipe mismatch".to_string());
+            break 'admit;
+        }
+        if ok.get("worker_version").and_then(|v| v.as_str()) != Some(EXPECTED_MN_WORKER_VERSION) {
+            infra_detail = Some("mn worker version mismatch".to_string());
+            break 'admit;
+        }
+        if ok.get("mn_abi").and_then(|v| v.as_str()) != Some("msvc-x64/priv-i32-bool-v1") {
+            infra_detail = Some("mn worker ABI axis mismatch".to_string());
+            break 'admit;
+        }
+        if ok.get("warm_edit_fallback").and_then(|v| v.as_bool()) == Some(true) {
+            // The syntax-increment engine could not converge on an edit
+            // shape: the worker fell back to the WHOLE-REQUEST path (a
+            // legal edit, recorded). Admit it under the whole-request
+            // contract (real link/run + manifest identity) and JUDGE the
+            // single PE result; the receipt labels the fallback.
+            let link = ok
+                .get("counters")
+                .and_then(|c| c.get("link_invocations"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let run = ok
+                .get("counters")
+                .and_then(|c| c.get("run_invocations"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            if link < 1 || run < 1 {
+                infra_detail =
+                    Some("fallback run violates the always-execute contract".to_string());
+                break 'admit;
+            }
+            let fp = ok.get("manifest_fp").and_then(|v| v.as_str()).unwrap_or("");
+            if fp.is_empty() {
+                infra_detail = Some("fallback success without a manifest fingerprint".to_string());
+                break 'admit;
+            }
+            exit_code = ok
+                .get("exit_code")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32);
+            if exit_code.is_none() {
+                infra_detail = Some("no judged exit in the fallback response".to_string());
+                break 'admit;
+            }
+            whole_fallback = true;
+            resp_manifest_fp = ok
+                .get("manifest_fp")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            break 'admit;
+        }
+        if ok.get("incremental").and_then(|v| v.as_bool()) != Some(true) {
+            infra_detail = Some("incremental path did not engage".to_string());
+            break 'admit;
+        }
+        if let Some(d) = resp.get("diagnostic") {
+            let code = d
+                .get("code")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?")
+                .to_string();
+            if code.starts_with("mn.incremental.refused") {
+                // A REFUSED warm edit (e.g. an interface change inside the
+                // steps) is an infra non-verdict for the formal path —
+                // never blessed as a language result.
+                infra_detail = Some(format!(
+                    "warm edit refused by the session: {}",
+                    d.get("message").and_then(|v| v.as_str()).unwrap_or("")
+                ));
+                break 'admit;
+            }
+            diag = Some((
+                code,
+                d.get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            ));
+            break 'admit;
+        }
+        let Some(recs) = ok.get("steps").and_then(|v| v.as_array()) else {
+            infra_detail = Some("incremental response without step records".to_string());
+            break 'admit;
+        };
+        step_records = recs.clone();
+        // Parent-side INCREMENTALITY admission: every edit step is truly
+        // incremental; every step really linked and ran (the last record's
+        // exit is a real PE execution).
+        for (i, rec) in recs.iter().enumerate() {
+            if rec.get("infra").map(|v| !v.is_null()) == Some(true) {
+                infra_detail = Some(format!("step {i} infra: {:?}", rec.get("infra")));
+                break 'admit;
+            }
+            if rec.get("op").and_then(|v| v.as_str()) == Some("edit-source") {
+                let unaffected = rec
+                    .get("unaffected_stage_delta")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let whole = rec
+                    .get("whole_module_stage_delta")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let fallback = rec
+                    .get("fallback_whole_lower")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let refused = rec.get("refused").map(|v| !v.is_null()) == Some(true);
+                if refused || unaffected != 0 || whole != 0 || fallback != 0 {
+                    infra_detail = Some(format!(
+                        "edit step {i} violates the incremental contract (refused={refused}, unaffected={unaffected}, whole={whole}, fallback={fallback})"
+                    ));
+                    break 'admit;
+                }
+            }
+        }
+        exit_code = recs
+            .last()
+            .and_then(|r| r.get("exit_code"))
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32);
+        if exit_code.is_none() {
+            infra_detail = Some("no judged exit in the incremental response".to_string());
+            break 'admit;
+        }
+    }
+
+    if let Some(e) = infra_detail {
+        return Ok(Verdict {
+            status: Status::Error,
+            mismatches: vec![Mismatch {
+                observation: "worker".into(),
+                kind: "infra".into(),
+                expected: "a contained incremental worker session".into(),
+                actual: e,
+                first_diff: None,
+            }],
+            detail: Some(format!("{MN_RECIPE}: infra failure (incremental)")),
+            artifacts: vec![],
+            native: None,
+        });
+    }
+
+    // ---- parent-side judgement (the same faces as the whole-request
+    // path; the judged value is the LAST step's PE exit).
+    let mut mismatches: Vec<Mismatch> = Vec::new();
+    if let Some((code, message)) = &diag {
+        let stage = if code.starts_with("mn.unsupported.frontend")
+            || code.starts_with("mn.unsupported.input")
+        {
+            Stage::Parse
+        } else {
+            Stage::Verify
+        };
+        match &oracle.completion {
+            Completion::Error {
+                stage: want_stage,
+                code: want_code,
+                ..
+            } => {
+                if want_stage != &stage {
+                    mismatches.push(Mismatch {
+                        observation: "stage".into(),
+                        kind: "stage".into(),
+                        expected: format!("{want_stage:?}"),
+                        actual: format!("{stage:?}"),
+                        first_diff: None,
+                    });
+                }
+                if let Some(want) = want_code {
+                    if want != code {
+                        mismatches.push(Mismatch {
+                            observation: "code".into(),
+                            kind: "code".into(),
+                            expected: want.clone(),
+                            actual: code.clone(),
+                            first_diff: None,
+                        });
+                    }
+                }
+            }
+            other => {
+                mismatches.push(Mismatch {
+                    observation: "completion".into(),
+                    kind: "outcome".into(),
+                    expected: format!("{other:?}"),
+                    actual: format!("diagnosed {code}: {message}"),
+                    first_diff: None,
+                });
+            }
+        }
+    } else {
+        match &oracle.completion {
+            Completion::Success => {
+                if let Some(want) = oracle.exit {
+                    if exit_code != Some(want) {
+                        mismatches.push(Mismatch {
+                            observation: "exit".into(),
+                            kind: "exit".into(),
+                            expected: format!("{want}"),
+                            actual: format!("{exit_code:?}"),
+                            first_diff: None,
+                        });
+                    }
+                } else if exit_code.is_none() {
+                    mismatches.push(Mismatch {
+                        observation: "exit".into(),
+                        kind: "missing".into(),
+                        expected: "a real PE exit code".into(),
+                        actual: "none".into(),
+                        first_diff: None,
+                    });
+                }
+            }
+            Completion::Error { stage, .. } => {
+                mismatches.push(Mismatch {
+                    observation: "completion".into(),
+                    kind: "outcome".into(),
+                    expected: format!("{stage:?} rejection"),
+                    actual: format!("success exit {exit_code:?}"),
+                    first_diff: None,
+                });
+            }
+        }
+    }
+
+    let request_wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+    // The whole-request fallback's manifest identity rides the receipt
+    // when present (the true incremental shape has none by design).
+    let manifest_fp = resp_manifest_fp.as_str();
+    let receipt = serde_json::json!({
+        "recipe": MN_RECIPE,
+        "protocol": MN_WORKER_PROTOCOL,
+        "incremental": !whole_fallback,
+        "warm_edit_fallback": whole_fallback,
+        "exit_code": exit_code,
+        "manifest_fp": manifest_fp,
+        "steps": step_records,
+        "worker_us": worker_us,
+        "request_wall_ms": request_wall_ms,
+        "toolchain": {
+            "recipe": MN_RECIPE,
+            "mn-worker-exe-sha256": exe_sha,
+        },
+    });
+    std::fs::write(
+        artifact_dir.join("mn-probe-receipt.json"),
+        serde_json::to_string_pretty(&receipt).unwrap_or_default(),
+    )
+    .map_err(|e| format!("write receipt: {e}"))?;
+
+    let status = if mismatches.is_empty() {
+        Status::Pass
+    } else {
+        Status::Fail
+    };
+    Ok(Verdict {
+        status,
+        mismatches,
+        detail: Some(format!(
+            "{MN_RECIPE}: incremental run judged (exit {exit_code:?}); receipt mn-probe-receipt.json"
+        )),
+        artifacts: vec![],
+        native: Some(NativeRecord {
+            exit_code,
+            stage_spans: vec![
+                ("worker_us".to_string(), worker_us),
+                ("request_wall_ms".to_string(), request_wall_ms as u64),
+            ],
+            cache_mode: None,
+            cache_hits: vec![],
+            counters: vec![],
+            toolchain: vec![
+                ("recipe".to_string(), MN_RECIPE.to_string()),
+                ("mn-worker-exe-sha256".to_string(), exe_sha),
+            ],
+            gaps: vec![],
+        }),
     })
 }

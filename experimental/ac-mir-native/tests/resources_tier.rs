@@ -18,9 +18,7 @@ use ac_artifact_probe::store::{
 use ac_mn::cache::{get_unit_coff, put_unit_coff, unit_fp, CoffMeta};
 use ac_mn::driver::MnDriver;
 use ac_mn::link_driver::{link_and_run, ObjectInput};
-use ac_mn::resources::{
-    raw_gate, RawSample, TreePeakSampler, MANAGED_TOTAL_CAP, PARTITION_CAPS,
-};
+use ac_mn::resources::{raw_gate, RawSample, TreePeakSampler, MANAGED_TOTAL_CAP, PARTITION_CAPS};
 use ac_mn::{emit, worker, MnError};
 
 fn temp_root(tag: &str) -> std::path::PathBuf {
@@ -303,7 +301,10 @@ fn mir_native_resources_cold_set_churn_gc_convergence() {
         "cold set is {} MiB, below the frozen ≥32 MiB duty",
         filled_bytes / MIB
     );
-    assert!(store.space().total > GC_HIGH, "store over the high watermark");
+    assert!(
+        store.space().total > GC_HIGH,
+        "store over the high watermark"
+    );
     assert_eq!(hashes.len(), filled.len(), "every COFF byte-distinct");
 
     // ---- random read-only restore of ONE function object ----------------
@@ -314,12 +315,18 @@ fn mir_native_resources_cold_set_churn_gc_convergence() {
         ^ (std::process::id() as u64) << 16;
     let pick = (seed % filled.len() as u64) as usize;
     let (meta_pick, bytes_pick) = &filled[pick];
-    let restored = get_unit_coff(&store, meta_pick).expect("random read").expect("present");
+    let restored = get_unit_coff(&store, meta_pick)
+        .expect("random read")
+        .expect("present");
     assert_eq!(
         restored, *bytes_pick,
         "random read-only restore binds byte-identically (sha admission)"
     );
-    eprintln!("random cold read: unit {} ({} B) admitted", meta_pick.unit, bytes_pick.len());
+    eprintln!(
+        "random cold read: unit {} ({} B) admitted",
+        meta_pick.unit,
+        bytes_pick.len()
+    );
 
     // ---- 512 real edit/re-key/result rounds on the SAME store -----------
     let sp_before_churn = store.space().total;
@@ -380,7 +387,11 @@ fn mir_native_resources_cold_set_churn_gc_convergence() {
     assert!(rc.ran, "GC must actually run over the high watermark");
     assert!(rc.deleted_chunks >= 1, "at least one PHYSICAL deletion");
     assert!(rc.freed_bytes > 0);
-    assert!(rc.backoff.is_none(), "no live overage: {}", rc.backoff.unwrap_or_default());
+    assert!(
+        rc.backoff.is_none(),
+        "no live overage: {}",
+        rc.backoff.unwrap_or_default()
+    );
     let sp_after_gc = store.space().total;
     assert!(
         sp_after_gc <= GC_LOW,
@@ -394,14 +405,21 @@ fn mir_native_resources_cold_set_churn_gc_convergence() {
         .get_artifact_by_id(&sentinel_id)
         .expect("sentinel get")
         .expect("sentinel survived GC");
-    assert_eq!(sentinel_after.payload, sentinel_payload, "sentinel bytes untouched");
+    assert_eq!(
+        sentinel_after.payload, sentinel_payload,
+        "sentinel bytes untouched"
+    );
 
     // Leased closure: the superseded round-510 manifest and its units
     // survived on the lease alone; restoring runs its PE result again.
     let out = worker::restore_run_by_id(&root, &leased_manifest, &root.join("leased"), None)
         .expect("leased closure restores and runs");
     let (_, want510) = churn_gen(510);
-    assert_eq!(out.exit_code, Some(want510), "leased closure result identical");
+    assert_eq!(
+        out.exit_code,
+        Some(want510),
+        "leased closure result identical"
+    );
 
     // Unreachable cache data is REALLY gone: watermark GC deletes
     // oldest-first down TO the low watermark, so the store's very first
@@ -425,9 +443,15 @@ fn mir_native_resources_cold_set_churn_gc_convergence() {
     // the formerly-leased manifest is gone and its restore becomes a
     // controlled rejection.
     lease.release();
-    let rc2 = run_gc(&store, ac_artifact_probe::store::GcConfig { high: 0, low: 0 })
-        .expect("gc 2 (full reclaim seam)");
-    assert!(rc2.deleted_chunks >= 1, "full reclaim deletes the released closure");
+    let rc2 = run_gc(
+        &store,
+        ac_artifact_probe::store::GcConfig { high: 0, low: 0 },
+    )
+    .expect("gc 2 (full reclaim seam)");
+    assert!(
+        rc2.deleted_chunks >= 1,
+        "full reclaim deletes the released closure"
+    );
     match worker::restore_run_by_id(&root, &leased_manifest, &root.join("released"), None) {
         Err(MnError::Admit(kind, _)) => assert_eq!(kind, "manifest"),
         other => panic!("released closure must be gone: {other:?}"),
@@ -478,7 +502,13 @@ fn mir_native_resources_deep_cfg_budget_sides() {
     }
     src.push_str("    return acc\n}\n\nfn main() int {\n    return deep(9)\n}\n");
     let mut d = MnDriver::ephemeral();
-    let r = d.request(&src, "d_main", &[], &temp_root("deep-under").join("w"), None);
+    let r = d.request(
+        &src,
+        "d_main",
+        &[],
+        &temp_root("deep-under").join("w"),
+        None,
+    );
     assert!(r.ok, "deep-CFG under budget failed: {:?}", r.error);
     assert_eq!(r.exit_code, Some(5), "9 -> 7 -> 5, guards then false");
 
@@ -511,8 +541,17 @@ fn mir_native_resources_deep_cfg_budget_sides() {
         wide.push_str("    if acc > 5 {\n        acc = acc - 2\n    }\n");
     }
     wide.push_str("    return acc\n}\n\nfn main() int {\n    return wide(9)\n}\n");
-    let r3 = d.request(&wide, "d_main", &[], &temp_root("deep-over2").join("w"), None);
-    assert!(!r3.ok, "block-heavy module over the analysis budget must be rejected");
+    let r3 = d.request(
+        &wide,
+        "d_main",
+        &[],
+        &temp_root("deep-over2").join("w"),
+        None,
+    );
+    assert!(
+        !r3.ok,
+        "block-heavy module over the analysis budget must be rejected"
+    );
     let msg3 = r3.error.as_ref().expect("error").message();
     assert!(
         msg3.contains("av.resource.verify-memory") || msg3.contains("av.resource."),
@@ -576,7 +615,10 @@ fn mir_native_resources_transient_spike_sampler_and_raw_gate() {
         bytes: 4096,
         ok: false,
     }];
-    assert!(!raw_gate(&failed).is_empty(), "a failed sample never passes");
+    assert!(
+        !raw_gate(&failed).is_empty(),
+        "a failed sample never passes"
+    );
     assert!(!raw_gate(&[]).is_empty(), "missing raw never passes");
 }
 
@@ -607,7 +649,10 @@ fn mir_native_resources_over_cap_cleanup() {
         Err(MnError::Resource(kind, msg)) => {
             assert_eq!(kind, "link-input", "{msg}");
         }
-        other => panic!("over-cap link inputs must Resource-reject: {:?}", other.map(|_| ())),
+        other => panic!(
+            "over-cap link inputs must Resource-reject: {:?}",
+            other.map(|_| ())
+        ),
     }
     let leftovers: Vec<_> = std::fs::read_dir(&workdir)
         .expect("workdir")

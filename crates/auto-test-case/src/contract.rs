@@ -1748,7 +1748,11 @@ fn decode_options(
                         None => None,
                         Some(v) => Some(as_str(v, &mf.path_of("session"))?.to_string()),
                     };
-                    Some(ProbeMnSpec { entry, caps, session })
+                    Some(ProbeMnSpec {
+                    entry,
+                    caps,
+                    session,
+                })
                 }
             };
 

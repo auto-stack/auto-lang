@@ -86,13 +86,13 @@ switch ($Scope) {
         # (measured). Heavy tiers go last.
         Run-Workspace-Tests "first_case" "first-case"
         Run-Runner-Tests "test(mir_native_turnaround)" "turnaround-formal"
+        Run-Workspace-Tests "incremental_tier" "incremental-d828"
         Run-Workspace-Tests "codegen_tier" "semantics-codegen"
         Run-Workspace-Tests "parity_tier" "semantics-parity"
         Run-Workspace-Tests "cache_tier" "cache-units"
         Run-Workspace-Tests "transaction_tier" "cache-transactions"
         Run-Runner-Tests 'test(/ac_mn_probe_corpus|ac_mn_probe_negative|ac_mn_probe_decode|mir_native_adapter/)' "autodown"
         Run-Workspace-Tests "turnaround_tier" "turnaround-driver"
-        Run-Workspace-Tests "incremental_tier" "incremental-d828"
         Run-Workspace-Tests "resources_tier" "resources-scale"
     }
     "closeout" {
@@ -100,13 +100,13 @@ switch ($Scope) {
         # (same ordering rationale as acceptance).
         Run-Workspace-Tests "first_case" "first-case"
         Run-Runner-Tests "test(mir_native_turnaround)" "turnaround-formal"
+        Run-Workspace-Tests "incremental_tier" "incremental-d828"
         Run-Workspace-Tests "codegen_tier" "semantics-codegen"
         Run-Workspace-Tests "parity_tier" "semantics-parity"
         Run-Workspace-Tests "cache_tier" "cache-units"
         Run-Workspace-Tests "transaction_tier" "cache-transactions"
         Run-Runner-Tests 'test(/ac_mn_probe_corpus|ac_mn_probe_negative|ac_mn_probe_decode|mir_native_adapter/)' "autodown"
         Run-Workspace-Tests "turnaround_tier" "turnaround-driver"
-        Run-Workspace-Tests "incremental_tier" "incremental-d828"
         Run-Workspace-Tests "resources_tier" "resources-scale"
     }
 }
