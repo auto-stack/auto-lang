@@ -28,7 +28,7 @@ affects: [auto-graphics, authoring-experimental, user-behavior-api]
 
 ## 0. 变更摘要
 
-当前archived11/12：最终R2、冻结1f完整63门及根仓日常5332/语料163、最终规范后继Git身份门通过；autographics-dev已快进`8b62db5cba54b9bfe7f759f4920b22ccb9b75e88`，master仅合canonical SDK四文件修复`0676dc13398f27655b4ecc1c34f70a7e95374736`及知识/归档，未带图形源码。规范/ledger79已写入，归档提交、fresh guard清树和840到期批量回归仍pending，T10完成前不宣称最终merge pass。详[合入收据](../attachments/840/merge-r1/receipt.md)。
+当前archived11/12：完整63门、root5332/163及最终delivery身份门通过，source/SDK/canonical/ledger79/归档均已提交；840工作树、开发分支和只读auto-down树已fresh guard安全移除。当前仅编号840触发的主检出单实例批量回归及最终收据待完成；未冒称12/12。详[合入收据](../attachments/840/merge-r1/receipt.md)。
 
 839建立“编辑→运行→停止恢复”，但产品只运行内置Auto行为。下一步让开发者**编写自己的单文件`.at`行为，仅调用最小公共API，选择现有场景运行；修改脚本后Stop/Run看到新行为，无需改Rust或复制profile内部协议**。
 
@@ -231,7 +231,7 @@ final review后merge冻结提交统一跑完整locked driver/AGP test+build、�
 
 ## 8. 执行步骤
 
-当前archived11/12；T01/01a/01b/T02..09关闭。T10完整63门、根仓日常/语料、source快进、SDK规范修复及canonical/ledger写入通过；归档/知识提交、fresh guard清理和840到期批量回归仍pending。以下历史状态不覆盖本段。
+当前archived11/12；T01/01a/01b/T02..09关闭。T10完整门/实际源码与SDK合入/规范台账/归档提交/fresh guard移树与删分支已完成；仅840到期主检出批量回归及最终跟踪提交pending。历史状态不覆盖本段。
 
 | task_id | owner_stage | 依赖 | 实际触点／新路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -249,6 +249,8 @@ final review后merge冻结提交统一跑完整locked driver/AGP test+build、�
 | T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出知识/ledger/archive/guard | AC-10实际门/落点/沉淀/清理/到期，改代码先受影响复审再重冻，不提前交付 |
 
 ## 9. 复审记录
+
+2026-10-24：stage:merge | PLAN-840:r2 | outcome:in_progress | checkpoint:cleaned | source:autographics-dev@8b62db5cb；SDK master0676dc133；archive/knowledge commit e6371606b | final-guard/down-final-guard均clean，lang840两Git树及plan-840-dev开发分支已实际移除（落地祖先验证+expected-SHA CAS）；独立standalone消费者/复现文件保留，组目录非空不删。实际安装入口debug auto.exe已重建并经真实VM注释/backtick假依赖烟测通过；其他production artifacts按路径/构建日期观察，未冒称部署。仅840 modulo5批量回归及最终状态提交待完成，T10仍pending；见[清理](../attachments/840/merge-r1/cleanup-operations.json.txt)与[产物](../attachments/840/merge-r1/production-artifacts.json.txt)。
 
 2026-10-24：stage:merge | PLAN-840:r2 | outcome:in_progress | checkpoint:landed/ledger_refreshed，archive_commit/cleaned/batch pending | reviewed_commit:1f19395254d7e676bd188e43e3d8f734d57aaa12 | delivery_commit:8b62db5cba54b9bfe7f759f4920b22ccb9b75e88（仅canonical/ledger后继，implementation/deps/config未变）| source_branch:autographics-dev fast-forward | SDK master:0676dc13398f27655b4ecc1c34f70a7e95374736，精确四文件patch-id相同 | 完整63有效入口、16AGP/两道合成门、旧双游戏/创作/层级/资产/Play/owner/partial/reopen、producer/consumer各13用户场景、root5332/163全部通过；最终消费者原生产物重冻后全受影响native族重跑。AGP2x采用PID绑定DPIaware真实OS输入夹具，原点击/重绘/resize/计数及内容断言保持，原失败未冒称通过。台账78→79仅11目标且无关raw项/顶层原样，canonical8目标和module/goals/INDEX回写通过。规范与归档提交/清树/到期回归仍待，未宣称最终merge pass。见[收据](../attachments/840/merge-r1/receipt.md)、[逐报告审计](../attachments/840/merge-r1/validated.json.txt)。
 
