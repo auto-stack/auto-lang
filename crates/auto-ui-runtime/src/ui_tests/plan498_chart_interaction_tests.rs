@@ -103,7 +103,10 @@ mod plan498_charts {
         // 驱动泵至静默（生产=帧通知泵）再重建，dump 反映 Init 完成态；首轮
         // 后 demand 已终态，驱动零开销。
         let _ = dc.view_with_debug_gated(true);
-        dc.drive_scheduler_to_quiescence(10_000);
+        dc.drive_test_to_completion(
+            "plan498_chart_interaction_tests",
+            std::time::Duration::from_secs(30),
+        );
         let (view, _, _) = dc.view_with_debug_gated(true);
         format!("{:?}", view)
     }

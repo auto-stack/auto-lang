@@ -103,7 +103,10 @@ mod plan499_axispointer {
         // 驱动泵至静默（生产=帧通知泵）再重建，dump 反映 Init 完成态；首轮
         // 后 demand 已终态，驱动零开销。
         let _ = dc.view_with_debug_gated(true);
-        dc.drive_scheduler_to_quiescence(10_000);
+        dc.drive_test_to_completion(
+            "plan499_pointer_stream_tests",
+            std::time::Duration::from_secs(30),
+        );
         let (view, _, _) = dc.view_with_debug_gated(true);
         format!("{:?}", view)
     }
@@ -187,7 +190,10 @@ mod plan499_axispointer {
         // PLAN-711 T-05 契约迁移：pending demand 首建产出骨架占位，驱动至
         // 终态后重建断言真实子树。
         let _ = dc.view_with_debug_gated(true);
-        dc.drive_scheduler_to_quiescence(10_000);
+        dc.drive_test_to_completion(
+            "plan499_pointer_stream_tests",
+            std::time::Duration::from_secs(30),
+        );
         let (view, _, _) = dc.view_with_debug_gated(true);
         let dump = format!("{:?}", view);
         assert!(
@@ -218,7 +224,10 @@ mod plan499_donut_sector {
         // 驱动泵至静默（生产=帧通知泵）再重建，dump 反映 Init 完成态；首轮
         // 后 demand 已终态，驱动零开销。
         let _ = dc.view_with_debug_gated(true);
-        dc.drive_scheduler_to_quiescence(10_000);
+        dc.drive_test_to_completion(
+            "plan499_pointer_stream_tests",
+            std::time::Duration::from_secs(30),
+        );
         let (view, _, _) = dc.view_with_debug_gated(true);
         format!("{:?}", view)
     }
@@ -309,7 +318,10 @@ mod plan499_anim {
         // PLAN-711 T-03 契约迁移：先构建（登记 chart Init demand）并驱动泵
         // 至静默，chart 状态达到 Init 完成基线后再做交互断言。
         let _ = dc.view_with_debug_gated(true);
-        dc.drive_scheduler_to_quiescence(10_000);
+        dc.drive_test_to_completion(
+            "plan499_pointer_stream_tests",
+            std::time::Duration::from_secs(30),
+        );
         let read = |dc: &mut crate::ui::dynamic::DynamicComponent, f: &str| {
             dc.bridge_mut().read_state(f).unwrap()
         };
@@ -387,7 +399,10 @@ mod plan499_anim {
         // PLAN-711 T-03 契约迁移：先构建（登记 chart Init demand）并驱动泵
         // 至静默，chart 状态达到 Init 完成基线后再做交互断言。
         let _ = dc.view_with_debug_gated(true);
-        dc.drive_scheduler_to_quiescence(10_000);
+        dc.drive_test_to_completion(
+            "plan499_pointer_stream_tests",
+            std::time::Duration::from_secs(30),
+        );
         let read = |dc: &mut crate::ui::dynamic::DynamicComponent, f: &str| {
             dc.bridge_mut().read_state(f).unwrap()
         };

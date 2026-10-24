@@ -459,3 +459,35 @@ pub fn drive_parked_segments(
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 }
+
+// PLAN-840 Phase 3: synchronous tests have no production frame loop. A single
+// scheduler call is not a completion signal (D-762-1); render can expose more
+// child Init demand. Keep production scheduling unchanged and drive the real
+// component until its observable work is terminal, with a bounded deadline.
+impl DynamicComponent {
+    pub(crate) fn drive_test_to_completion(&mut self, label: &str, deadline: std::time::Duration) {
+        let started = std::time::Instant::now();
+        loop {
+            let _ = self.view_with_debug_gated(true);
+            if !(self.has_pending_init_work()
+                || self.has_cpu_continuations()
+                || self.has_parked_io_tasks())
+            {
+                return;
+            }
+            assert!(
+                started.elapsed() < deadline,
+                "{label}: component work did not complete within {deadline:?} (pending_init={} cpu_cont={} parked_total={})",
+                self.bridge_mut().pending_init_demand_count(),
+                self.bridge_mut().cpu_continuation_count(),
+                self.bridge_mut().parked_count(),
+            );
+            // Check the deadline between rounds rather than burying it inside a
+            // 10,000-round call. Unready I/O must not spin a test core forever.
+            self.drive_scheduler_to_quiescence(1);
+            if self.has_parked_io_tasks() {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
+    }
+}

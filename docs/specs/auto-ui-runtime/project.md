@@ -123,3 +123,14 @@
 进程级解法;宿主经 RunIo 每请求精确 env 传会话上下文,行 `q` 经
 request_host_exit 干净收口)。托管形态取消/EOF 终止整 owned 树并
 有界收尸。（PLAN-815 M815-B，T-09 R2 pass @ 生产冻结位 0f2858e35；终稿正文与证据：attachments/815/handoff.md §规范增量）
+
+## PLAN-840：同步测试的完成态
+
+无 iced 帧循环的同步载体，在读取 Init 派生几何或交互终态前，须通过真实
+DynamicComponent 泵续跑 Init/CPU/I/O，并重建视图登记下层 demand，直到工作
+终态；单次 drive_scheduler_to_quiescence 不等于完成。共享 test-only 驱动逐轮
+检查有界截止时间，pending 超时必须失败；所有原几何/交互断言保持。多片 Init
+早退及真实几何完成的对照与 pending 截止时间反控永久保留。
+
+该约束只修正测试载体，未修改生产 dynamic.rs 或 VM 调度。D-762-1 的生产
+helper 债及其单独授权约束保持，不冒称本计划清偿了生产 helper。

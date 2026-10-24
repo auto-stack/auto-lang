@@ -235,6 +235,36 @@ widget ChildSpin (spins: int = 0) {
         );
     }
 
+    // The shared fixture must complete the SAME deterministic multi-slice
+    // workload that defeats a single production-helper call. Geometry is the
+    // original hand-computed observable, not a new completion counter.
+    #[cfg(all(feature = "ui-interpreter", feature = "ui-iced"))]
+    #[test]
+    fn shared_completion_drives_multislice_geometry() {
+        let mut dc = build_inline(SRC_SPIN);
+        dc.fire_init();
+        let _ = dc.view_with_debug_gated(true);
+        dc.drive_scheduler_to_quiescence(10_000);
+        assert!(dc.has_pending_init_work() || dc.has_cpu_continuations());
+        dc.drive_test_to_completion("shared multi-slice", std::time::Duration::from_secs(30));
+        let (view, _, _) = dc.view_with_debug_gated(true);
+        assert!(format!("{view:?}").contains("M 250040 260"));
+    }
+
+    #[cfg(all(feature = "ui-interpreter", feature = "ui-iced"))]
+    #[test]
+    fn shared_completion_deadline_rejects_pending_work() {
+        let mut dc = build_inline(SRC_SPIN);
+        dc.fire_init();
+        let _ = dc.view_with_debug_gated(true);
+        assert!(dc.has_pending_init_work() || dc.has_cpu_continuations());
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            dc.drive_test_to_completion("pending deadline control", std::time::Duration::ZERO);
+        }));
+        assert!(result.is_err(), "pending work must fail a zero deadline");
+        assert!(dc.has_pending_init_work() || dc.has_cpu_continuations());
+    }
+
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn child_init_fires_during_render() {

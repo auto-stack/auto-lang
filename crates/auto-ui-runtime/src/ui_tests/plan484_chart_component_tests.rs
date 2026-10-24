@@ -20,7 +20,10 @@ mod plan484_smoke {
         dc.set_route("/");
         // PLAN-711 T-03 契约迁移：构建登记 Init demand，驱动至静默后重建。
         let _ = dc.view_with_debug_gated(true);
-        dc.drive_scheduler_to_quiescence(10_000);
+        dc.drive_test_to_completion(
+            "plan484_chart_component_tests",
+            std::time::Duration::from_secs(30),
+        );
         let (view, _, _) = dc.view_with_debug_gated(true);
         let dump = format!("{:?}", view);
         assert!(dump.contains("svgdoc:"), "line chart svg must render");
@@ -57,7 +60,10 @@ mod plan484_smoke {
         }
         // PLAN-711 T-03 契约迁移：构建登记 chart Init demand，驱动至静默后重建。
         let _ = dc.view_with_debug_gated(true);
-        dc.drive_scheduler_to_quiescence(10_000);
+        dc.drive_test_to_completion(
+            "plan484_chart_component_tests",
+            std::time::Duration::from_secs(30),
+        );
         let (view, _, _) = dc.view_with_debug_gated(true);
         let dump = format!("{:?}", view);
         assert!(
@@ -86,7 +92,10 @@ mod plan484_smoke {
         dc.set_route("/");
         // PLAN-711 T-03 契约迁移：构建登记 Init demand，驱动至静默后重建。
         let _ = dc.view_with_debug_gated(true);
-        dc.drive_scheduler_to_quiescence(10_000);
+        dc.drive_test_to_completion(
+            "plan484_chart_component_tests",
+            std::time::Duration::from_secs(30),
+        );
         let (view, _, _) = dc.view_with_debug_gated(true);
         let dump = format!("{:?}", view);
         // 六图卡:四类几何全部落图(A 弧线/M 路径/L 折线)

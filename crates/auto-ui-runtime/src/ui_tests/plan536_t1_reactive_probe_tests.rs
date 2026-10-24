@@ -248,7 +248,10 @@ mod plan536_t1_reactive_probe_tests {
         // PLAN-711 T-05 契约迁移：pending demand 首建产出骨架占位，驱动至
         // 终态后取基线。
         let _ = dc.view_with_debug_gated(false);
-        dc.drive_scheduler_to_quiescence(10_000);
+        dc.drive_test_to_completion(
+            "plan536_t1_reactive_probe_tests",
+            std::time::Duration::from_secs(30),
+        );
 
         // 基线：两臂都显示 initial
         let base = rendered_texts(&dc);
@@ -339,7 +342,10 @@ mod plan536_t1_reactive_probe_tests {
 
         // 首次渲染 = 挂载：ChatBubble.Init 恰好一次
         let _ = dc.view_with_debug_gated(false);
-        dc.drive_scheduler_to_quiescence(10_000);
+        dc.drive_test_to_completion(
+            "plan536_t1_reactive_probe_tests",
+            std::time::Duration::from_secs(30),
+        );
         assert_eq!(
             dc.read_state("bubble_init_count"),
             Ok(auto_val::Value::Int(1)),

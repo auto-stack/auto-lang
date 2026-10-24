@@ -190,7 +190,7 @@ widget ChildGeo (data: List, field: str = "v") {
         fn child_init_fstr_dollar_bracket_lands() {
             let mut dc = build_inline(SRC_DOLLAR);
             let _ = dc.view_with_debug_gated(true);
-            dc.drive_scheduler_to_quiescence(10_000);
+            dc.drive_test_to_completion("plan492_tests", std::time::Duration::from_secs(30));
             let (view, _, _) = dc.view_with_debug_gated(true);
             let _ = format!("{view:?}");
             let s = dc
@@ -212,7 +212,7 @@ widget ChildGeo (data: List, field: str = "v") {
             let src = SRC_DOLLAR.replace("f\"w-[${slot}px] h-full\"", "f\"w-${slot}px h-full\"");
             let mut dc = build_inline(&src);
             let _ = dc.view_with_debug_gated(true);
-            dc.drive_scheduler_to_quiescence(10_000);
+            dc.drive_test_to_completion("plan492_tests", std::time::Duration::from_secs(30));
             let (view, _, _) = dc.view_with_debug_gated(true);
             let _ = format!("{view:?}");
             let s = dc
@@ -234,7 +234,7 @@ widget ChildGeo (data: List, field: str = "v") {
             let src = SRC_DOLLAR.replace("f\"w-[${slot}px] h-full\"", "f\"w-[{slot}px] h-full\"");
             let mut dc = build_inline(&src);
             let _ = dc.view_with_debug_gated(true);
-            dc.drive_scheduler_to_quiescence(10_000);
+            dc.drive_test_to_completion("plan492_tests", std::time::Duration::from_secs(30));
             let (view, _, _) = dc.view_with_debug_gated(true);
             let _ = format!("{view:?}");
             let s = dc
@@ -324,7 +324,7 @@ pub(crate) mod pkg_harness {
         // PLAN-711 T-03 契约迁移：构建登记 Init demand，驱动泵至静默后重建
         //（生产=帧通知泵），dump 反映 Init 完成态。
         let _ = dc.view_with_debug_gated(true);
-        dc.drive_scheduler_to_quiescence(10_000);
+        dc.drive_test_to_completion("plan492_tests", std::time::Duration::from_secs(30));
         let (view, _, _) = dc.view_with_debug_gated(true);
         format!("{view:?}")
     }
