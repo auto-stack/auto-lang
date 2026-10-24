@@ -3177,3 +3177,8 @@ producer/consumer完整driver各155、AGP各163和已绿原生门保留身份；
 ### PLAN-845 R6 — F-845-M1-04 独立关闭（2026-10-25）
 
 冻结944c1c551b524d7d8c7f69519e465831417d21a8，新独立上下文R6 pass。实际正常/36帧延迟Step均phase27；丢点击在原360帧phase6截止拒绝，重复实际+2拒绝；真实Step矩形down/up与36GPU检查保留。独立Patrol120帧绿、361帧超预算拒绝、原交互/丢释放反控保留；实际cursor裁切与任务栏foreign PID护栏均准确拒绝。仅原生probe工作区放置/每点可达性和严格tick+1有界确认，不改Host/VM/正常App/取消/期限，不重发Step。原历史54→54缺事件记录故不虚构唯一根因；两夹具不变量与可区分反控独立闭合。用户上限6，计数4/6；此前blocking历史保留。完整83项merge门仍pending，无合入/交付。[R6](attachments/845/review-r6-step/review.md)、[第4轮工作/边界](attachments/845/work-r4-step/readiness.md)。
+
+
+### F-845-M1-05 — closed (Plan845 r2, automatic repair5/6)
+
+Merge on944c1c55 exposed the original native authoring probe silently discarding scroll errors after real node selection. The legacy click path lacked the common physical-pointer/setup contract. Frozen fix ae1a87e15b857329efc1110beb9c76e9c0299baa unifies legacy OS inputs and propagates all five scroll errors without changing product semantics, original target/GPU/Save/Undo/Redo/resize assertions or1400-frame budget. Permanent actual native failure case distinguishes discarded Result (controlled mutation red) from immediate error (restored green); full accepted control phase9/280/accepted3, wrong/partial remain negative. Fresh-context independent R7 pass: [receipt](attachments/845/review-r7-legacy/review.md). This is a closed gate finding, not deferred debt; complete merge/landing remain separately pending until verified.
