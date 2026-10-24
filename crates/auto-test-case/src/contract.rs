@@ -1363,9 +1363,9 @@ fn decode_options(
 
     let (probe_recipe, probe_steps, probe_sema, probe_abi, probe_av, probe_cte, probe_mn) =
         if adapter == Adapter::Probe {
-        let recipe = req_str(&f, "recipe")?;
-        if !REGISTERED_PROBE_RECIPES.contains(&recipe.as_str()) {
-            return Err(err(
+            let recipe = req_str(&f, "recipe")?;
+            if !REGISTERED_PROBE_RECIPES.contains(&recipe.as_str()) {
+                return Err(err(
                 &f.path_of("recipe"),
                 format!(
                     "recipe {:?} is not registered (registered: {}; a case can never name an executable)",
@@ -1373,278 +1373,278 @@ fn decode_options(
                     REGISTERED_PROBE_RECIPES.join(", ")
                 ),
             ));
-        }
-        let steps = match f.sub("steps") {
-            None => {
-                return Err(err(
-                    &f.path_of("steps"),
-                    "probe/run requires a non-empty step sequence",
-                ))
             }
-            Some(v) => {
-                let list = as_list(v, &f.path_of("steps"))?;
-                if list.is_empty() || list.len() > PROBE_MAX_STEPS {
+            let steps = match f.sub("steps") {
+                None => {
                     return Err(err(
                         &f.path_of("steps"),
-                        format!(
-                            "probe step sequence must be 1..={} steps, got {}",
-                            PROBE_MAX_STEPS,
-                            list.len()
-                        ),
-                    ));
+                        "probe/run requires a non-empty step sequence",
+                    ))
                 }
-                let mut out = Vec::new();
-                for (i, item) in list.iter().enumerate() {
-                    let ipath = format!("{}.steps[{}]", f.path, i);
-                    let pairs = as_obj(item, &ipath)?;
-                    let sf = Fields::new(&ipath, pairs, &["op", "from", "to"])?;
-                    let op = req_str(&sf, "op")?;
-                    // PLAN-798: `run` joins the known op vocabulary
-                    // (ac-av's only op); recipes never borrow each other's
-                    // ops, and genuinely unknown ops keep the original
-                    // unknown-op error.
-                    let known_op =
-                        matches!(op.as_str(), "query" | "edit-source" | "restart" | "run");
-                    if !known_op {
+                Some(v) => {
+                    let list = as_list(v, &f.path_of("steps"))?;
+                    if list.is_empty() || list.len() > PROBE_MAX_STEPS {
                         return Err(err(
+                            &f.path_of("steps"),
+                            format!(
+                                "probe step sequence must be 1..={} steps, got {}",
+                                PROBE_MAX_STEPS,
+                                list.len()
+                            ),
+                        ));
+                    }
+                    let mut out = Vec::new();
+                    for (i, item) in list.iter().enumerate() {
+                        let ipath = format!("{}.steps[{}]", f.path, i);
+                        let pairs = as_obj(item, &ipath)?;
+                        let sf = Fields::new(&ipath, pairs, &["op", "from", "to"])?;
+                        let op = req_str(&sf, "op")?;
+                        // PLAN-798: `run` joins the known op vocabulary
+                        // (ac-av's only op); recipes never borrow each other's
+                        // ops, and genuinely unknown ops keep the original
+                        // unknown-op error.
+                        let known_op =
+                            matches!(op.as_str(), "query" | "edit-source" | "restart" | "run");
+                        if !known_op {
+                            return Err(err(
                             &sf.path_of("op"),
                             format!("unknown probe op {:?} (supported: query, edit-source, restart, run)", op),
                         ));
-                    }
-                    let allowed = match recipe.as_str() {
-                        // T-07 edit-session: runs + discriminating edits.
-                        "ac-av/core-run-v1" => matches!(op.as_str(), "run" | "edit-source"),
-                        // PLAN-818 T-06: runs + discriminating edits +
-                        // restart session boundaries (`query` stays a
-                        // sema/abi op — recipes never borrow ops).
-                        "ac/mir-native-scalar-v1" => {
-                            matches!(op.as_str(), "run" | "edit-source" | "restart")
                         }
-                        _ => op != "run",
-                    };
-                    if !allowed {
-                        return Err(err(
+                        let allowed = match recipe.as_str() {
+                            // T-07 edit-session: runs + discriminating edits.
+                            "ac-av/core-run-v1" => matches!(op.as_str(), "run" | "edit-source"),
+                            // PLAN-818 T-06: runs + discriminating edits +
+                            // restart session boundaries (`query` stays a
+                            // sema/abi op — recipes never borrow ops).
+                            "ac/mir-native-scalar-v1" => {
+                                matches!(op.as_str(), "run" | "edit-source" | "restart")
+                            }
+                            _ => op != "run",
+                        };
+                        if !allowed {
+                            return Err(err(
                             &sf.path_of("op"),
                             format!(
                                 "probe op {:?} is not valid for recipe {:?} (recipe-specific step vocabulary)",
                                 op, recipe
                             ),
                         ));
-                    }
-                    let step = match op.as_str() {
-                        "query" => ProbeStep::Query,
-                        "run" => ProbeStep::Run,
-                        "edit-source" => {
-                            let from = req_str(&sf, "from")?;
-                            let to = req_str(&sf, "to")?;
-                            if from.is_empty() || from == to {
-                                return Err(err(
+                        }
+                        let step = match op.as_str() {
+                            "query" => ProbeStep::Query,
+                            "run" => ProbeStep::Run,
+                            "edit-source" => {
+                                let from = req_str(&sf, "from")?;
+                                let to = req_str(&sf, "to")?;
+                                if from.is_empty() || from == to {
+                                    return Err(err(
                                     &sf.path_of("from"),
                                     "edit-source needs a non-empty `from` distinct from `to` (a discriminating edit oracle)",
                                 ));
+                                }
+                                if from.len() > 64 * 1024 || to.len() > 64 * 1024 {
+                                    return Err(err(
+                                        &sf.path_of("to"),
+                                        "edit-source literals exceed the 64KiB step cap",
+                                    ));
+                                }
+                                ProbeStep::EditSource { from, to }
                             }
-                            if from.len() > 64 * 1024 || to.len() > 64 * 1024 {
+                            "restart" => ProbeStep::Restart,
+                            other => {
                                 return Err(err(
-                                    &sf.path_of("to"),
-                                    "edit-source literals exceed the 64KiB step cap",
-                                ));
-                            }
-                            ProbeStep::EditSource { from, to }
-                        }
-                        "restart" => ProbeStep::Restart,
-                        other => {
-                            return Err(err(
-                                &sf.path_of("op"),
-                                format!(
+                                    &sf.path_of("op"),
+                                    format!(
                                 "unknown probe op {:?} (supported: query, edit-source, restart)",
                                 other
                             ),
-                            ))
-                        }
-                    };
-                    out.push(step);
-                }
-                if recipe == "ac-av/core-run-v1" {
-                    // PLAN-798 T-07 edit-session shape (F798-R3-07): runs
-                    // plus discriminating edit-source steps; a sequence
-                    // may LEAD with edits (the measured formal window —
-                    // the request materializes the source, applies leading
-                    // edits, then runs) but must END with the judged run,
-                    // and leading edits require an explicit session only
-                    // for cross-call warmth (single-call shapes are
-                    // unchanged).
-                    if !matches!(out.last(), Some(ProbeStep::Run)) {
-                        return Err(err(
+                                ))
+                            }
+                        };
+                        out.push(step);
+                    }
+                    if recipe == "ac-av/core-run-v1" {
+                        // PLAN-798 T-07 edit-session shape (F798-R3-07): runs
+                        // plus discriminating edit-source steps; a sequence
+                        // may LEAD with edits (the measured formal window —
+                        // the request materializes the source, applies leading
+                        // edits, then runs) but must END with the judged run,
+                        // and leading edits require an explicit session only
+                        // for cross-call warmth (single-call shapes are
+                        // unchanged).
+                        if !matches!(out.last(), Some(ProbeStep::Run)) {
+                            return Err(err(
                             &f.path_of("steps"),
                             "ac-av/core-run-v1 step sequences must end with a run step (the judged step)",
                         ));
+                        }
+                        if out.is_empty() {
+                            return Err(err(&f.path_of("steps"), "steps must not be empty"));
+                        }
                     }
-                    if out.is_empty() {
-                        return Err(err(&f.path_of("steps"), "steps must not be empty"));
-                    }
-                }
-                if recipe == "cte/scalar-query-v1"
-                    && !matches!(out.last(), Some(ProbeStep::Query))
-                {
-                    return Err(err(
-                        &f.path_of("steps"),
-                        "cte/scalar-query-v1 step sequences must end with a query step (the judged step)",
-                    ));
-                if recipe == "ac/mir-native-scalar-v1" {
-                    // PLAN-818 T-06 session shape: leading edits
-                    // materialize parent-side, `restart` splits worker
-                    // sessions (a real new process each), and the judged
-                    // step is the sequence's LAST run.
-                    if !matches!(out.last(), Some(ProbeStep::Run)) {
+                    if recipe == "cte/scalar-query-v1"
+                        && !matches!(out.last(), Some(ProbeStep::Query))
+                    {
                         return Err(err(
                             &f.path_of("steps"),
-                            "ac/mir-native-scalar-v1 step sequences must end with a run step (the judged step)",
+                            "cte/scalar-query-v1 step sequences must end with a query step (the judged step)",
                         ));
                     }
-                    if out.is_empty() {
-                        return Err(err(&f.path_of("steps"), "steps must not be empty"));
+                    if recipe == "ac/mir-native-scalar-v1" {
+                        // PLAN-818 T-06 session shape: leading edits
+                        // materialize parent-side, `restart` splits worker
+                        // sessions (a real new process each), and the judged
+                        // step is the sequence's LAST run.
+                        if !matches!(out.last(), Some(ProbeStep::Run)) {
+                            return Err(err(
+                                &f.path_of("steps"),
+                                "ac/mir-native-scalar-v1 step sequences must end with a run step (the judged step)",
+                            ));
+                        }
+                        if out.is_empty() {
+                            return Err(err(&f.path_of("steps"), "steps must not be empty"));
+                        }
                     }
+                    out
                 }
+            };
+            // The binding object is RECIPE-SPECIFIC: sema/query-v1 takes
+            // `sema`, abi/interop-v1 takes `abi`; declaring the wrong one
+            // (or none) is an admission error, never a parsed-then-ignored
+            // field.
+            let sema = match f.sub("sema") {
+                None => {
+                    if recipe == "sema/query-v1" {
+                        return Err(err(
+                            &f.path_of("sema"),
+                            "sema/query-v1 requires a sema binding",
+                        ));
+                    }
+                    None
                 }
-                out
-            }
-        };
-        // The binding object is RECIPE-SPECIFIC: sema/query-v1 takes
-        // `sema`, abi/interop-v1 takes `abi`; declaring the wrong one
-        // (or none) is an admission error, never a parsed-then-ignored
-        // field.
-        let sema = match f.sub("sema") {
-            None => {
-                if recipe == "sema/query-v1" {
-                    return Err(err(
-                        &f.path_of("sema"),
-                        "sema/query-v1 requires a sema binding",
-                    ));
-                }
-                None
-            }
-            Some(v) => {
-                if recipe != "sema/query-v1" {
-                    return Err(err(
+                Some(v) => {
+                    if recipe != "sema/query-v1" {
+                        return Err(err(
                         &f.path_of("sema"),
                         format!(
                             "the sema binding belongs to sema/query-v1; it is not valid for recipe {:?}",
                             recipe
                         ),
                     ));
+                    }
+                    let spath = f.path_of("sema");
+                    let pairs = as_obj(v, &spath)?;
+                    let sf = Fields::new(&spath, pairs, &["package", "module", "kind", "fn"])?;
+                    let kind = req_str(&sf, "kind")?;
+                    if kind != "infer-body" {
+                        return Err(err(
+                            &sf.path_of("kind"),
+                            format!("unknown sema query kind {:?} (v1 freezes infer-body)", kind),
+                        ));
+                    }
+                    Some(ProbeSemaSpec {
+                        package: req_str(&sf, "package")?,
+                        module: req_str(&sf, "module")?,
+                        kind,
+                        fn_name: req_str(&sf, "fn")?,
+                    })
                 }
-                let spath = f.path_of("sema");
-                let pairs = as_obj(v, &spath)?;
-                let sf = Fields::new(&spath, pairs, &["package", "module", "kind", "fn"])?;
-                let kind = req_str(&sf, "kind")?;
-                if kind != "infer-body" {
-                    return Err(err(
-                        &sf.path_of("kind"),
-                        format!("unknown sema query kind {:?} (v1 freezes infer-body)", kind),
-                    ));
+            };
+            let abi = match f.sub("abi") {
+                None => {
+                    if recipe == "abi/interop-v1" {
+                        return Err(err(
+                            &f.path_of("abi"),
+                            "abi/interop-v1 requires an abi binding",
+                        ));
+                    }
+                    None
                 }
-                Some(ProbeSemaSpec {
-                    package: req_str(&sf, "package")?,
-                    module: req_str(&sf, "module")?,
-                    kind,
-                    fn_name: req_str(&sf, "fn")?,
-                })
-            }
-        };
-        let abi = match f.sub("abi") {
-            None => {
-                if recipe == "abi/interop-v1" {
-                    return Err(err(
-                        &f.path_of("abi"),
-                        "abi/interop-v1 requires an abi binding",
-                    ));
+                Some(v) => {
+                    if recipe != "abi/interop-v1" {
+                        return Err(err(
+                            &f.path_of("abi"),
+                            format!(
+                                "the abi binding belongs to abi/interop-v1, not {:?}",
+                                recipe
+                            ),
+                        ));
+                    }
+                    let apath = f.path_of("abi");
+                    let pairs = as_obj(v, &apath)?;
+                    let af = Fields::new(&apath, pairs, &["leg"])?;
+                    let leg = req_str(&af, "leg")?;
+                    if !matches!(leg.as_str(), "a" | "b" | "c") {
+                        return Err(err(
+                            &af.path_of("leg"),
+                            format!("unknown ABI leg {:?} (v1 freezes a/b/c)", leg),
+                        ));
+                    }
+                    Some(ProbeAbiSpec { leg })
                 }
-                None
-            }
-            Some(v) => {
-                if recipe != "abi/interop-v1" {
-                    return Err(err(
-                        &f.path_of("abi"),
-                        format!(
-                            "the abi binding belongs to abi/interop-v1, not {:?}",
-                            recipe
-                        ),
-                    ));
+            };
+            let av = match f.sub("av") {
+                None => {
+                    if recipe == "ac-av/core-run-v1" {
+                        return Err(err(
+                            &f.path_of("av"),
+                            "ac-av/core-run-v1 requires an av binding",
+                        ));
+                    }
+                    None
                 }
-                let apath = f.path_of("abi");
-                let pairs = as_obj(v, &apath)?;
-                let af = Fields::new(&apath, pairs, &["leg"])?;
-                let leg = req_str(&af, "leg")?;
-                if !matches!(leg.as_str(), "a" | "b" | "c") {
-                    return Err(err(
-                        &af.path_of("leg"),
-                        format!("unknown ABI leg {:?} (v1 freezes a/b/c)", leg),
-                    ));
-                }
-                Some(ProbeAbiSpec { leg })
-            }
-        };
-        let av = match f.sub("av") {
-            None => {
-                if recipe == "ac-av/core-run-v1" {
-                    return Err(err(
-                        &f.path_of("av"),
-                        "ac-av/core-run-v1 requires an av binding",
-                    ));
-                }
-                None
-            }
-            Some(v) => {
-                if recipe != "ac-av/core-run-v1" {
-                    return Err(err(
-                        &f.path_of("av"),
-                        format!(
+                Some(v) => {
+                    if recipe != "ac-av/core-run-v1" {
+                        return Err(err(
+                            &f.path_of("av"),
+                            format!(
                             "av binding is not valid for recipe {:?} (recipe-specific bindings)",
                             recipe
                         ),
-                    ));
+                        ));
+                    }
+                    let apath = f.path_of("av");
+                    let pairs = as_obj(v, &apath)?;
+                    let sf = Fields::new(&apath, pairs, &["entry", "caps", "session"])?;
+                    let entry = req_str(&sf, "entry")?;
+                    let session = match sf.sub("session") {
+                        None => None,
+                        Some(v) => {
+                            let sid = as_str(v, &sf.path_of("session"))?.to_string();
+                            if sid.is_empty()
+                                || sid.len() > 64
+                                || !sid
+                                    .chars()
+                                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                            {
+                                return Err(err(
+                                    &sf.path_of("session"),
+                                    "av session id must be 1-64 chars of [A-Za-z0-9_-]",
+                                ));
+                            }
+                            Some(sid)
+                        }
+                    };
+                    let caps = match sf.sub("caps") {
+                        None => Vec::new(),
+                        Some(v) => {
+                            let list = as_list(v, &sf.path_of("caps"))?;
+                            let mut out = Vec::new();
+                            for (i, item) in list.iter().enumerate() {
+                                let cpath = format!("{}.caps[{}]", apath, i);
+                                out.push(as_str(item, &cpath)?.to_string());
+                            }
+                            out
+                        }
+                    };
+                    Some(ProbeAvSpec {
+                        entry,
+                        caps,
+                        session,
+                    })
                 }
-                let apath = f.path_of("av");
-                let pairs = as_obj(v, &apath)?;
-                let sf = Fields::new(&apath, pairs, &["entry", "caps", "session"])?;
-                let entry = req_str(&sf, "entry")?;
-                let session = match sf.sub("session") {
-                    None => None,
-                    Some(v) => {
-                        let sid = as_str(v, &sf.path_of("session"))?.to_string();
-                        if sid.is_empty()
-                            || sid.len() > 64
-                            || !sid
-                                .chars()
-                                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-                        {
-                            return Err(err(
-                                &sf.path_of("session"),
-                                "av session id must be 1-64 chars of [A-Za-z0-9_-]",
-                            ));
-                        }
-                        Some(sid)
-                    }
-                };
-                let caps = match sf.sub("caps") {
-                    None => Vec::new(),
-                    Some(v) => {
-                        let list = as_list(v, &sf.path_of("caps"))?;
-                        let mut out = Vec::new();
-                        for (i, item) in list.iter().enumerate() {
-                            let cpath = format!("{}.caps[{}]", apath, i);
-                            out.push(as_str(item, &cpath)?.to_string());
-                        }
-                        out
-                    }
-                };
-                Some(ProbeAvSpec {
-                    entry,
-                    caps,
-                    session,
-                })
-            }
-        };
+            };
             // PLAN-817: the cte binding (entry/caps/session — the query and
             // binding tables live in the atom-data deck the worker owns).
             let cte = match f.sub("cte") {
@@ -1749,10 +1749,10 @@ fn decode_options(
                         Some(v) => Some(as_str(v, &mf.path_of("session"))?.to_string()),
                     };
                     Some(ProbeMnSpec {
-                    entry,
-                    caps,
-                    session,
-                })
+                        entry,
+                        caps,
+                        session,
+                    })
                 }
             };
 
@@ -1777,7 +1777,7 @@ fn decode_options(
         probe_sema,
         probe_abi,
         probe_av,
-probe_cte,
+        probe_cte,
         probe_mn,
     })
 }
