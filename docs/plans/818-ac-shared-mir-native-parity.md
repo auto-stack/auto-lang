@@ -6,7 +6,7 @@ plan_revision: 3
 author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-24
-current_step: 7
+current_step: 9
 total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-av/resident-function-install.md
