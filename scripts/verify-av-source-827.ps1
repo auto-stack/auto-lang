@@ -20,12 +20,17 @@ New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
 
 if ($env:SCCACHE_SERVER_PORT -eq $null) { $env:SCCACHE_SERVER_PORT = "28101" }
 
-function Test-Selected([string]$Out, [string]$Label) {
-    # Returns $true iff the run output proves a NON-EMPTY selection with
-    # ZERO skipped/ignored cases. nextest summary: "Summary [...] N tests
-    # run: X passed, Y failed, Z skipped"; libtest: "test result: ok. N
-    # passed; M failed; K ignored". A required case that is skipped or
-    # ignored is NOT a pass (R1-F01).
+function Test-Selected([string]$Out, [string]$Label, [string[]]$RequiredIds = @()) {
+    # Returns $true iff the run output proves: a NON-EMPTY selection, ZERO
+    # REALLY-skipped/ignored cases among the selected, and every REQUIRED
+    # case id observed as a passing result (R1-F01 + R2 correction).
+    #
+    # Skip semantics distinguished (R2): nextest reports the FILTERED-OUT
+    # global population in the "Starting N tests across M binaries (K tests
+    # skipped)" line and in the Summary's skipped total — filter exclusion
+    # is NOT a required-case skip. The real signals are (a) nextest SKIP
+    # result lines (a SELECTED test that skipped) and (b) libtest
+    # "test result: ... N ignored" counts.
     $selected = 0
     if ($Out -match '(\d+) tests run') { $selected = [int]$Matches[1] }
     elseif ($Out -match '(\d+) passed') { $selected = [int]$Matches[1] }
@@ -33,22 +38,30 @@ function Test-Selected([string]$Out, [string]$Label) {
         Write-Host "FAILED: $Label selected 0 tests (0 selected is never a pass)"
         return $false
     }
-    $skipped = 0
-    if ($Out -match '(\d+) skipped') { $skipped = [int]$Matches[1] }
-    elseif ($Out -match '(\d+) ignored') { $skipped = [int]$Matches[1] }
-    if ($skipped -gt 0) {
-        Write-Host "FAILED: $Label has $skipped skipped/ignored cases (skips are never green)"
+    $realSkips = ([regex]::Matches($Out, '(?m)^\s*SKIP \[')).Count
+    foreach ($m in [regex]::Matches($Out, 'test result:[^\r\n]*?(\d+) ignored')) {
+        if ([int]$m.Groups[1].Value -gt 0) { $realSkips += [int]$m.Groups[1].Value }
+    }
+    if ($realSkips -gt 0) {
+        Write-Host "FAILED: $Label has $realSkips skipped/ignored SELECTED cases (never green)"
         return $false
     }
-    Write-Host "   selected: $selected (0 skipped)"
+    foreach ($id in $RequiredIds) {
+        $esc = [regex]::Escape($id)
+        if (!(($Out -match "PASS.*$esc") -or ($Out -match "test $esc \.\.\. ok"))) {
+            Write-Host "FAILED: $Label required case '$id' did not pass (missing/renamed/red)"
+            return $false
+        }
+    }
+    Write-Host "   selected: $selected (0 real skips; required $($RequiredIds.Count) all passed)"
     return $true
 }
 
-function Assert-Selected([string]$Out, [string]$Label) {
-    if (!(Test-Selected $Out $Label)) { exit 1 }
+function Assert-Selected([string]$Out, [string]$Label, [string[]]$RequiredIds = @()) {
+    if (!(Test-Selected $Out $Label $RequiredIds)) { exit 1 }
 }
 
-function Run-Probe-Tests([string]$TestBin, [string]$Label) {
+function Run-Probe-Tests([string]$TestBin, [string]$Label, [string[]]$RequiredIds = @()) {
     Write-Host "== $Label (ac-av-probe --test $TestBin)"
     Push-Location $probeWs
     & cargo test -p auto-av-probe --test $TestBin 2>&1 | Tee-Object -Variable out | Write-Host
@@ -59,10 +72,10 @@ function Run-Probe-Tests([string]$TestBin, [string]$Label) {
         Write-Host "FAILED: $Label (exit $code)"
         exit 1
     }
-    Assert-Selected ($out -join "`n") $Label
+    Assert-Selected ($out -join "`n") $Label $RequiredIds
 }
 
-function Run-Runner-Tests([string]$Filter, [string]$Label) {
+function Run-Runner-Tests([string]$Filter, [string]$Label, [string[]]$RequiredIds = @()) {
     Write-Host "== $Label (main workspace, filter: $Filter)"
     Push-Location $repo
     & cargo t $Filter 2>&1 | Tee-Object -Variable out | Write-Host
@@ -73,7 +86,7 @@ function Run-Runner-Tests([string]$Filter, [string]$Label) {
         Write-Host "FAILED: $Label (exit $code)"
         exit 1
     }
-    Assert-Selected ($out -join "`n") $Label
+    Assert-Selected ($out -join "`n") $Label $RequiredIds
 }
 
 function Not-Wired([string]$Scope, [string]$Owner) {
@@ -101,23 +114,40 @@ switch ($Scope) {
         # V-01 first case, full path: real AP-01 frozen bytes (identity
         # receipts) -> ephemeral -> store put/hit -> NEW-worker restore, plus
         # the formal-recipe corpus gate judged parent-side.
-        Run-Probe-Tests "av_source_827_first_case" "first-case"
-        Run-Runner-Tests "av_source_827" "first-case-corpus"
+        Run-Probe-Tests "av_source_827_first_case" "first-case" @(
+            "av_source_827_seeds_identity",
+            "av_source_827_first_case_real_file_ephemeral",
+            "av_source_827_first_case_store_round_hit_new_worker",
+            "av_source_827_first_case_native_cross_check"
+        )
+        Run-Runner-Tests "av_source_827" "first-case-corpus" @("av_source_827_corpus_green")
     }
     "semantics" {
         # V-02/03 (+ targeted V-04/05/09 axes): AP-22 argument-value change,
         # AP-23 precise trap + false-only control + native exit70 channel,
         # trace authorization, same-path/frozen-bytes identity, front-door
         # rejections with zero dispatch, budget/cancel axes.
-        Run-Probe-Tests "av_source_827_semantics" "semantics"
-        Run-Runner-Tests "av_source_827_corpus" "semantics-corpus"
+        Run-Probe-Tests "av_source_827_semantics" "semantics" @(
+            "av_source_827_ap22_argument_value_change_changes_result",
+            "av_source_827_ap23_precise_trap_and_false_only_control",
+            "av_source_827_ap23_native_exit70_channel",
+            "av_source_827_trace_order_exact_and_capability_gated",
+            "av_source_827_same_path_different_bytes_and_frozen_snapshot",
+            "av_source_827_front_door_rejects_disallow_no_dispatch",
+            "av_source_827_resource_budget_and_cancel_axes"
+        )
+        Run-Runner-Tests "av_source_827_corpus" "semantics-corpus" @("av_source_827_corpus_green")
     }
     "admission" {
         # V-04 runner-level admission negatives: invalid UTF-8 = infra (not
         # a trap), missing file = resolution error, path escapes rejected
         # at decode. Plus the unsupported front-door corpus faces.
-        Run-Runner-Tests "av_source_827_admission" "admission"
-        Run-Runner-Tests "av_source_827_corpus" "admission-corpus"
+        Run-Runner-Tests "av_source_827_admission" "admission" @(
+            "av_source_827_admission_invalid_utf8_is_infra_not_trap",
+            "av_source_827_admission_missing_file_is_resolve_error",
+            "av_source_827_admission_path_escape_rejected_at_decode"
+        )
+        Run-Runner-Tests "av_source_827_corpus" "admission-corpus" @("av_source_827_corpus_green")
     }
     "resources" {
         # V-09 heavy tier (single instance, serial):
@@ -159,18 +189,25 @@ switch ($Scope) {
             Write-Host "FAILED: formal campaign (exit $f828code)"
             exit 1
         }
-        Assert-Selected ($f828 -join "`n") "resources-formal-828"
+        Assert-Selected ($f828 -join "`n") "resources-formal-828" @("t08_formal_campaign_v08_dual_gate_30_revisions")
     }
     "autodown" {
         # V-10: the formal recipe positives + every parent-side injection:
         # corpus green (with required population), negative oracle, worker
         # faults (exit9/extra-frame/wrong-hash/delay = infra).
-        Run-Runner-Tests "av_source_827" "autodown"
+        Run-Runner-Tests "av_source_827" "autodown" @(
+            "av_source_827_corpus_green",
+            "av_source_827_negative_oracle_fails",
+            "av_source_827_worker_faults_are_infra"
+        )
     }
     "inventory" {
         # V-11: the G0 denominators re-derived from the real discovery
-        # rules; the JSON summary is the inventory artifact.
-        Run-Runner-Tests "av_source_827_inventory" "inventory"
+        # rules; the JSON artifact is the inventory deliverable.
+        Run-Runner-Tests "av_source_827_inventory" "inventory" @(
+            "av_source_827_inventory_denominators_replayable",
+            "av_source_827_inventory_negative_controls"
+        )
     }
     "acceptance" {
         # V-01..12 ALL required sub-cases across EVERY implemented scope —
@@ -200,26 +237,46 @@ switch ($Scope) {
         Write-Host "PASS: acceptance (all scopes incl. resources + SEM material)"
     }
     "selftest" {
-        # R1-F01 repair evidence: negative controls replayed against the
-        # REAL validator/aggregator pieces. Each bad shape must be RED.
+        # R1-F01/R2 repair evidence: negative and positive controls replayed
+        # against the REAL validator/aggregator pieces. Bad shapes are RED,
+        # the legitimate filtered run is GREEN.
         $fails = 0
-        # 1. valid nextest summary, zero skipped -> green.
-        if (!(Test-Selected "Summary [ 1.2s] 5 tests run: 5 passed, 0 failed, 0 skipped" "valid")) { $fails++ }
-        # 2. nextest with skipped -> red.
-        if (Test-Selected "Summary [ 1.2s] 5 tests run: 4 passed, 0 failed, 1 skipped" "skipped") { Write-Host "CONTROL FAILED: skipped must be red"; $fails++ }
-        # 3. libtest with ignored -> red.
-        if (Test-Selected "test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured" "ignored") { Write-Host "CONTROL FAILED: ignored must be red"; $fails++ }
-        # 4. missing/zero selection -> red.
+        # R2 regression control (the R2 misfire): a REAL filtered nextest
+        # run — the Starting line and the Summary carry the FILTERED-OUT
+        # population as "skipped" (6926), but no SKIP result line exists
+        # and every REQUIRED case passed -> must be GREEN.
+        $filtered = "Starting 2 tests across 8 binaries (6926 tests skipped)`n" +
+            "        PASS [ 0.04s] auto-lang tests::av_source_827_tests::av_source_827_inventory_denominators_replayable`n" +
+            "        PASS [ 0.01s] auto-lang tests::av_source_827_tests::av_source_827_inventory_negative_controls`n" +
+            "Summary [ 0.085s] 2 tests run: 2 passed, 6926 skipped"
+        if (!(Test-Selected $filtered "filtered-positive" @(
+            "av_source_827_inventory_denominators_replayable",
+            "av_source_827_inventory_negative_controls"
+        ))) { Write-Host "CONTROL FAILED: filtered-out population must not be a skip failure"; $fails++ }
+        # A real SKIP result line (a SELECTED test skipped) -> red.
+        if (Test-Selected $filtered.Replace("PASS [ 0.04s]", "SKIP [ 0.04s]") "real-skip") {
+            Write-Host "CONTROL FAILED: a selected skipped case must be red"; $fails++
+        }
+        # A required case deleted (its PASS line absent) -> red.
+        $missingReq = $filtered.Replace("        PASS [ 0.01s] auto-lang tests::av_source_827_tests::av_source_827_inventory_negative_controls`n", "")
+        if (Test-Selected $missingReq "missing-required" @("av_source_827_inventory_negative_controls")) {
+            Write-Host "CONTROL FAILED: a missing required case must be red"; $fails++
+        }
+        # libtest ignored -> red.
+        if (Test-Selected "test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured" "ignored") {
+            Write-Host "CONTROL FAILED: ignored must be red"; $fails++
+        }
+        # Zero selection / no summary -> red.
         if (Test-Selected "Summary [ 0.1s] 0 tests run: 0 passed" "missing") { Write-Host "CONTROL FAILED: zero-selected must be red"; $fails++ }
         if (Test-Selected "build finished, no summary matched" "no-summary") { Write-Host "CONTROL FAILED: no-summary must be red"; $fails++ }
-        # 5. a REAL failing child scope propagated through the same
-        #    Invoke-Scope path acceptance uses -> red.
+        # A REAL failing child scope propagated through the same
+        # Invoke-Scope path acceptance uses -> red.
         if (Invoke-Scope "fail-shim") { Write-Host "CONTROL FAILED: failing scope must be red"; $fails++ }
         if ($fails -gt 0) {
-            Write-Host "FAILED: selftest ($fails red-path controls mis-behaved)"
+            Write-Host "FAILED: selftest ($fails controls mis-behaved)"
             exit 1
         }
-        Write-Host "PASS: selftest (validator + aggregator negative controls all red as required)"
+        Write-Host "PASS: selftest (validator + aggregator controls: bad shapes red, filtered run green)"
     }
     "fail-shim" {
         # Selftest-only scope: a deliberately red child.
@@ -228,7 +285,13 @@ switch ($Scope) {
     }
     "incremental" {
         # V-13 (T-09): the 828 session reuse over this plan's source entry.
-        Run-Probe-Tests "av_source_827_incremental" "incremental"
+        Run-Probe-Tests "av_source_827_incremental" "incremental" @(
+            "av_source_827_incremental_d828_baseline_30_structure_and_p95",
+            "av_source_827_incremental_two_fn_local_updates",
+            "av_source_827_incremental_precise_refusals",
+            "av_source_827_incremental_degradation_caught",
+            "av_source_827_incremental_detector_negative_controls"
+        )
     }
     "cache" {
         # V-07/V-08: overlay misses only the changed unit; caps re-key;
@@ -236,15 +299,21 @@ switch ($Scope) {
         # project content-addressed reuse; position shift = new identity.
         # Formal face: the session-overlay corpus case (new worker per
         # check, shared warm store, parent-side judgement).
-        Run-Probe-Tests "av_source_827_cache" "cache"
-        Run-Runner-Tests "av_source_827_corpus" "cache-corpus"
+        Run-Probe-Tests "av_source_827_cache" "cache" @(
+            "av_source_827_overlay_misses_only_changed_unit",
+            "av_source_827_cross_project_content_addressed_reuse",
+            "av_source_827_caps_change_rekeys",
+            "av_source_827_corrupt_republish_conflicts_and_good_survives",
+            "av_source_827_position_shift_new_identity_same_result"
+        )
+        Run-Runner-Tests "av_source_827_corpus" "cache-corpus" @("av_source_827_corpus_green")
     }
     "compatibility" {
         # V-11: the ORIGINAL consumers keep their support faces — the ac-av
         # corpus and the delivered 817/818 recipe gates run unchanged.
-        Run-Runner-Tests "ac_av_probe" "compatibility-ac-av"
-        Run-Runner-Tests "ac_cte_probe" "compatibility-ac-cte"
-        Run-Runner-Tests "ac_mn_probe" "compatibility-ac-mn"
+        Run-Runner-Tests "ac_av_probe" "compatibility-ac-av" @("ac_av_probe_corpus_executes_green")
+        Run-Runner-Tests "cte_probe" "compatibility-ac-cte" @("cte_probe_corpus_executes_green")
+        Run-Runner-Tests "ac_mn_probe" "compatibility-ac-mn" @("ac_mn_probe_corpus_executes_green")
     }
 }
 Write-Host "PASS: scope '$Scope' green"

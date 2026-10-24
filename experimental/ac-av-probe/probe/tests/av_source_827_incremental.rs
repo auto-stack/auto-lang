@@ -456,7 +456,7 @@ fn av_source_827_incremental_detector_negative_controls() {
     // the identity gate over the same transition goes RED, while the
     // degraded path still computes the correct VALUE — the detector is
     // structural, which is the point.
-    let mut s2 = warmup(&rev1.source, "d_main", &[]).expect("forced re-warmup");
+    let s2 = warmup(&rev1.source, "d_main", &[]).expect("forced re-warmup");
     assert_eq!(
         run_value(&s2),
         rev1.expected_main,
@@ -479,8 +479,8 @@ fn av_source_827_incremental_detector_negative_controls() {
     // (same hash), while the resident objects are distinct allocations
     // (different pointers): the ptr axis catches a swapped object that a
     // content hash alone would accept.
-    let mut sa = warmup(&base.source, "d_main", &[]).expect("warmup a");
-    let mut sb = warmup(&base.source, "d_main", &[]).expect("warmup b");
+    let sa = warmup(&base.source, "d_main", &[]).expect("warmup a");
+    let sb = warmup(&base.source, "d_main", &[]).expect("warmup b");
     let _ = run_value(&sa);
     let _ = run_value(&sb);
     let (pub_a, _, _) = sa.last_run_publication();

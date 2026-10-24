@@ -544,12 +544,48 @@ fn scan_vm_corpus(repo: &Path, vm_rel: &str) -> Vec<InvItem> {
         for case in case_names {
             let case_dir = cat_dir.join(&case);
             let name = case.split_once('_').map(|(_, rest)| rest).unwrap_or(&case).to_string();
-            let at = case_dir.join(format!("{name}.at")).is_file();
-            let asf = case_dir.join(format!("{name}.as")).is_file();
-            let out = case_dir.join(format!("{name}.expected.out")).is_file();
-            let result = case_dir.join(format!("{name}.expected.result")).is_file();
-            let errorf = case_dir.join(format!("{name}.expected.error")).is_file();
-            let source = if at { "at" } else if asf { "as" } else { "none" };
+            let at_path = case_dir.join(format!("{name}.at"));
+            let as_path = case_dir.join(format!("{name}.as"));
+            let out_path = case_dir.join(format!("{name}.expected.out"));
+            let result_path = case_dir.join(format!("{name}.expected.result"));
+            let error_path = case_dir.join(format!("{name}.expected.error"));
+            let (at, asf) = (at_path.is_file(), as_path.is_file());
+            let (out, result, errorf) =
+                (out_path.is_file(), result_path.is_file(), error_path.is_file());
+            // R2-F03: bind the SOURCE identity (bytes hashed — a later edit
+            // changes the row) and the ORACLE sidecar identity; read
+            // failures are RETAINED rows, never silent drops.
+            let src_path = if at {
+                Some(at_path)
+            } else if asf {
+                Some(as_path)
+            } else {
+                None
+            };
+            let (src_sha, src_err) = match &src_path {
+                Some(p) => match std::fs::read(p) {
+                    Ok(b) => (sha256_of(&b), None),
+                    Err(e) => (String::new(), Some(format!("source read failed: {e}"))),
+                },
+                None => (String::new(), None),
+            };
+            let oracle_path = if out {
+                Some(out_path)
+            } else if result {
+                Some(result_path)
+            } else if errorf {
+                Some(error_path)
+            } else {
+                None
+            };
+            let (oracle_sha, oracle_err) = match &oracle_path {
+                Some(p) => match std::fs::read(p) {
+                    Ok(b) => (sha256_of(&b), None),
+                    Err(e) => (String::new(), Some(format!("oracle read failed: {e}"))),
+                },
+                None => (String::new(), None),
+            };
+            let source_kind = if at { "at" } else if asf { "as" } else { "none" };
             let oracle = if out {
                 "expected.out"
             } else if result {
@@ -559,17 +595,32 @@ fn scan_vm_corpus(repo: &Path, vm_rel: &str) -> Vec<InvItem> {
             } else {
                 "none"
             };
+            if let Some(err) = src_err.or(oracle_err) {
+                // Identity read failure: retained scan-error row.
+                items.push(inv_error(
+                    &format!("{vm_rel}/{cat}/{case}"),
+                    "vm-corpus-case",
+                    &format!("{vm_rel}/{cat}/{case}"),
+                    &err,
+                ));
+                continue;
+            }
             // Disk rows include deliberately-unregistered cases (the
             // in-repo caveat) — the denominator counts disk, the status
-            // marks the oracle state without deleting the row.
+            // marks the oracle state without deleting the row. sha256 =
+            // the SOURCE identity; the oracle identity rides the note.
             items.push(InvItem {
                 id: format!("{vm_rel}/{cat}/{case}"),
                 kind: "vm-corpus-case",
                 path: format!("{vm_rel}/{cat}/{case}"),
-                sha256: String::new(),
-                status: format!("source={source};oracle={oracle}"),
+                sha256: src_sha,
+                status: format!("source={source_kind};oracle={oracle}"),
                 owner: if oracle == "none" { "future-G".into() } else { "vm-corpus".into() },
-                note: if oracle == "none" { "gap: no oracle sidecar".into() } else { String::new() },
+                note: if oracle == "none" {
+                    "gap: no oracle sidecar".into()
+                } else {
+                    format!("oracle_sha256={oracle_sha}")
+                },
             });
         }
     }
@@ -630,6 +681,68 @@ impl WithIndex for InvItem {
         }
         self
     }
+}
+
+/// R2-F03: stdlib/auto FILE members — every `.at` layer file is a durable
+/// row (public layer / `.vm.at` VM shim / `.rs.at` Rust mirror / `.c.at`
+/// C layer), bytes hashed; enumeration/read failures are retained rows.
+/// These are the actual stdlib denominator members the provider rows
+/// only declare ownership over.
+fn scan_stdlib_auto(repo: &Path, rel_dir: &str) -> Vec<InvItem> {
+    let full = repo.join(rel_dir);
+    let entries = match std::fs::read_dir(&full) {
+        Ok(rd) => rd.collect::<Vec<_>>(),
+        Err(e) => return vec![inv_error(rel_dir, "stdlib-auto-file", rel_dir, &format!("read_dir failed: {e}"))],
+    };
+    let mut names: Vec<String> = Vec::new();
+    for e in entries {
+        match e {
+            Ok(e) => {
+                if e.path().extension().is_some_and(|x| x == "at") {
+                    names.push(e.file_name().to_string_lossy().to_string());
+                }
+            }
+            Err(err) => {
+                names.push(format!("__enumerate-error:{err}"));
+            }
+        }
+    }
+    names.sort();
+    names
+        .into_iter()
+        .map(|name| {
+            if let Some(err) = name.strip_prefix("__enumerate-error:") {
+                return inv_error(
+                    &format!("{rel_dir}/{name}"),
+                    "stdlib-auto-file",
+                    rel_dir,
+                    &format!("entry error: {err}"),
+                );
+            }
+            let rel = format!("{rel_dir}/{name}");
+            let layer = if name.ends_with(".vm.at") {
+                "vm-shim"
+            } else if name.ends_with(".rs.at") {
+                "rust-mirror"
+            } else if name.ends_with(".c.at") {
+                "c-layer"
+            } else {
+                "public"
+            };
+            match std::fs::read(repo.join(&rel)) {
+                Ok(bytes) => InvItem {
+                    id: format!("stdlib-auto/{name}"),
+                    kind: "stdlib-auto-file",
+                    path: rel,
+                    sha256: sha256_of(&bytes),
+                    status: format!("layer={layer}"),
+                    owner: "PLAN-738".into(),
+                    note: format!("{} bytes", bytes.len()),
+                },
+                Err(e) => inv_error(&rel, "stdlib-auto-file", &rel, &format!("read failed: {e}")),
+            }
+        })
+        .collect()
 }
 
 /// Markdown table rows `| <ID> | ...` for a fixed id prefix — per-row
@@ -706,7 +819,7 @@ fn scan_md_rows(text: &str, prefix: &str, count: usize, kind: &'static str, owne
 /// Entry call-site anchors WITH symbol discovery: the row is green only
 /// when the file exists AND carries its characteristic call-site symbol.
 fn scan_entry_anchors(repo: &Path) -> Vec<InvItem> {
-    const ANCHORS: [(&str, &str, &str); 13] = [
+    const ANCHORS: [(&str, &str, &str); 15] = [
         ("entry:cli-run", "crates/auto/src/main.rs", "Commands::Run"),
         ("entry:cli-script-positional", "crates/auto/src/main.rs", "run_file_with_args"),
         ("entry:cli-eval", "crates/auto/src/main.rs", "Commands::Eval"),
@@ -720,6 +833,8 @@ fn scan_entry_anchors(repo: &Path) -> Vec<InvItem> {
         ("entry:testcase-avm-adapter", "crates/auto-lang-core/src/test_cases/avm.rs", "Verdict"),
         ("entry:ui-vm-bridge", "crates/auto-ui-runtime/src/ui/vm_bridge.rs", "vm_bridge"),
         ("entry:old-vm-engine", "crates/auto-lang-core/src/vm.rs", "register_module"),
+        ("entry:cli-service", "crates/auto/src/cmd_service.rs", "cmd_service"),
+        ("entry:man-runtime", "crates/auto-man-runtime/src/lib.rs", "Automan"),
     ];
     ANCHORS
         .iter()
@@ -844,13 +959,24 @@ fn av_source_827_inventory_denominators_replayable() {
         .count();
     assert!(cats >= 47, "corpus category rows (>=47, saw {cats})");
 
-    // 4) stdlib provider declarations.
+    // 4) stdlib provider declarations + the FILE members they own (R2-F03:
+    //    the stdlib denominator is the on-disk layer population, not only
+    //    the 37 declaration rows).
     items.extend(scan_providers(&repo, "stdlib/assembly-providers.json"));
     let providers = items
         .iter()
         .filter(|i| i.kind == "stdlib-provider")
         .count();
     assert!(providers >= 18, "provider rows (>=18 six-core 3-target grid, saw {providers})");
+    items.extend(scan_stdlib_auto(&repo, "stdlib/auto"));
+    let stdlib_files = items
+        .iter()
+        .filter(|i| i.kind == "stdlib-auto-file")
+        .count();
+    assert!(
+        stdlib_files >= 102,
+        "stdlib/auto file member rows (>=102, saw {stdlib_files})"
+    );
 
     // 5) Capability matrix C-01..C-43 (per-row owner/gate extraction).
     let matrix = std::fs::read_to_string(
@@ -883,6 +1009,25 @@ fn av_source_827_inventory_denominators_replayable() {
         missing.is_empty(),
         "missing denominator rows / symbols: {missing:?}"
     );
+    // R2-F03 identity completeness: every discovered SOURCE-bearing row
+    // carries real bytes identity (an edit changes the row; a vanished
+    // file becomes a scan-error row above).
+    let identityless: Vec<&InvItem> = items
+        .iter()
+        .filter(|i| {
+            (i.kind == "vm-corpus-case" && i.sha256.is_empty() && i.status.contains("source=at")
+                || i.kind == "vm-corpus-case"
+                    && i.sha256.is_empty()
+                    && i.status.contains("source=as"))
+                || (i.kind == "stdlib-auto-file" && i.sha256.is_empty())
+                || (i.kind == "ac-fixture" && i.sha256.is_empty() && i.status == "present")
+                || (i.kind == "ap-seed" && i.sha256.is_empty())
+        })
+        .collect();
+    assert!(
+        identityless.is_empty(),
+        "source-bearing rows without byte identity: {identityless:?}"
+    );
     let caps = items.iter().filter(|i| i.kind == "capability").count();
     assert_eq!(caps, 43, "capability denominator");
     let eps = items.iter().filter(|i| i.kind == "entry-point").count();
@@ -896,7 +1041,10 @@ fn av_source_827_inventory_denominators_replayable() {
         .iter()
         .filter(|i| i.kind == "entry-call-site" && i.status == "symbol-found")
         .count();
-    assert_eq!(anchors, 13, "all 13 call-site anchors verified with symbols");
+    assert_eq!(
+        anchors, 15,
+        "all 15 call-site anchors (incl. service/man) verified with symbols"
+    );
     // Every capability row carries a real owner cell.
     for it in items.iter().filter(|i| i.kind == "capability") {
         assert!(
@@ -918,6 +1066,7 @@ fn av_source_827_inventory_denominators_replayable() {
             "vm_corpus_cases": corpus,
             "vm_categories": cats,
             "stdlib_providers": providers,
+            "stdlib_auto_files": stdlib_files,
             "capabilities": caps,
             "entry_points": eps,
             "gates": gates,
@@ -934,7 +1083,7 @@ fn av_source_827_inventory_denominators_replayable() {
     )
     .unwrap_or_else(|e| panic!("write inventory artifact {out_path}: {e}"));
     println!(
-        "inventory: {} items (23 AP / {fixtures} fixtures / {corpus} corpus cases / {providers} providers / 43 C / 10 EP / {gates} G / 13 anchors) -> {out_path}",
+        "inventory: {} items (23 AP / {fixtures} fixtures / {corpus} corpus cases / {providers} providers / {stdlib_files} stdlib files / 43 C / 10 EP / {gates} G / 15 anchors) -> {out_path}",
         items.len()
     );
 }
@@ -969,7 +1118,8 @@ fn av_source_827_inventory_negative_controls() {
     assert!(rows[0].note.contains("no `providers` array"));
 
     // A corpus case dir WITHOUT any oracle sidecar stays in the
-    // denominator as a gap row with a future-G owner.
+    // denominator as a gap row with a future-G owner; the row carries the
+    // SOURCE byte identity (R2-F03).
     let case = tmp.join("vmroot/01_cat/001_prog");
     std::fs::create_dir_all(&case).unwrap();
     std::fs::write(case.join("prog.at"), b"fn main() int { return 0 }").unwrap();
@@ -978,11 +1128,58 @@ fn av_source_827_inventory_negative_controls() {
     assert_eq!(case_rows.len(), 1, "the oracle-less case is still a row");
     assert!(case_rows[0].status.contains("oracle=none"));
     assert_eq!(case_rows[0].owner, "future-G");
-    // The category denominator row is present too (directory-level).
-    assert_eq!(
-        rows.iter().filter(|r| r.kind == "vm-corpus-category").count(),
-        1
+    let sha_before = case_rows[0].sha256.clone();
+    assert!(!sha_before.is_empty(), "the case row binds source bytes");
+
+    // R2-F03 source-change control: editing the program source CHANGES the
+    // row's identity — a silent identical row would hide the edit.
+    std::fs::write(case.join("prog.at"), b"fn main() int { return 9 }").unwrap();
+    let rows = scan_vm_corpus(&tmp, "vmroot");
+    let after: &InvItem = rows
+        .iter()
+        .find(|r| r.kind == "vm-corpus-case")
+        .expect("row after edit");
+    assert_ne!(
+        after.sha256, sha_before,
+        "a source edit must move the row identity"
     );
+
+    // R2-F03 unreadable-source control: an EXCLUSIVELY-LOCKED source file
+    // (share_mode(0), same process) makes the read REALLY fail — the row
+    // is a RETAINED scan-error row naming the failure, never a silent
+    // drop; releasing the lock restores the normal row. (Windows-gated:
+    // the lock is a Win32 share-mode violation.)
+    #[cfg(windows)]
+    {
+        let lock_case = tmp.join("vmlock/01_cat/003_locked");
+        std::fs::create_dir_all(&lock_case).unwrap();
+        std::fs::write(lock_case.join("locked.at"), b"fn main() int { return 1 }").unwrap();
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            let _exclusive = std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(0)
+                .open(lock_case.join("locked.at"))
+                .expect("open exclusive");
+            let rows = scan_vm_corpus(&tmp, "vmlock");
+            let locked: Vec<&InvItem> =
+                rows.iter().filter(|r| r.kind == "vm-corpus-case").collect();
+            assert_eq!(locked.len(), 1, "the unreadable case is retained");
+            assert_eq!(locked[0].status, "scan-error");
+            assert!(
+                locked[0].note.contains("source read failed"),
+                "the read failure is named: {:?}",
+                locked[0].note
+            );
+        }
+        // Lock released: the same scan now produces the normal row.
+        let rows = scan_vm_corpus(&tmp, "vmlock");
+        let normal: Vec<&InvItem> =
+            rows.iter().filter(|r| r.kind == "vm-corpus-case").collect();
+        assert_eq!(normal.len(), 1);
+        assert_ne!(normal[0].status, "scan-error");
+        assert!(!normal[0].sha256.is_empty());
+    }
 
     // A missing markdown row is completed as a gap-missing-row (and the
     // main test turns any such row red).
