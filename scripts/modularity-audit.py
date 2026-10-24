@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -71,7 +72,9 @@ SCANNER_LIMITATIONS = [
     "别名引用不可见：use ... as 别名后的短路径使用不计入命中",
     "re-export 不可见：pub use 消化掉模块路径后的类型使用不计入命中",
     "宏内部生成/展开期拼接的路径只在源文本出现处计数，不追踪展开",
-    "字符串/注释命中按逐字符状态机分类，跨行 raw string 与字符字面量边界为启发式",
+    "字符串/注释命中按逐字符状态机分类（跨行 raw string 按哈希数跟踪；单行字符"
+    "字面量 PLAN-831 起按 \\'(\\\\.|[^\\\\'])\\' 规则消费，\\'\\u{..}\\' 展开形与多行"
+    "拼接边界仍为启发式）",
     "cfg(test) mod 边界按朴素花括号计数判定，花括号在非常规位置可能误界",
     "文本命中是候选，不是解析后的语义依赖边；人工确认前不得当作架构事实",
 ]
@@ -107,6 +110,29 @@ def git_required(root: Path, args: list[str]) -> str:
             f"git {' '.join(args)} 失败 (exit {proc.returncode}): {proc.stderr.strip()[:300]}"
         )
     return proc.stdout
+
+
+def resolve_repo_root(repo_id: str, root: Path) -> Path:
+    """PLAN-831 F831-09-04：跨仓扫描根解析（env 覆盖 → 组内兄弟 → 具名失败）。
+
+    组内兄弟 = 本仓检出父目录下同名目录（.wt/lang-<N>/<repo> 组布局与
+    D:/autostack 主检出布局同构）。不创建链接；报告只记 repo id/revision，
+    不记解析出的绝对路径（payload 稳定性契约）。树内禁 junction/symlink
+    红线不受影响——本函数只解析已存在目录。
+    """
+    env_key = re.sub(r"[^A-Z0-9]", "_", repo_id.upper()) + "_ROOT"
+    env_val = os.environ.get(env_key)
+    if env_val:
+        candidate = Path(env_val)
+        if candidate.is_dir():
+            return candidate
+        raise ConfigError(f"{env_key} 指向不存在目录: {env_val}")
+    sibling = root.parent / repo_id
+    if sibling.is_dir():
+        return sibling
+    raise ConfigError(
+        f"跨仓根 {repo_id} 不可解析（{env_key} 未设且组内兄弟 {sibling.name}/ 不存在）"
+    )
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -568,6 +594,18 @@ def classify_source_lines(text: str) -> list[dict]:
                 ctx[col + 1] = "comment"
                 col += 2
                 continue
+            # PLAN-831 F831-09-04：字符字面量跟踪（此前盲区——`'"'` 这类含引号
+            # 的 char literal 会让字符串奇偶翻转，其后整个文件的引号分类失步，
+            # raw string 模板内的命中被误判 code 类）。规则：`'(\\.|[^\\'])'`
+            # 记为单字符字面量整体消费；不匹配（如 `'a` lifetime、`'\u{7f}'`
+            # 展开形）按普通 code 字符走——不含裸引号，不再翻转状态。
+            if rest[0] == "'":
+                m = re.match(r"'(\\.|[^\\'])'", rest)
+                span = m.end() if m else 1
+                for i in range(col, col + span):
+                    ctx[i] = "code"
+                col += span
+                continue
             m = re.match(r'(b?r)(#*)"', rest)
             if m:
                 string_state = {"raw": True, "hashes": len(m.group(2))}
@@ -645,6 +683,23 @@ def run_text_scans(root: Path, tracked: list[str], scan_configs: list[dict]) -> 
     rust_files = sorted(p for p in tracked if p.endswith(".rs"))
     scans = []
     for cfg in scan_configs:
+        # PLAN-831 F831-09-04：跨仓 text_scan——repo 指定时按解析序取兄弟仓
+        # 受管 .rs（源根相对该仓根）；报告记 repo id + HEAD revision 供身份
+        # 对账，不记绝对路径。缺省 repo 行为与历史逐字节同构。
+        repo_id = cfg.get("repo")
+        scan_root: Path = root
+        scan_files: list[str] = rust_files
+        repo_revision: str | None = None
+        repo_dirty: bool | None = None
+        if repo_id:
+            repo_root = resolve_repo_root(repo_id, root)
+            scan_root = repo_root
+            scan_files = sorted(
+                p for p in collect_tracked_files(repo_root) if p.endswith(".rs")
+            )
+            repo_rev = collect_revision(repo_root)
+            repo_revision = repo_rev["head"]
+            repo_dirty = repo_rev["tracked_dirty"]
         source_roots = [r.rstrip("/") for r in cfg.get("source_roots", [])]
         exclude_roots = [r.rstrip("/") for r in cfg.get("exclude_roots", [])]
         patterns = [ _compile_pattern(p) for p in cfg.get("patterns", []) ]
@@ -654,14 +709,14 @@ def run_text_scans(root: Path, tracked: list[str], scan_configs: list[dict]) -> 
                 return False
             return not any(path == r or path.startswith(r + "/") for r in exclude_roots)
 
-        targets = [p for p in rust_files if selected(p)]
+        targets = [p for p in scan_files if selected(p)]
         total = 0
         by_class: dict[str, int] = {}
         per_file: dict[str, dict] = {}
         samples: list[dict] = []
         samples_truncated = False
         for rel in targets:
-            text = read_text_or_none(root / rel)
+            text = read_text_or_none(scan_root / rel)
             if text is None:
                 continue
             line_entries = classify_source_lines(text)
@@ -692,8 +747,14 @@ def run_text_scans(root: Path, tracked: list[str], scan_configs: list[dict]) -> 
             "source_roots": source_roots,
             "exclude_roots": exclude_roots,
             "patterns": cfg.get("patterns", []),
+            "repo": repo_id,
+            "repo_revision": repo_revision,
+            "repo_dirty": repo_dirty,
             "files_scanned": len(targets),
             "total_matches": total,
+            # PLAN-831 F831-09-04：code 类（生产源码位；test/macro 区、注释/
+            # doc/字符串不计）单列——code_fence_zero 围栏的判红输入。
+            "code_matches": by_class.get("code", 0),
             "by_class": dict(sorted(by_class.items())),
             "per_file": dict(sorted(per_file.items())),
             "samples": samples,
@@ -719,13 +780,17 @@ def check_ownership(root: Path, entries: list[dict], asset_cfgs: list[dict] | No
     for entry in entries:
         path = entry.get("path", "")
         is_outside = bool(entry.get("outside_root", False))
+        # PLAN-831 F831-09-04：ownership 条目跨仓化——repo 指定时按解析序取
+        # 兄弟仓根核对存在性（迁移后 UI 焊点实际在 auto-ui 仓）。
+        repo_id = entry.get("repo")
+        entry_root = resolve_repo_root(repo_id, root) if repo_id else root
         exists = None
         if is_outside:
             outside += 1
         else:
-            exists = (root / path).exists()
+            exists = (entry_root / path).exists()
             if not exists:
-                missing.append(path)
+                missing.append(f"{repo_id}:{path}" if repo_id else path)
         owner = entry.get("owner", "unassigned")
         by_owner[owner] = by_owner.get(owner, 0) + 1
         group = entry.get("coverage_group", "")
@@ -735,6 +800,7 @@ def check_ownership(root: Path, entries: list[dict], asset_cfgs: list[dict] | No
             "id": entry.get("id", ""),
             "kind": entry.get("kind", "weld"),
             "path": path,
+            "repo": repo_id,
             "owner": owner,
             "exit_phase": entry.get("exit_phase", ""),
             "status": entry.get("status", "active"),
@@ -1114,6 +1180,32 @@ def evaluate_strict(
                 f"文本候选漂移（需人工确认，不判红）: {scan['id']} 基线 {base_total} -> 当前 {scan['total_matches']}"
             )
 
+    # PLAN-831 F831-09-04：code_fence_zero 围栏——配置声明的 scan 其 code 类
+    # （生产源码位；注释/doc/字符串/test/macro 区不计）命中 > 0 直接判红。
+    # 此前 ui_to_language 因 TOML "\b"（退格转义，非正则词边界）+ 源根迁出
+    # 双重原因恒 0 命中（files_scanned=0 的空转绿）；围栏必须对真实源根生效。
+    scan_cfgs = {sc.get("id"): sc for sc in config.get("text_scan", [])}
+    base_code_totals = baseline.get("text_scan_code_totals", {})
+    for scan in text_candidates.get("scans", []):
+        sc_cfg = scan_cfgs.get(scan.get("id"))
+        if sc_cfg is None:
+            continue
+        code_now = scan.get("code_matches", 0)
+        if sc_cfg.get("code_fence_zero") and code_now > 0:
+            violations.append({
+                "type": "text_code_fence",
+                "rule": scan.get("id"),
+                "detail": (
+                    f"code 类文本命中 {code_now} 处 > 0（code_fence_zero 围栏；"
+                    "注释/doc/字符串命中不判红，逐条见报告 samples）"
+                ),
+            })
+        base_code = base_code_totals.get(scan.get("id"))
+        if base_code is not None and code_now != base_code:
+            warnings.append(
+                f"文本 code 类候选漂移（需人工确认，不判红）: {scan['id']} 基线 {base_code} -> 当前 {code_now}"
+            )
+
     if ownership.get("paths_missing"):
         warnings.append(
             "ownership 声明路径在扫描根下缺失（配置漂移，需人工核对）: "
@@ -1156,8 +1248,11 @@ METHOD = {
                       "不自动更新、不作编译验收；metadata 成功不代表编译成功",
     "text_candidates": "配置驱动正则扫描 + 逐字符注释/字符串状态机 + cfg(test)/macro_rules 区域跟踪的"
                        "启发式分类（code/comment/doc/string/test/macro）；文本命中是候选，"
-                       "不是解析后的语义依赖边；盲区见 scanner_limitations",
-    "ownership": "按配置声明焊点/资产/consumer 的 owner 与退出阶段；路径存在性核对仅限扫描根内，"
+                       "不是解析后的语义依赖边；盲区见 scanner_limitations。PLAN-831 起支持跨仓"
+                       "scan（repo 字段：env <REPO>_ROOT 覆盖 → 组内兄弟 → 具名失败；报告记 repo "
+                       "id/HEAD/脏态，不记绝对路径）；code_fence_zero 围栏按 code 类命中判红",
+    "ownership": "按配置声明焊点/资产/consumer 的 owner 与退出阶段；路径存在性核对仅限扫描根内"
+                 "（PLAN-831 起条目可带 repo 字段跨仓核对——解析序同跨仓 scan），"
                  "根外 consumer 只登记不核对；对照 ownership_coverage.required 必需组核对覆盖，"
                  "缺组在 strict 判红（不能只验证已登记 path 存在）",
     "assets": "受管文件按配置资产根计数（文件数/字节数/扩展名分布）",
@@ -1230,6 +1325,14 @@ def refresh_baseline(
             "拒绝在脏树上刷新基线：基线必须绑定干净受管树的实际 HEAD"
             f"（当前: {revision['tracked_status'][:5]}）"
         )
+    # PLAN-831 F831-09-04：跨仓扫描面同样绑定干净树——主仓干净而兄弟仓带
+    # 未提交变更时刷新，会把脏内容冻进基线且无法从 base_revision 复现。
+    for scan in text_candidates.get("scans", []):
+        if scan.get("repo") and scan.get("repo_dirty"):
+            raise ConfigError(
+                f"拒绝刷新基线：跨仓 {scan['repo']} 工作树脏"
+                f"（HEAD {str(scan.get('repo_revision'))[:12]}）——基线必须绑定干净受管树"
+            )
     config_text = read_text_or_none(config_path)
     if config_text is None:
         raise ConfigError("配置不可读")
@@ -1241,6 +1344,9 @@ def refresh_baseline(
         "declared_edges": sorted(declared_edges, key=edge_sort_key),
         "text_scan_totals": {
             scan["id"]: scan["total_matches"] for scan in text_candidates.get("scans", [])
+        },
+        "text_scan_code_totals": {
+            scan["id"]: scan.get("code_matches", 0) for scan in text_candidates.get("scans", [])
         },
     }
     baseline_path.write_text(canonical_json(baseline), encoding="utf-8", newline="\n")
