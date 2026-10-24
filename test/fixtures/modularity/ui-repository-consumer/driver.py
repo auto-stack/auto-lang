@@ -719,6 +719,7 @@ FAILURE_SHAPES = [
 # driver 收据（DST-5 + FLR-1..4,6；其 V01..V05 结果映射见 792_RECEIPT_MAP）。
 DISTRIBUTION_RECEIPT_REL = "../../../../../scratch-ui-repo-distribution/distribution-receipt.json"
 D792_RECEIPT_REL = "../../../../../scratch-consumer/driver-receipt.json"
+SWITCH_DRILL_RECEIPT_REL = "../../../../../scratch-ui-repo-fixture/switch-drill-receipt.json"
 D792_RECEIPT_MAP = {
     "DST-5": ["V05a-tool-fresh-locked-build", "V05b-tool-relocated-locked-build",
               "V05c-tool-describe", "V05e-tool-generate-real"],
@@ -769,7 +770,15 @@ def run_distribution(ctx: dict, phases: dict, ledger: Ledger) -> None:
 def run_failure(ctx: dict, phases: dict, ledger: Ledger) -> None:
     phase = ctx["phase"]
     bound792 = _load_bound_receipt(D792_RECEIPT_REL) if phase == "source-switched" else None
+    drill = _load_bound_receipt(SWITCH_DRILL_RECEIPT_REL) if phase == "source-switched" else None
     for shape_id, name, oracle in FAILURE_SHAPES:
+        if shape_id == "FLR-5" and drill is not None:
+            ok_checks = [c["ok"] for c in drill.get("checks", [])]
+            all_ok = bool(ok_checks) and all(ok_checks)
+            ledger.add(shape_id, "pass" if all_ok else "fail",
+                       f"[{name}] 切换事务 drill 收据绑定（{len(ok_checks)} 检：正常链/锚冲突/"
+                       "中断幂等/交换失败保旧/取消零副作用/恢复重试，工具 scripts/ui-repository-switch.py）")
+            continue
         if bound792 is not None and shape_id in D792_RECEIPT_MAP:
             results = {r["case"]: r["ok"] for r in bound792.get("results", [])}
             mapped = [(c, results.get(c)) for c in D792_RECEIPT_MAP[shape_id]]
