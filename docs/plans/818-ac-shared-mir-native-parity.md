@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-818
-status: executing
+status: execution_done
 feature_name: AC接入共享Typed MIR与原生一致性闭环
 plan_revision: 3
 author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-24
-current_step: 8
+current_step: 9
 total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-av/resident-function-install.md
@@ -214,11 +214,13 @@ V-01–11为必验区分性补充，固定语料族总绿不替代反控；requi
 | [x] T-06 | work | T-05、公共单写窗口 | 正式AutoDown完整suite及兼容/坏actual/身份/stale | adapter、V-10；AC-07。[✅ 已完成 2026-10-24 @ 1dd79a16d：mir_native_adapter_ 7测全绿+ac_mn_probe 10/10回归。**词表**（contract.rs：mn 增 edit-source/restart，query 保持 sema/abi 专属；末步必为判定 run；T-02 单 run 形态原样可解=原协议兼容）；**会话模型**（ac_mn.rs：restart 分会话=真实新 worker 进程、盘上 store 为唯一携带态；前导 edit-source 父侧 exactly-once 物化、worker 协议 mnworker/1 不变；每会话 PE 结构化准入 link/run≥1——诊断拒绝不达 link/run 属设计语义、准入序恢复 T-02 原序；**manifest 身份父侧准入**=成功必 echo 指纹+同源跨进程同指纹）；**收据**改 per-session（steps/source_sha/exit/manifest_fp/counters/spans/judged）；**测试**：edit 物化判定/restart 跨进程缓存复用（codegen=1→hit=1+manifest 指纹跨进程一致）/坏actual三负oracle（含 trap70）/诊断正面+错stage红/解码负例五路/worker故障四形态皆infra（AC_MN_CASE_WORKER 改每调用重读env防进程memo吞seam）/旧协议+ac-av混跑+stale重跑。回归 probe_adapter 28/28（首跑2失败=已知并行timing flake复跑绿） ] |
 | [x] T-07 | work | T-06 | 真实runner六场景、两编辑P95门、raw报告及反控 | turnaround、V-09；AC-06。[✅ 已完成 2026-10-24 @ 32c050234：正式5测+驱动档3测全绿。**正式腿**（receipt request_wall_ms 连续窗口，六场景之四）：fresh真冷30（P50 1356 报备）；restart暖store 30（每调用真新进程/全命中仍真link/run）；**body编辑P95=869ms<1000**（冻结fn_041 A0编辑位/1重编114命中/期望随rev逐轮独立）；**合法签名重建P95=996ms<1000**（fn_leaf_2 +w全调用点一致+每迭代K_i变体/期望闭式+8K/8-9重键）；签名冲突诊断P95=210ms<1000。**驱动档**：same-process hot/cross-project/并发GC（GC竞速与编辑流量共存逐轮正确+当前发布存活+流量后全量回收）。**支撑面**：mn binding session（798会话形态）；mn-worker load-revision；工具发现磁盘memo（−110ms/短命进程，内容绑定仍逐进程重哈希）；AC_MN_SESSION_ROOT；nextest mn-turnaround串行组；raw五文件落docs/reports/plan818/。实测：C:Temp AV使116对象link翻倍（177→461ms）→T-07 scratch指D:构建盘；冷页首调用558ms→双warm-up；**sig重建P95余量仅4ms（996）在案**——根治=T-11增量前端（消330ms/请求）；回归ac_mn_probe 15/15+驱动档3/3 ] |
 | [x] T-08 | work | T-07 | verify全Scope、docs/reports/plan818、边界/coverage/SD提案 | acceptance V-01–11；AC-01–08。[✅ 已完成 2026-10-24 @ 6da1acaf1：verify-ac-mir-native-818.ps1 九Scope（顺序敏感固化：turnaround-formal 前置/resources 垫底——重档 IO 余波曾把 body-edit 尾部推 3-12s 实录）+ acceptance.md 对账（V 矩阵/AC 状态/边界含 request-objects 结构性不可达+worker 版本准入代码覆盖+sig 重建 P95 余量 4ms 在案/SD-01~06 提案含 root 生命周期新事实）+ **acceptance 全Scope重放绿**（`OK: acceptance`：first 3/turnaround-formal 5/codegen 6/parity 2/cache 7/transaction 6/autodown 10/driver 3/resources 5=工作区32+主仓15）；execution_done 顺延至 T-11 完成（AC-11 为 work 必做项） ] |
-| [ ] T-11 | work | D828及本计划其他work实现完成 | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-12 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage | AC-11；共同基线+新增能力兼容定向验收，未实测不勾；送审前不跑整档 |
+| [x] T-11 | work | D828及本计划其他work实现完成 | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-12 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage | AC-11。[✅ 已完成 2026-10-24 @ e10452fe9：**接入面**（828会话 PreparedEdit 增 unit_mir/changed_name 只读消费缝——加法-only，miss 路透出 lower_function_unit+verify_mir 处理过的精确单元；auto-av-probe 回归 session17+ac_av6+probe_adapter28 全绿；mn 消费者 src/incremental.rs：D828 驻留模型 resident 工作集+store 持久层、mn 门重验证、emission 失败永不提交 revision）。**V-12 四子全绿**：(1.1) 273575B/115函数×30修订双门——结构（未改fp/代际不动/whole-module恒0/恰一安装一重发114驻留命中）AND edit→PE P95=715.5ms<1000（P50 528，反超全请求路径869——增量架构兑现）；(1.2) 两函数局部更新（先改身份保留不回退/main零重发）；(1.3) 三路精确失效/拒绝（body恰重键caller代际0/签名编辑接口门拒绝mn零变化不wedge/无能力加mark_a前端拒）；(1.4) 退化必被抓（content-hit回退=记录性fallback非零/活键换对象=Conflict活身份存活）。verify脚本acceptance/closeout接入incremental档 ] |
 | [ ] T-09 | review | T-08冻结提交、T-11 完成 | 同树独立验收/规范/遗漏审查及反控重放 | AC-09；reviewed=10/11，merge门禁pending |
 | [ ] T-10 | merge | T-09 pass | 冻结门禁、Spec/ledger、归档合入、批量判定/wt-guard后清理 | AC-10；实际11/11 |
 
 ## 9. 复审记录
+
+2026-10-24 stage:work | PLAN-818 | plan_revision 3 | outcome:pass（T-11完成，9/11 work全清；execution_done，next=review T-09）| worktree:`D:/autostack/.wt/lang-818/auto-lang` | branch:plan-818-dev | base_commit:828237e56 | code_commit:e10452fe9（T-11；前序 6da1acaf1/32c050234/1dd79a16d/adc692b55）| dependency_revisions:同T-04记录 | task_ids:T-11（9/11）| evidence:§8 T-11行全录（incremental_tier 4/4+828面回归全绿）；教训：①会话changed_name=源名、单元层键=d_前缀；②prepare不发布、src()在commit前仍旧源（fallback须本地重构新源——首跑退回编辑链接旧对象实录）；③并行link风暴把P95 715→1131（档内串行修复）；④T-08遗留resources_tier HEAVY_LEGS串行修复随本记录提交（同进程spike腿与重腿并发竞实录）| blockers:无 | next_responsible_role:review（T-09 同树独立复审；merge门禁pending：裸t+触面档于冻结提交）
 
 2026-10-24 stage:work | PLAN-818 | plan_revision 3 | outcome:pass（T-08完成，8/11；继续T-11）| worktree:`D:/autostack/.wt/lang-818/auto-lang` | branch:plan-818-dev | base_commit:828237e56 | code_commit:6da1acaf1（T-08；前序 32c050234/1dd79a16d/adc692b55）| dependency_revisions:同T-04记录 | task_ids:T-08（8/11）| evidence:§8 T-08行全录（acceptance全Scope重放绿）；实测教训：①同进程重腿与spike腿并发竞（HEAVY_LEGS互斥修复）；②nextest位置滤串无法排除同模块测试→-E表达式+cargo t别名特性透传；③验收Scope顺序敏感（墙钟门vs重档IO余波）固化于脚本；execution_done顺延至T-11（AC-11 work必做，四子case+D828接口接入）| blockers:无 | next_responsible_role:work继续T-11
 
