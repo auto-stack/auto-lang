@@ -55,6 +55,13 @@ pub const TYPED_FIXTURES: &[TypedFixture] = &[
         kind: "f32",
         bits: "3f800000",
     },
+    // The contract's frozen f32 NaN payload sample (contract-decision §3:
+    // NaN(payload)=0x7F80_AD00) — F820-R7-02.
+    TypedFixture {
+        id: "f32-nan-payload",
+        kind: "f32",
+        bits: "7f80ad00",
+    },
     TypedFixture {
         id: "bool-true",
         kind: "bool",

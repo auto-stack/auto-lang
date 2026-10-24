@@ -1007,6 +1007,13 @@ case {
         av: { entry: "typed:u64-max" },
         steps: [ { op: "run" } ]
       },
+      expect: { completion: "success" } },
+    { id: "wrong-bits-f32-nan", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/data-run-v1",
+        av: { entry: "typed:f32-nan-payload" },
+        steps: [ { op: "run" } ]
+      },
       expect: { completion: "success" } }
   ]
 }
@@ -1033,6 +1040,13 @@ case {
             .iter()
             .map(|r| &r.mismatches)
             .collect::<Vec<_>>()
+    );
+    // The frozen f32 NaN payload sample is bound too (F820-R7-02): one
+    // bit off its exact raw bits is red through the real parent judge.
+    assert_eq!(
+        status_of(&report, "wrong-bits-f32-nan"),
+        auto_test_case::report::Status::Fail,
+        "a one-bit-off f32 NaN payload expectation must be red"
     );
 }
 

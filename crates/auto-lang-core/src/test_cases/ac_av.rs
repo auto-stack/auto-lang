@@ -750,6 +750,7 @@ const DATA_TYPED_FIXTURES: &[(&str, &str, &str)] = &[
     ("fneg-nan", "f64", "fff80000deadbeef"),
     ("neg-zero", "f64", "8000000000000000"),
     ("f32-one", "f32", "3f800000"),
+    ("f32-nan-payload", "f32", "7f80ad00"),
     ("bool-true", "bool", "1"),
     ("i32-42", "i32", "2a"),
 ];
@@ -926,6 +927,14 @@ fn run_check_impl(
             infra_detail = Some(format!("av worker recipe mismatch: {}", ok.recipe));
             break 'admit;
         }
+        // F820-R7-01: the typed report is a DATA-recipe protocol
+        // increment — its presence on any non-data (core) response is an
+        // admission violation, never a pass-shaped extra channel.
+        if typed_on_non_data(family, &ok.steps) {
+            infra_detail =
+                Some("typed report on a non-data recipe (protocol violation)".to_string());
+            break 'admit;
+        }
         if ok.worker_version != EXPECTED_AV_WORKER_VERSION {
             infra_detail = Some(format!(
                 "av worker version `{}` does not match the admitted `{}`",
@@ -1099,7 +1108,7 @@ fn run_check_impl(
             }
         }
     } else {
-        judge_expectation(&step, oracle, &mut mismatches);
+        judge_expectation(family, &step, oracle, &mut mismatches);
     }
 
     // Receipt (probe-receipt.json in the artifact dir). `request_wall_ms`
@@ -1176,7 +1185,42 @@ fn run_check_impl(
 /// Judge the observed step outcome against the declared expectations.
 /// The oracle faces: success+exit (value), error-run+message (trap),
 /// error-parse/verify+code (diagnosed rejection).
-fn judge_expectation(step: &StepOut, oracle: &ResolvedOracle, mismatches: &mut Vec<Mismatch>) {
+/// Canonical typed-shape validation (F820-R7-01): a data-family typed
+/// report must name one of the six scalar tags and carry the kind's
+/// canonical lowercase-hex width — malformed reports are mismatches, not
+/// silent passes. Returns the violation message, if any.
+fn typed_shape_violation(t: &TypedOut) -> Option<String> {
+    let width_ok = match t.kind.as_str() {
+        "i64" | "u64" | "f64" => t.bits.len() == 16,
+        "f32" => t.bits.len() == 8,
+        "i32" | "bool" => (1..=8).contains(&t.bits.len()),
+        other => return Some(format!("unknown typed kind `{other}`")),
+    };
+    if !width_ok
+        || !t
+            .bits
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Some(format!(
+            "typed bits `{}` are not canonical for kind `{}`",
+            t.bits, t.kind
+        ));
+    }
+    None
+}
+
+/// Admission rule (F820-R7-01): any typed report on a non-data recipe.
+fn typed_on_non_data(family: RecipeFamily, steps: &[StepOut]) -> bool {
+    family != RecipeFamily::Data && steps.iter().any(|s| s.typed.is_some())
+}
+
+fn judge_expectation(
+    family: RecipeFamily,
+    step: &StepOut,
+    oracle: &ResolvedOracle,
+    mismatches: &mut Vec<Mismatch>,
+) {
     let expect = oracle;
     match &expect.completion {
         Completion::Success => {
@@ -1201,10 +1245,17 @@ fn judge_expectation(step: &StepOut, oracle: &ResolvedOracle, mismatches: &mut V
                     });
                 }
             } else if expect.exit.is_none() && expect.stdout.is_none() && expect.stderr.is_none() {
-                // success without a value oracle: still require a value
-                // present — via the i32 channel OR the typed report (a
-                // bool/wide data result has no i32 form; F820-R6-01).
-                if step.value.is_none() && step.typed.is_none() {
+                // Success without a value oracle still requires a value
+                // present — FAMILY-ISOLATED (F820-R7-01): the typed
+                // channel is a DATA-recipe increment only. A core/i32
+                // success must carry the OLD value channel (a typed
+                // report on a core response is an admission violation,
+                // checked there); a data success may satisfy presence
+                // via either channel, and a data typed report must have
+                // the canonical tag/width shape.
+                let present =
+                    step.value.is_some() || (family == RecipeFamily::Data && step.typed.is_some());
+                if !present {
                     mismatches.push(Mismatch {
                         observation: "exit".into(),
                         kind: "missing".into(),
@@ -1212,6 +1263,19 @@ fn judge_expectation(step: &StepOut, oracle: &ResolvedOracle, mismatches: &mut V
                         actual: "none".into(),
                         first_diff: None,
                     });
+                }
+                if family == RecipeFamily::Data {
+                    if let Some(t) = &step.typed {
+                        if let Some(v) = typed_shape_violation(t) {
+                            mismatches.push(Mismatch {
+                                observation: "typed".into(),
+                                kind: "typed-shape".into(),
+                                expected: "canonical {kind, bits}".into(),
+                                actual: v,
+                                first_diff: None,
+                            });
+                        }
+                    }
                 }
             }
         }
@@ -1354,5 +1418,121 @@ fn fnv1a64_hex(bytes: &[u8]) -> String {
 pub mod tests_seam {
     pub fn locate_worker_for_test() -> Result<std::path::PathBuf, String> {
         super::locate_worker()
+    }
+}
+
+#[cfg(test)]
+mod judge_tests {
+    //! F820-R7-01 pins: the typed channel is a DATA-recipe increment —
+    //! the shared judge and admission rules are exercised HERE, on the
+    //! production functions, with synthetic steps (the reviewer's
+    //! fault-worker e2e shapes: core success missing the i32 value, with
+    //! and without an attached typed object).
+
+    use super::*;
+
+    fn step(value: Option<i32>, typed: Option<TypedOut>) -> StepOut {
+        StepOut {
+            op: "run".into(),
+            outcome: "success".into(),
+            value,
+            typed,
+            trap: None,
+            diag: None,
+            counters: Default::default(),
+            source_hash: String::new(),
+            wall_ms: 0.0,
+            trace: Vec::new(),
+            spans: Vec::new(),
+        }
+    }
+
+    fn typed(kind: &str, bits: &str) -> Option<TypedOut> {
+        Some(TypedOut {
+            kind: kind.into(),
+            bits: bits.into(),
+        })
+    }
+
+    fn oracle_no_exit() -> ResolvedOracle {
+        ResolvedOracle {
+            completion: auto_test_case::contract::Completion::Success,
+            result: None,
+            stdout: None,
+            stderr: None,
+            artifacts: Vec::new(),
+            exit: None,
+            perf: None,
+            probe: None,
+            oracle_sha256: String::new(),
+        }
+    }
+
+    fn mismatches(family: RecipeFamily, step: &StepOut) -> Vec<Mismatch> {
+        let oracle = oracle_no_exit();
+        let mut ms = Vec::new();
+        judge_expectation(family, step, &oracle, &mut ms);
+        ms
+    }
+
+    #[test]
+    fn core_success_requires_the_old_value_channel() {
+        // Without typed: the pre-R6 semantics — a missing value mismatches.
+        let ms = mismatches(RecipeFamily::Core, &step(None, None));
+        assert!(ms.iter().any(|m| m.kind == "missing"));
+        // With a typed object attached (the R7 fault-worker shape): the
+        // typed channel must NOT satisfy a core success — still missing.
+        let ms = mismatches(RecipeFamily::Core, &step(None, typed("bool", "1")));
+        assert!(
+            ms.iter().any(|m| m.kind == "missing"),
+            "typed must not satisfy a core value presence: {ms:?}"
+        );
+        // And the admission gate rejects the typed-on-core shape outright
+        // (infra, never a pass-shaped extra channel).
+        let steps = vec![step(None, typed("bool", "1"))];
+        assert!(super::typed_on_non_data(RecipeFamily::Core, &steps));
+        // A clean core response carries no typed at all.
+        assert!(!super::typed_on_non_data(
+            RecipeFamily::Core,
+            &[step(Some(42), None)]
+        ));
+        // Positive: value present, no typed — no presence mismatch.
+        assert!(mismatches(RecipeFamily::Core, &step(Some(42), None)).is_empty());
+    }
+
+    #[test]
+    fn data_success_presence_accepts_the_typed_channel() {
+        // bool has no i32 form: presence via typed (the F820-R6-01 fix,
+        // now family-isolated to data).
+        assert!(mismatches(RecipeFamily::Data, &step(None, typed("bool", "1"))).is_empty());
+        assert!(mismatches(RecipeFamily::Data, &step(Some(42), None)).is_empty());
+        assert!(mismatches(RecipeFamily::Data, &step(None, None))
+            .iter()
+            .any(|m| m.kind == "missing"));
+    }
+
+    #[test]
+    fn data_typed_reports_must_have_the_canonical_shape() {
+        // Unknown kind tag.
+        let ms = mismatches(RecipeFamily::Data, &step(None, typed("weird", "1")));
+        assert!(ms.iter().any(|m| m.kind == "typed-shape"), "{ms:?}");
+        // Wrong canonical width for the kind (f32 must be 8 hex digits).
+        let ms = mismatches(RecipeFamily::Data, &step(None, typed("f32", "3f80")));
+        assert!(ms.iter().any(|m| m.kind == "typed-shape"), "{ms:?}");
+        // Non-hex digits.
+        let ms = mismatches(
+            RecipeFamily::Data,
+            &step(None, typed("u64", "zzzzzzzzzzzzzzzz")),
+        );
+        assert!(ms.iter().any(|m| m.kind == "typed-shape"), "{ms:?}");
+        // Canonical shapes pass validation.
+        for (kind, bits) in [
+            ("i32", "2a"),
+            ("bool", "1"),
+            ("f32", "7f80ad00"),
+            ("f64", "8000000000000000"),
+        ] {
+            assert!(typed_shape_violation(&typed(kind, bits).unwrap()).is_none());
+        }
     }
 }
