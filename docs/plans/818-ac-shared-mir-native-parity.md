@@ -6,7 +6,7 @@ plan_revision: 3
 author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-24
-current_step: 2
+current_step: 3
 total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-av/resident-function-install.md
@@ -208,7 +208,7 @@ V-01–11为必验区分性补充，固定语料族总绿不替代反控；requi
 |---|---|---|---|---|
 | [x] T-01 | work | 用户实施指令 | 只读MIR映射/符号/ABI/工具/内存/负载/测试owner设计，contract-decision.md及独立golden | 指令覆盖/资源可审；AC-01，不编译未合入接口。[✅ 已完成 2026-10-20：[contract-decision.md](attachments/818/contract-decision.md)（全指令表映射/符号/私有ABI `msvc-x64/priv-i32-bool-v1`/trap70/预算与mn.*错误分类/对象key/层与恢复/工具链与参考机身份/48-512-768MiB分区/测试owner映射）+ [golden.md](attachments/818/golden.md)（首例源冻结+手算：exit 0/stderr "aab"/无trap审计；256KiB/100caller+14leaf+main负载设计、LCG seed 0x818_5eed、K=19、fn_041编辑位/fn_leaf_2签名冲突位、无trap界分析、闭式镜像+手审义务）。全程只读：主检出零代码WIP预检过、未编译在途接口、未造mock、未开树；观察基面=798在途分支072cb4e14（forecast非冻结，D-798后重读） ] |
 | [x] T-02 | work | T-01、D-798、公共注册窗口、D828排期门、当前单写窗口交接 | D828后先刷新T-01接口/版本/预算合同，旧准备不冒领新依赖pass； 新workspace/lock、两函数多obj新codegen→PE、三路径/expected、cache新进程恢复/正式AutoDown/trace/峰值首例；记录已合入基面/API版本/写面owner与接受交接，无公共写面则明确登记 | first-case，V-01/04/10；AC-01。[✅ 已完成 2026-10-24（D828核验+刷新重验+窗口交接齐）：**D828成立**（828 archived 11/11 delivered，门禁裸t 5331/5331+tv 163+probe消费面、SD-01..06、ledger v70、合并祖先核验过）；**刷新义务**（contract-decision r1.2：消费API `compile_scalar_source`/`lower_checked`/`verify_mir`/`split_units` 签名存续、MIR/AV版本轴未变；814大迁移注册映射刷新——ac_mn.rs/dispatch经git重命名检测落位 `crates/auto-lang-core/src/test_cases/`，测试/语料留auto-lang；828新增 `lower_function_unit`/`session.rs`/`function_queries.rs` 记为T-11消费目标）；**跨兄弟消费缺陷修复**（828给auto-av-probe新增ac-syntax-core-adapter继承依赖→experimental/内兄弟workspace经path链消费时cargo错析继承至auto-lang根，差分实测证实；四成员清单改语义等价字面量、ac-syntax自建39/39零回归，路由KNOWN-DEBT）；**重放全绿**（首例3/3+AutoDown 3/3 @ c4819bf58，基面=master 828237e56，原T-02提交rebase为199a9a4a3）；**写面交接登记**（触及公共写面：auto-test-case contract.rs/suite.rs（recipe注册+mn绑定）、auto-lang-core test_cases/mod.rs（dispatch+模块）、auto-lang tests.rs（测试注册）——在途竞争写者：817含同面注册（plan-817-dev b249767d0）、839一触及提交；按批次并行合同§2合并时串行，先合入方完成注册、后合入方同步master追加复验，818分支当前基于无注册master，若817先合则合并前rebase复验）；**验证证据**（新路径真PE=独立golden exit0/stderr"aab"；三路径一致；真store→新进程worker恢复codegen=0仍真link/run→进程内命中forbid_codegen反控；语料3 case过真实runner含除溢出真PE exit70；负oracle红；解码负控4例） ] |
-| [ ] T-03 | work | T-02 | 完整有限MIR指令/CFG/槽/调用/数值/trace与负例，精确错误/来源 | mir_native_codegen_/parity_、V-01–03；AC-02/03 |
+| [x] T-03 | work | T-02 | 完整有限MIR指令/CFG/槽/调用/数值/trace与负例，精确错误/来源 | mir_native_codegen_/parity_、V-01–03；AC-02/03。[✅ 已完成 2026-10-24 @ da76e6303：codegen_tier 6测（算术边界19例全族trap真PE exit70/负数截断三态/MAX精确界/比较边界/bool-not；未走分支trap潜在两向；循环break-continue/零迭代/槽重赋值/合流；7参混合栈传/自递归/互递归/嵌套；trace三序含未走臂静默；坏MIR准入mn.unsupported.profile/unit-shape/import精确码+codegen=0、驱动级missing entry同0）+ parity_tier 2测（值/trap/潜在矩阵7例+调用循环5例×三路径逐腿对独立手算期望，AV腿TrapKind精确、双native trace字节一致）；**修复lowering真缺陷**（发射循环无条件预seal→循环头回边断言；改仅remaining==0时seal，回边头延迟seal）；回归：首例3/3+AutoDown 3/3绿 ] |
 | [ ] T-04 | work | T-03 | 函数对象/符号/manifest/版本key，恢复/再生/无MIR命中、事务/失败/反控 | mir_native_cache_/transaction_、V-04–07；AC-04/05 |
 | [ ] T-05 | work | T-04 | 32MiB冷对象/512真实编辑/GC、内存分区/树峰值/深CFG/超限清理 | resources、V-06–08；AC-05 |
 | [ ] T-06 | work | T-05、公共单写窗口 | 正式AutoDown完整suite及兼容/坏actual/身份/stale | adapter、V-10；AC-07 |
@@ -219,6 +219,8 @@ V-01–11为必验区分性补充，固定语料族总绿不替代反控；requi
 | [ ] T-10 | merge | T-09 pass | 冻结门禁、Spec/ledger、归档合入、批量判定/wt-guard后清理 | AC-10；实际11/11 |
 
 ## 9. 复审记录
+
+2026-10-24 stage:work | PLAN-818 | plan_revision 3 | outcome:pass（T-03完成，3/11；继续T-04）| worktree:`D:/autostack/.wt/lang-818/auto-lang` | branch:plan-818-dev | base_commit:828237e56 | code_commit:da76e6303（T-03）| dependency_revisions:同T-02清偿记录 | task_ids:T-03（3/11）| evidence:§8 T-03行全录（codegen 6/6+parity 2/2+回归首例3/3+AutoDown 3/3）；含lowering循环回边seal真缺陷修复 | blockers:无 | next_responsible_role:work继续T-04
 
 2026-10-24 stage:work | PLAN-818 | plan_revision 3 | outcome:pass（T-02清偿完成，2/11；继续T-03）| worktree:`D:/autostack/.wt/lang-818/auto-lang`（组内auto-down兄弟detached@master）| branch:plan-818-dev | base_commit:828237e56（master）| code_commit:199a9a4a3（T-02，经rebase自21b95c0e8）+c4819bf58（D828刷新轮：rebase 828/814迁移面+ac-syntax四清单字面量修复+lock重生成）| dependency_revisions:828 archived 11/11 delivered（D828核验：合并祖先/SD-01..06/ledger v70）；798面存续（contract-decision r1.2）；ACE顺序合同§11刷新重验义务履行 | task_ids:T-02（2/11）| evidence:§8 T-02行全录（重放首例3/3+AutoDown 3/3 @c4819bf58；ac-syntax自建39/39零回归）| blockers:无（写面合并时串行：817同面在途注册按并行合同§2处理）| next_responsible_role:work继续T-03
 
