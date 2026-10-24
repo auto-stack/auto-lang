@@ -28,6 +28,7 @@ fn main() {
     match args[0].as_str() {
         "restore-run" => restore_run(&args[1..]),
         "data-restore-run" => data_restore_run(&args[1..]),
+        "data-mem-envelope" => data_mem_envelope(&args[1..]),
         "request" => request(&args[1..]),
         "gc-loop" => gc_loop(&args[1..]),
         "case-serve" => case_serve(),
@@ -47,6 +48,7 @@ fn main() {
 fn usage() -> ! {
     eprintln!("usage: av_probe_worker restore-run --store DIR --owner NAME --entry FN --manifest-artifact ID [--snapshot HEX] [--caps C1,C2]");
     eprintln!("       av_probe_worker data-restore-run --store DIR --owner NAME --entry FN --snapshot HEX --types-fp FP   (PLAN-820: data-profile module restore, re-verify, execute)");
+    eprintln!("       av_probe_worker data-mem-envelope [--rounds N] [--store DIR] [--transient MIB] [--hold-ms N]   (PLAN-820 F820-R1-02: parent-sampled memory-envelope worker modes)");
     eprintln!("       av_probe_worker request --store DIR --src-file FILE --entry FN [--project P] [--caps C1,C2]");
     eprintln!("       av_probe_worker gc-loop --store DIR --stop-file FILE [--interval-ms N]");
     eprintln!("       av_probe_worker bench-turnaround --samples N --gate-ms MS --out FILE");
@@ -60,6 +62,82 @@ fn usage() -> ! {
         "       av_probe_worker native-run --exe P --budget-ms N --stdout-cap N --stderr-cap N"
     );
     exit(2)
+}
+
+/// PLAN-820 F820-R1-02: the data-pipeline memory-envelope worker modes.
+/// The PARENT samples THIS process's private-bytes peak externally
+/// (`mempeek::ChildPeakSampler`) for the child's whole lifetime; this
+/// child never self-reports a verdict. Composable modes:
+///   --rounds N       run N data requests (the load; a varying record
+///                    source per round — the exact pipeline the old
+///                    in-process envelope ran, store round trip included)
+///   --store DIR      store directory for the rounds
+///   --transient MIB  allocate + touch + free an MIB-sized staging buffer
+///                    mid-life (the sampler-capture counter-control)
+///   --hold-ms N      sleep before exit (a stable observation window)
+fn data_mem_envelope(args: &[String]) -> ! {
+    let rounds: usize = flag(args, "--rounds")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let transient_mib: usize = flag(args, "--transient")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let hold_ms: u64 = flag(args, "--hold-ms")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let store = flag(args, "--store").map(std::path::PathBuf::from);
+    let mut failures: Vec<String> = Vec::new();
+    let mut ok_rounds = 0usize;
+    for i in 0..rounds {
+        let src = format!(
+            "type Inner {{ x int }}
+type Outer {{ inner Inner }}
+fn main() int {{
+    var o = Outer {{ inner: Inner {{ x: {i} }} }}
+    o.inner.x = o.inner.x + 2
+    return o.inner.x
+}}
+"
+        );
+        let dir = store
+            .clone()
+            .unwrap_or_else(|| std::env::temp_dir().join("av820-mem-envelope"));
+        match auto_av_probe::data_driver::request_data(Some(&dir), "mem", &src, "d_main", &[]) {
+            Ok(r)
+                if matches!(
+                    r.av,
+                    Some(auto_av_core::contract::ExecOutcome::Success { .. })
+                ) =>
+            {
+                ok_rounds += 1;
+            }
+            Ok(r) => failures.push(format!("round {i}: non-success outcome {:?}", r.av)),
+            Err(e) => failures.push(format!("round {i}: {e}")),
+        }
+    }
+    if transient_mib > 0 {
+        // The staging buffer must stay ALIVE across several parent-side
+        // sampling periods before it is freed — a spike shorter than the
+        // poll interval is legitimately missable (poll-quantized evidence).
+        let mut v = vec![0u8; transient_mib * 1024 * 1024];
+        for chunk in v.chunks_mut(4096 * 64) {
+            chunk[0] = 1;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(hold_ms.max(300)));
+        drop(v);
+    } else if hold_ms > 0 {
+        std::thread::sleep(std::time::Duration::from_millis(hold_ms));
+    }
+    let line = serde_json::json!({
+        "ok": failures.is_empty(),
+        "rounds": rounds,
+        "ok_rounds": ok_rounds,
+        "transient_mib": transient_mib,
+        "hold_ms": hold_ms,
+        "failures": failures,
+    });
+    println!("{line}");
+    exit(if failures.is_empty() { 0 } else { 4 })
 }
 
 fn flag(args: &[String], name: &str) -> Option<String> {
@@ -712,6 +790,10 @@ fn native_build(args: &[String]) -> ! {
     let entry = flag(args, "--entry").unwrap_or_else(|| usage());
     let workdir = flag(args, "--workdir").unwrap_or_else(|| usage());
     let trace_lib = flag(args, "--trace-lib");
+    // PLAN-820 F820-R1-03: `--profile record` compiles the same front door
+    // under the record domain (the old HIR-native lowering has supported
+    // nominal records since PLAN-771); the default stays scalar.
+    let record_profile = flag(args, "--profile").as_deref() == Some("record");
     let caps: Vec<String> = flag(args, "--caps")
         .map(|c| {
             c.split(',')
@@ -722,8 +804,12 @@ fn native_build(args: &[String]) -> ! {
         .unwrap_or_default();
     let out = match (|| -> Result<serde_json::Value, String> {
         let src = std::fs::read_to_string(&src_file).map_err(|e| format!("build: {}", e))?;
-        let compiled = auto_ac_prototype::source::compile_scalar_source(&src, "native.at", &caps)
-            .map_err(|ds| {
+        let compiled = if record_profile {
+            auto_ac_prototype::source::compile_record_source(&src, "native.at", &caps)
+        } else {
+            auto_ac_prototype::source::compile_scalar_source(&src, "native.at", &caps)
+        }
+        .map_err(|ds| {
             format!(
                 "build: {:?}",
                 ds.first().map(|d| d.message.clone()).unwrap_or_default()

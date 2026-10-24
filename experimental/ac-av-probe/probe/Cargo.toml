@@ -18,3 +18,12 @@ base64 = "0.22"
 blake3 = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+# PLAN-820 F820-R1-02: parent-side per-PID private-bytes polling (the same
+# windows-sys surface ac-artifact-probe's sysinfo uses).
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }

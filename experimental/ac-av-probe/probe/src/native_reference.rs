@@ -305,6 +305,30 @@ pub fn build_and_run(
     )
 }
 
+/// PLAN-820 F820-R1-03: the SAME supervised native comparison under the
+/// RECORD source domain — the first case's independent oracle (§5.2: the
+/// same record source through the old HIR-native path vs the fixed manual
+/// expected value). Identical budgets/supervision to [`build_and_run`];
+/// only the worker's compile profile differs (`--profile record`).
+pub fn build_and_run_record(
+    src: &str,
+    caps: &[String],
+    entry: &str,
+    workdir: &Path,
+    trace_lib: Option<&Path>,
+) -> Result<NativeRun, NativeError> {
+    build_and_run_profile(
+        src,
+        caps,
+        entry,
+        workdir,
+        trace_lib,
+        NATIVE_STREAM_CAP,
+        NATIVE_STREAM_CAP,
+        true,
+    )
+}
+
 /// Frozen per-stream output cap (§3: stdout/stderr each ≤ 1 MiB).
 pub const NATIVE_STREAM_CAP: usize = 1024 * 1024;
 
@@ -317,6 +341,22 @@ pub fn build_and_run_with_caps(
     trace_lib: Option<&Path>,
     stdout_cap: usize,
     stderr_cap: usize,
+) -> Result<NativeRun, NativeError> {
+    build_and_run_profile(
+        src, caps, entry, workdir, trace_lib, stdout_cap, stderr_cap, false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_and_run_profile(
+    src: &str,
+    caps: &[String],
+    entry: &str,
+    workdir: &Path,
+    trace_lib: Option<&Path>,
+    stdout_cap: usize,
+    stderr_cap: usize,
+    record: bool,
 ) -> Result<NativeRun, NativeError> {
     // F798-R8-03: worker preparation happens BEFORE the request clock,
     // under its OWN bounded wall — the supervised budgets below measure
@@ -347,6 +387,9 @@ pub fn build_and_run_with_caps(
     }
     if !caps.is_empty() {
         cmd.arg("--caps").arg(caps.join(","));
+    }
+    if record {
+        cmd.arg("--profile").arg("record");
     }
     let built = supervise(&mut cmd, build_remaining, NATIVE_STREAM_CAP)
         .map_err(|e| map_deadline(e, "build exceeded the remaining 60s budget (tree killed)"))?;

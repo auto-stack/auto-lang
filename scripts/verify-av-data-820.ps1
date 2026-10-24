@@ -74,7 +74,7 @@ switch ($Scope) {
     }
     "resources" {
         Run-Tier "resources" @("-p", "auto-av-probe", "--test", "av_data_820_resources") @()
-        Run-Tier "memory-envelope" @("-p", "auto-av-probe", "--test", "av_data_820") @("av_data_820_worker_memory_envelope_b_line")
+        Run-Tier "memory-envelope" @("-p", "auto-av-probe", "--test", "av_data_820") @("av_data_820_worker_memory_envelope_b_line", "av_data_820_worker_peak_sampler_catches_transient")
         Write-Host "[verify-av-data-820] resources PASS" -ForegroundColor Green
         exit 0
     }

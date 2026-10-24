@@ -77,6 +77,41 @@ fn main() int {
     assert!(trace.peak_slot_bytes > 0, "record data enters the ledger");
 }
 
+/// F820-R1-03: the first case's INDEPENDENT native oracle (§5.2, restored
+/// as written): the SAME record source through the OLD HIR-native entry
+/// (supervised worker build+run under the record profile) must agree with
+/// the fixed manual expected value — 42 — the same value the data path
+/// returns above. Not a scalar-ized substitute.
+#[test]
+fn av_data_820_first_case_native_independent_comparison() {
+    let src = "\
+type Inner { x int }
+type Outer { inner Inner }
+fn main() int {
+    var o = Outer { inner: Inner { x: 0 } }
+    o.inner.x = 41 + 1
+    return o.inner.x
+}
+";
+    let workdir = std::env::temp_dir().join(format!(
+        "av820-native-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let run =
+        auto_av_probe::native_reference::build_and_run_record(src, &[], "d_main", &workdir, None)
+            .expect("the old HIR-native path builds and runs the record first case");
+    assert_eq!(
+        run.exit_code, 42,
+        "native independent oracle: manual expected 42, stderr: {}",
+        run.stderr
+    );
+    let _ = std::fs::remove_dir_all(&workdir);
+}
+
 #[test]
 fn av_data_820_first_case_wire_round_trip() {
     let src = "\
@@ -797,13 +832,17 @@ fn types_fp_of_source(src: &str) -> String {
 
 #[test]
 fn av_data_820_worker_memory_envelope_b_line() {
-    // The 798 r7 two-line contract: B = the probe's OWN residual, and a
-    // measurement without attribution counts the WHOLE peak conservatively
-    // into B. This in-process envelope runs the exact pipeline the data
-    // worker runs (compile → lower → verify → AVAD encode → admit →
-    // execute, plus a persisted store round trip) inside THIS process and
-    // bounds the private-bytes increment by the frozen 128 MiB line.
-    let base = ac_artifact_probe::sysinfo::imp::current_process_memory().private_bytes;
+    // F820-R1-02: PARENT-side peak sampling of a REAL new worker process
+    // over its full lifecycle. A = an idle worker (the same binary, no
+    // load, the same hold — the load-attribution baseline); B = the same
+    // worker running the exact data pipeline (compile → lower → verify →
+    // AVAD encode → admit → execute, store round trip included) 25 times
+    // with a varying record source. The 798 B-line budget judges the
+    // INCREMENT: parent-observed peak(B) − parent-observed peak(A) ≤
+    // 128 MiB. Endpoint and self-reported numbers are attribution only —
+    // the peak evidence is the parent's poll log (sample count > 0).
+    use auto_av_probe::mempeek::ChildPeakSampler;
+    let worker = env!("CARGO_BIN_EXE_av_probe_worker");
     let tmp = std::env::temp_dir().join(format!(
         "av820-mem-{}-{}",
         std::process::id(),
@@ -813,30 +852,88 @@ fn av_data_820_worker_memory_envelope_b_line() {
             .as_nanos()
     ));
     std::fs::create_dir_all(&tmp).unwrap();
-    let mut peak = base;
-    for i in 0..25 {
-        let src = format!(
-            "type Inner {{ x int }}\ntype Outer {{ inner Inner }}\nfn main() int {{\
-             \n    var o = Outer {{ inner: Inner {{ x: {i} }} }}\
-             \n    o.inner.x = o.inner.x + 2\
-             \n    return o.inner.x\
-             }}\n"
-        );
-        let r = auto_av_probe::data_driver::request_data(Some(&tmp), "mem", &src, "d_main", &[])
-            .expect("request");
-        assert!(matches!(r.av, Some(ExecOutcome::Success { .. })));
-        let now = ac_artifact_probe::sysinfo::imp::current_process_memory().private_bytes;
-        peak = peak.max(now);
-    }
-    let delta = peak - base;
+
+    // A — idle baseline: same binary, same hold, no work.
+    let mut child = std::process::Command::new(worker)
+        .args(["data-mem-envelope", "--rounds", "0", "--hold-ms", "400"])
+        .spawn()
+        .expect("spawn idle worker");
+    let sampler_idle = ChildPeakSampler::start(child.id(), 2)
+        .expect("the parent opens the idle child for sampling");
+    let status = child.wait().expect("idle worker exits");
+    assert!(status.success(), "idle worker exits 0");
+    let (peak_idle, samples_idle) = sampler_idle.stop();
+    assert!(samples_idle > 0, "raw idle-side evidence exists");
+
+    // B — the loaded worker: 25 full data-pipeline requests.
+    let mut child = std::process::Command::new(worker)
+        .args([
+            "data-mem-envelope",
+            "--rounds",
+            "25",
+            "--store",
+            tmp.to_str().unwrap(),
+            "--hold-ms",
+            "100",
+        ])
+        .spawn()
+        .expect("spawn loaded worker");
+    let sampler_load = ChildPeakSampler::start(child.id(), 2)
+        .expect("the parent opens the loaded child for sampling");
+    let status = child.wait().expect("loaded worker exits");
+    assert!(
+        status.success(),
+        "loaded worker exits 0 (25/25 rounds green)"
+    );
+    let (peak_load, samples_load) = sampler_load.stop();
+    assert!(samples_load > 0, "raw load-side evidence exists");
+
+    let delta = peak_load.saturating_sub(peak_idle);
     println!(
-        "av820 B-line conservative: base={base} peak={peak} delta={} ({:.1} MiB)",
-        delta,
+        "av820 B-line parent-side: idle={peak_idle} load={peak_load} delta={delta} ({:.1} MiB); samples idle/load={samples_idle}/{samples_load}; interval=2ms; input=25 rounds, varying record source",
         delta as f64 / (1024.0 * 1024.0)
     );
     assert!(
         delta <= 128 * 1024 * 1024,
-        "data pipeline private-bytes increment {delta} exceeds the 128 MiB B-line"
+        "worker private-bytes increment {delta} exceeds the 128 MiB B-line (idle {peak_idle}, load {peak_load})"
     );
     let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// F820-R1-02 counter-control: the parent-side sampler must capture a
+/// TRANSIENT staging peak that end-state observation cannot (the child
+/// frees the buffer and exits — there is no end state to sample). A ~64
+/// MiB allocate/touch/hold/free cycle must raise the observed peak by at
+/// least 48 MiB over the same binary's idle baseline.
+#[test]
+fn av_data_820_worker_peak_sampler_catches_transient() {
+    use auto_av_probe::mempeek::ChildPeakSampler;
+    let worker = env!("CARGO_BIN_EXE_av_probe_worker");
+
+    let mut child = std::process::Command::new(worker)
+        .args(["data-mem-envelope", "--rounds", "0", "--hold-ms", "400"])
+        .spawn()
+        .expect("spawn idle worker");
+    let sampler = ChildPeakSampler::start(child.id(), 2).expect("idle sampler");
+    assert!(child.wait().expect("idle exits").success());
+    let (peak_idle, _) = sampler.stop();
+
+    let mut child = std::process::Command::new(worker)
+        .args(["data-mem-envelope", "--transient", "64", "--hold-ms", "50"])
+        .spawn()
+        .expect("spawn transient worker");
+    let sampler = ChildPeakSampler::start(child.id(), 2).expect("transient sampler");
+    assert!(child.wait().expect("transient exits").success());
+    let (peak_transient, samples) = sampler.stop();
+    assert!(samples > 0, "the transient worker was sampled mid-life");
+
+    let delta = peak_transient.saturating_sub(peak_idle);
+    println!(
+        "av820 transient capture: idle={peak_idle} transient-peak={peak_transient} delta={delta} ({:.1} MiB), samples={samples}",
+        delta as f64 / (1024.0 * 1024.0)
+    );
+    assert!(
+        delta >= 48 * 1024 * 1024,
+        "a ~64 MiB mid-life staging peak was NOT captured (delta {delta} bytes) — the sampler cannot prove transient budget compliance"
+    );
 }
