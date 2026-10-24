@@ -16,7 +16,7 @@ after候选：auto-ui既有仓持有auto-ui-dialect/compiler/runtime/tools与she
 
 before：仅已有生成UI bundle合同，无完整UI仓交付总表。
 
-after候选：区分开发三仓同级path组、源码固定commit clone渠道与受管外部生成bundle。开发解析允许显式根/组内兄弟；发行消费者须使用已登记固定源码或验证过的内容寻址包，清理开发根覆盖并禁止隐式主检出回退。profile包含compiler/runtime、真实tool二进制及其运行资产；实际支持/平台/第三方工具前置逐项登记，缺环境为未验证，不能删除支持。source/fresh/locked/A→B/运行与失败恢复收据各绑定producer/工具/锁/资源身份。
+after候选：区分开发三仓同级path组、源码固定commit clone渠道与受管外部生成bundle。开发解析允许显式根/组内兄弟；发行消费者须使用已登记固定源码或验证过的内容寻址包，清理开发根覆盖并禁止隐式主检出回退。profile包含compiler/runtime、真实tool二进制及其运行资产；实际支持/平台/第三方工具前置逐项登记，缺环境为未验证，不能删除支持（r3：jet/ark 真实构建验证转后续环境门控渠道——用户 2026-10-24 裁定，缺环境记录不阻塞本 delta）。source/fresh/locked/A→B/运行与失败恢复收据各绑定producer/工具/锁/资源身份。
 
 多仓状态为prepared→UI landed→language switched→verified；单仓仅ff-only且核旧锚，失败保留已完成状态和恢复指令，不假称跨Git原子。真正取消/超时/交换失败仍按原受管保旧合同验证，不用合成组代替真实运行。U831完整收尾前不放行832。
 
@@ -44,7 +44,7 @@ targets：docs/specs/auto-ui-compiler/project.md、auto-ui-runtime/project.md、
 
 before：仓内crates路径、测试/资源源根与单仓命令。
 
-after候选：同名路径属于auto-ui仓，公开类型/feature/动态状态仍单源。compiler自持schema/aura.at；runtime字体与.at资产、tools嵌入资产及真实auto-ui-tool随owner；dialect对留语言仓a2gd语料使用显式来源。测试/fixture/例程/blueprints/宿主CLI依赖必须指明实际owner，跨仓CI需保留原测试ID、feature选择、integration和单进程ui_gen档，不能凭源码文件未少宣布无丢测。现行Vue/Rust/VM-Iced及jet/ark/tauri/vscode能力按既有合同保留；实际运行与寿命矩阵须由迁后来源证明。
+after候选：同名路径属于auto-ui仓，公开类型/feature/动态状态仍单源。compiler自持schema/aura.at；runtime字体与.at资产、tools嵌入资产及真实auto-ui-tool随owner；dialect对留语言仓a2gd语料使用显式来源。测试/fixture/例程/blueprints/宿主CLI依赖必须指明实际owner，跨仓CI需保留原测试ID、feature选择、integration和单进程ui_gen档，不能凭源码文件未少宣布无丢测。现行Vue/Rust/VM-Iced及jet/ark/tauri/vscode能力按既有合同保留；实际运行与寿命矩阵须由迁后来源证明（r3 用户裁定：构建验证必需面=vue/rust/vscode+vm 运行；jet/ark 真实构建转后续环境门控渠道，生成面不变）。
 
 来源：五包blob对账、compiler schema include、runtime/工具资产、ci-entrypoints.md；AC-01/02/06，V-01/02/06。R1 终态：F01 blueprints 兜底断言恢复独立 oracle（精确单源路径+真实包枚举+错 owner 负控）；F02/03/04/06 已闭。测试/资源 owner 迁移为既成事实（tier-parity ID 对拍零丢失）。
 

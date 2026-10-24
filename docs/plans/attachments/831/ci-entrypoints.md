@@ -1,6 +1,6 @@
 # PLAN-831 T-09 实际 CI / 本地门入口清单
 
-绑定 [handoff.md](handoff.md) §1 三仓 SHA（R1 修复轮终态：lang `09307c05e`、UI `4250885`、down `c39ac7f9`），日期 2026-10-24（R1 刷新）。两实现仓 `git ls-files .github/workflows` 均空，无受管远端 workflow；本地受管入口即 CI 入口。**跨仓编排已落地**（cross-repo-tiers.py，F831-09-04 闭合）。
+绑定 [handoff.md](handoff.md) §1 三仓 SHA（R2 修复轮+r3 修订终态：lang `2d47e236e`、UI `4250885`、down `c39ac7f9`），日期 2026-10-24（R1 刷新）。两实现仓 `git ls-files .github/workflows` 均空，无受管远端 workflow；本地受管入口即 CI 入口。**跨仓编排已落地**（cross-repo-tiers.py，F831-09-04 闭合）。
 
 所有命令在列明的原权威树运行。组内 auto-down 为只读固定 SHA。不得创建链接绕过。
 
@@ -28,4 +28,4 @@
 
 work（本轮已完成）：F831-09-01..06 全部闭合（证据见 handoff §5 与本表）；定向验证含 ti 实跑、编译探针三组合、777 strict、792/distribution/drill 终源重跑、三族 MCP 冒烟。未运行整档 t/tv/tt/tb/tu/taa（合同后置）。
 
-T-10：独立审核最终代码（lang `09307c05e`/UI `4250885`）、全部 work-owned AC、SD 与收据身份；pass 显式保留 merge 门 pending。T-11：冻结三仓输入执行语言裸 cargo t 及实际触面档、UI 适用门并实际落地/读回。T-12：归档沉淀；tf 到期仍主语言检出单实例。
+T-10：独立审核最终代码（lang `2d47e236e`/UI `4250885`）、全部 work-owned AC、SD 与收据身份；pass 显式保留 merge 门 pending。T-11：冻结三仓输入执行语言裸 cargo t 及实际触面档、UI 适用门并实际落地/读回。T-12：归档沉淀；tf 到期仍主语言检出单实例。
