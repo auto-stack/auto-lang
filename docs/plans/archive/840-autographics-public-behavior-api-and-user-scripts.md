@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-840
-status: executing
-completion_kind: phase1_delivered
+status: archived
+completion_kind: delivered
 feature_name: AutoGraphics最小公共行为API与用户Auto脚本
 plan_revision: 8
 author: [Codex]
 created_at: 2026-10-24
 updated_at: 2026-10-24
-current_step: 17
+current_step: 24
 total_steps: 26
 depends_on: [PLAN-839]
 supersedes_spec_components:
@@ -45,9 +45,9 @@ affects: [auto-graphics, authoring-experimental, user-behavior-api, language-sdk
 |---|---|---|
 | T-11 [x] | work | 核定 feature/off-on/档位 ID、红与合法控制、性能对照和修复机制；AC11..13 |
 | T-12 [x] | work | 最小 feature 修复；off/on no-run 与 CTE/相邻定向病例、选择面核销及删项负控；AC11/12 |
-| T-13 [ ] | work | 性能实路径诊断与资源机制修复，原输入/阈值/断言保留；定向实测和机制反控；AC13 |
-| T-14 [ ] | work | 同提交定向 check/fmt、关闭表、SD 提案、提交冻结；AC14 |
-| T-15 [ ] | review | 核验 AC11..14 与原支持面，绑定 SHA；AC15 |
+| T-13 [x] | work | 性能实路径诊断与资源机制修复，原输入/阈值/断言保留；定向实测和机制反控；AC13 |
+| T-14 [x] | work | 同提交定向 check/fmt、关闭表、SD 提案、提交冻结；AC14 |
+| T-15 [x] | review | 核验 AC11..14 与原支持面，绑定 SHA；AC15 |
 | T-16 [ ] | merge | 审查后 bare cargo t 与必要触面，master 落地、主检出批量三档、规范/台账/收据/最终归档清理；AC16 |
 
 新增验证：V11=默认/tests 与 book-feature 定向 no-run 编译；V12=test-cases on 的 CTE+同族 adapter 定向执行与实际 ID；V13=814 选择面映射复用、各档清单与删除 ID 负控；V14=原 census 与 30 样本真实 IPC 门、原边界控制；V15=逐 AC/SD 冻结复审；V16=review 后 merge 门与主检出完整批量。修复/复审均不运行 whole-tier；先完成全部修复再提交复审。
@@ -399,11 +399,25 @@ V14追加full/t3实际test-group成员核验、删除绑定负控与整族ffi_du
 
 | task_id | owner | 关闭条件 |
 |---|---|---|
-| T-21 [ ] | work | 文件锁生产根因、最小修复及真实竞争/瞬态/硬错误/超时/stale 定向控制；AC21 |
-| T-22 [ ] | work | SSE 超时生产链归因、最小修复及事件/park/EOF/取消相邻控制；AC22 |
-| T-23 [ ] | work | 全部修复完成后的共同定向检查、健康、SD-P4 提案、提交冻结；AC23 |
-| T-24 [ ] | review | r7/r8 受影响验收和相邻合法控制复审，核验原支持面；完整门交 merge |
+| T-21 [x] | work | 文件锁生产根因、最小修复及真实竞争/瞬态/硬错误/超时/stale 定向控制；AC21 |
+| T-22 [x] | work | SSE 超时生产链归因、最小修复及事件/park/EOF/取消相邻控制；AC22 |
+| T-23 [x] | work | 全部修复完成后的共同定向检查、健康、SD-P4 提案、提交冻结；AC23 |
+| T-24 [x] | review | r7/r8 受影响验收和相邻合法控制复审，核验原支持面；完整门交 merge |
 
 执行链：锁生产者 create_new→持有锁文件→临界区→释放→竞争者获取；禁止把瞬态 namespace 竞争直接视为永久错误，也禁止无限重试。SSE 上游真实 TCP→流资源/队列→VM generator 等待凭据→事件/终结通知→消费者继续；先用有界诊断确定阻塞点，不能凭单次隔离绿关闭。反例须能区分旧错误机制，原批量红日志保留。SD-P4 将在根因确认后落入相应 canonical SDK/runtime/VM 文档；不预先承诺不存在的语义。
 
 总体保持 executing，当前17/26；T-10/T-16最终收尾仍 pending。所有修复完成并复审通过后，在新冻结提交执行裸 cargo t 与实际触面的 tv/tt/tb 等门，落地主检出后单实例完整批量回归，最后规范台账/归档/guard清理。批量红不得用隔离绿替代。
+
+
+2026-10-24 r8 work pass：T-13/14及T-21..23关闭，execution_done22/26；冻结 ba6479da53b7999e490dd0e8ac8d701d5ffe86b2（r7配置6b605bb87、文件锁7b977ae6c、SSE ba6479da5）。34/34定向、4关键病例50轮200次、locked check、触面fmt/diff及六锁核验通过；原SSE全部断言逐字保持。旧随机40轮首次pull超时、固定冲突5s红、内层修复撤回5s红、真实Windows延迟删除错误5导致未锁执行均保留。第一次现代POSIX删除未制造延迟状态的失败不作根因证明。原批量文件锁日志未记errno，不能断言每次旧失败都等于错误5；真实系统反例闭合已确认的误降级机制，补入错误诊断，完整档仍需验证。
+
+SD-P4-01：language-sdk/project状态锁竞争分类/有界重试及原降级语义；SD-P4-02：stdlib/design/http-stream-lifecycle的任务表guard寿命，均已在同树提交。next:review核验r7/r8与原支持面；T-15/T-24待复审，T-10/T-16完整合入/批量/归档清理仍pending。
+
+
+2026-10-24 r8 final affected review pass：reviewed24/26，冻结ba6479da53b7999e490dd0e8ac8d701d5ffe86b2；T-15/T-24关闭。详[复审](../attachments/840/phase4/review.md)。同实现会话独立性限制明确披露；逐项核验AC01..23与全部原支持面，不冒称独立模型/会话。merge-owned完整裸t、tv、tt/tb与主检出单实例tf/tt/tb均pending，T-10/T-16仍未关闭，待merge执行后方可最终归档清理。
+
+
+2026-10-24 r8 merge checkpoint：冻结ba6479da5完整裸t5345/5345、tv163/163、tt5717/5717、tb5316/5316全过；docs-only descendant53298cd273e0c04fabc508745ce342655394f1a4已FF入master，规范/导航与guarded offline ledger80→81六目标读回通过，无关raw项1183保持。详[合入收据](../attachments/840/phase4/merge-r8/receipt.md)。原autographics-dev8b62/SDK932不变，原支持面完整。主检出单实例batch-r3完整tf/tt/tb进行中，last-batch835未提前推进，T-10/T-16最终归档清理仍pending24/26，工作树保留。
+
+
+2026-10-24 r8完整批量PASS：主检出53298cd27单实例tf6291/6291、tt5717/5717、tb5316/5316全绿，原FFI布局/文件锁计数/SSE超时均在完整池通过；源树、六锁、依赖守卫及既有报告字节恢复通过。last-batch835→840，详batch-r3/triage.md与phase4/complete-gates.json.txt。所有原支持面保留，原失败/反例/无效fixture证据保留；未豁免新红或缩档。规范ledger81及代码已落地，当前归档文档准备提交；T-10/T-16仅剩最终guard清理，故计数暂留24/26，须实际完成清理后才关闭，不提前冒称清理完成。

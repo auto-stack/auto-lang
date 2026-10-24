@@ -3152,3 +3152,8 @@ PLAN-840 R2受影响复审（2026-10-24）：在冻结提交`1f19395254d7e676bd1
 
 
 PLAN-840 merge（2026-10-24，archived11/12）：R1三finding已复审关闭；冻结1f的完整63入口、root5332/163、producer与fresh consumer各13原生场景及原有16AGP/旧游戏/创作/资源/层级/Play/owner/counter+content全分母通过。源码已快进autographics-dev@8b62db5cb；master仅SDK四文件精确补丁0676dc133，规范/ledger78→79已读回。归档知识提交/fresh guard清理/840到期批量回归仍pending，暂非最终merge pass。AGP2x原输入辅助失败以PID绑定DPIaware真实OS输入夹具完成相同原断言，未改AGP/压断言/缩面；后续自动点击辅助可单独改善，非本计划生产缺陷豁免。失败原记录、真实反控、最终产物重冻回放见[合入收据](attachments/840/merge-r1/receipt.md)。
+
+
+### PLAN-840 r8：批量回归修复关闭（2026-10-24）
+
+原840内追加Phase2/3/4，保留全部原支持面：CTE可选feature注册、真实计量边界/运行池前提、测试载体Init及RQHost真实发布、full/t3 FFI共享fixture分组、Windows延迟删除瞬态锁错误有界重试，以及SSE/嵌套generator任务表guard重入死锁均已修复并保留反例。原批量文件锁日志缺errno，不将所有旧失败强归为错误5；新增真实Windows错误5反例及完整池复验关闭已确认机制，生产诊断保留最近系统错误。冻结ba6479da5完整t5345/tv163/tt5717/tb5316通过；落地53298cd27主检出完整tf6291/tt5717/tb5316全绿，失败与诊断历史均保留于840附件。D-762-1生产UI helper未修改、债务未被关闭；同计划修复仅将相关测试改为等待真实完成态。无新增未处理finding，不以隔离绿豁免完整档。

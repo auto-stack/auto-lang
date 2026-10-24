@@ -1,9 +1,9 @@
 {
-  "last_covered_plan_id": 835,
-  "timestamp": "2026-10-23T03:01:52.941262+00:00",
-  "covered_commit": "6991731ab3e6fb7f64865a2962b9cbd2e2a3bab5",
-  "covered_note": "PLAN-835 modulo5 postlanding batch, main-only single instance. Prior window contains knowledge bookkeeping and one shim doc-comment marker change; no runtime semantics changes. Full tf and complete tt/tb retries collected; only previously recorded D-762-1 chart Init helper debt remains in tt.",
-  "window": "6336ab95b4a7470cab0fa323051c9fe1ad1d5131..6991731ab3e6fb7f64865a2962b9cbd2e2a3bab5",
+  "last_covered_plan_id": 840,
+  "timestamp": "2026-10-24T10:56:11.965207+00:00",
+  "covered_commit": "53298cd273e0c04fabc508745ce342655394f1a4",
+  "covered_note": "PLAN-840 modulo5 postlanding complete batch; in-plan Phase2/3/4 repairs preserve all original support. All tf/tt/tb pass, including original FFI wide layout, state-file counter and SSE wait failures; no waiver or selection reduction.",
+  "window": "6991731ab3e6fb7f64865a2962b9cbd2e2a3bab5..53298cd273e0c04fabc508745ce342655394f1a4",
   "legs": [
     "tf",
     "tt",
@@ -11,80 +11,56 @@
   ],
   "leg_results": {
     "tf": {
-      "seconds": 113.536,
-      "run": 6282,
-      "passed": 6282,
+      "run": 6291,
+      "passed": 6291,
       "failed": 0,
+      "timed_out": 0,
       "skipped": 518,
+      "test_seconds": 96.466,
       "exit": 0,
-      "evidence": "tf.txt"
+      "evidence": "docs/plans/attachments/840/batch-r3/tf.txt",
+      "seconds": 148.661
     },
     "tt": {
-      "seconds": 106.981,
-      "run": 5703,
-      "passed": 5702,
-      "failed": 1,
+      "run": 5717,
+      "passed": 5717,
+      "failed": 0,
+      "timed_out": 0,
       "skipped": 1800,
-      "exit": 100,
-      "evidence": "tt-retry.txt"
+      "test_seconds": 184.173,
+      "exit": 0,
+      "evidence": "docs/plans/attachments/840/batch-r3/tt.txt",
+      "seconds": 231.846
     },
     "tb": {
-      "seconds": 75.264,
-      "run": 5307,
-      "passed": 5307,
+      "run": 5316,
+      "passed": 5316,
       "failed": 0,
+      "timed_out": 0,
       "skipped": 1548,
+      "test_seconds": 94.594,
       "exit": 0,
-      "evidence": "tb-retry.txt"
+      "evidence": "docs/plans/attachments/840/batch-r3/tb.txt",
+      "seconds": 113.828
     }
   },
-  "verdict": "known-reds-only",
+  "verdict": "pass",
   "new_reds": [],
-  "known_reds_seen": [
-    {
-      "test": "auto-ui-runtime ui_tests::plan484_chart_component_tests::plan484_smoke::plan484_024_charts_streaming_recompute",
-      "debt": "D-762-1",
-      "leg": "tt",
-      "evidence": "committed KNOWN-DEBT baseline + current helper progressed predicate + chart call and CpuRunnable trace"
-    }
+  "known_reds_seen": [],
+  "prior_failed_batches": [
+    "docs/plans/attachments/840/batch-r1",
+    "docs/plans/attachments/840/batch-r2"
   ],
-  "initial_failures_cleared_on_complete_replay": [
-    "abi_worker_overflow_then_hang_is_infra_error_fast",
-    "probe_adapter_descendant_held_pipes_bounded_by_parent_containment",
-    "probe_adapter_descendant_reaped_by_worker_self_containment"
-  ],
-  "initial_attempts": [
-    {
-      "leg": "tf",
-      "exit": 0,
-      "seconds": 113.536006
-    },
-    {
-      "leg": "tt",
-      "exit": 100,
-      "seconds": 135.5084165
-    },
-    {
-      "leg": "tb",
-      "exit": 100,
-      "seconds": 81.1664444
-    }
-  ],
-  "replay_attempts": [
-    {
-      "leg": "tt",
-      "exit": 100,
-      "seconds": 106.9808204,
-      "reason": "same four original assertions passed isolated; now repeat complete scope on warmed worker/cache inputs, no code or thresholds changed"
-    },
-    {
-      "leg": "tb",
-      "exit": 0,
-      "seconds": 75.2636062,
-      "reason": "same four original assertions passed isolated; now repeat complete scope on warmed worker/cache inputs, no code or thresholds changed"
-    }
+  "repaired_findings": [
+    "optional CTE feature boundary",
+    "shared timing boundaries and pool reservation",
+    "test-only Init/RQHost producer completion",
+    "full/t3 FFI group binding",
+    "Windows transient lock namespace contention",
+    "SSE/nested generator task-map shard re-entry"
   ],
   "aavm_trigger_paths": [],
   "single_instance": true,
-  "evidence": "docs/plans/attachments/835/batch-r1"
+  "evidence": "docs/plans/attachments/840/batch-r3",
+  "main_report_restored_exactly": true
 }
