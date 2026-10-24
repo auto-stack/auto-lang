@@ -21,7 +21,12 @@ semantics|cache|resources|autodown|turnaround|acceptance|closeout>`。
 | V-10 | runner（未知 recipe/字段/坏 actual/身份/stale/旧协议） | mir_native_adapter 7 测（T-06）：解码负例五路/worker 故障四形态皆 infra/manifest 指纹父侧准入（同源跨进程一致）/mn+av 混跑+stale 重跑 |
 | V-11 | 边界/来源（审计，无新族） | 本报告"边界"节 + §5 规范增量提案；T-02 已证 D-798 消费面/零 817 强依赖/复用 798/783/787/788 落地面 |
 
-V-12（AC-11，T-11）：pending——D828 公共接口接入与四子 case 属 T-11，送审前完成。
+V-12（AC-11，T-11）✅：incremental_tier 4/4 @ T-11——
+1.1 D828 基线 273575B/115 函数 ×30 修订**双门过**：结构（未改单元 fp/代际逐轮不动、whole-module 阶段恒 0、恰一安装/一重发/114 驻留命中）AND edit→PE P95=715.5ms<1000（P50 528）；
+1.2 两函数局部更新：恰各自重键、先改身份保留不回退、main 零重发；
+1.3 精确失效/拒绝：helper body 恰 helper 重键（caller 代际 0）；签名/接口编辑=retained environment 接口门拒绝且 mn 状态零变化、会话不 wedge；未授权 capability（无 trace 能力会话内加 mark_a 调用）前端拒绝；
+1.4 退化必被抓：content-hit 回退编辑触发记录性 whole-module fallback（fallback_whole_lower=1，结构门非零）；活键下换对象=store 受控 Conflict、活身份存活、后续编辑正确。
+接入面：828 会话 PreparedEdit 增 unit_mir/changed_name 消费缝（加法-only，auto-av-probe 回归 17+6+28 全绿）；mn 消费者 src/incremental.rs（D828 驻留模型：resident 工作集+store 持久层；mn 门重验证单元；emission 失败永不提交 revision）。
 
 ## AC 状态（work-owned）
 
@@ -35,7 +40,7 @@ V-12（AC-11，T-11）：pending——D828 公共接口接入与四子 case 属 
 | AC-06 两编辑 P95<1s/六场景 raw/反控 | ✅ | T-07（body 869/签名重建 996/冲突 210；raw+零/NaN 反控） |
 | AC-07 正式recipe/父侧oracle/stale/旧通道 | ✅ | T-06 mir_native_adapter 7 测 |
 | AC-08 依赖/并行边界/coverage/SD | ✅ | 本报告+§5 SD 提案；公共注册面合并时串行（817 同面在途） |
-| AC-11 D828 全链路增量 | ⏳ T-11 | 四子 case 生产观测/身份/依赖/失败控制待接线 |
+| AC-11 D828 全链路增量 | ✅ | incremental_tier 4/4（V-12 四子 case 全绿；增量路径 P95=715 反超全请求路径 869——增量架构兑现） |
 
 ## 边界（不因实现进度改口）
 

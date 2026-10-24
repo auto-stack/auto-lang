@@ -52,6 +52,7 @@ use auto_av_core::abc_verify::verify_abc;
 use auto_av_core::av::{execute_program, CancelFlag, ExecLimits, ExecTrace};
 use auto_av_core::contract::{ExecOutcome, Value};
 use auto_av_core::function_code::FunctionCode;
+use auto_av_core::mir::MirModule;
 use auto_av_core::mir_verify::verify_mir;
 use auto_av_core::program_snapshot::ProgramSnapshot;
 use std::collections::BTreeMap;
@@ -285,6 +286,10 @@ pub struct PreparedEdit {
     /// The changed function's code-object span map (history entry's own on
     /// a hit; empty on a miss).
     span_map: auto_av_core::span_map::SpanSegments,
+    /// PLAN-818 T-11 consumer seam: the changed function's lowered +
+    /// verified MIR UNIT (the exact object this candidate ran through
+    /// `lower_function_unit`/`verify_mir`); `None` on a content HIT.
+    unit: Option<Arc<MirModule>>,
     base_revision: u64,
     changed_idx: usize,
     changed_name: String,
@@ -307,6 +312,19 @@ impl PreparedEdit {
     /// Diagnostics-only.
     pub fn code_weak(&self) -> std::sync::Weak<FunctionCode> {
         Arc::downgrade(&self.code)
+    }
+
+    /// Source name of the single changed function (PLAN-818 T-11
+    /// consumer seam).
+    pub fn changed_name(&self) -> &str {
+        &self.changed_name
+    }
+
+    /// The changed function's lowered + verified MIR unit, when this
+    /// candidate MINTED one (`None` on a content hit). PLAN-818 T-11
+    /// consumer seam.
+    pub fn unit_mir(&self) -> Option<&MirModule> {
+        self.unit.as_deref()
     }
 }
 
@@ -1952,7 +1970,8 @@ impl FunctionIncrementalSession {
         checked_fn: CheckedFunction,
         changed_name: &str,
         new_src_hash: u64,
-    ) -> Result<Result<(Arc<hir::Body>, Arc<FunctionCode>), Vec<String>>, String> {
+    ) -> Result<Result<(Arc<hir::Body>, Arc<FunctionCode>, Arc<MirModule>), Vec<String>>, String>
+    {
         // Credential currency: the body was verified under the SAME
         // declaration context as the outstanding ones — a drift here means
         // the interface gate above missed a context change (defense in
@@ -2002,7 +2021,7 @@ impl FunctionIncrementalSession {
         );
         self.phase_walls.insert("load_us".into(), elapsed_us(t));
         self.counters.bump(&format!("load:{changed_name}"));
-        Ok(Ok((Arc::new(checked_fn.into_body()), code)))
+        Ok(Ok((Arc::new(checked_fn.into_body()), code, Arc::new(unit))))
     }
 
     /// PREPARE (PLAN-828 T-06): run the whole candidate chain (syntax
@@ -2265,7 +2284,8 @@ impl FunctionIncrementalSession {
         let mut was_hit = false;
         let mut candidate_mint_origin: u64 = 0;
         let mut candidate_span_map = auto_av_core::span_map::SpanSegments::default();
-        let (new_hir_body, new_code): (Arc<hir::Body>, Arc<FunctionCode>) = match if deps_stale {
+        let (new_hir_body, new_code, minted_unit): (Arc<hir::Body>, Arc<FunctionCode>, Option<Arc<MirModule>>) =
+            match if deps_stale {
             None
         } else {
             self.fns[changed_idx].history.get(&cv)
@@ -2298,7 +2318,7 @@ impl FunctionIncrementalSession {
                         m
                     }
                 };
-                (body.clone(), code.clone())
+                (body.clone(), code.clone(), None)
             }
             None => {
                 let new_src_hash = fnv64(new_src.as_bytes());
@@ -2326,7 +2346,7 @@ impl FunctionIncrementalSession {
                     &changed_name,
                     new_src_hash,
                 )? {
-                    Ok(pair) => pair,
+                    Ok((body, code, unit)) => (body, code, Some(unit)),
                     Err(diags) => {
                         return Ok(Err(EditOutcome::rejected(
                             self.revision,
@@ -2347,6 +2367,7 @@ impl FunctionIncrementalSession {
             edit_bytes: edit.insert.clone(),
             session_id: self.session_id,
             reminted: !was_hit,
+            unit: minted_unit,
             mint_origin: candidate_mint_origin,
             span_map: candidate_span_map,
             base_revision: self.revision,

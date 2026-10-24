@@ -13,6 +13,7 @@ pub mod cache;
 pub mod config;
 pub mod driver;
 pub mod emit;
+pub mod incremental;
 pub mod fingerprint;
 pub mod link_driver;
 pub mod lower;

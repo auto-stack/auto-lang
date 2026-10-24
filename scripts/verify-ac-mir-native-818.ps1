@@ -92,6 +92,7 @@ switch ($Scope) {
         Run-Workspace-Tests "transaction_tier" "cache-transactions"
         Run-Runner-Tests 'test(/ac_mn_probe_corpus|ac_mn_probe_negative|ac_mn_probe_decode|mir_native_adapter/)' "autodown"
         Run-Workspace-Tests "turnaround_tier" "turnaround-driver"
+        Run-Workspace-Tests "incremental_tier" "incremental-d828"
         Run-Workspace-Tests "resources_tier" "resources-scale"
     }
     "closeout" {
@@ -105,6 +106,7 @@ switch ($Scope) {
         Run-Workspace-Tests "transaction_tier" "cache-transactions"
         Run-Runner-Tests 'test(/ac_mn_probe_corpus|ac_mn_probe_negative|ac_mn_probe_decode|mir_native_adapter/)' "autodown"
         Run-Workspace-Tests "turnaround_tier" "turnaround-driver"
+        Run-Workspace-Tests "incremental_tier" "incremental-d828"
         Run-Workspace-Tests "resources_tier" "resources-scale"
     }
 }
