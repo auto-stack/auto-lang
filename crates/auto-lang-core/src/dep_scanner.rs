@@ -89,7 +89,7 @@ impl DepStatement {
 pub fn scan_dep_statements(source: &str) -> Vec<DepStatement> {
     let mut deps = Vec::new();
 
-    for line in source.lines() {
+    for line in crate::dependency_scan::code_lines(source) {
         let trimmed = line.trim();
 
         // Skip comments
@@ -308,6 +308,16 @@ fn skip_value(chars: &[char], i: &mut usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inert_multiline_text_does_not_create_dependencies() {
+        let source = "/*\r\ndep hidden_block\r\n*/\r\nvar s=\"\ndep hidden_string\n\"\nvar t=\"\"\"\ndep hidden_triple\n\"\"\"\nvar r=`\ndep hidden_raw\n`\ndep real(path: \"folder//data\", features: [\"one\"])\n";
+        let deps = scan_dep_statements(source);
+        assert_eq!(deps.len(), 1, "{deps:?}");
+        assert_eq!(deps[0].name, "real");
+        assert_eq!(deps[0].path.as_deref(), Some("folder//data"));
+        assert_eq!(deps[0].features, ["one"]);
+    }
 
     #[test]
     fn test_scan_simple_dep() {

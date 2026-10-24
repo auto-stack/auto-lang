@@ -160,7 +160,7 @@ pub fn scan_use_statements(source: &str) -> Vec<UseStatement> {
     let mut statements = Vec::new();
     let mut seen_modules = HashSet::new();
 
-    for line in source.lines() {
+    for line in crate::dependency_scan::code_lines(source) {
         let trimmed = line.trim();
 
         // 跳过注释和空行
@@ -416,6 +416,16 @@ fn parse_python_import(line: &str) -> Option<UseStatement> {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn inert_multiline_text_does_not_create_imports() {
+        let source = "/*\nuse missing_block\n*/\nvar s=\"escaped \\\"\nuse missing_string\n\"\nvar t=\"\"\"\nuse missing_triple\n\"\"\"\nvar f=f\"\nuse missing_format\n\"\nvar r=`\nuse missing_backtick\n`\nuse real.module: x\nuse real.module: x\nuse.rs serde: parse\nuse.py json: loads\nuse.c <math.h>\n";
+        let uses = scan_use_statements(source);
+        assert_eq!(uses.len(), 4, "{uses:?}");
+        assert_eq!(uses[0].module, "real.module");
+        assert!(uses[1].is_rust_import);
+        assert!(uses[2].is_python_import);
+        assert!(uses[3].is_c_import);
+    }
     /// Plan 597: dot-form `use.c <x.h>` / `use.c "x.json"` must scan as a
     /// C import (not a module path) — previously ANY VM-mode use.c failed
     /// module resolution (latent Plan 216 breakage).

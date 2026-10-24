@@ -22,6 +22,7 @@ use auto_val::{Array, Node, Obj, Value};
 
 // ---- T-02 批 1-2：扫描器/前端门面组 ----
 pub mod dep_scanner;
+mod dependency_scan;
 pub mod mode;
 pub mod os_paths;
 pub mod use_scanner;
