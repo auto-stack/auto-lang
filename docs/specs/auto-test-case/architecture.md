@@ -110,3 +110,23 @@ parse/verify/capability/run stage 投影+message matcher）、期望 success 默
 未知字段/recipe 拒绝；未注册 recipe lint 拒（列注册集）；坏 worker 工具身份=ERROR
 不绿。runner/适配器见 `crates/auto-lang-core/src/test_cases/ac_cte.rs` 与语料
 `crates/auto-lang/test/cases/ac-cte/`。
+PLAN-818 mn recipe `ac/mir-native-scalar-v1`：mn 绑定 entry/caps/session +
+edit-source/run/restart 步骤；含 edit 无 restart 的序列走**增量会话**（D828
+单 body 事务+单元级 COFF 重发/历史复用+逐步真 link/run+授权 trace 库全程链接
++逐轮原始 PE 字节），`[run]` 全请求路径保留为冷/恢复场景（不标增量）。
+worker 协议 `mnworker/1`（加法扩展 rounds 模式：一常驻进程×每 step 一问一答；
+单发 steps 形态原样可解）。
+
+**rounds 边界（失败活跃性与限额）**：全部阻塞 IO 位于会话线程（写=邮箱投递、
+读=单一绝对墙下接收、回收=截止治理轮询、teardown 先杀树再 join 全线程）；
+stdout 限额在**累积期间**生效、行队列有界、stderr 超限在每次接收与收尾传播
+为 infra；协议感知 fault 夹具（no-stdin/stop-after-warmup/close 两形态/stdout
+两越界+洪泛/stderr 越界）验证预算内 infra+进程树消亡，边界有效对照全绿。
+
+**计时语义（§5.5 有效窗口）**：正式 V-12.1 门=父侧观测**连续**窗口——父侧
+准备（源拷贝+字面量 exactly-once 搜索/插入+载荷序列化）→IPC→worker 定位/
+编辑/链接/运行→响应→父侧准入→**独立期望比较**（观察者缝
+`AC_MN_INCREMENTAL_EXPECT_EXITS`：期望只在父侧、worker 永不见；mismatch=
+verdict Fail；数量失配=infra）；worker 侧连续 wall_ms 保留为被覆盖证据
+（断言 pw≥w）。语法回退（warm_edit_fallback）不标记增量、保留已提交前缀、
+其诊断按先诊断后结构准入传播——回退不是增量样本。

@@ -4,6 +4,7 @@
 
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |------|------|------|------|-----------|
+| 818 | ac-shared-mir-native-parity（runner 面） | ✅（delivered，R1–R4 四轮复审链收敛） | [archive/818-ac-shared-mir-native-parity.md](../../plans/archive/818-ac-shared-mir-native-parity.md) | mn recipe/rounds 协议（常驻 worker×逐步一问一答/失败活跃性与限额边界夹具化）+有效计时语义（父侧观测连续窗口含独立期望比较，观察者缝期望不入 worker）；[architecture.md](architecture.md) 818 节 |
 | 773 | autodown-testcase-protocol-pilot | ✅（delivered） | [archive/773-autodown-testcase-protocol-pilot.md](../../plans/archive/773-autodown-testcase-protocol-pilot.md) | TestCase 协议 A 阶段落地：核心 crate + adapters + auto-case CLI + 21 case 引用式 pilot；R1 复审 11 阻断全闭合（admission/路径域/类型化阶段/产物交接/stale），R2 pass |
 | 788 | autodown-ac-native-turnaround | ✅（delivered，r10；R1..R9 修复链清偿后 final pass） | [archive/788-autodown-ac-native-turnaround.md](../../plans/archive/788-autodown-ac-native-turnaround.md) | B 阶段 v2 native：ac check/build/run（真实 COFF/PE/执行、typed 阶段、部分产物边界、783 cache 三模式、逐行身份适用集合）+ syntax parse/edit（787 runtime 绑定）；ac-case-worker 独立 workspace + 父侧全量判定（I/O 生命周期/解码后流 cap/即时 cap 终止）；42 case 语料+账本；周转六场景硬门（hot/body-edit/syntax P95<1s）与 50 修订并发流（双车道/真实错序全拒）；验收器七族+档位必验集合绑定 |
 

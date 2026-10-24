@@ -107,3 +107,12 @@ CAS），producer=`plan817/cte-probe` 仅由真实 AV 成功结果铸造；全�
 [auto-cte/frozen-cache.md](../auto-cte/frozen-cache.md)。依赖侧追加（单写收据）：
 783 store 两个有界读取 API（`read_chunk_gated_bounded`/`get_artifact_bounded`——
 物理读取界+SQL 错误传播，plan-817 R8/R9）。
+## PLAN-818：MIR-native 单元/manifest 生产消费（A08'/A09'）
+
+- A08'（消费）：新后端只消费 798 共享 CheckedMir（本进程 verify 产出或 798
+  真实解码/verify 重新授信），mn 消费门对编辑单元重验证；不读 HIR AST 重做
+  类型/控制流语义。
+- A09'（生产/消费）：每函数可重定位 COFF+链接输入 manifest 经 783 统一 store
+  持久化——**单元缓存项不带 project**、manifest 顺序发布摘旧 root（787
+  R3-03，否则体量 churn 不可水位收敛）、无上游活缓存仍可合法 link/run；
+  key 轴与失效规则见 [mir-native-cache.md](mir-native-cache.md)。

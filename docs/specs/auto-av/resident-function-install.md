@@ -35,3 +35,13 @@ lane 退化计数器与 828 计数器双重观测（resident-edit rewarms≠0 �
 即 bool callee 属正常支持面；新能力为追加车道，默认 closure 车道保持，不退回整模块
 热重编/装载。消费契约详文见
 [auto-cte/scalar-query-profile.md](../auto-cte/scalar-query-profile.md)。
+## PLAN-818：mn 消费者的增量继承（SD-06）
+
+- 818 消费 828 函数 IR/代码复用模型：未改函数不重新 lower/codegen（驻留工作
+  集+store 持久层）、内容命中=历史单元复用（cv→fp 映射、代际不跳）、每编辑
+  恰一单元重发——**新增能力不退回整模块热重编/装载**（退化仅记录性：注入缝/
+  异常触发的全模块回退=结构门非零）。
+- 用户明确的顺序与增量机制保留：编辑序即提交序（前缀 exactly-once 保留，
+  语法回退从 session 当前源重建）；代际/身份变更只落在被编辑单元。
+- mn 消费门对每个单元重验证（verify_mir）后安装；emission 失败永不提交
+  revision——受检安装/依赖/寿命语义与上节安装事务一致。

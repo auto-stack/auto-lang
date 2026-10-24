@@ -203,3 +203,17 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
   内建，随 text 批次导入。
 - 通道合同见 `docs/specs/auto-test-case/profile-v2-native.md`（auto-test-case
   模块属主）；语料 `crates/auto-lang/test/cases/ac-native/`（42 case + 账本）。
+
+## MIR-native 实验后端（PLAN-818，加法 consumer）
+
+- 818 在独立 workspace（`experimental/ac-mir-native/`）建立
+  `CheckedMir → CLIF → 函数 COFF → rust-lld → PE` 新通道并与 AV/旧 HIR-native/
+  独立 expected 对拍；语言面/私有 ABI/授权 trace 见
+  [mir-native-scalar.md](mir-native-scalar.md)，单元缓存/增量/资源/周转见
+  [mir-native-cache.md](mir-native-cache.md)。
+- 818 是既有 producer/consumer 面的**加法消费者**：消费 798 共享 MIR
+  （A08'）、828 函数增量会话、783/787 受管 store（A09' 单元 COFF+manifest）、
+  788 AutoDown 正式 recipe 通道（`ac/mir-native-scalar-v1`，mn 词表）；旧
+  profile/producer 不因 818 扩面，不回溯宣布生产默认迁移。
+- 既有生产入口（ac-core 前端/旧 CLI/旧 native emitter）保持不动；旧
+  HIR→native 参照路径保留。
