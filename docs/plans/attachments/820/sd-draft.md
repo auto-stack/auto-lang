@@ -45,9 +45,18 @@
 - 新 recipe `ac-av/data-run-v1`：注册三处追加（REGISTERED_PROBE_RECIPES
   白名单、step 词表=run+edit-source、av binding）；worker case-serve data
   分支（av_core_version=av.data/1、parse/verify 诊断分级）；父侧判定同
-  core 语义（成功=exit 值、diag=parse/verify 分级、infra=非语言判定）；
-  V-10 反控（wrong-exit/wrong-diag/未注册 recipe/worker 三故障=ERROR）。
-  验收：corpus 绿（av-data-first.case.ad）+ ac_av_data_probe 4/4。
+  core 语义（成功=exit 值、diag=parse/verify 分级、infra=非语言判定）。
+  **typed 面（F820-R6-01）**：`typed:<id>` 入口（av.data-fixture/1 冻结
+  七样本：u64::MAX/i64::MIN/-NaN payload/-0.0/f32 1.0/bool true/i32 42）
+  经真实准入链（data MIR→AVAD→AV），worker 报告实际产值的规范
+  {kind,bits}（i64/u64/f64 十六位、f32 八位、i32/bool 不补零），父侧持
+  **独立冻结期望表**逐项比对 tag 与精确 rawbits（worker 之言从非 oracle）；
+  record 源成功同样附 typed 报告（bool/宽标量不再丢失于 i32-only 通道，
+  父侧存在性规则认 value 或 typed）；typed 步骤修订哈希绑定入口身份。
+  V-10 反控（wrong-exit/wrong-diag/未注册 recipe/worker 三故障=ERROR
+  /wrong-bits/wrong-type-tag（父侧期望破坏缝 AV820_TYPED_EXPECT_SABOTAGE
+  仅测试用）/未知 fixture id=检查错误非绿）。
+  验收：corpus 绿（av-data-first/typed/bool.case.ad）+ ac_av_data_probe 7/7。
 
 ## SD-06 modify docs/specs/auto-hir/stage-contract.md
 
