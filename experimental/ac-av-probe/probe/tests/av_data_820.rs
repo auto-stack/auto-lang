@@ -790,3 +790,53 @@ fn types_fp_of_source(src: &str) -> String {
         .expect("lower");
     auto_av_probe::data_driver::types_fp_of(&mir)
 }
+
+// ---------------------------------------------------------------------------
+// T-02 B-line memory envelope (conservative in-process attribution)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn av_data_820_worker_memory_envelope_b_line() {
+    // The 798 r7 two-line contract: B = the probe's OWN residual, and a
+    // measurement without attribution counts the WHOLE peak conservatively
+    // into B. This in-process envelope runs the exact pipeline the data
+    // worker runs (compile → lower → verify → AVAD encode → admit →
+    // execute, plus a persisted store round trip) inside THIS process and
+    // bounds the private-bytes increment by the frozen 128 MiB line.
+    let base = ac_artifact_probe::sysinfo::imp::current_process_memory().private_bytes;
+    let tmp = std::env::temp_dir().join(format!(
+        "av820-mem-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let mut peak = base;
+    for i in 0..25 {
+        let src = format!(
+            "type Inner {{ x int }}\ntype Outer {{ inner Inner }}\nfn main() int {{\
+             \n    var o = Outer {{ inner: Inner {{ x: {i} }} }}\
+             \n    o.inner.x = o.inner.x + 2\
+             \n    return o.inner.x\
+             }}\n"
+        );
+        let r = auto_av_probe::data_driver::request_data(Some(&tmp), "mem", &src, "d_main", &[])
+            .expect("request");
+        assert!(matches!(r.av, Some(ExecOutcome::Success { .. })));
+        let now = ac_artifact_probe::sysinfo::imp::current_process_memory().private_bytes;
+        peak = peak.max(now);
+    }
+    let delta = peak - base;
+    println!(
+        "av820 B-line conservative: base={base} peak={peak} delta={} ({:.1} MiB)",
+        delta,
+        delta as f64 / (1024.0 * 1024.0)
+    );
+    assert!(
+        delta <= 128 * 1024 * 1024,
+        "data pipeline private-bytes increment {delta} exceeds the 128 MiB B-line"
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
+}

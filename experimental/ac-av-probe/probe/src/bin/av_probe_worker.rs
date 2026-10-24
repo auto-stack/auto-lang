@@ -226,7 +226,8 @@ fn case_serve() -> ! {
         std::io::stdout().write_all(line.as_bytes()).ok();
         exit(0)
     };
-    if recipe != "ac-av/core-run-v1" {
+    let data_recipe = recipe == "ac-av/data-run-v1";
+    if recipe != "ac-av/core-run-v1" && !data_recipe {
         eprintln!("unknown recipe {recipe}");
         exit(2);
     }
@@ -298,11 +299,18 @@ fn case_serve() -> ! {
     if session.is_none() {
         let _ = std::fs::remove_dir_all(&store_dir);
     }
-    let mut d = auto_av_probe::driver::Driver::with_store(&store_dir, "autodown-case")
-        .unwrap_or_else(|e| {
-            eprintln!("store: {e}");
-            exit(3)
-        });
+    let mut d = if data_recipe {
+        None
+    } else {
+        Some(
+            auto_av_probe::driver::Driver::with_store(&store_dir, "autodown-case").unwrap_or_else(
+                |e| {
+                    eprintln!("store: {e}");
+                    exit(3)
+                },
+            ),
+        )
+    };
 
     let replace_once = |src: &str, from: &str, to: &str| -> Result<String, String> {
         let hits = src.matches(from).count();
@@ -340,7 +348,87 @@ fn case_serve() -> ! {
                 }
             }
             Some("run") => {
-                let r = d.request(&current_source, &entry, &caps);
+                if data_recipe {
+                    // PLAN-820: the data-profile pipeline (record source →
+                    // data MIR → AVAD → AV) with the same store model; the
+                    // first case's oracle is parent-side like the core
+                    // recipe. Wide scalars have no source syntax — data
+                    // cases are record-source programs with scalar exits.
+                    match auto_av_probe::data_driver::request_data(
+                        Some(&store_dir),
+                        "autodown-data-case",
+                        &current_source,
+                        &entry,
+                        &caps,
+                    ) {
+                        Ok(r) => {
+                            let (outcome, value, trap, diag) = match &r.av {
+                                Some(auto_av_core::contract::ExecOutcome::Success {
+                                    value,
+                                    ..
+                                }) => ("success".to_string(), value.as_i32(), None, None),
+                                Some(auto_av_core::contract::ExecOutcome::Trap {
+                                    kind, ..
+                                }) => (
+                                    "trap".to_string(),
+                                    None,
+                                    Some(kind.code().to_string()),
+                                    None,
+                                ),
+                                other => (
+                                    "infra".to_string(),
+                                    None,
+                                    None,
+                                    Some(serde_json::json!({ "detail": format!("{:?}", other) })),
+                                ),
+                            };
+                            step_outs.push(serde_json::json!({
+                                "op": "run",
+                                "outcome": outcome,
+                                "value": value,
+                                "trap": trap,
+                                "diag": diag,
+                                "source_hash": format!("{:016x}", r.snapshot),
+                                "wall_ms": r.wall_ms,
+                            }));
+                        }
+                        Err(e) => {
+                            // Front-door/frontend/lowering rejections are
+                            // PARSE-stage diagnoses (same mapping as the
+                            // core recipe); admission failures (mir
+                            // verify/encode/abc admit) are VERIFY stage.
+                            // Every other failure shape is a request error.
+                            let stage = if e.starts_with("front door")
+                                || e.starts_with("frontend")
+                                || e.starts_with("lower")
+                            {
+                                "frontend"
+                            } else if e.starts_with("mir verify")
+                                || e.starts_with("encode")
+                                || e.starts_with("abc admit")
+                            {
+                                "verify"
+                            } else {
+                                eprintln!("data pipeline: {e}");
+                                exit(2);
+                            };
+                            step_outs.push(serde_json::json!({
+                                "op": "run",
+                                "outcome": "diag",
+                                "value": null,
+                                "trap": null,
+                                "diag": { "stage": stage, "code": "", "message": e },
+                                "source_hash": "",
+                                "wall_ms": 0.0,
+                            }));
+                        }
+                    }
+                    continue;
+                }
+                let r = d
+                    .as_mut()
+                    .expect("core driver")
+                    .request(&current_source, &entry, &caps);
                 let (outcome, value, trap, diag) = if let Some(dg) = &r.diag {
                     (
                         "diag".to_string(),
@@ -432,7 +520,11 @@ fn case_serve() -> ! {
                         "recipe": recipe,
                         "steps": step_outs,
                         "worker_version": EXPECTED_WORKER_VERSION,
-                        "av_core_version": auto_av_core::contract::AV_PROFILE,
+                        "av_core_version": if data_recipe {
+                            auto_av_core::contract::AV_DATA_PROFILE
+                        } else {
+                            auto_av_core::contract::AV_PROFILE
+                        },
                     },
                 });
                 let mut line = serde_json::to_string(&ok_out).unwrap_or_default();
@@ -461,7 +553,11 @@ fn case_serve() -> ! {
         "recipe": recipe,
         "steps": step_outs,
         "worker_version": EXPECTED_WORKER_VERSION,
-        "av_core_version": auto_av_core::contract::AV_PROFILE,
+        "av_core_version": if data_recipe {
+            auto_av_core::contract::AV_DATA_PROFILE
+        } else {
+            auto_av_core::contract::AV_PROFILE
+        },
     }))
 }
 

@@ -40,6 +40,34 @@ const SESSION_WALL: Duration = Duration::from_secs(60);
 const BUILD_WALL: Duration = Duration::from_secs(300);
 
 pub const AV_RECIPE: &str = "ac-av/core-run-v1";
+/// PLAN-820: the data-profile recipe — record source → data MIR → AVAD →
+/// AV through the same worker/executor contract; judgement stays
+/// parent-side. Registered as its own recipe identity (append-only; the
+/// core recipe contract is untouched).
+pub const AV_DATA_RECIPE: &str = "ac-av/data-run-v1";
+pub const EXPECTED_AV_DATA_CORE_VERSION: &str = "av.data/1";
+
+/// Which registered av recipe a check runs under.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RecipeFamily {
+    Core,
+    Data,
+}
+
+impl RecipeFamily {
+    pub fn recipe(&self) -> &'static str {
+        match self {
+            RecipeFamily::Core => AV_RECIPE,
+            RecipeFamily::Data => AV_DATA_RECIPE,
+        }
+    }
+    pub fn expected_core_version(&self) -> &'static str {
+        match self {
+            RecipeFamily::Core => EXPECTED_AV_CORE_VERSION,
+            RecipeFamily::Data => EXPECTED_AV_DATA_CORE_VERSION,
+        }
+    }
+}
 pub const AV_WORKER_PROTOCOL: &str = "avworker/1";
 /// Mirrored worker identity expectations — admission constants; a worker
 /// bump without a mirror update fails loudly.
@@ -62,14 +90,18 @@ pub fn current_toolchain_identity() -> std::collections::BTreeMap<String, String
     m
 }
 
-fn probe_toolchain_axes(exe_sha: &str) -> Vec<(String, String)> {
+fn probe_toolchain_axes(exe_sha: &str, family: RecipeFamily) -> Vec<(String, String)> {
     vec![
         ("av-protocol".into(), AV_WORKER_PROTOCOL.into()),
-        ("recipe".into(), AV_RECIPE.into()),
+        ("recipe".into(), family.recipe().into()),
         ("av-worker-exe-sha256".into(), exe_sha.to_string()),
         (
             "av-worker-version".into(),
             EXPECTED_AV_WORKER_VERSION.into(),
+        ),
+        (
+            "av-core-version".into(),
+            family.expected_core_version().into(),
         ),
     ]
 }
@@ -678,14 +710,56 @@ pub fn run_check(
     case: &ResolvedCase,
     check: &CheckSpec,
     oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::Core,
+    )
+}
+
+/// PLAN-820: the data-recipe entry — same executor/judgement contract,
+/// data-profile pipeline (record source front door in the worker).
+pub fn run_data_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::Data,
+    )
+}
+
+fn run_check_impl(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
     _project_dir: &Path,
     artifact_dir: &Path,
     _run_dir: &Path,
+    family: RecipeFamily,
 ) -> Result<Verdict, String> {
     let started = Instant::now();
+    let recipe = family.recipe();
     if case.spec.source.syntax != auto_test_case::contract::Syntax::Auto {
         return Err(format!(
-            "{AV_RECIPE} consumes .at sources; syntax {:?} is not accepted by this recipe",
+            "{recipe} consumes .at sources; syntax {:?} is not accepted by this recipe",
             case.spec.source.syntax.as_str()
         ));
     }
@@ -699,14 +773,14 @@ pub fn run_check(
         .probe_steps
         .as_ref()
         .ok_or("probe check without steps (contract violation)")?;
-    if check.options.probe_recipe.as_deref() != Some(AV_RECIPE) {
+    if check.options.probe_recipe.as_deref() != Some(recipe) {
         return Err("probe check with an unregistered recipe (contract violation)".into());
     }
     // F798-R3-07 shape: leading edit-source allowed (measured window);
     // the judged last step must be a run.
     if !matches!(steps.last(), Some(auto_test_case::contract::ProbeStep::Run)) {
         return Err(format!(
-            "{AV_RECIPE} step sequences must end with a run step (contract violation)"
+            "{recipe} step sequences must end with a run step (contract violation)"
         ));
     }
     let input_bytes = case
@@ -742,7 +816,7 @@ pub fn run_check(
         })
         .collect();
     let mut request = serde_json::json!({
-        "recipe": AV_RECIPE,
+        "recipe": recipe,
         "nonce": nonce,
         "source_b64": b64(&input_bytes),
         "entry": av.entry,
@@ -799,7 +873,7 @@ pub fn run_check(
                 break 'admit;
             }
         };
-        if ok.recipe != AV_RECIPE {
+        if ok.recipe != recipe {
             infra_detail = Some(format!("av worker recipe mismatch: {}", ok.recipe));
             break 'admit;
         }
@@ -810,10 +884,11 @@ pub fn run_check(
             ));
             break 'admit;
         }
-        if ok.av_core_version != EXPECTED_AV_CORE_VERSION {
+        if ok.av_core_version != family.expected_core_version() {
             infra_detail = Some(format!(
                 "av core version `{}` does not match the admitted `{}`",
-                ok.av_core_version, EXPECTED_AV_CORE_VERSION
+                ok.av_core_version,
+                family.expected_core_version()
             ));
             break 'admit;
         }
@@ -897,7 +972,7 @@ pub fn run_check(
                 actual: e,
                 first_diff: None,
             }],
-            detail: Some(format!("{AV_RECIPE}: infra failure")),
+            detail: Some(format!("{recipe}: infra failure")),
             artifacts: vec![],
             native: None,
         });
@@ -913,7 +988,7 @@ pub fn run_check(
     // measures THIS, never a subtraction of parent call time).
     let request_wall_ms = started.elapsed().as_secs_f64() * 1000.0;
     let receipt = serde_json::json!({
-        "recipe": AV_RECIPE,
+        "recipe": recipe,
         "protocol": AV_WORKER_PROTOCOL,
         "nonce": nonce,
         "request_hash": request_hash,
@@ -931,7 +1006,7 @@ pub fn run_check(
         },
         "worker_us": worker_us,
         "request_wall_ms": request_wall_ms,
-        "toolchain": probe_toolchain_axes(&exe_sha),
+        "toolchain": probe_toolchain_axes(&exe_sha, family),
     });
     std::fs::write(
         artifact_dir.join("probe-receipt.json"),
@@ -957,7 +1032,7 @@ pub fn run_check(
             .iter()
             .map(|(k, v)| (k.clone(), *v as u32))
             .collect(),
-        toolchain: probe_toolchain_axes(&exe_sha),
+        toolchain: probe_toolchain_axes(&exe_sha, family),
         gaps: vec![],
     };
     let status = if mismatches.is_empty() {
@@ -969,7 +1044,7 @@ pub fn run_check(
         status,
         mismatches,
         detail: Some(format!(
-            "{AV_RECIPE}: run step judged (outcome {}); receipt probe-receipt.json",
+            "{recipe}: run step judged (outcome {}); receipt probe-receipt.json",
             step.outcome
         )),
         artifacts: vec![],

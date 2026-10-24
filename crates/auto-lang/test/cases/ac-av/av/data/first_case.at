@@ -1,0 +1,10 @@
+// PLAN-820 T-02 frozen first case (contract-decision §11): nested record
+// construction, field-path write through the root, field read back.
+// Independent hand-audited oracle: 41 + 1 = 42.
+type Inner { x int }
+type Outer { inner Inner }
+fn main() int {
+    var o = Outer { inner: Inner { x: 0 } }
+    o.inner.x = 41 + 1
+    return o.inner.x
+}

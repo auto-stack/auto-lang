@@ -36,10 +36,17 @@ switch ($Scope) {
         $code = $LASTEXITCODE
         $text = ($out | Out-String)
         if ($code -ne 0) { Fail "av_data_820 family red:`n$text" }
-        if ($text -notmatch "10 passed") {
-            Fail "av_data_820 family must select and pass all 10 first-case tests; output:`n$text"
+        if ($text -notmatch "(\d+) passed") {
+            Fail "no test-count line in output:`n$text"
         }
-        Write-Host "[verify-av-data-820] first-case PASS (av_data_820 10/10)" -ForegroundColor Green
+        $passed = [int]$Matches[1]
+        if ($passed -lt 11) {
+            Fail "av_data_820 family must select and pass at least its 11 first-case tests; saw $passed; output:`n$text"
+        }
+        if ($text -match "[1-9]\d* failed") {
+            Fail "av_data_820 family red; output:`n$text"
+        }
+        Write-Host "[verify-av-data-820] first-case PASS (av_data_820 $passed tests)" -ForegroundColor Green
         exit 0
     }
     default {
