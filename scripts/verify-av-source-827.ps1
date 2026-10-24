@@ -8,7 +8,7 @@
 # and cargo exit codes are passed through.
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("first-case", "semantics", "admission", "cache", "resources", "compatibility", "autodown", "inventory", "incremental", "acceptance")]
+    [ValidateSet("first-case", "semantics", "admission", "cache", "resources", "compatibility", "autodown", "inventory", "incremental", "acceptance", "selftest", "fail-shim")]
     [string]$Scope
 )
 
@@ -20,16 +20,32 @@ New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
 
 if ($env:SCCACHE_SERVER_PORT -eq $null) { $env:SCCACHE_SERVER_PORT = "28101" }
 
-function Assert-Selected([string]$Out, [string]$Label) {
-    # nextest summary: "Summary [...] N tests run: ..."; libtest: "N passed".
+function Test-Selected([string]$Out, [string]$Label) {
+    # Returns $true iff the run output proves a NON-EMPTY selection with
+    # ZERO skipped/ignored cases. nextest summary: "Summary [...] N tests
+    # run: X passed, Y failed, Z skipped"; libtest: "test result: ok. N
+    # passed; M failed; K ignored". A required case that is skipped or
+    # ignored is NOT a pass (R1-F01).
     $selected = 0
     if ($Out -match '(\d+) tests run') { $selected = [int]$Matches[1] }
     elseif ($Out -match '(\d+) passed') { $selected = [int]$Matches[1] }
     if ($selected -le 0) {
         Write-Host "FAILED: $Label selected 0 tests (0 selected is never a pass)"
-        exit 1
+        return $false
     }
-    Write-Host "   selected: $selected"
+    $skipped = 0
+    if ($Out -match '(\d+) skipped') { $skipped = [int]$Matches[1] }
+    elseif ($Out -match '(\d+) ignored') { $skipped = [int]$Matches[1] }
+    if ($skipped -gt 0) {
+        Write-Host "FAILED: $Label has $skipped skipped/ignored cases (skips are never green)"
+        return $false
+    }
+    Write-Host "   selected: $selected (0 skipped)"
+    return $true
+}
+
+function Assert-Selected([string]$Out, [string]$Label) {
+    if (!(Test-Selected $Out $Label)) { exit 1 }
 }
 
 function Run-Probe-Tests([string]$TestBin, [string]$Label) {
@@ -63,6 +79,21 @@ function Run-Runner-Tests([string]$Filter, [string]$Label) {
 function Not-Wired([string]$Scope, [string]$Owner) {
     Write-Host "NOT WIRED: scope '$Scope' lands with $Owner (explicit non-green, never silent)"
     exit 1
+}
+
+function Invoke-Scope([string]$Scope) {
+    # Run one scope as a REAL child script and return $true iff it exits 0.
+    # The acceptance aggregate and the selftest failure-propagation control
+    # share this one path (R1-F01). Child output is captured and shown via
+    # Write-Host so the function's return value is ONLY the boolean.
+    $out = & powershell -File $PSCommandPath -Scope $Scope 2>&1
+    $code = $LASTEXITCODE
+    $out | Write-Host
+    if ($code -ne 0) {
+        Write-Host "scope '$Scope' red (exit $code)"
+        return $false
+    }
+    return $true
 }
 
 switch ($Scope) {
@@ -142,7 +173,9 @@ switch ($Scope) {
         Run-Runner-Tests "av_source_827_inventory" "inventory"
     }
     "acceptance" {
-        # V-01..12 all required sub-cases, selected>0 everywhere, plus the
+        # V-01..12 ALL required sub-cases across EVERY implemented scope —
+        # including resources (R1-F01: a resource gate failure must break
+        # the aggregate) — selected>0 with 0 skips everywhere, plus the
         # SEM decision material (SEM-01..08) presence check.
         $sem = Join-Path $repo "docs/plans/attachments/827/sem-decisions.md"
         if (!(Test-Path $sem)) {
@@ -154,24 +187,44 @@ switch ($Scope) {
             Write-Host "FAILED: SEM table must carry SEM-01..08 (saw $semRows rows)"
             exit 1
         }
-        Write-Host "== acceptance: replaying every implemented scope"
-        & powershell -File $PSCommandPath -Scope first-case
-        if ($LASTEXITCODE -ne 0) { exit 1 }
-        & powershell -File $PSCommandPath -Scope semantics
-        if ($LASTEXITCODE -ne 0) { exit 1 }
-        & powershell -File $PSCommandPath -Scope admission
-        if ($LASTEXITCODE -ne 0) { exit 1 }
-        & powershell -File $PSCommandPath -Scope cache
-        if ($LASTEXITCODE -ne 0) { exit 1 }
-        & powershell -File $PSCommandPath -Scope autodown
-        if ($LASTEXITCODE -ne 0) { exit 1 }
-        & powershell -File $PSCommandPath -Scope inventory
-        if ($LASTEXITCODE -ne 0) { exit 1 }
-        & powershell -File $PSCommandPath -Scope compatibility
-        if ($LASTEXITCODE -ne 0) { exit 1 }
-        & powershell -File $PSCommandPath -Scope incremental
-        if ($LASTEXITCODE -ne 0) { exit 1 }
-        Write-Host "PASS: acceptance (all scopes + SEM material)"
+        Write-Host "== acceptance: replaying every implemented scope (resources included)"
+        foreach ($scope in @(
+            "first-case", "semantics", "admission", "cache", "autodown",
+            "inventory", "compatibility", "incremental", "resources"
+        )) {
+            if (!(Invoke-Scope $scope)) {
+                Write-Host "FAILED: acceptance — scope '$scope' red"
+                exit 1
+            }
+        }
+        Write-Host "PASS: acceptance (all scopes incl. resources + SEM material)"
+    }
+    "selftest" {
+        # R1-F01 repair evidence: negative controls replayed against the
+        # REAL validator/aggregator pieces. Each bad shape must be RED.
+        $fails = 0
+        # 1. valid nextest summary, zero skipped -> green.
+        if (!(Test-Selected "Summary [ 1.2s] 5 tests run: 5 passed, 0 failed, 0 skipped" "valid")) { $fails++ }
+        # 2. nextest with skipped -> red.
+        if (Test-Selected "Summary [ 1.2s] 5 tests run: 4 passed, 0 failed, 1 skipped" "skipped") { Write-Host "CONTROL FAILED: skipped must be red"; $fails++ }
+        # 3. libtest with ignored -> red.
+        if (Test-Selected "test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured" "ignored") { Write-Host "CONTROL FAILED: ignored must be red"; $fails++ }
+        # 4. missing/zero selection -> red.
+        if (Test-Selected "Summary [ 0.1s] 0 tests run: 0 passed" "missing") { Write-Host "CONTROL FAILED: zero-selected must be red"; $fails++ }
+        if (Test-Selected "build finished, no summary matched" "no-summary") { Write-Host "CONTROL FAILED: no-summary must be red"; $fails++ }
+        # 5. a REAL failing child scope propagated through the same
+        #    Invoke-Scope path acceptance uses -> red.
+        if (Invoke-Scope "fail-shim") { Write-Host "CONTROL FAILED: failing scope must be red"; $fails++ }
+        if ($fails -gt 0) {
+            Write-Host "FAILED: selftest ($fails red-path controls mis-behaved)"
+            exit 1
+        }
+        Write-Host "PASS: selftest (validator + aggregator negative controls all red as required)"
+    }
+    "fail-shim" {
+        # Selftest-only scope: a deliberately red child.
+        Write-Host "fail-shim: intentional failure"
+        exit 5
     }
     "incremental" {
         # V-13 (T-09): the 828 session reuse over this plan's source entry.

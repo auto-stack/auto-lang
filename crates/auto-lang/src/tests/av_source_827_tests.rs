@@ -81,6 +81,16 @@ fn av_source_827_corpus_green() {
         .iter()
         .map(|r| r.check_id.as_str())
         .collect();
+    // R1-F01 duplicate control: a check id may appear exactly ONCE — a
+    // duplicated row would double-count the required population.
+    let mut sorted_ids = ids.clone();
+    sorted_ids.sort_unstable();
+    sorted_ids.dedup();
+    assert_eq!(
+        sorted_ids.len(),
+        ids.len(),
+        "duplicated check ids in the report: {ids:?}"
+    );
     assert!(
         ids.contains(&"run-first"),
         "the first-case check must be present: {ids:?}"
@@ -348,189 +358,642 @@ fn av_source_827_worker_faults_are_infra() {
     );
 }
 
-/// V-11 (G0 replayable inventory): the frozen denominators re-derive from
-/// the real discovery rules — every shrink is red, growth is reported.
-/// Prints a JSON summary the script persists as the inventory artifact.
-#[test]
-fn av_source_827_inventory_denominators_replayable() {
-    // crates/auto-lang -> repo root
-    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf();
+// ---------------------------------------------------------------------------
+// G0 item-level inventory (V-11 / R1-F03): durable per-item discovery with
+// owner/status/gap retained as ROWS (scan failures are rows, never silent
+// drops), reconciled against the frozen denominators, persisted as JSON.
+// ---------------------------------------------------------------------------
 
-    // AP-01..23: every seed path exists; the 5 AC-source-domain seeds
-    // carry their frozen SHA256 receipts (identity is content, not path).
-    const AC_SEEDS: [(&str, &str, &str); 5] = [
-        ("AP-01", "experimental/ac-core/fixtures/scalar-source/valid/p-gcd-euclid.at",
-         "6d466c03e1b0012f7ac9b883cf88f253345fd911ac3ced2d1f282ce042799af3"),
-        ("AP-02", "experimental/ac-core/fixtures/record-source/valid/p01-records.at", ""),
-        ("AP-03", "experimental/ac-core/fixtures/text-record-source/valid/p02-overlap.at", ""),
-        ("AP-22", "experimental/ac-core/fixtures/scalar-source/valid/p-binop-args.at",
-         "46d6a431a5c1b9bbe6e2e87b8732c09a9c584b58eb92799fdb4ab073f423e625"),
-        ("AP-23", "experimental/ac-core/fixtures/scalar-source/valid/p-short-circuit-trap.at",
-         "d6871b77c9b02e797c77a2cf34900e005fe97062bf1fc95ffcdf1cf7707052a9"),
-    ];
-    const OLD_VM_SEEDS: [&str; 18] = [
-        "crates/auto-lang/test/vm/09_functions/013_closure_capture_hof/closure_capture_hof.at",
-        "crates/auto-lang/test/vm/09_functions/015_list_chain_pipeline/list_chain_pipeline.at",
-        "crates/auto-lang/test/vm/16_option_result/022_result_multi_error/result_multi_error.at",
-        "crates/auto-lang/test/vm/17_modules/001_use_fn/use_fn.at",
-        "crates/auto-lang/test/vm/24_generics/001_list_struct/list_struct.at",
-        "crates/auto-lang/test/vm/18_ffi/038_json_encode_parse/json_encode_parse.at",
-        "crates/auto-lang/test/vm/18_ffi/051_file_write_read/file_write_read.at",
-        "crates/auto-lang/test/vm/18_ffi/055_process_args/process_args.at",
-        "crates/auto-lang/test/vm/23_actor/006_state_increment/state_increment.at",
-        "crates/auto-lang/test/vm/22_generator/001_sum/sum.at",
-        "examples/script-to-ship-demos/async-demo/main.at",
-        "examples/http_server/server.at",
-        "examples/ui/015-notes/src/front/app.at",
-        "examples/script-to-ship-demos/trait-demo/main.at",
-        "crates/auto-lang/test/vm/99_script_err/05_obj_call_auto_catch/obj_call_auto_catch.as",
-        "crates/auto-lang/test/vm/07_objects/010_map_bracket_write/map_bracket_write.at",
-        "crates/auto-lang/test/vm/18_ffi/056_math_pow/math_pow.at",
-        "crates/auto-lang/test/vm/99_py_dispatch/01_dual_len/dual_len.as",
-    ];
-    let mut ap_total = 0usize;
-    for (id, rel, frozen_sha) in AC_SEEDS {
-        let bytes = std::fs::read(repo.join(rel))
-            .unwrap_or_else(|e| panic!("{id} seed missing at {rel}: {e}"));
-        if !frozen_sha.is_empty() {
-            assert_eq!(
-                auto_test_case::sha256::hex(&auto_test_case::sha256::sha256(&bytes)),
-                frozen_sha,
-                "{id} drifted from the frozen receipt"
-            );
-        }
-        ap_total += 1;
+#[derive(serde::Serialize, Debug)]
+struct InvItem {
+    id: String,
+    kind: &'static str,
+    path: String,
+    sha256: String,
+    status: String,
+    owner: String,
+    note: String,
+}
+
+fn inv_error(id: &str, kind: &'static str, path: &str, msg: &str) -> InvItem {
+    InvItem {
+        id: id.to_string(),
+        kind,
+        path: path.to_string(),
+        sha256: String::new(),
+        status: "scan-error".into(),
+        owner: "-".into(),
+        note: msg.to_string(),
     }
-    for rel in OLD_VM_SEEDS {
-        assert!(repo.join(rel).is_file(), "old-VM seed missing: {rel}");
-        ap_total += 1;
+}
+
+fn sha256_of(bytes: &[u8]) -> String {
+    auto_test_case::sha256::hex(&auto_test_case::sha256::sha256(bytes))
+}
+
+fn scan_file(repo: &Path, rel: &str, id: &str, kind: &'static str) -> InvItem {
+    let full = repo.join(rel);
+    match std::fs::read(&full) {
+        Ok(bytes) => InvItem {
+            id: id.to_string(),
+            kind,
+            path: rel.to_string(),
+            sha256: sha256_of(&bytes),
+            status: "present".into(),
+            owner: "-".into(),
+            note: format!("{} bytes", bytes.len()),
+        },
+        Err(e) => inv_error(id, kind, rel, &format!("read failed: {e}")),
     }
-    assert_eq!(ap_total, 23, "the AP denominator is exactly 23");
+}
 
-    // Scalar-source fixtures: 3 scalar seeds (AP-01/22/23; AP-02/03 live in
-    // the record/text-record profile dirs) + 8 beyond-seed programs.
-    let scalar_dir = repo.join("experimental/ac-core/fixtures/scalar-source/valid");
-    let scalar_count = std::fs::read_dir(&scalar_dir)
-        .expect("scalar-source/valid dir")
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|x| x == "at"))
-        .count();
-    assert!(scalar_count >= 11, "scalar seeds (>=11, saw {scalar_count})");
+/// One AP seed: file presence + SHA + oracle sidecar probe + frozen
+/// nature/owner/status from the catalog (hand-audited at T-01/T-02).
+fn scan_ap_seed(repo: &Path, id: &str, rel: &str, nature: &str, owner: &str, status: &str) -> InvItem {
+    let mut item = scan_file(repo, rel, id, "ap-seed");
+    item.note = format!("nature={nature}");
+    if item.status == "present" {
+        // Oracle sidecar probe (uniform rule): .expected.out / .expected.result.
+        let out = repo.join(format!("{rel}.expected.out")).is_file();
+        let result = repo.join(format!("{rel}.expected.result")).is_file();
+        let oracle = if out {
+            "expected.out"
+        } else if result {
+            "expected.result"
+        } else {
+            "none"
+        };
+        item.status = status.to_string();
+        item.owner = owner.to_string();
+        item.note = format!("nature={nature}; oracle={oracle}");
+    }
+    item
+}
 
-    // VM corpus (the two-level discovery rule, counting DISK case dirs —
-    // deliberately including unregistered ones; frozen minimums).
-    let vm_root = repo.join("crates/auto-lang/test/vm");
-    let mut categories = 0usize;
-    let mut case_dirs = 0usize;
-    let mut at_files = 0usize;
-    let mut as_files = 0usize;
-    for cat in std::fs::read_dir(&vm_root).expect("test/vm dir").flatten() {
-        let cat_path = cat.path();
-        if !cat_path.is_dir() {
-            continue;
-        }
-        // The discovery rule treats every subdirectory of test/vm as a
-        // category (including e.g. `aavm2` / `for_outer_var`).
-        categories += 1;
-        for case in std::fs::read_dir(&cat_path).expect("category dir").flatten() {
-            if !case.path().is_dir() {
-                continue;
-            }
-            case_dirs += 1;
-            let mut stack = vec![case.path()];
-            while let Some(d) = stack.pop() {
-                for f in std::fs::read_dir(&d).expect("case walk").flatten() {
-                    let p = f.path();
-                    if p.is_dir() {
-                        stack.push(p);
-                    } else if p.extension().is_some_and(|x| x == "at") {
-                        at_files += 1;
-                    } else if p.extension().is_some_and(|x| x == "as") {
-                        as_files += 1;
-                    }
+/// Scan one directory of .at fixtures; enumeration failures are rows.
+fn scan_fixture_dir(repo: &Path, rel_dir: &str, kind: &'static str, owner: &str) -> Vec<InvItem> {
+    let full = repo.join(rel_dir);
+    let entries = match std::fs::read_dir(&full) {
+        Ok(rd) => rd.collect::<Vec<_>>(),
+        Err(e) => return vec![inv_error(rel_dir, kind, rel_dir, &format!("read_dir failed: {e}"))],
+    };
+    let mut files: Vec<String> = Vec::new();
+    for e in entries {
+        match e {
+            Ok(e) => {
+                let p = e.path();
+                if p.extension().is_some_and(|x| x == "at") {
+                    files.push(e.file_name().to_string_lossy().to_string());
                 }
             }
+            Err(err) => {
+                files.push(format!("__enumerate-error:{err}"));
+            }
         }
     }
-    assert!(categories >= 47, "corpus categories (>=47, saw {categories})");
-    assert!(case_dirs >= 517, "corpus case dirs (>=517, saw {case_dirs})");
-    assert!(at_files >= 661, "corpus .at files (>=661, saw {at_files})");
-    assert!(as_files >= 8, "corpus .as files (>=8, saw {as_files})");
+    files.sort();
+    files
+        .into_iter()
+        .map(|name| {
+            if let Some(err) = name.strip_prefix("__enumerate-error:") {
+                return inv_error(
+                    &format!("{rel_dir}/{name}"),
+                    kind,
+                    rel_dir,
+                    &format!("entry error: {err}"),
+                );
+            }
+            let rel = format!("{rel_dir}/{name}");
+            let mut item = scan_file(repo, &rel, &rel, kind);
+            if item.status == "present" {
+                // Beyond-seed fixtures have no committed oracle: gap rows.
+                let seed = matches!(
+                    name.as_str(),
+                    "p-gcd-euclid.at" | "p-binop-args.at" | "p-short-circuit-trap.at"
+                ) || rel.contains("record-source") || rel.contains("text-record-source");
+                item.status = if seed { "seed".into() } else { "gap-no-oracle".into() };
+                item.owner = owner.to_string();
+            }
+            item
+        })
+        .collect()
+}
 
-    // Capability/entry/gate denominators from the strategy docs.
+/// The VM corpus (two-level discovery rule): one row per case dir, with
+/// its source kind and oracle sidecar state. No sidecar = gap row.
+fn scan_vm_corpus(repo: &Path, vm_rel: &str) -> Vec<InvItem> {
+    let root = repo.join(vm_rel);
+    let mut items = Vec::new();
+    let cats = match std::fs::read_dir(&root) {
+        Ok(rd) => rd.collect::<Vec<_>>(),
+        Err(e) => return vec![inv_error(vm_rel, "vm-corpus", vm_rel, &format!("read_dir failed: {e}"))],
+    };
+    let mut cat_names: Vec<String> = Vec::new();
+    for c in cats {
+        match c {
+            Ok(c) if c.path().is_dir() => cat_names.push(c.file_name().to_string_lossy().to_string()),
+            Ok(_) => {}
+            Err(err) => items.push(inv_error(
+                &format!("{vm_rel}/__cat"),
+                "vm-corpus",
+                vm_rel,
+                &format!("category entry error: {err}"),
+            )),
+        }
+    }
+    cat_names.sort();
+    for cat in cat_names {
+        let cat_dir = root.join(&cat);
+        let cases = match std::fs::read_dir(&cat_dir) {
+            Ok(rd) => rd.collect::<Vec<_>>(),
+            Err(e) => {
+                items.push(inv_error(
+                    &format!("{vm_rel}/{cat}"),
+                    "vm-corpus",
+                    &format!("{vm_rel}/{cat}"),
+                    &format!("read_dir failed: {e}"),
+                ));
+                continue;
+            }
+        };
+        let mut case_names: Vec<String> = Vec::new();
+        for c in cases {
+            match c {
+                Ok(c) if c.path().is_dir() => case_names.push(c.file_name().to_string_lossy().to_string()),
+                Ok(_) => {}
+                Err(err) => items.push(inv_error(
+                    &format!("{vm_rel}/{cat}/__case"),
+                    "vm-corpus",
+                    &format!("{vm_rel}/{cat}"),
+                    &format!("case entry error: {err}"),
+                )),
+            }
+        }
+        // Category-level row: the directory denominator (a category with
+        // only loose files — e.g. for_outer_var/main.at — still counts).
+        items.push(InvItem {
+            id: format!("{vm_rel}/{cat}"),
+            kind: "vm-corpus-category",
+            path: format!("{vm_rel}/{cat}"),
+            sha256: String::new(),
+            status: format!("cases={}", case_names.len()),
+            owner: "vm-corpus".into(),
+            note: String::new(),
+        });
+        case_names.sort();
+        for case in case_names {
+            let case_dir = cat_dir.join(&case);
+            let name = case.split_once('_').map(|(_, rest)| rest).unwrap_or(&case).to_string();
+            let at = case_dir.join(format!("{name}.at")).is_file();
+            let asf = case_dir.join(format!("{name}.as")).is_file();
+            let out = case_dir.join(format!("{name}.expected.out")).is_file();
+            let result = case_dir.join(format!("{name}.expected.result")).is_file();
+            let errorf = case_dir.join(format!("{name}.expected.error")).is_file();
+            let source = if at { "at" } else if asf { "as" } else { "none" };
+            let oracle = if out {
+                "expected.out"
+            } else if result {
+                "expected.result"
+            } else if errorf {
+                "expected.error"
+            } else {
+                "none"
+            };
+            // Disk rows include deliberately-unregistered cases (the
+            // in-repo caveat) — the denominator counts disk, the status
+            // marks the oracle state without deleting the row.
+            items.push(InvItem {
+                id: format!("{vm_rel}/{cat}/{case}"),
+                kind: "vm-corpus-case",
+                path: format!("{vm_rel}/{cat}/{case}"),
+                sha256: String::new(),
+                status: format!("source={source};oracle={oracle}"),
+                owner: if oracle == "none" { "future-G".into() } else { "vm-corpus".into() },
+                note: if oracle == "none" { "gap: no oracle sidecar".into() } else { String::new() },
+            });
+        }
+    }
+    items
+}
+
+/// stdlib provider declarations (PLAN-738): one row per module x target
+/// with its declared status; parse failures are rows, never silent.
+fn scan_providers(repo: &Path, rel: &str) -> Vec<InvItem> {
+    let bytes = match std::fs::read(repo.join(rel)) {
+        Ok(b) => b,
+        Err(e) => return vec![inv_error("providers", "stdlib-provider", rel, &format!("read failed: {e}"))],
+    };
+    let value: serde_json::Value = match serde_json::from_slice(&bytes) {
+        Ok(v) => v,
+        Err(e) => return vec![inv_error("providers", "stdlib-provider", rel, &format!("parse failed: {e}"))],
+    };
+    let Some(arr) = value.get("providers").and_then(|v| v.as_array()) else {
+        return vec![inv_error(
+            "providers",
+            "stdlib-provider",
+            rel,
+            "no `providers` array in the catalog",
+        )];
+    };
+    arr.iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let module = p.get("module").and_then(|v| v.as_str()).unwrap_or("?");
+            let target = p.get("target").and_then(|v| v.as_str()).unwrap_or("?");
+            let status = p.get("status").and_then(|v| v.as_str()).unwrap_or("?");
+            InvItem {
+                id: format!("provider:{module}:{target}"),
+                kind: "stdlib-provider",
+                path: rel.to_string(),
+                sha256: String::new(),
+                status: status.to_string(),
+                owner: "PLAN-738".into(),
+                note: p
+                    .get("reason")
+                    .or_else(|| p.get("notes"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            }
+            .with_index(i)
+        })
+        .collect()
+}
+
+trait WithIndex {
+    fn with_index(self, _: usize) -> InvItem;
+}
+impl WithIndex for InvItem {
+    fn with_index(mut self, i: usize) -> InvItem {
+        if self.id.contains(':') && self.id.ends_with("?") {
+            self.id = format!("provider[{i}]");
+        }
+        self
+    }
+}
+
+/// Markdown table rows `| <ID> | ...` for a fixed id prefix — per-row
+/// parse with owner extraction; a missing row becomes a generated gap row
+/// so the denominator cannot shrink silently.
+fn scan_md_rows(text: &str, prefix: &str, count: usize, kind: &'static str, owner_col: usize, gate_col: usize) -> Vec<InvItem> {
+    let mut by_id: std::collections::BTreeMap<String, InvItem> = Default::default();
+    for line in text.lines() {
+        let t = line.trim();
+        if !t.starts_with(&format!("| {prefix}")) {
+            continue;
+        }
+        let cells: Vec<&str> = t.split('|').collect();
+        if cells.len() < 3 {
+            continue;
+        }
+        let id = cells[1].trim().to_string();
+        if !id.starts_with(prefix) {
+            continue;
+        }
+        // Gate rows merge id+name in one cell ("G0 库存与差异基线") —
+        // normalize to the bare id; a table header like "Gate ID" is not
+        // a gate row (the id must be G<digit>...).
+        let id = id.split_whitespace().next().unwrap_or(&id).to_string();
+        if prefix == "G" && !id.as_bytes().get(1).is_some_and(|b| b.is_ascii_digit()) {
+            continue;
+        }
+        let owner = cells.get(owner_col).map(|c| c.trim().to_string()).unwrap_or_default();
+        let gate = cells.get(gate_col).map(|c| c.trim().to_string()).unwrap_or_default();
+        let name = cells.get(2).map(|c| c.trim().to_string()).unwrap_or_default();
+        by_id.insert(
+            id.clone(),
+            InvItem {
+                id,
+                kind,
+                path: String::new(),
+                sha256: String::new(),
+                status: "declared".into(),
+                owner,
+                note: format!("gate={gate}; {name}"),
+            },
+        );
+    }
+    // Denominator completion: every expected id must exist — missing ones
+    // are RETAINED as gap rows (and the assertion below turns them red).
+    let mut items: Vec<InvItem> = by_id.into_values().collect();
+    let expected_ids: Vec<String> = if prefix == "G" {
+        // The roadmap splits G2 into G2a/G2b — the frozen gate denominator.
+        ["G0", "G1", "G2a", "G2b", "G3", "G4", "G5", "G6", "G7", "G8"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    } else {
+        (1..=count)
+            .map(|n| format!("{prefix}{n:02}"))
+            .collect()
+    };
+    for id in expected_ids {
+        if !items.iter().any(|it| it.id == id) {
+            items.push(InvItem {
+                id,
+                kind,
+                path: String::new(),
+                sha256: String::new(),
+                status: "gap-missing-row".into(),
+                owner: "-".into(),
+                note: "expected row absent from the document".into(),
+            });
+        }
+    }
+    items
+}
+
+/// Entry call-site anchors WITH symbol discovery: the row is green only
+/// when the file exists AND carries its characteristic call-site symbol.
+fn scan_entry_anchors(repo: &Path) -> Vec<InvItem> {
+    const ANCHORS: [(&str, &str, &str); 13] = [
+        ("entry:cli-run", "crates/auto/src/main.rs", "Commands::Run"),
+        ("entry:cli-script-positional", "crates/auto/src/main.rs", "run_file_with_args"),
+        ("entry:cli-eval", "crates/auto/src/main.rs", "Commands::Eval"),
+        ("entry:cli-old-repl", "crates/auto/src/main.rs", "autovm_repl"),
+        ("entry:cli-mcp-daemon", "crates/auto/src/main.rs", "AutovmDaemon"),
+        ("entry:script-entry", "crates/auto-lang-core/src/script_entry.rs", "run_file"),
+        ("entry:sdk-staged", "crates/auto-lang/src/lib.rs", "run_with_capture_and_path_staged"),
+        ("entry:persistent-vm", "crates/auto-lang-core/src/autovm_persistent.rs", "AutovmReplSession"),
+        ("entry:daemon", "crates/auto-lang-core/src/autovm_daemon.rs", "AutovmDaemon"),
+        ("entry:client", "crates/auto-lang-core/src/autovm_client.rs", "eval_one_shot"),
+        ("entry:testcase-avm-adapter", "crates/auto-lang-core/src/test_cases/avm.rs", "Verdict"),
+        ("entry:ui-vm-bridge", "crates/auto-ui-runtime/src/ui/vm_bridge.rs", "vm_bridge"),
+        ("entry:old-vm-engine", "crates/auto-lang-core/src/vm.rs", "register_module"),
+    ];
+    ANCHORS
+        .iter()
+        .map(|(id, rel, symbol)| match std::fs::read_to_string(repo.join(rel)) {
+            Ok(text) => {
+                let found = text.contains(symbol);
+                InvItem {
+                    id: id.to_string(),
+                    kind: "entry-call-site",
+                    path: rel.to_string(),
+                    sha256: String::new(),
+                    status: if found { "symbol-found".into() } else { "symbol-missing".into() },
+                    owner: "EP-anchor".into(),
+                    note: format!("symbol `{symbol}`"),
+                }
+            }
+            Err(e) => inv_error(id, "entry-call-site", rel, &format!("read failed: {e}")),
+        })
+        .collect()
+}
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf()
+}
+
+const AP_SEEDS: [(&str, &str, &str, &str, &str); 23] = [
+    ("AP-01", "experimental/ac-core/fixtures/scalar-source/valid/p-gcd-euclid.at", "ac-source", "827", "supported-G1"),
+    ("AP-02", "experimental/ac-core/fixtures/record-source/valid/p01-records.at", "ac-source", "G2a", "gap"),
+    ("AP-03", "experimental/ac-core/fixtures/text-record-source/valid/p02-overlap.at", "ac-source", "G2a", "gap"),
+    ("AP-04", "crates/auto-lang/test/vm/09_functions/013_closure_capture_hof/closure_capture_hof.at", "vm-corpus", "G2b", "gap"),
+    ("AP-05", "crates/auto-lang/test/vm/09_functions/015_list_chain_pipeline/list_chain_pipeline.at", "vm-corpus", "G2b", "gap"),
+    ("AP-06", "crates/auto-lang/test/vm/16_option_result/022_result_multi_error/result_multi_error.at", "vm-corpus", "G2b", "gap"),
+    ("AP-07", "crates/auto-lang/test/vm/17_modules/001_use_fn/use_fn.at", "vm-corpus", "G3", "gap"),
+    ("AP-08", "crates/auto-lang/test/vm/24_generics/001_list_struct/list_struct.at", "vm-corpus", "G2b", "gap"),
+    ("AP-09", "crates/auto-lang/test/vm/18_ffi/038_json_encode_parse/json_encode_parse.at", "vm-corpus", "G3", "gap"),
+    ("AP-10", "crates/auto-lang/test/vm/18_ffi/051_file_write_read/file_write_read.at", "vm-corpus", "G4", "gap"),
+    ("AP-11", "crates/auto-lang/test/vm/18_ffi/055_process_args/process_args.at", "vm-corpus", "G4", "gap"),
+    ("AP-12", "crates/auto-lang/test/vm/23_actor/006_state_increment/state_increment.at", "vm-corpus", "G5", "gap"),
+    ("AP-13", "crates/auto-lang/test/vm/22_generator/001_sum/sum.at", "vm-corpus", "G5", "gap"),
+    ("AP-14", "examples/script-to-ship-demos/async-demo/main.at", "example-app", "G5", "gap"),
+    ("AP-15", "examples/http_server/server.at", "example-app", "G5", "gap"),
+    ("AP-16", "examples/ui/015-notes/src/front/app.at", "example-ui", "G6", "gap"),
+    ("AP-17", "examples/script-to-ship-demos/trait-demo/main.at", "example-app", "G3", "gap"),
+    ("AP-18", "crates/auto-lang/test/vm/99_script_err/05_obj_call_auto_catch/obj_call_auto_catch.as", "script-sugar", "G6", "gap-witness"),
+    ("AP-19", "crates/auto-lang/test/vm/07_objects/010_map_bracket_write/map_bracket_write.at", "vm-corpus", "G3", "gap"),
+    ("AP-20", "crates/auto-lang/test/vm/18_ffi/056_math_pow/math_pow.at", "vm-corpus", "G3", "gap"),
+    ("AP-21", "crates/auto-lang/test/vm/99_py_dispatch/01_dual_len/dual_len.as", "script-sugar", "G6", "gap-witness"),
+    ("AP-22", "experimental/ac-core/fixtures/scalar-source/valid/p-binop-args.at", "ac-source", "827", "supported-G1"),
+    ("AP-23", "experimental/ac-core/fixtures/scalar-source/valid/p-short-circuit-trap.at", "ac-source", "827", "supported-G1"),
+];
+
+/// V-11 (G0 replayable ITEM inventory, R1-F03): every denominator member
+/// is a durable row with identity/status/owner; failures stay as rows;
+/// counts reconcile with the frozen denominators; the JSON artifact is
+/// persisted under docs/reports/plan827/inventory.json.
+#[test]
+fn av_source_827_inventory_denominators_replayable() {
+    let repo = repo_root();
+    let mut items: Vec<InvItem> = Vec::new();
+
+    // 1) AP seeds: 23 rows, frozen receipts for the three G1 seeds.
+    for (id, rel, nature, owner, status) in AP_SEEDS {
+        items.push(scan_ap_seed(&repo, id, rel, nature, owner, status));
+    }
+    assert_eq!(
+        items.iter().filter(|i| i.kind == "ap-seed").count(),
+        23,
+        "the AP denominator is exactly 23"
+    );
+    let row_of = |id: &str| -> (String, String) {
+        let it = items.iter().find(|i| i.id == id).unwrap_or_else(|| panic!("{id} row"));
+        (it.sha256.clone(), it.note.clone())
+    };
+    let (sha, _) = row_of("AP-01");
+    assert_eq!(
+        sha,
+        "6d466c03e1b0012f7ac9b883cf88f253345fd911ac3ced2d1f282ce042799af3"
+    );
+    let (sha, _) = row_of("AP-22");
+    assert_eq!(
+        sha,
+        "46d6a431a5c1b9bbe6e2e87b8732c09a9c584b58eb92799fdb4ab073f423e625"
+    );
+    let (sha, _) = row_of("AP-23");
+    assert_eq!(
+        sha,
+        "d6871b77c9b02e797c77a2cf34900e005fe97062bf1fc95ffcdf1cf7707052a9"
+    );
+    // AP-11 is the no-oracle gap row the catalog flags (argv oracle TBD).
+    let (_, note) = row_of("AP-11");
+    assert!(note.contains("oracle=none"), "AP-11: {note}");
+
+    // 2) AC-source fixture dirs (all three profiles).
+    for (rel, owner) in [
+        ("experimental/ac-core/fixtures/scalar-source/valid", "827/G2"),
+        ("experimental/ac-core/fixtures/record-source/valid", "G2a"),
+        ("experimental/ac-core/fixtures/text-record-source/valid", "G2a"),
+    ] {
+        items.extend(scan_fixture_dir(&repo, rel, "ac-fixture", owner));
+    }
+    let fixtures = items
+        .iter()
+        .filter(|i| i.kind == "ac-fixture")
+        .count();
+    assert!(fixtures >= 14, "ac fixtures (>=14, saw {fixtures})");
+
+    // 3) VM corpus: every disk case dir is a row (registered or not).
+    items.extend(scan_vm_corpus(&repo, "crates/auto-lang/test/vm"));
+    let corpus = items
+        .iter()
+        .filter(|i| i.kind == "vm-corpus-case")
+        .count();
+    assert!(corpus >= 517, "corpus case rows (>=517, saw {corpus})");
+    let cats = items
+        .iter()
+        .filter(|i| i.kind == "vm-corpus-category")
+        .count();
+    assert!(cats >= 47, "corpus category rows (>=47, saw {cats})");
+
+    // 4) stdlib provider declarations.
+    items.extend(scan_providers(&repo, "stdlib/assembly-providers.json"));
+    let providers = items
+        .iter()
+        .filter(|i| i.kind == "stdlib-provider")
+        .count();
+    assert!(providers >= 18, "provider rows (>=18 six-core 3-target grid, saw {providers})");
+
+    // 5) Capability matrix C-01..C-43 (per-row owner/gate extraction).
     let matrix = std::fs::read_to_string(
         repo.join("docs/design/strategy/av-language-capability-matrix.md"),
     )
     .expect("capability matrix");
-    let mut caps = 0usize;
-    for n in 1..=43 {
-        let id = format!("C-{:02}", n);
-        assert!(
-            matrix.contains(&id),
-            "capability row {id} missing from the matrix"
-        );
-        caps += 1;
-    }
-    assert_eq!(caps, 43, "the capability denominator is C-01..C-43");
+    items.extend(scan_md_rows(&matrix, "C-", 43, "capability", 6, 8));
+    // 6) Roadmap EP-01..10 + G0..G8.
     let roadmap = std::fs::read_to_string(
         repo.join("docs/design/strategy/av-source-programs-and-avm-replacement-roadmap.md"),
     )
     .expect("roadmap");
-    let mut eps = 0usize;
-    for n in 1..=10 {
-        assert!(
-            roadmap.contains(&format!("EP-{:02}", n)),
-            "entry point EP-{n:02} missing"
-        );
-        eps += 1;
-    }
-    assert_eq!(eps, 10, "the entry-point denominator is EP-01..EP-10");
-    for g in ["G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8"] {
-        assert!(roadmap.contains(g), "gate {g} missing from the roadmap");
-    }
+    items.extend(scan_md_rows(&roadmap, "EP-", 10, "entry-point", 2, 2));
+    items.extend(scan_md_rows(&roadmap, "G", 10, "gate", 3, 3));
 
-    // stdlib inventory: the provider catalog + the auto layer files.
-    assert!(repo.join("stdlib/assembly-providers.json").is_file());
-    let auto_stdlib = std::fs::read_dir(repo.join("stdlib/auto"))
-        .expect("stdlib/auto dir")
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|x| x == "at"))
-        .count();
-    assert!(auto_stdlib >= 50, "stdlib auto layer (>=50, saw {auto_stdlib})");
+    // 7) Old-VM entry call-site anchors WITH symbol discovery.
+    items.extend(scan_entry_anchors(&repo));
 
-    // The 13 frozen old-VM entry call-site anchors (existence replay).
-    const ENTRY_ANCHORS: [&str; 13] = [
-        "crates/auto/src/main.rs",
-        "crates/auto-lang-core/src/script_entry.rs",
-        "crates/auto-lang/src/lib.rs",
-        "crates/auto-lang-core/src/autovm_persistent.rs",
-        "crates/auto-lang-core/src/autovm_daemon.rs",
-        "crates/auto-lang-core/src/autovm_client.rs",
-        "crates/auto-lang-core/src/autovm_repl.rs",
-        "crates/auto-lang-core/src/test_cases/avm.rs",
-        "crates/auto-ui-runtime/src/ui/vm_bridge.rs",
-        "crates/auto-lang-core/src/vm.rs",
-        "crates/auto-man-runtime/src/lib.rs",
-        "crates/auto/src/cmd_ui.rs",
-        "crates/auto/src/cmd_service.rs",
-    ];
-    for a in ENTRY_ANCHORS {
-        assert!(repo.join(a).is_file(), "entry anchor missing: {a}");
-    }
-
-    // JSON summary (the script persists this as the inventory artifact).
-    println!(
-        "{{\"scope\":\"inventory\",\"ap_seeds\":{ap_total},\"ac_source_seeds\":5,\
-         \"scalar_fixtures\":{scalar_count},\"vm_categories\":{categories},\
-         \"vm_case_dirs\":{case_dirs},\"vm_at\":{at_files},\"vm_as\":{as_files},\
-         \"capabilities\":43,\"entry_points\":10,\"gates\":9,\
-         \"stdlib_auto_at\":{auto_stdlib},\"entry_anchors\":13}}"
+    // Reconciliation: no scan errors, no missing rows, anchors all found.
+    let errors: Vec<&InvItem> = items.iter().filter(|i| i.status == "scan-error").collect();
+    assert!(
+        errors.is_empty(),
+        "scan failures must be zero (they would be retained rows): {errors:?}"
     );
+    let missing: Vec<&InvItem> = items
+        .iter()
+        .filter(|i| i.status == "gap-missing-row" || i.status == "symbol-missing")
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "missing denominator rows / symbols: {missing:?}"
+    );
+    let caps = items.iter().filter(|i| i.kind == "capability").count();
+    assert_eq!(caps, 43, "capability denominator");
+    let eps = items.iter().filter(|i| i.kind == "entry-point").count();
+    assert_eq!(eps, 10, "entry-point denominator");
+    let gates = items.iter().filter(|i| i.kind == "gate").count();
+    assert_eq!(
+        gates, 10,
+        "gate denominator (G0..G8 with G2a/G2b split)"
+    );
+    let anchors = items
+        .iter()
+        .filter(|i| i.kind == "entry-call-site" && i.status == "symbol-found")
+        .count();
+    assert_eq!(anchors, 13, "all 13 call-site anchors verified with symbols");
+    // Every capability row carries a real owner cell.
+    for it in items.iter().filter(|i| i.kind == "capability") {
+        assert!(
+            !it.owner.is_empty(),
+            "capability {} has no owner cell: {:?}",
+            it.id,
+            it.note
+        );
+    }
+
+    // Persist the durable item artifact + the summary line.
+    let artifact = serde_json::json!({
+        "scope": "inventory",
+        "repo_head": option_env!("AV827_INV_HEAD").unwrap_or("-"),
+        "items": items,
+        "summary": {
+            "ap_seeds": 23,
+            "ac_fixtures": fixtures,
+            "vm_corpus_cases": corpus,
+            "vm_categories": cats,
+            "stdlib_providers": providers,
+            "capabilities": caps,
+            "entry_points": eps,
+            "gates": gates,
+            "entry_anchors": anchors,
+        },
+    });
+    let out_path = repo
+        .join("docs/reports/plan827/inventory.json")
+        .to_string_lossy()
+        .to_string();
+    std::fs::write(
+        &out_path,
+        serde_json::to_string_pretty(&artifact).expect("serialize inventory"),
+    )
+    .unwrap_or_else(|e| panic!("write inventory artifact {out_path}: {e}"));
+    println!(
+        "inventory: {} items (23 AP / {fixtures} fixtures / {corpus} corpus cases / {providers} providers / 43 C / 10 EP / {gates} G / 13 anchors) -> {out_path}",
+        items.len()
+    );
+}
+
+/// R1-F03 negative controls: the scanner RETAINS failures as rows and
+/// keeps gap semantics — a missing directory, a malformed provider
+/// catalog, and an oracle-less program each surface as their own row
+/// class instead of silently shrinking the denominator.
+#[test]
+fn av_source_827_inventory_negative_controls() {
+    let tmp = std::env::temp_dir().join(format!("av827-inv-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    // Missing directory -> a retained scan-error row (not an empty set).
+    let rows = scan_fixture_dir(&tmp, "no-such-dir", "ac-fixture", "x");
+    assert_eq!(rows.len(), 1, "one retained row");
+    assert_eq!(rows[0].status, "scan-error");
+    assert!(rows[0].note.contains("read_dir failed"));
+
+    // Malformed provider JSON -> a retained parse-error row.
+    std::fs::write(tmp.join("bad-providers.json"), b"{ not json").unwrap();
+    let rows = scan_providers(&tmp, "bad-providers.json");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].status, "scan-error");
+    assert!(rows[0].note.contains("parse failed"));
+
+    // Structurally-valid JSON without the providers array -> its own row.
+    std::fs::write(tmp.join("empty-providers.json"), b"{}").unwrap();
+    let rows = scan_providers(&tmp, "empty-providers.json");
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].note.contains("no `providers` array"));
+
+    // A corpus case dir WITHOUT any oracle sidecar stays in the
+    // denominator as a gap row with a future-G owner.
+    let case = tmp.join("vmroot/01_cat/001_prog");
+    std::fs::create_dir_all(&case).unwrap();
+    std::fs::write(case.join("prog.at"), b"fn main() int { return 0 }").unwrap();
+    let rows = scan_vm_corpus(&tmp, "vmroot");
+    let case_rows: Vec<&InvItem> = rows.iter().filter(|r| r.kind == "vm-corpus-case").collect();
+    assert_eq!(case_rows.len(), 1, "the oracle-less case is still a row");
+    assert!(case_rows[0].status.contains("oracle=none"));
+    assert_eq!(case_rows[0].owner, "future-G");
+    // The category denominator row is present too (directory-level).
+    assert_eq!(
+        rows.iter().filter(|r| r.kind == "vm-corpus-category").count(),
+        1
+    );
+
+    // A missing markdown row is completed as a gap-missing-row (and the
+    // main test turns any such row red).
+    let rows = scan_md_rows("| C-01 | x | a | b | c | d | e | f | g |", "C-", 2, "capability", 6, 8);
+    assert_eq!(rows.len(), 2);
+    assert!(
+        rows.iter().any(|r| r.status == "gap-missing-row" && r.id == "C-02"),
+        "the absent C-02 row is retained as a gap: {rows:?}"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
 }
 
 /// V-04: an out-of-root `source.file` (`../` escape, absolute path, or a

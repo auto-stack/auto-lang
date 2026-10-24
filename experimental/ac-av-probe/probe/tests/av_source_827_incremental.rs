@@ -62,6 +62,49 @@ fn percentile(vals: &[f64], p: f64) -> f64 {
     s[((p / 100.0) * (s.len() - 1) as f64).round() as usize % s.len()]
 }
 
+/// R1-F02: the STRUCTURE GATE as an explicit predicate — the same rules
+/// the assertions below enforce inline, so the forced-degradation control
+/// can prove the DETECTOR fires (a bad consumer cannot pass it silently).
+/// Red iff more than one function gained a `mir_lower` stage, or any
+/// module-level non-syntax counter grew (whole frontend/reload shapes).
+fn whole_module_findings(
+    before: &std::collections::BTreeMap<String, u64>,
+    after: &std::collections::BTreeMap<String, u64>,
+) -> Vec<String> {
+    let mut lowered: Vec<String> = Vec::new();
+    let mut findings: Vec<String> = Vec::new();
+    for (k, v) in after {
+        let bv = before.get(k).copied().unwrap_or(0);
+        if *v <= bv {
+            continue;
+        }
+        if let Some(fn_name) = k.strip_prefix("mir_lower:") {
+            lowered.push(fn_name.to_string());
+        } else if !k.contains(':') && !k.starts_with("syntax_") {
+            findings.push(format!("module-level counter `{k}` grew"));
+        }
+    }
+    if lowered.len() > 1 {
+        findings.push(format!(
+            "{} functions re-lowered in one step (whole-module shape)",
+            lowered.len()
+        ));
+    }
+    findings
+}
+
+/// R1-F02: resident object identity of one function — (Arc pointer,
+/// generation) from the CURRENT snapshot: the identity axes the formal
+/// gate binds (a swapped object with equal content hash still moves the
+/// pointer; a re-published generation still moves the number).
+fn resident_identity(s: &FunctionIncrementalSession, def_id: &str) -> Option<(usize, u64)> {
+    let snap = s.current();
+    let code = snap.find_code(def_id)?;
+    let ptr = std::sync::Arc::as_ptr(code) as usize;
+    let gen = snap.generation_of(def_id)?;
+    Some((ptr, gen))
+}
+
 /// V-13 (1.1): the D828 frozen baseline through this plan's consumer —
 /// 30 distinct body revisions, structure AND time gates.
 #[test]
@@ -70,7 +113,18 @@ fn av_source_827_incremental_d828_baseline_30_structure_and_p95() {
     assert_eq!(base.source.len(), 273_575, "the D828 frozen baseline size");
     let mut s = warmup(&base.source, "d_main", &[]).expect("warmup");
     assert_eq!(run_value(&s), base.expected_main, "warm-up value");
-    assert_eq!(s.function_names().len(), 115, "115 functions");
+    let fn_names = s.function_names();
+    assert_eq!(fn_names.len(), 115, "115 functions");
+    // R1-F02 identity binding: every function's resident (ptr, generation)
+    // from the warm-up snapshot — unchanged functions must hold BOTH axes
+    // across all 30 revisions; the edited function must move.
+    let identities_before: std::collections::BTreeMap<String, (usize, u64)> = fn_names
+        .iter()
+        .map(|n| {
+            let def = format!("d_{n}");
+            (n.clone(), resident_identity(&s, &def).expect("identity"))
+        })
+        .collect();
 
     let samples = 30usize;
     let mut walls = Vec::with_capacity(samples);
@@ -119,6 +173,48 @@ fn av_source_827_incremental_d828_baseline_30_structure_and_p95() {
             after.get("syntax_reused_decls").copied().unwrap_or(0)
                 > before.get("syntax_reused_decls").copied().unwrap_or(0),
             "rev {n}: the incremental syntax layer must show reuse"
+        );
+        // R1-F02 explicit structure gate over the same deltas — the
+        // detector the forced-degradation control exercises.
+        assert!(
+            whole_module_findings(&before, &after).is_empty(),
+            "rev {n}: structure gate red: {:?}",
+            whole_module_findings(&before, &after)
+        );
+        // R1-F02 identity axes across this revision: unchanged functions
+        // hold (ptr, generation) from the ORIGINAL warm-up; the edited
+        // function moves at least one axis.
+        let changed = obs.changed_fn.clone().unwrap_or_default();
+        for n2 in &fn_names {
+            let def = format!("d_{n2}");
+            let now = resident_identity(&s, &def).expect("identity after edit");
+            let was = identities_before[n2];
+            if *n2 == changed {
+                assert_ne!(
+                    now, was,
+                    "rev {n}: the edited function `{changed}` must move identity"
+                );
+            } else {
+                assert_eq!(
+                    now, was,
+                    "rev {n}: unchanged function `{n2}` must hold ptr+generation"
+                );
+            }
+        }
+        // R1-F02 production/IO facts: the warm path rescans INCREMENTALLY
+        // (bytes far below a whole-source rescan) and writes NOTHING to
+        // the store (no store attached — zero disk IO).
+        let io = s.phase_io();
+        let rescan = io.get("syntax_rescan_bytes").copied().unwrap_or(0);
+        assert!(
+            rescan > 0 && (rescan as usize) < base.source.len() / 100,
+            "rev {n}: incremental rescan {rescan}B vs whole {}B",
+            base.source.len()
+        );
+        assert_eq!(
+            io.get("store_write_bytes").copied().unwrap_or(0),
+            0,
+            "rev {n}: the warm edit path performs zero store IO"
         );
         prev_src = rev.source;
     }
@@ -270,4 +366,146 @@ fn av_source_827_incremental_degradation_caught() {
     );
     assert_eq!(s.revision(), rev1, "refusal keeps the live revision");
     assert_eq!(run_value(&s), 1, "the resident session still serves rev");
+}
+
+/// R1-F02: the IDENTITY STABILITY gate — the delivered degradation
+/// detector (mirrors the 828 formal judge's `edit_identity_gate`): across
+/// an edit step, every UNCHANGED function must hold its resident
+/// (ptr, generation). A consumer that degrades to whole-frontend/reload
+/// per edit (a fresh warm-up) reallocates EVERY function object — the
+/// unchanged pointers move and the gate goes red. (The warm-up cold path
+/// records no counters/phase-io — verified — so pointer stability is the
+/// axis the production judge itself uses for this class.)
+fn identity_findings(
+    before: &std::collections::BTreeMap<String, (usize, u64)>,
+    after: &std::collections::BTreeMap<String, (usize, u64)>,
+    changed: &str,
+) -> Vec<String> {
+    let mut findings = Vec::new();
+    for (name, was) in before {
+        if name == changed {
+            continue;
+        }
+        match after.get(name) {
+            Some(now) if now == was => {}
+            Some(now) => findings.push(format!(
+                "{name}: identity moved {was:?} -> {now:?} without an edit"
+            )),
+            None => findings.push(format!("{name}: identity missing after the step")),
+        }
+    }
+    findings
+}
+
+fn snapshot_identities(
+    s: &FunctionIncrementalSession,
+) -> std::collections::BTreeMap<String, (usize, u64)> {
+    s.function_names()
+        .iter()
+        .map(|n| {
+            let def = format!("d_{n}");
+            (n.clone(), resident_identity(s, &def).expect("identity"))
+        })
+        .collect()
+}
+
+/// V-13 (1.4) / R1-F02: the degradation DETECTOR's negative oracle.
+/// (a) A REAL forced whole-frontend/reload (a fresh warm-up on the edited
+///     source — exactly what a degrading consumer does per edit) must make
+///     the identity gate RED; the legitimate fast-path edit over the same
+///     source stays GREEN. The degraded path still computes the right
+///     VALUE — the gate is structural, which is the point.
+/// (b) A hash-preserving object swap — a second warm-up of the SAME
+///     source: per-function content versions EQUAL, resident objects
+///     (Arc pointers) DIFFERENT — so swapping objects behind an unchanged
+///     hash cannot hide from the (ptr, generation) axes.
+#[test]
+fn av_source_827_incremental_detector_negative_controls() {
+    let base = auto_av_probe::load256::generate_revision(0);
+
+    // (a) Positive: a real fast-path edit stays green under BOTH gates
+    // (counter structure AND identity stability).
+    let mut s = warmup(&base.source, "d_main", &[]).expect("warmup");
+    let rev1 = auto_av_probe::load256::generate_revision(1);
+    let (start, end, insert) =
+        auto_av_probe::formal_828::diff_edit(&base.source, &rev1.source).expect("diff");
+    let counter_before = s.counters().snapshot();
+    let identity_before = snapshot_identities(&s);
+    let obs = s.edit(start, end, insert).expect("edit infra");
+    assert!(obs.ok, "the legitimate edit installs");
+    let changed = obs.changed_fn.clone().unwrap_or_default();
+    let after_counters = s.counters().snapshot();
+    assert!(
+        whole_module_findings(&counter_before, &after_counters).is_empty(),
+        "a fast-path edit is green under the counter structure gate"
+    );
+    let after_identities = snapshot_identities(&s);
+    assert!(
+        identity_findings(&identity_before, &after_identities, &changed).is_empty(),
+        "a fast-path edit is green under the identity gate: {:?}",
+        identity_findings(&identity_before, &after_identities, &changed)
+    );
+    assert!(
+        identity_before[&changed] != after_identities[&changed],
+        "the edited function's identity moved"
+    );
+
+    // (a) Negative: FORCED degradation — the degrading consumer's actual
+    // step (a fresh whole-frontend warm-up on the edited source, per
+    // edit). Every unchanged function's resident object is REALLOCATED:
+    // the identity gate over the same transition goes RED, while the
+    // degraded path still computes the correct VALUE — the detector is
+    // structural, which is the point.
+    let mut s2 = warmup(&rev1.source, "d_main", &[]).expect("forced re-warmup");
+    assert_eq!(
+        run_value(&s2),
+        rev1.expected_main,
+        "the degraded path still computes the right value"
+    );
+    let degraded_identities = snapshot_identities(&s2);
+    let findings = identity_findings(&after_identities, &degraded_identities, &changed);
+    assert!(
+        !findings.is_empty(),
+        "the identity gate must FIRE on a forced whole-frontend/reload step"
+    );
+    assert!(
+        findings.len() >= 100,
+        "the re-warmup reallocates essentially every function object (saw {} findings)",
+        findings.len()
+    );
+
+    // (b) Hash-preserving swap discrimination: two warm-ups of the SAME
+    // source — executor-published per-function CONTENT versions are equal
+    // (same hash), while the resident objects are distinct allocations
+    // (different pointers): the ptr axis catches a swapped object that a
+    // content hash alone would accept.
+    let mut sa = warmup(&base.source, "d_main", &[]).expect("warmup a");
+    let mut sb = warmup(&base.source, "d_main", &[]).expect("warmup b");
+    let _ = run_value(&sa);
+    let _ = run_value(&sb);
+    let (pub_a, _, _) = sa.last_run_publication();
+    let (pub_b, _, _) = sb.last_run_publication();
+    let map_a: std::collections::BTreeMap<String, (u64, u64, u64)> = pub_a
+        .iter()
+        .map(|(n, ptr, gen, content, _)| (n.clone(), (*ptr, *gen, *content)))
+        .collect();
+    let map_b: std::collections::BTreeMap<String, (u64, u64, u64)> = pub_b
+        .iter()
+        .map(|(n, ptr, gen, content, _)| (n.clone(), (*ptr, *gen, *content)))
+        .collect();
+    assert!(
+        !map_a.is_empty(),
+        "the executor published dispatch identities"
+    );
+    for (name, (pa, ga, ca)) in &map_a {
+        let (pb, gb, cb) = map_b
+            .get(name)
+            .unwrap_or_else(|| panic!("function {name} dispatched in both runs"));
+        assert_eq!(ca, cb, "{name}: same source -> same content version (hash)");
+        assert_eq!(ga, gb, "{name}: same warm-up sequence -> same generation");
+        assert_ne!(
+            pa, pb,
+            "{name}: fresh warm-up = distinct resident object — the ptr axis discriminates hash-preserving swaps"
+        );
+    }
 }
