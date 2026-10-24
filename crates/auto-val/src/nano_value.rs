@@ -42,14 +42,22 @@ pub const PAYLOAD48_MASK: u64 = 0x0000_FFFF_FFFF_FFFF;
 
 #[inline(always)]
 pub fn is_nanboxed(v: NanoValue) -> bool {
-    (v >> 52) == 0xFFF
+    // Negative infinity has a zero mantissa and is a real f64, not a tag.
+    (v >> 52) == 0xFFF && v != 0xFFF0_0000_0000_0000
 }
 
 // ---- Encode ----
 
 #[inline(always)]
 pub fn encode_f64(f: f64) -> NanoValue {
-    f.to_bits()
+    // Negative IEEE NaNs overlap the tagged-value namespace. Keep their
+    // payload but clear the sign so consumers still see a floating NaN.
+    let bits = f.to_bits();
+    if f.is_nan() {
+        bits & !(1u64 << 63)
+    } else {
+        bits
+    }
 }
 
 #[inline(always)]
@@ -273,6 +281,47 @@ pub fn is_bigint(v: NanoValue) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn f64_nan_encoding_cannot_alias_tagged_values() {
+        // Quiet/signaling, both signs and every tag nibble, with distinct payloads.
+        for sign in [0, 1u64 << 63] {
+            for tag in 0..16u64 {
+                for payload in [1, 0x12345, 0xffff_ffff] {
+                    let bits = sign | 0x7ff0_0000_0000_0000 | (tag << 48) | payload;
+                    let value = f64::from_bits(bits);
+                    assert!(value.is_nan());
+                    let encoded = encode_f64(value);
+                    assert!(is_f64(encoded), "NaN aliased a tag: {bits:016x}");
+                    assert!(!is_nanboxed(encoded));
+                    assert_eq!(encoded, bits & !(1u64 << 63));
+                    assert!(decode_f64(encoded).is_nan());
+                }
+            }
+        }
+        for value in [
+            0.,
+            -0.,
+            1.,
+            -1.,
+            f64::MAX,
+            f64::MIN_POSITIVE,
+            f64::from_bits(1),
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ] {
+            assert_eq!(encode_f64(value), value.to_bits());
+            assert!(is_f64(encode_f64(value)));
+        }
+        // A numeric NaN must not occupy even the exact observed i64-zero tag.
+        assert_ne!(
+            encode_f64(f64::from_bits(0xfff8_0000_0000_0000)),
+            try_encode_i64(0).unwrap()
+        );
+        assert!(is_i32(encode_i32(0)));
+        assert!(is_object(encode_object(1)));
+        assert!(is_f32(encode_f32(f32::NAN)));
+    }
 
     #[test]
     fn test_f64_roundtrip() {
