@@ -1034,12 +1034,18 @@ def main() -> int:
                     "body": {"op": "generate_ui",
                              "request": tool_wire_request(proj, f"v06-{prof}", **render_ov)}})
                 body = resp.get("body", {})
-                # rust profile 的落盘形态=共享 rust-workspace/（api-gen
-                # ensure_shared_workspace），其余 profile=gen/front/<prof>
-                gen_root = (proj / "rust-workspace") if prof == "rust" else (proj / "gen" / "front" / prof)
-                files = [p for p in gen_root.rglob("*") if p.is_file()] if gen_root.is_dir() else []
-                marker = ((gen_root / "Cargo.toml").is_file()
-                          and any(gen_root.rglob("main.rs"))) if prof == "rust" else bool(files)
+                # profile 落盘形态：rust=共享 rust-workspace/（api-gen
+                # ensure_shared_workspace）；tauri=双根（vue 壳 gen/front/vue +
+                # rust 后端 gen/back/rust）；其余=gen/front/<prof>
+                if prof == "rust":
+                    roots = [proj / "rust-workspace"]
+                elif prof == "tauri":
+                    roots = [proj / "gen" / "front" / "vue", proj / "gen" / "back" / "rust"]
+                else:
+                    roots = [proj / "gen" / "front" / prof]
+                files = [p for r in roots for p in r.rglob("*") if p.is_file()]                     if all(r.is_dir() for r in roots) else []
+                marker = ((roots[0] / "Cargo.toml").is_file()
+                          and any(roots[0].rglob("main.rs"))) if prof == "rust" else bool(files)
                 err = body.get("error", {}).get("kind", {})
                 ok = (body.get("type") == "generate_ok"
                       and body.get("report", {}).get("files_written", 0) > 0
