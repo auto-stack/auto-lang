@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-845
-status: execution_done
+status: reviewed
 feature_name: AutoGraphics行为绑定与可搬迁项目闭环
 plan_revision: 2
 author: [Codex]
 created_at: 2026-10-24
 updated_at: 2026-10-24
-current_step: 8
+current_step: 9
 total_steps: 10
 depends_on: [PLAN-840]
 supersedes_spec_components:
@@ -203,7 +203,7 @@ T-08列准确完整合入矩阵；**最终独立review pass后**T-10才在冻结
 
 ## 8. 执行步骤
 
-r2 final review R1发现F-845-R1-01（P2，未保存绑定源码诊断误标磁盘blob），T-06/T-08重开；当前executing6/10，T-09/T-10仍pending。保留T-01..05/T-07已通过证据；work T-01..08全部完成且无合同finding/gap才execution_done8/10，T-09最终pass为reviewed9/10（完整门pending），T-10实际完成才交付10/10。
+r2 final review R2已在冻结e518f5fc独立验闭F-845-R1-01，AC-01..09 pass，当前reviewed9/10；T-09完成、T-10及全部merge-owned完整门仍pending。R1与work修复历史见§9；本次pass不代表合入或交付，T-10实际关闭才10/10。
 
 | task_id | owner_stage | 依赖 | 真实触点／拟新增路径及动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -212,10 +212,10 @@ r2 final review R1发现F-845-R1-01（P2，未保存绑定源码诊断误标磁�
 | T-03 [x] | work | T-02 | document.rs、新authoring/behavior_project.rs及behavior_project_document tests | scene4/旧版/严格绑定/CodePayload原字节及840统一准入定向通过，V-02/03；AC-02, AC-03 |
 | T-04 [x] | work | T-03 | session.rs::Edit/Step/Pending/Editor、history/源码owners；新behavior_project_session | 候选绑定/更新/改角色/解绑/Undo/引用失效/预算/stale关闭，V-04/09主体；AC-03, AC-04, AC-07 |
 | T-05 [x] | work | T-04 | storage.rs::Snapshot/load_assets/prepare_closure/verify_locked、源码闭包与新storage tests | V-05/06及原storage/assets故障定向通过、单entry/同root锁/完整Verify；AC-05 |
-| T-06 [x] | work | T-05 | Host/Panel/bin、840正式来源选择与Run、Open/inspect；新host tests | F-845-R1-01工作修复：已存场景新绑定未保存时Run/诊断明确memory/hash；来源生命周期断言及原反例通过，独立验闭待定；其余V-07证据保留；AC-06 |
+| T-06 [x] | work | T-05 | Host/Panel/bin、840正式来源选择与Run、Open/inspect；新host tests | F-845-R1-01工作修复：已存场景新绑定未保存时Run/诊断明确memory/hash；来源生命周期断言及原反例经R2独立验闭；其余V-07证据保留；AC-06 |
 | T-07 [x] | work | T-06 | 新samples/behavior_projects/{move,patrol}、check_behavior_project.py/真实GPU反控 | V-08/10 OS/仓外/同binary/搬迁/源码更新/错误恢复/partial全证据；AC-06, AC-08 |
-| T-08 [x] | work | T-07 | 新check_behavior_project_owners.py、source/独立consumer、README/new research/behavior-project-handoff.md/Spec proposal | F-845-R1-01来源状态永久断言/知识说明工作关闭，受影响独立复审待定；其余V-01/09/10、owner/source/consumer/check/fmt与merge矩阵证据保留；AC-01, AC-07, AC-08 |
-| T-09 | review | T-08 | 同树冻结code/Plan/Spec与原始报告，主检出独立review附件 | AC-01..08逐项独立审查、遗漏/延后/workaround与健康；AC-09 |
+| T-08 [x] | work | T-07 | 新check_behavior_project_owners.py、source/独立consumer、README/new research/behavior-project-handoff.md/Spec proposal | F-845-R1-01来源状态永久断言/知识说明经R2独立复审关闭；其余V-01/09/10、owner/source/consumer/check/fmt与merge矩阵证据保留；AC-01, AC-07, AC-08 |
+| T-09 [x] | review | T-08 | 同树冻结code/Plan/Spec与原始报告，主检出独立review附件 | AC-01..08逐项独立审查、遗漏/延后/workaround与健康；AC-09 |
 | T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出知识/ledger/archive/guard | AC-10实际落地/清理/到期，改代码先受影响复审再重新冻结 |
 
 ## 9. 复审记录
@@ -309,6 +309,22 @@ stage: work | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass | worktree_pa
 F01工作关闭：Load/完整Verify确认当前root的有限源码身份；Run按身份标记真实已确认项目blob或memory/hash，不以整体dirty/exists判断、不读盘、不保留额外payload。两组永久来源生命周期断言通过，原R1反例同三正控exit0，旧Host逻辑受控回退两例准确翻红并恢复绿；几何dirty/首次绑定/Undo/Redo/Open/SaveAs换root/旧revision与pending完整覆盖。两项受影响旧storage检查、lib check/fmt与source320含原反控通过，仅SDK146固定预存warning。首轮fixture路径/selection/pending错误及原红日志保留，不作产品失败或绿证据。
 
 AC03/06/08工作证据恢复pass；其余R1验收和工作证据依代码/配置/输入未变保留，详readiness。T06/T08关闭、execution_done8/10，F01需独立复审核闭；原合同/plan_revision不变，SD01/03补明确来源规则，canonical/ledger未写。T09未pass，全部merge-owned完整门/T10仍pending，未合入/归档/清树。实现已提交冻结，现转移Plan写权给独立复审者。
+
+### 2026-10-24 r2 independent final review R2 — pass / reviewed9/10
+
+stage: review | review_scope: final | reviewer_identity: `/root/review_845_r2`（获授权的新独立上下文，非实现/R1上下文；无进一步委派） | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass |
+worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev |
+reviewed_commit: e518f5fc778cfa6827f7de9eb99b4c0910ef294d | repair_parent: 75277a7b7b8d1b43f840c8993721c02833e5657a | base_commit: 8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 |
+dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，三锁/config/Spec输入与R1一致，完整hash见[audit](attachments/845/review-r2/audit.json.txt) |
+acceptance_results: AC-01..09 pass、AC-10 pending | findings: F-845-R1-01 independently closed，无新增finding |
+evidence: [完整独立收据/逐AC/SD](attachments/845/review-r2/review.md)、[原反例实跑](attachments/845/review-r2/replay-source-origin.log.txt)、[永久2/2](attachments/845/review-r2/permanent-origin.log.txt)、[自选兄弟/失败状态](attachments/845/review-r2/holdout.rs)、[raw](attachments/845/review-r2/holdout.log.txt) |
+next: merge owner在本冻结提交执行全部完整门；通过后才落autographics-dev及知识/归档/guard清理。
+
+R1原反例同三个合法控制exit0；未保存B的SourceSnapshot.path/Last Run/真实Auto app_start node999错误均明确memory/hash。永久两例2/2覆盖首次绑定、几何dirty、Undo/Redo、Open、删除导入/已确认blob仍用接受字节、SaveAs失败/pending/旧revision与换根。独立H1同根更名、H2跨根实际坏blob Verify失败/修复/坏Open保旧、H3解绑SaveAs再Undo不继承旧根证明全部通过。Storage仅在load/完整Verify确认有限CodeRef，不保payload，不读盘判来源；真实callback及中间来源观察已复核。
+
+320冻结Git对象、work-r2 280与work-r3 18原始附件SHA逐项无差异；SDK681只读核验、三锁/config/全部Spec输入与R1一致，故其余未受影响AC与原生/owner/consumer证据保留，不因新HEAD重跑完整矩阵。定向library build/fmt/diff健康检查通过，仅SDK146固定预存warning。SD01..04及来源澄清与合同/代码一致；冻结proposal SHA256 `01eaa3e632a062c50bbcd5860df79d5a28e4d56390c881711754fb6416a351c5`，canonical/ledger未写。
+
+T-09关闭、reviewed9/10；T-10开放。pending_closeout_gates: 原63完整调用、driver/AGP全测/构建、原16 AGP/双游戏、authoring/hierarchy/assets/Play/source/owner/counter AND content、producer/fresh own-SDK/own-target consumer、15新project native及实际UI产物搬迁，全部merge-owned pending；精确矩阵沿冻结handoff。root档/docs_gen本driver-only diff不触发，tf仍主检出单实例批量并在845落地判到期。G840豁免仅840历史，845本轮确有独立上下文。未合入/归档/清树，不宣称交付。
 
 ## 10. 待澄清事项
 

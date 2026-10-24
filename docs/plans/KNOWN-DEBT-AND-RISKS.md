@@ -3161,3 +3161,7 @@ PLAN-840 merge（2026-10-24，archived11/12）：R1三finding已复审关闭；�
 ### PLAN-845 final R1 — F-845-R1-01（2026-10-24，needs_fix）
 
 P2原合同缺陷候选，非可延期债务：受审75277a7b7b8d1b43f840c8993721c02833e5657a/r2。已有保存路径的场景绑定全新未保存源码后Run，实际SourceSnapshot/Last Run/app_start错误误标尚不存在的scripts/<hash>.at，违反§5.2明确memory/hash来源；三个合法来源控制通过，反例实际执行至Auto API错误后在来源断言exit101。[完整finding与最小重放](attachments/845/review-r1/review.md)。T-06/T-08重开、executing6/10；AC03/06 fail、AC08 partial，其他pass保留。修复须提交及受影响独立复审；登记不授权缩面/延期，完整门仍merge-owned pending，未合入/归档/清树。
+
+### PLAN-845 R2 — F-845-R1-01 独立关闭（2026-10-24）
+
+冻结e518f5fc778cfa6827f7de9eb99b4c0910ef294d/r2，新独立上下文复审pass。原反例与三控制、永久来源生命周期2/2、独立SaveAs/坏Verify/坏Open/解绑Undo兄弟状态通过；SourceSnapshot/Last Run/真实Auto回调错误均正确标记memory/hash或当前root已确认来源。F01关闭，无延期或合同降级；reviewed9/10，T10及全部merge-owned完整门pending，未合入/交付。[独立R2证据](attachments/845/review-r2/review.md)。保留R1历史及其他计划记录。
