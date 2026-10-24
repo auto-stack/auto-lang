@@ -5,7 +5,7 @@ feature_name: AutoGraphics行为绑定与可搬迁项目闭环
 plan_revision: 2
 author: [Codex]
 created_at: 2026-10-24
-updated_at: 2026-10-24
+updated_at: 2026-10-25
 current_step: 9
 total_steps: 10
 depends_on: [PLAN-840]
@@ -203,7 +203,7 @@ T-08列准确完整合入矩阵；**最终独立review pass后**T-10才在冻结
 
 ## 8. 执行步骤
 
-r2 affected final review R4已在冻结152bc7fa独立验闭owner负控断言顺序F-845-M1-02；F-845-R1-01及F-845-M1-01保持独立关闭，AC-01..09 pass，当前reviewed9/10。T-09完成、T-10及受影响完整driver/消费者与尚未执行native等merge-owned门仍pending；已绿且未变输入的门仅按精确身份复用。历史与复用边界见§9及R4收据；本次pass不代表合入或交付，T-10实际关闭才10/10。
+r2 affected final review R5已在冻结da43267d独立验闭原生物理/posted指针一致性F-845-M1-03；F-845-R1-01及F-845-M1-01/02保持独立关闭，AC-01..09 pass，当前reviewed9/10。T-07/08/09完成，T-10与受影响完整driver/消费者、全部共享helper原生和实际UI产物搬迁等merge-owned完整门仍pending；已绿且未变输入的门仅按精确身份复用。历史与复用边界见§9及R5收据；本次pass不代表合入或交付，T-10实际关闭才10/10。
 
 | task_id | owner_stage | 依赖 | 真实触点／拟新增路径及动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -215,7 +215,7 @@ r2 affected final review R4已在冻结152bc7fa独立验闭owner负控断言顺�
 | T-06 [x] | work | T-05 | Host/Panel/bin、840正式来源选择与Run、Open/inspect；新host tests | F-845-R1-01工作修复：已存场景新绑定未保存时Run/诊断明确memory/hash；来源生命周期断言及原反例经R2独立验闭；其余V-07证据保留；AC-06 |
 | T-07 [x] | work | T-06 | 新samples/behavior_projects/{move,patrol}、check_behavior_project.py/真实GPU反控 | V-08/10 OS/仓外/同binary/搬迁/源码更新/错误恢复/partial全证据；AC-06, AC-08 |
 | T-08 [x] | work | T-07 | 新check_behavior_project_owners.py、source/独立consumer、README/new research/behavior-project-handoff.md/Spec proposal | F-845-R1-01来源状态永久断言/知识说明经R2独立复审关闭；其余V-01/09/10、owner/source/consumer/check/fmt与merge矩阵证据保留；AC-01, AC-07, AC-08 |
-| T-09 [x] | review | T-08 | 同树冻结code/Plan/Spec与原始报告，主检出独立review附件 | AC-01..08逐项独立审查、遗漏/延后/workaround与健康；AC-09；R4受影响owner断言顺序复审通过 |
+| T-09 [x] | review | T-08 | 同树冻结code/Plan/Spec与原始报告，主检出独立review附件 | AC-01..08逐项独立审查、遗漏/延后/workaround与健康；AC-09；R5原生指针一致性受影响独立复审通过 |
 | T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出知识/ledger/archive/guard | AC-10实际落地/清理/到期，改代码先受影响复审再重新冻结 |
 
 ## 9. 复审记录
@@ -373,6 +373,34 @@ next: merge owner在本冻结提交重跑受影响完整driver/consumer/source/f
 AC01身份刷新、AC07/08 owner/原门保留新验；生产/SDK/AGP/锁/配置/fixtures/原生输入/Spec均未变，其余AC与已闭findings按R2/R3身份明确复用，未重跑来源/GC/native或全档。SD01..04冻结SHA256 `01eaa3e632a062c50bbcd5860df79d5a28e4d56390c881711754fb6416a351c5`保持，canonical/ledger未写，无合同修订/新增债务。
 
 T09关闭、reviewed9/10；T10开放。pending_closeout_gates: 修改所在producer与fresh own-SDK/own-target consumer完整driver及相应source/manifest/fmt，尚未执行native矩阵、实际UI产物搬迁及原63/project其余完整门。a0e2已绿AGP163/旧owner等只有输入/依赖/config/代码不变部分可复用，不称R4新跑；旧155全driver不覆盖本次修改文件。root档/docs_gen不触发，tf仍主检出单实例批量且845收尾判到期。最终WT仍152bc7fa clean；未合入/归档/清树，不宣称交付。
+
+### merge R1 → F-845-M1-03：原生输入夹具坐标一致性
+
+原16AGP/合成两反控及旧双游戏/创作窗口已过。AGP首轮物理click未收到（presses0），未冒称通过；同冻结exe/PID窗口放置在屏幕内并验证foreground/hit PID后原3图像/counter断言通过，非产品更改。继而interaction positive phase2 temporary pixels unchanged。raw输入明确down690,380→synthetic move730,400→OS真实cursor回传690,380；真实mouse仍在起点，最新样本回零，故不能拿该次伪造窗口事件流当产品反例。公共probe::post目前只维护posted坐标，phase0物理预置不能覆盖后续drag/scroll/click；同helper被hierarchy/assets/play/user/project共享。
+
+本轮第三次有界自动work/review修复：仅原生验证helper的WM_MOUSEMOVE路径在同PID HWND ClientToScreen后同步真实SetCursorPos，再保留原PostMessage路径。不得抑制CursorLeft/取消/blur，不改Host/VM/输入生产逻辑、时序预算或任何原断言。相关old interaction正反/partial、代表hierarchy/assets拖动及user move/wrong-focus需定向验证，明确共享路径后独立review；完整门受影响项在新冻结后执行。T07/T08/T09重开executing6/10；M1/02及F01原关闭保留。失败raw merge-r1/interaction.json/.txt保留。后续若仍有代码性阻断，不再盲目第4轮，须诊断并交回具体缺口。
+
+### F-845-M1-03 work 修复交接
+
+冻结da43267d4dffe9064d9d95585b7b56416b730d5e（parent152bc7fa），仅Windows原生probe::post在WM_MOUSEMOVE时以已验证本PID HWND做ClientToScreen/SetCursorPos，同步真实指针后保留原PostMessage；另重冻source320。未改Host/VM/应用输入、取消/blur、期限或任何验收断言。bin定向测试、PE32MiB构建、fmt/source/diff检查通过。原interaction完成phase27；wrong-target/drop-release/partial52/truncated1四反控均按原oracle失败，hierarchy/assets/user Move三正及user wrong-focus反控通过，九项raw见attachments/845/merge-r1/pointer-work及pointer-work.py。父调用者首次误写完成phase26，实际native已exit0/27；保留原调用日志并按源协议修正为27，不削弱native断言。
+
+T07/T08工作关闭，execution_done8/10，T09待全新上下文受影响独立复审；现有R2/R3/R4未变内容与关闭结论保留。Spec proposal及依赖/锁/SDK未变，完整driver/消费者及共享helper所有native仍须新冻结提交的merge门。未合入/沉淀/归档/清理；第三次有界修复之后不盲目开启第四轮。实现冻结clean，移交Plan写权给独立review。
+
+### 2026-10-25 r2 independent affected final review R5 — pass / reviewed9/10
+
+stage: review | review_scope: final（merge失败后的受影响复审） | reviewer_identity: `/root/review_845_pointer_gate`（用户授权全新独立上下文，非实现及前序review，无进一步委派） | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass |
+worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev |
+reviewed_commit: da43267d4dffe9064d9d95585b7b56416b730d5e | repair_parent: 152bc7fa6c6aa5158ae97868cf2e3b28acf136fd | base_commit: 8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 |
+dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，三锁/config/16项Spec/提案未变，见[audit](attachments/845/review-r5-pointer/audit.json.txt) |
+acceptance_results: AC-01..09 pass；AC-10 pending | findings: F-845-M1-03独立关闭，F-845-R1-01及F-845-M1-01/02保持已闭，无新增finding |
+evidence: [独立收据/共享影响及复用边界](attachments/845/review-r5-pointer/review.md)、[独立原生调用](attachments/845/review-r5-pointer/native-run.txt)、[真实PID/物理坐标](attachments/845/review-r5-pointer/interaction.pointer.json.txt)、[patrol/wrong-focus holdout](attachments/845/review-r5-pointer/user-holdout/results.json.txt)、[真实raw manifest](attachments/845/review-r5-pointer/manifest.json.txt) |
+next: merge owner在本冻结提交执行受影响完整门及所有共享原生、实际UI保存搬迁；通过后才autographics-dev落地/知识归档/guard清理。
+
+独立检查原helper保留FindWindow/本PID拒绝、原PostMessage/wheel/key及所有取消/blur/resize/期限/断言；仅WM_MOUSEMOVE先ClientToScreen/SetCursorPos，失败明确返回。重建PE32MiB二进制b1465fe2aac515541bb891d44d76bcbbc66d5436f762615a8188a7511dd35e44；真实runner/window PID29708且系统物理client345,190→365,200→375,205。interaction27正控通过；wrong-target1、drop-release4原期限超时、partial52 phase3均正确失败。独立hierarchy16七组真实像素绿；自选Patrol27六阶段×六像素与wrong-focus phase5反控绿，Stop/保存重开由原工具核实。work九项raw与asset九组×四像素断言逐项复核，单帧phase0保留；未冒称本review重跑asset或全矩阵。定向completion4/4、source320/SDK681/479packages/17locals/29edges、fmt/diff健康通过，仅SDK146固定预存warning。
+
+本轮共享影响包括interaction/hierarchy/assets/Play builtin及user/project、旧authoring的scroll；这些完整native均须新冻结的merge-owned门。纯库/owner、AGP/独立游戏、SDK/锁/配置/fixtures/Spec未变，55项R2/R3/R4原始manifest hash逐项核实，未变AC与既有finding关闭按明确边界复用。SD01..04冻结SHA256 `01eaa3e632a062c50bbcd5860df79d5a28e4d56390c881711754fb6416a351c5`保持，canonical/ledger未写，无新债务/合同缩面。
+
+T07/08保持关闭、T09关闭，reviewed9/10；T10与全部merge-owned完整门pending，包括producer/fresh own-SDK own-target consumer/driver与build/source、原63/project尚余门、所有共享native、counter AND content、owner/source及新15 project native和实际UI产物搬迁；仅未变旧门可精确复用。root档/docs_gen本driver-only不触发；tf仍主检出单实例批量及845收尾到期判定。最终WT仍da43267d clean，所有本review原生进程/构建结束后移交Plan写权；未合入/归档/清树，不宣称交付。
 
 ## 10. 待澄清事项
 
