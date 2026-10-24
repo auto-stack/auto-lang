@@ -1,21 +1,30 @@
-//! PLAN-818 T-02: the `ac/mir-native-scalar-v1` probe recipe — formal
-//! AutoDown execution of the MIR-native backend through the unified
-//! probe/run seam (PLAN-796, riding the PLAN-788 TestCase v2 runner).
+//! PLAN-818: the `ac/mir-native-scalar-v1` probe recipe — formal AutoDown
+//! execution of the MIR-native backend through the unified probe/run seam
+//! (PLAN-796, riding the PLAN-788 TestCase v2 runner).
 //!
-//! Same contract shape as `ac_av.rs`: the case declares a recipe + one
-//! `run` step + an `mn` binding (entry/caps); this adapter builds/spawns
-//! the plan's worker (`mn-worker case-run`, protocol `mnworker/1`) under
-//! Job containment, admits the schema/nonce/request-hash/recipe/version
-//! echoes, and judges the observed outcome PARENT-SIDE. The worker never
-//! sees the expected outcomes.
+//! Same contract shape as `ac_av.rs`: the case declares a recipe + steps +
+//! an `mn` binding (entry/caps); this adapter builds/spawns the plan's
+//! worker (`mn-worker case-run`, protocol `mnworker/1`) under Job
+//! containment, admits the schema/nonce/request-hash/recipe/version echoes,
+//! and judges the observed outcome PARENT-SIDE. The worker never sees the
+//! expected outcomes.
 //!
-//! Recipe semantics (v1, T-02): one run = the FULL
-//! source → Checked HIR → MIR → per-function COFF → multi-object PE →
-//! real execute pipeline, on a real per-check store. Judgement faces:
+//! Step semantics (T-06): `restart` splits the sequence into worker
+//! SESSIONS — each session is a REAL new worker process (the store on disk
+//! is the only carried state); a session's leading `edit-source` steps
+//! materialize PARENT-SIDE (exactly-once literal replacement) before the
+//! request, so the worker protocol `mnworker/1` stays unchanged (the T-02
+//! single-run channel decodes and runs identically). The judged step is
+//! the sequence's LAST run; every session's run is structurally admitted
+//! (it really linked and really executed) and its manifest identity is
+//! admitted parent-side — sessions fed identical sources must echo
+//! IDENTICAL manifest fingerprints.
+//!
+//! Judgement faces:
 //! - `completion: "success"` + `exit: <i32>` — the real PE exit code
 //!   (a language trap IS exit 70, the frozen experiment contract);
 //! - `completion: { stage: "parse"|"verify", code }` — a diagnosed
-//!   pipeline rejection (T-06 extends this face's corpus).
+//!   pipeline rejection.
 
 use crate::test_cases::sema::containment;
 use auto_test_case::compare::Mismatch;
@@ -61,15 +70,12 @@ fn worker_file_sha256(exe: &Path) -> Result<String, String> {
 }
 
 /// Locate (and on first use build) the mn worker binary. Env override
-/// first; otherwise find `experimental/ac-mir-native` above this crate's
-/// source root and build its worker release under the contained, bounded
-/// build discipline (same shape as the av worker build).
+/// first (read on EVERY call — the fault-injection test seam must stay
+/// injectable after the real binary was memoized); otherwise find
+/// `experimental/ac-mir-native` above this crate's source root and build
+/// its worker release under the contained, bounded build discipline (same
+/// shape as the av worker build).
 pub fn worker_binary() -> Result<PathBuf, String> {
-    static CACHE: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
-    CACHE.get_or_init(locate_worker).clone()
-}
-
-fn locate_worker() -> Result<PathBuf, String> {
     if let Ok(env_path) = std::env::var("AC_MN_CASE_WORKER") {
         let p = PathBuf::from(&env_path);
         if p.is_file() {
@@ -80,6 +86,11 @@ fn locate_worker() -> Result<PathBuf, String> {
             env_path
         ));
     }
+    static CACHE: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| locate_worker_exn().map_err(|e| e)).clone()
+}
+
+fn locate_worker_exn() -> Result<PathBuf, String> {
     let mut dir: Option<&Path> = Some(Path::new(env!("CARGO_MANIFEST_DIR")));
     let manifest = loop {
         let Some(d) = dir else {
@@ -87,15 +98,16 @@ fn locate_worker() -> Result<PathBuf, String> {
                 "mn worker not located: no experimental/ac-mir-native above the crate and no AC_MN_CASE_WORKER override".to_string(),
             );
         };
-        let m = d
-            .join("experimental")
-            .join("ac-mir-native")
-            .join("Cargo.toml");
+        let m = d.join("experimental").join("ac-mir-native").join("Cargo.toml");
         if m.is_file() {
             break m;
         }
         dir = d.parent();
     };
+    build_worker(&manifest)
+}
+
+fn build_worker(manifest: &Path) -> Result<PathBuf, String> {
     let ws_root = manifest.parent().expect("workspace root");
     let exe = ws_root.join("target").join("release").join("mn-worker.exe");
     // ALWAYS build (no-op incremental builds are sub-second) under the
@@ -331,6 +343,32 @@ fn call_worker(request: &str) -> Result<String, String> {
     Ok(non_empty[0].to_string())
 }
 
+/// Exactly-once literal replacement for an `edit-source` step (the
+/// discriminating-edit oracle demands a unique match — ambiguity is a
+/// contract error, never a silent first-hit edit).
+fn replace_once(src: &[u8], from: &str, to: &str) -> Result<Vec<u8>, String> {
+    let s = std::str::from_utf8(src).map_err(|e| format!("source not utf-8: {e}"))?;
+    let hits = s.matches(from).count();
+    if hits != 1 {
+        return Err(format!(
+            "edit-source literal matched {hits} times (expected exactly once)"
+        ));
+    }
+    Ok(s.replacen(from, to, 1).into_bytes())
+}
+
+/// One executed session's parent-side record (receipt evidence).
+struct SessionRecord {
+    steps: Vec<String>,
+    source_sha: String,
+    exit_code: Option<i32>,
+    manifest_fp: Option<String>,
+    counters: Vec<(String, u32)>,
+    spans: Vec<(String, u64)>,
+    worker_us: u64,
+    judged: bool,
+}
+
 pub fn run_check(
     case: &ResolvedCase,
     check: &CheckSpec,
@@ -371,132 +409,258 @@ pub fn run_check(
     std::fs::create_dir_all(artifact_dir).map_err(|e| format!("mn artifact dir: {e}"))?;
     let workdir = artifact_dir.join("mn-work");
 
-    let nonce = hex(&sha256(
-        format!("{}|{:?}|mn", std::process::id(), started).as_bytes(),
-    ));
-    let mut request = serde_json::json!({
-        "recipe": MN_RECIPE,
-        "nonce": nonce,
-        "source_b64": b64(&input_bytes),
-        "entry": mn.entry,
-        "caps": mn.caps,
-        "store_root": store_root.display().to_string().replace('/', "\\"),
-        "workdir": workdir.display().to_string().replace('/', "\\"),
-    });
-    let request_hash = hex(&sha256(request.to_string().as_bytes()));
-    request["request_hash"] = serde_json::json!(request_hash);
+    // ---- T-06 session split: `restart` ends a session (each session is a
+    // REAL new worker process; the on-disk store is the carried state);
+    // a session's leading edits materialize parent-side before its run.
+    let mut sessions: Vec<Vec<&auto_test_case::contract::ProbeStep>> = Vec::new();
+    let mut current: Vec<&auto_test_case::contract::ProbeStep> = Vec::new();
+    for st in steps.iter() {
+        let is_restart = matches!(st, auto_test_case::contract::ProbeStep::Restart);
+        current.push(st);
+        if is_restart {
+            sessions.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.is_empty() {
+        sessions.push(current);
+    }
+    let total_runs = steps
+        .iter()
+        .filter(|s| matches!(s, auto_test_case::contract::ProbeStep::Run))
+        .count();
+    let mut run_index = 0usize; // 0-based index of executed RUN steps
 
-    let worker_started = Instant::now();
-    let resp_result = call_worker(&request.to_string());
-    let worker_us = worker_started.elapsed().as_micros() as u64;
-
+    let mut source = input_bytes.clone();
     let mut mismatches: Vec<Mismatch> = Vec::new();
     let mut infra_detail: Option<String> = None;
+    let mut diag: Option<(String, String)> = None;
     let mut exit_code: Option<i32> = None;
     let mut stderr_hex = String::new();
-    let mut counters: Vec<(String, u32)> = Vec::new();
-    let mut spans: Vec<(String, u64)> = Vec::new();
-    let mut diag: Option<(String, String)> = None;
-    let exe_sha = worker_file_sha256(&worker_binary()?)?;
+    let mut session_records: Vec<SessionRecord> = Vec::new();
+    // Parent-side manifest identity admission: source-hash → manifest fp.
+    let mut manifest_by_source: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
 
-    'admit: {
-        let resp = match resp_result {
-            Ok(r) => serde_json::from_str::<serde_json::Value>(&r)
-                .map_err(|e| format!("bad mn worker response ({e}): {r:.200}")),
-            Err(e) => Err(e),
-        };
-        let resp = match resp {
-            Ok(r) => r,
-            Err(e) => {
-                infra_detail = Some(e);
+    'sessions: for session in sessions.iter() {
+        // Materialize this session's leading edits parent-side.
+        let mut step_labels = Vec::new();
+        for st in session.iter() {
+            match st {
+                auto_test_case::contract::ProbeStep::EditSource { from, to } => {
+                    source = replace_once(&source, from, to)?;
+                    step_labels.push("edit-source".to_string());
+                }
+                auto_test_case::contract::ProbeStep::Restart => {
+                    step_labels.push("restart".to_string());
+                }
+                auto_test_case::contract::ProbeStep::Run => step_labels.push("run".to_string()),
+                auto_test_case::contract::ProbeStep::Query => {
+                    return Err(format!(
+                        "{MN_RECIPE} does not take query steps (decode contract violation)"
+                    ));
+                }
+            }
+        }
+        let has_run = session
+            .iter()
+            .any(|s| matches!(s, auto_test_case::contract::ProbeStep::Run));
+        if !has_run {
+            // A restart-only prefix: a session boundary without a judged
+            // run — nothing to request; the next session opens cold.
+            continue;
+        }
+        let source_sha = hex(&sha256(&source));
+
+        let nonce = hex(&sha256(
+            format!("{}|{:?}|mn", std::process::id(), started).as_bytes(),
+        ));
+        let mut request = serde_json::json!({
+            "recipe": MN_RECIPE,
+            "nonce": nonce,
+            "source_b64": b64(&source),
+            "entry": mn.entry,
+            "caps": mn.caps,
+            "store_root": store_root.display().to_string().replace('/', "\\"),
+            "workdir": workdir.display().to_string().replace('/', "\\"),
+        });
+        let request_hash = hex(&sha256(request.to_string().as_bytes()));
+        request["request_hash"] = serde_json::json!(request_hash);
+
+        let worker_started = Instant::now();
+        let resp_result = call_worker(&request.to_string());
+        let worker_us = worker_started.elapsed().as_micros() as u64;
+
+        let mut counters: Vec<(String, u32)> = Vec::new();
+        let mut spans: Vec<(String, u64)> = Vec::new();
+        let mut session_exit: Option<i32> = None;
+        let mut session_manifest: Option<String> = None;
+
+        'admit: {
+            let resp = match resp_result {
+                Ok(r) => serde_json::from_str::<serde_json::Value>(&r)
+                    .map_err(|e| format!("bad mn worker response ({e}): {r:.200}")),
+                Err(e) => Err(e),
+            };
+            let resp = match resp {
+                Ok(r) => r,
+                Err(e) => {
+                    infra_detail = Some(e);
+                    break 'admit;
+                }
+            };
+            if resp.get("schema").and_then(|v| v.as_str()) != Some(MN_WORKER_PROTOCOL) {
+                infra_detail = Some("mn worker schema mismatch".to_string());
                 break 'admit;
             }
-        };
-        if resp.get("schema").and_then(|v| v.as_str()) != Some(MN_WORKER_PROTOCOL) {
-            infra_detail = Some("mn worker schema mismatch".to_string());
-            break 'admit;
-        }
-        if resp.get("nonce").and_then(|v| v.as_str()) != Some(nonce.as_str())
-            || resp.get("request_hash").and_then(|v| v.as_str()) != Some(request_hash.as_str())
-        {
-            infra_detail = Some("mn worker nonce/request_hash echo mismatch".to_string());
-            break 'admit;
-        }
-        let Some(ok) = resp.get("ok") else {
-            let e = resp.get("error");
-            infra_detail = Some(format!(
-                "mn worker error: {}",
-                e.map(|v| v.to_string()).unwrap_or_else(|| "missing".into())
-            ));
-            break 'admit;
-        };
-        if ok.get("recipe").and_then(|v| v.as_str()) != Some(MN_RECIPE) {
-            infra_detail = Some("mn worker recipe mismatch".to_string());
-            break 'admit;
-        }
-        if ok.get("worker_version").and_then(|v| v.as_str()) != Some(EXPECTED_MN_WORKER_VERSION) {
-            infra_detail = Some("mn worker version mismatch".to_string());
-            break 'admit;
-        }
-        if ok.get("mn_abi").and_then(|v| v.as_str()) != Some("msvc-x64/priv-i32-bool-v1") {
-            infra_detail = Some("mn worker ABI axis mismatch".to_string());
-            break 'admit;
-        }
-        if let Some(c) = ok.get("counters").and_then(|v| v.as_object()) {
-            for (k, v) in c {
-                if let Some(n) = v.as_u64() {
-                    counters.push((k.clone(), n as u32));
+            if resp.get("nonce").and_then(|v| v.as_str()) != Some(nonce.as_str())
+                || resp.get("request_hash").and_then(|v| v.as_str())
+                    != Some(request_hash.as_str())
+            {
+                infra_detail = Some("mn worker nonce/request_hash echo mismatch".to_string());
+                break 'admit;
+            }
+            let Some(ok) = resp.get("ok") else {
+                let e = resp.get("error");
+                infra_detail = Some(format!(
+                    "mn worker error: {}",
+                    e.map(|v| v.to_string()).unwrap_or_else(|| "missing".into())
+                ));
+                break 'admit;
+            };
+            if ok.get("recipe").and_then(|v| v.as_str()) != Some(MN_RECIPE) {
+                infra_detail = Some("mn worker recipe mismatch".to_string());
+                break 'admit;
+            }
+            if ok.get("worker_version").and_then(|v| v.as_str()) != Some(EXPECTED_MN_WORKER_VERSION)
+            {
+                infra_detail = Some("mn worker version mismatch".to_string());
+                break 'admit;
+            }
+            if ok.get("mn_abi").and_then(|v| v.as_str()) != Some("msvc-x64/priv-i32-bool-v1") {
+                infra_detail = Some("mn worker ABI axis mismatch".to_string());
+                break 'admit;
+            }
+            if let Some(c) = ok.get("counters").and_then(|v| v.as_object()) {
+                for (k, v) in c {
+                    if let Some(n) = v.as_u64() {
+                        counters.push((k.clone(), n as u32));
+                    }
                 }
             }
-        }
-        if let Some(s) = ok.get("spans").and_then(|v| v.as_object()) {
-            for (k, v) in s {
-                if let Some(n) = v.as_u64() {
-                    spans.push((k.clone(), n));
+            if let Some(s) = ok.get("spans").and_then(|v| v.as_object()) {
+                for (k, v) in s {
+                    if let Some(n) = v.as_u64() {
+                        spans.push((k.clone(), n));
+                    }
                 }
             }
-        }
-        if let Some(d) = resp.get("diagnostic") {
-            // A diagnosed pipeline rejection (mn.* / mir.* code).
-            diag = Some((
-                d.get("code")
+            if let Some(d) = resp.get("diagnostic") {
+                // A diagnosed pipeline rejection (mn.* / mir.* code) —
+                // only the judged session's diagnosis is a verdict.
+                let code = d
+                    .get("code")
                     .and_then(|v| v.as_str())
                     .unwrap_or("?")
-                    .to_string(),
-                d.get("message")
+                    .to_string();
+                let message = d
+                    .get("message")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
-                    .to_string(),
-            ));
-            break 'admit;
+                    .to_string();
+                let judged = run_index + 1 == total_runs;
+                session_records.push(SessionRecord {
+                    steps: step_labels,
+                    source_sha,
+                    exit_code: None,
+                    manifest_fp: None,
+                    counters,
+                    spans,
+                    worker_us,
+                    judged,
+                });
+                if judged {
+                    diag = Some((code, message));
+                    break 'sessions;
+                }
+                run_index += 1;
+                continue 'sessions;
+            }
+            // Structural counter admission (successful runs only — a
+            // diagnosed rejection never reaches link/run by design): a
+            // judged run REALLY linked and REALLY executed; a cached PASS
+            // is never a verdict here.
+            let link = counters
+                .iter()
+                .find(|(k, _)| k == "link_invocations")
+                .map(|(_, v)| *v)
+                .unwrap_or(0);
+            let run = counters
+                .iter()
+                .find(|(k, _)| k == "run_invocations")
+                .map(|(_, v)| *v)
+                .unwrap_or(0);
+            if link < 1 || run < 1 {
+                infra_detail = Some(format!(
+                    "mn worker counters violate the always-execute contract (link={link}, run={run})"
+                ));
+                break 'admit;
+            }
+            session_exit = ok
+                .get("exit_code")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32);
+            let session_stderr = ok
+                .get("stderr_hex")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            // Parent-side MANIFEST identity admission: a successful run
+            // must echo its manifest fingerprint, and sessions fed
+            // IDENTICAL sources must agree on it.
+            let fp = ok
+                .get("manifest_fp")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if fp.is_empty() {
+                infra_detail =
+                    Some("mn worker success without a manifest fingerprint".to_string());
+                break 'admit;
+            }
+            if let Some(prev) = manifest_by_source.get(&source_sha) {
+                if *prev != fp {
+                    infra_detail = Some(format!(
+                        "mn worker manifest identity unstable for one source: {prev} vs {fp}"
+                    ));
+                    break 'admit;
+                }
+            } else {
+                manifest_by_source.insert(source_sha.clone(), fp.clone());
+            }
+            session_manifest = Some(fp);
+            if run_index + 1 == total_runs {
+                // The judged session: its raw PE bytes ride the receipt.
+                stderr_hex = session_stderr;
+            }
         }
-        exit_code = ok
-            .get("exit_code")
-            .and_then(|v| v.as_i64())
-            .map(|v| v as i32);
-        stderr_hex = ok
-            .get("stderr_hex")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        // Structural counter admission: a judged run REALLY linked and
-        // REALLY executed — a cached PASS is never a verdict here.
-        let link = counters
-            .iter()
-            .find(|(k, _)| k == "link_invocations")
-            .map(|(_, v)| *v)
-            .unwrap_or(0);
-        let run = counters
-            .iter()
-            .find(|(k, _)| k == "run_invocations")
-            .map(|(_, v)| *v)
-            .unwrap_or(0);
-        if link < 1 || run < 1 {
-            infra_detail = Some(format!(
-                "mn worker counters violate the always-execute contract (link={link}, run={run})"
-            ));
-            break 'admit;
+        if infra_detail.is_some() {
+            break 'sessions;
         }
+        let judged = run_index + 1 == total_runs;
+        session_records.push(SessionRecord {
+            steps: step_labels,
+            source_sha,
+            exit_code: session_exit,
+            manifest_fp: session_manifest,
+            counters,
+            spans,
+            worker_us,
+            judged,
+        });
+        if judged {
+            exit_code = session_exit;
+        }
+        run_index += 1;
     }
 
     if let Some(e) = infra_detail {
@@ -600,17 +764,31 @@ pub fn run_check(
         "success".to_string()
     };
 
+    // ---- receipt: per-session evidence (T-06) -------------------------
     let request_wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+    let exe_sha = worker_file_sha256(&worker_binary()?)?;
+    let judged_record = session_records.iter().rev().find(|r| r.judged);
+    let sessions_json: Vec<serde_json::Value> = session_records
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "steps": r.steps,
+                "source_sha256": r.source_sha,
+                "exit_code": r.exit_code,
+                "manifest_fp": r.manifest_fp,
+                "judged": r.judged,
+                "worker_us": r.worker_us,
+                "counters": r.counters,
+                "spans": r.spans,
+            })
+        })
+        .collect();
     let receipt = serde_json::json!({
         "recipe": MN_RECIPE,
         "protocol": MN_WORKER_PROTOCOL,
-        "nonce": nonce,
-        "request_hash": request_hash,
         "exit_code": exit_code,
         "stderr_hex": stderr_hex,
-        "counters": counters,
-        "spans": spans,
-        "worker_us": worker_us,
+        "sessions": sessions_json,
         "request_wall_ms": request_wall_ms,
         "toolchain": {
             "recipe": MN_RECIPE,
@@ -623,18 +801,48 @@ pub fn run_check(
     )
     .map_err(|e| format!("write receipt: {e}"))?;
 
+    // Aggregated observability for the record (the judged session's own
+    // counters/spans lead, so single-run shapes are byte-compatible in
+    // spirit with the T-02 receipt).
+    let mut counters: Vec<(String, u32)> = Vec::new();
+    let mut spans: Vec<(String, u64)> = Vec::new();
+    let mut worker_us_total: u64 = 0;
+    for r in &session_records {
+        worker_us_total += r.worker_us;
+        for (k, v) in &r.counters {
+            if let Some(e) = counters.iter_mut().find(|(ek, _)| ek == k) {
+                e.1 += v;
+            } else {
+                counters.push((k.clone(), *v));
+            }
+        }
+        for (k, v) in &r.spans {
+            if let Some(e) = spans.iter_mut().find(|(ek, _)| ek == k) {
+                e.1 += v;
+            } else {
+                spans.push((k.clone(), *v));
+            }
+        }
+    }
+    let judged_spans: Vec<(String, u64)> = judged_record
+        .map(|r| r.spans.clone())
+        .unwrap_or_default();
+    let judged_counters: Vec<(String, u32)> = judged_record
+        .map(|r| r.counters.clone())
+        .unwrap_or_default();
+
     let native = NativeRecord {
         exit_code,
         stage_spans: {
             let mut s = vec![
-                ("worker_us".to_string(), worker_us),
+                ("worker_us".to_string(), worker_us_total),
                 ("request_wall_ms".to_string(), request_wall_ms as u64),
             ];
-            s.extend(spans);
+            s.extend(judged_spans);
             s
         },
         cache_mode: None,
-        cache_hits: counters
+        cache_hits: judged_counters
             .iter()
             .filter(|(k, _)| k == "cache_hit_coff")
             .map(|(k, v)| (k.clone(), v.to_string()))

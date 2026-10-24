@@ -1414,9 +1414,12 @@ fn decode_options(
                     let allowed = match recipe.as_str() {
                         // T-07 edit-session: runs + discriminating edits.
                         "ac-av/core-run-v1" => matches!(op.as_str(), "run" | "edit-source"),
-                        // PLAN-818 T-02: the judged single run (the formal
-                        // first case); edit-source/restart join in T-06.
-                        "ac/mir-native-scalar-v1" => op == "run",
+                        // PLAN-818 T-06: runs + discriminating edits +
+                        // restart session boundaries (`query` stays a
+                        // sema/abi op — recipes never borrow ops).
+                        "ac/mir-native-scalar-v1" => {
+                            matches!(op.as_str(), "run" | "edit-source" | "restart")
+                        }
                         _ => op != "run",
                     };
                     if !allowed {
@@ -1487,6 +1490,20 @@ fn decode_options(
                         &f.path_of("steps"),
                         "cte/scalar-query-v1 step sequences must end with a query step (the judged step)",
                     ));
+                if recipe == "ac/mir-native-scalar-v1" {
+                    // PLAN-818 T-06 session shape: leading edits
+                    // materialize parent-side, `restart` splits worker
+                    // sessions (a real new process each), and the judged
+                    // step is the sequence's LAST run.
+                    if !matches!(out.last(), Some(ProbeStep::Run)) {
+                        return Err(err(
+                            &f.path_of("steps"),
+                            "ac/mir-native-scalar-v1 step sequences must end with a run step (the judged step)",
+                        ));
+                    }
+                    if out.is_empty() {
+                        return Err(err(&f.path_of("steps"), "steps must not be empty"));
+                    }
                 }
                 out
             }
