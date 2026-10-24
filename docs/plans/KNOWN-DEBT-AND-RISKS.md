@@ -3182,3 +3182,8 @@ producer/consumer完整driver各155、AGP各163和已绿原生门保留身份；
 ### F-845-M1-05 — closed (Plan845 r2, automatic repair5/6)
 
 Merge on944c1c55 exposed the original native authoring probe silently discarding scroll errors after real node selection. The legacy click path lacked the common physical-pointer/setup contract. Frozen fix ae1a87e15b857329efc1110beb9c76e9c0299baa unifies legacy OS inputs and propagates all five scroll errors without changing product semantics, original target/GPU/Save/Undo/Redo/resize assertions or1400-frame budget. Permanent actual native failure case distinguishes discarded Result (controlled mutation red) from immediate error (restored green); full accepted control phase9/280/accepted3, wrong/partial remain negative. Fresh-context independent R7 pass: [receipt](attachments/845/review-r7-legacy/review.md). This is a closed gate finding, not deferred debt; complete merge/landing remain separately pending until verified.
+
+
+### F-845-M1-06 — closed (Plan845 r2, repair6/6)
+
+Merge onae1a87e15 exposed hierarchy phase0 scroll before initial focus/pointer preparation; shared assets path had the same ordering. Actual native point hit Terminal PID1932 before run() readiness was reachable. Fix231957020cc855485adfc4b15be75457a94ef2d8 moves initial readiness ahead of auto-scroll in both probes, preserving original240 budget, pixel/state/Save/cancel and PID guards. Two permanent actual-native delayed acceptance/deadline tests reject old-order mutation (both frame12 foreign-hit), restored green; affected hierarchy4/pixel-faults2/assets7 pass. Fresh-context [R8](attachments/845/review-r8-preparation/review.md) independently closes it, no deferred debt. Complete merge/landing remain separate required checkpoints.
