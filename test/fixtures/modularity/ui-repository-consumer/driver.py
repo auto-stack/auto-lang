@@ -283,6 +283,22 @@ def edge_label(edge: dict) -> str:
 # source 族（V-01）
 # ---------------------------------------------------------------------------
 
+def _ledger_tuple(edge: dict) -> tuple:
+    return (edge["from"], edge["to"], edge["kind"], edge["optional"])
+
+
+def _fallback_resolve(edge: dict, repos: dict[str, Repo]) -> str | None:
+    """跨根边目标自本树悬挂时，按文档解析序在兄弟/主检出仓内恢复包名。"""
+    raw = edge["raw_path"].replace("\\", "/")
+    for repo_key, marker in (("lang", "auto-lang/"), ("down", "auto-down/")):
+        if marker in raw:
+            alt = repos[repo_key].path / raw.split(marker, 1)[1]
+            name = manifest_package_name(alt / "Cargo.toml")
+            if name:
+                return name
+    return None
+
+
 def run_source(ctx: dict, phases: dict, ledger: Ledger) -> None:
     lang, ui = ctx["repos"]["lang"], ctx["repos"]["ui"]
     phase = ctx["phase"]
@@ -293,63 +309,109 @@ def run_source(ctx: dict, phases: dict, ledger: Ledger) -> None:
         raise UsageError(f"语言仓不可解析（缺 Cargo.toml）: {lang.path}")
     lang_edges, lang_members = extract_declared_edges(lang.path)
     ui_edges, ui_members = (extract_declared_edges(ui.path) if ui.present else ([], {}))
+    five = set(migrating)
+    ban_pre = forbidden["closure_ban_pre_migration"]
+    ban_post = forbidden["closure_ban_source_switched"]
+    frozen_ledger = phases["transitional_man_core_edge_ledger"]["frozen_expected_pre_migration"]
+    ledger_keys = {(x["from"], x["to"], x["kind"], x["optional"]) for x in frozen_ledger}
+    # 窗口期 UI 仓侧台账 = 冻结台账中 from 为迁移包的子集（非迁移包的边留在语言侧）。
+    window_ui_ledger = {k for k in ledger_keys if k[0] in five}
 
-    # ---- SRC-P1：五包存在于阶段所属仓 ----
-    home = lang_members if phase == "pre-migration" else ui_members
-    home_name = "lang_repo" if phase == "pre-migration" else "ui_repo"
-    missing = [p for p in migrating if p not in home]
-    ledger.add(
-        "SRC-P1",
-        "pass" if not missing else "fail",
-        f"五包@{home_name}: {'全部在位' if not missing else '缺失 ' + ','.join(missing)}"
-        f"（lang 成员 {len(lang_members)}，ui 成员 {len(ui_members)}）",
-    )
-
-    # ---- SRC-P2 + SRC-P3：五包闭包禁断 + Man-core 台账 ----
-    roots = set(migrating) & set(home)
-    reached, reached_edges = closure_of(roots, home, lang_edges if phase == "pre-migration" else ui_edges)
-    ban = forbidden["closure_ban_pre_migration" if phase == "pre-migration"
-                    else "closure_ban_source_switched"]
-    hits = sorted(
-        edge_label(e) for e in reached_edges
-        if e["to"] in ban
-    )
-    ledger.add(
-        "SRC-P2",
-        "pass" if not hits else "fail",
-        (f"闭包 {len(reached)} 包零禁断（{'/'.join(ban)}）"
-         if not hits else "禁断边: " + "; ".join(hits)),
-    )
-
+    # ---- SRC-P1：五包在场（阶段语义）----
     if phase == "pre-migration":
-        frozen_expected = phases["transitional_man_core_edge_ledger"]["frozen_expected_pre_migration"]
-        observed = sorted(
-            (e["from"], e["to"], e["kind"], e["optional"])
-            for e in reached_edges if e["to"] == "auto-man-core"
-        )
-        expected = sorted(
-            (x["from"], x["to"], x["kind"], x["optional"]) for x in frozen_expected
-        )
-        if observed == expected:
+        missing = sorted(five - set(lang_members))
+        ledger.add("SRC-P1", "pass" if not missing else "fail",
+                   f"五包@lang_repo: {'全部在位' if not missing else '缺失 ' + ','.join(missing)}"
+                   f"（lang 成员 {len(lang_members)}，ui 成员 {len(ui_members)}）")
+    elif phase == "import-window":
+        miss_ui = sorted(five - set(ui_members))
+        lang_side = len(five & set(lang_members))
+        ledger.add("SRC-P1", "pass" if not miss_ui else "fail",
+                   f"五包候选@ui_repo: {'全部导入' if not miss_ui else '缺 ' + ','.join(miss_ui)}"
+                   f"；语言仓权威保留 {lang_side}/5（窗口期设计态）")
+    else:  # source-switched
+        miss_ui = sorted(five - set(ui_members))
+        ledger.add("SRC-P1", "pass" if not miss_ui else "fail",
+                   f"五包@ui_repo: {'全部在位' if not miss_ui else '缺失 ' + ','.join(miss_ui)}"
+                   f"（lang 成员 {len(lang_members)}，ui 成员 {len(ui_members)}）")
+
+    # ---- 语言侧权威闭包（pre + window 共用 pre 口径）----
+    if phase in ("pre-migration", "import-window"):
+        reached_l, edges_l = closure_of(five & set(lang_members), lang_members, lang_edges)
+        hits_l = sorted(edge_label(e) for e in edges_l if e["to"] in ban_pre)
+        ledger.add("SRC-P2", "pass" if not hits_l else "fail",
+                   (f"语言仓权威闭包 {len(reached_l)} 包零禁断（{'/'.join(ban_pre)}）"
+                    if not hits_l else "语言仓权威面禁断边: " + "; ".join(hits_l)))
+        obs_l = sorted(_ledger_tuple(e) for e in edges_l if e["to"] == "auto-man-core")
+        exp_l = sorted(ledger_keys)
+        if obs_l == exp_l:
             ledger.add("SRC-P3", "recorded",
-                       f"过渡 Man-core 边台账=冻结期望集（{len(observed)} 条）："
-                       + "; ".join(f"{f}->{t}({k})" for f, t, k, _ in observed))
-        elif set(observed) <= set(expected):
+                       f"语言仓过渡 Man-core 台账=冻结期望集（{len(obs_l)} 条）："
+                       + "; ".join(f"{f}->{t}({k})" for f, t, k, _ in obs_l))
+        elif set(obs_l) <= set(exp_l):
             ledger.add("SRC-P3", "recorded",
-                       f"少于冻结期望（C2 提前完成切除）：现存 {observed or '无'}")
+                       f"语言仓台账少于冻结期望（C2 提前完成）: 现存 {obs_l or '无'}")
         else:
-            grown = sorted(set(observed) - set(expected))
-            ledger.add("SRC-P3", "fail",
-                       "Man-core 边超出台账（C2 范围被扩大）: " + str(grown))
+            grown = sorted(set(obs_l) - set(exp_l))
+            ledger.add("SRC-P3", "fail", f"语言仓 Man-core 边超出台账（C2 范围被扩大）: {grown}")
+        # 路径布线解析（P1b）：pre 基线面
+        unresolved = [
+            e for e in edges_l
+            if e["to"] is None and _fallback_resolve(e, ctx["repos"]) is None
+        ]
+        ledger.add("SRC-P1b", "pass" if not unresolved else "recorded",
+                   "语言仓五包闭包路径布线全解析" if not unresolved else
+                   "未解析路径边（预迁移记档）: " + "; ".join(edge_label(e) for e in unresolved))
+
+    # ---- UI 仓候选/切源闭包（window + switched）----
+    if phase in ("import-window", "source-switched"):
+        ban_ui = ban_pre if phase == "import-window" else ban_post
+        reached_u, edges_u = closure_of(five & set(ui_members), ui_members, ui_edges)
+        # P1b：候选布线必须解析（窗口/切源均判红——跨根边按文档序恢复后仍无名=布线断）
+        unresolved_u = []
+        for e in edges_u:
+            if e["to"] is None:
+                e = dict(e, to=_fallback_resolve(e, ctx["repos"]))
+                if e["to"] is None:
+                    unresolved_u.append(e)
+        if phase == "import-window":
+            ledger.add("SRC-P1b", "pass" if not unresolved_u else "fail",
+                       "UI 仓候选五包闭包布线全解析（跨根按文档序）" if not unresolved_u
+                       else "候选布线未解析: " + "; ".join(edge_label(e) for e in unresolved_u))
+        else:
+            ledger.add("SRC-P1b", "pass" if not unresolved_u else "fail",
+                       "UI 仓五包闭包布线全解析" if not unresolved_u
+                       else "布线未解析: " + "; ".join(edge_label(e) for e in unresolved_u))
+
+        hits3 = sorted(edge_label(e) for e in edges_u
+                       if e["to"] in ("auto-man", "auto-man-runtime", "auto-lang"))
+        core_edges = [e for e in edges_u if e["to"] == "auto-man-core"]
+        obs_u_core = sorted(_ledger_tuple(e) for e in core_edges)
+        if phase == "import-window":
+            core_ok = set(obs_u_core) <= window_ui_ledger
+            detail = (f"UI 仓候选闭包 {len(reached_u)} 包零大库/monolith 禁断"
+                      + (f"；Man-core 过渡边在台账内（{len(obs_u_core)} 条）" if core_ok and obs_u_core
+                         else "；Man-core 过渡边已清零（提前完成）" if core_ok else ""))
+            ledger.add("SRC-P2u", "pass" if (not hits3 and core_ok) else "fail",
+                       detail if not hits3 and core_ok else
+                       "候选闭包违例: " + "; ".join(hits3)
+                       + ("；Man-core 边超出台账: " + str(sorted(set(obs_u_core) - window_ui_ledger)) if not core_ok else ""))
+            ledger.add("SRC-P3u", "recorded" if set(obs_u_core) == window_ui_ledger else
+                       ("recorded" if core_ok else "fail"),
+                       f"UI 仓侧 Man-core 台账观察={obs_u_core or '无'}（窗口期望={sorted(window_ui_ledger) or '无'}）")
+        else:
+            all_hits = hits3 + [edge_label(e) for e in core_edges]
+            ledger.add("SRC-P2", "pass" if not all_hits else "fail",
+                       (f"闭包 {len(reached_u)} 包零禁断（{'/'.join(ban_ui)}，收紧含零 auto-man-core）"
+                        if not all_hits else "禁断边: " + "; ".join(sorted(all_hits))))
+        # P2 主 ID 在 window 阶段由语言仓权威面持有；候选面为 P2u，避免同名双义。
 
     # ---- SRC-P4：UI 仓 vendoring / 走私守卫 ----
     member_ban = forbidden["member_ban_all_phases"]
     vendored = sorted(set(ui_members) & set(member_ban))
     ledger.add(
-        "SRC-P4a",
-        "pass" if not vendored else "fail",
-        "UI 仓成员零 vendoring（四名恒禁）" if not vendored else "UI 仓 vendoring: " + ",".join(vendored),
-    )
+        "SRC-P4a", "pass" if not vendored else "fail",
+        "UI 仓成员零 vendoring（四名恒禁）" if not vendored else "UI 仓 vendoring: " + ",".join(vendored))
     legacy = phases["legacy_attribution_pre_migration"]
     legacy_names = set(legacy["legacy_crates"])
 
@@ -362,23 +424,36 @@ def run_source(ctx: dict, phases: dict, ledger: Ledger) -> None:
             return any(rel.startswith(p) for p in legacy["legacy_manifest_prefixes"])
         return False
 
-    ui_forbidden_edges = [e for e in ui_edges if e["to"] in member_ban]
-    legacy_hits = sorted(
-        edge_label(e) for e in ui_forbidden_edges if is_legacy_member(e["from"])
-    )
-    new_hits = sorted(
-        edge_label(e) for e in ui_forbidden_edges if not is_legacy_member(e["from"])
-    )
-    if phase == "pre-migration":
-        ledger_part = f"legacy_observed={legacy_hits or '无'}"
-        if new_hits:
-            ledger.add("SRC-P4b", "fail",
-                       "T-04 走私守卫命中（非 legacy 新边指向禁断包）: "
-                       + "; ".join(new_hits) + f"；{ledger_part}")
-        else:
-            ledger.add("SRC-P4b", "recorded", f"UI 仓禁断声明边：{ledger_part}；非 legacy=无")
+    ui_edges_named = [dict(e, to=e["to"] or _fallback_resolve(e, ctx["repos"])) for e in ui_edges]
+    forbidden3_edges = [e for e in ui_edges_named
+                        if e["to"] in ("auto-man", "auto-man-runtime", "auto-lang")]
+    core_member_edges = [e for e in ui_edges_named if e["to"] == "auto-man-core"]
+    legacy3 = sorted(edge_label(e) for e in forbidden3_edges if is_legacy_member(e["from"]))
+    new3 = sorted(edge_label(e) for e in forbidden3_edges if not is_legacy_member(e["from"]))
+    if phase in ("pre-migration", "import-window"):
+        part = f"legacy_observed={legacy3 or '无'}"
+        if phase == "pre-migration":
+            if new3:
+                ledger.add("SRC-P4b", "fail",
+                           "T-04 走私守卫命中（非 legacy 新边指向禁断包）: " + "; ".join(new3) + f"；{part}")
+            else:
+                ledger.add("SRC-P4b", "recorded", f"UI 仓禁断声明边：{part}；非 legacy=无")
+        else:  # import-window：Man-core 边按窗口台账判（迁移包=台账内记档；其余红）
+            core_ok_edges = [e for e in core_member_edges
+                             if _ledger_tuple(e) in window_ui_ledger]
+            core_bad = sorted(edge_label(e) for e in core_member_edges
+                              if _ledger_tuple(e) not in window_ui_ledger
+                              and not is_legacy_member(e["from"]))
+            core_legacy = sorted(edge_label(e) for e in core_member_edges
+                                 if _ledger_tuple(e) not in window_ui_ledger
+                                 and is_legacy_member(e["from"]))
+            bad = new3 + core_bad
+            ledger.add("SRC-P4b", "fail" if bad else "recorded",
+                       (f"T-04 走私守卫命中: {'; '.join(bad)}" if bad else "UI 仓窗口期禁断边零违规")
+                       + f"；{part}；Man-core 台账内={len(core_ok_edges)}"
+                       + (f"；Man-core legacy/台账外记档={core_legacy}" if core_legacy else ""))
     else:
-        all_hits = sorted(edge_label(e) for e in ui_forbidden_edges)
+        all_hits = sorted(edge_label(e) for e in forbidden3_edges + core_member_edges)
         ledger.add("SRC-P4b", "pass" if not all_hits else "fail",
                    "UI 仓全成员零禁断边（legacy 已清理）" if not all_hits
                    else "禁断边（含 legacy 残留）: " + "; ".join(all_hits))
@@ -387,9 +462,9 @@ def run_source(ctx: dict, phases: dict, ledger: Ledger) -> None:
                    f"legacy 成员残留（T-09 清洁面复核）: {remaining or '无'}")
 
     # ---- SRC-P5：autodown 跨仓边 ----
-    runtime_home = home.get("auto-ui-runtime")
+    runtime_edges = ui_edges if phase in ("import-window", "source-switched") else lang_edges
     autodown_edges = [
-        e for e in (lang_edges if phase == "pre-migration" else ui_edges)
+        e for e in runtime_edges
         if e["from"] == "auto-ui-runtime" and e["dep_key"] == "autodown-core"
     ]
     down = ctx["repos"]["down"]
@@ -398,40 +473,37 @@ def run_source(ctx: dict, phases: dict, ledger: Ledger) -> None:
                    "auto-ui-runtime 未声明 autodown-core optional 边（跨仓 §4 合同失位）"
                    if phase == "source-switched" else
                    "autodown-core 边缺失：预迁移记档（若 T-06 前被移除须携记录修订阶段表）")
-        return
-    edge = autodown_edges[0]
-    target = edge["target_dir"]
-    resolvable = (target / "Cargo.toml").is_file()
-    # 声明目标自本树悬挂时，按文档解析序（env→组内兄弟→主检出）补一次 down 仓内
-    # 定位：取声明 path 中 auto-down/ 之后的仓内尾部，在已解析 down 仓根下重试。
-    order_note = ""
-    if not resolvable and down.path.is_dir():
-        raw = edge["raw_path"].replace("\\", "/")
-        marker = "auto-down/"
-        if marker in raw:
-            alt = down.path / raw.split(marker, 1)[1]
-            alt_name = manifest_package_name(alt / "Cargo.toml")
-            if alt_name:
-                order_note = f"；声明目标自本树悬挂，按文档解析序于 down 仓解析到 {alt_name}"
-    detail = (f"{edge_label(edge)} → 目标{'可解析' if resolvable else '不可解析'}"
-              f"（down 仓在案={down.path.is_dir()}）{order_note}")
-    if phase == "pre-migration":
-        ledger.add("SRC-P5", "recorded",
-                   detail + "；固定依赖机制 T-06 冻结（contract-baseline §4）")
     else:
-        ledger.add("SRC-P5", "pass" if (resolvable or order_note) else "fail",
-                   detail + "；source-switched 后必须可解析（fresh/locked 可复现）")
-    _ = runtime_home  # 位置性信息已在 edges 中体现
+        edge = autodown_edges[0]
+        target = edge["target_dir"]
+        resolvable = (target / "Cargo.toml").is_file()
+        order_note = ""
+        if not resolvable:
+            fallback = _fallback_resolve(edge, ctx["repos"])
+            if fallback:
+                order_note = f"；声明目标自本树悬挂，按文档解析序于 down 仓解析到 {fallback}"
+        detail = (f"{edge_label(edge)} → 目标{'可解析' if resolvable else '不可解析'}"
+                  f"（down 仓在案={down.path.is_dir()}）{order_note}")
+        if phase in ("pre-migration", "import-window"):
+            ledger.add("SRC-P5", "recorded",
+                       detail + "；固定依赖机制 T-06 冻结（contract-baseline §4）")
+        else:
+            ledger.add("SRC-P5", "pass" if (resolvable or order_note) else "fail",
+                       detail + "；source-switched 后必须可解析（fresh/locked 可复现）")
 
-    # ---- SRC-P6：语言仓原件删除（source-switched）----
+    # ---- SRC-P6：语言仓原件删除 ----
     if phase == "source-switched":
-        leftover = sorted(set(lang_members) & set(migrating))
+        leftover = sorted(set(lang_members) & five)
         ledger.add("SRC-P6", "pass" if not leftover else "fail",
                    "语言仓成员零五包名（原生产目录删除）" if not leftover
                    else "语言仓残留五包成员: " + ",".join(leftover))
+    elif phase == "import-window":
+        ledger.add("SRC-P6", "recorded",
+                   f"窗口期设计态：语言仓五包保留 {len(five & set(lang_members))}/5"
+                   "（权威未切，T-06 切源后本断言转判）")
     else:
         ledger.add("SRC-P6", "recorded",
-                   f"预迁移：五包预期仍在语言仓（在位 {len(set(lang_members) & set(migrating))}/5）")
+                   f"预迁移：五包预期仍在语言仓（在位 {len(five & set(lang_members))}/5）")
 
 
 # ---------------------------------------------------------------------------
@@ -774,11 +846,58 @@ def cmd_selftest() -> int:
         _make_workspace(s3_ui, ["crates/*"])
         _make_pkg(s3_ui / "crates" / "auto-ui-dialect", "auto-ui-dialect")
         try:
-            detect_phase(Repo("ui", s3_ui),
+            detect_phase(real_lang, Repo("ui", s3_ui),
                          json.loads(PHASES_PATH.read_text(encoding="utf-8"))["migrating_packages"])
             _expect(False, "S3 部分导入中间态被拒绝（detect_phase）", problems)
         except UsageError:
             _expect(True, "S3 部分导入中间态被拒绝（detect_phase）", problems)
+
+        # ---- S4：import-window（T-04 候选导入态；真语言仓 + 合成已导入 UI 仓）----
+        s4 = base / "s4"
+        s4_ui = s4 / "auto-ui"
+        _make_workspace(s4_ui, ["crates/*"])
+        for pkg in ("auto-ui-dialect", "auto-ui-compiler", "auto-ui-runtime",
+                    "auto-ui-tools", "shell-pack"):
+            # 候选布线：语言基础走 ../../../auto-lang/crates/<pkg>（组内兄弟布局）
+            deps = {
+                "auto-ui-dialect": {"auto-parser-api": "../../../auto-lang/crates/auto-parser-api"},
+                "auto-ui-compiler": {"auto-lang-core": "../../../auto-lang/crates/auto-lang-core",
+                                     "auto-ui-dialect": "../auto-ui-dialect"},
+                "auto-ui-runtime": {"auto-lang-core": "../../../auto-lang/crates/auto-lang-core",
+                                    "auto-ui-compiler": "../auto-ui-compiler"},
+                # 过渡 Man-core 边按冻结台账保留（cross-root 指真语言仓）
+                "auto-ui-tools": {"auto-man-core": "../../../auto-lang/crates/auto-man-core",
+                                  "auto-ui-runtime": "../auto-ui-runtime"},
+                "shell-pack": {"auto-ui-runtime": "../auto-ui-runtime"},
+            }[pkg]
+            _make_pkg(s4_ui / "crates" / pkg, pkg, deps)
+        phase_s4 = detect_phase(real_lang, Repo("ui", s4_ui),
+                                json.loads(PHASES_PATH.read_text(encoding="utf-8"))["migrating_packages"])
+        _expect(phase_s4 == "import-window", "S4 判别=import-window（lang+ui 双侧五包）", problems)
+        ledger = _run_family("source",
+                             {"lang": real_lang, "ui": Repo("ui", s4_ui),
+                              "down": Repo("down", base / "absent-down")},
+                             "import-window")
+        got = _ledger_map(ledger)
+        _expect(got["SRC-P1"]["status"] == "pass" and got["SRC-P1b"]["status"] == "pass",
+                "S4 候选导入完备 + 布线全解析（SRC-P1/P1b）", problems)
+        _expect(got["SRC-P2"]["status"] == "pass" and got["SRC-P3"]["status"] == "recorded",
+                "S4 语言仓权威面仍按 pre 口径断言（SRC-P2/P3）", problems)
+        _expect(got["SRC-P2u"]["status"] == "pass"
+                and got["SRC-P3u"]["status"] == "recorded",
+                "S4 候选闭包零大库/monolith + Man-core 台账内记档（SRC-P2u/P3u）", problems)
+        _expect(got["SRC-P6"]["status"] == "recorded",
+                "S4 语言仓原件未删=窗口设计态记档（SRC-P6）", problems)
+        # 窗口走私反例：候选包外新增 Man-core 边必须红
+        _make_pkg(s4_ui / "crates" / "smuggler", "smuggler",
+                  {"auto-man-core": "../../../auto-lang/crates/auto-man-core"})
+        ledger = _run_family("source",
+                             {"lang": real_lang, "ui": Repo("ui", s4_ui),
+                              "down": Repo("down", base / "absent-down")},
+                             "import-window")
+        got = _ledger_map(ledger)
+        _expect(got["SRC-P4b"]["status"] == "fail" and "smuggler" in got["SRC-P4b"]["detail"],
+                "S4 窗口走私反例：台账外 Man-core 边判红并点名（SRC-P4b）", problems)
     finally:
         shutil.rmtree(base, ignore_errors=True)
 
@@ -793,16 +912,22 @@ def cmd_selftest() -> int:
 # 阶段检测与主流程
 # ---------------------------------------------------------------------------
 
-def detect_phase(ui_repo: Repo, migrating: list[str]) -> str:
-    members = discover_members(ui_repo.path) if ui_repo.present else {}
-    hits = set(members) & set(migrating)
-    if not hits:
+def detect_phase(lang_repo: Repo, ui_repo: Repo, migrating: list[str]) -> str:
+    lang_members = discover_members(lang_repo.path) if lang_repo.present else {}
+    ui_members = discover_members(ui_repo.path) if ui_repo.present else {}
+    five = set(migrating)
+    in_lang, in_ui = five <= set(lang_members), five <= set(ui_members)
+    any_lang, any_ui = bool(five & set(lang_members)), bool(five & set(ui_members))
+    if in_lang and not any_ui:
         return "pre-migration"
-    if hits == set(migrating):
+    if in_lang and in_ui:
+        return "import-window"
+    if in_ui and not any_lang:
         return "source-switched"
     raise UsageError(
-        f"UI 仓成员与两阶段结构判别均不匹配：迁移包在场 {sorted(hits)}"
-        f"（部分导入=中间态，禁止作为门禁基线；完成 T-06 或修正 --ui-repo）"
+        f"五包在场状态与全部阶段判别均不匹配：lang={sorted(five & set(lang_members))}，"
+        f"ui={sorted(five & set(ui_members))}（部分导入/部分删除=中间态，禁止作为门禁基线；"
+        "完成对应任务或修正 --lang-repo/--ui-repo）"
     )
 
 
@@ -816,7 +941,8 @@ def main() -> int:
     parser.add_argument("--down-repo", default=None,
                         help="缺省=语言仓 ../../../auto-down，再缺省 D:/autostack/auto-down")
     parser.add_argument("--phase", default="auto",
-                        choices=["auto", "pre-migration", "source-switched"])
+                        choices=["auto", "pre-migration", "import-window",
+                                 "source-switched"])
     parser.add_argument("--output", default=None)
     parser.add_argument("--compile-probe", action="store_true",
                         help="生成 scratch 编译探针（T-05 起启用；当前记录 pending）")
@@ -841,7 +967,7 @@ def main() -> int:
         "ui": Repo("ui", ui_path),
         "down": Repo("down", down_path),
     }
-    detected = detect_phase(repos["ui"], phases["migrating_packages"])
+    detected = detect_phase(repos["lang"], repos["ui"], phases["migrating_packages"])
     phase = detected if args.phase == "auto" else args.phase
     if args.phase != "auto" and args.phase != detected:
         print(f"[ui-repo-fixture] 配置错：声明 phase={args.phase} 与结构判别={detected} 不符",

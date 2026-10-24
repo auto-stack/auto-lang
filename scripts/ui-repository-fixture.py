@@ -79,7 +79,8 @@ def main() -> int:
     parser.add_argument("--ui-repo")
     parser.add_argument("--down-repo")
     parser.add_argument("--phase", default="auto",
-                        choices=["auto", "pre-migration", "source-switched"])
+                        choices=["auto", "pre-migration", "import-window",
+                                 "source-switched"])
     parser.add_argument("--family", default="all",
                         choices=["source", "type", "test-id", "distribution",
                                  "failure", "all"])

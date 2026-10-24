@@ -31,10 +31,11 @@ python test/fixtures/modularity/ui-repository-consumer/driver.py selftest
 
 | phase | 判别 | 五包位置 | 断言口径 |
 |---|---|---|---|
-| `pre-migration` | UI 仓成员不含任何迁移包名 | 语言仓 | 五包闭包**无 auto-man 大库/无 lang-monolith**（auto-man/auto-man-runtime/auto-lang）；Man-core 边按冻结台账记档（现值 2 条：auto-ui-tools/auto-api-gen → auto-man-core） |
-| `source-switched` | UI 仓成员含全部迁移包名 | UI 仓 | 同一断言**收紧到零 auto-man-core**；UI 仓全成员零禁断边（含 legacy 清理）；语言仓成员零五包名（原件删除）；autodown 边必须可解析 |
+| `pre-migration` | lang 含全部五包且 ui 无任何迁移包名 | 语言仓 | 五包闭包**无 auto-man 大库/无 lang-monolith**（auto-man/auto-man-runtime/auto-lang）；Man-core 边按冻结台账记档（现值 2 条：auto-ui-tools/auto-api-gen → auto-man-core） |
+| `import-window` | lang 与 ui 均含全部五包（T-04 具名接口修订新增） | 双侧（权威=lang，候选=ui） | 语言仓权威面仍按 pre 口径断言；UI 仓候选闭包零大库/monolith + Man-core 仅限窗口台账（冻结台账 from∈迁移包子集，现值 {auto-ui-tools→auto-man-core}）+ 候选布线必须解析（SRC-P1b）；SRC-P6=设计态保留记档 |
+| `source-switched` | ui 含全部五包且 lang 无任何迁移包名 | UI 仓 | 同一断言**收紧到零 auto-man-core**；UI 仓全成员零禁断边（含 legacy 清理）；语言仓成员零五包名（原件删除）；autodown 边必须可解析 |
 
-部分导入（判别均不匹配）= 中间态，入口拒绝作为门禁基线（exit 3）。
+部分导入/部分删除（判别均不匹配）= 中间态，入口拒绝作为门禁基线（exit 3）。
 预迁移 legacy 归属（老仓 crates 面与 examples/）在 SRC-P4b 记档
 `legacy_observed`（现值：legacy `auto-ui → auto-lang` optional 跨根边 1 条），
 非 legacy 成员新增禁断边立即红（T-04 走私守卫）；source-switched 后一律红。

@@ -15,12 +15,18 @@
   "phases": {
     "pre-migration": {
       "meaning": "五个迁移包仍以语言仓 workspace 成员形式实编（T-03 基线，直至 T-06 切源落地）。",
-      "structural_detector": "ui_repo 的 workspace 成员包名不含任何 migrating_packages 名称。",
+      "structural_detector": "lang 仓含全部五包且 ui 仓不含任何迁移包名。",
       "package_location": "lang_repo"
+    },
+    "import-window": {
+      "meaning": "T-04 候选导入后、T-06 切源前：五包候选已在 UI 仓迁移分支，语言仓原件仍在且保持权威（本窗口为 Plan 831 T-04 具名接口修订新增，2026-10-24）。",
+      "structural_detector": "lang 仓与 ui 仓均含全部五包。",
+      "package_location": "dual（权威=lang_repo，候选=ui_repo）",
+      "window_rules": "UI 仓侧禁断=auto-man/auto-man-runtime/auto-lang 恒禁；auto-man-core 边仅限冻结台账中 from 为迁移包的子集（当前={auto-ui-tools→auto-man-core}），超出即红；legacy 归属记档不变；语言仓侧闭包仍按 pre-migration 口径断言（权威面不得漂移）。SRC-P6 在本阶段为预期未删（recorded）。"
     },
     "source-switched": {
       "meaning": "T-06 切源后：五包在 UI 仓独立 workspace 内实编，语言仓原实现删除。",
-      "structural_detector": "ui_repo 的 workspace 成员包名包含全部 migrating_packages 名称。",
+      "structural_detector": "ui 仓含全部五包且 lang 仓不含任何迁移包名。",
       "package_location": "ui_repo"
     }
   },
@@ -81,12 +87,15 @@
   },
 
   "assertion_owners": {
-    "SRC-P1": "五包存在于阶段所属仓（成员包名）",
-    "SRC-P2": "五包声明闭包（normal/build/dev 含 optional，仓内 path 递归 + 跨根边记名）零禁断包（阶段收紧：source-switched 追加 auto-man-core）",
-    "SRC-P3": "过渡期 auto-man-core 边台账（比对冻结期望集）",
-    "SRC-P4": "UI 仓成员级 vendoring 禁断（四名恒禁）+ UI 仓成员声明边禁断（pre：legacy 归属记档、非 legacy 红；post：一律红）",
-    "SRC-P5": "autodown-core 跨仓 optional 边记录与解析（pre 记档；post 必须可解析）",
-    "SRC-P6": "source-switched：语言仓成员不再含五包名（原生产目录删除）",
+    "SRC-P1": "五包在场（pre=语言仓；window=UI 仓候选导入完备+语言仓权威保留；switched=UI 仓）",
+    "SRC-P1b": "五包闭包路径布线解析（pre=语言仓记档；window/switched=UI 仓候选布线判红，跨根按文档序恢复）",
+    "SRC-P2": "闭包零禁断（pre/window=语言仓权威面按 pre 口径；switched=UI 仓收紧含零 auto-man-core）",
+    "SRC-P2u": "UI 仓候选闭包（window 专用）：零 auto-man/auto-man-runtime/auto-lang；Man-core 仅限窗口台账",
+    "SRC-P3": "过渡 Man-core 边台账（pre/window=语言仓侧比对冻结全集；窗口期望 UI 侧=from∈迁移包子集）",
+    "SRC-P3u": "UI 仓侧 Man-core 台账观察（window 专用）",
+    "SRC-P4": "UI 仓成员级 vendoring 禁断（四名恒禁）+ UI 仓成员声明边禁断（pre：legacy 归属记档、非 legacy 红；window：Man-core 按窗口台账判、大库/monolith 恒按 legacy/非 legacy 分判；post：一律红）",
+    "SRC-P5": "autodown-core 跨仓 optional 边记录与解析（pre/window 记档；post 必须可解析）",
+    "SRC-P6": "语言仓原件删除（pre=预期在位；window=设计态保留记档；switched=判红零五包名）",
     "TYP-C*": "旧 auto_lang 兼容面 touchpoint 锚点在位（compat-touchpoints.toml）",
     "TYP-D1..D3": "C2 声明符号单源（sidecar_decl_from_root/SidecarDecl/pac_from_decl 在 auto-man-core 与 auto-project-model 恰居其一）",
     "TYP-D4": "auto-api-gen sidecar 声明源（pre 记档；post 必须 auto_project_model）",
