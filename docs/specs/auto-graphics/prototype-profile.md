@@ -174,3 +174,30 @@ scene/static-model authoring. Production I2/I3, general materials/animation,
 multi-platform/public engine/Forge distribution remain pending.
 
 Provenance: [PLAN-838](../../plans/archive/838-autographics-glb-import-and-portable-scene-assets.md), [independent final R2](../../plans/attachments/838/review-r2/review.md), [merge receipt](../../plans/attachments/838/merge-r1/receipt.md). Source remains autographics-dev; production I2/I3 pending.
+
+## PLAN-839 current scene play extension
+
+Profile6 is a finite driver-local scene behavior sample alongside unchanged old
+game and authoring profiles. Exact CLI: --play-check, --play-asset <GLB>,
+--asset-save <scene>, --report <path>; negatives --wrong-play-focus,
+--drop-play-tick, --play-gpu-fault transparent|missing-part|wrong-asset, --frames1.
+Full positive reaches27 phases and six independent endpoint/origin/all-part pixel
+states, actual Auto step+1, UI/V parity/hidden/shown/focus loss, Stop original canvas
+hashes, fresh Run identity, Save and relocated independent-process reopen. Negative
+exit/report/aggregate completeness agree; partial/absent oracle is failure. Real GPU
+faults must fail the same pixel oracle despite valid protocol/state/mesh counters.
+
+Source closure is plan839-identity.json and verify_plan839.py --controls; package
+consumer exports only verified inputs plus pinned680 SDK files, with its own target.
+Inherited worker stack16MiB and native PE32MiB settings remain required for a fresh
+consumer. Existing model upload counters distinguish immutable geometry writes from
+legal per-instance/content/composition writes. Report bounded Run/Stop/pump/full-frame
+CPU/compile durations and Windows working set; exclude GPU timestamps, Iced internal
+buffers/atlas and driver residency. No performance/production maturity is inferred.
+
+No arbitrary scripts, dynamic graph/resource edits, persistence of runtime, Apply
+runtime result, general TRS/ECS/physics/audio, SDK/AGP changes, production AutoUI/RQHost,
+Forge distribution, ACE/AutoShader/CAP, Linux or new platforms. Source integration
+remains autographics-dev only; master receives knowledge after the actual closeout.
+
+Provenance: [PLAN-839](../../plans/archive/839-autographics-scene-play-mode-and-auto-runtime.md), [independent final R2](../../plans/attachments/839/review-r2/independent/review.md), [affected independent R3](../../plans/attachments/839/review-r3/independent/review.md), [merge receipt](../../plans/attachments/839/merge-r1/receipt.md). Source remains autographics-dev; production I2/I3 pending.

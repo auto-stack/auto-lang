@@ -129,3 +129,5 @@ PLAN-836 extends the independent graphics experiment with [finite viewport picki
 PLAN-837 extends the independent graphics experiment with [finite scene hierarchy](auto-graphics/scene-hierarchy.md), real Auto profile4 and v2 authoring persistence; production AutoUI/RQHost/Forge I2/I3 remain pending.
 
 PLAN-838 adds [bounded static GLB scene assets](auto-graphics/scene-assets.md), real Auto profile5 and portable schema3 resource closure to the independent graphics experiment; source remains autographics-dev and production I2/I3 remain pending.
+
+PLAN-839 adds [finite scene play sessions](auto-graphics/scene-play-session.md): real retained Auto profile6 runs the accepted editable scene with fixed ticks, focused input, Pause/Step and Stop restoration. Schema3 and original dual-game denominator remain; source only autographics-dev, production I2/I3 pending.

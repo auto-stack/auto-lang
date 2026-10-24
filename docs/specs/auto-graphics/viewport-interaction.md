@@ -40,3 +40,19 @@ separate and are not automatically deleted. OBB/pick/group aggregate bounds and
 actual renderer consume the same admitted Auto-selected complete multi-part model.
 
 Provenance: [PLAN-838](../../plans/archive/838-autographics-glb-import-and-portable-scene-assets.md), [independent final R2](../../plans/attachments/838/review-r2/review.md), [merge receipt](../../plans/attachments/838/merge-r1/receipt.md). Source remains autographics-dev; production I2/I3 pending.
+
+## PLAN-839 current scene play extension
+
+During play, canvas presses select keyboard focus only; no selection/gizmo/gesture
+starts. CompositionInput is authoritative for2D/3D/panel keyboard target. Held axes
+and one toggle parity are sampled at dispatch, not simulated in Rust. Panel text/
+buttons produce no actor actions. Canvas changes clear old held/parity; blur/leave/
+resize/DPI/occlusion/minimize/Pause/Stop/Fault clear held/edges/debt. A Starting
+cancellation survives all remaining initialization queries/preparation. Nonrepeat
+new press is required after clearing and Resume; OS repeat cannot resurrect held input; keyup
+still clears state after focus changes. Esc is handled once by the mode as Stop,
+returning to Editing without another widget/game delivery. Bounds used by actual
+OS probes account for Panel's actual clamped scroll translation; no fixed-coordinate scan is an
+acceptance substitute.
+
+Provenance: [PLAN-839](../../plans/archive/839-autographics-scene-play-mode-and-auto-runtime.md), [independent final R2](../../plans/attachments/839/review-r2/independent/review.md), [affected independent R3](../../plans/attachments/839/review-r3/independent/review.md), [merge receipt](../../plans/attachments/839/merge-r1/receipt.md). Source remains autographics-dev; production I2/I3 pending.

@@ -15,3 +15,5 @@
 - [Scene hierarchy](scene-hierarchy.md): PLAN-837 finite same-dimension translation/visibility groups, v2 persistence and actual Auto profile4.
 
 - [Scene assets](scene-assets.md): PLAN-838 bounded static GLB admission, actual Auto profile5, immutable SHA resources, schema3 portable closure and resource-aware save/recovery.
+
+- [Scene play session](scene-play-session.md): PLAN-839 accepted scene Run/Pause/neutral Step/Stop with retained real Auto profile6, fixed tick/input isolation and original editing recovery; schema3 unchanged.

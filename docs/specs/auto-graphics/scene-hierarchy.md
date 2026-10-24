@@ -33,3 +33,24 @@ separate and are not automatically deleted. OBB/pick/group aggregate bounds and
 actual renderer consume the same admitted Auto-selected complete multi-part model.
 
 Provenance: [PLAN-838](../../plans/archive/838-autographics-glb-import-and-portable-scene-assets.md), [independent final R2](../../plans/attachments/838/review-r2/review.md), [merge receipt](../../plans/attachments/838/merge-r1/receipt.md). Source remains autographics-dev; production I2/I3 pending.
+
+## PLAN-839 current scene play extension
+
+Document remains autographics.scene/3. Runtime/actor selection/ticks/input/VM/code
+bindings are transient and never serialized. Run/Pause/Step/Fault do not mutate
+accepted bytes/hash/stamp/selection/saved hash/dirty/undo/redo or entry/GLB files.
+All editing/structure/resource/file commands and actor changes are disabled and
+rejected again at Host admission until Stop; property drafts must Apply/Cancel
+before Run. Runtime local/world state lives outside Editor and never calls its
+begin/commit APIs. After Stop, Save and a new-process reopen contain editable locals,
+not final runtime transforms. Existing hierarchy/asset budgets remain in effect,
+including hidden potential512 mesh instances and full imported multi-part models.
+
+Accepted Registry and GPU mesh Arcs are pinned/shared, never reparsed/reuploaded in
+warm runtime frames. Stop releases the additional runtime Session, while Editor's
+accepted preview/assets legitimately retain resources. Actual20-run weak-owner/Arc/
+target/pipeline identity/upload accounting and retention/reupload negatives distinguish
+this from leaked runtime owners or repeated model upload. Final Editor close releases
+source payloads; an explicit external mesh pin lasts until its own last drop.
+
+Provenance: [PLAN-839](../../plans/archive/839-autographics-scene-play-mode-and-auto-runtime.md), [independent final R2](../../plans/attachments/839/review-r2/independent/review.md), [affected independent R3](../../plans/attachments/839/review-r3/independent/review.md), [merge receipt](../../plans/attachments/839/merge-r1/receipt.md). Source remains autographics-dev; production I2/I3 pending.

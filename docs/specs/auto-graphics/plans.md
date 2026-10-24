@@ -16,3 +16,5 @@
 | 837 | 场景层级与组创作原型 | archived | [archive/837](../../plans/archive/837-autographics-scene-hierarchy-and-group-authoring.md) | 有限同维平移/显隐组、真实Auto profile4、v2保存与保持世界位置挂接；源码autographics-dev，生产I2/I3 pending |
 
 | 838 | 静态GLB导入与可携带场景资源 | archived | [archive/838](../../plans/archive/838-autographics-glb-import-and-portable-scene-assets.md) | 严格静态GLB/真实Auto profile5、内容寻址资源/原字节身份、schema3闭包保存/搬迁重开；源码autographics-dev，生产I2/I3 pending |
+
+| 839 | 场景运行模式与Auto最小行为回路 | archived | [archive/839](../../plans/archive/839-autographics-scene-play-mode-and-auto-runtime.md) | 当前accepted场景/资源进入独立真实Auto profile6，固定tick/实际焦点、暂停单步/故障/启动取消及Stop恢复编辑；schema3不变，源码autographics-dev，生产I2/I3 pending |
