@@ -371,11 +371,36 @@ impl<'a> Verifier<'a> {
         // (checked arithmetic; the wire never carries a descriptor). Layout
         // rejections are `mir.layout-*` (contract-decision §6).
         if self.is_data {
-            for ti in 0..self.module.types.len() {
+            // F820-R3-01: ONE memo/color pair and the VERIFIER'S OWN step
+            // counter serve every record — layout work shares the frozen
+            // verification budget (no per-record reset, no quadratic
+            // ancestor re-walk), and an over-ceiling derivation is a
+            // RESOURCE rejection (never a silent accept, never mislabeled
+            // invalid).
+            let n = self.module.types.len();
+            let mut layout_memo: Vec<Option<crate::layout::LayoutDesc>> = vec![None; n];
+            let mut layout_color = vec![0u8; n];
+            for ti in 0..n {
                 if matches!(self.module.types[ti], MirType::Record(_)) {
                     self.tick(1)?;
-                    if let Err(e) = crate::layout::compute_layout(self.module, ti as TypeIdx) {
-                        return Err(MirVerifyError::inv(e.code(), format!("{:?}", e)));
+                    let derived = crate::layout::compute_layout_shared(
+                        self.module,
+                        ti as TypeIdx,
+                        &mut self.steps,
+                        &mut layout_memo,
+                        &mut layout_color,
+                    );
+                    if let Err(e) = derived {
+                        return Err(match e {
+                            crate::layout::LayoutError::Budget => MirVerifyError::Resource {
+                                kind: ResourceKind::VerifySteps,
+                                message: format!(
+                                    "layout derivation of type {ti} exceeded the shared {} work-step budget",
+                                    MAX_VERIFY_WORK_STEPS
+                                ),
+                            },
+                            other => MirVerifyError::inv(other.code(), format!("{:?}", other)),
+                        });
                     }
                 }
             }

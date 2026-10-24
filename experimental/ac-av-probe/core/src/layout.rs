@@ -90,24 +90,60 @@ impl LayoutError {
     }
 }
 
-/// Compute the logical layout of `record_ty` within `module`'s type table.
-/// Nested record fields contribute their OWN derived size/align — an
-/// iterative post-order DFS (explicit `(node, field-cursor)` stack, three
-/// colors) memoizes per type index; a GRAY revisit is a cycle.
+/// Compute the logical layout of `record_ty` within `module`'s type table
+/// (a FRESH budget and memo — single-type callers: diagnostics and the
+/// layout unit tests). Verification passes MUST use
+/// [`compute_layout_shared`] so every record's layout work draws from ONE
+/// budget and ONE memo (F820-R3-01: per-record resets both re-walked
+/// ancestors quadratically and gave each call the full step ceiling).
 pub fn compute_layout(module: &MirModule, record_ty: TypeIdx) -> Result<LayoutDesc, LayoutError> {
+    let n = module.types.len();
+    let mut steps: u64 = 0;
+    let mut color = vec![0u8; n];
+    let mut memo: Vec<Option<LayoutDesc>> = vec![None; n];
+    compute_layout_impl(module, record_ty, &mut steps, &mut memo, &mut color)
+}
+
+/// F820-R3-01: layout derivation against a SHARED, caller-owned work
+/// budget and ONE memo/color pair persisted across every record of the
+/// pass. All layout work is charged to `budget` (the caller's verifier
+/// step counter — the same ceiling its own ticks use), and a memoized
+/// ancestor is never re-walked: a chain of N nested records costs O(N)
+/// placements, not the O(N²) ancestor revisits the per-record reset
+/// performed. Exceeding the ceiling is [`LayoutError::Budget`] — a
+/// RESOURCE rejection, never silent acceptance.
+pub fn compute_layout_shared(
+    module: &MirModule,
+    record_ty: TypeIdx,
+    budget: &mut u64,
+    memo: &mut Vec<Option<LayoutDesc>>,
+    color: &mut Vec<u8>,
+) -> Result<LayoutDesc, LayoutError> {
+    if memo.len() != module.types.len() {
+        memo.resize(module.types.len(), None);
+    }
+    if color.len() != module.types.len() {
+        color.resize(module.types.len(), 0);
+    }
+    compute_layout_impl(module, record_ty, budget, memo, color)
+}
+
+fn compute_layout_impl(
+    module: &MirModule,
+    record_ty: TypeIdx,
+    steps: &mut u64,
+    memo: &mut Vec<Option<LayoutDesc>>,
+    color: &mut Vec<u8>,
+) -> Result<LayoutDesc, LayoutError> {
     let n = module.types.len();
     if record_ty as usize >= n {
         return Err(LayoutError::NotRecord(record_ty));
     }
-    let mut steps: u64 = 0;
-    // 0 = white, 1 = gray (on the DFS stack), 2 = black (memoized).
-    let mut color = vec![0u8; n];
-    let mut memo: Vec<Option<LayoutDesc>> = vec![None; n];
     color[record_ty as usize] = 1;
     let mut stack: Vec<(TypeIdx, usize)> = vec![(record_ty, 0)];
     while !stack.is_empty() {
-        steps += 1;
-        if steps > MAX_VERIFY_WORK_STEPS {
+        *steps += 1;
+        if *steps > MAX_VERIFY_WORK_STEPS {
             return Err(LayoutError::Budget);
         }
         let cur = stack.last().expect("non-empty").0;
@@ -151,8 +187,8 @@ pub fn compute_layout(module: &MirModule, record_ty: TypeIdx) -> Result<LayoutDe
             continue;
         }
         // Every field is a scalar or a black (memoized) record: place them.
-        steps += r.fields.len() as u64;
-        if steps > MAX_VERIFY_WORK_STEPS {
+        *steps += r.fields.len() as u64;
+        if *steps > MAX_VERIFY_WORK_STEPS {
             return Err(LayoutError::Budget);
         }
         let desc = place_fields(module, r, &memo)?;

@@ -475,14 +475,18 @@ fn av_data_820_v13_metering_injection_controls_redden_the_gate() {
     let mut s = DataIncrementalSession::warmup(SRC, "d_main", &[]).expect("warmup");
     let edited = SRC.replace("+ 1", "+ 2");
 
-    // Control A: an inserted disk-read event on the edit path.
-    s.set_control_disk_read(4096);
+    // Control A: a REAL disk read on the edit path — the gate must quote
+    // the ACTUAL byte count of the file that was read.
+    let probe = std::env::temp_dir().join(format!("av820-io-control-{}", std::process::id()));
+    let payload = vec![0xA5u8; 4096];
+    std::fs::write(&probe, &payload).expect("write control file");
+    s.set_control_disk_read(probe.clone());
     let err = s
         .edit_body(&edited, "d_bump")
-        .expect_err("an inserted disk read must redden the gate");
+        .expect_err("an actual disk read on the edit path must redden the gate");
     assert!(
         err.contains("edit-path IO read=4096"),
-        "the gate must quote the metered value: {err}"
+        "the gate must quote the ACTUAL metered byte count: {err}"
     );
     assert!(
         matches!(s.run(), Ok(Value::I32(42))),
@@ -491,8 +495,10 @@ fn av_data_820_v13_metering_injection_controls_redden_the_gate() {
     // The seam is consumed once: a normal edit now passes.
     s.edit_body(&edited, "d_bump")
         .expect("the seam is one-shot");
+    let _ = std::fs::remove_file(&probe);
 
-    // Control B: an inserted re-verify event for an UNCHANGED def.
+    // Control B: a REAL re-lower + verify_mir of an UNCHANGED def — the
+    // meter records the actual verifier call and the gate names it.
     let mut s = DataIncrementalSession::warmup(SRC, "d_main", &[]).expect("warmup");
     s.set_control_reverify_def("d_main");
     let err = s

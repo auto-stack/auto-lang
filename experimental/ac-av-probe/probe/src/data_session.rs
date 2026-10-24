@@ -207,10 +207,11 @@ pub struct DataIncrementalSession {
     /// The warmup's own producer body work (cold evidence; the gate only
     /// ever judges edit windows).
     cold_body_work: BTreeMap<String, BodyWork>,
-    /// F820-R1-01 counter-control seam A: when set, the NEXT edit records
-    /// a simulated disk read of N bytes through the real metering entry
-    /// mid-edit — the gate must redden. Consumed once.
-    control_disk_read: Option<u64>,
+    /// F820-R1-01 counter-control seam A: when set, the NEXT edit performs
+    /// a REAL read of this file on the edit path and the metering entry
+    /// records the ACTUAL byte count — the gate must redden. Consumed
+    /// once.
+    control_disk_read: Option<std::path::PathBuf>,
     /// F820-R1-01 counter-control seam B: when set to a def id, the NEXT
     /// edit records a simulated re-verify (verify_mir) event for that
     /// (unchanged) def through the real metering entry — the gate must
@@ -429,13 +430,25 @@ impl DataIncrementalSession {
         let (new_body_arc, new_code) =
             self.lower_and_admit(&cand_bundle, changed_def, mint, new_src, &mut ev)?;
 
-        // Counter-control seams (F820-R1-01 close): an injected event
-        // flows through the REAL recording entry mid-edit; the gate below
-        // must redden. Consumed once either way.
-        if let Some(bytes) = self.control_disk_read.take() {
-            ev.record_disk_read(bytes);
+        // Counter-control seams (F820-R1-01 close): REAL injected work —
+        // an actual file read, and an actual re-lower + verify_mir of an
+        // UNCHANGED def — observed through the same metering entries; the
+        // gate below must redden. Consumed once either way.
+        if let Some(path) = self.control_disk_read.take() {
+            let bytes = std::fs::read(&path)
+                .map_err(|e| format!("control disk read {}: {e}", path.display()))?;
+            ev.record_disk_read(bytes.len() as u64);
         }
         if let Some(def) = self.control_reverify_def.take() {
+            let bundle = self.bundle_for(&def);
+            let mir = crate::hir_adapter::lower_function_data_unit(
+                &bundle,
+                &def,
+                &self.caps,
+                fnv1a64(self.src.as_bytes()),
+            )
+            .map_err(|e| format!("control reverify lower {def}: {}", e.code()))?;
+            verify_mir(&mir).map_err(|e| format!("control reverify verify {def}: {e:?}"))?;
             ProductionEvents::bump(&mut ev.verify_mir, &def);
         }
 
@@ -1206,18 +1219,20 @@ impl DataIncrementalSession {
     // Counter-control seams (F820-R1-01 close)
     // ------------------------------------------------------------------
 
-    /// Counter-control seam A: the NEXT `edit_body` records a simulated
-    /// disk read of `bytes` THROUGH the real metering entry, mid-edit —
-    /// the structural gate must redden the edit (proving the zero-IO
-    /// rule judges live events, not a constant). Consumed once.
-    pub fn set_control_disk_read(&mut self, bytes: u64) {
-        self.control_disk_read = Some(bytes);
+    /// Counter-control seam A: the NEXT `edit_body` performs a REAL read
+    /// of `path` on the edit path; the metering entry records the ACTUAL
+    /// byte count and the structural gate must redden the edit (proving
+    /// the zero-IO rule judges live events, not a constant). Consumed
+    /// once.
+    pub fn set_control_disk_read(&mut self, path: std::path::PathBuf) {
+        self.control_disk_read = Some(path);
     }
 
-    /// Counter-control seam B: the NEXT `edit_body` records a simulated
-    /// re-verify (`verify_mir`) event for `def` THROUGH the real metering
-    /// entry — the gate must redden (proving stage events are metered per
-    /// def, not asserted). Consumed once.
+    /// Counter-control seam B: the NEXT `edit_body` performs a REAL
+    /// re-lower + `verify_mir` of the (unchanged) def out of its
+    /// producing bundle; the metering entry records the real verifier
+    /// call and the gate must redden (proving stage events are metered
+    /// per def, not asserted). Consumed once.
     pub fn set_control_reverify_def(&mut self, def: &str) {
         self.control_reverify_def = Some(def.to_string());
     }

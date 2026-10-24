@@ -224,27 +224,196 @@ fn av_data_820_cancellation_keeps_peak_accounting() {
 }
 
 #[test]
-fn av_data_820_layout_overflow_arm_is_defense_only() {
-    // Documented boundary (not a synthetic fake): u64 layout arithmetic
-    // cannot overflow inside the frozen table budgets — 65 536 types × a
-    // ≤1024-field record (≤8 KiB logical each) tops out ≈512 MiB, far
-    // below 2^63. The checked arithmetic stays as defense-in-depth; the
-    // REACHABLE shape guards (field count, cycles, empty) are pinned by
-    // av_data_820_record_field_count_and_path_depth_are_resource and the
-    // core layout tests.
-    let mut m = MirModule::new_data(owner("of"));
+fn av_data_820_layout_overflow_real_input_rejected() {
+    // F820-R3-01 companion (V-04): nested layout overflow IS reachable
+    // within the frozen table budgets — a binary expansion of records
+    // (every type two fields of its predecessor, i32 leaf) doubles the
+    // logical size per level: level k sizes to 8·2^k logical bytes.
+    // Level 60 (2^63) still fits u64 and must derive; level 61 overflows
+    // the CHECKED arithmetic and must be a controlled `mir.layout-overflow`
+    // rejection at layout AND at full MIR/ABC admission — no panic, no
+    // silent acceptance (this replaces the r6 "defense-only" test whose
+    // ≤8 KiB-per-record inference wrongly proved nested overflow away).
+    fn binary_expansion(levels: usize) -> (MirModule, TypeIdx) {
+        let mut m = MirModule::new_data(owner("ovf"));
+        let ti = m.intern_type(MirType::I32);
+        let mut prev = ti;
+        for k in 0..levels {
+            let fields = vec![
+                MirFieldDef {
+                    name: "a".into(),
+                    ty: prev,
+                },
+                MirFieldDef { name: "b".into(), ty: prev },
+            ];
+            prev = m.intern_type(MirType::Record(RecordTypeRef {
+                owner_module: "ovf".into(),
+                name: format!("T{k}"),
+                fields,
+            }));
+        }
+        // One otherwise-valid function (i32 identity) so the module is a
+        // complete admission candidate, not a bare type table.
+        let sig = m.intern_type(MirType::Fn(FnSig { params: vec![ti], result: ti }));
+        m.funcs.push(MirFunction {
+            owner: owner("ovf"),
+            name: "main".into(),
+            sig,
+            slots: vec![
+                MirSlot { kind: SlotKind::Param, ty: ti, name: None },
+                MirSlot { kind: SlotKind::Local, ty: ti, name: None },
+            ],
+            blocks: vec![MirBlock {
+                instrs: vec![MirInstr::Copy { dst: 1, src: 0 }],
+                term: Terminator::Return { value: 1 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+        });
+        m.entry = 0;
+        (m, prev)
+    }
+
+    // Legal control: level 60 derives exactly 2^63 logical bytes.
+    let (legal, deepest) = binary_expansion(61); // T0..T60, deepest = level 60
+    let d = auto_av_core::layout::compute_layout(&legal, deepest)
+        .expect("level 60 (2^63 bytes) still derives");
+    assert_eq!(d.size, 9223372036854775808, "8·2^60 = 2^63");
+    let checked = mir_verify::verify_mir(&legal).expect("legal deep module verifies");
+    assert!(checked.stats().work_steps < 2_000_000);
+
+    // Overflow control: one more level — checked arithmetic rejects at
+    // layout derivation AND at full MIR admission; the encoded module is
+    // equally refused at the ABC gate (the restore path re-verifies).
+    let (overflow, deepest) = binary_expansion(62); // deepest = level 61 → 2^64 > u64
+    let err = auto_av_core::layout::compute_layout(&overflow, deepest)
+        .expect_err("2^64 overflows u64");
+    assert_eq!(err.code(), "mir.layout-overflow", "got {err:?}");
+    let err = mir_verify::verify_mir(&overflow).expect_err("overflow module rejected");
+    match &err {
+        mir_verify::MirVerifyError::Invalid { code, .. } => {
+            assert!(code.contains("mir.layout-overflow"), "got {err:?}");
+        }
+        other => panic!("overflow must be an invalid-layout rejection, got {other:?}"),
+    }
+    let wire = auto_av_core::abc::encode_abc(&overflow).expect("encode").to_flat();
+    let err = abc_verify::verify_abc_bytes(&wire, &overflow.owner)
+        .expect_err("ABC admission re-verifies and refuses the overflow module");
+    assert!(
+        format!("{err:?}").contains("mir.layout-overflow"),
+        "got {err:?}"
+    );
+}
+
+#[test]
+fn av_data_820_layout_work_shares_the_verify_budget() {
+    // F820-R3-01: layout derivation must draw from the ONE verification
+    // work-step budget. The r6 shape reset steps=0 and the memo per record,
+    // so a 2100-deep chain re-walked ancestors (2,205,050 field visits —
+    // already past the 2M ceiling) yet passed every local check. Now ONE
+    // memo makes the walk linear (the legal deep graph stays green) and
+    // every layout step charges the shared verifier counter — a module
+    // whose TOTAL derivation work exceeds the ceiling is a RESOURCE
+    // rejection, never a silent accept. (The negative control builds
+    // ~2.1M field defs — expect a ~200MB test-process footprint.)
+    fn chain_fn(m: &mut MirModule, ti: TypeIdx) {
+        let sig = m.intern_type(MirType::Fn(FnSig { params: vec![ti], result: ti }));
+        m.funcs.push(MirFunction {
+            owner: owner(m.owner.module.as_str()),
+            name: "main".into(),
+            sig,
+            slots: vec![
+                MirSlot { kind: SlotKind::Param, ty: ti, name: None },
+                MirSlot { kind: SlotKind::Local, ty: ti, name: None },
+            ],
+            blocks: vec![MirBlock {
+                instrs: vec![MirInstr::Copy { dst: 1, src: 0 }],
+                term: Terminator::Return { value: 1 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+        });
+        m.entry = 0;
+    }
+
+    // Positive: the reviewer's 2100-deep chain (legal within budget).
+    let mut m = MirModule::new_data(owner("chain"));
     let ti = m.intern_type(MirType::I32);
-    let fields: Vec<MirFieldDef> = (0..1024)
-        .map(|i| MirFieldDef {
-            name: format!("f{i}"),
-            ty: ti,
-        })
-        .collect();
-    let rec = m.intern_type(MirType::Record(RecordTypeRef {
-        owner_module: "of".into(),
-        name: "Max".into(),
-        fields,
-    }));
-    let d = auto_av_core::layout::compute_layout(&m, rec).expect("max-width layout derives");
-    assert_eq!(d.size, 4096, "1024 × i32 = 4096 logical bytes");
+    let mut prev = ti;
+    for k in 0..2100 {
+        prev = m.intern_type(MirType::Record(RecordTypeRef {
+            owner_module: "chain".into(),
+            name: format!("C{k}"),
+            fields: vec![MirFieldDef { name: "p".into(), ty: prev }],
+        }));
+    }
+    chain_fn(&mut m, ti);
+    let checked = mir_verify::verify_mir(&m)
+        .expect("the legal deep graph verifies under the shared budget");
+    assert!(
+        checked.stats().work_steps < 2_000_000,
+        "memoized layout is linear: {} steps",
+        checked.stats().work_steps
+    );
+
+    // Negative control A (unit, direct): the SHARED counter IS the layout
+    // budget — a derivation started with the counter near the ceiling
+    // refuses with LayoutError::Budget instead of silently completing.
+    // This is the axis the r6 shape lost (each call got a fresh counter).
+    let (m_small, deepest_small) = {
+        let mut m = MirModule::new_data(owner("near"));
+        let ti = m.intern_type(MirType::I32);
+        let mut prev = ti;
+        for k in 0..8 {
+            prev = m.intern_type(MirType::Record(RecordTypeRef {
+                owner_module: "near".into(),
+                name: format!("N{k}"),
+                fields: vec![MirFieldDef { name: "p".into(), ty: prev }],
+            }));
+        }
+        (m, prev)
+    };
+    let mut budget = auto_av_core::contract::MAX_VERIFY_WORK_STEPS - 3;
+    let mut memo = vec![None; m_small.types.len()];
+    let mut color = vec![0u8; m_small.types.len()];
+    let err = auto_av_core::layout::compute_layout_shared(
+        &m_small,
+        deepest_small,
+        &mut budget,
+        &mut memo,
+        &mut color,
+    )
+    .expect_err("a near-ceiling shared budget must refuse further derivation");
+    assert!(
+        matches!(err, auto_av_core::layout::LayoutError::Budget),
+        "got {err:?}"
+    );
+
+    // Negative control B (integration): a module whose TOTAL admission
+    // work crosses a frozen ceiling is RESOURCE-classified — never
+    // accepted, never an invalid/panic. For field-count blowups the
+    // decoded-heap gate (16 MiB) owns the rejection before the step
+    // ceiling; both are the same resource family, and the layout stage
+    // now charges the same shared counter control A proves live.
+    let mut m = MirModule::new_data(owner("wide"));
+    let ti = m.intern_type(MirType::I32);
+    let mut many: Vec<MirFieldDef> = Vec::with_capacity(1024);
+    for i in 0..1024 {
+        many.push(MirFieldDef { name: format!("f{i}"), ty: ti });
+    }
+    for k in 0..2050u32 {
+        m.intern_type(MirType::Record(RecordTypeRef {
+            owner_module: "wide".into(),
+            name: format!("W{k}"),
+            fields: many.clone(),
+        }));
+    }
+    chain_fn(&mut m, ti);
+    let err = mir_verify::verify_mir(&m).expect_err("over-ceiling work is rejected");
+    match &err {
+        mir_verify::MirVerifyError::Resource { .. } => {}
+        other => panic!("expected a resource-classified rejection, got {other:?}"),
+    }
 }
