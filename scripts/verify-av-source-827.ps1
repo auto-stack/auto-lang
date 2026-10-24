@@ -137,7 +137,8 @@ switch ($Scope) {
             "av_source_827_seeds_identity",
             "av_source_827_first_case_real_file_ephemeral",
             "av_source_827_first_case_store_round_hit_new_worker",
-            "av_source_827_first_case_native_cross_check"
+            "av_source_827_first_case_native_cross_check",
+            "av_source_827_native_missing_tool_is_red_first_case_control"
         )
         Run-Runner-Tests "av_source_827" "first-case-corpus" @("av_source_827_corpus_green")
     }
@@ -150,6 +151,7 @@ switch ($Scope) {
             "av_source_827_ap22_argument_value_change_changes_result",
             "av_source_827_ap23_precise_trap_and_false_only_control",
             "av_source_827_ap23_native_exit70_channel",
+            "av_source_827_native_missing_tool_is_red_ap23_control",
             "av_source_827_trace_order_exact_and_capability_gated",
             "av_source_827_same_path_different_bytes_and_frozen_snapshot",
             "av_source_827_front_door_rejects_disallow_no_dispatch",
