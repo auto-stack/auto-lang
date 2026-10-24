@@ -264,7 +264,18 @@ sidecar/trailer/分页/解码顺序/分配前配额：同 AVAB v2 合同（§4 7
 | V-12 | 同布局异 owner 与伪 Copy/drop/layout 描述符（构造面不存在=反控确认）；合法构造/拷贝=42；源码空 record 保持既有拒绝；模块/函数族合计 cap 两侧 | admission+semantics+cache | verifier/ABC/AV/store | 源域既有 `verify.*`/资源分类 | 伪造字段不能获复制/布局权限；非法输入授信前拒；合法派生描述符结果 42；资源超额非类型错误；计数按准入/运行分态 | 必需 |
 | V-13 | D828 source30 修订基线；本计划两函数局部 body 更新；依赖/layout/授权变化精确失效；强制 whole 前端退化 | acceptance（增量） | 828 session/`lower_function_unit`(data)/edit 接口 | session 计数/身份/IO | 未改对象/代际相同、生产阶段/IO=0；P95<1s；强制退化非零 | 必需（T-09） |
 
-## 13. 本轮不冻结/显式留 T-02 实现核实的项
+## 13. 本轮不冻结/显式留 T-02 实现核实的项（2026-10-24 T-02 轮核实结果）
+
+- **native_reference record 面（已核实）**：`probe/src/native_reference.rs` 为
+  scalar-only（零 record 支持）——首例 native 对照按合同以**手审 oracle=42 +
+  值语义反例组**为准，不做 record native 对拍、不冒称。scalar 子集的 native
+  对照由既有 core 套件覆盖。
+- **B 线内存（T-02 口径）**：data 管线进程内 private-bytes 增量保守归因
+  （含测试壳开销）≤128MiB 实测入档；真实 spawn-worker 外部采样峰值归
+  T-04/T-06 resources scope（与故障注入 hook 同批）。
+- 其余三项中：首例 exact 源码已冻结于 fixture；avworker/1 信封内 profile 以
+  recipe id 区分（data recipe 复用信封不扩字段）；828 session data 接口缝隙
+  仍留 T-09。
 
 - 首例 exact 源码文本（含 trace 观察点与否）——T-02 落 fixture 时以 §11 形状
   为准冻结并记 hash。
