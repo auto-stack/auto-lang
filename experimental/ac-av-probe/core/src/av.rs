@@ -26,6 +26,12 @@ pub struct ExecLimits {
     pub max_slot_bytes: usize,
     pub wall: std::time::Duration,
     pub max_trace_bytes: usize,
+    /// Test-only fault-injection seam (V-07): fail the Nth value
+    /// allocation (any slot write with a positive data delta) with an
+    /// Infra outcome BEFORE the write lands — prior frames/values/trace
+    /// stay intact, proving allocation failure does not corrupt state.
+    /// `None` in every production path.
+    pub fault_after_allocs: Option<u64>,
 }
 
 impl Default for ExecLimits {
@@ -36,6 +42,7 @@ impl Default for ExecLimits {
             max_slot_bytes: MAX_AV_SLOT_BYTES,
             wall: MAX_AV_WALL,
             max_trace_bytes: MAX_TRACE_BYTES,
+            fault_after_allocs: None,
         }
     }
 }
@@ -324,6 +331,11 @@ struct LoopState {
     slot_bytes: usize,
     steps: u64,
     trace: ExecTrace,
+    /// Value-allocation events (V-07 observability: budget-rejections
+    /// before the attempt report 0; injected faults report the count).
+    alloc_events: u64,
+    /// Step counter at the last cancellation poll.
+    last_poll: u64,
 }
 
 /// The shared flat dispatch loop: explicit frames, budgets and traps.
@@ -439,6 +451,18 @@ fn commit_slot_write(
     let new = val.deep_size(&mut visited);
     st.steps += visited;
     if new > old {
+        // V-07 fault seam: the Nth allocation fails WITHOUT applying the
+        // write — the slot keeps its prior value and the ledger its prior
+        // accounting (nothing half-committed).
+        if let Some(n) = limits.fault_after_allocs {
+            st.alloc_events += 1;
+            if st.alloc_events == n {
+                return Err(ExecOutcome::Infra(format!(
+                    "fault-injected at value allocation #{}",
+                    n
+                )));
+            }
+        }
         let delta = new - old;
         if st.slot_bytes.saturating_add(delta) > limits.max_slot_bytes {
             return Err(ExecOutcome::Resource {
@@ -623,7 +647,12 @@ fn dispatch<V: ModuleView>(
                 message: format!("execution exceeded {} instruction steps", limits.max_steps),
             });
         }
-        if st.steps % CANCEL_CHECK_INTERVAL == 0 {
+        // Poll at ≥INTERVAL steps since the LAST poll (data-profile writes
+        // charge fuel in batches — a plain modulo can skip the boundary;
+        // unit-increment programs poll at exactly the same steps as the
+        // historic modulo cadence).
+        if st.steps - st.last_poll >= CANCEL_CHECK_INTERVAL {
+            st.last_poll = st.steps;
             if CancelCheck::poll(cancel) {
                 return Some(ExecOutcome::Cancelled);
             }

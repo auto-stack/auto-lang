@@ -418,7 +418,10 @@ fn case_serve() -> ! {
                                 "value": null,
                                 "trap": null,
                                 "diag": { "stage": stage, "code": "", "message": e },
-                                "source_hash": "",
+                                "source_hash": format!(
+                                    "{:016x}",
+                                    auto_av_core::contract::fnv1a64(current_source.as_bytes())
+                                ),
                                 "wall_ms": 0.0,
                             }));
                         }

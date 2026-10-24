@@ -215,15 +215,17 @@ impl Value {
     /// slot-data budget: every value cell counts `size_of::<Value>()`;
     /// record levels add their `Vec` header. Shared `Rc`s are counted
     /// PER REFERENCE — conservative over-counting, never under-counting
-    /// (contract-decision §6). `visited` counts RECORD-NODE visits only —
-    /// the frozen per-instruction fuel already covers scalar writes, so
-    /// scalar-only programs keep their exact historic step counts.
+    /// (contract-decision §6). `visited` counts every traversed record
+    /// node AND field (the frozen "deep_size 按字段计" fuel rule) —
+    /// scalar-only programs never enter the record branch and keep their
+    /// exact historic step counts.
     pub fn deep_size(&self, visited: &mut u64) -> usize {
         let mut b = std::mem::size_of::<Value>();
         if let Value::Record(r) = self {
             *visited += 1;
             b += std::mem::size_of::<Vec<Value>>(); // Vec header (len-based)
             for f in r.fields.iter() {
+                *visited += 1;
                 b += f.deep_size(visited);
             }
         }

@@ -827,3 +827,213 @@ fn ac_av_probe_mixed_recipe_stale_identity_is_order_independent() {
     }
     let _ = std::fs::remove_dir_all(root);
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-820 V-10: the DATA recipe's formal AutoDown counter-controls —
+// wrong result oracles, skip-shaped incompleteness, and wrong tool
+// identity each make the overall verdict NON-GREEN; a missing worker
+// path can never pass.
+// ---------------------------------------------------------------------------
+
+fn data_neg_suite(tag: &str, case_body: &str) -> (PathBuf, PathBuf) {
+    let root = temp_root(tag);
+    std::fs::write(
+        root.join("neg.suite.ad"),
+        r#"# data neg suite
+```test-suite
+suite { schema: "autolang.suite/2", id: "neg-av-data", include: ["neg.case.ad"] }
+```
+"#,
+    )
+    .unwrap();
+    std::fs::write(root.join("neg.case.ad"), case_body).unwrap();
+    let out = out_of(&root, "out");
+    (root.join("neg.suite.ad"), out)
+}
+
+#[test]
+fn ac_av_data_probe_wrong_result_oracle_fails() {
+    let _guard = AV_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let (suite, out) = data_neg_suite(
+        "negdata",
+        r#"# neg case: the frozen first case returns 42 — 43 is WRONG.
+```test-case
+case {
+  schema: "autolang.case/2",
+  id: "neg.av.data",
+  source: { text: "type Inner { x int }\ntype Outer { inner Inner }\nfn main() int {\n    var o = Outer { inner: Inner { x: 0 } }\n    o.inner.x = 41 + 1\n    return o.inner.x\n}", syntax: "auto", path: "main.at" },
+  entry: { mode: "program" },
+  checks: [
+    { id: "wrong-exit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/data-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 43 } }
+  ]
+}
+```
+"#,
+    );
+    let report = run_suite(&suite, &out, &Limits::defaults()).expect("suite runs");
+    assert_eq!(
+        status_of(&report, "wrong-exit"),
+        auto_test_case::report::Status::Fail,
+        "wrong data oracle must be red (actual 42 vs expected 43)"
+    );
+}
+
+#[test]
+fn ac_av_data_probe_wrong_diag_oracle_fails() {
+    // A source the data profile REJECTS (field write on an immutable let)
+    // expected as success: the diag must be judged, not green-washed.
+    let _guard = AV_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let (suite, out) = data_neg_suite(
+        "negdiag",
+        r#"# neg case: let-record field write is a verify rejection.
+```test-case
+case {
+  schema: "autolang.case/2",
+  id: "neg.av.data.diag",
+  source: { text: "type P { x int }\nfn main() int {\n    let p = P { x: 1 }\n    p.x = 2\n    return p.x\n}", syntax: "auto", path: "main.at" },
+  entry: { mode: "program" },
+  checks: [
+    { id: "wrong-completion", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/data-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 0 } }
+  ]
+}
+```
+"#,
+    );
+    let report = run_suite(&suite, &out, &Limits::defaults()).expect("suite runs");
+    assert_eq!(
+        status_of(&report, "wrong-completion"),
+        auto_test_case::report::Status::Fail,
+        "a rejected program never satisfies a success oracle"
+    );
+}
+
+#[test]
+fn ac_av_data_probe_skip_shape_is_not_green() {
+    // A skipped check (unknown-to-the-runner expectation shape) must not
+    // read as a pass: route it through the wrong-recipe decode control —
+    // an unregistered recipe id is a LOCATED decode error (red), proving
+    // the seam cannot silently skip data cases.
+    let _guard = AV_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let (suite, out) = data_neg_suite(
+        "negskip",
+        r#"# neg case: unregistered recipe id.
+```test-case
+case {
+  schema: "autolang.case/2",
+  id: "neg.av.data.skip",
+  source: { text: "fn main() int { return 0 }", syntax: "auto", path: "main.at" },
+  entry: { mode: "program" },
+  checks: [
+    { id: "unregistered-recipe", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/data-run-v2",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 0 } }
+  ]
+}
+```
+"#,
+    );
+    let load = run_suite(&suite, &out, &Limits::defaults());
+    match load {
+        Ok(report) => {
+            assert_ne!(
+                status_of(&report, "unregistered-recipe"),
+                auto_test_case::report::Status::Pass,
+                "an unregistered data recipe is never green"
+            );
+        }
+        Err(e) => {
+            assert!(
+                e.contains("not registered"),
+                "the located decode error names the registration, got {e}"
+            );
+        }
+    }
+}
+
+#[test]
+fn ac_av_data_probe_worker_faults_are_infra() {
+    // Wrong tool identity (worker misbehavior: bad exit, protocol break,
+    // hash lie) on the DATA recipe is infra ERROR — never a language
+    // verdict and never green. Same deterministic AV798_FAULT seam as the
+    // core recipe's contract-fault controls.
+    let _guard = AV_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+
+    let root = temp_root("faultsdata");
+    let run_one = |tag: &str| -> auto_test_case::report::Status {
+        let case_dir = root.join(tag);
+        let out_dir = root.join(format!("{tag}-out"));
+        let _ = std::fs::remove_dir_all(&case_dir);
+        let _ = std::fs::remove_dir_all(&out_dir);
+        std::fs::create_dir_all(&case_dir).unwrap();
+        std::fs::write(
+            case_dir.join("main.at"),
+            "type Inner { x int }
+type Outer { inner Inner }
+fn main() int {
+    var o = Outer { inner: Inner { x: 0 } }
+    o.inner.x = 41 + 1
+    return o.inner.x
+}",
+        )
+        .unwrap();
+        std::fs::write(
+            case_dir.join("c.case.ad"),
+            "# fault
+```test-case
+case {
+  schema: \"autolang.case/2\",
+  id: \"av.fault.data\",
+  source: { file: \"main.at\", syntax: \"auto\", path: \"main.at\" },
+  entry: { mode: \"program\" },
+  checks: [
+    { id: \"run\", adapter: \"probe\", action: \"run\",
+      options: { recipe: \"ac-av/data-run-v1\", av: { entry: \"d_main\" }, steps: [ { op: \"run\" } ] },
+      expect: { completion: \"success\", exit: 42 } }
+  ]
+}
+```
+",
+        )
+        .unwrap();
+        std::fs::write(
+            case_dir.join("s.suite.ad"),
+            "# s
+```test-suite
+suite { schema: \"autolang.suite/2\", id: \"s\", include: [\"c.case.ad\"] }
+```
+",
+        )
+        .unwrap();
+        let report = run_suite(&case_dir.join("s.suite.ad"), &out_dir, &Limits::defaults())
+            .expect("fault suite runs");
+        status_of(&report, "run")
+    };
+
+    for fault in ["exit9", "extra-frame", "wrong-hash"] {
+        std::env::set_var("AV798_FAULT", fault);
+        let status = run_one(fault);
+        std::env::remove_var("AV798_FAULT");
+        assert_eq!(
+            status,
+            auto_test_case::report::Status::Error,
+            "data-recipe fault `{fault}` must be an infra ERROR, not a language verdict"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}

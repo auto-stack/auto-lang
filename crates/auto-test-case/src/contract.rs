@@ -1414,6 +1414,9 @@ fn decode_options(
                         let allowed = match recipe.as_str() {
                             // T-07 edit-session: runs + discriminating edits.
                             "ac-av/core-run-v1" => matches!(op.as_str(), "run" | "edit-source"),
+                            // PLAN-820: the data recipe shares the core recipe's
+                            // step vocabulary (runs + discriminating edits).
+                            "ac-av/data-run-v1" => matches!(op.as_str(), "run" | "edit-source"),
                             // PLAN-818 T-06: runs + discriminating edits +
                             // restart session boundaries (`query` stays a
                             // sema/abi op — recipes never borrow ops).
@@ -1464,7 +1467,7 @@ fn decode_options(
                         };
                         out.push(step);
                     }
-                    if recipe == "ac-av/core-run-v1" {
+                    if recipe == "ac-av/core-run-v1" || recipe == "ac-av/data-run-v1" {
                         // PLAN-798 T-07 edit-session shape (F798-R3-07): runs
                         // plus discriminating edit-source steps; a sequence
                         // may LEAD with edits (the measured formal window —
@@ -1472,11 +1475,12 @@ fn decode_options(
                         // edits, then runs) but must END with the judged run,
                         // and leading edits require an explicit session only
                         // for cross-call warmth (single-call shapes are
-                        // unchanged).
+                        // unchanged). PLAN-820: the data recipe shares the
+                        // same shape (its judged step is also a run).
                         if !matches!(out.last(), Some(ProbeStep::Run)) {
                             return Err(err(
                             &f.path_of("steps"),
-                            "ac-av/core-run-v1 step sequences must end with a run step (the judged step)",
+                            "ac-av step sequences must end with a run step (the judged step)",
                         ));
                         }
                         if out.is_empty() {
@@ -1586,16 +1590,16 @@ fn decode_options(
             };
             let av = match f.sub("av") {
                 None => {
-                    if recipe == "ac-av/core-run-v1" {
+                    if recipe == "ac-av/core-run-v1" || recipe == "ac-av/data-run-v1" {
                         return Err(err(
                             &f.path_of("av"),
-                            "ac-av/core-run-v1 requires an av binding",
+                            format!("{recipe} requires an av binding"),
                         ));
                     }
                     None
                 }
                 Some(v) => {
-                    if recipe != "ac-av/core-run-v1" {
+                    if recipe != "ac-av/core-run-v1" && recipe != "ac-av/data-run-v1" {
                         return Err(err(
                             &f.path_of("av"),
                             format!(
@@ -1804,6 +1808,8 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     "cte/scalar-query-v1",
     // PLAN-818: the MIR-native experimental recipe, same seam contract.
     "ac/mir-native-scalar-v1",
+    // PLAN-820: the av.data/1 data recipe, same seam contract.
+    "ac-av/data-run-v1",
 ];
 /// Probe step-count cap (frozen with the seam; mirrors the syntax edit cap).
 pub const PROBE_MAX_STEPS: usize = 64;
