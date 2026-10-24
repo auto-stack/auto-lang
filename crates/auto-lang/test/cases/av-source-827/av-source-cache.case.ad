@@ -1,0 +1,39 @@
+# PLAN-827 V-07 formal face: the SAME AP-01 source through TWO checks of
+# one session — every check spawns a NEW worker process; the session id
+# shares one warm store across those processes (the parent owns cleanup).
+# Check 1 warms (fresh, value 0); check 2 is the overlay edit
+# (`return 0` -> `return 9`, exactly-once literal, validated worker- AND
+# parent-side) executed by a NEW worker over the warm store, judged
+# parent-side against the NEW independent expected 9. A hit is never a
+# cached PASS: both runs really execute AV and the parent re-derives the
+# post-edit source hash before accepting any result.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.source.session-overlay"
+  tags: ["av-source-827", "probe", "cache"]
+  links: ["PLAN-827"]
+  source: { file: "src/p-gcd-euclid.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "warm-run", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main", session: "av827-overlay" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 0 } },
+    { id: "overlay-edit-run", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main", session: "av827-overlay" },
+        steps: [
+          { op: "edit-source", from: "return 0", to: "return 9" },
+          { op: "run" }
+        ]
+      },
+      expect: { completion: "success", exit: 9 } }
+  ]
+}
+```

@@ -7,5 +7,6 @@ suite { schema: "autolang.suite/2", id: "av-source-827", include: [
   "av-source-first-case.case.ad",
   "av-source-semantics.case.ad",
   "av-source-unsupported.case.ad",
+  "av-source-cache.case.ad",
 ] }
 ```

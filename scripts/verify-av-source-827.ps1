@@ -89,8 +89,22 @@ switch ($Scope) {
         Run-Runner-Tests "av_source_827_corpus" "admission-corpus"
     }
     "resources" { Not-Wired $Scope "T-04/T-06" }
-    "cache" { Not-Wired $Scope "T-05" }
-    "compatibility" { Not-Wired $Scope "T-05" }
+    "cache" {
+        # V-07/V-08: overlay misses only the changed unit; caps re-key;
+        # corrupt same-key republish conflicts (good survives); cross-
+        # project content-addressed reuse; position shift = new identity.
+        # Formal face: the session-overlay corpus case (new worker per
+        # check, shared warm store, parent-side judgement).
+        Run-Probe-Tests "av_source_827_cache" "cache"
+        Run-Runner-Tests "av_source_827_corpus" "cache-corpus"
+    }
+    "compatibility" {
+        # V-11: the ORIGINAL consumers keep their support faces — the ac-av
+        # corpus and the delivered 817/818 recipe gates run unchanged.
+        Run-Runner-Tests "ac_av_probe" "compatibility-ac-av"
+        Run-Runner-Tests "ac_cte_probe" "compatibility-ac-cte"
+        Run-Runner-Tests "ac_mn_probe" "compatibility-ac-mn"
+    }
     "autodown" { Not-Wired $Scope "T-06" }
     "inventory" { Not-Wired $Scope "T-06" }
     "acceptance" { Not-Wired $Scope "T-06" }

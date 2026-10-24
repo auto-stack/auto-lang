@@ -96,6 +96,8 @@ fn av_source_827_corpus_green() {
         "run-trap-div-zero",
         "run-unsupported-print",
         "run-unsupported-list",
+        "warm-run",
+        "overlay-edit-run",
     ] {
         assert!(ids.contains(&required), "required check {required}: {ids:?}");
     }
