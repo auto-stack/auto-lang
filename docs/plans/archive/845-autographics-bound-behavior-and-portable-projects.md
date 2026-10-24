@@ -494,6 +494,13 @@ stage: merge | outcome: delivered_closeout_pending | completion_kind: delivered 
 
 主检出仅知识/索引/账本/归档；RegimeB HTTP探测超时后受保护离线投影12项，tracked81→82、working82→83，5项P818外来WIP及未知字段/原字节保全，仅目标投影入index，恢复副本仅本地忽略。实际归档status/location与9/10匹配。T10的guard清理、生产消费产物观察与845到期批量仍pending；不把未执行项称已完成，修复6/6保持。
 
+
+### 清理 checkpoint / due batch pending
+
+cleaned: pass；实际守护脚本[输出](../attachments/845/merge-r1/wt-guard-before-cleanup.txt)确认无reparse，源分支精确等于deliveryc1c7cfea5c9cc84987091ddeaf6cde59cefd5d4f后移除唯一845 worktree和plan-845-dev（普通-d，local upstream autographics-dev；图形代码不能进master）。[删除/库存收据](../attachments/845/merge-r1/cleanup.json.txt)。归档在删除前已由主提交492630e7b9c1ea05a707787923c27b94c0d55193版本化。组内非Git独立消费者/源码导出保留，未删除非空组。
+
+[产物实际观察](../attachments/845/merge-r1/artifact-observations.json.txt)：生产release/backend、依赖daemon和生成web路径均非本experimental交付消费者，实际存在性/构建日期逐项记录；未声称生产部署或I2/I3完成。已测实验exe/消费者/AGP记录actual dates及hash；主Rust/daemon/web源码未改。T10仅余主检出单实例tf/tt/tb到期批量与最终核验；845%5且last-covered840，故到期。仍9/10，不提前称全部完成。
+
 ## 10. 待澄清事项
 
 无阻塞草案的产品问题。完整项目为单scene入口+声明GLB+一个内容寻址用户源码/角色绑定，保留840临时源路径与可信源码局限；G840已按用户r2决定成立，正式API/SDK来源已由T-01核实。T-02可选等价局部接法，无须重复请求常规选择；若需多脚本/多文件包、SDK/AGP/生产写面、跨进程/安装发行或改变原行为支持与资源保证，回new具体修订后再开展依赖工作。
