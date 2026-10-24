@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-820
-status: drafting
+status: executing
 feature_name: AV类型化数据表示与布局首个闭环
-plan_revision: 4
+plan_revision: 6
 author: [Codex]
 created_at: 2026-10-20
-updated_at: 2026-10-20
-current_step: 0
+updated_at: 2026-10-24
+current_step: 1
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-av/resident-function-install.md
@@ -60,7 +60,7 @@ Rust、D依赖交付的 `experimental/ac-av-probe/` 独立workspace（已观察p
 
 ## 4. 需求分析与背景调查
 
-用户2026-10-20确认798完成后优先828，所有ACE扩展保留全链路增量。D828为共享核心实施/集成排期门；只读准备可先，既有准备/进度保留。原其他依赖仍有效，无对798/828的反向依赖。旧revision/排期记录仅为历史，当前以本轮§5–8为准。
+用户2026-10-21确认：828之后优先推进817/818、827与820功能线，825/826择机插入；全链路增量、D828门和原硬依赖保留。授权本轮更新计划/战略及单写交接规则，不启动实施、不改变已有进度/预算/支持面；当前合同以§5–8及共同排期为准，旧排期/待裁定记录为历史。
 
 授权：2026-10-20用户认可方向并明确要求正式架构、衔接43/798、拆分计划，**先不写代码**。本轮允许主检出设计/计划簿记；未授权实施、开树、建/联系代理、改canonical Spec或切换产品。未指定实施者/模型/时间预算。
 
@@ -135,6 +135,12 @@ T-09 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳
 
 原支持面/资源/原生等性能门不放宽；cold/restart/版本迁移或真实广泛失效另报，不掩盖正常body退化。旧帧/值/drop引用期间代码与布局保活，失败/取消/迟到不安装，退出后回收；不兼容布局按实际支持策略拒绝/扩大失效，不擅自迁移活值。
 
+### 执行排期与单写交接（2026-10-21）
+
+优先功能线起点；D798和D828满足后可申请核心窗口，不以D817/D818为整计划硬前置。公共定义仍有在途owner时等待该面交接。随后821→822→823→824按实际交付串行；本计划不等825/826。
+
+所有后继在D828前仅作只读准备，现有实现与证据保留。共用[执行顺序与交接合同](reports/ace-execution-order-and-incremental-compatibility-2026-10-20.md)：T-01准备写面/owner/消费者映射，T-02在D门满足后刷新基面、版本、预算与接口并记录窗口接受；既有兼容/coverage工作记录定向结果，独立review核记录，merge补实际合入与窗口释放。公共核心默认单写，公共注册追加也串行；不同worktree不豁免。不能持窗等未交付依赖、复制WIP或改变他方在途合同；无公共写面者可并行消费稳定API。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
@@ -150,6 +156,8 @@ T-09 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳
 前序Spec未合入时不提前写；review按D实际Spec最终确认modify/add及差异，merge才沉淀。touched_goals为空：本计划是有限实验扩面，不凭其单独核销AAC/AAV自举或生产目标。
 
 ## 6. 测试设计
+
+排期交接沿本节既有兼容性入口与独立review核查：对照记录中的实际基面/API/版本/消费者验证结果；公共写面无交接、依赖未交付或旧证据失配时不得判就绪。不新增整档测试；原增量、AutoDown、P95/内存及反控门保持。
 
 不变量为Design44 I-01..12及§5。以下V均为**必需补充反例/正控**，T-02/T-04将其变为真实入口；固定语料总数不能替代。每案保存输入身份、阶段/码、result/trace/bits/owner与原始日志。期望由人工或独立小模型确定，不能由被测布局/清理算法生成。
 
@@ -204,8 +212,8 @@ T-09 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳
 
 | Task | owner_stage | 依赖 | 文件/操作与可核成果 | AC / 验证 |
 |---|---|---|---|---|
-| [ ] T-01 | work | 用户授权；只读准备可早于D-798 | 核对实际主检出/唯一树/Spec/API/817/818 owner；在attachments/820/contract-decision.md冻结支持矩阵、profile/codec/访问/预算和oracle，未知项不留给下游猜 | AC-01..06；决策表含全部V、cap两侧输入、公开入口/分类；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 |
-| [ ] T-02 | work | T-01、D-798、注册owner交接、D828排期门 | D828后先刷新T-01接口/版本/预算合同，旧准备不冒领新依赖pass； §3入口完成§5.2最小whole-path；新增first-case脚本/真实recipe、同store新worker恢复；记录CPU/时间/内存与独立oracle | AC-01/06；first-case、V-01/08/10正控 |
+| [x] T-01 | work | 用户授权；只读准备可早于D-798 | 核对实际主检出/唯一树/Spec/API/817/818 owner；在attachments/820/contract-decision.md冻结支持矩阵、profile/codec/访问/预算和oracle，未知项不留给下游猜 | AC-01..06；决策表含全部V、cap两侧输入、公开入口/分类；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 | [✅ 已完成 2026-10-24：依赖门全绿（D-798 archived/D828 archived 11/11/817 合入/818 在途非硬前置且持独立 workspace/ac-av-probe 单写窗口空闲——821-827 全 drafting 0 步/注册 owner=crates/auto-lang-core/src/test_cases/ac_av.rs 814 迁移后落位/主检出代码路径零 WIP）。contract-decision.md r1 冻结：av.data/1（profile id 2）+ AVAD v1 wire + auto.mir.av-data/1 MIR schema + producer plan820/av-data + 语义版本 1/1/1（core-i32 1/2/1 不变）；MirType 增 I64/U64/F32/F64/Record（名义身份=owner+name+fields，无环迭代检测，空 record 不支持）；MirConst 增宽标量位型（to_bits 保真，V-03 样本冻结）；新指令 07 FIELD_GET/08 FIELD_SET/09 AGGREGATE（仅 data；BIN/UN 零新子码，宽标量运算 mir.type-op 拒）+ InstructionSpec 表 + 四层覆盖检查；layout.rs 逻辑描述符（checked 布局、不 reinterpret、恢复重算）；Value 增 Record(Rc) 不可变纯值+deep_size 记账入 8MiB 槽预算；adapter 面=compile_record_source+自由函数+RecordCtor/FieldGet/FieldPath 赋值（Method/Borrow 显式拒）；预算=798 冻结值零放宽+每类型字段≤1024+路径深≤64；§12 case→Scope→入口→oracle 全矩阵（V-01..13）；§13 显式留 T-02/T-09 核实项。见 attachments/820/contract-decision.md ]
+| [ ] T-02 | work | T-01、D-798、注册owner交接、D828排期门、当前单写窗口交接 | D828后先刷新T-01接口/版本/预算合同，旧准备不冒领新依赖pass； §3入口完成§5.2最小whole-path；新增first-case脚本/真实recipe、同store新worker恢复；记录CPU/时间/内存与独立oracle；记录已合入基面/API版本/写面owner与接受交接，无公共写面则明确登记 | AC-01/06；first-case、V-01/08/10正控 |
 | [ ] T-03 | work | T-02 | §3共享核心/新模块完成§5全部支持语义，source支持面adapter明确；不偷改其他profile | AC-02/03；av_data_820定向正反例；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 |
 | [ ] T-04 | work | T-03 | 实现必须的拒绝/回滚/cleanup/资源hook与V-02..07补充对照，先完成所有findings再送审 | AC-03/04/05；admission/resources及真实边界事件；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 |
 | [ ] T-05 | work | T-04 | probe真实缓存依赖/重启重验、来源/身份；注册与旧consumer兼容，串行更新唯一公共写面 | AC-06；V-08/09，cache/compatibility；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 |
@@ -215,6 +223,10 @@ T-09 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳
 | [ ] T-08 | merge | T-07 pass | 冻结门禁→合入→SD/ledger/catalog→archive；到期批回归主检出单实例；wt-guard后移除唯一树/分支 | AC-08；真实门禁/合入/清理收据 |
 
 ## 9. 复审记录
+
+2026-10-24 stage:work | PLAN-820 r5→r6（执行启动） | outcome:pass（T-01 完成，drafting→executing；用户授权"实施"） | worktree:无（T-01 只读准备，产物落 docs/plans/attachments/820/；实施树 T-02 创建）| branch:—| base_commit:11ba8fd0a（主检出，未动代码）| code_commit:—（仅计划簿记）| dependency_revisions:D-798 archived、D828 archived 11/11、817 已合入；ac-av-probe 写窗口空闲（821-827 drafting 0 步）| task_ids:T-01（1/9）| evidence:attachments/820/contract-decision.md r1；主检出预检=crates/test/experimental 零 WIP | blockers:无 | next_responsible_role:work 继续 T-02（建树 lang-820、刷新基面记录、first-case whole-path）
+
+2026-10-21 stage:new | PLAN-820 r4→r5 | outcome:pass（排期/交接合同静态修订，非实现验收或依赖解锁） | authority:用户确认828后优先817/818、827和820功能线，825/826择机插入 | changed:§4授权、§5排期/共享单写、§6交接核查、T-02及§10当前入口；T/AC/V/SD ID、数量、状态和原进度保留 | next:只读准备可先，D828及本计划原D门/单写交接满足后work；不自动启动 | evidence:[本轮预检](attachments/ace-order-20261021/preflight.md)。
 
 2026-10-20 stage:new | PLAN-820 r3→r4 | outcome:pass（规划修订，非实现通过） | authority: 用户指定798→828优先/后继保留全链路增量 | delta: AC-09 / V-13四子case / SD-07 / T-09；review依赖新work项，D828排期/集成门，原D门不减 | 原进度保留，total 8→9，新证据pending | next:只读准备可先，D828后串行实施；无代码/测试/Spec发布/合入。
 
@@ -235,4 +247,4 @@ stage: new；outcome: pass（合同静态预检，非实施验收）。用户认
 无须用户再裁定已认可的总体方向。精确opcode/布局实现/资源测量由有界T-01和T-02负责冻结，不能改变§5语义或预算；需要扩大支持/资源/兼容承诺时回new显式revision。当前依赖与执行授权门如§4；不以等待实施为由伪造通过或删AC。NaN-boxing、完整数值运算/用户泛型、共享图、async、native与CTE复合消费者另案，不是本计划“已完成后续”。
 
 
-**当前排期与验收**：798→828→本计划（原前置仍需满足）；T-09 / AC-09 / V-13 未完成，旧revision/测试总数不覆盖新增义务。用户已确认该顺序/目标，不重复请求同范围授权。
+**当前排期与验收（2026-10-21）**：D828后按§5本计划优先级/原D门及单写交接推进，不等待无硬依赖的整批；T-09 / AC-09 / V-13 未完成，旧revision/测试总数不覆盖新增义务。用户已确认该顺序/目标，不重复请求同范围授权。
