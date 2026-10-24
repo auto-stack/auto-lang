@@ -232,6 +232,186 @@ pub fn load_frozen_payload(
     Ok(Some(loaded.payload))
 }
 
+/// The DECODE budget auditor (F-817-R10-01): a ZERO-ALLOCATION JSON
+/// structural scan of the payload that derives the Hot grant BEFORE
+/// `serde_json::from_slice` runs. serde's container growth is not
+/// anchored by the payload length (a short-string array decoded to a
+/// 12MiB single allocation against a "2x payload" grant), so the grant
+/// is derived from the ACTUAL container population:
+///
+///   grant = 2*S                    string CONTENT bytes (serde
+///            allocates each string's bytes once; x2 covers
+///            from_utf8/scratch transients)
+///         + A * (3*24*2 + 32)      array ELEMENTS: the widest slot the
+///            envelope carries is Vec<(String,String,String)> =
+///            3x24B; Vec doubling keeps <=2x slots live; +32B per
+///            element covers the allocator's minimum granularity for
+///            tiny items (empty strings etc.)
+///         + 4096                   fixed top-level fields
+///
+/// Every factor is anchored in the type layout (the widest container
+/// element the envelope carries is the fingerprint triple) and Rust
+/// Vec growth - not an arbitrary multiplier on the payload size.
+/// Nesting deeper than 64 (a legal envelope is <= 5 deep) and
+/// malformed JSON are controlled rejections at the audit itself,
+/// BEFORE any decode allocation. The scan reads the payload slice
+/// only and allocates nothing.
+pub fn audit_envelope_budget(payload: &[u8]) -> Result<u64, CteAdmissionError> {
+    const MAX_DEPTH: usize = 64;
+    let mut i = 0usize;
+    let mut string_bytes: u64 = 0;
+    let mut array_items: u64 = 0;
+
+    fn skip_ws(p: &[u8], i: &mut usize) {
+        while *i < p.len() && matches!(p[*i], b' ' | b'\t' | b'\n' | b'\r') {
+            *i += 1;
+        }
+    }
+    fn scan_string(p: &[u8], i: &mut usize, string_bytes: &mut u64) -> Result<(), &'static str> {
+        if p.get(*i) != Some(&b'"') {
+            return Err("expected string");
+        }
+        *i += 1;
+        let start = *i;
+        while let Some(&c) = p.get(*i) {
+            match c {
+                b'"' => {
+                    *string_bytes += (*i - start) as u64;
+                    *i += 1;
+                    return Ok(());
+                }
+                b'\\' => {
+                    *i += 2;
+                }
+                _ => *i += 1,
+            }
+        }
+        Err("unterminated json string")
+    }
+    fn scan_value(
+        p: &[u8],
+        i: &mut usize,
+        d: usize,
+        max_depth: usize,
+        string_bytes: &mut u64,
+        array_items: &mut u64,
+    ) -> Result<(), &'static str> {
+        if d > max_depth {
+            return Err("json nesting deeper than the envelope audit bound");
+        }
+        skip_ws(p, i);
+        let Some(&c) = p.get(*i) else {
+            return Err("unexpected end of json");
+        };
+        match c {
+            b'{' => {
+                *i += 1;
+                skip_ws(p, i);
+                if p.get(*i) == Some(&b'}') {
+                    *i += 1;
+                    return Ok(());
+                }
+                loop {
+                    skip_ws(p, i);
+                    scan_string(p, i, string_bytes)?;
+                    skip_ws(p, i);
+                    if p.get(*i) != Some(&b':') {
+                        return Err("expected ':' in object");
+                    }
+                    *i += 1;
+                    scan_value(p, i, d + 1, max_depth, string_bytes, array_items)?;
+                    skip_ws(p, i);
+                    match p.get(*i) {
+                        Some(&b',') => *i += 1,
+                        Some(&b'}') => {
+                            *i += 1;
+                            return Ok(());
+                        }
+                        _ => return Err("expected ',' or '}' in object"),
+                    }
+                }
+            }
+            b'[' => {
+                *i += 1;
+                skip_ws(p, i);
+                if p.get(*i) == Some(&b']') {
+                    *i += 1;
+                    return Ok(());
+                }
+                loop {
+                    scan_value(p, i, d + 1, max_depth, string_bytes, array_items)?;
+                    *array_items += 1;
+                    skip_ws(p, i);
+                    match p.get(*i) {
+                        Some(&b',') => *i += 1,
+                        Some(&b']') => {
+                            *i += 1;
+                            return Ok(());
+                        }
+                        _ => return Err("expected ',' or ']' in array"),
+                    }
+                }
+            }
+            b'"' => scan_string(p, i, string_bytes),
+            b't' | b'f' | b'n' => {
+                for lit in ["true", "false", "null"] {
+                    if p[*i..].starts_with(lit.as_bytes()) {
+                        *i += lit.len();
+                        return Ok(());
+                    }
+                }
+                Err("bad json literal")
+            }
+            b'-' | b'0'..=b'9' => {
+                if p.get(*i) == Some(&b'-') {
+                    *i += 1;
+                }
+                let start = *i;
+                while matches!(p.get(*i), Some(b'0'..=b'9')) {
+                    *i += 1;
+                }
+                if *i == start {
+                    return Err("bad json number");
+                }
+                if p.get(*i) == Some(&b'.') {
+                    *i += 1;
+                    while matches!(p.get(*i), Some(b'0'..=b'9')) {
+                        *i += 1;
+                    }
+                }
+                Ok(())
+            }
+            _ => Err("unexpected json byte"),
+        }
+    }
+
+    scan_value(
+        payload,
+        &mut i,
+        0,
+        MAX_DEPTH,
+        &mut string_bytes,
+        &mut array_items,
+    )
+    .map_err(|m| {
+        CteAdmissionError::new(
+            CteCode::Infra("restore".into()),
+            format!("envelope audit: {m}"),
+        )
+    })?;
+    skip_ws(payload, &mut i);
+    if i != payload.len() {
+        return Err(CteAdmissionError::new(
+            CteCode::Infra("restore".into()),
+            "envelope audit: trailing bytes after the json value",
+        ));
+    }
+    Ok(string_bytes
+        .saturating_mul(2)
+        .saturating_add(array_items.saturating_mul(3 * 24 * 2 + 32))
+        .saturating_add(4096))
+}
+
 /// Stage 2 of the reserved restore (F-817-R6-02): decode + full-field
 /// admission. The caller must have reserved a covering Hot bound BEFORE
 /// this call — the decoded envelope's allocations happen here. The
@@ -247,6 +427,7 @@ pub fn decode_envelope(
             format!("frozen envelope does not decode: {e}"),
         )
     })?;
+
     // Full-field restore admission (§6): wrong producer/schema/engine/
     // request identity are controlled rejections.
     if env.schema != auto_cte_contract::CTE_EXECUTED_SCHEMA {
@@ -315,9 +496,19 @@ pub fn serialize_envelope_reserved(
     budget
         .reserve(crate::observe::Partition::Staging, count, "envelope encode")
         .map_err(|m| CteAdmissionError::new(CteCode::Resource("managed-staging".into()), m))?;
-    let payload = serialize_envelope(env)?;
-    budget.record_alloc("envelope-encode", payload.len() as u64);
-    Ok(payload)
+    // EXACT capacity (F-817-R10-02): pre-sized to the reserved count,
+    // filled by to_writer — the allocation the allocator sees IS the
+    // grant (no growth-chain capacity overshoot).
+    let mut buf = Vec::with_capacity(count as usize);
+    serde_json::to_writer(&mut buf, env).map_err(|e| {
+        CteAdmissionError::new(
+            CteCode::Infra("encode".into()),
+            format!("envelope serialization failed: {e}"),
+        )
+    })?;
+    debug_assert_eq!(buf.len() as u64, count);
+    budget.record_alloc("envelope-encode", buf.capacity() as u64);
+    Ok(buf)
 }
 
 /// Count the serialized envelope bytes WITHOUT allocating (a counting

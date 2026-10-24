@@ -63,21 +63,27 @@ unsafe impl GlobalAlloc for TrackingAlloc {
 #[global_allocator]
 static GLOBAL: TrackingAlloc = TrackingAlloc;
 
-/// Reset the observation window; returns the previous single-alloc max.
-fn reset_alloc_window() -> usize {
-    WINDOW_BASELINE.store(
-        LIVE_BYTES.load(AtomicOrdering::Relaxed),
-        AtomicOrdering::Relaxed,
-    );
-    MAX_SINGLE_ALLOC.swap(0, AtomicOrdering::Relaxed)
+/// F-817-R10-03: the observation window is begun ONCE (baseline = the
+/// live watermark AT THAT MOMENT, single-max cleared, watermark
+/// re-based) and read out WITHOUT resetting — the old reset-on-read
+/// pattern re-based the watermark AFTER the measured operation and
+/// left stale process history in both metrics.
+fn begin_window() {
+    let live = LIVE_BYTES.load(AtomicOrdering::Relaxed);
+    WINDOW_BASELINE.store(live, AtomicOrdering::Relaxed);
+    MAX_LIVE_BYTES.store(live, AtomicOrdering::Relaxed);
+    MAX_SINGLE_ALLOC.store(0, AtomicOrdering::Relaxed);
 }
 
-/// The window's coexisting-live peak ABOVE the reset baseline (the
-/// bytes the measured operation actually holds at once).
-fn live_peak_delta() -> usize {
-    MAX_LIVE_BYTES
-        .load(AtomicOrdering::Relaxed)
-        .saturating_sub(WINDOW_BASELINE.load(AtomicOrdering::Relaxed))
+/// Read the window: (max single allocation, coexisting-live peak above
+/// the begin baseline). Does NOT reset anything.
+fn window_readout() -> (usize, usize) {
+    (
+        MAX_SINGLE_ALLOC.load(AtomicOrdering::Relaxed),
+        MAX_LIVE_BYTES
+            .load(AtomicOrdering::Relaxed)
+            .saturating_sub(WINDOW_BASELINE.load(AtomicOrdering::Relaxed)),
+    )
 }
 
 fn deck_with(src: &str, tail: &str) -> String {
@@ -846,19 +852,45 @@ fn cte_resources_encode_reserve_before_alloc_order() {
         "no encode allocation after the rejection: {ev:?}"
     );
     // (d) Exactly-enough budget: accepted, reservation BEFORE the
-    // allocation in the SAME event log.
+    // allocation in the SAME event log — AND the real capacity IS the
+    // grant (F-817-R10-02): the window's max single allocation never
+    // exceeds the reserved count, and the returned Vec's capacity
+    // equals its length (the growth chain that left 2048B behind a
+    // 1163B grant is gone).
     let mut fits = auto_cte_probe::ManagedBudget::new(BudgetCaps {
         hot: 8 * 1024 * 1024,
         staging: exact,
         av_slots: 8 * 1024 * 1024,
     });
+    begin_window();
     let payload = auto_cte_probe::store::serialize_envelope_reserved(&env, &mut fits)
         .expect("exact budget fits");
+    let (enc_single, _) = window_readout();
     assert_eq!(payload.len() as u64, exact);
+    assert_eq!(
+        payload.capacity() as u64,
+        exact,
+        "exact-capacity encode: capacity == the reserved count"
+    );
+    assert!(
+        enc_single <= exact as usize + 512,
+        "the encode window's largest allocation ({enc_single}) stays at the grant ({exact})"
+    );
     let ev2 = fits.events();
     let r2 = event_index(ev2, is_reserve_what("envelope encode", true)).unwrap();
     let a2 = event_index(ev2, is_alloc("envelope-encode")).unwrap();
     assert!(r2 < a2, "reserve precedes alloc: {ev2:?}");
+    // Sensitivity: the GROWTH-based encoder (serde_json::to_vec, the
+    // pre-fix algorithm) on the same envelope overshoots the grant —
+    // this checker must see it.
+    begin_window();
+    let grown = serde_json::to_vec(&env).expect("growth encoder runs");
+    let (grown_single, _) = window_readout();
+    assert!(
+        grown.capacity() as u64 > exact || grown_single > exact as usize + 512,
+        "the sensitivity control sees the growth encoder overshoot: cap={} single={grown_single} grant={exact}",
+        grown.capacity()
+    );
 }
 
 /// The RESTORE path: the codec-page bound is reserved before the
@@ -1111,20 +1143,20 @@ fn cte_resources_corrupt_blob_read_bounded() {
     // allocation AND coexisting-live peak stay modest (no ungranted
     // payload-sized copies).
     {
-        reset_alloc_window();
+        begin_window();
         let mut h = CteDriver::with_store(root.path(), "r8").unwrap();
         let out = h.query_step(&deck, None);
         assert_eq!(out.status, StepStatus::Ok);
         assert_eq!(out.cache, Some("hit"));
-        let max = reset_alloc_window();
+        let (max, _live) = window_readout();
         assert!(
             max <= 512 * 1024,
             "normal restore window max single alloc {max} stays modest (no payload-sized copies)"
         );
         assert!(
-            live_peak_delta() <= 512 * 1024,
+            window_readout().1 <= 512 * 1024,
             "coexisting-live peak {} stays modest",
-            live_peak_delta()
+            window_readout().1
         );
     }
 
@@ -1175,7 +1207,7 @@ fn cte_resources_corrupt_blob_read_bounded() {
     // is NEVER read: the window's max single allocation stays at the
     // small-allocation scale, far below the 2MiB corruption.
     {
-        reset_alloc_window();
+        begin_window();
         let mut d3 = CteDriver::with_store(root.path(), "r8").unwrap();
         let out = d3.query_step(&deck, None);
         assert_eq!(out.status, StepStatus::Diag);
@@ -1189,7 +1221,7 @@ fn cte_resources_corrupt_blob_read_bounded() {
             "a corrupt blob is infra, never a language verdict"
         );
         assert!(d3.last_published_artifact().is_none());
-        let max = reset_alloc_window();
+        let (max, _live) = window_readout();
         assert!(
             max < 2 * 1024 * 1024,
             "the 2MiB corrupted blob was NEVER read into memory (window max single alloc = {max}B)"
@@ -1225,7 +1257,7 @@ fn cte_resources_bounded_read_capacity_exact() {
     // strings, SQL row buffers) — the content-buffer budgets below are
     // asserted EXACTLY; this epsilon only covers those fixed-size
     /// artifacts, independent of payload size.
-    const INCIDENTAL: usize = 8192;
+    const INCIDENTAL: usize = 2048;
 
     let mut blobs: Vec<std::path::PathBuf> = Vec::new();
     fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
@@ -1241,9 +1273,16 @@ fn cte_resources_bounded_read_capacity_exact() {
         }
     }
 
-    for (i, payload_len) in [500usize, 512, 524, 1023, 1024, 1032, 2047, 2048, 2056]
-        .into_iter()
-        .enumerate()
+    for (i, payload_len) in [
+        500usize, 512, 524, 1023, 1024, 1032, 2047, 2048, 2056,
+        // Content-dominated size: the granted coexisting budget
+        // (2*framed-48 ~= 200KB) sits BELOW the old growth algorithm's
+        // footprint (read_to_end capacity 131072 + copy 100000), which
+        // the sensitivity control proves this sweep would catch.
+        100_000,
+    ]
+    .into_iter()
+    .enumerate()
     {
         // One identity per size; a LEGAL chunk via the public put.
         let identity = CteRequestIdentityV1 {
@@ -1283,17 +1322,17 @@ fn cte_resources_bounded_read_capacity_exact() {
         // (1) LEGAL: exact single allocation == framed; coexisting peak
         // within the two grants (frame + copy = 2*framed−48).
         {
-            reset_alloc_window();
+            begin_window();
             let out = auto_cte_probe::store::load_frozen_payload_bounded(&st, &identity, framed)
                 .expect("legal load")
                 .expect("present");
             assert_eq!(out.len(), payload_len);
-            let max = reset_alloc_window();
+            let (max, live) = window_readout();
             assert!(
                 max <= framed as usize + INCIDENTAL,
                 "legal {payload_len}: max single alloc {max} <= framed {framed} (+incidental)"
             );
-            let live = live_peak_delta();
+
             assert!(
                 live <= (2 * framed - 48) as usize + INCIDENTAL,
                 "legal {payload_len}: coexisting peak {live} <= frame+copy grants {} (+incidental)",
@@ -1306,14 +1345,14 @@ fn cte_resources_bounded_read_capacity_exact() {
         // ever built).
         std::fs::write(&blob, vec![0xABu8; framed as usize + 1]).expect("grow");
         {
-            reset_alloc_window();
+            begin_window();
             let err = auto_cte_probe::store::load_frozen_payload_bounded(&st, &identity, framed)
                 .expect_err("over-bound rejected");
             assert!(
                 format!("{err:?}").contains("granted read budget"),
                 "{payload_len}+1 names the read bound: {err:?}"
             );
-            let max = reset_alloc_window();
+            let (max, _live) = window_readout();
             assert!(
                 max <= INCIDENTAL,
                 "{payload_len}+1: zero content allocation (max single {max})"
@@ -1325,14 +1364,14 @@ fn cte_resources_bounded_read_capacity_exact() {
         // doubling overshoot is gone), then CAS rejects.
         std::fs::write(&blob, vec![0xCDu8; framed as usize]).expect("same-len garbage");
         {
-            reset_alloc_window();
+            begin_window();
             let err = auto_cte_probe::store::load_frozen_payload_bounded(&st, &identity, framed)
                 .expect_err("corrupt CAS rejected");
             assert!(
                 format!("{err:?}").contains("address mismatch"),
                 "{payload_len} same-len garbage hits CAS: {err:?}"
             );
-            let max = reset_alloc_window();
+            let (max, _live) = window_readout();
             assert!(
                 max <= framed as usize + INCIDENTAL,
                 "{payload_len} garbage: single alloc {max} <= framed {framed} (exact capacity)"
@@ -1343,7 +1382,7 @@ fn cte_resources_bounded_read_capacity_exact() {
         std::fs::write(&blob, vec![0xEFu8; payload_len.saturating_sub(100).max(1)])
             .expect("shrink");
         {
-            reset_alloc_window();
+            begin_window();
             let err = auto_cte_probe::store::load_frozen_payload_bounded(&st, &identity, framed)
                 .expect_err("shrunk rejected");
             let txt = format!("{err:?}");
@@ -1351,7 +1390,7 @@ fn cte_resources_bounded_read_capacity_exact() {
                 txt.contains("bounded chunk read") || txt.contains("address mismatch"),
                 "{payload_len} shrunk: controlled rejection: {txt}"
             );
-            let max = reset_alloc_window();
+            let (max, _live) = window_readout();
             assert!(
                 max <= framed as usize + INCIDENTAL,
                 "{payload_len} shrunk: allocation bounded by the grant"
@@ -1420,4 +1459,220 @@ fn cte_resources_probe_sql_error_not_miss() {
         "an infra probe failure NEVER becomes a silent AV recompute"
     );
     assert!(d.last_published_artifact().is_none());
+}
+
+/// F-817-R10-01: the decode grant comes from the STRUCTURAL AUDIT (the
+/// real container population), so a short-string envelope cannot
+/// decode past its grant. The review's counterexample replayed on the
+/// REAL driver path: the identity is taken from a real execution, a
+/// foreign envelope (schema replaced, closure = N empty strings) is
+/// planted under that exact key via the PUBLIC put, and the driver
+/// restores it:
+///   N=100000 -> the audit grant (~17.6MB) exceeds the 8MiB Hot cap —
+///     the reservation is refused BEFORE serde_json ever runs (the
+///     window shows no decode-sized allocation);
+///   N=10000  -> the audit grant (~1.76MB) fits, serde runs, and the
+///     window's real allocations stay under the grant (the old "2x
+///     payload" grant left a 393216B single allocation against
+///     62292B); the foreign schema is then a controlled rejection;
+///   N=0      -> the pristine envelope hits normally.
+#[test]
+fn cte_resources_decode_audit_bounded() {
+    use ac_artifact_probe::codec::ChunkKind;
+    use ac_artifact_probe::store::PutRequest;
+    use auto_cte_contract::{CteExecutedV1, CTE_FROZEN_LAYER};
+
+    let seed_root = tempfile::tempdir().unwrap();
+    let deck = small_query_deck();
+    let mut d = CteDriver::with_store(seed_root.path(), "r10").unwrap();
+    assert_eq!(d.query_step(&deck, None).status, StepStatus::Ok);
+    let art_id = d.last_published_artifact().expect("published").to_string();
+    let st_a = auto_cte_probe::store::CteStore::open(seed_root.path(), "r10").unwrap();
+    let loaded = st_a
+        .raw()
+        .get_artifact_by_id(&art_id)
+        .expect("read")
+        .expect("present");
+    let env: CteExecutedV1 = serde_json::from_slice(&loaded.payload).expect("decodes");
+    let identity = env.request_identity.clone();
+
+    for n in [0usize, 10000, 100000] {
+        let mut foreign = env.clone();
+        if n > 0 {
+            foreign.schema = "foreign-schema".into();
+            foreign.deps.closure = vec![String::new(); n];
+        }
+        let bytes = serde_json::to_vec(&foreign).unwrap();
+        assert!(
+            bytes.len() <= 1024 * 1024,
+            "plant stays under the read bound"
+        );
+        let root = tempfile::tempdir().unwrap();
+        let st = auto_cte_probe::store::CteStore::open(root.path(), "r10").unwrap();
+        st.raw()
+            .put_artifact(PutRequest {
+                layer: CTE_FROZEN_LAYER,
+                key: auto_cte_probe::store::envelope_key(&identity),
+                kind: ChunkKind::LayoutData,
+                payload: bytes.clone(),
+                edges: Vec::new(),
+                project: Some("r10".into()),
+            })
+            .expect("plant");
+        let audit = auto_cte_probe::store::audit_envelope_budget(&bytes)
+            .expect("audit scans the syntactic json")
+            .max(1);
+        begin_window();
+        let mut drv = CteDriver::with_store(root.path(), "r10").unwrap();
+        let out = drv.query_step(&deck, None);
+        let (single, live) = window_readout();
+        match n {
+            0 => {
+                assert_eq!(out.status, StepStatus::Ok);
+                assert_eq!(out.cache, Some("hit"));
+                assert_eq!(out.ct_execute, 0);
+            }
+            100000 => {
+                // The audit grant (>= 100000 * 176 = 17.6MB) exceeds the
+                // 8MiB Hot cap: refused at the reservation, from_slice
+                // NEVER runs — no decode-sized allocation appears.
+                assert!(audit > 8 * 1024 * 1024, "audit {audit} exceeds Hot");
+                assert_eq!(out.status, StepStatus::Diag, "{:?}", out.message);
+                assert!(
+                    out.message
+                        .as_deref()
+                        .unwrap_or_default()
+                        .contains("restored envelope decode"),
+                    "refused at the decode reservation: {:?}",
+                    out.message
+                );
+                assert!(drv.last_published_artifact().is_none());
+                assert!(
+                    single < 1024 * 1024,
+                    "no decode-sized allocation (max single {single}; the old path saw 3145728)"
+                );
+                assert!(
+                    live < 2 * 1024 * 1024,
+                    "coexisting peak {live} stays at load scale"
+                );
+            }
+            10000 => {
+                // The audit grant (~1.76MB) fits the 8MiB Hot cap: serde
+                // runs and its REAL allocations stay under the grant —
+                // then the foreign schema is a controlled rejection.
+                assert!(audit <= 8 * 1024 * 1024, "audit {audit} fits Hot");
+                assert_eq!(out.status, StepStatus::Diag, "{:?}", out.message);
+                let msg = out.message.as_deref().unwrap_or_default();
+                assert!(
+                    msg.contains("foreign-schema") || msg.contains("schema"),
+                    "the foreign schema is the rejection: {msg}"
+                );
+                assert!(drv.last_published_artifact().is_none());
+                assert!(
+                    single as u64 <= audit,
+                    "decode's largest allocation ({single}) stays under the audited grant ({audit}; the old 2x grant saw 393216 against 62292)"
+                );
+                assert!(
+                    live as u64 <= audit + bytes.len() as u64 + 4096,
+                    "coexisting peak ({live}) stays under grant + payload + slack"
+                );
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
+/// F-817-R10-03: the observer + thresholds actually DISTINGUISH the
+/// pre-fix algorithm. A faithful in-test replica of the old growth
+/// read (File::take + read_to_end, the R8 shape) on a REAL 100000B
+/// blob produces a coexisting footprint ABOVE the granted budget that
+/// this suite asserts — so a regression back to growth-based reading
+/// turns these gates red, while the current exact-capacity read stays
+/// green (covered by the sweep's 100000 size).
+#[test]
+fn cte_resources_allocator_gate_sensitivity() {
+    use ac_artifact_probe::codec::ChunkKind;
+    use ac_artifact_probe::store::PutRequest;
+    use auto_cte_contract::{CteRequestIdentityV1, CTE_FROZEN_LAYER};
+
+    let root = tempfile::tempdir().unwrap();
+    let st = auto_cte_probe::store::CteStore::open(root.path(), "r10s").unwrap();
+    let identity = CteRequestIdentityV1 {
+        module: "main".into(),
+        package: "r10s".into(),
+        callee: "sens".into(),
+        args_canonical: "i32:1".into(),
+        query_algo: "r10s".into(),
+        caps: vec![],
+        engine: auto_cte_probe::av_driver::current_engine(),
+        manifest_fp: "r10s".into(),
+    };
+    let payload_len = 100_000usize;
+    st.raw()
+        .put_artifact(PutRequest {
+            layer: CTE_FROZEN_LAYER,
+            key: auto_cte_probe::store::envelope_key(&identity),
+            kind: ChunkKind::LayoutData,
+            payload: vec![0x11u8; payload_len],
+            edges: Vec::new(),
+            project: Some("r10s".into()),
+        })
+        .expect("plant");
+    let (framed, _) = auto_cte_probe::store::probe_frozen_size(&st, &identity)
+        .expect("probe")
+        .expect("present");
+    // Locate the blob file.
+    let mut blobs: Vec<std::path::PathBuf> = Vec::new();
+    fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        if let Ok(rd) = std::fs::read_dir(dir) {
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(&p, out);
+                } else {
+                    out.push(p);
+                }
+            }
+        }
+    }
+    walk(&root.path().join("blocks"), &mut blobs);
+    let blob = blobs
+        .iter()
+        .find(|p| std::fs::metadata(p).map(|m| m.len()).ok() == Some(framed as u64))
+        .expect("blob")
+        .clone();
+
+    // The OLD algorithm's shape: File::take(cap) + read_to_end (growth),
+    // then the payload copy — measured with the same window API.
+    begin_window();
+    let old_bytes = {
+        use std::io::Read as _;
+        let mut f = std::fs::File::open(&blob).unwrap();
+        let mut buf = Vec::new();
+        (&mut f)
+            .take(framed)
+            .read_to_end(&mut buf)
+            .expect("old read");
+        let payload_copy = buf[48..].to_vec();
+        (buf.capacity(), payload_copy)
+    };
+    let (old_single, old_live) = window_readout();
+    // The granted budget the sweep asserts for this size:
+    // frame + copy = 2*framed - 48 (+ the same incidental margin).
+    let granted = (2 * framed - 48) as usize + 2048;
+    assert!(
+        old_live > granted || old_single > framed as usize + 2048,
+        "the sensitivity control MUST flag the old algorithm here: old_live={old_live} old_single={old_single} granted={granted}"
+    );
+    // And the CURRENT loader on the same blob stays within the grant
+    // (cross-checked against the sweep's 100000 case).
+    begin_window();
+    let loaded = auto_cte_probe::store::load_frozen_payload_bounded(&st, &identity, framed)
+        .expect("load")
+        .expect("present");
+    let (new_single, new_live) = window_readout();
+    assert_eq!(loaded.len(), payload_len);
+    assert!(new_single <= framed as usize + 2048);
+    assert!(new_live <= granted, "current read within grant: {new_live}");
+    let _ = old_bytes;
 }

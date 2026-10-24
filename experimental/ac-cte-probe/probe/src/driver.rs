@@ -672,9 +672,25 @@ impl CteDriver {
                                     }
                                     budget.record_alloc("frozen-frame", payload.len() as u64 + 48);
                                     budget.record_alloc("frozen-payload", payload.len() as u64);
+                                    // F-817-R10-01: the decode grant comes
+                                    // from the ZERO-ALLOCATION structural
+                                    // audit (the real container population),
+                                    // NOT a multiple of the payload — serde's
+                                    // container growth is unanchored by
+                                    // payload length (a short-string array
+                                    // decoded to a 12MiB single allocation
+                                    // against a 2x grant). Malformed or
+                                    // over-deep JSON is rejected HERE,
+                                    // before from_slice runs.
+                                    let audited = match store::audit_envelope_budget(&payload) {
+                                        Ok(v) => v,
+                                        Err(e) => {
+                                            return CteStepOutcome::diag(&e, cache_verdict, obs)
+                                        }
+                                    };
                                     if let Err(m) = budget.reserve(
                                         crate::observe::Partition::Hot,
-                                        payload_len.saturating_mul(2),
+                                        audited,
                                         "restored envelope decode",
                                     ) {
                                         let e = CteAdmissionError::new(
@@ -687,10 +703,7 @@ impl CteDriver {
                                         store::decode_envelope(&payload, &identity)
                                     }) {
                                         Ok(env) => {
-                                            budget.record_alloc(
-                                                "restore-decode",
-                                                payload_len.saturating_mul(2),
-                                            );
+                                            budget.record_alloc("restore-decode", audited);
                                             budget.release(
                                                 crate::observe::Partition::Staging,
                                                 framed_len,
@@ -702,7 +715,7 @@ impl CteDriver {
                                                         as u64,
                                                 ),
                                             );
-                                            (Some(env), payload_len.saturating_mul(2))
+                                            (Some(env), audited)
                                         }
                                         Err(e) => {
                                             return CteStepOutcome::diag(&e, cache_verdict, obs)
