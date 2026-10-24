@@ -7,7 +7,7 @@ plan_revision: 8
 author: [Codex]
 created_at: 2026-10-24
 updated_at: 2026-10-24
-current_step: 24
+current_step: 26
 total_steps: 26
 depends_on: [PLAN-839]
 supersedes_spec_components:
@@ -48,7 +48,7 @@ affects: [auto-graphics, authoring-experimental, user-behavior-api, language-sdk
 | T-13 [x] | work | 性能实路径诊断与资源机制修复，原输入/阈值/断言保留；定向实测和机制反控；AC13 |
 | T-14 [x] | work | 同提交定向 check/fmt、关闭表、SD 提案、提交冻结；AC14 |
 | T-15 [x] | review | 核验 AC11..14 与原支持面，绑定 SHA；AC15 |
-| T-16 [ ] | merge | 审查后 bare cargo t 与必要触面，master 落地、主检出批量三档、规范/台账/收据/最终归档清理；AC16 |
+| T-16 [x] | merge | 审查后 bare cargo t 与必要触面，master 落地、主检出批量三档、规范/台账/收据/最终归档清理；AC16 |
 
 新增验证：V11=默认/tests 与 book-feature 定向 no-run 编译；V12=test-cases on 的 CTE+同族 adapter 定向执行与实际 ID；V13=814 选择面映射复用、各档清单与删除 ID 负控；V14=原 census 与 30 样本真实 IPC 门、原边界控制；V15=逐 AC/SD 冻结复审；V16=review 后 merge 门与主检出完整批量。修复/复审均不运行 whole-tier；先完成全部修复再提交复审。
 
@@ -275,7 +275,7 @@ final review后merge冻结提交统一跑完整locked driver/AGP test+build、�
 | T-07 | [✅] work | T-06 | 新behavior-check/aggregate/实际GPU反控、仓外Move/Patrol与source文件修改 | V-07/09同runner/无重编译/搬迁/OS全正反/partial/原生恢复关闭，无环境gap；AC-05, AC-06, AC-08 |
 | T-08 | [✅] work | T-07 | source/独立consumer/owner/计量，README/new research/user-behavior-handoff.md及树内Spec proposal | [x] F-840-R1-03修复：Spec SD01..05和8个canonical目标版本/hash核对通过；源码299/SDK681/两锁原样及定向独立consumer通过，完整合入档仍pending。 原关闭条件：V-01/08/10、全work case/定向check/fmt完成，精确API/例子/merge矩阵可用，不跑完整merge档；AC-01, AC-07, AC-08 |
 | T-09 | [✅] review | T-08 | 同树冻结code/Plan r2/Spec/真实双示例，主检出独立review附件 | [x] review-r2：三项finding关闭，原10case/行为12/实际Host恢复1/独立相邻8及Spec5ID/8目标通过，受影响AC与复用边界核实；AC-09 pass，完整merge门pending |
-| T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出知识/ledger/archive/guard | AC-10实际门/落点/沉淀/清理/到期，改代码先受影响复审再重冻，不提前交付 |
+| T-10 | [✅] merge | T-09 pass | 冻结完整门→autographics-dev；主检出知识/ledger/archive/guard | AC-10实际门/落点/沉淀/清理/到期，改代码先受影响复审再重冻，不提前交付 |
 
 ## 9. 复审记录
 
@@ -421,3 +421,6 @@ SD-P4-01：language-sdk/project状态锁竞争分类/有界重试及原降级语
 
 
 2026-10-24 r8完整批量PASS：主检出53298cd27单实例tf6291/6291、tt5717/5717、tb5316/5316全绿，原FFI布局/文件锁计数/SSE超时均在完整池通过；源树、六锁、依赖守卫及既有报告字节恢复通过。last-batch835→840，详batch-r3/triage.md与phase4/complete-gates.json.txt。所有原支持面保留，原失败/反例/无效fixture证据保留；未豁免新红或缩档。规范ledger81及代码已落地，当前归档文档准备提交；T-10/T-16仅剩最终guard清理，故计数暂留24/26，须实际完成清理后才关闭，不提前冒称清理完成。
+
+
+2026-10-24 r8最终关闭：archived/delivered26/26，T-10/T-16已在实际收尾后关闭。归档/全部owned证据与批量收据已提交c0705306371d4c2c399f9040577be17aa52d3fcf；随后两个工作树分别fresh guard clean后安全移除，plan-840-dev已删除，原autographics-dev8b62与codex/plan-840-sdk932保留。组目录中的非Git独立消费/原生复现资产保留，未递归删除组目录。最终收据phase4/merge-r8/receipt.md、cleanup.json.txt及complete-gates.json.txt；既有主检出无关WIP与报告原字节保留。未新建计划、未缩原支持面，完整合入门与主检出完整批量全部通过。
