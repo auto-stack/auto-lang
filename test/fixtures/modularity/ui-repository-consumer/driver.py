@@ -714,10 +714,53 @@ FAILURE_SHAPES = [
     ("FLR-6", "foreign-dir-no-delete", "陌生目录/外来同级字节不删不覆盖（792 V03d/h）"),
 ]
 
+# 收据绑定（T-07 起）：发行/失败族从执行载体收据读取实际结果——
+# scripts/ui-repository-distribution.py（DST-1..4）与 792 generated-ui-consumer
+# driver 收据（DST-5 + FLR-1..4,6；其 V01..V05 结果映射见 792_RECEIPT_MAP）。
+DISTRIBUTION_RECEIPT_REL = "../../../../../scratch-ui-repo-distribution/distribution-receipt.json"
+D792_RECEIPT_REL = "../../../../../scratch-consumer/driver-receipt.json"
+D792_RECEIPT_MAP = {
+    "DST-5": ["V05a-tool-fresh-locked-build", "V05b-tool-relocated-locked-build",
+              "V05c-tool-describe", "V05e-tool-generate-real"],
+    "FLR-1": ["V03e-redelivery-failure-preserves-old", "V03e-redelivery-after-restore"],
+    "FLR-2": ["V03c-incompatible-pin-red"],
+    "FLR-3": ["V03b-missing-patch-red"],
+    "FLR-4": ["V03a-eqlen-tamper-red", "V03a-corrupt-hash-red",
+              "V03a-missing-resource-red", "V03a-unlisted-resource-red"],
+    "FLR-6": ["V03d-foreign-dir-rejected", "V03h-foreign-staging-sibling-preserved",
+              "V03h-foreign-fixed-backup-sibling-preserved"],
+}
+
+
+def _load_bound_receipt(rel: str) -> dict | None:
+    path = (HERE / rel).resolve()
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
 
 def run_distribution(ctx: dict, phases: dict, ledger: Ledger) -> None:
     phase = ctx["phase"]
+    bound = _load_bound_receipt(DISTRIBUTION_RECEIPT_REL) if phase == "source-switched" else None
+    bound792 = _load_bound_receipt(D792_RECEIPT_REL) if phase == "source-switched" else None
     for shape_id, name, oracle in DISTRIBUTION_SHAPES:
+        if bound is not None:
+            step = next((s for s in bound.get("steps", []) if s["step"].startswith(shape_id)), None)
+            if step is not None:
+                ledger.add(shape_id, "pass" if step["ok"] else "fail",
+                           f"[{name}] 收据绑定：{step['detail']}（{step['elapsed_s']}s，"
+                           f"源 {bound.get('sources', {}).get('ui', '?')[:9]}）")
+                continue
+        if shape_id == "DST-5" and bound792 is not None:
+            results = {r["case"]: r["ok"] for r in bound792.get("results", [])}
+            mapped = [(c, results.get(c)) for c in D792_RECEIPT_MAP[shape_id]]
+            all_ok = mapped and all(ok for _, ok in mapped)
+            ledger.add(shape_id, "pass" if all_ok else "fail",
+                       f"[{name}] 792 收据绑定（V05 工具+资产随包真实构建/外部消费）：{mapped}")
+            continue
         ledger.add(shape_id, "pending",
                    f"[{name}] {oracle}——接口冻结；执行 phase=source-switched（T-07，"
                    f"当前={phase}）；现行同构控制 generated-ui-consumer/driver.py（815-A）")
@@ -725,7 +768,15 @@ def run_distribution(ctx: dict, phases: dict, ledger: Ledger) -> None:
 
 def run_failure(ctx: dict, phases: dict, ledger: Ledger) -> None:
     phase = ctx["phase"]
+    bound792 = _load_bound_receipt(D792_RECEIPT_REL) if phase == "source-switched" else None
     for shape_id, name, oracle in FAILURE_SHAPES:
+        if bound792 is not None and shape_id in D792_RECEIPT_MAP:
+            results = {r["case"]: r["ok"] for r in bound792.get("results", [])}
+            mapped = [(c, results.get(c)) for c in D792_RECEIPT_MAP[shape_id]]
+            all_ok = mapped and all(ok for _, ok in mapped)
+            ledger.add(shape_id, "pass" if all_ok else "fail",
+                       f"[{name}] 792 收据绑定（负控确定性红+恢复复绿）：{mapped}")
+            continue
         ledger.add(shape_id, "pending",
                    f"[{name}] {oracle}——接口冻结；执行 T-07/T-08（当前 phase={phase}）；"
                    "现行同构控制 792 driver V03 + scripts/legacy-preservation.py recover-drill")
@@ -789,8 +840,21 @@ def cmd_selftest() -> int:
     import tempfile
 
     base = Path(tempfile.mkdtemp(prefix="ui-repo-fixture-selftest-"))
-    real_lang = Repo("lang", HERE.parents[3])
     problems: list[str] = []
+    # 合成 pre-migration 语言仓（五包成员 + 仅内部互引——合法对照基线；
+    # T-06 切源后真语言仓已无五包，不再可作 S1/S4 对照）。
+    synth_lang = base / "synth-lang"
+    _make_workspace(synth_lang, ["crates/*"])
+    for pkg in ("auto-ui-dialect", "auto-ui-compiler", "auto-ui-runtime",
+                "auto-ui-tools", "shell-pack"):
+        deps = {"auto-ui-dialect": None,
+                "auto-ui-compiler": {"auto-ui-dialect": "../auto-ui-dialect"},
+                "auto-ui-runtime": {"auto-ui-compiler": "../auto-ui-compiler"},
+                "auto-ui-tools": {"auto-ui-runtime": "../auto-ui-runtime"},
+                "shell-pack": {"auto-ui-runtime": "../auto-ui-runtime"}}[pkg]
+        _make_pkg(synth_lang / "crates" / pkg, pkg, deps)
+    pre_lang = Repo("lang", synth_lang)
+    real_lang = Repo("lang", HERE.parents[3])
     try:
         # ---- S1：T-04 走私守卫（真语言仓 + 合成 UI 仓受控突变）----
         stubs = base / "stubs"
@@ -811,7 +875,7 @@ def cmd_selftest() -> int:
                   {"auto-man": "../../../stubs/auto-man"})
         # vendoring：UI 仓成员自称 auto-man-core → P4a 红
         _make_pkg(s1_ui / "crates" / "vendored", "auto-man-core")
-        repos_s1 = {"lang": real_lang, "ui": Repo("ui", s1_ui),
+        repos_s1 = {"lang": pre_lang, "ui": Repo("ui", s1_ui),
                     "down": Repo("down", base / "absent-down")}
         ledger = _run_family("source", repos_s1, "pre-migration")
         got = _ledger_map(ledger)
@@ -890,11 +954,19 @@ def cmd_selftest() -> int:
                 "shell-pack": {"auto-ui-runtime": "../auto-ui-runtime"},
             }[pkg]
             _make_pkg(s4_ui / "crates" / pkg, pkg, deps)
-        phase_s4 = detect_phase(real_lang, Repo("ui", s4_ui),
+        # 窗口态配对语言仓（同组兄弟：五包权威在位 + 跨根布线目标 crate stub）
+        s4_lang = s4 / "auto-lang"
+        _make_workspace(s4_lang, ["crates/*"])
+        for pkg in ("auto-ui-dialect", "auto-ui-compiler", "auto-ui-runtime",
+                    "auto-ui-tools", "shell-pack",
+                    "auto-parser-api", "auto-lang-core", "auto-man-core"):
+            _make_pkg(s4_lang / "crates" / pkg, pkg)
+        s4_lang_repo = Repo("lang", s4_lang)
+        phase_s4 = detect_phase(s4_lang_repo, Repo("ui", s4_ui),
                                 json.loads(PHASES_PATH.read_text(encoding="utf-8"))["migrating_packages"])
         _expect(phase_s4 == "import-window", "S4 判别=import-window（lang+ui 双侧五包）", problems)
         ledger = _run_family("source",
-                             {"lang": real_lang, "ui": Repo("ui", s4_ui),
+                             {"lang": s4_lang_repo, "ui": Repo("ui", s4_ui),
                               "down": Repo("down", base / "absent-down")},
                              "import-window")
         got = _ledger_map(ledger)
@@ -911,7 +983,7 @@ def cmd_selftest() -> int:
         _make_pkg(s4_ui / "crates" / "smuggler", "smuggler",
                   {"auto-man-core": "../../../auto-lang/crates/auto-man-core"})
         ledger = _run_family("source",
-                             {"lang": real_lang, "ui": Repo("ui", s4_ui),
+                             {"lang": s4_lang_repo, "ui": Repo("ui", s4_ui),
                               "down": Repo("down", base / "absent-down")},
                              "import-window")
         got = _ledger_map(ledger)

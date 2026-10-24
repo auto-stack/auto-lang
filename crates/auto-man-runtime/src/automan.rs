@@ -598,7 +598,17 @@ impl Automan {
     fn gen_request_run(
         &self,
     ) -> AutoResult<auto_project_model::generation_request::GenerationRequest> {
-        self.gen_request_as(auto_project_model::generation_request::RequestMode::Run)
+        let mut req =
+            self.gen_request_as(auto_project_model::generation_request::RequestMode::Run)?;
+        // PLAN-831 T-07：815 诚实门（run-without-output-root）要求 run 请求
+        // 携带交付锚点。run 的真实布局由 project_root 推导（gen/、
+        // rust-workspace/ 均落工程内），故 output_root=工程根是真实语义值——
+        // 816-T05-R1 清除 generate 侧字段塞用后，run 侧此前隐式依赖旧二进制
+        // 无门禁才可跑（master 源级预存缺陷，本轮暴露并修复）。
+        if req.output_root.is_none() {
+            req.output_root = Some(self.root_dir.clone());
+        }
+        Ok(req)
     }
 
     fn gen_request_as(
