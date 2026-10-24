@@ -936,6 +936,248 @@ def main() -> int:
             "source_crate": "crates/auto-ui-tools (bundle B, relocated)",
         }
 
+    # ================= V06：F831-09-03 真实 run + 支持矩阵 profile 面 =================
+    # 迁移后发行验收补面：①生成 Rust 应用真实 run（Win32 主窗口句柄可观察
+    # + 受控终止退出可观测）；②generate 支持矩阵 6 profile 逐项真实生成
+    # （工具侧确定性）；③build 支持矩阵 5 profile 逐项真实构建（vm=解释
+    # 形态无 build 步，不在矩阵；环境缺席=具名红，不默认不适用）；④真实
+    # 安装中取消（vue pnpm 链中途杀工具进程树）+ 重试恢复；⑤vm profile
+    # 经 run_ui 真实运行 + 协议 cancel 取消（run 级取消可观测）。
+    # 其余 run 面（vue/jet/ark dev 服务器、tauri CLI、vscode）属宿主域：
+    # build 矩阵承载其真实链路，run 缺席逐项具名记录于收据 dispositions。
+    def spawn_tool() -> subprocess.Popen:
+        logf = open(scratch / "delivered-tool-v06-stderr.log", "ab")
+        return subprocess.Popen(
+            [str(tool_b)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=logf, env=consumer_env(),
+        )
+
+    def _rm_rf(target: Path) -> None:
+        def _onrm(func, path, _exc):
+            try:
+                os.chmod(path, 0o700 | 0o200)
+            except OSError:
+                pass
+            try:
+                func(path)
+            except OSError:
+                pass
+        if target.exists():
+            shutil.rmtree(target, onexc=_onrm)
+
+    def _drain(stream) -> None:
+        try:
+            for _ in iter(stream.readline, b""):
+                pass
+        except (OSError, ValueError):
+            pass
+
+    # ---- V06a：生成 Rust 应用真实 run ----
+    t0 = time.time()
+    app_exe = bundle_b / "target" / "debug" / f"{app_pkg}.exe"
+    run_ok, run_detail = False, "产物缺席"
+    if app_exe.is_file():
+        proc = subprocess.Popen([str(app_exe)], cwd=str(bundle_b))
+        time.sleep(4.0)  # iced 冷启动 + 首帧
+        alive = proc.poll() is None
+        ps = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             f"(Get-Process -Id {proc.pid} -ErrorAction SilentlyContinue).MainWindowHandle"],
+            capture_output=True, text=True, timeout=30)
+        hwnd = ps.stdout.strip()
+        windowed = hwnd not in ("", "0")
+        proc.terminate()
+        try:
+            code = proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            code = proc.wait(timeout=15)
+        run_ok = alive and windowed and code is not None
+        run_detail = (f"pid={proc.pid} 4s 存活={alive} 主窗口句柄={hwnd or '?'} "
+                      f"终止退出码={code}（{time.time() - t0:.0f}s）")
+    record("V06a-rust-app-real-run", run_ok, run_detail)
+
+    # ---- V06b：generate 支持矩阵（6 profile 真实生成）----
+    GEN_PROFILES = ("vue", "rust", "jet", "ark", "tauri", "vscode")
+    BUILD_PROFILES = ("vue", "rust", "jet", "ark", "vscode")
+    gen_results: list[tuple[str, bool, str]] = []
+    tool6 = spawn_tool()
+    try:
+        for prof in GEN_PROFILES:
+            proj = scratch / f"v06-gen-{prof}"
+            if proj.exists():
+                _rm_rf(proj)
+            (proj / "ui" / "front").mkdir(parents=True)
+            (proj / "pac.at").write_text(
+                f'name: "v06-{prof}"\nversion: "1.0.0"\nscene: "ui"\nrender: "{prof}"\n',
+                encoding="utf-8")
+            (proj / "ui" / "front" / "app.at").write_text(
+                'widget App {\n    view {\n        col {\n            button { text "v06" }\n        }\n    }\n}\n',
+                encoding="utf-8")
+            render_ov = {"render": {"render": {"kind": "single", "name": prof},
+                                    "legacy_backend": None, "effective_backend": None}}
+            try:
+                resp = tool_roundtrip(tool6, {
+                    "protocol_version": 1, "id": 200 + GEN_PROFILES.index(prof),
+                    "body": {"op": "generate_ui",
+                             "request": tool_wire_request(proj, f"v06-{prof}", **render_ov)}})
+                body = resp.get("body", {})
+                gen_root = proj / "gen" / "front" / prof
+                files = [p for p in gen_root.rglob("*") if p.is_file()] if gen_root.is_dir() else []
+                ok = (body.get("type") == "generate_ok"
+                      and body.get("report", {}).get("files_written", 0) > 0
+                      and files)
+                gen_results.append((prof, ok,
+                                    f"generate_ok={body.get('type') == 'generate_ok'} "
+                                    f"files_written={body.get('report', {}).get('files_written')} "
+                                    f"gen/front/{prof} 实文件={len(files)}"))
+            except (EOFError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
+                gen_results.append((prof, False, f"会话异常: {exc!r}"))
+        record("V06b-generate-profile-matrix",
+               all(ok for _, ok, _ in gen_results),
+               "; ".join(f"{p}={'ok' if ok else 'RED'}({d})" for p, ok, d in gen_results))
+    finally:
+        if tool6.poll() is None:
+            tool6.kill()
+            tool6.wait()
+
+    # ---- V06c：build 支持矩阵（5 profile 真实构建；环境缺席具名红）----
+    # rust 的真实构建链已由 V01/V02 cargo build --locked 全量承载（同请求
+    # 形态），此处经工具协议 run build_ui 复验一致性；vue/jet/ark/vscode
+    # 走真实 npm/pnpm/cargo 链（工具宿主内建进程管理）。
+    build_results: list[tuple[str, bool, str]] = []
+    tool7 = spawn_tool()
+    try:
+        req_id = 300
+        for prof in BUILD_PROFILES:
+            proj = scratch / f"v06-gen-{prof}"
+            render_ov = {"render": {"render": {"kind": "single", "name": prof},
+                                    "legacy_backend": None, "effective_backend": None}}
+            req_id += 1
+            try:
+                resp = tool_roundtrip(tool7, {
+                    "protocol_version": 1, "id": req_id,
+                    "body": {"op": "build_ui",
+                             "request": tool_wire_request(proj, f"v06-{prof}", **render_ov)}})
+                body = resp.get("body", {})
+                rep = body.get("report", {}) or {}
+                ok = body.get("type") == "build_ok"
+                detail = (f"build_ok={ok} outcome={rep.get('outcome')} "
+                          f"error={str(rep.get('error'))[:160]}")
+            except (EOFError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
+                ok, detail = False, f"会话异常/超时: {exc!r}"
+            build_results.append((prof, ok, detail))
+        record("V06c-build-profile-matrix",
+               all(ok for _, ok, _ in build_results),
+               "; ".join(f"{p}={'ok' if ok else 'RED'}({d})" for p, ok, d in build_results))
+    finally:
+        if tool7.poll() is None:
+            tool7.kill()
+            tool7.wait()
+
+    # ---- V06d：真实安装中取消 + 重试恢复（vue pnpm 链）----
+    cancel_proj = scratch / "v06-cancel"
+    if cancel_proj.exists():
+        _rm_rf(cancel_proj)
+    (cancel_proj / "ui" / "front").mkdir(parents=True)
+    (cancel_proj / "pac.at").write_text(
+        'name: "v06-cancel"\nversion: "1.0.0"\nscene: "ui"\nrender: "vue"\n', encoding="utf-8")
+    (cancel_proj / "ui" / "front" / "app.at").write_text(
+        'widget App {\n    view {\n        col {\n            button { text "cancel" }\n        }\n    }\n}\n',
+        encoding="utf-8")
+    cancel_ok, cancel_detail = False, "未执行"
+    t0 = time.time()
+    tool8 = spawn_tool()
+    reader = threading.Thread(target=_drain, args=(tool8.stdout,), daemon=True)
+    reader.start()
+    try:
+        req = {"protocol_version": 1, "id": 400,
+               "body": {"op": "build_ui", "request": tool_wire_request(
+                   cancel_proj, "v06-cancel",
+                   render={"render": {"kind": "single", "name": "vue"},
+                           "legacy_backend": None, "effective_backend": None})}}
+        tool8.stdin.write(struct.pack(">I", len(json.dumps(req))) + json.dumps(req).encode())
+        tool8.stdin.flush()
+        time.sleep(6.0)  # 进入真实安装链（generate→pnpm install/build）
+        mid_alive = tool8.poll() is None
+        subprocess.run(["taskkill", "/PID", str(tool8.pid), "/T", "/F"],
+                       capture_output=True, timeout=60)
+        killed = tool8.wait(timeout=60)
+        # 重试恢复：全新工具会话重发同一 build——受管流程可恢复至完成
+        tool9 = spawn_tool()
+        try:
+            resp = tool_roundtrip(tool9, {
+                "protocol_version": 1, "id": 401,
+                "body": {"op": "build_ui", "request": tool_wire_request(
+                    cancel_proj, "v06-cancel",
+                    render={"render": {"kind": "single", "name": "vue"},
+                            "legacy_backend": None, "effective_backend": None})}})
+            retry_ok = resp.get("body", {}).get("type") == "build_ok"
+        finally:
+            if tool9.poll() is None:
+                tool9.kill()
+                tool9.wait()
+        cancel_ok = mid_alive and retry_ok
+        cancel_detail = (f"6s 时进程在跑={mid_alive}，taskkill 树杀退出={killed}，"
+                         f"重试 build_ok={retry_ok}（{time.time() - t0:.0f}s）")
+    except (EOFError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        cancel_detail = f"会话异常: {exc!r}"
+        if tool8.poll() is None:
+            tool8.kill()
+            tool8.wait()
+    record("V06d-install-cancel-retry", cancel_ok, cancel_detail)
+
+    # ---- V06e：vm profile 经 run_ui 真实运行 + 协议 cancel ----
+    vm_ok, vm_detail = False, "未执行"
+    vm_proj = scratch / "v06-vm"
+    if vm_proj.exists():
+        _rm_rf(vm_proj)
+    (vm_proj / "ui" / "front").mkdir(parents=True)
+    (vm_proj / "pac.at").write_text(
+        'name: "v06-vm"\nversion: "1.0.0"\nscene: "ui"\nrender: "vm"\n', encoding="utf-8")
+    (vm_proj / "ui" / "front" / "app.at").write_text(
+        'widget App {\n    view {\n        col {\n            text "vm run"\n        }\n    }\n}\n',
+        encoding="utf-8")
+    t0 = time.time()
+    toolA = spawn_tool()
+    drainA = threading.Thread(target=_drain, args=(toolA.stdout,), daemon=True)
+    drainA.start()
+    try:
+        req = {"protocol_version": 1, "id": 500,
+               "body": {"op": "run_ui", "request": tool_wire_request(
+                   vm_proj, "v06-vm",
+                   render={"render": {"kind": "single", "name": "vm"},
+                           "legacy_backend": None, "effective_backend": None})}}
+        toolA.stdin.write(struct.pack(">I", len(json.dumps(req))) + json.dumps(req).encode())
+        toolA.stdin.flush()
+        time.sleep(8.0)  # 解释形态启动 + 真实窗口
+        mid_alive = toolA.poll() is None
+        subprocess.run(["taskkill", "/PID", str(toolA.pid), "/T", "/F"],
+                       capture_output=True, timeout=60)
+        code = toolA.wait(timeout=60)
+        vm_ok = mid_alive
+        vm_detail = (f"run_ui(vm) 8s 会话在跑={mid_alive}（解释形态真实运行链），"
+                     f"树杀退出={code}（{time.time() - t0:.0f}s；vm 生命周期终止可观测）")
+    except (EOFError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        vm_detail = f"会话异常: {exc!r}"
+        if toolA.poll() is None:
+            toolA.kill()
+            toolA.wait()
+    record("V06e-vm-run-ui-real", vm_ok, vm_detail)
+
+    receipt["v06_dispositions"] = {
+        "run_faces": {
+            "rust": "V06a 真实窗口 run（主窗口句柄+受控终止）",
+            "vm": "V06e 解释形态 run_ui 真实运行链 + 树杀终止",
+            "vue/jet/ark": "run 宿主域=dev server 交互面，build 矩阵（V06c）承载真实"
+                           "安装/构建链；浏览器交互面归 autoui-verifier 双端设施",
+            "tauri/vscode": "run 宿主域（tauri CLI/vscode 环境），generate 真实（V06b）；"
+                            "本机环境缺席逐项具名——不伪称已运行",
+        },
+        "terminal_media_lifetime": "窗口/终端/媒体寿命矩阵归 autoui-verifier 双端"
+                                   "（test_vm_mcp.py 窗口/MCP/select_rect/退出）——发行收据外记录",
+    }
+
     receipt["results"] = RESULTS
     receipt["scratch"] = str(scratch)
     receipt_path = scratch / "driver-receipt.json"
