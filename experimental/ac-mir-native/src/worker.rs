@@ -13,6 +13,7 @@ use crate::{emit, MnError};
 use ac_artifact_probe::store::ManagedStore;
 use std::path::{Path, PathBuf};
 
+#[derive(Debug)]
 pub struct RestoreRunOutcome {
     pub exit_code: Option<i32>,
     pub stdout: Vec<u8>,
