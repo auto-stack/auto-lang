@@ -1,14 +1,24 @@
 [package]
 name = "ac-syntax-core-adapter"
-version.workspace = true
-edition.workspace = true
-publish.workspace = true
+# PLAN-818 sibling-workspace fix: literal fields instead of `.workspace`
+# inheritance. Values are IDENTICAL to experimental/ac-syntax's
+# [workspace.package]; inheritance resolves against the ac-syntax root
+# only when this crate is built from within its own workspace tree — a
+# sibling workspace (experimental/ac-mir-native) consuming
+# experimental/ac-av-probe by path drives cargo to resolve the
+# inheritance against the outer auto-lang root, which never defined
+# these fields. Literals are semantics-preserving for ac-syntax's own
+# builds (same values) and unblock any sibling consumer. Routed to the
+# ac-syntax owner as a delivered-face defect note (KNOWN-DEBT).
+version = "0.1.0"
+edition = "2021"
+publish = false
 
 [dependencies]
-ac-syntax-rt = { workspace = true }
-ac-syntax-grammar = { workspace = true }
-auto-ac-prototype = { workspace = true }
-ac-artifact-probe = { workspace = true }
+ac-syntax-rt = { path = "../../runtime" }
+ac-syntax-grammar = { path = "../../grammar" }
+auto-ac-prototype = { path = "../../../ac-core" }
+ac-artifact-probe = { path = "../../../ac-artifact-probe" }
 
 [dev-dependencies]
 ac-syntax-artifact-adapter = { path = "../artifacts" }

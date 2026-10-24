@@ -1,13 +1,15 @@
 [package]
 name = "ac-syntax-artifact-adapter"
-version.workspace = true
-edition.workspace = true
-publish.workspace = true
+# PLAN-818 sibling-workspace fix (see adapters/core/Cargo.toml): literal
+# fields; values identical to this workspace's [workspace.package].
+version = "0.1.0"
+edition = "2021"
+publish = false
 
 [dependencies]
-ac-syntax-rt = { workspace = true }
-ac-syntax-grammar = { workspace = true }
-ac-artifact-probe = { workspace = true }
-serde = { workspace = true }
+ac-syntax-rt = { path = "../../runtime" }
+ac-syntax-grammar = { path = "../../grammar" }
+ac-artifact-probe = { path = "../../../ac-artifact-probe" }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-blake3 = { workspace = true }
+blake3 = "1.5"

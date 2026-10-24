@@ -6,6 +6,7 @@ publish = false
 description = "PLAN-818: shared CheckedMir -> per-function COFF -> multi-obj PE, unit cache and the native parity loop"
 
 [workspace]
+resolver = "2"
 
 [dependencies]
 auto-ac-prototype = { path = "../ac-core" }
