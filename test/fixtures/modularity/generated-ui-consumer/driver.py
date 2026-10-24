@@ -1084,18 +1084,27 @@ def main() -> int:
             tool6.wait()
 
     # ---- V06c：build 支持矩阵（5 profile 全真实尝试；required=vue/rust/vscode）----
-    # 合同修订（Plan r3，用户 2026-10-24 裁定"正式修订验收合同"）+ R3 判据
-    # 收口（review-r3 build-matrix 反例）：jet/ark 真实构建面自 AC-03/V-03
-    # 移出转后续环境门控渠道，但移出的只是"缺环境的真实构建验证"——三类
-    # 状态在判据中显式区分：①completed（含非必需面成功）=通过；②env_gated
-    # （失败且错误文本含工具链缺席标记，仅限非必需面 jet/ark）=获准延期，
-    # 逐项记录不阻塞；③real_fail（在场执行后的真实编译/协议/会话失败——
-    # 无环境缺席标记，或发生在必需面）=传播红，不得吞掉（review-r3 五控制：
-    # jet Kotlin 编译错/ark ArkTS 编译错必须红，缺环境 9009/wrapper 缺席
-    # 必须绿，required 失败必须红）。五 profile 全部真实尝试逐项记录；
-    # rust 构建链另由 V01/V02 cargo build --locked 全量承载。
+    # 合同修订（Plan r3，用户 2026-10-24 裁定"正式修订验收合同"）+ R3/R4 判据
+    # 收口：三类状态显式区分——①completed=通过；②env_gated（获准延期）=仅限
+    # 非必需面 jet/ark 且失败文本命中**当前 producer 的具名工具链缺席模板**
+    # （jet=gradle 缺席：9009=Windows 命令未找到退出码/wrapper 生成失败提示；
+    # ark=hvigorw wrapper 文件缺席原文——jet.rs:930/1191、ark.rs:763 模板）；
+    # ③real_fail=其余一切失败（编译错/协议错/会话异常/未知错误）传播红。
+    # review-r4 反例根修：泛化 "not found" 子串对整个 error 文本匹配会把
+    # "wrapper 已执行、exit 1" 的真实失败因项目路径中的无关字节误判为环境
+    # 延期——env 判定只认具名模板，路径/文件名/资源模块缺失/建议命令中的
+    # 通用字串不参与（不做反例黑名单，误差边界=producer 模板原文）。
+    # 五 profile 全部真实尝试逐项记录；rust 构建链另由 V01/V02 cargo build
+    # --locked 全量承载。
     BUILD_REQUIRED_PROFILES = ("vue", "rust", "vscode")
-    BUILD_ENV_ABSENCE_MARKERS = ("9009", "not found", "wrapper not found", "open the project in")
+    BUILD_ENV_ABSENCE_SIGNATURES = {
+        "jet": ("exit code: 9009", "exited 9009",
+                "Failed to generate gradle wrapper",
+                "Please install Gradle or Android Studio",
+                "Gradle not found."),
+        "ark": ("Hvigor wrapper not found",
+                "open the project in DevEco Studio to build (no build was executed)"),
+    }
     build_results: list[tuple[str, bool, bool, str]] = []  # (profile, ok, env_gated, detail)
     tool7 = spawn_tool()
     try:
@@ -1121,8 +1130,9 @@ def main() -> int:
                 detail = f"会话异常/超时: {exc!r}"
                 build_results.append((prof, ok, False, detail))
                 continue
+            signatures = BUILD_ENV_ABSENCE_SIGNATURES.get(prof, ())
             env_gated = (not ok) and prof not in BUILD_REQUIRED_PROFILES and any(
-                marker in err_text for marker in BUILD_ENV_ABSENCE_MARKERS)
+                sig in err_text for sig in signatures)
             if ok:
                 detail = "outcome=completed（真实构建链完成）"
             elif env_gated:
@@ -1130,7 +1140,7 @@ def main() -> int:
             elif prof in BUILD_REQUIRED_PROFILES:
                 detail = f"outcome={outcome} error={err_text}"
             else:
-                detail = (f"outcome={outcome}【真实失败·传播红：非环境缺席的执行失败】{err_text}")
+                detail = (f"outcome={outcome}【真实失败·传播红：未命中工具链缺席模板】{err_text}")
             build_results.append((prof, ok, env_gated, detail))
         required_ok = all(ok for p, ok, _, _ in build_results
                           if p in BUILD_REQUIRED_PROFILES)
