@@ -26,3 +26,11 @@ base64 = "0.22"
 [[bin]]
 name = "mn-worker"
 path = "src/bin/mn-worker.rs"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }

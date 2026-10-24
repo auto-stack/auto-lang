@@ -1,8 +1,7 @@
-//! Request observation: stage spans (wall ms) and named counters — the
-//! T-02 trace skeleton. Memory peak sampling lands with the T-05
-//! resources tier; the stage contract (every request records prep/
-//! frontend/MIR/cache/codegen/link/run windows) is wired here from the
-//! first case on.
+//! Request observation: stage spans (wall ms), named counters, and the
+//! managed-data charge ledger (T-05). The stage contract (every request
+//! records prep/frontend/MIR/cache/codegen/link/run windows) is wired here
+//! from the first case on; memory peaks live in `resources.rs`.
 
 use std::collections::BTreeMap;
 use std::time::Instant;
@@ -11,6 +10,8 @@ use std::time::Instant;
 pub struct Obs {
     pub spans: BTreeMap<String, u128>,
     pub counters: BTreeMap<String, u64>,
+    /// Managed-data partitions charged over this request (T-05, §11).
+    pub ledger: crate::resources::ManagedLedger,
 }
 
 impl Obs {

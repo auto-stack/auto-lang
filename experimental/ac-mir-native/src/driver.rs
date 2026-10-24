@@ -8,6 +8,7 @@ use crate::cache::{self, CoffMeta, LinkManifest, LinkUnitEntry};
 use crate::config::*;
 use crate::link_driver::{self, ObjectInput};
 use crate::observe::Obs;
+use crate::resources::Partition;
 use crate::{emit, MnError};
 use ac_artifact_probe::store::ManagedStore;
 use auto_ac_prototype::source::compile_scalar_source;
@@ -21,6 +22,15 @@ pub struct MnDriver {
     /// to lower a unit aborts — a "hit" that secretly recompiled cannot
     /// pass as a hit.
     pub forbid_codegen: bool,
+    /// Current publication per (project, owner, entry): publishing a new
+    /// manifest revision auto-roots it (783 soft root on a project-tagged
+    /// put) and the SUPERSEDED revision's soft root is dropped right after
+    /// (ordered publication, PLAN-787 R3-03) — the store's live set is the
+    /// current publications, not every historical revision. Unit COFFs are
+    /// cache entries (put WITHOUT a project tag): they stay live through
+    /// the manifest `required` edges, so watermark GC can reclaim stale
+    /// revisions without touching the current closure.
+    last_publication: std::collections::HashMap<(String, String, String), String>,
 }
 
 pub struct MnRequest {
@@ -42,6 +52,7 @@ impl MnDriver {
             store: None,
             project: None,
             forbid_codegen: false,
+            last_publication: std::collections::HashMap::new(),
         }
     }
 
@@ -52,6 +63,7 @@ impl MnDriver {
             ),
             project: Some(project.to_string()),
             forbid_codegen: false,
+            last_publication: std::collections::HashMap::new(),
         })
     }
 
@@ -154,15 +166,23 @@ impl MnDriver {
                 .map_err(|e| MnError::Backend(format!("unit split: {e}")))
         })?;
         obs.counter("mir_units_split", units.len() as u64);
+        // The units stay resident for the whole request: their structural
+        // heap estimate is the MIR/symbol-hot partition charge (T-05 §11).
+        for u in &units {
+            obs.ledger
+                .charge(Partition::MirSymbol, u.heap_estimate() as u64);
+        }
 
         // ---- per-unit: A09' lookup → hit(admit) | miss(codegen+persist) --
         let mut objects: Vec<ObjectInput> = Vec::with_capacity(units.len());
         let mut entries: Vec<LinkUnitEntry> = Vec::with_capacity(units.len());
         let mut emitted_total = 0usize;
         for unit in &units {
-            let meta = obs.span("unit_fp", |_| {
-                CoffMeta::for_unit(unit, cache::unit_fp(unit))
-            })?;
+            // The fingerprint render is transient codec staging.
+            let fp = obs
+                .ledger
+                .with_charge(Partition::Staging, 4096, |_| cache::unit_fp(unit));
+            let meta = obs.span("unit_fp", |_| CoffMeta::for_unit(unit, fp))?;
             let entry_row: Option<LinkUnitEntry>;
             let bytes: Vec<u8>;
             match self.store.as_ref() {
@@ -170,6 +190,9 @@ impl MnDriver {
                     match obs.span("cache_lookup", |_| cache::get_unit_coff(store, &meta))? {
                         Some(b) => {
                             obs.counter("cache_hit_coff", 1);
+                            // Restored object bytes: I/O read buffers held
+                            // through the link (T-05 §11 partition).
+                            obs.ledger.charge(Partition::Io, b.len() as u64);
                             // The manifest binds the concrete artifact id.
                             let id = store
                                 .get_artifact(COFF_LAYER.id, &cache::coff_unit_key(&meta))
@@ -202,12 +225,26 @@ impl MnDriver {
                                 emit::emit_unit_coff(unit)
                             })?;
                             emitted_total += obj.bytes.len();
-                            let (id, extra) = obs.span("coff_persist", |_| {
-                                cache::put_unit_coff(
-                                    store,
-                                    self.project.as_deref(),
-                                    &meta,
-                                    &obj.bytes,
+                            // Emitted object bytes held for the link:
+                            // lowering/codec staging (T-05 §11).
+                            obs.ledger
+                                .charge(Partition::Staging, obj.bytes.len() as u64);
+                            let (id, extra) = obs.span("coff_persist", |o| {
+                                o.ledger.with_charge(
+                                    Partition::Io,
+                                    obj.bytes.len() as u64 + 512,
+                                    |_| {
+                                        // Unit COFFs are CACHE entries, not
+                                        // publications: no project tag (a
+                                        // tagged put would auto-soft-root
+                                        // them and pin every revision).
+                                        cache::put_unit_coff(
+                                            store,
+                                            None,
+                                            &meta,
+                                            &obj.bytes,
+                                        )
+                                    },
                                 )
                             })?;
                             obs.counter("coff_objects_persisted", 1);
@@ -235,6 +272,7 @@ impl MnDriver {
                         emit::emit_unit_coff(unit)
                     })?;
                     emitted_total += obj.bytes.len();
+                    obs.ledger.charge(Partition::Staging, obj.bytes.len() as u64);
                     entry_row = None;
                     bytes = obj.bytes;
                 }
@@ -286,6 +324,9 @@ impl MnDriver {
             kernel32_sha: k32_sha,
             trace_lib_sha,
         };
+        // Manifest render: index/codec staging for the closure record.
+        obs.ledger
+            .charge(Partition::Staging, manifest.render().len() as u64);
         let fp = manifest.fingerprint();
         let mut manifest_artifact_id = None;
         if let Some(store) = &self.store {
@@ -293,6 +334,20 @@ impl MnDriver {
                 o.counter("link_manifests_persisted", 1);
                 cache::put_link_manifest(store, self.project.as_deref(), &manifest)
             })?;
+            // Ordered publication (787 R3-03): the new revision is rooted
+            // by its put; the superseded revision's soft root drops now.
+            // The current closure stays live via the manifest `required`
+            // edges; stale revisions become GC-reclaimable.
+            if let Some(project) = self.project.as_deref() {
+                let key = (
+                    project.to_string(),
+                    manifest.owner.module.clone(),
+                    manifest.entry.clone(),
+                );
+                if let Some(prev) = self.last_publication.insert(key, id.clone()) {
+                    let _ = store.remove_root(project, "soft", &prev);
+                }
+            }
             manifest_artifact_id = Some(id);
         }
 
@@ -301,6 +356,7 @@ impl MnDriver {
             o.counter("codegen_emit_wrappers", 1);
             emit::emit_wrapper_coff(&entry_meta.symbol)
         })?;
+        obs.ledger.charge(Partition::Staging, wrapper.len() as u64);
         let run = obs.span("link_run", |o| {
             o.counter("link_invocations", 1);
             o.counter("run_invocations", 1);
@@ -314,6 +370,13 @@ impl MnDriver {
             )
         })?;
         obs.counter("mn_runs", 1);
+        // Ledger peaks enter the observable trace (T-05 evidence).
+        let peaks = obs.ledger.peaks();
+        let peak_total = obs.ledger.peak_total();
+        for (i, name) in crate::resources::PARTITION_NAMES.iter().enumerate() {
+            obs.counter(&format!("ledger_peak_{name}"), peaks[i] as u64);
+        }
+        obs.counter("ledger_peak_total", peak_total as u64);
         Ok((
             run.exit_code,
             run.stdout,

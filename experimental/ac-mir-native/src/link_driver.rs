@@ -103,10 +103,13 @@ pub fn file_identity(p: &Path) -> Result<String, MnError> {
     Ok(h)
 }
 
-/// Link identities: (lld sha, sdk tag, kernel32 sha).
+/// Link identities: (lld sha, sdk tag, kernel32 sha). Tool DISCOVERY
+/// (rustc sysroot / registry walks — subprocess-priced) is memoized per
+/// process for the non-override path; env overrides are re-read on every
+/// call (test seams), and content binding still goes through
+/// `file_identity`, which re-hashes on any (path, len) change.
 pub fn link_identities() -> Result<(String, String, String), MnError> {
-    let lld = find_rust_lld().map_err(|d| MnError::Infra(d.message.clone()))?;
-    let sdk = find_sdk_um_dir().map_err(|d| MnError::Infra(d.message.clone()))?;
+    let (lld, sdk) = located_tools()?;
     let lld_sha = file_identity(&lld)?;
     let kernel32 = sdk.join("kernel32.lib");
     let k32_sha = file_identity(&kernel32)?;
@@ -117,6 +120,35 @@ pub fn link_identities() -> Result<(String, String, String), MnError> {
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| sdk.display().to_string());
     Ok((lld_sha, sdk_tag, k32_sha))
+}
+
+/// Resolve (rust-lld, SDK um dir): env overrides first (per call — the
+/// sleeping-linker/timeout seams must stay injectable), then the
+/// process-memoized default discovery.
+fn located_tools() -> Result<(std::path::PathBuf, std::path::PathBuf), MnError> {
+    fn memoized_default() -> Result<(std::path::PathBuf, std::path::PathBuf), MnError> {
+        use std::sync::OnceLock;
+        static MEMO: OnceLock<Result<(std::path::PathBuf, std::path::PathBuf), String>> =
+            OnceLock::new();
+        MEMO.get_or_init(|| {
+            let lld = find_rust_lld().map_err(|d| d.message.clone())?;
+            let sdk = find_sdk_um_dir().map_err(|d| d.message.clone())?;
+            Ok((lld, sdk))
+        })
+        .clone()
+        .map_err(MnError::Infra)
+    }
+    let lld = match std::env::var("AC741_RUST_LLD") {
+        Ok(p) if std::path::Path::new(&p).is_file() => std::path::PathBuf::from(p),
+        _ => memoized_default()?.0,
+    };
+    let sdk = match std::env::var("AC741_SDK_UM_LIB") {
+        Ok(d) if std::path::Path::new(&d).join("kernel32.lib").is_file() => {
+            std::path::PathBuf::from(d)
+        }
+        _ => memoized_default()?.1,
+    };
+    Ok((lld, sdk))
 }
 
 /// Link the closure into a staged PE, publish it transactionally over any
@@ -179,8 +211,7 @@ pub fn link_and_run(
         err
     };
 
-    let lld = find_rust_lld().map_err(|d| MnError::Infra(d.message.clone()))?;
-    let sdk = find_sdk_um_dir().map_err(|d| MnError::Infra(d.message.clone()))?;
+    let (lld, sdk) = located_tools()?;
     let tmp_exe = workdir.join(format!(".tmp-mn8-exe-{tag}"));
     owned.push(tmp_exe.clone());
     let tmp_receipt = workdir.join(format!(".tmp-mn8-link-{tag}.txt"));
@@ -274,17 +305,16 @@ pub fn link_and_run(
     owned.retain(|p| p != &tmp_exe);
     // Place the receipt; on failure roll the exe back to the old output.
     if let Err(e) = std::fs::rename(&tmp_receipt, &receipt_path) {
-        let mut rollback_note = String::new();
         // Roll the just-placed exe back to the backup (or remove it when
         // there was no old output) so the previous artifacts survive.
-        if had_old {
+        let rollback_note = if had_old {
             let _ = std::fs::rename(&backup, &exe_path);
             owned.retain(|p| p != &backup);
-            rollback_note = "; old output restored".to_string();
+            "; old output restored"
         } else {
             let _ = std::fs::remove_file(&exe_path);
-            rollback_note = "; new output removed (no previous output)".to_string();
-        }
+            "; new output removed (no previous output)"
+        };
         return Err(fail(
             MnError::Infra(format!("publish receipt: {e}{rollback_note}")),
             owned,

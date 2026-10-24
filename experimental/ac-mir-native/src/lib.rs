@@ -17,7 +17,9 @@ pub mod fingerprint;
 pub mod link_driver;
 pub mod lower;
 pub mod observe;
+pub mod resources;
 pub mod symbols;
+pub mod workload;
 pub mod worker;
 
 /// Error taxonomy of the MIR-native backend (contract-decision §7.3).
