@@ -1,0 +1,20 @@
+# PLAN-831 T-09/F831-09-02 双 source 负控——同名包经两条 path 同时进入
+# 依赖图必须被 cargo 拒绝（V-01 单源不变量的解析级 oracle）。
+#
+# 正常依赖真实 UI 仓的 auto-ui-dialect，同时经改名键引入第二个同名包
+# （vendor-stub/auto-ui-dialect——故意只保留包名/版本的极小占位，内容
+# 无关：拒绝发生在包解析层）。期望：cargo metadata/check **非零失败**，
+# 错误指向 auto-ui-dialect 重复。作为负控由驱动以"期望失败"方式执行；
+# 本 crate 永远不应构建成功。
+
+[package]
+name = "plan831-compile-probe-dual"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+auto-ui-dialect = { path = "../../../../../../auto-ui/crates/auto-ui-dialect" }
+dialect-shadow = { package = "auto-ui-dialect", path = "vendor-stub/auto-ui-dialect" }

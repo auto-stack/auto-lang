@@ -1,0 +1,43 @@
+# PLAN-831 T-09/F831-09-02 编译探针——旧公开 API 实编 + 类型单源身份。
+#
+# 角色：外部消费者视角，对 compat-touchpoints.toml 冻结的 16 条
+# `auto_lang::` 旧路径做**真实编译**（类型/构造/pub 字段/回调/fn-item），
+# 并以三 feature 组合（default=full / core-only / core+显式 UI）证明
+# Core/default/UI 组合实编不退化；跨 SDK/UI 的轻数据类型传递与
+# nominal 类型身份（同一 auto-lang-core/auto-val 单源）在 main.rs 运行
+# 断言。双 source 负控见 ../compile-probe-dual（同名包双路径必须拒绝）。
+#
+# 独立解析单元（空 [workspace]，根 exclude 双保险）。门禁入口（经
+# scripts/ui-repository-fixture.py --compile-probe 或直接）：
+#   cargo run  --manifest-path ...（default=lang-full+ui-face，运行时断言）
+#   cargo check --no-default-features --features lang-core
+#   cargo check --no-default-features --features lang-core,ui-face
+
+[package]
+name = "plan831-compile-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[features]
+default = ["lang-full", "ui-face", "iced-face"]
+# auto-lang 全默认（with-file-history + ui-iced 重后端组合）
+lang-full = ["dep:auto-lang", "auto-lang/default"]
+# no-default 组合：auto-lang 仅核心面（旧 C4 合同 no-UI 缺席语义）
+lang-core = ["dep:auto-lang"]
+# 显式 UI 组合：ui 文法/runtime 面 + ui-dialog（host_adapters 唯一成员
+# dialog 的单门控）——不依赖 auto-lang default 的重后端
+ui-face = ["auto-lang/ui", "auto-ui-compiler/ui", "auto-ui-runtime/ui", "auto-ui-runtime/ui-dialog"]
+# 旧路径面的 iced 门子集：auto_lang::{has_ui_keywords} 等转发与
+# auto_lang::ui::i18n_lookup（ui-interpreter 门，随 ui-iced 激活）在
+# `ui` 门下不可得——探针按真实 feature 条件性分面（门名与迁移前同名保持）
+iced-face = ["auto-lang/ui-iced"]
+
+[dependencies]
+auto-lang = { path = "../../../../../crates/auto-lang", default-features = false, optional = true }
+auto-lang-core = { path = "../../../../../crates/auto-lang-core" }
+auto-val = { path = "../../../../../crates/auto-val" }
+auto-ui-compiler = { path = "../../../../../../auto-ui/crates/auto-ui-compiler", default-features = false, optional = true }
+auto-ui-runtime = { path = "../../../../../../auto-ui/crates/auto-ui-runtime", default-features = false, optional = true }

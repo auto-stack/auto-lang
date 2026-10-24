@@ -1,0 +1,7 @@
+# 双 source 负控占位：包名/版本与真实 auto-ui-dialect 相同（解析层重复
+# 检测的触发条件）；无源码内容——拒绝发生在依赖解析，内容不参与。
+[package]
+name = "auto-ui-dialect"
+version = "0.1.0"
+edition = "2021"
+publish = false

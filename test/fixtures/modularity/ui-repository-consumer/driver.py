@@ -11,7 +11,8 @@ migration-phases.json 的 successor_execution 以最终来源完善执行。
                 UI 仓 vendoring 走私守卫、autodown 跨仓边台账。
   type          V-02 兼容/声明：旧 auto_lang 面 touchpoint 锚点钉住 +
                 C2 声明符号单源（exactly-one）+ feature 名单清点。
-                编译探针（--compile-probe）接口冻结，T-05 起真实执行。
+                编译探针（--compile-probe，F831-09-02 起真实执行：
+                三 feature 组合实编 + 双 source 负控；默认零 cargo）。
   test-id       V-06 测试身份：五包测试 ID 清点（预迁移=源码枚举法，收据
                 显式标注方法与盲区；正典法 cargo -- --list 归 T-06+）+
                 cargo 档位别名表快照。
@@ -601,13 +602,55 @@ def run_type(ctx: dict, phases: dict, ledger: Ledger) -> None:
         except tomllib.TOMLDecodeError as exc:
             ledger.add("TYP-F1", "fail", f"feature 清点 TOML 解析失败: {exc}")
 
-    # ---- 编译探针：接口冻结，T-05 起执行 ----
+    # ---- 编译探针（F831-09-02）：--compile-probe 时真实执行，否则接口冻结记 pending ----
     probe_items = [face["probe"] for face in tp.get("compat_face", [])]
     ctx.setdefault("inventories", {})["compile_probe_uses"] = sorted(set(probe_items))
-    requested = "（--compile-probe 已请求，仍记 pending：以最终源执行归 T-05）" if ctx.get("compile_probe") else ""
-    ledger.add("TYP-PROBE", "pending",
-               f"编译探针接口冻结（{len(set(probe_items))} 条 use 路径，由 touchpoint 表派生）；"
-               f"执行归 T-05 定向 V-02{requested}")
+    if not ctx.get("compile_probe"):
+        ledger.add("TYP-PROBE", "pending",
+                   f"编译探针接口冻结（{len(set(probe_items))} 条 use 路径，由 touchpoint 表派生）；"
+                   "默认零 cargo——实编（三 feature 组合 + 双 source 负控）须 --compile-probe")
+        return
+
+    # 实编：compile-probe/ 三 feature 组合（A=default 全量含运行断言；
+    # B=core-only；C=core+显式 UI）+ compile-probe-dual/ 同名包双路径负控。
+    # 组合语义与 feature 条件性分面（iced/interpreter 门子集）见探针 Cargo.toml。
+    probe_dir = HERE / "compile-probe"
+    combos = [
+        ("A:default+run", ["cargo", "run", "--quiet"]),
+        ("B:core-only", ["cargo", "check", "--quiet", "--no-default-features",
+                         "--features", "lang-core"]),
+        ("C:core+explicit-ui", ["cargo", "check", "--quiet", "--no-default-features",
+                                "--features", "lang-core,ui-face"]),
+    ]
+    combo_results: list[str] = []
+    combo_tails: list[str] = []
+    combos_ok = True
+    for combo_name, cmd in combos:
+        proc = subprocess.run(cmd, cwd=str(probe_dir), capture_output=True,
+                              text=True, encoding="utf-8", errors="replace")
+        ok = proc.returncode == 0
+        combos_ok = combos_ok and ok
+        combo_results.append(f"{combo_name}={'pass' if ok else 'RED(exit ' + str(proc.returncode) + ')'}")
+        if not ok:
+            tail = [ln for ln in (proc.stderr or "").splitlines() if ln.strip()][-2:]
+            combo_tails.append(f"{combo_name}: " + " / ".join(tail)[:200])
+    dual_dir = HERE / "compile-probe-dual"
+    dual = subprocess.run(
+        ["cargo", "metadata", "--format-version", "1"], cwd=str(dual_dir),
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    dual_rejected = dual.returncode != 0 and "auto-ui-dialect" in (dual.stderr or "")
+    dual_lock = dual_dir / "Cargo.lock"
+    if dual_lock.exists():
+        dual_lock.unlink()  # 负控判定面=解析错误文本；半写锁可再生，不入收据
+    ctx.setdefault("inventories", {})["compile_probe_runs"] = combo_results + [
+        f"dual-source={'rejected' if dual_rejected else 'NOT-REJECTED'}"]
+    ok = combos_ok and dual_rejected
+    detail = (f"编译探针实编 {len(set(probe_items))} 条 use 路径（构造/pub 字段/回调/fn-item/"
+              f"类型传递与单源身份运行断言）：{'；'.join(combo_results)}；"
+              f"双source负控={'同名包双路径被解析层拒绝' if dual_rejected else '未拒绝（RED）'}")
+    if combo_tails:
+        detail += "；失败尾巴: " + " | ".join(combo_tails)
+    ledger.add("TYP-PROBE", "pass" if ok else "fail", detail)
 
 
 # ---------------------------------------------------------------------------
@@ -1045,7 +1088,7 @@ def main() -> int:
                                  "source-switched"])
     parser.add_argument("--output", default=None)
     parser.add_argument("--compile-probe", action="store_true",
-                        help="生成 scratch 编译探针（T-05 起启用；当前记录 pending）")
+                        help="编译探针实编（F831-09-02 起启用：三 feature 组合 + 双 source 负控；默认零 cargo 记 pending）")
     args = parser.parse_args()
 
     if args.family == "selftest":
