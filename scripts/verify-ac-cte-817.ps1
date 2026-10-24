@@ -30,17 +30,26 @@ function Test-Scope([string]$s) {
             Run-Step "workspace cte_schedule_" { cargo test --manifest-path $ws --offline cte_schedule_ 2>&1 | Select-Object -Last 3 }
         }
         "cache" {
-            Run-Step "workspace cte_cache_" { cargo test --manifest-path $ws --offline cte_cache_ 2>&1 | Select-Object -Last 3 }
+            # Binary selection, NOT a name filter (F-817-R12-01): this
+            # family's tests are named cache_* — the old `cte_cache_`
+            # filter matched ZERO tests (vacuous green since T-08).
+            Run-Step "workspace cte_cache_tests" { cargo test --manifest-path $ws --offline --test cte_cache_tests 2>&1 | Select-Object -Last 3 }
         }
         "freeze" {
-            Run-Step "workspace cte_freeze_" { cargo test --manifest-path $ws --offline cte_freeze_ 2>&1 | Select-Object -Last 3 }
+            # Binary selection, NOT a name filter (F-817-R12-01): tests
+            # are named freeze_* — the old `cte_freeze_` filter matched
+            # ZERO tests (vacuous green since T-08).
+            Run-Step "workspace cte_freeze_tests" { cargo test --manifest-path $ws --offline --test cte_freeze_tests 2>&1 | Select-Object -Last 3 }
         }
         "resources" {
-            # SERIAL on purpose: the family's allocator windows
-            # (F-817-R8+ global TrackingAlloc) are process-global —
-            # parallel libtest threads cross-pollute the single/live
-            # readouts and turn passing gates spuriously red.
-            Run-Step "workspace cte_resources_" { cargo test --manifest-path $ws --offline --release cte_resources_ -- --test-threads=1 2>&1 | Select-Object -Last 3 }
+            # FULL family, serial, binary-selected (F-817-R11-01/R12-01):
+            # the allocator windows (R8+ global TrackingAlloc) are
+            # process-global — parallel libtest threads cross-pollute the
+            # single/live readouts; and the scale/GC tests are named
+            # resources_* — the old `cte_resources_` name filter silently
+            # excluded them (6 tests: 32MiB pages/512 revisions/GC
+            # watermark/worker peak/budget/spike/deep-input).
+            Run-Step "workspace cte_resources_tests serial" { cargo test --manifest-path $ws --offline --release --test cte_resources_tests -- --test-threads=1 2>&1 | Select-Object -Last 3 }
         }
         "turnaround" {
             Run-Step "workspace cte_turnaround_" { cargo test --manifest-path $ws --offline cte_turnaround_ 2>&1 | Select-Object -Last 3 }
@@ -64,7 +73,10 @@ function Test-Scope([string]$s) {
         }
         "acceptance" {
             foreach ($s2 in @("first-case","admission","schedule","cache","freeze","snapshot","turnaround","autodown")) { Test-Scope $s2 }
-            Run-Step "workspace full" { cargo test --manifest-path $ws --offline --workspace 2>&1 | Select-String "test result" | Select-Object -Last 12 }
+            # SERIAL (F-817-R12-01): the workspace aggregate includes the
+            # resources binary's process-global allocator windows —
+            # parallel threads inside one binary cross-pollute them.
+            Run-Step "workspace full" { cargo test --manifest-path $ws --offline --workspace -- --test-threads=1 2>&1 | Select-String "test result" | Select-Object -Last 12 }
         }
         "closeout" {
             Run-Step "read-only consumption audit (no edits under consumed crates)" {

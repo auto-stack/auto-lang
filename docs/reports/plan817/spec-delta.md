@@ -80,4 +80,13 @@
 - 证据：AC-11；cte_snapshot_ 13/13（含 115 函数基线 30 修订全阶段/IO 观测与强制重建反控）。
 
 ## 覆盖
-见 [acceptance-matrix.md](acceptance-matrix.md)（V-01..11 → scope/证据/提交）。
+见 [acceptance-matrix.md](acceptance-matrix.md)：V-01..V-12 全量映射（AC/task、
+具名测试入口、Scope、证据状态）于 F-817-R12-01 恢复并更新至当前冻结树
+`4309f49de`——新跑/复用/merge-owned pending 三态逐行区分，V-12 四子 case
+（AC-11/SD-06：cte_snapshot_{production_observation_incremental,
+identity_lanes_do_not_share_cache,dependency_invalidates_and_scopes_recompiles,
+failure_control_edits_and_degrade_counter}）逐项落点；修复轮 R7–R11 历史原文
+保留为矩阵历史节。verify 脚本 cache/freeze/resources scope 接线随本轮修正
+（原 `cte_cache_`/`cte_freeze_` 名过滤各选中 0 测试、`cte_resources_` 漏 6 个
+`resources_*` 规模/GC 测试，T-08 起静默漏跑；现改 `--test` 二进制精确选择、
+resources/acceptance 全量串行，`--list` 计数验证 6/7/18 与其余 scope 6/9/19/11/13）。
