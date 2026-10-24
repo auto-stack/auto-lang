@@ -92,6 +92,123 @@ function Assert-TierOutput(
     }
 }
 
+# The CONTRACT case manifest (F820-R2-02/R4 close): an INDEPENDENT list of
+# the plan's required case ids per tier — NOT generated from the verified
+# object. The `--list` derivation alone cannot detect a required case that
+# was deleted or cfg-excluded (listing and execution would both miss it
+# and the tier would stay green); the contract anchors what MUST exist.
+# A contract name matches a listed id exactly or as its trailing
+# `::<name>` segment, so fully-qualified root ids bind without hardcoding
+# prefixes, and renames stay an explicit manifest edit.
+$TIER_CONTRACT = @{
+    "first-case" = @(
+        "av_data_820_first_case_whole_path",
+        "av_data_820_first_case_native_independent_comparison",
+        "av_data_820_first_case_wire_round_trip",
+        "av_data_820_record_copy_keeps_original",
+        "av_data_820_wide_scalar_bit_exact_roundtrip",
+        "av_data_820_entry_rejects_wrong_kind_and_record",
+        "av_data_820_same_width_owner_mismatch_rejected",
+        "av_data_820_wide_scalar_arith_rejected",
+        "av_data_820_type_cycle_and_empty_record_rejected",
+        "av_data_820_wire_family_isolation",
+        "av_data_820_store_restore_new_process",
+        "av_data_820_worker_memory_envelope_b_line",
+        "av_data_820_worker_peak_sampler_catches_transient"
+    )
+    "semantics" = @(
+        "av_data_820_ctor_evaluates_in_source_order_not_declaration_order",
+        "av_data_820_ctor_source_order_trace_is_ba",
+        "av_data_820_unexecuted_branch_trap_stays_latent",
+        "av_data_820_swap_assignment_reads_before_writes",
+        "av_data_820_nested_field_write_hits_original_root",
+        "av_data_820_ctor_missing_and_duplicate_fields_rejected",
+        "av_data_820_record_slot_uninitialized_read_rejected",
+        "av_data_820_bits_survive_call_chain",
+        "av_data_820_type_equivalence_grid_all_consumption_points",
+        "av_data_820_duplicate_primitive_entries_normalize",
+        "av_data_820_record_field_count_and_path_depth_are_resource",
+        "av_data_820_unit_kind_never_executes",
+        "av_data_820_instruction_contract_round_trip_all_opcodes"
+    )
+    "admission" = @(
+        "av_data_820_type_equivalence_grid_all_consumption_points",
+        "av_data_820_ctor_missing_and_duplicate_fields_rejected",
+        "av_data_820_record_slot_uninitialized_read_rejected",
+        "av_data_820_record_field_count_and_path_depth_are_resource",
+        "av_data_820_unit_kind_never_executes",
+        "av_data_820_wide_scalar_arith_rejected",
+        "av_data_820_type_cycle_and_empty_record_rejected",
+        "av_data_820_entry_rejects_wrong_kind_and_record",
+        "av_data_820_wire_family_isolation"
+    )
+    "resources" = @(
+        "av_data_820_slot_budget_within_cap_control_succeeds",
+        "av_data_820_slot_budget_over_cap_rejects_mid_run",
+        "av_data_820_slot_budget_one_unit_under_rejects",
+        "av_data_820_fault_at_nth_allocation_preserves_prior_state",
+        "av_data_820_cancellation_keeps_peak_accounting",
+        "av_data_820_layout_overflow_real_input_rejected",
+        "av_data_820_layout_work_shares_the_verify_budget"
+    )
+    "memory-envelope" = @(
+        "av_data_820_worker_memory_envelope_b_line",
+        "av_data_820_worker_peak_sampler_catches_transient"
+    )
+    "cache" = @(
+        "av_data_820_cache_changed_types_is_clean_miss_not_stale_reuse",
+        "av_data_820_cache_good_hash_bad_payload_rejected",
+        "av_data_820_data_payload_under_core_envelope_identity_rejected"
+    )
+    "store-restore" = @("av_data_820_store_restore_new_process")
+    "compatibility" = @(
+        "av_data_820_old_consumer_replays_scalar_and_rejects_record_source",
+        "av_data_820_old_manifest_restore_refuses_data_store"
+    )
+    "corpus" = @("ac_av_probe_corpus_executes_green")
+    "v10-negatives" = @(
+        "ac_av_data_probe_wrong_result_oracle_fails",
+        "ac_av_data_probe_wrong_diag_oracle_fails",
+        "ac_av_data_probe_skip_shape_is_not_green",
+        "ac_av_data_probe_worker_faults_are_infra"
+    )
+    "cache-compat" = @(
+        "av_data_820_cache_changed_types_is_clean_miss_not_stale_reuse",
+        "av_data_820_cache_good_hash_bad_payload_rejected",
+        "av_data_820_data_payload_under_core_envelope_identity_rejected",
+        "av_data_820_old_consumer_replays_scalar_and_rejects_record_source",
+        "av_data_820_old_manifest_restore_refuses_data_store"
+    )
+    "incremental-v13" = @(
+        "av_data_820_v13_body_edit_is_function_level",
+        "av_data_820_v13_dependency_changes_invalidate_precisely",
+        "av_data_820_v13_forced_degradations_redden_the_gate",
+        "av_data_820_v13_old_snapshot_survives_for_comparison",
+        "av_data_820_v13_multi_function_edit_is_explicit_non_fast",
+        "av_data_820_v13_failed_edit_installs_nothing",
+        "av_data_820_v13_metering_injection_controls_redden_the_gate"
+    )
+    # "core" is a support tier (the shared core suite) — guarded by the
+    # listing/execution rules only, no plan contract of its own.
+}
+
+# Contract coverage: every contract case must be present in the DERIVED
+# listing (exact id or trailing ::<name> segment). Returns the misses.
+function Get-ContractMisses(
+    [string[]]$listedIds,
+    [string[]]$contract
+) {
+    $misses = @()
+    foreach ($name in $contract) {
+        $covered = $false
+        foreach ($id in $listedIds) {
+            if ($id -eq $name -or $id.EndsWith("::$name")) { $covered = $true; break }
+        }
+        if (-not $covered) { $misses += ("contract case {0} missing from the tier listing (deleted or excluded)" -f $name) }
+    }
+    return $misses
+}
+
 # Run one cargo test selection under the tier guard. The REQUIRED id set
 # is DERIVED from the same selection via `--list` (F820-R2-02/R3): the
 # actual complete id set — fully-qualified on the root workspace, and
@@ -123,6 +240,17 @@ function Run-Tier(
     )
     if ($required.Count -eq 0) {
         Fail "$what listed ZERO tests — a 0-selection tier can never be green"
+    }
+    # Independent contract oracle: the plan's required cases must ALL be
+    # present in the listing — a case deleted or excluded from the binary
+    # disappears from listing AND execution together; only this manifest
+    # anchors it (F820-R2-02/R4).
+    $contract = $TIER_CONTRACT[$what]
+    if ($contract) {
+        $misses = Get-ContractMisses $required $contract
+        if ($misses.Count -gt 0) {
+            Fail ("{0}: {1}" -f $what, ($misses -join "; "))
+        }
     }
     $all = @("test", "--manifest-path", $useManifest) + $cargoArgs + $sel
     Write-Host ("[verify-av-data-820] {0} : cargo {1} [required ids: {2}]" -f `
@@ -160,6 +288,19 @@ test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
     if ((Get-TierViolations $multi $req2).Count -ne 0) {
         Fail "selftest: a clean multi-target run was flagged"
     }
+    # Contract coverage: fully-qualified listing covers the manifest...
+    $listedRoot = @(
+        "tests::ac_av_probe_tests::ac_av_data_probe_wrong_result_oracle_fails",
+        "tests::ac_av_probe_tests::ac_av_data_probe_wrong_diag_oracle_fails"
+    )
+    if ((Get-ContractMisses $listedRoot @("ac_av_data_probe_wrong_result_oracle_fails", "ac_av_data_probe_wrong_diag_oracle_fails")).Count -ne 0) {
+        Fail "selftest: a fully-covered contract listing was flagged"
+    }
+    # ...and a listing that LOST a contract case is caught even though the
+    # execution of what remains is perfectly green (the R4 deletion shape).
+    if ((Get-ContractMisses $listedRoot @("ac_av_data_probe_wrong_result_oracle_fails", "ac_av_data_probe_skip_shape_is_not_green")).Count -eq 0) {
+        Fail "selftest: contract coverage is BLIND to a deleted required case"
+    }
     # Fully-qualified root ids parse identically (the R3 false-miss shape).
     $root = @"
 running 1 test
@@ -186,7 +327,7 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; fini
         if ($v.Count -eq 0) { Fail "selftest: guard is BLIND to shape '$($c.name)'" }
         Write-Host ("[verify-av-data-820] selftest '{0}' caught: {1}" -f $c.name, ($v -join '; '))
     }
-    Write-Host "[verify-av-data-820] GuardSelfTest PASS (3 positive + 7 negative controls)" -ForegroundColor Green
+    Write-Host "[verify-av-data-820] GuardSelfTest PASS (5 positive + 7 negative controls)" -ForegroundColor Green
     exit 0
 }
 

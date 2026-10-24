@@ -244,7 +244,10 @@ fn av_data_820_layout_overflow_real_input_rejected() {
                     name: "a".into(),
                     ty: prev,
                 },
-                MirFieldDef { name: "b".into(), ty: prev },
+                MirFieldDef {
+                    name: "b".into(),
+                    ty: prev,
+                },
             ];
             prev = m.intern_type(MirType::Record(RecordTypeRef {
                 owner_module: "ovf".into(),
@@ -254,14 +257,25 @@ fn av_data_820_layout_overflow_real_input_rejected() {
         }
         // One otherwise-valid function (i32 identity) so the module is a
         // complete admission candidate, not a bare type table.
-        let sig = m.intern_type(MirType::Fn(FnSig { params: vec![ti], result: ti }));
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![ti],
+            result: ti,
+        }));
         m.funcs.push(MirFunction {
             owner: owner("ovf"),
             name: "main".into(),
             sig,
             slots: vec![
-                MirSlot { kind: SlotKind::Param, ty: ti, name: None },
-                MirSlot { kind: SlotKind::Local, ty: ti, name: None },
+                MirSlot {
+                    kind: SlotKind::Param,
+                    ty: ti,
+                    name: None,
+                },
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: ti,
+                    name: None,
+                },
             ],
             blocks: vec![MirBlock {
                 instrs: vec![MirInstr::Copy { dst: 1, src: 0 }],
@@ -287,8 +301,8 @@ fn av_data_820_layout_overflow_real_input_rejected() {
     // layout derivation AND at full MIR admission; the encoded module is
     // equally refused at the ABC gate (the restore path re-verifies).
     let (overflow, deepest) = binary_expansion(62); // deepest = level 61 → 2^64 > u64
-    let err = auto_av_core::layout::compute_layout(&overflow, deepest)
-        .expect_err("2^64 overflows u64");
+    let err =
+        auto_av_core::layout::compute_layout(&overflow, deepest).expect_err("2^64 overflows u64");
     assert_eq!(err.code(), "mir.layout-overflow", "got {err:?}");
     let err = mir_verify::verify_mir(&overflow).expect_err("overflow module rejected");
     match &err {
@@ -297,7 +311,9 @@ fn av_data_820_layout_overflow_real_input_rejected() {
         }
         other => panic!("overflow must be an invalid-layout rejection, got {other:?}"),
     }
-    let wire = auto_av_core::abc::encode_abc(&overflow).expect("encode").to_flat();
+    let wire = auto_av_core::abc::encode_abc(&overflow)
+        .expect("encode")
+        .to_flat();
     let err = abc_verify::verify_abc_bytes(&wire, &overflow.owner)
         .expect_err("ABC admission re-verifies and refuses the overflow module");
     assert!(
@@ -318,14 +334,25 @@ fn av_data_820_layout_work_shares_the_verify_budget() {
     // rejection, never a silent accept. (The negative control builds
     // ~2.1M field defs — expect a ~200MB test-process footprint.)
     fn chain_fn(m: &mut MirModule, ti: TypeIdx) {
-        let sig = m.intern_type(MirType::Fn(FnSig { params: vec![ti], result: ti }));
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![ti],
+            result: ti,
+        }));
         m.funcs.push(MirFunction {
             owner: owner(m.owner.module.as_str()),
             name: "main".into(),
             sig,
             slots: vec![
-                MirSlot { kind: SlotKind::Param, ty: ti, name: None },
-                MirSlot { kind: SlotKind::Local, ty: ti, name: None },
+                MirSlot {
+                    kind: SlotKind::Param,
+                    ty: ti,
+                    name: None,
+                },
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: ti,
+                    name: None,
+                },
             ],
             blocks: vec![MirBlock {
                 instrs: vec![MirInstr::Copy { dst: 1, src: 0 }],
@@ -346,12 +373,15 @@ fn av_data_820_layout_work_shares_the_verify_budget() {
         prev = m.intern_type(MirType::Record(RecordTypeRef {
             owner_module: "chain".into(),
             name: format!("C{k}"),
-            fields: vec![MirFieldDef { name: "p".into(), ty: prev }],
+            fields: vec![MirFieldDef {
+                name: "p".into(),
+                ty: prev,
+            }],
         }));
     }
     chain_fn(&mut m, ti);
-    let checked = mir_verify::verify_mir(&m)
-        .expect("the legal deep graph verifies under the shared budget");
+    let checked =
+        mir_verify::verify_mir(&m).expect("the legal deep graph verifies under the shared budget");
     assert!(
         checked.stats().work_steps < 2_000_000,
         "memoized layout is linear: {} steps",
@@ -370,7 +400,10 @@ fn av_data_820_layout_work_shares_the_verify_budget() {
             prev = m.intern_type(MirType::Record(RecordTypeRef {
                 owner_module: "near".into(),
                 name: format!("N{k}"),
-                fields: vec![MirFieldDef { name: "p".into(), ty: prev }],
+                fields: vec![MirFieldDef {
+                    name: "p".into(),
+                    ty: prev,
+                }],
             }));
         }
         (m, prev)
@@ -401,7 +434,10 @@ fn av_data_820_layout_work_shares_the_verify_budget() {
     let ti = m.intern_type(MirType::I32);
     let mut many: Vec<MirFieldDef> = Vec::with_capacity(1024);
     for i in 0..1024 {
-        many.push(MirFieldDef { name: format!("f{i}"), ty: ti });
+        many.push(MirFieldDef {
+            name: format!("f{i}"),
+            ty: ti,
+        });
     }
     for k in 0..2050u32 {
         m.intern_type(MirType::Record(RecordTypeRef {
