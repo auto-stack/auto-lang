@@ -1084,17 +1084,19 @@ def main() -> int:
             tool6.wait()
 
     # ---- V06c：build 支持矩阵（5 profile 全真实尝试；required=vue/rust/vscode）----
-    # 合同修订（Plan r3，用户 2026-10-24 R2 裁定"正式修订验收合同"）：
-    # jet/ark 真实构建面自 AC-03/V-03 移出，转后续环境门控渠道承载（本机
-    # 实测无 gradle/java/ANDROID_HOME 与 hvigorw/DEVECO，review-r2 在案）。
-    # 本用例语义：五 profile 仍全部真实尝试并逐项记录结果（不静默跳过、
-    # 不默认不适用）；pass 判据=required 集 {vue,rust,vscode} completed；
-    # jet/ark 环境缺席记【环境门控·转后续】，若工具链在场且构建失败仍判
-    # 红（移出合同不豁免真实失败）。rust 构建链另由 V01/V02 cargo build
-    # --locked 全量承载（同请求形态），此处经工具协议复验一致性；
-    # vue/vscode 走真实 npm/pnpm 链（工具宿主内建进程管理）。
+    # 合同修订（Plan r3，用户 2026-10-24 裁定"正式修订验收合同"）+ R3 判据
+    # 收口（review-r3 build-matrix 反例）：jet/ark 真实构建面自 AC-03/V-03
+    # 移出转后续环境门控渠道，但移出的只是"缺环境的真实构建验证"——三类
+    # 状态在判据中显式区分：①completed（含非必需面成功）=通过；②env_gated
+    # （失败且错误文本含工具链缺席标记，仅限非必需面 jet/ark）=获准延期，
+    # 逐项记录不阻塞；③real_fail（在场执行后的真实编译/协议/会话失败——
+    # 无环境缺席标记，或发生在必需面）=传播红，不得吞掉（review-r3 五控制：
+    # jet Kotlin 编译错/ark ArkTS 编译错必须红，缺环境 9009/wrapper 缺席
+    # 必须绿，required 失败必须红）。五 profile 全部真实尝试逐项记录；
+    # rust 构建链另由 V01/V02 cargo build --locked 全量承载。
     BUILD_REQUIRED_PROFILES = ("vue", "rust", "vscode")
-    build_results: list[tuple[str, bool, str]] = []
+    BUILD_ENV_ABSENCE_MARKERS = ("9009", "not found", "wrapper not found", "open the project in")
+    build_results: list[tuple[str, bool, bool, str]] = []  # (profile, ok, env_gated, detail)
     tool7 = spawn_tool()
     try:
         req_id = 300
@@ -1103,6 +1105,7 @@ def main() -> int:
             render_ov = {"render": {"render": {"kind": "single", "name": prof},
                                     "legacy_backend": None, "effective_backend": None}}
             req_id += 1
+            err_text = ""
             try:
                 resp = tool_roundtrip(tool7, {
                     "protocol_version": 1, "id": req_id,
@@ -1113,23 +1116,29 @@ def main() -> int:
                 outcome = rep.get("outcome")
                 err_text = str(rep.get("error"))[:200]
                 ok = body.get("type") == "build_ok" and outcome == "completed"
-                if prof in BUILD_REQUIRED_PROFILES:
-                    detail = (f"outcome={outcome}"
-                              + (f" error={err_text}" if not ok else "（真实构建链完成）"))
-                else:
-                    env_blocked = any(marker in err_text for marker in (
-                        "9009", "not found", "wrapper not found", "open the project in"))
-                    detail = (f"outcome={outcome}"
-                              + (f"【环境门控·转后续（Plan r3 用户裁定）】{err_text}"
-                                 if env_blocked and not ok
-                                 else f" error={err_text}" if not ok else "（真实构建链完成）"))
             except (EOFError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
-                ok, detail = False, f"会话异常/超时: {exc!r}"
-            build_results.append((prof, ok, detail))
-        required_ok = all(ok for p, ok, _ in build_results if p in BUILD_REQUIRED_PROFILES)
+                ok = False
+                detail = f"会话异常/超时: {exc!r}"
+                build_results.append((prof, ok, False, detail))
+                continue
+            env_gated = (not ok) and prof not in BUILD_REQUIRED_PROFILES and any(
+                marker in err_text for marker in BUILD_ENV_ABSENCE_MARKERS)
+            if ok:
+                detail = "outcome=completed（真实构建链完成）"
+            elif env_gated:
+                detail = f"outcome={outcome}【环境门控·转后续（Plan r3 用户裁定）】{err_text}"
+            elif prof in BUILD_REQUIRED_PROFILES:
+                detail = f"outcome={outcome} error={err_text}"
+            else:
+                detail = (f"outcome={outcome}【真实失败·传播红：非环境缺席的执行失败】{err_text}")
+            build_results.append((prof, ok, env_gated, detail))
+        required_ok = all(ok for p, ok, _, _ in build_results
+                          if p in BUILD_REQUIRED_PROFILES)
+        real_failures = [p for p, ok, gated, _ in build_results if not ok and not gated]
         record("V06c-build-profile-matrix",
-               required_ok,
-               "; ".join(f"{p}={'ok' if ok else 'RED'}({d})" for p, ok, d in build_results))
+               required_ok and not real_failures,
+               "; ".join(f"{p}={'ok' if ok else ('env-gated' if gated else 'RED')}"
+                         f"({d})" for p, ok, gated, d in build_results))
     finally:
         if tool7.poll() is None:
             tool7.kill()
@@ -1273,10 +1282,12 @@ def main() -> int:
         "widget App {\n    view {\n        col {\n            text \"vm run\"\n        }\n    }\n}\n",
         encoding="utf-8")
 
-    def _mcp_alive(url: str) -> tuple[bool, str]:
-        """子应用 MCP 端点活性探针：真实监听者对 POST /mcp 有 HTTP 应答
-        （含 JSON-RPC 4xx/5xx 诊断应答——应答本身即监听者存在证明）；
-        连接拒绝/超时=无监听者。只观察，不改子应用状态。"""
+    def _mcp_probe(url: str) -> tuple[str, str]:
+        """子应用 MCP 端点探测三态（R3 判据收口，review-r3 endpoint-timeout
+        反例：仍监听但不回答 HTTP 的端点以超时呈现，不得当作已关闭）：
+        "http"=监听者应答（任意状态码，含 JSON-RPC 4xx/5xx 诊断应答）；
+        "refused"=连接被拒绝（端点确证关闭）；"unknown"=超时/其他探测失败
+        （不可判定——既不证明监听也不证明关闭，不得单独充当任一结论）。"""
         import urllib.error
         import urllib.request
         try:
@@ -1284,11 +1295,18 @@ def main() -> int:
                 url.rstrip("/") + "/mcp", data=b"{}", method="POST",
                 headers={"Content-Type": "application/json"})
             with urllib.request.urlopen(req, timeout=5) as resp:
-                return True, f"HTTP {resp.status}"
+                return "http", f"HTTP {resp.status}"
         except urllib.error.HTTPError as e:
-            return True, f"HTTP {e.code}（JSON-RPC 诊断应答=监听者在）"
-        except Exception as e:  # noqa: BLE001 — URLError/超时/拒绝统一=无监听者
-            return False, repr(e)[:110]
+            return "http", f"HTTP {e.code}（JSON-RPC 诊断应答=监听者在）"
+        except urllib.error.URLError as e:
+            reason = getattr(e, "reason", e)
+            text = repr(reason)
+            if isinstance(reason, ConnectionRefusedError) \
+                    or "10061" in text or "refused" in text.lower() or "积极拒绝" in text:
+                return "refused", text[:110]
+            return "unknown", text[:110]
+        except Exception as e:  # noqa: BLE001 — 超时等探测失败=不可判定
+            return "unknown", repr(e)[:110]
 
     t0 = time.time()
     toolA = spawn_tool()
@@ -1335,10 +1353,11 @@ def main() -> int:
                          f" 终态={finalsA[:1]} 工具存活={toolA.poll() is None}）——仅有启动前"
                          f"进度不能证明 VM 实际运行（R2 progress-only 反例面）")
         else:
-            alive, alive_note = _mcp_alive(launched_url)
-            if not alive:
-                vm_detail = (f"Launched url={launched_url} 但端点探活失败（{alive_note}）"
-                             f"——事件声称与真实监听者不符")
+            liveness_state, liveness_note = _mcp_probe(launched_url)
+            if liveness_state != "http":
+                vm_detail = (f"Launched url={launched_url} 端点探活未获 HTTP 应答"
+                             f"（state={liveness_state}：{liveness_note}）——"
+                             f"子应用服务真实可用未被证实")
             else:
                 tool_send(toolA, {"protocol_version": 1, "id": 501,
                                   "body": {"op": "cancel", "target_id": 500}})
@@ -1357,14 +1376,17 @@ def main() -> int:
                         break
                     time.sleep(0.2)
                 outcome = ((final or {}).get("body", {}).get("report", {}) or {}).get("outcome")
-                # 同端点寿命收口：cancelled 终态后同一 MCP 端点须停止应答
-                #（独立外部观测；≤10s 宽限覆盖树杀迟滞，仍应答=未收口红）。
-                endpoint_closed, closure_note = False, ""
+                # 同端点寿命收口：cancelled 终态后同一 MCP 端点须"确证关闭"
+                #（连接拒绝）。http/unknown（仍监听或不可判定）继续轮询，
+                # 超窗仍未确证关闭=诚实红——review-r3 反例：仍监听但不回答
+                # 的端点超时呈现，不能当关闭判绿（R3 三类：获准延期/真失败/
+                # 未知探测——本处 unknown 属"未知探测"，不得单独成绿）。
+                endpoint_closed, closure_note = False, "未探"
                 if outcome == "cancelled":
                     deadline3 = time.time() + 10.0
                     while time.time() < deadline3:
-                        still, closure_note = _mcp_alive(launched_url)
-                        if not still:
+                        state, closure_note = _mcp_probe(launched_url)
+                        if state == "refused":
                             endpoint_closed = True
                             break
                         time.sleep(0.5)
@@ -1382,13 +1404,14 @@ def main() -> int:
                         if session_ok or toolA.poll() is not None:
                             break
                         time.sleep(0.2)
-                vm_ok = (alive and cancel_ack and outcome == "cancelled"
+                vm_ok = (liveness_state == "http" and cancel_ack and outcome == "cancelled"
                          and endpoint_closed and session_ok)
                 vm_detail = (f"run_ui(vm) 进度={progress_seen[:3]}；Launched={launched_url}"
-                             f"（vm-session MCP 子应用）探活[{alive_note}]；协议cancel回执="
+                             f"（vm-session MCP 子应用）探活[{liveness_note}]；协议cancel回执="
                              f"{cancel_ack}；终态run_ok outcome={outcome}；同端点收口="
-                             f"{endpoint_closed}（{closure_note[:60]}）；cancel后宿主describe"
-                             f"复验={session_ok}（{time.time() - t0:.0f}s）")
+                             f"{endpoint_closed}（state 序列末值：{closure_note[:60]}——仅连接拒"
+                             f"绝计为确证关闭）；cancel后宿主describe复验={session_ok}"
+                             f"（{time.time() - t0:.0f}s）")
     except (EOFError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
         vm_detail = f"会话异常: {exc!r}"
     finally:
