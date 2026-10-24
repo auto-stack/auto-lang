@@ -170,7 +170,10 @@ $TIER_CONTRACT = @{
         "ac_av_data_probe_wrong_result_oracle_fails",
         "ac_av_data_probe_wrong_diag_oracle_fails",
         "ac_av_data_probe_skip_shape_is_not_green",
-        "ac_av_data_probe_worker_faults_are_infra"
+        "ac_av_data_probe_worker_faults_are_infra",
+        "ac_av_data_probe_wrong_bits_oracle_fails",
+        "ac_av_data_probe_wrong_type_tag_oracle_fails",
+        "ac_av_data_probe_unknown_typed_fixture_is_error"
     )
     "cache-compat" = @(
         "av_data_820_cache_changed_types_is_clean_miss_not_stale_reuse",

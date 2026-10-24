@@ -421,6 +421,17 @@ struct OkOut {
     av_core_version: String,
 }
 
+/// PLAN-820 F820-R6-01: the typed-result report of a `typed:<id>` data
+/// run — canonical kind tag + exact raw bits (lowercase hex; i64/u64/f64
+/// 16 digits, f32 8, i32/bool unpadded). The parent compares BOTH against
+/// its own frozen expectation; the worker's word is never the oracle.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TypedOut {
+    kind: String,
+    bits: String,
+}
+
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StepOut {
@@ -428,6 +439,8 @@ struct StepOut {
     outcome: String,
     #[serde(default)]
     value: Option<i32>,
+    #[serde(default)]
+    typed: Option<TypedOut>,
     #[serde(default)]
     trap: Option<String>,
     #[serde(default)]
@@ -727,6 +740,20 @@ pub fn run_check(
 
 /// PLAN-820: the data-recipe entry — same executor/judgement contract,
 /// data-profile pipeline (record source front door in the worker).
+/// PLAN-820 F820-R6-01: the PARENT's frozen av.data-fixture/1 expectation
+/// table — an INDEPENDENT copy of the worker-side fixture truths (tag +
+/// exact raw bits). The typed judge compares against THIS, never against
+/// anything the worker reports as expected.
+const DATA_TYPED_FIXTURES: &[(&str, &str, &str)] = &[
+    ("u64-max", "u64", "ffffffffffffffff"),
+    ("i64-min", "i64", "8000000000000000"),
+    ("fneg-nan", "f64", "fff80000deadbeef"),
+    ("neg-zero", "f64", "8000000000000000"),
+    ("f32-one", "f32", "3f800000"),
+    ("bool-true", "bool", "1"),
+    ("i32-42", "i32", "2a"),
+];
+
 pub fn run_data_check(
     case: &ResolvedCase,
     check: &CheckSpec,
@@ -815,6 +842,25 @@ fn run_check_impl(
             _ => serde_json::json!({ "op": "run" }),
         })
         .collect();
+    // F820-R6-01: a `typed:<id>` entry (data recipe only) selects a frozen
+    // av.data-fixture/1 input; the PARENT validates the id against its OWN
+    // frozen table before any request — an unregistered fixture is a check
+    // error, never a green run.
+    let typed_fixture = if family == RecipeFamily::Data {
+        match av.entry.strip_prefix("typed:") {
+            None => None,
+            Some(id) => match DATA_TYPED_FIXTURES.iter().find(|(fid, _, _)| *fid == id) {
+                Some(_) => Some(id.to_string()),
+                None => {
+                    return Err(format!(
+                        "av.data typed fixture `{id}` is not registered (parent table)"
+                    ))
+                }
+            },
+        }
+    } else {
+        None
+    };
     let mut request = serde_json::json!({
         "recipe": recipe,
         "nonce": nonce,
@@ -824,6 +870,9 @@ fn run_check_impl(
         "store_root": store_root.display().to_string().replace('/', "\\"),
         "steps": steps_json,
     });
+    if let Some(id) = &typed_fixture {
+        request["typed_fixture"] = serde_json::json!(id);
+    }
     if let Some(session) = &av.session {
         request["session"] = serde_json::json!(session);
     }
@@ -948,7 +997,14 @@ fn run_check_impl(
                 break 'admit;
             }
             if want_op == "run" {
-                let expect_hash = fnv1a64_hex(current_source.as_bytes());
+                // A typed run's revision identity is the TYPED ENTRY (the
+                // fixture that actually ran); a source run binds the
+                // current source revision (F820-R6-01).
+                let expect_hash = if typed_fixture.is_some() {
+                    fnv1a64_hex(av.entry.as_bytes())
+                } else {
+                    fnv1a64_hex(current_source.as_bytes())
+                };
                 if got.source_hash != expect_hash {
                     infra_detail = Some(format!(
                         "step {i}: source_hash `{}` does not bind the request's current revision ({})",
@@ -979,7 +1035,72 @@ fn run_check_impl(
     }
 
     let step = step_out.expect("admitted");
-    judge_expectation(&step, oracle, &mut mismatches);
+    if let Some(id) = &typed_fixture {
+        // The typed judge face: tag + exact raw bits against the parent's
+        // frozen expectation — independent of `value` (which cannot carry
+        // wide/bool results) and of anything the worker claims.
+        let (_, want_kind, want_bits) = DATA_TYPED_FIXTURES
+            .iter()
+            .find(|(fid, _, _)| fid == id)
+            .expect("validated above");
+        // Counter-control seam (V-10 wrong-bits / wrong-type-tag): the
+        // test-only sabotage mutates the PARENT's expectation copy so a
+        // real run of a legal fixture must FAIL. Never set in production.
+        let (want_kind, want_bits) =
+            match std::env::var("AV820_TYPED_EXPECT_SABOTAGE").ok().as_deref() {
+                Some("kind") => (
+                    if *want_kind == "i64" { "u64" } else { "i64" },
+                    want_bits.to_string(),
+                ),
+                Some("bits") => {
+                    let mut b = want_bits.to_string();
+                    let last = b.pop().expect("non-empty bits");
+                    b.push(if last == '0' { '1' } else { '0' });
+                    (*want_kind, b)
+                }
+                _ => (*want_kind, want_bits.to_string()),
+            };
+        if step.outcome != "success" {
+            mismatches.push(Mismatch {
+                observation: "completion".into(),
+                kind: "typed-outcome".into(),
+                expected: "success".into(),
+                actual: step_summary(&step),
+                first_diff: None,
+            });
+        }
+        match &step.typed {
+            None => mismatches.push(Mismatch {
+                observation: "typed".into(),
+                kind: "typed-report".into(),
+                expected: format!("{want_kind}:{want_bits}"),
+                actual: "no typed result on the step".into(),
+                first_diff: None,
+            }),
+            Some(t) => {
+                if t.kind != want_kind {
+                    mismatches.push(Mismatch {
+                        observation: "typed".into(),
+                        kind: "typed-tag".into(),
+                        expected: want_kind.to_string(),
+                        actual: t.kind.clone(),
+                        first_diff: None,
+                    });
+                }
+                if t.bits != want_bits {
+                    mismatches.push(Mismatch {
+                        observation: "typed".into(),
+                        kind: "typed-bits".into(),
+                        expected: want_bits.clone(),
+                        actual: t.bits.clone(),
+                        first_diff: None,
+                    });
+                }
+            }
+        }
+    } else {
+        judge_expectation(&step, oracle, &mut mismatches);
+    }
 
     // Receipt (probe-receipt.json in the artifact dir). `request_wall_ms`
     // is the continuous parent-side window from request build to judged
@@ -1080,8 +1201,10 @@ fn judge_expectation(step: &StepOut, oracle: &ResolvedOracle, mismatches: &mut V
                     });
                 }
             } else if expect.exit.is_none() && expect.stdout.is_none() && expect.stderr.is_none() {
-                // success without a value oracle: still require a value present
-                if step.value.is_none() {
+                // success without a value oracle: still require a value
+                // present — via the i32 channel OR the typed report (a
+                // bool/wide data result has no i32 form; F820-R6-01).
+                if step.value.is_none() && step.typed.is_none() {
                     mismatches.push(Mismatch {
                         observation: "exit".into(),
                         kind: "missing".into(),

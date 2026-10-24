@@ -1,0 +1,41 @@
+# PLAN-820 F820-R6-01: the av.data/1 typed-fixture face — frozen
+# av.data-fixture/1 inputs (`typed:<id>` entries; wide scalars have no
+# source syntax) run through the formal recipe's REAL admission chain
+# (data MIR → AVAD → AV). The worker reports the produced value as
+# canonical {kind, bits}; the parent independently compares tag and exact
+# raw bits against its own frozen table (u64::MAX, i64::MIN, -NaN payload,
+# -0.0, f32 1.0, plus the bool/i32 faces the record domain supports).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.data.typed"
+  tags: ["ac-av", "probe", "av-data"]
+  links: ["PLAN-820"]
+  source: { file: "av/data/first_case.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "typed-u64-max", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "typed:u64-max" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } },
+    { id: "typed-i64-min", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "typed:i64-min" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } },
+    { id: "typed-fneg-nan", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "typed:fneg-nan" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } },
+    { id: "typed-neg-zero", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "typed:neg-zero" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } },
+    { id: "typed-f32-one", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "typed:f32-one" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } },
+    { id: "typed-bool-true", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "typed:bool-true" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } },
+    { id: "typed-i32-42", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "typed:i32-42" }, steps: [ { op: "run" } ] },
+      expect: { completion: "success" } }
+  ]
+}
+```

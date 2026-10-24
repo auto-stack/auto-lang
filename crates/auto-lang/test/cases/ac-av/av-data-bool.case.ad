@@ -1,0 +1,24 @@
+# PLAN-820 F820-R6-01: a record-source program whose entry returns BOOL —
+# the r6 finding's exact shape (the i32-only value channel reported
+# success/null and lost the legal result). The canonical typed report now
+# carries {kind:"bool", bits:"1"}; the parent's presence rule accepts it.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.data.bool"
+  tags: ["ac-av", "probe", "av-data"]
+  links: ["PLAN-820"]
+  source: { text: "type P { x int }\nfn main() bool {\n    var p = P { x: 7 }\n    return p.x > 0\n}", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-data-bool", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/data-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success" } }
+  ]
+}
+```

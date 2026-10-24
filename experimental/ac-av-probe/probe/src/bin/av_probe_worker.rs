@@ -305,6 +305,11 @@ fn case_serve() -> ! {
         exit(0)
     };
     let data_recipe = recipe == "ac-av/data-run-v1";
+    // PLAN-820 F820-R6-01: the typed-fixture entry (`av.entry` of the
+    // form `typed:<id>`, validated by the parent against its OWN frozen
+    // table before the request) selects a frozen av.data-fixture/1 input
+    // instead of a record source.
+    let typed_fixture = req["typed_fixture"].as_str().map(|s| s.to_string());
     if recipe != "ac-av/core-run-v1" && !data_recipe {
         eprintln!("unknown recipe {recipe}");
         exit(2);
@@ -427,6 +432,48 @@ fn case_serve() -> ! {
             }
             Some("run") => {
                 if data_recipe {
+                    if let Some(fid) = &typed_fixture {
+                        // F820-R6-01: frozen typed fixture through the REAL
+                        // admission chain; the produced value is reported
+                        // as canonical {kind, bits} — the PARENT compares
+                        // tag and exact raw bits against its own frozen
+                        // expectation (never the worker's word).
+                        match auto_av_probe::typed_fixture::typed_fixture(fid) {
+                            None => {
+                                // The parent validates ids too; an unknown
+                                // id here is a protocol violation.
+                                eprintln!("unknown typed fixture {fid}");
+                                exit(2);
+                            }
+                            Some(f) => {
+                                let started = std::time::Instant::now();
+                                match auto_av_probe::typed_fixture::run_fixture(f)
+                                    .and_then(|v| {
+                                        auto_av_probe::typed_fixture::canonical_typed(&v)
+                                            .map(|(kind, bits)| (kind, bits))
+                                            .ok_or_else(|| {
+                                                "non-scalar fixture result".to_string()
+                                            })
+                                    }) {
+                                    Ok((kind, bits)) => step_outs.push(serde_json::json!({
+                                        "op": "run",
+                                        "outcome": "success",
+                                        "value": null,
+                                        "typed": { "kind": kind, "bits": bits },
+                                        "trap": null,
+                                        "diag": null,
+                                        "source_hash": format!("{:016x}", auto_av_core::contract::fnv1a64(entry.as_bytes())),
+                                        "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+                                    })),
+                                    Err(e) => {
+                                        eprintln!("typed fixture {fid}: {e}");
+                                        exit(2);
+                                    }
+                                }
+                            }
+                        }
+                        continue;
+                    }
                     // PLAN-820: the data-profile pipeline (record source →
                     // data MIR → AVAD → AV) with the same store model; the
                     // first case's oracle is parent-side like the core
@@ -440,11 +487,22 @@ fn case_serve() -> ! {
                         &caps,
                     ) {
                         Ok(r) => {
-                            let (outcome, value, trap, diag) = match &r.av {
+                            let (outcome, value, trap, diag, typed) = match &r.av {
                                 Some(auto_av_core::contract::ExecOutcome::Success {
                                     value,
                                     ..
-                                }) => ("success".to_string(), value.as_i32(), None, None),
+                                }) => {
+                                    // F820-R6-01: the canonical typed report
+                                    // rides EVERY data success — bool/wide
+                                    // results are no longer lost to the
+                                    // i32-only `value` channel (records
+                                    // report no typed face).
+                                    let typed = auto_av_probe::typed_fixture::canonical_typed(
+                                        value,
+                                    )
+                                    .map(|(kind, bits)| serde_json::json!({ "kind": kind, "bits": bits }));
+                                    ("success".to_string(), value.as_i32(), None, None, typed)
+                                }
                                 Some(auto_av_core::contract::ExecOutcome::Trap {
                                     kind, ..
                                 }) => (
@@ -452,18 +510,21 @@ fn case_serve() -> ! {
                                     None,
                                     Some(kind.code().to_string()),
                                     None,
+                                    None,
                                 ),
                                 other => (
                                     "infra".to_string(),
                                     None,
                                     None,
                                     Some(serde_json::json!({ "detail": format!("{:?}", other) })),
+                                    None,
                                 ),
                             };
                             step_outs.push(serde_json::json!({
                                 "op": "run",
                                 "outcome": outcome,
                                 "value": value,
+                                "typed": typed,
                                 "trap": trap,
                                 "diag": diag,
                                 "source_hash": format!("{:016x}", r.snapshot),

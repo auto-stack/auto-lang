@@ -23,4 +23,5 @@ pub mod native_reference;
 pub mod observations;
 pub mod semrefs;
 pub mod session;
+pub mod typed_fixture;
 pub mod worker_restore;

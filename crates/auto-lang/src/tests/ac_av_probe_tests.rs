@@ -619,6 +619,9 @@ fn ac_av_probe_worker_contract_faults_are_infra() {
 /// fake launcher that reproduces the R15 probe shapes.
 #[test]
 fn ac_av_probe_prep_executor_contained_failure_shapes() {
+    // Process-global fault seams must never overlap another av test
+    // (parallel libtest poisons unrelated worker runs otherwise).
+    let _guard = AV_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     fn locate_with(seam_cargo: &str, wall_ms: u64) -> Result<std::path::PathBuf, String> {
         std::env::set_var("AV798_BUILD_CARGO", seam_cargo);
         std::env::set_var("AV798_BUILD_WALL_MS", wall_ms.to_string());
@@ -961,6 +964,164 @@ case {
             assert!(
                 e.contains("not registered"),
                 "the located decode error names the registration, got {e}"
+            );
+        }
+    }
+}
+
+/// F820-R6-01: panic-safe sabotage guard for the typed-expectation
+/// counter-controls — the env var can never leak into another test, even
+/// on a panic between set and clear (Drop runs on unwind).
+struct TypedSabotageGuard;
+impl TypedSabotageGuard {
+    fn new(mode: &'static str) -> Self {
+        std::env::set_var("AV820_TYPED_EXPECT_SABOTAGE", mode);
+        TypedSabotageGuard
+    }
+}
+impl Drop for TypedSabotageGuard {
+    fn drop(&mut self) {
+        std::env::remove_var("AV820_TYPED_EXPECT_SABOTAGE");
+    }
+}
+
+/// F820-R6-01 (V-10 wrong-bits): a LEGAL typed fixture run whose PARENT
+/// expectation has one bit flipped must FAIL the formal verdict — the
+/// typed judge compares exact raw bits, it does not trust the worker.
+#[test]
+fn ac_av_data_probe_wrong_bits_oracle_fails() {
+    let _guard = AV_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let (suite, out) = data_neg_suite(
+        "negbits",
+        r#"# neg case: parent expects one bit flipped off the frozen truth.
+```test-case
+case {
+  schema: "autolang.case/2",
+  id: "neg.av.data.bits",
+  source: { text: "type P { x int }", syntax: "auto", path: "main.at" },
+  entry: { mode: "program" },
+  checks: [
+    { id: "wrong-bits", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/data-run-v1",
+        av: { entry: "typed:u64-max" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success" } }
+  ]
+}
+```
+"#,
+    );
+    let _sabotage = TypedSabotageGuard::new("bits");
+    let report = run_suite(&suite, &out, &Limits::defaults());
+    drop(_sabotage);
+    let report = report.expect("suite runs");
+    assert_eq!(
+        status_of(&report, "wrong-bits"),
+        auto_test_case::report::Status::Fail,
+        "a one-bit-off expectation must be red"
+    );
+    assert!(
+        report
+            .results
+            .iter()
+            .any(|r| r.mismatches.iter().any(|m| m.kind == "typed-bits")),
+        "the mismatch is named typed-bits: {:?}",
+        report
+            .results
+            .iter()
+            .map(|r| &r.mismatches)
+            .collect::<Vec<_>>()
+    );
+}
+
+/// F820-R6-01 (V-10 wrong-type-tag): a LEGAL typed fixture run whose
+/// PARENT expectation swaps the kind tag must FAIL — the tag is judged,
+/// not just the bits.
+#[test]
+fn ac_av_data_probe_wrong_type_tag_oracle_fails() {
+    let _guard = AV_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let (suite, out) = data_neg_suite(
+        "negtag",
+        r#"# neg case: parent expects the wrong kind tag for the fixture.
+```test-case
+case {
+  schema: "autolang.case/2",
+  id: "neg.av.data.tag",
+  source: { text: "type P { x int }", syntax: "auto", path: "main.at" },
+  entry: { mode: "program" },
+  checks: [
+    { id: "wrong-tag", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/data-run-v1",
+        av: { entry: "typed:i64-min" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success" } }
+  ]
+}
+```
+"#,
+    );
+    let _sabotage = TypedSabotageGuard::new("kind");
+    let report = run_suite(&suite, &out, &Limits::defaults());
+    drop(_sabotage);
+    let report = report.expect("suite runs");
+    assert_eq!(
+        status_of(&report, "wrong-tag"),
+        auto_test_case::report::Status::Fail,
+        "a wrong type tag must be red"
+    );
+    assert!(
+        report
+            .results
+            .iter()
+            .any(|r| r.mismatches.iter().any(|m| m.kind == "typed-tag")),
+        "the mismatch is named typed-tag"
+    );
+}
+
+/// F820-R6-01 (wrong tool identity): a `typed:` entry that is not in the
+/// parent's frozen table is a check error — never a green run and never a
+/// worker round-trip.
+#[test]
+fn ac_av_data_probe_unknown_typed_fixture_is_error() {
+    let _guard = AV_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let (suite, out) = data_neg_suite(
+        "negfid",
+        r#"# neg case: an unregistered typed fixture id.
+```test-case
+case {
+  schema: "autolang.case/2",
+  id: "neg.av.data.fid",
+  source: { text: "type P { x int }", syntax: "auto", path: "main.at" },
+  entry: { mode: "program" },
+  checks: [
+    { id: "unknown-fixture", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/data-run-v1",
+        av: { entry: "typed:not-a-fixture" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success" } }
+  ]
+}
+```
+"#,
+    );
+    match run_suite(&suite, &out, &Limits::defaults()) {
+        Ok(report) => {
+            assert_ne!(
+                status_of(&report, "unknown-fixture"),
+                auto_test_case::report::Status::Pass,
+                "an unknown typed fixture is never green"
+            );
+        }
+        Err(e) => {
+            assert!(
+                e.contains("not registered"),
+                "the error names the registration, got {e}"
             );
         }
     }
