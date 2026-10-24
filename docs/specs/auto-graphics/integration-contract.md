@@ -207,3 +207,9 @@ The experiment additionally supports [autographics.behavior/1](behavior-api.md),
 The full inherited driver/AGP16case/dual-game/authoring/resource/hierarchy/Play/native/owner/counter AND actual-content denominators remain required, plus user13case and independent source-consumer gates. No I2/I3/general engine/public production SDK claim, script packaging/persistence, hot reload, FFI/import/async, rotation/scale writer or arbitrary VM heap hard quota is added.
 
 Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md), [affected final review](../../plans/attachments/840/review-r2/review.md), [complete merge receipt](../../plans/attachments/840/merge-r1/receipt.md). Graphics source: autographics-dev. Production I2/I3 remain pending.
+
+## Finite project persistence boundary (PLAN-845)
+
+A locally saved scene4 declares GLB assets and one accepted content-addressed Auto source, with explicit nullable stable actors. This finite binding/persistence supersedes PLAN-840's former script-packaging exclusion, without expanding behavior/1 or changing production integration. [Behavior projects](behavior-project.md) is the current contract for source admission/owners/closure/Run provenance. Root/source loss after acceptance never causes a fallback reread; later Open/Save/Verify still detect bad disk closure. Actual UI project relocation and own-SDK/target consumers complement, rather than replace, all previous games/AGP16/authoring/hierarchy/assets/Play/owner and counter AND content gates. I2/I3 and full engine/installable distribution remain pending.
+
+Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-portable-projects.md), [independent final review](../../plans/attachments/845/review-r8-preparation/review.md), [merge receipt](../../plans/attachments/845/merge-r1/receipt.md). Source: autographics-dev; production I2/I3 pending.

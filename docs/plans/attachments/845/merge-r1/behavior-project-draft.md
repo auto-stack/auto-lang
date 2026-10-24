@@ -18,7 +18,7 @@ are generated at Run and never persisted.
 A project is one scene entry, declared `assets/<sha>.glb` and one declared
 `scripts/<sha>.at`. Original import paths, runtime state and API/bridge overrides
 are not saved. Strict v1/2/3 decode migrates to scene4/behavior:null in memory only;
-source files are rewritten only by explicit Save. Unknown/missing/duplicate JSON
+scene files are rewritten only by explicit Save. Unknown/missing/duplicate JSON
 fields, invalid source identities or actor references reject before consumption.
 
 ## Acceptance, history and ownership

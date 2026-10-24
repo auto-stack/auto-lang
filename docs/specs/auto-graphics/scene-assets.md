@@ -96,3 +96,9 @@ this from leaked runtime owners or repeated model upload. Final Editor close rel
 source payloads; an explicit external mesh pin lasts until its own last drop.
 
 Provenance: [PLAN-839](../../plans/archive/839-autographics-scene-play-mode-and-auto-runtime.md), [independent final R2](../../plans/attachments/839/review-r2/independent/review.md), [affected independent R3](../../plans/attachments/839/review-r3/independent/review.md), [merge receipt](../../plans/attachments/839/merge-r1/receipt.md). Source remains autographics-dev; production I2/I3 pending.
+
+## Scene4 code and GLB closure (PLAN-845)
+
+The existing GLB rules, budgets, root lock, one-entry rename and resource ownership remain. A save Snapshot additionally owns one accepted code payload; both code and GLB install/readback precede scene commit and both are checked before Verify confirms saved state. scripts has its independent8file/2MiB disk quota including reservations/residuals; source payload union has8identity/2MiB memory bounds. Entry cannot overwrite source/blob/locks/reserved paths through Windows aliases, even before an earlier receipt Verify. Postcommit source/GLB failure stays pending, not clean; precommit residuals remain explicit. SaveAs uses accepted bytes, not an import reread. [Behavior projects](behavior-project.md) specifies recovery and scope.
+
+Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-portable-projects.md), [independent final review](../../plans/attachments/845/review-r8-preparation/review.md), [merge receipt](../../plans/attachments/845/merge-r1/receipt.md). Source: autographics-dev; production I2/I3 pending.

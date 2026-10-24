@@ -482,7 +482,7 @@
 | auto-abi | candidate（`autoabi.win-x64.v0.1-candidate`，PLAN-797 | 10 | [auto-abi/project.md](auto-abi/project.md) |
 | auto-mir | experimental | 0 | [auto-mir/project.md](auto-mir/project.md) |
 | auto-av | experimental | 0 | [auto-av/project.md](auto-av/project.md) |
-| auto-graphics | experimental | 0 | [auto-graphics/project.md](auto-graphics/project.md) |
+| auto-graphics | experimental | 1 | [auto-graphics/project.md](auto-graphics/project.md) |
 
 <details><summary>auto-cosmic 模块明细</summary>
 
@@ -531,6 +531,14 @@
 | cache | ABI-O1 对象层：观测依赖闭包 + 候选位置全集适用域 + 代际键 | active |
 | worker | `abiworker/1` 受限执行半体（Job containment、收据化 GC、产物预算） | active |
 | cside | 独立审定的 C 参考 provider/consumer（真实 cl 编译对拍） | active |
+
+</details>
+
+<details><summary>auto-graphics 模块明细</summary>
+
+| 模块 | 职责 | 状态 |
+|---|---|---|
+| behavior-project | 单源码绑定、历史/闭包/来源及可搬迁Run合同 | experimental |
 
 </details>
 

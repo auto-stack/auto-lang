@@ -6,43 +6,35 @@
 > 路径：`experimental/autographics-prototype/`（独立 Cargo workspace，自有 manifest/lock/资产；bin `graphics-probe` / `iced_spike`） | 技术栈：Rust + wgpu 27.0.1 + winit 0.30.13 + iced/iced_wgpu 0.14 + kira 0.9.6 + gltf 1.4.1 + fontdue
 > **代码位置（2026-10-22 用户裁定）**：原型代码在 `autographics-dev` 集成分支（PLAN-829 落点 merge `ab56c32ec`，AGP 子树与复审冻结提交 `ddbde3e62857` 逐字节一致），**不合入 master**——待 814/815/816 系列（及后续）迁移工作全部完成后再议合回 master。master 侧仅沉淀本知识文档。后续 AutoGraphics 计划（830+）沿用同一集成分支承接模式（各自 plan 分支审毕后并入 `autographics-dev`）。
 
-Module identity：实验性 wgpu 图形/游戏研究（AGP）。独立 workspace，不属生产 UI 栈，
-不替代任何现行默认实现。
+Module identity：实验性 wgpu 图形/游戏研究（AGP）。独立 workspace，不属生产 UI 栈， 不替代任何现行默认实现。
 
 ## Real entries（PLAN-829 证据）
 
 - Probe runner `graphics-probe`（10 case：gpu-foundation / shared-runtime /
-  ag2d-breakout / ag3d-risk-slice / ag3d-squash / lifecycle / metrics /
-  verifier-negative-controls / iced-shared-device / independent-consumer）；
-  独立交互宿主 `iced_spike`。
+ag2d-breakout / ag3d-risk-slice / ag3d-squash / lifecycle / metrics / verifier-negative-controls / iced-shared-device / independent-consumer）； 独立交互宿主 `iced_spike`。
 - 冻结样本：AG-2D-01 Bevy Breakout（`bevyengine/bevy@efe61cc5`）、
-  AG-3D-01 Godot Squash the Creeps（`godot-demo-projects@b761b4cd`）——
-  oracle 见 `research/sample-manifest.md`，golden trace 冻结于 `testdata/`。
+AG-3D-01 Godot Squash the Creeps（`godot-demo-projects@b761b4cd`）—— oracle 见 `research/sample-manifest.md`，golden trace 冻结于 `testdata/`。
 - 机器 profile：Windows x64、键鼠；GPU/驱动/DPI 每次运行记录于报告
-  （实测 RTX 4060 Ti / Vulkan / 驱动 617.14 / DPI 2.0）。
+（实测 RTX 4060 Ti / Vulkan / 驱动 617.14 / DPI 2.0）。
 
 ## Ownership & boundaries
 
 - Owner 阶段：work（PLAN-829 T-01..09）→ review（T-10，R18 PASS）→
-  merge（T-11，2026-10-22 落 `autographics-dev`）。
+merge（T-11，2026-10-22 落 `autographics-dev`）。
 - 仓界：对 auto-lang/auto-ui/auto-man 私有源码零 path 依赖；
-  iced_widget 0.14.2 **stock** 自 crates.io（r1 F09 去 vendoring——实测最小
-  spike 无需生产 PLAN-043 patch，闭包内零 path 来源包）；无 junction/symlink；
-  根 workspace/锁零改动（V-09 门）。
+iced_widget 0.14.2 **stock** 自 crates.io（r1 F09 去 vendoring——实测最小 spike 无需生产 PLAN-043 patch，闭包内零 path 来源包）；无 junction/symlink； 根 workspace/锁零改动（V-09 门）。
 - 生产集成 PENDING（I1–I3），本卡不得读作生产能力；
-  见 [integration-contract.md](integration-contract.md)。
+见 [integration-contract.md](integration-contract.md)。
 
 ## Non-goals（PLAN-829 不变）
 
-Godot/Bevy 引擎兼容、第二渲染后端、生产 RQHost 接线、完整物理/动画编辑器、
-Tilemap/骨骼/联网/XR。
+Godot/Bevy 引擎兼容、第二渲染后端、生产 RQHost 接线、完整物理/动画编辑器、 Tilemap/骨骼/联网/XR。
 
 ## PLAN-833 Auto source consumer
 
 Independent `experimental/autographics-auto-driver` consumes pinned pure SDK source and AGP's neutral scene/renderer interfaces. Real Auto owns the basic scene and frozen Breakout simulation; Rust owns rendering, fonts/audio and window routing. No production crate/root manifest/lock or SDK source is modified. Independent R2 and frozen merge gates passed; source lands only on autographics-dev. Profile and limitations: [auto-source-driver.md](auto-source-driver.md).
 
 Delivery provenance: [PLAN-833](../../plans/archive/833-autographics-auto-source-minimal-loop.md), reviewed code 77302d855; production boundaries above remain unchanged.
-
 
 ## PLAN-834 delivered second real Auto game
 
@@ -64,82 +56,27 @@ SD-04 clarification after F-836-R1-01 (existing no-skip acceptance): self-check 
 
 Measurements from the accepted work native run: CPU cold frame39386us, warm p50/p95 16473/19612us, synchronous compile26629us, working set380551168bytes, scale2.0. Candidate compile23904..25676us and pump745..803us (samples, not guarantees). Resident7 meshes/14 vertex-index writes136952bytes; repeated gestures preserve GPU Arc/store/target identity. Excludes Iced atlas/internal buffers, driver allocations and GPU timestamps. Source/consumer commands are in experimental/autographics-auto-driver/README.md: prepare_sdk.py --repository <pinned repo> --verify-only; verify_source.py; verify_plan836.py --controls; package_consumer.py <external-directory>.
 
-
 Provenance: [PLAN-836](../../plans/archive/836-autographics-viewport-picking-and-translation.md), [final R2](../../plans/attachments/836/review-r2/review.md), [merge receipt](../../plans/attachments/836/merge-r1/receipt.md). Source integration is autographics-dev only; production I2/I3 remain pending.
 
 ## PLAN-837 current finite hierarchy profile
 
-Document explicit profile4, current v2 finite forest and exact experimental CLI:
---hierarchy-check, --wrong-parent, --drop-release, --frames 1 incomplete, --inspect.
-Self-check completion is resolved before serialization; incomplete/fault exits nonzero
-and passed=false, full positive exits0/passed=true. New-process reconstruction stays independently checked.
-Actual final-composition endpoint/origin pixels are compared to independent initial
-leaf-color/background controls at temporary/move/undo/redo/hidden/show/saved states;
-missing readback rejects. Native failure is serialized before nonzero exit and the
-aggregate requires all seven state records. A test-only native copy injecting real
-transparent endpoint or an old-position ghost must fail that same gate despite
-valid Auto/state/commands, before paired reopen hashes can hide shared rendering
-faults. These are finite2D fixture controls, not a whole-image/3D pixel-equivalence
-claim. F-837-R1-01 corrected the earlier unimplemented visible-state oracle claim. Source identity is
-plan837-identity.json; tools/verify_plan837.py --controls, check_hierarchy.py, check_hierarchy_pixel_faults.py and
-package_consumer.py provide reproducible inputs. Fixed SDK9576b4d, locks, original
-profile1/2 games, AGP/assets/goldens unchanged.7 resident meshes/14 initial writes
-136952B, target/pipeline/mesh warm reuse; actual20 hierarchy rounds and retained-owner/
-fresh-upload controls. CPU compile/frame/working-set measurements explicitly exclude
-GPU timestamps, driver residency and Iced internal allocations. Source integration
-only autographics-dev; master knowledge after reviewed landing. I1 remains delivered,
-I2 production AutoUI/RQHost and I3 formal Forge/distribution remain pending. Finite
-scene organization does not establish general TRS/Prefab/assets/game editing, public
-stable engine APIs, production migration, Linux/Shader/CAP/ACE or full engine completion.
-Final complete driver/AGP/native/composite/source/consumer gate results and actual T-10 closeout are recorded in the merge receipt.
+Document explicit profile4, current v2 finite forest and exact experimental CLI: --hierarchy-check, --wrong-parent, --drop-release, --frames 1 incomplete, --inspect. Self-check completion is resolved before serialization; incomplete/fault exits nonzero and passed=false, full positive exits0/passed=true. New-process reconstruction stays independently checked. Actual final-composition endpoint/origin pixels are compared to independent initial leaf-color/background controls at temporary/move/undo/redo/hidden/show/saved states; missing readback rejects. Native failure is serialized before nonzero exit and the aggregate requires all seven state records. A test-only native copy injecting real transparent endpoint or an old-position ghost must fail that same gate despite valid Auto/state/commands, before paired reopen hashes can hide shared rendering faults. These are finite2D fixture controls, not a whole-image/3D pixel-equivalence claim. F-837-R1-01 corrected the earlier unimplemented visible-state oracle claim. Source identity is plan837-identity.json; tools/verify_plan837.py --controls, check_hierarchy.py, check_hierarchy_pixel_faults.py and package_consumer.py provide reproducible inputs. Fixed SDK9576b4d, locks, original profile1/2 games, AGP/assets/goldens unchanged.7 resident meshes/14 initial writes 136952B, target/pipeline/mesh warm reuse; actual20 hierarchy rounds and retained-owner/ fresh-upload controls. CPU compile/frame/working-set measurements explicitly exclude GPU timestamps, driver residency and Iced internal allocations. Source integration only autographics-dev; master knowledge after reviewed landing. I1 remains delivered, I2 production AutoUI/RQHost and I3 formal Forge/distribution remain pending. Finite scene organization does not establish general TRS/Prefab/assets/game editing, public stable engine APIs, production migration, Linux/Shader/CAP/ACE or full engine completion. Final complete driver/AGP/native/composite/source/consumer gate results and actual T-10 closeout are recorded in the merge receipt.
 
 Provenance: [PLAN-837](../../plans/archive/837-autographics-scene-hierarchy-and-group-authoring.md), [final R2](../../plans/attachments/837/review-r2/review.md), [merge receipt](../../plans/attachments/837/merge-r1/receipt.md). Source integration remains autographics-dev; production I2/I3 pending.
 
 ## PLAN-838 current static asset extension
 
-Keep profile1/2 games and profile3/4 sample contracts. Asset documents explicitly
-use new samples/authoring_assets/main.at profile5. Auto accepts parent-first
-hierarchy plus candidate-local resource ordinals, derives world/effective state,
-and returns every node's kind/parent/dimension/ordinal and complete fields. Rust
-checks exact count, identity, resource mapping and fields, then consumes the actual
-returned resource/world/effective data for rendering/pick. Wrong resource output
-is a whole-candidate rejection. GLB decode and GPU ownership remain in the host.
-The same pinned SDK9576b4d and independent two workspaces/locks remain, with the
-driver's direct locked gltf1.4 dependency and extras feature recorded in source.
-Current source identity is plan838-identity.json; .agscene text hashes normalize
-LF/CRLF, fixing fresh-checkout reproduction of inherited837 fixture bytes.
-CLI adds --asset-check/--asset-file/--asset-save/--wrong-asset/--asset-gpu-fault
-and retains --drop-release/--frames/--inspect. Native/report/aggregate completeness
-and actual content controls remain mandatory. The slice provides portable finite
-scene/static-model authoring. Production I2/I3, general materials/animation,
-multi-platform/public engine/Forge distribution remain pending.
+Keep profile1/2 games and profile3/4 sample contracts. Asset documents explicitly use new samples/authoring_assets/main.at profile5. Auto accepts parent-first hierarchy plus candidate-local resource ordinals, derives world/effective state, and returns every node's kind/parent/dimension/ordinal and complete fields. Rust checks exact count, identity, resource mapping and fields, then consumes the actual returned resource/world/effective data for rendering/pick. Wrong resource output is a whole-candidate rejection. GLB decode and GPU ownership remain in the host. The same pinned SDK9576b4d and independent two workspaces/locks remain, with the driver's direct locked gltf1.4 dependency and extras feature recorded in source. Current source identity is plan838-identity.json; .agscene text hashes normalize LF/CRLF, fixing fresh-checkout reproduction of inherited837 fixture bytes. CLI adds --asset-check/--asset-file/--asset-save/--wrong-asset/--asset-gpu-fault and retains --drop-release/--frames/--inspect. Native/report/aggregate completeness and actual content controls remain mandatory. The slice provides portable finite scene/static-model authoring. Production I2/I3, general materials/animation, multi-platform/public engine/Forge distribution remain pending.
 
 Provenance: [PLAN-838](../../plans/archive/838-autographics-glb-import-and-portable-scene-assets.md), [independent final R2](../../plans/attachments/838/review-r2/review.md), [merge receipt](../../plans/attachments/838/merge-r1/receipt.md). Source remains autographics-dev; production I2/I3 pending.
 
 ## PLAN-839 current scene play extension
 
-Profile6 is a finite driver-local scene behavior sample alongside unchanged old
-game and authoring profiles. Exact CLI: --play-check, --play-asset <GLB>,
---asset-save <scene>, --report <path>; negatives --wrong-play-focus,
---drop-play-tick, --play-gpu-fault transparent|missing-part|wrong-asset, --frames1.
-Full positive reaches27 phases and six independent endpoint/origin/all-part pixel
-states, actual Auto step+1, UI/V parity/hidden/shown/focus loss, Stop original canvas
-hashes, fresh Run identity, Save and relocated independent-process reopen. Negative
-exit/report/aggregate completeness agree; partial/absent oracle is failure. Real GPU
-faults must fail the same pixel oracle despite valid protocol/state/mesh counters.
+Profile6 is a finite driver-local scene behavior sample alongside unchanged old game and authoring profiles. Exact CLI: --play-check, --play-asset <GLB>, --asset-save <scene>, --report <path>; negatives --wrong-play-focus, --drop-play-tick, --play-gpu-fault transparent|missing-part|wrong-asset, --frames1. Full positive reaches27 phases and six independent endpoint/origin/all-part pixel states, actual Auto step+1, UI/V parity/hidden/shown/focus loss, Stop original canvas hashes, fresh Run identity, Save and relocated independent-process reopen. Negative exit/report/aggregate completeness agree; partial/absent oracle is failure. Real GPU faults must fail the same pixel oracle despite valid protocol/state/mesh counters.
 
-Source closure is plan839-identity.json and verify_plan839.py --controls; package
-consumer exports only verified inputs plus pinned680 SDK files, with its own target.
-Inherited worker stack16MiB and native PE32MiB settings remain required for a fresh
-consumer. Existing model upload counters distinguish immutable geometry writes from
-legal per-instance/content/composition writes. Report bounded Run/Stop/pump/full-frame
-CPU/compile durations and Windows working set; exclude GPU timestamps, Iced internal
-buffers/atlas and driver residency. No performance/production maturity is inferred.
+Source closure is plan839-identity.json and verify_plan839.py --controls; package consumer exports only verified inputs plus pinned680 SDK files, with its own target. Inherited worker stack16MiB and native PE32MiB settings remain required for a fresh consumer. Existing model upload counters distinguish immutable geometry writes from legal per-instance/content/composition writes. Report bounded Run/Stop/pump/full-frame CPU/compile durations and Windows working set; exclude GPU timestamps, Iced internal buffers/atlas and driver residency. No performance/production maturity is inferred.
 
-No arbitrary scripts, dynamic graph/resource edits, persistence of runtime, Apply
-runtime result, general TRS/ECS/physics/audio, SDK/AGP changes, production AutoUI/RQHost,
-Forge distribution, ACE/AutoShader/CAP, Linux or new platforms. Source integration
-remains autographics-dev only; master receives knowledge after the actual closeout.
+No arbitrary scripts, dynamic graph/resource edits, persistence of runtime, Apply runtime result, general TRS/ECS/physics/audio, SDK/AGP changes, production AutoUI/RQHost, Forge distribution, ACE/AutoShader/CAP, Linux or new platforms. Source integration remains autographics-dev only; master receives knowledge after the actual closeout.
 
 Provenance: [PLAN-839](../../plans/archive/839-autographics-scene-play-mode-and-auto-runtime.md), [independent final R2](../../plans/attachments/839/review-r2/independent/review.md), [affected independent R3](../../plans/attachments/839/review-r3/independent/review.md), [merge receipt](../../plans/attachments/839/merge-r1/receipt.md). Source remains autographics-dev; production I2/I3 pending.
 
@@ -150,3 +87,27 @@ The experiment additionally supports [autographics.behavior/1](behavior-api.md),
 The full inherited driver/AGP16case/dual-game/authoring/resource/hierarchy/Play/native/owner/counter AND actual-content denominators remain required, plus user13case and independent source-consumer gates. No I2/I3/general engine/public production SDK claim, script packaging/persistence, hot reload, FFI/import/async, rotation/scale writer or arbitrary VM heap hard quota is added.
 
 Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md), [affected final review](../../plans/attachments/840/review-r2/review.md), [complete merge receipt](../../plans/attachments/840/merge-r1/receipt.md). Graphics source: autographics-dev. Production I2/I3 remain pending.
+
+## Bound behavior delivery (PLAN-845)
+
+[Behavior projects](behavior-project.md) adds a finite self-contained scene4/GLB/one-source project to the existing experimental driver. Explicit Bind/Update/nullable stable roles/Detach share accepted Document/immutable payload/history; Save/Verify and Open validate the complete closure. Default Run uses accepted bytes and honest current-root or memory/hash provenance, preserving temporary external/Builtin and prior APIs/profiles. Actual saved Move/Patrol outputs run after original-root removal on the same binary in a new process/cwd; source-only speed update needs no Rust rebuild.
+
+Graphics source remains autographics-dev and master holds canonical knowledge. All original old/new native/owner/source/counter AND content/consumer denominators remain required; production AutoUI/RQHost I2, Forge/distribution I3, Shader/CAP and general multi-file packages are still outside this delivery.
+
+```mermaid
+flowchart LR
+    Scene[scene4] --> Run[Accepted project Run]
+    Code[Immutable source] --> Run
+    Assets[Declared GLB] --> Run
+    Run --> VM[Real Auto VM]
+    click Scene "scene-document.md"
+    click Code "behavior-project.md"
+    click Assets "scene-assets.md"
+    click VM "scene-play-session.md"
+```
+
+| 模块 | 职责 | 状态 |
+|---|---|---|
+| [behavior-project](behavior-project.md) | 单源码绑定、历史/闭包/来源及可搬迁Run合同 | experimental |
+
+Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-portable-projects.md), [independent final review](../../plans/attachments/845/review-r8-preparation/review.md), [merge receipt](../../plans/attachments/845/merge-r1/receipt.md). Source: autographics-dev; production I2/I3 pending.

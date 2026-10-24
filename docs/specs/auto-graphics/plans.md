@@ -22,3 +22,5 @@
 | 840 | 最小公共行为API与用户Auto脚本 | archived | [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md) | UserV1/profile7、真实Auto API/脚本、双便携示例及SDK扫描修复；旧支持面保留，源码autographics-dev，生产I2/I3 pending |
 
 Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md), [affected final review](../../plans/attachments/840/review-r2/review.md), [complete merge receipt](../../plans/attachments/840/merge-r1/receipt.md). Graphics source: autographics-dev. Production I2/I3 remain pending.
+
+| 845 | 行为绑定与可搬迁项目闭环 | archived | [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-portable-projects.md) | scene4单源码/稳定角色、接受字节历史/闭包存储、真实UI输出搬迁及来源诊断；autographics-dev，生产I2/I3 pending |

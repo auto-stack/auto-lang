@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-845
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: AutoGraphics行为绑定与可搬迁项目闭环
 plan_revision: 2
 author: [Codex]
@@ -42,7 +43,7 @@ r1规划调查时840为executing r2 3/12，SDK扫描修复和精确重冻已记�
 4. 保存前故障保旧入口；提交后验证失败保明确unverified收据与恢复流程；代码/GLB/entry冲突及晚到旧epoch结果不能把旧内容标成新内容已保存。
 5. 沿用840两个不同逻辑示例，在同一个未重编译runner上，独立新进程/仓外搬迁实际Auto轨迹及最终GPU像素可验证。
 
-非目标：多脚本节点组件/动态创建销毁、多文件use/include/源码包解析、脚本编辑器/热重载、可执行文件打包/安装/发布器、网络协作/自动GC、源码安全沙箱、SDK/AGP改造、生产AutoUI/RQHost/完整Forge/新默认设计包。完整组件接入、主题继承与跨端样式研究继续沿[Design47 §16](../design/47-autoui-state-design-and-feature-architecture.md#16-autographics-后续完整组件接入与默认设计体系2026-10-24)后续规划；不并入本Plan，也不改840范围。
+非目标：多脚本节点组件/动态创建销毁、多文件use/include/源码包解析、脚本编辑器/热重载、可执行文件打包/安装/发布器、网络协作/自动GC、源码安全沙箱、SDK/AGP改造、生产AutoUI/RQHost/完整Forge/新默认设计包。完整组件接入、主题继承与跨端样式研究继续沿[Design47 §16](../../design/47-autoui-state-design-and-feature-architecture.md#16-autographics-后续完整组件接入与默认设计体系2026-10-24)后续规划；不并入本Plan，也不改840范围。
 
 ## 2. 架构方案
 
@@ -79,7 +80,7 @@ L1：只写`experimental/autographics-auto-driver/`，局部扩展现有Document
 
 2026-10-24用户“840正在实施中，请继续规划下一个计划”。授权只读调查及一份下一Plan草案；本轮不执行840/845、不创建agent/聊天、未指定模型/预算。前次“完整AutoUI/默认设计体系补充到后续规划、840不扩面”的约束继续适用；本计划消费840而不改写其合同。
 
-已读[全局overview](../specs/overview.md)、[图形overview](../specs/auto-graphics/overview.md)、[场景文档](../specs/auto-graphics/scene-document.md)、[静态资源](../specs/auto-graphics/scene-assets.md)、[编辑会话](../specs/auto-graphics/authoring-session.md)、[运行会话](../specs/auto-graphics/scene-play-session.md)、[集成边界](../specs/auto-graphics/integration-contract.md)、[SDK](../specs/language-sdk/project.md)和[840 r2](840-autographics-public-behavior-api-and-user-scripts.md)。固定对象及文档hash见[来源清单](attachments/845/planning/source-observation.json.txt)。behavior-api.md待840沉淀，当前不编造其canonical内容。
+已读[全局overview](../../specs/overview.md)、[图形overview](../../specs/auto-graphics/overview.md)、[场景文档](../../specs/auto-graphics/scene-document.md)、[静态资源](../../specs/auto-graphics/scene-assets.md)、[编辑会话](../../specs/auto-graphics/authoring-session.md)、[运行会话](../../specs/auto-graphics/scene-play-session.md)、[集成边界](../../specs/auto-graphics/integration-contract.md)、[SDK](../../specs/language-sdk/project.md)和[840 r2](840-autographics-public-behavior-api-and-user-scripts.md)。固定对象及文档hash见[来源清单](../attachments/845/planning/source-observation.json.txt)。behavior-api.md待840沉淀，当前不编造其canonical内容。
 
 ### 4.2 已观察事实与缺口
 
@@ -222,7 +223,7 @@ r2第6轮修复冻结231957020cc855485adfc4b15be75457a94ef2d8经R8全新独立�
 
 2026-10-24：stage:new；PLAN-845 revision1；outcome:blocked（G840完整交付pending，草案可评审）；next:840完成独立最终审查及冻结合入交付，再由用户启动845 work，T-01冻结正式基面后做T-02。当前drafting0/10；T/AC/V均拟议未通过，本轮无源码实现、建树、依赖准备、构建/运行或新agent/chat。
 
-静态合同检查及来源校验见[preflight](attachments/845/planning/preflight.md)。本轮未改840或AutoUI后续设计范围，不提前把场景项目等同完整引擎/生产Forge。review/merge仍各自负责，不以计划检查替代运行验收；连续同因不收敛先诊断原因与兄弟路径，不暗减分母/改fixture。
+静态合同检查及来源校验见[preflight](../attachments/845/planning/preflight.md)。本轮未改840或AutoUI后续设计范围，不提前把场景项目等同完整引擎/生产Forge。review/merge仍各自负责，不以计划检查替代运行验收；连续同因不收敛先诊断原因与兄弟路径，不暗减分母/改fixture。
 
 
 ### 2026-10-24 work 启动核查（T-01未关闭）
@@ -271,7 +272,7 @@ worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev |
 base_commit: 8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 |
 code_commit: 75277a7b7b8d1b43f840c8993721c02833e5657a（runtime ce28bdc070afcb2612d27b04cd103602a6fc8f35未变） |
 dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，driver/AGP两锁+SDKroot锁完整SHA见evidence |
-task_ids: T-01..08 | evidence: [readiness](attachments/845/work-r2/readiness.md)、[原始证据及身份](attachments/845/work-r2/evidence.json.txt) |
+task_ids: T-01..08 | evidence: [readiness](../attachments/845/work-r2/readiness.md)、[原始证据及身份](../attachments/845/work-r2/evidence.json.txt) |
 blockers: none | next_responsible_role: independent review
 
 T-08已关闭：fresh consumer845-verified持有自己的SDK/target，源码/依赖反控、五storage用例及仅--open新进程真实GPU正控/缺源码负控全部通过，构建后681源文件再次读回通过。所有320输入与最终Git提交对象逐项匹配。原错误默认栈尝试保留；采用840既有16MiB测试线程和32MiB可执行主栈要求，未改SDK/测试语义或阈值。
@@ -287,8 +288,8 @@ T-09/AC-09独立上下文最终review未执行；T-10/AC-10全部完整锁定门
 stage: review | review_scope: final | reviewer_identity: `/root/review_845`（获用户授权的新独立上下文；父代理后提供来源疑点，复审者独立构造并实跑反例与控制） | plan_id: PLAN-845 | plan_revision: 2 | outcome: needs_fix |
 worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev |
 reviewed_commit: 75277a7b7b8d1b43f840c8993721c02833e5657a | base_commit: 8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 |
-dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21、三锁/配置与Spec输入完整hash见[audit](attachments/845/review-r1/audit.json.txt) |
-evidence: [完整收据/逐AC与SD](attachments/845/review-r1/review.md)、[独立反例](attachments/845/review-r1/source-origin.rs)、[raw](attachments/845/review-r1/source-origin-run.log.txt)、[重放入口](attachments/845/review-r1/replay.ps1) |
+dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21、三锁/配置与Spec输入完整hash见[audit](../attachments/845/review-r1/audit.json.txt) |
+evidence: [完整收据/逐AC与SD](../attachments/845/review-r1/review.md)、[独立反例](../attachments/845/review-r1/source-origin.rs)、[raw](../attachments/845/review-r1/source-origin-run.log.txt)、[重放入口](../attachments/845/review-r1/replay.ps1) |
 findings: F-845-R1-01 P2（原合同§5.2，AC-03/06/08，T-06/08） |
 next: 同树work修复、永久反例/控制、提交后仅复审受影响来源状态；不改语义合同，不重跑完整矩阵。
 
@@ -304,7 +305,7 @@ T-06/T-08重开，计数executing6/10；T-01..05/T-07与无关pass证据保留�
 
 ### r2 work R3 — F-845-R1-01 修复交接
 
-stage: work | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev | base_commit: 75277a7b7b8d1b43f840c8993721c02833e5657a | code_commit: e518f5fc778cfa6827f7de9eb99b4c0910ef294d | dependency_revisions: SDK932/三锁未变，完整hash见[identity](attachments/845/work-r3/identity.json.txt) | task_ids: T-06/T-08 | evidence: [关闭矩阵/检查/限制](attachments/845/work-r3/readiness.md)、[raw身份](attachments/845/work-r3/manifest.json.txt) | blockers: none | next_responsible_role: fresh-context independent review
+stage: work | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev | base_commit: 75277a7b7b8d1b43f840c8993721c02833e5657a | code_commit: e518f5fc778cfa6827f7de9eb99b4c0910ef294d | dependency_revisions: SDK932/三锁未变，完整hash见[identity](../attachments/845/work-r3/identity.json.txt) | task_ids: T-06/T-08 | evidence: [关闭矩阵/检查/限制](../attachments/845/work-r3/readiness.md)、[raw身份](../attachments/845/work-r3/manifest.json.txt) | blockers: none | next_responsible_role: fresh-context independent review
 
 F01工作关闭：Load/完整Verify确认当前root的有限源码身份；Run按身份标记真实已确认项目blob或memory/hash，不以整体dirty/exists判断、不读盘、不保留额外payload。两组永久来源生命周期断言通过，原R1反例同三正控exit0，旧Host逻辑受控回退两例准确翻红并恢复绿；几何dirty/首次绑定/Undo/Redo/Open/SaveAs换root/旧revision与pending完整覆盖。两项受影响旧storage检查、lib check/fmt与source320含原反控通过，仅SDK146固定预存warning。首轮fixture路径/selection/pending错误及原红日志保留，不作产品失败或绿证据。
 
@@ -315,9 +316,9 @@ AC03/06/08工作证据恢复pass；其余R1验收和工作证据依代码/配置
 stage: review | review_scope: final | reviewer_identity: `/root/review_845_r2`（获授权的新独立上下文，非实现/R1上下文；无进一步委派） | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass |
 worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev |
 reviewed_commit: e518f5fc778cfa6827f7de9eb99b4c0910ef294d | repair_parent: 75277a7b7b8d1b43f840c8993721c02833e5657a | base_commit: 8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 |
-dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，三锁/config/Spec输入与R1一致，完整hash见[audit](attachments/845/review-r2/audit.json.txt) |
+dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，三锁/config/Spec输入与R1一致，完整hash见[audit](../attachments/845/review-r2/audit.json.txt) |
 acceptance_results: AC-01..09 pass、AC-10 pending | findings: F-845-R1-01 independently closed，无新增finding |
-evidence: [完整独立收据/逐AC/SD](attachments/845/review-r2/review.md)、[原反例实跑](attachments/845/review-r2/replay-source-origin.log.txt)、[永久2/2](attachments/845/review-r2/permanent-origin.log.txt)、[自选兄弟/失败状态](attachments/845/review-r2/holdout.rs)、[raw](attachments/845/review-r2/holdout.log.txt) |
+evidence: [完整独立收据/逐AC/SD](../attachments/845/review-r2/review.md)、[原反例实跑](../attachments/845/review-r2/replay-source-origin.log.txt)、[永久2/2](../attachments/845/review-r2/permanent-origin.log.txt)、[自选兄弟/失败状态](../attachments/845/review-r2/holdout.rs)、[raw](../attachments/845/review-r2/holdout.log.txt) |
 next: merge owner在本冻结提交执行全部完整门；通过后才落autographics-dev及知识/归档/guard清理。
 
 R1原反例同三个合法控制exit0；未保存B的SourceSnapshot.path/Last Run/真实Auto app_start node999错误均明确memory/hash。永久两例2/2覆盖首次绑定、几何dirty、Undo/Redo、Open、删除导入/已确认blob仍用接受字节、SaveAs失败/pending/旧revision与换根。独立H1同根更名、H2跨根实际坏blob Verify失败/修复/坏Open保旧、H3解绑SaveAs再Undo不继承旧根证明全部通过。Storage仅在load/完整Verify确认有限CodeRef，不保payload，不读盘判来源；真实callback及中间来源观察已复核。
@@ -339,9 +340,9 @@ code_commit a0e2a9115a0b48bab44e3acaef17485dca472420（parent e518）；仅autho
 stage: review | review_scope: final（merge失败后的受影响复审） | reviewer_identity: `/root/review_845_gate`（获授权的新独立上下文；非实现/R2复审上下文，无进一步委派） | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass |
 worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev |
 reviewed_commit: a0e2a9115a0b48bab44e3acaef17485dca472420 | repair_parent: e518f5fc778cfa6827f7de9eb99b4c0910ef294d | base_commit: 8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 |
-dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，三锁/config/16项Spec输入/提案与R2相同，见[audit](attachments/845/review-r3-gate/audit.json.txt) |
+dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，三锁/config/16项Spec输入/提案与R2相同，见[audit](../attachments/845/review-r3-gate/audit.json.txt) |
 acceptance_results: AC-01..09 pass；AC-10 pending | findings: F-845-M1-01独立关闭，F-845-R1-01保持已闭，无新增finding |
-evidence: [受影响独立收据/复用边界](attachments/845/review-r3-gate/review.md)、[永久原入口1/1](attachments/845/review-r3-gate/permanent.log.txt)、[真实Host反例及可见输入控制](attachments/845/review-r3-gate/visible.log.txt)、[Spec冻结](attachments/845/review-r3-gate/spec-delta-frozen.md) |
+evidence: [受影响独立收据/复用边界](../attachments/845/review-r3-gate/review.md)、[永久原入口1/1](../attachments/845/review-r3-gate/permanent.log.txt)、[真实Host反例及可见输入控制](../attachments/845/review-r3-gate/visible.log.txt)、[Spec冻结](../attachments/845/review-r3-gate/spec-delta-frozen.md) |
 next: merge owner在本冻结提交恢复全部完整门；通过后才autographics-dev落地/知识归档/guard清理。
 
 独立重编实际Host探针：action-create未滚动y889.5998，原真实click保4；scroll/frame后y709.5998真click创建5，node5真选中、delete恢复4并清selection。永久actual_create_delete_widgets_and_bad_open原入口1/1通过。修复仅30次有界可见定位+source清单单hash更新；完整diff核实原create/select/delete/badOpen/document/history/pixel断言均保留，无直接dispatch/忽略/阈值放宽。source320 Git对象及文件验证、SDK681只读验证、fmt/diff健康通过，只有SDK146固定预存warning。
@@ -363,9 +364,9 @@ a0e2生产/独立消费完整driver155及AGP163各通过，旧owner三入口通�
 stage: review | review_scope: final（merge失败后的受影响复审） | reviewer_identity: `/root/review_845_owner_gate`（获授权的新独立上下文；非实现或前序复审上下文，无进一步委派） | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass |
 worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev |
 reviewed_commit: 152bc7fa6c6aa5158ae97868cf2e3b28acf136fd | repair_parent: a0e2a9115a0b48bab44e3acaef17485dca472420 | base_commit: 8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 |
-dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，三锁/config/16项Spec输入/提案与R2/R3一致，见[audit](attachments/845/review-r4-owner/audit.json.txt) |
+dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，三锁/config/16项Spec输入/提案与R2/R3一致，见[audit](../attachments/845/review-r4-owner/audit.json.txt) |
 acceptance_results: AC-01..09 pass；AC-10 pending | findings: F-845-M1-02独立关闭，F-845-R1-01/F-845-M1-01保持已闭，无新增finding |
-evidence: [独立收据/复用边界](attachments/845/review-r4-owner/review.md)、[原工具四控制实跑](attachments/845/review-r4-owner/controls-run.txt)、[真实Arc反控](attachments/845/review-r4-owner/controls/fresh-upload.stderr.txt)、[restored原入口](attachments/845/review-r4-owner/controls/restored.stdout.txt)、[Spec冻结](attachments/845/review-r4-owner/spec-delta-frozen.md) |
+evidence: [独立收据/复用边界](../attachments/845/review-r4-owner/review.md)、[原工具四控制实跑](../attachments/845/review-r4-owner/controls-run.txt)、[真实Arc反控](../attachments/845/review-r4-owner/controls/fresh-upload.stderr.txt)、[restored原入口](../attachments/845/review-r4-owner/controls/restored.stdout.txt)、[Spec冻结](../attachments/845/review-r4-owner/spec-delta-frozen.md) |
 next: merge owner在本冻结提交重跑受影响完整driver/consumer/source/fmt并补齐未执行native等完整门，再落autographics-dev及知识归档/guard清理。
 
 完整差异仅原八行pin/Arc断言块移至资源计数前、单manifest hash刷新；所有原计数/target/VM/源码owner/真实像素和20轮断言原样保留，pin为真实store非变更读取。原工具新输出独立实跑exit0，三反控101/101/101分别命中源码最后owner、VM Stop、真实GPU Arc，restored0且1passed/0ignored、20轮完成。旧fresh-upload红确由同一次真实reupload先命中mesh_uploads 18/137208→22/137464，现准确命中原Arc oracle；未放宽工具字符串/断言或改产品行为。source320 Git对象/文件、SDK681、fmt/diff健康均通过，仅原SDK146预存warning。
@@ -391,9 +392,9 @@ T07/T08工作关闭，execution_done8/10，T09待全新上下文受影响独立�
 stage: review | review_scope: final（merge失败后的受影响复审） | reviewer_identity: `/root/review_845_pointer_gate`（用户授权全新独立上下文，非实现及前序review，无进一步委派） | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass |
 worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev |
 reviewed_commit: da43267d4dffe9064d9d95585b7b56416b730d5e | repair_parent: 152bc7fa6c6aa5158ae97868cf2e3b28acf136fd | base_commit: 8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 |
-dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，三锁/config/16项Spec/提案未变，见[audit](attachments/845/review-r5-pointer/audit.json.txt) |
+dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，三锁/config/16项Spec/提案未变，见[audit](../attachments/845/review-r5-pointer/audit.json.txt) |
 acceptance_results: AC-01..09 pass；AC-10 pending | findings: F-845-M1-03独立关闭，F-845-R1-01及F-845-M1-01/02保持已闭，无新增finding |
-evidence: [独立收据/共享影响及复用边界](attachments/845/review-r5-pointer/review.md)、[独立原生调用](attachments/845/review-r5-pointer/native-run.txt)、[真实PID/物理坐标](attachments/845/review-r5-pointer/interaction.pointer.json.txt)、[patrol/wrong-focus holdout](attachments/845/review-r5-pointer/user-holdout/results.json.txt)、[真实raw manifest](attachments/845/review-r5-pointer/manifest.json.txt) |
+evidence: [独立收据/共享影响及复用边界](../attachments/845/review-r5-pointer/review.md)、[独立原生调用](../attachments/845/review-r5-pointer/native-run.txt)、[真实PID/物理坐标](../attachments/845/review-r5-pointer/interaction.pointer.json.txt)、[patrol/wrong-focus holdout](../attachments/845/review-r5-pointer/user-holdout/results.json.txt)、[真实raw manifest](../attachments/845/review-r5-pointer/manifest.json.txt) |
 next: merge owner在本冻结提交执行受影响完整门及所有共享原生、实际UI保存搬迁；通过后才autographics-dev落地/知识归档/guard清理。
 
 独立检查原helper保留FindWindow/本PID拒绝、原PostMessage/wheel/key及所有取消/blur/resize/期限/断言；仅WM_MOUSEMOVE先ClientToScreen/SetCursorPos，失败明确返回。重建PE32MiB二进制b1465fe2aac515541bb891d44d76bcbbc66d5436f762615a8188a7511dd35e44；真实runner/window PID29708且系统物理client345,190→365,200→375,205。interaction27正控通过；wrong-target1、drop-release4原期限超时、partial52 phase3均正确失败。独立hierarchy16七组真实像素绿；自选Patrol27六阶段×六像素与wrong-focus phase5反控绿，Stop/保存重开由原工具核实。work九项raw与asset九组×四像素断言逐项复核，单帧phase0保留；未冒称本review重跑asset或全矩阵。定向completion4/4、source320/SDK681/479packages/17locals/29edges、fmt/diff健康通过，仅SDK146固定预存warning。
@@ -404,7 +405,7 @@ T07/08保持关闭、T09关闭，reviewed9/10；T10与全部merge-owned完整门
 
 ### merge R1 — F-845-M1-04 / needs_fix（自动修复上限）
 
-stage: merge | plan_id: PLAN-845 | plan_revision: 2 | outcome: needs_fix | frozen_commit: da43267d4dffe9064d9d95585b7b56416b730d5e | evidence: [完整收据/状态](attachments/845/merge-r1/receipt.md)、[诊断](attachments/845/merge-r1/failure-m1-04.json.txt)、[消费端raw](attachments/845/merge-r1/consumer-user/move/report.json.txt)、[实际截图](attachments/845/merge-r1/consumer-user/move/report.png)。
+stage: merge | plan_id: PLAN-845 | plan_revision: 2 | outcome: needs_fix | frozen_commit: da43267d4dffe9064d9d95585b7b56416b730d5e | evidence: [完整收据/状态](../attachments/845/merge-r1/receipt.md)、[诊断](../attachments/845/merge-r1/failure-m1-04.json.txt)、[消费端raw](../attachments/845/merge-r1/consumer-user/move/report.json.txt)、[实际截图](../attachments/845/merge-r1/consumer-user/move/report.png)。
 
 新冻结producer/consumer完整driver各155/0/0，AGP各163/0/0（未变来源明确复用）；原16AGP/两合成反控/旧双游戏、producer interaction/反控/reopen/hierarchy/assets/Play/user13均通过。消费端assets/hierarchy/两pixel-fault/Play通过；consumer-user第一Move正例phase6失败。phase5暂停tick54并投递实际Step click，phase6pending false、仍Paused/tick54而非55、runtime error null。生产端相同冻结源正例phase27通过；是否原生点击未被接收还是consumer单步分发失败尚未证实，不把它当环境flake或允许重跑到绿。共享路径是play::Probe phases5/6→native click/post→Host play-step→PlaySession single_step，并覆盖后续user/project native。
 
@@ -418,7 +419,7 @@ T07/T08/T09重开、executing6/10，AC08当前red，受影响AC06/07完整门待
 
 ### F-845-M1-04 work 第4轮修复交接（上限6）
 
-stage: work | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev | base_commit: da43267d4dffe9064d9d95585b7b56416b730d5e | code_commit: 944c1c551b524d7d8c7f69519e465831417d21a8 | task_ids: T07/T08 | evidence: [逐不变量/边界/原始失败分类](attachments/845/work-r4-step/readiness.md)、[全部raw哈希](attachments/845/work-r4-step/manifest.json.txt) | blockers: none | next_responsible_role: fresh-context independent final review。
+stage: work | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev | base_commit: da43267d4dffe9064d9d95585b7b56416b730d5e | code_commit: 944c1c551b524d7d8c7f69519e465831417d21a8 | task_ids: T07/T08 | evidence: [逐不变量/边界/原始失败分类](../attachments/845/work-r4-step/readiness.md)、[全部raw哈希](../attachments/845/work-r4-step/manifest.json.txt) | blockers: none | next_responsible_role: fresh-context independent final review。
 
 Step只投一次实际OS click；phase6等实际Paused/tick+1而非把固定12帧当接收证明，原360帧截止不改，少tick最终超时、多tick即时拒绝。永久normal/delayed/drop/duplicate实跑0/0/1/1，并断言真实Step矩形内down/up、原六阶段36GPU checks、丢失永无新tick、重复实际+2；受控恢复旧early-check使delayed正例按原phase6消息翻红，恢复绿。原生probe专用整窗工作区放置与每点实际坐标/WindowFromPoint同PID验证，正常App不改；受控裁切证明任务栏命中和真实CursorLeft导致后续动作丢失，修复后同类设置明确fixture拒绝。原故障缺历史鼠标事件，不能唯一追溯是延迟还是遮挡；不编造VM缺陷或把单次重跑绿当关闭。两项实际夹具缺口及可区分控制均见readiness。
 
@@ -429,9 +430,9 @@ Patrol/wrong-focus、bound-project Move、legacy interaction27/wrong-target1、c
 stage: review | review_scope: final（merge失败后的受影响复审） | reviewer_identity: `/root/review_845_step_gate`（用户授权全新独立上下文，非实现及R1–R5 review，无进一步委派） | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass |
 worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev |
 reviewed_commit: 944c1c551b524d7d8c7f69519e465831417d21a8 | repair_parent: da43267d4dffe9064d9d95585b7b56416b730d5e | base_commit: 8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 |
-dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，三锁/config/16项main canonical Spec/提案未变，见[audit](attachments/845/review-r6-step/audit.json.txt) |
+dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，三锁/config/16项main canonical Spec/提案未变，见[audit](../attachments/845/review-r6-step/audit.json.txt) |
 acceptance_results: AC01..09 pass；AC10 pending | findings: F-845-M1-04在已证fixture不变量边界独立关闭，F-R1-01/M1-01/02/03保持关闭，无新增finding |
-evidence: [独立收据/AC映射/复用边界](attachments/845/review-r6-step/review.md)、[永久四控制实跑](attachments/845/review-r6-step/step-controls-run.txt)、[实际tick/事件](attachments/845/review-r6-step/step-summary.json.txt)、[自选Patrol120/超期限361及legacy交互](attachments/845/review-r6-step/holdout-results.json.txt)、[实际taskbar PID护栏](attachments/845/review-r6-step/occluded-hitpid/observer.json.txt)、[Spec冻结](attachments/845/review-r6-step/spec-delta-frozen.md) |
+evidence: [独立收据/AC映射/复用边界](../attachments/845/review-r6-step/review.md)、[永久四控制实跑](../attachments/845/review-r6-step/step-controls-run.txt)、[实际tick/事件](../attachments/845/review-r6-step/step-summary.json.txt)、[自选Patrol120/超期限361及legacy交互](../attachments/845/review-r6-step/holdout-results.json.txt)、[实际taskbar PID护栏](../attachments/845/review-r6-step/occluded-hitpid/observer.json.txt)、[Spec冻结](../attachments/845/review-r6-step/spec-delta-frozen.md) |
 next: merge owner在冻结944c1c55执行受影响完整门及83项两端原生/项目/实际UI输出搬迁，通过后才autographics-dev落地/知识归档/guard清理。
 
 独立重建PE32MiB二进制173183e31cd3341c4db645c84e759e92e09b02058218ded5ee0ada6138a8155c；永久normal/delayed/drop/duplicate实际退出0/0/1/1，前两phase27/36GPU checks，缺失无新tick且phase6原期限红，重复实际+2按原oracle红。自选Patrol延迟120帧正例27/36像素，延迟361帧在原360预算下phase6拒绝且零Step事件；无重试/重置期限。真实裁切先证requested2562/actual2559不可达（首次caller仅预期occlusion字符串错误保留），再以可达2518/taskbar PID5416≠runner18048准确触发foreign PID拒绝。legacy interaction27与drop-release phase4红均保原断言，completion4/4、source321 Git对象与文件/SDK681/479packages/17locals/29edges、fmt通过，只有SDK146固定预存warnings。
@@ -447,17 +448,17 @@ T09关闭、reviewed9/10；T10和全部merge-owned完整门pending：producer/fr
 
 ### F-845-M1-05 work第5轮交接（上限6）
 
-stage: work | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev | base_commit: 944c1c551b524d7d8c7f69519e465831417d21a8 | code_commit: ae1a87e15b857329efc1110beb9c76e9c0299baa | evidence: [不变量/调试边界](attachments/845/work-r5-legacy/diagnosis.md)、[ready/复用/待门](attachments/845/work-r5-legacy/readiness.md)、[原始哈希](attachments/845/work-r5-legacy/manifest.json.txt) | blockers: none | next_responsible_role: fresh-context independent final review。
+stage: work | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev | base_commit: 944c1c551b524d7d8c7f69519e465831417d21a8 | code_commit: ae1a87e15b857329efc1110beb9c76e9c0299baa | evidence: [不变量/调试边界](../attachments/845/work-r5-legacy/diagnosis.md)、[ready/复用/待门](../attachments/845/work-r5-legacy/readiness.md)、[原始哈希](../attachments/845/work-r5-legacy/manifest.json.txt) | blockers: none | next_responsible_role: fresh-context independent final review。
 
 旧入口焦点准备、所有click/key统一验证原生通路，五处scroll Result传播，错误携phase即时退出；保留原target/GPU/Save/Undo/Redo/resize与1400frame预算。原完整正例phase9/280/accepted3；错目标与截断负例保持红。新永久CLI反例真实field裁切路径即报错，恢复旧五处丢弃Result使断言按原phase1超时消息翻红，恢复绿；completion4/fmt/source321/SDK681通过，仅SDK146旧warnings。共享helper/生产Host/VM/SDK/锁/Spec proposal不改，M1-04等未变证据按身份复用。无未完work-owned项，execution_done8/10，T09待独立上下文；完整driver156/AGP163两端与83项仍merge-owned pending。所有早期无效设置与修正记录保留，不计绿或豁免。未合入/沉淀/归档/清理。
 
 ### 2026-10-25 r2 independent affected final review R7 — pass / reviewed9/10
 
-stage: review | review_scope: final | reviewer_identity: `/root/review_845_legacy_gate`，用户授权的新鲜独立上下文，非实现与R1–R6会话；未委派/改实现/另建树 | plan_id: PLAN-845 | plan_revision:2 | outcome:pass | worktree_path:`D:/autostack/.wt/lang-845/auto-lang` | branch:`plan-845-dev` | reviewed_commit:`ae1a87e15b857329efc1110beb9c76e9c0299baa` | base_commit:`944c1c551b524d7d8c7f69519e465831417d21a8`，原正式base8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 | dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，三锁/config/16项main canonical Spec未变 | spec_inputs: [audit](attachments/845/review-r7-legacy/audit.json.txt)，[冻结SD01..04](attachments/845/review-r7-legacy/spec-delta-frozen.md)，proposal SHA256 `01eaa3e632a062c50bbcd5860df79d5a28e4d56390c881711754fb6416a351c5`。
+stage: review | review_scope: final | reviewer_identity: `/root/review_845_legacy_gate`，用户授权的新鲜独立上下文，非实现与R1–R6会话；未委派/改实现/另建树 | plan_id: PLAN-845 | plan_revision:2 | outcome:pass | worktree_path:`D:/autostack/.wt/lang-845/auto-lang` | branch:`plan-845-dev` | reviewed_commit:`ae1a87e15b857329efc1110beb9c76e9c0299baa` | base_commit:`944c1c551b524d7d8c7f69519e465831417d21a8`，原正式base8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 | dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，三锁/config/16项main canonical Spec未变 | spec_inputs: [audit](../attachments/845/review-r7-legacy/audit.json.txt)，[冻结SD01..04](../attachments/845/review-r7-legacy/spec-delta-frozen.md)，proposal SHA256 `01eaa3e632a062c50bbcd5860df79d5a28e4d56390c881711754fb6416a351c5`。
 
 acceptance_results: AC01来源身份刷新pass；AC02..05按R2–R6精确未变代码/依赖/config/输入复用；AC06..08受影响旧原生门独立验闭pass，R6 Step/common helper字节相同复用；AC09 pass，AC10 pending。完整五文件diff核实五处scroll均传播Result、所有旧click/key走共同验证通路、原selection/target/GPU/Save/Undo/Redo/resize/1400帧预算保留。永久实际native反例1/1、completion4/4通过；work真实五点忽略Result mutation红/恢复绿已独立审计，未冒认review改实现重跑mutation。
 
-独立同binary完整旧window正例phase9/280帧/accepted3/-551与真实End/字符1事件通过，物理2000×1400除scale2等于原逻辑1000×700；wrong-target保持phase1/1401红，partial1帧保持incomplete，scroll fault第61帧携原phase1错误红；自选相邻interaction27正例与drop-release phase4反控通过。[原始运行](attachments/845/review-r7-legacy/native-results.json.txt)、[收据/AC映射](attachments/845/review-r7-legacy/review.md)。source321 Git对象与文件/SDK681/479packages/17locals/29edges、39原始附件hash、fmt/clean HEAD通过，仅SDK146固定旧warnings。review caller的DPI和CRLF哈希比较错误保留为探针纠正，不计产品finding。
+独立同binary完整旧window正例phase9/280帧/accepted3/-551与真实End/字符1事件通过，物理2000×1400除scale2等于原逻辑1000×700；wrong-target保持phase1/1401红，partial1帧保持incomplete，scroll fault第61帧携原phase1错误红；自选相邻interaction27正例与drop-release phase4反控通过。[原始运行](../attachments/845/review-r7-legacy/native-results.json.txt)、[收据/AC映射](../attachments/845/review-r7-legacy/review.md)。source321 Git对象与文件/SDK681/479packages/17locals/29edges、39原始附件hash、fmt/clean HEAD通过，仅SDK146固定旧warnings。review caller的DPI和CRLF哈希比较错误保留为探针纠正，不计产品finding。
 
 findings: F-845-M1-05关闭，无未完成work-owned验收/非法延期/workaround；T08表格漏勾已按实际证据纠正，T09关闭；自动修复5/6，未重置。pending_closeout_gates: 两端完整driver156/AGP163+build/source/owner、83调用native/user/project/Step与实际UI项目搬迁/counter AND content等统一门仍merge-owned pending；root t/tv/tt/tb/tu/taa/docs_gen本driver-only触面不触发，tf到期/批量仍主检出单实例。未合入/知识发布/归档/清树，图形源码只落autographics-dev。review子进程全部退出/reaped；Plan写权移交parent merge owner，下一步完成冻结完整门后按merge收尾，不宣称门前交付。
 
@@ -470,19 +471,28 @@ findings: F-845-M1-05关闭，无未完成work-owned验收/非法延期/workarou
 
 ### F-845-M1-06 work第6轮交接（上限6）
 
-stage: work | plan_id: PLAN-845 | plan_revision:2 | outcome:pass | worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev | base_commit: ae1a87e15b857329efc1110beb9c76e9c0299baa | code_commit: 231957020cc855485adfc4b15be75457a94ef2d8 | evidence: [根因/共享调用状态/前轮遗漏原因](attachments/845/work-r6-surface/diagnosis.md)、[就绪/范围/复用](attachments/845/work-r6-surface/readiness.md)、[逐项raw哈希](attachments/845/work-r6-surface/manifest.json.txt) | blockers:none | next_responsible_role:fresh-context independent review。
+stage: work | plan_id: PLAN-845 | plan_revision:2 | outcome:pass | worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev | base_commit: ae1a87e15b857329efc1110beb9c76e9c0299baa | code_commit: 231957020cc855485adfc4b15be75457a94ef2d8 | evidence: [根因/共享调用状态/前轮遗漏原因](../attachments/845/work-r6-surface/diagnosis.md)、[就绪/范围/复用](../attachments/845/work-r6-surface/readiness.md)、[逐项raw哈希](../attachments/845/work-r6-surface/manifest.json.txt) | blockers:none | next_responsible_role:fresh-context independent review。
 
 两探针初始准备先于所有auto-scroll，原240帧/像素/所有状态与后续blur/cancel不变。永久实际native延迟36正例与241超限反例两族都过，旧顺序mutation使两族均在12帧actual foreign-hit翻红，恢复和最终隔离输出测试绿；hierarchy4/pixel-faults2/assets7、completion4/fmt/source321/SDK681均过，无新driver warnings。其他entrypoint扫描无同类pre-scroll，相关历史门保留，不冒认完整campaign通过。execution_done8/10；完整driver158/AGP163两端+83调用仍merge-owned pending，T09待独立判。上限6/6不重置；无合入/沉淀/归档/清理。
 
 ### 2026-10-25 r2 independent affected final review R8 — pass / reviewed9/10
 
-stage: review | review_scope: final | reviewer_identity: `/root/review_845_preparation_gate`（用户授权全新独立上下文，非实现/R1–R7；无委派/源码写入） | plan_id: PLAN-845 | plan_revision:2 | outcome:pass | worktree_path:`D:/autostack/.wt/lang-845/auto-lang` | branch:`plan-845-dev` | reviewed_commit:`231957020cc855485adfc4b15be75457a94ef2d8` | base_commit:`ae1a87e15b857329efc1110beb9c76e9c0299baa`，正式base8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 | dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21；三锁/config/16项main Spec未变 | spec_inputs:[audit](attachments/845/review-r8-preparation/audit.json.txt)、[冻结SD01..04](attachments/845/review-r8-preparation/spec-delta-frozen.md)，SHA256 `01eaa3e632a062c50bbcd5860df79d5a28e4d56390c881711754fb6416a351c5`。
+stage: review | review_scope: final | reviewer_identity: `/root/review_845_preparation_gate`（用户授权全新独立上下文，非实现/R1–R7；无委派/源码写入） | plan_id: PLAN-845 | plan_revision:2 | outcome:pass | worktree_path:`D:/autostack/.wt/lang-845/auto-lang` | branch:`plan-845-dev` | reviewed_commit:`231957020cc855485adfc4b15be75457a94ef2d8` | base_commit:`ae1a87e15b857329efc1110beb9c76e9c0299baa`，正式base8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 | dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21；三锁/config/16项main Spec未变 | spec_inputs:[audit](../attachments/845/review-r8-preparation/audit.json.txt)、[冻结SD01..04](../attachments/845/review-r8-preparation/spec-delta-frozen.md)，SHA256 `01eaa3e632a062c50bbcd5860df79d5a28e4d56390c881711754fb6416a351c5`。
 
-acceptance_results: AC01刷新pass；AC02..05与未变AC06..08按R2..R7确切代码/依赖/config/输入复用；受影响AC06/07/08与AC09pass，AC10pending | findings: F-845-M1-06独立关闭，既有关闭保留，无新增finding | evidence:[收据/不变量与AC映射](attachments/845/review-r8-preparation/review.md)、[永久2/2实跑](attachments/845/review-r8-preparation/permanent-run.txt)、[四native正反原oracle](attachments/845/review-r8-preparation/permanent-summary.json.txt)、[自选120帧延迟/释放丢失](attachments/845/review-r8-preparation/holdout-results.json.txt)、[raw manifest](attachments/845/review-r8-preparation/manifest.json.txt)。
+acceptance_results: AC01刷新pass；AC02..05与未变AC06..08按R2..R7确切代码/依赖/config/输入复用；受影响AC06/07/08与AC09pass，AC10pending | findings: F-845-M1-06独立关闭，既有关闭保留，无新增finding | evidence:[收据/不变量与AC映射](../attachments/845/review-r8-preparation/review.md)、[永久2/2实跑](../attachments/845/review-r8-preparation/permanent-run.txt)、[四native正反原oracle](../attachments/845/review-r8-preparation/permanent-summary.json.txt)、[自选120帧延迟/释放丢失](../attachments/845/review-r8-preparation/holdout-results.json.txt)、[raw manifest](../attachments/845/review-r8-preparation/manifest.json.txt)。
 
 完整七文件diff确认仅两探针phase0原准备前移，原hierarchy准备timestamp与240帧预算不改，shared helper/Play/legacy/Host/VM/SDK/API/锁/config完全未变，原selection/state/Save/Undo/Redo/全部像素及后续blur/cancel保留。永久delay36两族phase16/20，实际prep37与全部38输入其后；delay241均frame241原phase0 timeout且零准备/鼠标输入。自选delay120 hierarchy16/327与asset20/356均绿、原七/九组GPU检查保留；drop-release phase9/474原期限红。初始asset holdout因review caller未建Save父目录在phase19 os2，原raw保留并仅修caller后绿，不计产品finding。work112原始hash/旧顺序mutation两族frame12 foreign-hit红与restore绿逐项核实，未冒认review改源码复现。source321 Git对象/文件及SDK681/479/17/29、completion4/fmt/clean通过，仅SDK146旧warnings。
 
 T09关闭，reviewed9/10；自动修复6of6不重置。pending_closeout_gates: producer/fresh own-SDK own-target consumer完整driver158/AGP163/build/source/owner，83调用native/user/project/Step、counter AND content与实际UI产物搬迁等统一门仍merge-owned pending。driver-only不触发root整档/docs_gen；tf仍主检出单实例due批量。无未完work-owned项/非法延期/workaround/新债务，无canonical/ledger发布、合入/归档/清树，不宣称交付。所有review子进程已退出/reaped，最终WT clean231957020，Plan写权移交root，由merge继续冻结门。
+
+
+### PLAN-845:r2 merge delivered / closeout pending
+
+stage: merge | outcome: delivered_closeout_pending | completion_kind: delivered | reviewed_commit: 231957020cc855485adfc4b15be75457a94ef2d8 | delivery_commit: c1c7cfea5c9cc84987091ddeaf6cde59cefd5d4f | source_destination: autographics-dev | canonical_commit: 61479d9f8e5df4f5c86b542c2e9a81aa639d5a28 | evidence: [83-call audit](../attachments/845/merge-r1/validated.json.txt)、[delivery](../attachments/845/merge-r1/delivery.json.txt)、[source landing](../attachments/845/merge-r1/source-landed.json.txt)、[ledger readback](../attachments/845/merge-r1/ledger-published.json.txt)。
+
+两端完整driver158/0/0，AGP163/0/0按明确未变来源复用；83调用逐实际状态/像素/输入/源身份审计通过，含两端15项目与真实UI输出搬迁各2。首次Squash反控仅phase2超时未到焦点oracle，已明确oracle-invalid并保留raw；同SHA原argv仅被动报告目的地不同，一次依赖类编译预热（不投递输入）后有界正反重放均phase9，原text-focus keys5/4/session/jump断言如期红，不改源码/预算/断言、不伪造唯一历史时序根因，见[分类](../attachments/845/merge-r1/game-control-replay/oracle-classification.md)。source231后仅14项Spec及派生ledger元数据，独立AGP消费重构通过。源码经实际clean guard/no-op rebase/ff-only落autographics-dev，未入master。
+
+主检出仅知识/索引/账本/归档；RegimeB HTTP探测超时后受保护离线投影12项，tracked81→82、working82→83，5项P818外来WIP及未知字段/原字节保全，仅目标投影入index，恢复副本仅本地忽略。实际归档status/location与9/10匹配。T10的guard清理、生产消费产物观察与845到期批量仍pending；不把未执行项称已完成，修复6/6保持。
 
 ## 10. 待澄清事项
 
@@ -491,3 +501,8 @@ T09关闭，reviewed9/10；自动修复6of6不重置。pending_closeout_gates: p
 2026-10-24 历史work blocker（已由r2用户决策解除）：G840独立最终复审证据缺口，详§9首次核查。用户启动授权已具备，无需再次确认实施845本身。
 
 2026-10-24 r2：上述G840 blocker经用户明确决策已解除；不再要求重复批准。
+
+
+## 11. spec-sync 回写记录
+
+SD01..04按独立R8冻结提案沉淀：scene-document、scene-assets、authoring-session、scene-play-session、behavior-api、auto-source-driver、project、integration-contract八项修订；新增[behavior-project](../../specs/auto-graphics/behavior-project.md)。module overview/plans、global overview/goals007/008与INDEX同步，共14路径；索引再生仅增加auto-graphics模块条目，原有其他模块/警告保留。GOAL007/008仍进行中，生产I2/I3不变。12项designs/tests/reviews/reports稳定ID、源Git提交/hash、版本与保留范围见[ledger projection](../attachments/845/merge-r1/ledger-projection.json.txt)。归档/清理/批量最终回执由T10按实际补齐。

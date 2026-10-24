@@ -16,8 +16,10 @@
 
 - [Scene assets](scene-assets.md): PLAN-838 bounded static GLB admission, actual Auto profile5, immutable SHA resources, schema3 portable closure and resource-aware save/recovery.
 
-- [Scene play session](scene-play-session.md): PLAN-839 accepted scene Run/Pause/neutral Step/Stop with retained real Auto profile6, fixed tick/input isolation and original editing recovery; schema3 unchanged.
+- [Scene play session](scene-play-session.md): PLAN-839 accepted scene Run/Pause/neutral Step/Stop with retained real Auto profile6, fixed tick/input isolation and original editing recovery; schema3 historical; scene4 bound sources are described below.
 
 - [Finite user behavior API](behavior-api.md): explicit source selection, actual Auto callbacks and graph/input functions, portable Move/Patrol projects; original profiles and production boundaries retained (PLAN-840).
 
 Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md), [affected final review](../../plans/attachments/840/review-r2/review.md), [complete merge receipt](../../plans/attachments/840/merge-r1/receipt.md). Graphics source: autographics-dev. Production I2/I3 remain pending.
+
+- [Bound behavior projects](behavior-project.md): scene4 stable nullable roles, byte-exact source/history and verified complete source/GLB closure; default Run and honest memory/hash provenance, real UI-output relocation (PLAN-845).

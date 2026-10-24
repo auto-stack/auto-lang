@@ -136,3 +136,5 @@ PLAN-839 adds [finite scene play sessions](auto-graphics/scene-play-session.md):
 PLAN-840 adds [finite user behavior](auto-graphics/behavior-api.md) and corrected pure-SDK dependency scanning. Source-only portable business scripts run in the actual Auto VM on one experimental runner; production I2/I3 remain pending.
 
 Provenance: [PLAN-840](../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md), [affected final review](../plans/attachments/840/review-r2/review.md), [complete merge receipt](../plans/attachments/840/merge-r1/receipt.md). Graphics source: autographics-dev. Production I2/I3 remain pending.
+
+PLAN-845 adds [finite bound behavior projects](auto-graphics/behavior-project.md): scene4 accepted source/roles and portable complete closure on the experimental runner. Production I2/I3 remain pending.

@@ -2,7 +2,7 @@
 
 Status: delivered experimentally after final R2 and frozen closeout gates; independent Windows authoring experiment on autographics-dev. I1 real Auto games stay delivered; I2 production AutoUI/RQHost and I3 Forge remain pending.
 
-`authoring::document::Document` original PLAN-835 schema used strict UTF-8 JSON `autographics.scene/1`; the hierarchy schema2 is historical; current schema3 is specified in the PLAN-838 extension below, retaining nonempty document_id (≤128 Unicode chars), fixed ordered resources `[circle,quad,cylinder,player,mob]`, and an ordered objects array. Object fields: positive unique u64 id, name≤128 Unicode chars, lowercase kind, translation[3], scale[3], yaw, pitch, rgba[4], visible boolean. The resource kind is a fixed registration identity, never an arbitrary file path.
+`authoring::document::Document` original PLAN-835 schema used strict UTF-8 JSON `autographics.scene/1`; the hierarchy schema2 is historical; current schema4 is specified in the PLAN-845 extension below, retaining nonempty document_id (≤128 Unicode chars), fixed ordered resources `[circle,quad,cylinder,player,mob]`, and an ordered objects array. Object fields: positive unique u64 id, name≤128 Unicode chars, lowercase kind, translation[3], scale[3], yaw, pitch, rgba[4], visible boolean. The resource kind is a fixed registration identity, never an arbitrary file path.
 
 Supported kinds: circle/quad (2D); cylinder/player/mob (3D; original procedural cylinder or unchanged original GLBs/all meshes/materials). Finite transform values have magnitude≤100000; scale>0; RGBA0..1. 2D requires z0, scale-z1 and yaw/pitch0; 3D retains fixed rgba `[0.9,0.3,0.2,1]` placeholder and original model material. Canonical encoding is serde struct field order with finite f32 values. Equivalent whitespace is accepted on input; semantic equality and canonical-content SHA256, not input byte formatting, define document/dirty identity.
 
@@ -60,7 +60,7 @@ Old epochs never write/confirm new documents; old revisions cannot clean newer e
 
 Provenance: [PLAN-838](../../plans/archive/838-autographics-glb-import-and-portable-scene-assets.md), [independent final R2](../../plans/attachments/838/review-r2/review.md), [merge receipt](../../plans/attachments/838/merge-r1/receipt.md). Source remains autographics-dev; production I2/I3 pending.
 
-## PLAN-839 current scene play extension
+## PLAN-839 historical scene play extension (before bound sources)
 
 Document remains autographics.scene/3. Runtime/actor selection/ticks/input/VM/code
 bindings are transient and never serialized. Run/Pause/Step/Fault do not mutate
@@ -80,3 +80,9 @@ this from leaked runtime owners or repeated model upload. Final Editor close rel
 source payloads; an explicit external mesh pin lasts until its own last drop.
 
 Provenance: [PLAN-839](../../plans/archive/839-autographics-scene-play-mode-and-auto-runtime.md), [independent final R2](../../plans/attachments/839/review-r2/independent/review.md), [affected independent R3](../../plans/attachments/839/review-r3/independent/review.md), [merge receipt](../../plans/attachments/839/merge-r1/receipt.md). Source remains autographics-dev; production I2/I3 pending.
+
+## PLAN-845 current scene4 extension
+
+Scene4 retains all scene3 geometry/resources/hierarchy limits and adds required behavior:null or exact behavior/1 source+nullable stable leaf actors. v1..3 migrate strictly to scene4/behavior:null in memory without rewriting their disk bytes. Binding participates in canonical hash/dirty/history; runtime ordinal/tick/input/VM state remains transient. Wrong API/hash/length/nullable/missing/cross-dimension references reject; deletion of a bound leaf/ancestor requires explicit detach or retarget. See [bound project contract](behavior-project.md) for byte admission, history and complete storage closure.
+
+Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-portable-projects.md), [independent final review](../../plans/attachments/845/review-r8-preparation/review.md), [merge receipt](../../plans/attachments/845/merge-r1/receipt.md). Source: autographics-dev; production I2/I3 pending.

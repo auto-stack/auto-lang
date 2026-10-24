@@ -4378,6 +4378,31 @@
  "modified_at": 1792838779,
  "completed_at": 1792838779
 }
+,
+{
+ "id": "P845-MERGE",
+ "title": "PLAN-845 delivered consolidation",
+ "content": "Revision2 source/canonical deposit to autographics-dev after full frozen gates; eight revised and one new canonical contract with module/goals/index and guarded offline projection. Archival/cleanup remain explicit checkpoints in docs/plans/attachments/845/merge-r1/receipt.md; completion requires their actual verification. Intended archive docs/plans/archive/845-autographics-bound-behavior-and-portable-projects.md.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/plans.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-845",
+  "r2",
+  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+  "source-commit:61479d9f8e5df4f5c86b542c2e9a81aa639d5a28",
+  "source-sha256:a9f52cd030606a9d36a446224a40fe1811e2aa78e14c4999cd1d0fd22e9c72fc"
+ ],
+ "created_at": 1792871770,
+ "modified_at": 1792871770,
+ "completed_at": 1792871770
+}
 ],
       "section_type": "Reports",
       "title": "📊 Reports",
@@ -14593,7 +14618,7 @@
         {
  "id": "P829-AGP",
  "title": "AutoGraphics project",
- "content": "Portable Move and Patrol projects, same runner user-only speed mutation and relocation/differentcwd. Experimental source only autographics-dev; production I2/I3/general engine remain pending.",
+ "content": "Finite portable scene4 behavior binding and verified source/GLB closure on autographics-dev. Actual Auto/OS/GPU and same-binary fresh-process relocation; production I2/I3/general engine remain pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14602,17 +14627,17 @@
  "test_file": null,
  "file": "docs/specs/auto-graphics/project.md",
  "milestone": null,
- "module": null,
+ "module": "auto-graphics",
  "tags": [
-  "PLAN-840",
+  "PLAN-845",
   "r2",
-  "reviewed:1f19395254d7e676bd188e43e3d8f734d57aaa12",
-  "source-sha256:fcdc2c471e005726cabb591a652ab161172a765d5a7e9d67242124c95c56f46a",
-  "source-path:docs/specs/auto-graphics/project.md"
+  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+  "source-commit:61479d9f8e5df4f5c86b542c2e9a81aa639d5a28",
+  "source-sha256:236c2108c552b29e564c742aa2ea37c4023a3e231c11e97f22e384e30028498a"
  ],
  "created_at": 1792685069,
- "modified_at": 1792828504,
- "completed_at": 1792828504
+ "modified_at": 1792871770,
+ "completed_at": 1792871770
 },
         {
           "id": "P830-SURF",
@@ -14679,7 +14704,7 @@
         {
  "id": "P830-IH",
  "title": "AutoGraphics integration-contract",
- "content": "Explicit finite behavior API and source-only consumer, with all old games/profiles and native/counter/content/owner compatibility gates retained. No production UI/RQHost integration or script packaging claim.",
+ "content": "Finite single-source persistence replaces former no-binding exclusion only; old profiles/temporary sources and all old/new owner/native/counter AND content gates remain. No production integration or distribution.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14688,17 +14713,17 @@
  "test_file": null,
  "file": "docs/specs/auto-graphics/integration-contract.md",
  "milestone": null,
- "module": null,
+ "module": "auto-graphics",
  "tags": [
-  "PLAN-840",
+  "PLAN-845",
   "r2",
-  "reviewed:1f19395254d7e676bd188e43e3d8f734d57aaa12",
-  "source-sha256:13446b2173bd1eceb281aeb4b3a4dfbe9e6471ae545eac40d5497c5d113030f9",
-  "source-path:docs/specs/auto-graphics/integration-contract.md"
+  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+  "source-commit:61479d9f8e5df4f5c86b542c2e9a81aa639d5a28",
+  "source-sha256:fe7cb250ab0e0f925e0a72feed463115aff1cc576c5f826492c3325c1aa06314"
  ],
  "created_at": 1792685069,
- "modified_at": 1792828504,
- "completed_at": 1792828504
+ "modified_at": 1792871770,
+ "completed_at": 1792871770
 },
         {
           "id": "P815-B-D1",
@@ -14728,7 +14753,7 @@
         {
  "id": "P833-AUTO-SOURCE",
  "title": "AutoGraphics auto-source-driver",
- "content": "One frozen source-only experiment runner accepts finite user business scripts with actual Auto API; unchanged profiles1..6, driver/AGP and original counter AND content/native/consumer denominators.",
+ "content": "One source-only runner opens complete scene/assets/scripts projects; same binary Move/Patrol/source-speed logic, actual UI-output relocation, full old/new compatibility and independent consumer gates.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14737,17 +14762,17 @@
  "test_file": null,
  "file": "docs/specs/auto-graphics/auto-source-driver.md",
  "milestone": null,
- "module": null,
+ "module": "auto-graphics",
  "tags": [
-  "PLAN-840",
+  "PLAN-845",
   "r2",
-  "reviewed:1f19395254d7e676bd188e43e3d8f734d57aaa12",
-  "source-sha256:d2433d016ee0d19135367aece484ef826111a031c82bba7b51458f7c114588ac",
-  "source-path:docs/specs/auto-graphics/auto-source-driver.md"
+  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+  "source-commit:61479d9f8e5df4f5c86b542c2e9a81aa639d5a28",
+  "source-sha256:e14f9ea444c5dbeb6f3a6bfc874d2fb4454254beb3e91a7d54efc53cfa73cb1d"
  ],
  "created_at": 1792685069,
- "modified_at": 1792828504,
- "completed_at": 1792828504
+ "modified_at": 1792871770,
+ "completed_at": 1792871770
 },
         {
           "id": "P828-SRC",
@@ -14857,7 +14882,7 @@
         {
  "id": "P835-DOCUMENT",
  "title": "AutoGraphics scene-document",
- "content": "Schema3 unchanged: runtime actors/ticks/input/VM/code bindings never persist. Only accepted editable state can save after Stop; relocated new-process reopen verifies original locals.",
+ "content": "Strict scene4 adds required single source/behavior1 and explicit nullable stable u64 leaf actors; strict old-version memory migration, original geometry constraints, binding/history hash and reference rejection retained.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14866,22 +14891,22 @@
  "test_file": null,
  "file": "docs/specs/auto-graphics/scene-document.md",
  "milestone": null,
- "module": null,
+ "module": "auto-graphics",
  "tags": [
-  "PLAN-839",
-  "r1",
-  "reviewed:bccc77d10700a58e7f5aea8fcdf55ab3440c4b58",
-  "source-sha256:eb48c99de1da5cb1268300e9f4f5561e24840079b4297f69f7b62f6b51e1b150",
-  "source-path:docs/specs/auto-graphics/scene-document.md"
+  "PLAN-845",
+  "r2",
+  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+  "source-commit:61479d9f8e5df4f5c86b542c2e9a81aa639d5a28",
+  "source-sha256:280b861e4c0bf48625108b73d96b606ed5db56df0b6ac187793634bc0d1fdfc3"
  ],
  "created_at": 1792720163,
- "modified_at": 1792814102,
- "completed_at": 1792814102
+ "modified_at": 1792871770,
+ "completed_at": 1792871770
 },
         {
  "id": "P835-SESSION",
  "title": "AutoGraphics authoring-session",
- "content": "Editing-only explicit user source UI/CLI; actual scene-root resolution, SaveAs root change, no fallback/hot reload/source persistence; corrected disk source recovers in a new real VM with Editor/GPU restoration.",
+ "content": "Atomic bound source/roles/detach with immutable current/pending/history/save owners;8identity/2MiB source union, original history and stale/cancel semantics, no callback at compile/Open.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14890,17 +14915,17 @@
  "test_file": null,
  "file": "docs/specs/auto-graphics/authoring-session.md",
  "milestone": null,
- "module": null,
+ "module": "auto-graphics",
  "tags": [
-  "PLAN-840",
+  "PLAN-845",
   "r2",
-  "reviewed:1f19395254d7e676bd188e43e3d8f734d57aaa12",
-  "source-sha256:6a4e59a3b4449aa9879610a579915000909f720954ccfa3cf3d8648b12414154",
-  "source-path:docs/specs/auto-graphics/authoring-session.md"
+  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+  "source-commit:61479d9f8e5df4f5c86b542c2e9a81aa639d5a28",
+  "source-sha256:a5dce68a80eefbb8cf4f94c4ad29caaa0372b6100110b2b14e12ca00120e0204"
  ],
  "created_at": 1792720163,
- "modified_at": 1792828504,
- "completed_at": 1792828504
+ "modified_at": 1792871770,
+ "completed_at": 1792871770
 },
         {
  "id": "P836-VIEWPORT",
@@ -14953,7 +14978,7 @@
         {
  "id": "P838-ASSETS",
  "title": "AutoGraphics scene-assets",
- "content": "Accepted assets and same-device immutable GPU Arcs remain pinned/shared during runtime; warm no model reupload/target/pipeline rebuild. Actual VM/resource final owners and legal external pins verified.",
+ "content": "One snapshot/root lock/single entry commit verifies GLB plus exact source closure; scripts8file/2MiB quota, reserved Windows aliases, residual/pending/old-revision recovery and accepted-byte SaveAs.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14962,17 +14987,17 @@
  "test_file": null,
  "file": "docs/specs/auto-graphics/scene-assets.md",
  "milestone": null,
- "module": null,
+ "module": "auto-graphics",
  "tags": [
-  "PLAN-839",
-  "r1",
-  "reviewed:bccc77d10700a58e7f5aea8fcdf55ab3440c4b58",
-  "source-sha256:3df4d999d54068d8e06528fe4d1ddf1f8f62690c4b1c60bba9d0c37e5937504b",
-  "source-path:docs/specs/auto-graphics/scene-assets.md"
+  "PLAN-845",
+  "r2",
+  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+  "source-commit:61479d9f8e5df4f5c86b542c2e9a81aa639d5a28",
+  "source-sha256:fd78e5506207120c0d1c9116c5c714bbb1aedf776f690b7d34eb50ecf655de76"
  ],
  "created_at": 1792791100,
- "modified_at": 1792814102,
- "completed_at": 1792814102
+ "modified_at": 1792871770,
+ "completed_at": 1792871770
 },
         {
           "id": "P816-CLI",
@@ -15017,7 +15042,7 @@
 {
  "id": "P839-PLAY",
  "title": "AutoGraphics scene-play-session",
- "content": "Builtin6/profile6 and UserV1/profile7 coexist; graph configured before app_start once and app_update once/tick; Unit AST invariant and nested function boundaries; original scheduling, Starting cancellation, whole-frame admission, Stop/fault/owners retained.",
+ "content": "Project default consumes accepted bytes/nullable actors; explicit external/Builtin stays temporary. Correct verified-root or memory/hash attribution; original Auto frame/time/Stop/owner behavior unchanged.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15026,23 +15051,23 @@
  "test_file": null,
  "file": "docs/specs/auto-graphics/scene-play-session.md",
  "milestone": null,
- "module": null,
+ "module": "auto-graphics",
  "tags": [
-  "PLAN-840",
+  "PLAN-845",
   "r2",
-  "reviewed:1f19395254d7e676bd188e43e3d8f734d57aaa12",
-  "source-sha256:c312f5edce41f46b880f08d2aea037c397d3c9ffb0c25126e14b1de6ec0d23a4",
-  "source-path:docs/specs/auto-graphics/scene-play-session.md"
+  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+  "source-commit:61479d9f8e5df4f5c86b542c2e9a81aa639d5a28",
+  "source-sha256:afcb04f6faff9407997c11d1b498a281a84e44263d65f9419c621250eb76f1b9"
  ],
  "created_at": 1792814102,
- "modified_at": 1792828504,
- "completed_at": 1792828504
+ "modified_at": 1792871770,
+ "completed_at": 1792871770
 }
 ,
 {
  "id": "P840-BEHAVIOR-API",
  "title": "AutoGraphics behavior-api",
- "content": "Finite autographics.behavior/1: actual Auto callbacks and API; run-scoped ordinal handles, graph/input reads and local translation/visibility writes; immutable source snapshots, real SDK diagnostics, budgets and experimental boundary.",
+ "content": "Existing behavior1 functions/callbacks/limits unchanged; bound scene default and exact accepted bytes complement temporary per-Run file selection without changing API semantics.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15051,17 +15076,17 @@
  "test_file": null,
  "file": "docs/specs/auto-graphics/behavior-api.md",
  "milestone": null,
- "module": null,
+ "module": "auto-graphics",
  "tags": [
-  "PLAN-840",
+  "PLAN-845",
   "r2",
-  "reviewed:1f19395254d7e676bd188e43e3d8f734d57aaa12",
-  "source-sha256:5a4eb070e4798cf136ae7ef6687ca77fa666e6ebde34c643d3c8ee4558f09f35",
-  "source-path:docs/specs/auto-graphics/behavior-api.md"
+  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+  "source-commit:61479d9f8e5df4f5c86b542c2e9a81aa639d5a28",
+  "source-sha256:2c8bfcd662f5e29b7ad99716f2527dab64f5271eaec4d176d004e83514575733"
  ],
  "created_at": 1792828504,
- "modified_at": 1792828504,
- "completed_at": 1792828504
+ "modified_at": 1792871770,
+ "completed_at": 1792871770
 },
 {
  "id": "P840-SDK",
@@ -15117,6 +15142,31 @@
  "created_at": 1792835257,
  "modified_at": 1792838779,
  "completed_at": 1792838779
+}
+,
+{
+ "id": "P845-BEHAVIOR-PROJECT",
+ "title": "AutoGraphics behavior-project",
+ "content": "Current bounded byte-exact source/actor project contract: strict scene4, immutable owners/history, verified closure save/Open, default accepted-source Run and honest memory/hash or verified-root provenance.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/behavior-project.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-845",
+  "r2",
+  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+  "source-commit:61479d9f8e5df4f5c86b542c2e9a81aa639d5a28",
+  "source-sha256:06b2c10c6e1f8c2d9ceafa12e5e8f766b3bad6e490ee3eb4e263c2a1c174dd85"
+ ],
+ "created_at": 1792871770,
+ "modified_at": 1792871770,
+ "completed_at": 1792871770
 }
 ],
       "section_type": "Designs",
@@ -18647,6 +18697,31 @@
  "created_at": 1792838779,
  "modified_at": 1792838779,
  "completed_at": 1792838779
+}
+,
+{
+ "id": "P845-TESTS",
+ "title": "PLAN-845 complete bound-project compatibility gates",
+ "content": "Frozen full driver/AGP and83 complete calls retaining original63, two-end normal/delayed/missing/duplicate native Step controls,16 AGP cases, old games/hierarchy/assets/Play/real owners/counter AND content; producer/fresh own-SDK+target project15case and actual UI-output relocation. Exact source provenance lifecycle and real callback errors; legacy widget scroll keeps original assertions.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/behavior-project.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-845",
+  "r2",
+  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+  "source-commit:61479d9f8e5df4f5c86b542c2e9a81aa639d5a28",
+  "source-sha256:06b2c10c6e1f8c2d9ceafa12e5e8f766b3bad6e490ee3eb4e263c2a1c174dd85"
+ ],
+ "created_at": 1792871770,
+ "modified_at": 1792871770,
+ "completed_at": 1792871770
 }
 ],
       "section_type": "Tests",
@@ -25069,6 +25144,31 @@
  "modified_at": 1792838779,
  "completed_at": 1792838779
 }
+,
+{
+ "id": "P845-R8",
+ "title": "PLAN-845 independent final acceptance PASS",
+ "content": "Revision2 frozen231957020: independent R2 closes source-origin F01; R3/R4/R5 close original input/owner/pointer gate repairs. R6 validates bounded actual Step acknowledgment and pointer reachability. R7 independently validates the original legacy native window path, exact input-error propagation and permanent controlled regression; original product/Spec assertions preserved. R8 independently validates initial focus/pointer readiness before automatic scrolling for hierarchy/assets, delayed setup and original deadline controls, with all original pixel/native assertions retained. No open finding; complete merge gates separately verified.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/attachments/845/review-r8-preparation/review.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-845",
+  "r2",
+  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+  "source-commit:c15486c68f2e70a4d6b5eeaa4acc62debebd19fb",
+  "source-sha256:2d55d781f41a672c758ef1bed70a79c5d4eb633c538e73761a13ca87f9f17193"
+ ],
+ "created_at": 1792871770,
+ "modified_at": 1792871770,
+ "completed_at": 1792871770
+}
 ],
       "section_type": "Reviews",
       "title": "🔍 Reviews",
@@ -25080,5 +25180,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 81
+  "version": 82
 }

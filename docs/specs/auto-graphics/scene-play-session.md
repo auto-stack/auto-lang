@@ -2,10 +2,10 @@
 
 Windows single-window stock Iced/wgpu authoring supports an explicitly finite
 scene Run mode with one retained real Auto Session. Builtin6 uses samples/authoring_play/main.at. UserV1/profile7 adds one
-explicitly selected finite user script via [behavior API](behavior-api.md); no
-saved code binding is introduced. Local Document and Registry come from accepted in-memory content, including
+finite user script via [behavior API](behavior-api.md), either accepted scene4
+binding or an explicit temporary external source; see [behavior projects](behavior-project.md). Local Document and Registry come from accepted in-memory content, including
 dirty/unsaved imports. Actor choice is a stable same-dimension leaf ID, one2D and
-one3D; default first eligible document leaf, absent dimension None. Empty worlds
+one3D; Builtin/temporary defaults choose the first eligible document leaf, absent dimension None; bound project roles remain explicit, including null. Empty worlds
 are valid. UI names the chosen IDs and cycles eligible actors only in Editing.
 
 Editing(no Play) → Starting → Running → Pausing/Paused → Stopping → Editing;
@@ -72,6 +72,14 @@ Provenance: [PLAN-839](../../plans/archive/839-autographics-scene-play-mode-and-
 
 ## UserV1/profile7 extension (PLAN-840)
 
-Builtin6/profile6 and profiles1..5 retain their existing routes. Explicit UserV1/profile7 snapshots one local source, supplies the complete graph/resources/actors/neutral input, then calls app_start exactly once; app_update(dt float) is called once per dispatched tick. Both callbacks return Unit through all accepted expression paths; nested functions/closures keep their own return policy. User source never supplies main/reset/tick/output transport. Public graph/input queries and local translation/visibility writers are actual Auto functions. Derived reads observe earlier writes. Sticky first API error rejects the entire frame and closes the VM, keeping last-good. Source identity, source regions and immutable scene/assets/actors are independently checked. The original Starting cancellation, fixed clock, Pause/neutral Step/Resume, Stop restoration, whole-frame admission and ownership/budget limits remain unchanged. New Run rereads source with new globals/VM. See [exact behavior contract](behavior-api.md).
+Builtin6/profile6 and profiles1..5 retain their existing routes. Explicit UserV1/profile7 snapshots one local source, supplies the complete graph/resources/actors/neutral input, then calls app_start exactly once; app_update(dt float) is called once per dispatched tick. Both callbacks return Unit through all accepted expression paths; nested functions/closures keep their own return policy. User source never supplies main/reset/tick/output transport. Public graph/input queries and local translation/visibility writers are actual Auto functions. Derived reads observe earlier writes. Sticky first API error rejects the entire frame and closes the VM, keeping last-good. Source identity, source regions and immutable scene/assets/actors are independently checked. The original Starting cancellation, fixed clock, Pause/neutral Step/Resume, Stop restoration, whole-frame admission and ownership/budget limits remain unchanged. New Run creates fresh globals/VM; only temporary external sources reread files, while bound defaults use accepted bytes. See [exact behavior contract](behavior-api.md).
 
 Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md), [affected final review](../../plans/attachments/840/review-r2/review.md), [complete merge receipt](../../plans/attachments/840/merge-r1/receipt.md). Graphics source: autographics-dev. Production I2/I3 remain pending.
+
+## Accepted project source (PLAN-845)
+
+Scene4 behavior defaults to accepted immutable source+explicit nullable leaf roles, otherwise Builtin6. Run validates current binding and consumes its accepted bytes even after disk change/removal; errors never fall back to a different script. Temporary external/Builtin overrides preserve their existing routes without dirty/Save mutation. SourceSnapshot/Last Run/runtime callback diagnostics all show verified current-root blob provenance or explicit <memory:SHA256>.at for unconfirmed identities; geometry dirtiness does not make saved source unsaved. SaveAs/old-revision/pending provenance follows [behavior projects](behavior-project.md).
+
+Original whole-frame validation, sticky API error, fixed dt/clock/credits/deadline, Starting cancellation, actual Auto dispatch, Stop restoration and VM/GPU ownership remain unchanged. No callback runs merely from bind/Open/Save; a runtime-Fault source can be saved and reopened before an explicit Run.
+
+Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-portable-projects.md), [independent final review](../../plans/attachments/845/review-r8-preparation/review.md), [merge receipt](../../plans/attachments/845/merge-r1/receipt.md). Source: autographics-dev; production I2/I3 pending.

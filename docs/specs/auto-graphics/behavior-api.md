@@ -7,10 +7,11 @@ engine SDK or a security sandbox. Use the runner's normal entry:
 autographics-authoring --open C:/project/scene.agscene --behavior main.at
 ```
 
-Choose **Use user script** and a `.at` path in Editing, then Run. No `--behavior`
-keeps Builtin6. A relative script path resolves against the saved scene entry's
+Choose **Use user script** and a `.at` path in Editing, then Run for a temporary
+override. Without `--behavior`, scene4 uses its accepted bound source/roles, or
+Builtin6 when behavior is null. A relative script path resolves against the saved scene entry's
 directory; an unsaved scene requires an absolute local path. Save As changes that
-root. The UI shows the resolved path/API and the last Run's source hash; failure
+root for temporary file resolution. The UI shows the resolved path/API and the last Run's source hash; failure
 does not silently select Builtin6. Active Starting/Running/Paused/Faulted modes
 reject source/path changes, without queuing them.
 
@@ -115,3 +116,9 @@ AutoUI/RQHost, I2/I3 or complete public engine promise is added.
 
 
 Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md), [affected final review](../../plans/attachments/840/review-r2/review.md), [complete merge receipt](../../plans/attachments/840/merge-r1/receipt.md). Graphics source: autographics-dev. Production I2/I3 remain pending.
+
+## Scene4 project default (PLAN-845)
+
+The public behavior/1 declarations, units, finite source validator, callbacks, limits and trusted-code boundary are unchanged. A scene may now explicitly bind one accepted byte-exact source and nullable stable same-dimension leaf roles; [behavior projects](behavior-project.md) defines persistence and ownership. Default Run snapshots accepted bytes without file reread, with current-root verified blob or explicit memory/hash provenance. Explicit user-file selection still reads once per Run and remains temporary; saving never silently binds it. Bind/Open compile/check but do not execute callbacks.
+
+Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-portable-projects.md), [independent final review](../../plans/attachments/845/review-r8-preparation/review.md), [merge receipt](../../plans/attachments/845/merge-r1/receipt.md). Source: autographics-dev; production I2/I3 pending.

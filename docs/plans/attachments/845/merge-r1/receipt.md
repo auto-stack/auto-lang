@@ -1,3 +1,39 @@
+# PLAN-845:r2 — source landed, ledger verified, archive prepared
+
+Reviewed231957020cc855485adfc4b15be75457a94ef2d8 → metadata-only deliveryc1c7cfea5c9cc84987091ddeaf6cde59cefd5d4f on autographics-dev (ff-only). Full83 effective calls and two-end driver158 passed, exact unchanged AGP163 evidence explicit. Project15+15 and actual UI-output relocation2+2 verified. Squash first incomplete negative excluded, one bounded same-binary valid phase9 pair retained with strict original oracle. Canonical14 and offline ledger12 read back; foreign P818 working items retained only locally. Main source unchanged. Archive actual state verified9/10; cleanup/artifact observation/due batch remain pending.
+
+---
+
+# PLAN-845:r2 — R8 pass, frozen complete merge gates running
+
+Current reviewed code231957020cc855485adfc4b15be75457a94ef2d8; independent [R8](../review-r8-preparation/review.md) closesF-845-M1-06 without changing product/Spec/original acceptance. Repair cycles6 of authorized6. Complete producer/consumer driver158 and all83 original/added invocations remain required; exact unchanged AGP/library/owner origin rows are explicit in preparation-unchanged-reuse.json.txt. Native outputs preparation-final preserve every legacy-final/step-final prior red/pass. Current campaign campaign-preparation-final.txt.
+
+Landing/canonical/ledger/archive/cleanup/due-batch checkpoints pending. No delivered pass before every required checkpoint verified.
+
+---
+
+# PLAN-845:r2 — F-845-M1-06 repaired, R8 pending
+
+Complete frozen ae1a87e15 campaign stopped honestly at hierarchy phase0/frame12. Before it stopped both full driver156, Step four-controls, original games/property/interaction negatives/reopen passed; historical legacy-final raw retained. Source fix cycle6/6 is frozen231957020cc855485adfc4b15be75457a94ef2d8; [work](../work-r6-surface/readiness.md). Independent R8 is pending; no complete gate or delivered pass is claimed. Prepared orchestration targets producer/consumer driver158, AGP163 and unchanged83 invocation matrix only after R8 final pass. No landing/canonical/ledger/archive/cleanup/batch occurred.
+
+---
+
+# PLAN-845:r2 — R7 pass, complete merge gates running
+
+Current frozen reviewed code `ae1a87e15b857329efc1110beb9c76e9c0299baa`; independent [R7](../review-r7-legacy/review.md) pass closesF-845-M1-05. Automatic repair cycles5 of authorized6. Complete83-call matrix preserves original63+20, runs both complete driver156 and native families on the new actual binaries, exact unchanged AGP/library/owner inputs reuse explicit origin rows in legacy-unchanged-reuse.json.txt. New native outputs legacy-final preserve all step-final raw history.
+
+Landing/canonical/ledger/archive/cleanup/due-batch checkpoints pending. Current campaign campaign-legacy-final.txt. No delivered pass until every required checkpoint verified.
+
+---
+
+# PLAN-845:r2 — R6 pass, complete merge gates running
+
+Current frozen reviewed code `944c1c551b524d7d8c7f69519e465831417d21a8`; independent [R6](../review-r6-step/review.md) pass closesF-845-M1-04. Automatic work/review cycles4 of user-authorized6. The complete83-call matrix retains every original gate, adds two-end Step regression, reruns affected complete driver and all game/authoring native families. Exact unchanged-input AGP/library/owner evidence remains labeled with origin commits in step-unchanged-reuse.json.txt. New native outputs under step-final; historical reports not overwritten.
+
+All landing/canonical/ledger/archive/cleanup checkpoints remain pending. Current campaign: campaign-step-final.txt. No delivered pass until complete matrix, canonical/ledger readback, landing, tracked archive, guarded cleanup and due batch are verified. The earlier needs_fix/cap3 record below is history, superseded by the user's cap6 authorization and R6 pass; no prior red was silently relabeled green.
+
+---
+
 # PLAN-845:r2 consolidation — needs_fix
 
 stage: merge | plan_revision: 2 | outcome: needs_fix | finding: F-845-M1-04
