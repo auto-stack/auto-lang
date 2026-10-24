@@ -20,7 +20,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-auto-ui-runtime = { path = "../../../../crates/auto-ui-runtime" }
+auto-ui-runtime = { path = "../../../../../auto-ui/crates/auto-ui-runtime" }
 auto-lang-core = { path = "../../../../crates/auto-lang-core" }
 auto-val = { path = "../../../../crates/auto-val" }
 

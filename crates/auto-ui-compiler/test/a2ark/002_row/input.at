@@ -1,8 +1,0 @@
-widget TestRow {
-    view {
-        row {
-            text "Left"
-            text "Right"
-        }
-    }
-}

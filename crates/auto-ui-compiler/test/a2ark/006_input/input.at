@@ -1,5 +1,0 @@
-widget TestInput {
-    view {
-        input (placeholder: "Enter name") {}
-    }
-}

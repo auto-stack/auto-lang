@@ -18,4 +18,4 @@ publish = false
 [workspace]
 
 [dependencies]
-auto-ui-compiler = { path = "../../../../crates/auto-ui-compiler" }
+auto-ui-compiler = { path = "../../../../../auto-ui/crates/auto-ui-compiler" }

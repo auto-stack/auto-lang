@@ -1,5 +1,0 @@
-widget TestImage {
-    view {
-        image (src: "https://example.com/logo.png") {}
-    }
-}

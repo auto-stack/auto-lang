@@ -22,7 +22,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-auto-ui-dialect = { path = "../../../../crates/auto-ui-dialect" }
+auto-ui-dialect = { path = "../../../../../auto-ui/crates/auto-ui-dialect" }
 # toy ParseContext 实现面（ParseContext/ParseCheckpoint/ast/token/error/
 # session 类型）与预词法 Lexer——均为轻层。
 auto-parser-api = { path = "../../../../crates/auto-parser-api" }

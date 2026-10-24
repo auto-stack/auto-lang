@@ -1,5 +1,0 @@
-widget TestButton {
-    view {
-        button (text: "Submit") {}
-    }
-}

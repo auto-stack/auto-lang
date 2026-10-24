@@ -18,7 +18,7 @@ auto-lang-core = { path = "../auto-lang-core" }
 #（mount_face 工厂注入；显式 AUTO_SHELL_PACK = 解释双轨）。PLAN-816 T-05：
 # 壳=桌面 UI 域（闭包含 auto-ui-runtime{ui-iced}）——随 ui-extra 门控，
 # Core 形态缺席。
-shell-pack = { path = "../shell-pack", optional = true }
+shell-pack = { path = "../../../auto-ui/crates/shell-pack", optional = true }
 auto-val = { path = "../auto-val" }
 # 管理/编排单源（非 UI 服务；UI 臂经 ui_ops seam=ToolUiOps→工具进程）。
 auto-man-runtime = { path = "../auto-man-runtime" }
@@ -42,9 +42,9 @@ colored = { workspace = true }
 notify = { workspace = true }
 
 # ---- ui-extra：五操作协议面之外的 UI 静态面（完整 profile 组成部分）----
-auto-ui-compiler = { path = "../auto-ui-compiler", optional = true }
-auto-ui-runtime = { path = "../auto-ui-runtime", optional = true }
-auto-ui-dialect = { path = "../auto-ui-dialect", optional = true }
+auto-ui-compiler = { path = "../../../auto-ui/crates/auto-ui-compiler", optional = true }
+auto-ui-runtime = { path = "../../../auto-ui/crates/auto-ui-runtime", optional = true }
+auto-ui-dialect = { path = "../../../auto-ui/crates/auto-ui-dialect", optional = true }
 
 [features]
 # 完整 profile（现行默认交付形态）：全部命令支持面。

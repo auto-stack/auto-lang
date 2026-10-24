@@ -121,8 +121,8 @@ test-native-dock = ["ui-iced", "native-dock", "auto-ui-runtime/test-native-dock"
 # 三个新包（机制切片：use_scanner 已迁 auto-lang-core，旧路径经 lib.rs
 # 再导出保类型身份；UI compiler/runtime 迁移面见 T-03/T-04）。
 auto-lang-core = { path = "../auto-lang-core" }
-auto-ui-compiler = { path = "../auto-ui-compiler" }
-auto-ui-runtime = { path = "../auto-ui-runtime", default-features = false }
+auto-ui-compiler = { path = "../../../auto-ui/crates/auto-ui-compiler" }
+auto-ui-runtime = { path = "../../../auto-ui/crates/auto-ui-runtime", default-features = false }
 # Plan 673 T-03：read_text_range 分块读 VM/a2r-std 双轨逐字节对拍
 # （P670-D1 纪律：两侧 serde 形状一致，测试断言 byte-identical）。
 # PLAN-681：升为正式依赖——迷你库 a2r_std::fs 的 tree/basename re-export
@@ -145,7 +145,7 @@ auto-parser-api = { path = "../auto-parser-api" }
 # PLAN-806: UI msg/model 声明文法单一份实现（完整算法自本 crate Parser
 # 迁出）；pub parse_msg_decl/parse_model_block 与结构路径 inner 一律薄
 # 委托此处，经 ParserBridge 的 ParseContext 端口驱动，无第二份算法。
-auto-ui-dialect = { path = "../auto-ui-dialect" }
+auto-ui-dialect = { path = "../../../auto-ui/crates/auto-ui-dialect" }
 auto-cache = { path = "../auto-cache" }
 # Plan 430 C2: dep 管线进程内调用 shim 包生成器 + manifest 结构
 shim-metadata = { path = "../shim-metadata" }

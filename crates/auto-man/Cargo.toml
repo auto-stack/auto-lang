@@ -40,7 +40,7 @@ auto-api-gen = { path = "../auto-api-gen" }
 # historic auto_man::{vue,rust_ui,jet,ark,tauri,vscode,...} path alive; the
 # M814-B-gated run residues (vue_run_compat / rust_ui_vm_compat) consume its
 # public surface from this side.
-auto-ui-tools = { path = "../auto-ui-tools" }
+auto-ui-tools = { path = "../../../auto-ui/crates/auto-ui-tools" }
 # PLAN-816 T-03: 非 UI 管理服务/执行单源（本 crate 为其 re-export 门面）。
 auto-man-runtime = { path = "../auto-man-runtime" }
 # PLAN-816 T-03 F-01: 链接本 crate 即自举 CompatUiOps（旧公开入口默认可用）

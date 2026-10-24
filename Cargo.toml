@@ -27,12 +27,6 @@ members = [
     # parser/compile/VM/trans 随 T-02..T-06 迁入）；normal/build/dev 闭包
     # 无 UI 实现/Man（闭包钉：test/fixtures/modularity/language-sdk-consumer）。
     "crates/auto-lang-core",
-    # PLAN-814: UI 编译/生成域——aura 提取/design tokens/四生成器
-    # （T-03 迁入）；依赖 SDK，不被 SDK 反向依赖。
-    "crates/auto-ui-compiler",
-    # PLAN-814: UI 运行/renderer/宿主域——VM 渲染轨与桌面栈（T-04 迁入）；
-    # 依赖 SDK 与 UI compiler；宿主能力装配收敛于此。
-    "crates/auto-ui-runtime",
     # PLAN-807: text foundation crate (persistent rope, file-backed paging,
     # snapshots, diff engine), extracted verbatim from auto-lang's
     # ui/code_editor; auto-lang keeps thin re-export facades at the old
@@ -44,10 +38,6 @@ members = [
     # auto-ast/auto-lex/auto-diagnostics — no Parser/VM/UI/Man implementation
     # in its closure; external grammar impls depend on this crate only).
     "crates/auto-parser-api",
-    # PLAN-806: UI msg/model 声明文法单一份实现 crate（完整算法自 Parser
-    # 逐字迁出，经 dyn ParseContext 驱动；闭包仅 auto-parser-api 轻层，
-    # 无 auto-lang/Parser/VM/renderer）。
-    "crates/auto-ui-dialect",
     # PLAN-799: AST model crate (Code/Stmt/Expr/Type/UI-compat nodes +
     # ToNode/ToAtom/AtomWriter serialization; extracted verbatim from
     # auto-lang; no Parser/TypeStore/inference/VM/UI deps).
@@ -110,8 +100,6 @@ members = [
     "crates/auto-terminal-core",
     "crates/auto-lsp",
     "crates/auto-val",
-    # PLAN-036 T-02: shell pack a2r 生成物（无窗组件库——入库=真编译门）
-    "crates/shell-pack",
     "crates/auto-vm",
     # Plan 330: auto-shell + ash-core moved to separate repo (../auto-shell)
     # "crates/auto-shell",
@@ -138,11 +126,6 @@ members = [
     # error/framing over stdio; pure data — reuses the one-source
     # auto-project-model request + wire codec, no AST/VM/renderer/Man).
     "crates/auto-tool-protocol",
-    # PLAN-815 T-12: UI engineering tool package (lib + `auto-ui-tool` bin).
-    # M815-A scope: describe/validate_project host over the light protocol;
-    # generation/build/run closure lands with M815-B. No Man/legacy big-lib
-    # deps (closure pinned by test/fixtures/modularity/ui-tool-consumer).
-    "crates/auto-ui-tools",
     # PLAN-815 T-04: API generation core — single-algorithm api_gen +
     # rust_sidecar effect adapter + shared rust workspace layout, extracted
     # from auto-man (owner: lang-service-adapter; man/ui域双消费).

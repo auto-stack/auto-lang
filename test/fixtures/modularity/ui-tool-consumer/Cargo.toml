@@ -22,7 +22,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-auto-ui-tools = { path = "../../../../crates/auto-ui-tools" }
+auto-ui-tools = { path = "../../../../../auto-ui/crates/auto-ui-tools" }
 auto-tool-protocol = { path = "../../../../crates/auto-tool-protocol" }
 auto-project-model = { path = "../../../../crates/auto-project-model", features = ["wire"] }
 # 测试体在 lib 目标内(#[test] 函数随非 test cfg 的 lib 一同编译,dev-deps
