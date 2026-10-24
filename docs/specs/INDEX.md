@@ -536,6 +536,7 @@
 
 ## 未分组
 
+- [auto-cte](auto-cte/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
 - [auto-man-core](auto-man-core/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
 - [auto-media-core](auto-media-core/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
 - [auto-ui-compiler](auto-ui-compiler/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）

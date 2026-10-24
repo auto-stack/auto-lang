@@ -4,6 +4,23 @@
       "id": "reports",
       "items": [
         {
+          "id": "P817-A",
+          "title": "PLAN-817 交付收据（AV 驱动 CTE 查询与冻结缓存闭环）",
+          "content": "delivery ec6a54c5d（reviewed c224a4b0b+纯文档 Spec 后代 39296cd24 经 range-diff 24/24 等价 rebase，ff-only 合入 master 无 merge commit）。merge 门禁全绿：裸 cargo t 5336/5336（worktree 68s+落地后主检出 70.6s，中途三轮竞争 flake 逐项隔离归因）、cargo tv 163/163、verify -Scope all PASS（acceptance 全族串行+官测 5/5+lint+resources 18/18 release 串行 308s+closeout 钉定边界）。Spec：auto-cte 三新文档+四目标只追加+五模块 plans.md+overview 行；ledger v78 四条目；INDEX 再生。归档 docs/plans/archive/817-av-cte-query-frozen-cache.md；批量回归未到期（835 收据 27h<48h、无 5 倍数落地）。",
+          "status": "verified",
+          "depends_on": [],
+          "related": ["PLAN-817"],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/plans/archive/817-av-cte-query-frozen-cache.md",
+          "milestone": null,
+          "module": "auto-cte",
+          "tags": ["PLAN-817", "delivery:ec6a54c5d"],
+          "created_at": 1792823919,
+          "modified_at": 1792823919
+        },
+        {
           "id": "P814-A",
           "title": "PLAN-814 M814-A 阶段发布收据（SDK/UI 编译分层 r3 合同）",
           "content": "T-14 phase pass（r3 合同 @256613936，R7 全 finding 闭）→ T-15 冻结门：裸 t 5307/5307（plan808/schema_drift 两围栏随迁修复 e47d85c7b，生产零改动）+tv 163+tu 867+tt 5679/5679（plan485 剪贴板并行 flake 归因复跑绿）；taa 用户豁免（aavm 拟退役）。master 合入 f6e07acee（合并解析：master 侧新增 test_cases/abi+ac_av 跟随目录迁移至 auto-lang-core 新路径）；分支同步 c06fb9917 保树继续 B。Spec 子集：新增 language-sdk/auto-ui-compiler project.md，修改 auto-lang project/frontend/vm/ui overview + auto-parser-api project + auto-ui-dialect full-grammar（r3 两处窄例外 canonical 落文）。consumer 读回：language-sdk-consumer 5/5 + no-ui 源码快照 fresh+locked + 792 driver 25/25 于合入后 master。777 master 重采样被并发会话脏文档阻塞（后续跟进）。",
@@ -8475,6 +8492,23 @@
       "id": "designs",
       "items": [
         {
+          "id": "P817-D",
+          "title": "auto-cte 有限 CTE 查询与冻结缓存模块合同（PLAN-817）",
+          "content": "SD-01/02 蒸馏：有限 i32/bool 真实 AV 查询（Literal/QueryRef/Call/FieldCount/HasField，cte.meta.fields/v1 门控；Meta→AV 实参合同路径）+ consumer 双向绑定回灌（owner∪entry∪闭包 owner-only 编译、HIR 原位回填重verify）；冻结 envelope ac817/cte-executed/v1（producer=plan817/cte-probe 绑定真实 AV）+ ac817/a05-cte-exec/v1 层（783 载体，坏块受控拒非 miss、hit 零 AV、lease/root/GC 水位）；恢复四段有序预留+S+2T 结构审计 decode 预算（共享 scratch Vec 模型）+精确容量编码+10s 请求累计墙钟。文档 docs/specs/auto-cte/{project,scalar-query-profile,frozen-cache}.md。",
+          "status": "verified",
+          "depends_on": [],
+          "related": ["PLAN-817"],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-cte/project.md",
+          "milestone": null,
+          "module": "auto-cte",
+          "tags": ["PLAN-817", "delivery:ec6a54c5d", "experimental"],
+          "created_at": 1792823919,
+          "modified_at": 1792823919
+        },
+        {
           "id": "P811-D2",
           "title": "媒体消费方接线契约（VM 17 native/HTTP/生成/渲染单源消费）",
           "content": "PLAN-811 SD-02..06：17 项 auto.image native（16 固定 ID 2960..2975+thumb 按名）与 /api/__auto/media/{id}/{revision} 快路径直接消费 core，控制面只收不透明票据/URI/元数据（零像素与绝对路径回灌），ui-iced 开关/stub 语义保持；ui::{image_pipeline,media_service} 薄重导出，Iced/merged 查同进程 registry/decoded pixels 与 VM 共享 Arc bytes，ImageSurface 事件合同（单发门/身份订阅/50ms 媒体唤醒）owner 改 core 后逐字保持；Man api_gen/rust_ui 媒体桥与生成 manifest 消费 core（生成物零第二份库源）；auto-media-core 及 codec 闭包进 792 交付闭包（14→16 crate 并集，777/792 门验收）。",
@@ -14928,6 +14962,23 @@
       "id": "tests",
       "items": [
         {
+          "id": "P817-T",
+          "title": "auto-cte 验证矩阵（九测试族+正式语料+verify 脚本全 Scope）",
+          "content": "cte_{first,admit,schedule,cache,freeze,resources,turnaround,adapter,snapshot}_ 九族（experimental/ac-cte-probe，92+ 测试）+正式语料 crates/auto-lang/test/cases/ac-cte 6 case（官测 ac_cte_probe 5 测）+auto-case lint；scripts/verify-ac-cte-817.ps1 全 Scope（cache/freeze/resources 二进制精确选择、resources/acceptance 串行、closeout 783 认可适配钉定边界）。merge 门禁：裸 t 5336/5336+tv 163/163+Scope all PASS（resources 18/18 release 串行）。逐 V 映射见 docs/reports/plan817/acceptance-matrix.md。",
+          "status": "verified",
+          "depends_on": [],
+          "related": ["PLAN-817"],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/reports/plan817/acceptance-matrix.md",
+          "milestone": null,
+          "module": "auto-cte",
+          "tags": ["PLAN-817", "delivery:ec6a54c5d", "suites:cte_*"],
+          "created_at": 1792823919,
+          "modified_at": 1792823919
+        },
+        {
           "id": "P811-T",
           "title": "媒体核心验证矩阵（生命周期/满通道 oracle/消费者/发行）",
           "content": "core 44 测试（关停准入/在途关闭归零/重复关闭完成语义/scan 收割/quiescence/预算/Range/索引不跟随 junction/满通道正控=有界补入观测 running>8&&backlog≥8 后从满态 shutdown 回收/未满负控=CAPACITY−1 算术判别+正常 Ready 收敛）；plan811_media_runtime 7 测（VM 17 native 接线/票据映射/HTTP 快路径）；auto-man plan811_media_consumers 3 测+生成 HTTP 真 TCP 13 项；media-core-consumer 独立 manifest fresh/locked+缺包/反向边负控；六 harness 真实三形态（VM/Vue/merged）+七窗口事件取证。",
@@ -18363,6 +18414,23 @@
     {
       "id": "reviews",
       "items": [
+        {
+          "id": "P817-R",
+          "title": "PLAN-817 第十四轮最终复审（pass）",
+          "content": "R14 final pass 绑定 c224a4b0b：R13-01（closeout 边界审计四向控制+钉定 SHA 复核）与 R13-02（82 具名入口核对、冻结报告数值重绑）闭合；AC-01..09/AC-11 全 pass、无未授权延期/缩小支持面/遗留 workaround；AC-10 merge-owned 由本 merge 完成（门禁全绿+Spec 落地+ledger v78+归档清理）。14 轮 final review 历史（R1..R13 修复全闭合）见计划 §9。",
+          "status": "verified",
+          "depends_on": [],
+          "related": ["PLAN-817"],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/plans/archive/817-av-cte-query-frozen-cache.md",
+          "milestone": null,
+          "module": "auto-cte",
+          "tags": ["PLAN-817", "reviewed:c224a4b0b"],
+          "created_at": 1792823919,
+          "modified_at": 1792823919
+        },
         {
           "id": "P811-R",
           "title": "PLAN-811 第八轮最终复审（pass）",
@@ -24689,5 +24757,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 77
+  "version": 78
 }
