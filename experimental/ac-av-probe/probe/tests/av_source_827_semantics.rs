@@ -310,3 +310,187 @@ fn av_source_827_resource_budget_and_cancel_axes() {
     let (out, _) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(true));
     assert_eq!(out, ExecOutcome::Cancelled, "pre-set cancel -> Cancelled");
 }
+
+/// V-06 (R5 binding, thin source-entry replay): the consume gate on the
+/// SOURCE path — a self-consistently corrupted ABC payload is rejected at
+/// decode (before ANY dispatch), while a valid single-function FULL
+/// module passes verify and executes. Bound at the inherited layers by
+/// abc_semantics_tier/cache_tier/native_admission_tier (required members
+/// of the admission scope); this replays the same invariant through this
+/// plan's compile pipeline on the real AP-01 bytes.
+#[test]
+fn av_source_827_consume_gate_corrupt_abc_never_executes() {
+    use auto_av_core::{decode_abc, encode_abc, verify_abc};
+    let src = read_seed(AP01_ORIGINAL, AP01_SHA256);
+    let compiled =
+        auto_ac_prototype::source::compile_scalar_source(&src, "v06.at", &[]).expect("compile");
+    let mir = lower_checked(&compiled.checked, "d_main", 0).expect("lower");
+    let flat = encode_abc(&mir).expect("encode").to_flat();
+    // Corrupt the payload interior (header intact) — a later re-encode is
+    // impossible; every consumer must reject at decode.
+    let mut corrupt = flat.clone();
+    let mid = corrupt.len() / 2;
+    corrupt[mid] ^= 0xff;
+    corrupt[mid + 1] ^= 0xff;
+    assert!(
+        decode_abc(&corrupt).is_err(),
+        "corrupted ABC bytes must fail decode (never executed)"
+    );
+    // Positive: the pristine bytes decode and a single-function FULL
+    // module verifies and executes (the consume gate's positive control).
+    let decoded = decode_abc(&flat).expect("pristine decode");
+    let owner = OwnerScope {
+        schema: ABC_SCHEMA.to_string(),
+        module: "v06-one".into(),
+    };
+    let loaded = verify_abc(decoded, &owner).expect("verify");
+    let (out, _) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    match out {
+        ExecOutcome::Success { value, .. } => assert_eq!(value.as_i32(), Some(0)),
+        other => panic!("AP-01 must execute: {other:?}"),
+    }
+    // One-function full module (main only): the minimal full-module shape
+    // the gate must accept.
+    let one = auto_ac_prototype::source::compile_scalar_source(
+        "fn main() int { return 7 }\n",
+        "one.at",
+        &[],
+    )
+    .expect("one-fn compile");
+    let one_mir = lower_checked(&one.checked, "d_main", 0).expect("one-fn lower");
+    let one_dec =
+        decode_abc(&encode_abc(&one_mir).expect("one-fn encode").to_flat()).expect("one-fn decode");
+    let one_loaded = verify_abc(
+        one_dec,
+        &OwnerScope {
+            schema: ABC_SCHEMA.to_string(),
+            module: "v06-two".into(),
+        },
+    )
+    .expect("one-fn verify");
+    let (out, _) = execute(&one_loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    match out {
+        ExecOutcome::Success { value, .. } => assert_eq!(value.as_i32(), Some(7)),
+        other => panic!("one-fn module must execute: {other:?}"),
+    }
+}
+
+/// V-08 (R5): revoking the CURRENT grant needed by cached code blocks
+/// execution — the trace source compiled and cached under the trace grant
+/// is REJECTED when the grant is absent on the next request (never a
+/// stale dispatch of the cached trace-capable code).
+#[test]
+fn av_source_827_trace_grant_revocation_blocks_execution() {
+    let src_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../crates/auto-lang/test/cases/ac-av/av/core/trace_order.at");
+    let src = std::fs::read_to_string(&src_path).expect("trace seed");
+    let root = std::env::temp_dir().join(format!("av827-revoke-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let mut d = Driver::with_store(&root, "av827-revoke").expect("store");
+    let granted = d.request(&src, "d_main", &["hir.test.trace.v1".to_string()]);
+    assert!(granted.ok(), "granted run: {:?}", granted.diag);
+    assert_eq!(granted.value_i32(), Some(1));
+    // Same store, grant REVOKED: diagnosed rejection, zero dispatch.
+    let revoked = d.request(&src, "d_main", &[]);
+    let diag = revoked
+        .diag
+        .as_ref()
+        .expect("revoked grant must reject, not execute cached code");
+    assert_eq!(
+        (diag.stage.as_str(), diag.code.as_str()),
+        ("frontend", "source.undefined"),
+        "the marks are undefined without the live grant"
+    );
+    assert_eq!(
+        *revoked.counters.get("av_execute").unwrap_or(&0),
+        0,
+        "no dispatch of cached trace-capable code under a revoked grant"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// V-08 (R5): a position-only shift re-binds the trap span to the NEW
+/// coordinates — the shifted run's trap span moves by exactly the prefix
+/// length (a real coordinate change, not merely "spans non-empty").
+#[test]
+fn av_source_827_position_shift_rebinds_trap_span_coordinates() {
+    let src = read_seed(AP23_ORIGINAL, AP23_SHA256);
+    let prefix = "\n\n";
+    let shifted = format!("{prefix}{src}");
+    let mut d = Driver::ephemeral();
+    let base = d.request(&src, "d_main", &[]);
+    let shifted_run = d.request(&shifted, "d_main", &[]);
+    let span_of = |r: &auto_av_probe::driver::RequestOutcome| match &r.av {
+        Some(ExecOutcome::Trap { kind, span }) => {
+            assert_eq!(*kind, TrapKind::DivByZero);
+            span.clone().expect("trap carries a span")
+        }
+        other => panic!("expected the div-by-zero trap, got {other:?}"),
+    };
+    let s1 = span_of(&base);
+    let s2 = span_of(&shifted_run);
+    assert_eq!(
+        s2.start as usize,
+        s1.start as usize + prefix.len(),
+        "the trap span start re-binds to the shifted coordinates (+{}): {:?} -> {:?}",
+        prefix.len(),
+        s1,
+        s2
+    );
+    assert_eq!(
+        s2.end - s2.start,
+        s1.end - s1.start,
+        "the span LENGTH is stable under a pure position shift"
+    );
+    assert_eq!(s2.func, s1.func, "the owning function is unchanged");
+}
+
+/// V-09 (R5): the input cap as an at/over-one PAIR — a source of EXACTLY
+/// MAX_INPUT_BYTES passes admission, one byte more is rejected at
+/// admission with the precise resource code (never a guest outcome).
+#[test]
+fn av_source_827_input_cap_at_and_over_one() {
+    // Comment lines only ("//<x's>\n") so the padded source stays valid;
+    // the final partial line is a comment too, landing EXACTLY on the cap.
+    const CAP: usize = auto_av_core::contract::MAX_INPUT_BYTES;
+    let mut at_cap = b"fn main() int { return 0 }\n".to_vec();
+    let mut rem = CAP - at_cap.len();
+    while rem >= 3 {
+        // line = "//" + k x's + "\n", at most 14 bytes, at least 3.
+        let take = rem.min(14);
+        at_cap.extend_from_slice(b"//");
+        at_cap.extend(std::iter::repeat(b'x').take(take - 3));
+        at_cap.push(b'\n');
+        rem -= take;
+    }
+    assert_eq!(rem, 0, "the construction consumes the remainder exactly");
+    assert_eq!(
+        at_cap.len(),
+        CAP,
+        "the at-cap source is exactly at the frozen boundary"
+    );
+    let mut d = Driver::ephemeral();
+    let ok = d.request(std::str::from_utf8(&at_cap).unwrap(), "d_main", &[]);
+    assert!(
+        ok.ok(),
+        "at-cap input passes the front door and compiles: {:?}",
+        ok.diag
+    );
+    assert_eq!(ok.value_i32(), Some(0));
+    let over = format!("{}x", std::str::from_utf8(&at_cap).unwrap());
+    assert_eq!(over.len(), auto_av_core::contract::MAX_INPUT_BYTES + 1);
+    let rejected = d.request(&over, "d_main", &[]);
+    let diag = rejected
+        .diag
+        .as_ref()
+        .expect("over-by-one must be rejected at admission");
+    assert_eq!(
+        (diag.stage.as_str(), diag.code.as_str()),
+        ("admission", ResourceKind::InputTooLarge.code())
+    );
+    assert_eq!(
+        *rejected.counters.get("av_execute").unwrap_or(&0),
+        0,
+        "rejection happens with zero dispatch"
+    );
+}

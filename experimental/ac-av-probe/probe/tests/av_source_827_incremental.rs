@@ -128,6 +128,10 @@ fn av_source_827_incremental_d828_baseline_30_structure_and_p95() {
 
     let samples = 30usize;
     let mut walls = Vec::with_capacity(samples);
+    // R5: durable per-revision structural raw (revision, changed function,
+    // install set, wall, identity-hold facts) — persisted below, not just
+    // the aggregate P95.
+    let mut raw_revisions: Vec<serde_json::Value> = Vec::with_capacity(samples);
     let mut prev_src = base.source.clone();
     for n in 1..=samples {
         let rev = auto_av_probe::load256::generate_revision(n as u32);
@@ -137,7 +141,29 @@ fn av_source_827_incremental_d828_baseline_30_structure_and_p95() {
         let t0 = std::time::Instant::now();
         let obs = s.edit(start, end, insert).expect("edit infra");
         let v = run_value(&s);
-        walls.push(t0.elapsed().as_secs_f64() * 1000.0);
+        let wall_ms = t0.elapsed().as_secs_f64() * 1000.0;
+        walls.push(wall_ms);
+        raw_revisions.push(serde_json::json!({
+            "revision": n,
+            "changed_fn": obs.changed_fn,
+            "install_set": obs.install_set,
+            "value": v,
+            "wall_ms": wall_ms,
+            "identity_hold": {
+                "changed_moved": identities_before
+                    .get(obs.changed_fn.as_deref().unwrap_or(""))
+                    .map(|was| {
+                        let def = format!("d_{}", obs.changed_fn.clone().unwrap_or_default());
+                        resident_identity(&s, &def).map(|now| now != *was).unwrap_or(false)
+                    }),
+                "unchanged_sample": {
+                    // one unchanged function's before/after identity
+                    "name": "d_main",
+                    "before": identities_before.get("d_main"),
+                    "after": resident_identity(&s, "d_main"),
+                },
+            },
+        }));
         assert!(
             obs.ok,
             "rev {n} refused: {:?} {:?}",
@@ -228,6 +254,21 @@ fn av_source_827_incremental_d828_baseline_30_structure_and_p95() {
         percentile(&walls, 50.0),
         p95
     );
+    // R5: persist the durable per-revision raw artifact.
+    let raw_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../docs/reports/plan827/incremental-raw.json");
+    let raw = serde_json::json!({
+        "scope": "incremental-raw",
+        "samples": samples,
+        "p50_ms": percentile(&walls, 50.0),
+        "p95_ms": p95,
+        "revisions": raw_revisions,
+    });
+    std::fs::write(
+        &raw_path,
+        serde_json::to_string_pretty(&raw).expect("serialize raw"),
+    )
+    .unwrap_or_else(|e| panic!("write raw {}: {e}", raw_path.display()));
 }
 
 /// V-13 (1.2): two-function local body updates on the REAL AP-01 entry —
@@ -241,6 +282,10 @@ fn av_source_827_incremental_d828_baseline_30_structure_and_p95() {
 fn av_source_827_incremental_two_fn_local_updates() {
     let src = ap01();
     let mut s = warmup(&src, "d_main", &[]).expect("warmup");
+    // R5: helper-dependency axis at the IDENTITY level — main's resident
+    // (ptr, generation) must be UNCHANGED by gcd's body edit (the caller
+    // reads only the callee interface).
+    let main_identity_before = resident_identity(&s, "d_main").expect("main identity");
     assert_eq!(run_value(&s), 0);
 
     // Edit gcd's body (semantics change: negate the gcd result) — every
@@ -259,10 +304,16 @@ fn av_source_827_incremental_two_fn_local_updates() {
     );
     assert_eq!(obs.changed_fn.as_deref(), Some("gcd"));
     assert_eq!(run_value(&s), 1, "negated gcd fails every group -> 1");
-    // main is untouched: every stage count for main is zero.
+    // main is untouched: every stage count for main is zero AND its
+    // resident identity holds.
     for (stage, count) in s.counters().stages_of("main") {
         assert_eq!(count, 0, "main stage `{stage}` must stay zero");
     }
+    assert_eq!(
+        resident_identity(&s, "d_main").expect("main identity after helper edit"),
+        main_identity_before,
+        "a helper body edit must not move the caller's resident object"
+    );
 
     // Edit main's body (first group's comparison 6 -> 7): main only; gcd
     // untouched by THIS edit (deltas over `before`). Offsets are taken
@@ -326,6 +377,19 @@ fn av_source_827_incremental_precise_refusals() {
     assert!(!obs.ok, "an unauthorized capability edit must be refused");
     assert_eq!(s.revision(), rev0, "refusal keeps the revision");
     assert_eq!(run_value(&s), 0);
+
+    // R5: revoking the CURRENT grant at session RE-ENTRY — a trace-using
+    // source cannot even warm up without the live grant (this is a
+    // different input from adding unauthorized NEW text above).
+    let trace_src = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../crates/auto-lang/test/cases/ac-av/av/core/trace_order.at"),
+    )
+    .expect("trace seed");
+    assert!(
+        warmup(&trace_src, "d_main", &[]).is_err(),
+        "re-entry with the grant revoked must refuse (marks undefined without the live grant)"
+    );
 }
 
 /// V-13 (1.4): degradation is CAUGHT, never silent — fast-path body edits

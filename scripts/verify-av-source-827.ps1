@@ -169,6 +169,28 @@ switch ($Scope) {
             "av_source_827_admission_path_escape_rejected_at_decode"
         )
         Run-Runner-Tests "av_source_827_corpus" "admission-corpus" @("av_source_827_corpus_green")
+        # R5 V-06 binding — the INHERITED D798 consume-gate counterexamples
+        # and positives as REQUIRED members (unchanged at the consumed
+        # revision; removal of any row breaks acceptance):
+        Run-Probe-Tests "cache_tier" "admission-inherited-cache" @(
+            "av_cache_corrupt_frame_rejected",
+            "av_cache_conflict_preserves_committed",
+            "av_cache_wrong_identity_rejected",
+            "av_cache_valid_payload_under_wrong_body_key_rejected"
+        )
+        Run-Probe-Tests "abc_semantics_tier" "admission-inherited-abc" @(
+            "abc_admission_only_verify_produces_executable_handle",
+            "abc_admission_tampered_inner_never_executes",
+            "abc_codec_rejects_truncation_and_trailing"
+        )
+        Run-Probe-Tests "native_admission_tier" "admission-inherited-native" @(
+            "native_admission_real_coff_positive",
+            "native_admission_identity_axes_rejected"
+        )
+        # 827 thin source-entry replay of the same invariant:
+        Run-Probe-Tests "av_source_827_semantics" "admission-thin-consume-gate" @(
+            "av_source_827_consume_gate_corrupt_abc_never_executes"
+        )
     }
     "resources" {
         # V-09 heavy tier (single instance, serial):
@@ -211,6 +233,18 @@ switch ($Scope) {
             exit 1
         }
         Assert-Selected ($f828 -join "`n") "resources-formal-828" @("t08_formal_campaign_v08_dual_gate_30_revisions")
+        # R5 V-09 binding — inherited finite resource oracles as REQUIRED
+        # members (cap-boundary, churn/cleanup under the 32MiB envelope).
+        Run-Probe-Tests "resources_tier" "resources-inherited-finite" @(
+            "av_resources_over_table_budget_is_resource",
+            "av_resources_front_door_nesting_boundary",
+            "av_resources_32mib_product_random_read_and_churn"
+        )
+        # 827 thin cap-boundary pair (at-cap passes / over-one rejects).
+        Run-Probe-Tests "av_source_827_semantics" "resources-thin-cap-pair" @(
+            "av_source_827_input_cap_at_and_over_one",
+            "av_source_827_resource_budget_and_cancel_axes"
+        )
     }
     "autodown" {
         # V-10: the formal recipe positives + every parent-side injection:
@@ -349,6 +383,12 @@ switch ($Scope) {
             "av_source_827_incremental_degradation_caught",
             "av_source_827_incremental_detector_negative_controls"
         )
+        # R5 V-13(3) binding — inherited D828 lifetime/transaction axes:
+        Run-Probe-Tests "function_incremental_828_contract" "incremental-inherited-lifecycle" @(
+            "contract_828_transaction_sequential_cancel_then_commit",
+            "contract_828_transaction_close_releases_owned_entries",
+            "contract_828_transaction_prepare_does_not_publish_and_drop_is_inert"
+        )
     }
     "cache" {
         # V-07/V-08: overlay misses only the changed unit; caps re-key;
@@ -364,6 +404,22 @@ switch ($Scope) {
             "av_source_827_position_shift_new_identity_same_result"
         )
         Run-Runner-Tests "av_source_827_corpus" "cache-corpus" @("av_source_827_corpus_green")
+        # R5 V-08 binding — inherited root/lease/grant/span-rebind axes:
+        Run-Probe-Tests "cache_tier" "cache-inherited-lifecycle" @(
+            "av_cache_gc_and_lease",
+            "av_cache_consumption_leases_cover_siblings_and_release",
+            "av_cache_snapshot_manifest_lease_survives_position_edit_gc",
+            "av_cache_restore_requires_current_trace_grant",
+            "av_cache_position_drift_keeps_trap_span",
+            "av_cache_hit_lifecycle",
+            "av_cache_dependency_invalidation"
+        )
+        # 827 thin replays: grant revocation blocks cached dispatch; the
+        # trap span re-binds to shifted COORDINATES.
+        Run-Probe-Tests "av_source_827_semantics" "cache-thin-grant-span" @(
+            "av_source_827_trace_grant_revocation_blocks_execution",
+            "av_source_827_position_shift_rebinds_trap_span_coordinates"
+        )
     }
     "compatibility" {
         # V-11: the ORIGINAL consumers keep their support faces — the ac-av
