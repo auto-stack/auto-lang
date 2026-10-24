@@ -111,6 +111,7 @@ switch ($Scope) {
         Run-Tier "resources" @("-p", "auto-av-probe", "--test", "av_data_820_resources") @()
         Run-Tier "cache-compat" @("-p", "auto-av-probe", "--test", "av_data_820_cache_compat") @()
         Run-Tier "core" @("-p", "auto-av-core") @() ""
+        Run-Tier "incremental-v13" @("-p", "auto-av-probe", "--test", "av_data_820_incremental") @() ""
         Run-Tier "corpus" @("-p", "auto-lang", "--features", "test-cases", "--lib", "ac_av_probe_corpus_executes_green") @() (Join-Path $repo "Cargo.toml")
         Run-Tier "v10-negatives" @("-p", "auto-lang", "--features", "test-cases", "--lib") @("ac_av_data_probe") (Join-Path $repo "Cargo.toml")
         & cargo check --manifest-path $manifest --workspace 2>&1 | Out-Null

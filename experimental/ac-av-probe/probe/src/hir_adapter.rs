@@ -330,14 +330,39 @@ pub fn lower_function_unit(
     capabilities: &[String],
     source_snapshot: u64,
 ) -> Result<MirModule, AdapterError> {
+    lower_function_unit_impl(bundle, def_id_text, capabilities, source_snapshot, false)
+}
+
+/// PLAN-820 T-09: the record-domain variant — one function of a checked
+/// record bundle into a self-contained DATA-profile unit (`av.data/1`,
+/// AVAD codec). Cross-function callees ride the same `fn:<name>` import
+/// convention; the 828 snapshot link resolves them with signature checks.
+pub fn lower_function_data_unit(
+    bundle: &hir::Bundle,
+    def_id_text: &str,
+    capabilities: &[String],
+    source_snapshot: u64,
+) -> Result<MirModule, AdapterError> {
+    lower_function_unit_impl(bundle, def_id_text, capabilities, source_snapshot, true)
+}
+
+fn lower_function_unit_impl(
+    bundle: &hir::Bundle,
+    def_id_text: &str,
+    capabilities: &[String],
+    source_snapshot: u64,
+    data: bool,
+) -> Result<MirModule, AdapterError> {
     match bundle.domain {
-        hir::HirDomain::Scalar | hir::HirDomain::Core => {}
+        hir::HirDomain::Scalar | hir::HirDomain::Core if !data => {}
+        hir::HirDomain::Record if data => {}
         other => {
             return Err(AdapterError::uns(
                 "lower.domain",
                 format!(
-                    "HIR domain `{}` is outside the av.core-i32/1 profile",
-                    other.as_str()
+                    "HIR domain `{}` is outside the {} profile",
+                    other.as_str(),
+                    if data { "av.data/1" } else { "av.core-i32/1" }
                 ),
             ));
         }
@@ -352,11 +377,22 @@ pub fn lower_function_unit(
         ));
     }
     let module = &bundle.modules[0];
-    let owner = OwnerScope {
-        schema: auto_av_core::contract::MIR_SCHEMA.to_string(),
-        module: module.id_text.clone(),
+    let owner = if data {
+        OwnerScope {
+            schema: auto_av_core::contract::MIR_DATA_SCHEMA.to_string(),
+            module: module.id_text.clone(),
+        }
+    } else {
+        OwnerScope {
+            schema: auto_av_core::contract::MIR_SCHEMA.to_string(),
+            module: module.id_text.clone(),
+        }
     };
-    let mut out = MirModule::unit(owner);
+    let mut out = if data {
+        MirModule::data_unit(owner)
+    } else {
+        MirModule::unit(owner)
+    };
     out.capabilities = capabilities.to_vec();
 
     // Def map: the target lowers into the unit's own func 0; every other
@@ -377,7 +413,7 @@ pub fn lower_function_unit(
                         *ty,
                         module,
                         &mut out,
-                        false,
+                        data,
                         &mut std::collections::BTreeMap::new(),
                         &mut std::collections::BTreeSet::new(),
                     )?;
@@ -393,7 +429,7 @@ pub fn lower_function_unit(
                         *ty,
                         module,
                         &mut out,
-                        false,
+                        data,
                         &mut std::collections::BTreeMap::new(),
                         &mut std::collections::BTreeSet::new(),
                     )?;
@@ -423,7 +459,7 @@ pub fn lower_function_unit(
                     *ty,
                     module,
                     &mut out,
-                    false,
+                    data,
                     &mut std::collections::BTreeMap::new(),
                     &mut std::collections::BTreeSet::new(),
                 )?;
@@ -449,7 +485,7 @@ pub fn lower_function_unit(
         ty,
         module,
         &mut out,
-        false,
+        data,
         &mut BTreeMap::new(),
         &mut std::collections::BTreeSet::new(),
     )?;
@@ -462,7 +498,7 @@ pub fn lower_function_unit(
         source_snapshot,
         &def_map,
         def_id_text.to_string(),
-        false,
+        data,
     )?;
     out.funcs.push(mir_fn);
     out.entry = 0;
@@ -1105,10 +1141,24 @@ impl<'a> FnLower<'a> {
                 );
                 Ok(dst)
             }
-            hir::ExprKind::BorrowView { .. } | hir::ExprKind::BorrowMut { .. } => {
+            // By-value record parameters/returns ride a BorrowView WRAPPER
+            // in the HIR (774 ABI-D `*const` shape). In the pure-value data
+            // profile this node is a transparent passthrough — evaluate the
+            // base and hand the value on (records are Copy; no borrow
+            // semantics exist here). Mut borrows stay outside the profile.
+            hir::ExprKind::BorrowView { base } => {
+                if !self.data {
+                    return Err(AdapterError::uns(
+                        "lower.borrow",
+                        "borrow expressions are outside the av.core-i32/1 profile".to_string(),
+                    ));
+                }
+                self.eval_expr(*base, depth + 1)
+            }
+            hir::ExprKind::BorrowMut { .. } => {
                 return Err(AdapterError::uns(
                     "lower.borrow",
-                    "borrow expressions are outside the av.data/1 profile".to_string(),
+                    "mut borrows are outside the av.data/1 profile".to_string(),
                 ));
             }
             other => Err(AdapterError::uns(
