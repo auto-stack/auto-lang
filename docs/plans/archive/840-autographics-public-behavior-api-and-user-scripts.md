@@ -1,16 +1,17 @@
 ---
 plan_id: PLAN-840
-status: archived
-completion_kind: delivered
+status: executing
+completion_kind: phase1_delivered
 feature_name: AutoGraphics最小公共行为API与用户Auto脚本
-plan_revision: 2
+plan_revision: 3
 author: [Codex]
 created_at: 2026-10-24
 updated_at: 2026-10-24
-current_step: 11
-total_steps: 12
+current_step: 12
+total_steps: 18
 depends_on: [PLAN-839]
 supersedes_spec_components:
+  - docs/specs/auto-lang/project.md
   - docs/specs/language-sdk/project.md
   - docs/specs/auto-graphics/scene-play-session.md
   - docs/specs/auto-graphics/authoring-session.md
@@ -27,6 +28,32 @@ affects: [auto-graphics, authoring-experimental, user-behavior-api]
 # [PLAN-840] AutoGraphics 最小公共行为 API 与用户 Auto 脚本
 
 ## 0. 变更摘要
+
+### r3 / Phase 2：批量回归修复（用户明确追加）
+
+2026-10-24 用户明确要求“不用新建计划修复，直接在当前计划里加新的 phase 修复”。据此覆盖 archived 终态须另建计划的默认规则：840 恢复 executing/r3；保留原归档路径作为唯一 canonical Plan，避免既有规范/台账来源链接失效。Phase 1 的实际合入、规范与清理记录及 r2 冻结证据保持有效；不撤销交付、不缩减任何原支持面。原 T-10 最终批量收据仍待新 phase 关闭，不冒称完成。
+
+撤回未提交的 846 草稿，相关诊断纳入本 phase，不创建新计划/agent/chat。新 phase 从 master 980a6708dacf843af2a84dd390da6ac4dce1619b 重建同一 lang-840 工作树/plan-840-dev，目标 master；原 autographics-dev 已交付 8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 不变。原工作树已经清理是历史事实，重建不是并行副本。
+
+范围：修复 CTE 注册与可选 test-cases feature 边界；核定并保持各档完整测试 ID 选择面；诊断 census 与真实 IPC 性能门的资源/测量问题，保留输入、墙钟、P95<1000ms 与所有语义断言。不得通过 ignore、删项、缩输入或放宽阈值关闭。若诊断需要生产算法/协议语义改动，先修订本 phase 的具体合同。
+
+新增 AC11：合法 feature off/on 编译正确且 SDK 可选边界保持；AC12：声明各档测试 ID 无未批准缺失；AC13：两项性能红有实路径诊断及原 oracle 下的关闭证据，隔离绿不能代替完整档；AC14：定向检查、健康、SD 与冻结关闭表完整；AC15：受影响复审 pass，完整门明确 merge-owned pending；AC16：冻结合入门后落 master，主检出单实例完整 tf/tt/tb 通过并补收据、规范、归档与 guard 清理。
+
+| task_id | owner | 关闭条件 |
+|---|---|---|
+| T-11 [x] | work | 核定 feature/off-on/档位 ID、红与合法控制、性能对照和修复机制；AC11..13 |
+| T-12 [ ] | work | 最小 feature 修复；off/on no-run 与 CTE/相邻定向病例、选择面核销及删项负控；AC11/12 |
+| T-13 [ ] | work | 性能实路径诊断与资源机制修复，原输入/阈值/断言保留；定向实测和机制反控；AC13 |
+| T-14 [ ] | work | 同提交定向 check/fmt、关闭表、SD 提案、提交冻结；AC14 |
+| T-15 [ ] | review | 核验 AC11..14 与原支持面，绑定 SHA；AC15 |
+| T-16 [ ] | merge | 审查后 bare cargo t 与必要触面，master 落地、主检出批量三档、规范/台账/收据/最终归档清理；AC16 |
+
+新增验证：V11=默认/tests 与 book-feature 定向 no-run 编译；V12=test-cases on 的 CTE+同族 adapter 定向执行与实际 ID；V13=814 选择面映射复用、各档清单与删除 ID 负控；V14=原 census 与 30 样本真实 IPC 门、原边界控制；V15=逐 AC/SD 冻结复审；V16=review 后 merge 门与主检出完整批量。修复/复审均不运行 whole-tier；先完成全部修复再提交复审。
+
+SD-P2-01：language-sdk/project.md 补充可选 test-cases off/on 测试边界；SD-P2-02：auto-lang/project.md 记录核定分档选择与性能资源前提；不推进新的产品目标。原 SD01..05 不变。
+
+当前诊断：tf/tb 五项导入编译错误，CTE 无门控登记来自817；完整 tt 5712 项首次 5710 过、census/IPC 两红，隔离各通过；相同完整选择面 -j6 5711 过、IPC 仍红，不能将降低并发视为修复。原始证据在 ../attachments/840/batch-r1/。当前代码未修复，复审与 merge 门 pending。
+
 
 当前archived11/12：完整63门、root5332/163及最终delivery身份门通过，source/SDK/canonical/ledger79/归档均已提交；840工作树、开发分支和只读auto-down树已fresh guard安全移除。当前仅编号840触发的主检出单实例批量回归及最终收据待完成；未冒称12/12。详[合入收据](../attachments/840/merge-r1/receipt.md)。
 
