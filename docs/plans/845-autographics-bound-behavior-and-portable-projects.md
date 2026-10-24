@@ -203,7 +203,7 @@ T-08列准确完整合入矩阵；**最终独立review pass后**T-10才在冻结
 
 ## 8. 执行步骤
 
-r2 final review R2已在冻结e518f5fc独立验闭F-845-R1-01，AC-01..09 pass，当前reviewed9/10；T-09完成、T-10及全部merge-owned完整门仍pending。R1与work修复历史见§9；本次pass不代表合入或交付，T-10实际关闭才10/10。
+r2 affected final review R3已在冻结a0e2a911独立验闭旧控件门禁定位F-845-M1-01；F-845-R1-01保持R2独立关闭，AC-01..09 pass，当前reviewed9/10。T-09完成、T-10及全部merge-owned完整门仍pending；原完整driver失败不计通过。历史与复用边界见§9及R3收据；本次pass不代表合入或交付，T-10实际关闭才10/10。
 
 | task_id | owner_stage | 依赖 | 真实触点／拟新增路径及动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -215,7 +215,7 @@ r2 final review R2已在冻结e518f5fc独立验闭F-845-R1-01，AC-01..09 pass�
 | T-06 [x] | work | T-05 | Host/Panel/bin、840正式来源选择与Run、Open/inspect；新host tests | F-845-R1-01工作修复：已存场景新绑定未保存时Run/诊断明确memory/hash；来源生命周期断言及原反例经R2独立验闭；其余V-07证据保留；AC-06 |
 | T-07 [x] | work | T-06 | 新samples/behavior_projects/{move,patrol}、check_behavior_project.py/真实GPU反控 | V-08/10 OS/仓外/同binary/搬迁/源码更新/错误恢复/partial全证据；AC-06, AC-08 |
 | T-08 [x] | work | T-07 | 新check_behavior_project_owners.py、source/独立consumer、README/new research/behavior-project-handoff.md/Spec proposal | F-845-R1-01来源状态永久断言/知识说明经R2独立复审关闭；其余V-01/09/10、owner/source/consumer/check/fmt与merge矩阵证据保留；AC-01, AC-07, AC-08 |
-| T-09 [x] | review | T-08 | 同树冻结code/Plan/Spec与原始报告，主检出独立review附件 | AC-01..08逐项独立审查、遗漏/延后/workaround与健康；AC-09 |
+| T-09 [x] | review | T-08 | 同树冻结code/Plan/Spec与原始报告，主检出独立review附件 | AC-01..08逐项独立审查、遗漏/延后/workaround与健康；AC-09；R3受影响门定位复审通过 |
 | T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出知识/ledger/archive/guard | AC-10实际落地/清理/到期，改代码先受影响复审再重新冻结 |
 
 ## 9. 复审记录
@@ -325,6 +325,30 @@ R1原反例同三个合法控制exit0；未保存B的SourceSnapshot.path/Last Ru
 320冻结Git对象、work-r2 280与work-r3 18原始附件SHA逐项无差异；SDK681只读核验、三锁/config/全部Spec输入与R1一致，故其余未受影响AC与原生/owner/consumer证据保留，不因新HEAD重跑完整矩阵。定向library build/fmt/diff健康检查通过，仅SDK146固定预存warning。SD01..04及来源澄清与合同/代码一致；冻结proposal SHA256 `01eaa3e632a062c50bbcd5860df79d5a28e4d56390c881711754fb6416a351c5`，canonical/ledger未写。
 
 T-09关闭、reviewed9/10；T-10开放。pending_closeout_gates: 原63完整调用、driver/AGP全测/构建、原16 AGP/双游戏、authoring/hierarchy/assets/Play/source/owner/counter AND content、producer/fresh own-SDK/own-target consumer、15新project native及实际UI产物搬迁，全部merge-owned pending；精确矩阵沿冻结handoff。root档/docs_gen本driver-only diff不触发，tf仍主检出单实例批量并在845落地判到期。G840豁免仅840历史，845本轮确有独立上下文。未合入/归档/清树，不宣称交付。
+
+### merge R1 → bounded work：旧控件门禁定位失败
+
+冻结e518完整driver门发现authoring_host::actual_create_delete_widgets_and_bad_open create4≠5；raw见attachments/845/merge-r1/driver-test.txt，未合入。独立真实Host探针create-visible.rs/.txt证明action-create y889.6超800px viewport；相同UI/原真实点击路径滚动后y709.6，创建/选中/删除4→5→4通过。属于新增绑定控件后旧测试缺实际scroll定位，不是授权削减旧断言。现回work仅调整该用例的可见控件定位、重冻source清单；T08/T09重开executing7/10，F01保持已闭。原失败/探针保留；相关永久断言/独立复审后在新冻结提交恢复完整门，不改产品或合同。其他已有source/SDK/输入证据按未变部分保留，完整门仍pending。
+
+### gate定位修复交接：F-845-M1-01 / work pass
+
+code_commit a0e2a9115a0b48bab44e3acaef17485dca472420（parent e518）；仅authoring_host测试与source清单两文件。实际click前通过原Host.scroll+frame将控件滚到800px视口，30次有界、不可达明确失败，不直接dispatch、不删原create/select/delete/badOpen/pixel断言。原失败与独立create-visible实际探针为red/control；永久原入口actual_create_delete_widgets_and_bad_open定向1/1绿，fmt与source320绿，SDK/锁/产品代码完全未变。证据位于attachments/845/merge-r1/create-visible*.txt/.rs；本轮不跑完整套件以替代受影响复审。T08工作关闭，execution_done8/10，T09受影响独立review待定；上一F01独立关闭结论不变，所有merge完整门待新冻结复审后执行。实现clean，写入暂停，转交独立review。
+
+### 2026-10-25 r2 independent affected final review R3 — pass / reviewed9/10
+
+stage: review | review_scope: final（merge失败后的受影响复审） | reviewer_identity: `/root/review_845_gate`（获授权的新独立上下文；非实现/R2复审上下文，无进一步委派） | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass |
+worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev |
+reviewed_commit: a0e2a9115a0b48bab44e3acaef17485dca472420 | repair_parent: e518f5fc778cfa6827f7de9eb99b4c0910ef294d | base_commit: 8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 |
+dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，三锁/config/16项Spec输入/提案与R2相同，见[audit](attachments/845/review-r3-gate/audit.json.txt) |
+acceptance_results: AC-01..09 pass；AC-10 pending | findings: F-845-M1-01独立关闭，F-845-R1-01保持已闭，无新增finding |
+evidence: [受影响独立收据/复用边界](attachments/845/review-r3-gate/review.md)、[永久原入口1/1](attachments/845/review-r3-gate/permanent.log.txt)、[真实Host反例及可见输入控制](attachments/845/review-r3-gate/visible.log.txt)、[Spec冻结](attachments/845/review-r3-gate/spec-delta-frozen.md) |
+next: merge owner在本冻结提交恢复全部完整门；通过后才autographics-dev落地/知识归档/guard清理。
+
+独立重编实际Host探针：action-create未滚动y889.5998，原真实click保4；scroll/frame后y709.5998真click创建5，node5真选中、delete恢复4并清selection。永久actual_create_delete_widgets_and_bad_open原入口1/1通过。修复仅30次有界可见定位+source清单单hash更新；完整diff核实原create/select/delete/badOpen/document/history/pixel断言均保留，无直接dispatch/忽略/阈值放宽。source320 Git对象及文件验证、SDK681只读验证、fmt/diff健康通过，只有SDK146固定预存warning。
+
+AC01身份刷新及AC07/08旧门保留受影响重新验收；生产/SDK/AGP/锁/输入/配置/Spec proposal未变，其余R2 AC证据与F01关闭按明确身份复用，不重跑已闭来源/GC/原生/consumer家族。SD01..04提案冻结SHA256 `01eaa3e632a062c50bbcd5860df79d5a28e4d56390c881711754fb6416a351c5` 与R2一致，canonical/ledger未写，无合同修订或新债务。
+
+T09关闭、reviewed9/10；T10及原63完整调用、driver/AGP全测/构建、原16 AGP/双游戏、所有counter AND content/owner/source/producer/fresh consumer、新15 project native及实际UI产物搬迁完整门仍merge-owned pending。旧完整driver失败不计pass；本轮仅受影响定向复审，无完整套件/root档/docs_gen/批量回归。未合入/归档/清树，不宣称交付。最终WT仍a0e2 clean。
 
 ## 10. 待澄清事项
 
