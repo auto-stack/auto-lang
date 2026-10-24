@@ -263,6 +263,23 @@ def main() -> int:
         receipt["toolchain"][tool] = out.stdout.strip()
     log(f"toolchain: {receipt['toolchain']}")
 
+    # PLAN-831 F831-09-05：三仓源身份入收据（此前缺失——fixture driver 的
+    # 收据身份 admission 要求 lang/ui 记录且与当前 HEAD 一致方可采信）。
+    # producer 二进制身份另由 delivered_tool.sha256 承载。
+    def _git_head(repo: Path) -> str | None:
+        out = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
+                             capture_output=True, text=True)
+        return out.stdout.strip() if out.returncode == 0 else None
+
+    _ui_root = WT_ROOT.parent / "auto-ui"
+    _down_root = WT_ROOT.parent / "auto-down"
+    receipt["sources"] = {
+        "lang": _git_head(WT_ROOT),
+        "ui": _git_head(_ui_root) if _ui_root.is_dir() else None,
+        "down": _git_head(_down_root) if _down_root.is_dir() else None,
+    }
+    log(f"sources: { {k: (v or '?')[:9] for k, v in receipt['sources'].items()} }")
+
     # ---- 生成器（正式入口）：auto CLI + UI 工具宿主 bin 构建 ----
     # PLAN-831 T-07：`auto gen` 走 framed I-TOOL 工具宿主子进程（auto-ui-tool
     # bin）；`cargo build -p auto` 只构建依赖 lib 不刷依赖 bin——工具 bin

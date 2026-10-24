@@ -786,11 +786,67 @@ def _load_bound_receipt(rel: str) -> dict | None:
         return None
 
 
+def _git_head(repo_path: Path) -> str | None:
+    proc = subprocess.run(["git", "-C", str(repo_path), "rev-parse", "HEAD"],
+                          capture_output=True, text=True, encoding="utf-8",
+                          errors="replace")
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def admit_receipt(receipt: dict | None, ctx: dict, label: str,
+                  require: tuple[str, ...] = ("lang", "ui")) -> tuple[bool, str]:
+    """F831-09-05 收据身份 admission：执行载体收据必须记录其覆盖的源身份
+    且与当前实际 HEAD 一致，其布尔结果才可被采信。
+
+    判定：require 列出的仓（缺省 lang/ui 两生产者；合成组工具收据如
+    switch-drill 只要求 lang=工具源仓）必须记录且匹配；其余记录了则须
+    匹配（历史收据缺 down 不自动红，但同源重跑后按新 schema 记齐）。
+    身份缺失/漂移一律 RED——错源证据不得充当当前结论（负控语义：篡改
+    SHA 的收据在 selftest S17 判红）。收据身份核对 git HEAD；受管内容
+    身份由干净树上的 commit 唯一承载，producer 二进制另有
+    delivered_tool.sha256。
+    """
+    if receipt is None:
+        return False, f"{label} 收据不可读"
+    recorded = receipt.get("sources") or {}
+    missing = [rid for rid in require if not recorded.get(rid)]
+    if missing:
+        return False, f"{label} 收据无源身份（sources.{'/'.join(missing)} 缺失）——不可采信"
+    actual: dict[str, str | None] = {}
+    for rid in ("lang", "ui", "down"):
+        repo = ctx["repos"].get(rid)
+        if repo is not None and repo.present:
+            actual[rid] = _git_head(repo.path)
+    for rid in ("lang", "ui", "down"):
+        if rid in require and actual.get(rid) and recorded.get(rid) != actual[rid]:
+            return False, (f"{label} 收据源身份漂移：{rid} 收据={str(recorded.get(rid))[:12]}"
+                           f" 当前={str(actual.get(rid))[:12]}——须在最终源重跑后再绑定")
+        if rid not in require and recorded.get(rid) and actual.get(rid) \
+                and recorded[rid] != actual[rid]:
+            return False, (f"{label} 收据源身份漂移：{rid} 收据={str(recorded[rid])[:12]}"
+                           f" 当前={str(actual[rid])[:12]}")
+    ident = "；".join(f"{rid}={str(actual.get(rid) or recorded.get(rid))[:12]}"
+                      for rid in ("lang", "ui", "down"))
+    return True, f"{label} 身份 admitted（{ident}）"
+
+
 def run_distribution(ctx: dict, phases: dict, ledger: Ledger) -> None:
     phase = ctx["phase"]
     bound = _load_bound_receipt(DISTRIBUTION_RECEIPT_REL) if phase == "source-switched" else None
     bound792 = _load_bound_receipt(D792_RECEIPT_REL) if phase == "source-switched" else None
+    # F831-09-05 收据身份 admission：静态 ok 读取升级为身份核对后的采信——
+    # 源身份缺失/漂移的收据其结果一律 RED（错源证据不得充当当前结论）。
+    if phase == "source-switched":
+        admit_dist, dist_detail = admit_receipt(bound, ctx, "distribution")
+        admit_792, d792_detail = admit_receipt(bound792, ctx, "792-driver")
+        ledger.add("RCPT-ID", "pass" if (admit_dist and admit_792) else "fail",
+                   f"收据身份 admission：{dist_detail}；{d792_detail}")
+    else:
+        admit_dist, admit_792 = False, False
     for shape_id, name, oracle in DISTRIBUTION_SHAPES:
+        if bound is not None and not admit_dist:
+            ledger.add(shape_id, "fail", f"[{name}] 收据身份未过 admission——{dist_detail}")
+            continue
         if bound is not None:
             step = next((s for s in bound.get("steps", []) if s["step"].startswith(shape_id)), None)
             if step is not None:
@@ -799,11 +855,14 @@ def run_distribution(ctx: dict, phases: dict, ledger: Ledger) -> None:
                            f"源 {bound.get('sources', {}).get('ui', '?')[:9]}）")
                 continue
         if shape_id == "DST-5" and bound792 is not None:
+            if not admit_792:
+                ledger.add(shape_id, "fail", f"[{name}] 792 收据身份未过 admission——{d792_detail}")
+                continue
             results = {r["case"]: r["ok"] for r in bound792.get("results", [])}
             mapped = [(c, results.get(c)) for c in D792_RECEIPT_MAP[shape_id]]
             all_ok = mapped and all(ok for _, ok in mapped)
             ledger.add(shape_id, "pass" if all_ok else "fail",
-                       f"[{name}] 792 收据绑定（V05 工具+资产随包真实构建/外部消费）：{mapped}")
+                       f"[{name}] 792 收据绑定（V05 工具+资产随包真实构建/外部消费；身份已核）：{mapped}")
             continue
         ledger.add(shape_id, "pending",
                    f"[{name}] {oracle}——接口冻结；执行 phase=source-switched（T-07，"
@@ -814,7 +873,17 @@ def run_failure(ctx: dict, phases: dict, ledger: Ledger) -> None:
     phase = ctx["phase"]
     bound792 = _load_bound_receipt(D792_RECEIPT_REL) if phase == "source-switched" else None
     drill = _load_bound_receipt(SWITCH_DRILL_RECEIPT_REL) if phase == "source-switched" else None
+    if phase == "source-switched":
+        admit_792, d792_detail = admit_receipt(bound792, ctx, "792-driver")
+        admit_drill, drill_detail = admit_receipt(drill, ctx, "switch-drill", require=("lang",))
+        ledger.add("RCPT-ID-F", "pass" if (admit_792 and admit_drill) else "fail",
+                   f"收据身份 admission（failure 族）：{d792_detail}；{drill_detail}")
+    else:
+        admit_792 = False
     for shape_id, name, oracle in FAILURE_SHAPES:
+        if bound792 is not None and not admit_792 and shape_id in D792_RECEIPT_MAP:
+            ledger.add(shape_id, "fail", f"[{name}] 792 收据身份未过 admission——{d792_detail}")
+            continue
         if shape_id == "FLR-5" and drill is not None:
             ok_checks = [c["ok"] for c in drill.get("checks", [])]
             all_ok = bool(ok_checks) and all(ok_checks)
@@ -1041,6 +1110,38 @@ def cmd_selftest() -> int:
         got = _ledger_map(ledger)
         _expect(got["SRC-P4b"]["status"] == "fail" and "smuggler" in got["SRC-P4b"]["detail"],
                 "S4 窗口走私反例：台账外 Man-core 边判红并点名（SRC-P4b）", problems)
+
+        # ---- S17：收据身份 admission（F831-09-05）受控突变 ----
+        # 合成仓取真实 HEAD：匹配=admitted（合法对照）；篡改 SHA/缺失身份
+        # 必须拒（错源收据不得充当当前结论——静态 ok 读取的负控）。
+        import tempfile as _tempfile
+        s17_base = Path(_tempfile.mkdtemp(prefix="ui-repo-fixture-s17-"))
+        try:
+            s17_lang = s17_base / "synth-lang"
+            s17_lang.mkdir()
+            subprocess.run(["git", "-C", str(s17_lang), "init", "-q"], check=True,
+                           capture_output=True)
+            (s17_lang / "Cargo.toml").write_text("[workspace]\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(s17_lang), "add", "-A"], check=True,
+                           capture_output=True)
+            subprocess.run(["git", "-C", str(s17_lang), "-c", "user.name=s17",
+                           "-c", "user.email=s17@invalid", "commit", "-qm", "s17"],
+                          check=True, capture_output=True)
+            head = _git_head(s17_lang)
+            ctx17 = {"repos": {"lang": Repo("lang", s17_lang), "ui": Repo("ui", s17_base / "absent-ui"),
+                               "down": Repo("down", s17_base / "absent-down")}}
+            ok_match, _ = admit_receipt({"sources": {"lang": head, "ui": "deadbeef"}},
+                                        ctx17, "S17-match")
+            ok_tampered, det_tampered = admit_receipt(
+                {"sources": {"lang": "0" * 40, "ui": "deadbeef"}}, ctx17, "S17-tamper")
+            ok_missing, det_missing = admit_receipt({"sources": {}}, ctx17, "S17-missing")
+            _expect(ok_match, "S17 身份匹配收据 admitted（合法对照）", problems)
+            _expect(not ok_tampered and "漂移" in det_tampered,
+                    "S17 篡改 SHA 收据被拒并点名漂移", problems)
+            _expect(not ok_missing and "缺失" in det_missing.replace("无源身份", "缺失"),
+                    "S17 无身份收据被拒", problems)
+        finally:
+            shutil.rmtree(s17_base, ignore_errors=True)
     finally:
         shutil.rmtree(base, ignore_errors=True)
 

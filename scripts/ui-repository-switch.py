@@ -427,9 +427,18 @@ def cmd_drill(args) -> int:
             func(path)
         shutil.rmtree(base, onexc=_force_rm)
 
+    def _tool_repo_head() -> str | None:
+        # F831-09-05：合成组工具收据绑定工具源仓（lang）HEAD——收据身份
+        # admission（fixture driver）据此核对本工具自录制以来是否变更。
+        proc = subprocess.run(
+            ["git", "-C", str(Path(__file__).resolve().parent.parent), "rev-parse", "HEAD"],
+            capture_output=True, text=True)
+        return proc.stdout.strip() if proc.returncode == 0 else None
+
     receipt = {
         "schema": "ui-repository-switch-drill-receipt/1", "plan": "PLAN-831",
         "tool": "scripts/ui-repository-switch.py drill",
+        "sources": {"lang": _tool_repo_head()},
         "checks": checks,
         "ok": not problems,
     }

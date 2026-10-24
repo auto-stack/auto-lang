@@ -105,7 +105,10 @@ def main() -> int:
                               capture_output=True, text=True)
         return proc.stdout.strip() if proc.returncode == 0 else None
 
-    receipt["sources"] = {"lang": git_head(lang_src), "ui": git_head(ui_src)}
+    # F831-09-05：三仓源身份齐记（down 为 optional 固定依赖，独立 clone 布局要求其在场）
+    down_src = lang_src.parent / "auto-down"
+    receipt["sources"] = {"lang": git_head(lang_src), "ui": git_head(ui_src),
+                          "down": git_head(down_src) if down_src.is_dir() else None}
     if not (ui_src / "crates" / "auto-ui-tools" / "Cargo.toml").is_file():
         log(f"UI 源不可解析: {ui_src}")
         return 1
