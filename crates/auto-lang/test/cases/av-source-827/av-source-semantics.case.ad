@@ -1,0 +1,50 @@
+# PLAN-827 V-02: AP-22 — the REAL source file (positional, named-arg
+# reversed order, nested calls, multiline continuation in brackets and
+# binary-op groups). Hand-audited oracle: add(1-2,3*4)=11, add(5,3)=8,
+# add(3,3)=7, multiline add(3,3)=6, (3)*(3)=9 -> every group passes ->
+# main returns 0.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.source.binop-args"
+  tags: ["av-source-827", "probe"]
+  links: ["PLAN-827"]
+  source: { file: "src/p-binop-args.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-binop-args", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 0 } }
+  ]
+}
+```
+
+# PLAN-827 V-03: AP-23 — short-circuit polarity. `false && (1/0>0)`: the
+# RHS division MUST NOT execute (no trap); `true && (1/0>0)`: the RHS
+# MUST execute and trap i32 divide-by-zero. Oracle = the precise trap
+# code; any other error is a fail, never a pass.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.source.short-circuit-trap"
+  tags: ["av-source-827", "probe", "trap"]
+  links: ["PLAN-827"]
+  source: { file: "src/p-short-circuit-trap.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-trap-div-zero", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: { stage: "run", message: { contains: "av.trap.div-by-zero" } } } }
+  ]
+}
+```

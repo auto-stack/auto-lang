@@ -1,0 +1,21 @@
+// V-08: binary operators inside call arguments — positional, named
+// (reversed order), nested calls, multiline continuation inside brackets.
+fn add(a int, b int) int {
+    return a + b
+}
+
+fn main() int {
+    if add(1 - 2, 3 * 4) != 11 { return 1 }
+    if add(b: 10 / 2, a: 7 % 4) != 8 { return 2 }
+    if add(add(1, 2), add(3 % 2, 4 - 1)) != 7 { return 3 }
+    if add(
+        1 +
+        2,
+        3
+    ) != 6 { return 4 }
+    let x = (1 +
+        2) * (10 -
+        7)
+    if x != 9 { return 5 }
+    return 0
+}

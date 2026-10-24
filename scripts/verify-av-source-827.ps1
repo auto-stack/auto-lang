@@ -73,8 +73,21 @@ switch ($Scope) {
         Run-Probe-Tests "av_source_827_first_case" "first-case"
         Run-Runner-Tests "av_source_827" "first-case-corpus"
     }
-    "semantics" { Not-Wired $Scope "T-04" }
-    "admission" { Not-Wired $Scope "T-04" }
+    "semantics" {
+        # V-02/03 (+ targeted V-04/05/09 axes): AP-22 argument-value change,
+        # AP-23 precise trap + false-only control + native exit70 channel,
+        # trace authorization, same-path/frozen-bytes identity, front-door
+        # rejections with zero dispatch, budget/cancel axes.
+        Run-Probe-Tests "av_source_827_semantics" "semantics"
+        Run-Runner-Tests "av_source_827_corpus" "semantics-corpus"
+    }
+    "admission" {
+        # V-04 runner-level admission negatives: invalid UTF-8 = infra (not
+        # a trap), missing file = resolution error, path escapes rejected
+        # at decode. Plus the unsupported front-door corpus faces.
+        Run-Runner-Tests "av_source_827_admission" "admission"
+        Run-Runner-Tests "av_source_827_corpus" "admission-corpus"
+    }
     "resources" { Not-Wired $Scope "T-04/T-06" }
     "cache" { Not-Wired $Scope "T-05" }
     "compatibility" { Not-Wired $Scope "T-05" }
