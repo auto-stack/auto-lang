@@ -793,18 +793,33 @@ def _git_head(repo_path: Path) -> str | None:
     return proc.stdout.strip() if proc.returncode == 0 else None
 
 
+def _git_tracked_dirty(repo_path: Path) -> list[str]:
+    """F831-09-05 REOPEN：tracked 工作树状态。收据身份声称"该 HEAD 的内容"，
+    tracked 文件被改动后同 HEAD 的内容声称不再成立（review-r1 admission-dirty
+    反例：同 HEAD 源码 1→999 旧收据仍被采信）。untracked 可再生产物（如编译
+    探针 Cargo.lock）不属于 commit 内容身份，不判脏。"""
+    proc = subprocess.run(["git", "-C", str(repo_path), "status", "--porcelain"],
+                          capture_output=True, text=True, encoding="utf-8",
+                          errors="replace")
+    if proc.returncode != 0:
+        return ["<git status 不可用>"]
+    return [line[3:] for line in proc.stdout.splitlines()
+            if line and not line.startswith("??")]
+
+
 def admit_receipt(receipt: dict | None, ctx: dict, label: str,
                   require: tuple[str, ...] = ("lang", "ui")) -> tuple[bool, str]:
     """F831-09-05 收据身份 admission：执行载体收据必须记录其覆盖的源身份
-    且与当前实际 HEAD 一致，其布尔结果才可被采信。
+    且与当前实际 HEAD 一致、tracked 工作树干净，其布尔结果才可被采信。
 
     判定：require 列出的仓（缺省 lang/ui 两生产者；合成组工具收据如
     switch-drill 只要求 lang=工具源仓）必须记录且匹配；其余记录了则须
     匹配（历史收据缺 down 不自动红，但同源重跑后按新 schema 记齐）。
     身份缺失/漂移一律 RED——错源证据不得充当当前结论（负控语义：篡改
-    SHA 的收据在 selftest S17 判红）。收据身份核对 git HEAD；受管内容
-    身份由干净树上的 commit 唯一承载，producer 二进制另有
-    delivered_tool.sha256。
+    SHA 的收据在 selftest S17 判红）。收据身份核对 git HEAD；同 HEAD 但
+    tracked 源码已改动（脏树）同样 RED——commit 不再唯一承载当前内容
+    （review-r1 F831-09-05 REOPEN）。untracked 可再生产物不判脏；producer
+    二进制身份另由 delivered_tool.sha256 承载。
     """
     if receipt is None:
         return False, f"{label} 收据不可读"
@@ -825,9 +840,19 @@ def admit_receipt(receipt: dict | None, ctx: dict, label: str,
                 and recorded[rid] != actual[rid]:
             return False, (f"{label} 收据源身份漂移：{rid} 收据={str(recorded[rid])[:12]}"
                            f" 当前={str(actual[rid])[:12]}")
+    # F831-09-05 REOPEN：收据覆盖的仓（require ∪ 收据记录且在场）tracked
+    # 工作树必须干净——同 HEAD 脏源不得视同冻结 commit 上的旧收据。
+    for rid in ("lang", "ui", "down"):
+        covered = rid in require or bool(recorded.get(rid) and actual.get(rid))
+        if covered and actual.get(rid):
+            dirty = _git_tracked_dirty(ctx["repos"][rid].path)
+            if dirty:
+                return False, (f"{label} 收据源 {rid} tracked 工作树非干净"
+                               f"（{len(dirty)} 处，如 {dirty[0][:60]}）——HEAD 同号"
+                               f"但源码已改，收据不覆盖当前内容，不可采信")
     ident = "；".join(f"{rid}={str(actual.get(rid) or recorded.get(rid))[:12]}"
                       for rid in ("lang", "ui", "down"))
-    return True, f"{label} 身份 admitted（{ident}）"
+    return True, f"{label} 身份 admitted（{ident}；tracked 树干净）"
 
 
 def run_distribution(ctx: dict, phases: dict, ledger: Ledger) -> None:
@@ -1135,11 +1160,24 @@ def cmd_selftest() -> int:
             ok_tampered, det_tampered = admit_receipt(
                 {"sources": {"lang": "0" * 40, "ui": "deadbeef"}}, ctx17, "S17-tamper")
             ok_missing, det_missing = admit_receipt({"sources": {}}, ctx17, "S17-missing")
+            # F831-09-05 REOPEN：同 HEAD tracked 脏源负控——commit 不再唯一
+            # 承载内容，旧收据必须拒（review-r1 admission-dirty 反例冻结）。
+            (s17_lang / "Cargo.toml").write_text("[workspace]\n# dirty\n", encoding="utf-8")
+            ok_dirty, det_dirty = admit_receipt(
+                {"sources": {"lang": head, "ui": "deadbeef"}}, ctx17, "S17-dirty")
+            (s17_lang / "Cargo.toml").write_text("[workspace]\n", encoding="utf-8")
+            # untracked 可再生产物不属 commit 内容身份——树仍视为干净（正控）。
+            (s17_lang / "untracked-可再生.lock").write_text("{}", encoding="utf-8")
+            ok_untracked, _ = admit_receipt(
+                {"sources": {"lang": head, "ui": "deadbeef"}}, ctx17, "S17-untracked")
             _expect(ok_match, "S17 身份匹配收据 admitted（合法对照）", problems)
             _expect(not ok_tampered and "漂移" in det_tampered,
                     "S17 篡改 SHA 收据被拒并点名漂移", problems)
             _expect(not ok_missing and "缺失" in det_missing.replace("无源身份", "缺失"),
                     "S17 无身份收据被拒", problems)
+            _expect(not ok_dirty and "非干净" in det_dirty,
+                    "S17 同 HEAD tracked 脏源收据被拒并点名脏树", problems)
+            _expect(ok_untracked, "S17 untracked 可再生产物不判脏（正控）", problems)
         finally:
             shutil.rmtree(s17_base, ignore_errors=True)
     finally:

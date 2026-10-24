@@ -207,6 +207,23 @@ def tool_roundtrip(proc: subprocess.Popen, envelope: dict) -> dict:
             return response
 
 
+def tool_frame_collector(proc: subprocess.Popen, sink: list, stop: threading.Event) -> None:
+    """后台收集控制流全部帧（事件+终态+cancel 回执）到 sink。
+
+    F831-09-03 REOPEN 修复的观测通道：异步操作（run_ui/build_ui）的进度
+    事件与终态必须被验证器消费——"进程存活"不再是运行/安装证据
+    （review-r1 idle/framed 假载体反例）。EOF/流关闭即退出；stop 仅在
+    帧间隙生效（阻塞读由树杀/关流解除，线程为 daemon）。"""
+    try:
+        while True:
+            (length,) = struct.unpack(">I", tool_read_exact(proc.stdout, 4))
+            sink.append(json.loads(tool_read_exact(proc.stdout, length)))
+            if stop.is_set():
+                return
+    except (EOFError, OSError, ValueError):
+        return
+
+
 def verify_delivery(bundle: Path) -> tuple[bool, str]:
     """受管资源校验（双层）：① 正式入口 verify.py（清单 sha256 逐资源 +
     未登记文件判红——无 producer 也可执行）；② 与 producer 源（fixture
@@ -1108,6 +1125,11 @@ def main() -> int:
             tool7.wait()
 
     # ---- V06d：真实安装中取消 + 重试恢复（vue pnpm 链）----
+    # F831-09-03 REOPEN 修复：mid_alive+重试完成不再足够——①须先观察到
+    # 安装活动证据（操作进度事件 + node_modules 落盘）且终态未到（仍在
+    # 安装中）才执行中断；立即回 completed 的假载体（从未安装）确定性红；
+    # ②中断后验证陌生数据与输入字节保持（中断不得破坏非所属数据）；
+    # ③重试全链 completed 且真实产物 dist/index.html 落盘才算复绿。
     cancel_proj = scratch / "v06-cancel"
     if cancel_proj.exists():
         _rm_rf(cancel_proj)
@@ -1115,53 +1137,112 @@ def main() -> int:
     (cancel_proj / "pac.at").write_text(
         'name: "v06-cancel"\nversion: "1.0.0"\nscene: "ui"\nrender: "vue"\n', encoding="utf-8")
     (cancel_proj / "ui" / "front" / "app.at").write_text(
-        'widget App {\n    view {\n        col {\n            button { text "cancel" }\n        }\n    }\n}\n',
+        "widget App {\n    view {\n        col {\n            button { text \"cancel\" }\n        }\n    }\n}\n",
         encoding="utf-8")
+    stranger_path = cancel_proj / "STRANGER-DATA.txt"
+    stranger_bytes = b"stranger-owned v06d \x00\xd5 payload" * 16
+    stranger_path.write_bytes(stranger_bytes)
+    pac_bytes = (cancel_proj / "pac.at").read_bytes()
+    app_bytes = (cancel_proj / "ui" / "front" / "app.at").read_bytes()
+    install_dir = cancel_proj / "gen" / "front" / "vue" / "node_modules"
     cancel_ok, cancel_detail = False, "未执行"
     t0 = time.time()
     tool8 = spawn_tool()
-    reader = threading.Thread(target=_drain, args=(tool8.stdout,), daemon=True)
-    reader.start()
+    frames8: list[dict] = []
+    stop8 = threading.Event()
+    reader8 = threading.Thread(target=tool_frame_collector, args=(tool8, frames8, stop8),
+                               daemon=True)
+    reader8.start()
     try:
         req = {"protocol_version": 1, "id": 400,
                "body": {"op": "build_ui", "request": tool_wire_request(
                    cancel_proj, "v06-cancel",
                    render={"render": {"kind": "single", "name": "vue"},
                            "legacy_backend": None, "effective_backend": None})}}
-        tool8.stdin.write(struct.pack(">I", len(json.dumps(req))) + json.dumps(req).encode())
-        tool8.stdin.flush()
-        time.sleep(6.0)  # 进入真实安装链（generate→pnpm install/build）
-        mid_alive = tool8.poll() is None
-        subprocess.run(["taskkill", "/PID", str(tool8.pid), "/T", "/F"],
-                       capture_output=True, timeout=60)
-        killed = tool8.wait(timeout=60)
-        # 重试恢复：全新工具会话重发同一 build——受管流程可恢复至完成
-        tool9 = spawn_tool()
-        try:
-            resp = tool_roundtrip(tool9, {
-                "protocol_version": 1, "id": 401,
-                "body": {"op": "build_ui", "request": tool_wire_request(
-                    cancel_proj, "v06-cancel",
-                    render={"render": {"kind": "single", "name": "vue"},
-                            "legacy_backend": None, "effective_backend": None})}})
-            retry_rep = resp.get("body", {}).get("report", {}) or {}
-            retry_ok = (resp.get("body", {}).get("type") == "build_ok"
-                        and retry_rep.get("outcome") == "completed")
-        finally:
-            if tool9.poll() is None:
-                tool9.kill()
-                tool9.wait()
-        cancel_ok = mid_alive and retry_ok
-        cancel_detail = (f"6s 时进程在跑={mid_alive}，taskkill 树杀退出={killed}，"
-                         f"重试 build_ok={retry_ok}（{time.time() - t0:.0f}s）")
+        tool_send(tool8, req)
+        # 安装活动观测窗：进度事件 + node_modules 落盘；终态先至=未进入
+        # 真实安装链（假载体），立即判红不中断。
+        act_events, act_disk, early_final = 0, False, None
+        deadline = time.time() + 150.0
+        while time.time() < deadline:
+            act_events = sum(1 for f in frames8
+                             if f.get("id") == 400 and f.get("body", {}).get("type") == "event")
+            try:
+                act_disk = install_dir.is_dir() and any(install_dir.iterdir())
+            except OSError:
+                act_disk = False
+            finals = [f for f in frames8
+                      if f.get("id") == 400 and f.get("body", {}).get("type") not in ("event",)]
+            if finals:
+                early_final = finals[0]
+                break
+            if act_events and act_disk:
+                break
+            if tool8.poll() is not None:
+                break
+            time.sleep(0.3)
+        if early_final is not None:
+            body8 = early_final.get("body", {})
+            cancel_detail = (f"安装活动证据缺失即收到终态（type={body8.get('type')} "
+                             f"outcome={(body8.get('report') or {}).get('outcome')}）——"
+                             f"未经真实安装链，验证器拒绝采信")
+        elif not (act_events and act_disk):
+            cancel_detail = (f"观测窗内未见安装活动（事件={act_events} node_modules落盘="
+                             f"{act_disk} 工具存活={tool8.poll() is None}）")
+        else:
+            subprocess.run(["taskkill", "/PID", str(tool8.pid), "/T", "/F"],
+                           capture_output=True, timeout=60)
+            killed = tool8.wait(timeout=60)
+            # 中断后保持性：陌生数据与源输入字节不得被破坏（失败阶段保护）。
+            stranger_kept = stranger_path.read_bytes() == stranger_bytes
+            inputs_kept = ((cancel_proj / "pac.at").read_bytes() == pac_bytes
+                           and (cancel_proj / "ui" / "front" / "app.at").read_bytes() == app_bytes)
+            # 重试恢复：全新工具会话重发同一 build——受管流程可恢复至完成，
+            # 且真实产物落盘（vite dist/index.html）才算真应用复绿。
+            tool9 = spawn_tool()
+            try:
+                resp = tool_roundtrip(tool9, {
+                    "protocol_version": 1, "id": 401,
+                    "body": {"op": "build_ui", "request": tool_wire_request(
+                        cancel_proj, "v06-cancel",
+                        render={"render": {"kind": "single", "name": "vue"},
+                                "legacy_backend": None, "effective_backend": None})}})
+                retry_rep = resp.get("body", {}).get("report", {}) or {}
+                retry_ok = (resp.get("body", {}).get("type") == "build_ok"
+                            and retry_rep.get("outcome") == "completed")
+            except (EOFError, OSError, ValueError, subprocess.TimeoutExpired):
+                retry_ok = False
+            finally:
+                if tool9.poll() is None:
+                    tool9.kill()
+                    tool9.wait()
+            dist_html = cancel_proj / "gen" / "front" / "vue" / "dist" / "index.html"
+            dist_ok = dist_html.is_file() and dist_html.stat().st_size > 0
+            stranger_kept2 = stranger_path.read_bytes() == stranger_bytes
+            cancel_ok = act_events > 0 and act_disk and stranger_kept and inputs_kept \
+                and retry_ok and dist_ok and stranger_kept2
+            cancel_detail = (f"安装活动=事件{act_events}/node_modules落盘，仍在跑时树杀退出={killed}；"
+                             f"中断后陌生数据保持={stranger_kept} 输入字节保持={inputs_kept}；"
+                             f"重试completed={retry_ok} dist/index.html落盘={dist_ok} "
+                             f"复绿后陌生数据保持={stranger_kept2}（{time.time() - t0:.0f}s）")
+        if tool8.poll() is None:
+            tool8.kill()
+            tool8.wait()
+        stop8.set()
     except (EOFError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
         cancel_detail = f"会话异常: {exc!r}"
         if tool8.poll() is None:
             tool8.kill()
             tool8.wait()
+        stop8.set()
     record("V06d-install-cancel-retry", cancel_ok, cancel_detail)
 
     # ---- V06e：vm profile 经 run_ui 真实运行 + 协议 cancel ----
+    # F831-09-03 REOPEN 修复：mid_alive 不再是证据——run 接受且实际运行须由
+    # 协议观测（run 操作的进度事件，如 resolve backend；无事件假载体确定性
+    # 红）；取消走协议 cancel op（非树杀），期望 cancelled 回执 + owned 树
+    # 回收后才发出的终态 run_ok(outcome=cancelled) + cancel 后宿主会话仍可
+    # 响应（describe 复验）——构成 owned 进程/reader 资源收口的协议观测。
     vm_ok, vm_detail = False, "未执行"
     vm_proj = scratch / "v06-vm"
     if vm_proj.exists():
@@ -1170,39 +1251,87 @@ def main() -> int:
     (vm_proj / "pac.at").write_text(
         'name: "v06-vm"\nversion: "1.0.0"\nscene: "ui"\nrender: "vm"\n', encoding="utf-8")
     (vm_proj / "ui" / "front" / "app.at").write_text(
-        'widget App {\n    view {\n        col {\n            text "vm run"\n        }\n    }\n}\n',
+        "widget App {\n    view {\n        col {\n            text \"vm run\"\n        }\n    }\n}\n",
         encoding="utf-8")
     t0 = time.time()
     toolA = spawn_tool()
-    drainA = threading.Thread(target=_drain, args=(toolA.stdout,), daemon=True)
-    drainA.start()
+    framesA: list[dict] = []
+    stopA = threading.Event()
+    readerA = threading.Thread(target=tool_frame_collector, args=(toolA, framesA, stopA),
+                               daemon=True)
+    readerA.start()
     try:
         req = {"protocol_version": 1, "id": 500,
                "body": {"op": "run_ui", "request": tool_wire_request(
                    vm_proj, "v06-vm",
                    render={"render": {"kind": "single", "name": "vm"},
                            "legacy_backend": None, "effective_backend": None})}}
-        toolA.stdin.write(struct.pack(">I", len(json.dumps(req))) + json.dumps(req).encode())
-        toolA.stdin.flush()
-        time.sleep(8.0)  # 解释形态启动 + 真实窗口
-        mid_alive = toolA.poll() is None
-        subprocess.run(["taskkill", "/PID", str(toolA.pid), "/T", "/F"],
-                       capture_output=True, timeout=60)
-        code = toolA.wait(timeout=60)
-        vm_ok = mid_alive
-        vm_detail = (f"run_ui(vm) 8s 会话在跑={mid_alive}（解释形态真实运行链），"
-                     f"树杀退出={code}（{time.time() - t0:.0f}s；vm 生命周期终止可观测）")
+        tool_send(toolA, req)
+        # 运行接受观测窗：run 操作的事件（进度）证明已进入真实运行链。
+        run_events: list[str] = []
+        deadline = time.time() + 30.0
+        while time.time() < deadline:
+            run_events = [str((f.get("body", {}).get("event") or {}).get("message"))
+                          for f in framesA
+                          if f.get("id") == 500 and f.get("body", {}).get("type") == "event"]
+            if run_events:
+                break
+            if any(f.get("id") == 500 and f.get("body", {}).get("type") != "event"
+                   for f in framesA):
+                break  # 终态先至：run 未驻留即结束（非运行态）
+            if toolA.poll() is not None:
+                break
+            time.sleep(0.2)
+        accepted = bool(run_events)
+        if not accepted:
+            finalsA = [f.get("body", {}).get("type") for f in framesA
+                       if f.get("id") == 500 and f.get("body", {}).get("type") != "event"]
+            vm_detail = (f"run_ui(vm) 观测窗内无操作事件（帧数={len(framesA)} 终态="
+                         f"{finalsA[:1]} 工具存活={toolA.poll() is None}）——"
+                         f"run 未被证实接受/运行")
+        else:
+            tool_send(toolA, {"protocol_version": 1, "id": 501,
+                              "body": {"op": "cancel", "target_id": 500}})
+            cancel_ack, final = False, None
+            deadline2 = time.time() + 60.0
+            while time.time() < deadline2:
+                cancel_ack = cancel_ack or any(
+                    f.get("id") == 501 and f.get("body", {}).get("type") == "cancelled"
+                    and f.get("body", {}).get("target_id") == 500 for f in framesA)
+                finals = [f for f in framesA
+                          if f.get("id") == 500 and f.get("body", {}).get("type") == "run_ok"]
+                if finals:
+                    final = finals[0]
+                    break
+                if toolA.poll() is not None:
+                    break
+                time.sleep(0.2)
+            outcome = ((final or {}).get("body", {}).get("report", {}) or {}).get("outcome")
+            session_ok = False
+            if toolA.poll() is None:
+                try:
+                    resp = tool_roundtrip(toolA, {"protocol_version": 1, "id": 502,
+                                                  "body": {"op": "describe"}})
+                    session_ok = resp.get("body", {}).get("type") == "describe_ok"
+                except (EOFError, OSError, ValueError, subprocess.TimeoutExpired):
+                    session_ok = False
+            vm_ok = accepted and cancel_ack and outcome == "cancelled" and session_ok
+            vm_detail = (f"run_ui(vm) 事件={run_events[:3]}；协议cancel回执={cancel_ack}；"
+                         f"终态run_ok outcome={outcome}（owned 树回收后发出）；"
+                         f"cancel后宿主describe复验={session_ok}（{time.time() - t0:.0f}s）")
     except (EOFError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
         vm_detail = f"会话异常: {exc!r}"
+    finally:
         if toolA.poll() is None:
             toolA.kill()
             toolA.wait()
+        stopA.set()
     record("V06e-vm-run-ui-real", vm_ok, vm_detail)
 
     receipt["v06_dispositions"] = {
         "run_faces": {
             "rust": "V06a 真实窗口 run（主窗口句柄+受控终止）",
-            "vm": "V06e 解释形态 run_ui 真实运行链 + 树杀终止",
+            "vm": "V06e 解释形态 run_ui 真实运行链（事件观测）+ 协议 cancel 终态/宿主存续",
             "vue/jet/ark": "run 宿主域=dev server 交互面，build 矩阵（V06c）承载真实"
                            "安装/构建链；浏览器交互面归 autoui-verifier 双端设施",
             "tauri/vscode": "run 宿主域（tauri CLI/vscode 环境），generate 真实（V06b）；"
