@@ -1,8 +1,6 @@
-### Plan 839（2026-10-24，archived9/10；已落地，归档提交及清理pending）
+### Plan 839（2026-10-24，已交付archived10/10；P2 CLOSED）
 
-当前：完整59条目和最终delivery身份门pass，autographics-dev已快进`a239653365a0c3451c85aa9921189fcf011bd8cf`，规范/ledger77读回通过，Plan已移archive；归档提交/fresh guard清树删分支/batch到期和重开smoke仍pending，T10暂不关闭。以下受审过程为历史：
-
-F-839-R1-01启动取消与F-839-M1-01像素探针模块映射均CLOSED；独立R3绑定bccc77d10700a58e7f5aea8fcdf55ab3440c4b58，仅工具+identity一hash变更，source278/SDK680/锁/所有Rust输入与SD未变。producer与独立consumer真实透明/ghost编译/GPU witness/phase9像素拒绝闭合，路径兄弟/失败及来源身份独立通过，原R2报告/receipt保持原hash。未变完整门按输入等价复用；受影响source/pixel/Git指纹与剩余native门/实际合入/沉淀/归档guard仍pending，未清树。三次初始失败（Squash预算、drop-release早到像素、像素探针缺模块编译）均保留，不以非预期红当通过。详[独立R3](attachments/839/review-r3/independent/review.md)、[版本收据](attachments/839/review-r3/independent/receipt.json.txt)。下方R1为历史。
+当前独立final R2 pass，完整冻结59入口及delivery身份消费门通过，autographics-dev快进`a239653365a0c3451c85aa9921189fcf011bd8cf`；主分支规范/台账77与归档提交`c14fc97fe8c83a571d6cf7a249cba74a76e218c7`已核。fresh guard后唯一实施树/开发分支已移除，独立消费复现副本保留；batch not-due、搬迁重开smoke通过。无本Plan开放finding/gap/未决决策或待完成项，生产I2/I3维持原非目标。首轮旧Squash预算失败与同冻结完整重跑通过原样保留。[合入pass收据](attachments/839/merge-r1/receipt.md)。下方R1仅为历史。
 
 ### Plan 839（2026-10-24，R1核验needs_fix历史；Starting取消一P2）
 

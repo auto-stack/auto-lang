@@ -7,7 +7,7 @@ plan_revision: 1
 author: [Codex]
 created_at: 2026-10-23
 updated_at: 2026-10-24
-current_step: 9
+current_step: 10
 total_steps: 10
 depends_on: [PLAN-838]
 supersedes_spec_components:
@@ -30,7 +30,7 @@ affects: [auto-graphics, authoring-experimental, scene-play-session]
 
 ## 0. 变更摘要
 
-当前archived9/10：独立R2及受影响R3、完整59条目与最终delivery身份门均通过；autographics-dev已实际快进`a239653365a0c3451c85aa9921189fcf011bd8cf`，规范与台账77读回一致。实施/依赖/配置相对bccc77d10未变；46项旧冻结行为门按精确输入复用，13项新冻结执行，Git metadata单独重建。归档文件已移动，但归档/知识提交、fresh guard清树/删分支、batch到期和重开smoke仍pending；T10完成前不宣称最终merge pass。详[合入收据](../attachments/839/merge-r1/receipt.md)。
+PLAN-839已交付并归档10/10。独立final R2及受影响R3确认两P2关闭，冻结修复`bccc77d10700a58e7f5aea8fcdf55ab3440c4b58`的59门禁条目（46项未变输入有界复用、13项新冻结执行）和最终delivery身份消费门通过；autographics-dev已快进`a239653365a0c3451c85aa9921189fcf011bd8cf`。规范/台账77、主分支归档提交`c14fc97fe8c83a571d6cf7a249cba74a76e218c7`、fresh guard后实际移除唯一实现树与开发分支、batch not-due和搬迁重开smoke均已核验。原始三次失败保留，未降门禁/预算。同组独立源码消费复现副本保留；master仅沉淀知识。详[合入收据](../attachments/839/merge-r1/receipt.md)。
 
 838提供自有静态GLB和可携带场景后，下一切片把场景从编辑状态推进到可运行：**编辑／导入场景 → Run → 真实Auto按固定步长响应键盘并移动对象 → Pause／单步 → Stop恢复编辑内容**。
 
@@ -38,7 +38,7 @@ affects: [auto-graphics, authoring-experimental, scene-play-session]
 
 规划阶段历史：本轮只规划。观察时838为**executing2/10**，T-01/T-02完成、T-03在途；正式集成基面为837交付`cf2e99f50ee2a70b70ca2cfc23a5af56b405638b`，尚无838正式交付。源码调查只读已提交基面，838合同/探针为拟交接依据，不把WIP或将来接口当成已交付。G838成立前不建839树、不准备/实施或跑探针。
 
-当前合入状态：archived9/10；完整冻结门、实际源码快进、规范/台账读回通过。归档提交及guard移树/删分支和到期收据仍待完成；下文pending为历史记录。见[合入收据](../attachments/839/merge-r1/receipt.md)。
+当前合入状态：archived10/10；完整冻结门、源码快进、规范/台账、已提交归档、fresh guard清树/删分支、到期判定与重开smoke全部完成；下文pending为历史记录。见[合入收据](../attachments/839/merge-r1/receipt.md)。
 
 ## 1. 目标
 
@@ -222,7 +222,7 @@ Run/Pause/Step/Fault不改变accepted Document/hash/revision/saved hash/dirty/hi
 
 ## 8. 执行步骤
 
-当前archived9/10；T01..09已关闭。T10完整门、源码快进、规范/ledger读回通过；仅归档/知识提交、fresh guard移树删分支、batch到期及重开smoke和最终收据pending。历史reviewed/needs_fix/pending仅为当时阶段，不覆盖当前状态。
+当前archived10/10，T01..10全部关闭；无本Plan开放finding、必需gap或待决事项。完整冻结门与实际落地/规范ledger/归档提交/guard清理/batch not-due均已核验，历史needs_fix和pending记录保留。
 
 | task_id | owner_stage | 依赖 | 实际触点／新路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -235,9 +235,11 @@ Run/Pause/Step/Fault不改变accepted Document/hash/revision/saved hash/dirty/hi
 | T-07 | [✅] work | T-06 | 新play-check/aggregate/原inspect/完成性、导入fixture/实际像素反控 | [x] bccc77d10修F-839-M1-01，仅像素探针自动映射所有入口模块与对应source指纹；透明/ghost实际phase9、producer/consumer来源及四反控通过，Rust/锁/SDK/AC/SD不变。此前： 新四永久case修前红/修后绿、原4case replay过；当前producer/consumer各7原生完整positive27phase/像素/Step/Stop/新Run/保存搬迁重开及wrong-focus/drop-tick/三GPU/partial符合oracle。保留桌面输入打断的失败和只读诊断；用户提供静止桌面后consumer完整通过。未改probe/取消/时钟/oracle；AC-05/06/08，见work-r2。 |
 | T-08 | [✅] work | T-07 | README/new research/scene-play-handoff.md、source/consumer/计量及树内Spec proposal | [x] bccc77d10修F-839-M1-01，仅像素探针自动映射所有入口模块与对应source指纹；透明/ghost实际phase9、producer/consumer来源及四反控通过，Rust/锁/SDK/AC/SD不变。此前： e44644e1f的README/SD01,03/handoff/source278刷新；consumer只更5输入+identity，自己target重建，source/四反控/check/16定向/native7过；producer39永久case/owner101+101恢复0/fmt/check通过、新增warning0。修复readiness无开放代码finding/必需gap/决策；AC-01/07/08，完整merge档pending。 |
 | T-09 | [✅] review | T-08 | 同树冻结code/Plan r1/Spec，主检出独立review记录 | [x] 受影响独立R3在bccc77d10关闭F-839-M1-01，source/路径兄弟及独立consumer真实GPU透明/ghost反控通过，未变R2/AC/SD有界复用；完整merge门仍pending。此前： 用户授权独立代理/root/review839、无实施历史上下文，final R2 pass绑定e44644e1f；AC01..09/SD01..04通过，原P2 CLOSED/无新增finding。独立原4+新3+期限3+正式13共23case全过，源码/consumer/原生/owner原始证据与精确复用边界已审；完整merge-owned门显式pending。见review-r2/independent/review.md。 |
-| T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出知识/ledger/archive/guard | AC-10实际门/落点/沉淀/清理/到期收据，代码变更先受影响复审再重冻，不提前交付 |
+| T-10 | [✅] merge | T-09 pass | 冻结完整门→autographics-dev；主检出知识/ledger/archive/guard | [x] 完整冻结59入口及最终delivery身份门pass；autographics-dev实际快进、规范/ledger77/已提交归档/fresh guard后移树删分支/batch not-due/搬迁重开smoke全部完成；AC-10。见[最终状态](../attachments/839/merge-r1/final-state.json.txt)。 |
 
 ## 9. 复审记录
+
+2026-10-24：stage: merge | PLAN-839:r1 | outcome: **pass** | completion_kind: delivered | checkpoints: prepared/landed/ledger_refreshed/archived/cleaned verified | delivery_commit: a239653365a0c3451c85aa9921189fcf011bd8cf | archive_commit: c14fc97fe8c83a571d6cf7a249cba74a76e218c7 | archived10/10。独立R2、完整59入口及最终delivery身份门均pass；台账76→77仅13目标，既有816七项基线原样保留。主分支仅规范/归档证据；fresh guard clean后实现树移除，开发分支按已落地预期SHA删除。同组独立消费副本留作复现，未保留实现Git工作树。批量not-due，无生产后台/daemon/web需重建或重启；新consumer搬迁重开hash/locals/clean/history/selection一致。详[收据](../attachments/839/merge-r1/receipt.md)、[最终状态](../attachments/839/merge-r1/final-state.json.txt)。历史pending不覆盖当前完成状态。
 
 2026-10-24：stage: merge | PLAN-839:r1 | checkpoint: landed/ledger_refreshed/archived | reviewed_commit: bccc77d10700a58e7f5aea8fcdf55ab3440c4b58 | delivery_commit: a239653365a0c3451c85aa9921189fcf011bd8cf（仅规范/台账后继，实施/依赖/配置未变）| 冻结完整门59入口、官方16case、原双游戏/创作/层级/资产/运行及真实owner正反、全新源码消费方通过，最终delivery身份独立AGP消费重建亦pass。首轮旧Squash预算失败与同冻结重跑通过均保留。台账76→77仅13个目标，已核816的既有七项v76基线原样携带。归档提交/清理尚pending，暂不宣称最终merge pass。详[收据](../attachments/839/merge-r1/receipt.md)、[审计](../attachments/839/merge-r1/validated.json.txt)。
 
@@ -269,7 +271,7 @@ Run/Pause/Step/Fault不改变accepted Document/hash/revision/saved hash/dirty/hi
 
 ## 10. 待澄清事项
 
-当前无开放实现finding、必需gap或产品决策；完整门及实际源码/规范ledger落地通过。仅T10归档提交、fresh guard清理、batch到期与重开smoke/最终收据pending，唯一树保留直至这些检查点成立。
+当前无本Plan开放finding、必需gap、未决产品决策或未完成任务；archived10/10，全部检查点完成。任意脚本/生产I2/I3等原非目标保持原边界，不冒认为本Plan实现。详[最终状态](../attachments/839/merge-r1/final-state.json.txt)。
 
 ## spec-sync 回写记录
 
