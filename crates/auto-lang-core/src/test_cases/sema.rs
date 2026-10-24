@@ -929,13 +929,13 @@ pub fn run_check(
         });
         let request_hash = hex(&sha256(request.to_string().as_bytes()));
         request["request_hash"] = serde_json::json!(request_hash);
-        let prep_us = session_started.elapsed().as_micros() as u64;
-
+        // Shared boundaries include scheduling pauses between phases in exactly
+        // one segment; separate elapsed()/now() calls leave unmeasured gaps.
         let worker_started = Instant::now();
+        let prep_us = worker_started.duration_since(session_started).as_micros() as u64;
         let resp_result = call_worker(&request.to_string(), SESSION_WALL);
-        let worker_us = worker_started.elapsed().as_micros() as u64;
-
         let admit_started = Instant::now();
+        let worker_us = admit_started.duration_since(worker_started).as_micros() as u64;
         'admit: {
             let resp = match resp_result {
                 Ok(r) => r,
@@ -1003,8 +1003,9 @@ pub fn run_check(
         }
         // the wall ends when the response has passed parent-side
         // admission and its current result is available (F-796-R10-01)
-        let admit_us = admit_started.elapsed().as_micros() as u64;
-        session_walls_us.push(session_started.elapsed().as_micros() as u64);
+        let session_finished = Instant::now();
+        let admit_us = session_finished.duration_since(admit_started).as_micros() as u64;
+        session_walls_us.push(session_finished.duration_since(session_started).as_micros() as u64);
         session_prep_us.push(prep_us);
         session_worker_us.push(worker_us);
         session_admit_us.push(admit_us);
