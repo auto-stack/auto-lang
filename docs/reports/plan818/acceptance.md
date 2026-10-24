@@ -21,11 +21,20 @@ semantics|cache|resources|autodown|turnaround|acceptance|closeout>`。
 | V-10 | runner（未知 recipe/字段/坏 actual/身份/stale/旧协议） | mir_native_adapter 7 测（T-06）：解码负例五路/worker 故障四形态皆 infra/manifest 指纹父侧准入（同源跨进程一致）/mn+av 混跑+stale 重跑 |
 | V-11 | 边界/来源（审计，无新族） | 本报告"边界"节 + §5 规范增量提案；T-02 已证 D-798 消费面/零 817 强依赖/复用 798/783/787/788 落地面 |
 
-V-12（AC-11，T-11）✅：incremental_tier 4/4 @ T-11——
-1.1 D828 基线 273575B/115 函数 ×30 修订**双门过**：结构（未改单元 fp/代际逐轮不动、whole-module 阶段恒 0、恰一安装/一重发/114 驻留命中）AND edit→PE P95=715.5ms<1000（P50 528）；
+V-12（AC-11，T-11，R1 修复后）✅：incremental_tier 4/4 + 正式序列门 1/1——
+1.1 D828 基线 273575B/115 函数 ×30 修订**双门过**：结构（未改单元 fp/代际逐轮不动、whole-module 阶段恒 0、恰一安装/一重发/114 驻留命中）AND **P95=514ms<1000**（正式 runner 单请求稳定会话承载全序列，release worker；R1-F01 修复：窗口=编辑入口→真 PE 的连续区间；debug 镜像档保留全结构断言、P95 转报备——其 link 子进程成本随桌面负载波动，restart 基线 P50 828→1025、同二进制 802 静默 vs 972..1373 连跑实录，硬门将测机器而非管线）；
 1.2 两函数局部更新：恰各自重键、先改身份保留不回退、main 零重发；
-1.3 精确失效/拒绝：helper body 恰 helper 重键（caller 代际 0）；签名/接口编辑=retained environment 接口门拒绝且 mn 状态零变化、会话不 wedge；未授权 capability（无 trace 能力会话内加 mark_a 调用）前端拒绝；
-1.4 退化必被抓：content-hit 回退编辑触发记录性 whole-module fallback（fallback_whole_lower=1，结构门非零）；活键下换对象=store 受控 Conflict、活身份存活、后续编辑正确。
+1.3 精确失效/拒绝：helper body 恰 helper 重键（caller 代际 0）；签名/接口编辑=retained environment 接口门拒绝且 mn 状态零变化、会话不 wedge（正式路径中拒改=父侧 infra 非裁定）；未授权 capability 前端拒绝；
+1.4 退化控制：**内容命中（改回旧值）=历史单元复用正控**（R1-F02 修复：cv→fp 映射复用 A09' store 历史 COFF，零全模块/零重发/fp 回退/代际不跳）；注入缝（drop_unit_history）触发记录性全模块回退=结构门非零；活键换对象=store Conflict 活身份存活。语法增量 NoConvergence（合法编辑、引擎局限）=记录性全请求回退（warm_edit_fallback 标注，带 warmup caps）。
+
+正式 recipe 接线（R1-F03）：worker case-run 增 steps 协议——edit-source 字面量走 MnIncrementalSession（单会话+单 body 事务+逐步真 link/run），适配器分流（有 edit 无 restart→增量）+父侧增量性准入（每编辑步 unaffected/whole/fallback=0）+收据 per-step 证据；[run] 全请求路径保留为冷/恢复场景（不标增量）。接入缝（加法-only，auto-av-probe 回归全绿）：PreparedEdit.unit_mir/changed_name/content_version + session.resident_content_version(pub)；mn 消费者 src/incremental.rs（D828 驻留模型+cv 复用+记录性回退）。
+
+**sig-rebuild 门环境证据（T-07 预存条件，非 R1 finding）**：今晨静默机 P95=996ms<1000 绿（T-07 提交时实测，余量 4ms 已在案）；当前桌面活跃负载（ToDesk/Everything/ChatGPT 等用户进程，非本计划残留）下同二进制 P95=1280-1933 红——restart 基线对照 P50 828→1025（+25%）证实为机器状态而非代码回归。签名重建按 828 设计不可走暖会话（接口门拒签名编辑），全请求路径为其唯一载体（地板 ~820ms 静默）。门将在静默参考机窗口重放；若审查环境可复现静默态，以审查重放为准。
+
+SD-06 描述（R1 要求补）：
+- 修复后的正式路径：edit-source 步骤→增量会话（单 body 事务/单元级 COFF 重发或历史复用/逐步真 link/run）；语法 NoConvergence→记录性全请求回退（warm_edit_fallback 标注）；接口编辑→拒绝=infra；[run]→全请求（冷/恢复，不标增量）。
+- history-hit 行为：内容命中=cv→fp 映射复用历史单元（零全模块、零重发、fp 回退、代际不跳）；映射不可解析=记录性全模块回退（结构门非零）。
+- 有效计时：V-12.1 门=正式序列（编辑入口→真 PE 连续区间，暖化=初始化单列）；debug 镜像报备并附机器负载量化证据。
 接入面：828 会话 PreparedEdit 增 unit_mir/changed_name 消费缝（加法-only，auto-av-probe 回归 17+6+28 全绿）；mn 消费者 src/incremental.rs（D828 驻留模型：resident 工作集+store 持久层；mn 门重验证单元；emission 失败永不提交 revision）。
 
 ## AC 状态（work-owned）
