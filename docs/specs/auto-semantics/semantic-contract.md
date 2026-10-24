@@ -62,3 +62,13 @@ ref 都须当前（包/模块/存在性/内容版本）；外属、外包、除�
 `contract/src/metadata.rs` `CATEGORY_MATRIX` 是 meta 类别/owner/schema/
 消费者的唯一登记源；`matrix_invariants` 强校验：无重复 id、Future 行有
 owner、页载体类别必须登记**当前**页 schema（v1/v2 漂移在库级拦截）。
+
+## PLAN-817：真实执行域指针（只追加，模型合同不变）
+
+796 模型合同零修改（`CtResult::admit_as_model` 拒 vm_execute；`ModelCt`/模型计数
+`model_compute` 不能铸造执行结果——模型 producer/伪 vm 标记经 cte_admit_/cte_freeze_
+反控钉死为受控拒绝）。真实执行走独立版本化 envelope（`ac817/cte-executed/v1`，
+producer=`plan817/cte-probe` 绑定真实 AV 成功），契约见
+[auto-cte/scalar-query-profile.md](../auto-cte/scalar-query-profile.md) 与
+[auto-cte/frozen-cache.md](../auto-cte/frozen-cache.md)；consumer 回灌消费 796
+`InferSession::infer_function`/`SemaInput` 事实源，CtRef 属新 recipe IR 不进求解器。

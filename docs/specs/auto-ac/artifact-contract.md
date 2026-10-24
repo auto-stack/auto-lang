@@ -96,3 +96,14 @@ A06 的**受限探针 producer** = `experimental/ac-semantics/probe`（PLAN-796�
 ## PLAN-798：已实现的AV消费边界
 
 798在独立ac-av-probe实现A08 MIR/A09 ABC函数producer、unit/manifest/sidecar、恢复重验/当前grant与required-edge/lease/GC；使用既有carrier和统一store，不新建数据库。类别/版本信封绑定和raw准入分开；只交付当前标量面，不冒领A01–A12全层生产化。详细行为及整模块重算现状见[AV缓存合同](../auto-av/cache-and-conformance.md)。
+
+## PLAN-817：有限 A05 真实执行 producer（只追加）
+
+A05 层新增 `ac817/a05-cte-exec/v1`（LayoutData 载体、783 统一 store、内容寻址
+CAS），producer=`plan817/cte-probe` 仅由真实 AV 成功结果铸造；全字段恢复准入+
+新鲜性（闭包 body/签名、meta 探针/事实负依赖、caps、engine 三元版本）；坏块受控
+拒绝非 miss；lease/root/GC 按 783 水位。783 原 producer Future 登记不动。编解码/
+恢复的预留顺序、S+2T 结构审计预算与 10s 请求累计墙钟见
+[auto-cte/frozen-cache.md](../auto-cte/frozen-cache.md)。依赖侧追加（单写收据）：
+783 store 两个有界读取 API（`read_chunk_gated_bounded`/`get_artifact_bounded`——
+物理读取界+SQL 错误传播，plan-817 R8/R9）。

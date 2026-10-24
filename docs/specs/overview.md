@@ -39,6 +39,7 @@
 | [auto-vm](auto-vm/project.md) | AutoVM 辅助 CLI（dump_code） | active |
 | [auto-cache](auto-cache/project.md) | 全局构建缓存（sqlite/指纹/GC/sandbox/shim 管线） | active |
 | [auto-semantics](auto-semantics/project.md) | AC 语义元信息/有限推导探针（PLAN-796；contract/core/probe，783 store 消费） | experimental |
+| [auto-cte](auto-cte/project.md) | AV 驱动的有限 CTE 查询与冻结缓存闭环（PLAN-817；experimental/ac-cte-probe 独立 workspace：真实 AV 标量查询→冻结 envelope→consumer 回灌；正式 recipe cte/scalar-query-v1） | experimental |
 | [auto-bindgen](auto-bindgen/project.md) | C FFI 头文件清单生成 | active |
 | [shim-metadata](shim-metadata/project.md) | rustdoc 元信息→FFI shim 包生成（Plan 430 管线） | active |
 | [a2r-actor-tests](a2r-actor-tests/project.md) | actor 行为 parity 慢测试（转译→编译→对拍 VM） | test-only |

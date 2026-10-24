@@ -14,3 +14,4 @@
 - Design 35（docs/design/35-autodown-test-cases.md）定义 A/B/C 阶段边界：B =
   真编译消费/deadline/进程隔离，C = 编辑矩阵——均未在本模块启动。
 | 828 | av-function-incremental-session | ✅（delivered，T-10 最终 PASS） | [计划](../../plans/archive/828-av-function-incremental-session.md) | 正式持续会话入口（session-serve worker+父侧 judge 测量窗/三门/证据先落盘）；one-shot recipe 保留 |
+| 817 | AV驱动的CTE查询与冻结缓存闭环 | ✅ delivered | [计划](../../plans/archive/817-av-cte-query-frozen-cache.md) | cte/scalar-query-v1 recipe + cte-worker stale 轴 + outcome admission（隔离态=ERROR） |

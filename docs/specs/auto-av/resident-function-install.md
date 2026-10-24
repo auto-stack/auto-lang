@@ -24,3 +24,14 @@
   旧代码在 snapshot/frame/lease 引用期间保活，最后 owner 释放即回收（Weak oracle）；
   close 幂等、释放 env/store 拥有引用，外 pin 存活、vacant 执行受控 Infra。
 - 每函数内容历史有界（HISTORY_CAP=32，真实淘汰；驻留当前条目永不逐出）。
+
+## PLAN-817：snapshot 车道消费（exec snapshot，追加）
+
+817 消费面接入 828 session：deck `exec snapshot` 车道——warm-up 一次装载全部单元+
+link ProgramSnapshot，逐调用实参经 wrapper 增量编辑（尾部锚点对齐），ProgramSnapshot
+单元视图执行。车道为缓存身份轴（engine.exec 入 envelope key——closure/snapshot
+永不共享条目）；增量纯度（未改函数零重编译/代际不变、warm 为唯一整模块事件）由
+lane 退化计数器与 828 计数器双重观测（resident-edit rewarms≠0 即红）；冷启动首调用
+即 bool callee 属正常支持面；新能力为追加车道，默认 closure 车道保持，不退回整模块
+热重编/装载。消费契约详文见
+[auto-cte/scalar-query-profile.md](../auto-cte/scalar-query-profile.md)。

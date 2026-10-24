@@ -98,3 +98,15 @@ PLAN-828 正式持续会话入口：`av_probe_worker session-serve`（一进程�
 单列（init_ms）、ready 先判；完整观测（逐样本计数差分/诊断/身份/worker 相位与
 输入/二进制身份）经 `JudgeReport::write_evidence` 落盘留存（成功与失败同留）；
 `frontend-attribution` 子命令为双线预算 A 线隔离测量口。one-shot run/recipe 保留不变。
+
+## PLAN-817：cte/scalar-query-v1 recipe（旧 recipe 零修改）
+
+正式 recipe 表追加 `cte/scalar-query-v1`（v2 probe/run、atom-data 源、
+steps=query|edit-source|restart 以 query 结尾、cte 绑定 entry/caps/session）；
+worker 身份轴族 `cte-worker`（stale 第二登记点——配方分支外独立轴，混合 cte/av
+行序独立+漂移即红）；outcome admission：judged 步骤上的隔离 resource/cancel/infra
+态=ERROR 行（永非语言裁决）、语言类 diag 对照声明的 error completion（cte.*→
+parse/verify/capability/run stage 投影+message matcher）、期望 success 默认 FAIL；
+未知字段/recipe 拒绝；未注册 recipe lint 拒（列注册集）；坏 worker 工具身份=ERROR
+不绿。runner/适配器见 `crates/auto-lang-core/src/test_cases/ac_cte.rs` 与语料
+`crates/auto-lang/test/cases/ac-cte/`。
