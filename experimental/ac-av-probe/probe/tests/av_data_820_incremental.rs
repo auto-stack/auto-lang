@@ -513,3 +513,100 @@ fn av_data_820_v13_metering_injection_controls_redden_the_gate() {
         .expect("the next legal edit proceeds normally");
     assert!(matches!(s.run(), Ok(Value::I32(43))));
 }
+
+/// F820-R5-01: a capability grant must reach the RETAINED frontend
+/// environment at the same publish point as the caps/code swap — the
+/// hot edit that USES the newly granted capability then resolves and
+/// type-checks against the new interface directory, and cold and hot
+/// agree on the value (the reviewer's replay: grant ok, hot edit
+/// `return mark_a()` wrongly `source.undefined`, cold control fine).
+#[test]
+fn av_data_820_v13_caps_grant_syncs_the_hot_frontend() {
+    let src = "\
+type P { x int }
+fn main() int {
+    var p = P { x: 42 }
+    return p.x
+}
+";
+    let mut s = DataIncrementalSession::warmup(src, "d_main", &[]).expect("warmup");
+    assert!(matches!(s.run(), Ok(Value::I32(42))));
+    let granted = s
+        .apply_caps(&["hir.test.trace.v1".to_string()])
+        .expect("grant re-admits");
+    assert_eq!(granted.len(), 1);
+    // The hot edit USES the granted capability.
+    let edited = src.replace("return p.x", "return mark_a()");
+    s.edit_body(&edited, "d_main")
+        .expect("the hot frontend resolves mark_a under the granted caps");
+    assert!(matches!(s.run(), Ok(Value::I32(1))), "mark_a() = 1");
+    // Cold control: the SAME edited source + caps warms cold to the SAME
+    // value — the hot path judges exactly what the cold path admits.
+    let cold =
+        DataIncrementalSession::warmup(&edited, "d_main", &["hir.test.trace.v1".to_string()])
+            .expect("cold control warms");
+    assert!(matches!(cold.run(), Ok(Value::I32(1))));
+    // Slot/interface-directory sync: a further body edit on the same
+    // session (back to the plain body) still resolves and runs.
+    s.edit_body(src, "d_main")
+        .expect("the synced environment keeps serving further edits");
+    assert!(matches!(s.run(), Ok(Value::I32(42))));
+}
+
+/// F820-R5-01 sibling controls: revoking a capability the CURRENT SOURCE
+/// actually uses is a controlled rejection keeping every old value; after
+/// a SUCCESSFUL revoke (source not using trace), the next unauthorized
+/// use through the hot edit is refused — the reduced environment gates
+/// the hot frontend too.
+#[test]
+fn av_data_820_v13_caps_revoke_is_controlled_and_gates_hot_edits() {
+    // (a) revoke-while-used: the source calls mark_a; reducing the caps
+    // cannot resolve it — Err, session fully at the old values.
+    let used = "\
+type P { x int }
+fn main() int {
+    var p = P { x: 42 }
+    return mark_a()
+}
+";
+    let mut s = DataIncrementalSession::warmup(used, "d_main", &["hir.test.trace.v1".to_string()])
+        .expect("warmup with trace");
+    assert!(matches!(s.run(), Ok(Value::I32(1))));
+    let err = s
+        .apply_caps(&[])
+        .expect_err("revoking a capability the source uses must reject");
+    assert!(
+        err.contains("mark_a") || err.contains("capability"),
+        "got {err}"
+    );
+    assert!(
+        matches!(s.run(), Ok(Value::I32(1))),
+        "the failed revoke installed nothing"
+    );
+
+    // (b) successful revoke on a source NOT using trace, then an
+    // unauthorized use via the hot edit is refused (zero install).
+    let plain = "\
+type P { x int }
+fn main() int {
+    var p = P { x: 42 }
+    return p.x
+}
+";
+    let mut s = DataIncrementalSession::warmup(plain, "d_main", &["hir.test.trace.v1".to_string()])
+        .expect("warmup");
+    let revoked = s.apply_caps(&[]).expect("revoke succeeds when unused");
+    assert_eq!(revoked.len(), 1);
+    assert!(matches!(s.run(), Ok(Value::I32(42))));
+    let err = s
+        .edit_body(&plain.replace("return p.x", "return mark_a()"), "d_main")
+        .expect_err("unauthorized use after revoke must be refused by the hot frontend");
+    assert!(
+        err.contains("mark_a") || err.contains("candidate rejected"),
+        "got {err}"
+    );
+    assert!(
+        matches!(s.run(), Ok(Value::I32(42))),
+        "the refused edit installed nothing"
+    );
+}

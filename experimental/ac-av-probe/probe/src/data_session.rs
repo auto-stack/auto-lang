@@ -1018,7 +1018,16 @@ impl DataIncrementalSession {
     /// so any caps delta re-lowers and re-admits EVERY unit while HIR
     /// identity stays put; an unchanged caps list produces ZERO work.
     /// TRANSACTIONAL (F820-R2-01): the re-admitted set links and runs
-    /// BEFORE the caps/code swap installs.
+    /// BEFORE the caps/code swap installs. F820-R5-01: the caps delta
+    /// ALSO rebuilds the RETAINED frontend environment under the new
+    /// authorization — the interface directory (e.g. the trace marks)
+    /// a later `edit_body` resolves against must reflect the granted or
+    /// revoked set, or a legal hot edit using a newly granted capability
+    /// is wrongly refused (`source.undefined`). Resident HIR objects are
+    /// NOT regenerated (bodies unchanged); the environment install joins
+    /// the SAME publish point as caps/code/snapshot, and any failure —
+    /// including a revoke the CURRENT SOURCE actually uses, which cannot
+    /// resolve under the reduced caps — keeps every old value.
     pub fn apply_caps(&mut self, new_caps: &[String]) -> Result<Vec<String>, String> {
         if new_caps == self.caps.as_slice() {
             return Ok(Vec::new());
@@ -1028,6 +1037,24 @@ impl DataIncrementalSession {
         let old_caps = std::mem::replace(&mut self.caps, new_caps.to_vec());
         let restore = |s: &mut Self| {
             s.caps = old_caps.clone();
+        };
+        // The candidate frontend environment under the NEW caps (aside):
+        // a source that USES a revoked capability fails to resolve here —
+        // a controlled rejection that installs nothing (F820-R5-01).
+        let mut new_env = match (|| -> Result<CheckedEnv, String> {
+            let program = parse_program_with(&self.src, SourceProfile::Record)
+                .map_err(|d| format!("caps env parse: {}", d.message))?;
+            resolve_env(&program, &self.caps, SourceProfile::Record).map_err(|ds| {
+                ds.first()
+                    .map(|d| format!("caps env resolve: {} {}", d.code, d.message))
+                    .unwrap_or_else(|| "caps env resolve failed".to_string())
+            })
+        })() {
+            Ok(e) => e,
+            Err(e) => {
+                restore(self);
+                return Err(e);
+            }
         };
         let mut ev = ProductionEvents::default();
         let mut new_code = self.code.clone();
@@ -1056,7 +1083,11 @@ impl DataIncrementalSession {
             restore(self);
             return Err(e);
         }
-        // publish (self.caps already holds the candidate set)
+        // publish (self.caps already holds the candidate set; the
+        // environment joins the same publish point — one consistent
+        // authorization state across frontend/units/snapshot).
+        auto_ac_prototype::source::env_note_cold_walks(&mut new_env);
+        self.env = new_env;
         self.code = new_code;
         self.revision += 1;
         self.snapshot = new_snap;

@@ -186,7 +186,9 @@ $TIER_CONTRACT = @{
         "av_data_820_v13_old_snapshot_survives_for_comparison",
         "av_data_820_v13_multi_function_edit_is_explicit_non_fast",
         "av_data_820_v13_failed_edit_installs_nothing",
-        "av_data_820_v13_metering_injection_controls_redden_the_gate"
+        "av_data_820_v13_metering_injection_controls_redden_the_gate",
+        "av_data_820_v13_caps_grant_syncs_the_hot_frontend",
+        "av_data_820_v13_caps_revoke_is_controlled_and_gates_hot_edits"
     )
     # "core" is a support tier (the shared core suite) — guarded by the
     # listing/execution rules only, no plan contract of its own.
