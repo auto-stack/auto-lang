@@ -1,19 +1,19 @@
-# PLAN-831 T-09 最终来源核查与候选快照（R2 修复轮+r3 合同修订版）
+# PLAN-831 T-09 最终来源核查与候选快照（R3 判据收口版）
 
-日期：2026-10-24（T-10 R2 needs_fix 后同组修复轮+用户裁定的 r3 合同修订闭合）；Plan revision：3；scope：work/T-09，非 T-10 独立终审。
+日期：2026-10-24（T-10 R3 needs_fix 后同组修复轮闭合）；Plan revision：3；scope：work/T-09，非 T-10 独立终审。
 
-本快照四份材料的内容哈希及三仓输入清单见 [freeze.json](freeze.json)。首轮快照结论 needs_fix（review-r1：F03/F05 REOPEN、F01 PARTIAL、F831-R1-01 OPEN）；本轮在同组原树完成四项修复、三反例重放确定性红、真实链终源重跑后重冻结。**候选结论：T-09 work 面闭合（四项 R1 finding 全部 CLOSED），可再送 T-10 独立终审**；jet/ark 构建面维持【环境阻塞·具名】红（AC-03 就其为 named-partial，不作 pass 主张、不缩减支持）；merge-owned 门显式 pending。Plan 状态 executing。
+本快照四份材料的内容哈希及三仓输入清单见 [freeze.json](freeze.json)。历轮：R1 needs_fix（F03/F05 REOPEN、F01 PARTIAL、F-R1-01 OPEN）→R1 修复；R2 needs_fix（F03 progress-only 假绿+jet/ark 必需环境面）→R2 修复+r3 合同修订；R3 needs_fix（两判据缺口：V06c 吞 jet/ark 真实编译失败、V06e 把超时当关闭）。本轮完成 R3 两子面判据收口（见 §5 R3 表，含"获准延期/真失败/未知探测"三类判据说明）。**候选结论：T-09 work 面闭合（review-r3 开放点全 CLOSED），可再送 T-10 独立终审**；merge-owned 门显式 pending。Plan 状态 executing（T-09 完成后由簿记推进 execution_done）。（历史注：R1 时 jet/ark 构建面表述为 named-partial，r3 用户裁定移出合同后该表述不再适用，见 §4 修订记录。）
 
-## 1. 唯一来源与可重建输入（R1 终态）
+## 1. 唯一来源与可重建输入（R3 终态）
 
 | 角色 | 权威树 / 分支 | 完整 SHA |
 |---|---|---|
-| 语言实现 | `D:/autostack/.wt/lang-831/auto-lang` / `codex/plan-831-dev` | `2d47e236eb7de6c9d275bbe7629b822c788f1820` |
+| 语言实现 | `D:/autostack/.wt/lang-831/auto-lang` / `codex/plan-831-dev` | `3064b34656af7b90511938d721624e1ba942ca53` |
 | UI 实现 | `D:/autostack/.wt/lang-831/auto-ui` / `codex/plan-831-dev` | `425088520e402b1efae9479b9d0b5b3d44a56df4` |
 | down 只读依赖 | `D:/autostack/.wt/lang-831/auto-down` / detached | `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` |
 | 搬迁比较基线 | 语言仓 T-04 source | `e199caf8a6cb369b320c02ca144c1e88b7bcef8f` |
 
-两实现树 tracked `git status --porcelain` 干净（lang 唯一 untracked=compile-probe 本地 Cargo.lock，可再生不入库；F05 admission 已明确 untracked 可再生产物不判脏）。默认分支未推进；未修改 canonical Specs 或 ledger；本轮修复全部在 plan 分支提交（**R1 新增**：lang 09307c05e+fe8f3090a、UI 4250885；**R2 新增**：lang 112167c58（V06e 接受证据改绑子应用服务实际存在性）+2d47e236e（V06c 判据随 r3 合同修订）。完整提交链见 git log）。
+两实现树 tracked `git status --porcelain` 干净（lang 唯一 untracked=compile-probe 本地 Cargo.lock，可再生不入库；F05 admission 已明确 untracked 可再生产物不判脏）。默认分支未推进；未修改 canonical Specs 或 ledger；本轮修复全部在 plan 分支提交（**R1 新增**：lang 09307c05e+fe8f3090a、UI 4250885；**R2 新增**：lang 112167c58+2d47e236e；**R3 新增**：lang 3064b3465（V06c 失败传播+V06e 收口三态判据）。完整提交链见 git log）。
 
 本期渠道仍是本地 Git commit/源码包。重新消费本候选必须 checkout 上表 SHA 并核对各锁与源码包哈希；收据身份经 [admission](#5-本轮发现及闭合条件) 核对——R1 起 admission 含 tracked 脏树拒绝（同 HEAD 源码改动后旧收据不可采信），四收据均于上表身份 admitted（RCPT-ID/RCPT-ID-F 双 pass，"tracked 树干净"入收据明细）。尚未生成正式 `ui-release.md`，不得称已发布，未推远端。
 
@@ -29,18 +29,18 @@
 |---|---|---|
 | V-01 / AC-01 | **pass** | 同首轮终态（777 strict 0v/5gf 零警告真实扫描 362 文件、编译探针类型身份、DST-4 隔离 SDK 反控 5/5 R1 终源复验）；R1 增：blueprints 兜底断言恢复独立 oracle（见 §5 F01）。 |
 | V-02 / AC-02 | **pass** | 同首轮终态（16 路径三 feature 组合 compile-probe 24/24、C2 单源 D01..06）。 |
-| V-03 / AC-03 | **pass（r3 合同下）** | 792 收据 R2/r3 终源 **39/39**：V01/V02 fresh/locked/重定位、V05 工具随包消费、V06a 真实窗口 run（句柄 28707468）、六 profile 真实生成、**vue/rust/vscode 真实构建链 completed（必需面全绿）**；jet/ark 构建全尝试逐项记录（缺环境=【环境门控·转后续】，r3 用户裁定移出合同、KNOWN-DEBT 承接，生成面已绿不受影响）。 |
+| V-03 / AC-03 | **pass（r3 合同下）** | 792 收据 R3 终源 **39/39**：V01/V02 fresh/locked/重定位、V05 工具随包消费、V06a 真实窗口 run（句柄 28707468）、六 profile 真实生成、**vue/rust/vscode 真实构建链 completed（必需面全绿）**；jet/ark 构建全尝试逐项记录（缺环境=【环境门控·转后续】，r3 用户裁定移出合同、KNOWN-DEBT 承接，生成面已绿不受影响）。 |
 | V-04 / AC-04 | **pass** | 792 坏 pin/漏 patch/资源四态/旧字节/陌生目录逐 case 绿（R2/r3 终源收据 39/39）；V06d 可区分 oracle（安装活动证据→中断→保持性→重试 completed+dist 落盘，真实链 PASS 19s）；drill 19 检 R2/r3 终源重跑；admission 含 tracked 脏树拒绝（selftest S17 五臂）。 |
 | V-05 / AC-05 | pass（历史+终态） | T-02 保全载荷不变；drill 终态 19/19（R1 重跑收据）；真实仓 prepared/land/switch 归 T-11 合同窗口。 |
 | V-06 / AC-06 | **pass** | 正典 ID 对拍不变（t 面三共享包逐 ID 相等、tu 863=863 ID 级差集空——865/867 对账：865=基线行数，867 叙述误计已撤回，当前侧 @4250885 实测 863 行）；ti 28/28、tn 门可列举；777 双根围栏；跨仓编排入口；V06e vm 真实运行=子应用服务级观测（Launched+探针+收口，见 §5 F03-B）。 |
 
-fixture 全族 R2/r3 终态：`--phase source-switched` = **46 pass/0 fail/1 recorded/1 pending**（收据 t09-r2-all.json；recorded=SRC-P4c 清洁面复核；pending=TYP-PROBE 零 cargo 缺省——专项 24/24 在案）；selftest 全过（含 S17 五臂）。
+fixture 全族 R3 终态：`--phase source-switched` = **46 pass/0 fail/1 recorded/1 pending**（收据 t09-r3-all.json；recorded=SRC-P4c 清洁面复核；pending=TYP-PROBE 零 cargo 缺省——专项 24/24 在案）；selftest 全过（含 S17 五臂）。
 
 ## 4. 真实支持面与发行边界（R1 终态）
 
 | 面 | 终态证据 |
 |---|---|
-| UI 源码组 | R2/r3 终源 5/5（fresh/locked/整组重定位/隔离 SDK 84s）；组布局成立 |
+| UI 源码组 | R3 终源 5/5（fresh/locked/整组重定位 176s/隔离 SDK 114s；首轮 DST-3 瞬态 rustc ACCESS_VIOLATION 重试绿，两轮事实在案）；组布局成立 |
 | 外部 Rust bundle | V01/V02 终源绿 + V06a 真实窗口 run；api-gen 双根修复保持 |
 | Vue | V05e 生成+资源字节=源；V06c vue completed（真实 pnpm 链，R2/r3 重跑）；V06d 可区分取消恢复 oracle PASS（19s） |
 | VM/Iced | **V06e R2 终态：Launched(url) 子应用事件（vm-session MCP 实际端口）+端点探活 HTTP 200+协议 cancel 回执+终态 cancelled+同端点收口 ConnectionRefused(10061) 独立观测+宿主 describe 复验**（真实链 PASS 3s）；三族寿命冒烟（窗口/终端/媒体）沿用 |
@@ -51,7 +51,22 @@ fixture 全族 R2/r3 终态：`--phase source-switched` = **46 pass/0 fail/1 rec
 
 ## 5. 本轮发现及闭合条件
 
-### R2 轮（review-r2 开放点全部 CLOSED）
+### R3 轮（review-r3 两判据缺口 CLOSED，含三类判据说明）
+
+review-r3 要求下一交接说明"**获准延期/真失败/未知探测**"三类如何在判据中区分——当前判据（lang 3064b3465）：
+
+| 类别 | 判据归属 | 处置 |
+|---|---|---|
+| 获准延期（r3 授权的环境缺失） | 仅限非必需面 jet/ark：失败且错误文本含工具链缺席标记（9009/not found/wrapper not found/open the project in） | 逐项记录【环境门控·转后续】不阻塞——r3 用户裁定移出合同，KNOWN-DEBT 经批准非阻塞延期承接 |
+| 真失败（在场执行后的失败） | 无环境缺席标记的失败（编译错/协议错/会话异常）或必需面（vue/rust/vscode）失败 | **传播红**——V06c 判据=required 全 completed 且无 real_fail；review-r3 五控制中 jet Kotlin/ark ArkTS 编译错均红 |
+| 未知探测（端点探测不可判定） | V06e `_mcp_probe` 三态之 unknown：超时/探测失败既不证明监听也不证明关闭 | 收口判定**仅连接拒绝**（ConnectionRefused/10061/积极拒绝）计为端点确证关闭；http/unknown 继续轮询、超窗诚实红——review-r3 endpoint-timeout 控制（仍监听不回答）判红且独立 TCP 取证证实判定真实 |
+
+| ID | 严重度 | 闭合证据（R3 修复轮） |
+|---|---|---|
+| F831-09-03 A（V06c 吞真实编译失败） | P1 | **CLOSED**（lang 3064b3465）：汇总器改三类判据（上表）；review-r3 replay.py --case build-matrix 五控制全符合同（all_complete 绿/缺环境绿/jet 编译错红/ark 编译错红/required vue 错红）；真实链 V06c PASS（jet/ark=env-gated 逐项记录+required 全 completed）。 |
+| F831-09-03 B（超时当关闭） | P1 | **CLOSED**（lang 3064b3465）：`_mcp_alive` 改 `_mcp_probe` 三态（http/refused/unknown），收口仅认 refused；review-r3 endpoint-timeout 控制：仍监听但不回答的端点→同端点收口=False 判红，工具清理前独立 `socket.create_connection` 同端口成功（监听者确在，判定真实非巧合）；真实链 V06e 收口=ConnectionRefusedError(10061)（3s）。 |
+
+### R2 轮（review-r2 开放点全部 CLOSED，历史）
 
 | ID | 严重度 | 闭合证据（R2 修复轮 + r3 修订） |
 |---|---|---|

@@ -20,7 +20,7 @@ after候选：区分开发三仓同级path组、源码固定commit clone渠道�
 
 多仓状态为prepared→UI landed→language switched→verified；单仓仅ff-only且核旧锚，失败保留已完成状态和恢复指令，不假称跨Git原子。真正取消/超时/交换失败仍按原受管保旧合同验证，不用合成组代替真实运行。U831完整收尾前不放行832。
 
-来源：scripts/ui-repository-{distribution,switch}.py、792 driver、UI tools/rust_ui.rs。AC-03/04/05，V-03/04/05。R1 终态：F03（V06d/e 区分性 oracle 重写+真实链）/F05 已闭；jet/ark 构建面=环境阻塞具名红（非支持缩减），AC-03 就其保持 named-partial，不作 pass 主张。
+来源：scripts/ui-repository-{distribution,switch}.py、792 driver、UI tools/rust_ui.rs。AC-03/04/05，V-03/04/05。R3 终态：F03（V06d/e 区分性 oracle+真实链）/F05 已闭；jet/ark 真实构建面经用户 2026-10-24 裁定以 r3 修订移出 AC-03/V-03，转后续环境门控渠道（缺环境=获准延期逐项记录；在场执行后的真实编译/协议失败仍传播红）。（历史：R1 时该面为 named-partial，r3 起不再适用该表述）
 
 ## SD-03 · modify · docs/specs/repository-boundaries/project.md
 
