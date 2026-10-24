@@ -31,11 +31,20 @@ V-12（AC-11，T-11，R1 修复后）✅：incremental_tier 4/4 + 正式序列�
 
 **sig-rebuild 门环境证据（T-07 预存条件，非 R1 finding）**：今晨静默机 P95=996ms<1000 绿（T-07 提交时实测，余量 4ms 已在案）；当前桌面活跃负载（ToDesk/Everything/ChatGPT 等用户进程，非本计划残留）下同二进制 P95=1280-1933 红——restart 基线对照 P50 828→1025（+25%）证实为机器状态而非代码回归。签名重建按 828 设计不可走暖会话（接口门拒签名编辑），全请求路径为其唯一载体（地板 ~820ms 静默）。门将在静默参考机窗口重放；若审查环境可复现静默态，以审查重放为准。
 
-SD-06 描述（R1 要求补）：
-- 修复后的正式路径：edit-source 步骤→增量会话（单 body 事务/单元级 COFF 重发或历史复用/逐步真 link/run）；语法 NoConvergence→记录性全请求回退（warm_edit_fallback 标注）；接口编辑→拒绝=infra；[run]→全请求（冷/恢复，不标增量）。
+**R2 修复（2026-10-24，四 finding 全闭）**：
+
+- **F-818-R2-01（P1 授权 trace 链接/字节丢失）**：根因=worker 获取 tracelib 后丢弃（`let _ = &tracelib`）、增量 `run_current` 调 `link_and_run(..., None, ...)`、`EditObservation` 无输出字节且回退前响应硬编码空流。修复=会话持有 tracelib 并在每个 link/run 传入；`EditObservation.stdout/stderr` 逐轮携带原始 PE 字节；单发响应 judged 流=真实字节、每步记录带 `stderr_hex/stdout_hex`。持久测试：`mir_native_incremental_trace_links_and_bytes_survive`（库层冷/编辑/历史命中/run-only 四路全链接+字节逐轮断言）+ `mir_native_incremental_trace_formal`（正式 runner：exit 12/每步+judged stderr "61"）+ 单发复演（R2 反例同请求：`undefined symbol hir.test.mark_a` → incremental=true/12/"61"）。未授权控制不变（V-12.3c 前端拒绝）。
+- **F-818-R2-02（P1 语法回退丢已提交前缀，202 错成 102）**：根因=单发回退以**原始** request source 重建全请求。修复=以 **session 当前源**（含全部已提交编辑）重建，被拒编辑 exactly-once 物化；rounds 路径同语义（物化态）。持久测试：`mir_native_incremental_syntax_fallback_preserves_prefix`（全序列 202+fallback 标注/依赖字面量 301/首步回退 102）+ `mir_native_incremental_fallback_diagnostic_propagation`（回退后签名编辑→整请求真实 parse 诊断绿裁定，link/run=0 按设计先诊断后结构准入）+ 单发复演（同请求 102→202）。
+- **F-818-R2-03（P2 三处新警告）**：incremental.rs `minted_fp` 初始值未读（重构为直接用 fp，语义不变——cv_map 插入时点/内容不变）/mn-worker.rs `mut apply`（闭包无捕获改 `replacen_once` helper）/incremental_tier.rs `gate_ms` 未用（并入报备行）。`cargo check --workspace --all-targets` 零警告；主仓触面两文件零警告（预存 130 主仓警告不在触面）。
+- **R1-01 残余（父侧观测计时）**：正式增量路径改 **rounds 协议**（一常驻 worker 进程承载暖会话，每 step 一问一答；`mnworker/1` 加法扩展，既有请求/响应形状不变）。父侧 adapter 测每编辑**连续**窗口：父侧准备（源拷贝+字面量 exactly-once 搜索/插入+载荷序列化）→IPC→worker 定位/编辑/链接/运行→响应→父侧准入——§5.5 合同区间。系列门与 body-edit 门切至父侧窗口（断言 pw≥w：worker 连续 wall_ms 保留且被覆盖）。**实测系列父侧 P95=388.6ms<1000**（P50 364；R1 worker 侧 514 的连续证据保留）；body-edit 父侧 P95=272.8ms；sig-rebuild 828ms（静默机重放，R1 时 996 余量 4ms 的脆弱性缓解为 172ms 余量）。raw 已更新（`turnaround-mn-incremental-series.json` 含 window 字段）。
+
+R2 后回归：incremental_tier 5/5（+新 trace 测）、first_case 3/3、主仓 `test(ac_mn_probe_tests)` 21/21（T-07 五场景+T-06 adapter+四新测+formal_runner_gate+series；sig-rebuild 本轮静默机绿）。复演脚本同请求红→绿对照在 [review-r2 反例复演](../../../plans/attachments/818/review-r2/review.md)（trace/prefix 两反例）。
+
+SD-06 描述（R2 修正后）：
+- 修复后的正式路径：edit-source 步骤→**rounds 协议**增量会话（常驻 worker：单 body 事务/单元级 COFF 重发或历史复用/逐步真 link/run/授权 trace 库全程链接/逐轮原始 PE 字节）；语法 NoConvergence→记录性全请求回退（**从 session 当前源重建，已提交前缀 exactly-once 保留**，warm_edit_fallback 标注；回退后诊断按先诊断后结构准入传播）；接口编辑→拒绝=infra；[run]→全请求（冷/恢复，不标增量）。
 - history-hit 行为：内容命中=cv→fp 映射复用历史单元（零全模块、零重发、fp 回退、代际不跳）；映射不可解析=记录性全模块回退（结构门非零）。
-- 有效计时：V-12.1 门=正式序列（编辑入口→真 PE 连续区间，暖化=初始化单列）；debug 镜像报备并附机器负载量化证据。
-接入面：828 会话 PreparedEdit 增 unit_mir/changed_name 消费缝（加法-only，auto-av-probe 回归 17+6+28 全绿）；mn 消费者 src/incremental.rs（D828 驻留模型：resident 工作集+store 持久层；mn 门重验证单元；emission 失败永不提交 revision）。
+- 有效计时：V-12.1 门=正式序列**父侧观测连续窗口**（父侧准备→IPC→worker 执行→父侧准入；§5.5 区间；worker 侧连续 wall_ms 保留为被覆盖证据）；debug 镜像报备并附机器负载量化证据。
+接入面：828 会话 PreparedEdit 增 unit_mir/changed_name 消费缝（加法-only，auto-av-probe 回归 17+6+28 全绿）；mn 消费者 src/incremental.rs（D828 驻留模型：resident 工作集+store 持久层；mn 门重验证单元；emission 失败永不提交 revision；**tracelib 会话级持有**）；worker rounds 模式 + mnworker/1 加法协议扩展。
 
 ## AC 状态（work-owned）
 
@@ -82,9 +91,12 @@ T-06 会话/编辑步骤词表与父侧物化；T-07 会话 store/磁盘工具 m
 
 ## 验证执行记录
 
+- 2026-10-24 R2 修复轮：复演 R2 两反例（trace：undefined symbol→12/"61"；prefix：102→202）；
+  incremental_tier 5/5（43.7s）+first_case 3/3+主仓 `test(ac_mn_probe_tests)` 21/21（256.5s，
+  mn-turnaround 串行组）+fmt 零漂移+workspace check 零警告。
 - 2026-10-24 acceptance scope @ `32c050234`+T-08 树：全绿（`OK: acceptance`）。
   顺序敏感实测：墙钟门必须先跑（resources 档 ~10min 高频 IO 的余波把紧随的
-  body-edit 尾部推到 3-12s 尖峰实录）——acceptance/closeout 固定
+  body-edit 尾部推到 3-12s 尖峰实录）——acceptance/closeout 固化
   turnaround-formal 前置、resources 垫底。明细：first-case 3/3、
   turnaround-formal 5/5（159s）、codegen 6/6、parity 2/2、cache 7/7、
   transaction 6/6、autodown 10/10、turnaround-driver 3/3（105s）、

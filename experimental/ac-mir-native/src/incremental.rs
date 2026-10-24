@@ -54,6 +54,11 @@ pub struct EditObservation {
     pub whole_module_stage_delta: u64,
     /// Edit entry → real PE result observed by the parent (ms).
     pub wall_ms: f64,
+    /// The round's raw PE stdout/stderr (byte-exact — the trace evidence
+    /// F-818-R2-01: authorized trace bytes must survive the incremental
+    /// path, never be hardcoded away).
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
 }
 
 pub struct MnIncrementalSession {
@@ -78,6 +83,10 @@ pub struct MnIncrementalSession {
     cv_map: BTreeMap<(String, String), String>,
     /// The warm-up capability grants (fallback lowers keep them).
     caps: Vec<String>,
+    /// The trace support staticlib for authorized-trace sessions
+    /// (F-818-R2-01): every link/run of this session links against it —
+    /// `hir.test.mark_a` and friends resolve or the link fails loudly.
+    tracelib: Option<PathBuf>,
 }
 
 /// Session counter deltas for one edit: the stage work of functions OTHER
@@ -145,6 +154,7 @@ impl MnIncrementalSession {
         entry: &str,
         caps: &[String],
         store_root: &Path,
+        tracelib: Option<&Path>,
     ) -> Result<(MnIncrementalSession, EditObservation), MnError> {
         let av = session::warmup(src, entry, caps)
             .map_err(|e| MnError::Infra(format!("828 warmup: {e}")))?;
@@ -170,6 +180,7 @@ impl MnIncrementalSession {
             resident: BTreeMap::new(),
             cv_map: BTreeMap::new(),
             caps: caps.to_vec(),
+            tracelib: tracelib.map(|p| p.to_path_buf()),
         };
         for unit in &units {
             let name = unit.funcs[0].name.clone();
@@ -255,7 +266,7 @@ impl MnIncrementalSession {
             &wrapper,
             START_SYMBOL,
             &workdir,
-            None,
+            self.tracelib.as_deref(),
             &format!("incremental round {}\n", self.round),
         )?;
         Ok(EditObservation {
@@ -272,6 +283,8 @@ impl MnIncrementalSession {
             unaffected_stage_delta: unaffected_delta,
             whole_module_stage_delta: whole_module_delta,
             wall_ms,
+            stdout: run.stdout,
+            stderr: run.stderr,
         })
     }
 
@@ -337,7 +350,6 @@ impl MnIncrementalSession {
         let mut codegen_units = 0u64;
         let mut fallback_whole = 0u64;
         let mut reused_history = false;
-        let mut minted_fp: Option<String> = None;
 
         match prepared.unit_mir() {
             Some(unit) => {
@@ -387,9 +399,6 @@ impl MnIncrementalSession {
                         },
                     );
                     self.resident.insert(changed_key.clone(), obj.bytes);
-                    minted_fp = Some(fp);
-                } else {
-                    minted_fp = Some(fp);
                 }
                 // COMMIT after the mn layer accepted the unit.
                 let outcome = self.av.commit(prepared);
@@ -403,8 +412,9 @@ impl MnIncrementalSession {
                     wall(&mut o);
                     return o;
                 }
-                // The minted content version now maps to the minted fp.
-                if let (Some(fp), Some(cv)) = (minted_fp, av_resident_cv(&self.av, &changed_name)) {
+                // The minted content version now maps to the unit's fp (the
+                // current identity, whether it just moved or not).
+                if let Some(cv) = av_resident_cv(&self.av, &changed_name) {
                     self.cv_map.insert((changed_key.clone(), cv), fp);
                 }
             }

@@ -62,6 +62,41 @@ mod case_run {
         bytes.iter().map(|b| format!("{b:02x}")).collect()
     }
 
+    /// One incremental step's record (byte-exact streams included —
+    /// F-818-R2-01: trace bytes ride every record, never dropped).
+    fn step_json(obs: &ac_mn::incremental::EditObservation, op: &str) -> serde_json::Value {
+        serde_json::json!({
+            "op": op,
+            "exit_code": obs.exit_code,
+            "changed_fn": obs.changed_fn,
+            "codegen_units": obs.codegen_units,
+            "cache_hits": obs.cache_hits,
+            "fallback_whole_lower": obs.fallback_whole_lower,
+            "reused_history_unit": obs.reused_history_unit,
+            "unaffected_stage_delta": obs.unaffected_stage_delta,
+            "whole_module_stage_delta": obs.whole_module_stage_delta,
+            "refused": obs.refused_reason,
+            "infra": obs.infra,
+            "wall_ms": obs.wall_ms,
+            "phase_walls": obs.phase_walls_us,
+            "stderr_hex": hex(&obs.stderr),
+            "stdout_hex": hex(&obs.stdout),
+        })
+    }
+
+    /// Exactly-once literal replacement on `cur` (the shared edit oracle:
+    /// ambiguity is an error, never a silent first-hit edit).
+    fn replacen_once(cur: &mut String, from: &str, to: &str) -> Result<(), String> {
+        let hits = cur.matches(from).count();
+        if from.is_empty() || hits != 1 {
+            return Err(format!(
+                "edit-source literal matched {hits} times (expected once)"
+            ));
+        }
+        *cur = cur.replacen(from, to, 1);
+        Ok(())
+    }
+
     /// The incremental-session path (F-818-R1-03): one warm session per
     /// request; edit-source steps are applied as single-body transactions
     /// (literal located exactly once in the CURRENT source); every step
@@ -105,30 +140,16 @@ mod case_run {
             &entry,
             &caps,
             &store_path,
+            tracelib.as_deref(),
         ) {
             Ok(pair) => pair,
             Err(e) => return fail(echo, "mn.worker.incremental", e.message()),
         };
-        let _ = &tracelib;
         let mut step_records: Vec<serde_json::Value> = Vec::new();
-        let record = |obs: &ac_mn::incremental::EditObservation, op: &str| {
-            serde_json::json!({
-                "op": op,
-                "exit_code": obs.exit_code,
-                "changed_fn": obs.changed_fn,
-                "codegen_units": obs.codegen_units,
-                "cache_hits": obs.cache_hits,
-                "fallback_whole_lower": obs.fallback_whole_lower,
-                "reused_history_unit": obs.reused_history_unit,
-                "unaffected_stage_delta": obs.unaffected_stage_delta,
-                "whole_module_stage_delta": obs.whole_module_stage_delta,
-                "refused": obs.refused_reason,
-                "infra": obs.infra,
-                "wall_ms": obs.wall_ms,
-                "phase_walls": obs.phase_walls_us,
-            })
-        };
-        step_records.push(record(&cold, "warmup"));
+        step_records.push(step_json(&cold, "warmup"));
+        // F-818-R2-01: the judged streams are the judged round's REAL PE
+        // bytes — authorized trace bytes survive the incremental path.
+        let mut judged_streams = (cold.stdout.clone(), cold.stderr.clone());
         let mut judged_exit: Option<i32> = cold.exit_code;
         let mut refused: Option<(String, String)> = None;
         for (st_idx, st) in steps.iter().enumerate() {
@@ -159,9 +180,12 @@ mod case_run {
                             // an engine limitation): fall back to the
                             // WHOLE-REQUEST path over the fully edited
                             // source — recorded, never labeled incremental.
+                            // F-818-R2-02: the accepted prefix rides in the
+                            // SESSION'S CURRENT source (every edit committed
+                            // so far), never the original request source.
                             return serve_incremental_whole_fallback(
                                 echo,
-                                &source,
+                                &session_source(&session),
                                 steps[st_idx..].to_vec(),
                                 from,
                                 to,
@@ -175,7 +199,8 @@ mod case_run {
                         refused = Some(("mn.incremental.refused".into(), r.clone()));
                     }
                     judged_exit = obs.exit_code;
-                    step_records.push(record(&obs, "edit-source"));
+                    judged_streams = (obs.stdout.clone(), obs.stderr.clone());
+                    step_records.push(step_json(&obs, "edit-source"));
                 }
                 Some("run") => {
                     let obs = session.run_only();
@@ -183,7 +208,8 @@ mod case_run {
                         return fail(echo, "mn.worker.incremental", i.clone());
                     }
                     judged_exit = obs.exit_code;
-                    step_records.push(record(&obs, "run"));
+                    judged_streams = (obs.stdout.clone(), obs.stderr.clone());
+                    step_records.push(step_json(&obs, "run"));
                 }
                 _ => {
                     return fail(
@@ -210,8 +236,8 @@ mod case_run {
             resp["diagnostic"] = serde_json::json!({"code": code, "message": message});
         } else {
             ok["exit_code"] = serde_json::json!(judged_exit);
-            ok["stderr_hex"] = serde_json::json!("");
-            ok["stdout_hex"] = serde_json::json!("");
+            ok["stderr_hex"] = serde_json::json!(hex(&judged_streams.1));
+            ok["stdout_hex"] = serde_json::json!(hex(&judged_streams.0));
         }
         resp["ok"] = ok;
         println!("{resp}");
@@ -244,24 +270,14 @@ mod case_run {
             ExitCode::FAILURE
         };
         let mut cur = source.to_string();
-        let mut apply = |from: &str, to: &str, cur: &mut String| -> Result<(), String> {
-            let hits = cur.matches(from).count();
-            if from.is_empty() || hits != 1 {
-                return Err(format!(
-                    "edit-source literal matched {hits} times (expected once)"
-                ));
-            }
-            *cur = cur.replacen(from, to, 1);
-            Ok(())
-        };
-        if let Err(e) = apply(refused_from, refused_to, &mut cur) {
+        if let Err(e) = replacen_once(&mut cur, refused_from, refused_to) {
             return fail("mn.worker.edit", e);
         }
         for st in remaining.iter().skip(1) {
             if st.get("op").and_then(|v| v.as_str()) == Some("edit-source") {
                 let from = st.get("from").and_then(|v| v.as_str()).unwrap_or("");
                 let to = st.get("to").and_then(|v| v.as_str()).unwrap_or("");
-                if let Err(e) = apply(from, to, &mut cur) {
+                if let Err(e) = replacen_once(&mut cur, from, to) {
                     return fail("mn.worker.edit", e);
                 }
             }
@@ -303,6 +319,238 @@ mod case_run {
             return fail("mn.worker.internal", "inconsistent result".into());
         }
         println!("{resp}");
+        ExitCode::SUCCESS
+    }
+
+    /// The ROUNDS mode (F-818-R1-01 parent-observed timing gate): ONE
+    /// persistent worker process carries ONE warm incremental session;
+    /// the parent drives ONE step per request line and reads ONE response
+    /// line per step. The parent therefore observes the CONTINUOUS
+    /// per-edit interval — its own request preparation (source copy +
+    /// literal search/insert + payload serialization), IPC both ways,
+    /// this side's locate/edit/link/run, response serialization, and
+    /// parent admission. Protocol lines (single-line JSON each):
+    ///   parent → worker: the initial request with `"mode":"rounds"` (no
+    ///                     steps); the worker answers the warmup record;
+    ///   per step: `{"op":"edit-source","from","to","nonce"}` or
+    ///             `{"op":"run","nonce"}` or `{"op":"close"}` — one
+    ///             response line echoing the round nonce with the record.
+    /// A syntax-fallback edit switches to MATERIALITZATION mode: the
+    /// accepted prefix is the session's CURRENT source (F-818-R2-02),
+    /// edits materialize exactly once, and the trailing run executes ONE
+    /// whole-request pipeline over the fully edited source (recorded as
+    /// warm_edit_fallback, never labeled incremental).
+    #[allow(clippy::too_many_arguments)]
+    fn serve_rounds(
+        echo: serde_json::Value,
+        source: String,
+        entry: String,
+        caps: Vec<String>,
+        store_root: String,
+        workdir: String,
+        tracelib: Option<PathBuf>,
+    ) -> ExitCode {
+        let respond = |v: serde_json::Value| {
+            println!("{v}");
+            use std::io::Write as _;
+            let _ = std::io::stdout().flush();
+        };
+        let fail_round = |nonce: &str, code: &str, message: String| -> ExitCode {
+            let mut r = serde_json::json!({
+                "schema": MN_WORKER_PROTOCOL,
+                "nonce": nonce,
+            });
+            r["error"] = serde_json::json!({"code": code, "message": message});
+            respond(r);
+            ExitCode::FAILURE
+        };
+        let mut store_path = PathBuf::from(&store_root);
+        if store_path
+            .components()
+            .last()
+            .map(|c| c.as_os_str() == "mn-store")
+            .unwrap_or(false)
+        {
+            store_path = workdir.clone().into();
+        }
+        store_path.push("mn-inc-store");
+        let (mut session, cold) = match ac_mn::incremental::MnIncrementalSession::warmup(
+            &source,
+            &entry,
+            &caps,
+            &store_path,
+            tracelib.as_deref(),
+        ) {
+            Ok(pair) => pair,
+            Err(e) => return fail_round("", "mn.worker.incremental", e.message()),
+        };
+        let mut warm_ok = step_json(&cold, "warmup");
+        warm_ok["recipe"] = serde_json::json!("ac/mir-native-scalar-v1");
+        warm_ok["worker_version"] = serde_json::json!(MN_WORKER_VERSION);
+        warm_ok["mn_abi"] = serde_json::json!(ac_mn::config::MN_ABI);
+        let mut warm = echo;
+        warm["ok"] = warm_ok;
+        respond(warm);
+        // Materialization state after a syntax fallback: the accepted
+        // prefix is the session's CURRENT source, the refused edit (and
+        // every later edit) materializes exactly once on it.
+        let mut fallback_src: Option<String> = None;
+        let stdin = std::io::stdin();
+        let mut lock = stdin.lock();
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match lock.read_line(&mut line) {
+                Ok(0) => break, // EOF = close
+                Ok(_) if line.trim().is_empty() => continue,
+                Ok(_) => {}
+                Err(e) => return fail_round("", "mn.worker.rounds", format!("read step: {e}")),
+            }
+            let st: serde_json::Value = match serde_json::from_str(line.trim()) {
+                Ok(v) => v,
+                Err(e) => return fail_round("", "mn.worker.rounds", format!("bad step line: {e}")),
+            };
+            let nonce = st
+                .get("nonce")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let mut resp = serde_json::json!({
+                "schema": MN_WORKER_PROTOCOL,
+                "nonce": nonce,
+            });
+            match st.get("op").and_then(|v| v.as_str()) {
+                Some("close") => {
+                    session.close();
+                    resp["ok"] = serde_json::json!({"op": "close"});
+                    respond(resp);
+                    return ExitCode::SUCCESS;
+                }
+                Some("edit-source") => {
+                    let from = st.get("from").and_then(|v| v.as_str()).unwrap_or("");
+                    let to = st.get("to").and_then(|v| v.as_str()).unwrap_or("");
+                    if let Some(src) = fallback_src.as_mut() {
+                        if let Err(e) = replacen_once(src, from, to) {
+                            return fail_round(&nonce, "mn.worker.edit", e);
+                        }
+                        resp["ok"] = serde_json::json!({
+                            "op": "edit-source",
+                            "warm_edit_fallback": true,
+                            "materialized": true,
+                        });
+                        respond(resp);
+                        continue;
+                    }
+                    let cur = session_source(&session);
+                    let hits = cur.matches(from).count();
+                    if from.is_empty() || hits != 1 {
+                        return fail_round(
+                            &nonce,
+                            "mn.worker.edit",
+                            format!("edit-source literal matched {hits} times (expected once)"),
+                        );
+                    }
+                    let start = cur.find(from).expect("one hit") as u64;
+                    let end = start + from.len() as u64;
+                    let obs = session.edit(start, end, to.as_bytes().to_vec());
+                    if let Some(i) = &obs.infra {
+                        return fail_round(&nonce, "mn.worker.incremental", i.clone());
+                    }
+                    if let Some(r) = &obs.refused_reason {
+                        if r.contains("syntax fallback") {
+                            let mut src = cur;
+                            if let Err(e) = replacen_once(&mut src, from, to) {
+                                return fail_round(&nonce, "mn.worker.edit", e);
+                            }
+                            fallback_src = Some(src);
+                            resp["ok"] = serde_json::json!({
+                                "op": "edit-source",
+                                "warm_edit_fallback": true,
+                                "materialized": true,
+                                "refused": r,
+                            });
+                            respond(resp);
+                            continue;
+                        }
+                        resp["ok"] = step_json(&obs, "edit-source");
+                        respond(resp);
+                        continue;
+                    }
+                    resp["ok"] = step_json(&obs, "edit-source");
+                    respond(resp);
+                }
+                Some("run") => {
+                    if let Some(src) = &fallback_src {
+                        // ONE whole-request pipeline over the fully edited
+                        // source (prefix preserved, recorded as fallback).
+                        let mut driver = match ac_mn::driver::MnDriver::with_store(
+                            &PathBuf::from(&store_root),
+                            "mn-case",
+                        ) {
+                            Ok(d) => d,
+                            Err(e) => return fail_round(&nonce, "mn.worker.store", e.message()),
+                        };
+                        let r = driver.request(
+                            src,
+                            &entry,
+                            &caps,
+                            &PathBuf::from(&workdir),
+                            tracelib.as_deref(),
+                        );
+                        let mut ok = serde_json::json!({
+                            "op": "run",
+                            "warm_edit_fallback": true,
+                            "recipe": "ac/mir-native-scalar-v1",
+                            "worker_version": MN_WORKER_VERSION,
+                            "mn_abi": ac_mn::config::MN_ABI,
+                            "mn_target": ac_mn::config::MN_TARGET,
+                            "counters": {},
+                            "spans": {},
+                        });
+                        for (k, v) in &r.obs.counters {
+                            ok["counters"][k] = serde_json::json!(v);
+                        }
+                        for (k, v) in &r.obs.spans {
+                            ok["spans"][k] = serde_json::json!(v);
+                        }
+                        if let Some(fp) = &r.manifest_fp {
+                            ok["manifest_fp"] = serde_json::json!(fp);
+                        }
+                        if r.ok {
+                            ok["exit_code"] = serde_json::json!(r.exit_code);
+                            ok["stderr_hex"] = serde_json::json!(hex(&r.stderr));
+                            ok["stdout_hex"] = serde_json::json!(hex(&r.stdout));
+                        } else if let Some(e) = &r.error {
+                            ok["diagnostic"] =
+                                serde_json::json!({"code": e.code(), "message": e.message()});
+                        } else {
+                            return fail_round(
+                                &nonce,
+                                "mn.worker.internal",
+                                "inconsistent result".into(),
+                            );
+                        }
+                        resp["ok"] = ok;
+                        respond(resp);
+                        continue;
+                    }
+                    let obs = session.run_only();
+                    if let Some(i) = &obs.infra {
+                        return fail_round(&nonce, "mn.worker.incremental", i.clone());
+                    }
+                    resp["ok"] = step_json(&obs, "run");
+                    respond(resp);
+                }
+                _ => {
+                    return fail_round(
+                        &nonce,
+                        "mn.worker.steps",
+                        "unsupported op in rounds mode".to_string(),
+                    )
+                }
+            }
+        }
+        session.close();
         ExitCode::SUCCESS
     }
 
@@ -409,6 +657,22 @@ mod case_run {
                 Err(e) => return fail(echo, "mn.worker.tracelib", e),
             },
         };
+
+        // F-818-R1-01: the ROUNDS protocol — one persistent session, one
+        // step per request/response line — so the PARENT observes the
+        // continuous per-edit interval (its preparation through its
+        // admission of each round's result).
+        if req.get("mode").and_then(|v| v.as_str()) == Some("rounds") {
+            return case_run::serve_rounds(
+                echo,
+                source,
+                entry,
+                caps,
+                store_root.to_string(),
+                workdir.to_string(),
+                tracelib,
+            );
+        }
 
         // F-818-R1-03: steps carrying edit-source route through the
         // D-828 incremental session (warm in-request session: one

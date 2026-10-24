@@ -658,6 +658,19 @@ fn mn_formal_call(
     session: Option<&str>,
     expect: &str,
 ) -> serde_json::Value {
+    mn_formal_call_opts(root, tag, source, steps, session, &[], expect)
+}
+
+/// `mn_formal_call` with capability grants (e.g. hir.test.trace.v1).
+fn mn_formal_call_opts(
+    root: &Path,
+    tag: &str,
+    source: &str,
+    steps: &str,
+    session: Option<&str>,
+    caps: &[&str],
+    expect: &str,
+) -> serde_json::Value {
     let case_dir = root.join(tag);
     let out_dir = root.join(format!("{tag}-out"));
     let _ = std::fs::remove_dir_all(&case_dir);
@@ -668,10 +681,20 @@ fn mn_formal_call(
         Some(s) => format!(", session: \"{}\"", s),
         None => String::new(),
     };
+    let caps_field = if caps.is_empty() {
+        String::new()
+    } else {
+        let list = caps
+            .iter()
+            .map(|c| format!("\"{c}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(", caps: [{list}]")
+    };
     std::fs::write(
         case_dir.join("c.case.ad"),
         format!(
-            "# t07 {tag}\n```test-case\ncase {{\n  schema: \"autolang.case/2\",\n  id: \"mn.t07.{tag}\",\n  source: {{ file: \"main.at\", syntax: \"auto\", path: \"main.at\" }},\n  entry: {{ mode: \"program\" }},\n  checks: [\n    {{ id: \"run\", adapter: \"probe\", action: \"run\",\n      options: {{ recipe: \"ac/mir-native-scalar-v1\", mn: {{ entry: \"d_main\"{session_field} }}, steps: [{steps}] }},\n      expect: {expect} }}\n  ]\n}}\n```\n"
+            "# t07 {tag}\n```test-case\ncase {{\n  schema: \"autolang.case/2\",\n  id: \"mn.t07.{tag}\",\n  source: {{ file: \"main.at\", syntax: \"auto\", path: \"main.at\" }},\n  entry: {{ mode: \"program\" }},\n  checks: [\n    {{ id: \"run\", adapter: \"probe\", action: \"run\",\n      options: {{ recipe: \"ac/mir-native-scalar-v1\", mn: {{ entry: \"d_main\"{session_field}{caps_field} }}, steps: [{steps}] }},\n      expect: {expect} }}\n  ]\n}}\n```\n"
         ),
     )
     .unwrap();
@@ -940,10 +963,12 @@ fn mir_native_turnaround_body_edit_gate() {
             Some(&session),
             &format!(r#"{{ completion: "success", exit: {} }}"#, rev_exp),
         );
-        // F-818-R1-03: the measured call runs the D-828 incremental
-        // session; the SAMPLE WINDOW is the edit step's own continuous
-        // edit-entry -> PE wall (the in-request warm-up is initialization,
-        // single-listed and excluded — the 828 formal-series semantics).
+        // F-818-R1-03/R1-01: the measured call runs the D-828 incremental
+        // session through the ROUNDS protocol; the SAMPLE WINDOW is the
+        // edit round's PARENT-OBSERVED interval — the parent's own
+        // preparation (literal search/insert) through its admission of
+        // the round's real PE result (the §5.5 gate window; the in-request
+        // warm-up is initialization, single-listed and excluded).
         assert_eq!(measured["incremental"].as_bool(), Some(true));
         let edit_rec = measured["steps"]
             .as_array()
@@ -961,8 +986,15 @@ fn mir_native_turnaround_body_edit_gate() {
         assert_eq!(edit_rec["whole_module_stage_delta"].as_u64(), Some(0));
         assert_eq!(edit_rec["fallback_whole_lower"].as_u64(), Some(0));
         let w = edit_rec["wall_ms"].as_f64().unwrap_or(0.0);
-        eprintln!("t07 body-edit rev {i}: window {w:.1}ms (expected {rev_exp})");
-        walls.push(w);
+        let pw = edit_rec["parent_window_ms"].as_f64().unwrap_or(0.0);
+        assert!(
+            w > 0.0 && pw >= w,
+            "rev {i}: the parent window ({pw:.1}ms) must cover the worker window ({w:.1}ms)"
+        );
+        eprintln!(
+            "t07 body-edit rev {i}: parent window {pw:.1}ms (worker {w:.1}ms, expected {rev_exp})"
+        );
+        walls.push(pw);
         prev_src = rev_src;
         prev_exp = rev_exp;
     }
@@ -1295,15 +1327,21 @@ fn mir_native_incremental_formal_runner_gate() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// V-12.1 through the REAL FORMAL RUNNER (R1 repair): ONE request = ONE
-/// stable D-828 session carrying the full 30-revision body-edit series
-/// (the frozen fn edit site, chained revision by revision) plus the
-/// judged run. The dual gate per the plan: STRUCTURE (every edit step
-/// re-emits exactly one unit, every other unit hits resident, zero
-/// unaffected-function stage work, zero whole-module stages, zero
-/// fallbacks, zero refusals) AND P95(edit-entry -> real PE result) over
-/// the >=30 step windows < 1000 ms — measured in the release worker
-/// where the margin is real. The debug-tier mirror keeps the structural
+/// V-12.1 through the REAL FORMAL RUNNER (R1 repair, R2 hardened): ONE
+/// request = ONE stable D-828 session carrying the full 30-revision
+/// body-edit series (the frozen fn edit site, chained revision by
+/// revision) plus the judged run — driven through the ROUNDS protocol
+/// (one request/response line pair per step). The dual gate per the
+/// plan: STRUCTURE (every edit step re-emits exactly one unit, every
+/// other unit hits resident, zero unaffected-function stage work, zero
+/// whole-module stages, zero fallbacks, zero refusals) AND the
+/// PARENT-OBSERVED P95 (F-818-R1-01): each edit's CONTINUOUS window
+/// from the parent's own round preparation (source copy + literal
+/// search/insert + payload serialization) through IPC, the worker's
+/// locate/edit/link/run, the response, and the parent's admission of
+/// the round — the §5.5 interval. The worker-side continuous wall_ms
+/// rides every record as retained evidence (asserted covered by the
+/// parent window). The debug-tier mirror keeps the structural
 /// assertions and reports (not gates) its environment-sensitive P95.
 #[test]
 #[cfg(windows)]
@@ -1396,9 +1434,17 @@ fn mir_native_incremental_series_formal() {
             Some(revs[n + 1].1),
             "rev {n}: PE result == the revision's independent expectation"
         );
+        // The worker's CONTINUOUS edit-entry -> PE window (retained
+        // evidence), and the PARENT-OBSERVED gate window that COVERS it
+        // (preparation + IPC + admission are inside the parent window).
         let w = e["wall_ms"].as_f64().unwrap_or(0.0);
-        assert!(w > 0.0, "rev {n}: real window");
-        walls.push(w);
+        assert!(w > 0.0, "rev {n}: real continuous worker window");
+        let pw = e["parent_window_ms"].as_f64().unwrap_or(0.0);
+        assert!(
+            pw >= w,
+            "rev {n}: the parent-observed window ({pw:.1}ms) must cover the worker window ({w:.1}ms)"
+        );
+        walls.push(pw);
     }
     let run_rec = recs
         .iter()
@@ -1408,16 +1454,20 @@ fn mir_native_incremental_series_formal() {
     assert_eq!(run_rec["exit_code"].as_i64(), Some(judged));
     let p95 = mn_t07_percentile(&walls, 95.0);
     eprintln!(
-        "t11 v12.1-formal: {samples} revisions in one stable session, P50/P95/P99 = {:.1}/{:.1}/{:.1} ms (gate {gate_ms})",
+        "t11 v12.1-formal: {samples} revisions in one stable session, PARENT-OBSERVED P50/P95/P99 = {:.1}/{:.1}/{:.1} ms (gate {gate_ms})",
         mn_t07_percentile(&walls, 50.0),
         p95,
         mn_t07_percentile(&walls, 99.0),
     );
-    assert!(p95 < gate_ms, "formal series P95 {p95:.1}ms >= {gate_ms}ms");
+    assert!(
+        p95 < gate_ms,
+        "formal series parent-observed P95 {p95:.1}ms >= {gate_ms}ms"
+    );
     // Raw evidence.
     let report = serde_json::json!({
         "plan": "PLAN-818",
         "tier": "t11-v12.1-formal-series",
+        "window": "parent-observed (preparation -> IPC -> worker -> admission)",
         "gate_ms": gate_ms,
         "samples": samples,
         "p50_ms": mn_t07_percentile(&walls, 50.0),
@@ -1430,4 +1480,286 @@ fn mir_native_incremental_series_formal() {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, serde_json::to_string_pretty(&report).unwrap()).unwrap();
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// F-818-R2-01: an AUTHORIZED-TRACE warm edit sequence through the REAL
+/// runner — the incremental session links the trace support library on
+/// EVERY round (cold warm-up, edit, judged run) and the raw PE stderr
+/// bytes survive byte-exact in every record and the judged receipt
+/// (never dropped or blanked).
+#[test]
+#[cfg(windows)]
+fn mir_native_incremental_trace_formal() {
+    let _guard = MN_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let root = mn_t07_root("t11-trace");
+    let src = "fn helper(v int) int {\n    let a = mark_a()\n    return v + a\n}\n\nfn main() int {\n    return helper(10)\n}\n";
+    let steps =
+        r#"{ op: "edit-source", from: "return v + a", to: "return v + a + 1" }, { op: "run" }"#;
+    let r = mn_formal_call_opts(
+        &root,
+        "trace-inc",
+        src,
+        steps,
+        None,
+        &["hir.test.trace.v1"],
+        r#"{ completion: "success", exit: 12 }"#,
+    );
+    assert_eq!(
+        r["incremental"].as_bool(),
+        Some(true),
+        "the warm path engaged"
+    );
+    let recs = r["steps"].as_array().expect("step records");
+    let warm = recs
+        .iter()
+        .find(|x| x["op"].as_str() == Some("warmup"))
+        .expect("warmup");
+    assert_eq!(warm["exit_code"].as_i64(), Some(11), "10 + mark_a()");
+    assert_eq!(
+        warm["stderr_hex"].as_str(),
+        Some("61"),
+        "the COLD round's trace byte"
+    );
+    let edit = recs
+        .iter()
+        .find(|x| x["op"].as_str() == Some("edit-source"))
+        .expect("edit step");
+    assert_eq!(edit["exit_code"].as_i64(), Some(12), "10 + a + 1");
+    assert_eq!(
+        edit["stderr_hex"].as_str(),
+        Some("61"),
+        "the EDIT round's trace byte (byte-exact, in order)"
+    );
+    assert_eq!(edit["codegen_units"].as_u64(), Some(1), "one unit re-emits");
+    let run_rec = recs
+        .iter()
+        .rev()
+        .find(|x| x["op"].as_str() == Some("run"))
+        .expect("judged run step");
+    assert_eq!(run_rec["exit_code"].as_i64(), Some(12));
+    assert_eq!(run_rec["stderr_hex"].as_str(), Some("61"));
+    assert_eq!(
+        r["stderr_hex"].as_str(),
+        Some("61"),
+        "the judged streams ride the receipt top level"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// F-818-R2-02: a LATER syntax fallback preserves the ACCEPTED PREFIX.
+/// The first edit is committed by the session (the first-step-only
+/// control in mir_native_incremental_formal_runner_gate proves true
+/// incremental engagement); when the SECOND edit cannot converge, the
+/// whole-request leg must reconstruct from the SESSION'S CURRENT source
+/// (both edits applied) — the correct result is 202, never the original
+/// source's 102. Includes the dependent-literal variant (the second
+/// edit's `from` exists only after the first edit) and the first-step
+/// fallback control.
+#[test]
+#[cfg(windows)]
+fn mir_native_incremental_syntax_fallback_preserves_prefix() {
+    let _guard = MN_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let root = mn_t07_root("t11-prefix");
+    let src = "fn helper(v int) int {\n    return v + 100\n}\n\nfn main() int {\n    return helper(1)\n}\n";
+    // (a) The R2 counterexample verbatim: committed edit + fallback edit
+    // + run. Correct result 202 (was executed as 102 by the defect).
+    let steps = r#"{ op: "edit-source", from: "return v + 100", to: "return v + 200" }, { op: "edit-source", from: "helper(1)", to: "helper(2)" }, { op: "run" }"#;
+    let r = mn_formal_call(
+        &root,
+        "prefix",
+        src,
+        steps,
+        None,
+        r#"{ completion: "success", exit: 202 }"#,
+    );
+    assert_eq!(
+        r["warm_edit_fallback"].as_bool(),
+        Some(true),
+        "the second edit falls back (recorded, never labeled incremental)"
+    );
+    assert_eq!(r["incremental"].as_bool(), Some(false));
+    assert_eq!(r["manifest_fp"].as_str().map(|s| !s.is_empty()), Some(true));
+    // (b) Dependent literal: the second edit's `from` (`return v + 200`)
+    // exists ONLY because the first edit introduced it — a prefix-dropping
+    // fallback cannot even locate it.
+    let steps_b = r#"{ op: "edit-source", from: "return v + 100", to: "return v + 200" }, { op: "edit-source", from: "return v + 200", to: "return v + 300" }, { op: "run" }"#;
+    let rb = mn_formal_call(
+        &root,
+        "dependent",
+        src,
+        steps_b,
+        None,
+        r#"{ completion: "success", exit: 301 }"#,
+    );
+    // Whichever path the second edit takes (incremental or fallback), the
+    // judged program is the fully edited source: 2 + 300.
+    assert_eq!(rb["exit_code"].as_i64(), Some(301));
+    // (c) FIRST-step fallback control: the non-converging shape as the
+    // very first edit — the whole-request leg runs over original-source +
+    // this edit: 102, labeled fallback.
+    let steps_c = r#"{ op: "edit-source", from: "helper(1)", to: "helper(2)" }, { op: "run" }"#;
+    let rc = mn_formal_call(
+        &root,
+        "first-fallback",
+        src,
+        steps_c,
+        None,
+        r#"{ completion: "success", exit: 102 }"#,
+    );
+    assert_eq!(rc["warm_edit_fallback"].as_bool(), Some(true));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// F-818-R2-02 (failure propagation): after a syntax fallback the
+/// whole-request leg surfaces REAL pipeline diagnostics — a signature
+/// edit materialized in fallback mode leaves the call sites broken, and
+/// the trailing run is a green DIAGNOSED frontend rejection (never a
+/// fake success, never an unexplained crash).
+#[test]
+#[cfg(windows)]
+fn mir_native_incremental_fallback_diagnostic_propagation() {
+    let _guard = MN_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let root = mn_t07_root("t11-fbdiag");
+    let src = "fn helper(v int) int {\n    return v + 100\n}\n\nfn main() int {\n    return helper(1)\n}\n";
+    let steps = r#"{ op: "edit-source", from: "helper(1)", to: "helper(2)" }, { op: "edit-source", from: "fn helper(v int) int {", to: "fn helper(v int, w int) int {" }, { op: "run" }"#;
+    let r = mn_formal_call(
+        &root,
+        "fbdiag",
+        src,
+        steps,
+        None,
+        r#"{ completion: { stage: "parse", code: "mn.unsupported.frontend" } }"#,
+    );
+    assert_eq!(
+        r["warm_edit_fallback"].as_bool(),
+        Some(true),
+        "the first edit falls back; the signature edit materializes"
+    );
+    assert!(
+        r["exit_code"].is_null(),
+        "a diagnosed rejection carries no success exit"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// F-818-R2-01/R2-02: the SINGLE-SHOT worker protocol (all steps in one
+/// request — the direct replay shape of the R2 review) carries the trace
+/// library and the accepted prefix: an authorized-trace edit run exits
+/// 12 with stderr byte 61, and the prefix sequence produces 202 (the
+/// review observed the link failure and 102 respectively).
+#[test]
+#[cfg(windows)]
+fn mir_native_worker_single_shot_trace_and_prefix() {
+    let _guard = MN_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let worker = crate::test_cases::ac_mn::worker_binary().expect("mn worker located");
+    let scratch = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target")
+        .join(format!("mn818-t11-shot-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let run_case = |req: serde_json::Value| -> serde_json::Value {
+        use std::io::Write as _;
+        let mut child = std::process::Command::new(&worker)
+            .arg("case-run")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn mn-worker case-run");
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(format!("{}\n", req.to_string()).as_bytes())
+            .unwrap();
+        let out = child.wait_with_output().expect("worker output");
+        assert!(
+            out.status.success(),
+            "single-shot worker must succeed: {}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+        let text = String::from_utf8_lossy(&out.stdout);
+        let line = text
+            .lines()
+            .find(|l| !l.trim().is_empty())
+            .expect("one protocol line");
+        serde_json::from_str(line).expect("protocol json")
+    };
+    let base64_request = |src: &str, caps: &[&str], steps: &[(&str, &str)], tag: &str| {
+        use base64::Engine as _;
+        let steps_json: Vec<serde_json::Value> = steps
+            .iter()
+            .map(|(f, t)| serde_json::json!({ "op": "edit-source", "from": f, "to": t }))
+            .chain(std::iter::once(serde_json::json!({ "op": "run" })))
+            .collect();
+        serde_json::json!({
+            "recipe": "ac/mir-native-scalar-v1",
+            "nonce": format!("shot-{tag}"),
+            "request_hash": "shot",
+            "source_b64": base64::engine::general_purpose::STANDARD.encode(src.as_bytes()),
+            "entry": "d_main",
+            "caps": caps,
+            "store_root": scratch.join(format!("{tag}-store")).display().to_string(),
+            "workdir": scratch.join(format!("{tag}-work")).display().to_string(),
+            "steps": steps_json,
+        })
+    };
+    // (a) The R2-01 trace counterexample: authorized mark_a edit run.
+    let trace_src = "fn helper(v int) int {\n    let a = mark_a()\n    return v + a\n}\n\nfn main() int {\n    return helper(10)\n}\n";
+    let ra = run_case(base64_request(
+        trace_src,
+        &["hir.test.trace.v1"],
+        &[("return v + a", "return v + a + 1")],
+        "trace",
+    ));
+    let ok = ra["ok"].as_object().expect("ok");
+    assert_eq!(
+        ok.get("incremental").and_then(|v| v.as_bool()),
+        Some(true),
+        "the traced edit rides the incremental session"
+    );
+    assert_eq!(
+        ok.get("exit_code").and_then(|v| v.as_i64()),
+        Some(12),
+        "traced edit result"
+    );
+    assert_eq!(
+        ok.get("stderr_hex").and_then(|v| v.as_str()),
+        Some("61"),
+        "the judged trace bytes ride the single-shot response"
+    );
+    let edit_rec = ok["steps"]
+        .as_array()
+        .expect("step records")
+        .iter()
+        .find(|x| x["op"].as_str() == Some("edit-source"))
+        .expect("edit record");
+    assert_eq!(
+        edit_rec["stderr_hex"].as_str(),
+        Some("61"),
+        "per-step trace bytes"
+    );
+    // (b) The R2-02 prefix counterexample: 202, not 102.
+    let prefix_src = "fn helper(v int) int {\n    return v + 100\n}\n\nfn main() int {\n    return helper(1)\n}\n";
+    let rb = run_case(base64_request(
+        prefix_src,
+        &[],
+        &[
+            ("return v + 100", "return v + 200"),
+            ("helper(1)", "helper(2)"),
+        ],
+        "prefix",
+    ));
+    let okb = rb["ok"].as_object().expect("ok");
+    assert_eq!(
+        okb.get("warm_edit_fallback").and_then(|v| v.as_bool()),
+        Some(true),
+        "the second edit falls back (single-shot)"
+    );
+    assert_eq!(
+        okb.get("exit_code").and_then(|v| v.as_i64()),
+        Some(202),
+        "the accepted prefix is preserved (was executed as 102)"
+    );
+    let _ = std::fs::remove_dir_all(&scratch);
 }

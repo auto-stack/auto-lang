@@ -52,7 +52,7 @@ fn mir_native_incremental_d828_baseline_30_structure_and_p95() {
     assert_eq!(base.source.len(), 273_575, "the D-828 frozen baseline size");
     let root = temp_root("v121");
     let (mut s, cold) =
-        MnIncrementalSession::warmup(&base.source, "d_main", &[], &root.join("store"))
+        MnIncrementalSession::warmup(&base.source, "d_main", &[], &root.join("store"), None)
             .expect("warmup");
     assert_eq!(
         cold.exit_code,
@@ -138,7 +138,7 @@ fn mir_native_incremental_d828_baseline_30_structure_and_p95() {
     // across consecutive loaded runs), so a debug-tier hard gate would
     // measure the machine, not the pipeline.
     eprintln!(
-        "t11 v12.1 (debug mirror): {} revisions, edit->PE P50/P95/P99 = {:.1}/{:.1}/{:.1} ms [REPORTED - the gate lives in mir_native_incremental_series_formal]",
+        "t11 v12.1 (debug mirror): {} revisions, edit->PE P50/P95/P99 = {:.1}/{:.1}/{:.1} ms vs gate {gate_ms} [REPORTED - the parent-observed gate lives in mir_native_incremental_series_formal]",
         samples,
         percentile(&walls, 50.0),
         p95,
@@ -162,8 +162,8 @@ fn mir_native_incremental_two_fn_local_updates() {
     }
     let src = "fn alpha(x int) int {\n    return x * 2\n}\n\nfn beta(x int) int {\n    return x + 10\n}\n\nfn main() int {\n    return alpha(5) + beta(3)\n}\n";
     let root = temp_root("v122");
-    let (mut s, cold) =
-        MnIncrementalSession::warmup(src, "d_main", &[], &root.join("store")).expect("warmup");
+    let (mut s, cold) = MnIncrementalSession::warmup(src, "d_main", &[], &root.join("store"), None)
+        .expect("warmup");
     assert_eq!(cold.exit_code, Some(23), "10 + 13");
     // Edit 1: alpha's body  x*2 -> x*3  => 15 + 13 = 28.
     let p1 = src.find("x * 2").expect("site1");
@@ -217,8 +217,8 @@ fn mir_native_incremental_precise_invalidation_controls() {
     }
     let src = "fn helper(v int) int {\n    return v * 3\n}\n\nfn main() int {\n    return helper(14)\n}\n";
     let root = temp_root("v123");
-    let (mut s, cold) =
-        MnIncrementalSession::warmup(src, "d_main", &[], &root.join("store")).expect("warmup");
+    let (mut s, cold) = MnIncrementalSession::warmup(src, "d_main", &[], &root.join("store"), None)
+        .expect("warmup");
     assert_eq!(cold.exit_code, Some(42));
 
     // (a) helper BODY change: helper re-keys; the CALLER (main) keeps its
@@ -308,8 +308,8 @@ fn mir_native_incremental_degenerate_modes_gate_nonzero() {
     let src =
         "fn site(v int) int {\n    return v + 100\n}\n\nfn main() int {\n    return site(1)\n}\n";
     let root = temp_root("v124");
-    let (mut s, cold) =
-        MnIncrementalSession::warmup(src, "d_main", &[], &root.join("store")).expect("warmup");
+    let (mut s, cold) = MnIncrementalSession::warmup(src, "d_main", &[], &root.join("store"), None)
+        .expect("warmup");
     assert_eq!(cold.exit_code, Some(101));
     let warmup_fp = s.units().get("d_site").unwrap().fp.clone();
     let structure_gate = |obs: &ac_mn::incremental::EditObservation| -> Vec<String> {
@@ -442,6 +442,71 @@ fn mir_native_incremental_degenerate_modes_gate_nonzero() {
         obs_next.infra.or(obs_next.refused_reason)
     );
     assert_eq!(obs_next.exit_code, Some(102));
+    s.close();
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// F-818-R2-01: an AUTHORIZED-TRACE session (caps=[hir.test.trace.v1])
+/// links the trace support library on EVERY incremental path — cold
+/// warm-up, body edit, and history hit — and the raw PE stderr bytes
+/// survive byte-exact in every observation (never dropped or blanked).
+#[test]
+#[cfg(windows)]
+fn mir_native_incremental_trace_links_and_bytes_survive() {
+    let _t11 = T11_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    if !common::tools_available() {
+        eprintln!("infra-blocked: skipped");
+        return;
+    }
+    let lib = common::trace_support_lib();
+    let src = "fn helper(v int) int {\n    let a = mark_a()\n    return v + a\n}\n\nfn main() int {\n    return helper(10)\n}\n";
+    let caps = vec!["hir.test.trace.v1".to_string()];
+    let root = temp_root("r201");
+    let (mut s, cold) =
+        MnIncrementalSession::warmup(src, "d_main", &caps, &root.join("store"), Some(&lib))
+            .expect("warmup links the trace support library");
+    assert_eq!(cold.exit_code, Some(11), "10 + mark_a()=1");
+    assert_eq!(cold.stderr, b"a", "cold round trace bytes");
+    assert_eq!(cold.stdout, b"");
+
+    // Body edit on the traced function: v+a -> v+a+1 => 12, trace intact.
+    let p = src.find("return v + a").expect("site");
+    let obs = s.edit(
+        p as u64,
+        (p + "return v + a".len()) as u64,
+        b"return v + a + 1".to_vec(),
+    );
+    assert!(obs.ok, "{:?}", obs.infra.or(obs.refused_reason));
+    assert_eq!(obs.exit_code, Some(12));
+    assert_eq!(obs.stderr, b"a", "edit round trace bytes");
+    assert_eq!(obs.codegen_units, 1, "exactly the traced unit re-emits");
+
+    // History hit back to the warm-up body: the HISTORICAL unit (with its
+    // mark_a import) restores, links against the trace library, and runs.
+    let cur = "fn helper(v int) int {\n    let a = mark_a()\n    return v + a + 1\n}\n\nfn main() int {\n    return helper(10)\n}\n";
+    let p2 = cur.find("return v + a + 1").expect("back site");
+    let obs_back = s.edit(
+        p2 as u64,
+        (p2 + "return v + a + 1".len()) as u64,
+        b"return v + a".to_vec(),
+    );
+    assert!(
+        obs_back.ok,
+        "{:?}",
+        obs_back.infra.or(obs_back.refused_reason)
+    );
+    assert_eq!(obs_back.exit_code, Some(11));
+    assert_eq!(obs_back.stderr, b"a", "history-hit round trace bytes");
+    assert!(
+        obs_back.reused_history_unit,
+        "the back-edit is a history hit"
+    );
+
+    // A judged run of the current revision keeps the bytes too.
+    let run = s.run_only();
+    assert!(run.ok, "{:?}", run.infra);
+    assert_eq!(run.exit_code, Some(11));
+    assert_eq!(run.stderr, b"a", "run-only round trace bytes");
     s.close();
     let _ = std::fs::remove_dir_all(&root);
 }

@@ -42,7 +42,6 @@ use std::time::{Duration, Instant};
 
 const READ_CAP: usize = (4 << 20) + (64 << 10);
 const STDERR_CAP: usize = 1 << 20;
-const READER_GRACE: Duration = Duration::from_secs(2);
 const SESSION_WALL: Duration = Duration::from_secs(120);
 const BUILD_WALL: Duration = Duration::from_secs(300);
 
@@ -373,6 +372,210 @@ fn replace_once(src: &[u8], from: &str, to: &str) -> Result<Vec<u8>, String> {
         ));
     }
     Ok(s.replacen(from, to, 1).into_bytes())
+}
+
+/// One line-read outcome from a ROUNDS worker's stdout.
+enum RoundRead {
+    Line(String),
+    Closed,
+    Overflow,
+    ReadErr(String),
+}
+
+/// A persistent ROUNDS mn-worker session (F-818-R1-01): the parent writes
+/// ONE request line per step and reads ONE response line per step, so the
+/// parent observes the CONTINUOUS per-edit interval — its own request
+/// preparation (source copy + literal search/insert + payload
+/// serialization), IPC both ways, the worker's locate/edit/link/run,
+/// response serialization, and its own admission of the round's result.
+/// Contained (suspended spawn → Job → resume; the guard is held for the
+/// whole session and kills the tree on drop), one absolute session
+/// deadline, response lines capped.
+struct RoundsWorker {
+    child: std::process::Child,
+    job: Option<containment::JobGuard>,
+    stdin: Option<std::process::ChildStdin>,
+    rx: std::sync::mpsc::Receiver<RoundRead>,
+    started: Instant,
+    deadline: Instant,
+}
+
+impl RoundsWorker {
+    /// Spawn the contained worker, send the initial (rounds) request line,
+    /// and return the session plus the warmup response line.
+    fn start(request: &str) -> Result<(RoundsWorker, String), String> {
+        let exe = worker_binary()?;
+        let mut cmd = Command::new(&exe);
+        cmd.arg("case-run")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(containment::CREATE_SUSPENDED);
+        }
+        let started = Instant::now();
+        let mut child = cmd.spawn().map_err(|e| format!("spawn mn worker: {e}"))?;
+        #[cfg(windows)]
+        let job = match containment::JobGuard::for_child(&child) {
+            Some(j) => Some(j),
+            None => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("containment unavailable: refusing an uncontained mn worker".into());
+            }
+        };
+        #[cfg(windows)]
+        if let Err(e) = containment::resume_suspended_process(&child) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("resume mn worker: {e}"));
+        }
+        #[cfg(not(windows))]
+        let job: Option<containment::JobGuard> = None;
+        // Capped stderr drain (diagnostics only) + line reader thread.
+        fn drain_thread<R: Read + Send + 'static>(
+            pipe: Option<R>,
+        ) -> Option<std::thread::JoinHandle<()>> {
+            pipe.map(|mut s| {
+                std::thread::spawn(move || {
+                    let mut buf = Vec::new();
+                    let mut chunk = [0u8; 8192];
+                    loop {
+                        match s.read(&mut chunk) {
+                            Ok(0) | Err(_) => break,
+                            Ok(n) => {
+                                buf.extend_from_slice(&chunk[..n]);
+                                if buf.len() > STDERR_CAP {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                })
+            })
+        }
+        let err_t = drain_thread(child.stderr.take());
+        let out_pipe = child.stdout.take().ok_or("worker stdout pipe")?;
+        let (tx, rx) = std::sync::mpsc::channel::<RoundRead>();
+        let line_t = std::thread::spawn(move || {
+            use std::io::BufRead as _;
+            let mut r = std::io::BufReader::new(out_pipe);
+            let mut s = String::new();
+            loop {
+                s.clear();
+                match r.read_line(&mut s) {
+                    Ok(0) => {
+                        let _ = tx.send(RoundRead::Closed);
+                        break;
+                    }
+                    Ok(_) => {
+                        if s.len() > READ_CAP {
+                            let _ = tx.send(RoundRead::Overflow);
+                            break;
+                        }
+                        if s.trim().is_empty() {
+                            continue;
+                        }
+                        if tx.send(RoundRead::Line(s.clone())).is_err() {
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(RoundRead::ReadErr(format!("{e}")));
+                        break;
+                    }
+                }
+            }
+        });
+        let _ = line_t;
+        let _ = err_t;
+        let mut stdin = child.stdin.take();
+        if let Some(w) = stdin.as_mut() {
+            w.write_all(request.as_bytes())
+                .and_then(|_| w.write_all(b"\n"))
+                .and_then(|_| w.flush())
+                .map_err(|e| format!("write rounds request: {e}"))?;
+        }
+        let worker = RoundsWorker {
+            child,
+            job,
+            stdin,
+            rx,
+            started,
+            deadline: started + SESSION_WALL,
+        };
+        let warm = worker.read_line()?;
+        Ok((worker, warm))
+    }
+
+    fn read_line(&self) -> Result<String, String> {
+        let Some(timeout) = self.deadline.checked_duration_since(Instant::now()) else {
+            return Err(
+                "mn rounds session exceeded the session wall (single absolute deadline)".into(),
+            );
+        };
+        match self.rx.recv_timeout(timeout) {
+            Ok(RoundRead::Line(l)) => Ok(l),
+            Ok(RoundRead::Closed) => Err("mn rounds worker closed its output early".into()),
+            Ok(RoundRead::Overflow) => Err(format!(
+                "mn rounds response line exceeded the {READ_CAP}-byte cap"
+            )),
+            Ok(RoundRead::ReadErr(e)) => Err(format!("mn rounds worker stdout read: {e}")),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                Err("mn rounds session exceeded the session wall (single absolute deadline)".into())
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                Err("mn rounds worker output ended without a response".into())
+            }
+        }
+    }
+
+    /// One round: write the step line, read the response line.
+    fn round(&mut self, line: &str) -> Result<String, String> {
+        if let Some(w) = self.stdin.as_mut() {
+            w.write_all(line.as_bytes())
+                .and_then(|_| w.write_all(b"\n"))
+                .and_then(|_| w.flush())
+                .map_err(|e| format!("write rounds step: {e}"))?;
+        }
+        self.read_line()
+    }
+
+    /// The graceful close handshake: close line → close response → reap.
+    fn finish(&mut self) -> Result<(), String> {
+        if let Some(w) = self.stdin.as_mut() {
+            let _ = w.write_all(b"{\"op\":\"close\"}\n");
+            let _ = w.flush();
+        }
+        let _ = self.read_line(); // the close response (best-effort)
+        self.stdin.take();
+        let status = self
+            .child
+            .wait()
+            .map_err(|e| format!("wait mn rounds worker: {e}"))?;
+        // The child has exited; releasing the guard now is safe (its
+        // kill-on-close semantics only matter for a live tree).
+        drop(self.job.take());
+        if !status.success() {
+            return Err(format!("mn rounds worker exited {status:?}"));
+        }
+        Ok(())
+    }
+
+    fn worker_us(&self) -> u64 {
+        self.started.elapsed().as_micros() as u64
+    }
+}
+
+impl Drop for RoundsWorker {
+    fn drop(&mut self) {
+        self.stdin.take();
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        drop(self.job.take());
+    }
 }
 
 /// One executed session's parent-side record (receipt evidence).
@@ -925,12 +1128,21 @@ pub fn run_check(
 
 /// F-818-R1-03: the formal INCREMENTAL path — the worker warms one D-828
 /// session on the case source and applies the edit steps as single-body
-/// transactions. Parent-side admission beyond the whole-request path:
-/// every edit step must be TRULY incremental (no unaffected-function
-/// stage work, no whole-module stage, no recorded fallback, no refusal)
-/// and every step really links and runs; the judged value is the LAST
-/// step's PE exit. The receipt carries the per-step records (the
-/// identity/stage evidence the review required).
+/// transactions. F-818-R1-01: the parent drives the ROUNDS protocol (one
+/// persistent worker process; ONE request/response line pair per step)
+/// and measures each edit's CONTINUOUS parent-observed window — the
+/// §5.5 interval from the parent's own request preparation (source copy,
+/// literal search/insert, payload serialization) through IPC, the
+/// worker's locate/edit/link/run, the response, and the parent's
+/// admission of the round. Parent-side admission beyond the
+/// whole-request path: every edit step must be TRULY incremental (no
+/// unaffected-function stage work, no whole-module stage, no recorded
+/// fallback, no refusal) and every step really links and runs; the
+/// judged value is the LAST step's PE exit. A syntax-fallback edit
+/// switches the session to whole-request materialization (F-818-R2-02:
+/// the accepted prefix is preserved exactly once); its trailing run is
+/// admitted under the whole-request contract and the receipt labels the
+/// fallback. The worker-side continuous `wall_ms` rides every record.
 fn run_incremental(
     case: &ResolvedCase,
     _check: &CheckSpec,
@@ -967,209 +1179,347 @@ fn run_incremental(
     std::fs::create_dir_all(artifact_dir).map_err(|e| format!("mn artifact dir: {e}"))?;
     let workdir = artifact_dir.join("mn-inc-work");
 
-    let mut steps_json: Vec<serde_json::Value> = Vec::with_capacity(steps.len());
-    for st in steps {
-        match st {
-            auto_test_case::contract::ProbeStep::EditSource { from, to } => {
-                steps_json.push(serde_json::json!({ "op": "edit-source", "from": from, "to": to }));
-            }
-            auto_test_case::contract::ProbeStep::Run => {
-                steps_json.push(serde_json::json!({ "op": "run" }));
-            }
-            other => {
-                return Err(format!(
-                    "{MN_RECIPE} incremental path does not take {other:?} steps"
-                ));
-            }
-        }
-    }
     let nonce = hex(&sha256(
         format!("{}|{:?}|mn-inc", std::process::id(), started).as_bytes(),
     ));
     let mut request = serde_json::json!({
         "recipe": MN_RECIPE,
+        "mode": "rounds",
         "nonce": nonce,
         "source_b64": b64(&input_bytes),
         "entry": mn.entry,
         "caps": mn.caps,
         "store_root": store_root.display().to_string().replace('/', "\\"),
         "workdir": workdir.display().to_string().replace('/', "\\"),
-        "steps": steps_json,
     });
     let request_hash = hex(&sha256(request.to_string().as_bytes()));
     request["request_hash"] = serde_json::json!(request_hash);
 
-    let worker_started = Instant::now();
-    let resp_result = call_worker(&request.to_string());
-    let worker_us = worker_started.elapsed().as_micros() as u64;
-    let exe_sha = worker_file_sha256(&worker_binary()?)?;
+    let (mut rounds, warm_line) = match RoundsWorker::start(&request.to_string()) {
+        Ok(p) => p,
+        Err(e) => {
+            return Ok(Verdict {
+                status: Status::Error,
+                mismatches: vec![Mismatch {
+                    observation: "worker".into(),
+                    kind: "infra".into(),
+                    expected: "a contained incremental worker session".into(),
+                    actual: e,
+                    first_diff: None,
+                }],
+                detail: Some(format!("{MN_RECIPE}: infra failure (incremental)")),
+                artifacts: vec![],
+                native: None,
+            })
+        }
+    };
 
     let mut infra_detail: Option<String> = None;
     let mut diag: Option<(String, String)> = None;
     let mut exit_code: Option<i32> = None;
+    let mut stderr_hex = String::new();
+    let mut stdout_hex = String::new();
     let mut step_records: Vec<serde_json::Value> = Vec::new();
+    let mut parent_windows_ms: Vec<f64> = Vec::new();
     let mut whole_fallback = false;
     let mut resp_manifest_fp = String::new();
 
     'admit: {
-        let resp = match resp_result {
-            Ok(r) => serde_json::from_str::<serde_json::Value>(&r)
-                .map_err(|e| format!("bad mn worker response ({e}): {r:.200}")),
-            Err(e) => Err(e),
-        };
-        let resp = match resp {
-            Ok(r) => r,
+        let warm: serde_json::Value = match serde_json::from_str(&warm_line) {
+            Ok(v) => v,
             Err(e) => {
-                infra_detail = Some(e);
+                infra_detail = Some(format!("bad warmup line ({e}): {warm_line:.200}"));
                 break 'admit;
             }
         };
-        if resp.get("schema").and_then(|v| v.as_str()) != Some(MN_WORKER_PROTOCOL) {
-            infra_detail = Some("mn worker schema mismatch".to_string());
-            break 'admit;
-        }
-        if resp.get("nonce").and_then(|v| v.as_str()) != Some(nonce.as_str())
-            || resp.get("request_hash").and_then(|v| v.as_str()) != Some(request_hash.as_str())
+        if warm.get("schema").and_then(|v| v.as_str()) != Some(MN_WORKER_PROTOCOL)
+            || warm.get("nonce").and_then(|v| v.as_str()) != Some(nonce.as_str())
+            || warm.get("request_hash").and_then(|v| v.as_str()) != Some(request_hash.as_str())
         {
-            infra_detail = Some("mn worker nonce/request_hash echo mismatch".to_string());
+            infra_detail = Some("mn rounds warmup echo mismatch".to_string());
             break 'admit;
         }
-        let Some(ok) = resp.get("ok") else {
-            let e = resp.get("error");
-            infra_detail = Some(format!(
-                "mn worker error: {}",
-                e.map(|v| v.to_string()).unwrap_or_else(|| "missing".into())
-            ));
-            break 'admit;
-        };
-        if ok.get("recipe").and_then(|v| v.as_str()) != Some(MN_RECIPE) {
-            infra_detail = Some("mn worker recipe mismatch".to_string());
-            break 'admit;
-        }
-        if ok.get("worker_version").and_then(|v| v.as_str()) != Some(EXPECTED_MN_WORKER_VERSION) {
-            infra_detail = Some("mn worker version mismatch".to_string());
-            break 'admit;
-        }
-        if ok.get("mn_abi").and_then(|v| v.as_str()) != Some("msvc-x64/priv-i32-bool-v1") {
-            infra_detail = Some("mn worker ABI axis mismatch".to_string());
-            break 'admit;
-        }
-        if ok.get("warm_edit_fallback").and_then(|v| v.as_bool()) == Some(true) {
-            // The syntax-increment engine could not converge on an edit
-            // shape: the worker fell back to the WHOLE-REQUEST path (a
-            // legal edit, recorded). Admit it under the whole-request
-            // contract (real link/run + manifest identity) and JUDGE the
-            // single PE result; the receipt labels the fallback.
-            let link = ok
-                .get("counters")
-                .and_then(|c| c.get("link_invocations"))
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let run = ok
-                .get("counters")
-                .and_then(|c| c.get("run_invocations"))
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            if link < 1 || run < 1 {
-                infra_detail =
-                    Some("fallback run violates the always-execute contract".to_string());
-                break 'admit;
-            }
-            let fp = ok.get("manifest_fp").and_then(|v| v.as_str()).unwrap_or("");
-            if fp.is_empty() {
-                infra_detail = Some("fallback success without a manifest fingerprint".to_string());
-                break 'admit;
-            }
-            exit_code = ok
+        let warm_ok = warm.get("ok").cloned().unwrap_or(serde_json::Value::Null);
+        if warm_ok.get("op").and_then(|v| v.as_str()) != Some("warmup")
+            || warm_ok
                 .get("exit_code")
-                .and_then(|v| v.as_i64())
-                .map(|v| v as i32);
-            if exit_code.is_none() {
-                infra_detail = Some("no judged exit in the fallback response".to_string());
-                break 'admit;
-            }
-            whole_fallback = true;
-            resp_manifest_fp = ok
-                .get("manifest_fp")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+                .map(|v| v.is_null())
+                .unwrap_or(true)
+        {
+            infra_detail = Some("mn rounds worker did not answer the warmup round".to_string());
             break 'admit;
         }
-        if ok.get("incremental").and_then(|v| v.as_bool()) != Some(true) {
-            infra_detail = Some("incremental path did not engage".to_string());
+        if warm_ok.get("recipe").and_then(|v| v.as_str()) != Some(MN_RECIPE)
+            || warm_ok.get("worker_version").and_then(|v| v.as_str())
+                != Some(EXPECTED_MN_WORKER_VERSION)
+            || warm_ok.get("mn_abi").and_then(|v| v.as_str()) != Some("msvc-x64/priv-i32-bool-v1")
+        {
+            infra_detail = Some("mn rounds worker identity mismatch".to_string());
             break 'admit;
         }
-        if let Some(d) = resp.get("diagnostic") {
-            let code = d
-                .get("code")
-                .and_then(|v| v.as_str())
-                .unwrap_or("?")
-                .to_string();
-            if code.starts_with("mn.incremental.refused") {
-                // A REFUSED warm edit (e.g. an interface change inside the
-                // steps) is an infra non-verdict for the formal path —
-                // never blessed as a language result.
-                infra_detail = Some(format!(
-                    "warm edit refused by the session: {}",
-                    d.get("message").and_then(|v| v.as_str()).unwrap_or("")
-                ));
-                break 'admit;
-            }
-            diag = Some((
-                code,
-                d.get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-            ));
-            break 'admit;
-        }
-        let Some(recs) = ok.get("steps").and_then(|v| v.as_array()) else {
-            infra_detail = Some("incremental response without step records".to_string());
-            break 'admit;
-        };
-        step_records = recs.clone();
-        // Parent-side INCREMENTALITY admission: every edit step is truly
-        // incremental; every step really linked and ran (the last record's
-        // exit is a real PE execution).
-        for (i, rec) in recs.iter().enumerate() {
-            if rec.get("infra").map(|v| !v.is_null()) == Some(true) {
-                infra_detail = Some(format!("step {i} infra: {:?}", rec.get("infra")));
-                break 'admit;
-            }
-            if rec.get("op").and_then(|v| v.as_str()) == Some("edit-source") {
-                let unaffected = rec
-                    .get("unaffected_stage_delta")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                let whole = rec
-                    .get("whole_module_stage_delta")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                let fallback = rec
-                    .get("fallback_whole_lower")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                let refused = rec.get("refused").map(|v| !v.is_null()) == Some(true);
-                if refused || unaffected != 0 || whole != 0 || fallback != 0 {
+        step_records.push(warm_ok);
+
+        let mut source = input_bytes.clone();
+        for (i, st) in steps.iter().enumerate() {
+            // The parent-observed window opens at the parent's OWN
+            // preparation for this round (F-818-R1-01): the exactly-once
+            // literal replacement on the parent's source copy plus the
+            // round payload serialization happen INSIDE it.
+            let round_started = Instant::now();
+            let round_nonce = hex(&sha256(format!("{nonce}|step{i}").as_bytes()));
+            let (op, round_line) = match st {
+                auto_test_case::contract::ProbeStep::EditSource { from, to } => {
+                    let next = match replace_once(&source, from, to) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            infra_detail = Some(e);
+                            break 'admit;
+                        }
+                    };
+                    source = next;
+                    (
+                        "edit-source",
+                        serde_json::json!({
+                            "op": "edit-source",
+                            "from": from,
+                            "to": to,
+                            "nonce": round_nonce,
+                        })
+                        .to_string(),
+                    )
+                }
+                auto_test_case::contract::ProbeStep::Run => (
+                    "run",
+                    serde_json::json!({"op": "run", "nonce": round_nonce}).to_string(),
+                ),
+                other => {
                     infra_detail = Some(format!(
-                        "edit step {i} violates the incremental contract (refused={refused}, unaffected={unaffected}, whole={whole}, fallback={fallback})"
+                        "{MN_RECIPE} incremental path does not take {other:?} steps"
                     ));
                     break 'admit;
                 }
+            };
+            let line = match rounds.round(&round_line) {
+                Ok(l) => l,
+                Err(e) => {
+                    infra_detail = Some(e);
+                    break 'admit;
+                }
+            };
+            let resp: serde_json::Value = match serde_json::from_str(&line) {
+                Ok(v) => v,
+                Err(e) => {
+                    infra_detail = Some(format!("bad round line ({e}): {line:.200}"));
+                    break 'admit;
+                }
+            };
+            if resp.get("schema").and_then(|v| v.as_str()) != Some(MN_WORKER_PROTOCOL) {
+                infra_detail = Some("mn worker schema mismatch".to_string());
+                break 'admit;
+            }
+            if resp.get("nonce").and_then(|v| v.as_str()) != Some(round_nonce.as_str()) {
+                infra_detail = Some("mn worker round nonce echo mismatch".to_string());
+                break 'admit;
+            }
+            if let Some(err) = resp.get("error") {
+                infra_detail = Some(format!(
+                    "mn worker error: {}",
+                    serde_json::to_string(err).unwrap_or_default()
+                ));
+                break 'admit;
+            }
+            let Some(ok) = resp.get("ok").cloned() else {
+                infra_detail = Some("mn round response without a record".to_string());
+                break 'admit;
+            };
+            if ok.get("op").and_then(|v| v.as_str()) != Some(op) {
+                infra_detail = Some(format!(
+                    "mn round answered op {:?}, the parent asked for {op}",
+                    ok.get("op").and_then(|v| v.as_str())
+                ));
+                break 'admit;
+            }
+            if op == "edit-source" {
+                if ok.get("warm_edit_fallback").and_then(|v| v.as_bool()) == Some(true) {
+                    // F-818-R2-02: the syntax increment could not converge
+                    // on this legal edit; the worker materialized it on the
+                    // session's CURRENT source (accepted prefix preserved).
+                    // Not an incremental sample; the trailing run executes
+                    // one whole-request pipeline admitted below.
+                    whole_fallback = true;
+                    let mut rec = ok;
+                    rec["parent_window_ms"] =
+                        serde_json::json!(round_started.elapsed().as_secs_f64() * 1000.0);
+                    step_records.push(rec);
+                    continue;
+                }
+                // Parent-side INCREMENTALITY admission: the edit is truly
+                // incremental and its PE result is a real, admitted exit.
+                if ok.get("refused").map(|v| !v.is_null()) == Some(true) {
+                    infra_detail = Some(format!(
+                        "warm edit refused by the session: {}",
+                        ok.get("refused").and_then(|v| v.as_str()).unwrap_or("")
+                    ));
+                    break 'admit;
+                }
+                let unaffected = ok
+                    .get("unaffected_stage_delta")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let whole = ok
+                    .get("whole_module_stage_delta")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let fallback = ok
+                    .get("fallback_whole_lower")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                if unaffected != 0 || whole != 0 || fallback != 0 {
+                    infra_detail = Some(format!(
+                        "edit round {i} violates the incremental contract (unaffected={unaffected}, whole={whole}, fallback={fallback})"
+                    ));
+                    break 'admit;
+                }
+                let round_exit = ok
+                    .get("exit_code")
+                    .and_then(|v| v.as_i64())
+                    .map(|v| v as i32);
+                if round_exit.is_none() {
+                    infra_detail = Some(format!("edit round {i} without a real PE exit"));
+                    break 'admit;
+                }
+                exit_code = round_exit;
+                stderr_hex = ok
+                    .get("stderr_hex")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                stdout_hex = ok
+                    .get("stdout_hex")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                // The parent-observed window closes here: preparation,
+                // IPC, worker work, response, and admission are all done.
+                let window_ms = round_started.elapsed().as_secs_f64() * 1000.0;
+                let mut rec = ok;
+                rec["parent_window_ms"] = serde_json::json!(window_ms);
+                parent_windows_ms.push(window_ms);
+                step_records.push(rec);
+            } else {
+                // A run round: either the judged incremental re-link/run or
+                // the whole-request leg after a syntax fallback.
+                if ok.get("warm_edit_fallback").and_then(|v| v.as_bool()) == Some(true) {
+                    if let Some(d) = ok.get("diagnostic") {
+                        // A diagnosed rejection from the whole-request leg
+                        // (a diagnosed rejection never reaches link/run by
+                        // design — admitted as a verdict, not infra).
+                        whole_fallback = true;
+                        diag = Some((
+                            d.get("code")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("?")
+                                .to_string(),
+                            d.get("message")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                        ));
+                        let mut rec = ok;
+                        rec["parent_window_ms"] =
+                            serde_json::json!(round_started.elapsed().as_secs_f64() * 1000.0);
+                        step_records.push(rec);
+                        continue;
+                    }
+                    let link = ok
+                        .get("counters")
+                        .and_then(|c| c.get("link_invocations"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let run = ok
+                        .get("counters")
+                        .and_then(|c| c.get("run_invocations"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    if link < 1 || run < 1 {
+                        infra_detail =
+                            Some("fallback run violates the always-execute contract".to_string());
+                        break 'admit;
+                    }
+                    let fp = ok
+                        .get("manifest_fp")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    if fp.is_empty() {
+                        infra_detail =
+                            Some("fallback success without a manifest fingerprint".to_string());
+                        break 'admit;
+                    }
+                    resp_manifest_fp = fp;
+                    let round_exit = ok
+                        .get("exit_code")
+                        .and_then(|v| v.as_i64())
+                        .map(|v| v as i32);
+                    if round_exit.is_none() {
+                        infra_detail = Some("no judged exit in the fallback run round".to_string());
+                        break 'admit;
+                    }
+                    exit_code = round_exit;
+                    stderr_hex = ok
+                        .get("stderr_hex")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    stdout_hex = ok
+                        .get("stdout_hex")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    whole_fallback = true;
+                    let mut rec = ok;
+                    rec["parent_window_ms"] =
+                        serde_json::json!(round_started.elapsed().as_secs_f64() * 1000.0);
+                    step_records.push(rec);
+                    continue;
+                }
+                if ok.get("infra").map(|v| !v.is_null()) == Some(true) {
+                    infra_detail = Some(format!("run round {i} infra: {:?}", ok.get("infra")));
+                    break 'admit;
+                }
+                let round_exit = ok
+                    .get("exit_code")
+                    .and_then(|v| v.as_i64())
+                    .map(|v| v as i32);
+                if round_exit.is_none() {
+                    infra_detail = Some(format!("run round {i} without a real PE exit"));
+                    break 'admit;
+                }
+                exit_code = round_exit;
+                stderr_hex = ok
+                    .get("stderr_hex")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                stdout_hex = ok
+                    .get("stdout_hex")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let mut rec = ok;
+                rec["parent_window_ms"] =
+                    serde_json::json!(round_started.elapsed().as_secs_f64() * 1000.0);
+                step_records.push(rec);
             }
         }
-        exit_code = recs
-            .last()
-            .and_then(|r| r.get("exit_code"))
-            .and_then(|v| v.as_i64())
-            .map(|v| v as i32);
-        if exit_code.is_none() {
-            infra_detail = Some("no judged exit in the incremental response".to_string());
-            break 'admit;
+        if infra_detail.is_none() {
+            if let Err(e) = rounds.finish() {
+                infra_detail = Some(e);
+            }
         }
     }
+    let worker_us = rounds.worker_us();
+    drop(rounds);
 
     if let Some(e) = infra_detail {
         return Ok(Verdict {
@@ -1274,14 +1624,18 @@ fn run_incremental(
     // The whole-request fallback's manifest identity rides the receipt
     // when present (the true incremental shape has none by design).
     let manifest_fp = resp_manifest_fp.as_str();
+    let exe_sha = worker_file_sha256(&worker_binary()?)?;
     let receipt = serde_json::json!({
         "recipe": MN_RECIPE,
         "protocol": MN_WORKER_PROTOCOL,
         "incremental": !whole_fallback,
         "warm_edit_fallback": whole_fallback,
         "exit_code": exit_code,
+        "stderr_hex": stderr_hex,
+        "stdout_hex": stdout_hex,
         "manifest_fp": manifest_fp,
         "steps": step_records,
+        "parent_windows_ms": parent_windows_ms,
         "worker_us": worker_us,
         "request_wall_ms": request_wall_ms,
         "toolchain": {
