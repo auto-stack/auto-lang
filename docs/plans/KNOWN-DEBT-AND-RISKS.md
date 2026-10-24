@@ -3135,3 +3135,11 @@ PLAN-817 R9（cb0ba5231，2026-10-24）：R8 SQL错误和2MiB旧损坏反例关�
 PLAN-816 T-10（2026-10-24）：**master 预存编译破损（cargo test 全目标面）**——`cargo t`/`tf`（nextest 档）结构性不触发、日常门不受影响，但裸 `cargo test`/`cargo check --tests`（全目标）红：①`crates/auto-gen/tests/common/mod.rs:19-20` 引用 `auto_lang::atom::Atom`，而 auto-gen 依赖自 814 T-06（9c7e44855）已切 auto-lang-core、无 auto-lang 依赖（E0433，master 主检出同红，非 816 引入）；②`crates/auto-cache/src/methods_pack.rs:697` ShimMethod 初始化缺 `trait_name`（shim-metadata 结构演进未同步消费者，E0063，master 同红）。两处均为计划合入面外的预存债，修复归后续 fix 计划裁定。
 
 PLAN-818 D828刷新轮（c4819bf58，2026-10-24）：**ac-syntax workspace 跨兄弟消费缺陷（路由 ac-syntax/828 owner）**——828 为 auto-av-probe 新增 `ac-syntax-core-adapter` 路径依赖（该 crate 及 runtime/grammar/artifacts 全部用 `.workspace=true` 继承）后，`experimental/` 内任何兄弟 workspace 经 path 链消费 auto-av-probe 时，cargo 将这些成员的继承解析到 auto-lang 根（差分实测：根临时补 edition 后错误推进到 publish；树外 /tmp workspace 消费同链正常）而根从未定义 workspace.package——跨 workspace path 依赖链在 828 布局下不可构建。PLAN-818 以语义等价修复临时解锁（四成员清单改字面量，值与 ac-syntax [workspace.package] 逐字一致；ac-syntax 自建 `cargo test --workspace` 39/39 全绿零回归）。路由事项：owner 侧要么正式接受字面量形态，要么以不破坏兄弟消费的方式恢复继承（如 [patch] 或 workspace 重组）；在 owner 裁定前该四文件为 818 分支携带的跨面修复，818 合入时随计划一起合入。
+
+
+### PLAN-840 review R1（2026-10-24；合约内阻断，非获准延后）
+
+- F-840-R1-01：callback Unit检查未覆盖初始化/一般表达式内return，实际非Unit回调被准入并发布；T03/T05待修。
+- F-840-R1-02：immutable常量引用及纯常量FStr/backtick被误拒，违背不缩原支持面的合同；T03待修。
+- F-840-R1-03：Spec proposal SD01/02/04与批准Plan稳定编号/目标映射不一致；T08待修。
+- 以上均不能通过记债判定完成。当前executing7/12，完整合入门禁仍待最终review pass后执行。复现/关闭oracle/验收映射见[PLAN-840 review R1](attachments/840/review-r1/review.md)。
