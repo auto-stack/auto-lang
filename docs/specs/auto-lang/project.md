@@ -83,3 +83,17 @@ autodown/ui-headless/code-editor 等）在此转发。
 - 测试期 UI 依赖清零（T-04 临时 dev-deps 兜住形态收口；残留 UI
   测试仅经再导出消费=V-02 兼容面）。
 - `extract_autovm_result` 再导出恢复（T-02 丢失公开路径勘误）。
+
+## PLAN-840 Phase 2：计时验收的调度前提
+
+`diff_window_census` 与 `probe_adapter_turnaround_ipc_hard_gate_p95` 保持原有
+输入、真实调用路径和所有断言：窗口体量/语义、窗口墙钟不劣于全量、30 样本
+完整 edit-session P95 <1000ms，以及 prep/worker/admit 窗口边界与间隙限制。
+这两项在 nextest 日常、full 与 t3 配置中通过 `threads-required =
+"num-test-threads"` 独占当前运行池，随 `-j` 自动调整；其他测试仍照原选择面
+执行。单个 max-threads=1 测试组不足以排除无关测试争用，不能作为替代。
+
+此调度只约束同一 nextest 实例，不隔离其他会话的构建/测试。计时证据须记录
+外部负载与精确代码/依赖/输入；受干扰失败保留，不通过放宽阈值、删除样本、
+缩小输入或 ignore 测试变绿。feature-on/off 的编译与完整 ID 选择面分别核验，
+配置解析或单项通过不能代替 merge 阶段的完整档验收。

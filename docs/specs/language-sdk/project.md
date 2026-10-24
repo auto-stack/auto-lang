@@ -74,3 +74,11 @@
 use_scanner and dep_scanner share code-line lexical state in dependency_scan.rs. Inert comments, ordinary/multiline/triple/backtick strings and escaped text do not become use/dep declarations during Session compilation or fresh/cached module scans. Actual dependency forms, ecosystem names, arguments and ordered deduplication remain supported. This scanner correction changes no Parser/VM syntax or module capability; strict single-file user behavior still rejects imports. The four-file canonical SDK patch is5e2f15806; standalone artifact932ad487 fixes the dependency input without adding UI/Man/old-package edges. Scanner38, actual fresh/cache/module controls and full frozen gates bind the correction.
 
 Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md), [affected final review](../../plans/attachments/840/review-r2/review.md), [complete merge receipt](../../plans/attachments/840/merge-r1/receipt.md). Graphics source: autographics-dev. Production I2/I3 remain pending.
+
+## PLAN-840 Phase 2：Case 测试可选边界
+
+`test-cases` 仍为显式可选 feature；Case/AV/CTE/probe 测试注册必须与其
+`auto-test-case` 可选依赖、Core `test_cases` 再导出使用同一 feature 门控。
+合法 feature-off 的测试构建不得引用该依赖；feature-on 必须保留并执行全部
+既有 CTE 正例、错误退出、未知 recipe、伪 worker 与身份漂移反例。
+本修复不增加默认依赖、不改变既有测试档的 feature 选择。

@@ -11,6 +11,8 @@ mod ac_case_tests;
 // adapter 同族，PLAN-814 T-04 归属勘误)。
 #[cfg(feature = "test-cases")]
 mod ac_av_probe_tests;
+// PLAN-840 Phase 2: CTE consumes the same optional Case dependency as its siblings.
+#[cfg(feature = "test-cases")]
 mod ac_cte_probe_tests;
 // PLAN-796: probe adapter integration (real sema worker + restart boundary)
 // probe_adapter_tests 门控（815 T-04/814 T-04 两计划同款修复，两侧独立
@@ -41,8 +43,8 @@ mod plan712_back_prefix_route_fetch; // PLAN-814 T-02 上移：routes 页前缀�
                                      // 真实 adapter 注册表往返/滚动投影链/OS 剪贴板回归锚
                                      // PLAN-804: dialog 2927/2928 + dnd 2938 host provider——core 剪断/缺席
                                      // 契约（dialog VMError+dnd false）/槽独立/重入/装配身份回归锚
-// PLAN-808: terminal 34 native host-domain extraction——codec 剪断/34 形状/
-// 装配身份/缺席矩阵/真实 DLL 会话生命周期与 UI 投影回归锚
+                                     // PLAN-808: terminal 34 native host-domain extraction——codec 剪断/34 形状/
+                                     // 装配身份/缺席矩阵/真实 DLL 会话生命周期与 UI 投影回归锚
 mod plan808_terminal_domain;
 // PLAN-804 V-04/V-05: 真 OS 实机证据档——env 门控（AUTO_LANG_DIALOG_E2E/
 // AUTO_LANG_DND_E2E=1 才运行，日常档零 OS 面零交互；详见文件头）。

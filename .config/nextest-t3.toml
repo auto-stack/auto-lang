@@ -29,3 +29,11 @@ test-group = "mem-lg"
 [[profile.default.overrides]]
 filter = "test(test_aavm2_goldens_check) or test(test_aavm2_a2r_main_dump_print) or test(test_aavm2_a2r_corpus_rustc) or test(test_aavm2_002_hello_compile)"
 test-group = "mem-md"
+
+# PLAN-840 Phase 2: these wall-clock oracles require an uncontended test pool.
+# Reserve the CURRENT pool (including -j overrides), retaining every selected test,
+# frozen input and original assertion. A one-thread test group alone cannot isolate
+# these tests from unrelated processes in this nextest invocation.
+[[profile.default.overrides]]
+filter = 'test(=tests::plan716_supply_probes::plan716_supply::diff_window_census) | test(=tests::probe_adapter_turnaround_ipc::probe_adapter_turnaround_ipc_hard_gate_p95)'
+threads-required = "num-test-threads"
