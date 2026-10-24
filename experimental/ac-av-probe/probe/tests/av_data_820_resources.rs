@@ -16,7 +16,7 @@
 
 use auto_av_core::abc::encode_abc;
 use auto_av_core::av::{execute, CancelFlag, ExecLimits};
-use auto_av_core::contract::{ExecOutcome, ResourceKind, Value, MIR_DATA_SCHEMA};
+use auto_av_core::contract::{ExecOutcome, ResourceKind, MIR_DATA_SCHEMA};
 use auto_av_core::mir::MirConst;
 use auto_av_core::mir::*;
 use auto_av_core::{abc_verify, mir_verify};

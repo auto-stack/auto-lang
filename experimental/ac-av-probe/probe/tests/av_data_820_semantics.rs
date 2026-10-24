@@ -20,7 +20,7 @@ fn owner(m: &str) -> OwnerScope {
     }
 }
 
-fn record(ty: TypeIdx, name: &str, modl: &str, fields: Vec<MirFieldDef>) -> MirType {
+fn record(name: &str, modl: &str, fields: Vec<MirFieldDef>) -> MirType {
     MirType::Record(RecordTypeRef {
         owner_module: modl.to_string(),
         name: name.to_string(),
@@ -215,7 +215,6 @@ fn av_data_820_record_slot_uninitialized_read_rejected() {
     let mut m = MirModule::new_data(owner("v5"));
     let ti = m.intern_type(MirType::I32);
     let rec = m.intern_type(record(
-        ti,
         "R",
         "v5",
         vec![MirFieldDef {
@@ -384,7 +383,6 @@ fn equiv_fixture(site: &str) -> MirModule {
     let ti = m.intern_type(MirType::I32);
     let tb = m.intern_type(MirType::Bool);
     let a = m.intern_type(record(
-        ti,
         "A",
         "m1",
         vec![MirFieldDef {
@@ -393,7 +391,6 @@ fn equiv_fixture(site: &str) -> MirModule {
         }],
     ));
     let b = m.intern_type(record(
-        ti,
         "B",
         "m2",
         vec![MirFieldDef {
@@ -584,18 +581,6 @@ fn av_data_820_type_equivalence_grid_all_consumption_points() {
     mir_verify::verify_mir(&m).expect("same-owner control verifies");
 }
 
-trait UnwrapErrOrCode {
-    fn unwrap_err_or_code(self) -> String;
-}
-impl UnwrapErrOrCode for Result<auto_av_core::mir_verify::CheckedMir, MirVerifyError> {
-    fn unwrap_err_or_code(self) -> String {
-        match self {
-            Err(e) => format!("{:?}", e),
-            Ok(_) => "UNEXPECTED-PASS".to_string(),
-        }
-    }
-}
-
 #[test]
 fn av_data_820_duplicate_primitive_entries_normalize() {
     // A hand-made type table with DUPLICATE i32 entries: every consumption
@@ -669,7 +654,7 @@ fn av_data_820_record_field_count_and_path_depth_are_resource() {
             ty: ti,
         })
         .collect();
-    m.intern_type(record(ti, "Big", "big", fields));
+    m.intern_type(record("Big", "big", fields));
     let sig = m.intern_type(MirType::Fn(FnSig {
         params: vec![],
         result: ti,
@@ -711,7 +696,6 @@ fn av_data_820_record_field_count_and_path_depth_are_resource() {
     let mut prev = ti;
     for d in 0..66 {
         prev = m.intern_type(record(
-            prev,
             &format!("R{d}"),
             "deep",
             vec![MirFieldDef {
@@ -827,7 +811,6 @@ fn av_data_820_instruction_contract_round_trip_all_opcodes() {
     let ti = m.intern_type(MirType::I32);
     let tb = m.intern_type(MirType::Bool);
     let rec = m.intern_type(record(
-        ti,
         "R",
         "allops",
         vec![MirFieldDef {

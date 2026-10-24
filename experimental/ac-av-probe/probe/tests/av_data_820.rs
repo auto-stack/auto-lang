@@ -454,7 +454,7 @@ fn av_data_820_same_width_owner_mismatch_rejected() {
                 name: None,
             },
             MirSlot {
-                kind: Local0(),
+                kind: local0(),
                 ty: a,
                 name: None,
             },
@@ -501,7 +501,7 @@ fn av_data_820_same_width_owner_mismatch_rejected() {
     );
 }
 
-fn Local0() -> SlotKind {
+fn local0() -> SlotKind {
     SlotKind::Local
 }
 

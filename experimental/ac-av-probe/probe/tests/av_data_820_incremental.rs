@@ -69,9 +69,10 @@ fn av_data_820_v13_body_edit_is_function_level() {
     let edited = SRC.replace("+ 1", "+ 2");
     let report = s.edit_body(&edited, "d_bump").expect("body edit");
     assert_eq!(report.changed_def, "d_bump");
-    // Parse scope: the edit's parse document held exactly ONE fn item.
+    // Parse scope: the edit's parse document held exactly ONE fn item
+    // (MEASURED from the parse result — the meter's raw value).
     assert_eq!(
-        report.facts.parse_fn_items, 1,
+        report.facts.events.parse_fn_items, 1,
         "the masked parse document contains only the edited function"
     );
     // Producer window: only bump's body was walked (resolve/typecheck/
@@ -93,12 +94,24 @@ fn av_data_820_v13_body_edit_is_function_level() {
     // Emission receipt: 1 real body rendered, n−1 body-less scaffolds.
     assert_eq!(report.facts.receipt.real_body_plans, 1);
     assert_eq!(report.facts.receipt.scaffold_fns, 2);
-    // Edit-path IO: zero.
-    assert!(
-        report.facts.io.values().all(|v| *v == 0),
-        "edit-path IO must be zero: {:?}",
-        report.facts.io
-    );
+    // Metered stage events: every axis names exactly the changed def once.
+    for (axis, map) in [
+        ("decode", &report.facts.events.decode),
+        ("verify_mir", &report.facts.events.verify_mir),
+        ("verify_abc", &report.facts.events.verify_abc),
+        ("admit", &report.facts.events.admit),
+    ] {
+        assert_eq!(
+            map.keys().collect::<Vec<_>>(),
+            vec![&"d_bump".to_string()],
+            "{axis} events must name only the edited function: {map:?}"
+        );
+        assert_eq!(map.get("d_bump"), Some(&1), "{axis} ran exactly once");
+    }
+    // Edit-path disk IO: metered zero (the counters are the recording
+    // entries, not constants — the injection controls below prove it).
+    assert_eq!(report.facts.events.disk_read_bytes, 0);
+    assert_eq!(report.facts.events.disk_write_bytes, 0);
     // HIR identity: bump replaced; main/untouched the SAME Arc objects.
     assert_eq!(
         s.hir_identity_of("d_main"),
@@ -330,7 +343,7 @@ fn av_data_820_v13_forced_degradations_redden_the_gate() {
     let report = s
         .edit_body(&edited, "d_bump")
         .expect("the real edit still passes the gate after the controls");
-    assert_eq!(report.facts.parse_fn_items, 1);
+    assert_eq!(report.facts.events.parse_fn_items, 1);
     assert!(matches!(s.run(), Ok(Value::I32(43))));
 }
 
@@ -388,5 +401,109 @@ fn av_data_820_v13_multi_function_edit_is_explicit_non_fast() {
         Some(main_code),
         "the caller's unit is reused as-is while the call follows the new body"
     );
+    assert!(matches!(s.run(), Ok(Value::I32(43))));
+}
+
+/// F820-R2-01: a FAILED edit installs NOTHING. The trap edit (`+ 1` →
+/// `/ 0`) passes the frontend, MIR/ABC and link — the real RUN traps, and
+/// the edit returns Err with the session exactly at its pre-edit values:
+/// identities, counters and the running program. The next legal edit
+/// proceeds normally. The sibling non-fast entry (`apply_source`) gets
+/// the same trap treatment.
+#[test]
+fn av_data_820_v13_failed_edit_installs_nothing() {
+    let mut s = DataIncrementalSession::warmup(SRC, "d_main", &[]).expect("warmup");
+    assert!(matches!(s.run(), Ok(Value::I32(42))));
+    let code_before = s.identity_all();
+    let hir_before = s.hir_identity_all();
+    let counters_before: Vec<(String, u64)> =
+        s.counters().iter().map(|(k, v)| (k.clone(), *v)).collect();
+    let snapshot_before = s.snapshot().clone();
+
+    // The trap edit: division by zero is legal at every admission stage
+    // and only traps at real execution.
+    let trapped = SRC.replace("c.inner.x + 1", "c.inner.x / 0");
+    let err = s
+        .edit_body(&trapped, "d_bump")
+        .expect_err("a runtime trap must reject the edit");
+    assert!(err.contains("Trap"), "got {err}");
+    // NOTHING installed: the session still runs the pre-edit program and
+    // every identity axis is at its pre-edit value.
+    assert!(
+        matches!(s.run(), Ok(Value::I32(42))),
+        "the current session still executes the pre-edit program"
+    );
+    assert_eq!(s.identity_all(), code_before, "code identities untouched");
+    assert_eq!(s.hir_identity_all(), hir_before, "HIR identities untouched");
+    assert_eq!(
+        s.snapshot().as_ref() as *const _,
+        snapshot_before.as_ref() as *const _,
+        "the published snapshot is still the pre-edit object"
+    );
+    for (k, v) in counters_before {
+        assert_eq!(s.counters().get(&k), Some(&v), "counter axis for {k}");
+    }
+    // A later legal edit on the SAME session succeeds (the failed edit
+    // left no half-committed transaction behind).
+    s.edit_body(&SRC.replace("+ 1", "+ 2"), "d_bump")
+        .expect("the next legal edit proceeds normally");
+    assert!(matches!(s.run(), Ok(Value::I32(43))));
+
+    // Sibling non-fast entry: the same trap through apply_source.
+    let mut s = DataIncrementalSession::warmup(SRC, "d_main", &[]).expect("warmup");
+    let code_before = s.identity_all();
+    let trapped = SRC.replace("c.inner.x + 1", "c.inner.x / 0");
+    let err = s
+        .apply_source(&trapped)
+        .expect_err("a runtime trap must reject the apply");
+    assert!(err.contains("Trap"), "got {err}");
+    assert!(matches!(s.run(), Ok(Value::I32(42))));
+    assert_eq!(
+        s.identity_all(),
+        code_before,
+        "apply_source installed nothing"
+    );
+}
+
+/// F820-R1-01 close (metering liveness): the production-event meter is
+/// judged by the gate on LIVE values. Injecting a disk-read event, or a
+/// re-verify event for an UNCHANGED def, through the real recording
+/// entries mid-edit must redden the SAME formal gate — constants can
+/// never stand in for raw evidence.
+#[test]
+fn av_data_820_v13_metering_injection_controls_redden_the_gate() {
+    let mut s = DataIncrementalSession::warmup(SRC, "d_main", &[]).expect("warmup");
+    let edited = SRC.replace("+ 1", "+ 2");
+
+    // Control A: an inserted disk-read event on the edit path.
+    s.set_control_disk_read(4096);
+    let err = s
+        .edit_body(&edited, "d_bump")
+        .expect_err("an inserted disk read must redden the gate");
+    assert!(
+        err.contains("edit-path IO read=4096"),
+        "the gate must quote the metered value: {err}"
+    );
+    assert!(
+        matches!(s.run(), Ok(Value::I32(42))),
+        "the rejected edit installed nothing"
+    );
+    // The seam is consumed once: a normal edit now passes.
+    s.edit_body(&edited, "d_bump")
+        .expect("the seam is one-shot");
+
+    // Control B: an inserted re-verify event for an UNCHANGED def.
+    let mut s = DataIncrementalSession::warmup(SRC, "d_main", &[]).expect("warmup");
+    s.set_control_reverify_def("d_main");
+    let err = s
+        .edit_body(&edited, "d_bump")
+        .expect_err("a re-verify of an unchanged def must redden the gate");
+    assert!(
+        err.contains("stage event verify_mir") && err.contains("d_main"),
+        "the gate must name the def and axis: {err}"
+    );
+    assert!(matches!(s.run(), Ok(Value::I32(42))), "nothing installed");
+    s.edit_body(&edited, "d_bump")
+        .expect("the next legal edit proceeds normally");
     assert!(matches!(s.run(), Ok(Value::I32(43))));
 }

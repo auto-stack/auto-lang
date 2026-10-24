@@ -1,6 +1,6 @@
-//! PLAN-820 T-09 (F820-R1-01 repair): the data profile's function-incremental
-//! consumer over the 828 PUBLIC compile/load/snapshot interfaces — a REAL
-//! full-chain increment, not a unit-layer-only one.
+//! PLAN-820 T-09 (F820-R1-01/R2-01 repair): the data profile's
+//! function-incremental consumer over the 828 PUBLIC compile/load/snapshot
+//! interfaces — a REAL full-chain increment with transactional installs.
 //!
 //! Fast path (a pure body edit — signature/type/declaration set/caps
 //! unchanged): every production stage is bounded to the CHANGED function.
@@ -10,7 +10,8 @@
 //!    rejection the caller routes to [`apply_source`];
 //! 2. a masked single-def parse document — every OTHER function's source
 //!    segment replaced by an equal-length line-comment block, byte offsets
-//!    preserved — is parsed: the parse stage touches exactly ONE function;
+//!    preserved — is parsed: the parse stage touches exactly ONE function
+//!    (the fn-item count in the evidence is the MEASURED parse result);
 //! 3. `prepare_candidate_document` runs the 828 single-body transaction
 //!    against the RETAINED checked environment: recheck (resolve +
 //!    typecheck of ONE body; signature drift is a controlled refusal) and
@@ -18,25 +19,43 @@
 //!    the scope (`BodyEmitReceipt`: 1 real body, n−1 scaffolds) and the
 //!    `body_work` window records per-function resolve/typecheck/plan/bind
 //!    counts — unchanged functions contribute ZERO body work;
-//! 4. the changed def alone lowers/verifies/admits as its av.data/1 unit
-//!    and the snapshot relinks.
-//! Unchanged functions keep their resident HIR body Arc and FunctionCode
-//! Arc BY IDENTITY (pointer + mint generation), zero production at every
-//! stage, zero IO. [`DataIncrementalSession::increment_gate`] enforces
-//! exactly these invariants INSIDE the production path — a regression to
-//! whole-frontend edits reddens the edit itself (and with it the formal
-//! script tier). Subcase-4 counter-controls
-//! ([`forced_whole_frontend_edit`],
-//! [`forced_hash_only_replacement`]) drive the SAME gate over
-//! deliberately degraded edits and expose the violations.
+//! 4. the changed def alone lowers/verifies/admits as its av.data/1 unit.
+//! Every stage/IO axis is metered AT the call site that performs the work
+//! ([`ProductionEvents`]) — no constant "zero evidence"; the
+//! counter-control seams (`set_control_disk_read`,
+//! `set_control_reverify_def`) write through the SAME recording entries
+//! mid-edit and the structural gate reddens, proving the meter is live.
+//!
+//! F820-R2-01 (transactional installs): a candidate publishes ONLY after
+//! admission, link, the candidate RUN, and the structural gate ALL succeed
+//! ("失败/取消/迟到不安装"). A runtime trap (e.g. division by zero), a link
+//! rejection, a gate violation or a commit failure returns `Err` with the
+//! session's source/environment/HIR/code/snapshot/revision/caps exactly at
+//! their pre-failure values — the next legal edit proceeds normally. The
+//! same build-aside/run-before-publish shape holds for the sibling
+//! entries ([`apply_source`], [`apply_caps`]).
+//!
+//! Unchanged functions keep their resident HIR body Arc, their PRODUCING
+//! bundle Arc (the frontend's own output object — not a consumer-side
+//! clone) and their FunctionCode Arc BY IDENTITY (pointer + mint
+//! generation), zero production events, zero IO.
+//! [`DataIncrementalSession::increment_gate`] enforces exactly these
+//! invariants INSIDE the production path — a regression to whole-frontend
+//! edits reddens the edit itself (and with it the formal script tier).
+//! Subcase-4 counter-controls ([`forced_whole_frontend_edit`],
+//! [`forced_hash_only_replacement`]) drive the SAME gate over deliberately
+//! degraded edits and expose the violations.
 //!
 //! Non-fast path ([`apply_source`]): a type-table / signature /
 //! declaration-set change is a bounded re-warmup whose REBUILD SET is
 //! computed from actual dependency facts extracted from the checked HIR
 //! (record mentions through locals/places/field paths/constructors, closed
-//! over record nesting; call edges from Call expressions) — never a
-//! caller-supplied guess. Unaffected functions keep identity and are not
-//! re-lowered. [`apply_source_partial`] keeps the explicit partial-rebuild
+//! over record nesting) plus cross-bundle SIGNATURE shape equality — a
+//! def whose signature CONTENT changed invalidates every unit (each unit
+//! imports every def with its signature; the snapshot link's interning
+//! gate owns that dependency), while a def whose BODY did not change
+//! keeps its resident HIR Arc. A pure helper-BODY change never re-lowers
+//! its callers. [`apply_source_partial`] keeps the explicit partial-rebuild
 //! counter-control (the cross-revision link hazard) and [`apply_caps`] the
 //! authorization axis (capabilities embed in every unit, so any caps delta
 //! re-lowers all units while HIR identity is untouched).
@@ -74,32 +93,71 @@ pub struct CodeIdentity {
     pub generation: u64,
 }
 
-/// One function's resident HIR identity evidence: the Arc pointer of its
-/// resident body object. Content equality does NOT pass this axis — a
-/// "reuse" that re-materializes an equal-content object is a degradation
-/// (the forced `hash-only` counter-control proves the gate sees it).
+/// One function's resident HIR identity evidence. `body_ptr` is the
+/// resident per-def body Arc the session materialized; `bundle_ptr` is
+/// the PRODUCING bundle's Arc pointer — the frontend's own output object
+/// (the warm-up whole bundle, or the single-def candidate bundle of the
+/// edit that last changed this function), NOT a consumer-side clone.
+/// Content equality passes neither axis: a "reuse" that re-materializes
+/// an equal-content object is a degradation the gate reddens.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HirIdentity {
-    pub ptr: u64,
+    pub body_ptr: u64,
+    pub bundle_ptr: u64,
+}
+
+/// Real production-event meter for ONE edit window (the F820-R1-01 close):
+/// every counter is incremented AT the call site performing the work —
+/// constants never stand in for raw evidence. The disk axes exist so any
+/// future IO added to the edit path has to flow through the gate; the
+/// counter-control seams prove they are live.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ProductionEvents {
+    pub disk_read_bytes: u64,
+    pub disk_write_bytes: u64,
+    /// per-def ABC decode executions (`verify_abc_bytes` decodes then
+    /// verifies — one call records one decode AND one verify event).
+    pub decode: BTreeMap<String, u64>,
+    /// per-def MIR verification executions.
+    pub verify_mir: BTreeMap<String, u64>,
+    /// per-def ABC verification executions.
+    pub verify_abc: BTreeMap<String, u64>,
+    /// per-def FunctionCode admission executions.
+    pub admit: BTreeMap<String, u64>,
+    /// MEASURED fn-item count of the edit's parse document (from the
+    /// parse result itself, never a literal).
+    pub parse_fn_items: usize,
+}
+
+impl ProductionEvents {
+    fn bump(map: &mut BTreeMap<String, u64>, def: &str) {
+        *map.entry(def.to_string()).or_insert(0) += 1;
+    }
+
+    /// The recording entry for a disk read (F820-R1-01: no constant
+    /// zeros — nothing in-tree calls this on the edit path today, and the
+    /// gate reddens the moment anything does).
+    pub fn record_disk_read(&mut self, bytes: u64) {
+        self.disk_read_bytes += bytes;
+    }
+
+    /// The recording entry for a disk write.
+    pub fn record_disk_write(&mut self, bytes: u64) {
+        self.disk_write_bytes += bytes;
+    }
 }
 
 /// The producer-observed facts of one edit window (the V-13 evidence the
 /// structural gate judges). `body_work` keys are SOURCE function names
-/// (the producer records `item.name.name`).
+/// (the producer records `item.name.name`); the event maps key def ids.
 #[derive(Clone, Debug)]
 pub struct EditFacts {
     pub changed_name: String,
-    /// How many fn items the edit's parse document contained.
-    pub parse_fn_items: usize,
-    /// Per-function body work recorded by the producer (resolve/typecheck/
-    /// plan/bind). Unchanged functions must be ABSENT, not zero-valued.
     pub body_work: BTreeMap<String, BodyWork>,
     /// The emission receipt: 1 real body, n−1 scaffolds on the fast path.
     pub receipt: BodyEmitReceipt,
-    /// Edit-path IO counters. The fast path performs no disk access; the
-    /// counters exist so any future IO added to the edit path reddens the
-    /// gate instead of passing silently.
-    pub io: BTreeMap<String, u64>,
+    /// Metered production events (recorded at the real call sites).
+    pub events: ProductionEvents,
 }
 
 /// The result of one function-level body edit.
@@ -134,12 +192,12 @@ pub struct DataIncrementalSession {
     /// Function def ids in source order == environment slot order.
     fn_order: Vec<String>,
     /// The current revision's whole-module bundle (cold credential input
-    /// and the lower source for every def whose `def_bundle` is absent).
-    bundle: hir::Bundle,
-    /// Per-def single-def bundle overrides: set for a def whose latest HIR
-    /// came from a fast-path edit (its body in `bundle` is stale).
-    def_bundle: BTreeMap<String, hir::Bundle>,
-    /// Resident per-def HIR bodies, one Arc each (identity axis).
+    /// and the lower source for every def without a per-def override).
+    bundle: Arc<hir::Bundle>,
+    /// Per-def PRODUCING bundle overrides (Arc identity axis): set for a
+    /// def whose latest HIR came from a fast-path edit.
+    def_bundle: BTreeMap<String, Arc<hir::Bundle>>,
+    /// Resident per-def HIR bodies, one Arc each.
     hir: BTreeMap<String, Arc<hir::Body>>,
     code: BTreeMap<String, Arc<FunctionCode>>,
     snapshot: Arc<ProgramSnapshot>,
@@ -149,6 +207,15 @@ pub struct DataIncrementalSession {
     /// The warmup's own producer body work (cold evidence; the gate only
     /// ever judges edit windows).
     cold_body_work: BTreeMap<String, BodyWork>,
+    /// F820-R1-01 counter-control seam A: when set, the NEXT edit records
+    /// a simulated disk read of N bytes through the real metering entry
+    /// mid-edit — the gate must redden. Consumed once.
+    control_disk_read: Option<u64>,
+    /// F820-R1-01 counter-control seam B: when set to a def id, the NEXT
+    /// edit records a simulated re-verify (verify_mir) event for that
+    /// (unchanged) def through the real metering entry — the gate must
+    /// redden. Consumed once.
+    control_reverify_def: Option<String>,
 }
 
 impl DataIncrementalSession {
@@ -167,7 +234,7 @@ impl DataIncrementalSession {
                 .map(|d| format!("frontend: {} {}", d.code, d.message))
                 .unwrap_or_else(|| "frontend failed".to_string())
         })?;
-        let bundle = compiled.checked.bundle().clone();
+        let bundle = Arc::new(compiled.checked.bundle().clone());
         let program = parse_program_with(src, SourceProfile::Record)
             .map_err(|d| format!("outline parse: {}", d.message))?;
         let outline = outline_of(&program)?;
@@ -215,6 +282,8 @@ impl DataIncrementalSession {
             revision: 0,
             counters: BTreeMap::new(),
             cold_body_work: cold_work,
+            control_disk_read: None,
+            control_reverify_def: None,
         };
         for def in sess.fn_order.clone() {
             sess.install_cold_unit(&def)?;
@@ -227,7 +296,9 @@ impl DataIncrementalSession {
     /// Cold lower/admit of one def from the whole bundle (warmup and
     /// `apply_source` rebuild path).
     fn install_cold_unit(&mut self, def: &str) -> Result<(), String> {
-        let (body_arc, code) = self.lower_and_admit(&self.bundle, def, 1, &self.src.clone())?;
+        let bundle = self.bundle.clone();
+        let mut ev = ProductionEvents::default();
+        let (body_arc, code) = self.lower_and_admit(&bundle, def, 1, &self.src.clone(), &mut ev)?;
         self.hir.insert(def.to_string(), body_arc);
         self.code.insert(def.to_string(), code);
         *self.counters.entry(format!("lower:{def}")).or_insert(0) += 1;
@@ -235,15 +306,18 @@ impl DataIncrementalSession {
     }
 
     /// Lower + MIR-verify + ABC-encode/verify + admit ONE def out of a
-    /// bundle that contains it. Returns the def's new HIR Arc (extracted
-    /// from the same bundle) and its new FunctionCode. `src_for_hash` is
-    /// the CURRENT source text (the unit's source snapshot identity).
+    /// bundle that contains it, metering every stage event INTO `ev` at
+    /// the call site that performs it. Returns the def's new HIR Arc
+    /// (extracted from the same bundle) and its new FunctionCode.
+    /// `src_for_hash` is the CURRENT source text (the unit's source
+    /// snapshot identity).
     fn lower_and_admit(
         &self,
         bundle: &hir::Bundle,
         def: &str,
         mint: u64,
         src_for_hash: &str,
+        ev: &mut ProductionEvents,
     ) -> Result<(Arc<hir::Body>, Arc<FunctionCode>), String> {
         let m = bundle.modules.first().ok_or("bundle has no module")?;
         let di = m
@@ -269,17 +343,23 @@ impl DataIncrementalSession {
         )
         .map_err(|e| format!("lower {def}: {}", e.code()))?;
         verify_mir(&mir).map_err(|e| format!("verify {def}: {:?}", e))?;
+        ProductionEvents::bump(&mut ev.verify_mir, def);
         let wire = encode_abc(&mir).map_err(|e| format!("encode {def}: {}", e.code()))?;
         let loaded = verify_abc_bytes(&wire.to_flat(), &mir.owner)
             .map_err(|e| format!("admit {def}: {e}"))?;
+        // verify_abc_bytes decodes the wire and verifies the decoded
+        // module — one call is one decode AND one verify event.
+        ProductionEvents::bump(&mut ev.decode, def);
+        ProductionEvents::bump(&mut ev.verify_abc, def);
         let code =
             FunctionCode::admit_unit(loaded, mint).map_err(|e| format!("mint {def}: {e}"))?;
+        ProductionEvents::bump(&mut ev.admit, def);
         Ok((body_arc, Arc::new(code)))
     }
 
     /// The bundle holding `def`'s CURRENT body (per-def override first,
     /// the whole bundle otherwise).
-    fn bundle_for(&self, def: &str) -> hir::Bundle {
+    fn bundle_for(&self, def: &str) -> Arc<hir::Bundle> {
         self.def_bundle
             .get(def)
             .cloned()
@@ -287,19 +367,25 @@ impl DataIncrementalSession {
     }
 
     // ------------------------------------------------------------------
-    // Fast path: the function-level body edit
+    // Fast path: the function-level body edit (transactional)
     // ------------------------------------------------------------------
 
     /// Apply a whole-source replacement that only changes ONE function's
     /// body. Every production stage is bounded to that function and the
-    /// structural gate enforces it in-path; `Err` is either a non-fast
-    /// rejection (route to [`apply_source`]) or a RED gate (regression).
+    /// structural gate enforces it in-path. PUBLICATION IS TRANSACTIONAL
+    /// (F820-R2-01): admission, link, the candidate RUN and the gate must
+    /// ALL succeed before anything installs; any failure (non-fast
+    /// rejection, candidate diagnostics, link rejection, runtime trap,
+    /// gate violation, commit refusal) returns `Err` with the session
+    /// exactly at its pre-edit values.
     pub fn edit_body(&mut self, new_src: &str, changed_def: &str) -> Result<EditReport, String> {
         let before_code = self.identity_all();
         let before_hir = self.hir_identity_all();
 
-        // 1. The single-def parse plan (segment diff + masked document).
-        let (item, changed_span) = self.plan_single_def_item(new_src, changed_def)?;
+        // 1. The single-def parse plan (segment diff + masked document);
+        //    the fn-item count comes back MEASURED from the parse.
+        let (item, changed_span, parse_fn_items) =
+            self.plan_single_def_item(new_src, changed_def)?;
         let changed_name = changed_def
             .strip_prefix("d_")
             .unwrap_or(changed_def)
@@ -311,7 +397,7 @@ impl DataIncrementalSession {
             .ok_or_else(|| format!("`{changed_def}` is not a resident function"))?;
 
         // 2. Input front door on the REAL new source (frozen budget; the
-        // same whole-text admission every 828 edit runs).
+        //    same whole-text admission every 828 edit runs).
         crate::driver::front_door_admit(new_src).map_err(|d| d.message)?;
 
         // 3. The 828 single-body transaction under the producer window.
@@ -327,48 +413,60 @@ impl DataIncrementalSession {
             )
         })?;
         let receipt = candidate.receipt();
-        let cand_bundle = candidate.parts().bundle.clone();
+        let cand_bundle = Arc::new(candidate.parts().bundle.clone());
 
-        // 4. Lower/admit the changed def alone.
+        // 4. Lower/admit the changed def alone, metering into the window's
+        //    event recorder (starts from the MEASURED parse count).
+        let mut ev = ProductionEvents {
+            parse_fn_items,
+            ..Default::default()
+        };
         let mint = self
             .code
             .get(changed_def)
             .map(|c| c.generation() + 1)
             .unwrap_or(1);
         let (new_body_arc, new_code) =
-            self.lower_and_admit(&cand_bundle, changed_def, mint, new_src)?;
+            self.lower_and_admit(&cand_bundle, changed_def, mint, new_src, &mut ev)?;
 
-        // 5. Install residents + outline shift, relink, run.
-        let delta = new_src.len() as i64 - self.src.len() as i64;
-        self.shift_outline_after(changed_def, delta);
-        if let Some(e) = self
-            .outline
-            .iter_mut()
-            .find(|o| o.is_fn && format!("d_{}", o.name) == changed_def)
-        {
-            e.start = changed_span.0;
-            e.end = changed_span.1;
+        // Counter-control seams (F820-R1-01 close): an injected event
+        // flows through the REAL recording entry mid-edit; the gate below
+        // must redden. Consumed once either way.
+        if let Some(bytes) = self.control_disk_read.take() {
+            ev.record_disk_read(bytes);
         }
-        self.src = new_src.to_string();
-        self.hir.insert(changed_def.to_string(), new_body_arc);
-        self.code.insert(changed_def.to_string(), new_code);
-        self.def_bundle.insert(changed_def.to_string(), cand_bundle);
-        *self
-            .counters
-            .entry(format!("lower:{changed_def}"))
-            .or_insert(0) += 1;
-        self.relink()?;
-        self.run().map(|_| ())?;
+        if let Some(def) = self.control_reverify_def.take() {
+            ProductionEvents::bump(&mut ev.verify_mir, &def);
+        }
 
-        // 6. The structural gate, in the production path.
-        let after_code = self.identity_all();
-        let after_hir = self.hir_identity_all();
+        // 5. Build the candidate state ASIDE — nothing below installs
+        //    until every check has passed.
+        let mut new_hir = self.hir.clone();
+        new_hir.insert(changed_def.to_string(), new_body_arc);
+        let mut new_code_map = self.code.clone();
+        new_code_map.insert(changed_def.to_string(), new_code);
+        let mut new_def_bundle = self.def_bundle.clone();
+        new_def_bundle.insert(changed_def.to_string(), cand_bundle);
+        let code_vec: Vec<Arc<FunctionCode>> = new_code_map.values().cloned().collect();
+        let new_snap = Arc::new(ProgramSnapshot::link(
+            code_vec,
+            &self.entry,
+            self.revision + 1,
+        )?);
+
+        // 6. RUN the candidate snapshot BEFORE publishing (F820-R2-01):
+        //    a runtime trap rejects the edit, it never installs the bad
+        //    program as the session's current state.
+        self.run_snapshot(&new_snap)?;
+
+        // 7. The structural gate over the aside state and the meter.
+        let after_code = code_identity_of(&new_code_map);
+        let after_hir = hir_identity_of(&new_hir, &new_def_bundle, &self.bundle);
         let facts = EditFacts {
             changed_name: changed_name.clone(),
-            parse_fn_items: 1,
             body_work: work,
             receipt,
-            io: zero_io(),
+            events: ev,
         };
         let violations = Self::increment_gate(
             changed_def,
@@ -386,12 +484,33 @@ impl DataIncrementalSession {
             ));
         }
 
-        // 7. Publish the environment entry (single commit point).
+        // 8. Publish: the environment entry first (a commit refusal
+        //    installs nothing), then the resident swap.
         candidate.commit(&mut self.env).map_err(|ds| {
             ds.first()
                 .map(|d| format!("commit: {} {}", d.code, d.message))
                 .unwrap_or_else(|| "commit failed".to_string())
         })?;
+        let delta = new_src.len() as i64 - self.src.len() as i64;
+        self.shift_outline_after(changed_def, delta);
+        if let Some(e) = self
+            .outline
+            .iter_mut()
+            .find(|o| o.is_fn && format!("d_{}", o.name) == changed_def)
+        {
+            e.start = changed_span.0;
+            e.end = changed_span.1;
+        }
+        self.src = new_src.to_string();
+        self.hir = new_hir;
+        self.code = new_code_map;
+        self.def_bundle = new_def_bundle;
+        self.revision += 1;
+        self.snapshot = new_snap;
+        *self
+            .counters
+            .entry(format!("lower:{changed_def}"))
+            .or_insert(0) += 1;
 
         Ok(EditReport {
             changed_def: changed_def.to_string(),
@@ -403,8 +522,9 @@ impl DataIncrementalSession {
     }
 
     /// The V-13 structural gate: the invariants a function-level edit must
-    /// hold, judged over producer facts and identity maps. Shared by the
-    /// production path and the subcase-4 degradation counter-controls.
+    /// hold, judged over producer facts, metered events and identity maps.
+    /// Shared by the production path, the non-fast precise-invalidation
+    /// gate and the subcase-4 degradation counter-controls.
     pub fn increment_gate(
         changed_def: &str,
         fn_order: &[String],
@@ -415,10 +535,10 @@ impl DataIncrementalSession {
         code_after: &BTreeMap<String, CodeIdentity>,
     ) -> Vec<String> {
         let mut v = Vec::new();
-        if facts.parse_fn_items != 1 {
+        if facts.events.parse_fn_items != 1 {
             v.push(format!(
                 "parse scope: the edit's parse document held {} fn items (expected 1)",
-                facts.parse_fn_items
+                facts.events.parse_fn_items
             ));
         }
         for (name, w) in &facts.body_work {
@@ -440,6 +560,35 @@ impl DataIncrementalSession {
             v.push(format!(
                 "emission scaffold count {} != {} (n−1)",
                 facts.receipt.scaffold_fns, expect_scaffold
+            ));
+        }
+        // Metered stage events: every axis must name the changed def
+        // EXACTLY once — a re-verify/decode/admit of any other def is a
+        // production regression.
+        for (axis, map) in [
+            ("decode", &facts.events.decode),
+            ("verify_mir", &facts.events.verify_mir),
+            ("verify_abc", &facts.events.verify_abc),
+            ("admit", &facts.events.admit),
+        ] {
+            for (def, count) in map {
+                if def != changed_def {
+                    v.push(format!(
+                        "stage event {axis}×{count} recorded for unchanged `{def}`"
+                    ));
+                }
+            }
+            if map.get(changed_def) != Some(&1) {
+                v.push(format!(
+                    "stage event {axis} for `{changed_def}` is {:?} (expected exactly 1)",
+                    map.get(changed_def)
+                ));
+            }
+        }
+        if facts.events.disk_read_bytes != 0 || facts.events.disk_write_bytes != 0 {
+            v.push(format!(
+                "edit-path IO read={}B write={}B (must be 0)",
+                facts.events.disk_read_bytes, facts.events.disk_write_bytes
             ));
         }
         for def in fn_order {
@@ -466,23 +615,18 @@ impl DataIncrementalSession {
                 "`{changed_def}`'s code generation is {other:?} (expected {want_gen})"
             )),
         }
-        for (k, val) in &facts.io {
-            if *val != 0 {
-                v.push(format!("edit-path IO {k}={val} (must be 0)"));
-            }
-        }
         v
     }
 
     /// Segment diff + masked single-def parse document. Returns the
-    /// changed function's parsed item (absolute spans) and its new byte
-    /// span. `Err` = explicit non-fast rejection (never a silent whole
-    /// compile).
+    /// changed function's parsed item (absolute spans), its new byte span
+    /// and the MEASURED fn-item count of the parse document. `Err` = an
+    /// explicit non-fast rejection (never a silent whole compile).
     fn plan_single_def_item(
         &self,
         new_src: &str,
         changed_def: &str,
-    ) -> Result<(FnItem, (usize, usize)), String> {
+    ) -> Result<(FnItem, (usize, usize), usize), String> {
         let old = self.src.as_bytes();
         let new = new_src.as_bytes();
         let mut p = 0usize;
@@ -555,14 +699,14 @@ impl DataIncrementalSession {
                 _ => None,
             })
             .collect();
-        if fns.len() != 1 || fns[0].name.name != hit.name {
+        let measured = fns.len();
+        if measured != 1 || fns[0].name.name != hit.name {
             return Err(format!(
-                "non-fast-path: the masked parse document held {} fn items (expected exactly `{}`)",
-                fns.len(),
+                "non-fast-path: the masked parse document held {measured} fn items (expected exactly `{}`)",
                 hit.name
             ));
         }
-        Ok((fns[0].clone(), new_span))
+        Ok((fns[0].clone(), new_span, measured))
     }
 
     /// Shift every outline entry AFTER `changed_def`'s segment by `delta`.
@@ -574,7 +718,7 @@ impl DataIncrementalSession {
             .map(|o| o.end)
             .unwrap_or(0);
         for e in self.outline.iter_mut() {
-            if (e.start as i64) >= changed_end as i64 && e.start >= changed_end {
+            if e.start >= changed_end {
                 e.start = (e.start as i64 + delta) as usize;
                 e.end = (e.end as i64 + delta) as usize;
             }
@@ -582,14 +726,15 @@ impl DataIncrementalSession {
     }
 
     // ------------------------------------------------------------------
-    // Non-fast path: dependency-computed invalidation
+    // Non-fast path: dependency-computed invalidation (transactional)
     // ------------------------------------------------------------------
 
     /// Apply a source edit that changes the type table, a signature, or
     /// the declaration set. The REBUILD SET is computed from actual
-    /// dependency facts (record mentions closed over nesting + call
-    /// edges); unaffected functions keep their resident HIR/code identity
-    /// and are not re-lowered. Returns the rebuilt defs.
+    /// dependency facts; unaffected functions keep their resident
+    /// HIR/code identity and are not re-lowered. TRANSACTIONAL: link, the
+    /// candidate run and the precise-invalidation gate must all succeed
+    /// BEFORE anything installs. Returns the rebuilt defs.
     pub fn apply_source(&mut self, new_src: &str) -> Result<Vec<String>, String> {
         self.apply_source_impl(new_src, None)
     }
@@ -625,7 +770,7 @@ impl DataIncrementalSession {
                 .map(|d| format!("frontend: {} {}", d.code, d.message))
                 .unwrap_or_else(|| "frontend failed".to_string())
         })?;
-        let bundle = compiled.checked.bundle().clone();
+        let bundle = Arc::new(compiled.checked.bundle().clone());
         let program = parse_program_with(new_src, SourceProfile::Record)
             .map_err(|d| format!("outline parse: {}", d.message))?;
         let new_outline = outline_of(&program)?;
@@ -745,60 +890,54 @@ impl DataIncrementalSession {
             None => affected.into_iter().collect(),
         };
 
-        // ---- build the new state aside; install only after link+run ----
+        // ---- build the new state ASIDE (metered); install only after
+        //      link + run + gate all pass (F820-R2-01) ----
+        let mut ev = ProductionEvents::default();
         let mut new_hir = self.hir.clone();
         let mut new_code = self.code.clone();
+        let mut new_def_bundle = self.def_bundle.clone();
+        // Pin the producing bundle of every def whose BODY did not change
+        // to the object that actually produced its resident HIR — the new
+        // revision's whole bundle did NOT re-produce it (identity axis
+        // honesty: the bundle pointer names the real producer).
+        for def in &new_fn_defs {
+            if !changed_fns.contains(def)
+                && self.hir.contains_key(def)
+                && !new_def_bundle.contains_key(def)
+            {
+                new_def_bundle.insert(def.clone(), self.bundle.clone());
+            }
+        }
         for def in &affected {
             if !new_fn_defs.contains(def) {
                 new_hir.remove(def);
                 new_code.remove(def);
+                new_def_bundle.remove(def);
                 continue;
             }
             let mint = new_code.get(def).map(|c| c.generation() + 1).unwrap_or(1);
-            let (body_arc, code) = self.lower_and_admit(&bundle, def, mint, new_src)?;
+            let (body_arc, code) = self.lower_and_admit(&bundle, def, mint, new_src, &mut ev)?;
             // Layer precision: a def whose BODY did not change keeps its
-            // resident HIR Arc even when its unit re-lowers (its import
-            // table embeds a changed sibling signature).
+            // resident HIR Arc (and producing bundle) even when its unit
+            // re-lowers (its import table embeds a changed sibling
+            // signature).
             if changed_fns.contains(def) || !new_hir.contains_key(def) {
                 new_hir.insert(def.clone(), body_arc);
+                new_def_bundle.insert(def.clone(), bundle.clone());
             }
             new_code.insert(def.clone(), code);
         }
         let code_vec: Vec<Arc<FunctionCode>> = new_code.values().cloned().collect();
-        let snap = match ProgramSnapshot::link(code_vec, &self.entry, self.revision + 1) {
-            Ok(s) => s,
-            Err(e) => {
-                // Controlled rejection: the previous snapshot survives and
-                // stays executable; no session state moved.
-                return Err(format!("link rejected: {e}"));
-            }
-        };
+        let new_snap = Arc::new(
+            ProgramSnapshot::link(code_vec, &self.entry, self.revision + 1)
+                .map_err(|e| format!("link rejected: {e}"))?,
+        );
 
         // Precise-invalidation gate (non-fast variant): every def OUTSIDE
-        // the affected set keeps BOTH identities exactly.
-        let after_code = new_code
-            .iter()
-            .map(|(k, c)| {
-                (
-                    k.clone(),
-                    CodeIdentity {
-                        ptr: Arc::as_ptr(c) as u64,
-                        generation: c.generation(),
-                    },
-                )
-            })
-            .collect::<BTreeMap<_, _>>();
-        let after_hir = new_hir
-            .iter()
-            .map(|(k, b)| {
-                (
-                    k.clone(),
-                    HirIdentity {
-                        ptr: Arc::as_ptr(b) as u64,
-                    },
-                )
-            })
-            .collect::<BTreeMap<_, _>>();
+        // the affected set keeps BOTH identities, and the meter names only
+        // affected defs.
+        let after_code = code_identity_of(&new_code);
+        let after_hir = hir_identity_of(&new_hir, &new_def_bundle, &self.bundle);
         let mut violations = Vec::new();
         for def in &new_fn_defs {
             if affected.contains(def) {
@@ -811,6 +950,20 @@ impl DataIncrementalSession {
                 violations.push(format!("code identity moved for unaffected `{def}`"));
             }
         }
+        for (axis, map) in [
+            ("decode", &ev.decode),
+            ("verify_mir", &ev.verify_mir),
+            ("verify_abc", &ev.verify_abc),
+            ("admit", &ev.admit),
+        ] {
+            for def in map.keys() {
+                if !affected.contains(def) {
+                    violations.push(format!(
+                        "stage event {axis} recorded for unaffected `{def}`"
+                    ));
+                }
+            }
+        }
         if !violations.is_empty() {
             return Err(format!(
                 "precise-invalidation gate RED: {}",
@@ -818,7 +971,12 @@ impl DataIncrementalSession {
             ));
         }
 
-        // ---- install ----
+        // RUN before publishing (F820-R2-01): a runtime trap in the new
+        // revision rejects the apply, the session stays on its previous
+        // state.
+        self.run_snapshot(&new_snap)?;
+
+        // ---- publish ----
         let mut env = resolve_env(&program, &self.caps, SourceProfile::Record).map_err(|ds| {
             ds.first()
                 .map(|d| format!("resolve env: {} {}", d.code, d.message))
@@ -830,37 +988,68 @@ impl DataIncrementalSession {
         self.fn_order = new_fn_defs;
         self.src = new_src.to_string();
         self.bundle = bundle;
-        self.def_bundle.clear();
+        self.def_bundle = new_def_bundle;
         self.hir = new_hir;
         self.code = new_code;
         self.revision += 1;
-        self.snapshot = Arc::new(snap);
+        self.snapshot = new_snap;
         for def in &affected {
             if self.code.contains_key(def) {
                 *self.counters.entry(format!("lower:{def}")).or_insert(0) += 1;
             }
         }
-        self.run().map(|_| ())?;
         Ok(affected)
     }
 
     /// The authorization axis: capabilities embed in every av.data/1 unit,
     /// so any caps delta re-lowers and re-admits EVERY unit while HIR
     /// identity stays put; an unchanged caps list produces ZERO work.
+    /// TRANSACTIONAL (F820-R2-01): the re-admitted set links and runs
+    /// BEFORE the caps/code swap installs.
     pub fn apply_caps(&mut self, new_caps: &[String]) -> Result<Vec<String>, String> {
         if new_caps == self.caps.as_slice() {
             return Ok(Vec::new());
         }
-        self.caps = new_caps.to_vec();
+        // Lower with the CANDIDATE caps; restore the old set on any
+        // failure — nothing installs before link + run pass.
+        let old_caps = std::mem::replace(&mut self.caps, new_caps.to_vec());
+        let restore = |s: &mut Self| {
+            s.caps = old_caps.clone();
+        };
+        let mut ev = ProductionEvents::default();
+        let mut new_code = self.code.clone();
         for def in self.fn_order.clone() {
-            let mint = self.code.get(&def).map(|c| c.generation() + 1).unwrap_or(1);
+            let mint = new_code.get(&def).map(|c| c.generation() + 1).unwrap_or(1);
             let bundle = self.bundle_for(&def);
-            let (_body_arc, code) = self.lower_and_admit(&bundle, &def, mint, &self.src.clone())?;
-            self.code.insert(def.clone(), code);
+            match self.lower_and_admit(&bundle, &def, mint, &self.src.clone(), &mut ev) {
+                Ok((_body_arc, code)) => {
+                    new_code.insert(def.clone(), code);
+                }
+                Err(e) => {
+                    restore(self);
+                    return Err(e);
+                }
+            }
+        }
+        let code_vec: Vec<Arc<FunctionCode>> = new_code.values().cloned().collect();
+        let new_snap = match ProgramSnapshot::link(code_vec, &self.entry, self.revision + 1) {
+            Ok(s) => Arc::new(s),
+            Err(e) => {
+                restore(self);
+                return Err(format!("link rejected: {e}"));
+            }
+        };
+        if let Err(e) = self.run_snapshot(&new_snap) {
+            restore(self);
+            return Err(e);
+        }
+        // publish (self.caps already holds the candidate set)
+        self.code = new_code;
+        self.revision += 1;
+        self.snapshot = new_snap;
+        for def in self.fn_order.clone() {
             *self.counters.entry(format!("lower:{def}")).or_insert(0) += 1;
         }
-        self.relink()?;
-        self.run().map(|_| ())?;
         Ok(self.fn_order.clone())
     }
 
@@ -898,14 +1087,11 @@ impl DataIncrementalSession {
                 .map(|d| format!("frontend: {} {}", d.code, d.message))
                 .unwrap_or_else(|| "frontend failed".to_string())
         })?;
-        let m = compiled
-            .checked
-            .bundle()
-            .modules
-            .first()
-            .ok_or("bundle has no module")?;
-        // Fresh HIR Arcs for EVERY def (the identity the degradation
-        // would install) and a generation bump for every unit.
+        let fresh_bundle = Arc::new(compiled.checked.bundle().clone());
+        let m = fresh_bundle.modules.first().ok_or("bundle has no module")?;
+        // Fresh HIR objects (a FRESH producing bundle Arc) for EVERY def
+        // and a generation bump for every unit — the identities the
+        // degradation would install.
         let mut after_hir = before_hir.clone();
         let mut after_code = before_code.clone();
         for d in m.defs.iter() {
@@ -914,7 +1100,8 @@ impl DataIncrementalSession {
                     after_hir.insert(
                         d.id_text.clone(),
                         HirIdentity {
-                            ptr: Arc::as_ptr(&Arc::new(b.clone())) as u64,
+                            body_ptr: Arc::as_ptr(&Arc::new(b.clone())) as u64,
+                            bundle_ptr: Arc::as_ptr(&fresh_bundle) as u64,
                         },
                     );
                 }
@@ -929,13 +1116,15 @@ impl DataIncrementalSession {
                 .strip_prefix("d_")
                 .unwrap_or(changed_def)
                 .to_string(),
-            parse_fn_items: fn_count,
             body_work: work,
             receipt: BodyEmitReceipt {
                 real_body_plans: fn_count,
                 scaffold_fns: 0,
             },
-            io: zero_io(),
+            events: ProductionEvents {
+                parse_fn_items: fn_count,
+                ..Default::default()
+            },
         };
         Ok(Self::increment_gate(
             changed_def,
@@ -949,17 +1138,20 @@ impl DataIncrementalSession {
     }
 
     /// Counter-control B — "only the hash kept, objects replaced": a
-    /// content-addressed "reuse" that re-materializes EQUAL-content HIR
-    /// objects for the UNCHANGED functions. Every stage fact stays clean
-    /// (no body work, single-body receipt) — only the object identity
-    /// axis can catch it, and it must.
+    /// content-addressed "reuse" that re-materializes an EQUAL-content
+    /// producing bundle for the UNCHANGED functions. Every stage fact
+    /// stays clean (no body work, single-body receipt) — only the
+    /// object-identity axes can catch it, and they must.
     pub fn forced_hash_only_replacement(
         &mut self,
         changed_def: &str,
     ) -> Result<Vec<String>, String> {
         let before_hir = self.hir_identity_all();
         let before_code = self.identity_all();
-        let m = self.bundle.modules.first().ok_or("bundle has no module")?;
+        // A FRESH equal-content bundle Arc (the "reuse" would produce new
+        // objects even though every content hash matches).
+        let fresh_bundle = Arc::new((*self.bundle).clone());
+        let m = fresh_bundle.modules.first().ok_or("bundle has no module")?;
         let mut after_hir = before_hir.clone();
         for def in &self.fn_order {
             if def == changed_def {
@@ -978,7 +1170,8 @@ impl DataIncrementalSession {
                 after_hir.insert(
                     def.clone(),
                     HirIdentity {
-                        ptr: Arc::as_ptr(&Arc::new(b.clone())) as u64,
+                        body_ptr: Arc::as_ptr(&Arc::new(b.clone())) as u64,
+                        bundle_ptr: Arc::as_ptr(&fresh_bundle) as u64,
                     },
                 );
             }
@@ -988,13 +1181,15 @@ impl DataIncrementalSession {
                 .strip_prefix("d_")
                 .unwrap_or(changed_def)
                 .to_string(),
-            parse_fn_items: 1,
             body_work: BTreeMap::new(),
             receipt: BodyEmitReceipt {
                 real_body_plans: 1,
                 scaffold_fns: self.fn_order.len().saturating_sub(1),
             },
-            io: zero_io(),
+            events: ProductionEvents {
+                parse_fn_items: 1,
+                ..Default::default()
+            },
         };
         Ok(Self::increment_gate(
             changed_def,
@@ -1008,6 +1203,26 @@ impl DataIncrementalSession {
     }
 
     // ------------------------------------------------------------------
+    // Counter-control seams (F820-R1-01 close)
+    // ------------------------------------------------------------------
+
+    /// Counter-control seam A: the NEXT `edit_body` records a simulated
+    /// disk read of `bytes` THROUGH the real metering entry, mid-edit —
+    /// the structural gate must redden the edit (proving the zero-IO
+    /// rule judges live events, not a constant). Consumed once.
+    pub fn set_control_disk_read(&mut self, bytes: u64) {
+        self.control_disk_read = Some(bytes);
+    }
+
+    /// Counter-control seam B: the NEXT `edit_body` records a simulated
+    /// re-verify (`verify_mir`) event for `def` THROUGH the real metering
+    /// entry — the gate must redden (proving stage events are metered per
+    /// def, not asserted). Consumed once.
+    pub fn set_control_reverify_def(&mut self, def: &str) {
+        self.control_reverify_def = Some(def.to_string());
+    }
+
+    // ------------------------------------------------------------------
     // Execution and evidence accessors
     // ------------------------------------------------------------------
 
@@ -1017,7 +1232,8 @@ impl DataIncrementalSession {
     }
 
     /// Run ONE snapshot's entry (old-snapshot comparison evidence: a
-    /// superseded snapshot stays executable).
+    /// superseded snapshot stays executable; a CANDIDATE snapshot can be
+    /// verified BEFORE publication — F820-R2-01).
     pub fn run_snapshot(&self, snap: &Arc<ProgramSnapshot>) -> Result<Value, String> {
         let (out, _trace) =
             execute_program_units(snap, &ExecLimits::default(), &CancelFlag::new(false));
@@ -1050,38 +1266,18 @@ impl DataIncrementalSession {
     }
 
     pub fn identity_all(&self) -> BTreeMap<String, CodeIdentity> {
-        self.code
-            .iter()
-            .map(|(k, c)| {
-                (
-                    k.clone(),
-                    CodeIdentity {
-                        ptr: Arc::as_ptr(c) as u64,
-                        generation: c.generation(),
-                    },
-                )
-            })
-            .collect()
+        code_identity_of(&self.code)
     }
 
     pub fn hir_identity_of(&self, def_id: &str) -> Option<HirIdentity> {
-        self.hir.get(def_id).map(|b| HirIdentity {
-            ptr: Arc::as_ptr(b) as u64,
-        })
+        hir_identity_of(&self.hir, &self.def_bundle, &self.bundle)
+            .into_iter()
+            .find(|(k, _)| k == def_id)
+            .map(|(_, v)| v)
     }
 
     pub fn hir_identity_all(&self) -> BTreeMap<String, HirIdentity> {
-        self.hir
-            .iter()
-            .map(|(k, b)| {
-                (
-                    k.clone(),
-                    HirIdentity {
-                        ptr: Arc::as_ptr(b) as u64,
-                    },
-                )
-            })
-            .collect()
+        hir_identity_of(&self.hir, &self.def_bundle, &self.bundle)
     }
 
     /// Per-def lower counters ("lower:<def>"; the structural axis).
@@ -1098,6 +1294,47 @@ impl DataIncrementalSession {
     pub fn fn_order(&self) -> &[String] {
         &self.fn_order
     }
+}
+
+// ----------------------------------------------------------------------
+// Identity-map helpers (shared by the production path and the controls)
+// ----------------------------------------------------------------------
+
+fn code_identity_of(code: &BTreeMap<String, Arc<FunctionCode>>) -> BTreeMap<String, CodeIdentity> {
+    code.iter()
+        .map(|(k, c)| {
+            (
+                k.clone(),
+                CodeIdentity {
+                    ptr: Arc::as_ptr(c) as u64,
+                    generation: c.generation(),
+                },
+            )
+        })
+        .collect()
+}
+
+fn hir_identity_of(
+    hir_map: &BTreeMap<String, Arc<hir::Body>>,
+    def_bundle: &BTreeMap<String, Arc<hir::Bundle>>,
+    whole: &Arc<hir::Bundle>,
+) -> BTreeMap<String, HirIdentity> {
+    hir_map
+        .iter()
+        .map(|(k, b)| {
+            let bundle_ptr = def_bundle
+                .get(k)
+                .map(|bb| Arc::as_ptr(bb) as u64)
+                .unwrap_or_else(|| Arc::as_ptr(whole) as u64);
+            (
+                k.clone(),
+                HirIdentity {
+                    body_ptr: Arc::as_ptr(b) as u64,
+                    bundle_ptr,
+                },
+            )
+        })
+        .collect()
 }
 
 // ----------------------------------------------------------------------
@@ -1171,15 +1408,6 @@ fn mask_fill(seg: &[u8]) -> Vec<u8> {
         }
     }
     out
-}
-
-fn zero_io() -> BTreeMap<String, u64> {
-    // The fast edit path performs no disk access. These axes exist so a
-    // future IO addition has to flow through the gate, not pass silently.
-    BTreeMap::from([
-        ("disk_read_bytes".to_string(), 0u64),
-        ("disk_write_bytes".to_string(), 0u64),
-    ])
 }
 
 // ----------------------------------------------------------------------
