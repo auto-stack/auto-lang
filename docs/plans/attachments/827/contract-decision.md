@@ -148,5 +148,21 @@ selected=0 不得 PASS）；根 workspace 门测试 `av_source_827_*`。
 
 ## 8. 修订
 
+- r2（2026-10-25，review-r1 修复轮，T-01/T-06/T-09 重开后再冻结）：
+  - **§4 升级为逐项库存合同**：分母成员必须是持久化 item 行（`{id,kind,path,sha256,status,owner,note}`，
+    工件 `docs/reports/plan827/inventory.json`，当前 714 项：23 AP+14 fixtures+47 类目行+517 case 行+
+    37 provider 行+43 C+10 EP+10 G（G2=G2a/G2b 拆分）+13 锚点行）；扫描失败保留为 `scan-error` 行、
+    缺行补全为 `gap-missing-row` 行且必红、无 oracle 的程序行 owner=future-G 不删分母；负控（缺目录/
+    坏 JSON/无 providers 数组/无 oracle case/缺表行）逐类可重放（`av_source_827_inventory_negative_controls`）。
+  - **§6 升级 V-13 检测器合同**：未改函数绑定 `(Arc ptr, generation)` 双轴（源=`current()` 快照
+    `find_code/generation_of` + 执行器 `last_run_publication` 五元组）；生产/IO 事实=每编辑
+    `phase_io`（增量 rescan 上界 len/100、无 store 时 store_write_bytes=0）；**强制退化检测器=身份稳定门**
+    （镜像 828 formal judge `edit_identity_gate`——warmup 冷路径零计数/零 IO 已实测，重 warmup 每编辑
+    全体换对象→未改指针移动→门红，且退化路径值仍正确=结构门语义）；同 hash 换对象判别力=双 warmup
+    同 content 不同 ptr（ptr 轴独立于 hash 轴）；`whole_module_findings` 计数器门保留覆盖会话内
+    fallback 形态。全部落在 `av_source_827_incremental`（5 测）。
+  - **§5 升级汇总器规则**：acceptance 必须串联**全部**已实现 scope 含 resources；`Test-Selected`
+    对 skipped/ignored>0 必红（0 选择亦红）；重复 check id 由 corpus 门去重断言拒绝；`selftest` 档
+    永久重放五类负控（valid/skipped/ignored/missing/真实失败子 scope 经同一 `Invoke-Scope` 路径）。
 - r1（2026-10-24，T-01/T-02 刷新合一）：按 D798+D828 合入基面冻结。复用裁定、薄适配面、
   oracle、分母、Scope、T-09 设计如上。无公共写面登记于 §1。
