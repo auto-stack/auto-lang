@@ -14,3 +14,5 @@
 | 738 | stdlib-assembly-manifest-and-core-validation | ✅（reviewed→archived） | archive/ | 标准库装配契约：inventory/AssemblyManifest 分离、双指纹共同身份、六核心引用闭包 strict 门（契约表驱动适配）、workspace lock 一次绑定；详档见 [assembly-manifest](design/assembly-manifest.md) 与 [backend-assembly](design/backend-assembly.md) |
 | 755 | http-contract-startup-diagnosis | ✅（reviewed→archived） | archive/ | HTTP 公共面契约覆盖完整性：production() 尾部补齐 46 条声明（41 缺契约 + 5 inventory int→Response 漂移覆盖）、泛型方法声明变体、常驻走查 + CFFI merge 存活守卫；e2e 启动诊断有界化（共享 outcome reporter，Err/panic 载荷转发 + 负向冻结）；120s 挂死根因闭合（契约错误被吞 × 拒绝连接爬行）；详档见 [assembly-manifest](design/assembly-manifest.md) |
 | 813 | tapl-runnable-examples | ✅（reviewed→archived） | [archive](../../plans/archive/813-tapl-runnable-examples.md) | TAPL 全书示例运行审计、网页 Run/输入/测试修复；数学 helper name/arity parity 与 a2r f64 行为证据边界明确 |
+
+- [PLAN-840 Phase 4](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md)：SSE pull / 嵌套 generator 推进前释放任务表分片 guard，固定冲突、原 park 及值/EOF/回收控制；合同见 [http-stream-lifecycle](design/http-stream-lifecycle.md)。

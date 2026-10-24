@@ -5872,7 +5872,7 @@ fn generator_next_drive(
         let tid = vm.spawn_task(gen_state.func_addr as usize, 65536);
         gen_state.task_id = Some(tid);
 
-        if let Some(gen_task_arc) = vm.tasks.get(&tid) {
+        if let Some(gen_task_arc) = vm.tasks.get(&tid).map(|entry| entry.clone()) {
             if let Ok(mut gt) = gen_task_arc.try_lock() {
                 gt.cooperative_http_sleep = cooperative;
                 // Plan 417-D2: seed the CALL-transferred args
@@ -5916,7 +5916,7 @@ fn generator_next_drive(
     // A generator can be created before its first HTTP pull; set
     // the mode on every pull so sleep dispatch stays scoped to
     // this cooperative SSE consumer.
-    if let Some(gen_task_arc) = vm.tasks.get(&tid) {
+    if let Some(gen_task_arc) = vm.tasks.get(&tid).map(|entry| entry.clone()) {
         if let Ok(mut gt) = gen_task_arc.try_lock() {
             gt.cooperative_http_sleep = cooperative;
         }
@@ -5931,7 +5931,9 @@ fn generator_next_drive(
     let mut finished = false;
     let mut pending = false;
 
-    if let Some(gen_task_arc) = vm.tasks.get(&tid) {
+    // Instructions can start nested generators/tasks. Keep task ownership,
+    // but release the registry shard guard before executing any instruction.
+    if let Some(gen_task_arc) = vm.tasks.get(&tid).map(|entry| entry.clone()) {
         if let Ok(mut gt) = gen_task_arc.try_lock() {
             for _ in 0..instruction_budget {
                 match vm.run_one_instruction(&mut gt) {

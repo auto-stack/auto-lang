@@ -7097,7 +7097,9 @@ async fn next_sse_generator_value(
         }
         let next_task_id = vm.spawn_task(0, 1024);
         let step_result = {
-            if let Some(next_task) = vm.tasks.get(&next_task_id) {
+            // Generator startup and bytecode may insert/remove tasks. Own the Arc
+            // before driving, so no DashMap shard guard survives re-entry.
+            if let Some(next_task) = vm.tasks.get(&next_task_id).map(|entry| entry.clone()) {
                 match next_task.try_lock() {
                     Ok(mut next_task) => {
                         next_task.ram.push_i32(iterator_id as i32);

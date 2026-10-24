@@ -156,3 +156,14 @@ headers/POST body 原样透传,不对 POST 自动重试/重连。
   与请求作用域;本篇为其外部流延伸)
 - [networking-stdlib](../../auto-lang/runtime/design/networking-stdlib.md)
   (C2a 落地面)
+
+
+## PLAN-840 Phase 4：generator 推进时的任务表锁寿命
+
+HTTP SSE pull 驱动和 generator 指令驱动先从任务表取得 owned `Arc`，释放
+DashMap 分片 guard，再锁任务并执行。首次 lazy generator 启动及嵌套 generator
+可在推进中向同一任务表插入任务；持有分片读 guard 跨该调用会在同分片自死锁，
+同步阻塞也无法由 Tokio timeout 打断。任务本身的互斥及注册/移除语义保持，
+不通过移除任务登记或放宽等待预算规避冲突。定向验收固定相邻 task ID 同分片，
+覆盖首个真实 SSE pull、原 park/唤醒事件和嵌套 generator 值/EOF/任务回收。
+流等待继续遵循已有凭据、通知防丢、背压和取消合同，不新增固定轮询。

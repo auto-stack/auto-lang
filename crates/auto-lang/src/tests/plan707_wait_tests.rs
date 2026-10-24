@@ -65,11 +65,32 @@ fn relay() ~Iter<str> {{
     (vm, iter_id)
 }
 
+/// Reserve adjacent IDs whose registry operations contend on the same shard.
+/// Probing is nonblocking; never hold a guard across an actual task insert.
+fn colliding_task_ids(vm: &crate::vm::engine::AutoVM) -> u64 {
+    let mut collision = None;
+    for _ in 0..4096 {
+        let id = vm.spawn_task(0, 16);
+        let guard = vm.tasks.get(&id).unwrap();
+        let locked = vm.tasks.try_get_mut(&(id + 1)).is_locked();
+        drop(guard);
+        vm.remove_task(id);
+        if locked {
+            collision = Some(id);
+            break;
+        }
+    }
+    collision.expect("find adjacent task IDs sharing a shard")
+}
+
 /// AC-02：gate 关闭期间驱动次数不随等待时长增长（凭据化等待 vs 自旋）。
 #[tokio::test(flavor = "current_thread")]
 async fn plan707_wait_generator_park_drive_count_static() {
     let (port, open_tx, _done_rx) = serve_gated_sse();
     let (vm, iter_id) = make_relay_generator(port);
+    // The pull task and lazy generator must share a shard in this regression.
+    let id = colliding_task_ids(&vm);
+    vm.id_gen.store(id, std::sync::atomic::Ordering::Relaxed);
 
     // 首个值：数据已在途（headers+首事件已发送）→ 快速返回。
     let first = tokio::time::timeout(
@@ -119,4 +140,50 @@ async fn plan707_wait_generator_park_drive_count_static() {
     )
     .await;
     let _ = hs::stream_live_count();
+}
+
+/// Nested generator startup also re-enters the task registry while executing
+/// the outer generator. Force those two tasks onto one shard and verify EOF.
+#[tokio::test(flavor = "current_thread")]
+async fn plan840_nested_generator_task_shard_collision_completes() {
+    let code = r#"
+fn leaf() ~Iter<str> { yield "nested" }
+fn outer() ~Iter<str> { for s in leaf() { yield s } }
+"#;
+    let (vm, _, _, _) = crate::create_vm_from_source(code).expect("compile nested generator");
+    let vm = std::rc::Rc::new(vm);
+    let mut task = AutoTask::new(0, 65536, 0);
+    assert!(matches!(
+        vm.call_fn_by_name_segment(&mut task, "outer", 0),
+        crate::vm::engine::SegmentOutcome::Completed(Ok(()))
+    ));
+    let iter_id = auto_val::decode_i32(task.ram.pop_nv()) as u32;
+    let mut id = colliding_task_ids(&vm);
+    if id == 0 {
+        id = colliding_task_ids(&vm);
+    }
+    // Temporary pull = id-1, outer generator = id, nested leaf = id+1.
+    vm.id_gen
+        .store(id - 1, std::sync::atomic::Ordering::Relaxed);
+    let value = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        crate::vm::ffi::http_server::next_sse_generator_value_for_test(&vm, iter_id),
+    )
+    .await
+    .expect("nested pull must complete")
+    .expect("nested value");
+    assert!(crate::vm::ffi::http_server::sse_value_is(
+        &vm, value, "nested"
+    ));
+    let eof = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        crate::vm::ffi::http_server::next_sse_generator_value_for_test(&vm, iter_id),
+    )
+    .await
+    .expect("nested EOF must complete");
+    assert!(eof.is_none(), "nested generator must finish exactly once");
+    assert!(
+        vm.tasks.is_empty(),
+        "completed generator and pull tasks reclaimed"
+    );
 }
