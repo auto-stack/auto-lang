@@ -638,6 +638,26 @@ owner = "man-core"
 exit_phase = "R5"
 status = "active"
 
+# PLAN-831 T-06：auto-lang 兼容 crate（lang-monolith）对独立 UI 仓包组的
+# 跨根消费——C4 兼容合同（pub use 转发面，非实现依赖方向反转）。语言域
+# 禁依赖外置 UI 的规则保持，此二边按窄豁免登记；lang-monolith 终态拆分
+# （R4/R8 在案）时随 re-export 面消解。
+[[baseline.edge_notes]]
+from = "auto-lang"
+to = "auto-ui-compiler"
+kind = "normal"
+owner = "PLAN-831-C4"
+exit_phase = "R8"
+status = "active"
+
+[[baseline.edge_notes]]
+from = "auto-lang"
+to = "auto-ui-runtime"
+kind = "normal"
+owner = "PLAN-831-C4"
+exit_phase = "R8"
+status = "active"
+
 # PLAN-814：SDK（auto-lang-core=lang-core）对 runtime 域轻能力的存量消费——
 # a2r-std（stdlib 装配/转译支撑）与 auto-terminal-core（轻宿主 terminal
 # capability，plan §3 语义）。规则 lang-core-no-monolith... 书写时仅覆盖
