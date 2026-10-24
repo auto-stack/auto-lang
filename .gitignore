@@ -187,6 +187,9 @@ test_temp.txt
 # 曾吞掉本件——B1 提交时发现漏库，强制补入后补否定规则）
 !scripts/style_palette_manifest.json
 !examples/ui/**/package.json
+# PLAN-831 T-03：ui-repository-consumer 冻结阶段/断言表（driver 必需输入；
+# *.json 母规则曾吞掉本件——fresh clone driver 缺输入必红）
+!test/fixtures/modularity/ui-repository-consumer/migration-phases.json
 playwright-report/
 test-results/
 __pycache__/

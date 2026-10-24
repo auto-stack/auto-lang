@@ -1,0 +1,156 @@
+# PLAN-831 T-03 冻结：旧 auto_lang 兼容面 + C2 声明单源 touchpoint 锚点表。
+#
+# 用途：type driver（driver.py type）按本表做结构性钉住（锚点在位性），
+# 并由本表派生编译探针（--compile-probe，T-05 起以真实源执行）。
+# 锚点均为 2026-10-24 实测源事实（lang-831 树 @2dafba909 基线）；
+# 若上游重构移动了符号，更新本表并按 migration-phases.json 的
+# interface_change_protocol 在 Plan 831 记录具名修订。
+#
+# 结构：
+#   [[compat_face]]     旧 auto_lang 公开面锚点（V-02「旧 Parser/VM 公开构造、
+#                       pub 字段/回调、default/显式 feature」）。anchor 给出
+#                       crate 内相对文件与必须包含的源文本（词边界匹配）。
+#                       probe 是编译探针使用的完整 use 路径。
+#   [[declaration_home]] C2 声明符号的单源约束：symbol 必须恰好存在于
+#                       homes 列出的 crate 之一（lib.rs 公开导出），双在场=复制红，
+#                       缺席=红（T-05 切移时表会随记录修订）。
+#   [[import_face]]     声明消费方的导入面：文件内 phase 期望的声明源 token。
+
+schema = "ui-repository-compat-touchpoints/1"
+frozen_by = "PLAN-831 T-03"
+
+# ---- 旧 auto_lang 兼容面（crates/auto-lang，V-02 / C4）----
+
+[[compat_face]]
+id = "TYP-C01"
+item = "auto_lang::Parser"
+anchor = { file = "src/lib.rs", contains = "pub use parser::Parser" }
+probe = "auto_lang::Parser"
+note = "方言扩展体系 Parser 再导出（旧消费构造入口）"
+
+[[compat_face]]
+id = "TYP-C02"
+item = "auto_lang::parse"
+anchor = { file = "src/lib.rs", contains = "parse_preserve_error" }
+probe = "auto_lang::parse"
+note = "SDK 解析入口族（parse/parse_preserve_error 成对在位）"
+
+[[compat_face]]
+id = "TYP-C03"
+item = "auto_lang::run_with_capture_and_bytecode"
+anchor = { file = "src/lib.rs", contains = "run_with_capture_and_bytecode" }
+probe = "auto_lang::run_with_capture_and_bytecode"
+note = "VM 捕获执行构造族（多 deadline/input/path 变体随族在位）"
+
+[[compat_face]]
+id = "TYP-C04"
+item = "auto_lang::execute_autovm"
+anchor = { file = "src/lib.rs", contains = "execute_autovm_with_deadline_and_input" }
+probe = "auto_lang::execute_autovm"
+note = "VM 直接执行入口族"
+
+[[compat_face]]
+id = "TYP-C05"
+item = "auto_lang::trans_rust_with_session"
+anchor = { file = "src/lib.rs", contains = "trans_rust_with_session" }
+probe = "auto_lang::trans_rust_with_session"
+note = "trans 出口（含显式 session 变体）"
+
+[[compat_face]]
+id = "TYP-C06"
+item = "auto_lang::set_ui_host_install_hook"
+anchor = { file = "src/lib.rs", contains = "set_ui_host_install_hook" }
+probe = "auto_lang::set_ui_host_install_hook"
+note = "公开回调 seam（pub 回调面）"
+
+[[compat_face]]
+id = "TYP-C07"
+item = "auto_lang::ui"
+anchor = { file = "src/lib.rs", contains = "pub use auto_ui_runtime::ui" }
+probe = "auto_lang::ui"
+note = "UI 面再导出（auto_ui_runtime::ui）"
+
+[[compat_face]]
+id = "TYP-C08"
+item = "auto_lang::ui_gen"
+anchor = { file = "src/lib.rs", contains = "pub use auto_ui_compiler::ui_gen" }
+probe = "auto_lang::ui_gen"
+note = "四生成器族（tu 档面）"
+
+[[compat_face]]
+id = "TYP-C09"
+item = "auto_lang::aura"
+anchor = { file = "src/lib.rs", contains = "pub use auto_ui_compiler::aura" }
+probe = "auto_lang::aura"
+note = "aura 提取面"
+
+[[compat_face]]
+id = "TYP-C10"
+item = "auto_lang::a2ui"
+anchor = { file = "src/lib.rs", contains = "pub use auto_ui_compiler::a2ui" }
+probe = "auto_lang::a2ui"
+
+[[compat_face]]
+id = "TYP-C11"
+item = "auto_lang::generator_fingerprint"
+anchor = { file = "src/lib.rs", contains = "pub use auto_ui_compiler::generator_fingerprint" }
+probe = "auto_lang::generator_fingerprint"
+note = "UIC 指纹（C3：源码指纹与实际 producer 同步）"
+
+[[compat_face]]
+id = "TYP-C12"
+item = "auto_lang::back_proxy"
+anchor = { file = "src/lib.rs", contains = "pub use auto_ui_runtime::back_proxy" }
+probe = "auto_lang::back_proxy"
+note = "单进程多后端宿主（PLAN-658，随 814 T-04 迁 runtime）"
+
+[[compat_face]]
+id = "TYP-C13"
+item = "auto_lang::host_adapters"
+anchor = { file = "src/lib.rs", contains = "pub use auto_ui_runtime::host_adapters" }
+probe = "auto_lang::host_adapters"
+
+[[compat_face]]
+id = "TYP-C14"
+item = "auto_lang::run_file_dynamic_ui"
+anchor = { file = "src/lib.rs", contains = "pub use auto_ui_runtime::{build_dynamic_component, has_ui_keywords, run_file_dynamic_ui}" }
+probe = "auto_lang::run_file_dynamic_ui"
+note = "动态 UI 构造族（含 with_scenario 变体）"
+
+[[compat_face]]
+id = "TYP-C15"
+item = "auto_lang::InferenceContext"
+anchor = { file = "src/lib.rs", contains = "pub use crate::infer::InferenceContext" }
+probe = "auto_lang::InferenceContext"
+note = "crate 本地 pub 类型（非 SDK 转发）"
+
+[[compat_face]]
+id = "TYP-C16"
+item = "auto_lang::SharedTypeRegistry"
+anchor = { file = "src/lib.rs", contains = "pub use crate::type_registry::SharedTypeRegistry" }
+probe = "auto_lang::SharedTypeRegistry"
+
+# ---- C2 声明单源（V-02 声明语义；T-05 切移后 homes 随记录修订）----
+
+[[declaration_home]]
+id = "TYP-D01"
+symbol = "sidecar_decl_from_root"
+homes = ["crates/auto-man-core", "crates/auto-project-model"]
+
+[[declaration_home]]
+id = "TYP-D02"
+symbol = "SidecarDecl"
+homes = ["crates/auto-man-core", "crates/auto-project-model"]
+
+[[declaration_home]]
+id = "TYP-D03"
+symbol = "pac_from_decl"
+homes = ["crates/auto-man-core", "crates/auto-project-model"]
+note = "theme/external_backend 声明规则（tools rust_ui.rs:5931/5951 消费）"
+
+[[import_face]]
+id = "TYP-D04"
+consumer_file = "crates/auto-api-gen/src/sidecar.rs"
+expected_pre_migration = "auto_man_core"
+expected_source_switched = "auto_project_model"
+note = "sidecar 声明解析导入面（C2 切点，contract-baseline §3）"

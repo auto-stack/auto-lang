@@ -1,0 +1,108 @@
+{
+  "schema": "ui-repository-fixture-phases/1",
+  "plan": "PLAN-831",
+  "frozen_by": "PLAN-831 T-03 (2026-10-24)",
+  "interface_change_protocol": "本文件是 T-03 冻结的断言/阶段合同。任何断言集、阶段语义或结构判别的变化都必须在 Plan 831 记录具名修订（含原因与受影响 V/AC），不得静默放宽；只允许收紧或在具名后继任务内携带记录地调整。",
+
+  "migrating_packages": [
+    "auto-ui-dialect",
+    "auto-ui-compiler",
+    "auto-ui-runtime",
+    "auto-ui-tools",
+    "shell-pack"
+  ],
+
+  "phases": {
+    "pre-migration": {
+      "meaning": "五个迁移包仍以语言仓 workspace 成员形式实编（T-03 基线，直至 T-06 切源落地）。",
+      "structural_detector": "ui_repo 的 workspace 成员包名不含任何 migrating_packages 名称。",
+      "package_location": "lang_repo"
+    },
+    "source-switched": {
+      "meaning": "T-06 切源后：五包在 UI 仓独立 workspace 内实编，语言仓原实现删除。",
+      "structural_detector": "ui_repo 的 workspace 成员包名包含全部 migrating_packages 名称。",
+      "package_location": "ui_repo"
+    }
+  },
+
+  "forbidden": {
+    "man_big_lib_members": ["auto-man", "auto-man-runtime"],
+    "lang_monolith_member": "auto-lang",
+    "man_core_member": "auto-man-core",
+    "member_ban_all_phases": [
+      "auto-man",
+      "auto-man-runtime",
+      "auto-man-core",
+      "auto-lang"
+    ],
+    "closure_ban_pre_migration": [
+      "auto-man",
+      "auto-man-runtime",
+      "auto-lang"
+    ],
+    "closure_ban_source_switched": [
+      "auto-man",
+      "auto-man-runtime",
+      "auto-lang",
+      "auto-man-core"
+    ]
+  },
+
+  "transitional_man_core_edge_ledger": {
+    "frozen_expected_pre_migration": [
+      {
+        "from": "auto-ui-tools",
+        "to": "auto-man-core",
+        "kind": "normal",
+        "optional": false
+      },
+      {
+        "from": "auto-api-gen",
+        "to": "auto-man-core",
+        "kind": "normal",
+        "optional": false
+      }
+    ],
+    "rule": "pre-migration 阶段五包闭包内 auto-man-core 边集与冻结期望集比对：超出（新增 Man-core 边）即红；少于（提前完成 C2 切除）记录为 tightened-early 不判红。source-switched 阶段由收紧后的闭包禁断言覆盖（期望为零）。台账为 2026-10-24 实测事实：C2 范围=tools 与 API 生成两个消费方（Plan §2、contract-baseline §1.3/§3），auto-api-gen 经 auto-ui-tools 入闭包。"
+  },
+
+  "legacy_attribution_pre_migration": {
+    "legacy_crates": [
+      "auto-ui",
+      "auto-ui-gpui",
+      "auto-ui-iced",
+      "auto-ui-transpiler",
+      "auto-ui-transpiler-cli",
+      "gpui-examples",
+      "iced-examples"
+    ],
+    "legacy_manifest_prefixes": ["examples/"],
+    "rule": "pre-migration 阶段 UI 仓内指向禁断包的声明边若归属于 legacy 面（成员名在 legacy_crates 或 manifest 位于 examples/ 下）记 legacy_observed（T-06 后由收紧断言判红）；归属于任何非 legacy 成员（即 T-04 及之后新导入/新增面）立即判红——这是 T-04 候选导入的走私守卫。source-switched 阶段任何归属一律判红（legacy 必须已清理）。"
+  },
+
+  "assertion_owners": {
+    "SRC-P1": "五包存在于阶段所属仓（成员包名）",
+    "SRC-P2": "五包声明闭包（normal/build/dev 含 optional，仓内 path 递归 + 跨根边记名）零禁断包（阶段收紧：source-switched 追加 auto-man-core）",
+    "SRC-P3": "过渡期 auto-man-core 边台账（比对冻结期望集）",
+    "SRC-P4": "UI 仓成员级 vendoring 禁断（四名恒禁）+ UI 仓成员声明边禁断（pre：legacy 归属记档、非 legacy 红；post：一律红）",
+    "SRC-P5": "autodown-core 跨仓 optional 边记录与解析（pre 记档；post 必须可解析）",
+    "SRC-P6": "source-switched：语言仓成员不再含五包名（原生产目录删除）",
+    "TYP-C*": "旧 auto_lang 兼容面 touchpoint 锚点在位（compat-touchpoints.toml）",
+    "TYP-D1..D3": "C2 声明符号单源（sidecar_decl_from_root/SidecarDecl/pac_from_decl 在 auto-man-core 与 auto-project-model 恰居其一）",
+    "TYP-D4": "auto-api-gen sidecar 声明源（pre 记档；post 必须 auto_project_model）",
+    "TYP-F1": "旧 auto_lang feature 名单清点钉住（[features] 键集）",
+    "TID-A1": "五包测试 ID 清点（pre=源码枚举法；post=cargo -- --list 正典法）",
+    "TID-A2": "cargo 别名/档位表（t/tf/tv/tt/tb/tu/taa/ta）定义快照",
+    "TID-A3": "source-switched：UI 仓逐包 cargo test --manifest-path 入口在位",
+    "DST-1..5": "发行面（fresh-lock / locked-build / A→B 重定位 / 外部 SDK 反向控制 / tool+资产 profile）——接口冻结，source-switched 起 T-07 执行",
+    "FLR-1..6": "失败面（缺源·producer 漂移 / 坏 pin / 漏 patch / 资源四态篡改 / 取消·交换失败保旧 / 陌生目录不删）——接口冻结，T-07/T-08 执行"
+  },
+
+  "successor_execution": {
+    "T-05": "定向 V-01/V-02：type driver 编译探针 + 声明语义正反控（theme/sidecar/external_backend 缺省/覆盖/动态）在此以真实源执行",
+    "T-06": "SRC-P2/P4/P5/P6 收紧生效；TID-A1 正典法（cargo -- --list）重采",
+    "T-07": "DST-1..5 与 FLR 资源族以 UI 仓 producer 真实执行",
+    "T-08": "FLR-5 三仓切换失败控制（prepared→landed→switched→verified）",
+    "T-09": "全 V/支持面按最终来源复核"
+  }
+}
