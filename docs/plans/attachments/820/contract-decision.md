@@ -238,9 +238,14 @@ sidecar/trailer/分页/解码顺序/分配前配额：同 AVAB v2 合同（§4 7
   `fn main() -> int { var o = Outer { inner: Inner { x: 0 } }; o.inner.x = 41 + 1;
   return o.inner.x }`（exact 源码 T-02 落 fixture 时冻结）→ 手审 expected=42；
   AV Success(I32(42)) 且 FIELD_SET 原根命中（o.inner.x 读回 42）。
-  旧 HIR→native 参照按 `probe/src/native_reference.rs` 实际支持面执行
-  （scalar 子集对照；record native 未交付，不冒称——首例 native 对照以同源码
-  的等价 scalar 化对拍或以手审为准，T-02 落地时按实际面记录）。
+  旧 HIR→native 参照（F820-R1-03 修复后按 §5.2 原文落地）：同一 record
+  源码经 worker `native-build --profile record`（compile_record_source
+  前门 → native::lower_object，ac-core native 自 PLAN-771 起支持名义
+  record）→ link → run，退出码=返回值=42，与手审 expected 及 data 路径
+  AV 结果独立一致（av_data_820_first_case_native_independent_comparison）。
+  r1 复审前曾以"native_reference scalar-only"为由降级为 scalar 化/手审
+  替代——该声明与代码事实不符（受限点仅 worker 子命令硬编码 scalar
+  前门），系未授权替换，已恢复原合同 oracle。
 - **宽标量往返**（T-02）：§3 冻结位型样本 typed MIR fixture → ABC → AV →
   entry/call/return 逐位 `to_bits()` 相等。
 - **V-01..V-13 期望值**全部手审冻结于各 fixture；期望不由被测布局/清理算法
@@ -266,13 +271,17 @@ sidecar/trailer/分页/解码顺序/分配前配额：同 AVAB v2 合同（§4 7
 
 ## 13. 本轮不冻结/显式留 T-02 实现核实的项（2026-10-24 T-02 轮核实结果）
 
-- **native_reference record 面（已核实）**：`probe/src/native_reference.rs` 为
-  scalar-only（零 record 支持）——首例 native 对照按合同以**手审 oracle=42 +
-  值语义反例组**为准，不做 record native 对拍、不冒称。scalar 子集的 native
-  对照由既有 core 套件覆盖。
-- **B 线内存（T-02 口径）**：data 管线进程内 private-bytes 增量保守归因
-  （含测试壳开销）≤128MiB 实测入档；真实 spawn-worker 外部采样峰值归
-  T-04/T-06 resources scope（与故障注入 hook 同批）。
+- **native_reference record 面（F820-R1-03 r1 修正）**：原"scalar-only
+  零 record 支持"核实结论错误——native 构建链（native::lower_object/
+  build_stages）自 PLAN-771 起支持 record 域，受限点仅 worker `native-build`
+  子命令硬编码 compile_scalar_source（已加 `--profile record`）。首例
+  native 独立对照已按 §5.2 原文恢复：同源码、固定 expected 42，不以
+  scalar 化/手审替代。
+- **B 线内存（F820-R1-02 r1 修正）**：原口径（测试进程内、请求返回后采样）
+  不能证明 worker 瞬态峰值，已废弃；现行口径=父侧 ChildPeakSampler 按 PID
+  对真实新 worker 全生命周期采样：A=同二进制空载基线、B=25 轮数据管线
+  负载，峰值增量 ≤128MiB 判定（实测 ~1MiB 量级）；另设 ~64MiB 中程暂存
+  反控证明采样器可捕获末端不可见峰值（实测捕获 64.1MiB）。
 - 其余三项中：首例 exact 源码已冻结于 fixture；avworker/1 信封内 profile 以
   recipe id 区分（data recipe 复用信封不扩字段）；828 session data 接口缝隙
   仍留 T-09。

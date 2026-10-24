@@ -63,12 +63,21 @@
 - data profile 接入 828 公共函数级增量接口：lower_function_data_unit
   （record 域单函数 AVAD unit）→ FunctionCode::admit_unit →
   ProgramSnapshot::link（fn: 导入解析+签名检查+owner 一致性）→ unit view
-  执行；body 编辑仅重建被改函数（未改函数 Arc 指针/代际不变=结构轴）、
-  类型变化重建受影响函数、跨修订签名失配=link 拒且前快照存活、强制全量
-  重建移动全部身份轴（退化反控）。边界：ac-syntax 驻留层（auto-scalar
-  语法）为 scalar-only，record 语法属 ac-syntax owner 面；数据增量以
-  前门重编译+unit/link 层增量交付。验收：V-13（incremental 族 3/3 +
-  828 标量套件绿=共享基线）。
+  执行。**全链增量（F820-R1-01 修复，取代旧"前门重编译+unit 层增量"边界）**：
+  纯 body 编辑走 828 单体事务——字节级分段 diff 命中唯一被改函数（否则显式
+  non-fast 拒绝）、等长注释掩码的单函数解析文档（解析面=1 函数，绝对偏移
+  保持）、保留 CheckedEnv 的 recheck（resolve+typecheck 仅单 body，签名漂移
+  受控拒）+ emit_function_body（BodyEmitReceipt=1 真 body/n−1 scaffold）+
+  body_work 生产窗（未改函数零 body 工作）、单函数 lower/admit；未改函数
+  HIR Arc 与 FunctionCode 指针/代际不变、生产阶段/IO=0，结构门内建于
+  edit_body 生产路径（实现退化即使编辑本身红→正式脚本档非零）。类型/签名/
+  声明集变化走依赖事实计算的精确失效：record mention 嵌套闭包+跨 bundle
+  签名形状等价——签名内容变化→全部 unit 重 lower（unit import 表嵌入每个
+  def 的签名，link 内 interstate 门拥有该依赖），body 未变函数保留 HIR Arc；
+  helper body 变化不重 lower 调用者（快照按槽位绑定调用）；caps 变化全
+  unit 重 lower/admit 而 HIR 身份不动；跨修订签名失配=link 拒且前快照存活；
+  强制 whole 前端与等内容换对象（只保 hash 却替换对象）双退化反控均使同一
+  结构门非零。验收：V-13（incremental 族 5/5 + 828 标量套件绿=共享基线）。
 
 ## touched_goals
 
