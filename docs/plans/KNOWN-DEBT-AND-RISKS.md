@@ -3143,3 +3143,6 @@ PLAN-818 D828刷新轮（c4819bf58，2026-10-24）：**ac-syntax workspace 跨�
 - F-840-R1-02：immutable常量引用及纯常量FStr/backtick被误拒，违背不缩原支持面的合同；T03待修。
 - F-840-R1-03：Spec proposal SD01/02/04与批准Plan稳定编号/目标映射不一致；T08待修。
 - 以上均不能通过记债判定完成。当前executing7/12，完整合入门禁仍待最终review pass后执行。复现/关闭oracle/验收映射见[PLAN-840 review R1](attachments/840/review-r1/review.md)。
+
+
+PLAN-840 R1修复（2026-10-24；work已关闭，复审待定）：F-840-R1-01/02/03修复提交`1f19395254d7e676bd188e43e3d8f734d57aaa12`；共享AST返回策略/合法常量准入/稳定Spec目标映射和原反例/相邻控制均通过。原R1记录保留为旧提交的缺陷事实；当前execution_done10/12，需受影响独立复审后才可执行完整合入门禁，并非已交付。详[修复关闭证据](attachments/840/work-r3-repair/closure.md)。
