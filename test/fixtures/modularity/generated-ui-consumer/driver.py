@@ -1307,14 +1307,22 @@ def main() -> int:
                     break
                 time.sleep(0.2)
             outcome = ((final or {}).get("body", {}).get("report", {}) or {}).get("outcome")
+            # 宿主存续复验：describe 亦走 framesA 单读者通道——collector 线程是
+            # toolA.stdout 的唯一读者，禁止再对同进程做阻塞 roundtrip（双读者
+            # 会互抢帧，describe_ok 被 collector 消费后 roundtrip 永久阻塞——
+            # 真实链首轮整跑实测卡死，假载体反例走不到此步故重放不可见）。
             session_ok = False
             if toolA.poll() is None:
-                try:
-                    resp = tool_roundtrip(toolA, {"protocol_version": 1, "id": 502,
-                                                  "body": {"op": "describe"}})
-                    session_ok = resp.get("body", {}).get("type") == "describe_ok"
-                except (EOFError, OSError, ValueError, subprocess.TimeoutExpired):
-                    session_ok = False
+                tool_send(toolA, {"protocol_version": 1, "id": 502,
+                                  "body": {"op": "describe"}})
+                deadline3 = time.time() + 15.0
+                while time.time() < deadline3:
+                    session_ok = any(
+                        f.get("id") == 502 and f.get("body", {}).get("type") == "describe_ok"
+                        for f in framesA)
+                    if session_ok or toolA.poll() is not None:
+                        break
+                    time.sleep(0.2)
             vm_ok = accepted and cancel_ack and outcome == "cancelled" and session_ok
             vm_detail = (f"run_ui(vm) 事件={run_events[:3]}；协议cancel回执={cancel_ack}；"
                          f"终态run_ok outcome={outcome}（owned 树回收后发出）；"
