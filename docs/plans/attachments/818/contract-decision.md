@@ -1,5 +1,20 @@
 # PLAN-818 contract-decision.md — T-01 只读设计冻结（MIR→新 native）
 
+> **r1.2 注记（2026-10-24，D828 达成后的刷新义务履行 + T-02 重放）**：828 已
+> archived 11/11 delivered（门禁裸 t 5331/5331+tv 163+probe 消费面、SD-01..06、
+> ledger v70、合并祖先核验过）。刷新事实：①本合同消费的全部 798 API 存续
+> （`compile_scalar_source`/`lower_checked`/`verify_mir`/`split_units` 签名未变；
+> 828 新增 `lower_function_unit` 函数级 lowering 与 `fn:<self>` 快照链、
+> `session.rs`/`function_queries.rs` 消费接口——为 T-11 的消费目标，不改 T-02 形态）；
+> ②MIR/AV core 表面与版本轴未变（contract.rs 零 diff）；③**注册映射刷新**：
+> PLAN-814 大迁移落地，`test_cases` 模块 → `crates/auto-lang-core/src/test_cases/`
+> （ac_mn.rs/dispatch 落位新家；测试与语料仍在 auto-lang；auto-test-case 未动）；
+> ④**跨兄弟消费缺陷与修复**（路由 KNOWN-DEBT）：828 给 auto-av-probe 新增
+> ac-syntax-core-adapter 依赖后，experimental/ 内兄弟 workspace 经 path 链消费时
+> cargo 将 ac-syntax 成员的 `.workspace=true` 继承错析到 auto-lang 根——以语义
+> 等价字面量修复（ac-syntax 自建 39/39 零回归）。T-02 定向重放全绿：首例 3/3
+> + AutoDown 3/3 @ c4819bf58（rebase 后基面）。
+
 > **r1.1 注记（2026-10-20，D-798达成后的重读义务履行）**：以实际合入master的798面
 > （archive 11/11）重读本文件§1——MIR核心表面未变（指令/终结器/类型/槽/verify规则，
 > 仅新增`MirInstr::can_trap()`分类器，与本文件§2 trap家族完全一致）；`contract.rs`的

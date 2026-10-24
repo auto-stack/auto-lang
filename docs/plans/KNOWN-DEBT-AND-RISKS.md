@@ -1,3 +1,7 @@
+### Plan 839（2026-10-24，R1核验needs_fix；Starting取消一P2 OPEN）
+
+受审`e58828ca64b7e26ce984faf850fb3b1d0887517f`/r1；[完整报告及持久反例](attachments/839/review-r1/review.md)。F-839-R1-01/P2：Starting后失焦/resize-DPI/离窗/遮挡请求被Play::pause状态过滤吞掉，初始化后仍Running且errorNone，后续真实Auto tick均到2；同锁独立客户端3控制过、四边沿同一case失败。Running失焦、Starting Stop/真实owner释放、晚query失败整笔拒绝对照通过；35永久定向/native7/source及来源四反控/owner保留与重传101+101恢复0/check/fmt/diff过，无新增warnings。原合同AC04/05/06内必修，T04/06/07/08重开，executing4/10，T01/02/03/05成果保留；同树修齐后刷新source/SD/handoff并提交。当前为同实施会话internal核验，独立上下文final review仍pending，未据此授最终pass；原完整merge-owned冻结矩阵/实际落地沉淀归档guard仍pending。未修改实现/合入/清树。
+
 ### Plan 838（2026-10-24，已交付archived10/10；四finding CLOSED）
 
 当前：独立R2 pass；完整冻结门/最终delivery身份门全过，autographics-dev已快进`37fd1a9cfe22d3d3471202ad4a8dbfe2103f9a5c`，主分支规范/台账75与归档提交`3cad6f34cd16ffce482c34737044102bba665a23`已核。fresh guard clean后实现树/分支已移除，3份独立consumer复现副本保留；batch not-due，无生产I2/I3冒认。无本Plan开放finding/gap/待完成项。[merge pass收据](attachments/838/merge-r1/receipt.md)。以下R1是历史记录：
@@ -3125,3 +3129,5 @@ PLAN-816 B-R10 更正（2026-10-24）：上条"exec_lifecycle Linux 面 3 预存
 PLAN-817 R9（cb0ba5231，2026-10-24）：R8 SQL错误和2MiB旧损坏反例关闭；R9-01仍阻断恢复预算：take限制len不限制Vec capacity，近界1025B文件reserve1072却allocator实际2048，正常frame1024+payload512共存1536亦超1072。见[R9](attachments/817/review-r9/review.md)，不可延期债务化。
 
 PLAN-816 T-10（2026-10-24）：**master 预存编译破损（cargo test 全目标面）**——`cargo t`/`tf`（nextest 档）结构性不触发、日常门不受影响，但裸 `cargo test`/`cargo check --tests`（全目标）红：①`crates/auto-gen/tests/common/mod.rs:19-20` 引用 `auto_lang::atom::Atom`，而 auto-gen 依赖自 814 T-06（9c7e44855）已切 auto-lang-core、无 auto-lang 依赖（E0433，master 主检出同红，非 816 引入）；②`crates/auto-cache/src/methods_pack.rs:697` ShimMethod 初始化缺 `trait_name`（shim-metadata 结构演进未同步消费者，E0063，master 同红）。两处均为计划合入面外的预存债，修复归后续 fix 计划裁定。
+
+PLAN-818 D828刷新轮（c4819bf58，2026-10-24）：**ac-syntax workspace 跨兄弟消费缺陷（路由 ac-syntax/828 owner）**——828 为 auto-av-probe 新增 `ac-syntax-core-adapter` 路径依赖（该 crate 及 runtime/grammar/artifacts 全部用 `.workspace=true` 继承）后，`experimental/` 内任何兄弟 workspace 经 path 链消费 auto-av-probe 时，cargo 将这些成员的继承解析到 auto-lang 根（差分实测：根临时补 edition 后错误推进到 publish；树外 /tmp workspace 消费同链正常）而根从未定义 workspace.package——跨 workspace path 依赖链在 828 布局下不可构建。PLAN-818 以语义等价修复临时解锁（四成员清单改字面量，值与 ac-syntax [workspace.package] 逐字一致；ac-syntax 自建 `cargo test --workspace` 39/39 全绿零回归）。路由事项：owner 侧要么正式接受字面量形态，要么以不破坏兄弟消费的方式恢复继承（如 [patch] 或 workspace 重组）；在 owner 裁定前该四文件为 818 分支携带的跨面修复，818 合入时随计划一起合入。
