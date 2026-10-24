@@ -46,10 +46,29 @@ function Test-Selected([string]$Out, [string]$Label, [string[]]$RequiredIds = @(
         Write-Host "FAILED: $Label has $realSkips skipped/ignored SELECTED cases (never green)"
         return $false
     }
+    # EXACT required-case binding (R3): a nextest PASS result line ENDS
+    # with the exact test id (optionally \r), preceded by `::` or a space;
+    # a libtest result line names it exactly before " ... ok". Substring
+    # collisions (`<id>_disabled`, `x_<id>`, `<id>_v2`) do NOT match. A
+    # required id must match EXACTLY ONCE — 0 = missing/renamed, >1 =
+    # duplicated/ambiguous relay.
+    $seen = @{}
     foreach ($id in $RequiredIds) {
+        if ($seen.ContainsKey($id)) {
+            Write-Host "FAILED: $Label required list declares '$id' more than once"
+            return $false
+        }
+        $seen[$id] = $true
         $esc = [regex]::Escape($id)
-        if (!(($Out -match "PASS.*$esc") -or ($Out -match "test $esc \.\.\. ok"))) {
+        $nextest = [regex]::Matches($Out, "(?m)^.*PASS.*[ :]$esc\r?$")
+        $libtest = [regex]::Matches($Out, "(?m)^test $esc \.\.\. ok\r?$")
+        $hits = $nextest.Count + $libtest.Count
+        if ($hits -eq 0) {
             Write-Host "FAILED: $Label required case '$id' did not pass (missing/renamed/red)"
+            return $false
+        }
+        if ($hits -gt 1) {
+            Write-Host "FAILED: $Label required case '$id' matched $hits times (duplicate/ambiguous)"
             return $false
         }
     }
@@ -261,6 +280,42 @@ switch ($Scope) {
         $missingReq = $filtered.Replace("        PASS [ 0.01s] auto-lang tests::av_source_827_tests::av_source_827_inventory_negative_controls`n", "")
         if (Test-Selected $missingReq "missing-required" @("av_source_827_inventory_negative_controls")) {
             Write-Host "CONTROL FAILED: a missing required case must be red"; $fails++
+        }
+        # R3 collision matrix — the closure strategy verified as a matrix,
+        # not just the old example. Every near-miss name shape is RED:
+        $reqId = "av_source_827_inventory_negative_controls"
+        $base = "PASS [ 0.01s] auto-lang tests::av_source_827_tests::${reqId}`nSummary [0.1s] 1 tests run: 1 passed, 6927 skipped"
+        foreach ($shape in @(
+            @{ n = "suffix-disabled"; s = $base.Replace($reqId, "${reqId}_disabled") },
+            @{ n = "prefix-collision"; s = $base.Replace($reqId, "x_${reqId}") },
+            @{ n = "versioned"; s = $base.Replace($reqId, "${reqId}_v2") },
+            @{ n = "unrelated"; s = $base.Replace($reqId, "unrelated_case") }
+        )) {
+            if (Test-Selected $shape.s $shape.n @($reqId)) {
+                Write-Host "CONTROL FAILED: $($shape.n) name must NOT satisfy the required id"; $fails++
+            }
+        }
+        # The EXACT id stays green (boundary positive).
+        if (!(Test-Selected $base "exact-positive" @($reqId))) {
+            Write-Host "CONTROL FAILED: the exact required id must be green"; $fails++
+        }
+        # Duplicated PASS lines for one required id -> red (ambiguous relay).
+        $dupOut = "$base`nPASS [ 0.02s] other-binary tests::$reqId"
+        if (Test-Selected $dupOut "duplicate-pass" @($reqId)) {
+            Write-Host "CONTROL FAILED: a duplicated required PASS must be red"; $fails++
+        }
+        # Duplicated required-list entry -> red (config error).
+        if (Test-Selected $base "duplicate-required-list" @($reqId, $reqId)) {
+            Write-Host "CONTROL FAILED: a duplicated required-list entry must be red"; $fails++
+        }
+        # libtest exact binding: the precise "... ok" line is green, a
+        # suffixed rename is red.
+        $libOk = "running 2 tests`ntest $reqId ... ok`ntest other_case ... ok`ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured"
+        if (!(Test-Selected $libOk "libtest-exact" @($reqId))) {
+            Write-Host "CONTROL FAILED: the exact libtest line must be green"; $fails++
+        }
+        if (Test-Selected $libOk.Replace("test $reqId ...", "test ${reqId}_disabled ...") "libtest-renamed" @($reqId)) {
+            Write-Host "CONTROL FAILED: a renamed libtest case must be red"; $fails++
         }
         # libtest ignored -> red.
         if (Test-Selected "test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured" "ignored") {
