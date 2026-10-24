@@ -18,3 +18,7 @@
 | 838 | 静态GLB导入与可携带场景资源 | archived | [archive/838](../../plans/archive/838-autographics-glb-import-and-portable-scene-assets.md) | 严格静态GLB/真实Auto profile5、内容寻址资源/原字节身份、schema3闭包保存/搬迁重开；源码autographics-dev，生产I2/I3 pending |
 
 | 839 | 场景运行模式与Auto最小行为回路 | archived | [archive/839](../../plans/archive/839-autographics-scene-play-mode-and-auto-runtime.md) | 当前accepted场景/资源进入独立真实Auto profile6，固定tick/实际焦点、暂停单步/故障/启动取消及Stop恢复编辑；schema3不变，源码autographics-dev，生产I2/I3 pending |
+
+| 840 | 最小公共行为API与用户Auto脚本 | archived | [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md) | UserV1/profile7、真实Auto API/脚本、双便携示例及SDK扫描修复；旧支持面保留，源码autographics-dev，生产I2/I3 pending |
+
+Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md), [affected final review](../../plans/attachments/840/review-r2/review.md), [complete merge receipt](../../plans/attachments/840/merge-r1/receipt.md). Graphics source: autographics-dev. Production I2/I3 remain pending.

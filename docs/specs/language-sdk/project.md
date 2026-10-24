@@ -68,3 +68,9 @@
   （纯 Core 面；宿主装配经本 crate 钩子分发器——无 UI 实现时 no-op）。
 - 非 UI 消费者基线升至四枚：auto-vm（A 期）+ auto-gen/
   auto-playground/a2r-actor-tests（B 期；闭包零 UI 零旧包）。
+
+## Dependency scan lexical recognition (PLAN-840)
+
+use_scanner and dep_scanner share code-line lexical state in dependency_scan.rs. Inert comments, ordinary/multiline/triple/backtick strings and escaped text do not become use/dep declarations during Session compilation or fresh/cached module scans. Actual dependency forms, ecosystem names, arguments and ordered deduplication remain supported. This scanner correction changes no Parser/VM syntax or module capability; strict single-file user behavior still rejects imports. The four-file canonical SDK patch is5e2f15806; standalone artifact932ad487 fixes the dependency input without adding UI/Man/old-package edges. Scanner38, actual fresh/cache/module controls and full frozen gates bind the correction.
+
+Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md), [affected final review](../../plans/attachments/840/review-r2/review.md), [complete merge receipt](../../plans/attachments/840/merge-r1/receipt.md). Graphics source: autographics-dev. Production I2/I3 remain pending.

@@ -85,3 +85,9 @@ this from leaked runtime owners or repeated model upload. Final Editor close rel
 source payloads; an explicit external mesh pin lasts until its own last drop.
 
 Provenance: [PLAN-839](../../plans/archive/839-autographics-scene-play-mode-and-auto-runtime.md), [independent final R2](../../plans/attachments/839/review-r2/independent/review.md), [affected independent R3](../../plans/attachments/839/review-r3/independent/review.md), [merge receipt](../../plans/attachments/839/merge-r1/receipt.md). Source remains autographics-dev; production I2/I3 pending.
+
+## Explicit behavior source selection (PLAN-840)
+
+Editing supports Builtin6 or Use user script plus one .at path. Ordinary CLI: autographics-authoring --open C:/project/scene.agscene --behavior main.at. Relative paths resolve against actual saved scene Storage root; unsaved scenes need an absolute path. Save As changes this root, with no fallback to the former root or Builtin6. Starting/Running/Paused/Faulted reject source/path changes without queueing. Each Run reads strict UTF-8/no-BOM regular local source, validates and compiles an immutable snapshot, and shows source/API/hash diagnostics; fix the file, Stop and Run to recover. Schema3 and Save/Save As do not copy the script or persist path/API/actor selection. [Behavior API](behavior-api.md) defines limits and callbacks.
+
+Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md), [affected final review](../../plans/attachments/840/review-r2/review.md), [complete merge receipt](../../plans/attachments/840/merge-r1/receipt.md). Graphics source: autographics-dev. Production I2/I3 remain pending.

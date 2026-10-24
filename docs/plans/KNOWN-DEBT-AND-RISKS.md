@@ -3149,3 +3149,6 @@ PLAN-840 R1修复（2026-10-24；work已关闭，复审待定）：F-840-R1-01/0
 
 
 PLAN-840 R2受影响复审（2026-10-24）：在冻结提交`1f19395254d7e676bd188e43e3d8f734d57aaa12`核验F-840-R1-01/02/03全部关闭，未新增合同内阻塞；原10case、行为12、实际Host/GPU修源恢复1、独立相邻8和Spec5ID/8目标通过。原支持面不减，当前reviewed11/12；完整合入门禁仍merge-owned pending。当前实施会话无独立上下文隔离，限制及未变证据复用边界见[复审报告](attachments/840/review-r2/review.md)。
+
+
+PLAN-840 merge（2026-10-24，archived11/12）：R1三finding已复审关闭；冻结1f的完整63入口、root5332/163、producer与fresh consumer各13原生场景及原有16AGP/旧游戏/创作/资源/层级/Play/owner/counter+content全分母通过。源码已快进autographics-dev@8b62db5cb；master仅SDK四文件精确补丁0676dc133，规范/ledger78→79已读回。归档知识提交/fresh guard清理/840到期批量回归仍pending，暂非最终merge pass。AGP2x原输入辅助失败以PID绑定DPIaware真实OS输入夹具完成相同原断言，未改AGP/压断言/缩面；后续自动点击辅助可单独改善，非本计划生产缺陷豁免。失败原记录、真实反控、最终产物重冻回放见[合入收据](attachments/840/merge-r1/receipt.md)。

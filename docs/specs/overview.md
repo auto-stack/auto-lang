@@ -132,3 +132,7 @@ PLAN-837 extends the independent graphics experiment with [finite scene hierarch
 PLAN-838 adds [bounded static GLB scene assets](auto-graphics/scene-assets.md), real Auto profile5 and portable schema3 resource closure to the independent graphics experiment; source remains autographics-dev and production I2/I3 remain pending.
 
 PLAN-839 adds [finite scene play sessions](auto-graphics/scene-play-session.md): real retained Auto profile6 runs the accepted editable scene with fixed ticks, focused input, Pause/Step and Stop restoration. Schema3 and original dual-game denominator remain; source only autographics-dev, production I2/I3 pending.
+
+PLAN-840 adds [finite user behavior](auto-graphics/behavior-api.md) and corrected pure-SDK dependency scanning. Source-only portable business scripts run in the actual Auto VM on one experimental runner; production I2/I3 remain pending.
+
+Provenance: [PLAN-840](../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md), [affected final review](../plans/attachments/840/review-r2/review.md), [complete merge receipt](../plans/attachments/840/merge-r1/receipt.md). Graphics source: autographics-dev. Production I2/I3 remain pending.

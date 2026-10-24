@@ -142,3 +142,11 @@ Forge distribution, ACE/AutoShader/CAP, Linux or new platforms. Source integrati
 remains autographics-dev only; master receives knowledge after the actual closeout.
 
 Provenance: [PLAN-839](../../plans/archive/839-autographics-scene-play-mode-and-auto-runtime.md), [independent final R2](../../plans/attachments/839/review-r2/independent/review.md), [affected independent R3](../../plans/attachments/839/review-r3/independent/review.md), [merge receipt](../../plans/attachments/839/merge-r1/receipt.md). Source remains autographics-dev; production I2/I3 pending.
+
+## Finite user behavior extension (PLAN-840)
+
+The experiment additionally supports [autographics.behavior/1](behavior-api.md), explicit UserV1/profile7 beside unchanged Builtin6/profile6 and profiles1..5. One trusted local .at file contains app_start()/app_update(dt float), Core helpers/state/control flow and finite pure initialized immutable values. Public Auto graph/input reads and local translation/visibility writers replace user-written transport. User bytes are unchanged. Limits: user256KiB, managed64KiB, combined320KiB,128nodes; original callback/frame/time/queue/owner limits remain. Source diagnostics and run snapshots bind raw/API/bridge/combined versions and hashes. Move and Patrol are distinct portable scene/assets/source projects on one runner; user-only60→90 speed and relocation/differentcwd require no Rust rebuild. SDK pin932ad4877e5968f1aa7227d9dcd7fb69b4c69a21 is old9576b4d plus exactly four scanner files. Source closure299, SDK681/479packages/17locals/29edges and both original locks are bound by receipts.
+
+The full inherited driver/AGP16case/dual-game/authoring/resource/hierarchy/Play/native/owner/counter AND actual-content denominators remain required, plus user13case and independent source-consumer gates. No I2/I3/general engine/public production SDK claim, script packaging/persistence, hot reload, FFI/import/async, rotation/scale writer or arbitrary VM heap hard quota is added.
+
+Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md), [affected final review](../../plans/attachments/840/review-r2/review.md), [complete merge receipt](../../plans/attachments/840/merge-r1/receipt.md). Graphics source: autographics-dev. Production I2/I3 remain pending.
