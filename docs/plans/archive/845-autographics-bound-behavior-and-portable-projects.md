@@ -7,7 +7,7 @@ plan_revision: 2
 author: [Codex]
 created_at: 2026-10-24
 updated_at: 2026-10-25
-current_step: 9
+current_step: 10
 total_steps: 10
 depends_on: [PLAN-840]
 supersedes_spec_components:
@@ -500,6 +500,15 @@ stage: merge | outcome: delivered_closeout_pending | completion_kind: delivered 
 cleaned: pass；实际守护脚本[输出](../attachments/845/merge-r1/wt-guard-before-cleanup.txt)确认无reparse，源分支精确等于deliveryc1c7cfea5c9cc84987091ddeaf6cde59cefd5d4f后移除唯一845 worktree和plan-845-dev（普通-d，local upstream autographics-dev；图形代码不能进master）。[删除/库存收据](../attachments/845/merge-r1/cleanup.json.txt)。归档在删除前已由主提交492630e7b9c1ea05a707787923c27b94c0d55193版本化。组内非Git独立消费者/源码导出保留，未删除非空组。
 
 [产物实际观察](../attachments/845/merge-r1/artifact-observations.json.txt)：生产release/backend、依赖daemon和生成web路径均非本experimental交付消费者，实际存在性/构建日期逐项记录；未声称生产部署或I2/I3完成。已测实验exe/消费者/AGP记录actual dates及hash；主Rust/daemon/web源码未改。T10仅余主检出单实例tf/tt/tb到期批量与最终核验；845%5且last-covered840，故到期。仍9/10，不提前称全部完成。
+
+
+### PLAN-845:r2 final merge — pass / delivered10/10
+
+stage: merge | outcome: pass | completion_kind: delivered | source_delivery: c1c7cfea5c9cc84987091ddeaf6cde59cefd5d4f | source_destination: autographics-dev | T-10 / AC-10: completed. R8 final review and frozen83-call gate pass, both driver158/0/0, unchanged AGP163/0/0 evidence explicitly reused; canonical14 paths,12 ledger entries and actual archive/guard cleanup verified. Source tree/plan branch removed; nonempty group with independent consumer/evidence retained. No production deployment claim.
+
+到期批量已在主检出单实例完成三档调用：[原始结果与归因](../attachments/845/batch-r1/receipt.json.txt)。tt完整绿；tf/tb在编译阶段因818引入的旧probe模块丢失test-cases门控失败，测试执行数均0，绝不称全绿。新红已建[PLAN-847草案](../847-restore-probe-test-feature-boundary.md)并写债务，尚未实施；按regress技能fix-forward，不回滚或重开已交付845。全覆盖锚点保持840，失败尝试/真实提交/三档耗时纳入.last-batch-regression.json，待847修复后主检出单实例恢复整档。845原合同要求到期判定与收据，已完成；跨计划根Rust问题不冒计为第7轮845修复。
+
+全部10步已按负责阶段核实，自动修复仍6/6。最终Git/ledger/canonical/evidence/foreign-byte读回见[final-readback](../attachments/845/merge-r1/final-readback.json.txt)，无845未完交付项；全局批量未绿的开放项明确归847。
 
 ## 10. 待澄清事项
 
