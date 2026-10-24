@@ -1,0 +1,9 @@
+# PLAN-827 av-source-827 suite — real Auto source files through the formal
+# ac-av/core-run-v1 recipe, judged parent-side. Seeds are byte-identical
+# copies of the AP fixtures (see README.md for the SHA256 receipts).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "av-source-827", include: [
+  "av-source-first-case.case.ad",
+] }
+```

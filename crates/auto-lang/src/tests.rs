@@ -26,6 +26,10 @@ mod probe_adapter_tests;
 // PLAN-796 R4: turnaround hard gate over the REAL adapter/IPC path
 #[cfg(feature = "test-cases")]
 mod probe_adapter_turnaround_ipc;
+// PLAN-827: av-source-827 corpus — real Auto source files (AP seeds) through
+// the formal ac-av/core-run-v1 recipe, parent-side judgement.
+#[cfg(feature = "test-cases")]
+mod av_source_827_tests;
 // PLAN-701 供④/供⑥: time 族三面对拍 + shell_recent 签名冒烟
 mod plan701_supply_probes;
 mod plan728_bench; // PLAN-728 T-08: 阶梯基准谱（#[ignore] 显式跑，JSONL 入 docs/reports）
