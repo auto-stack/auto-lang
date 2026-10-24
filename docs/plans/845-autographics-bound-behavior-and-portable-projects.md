@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-845
-status: reviewed
+status: executing
 feature_name: AutoGraphics行为绑定与可搬迁项目闭环
 plan_revision: 2
 author: [Codex]
 created_at: 2026-10-24
 updated_at: 2026-10-25
-current_step: 9
+current_step: 6
 total_steps: 10
 depends_on: [PLAN-840]
 supersedes_spec_components:
@@ -203,7 +203,7 @@ T-08列准确完整合入矩阵；**最终独立review pass后**T-10才在冻结
 
 ## 8. 执行步骤
 
-r2 affected final review R5已在冻结da43267d独立验闭原生物理/posted指针一致性F-845-M1-03；F-845-R1-01及F-845-M1-01/02保持独立关闭，AC-01..09 pass，当前reviewed9/10。T-07/08/09完成，T-10与受影响完整driver/消费者、全部共享helper原生和实际UI产物搬迁等merge-owned完整门仍pending；已绿且未变输入的门仅按精确身份复用。历史与复用边界见§9及R5收据；本次pass不代表合入或交付，T-10实际关闭才10/10。
+r2 R5冻结da43267d的受影响独立复审通过，原F01/M1-01..03保持关闭；但完整merge门在consumer-user Move的Single Step恰好推进一tick检查失败（phase6，54未变55），F-845-M1-04阻断。当前executing6/10，T07/08/09重开，T10开放；其余通过证据按输入身份保留。尚未执行consumer用户其余12项、两端各15项目/实际UI产物搬迁及完整81-call审核，未沉淀/合入/归档/清理。三次自动work/review修复上限已达，详§9诊断和merge收据，不能以R5 pass或此前绿色替代未完成完整门。
 
 | task_id | owner_stage | 依赖 | 真实触点／拟新增路径及动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -213,9 +213,9 @@ r2 affected final review R5已在冻结da43267d独立验闭原生物理/posted�
 | T-04 [x] | work | T-03 | session.rs::Edit/Step/Pending/Editor、history/源码owners；新behavior_project_session | 候选绑定/更新/改角色/解绑/Undo/引用失效/预算/stale关闭，V-04/09主体；AC-03, AC-04, AC-07 |
 | T-05 [x] | work | T-04 | storage.rs::Snapshot/load_assets/prepare_closure/verify_locked、源码闭包与新storage tests | V-05/06及原storage/assets故障定向通过、单entry/同root锁/完整Verify；AC-05 |
 | T-06 [x] | work | T-05 | Host/Panel/bin、840正式来源选择与Run、Open/inspect；新host tests | F-845-R1-01工作修复：已存场景新绑定未保存时Run/诊断明确memory/hash；来源生命周期断言及原反例经R2独立验闭；其余V-07证据保留；AC-06 |
-| T-07 [x] | work | T-06 | 新samples/behavior_projects/{move,patrol}、check_behavior_project.py/真实GPU反控 | V-08/10 OS/仓外/同binary/搬迁/源码更新/错误恢复/partial全证据；AC-06, AC-08 |
-| T-08 [x] | work | T-07 | 新check_behavior_project_owners.py、source/独立consumer、README/new research/behavior-project-handoff.md/Spec proposal | F-845-R1-01来源状态永久断言/知识说明经R2独立复审关闭；其余V-01/09/10、owner/source/consumer/check/fmt与merge矩阵证据保留；AC-01, AC-07, AC-08 |
-| T-09 [x] | review | T-08 | 同树冻结code/Plan/Spec与原始报告，主检出独立review附件 | AC-01..08逐项独立审查、遗漏/延后/workaround与健康；AC-09；R5原生指针一致性受影响独立复审通过 |
+| T-07 [ ] | work | T-06 | 新samples/behavior_projects/{move,patrol}、check_behavior_project.py/真实GPU反控 | V-08/10 OS/仓外/同binary/搬迁/源码更新/错误恢复/partial全证据；AC-06, AC-08 |
+| T-08 [ ] | work | T-07 | 新check_behavior_project_owners.py、source/独立consumer、README/new research/behavior-project-handoff.md/Spec proposal | F-845-R1-01来源状态永久断言/知识说明经R2独立复审关闭；其余V-01/09/10、owner/source/consumer/check/fmt与merge矩阵证据保留；AC-01, AC-07, AC-08 |
+| T-09 [ ] | review | T-08 | 同树冻结code/Plan/Spec与原始报告，主检出独立review附件 | AC-01..08逐项独立审查、遗漏/延后/workaround与健康；AC-09；R5原生指针一致性受影响独立复审通过 |
 | T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出知识/ledger/archive/guard | AC-10实际落地/清理/到期，改代码先受影响复审再重新冻结 |
 
 ## 9. 复审记录
@@ -401,6 +401,16 @@ next: merge owner在本冻结提交执行受影响完整门及所有共享原生
 本轮共享影响包括interaction/hierarchy/assets/Play builtin及user/project、旧authoring的scroll；这些完整native均须新冻结的merge-owned门。纯库/owner、AGP/独立游戏、SDK/锁/配置/fixtures/Spec未变，55项R2/R3/R4原始manifest hash逐项核实，未变AC与既有finding关闭按明确边界复用。SD01..04冻结SHA256 `01eaa3e632a062c50bbcd5860df79d5a28e4d56390c881711754fb6416a351c5`保持，canonical/ledger未写，无新债务/合同缩面。
 
 T07/08保持关闭、T09关闭，reviewed9/10；T10与全部merge-owned完整门pending，包括producer/fresh own-SDK own-target consumer/driver与build/source、原63/project尚余门、所有共享native、counter AND content、owner/source及新15 project native和实际UI产物搬迁；仅未变旧门可精确复用。root档/docs_gen本driver-only不触发；tf仍主检出单实例批量及845收尾到期判定。最终WT仍da43267d clean，所有本review原生进程/构建结束后移交Plan写权；未合入/归档/清树，不宣称交付。
+
+### merge R1 — F-845-M1-04 / needs_fix（自动修复上限）
+
+stage: merge | plan_id: PLAN-845 | plan_revision: 2 | outcome: needs_fix | frozen_commit: da43267d4dffe9064d9d95585b7b56416b730d5e | evidence: [完整收据/状态](attachments/845/merge-r1/receipt.md)、[诊断](attachments/845/merge-r1/failure-m1-04.json.txt)、[消费端raw](attachments/845/merge-r1/consumer-user/move/report.json.txt)、[实际截图](attachments/845/merge-r1/consumer-user/move/report.png)。
+
+新冻结producer/consumer完整driver各155/0/0，AGP各163/0/0（未变来源明确复用）；原16AGP/两合成反控/旧双游戏、producer interaction/反控/reopen/hierarchy/assets/Play/user13均通过。消费端assets/hierarchy/两pixel-fault/Play通过；consumer-user第一Move正例phase6失败。phase5暂停tick54并投递实际Step click，phase6pending false、仍Paused/tick54而非55、runtime error null。生产端相同冻结源正例phase27通过；是否原生点击未被接收还是consumer单步分发失败尚未证实，不把它当环境flake或允许重跑到绿。共享路径是play::Probe phases5/6→native click/post→Host play-step→PlaySession single_step，并覆盖后续user/project native。
+
+T07/T08/T09重开、executing6/10，AC08当前red，受影响AC06/07完整门待补；R5和其他关闭历史保留，无新源码改动。consumer其余12user、producer/consumer各15project与实际UI输出搬迁各2、完整81-call oracle审核均未跑；此前通过原始证据按实际身份保留，不称全部完整门绿。需先观察真实OS/widget接收、pending/tick过渡并区分fixture/产品原因，再做同树永久回归/控制与修复提交、受影响独立复审、冻结后补跑所需完整门。
+
+三次自动work/review修复M1-01/02/03已分别独立关闭，达到auto-plan-work默认cap three；本轮不盲目开始第四次修复。按技能交回具体阻断，用户提高自动修复上限后可继续同一树；无需重建树或重跑未变绿色。source HEAD clean da43267d，autographics-dev仍8b62db5c；canonical/ledger未动，所有准备稿未执行；未合入/归档/清理，postlanding批量到期门也未启动。原source/SDK/manifest/锁配置后置核验两端仍通过。故障候选登记KNOWN-DEBT但不授权延期/豁免。
 
 ## 10. 待澄清事项
 

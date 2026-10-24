@@ -3165,3 +3165,10 @@ P2原合同缺陷候选，非可延期债务：受审75277a7b7b8d1b43f840c899372
 ### PLAN-845 R2 — F-845-R1-01 独立关闭（2026-10-24）
 
 冻结e518f5fc778cfa6827f7de9eb99b4c0910ef294d/r2，新独立上下文复审pass。原反例与三控制、永久来源生命周期2/2、独立SaveAs/坏Verify/坏Open/解绑Undo兄弟状态通过；SourceSnapshot/Last Run/真实Auto回调错误均正确标记memory/hash或当前root已确认来源。F01关闭，无延期或合同降级；reviewed9/10，T10及全部merge-owned完整门pending，未合入/交付。[独立R2证据](attachments/845/review-r2/review.md)。保留R1历史及其他计划记录。
+
+
+### PLAN-845 merge — F-845-M1-04（2026-10-25，阻断 / needs_fix）
+
+冻结da43267d4dffe9064d9d95585b7b56416b730d5e，consumer-user Move实际native phase6要求Single Step恰好一tick，但暂停trace54仍54（应55），Paused/error null；生产端同源完整Move通过。尚不能区分原生点击未接收与consumer运行时分发问题，不当作已知flake/可延期债务，不放宽原断言。共享play::Probe phases5/6→native click/post→Host play-step→PlaySession single_step，并影响后续user/project native。原始[失败报告](attachments/845/merge-r1/consumer-user/move/report.json.txt)、[诊断/剩余门](attachments/845/merge-r1/failure-m1-04.json.txt)、[收据](attachments/845/merge-r1/receipt.md)。
+
+producer/consumer完整driver各155、AGP各163和已绿原生门保留身份；消费端user余12/两端project各15与实际UI输出搬迁各2/完整81-call审核未执行。前三次自动修复已独立关闭，默认三轮cap到达；无第四次源修复、未合入/沉淀/归档/清理，保留同一845 clean树。需明确click接收/pending/tick过渡、永久反例控制、同树修复提交与受影响独立复审后补所需完整门。登记不授权合同缩面或豁免。
