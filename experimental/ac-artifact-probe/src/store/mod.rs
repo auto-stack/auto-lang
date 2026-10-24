@@ -911,12 +911,18 @@ impl ManagedStore {
                 chunk_id
             )));
         }
-        let mut bytes = Vec::new();
+        // EXACT-capacity bounded read (F-817-R9-01): one fixed-size
+        // buffer of precisely the verified file length — read_to_end's
+        // implicit growth is NOT used, so the single content allocation
+        // equals `real_len` (<= the granted bound) with no capacity
+        // overshoot. A file SHRINKING after the metadata check fails
+        // read_exact (UnexpectedEof -> controlled Io error); one
+        // GROWING yields exactly real_len bytes, which the framing/CAS
+        // admission below rejects.
+        let mut bytes = vec![0u8; real_len as usize];
         use std::io::Read as _;
-        (&mut file)
-            .take(max_bytes)
-            .read_to_end(&mut bytes)
-            .map_err(|e| StoreError::Io(e.to_string()))?;
+        file.read_exact(&mut bytes)
+            .map_err(|e| StoreError::Io(format!("bounded chunk read: {e}")))?;
         // Admission: recompute the framed-byte content identity.
         let actual = ChunkId::from_parts(&[bytes.as_slice()]).0;
         if actual != chunk_id {

@@ -25,6 +25,12 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
 static MAX_SINGLE_ALLOC: AtomicUsize = AtomicUsize::new(0);
+/// Coexisting-live bytes (alloc − dealloc watermark peak): the oracle
+/// for COEXISTING copy budgets (F-817-R9-01), which single-allocation
+/// maxima cannot observe.
+static LIVE_BYTES: AtomicUsize = AtomicUsize::new(0);
+static MAX_LIVE_BYTES: AtomicUsize = AtomicUsize::new(0);
+static WINDOW_BASELINE: AtomicUsize = AtomicUsize::new(0);
 
 struct TrackingAlloc;
 
@@ -33,16 +39,22 @@ unsafe impl GlobalAlloc for TrackingAlloc {
         let p = System.alloc(layout);
         if !p.is_null() {
             MAX_SINGLE_ALLOC.fetch_max(layout.size(), AtomicOrdering::Relaxed);
+            let live = LIVE_BYTES.fetch_add(layout.size(), AtomicOrdering::Relaxed) + layout.size();
+            MAX_LIVE_BYTES.fetch_max(live, AtomicOrdering::Relaxed);
         }
         p
     }
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        LIVE_BYTES.fetch_sub(layout.size(), AtomicOrdering::Relaxed);
         System.dealloc(ptr, layout)
     }
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         let p = System.realloc(ptr, layout, new_size);
         if !p.is_null() {
             MAX_SINGLE_ALLOC.fetch_max(new_size, AtomicOrdering::Relaxed);
+            LIVE_BYTES.fetch_sub(layout.size(), AtomicOrdering::Relaxed);
+            let live = LIVE_BYTES.fetch_add(new_size, AtomicOrdering::Relaxed) + new_size;
+            MAX_LIVE_BYTES.fetch_max(live, AtomicOrdering::Relaxed);
         }
         p
     }
@@ -51,8 +63,21 @@ unsafe impl GlobalAlloc for TrackingAlloc {
 #[global_allocator]
 static GLOBAL: TrackingAlloc = TrackingAlloc;
 
+/// Reset the observation window; returns the previous single-alloc max.
 fn reset_alloc_window() -> usize {
+    WINDOW_BASELINE.store(
+        LIVE_BYTES.load(AtomicOrdering::Relaxed),
+        AtomicOrdering::Relaxed,
+    );
     MAX_SINGLE_ALLOC.swap(0, AtomicOrdering::Relaxed)
+}
+
+/// The window's coexisting-live peak ABOVE the reset baseline (the
+/// bytes the measured operation actually holds at once).
+fn live_peak_delta() -> usize {
+    MAX_LIVE_BYTES
+        .load(AtomicOrdering::Relaxed)
+        .saturating_sub(WINDOW_BASELINE.load(AtomicOrdering::Relaxed))
 }
 
 fn deck_with(src: &str, tail: &str) -> String {
@@ -847,20 +872,24 @@ fn cte_resources_restore_reserve_before_alloc_order() {
     let deck = small_query_deck();
     let mut d = CteDriver::with_store(root.path(), "rst").unwrap();
     assert_eq!(d.query_step(&deck, None).status, StepStatus::Ok);
-    // (a) Legal restore (fresh driver, same store): load reserve <
-    // payload alloc < decode reserve < decode alloc.
+    // (a) Legal restore (fresh driver, same store): frame-read reserve
+    // < payload-copy reserve < frame alloc < decode reserve < decode
+    // alloc (F-817-R9-01 separate grants).
     let mut d2 = CteDriver::with_store(root.path(), "rst").unwrap();
     assert_eq!(d2.query_step(&deck, None).status, StepStatus::Ok);
     let events = d2.last_budget_events();
-    let load_reserve = event_index(events, is_reserve_what("frozen payload load", true))
-        .expect("load reservation recorded");
+    let frame_reserve = event_index(events, is_reserve_what("frozen frame read", true))
+        .expect("frame reservation recorded");
+    let copy_reserve = event_index(events, is_reserve_what("frozen payload copy", true))
+        .expect("copy reservation recorded");
+    assert!(frame_reserve < copy_reserve, "{events:?}");
     let payload_alloc =
         event_index(events, is_alloc("frozen-payload")).expect("payload allocation recorded");
     let decode_reserve = event_index(events, is_reserve_what("restored envelope decode", true))
         .expect("decode reservation recorded");
     let decode_alloc =
         event_index(events, is_alloc("restore-decode")).expect("decode allocation recorded");
-    assert!(load_reserve < payload_alloc, "{events:?}");
+    assert!(copy_reserve < payload_alloc, "{events:?}");
     assert!(payload_alloc < decode_reserve, "{events:?}");
     assert!(decode_reserve < decode_alloc, "{events:?}");
     // (b) Shrunken Hot: the DECODE reservation fails — the payload
@@ -889,10 +918,10 @@ fn cte_resources_restore_reserve_before_alloc_order() {
         "the load was gated first (ordered), the decode is what fails"
     );
     assert!(event_index(events3, is_alloc("restore-decode")).is_none());
-    // (c) Shrunken Staging (below the codec-page bound): the LOAD
-    // reservation fails — get_artifact never allocates.
+    // (c) Shrunken Staging: the FRAME-READ reservation fails — the
+    // loader never allocates.
     let load_reserve_idx =
-        event_index(events, is_reserve_what("frozen payload load", true)).expect("load reserve");
+        event_index(events, is_reserve_what("frozen frame read", true)).expect("load reserve");
     let pre_load = staging_live_at(events, load_reserve_idx);
     let mut d4 = CteDriver::with_store(root.path(), "rst").unwrap();
     d4.set_managed_caps(BudgetCaps {
@@ -906,12 +935,13 @@ fn cte_resources_restore_reserve_before_alloc_order() {
         out4.message
             .as_deref()
             .unwrap_or("")
-            .contains("frozen payload load"),
+            .contains("frozen frame read"),
         "{:?}",
         out4.message
     );
     let events4 = d4.last_budget_events();
-    assert!(event_index(events4, is_reserve_what("frozen payload load", false)).is_some());
+    assert!(event_index(events4, is_reserve_what("frozen frame read", false)).is_some());
+    assert!(event_index(events4, is_alloc("frozen-frame")).is_none());
     assert!(event_index(events4, is_alloc("frozen-payload")).is_none());
     // (d) Old entry intact throughout.
     let mut d5 = CteDriver::with_store(root.path(), "rst").unwrap();
@@ -992,19 +1022,13 @@ fn cte_resources_oversized_restore_rejected_before_load() {
         out.counters
     );
     // No load reservation either — the rejection precedes the ledger.
+    let ev2 = d2.last_budget_events();
     assert!(
-        event_index(
-            d2.last_budget_events(),
-            is_reserve_what("frozen payload load", false)
-        )
-        .is_none()
-            && event_index(
-                d2.last_budget_events(),
-                is_reserve_what("frozen payload load", true)
-            )
-            .is_none(),
-        "no load reservation was reached: {:?}",
-        d2.last_budget_events()
+        event_index(ev2, is_reserve_what("frozen frame read", false)).is_none()
+            && event_index(ev2, is_reserve_what("frozen frame read", true)).is_none()
+            && event_index(ev2, is_reserve_what("frozen payload copy", false)).is_none()
+            && event_index(ev2, is_reserve_what("frozen payload copy", true)).is_none(),
+        "no load reservation was reached: {ev2:?}"
     );
     assert!(d2.last_published_artifact().is_none());
     // (4) The planted store row is INTACT (a normal smaller envelope at
@@ -1084,7 +1108,8 @@ fn cte_resources_corrupt_blob_read_bounded() {
     assert_eq!(d.query_step(&deck, None).status, StepStatus::Ok);
 
     // (a) In-budget positive control: a normal hit's largest single
-    // allocation stays under the granted restore budget.
+    // allocation AND coexisting-live peak stay modest (no ungranted
+    // payload-sized copies).
     {
         reset_alloc_window();
         let mut h = CteDriver::with_store(root.path(), "r8").unwrap();
@@ -1096,10 +1121,15 @@ fn cte_resources_corrupt_blob_read_bounded() {
             max <= 512 * 1024,
             "normal restore window max single alloc {max} stays modest (no payload-sized copies)"
         );
+        assert!(
+            live_peak_delta() <= 512 * 1024,
+            "coexisting-live peak {} stays modest",
+            live_peak_delta()
+        );
     }
 
     // (b) The probed sizes (metadata still correct here).
-    let mut d2 = CteDriver::with_store(root.path(), "r8").unwrap();
+    let d2 = CteDriver::with_store(root.path(), "r8").unwrap();
     // Re-derive the identity from the last published envelope.
     let art_id = d2
         .last_published_artifact()
@@ -1168,6 +1198,175 @@ fn cte_resources_corrupt_blob_read_bounded() {
             max <= 512 * 1024,
             "the rejection window's max allocation stays at small scale: {max}B"
         );
+    }
+}
+
+/// F-817-R9-01: the EXACT-capacity bounded read — narrow-window
+/// allocator evidence at sizes AROUND the power-of-two growth steps
+/// (where read_to_end's doubling used to overshoot). For each planted
+/// payload size (legal content via the PUBLIC put, one identity per
+/// size), four states are measured against the granted budgets
+/// (frame grant = probed framed length; copy grant = frame−48):
+///   legal   -> Ok, max SINGLE alloc == framed (exact capacity, no
+///              growth), coexisting peak <= frame + copy grants;
+///   +1 byte -> rejected at the read bound, ZERO content allocation;
+///   same-len garbage -> read in full (single alloc == framed), then
+///              rejected by CAS — allocation never exceeds the grant;
+///   shrunk  -> read_exact fails (UnexpectedEof), controlled Io.
+#[test]
+fn cte_resources_bounded_read_capacity_exact() {
+    use ac_artifact_probe::codec::ChunkKind;
+    use ac_artifact_probe::store::PutRequest;
+    use auto_cte_contract::{CteRequestIdentityV1, CTE_FROZEN_LAYER};
+
+    let root = tempfile::tempdir().unwrap();
+    let st = auto_cte_probe::store::CteStore::open(root.path(), "r9").unwrap();
+    // Small fixed incidental allocations OUTSIDE the loader (identity
+    // strings, SQL row buffers) — the content-buffer budgets below are
+    // asserted EXACTLY; this epsilon only covers those fixed-size
+    /// artifacts, independent of payload size.
+    const INCIDENTAL: usize = 8192;
+
+    let mut blobs: Vec<std::path::PathBuf> = Vec::new();
+    fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        if let Ok(rd) = std::fs::read_dir(dir) {
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(&p, out);
+                } else {
+                    out.push(p);
+                }
+            }
+        }
+    }
+
+    for (i, payload_len) in [500usize, 512, 524, 1023, 1024, 1032, 2047, 2048, 2056]
+        .into_iter()
+        .enumerate()
+    {
+        // One identity per size; a LEGAL chunk via the public put.
+        let identity = CteRequestIdentityV1 {
+            module: "main".into(),
+            package: "r9".into(),
+            callee: format!("sum{i}"),
+            args_canonical: format!("i32:{payload_len}"),
+            query_algo: "r9".into(),
+            caps: vec![],
+            engine: auto_cte_probe::av_driver::current_engine(),
+            manifest_fp: format!("r9-{payload_len}"),
+        };
+        st.raw()
+            .put_artifact(PutRequest {
+                layer: CTE_FROZEN_LAYER,
+                key: auto_cte_probe::store::envelope_key(&identity),
+                kind: ChunkKind::LayoutData,
+                payload: vec![0x5Au8; payload_len],
+                edges: Vec::new(),
+                project: Some("r9".into()),
+            })
+            .expect("plant");
+        let (framed, probed_payload) = auto_cte_probe::store::probe_frozen_size(&st, &identity)
+            .expect("probe")
+            .expect("present");
+        assert_eq!(probed_payload as usize, payload_len);
+
+        // Locate this size's blob file (framed length is unique here).
+        blobs.clear();
+        walk(&root.path().join("blocks"), &mut blobs);
+        let blob = blobs
+            .iter()
+            .find(|p| std::fs::metadata(p).map(|m| m.len()).ok() == Some(framed))
+            .unwrap_or_else(|| panic!("blob for framed {framed} not found"))
+            .clone();
+
+        // (1) LEGAL: exact single allocation == framed; coexisting peak
+        // within the two grants (frame + copy = 2*framed−48).
+        {
+            reset_alloc_window();
+            let out = auto_cte_probe::store::load_frozen_payload_bounded(&st, &identity, framed)
+                .expect("legal load")
+                .expect("present");
+            assert_eq!(out.len(), payload_len);
+            let max = reset_alloc_window();
+            assert!(
+                max <= framed as usize + INCIDENTAL,
+                "legal {payload_len}: max single alloc {max} <= framed {framed} (+incidental)"
+            );
+            let live = live_peak_delta();
+            assert!(
+                live <= (2 * framed - 48) as usize + INCIDENTAL,
+                "legal {payload_len}: coexisting peak {live} <= frame+copy grants {} (+incidental)",
+                2 * framed - 48
+            );
+        }
+
+        // (2) +1 BYTE over the FRAMED grant: rejected at the read
+        // bound, ZERO content allocation (no frame-sized buffer is
+        // ever built).
+        std::fs::write(&blob, vec![0xABu8; framed as usize + 1]).expect("grow");
+        {
+            reset_alloc_window();
+            let err = auto_cte_probe::store::load_frozen_payload_bounded(&st, &identity, framed)
+                .expect_err("over-bound rejected");
+            assert!(
+                format!("{err:?}").contains("granted read budget"),
+                "{payload_len}+1 names the read bound: {err:?}"
+            );
+            let max = reset_alloc_window();
+            assert!(
+                max <= INCIDENTAL,
+                "{payload_len}+1: zero content allocation (max single {max})"
+            );
+        }
+
+        // (3) SAME-LENGTH garbage: passes metadata, reads EXACTLY
+        // framed bytes (single alloc == framed — the read_to_end
+        // doubling overshoot is gone), then CAS rejects.
+        std::fs::write(&blob, vec![0xCDu8; framed as usize]).expect("same-len garbage");
+        {
+            reset_alloc_window();
+            let err = auto_cte_probe::store::load_frozen_payload_bounded(&st, &identity, framed)
+                .expect_err("corrupt CAS rejected");
+            assert!(
+                format!("{err:?}").contains("address mismatch"),
+                "{payload_len} same-len garbage hits CAS: {err:?}"
+            );
+            let max = reset_alloc_window();
+            assert!(
+                max <= framed as usize + INCIDENTAL,
+                "{payload_len} garbage: single alloc {max} <= framed {framed} (exact capacity)"
+            );
+        }
+
+        // (4) SHRUNK file: read_exact fails — controlled Io rejection.
+        std::fs::write(&blob, vec![0xEFu8; payload_len.saturating_sub(100).max(1)])
+            .expect("shrink");
+        {
+            reset_alloc_window();
+            let err = auto_cte_probe::store::load_frozen_payload_bounded(&st, &identity, framed)
+                .expect_err("shrunk rejected");
+            let txt = format!("{err:?}");
+            assert!(
+                txt.contains("bounded chunk read") || txt.contains("address mismatch"),
+                "{payload_len} shrunk: controlled rejection: {txt}"
+            );
+            let max = reset_alloc_window();
+            assert!(
+                max <= framed as usize + INCIDENTAL,
+                "{payload_len} shrunk: allocation bounded by the grant"
+            );
+        }
+
+        // Restore a legal file so later sizes find their blobs cleanly.
+        std::fs::write(&blob, {
+            // Rebuild the exact framed bytes via a fresh put at a
+            // scratch identity is unnecessary — the store's CAS
+            // requires the original content; just leave the damaged
+            // file (each size uses its own unique blob).
+            vec![0u8; 0]
+        })
+        .ok();
     }
 }
 

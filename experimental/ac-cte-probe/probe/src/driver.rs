@@ -581,17 +581,23 @@ impl CteDriver {
                 manifest_fp: mfp,
             };
             // Cache lookup first — a hit must never touch the AV. The
-            // restore is bounded IN ORDER (F-817-R7-01):
+            // restore is bounded IN ORDER with SEPARATE grants
+            // (F-817-R9-01: the hard read cap and the coexisting
+            // copies never share one budget):
             //   0. a ZERO-ALLOCATION size probe (the store's own
             //      `chunks.size` metadata) — an oversized/foreign
             //      carrier is rejected BEFORE any reassembly happens;
-            //   1. the reservation covers the loader's TRUE transient
-            //      footprint (the framed Vec + the unframed payload
-            //      copy = framed + payload bytes);
-            //   2. the loaded length must equal the probe (chunks are
+            //   1. the frame read grant: the loader's content buffer is
+            //      EXACT-capacity (one allocation == the verified file
+            //      length <= this grant);
+            //   2. the payload copy grant: `get_artifact_bounded`'s
+            //      unframed `to_vec` runs while the frame is still
+            //      alive — a SEPARATE grant of frame-48 covers the
+            //      coexisting peak (frame + copy <= 2*frame-48);
+            //   3. the loaded length must equal the probe (chunks are
             //      content-addressed; a drift is a foreign-write
             //      window — controlled infra rejection);
-            //   3. the decode reserves Hot at a conservative 2× the
+            //   4. the decode reserves Hot at a conservative 2x the
             //      payload (serde structures — BTreeMap nodes, String
             //      capacities — plus the payload alive alongside).
             let (cached, held_hot): (Option<CteExecutedV1>, u64) = match self.store.as_ref() {
@@ -616,13 +622,29 @@ impl CteDriver {
                                 );
                                 return CteStepOutcome::diag(&e, cache_verdict, obs);
                             }
-                            // The loader's real transient: fs::read returns the
-                            // framed Vec, unframe slices it, the payload is
-                            // copied out — framed + payload bytes coexist.
+                            // SEPARATE grants (F-817-R9-01): the frame read
+                            // cap is `framed_len` (NOT the total) — a file
+                            // even slightly larger than the probed frame
+                            // size is rejected at the read bound — and the
+                            // coexisting payload copy gets its own
+                            // frame-48 grant.
                             if let Err(m) = budget.reserve(
                                 crate::observe::Partition::Staging,
-                                framed_len + payload_len,
-                                "frozen payload load",
+                                framed_len,
+                                "frozen frame read",
+                            ) {
+                                let e = CteAdmissionError::new(
+                                    CteCode::Resource("managed-staging".into()),
+                                    m,
+                                );
+                                return CteStepOutcome::diag(&e, cache_verdict, obs);
+                            }
+                            if let Err(m) = budget.reserve(
+                                crate::observe::Partition::Staging,
+                                framed_len.saturating_sub(
+                                    ac_artifact_probe::codec::CHUNK_HEADER_LEN as u64,
+                                ),
+                                "frozen payload copy",
                             ) {
                                 let e = CteAdmissionError::new(
                                     CteCode::Resource("managed-staging".into()),
@@ -631,17 +653,11 @@ impl CteDriver {
                                 return CteStepOutcome::diag(&e, cache_verdict, obs);
                             }
                             obs.counter("frozen_load_attempts", 1);
-                            // The loader is HARD-BOUNDED by the granted
-                            // budget (F-817-R8-01): a blob whose real file
-                            // size exceeds the reservation is rejected
-                            // BEFORE any content read (metadata/file drift,
-                            // foreign writes, truncation all covered).
+                            // The loader is HARD-BOUNDED by the frame
+                            // grant (F-817-R8/R9): exact-capacity read,
+                            // coexisting copy separately granted.
                             match obs.span("cache_lookup", |_| {
-                                store::load_frozen_payload_bounded(
-                                    st,
-                                    &identity,
-                                    framed_len + payload_len,
-                                )
+                                store::load_frozen_payload_bounded(st, &identity, framed_len)
                             }) {
                                 Ok(Some(payload)) => {
                                     if (payload.len() as u64) != payload_len {
@@ -654,6 +670,7 @@ impl CteDriver {
                                         );
                                         return CteStepOutcome::diag(&e, cache_verdict, obs);
                                     }
+                                    budget.record_alloc("frozen-frame", payload.len() as u64 + 48);
                                     budget.record_alloc("frozen-payload", payload.len() as u64);
                                     if let Err(m) = budget.reserve(
                                         crate::observe::Partition::Hot,
@@ -676,7 +693,14 @@ impl CteDriver {
                                             );
                                             budget.release(
                                                 crate::observe::Partition::Staging,
-                                                framed_len + payload_len,
+                                                framed_len,
+                                            );
+                                            budget.release(
+                                                crate::observe::Partition::Staging,
+                                                framed_len.saturating_sub(
+                                                    ac_artifact_probe::codec::CHUNK_HEADER_LEN
+                                                        as u64,
+                                                ),
                                             );
                                             (Some(env), payload_len.saturating_mul(2))
                                         }
@@ -686,9 +710,12 @@ impl CteDriver {
                                     }
                                 }
                                 Ok(None) => {
+                                    budget.release(crate::observe::Partition::Staging, framed_len);
                                     budget.release(
                                         crate::observe::Partition::Staging,
-                                        framed_len + payload_len,
+                                        framed_len.saturating_sub(
+                                            ac_artifact_probe::codec::CHUNK_HEADER_LEN as u64,
+                                        ),
                                     );
                                     (None, 0)
                                 }
