@@ -27,6 +27,7 @@ fn main() {
     }
     match args[0].as_str() {
         "restore-run" => restore_run(&args[1..]),
+        "data-restore-run" => data_restore_run(&args[1..]),
         "request" => request(&args[1..]),
         "gc-loop" => gc_loop(&args[1..]),
         "case-serve" => case_serve(),
@@ -45,6 +46,7 @@ fn main() {
 
 fn usage() -> ! {
     eprintln!("usage: av_probe_worker restore-run --store DIR --owner NAME --entry FN --manifest-artifact ID [--snapshot HEX] [--caps C1,C2]");
+    eprintln!("       av_probe_worker data-restore-run --store DIR --owner NAME --entry FN --snapshot HEX --types-fp FP   (PLAN-820: data-profile module restore, re-verify, execute)");
     eprintln!("       av_probe_worker request --store DIR --src-file FILE --entry FN [--project P] [--caps C1,C2]");
     eprintln!("       av_probe_worker gc-loop --store DIR --stop-file FILE [--interval-ms N]");
     eprintln!("       av_probe_worker bench-turnaround --samples N --gate-ms MS --out FILE");
@@ -861,4 +863,55 @@ fn session_serve() -> ! {
         }
     }
     exit(0)
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-820: data-profile module restore + run (new-worker seam)
+// ---------------------------------------------------------------------------
+
+fn data_restore_run(args: &[String]) -> ! {
+    let mut store: Option<PathBuf> = None;
+    let mut owner = String::new();
+    let mut entry = String::new();
+    let mut snapshot: Option<u64> = None;
+    let mut types_fp = String::new();
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--store" => store = Some(PathBuf::from(&args[i + 1])),
+            "--owner" => owner = args[i + 1].clone(),
+            "--entry" => entry = args[i + 1].clone(),
+            "--snapshot" => {
+                snapshot = Some(
+                    u64::from_str_radix(args[i + 1].trim_start_matches("0x"), 16)
+                        .expect("hex snapshot"),
+                )
+            }
+            "--types-fp" => types_fp = args[i + 1].clone(),
+            other => {
+                eprintln!("data-restore-run: unknown flag `{}`", other);
+                exit(2);
+            }
+        }
+        i += 2;
+    }
+    let (Some(store), Some(snapshot)) = (store, snapshot) else {
+        eprintln!(
+            "data-restore-run: --store/--owner/--entry/--snapshot/--types-fp are all required"
+        );
+        exit(2);
+    };
+    match auto_av_probe::data_driver::restore_data(&store, &owner, &entry, snapshot, &types_fp) {
+        Ok(out) => {
+            println!("{:?}", out);
+            match out {
+                auto_av_core::contract::ExecOutcome::Success { .. } => exit(0),
+                _ => exit(3),
+            }
+        }
+        Err(e) => {
+            eprintln!("data-restore-run failed: {}", e);
+            exit(1);
+        }
+    }
 }

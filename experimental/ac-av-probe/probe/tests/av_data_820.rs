@@ -663,3 +663,130 @@ fn av_data_820_wire_family_isolation() {
     let err = decode_abc(&wire).unwrap_err();
     assert_eq!(err.code(), "abc.decode.checksum");
 }
+
+// ---------------------------------------------------------------------------
+// V-08 first cut: same-store persistence + new-process worker restore
+// ---------------------------------------------------------------------------
+
+const FIRST_CASE_SRC: &str = "\
+type Inner { x int }
+type Outer { inner Inner }
+fn main() int {
+    var o = Outer { inner: Inner { x: 40 } }
+    o.inner.x = o.inner.x + 2
+    return o.inner.x
+}
+";
+
+#[test]
+fn av_data_820_store_restore_new_process() {
+    use auto_av_core::contract::ExecOutcome;
+    let tmp = std::env::temp_dir().join(format!(
+        "av820-store-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    // Fresh request persists the AVAD module under the data layer.
+    let r = auto_av_probe::data_driver::request_data(
+        Some(&tmp),
+        "av820",
+        FIRST_CASE_SRC,
+        "d_main",
+        &[],
+    )
+    .expect("data request");
+    assert!(
+        matches!(
+            r.av,
+            Some(ExecOutcome::Success {
+                value: Value::I32(42),
+                ..
+            })
+        ),
+        "fresh data request returns 42, got {:?}",
+        r.av
+    );
+    let art = r.artifact.expect("artifact persisted");
+    assert!(!art.is_empty());
+
+    // Same-store IN-PROCESS restore re-verifies and returns the same value.
+    let restored = auto_av_probe::data_driver::restore_data(
+        &tmp,
+        &r.owner,
+        "d_main",
+        r.snapshot,
+        &types_fp_of_source(FIRST_CASE_SRC),
+    )
+    .expect("restore");
+    assert!(
+        matches!(
+            restored,
+            ExecOutcome::Success {
+                value: Value::I32(42),
+                ..
+            }
+        ),
+        "restored data module returns 42, got {restored:?}"
+    );
+
+    // NEW-PROCESS worker restore: re-verify + execute in a fresh process.
+    let worker = env!("CARGO_BIN_EXE_av_probe_worker");
+    let out = std::process::Command::new(worker)
+        .arg("data-restore-run")
+        .arg("--store")
+        .arg(&tmp)
+        .arg("--owner")
+        .arg(&r.owner)
+        .arg("--entry")
+        .arg("d_main")
+        .arg("--snapshot")
+        .arg(format!("{:016x}", r.snapshot))
+        .arg("--types-fp")
+        .arg(types_fp_of_source(FIRST_CASE_SRC))
+        .output()
+        .expect("spawn worker");
+    assert!(
+        out.status.success(),
+        "worker restore-run exits 0; stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(
+        stdout.contains("Success"),
+        "worker reports Success, got {stdout}"
+    );
+    assert!(
+        stdout.contains("I32(42)"),
+        "worker value is 42, got {stdout}"
+    );
+
+    // A wrong types fingerprint (dependency change) is a CLEAN MISS — the
+    // changed-type artifact never executes (no stale reuse).
+    let err = auto_av_probe::data_driver::restore_data(
+        &tmp,
+        &r.owner,
+        "d_main",
+        r.snapshot,
+        "0000000000000000",
+    )
+    .unwrap_err();
+    assert!(
+        err.contains("not found"),
+        "wrong types-fp misses, got {err}"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+fn types_fp_of_source(src: &str) -> String {
+    let compiled =
+        auto_ac_prototype::source::compile_record_source(src, "data.at", &[]).expect("compile");
+    let mir = auto_av_probe::hir_adapter::lower_checked_data(&compiled.checked, "d_main", 0)
+        .expect("lower");
+    auto_av_probe::data_driver::types_fp_of(&mir)
+}
