@@ -134,3 +134,9 @@ DynamicComponent 泵续跑 Init/CPU/I/O，并重建视图登记下层 demand，�
 
 该约束只修正测试载体，未修改生产 dynamic.rs 或 VM 调度。D-762-1 的生产
 helper 债及其单独授权约束保持，不冒称本计划清偿了生产 helper。
+
+RQHost 末窗测试中的待定采纳必须来自真实服务端发布：客户端 adopt 返回
+不代表其 peer 已入 pending，须按有界条件等待并持有实际客户端端点。
+不得手工把客户端端点再塞入服务端 pending 冒充采纳；否则真实 peer 晚到可
+污染清空后的关闭断言。原双窗/待定/末窗/从未开窗的停机断言保持，生产
+rq_update 的退出逻辑不变。

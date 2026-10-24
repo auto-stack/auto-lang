@@ -2238,13 +2238,28 @@ mod tests {
         let _ = rq_update(&mut state, RqMessage::WindowClosed { window: win_a });
         assert!(!state.serve.stop_requested(), "双窗在册不退");
         // ② 单窗在册：关 B 前不退（① 已闭 A）——此刻关 B = 末窗。
-        //    先注入待定采纳占位验证 ③：pending 非空 → 不退。
-        state.serve.pending.lock().unwrap().push({
-            // 真实在途采纳占位（adopt 已转连未 Hello——per-adoption 线程
-            // 交付形态；不发 Hello 即驻 pending）。
-            let (_, end) = adopt(&pipe, "gamma", 2000).expect("adopt gamma");
-            ("gamma".into(), end)
-        });
+        //    等真实服务端采纳发布验证 ③：pending 非空 → 不退。
+        // adopt returns the CLIENT endpoint before the server thread necessarily
+        // publishes its peer. Manually pushing that client endpoint fabricated a
+        // duplicate pending entry; the real peer could arrive after clear().
+        let (_, gamma_end) = adopt(&pipe, "gamma", 2000).expect("adopt gamma");
+        ends.push(gamma_end); // keep the client alive without sending Hello
+        let pending_deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !state
+            .serve
+            .pending
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(name, _)| name == "gamma")
+        {
+            assert!(
+                std::time::Instant::now() < pending_deadline,
+                "gamma server endpoint was not published within 5s"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert_eq!(state.serve.pending.lock().unwrap().len(), 1);
         let _ = rq_update(&mut state, RqMessage::WindowClosed { window: win_b });
         assert!(
             !state.serve.stop_requested(),
