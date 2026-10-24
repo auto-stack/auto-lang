@@ -1238,11 +1238,19 @@ def main() -> int:
     record("V06d-install-cancel-retry", cancel_ok, cancel_detail)
 
     # ---- V06e：vm profile 经 run_ui 真实运行 + 协议 cancel ----
-    # F831-09-03 REOPEN 修复：mid_alive 不再是证据——run 接受且实际运行须由
-    # 协议观测（run 操作的进度事件，如 resolve backend；无事件假载体确定性
-    # 红）；取消走协议 cancel op（非树杀），期望 cancelled 回执 + owned 树
-    # 回收后才发出的终态 run_ok(outcome=cancelled) + cancel 后宿主会话仍可
-    # 响应（describe 复验）——构成 owned 进程/reader 资源收口的协议观测。
+    # R2 诊断与 oracle 调整（F831-09-03 B 面）：R1 闭合把"任意操作事件"当
+    # 接受证据，观测对象错置在事件通道——run_vm 在解释器启动前即发进度
+    # （:292 resolve backend、:558 vm interpreter 亦为进入解释器前），故
+    # "有事件"状态空间含"VM 从未启动"态，progress-only 合法载体（review-r2
+    # replay-vm-progress）假绿。接受证据改绑只在子应用真实服务时存在的
+    # 观察：①Launched(url) 事件（身份与含义=vm-session 子进程 MCP banner
+    # "AutoUI MCP: listening on http://…" 被 host 前转器嗅探发射，url 即
+    # 实际绑定端口，非任意 event 字串）；②该端点活性探针（真实 axum 监听
+    # 者对 HTTP 请求有应答，含 4xx/5xx 诊断应答）；③寿命收口=cancel 终态
+    # 后同一端点停止应答（同会话同对象的独立外部观测，≤10s 宽限，仍应答
+    # =资源未收口诚实红）——不以 report 自称"已回收"代替观测。宿主存续
+    # describe 复验保持；窗口/终端/媒体全寿命矩阵仍由 autoui-verifier MCP
+    # 冒烟承载（发行收据外记录）。
     vm_ok, vm_detail = False, "未执行"
     vm_proj = scratch / "v06-vm"
     if vm_proj.exists():
@@ -1253,6 +1261,24 @@ def main() -> int:
     (vm_proj / "ui" / "front" / "app.at").write_text(
         "widget App {\n    view {\n        col {\n            text \"vm run\"\n        }\n    }\n}\n",
         encoding="utf-8")
+
+    def _mcp_alive(url: str) -> tuple[bool, str]:
+        """子应用 MCP 端点活性探针：真实监听者对 POST /mcp 有 HTTP 应答
+        （含 JSON-RPC 4xx/5xx 诊断应答——应答本身即监听者存在证明）；
+        连接拒绝/超时=无监听者。只观察，不改子应用状态。"""
+        import urllib.error
+        import urllib.request
+        try:
+            req = urllib.request.Request(
+                url.rstrip("/") + "/mcp", data=b"{}", method="POST",
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return True, f"HTTP {resp.status}"
+        except urllib.error.HTTPError as e:
+            return True, f"HTTP {e.code}（JSON-RPC 诊断应答=监听者在）"
+        except Exception as e:  # noqa: BLE001 — URLError/超时/拒绝统一=无监听者
+            return False, repr(e)[:110]
+
     t0 = time.time()
     toolA = spawn_tool()
     framesA: list[dict] = []
@@ -1267,14 +1293,23 @@ def main() -> int:
                    render={"render": {"kind": "single", "name": "vm"},
                            "legacy_backend": None, "effective_backend": None})}}
         tool_send(toolA, req)
-        # 运行接受观测窗：run 操作的事件（进度）证明已进入真实运行链。
-        run_events: list[str] = []
+        # 接受观测窗：等 Launched(url)（子应用服务实际监听）；进度仅收集
+        # 作过程信息，不作接受证据（R2 反例面：仅启动前进度≠实际运行）。
+        launched_url: str | None = None
+        progress_seen: list[str] = []
         deadline = time.time() + 30.0
         while time.time() < deadline:
-            run_events = [str((f.get("body", {}).get("event") or {}).get("message"))
-                          for f in framesA
-                          if f.get("id") == 500 and f.get("body", {}).get("type") == "event"]
-            if run_events:
+            for f in framesA:
+                if f.get("id") != 500 or f.get("body", {}).get("type") != "event":
+                    continue
+                ev = f.get("body", {}).get("event") or {}
+                if ev.get("event") == "progress":
+                    msg = str(ev.get("message"))
+                    if msg not in progress_seen:
+                        progress_seen.append(msg)
+                if ev.get("event") == "launched" and ev.get("url") and launched_url is None:
+                    launched_url = str(ev["url"])
+            if launched_url:
                 break
             if any(f.get("id") == 500 and f.get("body", {}).get("type") != "event"
                    for f in framesA):
@@ -1282,51 +1317,67 @@ def main() -> int:
             if toolA.poll() is not None:
                 break
             time.sleep(0.2)
-        accepted = bool(run_events)
-        if not accepted:
+        if not launched_url:
             finalsA = [f.get("body", {}).get("type") for f in framesA
                        if f.get("id") == 500 and f.get("body", {}).get("type") != "event"]
-            vm_detail = (f"run_ui(vm) 观测窗内无操作事件（帧数={len(framesA)} 终态="
-                         f"{finalsA[:1]} 工具存活={toolA.poll() is None}）——"
-                         f"run 未被证实接受/运行")
+            vm_detail = (f"run_ui(vm) 观测窗内无 Launched 子应用事件（进度={progress_seen[:3]}"
+                         f" 终态={finalsA[:1]} 工具存活={toolA.poll() is None}）——仅有启动前"
+                         f"进度不能证明 VM 实际运行（R2 progress-only 反例面）")
         else:
-            tool_send(toolA, {"protocol_version": 1, "id": 501,
-                              "body": {"op": "cancel", "target_id": 500}})
-            cancel_ack, final = False, None
-            deadline2 = time.time() + 60.0
-            while time.time() < deadline2:
-                cancel_ack = cancel_ack or any(
-                    f.get("id") == 501 and f.get("body", {}).get("type") == "cancelled"
-                    and f.get("body", {}).get("target_id") == 500 for f in framesA)
-                finals = [f for f in framesA
-                          if f.get("id") == 500 and f.get("body", {}).get("type") == "run_ok"]
-                if finals:
-                    final = finals[0]
-                    break
-                if toolA.poll() is not None:
-                    break
-                time.sleep(0.2)
-            outcome = ((final or {}).get("body", {}).get("report", {}) or {}).get("outcome")
-            # 宿主存续复验：describe 亦走 framesA 单读者通道——collector 线程是
-            # toolA.stdout 的唯一读者，禁止再对同进程做阻塞 roundtrip（双读者
-            # 会互抢帧，describe_ok 被 collector 消费后 roundtrip 永久阻塞——
-            # 真实链首轮整跑实测卡死，假载体反例走不到此步故重放不可见）。
-            session_ok = False
-            if toolA.poll() is None:
-                tool_send(toolA, {"protocol_version": 1, "id": 502,
-                                  "body": {"op": "describe"}})
-                deadline3 = time.time() + 15.0
-                while time.time() < deadline3:
-                    session_ok = any(
-                        f.get("id") == 502 and f.get("body", {}).get("type") == "describe_ok"
-                        for f in framesA)
-                    if session_ok or toolA.poll() is not None:
+            alive, alive_note = _mcp_alive(launched_url)
+            if not alive:
+                vm_detail = (f"Launched url={launched_url} 但端点探活失败（{alive_note}）"
+                             f"——事件声称与真实监听者不符")
+            else:
+                tool_send(toolA, {"protocol_version": 1, "id": 501,
+                                  "body": {"op": "cancel", "target_id": 500}})
+                cancel_ack, final = False, None
+                deadline2 = time.time() + 60.0
+                while time.time() < deadline2:
+                    cancel_ack = cancel_ack or any(
+                        f.get("id") == 501 and f.get("body", {}).get("type") == "cancelled"
+                        and f.get("body", {}).get("target_id") == 500 for f in framesA)
+                    finals = [f for f in framesA
+                              if f.get("id") == 500 and f.get("body", {}).get("type") == "run_ok"]
+                    if finals:
+                        final = finals[0]
+                        break
+                    if toolA.poll() is not None:
                         break
                     time.sleep(0.2)
-            vm_ok = accepted and cancel_ack and outcome == "cancelled" and session_ok
-            vm_detail = (f"run_ui(vm) 事件={run_events[:3]}；协议cancel回执={cancel_ack}；"
-                         f"终态run_ok outcome={outcome}（owned 树回收后发出）；"
-                         f"cancel后宿主describe复验={session_ok}（{time.time() - t0:.0f}s）")
+                outcome = ((final or {}).get("body", {}).get("report", {}) or {}).get("outcome")
+                # 同端点寿命收口：cancelled 终态后同一 MCP 端点须停止应答
+                #（独立外部观测；≤10s 宽限覆盖树杀迟滞，仍应答=未收口红）。
+                endpoint_closed, closure_note = False, ""
+                if outcome == "cancelled":
+                    deadline3 = time.time() + 10.0
+                    while time.time() < deadline3:
+                        still, closure_note = _mcp_alive(launched_url)
+                        if not still:
+                            endpoint_closed = True
+                            break
+                        time.sleep(0.5)
+                # 宿主存续复验：describe 走 framesA 单读者通道（collector 是
+                # toolA.stdout 唯一读者；对同进程阻塞 roundtrip 会互抢帧挂死）。
+                session_ok = False
+                if toolA.poll() is None:
+                    tool_send(toolA, {"protocol_version": 1, "id": 502,
+                                      "body": {"op": "describe"}})
+                    deadline4 = time.time() + 15.0
+                    while time.time() < deadline4:
+                        session_ok = any(
+                            f.get("id") == 502 and f.get("body", {}).get("type") == "describe_ok"
+                            for f in framesA)
+                        if session_ok or toolA.poll() is not None:
+                            break
+                        time.sleep(0.2)
+                vm_ok = (alive and cancel_ack and outcome == "cancelled"
+                         and endpoint_closed and session_ok)
+                vm_detail = (f"run_ui(vm) 进度={progress_seen[:3]}；Launched={launched_url}"
+                             f"（vm-session MCP 子应用）探活[{alive_note}]；协议cancel回执="
+                             f"{cancel_ack}；终态run_ok outcome={outcome}；同端点收口="
+                             f"{endpoint_closed}（{closure_note[:60]}）；cancel后宿主describe"
+                             f"复验={session_ok}（{time.time() - t0:.0f}s）")
     except (EOFError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
         vm_detail = f"会话异常: {exc!r}"
     finally:
