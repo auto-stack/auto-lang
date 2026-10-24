@@ -232,34 +232,67 @@ pub fn load_frozen_payload(
     Ok(Some(loaded.payload))
 }
 
-/// The DECODE budget auditor (F-817-R10-01): a ZERO-ALLOCATION JSON
-/// structural scan of the payload that derives the Hot grant BEFORE
-/// `serde_json::from_slice` runs. serde's container growth is not
-/// anchored by the payload length (a short-string array decoded to a
-/// 12MiB single allocation against a "2x payload" grant), so the grant
-/// is derived from the ACTUAL container population:
+/// The DECODE budget auditor (F-817-R10-01, model repaired in
+/// F-817-R11-01): a ZERO-ALLOCATION JSON structural scan of the payload
+/// that derives the Hot grant BEFORE `serde_json::from_slice` runs.
+/// serde's container growth is not anchored by the payload length (a
+/// short-string array decoded to a 12MiB single allocation against a
+/// "2x payload" grant), so the grant is derived from the ACTUAL token
+/// and container population:
 ///
-///   grant = 2*S                    string CONTENT bytes (serde
-///            allocates each string's bytes once; x2 covers
-///            from_utf8/scratch transients)
+///   grant = S                    string CONTENT bytes (the audit counts
+///            each string's ENCODED span; the decoded copy is never
+///            longer). serde_core's StringVisitor `to_owned`s every
+///            parse result into the envelope being built, so ALL owned
+///            copies coexist in the final structure — one sum covers
+///            them (plain strings take the Borrowed zero-copy path and
+///            cost exactly their owned copy).
+///         + 2*T                    THE one serde_json scratch Vec, at
+///            its peak capacity. `Deserializer::scratch` (serde_json
+///            1.0.154 de.rs) is a single shared buffer — `clear()`ed
+///            (capacity KEPT) per token, grown by Vec doubling — so
+///            its capacity tops out at next_pow2(content) <= 2x the
+///            LARGEST single token it ever held. Tokens that use it:
+///            strings WITH escapes (SliceRead::parse_str_bytes extends
+///            scratch and returns Reference::Copied) and number
+///            literals long enough to reach parse_long_integer /
+///            parse_decimal (the digits accumulate in the same
+///            buffer). T = max over ALL strings and number literals
+///            because the buffer is shared — one term covers both
+///            branches, and charging plain strings too is a bound, not
+///            a bill. The scratch outlives every token (dropped only
+///            with the Deserializer), so the steady worst state is
+///            all-owned + full scratch = S + 2T — exactly the grant.
+///            While a token's scratch GROWS, the realloc'd old+new
+///            blocks briefly coexist: this observer nets reallocs, but
+///            even a strict alloc/copy/dealloc view stays inside the
+///            grant — the transient is prev-owned + 1.5*cap <=
+///            (S - T) + 3T <= S + 2T because the growing token's own
+///            owned copy does not exist yet.
 ///         + A * (3*24*2 + 32)      array ELEMENTS: the widest slot the
 ///            envelope carries is Vec<(String,String,String)> =
 ///            3x24B; Vec doubling keeps <=2x slots live; +32B per
 ///            element covers the allocator's minimum granularity for
 ///            tiny items (empty strings etc.)
-///         + 4096                   fixed top-level fields
+///         + 4096                   fixed top-level fields, tiny-token
+///            scratch floors (a 1-char escaped string still allocates
+///            the 8B minimum Vec slot), and small error-path
+///            formatting.
 ///
-/// Every factor is anchored in the type layout (the widest container
-/// element the envelope carries is the fingerprint triple) and Rust
-/// Vec growth - not an arbitrary multiplier on the payload size.
-/// Nesting deeper than 64 (a legal envelope is <= 5 deep) and
-/// malformed JSON are controlled rejections at the audit itself,
-/// BEFORE any decode allocation. The scan reads the payload slice
-/// only and allocates nothing.
+/// Every factor is anchored in the serde/serde_json code paths and Rust
+/// Vec growth — not an arbitrary multiplier on the payload size (the
+/// old "2x S" string term under-covered the escaped-string tier, where
+/// scratch-capacity + owned coexist at ~3x the string). Nesting deeper
+/// than 64 (a legal envelope is <= 5 deep) and malformed JSON are
+/// controlled rejections at the audit itself, BEFORE any decode
+/// allocation. The scan reads the payload slice only and allocates
+/// nothing.
 pub fn audit_envelope_budget(payload: &[u8]) -> Result<u64, CteAdmissionError> {
     const MAX_DEPTH: usize = 64;
     let mut i = 0usize;
     let mut string_bytes: u64 = 0;
+    let mut string_max: u64 = 0;
+    let mut number_max: u64 = 0;
     let mut array_items: u64 = 0;
 
     fn skip_ws(p: &[u8], i: &mut usize) {
@@ -267,7 +300,12 @@ pub fn audit_envelope_budget(payload: &[u8]) -> Result<u64, CteAdmissionError> {
             *i += 1;
         }
     }
-    fn scan_string(p: &[u8], i: &mut usize, string_bytes: &mut u64) -> Result<(), &'static str> {
+    fn scan_string(
+        p: &[u8],
+        i: &mut usize,
+        string_bytes: &mut u64,
+        string_max: &mut u64,
+    ) -> Result<(), &'static str> {
         if p.get(*i) != Some(&b'"') {
             return Err("expected string");
         }
@@ -276,7 +314,9 @@ pub fn audit_envelope_budget(payload: &[u8]) -> Result<u64, CteAdmissionError> {
         while let Some(&c) = p.get(*i) {
             match c {
                 b'"' => {
-                    *string_bytes += (*i - start) as u64;
+                    let len = (*i - start) as u64;
+                    *string_bytes += len;
+                    *string_max = (*string_max).max(len);
                     *i += 1;
                     return Ok(());
                 }
@@ -294,6 +334,8 @@ pub fn audit_envelope_budget(payload: &[u8]) -> Result<u64, CteAdmissionError> {
         d: usize,
         max_depth: usize,
         string_bytes: &mut u64,
+        string_max: &mut u64,
+        number_max: &mut u64,
         array_items: &mut u64,
     ) -> Result<(), &'static str> {
         if d > max_depth {
@@ -313,13 +355,22 @@ pub fn audit_envelope_budget(payload: &[u8]) -> Result<u64, CteAdmissionError> {
                 }
                 loop {
                     skip_ws(p, i);
-                    scan_string(p, i, string_bytes)?;
+                    scan_string(p, i, string_bytes, string_max)?;
                     skip_ws(p, i);
                     if p.get(*i) != Some(&b':') {
                         return Err("expected ':' in object");
                     }
                     *i += 1;
-                    scan_value(p, i, d + 1, max_depth, string_bytes, array_items)?;
+                    scan_value(
+                        p,
+                        i,
+                        d + 1,
+                        max_depth,
+                        string_bytes,
+                        string_max,
+                        number_max,
+                        array_items,
+                    )?;
                     skip_ws(p, i);
                     match p.get(*i) {
                         Some(&b',') => *i += 1,
@@ -339,7 +390,16 @@ pub fn audit_envelope_budget(payload: &[u8]) -> Result<u64, CteAdmissionError> {
                     return Ok(());
                 }
                 loop {
-                    scan_value(p, i, d + 1, max_depth, string_bytes, array_items)?;
+                    scan_value(
+                        p,
+                        i,
+                        d + 1,
+                        max_depth,
+                        string_bytes,
+                        string_max,
+                        number_max,
+                        array_items,
+                    )?;
                     *array_items += 1;
                     skip_ws(p, i);
                     match p.get(*i) {
@@ -352,7 +412,7 @@ pub fn audit_envelope_budget(payload: &[u8]) -> Result<u64, CteAdmissionError> {
                     }
                 }
             }
-            b'"' => scan_string(p, i, string_bytes),
+            b'"' => scan_string(p, i, string_bytes, string_max),
             b't' | b'f' | b'n' => {
                 for lit in ["true", "false", "null"] {
                     if p[*i..].starts_with(lit.as_bytes()) {
@@ -363,14 +423,15 @@ pub fn audit_envelope_budget(payload: &[u8]) -> Result<u64, CteAdmissionError> {
                 Err("bad json literal")
             }
             b'-' | b'0'..=b'9' => {
+                let start = *i;
                 if p.get(*i) == Some(&b'-') {
                     *i += 1;
                 }
-                let start = *i;
+                let digits_start = *i;
                 while matches!(p.get(*i), Some(b'0'..=b'9')) {
                     *i += 1;
                 }
-                if *i == start {
+                if *i == digits_start {
                     return Err("bad json number");
                 }
                 if p.get(*i) == Some(&b'.') {
@@ -379,6 +440,10 @@ pub fn audit_envelope_budget(payload: &[u8]) -> Result<u64, CteAdmissionError> {
                         *i += 1;
                     }
                 }
+                // The literal's full span feeds parse_long_integer /
+                // parse_decimal's shared scratch when it overflows the
+                // u64 fast path, so its length is a scratch token too.
+                *number_max = (*number_max).max((*i - start) as u64);
                 Ok(())
             }
             _ => Err("unexpected json byte"),
@@ -391,6 +456,8 @@ pub fn audit_envelope_budget(payload: &[u8]) -> Result<u64, CteAdmissionError> {
         0,
         MAX_DEPTH,
         &mut string_bytes,
+        &mut string_max,
+        &mut number_max,
         &mut array_items,
     )
     .map_err(|m| {
@@ -406,8 +473,9 @@ pub fn audit_envelope_budget(payload: &[u8]) -> Result<u64, CteAdmissionError> {
             "envelope audit: trailing bytes after the json value",
         ));
     }
+    let scratch_token = string_max.max(number_max);
     Ok(string_bytes
-        .saturating_mul(2)
+        .saturating_add(scratch_token.saturating_mul(2))
         .saturating_add(array_items.saturating_mul(3 * 24 * 2 + 32))
         .saturating_add(4096))
 }

@@ -36,7 +36,11 @@ function Test-Scope([string]$s) {
             Run-Step "workspace cte_freeze_" { cargo test --manifest-path $ws --offline cte_freeze_ 2>&1 | Select-Object -Last 3 }
         }
         "resources" {
-            Run-Step "workspace cte_resources_" { cargo test --manifest-path $ws --offline --release cte_resources_ 2>&1 | Select-Object -Last 3 }
+            # SERIAL on purpose: the family's allocator windows
+            # (F-817-R8+ global TrackingAlloc) are process-global —
+            # parallel libtest threads cross-pollute the single/live
+            # readouts and turn passing gates spuriously red.
+            Run-Step "workspace cte_resources_" { cargo test --manifest-path $ws --offline --release cte_resources_ -- --test-threads=1 2>&1 | Select-Object -Last 3 }
         }
         "turnaround" {
             Run-Step "workspace cte_turnaround_" { cargo test --manifest-path $ws --offline cte_turnaround_ 2>&1 | Select-Object -Last 3 }

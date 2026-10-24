@@ -30,9 +30,14 @@
   无二次未预留副本）；恢复四段有序（F-817-R7-01）：**零分配大小探测**（经公共 `ManagedStore::db()` 只读 SQL
   `chunks.size`，framed=48B 帧头+载荷）在读取/重组上限处先行拒绝超界载体（加载器零调用）；
   载入预留=loader 真实瞬态足迹（framed Vec+unframed 拷贝）；加载长度须与探测一致（内容
-  寻址漂移=异质写窗口受控拒）；decode 额度来自**零分配结构审计**（JSON 容器计量：字符串
-  内容字节×2+数组元素×最宽槽位布局×Vec 倍增系数+固定项——类型布局锚定，非载荷倍数；
-  非法/超深 JSON 在审计处拒、from_slice 前置）；编码为**精确容量**（count→with_capacity
+  寻址漂移=异质写窗口受控拒）；decode 额度来自**零分配结构审计**（F-817-R10-01 模型、
+  R11-01 修复：JSON 计量=字符串内容字节总和 S（全部 owned 副本同时存活于解码结果）
+  +2×最大单 token 内容 T（serde_json 共享 scratch Vec 峰值容量——转义字符串与超长
+  数字字面量共用该缓冲，Vec 倍增封顶 2×单 token；非转义串走 Borrowed 零拷贝路径）
+  +数组元素×最宽槽位布局×Vec 倍增系数+固定项——每一因子锚定 serde/serde_json 实际
+  代码路径与 Rust Vec 增长策略，非载荷倍数（旧"字符串×2"模型对转义档共存 ~3×单串
+  覆盖不足，R11 反例 268780B 授权 vs 393995B 实测共存）；非法/超深 JSON 在审计处拒、
+  from_slice 前置）；编码为**精确容量**（count→with_capacity
   →to_writer，容量==授权额，无增长链）；worker wire 读入有界（6MiB）且 base64 预检先于解码；预算事件日志
   （Reserve/Alloc/Release 顺序）使"拒绝先于大分配"可观测。
 - **请求累计墙钟（F-817-R6-01）**：单 CTE 请求（调度/缓存/编译执行/consumer/

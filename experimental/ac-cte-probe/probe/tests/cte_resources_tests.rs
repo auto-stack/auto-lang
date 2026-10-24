@@ -1582,6 +1582,183 @@ fn cte_resources_decode_audit_bounded() {
     }
 }
 
+/// Splice a `digits`-long run of 9s over an integer field's literal —
+/// builds a syntactically valid JSON number far past u64 (serde's
+/// `parse_long_integer` consumes the rest of the digits through the
+/// shared scratch buffer before the u64 visitor rejects the result).
+fn splice_giant_number(json: &[u8], field: &str, digits: usize) -> Vec<u8> {
+    let key = format!("\"{field}\":");
+    let pos = json
+        .windows(key.len())
+        .position(|w| w == key.as_bytes())
+        .expect("field present");
+    let mut end = pos + key.len();
+    while json
+        .get(end)
+        .is_some_and(|c| c.is_ascii_digit() || *c == b'-')
+    {
+        end += 1;
+    }
+    let mut out = Vec::with_capacity(json.len() + digits);
+    out.extend_from_slice(&json[..pos + key.len()]);
+    out.extend(std::iter::repeat_n(b'9', digits));
+    out.extend_from_slice(&json[end..]);
+    out
+}
+
+/// F-817-R11-01: the decode Hot grant must cover the REAL serde_json
+/// decode footprint — escaped strings route through the deserializer's
+/// shared scratch Vec (grown by doubling) BEFORE serde_core's
+/// StringVisitor copies the unescaped bytes into the owned String that
+/// lands in the envelope, so the escaped tier coexists at
+/// scratch-capacity + owned ≈ 3x the string while the old "2x S" term
+/// granted 2x. The review's replay shapes (real execution identity,
+/// public put, foreign schema so admission rejects AFTER the decode
+/// allocations happen): source_fp = "x"×N + "\n" + "x"×N vs a plain
+/// control of the same decoded length. Long number literals share the
+/// same scratch buffer (`parse_long_integer`), so they are audited as
+/// tokens too — not just strings.
+#[test]
+fn cte_resources_decode_audit_escaped_scratch_bounded() {
+    use ac_artifact_probe::codec::ChunkKind;
+    use ac_artifact_probe::store::PutRequest;
+    use auto_cte_contract::{CteExecutedV1, CTE_FROZEN_LAYER};
+
+    let seed_root = tempfile::tempdir().unwrap();
+    let deck = small_query_deck();
+    let mut d = CteDriver::with_store(seed_root.path(), "r11").unwrap();
+    assert_eq!(d.query_step(&deck, None).status, StepStatus::Ok);
+    let art_id = d.last_published_artifact().expect("published").to_string();
+    let st_a = auto_cte_probe::store::CteStore::open(seed_root.path(), "r11").unwrap();
+    let loaded = st_a
+        .raw()
+        .get_artifact_by_id(&art_id)
+        .expect("read")
+        .expect("present");
+    let env: CteExecutedV1 = serde_json::from_slice(&loaded.payload).expect("decodes");
+    let identity = env.request_identity.clone();
+
+    for n in [32768usize, 65536, 131072] {
+        for escaped in [true, false] {
+            let mut foreign = env.clone();
+            foreign.schema = "foreign-schema".into();
+            // Escaped: one real newline — serde_json encodes it as the
+            // 2-byte `\n` escape, forcing the scratch path. Plain: same
+            // decoded length (2N+1), zero escapes — Borrowed fast path.
+            foreign.source_fp = if escaped {
+                format!("{}\n{}", "x".repeat(n), "x".repeat(n))
+            } else {
+                format!("{}y{}", "x".repeat(n), "x".repeat(n))
+            };
+            let bytes = serde_json::to_vec(&foreign).unwrap();
+            assert!(
+                bytes.len() <= 1024 * 1024,
+                "plant stays under the read bound"
+            );
+
+            // The audit itself allocates nothing (Ok path).
+            begin_window();
+            let audit = auto_cte_probe::store::audit_envelope_budget(&bytes)
+                .expect("audit scans the syntactic json");
+            let (a_single, a_live) = window_readout();
+            assert_eq!((a_single, a_live), (0, 0), "audit is zero-allocation");
+
+            // DECODE-ONLY window (the payload is NOT part of the Hot
+            // grant): the controlled schema rejection happens AFTER the
+            // decode allocations, so the window observes exactly what
+            // the grant must cover — scratch + owned + containers.
+            begin_window();
+            let decoded = auto_cte_probe::store::decode_envelope(&bytes, &identity);
+            let (single, live) = window_readout();
+            assert!(decoded.is_err(), "foreign schema is rejected");
+            let s_big = 2 * n as u64 + if escaped { 2 } else { 1 };
+            assert!(
+                audit >= s_big + 2 * s_big,
+                "grant ({audit}) covers owned (>= {s_big}) + scratch (2x {s_big})"
+            );
+            assert!(
+                single as u64 <= audit,
+                "largest decode allocation ({single}) over the grant ({audit})"
+            );
+            assert!(
+                live as u64 <= audit,
+                "coexisting decode peak ({live}) over the grant ({audit}) — the R11 replay saw 393995 against 268780 at N=65536"
+            );
+            if escaped {
+                // Sensitivity (the check distinguishes the OLD model):
+                // the measured peak exceeds the old "2x S" string term
+                // even with 16KiB of slack for the container factor and
+                // the fixed fields — so a regression back to 2x S must
+                // turn this test red.
+                assert!(
+                    live as u64 > 2 * s_big + 16384,
+                    "peak ({live}) must exceed the old 2x-string grant + slack (2*{s_big}+16384)"
+                );
+            }
+        }
+    }
+
+    // Long number literals share the scratch Vec: a 100000-digit
+    // `exec_steps` is syntactically valid JSON, so the audit must grant
+    // its token footprint BEFORE from_slice grows the scratch to hold
+    // the digits.
+    let giant = splice_giant_number(&loaded.payload, "exec_steps", 100000);
+    begin_window();
+    let audit =
+        auto_cte_probe::store::audit_envelope_budget(&giant).expect("audit scans the giant number");
+    let (a_single, a_live) = window_readout();
+    assert_eq!((a_single, a_live), (0, 0), "audit is zero-allocation");
+    assert!(
+        audit >= 2 * 100000,
+        "grant ({audit}) covers the number's scratch term"
+    );
+    begin_window();
+    let decoded = auto_cte_probe::store::decode_envelope(&giant, &identity);
+    let (single, live) = window_readout();
+    assert!(decoded.is_err(), "a >u64 literal cannot decode into u64");
+    assert!(
+        single as u64 <= audit,
+        "max single ({single}) over ({audit})"
+    );
+    assert!(
+        live as u64 <= audit,
+        "coexisting peak ({live}) over ({audit})"
+    );
+
+    // DRIVER path, default caps: the (now sufficient) grant fits Hot,
+    // so the foreign envelope reaches the schema rejection — never an
+    // AV recompute, never a publish.
+    let mut foreign = env.clone();
+    foreign.schema = "foreign-schema".into();
+    foreign.source_fp = format!("{}\n{}", "x".repeat(65536), "x".repeat(65536));
+    let bytes = serde_json::to_vec(&foreign).unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let st = auto_cte_probe::store::CteStore::open(root.path(), "r11").unwrap();
+    st.raw()
+        .put_artifact(PutRequest {
+            layer: CTE_FROZEN_LAYER,
+            key: auto_cte_probe::store::envelope_key(&identity),
+            kind: ChunkKind::LayoutData,
+            payload: bytes.clone(),
+            edges: Vec::new(),
+            project: Some("r11".into()),
+        })
+        .expect("plant");
+    let mut drv = CteDriver::with_store(root.path(), "r11").unwrap();
+    let out = drv.query_step(&deck, None);
+    assert_eq!(out.status, StepStatus::Diag, "{:?}", out.message);
+    assert!(
+        out.message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("foreign-schema"),
+        "the rejection is the foreign schema, not the budget: {:?}",
+        out.message
+    );
+    assert_eq!(out.ct_execute, 0);
+    assert!(drv.last_published_artifact().is_none());
+}
+
 /// F-817-R10-03: the observer + thresholds actually DISTINGUISH the
 /// pre-fix algorithm. A faithful in-test replica of the old growth
 /// read (File::take + read_to_end, the R8 shape) on a REAL 100000B

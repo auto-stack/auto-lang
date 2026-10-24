@@ -597,9 +597,11 @@ impl CteDriver {
             //   3. the loaded length must equal the probe (chunks are
             //      content-addressed; a drift is a foreign-write
             //      window — controlled infra rejection);
-            //   4. the decode reserves Hot at a conservative 2x the
-            //      payload (serde structures — BTreeMap nodes, String
-            //      capacities — plus the payload alive alongside).
+            //   4. the decode reserves Hot at the STRUCTURAL AUDIT
+            //      amount (F-817-R10-01/R11-01): owned strings + the
+            //      ONE shared serde scratch Vec (escapes AND long
+            //      number literals are scratch tokens) + container
+            //      slots — see store::audit_envelope_budget.
             let (cached, held_hot): (Option<CteExecutedV1>, u64) = match self.store.as_ref() {
                 Some(st) => {
                     let probed = match obs.span("cache_size_probe", |_| {
