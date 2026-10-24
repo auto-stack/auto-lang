@@ -148,12 +148,16 @@ selected=0 不得 PASS）；根 workspace 门测试 `av_source_827_*`。
 
 ## 8. 修订
 
-- r3（2026-10-25，review-r2 修复轮）：
+- r3（2026-10-25，review-r2 修复轮；同日 review-r3 后补精确绑定修正）：
   - **§5 汇总器规则修正（R2 判定 r2 的全域 skipped>0 红为无效解释）**：判别对象是**必需案例**——
     nextest 的 Starting/Summary 行中 filtered-out 总体 skipped 属过滤排除，不算必需案例跳过；真实跳过信号
     =nextest `SKIP [` 结果行（被选中而跳过）与 libtest `test result:` 行 ignored 计数；每 scope 绑定
     **必需测试 ID 清单**（缺失/改名/红即 whole-scope 红）；selftest 永久重放六控制（过滤正例必须绿/
     真 SKIP 红/缺必需 ID 红/ignored 红/零选择红/真实失败子 scope 同路径红）。
+    **R3 精确绑定修正**：必需 ID 匹配为精确成员名——nextest PASS 行以 `[ :]<id>` 行尾锚定、libtest
+    `^test <id> \.\.\. ok` 整行匹配；`<id>_disabled`/`x_<id>`/`<id>_v2` 近失名形一律不匹配；单 id
+    恰命中一次（0=缺失/改名，>1=重复/歧义中继），必需清单自身重复即红；selftest 碰撞矩阵
+    （12 负控+2 正例）永久重放。
   - **§4 库存合同补全**：stdlib/auto 文件成员为独立行（逐文件 SHA+layer 分类 public/.vm/.rs/.c，
     ≥102 行——37 条 provider 声明只声明所有权，不替代成员分母）；vm-corpus-case 行绑定**源码字节
     SHA**（编辑即换行身份）+oracle sidecar SHA 于 note；入口锚点补 service（cmd_service）与 man
