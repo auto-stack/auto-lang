@@ -203,7 +203,7 @@ T-08列准确完整合入矩阵；**最终独立review pass后**T-10才在冻结
 
 ## 8. 执行步骤
 
-r2 affected final review R3已在冻结a0e2a911独立验闭旧控件门禁定位F-845-M1-01；F-845-R1-01保持R2独立关闭，AC-01..09 pass，当前reviewed9/10。T-09完成、T-10及全部merge-owned完整门仍pending；原完整driver失败不计通过。历史与复用边界见§9及R3收据；本次pass不代表合入或交付，T-10实际关闭才10/10。
+r2 affected final review R4已在冻结152bc7fa独立验闭owner负控断言顺序F-845-M1-02；F-845-R1-01及F-845-M1-01保持独立关闭，AC-01..09 pass，当前reviewed9/10。T-09完成、T-10及受影响完整driver/消费者与尚未执行native等merge-owned门仍pending；已绿且未变输入的门仅按精确身份复用。历史与复用边界见§9及R4收据；本次pass不代表合入或交付，T-10实际关闭才10/10。
 
 | task_id | owner_stage | 依赖 | 真实触点／拟新增路径及动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -215,7 +215,7 @@ r2 affected final review R3已在冻结a0e2a911独立验闭旧控件门禁定位
 | T-06 [x] | work | T-05 | Host/Panel/bin、840正式来源选择与Run、Open/inspect；新host tests | F-845-R1-01工作修复：已存场景新绑定未保存时Run/诊断明确memory/hash；来源生命周期断言及原反例经R2独立验闭；其余V-07证据保留；AC-06 |
 | T-07 [x] | work | T-06 | 新samples/behavior_projects/{move,patrol}、check_behavior_project.py/真实GPU反控 | V-08/10 OS/仓外/同binary/搬迁/源码更新/错误恢复/partial全证据；AC-06, AC-08 |
 | T-08 [x] | work | T-07 | 新check_behavior_project_owners.py、source/独立consumer、README/new research/behavior-project-handoff.md/Spec proposal | F-845-R1-01来源状态永久断言/知识说明经R2独立复审关闭；其余V-01/09/10、owner/source/consumer/check/fmt与merge矩阵证据保留；AC-01, AC-07, AC-08 |
-| T-09 [x] | review | T-08 | 同树冻结code/Plan/Spec与原始报告，主检出独立review附件 | AC-01..08逐项独立审查、遗漏/延后/workaround与健康；AC-09；R3受影响门定位复审通过 |
+| T-09 [x] | review | T-08 | 同树冻结code/Plan/Spec与原始报告，主检出独立review附件 | AC-01..08逐项独立审查、遗漏/延后/workaround与健康；AC-09；R4受影响owner断言顺序复审通过 |
 | T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出知识/ledger/archive/guard | AC-10实际落地/清理/到期，改代码先受影响复审再重新冻结 |
 
 ## 9. 复审记录
@@ -349,6 +349,30 @@ next: merge owner在本冻结提交恢复全部完整门；通过后才autograph
 AC01身份刷新及AC07/08旧门保留受影响重新验收；生产/SDK/AGP/锁/输入/配置/Spec proposal未变，其余R2 AC证据与F01关闭按明确身份复用，不重跑已闭来源/GC/原生/consumer家族。SD01..04提案冻结SHA256 `01eaa3e632a062c50bbcd5860df79d5a28e4d56390c881711754fb6416a351c5` 与R2一致，canonical/ledger未写，无合同修订或新债务。
 
 T09关闭、reviewed9/10；T10及原63完整调用、driver/AGP全测/构建、原16 AGP/双游戏、所有counter AND content/owner/source/producer/fresh consumer、新15 project native及实际UI产物搬迁完整门仍merge-owned pending。旧完整driver失败不计pass；本轮仅受影响定向复审，无完整套件/root档/docs_gen/批量回归。未合入/归档/清树，不宣称交付。最终WT仍a0e2 clean。
+
+### merge R1 → F-845-M1-02 工作定位
+
+a0e2生产/独立消费完整driver155及AGP163各通过，旧owner三入口通过。新project-owners前两反控正确，fresh-upload在真实reupload后先触发stable bound resource mesh_uploads（18/137208→22/137464），故脚本等待后置Arc消息失败；raw保留merge-r1/project-owners。产品无默认重传，restored完整用例此前绿。本轮不放宽runner字符串/不跳过断言：仅把同一永久用例的真实Arc身份断言移至计数断言之前，让原fresh-upload负控与定义的Arc oracle一致，全部资源计数/目标/owner与restored20轮仍保留。原始red/control已经触达实际GPU替换；回work定向四反控/恢复后独立复审，T08/T09重开executing7/10。无关既有门仅在输入/配置/代码未变时按精确边界复用；受影响完整driver/新owner/source/fmt将于新冻结提交补跑，不用旧全套掩盖改动。
+
+### F-845-M1-02 work 修复交接
+
+冻结152bc7fa6c6aa5158ae97868cf2e3b28acf136fd，parent a0e2；仅永久behavior_project_host用例移动原Arc身份检查块到上传计数检查之前，另重冻manifest。没有删除/修改任何断言、生产或脚本；同一强制真实reupload现命中warm model must retain actual GPU Arc，原计数/target/owner断言在restored20轮全部保留。check_behavior_project_owners.py原聚合4控制实跑exit0，逐项101/101/101/0及原消息见merge-r1/project-owners-repair/results.json、对应txt日志；fmt/source320通过。工作关闭T08、execution_done8/10，T09待受影响独立review。原R2 F01及R3可见点击修复保持，未动相应代码/断言。此前已绿的AGP/旧owner/未改模块只按确切未变输入复用；修改所在完整driver档及消费者/manifest检查须在新review后重跑，后续native尚未开始。实现clean且冻结，移交独立review，无产品/合同缩面。
+
+### 2026-10-25 r2 independent affected final review R4 — pass / reviewed9/10
+
+stage: review | review_scope: final（merge失败后的受影响复审） | reviewer_identity: `/root/review_845_owner_gate`（获授权的新独立上下文；非实现或前序复审上下文，无进一步委派） | plan_id: PLAN-845 | plan_revision: 2 | outcome: pass |
+worktree_path: D:/autostack/.wt/lang-845/auto-lang | branch: plan-845-dev |
+reviewed_commit: 152bc7fa6c6aa5158ae97868cf2e3b28acf136fd | repair_parent: a0e2a9115a0b48bab44e3acaef17485dca472420 | base_commit: 8b62db5cba54b9bfe7f759f4920b22ccb9b75e88 |
+dependency_revisions: SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21，三锁/config/16项Spec输入/提案与R2/R3一致，见[audit](attachments/845/review-r4-owner/audit.json.txt) |
+acceptance_results: AC-01..09 pass；AC-10 pending | findings: F-845-M1-02独立关闭，F-845-R1-01/F-845-M1-01保持已闭，无新增finding |
+evidence: [独立收据/复用边界](attachments/845/review-r4-owner/review.md)、[原工具四控制实跑](attachments/845/review-r4-owner/controls-run.txt)、[真实Arc反控](attachments/845/review-r4-owner/controls/fresh-upload.stderr.txt)、[restored原入口](attachments/845/review-r4-owner/controls/restored.stdout.txt)、[Spec冻结](attachments/845/review-r4-owner/spec-delta-frozen.md) |
+next: merge owner在本冻结提交重跑受影响完整driver/consumer/source/fmt并补齐未执行native等完整门，再落autographics-dev及知识归档/guard清理。
+
+完整差异仅原八行pin/Arc断言块移至资源计数前、单manifest hash刷新；所有原计数/target/VM/源码owner/真实像素和20轮断言原样保留，pin为真实store非变更读取。原工具新输出独立实跑exit0，三反控101/101/101分别命中源码最后owner、VM Stop、真实GPU Arc，restored0且1passed/0ignored、20轮完成。旧fresh-upload红确由同一次真实reupload先命中mesh_uploads 18/137208→22/137464，现准确命中原Arc oracle；未放宽工具字符串/断言或改产品行为。source320 Git对象/文件、SDK681、fmt/diff健康均通过，仅原SDK146预存warning。
+
+AC01身份刷新、AC07/08 owner/原门保留新验；生产/SDK/AGP/锁/配置/fixtures/原生输入/Spec均未变，其余AC与已闭findings按R2/R3身份明确复用，未重跑来源/GC/native或全档。SD01..04冻结SHA256 `01eaa3e632a062c50bbcd5860df79d5a28e4d56390c881711754fb6416a351c5`保持，canonical/ledger未写，无合同修订/新增债务。
+
+T09关闭、reviewed9/10；T10开放。pending_closeout_gates: 修改所在producer与fresh own-SDK/own-target consumer完整driver及相应source/manifest/fmt，尚未执行native矩阵、实际UI产物搬迁及原63/project其余完整门。a0e2已绿AGP163/旧owner等只有输入/依赖/config/代码不变部分可复用，不称R4新跑；旧155全driver不覆盖本次修改文件。root档/docs_gen不触发，tf仍主检出单实例批量且845收尾判到期。最终WT仍152bc7fa clean；未合入/归档/清树，不宣称交付。
 
 ## 10. 待澄清事项
 
