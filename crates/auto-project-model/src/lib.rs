@@ -28,7 +28,13 @@
 pub mod descriptor;
 mod from_scan;
 pub mod generation_request;
+/// pac.at 展示面声明提取轻规则（PLAN-831 T-05 C2：theme{} 块与 back——
+/// 自 auto-man-core/pac.rs 逐字单源迁入，Man 侧委派）。
+pub mod pac_display;
 pub mod scanner;
+/// Sidecar 声明解析纯规则（PLAN-831 T-05 C2：自 auto-man-core 逐字单源
+/// 迁入；旧入口 auto_man_core::sidecar::* 再导出保持）。
+pub mod sidecar;
 /// Same-source wire codec for [`generation_request::GenerationRequest`]
 /// (PLAN-815 T-03). Feature-gated: the base project model stays JSON-free;
 /// the tool protocol and tool host enable `wire` to serialize requests

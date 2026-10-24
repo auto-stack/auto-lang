@@ -514,6 +514,28 @@ def word_contains(text: str, needle: str) -> bool:
     return re.search(r"(?<![A-Za-z0-9_])" + re.escape(needle) + r"(?![A-Za-z0-9_])", text) is not None
 
 
+DEF_FORM_RE_CACHE: dict[str, re.Pattern] = {}
+
+
+def defines_symbol(crate_dir: Path, symbol: str) -> bool:
+    """定义形态判别：crate src 树内存在 `pub fn/struct/enum/trait/type <symbol>`
+    定义（pub use 再导出不计——T-05 起旧入口为再导出 shim，恰一判别不受干扰）。"""
+    if symbol not in DEF_FORM_RE_CACHE:
+        DEF_FORM_RE_CACHE[symbol] = re.compile(
+            r"^\s*pub\s+(?:async\s+)?(?:fn|struct|enum|trait|type|const)\s+"
+            + re.escape(symbol) + r"\b", re.M,
+        )
+    pattern = DEF_FORM_RE_CACHE[symbol]
+    src = crate_dir / "src"
+    if not src.is_dir():
+        return False
+    for rs in src.rglob("*.rs"):
+        body = read_text_or_none(rs)
+        if body is not None and pattern.search(body):
+            return True
+    return False
+
+
 def run_type(ctx: dict, phases: dict, ledger: Ledger) -> None:
     lang = ctx["repos"]["lang"]
     phase = ctx["phase"]
@@ -537,15 +559,12 @@ def run_type(ctx: dict, phases: dict, ledger: Ledger) -> None:
 
     for home_entry in tp.get("declaration_home", []):
         symbol = home_entry["symbol"]
-        present_in = []
-        for home in home_entry["homes"]:
-            lib = read_text_or_none(lang.path / home / "src" / "lib.rs")
-            if lib is not None and word_contains(lib, symbol):
-                present_in.append(home)
+        present_in = [home for home in home_entry["homes"]
+                      if defines_symbol(lang.path / home, symbol)]
         status = "pass" if len(present_in) == 1 else "fail"
-        detail = (f"{symbol} 单源@{present_in[0]}" if len(present_in) == 1
-                  else f"{symbol} 声明单源被破坏：在场={present_in or '无'}（期望恰一，"
-                       f"候选={home_entry['homes']}）")
+        detail = (f"{symbol} 定义单源@{present_in[0]}（再导出不计）" if len(present_in) == 1
+                  else f"{symbol} 定义单源被破坏：定义在场={present_in or '无'}（期望恰一，"
+                       f"候选={home_entry['homes']}；双在场=复制，缺席=失位）")
         ledger.add(home_entry["id"], status, detail)
 
     for face in tp.get("import_face", []):

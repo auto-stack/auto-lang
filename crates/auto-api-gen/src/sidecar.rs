@@ -51,13 +51,13 @@ pub fn load_sidecar(project_dir: &Path) -> SidecarSpec {
     let Ok(config) = auto_lang_core::config::AutoConfig::from_file(&pac, &Obj::new()) else {
         return SidecarSpec::default();
     };
-    // R2-F02（T01 §6.4）：声明解析单源在 auto_man_core::sidecar；
+    // R2-F02（T01 §6.4）/PLAN-831 T-05：声明解析单源在 auto_project_model::sidecar；
     // 本函数只剩语言求值与形态转换（效果 adapter）。
-    from_decl(&auto_man_core::sidecar_decl_from_root(&config.root))
+    from_decl(&auto_project_model::sidecar::sidecar_decl_from_root(&config.root))
 }
 
 /// core 声明 → 本 crate 形态（PathBuf 转换）。
-pub fn from_decl(decl: &auto_man_core::SidecarDecl) -> SidecarSpec {
+pub fn from_decl(decl: &auto_project_model::sidecar::SidecarDecl) -> SidecarSpec {
     SidecarSpec {
         modules: decl
             .modules

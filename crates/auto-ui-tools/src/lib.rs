@@ -17,7 +17,7 @@
 //!
 //! Closure discipline: this crate depends only on the protocol crate, the
 //! one-source project model, the M814-A public UI/compiler/SDK packages,
-//! auto-man-core (declaration single source) and auto-api-gen — no auto-man,
+//! auto-project-model (declaration single source, PLAN-831 T-05) and auto-api-gen — no auto-man,
 //! no legacy auto-lang compat big lib. Clients (PLAN-816 CLI) talk to the
 //! binary over framed stdio; they must not link this crate as a library
 //! dependency.

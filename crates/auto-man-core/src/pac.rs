@@ -227,37 +227,9 @@ pub fn pac_from_decl_with_probe(
     let theme = (!theme_trimmed.is_empty()).then(|| AutoStr::from(theme_trimmed));
 
     // PLAN-601 T-03：theme{} 块形态（Obj）——标量与块同现时块胜。
-    let theme_decl = match root_view.get_prop("theme") {
-        Value::Obj(obj) => {
-            let extends = obj
-                .get("extends")
-                .map(|v| v.to_astr().trim().to_string())
-                .filter(|s| !s.is_empty());
-            let mode = obj
-                .get("mode")
-                .map(|v| v.to_astr().trim().to_lowercase())
-                .filter(|s| !s.is_empty());
-            let name = obj
-                .get("name")
-                .map(|v| v.to_astr().trim().to_string())
-                .filter(|s| !s.is_empty());
-            let colors = match obj.get("colors") {
-                Some(Value::Obj(co)) => co
-                    .iter()
-                    .map(|(k, v)| (k.to_string(), v.to_astr().trim().to_string()))
-                    .filter(|(_, v)| !v.is_empty())
-                    .collect::<Vec<_>>(),
-                _ => Vec::new(),
-            };
-            Some(ThemeDeclLite {
-                name,
-                extends,
-                mode,
-                colors,
-            })
-        }
-        _ => None,
-    };
+    // PLAN-831 T-05：提取规则单源迁 auto-project-model/pac_display（逐字），
+    // 此处委派——Man/UI/API 三径同源，零复制。
+    let theme_decl = auto_project_model::pac_display::theme_decl_from_root(&root_view);
     let accent = root_view.get_prop("accent").to_astr();
     let accent_trimmed = accent.trim().to_lowercase();
     let accent = (!accent_trimmed.is_empty()).then(|| AutoStr::from(accent_trimmed));
@@ -274,17 +246,9 @@ pub fn pac_from_decl_with_probe(
     let ui_config = (!ui_config_trimmed.is_empty()).then(|| AutoStr::from(ui_config_trimmed));
 
     // Plan 061: external backend project.
-    let external_backend = match root_view.get_prop("back") {
-        Value::Obj(obj) => obj
-            .get("project")
-            .map(|v| v.to_astr().trim().to_string())
-            .filter(|s| !s.is_empty())
-            .map(AutoStr::from),
-        v => {
-            let s = v.to_astr().trim().to_string();
-            (!s.is_empty()).then(|| AutoStr::from(s))
-        }
-    };
+    // PLAN-831 T-05：提取规则单源迁 auto-project-model/pac_display（逐字），
+    // 此处委派（Pac::new 对该字段本就直拷——oracle 不变）。
+    let external_backend = auto_project_model::pac_display::external_backend_from_root(&root_view);
 
     // Plan 013: shadcn-vue mapping toggle.
     let shadcn = if !root_view.has_prop("shadcn") {

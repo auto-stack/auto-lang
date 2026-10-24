@@ -2670,12 +2670,12 @@ impl VueReads {
         let composed_theme: Option<auto_lang_core::design_tokens::decl::ComposedTheme> =
             match auto_lang_core::config::AutoConfig::from_file(pac_path, &auto_val::Obj::new()) {
                 Ok(config) => {
-                    // PLAN-815 T-04: 声明读取经 auto_man_core 单源（Pac::new
-                    // 对 theme_decl 是 decl 字段直拷+语言类型直映；resolve()
-                    // 只动 props/targets/依赖下载，不触及 theme_decl——冻结
-                    // oracle 不变，不引 Man Pac）。
+                    // PLAN-815 T-04/831 T-05：声明读取单源在
+                    // auto_project_model::pac_display（Pac::new 对 theme_decl
+                    // 是 decl 字段直拷+语言类型直映；resolve() 只动
+                    // props/targets/依赖下载，不触及 theme_decl——oracle 不变）。
                     let decl_lite =
-                        auto_man_core::pac_from_decl(&config.root, &config.args).theme_decl;
+                        auto_project_model::pac_display::theme_decl_from_root(&config.root);
                     decl_lite
                         .map(|d| auto_lang_core::design_tokens::decl::ThemeDecl {
                             name: d.name.clone(),

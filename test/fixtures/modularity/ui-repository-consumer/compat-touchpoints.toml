@@ -131,11 +131,15 @@ anchor = { file = "src/lib.rs", contains = "pub use crate::type_registry::Shared
 probe = "auto_lang::SharedTypeRegistry"
 
 # ---- C2 声明单源（V-02 声明语义；T-05 切移后 homes 随记录修订）----
+# 判别=定义形态（pub fn/struct/enum <symbol>）在候选 crate 源树内恰居其一；
+# 再导出（pub use）不计为定义（T-05 起旧入口 auto_man_core::sidecar::* 为
+# 再导出 shim——恰一判别不受再导出干扰）。
 
 [[declaration_home]]
 id = "TYP-D01"
 symbol = "sidecar_decl_from_root"
 homes = ["crates/auto-man-core", "crates/auto-project-model"]
+note = "PLAN-831 T-05：定义单源=auto-project-model/src/sidecar.rs（逐字迁）；man-core 为再导出 shim"
 
 [[declaration_home]]
 id = "TYP-D02"
@@ -146,11 +150,23 @@ homes = ["crates/auto-man-core", "crates/auto-project-model"]
 id = "TYP-D03"
 symbol = "pac_from_decl"
 homes = ["crates/auto-man-core", "crates/auto-project-model"]
-note = "theme/external_backend 声明规则（tools rust_ui.rs:5931/5951 消费）"
+note = "定义恒居 auto-man-core（Man 域完整声明归一含 targets/build 规划）；T-05 后其 theme_decl/external_backend 字段提取委派 project-model 单源"
+
+[[declaration_home]]
+id = "TYP-D05"
+symbol = "theme_decl_from_root"
+homes = ["crates/auto-project-model", "crates/auto-man-core"]
+note = "PLAN-831 T-05 新单源（theme{} 块提取，逐字自 pac.rs 迁入）；双在场=复制红"
+
+[[declaration_home]]
+id = "TYP-D06"
+symbol = "external_backend_from_root"
+homes = ["crates/auto-project-model", "crates/auto-man-core"]
+note = "PLAN-831 T-05 新单源（back 声明提取，逐字自 pac.rs 迁入）；双在场=复制红"
 
 [[import_face]]
 id = "TYP-D04"
 consumer_file = "crates/auto-api-gen/src/sidecar.rs"
 expected_pre_migration = "auto_man_core"
 expected_source_switched = "auto_project_model"
-note = "sidecar 声明解析导入面（C2 切点，contract-baseline §3）"
+note = "sidecar 声明解析导入面（C2 切点）；T-05 已在 pre-migration 阶段内提前完成切源（driver 记档，切源后断言 expected_source_switched 不变）"

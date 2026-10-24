@@ -14,7 +14,7 @@
 //!
 //! Boundaries:
 //! - depends on the language SDK (`auto-lang-core`) for api/ast/trans/config
-//!   and `auto-man-core` for the `rust_sidecar` declaration single source;
+//!   and `auto-project-model` for the `rust_sidecar` declaration single source (PLAN-831 T-05);
 //! - never depends on `auto-man` or `auto-ui-tools` (facade direction only:
 //!   those crates re-export from here);
 //! - generated-code template strings deliberately keep referencing the

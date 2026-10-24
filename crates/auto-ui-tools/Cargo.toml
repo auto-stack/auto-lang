@@ -22,10 +22,9 @@ auto-lang-core = { path = "../auto-lang-core" }
 auto-ui-runtime = { path = "../auto-ui-runtime" }
 # PLAN-815 T-05 R1（F01）：统一 owned 子进程执行设施（Job Object/进程组
 # 树终止+收尸+可停止 stdin 写）——man-ecosystem 纯设施层（ui→man-ecosystem
-# 与 auto-man-core/auto-api-gen 同向，ui-no-man-big-lib 不涉）。
+# 与 auto-api-gen 同向，ui-no-man-big-lib 不涉；PLAN-831 T-05 起声明单源=project-model）。
 auto-tool-execution = { path = "../auto-tool-execution" }
 # 声明单源(rust_sidecar/theme 的 core 规则;PacSource legacy 臂直读)。
-auto-man-core = { path = "../auto-man-core" }
 # API 生成单算法(generate_api/rust server/ts client + 共享 rust 工作区布局)。
 auto-api-gen = { path = "../auto-api-gen" }
 auto-val = { path = "../auto-val" }

@@ -3364,7 +3364,7 @@ impl<'a> PacSource<'a> {
                 for n in sidecar_nodes {
                     root.add_kid(n);
                 }
-                auto_api_gen::sidecar::from_decl(&auto_man_core::sidecar_decl_from_root(&root))
+                auto_api_gen::sidecar::from_decl(&auto_project_model::sidecar::sidecar_decl_from_root(&root))
             }
             None => auto_api_gen::sidecar::load_sidecar(project_dir),
         }
@@ -3884,7 +3884,7 @@ pub fn generate_shell_pack_lib(output_dir: &Path) -> AutoResult<()> {
 
 /// 交付闭包内受管源码 crate（相对 crates/；含 auto-lang 全库——语言源码
 /// 尚未拆完，属如实披露的受管包含，非"纯 core/独立 UI 仓"）。
-pub const DELIVERY_CRATES: [&str; 26] = [
+pub const DELIVERY_CRATES: [&str; 24] = [
     "auto-lang",
     "auto-val",
     "auto-atom",
@@ -3932,20 +3932,19 @@ pub const DELIVERY_CRATES: [&str; 26] = [
     // B/T-04 迁入真实 renderer/宿主 adapter；当前为文档骨架，闭包零额外面）。
     "auto-ui-runtime",
     // PLAN-815 T-04 起受管交付随包发行 UI 工具链（合同 §1 增补
-    // auto-tool-protocol/auto-ui-tools；工具的生成主体闭包新增
-    // auto-api-gen（api 生成单算法）与 auto-man-core（rust_sidecar 声明
-    // 单源）；R1-F01 补 auto-project-model（协议 crate 的 path 依赖）与
-    // auto-toolchain-core（auto-man-core 的 path 依赖）——六者缺一则
-    // 交付根 fresh metadata/lock 即红（闭包完备性由 delivery 测试静态钉住）。
+    // auto-tool-protocol/auto-ui-tools；工具的生成主体闭包含 auto-api-gen
+    //（api 生成单算法）；R1-F01 补 auto-project-model（协议 crate 的 path
+    // 依赖）——四者缺一则交付根 fresh metadata/lock 即红（闭包完备性由
+    // delivery 测试静态钉住）。PLAN-831 T-05：rust_sidecar/theme/back 声明
+    // 规则单源迁 auto-project-model 后，auto-man-core 与其 path 依赖
+    // auto-toolchain-core 出闭包（C2 去边）。
     "auto-tool-protocol",
     "auto-ui-tools",
     // PLAN-815 T-05 R1（F01）：owned 子进程执行设施（std-only）——工具
     // 托管 spawn 的树终止/收尸原语，交付根复算生成/运行闭包必需。
     "auto-tool-execution",
     "auto-api-gen",
-    "auto-man-core",
     "auto-project-model",
-    "auto-toolchain-core",
 ];
 
 /// 随包发行的本地 patch（相对 crates/patches/）。
@@ -5926,10 +5925,10 @@ fn external_backend_of(project_dir: &Path) -> AutoResult<Option<auto_val::AutoSt
     let mut probe = Obj::new();
     probe.set("port", Value::Str(AutoStr::from("win32")));
     let config = auto_lang_core::config::AutoConfig::from_file(&pac_path, &probe)?;
-    // PLAN-815 T-04: 读取经 auto_man_core 声明归一单源（Pac::new 对
-    // external_backend 是 decl 字段直拷——冻结 oracle 不变；不引 Man Pac）。
-    let decl = auto_man_core::pac_from_decl(&config.root, &config.args);
-    Ok(decl.external_backend.filter(|s| !s.is_empty()))
+    // PLAN-815 T-04/831 T-05：提取规则单源在 auto_project_model::pac_display
+    // （Pac::new 对 external_backend 是 decl 字段直拷——冻结 oracle 不变；不引 Man 实现）。
+    let decl = auto_project_model::pac_display::external_backend_from_root(&config.root);
+    Ok(decl.filter(|s| !s.is_empty()))
 }
 
 /// PLAN-609 T-A1: pac.at `theme: {}` 块声明 → 合成主题激活（VM 腿 boot）。
@@ -5945,10 +5944,10 @@ fn apply_pac_theme_decl(project_dir: &Path) -> Option<String> {
             Ok(c) => c,
             Err(_) => return None,
         };
-    // PLAN-815 T-04: 声明读取经 auto_man_core 单源（Pac::new 对 theme_decl
-    // 是 decl 字段直拷+语言类型直映；resolve() 只动 props/targets/依赖
-    // 下载，不触及 theme_decl——冻结 oracle 不变，不引 Man Pac）。
-    let decl_lite = auto_man_core::pac_from_decl(&config.root, &config.args).theme_decl?;
+    // PLAN-815 T-04/831 T-05：声明读取单源在 auto_project_model::pac_display
+    // （Pac::new 对 theme_decl 是 decl 字段直拷+语言类型直映；resolve() 只动
+    // props/targets/依赖下载，不触及 theme_decl——冻结 oracle 不变）。
+    let decl_lite = auto_project_model::pac_display::theme_decl_from_root(&config.root)?;
     let decl = auto_lang_core::design_tokens::decl::ThemeDecl {
         name: decl_lite.name.clone(),
         extends: decl_lite.extends.clone(),
