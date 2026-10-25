@@ -245,7 +245,7 @@ r3根门策略：显式设置`AUTO_LANG_AUTOGRAPHICS_INCREMENTAL_PERF=observe`�
 
 ## 8. 执行步骤
 
-当前T-01、T-02-SDK、T-02..08完成；r3合同修订及根验收策略实现/受影响T09复审进行中，executing9/11，T10合入门及收尾pending。T-01..08关闭且无必需gap才execution_done9/11；T-09最终独立pass为reviewed10/11，完整merge门pending；T-10实际收尾才交付11/11。
+当前T-01、T-02-SDK、T-02..09完成，r3受影响复审与完整功能门已通过，reviewed10/11；T10落地/规范/账本/归档/清理收尾pending。T-01..08关闭且无必需gap才execution_done9/11；T-09最终独立pass为reviewed10/11，完整merge门pending；T-10实际收尾才交付11/11。
 
 | task_id | owner_stage | 依赖 | 实际触点／拟新增路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -405,6 +405,12 @@ F-846-M1-ROOT-MN-P95：实际根接收冻结44480（纯SDK映射，master父9a6c
 
 根33ed071a6，图形bf22、SDK7b987ca8、UIaee499e/downc39ac7f固定。用户授权的AutoGraphics增量功能优先策略已实现，默认根性能门仍严格；显式observe只撤销四处增量延迟判定，原功能/缓存失效/实际链接运行/30样本/数值/支持/安全deadline不变。策略正反+实际序列+签名重建3/3，最终元数据修订后策略1/1；签名P951428.581ms明确观测非门禁，不冒称优化达标。有界工具散列及整cache8证据保留。SD06新提案与十目标r2SD经hash核冻结。AC01..08具名复用未变证据，AC09受影响通过；同实施会话审查上下文限制如实保留。[R6复审](attachments/846/review-r6/review.md)。F-846-M1-ROOT-MN-P95按用户合同变更转D-846-INCR-PERF后续议题，非“性能修复关闭”。T10仍须新冻结完整t/tv及原UI2207功能面，再完成全部落地/知识/归档/清理。
 
+### 2026-10-25 merge:r4 — r3冻结完整功能门通过
+
+根冻结ae5616472（R6根33ed071a6四补丁完全等价重放到mastera45a00678），显式AUTO_LANG_AUTOGRAPHICS_INCREMENTAL_PERF=observe，原30样本/全部功能断言/执行deadline不变。根裸t3173/3173（skip668）、tv163/163（skip2006）及原迁仓UI三包2207/2207（skip884）全部通过，原5368范围保留且纳入820与策略新增用例。所有原始结果绑定[本轮冻结](attachments/846/merge-r4/frozen-root.json.txt)/[本轮完整命令](attachments/846/merge-r4/root-gates.json.txt)。P95按r3仅观测，非优化达标声明；旧额外UI工具诊断红与847批量阻断不改记绿。
+
+图形bf22的87有效门（83原门+4空间）、producer/fresh consumer各178与AGP163/16原分母经实际断言审计；仅具名23 AGP未变复用。每侧14空间调用/4Step/15项目/2实际界面搬迁过，历史输入干扰失败原样保存；source345/SDK681/metadata479闭包再次通过且WT clean。[完整审计](attachments/846/merge-r1/validated.json.txt)。当前仅完整门已过，尚未记录landed/ledger/archive/cleanup；下一步规范准备及两条真实ff-only落地。
+
 ## 10. 待澄清事项
 
-无待用户决定事项。r3已明确暂缓AutoGraphics增量编译性能检查，历史P95红不再阻断本线路；功能/数值/支持/运行时预算与原完整功能门保持。待完成策略实现、受影响复审与新冻结完整门，再合入/规范沉淀/归档/清树。
+无待用户决定事项。r3已明确暂缓AutoGraphics增量编译性能检查，历史P95红不再阻断本线路；功能/数值/支持/运行时预算与原完整功能门保持。策略实现、受影响复审及新冻结完整功能门已通过，待合入/规范沉淀/账本/归档/清树。
