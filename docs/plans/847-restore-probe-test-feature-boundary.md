@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-847
-status: drafting
+status: reviewed
 feature_name: Restore optional probe-test feature boundary
 author: [Codex]
 created_at: 2026-10-25
 updated_at: 2026-10-25
 plan_revision: 1
-current_step: 0
+current_step: 3
 total_steps: 4
 supersedes_spec_components: []
 new_spec_components: []
@@ -17,7 +17,7 @@ touched_goals: []
 
 ## 0. 变更摘要
 
-845 落地后的批量回归发现主分支 feature-off 编译红，修复独立于已交付的图形源码。此计划仅起草，尚未实施。
+845 落地后的批量回归发现主分支 feature-off 编译红，修复独立于已交付的图形源码。用户现已授权实施、独立复审及完整主检出批量回归；沿原847修复，不调整测试支持或阈值。
 
 ## 1. 目标
 
@@ -67,12 +67,12 @@ T-01 先核对实际基线及同族模块所有 optional 引用；预期为局�
 
 | ID | owner_stage | 依赖 | 位置与结果 | 验收 |
 |---|---|---|---|---|
-| T-01 | work | 用户启动实施 | 现有 tests.rs/Cargo.toml 与完整模块依赖扫描，冻结修复范围 | AC-01/02 |
-| T-02 | work | T-01 | 专用工作树修门控、补反控/选择面证据、定向验收并提交 | AC-01/02 |
-| T-03 | review | T-02 | 同一树独立上下文审查，冻结 revision/commit 与不变 Spec 结论 | AC-03 |
-| T-04 | merge | T-03 pass | 合入整档、主检出批量恢复、知识/收据/归档/guard 清理 | AC-04 |
+| T-01 | [x] work | 用户启动实施 | 现有 tests.rs/Cargo.toml 与完整模块依赖扫描，冻结修复范围 | AC-01/02 |
+| T-02 | [x] work | T-01 | 专用工作树修门控、补反控/选择面证据、定向验收并提交 | AC-01/02 |
+| T-03 | [x] review | T-02 | 同一树独立上下文审查，冻结 revision/commit 与不变 Spec 结论 | AC-03 |
+| T-04 | [ ] merge | T-03 pass | 合入整档、主检出批量恢复、知识/收据/归档/guard 清理 | AC-04 |
 
-四步均未执行，当前 0/4。
+T-01/T-02/T-03完成，当前3/4；merge/batch门尚未执行。
 
 ## 9. 复审记录
 
@@ -80,4 +80,23 @@ T-01 先核对实际基线及同族模块所有 optional 引用；预期为局�
 
 ## 10. 待澄清事项
 
-无阻碍起草的问题。实施需由用户启动 847；批量原始证据和新红债务保留，旧批量完整绿覆盖点不得冒进到编译失败提交。
+用户已明确启动847的work/review/merge与完整批量恢复，无待决产品问题；批量原始证据和新红债务保留，旧批量完整绿覆盖点不得冒进到编译失败提交。
+
+### work:r1 启动
+
+用户授权2026-10-25；主检出acbca34e3无tracked代码WIP，保留其他会话未跟踪Cargo.lock。唯一树D:/autostack/.wt/lang-847/auto-lang，plan-847-dev，base acbca34e3；auto-down只读兄弟c3464d0。先feature-off反例，再移动错挂的cfg到旧probe模块，核feature-on两族完整ID和定向测试；不改配置/依赖/输入/阈值。
+
+T01核验完成：实际feature-off --tests复现44个E0432/E0433（[日志](attachments/847/work-r1/feature-off-before.log.txt)），10个测试文件的optional引用已登记[扫描](attachments/847/work-r1/optional-consumers.json.txt)。其他模块由test-cases或内部函数cfg保护（a2r/vm_file内部受检），仅probe_adapter注册遗漏。本地脚本首次路径断言的Windows分隔符已校正，首次缺auto-ui依赖后建同组只读aee499e树；均不算产品反例。SDK/测试配置不改。为避免大规模冷编，847串行复用主检出target缓存，执行cwd始终在专用树，无其他cargo任务；运行日志完整留存。
+
+### work:r1 完成 — execution_done2/4
+
+stage:work | plan_id:PLAN-847 | plan_revision:1 | outcome:pass | worktree_path:D:/autostack/.wt/lang-847/auto-lang | branch:plan-847-dev | base_commit:acbca34e3 | code_commit:60f0bb03331e716516701fc8189bfd6e6b7244d9 | dependency_revisions:auto-down c3464d0/auto-ui aee499e只读 | tasks:T01/T02 closed | evidence:[readiness](attachments/847/work-r1/readiness.md) | blockers:none work-owned | next:独立review；merge裸t与主检出tf/tt/tb pending。
+
+feature-off原44错误变成功；feature-on完整2177 IDs逐项相同，旧probe27/新mn24保留；定向29例按不变输入/配置/代码的9已通过+20受影响重放全部通过，原formal性能例排除仅沿用日常既有规则，不能当全档证据。所有环境/冷编/共享缓存丢路径失败已具名归因留档，最终用原树独享target；不更改时限/断言或生产实现。[冻结无变更规范增量](attachments/847/work-r1/spec-delta.md)。
+
+
+### final review:r1 — pass / reviewed3/4
+
+stage:review | review_scope:final | reviewer:/root/review_847_r1 independent delegated context, implementation paused | plan_id:PLAN-847 | plan_revision:1 | outcome:pass | worktree_path:D:/autostack/.wt/lang-847/auto-lang | branch:plan-847-dev | reviewed_commit:60f0bb03331e716516701fc8189bfd6e6b7244d9 | base_commit:acbca34e3a0d12b671f230a5a219f5d0a9538398 | dependency_revisions:auto-ui aee499e87093ff727f68ac8467c506e9ecf6ecdc; auto-down c3464d0a0d36e4f8a7988b0c0c26448fc52361b4 | acceptance_results:AC01/02/03 pass, AC04 pending merge | findings:none blocking | evidence:[完整审查报告](attachments/847/review-r1/report.md), [完整2177 IDs与源/证据hash](attachments/847/review-r1/audit.json.txt), [冻结SD01](attachments/847/review-r1/spec-delta.md) | pending_closeout_gates:Plan树冻结裸cargo t; 主检出单实例tf/tt/tb及最终归因/归档/guard | next:merge。
+
+独立feature-off check成功；probe/MIR-native/AV三条非法合同定向控制3/3通过。实际2177完整IDs前后相同、27/24保留；work辅助test-ids.json仅计tests::前缀2099，review已从原始日志重新解析完整2177并留档。corrected9 pass与owned-target replay20 pass集合逐项核验闭合29，旧失败保留且不算通过；formal ABI性能例仍由既有default-filter排除并保留在ID清单，批量实际执行尚pending。SD01无规范语义变更、空spec-impact成立；review不改生产/测试/配置/规范/ledger。
