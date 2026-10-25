@@ -35,7 +35,7 @@ R5 绑定时这些文件未改；R6 修复在 AV 帧槽位 reserve 边界新增�
 | cap-at/超1（表/嵌套轴） | `resources_tier::av_resources_over_table_budget_is_resource`、`av_resources_front_door_nesting_boundary`（继承） | 正/负对 | resources-inherited-finite |
 | 无限循环/cancel/资源态 | 827 既有 `av_source_827_resource_budget_and_cancel_axes` | InstrSteps 资源态/Cancelled（host 决策）/dispatch=0 | resources-thin-cap-pair |
 | churn/清理（32MiB 信封内） | `resources_tier::av_resources_32mib_product_random_read_and_churn`（继承） | 预算内清理与水位 | resources-inherited-finite |
-| 双线内存硬门 + 两路径 P95 | `av_probe_worker bench-turnaround --samples 30 --gate-ms 1000`（validate_and_gate 对 frontend_transient/worker_private 双线 hard_gate_failures→exit5）+ `t08_formal_campaign_v08_dual_gate_30_revisions`（正式会话时间门） | P95<1000 且双线绿；gate-0 必红反控 | raw=docs/reports/plan827/bench-*.jsonl（时间戳留档，失败轮保留） |
+| 双线内存硬门 + 两路径 P95 | `av_probe_worker bench-turnaround --samples 30 --gate-ms 1000`（validate_and_gate 对 frontend_transient/worker_private 双线 hard_gate_failures→exit5）+ `t08_formal_campaign_v08_dual_gate_30_revisions`（正式会话时间门） | P95<1000 且双线绿；gate-0 必红反控；**R7 F-R7-02：worker 先从冻结 workspace 构建（cargo build --release -p auto-av-probe --bin av_probe_worker），SHA256+head+probe-ws 脏项入 per-run 绑定收据署名两 raw，陈旧/篡改/缺失绑定负控先于战役必红+当前正控** | raw=bench-*.jsonl+resources-worker-binding-*.json（失败轮保留）；当前绑定过门轮 20261025-091045（worker 0A50E300E1B4BC97…、head=10c1456e2、single-body-edit P95=598.0/signature-conflict P95=24.8）；失败轮 085917 归因并发编译撞车，样本+收据保留 |
 
 注：828 战役测试内内存峰值为报告项（其注释明示）；**内存硬门在 bench-turnaround 的
 validate_and_gate**（同 scope 必跑、失败 exit 5）——本行即"actual dual-line hard-memory/formal
@@ -49,7 +49,14 @@ two-path evidence"到当前基面的绑定。故障第 n 次分配注入现已�
 | 授权：撤销当前授权（会话再入） | **R5 增断言** `av_source_827_incremental_precise_refusals` 尾 | 负：warmup(trace 源, caps=[]) 必 Err（与"新增未授权文本"不同输入） | incremental |
 | 授权：新增未授权文本 | 同测试 mark_a 块 | 负：拒绝且修订保留 | incremental |
 | 旧帧/值/drop 生命周期 | `function_incremental_828_contract::{contract_828_transaction_sequential_cancel_then_commit, contract_828_transaction_close_releases_owned_entries, contract_828_transaction_prepare_does_not_publish_and_drop_is_inert}`（继承） | cancel 保基/close 释放/prepare 不发布 | incremental-inherited-lifecycle |
-| 逐修订结构 raw | **R5 增持久化** `av_source_827_incremental_d828_baseline_30_structure_and_p95` | 每修订 {changed_fn,install_set,value,wall_ms,identity_hold} 落盘 | **docs/reports/plan827/incremental-raw.json** |
+| 逐修订结构 raw | **R5 增持久化、R7 F-R7-01 升级** `av_source_827_incremental_d828_baseline_30_structure_and_p95` | 每修订 {changed_fn,install_set,value,wall_ms,identity_hold} **断言前落盘**；unchanged before/after 缺对必拒（具体 (ptr,generation) 对，非 null）；最终 structure/P95 verdict 先于断言写入；失败运行证据不被后续运行覆盖 | **每运行文件 incremental-raw-<run_id>.json（不可变证据）+incremental-raw.json（last-completed 指针，含 run_id）**；shape 负控 `av_source_827_incremental_raw_shape_rejects_missing_baseline`（null before/缺 after/短对/零修订全拒）+失败留档负控 `av_source_827_incremental_failing_verdict_still_writes_raw`（negatives/ 留档，不动真实运行文件）均接 incremental 必需清单 |
+
+## R7 证据闭包（2026-10-25，冻结 10c1456e2+ebced8cd5）
+
+- **F-827-R7-01（V13 持久化身份/失败 raw）**：根因=identities_before 裸名键 vs 查询 `d_main` 前缀键（30 行 before 全 null）+raw 仅在 P95 断言后一次性写固定名。修复/重放见上表 V-13 行；评审 replay-evidence.ps1 复放 null_before=0 exit0。
+- **F-827-R7-02（V09 bench 二进制未绑当前源码）**：根因=resources 档直接执行 target/release 旧 exe（depinfo 缺 frame_allocation.rs，写于 R6 前）。修复/重放见上表 V-09 行；selftest 增绑定校验五控制（外部二进制/篡改收据/缺失 exe/空哈希红+精确绿）。R6 执行器变更后的 30 样本资源证据已在新绑定 worker 上再生（091045 轮）。
+- **R6 core 写窗对账**：frame_allocation.rs 写入 ac-av-probe/core 系用户明确指令的最小故障探针；最终写面含 crates/auto-lang **计划内测试面**（§3 既定 corpus+根门测试+模块注册），生产 crates 源码与 D798 公共 API 零触碰。
+
 
 ## R6 故障注入闭包（2026-10-25）
 
