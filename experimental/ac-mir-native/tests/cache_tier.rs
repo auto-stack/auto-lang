@@ -495,3 +495,26 @@ fn mir_native_cache_fingerprint_axes() {
         "caller fp untouched by a callee BODY edit (signature unchanged)"
     );
 }
+
+/// Tool identity must cover every byte, including a short final read, while
+/// agreeing with the existing whole-buffer BLAKE3 identity at block boundaries.
+#[test]
+fn mir_native_cache_streamed_tool_identity_matches_full_bytes() {
+    let root = temp_root("streamed-tool-identity");
+    for n in [0usize, 1, 65535, 65536, 65537, 131089] {
+        let mut bytes: Vec<u8> = (0..n).map(|i| (i.wrapping_mul(37) % 251) as u8).collect();
+        if let Some(last) = bytes.last_mut() {
+            *last = 255;
+        }
+        let path = root.join(format!("tool-{n}.bin"));
+        std::fs::write(&path, &bytes).unwrap();
+        let got = ac_mn::link_driver::file_identity(&path).unwrap();
+        assert_eq!(got, ac_mn::cache::content_hash(&bytes), "length {n}");
+        assert_eq!(got, ac_mn::link_driver::file_identity(&path).unwrap());
+        if n > 65536 {
+            assert_ne!(got, ac_mn::cache::content_hash(&bytes[..65536]));
+        }
+    }
+    assert!(ac_mn::link_driver::file_identity(&root.join("missing.bin")).is_err());
+    std::fs::remove_dir_all(root).unwrap();
+}

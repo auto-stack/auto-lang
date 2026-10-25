@@ -96,9 +96,25 @@ pub fn file_identity(p: &Path) -> Result<String, MnError> {
     if let Some(h) = cache.lock().unwrap().get(&key) {
         return Ok(h.clone());
     }
-    let bytes =
-        std::fs::read(p).map_err(|e| MnError::Infra(format!("tool read {}: {e}", p.display())))?;
-    let h = crate::cache::content_hash(&bytes);
+    // Tool binaries can be large. Hash the same complete byte stream without
+    // allocating a file-sized temporary on every fresh worker process.
+    use std::io::Read;
+    let mut file = std::fs::File::open(p)
+        .map_err(|e| MnError::Infra(format!("tool read {}: {e}", p.display())))?;
+    let mut hasher = blake3::Hasher::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let n = match file.read(&mut buffer) {
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(MnError::Infra(format!("tool read {}: {e}", p.display()))),
+        };
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+    let h = hasher.finalize().to_hex().to_string();
     cache.lock().unwrap().insert(key, h.clone());
     Ok(h)
 }
