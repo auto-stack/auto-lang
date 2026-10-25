@@ -3,7 +3,7 @@
 规则（review-r5 "Reproducible closing package"）：每行 = V/子案例 → 精确测试/实际入口 →
 正/负断言 → 输入/工具/运行时版本 → 留存 raw → scope 选择映射。继承测试的同一性核验：
 本计划唯一树与 D798/D828 交付在同一合入基面（base 369e1c349，实现/依赖/配置/输入未变，
-本计划对这些文件零改动——零公共写面裁定），故按"实现、依赖、配置与输入身份未变"显式复用。
+R5 绑定时这些文件未改；R6 修复在 AV 帧槽位 reserve 边界新增最小探针，执行器相关证据以 4a069ce7f 定向测试重新核验），故按"实现、依赖、配置与输入身份未变"显式复用。
 
 ## V-06 工件准入（scope=admission）
 
@@ -39,9 +39,7 @@
 
 注：828 战役测试内内存峰值为报告项（其注释明示）；**内存硬门在 bench-turnaround 的
 validate_and_gate**（同 scope 必跑、失败 exit 5）——本行即"actual dual-line hard-memory/formal
-two-path evidence"到当前基面的绑定。故障第 n 次分配注入：D798 交付面无该注入缝（AV798_FAULT
-仅 worker 协议族）；除已绑定的真实资源/清理/GC oracles 外，该单一注入形态在本计划合同内不可
-exercise——按 R5 规则登记为**工作项缺口行**而非静默归属 merge（见 §遗留）。
+two-path evidence"到当前基面的绑定。故障第 n 次分配注入现已在 R6 闭包，见下节实际分配/清理反控，不再保留“无注入缝”的未完成项。
 
 ## V-13 依赖/授权/生命周期/raw（scope=incremental）
 
@@ -53,12 +51,12 @@ exercise——按 R5 规则登记为**工作项缺口行**而非静默归属 mer
 | 旧帧/值/drop 生命周期 | `function_incremental_828_contract::{contract_828_transaction_sequential_cancel_then_commit, contract_828_transaction_close_releases_owned_entries, contract_828_transaction_prepare_does_not_publish_and_drop_is_inert}`（继承） | cancel 保基/close 释放/prepare 不发布 | incremental-inherited-lifecycle |
 | 逐修订结构 raw | **R5 增持久化** `av_source_827_incremental_d828_baseline_30_structure_and_p95` | 每修订 {changed_fn,install_set,value,wall_ms,identity_hold} 落盘 | **docs/reports/plan827/incremental-raw.json** |
 
-## 遗留（非静默归属）
+## R6 故障注入闭包（2026-10-25）
 
-- **故障第 n 次分配注入**：交付面无可 exercise 的注入缝（见 V-09 注）。归属：后续 store owner
-  计划（在注入缝交付后由消费计划绑定）；本计划不以任何现有通过项冒领该行。此行按 R5 规则
-  显式登记，不转 merge、不标签 future debt 而删除义务。
-
+- **故障第 n 次分配注入已实现**：4a069ce7f 的 `core/src/frame_allocation.rs`，AV 根帧/调用帧实际槽位 `try_reserve_exact` 前触发。`FrameAllocationProbe` 线程局部作用域指定第 n 次；未启用时不注入。统计 attempts/successful/released/live_bytes/peak_bytes；槽位 Vec 随 Frame 实际 Drop 后回收记账。
+- V09 必需成员：`av_source_827_nth_frame_allocation_failure_cleans_owned_slots`（n=1/2/3失败、n=4未到达正控、零frames/slots预算attempt=0、callee预算先拒、合法trace前缀保留）；`av_source_827_frame_allocation_pause_cancel_trap_cleanup`（跨暂停恢复n=2失败、暂停pin存活/取消后Weak消失、丢弃未完成链、trap/fuel退出全部释放）。两测试已绑定 resources-thin-cap-pair 必需ID。
+- 真实反控：关闭注入分支的受控变异使n=1测试失败exit101；恢复后两测试通过。证据 `[work-r6](work-r6/readiness.md)`。
+- 覆盖真实帧槽位储存分配，不替换全局allocator，不宣称控制parser/store/诊断Vec所有进程分配。旧root/store租约证据仍由继承生命周期成员负责；本次新增的是执行槽位及暂停快照拥有链的故障清理证据，原合同不删项、不归后续owner。
 ## 受控失败传播
 
 每组必需成员经脚本必需 ID 精确绑定（R3 语义：缺失/改名/重复/真跳过必红）；移除任一继承行
