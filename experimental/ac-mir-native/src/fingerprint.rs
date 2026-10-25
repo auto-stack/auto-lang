@@ -168,6 +168,36 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
         MirInstr::Aggregate { dst, record_ty, operands } => {
             format!("aggregate {dst} {record_ty} {:?}", operands)
         }
+        // PLAN-821 shared-core widening: the owned-profile instructions
+        // render (pure formatting — a fingerprint must not panic on
+        // them); the lower surface rejects them below.
+        MirInstr::Clone { dst, src } => format!("clone {dst} {src}"),
+        MirInstr::Move { dst, src } => format!("move {dst} {src}"),
+        MirInstr::View { dst, src } => format!("view {dst} {src}"),
+        MirInstr::MutRef { dst, src } => format!("mutref {dst} {src}"),
+        MirInstr::BorrowEnd { token } => format!("borrowend {token}"),
+        MirInstr::Drop { slot } => format!("drop {slot}"),
+        MirInstr::StrLen { dst, view } => format!("strlen {dst} {view}"),
+        MirInstr::StrLenBytes { dst, view } => format!("strlenbytes {dst} {view}"),
+        MirInstr::StrCharAt { dst, view, index } => {
+            format!("strcharat {dst} {view} {index}")
+        }
+        MirInstr::StrSlice {
+            dst,
+            view,
+            start,
+            end,
+        } => format!("strslice {dst} {view} {start} {end}"),
+        MirInstr::StrConcat { dst, lhs, rhs } => format!("strconcat {dst} {lhs} {rhs}"),
+        MirInstr::StrToOwned { dst, view } => format!("toowned {dst} {view}"),
+        MirInstr::StrCmp {
+            eq,
+            dst,
+            lhs,
+            rhs,
+        } => format!("strcmp {eq} {dst} {lhs} {rhs}"),
+        MirInstr::CharToCodepoint { dst, ch } => format!("char2cp {dst} {ch}"),
+        MirInstr::CharFromCodepoint { dst, code } => format!("cp2char {dst} {code}"),
     })
 }
 

@@ -462,6 +462,28 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     "av.data/1 record instructions are outside the mn scalar surface".to_string()
                 )
             }
+            // PLAN-821 shared-core widening: the owned-profile instructions
+            // (av.owned/1) are likewise a controlled lower rejection — mn
+            // keeps its scalar ABI; no semantic widening.
+            MirInstr::Clone { .. }
+            | MirInstr::Move { .. }
+            | MirInstr::View { .. }
+            | MirInstr::MutRef { .. }
+            | MirInstr::BorrowEnd { .. }
+            | MirInstr::Drop { .. }
+            | MirInstr::StrLen { .. }
+            | MirInstr::StrLenBytes { .. }
+            | MirInstr::StrCharAt { .. }
+            | MirInstr::StrSlice { .. }
+            | MirInstr::StrConcat { .. }
+            | MirInstr::StrToOwned { .. }
+            | MirInstr::StrCmp { .. }
+            | MirInstr::CharToCodepoint { .. }
+            | MirInstr::CharFromCodepoint { .. } => {
+                return Err(
+                    "av.owned/1 instructions are outside the mn scalar surface".to_string()
+                )
+            }
         }
         Ok(())
     }

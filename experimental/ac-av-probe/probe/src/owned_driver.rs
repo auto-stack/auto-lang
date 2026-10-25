@@ -242,3 +242,12 @@ pub fn restore_owned(
 pub fn types_fp_of(mir: &auto_av_core::mir::MirModule) -> String {
     format!("{:016x}", fnv1a64(format!("{:?}", mir.types).as_bytes()))
 }
+
+/// The store key of an owned module's ABC layer artifact (the restore/
+/// test seam — mirrors the data driver's `data_module_key`).
+pub fn owned_module_key(owner: &str, entry: &str, types_fp: &str, snapshot: u64) -> QueryKey {
+    QueryKey::new(
+        &OWNED_ABC_LAYER,
+        owned_key_axes(owner, entry, types_fp, &format!("{snapshot:016x}")),
+    )
+}
