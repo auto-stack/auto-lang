@@ -37,7 +37,7 @@ LEDGER = ROOT / ".autoos/specs.json"
 DELIVERY = "1b9f70dab0109dcc405ea66e30d01cddcacbef88"
 FREEZE = "1b9f70dab"
 REVIEWED = "e320abf4fa1ae2d00d3e2bc91a35eea53345f409"
-MAN_DELIVERY = "75a81b4f4b100f7f8bdf9c02bbf87c299cc9e5af"
+MAN_DELIVERY = "ceb8dfdd469b2dec1f2490aae1126b0b3303e35e"
 
 DESIGN = {
     "id": "P832-D1",

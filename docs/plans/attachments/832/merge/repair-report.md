@@ -19,3 +19,9 @@ Man `75a81b4f4b100f7f8bdf9c02bbf87c299cc9e5af`；前基线 `f52cd93b`。R3 的 F
 - `rustfmt --check`、`git diff --check` 通过；无临时诊断输出。
 
 未在本 repair 重跑整档。后续受影响独立复审通过后，merge 必须重跑 Man `cargo t` 和其余冻结门。lang 的 B845-FEATURE-01 是已登记 PLAN-847 blocker，与本 finding 分开，不由 832 越权修复。
+
+## F832-MERGE-BP-01：安装来源反例与关闭
+
+独立 reviewer 指出，上一版的通用 UI 回退可在安装态先命中开发语言库，使 SDK 分支失效；相同包清单不能证明来源。最终 Man `ceb8dfdd469b2dec1f2490aae1126b0b3303e35e` 将优先级改为显式 env/真实项目库→安装自身 SDK→开发语言 owner。
+
+永久 `installed_blueprints` driver 在安装 SDK 的 `form/login/spec.md` 注入 `PLAN832_INSTALLED_SDK_ONLY`，要求真实 `bp show` 输出该 marker，随后恢复原字节；[结果](installed-sdk-marker.log.txt) PASS。`cmd_bp` 4/4 与 full build 保持通过，见 [定向日志](repair-bp-install.log.txt)。该检查区分真实 SDK 与开发源，不再以相同包清单冒充安装来源。

@@ -41,3 +41,5 @@
 R3 后首次 merge 门发现 Man 占位 `packages/blueprints` 阻断语言真实库，且原 cmd_bp 测试绕过生产 registry。Man `75a81b4f` 已统一生产/测试入口，保留显式 env 和项目库优先，仅占位根回退安装 SDK 或语言 owner。`cmd_bp` 4/4、开发/安装 `bp list` 与显式根负控通过，详见 [merge 修复报告](merge/repair-report.md)。该代码变化使 R3 旧提交审查不能替代新受影响复审。
 
 lang 首次 `cargo t` 另命中已登记 B845-FEATURE-01（`probe_adapter_tests` 可选 `auto_test_case` 门控缺失），PLAN-847 为独立 owner；832 未修改或豁免该 blocker，lang 合入须等其恢复。当前 Man/lang 均未落地，ledger/归档/清理未执行。
+
+独立 reviewer 随后发现安装回退仍可能被编译期语言库抢先（F832-MERGE-BP-01）。最终 Man `ceb8dfdd` 已把安装 SDK 置于开发回退之前，并保留显式 env/真实项目库优先。永久 driver 的安装 SDK 唯一 marker 已被真实 `bp show` 读取，`cmd_bp` 4/4 与 full build 通过；[证据](merge/repair-report.md)。仍需同一 reviewer 对最终提交做受影响复审。
