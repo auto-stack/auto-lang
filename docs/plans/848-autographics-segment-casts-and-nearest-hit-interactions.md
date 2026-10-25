@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-848
-status: execution_done
+status: executing
 feature_name: AutoGraphics有限线段查询与最近命中交互
 plan_revision: 2
 author: [Codex]
 created_at: 2026-10-25
 updated_at: 2026-10-25
-current_step: 8
+current_step: 5
 total_steps: 10
 depends_on: [PLAN-846]
 supersedes_spec_components:
@@ -221,18 +221,18 @@ T-08登记准确完整矩阵；T-09最终独立pass后，T-10在冻结提交执�
 
 ## 8. 执行步骤
 
-当前T-01..08已完成并提交，execution_done8/10；T-09独立复审与T-10冻结完整门/合入收尾pending。T-01..08无必需gap完成为execution_done8/10；T-09独立pass为reviewed9/10且完整门pending；T-10实际收尾才交付10/10。
+当前R1复审needs_fix：128节点晚轴miss/逐个变近候选触发原100000步上限，F-848-R1-01开放；T-02/T-05/T-08重开，保留T-01/T-03/T-04/T-06/T-07已验证内容，executing5/10。修复及受影响复审通过后才能重新execution_done；T-09最终pass为reviewed9/10且完整门pending；T-10实际收尾才交付10/10。
 
 | task_id | owner_stage | 依赖 | 触点／拟新增路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
 | T-01 | work | G846/GSTART | 正式846收据/Specs、唯一848树、SDK/三锁/原source闭包和分母 | [x] 完整846及纯修复来源可消费，重核正式SHA/身份冻结；AC-01|
-| T-02 | work | T-01 | Api/SourceSnapshot/Descriptor/Play，new research/segment-query-feasibility.md | [x] §5.1选定方案CPU128宽/深双parent写和反控，局部cache/剪枝数值与owner边界；公开版本/token/GPU/Stop由T-03..07关闭，T-08汇总；AC-02, AC-03, AC-04, AC-05|
+| T-02 | work | T-01 | Api/SourceSnapshot/Descriptor/Play，new research/segment-query-feasibility.md | [ ] R1重开F-848-R1-01：128宽晚轴miss/逐个变近候选预算失败；原均匀宽/深控制和数值/身份证据保留，修复计算路径后补有区分反例；AC-02, AC-03, AC-04, AC-05|
 | T-03 | work | T-02 | behavior.rs/behavior_project.rs/正式版本选择，新segment_api/project tests | [x] v3构造/准入/Binding/同raw凭证/Undo，V-04/08；旧v1/v2 source/reserved/身份保持；AC-03, AC-06|
 | T-04 | work | T-03 | 新api/behavior_segment_v3.at、new segment_geometry.rs；只读复用spatial描述 | [x] actual Auto slab/filter/nearest/法线/结果与独立参考，V-02/03/05；不加native求交；AC-02, AC-04|
-| T-05 | work | T-04 | Play profile9/callback begin-end/result token/weighted errors/consumer，新segment_host tests | [x] V-05/06/07、原budgets/初始化/错配置/Stop反控闭合；AC-04, AC-05, AC-07|
+| T-05 | work | T-04 | Play profile9/callback begin-end/result token/weighted errors/consumer，新segment_host tests | [ ] R1重开F-848-R1-01：正式Host128合法分布Fault/tick0；需在原预算内成功发布，token/配置/Stop等未变证据保留；AC-04, AC-05, AC-07|
 | T-06 | work | T-05 | Host/Panel/bin正式v3选择、samples/segment_projects/beam2d与sight3d | [x] V-08/09与旧v1/v2/项目分母定向通过，callback操作与实际Auto业务完整；AC-06|
 | T-07 | work | T-06 | 新check_segment_queries.py/OS/GPU/仓外new-process回放 | [x] V-09/10同binary/全部mesh反馈/条件变异/Stop/partial正反无gap；AC-08|
-| T-08 | work | T-07 | 新check_segment_owners.py/source/fresh consumer/README/new research/segment-query-handoff.md/Spec proposal | [x] V-01/11/12与20轮owner/原定向/check/fmt/精确merge矩阵齐；AC-01, AC-07, AC-08|
+| T-08 | work | T-07 | 新check_segment_owners.py/source/fresh consumer/README/new research/segment-query-handoff.md/Spec proposal | [ ] R1重开：修复F-848-R1-01后刷新可行性/source/consumer/受影响文档及readiness，不再以均匀box控制声明完整128无gap；owner/原生未变面保留；AC-01, AC-07, AC-08|
 | T-09 | review | T-08 | 同树冻结code/Plan/Spec与raw，主检出独立review附件 | AC-01..08逐项/遗漏/延后/workaround/健康、版本绑定结论；AC-09 |
 | T-10 | merge | T-09 pass | 新冻结完整门→autographics-dev；主检出知识/ledger/archive/guard/到期 | AC-10真实交付/清理，改代码先受影响复审再冻结，不提前冒领 |
 
@@ -290,6 +290,14 @@ AC-01..08 work-owned结果pass；open in-contract findings、required coverage g
 
 stage:work | plan_id:PLAN-848 | plan_revision:2 | outcome:pass | worktree_path:D:/autostack/.wt/lang-848/auto-lang | branch:plan-848-dev | base_commit:bf22db3465203f3babd649494f4b37aa2a012027 | code_commit:cef25b5c41dbbfbec6b7bfd4b13507d8d5f1e34d | dependency_revisions:SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467、T-01三锁/AGP未变 | task_ids:T-01..08 closed | evidence:readiness及具名原始结果 | blockers:none | next_responsible_role:review。
 
+### 2026-10-25 review:r1 — needs_fix / executing5/10
+
+stage:review | review_scope:final | reviewer_identity:当前Codex会话（含实施上下文，非全新独立会话；停止实现写入、从合同/代码/raw重建判断，不冒认最终独立pass） | plan_id:PLAN-848 | plan_revision:2 | outcome:needs_fix | worktree_path:D:/autostack/.wt/lang-848/auto-lang | branch:plan-848-dev | reviewed_commit:cef25b5c41dbbfbec6b7bfd4b13507d8d5f1e34d | base_commit:bf22db3465203f3babd649494f4b37aa2a012027 | dependency_revisions:SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467，AGP/三锁未变 | spec_inputs:review-r1/baseline.json.txt及冻结spec-delta.md | acceptance_results:AC01/02数值/03/04/06/07保留通过，AC05失败，AC08部分，AC09未通过，AC10 pending | findings:F-848-R1-01 P1 OPEN | next:work同树修复后重新送审。
+
+[逐项报告、可复用反例与关闭范围](attachments/848/review-r1/review.md)。actual Session和正式Host均验证：1group+127合法3D叶子、双group写、2cast+10getter+6AABB，在晚Z轴miss或ordinal逐个更近时触发100000累计步上限；等深对照成功tick1。正式Host两反例均Faulted/tick0，非probe-only/初始化错误或计时噪声。当前nearest剪枝收益依赖候选分布，原均匀box绿不能证明r2完整128支持。T02/T05/T08重开，保留其余已验证任务与原始历史；readiness旧无gap声明由本记录替代，不弱化数值/预算/节点合同。
+
+本轮API8+geometry6定向重放通过，source370/SDK681/17local/29edges/479metadata、固定runner075bab…、14原生raw报告/4重开/5owner反控与SD01..04逐项复核，fmt及diff whitespace通过；原生/GPU/20轮owner按未变相关代码/输入复用，未再跑整档。完整driver/AGP/原图形与spatial/native/owner/source及producer/fresh consumer门仍merge-owned pending，最终审查通过前不启动。未改产品/SDK/锁/canonical/live ledger、未合入/归档/清树。临时review探针归档后删除，实施树HEAD及clean复核无漂移。
+
 ## 10. 待澄清事项
 
-无阻塞草案的产品问题。有限world线段/AABB最近命中、single-slot callback token、显式v3、128节点/weighted32credits、用户Auto交互及原始项目闭包边界明确。G846及T-01已完成；r2实施T-01..08完成，当前无待用户决定的产品问题；独立review与merge完整门尚待执行。若需要SDK/AGP/生产写面、提高CPU/降低节点保证，或精确mesh、sweep/运动响应/相机/Schema/ACE/HMR，回new具体修订，不默认扩面实施。
+当前无待用户决定的产品问题，但有合同内阻塞F-848-R1-01待work修复；不能宣称T-01..08无gap。有限world线段/AABB最近命中、single-slot callback token、显式v3、128节点/weighted32credits及原CPU合同保持。G846/T-01完成；独立最终pass与merge完整门尚待执行。若修复需要SDK/AGP/生产写面、提高CPU/降低节点保证，或精确mesh、sweep/运动响应/相机/Schema/ACE/HMR，回new具体修订，不默认扩面实施。

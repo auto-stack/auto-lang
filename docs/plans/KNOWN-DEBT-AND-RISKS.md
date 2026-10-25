@@ -1,3 +1,7 @@
+### Plan 848（2026-10-25，R1 needs_fix：128节点预算覆盖缺口）
+
+F-848-R1-01 P1 OPEN（合同内阻塞，非可延期债务）：r2/cef25b5c4，actual Session与正式Host的1group+127真实Cylinder、双group写/2cast+10getter+6AABB恰32credits，在晚Z轴miss或候选ordinal逐个更近时均触发100000累计步上限，Host Faulted/tick0；等深对照正常tick1。nearest剪枝令原均匀box测试通过，但不能证明全部既定128支持。T02/T05/T08重开，executing5/10；保留未变几何/版本/项目/资源证据，work同树修计算路径与永久反例，再受影响复审，完整回归仍merge-owned pending。不得以增预算/减节点/仅留易剪枝fixture关闭。[报告/重放/关闭范围](attachments/848/review-r1/review.md)。未合入或改产品。
+
 ### Plan 846（2026-10-25，merge:r1 根性能门阻断，未合入）
 
 ## D-846-INCR-PERF — AutoGraphics增量编译性能暂缓（用户授权，2026-10-25）
