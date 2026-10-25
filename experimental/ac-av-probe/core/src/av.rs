@@ -598,9 +598,21 @@ fn dispatch<V: ModuleView>(
                 ),
             });
         }
-        // Root frame. PLAN-827 R6: the slot storage goes through the
-        // fallible fault-injectable reserve (attempt accounting + ownership
-        // lease); PLAN-820 §6 keeps the deep filled-frame budget below.
+        // Root frame. PLAN-827 R6: a shallow pre-gate so a budget refusal
+        // PRECEDES the reserve attempt (fault-probe observable), then the
+        // slot storage goes through the fallible fault-injectable reserve
+        // (attempt accounting + ownership lease); PLAN-820 §6 keeps the
+        // authoritative deep filled-frame budget below.
+        if entry_fn.slots.len() * crate::contract::SLOT_CELL_BYTES > limits.max_slot_bytes {
+            return Some(ExecOutcome::Resource {
+                kind: ResourceKind::SlotBytes,
+                message: format!(
+                    "root frame slot data would reach {} bytes, above budget {}",
+                    entry_fn.slots.len() * crate::contract::SLOT_CELL_BYTES,
+                    limits.max_slot_bytes
+                ),
+            });
+        }
         let (slots, allocation) = match crate::frame_allocation::reserve_slots(entry_fn.slots.len())
         {
             Ok(v) => v,
