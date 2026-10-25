@@ -120,11 +120,40 @@ def repo_identity(root: Path) -> dict:
     }
 
 
-def run_cmd(cmd: list[str], cwd: Path) -> dict:
+def child_env(roots: dict[str, Path]) -> dict[str, str]:
+    result = os.environ.copy()
+    for repo_id, root in roots.items():
+        result[repo_id.upper().replace("-", "_") + "_ROOT"] = str(root)
+    exe = ".exe" if os.name == "nt" else ""
+    result.setdefault("AUTO_UI_TOOL_BIN", str(roots["auto-ui"] / "target/debug" / f"auto-ui-tool{exe}"))
+    te_child = str(roots["auto-lang"] / "target/debug" / f"te-child{exe}")
+    result.setdefault("AUTO_TE_CHILD_BIN", te_child)
+    result.setdefault("TE_CHILD_BIN", te_child)
+    return result
+
+
+def run_cmd(cmd: list[str], cwd: Path, env: dict[str, str]) -> dict:
     start = time.monotonic()
-    proc = subprocess.run(cmd, cwd=str(cwd))
+    proc = subprocess.run(cmd, cwd=str(cwd), env=env)
     return {"command": cmd, "exit": proc.returncode,
             "duration_s": round(time.monotonic() - start, 1)}
+
+
+def man_ti_bootstrap(roots: dict[str, Path], env: dict[str, str]) -> list[dict]:
+    commands = [
+        ("auto-ui", ["cargo", "build", "--locked", "-p", "auto-ui-tools"]),
+        ("auto-lang", ["cargo", "build", "--locked", "-p", "auto-tool-execution", "--bin", "te-child"]),
+    ]
+    results = []
+    for repo_id, command in commands:
+        sys.stdout.write(f"[{TOOL}] bootstrap man-ti @ {repo_id} → {' '.join(command)}\n")
+        sys.stdout.flush()
+        result = {"tier": "bootstrap:man-ti", "repo": repo_id,
+                  **run_cmd(command, roots[repo_id], env)}
+        results.append(result)
+        if result["exit"] != 0:
+            break
+    return results
 
 
 def cmd_run(args) -> int:
@@ -140,18 +169,30 @@ def cmd_run(args) -> int:
         "queue": list(tiers), "results": [], "verdict": "pass",
     }
     exit_code = 0
-    for tier in tiers:
-        spec = TIERS[tier]
-        root = roots[spec["repo"]]
-        sys.stdout.write(f"[{TOOL}] {tier} @ {spec['repo']} {root} → {' '.join(spec['run'])}\n")
-        sys.stdout.flush()
-        result = {"tier": tier, "repo": spec["repo"], **run_cmd(spec["run"], root)}
-        receipt["results"].append(result)
-        if result["exit"] != 0:
-            receipt["verdict"] = "fail"
-            exit_code = 1
-            sys.stdout.write(f"[{TOOL}] {tier} 红（exit {result['exit']}），首红即停\n")
-            break
+    environment = child_env(roots)
+    bootstrap_ok = True
+    if "man-ti" in tiers:
+        for result in man_ti_bootstrap(roots, environment):
+            receipt["results"].append(result)
+            if result["exit"] != 0:
+                receipt["verdict"] = "fail"
+                exit_code = 1
+                bootstrap_ok = False
+                sys.stdout.write(f"[{TOOL}] man-ti bootstrap 红（exit {result['exit']}），首红即停\n")
+                break
+    if bootstrap_ok:
+        for tier in tiers:
+            spec = TIERS[tier]
+            root = roots[spec["repo"]]
+            sys.stdout.write(f"[{TOOL}] {tier} @ {spec['repo']} {root} → {' '.join(spec['run'])}\n")
+            sys.stdout.flush()
+            result = {"tier": tier, "repo": spec["repo"], **run_cmd(spec["run"], root, environment)}
+            receipt["results"].append(result)
+            if result["exit"] != 0:
+                receipt["verdict"] = "fail"
+                exit_code = 1
+                sys.stdout.write(f"[{TOOL}] {tier} 红（exit {result['exit']}），首红即停\n")
+                break
     out = Path(args.output) if args.output else (
         roots["auto-lang"].parent / "scratch-cross-repo-tiers" / "run-receipt.json")
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -177,7 +218,7 @@ def cmd_list(args) -> int:
         root = roots[spec["repo"]]
         sys.stdout.write(f"[{TOOL}] list {tier} @ {spec['repo']}\n")
         sys.stdout.flush()
-        proc = subprocess.run(spec["list"], cwd=str(root), capture_output=True,
+        proc = subprocess.run(spec["list"], cwd=str(root), env=child_env(roots), capture_output=True,
                               text=True, encoding="utf-8", errors="replace")
         if proc.returncode != 0:
             sys.stderr.write(proc.stdout[-2000:] + proc.stderr[-2000:])
