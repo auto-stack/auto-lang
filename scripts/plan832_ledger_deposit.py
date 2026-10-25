@@ -36,7 +36,7 @@ LEDGER = ROOT / ".autoos/specs.json"
 
 DELIVERY = "1b9f70dab0109dcc405ea66e30d01cddcacbef88"
 FREEZE = "1b9f70dab"
-REVIEWED = "e320abf4fa1ae2d00d3e2bc91a35eea53345f409"
+REVIEWED = "adb5ce0f3ba8935f3f546b4bc40217c4d20235e9"
 MAN_DELIVERY = "ceb8dfdd469b2dec1f2490aae1126b0b3303e35e"
 
 DESIGN = {
@@ -72,18 +72,18 @@ TESTS = {
 }
 
 REVIEWS = {
-    "id": "P832-R3",
-    "title": "PLAN-832 独立终审 R3 — pass（F01..F04 全关闭）",
+    "id": "P832-R4",
+    "title": "PLAN-832 独立终审 R3+R4 — pass（F01..F04 与 merge blueprint 全关闭）",
     "content": (
-        "R1/R2 分别暴露独立 Core、unknown owner、生产发现与真实 backup 恢复缺口后，"
-        "修复形成独立 Core、owner 三态、current_exe 开发发现、无注入永久测试和 marker 恢复文档。"
-        "连续失败覆盖诊断已验证。R3 绑定 lang e320abf4f、Man f52cd93b，独立确认直接 CLI/安装/显式/"
-        "缺件/release/平放布局、PowerShell 真实恢复和严格 extra 负控全过；AC01..07/SD pass，"
-        "jet/ark 真实构建按 r3 裁定转 v0.7，merge 门另验。"
+        "R3 绑定 lang e320abf4f、Man f52cd93b，F01..F04 全关闭。merge 门禁另发现 Man 占位 blueprint"
+        "遮蔽与安装来源回退缺口；最终修复按显式 env/真实项目库→安装 SDK→开发 owner，"
+        "安装 SDK 唯一 marker 被真实 bp show 读取，项目库/env 优先和缺件负控保持。"
+        f"R4 独立受影响复审绑定 lang {REVIEWED}、Man {MAN_DELIVERY}，F832-MERGE-BP-01 CLOSED；"
+        "jet/ark 真实构建按 r3 裁定转 v0.7，统一 merge 门另验。"
     ),
     "status": "verified",
-    "file": "docs/plans/attachments/832/review-r3/review.md",
-    "tags": ["PLAN-832", "review:R3-pass", f"reviewed:{REVIEWED}", f"man-reviewed:{MAN_DELIVERY}"],
+    "file": "docs/plans/attachments/832/review-r4/review.md",
+    "tags": ["PLAN-832", "review:R4-pass", f"reviewed:{REVIEWED}", f"man-reviewed:{MAN_DELIVERY}"],
 }
 
 REPORTS = {
@@ -91,7 +91,7 @@ REPORTS = {
     "title": "PLAN-832 三仓交付与 merge 收据",
     "content": (
         f"lang delivery {DELIVERY}（28 个提交 rebase range-diff 全等价，ff-only）；"
-        f"Man delivery {MAN_DELIVERY}（10 个提交 ff-only）；UI/down 固定版本不变。"
+        f"Man delivery {MAN_DELIVERY}（12 个提交 ff-only）；UI/down 固定版本不变。"
         "T-11 统一门、三仓来源读回、canonical SD-01..06、受管 ledger/索引、归档与 guard 清理"
         "按归档 Plan 的 merge 收据逐项核验。jet/ark 构建延期至 v0.7，不冒称已测；"
         "批量 tf 仍按主检收到期规则与既有 blocker 分诊。"
