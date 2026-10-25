@@ -1435,15 +1435,48 @@ impl<'a> Verifier<'a> {
                             ));
                         }
                     }
-                    MirInstr::MutRef { .. } | MirInstr::Drop { .. } => {
-                        // Wire/codec rows exist; admission arrives with
-                        // PLAN-821 T-03 (staged surface, contract-decision
-                        // §4 note) — both layers reject identically.
-                        return Err(err(
-                            "mir.profile-instr",
-                            "MUTREF/DROP land with PLAN-821 T-03 (not admitted at T-02)"
-                                .to_string(),
-                        ));
+                    MirInstr::MutRef { dst, src } => {
+                        if !self.is_owned {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "MUTREF exists only in the owned profile".to_string(),
+                            ));
+                        }
+                        let dt = slot_ty_of(f, *dst, sp, "mutref dst")?;
+                        let st = slot_ty_of(f, *src, sp, "mutref src")?;
+                        if !matches!(self.module.types.get(dt as usize), Some(MirType::MutRef)) {
+                            return Err(err(
+                                "mir.type-op",
+                                format!("MUTREF destination type {} is not MutRef", dt),
+                            ));
+                        }
+                        if !crate::ownership::type_is_rootable(self.module, st) {
+                            return Err(err(
+                                "mir.type-op",
+                                format!(
+                                    "MUTREF source type {} is not an ownable root (Str / resource record)",
+                                    st
+                                ),
+                            ));
+                        }
+                    }
+                    MirInstr::Drop { slot } => {
+                        if !self.is_owned {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "DROP exists only in the owned profile".to_string(),
+                            ));
+                        }
+                        let st = slot_ty_of(f, *slot, sp, "drop slot")?;
+                        if !crate::ownership::type_is_owned(self.module, st) {
+                            return Err(err(
+                                "mir.type-op",
+                                format!(
+                                    "DROP of type {} (only owned Str / resource records drop)",
+                                    st
+                                ),
+                            ));
+                        }
                     }
                     MirInstr::BorrowEnd { token } => {
                         if !self.is_owned {

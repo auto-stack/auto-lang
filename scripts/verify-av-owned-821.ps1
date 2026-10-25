@@ -243,9 +243,40 @@ switch ($Scope) {
         Write-Host "   evidence: $evPath (p95 wall $($evidence.wall_ms_p95)ms, max peak $($evidence.peak_bytes_max) bytes)"
     }
     "semantics" {
-        # V-01 reservation control / V-02 move+borrow / V-05 handles /
-        # V-06 text / V-11/V-12 control-flow joins — T-03.
-        Not-Wired "semantics" "T-03"
+        # T-03: the full frozen semantics matrices — V-01 reservation /
+        # RHS-reads-same-root, V-02 borrow exclusivity + multi-view,
+        # V-05 handle/integer isolation, V-06 frozen bit samples +
+        # escapes + traps, V-11 merges/loops/trap-cleanup/sparse/budget,
+        # V-12 arm-specific init/borrow joins (all as typed MIR fixtures
+        # through the REAL admission chain), plus the formal corpus gate.
+        Run-Probe-Tests "av_owned_821_semantics" "semantics" @(
+            "av_owned_821_v01_field_replace_rhs_reads_same_root_legal",
+            "av_owned_821_v01_self_move_is_reservation_conflict",
+            "av_owned_821_v01_source_domain_shapes_keep_verify_codes",
+            "av_owned_821_v02_multi_view_and_view_copy_legal",
+            "av_owned_821_v02_live_mutref_blocks_field_set",
+            "av_owned_821_v02_borrow_end_releases_exclusion",
+            "av_owned_821_v02_copy_owned_and_mutref_refused",
+            "av_owned_821_v02_double_move_rejected",
+            "av_owned_821_v05_integer_equal_to_resource_id_stays_integer",
+            "av_owned_821_v05_view_into_int_op_rejected_at_verify",
+            "av_owned_821_v05_borrow_end_then_redefine_frees_old_exactly_once",
+            "av_owned_821_v06_frozen_bit_samples_observe_exactly",
+            "av_owned_821_v06_oob_char_at_and_invalid_codepoint_trap",
+            "av_owned_821_v06_char_domain_round_trips",
+            "av_owned_821_v06_view_escape_rejected_and_param_view_legal",
+            "av_owned_821_v11_one_arm_move_join_read_rejected",
+            "av_owned_821_v11_loop_back_edge_move_conservative",
+            "av_owned_821_v11_call_arg_shape_mismatch_rejected",
+            "av_owned_821_v11_trap_cleans_owned_in_creation_order",
+            "av_owned_821_v11_sparse_field_paths_execute",
+            "av_owned_821_v11_analysis_over_budget_is_resource",
+            "av_owned_821_v12_single_arm_temp_read_rules",
+            "av_owned_821_v12_one_arm_view_blocks_join_mut_until_ended",
+            "av_owned_821_v12_two_arm_end_borrow_then_mut_legal",
+            "av_owned_821_v12_zero_or_many_loop_borrow_and_move_faces"
+        )
+        Run-Runner-Tests "av_owned_821_corpus" "semantics-corpus" @("av_owned_821_corpus_green")
     }
     "admission" {
         # V-02..V-06 admission faces — T-04 (with resources).

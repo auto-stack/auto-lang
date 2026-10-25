@@ -491,6 +491,14 @@ pub fn verify_owned_function(
                     if is_rootable[*dst as usize] {
                         check_def_conflict!(dst, "field-get destination");
                     }
+                    // A Str-field read IS a borrow view rooted at the base
+                    // (CD §4 07, 782 "字段读取=视图"): register the token so
+                    // root-conservative conflicts see it across merges.
+                    if is_token[*dst as usize] {
+                        st.token_roots[*dst as usize] = Bitsets::new(root_bits);
+                        st.token_roots[*dst as usize].set(*base as usize);
+                        st.tokens_live.set(*dst as usize);
+                    }
                     st.init.set(*dst as usize);
                     st.moved.clear(*dst as usize);
                     st.dropped.clear(*dst as usize);
@@ -687,14 +695,59 @@ pub fn verify_owned_function(
                     st.moved.clear(*dst as usize);
                     st.dropped.clear(*dst as usize);
                 }
-                MirInstr::MutRef { .. } | MirInstr::Drop { .. } => {
-                    // T-03 surface: not admitted at this stage.
-                    fail = Some(err(
-                        "mir.profile-instr",
-                        "MUTREF/DROP land with PLAN-821 T-03 (not admitted at T-02)".to_string(),
-                        flat,
-                    ));
-                    break 'blk;
+                MirInstr::MutRef { dst, src } => {
+                    check_read!(src, "mut borrow source");
+                    // Root-conservative exclusivity (CD §4 0D): no other
+                    // live token may hold the root when the exclusive
+                    // token is created.
+                    if root_has_live_token(&st, *src as usize) {
+                        fail = Some(err(
+                            "mir.mut-conflict",
+                            format!(
+                                "MUTREF of `{}` conflicts an active borrow on the root",
+                                slot_name(f, *src as usize)
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    st.token_roots[*dst as usize] = Bitsets::new(root_bits);
+                    st.token_roots[*dst as usize].set(*src as usize);
+                    st.tokens_live.set(*dst as usize);
+                    st.init.set(*dst as usize);
+                    st.moved.clear(*dst as usize);
+                    st.dropped.clear(*dst as usize);
+                }
+                MirInstr::Drop { slot } => {
+                    // Explicit drop: owned + Init + not already
+                    // moved/dropped (mir.drop-uninit); no live borrows on
+                    // the root (root-conservative).
+                    if !st.init.get(*slot as usize)
+                        || st.moved.get(*slot as usize)
+                        || st.dropped.get(*slot as usize)
+                    {
+                        fail = Some(err(
+                            "mir.drop-uninit",
+                            format!(
+                                "DROP of an uninitialised/moved/dropped slot `{}`",
+                                slot_name(f, *slot as usize)
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    if root_has_live_token(&st, *slot as usize) {
+                        fail = Some(err(
+                            "mir.mut-conflict",
+                            format!(
+                                "DROP of `{}` conflicts an active borrow on the root",
+                                slot_name(f, *slot as usize)
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    st.dropped.set(*slot as usize);
                 }
                 MirInstr::BorrowEnd { token } => {
                     check_read!(token, "borrow-end token");

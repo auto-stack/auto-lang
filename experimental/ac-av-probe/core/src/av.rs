@@ -1213,12 +1213,32 @@ fn dispatch<V: ModuleView>(
                         return Some(out);
                     }
                 }
-                MirInstr::MutRef { .. } | MirInstr::Drop { .. } => {
-                    // Wire rows exist; T-02 never admits these past
-                    // verification — reaching here is an admission bug.
-                    return Some(ExecOutcome::Infra(
-                        "MUTREF/DROP execution lands with PLAN-821 T-03".to_string(),
-                    ));
+                MirInstr::MutRef { dst, src } => {
+                    // The exclusive write token: a (frame, slot,
+                    // generation) handle over the ROOT slot. Writes never
+                    // go through the token (the static analysis gates the
+                    // root while any token is live) — the handle IS the
+                    // exclusivity lock (V-05 generation domain).
+                    let tok = {
+                        let fr = st.frames.last().expect("frame present");
+                        Value::MutRef(crate::contract::MutRefV {
+                            frame: fr.seq as u32,
+                            slot: *src as u32,
+                            gen: fr.gens[*src as usize],
+                        })
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, tok, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::Drop { slot } => {
+                    // Explicit drop: take the owned value out; its
+                    // StrHandle drops report the frees to the arena
+                    // (exactly-once, reverse-creation order inside the
+                    // value), the generation bump retires stale rooted
+                    // views, and the slot returns to the uninit zero.
+                    let zero = v.zero_of(func_idx, func.slots[*slot as usize].ty);
+                    owned_kill_slot(st, *slot as usize, zero);
                 }
                 MirInstr::BorrowEnd { .. } => {
                     // The token is a plain value: release is a no-op at
