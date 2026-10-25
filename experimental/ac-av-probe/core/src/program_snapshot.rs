@@ -454,16 +454,32 @@ impl crate::av::ModuleView for UnitView<'_> {
         let u = self.snap.code.get(func as usize)?.unit().module();
         u.type_shape(ty)
     }
-    fn is_strview_type(&self, _func: u32, _ty: u32) -> bool {
-        // The owned profile rides the merged module view for T-02; the
-        // unit view gains its own type space with PLAN-821 T-09.
-        false
+    // PLAN-821 T-09: the unit view resolves types against the OWNING
+    // unit's own table (slot type indices are unit-local — the merged
+    // table's indices never matched them).
+    fn is_strview_type(&self, func: u32, ty: u32) -> bool {
+        let Some(u) = self.snap.code.get(func as usize) else {
+            return false;
+        };
+        matches!(
+            u.unit().module().types.get(ty as usize),
+            Some(crate::mir::MirType::StrView)
+        )
     }
-    fn mir_type_of(&self, _func: u32, _ty: u32) -> Option<&crate::mir::MirType> {
-        None
+    fn mir_type_of(&self, func: u32, ty: u32) -> Option<&crate::mir::MirType> {
+        self.snap
+            .code
+            .get(func as usize)?
+            .unit()
+            .module()
+            .types
+            .get(ty as usize)
     }
-    fn type_is_owned(&self, _func: u32, _ty: u32) -> bool {
-        false
+    fn type_is_owned(&self, func: u32, ty: u32) -> bool {
+        let Some(u) = self.snap.code.get(func as usize) else {
+            return false;
+        };
+        crate::ownership::type_is_owned(u.unit().module(), ty)
     }
     fn resolve_callee(&self, func: u32, callee: &crate::mir::CalleeRef) -> Option<u32> {
         match callee {

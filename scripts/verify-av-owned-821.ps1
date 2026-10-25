@@ -9,7 +9,7 @@
 # through.
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("first-case", "semantics", "admission", "resources", "cache", "compatibility", "autodown", "acceptance")]
+    [ValidateSet("first-case", "semantics", "admission", "resources", "cache", "compatibility", "autodown", "incremental", "acceptance")]
     [string]$Scope
 )
 
@@ -339,6 +339,49 @@ switch ($Scope) {
         )
         Run-Runner-Tests "av_owned_821_corpus" "cache-corpus" @("av_owned_821_corpus_green")
     }
+    "incremental" {
+        # T-09 V-13: (1) the SHARED scalar baseline — the frozen 828
+        # formal-session campaign dual gate (30 revisions, structure +
+        # P95 <1s, dual memory lines) replays green, plus the 827
+        # incremental family (the scalar V-13 precedent, unchanged);
+        # (2..4) the owned faces — two-fn local body updates (object +
+        # generation reuse, zero production deltas), precise refusals
+        # (signature/layout stale-link refusals, module-wide import-table
+        # invalidation), forced-whole-recompute visibility; plus the
+        # inherited 828 lifecycle transaction axes.
+        Push-Location $probeWs
+        & cargo test -p auto-av-probe --test function_incremental_828_t08 t08_formal_campaign_v08_dual_gate 2>&1 | Tee-Object -Variable f828 | Write-Host
+        $f828code = $LASTEXITCODE
+        Pop-Location
+        $f828 | Out-File (Join-Path $reportDir "incremental-baseline-828.log") -Encoding utf8
+        if ($f828code -ne 0) {
+            Write-Host "FAILED: incremental baseline (exit $f828code)"
+            exit 1
+        }
+        Assert-Selected ($f828 -join "`n") "incremental-baseline-828" @(
+            "t08_formal_campaign_v08_dual_gate_30_revisions"
+        )
+        Run-Probe-Tests "av_owned_821_incremental" "incremental-owned" @(
+            "av_owned_821_v13_two_fn_local_body_updates",
+            "av_owned_821_v13_precise_refusals_signature_and_layout",
+            "av_owned_821_v13_forced_whole_recompute_is_nonzero_everywhere",
+            "av_owned_821_v13_shared_scalar_session_still_warms"
+        )
+        Run-Probe-Tests "av_source_827_incremental" "incremental-scalar-precedent" @(
+            "av_source_827_incremental_d828_baseline_30_structure_and_p95",
+            "av_source_827_incremental_raw_shape_rejects_missing_baseline",
+            "av_source_827_incremental_failing_verdict_still_writes_raw",
+            "av_source_827_incremental_two_fn_local_updates",
+            "av_source_827_incremental_precise_refusals",
+            "av_source_827_incremental_degradation_caught",
+            "av_source_827_incremental_detector_negative_controls"
+        )
+        Run-Probe-Tests "function_incremental_828_contract" "incremental-inherited-lifecycle" @(
+            "contract_828_transaction_sequential_cancel_then_commit",
+            "contract_828_transaction_close_releases_owned_entries",
+            "contract_828_transaction_prepare_does_not_publish_and_drop_is_inert"
+        )
+    }
     "compatibility" {
         # T-05 V-09: the ORIGINAL consumers keep their support faces — the
         # core-i32 ac-av corpus, the delivered 817 (CTE) and 818
@@ -370,7 +413,7 @@ switch ($Scope) {
         # drop out of acceptance).
         foreach ($scope in @(
             "first-case", "semantics", "admission", "cache",
-            "compatibility", "autodown", "resources"
+            "compatibility", "autodown", "incremental", "resources"
         )) {
             if (!(Invoke-Scope $scope)) {
                 Write-Host "FAILED: acceptance — scope '$scope' red"
