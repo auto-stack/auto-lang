@@ -440,15 +440,15 @@ pub fn bind(desc: &Descriptor, source: &str) -> Result<hir::Bundle, Vec<Diagnost
 }
 
 /// A field set merged from head + body with duplicate detection.
-struct FieldSet {
-    by_name: BTreeMap<String, NamedValue>,
+struct FieldSet<'a> {
+    by_name: BTreeMap<&'a str, &'a NamedValue>,
 }
 
-impl FieldSet {
-    fn build(node: &SyntaxNode, b: &mut Binder) -> FieldSet {
-        let mut by_name: BTreeMap<String, NamedValue> = BTreeMap::new();
+impl<'a> FieldSet<'a> {
+    fn build(node: &'a SyntaxNode, b: &mut Binder) -> FieldSet<'a> {
+        let mut by_name: BTreeMap<&'a str, &'a NamedValue> = BTreeMap::new();
         for f in node.all_fields() {
-            if let Some(prev) = by_name.get(&f.name) {
+            if let Some(prev) = by_name.get(f.name.as_str()) {
                 b.error(
                     "bind.duplicate-field",
                     format!(
@@ -458,18 +458,18 @@ impl FieldSet {
                     f.name_span,
                 );
             } else {
-                by_name.insert(f.name.clone(), f.clone());
+                by_name.insert(f.name.as_str(), f);
             }
         }
         FieldSet { by_name }
     }
 
     fn get(&self, name: &str) -> Option<&NamedValue> {
-        self.by_name.get(name)
+        self.by_name.get(name).copied()
     }
 
-    fn names(&self) -> impl Iterator<Item = &String> {
-        self.by_name.keys()
+    fn names(&self) -> impl Iterator<Item = &str> {
+        self.by_name.keys().copied()
     }
 }
 
@@ -689,8 +689,9 @@ impl<'d> Binder<'d> {
         }
         candidates.push(tag.to_string());
 
+        let desc = self.desc;
         for key in &candidates {
-            if let Some(spec) = self.desc.branches.get(key).cloned() {
+            if let Some(spec) = desc.branches.get(key) {
                 for r in &spec.require {
                     if fields.get(r).is_none() {
                         self.error(
@@ -701,7 +702,7 @@ impl<'d> Binder<'d> {
                     }
                 }
                 for name in fields.names() {
-                    if spec.forbid.contains(name) {
+                    if spec.forbid.iter().any(|v| v == name) {
                         self.error(
                             "bind.branch-forbidden-field",
                             format!("field `{}` is not allowed on {} here", name, subject),
@@ -731,27 +732,16 @@ impl<'d> Binder<'d> {
     }
 
     fn check_fields_against_spec(&mut self, tag: &str, fields: &FieldSet) {
-        let (spec_fields, slot_aliases) = match self.desc.nodes.get(tag) {
-            Some(s) => {
-                let mut aliases: Vec<&'static str> = Vec::new();
-                for (i, k) in s.slots.iter().enumerate() {
-                    match k {
-                        SlotKind::Id => {
-                            if i == 0 {
-                                aliases.push("id");
-                            }
-                        }
-                        SlotKind::TypeUse | SlotKind::TypeRef => aliases.push("type"),
-                        SlotKind::Enum(_) => aliases.push("kind"),
-                    }
-                }
-                (s.fields.clone(), aliases)
-            }
-            None => (BTreeMap::new(), Vec::new()),
-        };
         for name in fields.names() {
-            let is_slot_field = slot_aliases.contains(&name.as_str());
-            if !spec_fields.contains_key(name) && !is_slot_field {
+            let known = self.desc.nodes.get(tag).is_some_and(|spec| {
+                spec.fields.contains_key(name)
+                    || spec.slots.iter().enumerate().any(|(i, kind)| match kind {
+                        SlotKind::Id => i == 0 && name == "id",
+                        SlotKind::TypeUse | SlotKind::TypeRef => name == "type",
+                        SlotKind::Enum(_) => name == "kind",
+                    })
+            });
+            if !known {
                 self.error(
                     "bind.unknown-field",
                     format!("unknown field `{}` on {}", name, tag),

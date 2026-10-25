@@ -428,7 +428,13 @@ impl<'s> Parser<'s> {
     }
 
     fn bump(&mut self) -> Token {
-        let t = self.toks[self.pos].clone();
+        // Tokens before pos are never revisited. Move owned lexemes into
+        // the syntax tree instead of allocating a second copy of each one.
+        let token = &mut self.toks[self.pos];
+        let t = Token {
+            tok: std::mem::replace(&mut token.tok, Tok::Punct('\0')),
+            span: token.span,
+        };
         self.pos += 1;
         t
     }
@@ -463,13 +469,13 @@ impl<'s> Parser<'s> {
     fn parse_node(&mut self) -> Result<SyntaxNode, Diagnostic> {
         let tag_tok = match self.peek() {
             Some(Token {
-                tok: Tok::Ident(name),
-                span,
+                tok: Tok::Ident(_), ..
             }) => {
-                let name = name.clone();
-                let span = *span;
-                self.pos += 1;
-                (name, span)
+                let t = self.bump();
+                let Tok::Ident(name) = t.tok else {
+                    unreachable!()
+                };
+                (name, t.span)
             }
             Some(t) => {
                 return Err(self.err(
@@ -633,8 +639,8 @@ impl<'s> Parser<'s> {
 
     fn parse_field(&mut self, _ctx: &str) -> Result<NamedValue, Diagnostic> {
         let name_tok = self.bump();
-        let name = match &name_tok.tok {
-            Tok::Ident(s) => s.clone(),
+        let name = match name_tok.tok {
+            Tok::Ident(s) => s,
             _ => {
                 return Err(self.err(
                     "text.unexpected-token",

@@ -239,6 +239,16 @@ pub fn put_unit_coff(
 /// Restore one unit's COFF by its base key. `None` on a clean miss; a
 /// present-but-wrong artifact is a controlled admission rejection.
 pub fn get_unit_coff(store: &ManagedStore, meta: &CoffMeta) -> Result<Option<Vec<u8>>, MnError> {
+    Ok(get_unit_coff_with_id(store, meta)?.map(|(_, bytes)| bytes))
+}
+
+/// Return the identity from the same admitted read as the bytes. Consumers
+/// must not reopen a hit merely to recover its identity (and risk binding a
+/// different concurrent lookup to these bytes).
+pub fn get_unit_coff_with_id(
+    store: &ManagedStore,
+    meta: &CoffMeta,
+) -> Result<Option<(String, Vec<u8>)>, MnError> {
     let key = coff_unit_key(meta);
     let Some(first) = store
         .get_artifact(COFF_LAYER.id, &key)
@@ -247,7 +257,7 @@ pub fn get_unit_coff(store: &ManagedStore, meta: &CoffMeta) -> Result<Option<Vec
         return Ok(None);
     };
     let bytes = admit_payload(meta, &first.payload, &key, store)?;
-    Ok(Some(bytes))
+    Ok(Some((first.artifact_id, bytes)))
 }
 
 /// Restore by artifact id (manifest path) with the same admission.

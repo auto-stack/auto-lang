@@ -253,6 +253,17 @@ fn mir_native_cache_bad_admission_rejections() {
     let coff = emit::emit_unit_coff(unit_helper).expect("emit helper");
     let (id_helper, _pages) = put_unit_coff(&store, None, &meta_helper, &coff.bytes).unwrap();
 
+    // A hit returns the identity of the exact artifact whose bytes passed
+    // envelope/COFF admission, rather than reopening the key for an id.
+    let (admitted_id, admitted_bytes) = ac_mn::cache::get_unit_coff_with_id(&store, &meta_helper)
+        .expect("admitted lookup")
+        .expect("persisted helper hit");
+    assert_eq!(admitted_id, id_helper);
+    assert_eq!(admitted_bytes, coff.bytes);
+    assert!(ac_mn::cache::get_unit_coff_with_id(&store, &meta_main)
+        .expect("clean miss")
+        .is_none());
+
     // (a) Self-consistent wrong address: the HELPER's enveloped payload
     // stored under the MAIN unit's key. Internally consistent, wrong
     // address — the consumption gate must reject, never link it as main.

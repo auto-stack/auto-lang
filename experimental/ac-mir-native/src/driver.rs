@@ -187,23 +187,15 @@ impl MnDriver {
             let bytes: Vec<u8>;
             match self.store.as_ref() {
                 Some(store) => {
-                    match obs.span("cache_lookup", |_| cache::get_unit_coff(store, &meta))? {
-                        Some(b) => {
+                    match obs.span("cache_lookup", |_| {
+                        cache::get_unit_coff_with_id(store, &meta)
+                    })? {
+                        Some((id, b)) => {
                             obs.counter("cache_hit_coff", 1);
                             // Restored object bytes: I/O read buffers held
                             // through the link (T-05 §11 partition).
                             obs.ledger.charge(Partition::Io, b.len() as u64);
                             // The manifest binds the concrete artifact id.
-                            let id = store
-                                .get_artifact(COFF_LAYER.id, &cache::coff_unit_key(&meta))
-                                .map_err(|e| MnError::Infra(format!("store id lookup: {e}")))?
-                                .map(|a| a.artifact_id)
-                                .ok_or_else(|| {
-                                    MnError::Admit(
-                                        "address",
-                                        format!("admitted unit `{}` has no artifact id", meta.unit),
-                                    )
-                                })?;
                             entry_row = Some(LinkUnitEntry {
                                 sha256: cache::content_hash(&b),
                                 len: b.len(),
