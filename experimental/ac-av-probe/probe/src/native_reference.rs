@@ -297,10 +297,19 @@ pub fn text_runtime_lib() -> Result<PathBuf, String> {
         return Err("ac-core runtime/text workspace not located".to_string());
     };
     if !rt.join("Cargo.toml").is_file() {
-        return Err(format!("text runtime workspace missing at {}", rt.display()));
+        return Err(format!(
+            "text runtime workspace missing at {}",
+            rt.display()
+        ));
     }
     let out = std::process::Command::new("cargo")
-        .args(["build", "-p", "ac-text-runtime-shim", "--release", "--locked"])
+        .args([
+            "build",
+            "-p",
+            "ac-text-runtime-shim",
+            "--release",
+            "--locked",
+        ])
         .current_dir(&rt)
         .output()
         .map_err(|e| format!("spawn cargo for the text runtime: {e}"))?;
@@ -310,7 +319,10 @@ pub fn text_runtime_lib() -> Result<PathBuf, String> {
             String::from_utf8_lossy(&out.stderr)
         ));
     }
-    let lib = rt.join("target").join("release").join("ac_text_runtime.lib");
+    let lib = rt
+        .join("target")
+        .join("release")
+        .join("ac_text_runtime.lib");
     if !lib.is_file() {
         return Err(format!("runtime lib missing at {}", lib.display()));
     }

@@ -1,0 +1,26 @@
+# PLAN-821 V-01 first case (formal path, frozen fixture): the frozen
+# av.owned-fixture/1 `first-case` input through the real `ac-av/owned-run-v1`
+# recipe. The PARENT judges the canonical result face + live=0 + alloc/free
+# order against its OWN frozen table (the worker never sees expected
+# outcomes). The case source seed stays byte-identical to the fixture
+# (identity receipts in README.md).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.owned.first"
+  tags: ["av-data-821", "probe"]
+  links: ["PLAN-821"]
+  source: { file: "src/first-case.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-owned-fixture", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/owned-run-v1",
+        av: { entry: "owned:first-case" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success" } }
+  ]
+}
+```

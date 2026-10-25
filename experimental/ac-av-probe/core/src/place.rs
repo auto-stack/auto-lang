@@ -65,10 +65,9 @@ pub fn record_set_path(root: &Value, path: &[u16], val: Value) -> Option<Value> 
         let inner = fields.get(seg)?.clone();
         fields[seg] = record_set_path(&inner, &path[1..], val)?;
     }
-    Some(Value::Record(std::rc::Rc::new(crate::contract::RecordValue {
-        ty: r.ty,
-        fields,
-    })))
+    Some(Value::Record(std::rc::Rc::new(
+        crate::contract::RecordValue { ty: r.ty, fields },
+    )))
 }
 
 #[cfg(test)]

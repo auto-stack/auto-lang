@@ -483,7 +483,9 @@ pub(crate) fn typed_zero(t: Option<&MirType>) -> Value {
         Some(MirType::Char) => Value::Char('\0'),
         Some(MirType::Str) => Value::Str(crate::contract::StrHandle::detached(Box::from([]))),
         Some(MirType::StrView) => Value::StrView(crate::contract::StrView {
-            src: crate::contract::StrViewSrc::Static { const_idx: u32::MAX },
+            src: crate::contract::StrViewSrc::Static {
+                const_idx: u32::MAX,
+            },
             start: 0,
             end: 0,
         }),
@@ -979,9 +981,7 @@ fn dispatch<V: ModuleView>(
                             if v.is_strview_type(func_idx, dst_ty) {
                                 let n = crate::owned_text::scalars(&bytes).len() as u32;
                                 Value::StrView(crate::contract::StrView {
-                                    src: crate::contract::StrViewSrc::Static {
-                                        const_idx: *value,
-                                    },
+                                    src: crate::contract::StrViewSrc::Static { const_idx: *value },
                                     start: 0,
                                     end: n,
                                 })
@@ -1089,7 +1089,8 @@ fn dispatch<V: ModuleView>(
                     // authoritative PLAN-820 §6 check is the deep size of
                     // the FILLED callee frame (params + typed placeholders)
                     // after the reserve below.
-                    let prospective = st.slot_bytes + callee_fn.slots.len() * crate::contract::SLOT_CELL_BYTES;
+                    let prospective =
+                        st.slot_bytes + callee_fn.slots.len() * crate::contract::SLOT_CELL_BYTES;
                     if prospective > limits.max_slot_bytes {
                         return Some(ExecOutcome::Resource {
                             kind: ResourceKind::SlotBytes,
@@ -1233,9 +1234,7 @@ fn dispatch<V: ModuleView>(
                         Err(out) => return Some(out),
                     };
                     let res = match instr {
-                        MirInstr::StrLen { .. } => {
-                            (sv.end - sv.start) as i32
-                        }
+                        MirInstr::StrLen { .. } => (sv.end - sv.start) as i32,
                         _ => {
                             let (bs, be) = match crate::owned_text::scalar_range_to_bytes(
                                 &bytes,
@@ -1246,7 +1245,8 @@ fn dispatch<V: ModuleView>(
                                 Err(kind) => {
                                     return Some(ExecOutcome::Trap {
                                         kind,
-                                        span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                                        span: span_of(func, flat)
+                                            .map(|sp| v.map_span(func_idx, sp)),
                                     })
                                 }
                             };
@@ -1294,7 +1294,12 @@ fn dispatch<V: ModuleView>(
                         }
                     }
                 }
-                MirInstr::StrSlice { dst, view, start, end } => {
+                MirInstr::StrSlice {
+                    dst,
+                    view,
+                    start,
+                    end,
+                } => {
                     let (vv, s_v, e_v) = {
                         let fr = st.frames.last().expect("frame present");
                         (

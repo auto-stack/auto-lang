@@ -64,9 +64,8 @@ fn owned_owner(module: &str) -> OwnerScope {
 
 /// Compile text-record source → owned MIR → AVAD v2 → admitted module.
 fn admit_owned_source(src: &str, entry: &str) -> abc_verify::LoadedModule {
-    let compiled =
-        auto_ac_prototype::source::compile_text_record_source(src, "p.at", &[])
-            .expect("text-record source compiles");
+    let compiled = auto_ac_prototype::source::compile_text_record_source(src, "p.at", &[])
+        .expect("text-record source compiles");
     assert_eq!(
         compiled.checked.domain(),
         auto_ac_prototype::hir::HirDomain::TextRecord
@@ -114,10 +113,20 @@ fn av_owned_821_first_case_whole_path_and_live_zero() {
     // Host receives the owned result — the SINGLE release responsibility:
     // while held, the record's clone buffer is live; an explicit drop is
     // the release, after which the arena reports live=0 (no reap_all).
-    let arena = trace.arena.as_ref().expect("owned execution carries the arena");
-    assert!(arena.live() >= 1, "the received record holds its clone buffer");
+    let arena = trace
+        .arena
+        .as_ref()
+        .expect("owned execution carries the arena");
+    assert!(
+        arena.live() >= 1,
+        "the received record holds its clone buffer"
+    );
     let allocs = arena.alloc_events();
-    assert_eq!(allocs.len(), 2, "exactly two owned allocations: ctor buffer + clone");
+    assert_eq!(
+        allocs.len(),
+        2,
+        "exactly two owned allocations: ctor buffer + clone"
+    );
     assert_eq!(allocs[0].bytes, 4, "ctor materializes the \"Auto\" literal");
     assert_eq!(allocs[1].bytes, 4, "clone re-buffers independently");
     drop(value);
@@ -126,7 +135,10 @@ fn av_owned_821_first_case_whole_path_and_live_zero() {
     // clone frees at the host release (creation-order LIFO).
     let frees = arena.free_events();
     assert_eq!(frees.len(), 2);
-    assert_eq!(frees[0].id, allocs[0].id, "old buffer freed exactly once at replace");
+    assert_eq!(
+        frees[0].id, allocs[0].id,
+        "old buffer freed exactly once at replace"
+    );
     assert_eq!(frees[1].id, allocs[1].id, "clone freed at the host release");
 }
 
@@ -174,14 +186,12 @@ fn av_owned_821_first_case_same_store_restore() {
         &outcome.entry,
         outcome.snapshot,
         &{
-            let compiled = auto_ac_prototype::source::compile_text_record_source(
-                FIRST_CASE, "p.at", &[],
-            )
-            .expect("compile");
-            let mir = auto_av_probe::hir_adapter::lower_checked_owned(
-                &compiled.checked, "d_main", 0x821,
-            )
-            .expect("lower");
+            let compiled =
+                auto_ac_prototype::source::compile_text_record_source(FIRST_CASE, "p.at", &[])
+                    .expect("compile");
+            let mir =
+                auto_av_probe::hir_adapter::lower_checked_owned(&compiled.checked, "d_main", 0x821)
+                    .expect("lower");
             auto_av_probe::owned_driver::types_fp_of(&mir)
         },
     )
@@ -228,9 +238,21 @@ fn av_owned_821_first_case_move_negative_controls() {
             name: "d_main".into(),
             sig: t_fn,
             slots: vec![
-                MirSlot { kind: SlotKind::Local, ty: t_rec, name: Some("u".into()) },
-                MirSlot { kind: SlotKind::Temp, ty: t_str, name: None },
-                MirSlot { kind: SlotKind::Temp, ty: t_rec, name: None },
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: t_rec,
+                    name: Some("u".into()),
+                },
+                MirSlot {
+                    kind: SlotKind::Temp,
+                    ty: t_str,
+                    name: None,
+                },
+                MirSlot {
+                    kind: SlotKind::Temp,
+                    ty: t_rec,
+                    name: None,
+                },
             ],
             blocks: vec![MirBlock {
                 instrs: vec![],
@@ -248,7 +270,10 @@ fn av_owned_821_first_case_move_negative_controls() {
         // Type-table layout of neg_module: 0 = Str, 1 = Note(record), 2 = fn sig.
         let c_str = m.intern_const(MirConst::Str(Box::from(*b"Auto")));
         vec![
-            MirInstr::Const { dst: 1, value: c_str },
+            MirInstr::Const {
+                dst: 1,
+                value: c_str,
+            },
             MirInstr::Aggregate {
                 dst: 0,
                 record_ty: 1,

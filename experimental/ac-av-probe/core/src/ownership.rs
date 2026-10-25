@@ -169,14 +169,19 @@ pub fn verify_owned_function(
     let n = f.slots.len();
     let blocks = f.blocks.len();
     let root_bits = n + 1; // + EXTERNAL sentinel
-    // Composite-analysis memory guard (same shape as check_init's):
-    // init/moved/dropped/tokens matrices are blocks × slot-words; the
-    // per-token root matrices are tokens × (slots+1)-words.
+                           // Composite-analysis memory guard (same shape as check_init's):
+                           // init/moved/dropped/tokens matrices are blocks × slot-words; the
+                           // per-token root matrices are tokens × (slots+1)-words.
     let token_slots: Vec<usize> = f
         .slots
         .iter()
         .enumerate()
-        .filter(|(_, s)| matches!(m.types.get(s.ty as usize), Some(MirType::StrView) | Some(MirType::MutRef)))
+        .filter(|(_, s)| {
+            matches!(
+                m.types.get(s.ty as usize),
+                Some(MirType::StrView) | Some(MirType::MutRef)
+            )
+        })
         .map(|(i, _)| i)
         .collect();
     let sw = words_of(n);
@@ -355,10 +360,7 @@ pub fn verify_owned_function(
             st.init.words = vec![u64::MAX; sw];
             st
         };
-        for p in preds[b as usize]
-            .iter()
-            .filter(|p| reachable[**p as usize])
-        {
+        for p in preds[b as usize].iter().filter(|p| reachable[**p as usize]) {
             let po = &out_state[*p as usize];
             if b != f.entry {
                 new_in.init.intersect_with(&po.init);
@@ -384,7 +386,11 @@ pub fn verify_owned_function(
                     if !st.init.get(s) {
                         fail = Some(err(
                             "mir.uninitialized-read",
-                            format!("read of uninitialized slot `{}` ({})", slot_name(f, s), $what),
+                            format!(
+                                "read of uninitialized slot `{}` ({})",
+                                slot_name(f, s),
+                                $what
+                            ),
                             flat,
                         ));
                         break 'blk;
@@ -428,7 +434,9 @@ pub fn verify_owned_function(
                 }};
             }
             match instr {
-                MirInstr::Const { dst, .. } | MirInstr::Bin { dst, .. } | MirInstr::Un { dst, .. } => {
+                MirInstr::Const { dst, .. }
+                | MirInstr::Bin { dst, .. }
+                | MirInstr::Un { dst, .. } => {
                     if is_rootable[*dst as usize] {
                         check_def_conflict!(dst, "re-initialization");
                     }
@@ -661,7 +669,10 @@ pub fn verify_owned_function(
                 }
                 MirInstr::View { dst, src } => {
                     check_read!(src, "view source");
-                    if !matches!(m.types.get(f.slots[*src as usize].ty as usize), Some(MirType::Str)) {
+                    if !matches!(
+                        m.types.get(f.slots[*src as usize].ty as usize),
+                        Some(MirType::Str)
+                    ) {
                         fail = Some(err(
                             "mir.type-op",
                             "VIEW sources must be an owned Str slot".to_string(),
@@ -680,8 +691,7 @@ pub fn verify_owned_function(
                     // T-03 surface: not admitted at this stage.
                     fail = Some(err(
                         "mir.profile-instr",
-                        "MUTREF/DROP land with PLAN-821 T-03 (not admitted at T-02)"
-                            .to_string(),
+                        "MUTREF/DROP land with PLAN-821 T-03 (not admitted at T-02)".to_string(),
                         flat,
                     ));
                     break 'blk;
@@ -705,7 +715,12 @@ pub fn verify_owned_function(
                     st.moved.clear(*dst as usize);
                     st.dropped.clear(*dst as usize);
                 }
-                MirInstr::StrSlice { dst, view, start, end } => {
+                MirInstr::StrSlice {
+                    dst,
+                    view,
+                    start,
+                    end,
+                } => {
                     check_read!(view, "str operand");
                     check_read!(start, "slice start");
                     check_read!(end, "slice end");
@@ -762,10 +777,7 @@ pub fn verify_owned_function(
                     } else if st.moved.get(*cond as usize) {
                         fail = Some(err(
                             "mir.use-after-move",
-                            format!(
-                                "branch on moved slot `{}`",
-                                slot_name(f, *cond as usize)
-                            ),
+                            format!("branch on moved slot `{}`", slot_name(f, *cond as usize)),
                             flat,
                         ));
                     }
@@ -775,10 +787,7 @@ pub fn verify_owned_function(
                     if !st.init.get(vs) {
                         fail = Some(err(
                             "mir.uninitialized-read",
-                            format!(
-                                "return of uninitialized slot `{}`",
-                                slot_name(f, vs)
-                            ),
+                            format!("return of uninitialized slot `{}`", slot_name(f, vs)),
                             flat,
                         ));
                     } else if st.moved.get(vs) {
@@ -863,8 +872,7 @@ impl OwnState {
             && self.moved.eq(&prev_out.moved)
             && self.dropped.eq(&prev_out.dropped)
             && self.tokens_live.eq(&prev_out.tokens_live)
-            && (0..self.token_roots.len())
-                .all(|t| self.token_roots[t].eq(&prev_out.token_roots[t]))
+            && (0..self.token_roots.len()).all(|t| self.token_roots[t].eq(&prev_out.token_roots[t]))
     }
 }
 

@@ -605,13 +605,8 @@ impl<'a> Verifier<'a> {
 
     fn entry_param_ok(&self, ty: TypeIdx) -> bool {
         match self.module.types.get(ty as usize) {
-            Some(MirType::I32)
-            | Some(MirType::Bool)
-            | Some(MirType::I64)
-            | Some(MirType::U64)
-            | Some(MirType::F32)
-            | Some(MirType::F64)
-            | Some(MirType::Char) => true,
+            Some(MirType::I32) | Some(MirType::Bool) | Some(MirType::I64) | Some(MirType::U64)
+            | Some(MirType::F32) | Some(MirType::F64) | Some(MirType::Char) => true,
             _ => false,
         }
     }
@@ -633,10 +628,16 @@ impl<'a> Verifier<'a> {
     ) -> Result<(), MirVerifyError> {
         let _ = sp;
         if !matches!(self.module.types.get(vt as usize), Some(MirType::StrView)) {
-            return Err(err("mir.type-op", format!("str operand {} is not a view", vt)));
+            return Err(err(
+                "mir.type-op",
+                format!("str operand {} is not a view", vt),
+            ));
         }
         if self.module.type_shape(dt) != Some(ScalarShape::I32) {
-            return Err(err("mir.type-op", format!("str-op dst type {} is not i32", dt)));
+            return Err(err(
+                "mir.type-op",
+                format!("str-op dst type {} is not i32", dt),
+            ));
         }
         Ok(())
     }
@@ -956,10 +957,12 @@ impl<'a> Verifier<'a> {
                                 // kind: an owned Str slot gets a fresh
                                 // allocation; a StrView slot gets the
                                 // immortal static view (770 literal rule).
-                                MirConst::Str(_) => Some(match self.module.types.get(dt as usize) {
-                                    Some(MirType::StrView) => MirType::StrView,
-                                    _ => MirType::Str,
-                                }),
+                                MirConst::Str(_) => {
+                                    Some(match self.module.types.get(dt as usize) {
+                                        Some(MirType::StrView) => MirType::StrView,
+                                        _ => MirType::Str,
+                                    })
+                                }
                                 _ => None,
                             } {
                                 if self.module.types.get(dt as usize) != Some(&want_ty) {
@@ -1219,7 +1222,9 @@ impl<'a> Verifier<'a> {
                                         ));
                                     }
                                 }
-                                Some(t) if crate::ownership::type_is_owned(self.module, final_ty) => {
+                                Some(t)
+                                    if crate::ownership::type_is_owned(self.module, final_ty) =>
+                                {
                                     let _ = t;
                                     return Err(err(
                                         "mir.ownership-required",
@@ -1436,7 +1441,8 @@ impl<'a> Verifier<'a> {
                         // §4 note) — both layers reject identically.
                         return Err(err(
                             "mir.profile-instr",
-                            "MUTREF/DROP land with PLAN-821 T-03 (not admitted at T-02)".to_string(),
+                            "MUTREF/DROP land with PLAN-821 T-03 (not admitted at T-02)"
+                                .to_string(),
                         ));
                     }
                     MirInstr::BorrowEnd { token } => {
@@ -1479,16 +1485,30 @@ impl<'a> Verifier<'a> {
                         let vt = slot_ty_of(f, *view, sp, "char_at view")?;
                         let it = slot_ty_of(f, *index, sp, "char_at index")?;
                         if !matches!(self.module.types.get(vt as usize), Some(MirType::StrView)) {
-                            return Err(err("mir.type-op", format!("char_at operand {} is not a view", vt)));
+                            return Err(err(
+                                "mir.type-op",
+                                format!("char_at operand {} is not a view", vt),
+                            ));
                         }
                         if self.module.type_shape(it) != Some(ScalarShape::I32) {
-                            return Err(err("mir.type-op", format!("char_at index type {} is not i32", it)));
+                            return Err(err(
+                                "mir.type-op",
+                                format!("char_at index type {} is not i32", it),
+                            ));
                         }
                         if !matches!(self.module.types.get(dt as usize), Some(MirType::Char)) {
-                            return Err(err("mir.type-op", format!("char_at dst type {} is not char", dt)));
+                            return Err(err(
+                                "mir.type-op",
+                                format!("char_at dst type {} is not char", dt),
+                            ));
                         }
                     }
-                    MirInstr::StrSlice { dst, view, start, end } => {
+                    MirInstr::StrSlice {
+                        dst,
+                        view,
+                        start,
+                        end,
+                    } => {
                         if !self.is_owned {
                             return Err(err(
                                 "mir.profile-instr",
@@ -1500,7 +1520,10 @@ impl<'a> Verifier<'a> {
                         let stt = slot_ty_of(f, *start, sp, "slice start")?;
                         let ent = slot_ty_of(f, *end, sp, "slice end")?;
                         if !matches!(self.module.types.get(vt as usize), Some(MirType::StrView)) {
-                            return Err(err("mir.type-op", format!("slice operand {} is not a view", vt)));
+                            return Err(err(
+                                "mir.type-op",
+                                format!("slice operand {} is not a view", vt),
+                            ));
                         }
                         if self.module.type_shape(stt) != Some(ScalarShape::I32)
                             || self.module.type_shape(ent) != Some(ScalarShape::I32)
@@ -1508,7 +1531,10 @@ impl<'a> Verifier<'a> {
                             return Err(err("mir.type-op", "slice bounds must be i32".to_string()));
                         }
                         if !matches!(self.module.types.get(dt as usize), Some(MirType::StrView)) {
-                            return Err(err("mir.type-op", format!("slice dst type {} is not StrView", dt)));
+                            return Err(err(
+                                "mir.type-op",
+                                format!("slice dst type {} is not StrView", dt),
+                            ));
                         }
                     }
                     MirInstr::StrConcat { dst, lhs, rhs } => {
@@ -1524,10 +1550,16 @@ impl<'a> Verifier<'a> {
                         if !matches!(self.module.types.get(lt as usize), Some(MirType::StrView))
                             || !matches!(self.module.types.get(rt as usize), Some(MirType::StrView))
                         {
-                            return Err(err("mir.type-op", "concat operands must be views".to_string()));
+                            return Err(err(
+                                "mir.type-op",
+                                "concat operands must be views".to_string(),
+                            ));
                         }
                         if !matches!(self.module.types.get(dt as usize), Some(MirType::Str)) {
-                            return Err(err("mir.type-op", format!("concat dst type {} is not Str", dt)));
+                            return Err(err(
+                                "mir.type-op",
+                                format!("concat dst type {} is not Str", dt),
+                            ));
                         }
                     }
                     MirInstr::StrToOwned { dst, view } => {
@@ -1540,10 +1572,16 @@ impl<'a> Verifier<'a> {
                         let dt = slot_ty_of(f, *dst, sp, "to-owned dst")?;
                         let vt = slot_ty_of(f, *view, sp, "to-owned view")?;
                         if !matches!(self.module.types.get(vt as usize), Some(MirType::StrView)) {
-                            return Err(err("mir.type-op", "to-owned operand must be a view".to_string()));
+                            return Err(err(
+                                "mir.type-op",
+                                "to-owned operand must be a view".to_string(),
+                            ));
                         }
                         if !matches!(self.module.types.get(dt as usize), Some(MirType::Str)) {
-                            return Err(err("mir.type-op", format!("to-owned dst type {} is not Str", dt)));
+                            return Err(err(
+                                "mir.type-op",
+                                format!("to-owned dst type {} is not Str", dt),
+                            ));
                         }
                     }
                     MirInstr::StrCmp { dst, lhs, rhs, .. } => {
@@ -1559,10 +1597,16 @@ impl<'a> Verifier<'a> {
                         if !matches!(self.module.types.get(lt as usize), Some(MirType::StrView))
                             || !matches!(self.module.types.get(rt as usize), Some(MirType::StrView))
                         {
-                            return Err(err("mir.type-op", "cmp operands must be views".to_string()));
+                            return Err(err(
+                                "mir.type-op",
+                                "cmp operands must be views".to_string(),
+                            ));
                         }
                         if self.module.type_shape(dt) != Some(ScalarShape::Bool) {
-                            return Err(err("mir.type-op", format!("cmp dst type {} is not bool", dt)));
+                            return Err(err(
+                                "mir.type-op",
+                                format!("cmp dst type {} is not bool", dt),
+                            ));
                         }
                     }
                     MirInstr::CharToCodepoint { dst, ch } => {
@@ -1575,10 +1619,16 @@ impl<'a> Verifier<'a> {
                         let dt = slot_ty_of(f, *dst, sp, "to-codepoint dst")?;
                         let ct = slot_ty_of(f, *ch, sp, "to-codepoint char")?;
                         if !matches!(self.module.types.get(ct as usize), Some(MirType::Char)) {
-                            return Err(err("mir.type-op", "to_codepoint operand must be char".to_string()));
+                            return Err(err(
+                                "mir.type-op",
+                                "to_codepoint operand must be char".to_string(),
+                            ));
                         }
                         if self.module.type_shape(dt) != Some(ScalarShape::I32) {
-                            return Err(err("mir.type-op", "to_codepoint dst must be i32".to_string()));
+                            return Err(err(
+                                "mir.type-op",
+                                "to_codepoint dst must be i32".to_string(),
+                            ));
                         }
                     }
                     MirInstr::CharFromCodepoint { dst, code } => {
@@ -1591,10 +1641,16 @@ impl<'a> Verifier<'a> {
                         let dt = slot_ty_of(f, *dst, sp, "from-codepoint dst")?;
                         let ct = slot_ty_of(f, *code, sp, "from-codepoint code")?;
                         if self.module.type_shape(ct) != Some(ScalarShape::I32) {
-                            return Err(err("mir.type-op", "from_codepoint operand must be i32".to_string()));
+                            return Err(err(
+                                "mir.type-op",
+                                "from_codepoint operand must be i32".to_string(),
+                            ));
                         }
                         if !matches!(self.module.types.get(dt as usize), Some(MirType::Char)) {
-                            return Err(err("mir.type-op", "from_codepoint dst must be char".to_string()));
+                            return Err(err(
+                                "mir.type-op",
+                                "from_codepoint dst must be char".to_string(),
+                            ));
                         }
                     }
                 }
@@ -1976,7 +2032,9 @@ impl MirInstr {
             | MirInstr::StrToOwned { view, .. }
             | MirInstr::CharToCodepoint { ch: view, .. } => vec![*view],
             MirInstr::StrCharAt { view, index, .. } => vec![*view, *index],
-            MirInstr::StrSlice { view, start, end, .. } => vec![*view, *start, *end],
+            MirInstr::StrSlice {
+                view, start, end, ..
+            } => vec![*view, *start, *end],
             MirInstr::StrConcat { lhs, rhs, .. } | MirInstr::StrCmp { lhs, rhs, .. } => {
                 vec![*lhs, *rhs]
             }
@@ -1999,7 +2057,10 @@ fn span_of_fn(f: &crate::mir::MirFunction, flat: u32) -> Option<SpanInfo> {
             hi = mid;
         }
     }
-    f.spans.get(lo).filter(|(i, _)| *i == flat).map(|(_, sp)| *sp)
+    f.spans
+        .get(lo)
+        .filter(|(i, _)| *i == flat)
+        .map(|(_, sp)| *sp)
 }
 
 fn words_for(bits: usize) -> usize {

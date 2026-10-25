@@ -1,0 +1,25 @@
+# PLAN-821 V-01 first case (source path): the int TWIN source (byte-
+# identical owned operations to the frozen first case; only the entry
+# wrapper returns int) through the same recipe's SOURCE face — the
+# hand-audited exit 404 (= len*100 + len) is the case-level oracle; the
+# owned face (result bits + ledger) is admitted parent-side.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.owned.first-twin"
+  tags: ["av-data-821", "probe"]
+  links: ["PLAN-821"]
+  source: { file: "src/first-case-int-twin.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-owned-source", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/owned-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 404 } }
+  ]
+}
+```

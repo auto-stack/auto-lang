@@ -46,12 +46,20 @@ pub const AV_RECIPE: &str = "ac-av/core-run-v1";
 /// core recipe contract is untouched).
 pub const AV_DATA_RECIPE: &str = "ac-av/data-run-v1";
 pub const EXPECTED_AV_DATA_CORE_VERSION: &str = "av.data/1";
+/// PLAN-821: the owned-profile recipe (`av.owned/1`, profile id 3) —
+/// text-record source → owned Typed MIR → AVAD v2 → AV with the arena
+/// ledger face. Same append-only registration rules; the owned face is
+/// judged parent-side against THIS crate's frozen expectations (result +
+/// live=0 + alloc/free order), never the worker's word.
+pub const AV_OWNED_RECIPE: &str = "ac-av/owned-run-v1";
+pub const EXPECTED_AV_OWNED_CORE_VERSION: &str = "av.owned/1";
 
 /// Which registered av recipe a check runs under.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RecipeFamily {
     Core,
     Data,
+    Owned,
 }
 
 impl RecipeFamily {
@@ -59,12 +67,14 @@ impl RecipeFamily {
         match self {
             RecipeFamily::Core => AV_RECIPE,
             RecipeFamily::Data => AV_DATA_RECIPE,
+            RecipeFamily::Owned => AV_OWNED_RECIPE,
         }
     }
     pub fn expected_core_version(&self) -> &'static str {
         match self {
             RecipeFamily::Core => EXPECTED_AV_CORE_VERSION,
             RecipeFamily::Data => EXPECTED_AV_DATA_CORE_VERSION,
+            RecipeFamily::Owned => EXPECTED_AV_OWNED_CORE_VERSION,
         }
     }
 }
@@ -91,7 +101,7 @@ pub fn current_toolchain_identity() -> std::collections::BTreeMap<String, String
 }
 
 fn probe_toolchain_axes(exe_sha: &str, family: RecipeFamily) -> Vec<(String, String)> {
-    vec![
+    let mut v = vec![
         ("av-protocol".into(), AV_WORKER_PROTOCOL.into()),
         ("recipe".into(), family.recipe().into()),
         ("av-worker-exe-sha256".into(), exe_sha.to_string()),
@@ -103,7 +113,13 @@ fn probe_toolchain_axes(exe_sha: &str, family: RecipeFamily) -> Vec<(String, Str
             "av-core-version".into(),
             family.expected_core_version().into(),
         ),
-    ]
+    ];
+    // PLAN-821 contract-decision §10: the owned tool-identity axis carries
+    // the frozen profile id (3) explicitly (core/data receipts unchanged).
+    if family == RecipeFamily::Owned {
+        v.push(("av-profile".into(), "3".into()));
+    }
+    v
 }
 
 fn worker_exe_sha256() -> Result<String, String> {
@@ -458,6 +474,13 @@ struct StepOut {
     /// observability carried into the receipt.
     #[serde(default)]
     spans: Vec<(String, f64)>,
+    /// PLAN-821: the owned face of an owned-recipe run step — the
+    /// canonical result plus the post-release arena ledger
+    /// ({result, live_after_release, allocs:[{id,bytes}], frees:[{id}]}).
+    /// An OWNED-recipe increment only; its presence on any other recipe
+    /// is an admission violation.
+    #[serde(default)]
+    owned: Option<serde_json::Value>,
 }
 
 /// Spawn the av worker and run ONE `case-serve` request under the bounded
@@ -774,6 +797,45 @@ pub fn run_data_check(
     )
 }
 
+/// PLAN-821 T-02: the PARENT's frozen av.owned-fixture/1 expectation
+/// table — an INDEPENDENT hand-audited copy of the frozen fixture truths
+/// (contract-decision §11): the canonical result face, the owned
+/// allocation byte sizes in CREATION order, and the free ids in RELEASE
+/// order (live must reach 0 after the host-side release). The owned judge
+/// compares against THIS, never against anything the worker reports as
+/// expected.
+const OWNED_CASES: &[(&str, &str, &[usize], &[u64])] = &[
+    // first-case: Note { body: clone of "Auto", n = len("Auto") = 4 }.
+    // Hand-audited: two 4-byte buffers (ctor literal + clone), the ctor
+    // buffer frees at the field replace, the clone frees at the host
+    // release (creation-order LIFO); live=0 after the release.
+    (
+        "first-case",
+        r#"{"fields":[{"kind":"str","utf8":"Auto"},{"kind":"i32","bits":"4"}],"kind":"record","name":"t_rec_Note"}"#,
+        &[4, 4],
+        &[0, 1],
+    ),
+];
+
+pub fn run_owned_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::Owned,
+    )
+}
+
 fn run_check_impl(
     case: &ResolvedCase,
     check: &CheckSpec,
@@ -862,6 +924,25 @@ fn run_check_impl(
     } else {
         None
     };
+    // PLAN-821: an `owned:<id>` entry (owned recipe only) selects a frozen
+    // av.owned-fixture/1 input; the PARENT validates the id against its OWN
+    // frozen table before any request — an unregistered fixture is a check
+    // error, never a green run.
+    let owned_fixture = if family == RecipeFamily::Owned {
+        match av.entry.strip_prefix("owned:") {
+            None => None,
+            Some(id) => match OWNED_CASES.iter().find(|(fid, ..)| *fid == id) {
+                Some(_) => Some(id.to_string()),
+                None => {
+                    return Err(format!(
+                        "av.owned fixture `{id}` is not registered (parent table)"
+                    ))
+                }
+            },
+        }
+    } else {
+        None
+    };
     let mut request = serde_json::json!({
         "recipe": recipe,
         "nonce": nonce,
@@ -873,6 +954,9 @@ fn run_check_impl(
     });
     if let Some(id) = &typed_fixture {
         request["typed_fixture"] = serde_json::json!(id);
+    }
+    if let Some(id) = &owned_fixture {
+        request["owned_fixture"] = serde_json::json!(id);
     }
     if let Some(session) = &av.session {
         request["session"] = serde_json::json!(session);
@@ -928,8 +1012,8 @@ fn run_check_impl(
             break 'admit;
         }
         // F820-R7-01: the typed report is a DATA-recipe protocol
-        // increment — its presence on any non-data (core) response is an
-        // admission violation, never a pass-shaped extra channel.
+        // increment — its presence on any non-data (core/owned) response
+        // is an admission violation, never a pass-shaped extra channel.
         if typed_on_non_data(family, &ok.steps) {
             infra_detail =
                 Some("typed report on a non-data recipe (protocol violation)".to_string());
@@ -938,6 +1022,21 @@ fn run_check_impl(
         // F820-R8-01: data typed shape is an ORACLE-INDEPENDENT admission
         // rule — no exit/value oracle match can bypass it.
         if let Some(v) = data_malformed_typed(&ok.steps) {
+            infra_detail = Some(v);
+            break 'admit;
+        }
+        // PLAN-821: the owned face is an OWNED-recipe increment — its
+        // presence on any non-owned response is an admission violation,
+        // and every owned report is SHAPE-validated here (oracle-independent:
+        // {result: object, live_after_release: u64, allocs: [{id,bytes}],
+        // frees: [{id}]}), so no oracle choice can let a malformed ledger
+        // face through.
+        if owned_on_non_owned(family, &ok.steps) {
+            infra_detail =
+                Some("owned report on a non-owned recipe (protocol violation)".to_string());
+            break 'admit;
+        }
+        if let Some(v) = malformed_owned(&ok.steps) {
             infra_detail = Some(v);
             break 'admit;
         }
@@ -1012,10 +1111,11 @@ fn run_check_impl(
                 break 'admit;
             }
             if want_op == "run" {
-                // A typed run's revision identity is the TYPED ENTRY (the
-                // fixture that actually ran); a source run binds the
-                // current source revision (F820-R6-01).
-                let expect_hash = if typed_fixture.is_some() {
+                // A typed/owned fixture run's revision identity is the
+                // FIXTURE ENTRY (the frozen input that actually ran); a
+                // source run binds the current source revision
+                // (F820-R6-01; PLAN-821 same rule for owned).
+                let expect_hash = if typed_fixture.is_some() || owned_fixture.is_some() {
                     fnv1a64_hex(av.entry.as_bytes())
                 } else {
                     fnv1a64_hex(current_source.as_bytes())
@@ -1113,6 +1213,11 @@ fn run_check_impl(
                 }
             }
         }
+    } else if let Some(id) = &owned_fixture {
+        // The owned-fixture judge face: canonical result + live=0 +
+        // alloc/free order against the parent's frozen table — fully
+        // independent of `value` and of anything the worker claims.
+        judge_owned_fixture(id, &step, &mut mismatches);
     } else {
         judge_expectation(family, &step, oracle, &mut mismatches);
     }
@@ -1134,6 +1239,7 @@ fn run_check_impl(
             "value": step.value,
             "trap": step.trap,
             "diag": step.diag,
+            "owned": step.owned,
             "counters": step.counters,
             "source_hash": step.source_hash,
             "wall_ms": step.wall_ms,
@@ -1227,6 +1333,161 @@ fn typed_on_non_data(family: RecipeFamily, steps: &[StepOut]) -> bool {
     family != RecipeFamily::Data && steps.iter().any(|s| s.typed.is_some())
 }
 
+/// Admission rule (PLAN-821): any owned report on a non-owned recipe.
+fn owned_on_non_owned(family: RecipeFamily, steps: &[StepOut]) -> bool {
+    family != RecipeFamily::Owned && steps.iter().any(|s| s.owned.is_some())
+}
+
+/// Admission rule (PLAN-821): EVERY owned report on an owned response is
+/// shape-validated HERE — before and independent of any oracle branch.
+/// The face must carry {result: <object>, live_after_release: <u64>,
+/// allocs: [{id: u64, bytes: u64}], frees: [{id: u64}]}.
+fn malformed_owned(steps: &[StepOut]) -> Option<String> {
+    steps.iter().find_map(|s| {
+        s.owned.as_ref().and_then(|o| {
+            let bad = |why: &str| Some(format!("malformed owned report on step `{}`: {}", s.op, why));
+            let o = o.as_object()?;
+            if !o.get("result")?.is_object() {
+                return bad("result is not an object");
+            }
+            if !o.get("live_after_release")?.is_u64() {
+                return bad("live_after_release is not a u64");
+            }
+            for key in ["allocs", "frees"] {
+                let arr = o.get(key)?.as_array()?;
+                if arr.len() > 65536 {
+                    return bad(&format!("{key} exceeds the table-entry family cap"));
+                }
+                for ev in arr {
+                    let e = ev.as_object()?;
+                    if !e.get("id")?.is_u64() {
+                        return bad(&format!("{key} entry id is not a u64"));
+                    }
+                    if key == "allocs" && !e.get("bytes")?.is_u64() {
+                        return bad("allocs entry bytes is not a u64");
+                    }
+                }
+            }
+            None
+        })
+    })
+}
+
+/// The owned-fixture judge: canonical result face (structural equality),
+/// live=0 after the host release, allocation byte sizes in creation order
+/// and free ids in release order — all against the PARENT's frozen table.
+/// Counter-control seam (V-10 wrong-result / wrong-ledger): the test-only
+/// sabotage mutates the PARENT's expectation copy so a legal fixture run
+/// must FAIL. Never set in production.
+fn judge_owned_fixture(id: &str, step: &StepOut, mismatches: &mut Vec<Mismatch>) {
+    let (_, want_result, want_allocs, want_frees) = OWNED_CASES
+        .iter()
+        .find(|(fid, ..)| *fid == id)
+        .expect("validated above");
+    let mut want_result: serde_json::Value =
+        serde_json::from_str(want_result).expect("frozen table JSON parses");
+    let mut want_frees: Vec<u64> = want_frees.to_vec();
+    match std::env::var("AV821_OWNED_EXPECT_SABOTAGE").ok().as_deref() {
+        Some("result") => {
+            // Flip one observable leaf: the record's first str field bytes.
+            want_result["fields"][0]["utf8"] =
+                serde_json::json!(format!("{}!", want_result["fields"][0]["utf8"].as_str().unwrap_or("")));
+        }
+        Some("ledger") => {
+            want_frees.rotate_left(1);
+        }
+        _ => {}
+    }
+    if step.outcome != "success" {
+        mismatches.push(Mismatch {
+            observation: "completion".into(),
+            kind: "owned-outcome".into(),
+            expected: "success".into(),
+            actual: step_summary(step),
+            first_diff: None,
+        });
+        return;
+    }
+    let owned = match &step.owned {
+        Some(o) => o,
+        None => {
+            mismatches.push(Mismatch {
+                observation: "owned".into(),
+                kind: "owned-report".into(),
+                expected: "the owned face on the step".into(),
+                actual: "no owned report".into(),
+                first_diff: None,
+            });
+            return;
+        }
+    };
+    let got_result = owned.get("result").cloned().unwrap_or(serde_json::Value::Null);
+    if got_result != want_result {
+        mismatches.push(Mismatch {
+            observation: "owned".into(),
+            kind: "owned-result".into(),
+            expected: want_result.to_string(),
+            actual: got_result.to_string(),
+            first_diff: None,
+        });
+    }
+    let live = owned.get("live_after_release").and_then(|v| v.as_u64()).unwrap_or(u64::MAX);
+    if live != 0 {
+        mismatches.push(Mismatch {
+            observation: "owned".into(),
+            kind: "owned-live".into(),
+            expected: "0 (host release empties the ledger)".into(),
+            actual: format!("{live}"),
+            first_diff: None,
+        });
+    }
+    let alloc_bytes: Vec<u64> = owned
+        .get("allocs")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|e| e.get("bytes").and_then(|b| b.as_u64())).collect())
+        .unwrap_or_default();
+    let want_allocs: Vec<u64> = want_allocs.iter().map(|b| *b as u64).collect();
+    if alloc_bytes != want_allocs {
+        mismatches.push(Mismatch {
+            observation: "owned".into(),
+            kind: "owned-allocs".into(),
+            expected: format!("{want_allocs:?}"),
+            actual: format!("{alloc_bytes:?}"),
+            first_diff: None,
+        });
+    }
+    // Creation order = strictly ascending ids (the ledger's monotonic
+    // allocation identity).
+    let alloc_ids: Vec<u64> = owned
+        .get("allocs")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|e| e.get("id").and_then(|b| b.as_u64())).collect())
+        .unwrap_or_default();
+    if !alloc_ids.windows(2).all(|w| w[0] < w[1]) {
+        mismatches.push(Mismatch {
+            observation: "owned".into(),
+            kind: "owned-alloc-order".into(),
+            expected: "strictly ascending allocation ids".into(),
+            actual: format!("{alloc_ids:?}"),
+            first_diff: None,
+        });
+    }
+    let free_ids: Vec<u64> = owned
+        .get("frees")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|e| e.get("id").and_then(|b| b.as_u64())).collect())
+        .unwrap_or_default();
+    if free_ids != want_frees {
+        mismatches.push(Mismatch {
+            observation: "owned".into(),
+            kind: "owned-frees".into(),
+            expected: format!("{want_frees:?}"),
+            actual: format!("{free_ids:?}"),
+            first_diff: None,
+        });
+    }
+}
+
 /// Admission rule (F820-R8-01): EVERY typed report on a data response is
 /// shape-validated HERE — before and independent of any oracle branch, so
 /// a matching exit expectation (or any other oracle choice) can never let
@@ -1277,9 +1538,12 @@ fn judge_expectation(
                 // report on a core response is an admission violation,
                 // checked there); a data success may satisfy presence
                 // via either channel, and a data typed report must have
-                // the canonical tag/width shape.
-                let present =
-                    step.value.is_some() || (family == RecipeFamily::Data && step.typed.is_some());
+                // the canonical tag/width shape. PLAN-821: an owned
+                // success satisfies presence via the owned face (the
+                // record/Str results have no i32 form).
+                let present = step.value.is_some()
+                    || (family == RecipeFamily::Data && step.typed.is_some())
+                    || (family == RecipeFamily::Owned && step.owned.is_some());
                 if !present {
                     mismatches.push(Mismatch {
                         observation: "exit".into(),
@@ -1458,6 +1722,7 @@ mod judge_tests {
             wall_ms: 0.0,
             trace: Vec::new(),
             spans: Vec::new(),
+            owned: None,
         }
     }
 
@@ -1490,8 +1755,7 @@ mod judge_tests {
     }
 
     #[test]
-    fn core_success_requires_the_old_value_channel() {
-        // Without typed: the pre-R6 semantics — a missing value mismatches.
+    fn core_success_requires_the_old_value_channel() {        // Without typed: the pre-R6 semantics — a missing value mismatches.
         let ms = mismatches(RecipeFamily::Core, &step(None, None));
         assert!(ms.iter().any(|m| m.kind == "missing"));
         // With a typed object attached (the R7 fault-worker shape): the
@@ -1573,5 +1837,103 @@ mod judge_tests {
         }
         assert!(data_malformed_typed(&[step(None, typed("bool", "1"))]).is_none());
         assert!(data_malformed_typed(&[step(Some(42), None)]).is_none());
+    }
+
+    /// PLAN-821 pins: the owned channel is an OWNED-recipe increment — the
+    /// admission rules and the fixture judge are exercised on the
+    /// production functions with synthetic faces.
+    #[test]
+    fn owned_face_is_family_isolated_and_shape_validated() {
+        let owned_face = serde_json::json!({
+            "result": { "kind": "str", "utf8": "Auto" },
+            "live_after_release": 0,
+            "allocs": [ { "id": 0, "bytes": 4 } ],
+            "frees": [ { "id": 0 } ],
+        });
+        let mut s = step(None, None);
+        s.owned = Some(owned_face.clone());
+        // Present on a non-owned recipe → admission violation.
+        assert!(owned_on_non_owned(RecipeFamily::Core, &[s.clone()]));
+        assert!(owned_on_non_owned(RecipeFamily::Data, &[s.clone()]));
+        // Present on the owned recipe → fine, and the shape is canonical.
+        assert!(!owned_on_non_owned(RecipeFamily::Owned, &[s.clone()]));
+        assert!(malformed_owned(&[s.clone()]).is_none());
+        // Typed stays data-only even on owned steps.
+        let mut with_typed = step(None, typed("bool", "1"));
+        with_typed.owned = Some(owned_face);
+        assert!(typed_on_non_data(RecipeFamily::Owned, &[with_typed]));
+        // Malformed faces: missing/typed result leaf, non-u64 live, an
+        // alloc entry without bytes, a free id that is a string.
+        for bad in [
+            serde_json::json!({ "result": "str", "live_after_release": 0,
+                                "allocs": [], "frees": [] }),
+            serde_json::json!({ "result": { "kind": "str", "utf8": "x" },
+                                "live_after_release": -1, "allocs": [], "frees": [] }),
+            serde_json::json!({ "result": { "kind": "str", "utf8": "x" },
+                                "live_after_release": 0,
+                                "allocs": [ { "id": 0 } ], "frees": [] }),
+            serde_json::json!({ "result": { "kind": "str", "utf8": "x" },
+                                "live_after_release": 0,
+                                "allocs": [], "frees": [ { "id": "0" } ] }),
+        ] {
+            let mut b = step(None, None);
+            b.owned = Some(bad);
+            assert!(
+                malformed_owned(&[b]).is_some(),
+                "malformed owned face must be an admission violation"
+            );
+        }
+    }
+
+    #[test]
+    fn owned_fixture_judge_distinguishes_every_face() {
+        let good = serde_json::json!({
+            "result": {
+                "kind": "record", "name": "t_rec_Note",
+                "fields": [
+                    { "kind": "str", "utf8": "Auto" },
+                    { "kind": "i32", "bits": "4" },
+                ],
+            },
+            "live_after_release": 0,
+            "allocs": [ { "id": 0, "bytes": 4 }, { "id": 1, "bytes": 4 } ],
+            "frees": [ { "id": 0 }, { "id": 1 } ],
+        });
+        fn with(face: serde_json::Value) -> StepOut {
+            let mut s = step(None, None);
+            s.owned = Some(face);
+            s
+        }
+        let mut ms = Vec::new();
+        judge_owned_fixture("first-case", &with(good.clone()), &mut ms);
+        assert!(ms.is_empty(), "the frozen first-case face must be green: {ms:?}");
+        // Wrong result bytes / live≠0 / an extra allocation / reversed
+        // free order — each mutation alone (from the pristine face) must
+        // redden its own axis.
+        let pristine = good.clone();
+        let mut m_result = pristine.clone();
+        m_result["result"]["fields"][0]["utf8"] = serde_json::json!("Autp");
+        let mut m_live = pristine.clone();
+        m_live["live_after_release"] = serde_json::json!(1);
+        let mut m_allocs = pristine.clone();
+        m_allocs["allocs"].as_array_mut().unwrap().push(serde_json::json!({
+            "id": 2, "bytes": 4
+        }));
+        let mut m_frees = pristine.clone();
+        m_frees["frees"].as_array_mut().unwrap().reverse();
+        for (axis, face) in [
+            ("result", m_result),
+            ("live", m_live),
+            ("allocs", m_allocs),
+            ("frees", m_frees),
+        ] {
+            let mut ms = Vec::new();
+            judge_owned_fixture("first-case", &with(face), &mut ms);
+            assert!(!ms.is_empty(), "{axis} mutation must not pass: {ms:?}");
+        }
+        // No owned report at all → the report mismatch (not a silent pass).
+        let mut ms = Vec::new();
+        judge_owned_fixture("first-case", &step(None, None), &mut ms);
+        assert!(ms.iter().any(|m| m.kind == "owned-report"));
     }
 }

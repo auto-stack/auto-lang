@@ -1,0 +1,13 @@
+type Note { body Str; n int }
+fn rebody(move u Note) Note {
+    let m int = u.body.len()
+    let c Str = u.body.clone()
+    u.body = c.move
+    u.n = m
+    return u.move
+}
+fn main() int {
+    let a Note = Note { body: "Auto", n: 1 }
+    let r Note = rebody(a.move)
+    return r.n * 100 + r.body.len()
+}

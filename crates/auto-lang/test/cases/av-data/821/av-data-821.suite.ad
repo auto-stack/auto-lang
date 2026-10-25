@@ -1,0 +1,10 @@
+# PLAN-821 av-data-821 suite — the owned-profile corpus through the formal
+# ac-av/owned-run-v1 recipe, judged parent-side (frozen expectation tables
+# live in the runner; identity receipts in README.md).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "av-data-821", include: [
+  "av-owned-first-case.case.ad",
+  "av-owned-first-twin.case.ad",
+] }
+```

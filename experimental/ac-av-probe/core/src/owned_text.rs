@@ -115,7 +115,11 @@ pub fn scalars(bytes: &[u8]) -> Vec<char> {
 /// `None` = out-of-domain (negative-shaped values are rejected by
 /// verification as i32 args; runtime bounds are checked here): `end > len`
 /// or `start > end` is a runtime `av.trap.str-index`.
-pub fn scalar_range_to_bytes(bytes: &[u8], start: i32, end: i32) -> Result<(usize, usize), TrapKind> {
+pub fn scalar_range_to_bytes(
+    bytes: &[u8],
+    start: i32,
+    end: i32,
+) -> Result<(usize, usize), TrapKind> {
     let chars = scalars(bytes);
     let n = chars.len() as i32;
     if start < 0 || end < 0 || end > n || start > end {
@@ -169,10 +173,7 @@ mod tests {
         assert_eq!(a.live(), 0);
         assert_eq!(
             a.free_events(),
-            vec![
-                FreeEvent { id: 1, bytes: 4 },
-                FreeEvent { id: 0, bytes: 4 },
-            ]
+            vec![FreeEvent { id: 1, bytes: 4 }, FreeEvent { id: 0, bytes: 4 },]
         );
     }
 

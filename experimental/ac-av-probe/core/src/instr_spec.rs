@@ -459,7 +459,13 @@ mod tests {
         let trapping: Vec<&str> = SPECS.iter().filter(|s| s.traps).map(|s| s.name).collect();
         assert_eq!(
             trapping,
-            vec!["BIN", "UN", "STR_CHAR_AT", "STR_SLICE", "CHAR_FROM_CODEPOINT"]
+            vec![
+                "BIN",
+                "UN",
+                "STR_CHAR_AT",
+                "STR_SLICE",
+                "CHAR_FROM_CODEPOINT"
+            ]
         );
         // Owned-only surface frozen (T-02 admits all but MUTREF/DROP).
         let owned_only: Vec<&str> = SPECS

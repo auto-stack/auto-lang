@@ -102,7 +102,11 @@ fn owned_key_axes(
     ]
 }
 
-/// One owned-profile whole-path request outcome.
+/// One owned-profile whole-path request outcome. `arena` is the Rc-shared
+/// ledger handle of THIS execution (PLAN-821 §5: the host-side release
+/// oracle — drop the success value, then `arena.live()` must read 0);
+/// `record_names` maps record type-table indices to their nominal names
+/// for the canonical result face.
 #[derive(Clone, Debug)]
 pub struct OwnedRequestOutcome {
     pub av: Option<ExecOutcome>,
@@ -112,6 +116,8 @@ pub struct OwnedRequestOutcome {
     pub entry: String,
     pub snapshot: u64,
     pub wall_ms: f64,
+    pub arena: Option<auto_av_core::owned_text::StrArena>,
+    pub record_names: std::collections::BTreeMap<u32, String>,
 }
 
 /// Run one owned-profile request; persist the AVAD v2 module when
@@ -126,16 +132,14 @@ pub fn request_owned(
     let started = std::time::Instant::now();
     crate::driver::front_door_admit(src)
         .map_err(|d| format!("front door: {} {}", d.stage, d.code))?;
-    let compiled =
-        auto_ac_prototype::source::compile_text_record_source(src, "owned.at", caps).map_err(
-            |ds| {
-                ds.first()
-                    .map(|d| format!("frontend: {} {}", d.code, d.message))
-                    .unwrap_or_else(|| "frontend failed".to_string())
-            },
-        )?;
-    let mir = lower_checked_owned(&compiled.checked, entry, fnv1a64(src.as_bytes())).map_err(
-        |e| {
+    let compiled = auto_ac_prototype::source::compile_text_record_source(src, "owned.at", caps)
+        .map_err(|ds| {
+            ds.first()
+                .map(|d| format!("frontend: {} {}", d.code, d.message))
+                .unwrap_or_else(|| "frontend failed".to_string())
+        })?;
+    let mir =
+        lower_checked_owned(&compiled.checked, entry, fnv1a64(src.as_bytes())).map_err(|e| {
             format!(
                 "lower: {} {}",
                 e.code(),
@@ -144,8 +148,7 @@ pub fn request_owned(
                     | crate::hir_adapter::AdapterError::Invalid { message, .. } => message,
                 }
             )
-        },
-    )?;
+        })?;
     verify_mir(&mir).map_err(|e| format!("mir verify: {:?}", e))?;
     let wire = encode_abc(&mir).map_err(|e| format!("encode: {}", e.code()))?;
     let flat = wire.to_flat();
@@ -153,6 +156,15 @@ pub fn request_owned(
     let owner = mir.owner.module.clone();
     let snapshot = fnv1a64(src.as_bytes());
     let types_fp = types_fp_of(&mir);
+    let record_names = mir
+        .types
+        .iter()
+        .enumerate()
+        .filter_map(|(i, t)| match t {
+            auto_av_core::mir::MirType::Record(r) => Some((i as u32, r.name.clone())),
+            _ => None,
+        })
+        .collect();
     let mut artifact = None;
     if let Some(root) = store_root {
         let store = ManagedStore::open(root).map_err(|e| format!("open store: {e}"))?;
@@ -176,6 +188,7 @@ pub fn request_owned(
 
     let loaded = verify_abc_bytes(&flat, &mir.owner).map_err(|e| format!("abc admit: {e}"))?;
     let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    let arena = trace.arena.clone();
     Ok(OwnedRequestOutcome {
         av: Some(out),
         steps: trace.execution_seq,
@@ -184,6 +197,8 @@ pub fn request_owned(
         entry: entry.to_string(),
         snapshot,
         wall_ms: started.elapsed().as_secs_f64() * 1000.0,
+        arena,
+        record_names,
     })
 }
 

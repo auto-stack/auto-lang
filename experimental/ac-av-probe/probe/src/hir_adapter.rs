@@ -445,7 +445,10 @@ pub fn lower_function_owned_unit(
     if bundle.modules.len() != 1 {
         return Err(AdapterError::uns(
             "lower.modules",
-            format!("expected exactly one module, found {}", bundle.modules.len()),
+            format!(
+                "expected exactly one module, found {}",
+                bundle.modules.len()
+            ),
         ));
     }
     let module = &bundle.modules[0];
@@ -1248,6 +1251,26 @@ impl<'a> FnLower<'a> {
                 self.emit(MirInstr::Const { dst, value: c }, sp);
                 Ok(dst)
             }
+            hir::ExprKind::Binary { op, lhs, rhs, .. }
+                if self.owned
+                    && matches!(op, hir::BinOp::Eq | hir::BinOp::Ne)
+                    && matches!(self.type_of_expr(*lhs), Some(MirType::StrView)) =>
+            {
+                // str eq/ne rides STR_CMP (BIN stays scalar-only).
+                let l = self.eval_expr(*lhs, depth + 1)?;
+                let r = self.eval_expr(*rhs, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                self.emit(
+                    MirInstr::StrCmp {
+                        eq: matches!(op, hir::BinOp::Eq),
+                        dst,
+                        lhs: l,
+                        rhs: r,
+                    },
+                    sp,
+                );
+                Ok(dst)
+            }
             hir::ExprKind::Binary { op, lhs, rhs, .. } => {
                 let l = self.eval_expr(*lhs, depth + 1)?;
                 let r = self.eval_expr(*rhs, depth + 1)?;
@@ -1454,9 +1477,9 @@ impl<'a> FnLower<'a> {
                 // owning context materializes a fresh buffer; a borrowing
                 // context gets the immortal static view (770).
                 let dst = self.temp_ty(ty);
-                let c = self.out.intern_const(MirConst::Str(
-                    value.as_bytes().to_vec().into_boxed_slice(),
-                ));
+                let c = self
+                    .out
+                    .intern_const(MirConst::Str(value.as_bytes().to_vec().into_boxed_slice()));
                 self.emit(MirInstr::Const { dst, value: c }, sp);
                 Ok(dst)
             }
@@ -1488,10 +1511,21 @@ impl<'a> FnLower<'a> {
                 let v = self.eval_expr(*operand, depth + 1)?;
                 let i = self.eval_expr(*index, depth + 1)?;
                 let dst = self.temp_ty(ty);
-                self.emit(MirInstr::StrCharAt { dst, view: v, index: i }, sp);
+                self.emit(
+                    MirInstr::StrCharAt {
+                        dst,
+                        view: v,
+                        index: i,
+                    },
+                    sp,
+                );
                 Ok(dst)
             }
-            hir::ExprKind::TextSlice { operand, start, end } if self.owned => {
+            hir::ExprKind::TextSlice {
+                operand,
+                start,
+                end,
+            } if self.owned => {
                 let v = self.eval_expr(*operand, depth + 1)?;
                 let a = self.eval_expr(*start, depth + 1)?;
                 let b = self.eval_expr(*end, depth + 1)?;
@@ -1511,7 +1545,14 @@ impl<'a> FnLower<'a> {
                 let l = self.eval_expr(*lhs, depth + 1)?;
                 let r = self.eval_expr(*rhs, depth + 1)?;
                 let dst = self.temp_ty(ty);
-                self.emit(MirInstr::StrConcat { dst, lhs: l, rhs: r }, sp);
+                self.emit(
+                    MirInstr::StrConcat {
+                        dst,
+                        lhs: l,
+                        rhs: r,
+                    },
+                    sp,
+                );
                 Ok(dst)
             }
             hir::ExprKind::TextClone { operand } if self.owned => {
@@ -1562,29 +1603,6 @@ impl<'a> FnLower<'a> {
                 let v = self.eval_expr(*operand, depth + 1)?;
                 let dst = self.temp_ty(ty);
                 self.emit(MirInstr::CharFromCodepoint { dst, code: v }, sp);
-                Ok(dst)
-            }
-            hir::ExprKind::Binary { op, lhs, rhs, .. }
-                if self.owned
-                    && matches!(op, hir::BinOp::Eq | hir::BinOp::Ne)
-                    && matches!(
-                        self.type_of_expr(*lhs),
-                        Some(MirType::StrView)
-                    ) =>
-            {
-                // str eq/ne rides STR_CMP (BIN stays scalar-only).
-                let l = self.eval_expr(*lhs, depth + 1)?;
-                let r = self.eval_expr(*rhs, depth + 1)?;
-                let dst = self.temp_ty(ty);
-                self.emit(
-                    MirInstr::StrCmp {
-                        eq: matches!(op, hir::BinOp::Eq),
-                        dst,
-                        lhs: l,
-                        rhs: r,
-                    },
-                    sp,
-                );
                 Ok(dst)
             }
             hir::ExprKind::RecordClone { base, .. } if self.owned => {
@@ -1973,7 +1991,9 @@ fn lower_function(
                                     .cloned();
                                 let is_owned = slot_ty
                                     .as_ref()
-                                    .map(|t| auto_av_core::ownership::type_is_owned_type_of(lower.out, t))
+                                    .map(|t| {
+                                        auto_av_core::ownership::type_is_owned_type_of(lower.out, t)
+                                    })
                                     .unwrap_or(false);
                                 if is_owned {
                                     lower.emit(MirInstr::Move { dst, src: v }, sp);

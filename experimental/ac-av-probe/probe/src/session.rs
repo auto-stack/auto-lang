@@ -2293,8 +2293,11 @@ impl FunctionIncrementalSession {
         let mut was_hit = false;
         let mut candidate_mint_origin: u64 = 0;
         let mut candidate_span_map = auto_av_core::span_map::SpanSegments::default();
-        let (new_hir_body, new_code, minted_unit): (Arc<hir::Body>, Arc<FunctionCode>, Option<Arc<MirModule>>) =
-            match if deps_stale {
+        let (new_hir_body, new_code, minted_unit): (
+            Arc<hir::Body>,
+            Arc<FunctionCode>,
+            Option<Arc<MirModule>>,
+        ) = match if deps_stale {
             None
         } else {
             self.fns[changed_idx].history.get(&cv)

@@ -154,7 +154,10 @@ pub fn canonical_typed(value: &Value) -> Option<(&'static str, String)> {
         // their content fingerprint (records-with-resources never occur on
         // this face — entry results only).
         Value::Char(c) => ("char", format!("{:x}", *c as u32)),
-        Value::Str(h) => ("Str", format!("{:016x}", auto_av_core::contract::fnv1a64(h.bytes()))),
+        Value::Str(h) => (
+            "Str",
+            format!("{:016x}", auto_av_core::contract::fnv1a64(h.bytes())),
+        ),
         Value::StrView(_) | Value::MutRef(_) => return None,
         Value::Record(_) => return None,
     })

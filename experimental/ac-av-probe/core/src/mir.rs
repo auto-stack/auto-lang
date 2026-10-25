@@ -658,7 +658,8 @@ impl MirModule {
             .sum::<usize>()
             + self.types.len() * std::mem::size_of::<MirType>()
             + VEC;
-        b += self.consts.len() * std::mem::size_of::<MirConst>() + VEC
+        b += self.consts.len() * std::mem::size_of::<MirConst>()
+            + VEC
             + self
                 .consts
                 .iter()

@@ -25,11 +25,11 @@ pub mod instr_spec;
 pub mod layout;
 pub mod mir;
 pub mod mir_verify;
-pub mod program_snapshot;
-pub mod span_map;
 pub mod owned_text;
 pub mod ownership;
 pub mod place;
+pub mod program_snapshot;
+pub mod span_map;
 
 pub use abc::{decode_abc, encode_abc, AbcDecodeError, DecodedAbc};
 pub use abc_verify::{verify_abc, verify_abc_bytes, AbcAdmissionError, LoadedModule};

@@ -773,7 +773,12 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                         put_u32(&mut w, *view);
                         put_u32(&mut w, *index);
                     }
-                    MirInstr::StrSlice { dst, view, start, end } => {
+                    MirInstr::StrSlice {
+                        dst,
+                        view,
+                        start,
+                        end,
+                    } => {
                         if !family.allows_owned_tags() {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
@@ -1667,7 +1672,12 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                         let view = c.u32()?;
                         let start = c.u32()?;
                         let end = c.u32()?;
-                        MirInstr::StrSlice { dst, view, start, end }
+                        MirInstr::StrSlice {
+                            dst,
+                            view,
+                            start,
+                            end,
+                        }
                     }
                     OP_STR_CONCAT if family.allows_owned_tags() => {
                         let dst = c.u32()?;

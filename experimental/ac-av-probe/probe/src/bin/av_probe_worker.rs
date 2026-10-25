@@ -30,6 +30,7 @@ fn main() {
         "data-restore-run" => data_restore_run(&args[1..]),
         "data-mem-envelope" => data_mem_envelope(&args[1..]),
         "request" => request(&args[1..]),
+        "owned-request" => owned_request(&args[1..]),
         "gc-loop" => gc_loop(&args[1..]),
         "case-serve" => case_serve(),
         "load-revision" => load_revision(&args[1..]),
@@ -50,6 +51,7 @@ fn usage() -> ! {
     eprintln!("       av_probe_worker data-restore-run --store DIR --owner NAME --entry FN --snapshot HEX --types-fp FP   (PLAN-820: data-profile module restore, re-verify, execute)");
     eprintln!("       av_probe_worker data-mem-envelope [--rounds N] [--store DIR] [--transient MIB] [--hold-ms N]   (PLAN-820 F820-R1-02: parent-sampled memory-envelope worker modes)");
     eprintln!("       av_probe_worker request --store DIR --src-file FILE --entry FN [--project P] [--caps C1,C2]");
+    eprintln!("       av_probe_worker owned-request --store DIR --src-file FILE --entry FN   (PLAN-821 T-02: owned whole path + arena ledger + sampled peak, one JSON line)");
     eprintln!("       av_probe_worker gc-loop --store DIR --stop-file FILE [--interval-ms N]");
     eprintln!("       av_probe_worker bench-turnaround --samples N --gate-ms MS --out FILE");
     eprintln!("       av_probe_worker frontend-attribution  (PLAN-828 T-07: Line-A frontend transient, isolated, one JSON line)");
@@ -230,6 +232,86 @@ fn request(args: &[String]) -> ! {
     exit(if r.ok() { 0 } else { 4 })
 }
 
+/// PLAN-821 T-02: one owned-profile whole-path request in THIS fresh
+/// process — the CPU/memory evidence entry. Wall covers the full
+/// request → outcome span (store round trip included); the peak is the
+/// parent-side-style sampled private-bytes high-water of THIS process.
+/// The result face and post-release ledger mirror case-serve's owned
+/// branch; the JUDGE is always the caller.
+fn owned_request(args: &[String]) -> ! {
+    let store_dir = flag(args, "--store").unwrap_or_else(|| usage());
+    let src_file = flag(args, "--src-file").unwrap_or_else(|| usage());
+    let entry = flag(args, "--entry").unwrap_or_else(|| usage());
+    let src = std::fs::read_to_string(&src_file).unwrap_or_else(|e| {
+        eprintln!("read {}: {}", src_file, e);
+        exit(2)
+    });
+    let started = std::time::Instant::now();
+    let sampler = auto_av_probe::mempeek::PeakSampler::start(5);
+    let r = auto_av_probe::owned_driver::request_owned(
+        Some(&PathBuf::from(&store_dir)),
+        "owned-evidence",
+        &src,
+        &entry,
+        &[],
+    );
+    let wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+    let peak = sampler.stop();
+    let payload = match r {
+        Ok(mut r) => {
+            let av = r.av.take().expect("request_owned sets av");
+            let ok = matches!(av, auto_av_core::contract::ExecOutcome::Success { .. });
+            let owned = match av {
+                auto_av_core::contract::ExecOutcome::Success { value, .. } => {
+                    let face =
+                        auto_av_probe::owned_fixture::canonical_owned(&value, &r.record_names);
+                    match face {
+                        Some(face) => {
+                            // Host release before the ledger read (the
+                            // live=0 oracle's ordering).
+                            drop(value);
+                            let arena = r.arena.as_ref().expect("owned arena");
+                            serde_json::json!({
+                                "result": face,
+                                "live_after_release": arena.live(),
+                                "allocs": arena.alloc_events().iter()
+                                    .map(|a| serde_json::json!({ "id": a.id, "bytes": a.bytes }))
+                                    .collect::<Vec<_>>(),
+                                "frees": arena.free_events().iter()
+                                    .map(|e| serde_json::json!({ "id": e.id }))
+                                    .collect::<Vec<_>>(),
+                            })
+                        }
+                        None => serde_json::json!({ "error": "non-canonicalizable owned result" }),
+                    }
+                }
+                other => serde_json::json!({ "av": format!("{:?}", other) }),
+            };
+            serde_json::json!({
+                "ok": ok,
+                "wall_ms": wall_ms,
+                "private_bytes_peak": peak,
+                "owned": owned,
+                "snapshot": format!("{:016x}", r.snapshot),
+            })
+        }
+        Err(e) => serde_json::json!({
+            "ok": false,
+            "wall_ms": wall_ms,
+            "private_bytes_peak": peak,
+            "error": e,
+        }),
+    };
+    let mut line = serde_json::to_string(&payload).unwrap_or_default();
+    line.push('\n');
+    std::io::stdout().write_all(line.as_bytes()).ok();
+    exit(if payload["ok"].as_bool() == Some(true) {
+        0
+    } else {
+        4
+    })
+}
+
 /// Repeated GC until the stop file appears (real cross-process concurrency
 /// against requests in other processes).
 fn gc_loop(args: &[String]) -> ! {
@@ -256,6 +338,17 @@ fn gc_loop(args: &[String]) -> ! {
     eprintln!("GCPeak={}", peak);
     eprintln!("gc-loop: {} passes", passes);
     exit(0)
+}
+
+/// The av-core identity a recipe's response must echo (admission mirror
+/// of the parent-side constants): core=av.core-i32/1, data=av.data/1,
+/// owned=av.owned/1 (PLAN-821).
+fn core_version_for(recipe: &str) -> &'static str {
+    match recipe {
+        "ac-av/data-run-v1" => auto_av_core::contract::AV_DATA_PROFILE,
+        "ac-av/owned-run-v1" => auto_av_core::contract::AV_OWNED_PROFILE,
+        _ => auto_av_core::contract::AV_PROFILE,
+    }
 }
 
 /// PLAN-798 T-07 AutoDown probe envelope (`avworker/1`): one bounded
@@ -305,12 +398,18 @@ fn case_serve() -> ! {
         exit(0)
     };
     let data_recipe = recipe == "ac-av/data-run-v1";
+    // PLAN-821 T-02: the owned-profile recipe (`avworker/1` envelope domain
+    // — the recipe id itself is the discriminator, no field grows).
+    let owned_recipe = recipe == "ac-av/owned-run-v1";
     // PLAN-820 F820-R6-01: the typed-fixture entry (`av.entry` of the
     // form `typed:<id>`, validated by the parent against its OWN frozen
     // table before the request) selects a frozen av.data-fixture/1 input
     // instead of a record source.
     let typed_fixture = req["typed_fixture"].as_str().map(|s| s.to_string());
-    if recipe != "ac-av/core-run-v1" && !data_recipe {
+    // PLAN-821: the owned-fixture entry (`owned:<id>`, parent-validated
+    // first) selects a frozen av.owned-fixture/1 source.
+    let owned_fixture = req["owned_fixture"].as_str().map(|s| s.to_string());
+    if recipe != "ac-av/core-run-v1" && !data_recipe && !owned_recipe {
         eprintln!("unknown recipe {recipe}");
         exit(2);
     }
@@ -431,6 +530,164 @@ fn case_serve() -> ! {
                 }
             }
             Some("run") => {
+                if owned_recipe {
+                    // PLAN-821 T-02: the owned-profile pipeline. A frozen
+                    // `owned:<id>` fixture carries its own face (result +
+                    // post-release ledger); a source run reports the same
+                    // owned face for its success value. The PARENT judges
+                    // against its own frozen expectations — never the
+                    // worker's word.
+                    if let Some(fid) = &owned_fixture {
+                        let f = match auto_av_probe::owned_fixture::owned_fixture(fid) {
+                            Some(f) => f,
+                            None => {
+                                // The parent validates ids too; an unknown
+                                // id here is a protocol violation.
+                                eprintln!("unknown owned fixture {fid}");
+                                exit(2);
+                            }
+                        };
+                        let started = std::time::Instant::now();
+                        match auto_av_probe::owned_fixture::run_owned_fixture(
+                            f,
+                            Some(&store_dir),
+                            "autodown-owned-case",
+                        ) {
+                            Ok(owned) => step_outs.push(serde_json::json!({
+                                "op": "run",
+                                "outcome": "success",
+                                "value": null,
+                                "owned": owned,
+                                "trap": null,
+                                "diag": null,
+                                "source_hash": format!("{:016x}", auto_av_core::contract::fnv1a64(entry.as_bytes())),
+                                "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+                            })),
+                            Err(e) => {
+                                eprintln!("owned fixture {fid}: {e}");
+                                exit(2);
+                            }
+                        }
+                        continue;
+                    }
+                    match auto_av_probe::owned_driver::request_owned(
+                        Some(&store_dir),
+                        "autodown-owned-case",
+                        &current_source,
+                        &entry,
+                        &caps,
+                    ) {
+                        Ok(mut r) => {
+                            let av = r.av.take().expect("request_owned sets av");
+                            let snapshot_hex = format!("{:016x}", r.snapshot);
+                            match av {
+                                auto_av_core::contract::ExecOutcome::Success { value, .. } => {
+                                    let value_i32 = value.as_i32();
+                                    let face = auto_av_probe::owned_fixture::canonical_owned(
+                                        &value,
+                                        &r.record_names,
+                                    );
+                                    let owned = match face {
+                                        Some(face) => {
+                                            // Host release BEFORE the ledger
+                                            // read — the live=0 oracle's
+                                            // ordering is part of the face.
+                                            drop(value);
+                                            let arena = r
+                                                .arena
+                                                .as_ref()
+                                                .expect("owned execution carries the arena");
+                                            serde_json::json!({
+                                                "result": face,
+                                                "live_after_release": arena.live(),
+                                                "allocs": arena.alloc_events().iter()
+                                                    .map(|a| serde_json::json!({ "id": a.id, "bytes": a.bytes }))
+                                                    .collect::<Vec<_>>(),
+                                                "frees": arena.free_events().iter()
+                                                    .map(|e| serde_json::json!({ "id": e.id }))
+                                                    .collect::<Vec<_>>(),
+                                            })
+                                        }
+                                        // A view/token crossing the entry is
+                                        // a protocol violation, never green.
+                                        None => {
+                                            eprintln!("owned result is not canonicalizable (view/token crossed entry)");
+                                            exit(2);
+                                        }
+                                    };
+                                    step_outs.push(serde_json::json!({
+                                        "op": "run",
+                                        "outcome": "success",
+                                        "value": value_i32,
+                                        "owned": owned,
+                                        "trap": null,
+                                        "diag": null,
+                                        "source_hash": snapshot_hex,
+                                        "wall_ms": r.wall_ms,
+                                    }));
+                                }
+                                auto_av_core::contract::ExecOutcome::Trap { kind, .. } => {
+                                    step_outs.push(serde_json::json!({
+                                        "op": "run",
+                                        "outcome": "trap",
+                                        "value": null,
+                                        "owned": null,
+                                        "trap": kind.code().to_string(),
+                                        "diag": null,
+                                        "source_hash": snapshot_hex,
+                                        "wall_ms": r.wall_ms,
+                                    }));
+                                }
+                                other => {
+                                    step_outs.push(serde_json::json!({
+                                        "op": "run",
+                                        "outcome": "infra",
+                                        "value": null,
+                                        "owned": null,
+                                        "trap": null,
+                                        "diag": { "detail": format!("{other:?}") },
+                                        "source_hash": snapshot_hex,
+                                        "wall_ms": r.wall_ms,
+                                    }));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            // Same stage mapping as the data recipe: source
+                            // gate rejections are frontend; admission
+                            // failures are verify; anything else is a
+                            // request error (infra, never a language face).
+                            let stage = if e.starts_with("front door")
+                                || e.starts_with("frontend")
+                                || e.starts_with("lower")
+                            {
+                                "frontend"
+                            } else if e.starts_with("mir verify")
+                                || e.starts_with("encode")
+                                || e.starts_with("abc admit")
+                            {
+                                "verify"
+                            } else {
+                                eprintln!("owned pipeline: {e}");
+                                exit(2);
+                            };
+                            step_outs.push(serde_json::json!({
+                                "op": "run",
+                                "outcome": "diag",
+                                "value": null,
+                                "owned": null,
+                                "trap": null,
+                                "diag": { "stage": stage, "code": "", "message": e },
+                                "source_hash": format!(
+                                    "{:016x}",
+                                    auto_av_core::contract::fnv1a64(current_source.as_bytes())
+                                ),
+                                "wall_ms": 0.0,
+                            }));
+                        }
+                    }
+                    continue;
+                }
                 if data_recipe {
                     if let Some(fid) = &typed_fixture {
                         // F820-R6-01: frozen typed fixture through the REAL
@@ -662,11 +919,7 @@ fn case_serve() -> ! {
                         "recipe": recipe,
                         "steps": step_outs,
                         "worker_version": EXPECTED_WORKER_VERSION,
-                        "av_core_version": if data_recipe {
-                            auto_av_core::contract::AV_DATA_PROFILE
-                        } else {
-                            auto_av_core::contract::AV_PROFILE
-                        },
+                        "av_core_version": core_version_for(&recipe),
                     },
                 });
                 let mut line = serde_json::to_string(&ok_out).unwrap_or_default();
@@ -695,11 +948,7 @@ fn case_serve() -> ! {
         "recipe": recipe,
         "steps": step_outs,
         "worker_version": EXPECTED_WORKER_VERSION,
-        "av_core_version": if data_recipe {
-            auto_av_core::contract::AV_DATA_PROFILE
-        } else {
-            auto_av_core::contract::AV_PROFILE
-        },
+        "av_core_version": core_version_for(&recipe),
     }))
 }
 
