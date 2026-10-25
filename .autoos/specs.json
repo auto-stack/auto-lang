@@ -4424,33 +4424,100 @@
           ],
           "modified_at": 1792896352,
           "created_at": 1792896352
+        },
+        {
+          "id": "P818-P",
+          "title": "PLAN-818 merge 交付存证",
+          "content": "rebase master（817/840注册面并集：contract/suite/mod三文件cte+mn并存，range-diff尾段配对=五冲突提交集成偏差+其余补丁等价；T-06末步校验嵌套缺陷修复+decode负例复验）；合并门禁=closeout全量重放（工作区8档+turnaround-formal5/5含sig-rebuild+autodown10/10）+R2/R3补面8/8+裸cargo t 5368/5368（首跑两CTE超时归因瞬态池负载：单跑2/2绿+静默重放绿）；SD-01..06沉淀+四模块plans.md登记；ff-only落master @176552d9d。ledger通道=守护离线投影（无store writer；备份.autoos/specs.json.bak-p818-merge）。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-818"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/reports/plan818/acceptance.md",
+          "milestone": null,
+          "module": "auto-ac",
+          "tags": [
+            "PLAN-818",
+            "merge:176552d9d",
+            "ledger:offline-projection"
+          ],
+          "created_at": 1793000000,
+          "modified_at": 1793000000
+        },
+        {
+          "id": "P831-MERGE-RECEIPT",
+          "title": "PLAN-831 合并交付记录",
+          "content": "T-11 冻结门：lang t 3160/3161（唯一红=818 在途族 master 同红归因）+tv 163/163（flake 隔离绿）；UI t 2394/2396（两预存潜在红 lang master 同红归因）+tu 861/0+ti 28/28。并集：840 修复 8 文件移植 UI 仓（5 覆盖+3 三方零冲突）；路径残留根修；rebase 23/24 patch-id 恒等+T-06 语义验。落地：UI f7d92eef2→aee499e87（工具 land-ui）；lang 1cf02e808→d7f378b67（ff-only 直接执行，触面∩脏集=空，工具零脏树前置偏差如实记录）；SD-01..07 沉淀+ui-release.md。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/plans/attachments/831/ui-release.md",
+          "milestone": null,
+          "module": "repository-boundaries",
+          "tags": [
+            "PLAN-831",
+            "r3",
+            "lang:d7f378b67",
+            "ui:aee499e87",
+            "review-pass:review-r7",
+            "merge-receipt"
+          ]
+        },
+        {
+          "id": "P846-MERGE",
+          "title": "PLAN-846 canonical consolidation",
+          "content": "PLAN-846:r3 canonical spatial profile, explicit version/project rules and scoped upstream numerical correction. Root SDK and graphics source land separately; actual delivery/archive/guard/artifact/batch checkpoints are recorded under docs/plans/attachments/846/merge-r4/receipt.md and the archived Plan. AutoGraphics incremental latency is observation-only until functionality/real ACE integration; no production I2/I3 promise.",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-graphics/plans.md",
+          "milestone": null,
+          "module": "auto-graphics",
+          "tags": [
+            "PLAN-846",
+            "r3",
+            "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
+            "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
+            "source-sha256:cb42d7bcc0138b27df191c7264eb6444143ed8ba368dad42cf85b4950b36e5f7"
+          ],
+          "created_at": 1792903815,
+          "modified_at": 1792903815,
+          "completed_at": 1792903815
+        },
+        {
+          "id": "P827-MERGE-RECEIPT",
+          "title": "PLAN-827 merge 交付存证",
+          "content": "rebase master 两轮（820 av-data 并集：Cargo 清单并集+av.rs 分配缝接入 820 深尺寸预算口径+根帧浅前置门；831 切源：ui-vm-bridge 锚点转 moved-external；846 r3 尾波），range-diff 15=+2!（f91215eac→2274e7fb7 清单并集、4a069ce7f→14f5c18bf 集成解）+集成适配三提交；合并门禁=探针 workspace 完整合同 33 二进制全绿+裸 cargo t 3181/3181+tv 163/163（首两轮 cte/mn 超时=冷构建+并行负载归因，warm 串行绿；820 native 红=R7 轮旧 release worker 无 record profile，重建后绿）；组内补 auto-ui 兄弟 worktree（831 后根 workspace 引用）；SD-01..06 沉淀+两新 spec/四追加+overview/plans 回写；ff-only 落 master @addc30f8a。ledger 通道=守卫离线投影（无 store writer；备份 .autoos/specs.json.bak-p827-merge；本提交同时收口先前未提交的 P818/P831 账本存证，其落地提交均在 master 祖先链）。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-827"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/plans/827-av-source-program-baseline.md",
+          "milestone": null,
+          "module": "auto-av",
+          "tags": [
+            "PLAN-827",
+            "merge:addc30f8a",
+            "ledger:offline-projection"
+          ],
+          "created_at": 1792904995,
+          "modified_at": 1792904995
         }
-      ,
-{
- "id": "P846-MERGE",
- "title": "PLAN-846 canonical consolidation",
- "content": "PLAN-846:r3 canonical spatial profile, explicit version/project rules and scoped upstream numerical correction. Root SDK and graphics source land separately; actual delivery/archive/guard/artifact/batch checkpoints are recorded under docs/plans/attachments/846/merge-r4/receipt.md and the archived Plan. AutoGraphics incremental latency is observation-only until functionality/real ACE integration; no production I2/I3 promise.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-graphics/plans.md",
- "milestone": null,
- "module": "auto-graphics",
- "tags": [
-  "PLAN-846",
-  "r3",
-  "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
-  "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
-  "source-sha256:cb42d7bcc0138b27df191c7264eb6444143ed8ba368dad42cf85b4950b36e5f7"
- ],
- "created_at": 1792903815,
- "modified_at": 1792903815,
- "completed_at": 1792903815
-}
-],
+      ],
       "section_type": "Reports",
       "title": "📊 Reports",
       "status": "empty",
@@ -8526,32 +8593,32 @@
           "completed_at": null
         },
         {
- "id": "P733-1",
- "title": "PLAN-846 current auto-lang/vm architecture",
- "content": "PLAN-733 delivered。VM 渲染目标下模块级 fn 调用（store handler 域与视图 computed 域）契约：返回真实值/参数逐位绑定/失败显式报错不静默返空。执行锚=call_vm_fn 堆引用实参栈编码 encode_list→encode_object 对齐 H2 统一约定（engine 数值臂只认 TAG_OBJECT/裸 i32,TAG_LIST 按空迭代=computed 列表实参恒空根因）+store_scope_module own-module 绑定域（同文件裸名跨模块歧义不再整链接失败）+视图求值器 t() 动态键/Expr::Object 臂。T-01 实证 handler 域本无缺陷（musk\"handler 域返空\"系输入面误归因）。矩阵锚 plan733_fn_call_semantics_tests;边界见 design/vm-fn-call-semantics.md。\n\nPLAN-846: encode_f64 normalizes NaN sign to avoid negative type tags; raw negative infinity remains f64. Finite/signed-zero/infinity/nonfloating-tag bits and ABI retained. Canonical source defines the enduring rule.",
- "file": "docs/specs/auto-lang/vm/architecture.md",
- "related": [
-  "PLAN-733",
-  "GOAL-007"
- ],
- "status": "verified",
- "depends_on": [],
- "tags": [
-  "PLAN-846",
-  "r3",
-  "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
-  "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
-  "source-sha256:5e37d7f64fdee2f9ca46d675b79173f2e5965a6a2467d62ebbed1a145c1c88eb"
- ],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "milestone": null,
- "module": "auto-lang/vm",
- "created_at": 1790958600,
- "modified_at": 1792903815,
- "completed_at": 1792903815
-},
+          "id": "P733-1",
+          "title": "PLAN-846 current auto-lang/vm architecture",
+          "content": "PLAN-733 delivered。VM 渲染目标下模块级 fn 调用（store handler 域与视图 computed 域）契约：返回真实值/参数逐位绑定/失败显式报错不静默返空。执行锚=call_vm_fn 堆引用实参栈编码 encode_list→encode_object 对齐 H2 统一约定（engine 数值臂只认 TAG_OBJECT/裸 i32,TAG_LIST 按空迭代=computed 列表实参恒空根因）+store_scope_module own-module 绑定域（同文件裸名跨模块歧义不再整链接失败）+视图求值器 t() 动态键/Expr::Object 臂。T-01 实证 handler 域本无缺陷（musk\"handler 域返空\"系输入面误归因）。矩阵锚 plan733_fn_call_semantics_tests;边界见 design/vm-fn-call-semantics.md。\n\nPLAN-846: encode_f64 normalizes NaN sign to avoid negative type tags; raw negative infinity remains f64. Finite/signed-zero/infinity/nonfloating-tag bits and ABI retained. Canonical source defines the enduring rule.",
+          "file": "docs/specs/auto-lang/vm/architecture.md",
+          "related": [
+            "PLAN-733",
+            "GOAL-007"
+          ],
+          "status": "verified",
+          "depends_on": [],
+          "tags": [
+            "PLAN-846",
+            "r3",
+            "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
+            "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
+            "source-sha256:5e37d7f64fdee2f9ca46d675b79173f2e5965a6a2467d62ebbed1a145c1c88eb"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "milestone": null,
+          "module": "auto-lang/vm",
+          "created_at": 1790958600,
+          "modified_at": 1792903815,
+          "completed_at": 1792903815
+        },
         {
           "id": "P732-2",
           "title": "ADR-27 autodown 编辑壳正文内链激活供给——零模型扩展/run 段命中区/publish 出口/双 Str 载荷",
@@ -14672,32 +14739,32 @@
           "completed_at": 1792644036
         },
         {
- "id": "P829-AGP",
- "title": "PLAN-846 current auto-graphics project",
- "content": "Finite portable scene4 behavior binding and verified source/GLB closure on autographics-dev. Actual Auto/OS/GPU and same-binary fresh-process relocation; production I2/I3/general engine remain pending.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-graphics/project.md",
- "milestone": null,
- "module": "auto-graphics",
- "tags": [
-  "PLAN-845",
-  "r2",
-  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
-  "PLAN-846",
-  "r3",
-  "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
-  "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
-  "source-sha256:a9de8823d6f95fdfd191ba3082898800032754f4f69643657d9f3249a5e6459a"
- ],
- "created_at": 1792685069,
- "modified_at": 1792903815,
- "completed_at": 1792903815
-},
+          "id": "P829-AGP",
+          "title": "PLAN-846 current auto-graphics project",
+          "content": "Finite portable scene4 behavior binding and verified source/GLB closure on autographics-dev. Actual Auto/OS/GPU and same-binary fresh-process relocation; production I2/I3/general engine remain pending.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-graphics/project.md",
+          "milestone": null,
+          "module": "auto-graphics",
+          "tags": [
+            "PLAN-845",
+            "r2",
+            "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+            "PLAN-846",
+            "r3",
+            "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
+            "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
+            "source-sha256:a9de8823d6f95fdfd191ba3082898800032754f4f69643657d9f3249a5e6459a"
+          ],
+          "created_at": 1792685069,
+          "modified_at": 1792903815,
+          "completed_at": 1792903815
+        },
         {
           "id": "P830-SURF",
           "title": "auto-graphics Surface/Portal 组合与 GPU 合成合同（PLAN-830 SD-01）",
@@ -14737,60 +14804,60 @@
           ]
         },
         {
- "id": "P830-PROFILE",
- "title": "PLAN-846 current auto-graphics prototype-profile",
- "content": "UserV1/profile7 adds finite trusted single-file behavior with public graph/input functions. User256KiB/managed64KiB/combined320KiB,128nodes; inherited queue/time limits; no general sandbox or arbitrary heap hard quota.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-graphics/prototype-profile.md",
- "milestone": null,
- "module": "auto-graphics",
- "tags": [
-  "PLAN-840",
-  "r2",
-  "reviewed:1f19395254d7e676bd188e43e3d8f734d57aaa12",
-  "source-path:docs/specs/auto-graphics/prototype-profile.md",
-  "PLAN-846",
-  "r3",
-  "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
-  "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
-  "source-sha256:f35d2f61f106223b815d1a8cdfb6043be3c406e721ae36c4cc59415950a3327a"
- ],
- "created_at": 1792685069,
- "modified_at": 1792903815,
- "completed_at": 1792903815
-},
+          "id": "P830-PROFILE",
+          "title": "PLAN-846 current auto-graphics prototype-profile",
+          "content": "UserV1/profile7 adds finite trusted single-file behavior with public graph/input functions. User256KiB/managed64KiB/combined320KiB,128nodes; inherited queue/time limits; no general sandbox or arbitrary heap hard quota.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-graphics/prototype-profile.md",
+          "milestone": null,
+          "module": "auto-graphics",
+          "tags": [
+            "PLAN-840",
+            "r2",
+            "reviewed:1f19395254d7e676bd188e43e3d8f734d57aaa12",
+            "source-path:docs/specs/auto-graphics/prototype-profile.md",
+            "PLAN-846",
+            "r3",
+            "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
+            "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
+            "source-sha256:f35d2f61f106223b815d1a8cdfb6043be3c406e721ae36c4cc59415950a3327a"
+          ],
+          "created_at": 1792685069,
+          "modified_at": 1792903815,
+          "completed_at": 1792903815
+        },
         {
- "id": "P830-IH",
- "title": "PLAN-846 current auto-graphics integration-contract",
- "content": "Finite single-source persistence replaces former no-binding exclusion only; old profiles/temporary sources and all old/new owner/native/counter AND content gates remain. No production integration or distribution.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-graphics/integration-contract.md",
- "milestone": null,
- "module": "auto-graphics",
- "tags": [
-  "PLAN-845",
-  "r2",
-  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
-  "PLAN-846",
-  "r3",
-  "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
-  "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
-  "source-sha256:6581b03c1ce597baf9958fc1f20757ce199899ee80fb91187d7683bf6424e087"
- ],
- "created_at": 1792685069,
- "modified_at": 1792903815,
- "completed_at": 1792903815
-},
+          "id": "P830-IH",
+          "title": "PLAN-846 current auto-graphics integration-contract",
+          "content": "Finite single-source persistence replaces former no-binding exclusion only; old profiles/temporary sources and all old/new owner/native/counter AND content gates remain. No production integration or distribution.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-graphics/integration-contract.md",
+          "milestone": null,
+          "module": "auto-graphics",
+          "tags": [
+            "PLAN-845",
+            "r2",
+            "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+            "PLAN-846",
+            "r3",
+            "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
+            "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
+            "source-sha256:6581b03c1ce597baf9958fc1f20757ce199899ee80fb91187d7683bf6424e087"
+          ],
+          "created_at": 1792685069,
+          "modified_at": 1792903815,
+          "completed_at": 1792903815
+        },
         {
           "id": "P815-B-D1",
           "title": "UI 工程工具唯一 owner 全量交付（PLAN-815 M815-B，SD-01..07）",
@@ -14817,32 +14884,32 @@
           "completed_at": 1792668085
         },
         {
- "id": "P833-AUTO-SOURCE",
- "title": "PLAN-846 current auto-graphics auto-source-driver",
- "content": "One source-only runner opens complete scene/assets/scripts projects; same binary Move/Patrol/source-speed logic, actual UI-output relocation, full old/new compatibility and independent consumer gates.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-graphics/auto-source-driver.md",
- "milestone": null,
- "module": "auto-graphics",
- "tags": [
-  "PLAN-845",
-  "r2",
-  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
-  "PLAN-846",
-  "r3",
-  "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
-  "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
-  "source-sha256:48e4864baa5d57381849461f76342ab6578248e95875984b35aee76af6acd0c6"
- ],
- "created_at": 1792685069,
- "modified_at": 1792903815,
- "completed_at": 1792903815
-},
+          "id": "P833-AUTO-SOURCE",
+          "title": "PLAN-846 current auto-graphics auto-source-driver",
+          "content": "One source-only runner opens complete scene/assets/scripts projects; same binary Move/Patrol/source-speed logic, actual UI-output relocation, full old/new compatibility and independent consumer gates.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-graphics/auto-source-driver.md",
+          "milestone": null,
+          "module": "auto-graphics",
+          "tags": [
+            "PLAN-845",
+            "r2",
+            "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+            "PLAN-846",
+            "r3",
+            "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
+            "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
+            "source-sha256:48e4864baa5d57381849461f76342ab6578248e95875984b35aee76af6acd0c6"
+          ],
+          "created_at": 1792685069,
+          "modified_at": 1792903815,
+          "completed_at": 1792903815
+        },
         {
           "id": "P828-SRC",
           "title": "auto-ac 函数级增量源前端合同",
@@ -15103,59 +15170,59 @@
           ]
         },
         {
- "id": "P839-PLAY",
- "title": "PLAN-846 current auto-graphics scene-play-session",
- "content": "Project default consumes accepted bytes/nullable actors; explicit external/Builtin stays temporary. Correct verified-root or memory/hash attribution; original Auto frame/time/Stop/owner behavior unchanged.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-graphics/scene-play-session.md",
- "milestone": null,
- "module": "auto-graphics",
- "tags": [
-  "PLAN-845",
-  "r2",
-  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
-  "PLAN-846",
-  "r3",
-  "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
-  "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
-  "source-sha256:3c90d754e4142ae68b8ed9aa5ee3b388dbb4008138ac459375b2db6dcfea0b91"
- ],
- "created_at": 1792814102,
- "modified_at": 1792903815,
- "completed_at": 1792903815
-},
+          "id": "P839-PLAY",
+          "title": "PLAN-846 current auto-graphics scene-play-session",
+          "content": "Project default consumes accepted bytes/nullable actors; explicit external/Builtin stays temporary. Correct verified-root or memory/hash attribution; original Auto frame/time/Stop/owner behavior unchanged.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-graphics/scene-play-session.md",
+          "milestone": null,
+          "module": "auto-graphics",
+          "tags": [
+            "PLAN-845",
+            "r2",
+            "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+            "PLAN-846",
+            "r3",
+            "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
+            "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
+            "source-sha256:3c90d754e4142ae68b8ed9aa5ee3b388dbb4008138ac459375b2db6dcfea0b91"
+          ],
+          "created_at": 1792814102,
+          "modified_at": 1792903815,
+          "completed_at": 1792903815
+        },
         {
- "id": "P840-BEHAVIOR-API",
- "title": "PLAN-846 current auto-graphics behavior-api",
- "content": "Existing behavior1 functions/callbacks/limits unchanged; bound scene default and exact accepted bytes complement temporary per-Run file selection without changing API semantics.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-graphics/behavior-api.md",
- "milestone": null,
- "module": "auto-graphics",
- "tags": [
-  "PLAN-845",
-  "r2",
-  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
-  "PLAN-846",
-  "r3",
-  "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
-  "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
-  "source-sha256:cb231131eb0c95aa9d108c33e3c81796dc715c8502878649f9b4d46f08764e15"
- ],
- "created_at": 1792828504,
- "modified_at": 1792903815,
- "completed_at": 1792903815
-},
+          "id": "P840-BEHAVIOR-API",
+          "title": "PLAN-846 current auto-graphics behavior-api",
+          "content": "Existing behavior1 functions/callbacks/limits unchanged; bound scene default and exact accepted bytes complement temporary per-Run file selection without changing API semantics.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-graphics/behavior-api.md",
+          "milestone": null,
+          "module": "auto-graphics",
+          "tags": [
+            "PLAN-845",
+            "r2",
+            "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+            "PLAN-846",
+            "r3",
+            "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
+            "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
+            "source-sha256:cb231131eb0c95aa9d108c33e3c81796dc715c8502878649f9b4d46f08764e15"
+          ],
+          "created_at": 1792828504,
+          "modified_at": 1792903815,
+          "completed_at": 1792903815
+        },
         {
           "id": "P840-SDK",
           "title": "Language SDK lexical, optional Case and state-file contracts",
@@ -15211,32 +15278,32 @@
           "completed_at": 1792838779
         },
         {
- "id": "P845-BEHAVIOR-PROJECT",
- "title": "PLAN-846 current auto-graphics behavior-project",
- "content": "Current bounded byte-exact source/actor project contract: strict scene4, immutable owners/history, verified closure save/Open, default accepted-source Run and honest memory/hash or verified-root provenance.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-graphics/behavior-project.md",
- "milestone": null,
- "module": "auto-graphics",
- "tags": [
-  "PLAN-845",
-  "r2",
-  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
-  "PLAN-846",
-  "r3",
-  "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
-  "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
-  "source-sha256:00efccc9f998e9dd642da07737b5fbeceff434f69869133fa1fd3b5d51b2b752"
- ],
- "created_at": 1792871770,
- "modified_at": 1792903815,
- "completed_at": 1792903815
-},
+          "id": "P845-BEHAVIOR-PROJECT",
+          "title": "PLAN-846 current auto-graphics behavior-project",
+          "content": "Current bounded byte-exact source/actor project contract: strict scene4, immutable owners/history, verified closure save/Open, default accepted-source Run and honest memory/hash or verified-root provenance.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-graphics/behavior-project.md",
+          "milestone": null,
+          "module": "auto-graphics",
+          "tags": [
+            "PLAN-845",
+            "r2",
+            "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+            "PLAN-846",
+            "r3",
+            "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
+            "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
+            "source-sha256:00efccc9f998e9dd642da07737b5fbeceff434f69869133fa1fd3b5d51b2b752"
+          ],
+          "created_at": 1792871770,
+          "modified_at": 1792903815,
+          "completed_at": 1792903815
+        },
         {
           "id": "P820-AVDATA-LAYOUT",
           "title": "av.data/1 数据布局与纯值 record（PLAN-820）",
@@ -15280,57 +15347,188 @@
           ],
           "modified_at": 1792896352,
           "created_at": 1792896352
+        },
+        {
+          "id": "P818-D1",
+          "title": "auto-ac MIR-native 有限标量后端合同（PLAN-818）",
+          "content": "SD-01 蒸馏：CheckedMir→CLIF→函数COFF→PE 新通道（不回译HIR/不调旧lower_object）；有限typed标量指令面+trap70；私有测试ABI msvc-x64/priv-i32-bool-v1（非797公共AutoABI）；只信本进程verify或798重授信、mn门对编辑单元重verify；授权trace（hir.test.trace.v1+支持库会话级持有、逐轮原始PE字节）；三路径对拍（AV/旧HIR-native/新MIR-native×独立expected）。canonical docs/specs/auto-ac/mir-native-scalar.md。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-818"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-ac/mir-native-scalar.md",
+          "milestone": null,
+          "module": "auto-ac",
+          "tags": [
+            "PLAN-818",
+            "delivery:176552d9d",
+            "experimental"
+          ],
+          "created_at": 1793000000,
+          "modified_at": 1793000000
+        },
+        {
+          "id": "P818-D2",
+          "title": "auto-ac MIR-native 单元缓存/链接/周转合同（PLAN-818）",
+          "content": "SD-02 蒸馏：每函数可重定位COFF+manifest（key全轴）；单元缓存项无project+manifest顺序发布摘旧root（787 R3-03）；坏准入拒/Conflict保旧；stage→backup→commit事务；D828增量消费（未改不重编/内容命中=历史单元复用cv→fp/语法回退=记录性全请求从session当前源重建保前缀、永不标incremental）；资源硬门（48/512/768MiB+水位GC）；时间门P95<1s=父侧观测连续窗口（准备→IPC→worker→准入→独立期望比较）。canonical docs/specs/auto-ac/mir-native-cache.md。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-818"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-ac/mir-native-cache.md",
+          "milestone": null,
+          "module": "auto-ac",
+          "tags": [
+            "PLAN-818",
+            "delivery:176552d9d",
+            "experimental"
+          ],
+          "created_at": 1793000000,
+          "modified_at": 1793000000
+        },
+        {
+          "id": "P831-AUTO-UI-REPO",
+          "title": "auto-ui 独立仓（五包 owner）",
+          "content": "auto-ui 仓持有 auto-ui-dialect/compiler/runtime/tools/shell-pack 五包；语言 SDK/project-model/api-gen 留语言仓单源；旧 auto-lang 为上层兼容再导出不入纯 SDK 闭包；三仓组布局+受管锁；tu 863 唯一 ID 恒等基线。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-ui/project.md",
+          "milestone": null,
+          "module": "auto-ui",
+          "tags": [
+            "PLAN-831",
+            "r3",
+            "lang:d7f378b67",
+            "ui:aee499e87",
+            "review-pass:review-r7"
+          ]
+        },
+        {
+          "id": "P831-UI-REPO-DELIVERY",
+          "title": "UI 仓发行与切换事务合同",
+          "content": "三渠道（path 组/固定 commit clone/受管 bundle）；构建必需面=vue/rust/vscode+vm 运行（r3：jet/ark 真实构建转后续环境门控，分类按失败类别语义位置）；prepared→ui-landed→lang-switched→verified 四状态 ff-only 事务；收据 admission 拒绝漂移/脏树。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/repository-boundaries/ui-repository-delivery.md",
+          "milestone": null,
+          "module": "repository-boundaries",
+          "tags": [
+            "PLAN-831",
+            "r3",
+            "lang:d7f378b67",
+            "ui:aee499e87",
+            "review-pass:review-r7"
+          ]
+        },
+        {
+          "id": "P831-AUTO-API-GEN",
+          "title": "auto-api-gen adapter（C2 零 Man 边）",
+          "content": "语言服务/API 生成 adapter 留语言仓；sidecar/展示声明单源=auto-project-model；闭包零 auto-man-core；旧入口兼容由定向语义验证。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-api-gen/project.md",
+          "milestone": null,
+          "module": "auto-api-gen",
+          "tags": [
+            "PLAN-831",
+            "r3",
+            "lang:d7f378b67",
+            "ui:aee499e87",
+            "review-pass:review-r7"
+          ]
+        },
+        {
+          "id": "P846-AUTO-GRAPHICS-SPATIAL-QUERY-PROFILE",
+          "title": "PLAN-846 current auto-graphics spatial-query-profile",
+          "content": "PLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-graphics/spatial-query-profile.md",
+          "milestone": null,
+          "module": "auto-graphics",
+          "tags": [
+            "PLAN-846",
+            "r3",
+            "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
+            "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
+            "source-sha256:0a03b837ef07936a470bcb841993295e6ee93935b66ef4be22d076bc4e9eb6d1"
+          ],
+          "created_at": 1792903815,
+          "modified_at": 1792903815,
+          "completed_at": 1792903815
+        },
+        {
+          "id": "P846-AUTO-VAL-PROJECT",
+          "title": "PLAN-846 current auto-val project",
+          "content": "PLAN-846: encode_f64 normalizes NaN sign to avoid negative type tags; raw negative infinity remains f64. Finite/signed-zero/infinity/nonfloating-tag bits and ABI retained. Canonical source defines the enduring rule.",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-val/project.md",
+          "milestone": null,
+          "module": "auto-val",
+          "tags": [
+            "PLAN-846",
+            "r3",
+            "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
+            "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
+            "source-sha256:e421d26dadbc7a264ef6c44a5dde123c73fba04d040b2fb29055a0df6b0366bd"
+          ],
+          "created_at": 1792903815,
+          "modified_at": 1792903815,
+          "completed_at": 1792903815
+        },
+        {
+          "id": "P827-AV-SOURCE-BASELINE",
+          "title": "PLAN-827 AV 真实源码验收基线（实验性标量源文件闭环）",
+          "content": "实验性标量源码文件验收基线：AP-01/22 经既有前端→HIR→共享 MIR→ABC→AV 返回 typed 0，AP-23 精确 av.trap.div-by-zero trap；G0 全量分母（AP/C/EP/入口锚点/stdlib 成员，缺项保留 gap/owner 行，831 切源的 ui-vm-bridge 锚点转 moved-external 行）。源身份/快照冻结/当前授权/span 重绑/缓存反控沿既有合同；帧槽位分配在预算检查后可失败（SlotBytes 资源结果+帧拥有缓冲释放+FrameAllocationProbe 可选注入缝）；资源证据绑定当前二进制/输入（0ms 阈值反控需真实零门+双冻结路径拒绝，调用文本逐字留存，成败 raw 保留）。不切默认、不扩语言/库/UI/FFI。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-827"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-av/source-program-conformance.md",
+          "milestone": null,
+          "module": "auto-av",
+          "tags": [
+            "PLAN-827",
+            "merge:addc30f8a",
+            "ledger:offline-projection"
+          ],
+          "created_at": 1792904995,
+          "modified_at": 1792904995
         }
-      ,
-{
- "id": "P846-AUTO-GRAPHICS-SPATIAL-QUERY-PROFILE",
- "title": "PLAN-846 current auto-graphics spatial-query-profile",
- "content": "PLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-graphics/spatial-query-profile.md",
- "milestone": null,
- "module": "auto-graphics",
- "tags": [
-  "PLAN-846",
-  "r3",
-  "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
-  "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
-  "source-sha256:0a03b837ef07936a470bcb841993295e6ee93935b66ef4be22d076bc4e9eb6d1"
- ],
- "created_at": 1792903815,
- "modified_at": 1792903815,
- "completed_at": 1792903815
-},
-{
- "id": "P846-AUTO-VAL-PROJECT",
- "title": "PLAN-846 current auto-val project",
- "content": "PLAN-846: encode_f64 normalizes NaN sign to avoid negative type tags; raw negative infinity remains f64. Finite/signed-zero/infinity/nonfloating-tag bits and ABI retained. Canonical source defines the enduring rule.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-val/project.md",
- "milestone": null,
- "module": "auto-val",
- "tags": [
-  "PLAN-846",
-  "r3",
-  "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
-  "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
-  "source-sha256:e421d26dadbc7a264ef6c44a5dde123c73fba04d040b2fb29055a0df6b0366bd"
- ],
- "created_at": 1792903815,
- "modified_at": 1792903815,
- "completed_at": 1792903815
-}
-],
+      ],
       "section_type": "Designs",
       "title": "🎨 Designs",
       "status": "empty",
@@ -18908,33 +19106,99 @@
           ],
           "modified_at": 1792896352,
           "created_at": 1792896352
+        },
+        {
+          "id": "P818-T",
+          "title": "PLAN-818 MIR-native 测试资产",
+          "content": "实验workspace九档（first_case3/incremental5/codegen6/parity2/cache7/transaction6/turnaround_driver3/resources5+admission）+主仓ac_mn_probe 23测（T-06 adapter7/T-07五场景/R2-R3新增：trace增量/前缀保持/依赖字面量/首步回退/回退诊断传播/单发复演/rounds失败活跃性与限额夹具/观察者缝正反控/系列父侧观测门含独立比较）。verify-ac-mir-native-818.ps1 九Scope冻结程序。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-818"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "experimental/ac-mir-native/tests/",
+          "milestone": null,
+          "module": "auto-ac",
+          "tags": [
+            "PLAN-818",
+            "delivery:176552d9d",
+            "test-assets"
+          ],
+          "created_at": 1793000000,
+          "modified_at": 1793000000
+        },
+        {
+          "id": "P831-UI-REPO-FIXTURES",
+          "title": "UI 迁仓验证设施与 UI 仓档位",
+          "content": "ui-repository-consumer/generated-ui-consumer 两 driver（五族+selftest S17 五臂 admission 负控+R3..R6 分类/端点反例重放链）；UI 仓 t/tu 863/ti 28/tn 档与 .config/nextest.toml；lang t 档五处跨仓读切组内兄弟路径。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-ui/project.md",
+          "milestone": null,
+          "module": "auto-ui",
+          "tags": [
+            "PLAN-831",
+            "r3",
+            "lang:d7f378b67",
+            "ui:aee499e87",
+            "review-pass:review-r7",
+            "test-assets"
+          ]
+        },
+        {
+          "id": "P846-TESTS",
+          "title": "PLAN-846 finite spatial and nonfinite verification",
+          "content": "Original158 driver tests plus20 append, complete178 passed per side; all-mesh/8corners/closed+ULP/NaN/32-33/identity/configuration/20owners and real OS/GPU positive+negative+reopen gates preserve original83 and AGP163/16. Actual complete outcomes are in the consolidation receipt.",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-graphics/spatial-query-profile.md",
+          "milestone": null,
+          "module": "auto-graphics",
+          "tags": [
+            "PLAN-846",
+            "r3",
+            "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
+            "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
+            "source-sha256:0a03b837ef07936a470bcb841993295e6ee93935b66ef4be22d076bc4e9eb6d1"
+          ],
+          "created_at": 1792903815,
+          "modified_at": 1792903815,
+          "completed_at": 1792903815
+        },
+        {
+          "id": "P827-TEST-ASSETS",
+          "title": "PLAN-827 测试资产（probe 四族+根 corpus 门+验证脚本九档）",
+          "content": "experimental/ac-av-probe/probe/tests：av_source_827_{first_case,semantics(含 R6 分配两测),cache,incremental(含 raw shape/失败留档两负控)}；根 workspace：av_source_827_tests（corpus 绿门/inventory 分母可复现+五负控/admission 负控/负 oracle/worker 故障 infra）；scripts/verify-av-source-827.ps1 九 scope（selftest 含必需 ID 精确绑定/worker 绑定/留存 summary/writer 精确文本控制）。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-827"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "experimental/ac-av-probe/probe/tests/av_source_827_semantics.rs",
+          "milestone": null,
+          "module": "auto-av",
+          "tags": [
+            "PLAN-827",
+            "merge:addc30f8a"
+          ],
+          "created_at": 1792904995,
+          "modified_at": 1792904995
         }
-      ,
-{
- "id": "P846-TESTS",
- "title": "PLAN-846 finite spatial and nonfinite verification",
- "content": "Original158 driver tests plus20 append, complete178 passed per side; all-mesh/8corners/closed+ULP/NaN/32-33/identity/configuration/20owners and real OS/GPU positive+negative+reopen gates preserve original83 and AGP163/16. Actual complete outcomes are in the consolidation receipt.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-graphics/spatial-query-profile.md",
- "milestone": null,
- "module": "auto-graphics",
- "tags": [
-  "PLAN-846",
-  "r3",
-  "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
-  "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
-  "source-sha256:0a03b837ef07936a470bcb841993295e6ee93935b66ef4be22d076bc4e9eb6d1"
- ],
- "created_at": 1792903815,
- "modified_at": 1792903815,
- "completed_at": 1792903815
-}
-],
+      ],
       "section_type": "Tests",
       "title": "🧪 Tests",
       "status": "empty",
@@ -25402,33 +25666,100 @@
           ],
           "modified_at": 1792896352,
           "created_at": 1792896352
+        },
+        {
+          "id": "P818-R",
+          "title": "PLAN-818 R1–R4 最终复审链（pass）",
+          "content": "R1（计时/历史命中/接线/格式四findings）→R2（trace链接+字节/前缀保留/警告/父侧计时残余）→R3（rounds截止治理/限额读中生效+stderr传播/比较入窗三阻断）→R4 final pass @ fec6b0c41（30修订完整父侧窗口P95=457.9ms；夹具/正反控/正式门全过）。报告 docs/plans/attachments/818/review-r{1..4}/。merge重放closeout+裸t 5368/5368+sig-rebuild 57.9s全绿 @176552d9d。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-818"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/plans/attachments/818/review-r4/review.md",
+          "milestone": null,
+          "module": "auto-ac",
+          "tags": [
+            "PLAN-818",
+            "review:R4-pass",
+            "delivery:176552d9d"
+          ],
+          "created_at": 1793000000,
+          "modified_at": 1793000000
+        },
+        {
+          "id": "P831-R7-FINAL-PASS",
+          "title": "PLAN-831 T-10 R7 独立终审 pass",
+          "content": "R4/R5/R6 真实工具反例+原五控制全过；F03-A 闭合（缺席句头优先+执行码仅原因区）；7 材料/4 收据 hash 匹配；AC01..07 pass、AC08 merge pending（本合并收口）。上下文限制如实记载。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/plans/attachments/831/review-r7/review.md",
+          "milestone": null,
+          "module": "auto-ui",
+          "tags": [
+            "PLAN-831",
+            "r3",
+            "lang:d7f378b67",
+            "ui:aee499e87",
+            "review-pass:review-r7",
+            "final-review"
+          ]
+        },
+        {
+          "id": "P846-R6",
+          "title": "PLAN-846 r3 affected final review PASS",
+          "content": "R6 verifies the explicitly authorized functional-only AutoGraphics incremental acceptance. All cache/invalidation/link/run assertions and30 inputs remain; latency is observation-only and historical P95 failures are not claimed fixed. Default root acceptance is unchanged. SDK and finite graphics AC/Spec evidence retained; same-session review limitation explicit; complete current functional gates are separately evidenced.",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/plans/attachments/846/review-r6/review.md",
+          "milestone": null,
+          "module": "auto-graphics",
+          "tags": [
+            "PLAN-846",
+            "r3",
+            "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
+            "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
+            "source-sha256:8974e7ef0df9450a9a72fbd4f3053610b0de977b5cd3b774386e92b775a055e3"
+          ],
+          "created_at": 1792903815,
+          "modified_at": 1792903815,
+          "completed_at": 1792903815
+        },
+        {
+          "id": "P827-R10-FINAL-PASS",
+          "title": "PLAN-827 T-07 最终独立复审通过（R7..R10 收敛）",
+          "content": "独立上下文四轮链收敛：R7 关闭分配/持久化身份/二进制绑定三 findings，R8 关闭 summary/峰值/exit 留存主体，R9 关闭 gate-0 无关失败误绿与 args 空串两残余，R10 终判 final pass（AC01..07/09 全过，AC08 merge-owned pending）。冻结提交 9ae7a7a3b；性能证据同码复用（worker SHA256 0A50E300E1B4BC97…）。merge 侧 rebase master（820 并集）两处冲突解经探针 workspace 完整合同 33 二进制+裸 cargo t 3181/3181+tv 163/163 于 addc30f8a 重验。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-827"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/plans/attachments/827/review-r10/review.md",
+          "milestone": null,
+          "module": "auto-av",
+          "tags": [
+            "PLAN-827",
+            "review:r10",
+            "merge:addc30f8a"
+          ],
+          "created_at": 1792904995,
+          "modified_at": 1792904995
         }
-      ,
-{
- "id": "P846-R6",
- "title": "PLAN-846 r3 affected final review PASS",
- "content": "R6 verifies the explicitly authorized functional-only AutoGraphics incremental acceptance. All cache/invalidation/link/run assertions and30 inputs remain; latency is observation-only and historical P95 failures are not claimed fixed. Default root acceptance is unchanged. SDK and finite graphics AC/Spec evidence retained; same-session review limitation explicit; complete current functional gates are separately evidenced.",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/plans/attachments/846/review-r6/review.md",
- "milestone": null,
- "module": "auto-graphics",
- "tags": [
-  "PLAN-846",
-  "r3",
-  "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
-  "source-commit:d369dd76024d0e7debe17d2d995ebd981d6b8bda",
-  "source-sha256:8974e7ef0df9450a9a72fbd4f3053610b0de977b5cd3b774386e92b775a055e3"
- ],
- "created_at": 1792903815,
- "modified_at": 1792903815,
- "completed_at": 1792903815
-}
-],
+      ],
       "section_type": "Reviews",
       "title": "🔍 Reviews",
       "status": "empty",
@@ -25439,5 +25770,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 84
+  "version": 86
 }
