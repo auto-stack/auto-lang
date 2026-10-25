@@ -27,6 +27,12 @@ preserve required unignored/profile-selected IDs (language full 3,218, UI full
 Baseline files are acceptance inputs: do not regenerate them to accept deletion,
 new ignore markers, feature loss or changed profile filters.
 
+Each language feature tier (tt/tb/taa/ta/t3) has its own complete `ids` and
+`selected` files. A feature-specific required ID is never intersected with the
+tf base. Those snapshots come from the already-frozen real JSON listings;
+explicit scoped runs may narrow selected tests but must still enumerate the
+complete compiled identity set.
+
 The wrapper retains the existing target directories and worker discovery. An
 explicit invalid root fails; metadata checks that the selected UI owner is the
 one the language workspace actually consumes. Receipt identities include both

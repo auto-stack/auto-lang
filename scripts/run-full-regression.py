@@ -186,6 +186,13 @@ def validate_ids(ids, selected, expected, required_selected):
     return sorted(ids - expected)
 
 
+def baseline_for(tier, label):
+    owner = "ui" if label == "ui-full" else label if label in ("tt", "tb") else "language" if tier == "tf" else tier
+    base = HERE / "scripts" / f"full-regression-{owner}"
+    return (set(base.with_name(base.name + "-ids.txt").read_text(encoding="utf-8").splitlines()),
+            set(base.with_name(base.name + "-selected.txt").read_text(encoding="utf-8").splitlines()))
+
+
 def legs(tier, lang, ui, batch=False):
     config = lang / ".config" / ("nextest-t3.toml" if tier == "t3" else "nextest-full.toml")
     common = ["--lib", "--config-file", str(config)]
@@ -253,14 +260,7 @@ def main(argv=None):
                 ids, selected = selection(json.loads(listing.read_text(encoding="utf-8")), allow_empty=bool(args.filters))
                 total_selected += len(selected)
                 record.update(ids=len(ids), selected=len(selected))
-                baseline = HERE / "scripts" / ("full-regression-ui-ids.txt" if label == "ui-full" else "full-regression-language-ids.txt")
-                expected = set(baseline.read_text(encoding="utf-8").splitlines())
-                # Non-tf language tiers historically omit the three integration binaries.
-                if label != "ui-full" and (label != "language" or args.tier != "tf"):
-                    expected = {identity for identity in expected if "::" not in identity.split("\t")[0]}
-                required_file = (HERE / "scripts" / f"full-regression-{label}-selected.txt" if label in ("tt", "tb")
-                                 else baseline.with_name(baseline.stem.replace('-ids', '-selected') + '.txt'))
-                required = set(required_file.read_text(encoding="utf-8").splitlines()) & expected
+                expected, required = baseline_for(args.tier, label)
                 record["added"] = validate_ids(ids, selected, expected, set() if args.filters else required)
                 if not selected:
                     record["skip"] = "explicit scope matches no tests in this owner"

@@ -17,6 +17,52 @@ spec.loader.exec_module(full)
 
 
 class Controls(unittest.TestCase):
+    def test_feature_only_ids_are_guarded_in_every_formal_child(self):
+        common, _ = full.baseline_for("tf", "language")
+        for tier in ("tt", "tb", "taa", "ta", "t3"):
+            formal = "tf" if tier in ("tt", "tb") else tier
+            target = tier if formal == "tf" else "language"
+            expected, required = full.baseline_for(formal, target)
+            victim = sorted(required - common)[0]
+            for mutation in ("missing", "ignored", "profile"):
+                with self.subTest(tier=tier, mutation=mutation), tempfile.TemporaryDirectory() as tmp:
+                    directory = Path(tmp)
+                    class Listed:
+                        def __init__(self, cmd, **kwargs):
+                            label = "ui-full" if "auto-ui-compiler" in cmd else "language"
+                            if label == "language" and formal == "tf" and "--features" in cmd:
+                                label = "tt" if "auto-lang/test-trans,auto-lang/test-cases" in cmd else "tb"
+                            ids, selected = full.baseline_for(formal, label)
+                            suites = {}
+                            for identity in ids:
+                                suite, name = identity.split("\t", 1)
+                                suites.setdefault(suite, {"testcases": {}})["testcases"][name] = {
+                                    "ignored": False,
+                                    "filter-match": {"status": "matches" if identity in selected else "mismatch"}}
+                            if label == target:
+                                suite, name = victim.split("\t", 1)
+                                if mutation == "missing":
+                                    del suites[suite]["testcases"][name]
+                                elif mutation == "ignored":
+                                    suites[suite]["testcases"][name]["ignored"] = True
+                                else:
+                                    suites[suite]["testcases"][name]["filter-match"]["status"] = "mismatch"
+                            json.dump({"rust-suites": suites}, kwargs["stdout"])
+                        def wait(self, **kwargs):
+                            return 0
+                    with mock.patch.object(full, "root", return_value=directory), \
+                         mock.patch.object(full, "machine_gate", contextlib.nullcontext), \
+                         mock.patch.object(full, "validate_layout"), \
+                         mock.patch.object(full, "require_main"), \
+                         mock.patch.object(full, "identity", return_value={"head": "frozen"}), \
+                         mock.patch.object(full.subprocess, "Popen", Listed), \
+                         mock.patch.object(full, "command", return_value=0):
+                        result = full.main([formal, *(["--batch"] if formal == "tf" else []), "--output", str(directory / "out")])
+                    receipt = json.loads((directory / "out/receipt.json").read_text())
+                    self.assertEqual(result, 1)
+                    self.assertEqual(receipt["results"][-1]["leg"], target)
+                    self.assertIn("baseline coverage lost", receipt["error"])
+
     def test_full_execution_rejects_worktree_and_main_code_wip(self):
         main = Path("main").resolve()
         with mock.patch.object(full.subprocess, "check_output", return_value="worktree " + str(main)):
