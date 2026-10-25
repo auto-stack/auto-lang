@@ -7,7 +7,16 @@ PLAN-798。实际Rust包：`experimental/ac-av-probe/core` 的auto-av-core与 `p
 Checked HIR → Typed MIR → ABC decode/verify → 私有LoadedModule → Rust AV。解释器使用显式frame/slot栈和受限dispatch，支持i32/bool、控制流/直接调用和精确trap。
 
 - [ABC与执行](abc-core-i32.md)
+- [数据布局与纯值 record（av.data/1，PLAN-820）](data-layout.md)
 - [缓存、资源与验收](cache-and-conformance.md)
-- [MIR](../auto-mir/core-i32.md)
+- [MIR](../auto-mir/core-i32.md) | [数据 MIR](../auto-mir/data-place-profile.md)
 
-798不是在线函数替换/完整AJ/发布器。用户指定798完成后优先828，再进行ACE扩展；实际增量边界以缓存合同为准。825执行优化、826紧凑wire和820–824数据扩展不得冒领未交付能力。
+798不是在线函数替换/完整AJ/发布器。实际增量边界以缓存合同为准。
+
+PLAN-820 交付独立 data profile `av.data/1`（AVAD wire v1/profile 2，语义
+版本 1/1/1 独立轴；core-i32 的 1/2/1 与 AVAB 字节语义不变）：宽标量数据+
+纯值 record+字段 Place，合同见 [data-layout](data-layout.md)与
+[data-place-profile](../auto-mir/data-place-profile.md)。非目标：宽标量算术/
+str/借用/Drop/List/enum/闭包/Dyn/NaN-boxing、生产默认接线、native 新数据
+lowering。825 执行优化、826 紧凑 wire 不冒领未交付能力；821–824 后继边界
+以各自实际交付为准。

@@ -168,3 +168,12 @@ CT 片段（comptime 输入）只经 CTRequest/CTResult 模型接缝（SchemaOnl
 重过 798 `verify_mir` 才进入 codegen；Cranelift IR/平台 ABI 留在后端内，
 **不返回公共 HIR/MIR**，不创建绕过 S0–S6 的新信任构造。旧 S0–S6 及 798
 保证原样（见上节）；828 的函数级凭证/source 复用仍是唯一来源，818 只消费。
+
+## record 域到 av.data/1 的消费支持面（PLAN-820）
+
+record 域（auto.hir.record.draft）到 av.data/1 的实际消费面：自由函数+
+i32/bool 算术+RecordCtor（源序求值→声明序映射）/FieldGet/FieldPath 赋值
+（RHS 先物化）/record 按值参数返回（BorrowView 传递包装直通、BorrowMut
+拒）/Method 含 static 显式拒（lower.method）；前端 compile_record_source
+前门复用（4MiB/128 深）。非扩大：core/scalar 域消费面不变。V-02/05/06、
+semantics 族 13/13。

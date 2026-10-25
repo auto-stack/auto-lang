@@ -130,3 +130,29 @@ stdout 限额在**累积期间**生效、行队列有界、stderr 超限在每�
 verdict Fail；数量失配=infra）；worker 侧连续 wall_ms 保留为被覆盖证据
 （断言 pw≥w）。语法回退（warm_edit_fallback）不标记增量、保留已提交前缀、
 其诊断按先诊断后结构准入传播——回退不是增量样本。
+
+## ac-av/data-run-v1 recipe（PLAN-820）
+
+新 recipe `ac-av/data-run-v1`：注册三处追加（REGISTERED_PROBE_RECIPES 白
+名单、step 词表=run+edit-source、av binding）；worker case-serve data 分支
+（av_core_version=av.data/1、parse/verify 诊断分级）；父侧判定同 core 语义
+（成功=exit 值、diag 分级、infra=非语言判定）。
+
+**typed 面**：`typed:<id>` 入口（av.data-fixture/1 冻结八样本：u64::MAX/
+i64::MIN/-NaN payload/-0.0/f32 1.0/f32 NaN payload 0x7F80_AD00/bool true/
+i32 42）经真实准入链（data MIR→AVAD→AV）；worker 报告实际产值的规范
+{kind,bits}（i64/u64/f64 十六位、f32 八位、i32/bool 不补零——单字符 "0" 是
+唯一规范零），父侧持**独立冻结期望表**逐项比对 tag 与精确 rawbits（worker
+之言从非 oracle）；record 源成功同样附 typed 报告（bool/宽标量不再丢失于
+i32-only 通道）。
+
+**family 隔离与形状校验**：typed 存在性仅属 data family——core/i32 成功仍
+必须有旧 value 通道，非 data 响应携带 typed 即准入门协议违规（infra 非
+绿）；data 的 typed 形状校验在 **oracle 无关的准入层**（任何 exit/value
+oracle 匹配不可绕过）：六 tag 之一、宽标量固定宽度、bool 恰为 0/1、i32 不
+补零，畸形=准入违规非绿。typed 步骤修订哈希绑定入口身份。
+
+V-10 反控：wrong-exit/wrong-diag/未注册 recipe/worker 三故障=ERROR、
+wrong-bits/wrong-type-tag（父侧期望破坏缝仅测试用）/未知 fixture id/整数
+边界矩阵。验收：corpus 绿（av-data-first/typed/bool/int-zero.case.ad）+
+ac_av_data_probe 8/8。

@@ -43,3 +43,13 @@ supersession 退役/回访重挂/restore 按行存在置归属追踪器——与
 
 
 798 r7用户交付裁定：六场景warm结果及所有失败如实计量保存，已有正式PASS证据持久保存；整模块重查的完整增量优化归优先828，不再以warm测量超1秒单独阻断798。798正式冻结30样本技术门两路径P95<1000ms、正确性/双线内存/K14和生命周期门继续必需。原bench及Scope turnaround仍可作为严格诊断工具返回目标未达，不能把诊断退出码单独冒充r7合入结论，也不能将资源/正确性失败归为时延例外。
+
+## av.data/1 持久与恢复（PLAN-820）
+
+新 producer `plan820/av-data` + A20 层（schema `ac820/a20-data-abc/v1`，键轴
+producer/owner/entry/profile/types-fp/codec/三语义版本/source-snapshot）。恢复
+重走 envelope→decode→深验（含布局重算）后执行：好 hash 坏载荷拒（校验和+
+内层 MIR 深验）、类型表变化 clean miss、跨 profile 信封身份拒；同 store 新
+进程 worker `data-restore-run` 恢复重验执行。V-08/09（cache_compat 5/5 +
+store_restore_new_process；好 hash 坏内层独立反例见
+[review-r10](../../plans/attachments/820/review-r10/review.md)）。

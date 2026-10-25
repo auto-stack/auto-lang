@@ -45,3 +45,30 @@ lane 退化计数器与 828 计数器双重观测（resident-edit rewarms≠0 �
   语法回退从 session 当前源重建）；代际/身份变更只落在被编辑单元。
 - mn 消费门对每个单元重验证（verify_mir）后安装；emission 失败永不提交
   revision——受检安装/依赖/寿命语义与上节安装事务一致。
+
+## data profile 接入（PLAN-820）
+
+data profile 接入 828 公共函数级增量接口：`lower_function_data_unit`（record
+域单函数 AVAD unit）→ `FunctionCode::admit_unit` → `ProgramSnapshot::link`
+（fn: 导入解析+签名检查+owner 一致性）→ unit view 执行。**全链增量**：
+
+- 纯 body 编辑走 828 单体事务：字节级分段 diff 命中唯一被改函数（否则显式
+  non-fast 拒绝）、等长注释掩码的单函数解析文档（解析面=1）、保留 CheckedEnv
+  的 recheck（resolve+typecheck 仅单 body，签名漂移受控拒）+
+  emit_function_body（收据=1 真 body/n−1 scaffold）+ body_work 生产窗（未改
+  函数零 body 工作）；未改函数 HIR Arc 与 FunctionCode 指针/代际不变、生产
+  阶段/IO=0；结构门内建于 edit_body 生产路径（实现退化即使编辑本身红）。真实
+  生产事件在调用点计量（verify_mir/decode/verify_abc/admit 逐 def），HIR 身份
+  绑定生产 bundle Arc（非消费者克隆）；失败/陷阱编辑零安装（build-aside +
+  运行先于发布）。
+- 类型/签名/声明集变化走依赖事实计算的精确失效：record mention 嵌套闭包+
+  跨 bundle 签名形状等价——签名内容变化→全部 unit 重 lower（unit import 表
+  嵌入每个 def 的签名），body 未变函数保留 HIR Arc；helper body 变化不重
+  lower 调用者（快照按槽位绑定调用）。
+- caps 变化在同一成功发布点同步三面：全 unit 重 lower/admit（HIR 身份
+  不动）+ 驻留前端环境按新授权重建（grant 后使用新能力的热编辑可解析、
+  被用撤销受控拒且旧值全保、成功撤销后无权热编辑被拒）。
+- 跨修订签名失配=link 拒且前快照存活；强制 whole 前端与"只保 hash 换对象"
+  双退化反控均使同一结构门非零。
+
+V-13：incremental 族 9/9 + 828 标量套件绿=共享基线。
