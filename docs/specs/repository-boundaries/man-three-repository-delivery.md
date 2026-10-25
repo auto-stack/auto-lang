@@ -13,7 +13,7 @@
 
 ## 固定版本与 profile
 
-本基线：Man `ebfc88f`、lang `0fd092bdc`、UI `aee499e87093ff727f68ac8467c506e9ecf6ecdc`、down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。
+本基线：Man `f52cd93b`、lang 生产源 `87f82d637`、UI `aee499e87093ff727f68ac8467c506e9ecf6ecdc`、down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。
 
 - **Core**：`cargo build --locked --manifest-path core/Cargo.toml -p auto --no-default-features --features core`。独立 Core workspace/lock/target 复用 `crates/auto` 的 CLI 源，但不经 full manifest；只需 Man/lang，无 UI 实现源、auto-ui-tool、auto-lang compat 或 iced。语言/管理/协议命令真实执行，UI 请求具名失败。
 - **完整 profile**：根 workspace default=`ui-extra+python+autodown`，含匹配 auto-ui-tool 与 UI 源/资产。五操作经 `auto-tool-client` 调真实工具进程；ui-extra 的静态面按固定 UI source 消费。
@@ -21,14 +21,14 @@
 
 ## 发现与机器合同
 
-- 发现序：`AUTO_UI_TOOL_BIN`（指定即必须存在）→ `AUTO_UI_ROOT`/组内 UI owner 的 target/{debug,release} → 邻接安装；真实 describe 验工具名、协议版本、能力及收尾，无静态 fallback，不从 Man target 或任意主检出取旧工具。
+- 发现序：`AUTO_UI_TOOL_BIN`（指定即必须存在）→ `AUTO_UI_ROOT`/Cargo manifest 锚/实际 `current_exe` 的 `target/debug|release` 开发布局推导 UI owner → 邻接安装；真实 describe 验工具名、协议版本、能力及收尾，无静态 fallback。普通 CLI 无 Cargo/AUTO 环境也能发现同组 owner；不搜索任意主检出或借用 Man target 旧工具。
 - I-TOOL v1 与 I-PROJECT/AST/Value/协议类型单源；选项经广播核对、落点核实和 StrictGuard 三层守门。
 - `--format json`/`--ai` 单 JSON；正常退出 0，错误具名非零。service≠serve/req/mcp；VM 线程亲和、Rust owned tree、watch/reader 真停保持。
 - Man 根 full workspace=9 package，根 Cargo.lock；Core 另有独立 workspace/lock/target。`cargo t`=full workspace lib+auto bin，`tc`=管理 Core，`tcore`=Core bin+非 UI driver，`ti`=集成目标。`cross-repo-tiers.py` 串行编排 lang/Man/UI，man-tcore 前在 lang 构建 te-child，man-ti 前分别在 UI/lang 构建 auto-ui-tool/te-child，并注入 owner 路径；测试 ID 逐项对拍而非仅比总数。
 
 ## 安装、切换与恢复
 
-安装采用源构建→唯一 staging→闭包/来源/hash/profile 校验→受管交换。陌生非空目录拒绝；旧安装换出保留于具名 backup；失败只清本次 staging 并恢复旧根，回滚不带 backup marker 入根。取消留下的 staging 仅在 marker schema 和 owner PID 死亡均确认后回收；活跃或权限不足等未知 owner 具名报告并保留，目录内容不动。
+安装采用源构建→唯一 staging→闭包/来源/hash/profile 校验→受管交换。陌生非空目录拒绝；旧安装换出保留于具名 backup；失败只清本次 staging 并恢复旧根，回滚不带 backup marker 入根。手工恢复真实 backup 时，将 owned `.man-backup.marker` 移到具名保存位置后再 verify，不把它当安装 payload，也不放宽其他额外文件拒绝；恢复后旧命令须实际可运行。取消留下的 staging 仅在 marker schema 和 owner PID 死亡均确认后回收；活跃或权限不足等未知 owner 具名报告并保留，目录内容不动。
 
 跨仓切换顺序为 prepared→target landed→consumer switched→verified，不假设跨 Git 原子事务。目标 Man 先存在且可消费，再切语言消费者并删除原件；旧 refs/恢复载荷不删，失败恢复通过新提交或受管交换，不 reset 历史。
 
