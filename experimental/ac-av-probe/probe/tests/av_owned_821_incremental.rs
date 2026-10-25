@@ -396,3 +396,96 @@ fn av_owned_821_v13_shared_scalar_session_still_warms() {
     );
     let _ = execute_program;
 }
+
+/// R4-F07 permanent counterexamples: CONSECUTIVE variable-length edits —
+/// the declaration coordinates must follow the CURRENT source (the
+/// edited function's end and every later declaration shift by the edit's
+/// delta at publish), in BOTH directions and across functions.
+#[test]
+fn av_owned_821_r4_consecutive_variable_length_edits() {
+    const SRC: &str = "type Note { body Str; n int }\nfn read(move p Note) int { return p.n }\nfn main() int {\nlet a Note = Note { body: \"A\", n: 7 }\nreturn read(a.move)\n}\n";
+    // Grow then edit the SAME function again (positive delta; the second
+    // edit addresses CURRENT-source coordinates).
+    let mut s =
+        auto_av_probe::owned_session::OwnedFunctionSession::warmup(SRC, "d_main", &[]).unwrap();
+    let p = SRC.find("n: 7").unwrap() as u64;
+    s.edit(p, p + 4, b"n: 1234").expect("grow edit installs");
+    assert_eq!(s.run_i32(), 1234);
+    let src1 = SRC.replacen("n: 7", "n: 1234", 1);
+    let p = src1.find("n: 1234").unwrap() as u64;
+    let bg = before(&s);
+    let inv = s
+        .edit(p, p + 7, b"n: 8")
+        .expect("the second edit addresses the CURRENT source");
+    assert_eq!(inv, vec!["d_main".to_string()]);
+    assert_eq!(
+        s.last_channel(),
+        auto_av_probe::owned_session::EditChannel::SingleBody
+    );
+    gate(&s, &bg, &["d_main"]).expect("the gate stays green on the shifted coordinates");
+    assert_eq!(s.run_i32(), 8);
+
+    // Shrink control: a shorter replacement then another edit of the same fn.
+    let src2 = src1.replacen("n: 1234", "n: 8", 1);
+    let p = src2.find("n: 8").unwrap() as u64;
+    s.edit(p, p + 4, b"n: 12").expect("grow again");
+    assert_eq!(s.run_i32(), 12);
+
+    // An EARLIER function's length change shifts a LATER function's
+    // coordinates; the later edit must still route the single-body path.
+    let mut s =
+        auto_av_probe::owned_session::OwnedFunctionSession::warmup(SRC, "d_main", &[]).unwrap();
+    let p = SRC.find("return p.n").unwrap() as u64;
+    s.edit(p, p + 10, b"return p.n + 100")
+        .expect("the earlier fn grows");
+    assert_eq!(s.run_i32(), 107);
+    let src1 = SRC.replacen("return p.n", "return p.n + 100", 1);
+    let p = src1.find("n: 7").unwrap() as u64;
+    let bg = before(&s);
+    let inv = s
+        .edit(p, p + 4, b"n: 8")
+        .expect("the LATER fn's coordinates shifted with the earlier edit");
+    assert_eq!(inv, vec!["d_main".to_string()]);
+    assert_eq!(
+        s.last_channel(),
+        auto_av_probe::owned_session::EditChannel::SingleBody,
+        "no silent whole-module fallback after a length change"
+    );
+    gate(&s, &bg, &["d_main"]).expect("gate green");
+    assert_eq!(s.run_i32(), 108);
+
+    // A rename touches TWO declarations (decl head + call site) — the
+    // whole-module channel owns it, and the rebuilt coordinates serve
+    // the NEXT pure body edit on the single-body path again.
+    let mut s =
+        auto_av_probe::owned_session::OwnedFunctionSession::warmup(SRC, "d_main", &[]).unwrap();
+    let (a1, a2) = (
+        SRC.find("read(move").unwrap() as u64,
+        SRC.find("return read(").unwrap() as u64,
+    );
+    s.edit_batch(&[
+        (a1, a1 + 4, b"redd".to_vec()),
+        (a2 + 7, a2 + 11, b"redd".to_vec()),
+    ])
+    .expect("the consistent rename installs via the whole-module channel");
+    assert_eq!(
+        s.last_channel(),
+        auto_av_probe::owned_session::EditChannel::WholeModule
+    );
+    assert_eq!(s.run_i32(), 7);
+    // After that whole-module round the fast path is rebuilt and still
+    // serves pure body edits with CURRENT coordinates.
+    let src1 =
+        SRC.replacen("read(move", "redd(move", 1)
+            .replacen("return read(", "return redd(", 1);
+    let p = src1.find("n: 7").unwrap() as u64;
+    let inv = s
+        .edit(p, p + 4, b"n: 9")
+        .expect("body edit after the whole round");
+    assert_eq!(inv, vec!["d_main".to_string()]);
+    assert_eq!(
+        s.last_channel(),
+        auto_av_probe::owned_session::EditChannel::SingleBody
+    );
+    assert_eq!(s.run_i32(), 9);
+}

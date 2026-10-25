@@ -841,3 +841,289 @@ fn av_owned_821_r3_field_move_per_field_consumption_invariants() {
         "a whole-root use of a partially-consumed root is a use-after-move: {err:?}"
     );
 }
+
+// ---- R4-F08/R4-F09: re-initialization, path-overlap, heap-payload
+// counterexamples (review-r4, permanent) ----------------------------------
+
+enum FieldSeq {
+    ReinitRoot,
+    ParentThenChild,
+    ChildThenParent,
+    LegalSiblings,
+}
+
+/// R4-F08: a mut loop — the callee's write-back lands across LOOP
+/// iterations. The wrapper temp is re-defined per iteration (each Call),
+/// so the per-field consumption state must reset with the new owner;
+/// oracle: two increments from 7 = 9.
+#[test]
+fn av_owned_821_r4_mut_loop_writeback() {
+    let src = "type Note { body Str; n int }\nfn set(mut p Note) int { p.n = p.n + 1; return p.n }\nfn main() int { var a Note = Note { body: \"A\", n: 7 }; var i int = 0; loop { if i >= 2 { break }; let n int = set(a.mut); i = i + 1 }; return a.n }\n";
+    let compiled =
+        auto_ac_prototype::source::compile_text_record_source(src, "r4.at", &[]).unwrap();
+    let mir =
+        auto_av_probe::hir_adapter::lower_checked_owned(&compiled.checked, "d_main", 0x1).unwrap();
+    let (out, trace) = admit_exec(&mir);
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(9),
+                ..
+            }
+        ),
+        "two loop iterations of set(a.mut) write back 7 -> 9, got {out:?}"
+    );
+    assert_eq!(trace.arena.as_ref().unwrap().live(), 0);
+}
+
+/// R4-F08 per-field consumption: re-initialization resets the field
+/// state; ancestor/descendant overlaps are use-after-move at ADMISSION
+/// (both directions); disjoint/other-root extractions stay legal.
+#[test]
+fn av_owned_821_r4_field_state_reinit_and_overlap() {
+    let build = |seq: FieldSeq| {
+        let mut m = MirModule::new_owned(owner("r4f"));
+        let t = types(&mut m);
+        let note = m.intern_type(MirType::Record(RecordTypeRef {
+            owner_module: "r4f".into(),
+            name: "Note".into(),
+            fields: vec![
+                MirFieldDef {
+                    name: "body".into(),
+                    ty: t.str,
+                },
+                MirFieldDef {
+                    name: "n".into(),
+                    ty: t.i32,
+                },
+            ],
+        }));
+        let outer = m.intern_type(MirType::Record(RecordTypeRef {
+            owner_module: "r4f".into(),
+            name: "Outer".into(),
+            fields: vec![MirFieldDef {
+                name: "inner".into(),
+                ty: note,
+            }],
+        }));
+        let a = m.intern_const(MirConst::Str(Box::from(&b"A"[..])));
+        let z = m.intern_const(MirConst::I32(0));
+        // 0 s1(Str) 1 note 2 outer 3 o1(note) 4 v(Str) 5 r(i32)
+        let slots = vec![
+            temp(t.str),
+            temp(note),
+            temp(outer),
+            temp(note),
+            temp(t.str),
+            temp(t.i32),
+        ];
+        let mut ins = vec![
+            MirInstr::Const { dst: 0, value: a },
+            MirInstr::Const { dst: 5, value: z },
+            MirInstr::Aggregate {
+                dst: 1,
+                record_ty: note,
+                operands: vec![0, 5],
+            },
+        ];
+        // The OUTER aggregate MOVE-CONSUMES the note (slot 1) — only the
+        // overlap faces need it as their root.
+        if !matches!(seq, FieldSeq::ReinitRoot) {
+            ins.push(MirInstr::Aggregate {
+                dst: 2,
+                record_ty: outer,
+                operands: vec![1],
+            });
+        }
+        match seq {
+            FieldSeq::ReinitRoot => {
+                // Consume [0] out of the note ROOT, drop it, then REBUILD
+                // the whole root (a fresh complete owner) and consume [0]
+                // again — legal (R4: the per-field state dies with the old
+                // owner).
+                ins.extend(vec![
+                    MirInstr::FieldMove {
+                        dst: 4,
+                        root: 1,
+                        path: vec![0],
+                    },
+                    MirInstr::Drop { slot: 4 },
+                    MirInstr::Const { dst: 0, value: a },
+                    MirInstr::Aggregate {
+                        dst: 1,
+                        record_ty: note,
+                        operands: vec![0, 5],
+                    },
+                    MirInstr::FieldMove {
+                        dst: 4,
+                        root: 1,
+                        path: vec![0],
+                    },
+                    MirInstr::Drop { slot: 4 },
+                ]);
+            }
+            FieldSeq::ParentThenChild | FieldSeq::ChildThenParent => {
+                // dst 3 is note-typed (the parent field), dst 4 is Str
+                // (the leaf) — the destinations follow the FIELD TYPES.
+                let moves: Vec<MirInstr> = if matches!(seq, FieldSeq::ParentThenChild) {
+                    vec![
+                        MirInstr::FieldMove {
+                            dst: 3,
+                            root: 2,
+                            path: vec![0],
+                        },
+                        MirInstr::FieldMove {
+                            dst: 4,
+                            root: 2,
+                            path: vec![0, 0],
+                        },
+                    ]
+                } else {
+                    vec![
+                        MirInstr::FieldMove {
+                            dst: 4,
+                            root: 2,
+                            path: vec![0, 0],
+                        },
+                        MirInstr::FieldMove {
+                            dst: 3,
+                            root: 2,
+                            path: vec![0],
+                        },
+                    ]
+                };
+                ins.extend(moves);
+            }
+            FieldSeq::LegalSiblings => {
+                // Non-overlapping consumption on DIFFERENT roots: extract
+                // outer's [0] (the note moved into it), then a REBUILT
+                // note root's [0] — never overlapping.
+                ins.extend(vec![
+                    MirInstr::FieldMove {
+                        dst: 3,
+                        root: 2,
+                        path: vec![0],
+                    },
+                    MirInstr::Const { dst: 0, value: a },
+                    MirInstr::Aggregate {
+                        dst: 1,
+                        record_ty: note,
+                        operands: vec![0, 5],
+                    },
+                    MirInstr::FieldMove {
+                        dst: 4,
+                        root: 1,
+                        path: vec![0],
+                    },
+                    MirInstr::Drop { slot: 4 },
+                ]);
+            }
+        }
+        ins.push(MirInstr::Const { dst: 5, value: z });
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: t.i32,
+        }));
+        m.funcs.push(MirFunction {
+            owner: m.owner.clone(),
+            name: "d_main".into(),
+            sig,
+            slots,
+            blocks: vec![MirBlock {
+                instrs: ins,
+                term: Terminator::Return { value: 5 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+        });
+        m
+    };
+    // Re-initialization of a consumed root: the SECOND extraction is legal.
+    let m = build(FieldSeq::ReinitRoot);
+    mir_verify::verify_mir(&m).expect("a fresh complete owner resets the field state");
+    let (out, _) = admit_exec(&m);
+    assert!(matches!(out, ExecOutcome::Success { .. }), "{out:?}");
+    // Ancestor then descendant: the subtree went with the ancestor.
+    let err = mir_verify::verify_mir(&build(FieldSeq::ParentThenChild)).unwrap_err();
+    assert!(
+        matches!(&err, mir_verify::MirVerifyError::Invalid { code, .. } if code.contains("use-after-move")),
+        "parent-then-child is a use-after-move at ADMISSION: {err:?}"
+    );
+    // Descendant then ancestor: the ancestor is no longer complete.
+    let err = mir_verify::verify_mir(&build(FieldSeq::ChildThenParent)).unwrap_err();
+    assert!(
+        matches!(&err, mir_verify::MirVerifyError::Invalid { code, .. } if code.contains("use-after-move")),
+        "child-then-parent is a use-after-move at ADMISSION: {err:?}"
+    );
+    // Disjoint/other-root extractions stay legal.
+    mir_verify::verify_mir(&build(FieldSeq::LegalSiblings))
+        .expect("non-overlapping consumption stays legal");
+}
+
+/// R4-F09: the heap estimate must cover the payloads a RecordView OWNS
+/// (owner/name/field-name strings) — with 3000 ~1000B field names the
+/// wire fits the frozen 4MiB input budget while flat+MIR+decoded together
+/// exceed the 8MiB hot partition; the estimate must not call that green.
+#[test]
+fn av_owned_821_r4_recordview_heap_payload_counted() {
+    let mut m = MirModule::new_owned(owner("r4m"));
+    let i = m.intern_type(MirType::I32);
+    let fields: Vec<_> = (0..3000)
+        .map(|n| MirFieldDef {
+            name: format!("f{n}_{}", "x".repeat(1000)),
+            ty: i,
+        })
+        .collect();
+    let name_payload: usize = fields.iter().map(|f| f.name.len()).sum();
+    m.intern_type(MirType::RecordView(RecordTypeRef {
+        owner_module: "r4m".into(),
+        name: "BigView".into(),
+        fields,
+    }));
+    let z = m.intern_const(MirConst::I32(0));
+    let sig = m.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: i,
+    }));
+    m.funcs.push(MirFunction {
+        owner: m.owner.clone(),
+        name: "d_main".into(),
+        sig,
+        slots: vec![MirSlot {
+            kind: SlotKind::Temp,
+            ty: i,
+            name: None,
+        }],
+        blocks: vec![MirBlock {
+            instrs: vec![MirInstr::Const { dst: 0, value: z }],
+            term: Terminator::Return { value: 0 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+    });
+    // Admission budgets (16MiB decode/verify) still pass...
+    let wire = encode_abc(&m).expect("encode");
+    let flat = wire.to_flat();
+    assert!(
+        flat.len() < 4 * 1024 * 1024,
+        "the wire fits the frozen input budget"
+    );
+    let loaded =
+        abc_verify::verify_abc_bytes(&flat, &m.owner).expect("decode + deep admission pass");
+    // ...but the working-set estimate must cover the OWNED payloads: the
+    // same lower bound the review computed (flat + two independent copies
+    // of the field-name strings) and, with it, the hot line reddens.
+    let hot = flat.len() + m.heap_estimate() + loaded.module().heap_estimate();
+    let lower = flat.len() + 2 * name_payload;
+    assert!(
+        hot >= lower,
+        "the estimate covers the simultaneously-live payloads: {hot} < {lower}"
+    );
+    assert!(
+        hot > 8 * 1024 * 1024,
+        "an over-hot-budget input must not estimate green (hot={hot})"
+    );
+}

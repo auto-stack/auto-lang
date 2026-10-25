@@ -1363,6 +1363,9 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                 let mut fields = Vec::with_capacity(nfields.min(1024));
                 for _ in 0..nfields {
                     let flen = c.u16()? as usize;
+                    // R4-F09: mirror `MirModule::heap_estimate` — every
+                    // field-name String is a real decoded heap payload.
+                    decode_mem!(flen + 24, "a record field name");
                     let fb = c.take(flen)?.to_vec();
                     let fname = String::from_utf8(fb).map_err(|_| {
                         AbcDecodeError::fmt_err(
@@ -1383,7 +1386,13 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                 }));
             }
             TY_RECORDVIEW if family.allows_owned_tags() => {
+                // R4-F09: a RecordView owns its WHOLE RecordTypeRef — the
+                // decode-memory guard charges the same per-element payload
+                // as the record branch and as `MirModule::heap_estimate`
+                // (the old branch allocated owner/name/field strings with
+                // zero charge).
                 let olen = c.u16()? as usize;
+                decode_mem!(olen + 24, "a record-view owner module");
                 let ob = c.take(olen)?.to_vec();
                 let owner_module = String::from_utf8(ob).map_err(|_| {
                     AbcDecodeError::fmt_err(
@@ -1392,6 +1401,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                     )
                 })?;
                 let nlen = c.u16()? as usize;
+                decode_mem!(nlen + 24, "a record-view name");
                 let nb = c.take(nlen)?.to_vec();
                 let name = String::from_utf8(nb).map_err(|_| {
                     AbcDecodeError::fmt_err(
@@ -1400,9 +1410,14 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                     )
                 })?;
                 let nfields = c.u16()? as usize;
-                let mut fields = Vec::with_capacity(nfields);
+                decode_mem!(
+                    nfields * (std::mem::size_of::<MirFieldDef>() + 8) + 24,
+                    "a record-view field table"
+                );
+                let mut fields = Vec::with_capacity(nfields.min(1024));
                 for _ in 0..nfields {
                     let flen = c.u16()? as usize;
+                    decode_mem!(flen + 24, "a record-view field name");
                     let fb = c.take(flen)?.to_vec();
                     let fname = String::from_utf8(fb).map_err(|_| {
                         AbcDecodeError::fmt_err(

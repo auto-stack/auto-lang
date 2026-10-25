@@ -659,13 +659,17 @@ impl MirModule {
                 | MirType::U64
                 | MirType::F32
                 | MirType::F64
-                | MirType::RecordView(_)
                 | MirType::Char
                 | MirType::Str
                 | MirType::StrView
                 | MirType::MutRef => 0, // inline enum, table vec counted below
                 MirType::Fn(s) => s.params.len() * std::mem::size_of::<TypeIdx>() + VEC,
-                MirType::Record(r) => {
+                // R4-F09: a RecordView OWNS its RecordTypeRef — the owner/
+                // name strings and the field table (names + type indices)
+                // are real heap payloads it directly carries, exactly like
+                // a Record (the old inline-zero branch under-counted a
+                // 3MB field-name payload to zero).
+                MirType::Record(r) | MirType::RecordView(r) => {
                     r.owner_module.len()
                         + r.name.len()
                         + STR * 2
@@ -715,7 +719,9 @@ impl MirModule {
                         MirInstr::Aggregate { operands, .. } => {
                             b += operands.len() * std::mem::size_of::<SlotId>() + VEC
                         }
-                        MirInstr::FieldGet { path, .. } | MirInstr::FieldSet { path, .. } => {
+                        MirInstr::FieldGet { path, .. }
+                        | MirInstr::FieldSet { path, .. }
+                        | MirInstr::FieldMove { path, .. } => {
                             b += path.len() * std::mem::size_of::<u16>() + VEC
                         }
                         _ => {}

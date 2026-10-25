@@ -120,12 +120,68 @@ struct EnvFacts {
 /// slot; a whole-module round REPLACES the (now stale) environment.
 enum EnvStep {
     /// Single-body: commit the prepared candidate into its slot (D-03 —
-    /// the one publication point, exactly once).
-    CommitBody(FnCandidate),
+    /// the one publication point, exactly once) AND shift the retained
+    /// declaration coordinates by the edit's length delta (R4-F07: the
+    /// committed function's `hi` grows/shrinks by `delta`; every
+    /// declaration positioned AFTER the function's pre-edit end shifts
+    /// with it — consecutive variable-length edits must address the
+    /// CURRENT source, never the cold-time spans).
+    CommitBody {
+        candidate: FnCandidate,
+        decl_idx: usize,
+        old_hi: u64,
+        delta: i64,
+    },
     /// Whole-module: the interface/context changed — the retained
     /// environment is stale and is REPLACED (with fresh declaration
     /// facts; outstanding candidates die by construction).
     Rebuild(Box<EnvFacts>),
+}
+
+impl EnvStep {
+    /// Apply the retained-state side of the publication (the environment
+    /// slot commit plus the declaration-coordinate shift).
+    fn publish(self, s: &mut OwnedFunctionSession) -> Result<(), String> {
+        match self {
+            EnvStep::CommitBody {
+                candidate,
+                decl_idx,
+                old_hi,
+                delta,
+            } => {
+                candidate.commit(&mut s.env).map_err(|ds| {
+                    ds.first()
+                        .map(|d| format!("env commit: {} {}", d.code, d.message))
+                        .unwrap_or_else(|| "env commit".to_string())
+                })?;
+                // The edited declaration's end moves by the delta; its
+                // start (and every earlier declaration) is untouched;
+                // every later declaration shifts wholesale.
+                let d = &mut s.decl_fns[decl_idx];
+                d.hi = (d.hi as i64 + delta) as u64;
+                for dd in s.decl_fns.iter_mut().skip(decl_idx + 1) {
+                    dd.lo = (dd.lo as i64 + delta) as u64;
+                    dd.hi = (dd.hi as i64 + delta) as u64;
+                }
+                for t in s.decl_types.iter_mut() {
+                    if t.0 >= old_hi {
+                        t.0 = (t.0 as i64 + delta) as u64;
+                        t.1 = (t.1 as i64 + delta) as u64;
+                    }
+                }
+                Ok(())
+            }
+            EnvStep::Rebuild(facts) => {
+                s.env = facts.env;
+                s.decl_fns = facts.decl_fns;
+                s.decl_types = facts.decl_types;
+                s.def_ids = facts.def_ids;
+                s.sig_mode_overrides = facts.sig_mode_overrides;
+                s.fast_path_ok = facts.fast_path_ok;
+                Ok(())
+            }
+        }
+    }
 }
 
 /// One fully-built ASIDE candidate (all stages ran; nothing published).
@@ -501,23 +557,9 @@ impl OwnedFunctionSession {
         self.identity = candidate.ident;
         self.last_invalidated = candidate.invalidated.clone();
         self.last_channel = candidate.channel;
-        match candidate.env_step {
-            EnvStep::CommitBody(c) => {
-                c.commit(&mut self.env).map_err(|ds| {
-                    ds.first()
-                        .map(|d| format!("env commit: {} {}", d.code, d.message))
-                        .unwrap_or_else(|| "env commit".to_string())
-                })?;
-            }
-            EnvStep::Rebuild(facts) => {
-                self.env = facts.env;
-                self.decl_fns = facts.decl_fns;
-                self.decl_types = facts.decl_types;
-                self.def_ids = facts.def_ids;
-                self.sig_mode_overrides = facts.sig_mode_overrides;
-                self.fast_path_ok = facts.fast_path_ok;
-            }
-        }
+        // The retained-environment publication (slot commit + declaration
+        // coordinate shift, or the whole-round rebuild).
+        candidate.env_step.publish(self)?;
         Ok(candidate.invalidated)
     }
 
@@ -651,7 +693,12 @@ impl OwnedFunctionSession {
             code,
             production,
             linked,
-            env_step: EnvStep::CommitBody(candidate),
+            env_step: EnvStep::CommitBody {
+                candidate,
+                decl_idx,
+                old_hi: decl.hi,
+                delta,
+            },
             channel: EditChannel::SingleBody,
         })
     }
@@ -936,14 +983,7 @@ impl OwnedFunctionSession {
         }
         self.production = merged;
         self.identity = candidate.ident;
-        if let EnvStep::Rebuild(facts) = candidate.env_step {
-            self.env = facts.env;
-            self.decl_fns = facts.decl_fns;
-            self.decl_types = facts.decl_types;
-            self.def_ids = facts.def_ids;
-            self.sig_mode_overrides = facts.sig_mode_overrides;
-            self.fast_path_ok = facts.fast_path_ok;
-        }
+        candidate.env_step.publish(self)?;
         Ok(())
     }
 }

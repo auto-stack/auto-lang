@@ -164,10 +164,31 @@ impl OwnState {
         }
     }
 
+    /// R4-F08: an accessed path is dead when ANY moved path OVERLAPS it
+    /// — an already-extracted ANCESTOR took the whole subtree with it,
+    /// and a value whose DESCENDANT was extracted is no longer a
+    /// complete initialized value. Exact equality is not enough (the
+    /// parent-then-child shape used to slip to the executor as an
+    /// unresolvable-path Infra).
     fn field_moved(&self, root: usize, path: &[u16]) -> bool {
-        self.moved_fields[root]
-            .as_ref()
-            .is_some_and(|m| m.iter().any(|p| p == path))
+        self.moved_fields[root].as_ref().is_some_and(|m| {
+            m.iter().any(|p| {
+                let n = p.len().min(path.len());
+                p[..n] == path[..n]
+            })
+        })
+    }
+
+    /// A DEFINITION establishes a fresh complete value in the slot: all
+    /// whole-slot may facts reset — and (R4-F08) the per-field
+    /// consumption state dies with the old owner: a re-initialized root
+    /// (fresh Call wrapper, re-Aggregated record, loop-carried redefinition)
+    /// is consumable again.
+    fn define_slot(&mut self, s: usize) {
+        self.init.set(s);
+        self.moved.clear(s);
+        self.dropped.clear(s);
+        self.moved_fields[s] = None;
     }
 }
 
@@ -532,9 +553,7 @@ pub fn verify_owned_function(
                     if is_rootable[*dst as usize] {
                         check_def_conflict!(dst, "re-initialization");
                     }
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::Copy { dst, src } => {
                     check_read!(src, "copy source");
@@ -548,9 +567,7 @@ pub fn verify_owned_function(
                     } else if is_token[*dst as usize] {
                         st.token_roots[*dst as usize] = None;
                     }
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::Call { dst, args, callee } => {
                     // R1-F08: the kill is SIG-DRIVEN — an owned arg dies
@@ -619,9 +636,7 @@ pub fn verify_owned_function(
                         st.token_roots[*dst as usize] = Some(roots);
                         st.tokens_live.set(*dst as usize);
                     }
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::Trace { .. } => {}
                 MirInstr::FieldGet { dst, base, path } => {
@@ -689,9 +704,7 @@ pub fn verify_owned_function(
                         st.token_roots[*dst as usize] = Some(roots);
                         st.tokens_live.set(*dst as usize);
                     }
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                     let _ = path;
                 }
                 MirInstr::FieldSet { root, value, .. } => {
@@ -822,18 +835,14 @@ pub fn verify_owned_function(
                     if is_rootable[*dst as usize] {
                         check_def_conflict!(dst, "aggregate destination");
                     }
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::Clone { dst, src } => {
                     check_read!(src, "clone source");
                     if is_rootable[*dst as usize] {
                         check_def_conflict!(dst, "clone destination");
                     }
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::Move { dst, src } => {
                     check_read!(src, "move source");
@@ -887,9 +896,7 @@ pub fn verify_owned_function(
                         }
                     }
                     st.moved.set(*src as usize);
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::View { dst, src } => {
                     check_read!(src, "view source");
@@ -921,9 +928,7 @@ pub fn verify_owned_function(
                     roots.set(*src as usize);
                     st.token_roots[*dst as usize] = Some(roots);
                     st.tokens_live.set(*dst as usize);
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::MutRef { dst, src } => {
                     check_read!(src, "mut borrow source");
@@ -945,9 +950,7 @@ pub fn verify_owned_function(
                     roots.set(*src as usize);
                     st.token_roots[*dst as usize] = Some(roots);
                     st.tokens_live.set(*dst as usize);
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::FieldMove { dst, root, path } => {
                     // R3-F08: PER-FIELD consumption — the root must be
@@ -1009,9 +1012,7 @@ pub fn verify_owned_function(
                     st.moved_fields[rs]
                         .get_or_insert_with(Default::default)
                         .insert(path.clone());
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::Drop { slot } => {
                     // Explicit drop: owned + Init + not already
@@ -1050,9 +1051,7 @@ pub fn verify_owned_function(
                 }
                 MirInstr::StrLen { dst, view } | MirInstr::StrLenBytes { dst, view } => {
                     check_read!(view, "str operand");
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::StrToOwned { dst, view } => {
                     check_read!(view, "str operand");
@@ -1062,16 +1061,12 @@ pub fn verify_owned_function(
                     if is_rootable[*dst as usize] {
                         check_def_conflict!(dst, "to-owned destination");
                     }
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::StrCharAt { dst, view, index } => {
                     check_read!(view, "str operand");
                     check_read!(index, "char_at index");
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::StrSlice {
                     dst,
@@ -1085,9 +1080,7 @@ pub fn verify_owned_function(
                     // A slice of a view shares the SAME root set.
                     st.token_roots[*dst as usize] = st.token_roots[*view as usize].clone();
                     st.tokens_live.set(*dst as usize);
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::StrConcat { dst, lhs, rhs } => {
                     check_read!(lhs, "concat lhs");
@@ -1096,28 +1089,20 @@ pub fn verify_owned_function(
                     if is_rootable[*dst as usize] {
                         check_def_conflict!(dst, "concat destination");
                     }
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::StrCmp { dst, lhs, rhs, .. } => {
                     check_read!(lhs, "cmp lhs");
                     check_read!(rhs, "cmp rhs");
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::CharToCodepoint { dst, ch } => {
                     check_read!(ch, "char operand");
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                 }
                 MirInstr::CharFromCodepoint { dst, code } => {
                     check_read!(code, "codepoint operand");
-                    st.init.set(*dst as usize);
-                    st.moved.clear(*dst as usize);
-                    st.dropped.clear(*dst as usize);
+                    st.define_slot(*dst as usize);
                 }
             }
         }
