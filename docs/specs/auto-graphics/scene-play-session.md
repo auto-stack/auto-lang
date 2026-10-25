@@ -90,3 +90,9 @@ Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-p
 Explicit UserSpatialV2/profile8 adds a bounded accepted geometry configuration before app_start. Its full base/descriptor identity is reconstructed from actual Host/Registry resources; malformed/foreign metadata cannot execute app_start or publish. Auto performs instant world queries and keeps original callback/whole-frame/CPU/Stop rules; geometry never becomes persisted runtime state.
 
 Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md), [final affected review](../../plans/attachments/846/review-r6/review.md). SDK/root and graphics delivery identities are recorded in the Plan consolidation receipt; production I2/I3 remain pending.
+
+## Finite segment extension (PLAN-848)
+
+Explicit UserSegmentV3/profile9 receives full spatial configuration before callbacks. Every cast attempt and callback boundary invalidates its one result slot; errors retain whole-frame rejection/closed-VM/last-good/Stop rules. V3 alone specializes shared derive into parent-first dirty X/Y/Z/visibility passes in the existing arrays, preserving local+parent f32 order with a local parent cache per axis. move marks all axes, initialization/shape repair derives fully;11 result plus4dirty scalars total60B logical. Trusted numeric generated units use compact source lines under unchanged VM accounting. Native checks acknowledge accepted input and explicitly OS-resume clock pauses within the original phase deadline; production clock/focus/SingleStep policies are unchanged.
+
+Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-nearest-hit-interactions.md), [independent affected final review](../../plans/attachments/848/review-r4-final/review.md), [frozen merge receipt](../../plans/attachments/848/merge-r2/receipt.md). Source: autographics-dev; production I2/I3 remain pending.

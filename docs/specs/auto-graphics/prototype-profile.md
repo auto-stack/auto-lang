@@ -216,3 +216,9 @@ Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-
 Explicit behavior/2/profile8 provides finite all-mesh AABB proxies and two portable trigger examples, as defined in spatial-query-profile.md. V1/Builtin6/profiles1..5, old games and picking remain. This is not precise physics, production widgets/Schema/ACE/Forge or a full engine claim.
 
 Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md), [final affected review](../../plans/attachments/846/review-r6/review.md). SDK/root and graphics delivery identities are recorded in the Plan consolidation receipt; production I2/I3 remain pending.
+
+## Finite segment extension (PLAN-848)
+
+The finite authoring profile includes explicit behavior/3/profile9 segment queries and Beam2D/Sight3D alongside unchanged old profiles. AABB proxies are not exact model picking, physics, sweep or camera unprojection. All original128-node/32-credit/CPU/owner/source/input limits and production I2/I3 exclusions remain; see [segment profile](segment-query-profile.md).
+
+Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-nearest-hit-interactions.md), [independent affected final review](../../plans/attachments/848/review-r4-final/review.md), [frozen merge receipt](../../plans/attachments/848/merge-r2/receipt.md). Source: autographics-dev; production I2/I3 remain pending.

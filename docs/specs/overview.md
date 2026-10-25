@@ -140,3 +140,5 @@ Provenance: [PLAN-840](../plans/archive/840-autographics-public-behavior-api-and
 PLAN-845 adds [finite bound behavior projects](auto-graphics/behavior-project.md): scene4 accepted source/roles and portable complete closure on the experimental runner. Production I2/I3 remain pending.
 
 PLAN-846 adds the experimental [finite spatial-query profile](auto-graphics/spatial-query-profile.md), explicit v2 alongside v1, and a scoped upstream nonfinite value correction; production I2/I3 remain pending.
+
+PLAN-848 adds the experimental [finite segment-query profile](auto-graphics/segment-query-profile.md) on autographics-dev; master retains knowledge only, production I2/I3 remain pending.

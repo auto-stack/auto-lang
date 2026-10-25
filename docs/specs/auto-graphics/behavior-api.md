@@ -129,3 +129,9 @@ Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-p
 Behavior/2 is explicitly selected, adds the finite AABB APIs in spatial-query-profile.md and profile8, and shares the unchanged v1 managed unit. V1 helper names/source identity do not acquire new reserved names. Source/API/bridge/base/geometry are checked on each Run; no auto-upgrade, source rewrite or quota/deadline relaxation.
 
 Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md), [final affected review](../../plans/attachments/846/review-r6/review.md). SDK/root and graphics delivery identities are recorded in the Plan consolidation receipt; production I2/I3 remain pending.
+
+## Finite segment extension (PLAN-848)
+
+Explicit behavior/3/profile9 adds the finite segment cast/result table in [segment-query-profile](segment-query-profile.md). Select API v3 segment in Editing or --behavior main.at --behavior-api v3; bound defaults retain their selected API. V1/v2 managed hashes/reserved names remain unchanged. No keyword inference or automatic upgrade occurs.
+
+Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-nearest-hit-interactions.md), [independent affected final review](../../plans/attachments/848/review-r4-final/review.md), [frozen merge receipt](../../plans/attachments/848/merge-r2/receipt.md). Source: autographics-dev; production I2/I3 remain pending.

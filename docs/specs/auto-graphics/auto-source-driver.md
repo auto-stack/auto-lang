@@ -152,3 +152,9 @@ Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-p
 The finite spatial-query-profile and zone2d/zone3d bound projects use real Auto private state for enter/stay/exit. They support same-binary source condition updates, OS Bind/Save, relocated projects and new-process reopen. SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467 fixes upstream nonfinite encoding without changing ABI, finite bits or support scope. Source-only changes and actual GPU/owner controls complement every inherited gate.
 
 Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md), [final affected review](../../plans/attachments/846/review-r6/review.md). SDK/root and graphics delivery identities are recorded in the Plan consolidation receipt; production I2/I3 remain pending.
+
+## Finite segment extension (PLAN-848)
+
+Beam2D and Sight3D add finite world segment/AABB nearest-query examples, implemented by user Auto with versioned v3 sources, same-callback writes/queries and snapshot results. Same-binary source Update/Save/moved-root reopen changes behavior; real OS input and complete GLB top-pixel witnesses remain required. See [segment profile](segment-query-profile.md). SDK/AGP/three locks and production I2/I3/ACE boundaries are unchanged.
+
+Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-nearest-hit-interactions.md), [independent affected final review](../../plans/attachments/848/review-r4-final/review.md), [frozen merge receipt](../../plans/attachments/848/merge-r2/receipt.md). Source: autographics-dev; production I2/I3 remain pending.

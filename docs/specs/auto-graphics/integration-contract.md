@@ -228,3 +228,9 @@ At this experimental stage, AutoGraphics requires correct incremental compilatio
 The functional cases, sample inputs, cache/identity/rejection/cleanup assertions and supported input scope remain required. Runtime callback limits and resource/deadline safety contracts remain in force. The root MN verification harness can select the explicitly named `AUTO_LANG_AUTOGRAPHICS_INCREMENTAL_PERF=observe` policy for AutoGraphics verification; it records the policy and measured values while leaving functional assertions active. Other root verification retains its default performance policy.
 
 This acceptance policy does not claim that the experimental graphics driver has already been integrated with the real ACE engine; that integration remains future work. Separately authorized root SDK/MN repairs and verification-policy changes land on master; graphics implementation continues to land only on autographics-dev.
+
+## Finite segment extension (PLAN-848)
+
+PLAN-848 delivers only the finite experimental world-segment/AABB user query profile and its two portable Auto examples on autographics-dev. It preserves128nodes/32credits/originalCPU, explicit versions and original geometry/owner/source/OS-GPU evidence. It does not complete production AutoUI/RQHost I2, Forge/distribution I3, ACE/HMR, triangle/OBB picking or physics/sweep/camera unprojection. Master receives canonical knowledge only.
+
+Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-nearest-hit-interactions.md), [independent affected final review](../../plans/attachments/848/review-r4-final/review.md), [frozen merge receipt](../../plans/attachments/848/merge-r2/receipt.md). Source: autographics-dev; production I2/I3 remain pending.

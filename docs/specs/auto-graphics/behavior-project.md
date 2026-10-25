@@ -8,7 +8,7 @@ engine SDK, multi-module package or production AutoUI/RQHost integration.
 ## Scene and source identity
 
 `autographics.scene/4` requires `behavior`: null or an object with exact `api`,
-`source` and `actors`. API is `autographics.behavior/1`. Source has
+`source` and `actors`. API is explicitly `autographics.behavior/1`, `/2` or `/3`. Source has
 `format: auto-source`, a lowercase 64-hex SHA256 and positive `byte_length` at most
 256KiB. `actors.two_d` and `actors.three_d` are explicit nulls or existing,
 same-dimension leaf u64 IDs, including values above32bits. No group, missing,
@@ -108,6 +108,12 @@ Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-p
 
 ## PLAN-846 finite spatial extension
 
-Scene4 Binding.api accepts exact behavior/1 or behavior/2. Temporary CLI/UI selection stays explicit and does not override a project default. Same raw bytes may share their Arc, but admission credentials remain API-specific; same-byte API switching is a real history/dirty transaction. Failure preserves the previous binding/source; save/open/verify and raw closure contracts remain.
+Scene4 Binding.api accepts exact behavior/1, behavior/2 or behavior/3. Temporary CLI/UI selection stays explicit and does not override a project default. Same raw bytes may share their Arc, but admission credentials remain API-specific; same-byte API switching is a real history/dirty transaction. Failure preserves the previous binding/source; save/open/verify and raw closure contracts remain.
 
 Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md), [final affected review](../../plans/attachments/846/review-r6/review.md). SDK/root and graphics delivery identities are recorded in the Plan consolidation receipt; production I2/I3 remain pending.
+
+## Finite segment extension (PLAN-848)
+
+Scene4 accepts exact behavior/1,/2,/3 bindings. Same raw bytes may share an Arc, while admission/compiled credentials remain API-specific. Switching API is a real dirty/history transaction; failed admission preserves the prior source/binding. Default binding and temporary CLI/UI overrides, Save/SaveAs/Undo/Redo/Open and verified source closure retain their existing rules. Older readers reject unknown v3 explicitly.
+
+Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-nearest-hit-interactions.md), [independent affected final review](../../plans/attachments/848/review-r4-final/review.md), [frozen merge receipt](../../plans/attachments/848/merge-r2/receipt.md). Source: autographics-dev; production I2/I3 remain pending.

@@ -110,6 +110,7 @@ flowchart LR
 |---|---|---|
 | [behavior-project](behavior-project.md) | 单源码绑定、历史/闭包/来源及可搬迁Run合同 | experimental |
 | [spatial-query-profile](spatial-query-profile.md) | 有限AABB/点包含/成对重叠与Auto触发状态 | experimental |
+| [segment-query-profile](segment-query-profile.md) | Finite world segment nearest query and callback result token | experimental |
 
 Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-portable-projects.md), [independent final review](../../plans/attachments/845/review-r8-preparation/review.md), [merge receipt](../../plans/attachments/845/merge-r1/receipt.md). Source: autographics-dev; production I2/I3 pending.
 
@@ -119,3 +120,9 @@ Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-p
 The next finite experimental layer is spatial-query-profile.md: explicit v2, all-mesh AABB bounds, point and pair queries, user Auto trigger state and portable zone2d/zone3d scene4 projects. Original games/authoring/project/owner/source/native denominators remain; production I2/I3 and overall engine goals are not completed by this work.
 
 Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md), [final affected review](../../plans/attachments/846/review-r6/review.md). SDK/root and graphics delivery identities are recorded in the Plan consolidation receipt; production I2/I3 remain pending.
+
+## Finite segment extension (PLAN-848)
+
+The experimental authoring consumer includes [finite segment queries](segment-query-profile.md), explicit behavior/3/profile9 and portable Beam2D/Sight3D user projects. Old v1/v2 profiles and the original dual-game denominator remain. Source lands only autographics-dev; I2/I3/ACE/production integration is still pending.
+
+Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-nearest-hit-interactions.md), [independent affected final review](../../plans/attachments/848/review-r4-final/review.md), [frozen merge receipt](../../plans/attachments/848/merge-r2/receipt.md). Source: autographics-dev; production I2/I3 remain pending.
