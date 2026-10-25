@@ -221,7 +221,7 @@ T-08登记准确完整矩阵；T-09最终独立pass后，T-10在冻结提交执�
 
 ## 8. 执行步骤
 
-当前R1复审needs_fix：128节点晚轴miss/逐个变近候选触发原100000步上限，F-848-R1-01开放；T-02/T-05/T-08重开，保留T-01/T-03/T-04/T-06/T-07已验证内容，executing5/10。修复及受影响复审通过后才能重新execution_done；T-09最终pass为reviewed9/10且完整门pending；T-10实际收尾才交付10/10。
+当前R1复审needs_fix，随后work方案调查仍needs_replan：128节点晚轴miss/逐个变近候选触发原100000步上限，F-848-R1-01开放；局部X特化可过原例但三轴斜向仍失败，未采用为产品修复。T-02/T-05/T-08重开，保留T-01/T-03/T-04/T-06/T-07已验证内容，executing5/10。需先找到满足完整控制的方案再修订设计/实施，修复及受影响复审通过后才能重新execution_done；T-09最终pass为reviewed9/10且完整门pending；T-10实际收尾才交付10/10。
 
 | task_id | owner_stage | 依赖 | 触点／拟新增路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -298,6 +298,16 @@ stage:review | review_scope:final | reviewer_identity:当前Codex会话（含实
 
 本轮API8+geometry6定向重放通过，source370/SDK681/17local/29edges/479metadata、固定runner075bab…、14原生raw报告/4重开/5owner反控与SD01..04逐项复核，fmt及diff whitespace通过；原生/GPU/20轮owner按未变相关代码/输入复用，未再跑整档。完整driver/AGP/原图形与spatial/native/owner/source及producer/fresh consumer门仍merge-owned pending，最终审查通过前不启动。未改产品/SDK/锁/canonical/live ledger、未合入/归档/清树。临时review探针归档后删除，实施树HEAD及clean复核无漂移。
 
+### 2026-10-25 work:r3 — 方案调查 needs_replan，未采用修复
+
+用户授权修复F-848-R1-01，明确先找到能守原预算的新方案，再更新当前计划并实施，完成后复审、先不合入。原唯一树/分支及冻结HEAD cef25b5c41dbbfbec6b7bfd4b13507d8d5f1e34d核对clean；主检出tracked代码路径无WIP，其他会话文档簿记保留。
+
+本轮先重放R1 actual Session/正式Host原例，失败及等深正控保持。随后在临时managed-source探针比较结果延后物化、局部别名/原位数组/循环、推导融合及受限按轴更新等方案；[完整诊断和原始源码/日志](attachments/848/work-r3/diagnosis.md)。B等普通局部简化仍不能通过逐个变近；H/I/J/K的X特化在原轴向反例上可过，但追加的正/负三轴斜向同负载仍100000步耗尽，且尚未实现通用dirty轴/visibility。它们不构成合格方案，不能只取通过的原例关闭finding，也不能宣称r3产品设计成立。
+
+因此仅更新调查/交接证据，**没有改语义合同或提升plan_revision，没有产品修复提交**；工作树仍cef25b5c4/clean。临时探针已删除，实际Auto编译输入及所有探索保存到附件；370源/681SDK/17local/29edges/479metadata再次核验通过。没有运行完整测试档或新最终复审，未合入/归档/清树、未改SDK/AGP/三锁/规范台账。没有证明固定SDK内所有方案都不可能；下一设计入口必须先解决无法剪枝的完整扫描与图推导合计预算，而不是继续依赖均匀box。保持原128/32credits/CPU与数值/资源要求，后续若需要扩SDK等边界，须具体回new决策。
+
+stage:work | plan_id:PLAN-848 | plan_revision:2 | outcome:needs_replan | worktree_path:D:/autostack/.wt/lang-848/auto-lang | branch:plan-848-dev | base_commit:bf22db3465203f3babd649494f4b37aa2a012027 | code_commit:cef25b5c41dbbfbec6b7bfd4b13507d8d5f1e34d | dependency_revisions:SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467、三锁/AGP未变 | task_ids:T02/T05/T08仍未关闭，executing5/10 | evidence:work-r3/diagnosis.md | blockers:F-848-R1-01尚无满足完整控制的可采用方案 | next_responsible_role:new（同一848有界设计调查，不另取号、不擅自减验收）。
+
 ## 10. 待澄清事项
 
-当前无待用户决定的产品问题，但有合同内阻塞F-848-R1-01待work修复；不能宣称T-01..08无gap。有限world线段/AABB最近命中、single-slot callback token、显式v3、128节点/weighted32credits及原CPU合同保持。G846/T-01完成；独立最终pass与merge完整门尚待执行。若修复需要SDK/AGP/生产写面、提高CPU/降低节点保证，或精确mesh、sweep/运动响应/相机/Schema/ACE/HMR，回new具体修订，不默认扩面实施。
+当前无新的产品选择待用户决定，但有合同内阻塞F-848-R1-01：work-r3调查尚未得到覆盖完整控制的新方案，需先完成有界设计调查，再更新设计并实施；不能宣称修复完成或T-01..08无gap。有限world线段/AABB最近命中、single-slot callback token、显式v3、128节点/weighted32credits及原CPU合同保持。G846/T-01完成；独立最终pass与merge完整门尚待执行。若修复需要SDK/AGP/生产写面、提高CPU/降低节点保证，或精确mesh、sweep/运动响应/相机/Schema/ACE/HMR，回new具体修订，不默认扩面实施。
