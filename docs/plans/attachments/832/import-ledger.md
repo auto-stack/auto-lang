@@ -3,17 +3,17 @@
 ## 固定来源与目标
 
 - source：`D:/autostack/.wt/lang-832/auto-lang` @`1cf2a9b97b0ddf4155fc1ab56b259a88c701f891`；生产包内容继承 T-01 基线 `45558ab628…`，T-03 未改这些 package。
-- target：`D:/autostack/.wt/lang-832/auto-man`，旧基线 `51fafe82e8e0c4e66325ee14088eed8c3270e07e`，分支 `codex/plan-832-dev`。
+- target：`D:/autostack/.wt/lang-832/auto-man`，旧基线 `51fafe82e8e0c4e66325ee14088eed8c3270e07e`，分支 `codex/plan-832-dev`；导入候选 commit=`041043bbf99ca698540e17fdfba89aa4a00e1ab6`。
 - fixed 依赖：UI=`aee499e87093ff727f68ac8467c506e9ecf6ecdc`；down=`c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`；语言中立源仍由 auto-lang 提供。
-- 完整逐文件 hash 见 [source-audit.json.txt](source-audit.json.txt)：185 文件，**175 same / 10 manifest-rewrite / 0 missing / 0 unexpected-drift**。rewrite 只含 9 个 package manifest 与 3 个 consumer manifest 的路径；package-resolver/toolchain-core/man-assets 及其余 consumer manifest 无需变化。
+- 完整逐文件 hash 见 [source-audit.json.txt](source-audit.json.txt)：185 文件，**165 same / 10 manifest-rewrite / 10 hygiene-whitespace / 0 missing / 0 unexpected-drift**。rewrite 只含 9 个 package manifest 与 3 个 consumer manifest 的路径；package-resolver/toolchain-core/man-assets 及其余 consumer manifest 无需变化。hygiene 为提交门发现的 pac.rs 三处空白行与九个 plan805 golden 末尾空行，正文不变；auto-man manifest 的 EOF 空白归入其 rewrite。
 
 ## package 映射
 
 | source→target | same / manifest rewrite | 目标职责 |
 |---|---:|---|
 | `crates/auto` → 同路径 | 16 / 1 | 薄 CLI、双 profile、命令测试 |
-| `crates/auto-man` → 同路径（替换旧 0.1.4 实现） | 39 / 1 | 0.1.0 compat facet + UiOps；不是 Core |
-| `crates/auto-man-runtime` → 同路径 | 47 / 1 | 非 UI 管理/服务/编排 |
+| `crates/auto-man` → 同路径（替换旧 0.1.4 实现） | 30 / 1（另9 hygiene） | 0.1.0 compat facet + UiOps；不是 Core |
+| `crates/auto-man-runtime` → 同路径 | 46 / 1（另1 hygiene） | 非 UI 管理/服务/编排 |
 | `crates/auto-man-core` → 同路径 | 14 / 1 | 管理纯规则 |
 | `crates/auto-package-lock` → 同路径 | 5 / 1 | pac.lock core |
 | `crates/auto-package-resolver` → 同路径 | 2 / 0 | 依赖路径规则 |
