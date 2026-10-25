@@ -63,3 +63,5 @@ must land only autographics-dev; master receives canonical knowledge/bookkeeping
 Production I2/I3 and deployment remain outside this finite experimental delivery.
 
 Source landed autographics-dev at dd7076a7f; canonical14 paths landed f126a98d7 and ledger v87 landed dbeb8d463 on master. All14 scoped items and1210 untouched items verified against guarded projection. Archive checkpoint follows actual-state validation; cleanup remains pending.
+
+Final merge pass: actual archived10/10, original worktree/two branches/empty group removed after fresh guards; ordinary exports/cache archived to plan-artifacts/plan-848-r3/retired-workspace. Canonical14/ledger14/version87 read back. Production artifacts explicitly observed, no deployment claimed. Batch remains due with existing B845-FEATURE-01/Plan847; no false full-green anchor. See cleaned, deployment-observations and batch-due receipts.

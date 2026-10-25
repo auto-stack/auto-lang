@@ -7,7 +7,7 @@ plan_revision: 3
 author: [Codex]
 created_at: 2026-10-25
 updated_at: 2026-10-25
-current_step: 9
+current_step: 10
 total_steps: 10
 depends_on: [PLAN-846]
 supersedes_spec_components:
@@ -29,7 +29,7 @@ affects: [auto-graphics, authoring-experimental, segment-query]
 
 ## 0. 变更摘要
 
-当前正式交付：冻结dd7076a7f修复原生验证器在合法时钟暂停后的输入确认与恢复，独立review:r4 pass；完整producer/fresh consumer各216测试及全部原生、owner、源码门通过。源码已快进autographics-dev，14项canonical规范和台账v87已落master。128节点、32credits及原CPU合同不变。下列旧失败/暂不合入记录保留为历史；当前仅T10工作树清理待完成。
+当前正式交付：冻结dd7076a7f修复原生验证器在合法时钟暂停后的输入确认与恢复，独立review:r4 pass；完整producer/fresh consumer各216测试及全部原生、owner、源码门通过。源码已快进autographics-dev，14项canonical规范和台账v87已落master。128节点、32credits及原CPU合同不变。下列旧失败/暂不合入记录保留为历史；当前T01..T10全部完成，工作树/临时分支/组目录清理完成。
 
 846提供有限2D/3D AABB包含/重叠和用户触发逻辑；下一步增加**有限world线段扫描、确定性最近命中及有界结果读取**，让真实Auto脚本实现光束选目标、视线遮挡/开门。沿用现有几何代理，不把无穷射线、triangle精确拾取或完整物理并入本版。
 
@@ -239,7 +239,7 @@ T-08登记准确完整矩阵；T-09最终独立pass后，T-10在冻结提交执�
 | T-07 | work | T-06 | 新check_segment_queries.py/OS/GPU/仓外new-process回放 | [x] V-09/10同binary/全部mesh反馈/条件变异/Stop/partial正反无gap；AC-08|
 | T-08 | work | T-07 | 新check_segment_owners.py/source/fresh consumer/README/new research/segment-query-handoff.md/Spec proposal | [x] 374源/固定SDK/锁闭包与四反控、独立SDK/target消费12相关测试、4原生+2重开，slot+dirty60B及实际SDK存储、heap/owner未变边界、提案/完整门216分母及readiness齐；AC-01, AC-07, AC-08|
 | T-09 | review | T-08 | 同树冻结code/Plan/Spec与raw，主检出独立review附件 | [x] AC-01..08逐项/遗漏/延后/workaround/健康、版本绑定结论；AC-09 |
-| T-10 | merge | T-09 pass | 新冻结完整门→autographics-dev；主检出知识/ledger/archive/guard/到期 | [ ] AC-10真实交付/清理，改代码先受影响复审再冻结，不提前冒领 |
+| T-10 | merge | T-09 pass | 新冻结完整门→autographics-dev；主检出知识/ledger/archive/guard/到期 | [x] AC-10真实交付/清理，改代码先受影响复审再冻结，不提前冒领 |
 
 ## 9. 复审记录
 
@@ -376,3 +376,11 @@ stage:review | review_scope:final affected | reviewer_identity:独立子代理/r
 stage:merge | plan_id:PLAN-848 | plan_revision:3 | outcome:delivery_verified_cleanup_pending | source_commit:dd7076a7f40b35ffda6b876c36f826af3443fb97 | source_branch:autographics-dev | canonical_commit:f126a98d79eb503d8f31fc7c56ff7024a460e1ea | ledger_commit:dbeb8d463833900957235909cd3bf0275858d979 | ledger_version:87 | completion_kind:delivered | archived:true | cleaned:pending。
 
 规范沉淀覆盖原8项修改与segment-query-profile新规范，以及模块overview/plans、全局overview/goals/INDEX共14路径，符合冻结Spec delta；台账14项映射、1210无关原项字节保留、六section/schema/来源hash已读回。单写离线投影前无可达store writer，备份与恢复路径见[投影收据](../attachments/848/merge-r2/ledger-projection.json.txt)。[实际落地](../attachments/848/merge-r2/knowledge-landed.json.txt)。代码只入autographics-dev，master仅知识簿记。当前9/10，归档实际状态核验通过后提交，再guard清理并完成T10。全局批量既有B845-FEATURE-01由847负责，未冒称全绿或降低标准。
+
+### 最终实际收尾核验
+
+stage:merge | plan_id:PLAN-848 | plan_revision:3 | outcome:pass | completion_kind:delivered | archived:true | cleaned:true | current_step:10/10。源码autographics-dev dd7076a7f、规范f126a98d7、台账dbeb8d463/v87已验证；独立复审与完整冻结门通过。上述cleanup pending均为归档检查时的历史检查点，现已完成。
+
+[清理恢复收据](../attachments/848/merge-r2/cleaned.json.txt)：fresh guard clean后移除原唯一worktree与两临时分支，普通consumer和缓存移至仓外retired-workspace保留恢复，组目录已空后移除。未动其他会话WIP。[产物观察](../attachments/848/merge-r2/deployment-observations.json.txt)：正式release/web产物路径不存在，未声称部署；当前验证runner独立留存。
+
+[批量到期检查](../attachments/848/merge-r2/batch-due.json.txt)：仍due，既有B845-FEATURE-01的未门控模块在当前源仍存在，847 drafting负责修复与主检出单实例全档重试。保留840完整绿色覆盖锚点，不把未执行的tf/tb报告为通过；不修改根代码绕过或降低标准。848的冻结专用完整门均已通过。
