@@ -23,6 +23,7 @@ pub mod native_reference;
 pub mod observations;
 pub mod owned_driver;
 pub mod owned_fixture;
+pub mod owned_session;
 pub mod semrefs;
 pub mod session;
 pub mod typed_fixture;

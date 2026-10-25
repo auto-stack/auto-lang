@@ -31,6 +31,7 @@ fn main() {
         "data-mem-envelope" => data_mem_envelope(&args[1..]),
         "request" => request(&args[1..]),
         "owned-request" => owned_request(&args[1..]),
+        "owned-restore-run" => owned_restore_run(&args[1..]),
         "gc-loop" => gc_loop(&args[1..]),
         "case-serve" => case_serve(),
         "load-revision" => load_revision(&args[1..]),
@@ -52,6 +53,7 @@ fn usage() -> ! {
     eprintln!("       av_probe_worker data-mem-envelope [--rounds N] [--store DIR] [--transient MIB] [--hold-ms N]   (PLAN-820 F820-R1-02: parent-sampled memory-envelope worker modes)");
     eprintln!("       av_probe_worker request --store DIR --src-file FILE --entry FN [--project P] [--caps C1,C2]");
     eprintln!("       av_probe_worker owned-request --store DIR --src-file FILE --entry FN   (PLAN-821 T-02: owned whole path + arena ledger + sampled peak, one JSON line)");
+    eprintln!("       av_probe_worker owned-restore-run --store DIR --owner NAME --entry FN --snapshot HEX --types-fp FP   (PLAN-821 R1-F10: owned new-process restore, re-verify + execute)");
     eprintln!("       av_probe_worker gc-loop --store DIR --stop-file FILE [--interval-ms N]");
     eprintln!("       av_probe_worker bench-turnaround --samples N --gate-ms MS --out FILE");
     eprintln!("       av_probe_worker frontend-attribution  (PLAN-828 T-07: Line-A frontend transient, isolated, one JSON line)");
@@ -230,6 +232,81 @@ fn request(args: &[String]) -> ! {
     line.push('\n');
     std::io::stdout().write_all(line.as_bytes()).ok();
     exit(if r.ok() { 0 } else { 4 })
+}
+
+/// PLAN-821 R1-F10: restore a persisted owned module from the store in
+/// THIS fresh process and execute — the real NEW-WORKER seam (envelope
+/// admission, decode and the FULL deep verification re-run; nothing on
+/// disk is trusted). Prints the outcome as one JSON line; non-zero exit
+/// unless the restored module verifies AND executes to Success.
+fn owned_restore_run(args: &[String]) -> ! {
+    let mut store = None;
+    let mut owner = String::new();
+    let mut entry = String::new();
+    let mut snapshot = None;
+    let mut types_fp = String::new();
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--store" => store = Some(args[i + 1].clone()),
+            "--owner" => owner = args[i + 1].clone(),
+            "--entry" => entry = args[i + 1].clone(),
+            "--snapshot" => {
+                snapshot = Some(
+                    u64::from_str_radix(args[i + 1].trim_start_matches("0x"), 16)
+                        .expect("snapshot hex"),
+                )
+            }
+            "--types-fp" => types_fp = args[i + 1].clone(),
+            other => {
+                eprintln!("owned-restore-run: unknown flag `{other}`");
+                exit(2);
+            }
+        }
+        i += 2;
+    }
+    let (Some(store), Some(snapshot)) = (store, snapshot) else {
+        eprintln!(
+            "owned-restore-run: --store/--owner/--entry/--snapshot/--types-fp are all required"
+        );
+        exit(2);
+    };
+    let payload = match auto_av_probe::owned_driver::restore_owned(
+        std::path::Path::new(&store),
+        &owner,
+        &entry,
+        snapshot,
+        &types_fp,
+    ) {
+        Ok(auto_av_core::contract::ExecOutcome::Success { value, .. }) => {
+            let face = auto_av_probe::owned_fixture::canonical_owned(&value, &Default::default())
+                .unwrap_or(serde_json::json!({ "note": "non-canonical" }));
+            serde_json::json!({
+                "ok": true,
+                "restored": true,
+                "result": face,
+            })
+        }
+        Ok(other) => serde_json::json!({
+            "ok": false,
+            "restored": true,
+            "outcome": format!("{other:?}"),
+        }),
+        Err(e) => serde_json::json!({
+            "ok": false,
+            "restored": false,
+            "error": e,
+            "dispatched": false,
+        }),
+    };
+    let mut line = serde_json::to_string(&payload).unwrap_or_default();
+    line.push('\n');
+    std::io::stdout().write_all(line.as_bytes()).ok();
+    exit(if payload["ok"].as_bool() == Some(true) {
+        0
+    } else {
+        4
+    })
 }
 
 /// PLAN-821 T-02: one owned-profile whole-path request in THIS fresh

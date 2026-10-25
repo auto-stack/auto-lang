@@ -801,3 +801,149 @@ fn av_owned_821_v07_cap_boundary_pass_and_over_by_one() {
     );
     assert_full_cleanup(arena);
 }
+
+// ---------------------------------------------------------------------------
+// R1-F09: the owned worker's process/managed-memory HARD GATES — the
+// PARENT samples the child's private-bytes peak (never the worker's own
+// word), the frozen B-line (128MiB) is ENFORCED, the managed store stays
+// inside its 32MiB partition, and the gate LOGIC itself is counter-
+// controlled (a zero threshold must FAIL).
+// ---------------------------------------------------------------------------
+
+/// Spawn ONE owned-request child under parent-side sampling; returns
+/// (child peak private bytes, exit ok).
+fn sampled_owned_request(
+    worker: &std::path::Path,
+    store: &std::path::Path,
+    src: &std::path::Path,
+) -> (u64, bool) {
+    use std::process::{Command, Stdio};
+    let mut child = Command::new(worker)
+        .args([
+            "owned-request",
+            "--store",
+            store.to_str().unwrap(),
+            "--src-file",
+            src.to_str().unwrap(),
+            "--entry",
+            "d_main",
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn owned worker");
+    let sampler = auto_av_probe::mempeek::ChildPeakSampler::start(child.id(), 5)
+        .expect("the parent samples the child");
+    let out = child.wait().expect("child exits");
+    let (peak, samples) = sampler.stop();
+    assert!(samples > 0, "the sampler actually polled ({samples})");
+    (peak, out.success())
+}
+
+/// The frozen memory lines for the owned worker (798 r7 discipline, the
+/// plan's OWN stricter text): B-line worker private-bytes peak ≤128MiB;
+/// managed store partition ≤32MiB.
+const OWNED_WORKER_B_LINE: u64 = 128 * 1024 * 1024;
+const OWNED_STORE_PARTITION: u64 = 32 * 1024 * 1024;
+
+fn dir_size(path: &std::path::Path) -> u64 {
+    let mut total = 0u64;
+    if let Ok(rd) = std::fs::read_dir(path) {
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                total += dir_size(&p);
+            } else if let Ok(md) = e.metadata() {
+                total += md.len();
+            }
+        }
+    }
+    total
+}
+
+#[test]
+fn av_owned_821_r1_worker_memory_hard_gate_parent_sampled() {
+    // Locate/build the release worker (same discipline as the corpus).
+    let ws = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("ws")
+        .to_path_buf();
+    let build = std::process::Command::new(env!("CARGO"))
+        .args([
+            "build",
+            "--release",
+            "-p",
+            "auto-av-probe",
+            "--bin",
+            "av_probe_worker",
+        ])
+        .current_dir(&ws)
+        .output()
+        .expect("build");
+    assert!(
+        build.status.success(),
+        "{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let worker = ws.join("target").join("release").join(if cfg!(windows) {
+        "av_probe_worker.exe"
+    } else {
+        "av_probe_worker"
+    });
+
+    // A REAL sustained owned load: 8 fresh children over 8 revisions of
+    // the frozen source family (record + Str fields + clone + concat),
+    // one managed store accumulating all artifacts.
+    let root = std::env::temp_dir().join(format!(
+        "av821-memgate-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let store = root.join("store");
+    let src_dir = root.join("src");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    let mut peaks = Vec::new();
+    let mut all_ok = true;
+    for i in 0..8u32 {
+        let src = format!(
+            "type Note {{ body Str; n int }}
+fn main() int {{
+    let a Note = Note {{ body: \"payload-{i}\", n: {i} }}
+    var b Note = a.clone()
+    let n int = b.body.len() + b.body.len_bytes()
+    return b.n * 100 + n
+}}
+"
+        );
+        let src_path = src_dir.join(format!("rev{i}.at"));
+        std::fs::write(&src_path, src).unwrap();
+        let (peak, ok) = sampled_owned_request(&worker, &store, &src_path);
+        assert!(ok, "revision {i} runs green");
+        peaks.push(peak);
+    }
+    // HARD GATES (parent-side evidence, worker self-reports never enter):
+    let max_peak = *peaks.iter().max().unwrap();
+    assert!(
+        max_peak <= OWNED_WORKER_B_LINE,
+        "worker B-line: parent-sampled peak {max_peak} > {}",
+        OWNED_WORKER_B_LINE
+    );
+    let store_bytes = dir_size(&store);
+    assert!(
+        store_bytes <= OWNED_STORE_PARTITION,
+        "managed store partition: {store_bytes} > {}",
+        OWNED_STORE_PARTITION
+    );
+
+    // GATE-LOGIC COUNTER-CONTROL: the same evidence against a ZERO
+    // threshold must FAIL (a gate that cannot red is no gate).
+    assert!(max_peak > 0, "a real peak was measured");
+    assert!(store_bytes > 0, "the store holds real artifacts");
+
+    let _ = std::fs::remove_dir_all(&root);
+}

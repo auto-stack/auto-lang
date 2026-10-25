@@ -90,7 +90,12 @@ fn av_owned_821_corpus_green() {
         ids.len(),
         "duplicated check ids in the report: {ids:?}"
     );
-    for required in ["run-owned-fixture", "run-owned-source", "run-owned-rejected"] {
+    for required in [
+        "run-owned-fixture",
+        "run-owned-source",
+        "run-owned-rejected",
+        "run-owned-borrowed",
+    ] {
         assert!(
             ids.contains(&required),
             "required check {required}: {ids:?}"

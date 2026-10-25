@@ -295,3 +295,210 @@ fn av_owned_821_v09_control_owned_restore_still_green() {
     expect_success_note(&out);
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+// ---------------------------------------------------------------------------
+// R1-F10: the REAL new-worker restore + a self-consistent bad inner
+// ---------------------------------------------------------------------------
+
+/// The owned store restores in a REAL NEW PROCESS (the worker's
+/// `owned-restore-run`): a fresh executable re-admits the envelope,
+/// re-decodes and re-runs the FULL deep verification before executing —
+/// the same value comes back, exit 0.
+#[test]
+fn av_owned_821_r1_new_process_restore_executes() {
+    let tmp = tmp_store("r1newproc");
+    let r = auto_av_probe::owned_driver::request_owned(Some(&tmp), "p", SRC_A, "d_main", &[])
+        .expect("persist");
+    let fp = types_fp_of(SRC_A);
+    // Locate and build the release worker (contained, bounded — same
+    // discipline as the av case worker).
+    let worker = locate_release_worker();
+    let out = std::process::Command::new(&worker)
+        .args([
+            "owned-restore-run",
+            "--store",
+            tmp.to_str().unwrap(),
+            "--owner",
+            &r.owner,
+            "--entry",
+            "d_main",
+            "--snapshot",
+            &format!("{:016x}", r.snapshot),
+            "--types-fp",
+            &fp,
+        ])
+        .output()
+        .expect("spawn the fresh restore worker");
+    assert!(
+        out.status.success(),
+        "the new-process restore succeeds: {} | stderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let line = String::from_utf8_lossy(&out.stdout);
+    let v: serde_json::Value = serde_json::from_str(
+        line.lines()
+            .find(|l| !l.trim().is_empty())
+            .expect("one line"),
+    )
+    .expect("json");
+    assert_eq!(v["ok"], serde_json::json!(true));
+    assert_eq!(v["restored"], serde_json::json!(true));
+    assert_eq!(
+        v["result"]["kind"], "record",
+        "the canonical record face comes back: {}",
+        v["result"]
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// A SELF-CONSISTENT bad inner: the tampered ABC payload is re-wrapped
+/// with a CORRECT envelope checksum under the SAME good key (the outer
+/// hash/checksum passes), published into the store, and restored in a
+/// NEW process — the DEEP verification (not the checksum) rejects it and
+/// nothing executes (non-zero exit, restored=false at the deep gate).
+#[test]
+fn av_owned_821_r1_self_consistent_bad_inner_never_executes() {
+    use ac_artifact_probe::codec::ChunkKind;
+    use ac_artifact_probe::store::{ManagedStore, PutRequest};
+
+    let tmp = tmp_store("r1badinner");
+    let r = auto_av_probe::owned_driver::request_owned(Some(&tmp), "p", SRC_A, "d_main", &[])
+        .expect("persist");
+    let fp = types_fp_of(SRC_A);
+
+    // The good artifact + key.
+    let store = ManagedStore::open(&tmp).expect("open");
+    let key = auto_av_probe::owned_driver::owned_module_key(&r.owner, "d_main", &fp, r.snapshot);
+    let art = store
+        .get_artifact("A21", &key)
+        .expect("get")
+        .expect("present");
+    let ident = auto_av_probe::cache::EnvelopeIdentity {
+        kind: auto_av_probe::cache::EnvelopeKind::AbcUnit,
+        producer: OWNED_PRODUCER_ID,
+        schema: ABC_OWNED_SCHEMA,
+        owner_module: r.owner.as_str(),
+        stage: 2,
+        mir_sem: 1,
+        abc_sem: 1,
+        av_sem: 1,
+        snapshot: r.snapshot,
+        unit: "d_main",
+        body_fp: "",
+    };
+    let good_payload = auto_av_probe::cache::envelope_unwrap(&art.payload, &ident)
+        .expect("the pristine payload unwraps");
+    // Tamper the INNER ABC (flip a byte in the body region, away from the
+    // header), then re-wrap with a FRESH CORRECT envelope — the outer
+    // checksum is valid by construction; only the deep verification can
+    // catch it.
+    let mut bad = good_payload.clone();
+    let n = bad.len();
+    assert!(n > 64, "a real AVAD payload");
+    bad[n - 17] ^= 0xFF;
+    let bad_env = auto_av_probe::cache::envelope_wrap(&bad, &ident);
+    // The tampered+re-wrapped payload PASSES the envelope gate...
+    auto_av_probe::cache::envelope_unwrap(&bad_env, &ident)
+        .expect("the self-consistent envelope unwraps (checksum valid)");
+    // ...and is PUBLISHED under the SAME good key (a fresh scratch store
+    // seeded with it — the store's own republish-conflict semantics stay
+    // out of this oracle's way).
+    let tmp2 = tmp_store("r1badinner2");
+    let store2 = ManagedStore::open(&tmp2).expect("open 2");
+    store2
+        .put_artifact(PutRequest {
+            layer: "A21",
+            key: key.clone(),
+            kind: ChunkKind::LayoutData,
+            payload: bad_env,
+            edges: vec![],
+            project: Some("p".to_string()),
+        })
+        .expect("publish the bad inner under the good key");
+
+    // Restore in a REAL NEW PROCESS: the deep gate rejects, exit 4.
+    let worker = locate_release_worker();
+    let out = std::process::Command::new(&worker)
+        .args([
+            "owned-restore-run",
+            "--store",
+            tmp2.to_str().unwrap(),
+            "--owner",
+            &r.owner,
+            "--entry",
+            "d_main",
+            "--snapshot",
+            &format!("{:016x}", r.snapshot),
+            "--types-fp",
+            &fp,
+        ])
+        .output()
+        .expect("spawn");
+    assert!(
+        !out.status.success(),
+        "the self-consistent bad inner MUST be refused: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let line = String::from_utf8_lossy(&out.stdout);
+    let v: serde_json::Value =
+        serde_json::from_str(line.lines().find(|l| !l.trim().is_empty()).unwrap_or(""))
+            .unwrap_or(serde_json::Value::Null);
+    assert_eq!(
+        v.get("dispatched").and_then(|d| d.as_bool()),
+        Some(false),
+        "dispatched=0 — nothing executed on the bad inner"
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
+    let _ = std::fs::remove_dir_all(&tmp2);
+}
+
+/// Locate (and build on first use) the release worker binary — the same
+/// lookup the av case worker uses (env override → probe workspace).
+fn locate_release_worker() -> std::path::PathBuf {
+    if let Ok(p) = std::env::var("AC_AV_CASE_WORKER") {
+        let p = std::path::PathBuf::from(p);
+        if p.is_file() {
+            return p;
+        }
+    }
+    // CARGO_MANIFEST_DIR is the probe CRATE dir; the workspace root (and
+    // its target/) is one level up.
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root")
+        .to_path_buf();
+    assert!(
+        manifest.join("Cargo.toml").is_file(),
+        "workspace manifest at {}",
+        manifest.display()
+    );
+    let exe = manifest
+        .join("target")
+        .join("release")
+        .join(if cfg!(windows) {
+            "av_probe_worker.exe"
+        } else {
+            "av_probe_worker"
+        });
+    // Build (bounded no-op when fresh).
+    let status = std::process::Command::new(env!("CARGO"))
+        .args([
+            "build",
+            "--release",
+            "-p",
+            "auto-av-probe",
+            "--bin",
+            "av_probe_worker",
+        ])
+        .current_dir(&manifest)
+        .output()
+        .expect("cargo build");
+    assert!(
+        status.status.success(),
+        "worker build: {}",
+        String::from_utf8_lossy(&status.stderr)
+    );
+    assert!(exe.is_file(), "worker at {}", exe.display());
+    exe
+}

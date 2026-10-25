@@ -143,6 +143,15 @@ switch ($Scope) {
             "av_owned_821_recipe_fixture_face_matches_hand_audit",
             "av_owned_821_recipe_canonical_face_shapes"
         )
+        Run-Probe-Tests "av_owned_821_r1_replay" "first-case-r1-replay" @(
+            "av_owned_821_r1_return_dropped_and_ended_escape_rejected",
+            "av_owned_821_r1_loan_invariants_hold",
+            "av_owned_821_r1_static_view_across_units_resolves_in_owner",
+            "av_owned_821_r1_aggregate_transfer_releases_source_at_commit",
+            "av_owned_821_r1_clone_byte_fuel_thresholds_discriminate",
+            "av_owned_821_r1_analysis_memory_bound_honest_no_tokens",
+            "av_owned_821_r1_borrowed_record_source_paths"
+        )
         Run-Runner-Tests "av_owned_821" "first-case-corpus" @(
             "av_owned_821_corpus_green",
             "av_owned_821_negative_oracle_fails",
@@ -317,7 +326,8 @@ switch ($Scope) {
             "av_owned_821_v03_record_clone_mid_failure_released_once",
             "av_owned_821_v04_all_exit_kinds_clean_lifo",
             "av_owned_821_v04_cancel_mid_run_cleans",
-            "av_owned_821_v07_cap_boundary_pass_and_over_by_one"
+            "av_owned_821_v07_cap_boundary_pass_and_over_by_one",
+            "av_owned_821_r1_worker_memory_hard_gate_parent_sampled"
         )
         Run-Probe-Tests "av_data_820_resources" "resources-inherited-820" @()
     }
@@ -332,7 +342,9 @@ switch ($Scope) {
             "av_owned_821_v08_good_hash_bad_payload_rejected",
             "av_owned_821_v08_profile_identity_isolation",
             "av_owned_821_v09_owned_bytes_rejected_by_old_consumers",
-            "av_owned_821_v09_control_owned_restore_still_green"
+            "av_owned_821_v09_control_owned_restore_still_green",
+            "av_owned_821_r1_new_process_restore_executes",
+            "av_owned_821_r1_self_consistent_bad_inner_never_executes"
         )
         Run-Probe-Tests "av_owned_821_first_case" "cache-restore-first-case" @(
             "av_owned_821_first_case_same_store_restore"
@@ -363,8 +375,9 @@ switch ($Scope) {
         )
         Run-Probe-Tests "av_owned_821_incremental" "incremental-owned" @(
             "av_owned_821_v13_two_fn_local_body_updates",
-            "av_owned_821_v13_precise_refusals_signature_and_layout",
-            "av_owned_821_v13_forced_whole_recompute_is_nonzero_everywhere",
+            "av_owned_821_v13_signature_edits_refused_or_whole_context",
+            "av_owned_821_v13_forced_whole_recompute_reddens_the_gate",
+            "av_owned_821_v13_stale_caller_unit_link_refused",
             "av_owned_821_v13_shared_scalar_session_still_warms"
         )
         Run-Probe-Tests "av_source_827_incremental" "incremental-scalar-precedent" @(
