@@ -282,3 +282,21 @@ stage: new；outcome: pass（合同静态预检，非实施验收）。用户认
 
 
 **当前排期与验收（2026-10-21）**：D828后按§5本计划优先级/原D门及单写交接推进，不等待无硬依赖的整批；T-09 / AC-09 / V-13 未完成，旧revision/测试总数不覆盖新增义务。用户已确认该顺序/目标，不重复请求同范围授权。
+
+### 合并后批量回归到期检查（fix-test-tiering 2026-09-30）
+
+- 820 % 5 == 0 → 到期。收据 `.last-batch-regression.json`：最后完整绿锚=
+  PLAN-840（tf/tt/tb 全绿）；PLAN-845 轮已尝试并**在案编译阻断**
+  B845-FEATURE-01（818 cfg 位移致 probe_adapter_tests 无门面 E0432/43，
+  tf/tb compile 段 101、0 测试执行；修复前向 PLAN-847 已建、status=
+  drafting，收据 `pending_retry: true`/Due remains true）。
+- 本合并核验：默认无 test-cases 门面仍有 46 个 E0432/E0433，**全部位于
+  probe_adapter_tests.rs**（B845-FEATURE-01 原签名），820 触面文件零新
+  增错误——落地不改变既有归因。按收据政策不在已知编译阻断上重跑全批
+  （无法产生覆盖）；PLAN-847 恢复门后由其重跑主检出单实例 tf/tt/tb。
+
+### Landing-is-not-deployment 检查
+
+- auto-lang 无常驻后端/守护进程/Web bundle 生产面；probe 各 release
+  worker 二进制按需由 `native_worker_binary` 现场构建缓存（内容 hash），
+  无需重建/重启项。auto-ui 仓生产面未触（820 diff 不含 auto-ui 文件）。
