@@ -105,6 +105,122 @@ fn resident_identity(s: &FunctionIncrementalSession, def_id: &str) -> Option<(us
     Some((ptr, gen))
 }
 
+/// R7 F-827-R7-01: a PER-RUN durable raw recorder. The run file is created
+/// and written BEFORE any assertion can discard evidence — each revision is
+/// persisted as soon as it is observed (that revision's assertions run
+/// AFTER its row is on disk), and the final structure/P95 verdict is
+/// persisted BEFORE the P95 assertion. A failing revision or time gate
+/// therefore always leaves its raw on disk, and per-run filenames mean a
+/// later run never overwrites an earlier run's evidence. The fixed-name
+/// `incremental-raw.json` remains only as a pointer copy of the LAST
+/// COMPLETED run (its `run_id` names the immutable evidence file).
+struct IncrementalRawRun {
+    path: std::path::PathBuf,
+    doc: serde_json::Value,
+    /// false for the controlled-negative location: a negative never updates
+    /// the "last completed run" pointer.
+    update_latest: bool,
+}
+
+fn report_file(rel: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../docs/reports/plan827")
+        .join(rel)
+}
+
+impl IncrementalRawRun {
+    fn start(samples: usize, run_id: &str) -> Self {
+        let mut run = Self::start_at(samples, run_id, &format!("incremental-raw-{run_id}.json"));
+        run.update_latest = true;
+        run
+    }
+
+    fn start_at(samples: usize, run_id: &str, rel: &str) -> Self {
+        let path = report_file(rel);
+        std::fs::create_dir_all(path.parent().expect("parent dir")).expect("create report dir");
+        let doc = serde_json::json!({
+            "scope": "incremental-raw",
+            "run_id": run_id,
+            "samples": samples,
+            "verdict": { "status": "in-progress" },
+            "revisions": [],
+        });
+        let run = Self {
+            path,
+            doc,
+            update_latest: false,
+        };
+        run.write();
+        run
+    }
+
+    fn push_revision(&mut self, rev: serde_json::Value) {
+        self.doc["revisions"]
+            .as_array_mut()
+            .expect("revisions array")
+            .push(rev);
+        self.write();
+    }
+
+    /// Persist the final verdict BEFORE the caller asserts on it, so a red
+    /// gate is recorded on disk exactly as observed.
+    fn finish(&mut self, verdict: serde_json::Value) {
+        self.doc["verdict"] = verdict;
+        self.write();
+        if self.update_latest {
+            let mut latest = self.doc.clone();
+            latest["latest_completed"] = serde_json::Value::Bool(true);
+            std::fs::write(
+                report_file("incremental-raw.json"),
+                serde_json::to_string_pretty(&latest).expect("serialize latest"),
+            )
+            .unwrap_or_else(|e| panic!("write latest raw: {e}"));
+        }
+    }
+
+    fn write(&self) {
+        std::fs::write(
+            &self.path,
+            serde_json::to_string_pretty(&self.doc).expect("serialize raw"),
+        )
+        .unwrap_or_else(|e| panic!("write raw {}: {e}", self.path.display()));
+    }
+}
+
+/// R7 F-827-R7-01: the persisted-raw SHAPE contract as a predicate — every
+/// revision must carry the complete observation, and the unchanged sample's
+/// identity baseline and current value must be CONCRETE (ptr, generation)
+/// pairs. A null/missing `before` (the shipped defect: 30 rows looked up
+/// `d_main` against a bare-name-keyed map) or a missing/short `after` is
+/// REJECTED, never silently persisted.
+fn validate_raw_shape(doc: &serde_json::Value) -> Result<(), String> {
+    let revisions = doc["revisions"]
+        .as_array()
+        .ok_or_else(|| "raw has no revisions array".to_string())?;
+    if revisions.is_empty() {
+        return Err("raw has zero revisions".into());
+    }
+    for rev in revisions {
+        let n = rev["revision"].as_u64().unwrap_or(0);
+        for field in ["changed_fn", "install_set", "value", "wall_ms"] {
+            if rev[field].is_null() {
+                return Err(format!("revision {n}: `{field}` is null"));
+            }
+        }
+        let hold = &rev["identity_hold"]["unchanged_sample"];
+        let name = hold["name"].as_str().unwrap_or("");
+        for axis in ["before", "after"] {
+            let pair = hold[axis].as_array().cloned().unwrap_or_default();
+            if pair.len() != 2 || !pair.iter().all(|v| v.is_u64()) {
+                return Err(format!(
+                    "revision {n}: unchanged sample `{name}` axis `{axis}` is not a concrete (ptr, generation) pair"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// V-13 (1.1): the D828 frozen baseline through this plan's consumer —
 /// 30 distinct body revisions, structure AND time gates.
 #[test]
@@ -128,10 +244,20 @@ fn av_source_827_incremental_d828_baseline_30_structure_and_p95() {
 
     let samples = 30usize;
     let mut walls = Vec::with_capacity(samples);
-    // R5: durable per-revision structural raw (revision, changed function,
-    // install set, wall, identity-hold facts) — persisted below, not just
-    // the aggregate P95.
-    let mut raw_revisions: Vec<serde_json::Value> = Vec::with_capacity(samples);
+    // R7 F-827-R7-01: per-run durable raw — each revision is written to disk
+    // BEFORE that revision's assertions, and the final verdict is written
+    // before the P95 assertion, so a failing revision/gate always leaves
+    // its evidence. (The map above is keyed by BARE function names; def-ids
+    // (`d_main`) are formed only at the `resident_identity` boundary.)
+    let run_id = format!(
+        "{}-pid{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_secs(),
+        std::process::id()
+    );
+    let mut raw = IncrementalRawRun::start(samples, &run_id);
     let mut prev_src = base.source.clone();
     for n in 1..=samples {
         let rev = auto_av_probe::load256::generate_revision(n as u32);
@@ -143,24 +269,37 @@ fn av_source_827_incremental_d828_baseline_30_structure_and_p95() {
         let v = run_value(&s);
         let wall_ms = t0.elapsed().as_secs_f64() * 1000.0;
         walls.push(wall_ms);
-        raw_revisions.push(serde_json::json!({
+        // R7: the unchanged sample's baseline and current identity pairs
+        // are REQUIRED — an absent lookup is an error, never a persisted
+        // null (the shipped defect persisted 30 null `before` fields).
+        let before_pair = *identities_before
+            .get("main")
+            .unwrap_or_else(|| panic!("baseline identity for `main` absent from the warm-up map"));
+        let after_pair = resident_identity(&s, "d_main")
+            .unwrap_or_else(|| panic!("current identity for `d_main` absent after rev {n}"));
+        let changed_name = obs.changed_fn.clone();
+        let changed_moved: Option<bool> = changed_name.as_deref().and_then(|c| {
+            identities_before.get(c).map(|was| {
+                let now = resident_identity(&s, &format!("d_{c}"))
+                    .unwrap_or_else(|| panic!("current identity for changed `{c}` absent"));
+                now != *was
+            })
+        });
+        raw.push_revision(serde_json::json!({
             "revision": n,
-            "changed_fn": obs.changed_fn,
+            "ok": obs.ok,
+            "non_fast_path_reason": format!("{:?}", obs.non_fast_path_reason),
+            "changed_fn": changed_name,
             "install_set": obs.install_set,
             "value": v,
             "wall_ms": wall_ms,
             "identity_hold": {
-                "changed_moved": identities_before
-                    .get(obs.changed_fn.as_deref().unwrap_or(""))
-                    .map(|was| {
-                        let def = format!("d_{}", obs.changed_fn.clone().unwrap_or_default());
-                        resident_identity(&s, &def).map(|now| now != *was).unwrap_or(false)
-                    }),
+                "changed_moved": changed_moved,
                 "unchanged_sample": {
                     // one unchanged function's before/after identity
                     "name": "d_main",
-                    "before": identities_before.get("d_main"),
-                    "after": resident_identity(&s, "d_main"),
+                    "before": [before_pair.0, before_pair.1],
+                    "after": [after_pair.0, after_pair.1],
                 },
             },
         }));
@@ -244,31 +383,136 @@ fn av_source_827_incremental_d828_baseline_30_structure_and_p95() {
         );
         prev_src = rev.source;
     }
+    let p50 = percentile(&walls, 50.0);
     let p95 = percentile(&walls, 95.0);
+    let time_gate = p95 < 1000.0;
+    // R7 F-827-R7-01: persist structure + time verdict BEFORE asserting it —
+    // a red P95 leaves its per-run raw on disk with `verdict.status=fail`.
+    validate_raw_shape(&raw.doc).expect("completed campaign raw shape");
+    raw.finish(serde_json::json!({
+        "status": if time_gate { "pass" } else { "fail" },
+        "structure": "pass",
+        "p50_ms": p50,
+        "p95_ms": p95,
+        "time_gate_ms": 1000.0,
+        "time_gate": time_gate,
+    }));
     assert!(
-        p95 < 1000.0,
+        time_gate,
         "edit->verified-result P95 {p95:.1}ms over {samples} revisions must be < 1000ms"
     );
     eprintln!(
-        "av827 incremental baseline: P50 {:.1}ms P95 {:.1}ms",
-        percentile(&walls, 50.0),
-        p95
+        "av827 incremental baseline: P50 {:.1}ms P95 {:.1}ms (raw run {run_id})",
+        p50, p95
     );
-    // R5: persist the durable per-revision raw artifact.
-    let raw_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../docs/reports/plan827/incremental-raw.json");
-    let raw = serde_json::json!({
-        "scope": "incremental-raw",
-        "samples": samples,
-        "p50_ms": percentile(&walls, 50.0),
-        "p95_ms": p95,
-        "revisions": raw_revisions,
+}
+
+/// R7 F-827-R7-01 negative: the persisted-raw SHAPE contract rejects a
+/// missing/null identity baseline (the exact defect all 30 shipped rows
+/// carried) and an absent/degenerate current pair; a complete row passes.
+#[test]
+fn av_source_827_incremental_raw_shape_rejects_missing_baseline() {
+    let good = serde_json::json!({
+        "revisions": [{
+            "revision": 1,
+            "changed_fn": "gcd",
+            "install_set": ["d_gcd"],
+            "value": 1,
+            "wall_ms": 12.5,
+            "identity_hold": {
+                "changed_moved": true,
+                "unchanged_sample": {
+                    "name": "d_main",
+                    "before": [7011024, 3],
+                    "after": [7011024, 3],
+                },
+            },
+        }]
     });
-    std::fs::write(
-        &raw_path,
-        serde_json::to_string_pretty(&raw).expect("serialize raw"),
+    assert!(
+        validate_raw_shape(&good).is_ok(),
+        "a complete row is accepted"
+    );
+
+    // The shipped defect shape: `before` null (keyed `d_main` against a
+    // bare-name-keyed map) must be REJECTED, with the axis named.
+    let mut doc = good.clone();
+    doc["revisions"][0]["identity_hold"]["unchanged_sample"]["before"] = serde_json::Value::Null;
+    let err = validate_raw_shape(&doc).expect_err("a null baseline must be rejected");
+    assert!(err.contains("before"), "error names the axis: {err}");
+
+    // Missing current pair / short pair / zero revisions: all rejected.
+    let mut doc = good.clone();
+    doc["revisions"][0]["identity_hold"]["unchanged_sample"]
+        .as_object_mut()
+        .expect("sample object")
+        .remove("after");
+    validate_raw_shape(&doc).expect_err("a missing current pair must be rejected");
+
+    let mut doc = good.clone();
+    doc["revisions"][0]["identity_hold"]["unchanged_sample"]["after"] = serde_json::json!([42]);
+    validate_raw_shape(&doc).expect_err("a 1-element pair must be rejected");
+
+    let empty = serde_json::json!({ "revisions": [] });
+    validate_raw_shape(&empty).expect_err("zero revisions must be rejected");
+}
+
+/// R7 F-827-R7-01 negative: a CONTROLLED FAILING VERDICT still leaves its
+/// per-run raw on disk — the recorder's write-before-assert contract, the
+/// exact path a red revision/P95 takes in the campaign test. The negative
+/// writes to its own negatives/ location and never touches a real campaign
+/// run file or the latest-completed pointer.
+#[test]
+fn av_source_827_incremental_failing_verdict_still_writes_raw() {
+    let revision = |n: u64, wall_ms: f64| {
+        serde_json::json!({
+            "revision": n,
+            "changed_fn": "gcd",
+            "install_set": ["d_gcd"],
+            "value": 1,
+            "wall_ms": wall_ms,
+            "identity_hold": {
+                "changed_moved": true,
+                "unchanged_sample": {
+                    "name": "d_main",
+                    "before": [7011024, 3],
+                    "after": [7011024, 3],
+                },
+            },
+        })
+    };
+    let mut run = IncrementalRawRun::start_at(
+        2,
+        "negative-failing-verdict",
+        "negatives/incremental-failing-verdict.json",
+    );
+    run.push_revision(revision(1, 900.0));
+    run.push_revision(revision(2, 2100.0));
+    run.finish(serde_json::json!({
+        "status": "fail",
+        "reason": "controlled negative: P95 exceeded the 1000ms gate",
+        "structure": "pass",
+        "p95_ms": 2100.0,
+        "time_gate": false,
+    }));
+    // The failing run's raw EXISTS on disk, parses, and carries the failing
+    // verdict plus both observed revisions.
+    let doc: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(report_file("negatives/incremental-failing-verdict.json"))
+            .expect("the failing run left its raw on disk"),
     )
-    .unwrap_or_else(|e| panic!("write raw {}: {e}", raw_path.display()));
+    .expect("parse the retained raw");
+    assert_eq!(
+        doc["verdict"]["status"], "fail",
+        "the failing verdict is persisted"
+    );
+    assert_eq!(doc["verdict"]["time_gate"], false);
+    assert_eq!(
+        doc["revisions"].as_array().map(Vec::len),
+        Some(2),
+        "both observed revisions are retained"
+    );
+    assert!(validate_raw_shape(&doc).is_ok());
 }
 
 /// V-13 (1.2): two-function local body updates on the REAL AP-01 entry —

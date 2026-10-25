@@ -80,6 +80,17 @@ function Assert-Selected([string]$Out, [string]$Label, [string[]]$RequiredIds = 
     if (!(Test-Selected $Out $Label $RequiredIds)) { exit 1 }
 }
 
+function Test-WorkerBinding([string]$Exe, [string]$BoundSha256) {
+    # R7 F-827-R7-02: the release worker a resource gate exercises must be
+    # BYTE-IDENTICAL to the binary recorded in the run's binding receipt
+    # (built from THIS workspace). A stale/foreign binary, a tampered
+    # receipt hash, or a missing exe is RED — checked BEFORE any campaign
+    # runs, so an old artifact can never supply the current gate.
+    if ([string]::IsNullOrEmpty($BoundSha256)) { return $false }
+    if (!(Test-Path $Exe)) { return $false }
+    return ((Get-FileHash $Exe -Algorithm SHA256).Hash -eq $BoundSha256)
+}
+
 function Run-Probe-Tests([string]$TestBin, [string]$Label, [string[]]$RequiredIds = @()) {
     Write-Host "== $Label (ac-av-probe --test $TestBin)"
     Push-Location $probeWs
@@ -194,6 +205,10 @@ switch ($Scope) {
     }
     "resources" {
         # V-09 heavy tier (single instance, serial):
+        # 0. R7 F-R7-02 binding: the release worker is BUILT from THIS frozen
+        #    workspace, its SHA256 + build command + source identity recorded
+        #    in a per-run receipt naming the raw files it certifies, and
+        #    stale/foreign binaries are rejected BEFORE any campaign runs;
         # 1. gate-0 counter-control: bench-turnaround with --gate-ms 0 MUST
         #    fail (a threshold of 0 can never be green);
         # 2. the real P95 gate: 30 samples, gate 1000ms, raw JSONL kept;
@@ -204,6 +219,65 @@ switch ($Scope) {
         # Every bench run keeps its OWN raw JSONL (failed runs included —
         # failure samples are never deleted or overwritten).
         $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+
+        Write-Host "== resources: build the release worker from the frozen workspace (F-R7-02)"
+        Push-Location $probeWs
+        & cargo build --release -p auto-av-probe --bin av_probe_worker 2>&1 | Tee-Object -Variable wbuild | Write-Host
+        $wbcode = $LASTEXITCODE
+        Pop-Location
+        $wbuild | Out-File (Join-Path $reportDir "resources-worker-build-$stamp.log") -Encoding utf8
+        if ($wbcode -ne 0) {
+            Write-Host "FAILED: release worker build (exit $wbcode) — no unbound binary may run the gate"
+            exit 1
+        }
+
+        # Binding receipt: binary hash + build provenance + frozen source
+        # identity (the ac-av-probe workspace whose build certifies the
+        # binary), naming BOTH raw files it certifies — the deliberately
+        # FAILED gate-0 run included.
+        $exeHash = (Get-FileHash $worker -Algorithm SHA256).Hash
+        $gitHead = (& git -C $repo rev-parse HEAD 2>$null) -join ""
+        $gitHead = $gitHead.Trim()
+        $probeDirty = @(& git -C $repo status --porcelain -- experimental/ac-av-probe 2>$null)
+        $binding = [pscustomobject]@{
+            stamp            = $stamp
+            exe              = $worker
+            sha256           = $exeHash
+            built_by         = "cargo build --release -p auto-av-probe --bin av_probe_worker (resources scope)"
+            git_head         = $gitHead
+            probe_ws_entries = @($probeDirty)
+            certifies        = @("bench-gate0-$stamp.jsonl", "bench-30-$stamp.jsonl")
+            created_at       = (Get-Date -Format o)
+        }
+        $binding | ConvertTo-Json -Depth 4 | Out-File (Join-Path $reportDir "resources-worker-binding-$stamp.json") -Encoding utf8
+
+        # Stale/foreign-worker negatives + the current-worker positive, all
+        # BEFORE a campaign runs: a foreign binary, a tampered receipt hash
+        # and a missing exe must each FAIL the binding check.
+        $stale = Join-Path $env:TEMP "av827-stale-worker-$stamp.exe"
+        Set-Content -Path $stale -Value "stale worker bytes (F-R7-02 binding negative)" -Encoding ascii
+        if (Test-WorkerBinding $stale $exeHash) {
+            Write-Host "FAILED: a foreign binary satisfied the worker binding (stale-worker negative)"
+            exit 1
+        }
+        # Tamper to a GUARANTEED-different hash (the real worker's SHA256
+        # itself starts with '0', so a naive "0"-prefix would be a no-op).
+        $flip = if ($exeHash[0] -eq '0') { '1' } else { '0' }
+        $tamperedHash = $flip + $exeHash.Substring(1)
+        if (Test-WorkerBinding $worker $tamperedHash) {
+            Write-Host "FAILED: a tampered receipt hash satisfied the worker binding"
+            exit 1
+        }
+        if (Test-WorkerBinding "$($worker).missing" $exeHash) {
+            Write-Host "FAILED: a missing exe satisfied the worker binding"
+            exit 1
+        }
+        if (!(Test-WorkerBinding $worker $exeHash)) {
+            Write-Host "FAILED: the freshly built worker does not match its binding receipt"
+            exit 1
+        }
+        Write-Host "   worker bound: sha256=$($exeHash.Substring(0,16))... head=$($gitHead.Substring(0, [Math]::Min(10, $gitHead.Length))) probe-ws dirty entries=$(@($probeDirty).Count) (3 negatives red, current green)"
+
         Write-Host "== resources: bench gate-0 counter-control (must FAIL)"
         Push-Location $probeWs
         & $worker bench-turnaround --samples 3 --gate-ms 0 --out "$reportDir/bench-gate0-$stamp.jsonl" 2>&1 | Tee-Object -Variable g0 | Write-Host
@@ -362,6 +436,20 @@ switch ($Scope) {
         # Zero selection / no summary -> red.
         if (Test-Selected "Summary [ 0.1s] 0 tests run: 0 passed" "missing") { Write-Host "CONTROL FAILED: zero-selected must be red"; $fails++ }
         if (Test-Selected "build finished, no summary matched" "no-summary") { Write-Host "CONTROL FAILED: no-summary must be red"; $fails++ }
+        # R7 F-R7-02 worker-binding controls: the binding validator must
+        # reject a foreign binary, a tampered receipt hash and a missing
+        # exe, and accept the exact recorded build.
+        $bindExe = Join-Path $env:TEMP "av827-selftest-worker.exe"
+        Set-Content -Path $bindExe -Value "selftest worker bytes" -Encoding ascii
+        $bindHash = (Get-FileHash $bindExe -Algorithm SHA256).Hash
+        if (!(Test-WorkerBinding $bindExe $bindHash)) { Write-Host "CONTROL FAILED: the exact recorded build must be green"; $fails++ }
+        $bindForeign = Join-Path $env:TEMP "av827-selftest-foreign.exe"
+        Set-Content -Path $bindForeign -Value "different bytes" -Encoding ascii
+        if (Test-WorkerBinding $bindForeign $bindHash) { Write-Host "CONTROL FAILED: a foreign binary must be red"; $fails++ }
+        $bindFlip = if ($bindHash[0] -eq '0') { '1' } else { '0' }
+        if (Test-WorkerBinding $bindExe ($bindFlip + $bindHash.Substring(1))) { Write-Host "CONTROL FAILED: a tampered receipt hash must be red"; $fails++ }
+        if (Test-WorkerBinding "$($bindExe).gone" $bindHash) { Write-Host "CONTROL FAILED: a missing exe must be red"; $fails++ }
+        if (Test-WorkerBinding $bindExe "") { Write-Host "CONTROL FAILED: an empty receipt hash must be red"; $fails++ }
         # A REAL failing child scope propagated through the same
         # Invoke-Scope path acceptance uses -> red.
         if (Invoke-Scope "fail-shim") { Write-Host "CONTROL FAILED: failing scope must be red"; $fails++ }
@@ -380,6 +468,8 @@ switch ($Scope) {
         # V-13 (T-09): the 828 session reuse over this plan's source entry.
         Run-Probe-Tests "av_source_827_incremental" "incremental" @(
             "av_source_827_incremental_d828_baseline_30_structure_and_p95",
+            "av_source_827_incremental_raw_shape_rejects_missing_baseline",
+            "av_source_827_incremental_failing_verdict_still_writes_raw",
             "av_source_827_incremental_two_fn_local_updates",
             "av_source_827_incremental_precise_refusals",
             "av_source_827_incremental_degradation_caught",
