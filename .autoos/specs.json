@@ -4542,6 +4542,31 @@
  "modified_at": 1792941529,
  "completed_at": 1792941529
 }
+,
+{
+ "id": "P847-MERGE",
+ "title": "PLAN-847 feature boundary restored; batch new reds routed",
+ "content": "Original B845-FEATURE-01 closed and code landed master; frozen daily3181/3181 and main book3109/3109 pass. Full batchtf external-workspace owner selection fails before tests and tt execution-state cases remain non-green, routedPlan850 draft. Green coverage anchor remains840; no test/limit reduction. Archive and cleanup effects in archived847 and merge receipts.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-test-case/plans.md",
+ "milestone": null,
+ "module": "auto-test-case",
+ "tags": [
+  "PLAN-847",
+  "r1",
+  "reviewed:60f0bb03331e716516701fc8189bfd6e6b7244d9",
+  "source-commit:65523405ccfb53a398caaec16ae4626bdc1eb635",
+  "source-sha256:92eac0b07dd75716f873f09d2fb95bc100a27a2d776f6f7556dfec34777d0fc9"
+ ],
+ "created_at": 1792946072,
+ "modified_at": 1792946072,
+ "completed_at": 1792946072
+}
 ],
       "section_type": "Reports",
       "title": "📊 Reports",
@@ -25924,6 +25949,31 @@
  "modified_at": 1792941529,
  "completed_at": 1792941529
 }
+,
+{
+ "id": "P847-REVIEW",
+ "title": "PLAN-847 independent final PASS",
+ "content": "Independent r1 verifies restored optional/default-off feature boundary, complete2177 ID equality, original probe27/MIR-native24 retention, and29 scoped cases; frozen60f0bb033. No normative Spec impact; merge/full regression separate.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/attachments/847/review-r1/report.md",
+ "milestone": null,
+ "module": "auto-test-case",
+ "tags": [
+  "PLAN-847",
+  "r1",
+  "reviewed:60f0bb03331e716516701fc8189bfd6e6b7244d9",
+  "source-commit:65523405ccfb53a398caaec16ae4626bdc1eb635",
+  "source-sha256:87ae4649b61d82208cb9406f3d8d7fd83749041aee793da561d0d9ad80bc789d"
+ ],
+ "created_at": 1792946072,
+ "modified_at": 1792946072,
+ "completed_at": 1792946072
+}
 ],
       "section_type": "Reviews",
       "title": "🔍 Reviews",
@@ -25935,5 +25985,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 87
+  "version": 88
 }
