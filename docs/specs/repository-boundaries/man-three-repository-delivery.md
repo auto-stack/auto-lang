@@ -13,7 +13,7 @@
 
 ## 固定版本与 profile
 
-本基线：Man `f52cd93b`、lang 生产源 `87f82d637`、UI `aee499e87093ff727f68ac8467c506e9ecf6ecdc`、down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。
+本基线：Man `75a81b4f`、lang rebase 候选 `1b9f70dab`（range-diff 28/28 等价）、UI `aee499e87093ff727f68ac8467c506e9ecf6ecdc`、down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。
 
 - **Core**：`cargo build --locked --manifest-path core/Cargo.toml -p auto --no-default-features --features core`。独立 Core workspace/lock/target 复用 `crates/auto` 的 CLI 源，但不经 full manifest；只需 Man/lang，无 UI 实现源、auto-ui-tool、auto-lang compat 或 iced。语言/管理/协议命令真实执行，UI 请求具名失败。
 - **完整 profile**：根 workspace default=`ui-extra+python+autodown`，含匹配 auto-ui-tool 与 UI 源/资产。五操作经 `auto-tool-client` 调真实工具进程；ui-extra 的静态面按固定 UI source 消费。
@@ -22,6 +22,7 @@
 ## 发现与机器合同
 
 - 发现序：`AUTO_UI_TOOL_BIN`（指定即必须存在）→ `AUTO_UI_ROOT`/Cargo manifest 锚/实际 `current_exe` 的 `target/debug|release` 开发布局推导 UI owner → 邻接安装；真实 describe 验工具名、协议版本、能力及收尾，无静态 fallback。普通 CLI 无 Cargo/AUTO 环境也能发现同组 owner；不搜索任意主检出或借用 Man target 旧工具。
+- Blueprint 资产以语言仓为唯一生产源；显式 `AUTO_BLUEPRINTS_ROOT` 与项目库优先，Man 占位目录不遮蔽真实库。开发回退语言 owner，安装回退当前根的 `sdk/packages/blueprints`，生产/测试共用注册入口。
 - I-TOOL v1 与 I-PROJECT/AST/Value/协议类型单源；选项经广播核对、落点核实和 StrictGuard 三层守门。
 - `--format json`/`--ai` 单 JSON；正常退出 0，错误具名非零。service≠serve/req/mcp；VM 线程亲和、Rust owned tree、watch/reader 真停保持。
 - Man 根 full workspace=9 package，根 Cargo.lock；Core 另有独立 workspace/lock/target。`cargo t`=full workspace lib+auto bin，`tc`=管理 Core，`tcore`=Core bin+非 UI driver，`ti`=集成目标。`cross-repo-tiers.py` 串行编排 lang/Man/UI，man-tcore 前在 lang 构建 te-child，man-ti 前分别在 UI/lang 构建 auto-ui-tool/te-child，并注入 owner 路径；测试 ID 逐项对拍而非仅比总数。

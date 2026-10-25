@@ -35,3 +35,9 @@
 实际执行：full build；直接生产 discovery 七格；无注入 CLI gen 1/1；真实 Core backup 恢复六步（含负控）；full 永久恢复 driver；rustfmt、Python AST、diff-check。未运行语言/Man 整档、六 profile、完整 14 项或无关 Core/owner/legacy 重放。
 
 下一责任角色为 **T-10 受影响独立复审**。final pass 后由 merge 在新冻结输入执行语言裸 `cargo t` 与实际触面、Man `t`/`tcore`/`ti` 及必要 consumer/UI 门，再完成合入、来源读回、Spec/ledger/索引、归档与 guard 清理。`tf` 仍仅主检出按到期规则单实例批量。
+
+## 5. Merge 门禁新增修复
+
+R3 后首次 merge 门发现 Man 占位 `packages/blueprints` 阻断语言真实库，且原 cmd_bp 测试绕过生产 registry。Man `75a81b4f` 已统一生产/测试入口，保留显式 env 和项目库优先，仅占位根回退安装 SDK 或语言 owner。`cmd_bp` 4/4、开发/安装 `bp list` 与显式根负控通过，详见 [merge 修复报告](merge/repair-report.md)。该代码变化使 R3 旧提交审查不能替代新受影响复审。
+
+lang 首次 `cargo t` 另命中已登记 B845-FEATURE-01（`probe_adapter_tests` 可选 `auto_test_case` 门控缺失），PLAN-847 为独立 owner；832 未修改或豁免该 blocker，lang 合入须等其恢复。当前 Man/lang 均未落地，ledger/归档/清理未执行。
