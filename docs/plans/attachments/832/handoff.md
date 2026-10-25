@@ -9,7 +9,7 @@
 - UI：`aee499e87093ff727f68ac8467c506e9ecf6ecdc`；down=`c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。
 - Core 安装=640 files/29 packages，仅 Man/lang source；full 安装=6608 files/四仓 source。确定性身份=固定源+各自锁+安装清单，二进制 hash 不替代来源。
 
-[R1 修复闭环报告](repair-r1/report.md) 与 [机器结果](repair-r1/results.json) 绑定上述代码、输入及证据复用边界。
+[R1 修复闭环报告](repair-r1/report.md) 与 [机器结果](repair-r1/results.json.txt) 绑定上述代码、输入及证据复用边界。
 
 ## 2. AC 结果与证据
 
