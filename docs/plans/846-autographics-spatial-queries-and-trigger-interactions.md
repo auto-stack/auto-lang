@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-846
-status: reviewed
+status: executing
 feature_name: AutoGraphics空间查询与触发交互原型
 plan_revision: 2
 author: [Codex]
 created_at: 2026-10-25
 updated_at: 2026-10-25
-current_step: 10
+current_step: 9
 total_steps: 11
 depends_on: [PLAN-845]
 supersedes_spec_components:
@@ -251,7 +251,7 @@ r1可行性原型与反例详§9。r2先执行V13/T02-SDK，再继续T02；既�
 | T-06 [x] | work | T-05 | Host/Panel/bin版本选择闭合、samples/spatial_projects/zone2d、zone3d | V-07/09正式默认/临时源与项目/源定位，用户Auto触发语义和原v1/845定向控制过；AC-06 |
 | T-07 [x] | work | T-06 | 新check_spatial_queries.py/正式OS路径/真实GPU故障及新进程项目回放 | V-09/10两项目仓外同binary/搬迁/条件变异/partial/Stop画面完整，非环境gap；AC-08 |
 | T-08 [x] | work | T-07 | 新check_spatial_owners.py、source/fresh consumer/README、新research/spatial-query-handoff.md/Spec proposal | V-01/11/12、20轮owner/扫描上传、全部work定向/check/fmt与准确完整merge矩阵齐；AC-01, AC-07, AC-08 |
-| T-09 [x] | review | T-08 | 同树冻结code/Plan/Spec及原始两项目报告，主检出独立review附件 | 逐AC-01..08/SD/遗漏/延后/workaround/健康绑定结论；AC-09 |
+| T-09 | review | T-08 | 同树冻结code/Plan/Spec及原始两项目报告，主检出独立review附件 | 逐AC-01..08/SD/遗漏/延后/workaround/健康绑定结论；AC-09 |
 | T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出Spec/ledger/archive/guard/到期 | AC-10实际落地/清理，改代码先受影响复审再新冻完整门，不提前宣称交付 |
 
 ## 9. 复审记录
@@ -378,6 +378,14 @@ F-846-M1-ROOT-MN-P95：实际根接收冻结44480（纯SDK映射，master父9a6c
 
 实际master新增820共享MIR扩展，原2ff/00973根整档证据不作为最终接收证据。唯一WT顺序重放至2090e9094，根新冻结204bc0781；SDK210fc8410与性能204bc0781两补丁range-diff完全等价。原binder拒绝、整个cache_tier准入/身份及双函数局部更新在新基面通过；检查820新增类型/指令受控拒绝与windows-sys锁边，不改846五文件/SDK数值/支持/30样本1000ms合同。图形bf22未变，R2十目标SD保留。[R4受影响复审](attachments/846/review-r4/review.md)，同实施会话独立性限制如实记录。新根t/tv和原迁仓三UI包整档仍merge-owned pending；其通过前不合入。
 
+### 2026-10-25 merge:r3 → work:r5 — 新接收基面P95再次失败
+
+图形87有效门全部完成（83原门+4空间），每侧14空间调用、4Step、15项目与2界面搬迁均通过；交互干扰失败历史保留，静默输入重放闭合。根冻结4df468b54/master d14983ae9，实际新增820后全档3172运行888：887pass/1fail，2284未跑；原签名重建30样本P951249.3752ms≥1000，P50955.8096。该真实失败不豁免、不缩范围，R4实现审查不足以证明新基面性能门通过。开启第二轮必要修复work:r5，T09受影响重开，executing9/11；保留图形/SDK与未变SD，根性能关闭待新证据。尚无landing/ledger/archive/cleanup。
+
+### 2026-10-25 work:r5 — 链接工具身份有界读取 / 性能仍未闭合
+
+用户必要修复授权下，MN链接工具身份从整文件临时Vec改为64KiB缓冲完整BLAKE3散列；原字节覆盖/算法/身份轴/准入/支持不变，不引入跨进程hash捷径。607ed28c6已提交，8项cache整族及格式通过；空/64KiB边界/短尾部/重复读取/缺文件对照补齐。实际原30样本定向P951107.9436ms仍≥1000，未送final pass、未伪称finding关闭。检测到其他仓大型编译，正在记录负载并等待30秒无其他cargo/rustc/nextest窗口，再决定原门复验；竞争影响尚未确认为唯一根因。与图形固定SDK闭包无交集，87门原始报告与失败历史已提交。所有规范/ledger/landing/archive/cleanup仍未执行。
+
 ## 10. 待澄清事项
 
-F-846-M1-ROOT-MN-P95必要修复及受影响R3已通过，当前等待新冻结完整合入门；历史阻断收据保留。F-846-R1-01已修复且R2 final pass，无剩余已知846实现finding；完整门尚未通过。F-846-T02-NAN已由r2修复及重放关闭，不再沿用r1只读SDK限制。原数值/支持/预算合同保持；未授权其他SDK改动/生产扩面。历史入口与needs_replan证据保留§9与附件。
+F-846-M1-ROOT-MN-P95在新根完整门及work:r5原30样本定向仍失败，保持未闭合，等待低竞争窗口验证及必要后续修复/复审；历史证据保留。F-846-R1-01已修复且R2 final pass，无剩余已知846实现finding；完整门尚未通过。F-846-T02-NAN已由r2修复及重放关闭，不再沿用r1只读SDK限制。原数值/支持/预算合同保持；未授权其他SDK改动/生产扩面。历史入口与needs_replan证据保留§9与附件。
