@@ -140,3 +140,5 @@ plan-report 07 文中的 plan 链接指向 `docs/plans/`，实际文件均已移
 | 773 | autodown-testcase-protocol-pilot（vm 侧） | ✅（reviewed） | plans/773-autodown-testcase-protocol-pilot.md | TestCase 协议 A 阶段：avm/run 检查合同化+`run_with_capture_and_path_staged` 类型化 trap 通道（engine 陷阱点记 VMError 变体名中继出线程，旧 API 原样）+旧 `expected.error` any-Err 弱断言在 pilot 轨强化为强辨识；pilot 引用式消费旧 vm 语料零搬动；tv 聚合入口 `vm_file_tests::pilot_aggregate_vm` |
 | 811 | media-host-runtime-extraction（vm 侧） | ✅（reviewed→archived） | archive/811-media-host-runtime-extraction.md | 17 项 auto.image native 与媒体 HTTP 快路径改消费 auto-media-core：ID 2960..2975+thumb 按名冻结、ui-iced 开关/stub 语义保持、控制面不透明票据/URI 零像素回灌、快路径仍先于用户路由 (Plan 811) |
 | 813 | tapl-runnable-examples | ✅（reviewed→archived） | [archive](../../../plans/archive/813-tapl-runnable-examples.md) | TAPL 书例所需的 AutoVM 输入、math/net/hash/regex 运行路径定向验证及目录执行回归 |
+
+| 846 | f64非有限编码纠正 | delivered | [PLAN-846](../../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md) | NaN不别名tag/零，负Inf分类纠正，有限数/±0/Inf/tag位型保留 |

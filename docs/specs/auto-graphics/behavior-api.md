@@ -122,3 +122,10 @@ Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-
 The public behavior/1 declarations, units, finite source validator, callbacks, limits and trusted-code boundary are unchanged. A scene may now explicitly bind one accepted byte-exact source and nullable stable same-dimension leaf roles; [behavior projects](behavior-project.md) defines persistence and ownership. Default Run snapshots accepted bytes without file reread, with current-root verified blob or explicit memory/hash provenance. Explicit user-file selection still reads once per Run and remains temporary; saving never silently binds it. Bind/Open compile/check but do not execute callbacks.
 
 Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-portable-projects.md), [independent final review](../../plans/attachments/845/review-r8-preparation/review.md), [merge receipt](../../plans/attachments/845/merge-r1/receipt.md). Source: autographics-dev; production I2/I3 pending.
+
+
+## PLAN-846 finite spatial extension
+
+Behavior/2 is explicitly selected, adds the finite AABB APIs in spatial-query-profile.md and profile8, and shares the unchanged v1 managed unit. V1 helper names/source identity do not acquire new reserved names. Source/API/bridge/base/geometry are checked on each Run; no auto-upgrade, source rewrite or quota/deadline relaxation.
+
+Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md), [final affected review](../../plans/attachments/846/review-r6/review.md). SDK/root and graphics delivery identities are recorded in the Plan consolidation receipt; production I2/I3 remain pending.

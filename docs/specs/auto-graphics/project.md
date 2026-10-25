@@ -109,5 +109,13 @@ flowchart LR
 | 模块 | 职责 | 状态 |
 |---|---|---|
 | [behavior-project](behavior-project.md) | 单源码绑定、历史/闭包/来源及可搬迁Run合同 | experimental |
+| [spatial-query-profile](spatial-query-profile.md) | 有限AABB/点包含/成对重叠与Auto触发状态 | experimental |
 
 Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-portable-projects.md), [independent final review](../../plans/attachments/845/review-r8-preparation/review.md), [merge receipt](../../plans/attachments/845/merge-r1/receipt.md). Source: autographics-dev; production I2/I3 pending.
+
+
+## PLAN-846 finite spatial extension
+
+The next finite experimental layer is spatial-query-profile.md: explicit v2, all-mesh AABB bounds, point and pair queries, user Auto trigger state and portable zone2d/zone3d scene4 projects. Original games/authoring/project/owner/source/native denominators remain; production I2/I3 and overall engine goals are not completed by this work.
+
+Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md), [final affected review](../../plans/attachments/846/review-r6/review.md). SDK/root and graphics delivery identities are recorded in the Plan consolidation receipt; production I2/I3 remain pending.

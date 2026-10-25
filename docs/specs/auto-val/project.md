@@ -23,3 +23,10 @@
 | string / str_slice / owned_str / cstr | 字符串类型族（AutoStr 等） | active |
 | array / linear / kids | 集合/子节点容器 | active |
 | meta / path / shared / types / to_value / emit | 元信息、路径、共享类型与转换输出工具 | active |
+
+
+## PLAN-846 finite spatial extension
+
+F64 NaN encoding clears only the sign bit so NaNs never occupy negative NaN-box type tags. Raw negative infinity (zero mantissa) is classified as f64, not a tag. Finite values, signed zero, infinities and nonfloating tag encodings retain their bits; NaN numerical semantics/payload are preserved while its sign is normalized. This corrects native-f64→float consumer aliases; it is not a new ABI.
+
+Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md), [final affected review](../../plans/attachments/846/review-r6/review.md). SDK/root and graphics delivery identities are recorded in the Plan consolidation receipt; production I2/I3 remain pending.

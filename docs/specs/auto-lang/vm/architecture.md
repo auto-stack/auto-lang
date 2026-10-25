@@ -156,3 +156,10 @@ graph TD
 - 备选：engine 数值臂逐一补 TAG_LIST 容忍（cons：双 tag 分叉扩散，H2 统一约定逆行；GET_FIELD 的 is_list 容忍臂即此路线的历史残留）；视图 computed 全走块体隐藏 fn（cons：表达式 computed 是既有合法形态，plan448 已并存双通道）。
 - 后果：T-01 有界调查实证 handler 域 fn 调用（全参型 × 同文件/跨模块 × 跨轮次消费）**本无缺陷**——musk 附页③"handler 域返空"系输入面（懒挂载 prop 迟到 + 提交树缺重算调用点）误归因；computed 面修复后 `cc2`（状态引用实参）/`cc`（对象字面量实参）真值渲染。矩阵回归锚 `plan733_fn_call_semantics_tests`（日常档）。已知边界（懒挂载时序/push_value 占位/预存红族/视图 `.length` 成员链）见设计文档登记节。
 - 状态：active
+
+
+## PLAN-846 finite spatial extension
+
+ADR-06 clarification: non-NaN f64 values remain directly stored, including raw negative infinity. encode_f64 places all NaNs outside the negative tagged namespace by normalizing their sign; other type tags remain unchanged. Native negative NaN must remain nonfinite through float slots and be rejected by finite consumers, never become integer/tagged zero. The representation stays one64-bit slot with the same public signatures.
+
+Provenance: [PLAN-846](../../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md), [final affected review](../../../plans/attachments/846/review-r6/review.md). SDK/root and graphics delivery identities are recorded in the Plan consolidation receipt; production I2/I3 remain pending.

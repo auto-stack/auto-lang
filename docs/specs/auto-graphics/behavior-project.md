@@ -104,3 +104,10 @@ No hot reload, multi-file module/package, async/FFI/import or production I2/I3 i
 
 
 Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-portable-projects.md), [independent final review](../../plans/attachments/845/review-r8-preparation/review.md), [merge receipt](../../plans/attachments/845/merge-r1/receipt.md). Source: autographics-dev; production I2/I3 pending.
+
+
+## PLAN-846 finite spatial extension
+
+Scene4 Binding.api accepts exact behavior/1 or behavior/2. Temporary CLI/UI selection stays explicit and does not override a project default. Same raw bytes may share their Arc, but admission credentials remain API-specific; same-byte API switching is a real history/dirty transaction. Failure preserves the previous binding/source; save/open/verify and raw closure contracts remain.
+
+Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md), [final affected review](../../plans/attachments/846/review-r6/review.md). SDK/root and graphics delivery identities are recorded in the Plan consolidation receipt; production I2/I3 remain pending.

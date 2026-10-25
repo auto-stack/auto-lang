@@ -209,3 +209,10 @@ The experiment additionally supports [autographics.behavior/1](behavior-api.md),
 The full inherited driver/AGP16case/dual-game/authoring/resource/hierarchy/Play/native/owner/counter AND actual-content denominators remain required, plus user13case and independent source-consumer gates. No I2/I3/general engine/public production SDK claim, script packaging/persistence, hot reload, FFI/import/async, rotation/scale writer or arbitrary VM heap hard quota is added.
 
 Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md), [affected final review](../../plans/attachments/840/review-r2/review.md), [complete merge receipt](../../plans/attachments/840/merge-r1/receipt.md). Graphics source: autographics-dev. Production I2/I3 remain pending.
+
+
+## PLAN-846 finite spatial extension
+
+Explicit behavior/2/profile8 provides finite all-mesh AABB proxies and two portable trigger examples, as defined in spatial-query-profile.md. V1/Builtin6/profiles1..5, old games and picking remain. This is not precise physics, production widgets/Schema/ACE/Forge or a full engine claim.
+
+Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md), [final affected review](../../plans/attachments/846/review-r6/review.md). SDK/root and graphics delivery identities are recorded in the Plan consolidation receipt; production I2/I3 remain pending.

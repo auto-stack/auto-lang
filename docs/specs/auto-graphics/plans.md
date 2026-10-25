@@ -24,3 +24,5 @@
 Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md), [affected final review](../../plans/attachments/840/review-r2/review.md), [complete merge receipt](../../plans/attachments/840/merge-r1/receipt.md). Graphics source: autographics-dev. Production I2/I3 remain pending.
 
 | 845 | 行为绑定与可搬迁项目闭环 | archived | [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-portable-projects.md) | scene4单源码/稳定角色、接受字节历史/闭包存储、真实UI输出搬迁及来源诊断；autographics-dev，生产I2/I3 pending |
+
+| 846 | 空间查询与用户触发交互 | delivered | [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md) | 显式v2有限AABB/点/对查询、Auto触发双示例；SDK非有限编码纠正，生产I2/I3 pending |

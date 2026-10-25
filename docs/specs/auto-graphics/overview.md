@@ -23,3 +23,5 @@
 Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md), [affected final review](../../plans/attachments/840/review-r2/review.md), [complete merge receipt](../../plans/attachments/840/merge-r1/receipt.md). Graphics source: autographics-dev. Production I2/I3 remain pending.
 
 - [Bound behavior projects](behavior-project.md): scene4 stable nullable roles, byte-exact source/history and verified complete source/GLB closure; default Run and honest memory/hash provenance, real UI-output relocation (PLAN-845).
+
+- [Finite spatial queries](spatial-query-profile.md): explicit behavior/2/profile8, actual all-mesh bounds and Auto point/pair queries, portable zone2d/zone3d triggers; unchanged v1 and production I2/I3 boundaries (PLAN-846).

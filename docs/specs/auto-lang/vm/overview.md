@@ -476,3 +476,5 @@ auto-ui-runtime。
 > **PLAN-814 B 事实注记（M814-B）**：renderer 生命周期已随 T-04 迁
 > auto-ui-runtime（VM 侧轻能力+宿主装配钩子分发不变）；VM 无 UI 实现
 > 闭包经六 provider 缺席臂哨兵维持（T-08 default-features=false 边）。
+
+PLAN-846: f64 NaN编码归一化符号以避开负NaN-box标签，负Inf保持浮点分类；数值/标签位型合同见[architecture](architecture.md)。

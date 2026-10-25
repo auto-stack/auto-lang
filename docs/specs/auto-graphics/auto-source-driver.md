@@ -145,3 +145,10 @@ Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-
 The same source-only experimental runner opens scene4+declared assets+one scripts/SHA.at, defaults to accepted user bytes/roles and preserves all previous profiles/games/temporary overrides. Move/Patrol and source-only speed updates use the same binary, real Auto traces and real all-part GPU pixels. Actual OS/UI-saved projects survive import-root removal and relocation/new process/cwd with --open only. [Behavior projects](behavior-project.md) owns binding/history/closure/provenance; source closure320, SDK681 at932ad487 and original locks remain fixed. Full producer/fresh own-SDK/own-target compatibility, owners, original16 AGP and counter AND content gates remain. The current finite single-source packaging supersedes PLAN-840's former no-persistence restriction only; general engine, installer/multi-module/production I2/I3 remain pending.
 
 Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-portable-projects.md), [independent final review](../../plans/attachments/845/review-r8-preparation/review.md), [merge receipt](../../plans/attachments/845/merge-r1/receipt.md). Source: autographics-dev; production I2/I3 pending.
+
+
+## PLAN-846 finite spatial extension
+
+The finite spatial-query-profile and zone2d/zone3d bound projects use real Auto private state for enter/stay/exit. They support same-binary source condition updates, OS Bind/Save, relocated projects and new-process reopen. SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467 fixes upstream nonfinite encoding without changing ABI, finite bits or support scope. Source-only changes and actual GPU/owner controls complement every inherited gate.
+
+Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md), [final affected review](../../plans/attachments/846/review-r6/review.md). SDK/root and graphics delivery identities are recorded in the Plan consolidation receipt; production I2/I3 remain pending.

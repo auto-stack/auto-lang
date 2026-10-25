@@ -213,3 +213,18 @@ Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-
 A locally saved scene4 declares GLB assets and one accepted content-addressed Auto source, with explicit nullable stable actors. This finite binding/persistence supersedes PLAN-840's former script-packaging exclusion, without expanding behavior/1 or changing production integration. [Behavior projects](behavior-project.md) is the current contract for source admission/owners/closure/Run provenance. Root/source loss after acceptance never causes a fallback reread; later Open/Save/Verify still detect bad disk closure. Actual UI project relocation and own-SDK/target consumers complement, rather than replace, all previous games/AGP16/authoring/hierarchy/assets/Play/owner and counter AND content gates. I2/I3 and full engine/installable distribution remain pending.
 
 Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-portable-projects.md), [independent final review](../../plans/attachments/845/review-r8-preparation/review.md), [merge receipt](../../plans/attachments/845/merge-r1/receipt.md). Source: autographics-dev; production I2/I3 pending.
+
+
+## PLAN-846 finite spatial extension
+
+PLAN-846 adds the explicit finite spatial profile beside v1 and a scoped upstream auto-val nonfinite fix/pin. Graphics code lands only on autographics-dev; the isolated SDK correction and separately authorized behavior-preserving MN repairs/verification policy land master after affected review and root functional gates. Original163 AGP/158 driver/83 native denominators remain, with20 driver tests and spatial native/owner/source cases appended. Production I2/I3/Schema/ACE remain later work.
+
+Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md), [final affected review](../../plans/attachments/846/review-r6/review.md). SDK/root and graphics delivery identities are recorded in the Plan consolidation receipt; production I2/I3 remain pending.
+
+## AutoGraphics incremental compilation acceptance (PLAN-846:r3)
+
+At this experimental stage, AutoGraphics requires correct incremental compilation: edits invalidate the applicable units, unchanged units may reuse admitted cached artifacts, and the resulting program must actually link and run with the expected behavior. Incremental compilation latency, throughput and P95 targets are observations rather than delivery gates. Performance optimization is deferred until functionality is complete, particularly integration with the real ACE engine; it requires later explicit acceptance criteria.
+
+The functional cases, sample inputs, cache/identity/rejection/cleanup assertions and supported input scope remain required. Runtime callback limits and resource/deadline safety contracts remain in force. The root MN verification harness can select the explicitly named `AUTO_LANG_AUTOGRAPHICS_INCREMENTAL_PERF=observe` policy for AutoGraphics verification; it records the policy and measured values while leaving functional assertions active. Other root verification retains its default performance policy.
+
+This acceptance policy does not claim that the experimental graphics driver has already been integrated with the real ACE engine; that integration remains future work. Separately authorized root SDK/MN repairs and verification-policy changes land on master; graphics implementation continues to land only on autographics-dev.

@@ -83,3 +83,10 @@ Scene4 behavior defaults to accepted immutable source+explicit nullable leaf rol
 Original whole-frame validation, sticky API error, fixed dt/clock/credits/deadline, Starting cancellation, actual Auto dispatch, Stop restoration and VM/GPU ownership remain unchanged. No callback runs merely from bind/Open/Save; a runtime-Fault source can be saved and reopened before an explicit Run.
 
 Provenance: [PLAN-845](../../plans/archive/845-autographics-bound-behavior-and-portable-projects.md), [independent final review](../../plans/attachments/845/review-r8-preparation/review.md), [merge receipt](../../plans/attachments/845/merge-r1/receipt.md). Source: autographics-dev; production I2/I3 pending.
+
+
+## PLAN-846 finite spatial extension
+
+Explicit UserSpatialV2/profile8 adds a bounded accepted geometry configuration before app_start. Its full base/descriptor identity is reconstructed from actual Host/Registry resources; malformed/foreign metadata cannot execute app_start or publish. Auto performs instant world queries and keeps original callback/whole-frame/CPU/Stop rules; geometry never becomes persisted runtime state.
+
+Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md), [final affected review](../../plans/attachments/846/review-r6/review.md). SDK/root and graphics delivery identities are recorded in the Plan consolidation receipt; production I2/I3 remain pending.
