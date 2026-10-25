@@ -826,19 +826,23 @@ def check_ownership(root: Path, entries: list[dict], asset_cfgs: list[dict] | No
 def summarize_assets(root: Path, tracked: list[str], asset_cfgs: list[dict]) -> dict:
     summary = {}
     for cfg in asset_cfgs:
+        repo_id = cfg.get("repo")
+        asset_root = resolve_repo_root(repo_id, root) if repo_id else root
+        asset_tracked = collect_tracked_files(asset_root) if repo_id else tracked
         rel_root = cfg.get("root", "").rstrip("/")
-        files = [p for p in tracked if p == rel_root or p.startswith(rel_root + "/")]
+        files = [p for p in asset_tracked if p == rel_root or p.startswith(rel_root + "/")]
         exts: dict[str, int] = {}
         total_bytes = 0
         for rel in files:
             ext = PurePosixPath(rel).suffix or "(none)"
             exts[ext] = exts.get(ext, 0) + 1
             try:
-                total_bytes += (root / rel).stat().st_size
+                total_bytes += (asset_root / rel).stat().st_size
             except OSError:
                 pass
         summary[cfg.get("id", rel_root)] = {
             "root": rel_root,
+            "repo": repo_id,
             "owner": cfg.get("owner", ""),
             "exit_phase": cfg.get("exit_phase", ""),
             "tracked_files": len(files),

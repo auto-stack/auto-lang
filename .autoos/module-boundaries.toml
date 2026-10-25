@@ -301,14 +301,6 @@ owner = "lang"
 exit_phase = "-"          # 生产标准库留语言仓
 
 [[assets]]
-id = "auto-man-assets"
-coverage_group = "assets"
-repo = "auto-man"
-root = "crates/auto-man/assets"
-owner = "auto-man"
-exit_phase = "R7"
-
-[[assets]]
 id = "man-template-assets"
 coverage_group = "assets"
 repo = "auto-man"
