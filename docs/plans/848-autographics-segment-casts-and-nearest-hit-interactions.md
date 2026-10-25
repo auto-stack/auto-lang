@@ -28,6 +28,8 @@ affects: [auto-graphics, authoring-experimental, segment-query]
 
 ## 0. 变更摘要
 
+当前merge:r1因完整原生门阻塞，尚未合入：producer/fresh consumer完整216/216各通过，构建/源码正反/部分旧原生矩阵通过；用户脚本Patrol及搬迁例在两次完整尝试中先触发原有tick backlog>4自动暂停，输入断言失败。准确外部诱因未证实，未改阈值/实现。保持reviewed9/10，T10 pending，规范/ledger/归档/清理未执行。[合入收据与归因](attachments/848/merge-r1/receipt.md)。本段替代下方历史“暂不合入”的授权状态：用户已授权全部门过后收尾，但门未全过。
+
 当前状态：用户授权的独立子代理 `/root/review_848_r3` 最终复审 **pass**，F-848-R1-01 CLOSED，T09完成，reviewed9/10。冻结提交6bc5abc60，128节点/32credits/原CPU合同保持。T10完整合入门pending，暂不合入。详见[独立最终报告](attachments/848/review-r3-final/review.md)及§9 review:r3；下方授权待答复、独立pending及OPEN仅为历史记录。
 
 846提供有限2D/3D AABB包含/重叠和用户触发逻辑；下一步增加**有限world线段扫描、确定性最近命中及有界结果读取**，让真实Auto脚本实现光束选目标、视线遮挡/开门。沿用现有几何代理，不把无穷射线、triangle精确拾取或完整物理并入本版。
@@ -344,6 +346,14 @@ stage:review | review_scope:final | reviewer_identity:用户明确授权的独�
 
 T09关闭，Plan状态reviewed9/10。原生/GPU/owner未变机制按报告明确边界复用原始证据，当前r3正控用当前runner补齐；未跑整档/全包/native完整矩阵。父代理复核报告、实施HEAD/clean后单写计划簿记；实施保持冻结，canonical Specs/live ledger未发布，T10及全部merge-owned门仍pending。最终pass不等于交付完成，任何后续代码/依赖/配置/输入漂移须受影响复审，未合入/归档/清树。本记录替代上方历史的授权待答复、独立final pending及F01待确认状态。
 
+### 2026-10-25 merge:r1 — blocked / reviewed9/10
+
+stage:merge | plan_id:PLAN-848 | plan_revision:3 | outcome:blocked | reviewed_commit:6bc5abc6080b2261a43f55a54f127cd779239edb | worktree_path:D:/autostack/.wt/lang-848/auto-lang | branch:plan-848-dev | dependency_revisions:固定SDK7b987/三锁/AGP未变 | passed_gates:producer216/consumer216、完整build、check/fmt、source四反控及恢复、旧双游戏/编辑/交互/层级GPU敏感性/资产/Play原生 | blocked_gate:user native完整13例 | blocker:原有auto-Pause tick backlog>4在输入oracle前暂停；外部原因尚未证实 | pending:T10剩余全部原生/owner/最终audit及收尾 | prepared/landed/ledger_refreshed/archived/cleaned:false | next:诊断/稳定原生重放条件，同阈值关闭失败与pending门后继续merge。
+
+[收据](attachments/848/merge-r1/receipt.md)、[原始归因](attachments/848/merge-r1/diagnosis.md)、[机器记录](attachments/848/merge-r1/blocked.json.txt)绑定真实执行。首次consumer遗漏既有32MiB链接栈的配置失败已由PE头/原配置和exact重放归因，随后全216通过；原日志保留不计绿。当前producer用户脚本首次Patrol phase5失败，单独原样Patrol phase27通过；完整重试Move/Patrol/Fast通过，搬迁例phase17再次记录tick backlog>4暂停后V隐藏断言失败。Play时钟/dispatch_credit及v1 API/原oracle未改，不能据此伪称全部Play文件未变或外部负载已证实。未改预算/节点/断言/暂停政策，停止无新条件的自动重试。
+
+独立最终pass仍绑定原冻结实现，尚未证明产品回归，保持reviewed9/10、T09完成、T10不勾选。没有合入autographics-dev、发布canonical/live ledger、归档或清树；实施HEAD/clean复核无漂移，当前规范输入hash无漂移。原生验证二进制/变异探针已按哈希留存仓外，producer/consumer树与缓存保留以便恢复。未跑root档或宣称批量绿；完整门未通过，不宣称交付完成。
+
 ## 10. 待澄清事项
 
-当前无新的产品选择待用户决定；用户授权的独立最终复审已pass，F-848-R1-01关闭，reviewed9/10。有限world线段/AABB最近命中、single-slot callback token、显式v3、128节点/weighted32credits及原CPU合同保持。T10完整统一门与实际交付仍pending，本轮暂不合入。若实际仍需要SDK/AGP/生产写面、提高CPU/降低节点保证或扩其他非目标，回new具体修订，不默认扩面实施。
+当前无新的产品选择待用户决定；用户已授权合入收尾，但merge:r1的原生user门仍被tick backlog自动暂停阻塞，不能合入。独立最终复审pass和F-848-R1-01关闭仍有效，reviewed9/10。有限world线段/AABB最近命中、single-slot callback token、显式v3、128节点/weighted32credits及原CPU合同保持。下一步先诊断原生积压/重放条件，按原阈值关闭失败及其余pending门；若发现代码缺陷，回work修复、提交并受影响复审后再冻结执行门禁。若实际需要SDK/AGP/生产写面、提高CPU/降低节点保证或扩其他非目标，回new具体修订，不默认扩面实施。

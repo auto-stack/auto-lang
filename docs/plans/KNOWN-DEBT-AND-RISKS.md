@@ -1,3 +1,7 @@
+### Plan 848 r3（2026-10-25，merge原生门阻塞，未合入）
+
+M848-NATIVE-BACKLOG OPEN（合入门阻塞，不是获准延期）：6bc5abc60/r3的producer/fresh consumer完整216各通过；原生用户脚本先后在Patrol phase5和搬迁例phase17记录auto-Pause tick backlog>4，随后输入/隐藏断言失败。单独原样Patrol通过；外部诱因未证实，不宣称848产品回归或全局原生绿。原时钟/credits/暂停及验收不改，reviewed9/10，T10剩余矩阵与收尾pending；未合入/沉淀/归档/清树。[收据及原始归因](attachments/848/merge-r1/receipt.md)。首次consumer链接栈配置遗漏已按既有32MiB配置定向及完整重放关闭，历史失败保留。
+
 ### Plan 848 r3（2026-10-25，独立final pass，合入门pending）
 
 F-848-R1-01 CLOSED，绑定6bc5abc6080b2261a43f55a54f127cd779239edb/r3。用户授权的独立子代理/root/review_848_r3复审通过，18个定向测试含60预算子例、6Host及新选128节点混合斜向反例。原128节点/32credits/CPU合同保持，无新阻塞。reviewed9/10，T10统一合入门pending，未合入。[独立报告](attachments/848/review-r3-final/review.md)。下方待确认/OPEN仅为历史。
