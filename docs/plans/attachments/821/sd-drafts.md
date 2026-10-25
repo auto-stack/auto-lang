@@ -1,8 +1,10 @@
-# PLAN-821 SD 草案（R3 修复后重生，供 review 复核 / merge 沉淀）
+# PLAN-821 SD 草案（R4 修复后重生，供 review 复核 / merge 沉淀）
 
-状态：草案——canonical Spec 写入由 merge 拥有。本文按 R3 修复后的实际交付
-（plan-821-dev R3 提交 `<本次提交>`，前置 R2 `18dee14f9` / R1 `e8e1e369d`+`e34a2c999`）
-整理 before/after 与证据锚点。当前状态单一事实源：frontmatter `execution_done 7/9`。
+状态：草案——canonical Spec 写入由 merge 拥有。本文按 R4 修复后的实际交付
+（plan-821-dev R4 提交 `40f4c594f`，前置 R3 `5fc1a0aa2` / R2 `18dee14f9` /
+R1 `e8e1e369d`+`e34a2c999`）整理 before/after 与证据锚点。当前状态单一
+事实源：frontmatter `status: executing / current_step: 7/9`（work-owned
+任务完成待 R5 独立复审；review/merge 任务未计）。
 
 ## SD-01 add `docs/specs/auto-av/place-ownership.md`
 
@@ -12,11 +14,16 @@
     plan821/av-owned、语义版本 1/1/1、types-fp 键轴。
   - 类型：Char/Str/StrView/MutRef/RecordView(RecordTypeRef)（借入 record 参数，
     tag 12）；资源分类派生不变。
-  - 指令集（R3 语义修订）：**FIELDMOVE（0x1C，owned-only）为逐字段消费**——
+  - 指令集（R3/R4 语义修订）：**FIELDMOVE（0x1C，owned-only）为逐字段消费**——
     dst 收字段值（record 为 Rc share、Str 为 handle——share 即转移），字段位
     置为类型化零值，root 代际 +1（root 上陈旧 view 退役）；**root 对其余字段
-    保持活**（t_MutRet 包装按 f0+wb* 逐字段消费，双 mut/owned 返回全形状）；
-    同路径二次抽取、部分消费后整根读均为 use-after-move。
+    保持活**（t_MutRet 包装按 f0+wb* 逐字段消费，双 mut/owned 返回全形状）。
+    死亡判定为**前缀重叠**（R4）：已移祖先⇒子树全死、已移后代⇒父非完整值
+    （父后子/子后父均授信前 use-after-move，不漏到执行期）；同路径二次抽取、
+    部分消费后整根读同红。**完整重初始化重置字段消费态**（R4）：任何定义点
+    （Const/Copy/Call/Aggregate/Clone/Move/FieldGet/FieldMove/文本族）建立
+    新完整值即清 moved_fields——新 owner（重聚合/每轮 Call 包装/循环携带
+    重定义）可再次消费；分支/回边合并保守并集。
   - 访问状态机：Return 全终态+逃逸按 provenance；Call 结果 view 溯源；
     MutRef 排他双向；owned def 目的地门；转移源 loan 门；FIELDMOVE 双侧
     borrow 门+逐路径 once。
@@ -28,15 +35,17 @@
     （与 to_borrowed 同派发）；view 操作数直通。
   - 分析内存：token_roots 稀疏+moved_fields 稀疏（仅 record 槽计入 bound，
     8192 i32 槽零开销）+真实布局 bound。
-- 证据：semantics 25 + resources 7 + r1_replay 9（含 R3 三形状+逐字段不变量）
-  + first 5 + corpus check。
+- 证据：semantics 25 + resources 7 + r1_replay 12（含 R3 三形状、R4 mut 循环=9、
+  整根重初始化 Success、父后子/子后父授信前拒、合法异根对照）+ first 5 +
+  corpus check。
 
 ## SD-02 add `docs/specs/auto-mir/owned-access-profile.md`
 
 - before：无本 profile MIR 合同。
 - after：SD-01 的 MIR 侧 + RecordView 编码（单向强制转换/签名驱动调用 kill/
   外部根字段视图）+ **FIELDMOVE 编码（路径解析到 owned 字段类型；dst 等型；
-  逐路径 once；稀疏 moved_fields 数据流+合并保守并集）**+ mut 参数写回 MIR
+  前缀重叠 once（祖先/后代双向）；稀疏 moved_fields 数据流+合并保守并集+
+  定义点重置）**+ mut 参数写回 MIR
   形状（move-in + t_MutRet 包装结果 {f0:源结果, wb*:按 callee mut-record 参数
   序}+调用点按 **callee 自身 mut 参数位** 驱动的 FIELDMOVE/MOVE 回写——只读
   record 实参与非 record 实参不消耗 wrapper 字段；f0 可复制结果 FIELD_GET、
@@ -96,23 +105,39 @@
   - 候选事务化保持（R2）：前端→失效→逐单元生产→整集受检 LINK→entry RUN
     全部成功后原子发布（EnvStep 分段：单 body 提交 FnCandidate::commit 一次、
     整轮重建环境——均在发布点应用）；任何失败保 source/revision/identity/
-    residents/production/可运行性。
+    residents/production/可运行性。**保留声明坐标随发布原子平移**（R4）：
+    单 body 发布携带 (decl_idx, old_hi, delta)——编辑函数 hi 平移、其后全部
+    声明（含 type）整体平移；连续变长编辑（同函数先增后改/前函数变长后改
+    后函数/缩回）恒以当前源坐标路由单 body 道，拒绝编辑不平移；整轮路径
+    重建全部坐标。
+  - 计量（R4 修订）：heap_estimate 将 RecordView 从 inline 零载荷分支移出、
+    与 Record 同式计费（owner/name/字段表/字段名 String 堆），FieldMove
+    路径 Vec 计入；abc.rs 解码卫哨逐元素镜像（RecordView 分支全量计费+两
+    record 分支逐字段名计费）——原对象/loaded/编码暂存同时存活的载荷进
+    保守上界（3000×~1000B 字段名：wire 3.03MB 入预算而 hot 估算 9.43MB
+    >8MiB 且 ≥载荷下界 9.07MB，超预算不再估算绿）。
   - **Production 六计数**（parse/recheck/emit/lower/encode/admit，逐单元）+
     整模块前端计数；**incremental_gate 通道感知**：单 body 编辑整模块前端
     必须零增、前端三元组仅期望集推进（真整前端在 body 编辑上即红）；整模块
     编辑恰 +1 前端、全单元前端三元组推进、backend 仅失效集；居民 Arc 身份+
     mint 代际双保、成员关系（forced whole、对象换不换代际、漏失效、静默移除、
     虚报期望集都红）。
-- 证据：incremental 6 例（含 R3 永久反例 main-only 零未改前端工作+虚报整集
-  反控）+ 事务反例（失败候选 revision/production/旧程序三保）。
+- 证据：incremental 7 例（含 R3 永久反例 main-only 零未改前端工作+虚报整集
+  反控；R4 连续变长编辑序列 1234→8/107→108/缩回/整轮后单 body 恢复）+
+  事务反例（失败候选 revision/production/旧程序三保）。
 
-## 待 review 裁定项（未变）
+## 待裁定项（V-05 合同差异，已具名路由 new/用户决策）
 
-**V-05 运行期句柄探测**：冻结指令集无句柄解引用指令——当前以类型隔离+
-bin-type 拒+MutRefV{frame,slot,gen} 捕获实现；旧帧复用/跨 store/generation
-边界运行期探测面不存在（无消费指令）。若冻结矩阵要求运行期探测 oracle，须扩
-指令或以故障注入探 MutRefV 域（合同修订路由）。该矩阵行未关闭，属具名必需
-反例缺口，待 review 对账——不以"不阻塞"替代裁定。
+**V-05 运行期句柄探测**：原冻结矩阵行（普通整数等于活资源id/旧帧复用/跨
+store/generation 边界 | 整数仍整数；无效访问在读取前受控拒绝）。as-built
+机制：类型隔离（Value 代数互斥）+ bin-type 拒 + MutRefV{frame,slot,gen}
+捕获与代际退役——**冻结指令集无句柄解引用指令，"无效访问"在运行期结构性
+不可达**（句柄是锁不是指针；排他性静态门+kill 代际退役）。因此原矩阵的
+运行期探测 oracle 在现指令集内不可构造：满足它需要 (a) 扩一条受检句柄
+解引用指令，或 (b) 授权测试专用故障注入探 MutRefV 域，或 (c) 修订矩阵行
+为 as-built 机制（静态门+代际退役+"整数仍整数"可执行例）。三选一均为
+合同修订——已按 R4 指示回 new 路由（§10 记录），未获授权前该行保持具名
+缺口，不以"不阻塞"或旧例绿替代裁定。
 
 ## 交付边界记录（R3 后）
 
@@ -128,3 +153,7 @@ bin-type 拒+MutRefV{frame,slot,gen} 捕获实现；旧帧复用/跨 store/gener
    （诊断面；身份 span 无关）。
 6. 资源门四线（B-line/hot/staging/execution）各按自身量纲判定；store space()
    为磁盘信息列，不代受管内存。
+7. 候选文档 span 为切片相对坐标（诊断面；身份 span 无关）；保留声明坐标仅
+   随成功发布平移（拒绝编辑不动）。
+8. 827 incremental-raw.json 为该测试运行自更收据，非本计划产物（R4 提交曾
+   误并入即剔）。
