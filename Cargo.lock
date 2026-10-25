@@ -564,6 +564,7 @@ dependencies = [
  "auto-lang-core",
  "auto-project-model",
  "auto-val",
+ "erased-serde 0.4.0-rc.1",
  "regex",
  "serde",
  "serde_json",
@@ -2660,13 +2661,20 @@ checksum = "00d174d5400e5e8fd687ad1049e2f578285fa914201b1af7e8b112a4546bd826"
 
 [[package]]
 name = "erased-serde"
-version = "0.4.10"
+version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2add8a07dd6a8d93ff627029c51de145e12686fbc36ecb298ac22e74cf02dec"
+checksum = "6c138974f9d5e7fe373eb04df7cae98833802ae4b11c24ac7039a21d5af4b26c"
 dependencies = [
  "serde",
- "serde_core",
- "typeid",
+]
+
+[[package]]
+name = "erased-serde"
+version = "0.4.0-rc.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "721cbf01fafc6d79d711eaf91e2ceda5619f260187944b2512f90251878ab29d"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -7329,14 +7337,12 @@ dependencies = [
 
 [[package]]
 name = "serde-untagged"
-version = "0.1.9"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9faf48a4a2d2693be24c6289dbe26552776eb7737074e6722891fadbe6c5058"
+checksum = "0ba3ac59c62f51b75a6bfad8840b2ede4a81ff5cc23c200221ef479ae75a4aa3"
 dependencies = [
- "erased-serde",
+ "erased-serde 0.3.31",
  "serde",
- "serde_core",
- "typeid",
 ]
 
 [[package]]
@@ -9237,12 +9243,6 @@ dependencies = [
  "sha1 0.11.0",
  "thiserror 2.0.21",
 ]
-
-[[package]]
-name = "typeid"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc7d623258602320d5c55d1bc22793b57daff0ec7efc270ea7d55ce1d5f5471c"
 
 [[package]]
 name = "typenum"
