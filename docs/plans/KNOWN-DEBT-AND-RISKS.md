@@ -1,3 +1,7 @@
+### Plan 846（2026-10-25，merge:r1 根性能门阻断，未合入）
+
+F-846-M1-ROOT-MN-P95 OPEN：实际SDK根接收44480完整t为879pass/1fail、4488未跑；MN signature-rebuild 30样本P95=1032.8293ms≥1000ms，归因待查，尚未证明846回归或预存。tv163及producer/consumer各178通过；剩余native完整矩阵pending。Plan保持reviewed10/11，WT恢复bf22并保留映射分支/SDK tag；未落地、沉淀、归档或清树。[阻断/恢复收据](attachments/846/merge-r1/receipt.md)。
+
 ### Plan 846（2026-10-25，R2 final pass；CLI finding CLOSED，merge门pending）
 
 F-846-R1-01 CLOSED，绑定bf22db346/r2：缺值presence guard+永久CLI3测试（10真实子进程），R1原3命令及独立6兄弟/合法对照共9次复验通过；actual Host版本、345来源/consumer闭包齐。其余R1未变AC/Spec证据保留，reviewed10/11。完整root t+tv、driver178与原AGP/native分母/新空间查询完整矩阵仍merge-owned pending，尚未合入/交付。[R2受影响pass](attachments/846/review-r2/review.md)。下方R1仅为历史。

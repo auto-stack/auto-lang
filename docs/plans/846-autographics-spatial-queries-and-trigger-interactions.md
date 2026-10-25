@@ -330,6 +330,26 @@ R1原三组实际命令逐个重放，另选缺值在inspect之前/带真实sour
 
 SD01..05语义与canonical基面未漂移，拟议delta仅完整测试计数增加3至178（原158+本Plan20）；revision2不变。树末核clean/HEAD一致，未改实现、canonical/live ledger、合入或清树。最终pass只表示代码/验收/规范通过；T10 merge-owned裸root t+tv、producer/fresh consumer178、AGP163/16native、原83和新spatial每侧14/owner/source完整矩阵及独立SDK/图形落地、知识归档guard到期收尾全部pending，通过前不得合入或宣称交付。
 
+### 2026-10-25 merge:r1 — prepared / 完整门执行中
+
+stage:merge | plan_id:PLAN-846:r2 | checkpoint:prepared | reviewed_commit:`bf22db3465203f3babd649494f4b37aa2a012027` | worktree:`D:/autostack/.wt/lang-846/auto-lang` | branch:plan-846-dev | root SDK:4cef80c1b/artifact7b987ca8 | evidence:[门准备](attachments/846/merge-r1/prepared.json.txt)、[精确AGP未变复用](attachments/846/merge-r1/agp-reuse.json.txt) | landed/ledger/archived/cleaned:false。
+
+根裸cargo t首轮实际选择5332，运行1150：1131pass/19timeout，4182因fail-fast未跑，不计完整绿。超时实际位于AC/AV/ABI worker冷构建路径，保留原raw及进程快照；同时检测到831另有根t。正在不改代码/选择面/断言/时限的前提下顺序预编译同树release worker，再以定向反例/原正控验证归因，只有前置条件改变且有效才重新执行冻结完整门。producer完整driver/build正在执行，其余consumer/native/root tv待序列门。任何必需门未通过前不合入/归档/清树。
+
+### 2026-10-25 merge:r1 根接收基面对齐（未合入）
+
+图形独立workspaces继续冻结bf22db346。旧图形分支携带的较早根仓快照在全档中出现cold worker超时、census墙钟比较、chart CPU continuation与future_all相对时长失败；各原raw/定向重放保留，未拼凑完整绿。实际master已包含后续chart测试completion修复及根代码更新，不能用旧图形根仓快照替代实际根接收者门。
+
+按独立SDK落地主路径，在**同一唯一实施worktree顺序切换**临时根合入分支`codex/plan-846-sdk-merge`，原Plan分支保持bf22未动；将已审纯SDK4cef80c1b重放到实际master基面9a6c2dace33e65de8db68e7655118bc823eab30a，形成44480cf6aff20f3b1e2a80df783976b866f5920f。[range-diff完全等价与单路径/同blob](attachments/846/merge-r1/sdk-root-equivalence.json.txt)。无冲突、无新增特性/修改根UI代码；不会把图形源码带入master。此为技能允许的旧→新落地hash映射，不更改Plan语义revision。
+
+该实际根基面另有CTE/MN两类新worker，首次全档的3超时如实保留；已补齐6类release前置构建，原CTE/MN3路径重放验证。实际接收者冻结44480的完整t+tv仍pending，旧根失败不改记通过。producer完整178（日志含1个嵌套child，top-level须去重）/build/source已通过；fresh own-SDK/own-target consumer的66定向+4deadline通过、完整178运行中。SDK纯模块17在同blob通过。全部代码/依赖/输入/实际测试分母和根/图形两条落地身份由最终收据核对；源WT/gfx/根SDK分支保留，尚无landing/ledger/archive/cleanup。
+
+### 2026-10-25 merge:r1 — blocked / 未合入
+
+F-846-M1-ROOT-MN-P95：实际根接收冻结44480（纯SDK映射，master父9a6c2d）完整cargo t在6类worker预编译后仍失败：879pass/1fail、4488未跑，signature-rebuild 30样本P95=1032.8293ms≥1000ms；归因待查，不判定为846实现缺陷。实际根tv163/163、producer/fresh consumer完整driver各178及build、SDK模块17通过；AGP23槽具名未变复用。其余原native/owner/project/Step和新spatial完整矩阵pending，不拼凑完整绿。旧根/cold历史原样保留。
+
+[合入阻断与恢复收据](attachments/846/merge-r1/receipt.md)及30样本已保存。唯一WT已恢复plan-846-dev/bf22，原始来源字节恢复并核345/SDK681，Git clean；未落地SDK映射分支和永久SDK tag保留。status仍reviewed10/11；landed/ledger_refreshed/archived/cleaned全部false，未改canonical/live ledger/清树。根性能门调查及必要修复/受影响复审后，重新核对冻结并完成完整门才可继续合入；本轮不再无条件重试或放宽门限。
+
 ## 10. 待澄清事项
 
-无待用户决定的阻塞。F-846-R1-01已修复且R2 final pass，无剩余work/review阻塞；下一责任阶段为merge及其完整门。F-846-T02-NAN已由r2修复及重放关闭，不再沿用r1只读SDK限制。原数值/支持/预算合同保持；未授权其他SDK改动/生产扩面。历史入口与needs_replan证据保留§9与附件。
+当前合入阻塞为F-846-M1-ROOT-MN-P95，见上述收据；根性能归因待查。F-846-R1-01已修复且R2 final pass，无剩余已知846实现finding；完整门尚未通过。F-846-T02-NAN已由r2修复及重放关闭，不再沿用r1只读SDK限制。原数值/支持/预算合同保持；未授权其他SDK改动/生产扩面。历史入口与needs_replan证据保留§9与附件。
