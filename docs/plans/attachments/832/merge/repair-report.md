@@ -29,3 +29,5 @@ Man `75a81b4f4b100f7f8bdf9c02bbf87c299cc9e5af`；前基线 `f52cd93b`。R3 的 F
 ## fresh-lock 依赖反例与修复
 
 完整发行的 fresh lock 曾选择 `brotli-decompressor 6.2.0`，随后 locked build 因该版本不可用失败。Man `b32d3d0eeed8e08dbe74302128fe3b815dc3fd6a` 以直接依赖精确 pin 可用 `6.1.1`，未复用旧锁或降低 fresh 验收。新 clone 的 `Cargo.lock` 已确认选择 6.1.1；`cargo check --locked -p auto-man` 通过。完整 14 项发行门在该提交上重新执行。
+
+792 的工具包 fresh build 另发现 `tauri 2.12.5` 与 stable `erased-serde 0.4.11` 不兼容。lang `9736eff9d5f9c9821880f4d67a6dbd3cb7d1c759` 在 `auto-api-gen` 的 dev 闭包精确 pin `erased-serde=0.4.0-rc.1`；`cargo check --locked -p auto-api-gen` 与 Man check 均通过。792 以该语言提交重新执行，未跳过任何 V01..V05 用例。
