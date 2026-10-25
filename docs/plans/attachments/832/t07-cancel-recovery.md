@@ -22,4 +22,6 @@
 
 把实际取消留下的 staging 按新 schema 标记其已死亡 owner PID 后重跑安装：死亡 staging 被清理，后续 full 安装和 verify 均通过，未残留 `.man-staging-*`。Windows 初版仅以 `os.kill(pid,0)` 判断未可靠识别死亡 PID，改为真实 `OpenProcess` 后闭合；未以目录不存在或安装成功反推取消清理成立。
 
+另经直接 swap 故障反例发现：backup 标记若在回滚时带回根目录会被 verify 判为额外文件。现仅在回滚前删除该标记，成功保留的 backup 仍留标记；同一反例重放后旧根 verify 通过且 staging 清零（修复 commit `074084827d0cf7533f16782307b4766fbce40299`）。
+
 独立 clone 的升级/坏 hash/半安装/陌生目录矩阵由 `scripts/man-distribution.py` 另附完整收据。
