@@ -3355,3 +3355,38 @@ ebced8cd5e5f26e609062acdcb08808452af5e20/r3：R7两finding独立关闭，T09恢�
   mir_native_resources_transient_spike_sampler_and_raw_gate 在并行负载下
   "sampler actually polled (4)" 偶红、隔离绿（主检出同绿）——818 既有
   并行敏感测试，非 820 引入。
+
+### PLAN-827 final R9 — 2026-10-25 needs_fix6/9（仅T06）
+cce6139e87629edbb251ded6a714a2c0dd5bdb66/r3：F-R8-01缺峰值/summary主体已关闭，103747直接捕获数据及历史summary原console均独立核实；同finding降为P2有限残余：gate0实际validator接受gate1000+无关fresh失败exit5，实际writer非空-Args输出空串（真实artifact同样）。见 [R9实际函数反例与最小闭包](attachments/827/review-r9/review.md)。仅T06重开；当前性能raw/summary保留可复用，不要求脚本判定/参数修复再跑性能矩阵。R6/R7/T09通过保留，统一门merge-owned pending，未合入。
+
+### PLAN-832 v0.7 环境门控承接（2026-10-25，用户批准延期）
+
+- **jet/ark 真实构建**：r3 用户裁定“暂时不测，等v0.7再考虑”。本 Plan 仅验收六 profile 真实生成、vue/rust/vscode 真实构建和 VM 真实运行；jet/ark 构建转 v0.7 环境门控渠道，未实测不得宣称通过，工具链在场且失败仍须非零。承接时需补 Gradle/Java/ANDROID_HOME 与 hvigorw/DEVECO 的实际构建及产物检查，不扩大其他延期。
+
+### PLAN-827 final R10 — 2026-10-25 reviewed8/9（全部原finding关闭）
+9ae7a7a3b6fa118cd94d6ea053ecc7da6d6bab96/r3：F-R8-01有限残余独立关闭，原AST反例false、writer参数逐字保留，8同机制控制+6真实/回收工件判断全符；原103747空args不改写，sidecar保留源码导出/归一化溯源性质。T07 final pass，AC01..07/09完成审查；AC08/T08和冻结merge-owned门仍pending。完整 [R10报告/冻结SD/hash/证据复用边界](attachments/827/review-r10/review.md)。无未解决in-contract finding，不等于已合入/交付；未跑整档/性能矩阵，未改canonical/ledger或清树。
+
+### PLAN-832 final R1 — 2026-10-25 needs_fix（合同内OPEN，非批准延期）
+
+r3 / lang `cd603e418accde3bb85327cc1b6affd49b2ce93f` + Man `356f2c8186d07bc18567b18179c3cad7bda2d483`：[完整审查/可重放反例/AC-SD矩阵](attachments/832/review-r1/review.md)。F832-R1-01(P1)：Core关闭UI特性仍要求UI邻仓manifest，安装无条件读取UI/down，四仓clone测试不能证明无UI独立来源；02(P2)：Windows OpenProcess AccessDenied被判死亡，真实PID4/error5导致合法staging误删，活控/死亡控均已验证；03(P2)：Man ti和跨仓CI未接UI tool/lang te-child owner，清环境真实生成测试1败1，显式固定tool后1/1；04(P2)：目标README/CLAUDE仍指导旧am/根cargo install（virtual manifest exit101），旧release.ps1与fixed sources/profile/恢复入口未承接。全部为原AC内必修，记债不构成延期；jet/ark r3用户批准转v0.7保持有效。185检出hash、Core/full校验、实际脚本、runtime2/2、777 strict0v4gf、29refs/23tags恢复通过事实保留。T05/T07/T08/T09重开，executing5/12；同树work修齐定向反例和合法对照、新SHA/SD/handoff后复审，统一门仍merge-owned pending。未改实现/跑整档/合入/发布Spec-ledger/归档清树。
+
+## PLAN-821 T-09 发现的 782 源域缝（2026-10-25，work 记录、owner=782/ac-core）
+
+- **多参 `.move` 调用标记关联错位**：`fn bump(move u Note, k int)` + 调用
+  `bump(a.move, 1)` → `verify.ownership-required: argument is marked .move but
+  parameter 1 does not declare move`（标记被关联到参数 1）；`.mut` 双参
+  （`bump(mut t Tok, d int)`+`bump(a.mut, 5)`）与静态方法形
+  （`Tok.new(fresh.move, 9)`）均正常。实测于 plan-821 T-09（owned 增量签名
+  变更形状选型时绕开）；782 owner 复核多参 move 标记的参数关联。
+- **借入 record 参数的 owned 调用侧降层未落地**：hir_adapter 的
+  `ExprKind::BorrowView` owned 臂仍为 `lower.borrow` 占位拒（原注释"land with
+  PLAN-821 T-03"，T-03 实测未触达）；782 源域支持借入 record 参数
+  （`fn bump(u Note) str { return u.body }` 编译过 verify），但 owned MIR 冻结
+  类型表无 record-view 值类型可表达调用侧不 kill 的借入传参——MIR CALL 的
+  owned 实参统一 move-in kill。属 MIR 表达力缺口非降层遗漏；如需支持须扩
+  record-view 类型（回 new 显式 revision）。T-09 测试以冻结论域内形状（param
+  Note→Str 重定型）覆盖同一接口失效轴，并留此债。
+
+### PLAN-832 final R2 — 2026-10-25 needs_fix（F01/F02关闭；F03/F04有限残余）
+
+r3 / lang `87f82d637ecd586c17a01c1c975e1456bc346991` + Man `ebfc88f8e66da05d192c88c11a8a946e8b5bbc7f`：[完整R2/复现/关闭oracle与覆盖诊断](attachments/832/review-r2/review.md)。F832-R1-01独立Core来源/锁/640安装/真实管理语言和F832-R1-02实际AccessDenied/live/dead/unknown保护均独立CLOSED。仅F03(P2) PARTIAL/OPEN：Cargo父测试先解析再给CLI注入tool，原例1/1绿；直接生产CLI清CARGO_MANIFEST_DIR/AUTO后仍exit1只尝试Man邻接target；合法工程仅加tool/manifest/UI根各exit0产App.vue，安装邻接与显式缺tool正反控成立。F04(P2) PARTIAL/OPEN：旧am/虚拟manifest说明及release退役已修，新文档从真实升级backup移回后verify因额外.man-backup.marker返回2，移走唯一标记其余字节不动即640/exit0，备份数据无丢失。原CI/helper定向、Core和owner有效证据保持，文档与默认发现不变量未闭合；记债不批准延期，jet/ark r3裁定继续有效。只重开T08/T09、executing7/12；这是第二次final needs_fix，work下一handoff前须记录真实CLI子环境与真实backup往返的覆盖诊断/oracle调整，提交后仅复审受影响面。未改实现/跑整档/合入/发布Spec-ledger/归档清树，merge-owned统一门仍pending。
