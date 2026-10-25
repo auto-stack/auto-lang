@@ -1,0 +1,9 @@
+# PLAN-847 delivery receipt
+
+Code repair frozen60f0bb03331e716516701fc8189bfd6e6b7244d9; source landed master2ff1286c5e3a33abc2e4ded96ab5773ee042a9d8. Independent final review PASS. Restores two optional feature gates without production/test-body/Cargo/default/filter/limit changes. Feature-off original44 errors now exit0; all2177 registered IDs unchanged (probe27/MIR-native24).
+
+Frozen bare cargo t ultimately3181/3181 PASS,668 existing skips; first attempt6 cold-worker timeouts retained, default worker builds prepared, full unchanged selection rerun passed. Root batch at2ff1286c5: tf exits101 before tests (external UI packages no longer workspace members), tt3553 executed3547pass/5fail/1timeout, tb3109/3109 PASS. All commands, timings and raw outputs in ../batch-r1/receipt.json.txt and triage.json.txt. No green anchor advanced: Plan840 retained, pending_retry true. Original B845-FEATURE-01 CLOSED; new B847-FULL-OWNER-01 / TT-STATE-02 route draftPlan850. File-mapping error1224 is an observed symptom; original owner unresolved, later read-only inventory empty and same-size probes preserve bytes. FFI018 also passes tb1.243s. No transient failure erased or asserted full-green.
+
+Knowledge: no normative Spec delta, confirmed independently; one historical module plans row at65523405c, actual spec-index regenerated61projects (INDEX unchanged). Two derived history entries P847-REVIEW/P847-MERGE, guarded offline projection no reachable store writer; version87→88,1224 unrelated raw items unchanged, actual live/readback matches projected hash. Ledger landed8c447f445dffd84eb66d9f33fd1a7bfaf507a45d. No goals or product contract changes.
+
+Source and knowledge landing verified; archive/cleanup checkpoints are in separate actual-state receipts. Production behavior unchanged; no deployment claim. Foreign root document/report WIP and pre-existing fixture locks preserved; changed generated root reports retained and restored byte-exact.

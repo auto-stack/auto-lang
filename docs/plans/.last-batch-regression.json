@@ -64,10 +64,11 @@
   "evidence": "docs/plans/attachments/840/batch-r3",
   "main_report_restored_exactly": true,
   "last_attempt": {
-    "last_covered_plan_id": 845,
-    "timestamp": "2026-10-24T20:18:12.118272+00:00",
-    "covered_commit": "c9ab21ea69ff70ed8f53bbbef87f9a89ff26b891",
-    "window": "53298cd273e0c04fabc508745ce342655394f1a4..c9ab21ea69ff70ed8f53bbbef87f9a89ff26b891",
+    "last_covered_plan_id": 848,
+    "repair_plan": 847,
+    "timestamp": "2026-10-25T16:30:20.783131+00:00",
+    "covered_commit": "2ff1286c5e3a33abc2e4ded96ab5773ee042a9d8",
+    "window": "53298cd273e0c04fabc508745ce342655394f1a4..2ff1286c5e3a33abc2e4ded96ab5773ee042a9d8",
     "legs": [
       "tf",
       "tt",
@@ -81,13 +82,12 @@
           "--no-fail-fast"
         ],
         "exit": 101,
-        "seconds": 30.46,
-        "evidence": "docs/plans/attachments/845/batch-r1/tf.txt",
-        "sha256": "6be71a2f1f6fd6d3f1bc585561faea17c2b80d4cf925ba377ca2a35bbad0c116",
+        "seconds": 1.0851788520812988,
+        "evidence": "docs/plans/attachments/847/batch-r1/tf.log.txt",
+        "sha256": "7a1a54afa0de8365b3d1964167562cf2fc2add417d36804ef8898569a3c07a03",
         "stage": "compile",
         "tests_executed": 0,
-        "coverage_complete": false,
-        "unresolved_errors": 44
+        "coverage_complete": false
       },
       "tt": {
         "command": [
@@ -95,17 +95,17 @@
           "tt",
           "--no-fail-fast"
         ],
-        "exit": 0,
-        "seconds": 460.963,
-        "evidence": "docs/plans/attachments/845/batch-r1/tt.txt",
-        "sha256": "54c245e5211441c5caf68228aa15c78d967e236fc4e533a38a07d2f9ab71877f",
-        "run": 5740,
-        "test_seconds": 445.193,
-        "passed": 5740,
-        "failed": 0,
-        "skipped": 1800,
-        "timed_out": 0,
+        "exit": 100,
+        "seconds": 506.8478946685791,
+        "evidence": "docs/plans/attachments/847/batch-r1/tt.log.txt",
+        "sha256": "bb1c40d8f7b0e593ec9b7ae8d2c5c712c9ef97f058166d190fc7468c065233b3",
         "stage": "tests",
+        "run": 3553,
+        "passed": 3547,
+        "failed": 5,
+        "timed_out": 1,
+        "skipped": 916,
+        "test_seconds": 383.33,
         "coverage_complete": true
       },
       "tb": {
@@ -114,64 +114,178 @@
           "tb",
           "--no-fail-fast"
         ],
-        "exit": 101,
-        "seconds": 9.256,
-        "evidence": "docs/plans/attachments/845/batch-r1/tb.txt",
-        "sha256": "775519a38730fcddd115c5df144b05a23968d456e5ec8b0ca56d381e01e0b4ea",
-        "stage": "compile",
-        "tests_executed": 0,
-        "coverage_complete": false,
-        "unresolved_errors": 44
+        "exit": 0,
+        "seconds": 133.16490602493286,
+        "evidence": "docs/plans/attachments/847/batch-r1/tb.log.txt",
+        "sha256": "454c455d11eb19e11660dd5a2600a724c9948e8319b5c85a58a319aa5e4ed69e",
+        "stage": "tests",
+        "run": 3109,
+        "passed": 3109,
+        "failed": 0,
+        "timed_out": 0,
+        "skipped": 664,
+        "test_seconds": 51.906,
+        "coverage_complete": true
       }
     },
     "aavm_trigger_paths": [],
     "new_reds": [
       {
-        "id": "B845-FEATURE-01",
+        "id": "B847-FULL-OWNER-01",
         "legs": [
-          "tf",
-          "tb"
+          "tf"
         ],
-        "stage": "compile",
-        "error": "E0432/E0433 unresolved optional auto_test_case in ungated probe_adapter_tests",
-        "introduced_commit": "5bebb0ad02c9807f157968bc6b34bf59f7431d66",
-        "attributed_plan": 818,
-        "fix_forward_plan": 847,
-        "fix_forward_path": "docs/plans/847-restore-probe-test-feature-boundary.md",
-        "source_changed_by_845": false,
-        "reason": "Existing cfg was displaced onto new ac_mn_probe_tests; two attributes now protect new module and none protect old module. tt enables test-cases; default/full and book do not."
+        "stage": "selection/compile",
+        "introduced_commit": "abd34a355",
+        "attributed_plan": 831,
+        "fix_forward_plan": 850,
+        "fix_forward_path": "docs/plans/850-restore-cross-workspace-full-regression.md",
+        "evidence": "docs/plans/attachments/847/batch-r1/tf.log.txt",
+        "error": "External auto-ui-compiler requires dev-dependencies but is not a language-workspace member; zero tests executed; do not delete UI coverage."
+      },
+      {
+        "id": "B847-TT-STATE-02",
+        "legs": [
+          "tt"
+        ],
+        "stage": "tests",
+        "attributed_code_owners": [
+          818,
+          "FFI dual regression"
+        ],
+        "introduced_by_847": false,
+        "fix_forward_plan": 850,
+        "fix_forward_path": "docs/plans/850-restore-cross-workspace-full-regression.md",
+        "evidence": "docs/plans/attachments/847/batch-r1/tt.log.txt",
+        "error": "6 test outcomes:4 report writes Windows1224 mapped-file rejection,1 stdout-cap control received session wall,1 FFI018 120s timeout. Full Plan-tree t passed all corresponding cases; FFI018 passes tb1.243s. Exact global conditions unresolved; T01 investigates execution state without weakening limits; product repair requires separate scoped contract.",
+        "report_probe": "docs/plans/attachments/847/batch-r1/report-state-probe.json.txt",
+        "probe_result": "Same-size file probes now succeed with byte-exact preservation, RestartManager currently found no owner; does not identify original mapper or prove complete tt green."
       }
     ],
     "known_reds_seen": [],
-    "scope": "Main checkout single-instance due PLAN-845 modulo5; no-fail-fast preserves complete selection and every assertion while collecting full attribution; shared bookkeeping preserved; generated turnaround report restored byte-exact.",
     "outcome": "new-reds",
     "coverage_complete": false,
     "completed_legs": [
-      "tt"
-    ],
-    "compile_blocked_legs": [
-      "tf",
+      "tt",
       "tb"
     ],
-    "implementation_action": "none; fix-forward draft only",
-    "retry_required": true
+    "compile_blocked_legs": [
+      "tf"
+    ],
+    "closed_findings": [
+      "B845-FEATURE-01"
+    ],
+    "fix_forward_plan": 850,
+    "retry_required": true,
+    "single_instance": true,
+    "scope": "Bare daily3181 passes before landing; main full batch sequential with exclusive mutex, unchanged inputs/limits/config, all legs no-fail-fast for complete attribution, generated reports preserved and original WIP restored."
   },
   "pending_retry": true,
-  "coverage_policy": "Retain last complete green coverage anchor/time because tf/tb never executed tests; latest attempted plan845/commit and all results are in last_attempt. PLAN847 must restore the gate and rerun main single-instance tf/tt/tb. Due remains true.",
+  "coverage_policy": "Retain last complete green Plan840/time/commit: latest tf executed zero tests. B845-FEATURE-01 closed by847; B847-FULL-OWNER-01 and TT execution-state findings route850 draft. No current full-green coverage claimed.",
   "last_due_check": {
-    "plan_id": 848,
-    "plan_revision": 3,
-    "checked_at": "2026-10-25T15:24:50.602097+00:00",
-    "checked_commit": "d52274db40a261e65186a074f52882512bfe1807",
+    "plan_id": 847,
+    "checked_at": "2026-10-25T16:33:21.067330+00:00",
+    "checked_commit": "2ff1286c5e3a33abc2e4ded96ab5773ee042a9d8",
     "due": true,
-    "outcome": "due-existing-blocker",
-    "blocker": "B845-FEATURE-01",
-    "owner_plan": 847,
-    "owner_path": "docs/plans/847-restore-probe-test-feature-boundary.md",
-    "retry_required": true,
-    "rerun": false,
-    "reason": "Current source still leaves probe_adapter_tests ungated after ac_mn_probe_tests; prior tf/tb compile failure boundary remains. Whole source hash changed since846, so only exact unchanged feature-boundary evidence is reused. Existing847 drafting owns repair/full single-instance rerun; no coverage pass claimed.",
-    "boundary_source_sha256": "bb877191681139c1d53488826cc893648732b9433807adedd5341edef60a97d9",
-    "coverage_anchor_preserved": 840
-  }
+    "outcome": "new-reds-routed",
+    "owner_plan": 850,
+    "coverage_anchor_preserved": 840,
+    "retry_required": true
+  },
+  "prior_attempts": [
+    {
+      "last_covered_plan_id": 845,
+      "timestamp": "2026-10-24T20:18:12.118272+00:00",
+      "covered_commit": "c9ab21ea69ff70ed8f53bbbef87f9a89ff26b891",
+      "window": "53298cd273e0c04fabc508745ce342655394f1a4..c9ab21ea69ff70ed8f53bbbef87f9a89ff26b891",
+      "legs": [
+        "tf",
+        "tt",
+        "tb"
+      ],
+      "leg_results": {
+        "tf": {
+          "command": [
+            "cargo",
+            "tf",
+            "--no-fail-fast"
+          ],
+          "exit": 101,
+          "seconds": 30.46,
+          "evidence": "docs/plans/attachments/845/batch-r1/tf.txt",
+          "sha256": "6be71a2f1f6fd6d3f1bc585561faea17c2b80d4cf925ba377ca2a35bbad0c116",
+          "stage": "compile",
+          "tests_executed": 0,
+          "coverage_complete": false,
+          "unresolved_errors": 44
+        },
+        "tt": {
+          "command": [
+            "cargo",
+            "tt",
+            "--no-fail-fast"
+          ],
+          "exit": 0,
+          "seconds": 460.963,
+          "evidence": "docs/plans/attachments/845/batch-r1/tt.txt",
+          "sha256": "54c245e5211441c5caf68228aa15c78d967e236fc4e533a38a07d2f9ab71877f",
+          "run": 5740,
+          "test_seconds": 445.193,
+          "passed": 5740,
+          "failed": 0,
+          "skipped": 1800,
+          "timed_out": 0,
+          "stage": "tests",
+          "coverage_complete": true
+        },
+        "tb": {
+          "command": [
+            "cargo",
+            "tb",
+            "--no-fail-fast"
+          ],
+          "exit": 101,
+          "seconds": 9.256,
+          "evidence": "docs/plans/attachments/845/batch-r1/tb.txt",
+          "sha256": "775519a38730fcddd115c5df144b05a23968d456e5ec8b0ca56d381e01e0b4ea",
+          "stage": "compile",
+          "tests_executed": 0,
+          "coverage_complete": false,
+          "unresolved_errors": 44
+        }
+      },
+      "aavm_trigger_paths": [],
+      "new_reds": [
+        {
+          "id": "B845-FEATURE-01",
+          "legs": [
+            "tf",
+            "tb"
+          ],
+          "stage": "compile",
+          "error": "E0432/E0433 unresolved optional auto_test_case in ungated probe_adapter_tests",
+          "introduced_commit": "5bebb0ad02c9807f157968bc6b34bf59f7431d66",
+          "attributed_plan": 818,
+          "fix_forward_plan": 847,
+          "fix_forward_path": "docs/plans/847-restore-probe-test-feature-boundary.md",
+          "source_changed_by_845": false,
+          "reason": "Existing cfg was displaced onto new ac_mn_probe_tests; two attributes now protect new module and none protect old module. tt enables test-cases; default/full and book do not."
+        }
+      ],
+      "known_reds_seen": [],
+      "scope": "Main checkout single-instance due PLAN-845 modulo5; no-fail-fast preserves complete selection and every assertion while collecting full attribution; shared bookkeeping preserved; generated turnaround report restored byte-exact.",
+      "outcome": "new-reds",
+      "coverage_complete": false,
+      "completed_legs": [
+        "tt"
+      ],
+      "compile_blocked_legs": [
+        "tf",
+        "tb"
+      ],
+      "implementation_action": "none; fix-forward draft only",
+      "retry_required": true
+    }
+  ],
+  "current_batch_status": "new-reds"
 }

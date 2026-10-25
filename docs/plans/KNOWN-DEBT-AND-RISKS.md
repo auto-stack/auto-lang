@@ -3309,9 +3309,16 @@ Merge on944c1c55 exposed the original native authoring probe silently discarding
 Merge onae1a87e15 exposed hierarchy phase0 scroll before initial focus/pointer preparation; shared assets path had the same ordering. Actual native point hit Terminal PID1932 before run() readiness was reachable. Fix231957020cc855485adfc4b15be75457a94ef2d8 moves initial readiness ahead of auto-scroll in both probes, preserving original240 budget, pixel/state/Save/cancel and PID guards. Two permanent actual-native delayed acceptance/deadline tests reject old-order mutation (both frame12 foreign-hit), restored green; affected hierarchy4/pixel-faults2/assets7 pass. Fresh-context [R8](attachments/845/review-r8-preparation/review.md) independently closes it, no deferred debt. Complete merge/landing remain separate required checkpoints.
 
 
-### B845-FEATURE-01 — open / fix-forward PLAN-847 (2026-10-25)
+### B845-FEATURE-01 — CLOSED / delivered PLAN-847 (2026-10-26)
 
-845 post-cleanup main batch at c9ab21ea69ff70ed8f53bbbef87f9a89ff26b891: tf/tb fail before tests with unresolved optional auto_test_case; tt completes green. Introduced by 818 T-02 commit5bebb0ad02c9807f157968bc6b34bf59f7431d66: inserting ac_mn_probe_tests between the existing cfg and probe_adapter_tests moved the old module's feature gate onto the new one. Both attributes now protect the new module; the old module is unconditional. This is a main Rust regression, independent of 845's autographics-dev source. [Raw three-leg receipt](attachments/845/batch-r1/receipt.json.txt), [fix-forward draft](847-restore-probe-test-feature-boundary.md). No inline source fix, threshold/selection waiver or unmerge. Complete coverage remains anchored at840; due batch retry required after847.
+845 post-cleanup main batch at c9ab21ea69ff70ed8f53bbbef87f9a89ff26b891: tf/tb fail before tests with unresolved optional auto_test_case; tt completes green. Introduced by 818 T-02 commit5bebb0ad02c9807f157968bc6b34bf59f7431d66: inserting ac_mn_probe_tests between the existing cfg and probe_adapter_tests moved the old module's feature gate onto the new one. Both attributes now protect the new module; the old module is unconditional. This is a main Rust regression, independent of 845's autographics-dev source. [Raw three-leg receipt](attachments/845/batch-r1/receipt.json.txt), [delivered847](archive/847-restore-probe-test-feature-boundary.md). No inline source fix, threshold/selection waiver or unmerge. Complete coverage remains anchored at840; due batch retry required after847.
+
+
+Closure847: independently reviewed60f0bb033; frozen t3181/3181 and main feature-off tb3109/3109 pass, optional/default-off and2177IDs unchanged. [Delivery](attachments/847/merge-r1/receipt.md). Existing847 blocker closed; last complete global green remains840.
+
+### B847-FULL-OWNER-01 / B847-TT-STATE-02 — OPEN / draft PLAN-850 (2026-10-26)
+
+Main2ff1286c5 full batch: tf cannot select external auto-ui packages after831 abd34a355 (zero tests); tt3547pass/5fail/1timeout includes4Windows1224 report-output writes, stdout-cap classified wall, FFI018timeout; tb3109pass and prior frozen t3181pass remain valid. Cause beyond observed output/selection failures is not invented. [Full triage](attachments/847/batch-r1/triage.json.txt), [fix-forward850](850-restore-cross-workspace-full-regression.md). Preserve all IDs/limits/inputs, no global green anchor advance; product repair beyond orchestration needs its own concrete contract.
 
 ### PLAN-845 final closeout — closed findings / optional fixture observation
 
