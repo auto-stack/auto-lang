@@ -1,0 +1,18 @@
+{
+  "annotates": [
+    "bench-summary-gate0-20261025-103747.json",
+    "bench-summary-30-20261025-103747.json"
+  ],
+  "defect": "Both artifacts carry args:\"\" although the call sites passed nonempty invocation text: the Save-BenchSummaryArtifact parameter was named `Args`, which collides with PowerShell's automatic $args handling; the named argument bound at the call site but the value did not survive to the output object (review-r9 writer-args control). Measured peaks/targets/exit_code/gate_ms in these artifacts are unaffected.",
+  "fixed_in": "f58fd3382 (parameter renamed to BenchArgs; exact-text selftest writer control added; gate-0 validation tightened)",
+  "real_invocations": {
+    "bench-summary-gate0-20261025-103747.json": "av_probe_worker bench-turnaround --samples 3 --gate-ms 0 --out docs/reports/plan827/bench-gate0-20261025-103747.jsonl",
+    "bench-summary-30-20261025-103747.json": "av_probe_worker bench-turnaround --samples 30 --gate-ms 1000 --out docs/reports/plan827/bench-30-20261025-103747.jsonl"
+  },
+  "sources": [
+    "scripts/verify-av-source-827.ps1 @311e81a7f, resources scope Save-BenchSummaryArtifact call sites (raw_file names resolve the --out values)",
+    "each artifact's own summary.gate_ms (0.0 / 1000.0) and per-lane samples (3 / 30) corroborate the invocation",
+    "resources-worker-binding-20261025-103747.json certifies both raw files with exe sha256 0A50E300E1B4BC9725C0DAA16E5502306AF3F455D142EC62FF79E01331782261"
+  ],
+  "note": "The recovered 085917/091045 summaries carry non-empty args (written by the one-off recovery tool, unaffected by this defect). Original artifacts are retained unmodified; this annotation is the recorded provenance correction per review-r9."
+}
