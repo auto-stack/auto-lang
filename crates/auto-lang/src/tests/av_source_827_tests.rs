@@ -819,7 +819,7 @@ fn scan_md_rows(text: &str, prefix: &str, count: usize, kind: &'static str, owne
 /// Entry call-site anchors WITH symbol discovery: the row is green only
 /// when the file exists AND carries its characteristic call-site symbol.
 fn scan_entry_anchors(repo: &Path) -> Vec<InvItem> {
-    const ANCHORS: [(&str, &str, &str); 15] = [
+    const ANCHORS: [(&str, &str, &str); 14] = [
         ("entry:cli-run", "crates/auto/src/main.rs", "Commands::Run"),
         ("entry:cli-script-positional", "crates/auto/src/main.rs", "run_file_with_args"),
         ("entry:cli-eval", "crates/auto/src/main.rs", "Commands::Eval"),
@@ -831,7 +831,6 @@ fn scan_entry_anchors(repo: &Path) -> Vec<InvItem> {
         ("entry:daemon", "crates/auto-lang-core/src/autovm_daemon.rs", "AutovmDaemon"),
         ("entry:client", "crates/auto-lang-core/src/autovm_client.rs", "eval_one_shot"),
         ("entry:testcase-avm-adapter", "crates/auto-lang-core/src/test_cases/avm.rs", "Verdict"),
-        ("entry:ui-vm-bridge", "crates/auto-ui-runtime/src/ui/vm_bridge.rs", "vm_bridge"),
         ("entry:old-vm-engine", "crates/auto-lang-core/src/vm.rs", "register_module"),
         ("entry:cli-service", "crates/auto/src/cmd_service.rs", "cmd_service"),
         ("entry:man-runtime", "crates/auto-man-runtime/src/lib.rs", "Automan"),
@@ -854,6 +853,22 @@ fn scan_entry_anchors(repo: &Path) -> Vec<InvItem> {
             Err(e) => inv_error(id, "entry-call-site", rel, &format!("read failed: {e}")),
         })
         .collect()
+}
+
+/// PLAN-831 moved the ui-vm-bridge call-site file out of this repository
+/// (abd34a355): the member STAYS in the denominator as a moved-external row
+/// with its new owner instead of a scan attempt on the removed path (the
+/// merge integration fix for the frozen R2 anchor list).
+fn moved_entry_rows() -> Vec<InvItem> {
+    vec![InvItem {
+        id: "entry:ui-vm-bridge".to_string(),
+        kind: "entry-call-site",
+        path: "auto-ui:crates/auto-ui-runtime/src/ui/vm_bridge.rs".to_string(),
+        sha256: String::new(),
+        status: "moved-external".to_string(),
+        owner: "PLAN-831/auto-ui".to_string(),
+        note: "symbol `vm_bridge` (file moved to the independent auto-ui repo)".to_string(),
+    }]
 }
 
 fn repo_root() -> PathBuf {
@@ -994,6 +1009,7 @@ fn av_source_827_inventory_denominators_replayable() {
 
     // 7) Old-VM entry call-site anchors WITH symbol discovery.
     items.extend(scan_entry_anchors(&repo));
+    items.extend(moved_entry_rows());
 
     // Reconciliation: no scan errors, no missing rows, anchors all found.
     let errors: Vec<&InvItem> = items.iter().filter(|i| i.status == "scan-error").collect();
@@ -1042,9 +1058,16 @@ fn av_source_827_inventory_denominators_replayable() {
         .filter(|i| i.kind == "entry-call-site" && i.status == "symbol-found")
         .count();
     assert_eq!(
-        anchors, 15,
-        "all 15 call-site anchors (incl. service/man) verified with symbols"
+        anchors, 14,
+        "all 14 in-repo call-site anchors (incl. service/man) verified with symbols"
     );
+    // PLAN-831 moved the 15th (ui-vm-bridge) to the independent auto-ui
+    // repo: the denominator keeps it as a moved-external owner row.
+    let moved = items
+        .iter()
+        .filter(|i| i.status == "moved-external")
+        .count();
+    assert_eq!(moved, 1, "the moved-out call-site stays in the denominator");
     // Every capability row carries a real owner cell.
     for it in items.iter().filter(|i| i.kind == "capability") {
         assert!(

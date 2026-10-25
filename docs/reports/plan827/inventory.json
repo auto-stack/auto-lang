@@ -7329,15 +7329,6 @@
       "note": "symbol `Verdict`"
     },
     {
-      "id": "entry:ui-vm-bridge",
-      "kind": "entry-call-site",
-      "path": "crates/auto-ui-runtime/src/ui/vm_bridge.rs",
-      "sha256": "",
-      "status": "symbol-found",
-      "owner": "EP-anchor",
-      "note": "symbol `vm_bridge`"
-    },
-    {
       "id": "entry:old-vm-engine",
       "kind": "entry-call-site",
       "path": "crates/auto-lang-core/src/vm.rs",
@@ -7363,6 +7354,15 @@
       "status": "symbol-found",
       "owner": "EP-anchor",
       "note": "symbol `Automan`"
+    },
+    {
+      "id": "entry:ui-vm-bridge",
+      "kind": "entry-call-site",
+      "path": "auto-ui:crates/auto-ui-runtime/src/ui/vm_bridge.rs",
+      "sha256": "",
+      "status": "moved-external",
+      "owner": "PLAN-831/auto-ui",
+      "note": "symbol `vm_bridge` (file moved to the independent auto-ui repo)"
     }
   ],
   "summary": {
@@ -7375,6 +7375,6 @@
     "capabilities": 43,
     "entry_points": 10,
     "gates": 10,
-    "entry_anchors": 15
+    "entry_anchors": 14
   }
 }
