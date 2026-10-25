@@ -1,0 +1,23 @@
+# PLAN-827 R6 readiness review — needs_fix (2026-10-25)
+
+Independent review chat, separate from implementation. User reports another same-tree writer completed repair, followed by their independent cross-check. This review verifies the committed artifacts directly; it does not attribute implementation to the user or treat the cross-check as T07 final approval.
+
+Baseline: unique tree D:/autostack/.wt/lang-827/auto-lang, branch plan-827-dev, HEAD 9f7b5dd6e144b0577a31d9528f667e85bd73c311, clean at both inventory checks. Repair base ef924df278728c09f79e5c986e4a7e50c17bd710; original base 369e1c349ea9587907f073aaecd3082e2bb486bd. Main HEAD 4774ee7914b6be9a34e81435431fb0e5f0f927a4, Plan r3 pre-review SHA256 12EEE13F9BD7CA84FFC617565D71D9A001BF30F538D2B5C8AB5BF346C2CC3DA3. Acceptance matrix frozen here, SHA256 F0D1D338689D4F452F4D29EA0C0B2834EE85CF801CFA7B8AF56F906B0E78DCE1.
+
+## F-827-R5-01 remains partially open — known incomplete required oracle
+
+Existing V09 explicitly requires nth-allocation failure control, budget-before-attempt vs allocation-attempt/success separation and actual owned-resource cleanup (§5.4 and §6 V09; AC05/06 work-owned). The new acceptance-matrix.md V09 note and final 遗留 section explicitly say the nth-allocation injection cannot be exercised because delivered D798 has no seam, and assign it to a later store-owner plan. The Plan's T06 and readiness summary repeat this as an explicit gap while checking the task complete and setting execution_done.
+
+No approval removing this requirement or revising the contract was supplied. Absence of an upstream seam explains the implementation gap; it does not satisfy the required oracle, nor authorize deferral. This is the same R5 coverage gap, not a new product defect/finding. The matrix itself is durable evidence of admitted incompleteness; no runtime-failure claim or speculative root-cause prescription is made.
+
+Expected: work-owned V09 closure before final readiness, or an approved semantic contract revision through new/replan. Observed: required item explicitly unexercised/assigned future owner, readiness nevertheless declares full completion. Manual review reproduction: compare current Plan §5.4/V09/AC05 with the frozen matrix V09 note and 遗留 bullet.
+
+Closing scope: implement the necessary bounded fault-injection seam/control in the authorized owner/write window, preserving budget and lifetime invariants, and test nth-failure plus legitimate allocation/zero-budget controls. If that cannot remain within approved thin-consumer scope, route a concrete needs_replan contract proposal through auto-plan-new and obtain the required contract decision; review cannot silently narrow the scope. Record exact input/entry/counters/cleanup assertions and bind selection/failed-control propagation. No full upstream suite or performance matrix replay required for this known gap.
+
+## Evidence retained and review boundary
+
+New source changes, inherited required-test bindings, timed bench raw and incremental-raw artifact are committed. Retain them as submitted evidence; this readiness check has NOT independently passed every new mapping/assertion. R1–R4 individual closures remain unchanged; R5 remains partial until the acknowledged required row is resolved. Other V06/V08/V13 and resource evidence can be independently assessed after readiness is real; no need to rerun all previously valid evidence solely for a new review label.
+
+Per auto-plan-review entry rule: known unfinished work-owned criteria/required oracles return to work even if receipt says execution_done; do not spend another full final-review cycle reconfirming admitted unfinished implementation. Accordingly no cargo checks, full campaigns or tiers run in R6. No implementation writes, tests with shared state, merge/archive/cleanup or canonical Spec/ledger publication. Implementation remained clean and frozen; no claim of inspecting other chats' live activity.
+
+Routing: reopen T04 (V09 fault implementation/control) and T06 (required matrix/aggregate readiness). Preserve T01/T02/T03/T05/T09 completion and submitted evidence; current_step=5/9 (work5/7), status executing. T07 not complete. SD final normative audit pending; exact impact metadata retained. Final frozen bare cargo t and applicable workspace/surface gates remain merge-owned pending after final acceptance pass, tf batch-only. No debt registration can waive the requirement.
