@@ -192,8 +192,12 @@ alloc 台账不入 cache。同 store 新 worker 恢复重验四态（V-08）沿 
 - **recipe id 冻结 `ac-av/owned-run-v1`**：plan §3 r1 字面 `av-data-821` 起草于 820
   T-01 冻结实际命名（`ac-av/data-run-v1`）之前；按已交付族式命名（ reconciliation
   记录于本节，非支持面变更）。case fixture 沿 820 实际交付形态内联于
-  `experimental/ac-av-probe/probe/tests/av_owned_821*.rs` + typed fixture（plan §3 的
-  `test/cases/av-data/821/` 目录在 820 实际交付中未创建，同规则不建）。
+  `experimental/ac-av-probe/probe/tests/av_owned_821*.rs` + typed fixture。
+  **r2 修订（2026-10-25 T-02，窗口记录已预告）**：827 交付确立 case 目录新事实
+  （`crates/auto-lang/test/cases/av-source-827/*.case.ad`+src/），首例 case 文件按同模式
+  落 `crates/auto-lang/test/cases/av-data/821/`（两 case：fixture 深判 + int 孪生源路径
+  exit 404；种子 SHA256 收据 README；case 单源约束故拆两文件）。fixture 源仍字节冻结于
+  probe 侧 `owned_fixture.rs`，corpus 种子与之字节身份测试锁定。
 - 注册：`crates/auto-lang-core/src/test_cases/ac_av.rs` **追加** owned recipe 分派
   （`AvRecipeFamily` 增柄；同 worker `av_probe_worker` 增 owned case-serve 分支，
   `avworker/1` 信封域内以 recipe id 区分不扩字段；不复制 sema worker、不改 v1/v2
