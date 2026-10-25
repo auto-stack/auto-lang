@@ -36,7 +36,13 @@ pub fn scalar_layout(t: &MirType) -> Option<ScalarLayout> {
         MirType::U64 => ScalarLayout { size: 8, align: 8 },
         MirType::F32 => ScalarLayout { size: 4, align: 4 },
         MirType::F64 => ScalarLayout { size: 8, align: 8 },
-        MirType::Fn(_) | MirType::Record(_) => return None,
+        // PLAN-821 (782 layout contract): char rides a u32 channel; an
+        // owned Str field is logically {ptr u64, len u32} = 12 bytes at
+        // align 8 — resource records therefore align to 8 while copyable
+        // nested records keep 4 (the C-style max-align rule derives both).
+        MirType::Char => ScalarLayout { size: 4, align: 4 },
+        MirType::Str => ScalarLayout { size: 12, align: 8 },
+        MirType::Fn(_) | MirType::Record(_) | MirType::StrView | MirType::MutRef => return None,
     })
 }
 
@@ -243,11 +249,16 @@ fn place_fields(
     let rem = offset.checked_rem(max_align).ok_or(LayoutError::Overflow)?;
     let pad = if rem == 0 { 0 } else { max_align - rem };
     let size = offset.checked_add(pad).ok_or(LayoutError::Overflow)?;
+    // PLAN-821: copyability is DERIVED, never input-claimed — a record is
+    // copyable iff its transitive field closure contains no owned Str
+    // (resource records are move/clone/replace-only). View/token fields
+    // never reach here (mir.field-borrow rejects them at verification).
+    let is_copy = !crate::ownership::record_reaches_str(module, r);
     Ok(LayoutDesc {
         size,
         align: max_align,
         fields: fields_out,
-        is_copy: true,
+        is_copy,
     })
 }
 

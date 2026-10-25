@@ -49,6 +49,22 @@ pub const OP_TRACE: u8 = 0x06;
 pub const OP_FIELD_GET: u8 = 0x07;
 pub const OP_FIELD_SET: u8 = 0x08;
 pub const OP_AGGREGATE: u8 = 0x09;
+// PLAN-821 owned opcodes (avoiding the term ids 0x10..0x12).
+pub const OP_CLONE: u8 = 0x0A;
+pub const OP_MOVE: u8 = 0x0B;
+pub const OP_VIEW: u8 = 0x0C;
+pub const OP_MUTREF: u8 = 0x0D;
+pub const OP_BORROW_END: u8 = 0x0E;
+pub const OP_DROP: u8 = 0x0F;
+pub const OP_STR_LEN: u8 = 0x13;
+pub const OP_STR_LEN_BYTES: u8 = 0x14;
+pub const OP_STR_CHAR_AT: u8 = 0x15;
+pub const OP_STR_SLICE: u8 = 0x16;
+pub const OP_STR_CONCAT: u8 = 0x17;
+pub const OP_STR_TO_OWNED: u8 = 0x18;
+pub const OP_STR_CMP: u8 = 0x19;
+pub const OP_CHAR_TO_CODEPOINT: u8 = 0x1A;
+pub const OP_CHAR_FROM_CODEPOINT: u8 = 0x1B;
 pub const TERM_JUMP: u8 = 0x10;
 pub const TERM_BRANCH: u8 = 0x11;
 pub const TERM_RETURN: u8 = 0x12;
@@ -74,6 +90,10 @@ pub const TY_BOOL: u8 = 1;
 pub const TY_FN: u8 = 2;
 pub const TY_I64: u8 = 3;
 pub const TY_U64: u8 = 4;
+pub const TY_CHAR: u8 = 8;
+pub const TY_STR: u8 = 9;
+pub const TY_STRVIEW: u8 = 10;
+pub const TY_MUTREF: u8 = 11;
 pub const TY_F32: u8 = 5;
 pub const TY_F64: u8 = 6;
 pub const TY_RECORD: u8 = 7;
@@ -84,6 +104,8 @@ pub const CONST_BOOL: u8 = 1;
 pub const CONST_I64: u8 = 2;
 pub const CONST_U64: u8 = 3;
 pub const CONST_F32_BITS: u8 = 4;
+pub const CONST_CHAR: u8 = 6;
+pub const CONST_STR: u8 = 7;
 pub const CONST_F64_BITS: u8 = 5;
 
 /// Which wire family a codec pass handles. The families share the table
@@ -95,29 +117,38 @@ pub const CONST_F64_BITS: u8 = 5;
 pub enum WireFamily {
     Core,
     Data,
+    /// PLAN-821: the owned profile rides the `AVAD` magic FAMILY at wire
+    /// version 2 (a separate format generation from v1 — the two decode
+    /// paths reject each other's bytes by the version field, 798 r6 rule).
+    Owned,
 }
 
 impl WireFamily {
     fn magic(&self) -> [u8; 4] {
         match self {
             WireFamily::Core => *ABC_MAGIC,
-            WireFamily::Data => crate::contract::ABC_DATA_MAGIC,
+            WireFamily::Data | WireFamily::Owned => crate::contract::ABC_DATA_MAGIC,
         }
     }
     fn version(&self) -> u16 {
         match self {
             WireFamily::Core => ABC_VERSION,
             WireFamily::Data => crate::contract::ABC_DATA_VERSION,
+            WireFamily::Owned => crate::contract::ABC_OWNED_VERSION,
         }
     }
     fn profile_id(&self) -> u16 {
         match self {
             WireFamily::Core => ABC_PROFILE_CORE_I32,
             WireFamily::Data => crate::contract::ABC_PROFILE_DATA,
+            WireFamily::Owned => crate::contract::ABC_PROFILE_OWNED,
         }
     }
     fn allows_data_tags(&self) -> bool {
-        matches!(self, WireFamily::Data)
+        matches!(self, WireFamily::Data | WireFamily::Owned)
+    }
+    fn allows_owned_tags(&self) -> bool {
+        matches!(self, WireFamily::Owned)
     }
 }
 
@@ -287,6 +318,7 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
     let family = match m.profile.as_str() {
         crate::contract::AV_PROFILE => WireFamily::Core,
         crate::contract::AV_DATA_PROFILE => WireFamily::Data,
+        crate::contract::AV_OWNED_PROFILE => WireFamily::Owned,
         other => {
             return Err(AbcDecodeError::fmt_err(
                 "abc.encode.profile",
@@ -388,6 +420,42 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                 }
                 put_u8(&mut w, TY_F64);
             }
+            MirType::Char => {
+                if !family.allows_owned_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "char type in a non-owned-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_CHAR);
+            }
+            MirType::Str => {
+                if !family.allows_owned_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "Str type in a non-owned-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_STR);
+            }
+            MirType::StrView => {
+                if !family.allows_owned_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "StrView type in a non-owned-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_STRVIEW);
+            }
+            MirType::MutRef => {
+                if !family.allows_owned_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "MutRef type in a non-owned-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_MUTREF);
+            }
             MirType::Record(r) => {
                 if !family.allows_data_tags() {
                     return Err(AbcDecodeError::fmt_err(
@@ -470,6 +538,33 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                 }
                 put_u8(&mut w, CONST_F32_BITS);
                 w.push(&bits.to_le_bytes());
+            }
+            MirConst::Char(c) => {
+                if !family.allows_owned_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "char constant in a non-owned-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, CONST_CHAR);
+                put_u32(&mut w, *c as u32);
+            }
+            MirConst::Str(bytes) => {
+                if !family.allows_owned_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "Str constant in a non-owned-profile module".to_string(),
+                    ));
+                }
+                if bytes.len() > u32::MAX as usize {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.const-length",
+                        "string constant exceeds wire width".to_string(),
+                    ));
+                }
+                put_u8(&mut w, CONST_STR);
+                put_u32(&mut w, bytes.len() as u32);
+                w.push(bytes);
             }
             MirConst::F64Bits(bits) => {
                 if !family.allows_data_tags() {
@@ -579,6 +674,175 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                         for a in args {
                             put_u32(&mut w, *a);
                         }
+                    }
+                    MirInstr::Clone { dst, src } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "CLONE in a non-owned-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_CLONE);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *src);
+                    }
+                    MirInstr::Move { dst, src } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "MOVE in a non-owned-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_MOVE);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *src);
+                    }
+                    MirInstr::View { dst, src } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "VIEW in a non-owned-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_VIEW);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *src);
+                    }
+                    MirInstr::MutRef { dst, src } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "MUTREF in a non-owned-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_MUTREF);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *src);
+                    }
+                    MirInstr::BorrowEnd { token } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "BORROW_END in a non-owned-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_BORROW_END);
+                        put_u32(&mut w, *token);
+                    }
+                    MirInstr::Drop { slot } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "DROP in a non-owned-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_DROP);
+                        put_u32(&mut w, *slot);
+                    }
+                    MirInstr::StrLen { dst, view } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "str operations in a non-owned-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_STR_LEN);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *view);
+                    }
+                    MirInstr::StrLenBytes { dst, view } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "str operations in a non-owned-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_STR_LEN_BYTES);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *view);
+                    }
+                    MirInstr::StrCharAt { dst, view, index } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "str operations in a non-owned-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_STR_CHAR_AT);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *view);
+                        put_u32(&mut w, *index);
+                    }
+                    MirInstr::StrSlice { dst, view, start, end } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "str operations in a non-owned-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_STR_SLICE);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *view);
+                        put_u32(&mut w, *start);
+                        put_u32(&mut w, *end);
+                    }
+                    MirInstr::StrConcat { dst, lhs, rhs } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "str operations in a non-owned-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_STR_CONCAT);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *lhs);
+                        put_u32(&mut w, *rhs);
+                    }
+                    MirInstr::StrToOwned { dst, view } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "str operations in a non-owned-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_STR_TO_OWNED);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *view);
+                    }
+                    MirInstr::StrCmp { eq, dst, lhs, rhs } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "str operations in a non-owned-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_STR_CMP);
+                        put_u8(&mut w, if *eq { 1 } else { 2 });
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *lhs);
+                        put_u32(&mut w, *rhs);
+                    }
+                    MirInstr::CharToCodepoint { dst, ch } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "char conversions in a non-owned-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_CHAR_TO_CODEPOINT);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *ch);
+                    }
+                    MirInstr::CharFromCodepoint { dst, code } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "char conversions in a non-owned-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_CHAR_FROM_CODEPOINT);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *code);
                     }
                     MirInstr::Trace { event } => {
                         put_u8(&mut w, OP_TRACE);
@@ -812,7 +1076,18 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     let family = if magic == ABC_MAGIC {
         WireFamily::Core
     } else if magic == crate::contract::ABC_DATA_MAGIC {
-        WireFamily::Data
+        // Same magic family, DIFFERENT format generations: the version
+        // field (below) selects v1=data vs v2=owned; a v1 payload in this
+        // build's v2 reader is a controlled `abc.decode.version`
+        // rejection (798 r6 generation isolation; never read as the other
+        // generation's semantics).
+        if bytes.get(4..6).map(|v| u16::from_le_bytes([v[0], v[1]]))
+            == Some(crate::contract::ABC_OWNED_VERSION)
+        {
+            WireFamily::Owned
+        } else {
+            WireFamily::Data
+        }
     } else {
         return Err(AbcDecodeError::fmt_err(
             "abc.decode.magic",
@@ -951,6 +1226,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         profile: match family {
             WireFamily::Core => crate::contract::AV_PROFILE.to_string(),
             WireFamily::Data => crate::contract::AV_DATA_PROFILE.to_string(),
+            WireFamily::Owned => crate::contract::AV_OWNED_PROFILE.to_string(),
         },
         owner: OwnerScope {
             schema: String::new(),
@@ -993,6 +1269,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                 let result = c.u32()?;
                 module.types.push(MirType::Fn(FnSig { params, result }));
             }
+            TY_CHAR if family.allows_owned_tags() => module.types.push(MirType::Char),
+            TY_STR if family.allows_owned_tags() => module.types.push(MirType::Str),
+            TY_STRVIEW if family.allows_owned_tags() => module.types.push(MirType::StrView),
+            TY_MUTREF if family.allows_owned_tags() => module.types.push(MirType::MutRef),
             TY_I64 if family.allows_data_tags() => module.types.push(MirType::I64),
             TY_U64 if family.allows_data_tags() => module.types.push(MirType::U64),
             TY_F32 if family.allows_data_tags() => module.types.push(MirType::F32),
@@ -1080,6 +1360,30 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             CONST_F64_BITS if family.allows_data_tags() => {
                 let bits = c.u64()?;
                 module.consts.push(MirConst::F64Bits(bits));
+            }
+            CONST_CHAR if family.allows_owned_tags() => {
+                let code = c.u32()?;
+                let ch = char::from_u32(code).ok_or_else(|| {
+                    AbcDecodeError::fmt_err(
+                        "abc.decode.char-domain",
+                        format!("char constant code point {code:#x} is not a Unicode scalar"),
+                    )
+                })?;
+                module.consts.push(MirConst::Char(ch));
+            }
+            CONST_STR if family.allows_owned_tags() => {
+                let n = c.u32()? as usize;
+                decode_mem!(n, "a string constant payload");
+                let b = c.take(n)?.to_vec().into_boxed_slice();
+                // Decode-side UTF-8 admission (contract-decision §3): an
+                // invalid byte sequence is a STRUCTURAL rejection.
+                std::str::from_utf8(&b).map_err(|_| {
+                    AbcDecodeError::fmt_err(
+                        "abc.decode.str-utf8",
+                        "string constant is not valid UTF-8".to_string(),
+                    )
+                })?;
+                module.consts.push(MirConst::Str(b));
             }
             other => {
                 return Err(AbcDecodeError::fmt_err(
@@ -1314,6 +1618,95 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                             operands,
                         }
                     }
+                    OP_CLONE if family.allows_owned_tags() => {
+                        let dst = c.u32()?;
+                        let src = c.u32()?;
+                        MirInstr::Clone { dst, src }
+                    }
+                    OP_MOVE if family.allows_owned_tags() => {
+                        let dst = c.u32()?;
+                        let src = c.u32()?;
+                        MirInstr::Move { dst, src }
+                    }
+                    OP_VIEW if family.allows_owned_tags() => {
+                        let dst = c.u32()?;
+                        let src = c.u32()?;
+                        MirInstr::View { dst, src }
+                    }
+                    OP_MUTREF if family.allows_owned_tags() => {
+                        let dst = c.u32()?;
+                        let src = c.u32()?;
+                        MirInstr::MutRef { dst, src }
+                    }
+                    OP_BORROW_END if family.allows_owned_tags() => {
+                        let token = c.u32()?;
+                        MirInstr::BorrowEnd { token }
+                    }
+                    OP_DROP if family.allows_owned_tags() => {
+                        let slot = c.u32()?;
+                        MirInstr::Drop { slot }
+                    }
+                    OP_STR_LEN if family.allows_owned_tags() => {
+                        let dst = c.u32()?;
+                        let view = c.u32()?;
+                        MirInstr::StrLen { dst, view }
+                    }
+                    OP_STR_LEN_BYTES if family.allows_owned_tags() => {
+                        let dst = c.u32()?;
+                        let view = c.u32()?;
+                        MirInstr::StrLenBytes { dst, view }
+                    }
+                    OP_STR_CHAR_AT if family.allows_owned_tags() => {
+                        let dst = c.u32()?;
+                        let view = c.u32()?;
+                        let index = c.u32()?;
+                        MirInstr::StrCharAt { dst, view, index }
+                    }
+                    OP_STR_SLICE if family.allows_owned_tags() => {
+                        let dst = c.u32()?;
+                        let view = c.u32()?;
+                        let start = c.u32()?;
+                        let end = c.u32()?;
+                        MirInstr::StrSlice { dst, view, start, end }
+                    }
+                    OP_STR_CONCAT if family.allows_owned_tags() => {
+                        let dst = c.u32()?;
+                        let lhs = c.u32()?;
+                        let rhs = c.u32()?;
+                        MirInstr::StrConcat { dst, lhs, rhs }
+                    }
+                    OP_STR_TO_OWNED if family.allows_owned_tags() => {
+                        let dst = c.u32()?;
+                        let view = c.u32()?;
+                        MirInstr::StrToOwned { dst, view }
+                    }
+                    OP_STR_CMP if family.allows_owned_tags() => {
+                        let sub = c.u8()?;
+                        let eq = match sub {
+                            1 => true,
+                            2 => false,
+                            other => {
+                                return Err(AbcDecodeError::fmt_err(
+                                    "abc.decode.str-cmp-sub",
+                                    format!("unknown str-cmp subcode {}", other),
+                                ))
+                            }
+                        };
+                        let dst = c.u32()?;
+                        let lhs = c.u32()?;
+                        let rhs = c.u32()?;
+                        MirInstr::StrCmp { eq, dst, lhs, rhs }
+                    }
+                    OP_CHAR_TO_CODEPOINT if family.allows_owned_tags() => {
+                        let dst = c.u32()?;
+                        let ch = c.u32()?;
+                        MirInstr::CharToCodepoint { dst, ch }
+                    }
+                    OP_CHAR_FROM_CODEPOINT if family.allows_owned_tags() => {
+                        let dst = c.u32()?;
+                        let code = c.u32()?;
+                        MirInstr::CharFromCodepoint { dst, code }
+                    }
                     other => {
                         return Err(AbcDecodeError::fmt_err(
                             "abc.decode.opcode",
@@ -1395,6 +1788,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         schema: match family {
             WireFamily::Core => crate::contract::ABC_SCHEMA.to_string(),
             WireFamily::Data => crate::contract::ABC_DATA_SCHEMA.to_string(),
+            WireFamily::Owned => crate::contract::ABC_OWNED_SCHEMA.to_string(),
         },
         module: String::new(),
     };

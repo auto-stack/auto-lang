@@ -20,6 +20,7 @@ pub mod load256;
 pub mod mempeek;
 pub mod native_admission;
 pub mod native_reference;
+pub mod owned_driver;
 pub mod observations;
 pub mod semrefs;
 pub mod session;

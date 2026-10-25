@@ -855,6 +855,9 @@ fn native_build(args: &[String]) -> ! {
     // under the record domain (the old HIR-native lowering has supported
     // nominal records since PLAN-771); the default stays scalar.
     let record_profile = flag(args, "--profile").as_deref() == Some("record");
+    // PLAN-821 T-02: the text-record domain (782's own native chain —
+    // tr_layouts/rollback live in ac-core native.rs since 782).
+    let text_record_profile = flag(args, "--profile").as_deref() == Some("text-record");
     let caps: Vec<String> = flag(args, "--caps")
         .map(|c| {
             c.split(',')
@@ -865,7 +868,9 @@ fn native_build(args: &[String]) -> ! {
         .unwrap_or_default();
     let out = match (|| -> Result<serde_json::Value, String> {
         let src = std::fs::read_to_string(&src_file).map_err(|e| format!("build: {}", e))?;
-        let compiled = if record_profile {
+        let compiled = if text_record_profile {
+            auto_ac_prototype::source::compile_text_record_source(&src, "native.at", &caps)
+        } else if record_profile {
             auto_ac_prototype::source::compile_record_source(&src, "native.at", &caps)
         } else {
             auto_ac_prototype::source::compile_scalar_source(&src, "native.at", &caps)
@@ -876,11 +881,13 @@ fn native_build(args: &[String]) -> ! {
                 ds.first().map(|d| d.message.clone()).unwrap_or_default()
             )
         })?;
-        let (obj, exe, receipt) = auto_av_probe::native_reference::build_stages(
+        let support_lib = flag(args, "--support-lib");
+        let (obj, exe, receipt) = auto_av_probe::native_reference::build_stages_with_support(
             &compiled.checked,
             &entry,
             std::path::Path::new(&workdir),
             trace_lib.as_deref().map(std::path::Path::new),
+            support_lib.as_deref().map(std::path::Path::new),
         )?;
         Ok(serde_json::json!({
             "ok": true,

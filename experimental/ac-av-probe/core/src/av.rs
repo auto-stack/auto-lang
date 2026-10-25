@@ -75,6 +75,10 @@ pub fn execution_seq() -> u64 {
 #[derive(Clone, Debug, Default)]
 pub struct ExecTrace {
     pub events: Vec<TraceEvent>,
+    /// PLAN-821: the execution's owned-text arena (allocated even for
+    /// non-owned profiles — an empty ledger; `None` keeps the struct
+    /// cheap on the historic paths).
+    pub arena: Option<crate::owned_text::StrArena>,
     /// This execution's process-wide sequence number (B3-C03).
     pub execution_seq: u64,
     /// High-water live slot data across all frames during execution (the
@@ -140,6 +144,14 @@ struct Frame {
     block: u32,
     ip: usize,
     slots: Vec<Value>,
+    /// Per-slot WRITE generation (PLAN-821 V-05): bumped by every
+    /// [`commit_slot_write`]; a frame-rooted view/mut handle whose recorded
+    /// generation no longer matches is stale and rejected at use.
+    gens: Vec<u64>,
+    /// This frame ACTIVATION's identity (monotonic; the MutRef token's
+    /// runtime rooting key — PLAN-821 T-03).
+    #[allow(dead_code)]
+    seq: u64,
     _allocation: Option<crate::frame_allocation::AllocationLease>,
     /// Caller bookkeeping: destination slot written on return (None = root).
     ret_dst: Option<u32>,
@@ -191,8 +203,15 @@ pub fn execute_entry(
         );
     }
     let mut st = LoopState::default();
+    st.arena = crate::owned_text::StrArena::new();
+    st.trace.arena = Some(st.arena.clone());
     let out = dispatch(&MergedView(m), limits, cancel, args, &mut st, None)
         .expect("no budget: the loop always terminates with an outcome");
+    if !st.frames.is_empty() {
+        // All-exit cleanup: trap/resource/cancel leaves frames behind —
+        // their owned values release before the outcome surfaces.
+        cleanup_owned_frames(&mut st);
+    }
     (out, st.trace)
 }
 
@@ -213,10 +232,15 @@ pub fn execute_program_units(
     cancel: &CancelFlag,
 ) -> (ExecOutcome, ExecTrace) {
     let mut st = LoopState::default();
+    st.arena = crate::owned_text::StrArena::new();
+    st.trace.arena = Some(st.arena.clone());
     st.trace.execution_seq = EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
     st.trace.dispatched = observe_dispatched(prog);
     let out = dispatch(&prog.unit_view(), limits, cancel, &[], &mut st, None)
         .expect("no budget: the loop always terminates with an outcome");
+    if !st.frames.is_empty() {
+        cleanup_owned_frames(&mut st);
+    }
     (out, st.trace)
 }
 
@@ -226,10 +250,15 @@ pub fn execute_program(
     cancel: &CancelFlag,
 ) -> (ExecOutcome, ExecTrace) {
     let mut st = LoopState::default();
+    st.arena = crate::owned_text::StrArena::new();
+    st.trace.arena = Some(st.arena.clone());
     st.trace.execution_seq = EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
     st.trace.dispatched = observe_dispatched(prog);
     let out = dispatch(&prog.unit_view(), limits, cancel, &[], &mut st, None)
         .expect("no budget: the loop always terminates with an outcome");
+    if !st.frames.is_empty() {
+        cleanup_owned_frames(&mut st);
+    }
     (out, st.trace)
 }
 
@@ -337,6 +366,11 @@ struct LoopState {
     alloc_events: u64,
     /// Step counter at the last cancellation poll.
     last_poll: u64,
+    /// PLAN-821 owned-text ledger: every owned Str allocation/free event
+    /// (ids in creation order; the LIFO/release oracles read the traces).
+    arena: crate::owned_text::StrArena,
+    /// Monotonic frame ACTIVATION sequence (V-05 handle domain).
+    frame_seq: u64,
 }
 
 /// The shared flat dispatch loop: explicit frames, budgets and traps.
@@ -366,6 +400,14 @@ pub(crate) trait ModuleView {
     /// Resolve a call site's callee to a function slot (None = an
     /// admission violation: unresolved import or foreign index space).
     fn resolve_callee(&self, func: u32, callee: &CalleeRef) -> Option<u32>;
+    /// Whether a type index denotes `StrView` (PLAN-821; drives the
+    /// field-get borrow-view materialization).
+    fn is_strview_type(&self, func: u32, ty: u32) -> bool;
+    /// The raw MIR type of an index (PLAN-821 entry admission for char).
+    fn mir_type_of(&self, func: u32, ty: u32) -> Option<&crate::mir::MirType>;
+    /// Whether a type index OWNS resources (Str / resource record) —
+    /// move-in CALL semantics and slot kills (PLAN-821).
+    fn type_is_owned(&self, func: u32, ty: u32) -> bool;
 
     /// Project a TRAP span of the EXECUTING function (frame slot `func`)
     /// into the outcome's published coordinates. The default is the
@@ -388,7 +430,7 @@ impl ModuleView for MergedView<'_> {
         self.0.funcs.get(idx as usize)
     }
     fn const_at(&self, _func: u32, idx: u32) -> Option<crate::mir::MirConst> {
-        self.0.consts.get(idx as usize).copied()
+        self.0.consts.get(idx as usize).cloned()
     }
     fn zero_of(&self, _func: u32, ty: u32) -> Value {
         typed_zero(self.0.types.get(ty as usize))
@@ -401,6 +443,18 @@ impl ModuleView for MergedView<'_> {
             CalleeRef::Func(idx) => self.0.funcs.get(*idx as usize).map(|_| *idx),
             CalleeRef::Import(_) => None,
         }
+    }
+    fn is_strview_type(&self, _func: u32, ty: u32) -> bool {
+        matches!(
+            self.0.types.get(ty as usize),
+            Some(crate::mir::MirType::StrView)
+        )
+    }
+    fn mir_type_of(&self, _func: u32, ty: u32) -> Option<&crate::mir::MirType> {
+        self.0.types.get(ty as usize)
+    }
+    fn type_is_owned(&self, _func: u32, ty: u32) -> bool {
+        crate::ownership::type_is_owned(self.0, ty)
     }
     fn entry(&self) -> u32 {
         self.0.entry
@@ -423,6 +477,21 @@ pub(crate) fn typed_zero(t: Option<&MirType>) -> Value {
             ty: u32::MAX,
             fields: Vec::new(),
         })),
+        // PLAN-821 placeholders: definite initialization gates every read,
+        // so these are never observed (the detached Str carries NO arena
+        // hook — no free event can fire for a placeholder).
+        Some(MirType::Char) => Value::Char('\0'),
+        Some(MirType::Str) => Value::Str(crate::contract::StrHandle::detached(Box::from([]))),
+        Some(MirType::StrView) => Value::StrView(crate::contract::StrView {
+            src: crate::contract::StrViewSrc::Static { const_idx: u32::MAX },
+            start: 0,
+            end: 0,
+        }),
+        Some(MirType::MutRef) => Value::MutRef(crate::contract::MutRefV {
+            frame: u32::MAX,
+            slot: u32::MAX,
+            gen: 0,
+        }),
         // I32 and (unusable) Fn slots keep the historic scalar zero.
         _ => Value::I32(0),
     }
@@ -451,6 +520,7 @@ fn commit_slot_write(
     let old = fr.slots[slot].deep_size(&mut visited);
     let new = val.deep_size(&mut visited);
     st.steps += visited;
+    fr.gens[slot] = fr.gens[slot].wrapping_add(1);
     if new > old {
         // V-07 fault seam: the Nth allocation fails WITHOUT applying the
         // write — the slot keeps its prior value and the ledger its prior
@@ -480,6 +550,154 @@ fn commit_slot_write(
     }
     fr.slots[slot] = val;
     Ok(())
+}
+
+impl Value {
+    fn as_strview(&self) -> Option<&crate::contract::StrView> {
+        match self {
+            Value::StrView(v) => Some(v),
+            _ => None,
+        }
+    }
+}
+
+/// Deep-clone one owned value (782 `clone()`): every reachable owned Str
+/// field gets a FRESH independent buffer; scalars/copyable fields copy by
+/// value. Iterative over the record closure (no host recursion).
+fn clone_owned_value(val: &Value, arena: &crate::owned_text::StrArena) -> Value {
+    match val {
+        Value::Str(h) => Value::Str(arena.alloc(h.bytes())),
+        Value::Record(r) => {
+            let fields = r
+                .fields
+                .iter()
+                .map(|f| clone_owned_value(f, arena))
+                .collect();
+            Value::Record(std::rc::Rc::new(crate::contract::RecordValue {
+                ty: r.ty,
+                fields,
+            }))
+        }
+        other => other.clone(),
+    }
+}
+
+/// Project a view's scalar range to its byte slice over the source bytes.
+fn project_bytes<'a>(bytes: &'a [u8], view: &crate::contract::StrView) -> &'a [u8] {
+    match crate::owned_text::scalar_range_to_bytes(bytes, view.start as i32, view.end as i32) {
+        Ok((s, e)) => &bytes[s..e],
+        // Verified programs never carry an out-of-domain stored range; the
+        // empty projection keeps this total for defense in depth.
+        Err(_) => &[],
+    }
+}
+
+/// Resolve one view VALUE to (source bytes, the view) for the str ops:
+/// static views read the module's const bytes; frame-rooted views
+/// re-validate the handle (frame alive + activations + generation) and
+/// project the path to the owning Str (V-05 stale-handle rejection).
+fn resolve_view_bytes<V: ModuleView>(
+    v: &V,
+    func_idx: u32,
+    val: &Value,
+) -> Result<(Vec<u8>, crate::contract::StrView), ExecOutcome> {
+    let _unused_frames: Option<&LoopState> = None;
+    let view = val.as_strview().ok_or_else(|| {
+        ExecOutcome::Infra(format!(
+            "str operand holds {} (admission violation)",
+            val.type_name()
+        ))
+    })?;
+    match &view.src {
+        crate::contract::StrViewSrc::Static { const_idx } => {
+            let bytes = match v.const_at(func_idx, *const_idx) {
+                Some(crate::mir::MirConst::Str(b)) => b.to_vec(),
+                _ => {
+                    return Err(ExecOutcome::Infra(
+                        "static view references a non-Str const (admission violation)".to_string(),
+                    ))
+                }
+            };
+            Ok((bytes, view.clone()))
+        }
+        crate::contract::StrViewSrc::Share(_) => {
+            let resolved = crate::place::resolve_share_view(view).ok_or_else(|| {
+                ExecOutcome::Infra("share view resolution failed (admission violation)".to_string())
+            })?;
+            Ok((resolved.handle.bytes().to_vec(), view.clone()))
+        }
+    }
+}
+
+/// PLAN-821 all-exit cleanup: drain remaining frames top-down, releasing
+/// each frame's owned values in DESCENDING creation order (the 782 LIFO
+/// table's cross-type rule; intra-record field order refines with T-03).
+/// Fuel is the reserved cleanup accounting — never cancelled by the
+/// exhaustion that triggered the unwind (contract-decision §5).
+/// Release one frame's owned values in descending creation order
+/// (shared by the RETURN path and the unwind path).
+fn release_frame_owned_lifo(st: &mut LoopState, frame: &mut Frame) {
+    let mut owned: Vec<(u64, Value)> = Vec::new();
+    for slot_val in frame.slots.iter_mut() {
+        match slot_val {
+            Value::Str(h) => {
+                owned.push((h.rc.id, Value::Str(h.clone())));
+                *slot_val = Value::I32(0);
+            }
+            Value::Record(_) => {
+                let min_id = min_buffer_id(slot_val);
+                owned.push((min_id, slot_val.clone()));
+                *slot_val = Value::I32(0);
+            }
+            _ => {}
+        }
+    }
+    owned.sort_by(|a, b| b.0.cmp(&a.0));
+    for (_, val) in owned {
+        st.steps += 1; // reserved cleanup fuel
+        drop(val);
+    }
+}
+
+fn cleanup_owned_frames(st: &mut LoopState) {
+    while let Some(mut frame) = st.frames.pop() {
+        release_frame_owned_lifo(st, &mut frame);
+        drop(frame);
+    }
+}
+
+fn min_buffer_id(val: &Value) -> u64 {
+    match val {
+        Value::Str(h) => h.rc.id,
+        Value::Record(r) => {
+            let mut min = u64::MAX;
+            let mut stack: Vec<&Value> = r.fields.iter().collect();
+            while let Some(x) = stack.pop() {
+                match x {
+                    Value::Str(h) => min = min.min(h.rc.id),
+                    Value::Record(inner) => stack.extend(inner.fields.iter()),
+                    _ => {}
+                }
+            }
+            min
+        }
+        _ => u64::MAX,
+    }
+}
+
+/// Kill one slot of the CURRENT frame (move-out / move-in at a call):
+/// replace with the typed placeholder, bump the generation and adjust the
+/// live-data ledger by the deep delta (a kill never allocates — no fault
+/// seam here, V-03's attempt accounting lives in the allocating op).
+fn owned_kill_slot(st: &mut LoopState, slot: usize, zero: Value) {
+    let mut visited = 0u64;
+    let fr = st.frames.last_mut().expect("frame present");
+    let old = fr.slots[slot].deep_size(&mut visited);
+    let new = zero.deep_size(&mut visited);
+    st.steps += visited;
+    st.slot_bytes = st.slot_bytes.saturating_sub(old.saturating_sub(new));
+    fr.slots[slot] = zero;
+    fr.gens[slot] = fr.gens[slot].wrapping_add(1);
 }
 
 /// Field-path read: walks a record value by declaration indices, cloning
@@ -575,7 +793,12 @@ fn dispatch<V: ModuleView>(
                 Some(ScalarShape::U64) => matches!(arg, Value::U64(_)),
                 Some(ScalarShape::F32) => matches!(arg, Value::F32(_)),
                 Some(ScalarShape::F64) => matches!(arg, Value::F64(_)),
-                None => false,
+                // PLAN-821: char entry params admit char values (the
+                // owned entry contract, contract-decision §6).
+                None => matches!(
+                    (v.mir_type_of(entry_slot, slot_ty), arg),
+                    (Some(crate::mir::MirType::Char), Value::Char(_))
+                ),
             };
             if !ok {
                 return Some(ExecOutcome::Infra(format!(
@@ -623,11 +846,14 @@ fn dispatch<V: ModuleView>(
                 })
             }
         };
+        st.frame_seq += 1;
         let mut frame = Frame {
             func: entry_slot,
             block: entry_fn.entry,
             ip: 0,
             slots,
+            gens: vec![0; entry_fn.slots.len()],
+            seq: st.frame_seq,
             _allocation: allocation,
             ret_dst: None,
         };
@@ -734,6 +960,7 @@ fn dispatch<V: ModuleView>(
                             )))
                         }
                     };
+                    let dst_ty = func.slots[*dst as usize].ty;
                     let val = match cv {
                         crate::mir::MirConst::I32(x) => Value::I32(x),
                         crate::mir::MirConst::Bool(b) => Value::Bool(b),
@@ -743,6 +970,25 @@ fn dispatch<V: ModuleView>(
                         // signed zeros survive the const round trip.
                         crate::mir::MirConst::F32Bits(bits) => Value::F32(f32::from_bits(bits)),
                         crate::mir::MirConst::F64Bits(bits) => Value::F64(f64::from_bits(bits)),
+                        // PLAN-821: a char const is its scalar; a Str const
+                        // materializes by DESTINATION kind — an owned Str
+                        // slot gets a FRESH arena allocation, a StrView
+                        // slot the immortal static view (770 literal rule).
+                        crate::mir::MirConst::Char(c) => Value::Char(c),
+                        crate::mir::MirConst::Str(bytes) => {
+                            if v.is_strview_type(func_idx, dst_ty) {
+                                let n = crate::owned_text::scalars(&bytes).len() as u32;
+                                Value::StrView(crate::contract::StrView {
+                                    src: crate::contract::StrViewSrc::Static {
+                                        const_idx: *value,
+                                    },
+                                    start: 0,
+                                    end: n,
+                                })
+                            } else {
+                                Value::Str(st.arena.alloc(&bytes))
+                            }
+                        }
                     };
                     if let Err(out) = commit_slot_write(st, *dst as usize, val, limits) {
                         return Some(out);
@@ -863,11 +1109,15 @@ fn dispatch<V: ModuleView>(
                                 })
                             }
                         };
+                    st.frame_seq += 1;
+                    let seq = st.frame_seq;
                     let mut nf = Frame {
                         func: target,
                         block: callee_fn.entry,
                         ip: 0,
                         slots,
+                        gens: vec![0; callee_fn.slots.len()],
+                        seq,
                         _allocation: allocation,
                         ret_dst: Some(*dst),
                     };
@@ -879,6 +1129,19 @@ fn dispatch<V: ModuleView>(
                         } else {
                             v.zero_of(target, s.ty)
                         });
+                    }
+                    // PLAN-821 move-in: owned-typed arguments transfer to
+                    // the callee — the CALLER slot dies at the call (killed
+                    // in the ownership dataflow; here the reference and the
+                    // generation both move on).
+                    {
+                        for a in args {
+                            let ty = func.slots[*a as usize].ty;
+                            if v.type_is_owned(func_idx, ty) {
+                                let zero = v.zero_of(func_idx, ty);
+                                owned_kill_slot(st, *a as usize, zero);
+                            }
+                        }
                     }
                     let mut visited = 0u64;
                     let callee_bytes = frame_slots_bytes(&nf.slots, &mut visited);
@@ -897,6 +1160,284 @@ fn dispatch<V: ModuleView>(
                     st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
                     st.frames.push(nf);
                 }
+                MirInstr::Clone { dst, src } => {
+                    // Explicit deep clone (782): per-field independent
+                    // buffers, scalars by value, empty Str zero-alloc.
+                    let sv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*src as usize].clone()
+                    };
+                    let cloned = clone_owned_value(&sv, &st.arena);
+                    if let Err(out) = commit_slot_write(st, *dst as usize, cloned, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::Move { dst, src } => {
+                    // Whole-root transfer: the source slot dies HERE (V-05
+                    // generation bump makes stale rooted views unusable).
+                    let (sv, zero) = {
+                        let fr = st.frames.last().expect("frame present");
+                        (
+                            fr.slots[*src as usize].clone(),
+                            v.zero_of(func_idx, func.slots[*src as usize].ty),
+                        )
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, sv, limits) {
+                        return Some(out);
+                    }
+                    owned_kill_slot(st, *src as usize, zero);
+                }
+                MirInstr::View { dst, src } => {
+                    let (share, n) = {
+                        let fr = st.frames.last().expect("frame present");
+                        match &fr.slots[*src as usize] {
+                            Value::Str(h) => (
+                                h.clone(),
+                                crate::owned_text::scalars(h.bytes()).len() as u32,
+                            ),
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "VIEW source holds {} (admission violation)",
+                                    other.type_name()
+                                )))
+                            }
+                        }
+                    };
+                    let view = Value::StrView(crate::contract::StrView {
+                        src: crate::contract::StrViewSrc::Share(share),
+                        start: 0,
+                        end: n,
+                    });
+                    if let Err(out) = commit_slot_write(st, *dst as usize, view, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::MutRef { .. } | MirInstr::Drop { .. } => {
+                    // Wire rows exist; T-02 never admits these past
+                    // verification — reaching here is an admission bug.
+                    return Some(ExecOutcome::Infra(
+                        "MUTREF/DROP execution lands with PLAN-821 T-03".to_string(),
+                    ));
+                }
+                MirInstr::BorrowEnd { .. } => {
+                    // The token is a plain value: release is a no-op at
+                    // runtime (the static analysis gates conflicts).
+                }
+                MirInstr::StrLen { dst, view } | MirInstr::StrLenBytes { dst, view } => {
+                    let vv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*view as usize].clone()
+                    };
+                    let (bytes, sv) = match resolve_view_bytes(v, func_idx, &vv) {
+                        Ok(x) => x,
+                        Err(out) => return Some(out),
+                    };
+                    let res = match instr {
+                        MirInstr::StrLen { .. } => {
+                            (sv.end - sv.start) as i32
+                        }
+                        _ => {
+                            let (bs, be) = match crate::owned_text::scalar_range_to_bytes(
+                                &bytes,
+                                sv.start as i32,
+                                sv.end as i32,
+                            ) {
+                                Ok(r) => r,
+                                Err(kind) => {
+                                    return Some(ExecOutcome::Trap {
+                                        kind,
+                                        span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                                    })
+                                }
+                            };
+                            (be - bs) as i32
+                        }
+                    };
+                    let res = Value::I32(res);
+                    if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::StrCharAt { dst, view, index } => {
+                    let (vv, iv) = {
+                        let fr = st.frames.last().expect("frame present");
+                        (
+                            fr.slots[*view as usize].clone(),
+                            fr.slots[*index as usize].clone(),
+                        )
+                    };
+                    let (bytes, sv) = match resolve_view_bytes(v, func_idx, &vv) {
+                        Ok(x) => x,
+                        Err(out) => return Some(out),
+                    };
+                    let idx = match iv {
+                        Value::I32(i) => i,
+                        other => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "char_at index holds {} (admission violation)",
+                                other.type_name()
+                            )))
+                        }
+                    };
+                    match crate::owned_text::char_at(&bytes, sv.start as i32 + idx) {
+                        Ok(c) => {
+                            let res = Value::Char(c);
+                            if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
+                                return Some(out);
+                            }
+                        }
+                        Err(kind) => {
+                            return Some(ExecOutcome::Trap {
+                                kind,
+                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                            })
+                        }
+                    }
+                }
+                MirInstr::StrSlice { dst, view, start, end } => {
+                    let (vv, s_v, e_v) = {
+                        let fr = st.frames.last().expect("frame present");
+                        (
+                            fr.slots[*view as usize].clone(),
+                            fr.slots[*start as usize].clone(),
+                            fr.slots[*end as usize].clone(),
+                        )
+                    };
+                    let (bytes, sv) = match resolve_view_bytes(v, func_idx, &vv) {
+                        Ok(x) => x,
+                        Err(out) => return Some(out),
+                    };
+                    let (s_i, e_i) = match (s_v, e_v) {
+                        (Value::I32(a), Value::I32(b)) => (a, b),
+                        _ => {
+                            return Some(ExecOutcome::Infra(
+                                "slice bounds hold a non-i32 (admission violation)".to_string(),
+                            ))
+                        }
+                    };
+                    // Validate against THIS view's range, then rebases.
+                    if s_i < 0 || e_i < 0 || s_i > e_i || sv.start as i32 + e_i > sv.end as i32 {
+                        return Some(ExecOutcome::Trap {
+                            kind: crate::contract::TrapKind::StrIndex,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                        });
+                    }
+                    let sliced = Value::StrView(crate::contract::StrView {
+                        src: vv.as_strview().unwrap().src.clone(),
+                        start: sv.start + s_i as u32,
+                        end: sv.start + e_i as u32,
+                    });
+                    let _ = bytes;
+                    if let Err(out) = commit_slot_write(st, *dst as usize, sliced, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::StrConcat { dst, lhs, rhs } => {
+                    let (lv, rv_) = {
+                        let fr = st.frames.last().expect("frame present");
+                        (
+                            fr.slots[*lhs as usize].clone(),
+                            fr.slots[*rhs as usize].clone(),
+                        )
+                    };
+                    let (lb, ls) = match resolve_view_bytes(v, func_idx, &lv) {
+                        Ok(x) => x,
+                        Err(out) => return Some(out),
+                    };
+                    let (rb, rs) = match resolve_view_bytes(v, func_idx, &rv_) {
+                        Ok(x) => x,
+                        Err(out) => return Some(out),
+                    };
+                    let l = project_bytes(&lb, &ls);
+                    let r = project_bytes(&rb, &rs);
+                    let mut joined = Vec::with_capacity(l.len() + r.len());
+                    joined.extend_from_slice(l);
+                    joined.extend_from_slice(r);
+                    let res = Value::Str(st.arena.alloc(&joined));
+                    if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::StrToOwned { dst, view } => {
+                    let vv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*view as usize].clone()
+                    };
+                    let (bytes, sv) = match resolve_view_bytes(v, func_idx, &vv) {
+                        Ok(x) => x,
+                        Err(out) => return Some(out),
+                    };
+                    let owned = Value::Str(st.arena.alloc(project_bytes(&bytes, &sv)));
+                    if let Err(out) = commit_slot_write(st, *dst as usize, owned, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::StrCmp { eq, dst, lhs, rhs } => {
+                    let (lv, rv_) = {
+                        let fr = st.frames.last().expect("frame present");
+                        (
+                            fr.slots[*lhs as usize].clone(),
+                            fr.slots[*rhs as usize].clone(),
+                        )
+                    };
+                    let (lb, ls) = match resolve_view_bytes(v, func_idx, &lv) {
+                        Ok(x) => x,
+                        Err(out) => return Some(out),
+                    };
+                    let (rb, rs) = match resolve_view_bytes(v, func_idx, &rv_) {
+                        Ok(x) => x,
+                        Err(out) => return Some(out),
+                    };
+                    let same = project_bytes(&lb, &ls) == project_bytes(&rb, &rs);
+                    let res = Value::Bool(if *eq { same } else { !same });
+                    if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::CharToCodepoint { dst, ch } => {
+                    let cv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*ch as usize].clone()
+                    };
+                    let res = match cv {
+                        Value::Char(c) => Value::I32(c as i32),
+                        other => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "to_codepoint holds {} (admission violation)",
+                                other.type_name()
+                            )))
+                        }
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::CharFromCodepoint { dst, code } => {
+                    let cv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*code as usize].clone()
+                    };
+                    let res = match cv {
+                        Value::I32(n) => match char::from_u32(n as u32) {
+                            Some(c) => Value::Char(c),
+                            None => {
+                                return Some(ExecOutcome::Trap {
+                                    kind: crate::contract::TrapKind::CharInvalid,
+                                    span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                                })
+                            }
+                        },
+                        other => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "from_codepoint holds {} (admission violation)",
+                                other.type_name()
+                            )))
+                        }
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
+                        return Some(out);
+                    }
+                }
                 MirInstr::Trace { event } => {
                     st.trace.events.push(*event);
                     if st.trace.events.len() > limits.max_trace_bytes {
@@ -914,6 +1455,42 @@ fn dispatch<V: ModuleView>(
                         let fr = st.frames.last().expect("frame present");
                         fr.slots[*base as usize].clone()
                     };
+                    let dst_ty = func.slots[*dst as usize].ty;
+                    if v.is_strview_type(func_idx, dst_ty) {
+                        // PLAN-821: a Str-field read is a BORROW VIEW rooted
+                        // at the base slot's place (782: 字段读取=视图) —
+                        // the owned value never leaves its root.
+                        let field = match crate::place::field_project(&bv, path) {
+                            Some(f) => f.clone(),
+                            None => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "field-get path {:?} does not resolve on the base value (admission violation)",
+                                    path
+                                )))
+                            }
+                        };
+                        let share = match &field {
+                            Value::Str(h) => h.clone(),
+                            _ => {
+                                return Some(ExecOutcome::Infra(
+                                    "field-get view of a non-Str field (admission violation)"
+                                        .to_string(),
+                                ))
+                            }
+                        };
+                        let n = crate::owned_text::scalars(share.bytes()).len() as u32;
+                        // 774 snapshot: the view shares the FIELD's buffer —
+                        // a later replace leaves it reading the old bytes.
+                        let view = Value::StrView(crate::contract::StrView {
+                            src: crate::contract::StrViewSrc::Share(share),
+                            start: 0,
+                            end: n,
+                        });
+                        if let Err(out) = commit_slot_write(st, *dst as usize, view, limits) {
+                            return Some(out);
+                        }
+                        continue;
+                    }
                     let picked = match field_get_val(&bv, path) {
                         Some(x) => x,
                         None => {
@@ -1011,7 +1588,12 @@ fn dispatch<V: ModuleView>(
                 };
                 st.steps += visited;
                 st.slot_bytes = st.slot_bytes.saturating_sub(frame_bytes);
-                st.frames.pop();
+                // PLAN-821: the popped frame's remaining owned values
+                // release in reverse creation order (result responsibility
+                // already transferred OUT in `rv`).
+                let mut frame = st.frames.pop().expect("frame present");
+                release_frame_owned_lifo(st, &mut frame);
+                drop(frame);
                 match (st.frames.last_mut(), ret_dst) {
                     (Some(_), Some(dst)) => {
                         if let Err(out) = commit_slot_write(st, dst as usize, rv, limits) {

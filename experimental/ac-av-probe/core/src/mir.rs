@@ -40,7 +40,9 @@ pub struct OwnerScope {
 
 /// A MIR type. The core-i32 profile has exactly two value types plus
 /// function signatures for call admission; the data profile (PLAN-820)
-/// adds the wide scalars and nominal pure-value records.
+/// adds the wide scalars and nominal pure-value records; the owned profile
+/// (PLAN-821) adds `char`, owned `Str`, the borrowed `StrView` and the
+/// `MutRef` write token.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum MirType {
     I32,
@@ -54,8 +56,20 @@ pub enum MirType {
     /// full field list with declaration order and per-field type indices).
     /// Two records of equal width but different owner/name never compare
     /// equal — `MirType`'s derived `PartialEq` IS the frozen type-equivalence
-    /// rule applied at every consumption point.
+    /// rule applied at every consumption point. In the owned profile a
+    /// record whose transitive field closure reaches `Str` is a RESOURCE
+    /// record (derived, never input-claimed); copyability follows the same
+    /// derivation (Design44 §4.2).
     Record(RecordTypeRef),
+    /// Unicode scalar (PLAN-774/821): domain-checked, Copy, never int.
+    Char,
+    /// Owned UTF-8 buffer (PLAN-774/821): single owner, real allocation.
+    Str,
+    /// Borrowed read-only view (PLAN-774/821): a value of places/temporaries
+    /// and borrow returns; NEVER a record field (`mir.field-borrow`).
+    StrView,
+    /// Exclusive write-borrow token (PLAN-821 §5.1.3).
+    MutRef,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -81,8 +95,12 @@ pub struct RecordTypeRef {
 /// Module constants. Bool constants are `true`/`false` only. The wide
 /// scalars store their EXACT BIT PATTERN (`to_bits`) — NaN payloads and
 /// signed zeros survive const/copy/call/return round trips; the profile
-/// has no float arithmetic that could canonicalize them.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// has no float arithmetic that could canonicalize them. The owned profile
+/// (PLAN-821) adds `char` (one Unicode scalar) and `Str` (UTF-8 bytes);
+/// the SAME Str const serves an owned `Str` slot (materializes a fresh
+/// allocation) and a `StrView` slot (materializes an immortal static view
+/// over the const bytes — PLAN-770's static borrowing source).
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum MirConst {
     I32(i32),
     Bool(bool),
@@ -92,6 +110,10 @@ pub enum MirConst {
     F32Bits(u32),
     /// f64 payload as raw bits.
     F64Bits(u64),
+    /// One Unicode scalar (domain-checked: no surrogates, ≤ 0x10FFFF).
+    Char(char),
+    /// UTF-8 bytes of a string literal (invariant: valid UTF-8).
+    Str(Box<[u8]>),
 }
 
 /// Effect classification of an import (mirrors the HIR intrinsic effect).
@@ -232,6 +254,103 @@ pub enum MirInstr {
         record_ty: TypeIdx,
         operands: Vec<SlotId>,
     },
+    // -- PLAN-821 owned surface (av.owned/1; contract-decision §4) -------
+    /// Explicit deep clone (782 `r.clone()` / 770 `s.clone()`): fresh
+    /// independent buffers per owned field, scalars by value; empty Str
+    /// allocates nothing. `dst` receives the new owner; `src` is unchanged.
+    Clone {
+        dst: SlotId,
+        src: SlotId,
+    },
+    /// Whole-root ownership transfer (782 `x.move`): `src` must be an
+    /// owned value (Str / resource record) that is initialized, not
+    /// already moved and free of live borrows; the commit kills `src`
+    /// (move-kill). Copyable sources are rejected (`mir.ownership-required`).
+    Move {
+        dst: SlotId,
+        src: SlotId,
+    },
+    /// Read-only borrow of an owned Str slot (770 `s.to(str)`): `dst`
+    /// receives a `StrView` rooted at `src`'s slot. Views have no drop
+    /// right; conflicts on the root are conservative (root granularity).
+    View {
+        dst: SlotId,
+        src: SlotId,
+    },
+    /// Exclusive write-borrow token over a Str/resource-record root slot.
+    /// Root-conservative exclusivity: no other token and no root
+    /// move/replace while live.
+    MutRef {
+        dst: SlotId,
+        src: SlotId,
+    },
+    /// End a VIEW or MUTREF token (kind from the token slot's type).
+    /// Released roots accept conflicting access again.
+    BorrowEnd {
+        token: SlotId,
+    },
+    /// Explicit drop: an initialized owned value cleans up exactly once
+    /// (reverse-creation order for its buffers) and the slot becomes
+    /// Dropped. Dropping an uninitialized/moved/dropped slot is
+    /// `mir.drop-uninit`.
+    Drop {
+        slot: SlotId,
+    },
+    /// `s.len()` — Unicode-scalar count of a view (result i32).
+    StrLen {
+        dst: SlotId,
+        view: SlotId,
+    },
+    /// `s.len_bytes()` — UTF-8 byte length of a view (result i32).
+    StrLenBytes {
+        dst: SlotId,
+        view: SlotId,
+    },
+    /// `s.char_at(i)` — scalar-indexed access (result char); out of range
+    /// traps `av.trap.str-index` at runtime.
+    StrCharAt {
+        dst: SlotId,
+        view: SlotId,
+        index: SlotId,
+    },
+    /// `s.slice(start, end)` — borrowed `[start, end)` scalar subslice of a
+    /// view (result StrView sharing the source). Invalid ranges trap.
+    StrSlice {
+        dst: SlotId,
+        view: SlotId,
+        start: SlotId,
+        end: SlotId,
+    },
+    /// `a + b` on text — concatenation into a fresh OWNED buffer.
+    StrConcat {
+        dst: SlotId,
+        lhs: SlotId,
+        rhs: SlotId,
+    },
+    /// `s.to(Str)` — owned copy of the viewed range (fresh allocation).
+    StrToOwned {
+        dst: SlotId,
+        view: SlotId,
+    },
+    /// View equality/inequality (782 eq/ne): byte-wise comparison of the
+    /// two views' ranges (result Bool).
+    StrCmp {
+        eq: bool,
+        dst: SlotId,
+        lhs: SlotId,
+        rhs: SlotId,
+    },
+    /// `c.to_codepoint()` — char to i32 (always succeeds).
+    CharToCodepoint {
+        dst: SlotId,
+        ch: SlotId,
+    },
+    /// `char.from_codepoint(n)` — i32 to char; invalid scalars trap
+    /// `av.trap.char-invalid` at runtime (never a verify error, 770).
+    CharFromCodepoint {
+        dst: SlotId,
+        code: SlotId,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -338,13 +457,35 @@ impl MirModule {
         m
     }
 
+    /// An owned-profile module (`av.owned/1`, PLAN-821).
+    pub fn new_owned(owner: OwnerScope) -> Self {
+        let mut m = MirModule::new(owner);
+        m.profile = crate::contract::AV_OWNED_PROFILE.to_string();
+        m
+    }
+
+    /// An owned-profile single-function unit.
+    pub fn owned_unit(owner: OwnerScope) -> Self {
+        let mut m = MirModule::new_owned(owner);
+        m.is_unit = true;
+        m
+    }
+
     /// Whether this module declares the data profile.
     pub fn is_data_profile(&self) -> bool {
         self.profile == crate::contract::AV_DATA_PROFILE
     }
 
-    /// Resolve a type to its scalar shape for verification (`None` = Fn or
-    /// Record).
+    /// Whether this module declares the owned profile (PLAN-821). The
+    /// owned profile SUBSUMES the data feature set (wide-scalar data ops
+    /// and FIELD_*/AGGREGATE) and adds the owned surface.
+    pub fn is_owned_profile(&self) -> bool {
+        self.profile == crate::contract::AV_OWNED_PROFILE
+    }
+
+    /// Resolve a type to its scalar shape for verification (`None` = Fn,
+    /// Record, or the owned profile's Char/Str/StrView/MutRef — the latter
+    /// have their own typing arms and never ride ScalarShape).
     pub fn type_shape(&self, idx: TypeIdx) -> Option<ScalarShape> {
         match self.types.get(idx as usize)? {
             MirType::I32 => Some(ScalarShape::I32),
@@ -353,7 +494,12 @@ impl MirModule {
             MirType::U64 => Some(ScalarShape::U64),
             MirType::F32 => Some(ScalarShape::F32),
             MirType::F64 => Some(ScalarShape::F64),
-            MirType::Fn(_) | MirType::Record(_) => None,
+            MirType::Fn(_)
+            | MirType::Record(_)
+            | MirType::Char
+            | MirType::Str
+            | MirType::StrView
+            | MirType::MutRef => None,
         }
     }
 
@@ -493,7 +639,11 @@ impl MirModule {
                 | MirType::I64
                 | MirType::U64
                 | MirType::F32
-                | MirType::F64 => 0, // inline enum, table vec counted below
+                | MirType::F64
+                | MirType::Char
+                | MirType::Str
+                | MirType::StrView
+                | MirType::MutRef => 0, // inline enum, table vec counted below
                 MirType::Fn(s) => s.params.len() * std::mem::size_of::<TypeIdx>() + VEC,
                 MirType::Record(r) => {
                     r.owner_module.len()
@@ -508,7 +658,15 @@ impl MirModule {
             .sum::<usize>()
             + self.types.len() * std::mem::size_of::<MirType>()
             + VEC;
-        b += self.consts.len() * std::mem::size_of::<MirConst>() + VEC;
+        b += self.consts.len() * std::mem::size_of::<MirConst>() + VEC
+            + self
+                .consts
+                .iter()
+                .map(|c| match c {
+                    MirConst::Str(bytes) => bytes.len(),
+                    _ => 0,
+                })
+                .sum::<usize>();
         b += self
             .imports
             .iter()

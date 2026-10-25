@@ -66,7 +66,8 @@ impl LoadedModule {
 
 /// Admit decoded ABC bytes as an executable module. `expected_owner` is the
 /// owner identity the ENVELOPE demands (the payload cannot self-assert it).
-/// Both wire families admit here: AVAB (core-i32) and AVAD (data, PLAN-820);
+/// All wire generations admit here: AVAB (core-i32), AVAD v1 (data,
+/// PLAN-820) and AVAD v2 (owned, PLAN-821);
 /// the decoded profile id selects the admitted version tuple and the AV
 /// semantics version stamped on the credential.
 pub fn verify_abc(
@@ -88,6 +89,12 @@ pub fn verify_abc(
                 crate::contract::ABC_DATA_VERSION,
                 crate::contract::ABC_PROFILE_DATA,
                 crate::contract::AV_DATA_SEMANTICS,
+            )
+        } else if decoded.profile == crate::contract::ABC_PROFILE_OWNED {
+            (
+                crate::contract::ABC_OWNED_VERSION,
+                crate::contract::ABC_PROFILE_OWNED,
+                crate::contract::AV_OWNED_SEMANTICS,
             )
         } else {
             return Err(AbcAdmissionError::Identity(format!(

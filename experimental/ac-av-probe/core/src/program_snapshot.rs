@@ -363,7 +363,11 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<u32> {
                 | MirType::I64
                 | MirType::U64
                 | MirType::F32
-                | MirType::F64 => {
+                | MirType::F64
+                | MirType::Char
+                | MirType::Str
+                | MirType::StrView
+                | MirType::MutRef => {
                     map[i] = merged.intern_type(t.clone());
                     progress = true;
                 }
@@ -440,7 +444,7 @@ impl crate::av::ModuleView for UnitView<'_> {
     }
     fn const_at(&self, func: u32, idx: u32) -> Option<crate::mir::MirConst> {
         let u = self.snap.code.get(func as usize)?.unit().module();
-        u.consts.get(idx as usize).copied()
+        u.consts.get(idx as usize).cloned()
     }
     fn zero_of(&self, func: u32, ty: u32) -> crate::contract::Value {
         let u = self.snap.code.get(func as usize).unwrap().unit().module();
@@ -449,6 +453,17 @@ impl crate::av::ModuleView for UnitView<'_> {
     fn scalar_shape_of(&self, func: u32, ty: u32) -> Option<crate::mir::ScalarShape> {
         let u = self.snap.code.get(func as usize)?.unit().module();
         u.type_shape(ty)
+    }
+    fn is_strview_type(&self, _func: u32, _ty: u32) -> bool {
+        // The owned profile rides the merged module view for T-02; the
+        // unit view gains its own type space with PLAN-821 T-09.
+        false
+    }
+    fn mir_type_of(&self, _func: u32, _ty: u32) -> Option<&crate::mir::MirType> {
+        None
+    }
+    fn type_is_owned(&self, _func: u32, _ty: u32) -> bool {
+        false
     }
     fn resolve_callee(&self, func: u32, callee: &crate::mir::CalleeRef) -> Option<u32> {
         match callee {

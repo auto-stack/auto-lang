@@ -88,6 +88,19 @@ pub fn build_stages(
     workdir: &Path,
     trace_lib: Option<&Path>,
 ) -> Result<(PathBuf, PathBuf, PathBuf), String> {
+    build_stages_with_support(checked, entry, workdir, trace_lib, None)
+}
+
+/// PLAN-821: build_stages plus an optional SUPPORT LIB linked after the
+/// module object (the text-record domain's `ac.runtime.text.v1` runtime,
+/// 782's `--support-lib` shape).
+pub fn build_stages_with_support(
+    checked: &CheckedModule,
+    entry: &str,
+    workdir: &Path,
+    trace_lib: Option<&Path>,
+    support_lib: Option<&Path>,
+) -> Result<(PathBuf, PathBuf, PathBuf), String> {
     std::fs::create_dir_all(workdir).map_err(|e| format!("build: {}", e))?;
     let obj = workdir.join("module.obj");
     let tmp_obj = workdir.join(".tmp-module.obj");
@@ -102,6 +115,9 @@ pub fn build_stages(
     let um = link::find_sdk_um_dir().map_err(|d| format!("toolchain: {}", d.message))?;
     let mut libs: Vec<PathBuf> = Vec::new();
     if let Some(t) = trace_lib {
+        libs.push(t.to_path_buf());
+    }
+    if let Some(t) = support_lib {
         libs.push(t.to_path_buf());
     }
     let staged = link::link_object_staged(&lld, &um, &tmp_obj, &exe, &sel.symbol, &libs)
@@ -261,6 +277,47 @@ pub fn bounded_worker_build(root: &Path, exe: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// PLAN-821: locate-or-build the text runtime support lib (the 782 native
+/// chain's `ac_text_runtime.lib`). Cached per process; the ac-core runtime
+/// workspace builds under its own target dir exactly as the 782 test
+/// harness does.
+pub fn text_runtime_lib() -> Result<PathBuf, String> {
+    use std::sync::Mutex;
+    static CACHE: Mutex<Option<PathBuf>> = Mutex::new(None);
+    let mut g = CACHE.lock().expect("text runtime cache");
+    if let Some(p) = g.as_ref() {
+        return Ok(p.clone());
+    }
+    let root = probe_workspace_root()?;
+    // probe root = <repo>/experimental/ac-av-probe -> sibling ac-core.
+    let rt = root
+        .parent()
+        .map(|p| p.join("ac-core").join("runtime").join("text"));
+    let Some(rt) = rt else {
+        return Err("ac-core runtime/text workspace not located".to_string());
+    };
+    if !rt.join("Cargo.toml").is_file() {
+        return Err(format!("text runtime workspace missing at {}", rt.display()));
+    }
+    let out = std::process::Command::new("cargo")
+        .args(["build", "-p", "ac-text-runtime-shim", "--release", "--locked"])
+        .current_dir(&rt)
+        .output()
+        .map_err(|e| format!("spawn cargo for the text runtime: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "text runtime build failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    let lib = rt.join("target").join("release").join("ac_text_runtime.lib");
+    if !lib.is_file() {
+        return Err(format!("runtime lib missing at {}", lib.display()));
+    }
+    *g = Some(lib.clone());
+    Ok(lib)
+}
+
 fn probe_workspace_root() -> Result<PathBuf, String> {
     // The workspace root is the ancestor holding both member crates.
     let mut dir: Option<&Path> = Some(Path::new(env!("CARGO_MANIFEST_DIR")));
@@ -325,12 +382,20 @@ pub fn build_and_run_record(
         trace_lib,
         NATIVE_STREAM_CAP,
         NATIVE_STREAM_CAP,
-        true,
+        Profile::Record,
     )
 }
 
 /// Frozen per-stream output cap (§3: stdout/stderr each ≤ 1 MiB).
 pub const NATIVE_STREAM_CAP: usize = 1024 * 1024;
+
+/// The native-build compile profile (source front door selection).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Profile {
+    Scalar,
+    Record,
+    TextRecord,
+}
 
 #[allow(clippy::too_many_arguments)]
 pub fn build_and_run_with_caps(
@@ -343,12 +408,41 @@ pub fn build_and_run_with_caps(
     stderr_cap: usize,
 ) -> Result<NativeRun, NativeError> {
     build_and_run_profile(
-        src, caps, entry, workdir, trace_lib, stdout_cap, stderr_cap, false,
+        src,
+        caps,
+        entry,
+        workdir,
+        trace_lib,
+        stdout_cap,
+        stderr_cap,
+        Profile::Scalar,
+    )
+}
+
+/// PLAN-821 T-02: the SAME supervised native comparison under the
+/// TEXT-RECORD source domain (782's native chain). Identical budgets and
+/// supervision; only the compile profile differs (`--profile text-record`).
+pub fn build_and_run_text_record(
+    src: &str,
+    caps: &[String],
+    entry: &str,
+    workdir: &Path,
+    trace_lib: Option<&Path>,
+) -> Result<NativeRun, NativeError> {
+    build_and_run_profile(
+        src,
+        caps,
+        entry,
+        workdir,
+        trace_lib,
+        NATIVE_STREAM_CAP,
+        NATIVE_STREAM_CAP,
+        Profile::TextRecord,
     )
 }
 
 #[allow(clippy::too_many_arguments)]
-fn build_and_run_profile(
+pub(crate) fn build_and_run_profile(
     src: &str,
     caps: &[String],
     entry: &str,
@@ -356,7 +450,7 @@ fn build_and_run_profile(
     trace_lib: Option<&Path>,
     stdout_cap: usize,
     stderr_cap: usize,
-    record: bool,
+    profile: Profile,
 ) -> Result<NativeRun, NativeError> {
     // F798-R8-03: worker preparation happens BEFORE the request clock,
     // under its OWN bounded wall — the supervised budgets below measure
@@ -388,8 +482,21 @@ fn build_and_run_profile(
     if !caps.is_empty() {
         cmd.arg("--caps").arg(caps.join(","));
     }
-    if record {
-        cmd.arg("--profile").arg("record");
+    match profile {
+        Profile::Scalar => {}
+        Profile::Record => {
+            cmd.arg("--profile").arg("record");
+        }
+        Profile::TextRecord => {
+            cmd.arg("--profile").arg("text-record");
+        }
+    }
+    let support_lib = match profile {
+        Profile::TextRecord => Some(text_runtime_lib().map_err(NativeError::Toolchain)?),
+        _ => None,
+    };
+    if let Some(lib) = support_lib.as_ref() {
+        cmd.arg("--support-lib").arg(lib);
     }
     let built = supervise(&mut cmd, build_remaining, NATIVE_STREAM_CAP)
         .map_err(|e| map_deadline(e, "build exceeded the remaining 60s budget (tree killed)"))?;

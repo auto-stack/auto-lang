@@ -175,6 +175,7 @@ pub fn lower_checked(
             &def_map,
             name.clone(),
             false,
+            false,
         )?;
         out.funcs.push(mir_fn);
     }
@@ -303,6 +304,7 @@ pub fn lower_checked_data(
             &def_map,
             name.clone(),
             true,
+            false,
         )?;
         out.funcs.push(mir_fn);
     }
@@ -314,6 +316,252 @@ pub fn lower_checked_data(
     })?;
     out.entry = entry;
     Ok(out)
+}
+
+/// PLAN-821: lower a CHECKED text-record (or text) bundle to the
+/// `av.owned/1` profile (contract-decision §7). The source path keeps its
+/// 774/782 `verify.*` diagnostics at the front door — this adapter only
+/// consumes the checked module; `verify_mir` re-admits everything (typed
+/// fixtures share that single trust path).
+pub fn lower_checked_owned(
+    checked: &CheckedModule,
+    entry_name: &str,
+    source_snapshot: u64,
+) -> Result<MirModule, AdapterError> {
+    match checked.domain() {
+        hir::HirDomain::TextRecord | hir::HirDomain::Text => {}
+        other => {
+            return Err(AdapterError::uns(
+                "lower.domain",
+                format!(
+                    "HIR domain `{}` is outside the av.owned/1 profile (expected text-record)",
+                    other.as_str()
+                ),
+            ));
+        }
+    }
+    if checked.bundle().modules.len() != 1 {
+        return Err(AdapterError::uns(
+            "lower.modules",
+            format!(
+                "expected exactly one module, found {}",
+                checked.bundle().modules.len()
+            ),
+        ));
+    }
+    let module = &checked.bundle().modules[0];
+    let owner = OwnerScope {
+        schema: auto_av_core::contract::MIR_OWNED_SCHEMA.to_string(),
+        module: module.id_text.clone(),
+    };
+    let mut out = MirModule::new_owned(owner);
+    out.capabilities = checked.required_capabilities().to_vec();
+
+    let mut def_map: BTreeMap<u32, CalleeRef> = BTreeMap::new();
+    let mut fn_order: Vec<(u32, hir::TypeId, hir::BodyId, String)> = Vec::new();
+    let mut next_fn_idx: u32 = 0;
+    for (di, d) in module.defs.iter().enumerate() {
+        match &d.kind {
+            hir::DefKind::Function { ty, body, .. } => {
+                def_map.insert(di as u32, CalleeRef::Func(next_fn_idx));
+                next_fn_idx += 1;
+                fn_order.push((di as u32, *ty, *body, d.id_text.clone()));
+            }
+            hir::DefKind::Method { .. } => {
+                return Err(AdapterError::uns(
+                    "lower.method",
+                    "type-bound methods (incl. static fn) are outside the av.owned/1 first cut"
+                        .to_string(),
+                ));
+            }
+            hir::DefKind::Intrinsic { .. } => {
+                return Err(AdapterError::uns(
+                    "lower.intrinsic",
+                    "intrinsics are outside the av.owned/1 first cut".to_string(),
+                ));
+            }
+        }
+    }
+
+    let mut entry_idx: Option<u32> = None;
+    for (di, ty, body_id, name) in fn_order {
+        let sig = fn_type_index_ext(
+            ty,
+            module,
+            &mut out,
+            true,
+            true,
+            &mut BTreeMap::new(),
+            &mut std::collections::BTreeSet::new(),
+        )?;
+        if name == entry_name {
+            entry_idx = Some(out.funcs.len() as u32);
+        }
+        let mir_fn = lower_function(
+            module,
+            &mut out,
+            di,
+            body_id,
+            sig,
+            source_snapshot,
+            &def_map,
+            name.clone(),
+            true,
+            true,
+        )?;
+        out.funcs.push(mir_fn);
+    }
+    let entry = entry_idx.ok_or_else(|| {
+        AdapterError::inv(
+            "lower.entry",
+            format!("no function named `{}` in module", entry_name),
+        )
+    })?;
+    out.entry = entry;
+    Ok(out)
+}
+
+/// Lower ONE function of a checked text-record bundle into a self-contained
+/// OWNED single-function unit (PLAN-821 T-09 seam; the 828 snapshot link
+/// resolves the `fn:<name>` imports exactly as the data units do).
+pub fn lower_function_owned_unit(
+    bundle: &hir::Bundle,
+    def_id_text: &str,
+    capabilities: &[String],
+    source_snapshot: u64,
+) -> Result<MirModule, AdapterError> {
+    match bundle.domain {
+        hir::HirDomain::TextRecord | hir::HirDomain::Text => {}
+        other => {
+            return Err(AdapterError::uns(
+                "lower.domain",
+                format!(
+                    "HIR domain `{}` is outside the av.owned/1 profile",
+                    other.as_str()
+                ),
+            ));
+        }
+    }
+    if bundle.modules.len() != 1 {
+        return Err(AdapterError::uns(
+            "lower.modules",
+            format!("expected exactly one module, found {}", bundle.modules.len()),
+        ));
+    }
+    let module = &bundle.modules[0];
+    let owner = OwnerScope {
+        schema: auto_av_core::contract::MIR_OWNED_SCHEMA.to_string(),
+        module: module.id_text.clone(),
+    };
+    let mut out = MirModule::owned_unit(owner);
+    out.capabilities = capabilities.to_vec();
+
+    let mut def_map: BTreeMap<u32, CalleeRef> = BTreeMap::new();
+    let mut target: Option<(u32, hir::TypeId, hir::BodyId)> = None;
+    for (di, d) in module.defs.iter().enumerate() {
+        match &d.kind {
+            hir::DefKind::Function { ty, body, .. } => {
+                let sig = fn_type_index_ext(
+                    *ty,
+                    module,
+                    &mut out,
+                    true,
+                    true,
+                    &mut std::collections::BTreeMap::new(),
+                    &mut std::collections::BTreeSet::new(),
+                )?;
+                let imp = out.intern_import(MirImport {
+                    symbol: format!("fn:{}", d.id_text),
+                    effect: Effect::Pure,
+                    sig,
+                });
+                def_map.insert(di as u32, CalleeRef::Import(imp));
+                if d.id_text == def_id_text {
+                    target = Some((di as u32, *ty, *body));
+                }
+            }
+            hir::DefKind::Method { .. } => {
+                return Err(AdapterError::uns(
+                    "lower.method",
+                    "type-bound methods are outside the av.owned/1 first cut".to_string(),
+                ));
+            }
+            hir::DefKind::Intrinsic { .. } => {
+                return Err(AdapterError::uns(
+                    "lower.intrinsic",
+                    "intrinsics are outside the av.owned/1 first cut".to_string(),
+                ));
+            }
+        }
+    }
+    let (di, ty, body_id) = target.ok_or_else(|| {
+        AdapterError::inv(
+            "lower.target",
+            format!("no function def `{def_id_text}` in module"),
+        )
+    })?;
+    let sig = fn_type_index_ext(
+        ty,
+        module,
+        &mut out,
+        true,
+        true,
+        &mut BTreeMap::new(),
+        &mut std::collections::BTreeSet::new(),
+    )?;
+    let mir_fn = lower_function(
+        module,
+        &mut out,
+        di,
+        body_id,
+        sig,
+        source_snapshot,
+        &def_map,
+        def_id_text.to_string(),
+        true,
+        true,
+    )?;
+    out.funcs.push(mir_fn);
+    out.entry = 0;
+    Ok(out)
+}
+
+/// Re-verify the entry gate for an owned module: entry params scalar/char,
+/// result may be owned (the verifier owns the full contract; this is the
+/// driver's diagnostic seam).
+pub fn owned_entry_ok(mir: &MirModule) -> bool {
+    let Some(f) = mir.funcs.get(mir.entry as usize) else {
+        return false;
+    };
+    let Some(sig) = mir.sig_of(f.sig) else {
+        return false;
+    };
+    let ok_ty = |t: u32| -> bool {
+        matches!(
+            mir.types.get(t as usize),
+            Some(MirType::I32)
+                | Some(MirType::Bool)
+                | Some(MirType::I64)
+                | Some(MirType::U64)
+                | Some(MirType::F32)
+                | Some(MirType::F64)
+                | Some(MirType::Char)
+                | Some(MirType::Str)
+                | Some(MirType::Record(_))
+        )
+    };
+    sig.params.iter().all(|p| {
+        matches!(
+            mir.types.get(*p as usize),
+            Some(MirType::I32)
+                | Some(MirType::Bool)
+                | Some(MirType::I64)
+                | Some(MirType::U64)
+                | Some(MirType::F32)
+                | Some(MirType::F64)
+                | Some(MirType::Char)
+        )
+    }) && ok_ty(sig.result)
 }
 
 /// Lower ONE function of a bound bundle directly into a self-contained
@@ -499,6 +747,7 @@ fn lower_function_unit_impl(
         &def_map,
         def_id_text.to_string(),
         data,
+        false,
     )?;
     out.funcs.push(mir_fn);
     out.entry = 0;
@@ -579,6 +828,11 @@ fn data_type_idx_of(
             let mapped = match &td.kind {
                 hir::TypeKind::I32 => Ok(out.intern_type(MirType::I32)),
                 hir::TypeKind::Bool => Ok(out.intern_type(MirType::Bool)),
+                // Named text kinds (PLAN-770 type-table entries): `str`,
+                // `Str`, `char` arrive as Ref uses in the text-record domain.
+                hir::TypeKind::Str => Ok(out.intern_type(MirType::StrView)),
+                hir::TypeKind::StrOwned => Ok(out.intern_type(MirType::Str)),
+                hir::TypeKind::Char => Ok(out.intern_type(MirType::Char)),
                 hir::TypeKind::Record(shape) => {
                     let mut fields = Vec::with_capacity(shape.fields.len());
                     let mut err = None;
@@ -626,6 +880,18 @@ fn fn_type_index(
     memo: &mut std::collections::BTreeMap<hir::TypeId, TypeIdx>,
     visiting: &mut std::collections::BTreeSet<hir::TypeId>,
 ) -> Result<TypeIdx, AdapterError> {
+    fn_type_index_ext(ty, m, out, data, false, memo, visiting)
+}
+
+fn fn_type_index_ext(
+    ty: hir::TypeId,
+    m: &hir::Module,
+    out: &mut MirModule,
+    data: bool,
+    owned: bool,
+    memo: &mut std::collections::BTreeMap<hir::TypeId, TypeIdx>,
+    visiting: &mut std::collections::BTreeSet<hir::TypeId>,
+) -> Result<TypeIdx, AdapterError> {
     let td = m.types.get(ty.0 as usize).ok_or_else(|| {
         AdapterError::inv("lower.type-ref", format!("type id {} out of range", ty.0))
     })?;
@@ -633,9 +899,17 @@ fn fn_type_index(
         hir::TypeKind::Function(sig) => {
             let mut params = Vec::with_capacity(sig.params.len());
             for p in &sig.params {
-                params.push(type_idx_of_use(p, m, out, data, memo, visiting)?);
+                params.push(if owned {
+                    owned_type_idx_of(p, m, out, memo, visiting)?
+                } else {
+                    type_idx_of_use(p, m, out, data, memo, visiting)?
+                });
             }
-            let result = type_idx_of_use(&sig.result, m, out, data, memo, visiting)?;
+            let result = if owned {
+                owned_type_idx_of(&sig.result, m, out, memo, visiting)?
+            } else {
+                type_idx_of_use(&sig.result, m, out, data, memo, visiting)?
+            };
             Ok(out.intern_type(MirType::Fn(FnSig { params, result })))
         }
         _ => Err(AdapterError::inv(
@@ -660,6 +934,86 @@ fn type_idx_of_use(
         data_type_idx_of(u, m, out, memo, visiting)
     } else {
         scalar_type_idx_of(u, m, out)
+    }
+}
+
+/// PLAN-821 owned-profile type mapping: the 782 field surface (i32/bool/
+/// char/Str/nested records; `str` views appear only as value/param/return
+/// kinds, never fields) maps onto the owned MIR kinds. Owned lowering
+/// never sees wide scalars from source (the text-record front door has no
+/// wide-scalar syntax).
+fn owned_type_idx_of(
+    u: &hir::TypeUse,
+    m: &hir::Module,
+    out: &mut MirModule,
+    memo: &mut std::collections::BTreeMap<hir::TypeId, TypeIdx>,
+    visiting: &mut std::collections::BTreeSet<hir::TypeId>,
+) -> Result<TypeIdx, AdapterError> {
+    match u {
+        hir::TypeUse::Builtin(b) => match b {
+            hir::BuiltinType::I32 => Ok(out.intern_type(MirType::I32)),
+            hir::BuiltinType::Bool => Ok(out.intern_type(MirType::Bool)),
+            hir::BuiltinType::Char => Ok(out.intern_type(MirType::Char)),
+            hir::BuiltinType::StrOwned => Ok(out.intern_type(MirType::Str)),
+            hir::BuiltinType::StrSlice => Ok(out.intern_type(MirType::StrView)),
+        },
+        hir::TypeUse::Ref(tid) => {
+            if let Some(idx) = memo.get(tid) {
+                return Ok(*idx);
+            }
+            if !visiting.insert(*tid) {
+                return Err(AdapterError::inv(
+                    "mir.type-cycle",
+                    format!("record type id {} participates in a type cycle", tid.0),
+                ));
+            }
+            let td = m.types.get(tid.0 as usize).ok_or_else(|| {
+                AdapterError::inv("lower.type-ref", format!("type id {} out of range", tid.0))
+            })?;
+            let mapped = match &td.kind {
+                hir::TypeKind::I32 => Ok(out.intern_type(MirType::I32)),
+                hir::TypeKind::Bool => Ok(out.intern_type(MirType::Bool)),
+                // Named text kinds (PLAN-770 type-table entries): `str`,
+                // `Str`, `char` arrive as Ref uses in the text-record domain.
+                hir::TypeKind::Str => Ok(out.intern_type(MirType::StrView)),
+                hir::TypeKind::StrOwned => Ok(out.intern_type(MirType::Str)),
+                hir::TypeKind::Char => Ok(out.intern_type(MirType::Char)),
+                hir::TypeKind::Record(shape) => {
+                    let mut fields = Vec::with_capacity(shape.fields.len());
+                    let mut err = None;
+                    for f in &shape.fields {
+                        match owned_type_idx_of(&f.ty, m, out, memo, visiting) {
+                            Ok(t) => fields.push(MirFieldDef {
+                                name: f.name.clone(),
+                                ty: t,
+                            }),
+                            Err(e) => {
+                                err = Some(e);
+                                break;
+                            }
+                        }
+                    }
+                    err.map_or_else(
+                        || {
+                            Ok(out.intern_type(MirType::Record(RecordTypeRef {
+                                owner_module: m.id_text.clone(),
+                                name: td.id_text.clone(),
+                                fields,
+                            })))
+                        },
+                        Err,
+                    )
+                }
+                other => Err(AdapterError::uns(
+                    "lower.type-use",
+                    format!("type kind {:?} is outside the av.owned/1 profile", other),
+                )),
+            };
+            visiting.remove(tid);
+            let idx = mapped?;
+            memo.insert(*tid, idx);
+            Ok(idx)
+        }
     }
 }
 
@@ -701,6 +1055,8 @@ struct FnLower<'a> {
     def_map: &'a BTreeMap<u32, CalleeRef>,
     out: &'a mut MirModule,
     slot_of_local: Vec<SlotId>,
+    /// MIR type index per BASE slot (owned lowering's transfer-vs-copy).
+    slot_ty_cache: Vec<TypeIdx>,
     base_slots: u32,
     extra_slots: Vec<MirSlot>,
     t_i32: TypeIdx,
@@ -708,6 +1064,9 @@ struct FnLower<'a> {
     /// Data-profile lowering (av.data/1): enables record type mapping and
     /// the record expression/statement arms.
     data: bool,
+    /// Owned-profile lowering (av.owned/1, PLAN-821): subsumes `data` and
+    /// adds the text/ownership surface (str ops, clone/move, borrow views).
+    owned: bool,
     ty_memo: BTreeMap<hir::TypeId, TypeIdx>,
     ty_visiting: std::collections::BTreeSet<hir::TypeId>,
     blocks: Vec<MirBlock>,
@@ -721,6 +1080,11 @@ struct FnLower<'a> {
     /// Running flat instruction counter — emission order equals block-major
     /// order because blocks are created in order and never revisited.
     flat: u32,
+    /// Slot index (into the FINAL slot table) one past the last slot at
+    /// the current STATEMENT's start — statement-tail borrow ends (774
+    /// 语句尾寿命 for temporaries) release view temps minted inside the
+    /// statement once its core instruction has been emitted.
+    stmt_slot_watermark: u32,
     spans: Vec<(u32, SpanInfo)>,
     /// Whether block 0 got a real (non-placeholder) terminator.
     root_wired: bool,
@@ -787,6 +1151,29 @@ impl<'a> FnLower<'a> {
         idx
     }
 
+    /// End every StrView TEMP minted since the statement watermark (774
+    /// statement-tail lifetime): a method-receiver view dies with its
+    /// statement, so a later field replace of the root is legal. Named
+    /// view LOCALS live to scope end (782's root-hold semantics).
+    fn end_stmt_temp_views(&mut self) {
+        let base = self.base_slots;
+        let wm = self.stmt_slot_watermark;
+        let mut ends: Vec<SlotId> = Vec::new();
+        for (i, slot) in self.extra_slots.iter().enumerate().rev() {
+            let idx = base + i as u32;
+            if idx < wm {
+                break;
+            }
+            if matches!(self.out.types.get(slot.ty as usize), Some(MirType::StrView)) {
+                ends.push(idx);
+            }
+        }
+        for t in ends {
+            self.emit(MirInstr::BorrowEnd { token: t }, None);
+        }
+        self.stmt_slot_watermark = base + self.extra_slots.len() as u32;
+    }
+
     fn const_i32(&mut self, v: i32) -> u32 {
         self.out.intern_const(MirConst::I32(v))
     }
@@ -802,14 +1189,31 @@ impl<'a> FnLower<'a> {
             AdapterError::inv("lower.expr-ref", format!("expr {} out of range", eid.0))
         })?;
         let (m, out) = (self.hir_module, &mut *self.out);
-        type_idx_of_use(
-            &e.ty,
-            m,
-            out,
-            self.data,
-            &mut self.ty_memo,
-            &mut self.ty_visiting,
-        )
+        if self.owned {
+            owned_type_idx_of(&e.ty, m, out, &mut self.ty_memo, &mut self.ty_visiting)
+        } else {
+            type_idx_of_use(
+                &e.ty,
+                m,
+                out,
+                self.data,
+                &mut self.ty_memo,
+                &mut self.ty_visiting,
+            )
+        }
+    }
+
+    /// The MIR type of an expression's slot kind WITHOUT allocating.
+    fn type_of_expr(&self, eid: hir::ExprId) -> Option<MirType> {
+        let e = self.body.exprs.get(eid.0 as usize)?;
+        match &e.ty {
+            hir::TypeUse::Builtin(hir::BuiltinType::StrSlice) => Some(MirType::StrView),
+            hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => Some(MirType::Str),
+            hir::TypeUse::Builtin(hir::BuiltinType::Char) => Some(MirType::Char),
+            hir::TypeUse::Builtin(hir::BuiltinType::I32) => Some(MirType::I32),
+            hir::TypeUse::Builtin(hir::BuiltinType::Bool) => Some(MirType::Bool),
+            _ => None,
+        }
     }
 
     fn span(&self, eid: hir::ExprId) -> Option<SpanInfo> {
@@ -1008,11 +1412,12 @@ impl<'a> FnLower<'a> {
                             "callee lacks a function type".to_string(),
                         )
                     })?;
-                let sig_idx = fn_type_index(
+                let sig_idx = fn_type_index_ext(
                     hir_ty,
                     self.hir_module,
                     self.out,
                     self.data,
+                    self.owned,
                     &mut self.ty_memo,
                     &mut self.ty_visiting,
                 )?;
@@ -1043,13 +1448,190 @@ impl<'a> FnLower<'a> {
                 );
                 Ok(dst)
             }
+            // -- PLAN-821 owned text surface (av.owned/1) ------------------
+            hir::ExprKind::StrLit { value } if self.owned => {
+                // Destination kind follows the expression's HIR type: an
+                // owning context materializes a fresh buffer; a borrowing
+                // context gets the immortal static view (770).
+                let dst = self.temp_ty(ty);
+                let c = self.out.intern_const(MirConst::Str(
+                    value.as_bytes().to_vec().into_boxed_slice(),
+                ));
+                self.emit(MirInstr::Const { dst, value: c }, sp);
+                Ok(dst)
+            }
+            hir::ExprKind::CharLit { scalar } if self.owned => {
+                let dst = self.temp_ty(ty);
+                let ch = char::from_u32(*scalar).ok_or_else(|| {
+                    AdapterError::inv(
+                        "lower.char-domain",
+                        format!("char literal {scalar:#x} is not a Unicode scalar"),
+                    )
+                })?;
+                let c = self.out.intern_const(MirConst::Char(ch));
+                self.emit(MirInstr::Const { dst, value: c }, sp);
+                Ok(dst)
+            }
+            hir::ExprKind::TextLen { operand } if self.owned => {
+                let v = self.eval_expr(*operand, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                self.emit(MirInstr::StrLen { dst, view: v }, sp);
+                Ok(dst)
+            }
+            hir::ExprKind::TextLenBytes { operand } if self.owned => {
+                let v = self.eval_expr(*operand, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                self.emit(MirInstr::StrLenBytes { dst, view: v }, sp);
+                Ok(dst)
+            }
+            hir::ExprKind::TextCharAt { operand, index } if self.owned => {
+                let v = self.eval_expr(*operand, depth + 1)?;
+                let i = self.eval_expr(*index, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                self.emit(MirInstr::StrCharAt { dst, view: v, index: i }, sp);
+                Ok(dst)
+            }
+            hir::ExprKind::TextSlice { operand, start, end } if self.owned => {
+                let v = self.eval_expr(*operand, depth + 1)?;
+                let a = self.eval_expr(*start, depth + 1)?;
+                let b = self.eval_expr(*end, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                self.emit(
+                    MirInstr::StrSlice {
+                        dst,
+                        view: v,
+                        start: a,
+                        end: b,
+                    },
+                    sp,
+                );
+                Ok(dst)
+            }
+            hir::ExprKind::TextConcat { lhs, rhs } if self.owned => {
+                let l = self.eval_expr(*lhs, depth + 1)?;
+                let r = self.eval_expr(*rhs, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                self.emit(MirInstr::StrConcat { dst, lhs: l, rhs: r }, sp);
+                Ok(dst)
+            }
+            hir::ExprKind::TextClone { operand } if self.owned => {
+                // Clone of an OWNED Str re-buffers; clone of a view is the
+                // owned copy of its range (770 AP-2 over both receivers).
+                let src_ty = self.expr_ty(*operand)?;
+                let v = self.eval_expr(*operand, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                match self.out.types.get(src_ty as usize) {
+                    Some(MirType::StrView) => {
+                        self.emit(MirInstr::StrToOwned { dst, view: v }, sp);
+                    }
+                    _ => {
+                        self.emit(MirInstr::Clone { dst, src: v }, sp);
+                    }
+                }
+                Ok(dst)
+            }
+            hir::ExprKind::TextToOwned { operand } if self.owned => {
+                let v = self.eval_expr(*operand, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                self.emit(MirInstr::StrToOwned { dst, view: v }, sp);
+                Ok(dst)
+            }
+            hir::ExprKind::TextToBorrowed { operand } if self.owned => {
+                // `.to(str)` of an owned Str slot mints a rooted VIEW; of a
+                // view it is the identity borrow (a legal view share).
+                let src_ty = self.expr_ty(*operand)?;
+                let v = self.eval_expr(*operand, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                match self.out.types.get(src_ty as usize) {
+                    Some(MirType::Str) => {
+                        self.emit(MirInstr::View { dst, src: v }, sp);
+                    }
+                    _ => {
+                        self.emit(MirInstr::Copy { dst, src: v }, sp);
+                    }
+                }
+                Ok(dst)
+            }
+            hir::ExprKind::CharToCodepoint { operand } if self.owned => {
+                let v = self.eval_expr(*operand, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                self.emit(MirInstr::CharToCodepoint { dst, ch: v }, sp);
+                Ok(dst)
+            }
+            hir::ExprKind::CharFromCodepoint { operand } if self.owned => {
+                let v = self.eval_expr(*operand, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                self.emit(MirInstr::CharFromCodepoint { dst, code: v }, sp);
+                Ok(dst)
+            }
+            hir::ExprKind::Binary { op, lhs, rhs, .. }
+                if self.owned
+                    && matches!(op, hir::BinOp::Eq | hir::BinOp::Ne)
+                    && matches!(
+                        self.type_of_expr(*lhs),
+                        Some(MirType::StrView)
+                    ) =>
+            {
+                // str eq/ne rides STR_CMP (BIN stays scalar-only).
+                let l = self.eval_expr(*lhs, depth + 1)?;
+                let r = self.eval_expr(*rhs, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                self.emit(
+                    MirInstr::StrCmp {
+                        eq: matches!(op, hir::BinOp::Eq),
+                        dst,
+                        lhs: l,
+                        rhs: r,
+                    },
+                    sp,
+                );
+                Ok(dst)
+            }
+            hir::ExprKind::RecordClone { base, .. } if self.owned => {
+                let v = self.eval_expr(*base, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                self.emit(MirInstr::Clone { dst, src: v }, sp);
+                Ok(dst)
+            }
+            hir::ExprKind::Move { inner } if self.owned => {
+                // Whole-root transfer: the inner expression must be a
+                // whole-local read (verify.partial-move is the source
+                // gate); evaluate it to its slot and MOVE out of it.
+                match &self.body.exprs[inner.0 as usize].kind {
+                    hir::ExprKind::ReadLocal { local } => {
+                        let src = self.slot_of_local[local.0 as usize];
+                        let dst = self.temp_ty(ty);
+                        self.emit(MirInstr::Move { dst, src }, sp);
+                        Ok(dst)
+                    }
+                    _ => Err(AdapterError::uns(
+                        "lower.expr",
+                        ".move must wrap a whole-local read (partial moves are verify-rejected)"
+                            .to_string(),
+                    )),
+                }
+            }
+            hir::ExprKind::BorrowView { base } if self.owned => {
+                // Record view params arrive with PLAN-821 T-03 (the
+                // record-view value kind); the text str path never wraps.
+                let _ = base;
+                Err(AdapterError::uns(
+                    "lower.borrow",
+                    "record view receivers land with PLAN-821 T-03 (T-02 first case needs none)"
+                        .to_string(),
+                ))
+            }
+            hir::ExprKind::BorrowMut { .. } if self.owned => Err(AdapterError::uns(
+                "lower.borrow",
+                "mut borrows land with PLAN-821 T-03".to_string(),
+            )),
             // -- PLAN-820 record surface (av.data/1) ----------------------
             hir::ExprKind::RecordCtor {
                 record,
                 eval_args,
                 bindings,
             } => {
-                if !self.data {
+                if !self.data && !self.owned {
                     return Err(AdapterError::uns(
                         "lower.expr",
                         "record construction is outside the av.core-i32/1 profile".to_string(),
@@ -1075,14 +1657,24 @@ impl<'a> FnLower<'a> {
                         ))
                     }
                 };
-                let rec_ty = type_idx_of_use(
-                    &hir::TypeUse::Ref(*record),
-                    self.hir_module,
-                    self.out,
-                    self.data,
-                    &mut self.ty_memo,
-                    &mut self.ty_visiting,
-                )?;
+                let rec_ty = if self.owned {
+                    owned_type_idx_of(
+                        &hir::TypeUse::Ref(*record),
+                        self.hir_module,
+                        self.out,
+                        &mut self.ty_memo,
+                        &mut self.ty_visiting,
+                    )?
+                } else {
+                    type_idx_of_use(
+                        &hir::TypeUse::Ref(*record),
+                        self.hir_module,
+                        self.out,
+                        self.data,
+                        &mut self.ty_memo,
+                        &mut self.ty_visiting,
+                    )?
+                };
                 let nfields = shape.fields.len();
                 if bindings.len() != nfields {
                     return Err(AdapterError::inv(
@@ -1122,7 +1714,7 @@ impl<'a> FnLower<'a> {
                 Ok(dst)
             }
             hir::ExprKind::FieldGet { base, path } => {
-                if !self.data {
+                if !self.data && !self.owned {
                     return Err(AdapterError::uns(
                         "lower.expr",
                         "field reads are outside the av.core-i32/1 profile".to_string(),
@@ -1228,6 +1820,7 @@ fn lower_function(
     def_map: &BTreeMap<u32, CalleeRef>,
     name: String,
     data: bool,
+    owned: bool,
 ) -> Result<MirFunction, AdapterError> {
     let body = hir_module.bodies.get(body_id.0 as usize).ok_or_else(|| {
         AdapterError::inv("lower.body-ref", format!("body {} out of range", body_id.0))
@@ -1243,7 +1836,11 @@ fn lower_function(
     let mut ty_memo = BTreeMap::new();
     let mut ty_visiting = std::collections::BTreeSet::new();
     for (li, l) in body.locals.iter().enumerate() {
-        let ty = type_idx_of_use(&l.ty, hir_module, out, data, &mut ty_memo, &mut ty_visiting)?;
+        let ty = if owned {
+            owned_type_idx_of(&l.ty, hir_module, out, &mut ty_memo, &mut ty_visiting)?
+        } else {
+            type_idx_of_use(&l.ty, hir_module, out, data, &mut ty_memo, &mut ty_visiting)?
+        };
         let idx = slots.len() as SlotId;
         slots.push(MirSlot {
             kind: if l.role == hir::LocalRole::Param {
@@ -1257,6 +1854,7 @@ fn lower_function(
         slot_of_local[li] = idx;
     }
     let base_slots = slots.len() as u32;
+    let slot_ty_cache: Vec<TypeIdx> = slots.iter().map(|s| s.ty).collect();
 
     let mut lower = FnLower {
         hir_module,
@@ -1264,11 +1862,13 @@ fn lower_function(
         def_map,
         out,
         slot_of_local,
+        slot_ty_cache,
         base_slots,
         extra_slots: vec![],
         t_i32,
         t_bool,
         data,
+        owned,
         ty_memo,
         ty_visiting,
         blocks: vec![],
@@ -1277,6 +1877,7 @@ fn lower_function(
         loop_targets: vec![(0, 0); body.loops.len()],
         func_index: def_index,
         flat: 0,
+        stmt_slot_watermark: slots.len() as u32,
         spans: vec![],
         root_wired: false,
         pending_joins: vec![],
@@ -1323,12 +1924,33 @@ fn lower_function(
             }
             let stmt = &block.stmts[task.stmt_idx];
             task.stmt_idx += 1;
+            lower.stmt_slot_watermark = lower.base_slots + lower.extra_slots.len() as u32;
             match stmt {
                 hir::Stmt::Let { local, value } => {
                     let v = lower.eval_expr(*value, 0)?;
+                    lower.end_stmt_temp_views();
                     let dst = lower.slot_of_local[local.0 as usize];
                     let sp = lower.span(*value);
-                    lower.emit(MirInstr::Copy { dst, src: v }, sp);
+                    if lower.owned {
+                        // The binding's slot type decides: owned kinds
+                        // transfer (MOVE — the temp dies), copyables copy.
+                        let slot_ty = lower
+                            .out
+                            .types
+                            .get(lower.slot_ty_cache[dst as usize] as usize)
+                            .cloned();
+                        let is_owned = slot_ty
+                            .as_ref()
+                            .map(|t| auto_av_core::ownership::type_is_owned_type_of(lower.out, t))
+                            .unwrap_or(false);
+                        if is_owned {
+                            lower.emit(MirInstr::Move { dst, src: v }, sp);
+                        } else {
+                            lower.emit(MirInstr::Copy { dst, src: v }, sp);
+                        }
+                    } else {
+                        lower.emit(MirInstr::Copy { dst, src: v }, sp);
+                    }
                 }
                 hir::Stmt::Assign { place, value } => {
                     let p = body.places.get(place.0 as usize).ok_or_else(|| {
@@ -1341,11 +1963,29 @@ fn lower_function(
                         hir::PlaceKind::Local => {
                             let dst = lower.slot_of_local[p.local.0 as usize];
                             let v = lower.eval_expr(*value, 0)?;
+                            lower.end_stmt_temp_views();
                             let sp = lower.span(*value);
-                            lower.emit(MirInstr::Copy { dst, src: v }, sp);
+                            if lower.owned {
+                                let slot_ty = lower
+                                    .out
+                                    .types
+                                    .get(lower.slot_ty_cache[dst as usize] as usize)
+                                    .cloned();
+                                let is_owned = slot_ty
+                                    .as_ref()
+                                    .map(|t| auto_av_core::ownership::type_is_owned_type_of(lower.out, t))
+                                    .unwrap_or(false);
+                                if is_owned {
+                                    lower.emit(MirInstr::Move { dst, src: v }, sp);
+                                } else {
+                                    lower.emit(MirInstr::Copy { dst, src: v }, sp);
+                                }
+                            } else {
+                                lower.emit(MirInstr::Copy { dst, src: v }, sp);
+                            }
                         }
                         hir::PlaceKind::FieldPath(path) => {
-                            if !lower.data {
+                            if !lower.data && !lower.owned {
                                 return Err(AdapterError::uns(
                                     "lower.place-kind",
                                     "field-path assignment is record-domain, outside the av profile"
@@ -1356,6 +1996,7 @@ fn lower_function(
                             // overlap invariant), then the structural write
                             // through the root local (contract-decision §4).
                             let v = lower.eval_expr(*value, 0)?;
+                            lower.end_stmt_temp_views();
                             let root = lower.slot_of_local[p.local.0 as usize];
                             let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
                             let sp = lower.span(*value);
@@ -1372,11 +2013,13 @@ fn lower_function(
                 }
                 hir::Stmt::Return { value } => {
                     let v = lower.eval_expr(*value, 0)?;
+                    lower.end_stmt_temp_views();
                     lower.set_term(Terminator::Return { value: v });
                     break; // HIR verify: nothing follows a terminator
                 }
                 hir::Stmt::If { cond, then, els } => {
                     let c = lower.eval_expr(*cond, 0)?;
+                    lower.end_stmt_temp_views();
                     let then_b = lower.new_block();
                     let then_exit;
                     match els {

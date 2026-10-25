@@ -48,6 +48,35 @@ pub const ABC_DATA_VERSION: u16 = 1;
 /// Numeric profile id carried in the data wire header.
 pub const ABC_PROFILE_DATA: u16 = 2;
 
+// ---------------------------------------------------------------------------
+// PLAN-821 `av.owned/1` identities (contract-decision.md §1, frozen T-01)
+// ---------------------------------------------------------------------------
+
+/// Logical schema identity of the owned-profile Typed MIR.
+pub const MIR_OWNED_SCHEMA: &str = "auto.mir.av-owned/1";
+/// Wire schema identity of the owned-profile ABC format. Same `AVAD` magic
+/// FAMILY as the data profile, but wire VERSION 2 — a different format
+/// generation: v1 (data) and v2 (owned) are mutually unreadable (798 r6
+/// generation-isolation precedent); a v1 payload in the v2 decoder is a
+/// controlled `abc.decode.version` rejection / deterministic stale miss.
+pub const ABC_OWNED_SCHEMA: &str = "auto.abc.av-owned/1";
+/// The owned execution profile (PLAN-821): char/Str/StrView/MutRef values,
+/// owned records, place borrows, move-kill, replace transactions and
+/// all-exit cleanup (Design44 §5–7).
+pub const AV_OWNED_PROFILE: &str = "av.owned/1";
+/// Producer identity for owned-profile units in store envelopes and keys.
+pub const OWNED_PRODUCER_ID: &str = "plan821/av-owned";
+/// Wire version of the owned-profile ABC format (v2; profile id 3).
+pub const ABC_OWNED_VERSION: u16 = 2;
+/// Numeric profile id carried in the owned wire header.
+pub const ABC_PROFILE_OWNED: u16 = 3;
+
+/// PLAN-821 owned-profile semantic versions — an INDEPENDENT axis from the
+/// core-i32 and data tuples (all three profiles' artifacts key separately).
+pub const MIR_OWNED_SEMANTICS: MirSemanticsVersion = MirSemanticsVersion(1);
+pub const ABC_OWNED_SEMANTICS: AbcSemanticsVersion = AbcSemanticsVersion(1);
+pub const AV_OWNED_SEMANTICS: AvSemanticsVersion = AvSemanticsVersion(1);
+
 /// Per-record field-count guard (module table family; contract-decision §8).
 pub const MAX_RECORD_FIELDS: usize = 1024;
 /// Field-path depth guard for FIELD_GET/FIELD_SET (u16 domain, explicit cap).
@@ -79,6 +108,11 @@ pub const AV_DATA_SEMANTICS: AvSemanticsVersion = AvSemanticsVersion(1);
 /// Capability that admits the closed test-only trace intrinsic set
 /// (same string as the HIR front door, `hir.test.trace.v1`).
 pub const TRACE_CAPABILITY: &str = "hir.test.trace.v1";
+
+/// PLAN-821: the text runtime capability the text-record source domain
+/// derives for resource modules (782: 组合模块派生 `ac.runtime.text.v1`).
+/// Admitted ONLY on owned-profile modules at MIR verification.
+pub const TEXT_RUNTIME_CAPABILITY: &str = "ac.runtime.text.v1";
 
 // ---------------------------------------------------------------------------
 // Frozen budgets (PLAN-798 §3; resource rejection on breach)
@@ -138,9 +172,18 @@ pub const MAX_DECODED_MODULE_BYTES: usize = 16 * 1024 * 1024;
 /// (shared by `Rc`; structural immutability makes a shallow clone
 /// observationally equal to a deep copy).
 ///
+/// The owned profile (PLAN-821, Design44 §4.1/§7) adds `char`, owned `Str`
+/// buffers (`StrHandle` — an owning handle, NEVER `Copy`; cloning
+/// duplicates the handle = one more owner), read-only `StrView` borrows
+/// (frame/slot-rooted or static-const-rooted; a view never owns) and
+/// `MutRef` exclusive write tokens. `Rust Copy` is not derived for owned
+/// resources by construction (the handle's Drop reports the final release
+/// to the arena).
+///
 /// `PartialEq`/`Eq` are BIT-EXACT for floats (`to_bits`): two NaNs with the
-/// same payload are equal, `0.0 != -0.0`. The type is `Clone` but not
-/// `Copy` since the record variant owns shared data.
+/// same payload are equal, `0.0 != -0.0`. Str compares by BYTES (the
+/// allocation id is not identity). The type is `Clone` but not `Copy`
+/// since the record/str variants own shared data.
 #[derive(Clone, Debug)]
 pub enum Value {
     I32(i32),
@@ -150,6 +193,18 @@ pub enum Value {
     F32(f32),
     F64(f64),
     Record(std::rc::Rc<RecordValue>),
+    /// Unicode scalar (PLAN-774): domain-checked (no surrogates, ≤0x10FFFF)
+    /// end to end; never implicitly an integer.
+    Char(char),
+    /// Owned UTF-8 buffer behind an owning handle.
+    Str(StrHandle),
+    /// Borrowed read-only view: a (frame, slot, generation) root plus a
+    /// Unicode-scalar range, or a static view over a const's bytes. A view
+    /// has NO drop right and never owns.
+    StrView(StrView),
+    /// Exclusive write-borrow token over a root slot (PLAN-821 §5.1.3).
+    /// Not copyable (exclusivity); released by BORROW_END or frame exit.
+    MutRef(MutRefV),
 }
 
 /// One pure-value record: the owning type-table index plus the field values
@@ -162,6 +217,118 @@ pub enum Value {
 pub struct RecordValue {
     pub ty: u32,
     pub fields: Vec<Value>,
+}
+
+/// The shared payload of one owned Str buffer. `id` is the arena allocation
+/// identity (event-ledger key); `bytes` is the UTF-8 content (invariant:
+/// valid UTF-8 — construction goes through `from_utf8`/`String` only).
+#[derive(Debug)]
+pub struct StrBuf {
+    pub id: u64,
+    pub bytes: Box<[u8]>,
+}
+
+/// Owning handle to an [`StrBuf`] (the `Value::Str` payload). Cloning adds
+/// one owner; the LAST handle's drop reports the free to the arena when one
+/// is attached (`hook` is `None` for placeholders — the never-read typed
+/// zeros — and for out-of-execution copies, e.g. test fixtures, where no
+/// ledger exists).
+#[derive(Debug)]
+pub struct StrHandle {
+    pub rc: std::rc::Rc<StrBuf>,
+    hook: Option<std::rc::Rc<std::cell::RefCell<crate::owned_text::ArenaCore>>>,
+}
+
+impl StrHandle {
+    /// A handle with NO arena hook (placeholder / out-of-execution value).
+    pub fn detached(bytes: Box<[u8]>) -> Self {
+        StrHandle {
+            rc: std::rc::Rc::new(StrBuf { id: 0, bytes }),
+            hook: None,
+        }
+    }
+    /// A LEDGERED handle: the arena mints the id and receives the final
+    /// release report (only the arena constructs these).
+    pub fn attached(
+        id: u64,
+        bytes: Box<[u8]>,
+        hook: std::rc::Rc<std::cell::RefCell<crate::owned_text::ArenaCore>>,
+    ) -> Self {
+        StrHandle {
+            rc: std::rc::Rc::new(StrBuf { id, bytes }),
+            hook: Some(hook),
+        }
+    }
+    pub fn bytes(&self) -> &[u8] {
+        &self.rc.bytes
+    }
+}
+
+impl Clone for StrHandle {
+    fn clone(&self) -> Self {
+        StrHandle {
+            rc: std::rc::Rc::clone(&self.rc),
+            hook: self.hook.clone(),
+        }
+    }
+}
+
+impl Drop for StrHandle {
+    fn drop(&mut self) {
+        // Exactly-one-strong-ref (this handle) ⇒ this drop is the final
+        // release: report the free event while the payload is still alive.
+        if let Some(hook) = self.hook.take() {
+            if std::rc::Rc::strong_count(&self.rc) == 1 {
+                crate::owned_text::ArenaCore::report_free(&hook, self.rc.id, self.rc.bytes.len());
+            }
+        }
+    }
+}
+
+/// Borrowed view source (774 SNAPSHOT semantics, source-text.md: "旧构
+/// 造的 view 读作陈旧"): a view SHARES the buffer it was created from —
+/// a later replace of the owning place leaves the view reading the OLD
+/// bytes (the share keeps them alive); it never roots at a mutable place.
+/// Static views reference a module constant's bytes (immortal literals).
+#[derive(Clone, Debug)]
+pub enum StrViewSrc {
+    /// An Rc share of the buffer this view was minted over. The share is
+    /// NOT ownership: the view has no drop right, and the buffer's free
+    /// event fires only when the LAST reference (owner or view) goes.
+    Share(StrHandle),
+    /// Backed by a module constant's bytes (a literal borrowing source:
+    /// immortal; resolved through the executor's const table by index).
+    Static { const_idx: u32 },
+}
+
+/// The `Value::StrView` payload: source + Unicode-scalar range `[start, end)`.
+#[derive(Clone, Debug)]
+pub struct StrView {
+    pub src: StrViewSrc,
+    pub start: u32,
+    pub end: u32,
+}
+
+impl PartialEq for StrView {
+    fn eq(&self, other: &Self) -> bool {
+        let bytes_eq = match (&self.src, &other.src) {
+            (StrViewSrc::Share(a), StrViewSrc::Share(b)) => a.bytes() == b.bytes(),
+            (StrViewSrc::Static { const_idx: a }, StrViewSrc::Static { const_idx: b }) => a == b,
+            _ => false,
+        };
+        bytes_eq && self.start == other.start && self.end == other.end
+    }
+}
+impl Eq for StrView {}
+
+/// The `Value::MutRef` payload: exclusive token over (frame, slot) at a
+/// generation. Invariants are enforced by the verifier's borrow analysis;
+/// the runtime re-checks the generation at use (V-05 defense in depth).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MutRefV {
+    pub frame: u32,
+    pub slot: u32,
+    pub gen: u64,
 }
 
 impl PartialEq for Value {
@@ -178,6 +345,12 @@ impl PartialEq for Value {
                 // Nominal identity first (same type index), then fields.
                 a.ty == b.ty && a.fields == b.fields
             }
+            // Str compares BY CONTENT (the allocation id is not identity):
+            // two independently cloned buffers of equal bytes are equal.
+            (Str(a), Str(b)) => a.bytes() == b.bytes(),
+            (Char(a), Char(b)) => a == b,
+            (StrView(a), StrView(b)) => a == b,
+            (MutRef(a), MutRef(b)) => a == b,
             _ => false,
         }
     }
@@ -194,6 +367,10 @@ impl Value {
             Value::F32(_) => "f32",
             Value::F64(_) => "f64",
             Value::Record(_) => "record",
+            Value::Char(_) => "char",
+            Value::Str(_) => "Str",
+            Value::StrView(_) => "str",
+            Value::MutRef(_) => "mut-ref",
         }
     }
 
@@ -213,21 +390,29 @@ impl Value {
 
     /// Deterministic deep data-size estimate (bytes) used by the live
     /// slot-data budget: every value cell counts `size_of::<Value>()`;
-    /// record levels add their `Vec` header. Shared `Rc`s are counted
-    /// PER REFERENCE — conservative over-counting, never under-counting
-    /// (contract-decision §6). `visited` counts every traversed record
-    /// node AND field (the frozen "deep_size 按字段计" fuel rule) —
-    /// scalar-only programs never enter the record branch and keep their
-    /// exact historic step counts.
+    /// record levels add their `Vec` header; owned Str buffers count their
+    /// byte payload (PLAN-821 §8: 槽+聚合+buffer 合计). Shared `Rc`s are
+    /// counted PER REFERENCE — conservative over-counting, never
+    /// under-counting (contract-decision §6). `visited` counts every
+    /// traversed record node AND field (the frozen "deep_size 按字段计"
+    /// fuel rule) — scalar-only programs never enter the record branch and
+    /// keep their exact historic step counts.
     pub fn deep_size(&self, visited: &mut u64) -> usize {
         let mut b = std::mem::size_of::<Value>();
-        if let Value::Record(r) = self {
-            *visited += 1;
-            b += std::mem::size_of::<Vec<Value>>(); // Vec header (len-based)
-            for f in r.fields.iter() {
+        match self {
+            Value::Record(r) => {
                 *visited += 1;
-                b += f.deep_size(visited);
+                b += std::mem::size_of::<Vec<Value>>(); // Vec header (len-based)
+                for f in r.fields.iter() {
+                    *visited += 1;
+                    b += f.deep_size(visited);
+                }
             }
+            Value::Str(s) => {
+                *visited += 1;
+                b += s.bytes().len();
+            }
+            _ => {}
         }
         b
     }
@@ -235,7 +420,8 @@ impl Value {
 
 /// Language traps of the scalar contract (i32 arithmetic). These are
 /// *runtime* outcomes; a trap on an unexecuted branch must stay latent —
-/// it is never folded into a compile-time rejection.
+/// it is never folded into a compile-time rejection. PLAN-821 adds the
+/// text-domain traps (770/782 runtime-failure semantics as AV traps).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TrapKind {
     /// add/sub/mul signed overflow (trap policy is implicit in the profile).
@@ -246,6 +432,16 @@ pub enum TrapKind {
     DivOverflow,
     /// `MIN % -1` (traps per the scalar contract, unlike host `%`).
     RemOverflow,
+    /// `char_at` index / `slice` range outside the view (782 ABI −10
+    /// mirrored as an AV trap; negative/reversed/`end > len` all here).
+    StrIndex,
+    /// `char.from_codepoint(n)` with an invalid Unicode scalar
+    /// (`text.invalid-scalar`, 770).
+    CharInvalid,
+    /// A frame/slot-rooted view or mut token used after its root's
+    /// generation moved (V-05 defense in depth — verification should
+    /// prevent this for admitted programs).
+    InvalidHandle,
 }
 
 impl TrapKind {
@@ -255,6 +451,9 @@ impl TrapKind {
             TrapKind::DivByZero => "av.trap.div-by-zero",
             TrapKind::DivOverflow => "av.trap.div-overflow",
             TrapKind::RemOverflow => "av.trap.rem-overflow",
+            TrapKind::StrIndex => "av.trap.str-index",
+            TrapKind::CharInvalid => "av.trap.char-invalid",
+            TrapKind::InvalidHandle => "av.trap.invalid-handle",
         }
     }
 }

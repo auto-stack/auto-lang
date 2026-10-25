@@ -1061,7 +1061,7 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
                 match instr {
                     MirInstr::Const { value, .. } => {
                         if c_map[*value as usize] == u32::MAX {
-                            let idx = unit.intern_const(m.consts[*value as usize]);
+                            let idx = unit.intern_const(m.consts[*value as usize].clone());
                             c_map[*value as usize] = idx;
                         }
                         *value = c_map[*value as usize];
@@ -1275,7 +1275,11 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<TypeIdx> {
                 | MirType::I64
                 | MirType::U64
                 | MirType::F32
-                | MirType::F64 => {
+                | MirType::F64
+                | MirType::Char
+                | MirType::Str
+                | MirType::StrView
+                | MirType::MutRef => {
                     map[i] = merged.intern_type(t.clone());
                     progress = true;
                 }
@@ -1331,7 +1335,7 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<TypeIdx> {
 fn merge_consts(merged: &mut MirModule, u: &MirModule) -> Vec<u32> {
     let mut map = vec![0u32; u.consts.len()];
     for (i, c) in u.consts.iter().enumerate() {
-        map[i] = merged.intern_const(*c);
+        map[i] = merged.intern_const(c.clone());
     }
     map
 }
@@ -1459,6 +1463,10 @@ pub fn render_unit_sig(unit: &MirModule) -> String {
             Some(MirType::U64) => "u64".to_string(),
             Some(MirType::F32) => "f32".to_string(),
             Some(MirType::F64) => "f64".to_string(),
+            Some(MirType::Char) => "char".to_string(),
+            Some(MirType::Str) => "Str".to_string(),
+            Some(MirType::StrView) => "str".to_string(),
+            Some(MirType::MutRef) => "mut".to_string(),
             Some(MirType::Fn(_)) => "fn".to_string(),
             Some(MirType::Record(r)) => format!("rec:{}", r.name),
             None => "?".to_string(),
