@@ -1,0 +1,60 @@
+{
+  "scope": "incremental-raw",
+  "run_id": "negative-failing-verdict",
+  "samples": 2,
+  "verdict": {
+    "status": "fail",
+    "reason": "controlled negative: P95 exceeded the 1000ms gate",
+    "structure": "pass",
+    "p95_ms": 2100.0,
+    "time_gate": false
+  },
+  "revisions": [
+    {
+      "revision": 1,
+      "changed_fn": "gcd",
+      "install_set": [
+        "d_gcd"
+      ],
+      "value": 1,
+      "wall_ms": 900.0,
+      "identity_hold": {
+        "changed_moved": true,
+        "unchanged_sample": {
+          "name": "d_main",
+          "before": [
+            7011024,
+            3
+          ],
+          "after": [
+            7011024,
+            3
+          ]
+        }
+      }
+    },
+    {
+      "revision": 2,
+      "changed_fn": "gcd",
+      "install_set": [
+        "d_gcd"
+      ],
+      "value": 1,
+      "wall_ms": 2100.0,
+      "identity_hold": {
+        "changed_moved": true,
+        "unchanged_sample": {
+          "name": "d_main",
+          "before": [
+            7011024,
+            3
+          ],
+          "after": [
+            7011024,
+            3
+          ]
+        }
+      }
+    }
+  ]
+}

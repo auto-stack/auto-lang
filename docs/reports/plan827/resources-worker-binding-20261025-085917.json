@@ -1,0 +1,15 @@
+﻿{
+    "stamp":  "20261025-085917",
+    "exe":  "D:\\autostack\\.wt\\lang-827\\auto-lang\\experimental\\ac-av-probe\\target\\release\\av_probe_worker.exe",
+    "sha256":  "0A50E300E1B4BC9725C0DAA16E5502306AF3F455D142EC62FF79E01331782261",
+    "built_by":  "cargo build --release -p auto-av-probe --bin av_probe_worker (resources scope)",
+    "git_head":  "10c1456e228c9f4bbfd56dc167e52c3cb4f82c20",
+    "probe_ws_entries":  [
+
+                         ],
+    "certifies":  [
+                      "bench-gate0-20261025-085917.jsonl",
+                      "bench-30-20261025-085917.jsonl"
+                  ],
+    "created_at":  "2026-10-25T08:59:17.9704792+08:00"
+}
