@@ -494,3 +494,260 @@ fn av_source_827_input_cap_at_and_over_one() {
         "rejection happens with zero dispatch"
     );
 }
+/// V-09/R6: actual frame-slot reserve failures, including failure after
+/// earlier frames and trace events exist. No global allocator is replaced.
+#[test]
+fn av_source_827_nth_frame_allocation_failure_cleans_owned_slots() {
+    use auto_av_core::frame_allocation::FrameAllocationProbe;
+    let src = "fn leaf(x int) int {\n    let a = mark_a()\n    return x + 1\n}\nfn mid(x int) int {\n    let b = mark_b()\n    return leaf(x)\n}\nfn main() int {\n    let a = mark_a()\n    return mid(6)\n}\n";
+    let c = auto_ac_prototype::source::compile_scalar_source(
+        src,
+        "allocation.at",
+        &[TRACE_CAPABILITY.to_string()],
+    )
+    .unwrap();
+    let m = lower_checked(&c.checked, "d_main", 0).unwrap();
+    let bytes = encode_abc(&m).unwrap();
+    let loaded = verify_abc(
+        decode_abc(&bytes.to_flat()).unwrap(),
+        &OwnerScope {
+            schema: ABC_SCHEMA.into(),
+            module: "av827-allocation".into(),
+        },
+    )
+    .unwrap();
+    for n in 1..=3 {
+        let probe = FrameAllocationProbe::new(Some(n));
+        let (out, trace) =
+            probe.run(|| execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false)));
+        assert!(
+            matches!(
+                out,
+                ExecOutcome::Resource {
+                    kind: ResourceKind::SlotBytes,
+                    ..
+                }
+            ),
+            "failure {n}: {out:?}"
+        );
+        let s = probe.snapshot();
+        eprintln!(
+            "V09 allocation failure n={n}: {s:?}, prefix={:?}",
+            trace.events
+        );
+        assert_eq!(s.attempts, n);
+        assert_eq!(s.successful, n - 1);
+        assert_eq!(s.released, s.successful);
+        assert_eq!(
+            s.live_bytes, 0,
+            "all previously allocated buffers actually dropped"
+        );
+        assert_eq!(
+            trace.events.len() as u64,
+            n - 1,
+            "retain legal prefix; failed callee never dispatches"
+        );
+        assert_eq!(s.peak_bytes > 0, n > 1);
+    }
+    // At n=4 no failure is reached. Correct source result/trace and every
+    // buffer is released on successful returns, not only error unwinding.
+    let probe = FrameAllocationProbe::new(Some(4));
+    let (out, trace) =
+        probe.run(|| execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false)));
+    assert!(matches!(
+        out,
+        ExecOutcome::Success {
+            value: auto_av_core::contract::Value::I32(7),
+            ..
+        }
+    ));
+    assert_eq!(trace.events.len(), 3);
+    let s = probe.snapshot();
+    assert_eq!(
+        (s.attempts, s.successful, s.released, s.live_bytes),
+        (3, 3, 3, 0)
+    );
+    for limits in [
+        ExecLimits {
+            max_frames: 0,
+            ..ExecLimits::default()
+        },
+        ExecLimits {
+            max_slot_bytes: 0,
+            ..ExecLimits::default()
+        },
+    ] {
+        let probe = FrameAllocationProbe::new(Some(1));
+        let (out, trace) = probe.run(|| execute(&loaded, &limits, &CancelFlag::new(false)));
+        assert!(matches!(out, ExecOutcome::Resource { .. }));
+        assert!(trace.events.is_empty());
+        assert_eq!(
+            probe.snapshot(),
+            Default::default(),
+            "budget rejection precedes reserve attempt"
+        );
+    }
+    // Root succeeds, callee budget rejects before a second reserve.
+    let probe = FrameAllocationProbe::new(Some(2));
+    let (out, trace) = probe.run(|| {
+        execute(
+            &loaded,
+            &ExecLimits {
+                max_frames: 1,
+                ..ExecLimits::default()
+            },
+            &CancelFlag::new(false),
+        )
+    });
+    assert!(matches!(
+        out,
+        ExecOutcome::Resource {
+            kind: ResourceKind::Frames,
+            ..
+        }
+    ));
+    assert_eq!(trace.events.len(), 1);
+    let s = probe.snapshot();
+    assert_eq!(
+        (s.attempts, s.successful, s.released, s.live_bytes),
+        (1, 1, 1, 0)
+    );
+    // The fault scope does not leak to the next uninstrumented run.
+    assert!(matches!(
+        execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false)).0,
+        ExecOutcome::Success { .. }
+    ));
+}
+
+/// The same allocation ownership survives pauses and releases on all exits.
+#[test]
+fn av_source_827_frame_allocation_pause_cancel_trap_cleanup() {
+    use auto_av_core::av::{execute_program_steps, resume_program, SteppedOutcome};
+    use auto_av_core::frame_allocation::FrameAllocationProbe;
+    use auto_av_probe::session::warmup;
+    let call_source =
+        "fn helper(x int) int {\n    return x + 1\n}\nfn main() int {\n    return helper(6)\n}\n";
+    let call_session = warmup(call_source, "d_main", &[]).unwrap();
+    let failure_probe = FrameAllocationProbe::new(Some(2));
+    let parked = failure_probe.run(|| {
+        execute_program_steps(
+            &call_session.current(),
+            &ExecLimits::default(),
+            &CancelFlag::new(false),
+            1,
+        )
+    });
+    let parked = match parked {
+        SteppedOutcome::Paused(p) => p,
+        _ => panic!("must pause before call"),
+    };
+    let finished = failure_probe.run(|| resume_program(parked, &CancelFlag::new(false), None));
+    assert!(matches!(
+        finished,
+        SteppedOutcome::Finished(
+            ExecOutcome::Resource {
+                kind: ResourceKind::SlotBytes,
+                ..
+            },
+            _
+        )
+    ));
+    let stats = failure_probe.snapshot();
+    assert_eq!(
+        (
+            stats.attempts,
+            stats.successful,
+            stats.released,
+            stats.live_bytes
+        ),
+        (2, 1, 1, 0),
+        "nth failure across pause/resume releases old frame"
+    );
+    let src =
+        "fn main() int {\n    var i = 0\n    loop {\n        i = i + 1\n    }\n    return i\n}\n";
+    let mut session = warmup(src, "d_main", &[]).unwrap();
+    let snapshot = session.current();
+    let weak = std::sync::Arc::downgrade(&snapshot);
+    let probe = FrameAllocationProbe::new(None);
+    let paused = probe.run(|| {
+        execute_program_steps(
+            &snapshot,
+            &ExecLimits::default(),
+            &CancelFlag::new(false),
+            1,
+        )
+    });
+    assert_eq!(probe.snapshot().successful, 1);
+    assert!(probe.snapshot().live_bytes > 0);
+    assert_eq!(probe.snapshot().released, 0);
+    session.close();
+    drop(snapshot);
+    assert!(weak.upgrade().is_some(), "paused chain pins the snapshot");
+    let paused = match paused {
+        SteppedOutcome::Paused(p) => p,
+        _ => panic!("must pause"),
+    };
+    let done = resume_program(paused, &CancelFlag::new(true), None);
+    assert!(matches!(
+        done,
+        SteppedOutcome::Finished(ExecOutcome::Cancelled, _)
+    ));
+    assert_eq!(probe.snapshot().released, 1);
+    assert_eq!(probe.snapshot().live_bytes, 0);
+    assert!(
+        weak.upgrade().is_none(),
+        "completed cancelled chain releases its snapshot pin"
+    );
+
+    // Dropping an unfinished chain also drops owned slot buffers.
+    let session = warmup(src, "d_main", &[]).unwrap();
+    let probe = FrameAllocationProbe::new(None);
+    let paused = probe.run(|| {
+        execute_program_steps(
+            &session.current(),
+            &ExecLimits::default(),
+            &CancelFlag::new(false),
+            1,
+        )
+    });
+    assert!(probe.snapshot().live_bytes > 0);
+    drop(paused);
+    assert_eq!(probe.snapshot().live_bytes, 0);
+    assert_eq!(probe.snapshot().successful, probe.snapshot().released);
+
+    for (source, limits, trap) in [
+        (
+            "fn main() int {\n    return 1 / 0\n}\n",
+            ExecLimits::default(),
+            true,
+        ),
+        (
+            src,
+            ExecLimits {
+                max_steps: 10,
+                ..ExecLimits::default()
+            },
+            false,
+        ),
+    ] {
+        let s = warmup(source, "d_main", &[]).unwrap();
+        let probe = FrameAllocationProbe::new(None);
+        let (out, _) = probe.run(|| {
+            auto_av_core::av::execute_program(&s.current(), &limits, &CancelFlag::new(false))
+        });
+        if trap {
+            assert!(matches!(out, ExecOutcome::Trap { .. }));
+        } else {
+            assert!(matches!(
+                out,
+                ExecOutcome::Resource {
+                    kind: ResourceKind::InstrSteps,
+                    ..
+                }
+            ));
+        }
+        assert!(probe.snapshot().successful > 0);
+        assert_eq!(probe.snapshot().live_bytes, 0);
+        assert_eq!(probe.snapshot().successful, probe.snapshot().released);
+    }
+}

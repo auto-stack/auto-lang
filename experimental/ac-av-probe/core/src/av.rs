@@ -140,6 +140,7 @@ struct Frame {
     block: u32,
     ip: usize,
     slots: Vec<Value>,
+    _allocation: Option<crate::frame_allocation::AllocationLease>,
     /// Caller bookkeeping: destination slot written on return (None = root).
     ret_dst: Option<u32>,
 }
@@ -597,12 +598,25 @@ fn dispatch<V: ModuleView>(
                 ),
             });
         }
-        // Root frame.
+        // Root frame. PLAN-827 R6: the slot storage goes through the
+        // fallible fault-injectable reserve (attempt accounting + ownership
+        // lease); PLAN-820 §6 keeps the deep filled-frame budget below.
+        let (slots, allocation) = match crate::frame_allocation::reserve_slots(entry_fn.slots.len())
+        {
+            Ok(v) => v,
+            Err(()) => {
+                return Some(ExecOutcome::Resource {
+                    kind: ResourceKind::SlotBytes,
+                    message: "root frame slot allocation failed".into(),
+                })
+            }
+        };
         let mut frame = Frame {
             func: entry_slot,
             block: entry_fn.entry,
             ip: 0,
-            slots: Vec::with_capacity(entry_fn.slots.len()),
+            slots,
+            _allocation: allocation,
             ret_dst: None,
         };
         let mut arg_iter = args.iter().cloned();
@@ -812,20 +826,41 @@ fn dispatch<V: ModuleView>(
                         .expect("resolve_callee only returns slots with a payload");
                     // Slot budget BEFORE the callee frame is allocated
                     // (F798-R3-04): the check used to run after the push.
-                    // PLAN-820: the prospective is the DEEP size of the
-                    // filled callee frame (params + typed placeholders).
-                    let arg_vals: Vec<Value> = {
-                        let fr = st.frames.last().expect("frame present");
-                        args.iter().map(|a| fr.slots[*a as usize].clone()).collect()
-                    };
+                    // PLAN-827 R6 keeps a shallow pre-gate so a budget
+                    // refusal still PRECEDES the allocation attempt; the
+                    // authoritative PLAN-820 §6 check is the deep size of
+                    // the FILLED callee frame (params + typed placeholders)
+                    // after the reserve below.
+                    let prospective = st.slot_bytes + callee_fn.slots.len() * crate::contract::SLOT_CELL_BYTES;
+                    if prospective > limits.max_slot_bytes {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::SlotBytes,
+                            message: format!(
+                                "live slot data would reach {} bytes, above budget {}",
+                                prospective, limits.max_slot_bytes
+                            ),
+                        });
+                    }
+                    let (slots, allocation) =
+                        match crate::frame_allocation::reserve_slots(callee_fn.slots.len()) {
+                            Ok(v) => v,
+                            Err(()) => {
+                                return Some(ExecOutcome::Resource {
+                                    kind: ResourceKind::SlotBytes,
+                                    message: "callee frame slot allocation failed".into(),
+                                })
+                            }
+                        };
                     let mut nf = Frame {
                         func: target,
                         block: callee_fn.entry,
                         ip: 0,
-                        slots: Vec::with_capacity(callee_fn.slots.len()),
+                        slots,
+                        _allocation: allocation,
                         ret_dst: Some(*dst),
                     };
-                    let mut ai = arg_vals.into_iter();
+                    let caller = st.frames.last().expect("frame present");
+                    let mut ai = args.iter().map(|a| caller.slots[*a as usize].clone());
                     for s in &callee_fn.slots {
                         nf.slots.push(if s.kind == crate::mir::SlotKind::Param {
                             ai.next().expect("arity verified at admission")

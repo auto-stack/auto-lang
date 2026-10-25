@@ -43,3 +43,4 @@ pub use mir::{MirModule, MirModuleUncheckedMarker, TraceEvent};
 pub use mir_verify::{verify_mir, verify_mir_with_deadline, CheckedMir, MirVerifyError};
 pub use program_snapshot::ProgramSnapshot;
 pub use span_map::SpanSegments;
+pub mod frame_allocation;

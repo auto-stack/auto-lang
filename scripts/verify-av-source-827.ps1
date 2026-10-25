@@ -243,7 +243,9 @@ switch ($Scope) {
         # 827 thin cap-boundary pair (at-cap passes / over-one rejects).
         Run-Probe-Tests "av_source_827_semantics" "resources-thin-cap-pair" @(
             "av_source_827_input_cap_at_and_over_one",
-            "av_source_827_resource_budget_and_cancel_axes"
+            "av_source_827_resource_budget_and_cancel_axes",
+            "av_source_827_nth_frame_allocation_failure_cleans_owned_slots",
+            "av_source_827_frame_allocation_pause_cancel_trap_cleanup"
         )
     }
     "autodown" {

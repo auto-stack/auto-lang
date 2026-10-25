@@ -145,7 +145,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "windows-sys 0.59.0", 首例全路径 — 真实源码文件验收基线薄适配落地（复用裁定=零公共写面：既有 ac-av/core-run-v1 recipe + case-serve worker 不新增 workspace/命令/recipe）：corpus av-source-827（AP-01 字节恒等副本+SHA 回执+success 0 oracle）；probe/tests av_source_827_first_case 4 测全绿（种子身份双向核验/真实文件 ephemeral 0+计数/同store put→hit 仍执行+真新进程 restore-run 0 双单元复验/native 独立通道 0）；根门 av_source_827_corpus_green 经正式 recipe 父侧判定 1/1 绿；scripts/verify-av-source-827.ps1 first-case 档 selected 非零强制 (Plan 827 T-03))
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
