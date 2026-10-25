@@ -30,4 +30,6 @@ Man `75a81b4f4b100f7f8bdf9c02bbf87c299cc9e5af`；前基线 `f52cd93b`。R3 的 F
 
 完整发行的 fresh lock 曾选择 `brotli-decompressor 6.2.0`，随后 locked build 因该版本不可用失败。Man `b32d3d0eeed8e08dbe74302128fe3b815dc3fd6a` 以直接依赖精确 pin 可用 `6.1.1`，未复用旧锁或降低 fresh 验收。新 clone 的 `Cargo.lock` 已确认选择 6.1.1；`cargo check --locked -p auto-man` 通过。完整 14 项发行门在该提交上重新执行。
 
-792 的工具包 fresh build 另发现 `tauri 2.12.5` 与 stable `erased-serde 0.4.11` 不兼容。lang `9736eff9d5f9c9821880f4d67a6dbd3cb7d1c759` 在 `auto-api-gen` 的 dev 闭包精确 pin `erased-serde=0.4.0-rc.1`；`cargo check --locked -p auto-api-gen` 与 Man check 均通过。792 以该语言提交重新执行，未跳过任何 V01..V05 用例。
+连带解析变化（同域重解，非无关漂移，R5-F02 记录）：Man 锁同时将 `brotli 9.0.0→8.0.4`、`async-compression 0.4.51→0.4.49`、`compression-codecs 0.4.46→0.4.44`、`brotli-decompressor 6.0.1→5.0.3` 降级，`alloc-no-stdlib`/`alloc-stdlib` 双版本共存——brotli 主版本 9→8 影响 reqwest 解压路径，由 14 项发行门与 Man 冻结门覆盖；lang 锁将 `serde-untagged 0.1.9→0.1.1`（转用 `erased-serde 0.3.31`）并移除 `typeid 1.0.3`，由 lang 冻结门覆盖。两处 pin 均为源码零引用的解析杠杆（Man 侧进入发行闭包 normal 图），已加注释并登记 6.2.x 恢复后 revisit（R5-F03）。
+
+792 的工具包 fresh build 另发现 `tauri 2.12.5` 与 stable `erased-serde 0.4.11` 不兼容。lang（rebase 后 `3e8213885`，原 `9736eff9d`）在 `auto-api-gen` 的 dev 闭包精确 pin `erased-serde=0.4.0-rc.1`；`cargo check --locked -p auto-api-gen` 与 Man check 均通过。R5 指出原句"792 以该语言提交重新执行，未跳过任何 V01..V05 用例"超前于在档证据（pass 日志止于 V03i）；V01..V05 全量重跑由 merge 阶段在最终候选上执行并归档回执后，该陈述才成立（R5-F01）。
