@@ -35,7 +35,7 @@ R5 绑定时这些文件未改；R6 修复在 AV 帧槽位 reserve 边界新增�
 | cap-at/超1（表/嵌套轴） | `resources_tier::av_resources_over_table_budget_is_resource`、`av_resources_front_door_nesting_boundary`（继承） | 正/负对 | resources-inherited-finite |
 | 无限循环/cancel/资源态 | 827 既有 `av_source_827_resource_budget_and_cancel_axes` | InstrSteps 资源态/Cancelled（host 决策）/dispatch=0 | resources-thin-cap-pair |
 | churn/清理（32MiB 信封内） | `resources_tier::av_resources_32mib_product_random_read_and_churn`（继承） | 预算内清理与水位 | resources-inherited-finite |
-| 双线内存硬门 + 两路径 P95 | `av_probe_worker bench-turnaround --samples 30 --gate-ms 1000`（validate_and_gate 对 frontend_transient/worker_private 双线 hard_gate_failures→exit5）+ `t08_formal_campaign_v08_dual_gate_30_revisions`（正式会话时间门） | P95<1000 且双线绿；gate-0 必红反控；**R7 F-R7-02：worker 先从冻结 workspace 构建（cargo build --release -p auto-av-probe --bin av_probe_worker），SHA256+head+probe-ws 脏项入 per-run 绑定收据署名两 raw，陈旧/篡改/缺失绑定负控先于战役必红+当前正控；R8 F-R8-01：实际 stdout summary+精确 exit 逐运行留存（bench-summary-{gate0,30}-*.json：exe/head/args/exit/raw/观测 input+全峰值+双 target+hard_gate_failures），Test-BenchSummary 从留存真实字段佐证（gate-0 预期拒绝与无关非零可区分；正常门 exit0+零 failures+双 target）+内联篡改负控+selftest 六控制** | raw=bench-*.jsonl+resources-worker-binding-*.json+bench-summary-*.json（失败轮保留）；当前绑定过门轮 20261025-103747（worker 0A50E300E1B4BC97…、head=311e81a7f、input 431bff0efbaabfec、single-body-edit P95=966.2/signature-conflict P95=38.1、exit0+零 failures+双 target 留存佐证）；085917/091045 轮另有 recovered summary+原始控制台捕获 |
+| 双线内存硬门 + 两路径 P95 | `av_probe_worker bench-turnaround --samples 30 --gate-ms 1000`（validate_and_gate 对 frontend_transient/worker_private 双线 hard_gate_failures→exit5）+ `t08_formal_campaign_v08_dual_gate_30_revisions`（正式会话时间门） | P95<1000 且双线绿；gate-0 必红反控；**R7 F-R7-02：worker 先从冻结 workspace 构建（cargo build --release -p auto-av-probe --bin av_probe_worker），SHA256+head+probe-ws 脏项入 per-run 绑定收据署名两 raw，陈旧/篡改/缺失绑定负控先于战役必红+当前正控；R8 F-R8-01：实际 stdout summary+精确 exit 逐运行留存（bench-summary-{gate0,30}-*.json：exe/head/args/exit/raw/观测 input+全峰值+双 target+hard_gate_failures），Test-BenchSummary 从留存真实字段佐证+内联篡改负控+selftest 控制；**R9 收紧：gate-0 佐证=summary.gate_ms==0 且每条 failure 为两冻结路径 ">= 0.0ms" 阈值拒绝形态且双路径均在（无关失败/健康阈值失败/单路径/外来文本均红），参数 Args→BenchArgs（$args 自动变量碰撞，writer 精确文本控制），既有 103747 工件在收紧校验器下复用全过**** | raw=bench-*.jsonl+resources-worker-binding-*.json+bench-summary-*.json（失败轮保留）；当前绑定过门轮 20261025-103747（worker 0A50E300E1B4BC97…、head=311e81a7f、input 431bff0efbaabfec、single-body-edit P95=966.2/signature-conflict P95=38.1、exit0+零 failures+双 target 留存佐证）；085917/091045 轮另有 recovered summary+原始控制台捕获 |
 
 注：828 战役测试内内存峰值为报告项（其注释明示）；**内存硬门在 bench-turnaround 的
 validate_and_gate**（同 scope 必跑、失败 exit 5）——本行即"actual dual-line hard-memory/formal
@@ -62,6 +62,13 @@ two-path evidence"到当前基面的绑定。故障第 n 次分配注入现已�
 - **F-827-R8-01（实际 bench summary/exit 未持久化）**：根因=worker 把真实 summary（硬门结果/双线内存峰值/targets）打到 stdout，脚本只打印不落盘，JSONL raw 仅逐样本行——持久工件无法复核资源验收、无法区分 gate-0 预期拒绝与无关非零退出。修复/重放见上表 V-09 行；留存工件含完整 frontend/private/child 峰值、worker 增量、双线 target、hard_gate_failures 与精确 exit_code。
 - **原始回收（评审首选，不造数）**：085917/091045 两轮原始控制台捕获原样入库（resources-console-*.log.txt，含 stdout summary JSON 行与退出码打印行）；四份 bench-summary-*.recovered.json 逐字提取自捕获行、绑定各自收据，退出码注明捕获出处（091045 bench-30 exit0 由控制流续行注记）；回收工件经 Test-BenchSummary 一致性检验四件全符（085917 bench-30 正确红=该轮真实门失败）。
 - formal-session 30 样本完整 report（P95=331.9732ms、worker_peak、input 身份）按 R8 评审复用，未重跑；inventory/cache/churn/整档未触动。
+
+## R9 校验收紧与溯源更正（2026-10-25，冻结 f58fd3382+9ae7a7a3b）
+
+- **gate-0 佐证收紧**（R9 残余1）：此前"exit≠0∧failures 非空"会误接受无关失败（评审反例：真实 gate-0 工件改 gate_ms=1000、failures 换 `fresh: failing samples [0]` → 旧校验 true）。现要求 gate_ms==0+两冻结路径（signature-conflict/single-body-edit）的 ">= 0.0ms" 阈值拒绝形态+双路径均在；selftest 增三同级负控。评审反例经 AST 提取提交态生产函数复放必红（review-r9/replay-r9-closure.ps1，exit0）。
+- **args 溯源更正**（R9 残余2）：`$args` 自动变量碰撞致参数名 `Args` 落盘空串——改名 BenchArgs+writer 逐字控制；两件既有 103747 工件的空 args 以溯源补注 sidecar 更正（bench-summary-args-annotation-20261025-103747.json：真实调用逐字记录，脚本调用点+工件 gate_ms/samples+绑定收据三重佐证，原工件不改写）。
+- 复用边界：闭包复放同场核验既有 103747 gate-0/normal 工件在收紧校验器下仍全过；按 R9 评审不重跑性能矩阵/acceptance。
+
 
 
 
