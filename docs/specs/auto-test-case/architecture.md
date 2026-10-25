@@ -156,3 +156,12 @@ V-10 反控：wrong-exit/wrong-diag/未注册 recipe/worker 三故障=ERROR、
 wrong-bits/wrong-type-tag（父侧期望破坏缝仅测试用）/未知 fixture id/整数
 边界矩阵。验收：corpus 绿（av-data-first/typed/bool/int-zero.case.ad）+
 ac_av_data_probe 8/8。
+
+
+## PLAN-827 源码程序 corpus/验证消费者
+
+PLAN-827 新增已交付 `ac-av/core-run-v1` recipe 的源码程序 corpus 与验证
+消费者。源文件字节与虚拟源身份由既有 runner 解析；worker 只收字节、永不读取
+期望结果。父侧拥有 typed actual 比较与 source/worker 身份准入。私有 overlay
+与同 store/新 worker 路径保留实际执行。不支持的 source、infra 失败与 guest
+trap 保持既有区分判定。不新增 recipe 注册、协议 decoder 或第二执行引擎。

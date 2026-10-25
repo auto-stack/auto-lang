@@ -20,3 +20,10 @@ PLAN-820 交付独立 data profile `av.data/1`（AVAD wire v1/profile 2，语义
 str/借用/Drop/List/enum/闭包/Dyn/NaN-boxing、生产默认接线、native 新数据
 lowering。825 执行优化、826 紧凑 wire 不冒领未交付能力；821–824 后继边界
 以各自实际交付为准。
+
+
+PLAN-827 通过既有 ac-av 消费者建立有界实验性标量源码文件验收基线。
+AP-01/AP-22 执行、AP-23 精确 trap；G0 库存与语义差异保持显式。不切换默认
+CLI/UI/CTE，不新增通用脚本/stdlib/host IO，不退役旧 VM。源码支持与未来
+能力缺口记录于 [language-support](language-support.md) 与
+[source-program-conformance](source-program-conformance.md)。

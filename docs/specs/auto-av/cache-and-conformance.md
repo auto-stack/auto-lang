@@ -53,3 +53,15 @@ producer/owner/entry/profile/types-fp/codec/三语义版本/source-snapshot）�
 进程 worker `data-restore-run` 恢复重验执行。V-08/09（cache_compat 5/5 +
 store_restore_new_process；好 hash 坏内层独立反例见
 [review-r10](../../plans/attachments/820/review-r10/review.md)）。
+
+
+## PLAN-827 源码程序消费（source-file 身份/恢复/反控）
+
+PLAN-827 消费既有内容寻址 source/cache 合同。fresh、同 store hit 与真实新
+worker restore 都执行 AV 并获得新的父侧比较；不使用缓存 PASS/actual 或
+序列化活帧。Source 内容/位置、依赖、profile/工具/producer/entry/当前授权
+参与既有身份与消费门。授权撤销在 dispatch 前拒绝；位置编辑把诊断 span 绑定
+到当前坐标。相同内容可跨工程标签复用；发布 root 与必需数据 lease 仍拥有 GC
+可达性。错误 owner/body 身份、损坏帧与自洽坏内层载荷被拒绝。冲突发布保留
+已提交的好工件。执行槽位所有权与持久 store lease 是分离的资源轴；失败清理
+证据必须覆盖每条所声称的轴。
