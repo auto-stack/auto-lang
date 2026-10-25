@@ -1,0 +1,87 @@
+﻿{
+    "stamp":  "20261025-085917",
+    "exe_sha256":  "0A50E300E1B4BC9725C0DAA16E5502306AF3F455D142EC62FF79E01331782261",
+    "git_head":  "10c1456e228c9f4bbfd56dc167e52c3cb4f82c20",
+    "args":  "bench-turnaround --samples 30 --gate-ms 1000",
+    "exit_code":  5,
+    "exit_code_note":  "console line: \u0027FAILED: bench-turnaround gate (exit 5)\u0027",
+    "raw_file":  "bench-30-20261025-085917.jsonl",
+    "input_source_hash_observed":  "431bff0efbaabfec",
+    "provenance":  "recovered VERBATIM from line 8 of resources-console-20261025-085917.log.txt (the original console capture of this run); binding fields from resources-worker-binding-20261025-085917.json; retention fix 311e81a7f landed AFTER these runs",
+    "summary":  {
+                    "fresh":  {
+                                  "samples":  30,
+                                  "p50_ms":  5342.7904,
+                                  "p95_ms":  12303.0889,
+                                  "p99_ms":  14193.3606,
+                                  "min_ms":  2605.0994,
+                                  "max_ms":  14193.3606,
+                                  "mean_ms":  6252.162046666667,
+                                  "failures":  0
+                              },
+                    "same_process_hot":  {
+                                             "samples":  30,
+                                             "p50_ms":  935.7968,
+                                             "p95_ms":  1215.6756,
+                                             "p99_ms":  1232.8254000000002,
+                                             "min_ms":  796.0878,
+                                             "max_ms":  1232.8254000000002,
+                                             "mean_ms":  944.2499333333332,
+                                             "failures":  0
+                                         },
+                    "restart_disk_hot":  {
+                                             "samples":  30,
+                                             "p50_ms":  693.7961,
+                                             "p95_ms":  953.2028,
+                                             "p99_ms":  990.2017,
+                                             "min_ms":  488.1879,
+                                             "max_ms":  990.2017,
+                                             "mean_ms":  692.3260433333334,
+                                             "failures":  0
+                                         },
+                    "single_body_edit":  {
+                                             "samples":  30,
+                                             "p50_ms":  1011.644,
+                                             "p95_ms":  1190.6918,
+                                             "p99_ms":  1218.7975,
+                                             "min_ms":  860.1453,
+                                             "max_ms":  1218.7975,
+                                             "mean_ms":  1021.1856866666668,
+                                             "failures":  0
+                                         },
+                    "signature_conflict":  {
+                                               "samples":  30,
+                                               "p50_ms":  32.3709,
+                                               "p95_ms":  38.358700000000006,
+                                               "p99_ms":  43.1971,
+                                               "min_ms":  29.514499999999998,
+                                               "max_ms":  43.1971,
+                                               "mean_ms":  33.19259666666667,
+                                               "failures":  0
+                                           },
+                    "gc_concurrent":  {
+                                          "samples":  30,
+                                          "p50_ms":  871.7873000000001,
+                                          "p95_ms":  987.5412,
+                                          "p99_ms":  1101.1154000000001,
+                                          "min_ms":  801.9789000000001,
+                                          "max_ms":  1101.1154000000001,
+                                          "mean_ms":  886.1931333333335,
+                                          "failures":  0
+                                      },
+                    "gate_ms":  1000.0,
+                    "hard_gate_p95_ms":  {
+                                             "signature-conflict":  38.358700000000006,
+                                             "single-body-edit":  1190.6918
+                                         },
+                    "worker_private_bytes_delta":  7819264.0,
+                    "private_bytes_peak":  217378816,
+                    "child_private_bytes_peak":  211693568,
+                    "frontend_peak_bytes":  210501632,
+                    "frontend_transient_target_met":  true,
+                    "worker_private_bytes_target_met":  true,
+                    "hard_gate_failures":  [
+                                               "hard gate: single-body-edit P95 1190.7ms \u003e= 1000.0ms"
+                                           ]
+                }
+}

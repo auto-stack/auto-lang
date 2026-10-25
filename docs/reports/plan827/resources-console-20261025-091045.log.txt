@@ -1,0 +1,73 @@
+== resources: build the release worker from the frozen workspace (F-R7-02)
+    Finished `release` profile [optimized] target(s) in 0.26s
+   worker bound: sha256=0A50E300E1B4BC97... head=10c1456e22 probe-ws dirty entries=0 (3 negatives red, current green)
+== resources: bench gate-0 counter-control (must FAIL)
+{"fresh":{"samples":3,"p50_ms":2745.4117,"p95_ms":3752.0265999999997,"p99_ms":3752.0265999999997,"min_ms":2735.6097,"max_ms":3752.0265999999997,"mean_ms":3077.682666666667,"failures":0},"same_process_hot":{"samples":3,"p50_ms":444.7816,"p95_ms":453.5967,"p99_ms":453.5967,"min_ms":429.5795,"max_ms":453.5967,"mean_ms":442.65260000000006,"failures":0},"restart_disk_hot":{"samples":3,"p50_ms":445.7221,"p95_ms":451.8831,"p99_ms":451.8831,"min_ms":441.2431,"max_ms":451.8831,"mean_ms":446.2827666666667,"failures":0},"single_body_edit":{"samples":3,"p50_ms":476.9336,"p95_ms":494.78630000000004,"p99_ms":494.78630000000004,"min_ms":472.3832,"max_ms":494.78630000000004,"mean_ms":481.3677,"failures":0},"signature_conflict":{"samples":3,"p50_ms":20.9372,"p95_ms":24.0324,"p99_ms":24.0324,"min_ms":18.5101,"max_ms":24.0324,"mean_ms":21.1599,"failures":0},"gc_concurrent":{"samples":3,"p50_ms":706.7295,"p95_ms":774.2620999999999,"p99_ms":774.2620999999999,"min_ms":703.11,"max_ms":774.2620999999999,"mean_ms":728.0338666666667,"failures":0},"gate_ms":0.0,"hard_gate_p95_ms":{"signature-conflict":24.0324,"single-body-edit":494.78630000000004},"worker_private_bytes_delta":6680576.0,"private_bytes_peak":215965696,"child_private_bytes_peak":211447808,"frontend_peak_bytes":211218432,"frontend_transient_target_met":true,"worker_private_bytes_target_met":true,"hard_gate_failures":["hard gate: signature-conflict P95 24.0ms >= 0.0ms","hard gate: single-body-edit P95 494.8ms >= 0.0ms"]}
+   gate-0 red as required (exit 5)
+== resources: bench-turnaround 30 samples gate 1000ms
+{"fresh":{"samples":30,"p50_ms":3515.8569,"p95_ms":4416.4044,"p99_ms":5410.321800000001,"min_ms":2493.1058999999996,"max_ms":5410.321800000001,"mean_ms":3599.8367366666666,"failures":0},"same_process_hot":{"samples":30,"p50_ms":864.2776,"p95_ms":1180.9957,"p99_ms":1406.8256999999999,"min_ms":651.7622,"max_ms":1406.8256999999999,"mean_ms":896.4975900000003,"failures":0},"restart_disk_hot":{"samples":30,"p50_ms":560.5284,"p95_ms":1452.6355,"p99_ms":1624.0858,"min_ms":435.0316,"max_ms":1624.0858,"mean_ms":658.6370666666666,"failures":0},"single_body_edit":{"samples":30,"p50_ms":532.789,"p95_ms":597.9909,"p99_ms":609.7548,"min_ms":452.0728,"max_ms":609.7548,"mean_ms":531.7269566666668,"failures":0},"signature_conflict":{"samples":30,"p50_ms":18.3334,"p95_ms":24.8172,"p99_ms":25.1609,"min_ms":17.6948,"max_ms":25.1609,"mean_ms":18.8175,"failures":0},"gc_concurrent":{"samples":30,"p50_ms":622.3602999999999,"p95_ms":770.8869000000001,"p99_ms":779.258,"min_ms":498.398,"max_ms":779.258,"mean_ms":616.5901566666668,"failures":0},"gate_ms":1000.0,"hard_gate_p95_ms":{"signature-conflict":24.8172,"single-body-edit":597.9909},"worker_private_bytes_delta":6320128.0,"private_bytes_peak":217575424,"child_private_bytes_peak":211767296,"frontend_peak_bytes":210464768,"frontend_transient_target_met":true,"worker_private_bytes_target_met":true,"hard_gate_failures":[]}
+== resources: 828 formal-session dual-gate campaign (V-08)
+   Compiling auto-av-probe v0.1.0 (D:\autostack\.wt\lang-827\auto-lang\experimental\ac-av-probe\probe)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.28s
+     Running tests\function_incremental_828_t08.rs (target\debug\deps\function_incremental_828_t08-dfb9e17a098999b0.exe)
+
+running 1 test
+test t08_formal_campaign_v08_dual_gate_30_revisions ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 10.64s
+
+   selected: 1 (0 real skips; required 1 all passed)
+== resources-inherited-finite (ac-av-probe --test resources_tier)
+   Compiling auto-av-probe v0.1.0 (D:\autostack\.wt\lang-827\auto-lang\experimental\ac-av-probe\probe)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.77s
+     Running tests\resources_tier.rs (target\debug\deps\resources_tier-ae1f1e98208a58fc.exe)
+
+running 17 tests
+test av_turnaround_two_line_memory_gate ... ok
+test av_resources_atom_front_door_rejects_before_recursive_parser ... ok
+test av_resources_front_door_nesting_boundary ... ok
+test av_resources_4096_block_chain_within_budget ... ok
+test av_resources_over_table_budget_is_resource ... ok
+test av_resources_composed_path_inside_one_argument ... ok
+test av_resources_flat_chain_front_door_boundary ... ok
+test av_resources_tail_operand_deep_call_not_concatenated ... ok
+test av_resources_parenthesized_flat_chain_front_door_boundary ... ok
+test av_resources_prefix_unary_binds_to_full_call ... ok
+test av_resources_bool_and_named_arg_chains_front_door ... ok
+test av_resources_sibling_max_paths_not_concatenated ... ok
+test av_resources_sequential_shallow_statements_not_depth_summed ... ok
+test av_resources_wide_shallow_call_not_depth_rejected ... ok
+test av_resources_peak_sampler_distinguishes_transient_spike ... ok
+test av_turnaround_six_scenarios_smoke ... ok
+test av_resources_32mib_product_random_read_and_churn has been running for over 60 seconds
+test av_resources_32mib_product_random_read_and_churn ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 82.31s
+
+   selected: 17 (0 real skips; required 3 all passed)
+== resources-thin-cap-pair (ac-av-probe --test av_source_827_semantics)
+    Blocking waiting for file lock on package cache
+   Compiling auto-av-probe v0.1.0 (D:\autostack\.wt\lang-827\auto-lang\experimental\ac-av-probe\probe)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.86s
+     Running tests\av_source_827_semantics.rs (target\debug\deps\av_source_827_semantics-161949f2fb3ccc64.exe)
+
+running 14 tests
+test av_source_827_front_door_rejects_disallow_no_dispatch ... ok
+test av_source_827_nth_frame_allocation_failure_cleans_owned_slots ... ok
+test av_source_827_trace_order_exact_and_capability_gated ... ok
+test av_source_827_position_shift_rebinds_trap_span_coordinates ... ok
+test av_source_827_ap23_precise_trap_and_false_only_control ... ok
+test av_source_827_consume_gate_corrupt_abc_never_executes ... ok
+test av_source_827_ap22_argument_value_change_changes_result ... ok
+test av_source_827_frame_allocation_pause_cancel_trap_cleanup ... ok
+test av_source_827_resource_budget_and_cancel_axes ... ok
+test av_source_827_trace_grant_revocation_blocks_execution ... ok
+test av_source_827_input_cap_at_and_over_one ... ok
+test av_source_827_same_path_different_bytes_and_frozen_snapshot ... ok
+test av_source_827_ap23_native_exit70_channel ... ok
+test av_source_827_native_missing_tool_is_red_ap23_control ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.18s
+
+   selected: 14 (0 real skips; required 4 all passed)
+PASS: scope 'resources' green

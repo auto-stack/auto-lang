@@ -1,0 +1,88 @@
+﻿{
+    "stamp":  "20261025-085917",
+    "exe_sha256":  "0A50E300E1B4BC9725C0DAA16E5502306AF3F455D142EC62FF79E01331782261",
+    "git_head":  "10c1456e228c9f4bbfd56dc167e52c3cb4f82c20",
+    "args":  "bench-turnaround --samples 3 --gate-ms 0",
+    "exit_code":  5,
+    "exit_code_note":  "console line: \u0027gate-0 red as required (exit 5)\u0027",
+    "raw_file":  "bench-gate0-20261025-085917.jsonl",
+    "input_source_hash_observed":  "431bff0efbaabfec",
+    "provenance":  "recovered VERBATIM from line 5 of resources-console-20261025-085917.log.txt (the original console capture of this run); binding fields from resources-worker-binding-20261025-085917.json; retention fix 311e81a7f landed AFTER these runs",
+    "summary":  {
+                    "fresh":  {
+                                  "samples":  3,
+                                  "p50_ms":  5036.698399999999,
+                                  "p95_ms":  5079.0697,
+                                  "p99_ms":  5079.0697,
+                                  "min_ms":  3906.1424,
+                                  "max_ms":  5079.0697,
+                                  "mean_ms":  4673.970166666667,
+                                  "failures":  0
+                              },
+                    "same_process_hot":  {
+                                             "samples":  3,
+                                             "p50_ms":  930.4511,
+                                             "p95_ms":  964.6585,
+                                             "p99_ms":  964.6585,
+                                             "min_ms":  919.829,
+                                             "max_ms":  964.6585,
+                                             "mean_ms":  938.3128666666667,
+                                             "failures":  0
+                                         },
+                    "restart_disk_hot":  {
+                                             "samples":  3,
+                                             "p50_ms":  473.8193,
+                                             "p95_ms":  478.8785,
+                                             "p99_ms":  478.8785,
+                                             "min_ms":  458.5098,
+                                             "max_ms":  478.8785,
+                                             "mean_ms":  470.40253333333334,
+                                             "failures":  0
+                                         },
+                    "single_body_edit":  {
+                                             "samples":  3,
+                                             "p50_ms":  966.2458,
+                                             "p95_ms":  1006.6816000000001,
+                                             "p99_ms":  1006.6816000000001,
+                                             "min_ms":  916.3974000000001,
+                                             "max_ms":  1006.6816000000001,
+                                             "mean_ms":  963.1082666666667,
+                                             "failures":  0
+                                         },
+                    "signature_conflict":  {
+                                               "samples":  3,
+                                               "p50_ms":  41.12070000000001,
+                                               "p95_ms":  41.877900000000004,
+                                               "p99_ms":  41.877900000000004,
+                                               "min_ms":  36.471000000000004,
+                                               "max_ms":  41.877900000000004,
+                                               "mean_ms":  39.82320000000001,
+                                               "failures":  0
+                                           },
+                    "gc_concurrent":  {
+                                          "samples":  3,
+                                          "p50_ms":  999.303,
+                                          "p95_ms":  1044.7740000000001,
+                                          "p99_ms":  1044.7740000000001,
+                                          "min_ms":  996.134,
+                                          "max_ms":  1044.7740000000001,
+                                          "mean_ms":  1013.4036666666667,
+                                          "failures":  0
+                                      },
+                    "gate_ms":  0.0,
+                    "hard_gate_p95_ms":  {
+                                             "signature-conflict":  41.877900000000004,
+                                             "single-body-edit":  1006.6816000000001
+                                         },
+                    "worker_private_bytes_delta":  6377472.0,
+                    "private_bytes_peak":  215339008,
+                    "child_private_bytes_peak":  211607552,
+                    "frontend_peak_bytes":  211517440,
+                    "frontend_transient_target_met":  true,
+                    "worker_private_bytes_target_met":  true,
+                    "hard_gate_failures":  [
+                                               "hard gate: signature-conflict P95 41.9ms \u003e= 0.0ms",
+                                               "hard gate: single-body-edit P95 1006.7ms \u003e= 0.0ms"
+                                           ]
+                }
+}

@@ -1,0 +1,87 @@
+﻿{
+    "stamp":  "20261025-091045",
+    "exe_sha256":  "0A50E300E1B4BC9725C0DAA16E5502306AF3F455D142EC62FF79E01331782261",
+    "git_head":  "10c1456e228c9f4bbfd56dc167e52c3cb4f82c20",
+    "args":  "bench-turnaround --samples 30 --gate-ms 1000",
+    "exit_code":  0,
+    "exit_code_note":  "scope continued past the nonzero-exit check to \u0027PASS: scope green\u0027; the bench-30 exit line was not printed in this capture (exit 0 implied by the script control flow)",
+    "raw_file":  "bench-30-20261025-091045.jsonl",
+    "input_source_hash_observed":  "431bff0efbaabfec",
+    "provenance":  "recovered VERBATIM from line 8 of resources-console-20261025-091045.log.txt (the original console capture of this run); binding fields from resources-worker-binding-20261025-091045.json; retention fix 311e81a7f landed AFTER these runs",
+    "summary":  {
+                    "fresh":  {
+                                  "samples":  30,
+                                  "p50_ms":  3515.8569,
+                                  "p95_ms":  4416.4044,
+                                  "p99_ms":  5410.321800000001,
+                                  "min_ms":  2493.1058999999996,
+                                  "max_ms":  5410.321800000001,
+                                  "mean_ms":  3599.8367366666666,
+                                  "failures":  0
+                              },
+                    "same_process_hot":  {
+                                             "samples":  30,
+                                             "p50_ms":  864.2776,
+                                             "p95_ms":  1180.9957,
+                                             "p99_ms":  1406.8256999999999,
+                                             "min_ms":  651.7622,
+                                             "max_ms":  1406.8256999999999,
+                                             "mean_ms":  896.4975900000003,
+                                             "failures":  0
+                                         },
+                    "restart_disk_hot":  {
+                                             "samples":  30,
+                                             "p50_ms":  560.5284,
+                                             "p95_ms":  1452.6355,
+                                             "p99_ms":  1624.0858,
+                                             "min_ms":  435.0316,
+                                             "max_ms":  1624.0858,
+                                             "mean_ms":  658.6370666666666,
+                                             "failures":  0
+                                         },
+                    "single_body_edit":  {
+                                             "samples":  30,
+                                             "p50_ms":  532.789,
+                                             "p95_ms":  597.9909,
+                                             "p99_ms":  609.7548,
+                                             "min_ms":  452.0728,
+                                             "max_ms":  609.7548,
+                                             "mean_ms":  531.7269566666668,
+                                             "failures":  0
+                                         },
+                    "signature_conflict":  {
+                                               "samples":  30,
+                                               "p50_ms":  18.3334,
+                                               "p95_ms":  24.8172,
+                                               "p99_ms":  25.1609,
+                                               "min_ms":  17.6948,
+                                               "max_ms":  25.1609,
+                                               "mean_ms":  18.8175,
+                                               "failures":  0
+                                           },
+                    "gc_concurrent":  {
+                                          "samples":  30,
+                                          "p50_ms":  622.3602999999999,
+                                          "p95_ms":  770.8869000000001,
+                                          "p99_ms":  779.258,
+                                          "min_ms":  498.398,
+                                          "max_ms":  779.258,
+                                          "mean_ms":  616.5901566666668,
+                                          "failures":  0
+                                      },
+                    "gate_ms":  1000.0,
+                    "hard_gate_p95_ms":  {
+                                             "signature-conflict":  24.8172,
+                                             "single-body-edit":  597.9909
+                                         },
+                    "worker_private_bytes_delta":  6320128.0,
+                    "private_bytes_peak":  217575424,
+                    "child_private_bytes_peak":  211767296,
+                    "frontend_peak_bytes":  210464768,
+                    "frontend_transient_target_met":  true,
+                    "worker_private_bytes_target_met":  true,
+                    "hard_gate_failures":  [
+
+                                           ]
+                }
+}
