@@ -24,7 +24,7 @@
 - 发现序：`AUTO_UI_TOOL_BIN`（指定即必须存在）→ `AUTO_UI_ROOT`/组内 UI owner 的 target/{debug,release} → 邻接安装；真实 describe 验工具名、协议版本、能力及收尾，无静态 fallback，不从 Man target 或任意主检出取旧工具。
 - I-TOOL v1 与 I-PROJECT/AST/Value/协议类型单源；选项经广播核对、落点核实和 StrictGuard 三层守门。
 - `--format json`/`--ai` 单 JSON；正常退出 0，错误具名非零。service≠serve/req/mcp；VM 线程亲和、Rust owned tree、watch/reader 真停保持。
-- Man 根 full workspace=9 package，根 Cargo.lock；Core 另有独立 workspace/lock/target。`cargo t`=workspace lib+auto bin，`tc`=管理 Core，`ti`=集成目标。`cross-repo-tiers.py` 串行编排 lang/Man/UI，man-ti 前分别在 UI/lang 构建 auto-ui-tool/te-child 并注入 owner 路径，测试 ID 逐项对拍而非仅比总数。
+- Man 根 full workspace=9 package，根 Cargo.lock；Core 另有独立 workspace/lock/target。`cargo t`=full workspace lib+auto bin，`tc`=管理 Core，`tcore`=Core bin+非 UI driver，`ti`=集成目标。`cross-repo-tiers.py` 串行编排 lang/Man/UI，man-tcore 前在 lang 构建 te-child，man-ti 前分别在 UI/lang 构建 auto-ui-tool/te-child，并注入 owner 路径；测试 ID 逐项对拍而非仅比总数。
 
 ## 安装、切换与恢复
 
@@ -35,6 +35,6 @@
 ## 验收与边界
 
 - 独立 clone、fresh/locked、整组重定位、第三方 consumer、安装升级和恢复共 14 项通过；792 共 37 项通过（fresh/locked/重定位/工具/失败/真实运行）。
-- Core 安装 643 文件；full 安装 6608 文件。管理库 252、Core CLI 18、外部 consumer 23、tool client 30、CLI driver 7、compat 33 通过；24/122/4 测试 ID 与基线逐字一致。
+- R1 修复后 Core 独立安装 640 文件（29 packages，仅 Man/lang 来源）；full 安装 6608 文件。`tcore` 23/23（Core CLI 18+非 UI driver 5）、full CLI driver 7/7、discovery 6/6 及真实 client/te-child 正控通过；管理库 252、外部 consumer 23、tool client 30、compat 33 的未变证据保留，24/122/4 full 测试 ID 与基线逐字一致。
 - Vue/Rust/vscode 真实构建、VM 真运行与六 profile 生成通过。jet/ark 仅生成已验证；其真实构建经 2026-10-25 用户正式裁定转 v0.7 环境门控渠道（“暂时不测，等v0.7再考虑”），未实测不冒称通过，工具链在场且失败仍须非零。
 - 未执行远端 push、默认分支更名或 registry 发布；本地受管 CI 入口见 `docs/plans/attachments/832/ci-entrypoints.md`，不冒称远端 CI。

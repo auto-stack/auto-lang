@@ -56,6 +56,9 @@ TIERS: dict[str, dict] = {
                          "--features", "auto-lang/ui-iced", "ui_gen::", "--", "--list"]},
     "man-t": {"repo": "auto-man", "run": ["cargo", "t"],
               "list": ["cargo", "nextest", "list", "--workspace", "--lib", "--bin", "auto"]},
+    "man-tcore": {"repo": "auto-man", "run": ["cargo", "tcore"],
+                  "list": ["cargo", "nextest", "list", "--manifest-path", "core/Cargo.toml",
+                           "--workspace", "--no-default-features", "--features", "core"]},
     "man-ti": {"repo": "auto-man", "run": ["cargo", "ti"],
                "list": ["cargo", "nextest", "list", "-p", "auto", "--test", "plan816_cli_driver",
                         "--test", "cmd_ui", "--test", "autodesk_client_smoke",
@@ -82,7 +85,7 @@ TIERS: dict[str, dict] = {
                        "--test", "native_dnd_e2e", "--", "--list"]},
 }
 
-DEFAULT_QUEUE = ("lang-t", "lang-tu", "man-t", "man-ti", "ui-t", "ui-tu", "ui-ti")
+DEFAULT_QUEUE = ("lang-t", "lang-tu", "man-t", "man-tcore", "man-ti", "ui-t", "ui-tu", "ui-ti")
 
 
 def resolve_root(repo_id: str, override: str | None) -> Path:
@@ -139,16 +142,17 @@ def run_cmd(cmd: list[str], cwd: Path, env: dict[str, str]) -> dict:
             "duration_s": round(time.monotonic() - start, 1)}
 
 
-def man_ti_bootstrap(roots: dict[str, Path], env: dict[str, str]) -> list[dict]:
-    commands = [
-        ("auto-ui", ["cargo", "build", "--locked", "-p", "auto-ui-tools"]),
-        ("auto-lang", ["cargo", "build", "--locked", "-p", "auto-tool-execution", "--bin", "te-child"]),
-    ]
+def man_bootstrap(tiers: list[str], roots: dict[str, Path], env: dict[str, str]) -> list[dict]:
+    commands = []
+    if "man-ti" in tiers:
+        commands.append(("auto-ui", ["cargo", "build", "--locked", "-p", "auto-ui-tools"]))
+    if "man-ti" in tiers or "man-tcore" in tiers:
+        commands.append(("auto-lang", ["cargo", "build", "--locked", "-p", "auto-tool-execution", "--bin", "te-child"]))
     results = []
     for repo_id, command in commands:
-        sys.stdout.write(f"[{TOOL}] bootstrap man-ti @ {repo_id} → {' '.join(command)}\n")
+        sys.stdout.write(f"[{TOOL}] bootstrap Man @ {repo_id} → {' '.join(command)}\n")
         sys.stdout.flush()
-        result = {"tier": "bootstrap:man-ti", "repo": repo_id,
+        result = {"tier": "bootstrap:man", "repo": repo_id,
                   **run_cmd(command, roots[repo_id], env)}
         results.append(result)
         if result["exit"] != 0:
@@ -171,15 +175,14 @@ def cmd_run(args) -> int:
     exit_code = 0
     environment = child_env(roots)
     bootstrap_ok = True
-    if "man-ti" in tiers:
-        for result in man_ti_bootstrap(roots, environment):
-            receipt["results"].append(result)
-            if result["exit"] != 0:
-                receipt["verdict"] = "fail"
-                exit_code = 1
-                bootstrap_ok = False
-                sys.stdout.write(f"[{TOOL}] man-ti bootstrap 红（exit {result['exit']}），首红即停\n")
-                break
+    for result in man_bootstrap(tiers, roots, environment):
+        receipt["results"].append(result)
+        if result["exit"] != 0:
+            receipt["verdict"] = "fail"
+            exit_code = 1
+            bootstrap_ok = False
+            sys.stdout.write(f"[{TOOL}] Man bootstrap 红（exit {result['exit']}），首红即停\n")
+            break
     if bootstrap_ok:
         for tier in tiers:
             spec = TIERS[tier]
