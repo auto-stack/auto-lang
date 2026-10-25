@@ -13,7 +13,7 @@
 
 ## 固定版本与 profile
 
-本基线：Man `356f2c8186d07bc18567b18179c3cad7bda2d483`、lang 切换 `ba1ce5901d76643a8878f5d0f4663c3ca4904ea5`、UI `aee499e87093ff727f68ac8467c506e9ecf6ecdc`、down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。
+本基线：Man `ebfc88f`、lang `0fd092bdc`、UI `aee499e87093ff727f68ac8467c506e9ecf6ecdc`、down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。
 
 - **Core**：`cargo build --locked --manifest-path core/Cargo.toml -p auto --no-default-features --features core`。独立 Core workspace/lock/target 复用 `crates/auto` 的 CLI 源，但不经 full manifest；只需 Man/lang，无 UI 实现源、auto-ui-tool、auto-lang compat 或 iced。语言/管理/协议命令真实执行，UI 请求具名失败。
 - **完整 profile**：根 workspace default=`ui-extra+python+autodown`，含匹配 auto-ui-tool 与 UI 源/资产。五操作经 `auto-tool-client` 调真实工具进程；ui-extra 的静态面按固定 UI source 消费。
