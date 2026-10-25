@@ -7230,51 +7230,6 @@
       "note": "gate=全保留SKU G7、R8，旧工件/调试/自举展示去留已决定; 全保留SKU默认AV、移除旧engine/codegen及新AV对旧NaN布局的执行依赖与隐含调用；必要旧API留薄兼容层"
     },
     {
-      "id": "entry:cli-run",
-      "kind": "entry-call-site",
-      "path": "crates/auto/src/main.rs",
-      "sha256": "",
-      "status": "symbol-found",
-      "owner": "EP-anchor",
-      "note": "symbol `Commands::Run`"
-    },
-    {
-      "id": "entry:cli-script-positional",
-      "kind": "entry-call-site",
-      "path": "crates/auto/src/main.rs",
-      "sha256": "",
-      "status": "symbol-found",
-      "owner": "EP-anchor",
-      "note": "symbol `run_file_with_args`"
-    },
-    {
-      "id": "entry:cli-eval",
-      "kind": "entry-call-site",
-      "path": "crates/auto/src/main.rs",
-      "sha256": "",
-      "status": "symbol-found",
-      "owner": "EP-anchor",
-      "note": "symbol `Commands::Eval`"
-    },
-    {
-      "id": "entry:cli-old-repl",
-      "kind": "entry-call-site",
-      "path": "crates/auto/src/main.rs",
-      "sha256": "",
-      "status": "symbol-found",
-      "owner": "EP-anchor",
-      "note": "symbol `autovm_repl`"
-    },
-    {
-      "id": "entry:cli-mcp-daemon",
-      "kind": "entry-call-site",
-      "path": "crates/auto/src/main.rs",
-      "sha256": "",
-      "status": "symbol-found",
-      "owner": "EP-anchor",
-      "note": "symbol `AutovmDaemon`"
-    },
-    {
       "id": "entry:script-entry",
       "kind": "entry-call-site",
       "path": "crates/auto-lang-core/src/script_entry.rs",
@@ -7338,24 +7293,6 @@
       "note": "symbol `register_module`"
     },
     {
-      "id": "entry:cli-service",
-      "kind": "entry-call-site",
-      "path": "crates/auto/src/cmd_service.rs",
-      "sha256": "",
-      "status": "symbol-found",
-      "owner": "EP-anchor",
-      "note": "symbol `cmd_service`"
-    },
-    {
-      "id": "entry:man-runtime",
-      "kind": "entry-call-site",
-      "path": "crates/auto-man-runtime/src/lib.rs",
-      "sha256": "",
-      "status": "symbol-found",
-      "owner": "EP-anchor",
-      "note": "symbol `Automan`"
-    },
-    {
       "id": "entry:ui-vm-bridge",
       "kind": "entry-call-site",
       "path": "auto-ui:crates/auto-ui-runtime/src/ui/vm_bridge.rs",
@@ -7363,6 +7300,69 @@
       "status": "moved-external",
       "owner": "PLAN-831/auto-ui",
       "note": "symbol `vm_bridge` (file moved to the independent auto-ui repo)"
+    },
+    {
+      "id": "entry:cli-run",
+      "kind": "entry-call-site",
+      "path": "auto-man:crates/auto/src/main.rs",
+      "sha256": "",
+      "status": "moved-external",
+      "owner": "PLAN-832/auto-man",
+      "note": "symbol `Commands::Run` (file moved to the independent auto-man repo)"
+    },
+    {
+      "id": "entry:cli-script-positional",
+      "kind": "entry-call-site",
+      "path": "auto-man:crates/auto/src/main.rs",
+      "sha256": "",
+      "status": "moved-external",
+      "owner": "PLAN-832/auto-man",
+      "note": "symbol `run_file_with_args` (file moved to the independent auto-man repo)"
+    },
+    {
+      "id": "entry:cli-eval",
+      "kind": "entry-call-site",
+      "path": "auto-man:crates/auto/src/main.rs",
+      "sha256": "",
+      "status": "moved-external",
+      "owner": "PLAN-832/auto-man",
+      "note": "symbol `Commands::Eval` (file moved to the independent auto-man repo)"
+    },
+    {
+      "id": "entry:cli-old-repl",
+      "kind": "entry-call-site",
+      "path": "auto-man:crates/auto/src/main.rs",
+      "sha256": "",
+      "status": "moved-external",
+      "owner": "PLAN-832/auto-man",
+      "note": "symbol `autovm_repl` (file moved to the independent auto-man repo)"
+    },
+    {
+      "id": "entry:cli-mcp-daemon",
+      "kind": "entry-call-site",
+      "path": "auto-man:crates/auto/src/main.rs",
+      "sha256": "",
+      "status": "moved-external",
+      "owner": "PLAN-832/auto-man",
+      "note": "symbol `AutovmDaemon` (file moved to the independent auto-man repo)"
+    },
+    {
+      "id": "entry:cli-service",
+      "kind": "entry-call-site",
+      "path": "auto-man:crates/auto/src/cmd_service.rs",
+      "sha256": "",
+      "status": "moved-external",
+      "owner": "PLAN-832/auto-man",
+      "note": "symbol `cmd_service` (file moved to the independent auto-man repo)"
+    },
+    {
+      "id": "entry:man-runtime",
+      "kind": "entry-call-site",
+      "path": "auto-man:crates/auto-man-runtime/src/lib.rs",
+      "sha256": "",
+      "status": "moved-external",
+      "owner": "PLAN-832/auto-man",
+      "note": "symbol `Automan` (file moved to the independent auto-man repo)"
     }
   ],
   "summary": {
@@ -7375,6 +7375,6 @@
     "capabilities": 43,
     "entry_points": 10,
     "gates": 10,
-    "entry_anchors": 14
+    "entry_anchors": 7
   }
 }

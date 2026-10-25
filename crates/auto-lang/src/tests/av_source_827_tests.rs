@@ -819,12 +819,7 @@ fn scan_md_rows(text: &str, prefix: &str, count: usize, kind: &'static str, owne
 /// Entry call-site anchors WITH symbol discovery: the row is green only
 /// when the file exists AND carries its characteristic call-site symbol.
 fn scan_entry_anchors(repo: &Path) -> Vec<InvItem> {
-    const ANCHORS: [(&str, &str, &str); 14] = [
-        ("entry:cli-run", "crates/auto/src/main.rs", "Commands::Run"),
-        ("entry:cli-script-positional", "crates/auto/src/main.rs", "run_file_with_args"),
-        ("entry:cli-eval", "crates/auto/src/main.rs", "Commands::Eval"),
-        ("entry:cli-old-repl", "crates/auto/src/main.rs", "autovm_repl"),
-        ("entry:cli-mcp-daemon", "crates/auto/src/main.rs", "AutovmDaemon"),
+    const ANCHORS: [(&str, &str, &str); 7] = [
         ("entry:script-entry", "crates/auto-lang-core/src/script_entry.rs", "run_file"),
         ("entry:sdk-staged", "crates/auto-lang/src/lib.rs", "run_with_capture_and_path_staged"),
         ("entry:persistent-vm", "crates/auto-lang-core/src/autovm_persistent.rs", "AutovmReplSession"),
@@ -832,8 +827,6 @@ fn scan_entry_anchors(repo: &Path) -> Vec<InvItem> {
         ("entry:client", "crates/auto-lang-core/src/autovm_client.rs", "eval_one_shot"),
         ("entry:testcase-avm-adapter", "crates/auto-lang-core/src/test_cases/avm.rs", "Verdict"),
         ("entry:old-vm-engine", "crates/auto-lang-core/src/vm.rs", "register_module"),
-        ("entry:cli-service", "crates/auto/src/cmd_service.rs", "cmd_service"),
-        ("entry:man-runtime", "crates/auto-man-runtime/src/lib.rs", "Automan"),
     ];
     ANCHORS
         .iter()
@@ -858,17 +851,39 @@ fn scan_entry_anchors(repo: &Path) -> Vec<InvItem> {
 /// PLAN-831 moved the ui-vm-bridge call-site file out of this repository
 /// (abd34a355): the member STAYS in the denominator as a moved-external row
 /// with its new owner instead of a scan attempt on the removed path (the
-/// merge integration fix for the frozen R2 anchor list).
+/// merge integration fix for the frozen R2 anchor list). PLAN-832 moved the
+/// CLI crate (`crates/auto`), its service command and `auto-man-runtime` to
+/// the independent auto-man repo: those anchors follow the same moved-external
+/// convention (the denominator keeps all 15 members; a lang-only checkout has
+/// no auto-man sibling, so the rows carry the new owner instead of a read).
 fn moved_entry_rows() -> Vec<InvItem> {
-    vec![InvItem {
-        id: "entry:ui-vm-bridge".to_string(),
+    let moved_external = |id: &str, path: &str, symbol: &str, owner: &str| InvItem {
+        id: id.to_string(),
         kind: "entry-call-site",
-        path: "auto-ui:crates/auto-ui-runtime/src/ui/vm_bridge.rs".to_string(),
+        path: path.to_string(),
         sha256: String::new(),
         status: "moved-external".to_string(),
-        owner: "PLAN-831/auto-ui".to_string(),
-        note: "symbol `vm_bridge` (file moved to the independent auto-ui repo)".to_string(),
-    }]
+        owner: owner.to_string(),
+        note: format!("symbol `{symbol}` (file moved to the independent {} repo)", owner.split('/').next_back().unwrap_or(owner)),
+    };
+    vec![
+        InvItem {
+            id: "entry:ui-vm-bridge".to_string(),
+            kind: "entry-call-site",
+            path: "auto-ui:crates/auto-ui-runtime/src/ui/vm_bridge.rs".to_string(),
+            sha256: String::new(),
+            status: "moved-external".to_string(),
+            owner: "PLAN-831/auto-ui".to_string(),
+            note: "symbol `vm_bridge` (file moved to the independent auto-ui repo)".to_string(),
+        },
+        moved_external("entry:cli-run", "auto-man:crates/auto/src/main.rs", "Commands::Run", "PLAN-832/auto-man"),
+        moved_external("entry:cli-script-positional", "auto-man:crates/auto/src/main.rs", "run_file_with_args", "PLAN-832/auto-man"),
+        moved_external("entry:cli-eval", "auto-man:crates/auto/src/main.rs", "Commands::Eval", "PLAN-832/auto-man"),
+        moved_external("entry:cli-old-repl", "auto-man:crates/auto/src/main.rs", "autovm_repl", "PLAN-832/auto-man"),
+        moved_external("entry:cli-mcp-daemon", "auto-man:crates/auto/src/main.rs", "AutovmDaemon", "PLAN-832/auto-man"),
+        moved_external("entry:cli-service", "auto-man:crates/auto/src/cmd_service.rs", "cmd_service", "PLAN-832/auto-man"),
+        moved_external("entry:man-runtime", "auto-man:crates/auto-man-runtime/src/lib.rs", "Automan", "PLAN-832/auto-man"),
+    ]
 }
 
 fn repo_root() -> PathBuf {
@@ -1058,16 +1073,21 @@ fn av_source_827_inventory_denominators_replayable() {
         .filter(|i| i.kind == "entry-call-site" && i.status == "symbol-found")
         .count();
     assert_eq!(
-        anchors, 14,
-        "all 14 in-repo call-site anchors (incl. service/man) verified with symbols"
+        anchors, 7,
+        "all 7 in-repo call-site anchors verified with symbols (CLI/service/man moved to auto-man by PLAN-832)"
     );
-    // PLAN-831 moved the 15th (ui-vm-bridge) to the independent auto-ui
-    // repo: the denominator keeps it as a moved-external owner row.
+    // PLAN-831 moved the 15th (ui-vm-bridge) to the independent auto-ui repo
+    // and PLAN-832 moved the CLI/service/man-runtime anchors to the
+    // independent auto-man repo: the denominator keeps all of them as
+    // moved-external owner rows.
     let moved = items
         .iter()
         .filter(|i| i.status == "moved-external")
         .count();
-    assert_eq!(moved, 1, "the moved-out call-site stays in the denominator");
+    assert_eq!(
+        moved, 8,
+        "the moved-out call-sites stay in the denominator (1×831 auto-ui + 7×832 auto-man)"
+    );
     // Every capability row carries a real owner cell.
     for it in items.iter().filter(|i| i.kind == "capability") {
         assert!(
