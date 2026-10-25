@@ -6,7 +6,7 @@ plan_revision: 5
 author: [Codex]
 created_at: 2026-10-20
 updated_at: 2026-10-25
-current_step: 4
+current_step: 5
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-av/resident-function-install.md
@@ -217,13 +217,15 @@ T-09 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳
 | [x] T-02 | work | T-01、D-820、注册owner交接、D828排期门、当前单写窗口交接 | D828后先刷新T-01接口/版本/预算合同，旧准备不冒领新依赖pass； §3入口完成§5.2最小whole-path；新增first-case脚本/真实recipe、同store新worker恢复；记录CPU/时间/内存与独立oracle；记录已合入基面/API版本/写面owner与接受交接，无公共写面则明确登记 | AC-01/06；first-case、V-01/08/10正控 [✅ 2026-10-25 已完成：首例全路径 37b51f2a1 + 收口 055ad06a9（证据 1bd 收据 docs/reports/plan821/first-case-evidence-20261025-163717.json，绑定 HEAD/worker sha）——recipe 注册 ac-av/owned-run-v1 三缝 append-only（contract 围栏 REGISTERED_PROBE_RECIPES+op/形状/av-binding、ac_av.rs RecipeFamily::Owned+父侧冻结表 OWNED_CASES+owned 面准入/逐面判决+V-10 sabotage 缝、mod.rs 分派）；worker case-serve owned 分支（fixture 面/源路径面，live=0 序入面）+ owned-request 证据子命令；corpus crates/auto-lang/test/cases/av-data/821/（两 case+suite+src SHA256 收据，827 模式）；scripts/verify-av-owned-821.ps1 八 Scope（first-case 全链绿：probe 5+3/corpus 3/回归 core 31+820 13/827 8 零退化；余 Scope Not-Wired 归 T-03..06）；CPU/内存：owned-request 采样 p95 wall 25.6ms、fresh 进程峰值 1720320B。附带修复首例提交两处预存问题（hir_adapter str eq/ne 死代码臂移正、probe fmt 归一）。组内新增 auto-ui@aee499e8/auto-down@c3464d0 兄弟 worktree（主 workspace 加载所需，merge 时随组清理）] |
 | [x] T-03 | work | T-02 | §3共享核心/新模块完成§5全部支持语义，source支持面adapter明确；不偷改其他profile | AC-02/03；av_owned_821定向正反例；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 [✅ 2026-10-25 已完成：提交 7e9cceaed @ plan-821-dev——MutRef/Drop 三层落地（ownership 传输语义/mir_verify 类型检查/av 执行含 MutRefV generation 句柄与 owned_kill_slot 释放）；**修复真实分析缺口**：FieldGet StrView 未注册 token（V-12 反例实测暴露，782 字段读取=视图按 root=base 注册）；semantics 25 例（V-01/02/05/06/11/12 全矩阵，typed fixtures 过真实授信链）；verify 脚本 semantics scope 接线全绿（25+corpus）；回归 31/5/3/13/3/8 零退化。**边界记录**：(1) 陈旧读（view 跨根写）在受检 MIR 结构性不可达（root 保守门禁），值层 Share oracle 由 core place.rs 固定；(2) av.trap.invalid-handle 无消费指令（冻结指令集无句柄解引用）——V-05 以类型隔离+bin-type 拒+MutRefV generation 捕获实现，invalid-handle 保持不可达构造；两项均为合同边界非缺口，T-04 资源注入不改变该结论] |
 | [x] T-04 | work | T-03 | 实现必须的拒绝/回滚/cleanup/资源hook与V-02..07补充对照，先完成所有findings再送审 | AC-03/04/05；admission/resources及真实边界事件；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 [✅ 2026-10-25 已完成：提交 809fadbca @ plan-821-dev——arena 级 attempts/fault_at 记账+try_alloc 故障缝+owned_alloc_precheck（预算前拒 attempt=0，四分配点）+execute_with_arena 注入缝；**修复预检算术 bug**（新值须含槽头部 V=32B，否则预检少算 V 而 commit 拒时已分配）；resources 6 例（V-03 三故障事务/V-04 四出口分态全清 LIFO+cancel 线程/V-07 cap±1B 自校准）；corpus admission case（782 partial-move 源门码）；**预存债清偿**：首例 Value 扩展致 820 resources 两例 cap 校准溢出（首例时未跑该 bin），按 817 先例重校准 7/7 恢复。share 延长下成功出口释放序合法重排（恰一次+live=0 恒断言，严格 LIFO 限无 share）——774 快照设计与清理义务序的边界记录] |
-| [ ] T-05 | work | T-04 | probe真实缓存依赖/重启重验、来源/身份；注册与旧consumer兼容，串行更新唯一公共写面 | AC-06；V-08/09，cache/compatibility；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 |
+| [x] T-05 | work | T-04 | probe真实缓存依赖/重启重验、来源/身份；注册与旧consumer兼容，串行更新唯一公共写面 | AC-06；V-08/09，cache/compatibility；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 [✅ 2026-10-25 已完成：提交 3cb7cd5e5 @ plan-821-dev——V-08 四态（改类型表 clean miss/own-fp 同结果/坏 payload checksum 拒+对照/producer·schema 身份三向隔离）；V-09 owned 送 data/core 授信路径受控拒+data restore 过 owned store 分层 miss；**预存断裂修复**：818 mn consumer 穷尽匹配被首例 16 新指令破坏（构建红），820 先例适配（fingerprint 渲染扩臂+lower 受控拒，零语义扩面）mn 24/24 恢复；cache/compatibility 两 Scope 接线绿] |
 | [ ] T-06 | work | T-05 | 脚本聚合所有Scope并透传失败；正式AutoDown V-10反控、fmt/check、受管/进程峰值，整理SD草案/任务证据 | AC-01..06；acceptance，0例/漏必需用例/skip均非绿；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 |
 | [ ] T-09 | work | D828及本计划其他work实现完成 | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-13 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage | AC-09；共同基线+新增能力兼容定向验收，未实测不勾；送审前不跑整档 |
 | [ ] T-07 | review | work-owned完成且提交冻结、T-09 完成 | 同唯一树独立复核AC/V/SD、遗漏/workaround/债及健康，核依赖输入未变，填规范影响和审查结论 | AC-07；merge-owned全档仍pending |
 | [ ] T-08 | merge | T-07 pass | 冻结门禁→合入→SD/ledger/catalog→archive；到期批回归主检出单实例；wt-guard后移除唯一树/分支 | AC-08；真实门禁/合入/清理收据 |
 
 ## 9. 复审记录
+
+2026-10-25 stage:work | PLAN-821 r5 | T-05 完成（5/9） | 覆盖：V-08 依赖分区恢复四态全绿（types-fp 轴/信封 checksum/身份三向）；V-09 旧 consumer 受控拒（AVAD v2 不入 data/core 授信、A20/A21 分层隔离）；cache/compatibility Scope 接线。**预存断裂修复**：818 ac-mir-native 的 MirInstr 穷尽匹配自首例 16 新指令起构建红（一直未重建故未暴露）——按 820 共享核扩展先例 fingerprint 渲染扩臂+lower 受控拒，mn 语料 24/24 恢复，零语义扩面（CD §13 notified 适配义务履行）。T-06 开工。
 
 2026-10-25 stage:work | PLAN-821 r5 | T-04 完成（4/9） | 覆盖：arena 故障注入（attempt/successful 分账）、四分配点预算前检（预算前拒 attempt=0）、cap±1B 自校准边界（calib peak 精确账含槽头 V=32B；at-cap peak==cap 通过/+1B 拒绝且 attempt 不增）、V-04 四出口（fuel/frames/slot-bytes/cancel）分态+全清、admission corpus 面（源门码透传）。**修复两个真 bug**：(1) 预检 new_size 少算槽头部 V（±1B 边界实测暴露——预检过而 commit 拒时 buffer 已分配）；(2) 预存债：首例 Value 16→32B 使 av_data_820_resources 两例 cap 校准溢出（首例验证未含该 bin），817 先例重校准 7/7。边界记录：share（774 快照 view）延长 buffer 生命周期——成功出口释放序可非严格 LIFO；恰一次+live=0 为恒定 oracle，严格 LIFO 仅无 share 断言。两 Scope 脚本档绿；全量回归零退化。T-05 开工。
 
