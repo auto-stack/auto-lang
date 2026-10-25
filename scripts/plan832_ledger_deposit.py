@@ -34,8 +34,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LEDGER = ROOT / ".autoos/specs.json"
 
-DELIVERY = "1b9f70dab0109dcc405ea66e30d01cddcacbef88"
-FREEZE = "1b9f70dab"
+DELIVERY = "8cc004f837844332899949e55e26939c6104b468"
+FREEZE = "8cc004f83"
 REVIEWED = "adb5ce0f3ba8935f3f546b4bc40217c4d20235e9"
 MAN_DELIVERY = "ceb8dfdd469b2dec1f2490aae1126b0b3303e35e"
 

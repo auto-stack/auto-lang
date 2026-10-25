@@ -1,6 +1,6 @@
 # PLAN-832 SD-01..06 规范增量审定材料（merge 门禁修复后）
 
-实现基线：Man `ceb8dfdd469b2dec1f2490aae1126b0b3303e35e`；lang rebase 候选 `1b9f70dab0109dcc405ea66e30d01cddcacbef88`（28/28 range-diff 等价）；UI `aee499e87093ff727f68ac8467c506e9ecf6ecdc`；down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。canonical Specs 已在 worktree 按 R1/R2 与 merge blueprint 修复更新；live `.autoos/specs.json` 仍归 merge 受管投影。
+实现基线：Man `ceb8dfdd469b2dec1f2490aae1126b0b3303e35e`；lang rebase 候选 `8cc004f837844332899949e55e26939c6104b468`（31/31 range-diff 等价）；UI `aee499e87093ff727f68ac8467c506e9ecf6ecdc`；down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。canonical Specs 已在 worktree 按 R1/R2 与 merge blueprint 修复更新；live `.autoos/specs.json` 仍归 merge 受管投影。
 
 | delta | target | 已写内容 / 审查点 |
 |---|---|---|
