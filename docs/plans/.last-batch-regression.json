@@ -184,13 +184,15 @@
   "coverage_policy": "Retain last complete green Plan840/time/commit: latest tf executed zero tests. B845-FEATURE-01 closed by847; B847-FULL-OWNER-01 and TT execution-state findings route850 draft. No current full-green coverage claimed.",
   "last_due_check": {
     "plan_id": 847,
-    "checked_at": "2026-10-25T16:33:21.067330+00:00",
-    "checked_commit": "2ff1286c5e3a33abc2e4ded96ab5773ee042a9d8",
+    "checked_at": "2026-10-25T16:40:19.048983+00:00",
+    "checked_commit": "2e5db724f31de767e534d51e09d6e4c2fca26a5f",
     "due": true,
-    "outcome": "new-reds-routed",
+    "outcome": "due-new-blockers-routed",
     "owner_plan": 850,
     "coverage_anchor_preserved": 840,
-    "retry_required": true
+    "retry_required": true,
+    "rerun": false,
+    "reason": "Complete latest batch just executed; tf owner selection blocked and tt execution-state results routed850. No changed conditions warrant blind repeat; all old thresholds/inputs preserved. 850 drafting, implementation authorization pending."
   },
   "prior_attempts": [
     {

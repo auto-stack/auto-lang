@@ -7,3 +7,5 @@ Frozen bare cargo t ultimately3181/3181 PASS,668 existing skips; first attempt6 
 Knowledge: no normative Spec delta, confirmed independently; one historical module plans row at65523405c, actual spec-index regenerated61projects (INDEX unchanged). Two derived history entries P847-REVIEW/P847-MERGE, guarded offline projection no reachable store writer; version87→88,1224 unrelated raw items unchanged, actual live/readback matches projected hash. Ledger landed8c447f445dffd84eb66d9f33fd1a7bfaf507a45d. No goals or product contract changes.
 
 Source and knowledge landing verified; archive/cleanup checkpoints are in separate actual-state receipts. Production behavior unchanged; no deployment claim. Foreign root document/report WIP and pre-existing fixture locks preserved; changed generated root reports retained and restored byte-exact.
+
+Final actual archive4/4 and cleanup pass: three worktrees/plan branch/empty group removed after fresh guards. All owned task/count/link/ledger checks pass. Overall full-regression green remains NOT restored; Plan840 anchor preserved,850 draft waits expanded-scope authorization. No deployment claimed.

@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-10-25
 updated_at: 2026-10-26
 plan_revision: 1
-current_step: 3
+current_step: 4
 total_steps: 4
 supersedes_spec_components: []
 new_spec_components: []
@@ -18,7 +18,7 @@ touched_goals: []
 
 ## 0. 变更摘要
 
-847原门控缺陷B845-FEATURE-01已修复交付：60f0bb033独立复审pass，冻结裸t3181/3181，主源码合入2ff1286c5；optional/default-off与完整2177 IDs保持。主检出batch真实执行后tb3109通过，tf被迁仓后的external-workspace配置阻塞，tt另有执行状态失败；均归因并转850草案，不推进840全局绿色锚点。规范无语义变化，仅历史索引和两台账历史条目v88已落地。当前归档3/4，最后guard清理pending；下方“未实施/未合入”段落均为历史记录。
+847原门控缺陷B845-FEATURE-01已修复交付：60f0bb033独立复审pass，冻结裸t3181/3181，主源码合入2ff1286c5；optional/default-off与完整2177 IDs保持。主检出batch真实执行后tb3109通过，tf被迁仓后的external-workspace配置阻塞，tt另有执行状态失败；均归因并转850草案，不推进840全局绿色锚点。规范无语义变化，仅历史索引和两台账历史条目v88已落地。当前归档4/4，三仓worktree、临时分支及空组目录清理完成；下方“未实施/未合入”段落均为历史记录。
 
 ## 1. 目标
 
@@ -71,7 +71,7 @@ T-01 先核对实际基线及同族模块所有 optional 引用；预期为局�
 | T-01 | [x] work | 用户启动实施 | 现有 tests.rs/Cargo.toml 与完整模块依赖扫描，冻结修复范围 | AC-01/02 |
 | T-02 | [x] work | T-01 | 专用工作树修门控、补反控/选择面证据、定向验收并提交 | AC-01/02 |
 | T-03 | [x] review | T-02 | 同一树独立上下文审查，冻结 revision/commit 与不变 Spec 结论 | AC-03 |
-| T-04 | [ ] merge | T-03 pass | 合入整档、主检出批量恢复、知识/收据/归档/guard 清理 | AC-04 |
+| T-04 | [x] merge | T-03 pass | 合入整档、主检出批量恢复、知识/收据/归档/guard 清理 | AC-04 |
 
 T-01/T-02/T-03完成，当前3/4；merge/batch门尚未执行。
 
@@ -117,3 +117,9 @@ stage:merge | plan_id:PLAN-847 | plan_revision:1 | outcome:delivery_verified_cle
 ### spec-sync 回写记录
 
 SD01无规范语义变更，supersedes/new/touched_goals为空经独立确认。仅在docs/specs/auto-test-case/plans.md加入847历史行（65523405c）；spec-index真实再生，61项目、INDEX内容恒等。reviews/P847-REVIEW和reports/P847-MERGE指向持久报告/模块索引，离线单写投影v87→88，1224无关raw条目及未知兼容字段保留，来源hash/commit与schema读回验证；8c447f445已落master。[投影与恢复收据](../attachments/847/merge-r1/ledger-projection.json.txt)。无新目标或生产功能承诺。
+
+### merge:r1 最终实际收尾 — delivered4/4
+
+stage:merge | plan_id:PLAN-847 | plan_revision:1 | outcome:pass | completion_kind:delivered | archived:true | cleaned:true | current_step:4/4。三个权威/只读worktree均fresh guard clean后由Git移除，临时plan-847-dev与已空组目录删除；[清理恢复收据](../attachments/847/merge-r1/cleaned.json.txt)。5个原树测试自产生Cargo.lock先存档再移除，主检出既存锁和其他WIP不动。源码与知识提交均可由master恢复。
+
+[产物实测](../attachments/847/merge-r1/artifact-observations.json.txt)：这是测试注册入口修复，无生产源码或依赖实现改动；未宣称部署/服务重启。归档前/清理后的实际状态均按真实文件、链接、任务数、台账hash、分支和worktree清单核验。最新全局批量非绿与850的扩围授权待答复不在847剩余任务内；但整体验收绿色尚未恢复，覆盖锚点840和pending_retry保持，不把新红当通过。
