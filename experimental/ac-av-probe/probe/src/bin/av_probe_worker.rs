@@ -671,13 +671,22 @@ fn case_serve() -> ! {
                                 eprintln!("owned pipeline: {e}");
                                 exit(2);
                             };
+                            // The source-gate rejections carry their
+                            // diagnostic code as the first token after the
+                            // layer prefix ("frontend: <code> <message>")
+                            // — surface it for parent-side code judgement.
+                            let code = e
+                                .strip_prefix("frontend: ")
+                                .or_else(|| e.strip_prefix("front door: "))
+                                .and_then(|rest| rest.split_whitespace().next())
+                                .unwrap_or("");
                             step_outs.push(serde_json::json!({
                                 "op": "run",
                                 "outcome": "diag",
                                 "value": null,
                                 "owned": null,
                                 "trap": null,
-                                "diag": { "stage": stage, "code": "", "message": e },
+                                "diag": { "stage": stage, "code": code, "message": e },
                                 "source_hash": format!(
                                     "{:016x}",
                                     auto_av_core::contract::fnv1a64(current_source.as_bytes())

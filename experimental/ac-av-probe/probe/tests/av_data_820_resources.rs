@@ -99,8 +99,11 @@ fn admit(m: &MirModule) -> abc_verify::LoadedModule {
 
 #[test]
 fn av_data_820_slot_budget_within_cap_control_succeeds() {
-    // 400 slots × ~16.0 KiB ≈ 6.6 MiB < 8 MiB: success.
-    let loaded = admit(&wide_record_module(400));
+    // PLAN-821 adaptation (817-precedent): Value grew with the owned
+    // variants (StrHandle), so a record field's footprint rose ~16→~24B;
+    // re-calibrated from 400 to 195 slots (Value 16->32B, record deep ~32.8 KiB) to keep the same ~6.4 MiB
+    // within-cap target (< 8 MiB, peak > 6 MiB).
+    let loaded = admit(&wide_record_module(195));
     let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
     assert!(
         matches!(out, ExecOutcome::Success { .. }),
@@ -204,7 +207,7 @@ fn av_data_820_fault_at_nth_allocation_preserves_prior_state() {
     // Two aggregates' worth of record data (~32 KiB) was live and STAYS
     // accounted; nothing beyond the fault point committed.
     assert!(
-        trace.peak_slot_bytes >= 2 * 16000 && trace.peak_slot_bytes < 3 * 17000,
+        trace.peak_slot_bytes >= 2 * 24000 && trace.peak_slot_bytes < 3 * 26000,
         "two committed aggregates' peak survives the fault: {}",
         trace.peak_slot_bytes
     );

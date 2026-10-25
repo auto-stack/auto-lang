@@ -279,12 +279,47 @@ switch ($Scope) {
         Run-Runner-Tests "av_owned_821_corpus" "semantics-corpus" @("av_owned_821_corpus_green")
     }
     "admission" {
-        # V-02..V-06 admission faces — T-04 (with resources).
-        Not-Wired "admission" "T-04"
+        # T-04: the diagnosed-admission corpus face — the 782 source-gate
+        # partial-move rejection surfaces with its code through the owned
+        # recipe (parse-stage verify.partial-move; an admitted-nothing
+        # program never counts as a run success), plus the corpus gate
+        # with the required population and the T-03 verify-side
+        # rejection family replayed.
+        Run-Runner-Tests "av_owned_821" "admission-corpus" @(
+            "av_owned_821_corpus_green",
+            "av_owned_821_negative_oracle_fails",
+            "av_owned_821_worker_faults_are_infra"
+        )
+        Run-Probe-Tests "av_owned_821_semantics" "admission-verify-faces" @(
+            "av_owned_821_v01_self_move_is_reservation_conflict",
+            "av_owned_821_v01_source_domain_shapes_keep_verify_codes",
+            "av_owned_821_v02_live_mutref_blocks_field_set",
+            "av_owned_821_v02_copy_owned_and_mutref_refused",
+            "av_owned_821_v02_double_move_rejected",
+            "av_owned_821_v05_view_into_int_op_rejected_at_verify",
+            "av_owned_821_v06_view_escape_rejected_and_param_view_legal",
+            "av_owned_821_v11_one_arm_move_join_read_rejected",
+            "av_owned_821_v11_loop_back_edge_move_conservative",
+            "av_owned_821_v11_call_arg_shape_mismatch_rejected",
+            "av_owned_821_v11_analysis_over_budget_is_resource",
+            "av_owned_821_v12_single_arm_temp_read_rules",
+            "av_owned_821_v12_one_arm_view_blocks_join_mut_until_ended"
+        )
     }
     "resources" {
-        # V-03/V-07 allocator/budget axes + the dual-line memory tier — T-04.
-        Not-Wired "resources" "T-04"
+        # T-04: the frozen V-03 allocation-failure transactions, V-04
+        # all-exit cleanup and V-07 cap-boundary/fault-accounting axes —
+        # arena-level fault seam + precheck (预算前拒 attempt=0), plus the
+        # inherited 820 finite-resource tier.
+        Run-Probe-Tests "av_owned_821_resources" "resources" @(
+            "av_owned_821_v03_clone_fault_attempt_counted_no_success",
+            "av_owned_821_v03_toowned_fault_mid_replace_preserves_old",
+            "av_owned_821_v03_record_clone_mid_failure_released_once",
+            "av_owned_821_v04_all_exit_kinds_clean_lifo",
+            "av_owned_821_v04_cancel_mid_run_cleans",
+            "av_owned_821_v07_cap_boundary_pass_and_over_by_one"
+        )
+        Run-Probe-Tests "av_data_820_resources" "resources-inherited-820" @()
     }
     "cache" {
         # V-08 restore/re-key/corruption faces — T-05.

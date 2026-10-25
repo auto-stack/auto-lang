@@ -36,6 +36,11 @@ pub struct ArenaCore {
     /// Ids of buffers currently alive (inserted on alloc, removed on the
     /// free report) — `live` is its length.
     live_ids: std::collections::BTreeSet<u64>,
+    /// PLAN-821 V-03/V-07 accounting: every ATTEMPT counts (successful or
+    /// not); `fault_at` (test-only) fails the Nth attempt BEFORE any
+    /// buffer exists — attempt recorded, successful_alloc unchanged.
+    pub attempts: u64,
+    pub fault_at: Option<u64>,
 }
 
 impl ArenaCore {
@@ -65,27 +70,53 @@ impl StrArena {
     /// success (V-07: 预算前拒的申请 attempt=0 在预算层; allocator 故障
     /// 注入 attempt 存在但 successful_alloc=0 由调用层区分).
     pub fn alloc(&self, bytes: &[u8]) -> StrHandle {
-        let id = {
-            let mut g = self.core.borrow_mut();
-            let id = g.next_id;
-            g.next_id += 1;
-            g.allocs.push(AllocEvent {
-                id,
-                bytes: bytes.len(),
-            });
-            g.live_ids.insert(id);
-            id
-        };
-        StrHandle::attached(
-            id,
-            bytes.to_vec().into_boxed_slice(),
-            std::rc::Rc::clone(&self.core),
-        )
+        self.try_alloc(bytes)
+            .expect("the fault seam is test-only; production arenas never configure it")
     }
 
     /// Number of owned buffers currently alive.
     pub fn live(&self) -> usize {
         self.core.borrow().live_ids.len()
+    }
+
+    /// Test-only fault seam (V-03/V-07): fail the Nth allocation ATTEMPT.
+    pub fn set_fault_at(&self, n: u64) {
+        self.core.borrow_mut().fault_at = Some(n);
+    }
+
+    /// Allocation attempts so far (successful or faulted).
+    pub fn attempts(&self) -> u64 {
+        self.core.borrow().attempts
+    }
+
+    /// Successful allocations so far.
+    pub fn successful_allocs(&self) -> usize {
+        self.core.borrow().allocs.len()
+    }
+
+    /// Fallible allocation: the Nth attempt (when configured) fails with
+    /// the attempt number — no buffer, no ledger entry, nothing
+    /// half-committed (V-03: attempt exists, successful_alloc unchanged).
+    pub fn try_alloc(&self, bytes: &[u8]) -> Result<StrHandle, u64> {
+        let mut g = self.core.borrow_mut();
+        g.attempts += 1;
+        if g.fault_at == Some(g.attempts) {
+            return Err(g.attempts);
+        }
+        let id = g.next_id;
+        g.next_id += 1;
+        g.allocs.push(AllocEvent {
+            id,
+            bytes: bytes.len(),
+        });
+        g.live_ids.insert(id);
+        let core = std::rc::Rc::clone(&self.core);
+        drop(g);
+        Ok(StrHandle::attached(
+            id,
+            bytes.to_vec().into_boxed_slice(),
+            core,
+        ))
     }
 
     /// The full allocation event sequence (creation order).

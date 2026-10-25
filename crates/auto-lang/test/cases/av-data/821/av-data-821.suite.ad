@@ -6,5 +6,6 @@
 suite { schema: "autolang.suite/2", id: "av-data-821", include: [
   "av-owned-first-case.case.ad",
   "av-owned-first-twin.case.ad",
+  "av-owned-admission.case.ad",
 ] }
 ```

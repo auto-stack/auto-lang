@@ -1,0 +1,31 @@
+# PLAN-821 T-04 admission face: a REAL diagnosed source-gate rejection
+# through the owned recipe — the 782 partial-move oracle fires at the
+# frontend (`.move` must wrap a whole local) and surfaces as the
+# parse-stage `verify.partial-move` code. An unsupported/admitted-nothing
+# program NEVER counts as a run success.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.owned.admission-partial-move"
+  tags: ["av-data-821", "probe", "admission"]
+  links: ["PLAN-821"]
+  source: { text: "type Note { body Str; n int }
+fn make() Note { return Note { body: \"x\", n: 1 } }
+fn main() int {
+    let b Note = make().move
+    return b.n
+}
+", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-owned-rejected", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/owned-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: { stage: "parse", code: "verify.partial-move" } } }
+  ]
+}
+```

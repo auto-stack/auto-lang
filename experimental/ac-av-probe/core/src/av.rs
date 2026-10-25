@@ -174,6 +174,35 @@ pub fn execute(
     execute_entry(module, limits, cancel, &[])
 }
 
+/// PLAN-821 T-04 test seam: execute with a PRE-CONFIGURED arena (fault
+/// injection / attempt accounting observers). The arena is Rc-shared —
+/// the returned trace's arena reflects the injected instance.
+pub fn execute_with_arena(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    arena: crate::owned_text::StrArena,
+) -> (ExecOutcome, ExecTrace) {
+    let m = module.module();
+    if !module.executable() {
+        return (
+            ExecOutcome::Infra(format!(
+                "admission violation: credential is a re-verifiable unit, not an executable closure"
+            )),
+            ExecTrace::default(),
+        );
+    }
+    let mut st = LoopState::default();
+    st.arena = arena;
+    st.trace.arena = Some(st.arena.clone());
+    let out = dispatch(&MergedView(m), limits, cancel, &[], &mut st, None)
+        .expect("no budget: the loop always terminates with an outcome");
+    if !st.frames.is_empty() {
+        cleanup_owned_frames(&mut st);
+    }
+    (out, st.trace)
+}
+
 /// Execute with explicit entry arguments (driver seam for unit closures —
 /// the root frame receives them as the entry's param slots).
 pub fn execute_entry(
@@ -566,21 +595,45 @@ impl Value {
 /// Deep-clone one owned value (782 `clone()`): every reachable owned Str
 /// field gets a FRESH independent buffer; scalars/copyable fields copy by
 /// value. Iterative over the record closure (no host recursion).
-fn clone_owned_value(val: &Value, arena: &crate::owned_text::StrArena) -> Value {
+/// PLAN-821 V-07 precheck: reject a prospective owned allocation BEFORE
+/// any attempt is recorded (预算前拒 attempt=0) — the exact deep delta is
+/// new_size - old_size of the destination slot.
+fn owned_alloc_precheck(
+    st: &LoopState,
+    new_size: usize,
+    dst: usize,
+    limits: &ExecLimits,
+) -> Result<(), ExecOutcome> {
+    let mut visited = 0u64;
+    let fr = st.frames.last().expect("frame present");
+    let old = fr.slots[dst].deep_size(&mut visited);
+    let delta = new_size.saturating_sub(old);
+    if st.slot_bytes.saturating_add(delta) > limits.max_slot_bytes {
+        return Err(ExecOutcome::Resource {
+            kind: ResourceKind::SlotBytes,
+            message: format!(
+                "live slot data would reach {} bytes, above budget {}",
+                st.slot_bytes + delta,
+                limits.max_slot_bytes
+            ),
+        });
+    }
+    Ok(())
+}
+
+fn clone_owned_value(val: &Value, arena: &crate::owned_text::StrArena) -> Result<Value, u64> {
     match val {
-        Value::Str(h) => Value::Str(arena.alloc(h.bytes())),
+        Value::Str(h) => Ok(Value::Str(arena.try_alloc(h.bytes())?)),
         Value::Record(r) => {
-            let fields = r
-                .fields
-                .iter()
-                .map(|f| clone_owned_value(f, arena))
-                .collect();
-            Value::Record(std::rc::Rc::new(crate::contract::RecordValue {
-                ty: r.ty,
-                fields,
-            }))
+            let mut fields = Vec::with_capacity(r.fields.len());
+            for f in &r.fields {
+                fields.push(clone_owned_value(f, arena)?);
+            }
+            Ok(Value::Record(std::rc::Rc::new(
+                crate::contract::RecordValue { ty: r.ty, fields },
+            )))
         }
-        other => other.clone(),
+        other => Ok(other.clone()),
     }
 }
 
@@ -986,7 +1039,22 @@ fn dispatch<V: ModuleView>(
                                     end: n,
                                 })
                             } else {
-                                Value::Str(st.arena.alloc(&bytes))
+                                // The prospective value's DEEP size (the
+                                // slot overhead rides every write).
+                                let deep = std::mem::size_of::<Value>() + bytes.len();
+                                if let Err(out) =
+                                    owned_alloc_precheck(st, deep, *dst as usize, limits)
+                                {
+                                    return Some(out);
+                                }
+                                match st.arena.try_alloc(&bytes) {
+                                    Ok(h) => Value::Str(h),
+                                    Err(n) => {
+                                        return Some(ExecOutcome::Infra(format!(
+                                            "fault-injected at owned allocation attempt #{n}"
+                                        )))
+                                    }
+                                }
                             }
                         }
                     };
@@ -1168,7 +1236,19 @@ fn dispatch<V: ModuleView>(
                         let fr = st.frames.last().expect("frame present");
                         fr.slots[*src as usize].clone()
                     };
-                    let cloned = clone_owned_value(&sv, &st.arena);
+                    let mut visited = 0u64;
+                    let new_size = sv.deep_size(&mut visited);
+                    if let Err(out) = owned_alloc_precheck(st, new_size, *dst as usize, limits) {
+                        return Some(out);
+                    }
+                    let cloned = match clone_owned_value(&sv, &st.arena) {
+                        Ok(v) => v,
+                        Err(n) => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "fault-injected at owned allocation attempt #{n}"
+                            )))
+                        }
+                    };
                     if let Err(out) = commit_slot_write(st, *dst as usize, cloned, limits) {
                         return Some(out);
                     }
@@ -1378,7 +1458,18 @@ fn dispatch<V: ModuleView>(
                     let mut joined = Vec::with_capacity(l.len() + r.len());
                     joined.extend_from_slice(l);
                     joined.extend_from_slice(r);
-                    let res = Value::Str(st.arena.alloc(&joined));
+                    let deep = std::mem::size_of::<Value>() + joined.len();
+                    if let Err(out) = owned_alloc_precheck(st, deep, *dst as usize, limits) {
+                        return Some(out);
+                    }
+                    let res = match st.arena.try_alloc(&joined) {
+                        Ok(h) => Value::Str(h),
+                        Err(n) => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "fault-injected at owned allocation attempt #{n}"
+                            )))
+                        }
+                    };
                     if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
                         return Some(out);
                     }
@@ -1392,7 +1483,19 @@ fn dispatch<V: ModuleView>(
                         Ok(x) => x,
                         Err(out) => return Some(out),
                     };
-                    let owned = Value::Str(st.arena.alloc(project_bytes(&bytes, &sv)));
+                    let projected = project_bytes(&bytes, &sv).to_vec();
+                    let deep = std::mem::size_of::<Value>() + projected.len();
+                    if let Err(out) = owned_alloc_precheck(st, deep, *dst as usize, limits) {
+                        return Some(out);
+                    }
+                    let owned = match st.arena.try_alloc(&projected) {
+                        Ok(h) => Value::Str(h),
+                        Err(n) => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "fault-injected at owned allocation attempt #{n}"
+                            )))
+                        }
+                    };
                     if let Err(out) = commit_slot_write(st, *dst as usize, owned, limits) {
                         return Some(out);
                     }
