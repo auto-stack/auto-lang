@@ -1202,7 +1202,9 @@ fn typed_shape_violation(t: &TypedOut) -> Option<String> {
         // Canonical UNPADDED hex (contract-decision §3: bool/i32 不补零) —
         // a leading zero is a non-canonical encoding, and bool is exactly
         // the two value digits 0/1 (F820-R8-01: `2`/`00` must not pass).
-        "i32" => (1..=8).contains(&t.bits.len()) && !t.bits.starts_with('0'),
+        // The single digit `0` is the UNIQUE canonical encoding of ZERO
+        // (F820-R9-01): forbidding padding must not forbid the zero value.
+        "i32" => t.bits == "0" || ((1..=8).contains(&t.bits.len()) && !t.bits.starts_with('0')),
         "bool" => t.bits == "0" || t.bits == "1",
         other => return Some(format!("unknown typed kind `{other}`")),
     };
@@ -1555,11 +1557,17 @@ mod judge_tests {
         for (kind, bits) in [
             ("bool", "0"),
             ("bool", "1"),
+            ("i32", "0"), // the UNIQUE canonical zero (F820-R9-01)
             ("i32", "2a"),
+            ("i32", "ffffffff"), // -1
+            ("i32", "80000000"), // i32::MIN
             ("f32", "7f80ad00"),
             ("f32", "3f800000"),
+            ("f32", "00000000"), // +0.0 (fixed width: zeros are the width)
             ("f64", "8000000000000000"),
+            ("f64", "0000000000000000"), // wide zero (fixed width)
             ("u64", "ffffffffffffffff"),
+            ("u64", "0000000000000000"),
         ] {
             assert!(typed_shape_violation(&typed(kind, bits).unwrap()).is_none());
         }

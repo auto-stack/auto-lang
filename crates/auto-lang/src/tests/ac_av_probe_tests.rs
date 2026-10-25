@@ -969,6 +969,63 @@ case {
     }
 }
 
+/// F820-R9-01: the REAL i32 result matrix through the real data recipe
+/// worker and parent — including the value ZERO, whose unique canonical
+/// encoding "0" the R8 padding rule wrongly rejected (a legal program
+/// returning 0 was an admission Error). -1/1/42 pin the neighbors,
+/// MIN/MAX pin the width edges.
+#[test]
+fn ac_av_data_probe_int_result_matrix_is_green() {
+    let _guard = AV_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let root = temp_root("intmatrix");
+    for (i, v) in [-2147483648i32, -1, 0, 1, 42, 2147483647]
+        .iter()
+        .enumerate()
+    {
+        let case_dir = root.join(format!("v{i}"));
+        std::fs::create_dir_all(&case_dir).unwrap();
+        std::fs::write(
+            case_dir.join("c.case.ad"),
+            format!(
+                "# int matrix v={v}
+```test-case
+case {{
+  schema: \"autolang.case/2\",
+  id: \"av.data.int.{v}\",
+  source: {{ text: \"type P {{ x int }}\nfn main() int {{\n    var p = P {{ x: {v} }}\n    return p.x\n}}\", syntax: \"auto\", path: \"main.at\" }},
+  entry: {{ mode: \"program\" }},
+  checks: [
+    {{ id: \"run-int\", adapter: \"probe\", action: \"run\",
+      options: {{ recipe: \"ac-av/data-run-v1\", av: {{ entry: \"d_main\" }}, steps: [ {{ op: \"run\" }} ] }},
+      expect: {{ completion: \"success\", exit: {v} }} }}
+  ]
+}}
+```
+"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            case_dir.join("s.suite.ad"),
+            "# s
+```test-suite
+suite { schema: \"autolang.suite/2\", id: \"s\", include: [\"c.case.ad\"] }
+```
+",
+        )
+        .unwrap();
+        let out = out_of(&case_dir, "out");
+        let report = run_suite(&case_dir.join("s.suite.ad"), &out, &Limits::defaults())
+            .expect("matrix suite runs");
+        assert_eq!(
+            status_of(&report, "run-int"),
+            auto_test_case::report::Status::Pass,
+            "real guest returning {v} must be green (matrix case {i})"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// F820-R6-01: panic-safe sabotage guard for the typed-expectation
 /// counter-controls — the env var can never leak into another test, even
 /// on a panic between set and clear (Drop runs on unwind).

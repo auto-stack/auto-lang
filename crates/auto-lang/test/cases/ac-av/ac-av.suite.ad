@@ -15,5 +15,6 @@ suite { schema: "autolang.suite/2", id: "ac-av", include: [
   "av-data-first.case.ad",
   "av-data-typed.case.ad",
   "av-data-bool.case.ad",
+  "av-data-int-zero.case.ad",
 ] }
 ```
