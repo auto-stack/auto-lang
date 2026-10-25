@@ -15,6 +15,10 @@ fn shape(m: &MirModule, idx: TypeIdx) -> &'static str {
         Some(ScalarShape::I32) => "i32",
         Some(ScalarShape::Bool) => "bool",
         None => "fn",
+        // PLAN-820 shared-core widening: wide/record shapes never enter an
+        // mn unit's fingerprint (rejected at admission) — a defensive
+        // non-panicking label keeps the match total.
+        Some(_) => "avdata",
     }
 }
 
@@ -44,6 +48,9 @@ fn const_repr(c: &MirConst) -> String {
     match c {
         MirConst::I32(v) => format!("i32:{v}"),
         MirConst::Bool(b) => format!("bool:{}", if *b { 1 } else { 0 }),
+        // PLAN-820 shared-core widening (defensive total match; wide
+        // constants are rejected before fingerprinting).
+        other => format!("avdata:{:?}", std::mem::discriminant(other)),
     }
 }
 
@@ -149,6 +156,18 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
             }
         },
         MirInstr::Trace { event } => format!("trace {event:?}"),
+        // PLAN-820 shared-core widening: the data-profile instructions are
+        // outside mn's frozen instruction surface — a fingerprint render
+        // (pure formatting) must not panic on them.
+        MirInstr::FieldGet { dst, base, path } => {
+            format!("fieldget {dst} {base} {:?}", path)
+        }
+        MirInstr::FieldSet { root, path, value } => {
+            format!("fieldset {root} {:?} {value}", path)
+        }
+        MirInstr::Aggregate { dst, record_ty, operands } => {
+            format!("aggregate {dst} {record_ty} {:?}", operands)
+        }
     })
 }
 

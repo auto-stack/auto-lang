@@ -387,6 +387,13 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                         self.fb.ins().iconst(types::I32, if *b { 1 } else { 0 })
                     }
                     None => return Err(format!("out-of-range constant {value}")),
+                    // PLAN-820 shared-core widening: wide constants are a
+                    // controlled lower rejection (mn keeps its scalar ABI).
+                    Some(_) => {
+                        return Err(format!(
+                            "constant {value} is an av.data/1 wide value outside the mn scalar surface"
+                        ))
+                    }
                 };
                 self.def_slot(*dst, val);
             }
@@ -446,6 +453,14 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             MirInstr::Trace { event } => {
                 let r = self.trace_ref(event_symbol(*event))?;
                 self.fb.ins().call(r, &[]); // result dropped — observation only
+            }
+            // PLAN-820 shared-core widening: the data-profile instructions
+            // are outside mn's frozen lower surface — controlled rejection
+            // (mn owner reviews at its own merge).
+            MirInstr::FieldGet { .. } | MirInstr::FieldSet { .. } | MirInstr::Aggregate { .. } => {
+                return Err(
+                    "av.data/1 record instructions are outside the mn scalar surface".to_string()
+                )
             }
         }
         Ok(())

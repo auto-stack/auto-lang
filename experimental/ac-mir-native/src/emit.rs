@@ -59,6 +59,16 @@ pub fn cranelift_sig_of(module: &MirModule, ty: u32) -> Result<Signature, MnErro
                     "function-typed parameters are outside the private ABI".to_string(),
                 ))
             }
+            // PLAN-820 shared-core widening (av.data/1): the wide scalar and
+            // record shapes are outside mn's frozen scalar ABI — a
+            // controlled rejection, never implicit support (F820-R10-01
+            // class; 818 owner reviews semantics at its own merge).
+            Some(_) => {
+                return Err(MnError::Unsupported(
+                    "param",
+                    "av.data/1 wide/record params are outside the mn scalar ABI".to_string(),
+                ))
+            }
         }
     }
     let ret = match module.type_shape(sig.result) {
