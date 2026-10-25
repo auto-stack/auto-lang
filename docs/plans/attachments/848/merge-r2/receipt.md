@@ -61,3 +61,5 @@ canonical preparation/landing, ledger refresh, archive and cleanup are pending.
 Subsequent sections/JSON receipts record only verified effects. Graphics source
 must land only autographics-dev; master receives canonical knowledge/bookkeeping.
 Production I2/I3 and deployment remain outside this finite experimental delivery.
+
+Source landed autographics-dev at dd7076a7f; canonical14 paths landed f126a98d7 and ledger v87 landed dbeb8d463 on master. All14 scoped items and1210 untouched items verified against guarded projection. Archive checkpoint follows actual-state validation; cleanup remains pending.

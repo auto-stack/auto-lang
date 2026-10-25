@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-848
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: AutoGraphics有限线段查询与最近命中交互
 plan_revision: 3
 author: [Codex]
@@ -28,11 +29,7 @@ affects: [auto-graphics, authoring-experimental, segment-query]
 
 ## 0. 变更摘要
 
-work:r5启动：用户授权解决原生backlog阻塞后继续合并。可控100ms绘制停顿已在原样Patrol复现原auto-Pause，再现phase5无动作失败；原生探针以固定绘制帧代替实际tick/input确认，导致合法自动暂停后仍发送刺激并错误归因。沿原848有界修复验证状态机：保留所有暂停/CPU/credit阈值，通过真实OS Resume恢复积压/显示间隔暂停、只在实际Running时发送输入，对被暂停清掉但尚未接受的按键批次重发，并按实际tick确认后检查原动作/像素断言；原phase截止时间不重置，focus丢失/负控/SingleStep不自动恢复。T07/T08/T09暂重开，executing6/10；不更改查询产品合同或另建Plan。实现提交后独立受影响复审，之后merge统一门全部通过才收尾。
-
-当前merge:r1因完整原生门阻塞，尚未合入：producer/fresh consumer完整216/216各通过，构建/源码正反/部分旧原生矩阵通过；用户脚本Patrol及搬迁例在两次完整尝试中先触发原有tick backlog>4自动暂停，输入断言失败。准确外部诱因未证实，未改阈值/实现。保持reviewed9/10，T10 pending，规范/ledger/归档/清理未执行。[合入收据与归因](attachments/848/merge-r1/receipt.md)。本段替代下方历史“暂不合入”的授权状态：用户已授权全部门过后收尾，但门未全过。
-
-当前状态：用户授权的独立子代理 `/root/review_848_r3` 最终复审 **pass**，F-848-R1-01 CLOSED，T09完成，reviewed9/10。冻结提交6bc5abc60，128节点/32credits/原CPU合同保持。T10完整合入门pending，暂不合入。详见[独立最终报告](attachments/848/review-r3-final/review.md)及§9 review:r3；下方授权待答复、独立pending及OPEN仅为历史记录。
+当前正式交付：冻结dd7076a7f修复原生验证器在合法时钟暂停后的输入确认与恢复，独立review:r4 pass；完整producer/fresh consumer各216测试及全部原生、owner、源码门通过。源码已快进autographics-dev，14项canonical规范和台账v87已落master。128节点、32credits及原CPU合同不变。下列旧失败/暂不合入记录保留为历史；当前仅T10工作树清理待完成。
 
 846提供有限2D/3D AABB包含/重叠和用户触发逻辑；下一步增加**有限world线段扫描、确定性最近命中及有界结果读取**，让真实Auto脚本实现光束选目标、视线遮挡/开门。沿用现有几何代理，不把无穷射线、triangle精确拾取或完整物理并入本版。
 
@@ -86,9 +83,9 @@ slab计算用受检有限f32及原Auto运算/控制流；不需要新数学库�
 
 2026-10-25用户先授权实施848，随后明确“先找到新方案，再更新计划，再实施”，直接修订848，不另建计划。允许在唯一848树调查、修订等价计算路径并继续实施；不扩大SDK/AGP/生产写面、节点/CPU/数值合同或新agent/chat权限。历史846观察留在§9和原来源附件，当前消费正式交付。
 
-已读[全局overview](../specs/overview.md)、[图形overview](../specs/auto-graphics/overview.md)、[行为API](../specs/auto-graphics/behavior-api.md)、[项目绑定](../specs/auto-graphics/behavior-project.md)、[运行会话](../specs/auto-graphics/scene-play-session.md)、[视口几何](../specs/auto-graphics/viewport-interaction.md)、[集成边界](../specs/auto-graphics/integration-contract.md)、[846](archive/846-autographics-spatial-queries-and-trigger-interactions.md)及[其R1 needs_fix](attachments/846/review-r1/review.md)。spatial-query-profile.md已由846正式沉淀，作为modify基面；历史候选观察不再作为当前前置。
+已读[全局overview](../../specs/overview.md)、[图形overview](../../specs/auto-graphics/overview.md)、[行为API](../../specs/auto-graphics/behavior-api.md)、[项目绑定](../../specs/auto-graphics/behavior-project.md)、[运行会话](../../specs/auto-graphics/scene-play-session.md)、[视口几何](../../specs/auto-graphics/viewport-interaction.md)、[集成边界](../../specs/auto-graphics/integration-contract.md)、[846](846-autographics-spatial-queries-and-trigger-interactions.md)及[其R1 needs_fix](../attachments/846/review-r1/review.md)。spatial-query-profile.md已由846正式沉淀，作为modify基面；历史候选观察不再作为当前前置。
 
-26个固定Git对象/16份文档hash与状态见[来源清单](attachments/848/planning/source-observation.json.txt)。831 reviewed10/12、832/841 drafting，完整生产迁移未交接；完整组件/设计体系、Schema统一声明与ACE/HMR仍按[Design45 §11](../design/45-autographics-wgpu-engine-and-game-prototypes.md#11-目标态schema-统一-ui2d-与-3d-声明语义2026-10-24)后续分期，本Plan不依赖未交付接口，也不冒认其成果。
+26个固定Git对象/16份文档hash与状态见[来源清单](../attachments/848/planning/source-observation.json.txt)。831 reviewed10/12、832/841 drafting，完整生产迁移未交接；完整组件/设计体系、Schema统一声明与ACE/HMR仍按[Design45 §11](../../design/45-autographics-wgpu-engine-and-game-prototypes.md#11-目标态schema-统一-ui2d-与-3d-声明语义2026-10-24)后续分期，本Plan不依赖未交付接口，也不冒认其成果。
 
 ### 4.2 已观察触点与缺口
 
@@ -105,7 +102,7 @@ slab计算用受检有限f32及原Auto运算/控制流；不需要新数学库�
 
 ### 5.1 r3：按脏坐标轴推导与受信热点源码布局
 
-T-01已冻结正式来源；r2在R1暴露128晚轴miss/逐个变近预算缺口，work-r3探索均未采用。用户再次明确沿848寻找新方案、先验证完整控制后修订实施，128/32credits及CPU均不变。r3候选已通过[实际60组Session与6组Host控制](attachments/848/work-r4/full-controls-fixed.log.txt)，正式实施前已保存候选源码快照并恢复原产品文件；据此更新当前合同，不另建Plan、不把预研当最终交付。仍不引入额外Descriptor/全场cache/结果list、native求交或SDK写面。
+T-01已冻结正式来源；r2在R1暴露128晚轴miss/逐个变近预算缺口，work-r3探索均未采用。用户再次明确沿848寻找新方案、先验证完整控制后修订实施，128/32credits及CPU均不变。r3候选已通过[实际60组Session与6组Host控制](../attachments/848/work-r4/full-controls-fixed.log.txt)，正式实施前已保存候选源码快照并恢复原产品文件；据此更新当前合同，不另建Plan、不把预研当最终交付。仍不引入额外Descriptor/全场cache/结果list、native求交或SDK写面。
 
 - Auto仍X/Y/Z展开、ordinal升序、每匹配box全部finite验证在任何剪枝之前；按方向预选offset索引，实际f32商及严格nearest/tie不变。扫描只保存最终t/target，命中点和法线在最终胜者上物化一次；法线用相同f32商按XYZ优先恢复，outside正t下溢0仍保进入面，inside/boundary仍全0。数值/错误/token合同不变，执行的非finite算术仍拒绝；GeometryUnavailable不得被剪枝隐藏。
 - 仅v3给原共享setters派生四个有界dirty标量X/Y/Z/visibility：set_local标记指定轴，move_local保守标记三轴（即使某delta为0），set_visible标记visibility。原dirty布尔与callback收口不变。每次derive只更新实际标记的轴/visibility；初始化或原数组形状不完整时预填同一world/effective数组并全量重算；无标记却显式derive时保守全量。原数组原位更新，不创建第二套世界图或几何cache。
@@ -248,14 +245,14 @@ T-08登记准确完整矩阵；T-09最终独立pass后，T-10在冻结提交执�
 
 2026-10-25：stage:new；PLAN-848 revision1；outcome:blocked（G846完整交付pending，草案可评审）；next:846先修复F-846-R1-01并完成有效最终独立review及冻结完整门/落地/知识与清理，再由后续work指令启动848 T-01冻结正式基面，T-02做有界可行性。drafting0/10；本轮无实现/建树/prepare/build/Cargo/原生/GPU执行，无agent/chat。
 
-静态合同/source检查见[preflight](attachments/848/planning/preflight.md)。所有AC/V/SD是拟议未执行，不修改846/845/840/841或Schema/ACE/HMR原范围；一份近程草案，不预设下一份扫掠的编号/月份。若上游收尾状态变动，T-01以正式收据刷新。重复同因不收敛先诊断邻接路径，不通过改fixture/减分母/扩大容差隐藏支持缺口。
+静态合同/source检查见[preflight](../attachments/848/planning/preflight.md)。所有AC/V/SD是拟议未执行，不修改846/845/840/841或Schema/ACE/HMR原范围；一份近程草案，不预设下一份扫掠的编号/月份。若上游收尾状态变动，T-01以正式收据刷新。重复同因不收敛先诊断邻接路径，不通过改fixture/减分母/扩大容差隐藏支持缺口。
 
 
 ### 2026-10-25 work:r1 — 正式启动与 T-01 冻结
 
 用户明确授权实施848，GSTART成立。846 r3已archived/delivered11/11，正式graphics bf22db3465203f3babd649494f4b37aa2a012027、root d369dd760、ledger fcea7d8dc，三个WT guard clean后已清理；历史草案中的needs_fix/pending观察由本记录更新。846按用户r3只对增量编译性能暂缓验收，功能/数值/运行时安全不变；批量due/B845-FEATURE-01由847承接，不宣称全局批量绿。
 
-[x] T-01：唯一工作树 D:/autostack/.wt/lang-848/auto-lang，plan-848-dev，显式以正式846 graphics完整SHA建树；根路径/分支已断言。原681 SDK文件/17 local/29 edges/479 metadata闭包与345 source hashes通过，四个source/pin/lock/asset拒绝反控和恢复正控通过。三锁及准确旧分母见[冻结记录](attachments/848/work-r1/frozen-source.json.txt)。未升级SDK/锁或借用他人WIP；主检出既有文档及未跟踪fixture锁保留。
+[x] T-01：唯一工作树 D:/autostack/.wt/lang-848/auto-lang，plan-848-dev，显式以正式846 graphics完整SHA建树；根路径/分支已断言。原681 SDK文件/17 local/29 edges/479 metadata闭包与345 source hashes通过，四个source/pin/lock/asset拒绝反控和恢复正控通过。三锁及准确旧分母见[冻结记录](../attachments/848/work-r1/frozen-source.json.txt)。未升级SDK/锁或借用他人WIP；主检出既有文档及未跟踪fixture锁保留。
 
 stage:work | plan_id:PLAN-848 | plan_revision:1 | outcome:executing | worktree_path:D:/autostack/.wt/lang-848/auto-lang | branch:plan-848-dev | base_commit/code_commit:bf22db3465203f3babd649494f4b37aa2a012027 | dependency_revisions:SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467 | task_ids:T-01 closed,T-02 next | blockers:none | next_responsible_role:work。当前1/10，T-02..08未完成，最终review及merge完整门pending。
 
@@ -264,7 +261,7 @@ stage:work | plan_id:PLAN-848 | plan_revision:1 | outcome:executing | worktree_p
 
 stage:work | plan_id:PLAN-848 | plan_revision:1 | outcome:needs_replan | worktree_path:D:/autostack/.wt/lang-848/auto-lang | branch:plan-848-dev | base_commit:bf22db3465203f3babd649494f4b37aa2a012027 | code_commit:5efe91a8a0cead18288215d74aa2d339af2e26f9 | dependency_revisions:SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467、三锁保持T-01 | task_ids:T-01 closed,T-02 incomplete,T-03..10 pending | next_responsible_role:new（有界修订T-02，随后work沿原树续行）。status executing、1/10，不宣称work pass。
 
-两个允许候选：A轴循环/共享helper；B内联finite与box edge降低调用开销。两者实际Auto128叶子、2cast+10get+6AABB均在_ag_tick触发原100000累计步上限；不是解析/初始化失败。最终同文件3测=2pass/1fail，exit101；2节点nearest/tie/t=.25/point=-1/normal=-1/移动后快照与16节点同负载正控通过。测试负载比完整128宽/深双parent写更轻，已足以否决当前方案；不推断所有Auto实现均不可行。保留源码候选A及[原始失败](attachments/848/work-r1/candidate-a.log.txt)、[B失败](attachments/848/work-r1/candidate-b.log.txt)、[最终三测](attachments/848/work-r1/final-scoped.log.txt)、[16节点正控](attachments/848/work-r1/candidate-b-small-control.log.txt)。初始探针setup错误已修正后才计运行失败。
+两个允许候选：A轴循环/共享helper；B内联finite与box edge降低调用开销。两者实际Auto128叶子、2cast+10get+6AABB均在_ag_tick触发原100000累计步上限；不是解析/初始化失败。最终同文件3测=2pass/1fail，exit101；2节点nearest/tie/t=.25/point=-1/normal=-1/移动后快照与16节点同负载正控通过。测试负载比完整128宽/深双parent写更轻，已足以否决当前方案；不推断所有Auto实现均不可行。保留源码候选A及[原始失败](../attachments/848/work-r1/candidate-a.log.txt)、[B失败](../attachments/848/work-r1/candidate-b.log.txt)、[最终三测](../attachments/848/work-r1/final-scoped.log.txt)、[16节点正控](../attachments/848/work-r1/candidate-b-small-control.log.txt)。初始探针setup错误已修正后才计运行失败。
 
 固定SDK原有146 warnings保留，不改依赖；rustfmt单文件与diff whitespace通过。已提交三份本Plan探针/研究材料，树clean；未实现公开v3准入、GPU/GLB/Stop、深层及数值/token完整控制，未执行候选tie变异，不将它们记pass。无整档、无canonical/live ledger更新、无合入/清树。具体风险及下步在工作树research/segment-query-feasibility.md。按§5.1最多两方案仍失败，不能擅自加预算/减128/写SDK，先回new有界修订计算路径；原支持与安全合同保持。
 
@@ -272,7 +269,7 @@ stage:work | plan_id:PLAN-848 | plan_revision:1 | outcome:needs_replan | worktre
 
 stage:new | plan_id:PLAN-848 | plan_revision:2 | outcome:pass | next:work，沿原唯一树plan-848-dev继续T-02..08。用户授权直接修订本计划，先预研再更新后实施；未申请新编号、SDK/AGP写面或改节点/预算/数值支持。修改§0/3/4当前来源、§5.1局部方案及阶段依赖、T-02关闭条件；AC-01..10、V-01..12和SD-01..04交付责任保留，SD-03覆盖v3 dirty末尾与共享derive等价特化。T-01源码/SDK/三锁证据保留；r1失败仍在历史附件。公开v3/consumer/GPU等未执行证据不能沿用或宣称通过。
 
-新方案预研[6测结果](attachments/848/work-r1/candidate-parent-cache.log.txt)、[选定Auto候选](attachments/848/work-r1/selected-candidate.at.txt)，其余探索和诊断日志按原始失败保留；仅证明下一实施入口可行，不是最终work/review pass。current_step保持1/10。下一步将探针转为版本隔离的真实v3实现，固化cache/dirty/几何/剪枝正反，并完成其余既定工作。
+新方案预研[6测结果](../attachments/848/work-r1/candidate-parent-cache.log.txt)、[选定Auto候选](../attachments/848/work-r1/selected-candidate.at.txt)，其余探索和诊断日志按原始失败保留；仅证明下一实施入口可行，不是最终work/review pass。current_step保持1/10。下一步将探针转为版本隔离的真实v3实现，固化cache/dirty/几何/剪枝正反，并完成其余既定工作。
 
 ### 2026-10-25 work:r2 — pass / execution_done8/10
 
@@ -282,17 +279,17 @@ stage:new | plan_id:PLAN-848 | plan_revision:2 | outcome:pass | next:work，沿�
 
 [x] T-03：显式behavior/3/profile9接SourceSnapshot、Binding、CodePayload、Host、正式UI/CLI；旧v1/v2 API/ENTRY/transport输入和保留名语义保持，同raw版本事务与坏快照/未知版本/缺值/孤立选项均有实际反例与正控。
 
-[x] T-04：实际Auto closed slab、nearest/ordinal/XYZ、过滤、miss/inside/endpoint/parallel/退化/ULP/all-axis normals通过独立预期。有限geometry在nearest剪枝前验证，实际NaN/±Inf经参数/局部/返回/容器流转拒绝。数值收口发现正fraction下溢0时丢进入面；保留[pre-fix red](attachments/848/work-r1/underflow-red.log.txt)，已修2D/3D并保留boundary正常0法线控制，不加epsilon或降支持。
+[x] T-04：实际Auto closed slab、nearest/ordinal/XYZ、过滤、miss/inside/endpoint/parallel/退化/ULP/all-axis normals通过独立预期。有限geometry在nearest剪枝前验证，实际NaN/±Inf经参数/局部/返回/容器流转拒绝。数值收口发现正fraction下溢0时丢进入面；保留[pre-fix red](../attachments/848/work-r1/underflow-red.log.txt)，已修2D/3D并保留boundary正常0法线控制，不加epsilon或降支持。
 
 [x] T-05：单槽token callback begin/end与下一cast尝试失效、查询后移动的旧快照/新查询、sticky-first/32credits/序列上限、原完整配置门和Starting Stop/last-good/Fault/修源恢复均通过。最终world读取使用Play实际消费的非派生`_ag_field`，移除final derive的变异会被抓住，不由ag_world自修复掩盖。
 
 [x] T-06：Beam2D与Sight3D由用户Auto实现有限光束/视线最近命中、反馈及同callback组移动/快照/第二次查询；3D消费非零parent/静态旋转缩放的真实多part GLB。正式绑定/版本/Save/Save As/Undo/Redo/Open来源与角色合同保留；只改用户reach即可Update/保存/重开改变选择/结果，Rust不注入业务。
 
-[x] T-07：同一个已保存的实际runner，14具名native cases=6正控/8预期拒绝，另4个new-process reopens；两项目均从正式UI Bind/Save As后搬迁，旧路径移走再重开。实际OS输入/Pause/Step/Resume/Stop、独立几何和每part最终像素通过；partial、透明、漏part、错资产、缺/坏source、坏API、缺GLB均在预期阶段拒绝。最终权威为[固定产物重放](attachments/848/work-r1/native-preserved-replay/results.json)，runner SHA `075bab84dee36195e0ecd05becdc46325faf46a9bb675cb7792eb6d264bbc7dd`，保留于工作树target/segment-verified-runner。一次真实鼠标移出触发auto-Pause的中断如实留档，安静输入重放完整通过；未改Pause政策。旧v2 Zone2D/Zone3D原生正控也通过。
+[x] T-07：同一个已保存的实际runner，14具名native cases=6正控/8预期拒绝，另4个new-process reopens；两项目均从正式UI Bind/Save As后搬迁，旧路径移走再重开。实际OS输入/Pause/Step/Resume/Stop、独立几何和每part最终像素通过；partial、透明、漏part、错资产、缺/坏source、坏API、缺GLB均在预期阶段拒绝。最终权威为[固定产物重放](../attachments/848/work-r1/native-preserved-replay/results.json)，runner SHA `075bab84dee36195e0ecd05becdc46325faf46a9bb675cb7792eb6d264bbc7dd`，保留于工作树target/segment-verified-runner。一次真实鼠标移出触发auto-Pause的中断如实留档，安静输入重放完整通过；未改Pause政策。旧v2 Zone2D/Zone3D原生正控也通过。
 
 [x] T-08：370 source/asset hashes、681 SDK文件/17本地包/29 edges/479 metadata闭包及三锁保持；新源/陈旧pin/锁表/GLB四反控+恢复正控通过，源包用独立SDK与target实际消费。39个去重定向检查（30新增+8原v2控制+1共享配置门）与相应反控通过；新consumer14例及最终字段/SDK存储定向重放通过。20轮v1/v2/v3历史/Open/Run/Fault/Stop释放VM/Descriptor/source最后owner，GPU Arc/target/上传/扫描不退化，5个保留/重扫/上传错误变异被抓住后恢复正控通过。64次查询heap对象数不增长。11标量结果逻辑44B，实测NanoValue88B/String结构264B/键容量138B；共享map/分配器等边界单列，未伪称总硬额度。fmt、类型检查和diff whitespace通过；固定只读SDK原有146 warnings保持、driver无新增警告。
 
-早期naive预算失败、探针setup/float-abs便利调用错误、合法远目标遮挡、初次空白行诊断及临时debug产物哈希更换均保留为历史，不计作通过。Sight3D远目标沿原查询方向改至x6防合法遮挡，全部part/pixel判据和业务/数值支持未弱化。最终代码/证据及逐AC映射见[readiness](attachments/848/work-r1/readiness.json.txt)；研究/规范提案位于工作树research/segment-query-{feasibility,handoff,spec-delta}.md。
+早期naive预算失败、探针setup/float-abs便利调用错误、合法远目标遮挡、初次空白行诊断及临时debug产物哈希更换均保留为历史，不计作通过。Sight3D远目标沿原查询方向改至x6防合法遮挡，全部part/pixel判据和业务/数值支持未弱化。最终代码/证据及逐AC映射见[readiness](../attachments/848/work-r1/readiness.json.txt)；研究/规范提案位于工作树research/segment-query-{feasibility,handoff,spec-delta}.md。
 
 AC-01..08 work-owned结果pass；open in-contract findings、required coverage gaps、unresolved decisions均为空。测试复用按相关代码/SDK/配置/输入未变确认；下溢、非派生consumer字段和SDK存储断言均在当前相关producer/consumer代码上重放。T-09独立复审尚未执行，作者自查不冒认独立pass。T-10完整门明确merge-owned pending：预计完整driver208（原178+新增30，须merge实际选择清单核数）、AGP163/16 native、原87图形及原spatial/Step/project/source/owner矩阵、producer/fresh consumer与新segment矩阵。通过后才可落autographics-dev/沉淀Spec与ledger/归档/guard清理/判定批量到期。未跑根t/tv/tt/tb/tu/taa/docs_gen/tf、未合入或发布规范、未清树。主检出他人文档簿记及fixture锁WIP保留。
 
@@ -302,7 +299,7 @@ stage:work | plan_id:PLAN-848 | plan_revision:2 | outcome:pass | worktree_path:D
 
 stage:review | review_scope:final | reviewer_identity:当前Codex会话（含实施上下文，非全新独立会话；停止实现写入、从合同/代码/raw重建判断，不冒认最终独立pass） | plan_id:PLAN-848 | plan_revision:2 | outcome:needs_fix | worktree_path:D:/autostack/.wt/lang-848/auto-lang | branch:plan-848-dev | reviewed_commit:cef25b5c41dbbfbec6b7bfd4b13507d8d5f1e34d | base_commit:bf22db3465203f3babd649494f4b37aa2a012027 | dependency_revisions:SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467，AGP/三锁未变 | spec_inputs:review-r1/baseline.json.txt及冻结spec-delta.md | acceptance_results:AC01/02数值/03/04/06/07保留通过，AC05失败，AC08部分，AC09未通过，AC10 pending | findings:F-848-R1-01 P1 OPEN | next:work同树修复后重新送审。
 
-[逐项报告、可复用反例与关闭范围](attachments/848/review-r1/review.md)。actual Session和正式Host均验证：1group+127合法3D叶子、双group写、2cast+10getter+6AABB，在晚Z轴miss或ordinal逐个更近时触发100000累计步上限；等深对照成功tick1。正式Host两反例均Faulted/tick0，非probe-only/初始化错误或计时噪声。当前nearest剪枝收益依赖候选分布，原均匀box绿不能证明r2完整128支持。T02/T05/T08重开，保留其余已验证任务与原始历史；readiness旧无gap声明由本记录替代，不弱化数值/预算/节点合同。
+[逐项报告、可复用反例与关闭范围](../attachments/848/review-r1/review.md)。actual Session和正式Host均验证：1group+127合法3D叶子、双group写、2cast+10getter+6AABB，在晚Z轴miss或ordinal逐个更近时触发100000累计步上限；等深对照成功tick1。正式Host两反例均Faulted/tick0，非probe-only/初始化错误或计时噪声。当前nearest剪枝收益依赖候选分布，原均匀box绿不能证明r2完整128支持。T02/T05/T08重开，保留其余已验证任务与原始历史；readiness旧无gap声明由本记录替代，不弱化数值/预算/节点合同。
 
 本轮API8+geometry6定向重放通过，source370/SDK681/17local/29edges/479metadata、固定runner075bab…、14原生raw报告/4重开/5owner反控与SD01..04逐项复核，fmt及diff whitespace通过；原生/GPU/20轮owner按未变相关代码/输入复用，未再跑整档。完整driver/AGP/原图形与spatial/native/owner/source及producer/fresh consumer门仍merge-owned pending，最终审查通过前不启动。未改产品/SDK/锁/canonical/live ledger、未合入/归档/清树。临时review探针归档后删除，实施树HEAD及clean复核无漂移。
 
@@ -310,7 +307,7 @@ stage:review | review_scope:final | reviewer_identity:当前Codex会话（含实
 
 用户授权修复F-848-R1-01，明确先找到能守原预算的新方案，再更新当前计划并实施，完成后复审、先不合入。原唯一树/分支及冻结HEAD cef25b5c41dbbfbec6b7bfd4b13507d8d5f1e34d核对clean；主检出tracked代码路径无WIP，其他会话文档簿记保留。
 
-本轮先重放R1 actual Session/正式Host原例，失败及等深正控保持。随后在临时managed-source探针比较结果延后物化、局部别名/原位数组/循环、推导融合及受限按轴更新等方案；[完整诊断和原始源码/日志](attachments/848/work-r3/diagnosis.md)。B等普通局部简化仍不能通过逐个变近；H/I/J/K的X特化在原轴向反例上可过，但追加的正/负三轴斜向同负载仍100000步耗尽，且尚未实现通用dirty轴/visibility。它们不构成合格方案，不能只取通过的原例关闭finding，也不能宣称r3产品设计成立。
+本轮先重放R1 actual Session/正式Host原例，失败及等深正控保持。随后在临时managed-source探针比较结果延后物化、局部别名/原位数组/循环、推导融合及受限按轴更新等方案；[完整诊断和原始源码/日志](../attachments/848/work-r3/diagnosis.md)。B等普通局部简化仍不能通过逐个变近；H/I/J/K的X特化在原轴向反例上可过，但追加的正/负三轴斜向同负载仍100000步耗尽，且尚未实现通用dirty轴/visibility。它们不构成合格方案，不能只取通过的原例关闭finding，也不能宣称r3产品设计成立。
 
 因此仅更新调查/交接证据，**没有改语义合同或提升plan_revision，没有产品修复提交**；工作树仍cef25b5c4/clean。临时探针已删除，实际Auto编译输入及所有探索保存到附件；370源/681SDK/17local/29edges/479metadata再次核验通过。没有运行完整测试档或新最终复审，未合入/归档/清树、未改SDK/AGP/三锁/规范台账。没有证明固定SDK内所有方案都不可能；下一设计入口必须先解决无法剪枝的完整扫描与图推导合计预算，而不是继续依赖均匀box。保持原128/32credits/CPU与数值/资源要求，后续若需要扩SDK等边界，须具体回new决策。
 
@@ -318,7 +315,7 @@ stage:work | plan_id:PLAN-848 | plan_revision:2 | outcome:needs_replan | worktre
 
 ### 2026-10-25 new:r3 — 先验证方案后修订，next work
 
-stage:new | plan_id:PLAN-848 | plan_revision:3 | outcome:pass | base/code:bf22db346/cef25b5c4 | dependency:固定SDK7b987、三锁/AGP未变 | next:work沿原唯一树实施r3，不另建Plan。用户授权范围与128节点/32credits/CPU、数值/来源/生命周期/owner等AC保持；仅修订§5.1有界计算设计和受影响任务。预研候选已实际通过60组Session+6组正式Host；[验证日志](attachments/848/work-r4/full-controls-fixed.log.txt)、[受信组合候选](attachments/848/work-r4/behavior-validated.rs.txt)、[Auto候选](attachments/848/work-r4/api-validated.at.txt)保存。原产品文件已恢复后才更新计划，尚未宣称正式修复/独立review pass。T02/T04/T05/T08待正式验证，current4/10，merge全门pending。
+stage:new | plan_id:PLAN-848 | plan_revision:3 | outcome:pass | base/code:bf22db346/cef25b5c4 | dependency:固定SDK7b987、三锁/AGP未变 | next:work沿原唯一树实施r3，不另建Plan。用户授权范围与128节点/32credits/CPU、数值/来源/生命周期/owner等AC保持；仅修订§5.1有界计算设计和受影响任务。预研候选已实际通过60组Session+6组正式Host；[验证日志](../attachments/848/work-r4/full-controls-fixed.log.txt)、[受信组合候选](../attachments/848/work-r4/behavior-validated.rs.txt)、[Auto候选](../attachments/848/work-r4/api-validated.at.txt)保存。原产品文件已恢复后才更新计划，尚未宣称正式修复/独立review pass。T02/T04/T05/T08待正式验证，current4/10，merge全门pending。
 
 ### 2026-10-25 work:r4 — pass / execution_done8/10，独立复审待执行
 
@@ -330,7 +327,7 @@ F-848-R1-01 work-fixed：原始R1 source/setup完整重放（只把预期Fault�
 
 固定runner **7ba32aa93a71433e1a1774b58fc704b4d9e5417ed353cc94c7cdfa826cce972a** 保存在target/segment-r3-verified-runner；本轮4原生正控（两项目及短源）+2新进程重开成功，实际OS/Pause/Step/Resume/Stop、每part像素与用户改源行为均由原严格oracle验证。未变CLI/Binding/SaveAs、GPU负控与owner机制等按R1代码/配置/输入映射复用；不重复完整旧矩阵。完整driver预期216（178原+38新增）须merge实际核数，不冒领全包已过；完整driver/AGP/原图形native-owner-source/consumer及批量到期等仍merge-owned pending。
 
-证据：[readiness](attachments/848/work-r4/readiness.json.txt)、work-r4具名原始日志、[冻结Spec提案](attachments/848/work-r4/spec-delta.md)。所有work-owned AC通过，开放work finding/gap/产品决策为空；F01待独立review确认关闭，未宣称最终reviewed。已申请用户明确授权只读独立子代理；未授权前不建代理/新chat。未合入/规范沉淀/归档/清树。
+证据：[readiness](../attachments/848/work-r4/readiness.json.txt)、work-r4具名原始日志、[冻结Spec提案](../attachments/848/work-r4/spec-delta.md)。所有work-owned AC通过，开放work finding/gap/产品决策为空；F01待独立review确认关闭，未宣称最终reviewed。已申请用户明确授权只读独立子代理；未授权前不建代理/新chat。未合入/规范沉淀/归档/清树。
 
 stage:work | plan_id:PLAN-848 | plan_revision:3 | outcome:pass | worktree_path:D:/autostack/.wt/lang-848/auto-lang | branch:plan-848-dev | base_commit:bf22db3465203f3babd649494f4b37aa2a012027 | code_commit:6bc5abc6080b2261a43f55a54f127cd779239edb | dependency_revisions:SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467、原三锁/AGP | task_ids:T01..08 closed,T09/T10 pending | evidence:work-r4/readiness | blockers:none in work | next_responsible_role:review。
 
@@ -338,13 +335,13 @@ stage:work | plan_id:PLAN-848 | plan_revision:3 | outcome:pass | worktree_path:D
 
 stage:review | review_scope:internal | reviewer_identity:当前实施会话，明确上下文限制 | plan_id:PLAN-848 | plan_revision:3 | outcome:pass | worktree_path:D:/autostack/.wt/lang-848/auto-lang | branch:plan-848-dev | reviewed_commit:6bc5abc6080b2261a43f55a54f127cd779239edb | base_commit:bf22db3465203f3babd649494f4b37aa2a012027 | dependency_revisions:固定SDK7b987/三锁/AGP | acceptance_results:AC01..08内部通过，AC09独立final pending，AC10 merge pending | findings:F-848-R1-01内部确认修复，待独立关闭 | next:获明确授权后独立只读复审或新独立会话。
 
-[受影响复核报告](attachments/848/review-r2-internal/review.md)逐项核原R1输入、60/6预算oracle、shared derive/dirty/布局/数值/生命周期/资源及Spec增量，复用未变兼容/项目/负控证据有明确边界；实现提交/clean/最终源四反控再核无漂移。无新work finding，不跑全包/整档。当前含实施上下文，内部pass不等于最终独立pass，保持execution_done8/10，未合入。
+[受影响复核报告](../attachments/848/review-r2-internal/review.md)逐项核原R1输入、60/6预算oracle、shared derive/dirty/布局/数值/生命周期/资源及Spec增量，复用未变兼容/项目/负控证据有明确边界；实现提交/clean/最终源四反控再核无漂移。无新work finding，不跑全包/整档。当前含实施上下文，内部pass不等于最终独立pass，保持execution_done8/10，未合入。
 
 ### 2026-10-25 review:r3 final — pass / reviewed9/10
 
 stage:review | review_scope:final | reviewer_identity:用户明确授权的独立子代理/root/review_848_r3，全新上下文、未参与实施 | plan_id:PLAN-848 | plan_revision:3 | outcome:pass | worktree_path:D:/autostack/.wt/lang-848/auto-lang | branch:plan-848-dev | reviewed_commit:6bc5abc6080b2261a43f55a54f127cd779239edb | base_commit:bf22db3465203f3babd649494f4b37aa2a012027 | dependency_revisions:SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467、原三锁/AGP未变 | spec_inputs:review-r3-final/baseline.json.txt，冻结spec-delta SHA256 a07b8bff14af5359d9eef139da1d4204d3e0a9bca907a541b57005800529d89a | acceptance_results:AC01..09 pass，AC10 pending | findings:F-848-R1-01 CLOSED，无新阻塞 | pending_closeout_gates:T10完整driver/AGP/原native-owner-source/producer-fresh consumer等统一门 | next:merge阶段，本轮按用户要求不合入。
 
-[独立最终报告](attachments/848/review-r3-final/review.md)逐项绑定AC/任务/代码及证据，18个具名测试通过，60预算子例/6Host不虚增测试数；另选非零起点、正负混合斜向、两查询切换X→Z脏轴、nearest127/Y法线与point.y的128节点独立oracle通过。原R1 exact Session/Host、dirty/parent/f32/finite/token/旧身份定向控制均通过，98yield仅为切片观察，不伪称精确步数或普遍余量。原128节点、32credits和CPU合同保持。
+[独立最终报告](../attachments/848/review-r3-final/review.md)逐项绑定AC/任务/代码及证据，18个具名测试通过，60预算子例/6Host不虚增测试数；另选非零起点、正负混合斜向、两查询切换X→Z脏轴、nearest127/Y法线与point.y的128节点独立oracle通过。原R1 exact Session/Host、dirty/parent/f32/finite/token/旧身份定向控制均通过，98yield仅为切片观察，不伪称精确步数或普遍余量。原128节点、32credits和CPU合同保持。
 
 T09关闭，Plan状态reviewed9/10。原生/GPU/owner未变机制按报告明确边界复用原始证据，当前r3正控用当前runner补齐；未跑整档/全包/native完整矩阵。父代理复核报告、实施HEAD/clean后单写计划簿记；实施保持冻结，canonical Specs/live ledger未发布，T10及全部merge-owned门仍pending。最终pass不等于交付完成，任何后续代码/依赖/配置/输入漂移须受影响复审，未合入/归档/清树。本记录替代上方历史的授权待答复、独立final pending及F01待确认状态。
 
@@ -352,13 +349,13 @@ T09关闭，Plan状态reviewed9/10。原生/GPU/owner未变机制按报告明确
 
 stage:merge | plan_id:PLAN-848 | plan_revision:3 | outcome:blocked | reviewed_commit:6bc5abc6080b2261a43f55a54f127cd779239edb | worktree_path:D:/autostack/.wt/lang-848/auto-lang | branch:plan-848-dev | dependency_revisions:固定SDK7b987/三锁/AGP未变 | passed_gates:producer216/consumer216、完整build、check/fmt、source四反控及恢复、旧双游戏/编辑/交互/层级GPU敏感性/资产/Play原生 | blocked_gate:user native完整13例 | blocker:原有auto-Pause tick backlog>4在输入oracle前暂停；外部原因尚未证实 | pending:T10剩余全部原生/owner/最终audit及收尾 | prepared/landed/ledger_refreshed/archived/cleaned:false | next:诊断/稳定原生重放条件，同阈值关闭失败与pending门后继续merge。
 
-[收据](attachments/848/merge-r1/receipt.md)、[原始归因](attachments/848/merge-r1/diagnosis.md)、[机器记录](attachments/848/merge-r1/blocked.json.txt)绑定真实执行。首次consumer遗漏既有32MiB链接栈的配置失败已由PE头/原配置和exact重放归因，随后全216通过；原日志保留不计绿。当前producer用户脚本首次Patrol phase5失败，单独原样Patrol phase27通过；完整重试Move/Patrol/Fast通过，搬迁例phase17再次记录tick backlog>4暂停后V隐藏断言失败。Play时钟/dispatch_credit及v1 API/原oracle未改，不能据此伪称全部Play文件未变或外部负载已证实。未改预算/节点/断言/暂停政策，停止无新条件的自动重试。
+[收据](../attachments/848/merge-r1/receipt.md)、[原始归因](../attachments/848/merge-r1/diagnosis.md)、[机器记录](../attachments/848/merge-r1/blocked.json.txt)绑定真实执行。首次consumer遗漏既有32MiB链接栈的配置失败已由PE头/原配置和exact重放归因，随后全216通过；原日志保留不计绿。当前producer用户脚本首次Patrol phase5失败，单独原样Patrol phase27通过；完整重试Move/Patrol/Fast通过，搬迁例phase17再次记录tick backlog>4暂停后V隐藏断言失败。Play时钟/dispatch_credit及v1 API/原oracle未改，不能据此伪称全部Play文件未变或外部负载已证实。未改预算/节点/断言/暂停政策，停止无新条件的自动重试。
 
 独立最终pass仍绑定原冻结实现，尚未证明产品回归，保持reviewed9/10、T09完成、T10不勾选。没有合入autographics-dev、发布canonical/live ledger、归档或清树；实施HEAD/clean复核无漂移，当前规范输入hash无漂移。原生验证二进制/变异探针已按哈希留存仓外，producer/consumer树与缓存保留以便恢复。未跑root档或宣称批量绿；完整门未通过，不宣称交付完成。
 
 ### 2026-10-25 work:r5 — pass / execution_done8/10
 
-用户授权解决原生积压问题后合并，沿原唯一848树完成有界验证器修复，冻结dd7076a7f40b35ffda6b876c36f826af3443fb97（parent6bc5）。可控100ms停顿在原探针复现自动暂停后无动作；当前五个停顿正控覆盖motion/held-motion/未接受hide/restore/已接受V不重放，另移除恢复的变异在原phase4截止失败。Patrol/搬迁phase27成功，wrong-focus仍phase5拒绝；Step正常/延迟成功、丢失/重复原阶段原断言拒绝。[准确修复、边界与原始证据](attachments/848/work-r5/receipt.md)。
+用户授权解决原生积压问题后合并，沿原唯一848树完成有界验证器修复，冻结dd7076a7f40b35ffda6b876c36f826af3443fb97（parent6bc5）。可控100ms停顿在原探针复现自动暂停后无动作；当前五个停顿正控覆盖motion/held-motion/未接受hide/restore/已接受V不重放，另移除恢复的变异在原phase4截止失败。Patrol/搬迁phase27成功，wrong-focus仍phase5拒绝；Step正常/延迟成功、丢失/重复原阶段原断言拒绝。[准确修复、边界与原始证据](../attachments/848/work-r5/receipt.md)。
 
 修复只改原生Play验证状态机、新控制脚本、handoff和374源receipt四文件；生产时钟/Host/Auto数学/SDK/AGP/三锁完全未改。实际OS Resume恢复合法clock暂停，按接受tick确认输入，恢复未接受的V而不重放已接受V；动作数量、独立像素/trace/SingleStep/Stop/焦点loss和360frame阶段deadline不变。无变更查询产品合同，plan_revision仍3。check/fmt/diff/source通过，原146SDK warning保持。历史准备/occlusion/has_focus等待失败留档不计绿；本轮未跑全包/根整档。T07/T08重新完成，T09待受影响独立复审，T10全部统一门/收尾pending，未合入/发布规范/ledger/归档/清树。
 
@@ -366,14 +363,16 @@ stage:work | plan_id:PLAN-848 | plan_revision:3 | outcome:pass | worktree_path:D
 
 ### 2026-10-25 review:r4 final — pass / reviewed9/10
 
-独立子代理/root/review_848_r3复审冻结dd7076a7f40b35ffda6b876c36f826af3443fb97，M848-NATIVE-BACKLOG CLOSED。另选实际OS兄弟控制：phase13文本焦点300ms display-gap恢复、phase10真实3D held-motion恢复、100ms恢复后wrong-focus仍拒绝均成立；强制重投已接受V的副本在phase17原隐藏断言失败，接受凭据具有区分性。work-r5六clock/三native/四Step raw子断言及hash审计通过。产品clock/Host/Auto/SDK/AGP/锁及冻结Spec delta未变，原F01闭合证据保留。[完整独立报告](attachments/848/review-r4-final/review.md)。最终HEAD/clean无漂移，未修改实施或主计划，父代理单写本记录。
+独立子代理/root/review_848_r3复审冻结dd7076a7f40b35ffda6b876c36f826af3443fb97，M848-NATIVE-BACKLOG CLOSED。另选实际OS兄弟控制：phase13文本焦点300ms display-gap恢复、phase10真实3D held-motion恢复、100ms恢复后wrong-focus仍拒绝均成立；强制重投已接受V的副本在phase17原隐藏断言失败，接受凭据具有区分性。work-r5六clock/三native/四Step raw子断言及hash审计通过。产品clock/Host/Auto/SDK/AGP/锁及冻结Spec delta未变，原F01闭合证据保留。[完整独立报告](../attachments/848/review-r4-final/review.md)。最终HEAD/clean无漂移，未修改实施或主计划，父代理单写本记录。
 
 stage:review | review_scope:final affected | reviewer_identity:独立子代理/root/review_848_r3，未参与work:r5实施 | plan_id:PLAN-848 | plan_revision:3 | outcome:pass | reviewed_commit:dd7076a7f40b35ffda6b876c36f826af3443fb97 | base_commit:bf22db3465203f3babd649494f4b37aa2a012027 | dependency_revisions:SDK7b987/AGP/三锁未变 | spec_inputs:review-r4-final/baseline与原a07b8bff14af5359d9eef139da1d4204d3e0a9bca907a541b57005800529d89a | acceptance_results:AC01..09 pass，AC10 pending | findings:M848-NATIVE-BACKLOG CLOSED，F-848-R1-01保留CLOSED | pending_closeout_gates:T10全部完整门 | next:按用户已授权执行merge统一门，全部过后落地/沉淀/归档/guard清理。
 
 ### 2026-10-25 merge:r2 — complete frozen gates pass，开始沉淀
 
-冻结dd7076a7f/SDK7b987/原三锁上完整producer216与fresh own-SDK/初始空target consumer216均0fail/0ignore，完整build/check/fmt/source正反通过。两端各13user/4Step/15project+2真实UI输出搬迁，12spatial+2reopen、14segment+4reopen、6clock控制，原双游戏/编辑/交互/层级GPU/资产/Play及全部owner变异/恢复完成；77当前组+23严格未变AGP槽保留原87语义分母，原始像素/trace/阶段/选择数审计通过。[完整收据](attachments/848/merge-r2/receipt.md)、[审计](attachments/848/merge-r2/validated.json.txt)。唯一新失败为consumer时钟副本链接磁盘不足，guard后以Cargo定向清旧r3缓存21.5GiB，同配置重跑六项通过，历史失败留档，open失败为空。原128/32/CPU/数值不变，无实现/SDK后改。下一步实际快进源码到autographics-dev，再同树知识沉淀、账本、归档及guard清理；完成前T10保持pending。
+冻结dd7076a7f/SDK7b987/原三锁上完整producer216与fresh own-SDK/初始空target consumer216均0fail/0ignore，完整build/check/fmt/source正反通过。两端各13user/4Step/15project+2真实UI输出搬迁，12spatial+2reopen、14segment+4reopen、6clock控制，原双游戏/编辑/交互/层级GPU/资产/Play及全部owner变异/恢复完成；77当前组+23严格未变AGP槽保留原87语义分母，原始像素/trace/阶段/选择数审计通过。[完整收据](../attachments/848/merge-r2/receipt.md)、[审计](../attachments/848/merge-r2/validated.json.txt)。唯一新失败为consumer时钟副本链接磁盘不足，guard后以Cargo定向清旧r3缓存21.5GiB，同配置重跑六项通过，历史失败留档，open失败为空。原128/32/CPU/数值不变，无实现/SDK后改。下一步实际快进源码到autographics-dev，再同树知识沉淀、账本、归档及guard清理；完成前T10保持pending。
 
-## 10. 待澄清事项
+## 10. 交付与收尾
 
-当前无新的产品选择待用户决定；用户已授权合入收尾，但merge:r1的原生user门仍被tick backlog自动暂停阻塞，不能合入。独立最终复审pass和F-848-R1-01关闭仍有效，reviewed9/10。有限world线段/AABB最近命中、single-slot callback token、显式v3、128节点/weighted32credits及原CPU合同保持。下一步先诊断原生积压/重放条件，按原阈值关闭失败及其余pending门；若发现代码缺陷，回work修复、提交并受影响复审后再冻结执行门禁。若实际需要SDK/AGP/生产写面、提高CPU/降低节点保证或扩其他非目标，回new具体修订，不默认扩面实施。
+stage:merge | plan_id:PLAN-848 | plan_revision:3 | outcome:delivery_verified_cleanup_pending | source_commit:dd7076a7f40b35ffda6b876c36f826af3443fb97 | source_branch:autographics-dev | canonical_commit:f126a98d79eb503d8f31fc7c56ff7024a460e1ea | ledger_commit:dbeb8d463833900957235909cd3bf0275858d979 | ledger_version:87 | completion_kind:delivered | archived:true | cleaned:pending。
+
+规范沉淀覆盖原8项修改与segment-query-profile新规范，以及模块overview/plans、全局overview/goals/INDEX共14路径，符合冻结Spec delta；台账14项映射、1210无关原项字节保留、六section/schema/来源hash已读回。单写离线投影前无可达store writer，备份与恢复路径见[投影收据](../attachments/848/merge-r2/ledger-projection.json.txt)。[实际落地](../attachments/848/merge-r2/knowledge-landed.json.txt)。代码只入autographics-dev，master仅知识簿记。当前9/10，归档实际状态核验通过后提交，再guard清理并完成T10。全局批量既有B845-FEATURE-01由847负责，未冒称全绿或降低标准。
