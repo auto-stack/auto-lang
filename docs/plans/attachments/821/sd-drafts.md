@@ -1,105 +1,107 @@
-# PLAN-821 SD 草案（T-06 整理，供 review 核对 / merge 沉淀）
+# PLAN-821 SD 草案（R1 修复后重生，供 review 复核 / merge 沉淀）
 
-状态：草案（drafts）——canonical Spec 写入由 merge 拥有；本文按 plan §5 规范增量表
-与实际交付整理 after 规则与证据锚点。所有"实际交付"均指 plan-821-dev 分支
-T-02..T-06 提交（37b51f2a1 / 055ad06a9 / 7e9cceaed / 809fadbca / 3cb7cd5e5 及后续）。
+状态：草案——canonical Spec 写入由 merge 拥有。本文按 R1 修复后的实际交付
+（plan-821-dev R1 提交链：e8e1e369d + 后续 R1 提交）整理 before/after 与证据
+锚点；与 r1 前草案的差异均已按复审 findings 修正，不再包含被反例推翻的现状
+描述。
 
 ## SD-01 add `docs/specs/auto-av/place-ownership.md`
 
-- before：无本 profile 规则（auto-av Spec 仅有 core-i32 与 data 两 profile 面）。
-- after（实际交付面）：
-  - 身份：`av.owned/1` = profile id 3；MIR `auto.mir.av-owned/1`；ABC `auto.abc.av-owned/1`
-    （AVAD magic、u16 version=2、profile=3；v1↔v2 互不可读=代际隔离）；producer
-    `plan821/av-owned`；语义版本 MIR/ABC/AV = 1/1/1 独立轴；缓存键含 producer/schema/
-    语义版本/profile=3/类型表指纹（types-fp）轴（V-08：改类型表=clean miss）。
-  - 类型/资源分类：MirType 增 Char/Str/StrView/MutRef；record 字段=六标量+Char+Str+
-    已存在 record；StrView/MutRef 入字段→`mir.field-borrow`；资源分类不信自称（record
-    传递闭包可达 Str ⇒ 资源 record，只可整根 move/clone/replace；copyable 不含资源）。
-  - 指令面（InstructionSpec 表 16 新行+共享 opcode owned 语义扩展）：0A CLONE/0B MOVE/
-    0C VIEW/0D MUTREF/0E BORROW_END/0F DROP/13..1B 文本九方法+char 转换；02 COPY 仅
-    copyable+StrView（token 复制），Str/MutRef→`mir.copy-owned`；05 CALL owned 实参=
-    move-in；07 FIELD_GET Str 字段=视图；08 FIELD_SET=替换事务（root 保守）；09
-    AGGREGATE 含 Str/Char。
-  - 访问状态机：Uninit→Init→{Moved|Dropped}；Init 交集、Moved/Dropped/活借用保守并集；
-    循环回边求有界不动点（worklist 防御性访问上限）；VIEW/FIELD_GET 视图按 root=base
-    注册 token；MUTREF root 保守排他；DROP owned+Init+非 Moved/Dropped，根上活借用拒。
-  - 运行期：arena 台账（alloc/free 事件、live、attempts/successful 分账、fault_at
-    测试缝）；宿主接收 owned 结果持唯一释放责任，显式 release 后 live=0；view=774
-    快照（Share 延长 buffer 生命周期，成功出口释放序可非严格 LIFO——恰一次+live=0 为
-    恒定 oracle）；预算前检（分配前拒 attempt=0）+ 四分配点（Const-Str/Clone/Concat/
-    ToOwned）exact deep delta（含槽头部 V）。
-  - 预算：沿 798/820 冻结值零放宽（输入 4MiB/表族 65536/验证 2M 步·5s·16MiB/执行
-    1M 步·1024 帧·2s）；活值合计 ≤8MiB（cap±1B 实测边界）；32MiB 分区与 128MiB
-    worker 增量沿 798 r7（T-02 基线采样 p95 wall 25.6ms/峰值 ~1.7MB 每 fresh 进程）。
-  - 拒绝码族：mir.{reservation-conflict,mut-conflict,use-after-move,ownership-required,
-    copy-owned,field-borrow,borrow-escape,drop-uninit,type-op,entry-sig…}；运行期
-    trap av.trap.{str-index,char-invalid}；av.trap.invalid-handle 无消费指令（冻结指令
-    集无句柄解引用）——不可达构造，类型层隔离为实现面。
-- 证据：semantics 25 例 + resources 6 例 + first_case 5 例 + corpus 4 check（脚本
-  first-case/semantics/admission/resources Scope）。
+- before：无本 profile 规则。
+- after（R1 后实际面）：
+  - 身份/版本/缓存键：同 r1 草案（av.owned/1=profile 3、AVAD v2 v1↔v2 互拒、
+    producer plan821/av-owned、语义版本 1/1/1、types-fp 键轴）。
+  - 类型：MirType Char/Str/StrView/MutRef + **RecordView(RecordTypeRef)**（R1-F08，
+    wire tag 12；782 ABI-D 借入 record 参数——只读、非 owned、调用无 kill、
+    字段视图外部根、字段写入被类型拒）；资源分类派生不变。
+  - 访问状态机：Uninit→Init→{Moved|Dropped}；**R1-F01**：Return 检查全部终态
+    （dropped 不得以 typed zero 充功返回）且逃逸门按来源 provenance 判定
+    （BorrowEnd 不合法化逃逸）；**R1-F02**：Call 结果 view 携带真实溯源
+    （view 实参根并集+外部 sentinel）；MutRef 排他双向（活排他阻新共享 view/
+    字段读）；owned def（含 StrToOwned/StrConcat）目的地冲突门；owned 转移
+    （Aggregate/FieldSet/move-in）源 loan 检查。
+  - 运行期：arena 台账（attempt/successful 分账+fault_at 缝）；静态 view 随带
+    产出单元已解析字节（**R1-F03**——跨单元常量域正确）；Aggregate/FieldSet
+    提交后 owned_kill_slot 源槽（**R1-F04**——静态 kill 与运行时责任一致）；
+    **R1-F06**：Const/Clone（字节+字段）/Concat/ToOwned 按冻结单位计 fuel；
+    clone 深度上限=MAX_FRONTEND_NESTING。
+  - 分析内存（**R1-F05**）：token_roots 稀疏（只 intern 实际使用根）；bound 按
+    真实布局计量（8192 槽 0 token：bound≈1.6MB、实测分配峰值≈1.37MB）。
+  - 预算/拒绝码族：同 r1 草案 + mir.drop-uninit 族扩展到 Return 终态。
+- 证据：semantics 25 + resources 7 + r1_replay 7 + first 5 + corpus 5 check。
 
 ## SD-02 add `docs/specs/auto-mir/owned-access-profile.md`
 
 - before：无本 profile MIR 合同。
-- after：SD-01 的 MIR 侧细化——owned 单元 OwnerScope.schema=`auto.mir.av-owned/1`；
-  typed fixture=未信任输入（与源码产物走同一 verify_mir/verify_abc 授信，无旁路）；
-  entry 合同（参数六标量+Char；结果可另含 owned Str/资源 record；view/token 不出
-  entry）；move-kill/借用/清理分析的 MIR 冻结形态（ownership.rs：MovePath 只 intern
-  实际触达根/投影、状态位图内存计入 verify-memory、分析超 16MiB=Resource 分态）；
-  部分字段 move 在 MIR 不可表达（源域 `verify.partial-move` 保持权威）。
-- 证据：V-11/V-12 矩阵（合流/回边/单臂 init/活 view join mut/两臂终结）。
+- after：SD-01 的 MIR 侧细化 + **RecordView 的 MIR 编码**（类型/tag/名义恒等/
+  借用参数位置；调用实参单向强制转换 record→RecordView；签名驱动的调用 kill）；
+  owned 单元 OwnerScope.schema；typed fixture 未信任授信；entry 合同；部分
+  字段 move 源域权威保持。
+- 证据：r1_replay（call 溯源/终态/静态跨单元）+ incremental stale-link 拒。
 
 ## SD-03 modify `docs/specs/auto-av/cache-and-conformance.md`
 
-- before：前序 profile（core/data）producer 身份/恢复/失效规则。
-- after 增：owned 单元独立 producer `plan821/av-owned`、LayerSpec A21（schema
-  `ac821/a21-owned-abc/v1`，key 轴含 types-fp+清理/借用分析 schema 版本）；恢复重走
-  envelope→decode→深授信→load 门（restore_owned）；好 hash 坏 payload=checksum 拒；
-  身份三向隔离（owned/data/core producer·schema 互拒）；活帧/借用 token/宿主地址/
-  alloc 台账不入 cache；同 store 新 worker 恢复同结果（V-08 四态）。
-- 证据：av_owned_821_cache_compat 5 例 + first-case 恢复例。
+- before：core/data producer 恢复规则。
+- after 增：owned A21 层 + **R1-F10**：真新进程恢复入口（worker
+  `owned-restore-run`——信封→decode→深授信→执行，跨进程同结果）；自洽坏内层
+  （重封正确 checksum 发布于好键）由深验证拒绝、dispatch=0；其余同 r1 草案
+  （types-fp clean miss/坏 checksum/身份三向隔离）。
+- 证据：cache_compat 7 例（含 r1 两例）。
 
 ## SD-04 modify `docs/specs/auto-av/project.md`
 
-- before：core-i32 与 data 两 profile 登记。
-- after 增：登记 `av.owned/1`（profile id 3）支持面与明确非目标（部分字段 move/完整
-  NLL/用户析构/循环共享/GC/List/闭包/Dyn/async/native ABI 不在本 profile；标量
-  core-i32 与 data 面不变——三旧语料+mn 24/24 重放零退化）。
+- before：core-i32/data 两 profile。
+- after 增：av.owned/1 登记（含 RecordView 借入面）+ 非目标更新：
+  **mut record 参数（782 ABI-E `*mut` 排他写回借用）超出冻结论域**——需要
+  写回通道（写穿借用/out-param 类机制）属显式合同修订项（见"待裁定"）；
+  其余非目标同 r1 草案。
 
 ## SD-05 modify `docs/specs/auto-test-case/architecture.md`
 
-- before：既有 probe/run recipe 登记（sema/abi/av-core/cte/mn/av-data）。
-- after 增：`ac-av/owned-run-v1` recipe（append-only 三缝：REGISTERED_PROBE_RECIPES
-  +op/形状/av-binding 围栏；runner 分派；worker case-serve owned 分支——avworker/1
-  信封域内 recipe id 区分不扩字段）；owned 面=canonical result（标量 typed-bits 编码/
-  Str 精确 UTF-8/record 名义名+声明序字段）+live_after_release+allocs/frees 台账；
-  父侧冻结表 OWNED_CASES 独立判决（逐位+live=0+事件序）；V-10 反控缝
-  （AV821_OWNED_EXPECT_SABOTAGE=result|ledger）与 worker 故障三态=infra。
-- 证据：corpus 4 check + av_owned_821 runner 3 例 + ac_av 判决单测 5 例。
+- before：六 recipe 登记。
+- after 增：ac-av/owned-run-v1（r1 草案面不变：三缝注册/owned 面判决/冻结表/
+  sabotage 双面反控/故障三态）+ corpus 借入正控（run-owned-borrowed exit 15）。
 
 ## SD-06 modify `docs/specs/auto-hir/stage-contract.md`
 
-- before：HIR 域语义（774/782 text/text-record）与 MIR 消费为 core/data。
-- after 增：TextRecord 域 CheckedModule→`lower_checked_owned`（owned MIR）实际消费
-  支持/拒绝/资源责任——支持面=774/782 已验证形态（Str/char 字面量、record 构造/字段
-  视图/clone/move/替换/mut 排他/清理/move-in/借入 view 返回）；源码路径 `verify.*`
-  诊断码保持权威（MIR 镜像码不改源域）；语句尾临时 view 终结（adapter 规范形：RHS
-  view 在 FieldSet 提交前 BorrowEnd）；unknown profile/域外输入→受控拒不进 fallback。
+- before：HIR 域语义与 core/data 消费。
+- after 增：TextRecord→owned 实际消费支持面——**R1-F08 后**：借入 record 参数
+  （`fn read(p Note)`）真实接入（RecordView/无 kill/字段视图/调用后有效）；move
+  参数面不变；**mut record 参数（`mut p Note`/`a.mut`）为 lower.mut-record 受控
+  拒**——782 源域允许、owned MIR 无写回表达力，按复审裁定以显式合同修订路由
+  （不得静默错语义或单方面删支持）；语句尾临时 view 终结（adapter 规范形）。
 
 ## SD-07 modify `docs/specs/auto-av/resident-function-install.md`
 
-- before：D828 函数 IR/代码复用、受检安装/依赖/寿命（828 增量接口）。
-- after 增（T-09 落地后回填）：owned 单元经 `lower_function_owned_unit` 接 828 编译/
-  装载/snapshot 接口；纯 body 编辑不触发未改函数重编/重装载（V-13 四子 case）；
-  签名/依赖/profile 变化精确失效；无活值布局迁移支持时不兼容安装受拒。
-  【状态：T-09 执行中——本行证据由 T-09 完成后补齐，merge 前不可缺】
+- before：D828 函数 IR/代码复用、受检安装/依赖/寿命。
+- after 增（**R1-F07 后已回填**）：owned 生产安装通道 `owned_session::
+  OwnedFunctionSession`——每修订一次真实前端编译、HIR 内容身份（去 span）自动
+  失效检测（body 局部变更=单函数重产；类型上下文变更=全模块——模块级 import
+  表语义）；真实生产计数（frontend/lower/encode/admit 在真实生产点自增）；
+  正式退化检测器 `incremental_gate`（增量集外生产=红；forced whole 经同一
+  checker 必红）；原子批量编辑（接口重定型无单点中间形）；拒绝中间形回滚
+  （revision/identity 不动）。
+- 证据：incremental 5 例（two_fn 自动检测+对象/代际复用+精确 oracle+live=0；
+  签名拒绝中间形回滚/一致批量=全模块失效+1101 oracle；forced whole 门红；
+  stale-link 单元拒；标量 session 对照）。
 
-## 交付边界记录（review 关注项）
+## 待用户裁定的合同修订项（复审 F821-R1-08 遗留）
 
-1. 陈旧读（view 跨根写）在受检 MIR 结构性不可达（root 保守门禁）；值层 Share 快照
-   oracle 由 core place.rs/owned_text 固定——非缺口，为 782 root 保守语义的推论。
-2. av.trap.invalid-handle 无消费指令（冻结指令集无句柄解引用）——V-05 以类型隔离+
-   bin-type 拒+MutRefV{frame,slot,gen} 捕获实现；invalid-handle 保持不可达构造。
-3. share 延长下成功出口释放序可非严格 LIFO（774 快照设计）；恰一次+live=0 恒定。
-4. 预存债清偿记录：820 resources 两例 cap 重校准（Value 16→32B）；818 mn consumer
-   穷尽匹配适配（受控拒，零语义扩面）。
+**mut record 参数写回借用**：782 源域 `fn set(mut p Note)`/`set(a.mut)`（ABI-E
+`*mut`）要求 callee 写对 caller 可见——需要 MIR 写回通道（写穿借用/out-param/
+结果回写约定），超出本计划冻结论域。当前实现：`lower.mut-record` 受控拒（精确
+诊断、不静默）。处置选项：(a) 回 new 显式修订 MIR 合同补写回机制；(b) 修订
+SD-06 支持面将 mut record 列为显式非目标（需用户授权——782 已验证形态的缩减）。
+
+## 交付边界记录（review 关注项，R1 后更新）
+
+1. ~~陈旧读在受检 MIR 不可达~~（保持：root 保守门禁；值层 Share oracle 在
+   core place.rs）。
+2. ~~invalid-handle 无消费指令~~（保持：类型层隔离；V-05 实现面）。
+3. share 延长下成功出口释放序可非严格 LIFO（恰一次+live=0 恒定）。
+4. 预存债清偿：820 resources cap 重校准、818 mn consumer 受控拒适配（r1 前
+   完成，保持）。
+5. **mut record 写回**：受控拒+合同修订路由（见上）。
+6. **V-05 旧帧/跨 store/generation 运行期探测**：冻结指令集无句柄解引用指令
+   ——"无消费指令不可达构造"与复审"pending contract reconciliation"判定的
+   和解待 review 裁定（若需运行期探测面须扩指令或以故障注入探 MutRefV 域）。
