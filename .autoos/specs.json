@@ -4567,7 +4567,32 @@
  "modified_at": 1792946072,
  "completed_at": 1792946072
 }
-],
+,
+{
+ "id": "P832-M",
+ "title": "PLAN-832 三仓交付与 merge 收据",
+ "content": "lang delivery 6b70b8deb8c9a0a1c6fdb3c61efbe98a21d12027（42 个提交两次 rebase 到当日 master，range-diff 等价、master 增量仅 821/848 簿记文档，ff-only）；Man delivery 1b7a9ce0de9055f7953129d78a25777662508258（14 个提交 ff-only）；UI/down 固定版本不变。T-11 统一门全绿：发行 14/14、lang 裸 t 3181/3181、792 39/39、Man t/tcore 280+23、ti/ui-t 归因预存红与 10-25 同集（816 smoke、P751-D2）；三仓来源读回、canonical SD-01..06、受管 ledger/索引、归档与 guard 清理按归档 Plan 的 merge 收据逐项核验。jet/ark 构建延期至 v0.7，不冒称已测；批量 tf 仍按主检出到期规则与既有 blocker（850 external-workspace）分诊。",
+ "status": "verified",
+ "file": "docs/plans/attachments/832/handoff.md",
+ "tags": [
+  "PLAN-832",
+  "delivery:6b70b8deb8c9a0a1c6fdb3c61efbe98a21d12027",
+  "man-delivery:1b7a9ce0de9055f7953129d78a25777662508258",
+  "receipt:merge",
+  "guarded-offline-projection",
+  "source-sha256:daedade6b2e78b79b39722d39284f2d8428c51322bb64bfc4359e62dbd36ee2e"
+ ],
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "milestone": "M1",
+ "module": "repository-boundaries",
+ "created_at": 1792954475,
+ "modified_at": 1792954475,
+ "completed_at": 1792954475
+}],
       "section_type": "Reports",
       "title": "📊 Reports",
       "status": "empty",
@@ -15668,7 +15693,32 @@
  "modified_at": 1792941529,
  "completed_at": 1792941529
 }
-],
+,
+{
+ "id": "P832-D1",
+ "title": "Man 独立仓与三仓 Core/full 交付（PLAN-832，SD-01..06）",
+ "content": "auto CLI、管理 runtime/core、包锁/resolver/toolchain/assets 与 I-TOOL client 归 auto-man；语言 SDK/AST/Value、I-PROJECT/I-TOOL 协议和 std-only owned 执行设施留 auto-lang，UI 实现归 auto-ui。Core 以独立 core workspace/lock/target 复用同一 CLI 源，仅需 Man/lang，无 UI 源码或工具；full 组合固定四仓源与真实 auto-ui-tool。开发发现按显式 env、Cargo 锚和 current_exe 布局解析 owner，安装态邻接；不搜索任意主检出。安装经 staging/hash/source/profile 校验与受管交换，仅确认死亡 owner 可清理 staging；真实 backup 恢复保存 owned marker 后严格 verify，陌生文件仍拒绝。canonical: docs/specs/repository-boundaries/man-three-repository-delivery.md 及 SD-01..06 目标。",
+ "status": "verified",
+ "file": "docs/specs/repository-boundaries/man-three-repository-delivery.md",
+ "tags": [
+  "PLAN-832",
+  "delivery:6b70b8deb8c9a0a1c6fdb3c61efbe98a21d12027",
+  "man-delivery:1b7a9ce0de9055f7953129d78a25777662508258",
+  "freeze:6b70b8de",
+  "guarded-offline-projection",
+  "source-sha256:7a0fa9f22e216ffd264d84596a9b51e2b013ce6af0d5a05bdcee8fa6e6aa88a7"
+ ],
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "milestone": "M1",
+ "module": "repository-boundaries",
+ "created_at": 1792954475,
+ "modified_at": 1792954475,
+ "completed_at": 1792954475
+}],
       "section_type": "Designs",
       "title": "🎨 Designs",
       "status": "empty",
@@ -19363,7 +19413,32 @@
  "modified_at": 1792941529,
  "completed_at": 1792941529
 }
-],
+,
+{
+ "id": "P832-T",
+ "title": "三仓 consumer、独立 Core 与发行恢复测试资产（PLAN-832）",
+ "content": "three-repository-consumer 与 fixture 驱动管理+SDK+协议单源；独立 Core workspace 和 man-tcore 覆盖 18 个 bin+5 个非 UI driver；跨仓 man-ti 分别预建 UI tool/lang te-child。man-install/man-distribution 覆盖无 UI/down fresh/locked/重定位、full 安装、真实升级备份恢复、未知 owner staging、严格额外文件和缺工具负控。永久 gen 测试不再由父进程注入工具路径。R3 终审 F01..F04 全关闭；merge 统一门全绿（发行 14/14、lang 裸 t 3181/3181、792 39/39、Man t/tcore 280+23、ti/ui-t 归因预存红与 10-25 同集），原始收据与 R5 收口记录归档于 docs/plans/attachments/832/merge。",
+ "status": "verified",
+ "file": "docs/plans/attachments/832/ci-entrypoints.md",
+ "tags": [
+  "PLAN-832",
+  "delivery:6b70b8deb8c9a0a1c6fdb3c61efbe98a21d12027",
+  "man-delivery:1b7a9ce0de9055f7953129d78a25777662508258",
+  "tier:merge",
+  "guarded-offline-projection",
+  "source-sha256:e415ea273a22c443e63719861a37ab01e5829902aa5bdeb269ed448d0c3fa2bd"
+ ],
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "milestone": "M1",
+ "module": "repository-boundaries",
+ "created_at": 1792954475,
+ "modified_at": 1792954475,
+ "completed_at": 1792954475
+}],
       "section_type": "Tests",
       "title": "🧪 Tests",
       "status": "empty",
@@ -25974,7 +26049,32 @@
  "modified_at": 1792946072,
  "completed_at": 1792946072
 }
-],
+,
+{
+ "id": "P832-R4",
+ "title": "PLAN-832 独立终审 R3+R4+R5 收口 — pass（findings 全关闭）",
+ "content": "R3 绑定 lang e320abf4f、Man f52cd93b，F01..F04 全关闭。merge 门禁另发现 Man 占位 blueprint遮蔽与安装来源回退缺口；最终修复按显式 env/真实项目库→安装 SDK→开发 owner，安装 SDK 唯一 marker 被真实 bp show 读取，项目库/env 优先和缺件负控保持。R4 独立受影响复审绑定 lang adb5ce0f3（rebase 前身）、Man ceb8dfdd4→b32d3d0e，F832-MERGE-BP-01 CLOSED。R5 merge 收口（同独立上下文两轮，绑定 lang abfcc3650c39a2e99987517d21e17d186e84b5a0、Man 1b7a9ce0de9055f7953129d78a25777662508258）：两处依赖 pin 最小无夹带，F832-R5-01..05 全闭合；B845 解锁后揭出的 827 锚点与 schema_drift 兄弟读两个被掩盖红按 831 先例最小修复；终判 pass。jet/ark 真实构建按 r3 裁定转 v0.7，不冒称已测。",
+ "status": "verified",
+ "file": "docs/plans/attachments/832/review-r4/review.md",
+ "tags": [
+  "PLAN-832",
+  "review:R4-pass",
+  "reviewed:abfcc3650c39a2e99987517d21e17d186e84b5a0",
+  "man-reviewed:1b7a9ce0de9055f7953129d78a25777662508258",
+  "guarded-offline-projection",
+  "source-sha256:9540e4d8dfdef4c80efbc43f739b181c1a8c5aff3bf19d3e1757e61d154522c5"
+ ],
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "milestone": "M1",
+ "module": "repository-boundaries",
+ "created_at": 1792954475,
+ "modified_at": 1792954475,
+ "completed_at": 1792954475
+}],
       "section_type": "Reviews",
       "title": "🔍 Reviews",
       "status": "empty",
@@ -25985,5 +26085,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 88
+  "version": 89
 }
