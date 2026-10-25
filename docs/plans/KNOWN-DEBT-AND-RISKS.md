@@ -1,3 +1,7 @@
+### Plan 848 r3（2026-10-25，独立final pass，合入门pending）
+
+F-848-R1-01 CLOSED，绑定6bc5abc6080b2261a43f55a54f127cd779239edb/r3。用户授权的独立子代理/root/review_848_r3复审通过，18个定向测试含60预算子例、6Host及新选128节点混合斜向反例。原128节点/32credits/CPU合同保持，无新阻塞。reviewed9/10，T10统一合入门pending，未合入。[独立报告](attachments/848/review-r3-final/review.md)。下方待确认/OPEN仅为历史。
+
 ### Plan 848 r3（2026-10-25，work修复/内部复核通过，独立final pending）
 
 F-848-R1-01 WORK-FIXED / 待独立确认：冻结6bc5abc6080b2261a43f55a54f127cd779239edb，先验证方案再修订r3实施；原R1输入/Host成功，60组128节点、32credits控制与6组Host oracle（含三轴正负/非等比例斜向、X/Y/Z标量写入）通过。shared按脏轴推导+受信紧凑生成区，原CPU/SDK/数值/单槽上限不变，新增4dirty标量后总60B；producer33/consumer12定向检查、4原生+2重开通过。无新增work gap，内部复核pass，当前会话含实现上下文，不冒称最终独立pass。Plan execution_done8/10，独立子代理授权待用户答复，完整统一门仍merge-owned pending，不合入。[工作收据](attachments/848/work-r4/readiness.json.txt)、[内部复核](attachments/848/review-r2-internal/review.md)。下方OPEN是R1历史。
