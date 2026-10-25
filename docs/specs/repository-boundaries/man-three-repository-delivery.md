@@ -13,7 +13,7 @@
 
 ## 固定版本与 profile
 
-本基线：Man `ceb8dfdd`、lang rebase 候选 `8cc004f83`（range-diff 31/31 等价）、UI `aee499e87093ff727f68ac8467c506e9ecf6ecdc`、down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。
+本基线：Man `b32d3d0e`、lang rebase 候选 `8cc004f83`（range-diff 31/31 等价）、UI `aee499e87093ff727f68ac8467c506e9ecf6ecdc`、down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。fresh lock 中 `brotli-decompressor` 以直接依赖固定为可用 `6.1.1`，不选不可用的 `6.2.0`。
 
 - **Core**：`cargo build --locked --manifest-path core/Cargo.toml -p auto --no-default-features --features core`。独立 Core workspace/lock/target 复用 `crates/auto` 的 CLI 源，但不经 full manifest；只需 Man/lang，无 UI 实现源、auto-ui-tool、auto-lang compat 或 iced。语言/管理/协议命令真实执行，UI 请求具名失败。
 - **完整 profile**：根 workspace default=`ui-extra+python+autodown`，含匹配 auto-ui-tool 与 UI 源/资产。五操作经 `auto-tool-client` 调真实工具进程；ui-extra 的静态面按固定 UI source 消费。

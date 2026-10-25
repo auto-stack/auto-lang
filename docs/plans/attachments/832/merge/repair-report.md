@@ -25,3 +25,7 @@ Man `75a81b4f4b100f7f8bdf9c02bbf87c299cc9e5af`；前基线 `f52cd93b`。R3 的 F
 独立 reviewer 指出，上一版的通用 UI 回退可在安装态先命中开发语言库，使 SDK 分支失效；相同包清单不能证明来源。最终 Man `ceb8dfdd469b2dec1f2490aae1126b0b3303e35e` 将优先级改为显式 env/真实项目库→安装自身 SDK→开发语言 owner。
 
 永久 `installed_blueprints` driver 在安装 SDK 的 `form/login/spec.md` 注入 `PLAN832_INSTALLED_SDK_ONLY`，要求真实 `bp show` 输出该 marker，随后恢复原字节；[结果](installed-sdk-marker.log.txt) PASS。`cmd_bp` 4/4 与 full build 保持通过，见 [定向日志](repair-bp-install.log.txt)。该检查区分真实 SDK 与开发源，不再以相同包清单冒充安装来源。
+
+## fresh-lock 依赖反例与修复
+
+完整发行的 fresh lock 曾选择 `brotli-decompressor 6.2.0`，随后 locked build 因该版本不可用失败。Man `b32d3d0eeed8e08dbe74302128fe3b815dc3fd6a` 以直接依赖精确 pin 可用 `6.1.1`，未复用旧锁或降低 fresh 验收。新 clone 的 `Cargo.lock` 已确认选择 6.1.1；`cargo check --locked -p auto-man` 通过。完整 14 项发行门在该提交上重新执行。
