@@ -1,3 +1,7 @@
+### Plan 848 r3（2026-10-25，原生backlog验证器修复独立pass）
+
+M848-NATIVE-BACKLOG CLOSED，绑定dd7076a7f/r3。合法clock自动暂停后探针误把未接受刺激用于动作/隐藏断言；修复仅原生验证状态机，实际OS Resume/恢复目标、未接受V重投/已接受不重放、原动作数量与phase deadline保持。独立display-gap文本/3D held/wrong-focus及强制重投已接受V变异均具区分性。生产clock/Host/Auto/128/32credits/CPU未改。[独立R4](attachments/848/review-r4-final/review.md)，reviewed9/10，当前冻结merge统一门仍pending，未合入。下方OPEN仅历史。
+
 ### Plan 848 r3（2026-10-25，merge原生门阻塞，未合入）
 
 M848-NATIVE-BACKLOG OPEN（合入门阻塞，不是获准延期）：6bc5abc60/r3的producer/fresh consumer完整216各通过；原生用户脚本先后在Patrol phase5和搬迁例phase17记录auto-Pause tick backlog>4，随后输入/隐藏断言失败。单独原样Patrol通过；外部诱因未证实，不宣称848产品回归或全局原生绿。原时钟/credits/暂停及验收不改，reviewed9/10，T10剩余矩阵与收尾pending；未合入/沉淀/归档/清树。[收据及原始归因](attachments/848/merge-r1/receipt.md)。首次consumer链接栈配置遗漏已按既有32MiB配置定向及完整重放关闭，历史失败保留。

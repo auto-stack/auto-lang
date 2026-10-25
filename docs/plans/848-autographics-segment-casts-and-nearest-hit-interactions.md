@@ -28,6 +28,8 @@ affects: [auto-graphics, authoring-experimental, segment-query]
 
 ## 0. 变更摘要
 
+work:r5启动：用户授权解决原生backlog阻塞后继续合并。可控100ms绘制停顿已在原样Patrol复现原auto-Pause，再现phase5无动作失败；原生探针以固定绘制帧代替实际tick/input确认，导致合法自动暂停后仍发送刺激并错误归因。沿原848有界修复验证状态机：保留所有暂停/CPU/credit阈值，通过真实OS Resume恢复积压/显示间隔暂停、只在实际Running时发送输入，对被暂停清掉但尚未接受的按键批次重发，并按实际tick确认后检查原动作/像素断言；原phase截止时间不重置，focus丢失/负控/SingleStep不自动恢复。T07/T08/T09暂重开，executing6/10；不更改查询产品合同或另建Plan。实现提交后独立受影响复审，之后merge统一门全部通过才收尾。
+
 当前merge:r1因完整原生门阻塞，尚未合入：producer/fresh consumer完整216/216各通过，构建/源码正反/部分旧原生矩阵通过；用户脚本Patrol及搬迁例在两次完整尝试中先触发原有tick backlog>4自动暂停，输入断言失败。准确外部诱因未证实，未改阈值/实现。保持reviewed9/10，T10 pending，规范/ledger/归档/清理未执行。[合入收据与归因](attachments/848/merge-r1/receipt.md)。本段替代下方历史“暂不合入”的授权状态：用户已授权全部门过后收尾，但门未全过。
 
 当前状态：用户授权的独立子代理 `/root/review_848_r3` 最终复审 **pass**，F-848-R1-01 CLOSED，T09完成，reviewed9/10。冻结提交6bc5abc60，128节点/32credits/原CPU合同保持。T10完整合入门pending，暂不合入。详见[独立最终报告](attachments/848/review-r3-final/review.md)及§9 review:r3；下方授权待答复、独立pending及OPEN仅为历史记录。
@@ -353,6 +355,20 @@ stage:merge | plan_id:PLAN-848 | plan_revision:3 | outcome:blocked | reviewed_co
 [收据](attachments/848/merge-r1/receipt.md)、[原始归因](attachments/848/merge-r1/diagnosis.md)、[机器记录](attachments/848/merge-r1/blocked.json.txt)绑定真实执行。首次consumer遗漏既有32MiB链接栈的配置失败已由PE头/原配置和exact重放归因，随后全216通过；原日志保留不计绿。当前producer用户脚本首次Patrol phase5失败，单独原样Patrol phase27通过；完整重试Move/Patrol/Fast通过，搬迁例phase17再次记录tick backlog>4暂停后V隐藏断言失败。Play时钟/dispatch_credit及v1 API/原oracle未改，不能据此伪称全部Play文件未变或外部负载已证实。未改预算/节点/断言/暂停政策，停止无新条件的自动重试。
 
 独立最终pass仍绑定原冻结实现，尚未证明产品回归，保持reviewed9/10、T09完成、T10不勾选。没有合入autographics-dev、发布canonical/live ledger、归档或清树；实施HEAD/clean复核无漂移，当前规范输入hash无漂移。原生验证二进制/变异探针已按哈希留存仓外，producer/consumer树与缓存保留以便恢复。未跑root档或宣称批量绿；完整门未通过，不宣称交付完成。
+
+### 2026-10-25 work:r5 — pass / execution_done8/10
+
+用户授权解决原生积压问题后合并，沿原唯一848树完成有界验证器修复，冻结dd7076a7f40b35ffda6b876c36f826af3443fb97（parent6bc5）。可控100ms停顿在原探针复现自动暂停后无动作；当前五个停顿正控覆盖motion/held-motion/未接受hide/restore/已接受V不重放，另移除恢复的变异在原phase4截止失败。Patrol/搬迁phase27成功，wrong-focus仍phase5拒绝；Step正常/延迟成功、丢失/重复原阶段原断言拒绝。[准确修复、边界与原始证据](attachments/848/work-r5/receipt.md)。
+
+修复只改原生Play验证状态机、新控制脚本、handoff和374源receipt四文件；生产时钟/Host/Auto数学/SDK/AGP/三锁完全未改。实际OS Resume恢复合法clock暂停，按接受tick确认输入，恢复未接受的V而不重放已接受V；动作数量、独立像素/trace/SingleStep/Stop/焦点loss和360frame阶段deadline不变。无变更查询产品合同，plan_revision仍3。check/fmt/diff/source通过，原146SDK warning保持。历史准备/occlusion/has_focus等待失败留档不计绿；本轮未跑全包/根整档。T07/T08重新完成，T09待受影响独立复审，T10全部统一门/收尾pending，未合入/发布规范/ledger/归档/清树。
+
+stage:work | plan_id:PLAN-848 | plan_revision:3 | outcome:pass | worktree_path:D:/autostack/.wt/lang-848/auto-lang | branch:plan-848-dev | code_commit:dd7076a7f40b35ffda6b876c36f826af3443fb97 | dependency_revisions:SDK7b987/原三锁与AGP未变 | task_ids:T01..08 closed,T09/T10 pending | finding:M848-NATIVE-BACKLOG work-fixed pending review | next:独立affected review，然后merge冻结完整门。
+
+### 2026-10-25 review:r4 final — pass / reviewed9/10
+
+独立子代理/root/review_848_r3复审冻结dd7076a7f40b35ffda6b876c36f826af3443fb97，M848-NATIVE-BACKLOG CLOSED。另选实际OS兄弟控制：phase13文本焦点300ms display-gap恢复、phase10真实3D held-motion恢复、100ms恢复后wrong-focus仍拒绝均成立；强制重投已接受V的副本在phase17原隐藏断言失败，接受凭据具有区分性。work-r5六clock/三native/四Step raw子断言及hash审计通过。产品clock/Host/Auto/SDK/AGP/锁及冻结Spec delta未变，原F01闭合证据保留。[完整独立报告](attachments/848/review-r4-final/review.md)。最终HEAD/clean无漂移，未修改实施或主计划，父代理单写本记录。
+
+stage:review | review_scope:final affected | reviewer_identity:独立子代理/root/review_848_r3，未参与work:r5实施 | plan_id:PLAN-848 | plan_revision:3 | outcome:pass | reviewed_commit:dd7076a7f40b35ffda6b876c36f826af3443fb97 | base_commit:bf22db3465203f3babd649494f4b37aa2a012027 | dependency_revisions:SDK7b987/AGP/三锁未变 | spec_inputs:review-r4-final/baseline与原a07b8bff14af5359d9eef139da1d4204d3e0a9bca907a541b57005800529d89a | acceptance_results:AC01..09 pass，AC10 pending | findings:M848-NATIVE-BACKLOG CLOSED，F-848-R1-01保留CLOSED | pending_closeout_gates:T10全部完整门 | next:按用户已授权执行merge统一门，全部过后落地/沉淀/归档/guard清理。
 
 ## 10. 待澄清事项
 
