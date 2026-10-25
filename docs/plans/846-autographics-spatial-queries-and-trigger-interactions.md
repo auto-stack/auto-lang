@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-846
-status: executing
+status: execution_done
 feature_name: AutoGraphics空间查询与触发交互原型
 plan_revision: 2
 author: [Codex]
 created_at: 2026-10-25
 updated_at: 2026-10-25
-current_step: 6
+current_step: 9
 total_steps: 11
 depends_on: [PLAN-845]
 supersedes_spec_components:
@@ -238,19 +238,19 @@ r1可行性原型与反例详§9。r2先执行V13/T02-SDK，再继续T02；既�
 
 ## 8. 执行步骤
 
-当前T-01、T-02-SDK、T-02/T-04/T-05/T-07完成；R1复审重开T-03/T-06/T-08，修复F-846-R1-01后受影响复审；T-09/T-10 pending（§9）。T-01..08关闭且无必需gap才execution_done9/11；T-09最终独立pass为reviewed10/11，完整merge门pending；T-10实际收尾才交付11/11。
+当前T-01、T-02-SDK、T-02..08完成；F-846-R1-01已提交修复，T-09受影响复审/T-10 pending（§9）。T-01..08关闭且无必需gap才execution_done9/11；T-09最终独立pass为reviewed10/11，完整merge门pending；T-10实际收尾才交付11/11。
 
 | task_id | owner_stage | 依赖 | 实际触点／拟新增路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
 | T-01 [x] | work | G845/GSTART | 845正式收据/Spec、唯一846树、SDK/三锁/verify_source与所有原分母 | 受影响review/合入/清理齐、正式完整SHA与来源可消费，重新冻结；AC-01 |
 | T-02-SDK [x] | work | T-01 | 上游auto-val/nano_value.rs NaN生产边界、定向回归、最小SDK artifact、新pin/source-lock/current verify入口 | V13原NaN反例转绿/旧编码mutation红，有限/±0/±Inf/tag对照、真实callback/SDK来源齐；AC04/05/08 |
 | T-02 [x] | work | T-02-SDK | 正式behavior/Play/项目接口、interaction::bounds/transform；新research/spatial-query-feasibility.md | §5.1 whole-path、v1 helper/版本/预算/三维GLB像素/Stop与失败控制通过，最多两方案；否则回new；AC-03, AC-04, AC-05 |
-| T-03 | work | T-02 | behavior.rs/behavior_project.rs版本化构造/准入/身份/绑定、CLI/UI版本数据通路；新spatial_api/project tests | V-03/07版本/source/同raw角色/历史隔离定向过，v1源码身份/合法集合不变；AC-03, AC-06 |
+| T-03 [x] | work | T-02 | behavior.rs/behavior_project.rs版本化构造/准入/身份/绑定、CLI/UI版本数据通路；新spatial_api/project tests | V-03/07版本/source/同raw角色/历史隔离定向过，v1源码身份/合法集合不变；AC-03, AC-06 |
 | T-04 [x] | work | T-03 | 新authoring/spatial.rs、原interaction几何复用和实际资源只读借用；新spatial_geometry tests | V-02/08元数据与V-11扫描/资源部分过，全mesh/8角/有限状态/身份正确；AC-02, AC-04, AC-07 |
 | T-05 [x] | work | T-04 | 新api/behavior_spatial_v2.at、Play profile8/配置/consumer/错误预算 | V-04/05/06/08实际Auto查询、同callback更新、32/33/原预算与Starting/Stop通过；AC-04, AC-05 |
-| T-06 | work | T-05 | Host/Panel/bin版本选择闭合、samples/spatial_projects/zone2d、zone3d | V-07/09正式默认/临时源与项目/源定位，用户Auto触发语义和原v1/845定向控制过；AC-06 |
+| T-06 [x] | work | T-05 | Host/Panel/bin版本选择闭合、samples/spatial_projects/zone2d、zone3d | V-07/09正式默认/临时源与项目/源定位，用户Auto触发语义和原v1/845定向控制过；AC-06 |
 | T-07 [x] | work | T-06 | 新check_spatial_queries.py/正式OS路径/真实GPU故障及新进程项目回放 | V-09/10两项目仓外同binary/搬迁/条件变异/partial/Stop画面完整，非环境gap；AC-08 |
-| T-08 | work | T-07 | 新check_spatial_owners.py、source/fresh consumer/README、新research/spatial-query-handoff.md/Spec proposal | V-01/11/12、20轮owner/扫描上传、全部work定向/check/fmt与准确完整merge矩阵齐；AC-01, AC-07, AC-08 |
+| T-08 [x] | work | T-07 | 新check_spatial_owners.py、source/fresh consumer/README、新research/spatial-query-handoff.md/Spec proposal | V-01/11/12、20轮owner/扫描上传、全部work定向/check/fmt与准确完整merge矩阵齐；AC-01, AC-07, AC-08 |
 | T-09 | review | T-08 | 同树冻结code/Plan/Spec及原始两项目报告，主检出独立review附件 | 逐AC-01..08/SD/遗漏/延后/workaround/健康绑定结论；AC-09 |
 | T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出Spec/ledger/archive/guard/到期 | AC-10实际落地/清理，改代码先受影响复审再新冻完整门，不提前宣称交付 |
 
@@ -314,6 +314,14 @@ stage:review | review_scope:final | reviewer_identity:Codex /root；同实施会
 
 完整统一门仍merge-owned pending：未来最终pass后root裸t+tv、driver producer/consumer175、AGP163/16native、原83及新spatial每侧14/owner/source矩阵、独立根SDK/图形落地与知识归档guard到期收尾。本次是首轮final needs_fix，不触发两轮失败诊断要求；修复不要求重跑无关整档或已闭native/GC全矩阵。
 
+### 2026-10-25 work:r3 — F-846-R1-01闭合 / execution_done9/11
+
+stage:work | plan_id:PLAN-846 | plan_revision:2 | outcome:pass | worktree_path:`D:/autostack/.wt/lang-846/auto-lang` | branch:plan-846-dev | base_commit:`655c366a3a4c53160c259a0b91a50c02d1cb020a`（修复基线；Plan原base仍c1c7cfea） | code_commit:`bf22db3465203f3babd649494f4b37aa2a012027` | dependency_revisions:SDK7b987ca8/auto-downc39ac7f9/三锁未变 | task_ids:T03/T06/T08重新关闭 | evidence:[finding不变量/输入/关闭表](attachments/846/work-r3/readiness.json.txt) | blockers:无 | next_responsible_role:review，用户已授权继续受影响复审。
+
+F-846-R1-01：生产CLI在版本解析前区分option存在与值缺席，终端缺值及下一option误当值均exit2且不执行inspect；合法absent/default/v1/v2保持绑定。永久spatial_cli 3测试实际10子进程（3缺值、3孤立/未知、4合法）原parser先2pass/1red，修复后3pass；实际Host文件版本/伪造不回落定向1pass，all-targets check/fmt/diff通过。未扩大语言/API/SDK/几何/预算/原生范围，语义revision2不变。
+
+最终来源闭包345hash（新增CLI回归），SDK681及三锁不变；fresh consumer846-r3-final自有SDK/源码导出与四实际来源变异/恢复通过，未跑consumer整档。新增3永久测试使merge预计完整driver分母178=原158+本Plan20；README/handoff/拟议integration Spec只刷新计数。R1未变AC/原证据具名保留；全局t/tv/整包/native全矩阵未重跑，最终pass后仍归merge。实施树末核clean。
+
 ## 10. 待澄清事项
 
-无待用户决定的阻塞。R1发现F-846-R1-01（CLI缺值未拒绝），须回同树work修复后受影响复审；当前不具备pass。F-846-T02-NAN已由r2修复及重放关闭，不再沿用r1只读SDK限制。原数值/支持/预算合同保持；未授权其他SDK改动/生产扩面。历史入口与needs_replan证据保留§9与附件。
+无待用户决定的阻塞。F-846-R1-01已提交修复及定向关闭，等待受影响复审；无剩余work阻塞。F-846-T02-NAN已由r2修复及重放关闭，不再沿用r1只读SDK限制。原数值/支持/预算合同保持；未授权其他SDK改动/生产扩面。历史入口与needs_replan证据保留§9与附件。
