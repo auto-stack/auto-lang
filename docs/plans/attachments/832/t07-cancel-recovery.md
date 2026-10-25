@@ -24,4 +24,4 @@
 
 另经直接 swap 故障反例发现：backup 标记若在回滚时带回根目录会被 verify 判为额外文件。现仅在回滚前删除该标记，成功保留的 backup 仍留标记；同一反例重放后旧根 verify 通过且 staging 清零（修复 commit `074084827d0cf7533f16782307b4766fbce40299`）。
 
-独立 clone 的升级/坏 hash/半安装/陌生目录矩阵由 `scripts/man-distribution.py` 另附完整收据。
+独立 clone 的升级/坏 hash/半安装/陌生目录矩阵由 `scripts/man-distribution.py` 另附完整收据。首轮矩阵还暴露“只比较 manifest hash 而未重新 verify”驱动盲区，现每个失败用例均追加旧安装 verify（`3f85c634448a642b264a684d896f9e5bbe18356b`），避免把额外污染文件误判为恢复成功。
