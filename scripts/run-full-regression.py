@@ -70,6 +70,9 @@ def preserve_reports(lang, out):
     """
     paths = [lang / "docs/reports/plan796/turnaround-ipc.json"]
     paths += sorted((lang / "docs/reports/plan818").glob("turnaround-mn-*.json"))
+    paths += [lang / "docs/plans/reports/738-stdlib-matrix.json",
+              lang / "docs/plans/reports/738-stdlib-matrix.md",
+              lang / "docs/reports/plan827/inventory.json"]
     saved = []
     manifest = []
     try:

@@ -15,7 +15,7 @@ Auto 语言的核心实现：lexer/parser/AST、类型系统、解释器、AutoV
 
 完整测试编排（PLAN-850）：`cargo tf/taa/ta/t3` 经 `scripts/full-regression-driver` 调用标准库 Python 编排器，在语言与 UI 各自 workspace 串行执行原完整选择。tf 保留三项语言集成目标；taa/ta/t3 保留各自 feature/profile，作用域子串过滤可显式传入，作用域运行不构成全量覆盖证据。`cargo tf --batch` 追加原语言 tt/tb，正式批量仅主检出单实例运行；`--list-only` 只构建、清点选择面，供 work/review 验收使用。
 
-编排器以机器锁保护全程，清点真实 nextest JSON 中的逐 ID、必选状态与非零选择，记录新增项、实际命令、配置和依赖身份。缺 owner、零选择、子门失败、超时或中断均返回非零并保留收据，首红停止；现有测试输入、profile、P95 与资源隔离不变。根目录按显式环境覆盖→组内兄弟→主检出解析，并校验语言依赖真实 UI 路径；不重定向 worker 的 target 目录。既存 796/818 输出报告先保护、运行后恢复并保存生成证据；无法安全保护报告时在运行前拒绝，不覆盖用户 WIP。
+编排器以机器锁保护全程，清点真实 nextest JSON 中的逐 ID、必选状态与非零选择，记录新增项、实际命令、配置和依赖身份。缺 owner、零选择、子门失败、超时或中断均返回非零并保留收据，首红停止；现有测试输入、profile、P95 与资源隔离不变。根目录按显式环境覆盖→组内兄弟→主检出解析，并校验语言依赖真实 UI 路径；不重定向 worker 的 target 目录。既存 738 矩阵（JSON/Markdown）、796 IPC、818 turnaround、827 inventory 输出报告先保护、运行后恢复并保存生成证据；无法安全保护报告时在运行前拒绝，不覆盖用户 WIP。
 
 ## 模块架构
 

@@ -162,6 +162,36 @@ class Controls(unittest.TestCase):
             self.assertEqual(report.read_bytes(), b"user WIP original")
             self.assertEqual((out / "report-0-generated").read_bytes(), b"generated")
 
+    def test_matrix_and_inventory_reports_restore_even_after_partial_prepare(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            names = ["docs/reports/plan796/turnaround-ipc.json",
+                     "docs/plans/reports/738-stdlib-matrix.json",
+                     "docs/plans/reports/738-stdlib-matrix.md",
+                     "docs/reports/plan827/inventory.json"]
+            paths = [root / name for name in names]
+            for index, path in enumerate(paths):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(f"user WIP {index}".encode())
+            originals = [path.read_bytes() for path in paths]
+            out = root / "receipt"
+            out.mkdir()
+            with paths[1].open("r+b") as handle, mmap.mmap(handle.fileno(), 0) as mapped:
+                if sys.platform == "win32":
+                    with self.assertRaises(OSError):
+                        with full.preserve_reports(root, out):
+                            self.fail("mapped matrix must reject before executing tests")
+                self.assertEqual([path.read_bytes() for path in paths], originals)
+                self.assertEqual(mapped[:], originals[1])
+            with self.assertRaises(RuntimeError):
+                with full.preserve_reports(root, out):
+                    for index, path in enumerate(paths):
+                        path.write_bytes(f"generated {index}".encode())
+                    raise RuntimeError("test child failed")
+            self.assertEqual([path.read_bytes() for path in paths], originals)
+            generated = {path.read_bytes() for path in out.glob("*-generated")}
+            self.assertEqual(generated, {f"generated {i}".encode() for i in range(4)})
+
     def test_selection_zero_and_ignored_are_not_green(self):
         for case in ({}, {"x": {"ignored": True, "filter-match": {"status": "matches"}}},
                      {"x": {"ignored": False, "filter-match": {"status": "mismatch"}}}):

@@ -39,7 +39,7 @@ one the language workspace actually consumes. Receipt identities include both
 HEADs, code/config diffs and lockfile hashes. A named machine mutex covers the
 entire queue. Child deadlines do not alter nextest's per-test deadlines; timeout
 and interruption terminate the child tree, with bounded cleanup. Existing
-producer-only 796/818 reports are protected and restored byte-for-byte while
+producer-only 738 matrix / 796 IPC / 818 turnaround / 827 inventory reports are protected and restored byte-for-byte while
 generated reports are retained. Failure to protect/restore them fails the gate.
 
 Focused controls: `python -m unittest discover -s scripts -p test_full_regression.py`.
