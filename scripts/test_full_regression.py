@@ -22,6 +22,24 @@ class Controls(unittest.TestCase):
             with self.assertRaises(ValueError):
                 full.root("auto-ui")
 
+    def test_reverse_sdk_owner_mismatch_is_rejected(self):
+        lang = Path("language").resolve()
+        ui = Path("ui").resolve()
+        language = {"packages": [
+            {"name": "auto-lang", "manifest_path": str(lang / "crates/auto-lang/Cargo.toml"),
+             "dependencies": [{"name": "auto-ui-compiler", "path": str(ui / "crates/auto-ui-compiler")}]},
+            {"name": "auto-lang-core", "manifest_path": str(lang / "crates/auto-lang-core/Cargo.toml")}
+        ]}
+        ui_data = {"packages": [{"name": "auto-ui-compiler", "dependencies": [
+            {"name": "auto-lang-core", "path": str(lang / "crates/auto-lang-core")}
+        ]}]}
+        with mock.patch.object(full.subprocess, "check_output", side_effect=[json.dumps(language), json.dumps(ui_data)]):
+            full.validate_layout(lang, ui)
+        ui_data["packages"][0]["dependencies"][0]["path"] = "different-language/crates/auto-lang-core"
+        with mock.patch.object(full.subprocess, "check_output", side_effect=[json.dumps(language), json.dumps(ui_data)]):
+            with self.assertRaisesRegex(ValueError, "language SDK owner mismatch"):
+                full.validate_layout(lang, ui)
+
     def run_queue_control(self, child_code):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)

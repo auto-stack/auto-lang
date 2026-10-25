@@ -25,7 +25,7 @@ def identity(path):
     def git(*args):
         return subprocess.check_output(["git", "-C", str(path), *args])
     return {"head": git("rev-parse", "HEAD").decode().strip(),
-            "diff_sha256": hashlib.sha256(git("diff", "HEAD", "--", "crates", "scripts", ".cargo", ".config", "Cargo.toml", "Cargo.lock")).hexdigest(),
+            "diff_sha256": hashlib.sha256(git("diff", "HEAD", "--", ".", ":(exclude)docs/plans", ":(exclude)docs/reports")).hexdigest(),
             "lock_sha256": hashlib.sha256((path / "Cargo.lock").read_bytes()).hexdigest()}
 
 
@@ -37,6 +37,13 @@ def validate_layout(lang, ui):
             expected = ui / "crates" / dependency["name"]
             if Path(dependency["path"]).resolve() != expected.resolve():
                 raise ValueError(f"UI owner mismatch: {dependency['name']} resolves to {dependency['path']}, requested {expected}")
+    language_packages = {p["name"]: Path(p["manifest_path"]).parent.resolve() for p in metadata["packages"]}
+    ui_metadata = json.loads(subprocess.check_output(["cargo", "metadata", "--no-deps", "--format-version", "1"], cwd=ui))
+    for package in ui_metadata["packages"]:
+        for dependency in package["dependencies"]:
+            expected = language_packages.get(dependency["name"])
+            if expected is not None and dependency.get("path") and Path(dependency["path"]).resolve() != expected:
+                raise ValueError(f"language SDK owner mismatch in {package['name']}: {dependency['name']}")
 
 
 def require_main(lang):
