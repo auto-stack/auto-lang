@@ -114,3 +114,7 @@ TypeMismatch 诊断 payload 保留 field,members/defines 在编解码两侧采�
 同请求再生逐字节一致为在案 oracle)。逐字段适用性/消费点/携带面边界:
 `docs/plans/attachments/815/t07-acceptance/batch3/field-profile-matrix.md`
 (携带字段=交接保真非缺陷;后续接线新消费须同步该表)。（PLAN-815 M815-B，T-09 R2 pass @ 生产冻结位 0f2858e35；终稿正文与证据：attachments/815/handoff.md §规范增量）
+
+## PLAN-831 共享声明单源（C2，as-built）
+
+SidecarDecl/sidecar_decl_from_root 与 theme_decl_from_root/external_backend_from_root（pac 展示面提取）单源定义于本 crate；auto-man-core pac_from_decl 的展示字段一行委派本 crate 规则（Man 旧 sidecar 入口再导出 shim 保身份）。UI tools 与 auto-api-gen 自本 crate 消费，零 auto-man-core 依赖；I-PROJECT wire、动态求值/缺省/覆盖语义与进程状态身份不变。

@@ -94,3 +94,7 @@ DELETE_PENDING(303)同为需在调用方既定截止时间内重试的竞争。�
 只有 AlreadyExists 分支可检查 stale 并尝试接管，其他错误不能据此删除锁。
 非竞争性硬错误仍直接降级，诊断保留最近系统错误。未改变锁文件路径/内容或
 跨仓约定，不宣称超时降级状态下仍提供互斥保证。
+
+## PLAN-831 SDK 独立源（SD-06，as-built）
+
+纯 SDK 缺 UI 检出仍可 parse/compile/VM 执行：normal/build/dev 闭包不拉 UI 组合（隔离 clone 反控实测）。旧 auto-lang UI 面为上层再导出（指向独立 UI 仓真实 owner），不混入纯 SDK 承诺。

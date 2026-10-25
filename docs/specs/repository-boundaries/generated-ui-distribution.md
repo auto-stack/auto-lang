@@ -198,3 +198,7 @@ shadcn/根级输入):
 - DELIVERY_CRATES 表增补(CLI/service/protocol/tool)属发行收口,随 R07 搬仓
   单独定稿(历史注记保持);正式独立安装包资源布局同。
 （PLAN-816 M816-B;终稿证据:attachments/816/handoff.md）
+
+## PLAN-831 多源 producer（SD-04，as-built）
+
+受管 UI 五包实际源可由独立 UI 根提供：delivery_crate_source 按显式 UI 根/组内 UI 源取得 owner 源码并投影为 bundle 内相对依赖；语言 SDK 源及其 root inputs 具名登记（探索序=primary 语言根优先再查 UI 根）。canonical auto-ui-runtime + auto-lang-core 双直依赖、vendored patch、版本 pin、多槽锁、资源哈希与陌生目录/旧字节保护不变；交付身份记录各 producer 根及固定 revision/内容 hash，不能只标语言根 SHA 而未绑定 UI 源。缺环境记录不阻塞（r3：jet/ark 真实构建转后续门控），不支持删除/allowlist 扩大。

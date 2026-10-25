@@ -107,3 +107,7 @@ autodown/ui-headless/code-editor 等）在此转发。
 约定；daily/full/t3 均须实际把整族绑定至 ffi-dual 组。显式 config-file
 整体替换配置，仅声明空组不产生隔离；不改变包布局、features 反例、输入、
 测试选择或值断言。该约定约束测试共享资源，不宣称修复生产ABI并发语义。
+
+## PLAN-831 上层兼容与切源（SD-06，as-built）
+
+五 UI 包生产 owner=独立 auto-ui 仓（组内兄弟相对 path + 受管锁）；本包作为上层兼容组合保留：公开路径经真实 UI owner 再导出，不进入纯 SDK 闭包。旧 auto-lang 巨包不再被 UI 仓反向依赖。

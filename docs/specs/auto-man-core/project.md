@@ -27,3 +27,7 @@
 ## 验证锚点
 
 crate 单测（closure/selection/planning/target/backend 全规则 oracle）；auto-man plan809_management_core（api_compat_probe 全字段构造 pin/production_delegation_parity/环/V-05）；man-core-consumer 外部全链。
+
+## PLAN-831 展示面委派（C2，as-built）
+
+pac_from_decl 完整 Man 规则仍居本 crate；其 theme/external_backend 展示字段一行委派 auto-project-model 单源（SidecarDecl/pac 展示提取）。sidecar 旧入口再导出 shim 保身份；UI tools 与 auto-api-gen 不再依赖本 crate。

@@ -415,3 +415,7 @@ UI 生产算法(vue/rust_ui/jet/ark/tauri/vscode/shadcn/gallery/wm 等)已全部
   兜底，`current` 显式优先——ctor/默认安装走默认槽，显式注入恒胜出；create_jet
   等旧默认行为经 compat 自举安装保持。
 （PLAN-816 M816-B；终稿证据：attachments/816/handoff.md）
+
+## PLAN-831 兼容身份（SD-06，as-built）
+
+对 UI 侧消费的声明/展示规则单源=auto-project-model（本仓经 auto-man-core 委派消费）；Man 域构建规则语义不变，包身份与入口兼容保持。

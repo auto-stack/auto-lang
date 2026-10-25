@@ -109,3 +109,7 @@ VM/iced extra 根和 manifest 聚合时去重；空子模块继续按无入口/p
 空子模块、显式 extra 优先及聚合去重；Vue `extra_roots_three_track_parity`
 覆盖正式目录 `auto-notes`→稳定 `015-notes` 且没有第二个新名入口。
 物理迁移归 [AutoOS PLAN-050](../../../../auto-os/docs/plans/archive/050-app-directory-product-names.md)。
+
+## PLAN-831 仓属与来源（SD-05，as-built）
+
+本 crate 物理属 auto-ui 仓（迁移基线=语言仓 e199caf8a 内容；测试/资源/接口 owner 随迁）。schema/aura.at 自持（crate 相对 include）；a2gd 语料单源留语言仓，dialect 回归以兄弟路径读。blueprints 消费经 resolve_blueprints_root 三级解析（env → cwd 向上 → 编译期组内兄弟语言仓兜底；兜底须精确解析到实际存在且含真实包的单源——独立 clone 无兄弟布局不在生成支持矩阵）。跨仓 CI 保留原测试 ID/feature 选择/integration/单进程 ui_gen 档（tu 863 唯一 ID 恒等基线）。

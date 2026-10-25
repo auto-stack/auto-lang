@@ -64,3 +64,9 @@ auto-ui 主检出带未提交 `M Cargo.lock`（原始字节已保全）；auto-m
 迁出候选路径 → 未来 owner → 资源/生成物/测试/消费者 → 在途计划的重放基线表
 见 [PLAN-784 迁出清单附件](../../plans/attachments/784/t04/migration-inventory.md)；
 编排顺序见[正式拆分与搬迁路线](../../plans/reports/v06-extraction-execution-roadmap.md)。
+
+## PLAN-831 迁仓实况（SD-03，as-built）
+
+- 保全：T-02 快照 45044cf9507d5628（10 refs/WIP 盘点、bundle 载荷 `.recovery/831-legacy-preservation`）、verify/recover-drill 读回在案；payload 与 legacy 分支不得作为清理对象。
+- 迁移：841 文件五包迁入既有 auto-ui 仓（T-04 导入窗口逐字节恒等），语言仓原件删除（零丢失对拍），旧 UI legacy 退出候选 workspace。迁移分支候选与默认分支实际交付区分：默认分支落地收据见归档 Plan 831（T-11 switch 事务）。
+- 远端动作：未执行（未 push/更名/force）；如实记录，不冒称已发布。

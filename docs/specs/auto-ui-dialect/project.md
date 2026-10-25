@@ -105,3 +105,7 @@ AST（R10 退出）；`scan_use_statements` 字符串级 use 扫描与真实文�
 加载（语言所有者——UI 专属 use 块已在本 crate，模块加载器不属 UI 文法）；
 UI 生成器/renderer/Man 工具与 Git 仓迁移（R04/R08）。auto-lang→本 crate
 的组合宿主边为 module-boundaries 已声明合法边（lang-core 域）。
+
+## PLAN-831 仓属与来源（SD-05，as-built）
+
+本 crate 物理属 auto-ui 仓（迁移基线=语言仓 e199caf8a 内容；86 测试 ID 恒等）。留语言仓的 a2gd 语料为单源，本包回归以组内兄弟路径读取（不复制语料）。
