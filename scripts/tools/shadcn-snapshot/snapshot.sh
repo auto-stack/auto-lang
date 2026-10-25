@@ -3,12 +3,12 @@
 #
 # Usage: snapshot.sh <scratch-dir> [component-name ...]
 #   Fetches each catalog component (default style, matching
-#   crates/auto-man/assets/shadcn-ui/SNAPSHOT.md) into a scratch Vite-less
+#   ../auto-ui/crates/auto-ui-tools/assets/shadcn-ui/SNAPSHOT.md) into a scratch Vite-less
 #   project via `pnpm dlx shadcn-vue@latest add`, one item per invocation so
 #   a single registry miss doesn't abort the whole batch.
 #
 # Afterwards copy <scratch-dir>/src/components/ui/* into
-# crates/auto-man/assets/shadcn-ui/ and re-apply the Sonner icon renames
+# ../auto-ui/crates/auto-ui-tools/assets/shadcn-ui/ and re-apply the Sonner icon renames
 # (see SNAPSHOT.md).
 
 set -u

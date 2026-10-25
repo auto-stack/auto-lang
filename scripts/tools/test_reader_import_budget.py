@@ -480,7 +480,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--auto-bin",
                     default=os.environ.get("AUTO_BIN",
-                                           os.path.join(REPO_ROOT, "target/debug/auto.exe")))
+                                           os.path.join(REPO_ROOT, "..", "auto-man", "target/debug/auto.exe")))
     ap.add_argument("--reader-dir", default=r"D:\autostack\auto-reader")
     ap.add_argument("--out-dir", default=os.environ.get("P781_T17_OUT", "D:/p781-t17/out"))
     ap.add_argument("--only", default="", help="逗号分隔用例过滤（v17_txt,…）")

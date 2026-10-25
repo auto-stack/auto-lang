@@ -272,6 +272,7 @@ code_fence_zero = true
 [[text_scan]]
 id = "man_to_language"
 description = "auto-man 源码对语言实现的文本引用候选（auto_lang:: 前缀）"
+repo = "auto-man"
 source_roots = ["crates/auto-man/src"]
 patterns = ["\\bauto_lang::"]
 
@@ -302,6 +303,7 @@ exit_phase = "-"          # 生产标准库留语言仓
 [[assets]]
 id = "auto-man-assets"
 coverage_group = "assets"
+repo = "auto-man"
 root = "crates/auto-man/assets"
 owner = "auto-man"
 exit_phase = "R7"
@@ -309,6 +311,7 @@ exit_phase = "R7"
 [[assets]]
 id = "man-template-assets"
 coverage_group = "assets"
+repo = "auto-man"
 root = "crates/auto-man-assets/assets"
 owner = "auto-man"
 exit_phase = "R7"
@@ -489,6 +492,7 @@ evidence = "调研 §5.3：ui/app_registry.rs 平铺文本读 pac；项目元信
 id = "split-man-package-core"
 coverage_group = "man-split"
 kind = "split"
+repo = "auto-man"
 path = "crates/auto-man-core/src/pac.rs"  # PLAN-831 F831-09-04：定义恒居 man-core（T-05 后展示面单源 project-model）
 owner = "man-core"
 exit_phase = "R5"
@@ -520,6 +524,7 @@ evidence = "调研 §5.2：api_gen/http_service/tauri_backend 通用部分归语
 id = "split-man-http-service"
 coverage_group = "man-split"
 kind = "split"
+repo = "auto-man"
 path = "crates/auto-man-runtime/src/http_service.rs"  # PLAN-831 F831-09-04：PLAN-816 T-03 析出 man-runtime
 owner = "lang-service-adapter"
 exit_phase = "R5"
@@ -550,6 +555,7 @@ evidence = "调研 §5.2：rust_ui 164 行引用面属 UI 工程编排（与 vue
 [[ownership]]
 id = "split-man-build-scheduling"
 kind = "split"
+repo = "auto-man"
 path = "crates/auto-man-runtime/src/builder.rs"  # PLAN-831 F831-09-04：PLAN-816 T-03 析出 man-runtime
 owner = "man-core"
 exit_phase = "R5"
@@ -560,6 +566,7 @@ evidence = "调研 §5.2：builder/{cargo,ninja}、target、工具发现/进程�
 [[ownership]]
 id = "split-cli-thin-entry"
 kind = "split"
+repo = "auto-man"
 path = "crates/auto/src/main.rs"
 owner = "auto-man"
 exit_phase = "R5"

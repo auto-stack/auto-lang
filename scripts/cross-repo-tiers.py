@@ -43,9 +43,9 @@ TOOL = "scripts/cross-repo-tiers.py"
 RECEIPT_SCHEMA = "cross-repo-tiers-receipt/1"
 LISTING_SCHEMA = "cross-repo-tier-listing/1"
 
-REPOS = ("auto-lang", "auto-ui", "auto-down")
+REPOS = ("auto-lang", "auto-man", "auto-ui", "auto-down")
 
-# 档位表：repo → alias/命令（与两仓 .cargo/config.toml 的 [alias] 对齐；
+# 档位表：repo → alias/命令（与各仓 .cargo/config.toml 的 [alias] 对齐；
 # 变更别名时同步此处）。nextest 档用 nextest list 对齐构建/选择语义；
 # bare cargo test 档（tu/tn）用 libtest --list。
 TIERS: dict[str, dict] = {
@@ -57,6 +57,19 @@ TIERS: dict[str, dict] = {
     "lang-tu": {"repo": "auto-lang", "run": ["cargo", "tu"],
                 "list": ["cargo", "test", "-p", "auto-lang", "--lib",
                          "--features", "auto-lang/ui-iced", "ui_gen::", "--", "--list"]},
+    "man-t": {"repo": "auto-man", "run": ["cargo", "t"],
+              "list": ["cargo", "nextest", "list", "--workspace", "--lib", "--bin", "auto"]},
+    "man-ti": {"repo": "auto-man", "run": ["cargo", "ti"],
+               "list": ["cargo", "nextest", "list", "-p", "auto", "--test", "plan816_cli_driver",
+                        "--test", "cmd_ui", "--test", "autodesk_client_smoke",
+                        "-p", "auto-man-runtime", "--test", "plan816_t03_non_ui_service",
+                        "--test", "plan816_t03_ui_default_fallback", "--test", "plan816_t03_ui_inject_explicit_first",
+                        "-p", "auto-man", "--test", "plan803_asset_facade_tests",
+                        "--test", "plan805_toolchain_parity", "--test", "plan805_type_identity",
+                        "--test", "plan809_management_core", "--test", "plan811_media_consumers",
+                        "--test", "plan815_t04_compat", "--test", "plan816_t03_create_jet_default",
+                        "--test", "plan816_t03_legacy_util_paths", "--test", "plan816_t03_sidecar_request",
+                        "--test", "plan816_t03_ui_inject_compat"]},
     "ui-t": {"repo": "auto-ui", "run": ["cargo", "t"],
              "list": ["cargo", "nextest", "list", "--workspace", "--lib"]},
     "ui-tu": {"repo": "auto-ui", "run": ["cargo", "tu"],
@@ -72,7 +85,7 @@ TIERS: dict[str, dict] = {
                        "--test", "native_dnd_e2e", "--", "--list"]},
 }
 
-DEFAULT_QUEUE = ("lang-t", "lang-tu", "ui-t", "ui-tu", "ui-ti")
+DEFAULT_QUEUE = ("lang-t", "lang-tu", "man-t", "man-ti", "ui-t", "ui-tu", "ui-ti")
 
 
 def resolve_root(repo_id: str, override: str | None) -> Path:

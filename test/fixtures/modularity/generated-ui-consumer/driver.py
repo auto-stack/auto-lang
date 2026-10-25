@@ -43,6 +43,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 WT_ROOT = HERE.parents[3]  # test/fixtures/modularity/<this> -> repo root
+MAN_ROOT = WT_ROOT.parent / "auto-man"
+UI_ROOT = WT_ROOT.parent / "auto-ui"
 PROJ = HERE / "proj"
 
 SCRATCH_ENV_KEYS = [
@@ -302,17 +304,17 @@ def main() -> int:
     # PLAN-831 T-07：`auto gen` 走 framed I-TOOL 工具宿主子进程（auto-ui-tool
     # bin）；`cargo build -p auto` 只构建依赖 lib 不刷依赖 bin——工具 bin
     # 须显式同建，防陈旧宿主假红/假绿。
-    auto_exe = WT_ROOT / "target" / "debug" / "auto.exe"
+    auto_exe = MAN_ROOT / "target" / "debug" / "auto.exe"
     if not args.skip_build_auto or not auto_exe.is_file():
         t0 = time.time()
-        r = run(["cargo", "build", "-p", "auto"], WT_ROOT, consumer_env(), timeout=2400)
+        r = run(["cargo", "build", "-p", "auto"], MAN_ROOT, consumer_env(), timeout=2400)
         if r.returncode != 0:
             record("build-auto-cli", False, r.stderr[-800:])
             return 1
         record("build-auto-cli", True, f"{time.time() - t0:.0f}s")
         t0 = time.time()
-        r = run(["cargo", "build", "-p", "auto-ui-tools"], WT_ROOT, consumer_env(), timeout=2400)
-        tool_exe = WT_ROOT / "target" / "debug" / "auto-ui-tool.exe"
+        r = run(["cargo", "build", "-p", "auto-ui-tools"], UI_ROOT, consumer_env(), timeout=2400)
+        tool_exe = UI_ROOT / "target" / "debug" / "auto-ui-tool.exe"
         if r.returncode != 0 or not tool_exe.is_file():
             record("build-ui-tool-host", False, (r.stdout + r.stderr)[-800:])
             return 1

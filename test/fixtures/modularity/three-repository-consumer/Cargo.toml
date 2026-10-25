@@ -5,7 +5,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-auto-man-core = { path = "../../../../crates/auto-man-core" }
+auto-man-core = { path = "../../../../../auto-man/crates/auto-man-core" }
 auto-lang-core = { path = "../../../../crates/auto-lang-core" }
 auto-tool-protocol = { path = "../../../../crates/auto-tool-protocol" }
 auto-project-model = { path = "../../../../crates/auto-project-model" }

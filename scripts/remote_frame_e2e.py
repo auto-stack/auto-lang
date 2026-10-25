@@ -15,8 +15,8 @@
     E census : 全程无 panic（进程退出码/输出扫描）；收尾进程树清场。
 
 用法：python scripts/remote_frame_e2e.py [--auto-exe PATH] [--keep]
-  --auto-exe 缺省解析序：env AUTO_EXE → <repo>/target/release/auto.exe →
-  <repo>/target/debug/auto.exe（皆缺则红——先 cargo build）。
+  --auto-exe 缺省解析序：env AUTO_EXE → <repo>/../auto-man/target/release/auto.exe →
+  <repo>/../auto-man/target/debug/auto.exe（皆缺则红——先 cargo build）。
   --keep 保留临时宿主目录与截图（调试用）。
 收据：tmp/remote-frame-e2e/receipt.json。退出 0 = 全断言过。
 注意：SendInput 需要交互桌面会话（手动门/实机跑——CI headless 不可用，
@@ -222,8 +222,8 @@ def main():
         (
             p
             for p in (
-                os.path.join(REPO, "target", "release", "auto.exe"),
-                os.path.join(REPO, "target", "debug", "auto.exe"),
+                os.path.join(REPO, "..", "auto-man", "target", "release", "auto.exe"),
+                os.path.join(REPO, "..", "auto-man", "target", "debug", "auto.exe"),
             )
             if os.path.exists(p)
         ),

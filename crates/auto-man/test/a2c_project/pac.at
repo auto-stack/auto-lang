@@ -1,8 +1,0 @@
-name: "a2c_project"
-version: "0.1.0"
-
-
-app main {
-    at: "."
-    srcs: ["main.at"]
-}

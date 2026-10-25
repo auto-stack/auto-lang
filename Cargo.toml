@@ -6,7 +6,6 @@ members = [
     # Plan 387 W5b: behavior-parity tests — transpile .at → compile+run → compare
     # stdout to the VM actor suite. Slow (cargo build per case), so #[ignore]d.
     "crates/a2r-actor-tests",
-    "crates/auto",
     "crates/auto-atom",
     # Plan 768: AutoDown TestCase protocol core (dependency-light; adapters
     # live in auto-lang/src/test_cases and depend on this crate).
@@ -53,47 +52,12 @@ members = [
     # only on auto-atom/auto-val — no compiler/VM/UI types cross this boundary)
     "crates/auto-project-model",
     "crates/auto-macros",
-    # Plan 078: AutoMan migration from ../auto-man
-    "crates/auto-man",
-    # PLAN-816 T-03: 非 UI 管理服务/执行实现（自 auto-man 析出;语言面走
-    # auto-lang-core,进程操作走 auto-tool-execution,UI 经 UiOps seam 注入;
-    # auto-man 变为其纯 re-export 门面 + UI 门面 + M814-B 门残留。
-    "crates/auto-man-runtime",
-    # PLAN-809: management/build-planning rules core — pac.at declaration
-    # normalization, target/link closure, source selection and build planning
-    # as pure rules over auto-val nodes; language execution, Git/FS
-    # observation and Builder execution stay in auto-man adapters.
-    "crates/auto-man-core",
-    # PLAN-795: pac.lock core (model/TOML-JSON codec/verify rules), extracted
-    # Target-free from auto-man; auto-man keeps the Target→projection, Git
-    # observation and compatibility facade over this crate.
-    "crates/auto-package-lock",
-    # PLAN-800: resolved dependency view & module path resolution core,
-    # extracted language-free from auto-man resolver.rs; auto-man keeps
-    # ExecutionMode/pac.at scanning/ModuleResolver trait as the adapter.
-    "crates/auto-package-resolver",
-    # PLAN-803: Man template/builder asset single source + pure scaffold
-    # path planning, extracted language-free from auto-man asset.rs
-    # (rust-embed resources; auto-man keeps the Auto-eval/IO adapter).
-    "crates/auto-man-assets",
-    # PLAN-805: toolchain config model / flag mapping / command template
-    # core, extracted verbatim from auto-man builder/ninja
-    # (config.rs/mapper.rs/templates.rs); auto-man keeps the am.at loading,
-    # PATH/disk/process resolution and Ninja execution as upper layers.
-    "crates/auto-toolchain-core",
     # PLAN-816 T-02: unified owned subprocess execution facility (argv/cwd/env/
     # stdio policy/exit classification/deadline/cancel with owned reaping/
     # reader termination/child-tree exit). std-only closure; the scattered
     # spawn sites (main.rs run_command_live, pkg.rs run_script_live, git.rs,
     # http_service.rs serve_rust) migrate onto it in T-03/T-05/T-06.
     "crates/auto-tool-execution",
-    # PLAN-816 T-12 (M816-A): real I-TOOL client — spawns actual tool host
-    # processes through auto-tool-execution and speaks the auto-tool-protocol
-    # single-source framing (describe/validate_project, version/capability
-    # rejections as data, per-request deadline with owned-tree reaping and
-    # reader joins). Closure = protocol/project-model (data) + execution
-    # (man-ecosystem); no tool-host static linking, no discovery (T-04).
-    "crates/auto-tool-client",
     # PLAN-808: terminal host-domain core (owned cell/color/geometry contract,
     # runtime autoterm_core.dll engine service + 34-method terminal capability
     # port); auto-lang keeps the VM codec, UI view/input adapter and assembly.
@@ -212,12 +176,6 @@ exclude = [
     # cargo test --manifest-path test/fixtures/modularity/gen-core-consumer/Cargo.toml
     # 依赖闭包断言：bash test/fixtures/modularity/gen-core-consumer/verify-deps.sh
     "test/fixtures/modularity/gen-core-consumer",
-    # PLAN-795: 外部锁核心消费方探针——独立 fixture crate（仅依赖
-    # auto-package-lock/auto-val，证明 pac.lock 模型/codec/校验核心无
-    # auto-lang/auto-man/生成器/renderer 闭包可用），门禁经
-    # cargo test --manifest-path test/fixtures/modularity/package-lock-consumer/Cargo.toml
-    # 依赖闭包断言：bash test/fixtures/modularity/package-lock-consumer/verify-deps.sh
-    "test/fixtures/modularity/package-lock-consumer",
     # PLAN-807: 外部文本基础消费方探针——独立 fixture crate（唯一依赖
     # auto-text-core，证明 rope/分页/快照/diff 闭包无 auto-lang/auto-man/
     # auto-ui/auto-vm/解释器栈），门禁经
@@ -230,23 +188,6 @@ exclude = [
     # cargo test --manifest-path test/fixtures/modularity/media-core-consumer/Cargo.toml
     # 依赖闭包断言：bash test/fixtures/modularity/media-core-consumer/verify-deps.sh
     "test/fixtures/modularity/media-core-consumer",
-    # PLAN-800: 外部解析核心消费方探针——独立 fixture crate（仅依赖
-    # auto-package-resolver/std，证明依赖视图/路径候选/依赖内模块判定核心
-    # 无 auto-lang/auto-man/auto-val/VM/UI 闭包可用），门禁经
-    # cargo test --manifest-path test/fixtures/modularity/package-resolver-consumer/Cargo.toml
-    # 依赖闭包断言：bash test/fixtures/modularity/package-resolver-consumer/verify-deps.sh
-    "test/fixtures/modularity/package-resolver-consumer",
-    # PLAN-803: 外部 Man 资源层消费方探针——独立 fixture crate（唯一依赖
-    # auto-man-assets，证明三组资源与纯路径规划无 auto-lang/auto-man/VM/UI
-    # 依赖），门禁经
-    # cargo test --manifest-path test/fixtures/modularity/man-assets-consumer/Cargo.toml
-    "test/fixtures/modularity/man-assets-consumer",
-    # PLAN-805: 外部工具链规则核心消费方探针——独立 fixture crate（唯一依赖
-    # auto-toolchain-core，证明八类配置/flag 映射/命令模板无 auto-lang/
-    # auto-man/auto-gen/VM/UI/AST 闭包可用；auto-val 为合法数据层），门禁经
-    # cargo test --manifest-path test/fixtures/modularity/toolchain-core-consumer/Cargo.toml
-    # 依赖闭包断言：bash test/fixtures/modularity/toolchain-core-consumer/verify-deps.sh
-    "test/fixtures/modularity/toolchain-core-consumer",
     # PLAN-793: 外部诊断消费方探针——独立 fixture crate（仅依赖
     # auto-diagnostics/auto-lex/miette，证明诊断基础无 auto-lang/Man/UI
     # 闭包可用），门禁经
@@ -293,12 +234,6 @@ exclude = [
     # cargo test --manifest-path test/fixtures/modularity/project-request-consumer/Cargo.toml
     # 依赖闭包断言：bash test/fixtures/modularity/project-request-consumer/verify-deps.sh
     "test/fixtures/modularity/project-request-consumer",
-    # PLAN-809: 管理规则核心消费方探针——独立 fixture crate（唯一依赖
-    # auto-man-core，证明声明归一/链接闭包（含环准入合同）/选择与规划
-    # 规则闭包无 auto-lang/auto-man/auto-vm/UI），门禁经
-    # cargo test --manifest-path test/fixtures/modularity/man-core-consumer/Cargo.toml
-    # 依赖闭包断言：bash test/fixtures/modularity/man-core-consumer/verify-deps.sh
-    "test/fixtures/modularity/man-core-consumer",
     # PLAN-832 T-03: 三仓管理规则 + 语言 SDK + I-TOOL 协议组合消费探针。
     "test/fixtures/modularity/three-repository-consumer",
     # PLAN-815: 外部 UI 工具消费方探针——独立 fixture crate（依赖仅
@@ -308,14 +243,6 @@ exclude = [
     # cargo build -p auto-ui-tools && AUTO_UI_TOOL_BIN=... cargo test --manifest-path test/fixtures/modularity/ui-tool-consumer/Cargo.toml
     # 依赖闭包断言：bash test/fixtures/modularity/ui-tool-consumer/verify-deps.sh
     "test/fixtures/modularity/ui-tool-consumer",
-    # PLAN-816 T-12: 外部 I-TOOL 客户端消费方探针——独立 fixture crate
-    # （依赖仅 auto-tool-client/auto-project-model，证明 M816-A 客户端闭包
-    # 无 auto-ui-tools 静态链接、无 auto-man/auto-lang/auto-vm/auto-gen；
-    # 经 AUTO_UI_TOOL_BIN 真实子进程消费 M815-A 窄能力，TE_CHILD_BIN 补
-    # 长运行/孙进程/reader 真停/流污染寿命反例），门禁经
-    # cargo build -p auto-ui-tools -p auto-tool-execution && AUTO_UI_TOOL_BIN=... cargo test --manifest-path test/fixtures/modularity/tool-client-consumer/Cargo.toml
-    # 依赖闭包断言：bash test/fixtures/modularity/tool-client-consumer/verify-deps.sh
-    "test/fixtures/modularity/tool-client-consumer",
 ]
 resolver = "2"
 

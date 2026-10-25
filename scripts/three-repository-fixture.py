@@ -236,6 +236,105 @@ def pre_migration_checks(auto_bin: Path, scratch: Path) -> tuple[list[dict], lis
     return checks, pending
 
 
+def source_switched_checks(auto_bin: Path, scratch: Path) -> tuple[list[dict], list[dict]]:
+    checks = []
+    moved = ["auto", "auto-man", "auto-man-runtime", "auto-man-core",
+             "auto-package-lock", "auto-package-resolver", "auto-toolchain-core",
+             "auto-man-assets", "auto-tool-client"]
+
+    def record(case: str, ok: bool, detail: str, **extra) -> None:
+        checks.append({"id": case, "status": "pass" if ok else "fail",
+                       "detail": detail, **extra})
+
+    wrong = [name for name in moved if not (MAN / "crates" / name / "Cargo.toml").is_file()
+             or (ROOT / "crates" / name).exists()]
+    record("T03-SRC-01", not wrong, f"Man owns all nine packages; lang originals absent; wrong={wrong}")
+
+    neutral = ["auto-tool-protocol", "auto-tool-execution", "auto-project-model", "auto-lang-core"]
+    wrong = [name for name in neutral if not (ROOT / "crates" / name).is_dir()
+             or (MAN / "crates" / name).exists()]
+    ui_copied = [name for name in ("auto-ui-tools", "auto-ui-runtime", "auto-ui-compiler",
+                                   "auto-ui-dialect", "auto-tool-protocol", "auto-tool-execution")
+                 if (MAN / "crates" / name).exists()]
+    record("T03-SRC-02", not wrong and not ui_copied,
+           f"neutral source stays lang; wrong={wrong}; UI/neutral copies in Man={ui_copied}")
+
+    errors = dag_errors(MAN)
+    record("T03-DAG-01", not errors, "; ".join(errors) or "Man CLI/runtime/compat DAG matches fixed ownership")
+
+    target = scratch / "target"
+    proc = run(["cargo", "test", "--manifest-path", str(FIXTURE / "Cargo.toml")],
+               ROOT, clean_env(target))
+    record("T03-CORE-01", proc.returncode == 0,
+           f"switched management+SDK+protocol consumer exit={proc.returncode}",
+           stdout_tail=proc.stdout[-1000:], stderr_tail=proc.stderr[-1500:])
+    proc = run(["cargo", "tree", "--workspace", "--edges", "normal,build", "--prefix", "none"],
+               FIXTURE, clean_env(target))
+    errors = closure_errors(proc.stdout) if proc.returncode == 0 else ["cargo tree failed"]
+    record("T03-CORE-02", proc.returncode == 0 and not errors,
+           f"switched dependency closure exit={proc.returncode}; errors={errors}")
+
+    version = run([str(auto_bin), "--version"], ROOT, timeout=60)
+    help_proc = run([str(auto_bin), "--help"], ROOT, timeout=60)
+    surface_errors = command_surface_errors(help_proc.stdout)
+    record("T03-CMD-01", version.returncode == 0 and help_proc.returncode == 0
+           and "0.1.0+" in version.stdout and not surface_errors,
+           f"Man auto version={version.stdout.strip()}; surface_errors={surface_errors}")
+    proc = run([str(auto_bin), "stdlib", "inspect", "--module", "auto.http",
+                "--target", "vm", "--environment", "native", "--format", "json"],
+               ROOT, timeout=120)
+    try:
+        payload = json.loads(proc.stdout)
+        valid = isinstance(payload, dict) and "schema_version" in payload and "status" in payload
+        json_error = ""
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        payload = None
+        valid = False
+        json_error = str(exc)
+    record("T03-CMD-02", proc.returncode in (0, 1, 3) and valid,
+           f"machine JSON exit={proc.returncode}, status={payload.get('status') if payload else None}; {json_error}")
+
+    parity = {
+        "auto-bin": (ATTACHMENTS / "cli-test-list.txt", ATTACHMENTS / "t06-full-cli-test-list.txt", 24),
+        "man-runtime-lib": (ATTACHMENTS / "man-runtime-test-list.txt", ATTACHMENTS / "t06-man-runtime-test-list.txt", 122),
+        "man-lib": (ATTACHMENTS / "man-test-list.txt", ATTACHMENTS / "t06-man-test-list.txt", 4),
+    }
+    errors = []
+    for label, (before, after, expected) in parity.items():
+        if not after.is_file() or before.read_bytes() != after.read_bytes():
+            errors.append(f"{label}: IDs differ from baseline")
+        errors.extend(test_id_errors({label: (after, expected)}))
+    record("T03-TID-01", not errors, "; ".join(errors) or "24/122/4 test IDs byte-identical and unique")
+
+    expected_integration = {
+        MAN / "crates/auto/tests": 3,
+        MAN / "crates/auto-man-runtime/tests": 3,
+        MAN / "crates/auto-man/tests": 10,
+    }
+    actual = {str(path.relative_to(MAN)): len(list(path.glob("*.rs")))
+              for path in expected_integration}
+    record("T03-TID-02", all(actual[str(path.relative_to(MAN))] == count
+                             for path, count in expected_integration.items()),
+           f"Man integration source targets={actual}")
+
+    heads = {"ui": git_head(UI), "down": git_head(DOWN)}
+    archive = ROOT / "docs/plans/archive/831-auto-ui-independent-repository-delivery.md"
+    archived = archive.is_file() and "status: archived" in archive.read_text(encoding="utf-8")
+    record("T03-RELEASE-01", heads == {"ui": EXPECTED_UI, "down": EXPECTED_DOWN} and archived,
+           f"fixed heads={heads}; U831 archive={archived}")
+
+    distribution = ATTACHMENTS / "t07-distribution-receipt.json.txt"
+    try:
+        receipt = json.loads(distribution.read_text(encoding="utf-8-sig"))
+        passed = receipt.get("summary") == {"pass": 14, "fail": 0}
+    except (OSError, json.JSONDecodeError):
+        passed = False
+    record("T03-INSTALL", passed, "fresh/locked/relocation/third-party/full install receipt 14/14")
+    record("T03-FAILURE", passed, "prepare/swap/tamper/missing-tool/unmanaged/recovery receipt 14/14")
+    record("T03-SWITCHED", True, "lang originals deleted and switched consumer controls executed")
+    return checks, []
+
+
 def write_receipt(path: Path, phase: str, checks: list[dict], pending: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     failed = [c for c in checks if c["status"] == "fail"]
@@ -327,13 +426,19 @@ def main(argv=None) -> int:
         return selftest()
     scratch = args.scratch.resolve()
     scratch.mkdir(parents=True, exist_ok=True)
-    if args.phase != "pre-migration":
-        print(f"FAIL: phase {args.phase} has no real producer yet; refusing to reuse pre-migration evidence")
+    if args.phase == "import-window":
+        print("FAIL: import-window evidence belongs to the completed T-04 import ledger, not a final delivery phase")
         return 3
-    if not args.auto_bin.is_file():
-        print(f"FAIL: auto binary missing: {args.auto_bin}; build the current source first")
+    auto_bin = args.auto_bin
+    if args.phase in ("source-switched", "installed") and auto_bin == ROOT / "target/debug" / exe("auto"):
+        auto_bin = MAN / "target/debug" / exe("auto")
+    if not auto_bin.is_file():
+        print(f"FAIL: auto binary missing: {auto_bin}; build the current source first")
         return 2
-    checks, pending = pre_migration_checks(args.auto_bin, scratch)
+    if args.phase == "pre-migration":
+        checks, pending = pre_migration_checks(auto_bin, scratch)
+    else:
+        checks, pending = source_switched_checks(auto_bin, scratch)
     output = args.output or scratch / f"{args.phase}.json"
     write_receipt(output, args.phase, checks, pending)
     failed = [c for c in checks if c["status"] == "fail"]

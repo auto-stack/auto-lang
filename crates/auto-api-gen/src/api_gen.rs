@@ -7220,7 +7220,7 @@ pub fn echo(n int, tag str) Echo {
         let generated = auto_lang_core::api::TauriGenerator::new().generate(&module);
         let fixture = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../auto-man/tests/fixtures/plan734_commands_fixture.rs.txt"
+            "/../../../auto-man/crates/auto-man/tests/fixtures/plan734_commands_fixture.rs.txt"
         ))
         .expect("fixture readable");
         assert_eq!(
