@@ -24,7 +24,7 @@
 //! the shared verification budget).
 
 use crate::contract::MAX_TABLE_ENTRIES;
-use crate::mir::{MirInstr, MirModule, MirType, SlotKind, Terminator};
+use crate::mir::{CalleeRef, MirInstr, MirModule, MirType, SlotKind, Terminator};
 use crate::mir_verify::MirVerifyError;
 use crate::SpanInfo;
 use std::collections::VecDeque;
@@ -134,8 +134,12 @@ struct OwnState {
     dropped: Bitsets, // may
     tokens_live: Bitsets,
     /// Per-slot root-set, valid where `tokens_live`. Bit domain: slots +
-    /// one EXTERNAL sentinel at index `n_slots`.
-    token_roots: Vec<Bitsets>,
+    /// one EXTERNAL sentinel at index `n_slots`. SPARSE (F821-R1-05): a
+    /// slot that has never been a token carries `None` — the frozen
+    /// contract interns only USED roots; the old all-slots matrix both
+    /// blew the verify-memory budget unaccounted (n x (n+1) bits x
+    /// states) and contradicted "只 intern 实际使用根".
+    token_roots: Vec<Option<Bitsets>>,
 }
 
 impl OwnState {
@@ -145,9 +149,7 @@ impl OwnState {
             moved: Bitsets::new(self.moved.n_bits),
             dropped: Bitsets::new(self.dropped.n_bits),
             tokens_live: Bitsets::new(self.tokens_live.n_bits),
-            token_roots: (0..self.token_roots.len())
-                .map(|_| Bitsets::new(self.init.n_bits + 1))
-                .collect(),
+            token_roots: vec![None; self.token_roots.len()],
         }
     }
 }
@@ -186,10 +188,23 @@ pub fn verify_owned_function(
         .collect();
     let sw = words_of(n);
     let rw = words_of(root_bits);
-    let bound = blocks
-        .saturating_mul(sw * 8 * 4)
-        .saturating_add(token_slots.len().saturating_mul(blocks * rw * 8))
-        .saturating_add(blocks * 64);
+    // The real peak layout (F821-R1-05): per block the state vectors
+    // (in_state + out_state + the transient new_in and st) hold the 4
+    // plain bitsets (sw words each) and the SPARSE root vector — an
+    // Option<Bitsets> header per slot for ALL n slots plus rw words per
+    // token-capable slot. The x6 factor covers the up-to-4 live copies
+    // and Vec-growth transients (realloc old+new) — measured against the
+    // probe's allocator peak (8192-slot fn: ~1.37MB real vs this bound).
+    let sparse_header = std::mem::size_of::<Option<Bitsets>>() as u64;
+    let bound = (blocks as u64)
+        .saturating_mul(
+            (sw as u64 * 8 * 4
+                + n as u64 * sparse_header
+                + token_slots.len() as u64 * rw as u64 * 8)
+                .saturating_mul(6),
+        )
+        .saturating_add(blocks as u64 * 64);
+    let bound = bound as usize;
     *analysis_bytes = (*analysis_bytes).max(bound as u64);
     if bound > crate::contract::MAX_VERIFY_ANALYSIS_BYTES {
         return Err(MirVerifyError::Resource {
@@ -271,6 +286,25 @@ pub fn verify_owned_function(
         })
         .collect();
     let is_rootable: Vec<bool> = f.slots.iter().map(|s| type_is_rootable(m, s.ty)).collect();
+    let is_mutref: Vec<bool> = f
+        .slots
+        .iter()
+        .map(|s| matches!(m.types.get(s.ty as usize), Some(MirType::MutRef)))
+        .collect();
+    // R1-F08: BORROWED view params (StrView / RecordView kinds) root
+    // EXTERNALLY — a field view rooted at such a param is legal to
+    // return (the caller owns the root); any other local root is not.
+    let external_borrow: Vec<bool> = f
+        .slots
+        .iter()
+        .map(|s| {
+            s.kind == SlotKind::Param
+                && matches!(
+                    m.types.get(s.ty as usize),
+                    Some(MirType::StrView) | Some(MirType::RecordView(_))
+                )
+        })
+        .collect();
 
     let entry_state = || -> OwnState {
         let mut st = OwnState {
@@ -278,7 +312,7 @@ pub fn verify_owned_function(
             moved: Bitsets::new(n),
             dropped: Bitsets::new(n),
             tokens_live: Bitsets::new(n),
-            token_roots: (0..n).map(|_| Bitsets::new(root_bits)).collect(),
+            token_roots: vec![None; n],
         };
         for (si, s) in f.slots.iter().enumerate() {
             if s.kind == SlotKind::Param {
@@ -286,7 +320,9 @@ pub fn verify_owned_function(
                 if is_token[si] {
                     // A view param flows in LIVE, rooted EXTERNALLY.
                     st.tokens_live.set(si);
-                    st.token_roots[si].set(n); // sentinel index
+                    let mut roots = Bitsets::new(root_bits);
+                    roots.set(n); // sentinel index
+                    st.token_roots[si] = Some(roots);
                 }
             }
         }
@@ -370,7 +406,11 @@ pub fn verify_owned_function(
             new_in.tokens_live.union_with(&po.tokens_live);
             for t in 0..n {
                 if new_in.is_token_live(t) && po.tokens_live.get(t) {
-                    new_in.token_roots[t].union_with(&po.token_roots[t]);
+                    match (&mut new_in.token_roots[t], po.token_roots[t].as_ref()) {
+                        (Some(r), Some(pr)) => r.union_with(pr),
+                        (None, Some(pr)) => new_in.token_roots[t] = Some(pr.clone()),
+                        _ => {}
+                    }
                 }
             }
         }
@@ -453,15 +493,38 @@ pub fn verify_owned_function(
                         // View alias: the copy shares the borrow.
                         st.token_roots[*dst as usize] = st.token_roots[*src as usize].clone();
                         st.tokens_live.set(*dst as usize);
+                    } else if is_token[*dst as usize] {
+                        st.token_roots[*dst as usize] = None;
                     }
                     st.init.set(*dst as usize);
                     st.moved.clear(*dst as usize);
                     st.dropped.clear(*dst as usize);
                 }
-                MirInstr::Call { dst, args, .. } => {
-                    for a in args {
+                MirInstr::Call { dst, args, callee } => {
+                    // R1-F08: the kill is SIG-DRIVEN — an owned arg dies
+                    // only where the callee's signature declares an OWNED
+                    // param (move-in); a borrowed (RecordView/StrView)
+                    // param keeps the caller's ownership (782 ABI-D).
+                    let callee_sig: Option<&MirType> = match callee {
+                        CalleeRef::Func(fi) => m
+                            .funcs
+                            .get(*fi as usize)
+                            .and_then(|cf| m.types.get(cf.sig as usize)),
+                        CalleeRef::Import(ii) => m
+                            .imports
+                            .get(*ii as usize)
+                            .and_then(|imp| m.types.get(imp.sig as usize)),
+                    };
+                    for (ai, a) in args.iter().enumerate() {
                         check_read!(a, "call argument");
-                        if is_owned[*a as usize] {
+                        let param_borrows = callee_sig
+                            .and_then(|t| match t {
+                                MirType::Fn(sig) => sig.params.get(ai).copied(),
+                                _ => None,
+                            })
+                            .map(|pt| !type_is_owned(m, pt))
+                            .unwrap_or(false);
+                        if is_owned[*a as usize] && !param_borrows {
                             // Move-in: the callee owns the value; the caller
                             // slot dies HERE (contract-decision §4 CALL).
                             if root_has_live_token(&st, *a as usize) {
@@ -481,6 +544,29 @@ pub fn verify_owned_function(
                     if is_rootable[*dst as usize] {
                         check_def_conflict!(dst, "call result");
                     }
+                    // F821-R1-02a: a view-typed result carries the REAL
+                    // provenance — the union of the VIEW arguments' roots
+                    // (a callee may return a view of any borrowed param;
+                    // those params are exactly the view args) plus the
+                    // EXTERNAL sentinel (a static const view is always a
+                    // legal return). Roots at move-in params are rejected
+                    // callee-side, so they never appear here.
+                    if is_token[*dst as usize] {
+                        let mut roots = Bitsets::new(root_bits);
+                        roots.set(n); // static/external possibility
+                        for a in args {
+                            if is_token[*a as usize] {
+                                if let Some(ar) = st.token_roots[*a as usize].as_ref() {
+                                    let mut merged =
+                                        std::mem::replace(&mut roots, Bitsets::new(root_bits));
+                                    merged.union_with(ar);
+                                    roots = merged;
+                                }
+                            }
+                        }
+                        st.token_roots[*dst as usize] = Some(roots);
+                        st.tokens_live.set(*dst as usize);
+                    }
                     st.init.set(*dst as usize);
                     st.moved.clear(*dst as usize);
                     st.dropped.clear(*dst as usize);
@@ -495,8 +581,22 @@ pub fn verify_owned_function(
                     // (CD §4 07, 782 "字段读取=视图"): register the token so
                     // root-conservative conflicts see it across merges.
                     if is_token[*dst as usize] {
-                        st.token_roots[*dst as usize] = Bitsets::new(root_bits);
-                        st.token_roots[*dst as usize].set(*base as usize);
+                        // F821-R1-02b: a live EXCLUSIVE borrow on the root
+                        // blocks every access, reads included (782 mut).
+                        if root_has_live_exclusive(&st, &is_mutref, *base as usize) {
+                            fail = Some(err(
+                                "mir.mut-conflict",
+                                format!(
+                                    "field read of `{}` conflicts an active exclusive borrow on the root",
+                                    slot_name(f, *base as usize)
+                                ),
+                                flat,
+                            ));
+                            break 'blk;
+                        }
+                        let mut roots = Bitsets::new(root_bits);
+                        roots.set(*base as usize);
+                        st.token_roots[*dst as usize] = Some(roots);
                         st.tokens_live.set(*dst as usize);
                     }
                     st.init.set(*dst as usize);
@@ -592,6 +692,19 @@ pub fn verify_owned_function(
                         break 'blk;
                     }
                     if is_owned[*value as usize] {
+                        // F821-R1-02d: transferring an owned value out of
+                        // its slot must not strand an active loan on it.
+                        if root_has_live_token(&st, *value as usize) {
+                            fail = Some(err(
+                                "mir.mut-conflict",
+                                format!(
+                                    "field-set value `{}` conflicts an active borrow on its root",
+                                    slot_name(f, *value as usize)
+                                ),
+                                flat,
+                            ));
+                            break 'blk;
+                        }
                         // The value's ownership moves into the root.
                         st.moved.set(*value as usize);
                     }
@@ -600,6 +713,19 @@ pub fn verify_owned_function(
                     for o in operands {
                         check_read!(o, "aggregate operand");
                         if is_owned[*o as usize] {
+                            // F821-R1-02d: an operand transfer strands any
+                            // active loan rooted at the operand.
+                            if root_has_live_token(&st, *o as usize) {
+                                fail = Some(err(
+                                    "mir.mut-conflict",
+                                    format!(
+                                        "aggregate operand `{}` conflicts an active borrow on its root",
+                                        slot_name(f, *o as usize)
+                                    ),
+                                    flat,
+                                ));
+                                break 'blk;
+                            }
                             st.moved.set(*o as usize);
                         }
                     }
@@ -688,8 +814,22 @@ pub fn verify_owned_function(
                         ));
                         break 'blk;
                     }
-                    st.token_roots[*dst as usize] = Bitsets::new(root_bits);
-                    st.token_roots[*dst as usize].set(*src as usize);
+                    // F821-R1-02b: a live EXCLUSIVE borrow blocks every
+                    // access to the root — a new shared view included.
+                    if root_has_live_exclusive(&st, &is_mutref, *src as usize) {
+                        fail = Some(err(
+                            "mir.mut-conflict",
+                            format!(
+                                "VIEW of `{}` conflicts an active exclusive borrow on the root",
+                                slot_name(f, *src as usize)
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    let mut roots = Bitsets::new(root_bits);
+                    roots.set(*src as usize);
+                    st.token_roots[*dst as usize] = Some(roots);
                     st.tokens_live.set(*dst as usize);
                     st.init.set(*dst as usize);
                     st.moved.clear(*dst as usize);
@@ -711,8 +851,9 @@ pub fn verify_owned_function(
                         ));
                         break 'blk;
                     }
-                    st.token_roots[*dst as usize] = Bitsets::new(root_bits);
-                    st.token_roots[*dst as usize].set(*src as usize);
+                    let mut roots = Bitsets::new(root_bits);
+                    roots.set(*src as usize);
+                    st.token_roots[*dst as usize] = Some(roots);
                     st.tokens_live.set(*dst as usize);
                     st.init.set(*dst as usize);
                     st.moved.clear(*dst as usize);
@@ -753,10 +894,20 @@ pub fn verify_owned_function(
                     check_read!(token, "borrow-end token");
                     st.tokens_live.clear(*token as usize);
                 }
-                MirInstr::StrLen { dst, view }
-                | MirInstr::StrLenBytes { dst, view }
-                | MirInstr::StrToOwned { dst, view } => {
+                MirInstr::StrLen { dst, view } | MirInstr::StrLenBytes { dst, view } => {
                     check_read!(view, "str operand");
+                    st.init.set(*dst as usize);
+                    st.moved.clear(*dst as usize);
+                    st.dropped.clear(*dst as usize);
+                }
+                MirInstr::StrToOwned { dst, view } => {
+                    check_read!(view, "str operand");
+                    // F821-R1-02c: the materialized OWNED result is a def
+                    // of its destination — the destination conflict gate
+                    // applies exactly as for CLONE.
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "to-owned destination");
+                    }
                     st.init.set(*dst as usize);
                     st.moved.clear(*dst as usize);
                     st.dropped.clear(*dst as usize);
@@ -787,6 +938,10 @@ pub fn verify_owned_function(
                 MirInstr::StrConcat { dst, lhs, rhs } => {
                     check_read!(lhs, "concat lhs");
                     check_read!(rhs, "concat rhs");
+                    // F821-R1-02c: same destination conflict gate.
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "concat destination");
+                    }
                     st.init.set(*dst as usize);
                     st.moved.clear(*dst as usize);
                     st.dropped.clear(*dst as usize);
@@ -849,18 +1004,28 @@ pub fn verify_owned_function(
                             format!("return of moved slot `{}`", slot_name(f, vs)),
                             flat,
                         ));
+                    } else if st.dropped.get(vs) {
+                        // F821-R1-01: DROPPED is a terminal state — a
+                        // consumed owner never rides a return as a typed
+                        // zero (same family as check_read's dropped gate).
+                        fail = Some(err(
+                            "mir.use-after-move",
+                            format!("return of dropped slot `{}`", slot_name(f, vs)),
+                            flat,
+                        ));
                     } else if is_token[vs] {
                         // Borrow-escape gate (782): a returned view must be
-                        // rooted EXTERNALLY (a caller view param) or at
-                        // nothing (static); roots inside this frame die with
-                        // it. Record-view params arrive with T-03.
-                        let mut offending: Option<usize> = None;
-                        for r in 0..n {
-                            if st.tokens_live.get(vs) && st.token_roots[vs].get(r) {
-                                offending = Some(r);
-                                break;
-                            }
-                        }
+                        // rooted EXTERNALLY (a caller view param / a
+                        // callee-returned provenance) or at nothing (a
+                        // static const view); roots inside this frame die
+                        // with it.
+                        // F821-R1-01: the root provenance gates the escape
+                        // REGARDLESS of token liveness — ending the borrow
+                        // does not legitimize it (the view still references
+                        // this frame's slot).
+                        let offending = st.token_roots[vs].as_ref().and_then(|roots| {
+                            (0..n).find(|r| roots.get(*r) && !external_borrow[*r])
+                        });
                         if let Some(r) = offending {
                             fail = Some(err(
                                 "mir.borrow-escape",
@@ -916,6 +1081,7 @@ impl OwnState {
             && self.moved.eq(&o.moved)
             && self.dropped.eq(&o.dropped)
             && self.tokens_live.eq(&o.tokens_live)
+            && self.roots_eq(o)
     }
     /// out vs the stored (in, out) pair — a may-set growth with an equal
     /// in-state still needs the stored out refreshed for later merges.
@@ -925,12 +1091,37 @@ impl OwnState {
             && self.moved.eq(&prev_out.moved)
             && self.dropped.eq(&prev_out.dropped)
             && self.tokens_live.eq(&prev_out.tokens_live)
-            && (0..self.token_roots.len()).all(|t| self.token_roots[t].eq(&prev_out.token_roots[t]))
+            && self.roots_eq(prev_out)
+    }
+    /// Root sets of LIVE tokens participate in equality: a root growth
+    /// must keep the worklist converging (F821-R1-05 hardening).
+    fn roots_eq(&self, o: &OwnState) -> bool {
+        (0..self.token_roots.len()).all(|t| {
+            if !self.tokens_live.get(t) && !o.tokens_live.get(t) {
+                return true;
+            }
+            match (&self.token_roots[t], &o.token_roots[t]) {
+                (Some(a), Some(b)) => a.eq(b),
+                (None, None) => true,
+                _ => false,
+            }
+        })
     }
 }
 
 fn root_has_live_token(st: &OwnState, root: usize) -> bool {
-    (0..st.tokens_live.n_bits).any(|t| st.tokens_live.get(t) && st.token_roots[t].get(root))
+    (0..st.tokens_live.n_bits)
+        .any(|t| st.tokens_live.get(t) && st.token_roots[t].as_ref().is_some_and(|r| r.get(root)))
+}
+
+/// F821-R1-02b: a live EXCLUSIVE (MutRef) borrow on the root — blocks
+/// every access to it, shared reads included (782 mut semantics).
+fn root_has_live_exclusive(st: &OwnState, is_mutref: &[bool], root: usize) -> bool {
+    (0..st.tokens_live.n_bits).any(|t| {
+        st.tokens_live.get(t)
+            && is_mutref.get(t).copied().unwrap_or(false)
+            && st.token_roots[t].as_ref().is_some_and(|r| r.get(root))
+    })
 }
 
 fn slot_name(f: &crate::mir::MirFunction, s: usize) -> String {

@@ -125,7 +125,9 @@ fn av_owned_821_recipe_canonical_face_shapes() {
     // Views/tokens may never cross the entry boundary — canonicalization
     // refuses them (the worker treats that as a protocol violation).
     let view = auto_av_core::contract::StrView {
-        src: auto_av_core::contract::StrViewSrc::Static { const_idx: 0 },
+        src: auto_av_core::contract::StrViewSrc::Static {
+            buf: std::rc::Rc::new(Box::from(&b"abc"[..])),
+        },
         start: 0,
         end: 1,
     };

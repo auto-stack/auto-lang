@@ -385,15 +385,8 @@ pub fn lower_checked_owned(
 
     let mut entry_idx: Option<u32> = None;
     for (di, ty, body_id, name) in fn_order {
-        let sig = fn_type_index_ext(
-            ty,
-            module,
-            &mut out,
-            true,
-            true,
-            &mut BTreeMap::new(),
-            &mut std::collections::BTreeSet::new(),
-        )?;
+        // R1-F08: mode-aware — borrowed record params type as RecordView.
+        let sig = owned_fn_sig_for_def(module, di, ty, &mut out)?;
         if name == entry_name {
             entry_idx = Some(out.funcs.len() as u32);
         }
@@ -464,15 +457,10 @@ pub fn lower_function_owned_unit(
     for (di, d) in module.defs.iter().enumerate() {
         match &d.kind {
             hir::DefKind::Function { ty, body, .. } => {
-                let sig = fn_type_index_ext(
-                    *ty,
-                    module,
-                    &mut out,
-                    true,
-                    true,
-                    &mut std::collections::BTreeMap::new(),
-                    &mut std::collections::BTreeSet::new(),
-                )?;
+                // R1-F08: mode-aware — the import's sig must equal the
+                // callee's own emission (borrowed record params =
+                // RecordView), or the snapshot link would part them.
+                let sig = owned_fn_sig_for_def(module, di as u32, *ty, &mut out)?;
                 let imp = out.intern_import(MirImport {
                     symbol: format!("fn:{}", d.id_text),
                     effect: Effect::Pure,
@@ -503,15 +491,7 @@ pub fn lower_function_owned_unit(
             format!("no function def `{def_id_text}` in module"),
         )
     })?;
-    let sig = fn_type_index_ext(
-        ty,
-        module,
-        &mut out,
-        true,
-        true,
-        &mut BTreeMap::new(),
-        &mut std::collections::BTreeSet::new(),
-    )?;
+    let sig = owned_fn_sig_for_def(module, di, ty, &mut out)?;
     let mir_fn = lower_function(
         module,
         &mut out,
@@ -884,6 +864,77 @@ fn fn_type_index(
     visiting: &mut std::collections::BTreeSet<hir::TypeId>,
 ) -> Result<TypeIdx, AdapterError> {
     fn_type_index_ext(ty, m, out, data, false, memo, visiting)
+}
+
+/// R1-F08: the OWNED signature of a text-record function, carrying each
+/// param's PARAM MODE: a View-mode RECORD param types as `RecordView`
+/// (782 ABI-D `*const` — read-only borrow, no caller kill, externally
+/// rooted field views); MoveOwn keeps the owned record; MutBorrow on a
+/// record stays a CONTROLLED rejection (ABI-E `*mut` write-back is
+/// beyond the frozen MIR expressiveness — pending an explicit contract
+/// revision, not silently wrong semantics).
+fn owned_fn_sig_for_def(
+    module: &hir::Module,
+    def_index: u32,
+    ty: hir::TypeId,
+    out: &mut MirModule,
+) -> Result<TypeIdx, AdapterError> {
+    let td = module.types.get(ty.0 as usize).ok_or_else(|| {
+        AdapterError::inv("lower.type-ref", format!("type id {} out of range", ty.0))
+    })?;
+    let hir_sig = match &td.kind {
+        hir::TypeKind::Function(sig) => sig,
+        _ => {
+            return Err(AdapterError::inv(
+                "lower.fn-type",
+                format!("type `{}` is not a function type", td.id_text),
+            ))
+        }
+    };
+    // The param locals lead the callee body's local table in signature
+    // order (HIR verify invariant, same one lower_function relies on).
+    let param_modes: Vec<hir::ParamMode> = module
+        .defs
+        .get(def_index as usize)
+        .and_then(|d| match &d.kind {
+            hir::DefKind::Function { body, .. } => module.bodies.get(body.0 as usize).map(|b| {
+                b.locals
+                    .iter()
+                    .filter(|l| l.role == hir::LocalRole::Param)
+                    .map(|l| l.param_mode)
+                    .collect()
+            }),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let mut memo = std::collections::BTreeMap::new();
+    let mut visiting = std::collections::BTreeSet::new();
+    let mut params = Vec::with_capacity(hir_sig.params.len());
+    for (pi, p) in hir_sig.params.iter().enumerate() {
+        let base = owned_type_idx_of(p, module, out, &mut memo, &mut visiting)?;
+        let mode = param_modes.get(pi).copied().unwrap_or(hir::ParamMode::View);
+        let mapped = match (mode, out.types.get(base as usize)) {
+            (hir::ParamMode::View, Some(MirType::Record(r))) => {
+                // A plain record param is a READ-ONLY borrow (782 default).
+                out.intern_type(MirType::RecordView(r.clone()))
+            }
+            (hir::ParamMode::MutBorrow, Some(MirType::Record(r))) => {
+                return Err(AdapterError::uns(
+                    "lower.mut-record",
+                    format!(
+                        "record param `{}` declares `mut` — the exclusive write-back borrow \
+                         (782 ABI-E `*mut`) is beyond the frozen av.owned/1 MIR expressiveness; \
+                         an explicit contract revision is required (record `{}`)",
+                        r.name, r.name
+                    ),
+                ))
+            }
+            _ => base,
+        };
+        params.push(mapped);
+    }
+    let result = owned_type_idx_of(&hir_sig.result, module, out, &mut memo, &mut visiting)?;
+    Ok(out.intern_type(MirType::Fn(FnSig { params, result })))
 }
 
 fn fn_type_index_ext(
@@ -1630,19 +1681,21 @@ impl<'a> FnLower<'a> {
                 }
             }
             hir::ExprKind::BorrowView { base } if self.owned => {
-                // Record view params arrive with PLAN-821 T-03 (the
-                // record-view value kind); the text str path never wraps.
-                let _ = base;
+                // R1-F08: a borrowed record argument is a PASS-THROUGH —
+                // the record stays in its caller slot; the callee's
+                // RecordView param signature carries the no-kill borrow
+                // (782 ABI-D `*const`; the ownership analysis and the
+                // runtime are both sig-driven).
+                self.eval_expr(*base, depth + 1)
+            }
+            hir::ExprKind::BorrowMut { local } if self.owned => {
+                let _ = local;
                 Err(AdapterError::uns(
-                    "lower.borrow",
-                    "record view receivers land with PLAN-821 T-03 (T-02 first case needs none)"
+                    "lower.mut-record",
+                    "the exclusive write-back borrow (782 ABI-E `*mut`) is beyond the frozen                      av.owned/1 MIR expressiveness; an explicit contract revision is required"
                         .to_string(),
                 ))
             }
-            hir::ExprKind::BorrowMut { .. } if self.owned => Err(AdapterError::uns(
-                "lower.borrow",
-                "mut borrows land with PLAN-821 T-03".to_string(),
-            )),
             // -- PLAN-820 record surface (av.data/1) ----------------------
             hir::ExprKind::RecordCtor {
                 record,
@@ -1854,11 +1907,18 @@ fn lower_function(
     let mut ty_memo = BTreeMap::new();
     let mut ty_visiting = std::collections::BTreeSet::new();
     for (li, l) in body.locals.iter().enumerate() {
-        let ty = if owned {
+        let mut ty = if owned {
             owned_type_idx_of(&l.ty, hir_module, out, &mut ty_memo, &mut ty_visiting)?
         } else {
             type_idx_of_use(&l.ty, hir_module, out, data, &mut ty_memo, &mut ty_visiting)?
         };
+        if owned && l.role == hir::LocalRole::Param && l.param_mode == hir::ParamMode::View {
+            // R1-F08: a plain record param is a READ-ONLY borrow — the
+            // slot type mirrors the signature's RecordView.
+            if let Some(MirType::Record(r)) = out.types.get(ty as usize).cloned() {
+                ty = out.intern_type(MirType::RecordView(r));
+            }
+        }
         let idx = slots.len() as SlotId;
         slots.push(MirSlot {
             kind: if l.role == hir::LocalRole::Param {

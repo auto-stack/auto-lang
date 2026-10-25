@@ -511,9 +511,17 @@ pub(crate) fn typed_zero(t: Option<&MirType>) -> Value {
         // hook — no free event can fire for a placeholder).
         Some(MirType::Char) => Value::Char('\0'),
         Some(MirType::Str) => Value::Str(crate::contract::StrHandle::detached(Box::from([]))),
+        Some(MirType::RecordView(_)) => {
+            Value::Record(std::rc::Rc::new(crate::contract::RecordValue {
+                ty: u32::MAX,
+                fields: Vec::new(),
+            }))
+        }
         Some(MirType::StrView) => Value::StrView(crate::contract::StrView {
+            // Never observed (definite initialization gates every read):
+            // an empty immortal buffer (F821-R1-03 shape).
             src: crate::contract::StrViewSrc::Static {
-                const_idx: u32::MAX,
+                buf: std::rc::Rc::new(Box::from([])),
             },
             start: 0,
             end: 0,
@@ -621,13 +629,30 @@ fn owned_alloc_precheck(
     Ok(())
 }
 
+/// Depth-bounded deep clone. Record nesting is acyclic and verify-bounded
+/// by the frozen frontend nesting cap (MAX_FRONTEND_NESTING = 128), so the
+/// host recursion depth is input-frozen small; the explicit depth counter
+/// turns any contract violation into a controlled infra rejection instead
+/// of a stack overflow (F821-R1-06). Fuel (bytes + fields) is charged by
+/// the CALLER before the walk — the budget check bounds the traversal.
 fn clone_owned_value(val: &Value, arena: &crate::owned_text::StrArena) -> Result<Value, u64> {
+    clone_owned_value_d(val, arena, 0)
+}
+
+fn clone_owned_value_d(
+    val: &Value,
+    arena: &crate::owned_text::StrArena,
+    depth: u32,
+) -> Result<Value, u64> {
+    if depth > crate::contract::MAX_FRONTEND_NESTING {
+        return Err(u64::MAX);
+    }
     match val {
         Value::Str(h) => Ok(Value::Str(arena.try_alloc(h.bytes())?)),
         Value::Record(r) => {
             let mut fields = Vec::with_capacity(r.fields.len());
             for f in &r.fields {
-                fields.push(clone_owned_value(f, arena)?);
+                fields.push(clone_owned_value_d(f, arena, depth + 1)?);
             }
             Ok(Value::Record(std::rc::Rc::new(
                 crate::contract::RecordValue { ty: r.ty, fields },
@@ -664,16 +689,11 @@ fn resolve_view_bytes<V: ModuleView>(
         ))
     })?;
     match &view.src {
-        crate::contract::StrViewSrc::Static { const_idx } => {
-            let bytes = match v.const_at(func_idx, *const_idx) {
-                Some(crate::mir::MirConst::Str(b)) => b.to_vec(),
-                _ => {
-                    return Err(ExecOutcome::Infra(
-                        "static view references a non-Str const (admission violation)".to_string(),
-                    ))
-                }
-            };
-            Ok((bytes, view.clone()))
+        crate::contract::StrViewSrc::Static { buf } => {
+            // F821-R1-03: the bytes were resolved in the OWNING unit at
+            // mint time — a cross-unit view stays correct (per-unit const
+            // index domains never mix).
+            Ok((buf.to_vec(), view.clone()))
         }
         crate::contract::StrViewSrc::Share(_) => {
             let resolved = crate::place::resolve_share_view(view).ok_or_else(|| {
@@ -1033,8 +1053,14 @@ fn dispatch<V: ModuleView>(
                         crate::mir::MirConst::Str(bytes) => {
                             if v.is_strview_type(func_idx, dst_ty) {
                                 let n = crate::owned_text::scalars(&bytes).len() as u32;
+                                // F821-R1-03: bind the OWNING unit's
+                                // resolved literal bytes — the view may
+                                // cross unit boundaries (its const index
+                                // must not).
                                 Value::StrView(crate::contract::StrView {
-                                    src: crate::contract::StrViewSrc::Static { const_idx: *value },
+                                    src: crate::contract::StrViewSrc::Static {
+                                        buf: std::rc::Rc::new(bytes.clone()),
+                                    },
                                     start: 0,
                                     end: n,
                                 })
@@ -1047,6 +1073,9 @@ fn dispatch<V: ModuleView>(
                                 {
                                     return Some(out);
                                 }
+                                // F821-R1-06: materialization copies the
+                                // literal — byte-scaled fuel.
+                                st.steps += bytes.len() as u64;
                                 match st.arena.try_alloc(&bytes) {
                                     Ok(h) => Value::Str(h),
                                     Err(n) => {
@@ -1202,11 +1231,21 @@ fn dispatch<V: ModuleView>(
                     // PLAN-821 move-in: owned-typed arguments transfer to
                     // the callee — the CALLER slot dies at the call (killed
                     // in the ownership dataflow; here the reference and the
-                    // generation both move on).
+                    // generation both move on). R1-F08: the kill is
+                    // SIG-DRIVEN — a borrowed (view-kind) callee param
+                    // keeps the caller's ownership (782 ABI-D `*const`).
                     {
-                        for a in args {
+                        let callee_sig_ty = v.mir_type_of(target, callee_fn.sig);
+                        for (ai, a) in args.iter().enumerate() {
                             let ty = func.slots[*a as usize].ty;
-                            if v.type_is_owned(func_idx, ty) {
+                            let param_borrows = callee_sig_ty
+                                .and_then(|t| match t {
+                                    crate::mir::MirType::Fn(sig) => sig.params.get(ai).copied(),
+                                    _ => None,
+                                })
+                                .map(|pt| !v.type_is_owned(target, pt))
+                                .unwrap_or(false);
+                            if v.type_is_owned(func_idx, ty) && !param_borrows {
                                 let zero = v.zero_of(func_idx, ty);
                                 owned_kill_slot(st, *a as usize, zero);
                             }
@@ -1241,14 +1280,23 @@ fn dispatch<V: ModuleView>(
                     if let Err(out) = owned_alloc_precheck(st, new_size, *dst as usize, limits) {
                         return Some(out);
                     }
-                    let cloned = match clone_owned_value(&sv, &st.arena) {
-                        Ok(v) => v,
-                        Err(n) => {
-                            return Some(ExecOutcome::Infra(format!(
-                                "fault-injected at owned allocation attempt #{n}"
-                            )))
-                        }
-                    };
+                    // F821-R1-06: the deep clone copies every buffer and
+                    // visits every field — byte- and field-scaled fuel
+                    // (contract-decision §4: CLONE 按输出字节数计量).
+                    st.steps += new_size as u64 + visited;
+                    let cloned =
+                        match clone_owned_value(&sv, &st.arena) {
+                            Ok(v) => v,
+                            Err(u64::MAX) => return Some(ExecOutcome::Infra(
+                                "clone depth exceeds the frozen nesting cap (admission violation)"
+                                    .to_string(),
+                            )),
+                            Err(n) => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "fault-injected at owned allocation attempt #{n}"
+                                )))
+                            }
+                        };
                     if let Err(out) = commit_slot_write(st, *dst as usize, cloned, limits) {
                         return Some(out);
                     }
@@ -1462,6 +1510,8 @@ fn dispatch<V: ModuleView>(
                     if let Err(out) = owned_alloc_precheck(st, deep, *dst as usize, limits) {
                         return Some(out);
                     }
+                    // F821-R1-06: concat copies both operands — byte fuel.
+                    st.steps += joined.len() as u64;
                     let res = match st.arena.try_alloc(&joined) {
                         Ok(h) => Value::Str(h),
                         Err(n) => {
@@ -1488,6 +1538,8 @@ fn dispatch<V: ModuleView>(
                     if let Err(out) = owned_alloc_precheck(st, deep, *dst as usize, limits) {
                         return Some(out);
                     }
+                    // F821-R1-06: byte-scaled fuel for the range copy.
+                    st.steps += projected.len() as u64;
                     let owned = match st.arena.try_alloc(&projected) {
                         Ok(h) => Value::Str(h),
                         Err(n) => {
@@ -1655,6 +1707,14 @@ fn dispatch<V: ModuleView>(
                     if let Err(out) = commit_slot_write(st, *root as usize, rebuilt, limits) {
                         return Some(out);
                     }
+                    // F821-R1-04: the analysis marks an owned VALUE slot
+                    // moved at a field replace — the runtime must match
+                    // (the source's Rc must not ghost-own the buffer past
+                    // the commit; failure paths above return BEFORE this).
+                    if v.type_is_owned(func_idx, func.slots[*value as usize].ty) {
+                        let zero = v.zero_of(func_idx, func.slots[*value as usize].ty);
+                        owned_kill_slot(st, *value as usize, zero);
+                    }
                 }
                 MirInstr::Aggregate {
                     dst,
@@ -1674,6 +1734,17 @@ fn dispatch<V: ModuleView>(
                     }));
                     if let Err(out) = commit_slot_write(st, *dst as usize, rv, limits) {
                         return Some(out);
+                    }
+                    // F821-R1-04: owned operands TRANSFER into the record —
+                    // the source slots die at the commit (matching the
+                    // analysis's kill), so the buffers release with the
+                    // record, not with ghost owners at frame end.
+                    for s in operands {
+                        let ty = func.slots[*s as usize].ty;
+                        if v.type_is_owned(func_idx, ty) {
+                            let zero = v.zero_of(func_idx, ty);
+                            owned_kill_slot(st, *s as usize, zero);
+                        }
                     }
                 }
             }

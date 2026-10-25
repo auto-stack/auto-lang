@@ -1283,6 +1283,26 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<TypeIdx> {
                     map[i] = merged.intern_type(t.clone());
                     progress = true;
                 }
+                MirType::RecordView(r) => {
+                    let pending = r.fields.iter().any(|f| map[f.ty as usize] == u32::MAX);
+                    if !pending {
+                        let nr = auto_av_core::mir::RecordTypeRef {
+                            owner_module: r.owner_module.clone(),
+                            name: r.name.clone(),
+                            fields: r
+                                .fields
+                                .iter()
+                                .map(|f| auto_av_core::mir::MirFieldDef {
+                                    name: f.name.clone(),
+                                    ty: map[f.ty as usize],
+                                })
+                                .collect(),
+                        };
+                        let idx = merged.intern_type(MirType::RecordView(nr));
+                        map[i] = idx;
+                        progress = true;
+                    }
+                }
                 MirType::Record(r) => {
                     let pending = r.fields.iter().any(|f| map[f.ty as usize] == u32::MAX);
                     if !pending {
@@ -1469,6 +1489,7 @@ pub fn render_unit_sig(unit: &MirModule) -> String {
             Some(MirType::MutRef) => "mut".to_string(),
             Some(MirType::Fn(_)) => "fn".to_string(),
             Some(MirType::Record(r)) => format!("rec:{}", r.name),
+            Some(MirType::RecordView(r)) => format!("recview:{}", r.name),
             None => "?".to_string(),
         }
     };

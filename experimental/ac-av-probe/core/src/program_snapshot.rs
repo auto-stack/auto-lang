@@ -371,6 +371,28 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<u32> {
                     map[i] = merged.intern_type(t.clone());
                     progress = true;
                 }
+                // Record-view types intern once every FIELD type is
+                // mapped (PLAN-821 R1-F08) - same nominal identity rule.
+                MirType::RecordView(r) => {
+                    let pending = r.fields.iter().any(|f| map[f.ty as usize] == u32::MAX);
+                    if !pending {
+                        let nr = RecordTypeRef {
+                            owner_module: r.owner_module.clone(),
+                            name: r.name.clone(),
+                            fields: r
+                                .fields
+                                .iter()
+                                .map(|f| MirFieldDef {
+                                    name: f.name.clone(),
+                                    ty: map[f.ty as usize],
+                                })
+                                .collect(),
+                        };
+                        let idx = merged.intern_type(MirType::RecordView(nr));
+                        map[i] = idx;
+                        progress = true;
+                    }
+                }
                 // Record types intern once every FIELD type is mapped
                 // (PLAN-820): nominal structure (owner+name+fields) interns
                 // by the frozen structural-equality rule.

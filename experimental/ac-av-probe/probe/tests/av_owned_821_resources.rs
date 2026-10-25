@@ -486,7 +486,14 @@ fn av_owned_821_v04_all_exit_kinds_clean_lifo() {
         }],
     );
     let arena = auto_av_core::owned_text::StrArena::new();
-    let (out, trace) = run(&m, &ExecLimits::default(), &arena);
+    // R1-F06 byte fuel: each 3MiB clone burns 3M steps — keep the step
+    // budget above the chain's real byte work so the THIRD clone's
+    // slot-bytes PRECHECK is the rejecting face (not InstrSteps).
+    let limits = ExecLimits {
+        max_steps: 20_000_000,
+        ..ExecLimits::default()
+    };
+    let (out, trace) = run(&m, &limits, &arena);
     match &out {
         ExecOutcome::Resource { kind, .. } => assert_eq!(*kind, ResourceKind::SlotBytes),
         other => panic!("the third 3MiB buffer must be Resource(SlotBytes), got {other:?}"),
@@ -735,9 +742,16 @@ fn av_owned_821_v07_cap_boundary_pass_and_over_by_one() {
     }
 
     // Calibration: pad=0 executes; the observed peak IS the exact live
-    // maximum (slot overheads included).
+    // maximum (slot overheads included). R1-F06 byte fuel: the concat
+    // chain copies ~5.6MB — the step budget stays above the byte work so
+    // the CAP (not InstrSteps) is the discriminating budget.
+    let limits = ExecLimits {
+        max_steps: 100_000_000,
+        wall: std::time::Duration::from_secs(30),
+        ..ExecLimits::default()
+    };
     let arena = auto_av_core::owned_text::StrArena::new();
-    let (out, trace) = run(&build(0), &ExecLimits::default(), &arena);
+    let (out, trace) = run(&build(0), &limits, &arena);
     let ExecOutcome::Success { value, .. } = out else {
         panic!("the calibration chain must succeed, got {out:?}")
     };
@@ -752,7 +766,7 @@ fn av_owned_821_v07_cap_boundary_pass_and_over_by_one() {
     // At-cap: pad exactly to the boundary — passes with peak == cap.
     let pad_pass = (MAX_AV_SLOT_BYTES as u64 - p0) as usize;
     let arena = auto_av_core::owned_text::StrArena::new();
-    let (out, trace) = run(&build(pad_pass), &ExecLimits::default(), &arena);
+    let (out, trace) = run(&build(pad_pass), &limits, &arena);
     let ExecOutcome::Success { .. } = out else {
         panic!("the at-cap chain must succeed, got {out:?}")
     };
@@ -765,7 +779,7 @@ fn av_owned_821_v07_cap_boundary_pass_and_over_by_one() {
     // Over by ONE byte: the same chain padded one more — rejected BEFORE
     // the attempt with the exact over-budget size named.
     let arena = auto_av_core::owned_text::StrArena::new();
-    let (out, trace) = run(&build(pad_pass + 1), &ExecLimits::default(), &arena);
+    let (out, trace) = run(&build(pad_pass + 1), &limits, &arena);
     match &out {
         ExecOutcome::Resource { kind, message } => {
             assert_eq!(*kind, ResourceKind::SlotBytes);

@@ -42,7 +42,13 @@ pub fn scalar_layout(t: &MirType) -> Option<ScalarLayout> {
         // nested records keep 4 (the C-style max-align rule derives both).
         MirType::Char => ScalarLayout { size: 4, align: 4 },
         MirType::Str => ScalarLayout { size: 12, align: 8 },
-        MirType::Fn(_) | MirType::Record(_) | MirType::StrView | MirType::MutRef => return None,
+        // PLAN-821 R1-F08: a borrowed record view is a place value - no
+        // scalar layout (views are never stored in records).
+        MirType::Fn(_)
+        | MirType::Record(_)
+        | MirType::RecordView(_)
+        | MirType::StrView
+        | MirType::MutRef => return None,
     })
 }
 

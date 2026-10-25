@@ -61,6 +61,12 @@ pub enum MirType {
     /// record (derived, never input-claimed); copyability follows the same
     /// derivation (Design44 §4.2).
     Record(RecordTypeRef),
+    /// Read-only borrow of a record value (PLAN-821 R1-F08, 782 ABI-D
+    /// `*const` borrowed record params): the frozen language surface's
+    /// plain `p Note` parameter mode. Identity mirrors the record's
+    /// nominal identity; NOT owned (no kill at the call, the callee
+    /// reads fields as externally-rooted views, writes are rejected).
+    RecordView(RecordTypeRef),
     /// Unicode scalar (PLAN-774/821): domain-checked, Copy, never int.
     Char,
     /// Owned UTF-8 buffer (PLAN-774/821): single owner, real allocation.
@@ -496,6 +502,7 @@ impl MirModule {
             MirType::F64 => Some(ScalarShape::F64),
             MirType::Fn(_)
             | MirType::Record(_)
+            | MirType::RecordView(_)
             | MirType::Char
             | MirType::Str
             | MirType::StrView
@@ -511,7 +518,9 @@ impl MirModule {
         let mut owner = ty;
         for seg in path {
             match self.types.get(ty as usize)? {
-                MirType::Record(r) => {
+                MirType::Record(r) | MirType::RecordView(r) => {
+                    // R1-F08: a borrowed record view resolves fields exactly
+                    // like its record (reads only; writes are typed away).
                     let f = r.fields.get(*seg as usize)?;
                     owner = ty;
                     ty = f.ty;
@@ -640,6 +649,7 @@ impl MirModule {
                 | MirType::U64
                 | MirType::F32
                 | MirType::F64
+                | MirType::RecordView(_)
                 | MirType::Char
                 | MirType::Str
                 | MirType::StrView

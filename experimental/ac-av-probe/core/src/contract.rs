@@ -297,8 +297,11 @@ pub enum StrViewSrc {
     /// event fires only when the LAST reference (owner or view) goes.
     Share(StrHandle),
     /// Backed by a module constant's bytes (a literal borrowing source:
-    /// immortal; resolved through the executor's const table by index).
-    Static { const_idx: u32 },
+    /// immortal). F821-R1-03: the view carries the RESOLVED bytes of the
+    /// OWNING unit's constant — a bare const INDEX resolves against the
+    /// wrong table when the view crosses function-unit boundaries (each
+    /// unit has an independent const index domain).
+    Static { buf: std::rc::Rc<Box<[u8]>> },
 }
 
 /// The `Value::StrView` payload: source + Unicode-scalar range `[start, end)`.
@@ -313,7 +316,7 @@ impl PartialEq for StrView {
     fn eq(&self, other: &Self) -> bool {
         let bytes_eq = match (&self.src, &other.src) {
             (StrViewSrc::Share(a), StrViewSrc::Share(b)) => a.bytes() == b.bytes(),
-            (StrViewSrc::Static { const_idx: a }, StrViewSrc::Static { const_idx: b }) => a == b,
+            (StrViewSrc::Static { buf: a }, StrViewSrc::Static { buf: b }) => a == b,
             _ => false,
         };
         bytes_eq && self.start == other.start && self.end == other.end

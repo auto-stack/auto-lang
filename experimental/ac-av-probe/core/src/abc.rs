@@ -94,6 +94,7 @@ pub const TY_CHAR: u8 = 8;
 pub const TY_STR: u8 = 9;
 pub const TY_STRVIEW: u8 = 10;
 pub const TY_MUTREF: u8 = 11;
+pub const TY_RECORDVIEW: u8 = 12;
 pub const TY_F32: u8 = 5;
 pub const TY_F64: u8 = 6;
 pub const TY_RECORD: u8 = 7;
@@ -491,6 +492,42 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                             format!("record field `{}` exceeds wire width", f.name),
                         ));
                     }
+                    put_u16(&mut w, fb.len() as u16);
+                    w.push(fb);
+                    put_u32(&mut w, f.ty);
+                }
+            }
+            // PLAN-821 R1-F08: a borrowed record view - owned profile only,
+            // same nominal payload as Record under its own tag.
+            MirType::RecordView(r) => {
+                if !family.allows_owned_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "record-view type in a non-owned-profile module".to_string(),
+                    ));
+                }
+                let owner_b = r.owner_module.as_bytes();
+                let name_b = r.name.as_bytes();
+                if owner_b.len() > u16::MAX as usize || name_b.len() > u16::MAX as usize {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.record-identity",
+                        format!("record-view `{}` identity exceeds wire width", r.name),
+                    ));
+                }
+                if r.fields.len() > u16::MAX as usize {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.record-arity",
+                        format!("record-view `{}` exceeds wire field width", r.name),
+                    ));
+                }
+                put_u8(&mut w, TY_RECORDVIEW);
+                put_u16(&mut w, owner_b.len() as u16);
+                w.push(owner_b);
+                put_u16(&mut w, name_b.len() as u16);
+                w.push(name_b);
+                put_u16(&mut w, r.fields.len() as u16);
+                for f in &r.fields {
+                    let fb = f.name.as_bytes();
                     put_u16(&mut w, fb.len() as u16);
                     w.push(fb);
                     put_u32(&mut w, f.ty);
@@ -1323,6 +1360,46 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                     });
                 }
                 module.types.push(MirType::Record(RecordTypeRef {
+                    owner_module,
+                    name,
+                    fields,
+                }));
+            }
+            TY_RECORDVIEW if family.allows_owned_tags() => {
+                let olen = c.u16()? as usize;
+                let ob = c.take(olen)?.to_vec();
+                let owner_module = String::from_utf8(ob).map_err(|_| {
+                    AbcDecodeError::fmt_err(
+                        "abc.decode.record-utf8",
+                        "record-view owner is not UTF-8".to_string(),
+                    )
+                })?;
+                let nlen = c.u16()? as usize;
+                let nb = c.take(nlen)?.to_vec();
+                let name = String::from_utf8(nb).map_err(|_| {
+                    AbcDecodeError::fmt_err(
+                        "abc.decode.record-utf8",
+                        "record-view name is not UTF-8".to_string(),
+                    )
+                })?;
+                let nfields = c.u16()? as usize;
+                let mut fields = Vec::with_capacity(nfields);
+                for _ in 0..nfields {
+                    let flen = c.u16()? as usize;
+                    let fb = c.take(flen)?.to_vec();
+                    let fname = String::from_utf8(fb).map_err(|_| {
+                        AbcDecodeError::fmt_err(
+                            "abc.decode.record-utf8",
+                            "record field name is not UTF-8".to_string(),
+                        )
+                    })?;
+                    let fty = c.u32()?;
+                    fields.push(MirFieldDef {
+                        name: fname,
+                        ty: fty,
+                    });
+                }
+                module.types.push(MirType::RecordView(RecordTypeRef {
                     owner_module,
                     name,
                     fields,

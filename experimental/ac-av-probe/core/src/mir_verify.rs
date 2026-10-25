@@ -320,7 +320,11 @@ impl<'a> Verifier<'a> {
                         ),
                     ));
                 }
-                MirType::Char | MirType::Str | MirType::StrView | MirType::MutRef
+                MirType::Char
+                | MirType::Str
+                | MirType::StrView
+                | MirType::MutRef
+                | MirType::RecordView(_)
                     if !self.is_owned =>
                 {
                     return Err(MirVerifyError::uns(
@@ -385,7 +389,9 @@ impl<'a> Verifier<'a> {
                         // 782 mirror: a borrowed view / token is not a
                         // field kind — owned Str fields are; views are
                         // place values only (contract-decision §2).
-                        Some(MirType::StrView) | Some(MirType::MutRef) => {
+                        Some(MirType::StrView)
+                        | Some(MirType::MutRef)
+                        | Some(MirType::RecordView(_)) => {
                             return Err(MirVerifyError::inv(
                                 "mir.field-borrow",
                                 format!(
@@ -780,7 +786,9 @@ impl<'a> Verifier<'a> {
         }
         let bt = slot_ty_of(f, base, sp, &format!("{} base", what))?;
         match self.module.types.get(bt as usize) {
-            Some(MirType::Record(_)) => Ok(()),
+            // R1-F08: a borrowed record view base reads fields like its
+            // record (FieldGet only; FieldSet roots stay owned records).
+            Some(MirType::Record(_)) | Some(MirType::RecordView(_)) => Ok(()),
             _ => Err(MirVerifyError::Invalid {
                 code: "mir.field-path".to_string(),
                 message: format!("{} base slot type {} is not a record", what, bt),
@@ -1161,7 +1169,21 @@ impl<'a> Verifier<'a> {
                         for (ai, (a, want)) in args.iter().zip(callee_sig.params.iter()).enumerate()
                         {
                             let at = slot_ty_of(f, *a, sp, &format!("call arg #{}", ai))?;
-                            if !self.ty_equiv(at, *want) {
+                            // R1-F08 borrowing coercion: an owned record arg
+                            // satisfies a RecordView (borrowed) param — one
+                            // way only (a view never satisfies an owned
+                            // param; .move semantics stay explicit).
+                            let borrow_ok = matches!(
+                                (
+                                    self.module.types.get(at as usize),
+                                    self.module.types.get(*want as usize),
+                                ),
+                                (
+                                    Some(MirType::Record(ra)),
+                                    Some(MirType::RecordView(rw)),
+                                ) if ra == rw
+                            );
+                            if !self.ty_equiv(at, *want) && !borrow_ok {
                                 return Err(err(
                                     "mir.call-arg-type",
                                     format!(
