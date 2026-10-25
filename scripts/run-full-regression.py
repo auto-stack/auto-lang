@@ -51,6 +51,13 @@ def require_main(lang):
     main = Path(listing.splitlines()[0].removeprefix("worktree ")).resolve()
     if lang.resolve() != main:
         raise ValueError(f"unfiltered full regression is main-checkout only: {main}; use --list-only for work/review")
+    branch = subprocess.check_output(["git", "-C", str(lang), "branch", "--show-current"], text=True).strip()
+    if branch != "master":
+        raise ValueError("full regression requires the frozen master checkout")
+    dirty = subprocess.check_output(["git", "-C", str(lang), "diff", "--name-only", "HEAD", "--",
+                                     "crates", "test", "experimental", "scripts", ".cargo", ".config", "Cargo.toml", "Cargo.lock"])
+    if dirty.strip():
+        raise ValueError("main checkout has code/configuration WIP; route it to its owning worktree before full regression")
 
 
 @contextlib.contextmanager

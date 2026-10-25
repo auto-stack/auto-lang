@@ -17,6 +17,16 @@ spec.loader.exec_module(full)
 
 
 class Controls(unittest.TestCase):
+    def test_full_execution_rejects_worktree_and_main_code_wip(self):
+        main = Path("main").resolve()
+        with mock.patch.object(full.subprocess, "check_output", return_value="worktree " + str(main)):
+            with self.assertRaisesRegex(ValueError, "main-checkout only"):
+                full.require_main(main.parent / "worktree")
+        with mock.patch.object(full.subprocess, "check_output", side_effect=["worktree " + str(main), "master", b"crates/wip.rs"]):
+            with self.assertRaisesRegex(ValueError, "code/configuration WIP"):
+                full.require_main(main)
+        with mock.patch.object(full.subprocess, "check_output", side_effect=["worktree " + str(main), "master", b""]):
+            full.require_main(main)
     def test_invalid_explicit_root_does_not_fall_back(self):
         with mock.patch.dict(full.os.environ, {"AUTO_UI_ROOT": "Z:/missing-plan850-owner"}):
             with self.assertRaises(ValueError):
