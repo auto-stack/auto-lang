@@ -1487,9 +1487,9 @@ fn decode_options(
                         // same shape (its judged step is also a run).
                         if !matches!(out.last(), Some(ProbeStep::Run)) {
                             return Err(err(
-                            &f.path_of("steps"),
-                            "ac-av step sequences must end with a run step (the judged step)",
-                        ));
+                                &f.path_of("steps"),
+                                "ac-av step sequences must end with a run step (the judged step)",
+                            ));
                         }
                         if out.is_empty() {
                             return Err(err(&f.path_of("steps"), "steps must not be empty"));

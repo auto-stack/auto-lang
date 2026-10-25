@@ -99,41 +99,44 @@ fn av_owned_821_corpus_green() {
 }
 
 /// V-10 negative oracle: with the parent's frozen expectation sabotaged
-/// (test-only seam `AV821_OWNED_EXPECT_SABOTAGE=result`), the LEGAL
-/// fixture run must FAIL — a wrong-bits worker report can never pass, and
-/// neither can a doctored parent table silently agree.
+/// (test-only seam `AV821_OWNED_EXPECT_SABOTAGE`), the LEGAL fixture run
+/// must FAIL — a wrong result face AND a wrong ledger face (rotated free
+/// order) each redden their own axis; neither a wrong-bits worker report
+/// nor a doctored parent table can silently agree.
 #[test]
 fn av_owned_821_negative_oracle_fails() {
     let _guard = crate::tests::ac_av_probe_tests::AV_CASE_LOCK
         .lock()
         .unwrap_or_else(|p| p.into_inner());
-    let root = temp_root("neg");
-    let out = out_of(&root, "out");
-    std::env::set_var("AV821_OWNED_EXPECT_SABOTAGE", "result");
-    let report = run_suite(
-        &owned_suite_dir().join("av-data-821.suite.ad"),
-        &out,
-        &Limits::defaults(),
-    );
-    std::env::remove_var("AV821_OWNED_EXPECT_SABOTAGE");
-    let report = report.expect("suite runs (the sabotage is judge-side)");
-    let row = report
-        .results
-        .iter()
-        .find(|r| r.check_id == "run-owned-fixture")
-        .expect("fixture check present");
-    assert_eq!(
-        row.status,
-        auto_test_case::report::Status::Fail,
-        "a sabotaged parent expectation must redden the legal fixture run: {:?} {:?}",
-        row.detail,
-        row.mismatches
-    );
-    assert!(
-        row.mismatches.iter().any(|m| m.kind == "owned-result"),
-        "the mismatch must name the owned-result axis: {:?}",
-        row.mismatches
-    );
+    for (seam, want_axis) in [("result", "owned-result"), ("ledger", "owned-frees")] {
+        let root = temp_root(&format!("neg-{seam}"));
+        let out = out_of(&root, "out");
+        std::env::set_var("AV821_OWNED_EXPECT_SABOTAGE", seam);
+        let report = run_suite(
+            &owned_suite_dir().join("av-data-821.suite.ad"),
+            &out,
+            &Limits::defaults(),
+        );
+        std::env::remove_var("AV821_OWNED_EXPECT_SABOTAGE");
+        let report = report.expect("suite runs (the sabotage is judge-side)");
+        let row = report
+            .results
+            .iter()
+            .find(|r| r.check_id == "run-owned-fixture")
+            .expect("fixture check present");
+        assert_eq!(
+            row.status,
+            auto_test_case::report::Status::Fail,
+            "the `{seam}` sabotage must redden the legal fixture run: {:?} {:?}",
+            row.detail,
+            row.mismatches
+        );
+        assert!(
+            row.mismatches.iter().any(|m| m.kind == want_axis),
+            "the mismatch must name the {want_axis} axis: {:?}",
+            row.mismatches
+        );
+    }
 }
 
 /// V-10 worker-contract faults on the OWNED recipe: a non-zero worker

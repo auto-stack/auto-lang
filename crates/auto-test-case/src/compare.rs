@@ -256,10 +256,6 @@ mod tests {
             del
         );
         let ins = unified_diff_hunk(b"a\nb\n", b"a\nnew\nb\n", 1).unwrap();
-        assert!(
-            ins.contains("+new\n") && !ins.contains("\n-"),
-            "{}",
-            ins
-        );
+        assert!(ins.contains("+new\n") && !ins.contains("\n-"), "{}", ins);
     }
 }

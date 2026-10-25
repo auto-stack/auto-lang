@@ -1345,7 +1345,12 @@ fn owned_on_non_owned(family: RecipeFamily, steps: &[StepOut]) -> bool {
 fn malformed_owned(steps: &[StepOut]) -> Option<String> {
     steps.iter().find_map(|s| {
         s.owned.as_ref().and_then(|o| {
-            let bad = |why: &str| Some(format!("malformed owned report on step `{}`: {}", s.op, why));
+            let bad = |why: &str| {
+                Some(format!(
+                    "malformed owned report on step `{}`: {}",
+                    s.op, why
+                ))
+            };
             let o = o.as_object()?;
             if !o.get("result")?.is_object() {
                 return bad("result is not an object");
@@ -1390,8 +1395,10 @@ fn judge_owned_fixture(id: &str, step: &StepOut, mismatches: &mut Vec<Mismatch>)
     match std::env::var("AV821_OWNED_EXPECT_SABOTAGE").ok().as_deref() {
         Some("result") => {
             // Flip one observable leaf: the record's first str field bytes.
-            want_result["fields"][0]["utf8"] =
-                serde_json::json!(format!("{}!", want_result["fields"][0]["utf8"].as_str().unwrap_or("")));
+            want_result["fields"][0]["utf8"] = serde_json::json!(format!(
+                "{}!",
+                want_result["fields"][0]["utf8"].as_str().unwrap_or("")
+            ));
         }
         Some("ledger") => {
             want_frees.rotate_left(1);
@@ -1421,7 +1428,10 @@ fn judge_owned_fixture(id: &str, step: &StepOut, mismatches: &mut Vec<Mismatch>)
             return;
         }
     };
-    let got_result = owned.get("result").cloned().unwrap_or(serde_json::Value::Null);
+    let got_result = owned
+        .get("result")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
     if got_result != want_result {
         mismatches.push(Mismatch {
             observation: "owned".into(),
@@ -1431,7 +1441,10 @@ fn judge_owned_fixture(id: &str, step: &StepOut, mismatches: &mut Vec<Mismatch>)
             first_diff: None,
         });
     }
-    let live = owned.get("live_after_release").and_then(|v| v.as_u64()).unwrap_or(u64::MAX);
+    let live = owned
+        .get("live_after_release")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(u64::MAX);
     if live != 0 {
         mismatches.push(Mismatch {
             observation: "owned".into(),
@@ -1444,7 +1457,11 @@ fn judge_owned_fixture(id: &str, step: &StepOut, mismatches: &mut Vec<Mismatch>)
     let alloc_bytes: Vec<u64> = owned
         .get("allocs")
         .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|e| e.get("bytes").and_then(|b| b.as_u64())).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|e| e.get("bytes").and_then(|b| b.as_u64()))
+                .collect()
+        })
         .unwrap_or_default();
     let want_allocs: Vec<u64> = want_allocs.iter().map(|b| *b as u64).collect();
     if alloc_bytes != want_allocs {
@@ -1461,7 +1478,11 @@ fn judge_owned_fixture(id: &str, step: &StepOut, mismatches: &mut Vec<Mismatch>)
     let alloc_ids: Vec<u64> = owned
         .get("allocs")
         .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|e| e.get("id").and_then(|b| b.as_u64())).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|e| e.get("id").and_then(|b| b.as_u64()))
+                .collect()
+        })
         .unwrap_or_default();
     if !alloc_ids.windows(2).all(|w| w[0] < w[1]) {
         mismatches.push(Mismatch {
@@ -1475,7 +1496,11 @@ fn judge_owned_fixture(id: &str, step: &StepOut, mismatches: &mut Vec<Mismatch>)
     let free_ids: Vec<u64> = owned
         .get("frees")
         .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|e| e.get("id").and_then(|b| b.as_u64())).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|e| e.get("id").and_then(|b| b.as_u64()))
+                .collect()
+        })
         .unwrap_or_default();
     if free_ids != want_frees {
         mismatches.push(Mismatch {
@@ -1755,7 +1780,8 @@ mod judge_tests {
     }
 
     #[test]
-    fn core_success_requires_the_old_value_channel() {        // Without typed: the pre-R6 semantics — a missing value mismatches.
+    fn core_success_requires_the_old_value_channel() {
+        // Without typed: the pre-R6 semantics — a missing value mismatches.
         let ms = mismatches(RecipeFamily::Core, &step(None, None));
         assert!(ms.iter().any(|m| m.kind == "missing"));
         // With a typed object attached (the R7 fault-worker shape): the
@@ -1906,7 +1932,10 @@ mod judge_tests {
         }
         let mut ms = Vec::new();
         judge_owned_fixture("first-case", &with(good.clone()), &mut ms);
-        assert!(ms.is_empty(), "the frozen first-case face must be green: {ms:?}");
+        assert!(
+            ms.is_empty(),
+            "the frozen first-case face must be green: {ms:?}"
+        );
         // Wrong result bytes / live≠0 / an extra allocation / reversed
         // free order — each mutation alone (from the pristine face) must
         // redden its own axis.
@@ -1916,9 +1945,12 @@ mod judge_tests {
         let mut m_live = pristine.clone();
         m_live["live_after_release"] = serde_json::json!(1);
         let mut m_allocs = pristine.clone();
-        m_allocs["allocs"].as_array_mut().unwrap().push(serde_json::json!({
-            "id": 2, "bytes": 4
-        }));
+        m_allocs["allocs"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "id": 2, "bytes": 4
+            }));
         let mut m_frees = pristine.clone();
         m_frees["frees"].as_array_mut().unwrap().reverse();
         for (axis, face) in [

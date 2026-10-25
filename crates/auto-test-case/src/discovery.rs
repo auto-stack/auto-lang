@@ -57,8 +57,7 @@ fn read_file_limited(path: &Path, limits: &Limits) -> Result<Vec<u8>, String> {
     // Bounded read (Plan 773 F-07): over-limit documents are rejected
     // without buffering them whole; reparse points on the file or any
     // ancestor are rejected before the open.
-    read_bounded(path, "max_document_bytes", limits.max_document_bytes)
-        .map_err(|e| e.to_string())
+    read_bounded(path, "max_document_bytes", limits.max_document_bytes).map_err(|e| e.to_string())
 }
 
 fn contract_from_fence(payload: &[u8], language: &str) -> Result<atom::CVal, String> {

@@ -322,20 +322,62 @@ switch ($Scope) {
         Run-Probe-Tests "av_data_820_resources" "resources-inherited-820" @()
     }
     "cache" {
-        # V-08 restore/re-key/corruption faces — T-05.
-        Not-Wired "cache" "T-05"
+        # T-05 V-08: dependency-partitioned restores — own-fingerprint
+        # restores reproduce identical results; a changed type table is a
+        # CLEAN MISS (never stale reuse); a tampered payload fails the
+        # envelope checksum (a good address never resurrects bad bytes);
+        # producer/profile identities never cross.
+        Run-Probe-Tests "av_owned_821_cache_compat" "cache" @(
+            "av_owned_821_v08_changed_types_is_clean_miss_not_stale_reuse",
+            "av_owned_821_v08_good_hash_bad_payload_rejected",
+            "av_owned_821_v08_profile_identity_isolation",
+            "av_owned_821_v09_owned_bytes_rejected_by_old_consumers",
+            "av_owned_821_v09_control_owned_restore_still_green"
+        )
+        Run-Probe-Tests "av_owned_821_first_case" "cache-restore-first-case" @(
+            "av_owned_821_first_case_same_store_restore"
+        )
+        Run-Runner-Tests "av_owned_821_corpus" "cache-corpus" @("av_owned_821_corpus_green")
     }
     "compatibility" {
-        # V-09 core-i32/data/817/818 replay + unknown-profile refusals — T-05.
-        Not-Wired "compatibility" "T-05"
+        # T-05 V-09: the ORIGINAL consumers keep their support faces — the
+        # core-i32 ac-av corpus, the delivered 817 (CTE) and 818
+        # (MIR-native) recipe gates run unchanged; the owned corpus gate
+        # replays; owned bytes under old consumers are explicit refusals
+        # (probe-side, in the cache bin).
+        Run-Runner-Tests "ac_av_probe" "compatibility-ac-av" @("ac_av_probe_corpus_executes_green")
+        Run-Runner-Tests "cte_probe" "compatibility-ac-cte" @("cte_probe_corpus_executes_green")
+        Run-Runner-Tests "ac_mn_probe" "compatibility-ac-mn" @("ac_mn_probe_corpus_executes_green")
+        Run-Runner-Tests "av_owned_821" "compatibility-owned-corpus" @(
+            "av_owned_821_corpus_green"
+        )
+        Run-Probe-Tests "av_data_820" "compatibility-820" @()
     }
     "autodown" {
-        # V-10 full counter-control matrix — T-06.
-        Not-Wired "autodown" "T-06"
+        # T-06 V-10: the formal recipe positives + every parent-side
+        # injection — both sabotage faces (wrong result / wrong ledger
+        # each redden their own axis) and the worker-contract faults
+        # (exit9/extra-frame/wrong-hash = infra, never green).
+        Run-Runner-Tests "av_owned_821" "autodown" @(
+            "av_owned_821_corpus_green",
+            "av_owned_821_negative_oracle_fails",
+            "av_owned_821_worker_faults_are_infra"
+        )
     }
     "acceptance" {
-        # Aggregates EVERY implemented scope (failures propagate) — T-06.
-        Not-Wired "acceptance" "T-06"
+        # T-06: replays EVERY implemented scope as a REAL child script —
+        # a failure anywhere breaks the aggregate (no scope may silently
+        # drop out of acceptance).
+        foreach ($scope in @(
+            "first-case", "semantics", "admission", "cache",
+            "compatibility", "autodown", "resources"
+        )) {
+            if (!(Invoke-Scope $scope)) {
+                Write-Host "FAILED: acceptance — scope '$scope' red"
+                exit 1
+            }
+        }
+        Write-Host "PASS: acceptance (all seven scopes replayed green)"
     }
 }
 Write-Host "PASS: scope '$Scope' green"

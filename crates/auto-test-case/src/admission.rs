@@ -405,8 +405,7 @@ mod tests {
         let root = temp_dir_tagged("outfile");
         let inputs = root.join("inputs");
         std::fs::create_dir_all(&inputs).unwrap();
-        let err =
-            validate_output_file(&inputs.join("report.json"), &[inputs.clone()]).unwrap_err();
+        let err = validate_output_file(&inputs.join("report.json"), &[inputs.clone()]).unwrap_err();
         assert!(err.to_string().contains("overlaps"), "{}", err);
         let ok = root.join("out");
         std::fs::create_dir_all(&ok).unwrap();
