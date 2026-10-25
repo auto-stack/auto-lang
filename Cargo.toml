@@ -299,6 +299,8 @@ exclude = [
     # cargo test --manifest-path test/fixtures/modularity/man-core-consumer/Cargo.toml
     # 依赖闭包断言：bash test/fixtures/modularity/man-core-consumer/verify-deps.sh
     "test/fixtures/modularity/man-core-consumer",
+    # PLAN-832 T-03: 三仓管理规则 + 语言 SDK + I-TOOL 协议组合消费探针。
+    "test/fixtures/modularity/three-repository-consumer",
     # PLAN-815: 外部 UI 工具消费方探针——独立 fixture crate（依赖仅
     # auto-ui-tools/auto-tool-protocol/auto-project-model，证明 M815-A 工具
     # 闭包无 auto-man/auto-lang/auto-vm/auto-gen；并经 AUTO_UI_TOOL_BIN 以

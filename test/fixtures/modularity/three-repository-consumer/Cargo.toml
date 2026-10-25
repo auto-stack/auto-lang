@@ -1,0 +1,15 @@
+[package]
+name = "three-repository-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-man-core = { path = "../../../../crates/auto-man-core" }
+auto-lang-core = { path = "../../../../crates/auto-lang-core" }
+auto-tool-protocol = { path = "../../../../crates/auto-tool-protocol" }
+auto-project-model = { path = "../../../../crates/auto-project-model" }
+auto-val = { path = "../../../../crates/auto-val" }
+serde_json = "1"
+
+[workspace]
