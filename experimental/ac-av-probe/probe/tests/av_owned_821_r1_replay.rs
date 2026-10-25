@@ -93,7 +93,7 @@ fn main_i32(m: &mut MirModule, t: &T, slots: Vec<MirSlot>, blocks: Vec<MirBlock>
 
 fn extra(
     m: &mut MirModule,
-    t: &T,
+    _t: &T,
     params: Vec<u32>,
     result: u32,
     slots: Vec<MirSlot>,
@@ -149,7 +149,6 @@ fn av_owned_821_r1_return_dropped_and_ended_escape_rejected() {
             Terminator::Return { value: 0 },
         )],
     );
-    let zero = m.intern_const(MirConst::I32(0));
     main_i32(
         &mut m,
         &t,
@@ -620,13 +619,47 @@ fn av_owned_821_r1_borrowed_record_source_paths() {
         }
     ));
 
-    // Mut record param: the ABI-E write-back borrow is a PRECISE
-    // controlled rejection (beyond the frozen MIR expressiveness — an
-    // explicit contract revision is required, not silently-wrong
-    // semantics).
-    let err = auto_ac_prototype::source::compile_text_record_source(MUT_RECORD, "r.at", &[])
-        .expect("the frontend accepts mut params");
-    let lower_err = auto_av_probe::hir_adapter::lower_checked_owned(&err.checked, "d_main", 0x1)
-        .expect_err("the owned lowering refuses the write-back borrow");
-    assert_eq!(lower_err.code(), "lower.mut-record");
+    // R2-F08': the mut record param now RUNS with caller-visible
+    // write-back — the callee's p.n=8 lands in the caller's `a` (oracle
+    // 8), and the ledger stays clean.
+    {
+        let compiled =
+            auto_ac_prototype::source::compile_text_record_source(MUT_RECORD, "r.at", &[])
+                .expect("the frontend accepts mut params");
+        let mir = auto_av_probe::hir_adapter::lower_checked_owned(&compiled.checked, "d_main", 0x1)
+            .expect("the owned lowering carries the write-back");
+        let (out, trace) = admit_exec(&mir);
+        assert!(matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(8),
+                ..
+            }
+        ));
+        assert_eq!(trace.arena.as_ref().unwrap().live(), 0);
+    }
+    // Caller-visible write-back: the caller reads `a` AFTER the call and
+    // observes the callee's mutation (8*100+8 = 808 = 0x328).
+    {
+        let src = "type Note { body Str; n int }
+fn set(mut p Note) int { p.n = 8; return p.n }
+fn main() int {
+    var a Note = Note { body: \"A\", n: 7 }
+    let r int = set(a.mut)
+    return r * 100 + a.n
+}
+";
+        let compiled =
+            auto_ac_prototype::source::compile_text_record_source(src, "r.at", &[]).unwrap();
+        let mir = auto_av_probe::hir_adapter::lower_checked_owned(&compiled.checked, "d_main", 0x1)
+            .unwrap();
+        let (out, _) = admit_exec(&mir);
+        assert!(matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(808),
+                ..
+            }
+        ));
+    }
 }

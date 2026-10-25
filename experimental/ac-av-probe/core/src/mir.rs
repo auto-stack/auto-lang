@@ -351,6 +351,16 @@ pub enum MirInstr {
         dst: SlotId,
         ch: SlotId,
     },
+    /// R2-F08' (mut-record write-back machinery): DESTRUCTIVE whole-field
+    /// move-out — `dst` receives the addressed field's value (an Rc share
+    /// for records); the ROOT slot dies (single-extraction, use-once).
+    /// Adapter-internal: lowers 782 `mut` record params' write-back
+    /// wrapper. Owned profile only.
+    FieldMove {
+        dst: SlotId,
+        root: SlotId,
+        path: Vec<u16>,
+    },
     /// `char.from_codepoint(n)` — i32 to char; invalid scalars trap
     /// `av.trap.char-invalid` at runtime (never a verify error, 770).
     CharFromCodepoint {

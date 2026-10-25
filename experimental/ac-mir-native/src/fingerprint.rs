@@ -198,6 +198,11 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
         } => format!("strcmp {eq} {dst} {lhs} {rhs}"),
         MirInstr::CharToCodepoint { dst, ch } => format!("char2cp {dst} {ch}"),
         MirInstr::CharFromCodepoint { dst, code } => format!("cp2char {dst} {code}"),
+        // PLAN-821 R2-F08' widening: the write-back extraction renders;
+        // the lower surface rejects it below.
+        MirInstr::FieldMove { dst, root, path } => {
+            format!("fieldmove {dst} {root} {:?}", path)
+        }
     })
 }
 

@@ -306,6 +306,17 @@ pub const SPECS: &[InstructionSpec] = &[
         ownership: "Copy",
     },
     InstructionSpec {
+        opcode: 0x1C,
+        name: "FIELDMOVE",
+        family: "instr",
+        operands: &[("dst", "W"), ("root", "R/K"), ("path", "R")],
+        type_rule: "path over root record -> owned field type == dst type; root dies (use-once)",
+        traps: false,
+        fuel: 1,
+        profiles: &["owned"],
+        ownership: "R2-F08' write-back machinery: destructive whole-field move-out (Rc share to dst, root killed)",
+    },
+    InstructionSpec {
         opcode: 0x10,
         name: "JUMP",
         family: "term",
@@ -390,6 +401,7 @@ pub fn coverage_check() -> Result<(), String> {
         "STR_CMP",
         "CHAR_TO_CODEPOINT",
         "CHAR_FROM_CODEPOINT",
+        "FIELDMOVE",
         "JUMP",
         "BRANCH",
         "RETURN",
@@ -428,6 +440,7 @@ pub fn mnemonic_of_instr(i: &MirInstr) -> &'static str {
         MirInstr::MutRef { .. } => "MUTREF",
         MirInstr::BorrowEnd { .. } => "BORROW_END",
         MirInstr::Drop { .. } => "DROP",
+        MirInstr::FieldMove { .. } => "FIELDMOVE",
         MirInstr::StrLen { .. } => "STR_LEN",
         MirInstr::StrLenBytes { .. } => "STR_LEN_BYTES",
         MirInstr::StrCharAt { .. } => "STR_CHAR_AT",
@@ -491,6 +504,7 @@ mod tests {
                 "STR_CMP",
                 "CHAR_TO_CODEPOINT",
                 "CHAR_FROM_CODEPOINT",
+                "FIELDMOVE",
             ]
         );
     }

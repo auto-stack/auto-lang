@@ -8,5 +8,6 @@ suite { schema: "autolang.suite/2", id: "av-data-821", include: [
   "av-owned-first-twin.case.ad",
   "av-owned-admission.case.ad",
   "av-owned-borrowed.case.ad",
+  "av-owned-mut-writeback.case.ad",
 ] }
 ```

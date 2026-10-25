@@ -918,23 +918,63 @@ fn owned_fn_sig_for_def(
                 // A plain record param is a READ-ONLY borrow (782 default).
                 out.intern_type(MirType::RecordView(r.clone()))
             }
-            (hir::ParamMode::MutBorrow, Some(MirType::Record(r))) => {
-                return Err(AdapterError::uns(
-                    "lower.mut-record",
-                    format!(
-                        "record param `{}` declares `mut` — the exclusive write-back borrow \
-                         (782 ABI-E `*mut`) is beyond the frozen av.owned/1 MIR expressiveness; \
-                         an explicit contract revision is required (record `{}`)",
-                        r.name, r.name
-                    ),
-                ))
-            }
+            // R2-F08': a MUT record param is an exclusive write-back
+            // borrow (782 ABI-E) — encoded as MOVE-IN + wrapper-result
+            // write-back: the caller moves the whole local in, the callee
+            // returns (source result, final mut params) in a t_MutRet
+            // wrapper, the caller extracts and writes back.
+            (hir::ParamMode::MutBorrow, Some(MirType::Record(_))) => base,
             _ => base,
         };
         params.push(mapped);
     }
     let result = owned_type_idx_of(&hir_sig.result, module, out, &mut memo, &mut visiting)?;
-    Ok(out.intern_type(MirType::Fn(FnSig { params, result })))
+    // Any mut RECORD param wraps the result (both sides derive from this
+    // builder, so caller/callee signatures agree).
+    let has_mut_record = param_modes.iter().zip(hir_sig.params.iter()).any(|(m, p)| {
+        *m == hir::ParamMode::MutBorrow
+            && matches!(
+                owned_type_idx_of(p, module, out, &mut memo, &mut visiting)
+                    .ok()
+                    .and_then(|i| out.types.get(i as usize).cloned()),
+                Some(MirType::Record(_))
+            )
+    });
+    if !has_mut_record {
+        return Ok(out.intern_type(MirType::Fn(FnSig { params, result })));
+    }
+    let mut fields = vec![MirFieldDef {
+        name: "f0".into(),
+        ty: result,
+    }];
+    for (m, p) in param_modes.iter().zip(hir_sig.params.iter()) {
+        if *m != hir::ParamMode::MutBorrow {
+            continue;
+        }
+        let ty = owned_type_idx_of(p, module, out, &mut memo, &mut visiting)?;
+        if matches!(out.types.get(ty as usize), Some(MirType::Record(_))) {
+            fields.push(MirFieldDef {
+                name: format!("wb{}", fields.len()),
+                ty,
+            });
+        }
+    }
+    let wrapper = out.intern_type(MirType::Record(RecordTypeRef {
+        owner_module: module.id_text.clone(),
+        name: format!(
+            "t_MutRet_{}",
+            module
+                .defs
+                .get(def_index as usize)
+                .map(|d| d.id_text.trim_start_matches("d_").to_string())
+                .unwrap_or_else(|| "fn".into())
+        ),
+        fields,
+    }));
+    Ok(out.intern_type(MirType::Fn(FnSig {
+        params,
+        result: wrapper,
+    })))
 }
 
 fn fn_type_index_ext(
@@ -1134,6 +1174,12 @@ struct FnLower<'a> {
     /// Running flat instruction counter — emission order equals block-major
     /// order because blocks are created in order and never revisited.
     flat: u32,
+    /// R2-F08' mut-record write-back: the t_MutRet wrapper type of THIS
+    /// function (None = no mut record params) and the param slots to wrap.
+    mut_wrap_ty: Option<TypeIdx>,
+    mut_param_slots: Vec<SlotId>,
+    /// R2-F08' call-site: (BorrowMut temp, borrowed local slot) pairs.
+    mut_borrow_temps: Vec<(SlotId, SlotId)>,
     /// Slot index (into the FINAL slot table) one past the last slot at
     /// the current STATEMENT's start — statement-tail borrow ends (774
     /// 语句尾寿命 for temporaries) release view temps minted inside the
@@ -1195,6 +1241,26 @@ impl<'a> FnLower<'a> {
     }
 
     /// Allocate a temp slot of an arbitrary (possibly record) MIR type.
+    /// A temp of an already-interned type index (write-back unwrap).
+    fn temp_ty_from_cache(&mut self, ty: TypeIdx) -> SlotId {
+        let idx = self.base_slots as usize + self.extra_slots.len();
+        self.extra_slots.push(MirSlot {
+            kind: SlotKind::Temp,
+            ty,
+            name: None,
+        });
+        idx as SlotId
+    }
+
+    /// R2-F08': map a BorrowMut argument TEMP back to the borrowed LOCAL
+    /// slot (the temp was created by the BorrowMut arm's MOVE).
+    fn mut_borrow_target(&self, arg_temp: SlotId) -> Option<SlotId> {
+        self.mut_borrow_temps
+            .iter()
+            .find(|(t, _)| *t == arg_temp)
+            .map(|(_, l)| *l)
+    }
+
     fn temp_ty(&mut self, ty: TypeIdx) -> SlotId {
         let idx = self.base_slots + self.extra_slots.len() as SlotId;
         self.extra_slots.push(MirSlot {
@@ -1511,6 +1577,99 @@ impl<'a> FnLower<'a> {
                     }
                     actuals[pos] = arg_slots[b.arg as usize];
                 }
+                // R2-F08': does the callee carry mut record params? Its
+                // MIR sig result is then the t_MutRet wrapper.
+                let callee_sig_ty = match callee_ref {
+                    CalleeRef::Func(fi) => self
+                        .out
+                        .funcs
+                        .get(fi as usize)
+                        .and_then(|f| self.out.types.get(f.sig as usize).cloned()),
+                    CalleeRef::Import(ii) => self
+                        .out
+                        .imports
+                        .get(ii as usize)
+                        .and_then(|imp| self.out.types.get(imp.sig as usize).cloned()),
+                };
+                let wrapper_fields = match callee_sig_ty {
+                    Some(MirType::Fn(f)) => match self.out.types.get(f.result as usize) {
+                        Some(MirType::Record(r)) if r.name.starts_with("t_MutRet_") => {
+                            Some((f.result, r.fields.clone()))
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some((wrap_ty, fields)) = wrapper_fields {
+                    // The call result IS the wrapper: dst gets the WRAPPER
+                    // type; then f0 = the source result, wb* write back.
+                    let wrap_dst = self.temp_ty_from_cache(wrap_ty);
+                    self.emit(
+                        MirInstr::Call {
+                            callee: callee_ref,
+                            dst: wrap_dst,
+                            args: actuals.clone(),
+                        },
+                        sp,
+                    );
+                    // f0: the source result (copyable via FIELD_GET).
+                    let v = self.temp_ty(ty);
+                    self.emit(
+                        MirInstr::FieldGet {
+                            dst: v,
+                            base: wrap_dst,
+                            path: vec![0],
+                        },
+                        sp,
+                    );
+                    // wb*: FIELDMOVE each mutated record out (kills the
+                    // wrapper), then MOVE it into the borrowed local's
+                    // slot — the caller-visible write-back.
+                    let mut wb_idx = 1usize;
+                    for a in actuals.clone().iter() {
+                        let base = self.base_slots as usize;
+                        let aty = if (*a as usize) < base {
+                            self.slot_ty_cache.get(*a as usize).copied()
+                        } else {
+                            self.extra_slots.get(*a as usize - base).map(|sl| sl.ty)
+                        };
+                        let is_record = aty
+                            .and_then(|t| self.out.types.get(t as usize).cloned())
+                            .map(|t| matches!(t, MirType::Record(_)))
+                            .unwrap_or(false);
+                        if !is_record {
+                            continue;
+                        }
+                        let back = self.temp_ty_from_cache(fields[wb_idx].ty);
+                        self.emit(
+                            MirInstr::FieldMove {
+                                dst: back,
+                                root: wrap_dst,
+                                path: vec![wb_idx as u16],
+                            },
+                            sp,
+                        );
+                        // The write-back target: the ORIGINAL BorrowMut'd
+                        // local — recover it from the HIR binding (the
+                        // arg slot is the MOVE temp). For the first record
+                        // arg the local is tracked below via mut_borrow_of.
+                        if let Some(target) = self.mut_borrow_target(*a) {
+                            self.emit(
+                                MirInstr::Move {
+                                    dst: target,
+                                    src: back,
+                                },
+                                sp,
+                            );
+                        } else {
+                            // Untracked target: drop the extracted record
+                            // (the borrow discipline was violated upstream).
+                            self.emit(MirInstr::Drop { slot: back }, sp);
+                        }
+                        wb_idx += 1;
+                    }
+                    return Ok(v);
+                }
                 let dst = self.temp_ty(ty);
                 self.emit(
                     MirInstr::Call {
@@ -1689,12 +1848,31 @@ impl<'a> FnLower<'a> {
                 self.eval_expr(*base, depth + 1)
             }
             hir::ExprKind::BorrowMut { local } if self.owned => {
-                let _ = local;
-                Err(AdapterError::uns(
-                    "lower.mut-record",
-                    "the exclusive write-back borrow (782 ABI-E `*mut`) is beyond the frozen                      av.owned/1 MIR expressiveness; an explicit contract revision is required"
-                        .to_string(),
-                ))
+                // R2-F08': `a.mut` — the exclusive write-back borrow. The
+                // whole local MOVES into a call-argument temp (exclusivity
+                // by transfer; the Call arm's write-back MOVE restores the
+                // caller's local from the callee's returned wrapper).
+                let slot = self
+                    .slot_of_local
+                    .get(local.0 as usize)
+                    .copied()
+                    .ok_or_else(|| {
+                        AdapterError::inv(
+                            "lower.borrow",
+                            format!("mut borrow of unknown local {}", local.0),
+                        )
+                    })?;
+                let ty = self.slot_ty_cache[slot as usize];
+                let tmp = self.temp_ty(ty);
+                self.mut_borrow_temps.push((tmp, slot));
+                self.emit(
+                    MirInstr::Move {
+                        dst: tmp,
+                        src: slot,
+                    },
+                    sp,
+                );
+                Ok(tmp)
             }
             // -- PLAN-820 record surface (av.data/1) ----------------------
             hir::ExprKind::RecordCtor {
@@ -1934,6 +2112,32 @@ fn lower_function(
     let base_slots = slots.len() as u32;
     let slot_ty_cache: Vec<TypeIdx> = slots.iter().map(|s| s.ty).collect();
 
+    // R2-F08': mut record params — plain OWNED record slots (move-in);
+    // their final values wrap into the t_MutRet result at Return.
+    let mut mut_param_slots: Vec<SlotId> = Vec::new();
+    let mut mut_wrap_ty: Option<TypeIdx> = None;
+    if owned {
+        let mut has_mut = false;
+        for (li, l) in body.locals.iter().enumerate() {
+            if l.role != hir::LocalRole::Param || l.param_mode != hir::ParamMode::MutBorrow {
+                continue;
+            }
+            let ty = slot_ty_cache[li];
+            if matches!(out.types.get(ty as usize), Some(MirType::Record(_))) {
+                has_mut = true;
+                mut_param_slots.push(slot_of_local[li]);
+            }
+        }
+        if has_mut {
+            // The wrapper's field types: (src result, mut param records).
+            let sig_ty = out.types.get(sig as usize).cloned();
+            if let Some(MirType::Fn(f)) = sig_ty {
+                // The result of the MIR sig IS the wrapper (built by
+                // owned_fn_sig_for_def): f0 = src result, wb* = params.
+                mut_wrap_ty = Some(f.result);
+            }
+        }
+    }
     let mut lower = FnLower {
         hir_module,
         body,
@@ -1955,6 +2159,9 @@ fn lower_function(
         loop_targets: vec![(0, 0); body.loops.len()],
         func_index: def_index,
         flat: 0,
+        mut_wrap_ty,
+        mut_param_slots,
+        mut_borrow_temps: vec![],
         stmt_slot_watermark: slots.len() as u32,
         spans: vec![],
         root_wired: false,
@@ -2094,6 +2301,27 @@ fn lower_function(
                 hir::Stmt::Return { value } => {
                     let v = lower.eval_expr(*value, 0)?;
                     lower.end_stmt_temp_views();
+                    // R2-F08': a mut-record-param function returns the
+                    // (source result, final mut params) wrapper — the
+                    // caller unwraps and writes the params back.
+                    let v = if let Some(wrap_ty) = lower.mut_wrap_ty {
+                        let mut operands = vec![v];
+                        for p in &lower.mut_param_slots {
+                            operands.push(*p);
+                        }
+                        let w = lower.temp_ty(wrap_ty);
+                        lower.emit(
+                            MirInstr::Aggregate {
+                                dst: w,
+                                record_ty: wrap_ty,
+                                operands,
+                            },
+                            None,
+                        );
+                        w
+                    } else {
+                        v
+                    };
                     lower.set_term(Terminator::Return { value: v });
                     break; // HIR verify: nothing follows a terminator
                 }

@@ -38,6 +38,29 @@ fn edit_of(src: &str, from: &str, to: &str) -> (u64, u64, Vec<u8>) {
     (pos, pos + from.len() as u64, to.as_bytes().to_vec())
 }
 
+/// Capture the gate's BEFORE state: production, resident snapshot,
+/// frontend count.
+fn before(
+    s: &auto_av_probe::owned_session::OwnedFunctionSession,
+) -> (
+    std::collections::BTreeMap<String, auto_av_probe::owned_session::Production>,
+    auto_av_probe::owned_session::GateSnapshot,
+    u32,
+) {
+    (s.production(), s.gate_snapshot(), s.frontends())
+}
+fn gate(
+    s: &auto_av_probe::owned_session::OwnedFunctionSession,
+    b: &(
+        std::collections::BTreeMap<String, auto_av_probe::owned_session::Production>,
+        auto_av_probe::owned_session::GateSnapshot,
+        u32,
+    ),
+    expected: &[&str],
+) -> Result<(), String> {
+    s.incremental_gate(&b.0, &b.1, b.2, expected)
+}
+
 /// V-13 (2): two PURE body edits through the real session — the edit
 /// channel AUTOMATICALLY invalidates only the edited function; the
 /// formal gate is green at each step; untouched residents keep their
@@ -55,15 +78,14 @@ fn av_owned_821_v13_two_fn_local_body_updates() {
 
     // ---- edit 1: bump's body (+1 -> +2). Only bump re-produces.
     let (a, b, ins) = edit_of(THREE_FN_SRC, "n: u.n + 1", "n: u.n + 2");
-    let before = s.production();
+    let bg = before(&s);
     let invalidated = s.edit(a, b, &ins).expect("edit installs");
     assert_eq!(
         invalidated,
         vec!["d_bump".to_string()],
         "automatic detection"
     );
-    s.incremental_gate(&before, &["d_bump"])
-        .expect("the formal gate is green on the incremental set");
+    gate(&s, &bg, &["d_bump"]).expect("the formal gate is green on the incremental set");
     assert_eq!(s.frontends, 2, "one frontend compile per revision");
     assert!(
         Arc::ptr_eq(&s.code_of("d_main"), &main_before),
@@ -89,11 +111,10 @@ fn av_owned_821_v13_two_fn_local_body_updates() {
     // ---- edit 2: main's body (*100 -> *10). Only main re-produces.
     let src1 = THREE_FN_SRC.replace("n: u.n + 1", "n: u.n + 2");
     let (a, b, ins) = edit_of(&src1, "c.n * 100", "c.n * 10");
-    let before = s.production();
+    let bg = before(&s);
     let invalidated = s.edit(a, b, &ins).expect("edit installs");
     assert_eq!(invalidated, vec!["d_main".to_string()]);
-    s.incremental_gate(&before, &["d_main"])
-        .expect("gate green on main-only");
+    gate(&s, &bg, &["d_main"]).expect("gate green on main-only");
     assert_eq!(s.run_i32(), 131);
 }
 
@@ -145,7 +166,7 @@ fn av_owned_821_v13_signature_edits_refused_or_whole_context() {
         "let f Str = \"X\"
     let b Note = bump(f.move)",
     );
-    let before = s.production();
+    let bg = before(&s);
     let inv = s
         .edit_batch(&[
             (e_sig, e_sig_end, i_sig),
@@ -162,7 +183,7 @@ fn av_owned_821_v13_signature_edits_refused_or_whole_context() {
         ],
         "a type-context change invalidates the WHOLE module (module-wide import tables)"
     );
-    s.incremental_gate(&before, &["d_bump", "d_main", "d_plain"])
+    gate(&s, &bg, &["d_bump", "d_main", "d_plain"])
         .expect("the gate is green on the precisely-whole set");
     // bump("X") -> Note{body:"X",n:1}; plain -> Note{body:"C",n:11};
     // 11*100 + len("X") = 1101.
@@ -184,21 +205,18 @@ fn av_owned_821_v13_forced_whole_recompute_reddens_the_gate() {
     assert_eq!(s.run_i32(), 1201);
     // A normal body edit first: gate green on the incremental set.
     let (a, b, i) = edit_of(THREE_FN_SRC, "n: u.n + 1", "n: u.n + 2");
-    let before = s.production();
+    let bg = before(&s);
     s.edit(a, b, &i).expect("edit");
-    s.incremental_gate(&before, &["d_bump"])
-        .expect("incremental is green");
+    gate(&s, &bg, &["d_bump"]).expect("incremental is green");
     // The forced whole path: production advances EVERYWHERE.
-    let before = s.production();
+    let bg = before(&s);
     s.force_whole_recompute().expect("forced whole runs");
-    let err = s
-        .incremental_gate(&before, &["d_bump"])
-        .expect_err("the formal gate CATCHES the whole recompute");
+    let err = gate(&s, &bg, &["d_bump"]).expect_err("the formal gate CATCHES the whole recompute");
     assert!(
         err.contains("outside the invalidated set"),
         "the gate names the leakage: {err}"
     );
-    s.incremental_gate(&before, &["d_bump", "d_main", "d_plain"])
+    gate(&s, &bg, &["d_bump", "d_main", "d_plain"])
         .expect("expecting the whole set is green (a declared recompute is legal)");
     assert_eq!(s.run_i32(), 1301, "the program still runs correctly");
 }

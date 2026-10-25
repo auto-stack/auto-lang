@@ -859,6 +859,29 @@ pub fn verify_owned_function(
                     st.moved.clear(*dst as usize);
                     st.dropped.clear(*dst as usize);
                 }
+                MirInstr::FieldMove { dst, root, path: _ } => {
+                    check_read!(root, "field-move root");
+                    // The ROOT dies at the extraction (use-once); both
+                    // sides must be borrow-free.
+                    if root_has_live_token(&st, *root as usize) {
+                        fail = Some(err(
+                            "mir.mut-conflict",
+                            format!(
+                                "field-move root `{}` conflicts an active borrow",
+                                slot_name(f, *root as usize)
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "field-move destination");
+                    }
+                    st.moved.set(*root as usize);
+                    st.init.set(*dst as usize);
+                    st.moved.clear(*dst as usize);
+                    st.dropped.clear(*dst as usize);
+                }
                 MirInstr::Drop { slot } => {
                     // Explicit drop: owned + Init + not already
                     // moved/dropped (mir.drop-uninit); no live borrows on

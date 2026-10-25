@@ -65,6 +65,8 @@ pub const OP_STR_TO_OWNED: u8 = 0x18;
 pub const OP_STR_CMP: u8 = 0x19;
 pub const OP_CHAR_TO_CODEPOINT: u8 = 0x1A;
 pub const OP_CHAR_FROM_CODEPOINT: u8 = 0x1B;
+/// R2-F08' write-back machinery (owned only).
+pub const OP_FIELD_MOVE: u8 = 0x1C;
 pub const TERM_JUMP: u8 = 0x10;
 pub const TERM_BRANCH: u8 = 0x11;
 pub const TERM_RETURN: u8 = 0x12;
@@ -885,6 +887,21 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                         put_u8(&mut w, OP_CHAR_FROM_CODEPOINT);
                         put_u32(&mut w, *dst);
                         put_u32(&mut w, *code);
+                    }
+                    MirInstr::FieldMove { dst, root, path } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "field-move in a non-owned-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_FIELD_MOVE);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *root);
+                        put_u16(&mut w, path.len() as u16);
+                        for seg in path {
+                            put_u16(&mut w, *seg);
+                        }
                     }
                     MirInstr::Trace { event } => {
                         put_u8(&mut w, OP_TRACE);
@@ -1793,6 +1810,17 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                         let dst = c.u32()?;
                         let code = c.u32()?;
                         MirInstr::CharFromCodepoint { dst, code }
+                    }
+                    OP_FIELD_MOVE if family.allows_owned_tags() => {
+                        let dst = c.u32()?;
+                        let root = c.u32()?;
+                        let n = c.u16()? as usize;
+                        decode_mem!(n * 2 + 12, "a field-move path");
+                        let mut path = Vec::with_capacity(n);
+                        for _ in 0..n {
+                            path.push(c.u16()?);
+                        }
+                        MirInstr::FieldMove { dst, root, path }
                     }
                     other => {
                         return Err(AbcDecodeError::fmt_err(

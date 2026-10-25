@@ -95,6 +95,7 @@ fn av_owned_821_corpus_green() {
         "run-owned-source",
         "run-owned-rejected",
         "run-owned-borrowed",
+        "run-owned-mut-writeback",
     ] {
         assert!(
             ids.contains(&required),

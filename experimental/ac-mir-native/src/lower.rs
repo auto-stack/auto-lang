@@ -479,7 +479,8 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             | MirInstr::StrToOwned { .. }
             | MirInstr::StrCmp { .. }
             | MirInstr::CharToCodepoint { .. }
-            | MirInstr::CharFromCodepoint { .. } => {
+            | MirInstr::CharFromCodepoint { .. }
+            | MirInstr::FieldMove { .. } => {
                 return Err(
                     "av.owned/1 instructions are outside the mn scalar surface".to_string()
                 )

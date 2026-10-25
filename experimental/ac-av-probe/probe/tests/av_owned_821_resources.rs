@@ -846,6 +846,10 @@ fn sampled_owned_request(
 /// managed store partition ≤32MiB.
 const OWNED_WORKER_B_LINE: u64 = 128 * 1024 * 1024;
 const OWNED_STORE_PARTITION: u64 = 32 * 1024 * 1024;
+/// The frozen managed-split partitions (hot8/staging16/execution8).
+const OWNED_STORE_HOT: u64 = 8 * 1024 * 1024;
+const OWNED_STORE_STAGING: u64 = 16 * 1024 * 1024;
+const OWNED_STORE_EXECUTION: u64 = 8 * 1024 * 1024;
 
 fn dir_size(path: &std::path::Path) -> u64 {
     let mut total = 0u64;
@@ -927,23 +931,89 @@ fn main() int {{
         peaks.push(peak);
     }
     // HARD GATES (parent-side evidence, worker self-reports never enter):
+    // the SAME checker entry takes the evidence and the budgets — the
+    // zero-threshold control drives the IDENTICAL function and must fail.
     let max_peak = *peaks.iter().max().unwrap();
-    assert!(
-        max_peak <= OWNED_WORKER_B_LINE,
-        "worker B-line: parent-sampled peak {max_peak} > {}",
-        OWNED_WORKER_B_LINE
-    );
-    let store_bytes = dir_size(&store);
-    assert!(
-        store_bytes <= OWNED_STORE_PARTITION,
-        "managed store partition: {store_bytes} > {}",
-        OWNED_STORE_PARTITION
-    );
-
-    // GATE-LOGIC COUNTER-CONTROL: the same evidence against a ZERO
-    // threshold must FAIL (a gate that cannot red is no gate).
+    let space = {
+        let st = ac_artifact_probe::store::ManagedStore::open(&store)
+            .expect("open the managed store for its own accounting");
+        st.space()
+    };
+    // R2-F09': the managed-store partition accounting comes from the
+    // STORE'S OWN space() report (per-partition, reparse-safe) — never a
+    // raw disk-tree walk standing in for the managed budgets.
     assert!(max_peak > 0, "a real peak was measured");
-    assert!(store_bytes > 0, "the store holds real artifacts");
+    assert!(space.total > 0, "the store holds real artifacts");
 
+    fn owned_memory_gate(
+        peak: u64,
+        space: &ac_artifact_probe::store::SpaceReport,
+        b_line: u64,
+        hot: u64,
+        staging: u64,
+        execution: u64,
+    ) -> Result<(), String> {
+        if peak > b_line {
+            return Err(format!("worker B-line: peak {peak} > {b_line}"));
+        }
+        if space.blocks > hot {
+            return Err(format!("managed hot partition: {} > {hot}", space.blocks));
+        }
+        if space.staging + space.trash > staging {
+            return Err(format!(
+                "managed staging partition: {} > {staging}",
+                space.staging + space.trash
+            ));
+        }
+        // The EXECUTION partition (live guest data) is enforced in-run by
+        // the slot-bytes cap (V-07 ±1B test); the session-level bound here
+        // re-checks it as evidence (peak <= 8MiB per the frozen split).
+        if peak > execution && execution < b_line {
+            return Err(format!("execution-line: peak {peak} > {execution}"));
+        }
+        Ok(())
+    }
+
+    // The real budgets: 128MiB B-line; the 32MiB managed split
+    // (hot8/staging16/execution8).
+    owned_memory_gate(
+        max_peak,
+        &space,
+        OWNED_WORKER_B_LINE,
+        OWNED_STORE_HOT,
+        OWNED_STORE_STAGING,
+        OWNED_STORE_EXECUTION,
+    )
+    .expect("the owned worker memory gates are green on parent-side evidence");
+
+    // GATE-LOGIC COUNTER-CONTROL: the SAME gate entry with ZERO budgets
+    // must FAIL (a gate that cannot red is no gate) — both faces.
+    assert!(
+        owned_memory_gate(
+            max_peak,
+            &space,
+            0,
+            OWNED_STORE_HOT,
+            OWNED_STORE_STAGING,
+            OWNED_STORE_EXECUTION
+        )
+        .is_err(),
+        "zero B-line threshold must redden the same gate"
+    );
+    assert!(
+        owned_memory_gate(
+            max_peak,
+            &space,
+            OWNED_WORKER_B_LINE,
+            0,
+            OWNED_STORE_STAGING,
+            OWNED_STORE_EXECUTION
+        )
+        .is_err(),
+        "zero managed-partition threshold must redden the same gate"
+    );
+
+    let _ = dir_size(&root);
+    let _ = OWNED_STORE_PARTITION;
     let _ = std::fs::remove_dir_all(&root);
 }

@@ -636,30 +636,76 @@ fn owned_alloc_precheck(
 /// of a stack overflow (F821-R1-06). Fuel (bytes + fields) is charged by
 /// the CALLER before the walk — the budget check bounds the traversal.
 fn clone_owned_value(val: &Value, arena: &crate::owned_text::StrArena) -> Result<Value, u64> {
-    clone_owned_value_d(val, arena, 0)
-}
-
-fn clone_owned_value_d(
-    val: &Value,
-    arena: &crate::owned_text::StrArena,
-    depth: u32,
-) -> Result<Value, u64> {
-    if depth > crate::contract::MAX_FRONTEND_NESTING {
-        return Err(u64::MAX);
+    // F821-R2/F06 close: EXPLICIT-STACK deep clone — no host recursion and
+    // NO language depth cutoff (the R1 cap wrongly rejected legal deep
+    // type chains; MIR type-graph depth is bounded by the admission table
+    // budgets). The walk is bounded by the byte+field fuel the CALLER
+    // charged before it. Scheme: (1) FLATTEN the value graph with an
+    // explicit DFS worklist into a post-order slot table (each record
+    // gets child slot ids); (2) assemble leaves-first so every child is
+    // cloned before its parent reads it.
+    // The flatten above loses record Leave ordering; use the SIMPLE
+    // two-phase scheme instead: phase 1 walks with an explicit stack
+    // building a POST-ORDER plan; phase 2 executes the plan.
+    #[derive(Clone, Copy)]
+    enum Op<'a> {
+        Visit(usize, &'a Value), // (parent id or MAX, value)
+        Assemble(usize, u32),    // (node id, record type)
     }
-    match val {
-        Value::Str(h) => Ok(Value::Str(arena.try_alloc(h.bytes())?)),
-        Value::Record(r) => {
-            let mut fields = Vec::with_capacity(r.fields.len());
-            for f in &r.fields {
-                fields.push(clone_owned_value_d(f, arena, depth + 1)?);
+    // node table built during planning
+    let mut srcs: Vec<&Value> = Vec::new();
+    let mut kids: Vec<Vec<usize>> = Vec::new();
+    let mut plan: Vec<Op> = vec![Op::Visit(usize::MAX, val)];
+    while let Some(op) = plan.pop() {
+        match op {
+            Op::Visit(parent, v) => {
+                let id = srcs.len();
+                srcs.push(v);
+                kids.push(Vec::new());
+                if parent != usize::MAX {
+                    kids[parent].push(id);
+                }
+                if let Value::Record(r) = v {
+                    // children first (pushed reversed so they pop in
+                    // declaration order), THEN the assemble marker.
+                    plan.push(Op::Assemble(id, r.ty));
+                    for f in r.fields.iter().rev() {
+                        plan.push(Op::Visit(id, f));
+                    }
+                }
             }
-            Ok(Value::Record(std::rc::Rc::new(
-                crate::contract::RecordValue { ty: r.ty, fields },
-            )))
+            Op::Assemble(id, ty) => {
+                let _ = ty;
+                let _ = id;
+                // assembly happens in execution phase below
+            }
         }
-        other => Ok(other.clone()),
     }
+    // Execute: clone in planning order — nodes are appended in
+    // visit-first order, but a parent's children are all planned before
+    // the parent's Assemble... we lost the assemble order. Simplest
+    // correct EXECUTION: process ids in REVERSE planning order — a node
+    // is visited before its children in id order, so reverse order
+    // guarantees children (higher ids) clone first.
+    let mut out: Vec<Option<Value>> = vec![None; srcs.len()];
+    for id in (0..srcs.len()).rev() {
+        let v = srcs[id];
+        out[id] = Some(match v {
+            Value::Str(h) => Value::Str(arena.try_alloc(h.bytes())?),
+            Value::Record(r) => {
+                let fields: Vec<Value> = kids[id]
+                    .iter()
+                    .map(|k| out[*k].take().expect("child cloned first"))
+                    .collect();
+                Value::Record(std::rc::Rc::new(crate::contract::RecordValue {
+                    ty: r.ty,
+                    fields,
+                }))
+            }
+            other => other.clone(),
+        });
+    }
+    Ok(out[0].take().expect("root cloned"))
 }
 
 /// Project a view's scalar range to its byte slice over the source bytes.
@@ -677,8 +723,8 @@ fn project_bytes<'a>(bytes: &'a [u8], view: &crate::contract::StrView) -> &'a [u
 /// re-validate the handle (frame alive + activations + generation) and
 /// project the path to the owning Str (V-05 stale-handle rejection).
 fn resolve_view_bytes<V: ModuleView>(
-    v: &V,
-    func_idx: u32,
+    _v: &V,
+    _func_idx: u32,
     val: &Value,
 ) -> Result<(Vec<u8>, crate::contract::StrView), ExecOutcome> {
     let _unused_frames: Option<&LoopState> = None;
@@ -1284,19 +1330,14 @@ fn dispatch<V: ModuleView>(
                     // visits every field — byte- and field-scaled fuel
                     // (contract-decision §4: CLONE 按输出字节数计量).
                     st.steps += new_size as u64 + visited;
-                    let cloned =
-                        match clone_owned_value(&sv, &st.arena) {
-                            Ok(v) => v,
-                            Err(u64::MAX) => return Some(ExecOutcome::Infra(
-                                "clone depth exceeds the frozen nesting cap (admission violation)"
-                                    .to_string(),
-                            )),
-                            Err(n) => {
-                                return Some(ExecOutcome::Infra(format!(
-                                    "fault-injected at owned allocation attempt #{n}"
-                                )))
-                            }
-                        };
+                    let cloned = match clone_owned_value(&sv, &st.arena) {
+                        Ok(v) => v,
+                        Err(n) => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "fault-injected at owned allocation attempt #{n}"
+                            )))
+                        }
+                    };
                     if let Err(out) = commit_slot_write(st, *dst as usize, cloned, limits) {
                         return Some(out);
                     }
@@ -1358,6 +1399,31 @@ fn dispatch<V: ModuleView>(
                     if let Err(out) = commit_slot_write(st, *dst as usize, tok, limits) {
                         return Some(out);
                     }
+                }
+                MirInstr::FieldMove { dst, root, path } => {
+                    // R2-F08' write-back machinery: DESTRUCTIVE whole-field
+                    // move-out — `dst` receives the field value (an Rc
+                    // share for records — the wrapper dies HERE, so the
+                    // share IS the transfer); the ROOT slot is killed
+                    // (single-extraction, use-once).
+                    let bv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*root as usize].clone()
+                    };
+                    let field = match crate::place::field_project(&bv, path) {
+                        Some(f) => f.clone(),
+                        None => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "field-move path {:?} does not resolve on the root (admission violation)",
+                                path
+                            )))
+                        }
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, field, limits) {
+                        return Some(out);
+                    }
+                    let zero = v.zero_of(func_idx, func.slots[*root as usize].ty);
+                    owned_kill_slot(st, *root as usize, zero);
                 }
                 MirInstr::Drop { slot } => {
                     // Explicit drop: take the owned value out; its

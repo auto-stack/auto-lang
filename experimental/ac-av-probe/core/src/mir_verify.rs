@@ -1193,7 +1193,16 @@ impl<'a> Verifier<'a> {
                                 ));
                             }
                         }
-                        if !self.ty_equiv(dt, callee_sig.result) {
+                        // R2-F08': a mut-param callee returns the t_MutRet
+                        // wrapper — the call dst legitimately holds the
+                        // WRAPPER (the adapter unwraps right after).
+                        let dst_is_wrapper = (|| {
+                            matches!(
+                                self.module.types.get(callee_sig.result as usize),
+                                Some(MirType::Record(r)) if r.name.starts_with("t_MutRet_")
+                            )
+                        })();
+                        if !self.ty_equiv(dt, callee_sig.result) && !dst_is_wrapper {
                             return Err(err(
                                 "mir.call-result-type",
                                 format!(
@@ -1497,6 +1506,45 @@ impl<'a> Verifier<'a> {
                                     "DROP of type {} (only owned Str / resource records drop)",
                                     st
                                 ),
+                            ));
+                        }
+                    }
+                    MirInstr::FieldMove { dst, root, path } => {
+                        if !self.is_owned {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "FIELDMOVE exists only in the owned profile".to_string(),
+                            ));
+                        }
+                        self.check_field_path(f, *root, path, sp, "field-move")?;
+                        let dt = slot_ty_of(f, *dst, sp, "field-move dst")?;
+                        let rt = slot_ty_of(f, *root, sp, "field-move root")?;
+                        let Some((final_ty, _owner)) = self.module.resolve_field_path(rt, path)
+                        else {
+                            return Err(err(
+                                "mir.field-path",
+                                format!(
+                                    "field path {:?} does not resolve from root type {}",
+                                    path, rt
+                                ),
+                            ));
+                        };
+                        // The extracted field must be OWNED (a resource
+                        // record — Str fields ride FIELD_GET views; the
+                        // write-back wrapper only carries records).
+                        if !crate::ownership::type_is_owned(self.module, final_ty) {
+                            return Err(err(
+                                "mir.ownership-required",
+                                format!(
+                                    "field-move of non-owned field type {} (use FIELD_GET)",
+                                    final_ty
+                                ),
+                            ));
+                        }
+                        if !self.ty_equiv(dt, final_ty) {
+                            return Err(err(
+                                "mir.field-type",
+                                format!("field-move dst {} != field type {}", dt, final_ty),
                             ));
                         }
                     }
@@ -2058,6 +2106,7 @@ impl MirInstr {
             | MirInstr::StrCmp { dst, .. }
             | MirInstr::CharToCodepoint { dst, .. }
             | MirInstr::CharFromCodepoint { dst, .. } => Some(*dst),
+            MirInstr::FieldMove { dst, .. } => Some(*dst),
             MirInstr::FieldSet { root, .. } => Some(*root),
             MirInstr::Trace { .. } | MirInstr::BorrowEnd { .. } | MirInstr::Drop { .. } => None,
         }
@@ -2068,6 +2117,7 @@ impl MirInstr {
         match self {
             MirInstr::Const { .. } | MirInstr::Trace { .. } => vec![],
             MirInstr::Copy { src, .. } => vec![*src],
+            MirInstr::FieldMove { root, .. } => vec![*root],
             MirInstr::Bin { lhs, rhs, .. } => vec![*lhs, *rhs],
             MirInstr::Un { operand, .. } => vec![*operand],
             MirInstr::Call { args, .. } => args.clone(),
