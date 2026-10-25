@@ -43,3 +43,11 @@ R3 后首次 merge 门发现 Man 占位 `packages/blueprints` 阻断语言真实
 lang 首次 `cargo t` 另命中已登记 B845-FEATURE-01（`probe_adapter_tests` 可选 `auto_test_case` 门控缺失），PLAN-847 为独立 owner；832 未修改或豁免该 blocker，lang 合入须等其恢复。当前 Man/lang 均未落地，ledger/归档/清理未执行。
 
 独立 reviewer 随后发现安装回退仍可能被编译期语言库抢先（F832-MERGE-BP-01）。最终 Man `ceb8dfdd` 已把安装 SDK 置于开发回退之前，并保留显式 env/真实项目库优先。永久 driver 的安装 SDK 唯一 marker 已被真实 `bp show` 读取，`cmd_bp` 4/4 与 full build 通过；[证据](merge/repair-report.md)。同一独立 reviewer 已在 [R4](review-r4/review.md) 复核通过：安装 SDK marker、项目库/env 优先、开发回退和缺件负控均符合；F832-MERGE-BP-01 CLOSED，merge-owned 门仍 pending。
+
+## 6. R5 收口与 merge 执行记录（2026-10-26）
+
+PLAN-847 恢复 B845-FEATURE-01 后，832 merge 在最终候选上完成全部统一门并经 R5 两轮独立复审（[pins+增量](merge/gate-status.json.txt) 收口结论 **pass**）：
+
+- **门禁**（回执均在 [merge/](merge/)，绑定见 [gate-status](merge/gate-status.json.txt)）：发行 14/14（m832final4）；lang 裸 `cargo t` 3181/3181（B845 解锁后揭出的两个被掩盖红已修：827 库存锚点 `1ee854831`、schema_drift cmd_vue 兄弟读 `b4444f66d`；probe worker 预构建按 847 先例）；consumer 792 39/39 含 V04/V05+V06（闭 R5-F01）；Man t 280/tcore 23/ti 42/43、UI t 2296/2297/tu/ti——归因红与 2026-10-25 运行完全同集（816 smoke、P751-D2 族），无新增红。
+- **R5 findings**：F01..F05 全闭合；备案 N-1（cargo t 回执已补绑定头行）、N-2（ffi oracle 未跟踪 Cargo.lock 随清理处理）、N-3（两侧 pin 均已注释）、N-4（**F05**：`scripts/plan832_ledger_deposit.py` 的 DELIVERY/REVIEWED/MAN_DELIVERY 常量、REVIEWS 补 R5、REPORTS 落地形状文案在 landing 输入上更新后再投影——本节即为显式标注）。
+- **jet/ark**：按 r3 用户裁定维持 v0.7 环境门控，回执中如实 env-gated，不冒称已测。

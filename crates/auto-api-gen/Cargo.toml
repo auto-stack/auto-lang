@@ -23,4 +23,7 @@ tempfile = { workspace = true }
 serde = { workspace = true }
 # plan734 fixture compile-check uses #[tauri::command] (same spec as auto-man).
 tauri = { version = "2", default-features = false, features = ["test"] }
+# PLAN-832 fresh-lock lever: tauri 2.12.5 needs the erased-serde prerelease;
+# without this exact pin a fresh lock resolves stable 0.4.11 and the test/tool
+# closure fails to build. Source has no direct erased-serde use.
 erased-serde = "=0.4.0-rc.1"
