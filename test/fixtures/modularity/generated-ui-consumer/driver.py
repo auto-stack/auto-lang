@@ -45,6 +45,7 @@ HERE = Path(__file__).resolve().parent
 WT_ROOT = HERE.parents[3]  # test/fixtures/modularity/<this> -> repo root
 MAN_ROOT = WT_ROOT.parent / "auto-man"
 UI_ROOT = WT_ROOT.parent / "auto-ui"
+TOOL_EXE = UI_ROOT / "target" / "debug" / "auto-ui-tool.exe"
 PROJ = HERE / "proj"
 
 SCRATCH_ENV_KEYS = [
@@ -72,6 +73,7 @@ def record(case: str, ok: bool, detail: str) -> bool:
 def consumer_env(extra: dict | None = None) -> dict:
     """消费侧环境：剥离全部开发根覆盖（含 RUSTC_WRAPPER），无隐式回退。"""
     env = {k: v for k, v in os.environ.items() if k not in SCRATCH_ENV_KEYS}
+    env["AUTO_UI_TOOL_BIN"] = str(TOOL_EXE)
     if extra:
         env.update(extra)
     return env

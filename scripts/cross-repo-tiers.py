@@ -1,21 +1,18 @@
 #!/usr/bin/env python3
-"""cross-repo-tiers.py — PLAN-831 F831-09-04：三仓测试档位编排入口。
+"""cross-repo-tiers.py — PLAN-831/832：三仓测试档位编排入口。
 
-五包 owner 迁独立 auto-ui 仓后，原单仓 alias 表拆成两仓各自持有：
-- 语言仓（auto-lang）：t / tf / tv / tt / tb / tu / taa / ta / th / t3
-  （tf/taa/ta/t3 经 path 依赖 -p 仍覆盖 UI 五包——语言仓主检出/组内
-  兄弟布局下解析序一致）；
-- UI 仓（auto-ui）：t（五包 lib，ui_gen 经 .config/nextest.toml 排除）、
-  tu（ui_gen 单进程）、ti（integration 档：tools 四目标 + osconfig）、
-  tn（native 手工档：native-dnd 双 feature 真光标，默认队列外）。
+owner 拆分后各仓持有自己的档位：
+- 语言仓（auto-lang）：t / tf / tv / tt / tb / tu / taa / ta / th / t3；
+- Man 仓（auto-man）：t（workspace lib + auto bin）、tc（管理 Core）、ti（集成）；
+- UI 仓（auto-ui）：t、tu、ti、tn（native 手工档）。
 
-本脚本是跨仓 CI 编排的实际入口（两仓均无 .github/workflows，本地受管
+本脚本是跨仓 CI 编排的实际入口（各仓均无 .github/workflows，本地受管
 入口即 CI 入口）：
-- run  子命令按固定序串行执行默认队列（lang-t → lang-tu → ui-t → ui-tu
-  → ui-ti），首红即停；收据 JSON 记录三仓 HEAD/脏态与每档命令、退出码、
-  时长——收据身份即 F831-09-05 evidence admission 的输入之一。
+- run  子命令按固定序串行执行默认队列（lang-t → lang-tu → man-t → man-ti
+  → ui-t → ui-tu → ui-ti），首红即停；收据 JSON 记录各仓 HEAD/脏态与每档命令、
+  退出码、时长。
 - list 子命令产出各档正典测试 ID 面（nextest list / libtest --list，
-  只构建不运行）——迁前后选择面对拍（F831-09-04）的证据入口。
+  只构建不运行）——迁前后选择面对拍的证据入口。
 
 边界与纪律（AGENTS.md 并行纪律一致）：
 - 重型/批量档（tf 批量回归、taa/ta/t3、画廊围栏、1M churn）不进本队列：
@@ -23,7 +20,7 @@
   （heavy_gate，D:/autostack/.locks/<family>.lock）归语言仓 heavy 族。
 - tn 为手工 native 门，仅显式 --tiers ui-tn 时执行。
 - 不创建任何 junction/symlink；跨仓根解析序：CLI 参数 > env
-  （AUTO_LANG_ROOT/AUTO_UI_ROOT/AUTO_DOWN_ROOT）> 组内兄弟（本仓检出
+  （AUTO_LANG_ROOT/AUTO_MAN_ROOT/AUTO_UI_ROOT/AUTO_DOWN_ROOT）> 组内兄弟（本仓检出
   父目录同名目录）> D:/autostack 主检出。
 
 退出码：0 全部通过；1 任一档非零（收据仍落盘）；2 用法/解析错误。
