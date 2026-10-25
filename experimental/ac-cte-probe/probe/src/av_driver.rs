@@ -8,8 +8,8 @@
 
 use auto_ac_prototype::source::compile_scalar_source;
 use auto_av_core::contract::{
-    ExecOutcome, ABC_SCHEMA, ABC_SEMANTICS, AV_PROFILE, AV_SEMANTICS, MAX_AV_WALL, MIR_SCHEMA,
-    MIR_SEMANTICS,
+    ExecOutcome, Value, ABC_SCHEMA, ABC_SEMANTICS, AV_PROFILE, AV_SEMANTICS, MAX_AV_WALL,
+    MIR_SCHEMA, MIR_SEMANTICS,
 };
 
 /// The D-798 per-call AV wall cap — an upper bound the request deadline
@@ -74,6 +74,23 @@ pub struct SnapshotLane {
 /// and its closing brace, exclusive). Retargets rewrite the WHOLE body:
 /// a callee switch may change the return class, and the body shape must
 /// follow (i32 → `return callee(args)`; bool → the if-projection).
+/// PLAN-820 F820-R10-01: fold an AV success value into the CTE value
+/// surface. The frozen CTE/scalar lanes keep their I32/Bool semantics
+/// byte-for-byte; the shared core's av.data/1 value extension
+/// (I64/U64/F32/F64/Record) is a CONTROLLED rejection here — no panic,
+/// no unreachable, and no implicit widening of the CTE scalar surface.
+fn cte_value_of(value: &Value, is_bool: bool) -> Result<CteValue, CteAdmissionError> {
+    match (value, is_bool) {
+        (Value::I32(x), true) => Ok(CteValue::Bool(*x != 0)),
+        (Value::I32(x), false) => Ok(CteValue::I32(*x)),
+        (Value::Bool(b), _) => Ok(CteValue::Bool(*b)),
+        (other, _) => Err(CteAdmissionError::new(
+            CteCode::CalleeFrontend,
+            format!("callee returned a value outside the cte/scalar-query-v1 surface: {other:?}"),
+        )),
+    }
+}
+
 fn locate_body_span(src: &str) -> Result<(u64, u64), CteAdmissionError> {
     let header = format!("fn {CTE_CALL_ENTRY}() int {{");
     let h = src.rfind(&header).ok_or_else(|| {
@@ -228,11 +245,7 @@ impl SnapshotLane {
         let wall_ms = started.elapsed().as_millis() as u64;
         match outcome {
             ExecOutcome::Success { value, steps } => {
-                let cv = match (&value, is_bool) {
-                    (auto_av_core::Value::I32(x), true) => CteValue::Bool(*x != 0),
-                    (auto_av_core::Value::I32(x), false) => CteValue::I32(*x),
-                    (auto_av_core::Value::Bool(b), _) => CteValue::Bool(*b),
-                };
+                let cv = cte_value_of(&value, is_bool)?;
                 Ok(AvExecResult {
                     value: cv,
                     steps,
@@ -466,11 +479,7 @@ pub fn execute_call(
     let wall_ms = started.elapsed().as_millis() as u64;
     match outcome {
         ExecOutcome::Success { value, steps } => {
-            let cv = match (&value, is_bool) {
-                (auto_av_core::Value::I32(x), true) => CteValue::Bool(*x != 0),
-                (auto_av_core::Value::I32(x), false) => CteValue::I32(*x),
-                (auto_av_core::Value::Bool(b), _) => CteValue::Bool(*b),
-            };
+            let cv = cte_value_of(&value, is_bool)?;
             Ok(AvExecResult {
                 value: cv,
                 steps,
@@ -500,5 +509,69 @@ pub fn execute_call(
             CteCode::Infra("exec".into()),
             format!("AV infra failure: {m}"),
         )),
+    }
+}
+
+#[cfg(test)]
+mod value_fold_tests {
+    //! F820-R10-01: the shared-core Value extension must not break the
+    //! CTE lanes — old semantics byte-identical, data values rejected
+    //! in a controlled way (this fold is the single consumption point
+    //! both lanes share).
+    use super::*;
+
+    #[test]
+    fn old_scalar_semantics_are_unchanged() {
+        assert_eq!(
+            cte_value_of(&Value::I32(0), true).unwrap(),
+            CteValue::Bool(false)
+        );
+        assert_eq!(
+            cte_value_of(&Value::I32(0), false).unwrap(),
+            CteValue::I32(0)
+        );
+        assert_eq!(
+            cte_value_of(&Value::I32(42), true).unwrap(),
+            CteValue::Bool(true)
+        );
+        assert_eq!(
+            cte_value_of(&Value::I32(-1), false).unwrap(),
+            CteValue::I32(-1)
+        );
+        assert_eq!(
+            cte_value_of(&Value::Bool(true), true).unwrap(),
+            CteValue::Bool(true)
+        );
+        assert_eq!(
+            cte_value_of(&Value::Bool(false), false).unwrap(),
+            CteValue::Bool(false)
+        );
+    }
+
+    #[test]
+    fn data_value_extension_is_a_controlled_rejection() {
+        for v in [
+            Value::I64(i64::MIN),
+            Value::U64(u64::MAX),
+            Value::F32(1.5),
+            Value::F64(-0.0),
+        ] {
+            let err = cte_value_of(&v, false)
+                .expect_err("data values are outside the CTE scalar surface");
+            assert!(
+                matches!(err.code, CteCode::CalleeFrontend),
+                "{:?} -> {err:?}",
+                v
+            );
+            assert!(err
+                .message
+                .contains("outside the cte/scalar-query-v1 surface"));
+        }
+        let rec = Value::Record(std::rc::Rc::new(auto_av_core::contract::RecordValue {
+            ty: 0,
+            fields: vec![],
+        }));
+        let err = cte_value_of(&rec, true).expect_err("records are rejected");
+        assert!(matches!(err.code, CteCode::CalleeFrontend));
     }
 }
