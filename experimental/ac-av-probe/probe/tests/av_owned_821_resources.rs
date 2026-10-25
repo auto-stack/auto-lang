@@ -803,22 +803,51 @@ fn av_owned_821_v07_cap_boundary_pass_and_over_by_one() {
 }
 
 // ---------------------------------------------------------------------------
-// R1-F09: the owned worker's process/managed-memory HARD GATES — the
-// PARENT samples the child's private-bytes peak (never the worker's own
-// word), the frozen B-line (128MiB) is ENFORCED, the managed store stays
-// inside its 32MiB partition, and the gate LOGIC itself is counter-
-// controlled (a zero threshold must FAIL).
+// R1-F09/R3-F09: the owned worker's process/managed-memory HARD GATES.
+// The PARENT samples the child's private-bytes peak (never the worker's
+// own word) — the 128MiB B-line's own dimension. The 32MiB managed
+// split's three lines are enforced in the DATA PIPELINE's working-set
+// dimension (hot8/staging16/execution8 — the worker's reported
+// peak_hot/peak_staging/peak_exec_slot bytes), each against its OWN
+// budget; the worker's whole-process peak is NEVER compared against a
+// partition budget (a legal 10MiB worker with a 1MiB guest slot stays
+// green). The store's DISK space() stays as an informational column,
+// never a managed-memory budget. The gate LOGIC itself is counter-
+// controlled per line (a zero threshold must FAIL) and cross-line
+// controlled (an over-line synthetic reddens exactly its line; a
+// legitimate cross-dimension shape stays green).
 // ---------------------------------------------------------------------------
 
-/// Spawn ONE owned-request child under parent-side sampling; returns
-/// (child peak private bytes, exit ok).
+/// The per-request memory evidence: one whole-process number (parent
+/// sampled) plus the three managed-partition peaks (worker reported, in
+/// the working-set dimension).
+#[derive(Clone, Copy, Debug)]
+struct OwnedMemoryEvidence {
+    worker_private_peak: u64,
+    peak_hot: u64,
+    peak_staging: u64,
+    peak_exec_slot: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct OwnedMemoryBudgets {
+    b_line: u64,
+    hot: u64,
+    staging: u64,
+    execution: u64,
+}
+
+/// Spawn ONE owned-request child under parent-side sampling; returns the
+/// evidence from the child's one JSON line (the parent's sampled peak is
+/// merged in — the worker's own private-bytes self-report is never the
+/// B-line's number) plus the exit status.
 fn sampled_owned_request(
     worker: &std::path::Path,
     store: &std::path::Path,
     src: &std::path::Path,
-) -> (u64, bool) {
+) -> (OwnedMemoryEvidence, bool) {
     use std::process::{Command, Stdio};
-    let mut child = Command::new(worker)
+    let child = Command::new(worker)
         .args([
             "owned-request",
             "--store",
@@ -835,35 +864,73 @@ fn sampled_owned_request(
         .expect("spawn owned worker");
     let sampler = auto_av_probe::mempeek::ChildPeakSampler::start(child.id(), 5)
         .expect("the parent samples the child");
-    let out = child.wait().expect("child exits");
+    let out = child.wait_with_output().expect("child exits");
     let (peak, samples) = sampler.stop();
     assert!(samples > 0, "the sampler actually polled ({samples})");
-    (peak, out.success())
+    let line = String::from_utf8_lossy(&out.stdout);
+    let payload: serde_json::Value =
+        serde_json::from_str(line.trim()).expect("the worker prints one JSON line");
+    (
+        OwnedMemoryEvidence {
+            worker_private_peak: peak,
+            peak_hot: payload["peak_hot_bytes"].as_u64().expect("peak_hot_bytes"),
+            peak_staging: payload["peak_staging_bytes"]
+                .as_u64()
+                .expect("peak_staging_bytes"),
+            peak_exec_slot: payload["peak_exec_slot_bytes"]
+                .as_u64()
+                .expect("peak_exec_slot_bytes"),
+        },
+        out.status.success(),
+    )
 }
 
 /// The frozen memory lines for the owned worker (798 r7 discipline, the
 /// plan's OWN stricter text): B-line worker private-bytes peak ≤128MiB;
-/// managed store partition ≤32MiB.
+/// the managed split hot8/staging16/execution8, each in its own
+/// dimension.
 const OWNED_WORKER_B_LINE: u64 = 128 * 1024 * 1024;
-const OWNED_STORE_PARTITION: u64 = 32 * 1024 * 1024;
-/// The frozen managed-split partitions (hot8/staging16/execution8).
 const OWNED_STORE_HOT: u64 = 8 * 1024 * 1024;
 const OWNED_STORE_STAGING: u64 = 16 * 1024 * 1024;
 const OWNED_STORE_EXECUTION: u64 = 8 * 1024 * 1024;
 
-fn dir_size(path: &std::path::Path) -> u64 {
-    let mut total = 0u64;
-    if let Ok(rd) = std::fs::read_dir(path) {
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                total += dir_size(&p);
-            } else if let Ok(md) = e.metadata() {
-                total += md.len();
-            }
-        }
+/// The SAME checker entry takes the evidence and the budgets — every
+/// line against its OWN dimension; no cross-dimension comparison.
+fn owned_memory_gate(ev: &OwnedMemoryEvidence, b: &OwnedMemoryBudgets) -> Result<(), String> {
+    if ev.worker_private_peak > b.b_line {
+        return Err(format!(
+            "worker B-line: private-bytes peak {} > {}",
+            ev.worker_private_peak, b.b_line
+        ));
     }
-    total
+    if ev.peak_hot > b.hot {
+        return Err(format!(
+            "managed hot partition: working-set peak {} > {}",
+            ev.peak_hot, b.hot
+        ));
+    }
+    if ev.peak_staging > b.staging {
+        return Err(format!(
+            "managed staging partition: working-set peak {} > {}",
+            ev.peak_staging, b.staging
+        ));
+    }
+    if ev.peak_exec_slot > b.execution {
+        return Err(format!(
+            "managed execution partition: guest slot peak {} > {}",
+            ev.peak_exec_slot, b.execution
+        ));
+    }
+    Ok(())
+}
+
+fn real_budgets() -> OwnedMemoryBudgets {
+    OwnedMemoryBudgets {
+        b_line: OWNED_WORKER_B_LINE,
+        hot: OWNED_STORE_HOT,
+        staging: OWNED_STORE_STAGING,
+        execution: OWNED_STORE_EXECUTION,
+    }
 }
 
 #[test]
@@ -911,109 +978,123 @@ fn av_owned_821_r1_worker_memory_hard_gate_parent_sampled() {
     let store = root.join("store");
     let src_dir = root.join("src");
     std::fs::create_dir_all(&src_dir).unwrap();
-    let mut peaks = Vec::new();
-    let mut all_ok = true;
+    let mut evidence = Vec::new();
     for i in 0..8u32 {
         let src = format!(
-            "type Note {{ body Str; n int }}
-fn main() int {{
-    let a Note = Note {{ body: \"payload-{i}\", n: {i} }}
-    var b Note = a.clone()
-    let n int = b.body.len() + b.body.len_bytes()
-    return b.n * 100 + n
-}}
-"
+            "type Note {{ body Str; n int }}\nfn main() int {{\n    let a Note = Note {{ body: \"payload-{i}\", n: {i} }}\n    var b Note = a.clone()\n    let n int = b.body.len() + b.body.len_bytes()\n    return b.n * 100 + n\n}}\n"
         );
         let src_path = src_dir.join(format!("rev{i}.at"));
         std::fs::write(&src_path, src).unwrap();
-        let (peak, ok) = sampled_owned_request(&worker, &store, &src_path);
+        let (ev, ok) = sampled_owned_request(&worker, &store, &src_path);
         assert!(ok, "revision {i} runs green");
-        peaks.push(peak);
+        evidence.push(ev);
     }
-    // HARD GATES (parent-side evidence, worker self-reports never enter):
-    // the SAME checker entry takes the evidence and the budgets — the
-    // zero-threshold control drives the IDENTICAL function and must fail.
-    let max_peak = *peaks.iter().max().unwrap();
+    // The store's OWN disk report — informational column only (it is
+    // blob/journal/staging DIRECTORY bytes, never a managed-memory
+    // partition).
     let space = {
         let st = ac_artifact_probe::store::ManagedStore::open(&store)
             .expect("open the managed store for its own accounting");
         st.space()
     };
-    // R2-F09': the managed-store partition accounting comes from the
-    // STORE'S OWN space() report (per-partition, reparse-safe) — never a
-    // raw disk-tree walk standing in for the managed budgets.
-    assert!(max_peak > 0, "a real peak was measured");
-    assert!(space.total > 0, "the store holds real artifacts");
 
-    fn owned_memory_gate(
-        peak: u64,
-        space: &ac_artifact_probe::store::SpaceReport,
-        b_line: u64,
-        hot: u64,
-        staging: u64,
-        execution: u64,
-    ) -> Result<(), String> {
-        if peak > b_line {
-            return Err(format!("worker B-line: peak {peak} > {b_line}"));
-        }
-        if space.blocks > hot {
-            return Err(format!("managed hot partition: {} > {hot}", space.blocks));
-        }
-        if space.staging + space.trash > staging {
-            return Err(format!(
-                "managed staging partition: {} > {staging}",
-                space.staging + space.trash
-            ));
-        }
-        // The EXECUTION partition (live guest data) is enforced in-run by
-        // the slot-bytes cap (V-07 ±1B test); the session-level bound here
-        // re-checks it as evidence (peak <= 8MiB per the frozen split).
-        if peak > execution && execution < b_line {
-            return Err(format!("execution-line: peak {peak} > {execution}"));
-        }
-        Ok(())
+    // HARD GATES on real evidence, each line in its own dimension.
+    let budgets = real_budgets();
+    assert!(
+        evidence.iter().all(|e| e.worker_private_peak > 0),
+        "a real process peak was measured"
+    );
+    assert!(
+        evidence
+            .iter()
+            .all(|e| e.peak_hot > 0 && e.peak_staging > 0 && e.peak_exec_slot > 0),
+        "the managed partition peaks were reported"
+    );
+    assert!(
+        space.total > 0,
+        "the store holds real artifacts (info column)"
+    );
+    for (i, ev) in evidence.iter().enumerate() {
+        owned_memory_gate(ev, &budgets)
+            .unwrap_or_else(|e| panic!("revision {i} memory gates: {e}"));
     }
 
-    // The real budgets: 128MiB B-line; the 32MiB managed split
-    // (hot8/staging16/execution8).
-    owned_memory_gate(
-        max_peak,
-        &space,
-        OWNED_WORKER_B_LINE,
-        OWNED_STORE_HOT,
-        OWNED_STORE_STAGING,
-        OWNED_STORE_EXECUTION,
-    )
-    .expect("the owned worker memory gates are green on parent-side evidence");
+    // GATE-LOGIC COUNTER-CONTROL (a gate that cannot red is no gate): the
+    // SAME gate entry with a ZERO budget per line must FAIL that line —
+    // all four faces.
+    let zero_faces: [(&str, OwnedMemoryBudgets); 4] = [
+        (
+            "B-line",
+            OwnedMemoryBudgets {
+                b_line: 0,
+                ..real_budgets()
+            },
+        ),
+        (
+            "hot",
+            OwnedMemoryBudgets {
+                hot: 0,
+                ..real_budgets()
+            },
+        ),
+        (
+            "staging",
+            OwnedMemoryBudgets {
+                staging: 0,
+                ..real_budgets()
+            },
+        ),
+        (
+            "execution",
+            OwnedMemoryBudgets {
+                execution: 0,
+                ..real_budgets()
+            },
+        ),
+    ];
+    for (name, zero) in zero_faces {
+        let err = owned_memory_gate(&evidence[0], &zero)
+            .expect_err("a zero threshold must redden the same gate");
+        assert!(
+            err.contains(name),
+            "the reddened line names its dimension ({name}): {err}"
+        );
+    }
 
-    // GATE-LOGIC COUNTER-CONTROL: the SAME gate entry with ZERO budgets
-    // must FAIL (a gate that cannot red is no gate) — both faces.
-    assert!(
-        owned_memory_gate(
-            max_peak,
-            &space,
-            0,
-            OWNED_STORE_HOT,
-            OWNED_STORE_STAGING,
-            OWNED_STORE_EXECUTION
-        )
-        .is_err(),
-        "zero B-line threshold must redden the same gate"
-    );
-    assert!(
-        owned_memory_gate(
-            max_peak,
-            &space,
-            OWNED_WORKER_B_LINE,
-            0,
-            OWNED_STORE_STAGING,
-            OWNED_STORE_EXECUTION
-        )
-        .is_err(),
-        "zero managed-partition threshold must redden the same gate"
-    );
+    // OVER-LINE COUNTER-CONTROL: a synthetic row over EXACTLY ONE line
+    // reddens that line only — the lines are independent.
+    let base = OwnedMemoryEvidence {
+        worker_private_peak: 2 * 1024 * 1024,
+        peak_hot: 1 * 1024 * 1024,
+        peak_staging: 2 * 1024 * 1024,
+        peak_exec_slot: 1 * 1024 * 1024,
+    };
+    let over_hot = OwnedMemoryEvidence {
+        peak_hot: OWNED_STORE_HOT + 1,
+        ..base
+    };
+    let err = owned_memory_gate(&over_hot, &real_budgets()).expect_err("over hot reddens");
+    assert!(err.contains("hot"), "names the hot line: {err}");
+    let over_exec = OwnedMemoryEvidence {
+        peak_exec_slot: OWNED_STORE_EXECUTION + 1,
+        ..base
+    };
+    let err = owned_memory_gate(&over_exec, &real_budgets()).expect_err("over execution reddens");
+    assert!(err.contains("execution"), "names the execution line: {err}");
 
-    let _ = dir_size(&root);
-    let _ = OWNED_STORE_PARTITION;
+    // LEGITIMATE CROSS-LINE POSITIVE CONTROL: a 10MiB worker (above the
+    // 8MiB execution partition but far below the 128MiB B-line) with a
+    // 1MiB guest slot is GREEN under the correct constraints — the old
+    // checker reddened exactly this shape by comparing the whole-process
+    // peak against the guest partition budget.
+    let cross = OwnedMemoryEvidence {
+        worker_private_peak: 10 * 1024 * 1024,
+        peak_hot: 1 * 1024 * 1024,
+        peak_staging: 9 * 1024 * 1024, // above 8MiB, inside the 16MiB staging budget
+        peak_exec_slot: 1 * 1024 * 1024,
+    };
+    owned_memory_gate(&cross, &real_budgets())
+        .expect("dimension separation keeps a legitimate cross-line shape green");
+
     let _ = std::fs::remove_dir_all(&root);
 }

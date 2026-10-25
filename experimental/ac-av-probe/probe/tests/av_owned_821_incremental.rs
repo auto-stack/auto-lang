@@ -1,10 +1,14 @@
-//! PLAN-821 V-13 incremental (R1-F07): the four sub-cases over the REAL
-//! owned install channel — `auto_av_probe::owned_session::
-//! OwnedFunctionSession` (one frontend compile per revision, automatic
-//! HIR-identity edit detection, real production counters at the real
-//! production points, and the FORMAL `incremental_gate` degradation
-//! detector). The unit-level stale-link refusal (V-13(3)) replays
-//! alongside through the raw D828 interfaces.
+//! PLAN-821 V-13 incremental (R1-F07/R2-F07'/R3-F07): the four sub-cases
+//! over the REAL owned install channel — `auto_av_probe::owned_session::
+//! OwnedFunctionSession`. A PURE single-body edit rides the REAL D828
+//! resident-function frontend (one fn-item parse + `prepare_candidate_
+//! document` re-check/emission against the retained environment — the
+//! unchanged units' parse/recheck/emit production work is ZERO); an
+//! interface/context edit takes the whole-module channel where every unit
+//! re-frontends. The FORMAL `incremental_gate` is channel-aware and
+//! reddens a real whole frontend on a body edit. The unit-level
+//! stale-link refusal (V-13(3)) replays alongside through the raw D828
+//! interfaces.
 
 use auto_av_core::abc::{decode_abc, encode_abc};
 use auto_av_core::av::{execute_program, CancelFlag, ExecLimits};
@@ -61,22 +65,24 @@ fn gate(
     s.incremental_gate(&b.0, &b.1, b.2, expected)
 }
 
-/// V-13 (2): two PURE body edits through the real session — the edit
-/// channel AUTOMATICALLY invalidates only the edited function; the
-/// formal gate is green at each step; untouched residents keep their
-/// objects and generations; both revisions run exact oracles with a
-/// clean owned ledger.
+/// V-13 (2): two PURE body edits through the real session — each edit
+/// rides the SINGLE-BODY channel (the D828 resident-function frontend):
+/// ZERO whole-module frontend compiles, the edited unit alone advances
+/// its frontend production (parse/recheck/emit), the untouched units'
+/// production is UNCHANGED (zero parse/recheck/emit work), and the formal
+/// gate is green at each step with objects and generations preserved.
 #[test]
 fn av_owned_821_v13_two_fn_local_body_updates() {
     let mut s =
         auto_av_probe::owned_session::OwnedFunctionSession::warmup(THREE_FN_SRC, "d_main", &[])
             .expect("warmup");
-    assert_eq!(s.frontends, 1, "cold warm-up = ONE frontend compile");
+    assert_eq!(s.frontends, 1, "cold warm-up = ONE whole-module frontend");
     assert_eq!(s.run_i32(), 1201);
     let main_before = s.code_of("d_main");
     let plain_before = s.code_of("d_plain");
 
-    // ---- edit 1: bump's body (+1 -> +2). Only bump re-produces.
+    // ---- edit 1: bump's body (+1 -> +2). Only bump re-produces; NO
+    // whole-module frontend runs (the D828 single-body channel).
     let (a, b, ins) = edit_of(THREE_FN_SRC, "n: u.n + 1", "n: u.n + 2");
     let bg = before(&s);
     let invalidated = s.edit(a, b, &ins).expect("edit installs");
@@ -85,8 +91,35 @@ fn av_owned_821_v13_two_fn_local_body_updates() {
         vec!["d_bump".to_string()],
         "automatic detection"
     );
+    assert_eq!(
+        s.last_channel(),
+        auto_av_probe::owned_session::EditChannel::SingleBody,
+        "a pure body edit rides the single-function channel"
+    );
     gate(&s, &bg, &["d_bump"]).expect("the formal gate is green on the incremental set");
-    assert_eq!(s.frontends, 2, "one frontend compile per revision");
+    assert_eq!(
+        s.frontends, 1,
+        "a single-body edit runs ZERO whole-module frontends"
+    );
+    let prod = s.production();
+    assert_eq!(
+        (
+            prod["d_main"].parse,
+            prod["d_main"].recheck,
+            prod["d_main"].emit
+        ),
+        (1, 1, 1),
+        "d_main's frontend production is the COLD round only (zero body-edit work)"
+    );
+    assert_eq!(
+        (
+            prod["d_bump"].parse,
+            prod["d_bump"].recheck,
+            prod["d_bump"].emit
+        ),
+        (2, 2, 2),
+        "d_bump's frontend production advanced exactly once"
+    );
     assert!(
         Arc::ptr_eq(&s.code_of("d_main"), &main_before),
         "main's resident object is reused"
@@ -115,15 +148,64 @@ fn av_owned_821_v13_two_fn_local_body_updates() {
     let invalidated = s.edit(a, b, &ins).expect("edit installs");
     assert_eq!(invalidated, vec!["d_main".to_string()]);
     gate(&s, &bg, &["d_main"]).expect("gate green on main-only");
+    assert_eq!(s.frontends, 1, "still zero whole-module frontends");
     assert_eq!(s.run_i32(), 131);
+}
+
+/// R3-F07 permanent counterexample: a main-only body edit in a
+/// two-function module — the untouched function's frontend production
+/// stays at the cold round (zero parse/recheck/emit work), no
+/// whole-module frontend runs, and the SAME gate reddens both lying
+/// expectations: claiming the whole set invalidated (a whole ride) or
+/// expecting the wrong unit.
+#[test]
+fn av_owned_821_r3_main_only_body_edit_zero_untouched_frontend_work() {
+    const SRC: &str = "type Note { body Str; n int }\nfn read(move p Note) int { return p.n }\nfn main() int {\nlet a Note = Note { body: \"A\", n: 7 }\nreturn read(a.move)\n}\n";
+    let mut s = auto_av_probe::owned_session::OwnedFunctionSession::warmup(SRC, "d_main", &[])
+        .expect("warmup");
+    assert_eq!(s.run_i32(), 7);
+    let read_before = s.code_of("d_read");
+    let bg = before(&s);
+    let pos = SRC.find("n: 7").unwrap() as u64;
+    let invalidated = s
+        .edit(pos, pos + 4, b"n: 8")
+        .expect("the main-only body edit installs");
+    assert_eq!(invalidated, vec!["d_main".to_string()]);
+    assert_eq!(
+        s.last_channel(),
+        auto_av_probe::owned_session::EditChannel::SingleBody
+    );
+    assert_eq!(s.frontends, 1, "no whole-module frontend ran");
+    gate(&s, &bg, &["d_main"]).expect("the honest expectation is green");
+    assert!(Arc::ptr_eq(&s.code_of("d_read"), &read_before));
+    let prod = s.production();
+    assert_eq!(
+        (
+            prod["d_read"].parse,
+            prod["d_read"].recheck,
+            prod["d_read"].emit
+        ),
+        (1, 1, 1),
+        "the untouched function's frontend production is the COLD round only"
+    );
+    assert_eq!(s.run_i32(), 8);
+
+    // Counter-control A: claiming the WHOLE set was invalidated (the
+    // whole-ride expectation) must redden — d_read produced nothing.
+    let err = gate(&s, &bg, &["d_main", "d_read"])
+        .expect_err("an over-claiming expectation reddens the same gate");
+    assert!(
+        err.contains("produced NOTHING"),
+        "the gate names the unproduced unit: {err}"
+    );
 }
 
 /// V-13 (3) session face: an INCONSISTENT intermediate edit is refused
 /// by the frontend (the state keeps the prior revision and still runs);
 /// a CONSISTENT signature edit changes the module's type context — the
 /// automatic invalidation set is then the WHOLE module (every unit's
-/// module-wide import table staled), and the gate is green expecting
-/// exactly that set.
+/// module-wide import table staled), the whole-module channel runs (ONE
+/// whole frontend) and the gate is green expecting exactly that set.
 #[test]
 fn av_owned_821_v13_signature_edits_refused_or_whole_context() {
     let mut s =
@@ -133,8 +215,9 @@ fn av_owned_821_v13_signature_edits_refused_or_whole_context() {
 
     // (a) The bare signature edit alone leaves bump's body referring to
     // `u.n` on a Str param — the FRONTEND refuses the intermediate; the
-    // session keeps revision 1 and still runs. (The precise-refusal
-    // front.)
+    // session keeps revision 1 and still runs. (The signature drift is
+    // the retained environment's own interface gate → the whole channel;
+    // its frontend rejects the inconsistent intermediate.)
     let (a, b, i) = edit_of(
         THREE_FN_SRC,
         "fn bump(move u Note) Note {",
@@ -148,7 +231,8 @@ fn av_owned_821_v13_signature_edits_refused_or_whole_context() {
     assert_eq!(s.run_i32(), 1201, "the prior snapshot still runs");
 
     // (b) The consistent retyping as ONE ATOMIC BATCH (no single-site
-    // intermediate typechecks): signature + body + call site together.
+    // intermediate typechecks): signature + body + call site together —
+    // TWO declarations met, the whole-module channel owns it.
     let (e_sig, e_sig_end, i_sig) = edit_of(
         THREE_FN_SRC,
         "fn bump(move u Note) Note {",
@@ -182,6 +266,11 @@ fn av_owned_821_v13_signature_edits_refused_or_whole_context() {
             "d_plain".to_string(),
         ],
         "a type-context change invalidates the WHOLE module (module-wide import tables)"
+    );
+    assert_eq!(
+        s.last_channel(),
+        auto_av_probe::owned_session::EditChannel::WholeModule,
+        "an interface edit rides the whole-module channel"
     );
     gate(&s, &bg, &["d_bump", "d_main", "d_plain"])
         .expect("the gate is green on the precisely-whole set");

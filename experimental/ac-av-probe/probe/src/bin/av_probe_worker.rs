@@ -368,6 +368,9 @@ fn owned_request(args: &[String]) -> ! {
                 "ok": ok,
                 "wall_ms": wall_ms,
                 "private_bytes_peak": peak,
+                "peak_hot_bytes": r.peak_hot_bytes,
+                "peak_staging_bytes": r.peak_staging_bytes,
+                "peak_exec_slot_bytes": r.peak_exec_slot_bytes,
                 "owned": owned,
                 "snapshot": format!("{:016x}", r.snapshot),
             })

@@ -949,10 +949,12 @@ fn av_data_820_instruction_contract_round_trip_all_opcodes() {
     );
     // TRACE (06) rides the trace-order test above; every mnemonic has a
     // spec row and the table's trap/fuel/profile facts are pinned by the
-    // core instr_spec tests.
+    // core instr_spec tests. The table is the SHARED union: 820's twelve
+    // plus PLAN-821's owned additions (16 rows incl. FIELDMOVE 0x1C);
+    // the count pin guards silent table growth beyond a known edition.
     let all_mnemonics: Vec<&str> = instr_spec::SPECS
         .iter()
         .map(|s: &InstructionSpec| s.name)
         .collect();
-    assert_eq!(all_mnemonics.len(), 12);
+    assert_eq!(all_mnemonics.len(), 28);
 }

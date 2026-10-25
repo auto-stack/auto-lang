@@ -46,6 +46,29 @@ pub fn field_project<'v>(base: &'v Value, path: &[u16]) -> Option<&'v Value> {
     Some(cur)
 }
 
+/// R3-F08 FIELD_MOVE's destructive half: take ONE field out of the root
+/// along `path`, leaving the leaf's typed `zero` in its place, and return
+/// the displaced value (the share IS the ownership transfer). Levels walk
+/// through `Rc::make_mut` — a shared record clones (copy-on-write), an
+/// unshared one mutates in place. `None` = shape mismatch. The ROOT stays
+/// live for its remaining fields; the executor bumps its generation so
+/// stale views over the moved field retire.
+pub fn field_take(root: &mut Value, path: &[u16], zero: Value) -> Option<Value> {
+    let seg = *path.first()? as usize;
+    let Value::Record(r) = root else {
+        return None;
+    };
+    let rec = std::rc::Rc::make_mut(r);
+    if path.len() == 1 {
+        if seg >= rec.fields.len() {
+            return None;
+        }
+        Some(std::mem::replace(&mut rec.fields[seg], zero))
+    } else {
+        field_take(&mut rec.fields[seg], &path[1..], zero)
+    }
+}
+
 /// Structural field rebuild along `path` (the immutable-replace write of
 /// 820, reused verbatim by the owned profile's FIELD_SET — the ownership
 /// transaction around it lives in the executor).

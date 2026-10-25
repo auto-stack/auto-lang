@@ -176,6 +176,7 @@ pub fn lower_checked(
             name.clone(),
             false,
             false,
+            &BTreeMap::new(),
         )?;
         out.funcs.push(mir_fn);
     }
@@ -305,6 +306,7 @@ pub fn lower_checked_data(
             name.clone(),
             true,
             false,
+            &BTreeMap::new(),
         )?;
         out.funcs.push(mir_fn);
     }
@@ -386,7 +388,7 @@ pub fn lower_checked_owned(
     let mut entry_idx: Option<u32> = None;
     for (di, ty, body_id, name) in fn_order {
         // R1-F08: mode-aware — borrowed record params type as RecordView.
-        let sig = owned_fn_sig_for_def(module, di, ty, &mut out)?;
+        let sig = owned_fn_sig_for_def(module, di, ty, &mut out, &BTreeMap::new())?;
         if name == entry_name {
             entry_idx = Some(out.funcs.len() as u32);
         }
@@ -401,6 +403,7 @@ pub fn lower_checked_owned(
             name.clone(),
             true,
             true,
+            &BTreeMap::new(),
         )?;
         out.funcs.push(mir_fn);
     }
@@ -422,6 +425,28 @@ pub fn lower_function_owned_unit(
     def_id_text: &str,
     capabilities: &[String],
     source_snapshot: u64,
+) -> Result<MirModule, AdapterError> {
+    lower_function_owned_unit_with_modes(
+        bundle,
+        def_id_text,
+        capabilities,
+        source_snapshot,
+        &BTreeMap::new(),
+    )
+}
+
+/// R3-F07: [`lower_function_owned_unit`] with RETAINED param-mode facts
+/// for BODY-LESS scaffold defs. A D828 single-function document binds the
+/// unchanged functions as body-less scaffolds — their MUT-record param
+/// modes (the t_MutRet wrapper ABI) are not expressible in the document's
+/// type section, so the session supplies the retained interface facts
+/// keyed by def id. A body present in the document always wins.
+pub fn lower_function_owned_unit_with_modes(
+    bundle: &hir::Bundle,
+    def_id_text: &str,
+    capabilities: &[String],
+    source_snapshot: u64,
+    mode_overrides: &BTreeMap<String, Vec<hir::ParamMode>>,
 ) -> Result<MirModule, AdapterError> {
     match bundle.domain {
         hir::HirDomain::TextRecord | hir::HirDomain::Text => {}
@@ -460,7 +485,7 @@ pub fn lower_function_owned_unit(
                 // R1-F08: mode-aware — the import's sig must equal the
                 // callee's own emission (borrowed record params =
                 // RecordView), or the snapshot link would part them.
-                let sig = owned_fn_sig_for_def(module, di as u32, *ty, &mut out)?;
+                let sig = owned_fn_sig_for_def(module, di as u32, *ty, &mut out, mode_overrides)?;
                 let imp = out.intern_import(MirImport {
                     symbol: format!("fn:{}", d.id_text),
                     effect: Effect::Pure,
@@ -491,7 +516,7 @@ pub fn lower_function_owned_unit(
             format!("no function def `{def_id_text}` in module"),
         )
     })?;
-    let sig = owned_fn_sig_for_def(module, di, ty, &mut out)?;
+    let sig = owned_fn_sig_for_def(module, di, ty, &mut out, mode_overrides)?;
     let mir_fn = lower_function(
         module,
         &mut out,
@@ -503,6 +528,7 @@ pub fn lower_function_owned_unit(
         def_id_text.to_string(),
         true,
         true,
+        mode_overrides,
     )?;
     out.funcs.push(mir_fn);
     out.entry = 0;
@@ -731,6 +757,7 @@ fn lower_function_unit_impl(
         def_id_text.to_string(),
         data,
         false,
+        &BTreeMap::new(),
     )?;
     out.funcs.push(mir_fn);
     out.entry = 0;
@@ -878,6 +905,7 @@ fn owned_fn_sig_for_def(
     def_index: u32,
     ty: hir::TypeId,
     out: &mut MirModule,
+    mode_overrides: &BTreeMap<String, Vec<hir::ParamMode>>,
 ) -> Result<TypeIdx, AdapterError> {
     let td = module.types.get(ty.0 as usize).ok_or_else(|| {
         AdapterError::inv("lower.type-ref", format!("type id {} out of range", ty.0))
@@ -893,19 +921,34 @@ fn owned_fn_sig_for_def(
     };
     // The param locals lead the callee body's local table in signature
     // order (HIR verify invariant, same one lower_function relies on).
+    // R3-F07: a BODY-LESS scaffold def (D828 single-function document)
+    // carries no body table — the modes then come from the RETAINED
+    // interface facts (the document's type section cannot express them).
+    let def_id_text = module
+        .defs
+        .get(def_index as usize)
+        .map(|d| d.id_text.clone())
+        .unwrap_or_default();
     let param_modes: Vec<hir::ParamMode> = module
         .defs
         .get(def_index as usize)
         .and_then(|d| match &d.kind {
-            hir::DefKind::Function { body, .. } => module.bodies.get(body.0 as usize).map(|b| {
-                b.locals
-                    .iter()
-                    .filter(|l| l.role == hir::LocalRole::Param)
-                    .map(|l| l.param_mode)
-                    .collect()
-            }),
+            hir::DefKind::Function { body, .. } => {
+                if body.0 == u32::MAX {
+                    None
+                } else {
+                    module.bodies.get(body.0 as usize).map(|b| {
+                        b.locals
+                            .iter()
+                            .filter(|l| l.role == hir::LocalRole::Param)
+                            .map(|l| l.param_mode)
+                            .collect()
+                    })
+                }
+            }
             _ => None,
         })
+        .or_else(|| mode_overrides.get(&def_id_text).cloned())
         .unwrap_or_default();
     let mut memo = std::collections::BTreeMap::new();
     let mut visiting = std::collections::BTreeSet::new();
@@ -1180,6 +1223,12 @@ struct FnLower<'a> {
     mut_param_slots: Vec<SlotId>,
     /// R2-F08' call-site: (BorrowMut temp, borrowed local slot) pairs.
     mut_borrow_temps: Vec<(SlotId, SlotId)>,
+    /// R3-F07 retained interface facts: param modes per def id for
+    /// BODY-LESS scaffold defs (D828 single-function documents carry no
+    /// body table for unchanged functions; the wrapper ABI needs the
+    /// callee's mut-record param positions, which the document's type
+    /// section cannot express). Captured where the real bodies exist.
+    sig_mode_overrides: BTreeMap<String, Vec<hir::ParamMode>>,
     /// Slot index (into the FINAL slot table) one past the last slot at
     /// the current STATEMENT's start — statement-tail borrow ends (774
     /// 语句尾寿命 for temporaries) release view temps minted inside the
@@ -1252,6 +1301,28 @@ impl<'a> FnLower<'a> {
         idx as SlotId
     }
 
+    /// R3-F08: text receivers take a VIEW. An owned-Str operand (e.g. an
+    /// owned Str returned from a mut call) is VIEWed first — the str ops'
+    /// MIR operands are StrView by contract; a view-typed operand passes
+    /// through unchanged (same dispatch as TextToBorrowed).
+    fn text_view_operand(
+        &mut self,
+        operand: &hir::ExprId,
+        depth: u32,
+    ) -> Result<SlotId, AdapterError> {
+        let v = self.eval_expr(*operand, depth)?;
+        let src_ty = self.expr_ty(*operand)?;
+        if matches!(self.out.types.get(src_ty as usize), Some(MirType::Str)) {
+            let view_ty = self.out.intern_type(MirType::StrView);
+            let view = self.temp_ty_from_cache(view_ty);
+            let sp = None;
+            self.emit(MirInstr::View { dst: view, src: v }, sp);
+            Ok(view)
+        } else {
+            Ok(v)
+        }
+    }
+
     /// R2-F08': map a BorrowMut argument TEMP back to the borrowed LOCAL
     /// slot (the temp was created by the BorrowMut arm's MOVE).
     fn mut_borrow_target(&self, arg_temp: SlotId) -> Option<SlotId> {
@@ -1259,6 +1330,61 @@ impl<'a> FnLower<'a> {
             .iter()
             .find(|(t, _)| *t == arg_temp)
             .map(|(_, l)| *l)
+    }
+
+    /// R3-F08: the callee's MUT-RECORD param positions in signature
+    /// order — exactly the wrapper's wb fields, in order. The modes lead
+    /// the callee body's local table (HIR verify invariant); a BODY-LESS
+    /// scaffold def (D828 single-function document) consults the retained
+    /// [`Self::sig_mode_overrides`]. Record-ness reads the callee's own
+    /// MIR signature (a mut record param maps to `Record`, a read-only
+    /// one to `RecordView`) — the same fact `owned_fn_sig_for_def`
+    /// interned the wrapper from.
+    fn callee_mut_record_params(
+        &self,
+        callee_def: hir::DefId,
+        callee_sig_ty: &Option<MirType>,
+    ) -> Vec<usize> {
+        let mut out = Vec::new();
+        let def = self.hir_module.defs.get(callee_def.0 as usize);
+        let modes: Option<Vec<hir::ParamMode>> = def
+            .and_then(|d| match &d.kind {
+                hir::DefKind::Function { body, .. } => {
+                    if body.0 == u32::MAX {
+                        // Scaffold sentinel: no body — retained facts.
+                        None
+                    } else {
+                        self.hir_module.bodies.get(body.0 as usize).map(|b| {
+                            b.locals
+                                .iter()
+                                .filter(|l| l.role == hir::LocalRole::Param)
+                                .map(|l| l.param_mode)
+                                .collect()
+                        })
+                    }
+                }
+                _ => None,
+            })
+            .or_else(|| {
+                def.map(|d| d.id_text.as_str())
+                    .and_then(|id| self.sig_mode_overrides.get(id).cloned())
+            });
+        let Some(modes) = modes else {
+            return out;
+        };
+        let Some(MirType::Fn(sig)) = callee_sig_ty else {
+            return out;
+        };
+        for (pi, pt) in sig.params.iter().enumerate() {
+            let mode = modes.get(pi).copied().unwrap_or(hir::ParamMode::View);
+            if mode != hir::ParamMode::MutBorrow {
+                continue;
+            }
+            if matches!(self.out.types.get(*pt as usize), Some(MirType::Record(_))) {
+                out.push(pi);
+            }
+        }
+        out
     }
 
     fn temp_ty(&mut self, ty: TypeIdx) -> SlotId {
@@ -1591,7 +1717,7 @@ impl<'a> FnLower<'a> {
                         .get(ii as usize)
                         .and_then(|imp| self.out.types.get(imp.sig as usize).cloned()),
                 };
-                let wrapper_fields = match callee_sig_ty {
+                let wrapper_fields = match callee_sig_ty.as_ref() {
                     Some(MirType::Fn(f)) => match self.out.types.get(f.result as usize) {
                         Some(MirType::Record(r)) if r.name.starts_with("t_MutRet_") => {
                             Some((f.result, r.fields.clone()))
@@ -1612,34 +1738,42 @@ impl<'a> FnLower<'a> {
                         },
                         sp,
                     );
-                    // f0: the source result (copyable via FIELD_GET).
+                    // f0: the SOURCE result. A copyable result copies out
+                    // (FIELD_GET); an OWNED result (Str / resource record)
+                    // is not Copy — FIELD_MOVE field 0 is the only
+                    // ownership exit (R3-F08: FieldGet of a Str field only
+                    // ever mints a view).
+                    let f0_owned = auto_av_core::ownership::type_is_owned(&self.out, fields[0].ty);
                     let v = self.temp_ty(ty);
-                    self.emit(
-                        MirInstr::FieldGet {
-                            dst: v,
-                            base: wrap_dst,
-                            path: vec![0],
-                        },
-                        sp,
-                    );
-                    // wb*: FIELDMOVE each mutated record out (kills the
-                    // wrapper), then MOVE it into the borrowed local's
-                    // slot — the caller-visible write-back.
+                    if f0_owned {
+                        self.emit(
+                            MirInstr::FieldMove {
+                                dst: v,
+                                root: wrap_dst,
+                                path: vec![0],
+                            },
+                            sp,
+                        );
+                    } else {
+                        self.emit(
+                            MirInstr::FieldGet {
+                                dst: v,
+                                base: wrap_dst,
+                                path: vec![0],
+                            },
+                            sp,
+                        );
+                    }
+                    // wb*: one write-back field per MUT-RECORD param of the
+                    // callee, in signature order (fields[1..] mirror that
+                    // order exactly). Only the callee's OWN mut params
+                    // consume wrapper fields — plain (read-only) record
+                    // args and non-record args contribute NOTHING (R3-F08:
+                    // the old loop keyed on "any record actual", mis-
+                    // indexing mixed signatures and panicking past the
+                    // wrapper's field count).
                     let mut wb_idx = 1usize;
-                    for a in actuals.clone().iter() {
-                        let base = self.base_slots as usize;
-                        let aty = if (*a as usize) < base {
-                            self.slot_ty_cache.get(*a as usize).copied()
-                        } else {
-                            self.extra_slots.get(*a as usize - base).map(|sl| sl.ty)
-                        };
-                        let is_record = aty
-                            .and_then(|t| self.out.types.get(t as usize).cloned())
-                            .map(|t| matches!(t, MirType::Record(_)))
-                            .unwrap_or(false);
-                        if !is_record {
-                            continue;
-                        }
+                    for pos in self.callee_mut_record_params(callee_def, &callee_sig_ty) {
                         let back = self.temp_ty_from_cache(fields[wb_idx].ty);
                         self.emit(
                             MirInstr::FieldMove {
@@ -1651,9 +1785,8 @@ impl<'a> FnLower<'a> {
                         );
                         // The write-back target: the ORIGINAL BorrowMut'd
                         // local — recover it from the HIR binding (the
-                        // arg slot is the MOVE temp). For the first record
-                        // arg the local is tracked below via mut_borrow_of.
-                        if let Some(target) = self.mut_borrow_target(*a) {
+                        // arg slot is the MOVE temp).
+                        if let Some(target) = self.mut_borrow_target(actuals[pos]) {
                             self.emit(
                                 MirInstr::Move {
                                     dst: target,
@@ -1668,6 +1801,11 @@ impl<'a> FnLower<'a> {
                         }
                         wb_idx += 1;
                     }
+                    debug_assert_eq!(
+                        wb_idx,
+                        fields.len(),
+                        "the wrapper is fully consumed: f0 + every wb field"
+                    );
                     return Ok(v);
                 }
                 let dst = self.temp_ty(ty);
@@ -1706,19 +1844,19 @@ impl<'a> FnLower<'a> {
                 Ok(dst)
             }
             hir::ExprKind::TextLen { operand } if self.owned => {
-                let v = self.eval_expr(*operand, depth + 1)?;
+                let v = self.text_view_operand(operand, depth)?;
                 let dst = self.temp_ty(ty);
                 self.emit(MirInstr::StrLen { dst, view: v }, sp);
                 Ok(dst)
             }
             hir::ExprKind::TextLenBytes { operand } if self.owned => {
-                let v = self.eval_expr(*operand, depth + 1)?;
+                let v = self.text_view_operand(operand, depth)?;
                 let dst = self.temp_ty(ty);
                 self.emit(MirInstr::StrLenBytes { dst, view: v }, sp);
                 Ok(dst)
             }
             hir::ExprKind::TextCharAt { operand, index } if self.owned => {
-                let v = self.eval_expr(*operand, depth + 1)?;
+                let v = self.text_view_operand(operand, depth)?;
                 let i = self.eval_expr(*index, depth + 1)?;
                 let dst = self.temp_ty(ty);
                 self.emit(
@@ -1736,7 +1874,7 @@ impl<'a> FnLower<'a> {
                 start,
                 end,
             } if self.owned => {
-                let v = self.eval_expr(*operand, depth + 1)?;
+                let v = self.text_view_operand(operand, depth)?;
                 let a = self.eval_expr(*start, depth + 1)?;
                 let b = self.eval_expr(*end, depth + 1)?;
                 let dst = self.temp_ty(ty);
@@ -2059,6 +2197,7 @@ fn expr_kind_name(k: &hir::ExprKind) -> &'static str {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn lower_function(
     hir_module: &hir::Module,
     out: &mut MirModule,
@@ -2070,6 +2209,7 @@ fn lower_function(
     name: String,
     data: bool,
     owned: bool,
+    mode_overrides: &BTreeMap<String, Vec<hir::ParamMode>>,
 ) -> Result<MirFunction, AdapterError> {
     let body = hir_module.bodies.get(body_id.0 as usize).ok_or_else(|| {
         AdapterError::inv("lower.body-ref", format!("body {} out of range", body_id.0))
@@ -2162,6 +2302,7 @@ fn lower_function(
         mut_wrap_ty,
         mut_param_slots,
         mut_borrow_temps: vec![],
+        sig_mode_overrides: mode_overrides.clone(),
         stmt_slot_watermark: slots.len() as u32,
         spans: vec![],
         root_wired: false,

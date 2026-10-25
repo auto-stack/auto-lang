@@ -140,6 +140,16 @@ struct OwnState {
     /// blew the verify-memory budget unaccounted (n x (n+1) bits x
     /// states) and contradicted "只 intern 实际使用根".
     token_roots: Vec<Option<Bitsets>>,
+    /// R3-F08 per-field consumption: the set of field paths already MOVED
+    /// OUT of a root via FIELD_MOVE. SPARSE — only roots that saw a
+    /// FIELD_MOVE carry `Some`. A recorded path may not be extracted (or
+    /// read) again; the ROOT itself stays live for its remaining fields
+    /// (the internal t_MutRet wrapper is consumed field by field — the
+    /// multi-mut / owned-result source shapes), while any WHOLE-root use
+    /// of a partially-consumed root is a use-after-move (the language
+    /// keeps rejecting partial moves of source values; FIELD_MOVE is the
+    /// adapter's internal channel).
+    moved_fields: Vec<Option<std::collections::BTreeSet<Vec<u16>>>>,
 }
 
 impl OwnState {
@@ -150,7 +160,14 @@ impl OwnState {
             dropped: Bitsets::new(self.dropped.n_bits),
             tokens_live: Bitsets::new(self.tokens_live.n_bits),
             token_roots: vec![None; self.token_roots.len()],
+            moved_fields: vec![None; self.moved_fields.len()],
         }
+    }
+
+    fn field_moved(&self, root: usize, path: &[u16]) -> bool {
+        self.moved_fields[root]
+            .as_ref()
+            .is_some_and(|m| m.iter().any(|p| p == path))
     }
 }
 
@@ -196,10 +213,21 @@ pub fn verify_owned_function(
     // and Vec-growth transients (realloc old+new) — measured against the
     // probe's allocator peak (8192-slot fn: ~1.37MB real vs this bound).
     let sparse_header = std::mem::size_of::<Option<Bitsets>>() as u64;
+    // R3-F08: the per-root moved-field sets are equally sparse — only
+    // RECORD-typed slots can ever be FIELD_MOVE roots (i32/bool/Str
+    // slots pay nothing); a t_MutRet wrapper carries one field per mut
+    // param, so the 64B per-root constant covers realistic shapes.
+    let record_slots: usize = f
+        .slots
+        .iter()
+        .filter(|s| matches!(m.types.get(s.ty as usize), Some(MirType::Record(_))))
+        .count();
+    let mf_header = std::mem::size_of::<Option<std::collections::BTreeSet<Vec<u16>>>>() as u64;
     let bound = (blocks as u64)
         .saturating_mul(
             (sw as u64 * 8 * 4
                 + n as u64 * sparse_header
+                + record_slots as u64 * (mf_header + 64)
                 + token_slots.len() as u64 * rw as u64 * 8)
                 .saturating_mul(6),
         )
@@ -313,6 +341,7 @@ pub fn verify_owned_function(
             dropped: Bitsets::new(n),
             tokens_live: Bitsets::new(n),
             token_roots: vec![None; n],
+            moved_fields: vec![None; n],
         };
         for (si, s) in f.slots.iter().enumerate() {
             if s.kind == SlotKind::Param {
@@ -412,6 +441,13 @@ pub fn verify_owned_function(
                         _ => {}
                     }
                 }
+                // R3-F08: moved field paths are MAY facts — union across
+                // predecessors (a path moved on ANY path stays moved).
+                match (&mut new_in.moved_fields[t], po.moved_fields[t].as_ref()) {
+                    (Some(a), Some(b)) => a.extend(b.iter().cloned()),
+                    (None, Some(b)) => new_in.moved_fields[t] = Some(b.clone()),
+                    _ => {}
+                }
             }
         }
 
@@ -447,6 +483,22 @@ pub fn verify_owned_function(
                         fail = Some(err(
                             "mir.use-after-move",
                             format!("read of dropped slot `{}` ({})", slot_name(f, s), $what),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    // R3-F08: a WHOLE read of a partially-consumed root is
+                    // a use-after-move (partial moves of source values stay
+                    // rejected; FIELD_MOVE/FIELD_GET reach fields through
+                    // their own path-aware checks below).
+                    if st.moved_fields[s].as_ref().is_some_and(|m| !m.is_empty()) {
+                        fail = Some(err(
+                            "mir.use-after-move",
+                            format!(
+                                "read of partially-moved slot `{}` ({})",
+                                slot_name(f, s),
+                                $what
+                            ),
                             flat,
                         ));
                         break 'blk;
@@ -573,7 +625,45 @@ pub fn verify_owned_function(
                 }
                 MirInstr::Trace { .. } => {}
                 MirInstr::FieldGet { dst, base, path } => {
-                    check_read!(base, "field-get base");
+                    // R3-F08: the BASE check is path-aware — a
+                    // partially-consumed root still serves reads of its
+                    // REMAINING fields; the already-moved path itself is a
+                    // use-after-move.
+                    let bs = *base as usize;
+                    if !st.init.get(bs) {
+                        fail = Some(err(
+                            "mir.uninitialized-read",
+                            format!(
+                                "read of uninitialized slot `{}` (field-get base)",
+                                slot_name(f, bs)
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    if st.moved.get(bs) || st.dropped.get(bs) {
+                        fail = Some(err(
+                            "mir.use-after-move",
+                            format!(
+                                "read of moved/dropped slot `{}` (field-get base)",
+                                slot_name(f, bs)
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    if st.field_moved(bs, path) {
+                        fail = Some(err(
+                            "mir.use-after-move",
+                            format!(
+                                "field-get of already-moved path {:?} on `{}`",
+                                path,
+                                slot_name(f, bs)
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
                     if is_rootable[*dst as usize] {
                         check_def_conflict!(dst, "field-get destination");
                     }
@@ -859,16 +949,55 @@ pub fn verify_owned_function(
                     st.moved.clear(*dst as usize);
                     st.dropped.clear(*dst as usize);
                 }
-                MirInstr::FieldMove { dst, root, path: _ } => {
-                    check_read!(root, "field-move root");
-                    // The ROOT dies at the extraction (use-once); both
-                    // sides must be borrow-free.
-                    if root_has_live_token(&st, *root as usize) {
+                MirInstr::FieldMove { dst, root, path } => {
+                    // R3-F08: PER-FIELD consumption — the root must be
+                    // live as a BASE (init, not whole-moved/dropped) but
+                    // partial consumption is the point of this
+                    // instruction: each DISTINCT path extracts exactly
+                    // once and the root keeps serving its remaining
+                    // fields. A repeated path is a use-after-move.
+                    let rs = *root as usize;
+                    if !st.init.get(rs) {
+                        fail = Some(err(
+                            "mir.uninitialized-read",
+                            format!(
+                                "read of uninitialized slot `{}` (field-move root)",
+                                slot_name(f, rs)
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    if st.moved.get(rs) || st.dropped.get(rs) {
+                        fail = Some(err(
+                            "mir.use-after-move",
+                            format!(
+                                "read of moved/dropped slot `{}` (field-move root)",
+                                slot_name(f, rs)
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    if st.field_moved(rs, path) {
+                        fail = Some(err(
+                            "mir.use-after-move",
+                            format!(
+                                "field-move of already-moved path {:?} on `{}`",
+                                path,
+                                slot_name(f, rs)
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    // Both sides must be borrow-free.
+                    if root_has_live_token(&st, rs) {
                         fail = Some(err(
                             "mir.mut-conflict",
                             format!(
                                 "field-move root `{}` conflicts an active borrow",
-                                slot_name(f, *root as usize)
+                                slot_name(f, rs)
                             ),
                             flat,
                         ));
@@ -877,7 +1006,9 @@ pub fn verify_owned_function(
                     if is_rootable[*dst as usize] {
                         check_def_conflict!(dst, "field-move destination");
                     }
-                    st.moved.set(*root as usize);
+                    st.moved_fields[rs]
+                        .get_or_insert_with(Default::default)
+                        .insert(path.clone());
                     st.init.set(*dst as usize);
                     st.moved.clear(*dst as usize);
                     st.dropped.clear(*dst as usize);
@@ -1105,6 +1236,7 @@ impl OwnState {
             && self.dropped.eq(&o.dropped)
             && self.tokens_live.eq(&o.tokens_live)
             && self.roots_eq(o)
+            && self.moved_fields == o.moved_fields
     }
     /// out vs the stored (in, out) pair — a may-set growth with an equal
     /// in-state still needs the stored out refreshed for later merges.
@@ -1115,6 +1247,7 @@ impl OwnState {
             && self.dropped.eq(&prev_out.dropped)
             && self.tokens_live.eq(&prev_out.tokens_live)
             && self.roots_eq(prev_out)
+            && self.moved_fields == prev_out.moved_fields
     }
     /// Root sets of LIVE tokens participate in equality: a root growth
     /// must keep the worklist converging (F821-R1-05 hardening).

@@ -663,3 +663,181 @@ fn main() int {
         ));
     }
 }
+
+// ---- R3-F08: the three mut write-back counterexample shapes + the
+// per-field consumption invariants (review-r3, permanent) ---------------
+
+/// The R3 source counterexamples: mixed mut/read-only params (the
+/// read-only record must NOT consume a wrapper field), double mut (two
+/// sequential field extractions from ONE wrapper), and an owned Str
+/// result (f0 transfers ownership, no FieldGet view). Exact hand oracles
+/// from the review; the ledger must read live=0 after each.
+#[test]
+fn av_owned_821_r3_mut_writeback_counterexample_shapes() {
+    let cases: &[(&str, i32)] = &[
+        // mut + read-only record: a.n=8 (written back), x = 8 + b.n(2)
+        // = 10 -> 8*100 + 10 = 810.
+        (
+            "type Note { body Str; n int }
+fn set(mut p Note, q Note) int { p.n = 8; return p.n + q.n }
+fn main() int {
+    var a Note = Note { body: \"A\", n: 7 }
+    let b Note = Note { body: \"B\", n: 2 }
+    let x int = set(a.mut, b)
+    return a.n * 100 + x
+}
+",
+            810,
+        ),
+        // double mut: a.n=8, b.n=9, x = 17 -> 8*1000 + 9*100 + 17 = 8917.
+        (
+            "type Note { body Str; n int }
+fn set(mut p Note, mut q Note) int { p.n = 8; q.n = 9; return p.n + q.n }
+fn main() int {
+    var a Note = Note { body: \"A\", n: 7 }
+    var b Note = Note { body: \"B\", n: 2 }
+    let x int = set(a.mut, b.mut)
+    return a.n * 1000 + b.n * 100 + x
+}
+",
+            8917,
+        ),
+        // mut + owned Str result: a.n=8, x.len()=1 -> 8*100 + 1 = 801.
+        (
+            "type Note { body Str; n int }
+fn set(mut p Note) Str { p.n = 8; return \"R\" }
+fn main() int {
+    var a Note = Note { body: \"A\", n: 7 }
+    let x Str = set(a.mut)
+    return a.n * 100 + x.len()
+}
+",
+            801,
+        ),
+    ];
+    for (src, want) in cases {
+        let compiled =
+            auto_ac_prototype::source::compile_text_record_source(src, "r3.at", &[]).unwrap();
+        let mir = auto_av_probe::hir_adapter::lower_checked_owned(&compiled.checked, "d_main", 0x1)
+            .unwrap();
+        let (out, trace) = admit_exec(&mir);
+        assert!(
+            matches!(out, ExecOutcome::Success { value: Value::I32(v), .. } if v == *want),
+            "source shape `{src}` must produce {want}, got {out:?}"
+        );
+        assert_eq!(trace.arena.as_ref().unwrap().live(), 0);
+    }
+}
+
+/// R3-F08 per-field consumption, analysis face: a REPEATED field-move of
+/// the same path is use-after-move; a WHOLE-root use of a
+/// partially-consumed root is use-after-move; DISTINCT paths stay legal.
+#[test]
+fn av_owned_821_r3_field_move_per_field_consumption_invariants() {
+    // slots: 0 s1(Str) 1 s2(Str) 2 n1(note) 3 n2(note) 4 wrap(t_MutRet)
+    //        5 o1(note) 6 o2(note) 7 r(i32) 8 sink(note)
+    let build = |same_path: bool, whole_read_after: bool| {
+        let mut m = MirModule::new_owned(owner("r3f"));
+        let t = types(&mut m);
+        let wrap = m.intern_type(MirType::Record(RecordTypeRef {
+            owner_module: "r3f".into(),
+            name: "t_MutRet_x".into(),
+            fields: vec![
+                MirFieldDef {
+                    name: "f0".into(),
+                    ty: t.i32,
+                },
+                MirFieldDef {
+                    name: "wb1".into(),
+                    ty: t.note,
+                },
+                MirFieldDef {
+                    name: "wb2".into(),
+                    ty: t.note,
+                },
+            ],
+        }));
+        let s1 = m.intern_const(MirConst::Str(Box::from(&b"A"[..])));
+        let s2 = m.intern_const(MirConst::Str(Box::from(&b"B"[..])));
+        let z = m.intern_const(MirConst::I32(0));
+        let slots = vec![
+            temp(t.str),
+            temp(t.str),
+            temp(t.note),
+            temp(t.note),
+            temp(wrap),
+            temp(t.note),
+            temp(t.note),
+            temp(t.i32),
+            temp(wrap),
+        ];
+        let mut ins = vec![
+            MirInstr::Const { dst: 0, value: s1 },
+            MirInstr::Const { dst: 1, value: s2 },
+            MirInstr::Const { dst: 7, value: z },
+            MirInstr::Aggregate {
+                dst: 2,
+                record_ty: t.note,
+                operands: vec![0],
+            },
+            MirInstr::Aggregate {
+                dst: 3,
+                record_ty: t.note,
+                operands: vec![1],
+            },
+            MirInstr::Aggregate {
+                dst: 4,
+                record_ty: wrap,
+                operands: vec![7, 2, 3],
+            },
+            MirInstr::FieldMove {
+                dst: 5,
+                root: 4,
+                path: vec![1],
+            },
+            MirInstr::FieldMove {
+                dst: 6,
+                root: 4,
+                path: vec![if same_path { 1 } else { 2 }],
+            },
+        ];
+        if whole_read_after {
+            ins.push(MirInstr::Move { dst: 8, src: 4 });
+        }
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: t.i32,
+        }));
+        m.funcs.push(MirFunction {
+            owner: m.owner.clone(),
+            name: "d_main".into(),
+            sig,
+            slots,
+            blocks: vec![MirBlock {
+                instrs: ins,
+                term: Terminator::Return { value: 7 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+        });
+        m
+    };
+    // Distinct paths: legal (the wrapper is consumed field by field).
+    assert!(
+        mir_verify::verify_mir(&build(false, false)).is_ok(),
+        "two DISTINCT field extractions from one wrapper are legal"
+    );
+    // Same path twice: use-after-move.
+    let err = mir_verify::verify_mir(&build(true, false)).unwrap_err();
+    assert!(
+        matches!(&err, mir_verify::MirVerifyError::Invalid { code, .. } if code.contains("use-after-move")),
+        "a repeated field extraction is a use-after-move: {err:?}"
+    );
+    // Whole-root use after partial consumption: use-after-move.
+    let err = mir_verify::verify_mir(&build(false, true)).unwrap_err();
+    assert!(
+        matches!(&err, mir_verify::MirVerifyError::Invalid { code, .. } if code.contains("use-after-move")),
+        "a whole-root use of a partially-consumed root is a use-after-move: {err:?}"
+    );
+}

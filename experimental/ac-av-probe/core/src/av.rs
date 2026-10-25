@@ -1401,29 +1401,38 @@ fn dispatch<V: ModuleView>(
                     }
                 }
                 MirInstr::FieldMove { dst, root, path } => {
-                    // R2-F08' write-back machinery: DESTRUCTIVE whole-field
-                    // move-out — `dst` receives the field value (an Rc
-                    // share for records — the wrapper dies HERE, so the
-                    // share IS the transfer); the ROOT slot is killed
-                    // (single-extraction, use-once).
-                    let bv = {
-                        let fr = st.frames.last().expect("frame present");
-                        fr.slots[*root as usize].clone()
+                    // R3-F08 per-field consumption: `dst` receives the
+                    // field VALUE (an Rc share for records, the handle for
+                    // Str — the share IS the transfer); the leaf's slot in
+                    // the root becomes its typed ZERO and the root slot's
+                    // generation bumps (stale views over the moved field
+                    // retire). The root stays live for its remaining
+                    // fields — the write-back wrapper is consumed field by
+                    // field (f0 result + one wb per mut param).
+                    let field_zero = v.zero_of(func_idx, func.slots[*dst as usize].ty);
+                    let taken = {
+                        let fr = st.frames.last_mut().expect("frame present");
+                        let root_val = &mut fr.slots[*root as usize];
+                        let mut visited = 0u64;
+                        let before = root_val.deep_size(&mut visited);
+                        let taken = match crate::place::field_take(root_val, path, field_zero) {
+                            Some(f) => f,
+                            None => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "field-move path {:?} does not resolve on the root (admission violation)",
+                                    path
+                                )))
+                            }
+                        };
+                        let after = root_val.deep_size(&mut visited);
+                        st.steps += visited;
+                        st.slot_bytes = st.slot_bytes.saturating_sub(before.saturating_sub(after));
+                        fr.gens[*root as usize] = fr.gens[*root as usize].wrapping_add(1);
+                        taken
                     };
-                    let field = match crate::place::field_project(&bv, path) {
-                        Some(f) => f.clone(),
-                        None => {
-                            return Some(ExecOutcome::Infra(format!(
-                                "field-move path {:?} does not resolve on the root (admission violation)",
-                                path
-                            )))
-                        }
-                    };
-                    if let Err(out) = commit_slot_write(st, *dst as usize, field, limits) {
+                    if let Err(out) = commit_slot_write(st, *dst as usize, taken, limits) {
                         return Some(out);
                     }
-                    let zero = v.zero_of(func_idx, func.slots[*root as usize].ty);
-                    owned_kill_slot(st, *root as usize, zero);
                 }
                 MirInstr::Drop { slot } => {
                     // Explicit drop: take the owned value out; its

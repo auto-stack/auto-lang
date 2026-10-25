@@ -118,6 +118,16 @@ pub struct OwnedRequestOutcome {
     pub wall_ms: f64,
     pub arena: Option<auto_av_core::owned_text::StrArena>,
     pub record_names: std::collections::BTreeMap<u32, String>,
+    /// R3-F09: the managed-memory partition peaks, in the data pipeline's
+    /// working-set dimension (driver.rs F798-R3-08) — `hot` is the loaded
+    /// closure retained through execution (wire + decoded module
+    /// structure), `staging` the transient codec/verification working
+    /// set's peak, `exec_slot` the guest live-data peak (the AV's own
+    /// slot-bytes accounting, V-07's 8MiB line). These are NOT disk
+    /// usage and NOT the worker process's private-bytes peak.
+    pub peak_hot_bytes: u64,
+    pub peak_staging_bytes: u64,
+    pub peak_exec_slot_bytes: u64,
 }
 
 /// Run one owned-profile request; persist the AVAD v2 module when
@@ -187,6 +197,15 @@ pub fn request_owned(
     }
 
     let loaded = verify_abc_bytes(&flat, &mir.owner).map_err(|e| format!("abc admit: {e}"))?;
+    // R3-F09: the managed-memory partition peaks, in the data pipeline's
+    // working-set dimension — hot = the loaded closure retained through
+    // execution (wire + MIR + decoded module), staging = the transient
+    // codec/verification working set's peak (encode buffer, MIR
+    // structure, decode + analysis), finalized AFTER the deep admit.
+    let hot_bytes = flat.len() + mir.heap_estimate() + loaded.module().heap_estimate();
+    let staging_peak = (flat.len() + mir.heap_estimate())
+        + loaded.stats().analysis_bytes as usize
+        + loaded.module().heap_estimate();
     let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
     let arena = trace.arena.clone();
     Ok(OwnedRequestOutcome {
@@ -199,6 +218,9 @@ pub fn request_owned(
         wall_ms: started.elapsed().as_secs_f64() * 1000.0,
         arena,
         record_names,
+        peak_hot_bytes: hot_bytes as u64,
+        peak_staging_bytes: staging_peak as u64,
+        peak_exec_slot_bytes: trace.peak_slot_bytes,
     })
 }
 
