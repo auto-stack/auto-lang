@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-832
-status: reviewed
+status: archived
 feature_name: auto-man 独立仓及三仓组合发行交付
 author: [Codex]
 created_at: 2026-10-22
 updated_at: 2026-10-26
 plan_revision: 3
-current_step: 10
+current_step: 12
 total_steps: 12
 supersedes_spec_components: [docs/specs/repository-boundaries/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md, docs/specs/auto-man/project.md, docs/specs/auto-man-core/project.md, docs/specs/auto-cli/project.md, docs/specs/tool-execution/project.md, docs/specs/tool-protocol/project.md, docs/specs/language-sdk/project.md]
 new_spec_components: [docs/specs/repository-boundaries/man-three-repository-delivery.md]
@@ -142,8 +142,8 @@ T-08在隔离组实现语言仓Man/CLI/管理执行编排原件删除，根成�
 | [x] | T-08 | work | G832；T-07；共享接线窗口且831实际交付 | [✅ BP-01修复] [repair-report](attachments/832/merge/repair-report.md) @Man`ceb8dfdd`：显式env/真实项目库→安装SDK→开发语言owner；安装SDK唯一marker被真实bp show读取，cmd_bp4/4与full build通过 | AC-01,05,06 |
 | [x] | T-09 | work | G832；T-08 | [✅ BP-01交接] [handoff](attachments/832/handoff.md)+[spec-delta](attachments/832/spec-delta.md) @lang`adb5ce0f3`：安装来源区分证据/SD冻结，待同一独立reviewer复核；lang847外部blocker仍单列 | AC-01..06 |
 | [x] | T-10 | review | G832；T-09冻结提交与真实831交付 | [✅ R4 pass] [独立复审](attachments/832/review-r4/review.md) @Man`ceb8dfdd`+lang`adb5ce0f3`：F832-MERGE-BP-01 CLOSED；安装SDK唯一marker、项目库/env优先、开发回退、缺件负控与SD全过；merge门仍pending | AC-07 |
-| [ ] | T-11 | merge | G832；T-10 pass；共享合入窗口 | R4后可重跑Man冻结门并先行落地；lang B845-FEATURE-01仍属PLAN-847外部blocker，lang不得在其恢复前合入；Man/lang尚未合入，ledger/归档/清理未执行 | AC-08 |
-| [ ] | T-12 | merge | G832；T-11全部交付收据 | canonical Specs/受管ledger与索引沉淀、归档；guard clean逐树清理本Plan临时树/分支/组，保legacy/恢复/实际交付分支 | AC-08 |
+| [x] | T-11 | merge | G832；T-10 pass；共享合入窗口 | [✅ r5统一门+有序合入] 847恢复B845后全门绿（发行14/14、lang裸t 3181/3181、792 39/39、Man/UI档归因预存红同集；[gate-status](attachments/832/merge/gate-status.json.txt)）+R5收口pass；Man master ff-only→`1b7a9ce0`（14提交）、lang master ff-only→`3934ed4f2`（42提交，两次rebase range-diff等价、无合并提交） | AC-08 |
+| [x] | T-12 | merge | G832；T-11全部交付收据 | [✅ ledger+归档+guard清理] canonical SD已载master；ledger v88→v89 guarded offline splice（designs/tests/reviews/reports四条目，[deposit脚本](../../scripts/plan832_ledger_deposit.py)读回验证）；归档archive/；wt-guard clean后逐树清理worktree/分支/组与沙箱（m832final4/scratch-consumer*/m832g2）；保legacy/恢复分支 | AC-08 |
 
 **G832未满足前不得创建/认领下述组、分支或实施会话；路径只登记未来执行位置。**
 
@@ -208,3 +208,5 @@ r1以下记录为历史合同预检，其提前准备/并行放行和pass仅适�
 调度已明确，无须重复确认；G832未满足前不得以规划准备名义开工。T-01按实际U816确定包名/安装/profile/平台支持与832 source清单，831提供最终无环的共享声明与UI release。若必须破坏命令/默认支持、改变线程/取消合同或跨出旧仓承接范围，具体needs_replan，不把缺工具/环境当静默缩面。远端push/更名/registry发布按具体授权另行执行，不以其未获授权阻断本地三仓独立交付。
 
 **已裁决（2026-10-25，r3）**：jet/ark 真实构建按用户指示“暂时不测，等v0.7再考虑”，转 v0.7 环境门控渠道并登记 KNOWN-DEBT；不视为已实测，不影响其他 AC 继续验收。该面后续落实工具链时须真实执行并保留失败非零语义。其余事项无须重复确认。
+
+2026-10-26 / stage: merge（收口收据，completion_kind: delivered） / plan_id: PLAN-832 / plan_revision: 3 / outcome: **pass（delivered）** / checkpoints: **prepared**=R5收口pass @lang`abfcc3650`+Man`1b7a9ce0`，canonical SD [man-three-repository-delivery](../specs/repository-boundaries/man-three-repository-delivery.md) 已随分支载master；**landed**=Man master 51fafe8→`1b7a9ce0de9055f7953129d78a25777662508258`（14提交ff-only）、lang master 3c3f79926→`3934ed4f28e8c994e92129a44f987bc9067e9e21`（42提交ff-only，两次rebase d4a4a9cc0→57b54fc42→0c37dbbd1 range-diff等价，无合并提交，master增量仅821/848簿记文档）；**ledger_refreshed**=.autoos/specs.json v88→v89（guarded offline splice，channel=deposit脚本自校验+读回验证，P832-D1/T/R4/M四条目，bak-v89-832入库）；**archived**=本提交git mv至docs/plans/archive/；**cleaned**=四树wt-guard clean后worktree×4（lang/man/ui/down）+分支×2（codex/plan-832-dev双仓）+组目录lang-832+沙箱（m832final4/m832g2/scratch-consumer*）全部移除并验证 / production_artifacts: 本Plan交付物为源码仓形态（Man独立仓+三仓组合安装经发行门验证），无常驻服务进程需重启；已装安装实例均在验证沙箱内随清理销毁 / batch_due: 到期（last_covered_plan_id=840<845，且>48h有合并），tf已有850 external-workspace blocker 分诊，移交 /auto-plan:regress 主检出单实例执行 / evidence: [gate-status](attachments/832/merge/gate-status.json.txt) 全量回执 / jet-ark: r3裁定维持v0.7环境门控，未测不冒称
