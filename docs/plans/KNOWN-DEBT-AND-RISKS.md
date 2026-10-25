@@ -14,6 +14,40 @@ F-846-R1-01 P2 OPEN（合同内，非可选延期）：末尾`--behavior-api`缺
 
 当前独立final R2 pass，完整冻结59入口及delivery身份消费门通过，autographics-dev快进`a239653365a0c3451c85aa9921189fcf011bd8cf`；主分支规范/台账77与归档提交`c14fc97fe8c83a571d6cf7a249cba74a76e218c7`已核。fresh guard后唯一实施树/开发分支已移除，独立消费复现副本保留；batch not-due、搬迁重开smoke通过。无本Plan开放finding/gap/未决决策或待完成项，生产I2/I3维持原非目标。首轮旧Squash预算失败与同冻结完整重跑通过原样保留。[合入pass收据](attachments/839/merge-r1/receipt.md)。下方R1仅为历史。
 
+### Plan 831（2026-10-25，R7 final pass；历史finding全闭，merge门pending）
+
+[R7 pass与范围/路由](attachments/831/review-r7/review.md)绑定lang2a3e2c4d6/UI4250885/downc39ac7f9、Plan r3。R4/R5真实exit1路径控制和R6真实缺wrapper数字路径控制均符合同（共6分类对照），原5矩阵控制全过；F831-09-03 A CLOSED、全部work-owned finding已闭。7材料/4原始终源收据hash与canonical输入匹配；未变兼容/777/测试选择面/净迁移/其他验收证据按范围复用。r3经批准的jet/ark缺环境构建后续门控承接保持（不冒称构建成功）；V06e保持已闭。当前reviewed10/12，仍须T11 merge-owned裸cargo t与必要触面/UI适用门通过、实际落地/读回/ui-release.md，T12 Specs-ledger/索引/归档/guard清理闭环后才算交付；U831未成立、832不放行。未改产品实现/跑整档/合入/清树；当前审查会话上下文限制已记。以下R1..R6记录为历史，以本R7当前结论为准。
+
+### Plan 831（2026-10-25，R6缺环境误红修复回归needs_fix）
+
+[R6真实缺席入口/对照](attachments/831/review-r6/review.md)绑定langc79d34311/UI4250885/downc39ac7f9。R4/R5真实旧假绿均已闭、原5控制全符合同，V06e与其余已闭面保留。仅F831-09-03 A PARTIAL：新re.search仍扫整段error，真实缺wrapper/no build executed的合法r3延期因项目路径exited 1-r6-*被误当实际exit1而RED；同错误只去掉无关路径数字恢复env-gated。当前是允许延期被误红的修复回归，不再称旧真实失败误绿。只修producer原因结构与路径边界、保留真实失败红/获准缺环境绿，执行受影响反例和对照即可；T09重开/executing8/12，revision3/r3延期不变，其他族不重跑。未改产品/跑整档/合入/清树，merge-owned门pending、832等待U831。
+
+### Plan 831（2026-10-25，R5仍仅F03-A分类不变量needs_fix）
+
+[R5真实兄弟输入/对照](attachments/831/review-r5/review.md)绑定lang538e3b8fe/UI4250885/downc39ac7f9。R4真实not found旧例与原5控制均符合同，V06e及其他已闭面保留。仅F831-09-03 A PARTIAL/OPEN：所谓producer具名模板仍以sig in整段error搜索，合法目录Hvigor wrapper not found-r5-*使真实交付tool的已执行wrapper exit1失败report又被env-gated，去掉同错误中的无关路径字串即RED；是旧例已闭而分类不变量未闭，不新增验收/规模要求。下一work仅修原因/附带文本边界、未知错误红，保留r3环境延期；executing8/12、revision3不变。未改产品/跑整档/合入/清树，merge-owned门pending、832等待U831。
+
+### Plan 831（2026-10-25，R4窄残项needs_fix，r3环境延期保留）
+
+[R4真实入口与对照](attachments/831/review-r4/review.md)绑定lang3064b3465/UI4250885/downc39ac7f9。原R3五构建控制全过，endpoint-timeout正确红且独立TCP仍在，F831-09-03 B CLOSED；仅A分类PARTIAL/OPEN：BUILD_ENV_ABSENCE_MARKERS的not found对整个错误文本匹配，真实交付tool执行现有Ark wrapper（写marker后exit1），合法工程路径含not found时实际失败report却被V06c归为env-gated/ok=True；同失败仅移除错误文本里的无关目录字串即红。已核实际producer错误格式，模拟编译消息只作诊断，不将未确认生产路径当缺陷。仅修V06c环境归因不变量及该反例/正控/代表兄弟；r3缺环境延期继续有效、V06e及无关已闭族不重跑。T09重开/executing8/12、revision3不变；未改实现/跑整档/合入/清树，merge-owned门pending、832等待U831。
+
+### Plan 831（2026-10-24，复审R3 needs_fix，Plan r3有界修订保留）
+
+[R3受影响复验与控制](attachments/831/review-r3/review.md)绑定lang2d47e236e/UI4250885/downc39ac7f9。接受用户本轮确认的r3：jet/ark缺环境真实构建转后续环境门控，**该延期本身不再是831阻塞**；六profile生成/required三构建/vm运行及工具链在场真失败红仍保留。R2 progress-only反例现已拒绝，但F831-09-03仍P1 PARTIAL/OPEN：①V06c只聚合required，jet/ark真实编译错被忽略，合法全完成/获准缺环境绿、required/vue错红对照均过，jet/Kotlin与ark/ArkTS错仍假绿；②V06e把HTTP超时当关闭，同一真实listener取消前HTTP200、取消后仍TCP connect成功但HTTP无应答，case仍绿。仅修两个新判据触面，复用未变历史证据，T09重开/executing8/12、revision3不变；merge-owned门pending、未改实现/跑整档/合入/清树，832等待U831。
+
+**经用户r3批准的后续承接项（非831当前阻塞）**：jet/ark在具备gradle/java/Android SDK与Hvigor/DevEco工具链的环境门控渠道完成真实构建验收。来源=Plan831 r3 §4/AC03/V03及handoff/freeze；当前缺环境实测记录保留，不声称构建成功、不退休后端。后续环境门控执行方负责补齐工具链/版本/输入与实测收据；尚无新Plan编号或远端CI入口，不虚构已创建任务/已运行渠道。工具链在场后的真实失败不得按本延期豁免。
+
+### Plan 831（2026-10-24，T-10 R2 repair re-review needs_fix）
+
+[R2定向复验与可重放控制](attachments/831/review-r2/review.md)绑定lang fe8f3090a/UI4250885/downc39ac7f9。F831-09-01 blueprint独立oracle5/5、F831-09-05 tracked dirty拒绝、F831-R1-01终态source/SD/hash刷新已闭，R1三个旧假绿反例均拒绝；原绿证据保留。仅F831-09-03仍P1 PARTIAL/OPEN：jet/ark约定环境面缺证不能转work complete；V06e把任意event当实际运行，合法Progress(resolve backend,1/3)+cancelled完整RunReport+真实descriptor但从未启动VM的真实framed载体仍判绿。是旧例闭合、完整运行接受不变量未闭，非新功能要求；下一work先交覆盖诊断与oracle调整，再做受影响正反控和真实链。T09重开、executing8/12；未改产品/跑整档/合入/清树，merge-owned门pending、832继续等待U831。当前会话独立性限制已记录。
+
+### Plan 831（2026-10-24，T-10 R1 needs_fix）
+
+[完整R1/原样验收器反例/AC-SD覆盖](attachments/831/review-r1/review.md)绑定lang1635835d3/UI464569d/downc39ac7f9。原示例扫描1/1、兼容实编24/24、777真实UI362文件strict0v5gf零警告通过；F02与主要布线修复保留。但F831-09-03(P1)REOPEN：jet/ark构建实际红且部分运行未验，V06e空闲不服务工具也判绿、V06d从未安装立即返回也判绿，不能证明VM/真实安装中取消与寿命；F831-09-05(P2)REOPEN：真Git tracked源码修改同HEAD仍admitted；F831-09-01(P2)原样例闭合但blueprint fallback精确oracle被contains字串弱化；F831-R1-01(P2)OPEN：最终source-audit/SD仍旧状态，三canonical Spec已有840更新需协调。均属合同内未闭，记账不豁免。T09重开、executing8/12，先同组work定向修复后更新终稿再审；merge-owned统一门仍pending，未改实现/跑整档/合入/清树，832仍等待U831。当前会话复审限制已记，不冒称新独立上下文pass。
+
+### Plan 831（2026-10-24，T-09 work核查 needs_fix，非终审）
+
+[最终来源核查及重放](attachments/831/handoff.md)绑定lang eaf1027e5 / UI 461c609 / down c39ac7f9。F831-09-01..06均OPEN、属于本Plan合同内阻塞，记账不构成延期或豁免：01示例/blueprint/宿主CLI根未迁（定向app_registry测试选1败1，实际0/预期≥34）；02兼容实编探针仍无条件pending；03全profile真实构建运行/安装失败恢复与寿命证据未齐；04UI t --lib漏integration、原档过滤/跨仓编排/777实际UI文本根未承接；05历史收据未完整绑定最终三仓来源；06目标无根LICENSE及编译告警需归因收口。841原文件全部迁入、零丢失的源码对账保留，不等于测试与发行闭环。T-09未完成、executing8/12；先同组work修复并定向验证再冻结，T-10独立终审及merge-owned统一门仍pending；832继续等待U831。未改实现/跑整档/合入/清树。
+
 ### Plan 839（2026-10-24，R1核验needs_fix历史；Starting取消一P2）
 
 受审`e58828ca64b7e26ce984faf850fb3b1d0887517f`/r1；[完整报告及持久反例](attachments/839/review-r1/review.md)。F-839-R1-01/P2：Starting后失焦/resize-DPI/离窗/遮挡请求被Play::pause状态过滤吞掉，初始化后仍Running且errorNone，后续真实Auto tick均到2；同锁独立客户端3控制过、四边沿同一case失败。Running失焦、Starting Stop/真实owner释放、晚query失败整笔拒绝对照通过；35永久定向/native7/source及来源四反控/owner保留与重传101+101恢复0/check/fmt/diff过，无新增warnings。原合同AC04/05/06内必修，T04/06/07/08重开，executing4/10，T01/02/03/05成果保留；同树修齐后刷新source/SD/handoff并提交。当前为同实施会话internal核验，独立上下文final review仍pending，未据此授最终pass；原完整merge-owned冻结矩阵/实际落地沉淀归档guard仍pending。未修改实现/合入/清树。
@@ -3144,9 +3178,19 @@ PLAN-816 B-R10 更正（2026-10-24）：上条"exec_lifecycle Linux 面 3 预存
 
 PLAN-817 R9（cb0ba5231，2026-10-24）：R8 SQL错误和2MiB旧损坏反例关闭；R9-01仍阻断恢复预算：take限制len不限制Vec capacity，近界1025B文件reserve1072却allocator实际2048，正常frame1024+payload512共存1536亦超1072。见[R9](attachments/817/review-r9/review.md)，不可延期债务化。
 
+PLAN-817 R10（e55b59cae，2026-10-24）：R9精确容量读取/分账预留实质闭合、20项定向绿；原AC-05编解码不变量仍有合同内阻断：R10-01/P1，301146B正确CAS坏信封恢复先留602292B、实际Vec单次3145728B（901146B例达12582912B）而managed_target_met=true；R10-02/P2，正常AV envelope编码预留1163B却实际capacity2048B；R10-03/P2，永久allocator窗口未重置峰值、结束前改基线且8192B容差放过旧错误算法。独立真实driver/allocator重放见[R10](attachments/817/review-r10/review.md)。三项均不可延期债务化；保持executing6/11，回work同树修复。
+
+PLAN-817 R11（b29cb2348，2026-10-24）：R10-02编码容量、R10-03观测器及原空串数组反例已关闭，22项定向绿。R10-01完整解码预算仍有合同内阻断F-817-R11-01/P1：132166B正确CAS坏信封的审计Hot额度268780B，带单次转义的长字符串经scratch与owned String共存，decode峰值393995B；真实driver仍managed_met=true，plain配对正控界内。该例证明decode/Hot预留不足，未声称默认32MiB总量实测超限；应显式覆盖scratch容量/归属/寿命，不能假定复用另一分区frame额度。见[R11证据和关闭oracle](attachments/817/review-r11/review.md)。不可延期债务化；保持executing6/11，同树work修复。
+
 PLAN-816 T-10（2026-10-24）：**master 预存编译破损（cargo test 全目标面）**——`cargo t`/`tf`（nextest 档）结构性不触发、日常门不受影响，但裸 `cargo test`/`cargo check --tests`（全目标）红：①`crates/auto-gen/tests/common/mod.rs:19-20` 引用 `auto_lang::atom::Atom`，而 auto-gen 依赖自 814 T-06（9c7e44855）已切 auto-lang-core、无 auto-lang 依赖（E0433，master 主检出同红，非 816 引入）；②`crates/auto-cache/src/methods_pack.rs:697` ShimMethod 初始化缺 `trait_name`（shim-metadata 结构演进未同步消费者，E0063，master 同红）。两处均为计划合入面外的预存债，修复归后续 fix 计划裁定。
 
 PLAN-818 D828刷新轮（c4819bf58，2026-10-24）：**ac-syntax workspace 跨兄弟消费缺陷（路由 ac-syntax/828 owner）**——828 为 auto-av-probe 新增 `ac-syntax-core-adapter` 路径依赖（该 crate 及 runtime/grammar/artifacts 全部用 `.workspace=true` 继承）后，`experimental/` 内任何兄弟 workspace 经 path 链消费 auto-av-probe 时，cargo 将这些成员的继承解析到 auto-lang 根（差分实测：根临时补 edition 后错误推进到 publish；树外 /tmp workspace 消费同链正常）而根从未定义 workspace.package——跨 workspace path 依赖链在 828 布局下不可构建。PLAN-818 以语义等价修复临时解锁（四成员清单改字面量，值与 ac-syntax [workspace.package] 逐字一致；ac-syntax 自建 `cargo test --workspace` 39/39 全绿零回归）。路由事项：owner 侧要么正式接受字面量形态，要么以不破坏兄弟消费的方式恢复继承（如 [patch] 或 workspace 重组）；在 owner 裁定前该四文件为 818 分支携带的跨面修复，818 合入时随计划一起合入。
+
+PLAN-817 R12（4309f49de，2026-10-24）：F-817-R11-01已关闭，3项受影响定向及独立三档escaped/plain/其他String字段反控通过，T-05完成。剩余F-817-R12-01/P2仅为T-08/T-11交付覆盖缺口：acceptance-matrix.md只有6行（空行+R7..R11历史），缺既定V-01..V-12/AC/task/证据映射。补齐索引优先复用已有证据，无需重跑全局/资源重族。详见[R12](attachments/817/review-r12/review.md)。executing7/11，统一门禁仍merge-owned pending，不能以债务化方式跳过收口。
+
+PLAN-817 R13（97203795b，2026-10-24）：无新运行时缺陷；覆盖矩阵结构/V-12四子落点已恢复，脚本6/7/18列表选择和六组路由/失败传播正反控通过。T-08仍有两项P2收口：F-817-R13-01，closeout将已认可的783追加API误判WRITE VIOLATION（真实exit1）；F-817-R13-02，V-08测试名缺cte前缀、V-09性能摘要与冻结raw不符。见[R13](attachments/817/review-r13/review.md)，仅需只读审计边界正反控及文档证据比对，无需全局测试。T-08重开，保留T-11完成，executing8/11，不能以登记债务代替收口。
+
+PLAN-817 R14（c224a4b0b，2026-10-24）：F-817-R13-01/02均已独立关闭。真实closeout exit0；783单文件+120/-0与授权diff SHA匹配，六项输入边界控制通过；82入口可解析、冻结性能摘要一致。无新增finding，final pass，reviewed10/11，仅T-10开放。统一回归仍merge-owned pending，门禁通过前不得合入/宣称交付完成。见[R14](attachments/817/review-r14/review.md)，本轮无Rust测试/全局回归。
 
 
 ### PLAN-840 review R1（2026-10-24；合约内阻断，非获准延后）
@@ -3221,6 +3265,9 @@ F-827-R1-01..03 为原合同验收缺口，不可延期债务：汇总门漏资�
 
 producer/consumer完整driver各155、AGP各163和已绿原生门保留身份；消费端user余12/两端project各15与实际UI输出搬迁各2/完整81-call审核未执行。前三次自动修复已独立关闭，默认三轮cap到达；无第四次源修复、未合入/沉淀/归档/清理，保留同一845 clean树。需明确click接收/pending/tick过渡、永久反例控制、同树修复提交与受影响独立复审后补所需完整门。登记不授权合同缩面或豁免。
 
+### PLAN-827 final R2 — 2026-10-25 needs_fix
+受审4531ece17/r3；R1-02核心检测缺口定向关闭，R1-01/03仍开（nextest范围外跳过误拒/必需成员未绑定；stdlib及源码身份库存仍缺），新增R2-01三处unused_mut。T01/T06/T09重开executing4/9。见 [R2报告](attachments/827/review-r2/review.md)。原合同缺口不可延期，统一门禁merge-owned pending，未合入。
+
 
 ### PLAN-845 R6 — F-845-M1-04 独立关闭（2026-10-25）
 
@@ -3280,3 +3327,22 @@ R8 closes all implementation findings within6/6 repairs; 83 effective calls and 
 
 ### PLAN-831 合并门新可见预存红（2026-10-25，归因在案非本迁移引入）
 UI 仓新 t 档（PLAN-831 T-09 创建）首次选中 auto-ui-tools lib 测试面，暴露两个在 lang master 迁移前副本即同样失败的预存潜在红（旧 lang t 档从未选中该面）：rust_ui::tests::merged_api_client_crud_fallback_for_uncovered_endpoints（a2r 生成物形态断言漂移）与 vue::plan593_index_css_golden_tests::index_css_values_match_p1_baseline（金样漂移）。归属证据：lang master 同测试同败（merge 收据）。待后续计划修复或再基线。
+
+### PLAN-827 final R8 — 2026-10-25 needs_fix6/9（仅T06）
+ebced8cd5e5f26e609062acdcb08808452af5e20/r3：R7两finding独立关闭，T09恢复pass，R6分配/清理闭包保留；新F-827-R8-01 P1原资源证据残余：当前绑定worker虽正确，但实际bench summary/exit未持久化，raw180行和binding无前端/总峰值、残差硬门字段；仅交接数字不能补峰值真值。见 [R8字段审计与最小补证](attachments/827/review-r8/review.md)。优先恢复现有stdout；无源则修留档后仅补受影响资源测量，不重放无关全验收/性能矩阵。不可由merge统一门豁免；未合入。
+
+## PLAN-820 合入适配（2026-10-25，merge c4afe1281）
+
+- **818 mn 工作区编译适配待 owner 复核**：820 扩展共享 auto-av-core
+  （Value/MirType/MirConst/ScalarShape/MirInstr 宽变体）后，818 在途工作区
+  `experimental/ac-mir-native` 六处穷尽匹配 E0004。按 F820-R10-01 同型做
+  最小受控拒适配（emit.rs 宽/record 参数 Unsupported；fingerprint.rs 形状
+  avdata 标签/常量防御渲染/三指令纯格式渲染；lower.rs 宽常量与
+  FieldGet/FieldSet/Aggregate 受控 lower 拒）+CTE/mn 双工作区锁补
+  windows-sys 0.59.0 实际边。mn 标量语义零变化（语料不触新臂）；master
+  日常档 ac_mn 族保持绿。**818 owner 在其合并/下次修复轮复核受控拒绝
+  语义并按需替换为真实支持**。
+- **818 resources_tier 采样器计数 flaky**：mn 工作区
+  mir_native_resources_transient_spike_sampler_and_raw_gate 在并行负载下
+  "sampler actually polled (4)" 偶红、隔离绿（主检出同绿）——818 既有
+  并行敏感测试，非 820 引入。
