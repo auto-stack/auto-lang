@@ -1076,7 +1076,8 @@ fn quote_at(s: &str) -> String {
     format!("\"{}\"", s)
 }
 
-/// Plan 435 P6-2(D1):`auto/src/cmd_vue.rs::detect_shadcn_components` 安装表 ——
+/// Plan 435 P6-2(D1):`cmd_vue.rs::detect_shadcn_components` 安装表（PLAN-832
+/// 起随 CLI 迁独立 auto-man 仓，经兄弟树读取）——
 /// 构建期 `shadcn-vue add` 可物化的 `@/components/ui/<pkg>` 路径集(vue 映射
 /// 的独立交叉源之一,不依赖 aura.at 自证)。
 fn scan_shadcn_install_table(src: &str) -> BTreeSet<String> {
@@ -2223,7 +2224,10 @@ fn schema_drift_fence() {
             // 双端 class 契约由 ui_gen/nav_contract.rs 单测锁定——482 落地时
             // 只登记了 nav-link,漏了本包(481 merge 修 Slot 红后围栏揭出)。
             ["data-table", "nav", "nav-link", "toast"].into_iter().collect();
-        let installable = scan_shadcn_install_table(&read("../../crates/auto/src/cmd_vue.rs"));
+        // PLAN-832 迁仓:cmd_vue.rs(含 detect_shadcn_components 安装表)随 CLI
+        // 承接进独立 auto-man 仓,围栏随迁改读 auto-man 兄弟树——与本测试既有
+        // 的 ../../../auto-ui 兄弟依赖同一布局契约。
+        let installable = scan_shadcn_install_table(&read("../../../auto-man/crates/auto/src/cmd_vue.rs"));
         let registry_root = repo_file("../../packages/widgets/registry");
         let mut bad: Vec<String> = Vec::new();
         for (canon, meta) in &schema.meta {
