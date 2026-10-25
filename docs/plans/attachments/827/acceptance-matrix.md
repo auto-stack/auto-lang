@@ -35,7 +35,7 @@ R5 绑定时这些文件未改；R6 修复在 AV 帧槽位 reserve 边界新增�
 | cap-at/超1（表/嵌套轴） | `resources_tier::av_resources_over_table_budget_is_resource`、`av_resources_front_door_nesting_boundary`（继承） | 正/负对 | resources-inherited-finite |
 | 无限循环/cancel/资源态 | 827 既有 `av_source_827_resource_budget_and_cancel_axes` | InstrSteps 资源态/Cancelled（host 决策）/dispatch=0 | resources-thin-cap-pair |
 | churn/清理（32MiB 信封内） | `resources_tier::av_resources_32mib_product_random_read_and_churn`（继承） | 预算内清理与水位 | resources-inherited-finite |
-| 双线内存硬门 + 两路径 P95 | `av_probe_worker bench-turnaround --samples 30 --gate-ms 1000`（validate_and_gate 对 frontend_transient/worker_private 双线 hard_gate_failures→exit5）+ `t08_formal_campaign_v08_dual_gate_30_revisions`（正式会话时间门） | P95<1000 且双线绿；gate-0 必红反控；**R7 F-R7-02：worker 先从冻结 workspace 构建（cargo build --release -p auto-av-probe --bin av_probe_worker），SHA256+head+probe-ws 脏项入 per-run 绑定收据署名两 raw，陈旧/篡改/缺失绑定负控先于战役必红+当前正控** | raw=bench-*.jsonl+resources-worker-binding-*.json（失败轮保留）；当前绑定过门轮 20261025-091045（worker 0A50E300E1B4BC97…、head=10c1456e2、single-body-edit P95=598.0/signature-conflict P95=24.8）；失败轮 085917 归因并发编译撞车，样本+收据保留 |
+| 双线内存硬门 + 两路径 P95 | `av_probe_worker bench-turnaround --samples 30 --gate-ms 1000`（validate_and_gate 对 frontend_transient/worker_private 双线 hard_gate_failures→exit5）+ `t08_formal_campaign_v08_dual_gate_30_revisions`（正式会话时间门） | P95<1000 且双线绿；gate-0 必红反控；**R7 F-R7-02：worker 先从冻结 workspace 构建（cargo build --release -p auto-av-probe --bin av_probe_worker），SHA256+head+probe-ws 脏项入 per-run 绑定收据署名两 raw，陈旧/篡改/缺失绑定负控先于战役必红+当前正控；R8 F-R8-01：实际 stdout summary+精确 exit 逐运行留存（bench-summary-{gate0,30}-*.json：exe/head/args/exit/raw/观测 input+全峰值+双 target+hard_gate_failures），Test-BenchSummary 从留存真实字段佐证（gate-0 预期拒绝与无关非零可区分；正常门 exit0+零 failures+双 target）+内联篡改负控+selftest 六控制** | raw=bench-*.jsonl+resources-worker-binding-*.json+bench-summary-*.json（失败轮保留）；当前绑定过门轮 20261025-103747（worker 0A50E300E1B4BC97…、head=311e81a7f、input 431bff0efbaabfec、single-body-edit P95=966.2/signature-conflict P95=38.1、exit0+零 failures+双 target 留存佐证）；085917/091045 轮另有 recovered summary+原始控制台捕获 |
 
 注：828 战役测试内内存峰值为报告项（其注释明示）；**内存硬门在 bench-turnaround 的
 validate_and_gate**（同 scope 必跑、失败 exit 5）——本行即"actual dual-line hard-memory/formal
@@ -56,6 +56,13 @@ two-path evidence"到当前基面的绑定。故障第 n 次分配注入现已�
 - **F-827-R7-01（V13 持久化身份/失败 raw）**：根因=identities_before 裸名键 vs 查询 `d_main` 前缀键（30 行 before 全 null）+raw 仅在 P95 断言后一次性写固定名。修复/重放见上表 V-13 行；评审 replay-evidence.ps1 复放 null_before=0 exit0。
 - **F-827-R7-02（V09 bench 二进制未绑当前源码）**：根因=resources 档直接执行 target/release 旧 exe（depinfo 缺 frame_allocation.rs，写于 R6 前）。修复/重放见上表 V-09 行；selftest 增绑定校验五控制（外部二进制/篡改收据/缺失 exe/空哈希红+精确绿）。R6 执行器变更后的 30 样本资源证据已在新绑定 worker 上再生（091045 轮）。
 - **R6 core 写窗对账**：frame_allocation.rs 写入 ac-av-probe/core 系用户明确指令的最小故障探针；最终写面含 crates/auto-lang **计划内测试面**（§3 既定 corpus+根门测试+模块注册），生产 crates 源码与 D798 公共 API 零触碰。
+
+## R8 留存闭包（2026-10-25，冻结 311e81a7f+cce6139e8）
+
+- **F-827-R8-01（实际 bench summary/exit 未持久化）**：根因=worker 把真实 summary（硬门结果/双线内存峰值/targets）打到 stdout，脚本只打印不落盘，JSONL raw 仅逐样本行——持久工件无法复核资源验收、无法区分 gate-0 预期拒绝与无关非零退出。修复/重放见上表 V-09 行；留存工件含完整 frontend/private/child 峰值、worker 增量、双线 target、hard_gate_failures 与精确 exit_code。
+- **原始回收（评审首选，不造数）**：085917/091045 两轮原始控制台捕获原样入库（resources-console-*.log.txt，含 stdout summary JSON 行与退出码打印行）；四份 bench-summary-*.recovered.json 逐字提取自捕获行、绑定各自收据，退出码注明捕获出处（091045 bench-30 exit0 由控制流续行注记）；回收工件经 Test-BenchSummary 一致性检验四件全符（085917 bench-30 正确红=该轮真实门失败）。
+- formal-session 30 样本完整 report（P95=331.9732ms、worker_peak、input 身份）按 R8 评审复用，未重跑；inventory/cache/churn/整档未触动。
+
 
 
 ## R6 故障注入闭包（2026-10-25）
