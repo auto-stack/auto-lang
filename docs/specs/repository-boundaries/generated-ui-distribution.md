@@ -202,3 +202,7 @@ shadcn/根级输入):
 ## PLAN-831 多源 producer（SD-04，as-built）
 
 受管 UI 五包实际源可由独立 UI 根提供：delivery_crate_source 按显式 UI 根/组内 UI 源取得 owner 源码并投影为 bundle 内相对依赖；语言 SDK 源及其 root inputs 具名登记（探索序=primary 语言根优先再查 UI 根）。canonical auto-ui-runtime + auto-lang-core 双直依赖、vendored patch、版本 pin、多槽锁、资源哈希与陌生目录/旧字节保护不变；交付身份记录各 producer 根及固定 revision/内容 hash，不能只标语言根 SHA 而未绑定 UI 源。缺环境记录不阻塞（r3：jet/ark 真实构建转后续门控），不支持删除/allowlist 扩大。
+
+## PLAN-832 Man 与三仓发行（SD-05，as-built）
+
+`auto` 与 auto-ui-tool 分属 Man/UI owner；792 driver 分别定位两仓实际二进制，producer 仍按固定语言/UI 源取件，不借主 target。Man 的 Core/full 安装复用受管 staging、hash/profile/source 校验、交换/备份和恢复语义，另补 CLI 所需的独立 workspace/锁与双 profile 布局。独立 clone、重定位、升级失败、等长篡改、缺 tool、取消和恢复均有真实正反控；详见 [man-three-repository-delivery](man-three-repository-delivery.md)。jet/ark 缺环境在 832 不作延期授权或完成声明。

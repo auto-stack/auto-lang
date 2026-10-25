@@ -70,3 +70,7 @@ I-TOOL v1 增补 op 级执行选项(serde default,**加法兼容**——缺席=v
 证据:升级前完整工具+选项请求=exit1 NOT sent(adjacent MITM/legacy-proxy/
 剥选项中继三态在案);真请求落点双向对照。候选协议语义不加宽 v1 基线。
 （PLAN-816 M816-B,T-05 R2;终稿证据:attachments/816/handoff.md）
+
+## PLAN-832 单源与 Man 消费（SD-06，as-built）
+
+`auto-tool-protocol` 与 I-PROJECT wire codec 继续由语言仓单源提供，Man 不复制协议或 GenerationRequest。auto-tool-client 已迁 Man，经真实 auto-ui-tool 子进程消费同一帧、版本、能力、预算与错误合同；独立 consumer 验证同一类型往返和单一 source。

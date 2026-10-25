@@ -419,3 +419,7 @@ UI 生产算法(vue/rust_ui/jet/ark/tauri/vscode/shadcn/gallery/wm 等)已全部
 ## PLAN-831 兼容身份（SD-06，as-built）
 
 对 UI 侧消费的声明/展示规则单源=auto-project-model（本仓经 auto-man-core 委派消费）；Man 域构建规则语义不变，包身份与入口兼容保持。
+
+## PLAN-832 Man 独立仓（SD-02，as-built）
+
+生产实现已迁入既有 auto-man 仓：`auto-man-runtime` 为非 UI 管理/服务单源，`auto-man` 为上层 compat facet（含 UI 转发，非 Core）；锁/resolver/toolchain/assets/core 与测试资源同属 Man。auto-api-gen 留语言 adapter，std-only execution 留语言中立设施。Core 与完整 profile 分开验收，不能以 compat 的 UI 链接证明 Core 纯净。语言仓原实现已删除，Man 消费固定 lang/UI 源且无反向实现边。独立发行、版本和恢复见 [man-three-repository-delivery](../repository-boundaries/man-three-repository-delivery.md)。

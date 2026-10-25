@@ -94,3 +94,7 @@ graph LR
   unsupported）；2=错误；3=inventory partial（解析失败非零不吞）。
 - JSON 稳定排序、便携源 ID、无绝对路径泄漏；provider_claims 仅列当前
   target 且实际装载的模块。
+
+## PLAN-832 CLI 仓属与组合发行（SD-03，as-built）
+
+`auto` 的生产 owner 已迁 auto-man 仓，语言仓原目录已删除。CLI 继续只负责 clap 解析/路由/显示，管理服务在 Man，语言 SDK/协议/owned 执行设施留语言仓，UI 经真实 auto-ui-tool 进程消费。Core 与 default full 双 profile、33 命令及 orphan 边界、JSON/stdio/寿命保持；独立安装、固定版本和升级恢复见 [man-three-repository-delivery](../repository-boundaries/man-three-repository-delivery.md)。

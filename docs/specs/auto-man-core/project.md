@@ -31,3 +31,7 @@ crate 单测（closure/selection/planning/target/backend 全规则 oracle）；a
 ## PLAN-831 展示面委派（C2，as-built）
 
 pac_from_decl 完整 Man 规则仍居本 crate；其 theme/external_backend 展示字段一行委派 auto-project-model 单源（SidecarDecl/pac 展示提取）。sidecar 旧入口再导出 shim 保身份；UI tools 与 auto-api-gen 不再依赖本 crate。
+
+## PLAN-832 仓属与外部消费（SD-02，as-built）
+
+`auto-man-core` 的生产 owner 已迁 auto-man 仓，语言仓原目录已删除。auto-val/auto-atom/auto-project-model 仍由语言仓单源提供；auto-toolchain-core 同仓消费。管理规则与 `man-core-consumer` 均从 Man 固定 source 实编执行，无 UI/旧大库/第二实现。

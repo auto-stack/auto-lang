@@ -98,3 +98,7 @@ DELETE_PENDING(303)同为需在调用方既定截止时间内重试的竞争。�
 ## PLAN-831 SDK 独立源（SD-06，as-built）
 
 纯 SDK 缺 UI 检出仍可 parse/compile/VM 执行：normal/build/dev 闭包不拉 UI 组合（隔离 clone 反控实测）。旧 auto-lang UI 面为上层再导出（指向独立 UI 仓真实 owner），不混入纯 SDK 承诺。
+
+## PLAN-832 Man 固定消费（SD-06，as-built）
+
+Man 的 runtime、CLI、three-repository-consumer 均从语言仓固定 source 消费 SDK；语言仓不因 Man 迁移反向依赖 Man 实现。独立 Core 安装与第三方工程真实 parse/compile/VM 通过，类型和 source 唯一；旧 Man/CLI 原件已从语言仓删除。

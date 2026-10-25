@@ -95,3 +95,7 @@ signal-tree（组信号送达证明对端）等模式；te-child 定位 env `AUT
 exec_lifecycle 与 plan816_cli_driver 永久回归锁定；审查期持久回放（probe/replay
 脚本）冻结于 `docs/plans/attachments/816/review-r*/`；代码/依赖/配置/输入变化
 时受影响证据须重验。
+
+## PLAN-832 client 仓属（SD-03，as-built）
+
+`auto-tool-execution` 继续作为语言仓 std-only 中立设施，UI 与 Man 双消费，不迁成 Man 独占。`auto-tool-client`（含 discovery）已迁 auto-man 仓；真实工具宿主、协议和 owned 寿命合同不变。`plan816_cli_driver` 与 tool-client-consumer 从 Man 固定 source 重放，UI tool 不静态链接。
