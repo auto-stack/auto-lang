@@ -350,6 +350,34 @@ F-846-M1-ROOT-MN-P95：实际根接收冻结44480（纯SDK映射，master父9a6c
 
 [合入阻断与恢复收据](attachments/846/merge-r1/receipt.md)及30样本已保存。唯一WT已恢复plan-846-dev/bf22，原始来源字节恢复并核345/SDK681，Git clean；未落地SDK映射分支和永久SDK tag保留。status仍reviewed10/11；landed/ledger_refreshed/archived/cleaned全部false，未改canonical/live ledger/清树。根性能门调查及必要修复/受影响复审后，重新核对冻结并完成完整门才可继续合入；本轮不再无条件重试或放宽门限。
 
+### 2026-10-25 work:r4 — 根门禁修复授权
+
+用户明确授权排查及修复F-846-M1-ROOT-MN-P95，不放宽1000ms/30样本、不缩减测试范围。 本次授权扩展根接收路径至ac-core的Atom reader/Schema binder与ac-mir-native缓存消费（含定向回归），仅消除重复分配/读取、保持全部语义/诊断/准入/数值与支持合同；修复单独落master，图形仍只落autographics-dev。T09受影响复审重开，current_step9/11，revision2保持。唯一WT顺序进入codex/plan-846-sdk-merge/44480根角色；原图形bf22及其未受影响证据保持。受影响根门证据失效，修复后先定向验证/受影响复审，再进入merge完整门。原样本阶段观测已定位frontend/link_run及缓存重复读取，尚未宣称根因关闭。
+
+### 2026-10-25 work:r4 — 根性能修复冻结 / execution_done9/11
+
+根修复0a12b60d6经range-diff完全等价重放到实际master00973e1d1，冻结根2fffb7e3a775e18175cbab5a392a8cf827f5f21b；图形冻结仍bf22。仅去除Atom token文本复制、Schema字段/规则表克隆和COFF hit二次读取；词法位置/重复与非法字段诊断、Schema绑定/验证、实际链接运行/缓存身份与准入保留。原门限1000ms、30样本、原全档选择面/配置均未改；最终定向原用例30样本P95=758.0851ms（p50=721.1186、max=788.925），101共享binder/source定向及cache7、cargo check与格式通过。首中间修复仍红P951625.7（期间存在本会话剖析负载）原样留存，不冒认pass；最终采样串行无本会话额外负载。
+
+[work冻结/hash/等价/样本](attachments/846/work-r4/readiness.json.txt)。根门finding等待受影响复审确认；原图形/SDK合同及review-r2未变面证据保留。必要root修复为用户本轮明确授权范围，不合入任何额外生产支持。完整根t/tv与图形未完门仍merge-owned pending；未落地/规范发布/归档/清树。
+
+### 2026-10-25 review:R3 affected final — pass / reviewed10/11
+
+根冻结2fffb7e3a（pure SDK72e61c508+根性能修复，range-diff等价），图形仍bf22；F-846-M1-ROOT-MN-P95必要实现修复闭合，原30样本P95758.0851<1000。字段拒绝矩阵/COFF身份准入/双函数局部更新/原签名冲突30样本复审过，原R2未变AC/十目标SD具名保留。reviewer为同实施会话Codex /root，上下文独立性限制明确保留。[受影响复审](attachments/846/review-r3/review.md)。
+
+实际master含831 UI迁仓，旧根44480门不能代替当前接收基面；新增只读组内auto-ui@aee499e87（正式交付pin），auto-down@c39ac7f9保持。第一次签名冲突因缺兄弟依赖在加载时exit102，已补齐后原命令通过，不当作产品红/静默跳过。根性能修复不改Schema/支持/数值/1000ms/30样本及门禁配置，零新规范合同；T10须当前根完整t+tv和迁走UI日常面、不缩减原覆盖，并完成剩余图形完整矩阵。pass不代表完整门或交付通过；未落地/规范发布/归档/清树。
+
+### 2026-10-25 merge:r2 — 当前根完整门通过 / 图形矩阵执行中
+
+根冻结2fffb7e3a、固定UIaee499e/downc39ac7f9：语言裸t3161/3161、tv163/163通过。831迁仓前根门明确只选compiler/dialect/runtime三个UI包；迁前真实测试二进制与当前命令nextest清单逐ID相等247/86/1874共2207，原ignored与过滤均未改；[三包完整2207/2207通过及逐ID映射](attachments/846/merge-r2/ui-original-scope-equivalence.json.txt)。因此原5368全覆盖=3161+2207，skip1552=668+884，没有缩减原测试范围。完整档中的签名重建30样本P95887.1887ms<原1000ms。
+
+首完整档FFI字段超时120s原样保留；原例1.548s与整族5定向通过后，在同冻结完整重跑全3161通过，未把定向pass替代整档、未改时限或过滤，超时原因未确认。新UI裸workspace额外选择原根门未含的189项tools/shell测试，扩展诊断命中已登记P693-D3/P751-D2的merged_api旧期望失败；不将其混作原5368门，也未冒称新UI全库绿或清偿该工具债。完整命令/原始失败与归属保留[收据数据](attachments/846/merge-r2/root-gates.json.txt)。
+
+唯一WT已恢复图形bf22，来源345/SDK681/metadata479闭包及Git clean通过；producer/fresh consumer各178及AGP23未变复用仍有效，根性能代码不在其固定SDK依赖闭包内。剩余原生/owner/source/项目搬迁/Step及新spatial每侧14与owner完整矩阵正在同树串行执行。未落地/规范发布/归档/清树。
+
+### 2026-10-25 review:R4 — Plan820接收基面对齐 / affected final pass
+
+实际master新增820共享MIR扩展，原2ff/00973根整档证据不作为最终接收证据。唯一WT顺序重放至2090e9094，根新冻结204bc0781；SDK210fc8410与性能204bc0781两补丁range-diff完全等价。原binder拒绝、整个cache_tier准入/身份及双函数局部更新在新基面通过；检查820新增类型/指令受控拒绝与windows-sys锁边，不改846五文件/SDK数值/支持/30样本1000ms合同。图形bf22未变，R2十目标SD保留。[R4受影响复审](attachments/846/review-r4/review.md)，同实施会话独立性限制如实记录。新根t/tv和原迁仓三UI包整档仍merge-owned pending；其通过前不合入。
+
 ## 10. 待澄清事项
 
-当前合入阻塞为F-846-M1-ROOT-MN-P95，见上述收据；根性能归因待查。F-846-R1-01已修复且R2 final pass，无剩余已知846实现finding；完整门尚未通过。F-846-T02-NAN已由r2修复及重放关闭，不再沿用r1只读SDK限制。原数值/支持/预算合同保持；未授权其他SDK改动/生产扩面。历史入口与needs_replan证据保留§9与附件。
+F-846-M1-ROOT-MN-P95必要修复及受影响R3已通过，当前等待新冻结完整合入门；历史阻断收据保留。F-846-R1-01已修复且R2 final pass，无剩余已知846实现finding；完整门尚未通过。F-846-T02-NAN已由r2修复及重放关闭，不再沿用r1只读SDK限制。原数值/支持/预算合同保持；未授权其他SDK改动/生产扩面。历史入口与needs_replan证据保留§9与附件。
