@@ -34,10 +34,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LEDGER = ROOT / ".autoos/specs.json"
 
-DELIVERY = "9736eff9d5f9c9821880f4d67a6dbd3cb7d1c759"
-FREEZE = "9736eff9d"
-REVIEWED = "adb5ce0f3ba8935f3f546b4bc40217c4d20235e9"
-MAN_DELIVERY = "b32d3d0eeed8e08dbe74302128fe3b815dc3fd6a"
+DELIVERY = "6b70b8deb8c9a0a1c6fdb3c61efbe98a21d12027"
+FREEZE = "6b70b8de"
+REVIEWED = "abfcc3650c39a2e99987517d21e17d186e84b5a0"
+MAN_DELIVERY = "1b7a9ce0de9055f7953129d78a25777662508258"
 
 DESIGN = {
     "id": "P832-D1",
@@ -64,7 +64,9 @@ TESTS = {
         "覆盖 18 个 bin+5 个非 UI driver；跨仓 man-ti 分别预建 UI tool/lang te-child。"
         "man-install/man-distribution 覆盖无 UI/down fresh/locked/重定位、full 安装、真实升级备份恢复、"
         "未知 owner staging、严格额外文件和缺工具负控。永久 gen 测试不再由父进程注入工具路径。"
-        "R3 终审 F01..F04 全关闭；merge 统一门结果与原始收据归档于 docs/plans/attachments/832/merge。"
+        "R3 终审 F01..F04 全关闭；merge 统一门全绿（发行 14/14、lang 裸 t 3181/3181、792 39/39、"
+        "Man t/tcore 280+23、ti/ui-t 归因预存红与 10-25 同集），原始收据与 R5 收口记录归档于 "
+        "docs/plans/attachments/832/merge。"
     ),
     "status": "verified",
     "file": "docs/plans/attachments/832/ci-entrypoints.md",
@@ -73,13 +75,16 @@ TESTS = {
 
 REVIEWS = {
     "id": "P832-R4",
-    "title": "PLAN-832 独立终审 R3+R4 — pass（F01..F04 与 merge blueprint 全关闭）",
+    "title": "PLAN-832 独立终审 R3+R4+R5 收口 — pass（findings 全关闭）",
     "content": (
         "R3 绑定 lang e320abf4f、Man f52cd93b，F01..F04 全关闭。merge 门禁另发现 Man 占位 blueprint"
         "遮蔽与安装来源回退缺口；最终修复按显式 env/真实项目库→安装 SDK→开发 owner，"
         "安装 SDK 唯一 marker 被真实 bp show 读取，项目库/env 优先和缺件负控保持。"
-        f"R4 独立受影响复审绑定 lang {REVIEWED}、Man {MAN_DELIVERY}，F832-MERGE-BP-01 CLOSED；"
-        "jet/ark 真实构建按 r3 裁定转 v0.7，统一 merge 门另验。"
+        "R4 独立受影响复审绑定 lang adb5ce0f3（rebase 前身）、Man ceb8dfdd4→b32d3d0e，F832-MERGE-BP-01 CLOSED。"
+        "R5 merge 收口（同独立上下文两轮，绑定 lang "
+        f"{REVIEWED}、Man {MAN_DELIVERY}）：两处依赖 pin 最小无夹带，F832-R5-01..05 全闭合；"
+        "B845 解锁后揭出的 827 锚点与 schema_drift 兄弟读两个被掩盖红按 831 先例最小修复；"
+        "终判 pass。jet/ark 真实构建按 r3 裁定转 v0.7，不冒称已测。"
     ),
     "status": "verified",
     "file": "docs/plans/attachments/832/review-r4/review.md",
@@ -90,11 +95,12 @@ REPORTS = {
     "id": "P832-M",
     "title": "PLAN-832 三仓交付与 merge 收据",
     "content": (
-        f"lang delivery {DELIVERY}（28 个提交 rebase range-diff 全等价，ff-only）；"
-        f"Man delivery {MAN_DELIVERY}（12 个提交 ff-only）；UI/down 固定版本不变。"
-        "T-11 统一门、三仓来源读回、canonical SD-01..06、受管 ledger/索引、归档与 guard 清理"
-        "按归档 Plan 的 merge 收据逐项核验。jet/ark 构建延期至 v0.7，不冒称已测；"
-        "批量 tf 仍按主检收到期规则与既有 blocker 分诊。"
+        f"lang delivery {DELIVERY}（42 个提交两次 rebase 到当日 master，range-diff 等价、master 增量仅 821/848 簿记文档，ff-only）；"
+        f"Man delivery {MAN_DELIVERY}（14 个提交 ff-only）；UI/down 固定版本不变。"
+        "T-11 统一门全绿：发行 14/14、lang 裸 t 3181/3181、792 39/39、Man t/tcore 280+23、"
+        "ti/ui-t 归因预存红与 10-25 同集（816 smoke、P751-D2）；三仓来源读回、canonical SD-01..06、"
+        "受管 ledger/索引、归档与 guard 清理按归档 Plan 的 merge 收据逐项核验。jet/ark 构建延期至 v0.7，不冒称已测；"
+        "批量 tf 仍按主检出到期规则与既有 blocker（850 external-workspace）分诊。"
     ),
     "status": "verified",
     "file": "docs/plans/attachments/832/handoff.md",
