@@ -7,7 +7,7 @@ plan_revision: 3
 author: [Codex]
 created_at: 2026-10-25
 updated_at: 2026-10-25
-current_step: 10
+current_step: 11
 total_steps: 11
 depends_on: [PLAN-845]
 supersedes_spec_components:
@@ -246,7 +246,7 @@ r3根门策略：显式设置`AUTO_LANG_AUTOGRAPHICS_INCREMENTAL_PERF=observe`�
 
 ## 8. 执行步骤
 
-当前T-01、T-02-SDK、T-02..09完成，r3受影响复审与完整功能门已通过，reviewed10/11；T10代码/规范/账本已落地且计划实际归档，清理收尾pending。T-01..08关闭且无必需gap才execution_done9/11；T-09最终独立pass为reviewed10/11，完整merge门pending；T-10实际收尾才交付11/11。
+当前全部11项执行任务完成。r3受影响复审、完整功能门、两条ff-only落地、canonical/账本、实际归档及guard清理已核实，archived/cleaned11/11；真实性能优化与真实ACE整合仍按用户要求留作后续议题。
 
 | task_id | owner_stage | 依赖 | 实际触点／拟新增路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -260,7 +260,7 @@ r3根门策略：显式设置`AUTO_LANG_AUTOGRAPHICS_INCREMENTAL_PERF=observe`�
 | T-07 [x] | work | T-06 | 新check_spatial_queries.py/正式OS路径/真实GPU故障及新进程项目回放 | V-09/10两项目仓外同binary/搬迁/条件变异/partial/Stop画面完整，非环境gap；AC-08 |
 | T-08 [x] | work | T-07 | 新check_spatial_owners.py、source/fresh consumer/README、新research/spatial-query-handoff.md/Spec proposal | V-01/11/12、20轮owner/扫描上传、全部work定向/check/fmt与准确完整merge矩阵齐；AC-01, AC-07, AC-08 |
 | T-09 [x] | review | T-08 | 同树冻结code/Plan/Spec及原始两项目报告，主检出独立review附件 | 逐AC-01..08/SD/遗漏/延后/workaround/健康绑定结论；AC-09 |
-| T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出Spec/ledger/archive/guard/到期 | AC-10实际落地/清理，改代码先受影响复审再新冻完整门，不提前宣称交付 |
+| T-10 [x] | merge | T-09 pass | 冻结完整门→autographics-dev；主检出Spec/ledger/archive/guard/到期 | AC-10实际落地/清理，改代码先受影响复审再新冻完整门，不提前宣称交付 |
 
 ## 9. 复审记录
 
@@ -418,9 +418,19 @@ prepared/root delivery d369dd76024d0e7debe17d2d995ebd981d6b8bda；根master以�
 
 completion_kind: delivered；当前实际归档，T10仅guard清树/产物观测/批量到期收尾pending，故保持10/11，不提前打勾。主检出存在他人既有docs/ledger簿记WIP，原样保留；本Plan只提交自身文件。性能按用户r3暂缓，真实ACE整合仍属后续工作。
 
+### 2026-10-25 merge:r4 — cleaned / pass / archived11/11
+
+三个唯一846 Git工作树（auto-lang、只读auto-ui/auto-down）各在fresh wt-guard clean后移除；plan-846-dev经autographics-dev已合入祖先验证、根codex/plan-846-sdk-merge经master祖先验证，以git branch -d安全删除，无force。永久SDK tag7b987ca8保留。组内普通复现材料原生移动到D:/autostack/plan-artifacts/plan-846-r3，搬移后producer/consumer与spatial关键二进制hash再次相等；原846组空目录已移除。详[清理](../attachments/846/merge-r4/cleanup.json.txt)/[旧新材料路径映射](../attachments/846/merge-r4/recovery-relocation.json.txt)。
+
+正式部署产物观察：auto-lang/auto-ui/auto-down默认target/release及两处gen/front/vue/dist均不存在，故无可报告构建日期；本次是源码/规范交付，没有声称已部署或重启。已测实验二进制/来源包保留于上述复现目录。[产物观察](../attachments/846/merge-r4/artifact-observations.json.txt)。
+
+按auto-plan-regress到期核对仍due，既有B845-FEATURE-01由847草案承接；tests.rs与845失败基面逐字节相同、optional/default-off边界未变，故不盲跑已知编译失败的整档、不冒称覆盖完成。保留840最后完整绿锚点及845失败/847重试责任，仅补本次last_due_check。[批量到期收据](../attachments/846/merge-r4/batch-due-check.json.txt)。
+
+最终stage:merge | outcome:pass（本Plan完整功能交付）| plan_revision:3 | completion_kind:delivered | root delivery:d369dd76024d0e7debe17d2d995ebd981d6b8bda | ledger:fcea7d8dc06de4f443fa25429d1fc9da593d83e7 | graphics:bf22db3465203f3babd649494f4b37aa2a012027 | archived/cleaned:true | completed:11/11。用户r3暂缓增量编译性能，不改数值/支持/运行时安全合同，不宣称已整合真实ACE、I2/I3或批量全绿。主检出其他会话docs/ledger WIP原样保留。
+
 ## 10. 待澄清事项
 
-无待用户决定事项。r3已明确暂缓AutoGraphics增量编译性能检查，历史P95红不再阻断本线路；功能/数值/支持/运行时预算与原完整功能门保持。策略实现、受影响复审及新冻结完整功能门已通过，待合入/规范沉淀/账本/归档/清树。
+无待用户决定事项。r3已明确暂缓AutoGraphics增量编译性能检查，历史P95红不再阻断本线路；功能/数值/支持/运行时预算与原完整功能门保持。策略实现、受影响复审、新冻结完整功能门、合入/规范沉淀/账本/归档/清树均已完成。既有批量回归B845-FEATURE-01仍由847承接，本计划未声称批量全绿或生产部署。
 
 ## 11. spec-sync 回写记录
 

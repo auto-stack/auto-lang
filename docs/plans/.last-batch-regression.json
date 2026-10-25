@@ -157,5 +157,21 @@
     "retry_required": true
   },
   "pending_retry": true,
-  "coverage_policy": "Retain last complete green coverage anchor/time because tf/tb never executed tests; latest attempted plan845/commit and all results are in last_attempt. PLAN847 must restore the gate and rerun main single-instance tf/tt/tb. Due remains true."
+  "coverage_policy": "Retain last complete green coverage anchor/time because tf/tb never executed tests; latest attempted plan845/commit and all results are in last_attempt. PLAN847 must restore the gate and rerun main single-instance tf/tt/tb. Due remains true.",
+  "last_due_check": {
+    "plan_id": 846,
+    "plan_revision": 3,
+    "checked_at": "2026-10-25T12:58:17.767530+08:00",
+    "checked_commit": "3cce53a616ffcf060887841f29731e311873c8b7",
+    "due": true,
+    "outcome": "due-existing-blocker",
+    "blocker": "B845-FEATURE-01",
+    "owner_plan": 847,
+    "owner_path": "docs/plans/847-restore-probe-test-feature-boundary.md",
+    "retry_required": true,
+    "rerun": false,
+    "reason": "Known feature-off compile blocker unchanged: tests.rs byte-identical to failed845 batch; optional/default-off dependency retained. Existing847 owns repair and complete main single-instance retry. No blind repeated batch or claimed full coverage.",
+    "boundary_source_sha256": "cf92ed6fd9c5fa4c11707bd7c74e8d2c4d8e974b10094ee21d0977df5f10c61c",
+    "coverage_anchor_preserved": 840
+  }
 }
