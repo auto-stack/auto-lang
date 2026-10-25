@@ -1,3 +1,7 @@
+### Plan 846（2026-10-25，R1 final needs_fix：CLI版本选项缺值）
+
+F-846-R1-01 P2 OPEN（合同内，非可选延期）：末尾`--behavior-api`缺值被当成未提供选项，实际`--inspect <合法scene> --behavior-api`返回0/closure_verified:true，违背§5.5孤立API选项usage error；有v2无--behavior正确2，无选项合法0。绑定655c366a3/r2，重开T03/T06/T08、executing6/11；SDK/空间查询/资源/已闭验收保留。仅修CLI验证与永久对照，刷新受影响来源再复审；完整门merge-owned pending。[复现与验收映射](attachments/846/review-r1/review.md)。
+
 ### Plan 839（2026-10-24，已交付archived10/10；P2 CLOSED）
 
 当前独立final R2 pass，完整冻结59入口及delivery身份消费门通过，autographics-dev快进`a239653365a0c3451c85aa9921189fcf011bd8cf`；主分支规范/台账77与归档提交`c14fc97fe8c83a571d6cf7a249cba74a76e218c7`已核。fresh guard后唯一实施树/开发分支已移除，独立消费复现副本保留；batch not-due、搬迁重开smoke通过。无本Plan开放finding/gap/未决决策或待完成项，生产I2/I3维持原非目标。首轮旧Squash预算失败与同冻结完整重跑通过原样保留。[合入pass收据](attachments/839/merge-r1/receipt.md)。下方R1仅为历史。
