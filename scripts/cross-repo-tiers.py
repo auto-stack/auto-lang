@@ -3,6 +3,8 @@
 
 owner 拆分后各仓持有自己的档位：
 - 语言仓（auto-lang）：t / tf / tv / tt / tb / tu / taa / ta / th / t3；
+  PLAN-850：tf/taa/ta/t3 经 run-full-regression.py 串行调用真实
+  language/UI workspace；外部 path 依赖不能作为本 workspace 的测试成员。
 - Man 仓（auto-man）：t（workspace lib + auto bin）、tc（管理 Core）、ti（集成）；
 - UI 仓（auto-ui）：t、tu、ti、tn（native 手工档）。
 

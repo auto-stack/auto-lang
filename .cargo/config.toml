@@ -80,7 +80,7 @@ t = "nextest run -p auto-lang -p auto-lang-core --lib --test schema_drift --test
 # 作废,desktop_protocol 面进 tf;复审清单不再须另跑 ui-iced 补档。)
 # (Plan 531 注:tf 亦不含 test-trans(tt 档)——a2r/cookbook 文本金样 28 件曾
 # 因此脱离门禁烂了一年(444/514/523 三期累积);复审清单同样须另跑 cargo tt)
-tf = "nextest run -p auto-lang -p auto-lang-core -p auto-ui-compiler -p auto-ui-dialect -p auto-ui-runtime --lib --test schema_drift --test docs_gen --test component_registry_test --config-file .config/nextest-full.toml"
+tf = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tf"
 # Plan 568: tv = 纯 .at 语料 golden 档(改 VM/编译器后的回归)。AAVM/AA2R
 # 自举测试已迁出(test-aavm feature)——"改 VM/编译器的回归"与"AAVM 展示"
 # 不是同一概念,aavm 无实用面,反射性 tv 不再触发三重解释/现场 cargo build
@@ -106,8 +106,8 @@ tu = "test -p auto-lang --lib --features auto-lang/ui-iced ui_gen::"
 # aavm 代码时使用(触发条件与作用域映射见 AGENTS.md);追加滤串缩小作用域
 # (同 cargo t <module> 习惯),如 cargo taa aavm2_m5 只跑 M5。刻意不带固定
 # 尾滤串:nextest 位置滤串是 OR 语义,固定串会废掉作用域缩小。
-taa = "nextest run -p auto-lang -p auto-lang-core -p auto-ui-compiler -p auto-ui-dialect -p auto-ui-runtime --lib --features auto-lang/test-aavm --config-file .config/nextest-full.toml"
-ta = "nextest run -p auto-lang -p auto-lang-core -p auto-ui-compiler -p auto-ui-dialect -p auto-ui-runtime --lib --features auto-lang/test-aavm,auto-lang/test-trans,auto-lang/test-book --config-file .config/nextest-full.toml"
+taa = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- taa"
+ta = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- ta"
 # Plan 317 §11 Phase 11: HTTP e2e tests (real TCP servers; serial only).
 # nextest runs each test in its own process, which is ideal here — each test's
 # detached server thread is reaped on process exit, giving full isolation.
@@ -117,7 +117,7 @@ th = "nextest run -p auto-lang --lib --features test-http-e2e http_e2e"
 # 自守门(T3_MILESTONE=1 才真正运行,否则秒退),default/full 两档
 # filter 亦显式排除——三重防误触发。运行形态(大版本时人工执行):
 #   T3_MILESTONE=1 cargo t3
-t3 = "nextest run -p auto-lang -p auto-lang-core -p auto-ui-compiler -p auto-ui-dialect -p auto-ui-runtime --lib --features auto-lang/test-aavm,auto-lang/test-trans,auto-lang/test-book --config-file .config/nextest-t3.toml"
+t3 = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- t3"
 
 # Plan 423 P5: VM 行为测试(015-notes 组件 build/dispatch 等)的 Rust 递归
 # 深度超过 libtest 默认 2MB 线程栈(STATUS_STACK_OVERFLOW)。仓库级抬高
