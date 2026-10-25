@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-846
-status: execution_done
+status: reviewed
 feature_name: AutoGraphics空间查询与触发交互原型
 plan_revision: 2
 author: [Codex]
 created_at: 2026-10-25
 updated_at: 2026-10-25
-current_step: 9
+current_step: 10
 total_steps: 11
 depends_on: [PLAN-845]
 supersedes_spec_components:
@@ -238,7 +238,7 @@ r1可行性原型与反例详§9。r2先执行V13/T02-SDK，再继续T02；既�
 
 ## 8. 执行步骤
 
-当前T-01、T-02-SDK、T-02..08完成；F-846-R1-01已提交修复，T-09受影响复审/T-10 pending（§9）。T-01..08关闭且无必需gap才execution_done9/11；T-09最终独立pass为reviewed10/11，完整merge门pending；T-10实际收尾才交付11/11。
+当前T-01、T-02-SDK、T-02..09完成；F-846-R1-01受影响R2 final pass，reviewed10/11，T-10完整合入门及收尾pending（§9）。T-01..08关闭且无必需gap才execution_done9/11；T-09最终独立pass为reviewed10/11，完整merge门pending；T-10实际收尾才交付11/11。
 
 | task_id | owner_stage | 依赖 | 实际触点／拟新增路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -251,7 +251,7 @@ r1可行性原型与反例详§9。r2先执行V13/T02-SDK，再继续T02；既�
 | T-06 [x] | work | T-05 | Host/Panel/bin版本选择闭合、samples/spatial_projects/zone2d、zone3d | V-07/09正式默认/临时源与项目/源定位，用户Auto触发语义和原v1/845定向控制过；AC-06 |
 | T-07 [x] | work | T-06 | 新check_spatial_queries.py/正式OS路径/真实GPU故障及新进程项目回放 | V-09/10两项目仓外同binary/搬迁/条件变异/partial/Stop画面完整，非环境gap；AC-08 |
 | T-08 [x] | work | T-07 | 新check_spatial_owners.py、source/fresh consumer/README、新research/spatial-query-handoff.md/Spec proposal | V-01/11/12、20轮owner/扫描上传、全部work定向/check/fmt与准确完整merge矩阵齐；AC-01, AC-07, AC-08 |
-| T-09 | review | T-08 | 同树冻结code/Plan/Spec及原始两项目报告，主检出独立review附件 | 逐AC-01..08/SD/遗漏/延后/workaround/健康绑定结论；AC-09 |
+| T-09 [x] | review | T-08 | 同树冻结code/Plan/Spec及原始两项目报告，主检出独立review附件 | 逐AC-01..08/SD/遗漏/延后/workaround/健康绑定结论；AC-09 |
 | T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出Spec/ledger/archive/guard/到期 | AC-10实际落地/清理，改代码先受影响复审再新冻完整门，不提前宣称交付 |
 
 ## 9. 复审记录
@@ -322,6 +322,14 @@ F-846-R1-01：生产CLI在版本解析前区分option存在与值缺席，终端
 
 最终来源闭包345hash（新增CLI回归），SDK681及三锁不变；fresh consumer846-r3-final自有SDK/源码导出与四实际来源变异/恢复通过，未跑consumer整档。新增3永久测试使merge预计完整driver分母178=原158+本Plan20；README/handoff/拟议integration Spec只刷新计数。R1未变AC/原证据具名保留；全局t/tv/整包/native全矩阵未重跑，最终pass后仍归merge。实施树末核clean。
 
+### 2026-10-25 review:R2 final — pass / reviewed10/11
+
+stage:review | review_scope:final | reviewer_identity:Codex /root；同实施会话、独立上下文限制保留，从R1/冻结diff/实际命令重建受影响结论 | plan_id:PLAN-846 | plan_revision:2 | outcome:pass | worktree_path:`D:/autostack/.wt/lang-846/auto-lang` | branch:plan-846-dev | reviewed_commit:`bf22db3465203f3babd649494f4b37aa2a012027` | base_commit:`655c366a3a4c53160c259a0b91a50c02d1cb020a`（修复diff；原基面c1c7cfea） | dependency_revisions:SDK7b987ca8/auto-downc39ac7f9/三锁未变 | spec_inputs:[十目标hash/冻结patch](attachments/846/review-r2/baseline.json.txt) | acceptance_results:AC01..09 pass，AC10 merge pending | findings:F-846-R1-01 CLOSED，无剩余finding/gap/决策 | evidence:[受影响复审与复用边界](attachments/846/review-r2/review.md) | next:merge，未获本轮合入指令，不代执行。
+
+R1原三组实际命令逐个重放，另选缺值在inspect之前/带真实source/空值/坏entry前缺值/合法v1与重排v2六组，共9个真实进程符合精确退出码和诊断，合法项目绑定保持。永久CLI三测试（10子进程）重新通过；生产/独立final consumer来源345hash验证通过。实际Host版本定向、check/fmt复用work同冻结结果。AC03/06/08缺口关闭；其他R1已闭几何/SDK/配置/资源/native证据经diff/依赖/配置/输入未变核验后保留，未重跑无关整档。
+
+SD01..05语义与canonical基面未漂移，拟议delta仅完整测试计数增加3至178（原158+本Plan20）；revision2不变。树末核clean/HEAD一致，未改实现、canonical/live ledger、合入或清树。最终pass只表示代码/验收/规范通过；T10 merge-owned裸root t+tv、producer/fresh consumer178、AGP163/16native、原83和新spatial每侧14/owner/source完整矩阵及独立SDK/图形落地、知识归档guard到期收尾全部pending，通过前不得合入或宣称交付。
+
 ## 10. 待澄清事项
 
-无待用户决定的阻塞。F-846-R1-01已提交修复及定向关闭，等待受影响复审；无剩余work阻塞。F-846-T02-NAN已由r2修复及重放关闭，不再沿用r1只读SDK限制。原数值/支持/预算合同保持；未授权其他SDK改动/生产扩面。历史入口与needs_replan证据保留§9与附件。
+无待用户决定的阻塞。F-846-R1-01已修复且R2 final pass，无剩余work/review阻塞；下一责任阶段为merge及其完整门。F-846-T02-NAN已由r2修复及重放关闭，不再沿用r1只读SDK限制。原数值/支持/预算合同保持；未授权其他SDK改动/生产扩面。历史入口与needs_replan证据保留§9与附件。

@@ -1,3 +1,7 @@
+### Plan 846（2026-10-25，R2 final pass；CLI finding CLOSED，merge门pending）
+
+F-846-R1-01 CLOSED，绑定bf22db346/r2：缺值presence guard+永久CLI3测试（10真实子进程），R1原3命令及独立6兄弟/合法对照共9次复验通过；actual Host版本、345来源/consumer闭包齐。其余R1未变AC/Spec证据保留，reviewed10/11。完整root t+tv、driver178与原AGP/native分母/新空间查询完整矩阵仍merge-owned pending，尚未合入/交付。[R2受影响pass](attachments/846/review-r2/review.md)。下方R1仅为历史。
+
 ### Plan 846（2026-10-25，R1 final needs_fix：CLI版本选项缺值）
 
 F-846-R1-01 P2 OPEN（合同内，非可选延期）：末尾`--behavior-api`缺值被当成未提供选项，实际`--inspect <合法scene> --behavior-api`返回0/closure_verified:true，违背§5.5孤立API选项usage error；有v2无--behavior正确2，无选项合法0。绑定655c366a3/r2，重开T03/T06/T08、executing6/11；SDK/空间查询/资源/已闭验收保留。仅修CLI验证与永久对照，刷新受影响来源再复审；完整门merge-owned pending。[复现与验收映射](attachments/846/review-r1/review.md)。
