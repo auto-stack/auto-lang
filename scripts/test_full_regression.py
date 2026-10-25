@@ -50,12 +50,12 @@ class Controls(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "language SDK owner mismatch"):
                 full.validate_layout(lang, ui)
 
-    def run_queue_control(self, child_code):
+    def run_queue_control(self, child_code, scope_empty=False):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
             # Reuse real inventories while substituting only process execution.
             data = {"rust-suites": {"owner": {"testcases": {
-                "x": {"ignored": False, "filter-match": {"status": "matches"}}
+                "x": {"ignored": False, "filter-match": {"status": "mismatch" if scope_empty else "matches"}}
             }}}}
             class Listed:
                 def __init__(self, cmd, **kwargs):
@@ -70,8 +70,15 @@ class Controls(unittest.TestCase):
                  mock.patch.object(full.subprocess, "Popen", Listed), \
                  mock.patch.object(full, "validate_ids", return_value=[]), \
                  mock.patch.object(full, "command", return_value=child_code) as child:
-                result = full.main(["tf", "--batch", "--output", str(directory / "out")])
+                result = full.main(["tf", "never-matches" if scope_empty else "--batch", "--output", str(directory / "out")])
             receipt = json.loads((directory / "out/receipt.json").read_text())
+            if scope_empty:
+                self.assertEqual(result, 1)
+                self.assertEqual(receipt["outcome"], "fail")
+                self.assertEqual(len(receipt["results"]), 2)
+                self.assertIn("zero selected", receipt["error"])
+                child.assert_not_called()
+                return
             self.assertEqual(result, 1 if child_code else 0)
             self.assertEqual(receipt["outcome"], "fail" if child_code else "pass")
             self.assertEqual(len(receipt["results"]), 1 if child_code else 4)
@@ -83,6 +90,9 @@ class Controls(unittest.TestCase):
 
     def test_all_four_children_success_is_green(self):
         self.run_queue_control(0)
+
+    def test_zero_selection_across_scoped_owners_is_not_green(self):
+        self.run_queue_control(0, scope_empty=True)
 
     def test_report_wip_survives_failure_and_locked_report_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
