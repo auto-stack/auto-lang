@@ -1788,10 +1788,10 @@ fn schema_drift_fence() {
         );
         return;
     }
-    let schema_rs = read("../auto-ui-compiler/src/aura/schema.rs");
-    let vue_rs = read("../auto-ui-compiler/src/ui_gen/vue.rs");
-    let vb_rs = read("../auto-ui-runtime/src/ui/aura_view_builder.rs");
-    let render_rs = read("../auto-ui-runtime/src/ui/render_support.rs");
+    let schema_rs = read("../../../auto-ui/crates/auto-ui-compiler/src/aura/schema.rs");
+    let vue_rs = read("../../../auto-ui/crates/auto-ui-compiler/src/ui_gen/vue.rs");
+    let vb_rs = read("../../../auto-ui/crates/auto-ui-runtime/src/ui/aura_view_builder.rs");
+    let render_rs = read("../../../auto-ui/crates/auto-ui-runtime/src/ui/render_support.rs");
     let aura_at = read("../../docs/schema/aura.at");
 
     // ---- 提取四表 + 结构断言 ----
@@ -1831,7 +1831,7 @@ fn schema_drift_fence() {
     // 并入 vb 并集，外部组件（含 autodown_editor 首迁）不再触发臂表孤儿误
     // 报；后续经 SPI 注册的新组件天然受同一围栏覆盖。
     let native_registered =
-        scan_native_registrations(&read("../auto-ui-runtime/src/ui/native_widget.rs"));
+        scan_native_registrations(&read("../../../auto-ui/crates/auto-ui-runtime/src/ui/native_widget.rs"));
     let vb_union: BTreeSet<String> = vb0
         .union(vb1)
         .cloned()
@@ -1865,7 +1865,7 @@ fn schema_drift_fence() {
 
     // PLAN-810:get_primary_prop 表随 UI 文法迁 grammar/helpers.rs,维度
     // 随迁(围栏自身指引:新表属 tag 知识,把维度加进本测试)。
-    let parser_rs = read("../auto-ui-dialect/src/grammar/helpers.rs");
+    let parser_rs = read("../../../auto-ui/crates/auto-ui-dialect/src/grammar/helpers.rs");
     let parser_tables = scan_match_tables(&parser_rs);
     assert_eq!(
         parser_tables.len(),
@@ -1877,7 +1877,7 @@ fn schema_drift_fence() {
     );
     let parser_tags = &parser_tables[0];
 
-    let a2ui_export_rs = read("../auto-ui-compiler/src/a2ui/export.rs");
+    let a2ui_export_rs = read("../../../auto-ui/crates/auto-ui-compiler/src/a2ui/export.rs");
     let a2ui_export_tables = scan_match_tables(&a2ui_export_rs);
     assert_eq!(
         a2ui_export_tables.len(),
@@ -1887,7 +1887,7 @@ fn schema_drift_fence() {
         a2ui_export_tables.len()
     );
     let a2ui_export = &a2ui_export_tables[0];
-    let a2ui_import = scan_tag_literals(&read("../auto-ui-compiler/src/a2ui/import.rs"));
+    let a2ui_import = scan_tag_literals(&read("../../../auto-ui/crates/auto-ui-compiler/src/a2ui/import.rs"));
 
     // ---- P1:别名归并 + 生成输入 ----
     let rs_elements = extract_rs_elements(&schema_rs);
@@ -1942,9 +1942,9 @@ fn schema_drift_fence() {
     // 第 11 源:活注册表 spec(ui_gen/widget/registry.rs)—— 其他表未登记的
     // (chart/scroll-area/toast 家族等)入册;Pascal spec 名与 kebab 别名同折叠合并
     let (registry_names, _vue_mappings, _registry_imported) =
-        scan_live_registry(&read("../auto-ui-compiler/src/ui_gen/widget/registry.rs"));
+        scan_live_registry(&read("../../../auto-ui/crates/auto-ui-compiler/src/ui_gen/widget/registry.rs"));
     let registry_vue =
-        scan_registry_vue(&read("../auto-ui-compiler/src/ui_gen/widget/registry.rs"));
+        scan_registry_vue(&read("../../../auto-ui/crates/auto-ui-compiler/src/ui_gen/widget/registry.rs"));
     let carried_vue = scan_aura_at_vue(&aura_at);
     let other_fold: BTreeSet<String> = prod_union.iter().map(|t| fold_key(t)).collect();
     prod_fold.extend(registry_names.iter().map(|t| fold_key(t)));
@@ -2070,7 +2070,7 @@ fn schema_drift_fence() {
     // —— spec 名(含别名)折叠后必须被 schema 覆盖;vue 映射数变更是显式事件。
     {
         let (registry_names, _vue_mappings, _imported) =
-            scan_live_registry(&read("../auto-ui-compiler/src/ui_gen/widget/registry.rs"));
+            scan_live_registry(&read("../../../auto-ui/crates/auto-ui-compiler/src/ui_gen/widget/registry.rs"));
         // P4-4:手写 vue insert 已退役(overlay 从 schema 重建)。
         let schema = auto_lang::aura::default_schema_cached().expect("schema");
         assert_eq!(

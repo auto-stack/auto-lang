@@ -128,7 +128,7 @@ fn assert_ui_imports_resolve(full_text: &str) {
     // Plan 482: PLAN-457 打包快照(assets/shadcn-ui/<pkg>)同为独立来源——
     // nav/ 即由此物化(离线 write-if-missing,见 vue_shadcn::materialize)。
     // PLAN-815 T-04: 快照随 vue 闭包迁 auto-ui-tools(唯一来源)。
-    let bundled_root = root.join("crates/auto-ui-tools/assets/shadcn-ui");
+    let bundled_root = root.join("../auto-ui/crates/auto-ui-tools/assets/shadcn-ui");
     let bad: Vec<String> = pkgs
         .iter()
         .filter(|p| {

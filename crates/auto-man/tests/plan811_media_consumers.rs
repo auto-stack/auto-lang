@@ -177,7 +177,7 @@ fn generators_emit_core_paths_and_delivery_closure_registers_media_core() {
         !api_gen_rs.contains("auto_lang::ui::image_pipeline"),
         "模板不再经 auto_lang::ui 路径（PLAN-811 剪断）"
     );
-    let rust_ui_rs = include_str!("../../auto-ui-tools/src/rust_ui.rs");
+    let rust_ui_rs = include_str!("../../../../auto-ui/crates/auto-ui-tools/src/rust_ui.rs");
     assert!(
         rust_ui_rs.contains("auto_media_core::image_pipeline::open_media_session"),
         "viewer 桥函数直调 core（rust_ui）"

@@ -238,7 +238,7 @@ fn plan702_ui_path_busy_wait_retired_gate() {
     // PLAN-814 T-04：ui/ 树已迁 auto-ui-runtime——围栏随树指向新址
     // （跨包源码读，同 desktop.at 单源先例；本 crate src/ui 已不存在）。
     let manifest = env!("CARGO_MANIFEST_DIR");
-    let ui_dir = std::path::Path::new(manifest).join("../auto-ui-runtime/src/ui");
+    let ui_dir = std::path::Path::new(manifest).join("../../../auto-ui/crates/auto-ui-runtime/src/ui");
     let mut offenders: Vec<String> = Vec::new();
     let mut legacy_sites: Vec<String> = Vec::new();
     visit_rs_files(&ui_dir, &mut |path, content| {

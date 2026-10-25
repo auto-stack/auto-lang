@@ -459,7 +459,7 @@ widget App {{
         assert!(tr.contains("diff_files_window"), "trans 裸名臂在册");
         // ui_gen handler 直调臂。
         let ug = // PLAN-814 T-03：rust 生成器迁 auto-ui-compiler；指纹探针引同仓单源。
-        include_str!("../../../auto-ui-compiler/src/ui_gen/rust.rs");
+        include_str!("../../../../../auto-ui/crates/auto-ui-compiler/src/ui_gen/rust.rs");
         assert!(ug.contains("diff_files_window"), "ui_gen 直调臂在册");
     }
     // ── T-15 (供⑨-a) 程序轨：VM server/api.at 同构面 ────────────────────
