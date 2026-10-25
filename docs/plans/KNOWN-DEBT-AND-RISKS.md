@@ -1,5 +1,10 @@
 ### Plan 846（2026-10-25，merge:r1 根性能门阻断，未合入）
 
+## D-846-INCR-PERF — AutoGraphics增量编译性能暂缓（用户授权，2026-10-25）
+
+状态：后续性能议题，当前AutoGraphics交付非阻断。PLAN-846:r3用户明确只验增量编译功能正确性，功能完成、尤其整合真正ACE引擎后再定义性能优化验收。原签名重建P95 1249.3752/1107.9436ms与原1000ms门的真实失败保留于[846 merge:r3](attachments/846/merge-r3/receipt.md)，不宣称性能已达标。功能失效传播、未变单元缓存复用、实际链接/运行、数值/支持/回收及运行时安全预算仍必须通过。命名观测策略及规范增量见[846 r3](attachments/846/revision-r3/spec-delta.md)。后续应在真实ACE整合上下文另定性能基线，不沿用本次豁免当作长期性能承诺。
+
+
 F-846-M1-ROOT-MN-P95 OPEN：实际SDK根接收44480完整t为879pass/1fail、4488未跑；MN signature-rebuild 30样本P95=1032.8293ms≥1000ms，归因待查，尚未证明846回归或预存。tv163及producer/consumer各178通过；剩余native完整矩阵pending。Plan保持reviewed10/11，WT恢复bf22并保留映射分支/SDK tag；未落地、沉淀、归档或清树。[阻断/恢复收据](attachments/846/merge-r1/receipt.md)。
 
 ### Plan 846（2026-10-25，R2 final pass；CLI finding CLOSED，merge门pending）

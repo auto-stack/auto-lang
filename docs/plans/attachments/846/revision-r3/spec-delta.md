@@ -1,0 +1,5 @@
+## AutoGraphics incremental compilation acceptance (PLAN-846:r3)
+
+At this experimental stage, AutoGraphics requires correct incremental compilation: edits invalidate the applicable units, unchanged units may reuse admitted cached artifacts, and the resulting program must actually link and run with the expected behavior. Incremental compilation latency, throughput and P95 targets are observations rather than delivery gates. Performance optimization is deferred until functionality is complete, particularly integration with the real ACE engine; it requires later explicit acceptance criteria.
+
+The functional cases, sample inputs, cache/identity/rejection/cleanup assertions and supported input scope remain required. Runtime callback limits and resource/deadline safety contracts remain in force. The root MN verification harness can select the explicitly named `AUTO_LANG_AUTOGRAPHICS_INCREMENTAL_PERF=observe` policy for AutoGraphics verification; it records the policy and measured values while leaving functional assertions active. Other root verification retains its default performance policy.

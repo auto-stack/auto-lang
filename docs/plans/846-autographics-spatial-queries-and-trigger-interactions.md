@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-846
-status: executing
+status: reviewed
 feature_name: AutoGraphics空间查询与触发交互原型
-plan_revision: 2
+plan_revision: 3
 author: [Codex]
 created_at: 2026-10-25
 updated_at: 2026-10-25
-current_step: 9
+current_step: 10
 total_steps: 11
 depends_on: [PLAN-845]
 supersedes_spec_components:
@@ -28,6 +28,8 @@ affects: [auto-graphics, authoring-experimental, spatial-query]
 # [PLAN-846] AutoGraphics 空间查询与触发交互原型
 
 ## 0. 变更摘要
+
+r3（2026-10-25）用户明确调整AutoGraphics当前验收：增量编译只验功能正确性，不以延迟/P95/吞吐阻断交付；功能完成，尤其与真正ACE引擎合并后再定义性能优化验收。历史r2性能红保留，不改记性能达标。数值、支持范围、实际编译/缓存失效/链接运行/回收及运行时安全预算保持。
 
 845把用户Auto行为、稳定actor绑定与GLB组成可保存/搬迁项目；下一步从“移动/显示节点”推进到“查询场景几何并产生交互”。本Plan交付**有限2D/3D AABB边界、点包含和成对重叠查询，以及两个由真实Auto私有状态实现enter/stay/exit的触发示例**。逻辑不写死在Rust样例名中，项目继续通过845绑定/保存/重开。
 
@@ -185,10 +187,13 @@ Save/Open/Verify/Save As继续校验完整GLB+code闭包和版本，原始代码
 
 ### 规范增量
 
+r3增量：SD-06见[冻结提案](attachments/846/revision-r3/spec-delta.md)，只调整增量编译性能验收归属，不改变功能/支持。
+
 全部拟议，当前不写canonical；behavior-project.md先由845完整交付再modify。
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
+| SD-06 | modify | docs/specs/auto-graphics/integration-contract.md | 当前增量速度/P95为阻断→AutoGraphics仅验正确增量编译，耗时观测；功能完成及真实ACE整合后再定性能标准 | 用户本轮明确授权暂缓性能验收 | AC-08, AC-09, AC-10 |
 | SD-05 | modify | docs/specs/auto-val/project.md; docs/specs/auto-lang/vm/architecture.md | f64直存有负NaN tag碰撞→NaN编码不占tag空间，有限/±0/±Inf/tag位型不变；SDK pin具名更新 | 保留非有限拒绝合同、修producer | AC-04, AC-05, AC-08 |
 | SD-01 | add | docs/specs/auto-graphics/spatial-query-profile.md | 无公共空间查询→有限AABB代理/坐标/闭区间/错误/32次预算/实际Auto与资源来源 | 几何查询有可验语义 | AC-02, AC-04, AC-05, AC-07 |
 | SD-02 | modify | docs/specs/auto-graphics/behavior-api.md; docs/specs/auto-graphics/behavior-project.md | 仅v1→v1原样并存v2/profile8、显式选择与API化source准入/绑定/历史/闭包 | 防保留名/同hash跨版本错误复用 | AC-03, AC-06, AC-08 |
@@ -219,6 +224,8 @@ r1可行性原型与反例详§9。r2先执行V13/T02-SDK，再继续T02；既�
 
 每case保存code/SDK/锁/用户源码/API/bridge/geometry算法/fixture身份、精确命令/退出码/断言数、原始报告与关键像素。独立参考不调用被测spatial helper或读取其输出生成expected。反控至少覆盖漏mesh/旧world、v1误保留名、同raw跨API错误复用、跳过query quota、实际结果/最终渲染破坏与owner/扫描/上传退化。反例在宣称路径实际失败，原同binary控制与复原绿并列。
 
+r3根门策略：显式设置`AUTO_LANG_AUTOGRAPHICS_INCREMENTAL_PERF=observe`，MN正文编辑/签名重建/冲突/实际增量序列保留全部原功能断言及30样本，耗时仅观测；裸根t/tv仍完整执行，不排除测试、不增设ignore、不升高执行deadline。AutoGraphics原生/owner/GPU完整门保留。
+
 最终review前work只定向/check/fmt；T-08登记准确旧/新完整矩阵。**T-09最终独立pass后**T-10才在冻结提交跑完整locked driver/AGP test+build、原16 AGP/双游戏、835..845相关原生/owner/reopen/source及独立own-SDK/own-target consumer、原counter AND content两道门和新spatial正反/项目搬迁/预算。证据复用须证明代码/依赖/配置/输入未变，不能只因旧Plan总绿略过新v2入口。r2含上游标量Rust修复，T09独立pass后T10须根`t`+`tv`（实际依赖组/可构建快照）及完整driver/AGP/consumer门；工作阶段只定向auto-val/实际native与API反例/check。无trans/book/UI生成/aavm触面则不跑相应档，docs_gen不触发；AGP/其他生产扩面仍回new。tf仍主检出单实例批量，846收尾做实际到期判定，不自动在worktree并跑。
 
 ## 7. 验收标准
@@ -238,7 +245,7 @@ r1可行性原型与反例详§9。r2先执行V13/T02-SDK，再继续T02；既�
 
 ## 8. 执行步骤
 
-当前T-01、T-02-SDK、T-02..09完成；F-846-R1-01受影响R2 final pass，reviewed10/11，T-10完整合入门及收尾pending（§9）。T-01..08关闭且无必需gap才execution_done9/11；T-09最终独立pass为reviewed10/11，完整merge门pending；T-10实际收尾才交付11/11。
+当前T-01、T-02-SDK、T-02..08完成；r3合同修订及根验收策略实现/受影响T09复审进行中，executing9/11，T10合入门及收尾pending。T-01..08关闭且无必需gap才execution_done9/11；T-09最终独立pass为reviewed10/11，完整merge门pending；T-10实际收尾才交付11/11。
 
 | task_id | owner_stage | 依赖 | 实际触点／拟新增路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -251,7 +258,7 @@ r1可行性原型与反例详§9。r2先执行V13/T02-SDK，再继续T02；既�
 | T-06 [x] | work | T-05 | Host/Panel/bin版本选择闭合、samples/spatial_projects/zone2d、zone3d | V-07/09正式默认/临时源与项目/源定位，用户Auto触发语义和原v1/845定向控制过；AC-06 |
 | T-07 [x] | work | T-06 | 新check_spatial_queries.py/正式OS路径/真实GPU故障及新进程项目回放 | V-09/10两项目仓外同binary/搬迁/条件变异/partial/Stop画面完整，非环境gap；AC-08 |
 | T-08 [x] | work | T-07 | 新check_spatial_owners.py、source/fresh consumer/README、新research/spatial-query-handoff.md/Spec proposal | V-01/11/12、20轮owner/扫描上传、全部work定向/check/fmt与准确完整merge矩阵齐；AC-01, AC-07, AC-08 |
-| T-09 | review | T-08 | 同树冻结code/Plan/Spec及原始两项目报告，主检出独立review附件 | 逐AC-01..08/SD/遗漏/延后/workaround/健康绑定结论；AC-09 |
+| T-09 [x] | review | T-08 | 同树冻结code/Plan/Spec及原始两项目报告，主检出独立review附件 | 逐AC-01..08/SD/遗漏/延后/workaround/健康绑定结论；AC-09 |
 | T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出Spec/ledger/archive/guard/到期 | AC-10实际落地/清理，改代码先受影响复审再新冻完整门，不提前宣称交付 |
 
 ## 9. 复审记录
@@ -390,6 +397,14 @@ F-846-M1-ROOT-MN-P95：实际根接收冻结44480（纯SDK映射，master父9a6c
 
 只读观察10分钟未取得连续30秒无其他构建窗口，故未再触发性能采样，无后台重试。最新有效原门仍P951107.9436≥1000，F-846-M1-ROOT-MN-P95未闭合；不能把竞争观察当作已确认唯一根因。原生重测87门完成证据保留，必要有界工具散列607ed28c6及8项测试已提交。唯一WT根角色clean、图形bf22/SDK永久tag/两个固定只读兄弟均保留；未合入/发布规范/写ledger/归档/清树。[当前恢复收据](attachments/846/merge-r3/receipt.md)、[当前未就绪记录](attachments/846/work-r5/readiness-pending.json.txt)。
 
+### 2026-10-25 new:r3 — 用户授权暂缓AutoGraphics增量性能验收
+
+用户明确“暂时先把性能要求放松；功能完成尤其与真正ACE引擎合并后再优化；AutoGraphics暂只需支持增量编译，不考虑性能检查”。revision2→3，执行中9/11，AC/任务ID和已完功能保留，T09须受影响重审。F-846-M1-ROOT-MN-P95按明确合同变更转为非阻断观测/后续性能议题，历史1249.3752/1107.9436真实红原样保留，绝不宣称性能已修到1000以下。根完整t/tv及原UI迁仓面仍执行；新增命名策略只令MN增量编译延迟为观测，功能断言/30样本/支持/错误/实际链接运行/数值/运行时预算不变，默认其他根验证保持原性能策略。拟SD-06仅落现有integration-contract，r2其他十目标SD保留。[r3冻结提案](attachments/846/revision-r3/spec-delta.md)。本次授权足够，不另索确认。
+
+### 2026-10-25 review:R6 — r3受影响final pass / reviewed10/11
+
+根33ed071a6，图形bf22、SDK7b987ca8、UIaee499e/downc39ac7f固定。用户授权的AutoGraphics增量功能优先策略已实现，默认根性能门仍严格；显式observe只撤销四处增量延迟判定，原功能/缓存失效/实际链接运行/30样本/数值/支持/安全deadline不变。策略正反+实际序列+签名重建3/3，最终元数据修订后策略1/1；签名P951428.581ms明确观测非门禁，不冒称优化达标。有界工具散列及整cache8证据保留。SD06新提案与十目标r2SD经hash核冻结。AC01..08具名复用未变证据，AC09受影响通过；同实施会话审查上下文限制如实保留。[R6复审](attachments/846/review-r6/review.md)。F-846-M1-ROOT-MN-P95按用户合同变更转D-846-INCR-PERF后续议题，非“性能修复关闭”。T10仍须新冻结完整t/tv及原UI2207功能面，再完成全部落地/知识/归档/清理。
+
 ## 10. 待澄清事项
 
-F-846-M1-ROOT-MN-P95在新根完整门及work:r5原30样本定向仍失败，保持未闭合，等待低竞争窗口验证及必要后续修复/复审；历史证据保留。F-846-R1-01已修复且R2 final pass，无剩余已知846实现finding；完整门尚未通过。F-846-T02-NAN已由r2修复及重放关闭，不再沿用r1只读SDK限制。原数值/支持/预算合同保持；未授权其他SDK改动/生产扩面。历史入口与needs_replan证据保留§9与附件。
+无待用户决定事项。r3已明确暂缓AutoGraphics增量编译性能检查，历史P95红不再阻断本线路；功能/数值/支持/运行时预算与原完整功能门保持。待完成策略实现、受影响复审与新冻结完整门，再合入/规范沉淀/归档/清树。
