@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-831
-status: reviewed
+status: archived
 feature_name: auto-ui 独立仓承接与完整发行交付
 author: [Codex]
 created_at: 2026-10-22
