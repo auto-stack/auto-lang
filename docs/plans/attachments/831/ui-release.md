@@ -38,4 +38,12 @@
 
 ## 后继
 
-U831 于 T-12 收尾闭环（归档+清理收据读回）后成立；832 届时放行（消费本记录固定版本）。
+## 收尾读回（T-12 终态，2026-10-25）
+
+- 双仓默认分支：auto-ui master=`aee499e87`、auto-lang master=`d7f378b67`（ff-only 线性，零 merge commit；落地后主检 cargo check 四包净）。
+- 原始终据持久化：[receipts-final/](receipts-final/)（distribution/792/switch-drill/t09-r6 全 hash 与 source-audit MATCH；switch-t11 事务链 JSONL 含工具 RED 事件与幂等重锚记录）。
+- 归档：docs/plans/archive/831-auto-ui-independent-repository-delivery.md（status: archived @309e040c2）。
+- 清理：wt-guard 三树全 clean → lang-831 组（auto-lang/auto-ui/auto-down worktrees + codex/plan-831-dev 分支×2 + 组目录）全部移除；legacy 保全载荷（.recovery/831-legacy-preservation 于 auto-ui 仓）与恢复 refs 保留未动。
+- **U831 成立；832 放行**（消费本记录固定版本）。
+- 批量回归：到期状态保持（845 批次 pending_retry 归 847，非本计划引入）。
+- 陈旧产物观察：主检出 auto.exe/auto-ui-tool.exe 为落地前构建（PATH 陈旧既知事实，ci-entrypoints 注记）；本仓交付物=源码+固定 commit，未含部署产物。
