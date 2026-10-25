@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-846
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: AutoGraphics空间查询与触发交互原型
 plan_revision: 3
 author: [Codex]
@@ -84,9 +85,9 @@ AABB是轻量数学查询，先复用现有`interaction::bounds/transform`的几
 
 原规划授权见r1历史。用户随后启动846 work，并在2026-10-25明确要求“允许修复上游SDK的NaN编码问题并更新固定版本，保持原数值合同、不缩减支持范围，然后继续实施”。本轮据此修订和继续work，不创建agent/chat/模型角色/预算；不代办无关计划。客户端日期本轮跨至2026-10-25，按此记录新草案日期。
 
-已读[全局overview](../specs/overview.md)、[图形overview](../specs/auto-graphics/overview.md)、[v1行为API](../specs/auto-graphics/behavior-api.md)、[运行会话](../specs/auto-graphics/scene-play-session.md)、[静态资源](../specs/auto-graphics/scene-assets.md)、[视口几何](../specs/auto-graphics/viewport-interaction.md)、[集成边界](../specs/auto-graphics/integration-contract.md)、[845](845-autographics-bound-behavior-and-portable-projects.md)、[其独立R2](attachments/845/review-r2/review.md)、[受影响独立R3](attachments/845/review-r3-gate/review.md)及[merge checkpoint](attachments/845/merge-r1/receipt.md)。behavior-project.md仍待845沉淀，先交付再作为modify基面；不把845树内proposal当canonical。
+已读[全局overview](../../specs/overview.md)、[图形overview](../../specs/auto-graphics/overview.md)、[v1行为API](../../specs/auto-graphics/behavior-api.md)、[运行会话](../../specs/auto-graphics/scene-play-session.md)、[静态资源](../../specs/auto-graphics/scene-assets.md)、[视口几何](../../specs/auto-graphics/viewport-interaction.md)、[集成边界](../../specs/auto-graphics/integration-contract.md)、[845](845-autographics-bound-behavior-and-portable-projects.md)、[其独立R2](../attachments/845/review-r2/review.md)、[受影响独立R3](../attachments/845/review-r3-gate/review.md)及[merge checkpoint](../attachments/845/merge-r1/receipt.md)。behavior-project.md仍待845沉淀，先交付再作为modify基面；不把845树内proposal当canonical。
 
-26个固定Git对象、19份文档输入hash、观察ref/状态与来源事实见[清单](attachments/846/planning/source-observation.json.txt)。831 execution_done9/12、832/841仍drafting；生产组件/Schema、ACE接线/热重载继续[Design45 §11](../design/45-autographics-wgpu-engine-and-game-prototypes.md#11-目标态schema-统一-ui2d-与-3d-声明语义2026-10-24)后继范围，本Plan不依赖这些在途接口，也不宣称绕过其生产门。
+26个固定Git对象、19份文档输入hash、观察ref/状态与来源事实见[清单](../attachments/846/planning/source-observation.json.txt)。831 execution_done9/12、832/841仍drafting；生产组件/Schema、ACE接线/热重载继续[Design45 §11](../../design/45-autographics-wgpu-engine-and-game-prototypes.md#11-目标态schema-统一-ui2d-与-3d-声明语义2026-10-24)后继范围，本Plan不依赖这些在途接口，也不宣称绕过其生产门。
 
 ### 4.2 实际触点与缺口
 
@@ -187,7 +188,7 @@ Save/Open/Verify/Save As继续校验完整GLB+code闭包和版本，原始代码
 
 ### 规范增量
 
-r3增量：SD-06见[冻结提案](attachments/846/revision-r3/spec-delta.md)，只调整增量编译性能验收归属，不改变功能/支持。
+r3增量：SD-06见[冻结提案](../attachments/846/revision-r3/spec-delta.md)，只调整增量编译性能验收归属，不改变功能/支持。
 
 全部拟议，当前不写canonical；behavior-project.md先由845完整交付再modify。
 
@@ -245,7 +246,7 @@ r3根门策略：显式设置`AUTO_LANG_AUTOGRAPHICS_INCREMENTAL_PERF=observe`�
 
 ## 8. 执行步骤
 
-当前T-01、T-02-SDK、T-02..09完成，r3受影响复审与完整功能门已通过，reviewed10/11；T10落地/规范/账本/归档/清理收尾pending。T-01..08关闭且无必需gap才execution_done9/11；T-09最终独立pass为reviewed10/11，完整merge门pending；T-10实际收尾才交付11/11。
+当前T-01、T-02-SDK、T-02..09完成，r3受影响复审与完整功能门已通过，reviewed10/11；T10代码/规范/账本已落地且计划实际归档，清理收尾pending。T-01..08关闭且无必需gap才execution_done9/11；T-09最终独立pass为reviewed10/11，完整merge门pending；T-10实际收尾才交付11/11。
 
 | task_id | owner_stage | 依赖 | 实际触点／拟新增路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -265,11 +266,11 @@ r3根门策略：显式设置`AUTO_LANG_AUTOGRAPHICS_INCREMENTAL_PERF=observe`�
 
 2026-10-25：stage:new；PLAN-846 revision1；outcome:blocked（G845完整交付pending，草案可评审）；next:845已完成测试定位修复的独立R3，继续其新冻结完整门与合入收尾；后续用户启动846 work，T-01重核正式基面，再T-02。当前drafting0/10；所有T/AC/V/SD是拟议合同，未实施/建树/prepare/build/Cargo/原生/GPU验证，未创建agent/chat。
 
-静态检查见[preflight](attachments/846/planning/preflight.md)。本轮未改845或841/840/迁移/ACE/Schema合同；后续生产目标继续已有设计。若上游合入期间状态改变，T-01消费最新正式收据，观察清单不冒认最新执行冻结。复审/完整门仍由各阶段负责，重复同因先诊断漏测/兄弟路径，不减分母/隐藏支持或调fixture把红当绿。
+静态检查见[preflight](../attachments/846/planning/preflight.md)。本轮未改845或841/840/迁移/ACE/Schema合同；后续生产目标继续已有设计。若上游合入期间状态改变，T-01消费最新正式收据，观察清单不冒认最新执行冻结。复审/完整门仍由各阶段负责，重复同因先诊断漏测/兄弟路径，不减分母/隐藏支持或调fixture把红当绿。
 
 ### 2026-10-25 work:r1 — needs_replan / executing1/10
 
-stage: work | plan_id: PLAN-846 | plan_revision:1 | outcome:needs_replan | worktree_path:`D:/autostack/.wt/lang-846/auto-lang` | branch:`plan-846-dev` | base_commit:`c1c7cfea5c9cc84987091ddeaf6cde59cefd5d4f` | code_commit:`118530ee5fa14959535a0cdb48d6d0cc0c6aaab5` | dependency_revisions:SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21；AGP/三锁未变 | task_ids:T-01完成、T-02未关闭 | evidence:[来源冻结](attachments/846/work-r1/entry.json.txt)、[当前结果/哈希](attachments/846/work-r1/readiness.json.txt)、[冻结NaN反例](attachments/846/work-r1/spatial-frozen-nan-gate.txt)、[实际源码](attachments/846/work-r1/actual-auto-sources/) | blockers:F-846-T02-NAN | next_responsible_role:new，有限数值支持/SDK边界修订后回同树work。
+stage: work | plan_id: PLAN-846 | plan_revision:1 | outcome:needs_replan | worktree_path:`D:/autostack/.wt/lang-846/auto-lang` | branch:`plan-846-dev` | base_commit:`c1c7cfea5c9cc84987091ddeaf6cde59cefd5d4f` | code_commit:`118530ee5fa14959535a0cdb48d6d0cc0c6aaab5` | dependency_revisions:SDK932ad4877e5968f1aa7227d9dcd7fb69b4c69a21；AGP/三锁未变 | task_ids:T-01完成、T-02未关闭 | evidence:[来源冻结](../attachments/846/work-r1/entry.json.txt)、[当前结果/哈希](../attachments/846/work-r1/readiness.json.txt)、[冻结NaN反例](../attachments/846/work-r1/spatial-frozen-nan-gate.txt)、[实际源码](../attachments/846/work-r1/actual-auto-sources) | blockers:F-846-T02-NAN | next_responsible_role:new，有限数值支持/SDK边界修订后回同树work。
 
 G845/GSTART/GSOURCE已成立，845最终交付/清理/到期收尾可消费；来源681SDK文件/479依赖/17本地包/29路径边/845闭包321hash已实核，master代码无WIP。T01按实际交付完成，不再被草案时期的G845状态阻塞。
 
@@ -289,19 +290,19 @@ stage:new | plan_id:PLAN-846 | plan_revision:2 | outcome:pass | authorization:�
 
 ### 2026-10-25 work:r2 进展 — SDK修复、T02与T03闭合
 
-用户授权已消费，原数值合同/支持/预算未变。上游纯修复提交`4cef80c1b`，SDK artifact `7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467`（父932ad、仅nano_value.rs差异），全部17本地包/681输入/479依赖/29边与三锁原字节保持。[artifact](attachments/846/work-r2/sdk-artifact-final.json.txt)。NaN编码规范化符号位；相同异常空间还覆盖raw -Inf的tag识别，已将`is_nanboxed`排除零尾数负Inf、位型不变，避免其也折0。
+用户授权已消费，原数值合同/支持/预算未变。上游纯修复提交`4cef80c1b`，SDK artifact `7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467`（父932ad、仅nano_value.rs差异），全部17本地包/681输入/479依赖/29边与三锁原字节保持。[artifact](../attachments/846/work-r2/sdk-artifact-final.json.txt)。NaN编码规范化符号位；相同异常空间还覆盖raw -Inf的tag识别，已将`is_nanboxed`排除零尾数负Inf、位型不变，避免其也折0。
 
-T-02-SDK [x]：纯模块真实源码直接rustc测试17/17（SDK workspace含既有nested-workspace，故其Cargo单测入口失败后保留raw，并用无crate依赖的原模块直接编译等价验证）；[旧编码实际mutation](attachments/846/work-r2/sdk-old-encoding-mutation.txt)同测试1red、原文件未改。新SDK原NaN双guard/8控制+2反例全部正确；参数/局部/返回/容器及±Inf相关API错误保持。[replay](attachments/846/work-r2/spatial-r2-sdk-replay-final.txt)、[扩展路径](attachments/846/work-r2/spatial-nan-paths-r2.txt)。原严格Session.float对native f64 NaN输出报positive-NaN type mismatch（非错误tag或成功零值），API内部仍必须错误7，测试未放宽查询合同。来源当前入口新增846版本，T08继续最终冻结与独立consumer。
+T-02-SDK [x]：纯模块真实源码直接rustc测试17/17（SDK workspace含既有nested-workspace，故其Cargo单测入口失败后保留raw，并用无crate依赖的原模块直接编译等价验证）；[旧编码实际mutation](../attachments/846/work-r2/sdk-old-encoding-mutation.txt)同测试1red、原文件未改。新SDK原NaN双guard/8控制+2反例全部正确；参数/局部/返回/容器及±Inf相关API错误保持。[replay](../attachments/846/work-r2/spatial-r2-sdk-replay-final.txt)、[扩展路径](../attachments/846/work-r2/spatial-nan-paths-r2.txt)。原严格Session.float对native f64 NaN输出报positive-NaN type mismatch（非错误tag或成功零值），API内部仍必须错误7，测试未放宽查询合同。来源当前入口新增846版本，T08继续最终冻结与独立consumer。
 
-T-02 [x]：上述SDK上重放spatial_feasibility3/3，含宽/深128节点32请求两父写、33错误、scene4绑定保存/重开、实际全mesh GPU/Stop；原型gap F-846-T02-NAN关闭。[geometry/whole-callback Fault/Stop](attachments/846/work-r2/spatial-geometry-host-r2.txt)同时验证last-good、VM关闭、Starting取消与修源新Run，不将安全占位算成功。
+T-02 [x]：上述SDK上重放spatial_feasibility3/3，含宽/深128节点32请求两父写、33错误、scene4绑定保存/重开、实际全mesh GPU/Stop；原型gap F-846-T02-NAN关闭。[geometry/whole-callback Fault/Stop](../attachments/846/work-r2/spatial-geometry-host-r2.txt)同时验证last-good、VM关闭、Starting取消与修源新Run，不将安全占位算成功。
 
-T-03 [x]：同raw API切换不no-op、Undo/Redo、raw Arc复用但按API准入、不合法切换原状态保留、v2保存重开；显式临时文件v2与v1编译失败不回落、伪API/profile/base拒绝；孤立CLI版本/未知版本实际exit2。[project](attachments/846/work-r2/spatial-project-r2.txt)、[Host版本](attachments/846/work-r2/spatial-version-host-r2.txt)、CLI raw。原v1定向模块12/12、project session4/4、storage5/5通过。credential仅记录已编译API种类，不保VM/cache；跨API每次具名校验，v1原临时入口保持一次源码读/一次Run编译。
+T-03 [x]：同raw API切换不no-op、Undo/Redo、raw Arc复用但按API准入、不合法切换原状态保留、v2保存重开；显式临时文件v2与v1编译失败不回落、伪API/profile/base拒绝；孤立CLI版本/未知版本实际exit2。[project](../attachments/846/work-r2/spatial-project-r2.txt)、[Host版本](../attachments/846/work-r2/spatial-version-host-r2.txt)、CLI raw。原v1定向模块12/12、project session4/4、storage5/5通过。credential仅记录已编译API种类，不保VM/cache；跨API每次具名校验，v1原临时入口保持一次源码读/一次Run编译。
 
 当前executing4/11，T04..08未宣称完成；新源/验证清单随开发变化最终由T08冻结。未启动最终review/完整根档/合入；所有历史red保留，后续继续原合同。
 
 ### 2026-10-25 work:r2 最终 — pass / execution_done9/11
 
-stage:work | plan_id:PLAN-846 | plan_revision:2 | outcome:pass | worktree_path:`D:/autostack/.wt/lang-846/auto-lang` | branch:plan-846-dev | base_commit:`c1c7cfea5c9cc84987091ddeaf6cde59cefd5d4f` | code_commit:`655c366a3a4c53160c259a0b91a50c02d1cb020a` | dependency_revisions:SDK`7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467`；auto-down`c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`；三锁字节保持 | task_ids:T-01/T-02-SDK/T-02..08全部关闭 | evidence:[完整readiness及AC映射](attachments/846/work-r2/readiness-final.json.txt)、[提交后来源](attachments/846/work-r2/committed-source-final.txt)、[native14次](attachments/846/work-r2/native-final/results.json)、[owner变异控制](attachments/846/work-r2/owner-controls/results.json) | blockers:无 | next_responsible_role:review。
+stage:work | plan_id:PLAN-846 | plan_revision:2 | outcome:pass | worktree_path:`D:/autostack/.wt/lang-846/auto-lang` | branch:plan-846-dev | base_commit:`c1c7cfea5c9cc84987091ddeaf6cde59cefd5d4f` | code_commit:`655c366a3a4c53160c259a0b91a50c02d1cb020a` | dependency_revisions:SDK`7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467`；auto-down`c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`；三锁字节保持 | task_ids:T-01/T-02-SDK/T-02..08全部关闭 | evidence:[完整readiness及AC映射](../attachments/846/work-r2/readiness-final.json.txt)、[提交后来源](../attachments/846/work-r2/committed-source-final.txt)、[native14次](../attachments/846/work-r2/native-final/results.json)、[owner变异控制](../attachments/846/work-r2/owner-controls/results.json) | blockers:无 | next_responsible_role:review。
 
 T04：真实Host资源借用、全mesh局部边界/8角变换、缓存与有限/退化/不可用状态和身份定向通过。T05：实际Auto闭区间查询、原数值合同、32/33限制、同callback父写查询、sticky error、last-good/Fault/Stop、配置未准入不得运行app_start全部通过。配置startup采用真实计数反例先红后绿，失效setup尝试保留未计证据。T06：正式UI/CLI/Binding.api与同raw历史/保存/重开闭合，两个真实Auto状态enter/stay/exit示例含Circle矩形代理corner像素，原v1 Move/Patrol实际OS27阶段及既有定向模块通过。
 
@@ -313,7 +314,7 @@ T09独立复审未执行、T10未执行。完整统一门明确merge-owned pendi
 
 ### 2026-10-25 review:R1 final — needs_fix / executing6/11
 
-stage:review | review_scope:final | reviewer_identity:Codex /root；同实施会话、无独立上下文，已明示限制并从合同/冻结代码/原始证据重建结论 | plan_id:PLAN-846 | plan_revision:2 | outcome:needs_fix | worktree_path:`D:/autostack/.wt/lang-846/auto-lang` | branch:plan-846-dev | reviewed_commit:`655c366a3a4c53160c259a0b91a50c02d1cb020a` | base_commit:`c1c7cfea5c9cc84987091ddeaf6cde59cefd5d4f` | dependency_revisions:SDK7b987ca8、auto-downc39ac7f9、三锁保持 | spec_inputs:[当前/拟议hash与冻结patch](attachments/846/review-r1/baseline.json.txt) | acceptance_results:AC01/02/04/05/07 pass；AC03/06/08仅CLI子项partial；AC09未过、AC10 merge pending | findings:F-846-R1-01 P2 | evidence:[完整复审/复现/作用域](attachments/846/review-r1/review.md) | next:work，同树只修CLI缺值验证及对应永久反例/来源刷新后提交，再受影响复审。
+stage:review | review_scope:final | reviewer_identity:Codex /root；同实施会话、无独立上下文，已明示限制并从合同/冻结代码/原始证据重建结论 | plan_id:PLAN-846 | plan_revision:2 | outcome:needs_fix | worktree_path:`D:/autostack/.wt/lang-846/auto-lang` | branch:plan-846-dev | reviewed_commit:`655c366a3a4c53160c259a0b91a50c02d1cb020a` | base_commit:`c1c7cfea5c9cc84987091ddeaf6cde59cefd5d4f` | dependency_revisions:SDK7b987ca8、auto-downc39ac7f9、三锁保持 | spec_inputs:[当前/拟议hash与冻结patch](../attachments/846/review-r1/baseline.json.txt) | acceptance_results:AC01/02/04/05/07 pass；AC03/06/08仅CLI子项partial；AC09未过、AC10 merge pending | findings:F-846-R1-01 P2 | evidence:[完整复审/复现/作用域](../attachments/846/review-r1/review.md) | next:work，同树只修CLI缺值验证及对应永久反例/来源刷新后提交，再受影响复审。
 
 唯一finding：`--inspect <合法scene> --behavior-api`末尾缺值时exit0且closure_verified:true；相同入口带v2但无--behavior正确exit2、不带选项正确exit0。实际生产CLI将“未提供选项”和“提供但无值”同映射None，违反§5.5/README孤立版本须usage error。32MB正式profile重复同证，精确命令/输出/二进制hash见附件；不是新支持需求。重开T03/T06及依赖其完整验收的T08，保留其他6项完成，current_step6/11，revision2不变。
 
@@ -323,7 +324,7 @@ stage:review | review_scope:final | reviewer_identity:Codex /root；同实施会
 
 ### 2026-10-25 work:r3 — F-846-R1-01闭合 / execution_done9/11
 
-stage:work | plan_id:PLAN-846 | plan_revision:2 | outcome:pass | worktree_path:`D:/autostack/.wt/lang-846/auto-lang` | branch:plan-846-dev | base_commit:`655c366a3a4c53160c259a0b91a50c02d1cb020a`（修复基线；Plan原base仍c1c7cfea） | code_commit:`bf22db3465203f3babd649494f4b37aa2a012027` | dependency_revisions:SDK7b987ca8/auto-downc39ac7f9/三锁未变 | task_ids:T03/T06/T08重新关闭 | evidence:[finding不变量/输入/关闭表](attachments/846/work-r3/readiness.json.txt) | blockers:无 | next_responsible_role:review，用户已授权继续受影响复审。
+stage:work | plan_id:PLAN-846 | plan_revision:2 | outcome:pass | worktree_path:`D:/autostack/.wt/lang-846/auto-lang` | branch:plan-846-dev | base_commit:`655c366a3a4c53160c259a0b91a50c02d1cb020a`（修复基线；Plan原base仍c1c7cfea） | code_commit:`bf22db3465203f3babd649494f4b37aa2a012027` | dependency_revisions:SDK7b987ca8/auto-downc39ac7f9/三锁未变 | task_ids:T03/T06/T08重新关闭 | evidence:[finding不变量/输入/关闭表](../attachments/846/work-r3/readiness.json.txt) | blockers:无 | next_responsible_role:review，用户已授权继续受影响复审。
 
 F-846-R1-01：生产CLI在版本解析前区分option存在与值缺席，终端缺值及下一option误当值均exit2且不执行inspect；合法absent/default/v1/v2保持绑定。永久spatial_cli 3测试实际10子进程（3缺值、3孤立/未知、4合法）原parser先2pass/1red，修复后3pass；实际Host文件版本/伪造不回落定向1pass，all-targets check/fmt/diff通过。未扩大语言/API/SDK/几何/预算/原生范围，语义revision2不变。
 
@@ -331,7 +332,7 @@ F-846-R1-01：生产CLI在版本解析前区分option存在与值缺席，终端
 
 ### 2026-10-25 review:R2 final — pass / reviewed10/11
 
-stage:review | review_scope:final | reviewer_identity:Codex /root；同实施会话、独立上下文限制保留，从R1/冻结diff/实际命令重建受影响结论 | plan_id:PLAN-846 | plan_revision:2 | outcome:pass | worktree_path:`D:/autostack/.wt/lang-846/auto-lang` | branch:plan-846-dev | reviewed_commit:`bf22db3465203f3babd649494f4b37aa2a012027` | base_commit:`655c366a3a4c53160c259a0b91a50c02d1cb020a`（修复diff；原基面c1c7cfea） | dependency_revisions:SDK7b987ca8/auto-downc39ac7f9/三锁未变 | spec_inputs:[十目标hash/冻结patch](attachments/846/review-r2/baseline.json.txt) | acceptance_results:AC01..09 pass，AC10 merge pending | findings:F-846-R1-01 CLOSED，无剩余finding/gap/决策 | evidence:[受影响复审与复用边界](attachments/846/review-r2/review.md) | next:merge，未获本轮合入指令，不代执行。
+stage:review | review_scope:final | reviewer_identity:Codex /root；同实施会话、独立上下文限制保留，从R1/冻结diff/实际命令重建受影响结论 | plan_id:PLAN-846 | plan_revision:2 | outcome:pass | worktree_path:`D:/autostack/.wt/lang-846/auto-lang` | branch:plan-846-dev | reviewed_commit:`bf22db3465203f3babd649494f4b37aa2a012027` | base_commit:`655c366a3a4c53160c259a0b91a50c02d1cb020a`（修复diff；原基面c1c7cfea） | dependency_revisions:SDK7b987ca8/auto-downc39ac7f9/三锁未变 | spec_inputs:[十目标hash/冻结patch](../attachments/846/review-r2/baseline.json.txt) | acceptance_results:AC01..09 pass，AC10 merge pending | findings:F-846-R1-01 CLOSED，无剩余finding/gap/决策 | evidence:[受影响复审与复用边界](../attachments/846/review-r2/review.md) | next:merge，未获本轮合入指令，不代执行。
 
 R1原三组实际命令逐个重放，另选缺值在inspect之前/带真实source/空值/坏entry前缺值/合法v1与重排v2六组，共9个真实进程符合精确退出码和诊断，合法项目绑定保持。永久CLI三测试（10子进程）重新通过；生产/独立final consumer来源345hash验证通过。实际Host版本定向、check/fmt复用work同冻结结果。AC03/06/08缺口关闭；其他R1已闭几何/SDK/配置/资源/native证据经diff/依赖/配置/输入未变核验后保留，未重跑无关整档。
 
@@ -339,7 +340,7 @@ SD01..05语义与canonical基面未漂移，拟议delta仅完整测试计数增�
 
 ### 2026-10-25 merge:r1 — prepared / 完整门执行中
 
-stage:merge | plan_id:PLAN-846:r2 | checkpoint:prepared | reviewed_commit:`bf22db3465203f3babd649494f4b37aa2a012027` | worktree:`D:/autostack/.wt/lang-846/auto-lang` | branch:plan-846-dev | root SDK:4cef80c1b/artifact7b987ca8 | evidence:[门准备](attachments/846/merge-r1/prepared.json.txt)、[精确AGP未变复用](attachments/846/merge-r1/agp-reuse.json.txt) | landed/ledger/archived/cleaned:false。
+stage:merge | plan_id:PLAN-846:r2 | checkpoint:prepared | reviewed_commit:`bf22db3465203f3babd649494f4b37aa2a012027` | worktree:`D:/autostack/.wt/lang-846/auto-lang` | branch:plan-846-dev | root SDK:4cef80c1b/artifact7b987ca8 | evidence:[门准备](../attachments/846/merge-r1/prepared.json.txt)、[精确AGP未变复用](../attachments/846/merge-r1/agp-reuse.json.txt) | landed/ledger/archived/cleaned:false。
 
 根裸cargo t首轮实际选择5332，运行1150：1131pass/19timeout，4182因fail-fast未跑，不计完整绿。超时实际位于AC/AV/ABI worker冷构建路径，保留原raw及进程快照；同时检测到831另有根t。正在不改代码/选择面/断言/时限的前提下顺序预编译同树release worker，再以定向反例/原正控验证归因，只有前置条件改变且有效才重新执行冻结完整门。producer完整driver/build正在执行，其余consumer/native/root tv待序列门。任何必需门未通过前不合入/归档/清树。
 
@@ -347,7 +348,7 @@ stage:merge | plan_id:PLAN-846:r2 | checkpoint:prepared | reviewed_commit:`bf22d
 
 图形独立workspaces继续冻结bf22db346。旧图形分支携带的较早根仓快照在全档中出现cold worker超时、census墙钟比较、chart CPU continuation与future_all相对时长失败；各原raw/定向重放保留，未拼凑完整绿。实际master已包含后续chart测试completion修复及根代码更新，不能用旧图形根仓快照替代实际根接收者门。
 
-按独立SDK落地主路径，在**同一唯一实施worktree顺序切换**临时根合入分支`codex/plan-846-sdk-merge`，原Plan分支保持bf22未动；将已审纯SDK4cef80c1b重放到实际master基面9a6c2dace33e65de8db68e7655118bc823eab30a，形成44480cf6aff20f3b1e2a80df783976b866f5920f。[range-diff完全等价与单路径/同blob](attachments/846/merge-r1/sdk-root-equivalence.json.txt)。无冲突、无新增特性/修改根UI代码；不会把图形源码带入master。此为技能允许的旧→新落地hash映射，不更改Plan语义revision。
+按独立SDK落地主路径，在**同一唯一实施worktree顺序切换**临时根合入分支`codex/plan-846-sdk-merge`，原Plan分支保持bf22未动；将已审纯SDK4cef80c1b重放到实际master基面9a6c2dace33e65de8db68e7655118bc823eab30a，形成44480cf6aff20f3b1e2a80df783976b866f5920f。[range-diff完全等价与单路径/同blob](../attachments/846/merge-r1/sdk-root-equivalence.json.txt)。无冲突、无新增特性/修改根UI代码；不会把图形源码带入master。此为技能允许的旧→新落地hash映射，不更改Plan语义revision。
 
 该实际根基面另有CTE/MN两类新worker，首次全档的3超时如实保留；已补齐6类release前置构建，原CTE/MN3路径重放验证。实际接收者冻结44480的完整t+tv仍pending，旧根失败不改记通过。producer完整178（日志含1个嵌套child，top-level须去重）/build/source已通过；fresh own-SDK/own-target consumer的66定向+4deadline通过、完整178运行中。SDK纯模块17在同blob通过。全部代码/依赖/输入/实际测试分母和根/图形两条落地身份由最终收据核对；源WT/gfx/根SDK分支保留，尚无landing/ledger/archive/cleanup。
 
@@ -355,7 +356,7 @@ stage:merge | plan_id:PLAN-846:r2 | checkpoint:prepared | reviewed_commit:`bf22d
 
 F-846-M1-ROOT-MN-P95：实际根接收冻结44480（纯SDK映射，master父9a6c2d）完整cargo t在6类worker预编译后仍失败：879pass/1fail、4488未跑，signature-rebuild 30样本P95=1032.8293ms≥1000ms；归因待查，不判定为846实现缺陷。实际根tv163/163、producer/fresh consumer完整driver各178及build、SDK模块17通过；AGP23槽具名未变复用。其余原native/owner/project/Step和新spatial完整矩阵pending，不拼凑完整绿。旧根/cold历史原样保留。
 
-[合入阻断与恢复收据](attachments/846/merge-r1/receipt.md)及30样本已保存。唯一WT已恢复plan-846-dev/bf22，原始来源字节恢复并核345/SDK681，Git clean；未落地SDK映射分支和永久SDK tag保留。status仍reviewed10/11；landed/ledger_refreshed/archived/cleaned全部false，未改canonical/live ledger/清树。根性能门调查及必要修复/受影响复审后，重新核对冻结并完成完整门才可继续合入；本轮不再无条件重试或放宽门限。
+[合入阻断与恢复收据](../attachments/846/merge-r1/receipt.md)及30样本已保存。唯一WT已恢复plan-846-dev/bf22，原始来源字节恢复并核345/SDK681，Git clean；未落地SDK映射分支和永久SDK tag保留。status仍reviewed10/11；landed/ledger_refreshed/archived/cleaned全部false，未改canonical/live ledger/清树。根性能门调查及必要修复/受影响复审后，重新核对冻结并完成完整门才可继续合入；本轮不再无条件重试或放宽门限。
 
 ### 2026-10-25 work:r4 — 根门禁修复授权
 
@@ -365,25 +366,25 @@ F-846-M1-ROOT-MN-P95：实际根接收冻结44480（纯SDK映射，master父9a6c
 
 根修复0a12b60d6经range-diff完全等价重放到实际master00973e1d1，冻结根2fffb7e3a775e18175cbab5a392a8cf827f5f21b；图形冻结仍bf22。仅去除Atom token文本复制、Schema字段/规则表克隆和COFF hit二次读取；词法位置/重复与非法字段诊断、Schema绑定/验证、实际链接运行/缓存身份与准入保留。原门限1000ms、30样本、原全档选择面/配置均未改；最终定向原用例30样本P95=758.0851ms（p50=721.1186、max=788.925），101共享binder/source定向及cache7、cargo check与格式通过。首中间修复仍红P951625.7（期间存在本会话剖析负载）原样留存，不冒认pass；最终采样串行无本会话额外负载。
 
-[work冻结/hash/等价/样本](attachments/846/work-r4/readiness.json.txt)。根门finding等待受影响复审确认；原图形/SDK合同及review-r2未变面证据保留。必要root修复为用户本轮明确授权范围，不合入任何额外生产支持。完整根t/tv与图形未完门仍merge-owned pending；未落地/规范发布/归档/清树。
+[work冻结/hash/等价/样本](../attachments/846/work-r4/readiness.json.txt)。根门finding等待受影响复审确认；原图形/SDK合同及review-r2未变面证据保留。必要root修复为用户本轮明确授权范围，不合入任何额外生产支持。完整根t/tv与图形未完门仍merge-owned pending；未落地/规范发布/归档/清树。
 
 ### 2026-10-25 review:R3 affected final — pass / reviewed10/11
 
-根冻结2fffb7e3a（pure SDK72e61c508+根性能修复，range-diff等价），图形仍bf22；F-846-M1-ROOT-MN-P95必要实现修复闭合，原30样本P95758.0851<1000。字段拒绝矩阵/COFF身份准入/双函数局部更新/原签名冲突30样本复审过，原R2未变AC/十目标SD具名保留。reviewer为同实施会话Codex /root，上下文独立性限制明确保留。[受影响复审](attachments/846/review-r3/review.md)。
+根冻结2fffb7e3a（pure SDK72e61c508+根性能修复，range-diff等价），图形仍bf22；F-846-M1-ROOT-MN-P95必要实现修复闭合，原30样本P95758.0851<1000。字段拒绝矩阵/COFF身份准入/双函数局部更新/原签名冲突30样本复审过，原R2未变AC/十目标SD具名保留。reviewer为同实施会话Codex /root，上下文独立性限制明确保留。[受影响复审](../attachments/846/review-r3/review.md)。
 
 实际master含831 UI迁仓，旧根44480门不能代替当前接收基面；新增只读组内auto-ui@aee499e87（正式交付pin），auto-down@c39ac7f9保持。第一次签名冲突因缺兄弟依赖在加载时exit102，已补齐后原命令通过，不当作产品红/静默跳过。根性能修复不改Schema/支持/数值/1000ms/30样本及门禁配置，零新规范合同；T10须当前根完整t+tv和迁走UI日常面、不缩减原覆盖，并完成剩余图形完整矩阵。pass不代表完整门或交付通过；未落地/规范发布/归档/清树。
 
 ### 2026-10-25 merge:r2 — 当前根完整门通过 / 图形矩阵执行中
 
-根冻结2fffb7e3a、固定UIaee499e/downc39ac7f9：语言裸t3161/3161、tv163/163通过。831迁仓前根门明确只选compiler/dialect/runtime三个UI包；迁前真实测试二进制与当前命令nextest清单逐ID相等247/86/1874共2207，原ignored与过滤均未改；[三包完整2207/2207通过及逐ID映射](attachments/846/merge-r2/ui-original-scope-equivalence.json.txt)。因此原5368全覆盖=3161+2207，skip1552=668+884，没有缩减原测试范围。完整档中的签名重建30样本P95887.1887ms<原1000ms。
+根冻结2fffb7e3a、固定UIaee499e/downc39ac7f9：语言裸t3161/3161、tv163/163通过。831迁仓前根门明确只选compiler/dialect/runtime三个UI包；迁前真实测试二进制与当前命令nextest清单逐ID相等247/86/1874共2207，原ignored与过滤均未改；[三包完整2207/2207通过及逐ID映射](../attachments/846/merge-r2/ui-original-scope-equivalence.json.txt)。因此原5368全覆盖=3161+2207，skip1552=668+884，没有缩减原测试范围。完整档中的签名重建30样本P95887.1887ms<原1000ms。
 
-首完整档FFI字段超时120s原样保留；原例1.548s与整族5定向通过后，在同冻结完整重跑全3161通过，未把定向pass替代整档、未改时限或过滤，超时原因未确认。新UI裸workspace额外选择原根门未含的189项tools/shell测试，扩展诊断命中已登记P693-D3/P751-D2的merged_api旧期望失败；不将其混作原5368门，也未冒称新UI全库绿或清偿该工具债。完整命令/原始失败与归属保留[收据数据](attachments/846/merge-r2/root-gates.json.txt)。
+首完整档FFI字段超时120s原样保留；原例1.548s与整族5定向通过后，在同冻结完整重跑全3161通过，未把定向pass替代整档、未改时限或过滤，超时原因未确认。新UI裸workspace额外选择原根门未含的189项tools/shell测试，扩展诊断命中已登记P693-D3/P751-D2的merged_api旧期望失败；不将其混作原5368门，也未冒称新UI全库绿或清偿该工具债。完整命令/原始失败与归属保留[收据数据](../attachments/846/merge-r2/root-gates.json.txt)。
 
 唯一WT已恢复图形bf22，来源345/SDK681/metadata479闭包及Git clean通过；producer/fresh consumer各178及AGP23未变复用仍有效，根性能代码不在其固定SDK依赖闭包内。剩余原生/owner/source/项目搬迁/Step及新spatial每侧14与owner完整矩阵正在同树串行执行。未落地/规范发布/归档/清树。
 
 ### 2026-10-25 review:R4 — Plan820接收基面对齐 / affected final pass
 
-实际master新增820共享MIR扩展，原2ff/00973根整档证据不作为最终接收证据。唯一WT顺序重放至2090e9094，根新冻结204bc0781；SDK210fc8410与性能204bc0781两补丁range-diff完全等价。原binder拒绝、整个cache_tier准入/身份及双函数局部更新在新基面通过；检查820新增类型/指令受控拒绝与windows-sys锁边，不改846五文件/SDK数值/支持/30样本1000ms合同。图形bf22未变，R2十目标SD保留。[R4受影响复审](attachments/846/review-r4/review.md)，同实施会话独立性限制如实记录。新根t/tv和原迁仓三UI包整档仍merge-owned pending；其通过前不合入。
+实际master新增820共享MIR扩展，原2ff/00973根整档证据不作为最终接收证据。唯一WT顺序重放至2090e9094，根新冻结204bc0781；SDK210fc8410与性能204bc0781两补丁range-diff完全等价。原binder拒绝、整个cache_tier准入/身份及双函数局部更新在新基面通过；检查820新增类型/指令受控拒绝与windows-sys锁边，不改846五文件/SDK数值/支持/30样本1000ms合同。图形bf22未变，R2十目标SD保留。[R4受影响复审](../attachments/846/review-r4/review.md)，同实施会话独立性限制如实记录。新根t/tv和原迁仓三UI包整档仍merge-owned pending；其通过前不合入。
 
 ### 2026-10-25 merge:r3 → work:r5 — 新接收基面P95再次失败
 
@@ -395,22 +396,32 @@ F-846-M1-ROOT-MN-P95：实际根接收冻结44480（纯SDK映射，master父9a6c
 
 ### 2026-10-25 work:r5 等待窗口结束 — needs_fix / executing9/11
 
-只读观察10分钟未取得连续30秒无其他构建窗口，故未再触发性能采样，无后台重试。最新有效原门仍P951107.9436≥1000，F-846-M1-ROOT-MN-P95未闭合；不能把竞争观察当作已确认唯一根因。原生重测87门完成证据保留，必要有界工具散列607ed28c6及8项测试已提交。唯一WT根角色clean、图形bf22/SDK永久tag/两个固定只读兄弟均保留；未合入/发布规范/写ledger/归档/清树。[当前恢复收据](attachments/846/merge-r3/receipt.md)、[当前未就绪记录](attachments/846/work-r5/readiness-pending.json.txt)。
+只读观察10分钟未取得连续30秒无其他构建窗口，故未再触发性能采样，无后台重试。最新有效原门仍P951107.9436≥1000，F-846-M1-ROOT-MN-P95未闭合；不能把竞争观察当作已确认唯一根因。原生重测87门完成证据保留，必要有界工具散列607ed28c6及8项测试已提交。唯一WT根角色clean、图形bf22/SDK永久tag/两个固定只读兄弟均保留；未合入/发布规范/写ledger/归档/清树。[当前恢复收据](../attachments/846/merge-r3/receipt.md)、[当前未就绪记录](../attachments/846/work-r5/readiness-pending.json.txt)。
 
 ### 2026-10-25 new:r3 — 用户授权暂缓AutoGraphics增量性能验收
 
-用户明确“暂时先把性能要求放松；功能完成尤其与真正ACE引擎合并后再优化；AutoGraphics暂只需支持增量编译，不考虑性能检查”。revision2→3，执行中9/11，AC/任务ID和已完功能保留，T09须受影响重审。F-846-M1-ROOT-MN-P95按明确合同变更转为非阻断观测/后续性能议题，历史1249.3752/1107.9436真实红原样保留，绝不宣称性能已修到1000以下。根完整t/tv及原UI迁仓面仍执行；新增命名策略只令MN增量编译延迟为观测，功能断言/30样本/支持/错误/实际链接运行/数值/运行时预算不变，默认其他根验证保持原性能策略。拟SD-06仅落现有integration-contract，r2其他十目标SD保留。[r3冻结提案](attachments/846/revision-r3/spec-delta.md)。本次授权足够，不另索确认。
+用户明确“暂时先把性能要求放松；功能完成尤其与真正ACE引擎合并后再优化；AutoGraphics暂只需支持增量编译，不考虑性能检查”。revision2→3，执行中9/11，AC/任务ID和已完功能保留，T09须受影响重审。F-846-M1-ROOT-MN-P95按明确合同变更转为非阻断观测/后续性能议题，历史1249.3752/1107.9436真实红原样保留，绝不宣称性能已修到1000以下。根完整t/tv及原UI迁仓面仍执行；新增命名策略只令MN增量编译延迟为观测，功能断言/30样本/支持/错误/实际链接运行/数值/运行时预算不变，默认其他根验证保持原性能策略。拟SD-06仅落现有integration-contract，r2其他十目标SD保留。[r3冻结提案](../attachments/846/revision-r3/spec-delta.md)。本次授权足够，不另索确认。
 
 ### 2026-10-25 review:R6 — r3受影响final pass / reviewed10/11
 
-根33ed071a6，图形bf22、SDK7b987ca8、UIaee499e/downc39ac7f固定。用户授权的AutoGraphics增量功能优先策略已实现，默认根性能门仍严格；显式observe只撤销四处增量延迟判定，原功能/缓存失效/实际链接运行/30样本/数值/支持/安全deadline不变。策略正反+实际序列+签名重建3/3，最终元数据修订后策略1/1；签名P951428.581ms明确观测非门禁，不冒称优化达标。有界工具散列及整cache8证据保留。SD06新提案与十目标r2SD经hash核冻结。AC01..08具名复用未变证据，AC09受影响通过；同实施会话审查上下文限制如实保留。[R6复审](attachments/846/review-r6/review.md)。F-846-M1-ROOT-MN-P95按用户合同变更转D-846-INCR-PERF后续议题，非“性能修复关闭”。T10仍须新冻结完整t/tv及原UI2207功能面，再完成全部落地/知识/归档/清理。
+根33ed071a6，图形bf22、SDK7b987ca8、UIaee499e/downc39ac7f固定。用户授权的AutoGraphics增量功能优先策略已实现，默认根性能门仍严格；显式observe只撤销四处增量延迟判定，原功能/缓存失效/实际链接运行/30样本/数值/支持/安全deadline不变。策略正反+实际序列+签名重建3/3，最终元数据修订后策略1/1；签名P951428.581ms明确观测非门禁，不冒称优化达标。有界工具散列及整cache8证据保留。SD06新提案与十目标r2SD经hash核冻结。AC01..08具名复用未变证据，AC09受影响通过；同实施会话审查上下文限制如实保留。[R6复审](../attachments/846/review-r6/review.md)。F-846-M1-ROOT-MN-P95按用户合同变更转D-846-INCR-PERF后续议题，非“性能修复关闭”。T10仍须新冻结完整t/tv及原UI2207功能面，再完成全部落地/知识/归档/清理。
 
 ### 2026-10-25 merge:r4 — r3冻结完整功能门通过
 
-根冻结ae5616472（R6根33ed071a6四补丁完全等价重放到mastera45a00678），显式AUTO_LANG_AUTOGRAPHICS_INCREMENTAL_PERF=observe，原30样本/全部功能断言/执行deadline不变。根裸t3173/3173（skip668）、tv163/163（skip2006）及原迁仓UI三包2207/2207（skip884）全部通过，原5368范围保留且纳入820与策略新增用例。所有原始结果绑定[本轮冻结](attachments/846/merge-r4/frozen-root.json.txt)/[本轮完整命令](attachments/846/merge-r4/root-gates.json.txt)。P95按r3仅观测，非优化达标声明；旧额外UI工具诊断红与847批量阻断不改记绿。
+根冻结ae5616472（R6根33ed071a6四补丁完全等价重放到mastera45a00678），显式AUTO_LANG_AUTOGRAPHICS_INCREMENTAL_PERF=observe，原30样本/全部功能断言/执行deadline不变。根裸t3173/3173（skip668）、tv163/163（skip2006）及原迁仓UI三包2207/2207（skip884）全部通过，原5368范围保留且纳入820与策略新增用例。所有原始结果绑定[本轮冻结](../attachments/846/merge-r4/frozen-root.json.txt)/[本轮完整命令](../attachments/846/merge-r4/root-gates.json.txt)。P95按r3仅观测，非优化达标声明；旧额外UI工具诊断红与847批量阻断不改记绿。
 
-图形bf22的87有效门（83原门+4空间）、producer/fresh consumer各178与AGP163/16原分母经实际断言审计；仅具名23 AGP未变复用。每侧14空间调用/4Step/15项目/2实际界面搬迁过，历史输入干扰失败原样保存；source345/SDK681/metadata479闭包再次通过且WT clean。[完整审计](attachments/846/merge-r1/validated.json.txt)。当前仅完整门已过，尚未记录landed/ledger/archive/cleanup；下一步规范准备及两条真实ff-only落地。
+图形bf22的87有效门（83原门+4空间）、producer/fresh consumer各178与AGP163/16原分母经实际断言审计；仅具名23 AGP未变复用。每侧14空间调用/4Step/15项目/2实际界面搬迁过，历史输入干扰失败原样保存；source345/SDK681/metadata479闭包再次通过且WT clean。[完整审计](../attachments/846/merge-r1/validated.json.txt)。当前仅完整门已过，尚未记录landed/ledger/archive/cleanup；下一步规范准备及两条真实ff-only落地。
+
+### 2026-10-25 merge:r4 — landed / ledger_refreshed / archived（cleanup pending）
+
+prepared/root delivery d369dd76024d0e7debe17d2d995ebd981d6b8bda；根master以真实ff-only接收SDK/根修复/策略与17个规范导航目标，graphics实现未入master。图形autographics-dev真实ff-only c1c7cfea5→bf22db346。与已测ae5616472四补丁range-diff全等，后继仅文档/派生账本。账本fcea7d8dc06de4f443fa25429d1fc9da593d83e7真实ff-only；guarded offline projection（无可达store writer），13项按canonical/hash投影，tracked83→84/live84→85，1190/1201无关原始条目与11项他人WIP保留，六段schema/链接/readback通过。详[实际落地及账本收据](../attachments/846/merge-r4/receipt.md)。
+
+completion_kind: delivered；当前实际归档，T10仅guard清树/产物观测/批量到期收尾pending，故保持10/11，不提前打勾。主检出存在他人既有docs/ledger簿记WIP，原样保留；本Plan只提交自身文件。性能按用户r3暂缓，真实ACE整合仍属后续工作。
 
 ## 10. 待澄清事项
 
 无待用户决定事项。r3已明确暂缓AutoGraphics增量编译性能检查，历史P95红不再阻断本线路；功能/数值/支持/运行时预算与原完整功能门保持。策略实现、受影响复审及新冻结完整功能门已通过，待合入/规范沉淀/账本/归档/清树。
+
+## 11. spec-sync 回写记录
+
+规范由唯一实施树准备并提交d369dd760：AutoGraphics有限空间profile及API/项目/Play/来源/实验边界、auto-val数值合同、VM architecture，以及模块overview/plans、goals/overview/INDEX共17目标。AutoGraphics增量编译仅验功能，性能待功能完成和真实ACE整合后另定，I2/I3未冒称完成。账本13项的稳定ID/文件/hash/版本及guarded offline channel见[投影与落地收据](../attachments/846/merge-r4/ledger-refreshed.json.txt)。

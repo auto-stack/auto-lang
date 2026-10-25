@@ -8,4 +8,6 @@ Full root t3173/3173, skip668; tv163/163, skip2006; exact original migrated UI3-
 
 Graphics87 effective invocations pass the actual assertion audit (merge-r1/validated.json.txt):83 original plus4 spatial, complete178 producer and178 fresh own-SDK/target consumer, AGP163/16cases with23 explicitly unchanged evidence slots, actual counter AND content controls, each side14 spatial calls/4Step/15projects/2native SaveAs relocations. Historical interference failures preserved; binary/source provenance limitations are explicit in artifact-provenance.md.
 
-Current checkpoints: prepared pending canonical commit; landed=false; ledger_refreshed=false; archived=false; cleaned=false. No deployment or batch success claimed.
+Current checkpoints: prepared=d369dd760; root/gfx landed=true; ledger_refreshed=fcea7d8dc; archived=true (actual-state receipt); cleaned=false (pending). No deployment or batch success claimed.
+
+Ledger channel: guarded offline projection, no reachable store writer;13 stable entries, tracked83→84/live84→85,11 foreign working items and all unrelated raw bytes preserved. Separate actual ff receipts and canonical hashes are in root-landed.json.txt, graphics-landed.json.txt and ledger-refreshed.json.txt. Archive actual-state checks pass with10/11 tasks; cleanup remains pending.
