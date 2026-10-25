@@ -420,7 +420,7 @@ switch ($Scope) {
                 exit 1
             }
         }
-        Write-Host "PASS: acceptance (all seven scopes replayed green)"
+        Write-Host "PASS: acceptance (all eight scopes replayed green)"
     }
 }
 Write-Host "PASS: scope '$Scope' green"
