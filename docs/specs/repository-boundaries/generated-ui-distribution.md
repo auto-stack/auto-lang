@@ -205,4 +205,4 @@ shadcn/根级输入):
 
 ## PLAN-832 Man 与三仓发行（SD-05，as-built）
 
-`auto` 与 auto-ui-tool 分属 Man/UI owner；792 driver 分别定位两仓实际二进制，producer 仍按固定语言/UI 源取件，不借主 target。Man 的 Core/full 安装复用受管 staging、hash/profile/source 校验、交换/备份和恢复语义，另补 CLI 所需的独立 workspace/锁与双 profile 布局。独立 clone、重定位、升级失败、等长篡改、缺 tool、取消和恢复均有真实正反控；详见 [man-three-repository-delivery](man-three-repository-delivery.md)。jet/ark 缺环境在 832 不作延期授权或完成声明。
+`auto` 与 auto-ui-tool 分属 Man/UI owner；792 driver 分别定位两仓实际二进制，producer 仍按固定语言/UI 源取件，不借主 target。Man 的 Core/full 安装复用受管 staging、hash/profile/source 校验、交换/备份和恢复语义，另补 CLI 所需的独立 workspace/锁与双 profile 布局。独立 clone、重定位、升级失败、等长篡改、缺 tool、取消和恢复均有真实正反控；详见 [man-three-repository-delivery](man-three-repository-delivery.md)。jet/ark 真实构建经 2026-10-25 用户正式裁定转 v0.7 环境门控渠道，未实测不冒称通过，其他发行与恢复验收不变。

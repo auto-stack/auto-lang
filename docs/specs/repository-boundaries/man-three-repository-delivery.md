@@ -1,6 +1,6 @@
 # Man 独立仓与三仓组合发行（PLAN-832 SD-01）
 
-> Status: active（as-built；支持矩阵中的 jet/ark 构建环境仍具名 pending）
+> Status: active（r3；jet/ark 真实构建经用户批准转 v0.7 环境门控渠道）
 
 ## 唯一 owner 与依赖
 
@@ -36,5 +36,5 @@
 
 - 独立 clone、fresh/locked、整组重定位、第三方 consumer、安装升级和恢复共 14 项通过；792 共 37 项通过（fresh/locked/重定位/工具/失败/真实运行）。
 - Core 安装 643 文件；full 安装 6608 文件。管理库 252、Core CLI 18、外部 consumer 23、tool client 30、CLI driver 7、compat 33 通过；24/122/4 测试 ID 与基线逐字一致。
-- Vue/Rust/vscode 真实构建、VM 真运行与六 profile 生成通过。**jet/ark 构建环境在本基线缺席**，仅生成已验证；832 未继承 831 的延期授权，不宣称该构建面或 M1 全部完成。缺工具链时必须保留具名 pending，不能删后端或假绿。
+- Vue/Rust/vscode 真实构建、VM 真运行与六 profile 生成通过。jet/ark 仅生成已验证；其真实构建经 2026-10-25 用户正式裁定转 v0.7 环境门控渠道（“暂时不测，等v0.7再考虑”），未实测不冒称通过，工具链在场且失败仍须非零。
 - 未执行远端 push、默认分支更名或 registry 发布；本地受管 CI 入口见 `docs/plans/attachments/832/ci-entrypoints.md`，不冒称远端 CI。

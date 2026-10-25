@@ -1,6 +1,6 @@
-# PLAN-832 T-09 交接与 readiness（jet/ark 环境项未决）
+# PLAN-832 T-09 交接与 readiness（r3 合同已裁定）
 
-状态：**work 材料齐备，但不送整体 execution_done / final pass**。AC-03 的 jet/ark 真实构建仍缺环境，T-10 不得据此启动整体终审。
+状态：**work 面完成，可交 T-10 独立终审；merge 门 pending**。用户于 2026-10-25 正式裁定 jet/ark 真实构建转 v0.7 环境门控渠道（“暂时不测，等v0.7再考虑”）。延期只覆盖这两项构建，未实测不冒称通过；其余 AC 范围不变。
 
 ## 1. 当前身份
 
@@ -16,18 +16,18 @@
 |---|---|---|
 | AC-01 Core/单源 | pass | [T-05](t05-verification.md)：normal/build/dev 无 UI、安装 SDK locked check、真实管理/VM；[切换 consumer](t08-source-switched.json.txt)；[最终来源](t09-source-audit.json.txt) |
 | AC-02 命令/API/寿命 | pass | [T-06](t06-verification.md)：client 30、CLI driver 7、compat 33、service/watch/退出；旧新失败阶段一致；24/122/4 测试 ID 逐字一致 |
-| AC-03 三仓 UI/安装 | **partial / open** | full 安装 6608 文件、真实三仓生成/build/run、独立 clone 14/14、792 37/37；**jet/ark 真实构建缺 Gradle/Hvigor，未获 832 延期授权** |
+| AC-03 三仓 UI/安装 | pass（r3） | full 安装 6608 文件、真实三仓生成/build/run、独立 clone 14/14、792 37/37；六 profile 生成、vue/rust/vscode 构建和 VM 运行满足必需面；jet/ark 构建经用户裁定转 v0.7 |
 | AC-04 发行/恢复 | pass | [T-07](t07-verification.md) 14/14；[取消恢复](t07-cancel-recovery.md)；792 fresh/locked/重定位/坏源/取消/恢复通过 |
 | AC-05 历史/事务 | pass | [保全](preservation.md)：29 refs/23 tags 恢复、tree 一致；目标先行→消费者切换→验证顺序已执行 |
 | AC-06 删除/测试/CI/SD | pass | 9 package+6 fixture 实际删除，185 迁移文件均在 Man；[CI](ci-entrypoints.md) 323 目标；777 0v/4gf、资产 20/410397B；SD-01..06 已写 canonical 并重建 61 项索引 |
-| AC-07 独立 final review | pending | 仅在 AC-03 未决项解决后进入 |
+| AC-07 独立 final review | pending（下一入口） | r3 范围已齐，绑定三仓冻结 commit 与实际 UI release；pass 仅表示 merge 门 pending |
 | AC-08 merge | pending | 冻结裸 cargo t + 触面档、落地/ledger/归档/guard 均未执行 |
 
 ## 3. 全部 V 复核
 
 - V-01：Core 独立安装、真实管理/协议执行、单一 source，pass。
 - V-02：完整命令/flags/JSON/stdin/路径兼容，pass；默认 run 与 split-demo 的旧新失败阶段也一致。
-- V-03：固定三仓 UI 工具生成/build/run、首次开发与安装，**jet/ark 构建 pending**。
+- V-03：固定三仓 UI 工具生成/build/run、首次开发与安装，r3 必需面 pass；jet/ark 构建按用户裁定转 v0.7，未实测不冒称通过。
 - V-04：fresh/locked/重定位/升级/坏锁/hash/source/patch/半安装/取消/交换与恢复，pass。
 - V-05：legacy refs/WIP/ignored 保全、恢复演练、切换失败保留，pass。
 - V-06：service vm/rust 配置与 ready、serve/req、watch/HMR、reader/child/线程寿命和测试 ID/CI，pass（Rust service 的真链证据沿 816 既有与 T-06 配置/VM 实跑，未冒称本轮重跑冷 Rust service）。
@@ -49,11 +49,8 @@
 
 plan734 tauri fixture 仍呈现上游已登记的排版金样差异；文件路径已切到 Man 且可读，非本迁仓缺文件/新回归，不纳入通过计数。
 
-## 6. 唯一开放项与解除动作
+## 6. 已裁定环境与下一责任角色
 
-**OPEN：jet/ark 真实构建环境。** 当前仅生成通过；本机无 Gradle/Java/ANDROID_HOME 与 hvigorw/DEVECO。832 未继承 831 r3 的延期授权。解除方式二选一：
+**jet/ark 已获用户正式延期至 v0.7。** 当前仅生成已验证，真实构建未执行，不宣称通过；工具链在场且实际失败仍须非零。承接项已登记 `docs/plans/KNOWN-DEBT-AND-RISKS.md`，不是静默缩面或删除后端。
 
-1. 提供真实工具链并执行 jet/ark 构建及产物检查；或
-2. 用户正式修订 832 的验收合同，明确该面的后续环境门控渠道。
-
-在此之前 Plan 保持 executing，T-09 不勾、T-10 不启动、不得合入或宣称 M1 完成。其余工作 owned 项无已知开放 finding。
+其余工作 owned 项无已知开放 finding。T-09 可勾选，下一责任角色为 T-10 独立终审；merge-owned 冻结门、实际落地、ledger、归档和 guard 清理仍 pending。
