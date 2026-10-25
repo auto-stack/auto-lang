@@ -58,3 +58,5 @@ source closure已刷新374；本轮独立 `python tools/verify_source.py` 核374
 [audit.py](audit.py)包含冻结/clean/四文件、依赖/Spec、raw子结果、独立兄弟及已接受V变异的可重放审计；详细身份在baseline。没有发现遗漏、未批准延后或掩盖产品缺陷的workaround，不新增债务候选。
 
 建议父代理单写Plan恢复 `reviewed`、9/10，T01..09完成，T10保持pending，关闭M848-NATIVE-BACKLOG。用户已授权后续合并，但必须先由merge在当前冻结提交完成/合法复用统一门；任何再次实现/依赖/配置/输入变化需受影响复审。根t/tv/tt/tb/tu/taa/docs_gen不触发，tf仍主检出批量单实例到期判定。本审查不合入、不提交、不清树；实施最终HEAD仍dd7076a7f且clean。
+
+父代理后续证据保全：本轮及work-r5的测试副本exe/PDB已按字节hash移至仓外长期目录，映射见[原生文件保全清单](../work-r5/native-artifacts.json.txt)。源码副本、报告和实际断言记录仍在原位置；该保全不修改审查结论。原audit是冻结且工作树存在时的审计，移树后的重放需按清单取回原文件或重建同一冻结版本。

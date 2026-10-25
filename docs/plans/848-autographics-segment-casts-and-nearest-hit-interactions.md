@@ -240,9 +240,9 @@ T-08登记准确完整矩阵；T-09最终独立pass后，T-10在冻结提交执�
 | T-05 | work | T-04 | Play profile9/callback begin-end/result token/weighted errors/consumer，新segment_host tests | [x] 原R1完整输入正式Host3分布均Paused/tick1，另6组实际Cylinder独立结果oracle，原Host4/宽深/配置/Stop恢复通过；新mixed dirty/visibility/move/final-field及缺标记变异闭合；AC-04, AC-05, AC-07|
 | T-06 | work | T-05 | Host/Panel/bin正式v3选择、samples/segment_projects/beam2d与sight3d | [x] V-08/09与旧v1/v2/项目分母定向通过，callback操作与实际Auto业务完整；AC-06|
 | T-07 | work | T-06 | 新check_segment_queries.py/OS/GPU/仓外new-process回放 | [x] V-09/10同binary/全部mesh反馈/条件变异/Stop/partial正反无gap；AC-08|
-| T-08 | work | T-07 | 新check_segment_owners.py/source/fresh consumer/README/new research/segment-query-handoff.md/Spec proposal | [x] 373源/固定SDK/锁闭包与四反控、独立SDK/target消费12相关测试、4原生+2重开，slot+dirty60B及实际SDK存储、heap/owner未变边界、提案/完整门216分母及readiness齐；AC-01, AC-07, AC-08|
-| T-09 | review | T-08 | 同树冻结code/Plan/Spec与raw，主检出独立review附件 | AC-01..08逐项/遗漏/延后/workaround/健康、版本绑定结论；AC-09 |
-| T-10 | merge | T-09 pass | 新冻结完整门→autographics-dev；主检出知识/ledger/archive/guard/到期 | AC-10真实交付/清理，改代码先受影响复审再冻结，不提前冒领 |
+| T-08 | work | T-07 | 新check_segment_owners.py/source/fresh consumer/README/new research/segment-query-handoff.md/Spec proposal | [x] 374源/固定SDK/锁闭包与四反控、独立SDK/target消费12相关测试、4原生+2重开，slot+dirty60B及实际SDK存储、heap/owner未变边界、提案/完整门216分母及readiness齐；AC-01, AC-07, AC-08|
+| T-09 | review | T-08 | 同树冻结code/Plan/Spec与raw，主检出独立review附件 | [x] AC-01..08逐项/遗漏/延后/workaround/健康、版本绑定结论；AC-09 |
+| T-10 | merge | T-09 pass | 新冻结完整门→autographics-dev；主检出知识/ledger/archive/guard/到期 | [ ] AC-10真实交付/清理，改代码先受影响复审再冻结，不提前冒领 |
 
 ## 9. 复审记录
 
@@ -369,6 +369,10 @@ stage:work | plan_id:PLAN-848 | plan_revision:3 | outcome:pass | worktree_path:D
 独立子代理/root/review_848_r3复审冻结dd7076a7f40b35ffda6b876c36f826af3443fb97，M848-NATIVE-BACKLOG CLOSED。另选实际OS兄弟控制：phase13文本焦点300ms display-gap恢复、phase10真实3D held-motion恢复、100ms恢复后wrong-focus仍拒绝均成立；强制重投已接受V的副本在phase17原隐藏断言失败，接受凭据具有区分性。work-r5六clock/三native/四Step raw子断言及hash审计通过。产品clock/Host/Auto/SDK/AGP/锁及冻结Spec delta未变，原F01闭合证据保留。[完整独立报告](attachments/848/review-r4-final/review.md)。最终HEAD/clean无漂移，未修改实施或主计划，父代理单写本记录。
 
 stage:review | review_scope:final affected | reviewer_identity:独立子代理/root/review_848_r3，未参与work:r5实施 | plan_id:PLAN-848 | plan_revision:3 | outcome:pass | reviewed_commit:dd7076a7f40b35ffda6b876c36f826af3443fb97 | base_commit:bf22db3465203f3babd649494f4b37aa2a012027 | dependency_revisions:SDK7b987/AGP/三锁未变 | spec_inputs:review-r4-final/baseline与原a07b8bff14af5359d9eef139da1d4204d3e0a9bca907a541b57005800529d89a | acceptance_results:AC01..09 pass，AC10 pending | findings:M848-NATIVE-BACKLOG CLOSED，F-848-R1-01保留CLOSED | pending_closeout_gates:T10全部完整门 | next:按用户已授权执行merge统一门，全部过后落地/沉淀/归档/guard清理。
+
+### 2026-10-25 merge:r2 — complete frozen gates pass，开始沉淀
+
+冻结dd7076a7f/SDK7b987/原三锁上完整producer216与fresh own-SDK/初始空target consumer216均0fail/0ignore，完整build/check/fmt/source正反通过。两端各13user/4Step/15project+2真实UI输出搬迁，12spatial+2reopen、14segment+4reopen、6clock控制，原双游戏/编辑/交互/层级GPU/资产/Play及全部owner变异/恢复完成；77当前组+23严格未变AGP槽保留原87语义分母，原始像素/trace/阶段/选择数审计通过。[完整收据](attachments/848/merge-r2/receipt.md)、[审计](attachments/848/merge-r2/validated.json.txt)。唯一新失败为consumer时钟副本链接磁盘不足，guard后以Cargo定向清旧r3缓存21.5GiB，同配置重跑六项通过，历史失败留档，open失败为空。原128/32/CPU/数值不变，无实现/SDK后改。下一步实际快进源码到autographics-dev，再同树知识沉淀、账本、归档及guard清理；完成前T10保持pending。
 
 ## 10. 待澄清事项
 
