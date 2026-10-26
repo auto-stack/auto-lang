@@ -4736,6 +4736,31 @@
  "modified_at": 1793023495,
  "completed_at": 1793023495
 }
+,
+{
+ "id": "P854-MERGE",
+ "title": "PLAN-854 M2/S0 checked source consolidation",
+ "content": "PLAN-854:r1 source delivery523d27b863dbe306c89af0ea546334225a29f8e9 on autographics-dev only; master holds reviewed behavior/source canonical contracts and this derived ledger. Gate/landing/archive/guard/artifact/batch receipts: docs/plans/attachments/854/merge-r1/receipt.md; archive docs/plans/archive/854-autographics-behavior-source-assembly.md. M2/S0 compatibility and maintenance; new M2 capabilities/I2/I3 pending.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/plans.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-854",
+  "r1",
+  "reviewed:523d27b863dbe306c89af0ea546334225a29f8e9",
+  "source-commit:8ea8da946dd32e9b660127d432442f88dd262084",
+  "source-sha256:c6c5cb8c3be3627ac07c099d81b7d7e86cf2b2743752463c4b640624136b1969"
+ ],
+ "created_at": 1793030588,
+ "modified_at": 1793030588,
+ "completed_at": 1793030588
+}
 ],
       "section_type": "Reports",
       "title": "📊 Reports",
@@ -6455,7 +6480,7 @@
         {
  "id": "GOAL-008",
  "title": "App generation and AI Authoring",
- "content": "Canonical GOAL-008 remains in progress. PLAN-851 adds portable user Auto Maze2D/Corridor3D and source/asset closure; production Forge/distribution I3 remains pending.\n\nPLAN-853 adds experimental M2/S0 comparable performance/resource baselines and complete portable source/test/runner evidence. GOAL-008 remains in progress; new M2 capabilities and production Forge/distribution I3 remain pending.",
+ "content": "Canonical GOAL-008 remains in progress. PLAN-851 adds portable user Auto Maze2D/Corridor3D and source/asset closure; production Forge/distribution I3 remains pending.\n\nPLAN-853 adds experimental M2/S0 comparable performance/resource baselines and complete portable source/test/runner evidence. GOAL-008 remains in progress; new M2 capabilities and production Forge/distribution I3 remain pending.\n\nPLAN-854 adds experimental M2/S0 checked behavior source generation and exact compatibility/consumer evidence. GOAL-008 remains in progress; no new M2 capability or production Forge/distribution I3 delivery.",
  "status": "in_progress",
  "depends_on": [],
  "related": [],
@@ -6477,11 +6502,13 @@
   "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
   "PLAN-853",
   "reviewed:c1961665d1a90a8705994085fd4344a1d6a9a564",
-  "source-commit:6d427a4a7165d5cb69bcfae2c9bdc668d26811d0",
-  "source-sha256:fb866ebf13abf90b93c94865dbdbbec949b1d664c6b4ea7e7ae38be5e59b5023"
+  "PLAN-854",
+  "reviewed:523d27b863dbe306c89af0ea546334225a29f8e9",
+  "source-commit:8ea8da946dd32e9b660127d432442f88dd262084",
+  "source-sha256:5a5a0b93589518c5bf290ba7eb04b1b969ec94f59f5154d6e42366df7c5cce19"
  ],
  "created_at": 1792941529,
- "modified_at": 1793023495,
+ "modified_at": 1793030588,
  "completed_at": null
 }
       ],
@@ -15239,7 +15266,7 @@
         {
  "id": "P833-AUTO-SOURCE",
  "title": "AutoGraphics auto-source-driver",
- "content": "One source-only runner opens complete scene/assets/scripts projects; same binary Move/Patrol/source-speed logic, actual UI-output relocation, full old/new compatibility and independent consumer gates.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.\n\nPLAN-851:r4 explicit behavior/5/profile11 bounded Auto move-and-slide, maximum two contacts, directional initial-boundary policy, actual f32 final candidate admission and typed cast/sweep/motion latest slot. Original128-node/CPU/32credits/SDK/source/resource boundaries and old versions remain; canonical target is authoritative and production I2/I3 remain pending.\n\nPLAN-853:r1 M2/S0 establishes comparable monotonic CPU/resource observation, default-off bounded scalar samples, five real Host workloads and raw off/on/process statistics; explicit current441-source/681-SDK consumer closure, five API credential/emitted-byte distinction, immutable actual runners and complete owned test frames preserve historical85-group/original IDs and semantic oracles. The canonical target is authoritative; no new M2 capability or production I2/I3 completion.",
+ "content": "One source-only runner opens complete scene/assets/scripts projects; same binary Move/Patrol/source-speed logic, actual UI-output relocation, full old/new compatibility and independent consumer gates.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.\n\nPLAN-851:r4 explicit behavior/5/profile11 bounded Auto move-and-slide, maximum two contacts, directional initial-boundary policy, actual f32 final candidate admission and typed cast/sweep/motion latest slot. Original128-node/CPU/32credits/SDK/source/resource boundaries and old versions remain; canonical target is authoritative and production I2/I3 remain pending.\n\nPLAN-853:r1 M2/S0 establishes comparable monotonic CPU/resource observation, default-off bounded scalar samples, five real Host workloads and raw off/on/process statistics; explicit current441-source/681-SDK consumer closure, five API credential/emitted-byte distinction, immutable actual runners and complete owned test frames preserve historical85-group/original IDs and semantic oracles. The canonical target is authoritative; no new M2 capability or production I2/I3 completion.\n\nPLAN-854:r1 keeps five behavior source versions byte-identical through one exhaustive trusted assembly entry with checked components, ordered boundaries and transformation cardinalities. Existing source admission/namespace/compatibility credentials/regions, Play semantics, budgets, SDK and public API remain unchanged. Current source/consumer closure is plan854; canonical target is authoritative. M2/S0 maintenance only; no speedup or production I2/I3 completion.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15266,12 +15293,14 @@
   "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
   "PLAN-853",
   "reviewed:c1961665d1a90a8705994085fd4344a1d6a9a564",
-  "source-commit:6d427a4a7165d5cb69bcfae2c9bdc668d26811d0",
-  "source-sha256:6ae85efd25c9e020d2230dd778536d6a0c6556828d9c841ffdd7e0dfb8e4b8f7"
+  "PLAN-854",
+  "reviewed:523d27b863dbe306c89af0ea546334225a29f8e9",
+  "source-commit:8ea8da946dd32e9b660127d432442f88dd262084",
+  "source-sha256:b018313713772f49c49ed308bf062a2d32e7f8cb7989d8554d361f14735f046c"
  ],
  "created_at": 1792685069,
- "modified_at": 1793023495,
- "completed_at": 1793023495
+ "modified_at": 1793030588,
+ "completed_at": 1793030588
 },
         {
           "id": "P828-SRC",
@@ -15570,7 +15599,7 @@
         {
  "id": "P840-BEHAVIOR-API",
  "title": "AutoGraphics behavior-api",
- "content": "Existing behavior1 functions/callbacks/limits unchanged; bound scene default and exact accepted bytes complement temporary per-Run file selection without changing API semantics.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.\n\nPLAN-851:r4 explicit behavior/5/profile11 bounded Auto move-and-slide, maximum two contacts, directional initial-boundary policy, actual f32 final candidate admission and typed cast/sweep/motion latest slot. Original128-node/CPU/32credits/SDK/source/resource boundaries and old versions remain; canonical target is authoritative and production I2/I3 remain pending.",
+ "content": "Existing behavior1 functions/callbacks/limits unchanged; bound scene default and exact accepted bytes complement temporary per-Run file selection without changing API semantics.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.\n\nPLAN-851:r4 explicit behavior/5/profile11 bounded Auto move-and-slide, maximum two contacts, directional initial-boundary policy, actual f32 final candidate admission and typed cast/sweep/motion latest slot. Original128-node/CPU/32credits/SDK/source/resource boundaries and old versions remain; canonical target is authoritative and production I2/I3 remain pending.\n\nPLAN-854:r1 keeps five behavior source versions byte-identical through one exhaustive trusted assembly entry with checked components, ordered boundaries and transformation cardinalities. Existing source admission/namespace/compatibility credentials/regions, Play semantics, budgets, SDK and public API remain unchanged. Current source/consumer closure is plan854; canonical target is authoritative. M2/S0 maintenance only; no speedup or production I2/I3 completion.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15595,12 +15624,14 @@
   "PLAN-851",
   "r4",
   "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
-  "source-commit:4fabe4931997d7636c11bc683fa54f405683e6cb",
-  "source-sha256:f5985a7bd3ab8bfe014cd3939e87bc09f75c598589f9b869a60ffcb9b8a7612c"
+  "PLAN-854",
+  "reviewed:523d27b863dbe306c89af0ea546334225a29f8e9",
+  "source-commit:8ea8da946dd32e9b660127d432442f88dd262084",
+  "source-sha256:e8cdf5b7cce5bd2dbcc729221557dfc1218e7e7c7b072367294acacf3755ebd4"
  ],
  "created_at": 1792828504,
- "modified_at": 1792998181,
- "completed_at": 1792998181
+ "modified_at": 1793030588,
+ "completed_at": 1793030588
 },
         {
           "id": "P840-SDK",
@@ -19980,6 +20011,31 @@
  "created_at": 1793023495,
  "modified_at": 1793023495,
  "completed_at": 1793023495
+}
+,
+{
+ "id": "P854-TESTS",
+ "title": "PLAN-854 source identity and trusted boundary verification",
+ "content": "Ten frozen actual853 LF/CRLF Unicode/local fixtures and independent trusted boundary/component mutation/restoration tests preserve actual bytes and metadata. Independent final R1 holdouts and tools7 cases pass; frozen merge complete producer/fresh consumer and original native/owner/content matrices are audited separately. Source/SDK/artifact identities, measured50 processes1500 ticks and complete raw gates: docs/plans/attachments/854/merge-r1/receipt.md.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/behavior-api.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-854",
+  "r1",
+  "reviewed:523d27b863dbe306c89af0ea546334225a29f8e9",
+  "source-commit:8ea8da946dd32e9b660127d432442f88dd262084",
+  "source-sha256:e8cdf5b7cce5bd2dbcc729221557dfc1218e7e7c7b072367294acacf3755ebd4"
+ ],
+ "created_at": 1793030588,
+ "modified_at": 1793030588,
+ "completed_at": 1793030588
 }
 ],
       "section_type": "Tests",
@@ -26762,6 +26818,31 @@
  "modified_at": 1793023495,
  "completed_at": 1793023495
 }
+,
+{
+ "id": "P854-R1",
+ "title": "PLAN-854 r1 independent final R1 PASS",
+ "content": "Independent /root/review_854_r1 final review binds523d27b863dbe306c89af0ea546334225a29f8e9 and frozen SD SHA6a29da3e8857594c97f22aecf0f762ba6ee62643f533661fbef96a44e96f4b9a. AC01..06/V01..05/SD01..02 pass, no findings; metadata provenance limitations remain explicit. Full merge gates were pending at review and are separately verified by the consolidation receipt; no waiver.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/attachments/854/review-r1/review.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-854",
+  "r1",
+  "reviewed:523d27b863dbe306c89af0ea546334225a29f8e9",
+  "source-commit:8ea8da946dd32e9b660127d432442f88dd262084",
+  "source-sha256:98c64ecf314096c37048767e56e38b5dab0d39d16a2055214b25e9492a437608"
+ ],
+ "created_at": 1793030588,
+ "modified_at": 1793030588,
+ "completed_at": 1793030588
+}
 ],
       "section_type": "Reviews",
       "title": "🔍 Reviews",
@@ -26773,5 +26854,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 95
+  "version": 96
 }
