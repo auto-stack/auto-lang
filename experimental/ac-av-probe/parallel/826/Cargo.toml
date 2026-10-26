@@ -1,0 +1,10 @@
+[package]
+name = "auto-av-compact-826"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+auto-av-core = { path = "../../core" }
