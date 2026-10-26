@@ -158,6 +158,27 @@ D852=本revision底座独立review、冻结门禁、实际合入、Spec/merge收
 | SD-04 | modify | docs/specs/auto-test-case/project.md | 导航新语料、认证与缺口 | 现状准确 | AC-05/08 |
 | SD-05 | modify | docs/specs/auto-test-case/profile-v1.md、profile-v2-native.md | 保持旧接受/拒绝集；新增合同显式版本化/导航 | 不宽松忽略未知字段 | AC-04/06 |
 
+### 规范增量补记（R1 修复后，merge 执行的具体沉淀文本）
+
+- **SD-01/02（add，工作树已备稿）**：`docs/specs/auto-test-case/ace-m1-conformance.md`
+  与 `a2r-golden-certification.md` 全文入正式 Spec；内容=R1 修复后事实（严格收据验证、
+  toolchain 构建期轴日常核查、wrapper 单源 `oracle/wrapper-main-v1.rs`、双管并发排水
+  与溢出杀树、G02 真实进程计数语义含 worker 维护构建豁免分类）。
+- **SD-03（modify，architecture.md 追加节"ace-m1 认证拓扑"）**：在现有 adapter 拓扑
+  节后追加：认证器为独立 bin（`ace-certify`，`auto-lang-core::test_cases::ace_certify`），
+  不属 suite runner 派发面；日常 face（snapshot scope）=emit+byte-compare+严格收据
+  验证+ancestry 进程计数，认证 face 仅显式入口；报告新增 `build-rustc-identity`
+  toolchain 轴（build.rs 捕获，零 spawn）。
+- **SD-04（modify，project.md 导航行）**：模块清单追加 ace-m1 语料
+  （`crates/auto-lang/test/cases/ace-m1/`：binding.tsv 分母登记/64源参考/base 套件/
+  证书 registry）与 verify 脚本六 scope、`ace-certify` 入口、证书 schema `ace.m1.cert/1`。
+- **SD-05（modify，profile-v1/v2 各加导航注）**：v1/v2 合同不变（接受/拒绝集保持，
+  未知字段仍拒）；各加一行导航：外部资产身份合同（收据/wrapper/binding）以
+  `ace.m1.cert/1`、`ace.m1.binding/1` 独立版本化，不进 case/suite 解码器。
+- **touched_goals 为空的说明**：852 是测试底座交付，不改写 roadmap 目标条目本身；
+  M1 语言/native 目标的推进归属 822～826 与 native 扩面/在线 loader 能力包，852 只
+  为其提供分母登记与验证入口（D852 交接），故不登记 touched_goals。
+
 ## 6. 测试设计
 
 [源码/参考](attachments/852/README.md)与[补充合同](attachments/852/SCENARIOS.md)为固定分母：W01～05、D01～09、E01～03、C01～02、R01～06、I01～12、G01～08。supplement各行在T-01 binding表绑定AC、owner_stage=work、实际入口/状态、独立oracle；不能只放文档算已运行。
