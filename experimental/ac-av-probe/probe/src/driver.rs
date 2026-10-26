@@ -1197,7 +1197,12 @@ impl Driver {
             execute(&loaded, &limits, &cancel)
         });
         obs.set_counter("av_execute", 1);
-        obs.set_counter("av_peak_slot_bytes", trace.peak_slot_bytes);
+        obs.set_counter(
+            "av_peak_slot_bytes",
+            trace
+                .peak_slot_bytes
+                .saturating_add(trace.loaded_index_bytes),
+        );
         obs.set_counter("loaded_index_builds", trace.loaded_index_builds);
         obs.set_counter("loaded_index_reuses", trace.loaded_index_reuses);
         obs.set_counter("loaded_index_bytes", trace.loaded_index_bytes);

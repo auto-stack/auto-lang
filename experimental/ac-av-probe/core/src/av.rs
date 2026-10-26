@@ -597,12 +597,9 @@ pub(crate) trait ModuleView {
     /// Whether a type index OWNS resources (Str / resource record) —
     /// move-in CALL semantics and slot kills (PLAN-821).
     fn type_is_owned(&self, func: u32, ty: u32) -> bool;
-    fn has_loaded_index(&self, _func: u32) -> bool {
-        false
-    }
-    fn logical_pc(&self, func: u32, block: u32, ip: usize) -> Option<u32> {
+    fn logical_pc(&self, func: u32, block: u32, ip: usize) -> Option<(bool, u32)> {
         let f = self.fn_at(func)?;
-        Some(f.block_base(block) + ip as u32)
+        Some((false, f.block_base(block) + ip as u32))
     }
     fn param_slots(&self, _func: u32) -> Option<&[u32]> {
         None
@@ -690,11 +687,8 @@ impl ModuleView for LoadedView<'_> {
     fn type_is_owned(&self, _func: u32, ty: u32) -> bool {
         crate::ownership::type_is_owned(self.0, ty)
     }
-    fn has_loaded_index(&self, func: u32) -> bool {
-        self.1.has_function(func)
-    }
-    fn logical_pc(&self, func: u32, block: u32, ip: usize) -> Option<u32> {
-        self.1.logical_pc(func, block, ip)
+    fn logical_pc(&self, func: u32, block: u32, ip: usize) -> Option<(bool, u32)> {
+        self.1.logical_pc(func, block, ip).map(|pc| (true, pc))
     }
     fn param_slots(&self, func: u32) -> Option<&[u32]> {
         self.1.param_slots(func)
@@ -2080,19 +2074,19 @@ fn dispatch<V: ModuleView>(
                 let fr = st.frames.last_mut().expect("frame present");
                 fr.ip += 1;
             }
-            if v.has_loaded_index(func_idx) {
-                st.trace.loaded_pc_lookups += 1;
-            } else {
-                st.trace.reference_pc_lookups += 1;
-            }
-            let flat = match v.logical_pc(func_idx, block_idx, ip) {
-                Some(flat) => flat,
+            let (loaded, flat) = match v.logical_pc(func_idx, block_idx, ip) {
+                Some(parts) => parts,
                 None => {
                     return Some(ExecOutcome::Infra(format!(
                         "logical PC missing for func #{func_idx} block #{block_idx} ip {ip}"
                     )))
                 }
             };
+            if loaded {
+                st.trace.loaded_pc_lookups += 1;
+            } else {
+                st.trace.reference_pc_lookups += 1;
+            }
             match instr {
                 MirInstr::Const { dst, value } => {
                     let cv = match v.const_at(func_idx, *value) {

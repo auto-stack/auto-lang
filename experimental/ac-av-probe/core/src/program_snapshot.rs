@@ -649,14 +649,15 @@ impl crate::av::ModuleView for UnitView<'_> {
             CalleeRef::Func(_) => None,
         }
     }
-    fn has_loaded_index(&self, func: u32) -> bool {
-        self.use_loaded && self.snap.loaded.has_function(func)
-    }
-    fn logical_pc(&self, func: u32, block: u32, ip: usize) -> Option<u32> {
+    fn logical_pc(&self, func: u32, block: u32, ip: usize) -> Option<(bool, u32)> {
         if self.use_loaded && self.snap.loaded.has_function(func) {
-            self.snap.loaded.logical_pc(func, block, ip)
+            self.snap
+                .loaded
+                .logical_pc(func, block, ip)
+                .map(|pc| (true, pc))
         } else {
-            self.fn_at(func).map(|f| f.block_base(block) + ip as u32)
+            self.fn_at(func)
+                .map(|f| (false, f.block_base(block) + ip as u32))
         }
     }
     fn param_slots(&self, func: u32) -> Option<&[u32]> {
