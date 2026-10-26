@@ -17,3 +17,8 @@ No root cargo t/tf/tv/tu/docs_gen tier is triggered by this independent experime
 ## Checkpoints
 
 prepared: current review/dependencies/frozen delta and all complete gates verified. Source/canonical/ledger publication, archive and cleanup pending; no prior delivery claimed here.
+
+- landed: source c1961665d→523d27b86 exact reviewed ff-only on autographics-dev; master ff-only to 3c909aeaf36a926d180e2dea98cbe4fb49149ee6 with canonical8ea8da946dd32e9b660127d432442f88dd262084. Source not rebased; documentation-only rebase mapping and exact six-tag correction in landed.json.txt / docs-rebase-equal.txt / docs-rebase-final.txt.
+- ledger_refreshed: guarded offline projection, no store reachable; v95→96,6 affected IDs,1252 unrelated raw items unchanged. Backup/readback/hash guards passed; no store success claimed.
+- canonical: existing behavior/source topics, module overview/plans and GOAL-008 updated; no new architectural module/ADR. INDEX regeneration has no semantic diff; foreign working INDEX preserved.
+- archive preparation: actual archive path/status delivered8/9, cleanup still pending until committed actual-state check.

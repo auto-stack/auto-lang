@@ -1,10 +1,11 @@
 ---
 plan_id: PLAN-854
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: AutoGraphics行为源码生成与版本兼容整理
 author: [Codex]
 created_at: 2026-10-26
-updated_at: 2026-10-26
+updated_at: 2026-10-27
 plan_revision: 1
 supersedes_spec_components:
   - docs/specs/auto-graphics/behavior-api.md
@@ -12,7 +13,7 @@ supersedes_spec_components:
 new_spec_components: []
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 7
+current_step: 8
 total_steps: 9
 ---
 
@@ -29,7 +30,7 @@ M2/S0第二份优化合同，覆盖OPT-01：在853基线与证据工具交付后
 - 对必需trusted片段/替换边界作明确检查，错误生成不能带着表面正确的hash进入编译/发布。
 - 在853同条件基线下报告源码生成/编译/运行与资源对照；主要成果是兼容与可维护性，不能凭行数宣称加速。
 
-非目标：改API、namespace规则、Auto数学展开、查询/运动协议、managed空间/CPU/资源预算、缓存新生命周期、SDK/AGP/依赖、Host拆分、游戏/编辑功能或HIR/ACE。[共同合同](attachments/853/planning/optimization-contract.md)组成此Plan保持面与门禁合同。
+非目标：改API、namespace规则、Auto数学展开、查询/运动协议、managed空间/CPU/资源预算、缓存新生命周期、SDK/AGP/依赖、Host拆分、游戏/编辑功能或HIR/ACE。[共同合同](../attachments/853/planning/optimization-contract.md)组成此Plan保持面与门禁合同。
 
 ## 2. 架构方案
 
@@ -45,9 +46,9 @@ M2/S0第二份优化合同，覆盖OPT-01：在853基线与证据工具交付后
 
 授权来源为2026-10-26用户的M2设计/战略及优化规划请求。本轮仅起草，实施须启动；无另开agent/建仓/推送授权。853交付是硬前置，不凭其draft假定工具/结果存在。
 
-先读[模块概览](../specs/auto-graphics/overview.md)、[行为API](../specs/auto-graphics/behavior-api.md)、[源码驱动](../specs/auto-graphics/auto-source-driver.md)、[运动](../specs/auto-graphics/bounded-motion-profile.md)。现行Specs定义语义/身份，本Plan只补生成结构和受检边界，不改它们的旧承诺。
+先读[模块概览](../../specs/auto-graphics/overview.md)、[行为API](../../specs/auto-graphics/behavior-api.md)、[源码驱动](../../specs/auto-graphics/auto-source-driver.md)、[运动](../../specs/auto-graphics/bounded-motion-profile.md)。现行Specs定义语义/身份，本Plan只补生成结构和受检边界，不改它们的旧承诺。
 
-M1观察与SHA见[source-observation](attachments/853/planning/source-observation.json.txt)。`src/authoring/behavior.rs`1214行；`SourceSnapshot::from_bytes_for`286–389附近用条件、compact和replace组合五版本，v5又注入derive/leaf同步。`bridge`依赖Builtin6来源分段；`segment_transport/segment_base_api/segment_compact/namespace`分别承担现有变换。行数含测试/诊断，未证明性能缺陷。
+M1观察与SHA见[source-observation](../attachments/853/planning/source-observation.json.txt)。`src/authoring/behavior.rs`1214行；`SourceSnapshot::from_bytes_for`286–389附近用条件、compact和replace组合五版本，v5又注入derive/leaf同步。`bridge`依赖Builtin6来源分段；`segment_transport/segment_base_api/segment_compact/namespace`分别承担现有变换。行数含测试/诊断，未证明性能缺陷。
 
 [853](853-autographics-m2-baselines-and-evidence.md)负责先导出真实生成基线/分段性能与当前闭包；本Plan执行前补其实际交付commit、工具命令和fixture清单。当前M1只是调查锚，不是尚未知的854实施冻结提交。
 
@@ -118,9 +119,9 @@ T-04新增当前`research/plan854-identity.json`/verifier，沿853明确当前�
 | T-03 | work | T-02 | behavior.rs及拟定assembly.rs；单入口/显式版本/受检marker，V-01..03 | AC-02/03/04 | [x] |
 | T-04 | work | T-03 | 当前854 identity/verifier/consumer与853同条件对照，V-05 | AC-01/05 | [x] |
 | T-05 | work | T-03/04 | 真实Auto/项目/版本Host定向回归、V-04，提交最终代码/SD/证据，不跑整档 | AC-01..05 | [x] |
-| T-06 | review | T-05 | 独立最终review R1 pass；[完整AC/V/SD证据](attachments/854/review-r1/review.md)，merge门仍pending | AC-06 | [x] |
+| T-06 | review | T-05 | 独立最终review R1 pass；[完整AC/V/SD证据](../attachments/854/review-r1/review.md)，merge门仍pending | AC-06 | [x] |
 | T-07 | merge | T-06 pass | 冻结两端完整/受影响原native-owner-content/新面，核不可变runner/选中ID | AC-07 | [x] |
-| T-08 | merge | T-07 | 源码只合autographics-dev；main沉淀SD/overview/plans/ADR/ledger/索引并归档 | AC-08 | [ ] |
+| T-08 | merge | T-07 | 源码只合autographics-dev；main沉淀SD/overview/plans/ADR/ledger/索引并归档 | AC-08 | [x] |
 | T-09 | merge | T-08 | guard clean后清树/临时分支，保留恢复产物/实际9/9，交接855 | AC-08 | [ ] |
 
 ## 9. 复审记录
@@ -129,11 +130,11 @@ T-04新增当前`research/plan854-identity.json`/verifier，沿853明确当前�
 
 2026-10-26 work entry：用户明确授权实施；853已 archived/delivered 9/9，实际交付与 autographics-dev HEAD 均为 c1961665d1a90a8705994085fd4344a1d6a9a564。唯一树 D:/autostack/.wt/lang-854/auto-lang / plan-854-dev 从该提交创建，顶层/分支已断言。SDK固定681文件已从Git对象重建。主检出既有未跟踪 crates/Cargo.lock 和 test/fixtures/modularity 输入已披露并保持不动。当前 T-01 正在重算原输出，尚未改assembler；review/merge门未执行。
 
-2026-10-26 T-01/02完成：本树原实现先独立构建并导出21文件，与853保留runner重导出及交付baseline-r2逐字节一致；[基面/实际输出SHA](attachments/854/work/entry.json.txt)。[局部组织决策与高风险执行合同](attachments/854/work/assembly-decision.md)已先于生成器修改记录，选择具名纯函数+穷尽Api匹配，历史v5无效替换只移除不启用。十组原输出metadata冻结入tests/fixtures/behavior-source-853.json（无更新模式）。目前新identity测试1例与实际trusted边界负控2例通过；初次整profile/版本文本替换碰到return10前缀而被新次数检查拒绝，已改完整函数声明边界，最终五版本字节等价通过。cargo fmt --all因固定SDK嵌套workspace不适用，改本package fmt通过；未改SDK/锁。T-03..05继续，未送review。
+2026-10-26 T-01/02完成：本树原实现先独立构建并导出21文件，与853保留runner重导出及交付baseline-r2逐字节一致；[基面/实际输出SHA](../attachments/854/work/entry.json.txt)。[局部组织决策与高风险执行合同](../attachments/854/work/assembly-decision.md)已先于生成器修改记录，选择具名纯函数+穷尽Api匹配，历史v5无效替换只移除不启用。十组原输出metadata冻结入tests/fixtures/behavior-source-853.json（无更新模式）。目前新identity测试1例与实际trusted边界负控2例通过；初次整profile/版本文本替换碰到return10前缀而被新次数检查拒绝，已改完整函数声明边界，最终五版本字节等价通过。cargo fmt --all因固定SDK嵌套workspace不适用，改本package fmt通过；未改SDK/锁。T-03..05继续，未送review。
 
-2026-10-26 T-03完成：实现提交16fea18a8，唯一单入口/五版本具名路径、受检marker与部件、internal assembly错误已接入。新assembly3例、冻结identity1例、原8个定向binary43例全通过，[命令/选中ID/日志SHA](attachments/854/work/scoped-receipts.json.txt)。cargo check通过（SDK原146 warning，driver0新），package fmt/diff检查通过；新增部件断言后identity仍等价，原行为所用字节与SDK未变，43例证据复用。447来源/681SDK闭合，源码删/多/坏SDK/恢复负控、工具7永久例通过。T-04/05性能与独立消费者进行中，未运行整档。
+2026-10-26 T-03完成：实现提交16fea18a8，唯一单入口/五版本具名路径、受检marker与部件、internal assembly错误已接入。新assembly3例、冻结identity1例、原8个定向binary43例全通过，[命令/选中ID/日志SHA](../attachments/854/work/scoped-receipts.json.txt)。cargo check通过（SDK原146 warning，driver0新），package fmt/diff检查通过；新增部件断言后identity仍等价，原行为所用字节与SDK未变，43例证据复用。447来源/681SDK闭合，源码删/多/坏SDK/恢复负控、工具7永久例通过。T-04/05性能与独立消费者进行中，未运行整档。
 
-2026-10-26 work最终交接：`stage: work | plan_id: PLAN-854 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-854/auto-lang | branch: plan-854-dev | base_commit: c1961665d1a90a8705994085fd4344a1d6a9a564 | code_commit: 523d27b863dbe306c89af0ea546334225a29f8e9 | dependency_revisions: SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467 / AGP与两锁/API/samples不变 | task_ids: T-01..05 | evidence: attachments/854/work/readiness.md + handoff.json.txt | blockers: [] | next_responsible_role: independent review`。work-owned AC-01..05完成，execution_done5/9；[逐AC/V就绪记录](attachments/854/work/readiness.md)、[最终身份/实际命令/原始日志SHA](attachments/854/work/handoff.json.txt)、[同条件性能/资源完整并列](attachments/854/work/performance-comparison.json.txt)。生产者56个具名定向例、消费者21个唯一例（含五API实际VM运行头）、工具7永久例通过；十fixture/447来源/681SDK与删改/恢复负控通过；50新进程1500暖tick与853语义/来源/像素/资源/owner完全一致。实际时间略高，不宣称加速；没有硬预算退化或放宽。测量后提交只补cfg(test)反例，非测试字节/其余身份完全一致的复用证明已绑定，不重复性能campaign。SDK原146 warning，driver0新；check/fmt/diff通过。开放finding/必需work覆盖缺口/未决决策为空。T-06独立review和T-07冻结完整两端/原native-owner-content/AGP门仍pending，T-08/09合入沉淀归档清理未做；源码只交autographics-dev。实现树clean、写权冻结并保留供同树review；本轮work自查不是独立终审。
+2026-10-26 work最终交接：`stage: work | plan_id: PLAN-854 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-854/auto-lang | branch: plan-854-dev | base_commit: c1961665d1a90a8705994085fd4344a1d6a9a564 | code_commit: 523d27b863dbe306c89af0ea546334225a29f8e9 | dependency_revisions: SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467 / AGP与两锁/API/samples不变 | task_ids: T-01..05 | evidence: attachments/854/work/readiness.md + handoff.json.txt | blockers: [] | next_responsible_role: independent review`。work-owned AC-01..05完成，execution_done5/9；[逐AC/V就绪记录](../attachments/854/work/readiness.md)、[最终身份/实际命令/原始日志SHA](../attachments/854/work/handoff.json.txt)、[同条件性能/资源完整并列](../attachments/854/work/performance-comparison.json.txt)。生产者56个具名定向例、消费者21个唯一例（含五API实际VM运行头）、工具7永久例通过；十fixture/447来源/681SDK与删改/恢复负控通过；50新进程1500暖tick与853语义/来源/像素/资源/owner完全一致。实际时间略高，不宣称加速；没有硬预算退化或放宽。测量后提交只补cfg(test)反例，非测试字节/其余身份完全一致的复用证明已绑定，不重复性能campaign。SDK原146 warning，driver0新；check/fmt/diff通过。开放finding/必需work覆盖缺口/未决决策为空。T-06独立review和T-07冻结完整两端/原native-owner-content/AGP门仍pending，T-08/09合入沉淀归档清理未做；源码只交autographics-dev。实现树clean、写权冻结并保留供同树review；本轮work自查不是独立终审。
 
 2026-10-26 final review R1：`stage: review | review_scope: final | reviewer_identity: /root/review_854_r1（独立子agent上下文，未参与实现，未写实现树） | plan_id: PLAN-854 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-854/auto-lang | branch: plan-854-dev | reviewed_commit: 523d27b863dbe306c89af0ea546334225a29f8e9 | base_commit: c1961665d1a90a8705994085fd4344a1d6a9a564 | dependency_revisions: SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467/681文件、AGP/两锁/API/samples未变 | acceptance_results: AC-01..06、V-01..05、SD-01/02 pass | findings: [] | evidence: attachments/854/review-r1/review.md + checks.json.txt + audit.json.txt | next: merge`。已实际核worktree注册/HEAD/分支/clean，重放identity1/assembly4并独立附加2例组合反例，工具7例通过；43行为+8项目及consumer21唯一例的原始SHA/具名选择/结束核验，复用基于生产前缀和依赖/输入未变。50组1500暖tick原始语义/来源/像素/资源/owner及P50/P95重算通过；447来源/681SDK的独立consumer逐文件核对，十fixture确为853原产物。冻结规范增量SHA256 `6a29da3e8857594c97f22aecf0f762ba6ee62643f533661fbef96a44e96f4b9a`，四项Spec输入hash见audit.json.txt。未写canonical/ledger，未修代码。历史853 runner构建环境metadata不足已在报告明确（实际两端PE栈均32MiB、运行配置/工具链/锁一致）；不宣称完全相同的构建环境记录或加速。最终复审次数1、失败0，T-06闭合，reviewed6/9。`pending_closeout_gates: T-07完整producer/fresh own-SDK consumer及原native-owner-content/AGP复用核准/current source gates；T-08限定autographics-dev合入与规范沉淀归档；T-09 guard清理`。禁止把review pass当作已交付或绕过上述merge-owned门。
 
@@ -141,8 +142,15 @@ T-04新增当前`research/plan854-identity.json`/verifier，沿853明确当前�
 
 2026-10-26 merge进度（T-07未关闭）：生产者/全新own-SDK空target消费者完整测试各79块/287通过/0failed/0ignored，原280逐binary ID包含；两端21生成文件逐字节等于853原产物，工具各7永久例通过。生产者全部原native（含motion14+4重开/6负owner+恢复）已通过，消费者native与两端剩余owner矩阵进行。clock-controls首次restore-v在phase2未建立Run、未到100ms注入而拒绝；原现场保留，完全同SHA payload重放达到phase21并恢复，完整六例矩阵重跑五正+原负全通过，闭环见attachments/854/merge-r1/clock-recovery.json.txt与failure-closures.json.txt；没有改代码/预算/oracle。其他已过组按同基线复用未重跑。仍reviewed6/9、未合入/归档/清理。
 
-2026-10-26 merge gate完成：T-07/AC-07通过，reviewed7/9。两端各79块/287通过/0failed/0ignored，原280逐binary ID包含；85当前调用组、AGP23完整输入复用和原85映射、两端全部原native/content/owner与新生成/工具面均通过。[最终审计](attachments/854/merge-r1/validated.json.txt)、[真实payload与原始日志索引](attachments/854/merge-r1/evidence-index.json.txt)、[收口收据](attachments/854/merge-r1/receipt.md)。唯一clock setup失败已由同SHA重放和完整六例闭环，没有代码/预算/oracle改动；最终两端来源门再次通过，523d27b86/clean未变。仅审计工具初次缺运行目录内AGP证明副本，按原字节复制已提交证明后审计通过，不重跑其他门。源码合入/规范账本发布/归档/清理尚待执行。
+2026-10-26 merge gate完成：T-07/AC-07通过，reviewed7/9。两端各79块/287通过/0failed/0ignored，原280逐binary ID包含；85当前调用组、AGP23完整输入复用和原85映射、两端全部原native/content/owner与新生成/工具面均通过。[最终审计](../attachments/854/merge-r1/validated.json.txt)、[真实payload与原始日志索引](../attachments/854/merge-r1/evidence-index.json.txt)、[收口收据](../attachments/854/merge-r1/receipt.md)。唯一clock setup失败已由同SHA重放和完整六例闭环，没有代码/预算/oracle改动；最终两端来源门再次通过，523d27b86/clean未变。仅审计工具初次缺运行目录内AGP证明副本，按原字节复制已提交证明后审计通过，不重跑其他门。源码合入/规范账本发布/归档/清理尚待执行。
+
+2026-10-27 consolidation PLAN-854:r1：`stage: merge | outcome: publication pass, cleanup pending | delivery_commit: 523d27b863dbe306c89af0ea546334225a29f8e9 | source_branch: autographics-dev | canonical_commit: 8ea8da946dd32e9b660127d432442f88dd262084 | ledger_commit: 3c909aeaf36a926d180e2dea98cbe4fb49149ee6`。源码exact reviewed SHA快进到autographics-dev，master只沉淀SD-01/02、module overview/plans/GOAL-008与派生账本；[实际落地](../attachments/854/merge-r1/landed.json.txt)、[规范准备](../attachments/854/merge-r1/canonical-prepared.json.txt)、[账本v95→96/六ID守护](../attachments/854/merge-r1/ledger-projection.json.txt)。主线新增822簿记后，仅规范/账本两提交rebase；初始range-diff2/2等价，后只重绑六个source-commit标签到等价规范提交，源码审查/测试SHA无改写。1252无关原始条目与主检出其他会话工作字节未扰动。默认bash解析到WSL无法读Windows路径，改Git for Windows bash执行同一wt-guard已clean，未绕过守护。原SDK/target与47research/4pycache运行文件已保留仓外，见runtime-recovery.json.txt；同树切换deposit用途未移动任何tracked源文件。T-08完成，archived/delivered8/9；归档实际检查/提交后再做T-09清理，不能提前宣称9/9。交855的真实前置为523d27b86，未开始855实施。
 
 ## 10. 待澄清事项
 
 853实际交付前置已闭合；T-02组织决策已记录。当前无work阻塞、必需覆盖缺口或未决合同问题。需要改变公共身份/接受规则/预算、Auto算法或生产仓边界时，先据证据回new修订，不在work静默扩面。
+
+
+## spec-sync 回写记录
+
+SD-01 → docs/specs/auto-graphics/behavior-api.md；SD-02 → docs/specs/auto-graphics/auto-source-driver.md；module overview/plans 与GOAL-008同步，spec-index再生无语义差异（主检出其他会话INDEX工作改动保持原字节）。本模块无独立ADR，新局部组织边界写入既有专题；没有新增模块/crate，global overview无需结构变更。派生账本通过无store writer时受保护离线投影更新6条，v95→96；byte-exact备份在D:/autostack/plan-artifacts/plan-854/ledger-recovery。规范为权威，账本仅摘要/索引/历史，不复制Plan章节。仅交付M2/S0兼容与维护；新M2能力、I2/I3保持pending。
