@@ -326,3 +326,40 @@ D822 满足后 T-02 全链路落地(§5.2 首例 + §5.3 recipe 交付):
 8. **归 T-03+ 的面**:V-02..07 反控全集、资源/峰值采样档、V-09 旧 consumer
    兼容重放、V-13 增量(828 接口)。V-08 的恢复重验+依赖转 miss 轴已由
    restore_reverifies 覆盖。
+
+## 14. r4 实施记录(2026-10-27,T-03/T-04/T-05/T-09/T-11/T-06,代码 30c1532de..209367573)
+
+本节冻结 T-03..T-06/T-09/T-11 实施确认的边界事实与裁定(不改变 §1–§13 已冻结合同
+的性质;均为其具体化或如实回记):
+
+1. **宽标量进入缝**:profile 常量为 i32/bool/char/Str(798 冻结规则:宽标量常量
+   data-profile 专属),I64/U64/F32/F64 经 **entry-param 缝**进入 dynamic profile
+   (entry_param_ok 含全部标量形状,§13.3 的具体化)。V-03 位保真正控经
+   `execute_entry(args)` 注入——这也是 dynamic 入口参数合同的首个参数测试面。
+2. **容器内类别封闭的实际门层**:Fn 作 List 元素/variant 载荷=`mir.type.list-elem`
+   /`mir.type.variant-payload`;Fn 作 record 字段=`mir.record-field-type`;StrView/
+   MutRef/Place 作字段=`mir.field-borrow`;record 包 Dyn 值=Aggregate `mir.aggregate-type`
+   ——V-12 的"递归白名单"在这些类别上由**类型门先于白名单**封闭(更早更严);
+   直接 Fn/Place/Dyn 槽位的 pack 仍由 `mir.dyn.whitelist` 拒;RecDyn{d:Dyn} 类型
+   合法、白名单拒(真白名单递归臂)。
+3. **跨计划穷尽 match 修复(818)**:T-02 核心窗口新增 DYN 三指令后,
+   `experimental/ac-mir-native`(817/818 独立 workspace)fingerprint.rs/lower.rs 两处
+   MirInstr 穷尽 match 漏臂导致 mn worker 构建红(ac_mn_probe 20 红)。按 820/821/822
+   既定跨计划补臂模式修复:fingerprint 纯渲染 + lower 受控拒绝("av.dynamic/1 dyn
+   instructions are outside the mn scalar surface"),818 恢复 24/24 绿。T-02 回归面
+   未含 818 worker 的教训在案:compatibility Scope 已将其纳入永久重放。
+4. **编号并行登记冲突(回记)**:823 树(plan-823-dev e9bb30606)与本树在同一
+   D822 合入后窗口(相差 2 分钟)各自登记了 id5/AVAD v4/opcode 0x2F..31。两树不共
+   构建,当前无实质冲突;按共同审计"公共编号由核心 owner 统一登记/最后集成者重核
+   消费者并集",**merge 时后合者改号**(常量集中于 contract.rs+冻结表,机械操作),
+   本条为裁定依据在案。
+5. **T-11 消费身份**:D852=archived(landed 4a81d2ebc,ledger v95,早于本树基面
+   c6c5ddb25,树内已含);binding.tsv 仅翻 824 自有 D01..D09 行 av 格
+   (`gap:av-dyn-824`→`ok:av-dyn-824`)+owner 注追加指针;W/I 行只追加证据指针,
+   格值归原 owner;schema/金样/通用合同零改动(下游只追加原则)。
+6. **脚本终态**:verify-av-dynamic-824.ps1 共 10 个验证面
+   (first-case/semantics/admission/resources/cache/compatibility/incremental/
+   baseline/autodown/acceptance),acceptance=9 Scope 子进程聚合+包级 fmt/check
+   零警告健康门;必需 ID 恰一次守卫覆盖全部冻结面;0 例/ignored>0/缺 ID 均非绿。
+7. **V-10 负控扩展**:expect-sabotage 的 result 轴对 take-probe 行必红(其 ledger
+   单事件,rotation 恒等——ledger 轴对该行如实不适用,仅声明可区分轴)。
