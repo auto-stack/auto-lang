@@ -370,7 +370,10 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<u32> {
                 | MirType::Char
                 | MirType::Str
                 | MirType::StrView
-                | MirType::MutRef => {
+                | MirType::MutRef
+                // PLAN-824: the erased Dyn type interns atomically (it has
+                // no type-table children).
+                | MirType::Dyn => {
                     map[i] = merged.intern_type(t.clone());
                     progress = true;
                 }

@@ -105,6 +105,33 @@ pub const MIR_COLLECTIONS_SEMANTICS: MirSemanticsVersion = MirSemanticsVersion(1
 pub const ABC_COLLECTIONS_SEMANTICS: AbcSemanticsVersion = AbcSemanticsVersion(1);
 pub const AV_COLLECTIONS_SEMANTICS: AvSemanticsVersion = AvSemanticsVersion(1);
 
+// ---------------------------------------------------------------------------
+// PLAN-824 `av.dynamic/1` identities (contract-decision.md §6, frozen r2:
+// profile id 5 / AVAD v4 — id 4 and v3 were taken by `av.collections/1`)
+// ---------------------------------------------------------------------------
+
+/// Logical schema identity of the dynamic-profile Typed MIR.
+pub const MIR_DYNAMIC_SCHEMA: &str = "auto.mir.av-dynamic/1";
+/// Wire schema identity of the dynamic-profile ABC format (`AVAD` family,
+/// wire VERSION 4 — v1/v2/v3/v4 are mutually unreadable generations).
+pub const ABC_DYNAMIC_SCHEMA: &str = "auto.abc.av-dynamic/1";
+/// The dynamic execution profile (PLAN-824): the collections surface plus
+/// the checked type-erasure Dyn container (DYN_PACK/DYN_IS/DYN_TAKE over
+/// the whitelisted value closure).
+pub const AV_DYNAMIC_PROFILE: &str = "av.dynamic/1";
+/// Producer identity for dynamic-profile units in store envelopes/keys.
+pub const DYNAMIC_PRODUCER_ID: &str = "plan824/av-dynamic";
+/// Wire version of the dynamic-profile ABC format (v4; profile id 5).
+pub const ABC_DYNAMIC_VERSION: u16 = 4;
+/// Numeric profile id carried in the dynamic wire header.
+pub const ABC_PROFILE_DYNAMIC: u16 = 5;
+
+/// PLAN-824 dynamic-profile semantic versions — an INDEPENDENT axis (all
+/// profiles' artifacts key separately; start at 1).
+pub const MIR_DYNAMIC_SEMANTICS: MirSemanticsVersion = MirSemanticsVersion(1);
+pub const ABC_DYNAMIC_SEMANTICS: AbcSemanticsVersion = AbcSemanticsVersion(1);
+pub const AV_DYNAMIC_SEMANTICS: AvSemanticsVersion = AvSemanticsVersion(1);
+
 /// Single-list element-count guard (collections contract-decision §5).
 /// len/cap arithmetic is checked u32→u64 throughout; a breach is a resource
 /// rejection (`av.resource.list-elems`), never a syntax classification.
@@ -259,6 +286,13 @@ pub enum Value {
     /// `av.trap.stale-place` BEFORE any buffer access (defense in depth;
     /// verification gates the admitted shapes).
     Place(ListPlaceV),
+    /// Type-erased dynamic value (PLAN-824, `av.dynamic/1`): an owning
+    /// share of a checked [`crate::dynamic::DynValue`] — the whitelist-
+    /// clean (value, DynType) pair whose only constructors are
+    /// `DynValue::pack` and the portable decoder. Cloning bumps the share
+    /// (like every handle); the DYN instructions are the only in-guest
+    /// minting path (verification gates the erased closure).
+    Dyn(std::rc::Rc<crate::dynamic::DynValue>),
 }
 
 /// The `Value::Place` payload: (frame, slot) root + buffer identity +
@@ -533,6 +567,9 @@ impl PartialEq for Value {
             }
             (Variant(a), Variant(b)) => a.ty == b.ty && a.disc == b.disc && a.payload == b.payload,
             (Place(a), Place(b)) => a == b,
+            // Dyn compares by the container's own (value, type) equality —
+            // content identity, never the Rc pointer.
+            (Dyn(a), Dyn(b)) => a == b,
             _ => false,
         }
     }
@@ -556,6 +593,7 @@ impl Value {
             Value::List(_) => "list",
             Value::Variant(_) => "variant",
             Value::Place(_) => "place",
+            Value::Dyn(_) => "dyn",
         }
     }
 
@@ -631,6 +669,12 @@ impl Value {
                         stack.push(p.as_ref().clone());
                     }
                 }
+                // PLAN-824: a Dyn slot's data volume is its inner value's
+                // (the type descriptor is bookkeeping, not payload).
+                Value::Dyn(d) => {
+                    *visited += 1;
+                    stack.push(d.as_value().clone());
+                }
                 _ => {}
             }
             total += b;
@@ -663,6 +707,11 @@ pub enum TrapKind {
     /// generation moved (V-05 defense in depth — verification should
     /// prevent this for admitted programs).
     InvalidHandle,
+    /// PLAN-824: `DYN_TAKE` of a dynamic value whose runtime type differs
+    /// from the instruction's expected type — a RUNTIME CHECKED failure
+    /// (not bad input): the source Dyn stays intact in its slot, nothing
+    /// is dropped or half-moved.
+    DynTypeMismatch,
     /// PLAN-822: list index outside `[0, len)` (or insert outside
     /// `[0, len]`); negative indices land here too. Checked BEFORE any
     /// buffer access.
@@ -686,6 +735,7 @@ impl TrapKind {
             TrapKind::StrIndex => "av.trap.str-index",
             TrapKind::CharInvalid => "av.trap.char-invalid",
             TrapKind::InvalidHandle => "av.trap.invalid-handle",
+            TrapKind::DynTypeMismatch => "av.trap.dyn-type",
             TrapKind::ListIndex => "av.trap.list-index",
             TrapKind::StalePlace => "av.trap.stale-place",
             TrapKind::VariantBranch => "av.trap.variant-branch",

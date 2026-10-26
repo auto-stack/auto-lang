@@ -94,6 +94,11 @@ pub enum MirType {
     /// identity, structural epoch and element generation at every use —
     /// a stale place traps before any access.
     Place(ListTypeRef),
+    /// The type-erased dynamic type (PLAN-824, wire tag 16): a slot of
+    /// this type holds a `Value::Dyn` — a checked DynValue share whose
+    /// runtime type is the erased source type. Only the dynamic profile
+    /// admits this type; DYN_PACK mints it, DYN_IS/DYN_TAKE consume it.
+    Dyn,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -551,6 +556,36 @@ pub enum MirInstr {
         place: SlotId,
         value: SlotId,
     },
+    /// DYN_PACK (PLAN-824 `av.dynamic/1`, opcode 0x2F): erase the typed
+    /// slot `src` into the Dyn slot `dst` — an explicit, checked type
+    /// erasure. Verification admits only the whitelisted type closure
+    /// (scalars/char/Str/record/List/Variant; Fn, borrows and Places are
+    /// rejected at ANY depth); the executor re-checks via the DynValue
+    /// pack admission. CLONE semantics (v1 wire): the source stays valid —
+    /// ownership of shared payloads follows the last handle drop (the
+    /// frozen "pack 须 move 或显式 clone" rule's explicit-clone form; the
+    /// guest's CLONE/MOVE remain the value-level controls).
+    DynPack {
+        dst: SlotId,
+        src: SlotId,
+    },
+    /// DYN_IS (opcode 0x30): runtime type test — `dst: Bool` is true iff
+    /// the Dyn in `src` holds a value of the static type `ty` under the
+    /// frozen type equivalence. Never traps; never consumes the source.
+    DynIs {
+        dst: SlotId,
+        src: SlotId,
+        ty: TypeIdx,
+    },
+    /// DYN_TAKE (opcode 0x31): checked recovery — on match, `dst` (typed
+    /// `ty`) receives the value; on mismatch the instruction TRAPS
+    /// `av.trap.dyn-type` (a runtime checked failure, not bad input): the
+    /// source Dyn stays intact in its slot, nothing dropped or moved.
+    DynTake {
+        dst: SlotId,
+        src: SlotId,
+        ty: TypeIdx,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -687,6 +722,22 @@ impl MirModule {
         m
     }
 
+    /// A dynamic-profile module (`av.dynamic/1`, PLAN-824). The dynamic
+    /// profile SUBSUMES the collections feature set and adds the
+    /// checked-erasure Dyn surface.
+    pub fn new_dynamic(owner: OwnerScope) -> Self {
+        let mut m = MirModule::new(owner);
+        m.profile = crate::contract::AV_DYNAMIC_PROFILE.to_string();
+        m
+    }
+
+    /// A dynamic-profile single-function unit.
+    pub fn dynamic_unit(owner: OwnerScope) -> Self {
+        let mut m = MirModule::new_dynamic(owner);
+        m.is_unit = true;
+        m
+    }
+
     /// Whether this module declares the data profile.
     pub fn is_data_profile(&self) -> bool {
         self.profile == crate::contract::AV_DATA_PROFILE
@@ -703,6 +754,12 @@ impl MirModule {
     /// The collections profile SUBSUMES the owned feature set.
     pub fn is_collections_profile(&self) -> bool {
         self.profile == crate::contract::AV_COLLECTIONS_PROFILE
+    }
+
+    /// Whether this module declares the dynamic profile (PLAN-824). The
+    /// dynamic profile SUBSUMES the collections feature set.
+    pub fn is_dynamic_profile(&self) -> bool {
+        self.profile == crate::contract::AV_DYNAMIC_PROFILE
     }
 
     /// Resolve a type to its scalar shape for verification (`None` = Fn,
@@ -725,7 +782,8 @@ impl MirModule {
             | MirType::MutRef
             | MirType::List(_)
             | MirType::Variant(_)
-            | MirType::Place(_) => None,
+            | MirType::Place(_)
+            | MirType::Dyn => None,
         }
     }
 
@@ -888,6 +946,9 @@ impl MirModule {
                 // owns its arm table (names + payload indices); Place is
                 // an inline capability type.
                 MirType::List(_) | MirType::Place(_) => 0,
+                // PLAN-824: the erased Dyn type is an inline capability
+                // type (no table payload).
+                MirType::Dyn => 0,
                 MirType::Variant(v) => {
                     v.owner_module.len()
                         + v.name.len()

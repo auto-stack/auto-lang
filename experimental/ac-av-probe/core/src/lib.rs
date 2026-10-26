@@ -20,6 +20,11 @@ pub mod abc;
 pub mod abc_verify;
 pub mod av;
 pub mod contract;
+// PLAN-824 `av.dynamic/1` (T-02 core window): the DynValue container and
+// the portable freeze/restore codec — same-source files previously
+// compiled only by the parallel/824 harness; the harness keeps working
+// (its #[path] copies compile against the same sources).
+pub mod dynamic;
 pub mod function_code;
 pub mod instr_spec;
 pub mod layout;
@@ -28,6 +33,7 @@ pub mod mir_verify;
 pub mod owned_text;
 pub mod ownership;
 pub mod place;
+pub mod portable;
 pub mod program_snapshot;
 pub mod span_map;
 

@@ -342,6 +342,11 @@ pub fn freeze(v: &DynValue, opts: &TraversalOptions) -> Result<Vec<u8>, Portable
             Value::StrView(_) | Value::MutRef(_) | Value::Place(_) => {
                 return Err(PortableError::Unsupported { category: "borrow" });
             }
+            Value::Dyn(_) => {
+                // A Dyn never nests inside a frozen tree in v1 (nested
+                // erasure is not a whitelisted category).
+                return Err(PortableError::Unsupported { category: "dyn" });
+            }
         }
         match payload {
             Some((prefix, bytes)) => {

@@ -943,6 +943,27 @@ pub fn verify_owned_function(
                     }
                     st.define_slot(*dst as usize);
                 }
+                // PLAN-824: the Dyn triple is non-consuming on the source
+                // side (PACK clones into the container; IS/TAKE only read)
+                // and each op defines its dst like Clone does.
+                MirInstr::DynPack { dst, src } => {
+                    check_read!(src, "dyn-pack source");
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "dyn-pack destination");
+                    }
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::DynIs { dst, src, .. } => {
+                    check_read!(src, "dyn-is source");
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::DynTake { dst, src, .. } => {
+                    check_read!(src, "dyn-take source");
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "dyn-take destination");
+                    }
+                    st.define_slot(*dst as usize);
+                }
                 MirInstr::Move { dst, src } => {
                     check_read!(src, "move source");
                     if dst == src {

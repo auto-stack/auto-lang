@@ -122,6 +122,7 @@ pub fn verify_mir_with_deadline(
         is_data: module.is_data_profile(),
         is_owned: module.is_owned_profile(),
         is_collections: module.is_collections_profile(),
+        is_dynamic: module.is_dynamic_profile(),
     };
     v.run()?;
     let stats = v.stats_snapshot();
@@ -148,9 +149,19 @@ struct Verifier<'a> {
     /// (PLAN-822): subsumes the owned surface and adds the List/Variant
     /// surface.
     is_collections: bool,
+    /// Whether the module declares the `av.dynamic/1` profile (PLAN-824):
+    /// subsumes the collections surface and adds the checked-erasure Dyn
+    /// surface.
+    is_dynamic: bool,
 }
 
 impl<'a> Verifier<'a> {
+    /// The collections feature surface (List/Variant/Place and their
+    /// instructions): admitted by `av.collections/1` and its dynamic
+    /// successor (PLAN-824 subsumption).
+    fn collections_surface(&self) -> bool {
+        self.is_collections || self.is_dynamic
+    }
     fn tick(&mut self, n: u64) -> Result<(), MirVerifyError> {
         self.steps += n;
         if self.steps > MAX_VERIFY_WORK_STEPS {
@@ -183,16 +194,18 @@ impl<'a> Verifier<'a> {
             && self.module.profile != crate::contract::AV_DATA_PROFILE
             && self.module.profile != crate::contract::AV_OWNED_PROFILE
             && self.module.profile != crate::contract::AV_COLLECTIONS_PROFILE
+            && self.module.profile != crate::contract::AV_DYNAMIC_PROFILE
         {
             return Err(MirVerifyError::uns(
                 "mir.profile",
                 format!(
-                    "profile `{}` is not one of the supported profiles (`{}` / `{}` / `{}` / `{}`)",
+                    "profile `{}` is not one of the supported profiles (`{}` / `{}` / `{}` / `{}` / `{}`)",
                     self.module.profile,
                     crate::contract::AV_PROFILE,
                     crate::contract::AV_DATA_PROFILE,
                     crate::contract::AV_OWNED_PROFILE,
-                    crate::contract::AV_COLLECTIONS_PROFILE
+                    crate::contract::AV_COLLECTIONS_PROFILE,
+                    crate::contract::AV_DYNAMIC_PROFILE
                 ),
             ));
         }
@@ -225,6 +238,16 @@ impl<'a> Verifier<'a> {
                     "collections-profile module owner schema `{}` is not `{}`",
                     self.module.owner.schema,
                     crate::contract::MIR_COLLECTIONS_SCHEMA
+                ),
+            ));
+        }
+        if self.is_dynamic && self.module.owner.schema != crate::contract::MIR_DYNAMIC_SCHEMA {
+            return Err(MirVerifyError::inv(
+                "mir.schema-profile",
+                format!(
+                    "dynamic-profile module owner schema `{}` is not `{}`",
+                    self.module.owner.schema,
+                    crate::contract::MIR_DYNAMIC_SCHEMA
                 ),
             ));
         }
@@ -328,7 +351,7 @@ impl<'a> Verifier<'a> {
             // contract-decision §2).
             match t {
                 MirType::I64 | MirType::U64 | MirType::F32 | MirType::F64 | MirType::Record(_)
-                    if !self.is_data && !self.is_owned && !self.is_collections =>
+                    if !self.is_data && !self.is_owned && !self.collections_surface() =>
                 {
                     return Err(MirVerifyError::uns(
                         "mir.profile-type",
@@ -345,7 +368,7 @@ impl<'a> Verifier<'a> {
                 | MirType::StrView
                 | MirType::MutRef
                 | MirType::RecordView(_)
-                    if !self.is_owned && !self.is_collections =>
+                    if !self.is_owned && !self.collections_surface() =>
                 {
                     return Err(MirVerifyError::uns(
                         "mir.profile-type",
@@ -358,16 +381,26 @@ impl<'a> Verifier<'a> {
                     ));
                 }
                 // PLAN-822: the List/Variant/Place surface is
-                // collections-only.
+                // collections-only (and its dynamic successor).
                 MirType::List(_) | MirType::Variant(_) | MirType::Place(_)
-                    if !self.is_collections =>
+                    if !self.collections_surface() =>
                 {
                     return Err(MirVerifyError::uns(
                         "mir.profile-type",
                         format!(
-                            "type #{ti} ({:?} …) exists only in the `{}` profile",
+                            "type #{ti} ({:?} …) exists only in the `{}`+ profiles",
                             t,
                             crate::contract::AV_COLLECTIONS_PROFILE
+                        ),
+                    ));
+                }
+                // PLAN-824: the erased Dyn type is dynamic-profile-only.
+                MirType::Dyn if !self.is_dynamic => {
+                    return Err(MirVerifyError::uns(
+                        "mir.profile-type",
+                        format!(
+                            "type #{ti} (Dyn) exists only in the `{}` profile",
+                            crate::contract::AV_DYNAMIC_PROFILE
                         ),
                     ));
                 }
@@ -870,6 +903,38 @@ impl<'a> Verifier<'a> {
         }
     }
 
+    /// PLAN-824: whether a type index lies inside the Dyn erasable closure
+    /// — scalars/char/Str/records/lists/variants, checked RECURSIVELY (Fn,
+    /// borrows, Places and Dyn itself are rejected at any depth). Cycle
+    /// detection is PATH-based (a type table is a DAG — two fields may
+    /// share one child type; only a reference back into the CURRENT path
+    /// is a cycle, and such recursive types have no finite value). The
+    /// frozen 256 depth bound keeps the walk stack-safe.
+    fn dyn_whitelisted(&self, root: TypeIdx) -> bool {
+        use crate::dynamic::MAX_DYN_DEPTH;
+        fn go(m: &MirModule, idx: TypeIdx, depth: u32, path: &mut Vec<TypeIdx>) -> bool {
+            if depth > MAX_DYN_DEPTH || path.contains(&idx) {
+                return false;
+            }
+            path.push(idx);
+            let ok = match m.types.get(idx as usize) {
+                Some(MirType::Bool) | Some(MirType::I32) | Some(MirType::I64)
+                | Some(MirType::U64) | Some(MirType::F32) | Some(MirType::F64)
+                | Some(MirType::Char) | Some(MirType::Str) => true,
+                Some(MirType::Record(r)) => r.fields.iter().all(|f| go(m, f.ty, depth + 1, path)),
+                Some(MirType::List(l)) => go(m, l.elem, depth + 1, path),
+                Some(MirType::Variant(v)) => v.arms.iter().all(|a| match a.payload {
+                    Some(p) => go(m, p, depth + 1, path),
+                    None => true,
+                }),
+                _ => false,
+            };
+            path.pop();
+            ok
+        }
+        go(self.module, root, 1, &mut Vec::new())
+    }
+
     /// PLAN-822: index operands are i32-typed slots (domain checked at
     /// runtime before any buffer access).
     fn check_list_index_slot(
@@ -1186,7 +1251,7 @@ impl<'a> Verifier<'a> {
                             Some(MirConst::Char(_)) | Some(MirConst::Str(_)) => true,
                             _ => false,
                         };
-                        if owned_const && !self.is_owned && !self.is_collections {
+                        if owned_const && !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-const",
                                 "char/Str constants exist only in the owned profile".to_string(),
@@ -1480,7 +1545,7 @@ impl<'a> Verifier<'a> {
                     }
                     MirInstr::Trace { .. } => {}
                     MirInstr::FieldGet { dst, base, path } => {
-                        if !self.is_data && !self.is_owned && !self.is_collections {
+                        if !self.is_data && !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "FIELD_GET exists only in the data/owned profiles".to_string(),
@@ -1554,7 +1619,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::FieldSet { root, path, value } => {
-                        if !self.is_data && !self.is_owned && !self.is_collections {
+                        if !self.is_data && !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "FIELD_SET exists only in the data/owned profiles".to_string(),
@@ -1594,7 +1659,7 @@ impl<'a> Verifier<'a> {
                         record_ty,
                         operands,
                     } => {
-                        if !self.is_data && !self.is_owned && !self.is_collections {
+                        if !self.is_data && !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "AGGREGATE exists only in the data/owned profiles".to_string(),
@@ -1665,7 +1730,7 @@ impl<'a> Verifier<'a> {
                     }
                     // -- PLAN-821 owned surface (av.owned/1) -------------------
                     MirInstr::Clone { dst, src } => {
-                        if !self.is_owned && !self.is_collections {
+                        if !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "CLONE exists only in the owned profile".to_string(),
@@ -1689,7 +1754,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::Move { dst, src } => {
-                        if !self.is_owned && !self.is_collections {
+                        if !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "MOVE exists only in the owned profile".to_string(),
@@ -1711,7 +1776,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::View { dst, src } => {
-                        if !self.is_owned && !self.is_collections {
+                        if !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "VIEW exists only in the owned profile".to_string(),
@@ -1733,7 +1798,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::MutRef { dst, src } => {
-                        if !self.is_owned && !self.is_collections {
+                        if !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "MUTREF exists only in the owned profile".to_string(),
@@ -1758,7 +1823,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::Drop { slot } => {
-                        if !self.is_owned && !self.is_collections {
+                        if !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "DROP exists only in the owned profile".to_string(),
@@ -1776,7 +1841,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::FieldMove { dst, root, path } => {
-                        if !self.is_owned && !self.is_collections {
+                        if !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "FIELDMOVE exists only in the owned profile".to_string(),
@@ -1816,7 +1881,7 @@ impl<'a> Verifier<'a> {
                     }
                     // -- PLAN-822 collections surface (typing arms) --------
                     MirInstr::ListNew { dst, list_ty, cap } => {
-                        if !self.is_collections {
+                        if !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "LIST_NEW exists only in the collections profile".to_string(),
@@ -1850,7 +1915,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::ListLen { dst, src } | MirInstr::ListCap { dst, src } => {
-                        if !self.is_collections {
+                        if !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "LIST_LEN/LIST_CAP exist only in the collections profile"
@@ -1873,7 +1938,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::ListGet { dst, base, index } => {
-                        if !self.is_collections {
+                        if !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "LIST_GET exists only in the collections profile".to_string(),
@@ -1899,7 +1964,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::ListPush { root, value } => {
-                        if !self.is_collections {
+                        if !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "LIST_PUSH exists only in the collections profile".to_string(),
@@ -1916,7 +1981,7 @@ impl<'a> Verifier<'a> {
                     }
                     MirInstr::ListInsert { root, index, value }
                     | MirInstr::ListSet { root, index, value } => {
-                        if !self.is_collections {
+                        if !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "LIST_INSERT/LIST_SET exist only in the collections profile"
@@ -1934,7 +1999,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::ListRemove { dst, root, index } => {
-                        if !self.is_collections {
+                        if !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "LIST_REMOVE exists only in the collections profile".to_string(),
@@ -1956,7 +2021,7 @@ impl<'a> Verifier<'a> {
                         index,
                         path,
                     } => {
-                        if !self.is_collections {
+                        if !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "LIST_FIELD_GET exists only in the collections profile".to_string(),
@@ -1997,7 +2062,7 @@ impl<'a> Verifier<'a> {
                         path,
                         value,
                     } => {
-                        if !self.is_collections {
+                        if !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "LIST_FIELD_SET exists only in the collections profile".to_string(),
@@ -2029,7 +2094,7 @@ impl<'a> Verifier<'a> {
                         disc,
                         payload,
                     } => {
-                        if !self.is_collections {
+                        if !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "VARIANT_PACK exists only in the collections profile".to_string(),
@@ -2048,7 +2113,7 @@ impl<'a> Verifier<'a> {
                         self.check_variant_arm(f, *variant_ty, *disc, payload.as_ref(), sp)?;
                     }
                     MirInstr::VariantDisc { dst, src } => {
-                        if !self.is_collections {
+                        if !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "VARIANT_DISC exists only in the collections profile".to_string(),
@@ -2073,7 +2138,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::VariantGuard { dst, src, disc } => {
-                        if !self.is_collections {
+                        if !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "VARIANT_GUARD exists only in the collections profile".to_string(),
@@ -2101,7 +2166,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::VariantProject { dst, root, disc } => {
-                        if !self.is_collections {
+                        if !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "VARIANT_PROJECT exists only in the collections profile"
@@ -2140,7 +2205,7 @@ impl<'a> Verifier<'a> {
                         disc,
                         payload,
                     } => {
-                        if !self.is_collections {
+                        if !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "VARIANT_SWITCH exists only in the collections profile".to_string(),
@@ -2160,7 +2225,7 @@ impl<'a> Verifier<'a> {
                     }
                     // -- PLAN-822 R2 index-place surface (typing arms) -----
                     MirInstr::ListPlace { dst, base, index } => {
-                        if !self.is_collections {
+                        if !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "LIST_PLACE exists only in the collections profile".to_string(),
@@ -2194,7 +2259,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::PlaceGet { dst, src } => {
-                        if !self.is_collections {
+                        if !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "PLACE_GET exists only in the collections profile".to_string(),
@@ -2234,7 +2299,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::PlaceSet { place, value } => {
-                        if !self.is_collections {
+                        if !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "PLACE_SET exists only in the collections profile".to_string(),
@@ -2264,8 +2329,110 @@ impl<'a> Verifier<'a> {
                             ));
                         }
                     }
+                    // -- PLAN-824 dynamic surface (typing arms) ----------
+                    MirInstr::DynPack { dst, src } => {
+                        if !self.is_dynamic {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "DYN_PACK exists only in the dynamic profile".to_string(),
+                            ));
+                        }
+                        let dt = slot_ty_of(f, *dst, sp, "dyn-pack dst")?;
+                        if !matches!(self.module.types.get(dt as usize), Some(MirType::Dyn)) {
+                            return Err(err(
+                                "mir.dyn.type",
+                                format!("DYN_PACK dst {} is not the Dyn type", dt),
+                            ));
+                        }
+                        let st = slot_ty_of(f, *src, sp, "dyn-pack src")?;
+                        if !self.dyn_whitelisted(st) {
+                            return Err(err(
+                                "mir.dyn.whitelist",
+                                format!(
+                                    "DYN_PACK src type {} is outside the erasable closure \
+                                     (Fn/borrows/Places rejected at any depth)",
+                                    st
+                                ),
+                            ));
+                        }
+                    }
+                    MirInstr::DynIs { dst, src, ty } => {
+                        if !self.is_dynamic {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "DYN_IS exists only in the dynamic profile".to_string(),
+                            ));
+                        }
+                        let dt = slot_ty_of(f, *dst, sp, "dyn-is dst")?;
+                        if !matches!(self.module.types.get(dt as usize), Some(MirType::Bool)) {
+                            return Err(err(
+                                "mir.dyn.type",
+                                format!("DYN_IS dst {} is not bool", dt),
+                            ));
+                        }
+                        let st = slot_ty_of(f, *src, sp, "dyn-is src")?;
+                        if !matches!(self.module.types.get(st as usize), Some(MirType::Dyn)) {
+                            return Err(err(
+                                "mir.dyn.type",
+                                format!("DYN_IS src {} is not the Dyn type", st),
+                            ));
+                        }
+                        if self.module.types.get(*ty as usize).is_none() {
+                            return Err(err(
+                                "mir.dyn.type",
+                                format!("DYN_IS type operand {} is out of bounds", ty),
+                            ));
+                        }
+                        if !self.dyn_whitelisted(*ty) {
+                            return Err(err(
+                                "mir.dyn.whitelist",
+                                format!(
+                                    "DYN_IS type operand {} is outside the erasable closure",
+                                    ty
+                                ),
+                            ));
+                        }
+                    }
+                    MirInstr::DynTake { dst, src, ty } => {
+                        if !self.is_dynamic {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "DYN_TAKE exists only in the dynamic profile".to_string(),
+                            ));
+                        }
+                        let st = slot_ty_of(f, *src, sp, "dyn-take src")?;
+                        if !matches!(self.module.types.get(st as usize), Some(MirType::Dyn)) {
+                            return Err(err(
+                                "mir.dyn.type",
+                                format!("DYN_TAKE src {} is not the Dyn type", st),
+                            ));
+                        }
+                        if self.module.types.get(*ty as usize).is_none() {
+                            return Err(err(
+                                "mir.dyn.type",
+                                format!("DYN_TAKE type operand {} is out of bounds", ty),
+                            ));
+                        }
+                        if !self.dyn_whitelisted(*ty) {
+                            return Err(err(
+                                "mir.dyn.whitelist",
+                                format!(
+                                    "DYN_TAKE type operand {} is outside the erasable closure",
+                                    ty
+                                ),
+                            ));
+                        }
+                        // dst receives exactly the requested type.
+                        let dt = slot_ty_of(f, *dst, sp, "dyn-take dst")?;
+                        if !self.ty_equiv(dt, *ty) {
+                            return Err(err(
+                                "mir.dyn.type",
+                                format!("DYN_TAKE dst {} != the requested type {}", dt, ty),
+                            ));
+                        }
+                    }
                     MirInstr::BorrowEnd { token } => {
-                        if !self.is_owned && !self.is_collections {
+                        if !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "BORROW_END exists only in the owned profile".to_string(),
@@ -2283,7 +2450,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::StrLen { dst, view } | MirInstr::StrLenBytes { dst, view } => {
-                        if !self.is_owned && !self.is_collections {
+                        if !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "str operations exist only in the owned profile".to_string(),
@@ -2294,7 +2461,7 @@ impl<'a> Verifier<'a> {
                         self.want_strview_i32(vt, dt, &err, sp)?;
                     }
                     MirInstr::StrCharAt { dst, view, index } => {
-                        if !self.is_owned && !self.is_collections {
+                        if !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "str operations exist only in the owned profile".to_string(),
@@ -2328,7 +2495,7 @@ impl<'a> Verifier<'a> {
                         start,
                         end,
                     } => {
-                        if !self.is_owned && !self.is_collections {
+                        if !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "str operations exist only in the owned profile".to_string(),
@@ -2357,7 +2524,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::StrConcat { dst, lhs, rhs } => {
-                        if !self.is_owned && !self.is_collections {
+                        if !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "str operations exist only in the owned profile".to_string(),
@@ -2382,7 +2549,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::StrToOwned { dst, view } => {
-                        if !self.is_owned && !self.is_collections {
+                        if !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "str operations exist only in the owned profile".to_string(),
@@ -2404,7 +2571,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::StrCmp { dst, lhs, rhs, .. } => {
-                        if !self.is_owned && !self.is_collections {
+                        if !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "str operations exist only in the owned profile".to_string(),
@@ -2429,7 +2596,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::CharToCodepoint { dst, ch } => {
-                        if !self.is_owned && !self.is_collections {
+                        if !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "char conversions exist only in the owned profile".to_string(),
@@ -2451,7 +2618,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::CharFromCodepoint { dst, code } => {
-                        if !self.is_owned && !self.is_collections {
+                        if !self.is_owned && !self.collections_surface() {
                             return Err(err(
                                 "mir.profile-instr",
                                 "char conversions exist only in the owned profile".to_string(),
@@ -2523,7 +2690,7 @@ impl<'a> Verifier<'a> {
             }
         }
         // ---- definite initialization over the reachable CFG -------------
-        if self.is_owned || self.is_collections {
+        if self.is_owned || self.collections_surface() {
             // PLAN-821: the ownership dataflow SUBSUMES the must-init
             // analysis (init ⊂ its state lattice) and adds move-kill,
             // borrow tokens, reservation and escape gates. PLAN-822: the
@@ -2841,6 +3008,11 @@ impl MirInstr {
             | MirInstr::VariantProject { dst, .. }
             | MirInstr::ListPlace { dst, .. }
             | MirInstr::PlaceGet { dst, .. } => Some(*dst),
+            // PLAN-824: all three Dyn ops define their dst (TAKE on a
+            // mismatch traps — nothing after it executes).
+            MirInstr::DynPack { dst, .. }
+            | MirInstr::DynIs { dst, .. }
+            | MirInstr::DynTake { dst, .. } => Some(*dst),
             MirInstr::FieldSet { root, .. } => Some(*root),
             MirInstr::Trace { .. }
             | MirInstr::BorrowEnd { .. }
@@ -2872,6 +3044,11 @@ impl MirInstr {
             | MirInstr::Move { src, .. }
             | MirInstr::View { src, .. }
             | MirInstr::MutRef { src, .. } => vec![*src],
+            // PLAN-824: every Dyn op reads its source slot (PACK clones —
+            // the source stays valid; IS/TAKE never consume).
+            MirInstr::DynPack { src, .. }
+            | MirInstr::DynIs { src, .. }
+            | MirInstr::DynTake { src, .. } => vec![*src],
             MirInstr::BorrowEnd { token } => vec![*token],
             MirInstr::Drop { slot } => vec![*slot],
             MirInstr::StrLen { view, .. }

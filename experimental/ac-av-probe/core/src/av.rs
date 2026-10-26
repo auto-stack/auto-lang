@@ -564,6 +564,89 @@ fn frame_slots_bytes(slots: &[Value], visited: &mut u64) -> usize {
     slots.iter().map(|s| s.deep_size(visited)).sum()
 }
 
+/// PLAN-824: resolve a module type index to the self-contained
+/// [`crate::dynamic::DynType`] tree (the MIR→DynType adapter the Dyn
+/// instructions consume). PATH-based cycle detection (a type table is a
+/// DAG — shared children are fine, only a back-reference to the current
+/// path is a cycle); the 256 depth bound matches the verifier's
+/// `dyn_whitelisted`, so a verified operand always resolves — `None` is
+/// an admission violation, never a guest outcome.
+fn resolve_dyn_type<V: ModuleView>(v: &V, func: u32, idx: u32) -> Option<crate::dynamic::DynType> {
+    use crate::dynamic::{DynArm, DynField, DynType};
+    use crate::mir::MirType;
+    fn go<V: ModuleView>(
+        v: &V,
+        func: u32,
+        idx: u32,
+        depth: u32,
+        path: &mut Vec<u32>,
+    ) -> Option<DynType> {
+        if depth > crate::dynamic::MAX_DYN_DEPTH || path.contains(&idx) {
+            return None;
+        }
+        path.push(idx);
+        let out = match v.mir_type_of(func, idx)? {
+            MirType::Bool => Some(DynType::Bool),
+            MirType::I32 => Some(DynType::I32),
+            MirType::I64 => Some(DynType::I64),
+            MirType::U64 => Some(DynType::U64),
+            MirType::F32 => Some(DynType::F32),
+            MirType::F64 => Some(DynType::F64),
+            MirType::Char => Some(DynType::Char),
+            MirType::Str => Some(DynType::Str),
+            MirType::Record(r) => {
+                let fields: Option<Vec<DynField>> = r
+                    .fields
+                    .iter()
+                    .map(|f| {
+                        Some(DynField {
+                            name: f.name.clone(),
+                            ty: go(v, func, f.ty, depth + 1, path)?,
+                        })
+                    })
+                    .collect();
+                Some(DynType::Record {
+                    owner: r.owner_module.clone(),
+                    name: r.name.clone(),
+                    fields: fields?,
+                })
+            }
+            MirType::List(l) => Some(DynType::List(Box::new(go(
+                v,
+                func,
+                l.elem,
+                depth + 1,
+                path,
+            )?))),
+            MirType::Variant(vt) => {
+                let arms: Option<Vec<DynArm>> = vt
+                    .arms
+                    .iter()
+                    .map(|a| match a.payload {
+                        Some(p) => Some(DynArm {
+                            name: a.name.clone(),
+                            payload: Some(go(v, func, p, depth + 1, path)?),
+                        }),
+                        None => Some(DynArm {
+                            name: a.name.clone(),
+                            payload: None,
+                        }),
+                    })
+                    .collect();
+                Some(DynType::Variant {
+                    owner: vt.owner_module.clone(),
+                    name: vt.name.clone(),
+                    arms: arms?,
+                })
+            }
+            _ => None,
+        };
+        path.pop();
+        out
+    }
+    go(v, func, idx, 1, &mut Vec::new())
+}
+
 /// Commit one slot write with deep delta accounting: a positive delta is
 /// checked against the live-data budget BEFORE the write lands (a resource
 /// outcome — the previous value stays in place). Fuel for the traversal is
@@ -2985,6 +3068,119 @@ fn dispatch<V: ModuleView>(
                     }
                     st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
                     kill_value_slot(v, func_idx, func, st, *value as usize);
+                }
+                // -- PLAN-824 dynamic surface (execution) ---------------
+                MirInstr::DynPack { dst, src } => {
+                    let val = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*src as usize].clone()
+                    };
+                    let src_ty = func.slots[*src as usize].ty;
+                    let dyn_ty = match resolve_dyn_type(v, func_idx, src_ty) {
+                        Some(t) => t,
+                        None => {
+                            return Some(ExecOutcome::Infra(
+                                "dyn-pack source type is outside the erasable closure \
+                                 (admission violation)"
+                                    .to_string(),
+                            ))
+                        }
+                    };
+                    // The executor re-checks the admission the verifier
+                    // gated (defense in depth): a mismatch here is an
+                    // admission violation, never a silent degrade.
+                    let packed = match crate::dynamic::DynValue::pack(val, dyn_ty) {
+                        Ok(p) => std::rc::Rc::new(p),
+                        Err(e) => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "dyn-pack admission rejected the value ({})",
+                                e.code()
+                            )))
+                        }
+                    };
+                    st.steps += 1;
+                    if let Err(out) =
+                        commit_slot_write(st, *dst as usize, Value::Dyn(packed), limits)
+                    {
+                        return Some(out);
+                    }
+                }
+                MirInstr::DynIs { dst, src, ty } => {
+                    let sv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*src as usize].clone()
+                    };
+                    let want = match resolve_dyn_type(v, func_idx, *ty) {
+                        Some(t) => t,
+                        None => {
+                            return Some(ExecOutcome::Infra(
+                                "dyn-is type operand is outside the erasable closure \
+                                 (admission violation)"
+                                    .to_string(),
+                            ))
+                        }
+                    };
+                    let hits = match &sv {
+                        Value::Dyn(d) => d.is(&want),
+                        other => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "dyn-is operand holds {} (admission violation)",
+                                other.type_name()
+                            )))
+                        }
+                    };
+                    st.steps += 1;
+                    if let Err(out) =
+                        commit_slot_write(st, *dst as usize, Value::Bool(hits), limits)
+                    {
+                        return Some(out);
+                    }
+                }
+                MirInstr::DynTake { dst, src, ty } => {
+                    let sv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*src as usize].clone()
+                    };
+                    let want = match resolve_dyn_type(v, func_idx, *ty) {
+                        Some(t) => t,
+                        None => {
+                            return Some(ExecOutcome::Infra(
+                                "dyn-take type operand is outside the erasable closure \
+                                 (admission violation)"
+                                    .to_string(),
+                            ))
+                        }
+                    };
+                    st.steps += 1;
+                    match &sv {
+                        Value::Dyn(d) => {
+                            if d.is(&want) {
+                                // v1 take materializes a SHARE of the inner
+                                // value (Value::clone — the Value model's
+                                // own semantics): the Dyn keeps its share,
+                                // Rc ownership releases at the last owner.
+                                let out = d.as_value().clone();
+                                if let Err(out) = commit_slot_write(st, *dst as usize, out, limits)
+                                {
+                                    return Some(out);
+                                }
+                            } else {
+                                // A RUNTIME CHECKED failure: the source
+                                // stays intact in its slot, nothing dropped
+                                // or half-moved.
+                                return Some(ExecOutcome::Trap {
+                                    kind: crate::contract::TrapKind::DynTypeMismatch,
+                                    span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                                });
+                            }
+                        }
+                        other => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "dyn-take operand holds {} (admission violation)",
+                                other.type_name()
+                            )))
+                        }
+                    }
                 }
                 MirInstr::Trace { event } => {
                     st.trace.events.push(*event);

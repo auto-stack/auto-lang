@@ -87,6 +87,10 @@ pub const OP_VARIANT_SWITCH: u8 = 0x2B;
 pub const OP_LIST_PLACE: u8 = 0x2C;
 pub const OP_PLACE_GET: u8 = 0x2D;
 pub const OP_PLACE_SET: u8 = 0x2E;
+// PLAN-824 dynamic-profile opcodes (contract-decision §6).
+pub const OP_DYN_PACK: u8 = 0x2F;
+pub const OP_DYN_IS: u8 = 0x30;
+pub const OP_DYN_TAKE: u8 = 0x31;
 pub const TERM_JUMP: u8 = 0x10;
 pub const TERM_BRANCH: u8 = 0x11;
 pub const TERM_RETURN: u8 = 0x12;
@@ -124,6 +128,8 @@ pub const TY_RECORD: u8 = 7;
 pub const TY_LIST: u8 = 13;
 pub const TY_VARIANT: u8 = 14;
 pub const TY_PLACE: u8 = 15;
+/// PLAN-824 dynamic-profile type tag (the opaque erased Dyn type).
+pub const TY_DYN: u8 = 16;
 
 // const tags (data profile adds 2..5)
 pub const CONST_I32: u8 = 0;
@@ -152,15 +158,19 @@ pub enum WireFamily {
     /// wire version 3 (another separate generation — v1/v2/v3 mutually
     /// reject by the version field).
     Collections,
+    /// PLAN-824: the dynamic profile rides the `AVAD` magic FAMILY at wire
+    /// version 4 (v1/v2/v3/v4 are mutually unreadable generations; id 5).
+    Dynamic,
 }
 
 impl WireFamily {
     fn magic(&self) -> [u8; 4] {
         match self {
             WireFamily::Core => *ABC_MAGIC,
-            WireFamily::Data | WireFamily::Owned | WireFamily::Collections => {
-                crate::contract::ABC_DATA_MAGIC
-            }
+            WireFamily::Data
+            | WireFamily::Owned
+            | WireFamily::Collections
+            | WireFamily::Dynamic => crate::contract::ABC_DATA_MAGIC,
         }
     }
     fn version(&self) -> u16 {
@@ -169,6 +179,7 @@ impl WireFamily {
             WireFamily::Data => crate::contract::ABC_DATA_VERSION,
             WireFamily::Owned => crate::contract::ABC_OWNED_VERSION,
             WireFamily::Collections => crate::contract::ABC_COLLECTIONS_VERSION,
+            WireFamily::Dynamic => crate::contract::ABC_DYNAMIC_VERSION,
         }
     }
     fn profile_id(&self) -> u16 {
@@ -177,21 +188,30 @@ impl WireFamily {
             WireFamily::Data => crate::contract::ABC_PROFILE_DATA,
             WireFamily::Owned => crate::contract::ABC_PROFILE_OWNED,
             WireFamily::Collections => crate::contract::ABC_PROFILE_COLLECTIONS,
+            WireFamily::Dynamic => crate::contract::ABC_PROFILE_DYNAMIC,
         }
     }
     fn allows_data_tags(&self) -> bool {
         matches!(
             self,
-            WireFamily::Data | WireFamily::Owned | WireFamily::Collections
+            WireFamily::Data | WireFamily::Owned | WireFamily::Collections | WireFamily::Dynamic
         )
     }
     fn allows_owned_tags(&self) -> bool {
-        matches!(self, WireFamily::Owned | WireFamily::Collections)
+        matches!(
+            self,
+            WireFamily::Owned | WireFamily::Collections | WireFamily::Dynamic
+        )
     }
     /// PLAN-822: the List/Variant tags and collection opcodes exist only
-    /// in the collections generation.
+    /// in the collections generation and its dynamic successor.
     fn allows_collections_tags(&self) -> bool {
-        matches!(self, WireFamily::Collections)
+        matches!(self, WireFamily::Collections | WireFamily::Dynamic)
+    }
+    /// PLAN-824: the checked-erasure opcodes exist only in the dynamic
+    /// generation.
+    fn allows_dynamic_tags(&self) -> bool {
+        matches!(self, WireFamily::Dynamic)
     }
 }
 
@@ -363,6 +383,7 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
         crate::contract::AV_DATA_PROFILE => WireFamily::Data,
         crate::contract::AV_OWNED_PROFILE => WireFamily::Owned,
         crate::contract::AV_COLLECTIONS_PROFILE => WireFamily::Collections,
+        crate::contract::AV_DYNAMIC_PROFILE => WireFamily::Dynamic,
         other => {
             return Err(AbcDecodeError::fmt_err(
                 "abc.encode.profile",
@@ -642,6 +663,15 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                 }
                 put_u8(&mut w, TY_PLACE);
                 put_u32(&mut w, l.elem);
+            }
+            MirType::Dyn => {
+                if !family.allows_dynamic_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "the erased Dyn type in a non-dynamic-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_DYN);
             }
         }
     }
@@ -1268,6 +1298,42 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                         put_u32(&mut w, *place);
                         put_u32(&mut w, *value);
                     }
+                    // -- PLAN-824 dynamic surface (encode) -----------------
+                    MirInstr::DynPack { dst, src } => {
+                        if !family.allows_dynamic_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "DYN operations in a non-dynamic-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_DYN_PACK);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *src);
+                    }
+                    MirInstr::DynIs { dst, src, ty } => {
+                        if !family.allows_dynamic_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "DYN operations in a non-dynamic-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_DYN_IS);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *src);
+                        put_u32(&mut w, *ty);
+                    }
+                    MirInstr::DynTake { dst, src, ty } => {
+                        if !family.allows_dynamic_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "DYN operations in a non-dynamic-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_DYN_TAKE);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *src);
+                        put_u32(&mut w, *ty);
+                    }
                     MirInstr::Trace { event } => {
                         put_u8(&mut w, OP_TRACE);
                         put_u8(
@@ -1501,18 +1567,18 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         WireFamily::Core
     } else if magic == crate::contract::ABC_DATA_MAGIC {
         // Same magic family, DIFFERENT format generations: the version
-        // field (below) selects v1=data / v2=owned / v3=collections; a
-        // payload of another generation in this build's reader is a
-        // controlled `abc.decode.version` rejection (798 r6 generation
-        // isolation; never read as the other generation's semantics).
-        if bytes.get(4..6).map(|v| u16::from_le_bytes([v[0], v[1]]))
-            == Some(crate::contract::ABC_OWNED_VERSION)
-        {
+        // field (below) selects v1=data / v2=owned / v3=collections /
+        // v4=dynamic; a payload of another generation in this build's
+        // reader is a controlled `abc.decode.version` rejection (798 r6
+        // generation isolation; never read as the other generation's
+        // semantics).
+        let ver = bytes.get(4..6).map(|v| u16::from_le_bytes([v[0], v[1]]));
+        if ver == Some(crate::contract::ABC_OWNED_VERSION) {
             WireFamily::Owned
-        } else if bytes.get(4..6).map(|v| u16::from_le_bytes([v[0], v[1]]))
-            == Some(crate::contract::ABC_COLLECTIONS_VERSION)
-        {
+        } else if ver == Some(crate::contract::ABC_COLLECTIONS_VERSION) {
             WireFamily::Collections
+        } else if ver == Some(crate::contract::ABC_DYNAMIC_VERSION) {
+            WireFamily::Dynamic
         } else {
             WireFamily::Data
         }
@@ -1656,6 +1722,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             WireFamily::Data => crate::contract::AV_DATA_PROFILE.to_string(),
             WireFamily::Owned => crate::contract::AV_OWNED_PROFILE.to_string(),
             WireFamily::Collections => crate::contract::AV_COLLECTIONS_PROFILE.to_string(),
+            WireFamily::Dynamic => crate::contract::AV_DYNAMIC_PROFILE.to_string(),
         },
         owner: OwnerScope {
             schema: String::new(),
@@ -1874,6 +1941,11 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             TY_PLACE if family.allows_collections_tags() => {
                 let elem = c.u32()?;
                 module.types.push(MirType::Place(ListTypeRef { elem }));
+            }
+            // PLAN-824: the opaque erased Dyn type (no operands — the
+            // runtime type lives in the value, not the type table).
+            TY_DYN if family.allows_dynamic_tags() => {
+                module.types.push(MirType::Dyn);
             }
             other => {
                 return Err(AbcDecodeError::fmt_err(
@@ -2430,6 +2502,24 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                         let value = c.u32()?;
                         MirInstr::PlaceSet { place, value }
                     }
+                    // -- PLAN-824 dynamic surface (decode) -----------------
+                    OP_DYN_PACK if family.allows_dynamic_tags() => {
+                        let dst = c.u32()?;
+                        let src = c.u32()?;
+                        MirInstr::DynPack { dst, src }
+                    }
+                    OP_DYN_IS if family.allows_dynamic_tags() => {
+                        let dst = c.u32()?;
+                        let src = c.u32()?;
+                        let ty = c.u32()?;
+                        MirInstr::DynIs { dst, src, ty }
+                    }
+                    OP_DYN_TAKE if family.allows_dynamic_tags() => {
+                        let dst = c.u32()?;
+                        let src = c.u32()?;
+                        let ty = c.u32()?;
+                        MirInstr::DynTake { dst, src, ty }
+                    }
                     other => {
                         return Err(AbcDecodeError::fmt_err(
                             "abc.decode.opcode",
@@ -2513,6 +2603,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             WireFamily::Data => crate::contract::ABC_DATA_SCHEMA.to_string(),
             WireFamily::Owned => crate::contract::ABC_OWNED_SCHEMA.to_string(),
             WireFamily::Collections => crate::contract::ABC_COLLECTIONS_SCHEMA.to_string(),
+            WireFamily::Dynamic => crate::contract::ABC_DYNAMIC_SCHEMA.to_string(),
         },
         module: String::new(),
     };
