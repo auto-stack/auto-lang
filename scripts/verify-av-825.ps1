@@ -95,8 +95,10 @@ function Invoke-Benchmark {
     $withoutPeak = @(Get-Content -LiteralPath $peakFile -Encoding UTF8 | Where-Object { $_ -notmatch 'process-peak' })
     Set-Content -LiteralPath $peakFile -Value $withoutPeak -Encoding UTF8
     $failed = $false
-    & powershell -NoProfile -File (Join-Path $root 'scripts/av-825-bench-report.ps1') -RawDir $guard -OutFile (Join-Path $guard 'bad.json') 2>$null
-    if ($LASTEXITCODE -ne 0) { $failed = $true }
+    try {
+        & powershell -NoProfile -File (Join-Path $root 'scripts/av-825-bench-report.ps1') -RawDir $guard -OutFile (Join-Path $guard 'bad.json') 2>$null
+        if ($LASTEXITCODE -ne 0) { $failed = $true }
+    } catch { $failed = $true }
     if (-not $failed) { throw 'missing process-peak counter-control was accepted' }
     Remove-Item -LiteralPath $guard -Recurse -Force
 }
