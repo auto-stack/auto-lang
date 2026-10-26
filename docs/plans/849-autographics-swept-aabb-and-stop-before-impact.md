@@ -269,6 +269,16 @@ stage:review | review_scope:final | reviewer_identity:/root/review_849_final_r1�
 
 无实现/依赖/规范/ledger修改，无新增合同内finding或债务候选；主检出其他WIP保留。T-09关闭，status reviewed/current_step9/total10；T-10保持开放。完整locked driver/AGP必要面/原生/owner/fresh own-SDK-own-target consumer等81组、autographics-dev落地、Spec/ledger/归档/guard/批量到期归因均merge-owned pending；这些门通过前不得宣称交付。未运行root t/tv/tt/tb/tu/taa/tf/docs_gen、完整driver或AGP套件，未合并/发布/清理。
 
+### 2026-10-26 merge:r1 — 冻结门进行中，尚未落地
+
+冻结6bb85f354/revision1及独立final pass、SDK/三锁、canonical Spec输入与草案原始hash核对一致，唯一树clean。沿848原串行runner执行849原77+新4组，输出改到本849目录，interaction reopen从真实本次report取path，不复用旧PID或覆盖848收据。原输入/预算/断言保持，完整driver及fresh own-SDK/empty-target consumer先行；全部过并审计前不合入、不沉淀、不归档。
+
+首次producer完整门exit101：authoring_probe_exit两项OS输入走查失败；同环境848旧runner也出现pointer unreachable。定向诊断含额外非脚本down/up与连续物理鼠标移动（原始报告/观察在merge-r1/input-interference.json.txt）；不能据此宣称产品回归或把失败计绿。用户明确答复现在可停止外部键鼠输入，条件改变后按同冻结源码/原断言重跑；无实现/测试代码修复，无阈值调整。当前reviewed9/10，T10全部门/落地/沉淀/归档/guard仍pending。
+
+### 2026-10-26 merge:r1 gates verified — landing pending
+
+冻结6bb85f354未改源码/依赖/测试/阈值。producer与fresh own-SDK/empty-target consumer完整各247 tests，81当前命令组、两边旧原生/owner及新增sweep14主例+4reopen/6owner反控+恢复通过，审计见[validated](attachments/849/merge-r1/validated.json.txt)。AGP未变23槽163tests/16native明确复用，不冒称新运行。首次输入受扰、一次临时链接错误和consumer sweep重开clock backlog auto-Pause超时均留档；后者同binary隔离完整矩阵重测通过，R849-NATIVE-CLOCK作为验证器稳定性风险保留，非产品geometry/CPU故障；未放宽时钟守护。直接键鼠原生阶段结束。git guard clean。源码快进/15项canonical与ledger/实际归档及清理仍pending，当前reviewed9/10。
+
 ## 10. 待澄清事项
 
 无必须追加询问的产品问题。固定AABB扫掠/初始闭接触、类型化单槽、v4/10、16credit、原128/CPU/源码上限和脚本停止边界明确。必要前置是848正式交付；T-02承担实现可行性，不预支成功。
