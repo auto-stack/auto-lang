@@ -86,7 +86,7 @@ fn av_dynamic_824_corpus_green() {
         ids.len(),
         "duplicated check ids in the report: {ids:?}"
     );
-    for required in ["run-dynamic-fixture"] {
+    for required in ["run-dynamic-fixture", "run-dynamic-take-probe"] {
         assert!(
             ids.contains(&required),
             "required check {required}: {ids:?}"

@@ -7,7 +7,7 @@
 [CmdletBinding()]
 param(
     [Parameter(ParameterSetName = 'Scope', Mandatory = $true)]
-    [ValidateSet("first-case", "semantics", "admission", "resources", "cache", "compatibility", "incremental", "autodown", "acceptance")]
+    [ValidateSet("first-case", "semantics", "admission", "resources", "cache", "compatibility", "incremental", "baseline", "autodown", "acceptance")]
     [string]$Scope,
 
     [Parameter(ParameterSetName = 'Guard')]
@@ -113,6 +113,27 @@ $REQ = @{
         'av_dynamic_824_resources_deep_chain_beyond_bound_rejected',
         'av_dynamic_824_resources_take_trap_drains_ledger',
         'av_dynamic_824_resources_cancel_is_its_own_state',
+        'av_dynamic_824_resources_worker_memory_hard_gate_parent_sampled'
+    )
+    'baseline' = @(
+        # D rows (the bound entries, exactly the binding.md table):
+        'av_dynamic_824_corpus_green',
+        'av_dynamic_824_restore_reverifies',
+        'av_dynamic_824_semantics_is_false_never_traps_dyn_usable',
+        'av_dynamic_824_semantics_same_width_different_name_unequal',
+        'av_dynamic_824_semantics_list_of_fn_not_declarable',
+        'av_dynamic_824_semantics_shared_dag_pack_ok_freeze_rejects',
+        'av_dynamic_824_cache_good_envelope_bad_payload_rejected',
+        'av_dynamic_824_cache_portable_good_checksum_bad_structure_rejected',
+        'av_dynamic_824_cache_restore_payload_types_fp_mismatch_rejected',
+        'av_dynamic_824_incremental_signature_and_grant_lifecycle',
+        # W rows (wide-scalar bit axes through the dynamic entry seam):
+        'av_dynamic_824_semantics_int_extremes_and_id_collision_stay_integers',
+        'av_dynamic_824_semantics_f64_bits_preserved_through_dyn',
+        'av_dynamic_824_semantics_f32_bits_preserved_through_dyn',
+        # I rows (incremental/session axes):
+        'av_dynamic_824_incremental_churn_512_bounded',
+        'av_dynamic_824_incremental_baseline_campaign_replay',
         'av_dynamic_824_resources_worker_memory_hard_gate_parent_sampled'
     )
     'incremental' = @(
@@ -241,13 +262,43 @@ switch ($Scope) {
         # + precise refusals/grant lifecycle + forced-degradation gate).
         Run-Probe-Tests -Bin 'av_dynamic_824_incremental' -Label 'incremental' -RequiredIds $REQ['incremental']
     }
+    'baseline' {
+        # T-11 (V-15/AC-11): the 852 unified-capability validation phase —
+        # every D/W/I row bound in attachments/824/852-validation/binding.md
+        # executes through its real entry (formal corpus + the mapped probe
+        # binaries); the required-id guard above proves no applicable row
+        # is missing. No a2r certification, no Rust recompile, no full-tier
+        # cargo t/tv (the 2026-10-14 ruling).
+        Run-Lang-Tests -Filter 'av_dynamic_824' -Label 'baseline: formal corpus' -RequiredIds @('av_dynamic_824_corpus_green')
+        Run-Probe-Tests -Bin 'av_dynamic_824_first_case' -Filter 'av_dynamic_824_restore_reverifies' -Label 'baseline: D06' -RequiredIds @('av_dynamic_824_restore_reverifies')
+        Run-Probe-Tests -Bin 'av_dynamic_824_semantics' -Label 'baseline: D02/D03/D05/D09+W' -RequiredIds @(
+            'av_dynamic_824_semantics_is_false_never_traps_dyn_usable',
+            'av_dynamic_824_semantics_same_width_different_name_unequal',
+            'av_dynamic_824_semantics_list_of_fn_not_declarable',
+            'av_dynamic_824_semantics_shared_dag_pack_ok_freeze_rejects',
+            'av_dynamic_824_semantics_int_extremes_and_id_collision_stay_integers',
+            'av_dynamic_824_semantics_f64_bits_preserved_through_dyn',
+            'av_dynamic_824_semantics_f32_bits_preserved_through_dyn'
+        )
+        Run-Probe-Tests -Bin 'av_dynamic_824_cache_compat' -Label 'baseline: D07/D08' -RequiredIds @(
+            'av_dynamic_824_cache_good_envelope_bad_payload_rejected',
+            'av_dynamic_824_cache_portable_good_checksum_bad_structure_rejected',
+            'av_dynamic_824_cache_restore_payload_types_fp_mismatch_rejected'
+        )
+        Run-Probe-Tests -Bin 'av_dynamic_824_incremental' -Label 'baseline: I04/I10/I11/D08' -RequiredIds @(
+            'av_dynamic_824_incremental_signature_and_grant_lifecycle',
+            'av_dynamic_824_incremental_churn_512_bounded',
+            'av_dynamic_824_incremental_baseline_campaign_replay'
+        )
+        Run-Probe-Tests -Bin 'av_dynamic_824_resources' -Filter 'av_dynamic_824_resources_worker_memory_hard_gate_parent_sampled' -Label 'baseline: I06' -RequiredIds @('av_dynamic_824_resources_worker_memory_hard_gate_parent_sampled')
+    }
     'autodown' {
         Run-Lang-Tests -Filter 'av_dynamic_824' -Label 'autodown' -RequiredIds $REQ['autodown']
     }
     'acceptance' {
         # Replay every implemented scope in child processes (isolated
         # working directories, same shapes the docs promise).
-        foreach ($s in @('first-case', 'semantics', 'admission', 'resources', 'cache', 'compatibility', 'incremental', 'autodown')) {
+        foreach ($s in @('first-case', 'semantics', 'admission', 'resources', 'cache', 'compatibility', 'incremental', 'baseline', 'autodown')) {
             & pwsh -File $PSCommandPath -Scope $s
             if ($LASTEXITCODE -ne 0) {
                 throw "acceptance: scope $s failed"

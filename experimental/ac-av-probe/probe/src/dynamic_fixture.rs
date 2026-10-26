@@ -281,6 +281,10 @@ pub const DYNAMIC_FIXTURES: &[DynamicFixture] = &[
         id: "take-mismatch",
         entry: "main",
     },
+    DynamicFixture {
+        id: "take-probe",
+        entry: "main",
+    },
 ];
 
 pub fn dynamic_fixture(id: &str) -> Option<&'static DynamicFixture> {
@@ -584,6 +588,121 @@ pub fn dyn_out_module() -> MirModule {
     m
 }
 
+/// The take-probe module (T-11 D02 formal-recipe face): pack a Note,
+/// probe it with the WRONG type (is List<Note> — `false`, never a trap),
+/// then take it with the RIGHT type and read the field — a SUCCESS run
+/// whose result proves the failed probe did not consume or disturb the
+/// container (the wrong-type TAKE itself is the take-mismatch trap
+/// fixture; this is its preservation-success counterpart).
+pub fn take_probe_module() -> MirModule {
+    let owner = dynamic_owner_scope();
+    let mut m = MirModule::new_dynamic(owner.clone());
+    let (t_i32, t_str) = (0u32, 1u32);
+    m.types = vec![
+        MirType::I32,
+        MirType::Str,
+        MirType::Record(RecordTypeRef {
+            owner_module: "dynamic824".to_string(),
+            name: "Note".to_string(),
+            fields: vec![
+                MirFieldDef {
+                    name: "text".to_string(),
+                    ty: t_str,
+                },
+                MirFieldDef {
+                    name: "n".to_string(),
+                    ty: t_i32,
+                },
+            ],
+        }),
+        MirType::List(auto_av_core::mir::ListTypeRef { elem: 2 }),
+        MirType::Dyn,
+        MirType::Bool,
+    ];
+    let c_text = m.intern_const(MirConst::Str(Box::from(*b"prb")));
+    let c_n = m.intern_const(MirConst::I32(7));
+    let c_zero = m.intern_const(MirConst::I32(0));
+    let slots = vec![
+        slot(t_str, "text"),
+        slot(t_i32, "n"),
+        slot(2, "note"),
+        slot(4, "d"),
+        slot(5, "miss"),
+        slot(2, "back"),
+        slot(t_i32, "got"),
+        slot(t_i32, "ret"),
+    ];
+    let f = MirFunction {
+        owner,
+        name: "main".to_string(),
+        sig: m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+            params: vec![],
+            result: t_i32,
+        })),
+        slots,
+        blocks: vec![
+            auto_av_core::mir::MirBlock {
+                instrs: vec![
+                    MirInstr::Const {
+                        dst: 0,
+                        value: c_text as u32,
+                    },
+                    MirInstr::Const {
+                        dst: 1,
+                        value: c_n as u32,
+                    },
+                    MirInstr::Aggregate {
+                        dst: 2,
+                        record_ty: 2,
+                        operands: vec![0, 1],
+                    },
+                    MirInstr::DynPack { dst: 3, src: 2 },
+                    // Wrong-type probe: false, never a trap.
+                    MirInstr::DynIs {
+                        dst: 4,
+                        src: 3,
+                        ty: 3,
+                    },
+                    // The container survives the failed probe.
+                    MirInstr::DynTake {
+                        dst: 5,
+                        src: 3,
+                        ty: 2,
+                    },
+                    MirInstr::FieldGet {
+                        dst: 6,
+                        base: 5,
+                        path: vec![1],
+                    },
+                    MirInstr::Const {
+                        dst: 7,
+                        value: c_zero as u32,
+                    },
+                ],
+                term: auto_av_core::mir::Terminator::Branch {
+                    cond: 4,
+                    then: 1,
+                    else_: 2,
+                },
+            },
+            auto_av_core::mir::MirBlock {
+                instrs: vec![],
+                term: auto_av_core::mir::Terminator::Return { value: 7 },
+            },
+            auto_av_core::mir::MirBlock {
+                instrs: vec![],
+                term: auto_av_core::mir::Terminator::Return { value: 6 },
+            },
+        ],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+    };
+    m.funcs = vec![f];
+    m.entry = 0;
+    m
+}
+
 /// The take-mismatch module: a wrong-type DYN_TAKE (Str expected over a
 /// packed Note) — the checked RUNTIME failure: trap `av.trap.dyn-type`
 /// with the source Dyn intact.
@@ -667,6 +786,7 @@ pub fn fixture_module(id: &str) -> Result<MirModule, String> {
         "first-case" => Ok(first_case_module()),
         "dyn-out" => Ok(dyn_out_module()),
         "take-mismatch" => Ok(take_mismatch_module()),
+        "take-probe" => Ok(take_probe_module()),
         other => Err(format!("unknown dynamic fixture `{other}`")),
     }
 }

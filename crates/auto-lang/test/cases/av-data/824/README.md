@@ -23,3 +23,12 @@ worker never sees expected outcomes — the parent judges).
 - negative oracles: `AV824_DYNAMIC_EXPECT_SABOTAGE=result|ledger` must
   redden `dynamic-result` / `dynamic-frees`; `AV798_FAULT=exit9|extra-frame|
   wrong-hash` must be `Status::Error` (infra, never a silent green).
+
+## T-11 追加：take-probe 固定面（D02 正式入口）
+
+- recipe `ac-av/dynamic-run-v1`，entry `dynamic:take-probe`（worker 冻结表 DYNAMIC_CASES 第 4 行）。
+- 冻结面：result `{"bits":"7","kind":"i32"}`；allocs `[{id:0,bytes:3}]`（"prb" 3B）；
+  frees `[{id:0,bytes:3}]`；live=0。is(Alias 类错型)=false 永不 trap；take 复原 n=7 证明
+  失败探针未消耗容器（错型 take 本身=take-mismatch trap fixture，证据在 probe 首例）。
+- binding：`crates/auto-lang/test/cases/ace-m1/binding.tsv` D02 行 av 格已翻
+  `ok:av-dyn-824`；映射与收据见 `docs/plans/attachments/824/852-validation/`。

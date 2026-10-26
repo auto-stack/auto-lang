@@ -33,7 +33,7 @@ fn tmp_store(tag: &str) -> PathBuf {
 #[test]
 fn av_dynamic_824_cache_restore_identity_and_miss() {
     let store = tmp_store("identity");
-    let mut r = request_dynamic(Some(&store), "cache-probe", "first-case").expect("persist");
+    let r = request_dynamic(Some(&store), "cache-probe", "first-case").expect("persist");
     let ExecOutcome::Success { value, steps } = r.av.clone().expect("av") else {
         panic!("first case must succeed")
     };
@@ -155,7 +155,7 @@ fn av_dynamic_824_cache_good_envelope_bad_payload_rejected() {
 #[test]
 fn av_dynamic_824_cache_portable_good_checksum_bad_structure_rejected() {
     let store = tmp_store("portable-tamper");
-    let mut r = request_dynamic(None, "ptamper-probe", "dyn-out").expect("derive identity");
+    let r = request_dynamic(None, "ptamper-probe", "dyn-out").expect("derive identity");
     let mut bytes = r.portable_bytes.clone();
     // Corrupt the FIRST type-descriptor tag (byte 16 = the root tydesc)
     // and RECOMPUTE the FNV trailer so the checksum is honest for the
@@ -369,7 +369,7 @@ fn av_dynamic_824_compat_wire_generation_isolation() {
 #[test]
 fn av_dynamic_824_compat_layer_separation() {
     let store = tmp_store("layers");
-    let mut r = request_dynamic(Some(&store), "layer-probe", "dyn-out").expect("persist");
+    let r = request_dynamic(Some(&store), "layer-probe", "dyn-out").expect("persist");
     let types_fp = dynamic_types_fp_of(&fixture_module("dyn-out").unwrap());
     let value_fp =
         format!("{:016x}", auto_av_core::contract::fnv1a64(&r.portable_bytes));

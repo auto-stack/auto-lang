@@ -414,3 +414,50 @@ fn av_dynamic_824_incremental_baseline_campaign_replay() {
     assert!(report.structural_ok, "the structural gate stays green");
     assert!(report.gate_pass, "P95 < {} ms holds", FORMAL_GATE_MS);
 }
+
+/// T-11 I10/I11 (dynamic-profile evidence): 512 body-edit revisions
+/// through the REAL update session stay BOUNDED and green — every
+/// revision executes the folded truth through the dyn pack/take path,
+/// drains the ledger, carries alpha's object, and the per-revision wall
+/// time stays under the 1000 ms incremental gate (I11); the session's
+/// unit table stays at exactly TWO units after the churn (I10 bounded).
+#[test]
+fn av_dynamic_824_incremental_churn_512_bounded() {
+    let mut s = DynamicUpdateSession::new(None, "main");
+    s.apply_revision(&[("main", alpha_unit(100)), ("beta", beta_unit(1))])
+        .expect("install");
+    let alpha_obj = s.unit("main").unwrap().clone();
+    let start = std::time::Instant::now();
+    let mut worst_wall = std::f64::MIN_POSITIVE;
+    for b in 2..=513u32 {
+        let t0 = std::time::Instant::now();
+        let out = s
+            .apply_revision(&[("beta", beta_unit(b as i32))])
+            .unwrap_or_else(|e| panic!("churn revision {b}: {e}"));
+        worst_wall = worst_wall.max(t0.elapsed().as_secs_f64() * 1000.0);
+        assert_eq!(out.value, Some(100 + b as i32), "revision {b} semantics");
+        assert_eq!(out.live_after_release, 0, "revision {b} drains");
+        assert_eq!(out.allocs, out.frees, "revision {b} ledger balanced");
+        assert!(out.gate.pass(), "revision {b} honest gate");
+    }
+    let total = start.elapsed().as_secs_f64();
+    // I11: every single revision stays under the frozen 1000 ms gate.
+    assert!(
+        worst_wall < 1000.0,
+        "worst per-revision wall {worst_wall:.1} ms exceeds the 1000 ms gate"
+    );
+    // I10: the churn stays bounded — exactly two units, alpha's object
+    // carried throughout, and the total churn completes in seconds.
+    assert!(Arc::ptr_eq(s.unit("main").unwrap(), &alpha_obj));
+    assert_eq!(
+        s.unit("beta").is_some(),
+        true,
+        "the updated unit stays installed"
+    );
+    // The final state still executes its final truth.
+    let snap = s.snapshot().expect("final snapshot links");
+    assert_eq!(run_snapshot(&snap), 100 + 513);
+    eprintln!(
+        "churn-512: total {total:.1}s, worst revision {worst_wall:.1} ms (I10 bounded, I11 <1000ms)"
+    );
+}

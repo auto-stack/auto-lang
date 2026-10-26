@@ -892,6 +892,16 @@ const DYNAMIC_CASES: &[(&str, &str, &[usize], &[u64])] = &[
         &[8],
         &[0],
     ),
+    // take-probe (T-11 D02 formal face): pack Note{"prb",7}, probe WRONG
+    // (is List<Note> — false, never a trap), take RIGHT, read n → 7. The
+    // success proves the failed probe left the container takeable; the
+    // "prb" Str (3 bytes) frees at frame exit; live=0.
+    (
+        "take-probe",
+        r#"{"bits":"7","kind":"i32"}"#,
+        &[3],
+        &[0],
+    ),
 ];
 
 pub fn run_collections_check(
