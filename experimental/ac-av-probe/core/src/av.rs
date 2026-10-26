@@ -276,7 +276,7 @@ fn execute_module_impl(
     let out = if let Some(loaded) = loaded.as_ref() {
         st.trace.loaded_index_builds = loaded.builds();
         st.trace.loaded_index_reuses = loaded.reuses();
-        st.trace.loaded_index_bytes = loaded.usage().0 as u64;
+        st.trace.loaded_index_bytes = loaded.usage().1 as u64;
         dispatch(&LoadedView(m, loaded), limits, cancel, args, &mut st, None)
     } else {
         dispatch(&MergedView(m), limits, cancel, args, &mut st, None)
@@ -340,7 +340,7 @@ fn execute_program_impl(
     if optimize {
         st.trace.loaded_index_builds = prog.loaded_program().builds();
         st.trace.loaded_index_reuses = prog.loaded_program().reuses();
-        st.trace.loaded_index_bytes = prog.loaded_program().usage().0 as u64;
+        st.trace.loaded_index_bytes = prog.loaded_program().usage().1 as u64;
     }
     let view = if optimize {
         prog.unit_view()
@@ -417,7 +417,7 @@ pub fn execute_program_steps(
     st.trace.dispatched = observe_dispatched(prog);
     st.trace.loaded_index_builds = prog.loaded_program().builds();
     st.trace.loaded_index_reuses = prog.loaded_program().reuses();
-    st.trace.loaded_index_bytes = prog.loaded_program().usage().0 as u64;
+    st.trace.loaded_index_bytes = prog.loaded_program().usage().1 as u64;
     match dispatch(
         &prog.unit_view(),
         limits,

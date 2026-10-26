@@ -71,8 +71,8 @@ function Invoke-Benchmark {
     foreach ($name in @('av.jsonl', 'js.jsonl', 'liftoff.jsonl', 'turbofan.jsonl', 'summary.json', 'js-tier.log', 'liftoff-tier.log', 'turbofan-tier.log', 'turnaround.jsonl', 'turnaround-summary.json')) {
         if (Test-Path (Join-Path $raw $name)) { Remove-Item -LiteralPath (Join-Path $raw $name) -Force }
     }
-    Invoke-Cargo -CargoArgs @('build', '--manifest-path', 'experimental/ac-av-probe/Cargo.toml', '--bin', 'av_runtime_825_bench', '--bin', 'av_probe_worker') | Out-Host
-    Invoke-Native -Exe (Join-Path $probe 'target/debug/av_runtime_825_bench.exe') -NativeArgs @('--out', (Join-Path $raw 'av.jsonl')) -Log (Join-Path $raw 'av-tier.log')
+    Invoke-Cargo -CargoArgs @('build', '--release', '--manifest-path', 'experimental/ac-av-probe/Cargo.toml', '--bin', 'av_runtime_825_bench', '--bin', 'av_probe_worker') | Out-Host
+    Invoke-Native -Exe (Join-Path $probe 'target/release/av_runtime_825_bench.exe') -NativeArgs @('--out', (Join-Path $raw 'av.jsonl')) -Log (Join-Path $raw 'av-tier.log')
     Invoke-Native -Exe 'node' -NativeArgs @('--jitless', '--print-bytecode', 'scripts/av-825-bench.mjs', '--engine', 'v8-js-ignition', '--out', (Join-Path $raw 'js.jsonl')) -Log (Join-Path $raw 'js-tier.log')
     Invoke-Native -Exe 'node' -NativeArgs @('--liftoff-only', '--no-wasm-tier-up', '--no-wasm-dynamic-tiering', '--trace-wasm-compilation-times', 'scripts/av-825-bench.mjs', '--engine', 'v8-wasm-liftoff', '--out', (Join-Path $raw 'liftoff.jsonl')) -Log (Join-Path $raw 'liftoff-tier.log')
     Invoke-Native -Exe 'node' -NativeArgs @('--no-liftoff', '--trace-wasm-compilation-times', 'scripts/av-825-bench.mjs', '--engine', 'v8-wasm-turbofan', '--out', (Join-Path $raw 'turbofan.jsonl')) -Log (Join-Path $raw 'turbofan-tier.log')
@@ -82,7 +82,7 @@ function Invoke-Benchmark {
     $summary = Get-Content -LiteralPath (Join-Path $raw 'summary.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($summary.total_rows -ne 1720 -or $summary.groups.Count -ne 40) { throw 'benchmark group/row completeness mismatch' }
 
-    Invoke-Native -Exe (Join-Path $probe 'target/debug/av_probe_worker.exe') -NativeArgs @('bench-turnaround', '--samples', '30', '--gate-ms', '1000', '--out', (Join-Path $raw 'turnaround.jsonl')) -Log (Join-Path $raw 'turnaround-summary.json')
+    Invoke-Native -Exe (Join-Path $probe 'target/release/av_probe_worker.exe') -NativeArgs @('bench-turnaround', '--samples', '30', '--gate-ms', '1000', '--out', (Join-Path $raw 'turnaround.jsonl')) -Log (Join-Path $raw 'turnaround-summary.json')
     $turnaround = Get-Content -LiteralPath (Join-Path $raw 'turnaround-summary.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($turnaround.hard_gate_failures.Count -ne 0 -or $turnaround.single_body_edit.p95_ms -ge 1000.0) { throw 'original editing P95 gate failed' }
     if ($turnaround.frontend_transient_target_met -ne $true -or $turnaround.worker_private_bytes_target_met -ne $true) { throw 'original editing memory gate failed' }

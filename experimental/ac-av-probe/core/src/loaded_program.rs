@@ -279,6 +279,7 @@ pub struct LoadedProgram<'a> {
     _module: &'a crate::abc_verify::LoadedModule,
     budget: IndexBudget,
     functions: Vec<Tables>,
+    _functions_charge: Charge,
     builds: u64,
 }
 
@@ -288,10 +289,20 @@ impl<'a> LoadedProgram<'a> {
             return Err(IndexError::UnsupportedProfile);
         }
         let budget = IndexBudget::new(crate::contract::MAX_AV_SLOT_BYTES);
+        let functions_bytes = module
+            .module()
+            .funcs
+            .len()
+            .checked_mul(size_of::<Tables>())
+            .ok_or(IndexError::IndexOverflow)?;
+        let functions_charge = budget.reserve(functions_bytes)?;
         let mut functions = Vec::new();
         functions
             .try_reserve_exact(module.module().funcs.len())
             .map_err(|_| IndexError::Allocation)?;
+        if functions.capacity() * size_of::<Tables>() > functions_bytes {
+            return Err(IndexError::Allocation);
+        }
         for function in &module.module().funcs {
             functions.push(Tables::build(function, &budget)?);
         }
@@ -300,6 +311,7 @@ impl<'a> LoadedProgram<'a> {
             _module: module,
             budget,
             functions,
+            _functions_charge: functions_charge,
             builds,
         })
     }
@@ -345,15 +357,19 @@ impl<'a> LoadedProgram<'a> {
 pub struct ResidentProgram {
     budget: IndexBudget,
     functions: Vec<Option<Arc<ResidentFunctionIndex>>>,
+    _functions_charge: Charge,
     builds: u64,
     reuses: u64,
 }
 
 impl ResidentProgram {
     pub fn vacant() -> Self {
+        let budget = IndexBudget::new(0);
+        let functions_charge = budget.reserve(0).expect("zero-byte vacant charge");
         Self {
-            budget: IndexBudget::new(0),
+            budget,
             functions: Vec::new(),
+            _functions_charge: functions_charge,
             builds: 0,
             reuses: 0,
         }
@@ -366,10 +382,19 @@ impl ResidentProgram {
         let budget = previous
             .map(|p| p.budget.clone())
             .unwrap_or_else(|| IndexBudget::new(crate::contract::MAX_AV_SLOT_BYTES));
+        let functions_bytes = code
+            .len()
+            .checked_mul(size_of::<Option<Arc<ResidentFunctionIndex>>>())
+            .ok_or(IndexError::IndexOverflow)?;
+        let functions_charge = budget.reserve(functions_bytes)?;
         let mut functions = Vec::new();
         functions
             .try_reserve_exact(code.len())
             .map_err(|_| IndexError::Allocation)?;
+        if functions.capacity() * size_of::<Option<Arc<ResidentFunctionIndex>>>() > functions_bytes
+        {
+            return Err(IndexError::Allocation);
+        }
         let mut builds = 0;
         let mut reuses = 0;
         for function in code {
@@ -394,6 +419,7 @@ impl ResidentProgram {
         Ok(Self {
             budget,
             functions,
+            _functions_charge: functions_charge,
             builds,
             reuses,
         })
@@ -680,6 +706,45 @@ mod tests {
         let accepted = ResidentFunctionIndex::prepare(code, Some(&first), &budget).unwrap();
         assert!(Arc::ptr_eq(&first, &accepted));
         assert_eq!(first.logical_pc(2, 0), Some(4));
+    }
+
+    #[test]
+    fn av_runtime_825_program_containers_share_execution_budget() {
+        let mut m = fixture(2, 1);
+        m.is_unit = false;
+        m.funcs[0].slots.retain(|slot| slot.kind == SlotKind::Temp);
+        for block in &mut m.funcs[0].blocks {
+            for instr in &mut block.instrs {
+                if let MirInstr::Copy { dst, .. } = instr {
+                    *dst = 0;
+                }
+            }
+        }
+        let zero = m.intern_const(MirConst::I32(0));
+        m.funcs[0].blocks[0].instrs.insert(
+            0,
+            MirInstr::Const {
+                dst: 0,
+                value: zero,
+            },
+        );
+        let result = m.funcs[0].slots[0].ty;
+        m.funcs[0].sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result,
+        }));
+        let loaded = verify_abc_bytes(&encode_abc(&m).unwrap().to_flat(), &m.owner).unwrap();
+        let program = LoadedProgram::build(&loaded).unwrap();
+        let expected = size_of::<Tables>() + Tables::requested_bytes(&m.funcs[0]).unwrap();
+        assert_eq!(program.usage().0, expected);
+
+        let resident = ResidentProgram::prepare(&[unit(1, 1)], None).unwrap();
+        let expected = size_of::<Option<Arc<ResidentFunctionIndex>>>()
+            + size_of::<ResidentFunctionIndex>()
+            - size_of::<Tables>()
+            + 2 * size_of::<usize>()
+            + Tables::requested_bytes(&unit(1, 1).unit().module().funcs[0]).unwrap();
+        assert_eq!(resident.usage().0, expected);
     }
 }
 
