@@ -3429,3 +3429,8 @@ The accepted compound props `[[.source]]` and `[{inner: .source}]` keep a borrow
 ### B855-FEATURE-01 — AV corpus optional dependency boundary (2026-10-27)
 
 Main batch7f966bfa3 language listing failed with24 E0432/E0433 in821/827 test modules;822 insertion displaced existing cfg. Zero tests ran; UI/tt/tb not reached. Fix-forward [PLAN-859](859-restore-av-corpus-feature-boundaries.md); evidence [build](attachments/855/batch-r1/language-build.log.txt). Last complete green remains850; retry required. No855 graphics source attribution or rollback.
+
+
+### PLAN-841 R6 — F841-R5-01 CLOSED（2026-10-27，受影响final pass）
+
+冻结 lang `ecc2f54a7ada58cd5cd015a9f21bea48debb4284` / UI `bfad5149f8f1d1981465d06d759e95cc8127ab75` / Man `6330ce00e594c99a4ef0a931dc85137ac47474fb`。实际递归Array/Object属性由快照逐边持有，重播逐层物化为ListData/ObjectData并配平最后释放；原两败例与直接对照、混合Init/视图读取、Failed后共享别名与所有中间容器回收均通过。18个具名定向行为测试全绿（原producer重播与永久控制有重叠），无新增合同内阻断。历史R5 OPEN保留为旧基线诊断，以本次修订绑定关闭为准；[R6报告与完整边界](attachments/841/review-r6/review.md)。Plan reviewed10/12，三实施树clean；裸t与适用tv/tt/tu、UI/Man自有门、冻结777/792/发行/三仓合入及Specs-ledger/归档/guard仍merge-owned pending，未宣称U841。

@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-841
-status: execution_done
+status: reviewed
 feature_name: UI领域模型、AST与Token及lowering终态解耦
 author: [Codex]
 created_at: 2026-10-24
 updated_at: 2026-10-27
 plan_revision: 1
-current_step: 9
+current_step: 10
 total_steps: 12
 supersedes_spec_components: [docs/specs/auto-ast/project.md, docs/specs/auto-lex/project.md, docs/specs/auto-parser-api/project.md, docs/specs/auto-ui-dialect/project.md, docs/specs/auto-ui-dialect/design/full-grammar.md, docs/specs/auto-ui-compiler/project.md, docs/specs/auto-ui-runtime/project.md, docs/specs/language-sdk/project.md, docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/ui-domain-model/project.md]
@@ -117,16 +117,21 @@ work/review只必要check（真实SDK/被改包）、相关包/模块/fixture和
 | [x] | T-04 | work | G841；T-03 | [✅ 已完成] Core UI Stmt/投影与旧 Parser UI 返回门面退出；`lower_ui` 校验后分离 UI owned/Core Code，十类语句裸 parse 拒绝 + 领域正控，Core 3 项与 ui_ast 4 项绿；代表 lower→VM/四生成器保持 | AC-01,02 |
 | [x] | T-05 | work | G841；T-04 | [✅ R3 修复复证] R2 工程准入保持；共享 file/module 预检先按各自目录 `prepare_style_recipe_imports` 再 parse/lower，冷态 local/named/wildcard full/incremental 实际 class 全过，私有/缺失/前一文件残留负控保持；tools 6 项与既有 recipe 9 项绿，见 [R3 验收](attachments/841/repair-r3-closeout.md) | AC-02,04 |
 | [x] | T-06 | work | G841；T-05 | [✅ R2 修复复证] [R2 修复验收](attachments/841/repair-r2-closeout.md)：codec 完整 artifact 检查恢复，合法空白/深视图/字段/span/source_lines/版本/tag/语义/Weak 保持；payload 形状反例新增；codec 9 项绿 | AC-03 |
-| [ ] | T-07 | work | G841；T-06 | [🔴 F841-R5-01 needs_fix] 三仓调用方/manifest/固定版本/生成 import 与测试 ID owner 已迁；plan050 负控、plan810 退役 oracle、compiler doctest 19、dialect 91+2、Man CLI 7 全绿；777 strict=0 violations，792 fresh/locked 初验通过 | AC-04,05 |
-| [ ] | T-08 | work | G841；T-07 | [🔴 F841-R5-01 needs_fix] 原 R3 兼容 probe 2 项转绿；原 R2 request 反例保持拒绝且零输出；tools 6、recipe 9、compiler 3 全绿，实际 full/incremental `rounded-full` 与 stale registry 负控齐备；codec 未改，R2 证据复用；merge 门 pending | AC-01..05 |
-| [ ] | T-09 | work | G841；T-08 | [🔴 F841-R5-01 needs_fix] 全 Plan 触面 rustfmt 与 diff-check 通过；SD 明确 recipe 初始化顺序；[R3 验收](attachments/841/repair-r3-closeout.md) 冻结；lang `ecfa187f7`、UI `eb50ce679`、Man `ebfbb3790`，三树干净，交受影响独立 review | AC-05 |
-| [ ] | T-10 | review | G841；T-09冻结提交 | [R5 needs_fix] G04原图表例/直接引用分支通过；实际递归Array/Object属性仍有悬垂引用，F841-R5-01待修复，见 [R5复审](attachments/841/review-r5/review.md) | AC-06 |
+| [x] | T-07 | work | G841；T-06 | [✅ F841-R5-01 修复] 嵌套 Array/Object 快照递归持有，重播逐层物化为 ListData/ObjectData；UI `bfad5149`、Man源pin `6330ce00`，实际引用身份与最后释放永久控制齐备 | AC-04,05 |
+| [x] | T-08 | work | G841；T-07 | [✅ R5修复复证] 原两败例及直接对照完成queue/replay/Init/最后释放；复合cancel/missing/drop/别名及R5既有owner重播通过；受影响定向27项全绿，见 [R5修复验收](attachments/841/repair-r5/closeout.md)；merge门pending | AC-01..05 |
+| [x] | T-09 | work | G841；T-08 | [✅ R5修复冻结] 触面rustfmt/diff-check通过，临时probe撤除，三实施树干净；候选SD-03补递归容器规则，lang `ecc2f54a7`、UI `bfad5149`、Man `6330ce00`，交受影响review | AC-05 |
+| [x] | T-10 | review | G841；T-09冻结提交 | [✅ R6受影响final pass] F841-R5-01关闭；原producer三形态、混合Init/视图消费、失败后别名与全部容器最后释放通过，18个具名行为测试全绿，见 [R6复审](attachments/841/review-r6/review.md)；统一门merge-owned pending | AC-06 |
 | [ ] | T-11 | merge | G841；T-10 pass | 并集影响复审、冻结三仓适用门与有序实际合入/固定版本/来源读回；若改变输入重审影响面，暂不放行后继 | AC-07 |
 | [ ] | T-12 | merge | G841；T-11全部交付收据 | canonical/受管ledger/索引沉淀、归档与逐树fresh wt-guard clean清理，整Plan闭环构成U841才放行下一份；保历史/恢复/交付分支 | AC-07 |
 
 G841未满足前禁止创建/认领以下组、分支或work agent。未来组`D:/autostack/.wt/lang-841/{auto-lang,auto-ui,auto-man}`，每个实际需写仓各一树/分支`codex/plan-841-dev`；只读consumer用固定版本clone而非借其他计划WIP，未需写仓不多建树。work/review/merge沿同组顺序交接，不建第二审查树；若auto-down为现有可选依赖则具名固定版本/detached兄弟，只解析不改实现。禁止junction/symlink，主检出只簿记，清理前每树fresh guard clean且保留实际交付/legacy恢复源。
 
 ## 9. 复审记录
+
+2026-10-27 / stage: review / review_scope: final（R6，F841-R5-01受影响复审） / reviewer_identity: Codex `/root`，参与过G04实施/R5复审，未实施本次bfad514修复；从冻结提交/真实输入重建结论，非全Plan全新独立context，未创建agent / plan_id: PLAN-841 / plan_revision: 1 / outcome: **pass** / worktree_path: `D:/autostack/.wt/lang-841/{auto-lang,auto-ui,auto-man}` / branch: `codex/plan-841-dev` / reviewed_commit: lang `ecc2f54a7ada58cd5cd015a9f21bea48debb4284`、UI `bfad5149f8f1d1981465d06d759e95cc8127ab75`、Man `6330ce00e594c99a4ef0a931dc85137ac47474fb` / base_commit: lang `88cd1aa7bdd4ac31d16b8d9dc229c5bb30bcbe80`、UI `2f311868f082bc4ab6fac9d484f71f18d13b1c95`、Man `9b4302fa585e6cda4a91738a6e9057fae12c9402` / dependency_revisions: down固定只读 `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`，依赖/配置/输入hash见 [baseline](attachments/841/review-r6/baseline.json.txt) / acceptance_results: AC-01/02与未变codec等证据保留；AC-03/04/05受影响递归所有权及消费者通过，AC-06 pass，AC-07 pending / findings: **F841-R5-01 CLOSED，无新增阻断**；两条原反例与直接对照转绿，递归快照/逐层堆容器配平，混合Init实际读7/视图显示7，Failed后共享别名存活及source和四层容器最终Weak失效 / evidence: [R6报告](attachments/841/review-r6/review.md)、[结束冻结检查](attachments/841/review-r6/final-state.json.txt)；13永久+3原输入重播+2混合行为=18个具名测试通过，另有AST诊断；原canary healthy36/runtime14不变，初始不适用探针及换行复制错误保留并解释；fmt/diff/pin/hash检查通过，临时probe撤除，三实施树clean且HEAD未变 / spec_inputs: SD-03候选delta SHA256 `2ff00020fa7de68fd51041356cedc3f1efbbd7f0d3cc2f6b4013fe6233423708`，规则与代码一致，metadata/goals不变，无canonical/live ledger发布 / pending_closeout_gates: 裸cargo t、适用tv/tt/tu、UI/Man自有档、冻结777/792/三仓发行及有序交付、Specs/受管ledger/归档/guard均merge-owned pending；未跑整档 / next: **merge**在当前冻结提交执行门禁及交付；Plan **reviewed 10/12**，T-10完成，T-11/12 pending；不宣称合入或U841。
+
+2026-10-27 / stage: work（F841-R5-01 needs_fix 修复） / plan_id: PLAN-841 / plan_revision: 1 / outcome: **pass（execution_done 9/12，待受影响复审）** / worktree_path: `D:/autostack/.wt/lang-841/{auto-lang,auto-ui,auto-man}` / branch: `codex/plan-841-dev` / base_commit: lang `88cd1aa7bdd4ac31d16b8d9dc229c5bb30bcbe80`、UI `2f311868f082bc4ab6fac9d484f71f18d13b1c95`、Man `9b4302fa585e6cda4a91738a6e9057fae12c9402` / code_commit: lang `ecc2f54a7ada58cd5cd015a9f21bea48debb4284`（仅候选Spec）、UI `bfad5149f8f1d1981465d06d759e95cc8127ab75`、Man `6330ce00e594c99a4ef0a931dc85137ac47474fb`（仅源pin） / dependency_revisions: down固定只读 `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` / task_ids: T-07,T-08,T-09 / evidence: [根因、关闭矩阵与readiness](attachments/841/repair-r5/closeout.md)、[冻结hash与日志](attachments/841/repair-r5/baseline.json.txt)；原R5两败例在修复前重放为直接对照过/嵌套两败，修复后真实producer三形态均完成queue/replay/Init/最后释放；复合cancel/missing/drop/共享别名、R5三项owner及既有图表/状态/生命周期共 **27项定向全绿**，无选择内skip；fmt/diff-check通过，临时probe撤除，三实施树clean / findings: **F841-R5-01实施侧关闭，受影响验收review pending**；快照递归持有Array/Object，重播逐层物化并沿用直接子引用RC协议，未复制引用身份、未永久保留快照、未改变Int分类/调度/失败语义 / spec_inputs: SD-03候选delta SHA256 `2ff00020fa7de68fd51041356cedc3f1efbbd7f0d3cc2f6b4013fe6233423708`，未发布canonical/live ledger / blockers: 无本finding的work-owned缺口或未决语义；T-10受影响复审及T-11/T-12统一门/发行/合入/沉淀/归档pending / next_responsible_role: review——核验递归所有权、堆容器最后释放、真实producer及候选SD；禁止把本work记录当独立验收或旧门收据当新冻结门通过。
+
 
 2026-10-27 / stage: review / review_scope: final（R5，M841-GATE-04受影响复审） / reviewer_identity: Codex `/root`，本会话参与前轮实施，明确非新独立context；从冻结代码/实际producer和补充反例重建结论，未委派agent / plan_id: PLAN-841 / plan_revision: 1 / outcome: **needs_fix** / reviewed_commit: lang `88cd1aa7bdd4ac31d16b8d9dc229c5bb30bcbe80`、UI `2f311868f082bc4ab6fac9d484f71f18d13b1c95`、Man `9b4302fa585e6cda4a91738a6e9057fae12c9402` / dependency_revisions: down固定 `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`，源码/配置/输入hash见 [baseline](attachments/841/review-r5/baseline.json.txt) / acceptance_results: AC-01/02及未变codec等证据保留；AC-03 runtime ownership partial/fail、AC-04/05/06 fail，AC-07 pending / findings: G04原非法输入拒绝/恢复及合法Init失败隔离例已通过；新增 **F841-R5-01 P2 OPEN**——实际producer接受 `[[.source]]`、`[{inner: .source}]`，但快照引用遍历只覆盖顶层/直接元素，父字段替换后原对象在Child仍Queued时已释放；直接数组对照通过 / evidence: [复审报告](attachments/841/review-r5/review.md)、[finding与逐字输入/关闭oracle](attachments/841/review-r5/finding-F841-R5-01.md)；本轮15个具名定向case=13过/2败，原canary命中healthy36/runtime14保持；共享owner取消、别名重播、CPUpark换代3项通过；fmt/diff/pin检查通过；临时probe撤去，三树clean且HEAD未变 / spec_inputs: SD-03修复delta SHA256 `14cc305bfe2db4ca0b0aed6c6d892f5ae1e6e11296fada9a46a65aefd4950718`，目标正确但完整所有权未满足，不能把direct-element描述当缩减已支持属性形态的批准 / pending_closeout_gates: 所有统一门与三仓发行/777/792仍merge-owned pending；已知blocker上未跑整档 / next: work修复实际Array/Object producer的queue/replay/回收路径后提交受影响复审；Plan回 **executing 6/12**，T-07..T-10未完成，不合入/不放行U841。
 
@@ -213,6 +218,11 @@ Attempt 4 UI t 编译已恢复，但默认3358位于Windows保留段3323–3422�
 当前状态以本条及§9最新 work 记录为准：**execution_done 9/12**。延迟 Init 的快照与根字段已各自持有并平衡引用；原解析期非法输入及运行期故障隔离分别验证，M841-GATE-04 已实施侧修复，20项定向通过。暂无待澄清的实现语义或接受延期；下一步为受影响独立复审。没有执行整档、合入、ledger、归档或清理；三实施树和历史失败证据保留。
 
 
-### R5 复审后的当前状态
+### R5 修复后的当前交接
 
-以§9最新R5记录为准：**needs_fix / executing 6/12**。F841-R5-01为实际已接受复合属性的引用持有缺口；原G04图表例通过不等于共享不变量完整关闭。下一责任work，按真实producer形态补齐排队及重播后的持有/释放，保留直接引用/真实Int/故障恢复/挂起取消对照；修复后再受影响复审。未合入、未更新ledger、未归档或清理。
+以§9最新work记录为准：**execution_done 9/12**。F841-R5-01已在实施侧关闭：嵌套Array/Object快照递归持有，重播逐层物化为堆容器并平衡最后释放；真实producer三形态及取消/缺失/Drop/共享别名等27项定向通过。下一责任为受影响独立review；统一门、发行、合入、ledger、归档与清理仍pending，未宣称U841完成。
+
+
+### R6 受影响复审后的当前状态
+
+以§9最新R6记录为准：**pass / reviewed 10/12**。F841-R5-01已由复审关闭，无新增阻断；原递归producer反例、重播/最后释放及混合Init/视图消费有实际证据。三实施树clean，当前冻结lang `ecc2f54a7`、UI `bfad5149`、Man `6330ce00`；下一责任merge，统一门与三仓发行/实际交付、canonical/ledger/归档/guard仍pending。历史失败与诊断原样保留，未合入或宣称U841。
