@@ -13664,6 +13664,44 @@ mod tests {
         assert!(!ast.stmts.is_empty());
     }
 
+    /// PLAN-841 T-03：Core 同名语义正反控（V-02 冻结 oracle 的 Core 侧）。
+    /// `view`/`msg` 等词法分类在 Core 语义面保持；UI 语句不经显式领域端口
+    /// 不构成合法 Core 输入（无隐式文法装配）。
+    #[test]
+    fn test_plan841_core_view_borrow_still_parses() {
+        // `.view` 不可变借用是 Core 表达式（Expr::View），与 UI view 声明无关。
+        let code = "fn main() {\n    let c = 1\n    let b = c.view\n    print(b)\n}";
+        let ast = parse_once(code);
+        assert!(
+            ast.stmts.iter().any(|s| format!("{s:?}").contains("View")),
+            "view borrow must survive as a Core expression"
+        );
+    }
+
+    #[test]
+    fn test_plan841_core_identifier_msg_unchanged() {
+        // `msg` 在 fn 体内是普通标识符，不受 UI msg 声明文法影响。
+        let code = "fn main() {\n    let msg = 1\n    print(msg)\n}";
+        let ast = parse_once(code);
+        assert!(ast.to_string().contains("(name msg)"));
+    }
+
+    #[test]
+    fn test_plan841_plain_parse_rejects_ui_statements() {
+        // 反控：无领域端口时 UI 语句在 Core 与 UI 场景下都必须解析失败——
+        // 文法只经 Parser::parse_domain(&D) 显式装配，不再有进程级注入。
+        let ui_src = "widget App { view { text \"x\" {} } }";
+        let core_err = Parser::from(ui_src).parse();
+        assert!(core_err.is_err(), "Core session must reject UI statements");
+        let ui_err = Parser::from(ui_src)
+            .with_session(crate::session::CompilerSession::ui())
+            .parse();
+        assert!(
+            ui_err.is_err(),
+            "plain parse under UI session must not gain UI grammar implicitly"
+        );
+    }
+
     #[test]
     fn test_parser() {
         let code = "1+2+3";

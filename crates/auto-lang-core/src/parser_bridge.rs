@@ -275,8 +275,9 @@ impl<'p, 'a> auto_parser_api::ParseContext for ParserBridge<'p, 'a> {
 // 文法 crate 侧不接触 Parser/lexer/scope/TypeStore 引用。
 //
 // PLAN-814 R3-03b：本 impl 无条件编译（原 `ui-dialect` feature 门删除）
-// ——纯 SDK 闭包仍零 auto-ui-dialect（impl 只依赖 auto-parser-api 的
-// trait 定义；文法调用经 UiGrammar 函数表，表缺席=拒绝/回退语义）。
+// ——纯 SDK 闭包仍零 auto-ui-dialect。PLAN-841 T-01 起 UI 文法不再经
+// UiGrammar 函数表装配：本 impl 是 `DomainParseContext` 的 Parser 侧实现，
+// 由 `Parser::parse_domain(&D)` 显式驱动（dialect 由调用方传入）。
 
 impl<'p, 'a> auto_parser_api::DomainParseContext for ParserBridge<'p, 'a> {
     fn prev_pos(&mut self) -> Pos {
