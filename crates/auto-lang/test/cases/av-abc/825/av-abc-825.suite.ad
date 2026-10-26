@@ -1,0 +1,7 @@
+# PLAN-825 LoadedProgram formal corpus.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "av-abc-825", include: [
+  "av-loaded-first-case.case.ad",
+] }
+```

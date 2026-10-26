@@ -48,6 +48,7 @@ pub struct ProgramSnapshot {
     /// Executor span-bearing outcomes map through this immutable
     /// snapshot-owned view (F-828-R1-04/R3a).
     span_maps: Vec<crate::span_map::SpanSegments>,
+    loaded: crate::loaded_program::ResidentProgram,
 }
 
 impl ProgramSnapshot {
@@ -78,6 +79,16 @@ impl ProgramSnapshot {
         entry: &str,
         revision: u64,
         span_maps: Vec<crate::span_map::SpanSegments>,
+    ) -> Result<ProgramSnapshot, String> {
+        Self::link_with_maps_and_previous(code, entry, revision, span_maps, None)
+    }
+
+    pub fn link_with_maps_and_previous(
+        code: Vec<Arc<FunctionCode>>,
+        entry: &str,
+        revision: u64,
+        span_maps: Vec<crate::span_map::SpanSegments>,
+        previous: Option<&ProgramSnapshot>,
     ) -> Result<ProgramSnapshot, String> {
         // Scratch interned type space: used ONLY for signature equality
         // checks (content equality), never retained.
@@ -230,6 +241,9 @@ impl ProgramSnapshot {
             .position(|c| c.name() == entry)
             .ok_or_else(|| format!("entry function `{entry}` not among code units"))?
             as u32;
+        let loaded =
+            crate::loaded_program::ResidentProgram::prepare(&code, previous.map(|p| &p.loaded))
+                .map_err(|e| format!("loaded-program preparation: {e}"))?;
         Ok(ProgramSnapshot {
             revision,
             entry: entry.to_string(),
@@ -237,6 +251,7 @@ impl ProgramSnapshot {
             code,
             bindings,
             span_maps,
+            loaded,
         })
     }
 
@@ -253,12 +268,17 @@ impl ProgramSnapshot {
             code: Vec::new(),
             bindings: Vec::new(),
             span_maps: Vec::new(),
+            loaded: crate::loaded_program::ResidentProgram::vacant(),
         }
     }
 
     /// The per-slot source maps this snapshot maps through.
     pub fn span_maps(&self) -> &[crate::span_map::SpanSegments] {
         &self.span_maps
+    }
+
+    pub fn loaded_program(&self) -> &crate::loaded_program::ResidentProgram {
+        &self.loaded
     }
 
     /// PLAN-828 D-02/T-05: the UNIT dispatch view over this snapshot's
@@ -268,7 +288,17 @@ impl ProgramSnapshot {
     /// the LINK-TIME binding table (no runtime name lookup, no merged
     /// copy).
     pub fn unit_view(&self) -> UnitView<'_> {
-        UnitView { snap: self }
+        UnitView {
+            snap: self,
+            use_loaded: true,
+        }
+    }
+
+    pub fn reference_unit_view(&self) -> UnitView<'_> {
+        UnitView {
+            snap: self,
+            use_loaded: false,
+        }
     }
 
     /// PLAN-828 D-02 binding-rejection control: every code slot holds a
@@ -560,6 +590,7 @@ fn imp_target(symbol: &str) -> Option<&str> {
 /// snapshot's link-time binding table.
 pub struct UnitView<'a> {
     snap: &'a ProgramSnapshot,
+    use_loaded: bool,
 }
 
 impl crate::av::ModuleView for UnitView<'_> {
@@ -616,6 +647,23 @@ impl crate::av::ModuleView for UnitView<'_> {
             // Unit-local instructions never carry merged-space Func
             // indices; one showing up is a foreign index space.
             CalleeRef::Func(_) => None,
+        }
+    }
+    fn has_loaded_index(&self, func: u32) -> bool {
+        self.use_loaded && self.snap.loaded.has_function(func)
+    }
+    fn logical_pc(&self, func: u32, block: u32, ip: usize) -> Option<u32> {
+        if self.use_loaded && self.snap.loaded.has_function(func) {
+            self.snap.loaded.logical_pc(func, block, ip)
+        } else {
+            self.fn_at(func).map(|f| f.block_base(block) + ip as u32)
+        }
+    }
+    fn param_slots(&self, func: u32) -> Option<&[u32]> {
+        if self.use_loaded {
+            self.snap.loaded.param_slots(func)
+        } else {
+            None
         }
     }
     fn entry(&self) -> u32 {

@@ -67,6 +67,7 @@ pub struct RequestOutcome {
     /// AV execution outcome when the pipeline reached execution.
     pub av: Option<ExecOutcome>,
     pub trace: Vec<TraceEvent>,
+    pub execution: auto_av_core::av::ExecTrace,
     pub spans: Vec<SpanRec>,
     pub counters: Counters,
     pub source_hash: String,
@@ -132,6 +133,23 @@ impl Driver {
         RequestOutcome {
             diag,
             av,
+            execution: auto_av_core::av::ExecTrace {
+                events: trace.clone(),
+                loaded_index_builds: *obs.counters().get("loaded_index_builds").unwrap_or(&0),
+                loaded_index_reuses: *obs.counters().get("loaded_index_reuses").unwrap_or(&0),
+                loaded_index_bytes: *obs.counters().get("loaded_index_bytes").unwrap_or(&0),
+                loaded_pc_lookups: *obs.counters().get("loaded_pc_lookups").unwrap_or(&0),
+                reference_pc_lookups: *obs.counters().get("reference_pc_lookups").unwrap_or(&0),
+                loaded_param_map_queries: *obs
+                    .counters()
+                    .get("loaded_param_map_queries")
+                    .unwrap_or(&0),
+                reference_param_map_copies: *obs
+                    .counters()
+                    .get("reference_param_map_copies")
+                    .unwrap_or(&0),
+                ..Default::default()
+            },
             trace,
             spans: obs.spans().to_vec(),
             counters: obs.counters().clone(),
@@ -1180,6 +1198,16 @@ impl Driver {
         });
         obs.set_counter("av_execute", 1);
         obs.set_counter("av_peak_slot_bytes", trace.peak_slot_bytes);
+        obs.set_counter("loaded_index_builds", trace.loaded_index_builds);
+        obs.set_counter("loaded_index_reuses", trace.loaded_index_reuses);
+        obs.set_counter("loaded_index_bytes", trace.loaded_index_bytes);
+        obs.set_counter("loaded_pc_lookups", trace.loaded_pc_lookups);
+        obs.set_counter("reference_pc_lookups", trace.reference_pc_lookups);
+        obs.set_counter("loaded_param_map_queries", trace.loaded_param_map_queries);
+        obs.set_counter(
+            "reference_param_map_copies",
+            trace.reference_param_map_copies,
+        );
         if let ExecOutcome::Success { steps, .. } = &outcome {
             obs.set_counter("av_steps", *steps);
         }

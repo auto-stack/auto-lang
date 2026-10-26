@@ -1424,7 +1424,10 @@ fn decode_options(
                             }
                             // PLAN-822: the collections recipe shares the av
                             // step vocabulary (runs + discriminating edits).
-                            "ac-av/collections-run-v1" | "ac-av/closures-run-v1" => {
+                            "ac-av/collections-run-v1" | "ac-av/loaded-run-v1" => {
+                                matches!(op.as_str(), "run" | "edit-source")
+                            }
+                            "ac-av/closures-run-v1" => {
                                 matches!(op.as_str(), "run" | "edit-source")
                             }
                             // PLAN-824: the dynamic recipe shares the same
@@ -1486,6 +1489,7 @@ fn decode_options(
                         || recipe == "ac-av/data-run-v1"
                         || recipe == "ac-av/owned-run-v1"
                         || recipe == "ac-av/collections-run-v1"
+                        || recipe == "ac-av/loaded-run-v1"
                         || recipe == "ac-av/closures-run-v1"
                         || recipe == "ac-av/dynamic-run-v1"
                     {
@@ -1615,6 +1619,7 @@ fn decode_options(
                         || recipe == "ac-av/data-run-v1"
                         || recipe == "ac-av/owned-run-v1"
                         || recipe == "ac-av/collections-run-v1"
+                        || recipe == "ac-av/loaded-run-v1"
                         || recipe == "ac-av/closures-run-v1"
                         || recipe == "ac-av/dynamic-run-v1"
                     {
@@ -1630,6 +1635,7 @@ fn decode_options(
                         && recipe != "ac-av/data-run-v1"
                         && recipe != "ac-av/owned-run-v1"
                         && recipe != "ac-av/collections-run-v1"
+                        && recipe != "ac-av/loaded-run-v1"
                         && recipe != "ac-av/closures-run-v1"
                         && recipe != "ac-av/dynamic-run-v1"
                     {
@@ -1847,6 +1853,8 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     "ac-av/owned-run-v1",
     // PLAN-822: the av.collections/1 collections recipe, same seam contract.
     "ac-av/collections-run-v1",
+    // PLAN-825: scalar LoadedProgram execution with parent-side counters.
+    "ac-av/loaded-run-v1",
     // PLAN-823: the typed closures fixture uses the AV protocol.
     "ac-av/closures-run-v1",
     // PLAN-824: the av.dynamic/1 dynamic recipe, same seam contract.

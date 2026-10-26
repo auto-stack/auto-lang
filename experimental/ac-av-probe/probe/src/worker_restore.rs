@@ -34,6 +34,12 @@ pub struct RestoreOutcome {
     pub units_verified: usize,
     pub steps: Option<u64>,
     pub av_peak_slot_bytes: u64,
+    pub loaded_index_builds: u64,
+    pub loaded_pc_lookups: u64,
+    pub reference_pc_lookups: u64,
+    pub loaded_param_map_queries: u64,
+    pub reference_param_map_copies: u64,
+    pub trace: Vec<String>,
 }
 
 /// Restore a module closure by manifest artifact id and execute its entry.
@@ -280,6 +286,15 @@ fn restore_and_run_inner(
     let cancel = CancelFlag::new(false);
     let (outcome, trace): (ExecOutcome, ExecTrace) =
         execute(&loaded_module, &ExecLimits::default(), &cancel);
+    let events: Vec<String> = trace
+        .events
+        .iter()
+        .map(|event| match event {
+            auto_av_core::mir::TraceEvent::MarkA => "a",
+            auto_av_core::mir::TraceEvent::MarkB => "b",
+        })
+        .map(str::to_string)
+        .collect();
     match outcome {
         ExecOutcome::Success { value, steps } => Ok(RestoreOutcome {
             executed_ok: true,
@@ -290,6 +305,12 @@ fn restore_and_run_inner(
             units_verified: verified,
             steps: Some(steps),
             av_peak_slot_bytes: trace.peak_slot_bytes,
+            loaded_index_builds: trace.loaded_index_builds,
+            loaded_pc_lookups: trace.loaded_pc_lookups,
+            reference_pc_lookups: trace.reference_pc_lookups,
+            loaded_param_map_queries: trace.loaded_param_map_queries,
+            reference_param_map_copies: trace.reference_param_map_copies,
+            trace: events,
         }),
         ExecOutcome::Trap { kind, span } => Ok(RestoreOutcome {
             executed_ok: true,
@@ -304,6 +325,12 @@ fn restore_and_run_inner(
             units_verified: verified,
             steps: None,
             av_peak_slot_bytes: trace.peak_slot_bytes,
+            loaded_index_builds: trace.loaded_index_builds,
+            loaded_pc_lookups: trace.loaded_pc_lookups,
+            reference_pc_lookups: trace.reference_pc_lookups,
+            loaded_param_map_queries: trace.loaded_param_map_queries,
+            reference_param_map_copies: trace.reference_param_map_copies,
+            trace: events,
         }),
         other => Err(format!("execution state: {:?}", other)),
     }
@@ -319,5 +346,11 @@ fn fail(msg: String) -> RestoreOutcome {
         units_verified: 0,
         steps: None,
         av_peak_slot_bytes: 0,
+        loaded_index_builds: 0,
+        loaded_pc_lookups: 0,
+        reference_pc_lookups: 0,
+        loaded_param_map_queries: 0,
+        reference_param_map_copies: 0,
+        trace: vec![],
     }
 }

@@ -63,6 +63,7 @@ pub const AV_COLLECTIONS_RECIPE: &str = "ac-av/collections-run-v1";
 /// registration; earlier recipe contracts untouched).
 pub const AV_CLOSURES_RECIPE: &str = "ac-av/closures-run-v1";
 pub const EXPECTED_AV_COLLECTIONS_CORE_VERSION: &str = "av.collections/1";
+pub const AV_LOADED_RECIPE: &str = "ac-av/loaded-run-v1";
 
 /// PLAN-824: the dynamic-profile recipe (`av.dynamic/1`, profile id 5) —
 /// programmatic typed fixture -> dynamic Typed MIR -> AVAD v4 -> AV with
@@ -79,6 +80,7 @@ pub enum RecipeFamily {
     Data,
     Owned,
     Collections,
+    Loaded,
     Closures,
     Dynamic,
 }
@@ -90,13 +92,14 @@ impl RecipeFamily {
             RecipeFamily::Data => AV_DATA_RECIPE,
             RecipeFamily::Owned => AV_OWNED_RECIPE,
             RecipeFamily::Collections => AV_COLLECTIONS_RECIPE,
+            RecipeFamily::Loaded => AV_LOADED_RECIPE,
             RecipeFamily::Closures => AV_CLOSURES_RECIPE,
             RecipeFamily::Dynamic => AV_DYNAMIC_RECIPE,
         }
     }
     pub fn expected_core_version(&self) -> &'static str {
         match self {
-            RecipeFamily::Core => EXPECTED_AV_CORE_VERSION,
+            RecipeFamily::Core | RecipeFamily::Loaded => EXPECTED_AV_CORE_VERSION,
             RecipeFamily::Data => EXPECTED_AV_DATA_CORE_VERSION,
             RecipeFamily::Owned => EXPECTED_AV_OWNED_CORE_VERSION,
             RecipeFamily::Collections => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
@@ -807,6 +810,25 @@ pub fn run_check(
     )
 }
 
+pub fn run_loaded_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::Loaded,
+    )
+}
+
 /// PLAN-820: the data-recipe entry — same executor/judgement contract,
 /// data-profile pipeline (record source front door in the worker).
 /// PLAN-820 F820-R6-01: the PARENT's frozen av.data-fixture/1 expectation
@@ -1460,6 +1482,9 @@ fn run_check_impl(
         judge_dynamic_fixture(id, &step, &mut mismatches);
     } else {
         judge_expectation(family, &step, oracle, &mut mismatches);
+        if family == RecipeFamily::Loaded {
+            judge_loaded_runtime(&step, &mut mismatches);
+        }
     }
 
     // Receipt (probe-receipt.json in the artifact dir). `request_wall_ms`
@@ -2140,6 +2165,38 @@ fn data_malformed_typed(steps: &[StepOut]) -> Option<String> {
             .and_then(typed_shape_violation)
             .map(|v| format!("malformed typed report on step `{}`: {}", s.op, v))
     })
+}
+
+fn judge_loaded_runtime(step: &StepOut, mismatches: &mut Vec<Mismatch>) {
+    if step.outcome != "success" {
+        return;
+    }
+    for (key, minimum) in [
+        ("loaded_index_builds", 1),
+        ("loaded_pc_lookups", 1),
+        ("loaded_param_map_queries", 1),
+    ] {
+        if step.counters.get(key).copied().unwrap_or(0) < minimum {
+            mismatches.push(Mismatch {
+                observation: "loaded-runtime".into(),
+                kind: key.into(),
+                expected: format!(">= {minimum}"),
+                actual: format!("{:?}", step.counters.get(key)),
+                first_diff: None,
+            });
+        }
+    }
+    for key in ["reference_pc_lookups", "reference_param_map_copies"] {
+        if step.counters.get(key).copied().unwrap_or(0) != 0 {
+            mismatches.push(Mismatch {
+                observation: "loaded-runtime".into(),
+                kind: key.into(),
+                expected: "0".into(),
+                actual: format!("{:?}", step.counters.get(key)),
+                first_diff: None,
+            });
+        }
+    }
 }
 
 fn judge_expectation(

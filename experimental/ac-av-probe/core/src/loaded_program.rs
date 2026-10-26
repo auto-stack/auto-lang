@@ -266,6 +266,190 @@ impl ResidentFunctionIndex {
     }
 }
 
+impl std::fmt::Display for IndexError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "loaded-program {:?} rejection", self)
+    }
+}
+
+/// Derived execution tables for one ABC-admitted complete module. The module
+/// remains the semantic credential; these tables are rebuilt, never persisted.
+#[derive(Debug)]
+pub struct LoadedProgram<'a> {
+    _module: &'a crate::abc_verify::LoadedModule,
+    budget: IndexBudget,
+    functions: Vec<Tables>,
+    builds: u64,
+}
+
+impl<'a> LoadedProgram<'a> {
+    pub fn build(module: &'a crate::abc_verify::LoadedModule) -> Result<Self, IndexError> {
+        if module.module().profile != AV_PROFILE {
+            return Err(IndexError::UnsupportedProfile);
+        }
+        let budget = IndexBudget::new(crate::contract::MAX_AV_SLOT_BYTES);
+        let mut functions = Vec::new();
+        functions
+            .try_reserve_exact(module.module().funcs.len())
+            .map_err(|_| IndexError::Allocation)?;
+        for function in &module.module().funcs {
+            functions.push(Tables::build(function, &budget)?);
+        }
+        let builds = functions.len() as u64;
+        Ok(Self {
+            _module: module,
+            budget,
+            functions,
+            builds,
+        })
+    }
+
+    pub fn has_function(&self, function: u32) -> bool {
+        self.functions.get(function as usize).is_some()
+    }
+
+    pub fn logical_pc(&self, function: u32, block: u32, ip: usize) -> Option<u32> {
+        self.functions.get(function as usize)?.logical_pc(block, ip)
+    }
+
+    pub fn param_slots(&self, function: u32) -> Option<&[u32]> {
+        Some(&self.functions.get(function as usize)?.params)
+    }
+
+    pub fn usage(&self) -> (usize, usize, usize) {
+        self.budget.usage()
+    }
+
+    pub fn builds(&self) -> u64 {
+        self.builds
+    }
+
+    pub fn reuses(&self) -> u64 {
+        0
+    }
+
+    pub fn work(&self) -> BuildWork {
+        self.functions
+            .iter()
+            .fold(BuildWork::default(), |mut total, f| {
+                total.block_visits += f.work.block_visits;
+                total.slot_visits += f.work.slot_visits;
+                total
+            })
+    }
+}
+
+/// Snapshot-resident derived tables. Only the scalar profile obtains an
+/// optimized index; all other delivered profiles keep their reference view.
+#[derive(Debug)]
+pub struct ResidentProgram {
+    budget: IndexBudget,
+    functions: Vec<Option<Arc<ResidentFunctionIndex>>>,
+    builds: u64,
+    reuses: u64,
+}
+
+impl ResidentProgram {
+    pub fn vacant() -> Self {
+        Self {
+            budget: IndexBudget::new(0),
+            functions: Vec::new(),
+            builds: 0,
+            reuses: 0,
+        }
+    }
+
+    pub fn prepare(
+        code: &[SharedFunctionCode],
+        previous: Option<&ResidentProgram>,
+    ) -> Result<Self, IndexError> {
+        let budget = previous
+            .map(|p| p.budget.clone())
+            .unwrap_or_else(|| IndexBudget::new(crate::contract::MAX_AV_SLOT_BYTES));
+        let mut functions = Vec::new();
+        functions
+            .try_reserve_exact(code.len())
+            .map_err(|_| IndexError::Allocation)?;
+        let mut builds = 0;
+        let mut reuses = 0;
+        for function in code {
+            if function.unit().module().profile != AV_PROFILE {
+                functions.push(None);
+                continue;
+            }
+            let old = previous.and_then(|p| {
+                p.functions
+                    .iter()
+                    .flatten()
+                    .find(|index| Arc::ptr_eq(index.code(), function))
+            });
+            let index = ResidentFunctionIndex::prepare(function.clone(), old, &budget)?;
+            if old.is_some_and(|old| Arc::ptr_eq(old, &index)) {
+                reuses += 1;
+            } else {
+                builds += 1;
+            }
+            functions.push(Some(index));
+        }
+        Ok(Self {
+            budget,
+            functions,
+            builds,
+            reuses,
+        })
+    }
+
+    pub fn has_function(&self, function: u32) -> bool {
+        self.functions
+            .get(function as usize)
+            .is_some_and(Option::is_some)
+    }
+
+    pub fn logical_pc(&self, function: u32, block: u32, ip: usize) -> Option<u32> {
+        self.functions
+            .get(function as usize)?
+            .as_ref()?
+            .logical_pc(block, ip)
+    }
+
+    pub fn param_slots(&self, function: u32) -> Option<&[u32]> {
+        Some(
+            self.functions
+                .get(function as usize)?
+                .as_ref()?
+                .param_slots(),
+        )
+    }
+
+    pub fn function(&self, slot: usize) -> Option<&Arc<ResidentFunctionIndex>> {
+        self.functions.get(slot)?.as_ref()
+    }
+
+    pub fn usage(&self) -> (usize, usize, usize) {
+        self.budget.usage()
+    }
+
+    pub fn builds(&self) -> u64 {
+        self.builds
+    }
+
+    pub fn reuses(&self) -> u64 {
+        self.reuses
+    }
+
+    pub fn work(&self) -> BuildWork {
+        self.functions
+            .iter()
+            .flatten()
+            .fold(BuildWork::default(), |mut total, f| {
+                let work = f.work();
+                total.block_visits += work.block_visits;
+                total.slot_visits += work.slot_visits;
+                total
+            })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

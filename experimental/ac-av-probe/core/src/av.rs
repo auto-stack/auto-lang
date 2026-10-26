@@ -92,6 +92,13 @@ pub struct ExecTrace {
     /// always describes the program that produced the trace — never a
     /// wrapper's view of some other snapshot it chose not to execute.
     pub dispatched: Vec<DispatchedPayload>,
+    pub loaded_index_builds: u64,
+    pub loaded_index_reuses: u64,
+    pub loaded_index_bytes: u64,
+    pub loaded_pc_lookups: u64,
+    pub reference_pc_lookups: u64,
+    pub loaded_param_map_queries: u64,
+    pub reference_param_map_copies: u64,
 }
 
 /// One dispatched payload's identity evidence (see [`ExecTrace::dispatched`]).
@@ -177,71 +184,102 @@ pub fn execute(
     execute_entry(module, limits, cancel, &[])
 }
 
-/// PLAN-821 T-04 test seam: execute with a PRE-CONFIGURED arena (fault
-/// injection / attempt accounting observers). The arena is Rc-shared —
-/// the returned trace's arena reflects the injected instance.
+pub fn execute_reference(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+) -> (ExecOutcome, ExecTrace) {
+    execute_entry_reference(module, limits, cancel, &[])
+}
+
 pub fn execute_with_arena(
     module: &LoadedModule,
     limits: &ExecLimits,
     cancel: &CancelFlag,
     arena: crate::owned_text::StrArena,
 ) -> (ExecOutcome, ExecTrace) {
-    let m = module.module();
-    if !module.executable() {
-        return (
-            ExecOutcome::Infra(format!(
-                "admission violation: credential is a re-verifiable unit, not an executable closure"
-            )),
-            ExecTrace::default(),
-        );
-    }
-    let mut st = LoopState::default();
-    st.arena = arena;
-    st.trace.arena = Some(st.arena.clone());
-    let out = dispatch(&MergedView(m), limits, cancel, &[], &mut st, None)
-        .expect("no budget: the loop always terminates with an outcome");
-    if !st.frames.is_empty() {
-        cleanup_owned_frames(&mut st);
-    }
-    (out, st.trace)
+    execute_module_impl(module, limits, cancel, &[], arena, true)
 }
 
-/// Execute with explicit entry arguments (driver seam for unit closures —
-/// the root frame receives them as the entry's param slots).
 pub fn execute_entry(
     module: &LoadedModule,
     limits: &ExecLimits,
     cancel: &CancelFlag,
     args: &[Value],
 ) -> (ExecOutcome, ExecTrace) {
-    let m = module.module();
+    execute_module_impl(
+        module,
+        limits,
+        cancel,
+        args,
+        crate::owned_text::StrArena::new(),
+        true,
+    )
+}
 
-    // Executable-closure gate (F798-R6-02 + F798-R12-02): a re-verifiable
-    // UNIT — by kind or by an unresolved import call — is never run;
-    // closure assembly resolves those callees and re-verifies the whole
-    // module first. Zero dispatch steps: an admission refusal, not a run.
+pub fn execute_entry_reference(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    args: &[Value],
+) -> (ExecOutcome, ExecTrace) {
+    execute_module_impl(
+        module,
+        limits,
+        cancel,
+        args,
+        crate::owned_text::StrArena::new(),
+        false,
+    )
+}
+
+fn execute_module_impl(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    args: &[Value],
+    arena: crate::owned_text::StrArena,
+    optimize: bool,
+) -> (ExecOutcome, ExecTrace) {
+    let m = module.module();
     if !module.executable() {
         let unit_kind = m.is_unit;
         return (
             ExecOutcome::Infra(format!(
                 "admission violation: credential is a re-verifiable unit ({}), not an executable closure — close it into a whole module first",
-                if unit_kind {
-                    "unit kind"
-                } else {
-                    "unresolved import call"
-                }
+                if unit_kind { "unit kind" } else { "unresolved import call" }
             )),
             ExecTrace::default(),
         );
     }
-    let mut st = LoopState::default();
-    st.arena = crate::owned_text::StrArena::new();
+    let loaded = if optimize && m.profile == crate::contract::AV_PROFILE {
+        match crate::loaded_program::LoadedProgram::build(module) {
+            Ok(loaded) => Some(loaded),
+            Err(e) => {
+                return (
+                    ExecOutcome::Infra(format!("loaded-program preparation: {e}")),
+                    ExecTrace::default(),
+                )
+            }
+        }
+    } else {
+        None
+    };
+    let mut st = LoopState {
+        arena,
+        ..Default::default()
+    };
     st.trace.arena = Some(st.arena.clone());
-    let out = dispatch(&MergedView(m), limits, cancel, args, &mut st, None)
-        .expect("no budget: the loop always terminates with an outcome");
+    let out = if let Some(loaded) = loaded.as_ref() {
+        st.trace.loaded_index_builds = loaded.builds();
+        st.trace.loaded_index_reuses = loaded.reuses();
+        st.trace.loaded_index_bytes = loaded.usage().0 as u64;
+        dispatch(&LoadedView(m, loaded), limits, cancel, args, &mut st, None)
+    } else {
+        dispatch(&MergedView(m), limits, cancel, args, &mut st, None)
+    }
+    .expect("no budget: the loop always terminates with an outcome");
     if !st.frames.is_empty() {
-        // All-exit cleanup: trap/resource/cancel leaves frames behind —
-        // their owned values release before the outcome surfaces.
         cleanup_owned_frames(&mut st);
     }
     (out, st.trace)
@@ -263,17 +301,7 @@ pub fn execute_program_units(
     limits: &ExecLimits,
     cancel: &CancelFlag,
 ) -> (ExecOutcome, ExecTrace) {
-    let mut st = LoopState::default();
-    st.arena = crate::owned_text::StrArena::new();
-    st.trace.arena = Some(st.arena.clone());
-    st.trace.execution_seq = EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-    st.trace.dispatched = observe_dispatched(prog);
-    let out = dispatch(&prog.unit_view(), limits, cancel, &[], &mut st, None)
-        .expect("no budget: the loop always terminates with an outcome");
-    if !st.frames.is_empty() {
-        cleanup_owned_frames(&mut st);
-    }
-    (out, st.trace)
+    execute_program(prog, limits, cancel)
 }
 
 pub fn execute_program(
@@ -281,12 +309,41 @@ pub fn execute_program(
     limits: &ExecLimits,
     cancel: &CancelFlag,
 ) -> (ExecOutcome, ExecTrace) {
-    let mut st = LoopState::default();
-    st.arena = crate::owned_text::StrArena::new();
+    execute_program_impl(prog, limits, cancel, true)
+}
+
+pub fn execute_program_reference(
+    prog: &crate::program_snapshot::ProgramSnapshot,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+) -> (ExecOutcome, ExecTrace) {
+    execute_program_impl(prog, limits, cancel, false)
+}
+
+fn execute_program_impl(
+    prog: &crate::program_snapshot::ProgramSnapshot,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    optimize: bool,
+) -> (ExecOutcome, ExecTrace) {
+    let mut st = LoopState {
+        arena: crate::owned_text::StrArena::new(),
+        ..Default::default()
+    };
     st.trace.arena = Some(st.arena.clone());
     st.trace.execution_seq = EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
     st.trace.dispatched = observe_dispatched(prog);
-    let out = dispatch(&prog.unit_view(), limits, cancel, &[], &mut st, None)
+    if optimize {
+        st.trace.loaded_index_builds = prog.loaded_program().builds();
+        st.trace.loaded_index_reuses = prog.loaded_program().reuses();
+        st.trace.loaded_index_bytes = prog.loaded_program().usage().0 as u64;
+    }
+    let view = if optimize {
+        prog.unit_view()
+    } else {
+        prog.reference_unit_view()
+    };
+    let out = dispatch(&view, limits, cancel, &[], &mut st, None)
         .expect("no budget: the loop always terminates with an outcome");
     if !st.frames.is_empty() {
         cleanup_owned_frames(&mut st);
@@ -346,11 +403,16 @@ pub fn execute_program_steps(
     cancel: &CancelFlag,
     max_steps: u64,
 ) -> SteppedOutcome {
-    let mut st = LoopState::default();
-    st.arena = crate::owned_text::StrArena::new();
+    let mut st = LoopState {
+        arena: crate::owned_text::StrArena::new(),
+        ..Default::default()
+    };
     st.trace.arena = Some(st.arena.clone());
     st.trace.execution_seq = EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
     st.trace.dispatched = observe_dispatched(prog);
+    st.trace.loaded_index_builds = prog.loaded_program().builds();
+    st.trace.loaded_index_reuses = prog.loaded_program().reuses();
+    st.trace.loaded_index_bytes = prog.loaded_program().usage().0 as u64;
     match dispatch(
         &prog.unit_view(),
         limits,
@@ -518,6 +580,16 @@ pub(crate) trait ModuleView {
     /// Whether a type index OWNS resources (Str / resource record) —
     /// move-in CALL semantics and slot kills (PLAN-821).
     fn type_is_owned(&self, func: u32, ty: u32) -> bool;
+    fn has_loaded_index(&self, _func: u32) -> bool {
+        false
+    }
+    fn logical_pc(&self, func: u32, block: u32, ip: usize) -> Option<u32> {
+        let f = self.fn_at(func)?;
+        Some(f.block_base(block) + ip as u32)
+    }
+    fn param_slots(&self, _func: u32) -> Option<&[u32]> {
+        None
+    }
 
     /// Project a TRAP span of the EXECUTING function (frame slot `func`)
     /// into the outcome's published coordinates. The default is the
@@ -565,6 +637,50 @@ impl ModuleView for MergedView<'_> {
     }
     fn type_is_owned(&self, _func: u32, ty: u32) -> bool {
         crate::ownership::type_is_owned(self.0, ty)
+    }
+    fn entry(&self) -> u32 {
+        self.0.entry
+    }
+}
+
+struct LoadedView<'a>(&'a MirModule, &'a crate::loaded_program::LoadedProgram<'a>);
+
+impl ModuleView for LoadedView<'_> {
+    fn fn_at(&self, idx: u32) -> Option<&MirFunction> {
+        self.0.funcs.get(idx as usize)
+    }
+    fn const_at(&self, _func: u32, idx: u32) -> Option<crate::mir::MirConst> {
+        self.0.consts.get(idx as usize).cloned()
+    }
+    fn zero_of(&self, _func: u32, ty: u32) -> Value {
+        typed_zero(self.0.types.get(ty as usize))
+    }
+    fn scalar_shape_of(&self, _func: u32, ty: u32) -> Option<crate::mir::ScalarShape> {
+        self.0.type_shape(ty)
+    }
+    fn resolve_callee(&self, _func: u32, callee: &CalleeRef) -> Option<u32> {
+        match callee {
+            CalleeRef::Func(idx) => self.0.funcs.get(*idx as usize).map(|_| *idx),
+            CalleeRef::Import(_) => None,
+        }
+    }
+    fn is_strview_type(&self, _func: u32, ty: u32) -> bool {
+        matches!(self.0.types.get(ty as usize), Some(MirType::StrView))
+    }
+    fn mir_type_of(&self, _func: u32, ty: u32) -> Option<&MirType> {
+        self.0.types.get(ty as usize)
+    }
+    fn type_is_owned(&self, _func: u32, ty: u32) -> bool {
+        crate::ownership::type_is_owned(self.0, ty)
+    }
+    fn has_loaded_index(&self, func: u32) -> bool {
+        self.1.has_function(func)
+    }
+    fn logical_pc(&self, func: u32, block: u32, ip: usize) -> Option<u32> {
+        self.1.logical_pc(func, block, ip)
+    }
+    fn param_slots(&self, func: u32) -> Option<&[u32]> {
+        self.1.param_slots(func)
     }
     fn entry(&self) -> u32 {
         self.0.entry
@@ -1759,11 +1875,19 @@ fn dispatch<V: ModuleView>(
                 )))
             }
         };
-        let n_params = entry_fn.param_slots().len();
-        if n_params != args.len() {
+        let reference_params;
+        let params = if let Some(params) = v.param_slots(entry_slot) {
+            st.trace.loaded_param_map_queries += 1;
+            params
+        } else {
+            reference_params = entry_fn.param_slots();
+            st.trace.reference_param_map_copies += 1;
+            &reference_params
+        };
+        if params.len() != args.len() {
             return Some(ExecOutcome::Infra(format!(
                 "entry expects {} args, driver passed {}",
-                n_params,
+                params.len(),
                 args.len()
             )));
         }
@@ -1773,7 +1897,7 @@ fn dispatch<V: ModuleView>(
         // Fn/Record-typed slot, or a record value at the entry boundary) is
         // an admission violation, never a silently executing coercion.
         for (i, arg) in args.iter().enumerate() {
-            let slot_ty = entry_fn.slots[entry_fn.param_slots()[i] as usize].ty;
+            let slot_ty = entry_fn.slots[params[i] as usize].ty;
             use crate::mir::ScalarShape;
             let ok = match v.scalar_shape_of(entry_slot, slot_ty) {
                 Some(ScalarShape::I32) => matches!(arg, Value::I32(_)),
@@ -1938,7 +2062,19 @@ fn dispatch<V: ModuleView>(
                 let fr = st.frames.last_mut().expect("frame present");
                 fr.ip += 1;
             }
-            let flat = func.block_base(block_idx) + ip as u32;
+            if v.has_loaded_index(func_idx) {
+                st.trace.loaded_pc_lookups += 1;
+            } else {
+                st.trace.reference_pc_lookups += 1;
+            }
+            let flat = match v.logical_pc(func_idx, block_idx, ip) {
+                Some(flat) => flat,
+                None => {
+                    return Some(ExecOutcome::Infra(format!(
+                        "logical PC missing for func #{func_idx} block #{block_idx} ip {ip}"
+                    )))
+                }
+            };
             match instr {
                 MirInstr::Const { dst, value } => {
                     let cv = match v.const_at(func_idx, *value) {

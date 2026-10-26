@@ -2472,11 +2472,12 @@ impl FunctionIncrementalSession {
             }
         }
         let t_link = std::time::Instant::now();
-        let next = match ProgramSnapshot::link_with_maps(
+        let next = match ProgramSnapshot::link_with_maps_and_previous(
             codes,
             &self.entry_def_id,
             next_revision,
             span_maps.clone(),
+            Some(self.current.as_ref()),
         ) {
             Ok(s) => Arc::new(s),
             Err(e) => {

@@ -645,6 +645,7 @@ fn case_serve() -> ! {
     // PLAN-822 T-02: the collections-profile recipe (avworker/1 envelope
     // domain; the recipe id is the discriminator).
     let collections_recipe = recipe == "ac-av/collections-run-v1";
+    let loaded_recipe = recipe == "ac-av/loaded-run-v1";
     let closures_recipe = recipe == "ac-av/closures-run-v1";
     let closures_fixture_id = req["closures_fixture"].as_str().map(|s| s.to_string());
     // PLAN-824: the dynamic-profile recipe (avworker/1 envelope domain).
@@ -667,6 +668,7 @@ fn case_serve() -> ! {
         && !data_recipe
         && !owned_recipe
         && !collections_recipe
+        && !loaded_recipe
         && !closures_recipe
         && !dynamic_recipe
     {
