@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-841
-status: drafting
+status: executing
 feature_name: UI领域模型、AST与Token及lowering终态解耦
 author: [Codex]
 created_at: 2026-10-24
-updated_at: 2026-10-24
+updated_at: 2026-10-26
 plan_revision: 1
-current_step: 0
+current_step: 2
 total_steps: 12
 supersedes_spec_components: [docs/specs/auto-ast/project.md, docs/specs/auto-lex/project.md, docs/specs/auto-parser-api/project.md, docs/specs/auto-ui-dialect/project.md, docs/specs/auto-ui-compiler/project.md, docs/specs/auto-ui-runtime/project.md, docs/specs/language-sdk/project.md, docs/specs/auto-lang/frontend/overview.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/ui-domain-model/project.md]
@@ -111,8 +111,8 @@ work/review只必要check（真实SDK/被改包）、相关包/模块/fixture和
 
 | 状态 | ID | owner_stage | 依赖/启动门 | 实际交付/验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | G841完整核验 | 冻结当前三仓模型与逐语法消费图、完成§5整链可行性probe和决策制品，含schema/lifetime/资源边界；不可行先重规划 | AC-01..05 |
-| [ ] | T-02 | work | G841；T-01 | 实现UI拥有的领域模型/visitor/codec与Core中立契约，禁止UI字段回灌和模型副本；独立类型/所有权控制 | AC-01,03 |
+| [x] | T-01 | work | G841完整核验 | [✅ 已完成] [contract-baseline](attachments/841/contract-baseline.md)：三仓消费图/语法分类/寿命与资源边界冻结；泛型 DomainCode/UiStmt 整链实证（Core check、UI两包check、全部测试目标构建、代表lower→Codegen→VM=1、四生成器、跨文件导入与Core同名对照） | AC-01..05 |
+| [x] | T-02 | work | G841；T-01 | [✅ 已完成] UI owned 模型/visitor/codec 与 Core serde 中立契约落地：`UI_AST_SCHEMA_VERSION` 版本信封（domain/schema/tag 具名拒绝）、递归 `UiAstVisitor`（UI/View/Core 全走）、`Shared<T>` 仅经显式 serde adapter（无全局对象表）、Core `ast/route.rs` 模型副本删除（RouteDef 单源归 dialect）；回归套件全部迁 `parse_domain(&UiDialect)` 显式端口（55 项文法回归 + plan778 回滚不变量经新端口复证 + design_tokens 9 项迁 compiler/tests + trans 两族纯 Core）；codec 含真实解析 span/源行/字段往返与坏 domain/version/tag 反例 | AC-01,03 |
 | [ ] | T-03 | work | G841；T-02 | 迁UI专属Token分类/文法端口/ParserBridge返回与默认/显式装配；Core同名语义正反控 | AC-01,02 |
 | [ ] | T-04 | work | G841；T-03 | 实现完整校验/lowering和类型/编译/VM消费准入；删除低层UI专属Stmt/投影臂，保源诊断与求值序 | AC-01,02 |
 | [ ] | T-05 | work | G841；T-04 | 迁UI分析/四生成器/registry/runtime/renderer生产消费到新owned模型，非UI trans保持 | AC-02,04 |
@@ -127,6 +127,12 @@ work/review只必要check（真实SDK/被改包）、相关包/模块/fixture和
 G841未满足前禁止创建/认领以下组、分支或work agent。未来组`D:/autostack/.wt/lang-841/{auto-lang,auto-ui,auto-man}`，每个实际需写仓各一树/分支`codex/plan-841-dev`；只读consumer用固定版本clone而非借其他计划WIP，未需写仓不多建树。work/review/merge沿同组顺序交接，不建第二审查树；若auto-down为现有可选依赖则具名固定版本/detached兄弟，只解析不改实现。禁止junction/symlink，主检出只簿记，清理前每树fresh guard clean且保留实际交付/legacy恢复源。
 
 ## 9. 复审记录
+
+2026-10-26 / stage: work（T-02） / plan_id: PLAN-841 / plan_revision: 1 / outcome: **pass（T-02 完成；Plan 保持 executing 2/12）** / worktree_path: `D:/autostack/.wt/lang-841/{auto-lang,auto-ui}` / branch: `codex/plan-841-dev` / base_commit: 承 T-01（lang `eccf8601e`、UI `992fbe4`） / code_commit: lang `50eb22dc9`、UI `d6d499b` / dependency_revisions: 同 T-01（down detached 只读、Man 固定版本） / task_ids: T-02 / evidence: `cargo check` lang 五包（ast/lex/parser-api/val/lang-core）PASS 且 lang 侧改动为纯 serde derive 零语义变化；`cargo test -p auto-ui-dialect` 90 单测 + 2 doctest 全绿（codec 4 测：往返+clone、坏 domain/version/tag 具名拒绝、visitor 计数、真实解析 span/源行/字段往返）；`cargo test -p auto-ui-compiler --lib` 1121 全绿（plan426 await 拒绝经领域端口保持）+ `--test design_tokens_recipe` 9 绿；dialect 包零警告（T-01 迁移遗留警告已清）；触面文件 rustfmt 通过 / 关键决策: ①design_tokens 回归因 dev-循环依赖类型分裂（dialect↔compiler）不可留在 dialect，迁 `auto-ui-compiler/tests/design_tokens_recipe.rs`（正向依赖类型同源）；②plan778 三段注册表测试改断言 builtin 恒空（内建 UI 方言已移入显式领域端口），None-回滚不变量经自定义 DomainDialect 在 `parse_domain` 复证；③vue plan426 测试改经领域端口（裸 `parse()` 不再载 UI 文法=T-01 终态设计，该红为 T-01 预存） / blockers: 无阻塞 T-02 验收，但登记两项 T-01 携带的预存破损供后续任务收口——①`auto-ui-runtime` 自 T-01 起 82 编译错（消费已删的 Core UI 臂/`ast::ui`/`resolve_use_module`，SDK `auto-lang` 因其失败；修复 owner=T-05 runtime 迁移，merge 前必须闭环）；②`auto-ui-compiler` 19 个 doctest 红（`auto_lang` crate 不可达，PLAN-814 迁移遗留；owner=T-07 测试ID/选择面同步时归因处置） / next_responsible_role: work T-03（Token 分类/文法端口/ParserBridge 迁移与 Core 同名语义正反控）
+
+2026-10-26 / stage: work（T-01） / plan_id: PLAN-841 / plan_revision: 1 / outcome: **pass（T-01 完成；Plan 保持 executing 1/12）** / worktree_path: `D:/autostack/.wt/lang-841/{auto-lang,auto-ui}` / branch: `codex/plan-841-dev` / base_commit: lang `100172980efb0343fe7016a05eb40f18d0014d74`、UI `aee499e87093ff727f68ac8467c506e9ecf6ecdc` / code_commit: lang `eccf8601e`、UI `992fbe4` / dependency_revisions: down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`（detached 只读）、Man `1b7a9ce0de9055f7953129d78a25777662508258` / task_ids: T-01 / evidence: [contract-baseline](attachments/841/contract-baseline.md) §6；Core check、UI两包check、全部测试目标构建、代表lower→Codegen→VM=1、四生成器与跨文件导入通过 / blockers: 无；全仓 fmt 被 auto-cosmic/linux.rs 与 auto-lang/examples/ui_container.rs 预存语法问题阻断，触面包 fmt 及复核通过；merge 统一门 pending / next_responsible_role: work T-02（模型/visitor/codec与独立所有权控制）
+
+2026-10-26 / stage: work（G841 启动门核验） / plan_id: PLAN-841 / plan_revision: 1 / outcome: **G841 满足，进入 T-01；Plan drafting→executing 0/12** / gate_evidence: U831=r3 archived 12/12，最终 review/统一门/landing/ledger v84/归档/三树 guard 清理闭环，lang delivery `d7f378b676e3a9dac7257f609936455e5d8248fe` 与 UI delivery `aee499e87093ff727f68ac8467c506e9ecf6ecdc` 均为当前 master 祖先/HEAD；U832=r3 archived 12/12，R5 收口/统一门/landing/ledger v89/归档/四树清理闭环，lang delivery `3934ed4f28e8c994e92129a44f987bc9067e9e21` 与 Man delivery `1b7a9ce0de9055f7953129d78a25777662508258` 均为当前 master 祖先/HEAD / baseline: auto-lang `100172980efb0343fe7016a05eb40f18d0014d74`、auto-ui `aee499e87093ff727f68ac8467c506e9ecf6ecdc`、auto-man `1b7a9ce0de9055f7953129d78a25777662508258` / worktrees: `D:/autostack/.wt/lang-841/{auto-lang,auto-ui,auto-man}`，各仓 `codex/plan-841-dev`，根路径与分支断言通过 / observations: 语言主检出他 session 文档 WIP 及未跟踪构建产物未纳入，三仓主检出代码零修改 / next_responsible_role: work T-01（冻结来源/语法/消费图与整链可行性决策）
 
 2026-10-24 / stage: new / plan_id: PLAN-841 / revision: 1 / outcome: blocked（上游整Plan启动门未齐；文档合同预检通过）/ next: 等G841真实满足后读回规范/交付/归档版本，再work T-01 / changed: T-01..12、AC-01..07、SD-01..05、V-01..05。本Plan drafting 0/12，无实施/fixture/probe/测试已完成，未创建树或agent；[预检](attachments/m2-governance-batch-20261024/preflight.md)。
 
