@@ -101,3 +101,22 @@ cases.json 逐例源 hash、基线四例全路径 bindable、场景组全覆盖�
    差异行保留，改语义须携反例另裁。
 2. B16 族：a2r 前端不做名解析——a2r 诊断行为差异行；是否给 a2r 加名检查属语言 owner 决策。
 3. B18：旧引擎可能允许 let 写——T-02 实测后单列。
+
+## 7. R1 修复补记（F-852-R1-01～04 闭环后，2026-10-26）
+
+- **收据验证**：复用仅在严格验证后；结构破损=REJECTED（--force 亦不覆盖，须人工
+  修复）；文件轴漂移=STALE 显式重认证。日常 snapshot 对全部 ok-emit 行执行同套
+  验证（含 oracle 文本绑定 binding 登记值、冻结 flags `["--edition=2021","-O"]`、
+  deps std-only、actual==golden 自洽）。
+- **toolchain 轴**：build.rs 捕获 `$RUSTC -vV` → `BUILD_TOOLCHAIN_IDENTITY`
+  （编译期常量），经 suite 报告 `build-rustc-identity` 轴输出；日常比对零 spawn
+  （取消"延迟到 certify"弱化）。证书 toolchain.identity 记完整 `-vV` 文本。
+- **wrapper 单源**：`oracle/wrapper-main-v1.rs` 版本化入库，代码 include_str 引用；
+  hash 为证书身份轴，日常可直接核验。
+- **scratch 策略对齐**：认证器 `--scratch <dir>` 显式参数；缺省=隔离 temp（PID 域）。
+  两形态均在全退出路径整体清理——与 §3 预算条款一致。
+- **流治理**：双独立有界读线程并发排水；任一流超 cap 杀全树并报溢出（不截断）；
+  墙到杀树；identity 捕获默认零 spawn，`--rustc` 覆盖经 contained 通道。
+- **隐式认证清除**：acceptance/lifecycle/日常测试不再触发任何 Rust 编译；认证与
+  流治理/墙钟负控为 #[ignore] 显式入口（certify scope 统一驱动）；日常 G02 证据
+  =真实进程计数（CIM ancestry 核查；引擎 worker memoized 维护构建单列报告）。
