@@ -427,6 +427,7 @@ fn core_version_for(recipe: &str) -> &'static str {
     match recipe {
         "ac-av/data-run-v1" => auto_av_core::contract::AV_DATA_PROFILE,
         "ac-av/owned-run-v1" => auto_av_core::contract::AV_OWNED_PROFILE,
+        "ac-av/collections-run-v1" => auto_av_core::contract::AV_COLLECTIONS_PROFILE,
         _ => auto_av_core::contract::AV_PROFILE,
     }
 }
@@ -481,6 +482,9 @@ fn case_serve() -> ! {
     // PLAN-821 T-02: the owned-profile recipe (`avworker/1` envelope domain
     // — the recipe id itself is the discriminator, no field grows).
     let owned_recipe = recipe == "ac-av/owned-run-v1";
+    // PLAN-822 T-02: the collections-profile recipe (avworker/1 envelope
+    // domain; the recipe id is the discriminator).
+    let collections_recipe = recipe == "ac-av/collections-run-v1";
     // PLAN-820 F820-R6-01: the typed-fixture entry (`av.entry` of the
     // form `typed:<id>`, validated by the parent against its OWN frozen
     // table before the request) selects a frozen av.data-fixture/1 input
@@ -489,7 +493,10 @@ fn case_serve() -> ! {
     // PLAN-821: the owned-fixture entry (`owned:<id>`, parent-validated
     // first) selects a frozen av.owned-fixture/1 source.
     let owned_fixture = req["owned_fixture"].as_str().map(|s| s.to_string());
-    if recipe != "ac-av/core-run-v1" && !data_recipe && !owned_recipe {
+    // PLAN-822: the collections-fixture entry (`collections:<id>`,
+    // parent-validated first) selects a frozen av-collections fixture.
+    let collections_fixture_id = req["collections_fixture"].as_str().map(|s| s.to_string());
+    if recipe != "ac-av/core-run-v1" && !data_recipe && !owned_recipe && !collections_recipe {
         eprintln!("unknown recipe {recipe}");
         exit(2);
     }
@@ -617,6 +624,37 @@ fn case_serve() -> ! {
                     // owned face for its success value. The PARENT judges
                     // against its own frozen expectations — never the
                     // worker's word.
+                    if let Some(fid) = &collections_fixture_id {
+                        let f = match auto_av_probe::collections_fixture::collections_fixture(fid) {
+                            Some(f) => f,
+                            None => {
+                                eprintln!("unknown collections fixture {fid}");
+                                exit(2);
+                            }
+                        };
+                        let started = std::time::Instant::now();
+                        match auto_av_probe::collections_fixture::run_collections_fixture(
+                            f.id,
+                            Some(&store_dir),
+                            "autodown-collections-case",
+                        ) {
+                            Ok(collections) => step_outs.push(serde_json::json!({
+                                "op": "run",
+                                "outcome": "success",
+                                "value": null,
+                                "collections": collections,
+                                "trap": null,
+                                "diag": null,
+                                "source_hash": format!("{:016x}", auto_av_core::contract::fnv1a64(fid.as_bytes())),
+                                "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+                            })),
+                            Err(e) => {
+                                eprintln!("collections fixture {fid}: {e}");
+                                exit(2);
+                            }
+                        }
+                        continue;
+                    }
                     if let Some(fid) = &owned_fixture {
                         let f = match auto_av_probe::owned_fixture::owned_fixture(fid) {
                             Some(f) => f,

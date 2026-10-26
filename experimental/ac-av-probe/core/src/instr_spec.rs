@@ -687,10 +687,10 @@ mod tests {
             ]
         );
         // Owned-introduced surface frozen (rows whose profile set contains
-        // owned but not core — unchanged by the collections superset).
+        // owned but not data/core — unchanged by the collections superset).
         let owned_only: Vec<&str> = SPECS
             .iter()
-            .filter(|s| s.profiles.contains(&"owned") && !s.profiles.contains(&"core"))
+            .filter(|s| s.profiles.contains(&"owned") && !s.profiles.contains(&"data"))
             .map(|s| s.name)
             .collect();
         assert_eq!(

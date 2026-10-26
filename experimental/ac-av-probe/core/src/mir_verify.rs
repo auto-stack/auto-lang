@@ -328,7 +328,7 @@ impl<'a> Verifier<'a> {
             // contract-decision §2).
             match t {
                 MirType::I64 | MirType::U64 | MirType::F32 | MirType::F64 | MirType::Record(_)
-                    if !self.is_data && !self.is_owned =>
+                    if !self.is_data && !self.is_owned && !self.is_collections =>
                 {
                     return Err(MirVerifyError::uns(
                         "mir.profile-type",
@@ -1169,7 +1169,7 @@ impl<'a> Verifier<'a> {
                             Some(MirConst::Char(_)) | Some(MirConst::Str(_)) => true,
                             _ => false,
                         };
-                        if owned_const && !self.is_owned {
+                        if owned_const && !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-const",
                                 "char/Str constants exist only in the owned profile".to_string(),
@@ -1463,7 +1463,7 @@ impl<'a> Verifier<'a> {
                     }
                     MirInstr::Trace { .. } => {}
                     MirInstr::FieldGet { dst, base, path } => {
-                        if !self.is_data && !self.is_owned {
+                        if !self.is_data && !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "FIELD_GET exists only in the data/owned profiles".to_string(),
@@ -1537,7 +1537,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::FieldSet { root, path, value } => {
-                        if !self.is_data && !self.is_owned {
+                        if !self.is_data && !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "FIELD_SET exists only in the data/owned profiles".to_string(),
@@ -1577,7 +1577,7 @@ impl<'a> Verifier<'a> {
                         record_ty,
                         operands,
                     } => {
-                        if !self.is_data && !self.is_owned {
+                        if !self.is_data && !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "AGGREGATE exists only in the data/owned profiles".to_string(),
@@ -2400,10 +2400,12 @@ impl<'a> Verifier<'a> {
             }
         }
         // ---- definite initialization over the reachable CFG -------------
-        if self.is_owned {
+        if self.is_owned || self.is_collections {
             // PLAN-821: the ownership dataflow SUBSUMES the must-init
             // analysis (init ⊂ its state lattice) and adds move-kill,
-            // borrow tokens, reservation and escape gates.
+            // borrow tokens, reservation and escape gates. PLAN-822: the
+            // collections profile rides the SAME analysis (its lattice
+            // carries the guard-fact and payload-moved states).
             let module = self.module;
             let steps = &mut self.steps;
             let analysis_bytes = &mut self.analysis_bytes;
