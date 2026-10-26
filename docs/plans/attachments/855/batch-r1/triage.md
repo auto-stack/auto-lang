@@ -1,0 +1,1 @@
+B855-FEATURE-01: language selection compile failed before tests;24 errors, zero executions. Attributed to AV corpus821/827 registrations and822 cfg displacement, not855. Fix-forward859. UI/tt/tb not reached. Anchor850 unchanged; retry pending. Official raw identity and unmodified build are adjacent .txt transports. No source, filters, oracle or limits changed.

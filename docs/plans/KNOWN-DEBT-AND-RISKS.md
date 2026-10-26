@@ -3425,3 +3425,7 @@ PLAN-849 merge observed one consumer dash3d-short reopen auto-Pause (tick backlo
 ## PLAN-841 R5 — F841-R5-01 (OPEN, P2, acceptance blocker)
 
 The accepted compound props `[[.source]]` and `[{inner: .source}]` keep a borrowed nested VmRef without queue/replayed-container ownership. Real parser/lowering/view build accepts both and queues Child Init; replacing the parent's source field then forces collection of the still-referenced object. Direct-array control passes. This is not accepted deferred debt or approval to narrow nested input support. [Finding and replay](attachments/841/review-r5/finding-F841-R5-01.md); [review](attachments/841/review-r5/review.md). Original G04 graph/direct-ref examples now pass, but shared lifetime invariant remains partial. Plan executing6/12; work must fix full producer/container lifetime then obtain affected review. Unified gates remain merge-owned pending.
+
+### B855-FEATURE-01 — AV corpus optional dependency boundary (2026-10-27)
+
+Main batch7f966bfa3 language listing failed with24 E0432/E0433 in821/827 test modules;822 insertion displaced existing cfg. Zero tests ran; UI/tt/tb not reached. Fix-forward [PLAN-859](859-restore-av-corpus-feature-boundaries.md); evidence [build](attachments/855/batch-r1/language-build.log.txt). Last complete green remains850; retry required. No855 graphics source attribution or rollback.

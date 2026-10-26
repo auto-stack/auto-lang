@@ -64,14 +64,30 @@
     }
   },
   "verdict": "pass",
-  "new_reds": [],
+  "new_reds": [
+    {
+      "id": "B855-FEATURE-01",
+      "stage": "language-list/compile",
+      "error": "24 E0432/E0433: av_owned_821_tests and av_source_827_tests consume optional test-cases dependencies without module cfg",
+      "attributed_plans": [
+        821,
+        827,
+        822
+      ],
+      "evidence": "docs/plans/attachments/855/batch-r1/language-build.log.txt",
+      "fix_forward_plan": 859,
+      "fix_forward_path": "docs/plans/859-restore-av-corpus-feature-boundaries.md",
+      "source_changed_by_855": false
+    }
+  ],
   "known_reds_seen": [],
   "prior_failed_batches": [
     "docs/plans/attachments/840/batch-r1",
     "docs/plans/attachments/840/batch-r2",
     "docs/plans/attachments/850/batch-r1",
     "docs/plans/attachments/850/batch-r2",
-    "docs/plans/attachments/850/batch-r3"
+    "docs/plans/attachments/850/batch-r3",
+    "docs/plans/attachments/855/batch-r1"
   ],
   "repaired_findings": [
     "optional CTE feature boundary",
@@ -86,24 +102,45 @@
   "evidence": "docs/plans/attachments/850/batch-r4",
   "main_report_restored_exactly": true,
   "last_attempt": {
-    "plan_id": 850,
-    "outcome": "pass",
-    "timestamp": "2026-10-26T00:02:10.122452+00:00",
-    "evidence": "docs/plans/attachments/850/batch-r4",
-    "retry_required": false
+    "plan_id": 855,
+    "outcome": "compile-blocked",
+    "timestamp": "2026-10-26T19:00:51.605491+00:00",
+    "head": "7f966bfa3d416a746b44cfe7abbde897e450e4da",
+    "evidence": "docs/plans/attachments/855/batch-r1",
+    "retry_required": true,
+    "coverage_complete": false,
+    "tests_executed": 0,
+    "new_reds": [
+      {
+        "id": "B855-FEATURE-01",
+        "stage": "language-list/compile",
+        "error": "24 E0432/E0433: av_owned_821_tests and av_source_827_tests consume optional test-cases dependencies without module cfg",
+        "attributed_plans": [
+          821,
+          827,
+          822
+        ],
+        "evidence": "docs/plans/attachments/855/batch-r1/language-build.log.txt",
+        "fix_forward_plan": 859,
+        "fix_forward_path": "docs/plans/859-restore-av-corpus-feature-boundaries.md",
+        "source_changed_by_855": false
+      }
+    ],
+    "unexecuted_legs": [
+      "ui-full",
+      "tt",
+      "tb"
+    ]
   },
-  "pending_retry": false,
+  "pending_retry": true,
   "coverage_policy": "Complete real language/UI/tt/tb execution verified; last complete green advances to850. Historical failed attempts retained.",
   "last_due_check": {
-    "plan_id": 850,
-    "checked_at": "2026-10-26T00:02:10.122452+00:00",
-    "checked_commit": "7750f8d3399fe8aa620b7eecb6c7390ca810df05",
-    "due": false,
-    "outcome": "complete-green-current",
+    "plan_id": 855,
+    "checked_at": "2026-10-26T19:00:51.605491+00:00",
+    "due": true,
+    "reason": "855 modulo5 landed; attempted official batch failed before test listing",
     "coverage_anchor_preserved": 850,
-    "retry_required": false,
-    "rerun": false,
-    "reason": "Current Plan850 modulo5 obligation discharged by this actual complete batch; subsequent closeout is documentation/ledger only."
+    "retry_required": true
   },
   "prior_attempts": [
     {
@@ -315,9 +352,16 @@
       "retry_required": true,
       "single_instance": true,
       "scope": "Bare daily3181 passes before landing; main full batch sequential with exclusive mutex, unchanged inputs/limits/config, all legs no-fail-fast for complete attribution, generated reports preserved and original WIP restored."
+    },
+    {
+      "plan_id": 850,
+      "outcome": "pass",
+      "timestamp": "2026-10-26T00:02:10.122452+00:00",
+      "evidence": "docs/plans/attachments/850/batch-r4",
+      "retry_required": false
     }
   ],
-  "current_batch_status": "pass",
+  "current_batch_status": "compile-blocked",
   "dependencies": {
     "language": {
       "head": "7750f8d3399fe8aa620b7eecb6c7390ca810df05",

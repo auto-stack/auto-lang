@@ -28,3 +28,5 @@ No root Cargo tier used as a per-plan experimental gate; independent due-trigger
 - batch: due check/complete batch pending; separate from already-passed experimental merge gates.
 
 Source/canonical/ledger/archive/cleanup delivery outcome: pass,9/9. Batch obligation is reported separately and must not be silently skipped.
+
+2026-10-27 batch closeout: official main-only cargo tf --batch attempted at7f966bfa3. Language listing compile failed with24 E0432/E0433 (optional test-cases consumers821/827;822 insertion displaced cfg). Zero tests executed; UI/tt/tb unexecuted. Raw receipt/build: docs/plans/attachments/855/batch-r1/. Fix-forward PLAN-859 drafted; last green850 preserved, pending_retry=true. Plan855 delivered/archived9/9 remains valid; global batch is not green.
