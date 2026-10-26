@@ -4,7 +4,7 @@ use auto_val::{AutoStr, Node as AutoNode, Value};
 use std::{fmt, io as stdio};
 
 /// Type alias declaration: `type List<T> = List<T, DefaultStorage>`
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TypeAlias {
     /// Alias name (e.g., "List")
     pub name: Name,

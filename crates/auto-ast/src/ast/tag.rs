@@ -4,7 +4,7 @@ use crate::ast::{AtomWriter, ToAtomStr};
 use auto_val::AutoStr;
 use std::{fmt, io as stdio};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Tag {
     pub name: Name,
     pub generic_params: Vec<GenericParam>, // Generic parameters (Plan 052: type + const)
@@ -12,7 +12,7 @@ pub struct Tag {
     pub methods: Vec<super::Fn>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TagField {
     pub name: Name,
     pub ty: Type,

@@ -24,7 +24,7 @@ use std::{fmt, io as stdio};
 /// ```
 ///
 /// The borrow is automatically released at the end of the hold block.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Hold {
     /// Path expression to borrow (e.g., x.y.z)
     pub path: Box<Expr>,

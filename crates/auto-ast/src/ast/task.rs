@@ -10,7 +10,7 @@ use auto_val::{AutoStr, Node as AutoNode, Value};
 use std::{fmt, io as stdio};
 
 /// Task annotation attributes
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub enum TaskAttr {
     /// `#[single]` - singleton task (only one instance)
     Single,
@@ -41,7 +41,7 @@ impl fmt::Display for TaskAttr {
 ///     }
 /// }
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TaskDef {
     /// Task name (e.g., "CounterTask")
     pub name: Name,
@@ -128,7 +128,7 @@ impl TaskDef {
 ///     amount int if amount > 10000 => { approve() }
 /// }
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TaskOnBlock {
     /// Context parameter name (e.g., "ctx", "req", "origin")
     /// None means no context parameter (Phase 1/2 style)
@@ -262,7 +262,7 @@ impl TaskOnBlock {
 ///
 /// - `Literal` - Literal exact match: `"start"`, `404`, `true`
 /// - `TypeBinding` - Type capture binding: `msg string`, `u User`
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum TaskMsgPattern {
     // === Phase 1/2 Patterns ===
     /// Simple variant without data: Reset, Print
@@ -331,7 +331,7 @@ impl PartialEq for TaskMsgPattern {
 impl Eq for TaskMsgPattern {}
 
 /// Literal value for Phase 3 pattern matching
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub enum LiteralValue {
     /// String literal: "start", "ping"
     String(AutoStr),

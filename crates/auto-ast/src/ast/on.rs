@@ -2,27 +2,27 @@ use crate::ast::Expr;
 use crate::ast::{AtomWriter, ToAtomStr};
 use std::{fmt, io as stdio};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Arrow {
     pub src: Option<Expr>,
     pub dest: Option<Expr>,
     pub with: Option<Expr>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CondArrow {
     pub src: Option<Expr>,
     pub cond: Expr,
     pub subs: Vec<Arrow>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Event {
     Arrow(Arrow),
     CondArrow(CondArrow),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct OnEvents {
     pub branches: Vec<Event>,
 }

@@ -259,7 +259,7 @@ thiserror = "2.0.12"
 regex = "1.11.1"
 strum = "0.26"
 strum_macros = "0.26"
-ecow = "0.2.3"
+ecow = { version = "0.2.3", features = ["serde"] }
 normalize-path = "0.2.1"
 roxmltree = "0.18.0"
 dashmap = "6.1"

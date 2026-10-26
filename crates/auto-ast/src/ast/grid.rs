@@ -2,7 +2,7 @@ use super::{Args, Expr, ToNode};
 use auto_val::Node as AutoNode;
 use std::fmt;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Grid {
     pub head: Args,
     pub data: Vec<Vec<Expr>>,

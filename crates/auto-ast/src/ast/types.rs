@@ -5,7 +5,7 @@ use auto_val::{AutoStr, Shared};
 use std::{fmt, io as stdio};
 
 /// Source of a Rust type imported via use.rust
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct RustSource {
     pub full_path: String,
 }
@@ -25,7 +25,7 @@ impl RustSource {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Type {
     Byte,
     Int,
@@ -50,9 +50,9 @@ pub enum Type {
     Reference(Box<Type>),           // &T - reference (Plan 052, for Rust transpiler)
     User(TypeDecl),
     Union(Union),
-    Tag(Shared<Tag>),
-    Enum(Shared<EnumDecl>),
-    Spec(Shared<SpecDecl>), // Spec 类型（多态接口）
+    Tag(#[serde(with = "super::serde_shared")] Shared<Tag>),
+    Enum(#[serde(with = "super::serde_shared")] Shared<EnumDecl>),
+    Spec(#[serde(with = "super::serde_shared")] Shared<SpecDecl>), // Spec 类型（多态接口）
     // May(Box<Type>) removed - use generic tag May<T> from stdlib instead
     GenericInstance(GenericInstance), // User-defined generic instance (e.g., MyType<int>)
     Storage(StorageType),             // Storage strategy type (Plan 055)
@@ -389,14 +389,14 @@ impl Type {
 /// Examples:
 /// - Type parameter: `T` in `List<T>` (no type annotation)
 /// - Const parameter: `N u32` in `Inline<T, N u32>` (with type annotation)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum GenericParam {
     Type(TypeParam),
     Const(ConstParam),
 }
 
 /// Type parameter (e.g., `T` in `List<T>`)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TypeParam {
     pub name: Name,
     /// Plan 364 W3: trait bounds — `#[with(T as A + B)]` collects multiple.
@@ -405,7 +405,7 @@ pub struct TypeParam {
 }
 
 /// Const parameter (e.g., `N u32` in `Inline<T, N u32>`)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ConstParam {
     pub name: Name,            // Parameter name (e.g., "N", "CAPACITY")
     pub typ: Type,             // Parameter type (e.g., u32, usize)
@@ -447,7 +447,7 @@ impl fmt::Display for ConstParam {
 
 /// Generic type instance - represents instantiation of a generic type
 /// Example: `List<int>`, `May<string>`, `Map<str, int>`
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct GenericInstance {
     pub base_name: Name, // Base type name (e.g., "List", "May", "Map")
     pub args: Vec<Type>, // Type arguments (e.g., [int], [str, int])
@@ -472,8 +472,9 @@ impl fmt::Display for GenericInstance {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PtrType {
+    #[serde(with = "super::serde_shared")]
     pub of: Shared<Type>,
 }
 
@@ -483,7 +484,7 @@ impl fmt::Display for PtrType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ArrayType {
     pub elem: Box<Type>,
     pub len: usize,
@@ -495,7 +496,7 @@ impl fmt::Display for ArrayType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SliceType {
     pub elem: Box<Type>,
 }
@@ -503,7 +504,7 @@ pub struct SliceType {
 /// Runtime-sized array type (Plan 052)
 /// Represents arrays where the size is determined at runtime
 /// Example: [size]int where size is a variable or function call
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RuntimeArrayType {
     pub elem: Box<Type>,
     pub size_expr: Box<Expr>, // Size expression evaluated at runtime (boxed to avoid recursive type)
@@ -521,13 +522,13 @@ impl fmt::Display for RuntimeArrayType {
 
 /// Storage strategy type (Plan 055: Environment-based Storage Injection)
 /// Represents storage strategies for collections like List<T>
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StorageType {
     pub kind: StorageKind,
 }
 
 /// Storage strategy kind
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub enum StorageKind {
     /// Fixed-capacity storage (stack/static allocation)
     /// Used for MCU environments - no heap allocation required
@@ -666,7 +667,7 @@ impl From<Type> for auto_val::Type {
 // currently, spec is just a name
 pub type Spec = AutoStr;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub enum TypeDeclKind {
     UserType,
     CType,
@@ -674,7 +675,7 @@ pub enum TypeDeclKind {
 
 /// 成员级委托声明
 /// 表示 `has member Type for Spec` 语法
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Delegation {
     pub member_name: AutoStr, // 成员名
     pub member_type: Type,    // 成员类型
@@ -693,7 +694,7 @@ impl fmt::Display for Delegation {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TypeDecl {
     pub name: Name,
     pub kind: TypeDeclKind,
@@ -807,7 +808,7 @@ impl fmt::Display for TypeDecl {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Member {
     pub name: Name,
     pub ty: Type,
@@ -836,13 +837,13 @@ impl Member {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TypeInst {
     pub name: Name,
     pub entries: Vec<Pair>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Pair {
     pub key: Key,
     pub value: Box<Expr>,
@@ -860,7 +861,7 @@ impl Pair {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Eq, PartialEq, PartialOrd, Ord)]
 pub enum Key {
     NamedKey(Name),
     IntKey(i32),

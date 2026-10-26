@@ -2,7 +2,7 @@ use auto_val::AutoStr;
 use std::fmt;
 use strum_macros;
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Pos {
     pub line: usize,
     pub at: usize,

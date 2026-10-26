@@ -3,7 +3,7 @@ use crate::ast::AtomWriter;
 use auto_val::AutoStr;
 use std::{fmt, io as stdio};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum UseKind {
     Auto,
     C,
@@ -11,7 +11,7 @@ pub enum UseKind {
     Py, // Plan 214: Python FFI import
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Use {
     pub kind: UseKind,
     /// Plan 131: Structured module path (new syntax)

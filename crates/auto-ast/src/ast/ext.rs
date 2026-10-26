@@ -44,7 +44,7 @@ pub use auto_val::Node as AutoNode;
 ///     fn new(list *const List<T, S>) ListIter<T, S> { ... }
 /// }
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Ext {
     /// Type being extended (e.g., "str", "Point", "File", "ListIter<T, S>")
     pub target: Name,

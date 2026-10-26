@@ -4,7 +4,7 @@ use std::io as stdio;
 use super::Expr;
 use crate::ast::{AtomWriter, ToAtomStr};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Range {
     pub start: Box<Expr>,
     pub end: Box<Expr>,

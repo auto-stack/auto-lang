@@ -2,13 +2,13 @@ use super::{Name, Type};
 use crate::ast::{AtomWriter, ToAtomStr};
 use std::{fmt, io as stdio};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Union {
     pub name: Name,
     pub fields: Vec<UnionField>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct UnionField {
     pub name: Name,
     pub ty: Type,

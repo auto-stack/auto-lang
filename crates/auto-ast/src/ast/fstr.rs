@@ -3,7 +3,7 @@ use auto_val::Node as AutoNode;
 use std::{fmt, io as stdio};
 
 /// A single part of an f-string: either a literal text segment or an expression.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum FStrPart {
     /// Literal text segment (no interpolation)
     Literal(String),
@@ -11,7 +11,7 @@ pub enum FStrPart {
     Expr(Expr),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FStr {
     pub parts: Vec<Expr>,
 }

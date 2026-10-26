@@ -2,7 +2,7 @@ use super::{Arg, Body, Call, Expr, Name, Stmt};
 use crate::ast::{AtomWriter, ToAtomStr};
 use std::{fmt, io as stdio};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct For {
     pub iter: Iter,
     pub range: Expr,
@@ -12,7 +12,7 @@ pub struct For {
                                  // TODO: maybe we could put mid block here
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Iter {
     Indexed(/*index*/ Name, /*iter*/ Name),
     Named(/*iter*/ Name),
@@ -22,7 +22,7 @@ pub enum Iter {
     Cond, // Conditional for loop: for condition { ... }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Break {
     // TODO: maybe we could put mid block here
 }

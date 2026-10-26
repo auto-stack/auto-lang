@@ -2,7 +2,7 @@ use super::{Expr, Stmt};
 use crate::ast::{AtomWriter, ToAtomStr};
 use std::{fmt, io as stdio};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct Body {
     pub stmts: Vec<Stmt>,
     pub has_new_line: bool,

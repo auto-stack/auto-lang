@@ -1,10 +1,9 @@
 use super::types::{ConstParam, TypeParam};
 use super::{Body, Expr, Name, Type};
 use crate::ast::{AtomWriter, ToAtomStr};
-use serde::Serialize;
 use std::{fmt, io as stdio};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub enum FnKind {
     Function,
     Lambda,
@@ -13,7 +12,7 @@ pub enum FnKind {
     VmFunction, // VM implemented function declaration
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Fn {
     // TODO: add FnKind to differ Fn/Lambda/Method?
     pub kind: FnKind,
@@ -53,7 +52,7 @@ pub struct Fn {
 
 /// Plan 312: HTTP API endpoint attributes parsed from `#[api(method = "GET", path = "/api/notes/:id")]`.
 /// Stored on `Fn` so the VM can build a route table at module load time.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct ApiAttrs {
     /// HTTP method: "GET", "POST", "PUT", "DELETE", "PATCH".
     pub method: String,
@@ -83,15 +82,6 @@ impl Default for Fn {
             attrs: Vec::new(),
             export_abi: None,
         }
-    }
-}
-
-impl Serialize for Fn {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str("fn")
     }
 }
 
@@ -201,7 +191,7 @@ impl Fn {
 /// | mut    | obj.mut    | fn foo(x mut T)    | O(1)  |
 /// | move   | obj.move   | fn foo(x move T)   | O(1)  |
 /// | clone  | obj.clone()| N/A                | O(N)  |
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Copy, PartialEq, Eq, Default)]
 pub enum ParamMode {
     #[default]
     View, // Immutable reference (DEFAULT) - O(1)
@@ -235,7 +225,7 @@ impl fmt::Display for ParamMode {
 /// | Mut   | `obj.mut`   | Mutable borrow (&mut T)| O(1)  |
 /// | Move  | `obj.move`  | Ownership transfer     | O(1)  |
 /// | Clone | `obj.clone()`| Deep copy             | O(N)  |
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Copy, PartialEq, Eq, Default)]
 pub enum AccessMode {
     /// Immutable borrow (&T) - O(1)
     #[default]
@@ -259,7 +249,7 @@ impl fmt::Display for AccessMode {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Param {
     pub name: Name,
     pub ty: Type,
@@ -274,7 +264,7 @@ pub struct Param {
 /// Plan 380 P3: 函数参数位置的结构体解构。
 /// `fn h(Path(id) ~Path<String>)` 中，Path 是 wrapper_type，id 是 inner_name。
 /// 函数体内直接使用 inner_name；a2r 输出 `Path(id): Path<String>`。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DestructureParam {
     pub wrapper_type: Name,
     pub inner_name: Name,
@@ -482,7 +472,7 @@ impl ToAtom for Fn {
 
 /// Closure parameter: (name, optional_type)
 /// Unlike Param, closure params don't have default values
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ClosureParam {
     pub name: Name,
     pub ty: Option<Type>, // None means type should be inferred
@@ -505,7 +495,7 @@ impl fmt::Display for ClosureParam {
 
 /// Closure expression: ` x => body` or `(a, b) => body`
 /// Plan 060: Lightweight anonymous functions with type inference
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Closure {
     /// Closure parameters (names with optional types)
     pub params: Vec<ClosureParam>,

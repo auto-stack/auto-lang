@@ -2,7 +2,7 @@ use super::{Body, Branch};
 use crate::ast::{AtomWriter, ToAtomStr};
 use std::{fmt, io as stdio};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct If {
     pub branches: Vec<Branch>,
     pub else_: Option<Body>,

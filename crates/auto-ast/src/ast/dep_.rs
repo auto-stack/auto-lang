@@ -17,7 +17,7 @@ use std::{fmt, io as stdio};
 /// dep my_lib(path: "../my_lib")      // Local crate
 /// dep tokio(git: "https://...", branch: "main")  // Git source
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DepStmt {
     /// Crate name (e.g., "serde", "serde_json")
     pub name: AutoStr,

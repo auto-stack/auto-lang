@@ -11,6 +11,6 @@ edition = "2021"
 #（.autoos/module-boundaries.toml）。
 
 [dependencies]
-auto-val = { path = "../auto-val" }
+auto-val = { path = "../auto-val", features = ["serde"] }
 auto-lex = { path = "../auto-lex" }
 serde = { workspace = true }

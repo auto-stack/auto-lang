@@ -6,7 +6,7 @@ use auto_val::AutoStr;
 
 /// A field definition inside an enum variant (Plan 201 Phase 1).
 /// Example: `status uint` in `Api { status uint, message str }`
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EnumField {
     pub name: AutoStr,
     pub field_type: Type,
@@ -22,7 +22,7 @@ pub struct EnumField {
 ///
 /// - **Heterogeneous**: Each variant may have a different payload type (algebraic data type).
 ///   Example: `enum Msg { Quit, Move Point, Write string }`
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum EnumKind {
     /// C-style scalar enumeration with optional explicit representation type.
     /// `enum Color { Red, Green }` or `enum HttpCode u16 { OK = 200 }`
@@ -48,7 +48,7 @@ pub enum EnumKind {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EnumDecl {
     pub name: AutoStr,
     pub items: Vec<EnumItem>,
@@ -63,7 +63,7 @@ pub struct EnumDecl {
     pub attrs: Vec<AutoStr>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EnumItem {
     pub name: AutoStr,
     /// Scalar form: optional explicit integer value (e.g., `OK = 200`).

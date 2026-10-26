@@ -1,20 +1,20 @@
 use auto_val::{AutoStr, Node as AutoNode, Value};
 use std::fmt;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Cover {
     Tag(TagCover),
 }
 
 // Tag.Field(v)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TagCover {
     pub kind: AutoStr,
     pub tag: AutoStr,
     pub bindings: Vec<AutoStr>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TagUncover {
     pub src: AutoStr,
     pub cover: TagCover,
@@ -23,20 +23,20 @@ pub struct TagUncover {
 
 // Plan 120: Option and Result pattern matching
 // Some(x) or None
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct OptionCover {
     pub variant: OptionVariant,
     pub binding: Option<AutoStr>, // Variable name to bind (Some(x) => x)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Copy, PartialEq)]
 pub enum OptionVariant {
     Some,
     None,
 }
 
 // Ok(x) or Err(e)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ResultCover {
     pub variant: ResultVariant,
     pub binding: Option<AutoStr>, // Variable name to bind (Ok(x) => x, Err(e) => e)
@@ -47,7 +47,7 @@ pub struct ResultCover {
     pub inner: Option<Box<crate::ast::Expr>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Copy, PartialEq)]
 pub enum ResultVariant {
     Ok,
     Err,
@@ -57,14 +57,14 @@ pub enum ResultVariant {
 // is x { Point { x, y } => ... } or is x { Message.User { content } => ... }
 
 /// A single field binding in a struct destructuring pattern
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FieldBinding {
     pub field: AutoStr,   // Field name
     pub binding: AutoStr, // Binding name (same as field when using shorthand)
 }
 
 /// Struct destructuring pattern: Type { field1, field2: alias }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StructCover {
     pub type_name: AutoStr,        // "Point" or "Message"
     pub variant: Option<AutoStr>,  // Some("User") for enum variant, None for plain struct
@@ -72,14 +72,14 @@ pub struct StructCover {
 }
 
 // Unwrap expressions for is statement pattern matching
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct OptionUncover {
     pub src: AutoStr,
     pub variant: OptionVariant,
     pub binding: AutoStr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ResultUncover {
     pub src: AutoStr,
     pub variant: ResultVariant,

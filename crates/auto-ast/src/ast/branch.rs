@@ -2,7 +2,7 @@ use super::{Body, Expr};
 use crate::ast::{AtomWriter, ToAtomStr};
 use std::{fmt, io as stdio};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Branch {
     pub cond: Expr,
     pub body: Body,

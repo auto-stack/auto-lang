@@ -3,13 +3,13 @@ use std::{fmt, io as stdio};
 use super::{Body, Expr};
 use crate::ast::{AtomWriter, ToAtomStr};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Is {
     pub target: Expr,
     pub branches: Vec<IsBranch>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum IsBranch {
     EqBranch(Vec<Expr>, Body),
     IfBranch(Expr, Body),

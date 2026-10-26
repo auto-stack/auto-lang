@@ -27,7 +27,7 @@ use std::{fmt, io};
 ///     // native code
 /// }
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct HashIf {
     /// Condition expression (must be evaluatable at compile time)
     pub cond: Expr,
@@ -38,7 +38,7 @@ pub struct HashIf {
 }
 
 /// Else branch for #if - can be another #if (elif) or a regular block
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum HashIfElse {
     /// `else { ... }` - regular else block
     Block(Body),
@@ -107,7 +107,7 @@ impl AtomWriter for HashIf {
 /// let var_2 = 2
 /// let var_3 = 3
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct HashFor {
     /// Loop variable name
     pub var: Name,
@@ -155,7 +155,7 @@ impl AtomWriter for HashFor {
 ///     else  => { panic("Unknown Arch") }
 /// }
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct HashIs {
     /// Expression to match (same as normal is statement)
     pub target: Expr,
@@ -164,7 +164,7 @@ pub struct HashIs {
 }
 
 /// Single branch in #is pattern matching
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum HashIsBranch {
     /// Pattern match branch: pattern => body
     EqBranch(Expr, Body),
@@ -249,7 +249,7 @@ impl AtomWriter for HashIs {
 ///
 /// The block is evaluated at compile time and the result is
 /// substituted into the code.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct HashBrace {
     /// Expression to evaluate at compile time
     pub expr: Expr,
@@ -286,7 +286,7 @@ impl AtomWriter for HashBrace {
 /// #debug("message")
 /// #info(f"value = $x")
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MacroCall {
     /// Macro name (without # prefix), e.g., "debug"
     pub name: Name,
@@ -328,7 +328,7 @@ impl AtomWriter for MacroCall {
 /// Compile-time expression that can appear in various contexts
 ///
 /// This is used for `#{}` interpolation within expressions
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ComptimeExpr {
     /// #{} block
     HashBrace(HashBrace),

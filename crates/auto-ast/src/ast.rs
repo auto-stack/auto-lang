@@ -56,6 +56,7 @@ mod range;
 pub use range::*;
 mod scene;
 pub use scene::*;
+mod serde_shared;
 
 // Plan 095: Compile-time execution AST nodes
 mod comptime;
@@ -141,7 +142,7 @@ pub trait ToNode {
     fn to_node(&self) -> AutoNode;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Code {
     pub stmts: Vec<Stmt>,
     /// Source line numbers for each statement (parallel to stmts)
@@ -189,7 +190,7 @@ impl fmt::Display for Code {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Stmt {
     Expr(Expr),
     If(If),
@@ -311,7 +312,7 @@ impl fmt::Display for Stmt {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Expr {
     // value exprs
     Int(i32),

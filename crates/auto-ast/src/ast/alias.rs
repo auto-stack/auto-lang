@@ -2,7 +2,7 @@ use super::Name;
 use crate::ast::AtomWriter;
 use std::{fmt, io as stdio};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Alias {
     pub alias: Name,
     pub target: Name,

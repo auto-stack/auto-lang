@@ -4,7 +4,7 @@ use auto_lex::token::Pos;
 use auto_val::AutoStr;
 use std::{fmt, io as stdio};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Call {
     pub name: Box<Expr>,
     pub args: Args,
@@ -44,7 +44,7 @@ impl fmt::Display for Call {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Args {
     // pub array: Vec<Expr>,
     // pub map: Vec<(Name, Expr)>,
@@ -57,7 +57,7 @@ impl Default for Args {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Arg {
     Pos(Expr),
     Name(Name),

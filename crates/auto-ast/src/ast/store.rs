@@ -2,7 +2,7 @@ use super::{Expr, Name, Type};
 use crate::ast::{AtomWriter, ToAtomStr};
 use std::{fmt, io as stdio};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum StoreKind {
     Let,
     Var,
@@ -12,7 +12,7 @@ pub enum StoreKind {
     Field,  // field of struct
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Store {
     pub kind: StoreKind,
     pub name: Name,

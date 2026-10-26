@@ -1,7 +1,7 @@
 use super::*;
 use auto_val::{shared, Shared};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Node {
     pub name: Name,
     pub id: Name,
@@ -9,6 +9,7 @@ pub struct Node {
     pub args: Args,      // TODO: Will be removed in Phase 5
     // pub props: BTreeMap<Key, Expr>,
     pub body: Body,
+    #[serde(with = "super::serde_shared")]
     pub typ: Shared<Type>,
     /// Doc comment from `///` lines (attached to this node)
     pub doc: Option<AutoStr>,

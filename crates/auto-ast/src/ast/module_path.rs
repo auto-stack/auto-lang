@@ -10,7 +10,7 @@
 use auto_val::AutoStr;
 
 /// The prefix of a module path
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub enum PathPrefix {
     /// No prefix - same directory: `use db`
     None,
@@ -24,7 +24,7 @@ pub enum PathPrefix {
 }
 
 /// A fully parsed module path
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct ModulePath {
     /// The prefix (None, Super, Pac, or Dep name)
     pub prefix: PathPrefix,

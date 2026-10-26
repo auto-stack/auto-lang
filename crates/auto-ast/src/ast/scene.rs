@@ -1,7 +1,7 @@
 use super::{Expr, Name, Type};
 use auto_val::AutoStr;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SceneDecl {
     pub name: Name,
     pub node_type: Name,
@@ -12,25 +12,25 @@ pub struct SceneDecl {
     pub signals: Vec<SceneSignal>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SceneProp {
     pub name: Name,
     pub value: SceneValue,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum SceneValue {
     Expr(Expr),
     SubResource(SceneSubResource),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SceneSubResource {
     pub res_type: Name,
     pub props: Vec<SceneProp>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum SceneNode {
     Node {
         node_type: Name,
@@ -44,7 +44,7 @@ pub enum SceneNode {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SceneConnection {
     pub signal: AutoStr,
     pub from: AutoStr,
@@ -52,13 +52,13 @@ pub struct SceneConnection {
     pub method: AutoStr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SceneSignal {
     pub name: AutoStr,
     pub params: Vec<SceneSignalParam>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SceneSignalParam {
     pub name: Name,
     pub ty: Type,

@@ -6,7 +6,7 @@ use std::{fmt, io as stdio};
 
 /// Spec implementation with type arguments
 /// Plan 057: Track which spec a type implements with concrete type arguments
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SpecImpl {
     pub spec_name: Name,
     pub type_args: Vec<Type>,
@@ -32,7 +32,7 @@ impl SpecImpl {
 /// parse as bare `Type::User(name)`; implementers bind them at the impl
 /// clause (`as Container<Item=int>`) and each consumer (trait checker, VM
 /// codegen, a2r) substitutes via `Type::substitute` before use.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AssociatedType {
     pub name: Name,
     /// Reserved for a future `type Item has Bound` extension. Always None
@@ -41,7 +41,7 @@ pub struct AssociatedType {
 }
 
 /// Trait 声明 - 定义类型可以实现契约
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SpecDecl {
     pub name: Name,
     pub generic_params: Vec<GenericParam>, // Plan 057: Generic parameters
@@ -100,7 +100,7 @@ impl SpecDecl {
 }
 
 /// Trait 声明中的方法签名
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SpecMethod {
     pub name: Name,
     pub params: Vec<Param>,

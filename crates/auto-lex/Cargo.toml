@@ -13,6 +13,7 @@ strum_macros = { workspace = true }
 # LexerError 诊断 derive（code/label/span）。
 miette = { workspace = true }
 thiserror = { workspace = true }
+serde = { workspace = true }
 
 [dev-dependencies]
 # V02 golden 重放（tests/ 集成测试读取冻结 JSON 对拍）。

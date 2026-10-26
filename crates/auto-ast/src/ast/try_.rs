@@ -11,7 +11,7 @@ use super::Body;
 use crate::ast::AtomWriter;
 use std::fmt;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Try {
     pub body: Body,
     /// Optional binding name for the caught error: `catch (e)`. None = `catch { }`.

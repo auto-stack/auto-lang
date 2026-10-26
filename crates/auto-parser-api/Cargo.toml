@@ -20,3 +20,4 @@ description = "AutoLang dialect port API: light CompilerSession/Scenario + Exter
 auto-ast = { path = "../auto-ast" }
 auto-lex = { path = "../auto-lex" }
 auto-diagnostics = { path = "../auto-diagnostics" }
+serde = { workspace = true }

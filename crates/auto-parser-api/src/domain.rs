@@ -4,13 +4,13 @@ use crate::error::AutoResult;
 use crate::session::CompilerSession;
 use crate::token::{Pos, Token, TokenKind};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum DomainStmt<D> {
     Core(Stmt),
     Domain(D),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DomainCode<D> {
     pub items: Vec<DomainStmt<D>>,
     pub source_lines: Vec<usize>,
