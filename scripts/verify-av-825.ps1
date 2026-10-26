@@ -21,7 +21,7 @@ function Assert-Selected {
         if ([int]$Matches[1] -gt 0) { throw "$Label : ignored/skipped mandatory case" }
     }
     foreach ($id in $RequiredIds) {
-        $count = ([regex]::Matches($Output, "(?m)^test $([regex]::Escape($id)) .*$")).Count
+        $count = ([regex]::Matches($Output, "(?m)^test $([regex]::Escape($id)) .* (?:ok|FAILED|ignored).*$")).Count
         if ($count -ne 1) { throw "$Label : required case '$id' occurred $count times" }
     }
 }
@@ -110,6 +110,14 @@ switch ($Scope) {
         Run-Probe -Bin 'function_incremental_828_t08' -Filter 't08_formal_campaign_v08_dual_gate_30_revisions' -RequiredIds @('t08_formal_campaign_v08_dual_gate_30_revisions')
         Run-Probe -Bin 'function_incremental_828_contract' -Filter 'contract_828_hotpath_old_synth_pipeline_same_window_is_red' -RequiredIds @('contract_828_hotpath_old_synth_pipeline_same_window_is_red')
         Run-Probe -Bin 'function_incremental_828_r1' -Filter 'r2_trace_in_unchanged_function_survives_body_edit' -RequiredIds @('r2_trace_in_unchanged_function_survives_body_edit')
+    }
+    'baseline' {
+        Run-Probe -Bin 'av_runtime_825_baseline' -RequiredIds @('av_runtime_825_baseline_sources_match_independent_oracles')
+        Run-Probe -Bin 'av_runtime_825_semantics' -Filter 'av_runtime_825_cancel_exhausted_then_next_request_clean' -RequiredIds @('av_runtime_825_cancel_exhausted_then_next_request_clean')
+        Run-Probe -Bin 'function_incremental_828_t08' -Filter 't08_formal_campaign_v08_dual_gate_30_revisions' -RequiredIds @('t08_formal_campaign_v08_dual_gate_30_revisions')
+        Run-Probe -Bin 'resources_tier' -Filter 'av_resources_32mib_product_random_read_and_churn' -RequiredIds @('av_resources_32mib_product_random_read_and_churn')
+        Run-Runner -Filter 'av_runtime_825_baseline_corpus_green' -RequiredIds @('tests::av_runtime_825_tests::av_runtime_825_baseline_corpus_green')
+        Run-Runner -Filter 'av_runtime_825_parent_sensitivity_controls_non_green' -RequiredIds @('tests::av_runtime_825_tests::av_runtime_825_parent_sensitivity_controls_non_green')
     }
     default {
         throw "PLAN-825 scope '$Scope' is not implemented yet; this is an explicit acceptance gap, not PASS"

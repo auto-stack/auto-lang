@@ -3,5 +3,11 @@
 ```test-suite
 suite { schema: "autolang.suite/2", id: "av-abc-825", include: [
   "av-loaded-first-case.case.ad",
+  "av-loaded-b01.case.ad",
+  "av-loaded-b04.case.ad",
+  "av-loaded-b09.case.ad",
+  "av-loaded-b13.case.ad",
+  "av-loaded-b14.case.ad",
+  "av-loaded-lifecycle.case.ad",
 ] }
 ```

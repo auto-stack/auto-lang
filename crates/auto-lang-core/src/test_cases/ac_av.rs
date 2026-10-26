@@ -2171,28 +2171,36 @@ fn judge_loaded_runtime(step: &StepOut, mismatches: &mut Vec<Mismatch>) {
     if step.outcome != "success" {
         return;
     }
+    let sabotage = std::env::var("AV825_JUDGE_SABOTAGE").unwrap_or_default();
+    let observed = |key: &str| {
+        if sabotage == key {
+            0
+        } else {
+            step.counters.get(key).copied().unwrap_or(0)
+        }
+    };
     for (key, minimum) in [
         ("loaded_index_builds", 1),
         ("loaded_pc_lookups", 1),
         ("loaded_param_map_queries", 1),
     ] {
-        if step.counters.get(key).copied().unwrap_or(0) < minimum {
+        if observed(key) < minimum {
             mismatches.push(Mismatch {
                 observation: "loaded-runtime".into(),
                 kind: key.into(),
                 expected: format!(">= {minimum}"),
-                actual: format!("{:?}", step.counters.get(key)),
+                actual: observed(key).to_string(),
                 first_diff: None,
             });
         }
     }
     for key in ["reference_pc_lookups", "reference_param_map_copies"] {
-        if step.counters.get(key).copied().unwrap_or(0) != 0 {
+        if observed(key) != 0 {
             mismatches.push(Mismatch {
                 observation: "loaded-runtime".into(),
                 kind: key.into(),
                 expected: "0".into(),
-                actual: format!("{:?}", step.counters.get(key)),
+                actual: observed(key).to_string(),
                 first_diff: None,
             });
         }

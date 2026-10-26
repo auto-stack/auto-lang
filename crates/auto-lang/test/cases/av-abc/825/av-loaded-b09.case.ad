@@ -1,0 +1,16 @@
+# PLAN-825 T-11 / 852 B09: real recursion fact(5)=120.
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.loaded.b09"
+  tags: ["av-abc-825", "probe", "ace-m1"]
+  links: ["PLAN-825", "PLAN-852"]
+  source: { file: "src/B09.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-loaded-b09", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/loaded-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 120 } }
+  ]
+}
+```
