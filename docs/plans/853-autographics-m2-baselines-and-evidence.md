@@ -13,7 +13,7 @@ new_spec_components:
   - docs/specs/auto-graphics/research-quality-baseline.md
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 6
+current_step: 7
 total_steps: 9
 ---
 
@@ -128,7 +128,7 @@ T-02将[继承85组](attachments/853/planning/inherited-gate-inventory.json.txt)
 | T-04 | work | T-02 | 新m2_evidence/853 identity/verifier，更新当前source/consumer和必要native绑定；V-01/03/04 | AC-01/04/05 | [x] |
 | T-05 | work | T-03/04 | 五类采样/on-off/五API生成基线，命名定向测试与所改native面，提交代码/SD/证据，不跑整档 | AC-01..05 | [x] |
 | T-06 | review | T-05 | 独立最终review；R3 affected pass，完整门pending，不修实现 | AC-06 | [x] |
-| T-07 | merge | T-06 pass | 冻结提交两端完整/原native-owner-content/新面，核SHA、选中ID和复用 | AC-07 | [ ] |
+| T-07 | merge | T-06 pass | 冻结提交两端完整/原native-owner-content/新面，核SHA、选中ID和复用 | AC-07 | [x] |
 | T-08 | merge | T-07 | 源码合autographics-dev，main沉淀SD/overview/plans/ADR/ledger/索引并归档，清理仍如实pending | AC-08 | [ ] |
 | T-09 | merge | T-08 | guard clean后移除树/临时分支；仓外产物路径/SHA和实际9/9，交854实际提交 | AC-08 | [ ] |
 
@@ -160,6 +160,8 @@ T-02将[继承85组](attachments/853/planning/inherited-gate-inventory.json.txt)
 2026-10-26 independent affected final review R3：`stage: review | review_scope: final | reviewer_identity: delegated /root/review_853_r3 fresh independent implementation-free context | plan_id: PLAN-853 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-853/auto-lang | branch: plan-853-dev | reviewed_commit: c1961665d1a90a8705994085fd4344a1d6a9a564 | repair_base_commit: 5e3f5b65f145fb127a4e206b626d3e2e3dc0ab8b | base_commit: 11911a4a6d809bfd515f745b77d00bc8f04f6ba9 | dependency_revisions: SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467 / Rust与AGP/锁/API/样本/config不变 | spec_inputs: attachments/853/review-r3/independent-results.json | acceptance_results: AC-01..06 pass（不变面明确复用）, AC-07/08 merge pending | findings: [] | evidence: attachments/853/review-r3/review.md + replay.py + reuse-proof.json + frozen-spec-delta.md | next: merge-owned frozen full gates before landing`。独立核两次失败诊断及实际每frame announced/pending/completed所有权调整；原R2三坏日志、原false-green receipt及R1两原例均在两入口拒绝，独立34条双入口控制（24拒/10受）、四永久方法及CLI通过，子块不吞父case完成。原85映射、两端各76块/280ID及当前scoped日志重放通过；441来源/681SDK、两端各21真实生成文件、50报告/raw日志、native14+4/owner6负恢复与原测runner复用绑定核对通过，未重跑来源/API/生成/性能/native全campaign或Cargo整档。SD冻结SHA `4b5c7ca7670e9a93420635c7bd90e313a2952dbffaa4f8b53d5a9e16e7f2145f`；当前增量与实际闭合一致，无未授权延后/绕行。T-06完成，reviewed6/9；T-07..09仍pending，完整冻结producer/fresh own-SDK空target consumer、原native/owner/content/新面及AGP23完整输入复用证明或重跑由merge承担，通过前不得合入/称交付。实现退出仍同HEAD且clean；未修实现、未改canonical/ledger、未合入/归档/清树；保留R1/R2全部历史。
 
 2026-10-26 merge entry：用户明确授权 /auto-plan:merge；reviewed_commit=c1961665d1a90a8705994085fd4344a1d6a9a564，SD SHA4b5c7ca7670e9a93420635c7bd90e313a2952dbffaa4f8b53d5a9e16e7f2145f。沿用独立实验共同合同，根Cargo整档不触发。生产者完整78块/282ID（原280包含）、原native/content、sweep/motion及owner门通过；fresh own-SDK/空target consumer完整门正在运行。首次asset受外部输入、segment受focus-lost暂停的失败现场与同payload恢复完整组通过均保留于merge-r1/environment-recovery.json.txt，未改代码/oracle/预算；用户已明确桌面空闲继续测试。新工具7永久测试/自检、50进程1500tick原始统计重验通过；AGP23完整输入不变证明保留。当前仍reviewed6/9，未合入/归档/清理。其他会话WIP保持不动，先提交本Plan及证据以提供耐久引用；规划阶段审计用原字节快照修复引用，不发布其他会话未跟踪报告。
+
+2026-10-26 merge gate完成：T-07/AC-07通过，reviewed7/9。当前producer/fresh own-SDK空target consumer完整各78顶层块/282通过/0failed/0ignored，原280ID逐binary包含；当前85执行组、原85映射/AGP23完整输入复用、两端全部原native/owner/content与motion14+4重开/6负+恢复、新工具7永久测试与两端21真实生成文件通过。50原始进程/1500tick按不变输入与实际runner重验统计，不冒称重采样。详见[最终审计](attachments/853/merge-r1/validated.json.txt)、[实际产物/原始日志索引](attachments/853/merge-r1/evidence-index.json.txt)、[全部失败闭环](attachments/853/merge-r1/failure-closures.json.txt)。桌面输入/focus、时钟注入前置未到与额外display-gap内容拒绝均保留，最终原完整组通过；调度误选重建runner导致重复UI输出目录拒绝的错误已诊断，原必需UI正例/原payload证据保留，未放宽oracle或丢弃失败。源码/SDK/锁/预算/SD无改动，源树clean；尚未合入/归档/清理。
 
 ## 10. 待澄清事项
 
