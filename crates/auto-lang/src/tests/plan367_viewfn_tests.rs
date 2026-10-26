@@ -19,7 +19,7 @@ mod plan367_viewfn_tests {
     fn parse_ok(code: &str) -> bool {
         let session = CompilerSession::ui();
         let mut parser = crate::Parser::from(code).with_session(session);
-        match parser.parse() {
+        match parser.parse_domain(&auto_ui_dialect::UiDialect) {
             Ok(_) => true,
             Err(e) => {
                 eprintln!("viewfn: PARSE FAIL: {:?}", e);

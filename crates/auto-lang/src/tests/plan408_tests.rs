@@ -223,7 +223,7 @@ mod plan408_tests {
         let bad_src = "view fn NoComputed(a: str) { computed { x => .a } div { text .x } }\nwidget W { view { NoComputed(a: .y) } model { var y str = \"\" } }";
         let session = CompilerSession::ui();
         let mut parser = crate::Parser::from(bad_src).with_session(session);
-        let parse_outcome = parser.parse();
+        let parse_outcome = parser.parse_domain(&auto_ui_dialect::UiDialect);
         assert!(parse_outcome.is_err(),
             "view fn with a computed block must NOT parse cleanly (computed is component-fn-only): {:?}",
             parse_outcome);
@@ -334,7 +334,7 @@ mod plan408_tests {
         let bad_src = "view fn NoEmit(a: str) { msg Msg { X } div { text .a } }\nwidget W { view { NoEmit(a: .y) } model { var y str = \"\" } }";
         let session = CompilerSession::ui();
         let mut parser = crate::Parser::from(bad_src).with_session(session);
-        let parse_outcome = parser.parse();
+        let parse_outcome = parser.parse_domain(&auto_ui_dialect::UiDialect);
         assert!(
             parse_outcome.is_err(),
             "view fn with a msg block must NOT parse cleanly (msg is component-fn-only): {:?}",

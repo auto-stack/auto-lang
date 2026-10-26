@@ -351,7 +351,7 @@ widget P {
     )
     .with_session(session);
     let err = parser
-        .parse()
+        .parse_domain(&auto_ui_dialect::UiDialect)
         .expect_err("illegal outlet head param must be a pointed parse error");
     let msg = format!("{err:?}");
     assert!(
