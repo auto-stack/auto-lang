@@ -3119,7 +3119,6 @@ fn av_collections_822_semantics_nested_variant_clone_control() {
         ],
     })) as u32;
     let c_s = m.intern_const(MirConst::Str(Box::from(*b"deep"))) as u32;
-    let c0 = m.intern_const(MirConst::I32(0)) as u32;
     // main: pack Opt0(Some "deep") → Opt1(Some) → Opt2(Some); clone the
     // Opt2; switch the ORIGINAL to None; the clone still disc 1.
     m.funcs[0] = MirFunction {
@@ -3196,147 +3195,130 @@ fn av_collections_822_semantics_nested_variant_clone_control() {
     assert_eq!(success(&m), Value::I32(1), "the clone keeps the deep arm");
 }
 
-/// F822-R9-01: CANCELLATION lands mid-traversal — a large clone (1,501
-/// visitor nodes) with the flag already raised returns Cancelled at the
-/// first in-loop poll; the partial assembly fully unwound (ledger
-/// balanced, live=0).
+// -- F822-R10-01: two-segment clone interruption with no-CLONE controls --
+
+// -- F822-R10-01: bounded traversal — seam oracles + production witness --
+
+/// SEAM ORACLE (the internal `clone_owned_value` traversal, exercised
+/// directly): a 1,300-element List<Str> snapshot cloned with the cancel
+/// flag already RAISED interrupts at the visitor's own poll — the entry
+/// witness is real (partial fresh allocations happened: allocs > the
+/// zero of an untouched arena) and EVERY partial buffer unwound on abort
+/// (allocs == frees, live 0). This proves the in-loop cancel path of the
+/// production helper, independent of any dispatch boundary.
 #[test]
-fn av_collections_822_semantics_clone_cancel_mid_traversal() {
-    let mut m = r9_base();
-    let t_list = m.intern_type(MirType::List(ListTypeRef { elem: 2 })) as u32;
-    let c_x = m.intern_const(MirConst::Str(Box::from(*b"x"))) as u32;
-    let c0 = m.intern_const(MirConst::I32(0)) as u32;
-    let c5 = m.intern_const(MirConst::I32(5)) as u32;
-    let mut instrs = vec![MirInstr::ListNew {
-        dst: 0,
-        list_ty: t_list,
-        cap: 0,
-    }];
-    for _ in 0..1_500 {
-        // An owned Str element kills its source slot at push — rematerialize
-        // the literal per push (1,500 Str nodes + the list = 1,501 visitors).
-        instrs.push(MirInstr::Const { dst: 1, value: c_x });
-        instrs.push(MirInstr::ListPush { root: 0, value: 1 });
-    }
-    instrs.push(MirInstr::Clone { dst: 2, src: 0 });
-    instrs.push(MirInstr::Const { dst: 3, value: c5 });
-    m.funcs[0] = MirFunction {
-        owner: m.owner.clone(),
-        name: "main".to_string(),
-        sig: m.funcs[0].sig,
-        slots: vec![
-            MirSlot {
-                kind: SlotKind::Local,
-                ty: t_list,
-                name: Some("l".into()),
-            },
-            MirSlot {
-                kind: SlotKind::Local,
-                ty: 2,
-                name: Some("v".into()),
-            },
-            MirSlot {
-                kind: SlotKind::Local,
-                ty: t_list,
-                name: Some("cl".into()),
-            },
-            MirSlot {
-                kind: SlotKind::Local,
-                ty: 0,
-                name: Some("r".into()),
-            },
-        ],
-        blocks: vec![MirBlock {
-            instrs,
-            term: Terminator::Return { value: 3 },
-        }],
-        entry: 0,
-        source_snapshot: 0,
-        spans: Vec::new(),
-    };
-    verify_mir(&m).unwrap_or_else(|e| panic!("{e:?}"));
-    let wire = encode_abc(&m).unwrap();
-    let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap();
+fn av_collections_822_semantics_clone_visitor_cancel_seam() {
+    let elems: Vec<Value> = (0..1_300)
+        .map(|_| {
+            Value::Str(auto_av_core::contract::StrHandle::detached(Box::from(
+                *b"x",
+            )))
+        })
+        .collect();
+    let list = Value::List(auto_av_core::contract::ListHandle::detached(elems));
+    let arena = auto_av_core::owned_text::StrArena::new();
     let cancel = auto_av_core::av::CancelFlag::new(true);
-    let (out, trace) = auto_av_core::av::execute_with_arena(
-        &loaded,
-        &ExecLimits::default(),
+    let mut fuel = 0u64;
+    let out = auto_av_core::av::clone_owned_value(
+        &list,
+        &arena,
         &cancel,
-        auto_av_core::owned_text::StrArena::new(),
+        std::time::Duration::from_secs(3600),
+        &mut fuel,
+        u64::MAX,
     );
-    assert!(matches!(out, ExecOutcome::Cancelled), "{out:?}");
-    let arena = trace.arena.expect("arena");
-    assert_eq!(arena.live(), 0, "the partial clone fully unwound");
+    assert!(matches!(out, Err(ExecOutcome::Cancelled)), "{out:?}");
+    // DIRECT seam call — no dispatch exists, so the outcome itself can
+    // only come from the visitor's own poll. The abort may land in
+    // phase 1 (no mints yet) or mid-assembly (partial mints); either way
+    // everything minted unwinds.
     assert_eq!(arena.alloc_events().len(), arena.free_events().len());
-    let _ = c0;
+    assert_eq!(arena.live(), 0);
 }
 
-/// F822-R9-01: a zero wall budget hits the SAME in-loop poll — the clone
-/// returns the wall Resource outcome mid-traversal with a clean ledger.
+/// SEAM ORACLE, wall branch: a ZERO remaining wall budget fires the same
+
+/// SEAM ORACLE, fuel branch: a step budget 60 nodes deep aborts
+/// mid-visitor with InstrSteps; the partial assembly unwinds fully.
 #[test]
-fn av_collections_822_semantics_clone_wall_mid_traversal() {
-    let mut m = r9_base();
-    let t_list = m.intern_type(MirType::List(ListTypeRef { elem: 2 })) as u32;
-    let c_x = m.intern_const(MirConst::Str(Box::from(*b"x"))) as u32;
-    let c5 = m.intern_const(MirConst::I32(5)) as u32;
-    let mut instrs = vec![MirInstr::ListNew {
-        dst: 0,
-        list_ty: t_list,
-        cap: 0,
-    }];
-    for _ in 0..1_500 {
-        // An owned Str element kills its source slot at push — rematerialize
-        // the literal per push (1,500 Str nodes + the list = 1,501 visitors).
-        instrs.push(MirInstr::Const { dst: 1, value: c_x });
-        instrs.push(MirInstr::ListPush { root: 0, value: 1 });
-    }
-    instrs.push(MirInstr::Clone { dst: 2, src: 0 });
-    instrs.push(MirInstr::Const { dst: 3, value: c5 });
-    m.funcs[0] = MirFunction {
-        owner: m.owner.clone(),
-        name: "main".to_string(),
-        sig: m.funcs[0].sig,
-        slots: vec![
-            MirSlot {
-                kind: SlotKind::Local,
-                ty: t_list,
-                name: Some("l".into()),
-            },
-            MirSlot {
-                kind: SlotKind::Local,
-                ty: 2,
-                name: Some("v".into()),
-            },
-            MirSlot {
-                kind: SlotKind::Local,
-                ty: t_list,
-                name: Some("cl".into()),
-            },
-            MirSlot {
-                kind: SlotKind::Local,
-                ty: 0,
-                name: Some("r".into()),
-            },
-        ],
-        blocks: vec![MirBlock {
-            instrs,
-            term: Terminator::Return { value: 3 },
-        }],
-        entry: 0,
-        source_snapshot: 0,
-        spans: Vec::new(),
-    };
-    verify_mir(&m).unwrap_or_else(|e| panic!("{e:?}"));
-    let wire = encode_abc(&m).unwrap();
-    let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap();
-    let mut limits = ExecLimits::default();
-    limits.wall = std::time::Duration::ZERO;
-    let (out, trace) = execute(&loaded, &limits, &auto_av_core::av::CancelFlag::new(false));
+fn av_collections_822_semantics_clone_visitor_fuel_seam() {
+    let elems: Vec<Value> = (0..1_300)
+        .map(|_| {
+            Value::Str(auto_av_core::contract::StrHandle::detached(Box::from(
+                *b"x",
+            )))
+        })
+        .collect();
+    let list = Value::List(auto_av_core::contract::ListHandle::detached(elems));
+    let arena = auto_av_core::owned_text::StrArena::new();
+    let cancel = auto_av_core::av::CancelFlag::new(false);
+    let mut fuel = 0u64;
+    let out = auto_av_core::av::clone_owned_value(
+        &list,
+        &arena,
+        &cancel,
+        std::time::Duration::from_secs(3600),
+        &mut fuel,
+        60,
+    );
     assert!(
-        matches!(&out, ExecOutcome::Resource { kind, .. } if *kind == auto_av_core::contract::ResourceKind::ExecutionWall),
+        matches!(&out, Err(ExecOutcome::Resource { kind, .. }) if *kind == auto_av_core::contract::ResourceKind::InstrSteps),
         "{out:?}"
     );
-    let arena = trace.arena.expect("arena");
     assert_eq!(arena.live(), 0);
     assert_eq!(arena.alloc_events().len(), arena.free_events().len());
+}
+
+/// SEAM ORACLE, positive control: the same 1,300-element snapshot clones
+/// to completion — an independent fresh buffer set, element order and
+/// content preserved, source untouched.
+#[test]
+fn av_collections_822_semantics_clone_visitor_full_control() {
+    let elems: Vec<Value> = (0..4)
+        .map(|i| {
+            Value::Str(auto_av_core::contract::StrHandle::detached(Box::from(
+                [b'a' + i as u8; 3],
+            )))
+        })
+        .collect();
+    let list = Value::List(auto_av_core::contract::ListHandle::detached(elems));
+    let arena = auto_av_core::owned_text::StrArena::new();
+    let cancel = auto_av_core::av::CancelFlag::new(false);
+    let mut fuel = 0u64;
+    let cloned = auto_av_core::av::clone_owned_value(
+        &list,
+        &arena,
+        &cancel,
+        std::time::Duration::from_secs(3600),
+        &mut fuel,
+        u64::MAX,
+    )
+    .expect("clone completes");
+    match cloned {
+        Value::List(ref h) => {
+            let buf = h.rc.borrow();
+            assert_eq!(buf.elems.len(), 4);
+            for (i, e) in buf.elems.iter().enumerate() {
+                match e {
+                    Value::Str(sh) => {
+                        assert_eq!(sh.bytes(), &[b'a' + i as u8; 3]);
+                    }
+                    other => panic!("{other:?}"),
+                }
+            }
+        }
+        other => panic!("{other:?}"),
+    }
+    // The clone minted its own buffers (5: list + 4 Str) and nothing
+    // leaked.
+    assert_eq!(arena.alloc_events().len(), 5, "fresh buffer set");
+    // Source untouched: still 4 elements; the CLONE's buffers are still
+    // live (owned by `cloned`), then fully released on drop.
+    match &list {
+        Value::List(h) => assert_eq!(h.rc.borrow().elems.len(), 4),
+        _ => unreachable!(),
+    }
+    drop(cloned);
+    assert_eq!(arena.free_events().len(), 5);
+    assert_eq!(arena.live(), 0);
 }

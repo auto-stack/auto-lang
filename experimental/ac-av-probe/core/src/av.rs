@@ -327,6 +327,8 @@ pub fn execute_program_steps(
     max_steps: u64,
 ) -> SteppedOutcome {
     let mut st = LoopState::default();
+    st.arena = crate::owned_text::StrArena::new();
+    st.trace.arena = Some(st.arena.clone());
     st.trace.execution_seq = EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
     st.trace.dispatched = observe_dispatched(prog);
     match dispatch(
@@ -400,6 +402,13 @@ struct LoopState {
     arena: crate::owned_text::StrArena,
     /// Monotonic frame ACTIVATION sequence (V-05 handle domain).
     frame_seq: u64,
+}
+
+thread_local! {
+    /// F822-R10-01: the dispatch segment's start instant — the clone
+    /// visitor polls the segment's REMAINING wall, never a fresh timer.
+    static SEGMENT_STARTED_AT: std::cell::Cell<Option<std::time::Instant>> =
+        const { std::cell::Cell::new(None) };
 }
 
 /// The shared flat dispatch loop: explicit frames, budgets and traps.
@@ -653,11 +662,16 @@ fn owned_alloc_precheck(
 /// turns any contract violation into a controlled infra rejection instead
 /// of a stack overflow (F821-R1-06). Fuel (bytes + fields) is charged by
 /// the CALLER before the walk — the budget check bounds the traversal.
-fn clone_owned_value(
+/// Internal observation seam (F822-R10-01): exposed for the bounded-
+/// traversal oracle tests — NOT a public execution API.
+#[doc(hidden)]
+pub fn clone_owned_value(
     val: &Value,
     arena: &crate::owned_text::StrArena,
     cancel: &CancelFlag,
-    wall_budget: std::time::Duration,
+    wall_left: std::time::Duration,
+    fuel: &mut u64,
+    max_fuel: u64,
 ) -> Result<Value, ExecOutcome> {
     // F821-R2/F06 + F822-R9-01: EXPLICIT-STACK deep clone — no host
     // recursion for ANY supported kind and NO language depth cutoff.
@@ -677,16 +691,26 @@ fn clone_owned_value(
         src: Value,
         parent: usize, // usize::MAX for the root
     }
-    let started = std::time::Instant::now();
-    let mut visited: u64 = 0;
+    // F822-R10-01: the polls carry the caller's REAL state — the shared
+    // cumulative fuel (charged per node, exhaustible mid-clone as
+    // InstrSteps) and the dispatch segment's REMAINING wall (not a fresh
+    // timer). Cancellation stays on the dispatch cadence.
     macro_rules! poll {
         () => {{
-            visited += 1;
-            if visited % crate::contract::CANCEL_CHECK_INTERVAL == 0 {
+            *fuel += 1;
+            if *fuel >= max_fuel {
+                return Err(ExecOutcome::Resource {
+                    kind: ResourceKind::InstrSteps,
+                    message: "deep clone exhausted the execution step budget".to_string(),
+                });
+            }
+            if *fuel % crate::contract::CANCEL_CHECK_INTERVAL == 0 {
                 if cancel.load(std::sync::atomic::Ordering::Relaxed) {
                     return Err(ExecOutcome::Cancelled);
                 }
-                if started.elapsed() > wall_budget {
+                if SEGMENT_STARTED_AT.with(|c| c.get().map(|t| t.elapsed()).unwrap_or_default())
+                    > wall_left
+                {
                     return Err(ExecOutcome::Resource {
                         kind: ResourceKind::ExecutionWall,
                         message: "deep clone exceeded the execution wall budget".to_string(),
@@ -781,7 +805,7 @@ fn clone_owned_value(
             Value::Variant(var) => {
                 let payload = child_list[id]
                     .first()
-                    .map(|k| Box::new(out[*k].take().expect("child cloned first")));
+                    .map(|k| std::rc::Rc::new(out[*k].take().expect("child cloned first")));
                 Value::Variant(crate::contract::VariantValue {
                     ty: var.ty,
                     disc: var.disc,
@@ -944,9 +968,9 @@ fn drop_owned_reverse(st: &mut LoopState, val: Value) {
             drop(h); // the buffer itself frees after its elements
         }
         Value::Variant(var) => {
-            if let Some(p) = var.payload {
+            if let Some(p) = var.payload.as_ref() {
                 st.steps += 1;
-                drop_owned_reverse(st, *p);
+                drop_owned_reverse(st, p.as_ref().clone());
             }
         }
         other => drop(other),
@@ -1160,6 +1184,7 @@ fn dispatch<V: ModuleView>(
     budget: Option<u64>,
 ) -> Option<ExecOutcome> {
     let started = Instant::now();
+    SEGMENT_STARTED_AT.with(|c| c.set(Some(started)));
     // B2-C04: the step budget is PER SEGMENT (this dispatch call's own
     // budget — `resume(.., Some(n))` grants n MORE steps); the cumulative
     // hard fuel (`limits.max_steps`) below still spans the whole chain.
@@ -1610,15 +1635,25 @@ fn dispatch<V: ModuleView>(
                     if let Err(out) = owned_alloc_precheck(st, new_size, *dst as usize, limits) {
                         return Some(out);
                     }
-                    // F821-R1-06: the deep clone copies every buffer and
-                    // visits every field — byte- and field-scaled fuel
-                    // (contract-decision §4: CLONE 按输出字节数计量).
-                    st.steps += new_size as u64 + visited;
-                    // F822-R9-01: the traversal carries its own in-loop
-                    // cancel/wall/fuel polls — Cancelled and wall-budget
-                    // outcomes surface HERE, mid-clone, with the partial
-                    // assembly fully unwound.
-                    let cloned = match clone_owned_value(&sv, &st.arena, &cancel, limits.wall) {
+                    // F822-R10-01: NO precharge — the visitor charges the
+                    // SHARED cumulative fuel per node, the true
+                    // interruptible budget (the byte-scaled shape stays
+                    // visible through the precheck's deep-size estimate
+                    // above).
+                    // F822-R10-01: the helper charges the SHARED cumulative
+                    // fuel per node (no unenforceable precharge) and polls
+                    // the dispatch segment's REMAINING wall — Cancelled,
+                    // wall and fuel outcomes surface mid-clone with the
+                    // partial assembly fully unwound.
+                    let wall_left = limits.wall.saturating_sub(started.elapsed());
+                    let cloned = match clone_owned_value(
+                        &sv,
+                        &st.arena,
+                        &cancel,
+                        wall_left,
+                        &mut st.steps,
+                        limits.max_steps,
+                    ) {
                         Ok(v) => v,
                         Err(out) => return Some(out),
                     };
@@ -2512,7 +2547,7 @@ fn dispatch<V: ModuleView>(
                     let res = Value::Variant(crate::contract::VariantValue {
                         ty: *variant_ty,
                         disc: *disc,
-                        payload: payload_val.map(Box::new),
+                        payload: payload_val.map(std::rc::Rc::new),
                     });
                     if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
                         return Some(out);
@@ -2606,12 +2641,16 @@ fn dispatch<V: ModuleView>(
                         let taken = {
                             let fr = st.frames.last_mut().expect("frame present");
                             match &mut fr.slots[*root as usize] {
-                                Value::Variant(var) => var.payload.take().expect("checked above"),
+                                Value::Variant(var) => var
+                                    .payload
+                                    .take()
+                                    .map(|rc| (*rc).clone())
+                                    .expect("checked above"),
                                 _ => unreachable!("checked above"),
                             }
                         };
                         st.slot_bytes = st.slot_bytes.saturating_sub(deep);
-                        if let Err(out) = commit_slot_write(st, *dst as usize, *taken, limits) {
+                        if let Err(out) = commit_slot_write(st, *dst as usize, taken, limits) {
                             return Some(out);
                         }
                     } else {
@@ -2666,7 +2705,7 @@ fn dispatch<V: ModuleView>(
                             }
                         },
                         disc: *disc,
-                        payload: payload_val.map(Box::new),
+                        payload: payload_val.map(std::rc::Rc::new),
                     });
                     if let Err(out) = commit_slot_write(st, *root as usize, res, limits) {
                         return Some(out);

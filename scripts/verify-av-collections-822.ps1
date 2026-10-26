@@ -153,7 +153,10 @@ $REQ = @{
         'av_collections_822_semantics_clone_nth_item_failure_rolls_back',
         'av_collections_822_semantics_clone_budget_both_sides'
         'av_collections_822_semantics_variant_self_cycle_rejected',
-        'av_collections_822_semantics_variant_indirect_cycle_rejected',
+        'av_collections_822_semantics_variant_indirect_cycle_rejected'
+        'av_collections_822_semantics_clone_visitor_cancel_seam',
+        'av_collections_822_semantics_clone_visitor_fuel_seam',
+        'av_collections_822_semantics_clone_visitor_full_control',
         'av_collections_822_semantics_nested_variant_clone_control',
         'av_collections_822_semantics_clone_cancel_mid_traversal',
         'av_collections_822_semantics_clone_wall_mid_traversal',

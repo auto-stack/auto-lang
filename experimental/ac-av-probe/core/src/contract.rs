@@ -494,12 +494,15 @@ impl Drop for ListHandle {
 }
 
 /// The `Value::Variant` payload: nominal type-table index, live arm index,
-/// and the live arm's payload (no-payload arms carry `None`).
+/// and the live arm's payload (no-payload arms carry `None`). The payload
+/// rides an `Rc` (F822-R10-01): a Value clone must be a SHALLOW handle
+/// bump for every supported kind — nested Variant snapshot trees are the
+/// deep-clone visitor's job, never derived-Clone recursion.
 #[derive(Clone, Debug)]
 pub struct VariantValue {
     pub ty: u32,
     pub disc: u32,
-    pub payload: Option<Box<Value>>,
+    pub payload: Option<std::rc::Rc<Value>>,
 }
 
 impl PartialEq for Value {
