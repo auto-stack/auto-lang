@@ -239,41 +239,31 @@ use crate::error::AutoResult;
 /// 在 ui 门内=三分），缺席槽=false/VMError 同旧。
 #[cfg(any(feature = "ui", feature = "ui-dialog"))]
 fn install_ui_host_capabilities() {
-    // PLAN-814 R4-01：**显式文法装配优先**——本包全部装配入口（run 族
-    // 漏斗/旧公开入口包装/本安装器经 SDK 钩子的回调）首先显式注入
-    // UI 文法函数表（auto-ui-dialect 单源构造；幂等，首装优先）。
-    // inventory 自注册（下方 submit）仅为不经任何装配入口的直达
-    // `Parser::from(..).with_session(UI)` 构造兜底——语义边界与
-    // UiCompatInstaller 同（见 SDK lib.rs 对账注记/R4-01 附件）。
-    let _ = auto_lang_core::set_ui_grammar(auto_ui_dialect::ui_grammar());
+    // PLAN-841 T-01/T-03：UI 文法函数表装配退役——文法不再进程级注入，
+    // UI 解析一律经 Parser::parse_domain(&UiDialect) 显式端口（auto-ui
+    // 侧 parse_ui 单源）。本安装器只保留宿主能力装配。
     // PLAN-814 R3-01：本安装器同时注册进 SDK 钩子——SDK 侧旧公开入口
     // （create_vm_from_source/abt、eval_config、execute 族等）经
     // auto_lang_core::install_ui_host_capabilities() 回调本包真实装配
-    // （PLAN-779 装配合同保持；首次直达调用由下方入口包装保证先注册）。
+    // （PLAN-779 装配合同保持）。
     // PLAN-814 T-04：provider 实装随 ui/ 迁 auto-ui-runtime（装配扇入
     // 单点=auto_ui_runtime::install_ui_host_capabilities）；本包装保留
-    // 文法装配与钩子注册（auto-ui-dialect 依赖在本包），钩子回调臂与
-    // 旧行为一致（文法幂等重装+provider 实装）。
+    // 钩子注册，钩子回调臂与旧行为一致（provider 实装）。
     auto_lang_core::set_ui_host_install_hook(plan814_sdk_hook_install);
     auto_ui_runtime::install_ui_host_capabilities();
 }
 
-/// SDK 钩子回调臂（旧=本包安装器自注册）：文法幂等重装（首装优先）
-/// + provider 实装委托 runtime 单点。runtime 无 renderer 构建时其安装器
-/// 为 no-op，语义与旧 no-op 安装器一致。
+/// SDK 钩子回调臂（旧=本包安装器自注册）：provider 实装委托 runtime
+/// 单点。runtime 无 renderer 构建时其安装器为 no-op，语义与旧 no-op
+/// 安装器一致。（PLAN-841 T-03：文法重装臂随函数表退役删除。）
 fn plan814_sdk_hook_install() {
-    let _ = auto_lang_core::set_ui_grammar(auto_ui_dialect::ui_grammar());
     auto_ui_runtime::install_ui_host_capabilities();
 }
 
 #[cfg(not(any(feature = "ui", feature = "ui-dialog")))]
 fn install_ui_host_capabilities() {
-    // PLAN-814 R4-01：无 renderer 构建同样显式装配文法表——旧包
-    // `ui-dialect` 默认组合时代（Scenario::UI 内建方言恒可用）与 renderer
-    // feature 无关；文法属语言面，宿主能力属 renderer 面。
-    let _ = auto_lang_core::set_ui_grammar(auto_ui_dialect::ui_grammar());
-    // PLAN-814 R3-01：无 UI 构建同注册（no-op 安装器）——SDK 钩子语义
-    // 与纯 SDK 形态一致（无 UI 默认实现）。
+    // PLAN-841 T-03：无 renderer 构建不再装配文法表（文法经显式领域
+    // 端口）；SDK 钩子语义与纯 SDK 形态一致（无 UI 默认实现）。
     auto_lang_core::set_ui_host_install_hook(plan814_sdk_hook_install);
 }
 
@@ -286,12 +276,9 @@ fn plan814_ui_compat_install() {
 }
 inventory::submit!(auto_lang_core::UiCompatInstaller(plan814_ui_compat_install));
 
-// PLAN-814 R3-03b：UI 文法函数表装配（SDK 收集点 UiGrammarSource——与
-// UiCompatInstaller 同机制，本 crate 被链接即生效）。SDK 清单不再引用
-// auto-ui-dialect 后，Scenario::UI 内建方言与旧 Parser 公开 UI 门面经该
-// 表派发；本提交使旧默认"UI 文法恒可用"行为（含不经 run 族漏斗的直达
-// `Parser::from(..).with_session(UI)` 构造）保持不变。
-inventory::submit!(auto_lang_core::UiGrammarSource(auto_ui_dialect::ui_grammar));
+// PLAN-841 T-01/T-03：UiGrammarSource inventory 收集点随文法函数表退役
+// 删除——"UI 文法恒可用"的旧默认行为由显式领域端口（parse_domain）取代；
+// Core 同名语义正反控见 auto-lang-core parser 测试（plan841_*）。
 
 // ---- PLAN-814 R3-01：旧公开高层入口的兼容装配包装 ----
 // 这四个入口在 SDK 侧经钩子回调本包安装器；包装确保消费者首次直达调用
