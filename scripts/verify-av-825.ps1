@@ -101,6 +101,7 @@ function Invoke-Benchmark {
     } catch { $failed = $true }
     if (-not $failed) { throw 'missing process-peak counter-control was accepted' }
     Remove-Item -LiteralPath $guard -Recurse -Force
+    exit 0
 }
 
 function Run-Probe {
