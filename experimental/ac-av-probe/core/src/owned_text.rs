@@ -122,16 +122,28 @@ impl StrArena {
     /// PLAN-822: fallible LIST buffer allocation over the same ledger
     /// (the attempt/fault/success accounting is shared with Str; `bytes`
     /// records the element count).
-    pub fn try_alloc_list(
-        &self,
-        elems: Vec<crate::contract::Value>,
-        reserve_cap: usize,
-    ) -> Result<crate::contract::ListHandle, u64> {
+    /// F822-R13-01: split open — `list_alloc_attempt` reserves the
+    /// fault seam BEFORE any elements change hands (on an injected fault
+    /// the caller keeps ownership, so the collected elements release
+    /// through the explicit cleanup worklist instead of the recursive
+    /// drop glue inside this module's call frame); `alloc_list_after_
+    /// attempt` is the post-attempt mint.
+    pub fn list_alloc_attempt(&self) -> Result<(), u64> {
         let mut g = self.core.borrow_mut();
         g.attempts += 1;
         if g.fault_at == Some(g.attempts) {
             return Err(g.attempts);
         }
+        Ok(())
+    }
+
+    /// The post-attempt mint — `list_alloc_attempt` already said Ok.
+    pub fn alloc_list_after_attempt(
+        &self,
+        elems: Vec<crate::contract::Value>,
+        reserve_cap: usize,
+    ) -> crate::contract::ListHandle {
+        let mut g = self.core.borrow_mut();
         let id = g.next_id;
         g.next_id += 1;
         g.allocs.push(AllocEvent {
@@ -146,7 +158,16 @@ impl StrArena {
             let mut buf = handle.rc.borrow_mut();
             buf.cap = buf.cap.max(reserve_cap as u32);
         }
-        Ok(handle)
+        handle
+    }
+
+    pub fn try_alloc_list(
+        &self,
+        elems: Vec<crate::contract::Value>,
+        reserve_cap: usize,
+    ) -> Result<crate::contract::ListHandle, u64> {
+        self.list_alloc_attempt()?;
+        Ok(self.alloc_list_after_attempt(elems, reserve_cap))
     }
 
     /// The full allocation event sequence (creation order).

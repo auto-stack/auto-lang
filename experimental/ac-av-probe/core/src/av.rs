@@ -734,115 +734,142 @@ pub fn clone_owned_value(
             }
         }};
     }
-    // Entry poll: a pre-exhausted allowance (or a raised cancel flag)
-    // rejects before ANY planning work — deterministic at any graph size
-    // and independent of prior calls on this thread.
-    poll_cancel_wall!();
-    let mut nodes: Vec<Node> = Vec::new();
-    let mut stack: Vec<(usize, Value)> = vec![(usize::MAX, val.clone())];
-    while let Some((parent, v)) = stack.pop() {
-        charge!(1);
-        let id = nodes.len();
-        match &v {
-            // Children are pushed REVERSED so the LIFO worklist pops them
-            // in DECLARATION order — the child_list built below therefore
-            // preserves field/element order.
-            Value::Record(r) => {
-                for f in r.fields.iter().rev() {
-                    stack.push((id, f.clone()));
-                }
-            }
-            Value::List(h) => {
-                let buf = h.rc.borrow();
-                for e in buf.elems.iter().rev() {
-                    stack.push((id, e.clone()));
-                }
-            }
-            Value::Variant(var) => {
-                if let Some(pl) = var.payload.as_ref() {
-                    stack.push((id, pl.as_ref().clone()));
-                }
-            }
-            _ => {}
-        }
-        nodes.push(Node { src: v, parent });
-    }
-    // Phase 2: children have LARGER ids than their parent (the DFS
-    // pushes children with the just-allocated id). Assemble in reverse id
-    // order; a parent consumes its children by scanning the parent map.
-    let mut out: Vec<Option<Value>> = vec![None; nodes.len()];
-    let mut next_child: Vec<usize> = vec![usize::MAX; nodes.len()];
-    // next_child[id] = the SMALLEST node index whose parent == id (they
-    // are NOT contiguous — sibling subtrees interleave — so each parent
-    // keeps a cursor into a per-parent child list).
-    let mut child_list: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
-    for (k, n) in nodes.iter().enumerate() {
-        if n.parent != usize::MAX {
-            child_list[n.parent].push(k);
-        }
-    }
-    for id in 0..nodes.len() {
-        next_child[id] = 0; // cursor into child_list[id]
-    }
-    for id in (0..nodes.len()).rev() {
-        charge!(1);
-        let v = nodes[id].src.clone();
-        let assembled = match &v {
-            Value::Str(h) => {
-                // F822-R11-01: output-byte-scaled fuel charged BEFORE the
-                // copy — the step-budget rejection precedes the allocation
-                // attempt (nothing minted for this node on rejection).
-                charge!(h.bytes().len());
-                match arena.try_alloc(h.bytes()) {
-                    Ok(nh) => Value::Str(nh),
-                    Err(n) => {
-                        return Err(ExecOutcome::Infra(format!(
-                            "fault-injected at owned allocation attempt #{n}"
-                        )))
+    // F822-R13-01: EVERY aborting exit (fuel/cancel/wall/allocator fault)
+    // funnels through ONE epilogue: the partially assembled output — the
+    // `out` entries plus any in-arm temporaries parked in `drain_extras`
+    // — releases through the SAME explicit last-owner worklist as the
+    // dispatcher's cleanup (release_owned_worklist), never the host drop
+    // glue: an abort mid-assembly of a deep chain would otherwise recurse
+    // the glue and overflow the stack before the helper returns. The
+    // drain is CHARGE-FREE (a scratch counter): the historical glue-drop
+    // rollback accounted no cleanup fuel, so abort-path fuel totals stay
+    // exactly what the work charged.
+    let mut out: Vec<Option<Value>> = Vec::new();
+    let mut drain_extras: Vec<Value> = Vec::new();
+    let mut build = || -> Result<(), ExecOutcome> {
+        // Entry poll: a pre-exhausted allowance (or a raised cancel flag)
+        // rejects before ANY planning work — deterministic at any graph
+        // size and independent of prior calls on this thread.
+        poll_cancel_wall!();
+        let mut nodes: Vec<Node> = Vec::new();
+        let mut stack: Vec<(usize, Value)> = vec![(usize::MAX, val.clone())];
+        while let Some((parent, v)) = stack.pop() {
+            charge!(1);
+            let id = nodes.len();
+            match &v {
+                // Children are pushed REVERSED so the LIFO worklist pops them
+                // in DECLARATION order — the child_list built below therefore
+                // preserves field/element order.
+                Value::Record(r) => {
+                    for f in r.fields.iter().rev() {
+                        stack.push((id, f.clone()));
                     }
                 }
-            }
-            Value::Record(r) => {
-                let fields: Vec<Value> = child_list[id]
-                    .iter()
-                    .map(|k| out[*k].take().expect("child cloned first"))
-                    .collect();
-                Value::Record(std::rc::Rc::new(crate::contract::RecordValue {
-                    ty: r.ty,
-                    fields,
-                }))
-            }
-            Value::List(_) => {
-                let elems: Vec<Value> = child_list[id]
-                    .iter()
-                    .map(|k| out[*k].take().expect("child cloned first"))
-                    .collect();
-                let cap = elems.len();
-                match arena.try_alloc_list(elems, cap) {
-                    Ok(h) => Value::List(h),
-                    Err(n) => {
-                        return Err(ExecOutcome::Infra(format!(
-                            "fault-injected at owned allocation attempt #{n}"
-                        )))
+                Value::List(h) => {
+                    let buf = h.rc.borrow();
+                    for e in buf.elems.iter().rev() {
+                        stack.push((id, e.clone()));
                     }
                 }
+                Value::Variant(var) => {
+                    if let Some(pl) = var.payload.as_ref() {
+                        stack.push((id, pl.as_ref().clone()));
+                    }
+                }
+                _ => {}
             }
-            Value::Variant(var) => {
-                let payload = child_list[id]
-                    .first()
-                    .map(|k| std::rc::Rc::new(out[*k].take().expect("child cloned first")));
-                Value::Variant(crate::contract::VariantValue {
-                    ty: var.ty,
-                    disc: var.disc,
-                    payload,
-                })
+            nodes.push(Node { src: v, parent });
+        }
+        // Phase 2: children have LARGER ids than their parent (the DFS
+        // pushes children with the just-allocated id). Assemble in reverse
+        // id order; a parent consumes its children by scanning the parent
+        // map. `out` lives OUTSIDE the closure so the abort epilogue owns
+        // every partial entry.
+        out = vec![None; nodes.len()];
+        let mut child_list: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
+        for (k, n) in nodes.iter().enumerate() {
+            if n.parent != usize::MAX {
+                child_list[n.parent].push(k);
             }
-            other => other.clone(),
-        };
-        out[id] = Some(assembled);
+        }
+        for id in (0..nodes.len()).rev() {
+            charge!(1);
+            let v = nodes[id].src.clone();
+            let assembled = match &v {
+                Value::Str(h) => {
+                    // F822-R11-01: output-byte-scaled fuel charged BEFORE the
+                    // copy — the step-budget rejection precedes the allocation
+                    // attempt (nothing minted for this node on rejection).
+                    charge!(h.bytes().len());
+                    match arena.try_alloc(h.bytes()) {
+                        Ok(nh) => Value::Str(nh),
+                        Err(n) => {
+                            return Err(ExecOutcome::Infra(format!(
+                                "fault-injected at owned allocation attempt #{n}"
+                            )))
+                        }
+                    }
+                }
+                Value::Record(r) => {
+                    let fields: Vec<Value> = child_list[id]
+                        .iter()
+                        .map(|k| out[*k].take().expect("child cloned first"))
+                        .collect();
+                    Value::Record(std::rc::Rc::new(crate::contract::RecordValue {
+                        ty: r.ty,
+                        fields,
+                    }))
+                }
+                Value::List(_) => {
+                    let elems: Vec<Value> = child_list[id]
+                        .iter()
+                        .map(|k| out[*k].take().expect("child cloned first"))
+                        .collect();
+                    let cap = elems.len();
+                    // F822-R13-01: reserve the fault ATTEMPT before the
+                    // elements change hands — on the injected fault the
+                    // collected children stay HERE for the explicit drain
+                    // (handing them to the arena by value would drop them
+                    // through the recursive glue inside its frame).
+                    match arena.list_alloc_attempt() {
+                        Err(n) => {
+                            drain_extras.extend(elems);
+                            return Err(ExecOutcome::Infra(format!(
+                                "fault-injected at owned allocation attempt #{n}"
+                            )));
+                        }
+                        Ok(()) => Value::List(arena.alloc_list_after_attempt(elems, cap)),
+                    }
+                }
+                Value::Variant(var) => {
+                    let payload = child_list[id]
+                        .first()
+                        .map(|k| std::rc::Rc::new(out[*k].take().expect("child cloned first")));
+                    Value::Variant(crate::contract::VariantValue {
+                        ty: var.ty,
+                        disc: var.disc,
+                        payload,
+                    })
+                }
+                other => other.clone(),
+            };
+            out[id] = Some(assembled);
+        }
+        Ok(())
+    };
+    match build() {
+        Ok(()) => Ok(out[0].take().expect("root cloned")),
+        Err(e) => {
+            // The ONE explicit rollback: partial owners drain through the
+            // worklist (leaf frees fire through the handle hooks; shared
+            // handles are plain transfers — the source stays untouched).
+            let mut partials: Vec<Value> = out.into_iter().flatten().collect();
+            partials.extend(drain_extras);
+            let mut rollback_fuel = 0u64; // charge-free (see above)
+            release_owned_worklist(&mut rollback_fuel, partials);
+            Err(e)
+        }
     }
-    let _ = &mut next_child;
-    Ok(out[0].take().expect("root cloned"))
 }
 
 /// Project a view's scalar range to its byte slice over the source bytes.
@@ -992,8 +1019,14 @@ fn min_buffer_id(val: &Value) -> u64 {
 /// shared handle (Rc::strong_count > 1) is a responsibility transfer
 /// (F822-R3-02 MOVE/COPY/kill-after-move-in semantics): nothing drains,
 /// the handle clone just releases.
-fn drop_owned_reverse(st: &mut LoopState, val: Value) {
-    let mut stack: Vec<Value> = vec![val];
+/// F822-R13-01: the worklist core is SHARED — the dispatcher cleanup
+/// charges reserved fuel through `st.steps`, and the clone visitor's
+/// partial-output rollback drains through the same walk with a
+/// charge-free scratch counter (the historical glue-drop rollback
+/// accounted no cleanup fuel; abort-path fuel totals stay exactly what
+/// the work charged).
+fn release_owned_worklist(fuel: &mut u64, roots: Vec<Value>) {
+    let mut stack: Vec<Value> = roots;
     while let Some(v) = stack.pop() {
         match v {
             Value::List(h) => {
@@ -1010,7 +1043,7 @@ fn drop_owned_reverse(st: &mut LoopState, val: Value) {
                         // pop in REVERSE — the contracted order.
                         stack.push(Value::List(h));
                         for e in elems.into_iter() {
-                            st.steps += 1; // reserved cleanup fuel (cancel point)
+                            *fuel += 1; // reserved cleanup fuel (cancel point)
                             stack.push(e);
                         }
                     }
@@ -1019,7 +1052,7 @@ fn drop_owned_reverse(st: &mut LoopState, val: Value) {
             }
             Value::Variant(mut var) => {
                 if let Some(p) = var.payload.take() {
-                    st.steps += 1; // reserved cleanup fuel (cancel point)
+                    *fuel += 1; // reserved cleanup fuel (cancel point)
                     if std::rc::Rc::strong_count(&p) == 1 {
                         // Last reference: take the inner value OUT so the
                         // empty variant shell drops without glue recursion
@@ -1051,6 +1084,10 @@ fn drop_owned_reverse(st: &mut LoopState, val: Value) {
             other => drop(other),
         }
     }
+}
+
+fn drop_owned_reverse(st: &mut LoopState, val: Value) {
+    release_owned_worklist(&mut st.steps, vec![val]);
 }
 
 /// Kill one slot of the CURRENT frame (move-out / move-in at a call):

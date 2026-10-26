@@ -3788,3 +3788,125 @@ fn av_collections_822_semantics_variant_switch_deep_chain_release() {
     assert_eq!(arena.alloc_events().len(), arena.free_events().len());
     assert_eq!(arena.live(), 0);
 }
+
+// -- F822-R13-01: explicit rollback of a PARTIAL clone -------------------
+
+/// F822-R13-01 kit: a detached runtime chain mirroring the ADMITTED type
+/// table of a deep_variant_chain_module (real verify/encode/ABC-admission
+/// proves the shape legal before the seam call).
+fn detached_chain_source(m: &MirModule) -> Value {
+    let mut source = Value::Str(auto_av_core::contract::StrHandle::detached(Box::from(
+        *b"leaf",
+    )));
+    for (ty, t) in m.types.iter().enumerate() {
+        if matches!(t, MirType::Variant(_)) {
+            source = Value::Variant(auto_av_core::contract::VariantValue {
+                ty: ty as u32,
+                disc: 0,
+                payload: Some(std::rc::Rc::new(source)),
+            });
+        }
+    }
+    source
+}
+
+/// F822-R13-01 rollback witness: a fuel abort MID-ASSEMBLY of a 3,072-
+/// level chain (the partial output is a ~2,495-deep owned Rc tail in the
+/// visitor's `out`) on a 256 KiB stack. The helper's abort epilogue must
+/// drain every partial owner through the explicit worklist and return the
+/// controlled InstrSteps outcome — never let the default drop glue
+/// recurse and overflow the stack before the helper returns. The source
+/// is pinned (mem::forget) to exclude its caller-side drop from the
+/// observation; abort-path fuel stays exactly what the work charged
+/// (5,573 — the drain itself is charge-free, as the glue was).
+#[test]
+fn av_collections_822_semantics_partial_clone_rollback_small_stack() {
+    let handle = std::thread::Builder::new()
+        .stack_size(256 * 1024)
+        .spawn(move || {
+            let m = deep_variant_chain_module(3_072, "plain");
+            verify_mir(&m).expect("legal acyclic type table");
+            let wire = encode_abc(&m).unwrap();
+            verify_abc_bytes(&wire.to_flat(), &m.owner).expect("real ABC gate");
+            let source = detached_chain_source(&m);
+            let arena = auto_av_core::owned_text::StrArena::new();
+            let mut fuel = 0u64;
+            let out = auto_av_core::av::clone_owned_value(
+                &source,
+                &arena,
+                &CancelFlag::new(false),
+                std::time::Duration::from_secs(120),
+                &mut fuel,
+                5_572,
+            );
+            std::mem::forget(source);
+            assert!(
+                matches!(&out, Err(ExecOutcome::Resource { kind, .. }) if *kind == auto_av_core::contract::ResourceKind::InstrSteps),
+                "{out:?}"
+            );
+            assert_eq!(fuel, 5_573, "the charge-free drain does not add fuel");
+            assert_eq!(arena.live(), 0);
+            assert_eq!(arena.alloc_events().len(), arena.free_events().len());
+        })
+        .expect("spawn");
+    handle.join().expect("join");
+}
+
+/// F822-R13-01 rollback controls (all on 256 KiB stacks):
+///  64/100 — a SMALL partial assembly aborts and cleans (fuel 101);
+///  3072/100 — an abort during PLANNING (before any fresh output) is safe;
+///  3072/unlimited — the same graph fully clones (the success result is
+///   pinned so only the helper's own paths run);
+///  3072/cancel-raised — the CANCEL exit drains the same explicit way.
+#[test]
+fn av_collections_822_semantics_partial_clone_rollback_controls() {
+    for (depth, limit, raised) in [
+        (64usize, 100u64, false),
+        (3_072, 100, false),
+        (3_072, u64::MAX, false),
+        (3_072, u64::MAX, true),
+    ] {
+        let handle = std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(move || {
+                let m = deep_variant_chain_module(depth, "plain");
+                verify_mir(&m).unwrap();
+                let wire = encode_abc(&m).unwrap();
+                verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap();
+                let source = detached_chain_source(&m);
+                let arena = auto_av_core::owned_text::StrArena::new();
+                let mut fuel = 0u64;
+                let out = auto_av_core::av::clone_owned_value(
+                    &source,
+                    &arena,
+                    &CancelFlag::new(raised),
+                    std::time::Duration::from_secs(120),
+                    &mut fuel,
+                    limit,
+                );
+                std::mem::forget(source);
+                match (limit, raised) {
+                    (u64::MAX, false) => {
+                        // Complete traversal: the deep result is pinned so
+                        // its final drop cannot confound the controls.
+                        std::mem::forget(out.expect("complete traversal succeeds"));
+                    }
+                    (_, true) => {
+                        assert!(matches!(out, Err(ExecOutcome::Cancelled)), "{out:?}");
+                        assert_eq!(arena.live(), 0);
+                        assert_eq!(arena.alloc_events().len(), arena.free_events().len());
+                    }
+                    _ => {
+                        assert!(
+                            matches!(&out, Err(ExecOutcome::Resource { kind, .. }) if *kind == auto_av_core::contract::ResourceKind::InstrSteps),
+                            "{out:?}"
+                        );
+                        assert_eq!(arena.live(), 0);
+                        assert_eq!(arena.alloc_events().len(), arena.free_events().len());
+                    }
+                }
+            })
+            .expect("spawn");
+        handle.join().expect("join");
+    }
+}

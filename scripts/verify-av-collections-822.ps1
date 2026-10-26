@@ -164,6 +164,8 @@ $REQ = @{
         'av_collections_822_semantics_deep_chain_cleanup_small_stack',
         'av_collections_822_semantics_deep_chain_trap_exit_cleanup',
         'av_collections_822_semantics_variant_switch_deep_chain_release',
+        'av_collections_822_semantics_partial_clone_rollback_small_stack',
+        'av_collections_822_semantics_partial_clone_rollback_controls',
         'av_collections_822_semantics_nested_variant_clone_control',
         # F822-R11/T-06: the two R9 two-phase ids that stood here
         # (clone_cancel_mid_traversal / clone_wall_mid_traversal) were
