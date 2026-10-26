@@ -14,7 +14,7 @@ new_spec_components:
   - docs/specs/auto-graphics/research-quality-baseline.md
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 8
+current_step: 9
 total_steps: 9
 ---
 
@@ -131,7 +131,7 @@ T-02将[继承85组](../attachments/853/planning/inherited-gate-inventory.json.t
 | T-06 | review | T-05 | 独立最终review；R3 affected pass，完整门pending，不修实现 | AC-06 | [x] |
 | T-07 | merge | T-06 pass | 冻结提交两端完整/原native-owner-content/新面，核SHA、选中ID和复用 | AC-07 | [x] |
 | T-08 | merge | T-07 | 源码合autographics-dev，main沉淀SD/overview/plans/ADR/ledger/索引并归档，清理仍如实pending | AC-08 | [x] |
-| T-09 | merge | T-08 | guard clean后移除树/临时分支；仓外产物路径/SHA和实际9/9，交854实际提交 | AC-08 | [ ] |
+| T-09 | merge | T-08 | guard clean后移除树/临时分支；仓外产物路径/SHA和实际9/9，交854实际提交 | AC-08 | [x] |
 
 ## 9. 复审记录
 
@@ -165,6 +165,8 @@ T-02将[继承85组](../attachments/853/planning/inherited-gate-inventory.json.t
 2026-10-26 merge gate完成：T-07/AC-07通过，reviewed7/9。当前producer/fresh own-SDK空target consumer完整各78顶层块/282通过/0failed/0ignored，原280ID逐binary包含；当前85执行组、原85映射/AGP23完整输入复用、两端全部原native/owner/content与motion14+4重开/6负+恢复、新工具7永久测试与两端21真实生成文件通过。50原始进程/1500tick按不变输入与实际runner重验统计，不冒称重采样。详见[最终审计](../attachments/853/merge-r1/validated.json.txt)、[实际产物/原始日志索引](../attachments/853/merge-r1/evidence-index.json.txt)、[全部失败闭环](../attachments/853/merge-r1/failure-closures.json.txt)。桌面输入/focus、时钟注入前置未到与额外display-gap内容拒绝均保留，最终原完整组通过；调度误选重建runner导致重复UI输出目录拒绝的错误已诊断，原必需UI正例/原payload证据保留，未放宽oracle或丢弃失败。源码/SDK/锁/预算/SD无改动，源树clean；尚未合入/归档/清理。
 
 2026-10-26 consolidation PLAN-853:r1：`stage: merge | outcome: publication pass, cleanup pending | delivery_commit: c1961665d1a90a8705994085fd4344a1d6a9a564 | source_branch: autographics-dev | canonical_commit: 6d427a4a7165d5cb69bcfae2c9bdc668d26811d0 | ledger_commit: 32e239a45852efce5263d71ee1ad5219b401399e`。源码与master知识均ff-only，无rebase/merge commit；[规范准备](../attachments/853/merge-r1/canonical-prepared.json.txt)、[实际落地](../attachments/853/merge-r1/landed.json.txt)、[账本v94/7ID与字节级守护](../attachments/853/merge-r1/ledger-projection.json.txt)回读通过。主检出其他会话WIP完整保留，INDEX重生成无语义差异；本模块无独立ADR，已审定边界写新专题/现有索引。T-08完成，archived/delivered8/9；实际归档引用/计数检查后提交，T-09清理仍pending，不提前声称9/9。仅M2/S0基线交付，I2/I3与新增M2功能仍pending。
+
+2026-10-26 cleaned最终闭环：`stage: merge | plan_id: PLAN-853 | plan_revision: 1 | outcome: pass | completion_kind: delivered | delivery_commit: c1961665d1a90a8705994085fd4344a1d6a9a564 | canonical_commit: 6d427a4a7165d5cb69bcfae2c9bdc668d26811d0 | ledger_commit: 32e239a45852efce5263d71ee1ad5219b401399e | archive_commit: 0f968c62e | task_ids: T-01..09 | blockers: []`。T-09及AC-08完成，archived/delivered9/9。[fresh guard](../attachments/853/merge-r1/cleanup-guard.log.txt) clean，树/plan-853-dev/codex临时分支/空组已核移除，[清理收据](../attachments/853/merge-r1/cleaned.json.txt)。源码只留autographics-dev，master仅知识/账本/证据；源码未rebase，交854的实际前置提交为c1961665d。仓外实际runner/consumer/runtime恢复路径与SHA保留；[产物观察](../attachments/853/merge-r1/artifact-observations.json.txt)明确生产backend/daemon/web不消费本实验增量，未宣称部署。[批量到期检查](../attachments/853/merge-r1/batch-due.json.txt)另存，未到期不跑根tf。最终状态/计数/引用与Git闭环检查后提交清理记录，其他会话WIP保持不动。
 
 ## 10. 待澄清事项
 
