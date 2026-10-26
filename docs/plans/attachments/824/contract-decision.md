@@ -12,13 +12,17 @@ T-01 冻结:实际基面核对、T-10 支持矩阵与预算、身份/编号、�
 |---|---|---|
 | D-821 (place-owned-access) | **满足**:archived r6 9/9,delivery 92b8daf60 | archive/821-*.md;core `contract.rs` owned 面(Value::Char/Str/StrView/MutRef、StrHandle arena hook、AV_OWNED_PROFILE) |
 | D-828 (function-incremental-session) | **满足**:archived 11/11 | archive/828-*.md(02af08442/d46e03e8a);增量接口由 T-09 接入 |
-| D-822 (typed-collections-variants) | **不满足**:executing 4/9,plan-822-dev 81c33e09 含 needs_fix 修复在途 | §8 T-02 集成门保持阻塞;T-10 不消费其 WIP |
+| D-822 (typed-collections-variants) | **满足(r2 更新)**:archived r5 9/9,merge 1e1386b1d + cleaned 893f8ac97 + ledger v97(c6c5ddb25) | archive/822-*.md;交付 `av.collections/1`(profile id 4/AVAD v3)、`Value::{List,Variant,Place}`、`MirType::{List,Variant,Place}`、LIST_*/VARIANT_*/PLACE_* 指令、MAX_LIST_ELEMS=65536 |
 | D-817/818 (cte-query-frozen-cache / shared-mir-native-parity) | 均 archived,owner 明确 | V-09 兼容消费面:T-05 定向重放,不改动其路径 |
 
-唯一实施树 `D:/autostack/.wt/lang-824/auto-lang`(分支 `plan-824-dev`,基面
-7513bcee0——会话开始时 master 为 9c7a7436f,期间他方簿记推进,建树取当时
-master HEAD;T-10 代码提交 29461c706)。生产源两文件 + 独立 harness
-workspace,全部在本树新增,详见 §8。
+**r2 集成基面**:T-02 起唯一树 `D:/autostack/.wt/lang-824/auto-lang`(分支
+`plan-824-dev`)已合并 master(merge 提交 b7837c63d,master 侧至 c6c5ddb25);
+T-10 代码提交 29461c706。parallel/824 harness 在 r1 面(821 值集)上的 22 绿
+证据按基面绑定,不冒领新依赖 pass——r2 扩展后按 §9 重跑。
+
+唯一实施树 `D:/autostack/.wt/lang-824/auto-lang`(分支 `plan-824-dev`;r1 基面
+7513bcee0/T-10 代码 29461c706;r2 起已并 master,见 §1)。生产源两文件 + 独立
+harness workspace,全部在本树新增,详见 §8。
 
 主检出预检:无 tracked 代码 WIP(仅未跟踪 fixtures Cargo.lock 与一个未跟踪 fixture
 目录,非本计划面);docs/ 上有他轮未提交簿记(含本计划 r5→r6 修订),提交时只携带
@@ -35,17 +39,28 @@ workspace,全部在本树新增,详见 §8。
 | Char | ✅ | ✅ u32 标量域检查(Rust char 域=774 域) | 白名单 char |
 | Str(StrHandle) | ✅ owned | ✅ 仅 UTF-8 bytes,**不存** allocation id/hook | §5.1.4 拒进程身份;Str 按字节相等 |
 | Record(Rc\<RecordValue\>) | ✅ 纯 owned record | ✅ 名义头(owner/name/字段名序)+ 子树 | §5.1.1;ty:u32 是位置身份不入 wire(§5.1.5) |
+| List(ListHandle) | ✅(**r2 起**,D822 已交付) | ✅ 元素子树按序;id/epoch/elem_gens/cap 为运行期簿记**不入 wire**,恢复为 detached 新表(同 Str id 政策) | §5.1.1 白名单 List;元素闭包递归同规(Fn/view/Place 任何深度拒) |
+| Variant(VariantValue) | ✅(**r2 起**) | ✅ 名义头(owner/name/臂名序+每臂 payload 有无)+disc+payload 子节点;ty 位置索引不入 wire | Option/Result/有限 enum 均降为此形(822) |
+| Place(ListPlaceV) | ❌ pack 递归拒(**r2 新增类别**,运行期索引 token,同 borrow 类) | ❌ | §5.1.4 拒 frame/borrow token;V-12 封闭性 |
 | StrView(StrView) | ❌ pack 递归拒绝 | ❌(pack 已挡,结构性不可达) | §5.1.1 borrowed str 拒绝;V-12 record 含借用 |
 | MutRef(MutRefV) | ❌ pack 递归拒绝 | ❌(同上) | §5.1.4 拒 frame/borrow token |
-| (Fn/闭包) | ❌ 类型级无此类别(DynType 不含 Fn 变体);List/Option/Result/enum 属 D822,不假造 | — | §5.1.1;审计§4 |
+| (Fn/闭包) | ❌ 类型级无此类别(DynType 不含 Fn 变体) | — | §5.1.1;审计§4 |
 
 类型面 `DynType`(本计划新增,dynamic.rs 内自足有限树):
 
 ```text
 DynType ::= Bool | I32 | I64 | U64 | F32 | F64 | Char | Str
-          | Record { owner: String, name: String, fields: Vec<DynField> }
+          | Record { owner: String, name: String, fields: Vec<DynField> }   // r1
+          | List(Box<DynType>)                                            // r2
+          | Variant { owner: String, name: String, arms: Vec<DynArm> }     // r2
 DynField ::= { name: String, ty: DynType }   // 声明序;重名字段 = 类型不良,pack 拒
+DynArm   ::= { name: String, payload: Option<DynType> }  // 声明序;重名臂 = 类型不良
 ```
+
+- List **结构**等价(仅元素型等价,镜像 MirType::List);Variant/Record **名义**
+  等价(owner+name+臂/字段声明序),镜像 822/820 的 MirType 冻结规则。
+- List 元数沿 822 `MAX_LIST_ELEMS=65_536`(pack/freeze 同规);portable 总节点
+  预算(§7)仍为总控,两层不相加、逐层先到先拒。
 
 - 类型等价 = **820 冻结规则**:`DynType` 派生 `PartialEq`(record 比对
   owner_module+name+全字段名与类型声明序)。**同宽异名/异 owner 不相容**;
@@ -123,16 +138,17 @@ unfreeze(bytes, &ctx, opts) -> Result<DynValue, PortableError>
   attached handle 并报台账,届时 free 计数入 V-07 oracle(本轮不冒领)。
 - 恢复不反序列化凭证、不猜 handle;坏 bytes 不消耗输入(&[u8] 借用)。
 
-## 6. T-02 身份冻结(本轮只登记,不实现)
+## 6. T-02 身份冻结(r2 修订:冲突回记)
 
 | 项 | 冻结值 | 状态 |
 |---|---|---|
-| 执行 profile | `av.dynamic/1`(id **4**;1/2/3 已被 core/data/owned 占用) | 冻结;实现等 D822/D828+窗口 |
+| 执行 profile | `av.dynamic/1`(id **5**——r1 冻结的 4 已被 822 `av.collections/1` 占用,按 §6 预案回记) | 冻结;本轮实现 |
 | MIR/ABC schema | `auto.mir.av-dynamic/1` / `auto.abc.av-dynamic/1` | 同上 |
-| ABC wire | `AVAD` 家族 version **3**(data=1/owned=2 先例:同族互不可读) | 同上 |
+| ABC wire | `AVAD` 家族 version **4**(v3 已被 collections 占用;data=1/owned=2/collections=3/dynamic=4 互不可读) | 同上 |
 | producer | `plan824/av-dynamic` | 同上 |
 | 三语义版本 | MIR=1/ABC=1/AV=1(独立轴) | 同上 |
-| recipe/测试前缀 | `av-data-824` / `av_dynamic_824`(注册于 T-02/T-05,见 §9 请求) | 同上 |
+| portable schema | `auto.portable.av-dynamic/1`(magic `AVPF` v1,T-10 已实现,不变) | 已实现 |
+| recipe/测试前缀 | `av_dynamic_824`;recipe 名按 822 模板(`ac-av/collections-run-v1` → 本计划 `ac-av/dynamic-run-v1`,登记于实施时以实际 owner 位置为准) | 本轮实现 |
 
 ## 7. 预算/取消/错误分态(T-10 模块级适用上限交集)
 
@@ -181,13 +197,22 @@ MAX_TABLE_ENTRIES}`、`mir::`(仅 T-03 adapter 用,T-10 不触)。不消费
 `av.rs::ModuleView`(pub(crate))/`abc_verify` 私有字段/任何 WIP(822 树)。
 
 **写面登记**:
-- T-10 私有写面 = 上述 2 生产源 + parallel/824 + 本附件;**无公共写面**(不触
-  core/lib.rs、父 members、mir/contract/codec/verifier/av/注册面),按审计§3
-  登记"无公共面",不占核心窗。
-- T-02 集成窗口**请求**(此刻只登记请求,由核心 owner 批):profile id 4、AVAD
-  v3、`av.dynamic/1` 常量入 `contract.rs`、Dyn 指令入 instr_spec/mir_verify、
-  typed host seam、`av-data-824` recipe 注册、`scripts/verify-av-dynamic-824.ps1`。
-  获窗后同步最新 master 刷新本合同 §6/§7 再实施。
+- T-10 私有写面(已完成)= 2 生产源 + parallel/824 + 本附件;**无公共写面**。
+- **T-02 核心窗口登记(r2 起占用,2026-10-27)**:
+  - Plan/revision:PLAN-824 r6(本合同 r2);已合入 base:master c6c5ddb25。
+  - 公共写面文件:`experimental/ac-av-probe/core/src/{contract,mir,mir_verify,abc,
+    abc_verify,av,instr_spec}.rs`(新增 av.dynamic/1 身份/Dyn 指令/typed host
+    seam,只增不改旧 profile 语义)、probe 新增 dynamic producer/恢复门与
+    fixtures、`crates/auto-lang/src/tests/` 新增 av_dynamic_824 族、
+    `scripts/verify-av-dynamic-824.ps1`、recipe `ac-av/dynamic-run-v1` 注册
+    (位置以侦察到的 822 实际 owner 为准)。
+  - 只读依赖:822 已合入面(Value/MirType::{List,Variant,Place}、MAX_LIST_ELEMS、
+    LIST_*/VARIANT_* 指令)、783 ManagedStore、828 增量接口、798 门与预算。
+  - 消费者:parallel/824 同源 harness、av_dynamic_824 测试族、av-data 旧
+    consumer(T-05 兼容重放)。
+  - 开始:2026-10-27;状态:**T-02 公共面已实现并提交(645378ab5/ff120762c/
+    9882277dd,plan-824-dev);窗口由本计划继续持有至 T-03..T-06/合入或交接**
+    (串行单写;823 会话须与本登记协调)。
 
 **测试命令**(T-10 建立,selected>0 硬要求):
 `cargo test --manifest-path experimental/ac-av-probe/parallel/824/Cargo.toml`
@@ -244,3 +269,60 @@ T-10 实施确认/细化以下决策(不改变 §1–§10 已冻结合同的性�
    unknown_and_layout_mismatch、budget_{nodes_freeze,bytes,depth}、cancel_probe、
    traversal_stop_codes_distinct。实测 22 passed/0 failed,零 warning,rustfmt 通过;
    `cargo check -p auto-av-core` 确认 core 构建面零改动。
+
+## 12. r2 修订记录(2026-10-27,D822 合入后 T-02 集成门刷新)
+
+D822 满足(archive 9/9 + merge/ledger 收据齐全)触发本修订,按计划 r6 T-02
+"先刷新 T-01 接口/版本/预算合同,旧准备不冒领新依赖 pass":
+
+1. **身份冲突回记(§6)**:profile id 4 与 AVAD v3 已被 822 `av.collections/1`
+   实际占用 → 本计划改为 **id 5 / AVAD v4**(名称/schema/producer/语义版本
+   不变)。portable `AVPF`/v1 无冲突,保持。
+2. **白名单扩展(§2)**:List/Variant 入白名单(D822 已交付,计划 §5.1.1 原文
+   即含);`Place` 新类别递归拒(运行期索引 token,同 borrow 类);List 运行期
+   簿记(id/epoch/elem_gens/cap)与 Variant 位置 ty 不入 wire,恢复铸 detached。
+3. **基面**:worktree 并 master(b7837c63d);T-10 的 22 绿证据按 r1 基面绑定,
+   白名单扩展后须重跑(§9)。
+4. **核心窗口登记(§8)**:2026-10-27 起占用,串行单写,823 会话须协调。
+5. parallel/824 harness 在 r2 基面因 Value 新变体导致 freeze 匹配非穷尽而编译
+   失败——预期状态,由同源模块 r2 扩展(dynamic.rs/portable.rs)修复,非回归。
+
+## 13. r3 实施记录(2026-10-27,T-02 集成门,代码 645378ab5/ff120762c/9882277dd)
+
+D822 满足后 T-02 全链路落地(§5.2 首例 + §5.3 recipe 交付):
+
+1. **核心面**(核心窗口占用中):`av.dynamic/1` 身份(§6 冻结值:AVAD v4/profile
+   5/`auto.mir.av-dynamic/1`/`plan824/av-dynamic`)、`Value::Dyn(Rc<DynValue>)`
+   (deep_size/PartialEq/type_name 臂)、`MirType::Dyn`(wire tag 16)、
+   DYN_PACK/IS/TAKE 指令(0x2F..0x31,ABC 编解码+WireFamily::Dynamic)、验证器
+   (`collections_surface()` 谓词覆盖子sume、`dyn_whitelisted` 路径式环检测+256 深度
+   界、DYN typing 臂、dynamic entry 合同)、执行器(resolve_dyn_type 类型解析器
+   + 三执行臂)、instr_spec 三行+穷尽清单、layout/ownership/program_snapshot/
+   cache 的穷尽性补臂。
+2. **指令语义落位**(v1 wire):DYN_PACK=显式克隆共享(§5.1.2"须 move 或显式
+   clone"的 clone 形——源保持有效,Rc 末主释放);DYN_TAKE 失败=运行期 checked
+   `TrapKind::DynTypeMismatch`(`av.trap.dyn-type`),源 Dyn 槽原样保持、零 drop;
+   DYN_IS 永不 trap;成功 take 物化共享(Value::clone 语义)。
+3. **entry 合同**:params 同 owned(scalar/char);result 可增 Dyn——容器经 Dyn
+   过界,不裸过(首例冻结)。
+4. **分域存储**:A23(代码 ABC,LayerSpec `ac824/a23-dynamic-abc/v1`,R14/R15/R16
+   同款绑定)与 A24(portable 冻结载荷,`ac824/a24-dynamic-portable/v1`,键含
+   portable-schema+value-fp 轴)独立层;portable 恢复=unfreeze+当前类型表准入
+   (portable_bindings_of)。
+5. **首例证据**(av_dynamic_824_first_case 4/4):first-case 分支计分 7+1+1=9
+   (pack/is/take 于 Note/List<Note>/Opt);台账冻结 allocs bytes=[3,0]、frees
+   LIFO ids=[1,0]、live=0(Dyn 持共享,零额外分配);dyn-out 返回 Dyn→冻结→A24→
+   同 store 恢复→unfreeze 与原值相等且冻结字节逐位一致;take-mismatch 陷阱;
+   AVAD v4 与 v1/v2/v3 互不可读;decode→re-encode 字节稳定。
+6. **recipe 链**:`ac-av/dynamic-run-v1` 注册(auto-test-case 5 处清单;ac_av
+   RecipeFamily::Dynamic+av-profile 轴=5+DYNAMIC_CASES 冻结表+judge_dynamic_
+   fixture 含 portable_roundtrip 轴;破坏缝 AV824_DYNAMIC_EXPECT_SABOTAGE);
+   worker `dynamic-request` 子命令+case-serve dynamic 分支;语料 av-data-824
+   (3/3:corpus_green/negative_oracle/worker_faults);脚本
+   verify-av-dynamic-824.ps1(guard 自测+first-case+autodown+acceptance 全绿;
+   semantics/admission/resources/cache/compatibility Scope 归 T-03..T-06)。
+7. **组树**:补 auto-ui/auto-down detached 依赖 worktree(相对路径依赖解析,
+   无 junction;主 workspace 首次构建所需)。
+8. **归 T-03+ 的面**:V-02..07 反控全集、资源/峰值采样档、V-09 旧 consumer
+   兼容重放、V-13 增量(828 接口)。V-08 的恢复重验+依赖转 miss 轴已由
+   restore_reverifies 覆盖。
