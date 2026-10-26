@@ -1279,7 +1279,9 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<TypeIdx> {
                 | MirType::Char
                 | MirType::Str
                 | MirType::StrView
-                | MirType::MutRef => {
+                | MirType::MutRef
+                // PLAN-824: the erased Dyn type interns atomically.
+                | MirType::Dyn => {
                     map[i] = merged.intern_type(t.clone());
                     progress = true;
                 }
@@ -1534,6 +1536,7 @@ pub fn render_unit_sig(unit: &MirModule) -> String {
             Some(MirType::List(_)) => "list".to_string(),
             Some(MirType::Variant(v)) => format!("variant:{}", v.name),
             Some(MirType::Place(_)) => "place".to_string(),
+            Some(MirType::Dyn) => "dyn".to_string(),
             None => "?".to_string(),
         }
     };

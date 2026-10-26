@@ -91,6 +91,13 @@ pub fn canonical_owned(
             }
             serde_json::json!({ "kind": "record", "name": name, "fields": fields })
         }
+        // PLAN-824: a Dyn canonicalizes its type descriptor plus its inner
+        // value's canonical form.
+        Value::Dyn(d) => serde_json::json!({
+            "kind": "dyn",
+            "ty": d.ty().describe(),
+            "value": canonical_owned(d.as_value(), names)?,
+        }),
         // A view/token never crosses the entry boundary (§6).
         Value::StrView(_) | Value::MutRef(_) => return None,
         // PLAN-822 R2: a retained element reference is a place value —

@@ -158,6 +158,18 @@ pub fn canonical_typed(value: &Value) -> Option<(&'static str, String)> {
             "Str",
             format!("{:016x}", auto_av_core::contract::fnv1a64(h.bytes())),
         ),
+        // PLAN-824: a Dyn reports the fingerprint of its frozen portable
+        // bytes (deterministic content identity).
+        Value::Dyn(d) => (
+            "dyn",
+            match auto_av_core::portable::freeze(
+                d,
+                &auto_av_core::dynamic::TraversalOptions::default(),
+            ) {
+                Ok(bytes) => format!("{:016x}", auto_av_core::contract::fnv1a64(&bytes)),
+                Err(_) => "unfreezable".to_string(),
+            },
+        ),
         Value::StrView(_) | Value::MutRef(_) => return None,
         Value::Record(_) => return None,
         // PLAN-822 containers never occur on the scalar typed face

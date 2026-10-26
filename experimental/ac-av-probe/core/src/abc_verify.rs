@@ -102,6 +102,12 @@ pub fn verify_abc(
                 crate::contract::ABC_PROFILE_COLLECTIONS,
                 crate::contract::AV_COLLECTIONS_SEMANTICS,
             )
+        } else if decoded.profile == crate::contract::ABC_PROFILE_DYNAMIC {
+            (
+                crate::contract::ABC_DYNAMIC_VERSION,
+                crate::contract::ABC_PROFILE_DYNAMIC,
+                crate::contract::AV_DYNAMIC_SEMANTICS,
+            )
         } else {
             return Err(AbcAdmissionError::Identity(format!(
                 "decoded profile id {} is not an admitted profile",

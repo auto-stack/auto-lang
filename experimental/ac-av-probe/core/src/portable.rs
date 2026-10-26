@@ -146,7 +146,7 @@ impl From<TraversalStop> for PortableError {
 pub struct RecordBinding<'a> {
     pub owner: &'a str,
     pub name: &'a str,
-    pub fields: &'a [&'a str],
+    pub fields: Vec<&'a str>,
     pub ty_index: u32,
 }
 
@@ -160,7 +160,7 @@ pub struct ArmSig<'a> {
 pub struct VariantBinding<'a> {
     pub owner: &'a str,
     pub name: &'a str,
-    pub arms: &'a [ArmSig<'a>],
+    pub arms: Vec<ArmSig<'a>>,
     pub ty_index: u32,
 }
 

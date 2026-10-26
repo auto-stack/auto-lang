@@ -758,6 +758,26 @@ impl<'a> Verifier<'a> {
                             .to_string(),
                     ));
                 }
+            } else if self.is_dynamic {
+                // PLAN-824 entry contract: params as owned; the result may
+                // ADDITIONALLY be a Dyn — the host receives the checked
+                // container with single release responsibility (containers
+                // cross the boundary via Dyn, not bare).
+                let ok = |t: &FnSig| -> bool {
+                    t.params.iter().all(|p| self.entry_param_ok(*p))
+                        && (self.entry_result_ok(t.result)
+                            || matches!(
+                                self.module.types.get(t.result as usize),
+                                Some(MirType::Dyn)
+                            ))
+                };
+                if !ok(entry_sig) {
+                    return Err(MirVerifyError::inv(
+                        "mir.entry-sig",
+                        "dynamic-profile module entry params must be scalar/char; result may additionally be owned Str/record/Dyn"
+                            .to_string(),
+                    ));
+                }
             } else if !entry_sig.params.is_empty()
                 || self.module.type_shape(entry_sig.result) != Some(ScalarShape::I32)
             {

@@ -89,13 +89,13 @@ mod tests {
             RecordBinding {
                 owner: "demo",
                 name: "Root",
-                fields: &["id", "name", "point"],
+                fields: vec!["id", "name", "point"],
                 ty_index: 3,
             },
             RecordBinding {
                 owner: "demo",
                 name: "Point",
-                fields: &["x", "y"],
+                fields: vec!["x", "y"],
                 ty_index: 7,
             },
         ];
@@ -199,7 +199,7 @@ mod tests {
         let records = [RecordBinding {
             owner: "demo",
             name: "Note",
-            fields: &["text", "n"],
+            fields: vec!["text", "n"],
             ty_index: 4,
         }];
         let bytes = freeze(&dv, &TraversalOptions::default()).unwrap();
@@ -226,7 +226,7 @@ mod tests {
         let variants = [VariantBinding {
             owner: "demo",
             name: "Opt",
-            arms: &[
+            arms: vec![
                 ArmSig {
                     name: "none",
                     has_payload: false,
@@ -257,7 +257,7 @@ mod tests {
         let res_variants = [VariantBinding {
             owner: "demo",
             name: "Res",
-            arms: &[
+            arms: vec![
                 ArmSig {
                     name: "ok",
                     has_payload: true,
@@ -980,7 +980,7 @@ mod tests {
         let binding = [RecordBinding {
             owner: "d",
             name: "R",
-            fields: &["a"],
+            fields: vec!["a"],
             ty_index: 1,
         }];
         let rctx = ctx(&binding, &[]);
@@ -1054,7 +1054,7 @@ mod tests {
         let binding = [RecordBinding {
             owner: "d",
             name: "R",
-            fields: &["a"],
+            fields: vec!["a"],
             ty_index: 1,
         }];
         let bad_rec = {
@@ -1076,7 +1076,7 @@ mod tests {
         let vsig = [VariantBinding {
             owner: "d",
             name: "V",
-            arms: &[
+            arms: vec![
                 ArmSig {
                     name: "n",
                     has_payload: false,
@@ -1170,7 +1170,7 @@ mod tests {
         let renamed = [RecordBinding {
             owner: "demo",
             name: "Root",
-            fields: &["id", "title", "point"], // was "name"
+            fields: vec!["id", "title", "point"], // was "name"
             ty_index: 3,
         }];
         assert_eq!(
@@ -1183,7 +1183,7 @@ mod tests {
         let reordered = [RecordBinding {
             owner: "demo",
             name: "Root",
-            fields: &["name", "id", "point"],
+            fields: vec!["name", "id", "point"],
             ty_index: 3,
         }];
         assert_eq!(
@@ -1197,7 +1197,7 @@ mod tests {
         let vsig = [VariantBinding {
             owner: "demo",
             name: "Opt",
-            arms: &[ArmSig {
+            arms: vec![ArmSig {
                 name: "n",
                 has_payload: true,
             }], // wire says none
@@ -1313,7 +1313,7 @@ mod tests {
         let binding = [RecordBinding {
             owner: "deep",
             name: "N",
-            fields: &["x"],
+            fields: vec!["x"],
             ty_index: 1,
         }];
         assert_eq!(
@@ -1362,13 +1362,13 @@ mod tests {
             RecordBinding {
                 owner: "big",
                 name: "Root",
-                fields: &["a", "b"],
+                fields: vec!["a", "b"],
                 ty_index: 2,
             },
             RecordBinding {
                 owner: "big",
                 name: "Mid",
-                fields: &leak_names_1024(),
+                fields: leak_names_1024().to_vec(),
                 ty_index: 1,
             },
         ];
