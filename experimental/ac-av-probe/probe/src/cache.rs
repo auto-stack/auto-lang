@@ -1283,6 +1283,38 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<TypeIdx> {
                     map[i] = merged.intern_type(t.clone());
                     progress = true;
                 }
+                MirType::List(l) => {
+                    if map[l.elem as usize] != u32::MAX {
+                        let nl = auto_av_core::mir::ListTypeRef {
+                            elem: map[l.elem as usize],
+                        };
+                        map[i] = merged.intern_type(MirType::List(nl));
+                        progress = true;
+                    }
+                }
+                MirType::Variant(v) => {
+                    let pending = v
+                        .arms
+                        .iter()
+                        .any(|a| a.payload.map_or(false, |t| map[t as usize] == u32::MAX));
+                    if !pending {
+                        let nv = auto_av_core::mir::VariantTypeRef {
+                            owner_module: v.owner_module.clone(),
+                            name: v.name.clone(),
+                            arms: v
+                                .arms
+                                .iter()
+                                .map(|a| auto_av_core::mir::VariantArm {
+                                    name: a.name.clone(),
+                                    payload: a.payload.map(|t| map[t as usize]),
+                                })
+                                .collect(),
+                        };
+                        let idx = merged.intern_type(MirType::Variant(nv));
+                        map[i] = idx;
+                        progress = true;
+                    }
+                }
                 MirType::RecordView(r) => {
                     let pending = r.fields.iter().any(|f| map[f.ty as usize] == u32::MAX);
                     if !pending {
@@ -1490,6 +1522,8 @@ pub fn render_unit_sig(unit: &MirModule) -> String {
             Some(MirType::Fn(_)) => "fn".to_string(),
             Some(MirType::Record(r)) => format!("rec:{}", r.name),
             Some(MirType::RecordView(r)) => format!("recview:{}", r.name),
+            Some(MirType::List(_)) => "list".to_string(),
+            Some(MirType::Variant(v)) => format!("variant:{}", v.name),
             None => "?".to_string(),
         }
     };

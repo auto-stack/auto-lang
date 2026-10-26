@@ -21,7 +21,10 @@
 
 use crate::contract::MIR_SCHEMA;
 use crate::function_code::FunctionCode;
-use crate::mir::{CalleeRef, FnSig, MirFieldDef, MirModule, MirType, RecordTypeRef};
+use crate::mir::{
+    CalleeRef, FnSig, ListTypeRef, MirFieldDef, MirModule, MirType, RecordTypeRef, VariantArm,
+    VariantTypeRef,
+};
 use std::sync::Arc;
 
 /// One immutable program revision: resident code set + link-time bindings.
@@ -412,6 +415,41 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<u32> {
                                 .collect(),
                         };
                         let idx = merged.intern_type(MirType::Record(nr));
+                        map[i] = idx;
+                        progress = true;
+                    }
+                }
+                // PLAN-822: List interns once its element type is mapped;
+                // Variant interns once every PAYLOAD type is mapped (same
+                // fixpoint rule as records).
+                MirType::List(l) => {
+                    if map[l.elem as usize] != u32::MAX {
+                        let nl = ListTypeRef {
+                            elem: map[l.elem as usize],
+                        };
+                        map[i] = merged.intern_type(MirType::List(nl));
+                        progress = true;
+                    }
+                }
+                MirType::Variant(v) => {
+                    let pending = v
+                        .arms
+                        .iter()
+                        .any(|a| a.payload.map_or(false, |t| map[t as usize] == u32::MAX));
+                    if !pending {
+                        let nv = VariantTypeRef {
+                            owner_module: v.owner_module.clone(),
+                            name: v.name.clone(),
+                            arms: v
+                                .arms
+                                .iter()
+                                .map(|a| VariantArm {
+                                    name: a.name.clone(),
+                                    payload: a.payload.map(|t| map[t as usize]),
+                                })
+                                .collect(),
+                        };
+                        let idx = merged.intern_type(MirType::Variant(nv));
                         map[i] = idx;
                         progress = true;
                     }

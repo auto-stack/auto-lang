@@ -119,6 +119,36 @@ impl StrArena {
         ))
     }
 
+    /// PLAN-822: fallible LIST buffer allocation over the same ledger
+    /// (the attempt/fault/success accounting is shared with Str; `bytes`
+    /// records the element count).
+    pub fn try_alloc_list(
+        &self,
+        elems: Vec<crate::contract::Value>,
+        reserve_cap: usize,
+    ) -> Result<crate::contract::ListHandle, u64> {
+        let mut g = self.core.borrow_mut();
+        g.attempts += 1;
+        if g.fault_at == Some(g.attempts) {
+            return Err(g.attempts);
+        }
+        let id = g.next_id;
+        g.next_id += 1;
+        g.allocs.push(AllocEvent {
+            id,
+            bytes: elems.len(),
+        });
+        g.live_ids.insert(id);
+        let core = std::rc::Rc::clone(&self.core);
+        drop(g);
+        let handle = crate::contract::ListHandle::attached(id, elems, core);
+        {
+            let mut buf = handle.rc.borrow_mut();
+            buf.cap = buf.cap.max(reserve_cap as u32);
+        }
+        Ok(handle)
+    }
+
     /// The full allocation event sequence (creation order).
     pub fn alloc_events(&self) -> Vec<AllocEvent> {
         self.core.borrow().allocs.clone()

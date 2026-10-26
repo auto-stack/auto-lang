@@ -77,6 +77,39 @@ pub const MIR_OWNED_SEMANTICS: MirSemanticsVersion = MirSemanticsVersion(1);
 pub const ABC_OWNED_SEMANTICS: AbcSemanticsVersion = AbcSemanticsVersion(1);
 pub const AV_OWNED_SEMANTICS: AvSemanticsVersion = AvSemanticsVersion(1);
 
+// ---------------------------------------------------------------------------
+// PLAN-822 `av.collections/1` identities (contract-decision.md §1)
+// ---------------------------------------------------------------------------
+
+/// Logical schema identity of the collections-profile Typed MIR.
+pub const MIR_COLLECTIONS_SCHEMA: &str = "auto.mir.av-collections/1";
+/// Wire schema identity of the collections-profile ABC format. Same `AVAD`
+/// magic family as data/owned but wire VERSION 3 — a new generation:
+/// v1 (data), v2 (owned) and v3 (collections) are mutually unreadable
+/// (798 r6 generation-isolation precedent).
+pub const ABC_COLLECTIONS_SCHEMA: &str = "auto.abc.av-collections/1";
+/// The collections execution profile (PLAN-822): the owned surface
+/// (records/Str/places/move-replace) plus typed `List<T>` and nominal
+/// variants (Option/Result/finite enums).
+pub const AV_COLLECTIONS_PROFILE: &str = "av.collections/1";
+/// Producer identity for collections-profile units in store envelopes/keys.
+pub const COLLECTIONS_PRODUCER_ID: &str = "plan822/av-collections";
+/// Wire version of the collections-profile ABC format (v3; profile id 4).
+pub const ABC_COLLECTIONS_VERSION: u16 = 3;
+/// Numeric profile id carried in the collections wire header.
+pub const ABC_PROFILE_COLLECTIONS: u16 = 4;
+
+/// PLAN-822 collections-profile semantic versions — an INDEPENDENT axis from
+/// the three earlier profiles (artifacts key separately; all start at 1).
+pub const MIR_COLLECTIONS_SEMANTICS: MirSemanticsVersion = MirSemanticsVersion(1);
+pub const ABC_COLLECTIONS_SEMANTICS: AbcSemanticsVersion = AbcSemanticsVersion(1);
+pub const AV_COLLECTIONS_SEMANTICS: AvSemanticsVersion = AvSemanticsVersion(1);
+
+/// Single-list element-count guard (collections contract-decision §5).
+/// len/cap arithmetic is checked u32→u64 throughout; a breach is a resource
+/// rejection (`av.resource.list-elems`), never a syntax classification.
+pub const MAX_LIST_ELEMS: usize = 65_536;
+
 /// Per-record field-count guard (module table family; contract-decision §8).
 pub const MAX_RECORD_FIELDS: usize = 1024;
 /// Field-path depth guard for FIELD_GET/FIELD_SET (u16 domain, explicit cap).
@@ -205,6 +238,18 @@ pub enum Value {
     /// Exclusive write-borrow token over a root slot (PLAN-821 §5.1.3).
     /// Not copyable (exclusivity); released by BORROW_END or frame exit.
     MutRef(MutRefV),
+    /// Owned typed list (PLAN-822, `av.collections/1`): an owning handle to
+    /// a [`ListBuf`]. NEVER `Copy`; cloning duplicates the handle = one more
+    /// owner (shared buffer, same epoch). Structural changes (realloc /
+    /// element shift) bump the buffer epoch; stale places must not touch the
+    /// new buffer.
+    List(ListHandle),
+    /// Nominal variant value (PLAN-822): Option/Result/finite enums. `disc`
+    /// is the arm index; `payload` is the live arm's payload (no-payload
+    /// arms carry `None`). A payload-moved arm (after VARIANT_PROJECT of an
+    /// owned payload) also carries `None` — verification keeps those states
+    /// apart; the runtime re-check is defense in depth.
+    Variant(VariantValue),
 }
 
 /// One pure-value record: the owning type-table index plus the field values
@@ -334,6 +379,98 @@ pub struct MutRefV {
     pub gen: u64,
 }
 
+/// The shared payload of one owned list buffer (PLAN-822). `id` is the
+/// arena allocation identity (event-ledger key); `epoch` bumps on every
+/// STRUCTURAL change (realloc, element insert/remove shift) so stale
+/// places can be detected; `cap` is the spare capacity in slots;
+/// `elems` are the element values in index order.
+#[derive(Debug)]
+pub struct ListBuf {
+    pub id: u64,
+    pub epoch: u64,
+    pub cap: u32,
+    pub elems: Vec<Value>,
+}
+
+/// Owning handle to a [`ListBuf`] (the `Value::List` payload). Cloning adds
+/// one owner; the LAST handle's drop reports the free to the arena when one
+/// is attached (`hook` is `None` for placeholders and out-of-execution
+/// copies, mirroring `StrHandle`).
+#[derive(Debug)]
+pub struct ListHandle {
+    pub rc: std::rc::Rc<std::cell::RefCell<ListBuf>>,
+    hook: Option<std::rc::Rc<std::cell::RefCell<crate::owned_text::ArenaCore>>>,
+}
+
+impl ListHandle {
+    /// A handle with NO arena hook (placeholder / out-of-execution value).
+    pub fn detached(elems: Vec<Value>) -> Self {
+        ListHandle {
+            rc: std::rc::Rc::new(std::cell::RefCell::new(ListBuf {
+                id: 0,
+                epoch: 0,
+                cap: elems.len() as u32,
+                elems,
+            })),
+            hook: None,
+        }
+    }
+    /// A LEDGERED handle: the arena mints the id and receives the final
+    /// release report (only the arena constructs these).
+    pub fn attached(
+        id: u64,
+        elems: Vec<Value>,
+        hook: std::rc::Rc<std::cell::RefCell<crate::owned_text::ArenaCore>>,
+    ) -> Self {
+        ListHandle {
+            rc: std::rc::Rc::new(std::cell::RefCell::new(ListBuf {
+                id,
+                epoch: 0,
+                cap: elems.len() as u32,
+                elems,
+            })),
+            hook: Some(hook),
+        }
+    }
+    pub fn len(&self) -> usize {
+        self.rc.borrow().elems.len()
+    }
+}
+
+impl Clone for ListHandle {
+    fn clone(&self) -> Self {
+        ListHandle {
+            rc: std::rc::Rc::clone(&self.rc),
+            hook: self.hook.clone(),
+        }
+    }
+}
+
+impl Drop for ListHandle {
+    fn drop(&mut self) {
+        // Exactly-one-strong-ref (this handle) ⇒ this drop is the final
+        // release: report the free event while the payload is still alive.
+        if let Some(hook) = self.hook.take() {
+            if std::rc::Rc::strong_count(&self.rc) == 1 {
+                let (id, elem_count) = {
+                    let b = self.rc.borrow();
+                    (b.id, b.elems.len())
+                };
+                crate::owned_text::ArenaCore::report_free(&hook, id, elem_count);
+            }
+        }
+    }
+}
+
+/// The `Value::Variant` payload: nominal type-table index, live arm index,
+/// and the live arm's payload (no-payload arms carry `None`).
+#[derive(Clone, Debug)]
+pub struct VariantValue {
+    pub ty: u32,
+    pub disc: u32,
+    pub payload: Option<Box<Value>>,
+}
+
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         use Value::*;
@@ -354,6 +491,13 @@ impl PartialEq for Value {
             (Char(a), Char(b)) => a == b,
             (StrView(a), StrView(b)) => a == b,
             (MutRef(a), MutRef(b)) => a == b,
+            // List compares BY CONTENT element-wise (the allocation id and
+            // epoch are not identity), mirroring the Str rule.
+            (List(a), List(b)) => {
+                let (ra, rb) = (a.rc.borrow(), b.rc.borrow());
+                ra.elems == rb.elems
+            }
+            (Variant(a), Variant(b)) => a.ty == b.ty && a.disc == b.disc && a.payload == b.payload,
             _ => false,
         }
     }
@@ -374,6 +518,8 @@ impl Value {
             Value::Str(_) => "Str",
             Value::StrView(_) => "str",
             Value::MutRef(_) => "mut-ref",
+            Value::List(_) => "list",
+            Value::Variant(_) => "variant",
         }
     }
 
@@ -415,6 +561,25 @@ impl Value {
                 *visited += 1;
                 b += s.bytes().len();
             }
+            // PLAN-822: every element is counted individually (the frozen
+            // per-element fuel rule — a list never hides its data volume
+            // behind one cheap instruction).
+            Value::List(l) => {
+                *visited += 1;
+                b += std::mem::size_of::<Vec<Value>>();
+                let buf = l.rc.borrow();
+                for e in buf.elems.iter() {
+                    *visited += 1;
+                    b += e.deep_size(visited);
+                }
+            }
+            Value::Variant(v) => {
+                *visited += 1;
+                if let Some(p) = v.payload.as_ref() {
+                    *visited += 1;
+                    b += p.deep_size(visited);
+                }
+            }
             _ => {}
         }
         b
@@ -445,6 +610,17 @@ pub enum TrapKind {
     /// generation moved (V-05 defense in depth — verification should
     /// prevent this for admitted programs).
     InvalidHandle,
+    /// PLAN-822: list index outside `[0, len)` (or insert outside
+    /// `[0, len]`); negative indices land here too. Checked BEFORE any
+    /// buffer access.
+    ListIndex,
+    /// PLAN-822: a place/token minted at an older list epoch used after a
+    /// structural change (realloc / element shift) bumped the epoch.
+    StalePlace,
+    /// PLAN-822: variant payload projected from the wrong arm or from a
+    /// payload-moved arm at runtime (defense in depth — static guard
+    /// analysis should prevent this for admitted programs).
+    VariantBranch,
 }
 
 impl TrapKind {
@@ -457,6 +633,9 @@ impl TrapKind {
             TrapKind::StrIndex => "av.trap.str-index",
             TrapKind::CharInvalid => "av.trap.char-invalid",
             TrapKind::InvalidHandle => "av.trap.invalid-handle",
+            TrapKind::ListIndex => "av.trap.list-index",
+            TrapKind::StalePlace => "av.trap.stale-place",
+            TrapKind::VariantBranch => "av.trap.variant-branch",
         }
     }
 }
@@ -480,6 +659,8 @@ pub enum ResourceKind {
     VerifyMemory,
     /// Decoded module structural heap estimate.
     DecodeMemory,
+    /// PLAN-822: single-list element count over `MAX_LIST_ELEMS`.
+    ListElems,
 }
 
 impl ResourceKind {
@@ -497,6 +678,7 @@ impl ResourceKind {
             ResourceKind::TraceBytes => "av.resource.trace-bytes",
             ResourceKind::VerifyMemory => "av.resource.verify-memory",
             ResourceKind::DecodeMemory => "av.resource.decode-memory",
+            ResourceKind::ListElems => "av.resource.list-elems",
         }
     }
 }

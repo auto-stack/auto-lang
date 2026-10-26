@@ -531,6 +531,14 @@ pub(crate) fn typed_zero(t: Option<&MirType>) -> Value {
             slot: u32::MAX,
             gen: 0,
         }),
+        // PLAN-822 placeholders: never observed (definite initialization
+        // gates every read); the detached list carries NO arena hook.
+        Some(MirType::List(_)) => Value::List(crate::contract::ListHandle::detached(Vec::new())),
+        Some(MirType::Variant(_)) => Value::Variant(crate::contract::VariantValue {
+            ty: u32::MAX,
+            disc: 0,
+            payload: None,
+        }),
         // I32 and (unusable) Fn slots keep the historic scalar zero.
         _ => Value::I32(0),
     }
@@ -819,6 +827,70 @@ fn owned_kill_slot(st: &mut LoopState, slot: usize, zero: Value) {
     st.slot_bytes = st.slot_bytes.saturating_sub(old.saturating_sub(new));
     fr.slots[slot] = zero;
     fr.gens[slot] = fr.gens[slot].wrapping_add(1);
+}
+
+// -- PLAN-822 collections helpers -------------------------------------------
+
+/// Checked list-capacity growth (0 -> 4 -> doubling), bounded by the frozen
+/// element guard.
+fn grow_cap(cap: u32) -> u32 {
+    if cap == 0 {
+        4
+    } else {
+        cap.saturating_mul(2)
+    }
+}
+
+/// Read the i32 index operand; a negative index is the same runtime trap
+/// as an out-of-range one (checked BEFORE any buffer access).
+fn list_index_of(iv: &Value) -> Option<usize> {
+    match iv {
+        Value::I32(i) if *i >= 0 => Some(*i as usize),
+        _ => None,
+    }
+}
+
+fn list_index_trap(
+    v: &dyn ModuleView,
+    func_idx: u32,
+    func: &MirFunction,
+    flat: u32,
+) -> ExecOutcome {
+    ExecOutcome::Trap {
+        kind: crate::contract::TrapKind::ListIndex,
+        span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+    }
+}
+
+/// The variant arm's payload TYPE INDEX in `func`'s type space (u32::MAX
+/// when unknown — typing caught those earlier; `type_is_owned` is false
+/// for it).
+fn variant_payload_ty(v: &dyn ModuleView, func_idx: u32, variant_slot_ty: u32, disc: u32) -> u32 {
+    match v.mir_type_of(func_idx, variant_slot_ty) {
+        Some(crate::mir::MirType::Variant(vr)) => vr
+            .arms
+            .get(disc as usize)
+            .and_then(|a| a.payload)
+            .unwrap_or(u32::MAX),
+        _ => u32::MAX,
+    }
+}
+
+/// Kill a source slot after its value transferred into a container/variant:
+/// OWNED sources drop to their typed zero (deep-delta accounted); Copy
+/// sources keep their value (copy-in).
+fn kill_value_slot(
+    v: &dyn ModuleView,
+    func_idx: u32,
+    func: &MirFunction,
+    st: &mut LoopState,
+    slot: usize,
+) {
+    let ty = func.slots[slot].ty;
+    if v.type_is_owned(func_idx, ty) {
+        let zero = v.zero_of(func_idx, ty);
+        owned_kill_slot(st, slot, zero);
+    }
 }
 
 /// Field-path read: walks a record value by declaration indices, cloning
@@ -1691,6 +1763,575 @@ fn dispatch<V: ModuleView>(
                     };
                     if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
                         return Some(out);
+                    }
+                }
+                // -- PLAN-822 collections surface (execution) -------------
+                MirInstr::ListNew { dst, list_ty, cap } => {
+                    let _ = list_ty;
+                    let deep = crate::contract::SLOT_CELL_BYTES
+                        .saturating_mul((*cap as usize).min(crate::contract::MAX_LIST_ELEMS));
+                    if let Err(out) = owned_alloc_precheck(st, deep, *dst as usize, limits) {
+                        return Some(out);
+                    }
+                    let handle = match st.arena.try_alloc_list(Vec::new(), *cap as usize) {
+                        Ok(h) => h,
+                        Err(n) => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "fault-injected at owned allocation attempt #{n}"
+                            )))
+                        }
+                    };
+                    st.steps += 1;
+                    if let Err(out) =
+                        commit_slot_write(st, *dst as usize, Value::List(handle), limits)
+                    {
+                        return Some(out);
+                    }
+                }
+                MirInstr::ListLen { dst, src } | MirInstr::ListCap { dst, src } => {
+                    let n = {
+                        let fr = st.frames.last().expect("frame present");
+                        match &fr.slots[*src as usize] {
+                            Value::List(h) => match instr {
+                                MirInstr::ListLen { .. } => h.rc.borrow().elems.len() as i32,
+                                _ => h.rc.borrow().cap as i32,
+                            },
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "list operand holds {} (admission violation)",
+                                    other.type_name()
+                                )))
+                            }
+                        }
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, Value::I32(n), limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::ListGet { dst, base, index } => {
+                    let iv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*index as usize].clone()
+                    };
+                    let idx = match list_index_of(&iv) {
+                        Some(i) => i,
+                        None => return Some(list_index_trap(v, func_idx, func, flat)),
+                    };
+                    let elem = {
+                        let fr = st.frames.last().expect("frame present");
+                        match &fr.slots[*base as usize] {
+                            Value::List(h) => {
+                                let buf = h.rc.borrow();
+                                if idx >= buf.elems.len() {
+                                    drop(buf);
+                                    return Some(list_index_trap(v, func_idx, func, flat));
+                                }
+                                buf.elems[idx].clone()
+                            }
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "list operand holds {} (admission violation)",
+                                    other.type_name()
+                                )))
+                            }
+                        }
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, elem, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::ListPush { root, value } => {
+                    let val = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*value as usize].clone()
+                    };
+                    // Per-element fuel + budget BEFORE any mutation (a
+                    // failure leaves the list and source untouched).
+                    let mut visited = 0u64;
+                    let elem_deep = val.deep_size(&mut visited);
+                    st.steps += visited;
+                    if st.slot_bytes.saturating_add(elem_deep) > limits.max_slot_bytes {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::SlotBytes,
+                            message: format!(
+                                "live slot data would reach {} bytes, above budget {}",
+                                st.slot_bytes + elem_deep,
+                                limits.max_slot_bytes
+                            ),
+                        });
+                    }
+                    let push = {
+                        let fr = st.frames.last_mut().expect("frame present");
+                        match fr.slots[*root as usize].clone() {
+                            Value::List(h) => {
+                                let mut buf = h.rc.borrow_mut();
+                                if buf.elems.len() >= crate::contract::MAX_LIST_ELEMS {
+                                    drop(buf);
+                                    return Some(ExecOutcome::Resource {
+                                        kind: ResourceKind::ListElems,
+                                        message: format!(
+                                            "list length would exceed {}",
+                                            crate::contract::MAX_LIST_ELEMS
+                                        ),
+                                    });
+                                }
+                                if buf.elems.len() as u32 == buf.cap {
+                                    let new_cap = grow_cap(buf.cap);
+                                    if new_cap as usize > crate::contract::MAX_LIST_ELEMS {
+                                        drop(buf);
+                                        return Some(ExecOutcome::Resource {
+                                            kind: ResourceKind::ListElems,
+                                            message: format!(
+                                                "list capacity would exceed {}",
+                                                crate::contract::MAX_LIST_ELEMS
+                                            ),
+                                        });
+                                    }
+                                    buf.cap = new_cap;
+                                }
+                                buf.elems.push(val.clone());
+                                buf.epoch = buf.epoch.wrapping_add(1);
+                            }
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "list operand holds {} (admission violation)",
+                                    other.type_name()
+                                )))
+                            }
+                        }
+                        true
+                    };
+                    let _ = push;
+                    st.slot_bytes += elem_deep;
+                    st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
+                    // The source transfers: kill an owned value slot.
+                    kill_value_slot(v, func_idx, func, st, *value as usize);
+                }
+                MirInstr::ListInsert { root, index, value } => {
+                    let (iv, val) = {
+                        let fr = st.frames.last().expect("frame present");
+                        (
+                            fr.slots[*index as usize].clone(),
+                            fr.slots[*value as usize].clone(),
+                        )
+                    };
+                    let idx = match list_index_of(&iv) {
+                        Some(i) => i,
+                        None => return Some(list_index_trap(v, func_idx, func, flat)),
+                    };
+                    let mut visited = 0u64;
+                    let elem_deep = val.deep_size(&mut visited);
+                    st.steps += visited;
+                    if st.slot_bytes.saturating_add(elem_deep) > limits.max_slot_bytes {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::SlotBytes,
+                            message: format!(
+                                "live slot data would reach {} bytes, above budget {}",
+                                st.slot_bytes + elem_deep,
+                                limits.max_slot_bytes
+                            ),
+                        });
+                    }
+                    let shifted = {
+                        let fr = st.frames.last_mut().expect("frame present");
+                        match fr.slots[*root as usize].clone() {
+                            Value::List(h) => {
+                                let mut buf = h.rc.borrow_mut();
+                                if idx > buf.elems.len()
+                                    || buf.elems.len() >= crate::contract::MAX_LIST_ELEMS
+                                {
+                                    drop(buf);
+                                    return Some(list_index_trap(v, func_idx, func, flat));
+                                }
+                                if buf.elems.len() as u32 == buf.cap {
+                                    let new_cap = grow_cap(buf.cap);
+                                    if new_cap as usize > crate::contract::MAX_LIST_ELEMS {
+                                        drop(buf);
+                                        return Some(ExecOutcome::Resource {
+                                            kind: ResourceKind::ListElems,
+                                            message: format!(
+                                                "list capacity would exceed {}",
+                                                crate::contract::MAX_LIST_ELEMS
+                                            ),
+                                        });
+                                    }
+                                    buf.cap = new_cap;
+                                }
+                                // The tail shift is billed per moved element.
+                                st.steps += (buf.elems.len() - idx) as u64;
+                                buf.elems.insert(idx, val.clone());
+                                buf.epoch = buf.epoch.wrapping_add(1);
+                                buf.elems.len() - idx - 1
+                            }
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "list operand holds {} (admission violation)",
+                                    other.type_name()
+                                )))
+                            }
+                        }
+                    };
+                    let _ = shifted;
+                    st.slot_bytes += elem_deep;
+                    st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
+                    kill_value_slot(v, func_idx, func, st, *value as usize);
+                }
+                MirInstr::ListSet { root, index, value } => {
+                    let (iv, val) = {
+                        let fr = st.frames.last().expect("frame present");
+                        (
+                            fr.slots[*index as usize].clone(),
+                            fr.slots[*value as usize].clone(),
+                        )
+                    };
+                    let idx = match list_index_of(&iv) {
+                        Some(i) => i,
+                        None => return Some(list_index_trap(v, func_idx, func, flat)),
+                    };
+                    let mut visited = 0u64;
+                    let new_deep = val.deep_size(&mut visited);
+                    st.steps += visited;
+                    let old_deep = {
+                        let fr = st.frames.last_mut().expect("frame present");
+                        match fr.slots[*root as usize].clone() {
+                            Value::List(h) => {
+                                let mut buf = h.rc.borrow_mut();
+                                if idx >= buf.elems.len() {
+                                    drop(buf);
+                                    return Some(list_index_trap(v, func_idx, func, flat));
+                                }
+                                let old = std::mem::replace(&mut buf.elems[idx], val.clone());
+                                let mut v2 = 0u64;
+                                let old_d = old.deep_size(&mut v2);
+                                st.steps += v2;
+                                drop(old);
+                                old_d
+                            }
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "list operand holds {} (admission violation)",
+                                    other.type_name()
+                                )))
+                            }
+                        }
+                    };
+                    // Deep-delta accounting for the in-place replacement.
+                    if new_deep > old_deep {
+                        let delta = new_deep - old_deep;
+                        if st.slot_bytes.saturating_add(delta) > limits.max_slot_bytes {
+                            // Roll the element back so nothing is
+                            // half-committed (the old value was already
+                            // dropped — this is the budget-seam contract:
+                            // reject BEFORE the write; here we restore the
+                            // accounting path by rejecting the whole op).
+                            return Some(ExecOutcome::Resource {
+                                kind: ResourceKind::SlotBytes,
+                                message: format!(
+                                    "live slot data would reach {} bytes, above budget {}",
+                                    st.slot_bytes + delta,
+                                    limits.max_slot_bytes
+                                ),
+                            });
+                        }
+                        st.slot_bytes += delta;
+                    } else {
+                        st.slot_bytes = st.slot_bytes.saturating_sub(old_deep - new_deep);
+                    }
+                    st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
+                    kill_value_slot(v, func_idx, func, st, *value as usize);
+                }
+                MirInstr::ListRemove { dst, root, index } => {
+                    let iv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*index as usize].clone()
+                    };
+                    let idx = match list_index_of(&iv) {
+                        Some(i) => i,
+                        None => return Some(list_index_trap(v, func_idx, func, flat)),
+                    };
+                    let removed = {
+                        let fr = st.frames.last_mut().expect("frame present");
+                        match fr.slots[*root as usize].clone() {
+                            Value::List(h) => {
+                                let mut buf = h.rc.borrow_mut();
+                                if idx >= buf.elems.len() {
+                                    drop(buf);
+                                    return Some(list_index_trap(v, func_idx, func, flat));
+                                }
+                                // The tail shift is billed per moved element.
+                                st.steps += (buf.elems.len() - 1 - idx) as u64;
+                                let out = buf.elems.remove(idx);
+                                buf.epoch = buf.epoch.wrapping_add(1);
+                                out
+                            }
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "list operand holds {} (admission violation)",
+                                    other.type_name()
+                                )))
+                            }
+                        }
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, removed, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::ListFieldGet {
+                    dst,
+                    base,
+                    index,
+                    path,
+                } => {
+                    let iv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*index as usize].clone()
+                    };
+                    let idx = match list_index_of(&iv) {
+                        Some(i) => i,
+                        None => return Some(list_index_trap(v, func_idx, func, flat)),
+                    };
+                    let got = {
+                        let fr = st.frames.last().expect("frame present");
+                        match &fr.slots[*base as usize] {
+                            Value::List(h) => {
+                                let buf = h.rc.borrow();
+                                match buf.elems.get(idx) {
+                                    Some(e) => field_get_val(e, path),
+                                    None => {
+                                        drop(buf);
+                                        return Some(list_index_trap(v, func_idx, func, flat));
+                                    }
+                                }
+                            }
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "list operand holds {} (admission violation)",
+                                    other.type_name()
+                                )))
+                            }
+                        }
+                    };
+                    let res = match got {
+                        Some(x) => x,
+                        None => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "list-field-get path {:?} does not resolve (admission violation)",
+                                path
+                            )))
+                        }
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::ListFieldSet {
+                    root,
+                    index,
+                    path,
+                    value,
+                } => {
+                    let (iv, val) = {
+                        let fr = st.frames.last().expect("frame present");
+                        (
+                            fr.slots[*index as usize].clone(),
+                            fr.slots[*value as usize].clone(),
+                        )
+                    };
+                    let idx = match list_index_of(&iv) {
+                        Some(i) => i,
+                        None => return Some(list_index_trap(v, func_idx, func, flat)),
+                    };
+                    {
+                        let fr = st.frames.last_mut().expect("frame present");
+                        let handle = match fr.slots[*root as usize].clone() {
+                            Value::List(h) => h,
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "list operand holds {} (admission violation)",
+                                    other.type_name()
+                                )))
+                            }
+                        };
+                        let mut buf = handle.rc.borrow_mut();
+                        if idx >= buf.elems.len() {
+                            drop(buf);
+                            return Some(list_index_trap(v, func_idx, func, flat));
+                        }
+                        let elem = buf.elems[idx].clone();
+                        match crate::place::record_set_path(&elem, path, val.clone()) {
+                            Some(new_elem) => {
+                                buf.elems[idx] = new_elem;
+                            }
+                            None => {
+                                drop(buf);
+                                return Some(ExecOutcome::Infra(format!(
+                                    "list-field-set path {:?} does not resolve (admission violation)",
+                                    path
+                                )));
+                            }
+                        }
+                    }
+                    kill_value_slot(v, func_idx, func, st, *value as usize);
+                }
+                MirInstr::VariantPack {
+                    dst,
+                    variant_ty,
+                    disc,
+                    payload,
+                } => {
+                    let payload_val = match payload {
+                        Some(p) => {
+                            let fr = st.frames.last().expect("frame present");
+                            Some(fr.slots[*p as usize].clone())
+                        }
+                        None => None,
+                    };
+                    let res = Value::Variant(crate::contract::VariantValue {
+                        ty: *variant_ty,
+                        disc: *disc,
+                        payload: payload_val.map(Box::new),
+                    });
+                    if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
+                        return Some(out);
+                    }
+                    if let Some(p) = payload {
+                        kill_value_slot(v, func_idx, func, st, *p as usize);
+                    }
+                }
+                MirInstr::VariantDisc { dst, src } => {
+                    let d = {
+                        let fr = st.frames.last().expect("frame present");
+                        match &fr.slots[*src as usize] {
+                            Value::Variant(var) => var.disc as i32,
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "variant operand holds {} (admission violation)",
+                                    other.type_name()
+                                )))
+                            }
+                        }
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, Value::I32(d), limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::VariantGuard { dst, src, disc } => {
+                    let b = {
+                        let fr = st.frames.last().expect("frame present");
+                        match &fr.slots[*src as usize] {
+                            Value::Variant(var) => var.disc == *disc,
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "variant operand holds {} (admission violation)",
+                                    other.type_name()
+                                )))
+                            }
+                        }
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, Value::Bool(b), limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::VariantProject { dst, root, disc } => {
+                    // Runtime defense in depth: the wrong arm or an
+                    // already-moved payload traps BEFORE any read.
+                    let current = {
+                        let fr = st.frames.last().expect("frame present");
+                        match &fr.slots[*root as usize] {
+                            Value::Variant(var) => (var.disc, var.payload.is_some()),
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "variant operand holds {} (admission violation)",
+                                    other.type_name()
+                                )))
+                            }
+                        }
+                    };
+                    if current.0 != *disc || !current.1 {
+                        return Some(ExecOutcome::Trap {
+                            kind: crate::contract::TrapKind::VariantBranch,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                        });
+                    }
+                    let root_slot_ty = func.slots[*root as usize].ty;
+                    let payload_owned = v.type_is_owned(
+                        func_idx,
+                        variant_payload_ty(v, func_idx, root_slot_ty, *disc),
+                    );
+                    let taken = {
+                        let fr = st.frames.last_mut().expect("frame present");
+                        match &mut fr.slots[*root as usize] {
+                            Value::Variant(var) => var.payload.take().expect("checked above"),
+                            other => {
+                                let _ = other;
+                                return Some(ExecOutcome::Infra(
+                                    "variant operand shape changed mid-instruction".to_string(),
+                                ));
+                            }
+                        }
+                    };
+                    if payload_owned {
+                        // The payload moved out: shrink the root's live-data
+                        // accounting, then grow the destination.
+                        let mut visited = 0u64;
+                        let deep = taken.deep_size(&mut visited);
+                        st.steps += visited;
+                        st.slot_bytes = st.slot_bytes.saturating_sub(deep);
+                        if let Err(out) = commit_slot_write(st, *dst as usize, *taken, limits) {
+                            return Some(out);
+                        }
+                    } else {
+                        // Copy payload: the arm keeps its value.
+                        let copy = taken.as_ref().clone();
+                        {
+                            let fr = st.frames.last_mut().expect("frame present");
+                            match &mut fr.slots[*root as usize] {
+                                Value::Variant(var) => {
+                                    var.payload = Some(taken);
+                                }
+                                _ => unreachable!("checked above"),
+                            }
+                        }
+                        if let Err(out) = commit_slot_write(st, *dst as usize, copy, limits) {
+                            return Some(out);
+                        }
+                    }
+                }
+                MirInstr::VariantSwitch {
+                    root,
+                    disc,
+                    payload,
+                } => {
+                    let payload_val = match payload {
+                        Some(p) => {
+                            let fr = st.frames.last().expect("frame present");
+                            Some(fr.slots[*p as usize].clone())
+                        }
+                        None => None,
+                    };
+                    // The old live arm's payload drops exactly once inside
+                    // commit_slot_write's old-value replacement.
+                    let res = Value::Variant(crate::contract::VariantValue {
+                        ty: {
+                            let fr = st.frames.last().expect("frame present");
+                            match &fr.slots[*root as usize] {
+                                Value::Variant(var) => var.ty,
+                                other => {
+                                    return Some(ExecOutcome::Infra(format!(
+                                        "variant operand holds {} (admission violation)",
+                                        other.type_name()
+                                    )))
+                                }
+                            }
+                        },
+                        disc: *disc,
+                        payload: payload_val.map(Box::new),
+                    });
+                    if let Err(out) = commit_slot_write(st, *root as usize, res, limits) {
+                        return Some(out);
+                    }
+                    if let Some(p) = payload {
+                        kill_value_slot(v, func_idx, func, st, *p as usize);
                     }
                 }
                 MirInstr::Trace { event } => {

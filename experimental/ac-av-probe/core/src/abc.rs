@@ -67,6 +67,22 @@ pub const OP_CHAR_TO_CODEPOINT: u8 = 0x1A;
 pub const OP_CHAR_FROM_CODEPOINT: u8 = 0x1B;
 /// R2-F08' write-back machinery (owned only).
 pub const OP_FIELD_MOVE: u8 = 0x1C;
+// PLAN-822 collections opcodes (contract-decision §3; 0x1D..0x2B).
+pub const OP_LIST_NEW: u8 = 0x1D;
+pub const OP_LIST_LEN: u8 = 0x1E;
+pub const OP_LIST_CAP: u8 = 0x1F;
+pub const OP_LIST_GET: u8 = 0x20;
+pub const OP_LIST_PUSH: u8 = 0x21;
+pub const OP_LIST_INSERT: u8 = 0x22;
+pub const OP_LIST_SET: u8 = 0x23;
+pub const OP_LIST_REMOVE: u8 = 0x24;
+pub const OP_LIST_FIELD_GET: u8 = 0x25;
+pub const OP_LIST_FIELD_SET: u8 = 0x26;
+pub const OP_VARIANT_PACK: u8 = 0x27;
+pub const OP_VARIANT_DISC: u8 = 0x28;
+pub const OP_VARIANT_GUARD: u8 = 0x29;
+pub const OP_VARIANT_PROJECT: u8 = 0x2A;
+pub const OP_VARIANT_SWITCH: u8 = 0x2B;
 pub const TERM_JUMP: u8 = 0x10;
 pub const TERM_BRANCH: u8 = 0x11;
 pub const TERM_RETURN: u8 = 0x12;
@@ -100,6 +116,9 @@ pub const TY_RECORDVIEW: u8 = 12;
 pub const TY_F32: u8 = 5;
 pub const TY_F64: u8 = 6;
 pub const TY_RECORD: u8 = 7;
+/// PLAN-822 collections type tags.
+pub const TY_LIST: u8 = 13;
+pub const TY_VARIANT: u8 = 14;
 
 // const tags (data profile adds 2..5)
 pub const CONST_I32: u8 = 0;
@@ -124,13 +143,19 @@ pub enum WireFamily {
     /// version 2 (a separate format generation from v1 — the two decode
     /// paths reject each other's bytes by the version field, 798 r6 rule).
     Owned,
+    /// PLAN-822: the collections profile rides the `AVAD` magic FAMILY at
+    /// wire version 3 (another separate generation — v1/v2/v3 mutually
+    /// reject by the version field).
+    Collections,
 }
 
 impl WireFamily {
     fn magic(&self) -> [u8; 4] {
         match self {
             WireFamily::Core => *ABC_MAGIC,
-            WireFamily::Data | WireFamily::Owned => crate::contract::ABC_DATA_MAGIC,
+            WireFamily::Data | WireFamily::Owned | WireFamily::Collections => {
+                crate::contract::ABC_DATA_MAGIC
+            }
         }
     }
     fn version(&self) -> u16 {
@@ -138,6 +163,7 @@ impl WireFamily {
             WireFamily::Core => ABC_VERSION,
             WireFamily::Data => crate::contract::ABC_DATA_VERSION,
             WireFamily::Owned => crate::contract::ABC_OWNED_VERSION,
+            WireFamily::Collections => crate::contract::ABC_COLLECTIONS_VERSION,
         }
     }
     fn profile_id(&self) -> u16 {
@@ -145,13 +171,22 @@ impl WireFamily {
             WireFamily::Core => ABC_PROFILE_CORE_I32,
             WireFamily::Data => crate::contract::ABC_PROFILE_DATA,
             WireFamily::Owned => crate::contract::ABC_PROFILE_OWNED,
+            WireFamily::Collections => crate::contract::ABC_PROFILE_COLLECTIONS,
         }
     }
     fn allows_data_tags(&self) -> bool {
-        matches!(self, WireFamily::Data | WireFamily::Owned)
+        matches!(
+            self,
+            WireFamily::Data | WireFamily::Owned | WireFamily::Collections
+        )
     }
     fn allows_owned_tags(&self) -> bool {
-        matches!(self, WireFamily::Owned)
+        matches!(self, WireFamily::Owned | WireFamily::Collections)
+    }
+    /// PLAN-822: the List/Variant tags and collection opcodes exist only
+    /// in the collections generation.
+    fn allows_collections_tags(&self) -> bool {
+        matches!(self, WireFamily::Collections)
     }
 }
 
@@ -322,6 +357,7 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
         crate::contract::AV_PROFILE => WireFamily::Core,
         crate::contract::AV_DATA_PROFILE => WireFamily::Data,
         crate::contract::AV_OWNED_PROFILE => WireFamily::Owned,
+        crate::contract::AV_COLLECTIONS_PROFILE => WireFamily::Collections,
         other => {
             return Err(AbcDecodeError::fmt_err(
                 "abc.encode.profile",
@@ -533,6 +569,63 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                     put_u16(&mut w, fb.len() as u16);
                     w.push(fb);
                     put_u32(&mut w, f.ty);
+                }
+            }
+            // PLAN-822: collections-only types.
+            MirType::List(l) => {
+                if !family.allows_collections_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "list type in a non-collections-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_LIST);
+                put_u32(&mut w, l.elem);
+            }
+            MirType::Variant(v) => {
+                if !family.allows_collections_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "variant type in a non-collections-profile module".to_string(),
+                    ));
+                }
+                let owner_b = v.owner_module.as_bytes();
+                let name_b = v.name.as_bytes();
+                if owner_b.len() > u16::MAX as usize || name_b.len() > u16::MAX as usize {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.variant-identity",
+                        format!("variant `{}` identity exceeds wire width", v.name),
+                    ));
+                }
+                if v.arms.len() > u16::MAX as usize {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.variant-arms",
+                        format!("variant `{}` has too many arms for the wire", v.name),
+                    ));
+                }
+                put_u8(&mut w, TY_VARIANT);
+                put_u16(&mut w, owner_b.len() as u16);
+                w.push(owner_b);
+                put_u16(&mut w, name_b.len() as u16);
+                w.push(name_b);
+                put_u16(&mut w, v.arms.len() as u16);
+                for a in &v.arms {
+                    let ab = a.name.as_bytes();
+                    if ab.len() > u16::MAX as usize {
+                        return Err(AbcDecodeError::fmt_err(
+                            "abc.encode.variant-arm",
+                            format!("variant arm `{}` exceeds wire width", a.name),
+                        ));
+                    }
+                    put_u16(&mut w, ab.len() as u16);
+                    w.push(ab);
+                    match a.payload {
+                        Some(t) => {
+                            put_u8(&mut w, 1);
+                            put_u32(&mut w, t);
+                        }
+                        None => put_u8(&mut w, 0),
+                    }
                 }
             }
         }
@@ -903,6 +996,229 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                             put_u16(&mut w, *seg);
                         }
                     }
+                    // PLAN-822 collections instructions (collections
+                    // generation only).
+                    MirInstr::ListNew { dst, list_ty, cap } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "list operations in a non-collections-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_LIST_NEW);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *list_ty);
+                        put_u32(&mut w, *cap);
+                    }
+                    MirInstr::ListLen { dst, src } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "list operations in a non-collections-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_LIST_LEN);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *src);
+                    }
+                    MirInstr::ListCap { dst, src } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "list operations in a non-collections-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_LIST_CAP);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *src);
+                    }
+                    MirInstr::ListGet { dst, base, index } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "list operations in a non-collections-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_LIST_GET);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *base);
+                        put_u32(&mut w, *index);
+                    }
+                    MirInstr::ListPush { root, value } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "list operations in a non-collections-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_LIST_PUSH);
+                        put_u32(&mut w, *root);
+                        put_u32(&mut w, *value);
+                    }
+                    MirInstr::ListInsert { root, index, value } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "list operations in a non-collections-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_LIST_INSERT);
+                        put_u32(&mut w, *root);
+                        put_u32(&mut w, *index);
+                        put_u32(&mut w, *value);
+                    }
+                    MirInstr::ListSet { root, index, value } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "list operations in a non-collections-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_LIST_SET);
+                        put_u32(&mut w, *root);
+                        put_u32(&mut w, *index);
+                        put_u32(&mut w, *value);
+                    }
+                    MirInstr::ListRemove { dst, root, index } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "list operations in a non-collections-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_LIST_REMOVE);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *root);
+                        put_u32(&mut w, *index);
+                    }
+                    MirInstr::ListFieldGet {
+                        dst,
+                        base,
+                        index,
+                        path,
+                    } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "list operations in a non-collections-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_LIST_FIELD_GET);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *base);
+                        put_u32(&mut w, *index);
+                        put_u16(&mut w, path.len() as u16);
+                        for seg in path {
+                            put_u16(&mut w, *seg);
+                        }
+                    }
+                    MirInstr::ListFieldSet {
+                        root,
+                        index,
+                        path,
+                        value,
+                    } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "list operations in a non-collections-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_LIST_FIELD_SET);
+                        put_u32(&mut w, *root);
+                        put_u32(&mut w, *index);
+                        put_u16(&mut w, path.len() as u16);
+                        for seg in path {
+                            put_u16(&mut w, *seg);
+                        }
+                        put_u32(&mut w, *value);
+                    }
+                    MirInstr::VariantPack {
+                        dst,
+                        variant_ty,
+                        disc,
+                        payload,
+                    } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "variant operations in a non-collections-profile module"
+                                    .to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_VARIANT_PACK);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *variant_ty);
+                        put_u32(&mut w, *disc);
+                        match payload {
+                            Some(p) => {
+                                put_u8(&mut w, 1);
+                                put_u32(&mut w, *p);
+                            }
+                            None => put_u8(&mut w, 0),
+                        }
+                    }
+                    MirInstr::VariantDisc { dst, src } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "variant operations in a non-collections-profile module"
+                                    .to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_VARIANT_DISC);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *src);
+                    }
+                    MirInstr::VariantGuard { dst, src, disc } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "variant operations in a non-collections-profile module"
+                                    .to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_VARIANT_GUARD);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *src);
+                        put_u32(&mut w, *disc);
+                    }
+                    MirInstr::VariantProject { dst, root, disc } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "variant operations in a non-collections-profile module"
+                                    .to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_VARIANT_PROJECT);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *root);
+                        put_u32(&mut w, *disc);
+                    }
+                    MirInstr::VariantSwitch {
+                        root,
+                        disc,
+                        payload,
+                    } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "variant operations in a non-collections-profile module"
+                                    .to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_VARIANT_SWITCH);
+                        put_u32(&mut w, *root);
+                        put_u32(&mut w, *disc);
+                        match payload {
+                            Some(p) => {
+                                put_u8(&mut w, 1);
+                                put_u32(&mut w, *p);
+                            }
+                            None => put_u8(&mut w, 0),
+                        }
+                    }
                     MirInstr::Trace { event } => {
                         put_u8(&mut w, OP_TRACE);
                         put_u8(
@@ -1136,14 +1452,18 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         WireFamily::Core
     } else if magic == crate::contract::ABC_DATA_MAGIC {
         // Same magic family, DIFFERENT format generations: the version
-        // field (below) selects v1=data vs v2=owned; a v1 payload in this
-        // build's v2 reader is a controlled `abc.decode.version`
-        // rejection (798 r6 generation isolation; never read as the other
-        // generation's semantics).
+        // field (below) selects v1=data / v2=owned / v3=collections; a
+        // payload of another generation in this build's reader is a
+        // controlled `abc.decode.version` rejection (798 r6 generation
+        // isolation; never read as the other generation's semantics).
         if bytes.get(4..6).map(|v| u16::from_le_bytes([v[0], v[1]]))
             == Some(crate::contract::ABC_OWNED_VERSION)
         {
             WireFamily::Owned
+        } else if bytes.get(4..6).map(|v| u16::from_le_bytes([v[0], v[1]]))
+            == Some(crate::contract::ABC_COLLECTIONS_VERSION)
+        {
+            WireFamily::Collections
         } else {
             WireFamily::Data
         }
@@ -1286,6 +1606,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             WireFamily::Core => crate::contract::AV_PROFILE.to_string(),
             WireFamily::Data => crate::contract::AV_DATA_PROFILE.to_string(),
             WireFamily::Owned => crate::contract::AV_OWNED_PROFILE.to_string(),
+            WireFamily::Collections => crate::contract::AV_COLLECTIONS_PROFILE.to_string(),
         },
         owner: OwnerScope {
             schema: String::new(),
@@ -1435,6 +1756,68 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                     owner_module,
                     name,
                     fields,
+                }));
+            }
+            // PLAN-822: collections-only type tags.
+            TY_LIST if family.allows_collections_tags() => {
+                let elem = c.u32()?;
+                module.types.push(MirType::List(ListTypeRef { elem }));
+            }
+            TY_VARIANT if family.allows_collections_tags() => {
+                let olen = c.u16()? as usize;
+                decode_mem!(olen + 24, "a variant owner module");
+                let ob = c.take(olen)?.to_vec();
+                let owner_module = String::from_utf8(ob).map_err(|_| {
+                    AbcDecodeError::fmt_err(
+                        "abc.decode.variant-utf8",
+                        "variant owner is not UTF-8".to_string(),
+                    )
+                })?;
+                let nlen = c.u16()? as usize;
+                decode_mem!(nlen + 24, "a variant name");
+                let nb = c.take(nlen)?.to_vec();
+                let name = String::from_utf8(nb).map_err(|_| {
+                    AbcDecodeError::fmt_err(
+                        "abc.decode.variant-utf8",
+                        "variant name is not UTF-8".to_string(),
+                    )
+                })?;
+                let narms = c.u16()? as usize;
+                decode_mem!(
+                    narms * (std::mem::size_of::<VariantArm>() + 8) + 24,
+                    "a variant arm table"
+                );
+                let mut arms = Vec::with_capacity(narms.min(1024));
+                for _ in 0..narms {
+                    let alen = c.u16()? as usize;
+                    decode_mem!(alen + 24, "a variant arm name");
+                    let ab = c.take(alen)?.to_vec();
+                    let aname = String::from_utf8(ab).map_err(|_| {
+                        AbcDecodeError::fmt_err(
+                            "abc.decode.variant-utf8",
+                            "variant arm name is not UTF-8".to_string(),
+                        )
+                    })?;
+                    let has_payload = c.u8()?;
+                    let payload = match has_payload {
+                        0 => None,
+                        1 => Some(c.u32()?),
+                        other => {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.decode.variant-payload",
+                                format!("variant arm payload byte {} is not 0/1", other),
+                            ));
+                        }
+                    };
+                    arms.push(VariantArm {
+                        name: aname,
+                        payload,
+                    });
+                }
+                module.types.push(MirType::Variant(VariantTypeRef {
+                    owner_module,
+                    name,
+                    arms,
                 }));
             }
             other => {
@@ -1837,6 +2220,145 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                         }
                         MirInstr::FieldMove { dst, root, path }
                     }
+                    // PLAN-822 collections opcodes.
+                    OP_LIST_NEW if family.allows_collections_tags() => {
+                        let dst = c.u32()?;
+                        let list_ty = c.u32()?;
+                        let cap = c.u32()?;
+                        MirInstr::ListNew { dst, list_ty, cap }
+                    }
+                    OP_LIST_LEN if family.allows_collections_tags() => {
+                        let dst = c.u32()?;
+                        let src = c.u32()?;
+                        MirInstr::ListLen { dst, src }
+                    }
+                    OP_LIST_CAP if family.allows_collections_tags() => {
+                        let dst = c.u32()?;
+                        let src = c.u32()?;
+                        MirInstr::ListCap { dst, src }
+                    }
+                    OP_LIST_GET if family.allows_collections_tags() => {
+                        let dst = c.u32()?;
+                        let base = c.u32()?;
+                        let index = c.u32()?;
+                        MirInstr::ListGet { dst, base, index }
+                    }
+                    OP_LIST_PUSH if family.allows_collections_tags() => {
+                        let root = c.u32()?;
+                        let value = c.u32()?;
+                        MirInstr::ListPush { root, value }
+                    }
+                    OP_LIST_INSERT if family.allows_collections_tags() => {
+                        let root = c.u32()?;
+                        let index = c.u32()?;
+                        let value = c.u32()?;
+                        MirInstr::ListInsert { root, index, value }
+                    }
+                    OP_LIST_SET if family.allows_collections_tags() => {
+                        let root = c.u32()?;
+                        let index = c.u32()?;
+                        let value = c.u32()?;
+                        MirInstr::ListSet { root, index, value }
+                    }
+                    OP_LIST_REMOVE if family.allows_collections_tags() => {
+                        let dst = c.u32()?;
+                        let root = c.u32()?;
+                        let index = c.u32()?;
+                        MirInstr::ListRemove { dst, root, index }
+                    }
+                    OP_LIST_FIELD_GET if family.allows_collections_tags() => {
+                        let dst = c.u32()?;
+                        let base = c.u32()?;
+                        let index = c.u32()?;
+                        let n = c.u16()? as usize;
+                        decode_mem!(n * 2 + 12, "a list-field-get path");
+                        let mut path = Vec::with_capacity(n);
+                        for _ in 0..n {
+                            path.push(c.u16()?);
+                        }
+                        MirInstr::ListFieldGet {
+                            dst,
+                            base,
+                            index,
+                            path,
+                        }
+                    }
+                    OP_LIST_FIELD_SET if family.allows_collections_tags() => {
+                        let root = c.u32()?;
+                        let index = c.u32()?;
+                        let n = c.u16()? as usize;
+                        decode_mem!(n * 2 + 12, "a list-field-set path");
+                        let mut path = Vec::with_capacity(n);
+                        for _ in 0..n {
+                            path.push(c.u16()?);
+                        }
+                        let value = c.u32()?;
+                        MirInstr::ListFieldSet {
+                            root,
+                            index,
+                            path,
+                            value,
+                        }
+                    }
+                    OP_VARIANT_PACK if family.allows_collections_tags() => {
+                        let dst = c.u32()?;
+                        let variant_ty = c.u32()?;
+                        let disc = c.u32()?;
+                        let has = c.u8()?;
+                        let payload = match has {
+                            0 => None,
+                            1 => Some(c.u32()?),
+                            other => {
+                                return Err(AbcDecodeError::fmt_err(
+                                    "abc.decode.variant-payload-slot",
+                                    format!("variant payload byte {} is not 0/1", other),
+                                ));
+                            }
+                        };
+                        MirInstr::VariantPack {
+                            dst,
+                            variant_ty,
+                            disc,
+                            payload,
+                        }
+                    }
+                    OP_VARIANT_DISC if family.allows_collections_tags() => {
+                        let dst = c.u32()?;
+                        let src = c.u32()?;
+                        MirInstr::VariantDisc { dst, src }
+                    }
+                    OP_VARIANT_GUARD if family.allows_collections_tags() => {
+                        let dst = c.u32()?;
+                        let src = c.u32()?;
+                        let disc = c.u32()?;
+                        MirInstr::VariantGuard { dst, src, disc }
+                    }
+                    OP_VARIANT_PROJECT if family.allows_collections_tags() => {
+                        let dst = c.u32()?;
+                        let root = c.u32()?;
+                        let disc = c.u32()?;
+                        MirInstr::VariantProject { dst, root, disc }
+                    }
+                    OP_VARIANT_SWITCH if family.allows_collections_tags() => {
+                        let root = c.u32()?;
+                        let disc = c.u32()?;
+                        let has = c.u8()?;
+                        let payload = match has {
+                            0 => None,
+                            1 => Some(c.u32()?),
+                            other => {
+                                return Err(AbcDecodeError::fmt_err(
+                                    "abc.decode.variant-payload-slot",
+                                    format!("variant payload byte {} is not 0/1", other),
+                                ));
+                            }
+                        };
+                        MirInstr::VariantSwitch {
+                            root,
+                            disc,
+                            payload,
+                        }
+                    }
                     other => {
                         return Err(AbcDecodeError::fmt_err(
                             "abc.decode.opcode",
@@ -1919,6 +2441,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             WireFamily::Core => crate::contract::ABC_SCHEMA.to_string(),
             WireFamily::Data => crate::contract::ABC_DATA_SCHEMA.to_string(),
             WireFamily::Owned => crate::contract::ABC_OWNED_SCHEMA.to_string(),
+            WireFamily::Collections => crate::contract::ABC_COLLECTIONS_SCHEMA.to_string(),
         },
         module: String::new(),
     };

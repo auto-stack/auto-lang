@@ -76,6 +76,16 @@ pub enum MirType {
     StrView,
     /// Exclusive write-borrow token (PLAN-821 §5.1.3).
     MutRef,
+    /// Owned typed list (PLAN-822, `av.collections/1`): `elem` is the
+    /// element type index. Identity is the element type alone (lists are
+    /// structural, not nominal). The admissible element closure is frozen
+    /// by the collections contract-decision §2 (borrowed views, `Fn`, and
+    /// List-of-List are rejected at verification).
+    List(ListTypeRef),
+    /// Nominal variant (PLAN-822): Option/Result/finite enums all lower to
+    /// this one shape. `arms` in declaration order carry optional payload
+    /// type indices; the arm INDEX is the runtime discriminant.
+    Variant(VariantTypeRef),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -96,6 +106,27 @@ pub struct RecordTypeRef {
     pub owner_module: String,
     pub name: String,
     pub fields: Vec<MirFieldDef>,
+}
+
+/// PLAN-822: element type reference of a `List<T>` type.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ListTypeRef {
+    pub elem: TypeIdx,
+}
+
+/// PLAN-822: one arm of a nominal variant type, in declaration order.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct VariantArm {
+    pub name: String,
+    pub payload: Option<TypeIdx>,
+}
+
+/// PLAN-822: nominal variant type identity (owner_module, name, arms).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct VariantTypeRef {
+    pub owner_module: String,
+    pub name: String,
+    pub arms: Vec<VariantArm>,
 }
 
 /// Module constants. Bool constants are `true`/`false` only. The wide
@@ -367,6 +398,123 @@ pub enum MirInstr {
         dst: SlotId,
         code: SlotId,
     },
+    // -- PLAN-822 collections surface (av.collections/1; contract-decision
+    // §3; opcodes 0x1D..0x2B) -------------------------------------------
+    /// LIST_NEW: an empty list of type `list_ty` with spare capacity `cap`
+    /// (checked against `MAX_LIST_ELEMS`; allocation is ledgered).
+    ListNew {
+        dst: SlotId,
+        list_ty: TypeIdx,
+        cap: u32,
+    },
+    /// LIST_LEN: element count as i32.
+    ListLen {
+        dst: SlotId,
+        src: SlotId,
+    },
+    /// LIST_CAP: spare capacity as i32.
+    ListCap {
+        dst: SlotId,
+        src: SlotId,
+    },
+    /// LIST_GET: copy element `index` out (Copy element types only; owned
+    /// elements are read via LIST_REMOVE / LIST_FIELD_GET). Out-of-range
+    /// indices trap `av.trap.list-index` BEFORE any buffer access.
+    ListGet {
+        dst: SlotId,
+        base: SlotId,
+        index: SlotId,
+    },
+    /// LIST_PUSH: append `value` (may realloc — epoch bump). Prepare →
+    /// capacity/borrow check → commit transfers the source; on failure the
+    /// old list and the source slot are unchanged.
+    ListPush {
+        root: SlotId,
+        value: SlotId,
+    },
+    /// LIST_INSERT: insert `value` at `index ∈ [0, len]`, shifting the tail
+    /// (epoch bump; shift is billed per element).
+    ListInsert {
+        root: SlotId,
+        index: SlotId,
+        value: SlotId,
+    },
+    /// LIST_SET: in-place replace of element `index`: the old element is
+    /// dropped exactly once and `value` is transferred at commit (LHS
+    /// reservation semantics per PLAN-821; index and RHS evaluated once).
+    ListSet {
+        root: SlotId,
+        index: SlotId,
+        value: SlotId,
+    },
+    /// LIST_REMOVE: move element `index` OUT into `dst` (owned transfer),
+    /// shifting the tail left (epoch bump). Stale places die with the bump;
+    /// recomputed in-range indices read the shifted values.
+    ListRemove {
+        dst: SlotId,
+        root: SlotId,
+        index: SlotId,
+    },
+    /// LIST_FIELD_GET: copy a scalar field of element `index`'s record out
+    /// along `path` (declaration-order field indices).
+    ListFieldGet {
+        dst: SlotId,
+        base: SlotId,
+        index: SlotId,
+        path: Vec<u16>,
+    },
+    /// LIST_FIELD_SET: write `value` into a field of element `index`'s
+    /// record along `path` (the first-case core: `list[i].inner.text`
+    /// replace). RHS is pre-materialized; the old field value is dropped
+    /// and the source transferred at commit; the element's generation
+    /// bumps (the buffer epoch does NOT).
+    ListFieldSet {
+        root: SlotId,
+        index: SlotId,
+        path: Vec<u16>,
+        value: SlotId,
+    },
+    /// VARIANT_PACK: construct arm `disc` of `variant_ty`; a payload arm
+    /// requires an initialized source slot (transferred at commit), a
+    /// no-payload arm requires `None`.
+    VariantPack {
+        dst: SlotId,
+        variant_ty: TypeIdx,
+        disc: u32,
+        payload: Option<SlotId>,
+    },
+    /// VARIANT_DISC: current arm index as i32.
+    VariantDisc {
+        dst: SlotId,
+        src: SlotId,
+    },
+    /// VARIANT_GUARD: `dst` = Bool (current arm == `disc`). Records the
+    /// guard FACT in the verifier's lattice; never traps at runtime.
+    VariantGuard {
+        dst: SlotId,
+        src: SlotId,
+        disc: u32,
+    },
+    /// VARIANT_PROJECT: move the live arm's payload out into `dst` (owned
+    /// transfer; the arm enters payload-moved state) — or, for Copy
+    /// payloads, read the value leaving the arm intact. Requires a live
+    /// guard fact for `disc` on `root`; re-projection of a moved arm is
+    /// `mir.variant.payload-moved` (verify) / `av.trap.variant-branch`
+    /// (runtime defense).
+    VariantProject {
+        dst: SlotId,
+        root: SlotId,
+        disc: u32,
+    },
+    /// VARIANT_SWITCH: switch `root` to arm `disc`: the pre-materialized
+    /// `payload` transfers in at commit, then the previous LIVE arm (if
+    /// not payload-moved) is dropped exactly once. All guard facts on the
+    /// root die with the switch.
+    VariantSwitch {
+        root: SlotId,
+        disc: u32,
+        payload: Option<SlotId>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -487,6 +635,22 @@ impl MirModule {
         m
     }
 
+    /// A collections-profile module (`av.collections/1`, PLAN-822). The
+    /// collections profile SUBSUMES the owned feature set and adds the
+    /// List/Variant surface.
+    pub fn new_collections(owner: OwnerScope) -> Self {
+        let mut m = MirModule::new(owner);
+        m.profile = crate::contract::AV_COLLECTIONS_PROFILE.to_string();
+        m
+    }
+
+    /// A collections-profile single-function unit.
+    pub fn collections_unit(owner: OwnerScope) -> Self {
+        let mut m = MirModule::new_collections(owner);
+        m.is_unit = true;
+        m
+    }
+
     /// Whether this module declares the data profile.
     pub fn is_data_profile(&self) -> bool {
         self.profile == crate::contract::AV_DATA_PROFILE
@@ -497,6 +661,12 @@ impl MirModule {
     /// and FIELD_*/AGGREGATE) and adds the owned surface.
     pub fn is_owned_profile(&self) -> bool {
         self.profile == crate::contract::AV_OWNED_PROFILE
+    }
+
+    /// Whether this module declares the collections profile (PLAN-822).
+    /// The collections profile SUBSUMES the owned feature set.
+    pub fn is_collections_profile(&self) -> bool {
+        self.profile == crate::contract::AV_COLLECTIONS_PROFILE
     }
 
     /// Resolve a type to its scalar shape for verification (`None` = Fn,
@@ -516,7 +686,9 @@ impl MirModule {
             | MirType::Char
             | MirType::Str
             | MirType::StrView
-            | MirType::MutRef => None,
+            | MirType::MutRef
+            | MirType::List(_)
+            | MirType::Variant(_) => None,
         }
     }
 
@@ -565,6 +737,14 @@ impl MirInstr {
             MirInstr::Un {
                 op: UnOp::NegI32, ..
             } => true,
+            // PLAN-822: index traps and the runtime variant defense.
+            MirInstr::ListGet { .. }
+            | MirInstr::ListSet { .. }
+            | MirInstr::ListInsert { .. }
+            | MirInstr::ListRemove { .. }
+            | MirInstr::ListFieldGet { .. }
+            | MirInstr::ListFieldSet { .. }
+            | MirInstr::VariantProject { .. } => true,
             _ => false,
         }
     }
@@ -664,6 +844,17 @@ impl MirModule {
                 | MirType::StrView
                 | MirType::MutRef => 0, // inline enum, table vec counted below
                 MirType::Fn(s) => s.params.len() * std::mem::size_of::<TypeIdx>() + VEC,
+                // PLAN-822: List carries one element index inline; Variant
+                // owns its arm table (names + payload indices).
+                MirType::List(_) => 0,
+                MirType::Variant(v) => {
+                    v.owner_module.len()
+                        + v.name.len()
+                        + STR * 2
+                        + v.arms.len() * std::mem::size_of::<VariantArm>()
+                        + v.arms.iter().map(|a| a.name.len() + STR).sum::<usize>()
+                        + VEC
+                }
                 // R4-F09: a RecordView OWNS its RecordTypeRef — the owner/
                 // name strings and the field table (names + type indices)
                 // are real heap payloads it directly carries, exactly like
@@ -721,7 +912,9 @@ impl MirModule {
                         }
                         MirInstr::FieldGet { path, .. }
                         | MirInstr::FieldSet { path, .. }
-                        | MirInstr::FieldMove { path, .. } => {
+                        | MirInstr::FieldMove { path, .. }
+                        | MirInstr::ListFieldGet { path, .. }
+                        | MirInstr::ListFieldSet { path, .. } => {
                             b += path.len() * std::mem::size_of::<u16>() + VEC
                         }
                         _ => {}

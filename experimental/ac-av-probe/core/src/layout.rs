@@ -44,6 +44,13 @@ pub fn scalar_layout(t: &MirType) -> Option<ScalarLayout> {
         MirType::Str => ScalarLayout { size: 12, align: 8 },
         // PLAN-821 R1-F08: a borrowed record view is a place value - no
         // scalar layout (views are never stored in records).
+        // PLAN-822: an owned list handle is logically {ptr u64, len u32,
+        // cap u32} = 16 bytes at align 8 (the element buffer lives behind
+        // the pointer, counted per element by deep_size); a variant value
+        // is {disc u32, pad, inline payload} = 16 bytes at align 8 (the
+        // payload is inline, sized by its own type at execution).
+        MirType::List(_) => ScalarLayout { size: 16, align: 8 },
+        MirType::Variant(_) => ScalarLayout { size: 16, align: 8 },
         MirType::Fn(_)
         | MirType::Record(_)
         | MirType::RecordView(_)

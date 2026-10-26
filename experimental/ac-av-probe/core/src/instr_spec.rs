@@ -33,7 +33,9 @@ pub struct InstructionSpec {
     /// Execution fuel units per instruction (the accounting base).
     pub fuel: u64,
     /// Profile membership: "core" = av.core-i32/1, "data" = av.data/1,
-    /// "owned" = av.owned/1 (PLAN-821; subsumes the data surface).
+    /// "owned" = av.owned/1 (PLAN-821; subsumes the data surface),
+    /// "collections" = av.collections/1 (PLAN-822; subsumes the owned
+    /// surface and adds the list/variant instructions).
     pub profiles: &'static [&'static str],
     /// Ownership/borrow note (all Copy in both frozen profiles).
     pub ownership: &'static str,
@@ -49,7 +51,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "const shape == dst slot type (shape compare, index-free)",
         traps: false,
         fuel: 1,
-        profiles: &["core", "data", "owned"],
+        profiles: &["core", "data", "owned", "collections"],
         ownership: "Copy",
     },
     InstructionSpec {
@@ -60,7 +62,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "src type == dst type under structural (nominal record) equivalence",
         traps: false,
         fuel: 1,
-        profiles: &["core", "data", "owned"],
+        profiles: &["core", "data", "owned", "collections"],
         ownership: "Copy (record: shallow Rc clone == deep copy, immutable)",
     },
     InstructionSpec {
@@ -71,7 +73,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "i32 arithmetic I32×I32→I32; comparisons same-scalar→Bool (Eq/Ne any equal scalar pair, ordered only I32); wide scalars rejected (mir.type-op)",
         traps: true,
         fuel: 1,
-        profiles: &["core", "data", "owned"],
+        profiles: &["core", "data", "owned", "collections"],
         ownership: "Copy",
     },
     InstructionSpec {
@@ -82,7 +84,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "NegI32 I32→I32; NotBool Bool→Bool",
         traps: true,
         fuel: 1,
-        profiles: &["core", "data", "owned"],
+        profiles: &["core", "data", "owned", "collections"],
         ownership: "Copy",
     },
     InstructionSpec {
@@ -93,7 +95,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "args structurally equal to callee sig params; dst == sig result (records nominal)",
         traps: false,
         fuel: 1,
-        profiles: &["core", "data", "owned"],
+        profiles: &["core", "data", "owned", "collections"],
         ownership: "Copy (aggregate params/returns by value)",
     },
     InstructionSpec {
@@ -104,7 +106,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "trace capability required for mark imports",
         traps: false,
         fuel: 1,
-        profiles: &["core", "data", "owned"],
+        profiles: &["core", "data", "owned", "collections"],
         ownership: "observation only",
     },
     InstructionSpec {
@@ -115,7 +117,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "base slot is a record; path segments validated against each owner record; dst == final field type",
         traps: false,
         fuel: 1,
-        profiles: &["data", "owned"],
+        profiles: &["data", "owned", "collections"],
         ownership: "Copy (rvalue copy out of an immutable value)",
     },
     InstructionSpec {
@@ -126,7 +128,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "root slot is a record; path validated against owners; value == final field type; RHS pre-materialized (overlap invariant)",
         traps: false,
         fuel: 1,
-        profiles: &["data", "owned"],
+        profiles: &["data", "owned", "collections"],
         ownership: "Copy (structural rebuild into the root slot)",
     },
     InstructionSpec {
@@ -137,7 +139,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "operands count == field count, each structurally equal to its field type; dst == record_ty",
         traps: false,
         fuel: 1,
-        profiles: &["data", "owned"],
+        profiles: &["data", "owned", "collections"],
         ownership: "Copy (fresh immutable aggregate)",
     },
     InstructionSpec {
@@ -148,7 +150,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "src type == dst type; source must be Str or resource record (782 clone: per-field independent buffers)",
         traps: false,
         fuel: 1,
-        profiles: &["owned"],
+        profiles: &["owned", "collections"],
         ownership: "fresh owner; source unchanged (explicit deep clone)",
     },
     InstructionSpec {
@@ -159,7 +161,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "src type == dst type; src owned+init+unmoved+borrow-free; kill src (move-kill); copyable src rejected (mir.ownership-required)",
         traps: false,
         fuel: 1,
-        profiles: &["owned"],
+        profiles: &["owned", "collections"],
         ownership: "ownership transfer; source slot dies (Moved)",
     },
     InstructionSpec {
@@ -170,7 +172,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "src slot type Str, dst StrView; register read-borrow rooted at src",
         traps: false,
         fuel: 1,
-        profiles: &["owned"],
+        profiles: &["owned", "collections"],
         ownership: "read-only token; no drop right; root-conservative conflicts",
     },
     InstructionSpec {
@@ -181,7 +183,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "src slot Str/resource record, dst MutRef; exclusive (T-03 admission)",
         traps: false,
         fuel: 1,
-        profiles: &["owned"],
+        profiles: &["owned", "collections"],
         ownership: "exclusive write token; blocks root move/replace while live",
     },
     InstructionSpec {
@@ -192,7 +194,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "token slot StrView/MutRef, init; releases the borrow",
         traps: false,
         fuel: 1,
-        profiles: &["owned"],
+        profiles: &["owned", "collections"],
         ownership: "borrow release; roots accept conflicting access again",
     },
     InstructionSpec {
@@ -203,7 +205,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "owned+init slot; cleans exactly once, slot -> Dropped (T-03 admission)",
         traps: false,
         fuel: 1,
-        profiles: &["owned"],
+        profiles: &["owned", "collections"],
         ownership: "explicit cleanup; uninit/moved/dropped source is mir.drop-uninit",
     },
     InstructionSpec {
@@ -214,7 +216,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "view: StrView -> dst I32 (Unicode scalar count)",
         traps: false,
         fuel: 1,
-        profiles: &["owned"],
+        profiles: &["owned", "collections"],
         ownership: "read-only view use",
     },
     InstructionSpec {
@@ -225,7 +227,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "view: StrView -> dst I32 (UTF-8 byte length)",
         traps: false,
         fuel: 1,
-        profiles: &["owned"],
+        profiles: &["owned", "collections"],
         ownership: "read-only view use",
     },
     InstructionSpec {
@@ -236,7 +238,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "view: StrView, index: I32 -> dst Char",
         traps: true,
         fuel: 1,
-        profiles: &["owned"],
+        profiles: &["owned", "collections"],
         ownership: "read-only view use; out-of-range traps av.trap.str-index",
     },
     InstructionSpec {
@@ -247,7 +249,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "view: StrView, start/end: I32 -> dst StrView sharing the source",
         traps: true,
         fuel: 1,
-        profiles: &["owned"],
+        profiles: &["owned", "collections"],
         ownership: "read-only view use; invalid range traps av.trap.str-index",
     },
     InstructionSpec {
@@ -258,7 +260,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "lhs/rhs: StrView -> dst Str (fresh owned buffer)",
         traps: false,
         fuel: 1,
-        profiles: &["owned"],
+        profiles: &["owned", "collections"],
         ownership: "fresh owned allocation",
     },
     InstructionSpec {
@@ -269,7 +271,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "view: StrView -> dst Str (deep copy of the range)",
         traps: false,
         fuel: 1,
-        profiles: &["owned"],
+        profiles: &["owned", "collections"],
         ownership: "fresh owned allocation (770 to)",
     },
     InstructionSpec {
@@ -280,7 +282,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "lhs/rhs: StrView -> dst Bool (byte-wise range equality/inequality)",
         traps: false,
         fuel: 1,
-        profiles: &["owned"],
+        profiles: &["owned", "collections"],
         ownership: "read-only view use",
     },
     InstructionSpec {
@@ -291,7 +293,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "ch: Char -> dst I32",
         traps: false,
         fuel: 1,
-        profiles: &["owned"],
+        profiles: &["owned", "collections"],
         ownership: "Copy",
     },
     InstructionSpec {
@@ -302,7 +304,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "code: I32 -> dst Char; invalid scalar traps av.trap.char-invalid",
         traps: true,
         fuel: 1,
-        profiles: &["owned"],
+        profiles: &["owned", "collections"],
         ownership: "Copy",
     },
     InstructionSpec {
@@ -313,8 +315,174 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "path over root record -> owned field type == dst type; root dies (use-once)",
         traps: false,
         fuel: 1,
-        profiles: &["owned"],
+        profiles: &["owned", "collections"],
         ownership: "R2-F08' write-back machinery: destructive whole-field move-out (Rc share to dst, root killed)",
+    },
+    // PLAN-822 collections surface (contract-decision §3).
+    InstructionSpec {
+        opcode: 0x1D,
+        name: "LIST_NEW",
+        family: "instr",
+        operands: &[("dst", "W"), ("list_ty", "R"), ("cap", "R")],
+        type_rule: "dst == list_ty (List<T>); cap <= MAX_LIST_ELEMS (admission)",
+        traps: false,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "fresh owned allocation (ledgered buffer)",
+    },
+    InstructionSpec {
+        opcode: 0x1E,
+        name: "LIST_LEN",
+        family: "instr",
+        operands: &[("dst", "W"), ("src", "R")],
+        type_rule: "src: List<T> -> dst I32 (checked arithmetic)",
+        traps: false,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "read-only",
+    },
+    InstructionSpec {
+        opcode: 0x1F,
+        name: "LIST_CAP",
+        family: "instr",
+        operands: &[("dst", "W"), ("src", "R")],
+        type_rule: "src: List<T> -> dst I32 (checked arithmetic)",
+        traps: false,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "read-only",
+    },
+    InstructionSpec {
+        opcode: 0x20,
+        name: "LIST_GET",
+        family: "instr",
+        operands: &[("dst", "W"), ("base", "R"), ("index", "R")],
+        type_rule: "base: List<T>, index: I32 -> dst T; T Copy-only (owned elements via LIST_REMOVE/LIST_FIELD_*)",
+        traps: true,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "Copy out; out-of-range traps av.trap.list-index before any access",
+    },
+    InstructionSpec {
+        opcode: 0x21,
+        name: "LIST_PUSH",
+        family: "instr",
+        operands: &[("root", "W"), ("value", "R/K")],
+        type_rule: "root: List<T>, value: T; prepare -> capacity/borrow check -> commit kills value",
+        traps: false,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "append; realloc bumps epoch; failure leaves list and source unchanged",
+    },
+    InstructionSpec {
+        opcode: 0x22,
+        name: "LIST_INSERT",
+        family: "instr",
+        operands: &[("root", "W"), ("index", "R"), ("value", "R/K")],
+        type_rule: "root: List<T>, index: I32 in [0,len], value: T; tail shift billed per element",
+        traps: true,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "insert; epoch bump; failure leaves list and source unchanged",
+    },
+    InstructionSpec {
+        opcode: 0x23,
+        name: "LIST_SET",
+        family: "instr",
+        operands: &[("root", "W"), ("index", "R"), ("value", "R/K")],
+        type_rule: "root: List<T>, index: I32 in [0,len), value: T; LHS reservation per 821, index/RHS evaluated once",
+        traps: true,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "in-place replace: old element dropped once, value transferred at commit",
+    },
+    InstructionSpec {
+        opcode: 0x24,
+        name: "LIST_REMOVE",
+        family: "instr",
+        operands: &[("dst", "W"), ("root", "R/W"), ("index", "R")],
+        type_rule: "root: List<T>, index: I32 in [0,len) -> dst T (owned transfer)",
+        traps: true,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "move-out; epoch bump kills stale places; recomputed in-range indices see shifted values",
+    },
+    InstructionSpec {
+        opcode: 0x25,
+        name: "LIST_FIELD_GET",
+        family: "instr",
+        operands: &[("dst", "W"), ("base", "R"), ("index", "R"), ("path", "R")],
+        type_rule: "base: List<record>, index: I32, path over the element record -> dst == final field type (Copy)",
+        traps: true,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "Copy out; out-of-range traps av.trap.list-index",
+    },
+    InstructionSpec {
+        opcode: 0x26,
+        name: "LIST_FIELD_SET",
+        family: "instr",
+        operands: &[("root", "W"), ("index", "R"), ("path", "R"), ("value", "R/K")],
+        type_rule: "root: List<record>, index: I32 in [0,len), path over the element record, value == final field type; RHS pre-materialized",
+        traps: true,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "element in-place write: old field dropped, source transferred at commit, element gen bumps (epoch unchanged)",
+    },
+    InstructionSpec {
+        opcode: 0x27,
+        name: "VARIANT_PACK",
+        family: "instr",
+        operands: &[("dst", "W"), ("variant_ty", "R"), ("disc", "R"), ("payload", "R/K?")],
+        type_rule: "dst == variant_ty; arm disc in range; payload arm requires init source of payload type, no-payload arm requires None",
+        traps: false,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "construction; payload transferred at commit (source killed); failure cleans the temporary",
+    },
+    InstructionSpec {
+        opcode: 0x28,
+        name: "VARIANT_DISC",
+        family: "instr",
+        operands: &[("dst", "W"), ("src", "R")],
+        type_rule: "src: Variant -> dst I32 (current arm index)",
+        traps: false,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "read-only",
+    },
+    InstructionSpec {
+        opcode: 0x29,
+        name: "VARIANT_GUARD",
+        family: "instr",
+        operands: &[("dst", "W"), ("src", "R"), ("disc", "R")],
+        type_rule: "src: Variant, disc in range -> dst Bool; records the guard fact (lattice)",
+        traps: false,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "read-only; facts die on re-pack/switch/possible-write call",
+    },
+    InstructionSpec {
+        opcode: 0x2A,
+        name: "VARIANT_PROJECT",
+        family: "instr",
+        operands: &[("dst", "W"), ("root", "R/W"), ("disc", "R")],
+        type_rule: "root: Variant with live guard fact for disc; payload type == dst; Copy reads, owned moves (arm -> payload-moved)",
+        traps: true,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "owned transfer out; re-projection of a moved arm is mir.variant.payload-moved / runtime av.trap.variant-branch",
+    },
+    InstructionSpec {
+        opcode: 0x2B,
+        name: "VARIANT_SWITCH",
+        family: "instr",
+        operands: &[("root", "W"), ("disc", "R"), ("payload", "R/K?")],
+        type_rule: "root: Variant; arm disc in range; payload arm/presence match; payload pre-materialized",
+        traps: false,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "switch: payload transfers in at commit, previous live arm dropped once, guard facts die",
     },
     InstructionSpec {
         opcode: 0x10,
@@ -324,7 +492,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "target block index in range",
         traps: false,
         fuel: 1,
-        profiles: &["core", "data", "owned"],
+        profiles: &["core", "data", "owned", "collections"],
         ownership: "—",
     },
     InstructionSpec {
@@ -335,7 +503,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "cond slot type Bool; targets in range",
         traps: false,
         fuel: 1,
-        profiles: &["core", "data", "owned"],
+        profiles: &["core", "data", "owned", "collections"],
         ownership: "—",
     },
     InstructionSpec {
@@ -346,7 +514,7 @@ pub const SPECS: &[InstructionSpec] = &[
         type_rule: "value structurally equal to the signature result",
         traps: false,
         fuel: 1,
-        profiles: &["core", "data", "owned"],
+        profiles: &["core", "data", "owned", "collections"],
         ownership: "Copy (value passes to caller frame)",
     },
 ];
@@ -402,6 +570,21 @@ pub fn coverage_check() -> Result<(), String> {
         "CHAR_TO_CODEPOINT",
         "CHAR_FROM_CODEPOINT",
         "FIELDMOVE",
+        "LIST_NEW",
+        "LIST_LEN",
+        "LIST_CAP",
+        "LIST_GET",
+        "LIST_PUSH",
+        "LIST_INSERT",
+        "LIST_SET",
+        "LIST_REMOVE",
+        "LIST_FIELD_GET",
+        "LIST_FIELD_SET",
+        "VARIANT_PACK",
+        "VARIANT_DISC",
+        "VARIANT_GUARD",
+        "VARIANT_PROJECT",
+        "VARIANT_SWITCH",
         "JUMP",
         "BRANCH",
         "RETURN",
@@ -450,6 +633,21 @@ pub fn mnemonic_of_instr(i: &MirInstr) -> &'static str {
         MirInstr::StrCmp { .. } => "STR_CMP",
         MirInstr::CharToCodepoint { .. } => "CHAR_TO_CODEPOINT",
         MirInstr::CharFromCodepoint { .. } => "CHAR_FROM_CODEPOINT",
+        MirInstr::ListNew { .. } => "LIST_NEW",
+        MirInstr::ListLen { .. } => "LIST_LEN",
+        MirInstr::ListCap { .. } => "LIST_CAP",
+        MirInstr::ListGet { .. } => "LIST_GET",
+        MirInstr::ListPush { .. } => "LIST_PUSH",
+        MirInstr::ListInsert { .. } => "LIST_INSERT",
+        MirInstr::ListSet { .. } => "LIST_SET",
+        MirInstr::ListRemove { .. } => "LIST_REMOVE",
+        MirInstr::ListFieldGet { .. } => "LIST_FIELD_GET",
+        MirInstr::ListFieldSet { .. } => "LIST_FIELD_SET",
+        MirInstr::VariantPack { .. } => "VARIANT_PACK",
+        MirInstr::VariantDisc { .. } => "VARIANT_DISC",
+        MirInstr::VariantGuard { .. } => "VARIANT_GUARD",
+        MirInstr::VariantProject { .. } => "VARIANT_PROJECT",
+        MirInstr::VariantSwitch { .. } => "VARIANT_SWITCH",
     }
 }
 
@@ -468,7 +666,8 @@ mod tests {
     #[test]
     fn instr_spec_coverage_complete() {
         coverage_check().expect("the V-11 instruction contract table is complete");
-        // Trap classification frozen: BIN/UN plus the text-runtime traps.
+        // Trap classification frozen: BIN/UN plus the text-runtime traps and
+        // the PLAN-822 index/variant-defense traps.
         let trapping: Vec<&str> = SPECS.iter().filter(|s| s.traps).map(|s| s.name).collect();
         assert_eq!(
             trapping,
@@ -477,13 +676,21 @@ mod tests {
                 "UN",
                 "STR_CHAR_AT",
                 "STR_SLICE",
-                "CHAR_FROM_CODEPOINT"
+                "CHAR_FROM_CODEPOINT",
+                "LIST_GET",
+                "LIST_INSERT",
+                "LIST_SET",
+                "LIST_REMOVE",
+                "LIST_FIELD_GET",
+                "LIST_FIELD_SET",
+                "VARIANT_PROJECT",
             ]
         );
-        // Owned-only surface frozen (T-02 admits all but MUTREF/DROP).
+        // Owned-introduced surface frozen (rows whose profile set contains
+        // owned but not core — unchanged by the collections superset).
         let owned_only: Vec<&str> = SPECS
             .iter()
-            .filter(|s| s.profiles.len() == 1 && s.profiles[0] == "owned")
+            .filter(|s| s.profiles.contains(&"owned") && !s.profiles.contains(&"core"))
             .map(|s| s.name)
             .collect();
         assert_eq!(
@@ -505,6 +712,33 @@ mod tests {
                 "CHAR_TO_CODEPOINT",
                 "CHAR_FROM_CODEPOINT",
                 "FIELDMOVE",
+            ]
+        );
+        // PLAN-822: the collections-only surface is exactly the 15 new
+        // instructions (the owned rows above are inherited, not duplicated).
+        let collections_only: Vec<&str> = SPECS
+            .iter()
+            .filter(|s| s.profiles.len() == 1 && s.profiles[0] == "collections")
+            .map(|s| s.name)
+            .collect();
+        assert_eq!(
+            collections_only,
+            vec![
+                "LIST_NEW",
+                "LIST_LEN",
+                "LIST_CAP",
+                "LIST_GET",
+                "LIST_PUSH",
+                "LIST_INSERT",
+                "LIST_SET",
+                "LIST_REMOVE",
+                "LIST_FIELD_GET",
+                "LIST_FIELD_SET",
+                "VARIANT_PACK",
+                "VARIANT_DISC",
+                "VARIANT_GUARD",
+                "VARIANT_PROJECT",
+                "VARIANT_SWITCH",
             ]
         );
     }

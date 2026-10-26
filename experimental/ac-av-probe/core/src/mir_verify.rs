@@ -121,6 +121,7 @@ pub fn verify_mir_with_deadline(
         analysis_bytes: 0,
         is_data: module.is_data_profile(),
         is_owned: module.is_owned_profile(),
+        is_collections: module.is_collections_profile(),
     };
     v.run()?;
     let stats = v.stats_snapshot();
@@ -143,6 +144,10 @@ struct Verifier<'a> {
     /// subsumes the data feature set and adds the owned surface (types,
     /// str ops, move/borrow/cleanup analysis).
     is_owned: bool,
+    /// Whether the module declares the `av.collections/1` profile
+    /// (PLAN-822): subsumes the owned surface and adds the List/Variant
+    /// surface.
+    is_collections: bool,
 }
 
 impl<'a> Verifier<'a> {
@@ -177,15 +182,17 @@ impl<'a> Verifier<'a> {
         if self.module.profile != crate::contract::AV_PROFILE
             && self.module.profile != crate::contract::AV_DATA_PROFILE
             && self.module.profile != crate::contract::AV_OWNED_PROFILE
+            && self.module.profile != crate::contract::AV_COLLECTIONS_PROFILE
         {
             return Err(MirVerifyError::uns(
                 "mir.profile",
                 format!(
-                    "profile `{}` is not one of the supported profiles (`{}` / `{}` / `{}`)",
+                    "profile `{}` is not one of the supported profiles (`{}` / `{}` / `{}` / `{}`)",
                     self.module.profile,
                     crate::contract::AV_PROFILE,
                     crate::contract::AV_DATA_PROFILE,
-                    crate::contract::AV_OWNED_PROFILE
+                    crate::contract::AV_OWNED_PROFILE,
+                    crate::contract::AV_COLLECTIONS_PROFILE
                 ),
             ));
         }
@@ -206,6 +213,18 @@ impl<'a> Verifier<'a> {
                     "owned-profile module owner schema `{}` is not `{}`",
                     self.module.owner.schema,
                     crate::contract::MIR_OWNED_SCHEMA
+                ),
+            ));
+        }
+        if self.is_collections
+            && self.module.owner.schema != crate::contract::MIR_COLLECTIONS_SCHEMA
+        {
+            return Err(MirVerifyError::inv(
+                "mir.schema-profile",
+                format!(
+                    "collections-profile module owner schema `{}` is not `{}`",
+                    self.module.owner.schema,
+                    crate::contract::MIR_COLLECTIONS_SCHEMA
                 ),
             ));
         }
@@ -303,9 +322,10 @@ impl<'a> Verifier<'a> {
                 }
             }
             // Profile feature gate: the wide scalars and records exist ONLY
-            // in the data/owned profiles (owned subsumes the data surface);
-            // char/Str/StrView/MutRef exist ONLY in the owned profile
-            // (PLAN-821 contract-decision §2).
+            // in the data/owned profiles (owned subsumes the data surface;
+            // collections subsumes owned); char/Str/StrView/MutRef exist
+            // ONLY in the owned-or-collections profiles (PLAN-821/822
+            // contract-decision §2).
             match t {
                 MirType::I64 | MirType::U64 | MirType::F32 | MirType::F64 | MirType::Record(_)
                     if !self.is_data && !self.is_owned =>
@@ -325,18 +345,110 @@ impl<'a> Verifier<'a> {
                 | MirType::StrView
                 | MirType::MutRef
                 | MirType::RecordView(_)
-                    if !self.is_owned =>
+                    if !self.is_owned && !self.is_collections =>
                 {
                     return Err(MirVerifyError::uns(
                         "mir.profile-type",
                         format!(
-                            "type #{ti} ({:?}) exists only in the `{}` profile",
+                            "type #{ti} ({:?}) exists only in the `{}`/`{}` profiles",
                             t,
-                            crate::contract::AV_OWNED_PROFILE
+                            crate::contract::AV_OWNED_PROFILE,
+                            crate::contract::AV_COLLECTIONS_PROFILE
+                        ),
+                    ));
+                }
+                // PLAN-822: the List/Variant surface is collections-only.
+                MirType::List(_) | MirType::Variant(_) if !self.is_collections => {
+                    return Err(MirVerifyError::uns(
+                        "mir.profile-type",
+                        format!(
+                            "type #{ti} ({:?} …) exists only in the `{}` profile",
+                            t,
+                            crate::contract::AV_COLLECTIONS_PROFILE
                         ),
                     ));
                 }
                 _ => {}
+            }
+            // PLAN-822 admissible-closure checks (contract-decision §2):
+            // list elements and variant payloads share the frozen element
+            // domain (borrowed views / Fn / nested lists rejected); records
+            // never carry containers in their fields.
+            if let MirType::List(l) = t {
+                if l.elem as usize >= self.module.types.len() {
+                    return Err(MirVerifyError::inv(
+                        "mir.type-ref",
+                        format!("list type #{ti} references out-of-range element {}", l.elem),
+                    ));
+                }
+                self.check_element_domain(l.elem, ti, "mir.type.list-elem")?;
+            }
+            if let MirType::Variant(v) = t {
+                if v.arms.is_empty() {
+                    return Err(MirVerifyError::inv(
+                        "mir.variant-empty",
+                        format!("variant type #{ti} `{}` has no arms", v.name),
+                    ));
+                }
+                if v.arms.len() > crate::contract::MAX_RECORD_FIELDS {
+                    return Err(MirVerifyError::Resource {
+                        kind: ResourceKind::TableEntries,
+                        message: format!(
+                            "variant type #{ti} `{}` has {} arms, above the frozen per-type guard {}",
+                            v.name,
+                            v.arms.len(),
+                            crate::contract::MAX_RECORD_FIELDS
+                        ),
+                    });
+                }
+                if v.owner_module.is_empty() || v.name.is_empty() {
+                    return Err(MirVerifyError::inv(
+                        "mir.variant-identity",
+                        format!("variant type #{ti} has an empty owner module or name"),
+                    ));
+                }
+                let mut seen = std::collections::BTreeSet::new();
+                for a in &v.arms {
+                    if !seen.insert(a.name.as_str()) {
+                        return Err(MirVerifyError::inv(
+                            "mir.variant-arm-dup",
+                            format!(
+                                "variant type #{ti} `{}` declares arm `{}` twice",
+                                v.name, a.name
+                            ),
+                        ));
+                    }
+                    if let Some(pt) = a.payload {
+                        if pt as usize >= self.module.types.len() {
+                            return Err(MirVerifyError::inv(
+                                "mir.type-ref",
+                                format!(
+                                    "variant type #{ti} `{}` arm `{}` references out-of-range payload type {}",
+                                    v.name, a.name, pt
+                                ),
+                            ));
+                        }
+                        self.check_element_domain(pt, ti, "mir.type.variant-payload")?;
+                    }
+                }
+            }
+            // PLAN-822: records stay container-free (a List/Variant field is
+            // `mir.type.nested-container`, first-batch rejection).
+            if let MirType::Record(r) = t {
+                for f in &r.fields {
+                    if matches!(
+                        self.module.types.get(f.ty as usize),
+                        Some(MirType::List(_)) | Some(MirType::Variant(_))
+                    ) {
+                        return Err(MirVerifyError::uns(
+                            "mir.type.nested-container",
+                            format!(
+                                "record type #{ti} `{}` field `{}` is a container type (not a record field kind in this profile)",
+                                r.name, f.name
+                            ),
+                        ));
+                    }
+                }
             }
             if let MirType::Record(r) = t {
                 if r.fields.is_empty() {
@@ -678,6 +790,134 @@ impl<'a> Verifier<'a> {
 
     /// Iterative three-color cycle check over the record type graph. A cycle
     /// means by-value recursion — rejected before any layout derivation.
+    /// PLAN-822: the frozen admissible element/payload domain (contract-
+    /// decision §2) — scalars (incl. wide + char), owned `Str`, records.
+    /// Rejected: borrowed views/tokens, `Fn`, and containers (List-of-List
+    /// / container payloads keep the first batch one layer deep).
+    fn check_element_domain(
+        &mut self,
+        elem: TypeIdx,
+        ti: usize,
+        code: &'static str,
+    ) -> Result<(), MirVerifyError> {
+        let ok = match self.module.types.get(elem as usize) {
+            Some(
+                MirType::I32
+                | MirType::Bool
+                | MirType::I64
+                | MirType::U64
+                | MirType::F32
+                | MirType::F64
+                | MirType::Char
+                | MirType::Str
+                | MirType::Record(_)
+                | MirType::Variant(_),
+            ) => true,
+            _ => false,
+        };
+        if !ok {
+            let what = match self.module.types.get(elem as usize) {
+                Some(MirType::List(_)) => "a nested List",
+                Some(MirType::Fn(_)) => "a function type",
+                Some(MirType::StrView) | Some(MirType::RecordView(_)) => "a borrowed view",
+                Some(MirType::MutRef) => "a borrow token",
+                _ => "an unsupported kind",
+            };
+            return Err(MirVerifyError::uns(
+                code,
+                format!("type #{} uses {} as an element/payload kind", ti, what),
+            ));
+        }
+        Ok(())
+    }
+
+    /// PLAN-822: the element type of the List-typed slot `base`.
+    fn list_elem_of(
+        &self,
+        f: &MirFunction,
+        base: SlotId,
+        sp: Option<SpanInfo>,
+    ) -> Result<TypeIdx, MirVerifyError> {
+        let bt = slot_ty_of(f, base, sp, "list base")?;
+        match self.module.types.get(bt as usize) {
+            Some(MirType::List(l)) => Ok(l.elem),
+            _ => Err(MirVerifyError::inv(
+                "mir.list-type",
+                format!("slot type {} is not a List", bt),
+            )),
+        }
+    }
+
+    /// PLAN-822: index operands are i32-typed slots (domain checked at
+    /// runtime before any buffer access).
+    fn check_list_index_slot(
+        &self,
+        f: &MirFunction,
+        index: SlotId,
+        sp: Option<SpanInfo>,
+    ) -> Result<(), MirVerifyError> {
+        let it = slot_ty_of(f, index, sp, "list index")?;
+        if !matches!(self.module.types.get(it as usize), Some(MirType::I32)) {
+            return Err(MirVerifyError::inv(
+                "mir.list-type",
+                format!("list index slot type {} is not i32", it),
+            ));
+        }
+        Ok(())
+    }
+
+    /// PLAN-822: disc in range and the payload-slot presence + type match
+    /// the arm's declaration.
+    fn check_variant_arm(
+        &self,
+        f: &MirFunction,
+        variant_ty: TypeIdx,
+        disc: u32,
+        payload: Option<&SlotId>,
+        sp: Option<SpanInfo>,
+    ) -> Result<(), MirVerifyError> {
+        let Some(MirType::Variant(v)) = self.module.types.get(variant_ty as usize) else {
+            return Err(MirVerifyError::inv(
+                "mir.variant-type",
+                format!("type {} is not a Variant", variant_ty),
+            ));
+        };
+        let Some(arm) = v.arms.get(disc as usize) else {
+            return Err(MirVerifyError::inv(
+                "mir.variant.arm-mismatch",
+                format!("discriminant {} out of range ({} arms)", disc, v.arms.len()),
+            ));
+        };
+        match (payload, arm.payload) {
+            (Some(slot), Some(want)) => {
+                let pt = slot_ty_of(f, *slot, sp, "variant payload")?;
+                if !self.ty_equiv(pt, want) {
+                    return Err(MirVerifyError::inv(
+                        "mir.variant.arm-mismatch",
+                        format!("payload type {} != arm payload type {}", pt, want),
+                    ));
+                }
+            }
+            (None, None) => {}
+            (Some(_), None) => {
+                return Err(MirVerifyError::inv(
+                    "mir.variant.arm-mismatch",
+                    format!(
+                        "arm `{}` carries no payload but a payload slot is given",
+                        arm.name
+                    ),
+                ));
+            }
+            (None, Some(_)) => {
+                return Err(MirVerifyError::inv(
+                    "mir.variant.arm-mismatch",
+                    format!("arm `{}` requires a payload but none is given", arm.name),
+                ));
+            }
+        }
+        Ok(())
+    }
+
     fn check_record_acyclic(&mut self) -> Result<(), MirVerifyError> {
         const WHITE: u8 = 0;
         const GRAY: u8 = 1;
@@ -685,6 +925,8 @@ impl<'a> Verifier<'a> {
         let n = self.module.types.len();
         let mut color = vec![WHITE; n];
         // Explicit (node, next-field-cursor) stack — no host recursion.
+        // PLAN-822: Variant payload edges are BY-VALUE like record fields,
+        // so they join the same cycle check.
         for root in 0..n {
             if color[root] != WHITE {
                 continue;
@@ -701,12 +943,18 @@ impl<'a> Verifier<'a> {
                         continue;
                     }
                 };
-                if *cur >= fields.len() {
+                let edges: Vec<TypeIdx> = match &self.module.types[*node] {
+                    MirType::Record(r) => r.fields.iter().map(|f| f.ty).collect(),
+                    MirType::Variant(v) => v.arms.iter().filter_map(|a| a.payload).collect(),
+                    _ => vec![],
+                };
+                let _ = fields;
+                if *cur >= edges.len() {
                     color[*node] = BLACK;
                     stack.pop();
                     continue;
                 }
-                let next = fields[*cur].ty as usize;
+                let next = edges[*cur] as usize;
                 *cur += 1;
                 if next >= n {
                     // Out-of-range refs are reported by the shape pass; skip.
@@ -716,12 +964,13 @@ impl<'a> Verifier<'a> {
                     GRAY => {
                         let name = match &self.module.types[next] {
                             MirType::Record(r) => r.name.clone(),
+                            MirType::Variant(v) => v.name.clone(),
                             _ => format!("#{}", next),
                         };
                         return Err(MirVerifyError::inv(
                             "mir.type-cycle",
                             format!(
-                                "record type graph is cyclic (cycle through `{}`); by-value recursion is unsupported",
+                                "by-value type graph is cyclic (cycle through `{}`); by-value recursion is unsupported",
                                 name
                             ),
                         ));
@@ -1399,7 +1648,7 @@ impl<'a> Verifier<'a> {
                     }
                     // -- PLAN-821 owned surface (av.owned/1) -------------------
                     MirInstr::Clone { dst, src } => {
-                        if !self.is_owned {
+                        if !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "CLONE exists only in the owned profile".to_string(),
@@ -1423,7 +1672,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::Move { dst, src } => {
-                        if !self.is_owned {
+                        if !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "MOVE exists only in the owned profile".to_string(),
@@ -1445,7 +1694,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::View { dst, src } => {
-                        if !self.is_owned {
+                        if !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "VIEW exists only in the owned profile".to_string(),
@@ -1467,7 +1716,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::MutRef { dst, src } => {
-                        if !self.is_owned {
+                        if !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "MUTREF exists only in the owned profile".to_string(),
@@ -1492,7 +1741,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::Drop { slot } => {
-                        if !self.is_owned {
+                        if !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "DROP exists only in the owned profile".to_string(),
@@ -1510,7 +1759,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::FieldMove { dst, root, path } => {
-                        if !self.is_owned {
+                        if !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "FIELDMOVE exists only in the owned profile".to_string(),
@@ -1548,8 +1797,352 @@ impl<'a> Verifier<'a> {
                             ));
                         }
                     }
+                    // -- PLAN-822 collections surface (typing arms) --------
+                    MirInstr::ListNew { dst, list_ty, cap } => {
+                        if !self.is_collections {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "LIST_NEW exists only in the collections profile".to_string(),
+                            ));
+                        }
+                        let dt = slot_ty_of(f, *dst, sp, "list-new dst")?;
+                        if !self.ty_equiv(dt, *list_ty) {
+                            return Err(err(
+                                "mir.list-type",
+                                format!("list-new dst {} != declared list type {}", dt, list_ty),
+                            ));
+                        }
+                        if !matches!(
+                            self.module.types.get(*list_ty as usize),
+                            Some(MirType::List(_))
+                        ) {
+                            return Err(err(
+                                "mir.list-type",
+                                format!("list-new type {} is not a List type", list_ty),
+                            ));
+                        }
+                        if *cap as usize > crate::contract::MAX_LIST_ELEMS {
+                            return Err(MirVerifyError::Resource {
+                                kind: ResourceKind::ListElems,
+                                message: format!(
+                                    "list-new capacity {} above the frozen guard {}",
+                                    cap,
+                                    crate::contract::MAX_LIST_ELEMS
+                                ),
+                            });
+                        }
+                    }
+                    MirInstr::ListLen { dst, src } | MirInstr::ListCap { dst, src } => {
+                        if !self.is_collections {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "LIST_LEN/LIST_CAP exist only in the collections profile"
+                                    .to_string(),
+                            ));
+                        }
+                        let st = slot_ty_of(f, *src, sp, "list-op source")?;
+                        if !matches!(self.module.types.get(st as usize), Some(MirType::List(_))) {
+                            return Err(err(
+                                "mir.list-type",
+                                format!("slot type {} is not a List", st),
+                            ));
+                        }
+                        let dt = slot_ty_of(f, *dst, sp, "list-op dst")?;
+                        if !matches!(self.module.types.get(dt as usize), Some(MirType::I32)) {
+                            return Err(err(
+                                "mir.list-type",
+                                format!("list-op dst {} is not i32", dt),
+                            ));
+                        }
+                    }
+                    MirInstr::ListGet { dst, base, index } => {
+                        if !self.is_collections {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "LIST_GET exists only in the collections profile".to_string(),
+                            ));
+                        }
+                        let elem = self.list_elem_of(f, *base, sp)?;
+                        self.check_list_index_slot(f, *index, sp)?;
+                        let dt = slot_ty_of(f, *dst, sp, "list-get dst")?;
+                        if !self.ty_equiv(dt, elem) {
+                            return Err(err(
+                                "mir.list-type",
+                                format!("list-get dst {} != element type {}", dt, elem),
+                            ));
+                        }
+                        if crate::ownership::type_is_owned(self.module, elem) {
+                            return Err(err(
+                                "mir.list-type",
+                                format!(
+                                    "list-get of owned element type {} (use LIST_REMOVE / LIST_FIELD_*)",
+                                    elem
+                                ),
+                            ));
+                        }
+                    }
+                    MirInstr::ListPush { root, value } => {
+                        if !self.is_collections {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "LIST_PUSH exists only in the collections profile".to_string(),
+                            ));
+                        }
+                        let elem = self.list_elem_of(f, *root, sp)?;
+                        let vt = slot_ty_of(f, *value, sp, "list-push value")?;
+                        if !self.ty_equiv(vt, elem) {
+                            return Err(err(
+                                "mir.list-type",
+                                format!("list-push value {} != element type {}", vt, elem),
+                            ));
+                        }
+                    }
+                    MirInstr::ListInsert { root, index, value }
+                    | MirInstr::ListSet { root, index, value } => {
+                        if !self.is_collections {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "LIST_INSERT/LIST_SET exist only in the collections profile"
+                                    .to_string(),
+                            ));
+                        }
+                        let elem = self.list_elem_of(f, *root, sp)?;
+                        self.check_list_index_slot(f, *index, sp)?;
+                        let vt = slot_ty_of(f, *value, sp, "list-op value")?;
+                        if !self.ty_equiv(vt, elem) {
+                            return Err(err(
+                                "mir.list-type",
+                                format!("list-op value {} != element type {}", vt, elem),
+                            ));
+                        }
+                    }
+                    MirInstr::ListRemove { dst, root, index } => {
+                        if !self.is_collections {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "LIST_REMOVE exists only in the collections profile".to_string(),
+                            ));
+                        }
+                        let elem = self.list_elem_of(f, *root, sp)?;
+                        self.check_list_index_slot(f, *index, sp)?;
+                        let dt = slot_ty_of(f, *dst, sp, "list-remove dst")?;
+                        if !self.ty_equiv(dt, elem) {
+                            return Err(err(
+                                "mir.list-type",
+                                format!("list-remove dst {} != element type {}", dt, elem),
+                            ));
+                        }
+                    }
+                    MirInstr::ListFieldGet {
+                        dst,
+                        base,
+                        index,
+                        path,
+                    } => {
+                        if !self.is_collections {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "LIST_FIELD_GET exists only in the collections profile".to_string(),
+                            ));
+                        }
+                        let elem = self.list_elem_of(f, *base, sp)?;
+                        self.check_list_index_slot(f, *index, sp)?;
+                        let Some((final_ty, _owner)) = self.module.resolve_field_path(elem, path)
+                        else {
+                            return Err(err(
+                                "mir.field-path",
+                                format!(
+                                    "field path {:?} does not resolve from element type {}",
+                                    path, elem
+                                ),
+                            ));
+                        };
+                        let dt = slot_ty_of(f, *dst, sp, "list-field-get dst")?;
+                        if !self.ty_equiv(dt, final_ty) {
+                            return Err(err(
+                                "mir.field-type",
+                                format!("list-field-get dst {} != field type {}", dt, final_ty),
+                            ));
+                        }
+                        if crate::ownership::type_is_owned(self.module, final_ty) {
+                            return Err(err(
+                                "mir.field-type",
+                                format!(
+                                    "list-field-get of owned field type {} (fields ride records; use LIST_REMOVE first)",
+                                    final_ty
+                                ),
+                            ));
+                        }
+                    }
+                    MirInstr::ListFieldSet {
+                        root,
+                        index,
+                        path,
+                        value,
+                    } => {
+                        if !self.is_collections {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "LIST_FIELD_SET exists only in the collections profile".to_string(),
+                            ));
+                        }
+                        let elem = self.list_elem_of(f, *root, sp)?;
+                        self.check_list_index_slot(f, *index, sp)?;
+                        let Some((final_ty, _owner)) = self.module.resolve_field_path(elem, path)
+                        else {
+                            return Err(err(
+                                "mir.field-path",
+                                format!(
+                                    "field path {:?} does not resolve from element type {}",
+                                    path, elem
+                                ),
+                            ));
+                        };
+                        let vt = slot_ty_of(f, *value, sp, "list-field-set value")?;
+                        if !self.ty_equiv(vt, final_ty) {
+                            return Err(err(
+                                "mir.field-type",
+                                format!("list-field-set value {} != field type {}", vt, final_ty),
+                            ));
+                        }
+                    }
+                    MirInstr::VariantPack {
+                        dst,
+                        variant_ty,
+                        disc,
+                        payload,
+                    } => {
+                        if !self.is_collections {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "VARIANT_PACK exists only in the collections profile".to_string(),
+                            ));
+                        }
+                        let vt = slot_ty_of(f, *dst, sp, "variant-pack dst")?;
+                        if !self.ty_equiv(vt, *variant_ty) {
+                            return Err(err(
+                                "mir.variant-type",
+                                format!(
+                                    "variant-pack dst {} != declared variant type {}",
+                                    vt, variant_ty
+                                ),
+                            ));
+                        }
+                        self.check_variant_arm(f, *variant_ty, *disc, payload.as_ref(), sp)?;
+                    }
+                    MirInstr::VariantDisc { dst, src } => {
+                        if !self.is_collections {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "VARIANT_DISC exists only in the collections profile".to_string(),
+                            ));
+                        }
+                        let st = slot_ty_of(f, *src, sp, "variant source")?;
+                        if !matches!(
+                            self.module.types.get(st as usize),
+                            Some(MirType::Variant(_))
+                        ) {
+                            return Err(err(
+                                "mir.variant-type",
+                                format!("slot type {} is not a Variant", st),
+                            ));
+                        }
+                        let dt = slot_ty_of(f, *dst, sp, "variant-disc dst")?;
+                        if !matches!(self.module.types.get(dt as usize), Some(MirType::I32)) {
+                            return Err(err(
+                                "mir.variant-type",
+                                format!("variant-disc dst {} is not i32", dt),
+                            ));
+                        }
+                    }
+                    MirInstr::VariantGuard { dst, src, disc } => {
+                        if !self.is_collections {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "VARIANT_GUARD exists only in the collections profile".to_string(),
+                            ));
+                        }
+                        let st = slot_ty_of(f, *src, sp, "variant source")?;
+                        let Some(MirType::Variant(v)) = self.module.types.get(st as usize) else {
+                            return Err(err(
+                                "mir.variant-type",
+                                format!("slot type {} is not a Variant", st),
+                            ));
+                        };
+                        if *disc as usize >= v.arms.len() {
+                            return Err(err(
+                                "mir.variant.arm-mismatch",
+                                format!("guard discriminant {} out of range", disc),
+                            ));
+                        }
+                        let dt = slot_ty_of(f, *dst, sp, "variant-guard dst")?;
+                        if !matches!(self.module.types.get(dt as usize), Some(MirType::Bool)) {
+                            return Err(err(
+                                "mir.variant-type",
+                                format!("variant-guard dst {} is not bool", dt),
+                            ));
+                        }
+                    }
+                    MirInstr::VariantProject { dst, root, disc } => {
+                        if !self.is_collections {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "VARIANT_PROJECT exists only in the collections profile"
+                                    .to_string(),
+                            ));
+                        }
+                        let rt = slot_ty_of(f, *root, sp, "variant root")?;
+                        let Some(MirType::Variant(v)) = self.module.types.get(rt as usize) else {
+                            return Err(err(
+                                "mir.variant-type",
+                                format!("slot type {} is not a Variant", rt),
+                            ));
+                        };
+                        let Some(arm) = v.arms.get(*disc as usize) else {
+                            return Err(err(
+                                "mir.variant.arm-mismatch",
+                                format!("project discriminant {} out of range", disc),
+                            ));
+                        };
+                        let Some(pt) = arm.payload else {
+                            return Err(err(
+                                "mir.variant.arm-mismatch",
+                                format!("project of no-payload arm {}", disc),
+                            ));
+                        };
+                        let dt = slot_ty_of(f, *dst, sp, "variant-project dst")?;
+                        if !self.ty_equiv(dt, pt) {
+                            return Err(err(
+                                "mir.variant-type",
+                                format!("variant-project dst {} != payload type {}", dt, pt),
+                            ));
+                        }
+                    }
+                    MirInstr::VariantSwitch {
+                        root,
+                        disc,
+                        payload,
+                    } => {
+                        if !self.is_collections {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "VARIANT_SWITCH exists only in the collections profile".to_string(),
+                            ));
+                        }
+                        let rt = slot_ty_of(f, *root, sp, "variant root")?;
+                        if !matches!(
+                            self.module.types.get(rt as usize),
+                            Some(MirType::Variant(_))
+                        ) {
+                            return Err(err(
+                                "mir.variant-type",
+                                format!("slot type {} is not a Variant", rt),
+                            ));
+                        }
+                        self.check_variant_arm(f, rt, *disc, payload.as_ref(), sp)?;
+                    }
                     MirInstr::BorrowEnd { token } => {
-                        if !self.is_owned {
+                        if !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "BORROW_END exists only in the owned profile".to_string(),
@@ -1567,7 +2160,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::StrLen { dst, view } | MirInstr::StrLenBytes { dst, view } => {
-                        if !self.is_owned {
+                        if !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "str operations exist only in the owned profile".to_string(),
@@ -1578,7 +2171,7 @@ impl<'a> Verifier<'a> {
                         self.want_strview_i32(vt, dt, &err, sp)?;
                     }
                     MirInstr::StrCharAt { dst, view, index } => {
-                        if !self.is_owned {
+                        if !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "str operations exist only in the owned profile".to_string(),
@@ -1612,7 +2205,7 @@ impl<'a> Verifier<'a> {
                         start,
                         end,
                     } => {
-                        if !self.is_owned {
+                        if !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "str operations exist only in the owned profile".to_string(),
@@ -1641,7 +2234,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::StrConcat { dst, lhs, rhs } => {
-                        if !self.is_owned {
+                        if !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "str operations exist only in the owned profile".to_string(),
@@ -1666,7 +2259,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::StrToOwned { dst, view } => {
-                        if !self.is_owned {
+                        if !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "str operations exist only in the owned profile".to_string(),
@@ -1688,7 +2281,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::StrCmp { dst, lhs, rhs, .. } => {
-                        if !self.is_owned {
+                        if !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "str operations exist only in the owned profile".to_string(),
@@ -1713,7 +2306,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::CharToCodepoint { dst, ch } => {
-                        if !self.is_owned {
+                        if !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "char conversions exist only in the owned profile".to_string(),
@@ -1735,7 +2328,7 @@ impl<'a> Verifier<'a> {
                         }
                     }
                     MirInstr::CharFromCodepoint { dst, code } => {
-                        if !self.is_owned {
+                        if !self.is_owned && !self.is_collections {
                             return Err(err(
                                 "mir.profile-instr",
                                 "char conversions exist only in the owned profile".to_string(),
@@ -2107,8 +2700,27 @@ impl MirInstr {
             | MirInstr::CharToCodepoint { dst, .. }
             | MirInstr::CharFromCodepoint { dst, .. } => Some(*dst),
             MirInstr::FieldMove { dst, .. } => Some(*dst),
+            // PLAN-822: value-producing collections instructions define
+            // their dst; structural mutations (PUSH/INSERT/SET/FIELD_SET/
+            // SWITCH) require an ALREADY-initialized root and never
+            // re-initialize it.
+            MirInstr::ListNew { dst, .. }
+            | MirInstr::ListLen { dst, .. }
+            | MirInstr::ListCap { dst, .. }
+            | MirInstr::ListGet { dst, .. }
+            | MirInstr::ListRemove { dst, .. }
+            | MirInstr::ListFieldGet { dst, .. }
+            | MirInstr::VariantPack { dst, .. }
+            | MirInstr::VariantDisc { dst, .. }
+            | MirInstr::VariantGuard { dst, .. }
+            | MirInstr::VariantProject { dst, .. } => Some(*dst),
             MirInstr::FieldSet { root, .. } => Some(*root),
             MirInstr::Trace { .. } | MirInstr::BorrowEnd { .. } | MirInstr::Drop { .. } => None,
+            MirInstr::ListPush { .. }
+            | MirInstr::ListInsert { .. }
+            | MirInstr::ListSet { .. }
+            | MirInstr::ListFieldSet { .. }
+            | MirInstr::VariantSwitch { .. } => None,
         }
     }
 
@@ -2144,6 +2756,33 @@ impl MirInstr {
                 vec![*lhs, *rhs]
             }
             MirInstr::CharFromCodepoint { code, .. } => vec![*code],
+            // PLAN-822 collections reads (payload transfer slots included;
+            // LIST_* roots are reads because the value stays initialized).
+            MirInstr::ListNew { .. } => vec![],
+            MirInstr::ListLen { src, .. } | MirInstr::ListCap { src, .. } => vec![*src],
+            MirInstr::ListGet { base, index, .. } => vec![*base, *index],
+            MirInstr::ListPush { root, value, .. } => vec![*root, *value],
+            MirInstr::ListInsert {
+                root, index, value, ..
+            }
+            | MirInstr::ListSet {
+                root, index, value, ..
+            } => vec![*root, *index, *value],
+            MirInstr::ListRemove { root, index, .. } => vec![*root, *index],
+            MirInstr::ListFieldGet { base, index, .. } => vec![*base, *index],
+            MirInstr::ListFieldSet {
+                root, index, value, ..
+            } => vec![*root, *index, *value],
+            MirInstr::VariantPack { payload, .. } => match payload {
+                Some(p) => vec![*p],
+                None => vec![],
+            },
+            MirInstr::VariantDisc { src, .. } | MirInstr::VariantGuard { src, .. } => vec![*src],
+            MirInstr::VariantProject { root, .. } => vec![*root],
+            MirInstr::VariantSwitch { payload, .. } => match payload {
+                Some(p) => vec![*p],
+                None => vec![],
+            },
         }
     }
 }

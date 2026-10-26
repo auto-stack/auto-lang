@@ -50,6 +50,8 @@ pub fn type_is_owned_type_of(m: &MirModule, t: &MirType) -> bool {
     match t {
         MirType::Str => true,
         MirType::Record(r) => record_reaches_str(m, r),
+        // PLAN-822: containers own (buffers/elements/payloads need drop).
+        MirType::List(_) | MirType::Variant(_) => true,
         _ => false,
     }
 }
@@ -83,6 +85,27 @@ pub fn type_is_rootable(m: &MirModule, ty: u32) -> bool {
         m.types.get(ty as usize),
         Some(MirType::Str) | Some(MirType::Record(_))
     )
+}
+
+/// PLAN-822: whether the given variant arm's payload is an OWNED type (its
+/// projection is a transfer; Copy payloads stay readable). `false` for
+/// no-payload arms and unknown slots (typing caught those earlier).
+pub fn variant_payload_is_owned(
+    m: &MirModule,
+    f: &crate::mir::MirFunction,
+    slot: usize,
+    disc: u32,
+) -> bool {
+    let Some(slot_ty) = f.slots.get(slot).map(|s| s.ty) else {
+        return false;
+    };
+    let Some(MirType::Variant(v)) = m.types.get(slot_ty as usize) else {
+        return false;
+    };
+    v.arms
+        .get(disc as usize)
+        .and_then(|a| a.payload)
+        .map_or(false, |pt| type_is_owned(m, pt))
 }
 
 #[derive(Clone)]
@@ -150,6 +173,15 @@ struct OwnState {
     /// keeps rejecting partial moves of source values; FIELD_MOVE is the
     /// adapter's internal channel).
     moved_fields: Vec<Option<std::collections::BTreeSet<Vec<u16>>>>,
+    /// PLAN-822 variant guard facts — MUST facts (intersected at joins):
+    /// the (root slot, disc) pairs proven by a VARIANT_GUARD since the
+    /// root's last (re)definition. Facts die on the root's redefinition,
+    /// a VARIANT_SWITCH, or a possibly-writing CALL (§5.5).
+    guards: std::collections::BTreeSet<(usize, u32)>,
+    /// PLAN-822 payload-moved arms — MAY facts (unioned at joins): per
+    /// variant root, the arms whose OWNED payload was already projected
+    /// out (the arm reads as moved; Copy payloads never land here).
+    variant_moved: std::collections::BTreeMap<usize, std::collections::BTreeSet<u32>>,
 }
 
 impl OwnState {
@@ -161,6 +193,8 @@ impl OwnState {
             tokens_live: Bitsets::new(self.tokens_live.n_bits),
             token_roots: vec![None; self.token_roots.len()],
             moved_fields: vec![None; self.moved_fields.len()],
+            guards: std::collections::BTreeSet::new(),
+            variant_moved: std::collections::BTreeMap::new(),
         }
     }
 
@@ -183,12 +217,15 @@ impl OwnState {
     /// whole-slot may facts reset — and (R4-F08) the per-field
     /// consumption state dies with the old owner: a re-initialized root
     /// (fresh Call wrapper, re-Aggregated record, loop-carried redefinition)
-    /// is consumable again.
+    /// is consumable again. PLAN-822: a re-defined variant root loses its
+    /// guard facts and payload-moved arms with the old value.
     fn define_slot(&mut self, s: usize) {
         self.init.set(s);
         self.moved.clear(s);
         self.dropped.clear(s);
         self.moved_fields[s] = None;
+        self.guards.retain(|(root, _)| *root != s);
+        self.variant_moved.remove(&s);
     }
 }
 
@@ -363,6 +400,8 @@ pub fn verify_owned_function(
             tokens_live: Bitsets::new(n),
             token_roots: vec![None; n],
             moved_fields: vec![None; n],
+            guards: std::collections::BTreeSet::new(),
+            variant_moved: std::collections::BTreeMap::new(),
         };
         for (si, s) in f.slots.iter().enumerate() {
             if s.kind == SlotKind::Param {
@@ -446,6 +485,7 @@ pub fn verify_owned_function(
             st.init.words = vec![u64::MAX; sw];
             st
         };
+        let mut first_pred = true;
         for p in preds[b as usize].iter().filter(|p| reachable[**p as usize]) {
             let po = &out_state[*p as usize];
             if b != f.entry {
@@ -454,6 +494,22 @@ pub fn verify_owned_function(
             new_in.moved.union_with(&po.moved);
             new_in.dropped.union_with(&po.dropped);
             new_in.tokens_live.union_with(&po.tokens_live);
+            // PLAN-822: guard facts are MUST facts — seed from the first
+            // reachable predecessor, intersect the rest.
+            if first_pred {
+                new_in.guards = po.guards.clone();
+                first_pred = false;
+            } else {
+                let pg = po.guards.clone();
+                new_in.guards.retain(|g| pg.contains(g));
+            }
+            for (root, arms) in po.variant_moved.iter() {
+                new_in
+                    .variant_moved
+                    .entry(*root)
+                    .or_default()
+                    .extend(arms.iter().copied());
+            }
             for t in 0..n {
                 if new_in.is_token_live(t) && po.tokens_live.get(t) {
                     match (&mut new_in.token_roots[t], po.token_roots[t].as_ref()) {
@@ -637,6 +693,10 @@ pub fn verify_owned_function(
                         st.tokens_live.set(*dst as usize);
                     }
                     st.define_slot(*dst as usize);
+                    // PLAN-822 (§5.5): a possibly-writing call invalidates
+                    // ALL variant guard facts — conservative (any callee
+                    // may re-pack/switch roots reachable through params).
+                    st.guards.clear();
                 }
                 MirInstr::Trace { .. } => {}
                 MirInstr::FieldGet { dst, base, path } => {
@@ -1103,6 +1163,267 @@ pub fn verify_owned_function(
                 MirInstr::CharFromCodepoint { dst, code } => {
                     check_read!(code, "codepoint operand");
                     st.define_slot(*dst as usize);
+                }
+                // -- PLAN-822 collections surface (lattice transfers) -----
+                MirInstr::ListNew { dst, .. } => {
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "list-new destination");
+                    }
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::ListLen { dst, src } | MirInstr::ListCap { dst, src } => {
+                    check_read!(src, "list source");
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::ListGet { dst, base, index } => {
+                    check_read!(base, "list base");
+                    check_read!(index, "list index");
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::ListPush { root, value } => {
+                    // Structural change: no live borrow may straddle it.
+                    check_read!(root, "list-push root");
+                    check_read!(value, "list-push value");
+                    if root_has_live_token(&st, *root as usize) {
+                        fail = Some(err(
+                            "mir.list.place-borrowed",
+                            format!(
+                                "list-push of `{}` conflicts an active borrow on the root",
+                                slot_name(f, *root as usize)
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    if is_owned[*value as usize] {
+                        // Owned element: the push TRANSFERS the source.
+                        if root_has_live_token(&st, *value as usize) {
+                            fail = Some(err(
+                                "mir.mut-conflict",
+                                format!(
+                                    "list-push of `{}` conflicts an active borrow on the value",
+                                    slot_name(f, *value as usize)
+                                ),
+                                flat,
+                            ));
+                            break 'blk;
+                        }
+                        st.moved.set(*value as usize);
+                    }
+                }
+                MirInstr::ListInsert { root, index, value } => {
+                    check_read!(root, "list-insert root");
+                    check_read!(index, "list-insert index");
+                    check_read!(value, "list-insert value");
+                    if root_has_live_token(&st, *root as usize) {
+                        fail = Some(err(
+                            "mir.list.place-borrowed",
+                            format!(
+                                "list-insert into `{}` conflicts an active borrow on the root",
+                                slot_name(f, *root as usize)
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    if is_owned[*value as usize] {
+                        if root_has_live_token(&st, *value as usize) {
+                            fail = Some(err(
+                                "mir.mut-conflict",
+                                format!(
+                                    "list-insert of `{}` conflicts an active borrow on the value",
+                                    slot_name(f, *value as usize)
+                                ),
+                                flat,
+                            ));
+                            break 'blk;
+                        }
+                        st.moved.set(*value as usize);
+                    }
+                }
+                MirInstr::ListSet { root, index, value } => {
+                    check_read!(root, "list-set root");
+                    check_read!(index, "list-set index");
+                    check_read!(value, "list-set value");
+                    if root_has_live_token(&st, *root as usize) {
+                        fail = Some(err(
+                            "mir.list.place-borrowed",
+                            format!(
+                                "list-set on `{}` conflicts an active borrow on the root",
+                                slot_name(f, *root as usize)
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    if is_owned[*value as usize] {
+                        if root_has_live_token(&st, *value as usize) {
+                            fail = Some(err(
+                                "mir.mut-conflict",
+                                format!(
+                                    "list-set of `{}` conflicts an active borrow on the value",
+                                    slot_name(f, *value as usize)
+                                ),
+                                flat,
+                            ));
+                            break 'blk;
+                        }
+                        st.moved.set(*value as usize);
+                    }
+                }
+                MirInstr::ListRemove { dst, root, index } => {
+                    check_read!(root, "list-remove root");
+                    check_read!(index, "list-remove index");
+                    if root_has_live_token(&st, *root as usize) {
+                        fail = Some(err(
+                            "mir.list.place-borrowed",
+                            format!(
+                                "list-remove from `{}` conflicts an active borrow on the root",
+                                slot_name(f, *root as usize)
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "list-remove destination");
+                    }
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::ListFieldGet {
+                    dst, base, index, ..
+                } => {
+                    check_read!(base, "list base");
+                    check_read!(index, "list index");
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::ListFieldSet {
+                    root, index, value, ..
+                } => {
+                    check_read!(root, "list-field-set root");
+                    check_read!(index, "list-field-set index");
+                    check_read!(value, "list-field-set value");
+                    if root_has_live_token(&st, *root as usize) {
+                        fail = Some(err(
+                            "mir.list.place-borrowed",
+                            format!(
+                                "list-field-set on `{}` conflicts an active borrow on the root",
+                                slot_name(f, *root as usize)
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    if is_owned[*value as usize] {
+                        if root_has_live_token(&st, *value as usize) {
+                            fail = Some(err(
+                                "mir.mut-conflict",
+                                format!(
+                                    "list-field-set of `{}` conflicts an active borrow on the value",
+                                    slot_name(f, *value as usize)
+                                ),
+                                flat,
+                            ));
+                            break 'blk;
+                        }
+                        st.moved.set(*value as usize);
+                    }
+                }
+                MirInstr::VariantPack { dst, payload, .. } => {
+                    if let Some(p) = payload {
+                        check_read!(p, "variant-pack payload");
+                        if is_owned[*p as usize] {
+                            if root_has_live_token(&st, *p as usize) {
+                                fail = Some(err(
+                                    "mir.mut-conflict",
+                                    format!(
+                                        "variant-pack of `{}` conflicts an active borrow",
+                                        slot_name(f, *p as usize)
+                                    ),
+                                    flat,
+                                ));
+                                break 'blk;
+                            }
+                            st.moved.set(*p as usize);
+                        }
+                    }
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "variant-pack destination");
+                    }
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::VariantDisc { dst, src } => {
+                    check_read!(src, "variant source");
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::VariantGuard { dst, src, disc } => {
+                    check_read!(src, "variant source");
+                    st.define_slot(*dst as usize);
+                    st.guards.insert((*src as usize, *disc));
+                }
+                MirInstr::VariantProject { dst, root, disc } => {
+                    check_read!(root, "variant root");
+                    let rs = *root as usize;
+                    if !st.guards.contains(&(rs, *disc)) {
+                        fail = Some(err(
+                            "mir.variant.guard-missing",
+                            format!(
+                                "project of `{}` disc {} without a live guard fact",
+                                slot_name(f, rs),
+                                disc
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    if st.variant_moved.get(&rs).is_some_and(|m| m.contains(disc)) {
+                        fail = Some(err(
+                            "mir.variant.payload-moved",
+                            format!(
+                                "project of already-moved payload (disc {}) on `{}`",
+                                disc,
+                                slot_name(f, rs)
+                            ),
+                            flat,
+                        ));
+                        break 'blk;
+                    }
+                    // An OWNED payload transfers out (arm -> payload-moved);
+                    // Copy payloads stay readable.
+                    let payload_owned = variant_payload_is_owned(m, f, rs, *disc);
+                    if payload_owned {
+                        st.variant_moved.entry(rs).or_default().insert(*disc);
+                    }
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "variant-project destination");
+                    }
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::VariantSwitch { root, payload, .. } => {
+                    if let Some(p) = payload {
+                        check_read!(p, "variant-switch payload");
+                        if is_owned[*p as usize] {
+                            if root_has_live_token(&st, *p as usize) {
+                                fail = Some(err(
+                                    "mir.mut-conflict",
+                                    format!(
+                                        "variant-switch of `{}` conflicts an active borrow",
+                                        slot_name(f, *p as usize)
+                                    ),
+                                    flat,
+                                ));
+                                break 'blk;
+                            }
+                            st.moved.set(*p as usize);
+                        }
+                    }
+                    if is_rootable[*root as usize] {
+                        check_def_conflict!(root, "variant-switch root");
+                    }
+                    // The re-assignment kills the old value's facts: the
+                    // previous live arm's cleanup is runtime work; all guard
+                    // facts on the root die here (§5.5).
+                    st.define_slot(*root as usize);
                 }
             }
         }

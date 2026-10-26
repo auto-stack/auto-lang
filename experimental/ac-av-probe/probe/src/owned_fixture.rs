@@ -93,6 +93,30 @@ pub fn canonical_owned(
         }
         // A view/token never crosses the entry boundary (§6).
         Value::StrView(_) | Value::MutRef(_) => return None,
+        // PLAN-822: containers canonicalize their content element/arm-wise.
+        Value::List(h) => {
+            let buf = h.rc.borrow();
+            let mut elems = Vec::with_capacity(buf.elems.len());
+            for e in buf.elems.iter() {
+                elems.push(canonical_owned(e, names)?);
+            }
+            serde_json::json!({ "kind": "list", "elems": elems })
+        }
+        Value::Variant(var) => {
+            let name = names
+                .get(&var.ty)
+                .cloned()
+                .unwrap_or_else(|| "?".to_string());
+            serde_json::json!({
+                "kind": "variant",
+                "name": name,
+                "disc": var.disc,
+                "payload": match var.payload.as_ref() {
+                    Some(p) => canonical_owned(p, names)?,
+                    None => serde_json::Value::Null,
+                },
+            })
+        }
     })
 }
 
