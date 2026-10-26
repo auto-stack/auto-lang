@@ -61,6 +61,14 @@ pub const EXPECTED_AV_OWNED_CORE_VERSION: &str = "av.owned/1";
 pub const AV_COLLECTIONS_RECIPE: &str = "ac-av/collections-run-v1";
 pub const EXPECTED_AV_COLLECTIONS_CORE_VERSION: &str = "av.collections/1";
 
+/// PLAN-824: the dynamic-profile recipe (`av.dynamic/1`, profile id 5) —
+/// programmatic typed fixture -> dynamic Typed MIR -> AVAD v4 -> AV with
+/// the arena-ledger + Dyn/portable face. Same append-only registration
+/// rules; the dynamic face is judged parent-side against THIS crate's
+/// frozen expectations, never the worker's word.
+pub const AV_DYNAMIC_RECIPE: &str = "ac-av/dynamic-run-v1";
+pub const EXPECTED_AV_DYNAMIC_CORE_VERSION: &str = "av.dynamic/1";
+
 /// Which registered av recipe a check runs under.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RecipeFamily {
@@ -68,6 +76,7 @@ pub enum RecipeFamily {
     Data,
     Owned,
     Collections,
+    Dynamic,
 }
 
 impl RecipeFamily {
@@ -77,6 +86,7 @@ impl RecipeFamily {
             RecipeFamily::Data => AV_DATA_RECIPE,
             RecipeFamily::Owned => AV_OWNED_RECIPE,
             RecipeFamily::Collections => AV_COLLECTIONS_RECIPE,
+            RecipeFamily::Dynamic => AV_DYNAMIC_RECIPE,
         }
     }
     pub fn expected_core_version(&self) -> &'static str {
@@ -85,6 +95,7 @@ impl RecipeFamily {
             RecipeFamily::Data => EXPECTED_AV_DATA_CORE_VERSION,
             RecipeFamily::Owned => EXPECTED_AV_OWNED_CORE_VERSION,
             RecipeFamily::Collections => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
+            RecipeFamily::Dynamic => EXPECTED_AV_DYNAMIC_CORE_VERSION,
         }
     }
 }
@@ -128,6 +139,10 @@ fn probe_toolchain_axes(exe_sha: &str, family: RecipeFamily) -> Vec<(String, Str
     // the frozen profile id (3) explicitly (core/data receipts unchanged).
     if family == RecipeFamily::Owned {
         v.push(("av-profile".into(), "3".into()));
+    }
+    // PLAN-824: the dynamic tool-identity axis carries profile id 5.
+    if family == RecipeFamily::Dynamic {
+        v.push(("av-profile".into(), "5".into()));
     }
     v
 }
@@ -182,11 +197,9 @@ mod worker_identity_tests {
             }
         }
         std::fs::remove_file(&path).unwrap();
-        assert!(
-            worker_file_sha256(&path)
-                .unwrap_err()
-                .starts_with("read worker exe:")
-        );
+        assert!(worker_file_sha256(&path)
+            .unwrap_err()
+            .starts_with("read worker exe:"));
     }
 }
 
@@ -498,6 +511,8 @@ struct StepOut {
     /// collections-recipe increment only.
     #[serde(default)]
     collections: Option<serde_json::Value>,
+    #[serde(default)]
+    dynamic: Option<serde_json::Value>,
 }
 
 /// Spawn the av worker and run ONE `case-serve` request under the bounded
@@ -853,6 +868,32 @@ const COLLECTIONS_CASES: &[(&str, &str, &[usize], &[u64])] = &[
     ),
 ];
 
+/// PLAN-824: the frozen dynamic-fixture faces the PARENT judges against.
+/// Same tuple shape as the collections table; the judge ADDITIONALLY
+/// asserts the Dyn face's portable axes when the fixture returns a Dyn
+/// (`dyn-out`), hand-audited below.
+const DYNAMIC_CASES: &[(&str, &str, &[usize], &[u64])] = &[
+    // first-case: pack/is/take over Note/List<Note>/Opt — all hits score
+    // 7+1+1=9. Hand-audited: the "dyn" Str (3 bytes) materializes and
+    // frees at frame exit; the list buffer (0-elem at LIST_NEW) frees
+    // FIRST (LIFO) reporting its final 1 element; live=0 after release.
+    (
+        "first-case",
+        r#"{"bits":"9","kind":"i32"}"#,
+        &[3, 0],
+        &[1, 0],
+    ),
+    // dyn-out: returns the packed Note{ "portable"(8B), 11 } as a Dyn; the
+    // Str allocation frees at frame exit; live=0 after host release; the
+    // portable round-trip axis is asserted true by the judge.
+    (
+        "dyn-out",
+        r#"{"kind":"dyn","ty":"record dynamic824/Note[2]","value":{"fields":[{"kind":"str","utf8":"portable"},{"kind":"i32","bits":"b"}],"kind":"record","name":"Note"}}"#,
+        &[8],
+        &[0],
+    ),
+];
+
 pub fn run_collections_check(
     case: &ResolvedCase,
     check: &CheckSpec,
@@ -869,6 +910,25 @@ pub fn run_collections_check(
         artifact_dir,
         run_dir,
         RecipeFamily::Collections,
+    )
+}
+
+pub fn run_dynamic_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::Dynamic,
     )
 }
 
@@ -1001,6 +1061,24 @@ fn run_check_impl(
     // PLAN-822: a `collections:<id>` entry (collections recipe only)
     // selects a frozen collections fixture; the PARENT validates the id
     // against its OWN frozen table before any request.
+    // PLAN-824: a `dynamic:<id>` entry (dynamic recipe only) selects a
+    // frozen dynamic fixture; the PARENT validates the id against its OWN
+    // frozen table before any request.
+    let dynamic_fixture = if family == RecipeFamily::Dynamic {
+        match av.entry.strip_prefix("dynamic:") {
+            None => None,
+            Some(id) => match DYNAMIC_CASES.iter().find(|(fid, ..)| *fid == id) {
+                Some(_) => Some(id.to_string()),
+                None => {
+                    return Err(format!(
+                        "av dynamic fixture `{id}` is not registered (parent table)"
+                    ));
+                }
+            },
+        }
+    } else {
+        None
+    };
     let collections_fixture = if family == RecipeFamily::Collections {
         match av.entry.strip_prefix("collections:") {
             None => None,
@@ -1030,6 +1108,9 @@ fn run_check_impl(
     }
     if let Some(id) = &owned_fixture {
         request["owned_fixture"] = serde_json::json!(id);
+    }
+    if let Some(id) = &dynamic_fixture {
+        request["dynamic_fixture"] = serde_json::json!(id);
     }
     if let Some(id) = &collections_fixture {
         request["collections_fixture"] = serde_json::json!(id);
@@ -1194,6 +1275,7 @@ fn run_check_impl(
                 let expect_hash = if typed_fixture.is_some()
                     || owned_fixture.is_some()
                     || collections_fixture.is_some()
+                    || dynamic_fixture.is_some()
                 {
                     fnv1a64_hex(av.entry.as_bytes())
                 } else {
@@ -1301,6 +1383,8 @@ fn run_check_impl(
         // PLAN-822: the collections-fixture judge face — same axes as the
         // owned judge (result + live=0 + alloc/free order), its own table.
         judge_collections_fixture(id, &step, &mut mismatches);
+    } else if let Some(id) = &dynamic_fixture {
+        judge_dynamic_fixture(id, &step, &mut mismatches);
     } else {
         judge_expectation(family, &step, oracle, &mut mismatches);
     }
@@ -1600,6 +1684,134 @@ fn judge_collections_fixture(id: &str, step: &StepOut, mismatches: &mut Vec<Mism
             actual: format!("{:?}", got_frees),
             first_diff: None,
         });
+    }
+}
+
+/// PLAN-824: judge the dynamic fixture face (canonical result, live=0,
+/// alloc bytes in creation order, free ids in release order) against the
+/// PARENT's frozen dynamic table — plus the DYN axes: a Dyn-valued fixture
+/// must report a successful portable round-trip. Counter-control seam
+/// (V-10): AV824_DYNAMIC_EXPECT_SABOTAGE.
+fn judge_dynamic_fixture(id: &str, step: &StepOut, mismatches: &mut Vec<Mismatch>) {
+    let (_, want_result, want_allocs, want_frees) = DYNAMIC_CASES
+        .iter()
+        .find(|(fid, ..)| *fid == id)
+        .expect("validated above");
+    let mut want_result: serde_json::Value =
+        serde_json::from_str(want_result).expect("frozen table JSON parses");
+    let mut want_frees: Vec<u64> = want_frees.to_vec();
+    match std::env::var("AV824_DYNAMIC_EXPECT_SABOTAGE")
+        .ok()
+        .as_deref()
+    {
+        Some("result") => {
+            want_result["bits"] =
+                serde_json::json!(format!("{}!", want_result["bits"].as_str().unwrap_or("")));
+        }
+        Some("ledger") => {
+            want_frees.rotate_left(1);
+        }
+        _ => {}
+    }
+    if step.outcome != "success" {
+        mismatches.push(Mismatch {
+            observation: "completion".into(),
+            kind: "dynamic-outcome".into(),
+            expected: "success".into(),
+            actual: step_summary(step),
+            first_diff: None,
+        });
+        return;
+    }
+    let dynamic = match &step.collections {
+        Some(o) => o,
+        None => {
+            mismatches.push(Mismatch {
+                observation: "dynamic".into(),
+                kind: "dynamic-report".into(),
+                expected: "the dynamic face on the step".into(),
+                actual: "no dynamic report".into(),
+                first_diff: None,
+            });
+            return;
+        }
+    };
+    let got_result = dynamic
+        .get("result")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    if got_result != want_result {
+        mismatches.push(Mismatch {
+            observation: "dynamic".into(),
+            kind: "dynamic-result".into(),
+            expected: want_result.to_string(),
+            actual: got_result.to_string(),
+            first_diff: None,
+        });
+    }
+    let live = dynamic
+        .get("live_after_release")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(u64::MAX);
+    if live != 0 {
+        mismatches.push(Mismatch {
+            observation: "dynamic".into(),
+            kind: "dynamic-live".into(),
+            expected: "0 (host release empties the ledger)".into(),
+            actual: format!("{live}"),
+            first_diff: None,
+        });
+    }
+    let got_allocs: Vec<usize> = dynamic
+        .get("allocs")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|e| e.get("bytes").and_then(|b| b.as_u64()).map(|b| b as usize))
+                .collect()
+        })
+        .unwrap_or_default();
+    if got_allocs != want_allocs.to_vec() {
+        mismatches.push(Mismatch {
+            observation: "dynamic".into(),
+            kind: "dynamic-allocs".into(),
+            expected: format!("{:?}", want_allocs),
+            actual: format!("{:?}", got_allocs),
+            first_diff: None,
+        });
+    }
+    let got_frees: Vec<u64> = dynamic
+        .get("frees")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|e| e.get("id").and_then(|b| b.as_u64()))
+                .collect()
+        })
+        .unwrap_or_default();
+    if got_frees != want_frees {
+        mismatches.push(Mismatch {
+            observation: "dynamic".into(),
+            kind: "dynamic-frees".into(),
+            expected: format!("{:?}", want_frees),
+            actual: format!("{:?}", got_frees),
+            first_diff: None,
+        });
+    }
+    // The DYN axes: a Dyn-valued fixture must carry a successful portable
+    // round-trip on its step face (V-14's byte-equivalence control at the
+    // recipe layer).
+    if let Some(dyn_face) = step.dynamic.as_ref().filter(|d| !d.is_null()) {
+        let roundtrip = dyn_face.get("portable_roundtrip").and_then(|v| v.as_bool());
+        if roundtrip != Some(true) {
+            mismatches.push(Mismatch {
+                observation: "dynamic".into(),
+                kind: "dynamic-portable".into(),
+                expected: "true (frozen payload restores bit-exactly)".into(),
+                actual: format!("{roundtrip:?}"),
+                first_diff: None,
+            });
+        }
     }
 }
 
@@ -2030,11 +2242,9 @@ mod judge_tests {
         // now family-isolated to data).
         assert!(mismatches(RecipeFamily::Data, &step(None, typed("bool", "1"))).is_empty());
         assert!(mismatches(RecipeFamily::Data, &step(Some(42), None)).is_empty());
-        assert!(
-            mismatches(RecipeFamily::Data, &step(None, None))
-                .iter()
-                .any(|m| m.kind == "missing")
-        );
+        assert!(mismatches(RecipeFamily::Data, &step(None, None))
+            .iter()
+            .any(|m| m.kind == "missing"));
     }
 
     #[test]

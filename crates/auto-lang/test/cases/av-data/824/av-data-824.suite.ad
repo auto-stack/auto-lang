@@ -1,0 +1,9 @@
+# PLAN-824 av-data-824 suite — the dynamic-profile corpus through the
+# formal ac-av/dynamic-run-v1 recipe, judged parent-side (the frozen
+# expectation table lives in the runner; identity receipts in README.md).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "av-data-824", include: [
+  "av-dynamic-first-case.case.ad",
+] }
+```

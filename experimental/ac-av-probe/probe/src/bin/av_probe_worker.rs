@@ -32,6 +32,7 @@ fn main() {
         "request" => request(&args[1..]),
         "owned-request" => owned_request(&args[1..]),
         "collections-request" => collections_request(&args[1..]),
+        "dynamic-request" => dynamic_request(&args[1..]),
         "owned-restore-run" => owned_restore_run(&args[1..]),
         "gc-loop" => gc_loop(&args[1..]),
         "case-serve" => case_serve(),
@@ -55,6 +56,7 @@ fn usage() -> ! {
     eprintln!("       av_probe_worker request --store DIR --src-file FILE --entry FN [--project P] [--caps C1,C2]");
     eprintln!("       av_probe_worker owned-request --store DIR --src-file FILE --entry FN   (PLAN-821 T-02: owned whole path + arena ledger + sampled peak, one JSON line)");
     eprintln!("       av_probe_worker collections-request --store DIR --fixture ID   (PLAN-822 T-09: collections whole path + ledger face + sampled peaks, one JSON line)");
+    eprintln!("       av_probe_worker dynamic-request --store DIR --fixture ID   (PLAN-824 T-02: dynamic whole path + portable round + sampled peaks, one JSON line)");
     eprintln!("       av_probe_worker owned-restore-run --store DIR --owner NAME --entry FN --snapshot HEX --types-fp FP   (PLAN-821 R1-F10: owned new-process restore, re-verify + execute)");
     eprintln!("       av_probe_worker gc-loop --store DIR --stop-file FILE [--interval-ms N]");
     eprintln!("       av_probe_worker bench-turnaround --samples N --gate-ms MS --out FILE");
@@ -394,6 +396,79 @@ fn owned_request(args: &[String]) -> ! {
     })
 }
 
+/// PLAN-824 T-02: one dynamic whole-path request in THIS fresh process -
+/// the CPU/memory evidence entry over the frozen fixture (the dynamic
+/// profile has no source surface; the input is the worker's programmatic
+/// typed fixture admitted by the real gates). Mirrors collections-request
+/// plus the portable round axes; the JUDGE is always the caller.
+fn dynamic_request(args: &[String]) -> ! {
+    let store_dir = flag(args, "--store").unwrap_or_else(|| usage());
+    let fixture = flag(args, "--fixture").unwrap_or_else(|| usage());
+    let started = std::time::Instant::now();
+    let sampler = auto_av_probe::mempeek::PeakSampler::start(5);
+    let r = auto_av_probe::dynamic_fixture::request_dynamic(
+        Some(&PathBuf::from(&store_dir)),
+        "dynamic-evidence",
+        &fixture,
+    );
+    let wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+    let peak = sampler.stop();
+    let payload = match r {
+        Ok(mut r) => {
+            let av = r.av.take().expect("request_dynamic sets av");
+            let ok = matches!(av, auto_av_core::contract::ExecOutcome::Success { .. });
+            let dynamic = match av {
+                auto_av_core::contract::ExecOutcome::Success { value, .. } => {
+                    let face = auto_av_probe::owned_fixture::canonical_owned(&value, &r.type_names);
+                    match face {
+                        Some(face) => {
+                            drop(value);
+                            let arena = r.arena.as_ref().expect("dynamic arena");
+                            serde_json::json!({
+                                "result": face,
+                                "live_after_release": arena.live(),
+                                "allocs": arena.alloc_events().iter()
+                                    .map(|a| serde_json::json!({ "id": a.id, "bytes": a.bytes }))
+                                    .collect::<Vec<_>>(),
+                                "frees": arena.free_events().iter()
+                                    .map(|e| serde_json::json!({ "id": e.id, "bytes": e.bytes }))
+                                    .collect::<Vec<_>>(),
+                                "portable_bytes": r.portable_bytes.len(),
+                                "portable_roundtrip": r.portable_roundtrip_ok,
+                            })
+                        }
+                        None => {
+                            serde_json::json!({ "error": "non-canonicalizable dynamic result" })
+                        }
+                    }
+                }
+                other => serde_json::json!({ "av": format!("{:?}", other) }),
+            };
+            serde_json::json!({
+                "ok": ok,
+                "wall_ms": wall_ms,
+                "private_bytes_peak": peak,
+                "dynamic": dynamic,
+                "snapshot": format!("{:016x}", r.snapshot),
+            })
+        }
+        Err(e) => serde_json::json!({
+            "ok": false,
+            "wall_ms": wall_ms,
+            "private_bytes_peak": peak,
+            "error": e,
+        }),
+    };
+    let mut line = serde_json::to_string(&payload).unwrap_or_default();
+    line.push('\n');
+    std::io::stdout().write_all(line.as_bytes()).ok();
+    exit(if payload["ok"].as_bool() == Some(true) {
+        0
+    } else {
+        4
+    })
+}
+
 /// PLAN-822 T-09: one collections whole-path request in THIS fresh
 /// process — the CPU/memory evidence entry over the frozen fixture (the
 /// collections profile has no source surface; the input is the worker's
@@ -507,6 +582,7 @@ fn core_version_for(recipe: &str) -> &'static str {
         "ac-av/data-run-v1" => auto_av_core::contract::AV_DATA_PROFILE,
         "ac-av/owned-run-v1" => auto_av_core::contract::AV_OWNED_PROFILE,
         "ac-av/collections-run-v1" => auto_av_core::contract::AV_COLLECTIONS_PROFILE,
+        "ac-av/dynamic-run-v1" => auto_av_core::contract::AV_DYNAMIC_PROFILE,
         _ => auto_av_core::contract::AV_PROFILE,
     }
 }
@@ -564,6 +640,8 @@ fn case_serve() -> ! {
     // PLAN-822 T-02: the collections-profile recipe (avworker/1 envelope
     // domain; the recipe id is the discriminator).
     let collections_recipe = recipe == "ac-av/collections-run-v1";
+    // PLAN-824: the dynamic-profile recipe (avworker/1 envelope domain).
+    let dynamic_recipe = recipe == "ac-av/dynamic-run-v1";
     // PLAN-820 F820-R6-01: the typed-fixture entry (`av.entry` of the
     // form `typed:<id>`, validated by the parent against its OWN frozen
     // table before the request) selects a frozen av.data-fixture/1 input
@@ -575,7 +653,15 @@ fn case_serve() -> ! {
     // PLAN-822: the collections-fixture entry (`collections:<id>`,
     // parent-validated first) selects a frozen av-collections fixture.
     let collections_fixture_id = req["collections_fixture"].as_str().map(|s| s.to_string());
-    if recipe != "ac-av/core-run-v1" && !data_recipe && !owned_recipe && !collections_recipe {
+    // PLAN-824: the dynamic-fixture entry (`dynamic:<id>`, parent-validated
+    // first) selects a frozen av-dynamic fixture.
+    let dynamic_fixture_id = req["dynamic_fixture"].as_str().map(|s| s.to_string());
+    if recipe != "ac-av/core-run-v1"
+        && !data_recipe
+        && !owned_recipe
+        && !collections_recipe
+        && !dynamic_recipe
+    {
         eprintln!("unknown recipe {recipe}");
         exit(2);
     }
@@ -702,6 +788,46 @@ fn case_serve() -> ! {
                 // profile (contract non-goal), so the fixture entry is the
                 // only run shape. The PARENT judges against its own frozen
                 // expectations — never the worker's word.
+                // PLAN-824 T-02: the dynamic-profile pipeline. A frozen
+                // `dynamic:<id>` fixture carries the judged face (result +
+                // ledger + the Dyn/portable axes); NO source surface — the
+                // fixture entry is the only run shape. The PARENT judges.
+                if dynamic_recipe {
+                    let Some(fid) = &dynamic_fixture_id else {
+                        eprintln!("dynamic recipe requires a dynamic:<id> entry");
+                        exit(2);
+                    };
+                    let f = match auto_av_probe::dynamic_fixture::dynamic_fixture(fid) {
+                        Some(f) => f,
+                        None => {
+                            eprintln!("unknown dynamic fixture {fid}");
+                            exit(2);
+                        }
+                    };
+                    let started = std::time::Instant::now();
+                    match auto_av_probe::dynamic_fixture::run_dynamic_fixture(
+                        f.id,
+                        Some(&store_dir),
+                        "autodown-dynamic-case",
+                    ) {
+                        Ok(dynamic) => step_outs.push(serde_json::json!({
+                            "op": "run",
+                            "outcome": "success",
+                            "value": null,
+                            "collections": dynamic,
+                            "dynamic": dynamic.get("dyn").cloned().unwrap_or(serde_json::Value::Null),
+                            "trap": null,
+                            "diag": null,
+                            "source_hash": format!("{:016x}", auto_av_core::contract::fnv1a64(entry.as_bytes())),
+                            "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+                        })),
+                        Err(e) => {
+                            eprintln!("dynamic fixture {fid}: {e}");
+                            exit(2);
+                        }
+                    }
+                    continue;
+                }
                 if collections_recipe {
                     let Some(fid) = &collections_fixture_id else {
                         eprintln!("collections recipe requires a collections:<id> entry");

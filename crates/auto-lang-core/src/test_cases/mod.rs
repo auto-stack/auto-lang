@@ -38,15 +38,15 @@ use auto_test_case::sha256::{hex, sha256};
 use auto_test_case::suite::apply_defaults;
 
 pub mod a2r;
-/// PLAN-852 T-04: the explicit independent a2r certification entry. Never
-/// invoked by the suite runner or any daily scope.
-pub mod ace_certify;
 pub mod abi;
 pub mod ac;
 pub mod ac_av;
 pub mod ac_cte;
 pub mod ac_mn;
 mod ac_protocol;
+/// PLAN-852 T-04: the explicit independent a2r certification entry. Never
+/// invoked by the suite runner or any daily scope.
+pub mod ace_certify;
 pub mod avm;
 pub mod materialize;
 pub mod sema;
@@ -803,6 +803,21 @@ fn dispatch_check(
             if check.options.probe_recipe.as_deref() == Some(ac_av::AV_COLLECTIONS_RECIPE) =>
         {
             ac_av::run_collections_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
+        // PLAN-824: the dynamic-profile av recipe (append-only
+        // registration; prior recipe contracts untouched; avworker/1
+        // envelope domain — the recipe id itself discriminates).
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref() == Some(ac_av::AV_DYNAMIC_RECIPE) =>
+        {
+            ac_av::run_dynamic_check(
                 resolved,
                 check,
                 oracle,
