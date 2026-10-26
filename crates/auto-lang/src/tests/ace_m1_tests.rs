@@ -50,11 +50,7 @@ fn ace_m1_base_suite_green() {
         .map(|r| {
             format!(
                 "{}:{} = {:?} | {:?} | mismatches: {:?}",
-                r.case_id,
-                r.check_id,
-                r.status,
-                r.detail,
-                r.mismatches
+                r.case_id, r.check_id, r.status, r.detail, r.mismatches
             )
         })
         .collect();
@@ -63,7 +59,11 @@ fn ace_m1_base_suite_green() {
         "ace-m1 base suite has non-PASS checks:\n{}",
         failing.join("\n")
     );
-    assert_eq!(report.results.len(), 97, "base suite check count (incl. T-05 lifecycle)");
+    assert_eq!(
+        report.results.len(),
+        97,
+        "base suite check count (incl. T-05 lifecycle)"
+    );
     assert!(report.coverage_gaps.is_empty(), "no coverage gaps");
 }
 
@@ -85,8 +85,12 @@ fn ace_m1_base_negative_oracle_fails() {
     );
     assert_ne!(mutated, text, "mutation must hit the B01 oracle");
     std::fs::write(&scalar, mutated).unwrap();
-    let report = run_suite(&corpus.join("ace-m1-base.suite.ad"), &root.join("out"), &Limits::defaults())
-        .expect("mutated suite still runs");
+    let report = run_suite(
+        &corpus.join("ace-m1-base.suite.ad"),
+        &root.join("out"),
+        &Limits::defaults(),
+    )
+    .expect("mutated suite still runs");
     let b01_ac = report
         .results
         .iter()
@@ -94,10 +98,7 @@ fn ace_m1_base_negative_oracle_fails() {
         .expect("B01 ac-native check present");
     assert_eq!(b01_ac.status, Status::Fail, "wrong exit must be RED");
     assert!(
-        b01_ac
-            .mismatches
-            .iter()
-            .any(|m| m.observation == "exit"),
+        b01_ac.mismatches.iter().any(|m| m.observation == "exit"),
         "the failure must name the exit axis: {:?}",
         b01_ac.mismatches
     );
@@ -105,10 +106,16 @@ fn ace_m1_base_negative_oracle_fails() {
     let other_reds: Vec<&str> = report
         .results
         .iter()
-        .filter(|r| r.status != Status::Pass && !(r.case_id == "ace.m1.b01" && r.check_id == "ac-native"))
+        .filter(|r| {
+            r.status != Status::Pass && !(r.case_id == "ace.m1.b01" && r.check_id == "ac-native")
+        })
         .map(|r| r.case_id.as_str())
         .collect();
-    assert!(other_reds.is_empty(), "unexpected extra reds: {:?}", other_reds);
+    assert!(
+        other_reds.is_empty(),
+        "unexpected extra reds: {:?}",
+        other_reds
+    );
 }
 
 /// Golden-drift control (PLAN-852 G04): when the emitted bytes stop matching
@@ -130,8 +137,12 @@ fn ace_m1_golden_drift_is_red() {
         .collect();
     assert_ne!(mutated, bytes, "mutation must change the golden");
     std::fs::write(&golden, mutated).unwrap();
-    let report = run_suite(&corpus.join("ace-m1-base.suite.ad"), &root.join("out"), &Limits::defaults())
-        .expect("mutated suite still runs");
+    let report = run_suite(
+        &corpus.join("ace-m1-base.suite.ad"),
+        &root.join("out"),
+        &Limits::defaults(),
+    )
+    .expect("mutated suite still runs");
     let snap = report
         .results
         .iter()
@@ -139,7 +150,9 @@ fn ace_m1_golden_drift_is_red() {
         .expect("B01 a2r-snapshot check present");
     assert_eq!(snap.status, Status::Fail, "golden drift must be RED");
     assert!(
-        snap.mismatches.iter().any(|m| m.observation.contains("m1_b01.rs")),
+        snap.mismatches
+            .iter()
+            .any(|m| m.observation.contains("m1_b01.rs")),
         "the failure must name the drifted artifact: {:?}",
         snap.mismatches
     );
@@ -149,8 +162,15 @@ fn ace_m1_golden_drift_is_red() {
 /// run into a temp certs dir certifies every ok-emit row (actual==golden,
 /// wrapper AND hand-written reference each print the fixed oracle through a
 /// REAL rustc compile+run under containment); a tampered golden must FAIL
-/// certification (drift is never re-certified silently — G04/G07).
+/// certification (drift is never re-certified silently — G04/G07), and a
+/// structurally INVALID receipt is REJECTED — never reused, never silently
+/// overwritten (F-852-R1-01, the reviewer's tamper variants replayed).
+///
+/// EXPLICIT-ONLY (F-852-R1-02): certification compiles and runs real Rust;
+/// normal daily test selection must not trigger it. Invoke with
+/// `cargo test ... ace_m1_certify -- --ignored`.
 #[test]
+#[ignore = "PLAN-852 F-852-R1-02: compiles+runs real Rust — certification is an explicit operation"]
 fn ace_m1_certify_fresh_and_tamper() {
     let suite_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/cases/ace-m1");
     let root = temp_root("cert");
@@ -163,10 +183,11 @@ fn ace_m1_certify_fresh_and_tamper() {
         certs_dir: certs.clone(),
         only: vec![],
         force: true,
-        rustc: std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()),
+        rustc: None,
+        scratch: None,
     };
-    let summaries = crate::test_cases::ace_certify::certify(&args)
-        .expect("certification pass runs");
+    let summaries =
+        crate::test_cases::ace_certify::certify(&args).expect("certification pass runs");
     assert_eq!(summaries.len(), 10, "certifiable set size");
     for s in &summaries {
         assert_eq!(s.outcome, "certified", "{}: {}", s.case, s.detail);
@@ -182,13 +203,86 @@ fn ace_m1_certify_fresh_and_tamper() {
         .collect();
     std::fs::write(&golden, tampered).unwrap();
     let before = std::fs::read(&certs.join("m1_b01.cert.json")).unwrap();
-    let summaries = crate::test_cases::ace_certify::certify(&args)
-        .expect("tampered pass still runs");
-    let b01 = summaries.iter().find(|s| s.case == "B01").expect("B01 present");
+    let summaries =
+        crate::test_cases::ace_certify::certify(&args).expect("tampered pass still runs");
+    let b01 = summaries
+        .iter()
+        .find(|s| s.case == "B01")
+        .expect("B01 present");
     assert_eq!(b01.outcome, "fail", "golden drift must fail certification");
     assert!(b01.detail.contains("actual != golden"), "{}", b01.detail);
     let after = std::fs::read(&certs.join("m1_b01.cert.json")).unwrap();
-    assert_eq!(before, after, "a failed certification never touches the cert");
+    assert_eq!(
+        before, after,
+        "a failed certification never touches the cert"
+    );
+
+    // F-852-R1-01 replay: restore the golden, then TAMPER THE RECEIPT
+    // (schema/flags/deps/observed — the reviewer's exact variants). Each
+    // variant must be REJECTED as structurally invalid: never reused, never
+    // silently overwritten — even --force refuses, demanding manual repair.
+    std::fs::write(&golden, bytes).unwrap();
+    let good_cert: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&before)).unwrap();
+    for (path_in_cert, value) in [
+        (vec!["schema"], serde_json::json!("invalid/999")),
+        (
+            vec!["toolchain", "flags"],
+            serde_json::json!(["--wrong-flag"]),
+        ),
+        (
+            vec!["deps", "closure"],
+            serde_json::json!("changed-dependency"),
+        ),
+        (
+            vec!["observed", "actual_run", "stdout"],
+            serde_json::json!("i32:999"),
+        ),
+    ] {
+        let mut tampered_cert = good_cert.clone();
+        let mut cur = &mut tampered_cert;
+        for key in &path_in_cert[..path_in_cert.len() - 1] {
+            cur = cur.get_mut(key).expect("cert path exists");
+        }
+        cur[path_in_cert.last().unwrap()] = value;
+        std::fs::write(
+            &certs.join("m1_b01.cert.json"),
+            serde_json::to_string_pretty(&tampered_cert).unwrap(),
+        )
+        .unwrap();
+        for force in [false, true] {
+            let args = crate::test_cases::ace_certify::CertifyArgs {
+                corpus: corpus.clone(),
+                certs_dir: certs.clone(),
+                only: vec!["b01".to_string()],
+                force,
+                rustc: None,
+                scratch: None,
+            };
+            let summaries = crate::test_cases::ace_certify::certify(&args).unwrap_or_else(|e| {
+                panic!(
+                    "certify errored for {:?} (force={force}): {e}",
+                    path_in_cert
+                )
+            });
+            let b01 = summaries.iter().find(|s| s.case == "B01").expect("B01");
+            assert_eq!(
+                b01.outcome, "fail",
+                "tampered receipt ({:?}, force={force}) must be REJECTED: {}",
+                path_in_cert, b01.detail
+            );
+            assert!(
+                b01.detail.contains("REJECTED receipt"),
+                "rejection detail: {}",
+                b01.detail
+            );
+            let still_there = std::fs::read(&certs.join("m1_b01.cert.json")).unwrap();
+            assert_ne!(
+                before, still_there,
+                "tampered receipt must NOT be silently overwritten"
+            );
+        }
+    }
 }
 
 /// Minimal recursive copy for the mutation fixture (the corpus is small;

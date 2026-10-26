@@ -128,4 +128,26 @@ fn main() {
         std::env::var("TARGET").unwrap()
     );
     println!("cargo::rustc-check-cfg=cfg(feature, values(\"interpreter\"))");
+    emit_build_toolchain_identity();
+}
+
+// PLAN-852 F-852-R1-01: capture the BUILD toolchain identity (`$RUSTC -vV`,
+// host triple + commit hash) so the daily certificate validity check can
+// detect toolchain drift WITHOUT spawning rustc (G02: the daily face spawns
+// no process). Re-runs when the RUSTC env changes; toolchain upgrades
+// replace the compiler binary and rebuild this script's dependents anyway.
+fn emit_build_toolchain_identity() {
+    println!("cargo:rerun-if-env-changed=RUSTC");
+    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+    let identity = std::process::Command::new(&rustc)
+        .arg("-vV")
+        .output()
+        .map(|o| {
+            let mut text = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            text.push('\n');
+            text
+        })
+        .unwrap_or_else(|e| format!("unavailable: {e}\n"));
+    let out = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
+    fs::write(out.join("build_toolchain.txt"), identity).expect("write build_toolchain.txt");
 }

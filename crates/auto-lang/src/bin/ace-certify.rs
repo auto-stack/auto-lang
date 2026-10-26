@@ -7,8 +7,9 @@
 //! ace-certify --corpus <crates/auto-lang/test/cases/ace-m1>
 //!             [--certs <dir>]        (default <corpus>/oracle/certs)
 //!             [--only b01,b02,...]   (default: every ok-emit row)
-//!             [--force]              (re-certify even when axes are unchanged)
+//!             [--force]              (skip reuse validation, certify fresh)
 //!             [--rustc <path>]       (default $RUSTC or `rustc`)
+//!             [--scratch <dir>]      (default: isolated temp dir; removed)
 //! ```
 
 #[cfg(not(feature = "test-cases"))]
@@ -25,29 +26,48 @@ fn main() {
     let mut certs: Option<PathBuf> = None;
     let mut only: Vec<String> = Vec::new();
     let mut force = false;
-    let mut rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+    let mut rustc: Option<String> = None;
+    let mut scratch: Option<PathBuf> = None;
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
     while i < args.len() {
+        let missing = |flag: &str| -> String {
+            eprintln!("ace-certify: {flag} needs a value");
+            std::process::exit(2);
+        };
         match args[i].as_str() {
             "--corpus" => {
                 i += 1;
-                corpus = Some(PathBuf::from(args.get(i).ok_or("--corpus needs a value").unwrap()));
+                corpus = Some(PathBuf::from(
+                    args.get(i).cloned().unwrap_or_else(|| missing("--corpus")),
+                ));
             }
             "--certs" => {
                 i += 1;
-                certs = Some(PathBuf::from(args.get(i).ok_or("--certs needs a value").unwrap()));
+                certs = Some(PathBuf::from(
+                    args.get(i).cloned().unwrap_or_else(|| missing("--certs")),
+                ));
             }
             "--only" => {
                 i += 1;
-                let list = args.get(i).ok_or("--only needs a value").unwrap();
-                only = list.split(',').map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()).collect();
+                let list = args.get(i).cloned().unwrap_or_else(|| missing("--only"));
+                only = list
+                    .split(',')
+                    .map(|s| s.trim().to_lowercase())
+                    .filter(|s| !s.is_empty())
+                    .collect();
             }
             "--force" => force = true,
             "--rustc" => {
                 i += 1;
-                rustc = args.get(i).ok_or("--rustc needs a value").unwrap().clone();
+                rustc = Some(args.get(i).cloned().unwrap_or_else(|| missing("--rustc")));
+            }
+            "--scratch" => {
+                i += 1;
+                scratch = Some(PathBuf::from(
+                    args.get(i).cloned().unwrap_or_else(|| missing("--scratch")),
+                ));
             }
             other => {
                 eprintln!("ace-certify: unknown argument {other:?}");
@@ -72,5 +92,6 @@ fn main() {
         only,
         force,
         rustc,
+        scratch,
     }));
 }

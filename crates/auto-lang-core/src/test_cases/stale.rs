@@ -71,6 +71,13 @@ pub fn toolchain_axes(limits: &Limits) -> BTreeMap<String, String> {
     // every prior native result row (per-check worker/toolchain builds also
     // travel in each row's native record).
     m.insert("ac-case-worker".to_string(), "acworker/1".to_string());
+    // PLAN-852 F-852-R1-01: the BUILD toolchain identity (rustc -vV captured
+    // by build.rs) rides every report so the daily certificate validity
+    // check can detect toolchain drift WITHOUT spawning rustc (G02).
+    m.insert(
+        "build-rustc-identity".to_string(),
+        crate::test_cases::ace_certify::BUILD_TOOLCHAIN_IDENTITY.trim().to_string(),
+    );
     m
 }
 

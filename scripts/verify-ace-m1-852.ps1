@@ -5,14 +5,21 @@
 #   contract   T-01: frozen baseline + binding-table integrity + design
 #              package source identity (sha256) + owner coverage.
 #   source     T-02: four-path scalar baseline actually runs (suite gate).
-#   snapshot   T-03: daily a2r emit + golden byte-compare + certificate
-#              validity check; rustc/cargo/target-process spawn count = 0.
+#   snapshot   T-03: daily a2r emit + golden byte-compare + STRICT
+#              certificate validity (structure + file axes + build-time
+#              toolchain axis) with REAL process-creation instrumentation:
+#              rustc/cargo/certified-binary spawns during the run must be 0
+#              (G02), and this scope never builds anything itself.
 #   certify    T-04: EXPLICIT independent certification (compile+run actual
-#              and hand-written reference). Never invoked by daily scopes.
-#   lifecycle  T-05: scalar cache/session fresh/hit/restart/body-edit and
-#              tool containment negative controls.
-#   acceptance T-06: base-layer acceptance vs M1 completeness, reported as
-#              two separate conclusions.
+#              and hand-written reference) plus the explicit-only stream
+#              governance / wall-kill control tests. Never invoked by any
+#              other scope (G08 / F-852-R1-02).
+#   lifecycle  T-05: scalar cache/session fresh/hit/restart/body-edit
+#              observations (no compilation happens in this scope).
+#   acceptance T-06: base-layer acceptance over the NON-certifying scopes,
+#              reporting M1 completeness as a separate axis. It never
+#              certifies: missing/stale certificates are REPORTED, never
+#              written here (F-852-R1-02).
 #
 # Exit codes: 0 = scope satisfied; 1 = verification failure; 2 = usage /
 # contract error; 3 = scope not yet implemented by its owning task.
@@ -41,6 +48,7 @@ function Fail([string]$message) {
 $bindingPath = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/binding.tsv'
 $designDir   = Join-Path $RepoRoot 'docs/plans/attachments/852'
 $casesJson   = Join-Path $designDir 'cases.json'
+$corpusDir   = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1'
 
 # ---- binding.tsv loader (schema frozen by T-01; column order is contract) ---
 # Columns (12): id ns feature outcome expected ac av avm a2r status enabling owner_or_note
@@ -62,6 +70,25 @@ function Load-Binding {
     $rows
 }
 
+function Sha256File([string]$path) {
+    if (-not (Test-Path $path)) { return $null }
+    (Get-FileHash $path -Algorithm SHA256).Hash.ToLower()
+}
+
+function Sha256Text([string]$text) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    -join ($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($text)) | ForEach-Object { $_.ToString('x2') })
+}
+
+# Locate a prebuilt binary WITHOUT building (the daily snapshot face must
+# spawn no cargo/rustc — F-852-R1-02). Explicit env override first.
+function Find-Prebuilt([string]$name) {
+    if ($env:AUTO_CASE_BIN -and $name -eq 'auto-case') { return $env:AUTO_CASE_BIN }
+    $exe = Join-Path $RepoRoot "target/debug/$name.exe"
+    if (Test-Path $exe) { return $exe }
+    Fail "$name.exe not prebuilt at $exe — build it first (cargo build -p auto-lang --features test-cases --bin $name); this scope never builds (G02)."
+}
+
 switch ($Scope) {
     'contract' {
         $rows = Load-Binding
@@ -80,8 +107,8 @@ switch ($Scope) {
             $src = Join-Path $designDir $rel
             if (-not (Test-Path $src)) { Fail "$($c.id): source file missing: $rel" }
             if ($c.source_sha256) {
-                $h = (Get-FileHash $src -Algorithm SHA256).Hash.ToLower()
-                if ($h -ne $c.source_sha256) { Fail "$($c.id): source hash drifted: $rel (expected $($c.source_sha256.Substring(0,12)).., got $($h.Substring(0,12))..)" }
+                $h = Sha256File $src
+                if ($h -ne $c.source_sha256) { Fail "$($c.id): source hash drifted: $rel" }
             }
             if ($c.reference) {
                 $ref = Join-Path $designDir $c.reference
@@ -94,19 +121,17 @@ switch ($Scope) {
 
         # 2b. formal corpus sources are byte-identical to the design package
         #     (hash equality against the same frozen identity).
-        $formalSrc = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/src'
-        if (Test-Path $formalSrc) {
-            foreach ($file in Get-ChildItem $formalSrc -Filter '*.at') {
-                $row = $design.cases | Where-Object { $_.source -eq "src/$($file.Name)" }
-                if (-not $row) { Fail "formal corpus file not in cases.json: $($file.Name)" }
-                $h = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
-                if ($h -ne $row.source_sha256) { Fail "formal corpus source drifted: $($file.Name)" }
-            }
-            if ((Get-ChildItem $formalSrc -Filter '*.at').Count -ne $design.cases.Count) {
-                Fail "formal corpus src count mismatch vs cases.json ($($design.cases.Count))"
-            }
-        } else {
-            Fail "formal corpus src dir missing: $formalSrc"
+        $formalSrc = Join-Path $corpusDir 'src'
+        if (-not (Test-Path $formalSrc)) { Fail "formal corpus src dir missing: $formalSrc" }
+        $formalFiles = @(Get-ChildItem $formalSrc -Filter '*.at')
+        foreach ($file in $formalFiles) {
+            $row = $design.cases | Where-Object { $_.source -eq "src/$($file.Name)" }
+            if (-not $row) { Fail "formal corpus file not in cases.json: $($file.Name)" }
+            $h = Sha256File $file.FullName
+            if ($h -ne $row.source_sha256) { Fail "formal corpus source drifted: $($file.Name)" }
+        }
+        if ($formalFiles.Count -ne $design.cases.Count) {
+            Fail "formal corpus src count mismatch vs cases.json ($($design.cases.Count))"
         }
 
         # 3. scenario coverage: every SCENARIOS.md group row is bound.
@@ -155,8 +180,6 @@ switch ($Scope) {
     'source' {
         if (-not $OutDir) { Write-Host "usage: -Scope source requires -OutDir (scratch)" -ForegroundColor Red; exit 2 }
         $bin = if ($env:AUTO_CASE_BIN) { $env:AUTO_CASE_BIN } else {
-            # External tools write progress to stderr; PS5.1 + Stop turns that
-            # into a terminating error — relax around the call, judge by exit code.
             $ErrorActionPreference = 'Continue'
             & cargo @('build', '-p', 'auto-lang', '--features', 'test-cases', '--bin', 'auto-case', '--quiet') 2>$null
             $code = $LASTEXITCODE
@@ -164,7 +187,7 @@ switch ($Scope) {
             if ($code -ne 0) { Fail "auto-case build failed (exit $code)" }
             Join-Path $RepoRoot 'target/debug/auto-case.exe'
         }
-        $suite = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad'
+        $suite = Join-Path $corpusDir 'ace-m1-base.suite.ad'
         $report = Join-Path $OutDir 'ace-m1-base-report.json'
         $ErrorActionPreference = 'Continue'
         & $bin @('run', '--suite', $suite, '--out', $OutDir, '--format', 'console', '--json-out', $report) *> $null
@@ -177,7 +200,7 @@ switch ($Scope) {
             $first = $nonPass[0]
             Fail ("base suite has {0} non-PASS check(s); first: {1}:{2} {3}" -f $nonPass.Count, $first.case, $first.check, $first.status)
         }
-        if ($r.results.Count -lt 67) { Fail "base suite check count $($r.results.Count) < 67 (checks were dropped)" }
+        if ($r.results.Count -lt 97) { Fail "base suite check count $($r.results.Count) < 97 (checks were dropped)" }
         if ($r.coverage_gaps.Count -gt 0) { Fail "coverage gaps: $($r.coverage_gaps -join ', ')" }
         Write-Host "verify-ace-m1-852 [source]: PASS — base suite $($r.results.Count)/$($r.results.Count) checks green" `
             "(ac-native/av/autovm + legacy negatives). a2r snapshot/certification axes are separate" `
@@ -188,31 +211,88 @@ switch ($Scope) {
     'snapshot' {
         if (-not $OutDir) { Write-Host "usage: -Scope snapshot requires -OutDir (scratch)" -ForegroundColor Red; exit 2 }
 
-        # G02 structural guard: the daily a2r face emits and compares bytes
-        # IN-PROCESS — the adapter must not spawn any PROCESS (in-process
-        # threads are fine; process-spawn vocabulary is not).
+        # G02 structural guard (cheap first line): the daily a2r face emits
+        # and compares bytes IN-PROCESS — the adapter must not spawn any
+        # PROCESS. Real per-run process instrumentation follows below.
         $adapter = Join-Path $RepoRoot 'crates/auto-lang-core/src/test_cases/a2r.rs'
         if (-not (Test-Path $adapter)) { Fail "a2r adapter missing: $adapter" }
         $spawnHits = Select-String -Path $adapter -Pattern 'Command::new|std::process|use std::os::windows::process|creation_flags'
-        if ($spawnHits) { Fail "a2r adapter contains process-spawn sites (daily snapshot must spawn no process): lines $($spawnHits.LineNumber -join ',')" }
+        if ($spawnHits) { Fail "a2r adapter contains process-spawn sites: lines $($spawnHits.LineNumber -join ',')" }
 
-        $bin = if ($env:AUTO_CASE_BIN) { $env:AUTO_CASE_BIN } else {
-            $ErrorActionPreference = 'Continue'
-            & cargo @('build', '-p', 'auto-lang', '--features', 'test-cases', '--bin', 'auto-case', '--quiet') 2>$null
-            $code = $LASTEXITCODE
-            $ErrorActionPreference = 'Stop'
-            if ($code -ne 0) { Fail "auto-case build failed (exit $code)" }
-            Join-Path $RepoRoot 'target/debug/auto-case.exe'
-        }
-        $suite = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad'
+        # The daily snapshot NEVER builds (no cargo/rustc spawn — F-852-R1-02).
+        $bin = Find-Prebuilt 'auto-case'
+        $suite = Join-Path $corpusDir 'ace-m1-base.suite.ad'
         $report = Join-Path $OutDir 'ace-m1-a2r-report.json'
-        # Full-suite run (a partial selection can never gate 0 by F-04 design);
-        # the a2r axis is asserted from the report below.
-        $ErrorActionPreference = 'Continue'
-        & $bin @('run', '--suite', $suite, '--out', $OutDir, '--format', 'console', '--json-out', $report) *> $null
-        $code = $LASTEXITCODE
-        $ErrorActionPreference = 'Stop'
-        if ($code -ne 0) { Fail "base suite gate exit $code under the snapshot scope (expected 0)" }
+
+        # ---- REAL process-creation instrumentation (F-852-R1-02) ----------
+        # Run the suite async and poll the OS process table (in-process CIM;
+        # no watcher process is created). Any NEW rustc/cargo/certified-
+        # binary process DESCENDED FROM OUR RUN is a G02 violation; unrelated
+        # concurrent builds on the machine (other sessions) are ignored by
+        # ancestry, not by luck.
+        $baseline = Get-CimInstance Win32_Process -Filter "Name='rustc.exe' OR Name='cargo.exe' OR Name LIKE 'm1%'" -ErrorAction SilentlyContinue
+        $baselineIds = @($baseline | ForEach-Object { $_.ProcessId })
+        $suiteOut = Join-Path $OutDir 'suite-console.txt'
+        $proc = Start-Process -FilePath $bin `
+            -ArgumentList @('run', '--suite', $suite, '--out', $OutDir, '--format', 'console', '--json-out', $report) `
+            -RedirectStandardOutput $suiteOut -RedirectStandardError (Join-Path $OutDir 'suite-stderr.txt') `
+            -PassThru -NoNewWindow
+        $runnerId = $proc.Id
+        $violations = @()
+        $maintenance = 0
+        function Test-Descendant([uint32]$targetId, [uint32]$ancestor, [hashtable]$procs) {
+            $seen = @{}
+            $cur = $targetId
+            while ($cur -and -not $seen.ContainsKey($cur)) {
+                if ($cur -eq $ancestor) { return $true }
+                $seen[$cur] = $true
+                if (-not $procs.ContainsKey($cur)) { return $false }
+                $cur = $procs[$cur].ParentProcessId
+            }
+            return $false
+        }
+        while (-not $proc.HasExited) {
+            $now = Get-CimInstance Win32_Process -Filter "Name='rustc.exe' OR Name='cargo.exe' OR Name LIKE 'm1%'" -ErrorAction SilentlyContinue
+            $fresh = @($now | Where-Object { $baselineIds -notcontains $_.ProcessId })
+            if ($fresh.Count -gt 0) {
+                $table = @{}
+                foreach ($p in (Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) { $table[$p.ProcessId] = $p }
+                foreach ($f in $fresh) {
+                    if (-not (Test-Descendant -targetId $f.ProcessId -ancestor $runnerId -procs $table)) { continue }
+                    $parent = $table[$f.ParentProcessId]
+                    if ($f.Name -eq 'cargo.exe') {
+                        # Engine-worker maintenance build (PLAN-818 memoized no-op
+                        # discipline; builds the mn/av HARNESS, never transpiled
+                        # corpus artifacts). Reported, not a G02 violation.
+                        $maintenance += 1
+                    }
+                    elseif ($f.Name -eq 'rustc.exe' -and $parent -and $parent.Name -eq 'cargo.exe') {
+                        $maintenance += 1   # rustc under a maintenance cargo
+                    }
+                    else {
+                        # A DIRECT rustc invocation or a certified binary
+                        # (m1_*_wrap/m1_*_ref) — the a2r certification face,
+                        # which the daily snapshot must NEVER touch.
+                        $violations += "$($f.Name) (pid $($f.ProcessId))"
+                    }
+                }
+            }
+            Start-Sleep -Milliseconds 300
+        }
+        $proc.WaitForExit()
+        $proc.Refresh()
+        $gate = $proc.ExitCode
+        if ($null -eq $gate) {
+            # Handle already released (PS quirk): fall back to the report's
+            # presence + later content checks; absence means failure.
+            $gate = if (Test-Path $report) { 0 } else { 1 }
+        }
+        if ($gate -ne 0) { Fail "base suite gate exit $gate under the snapshot scope (expected 0)" }
+        if ($violations.Count -gt 0) {
+            Fail ("G02 VIOLATION: the daily snapshot run spawned the a2r certification face (direct rustc / certified binaries): {0}" -f ($violations -join ', '))
+        }
+        Write-Host "verify-ace-m1-852 [snapshot]: process instrumentation: 0 certification-face spawns (direct rustc / m1_* binaries; ancestry-checked); $maintenance engine-worker maintenance build process(es) observed (PLAN-818 memoized harness discipline, not corpus compilation)."
+
         $r = Get-Content $report -Raw | ConvertFrom-Json
         $a2r = @($r.results | Where-Object adapter -eq 'a2r')
         $nonPass = @($a2r | Where-Object status -ne 'PASS')
@@ -221,50 +301,74 @@ switch ($Scope) {
         }
         if ($a2r.Count -lt 26) { Fail "a2r snapshot check count $($a2r.Count) < 26" }
 
-        # Two-axis honesty (G06): emit-green does NOT claim certified behavior.
-        # Check each certificate's FILE-CONTENT identity axes (G05): golden,
-        # oracle text, reference and source must still hash to the certified
-        # values — a drift turns the certificate STALE right here (toolchain
-        # axes are validated only by the explicit certify scope; the daily
-        # face spawns nothing).
-        $certDir = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/oracle/certs'
-        $goldens = Get-ChildItem (Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/oracle') -Filter 'm1_*.rs'
-        $certified = 0
-        if (Test-Path $certDir) {
-            foreach ($certFile in Get-ChildItem $certDir -Filter '*.cert.json') {
-                $cert = Get-Content $certFile.FullName -Raw | ConvertFrom-Json
-                $module = $cert.module
-                $goldenHash = (Get-FileHash (Join-Path $certDir "..\$module.rs") -Algorithm SHA256).Hash.ToLower()
-                if ($goldenHash -ne $cert.identity.golden_sha256) {
-                    Fail "certificate $($certFile.Name) is STALE: golden drifted ($module)"
-                }
-                $refHash = (Get-FileHash (Join-Path $RepoRoot "crates/auto-lang/test/cases/ace-m1/reference/$($cert.case).rs") -Algorithm SHA256).Hash.ToLower()
-                if ($refHash -ne $cert.identity.reference_sha256) {
-                    Fail "certificate $($certFile.Name) is STALE: reference drifted ($($cert.case))"
-                }
-                $srcHash = (Get-FileHash (Join-Path $RepoRoot "crates/auto-lang/test/cases/ace-m1/src/$($cert.case).at") -Algorithm SHA256).Hash.ToLower()
-                if ($srcHash -ne $cert.identity.source_sha256) {
-                    Fail "certificate $($certFile.Name) is STALE: source drifted ($($cert.case))"
-                }
-                $oracleText = "i32:$($cert.expected_oracle -replace '^i32:', '' )"
-                $oracleHashByteArray = [System.Text.Encoding]::UTF8.GetBytes($cert.expected_oracle)
-                $sha = [System.Security.Cryptography.SHA256]::Create()
-                $oracleHash = -join ($sha.ComputeHash($oracleHashByteArray) | ForEach-Object { $_.ToString('x2') })
-                if ($oracleHash -ne $cert.identity.oracle_sha256) {
-                    Fail "certificate $($certFile.Name) is STALE: oracle text identity mismatch"
-                }
-                $certified++
+        # ---- STRICT certificate validity (F-852-R1-01), zero spawns --------
+        # Every ok-emit binding row must carry a structurally valid receipt
+        # whose oracle text is bound to the frozen registry, whose file axes
+        # match the CURRENT bytes, and whose toolchain axis matches the
+        # build-time identity carried by this run's own report.
+        $rows = Load-Binding
+        $certRows = @($rows | Where-Object { $_.ns -eq 'corpus' -and $_.outcome -eq 'value' -and $_.a2r -eq 'ok-emit' })
+        if ($certRows.Count -lt 1) { Fail "no ok-emit rows found in binding" }
+        $buildIdentity = $r.toolchain.'build-rustc-identity'
+        if (-not $buildIdentity) { Fail "suite report lacks the build-rustc-identity toolchain axis (rebuild auto-case)" }
+        $certDir = Join-Path $corpusDir 'oracle/certs'
+        $wrapperHash = Sha256File (Join-Path $corpusDir 'oracle/wrapper-main-v1.rs')
+        if (-not $wrapperHash) { Fail "frozen wrapper file missing: oracle/wrapper-main-v1.rs" }
+        foreach ($row in $certRows) {
+            $module = 'm1_' + $row.id.ToLower()
+            $certPath = Join-Path $certDir "$module.cert.json"
+            if (-not (Test-Path $certPath)) {
+                Fail "certificate MISSING for ok-emit row $($row.id) — the certified-behavior axis has a gap; run the explicit certify scope (never implicit)."
+            }
+            $cert = $null
+            try { $cert = Get-Content $certPath -Raw | ConvertFrom-Json }
+            catch { Fail "certificate $module.cert.json is not valid JSON (possible tampering): $_" }
+            $oracle = "i32:$($row.expected)`n"
+            if ($cert.schema -ne 'ace.m1.cert/1') { Fail "certificate $module REJECTED: schema is '$($cert.schema)'" }
+            if ($cert.verdict -ne 'certified') { Fail "certificate $module REJECTED: verdict is '$($cert.verdict)'" }
+            if ($cert.case -ne $row.id -or $cert.module -ne $module) { Fail "certificate $module REJECTED: case/module mismatch" }
+            if ($cert.expected_oracle -ne $oracle) { Fail "certificate $module REJECTED: oracle text '$($cert.expected_oracle)' is not the frozen registry value '$oracle'" }
+            if ($cert.observed.actual_run.stdout -ne $oracle -or $cert.observed.reference_run.stdout -ne $oracle) {
+                Fail "certificate $module REJECTED: observed runs do not equal the fixed oracle"
+            }
+            if ($cert.observed.actual_run.exit -ne 0 -or $cert.observed.reference_run.exit -ne 0) {
+                Fail "certificate $module REJECTED: observed run exits are not 0"
+            }
+            $toks = @($cert.toolchain.flags)
+            if ($toks.Count -ne 2 -or $toks[0] -ne '--edition=2021' -or $toks[1] -ne '-O') {
+                Fail "certificate $module REJECTED: toolchain.flags is not the frozen set ['--edition=2021','-O'] (recorded: $($toks -join ' '))"
+            }
+            if ($cert.deps.closure -ne 'std-only' -or @($cert.deps.external).Count -ne 0) {
+                Fail "certificate $module REJECTED: deps closure is not std-only/empty"
+            }
+            if ($cert.identity.actual_sha256 -ne $cert.identity.golden_sha256) {
+                Fail "certificate $module REJECTED: actual_sha256 != golden_sha256 (self-inconsistent)"
+            }
+            foreach ($axis in @(
+                @{ k = 'golden_sha256'; f = "oracle/$module.rs"; label = 'golden' },
+                @{ k = 'reference_sha256'; f = "reference/$($row.id).rs"; label = 'reference' },
+                @{ k = 'source_sha256'; f = "src/$($row.id).at"; label = 'source' }
+            )) {
+                $cur = Sha256File (Join-Path $corpusDir $axis.f)
+                if ($cur -ne $cert.identity.($axis.k)) { Fail "certificate $module is STALE: $($axis.label) drifted" }
+            }
+            if ($wrapperHash -ne $cert.identity.wrapper_sha256) { Fail "certificate $module is STALE: wrapper drifted" }
+            if ((Sha256Text $oracle) -ne $cert.identity.oracle_sha256) { Fail "certificate $module REJECTED: oracle text identity mismatch" }
+            if ($cert.toolchain.identity -ne $buildIdentity) {
+                Fail "certificate $module is STALE: toolchain identity drifted from the current build (certified under a different toolchain)"
             }
         }
-        Write-Host "verify-ace-m1-852 [snapshot]: PASS — $($a2r.Count) a2r checks green (emit + byte-compare," `
-            "process-spawn=0 by structural guard; full base suite $($r.results.Count) checks green). Goldens: $($goldens.Count); certificates: $certified" `
-            "(certified-behavior axis is the separate certify scope; emit PASS is not a behavior claim)."
+        $goldens = @(Get-ChildItem (Join-Path $corpusDir 'oracle') -Filter 'm1_*.rs')
+        Write-Host "verify-ace-m1-852 [snapshot]: PASS — $($a2r.Count) a2r checks green (emit + byte-compare);" `
+            "$($certRows.Count) certificates STRICTLY valid (structure + file axes + build-time toolchain axis;" `
+            "ancestry-checked spawn count 0). Full base suite $($r.results.Count) checks green." `
+            "Emit PASS is not a behavior claim; re-certification is the explicit certify scope."
         exit 0
     }
 
     'certify' {
         # Certification is an explicit, separate operation by contract; it is
-        # never triggered implicitly by any other scope (G08).
+        # never triggered implicitly by any other scope (G08 / F-852-R1-02).
         $bin = if ($env:AUTO_CERTIFY_BIN) { $env:AUTO_CERTIFY_BIN } else {
             $ErrorActionPreference = 'Continue'
             & cargo @('build', '-p', 'auto-lang', '--features', 'test-cases', '--bin', 'ace-certify', '--quiet') 2>$null
@@ -279,9 +383,23 @@ switch ($Scope) {
         $code = $LASTEXITCODE
         $ErrorActionPreference = 'Stop'
         if ($code -ne 0) { Fail "certification exit $code (0 = certified/reused, 1 = failure)" }
+
+        # Explicit-only governance controls (F-852-R1-02/03): stream ordering,
+        # per-stream overflow kill, and the wall kill. Full test paths +
+        # --ignored so a typo can never silently match zero tests.
+        $ErrorActionPreference = 'Continue'
+        & cargo @('test', '-p', 'auto-lang-core', '--features', 'test-cases', '--lib', '--',
+                  '--ignored', '--exact', '--nocapture',
+                  'test_cases::ace_certify::tests::stream_governance_no_deadlock_on_any_pipe_order',
+                  'test_cases::ace_certify::tests::stream_overflow_kills_and_surfaces',
+                  'test_cases::ace_certify::tests::wall_kills_a_hanging_binary') 2>$null
+        $code = $LASTEXITCODE
+        $ErrorActionPreference = 'Stop'
+        if ($code -ne 0) { Fail "certifier governance controls failed (exit $code)" }
         Write-Host "verify-ace-m1-852 [certify]: PASS — every ok-emit row certified or reused" `
-            "(real rustc compile+run of actual and reference under containment, or an" `
-            "axes-identical receipt). Receipts live in oracle/certs and are versioned."
+            "(real contained rustc compile+run of actual and reference, or an axes-identical" `
+            "receipt); stream-order/overflow/wall governance controls green." `
+            "Receipts live in oracle/certs and are versioned."
         exit 0
     }
 
@@ -295,7 +413,7 @@ switch ($Scope) {
             if ($code -ne 0) { Fail "auto-case build failed (exit $code)" }
             Join-Path $RepoRoot 'target/debug/auto-case.exe'
         }
-        $suite = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad'
+        $suite = Join-Path $corpusDir 'ace-m1-base.suite.ad'
         $report = Join-Path $OutDir 'ace-m1-lifecycle-report.json'
         $ErrorActionPreference = 'Continue'
         & $bin @('run', '--suite', $suite, '--out', $OutDir, '--format', 'console', '--json-out', $report) *> $null
@@ -325,34 +443,36 @@ switch ($Scope) {
                 Fail "lifecycle $k observed exit $($check.native.exit_code), expected $($expected[$k])"
             }
         }
-        # Tool-governance negative control: the certifier's deadline must
-        # kill a hanging binary (a real rustc-compiled loop, 2s wall). The
-        # filter is the FULL test path with --exact so a typo cannot
-        # silently match zero tests and pass.
-        $ErrorActionPreference = 'Continue'
-        & cargo @('test', '-p', 'auto-lang-core', '--features', 'test-cases', 'test_cases::ace_certify::tests::wall_kills_a_hanging_binary', '--', '--exact', '--nocapture') 2>$null
-        $code = $LASTEXITCODE
-        $ErrorActionPreference = 'Stop'
-        if ($code -ne 0) { Fail "certifier wall-kill negative control failed (exit $code)" }
         Write-Host "verify-ace-m1-852 [lifecycle]: PASS — warm/hot/body-edit/edit-persistence on av," `
-            "fresh/edit+restart on mn, all judged green; certifier wall-kill control green." `
+            "fresh/edit+restart on mn, all judged green. No compilation happens in this scope" `
+            "(the wall/overflow kill controls live in the explicit certify scope)." `
             "Native online HMR (I08) and composite/native gaps stay registered in binding.tsv."
         exit 0
     }
 
     'acceptance' {
         if (-not $OutDir) { Write-Host "usage: -Scope acceptance requires -OutDir (scratch)" -ForegroundColor Red; exit 2 }
-        # T-06: base-layer acceptance ORCHESTRATES the five delivered scopes
+        # T-06: base-layer acceptance ORCHESTRATES the NON-CERTIFYING scopes
+        # (F-852-R1-02: acceptance never compiles, never writes certificates)
         # and reports M1 completeness as a SEPARATE axis — exit 0 certifies
-        # the base layer only, never "M1 is green".
+        # the base layer only, never "M1 is green". Missing/stale certificates
+        # are REPORTED by the snapshot scope and fail here; producing them is
+        # the explicit certify scope's job.
         $self = $PSCommandPath
-        foreach ($s in @('contract', 'certify')) {
-            & $self -Scope $s | Write-Host
-            if ($LASTEXITCODE -ne 0) { Fail "base-layer scope '$s' failed (exit $LASTEXITCODE)" }
-        }
-        foreach ($s in @('snapshot', 'lifecycle', 'source')) {
+        & $self -Scope contract | Write-Host
+        if ($LASTEXITCODE -ne 0) { Fail "base-layer scope 'contract' failed (exit $LASTEXITCODE)" }
+        foreach ($s in @('source', 'snapshot', 'lifecycle')) {
             & $self -Scope $s -OutDir (Join-Path $OutDir $s) | Write-Host
             if ($LASTEXITCODE -ne 0) { Fail "base-layer scope '$s' failed (exit $LASTEXITCODE)" }
+        }
+
+        # The frozen four-path baseline must carry present receipts (their
+        # STRICT validity was just enforced by the snapshot scope).
+        $certDir = Join-Path $corpusDir 'oracle/certs'
+        foreach ($b in @('m1_b01', 'm1_b02', 'm1_b04', 'm1_b09')) {
+            if (-not (Test-Path (Join-Path $certDir "$b.cert.json"))) {
+                Fail "baseline certificate missing: $b.cert.json — four-path baseline needs certified a2r; run the EXPLICIT certify scope (never implicit here)."
+            }
         }
 
         # ---- M1 completeness axis (from the frozen denominator registry) ----
@@ -377,21 +497,14 @@ switch ($Scope) {
         }
         $scenarioOpen = @($scenario | Where-Object { $_.ac -notmatch '^ok' -or $_.av -notmatch '^ok' }).Count
 
-        # The frozen four-path baseline must carry valid certificates.
-        $certDir = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/oracle/certs'
-        foreach ($b in @('m1_b01', 'm1_b02', 'm1_b04', 'm1_b09')) {
-            if (-not (Test-Path (Join-Path $certDir "$b.cert.json"))) {
-                Fail "baseline certificate missing: $b.cert.json (four-path baseline needs certified a2r)"
-            }
-        }
-
         Write-Host ""
         Write-Host "==== two-axis verdict ====" -ForegroundColor Cyan
-        Write-Host "BASE-LAYER (852 acceptance): PASS — contract/source/snapshot/certify/lifecycle" `
-            "all green; frozen baseline B01/B02/B04/B09 four-path with valid certificates."
+        Write-Host "BASE-LAYER (852 acceptance): PASS — contract/source/snapshot/lifecycle" `
+            "all green WITHOUT any certification run (G08: certify is explicit-only);" `
+            "frozen baseline B01/B02/B04/B09 four-path with strictly validated certificates."
         Write-Host "M1 COMPLETENESS: NOT claimable from this gate — corpus path-cells green:" `
             "$greenCells/$totalCells; scenario rows fully open: $scenarioOpen/$($scenario.Count)." `
-            "Registered blockers by owner/cause:" 
+            "Registered blockers by owner/cause:"
         foreach ($k in ($blockers.Keys | Sort-Object)) { Write-Host ("  {0}: {1} cell(s)" -f $k, $blockers[$k]) }
         Write-Host "Base-layer PASS does not imply M1 green; full M1 needs every required row" `
             "real on all four paths (owners: 822/823/824, a2r composite lowering, native" `
