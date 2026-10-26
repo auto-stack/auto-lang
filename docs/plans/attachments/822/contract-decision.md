@@ -122,8 +122,11 @@ guard 事实失效(§5.5 r3 冻结):variant 重赋值(PACK 到同 root)、SWITCH
 - **清理**:List drop(显式 DROP/frame 退出)按元素逆序责任清理(事件台账逆序断言,V-06);
   Variant drop 清当前活分支 payload 一次(payload-moved 态不重复清);清理循环按元素计
   steps 设取消点(沿 deep_size visited-fuel);cleanup 预算预留独立(沿 821 机制)。
-- **821 兼容**:FIELD_GET/FIELD_SET/AGGREGATE/MOVE/CLONE/DROP 等对 List/Variant 类型槽
-  的行为 = verify 拒 `mir.type.owned-op-on-collection`(首批显式不支持,不静默降级);
+- **821 兼容**:FIELD_GET/FIELD_SET/AGGREGATE 等对 List/Variant 类型槽
+  的行为 = verify 拒(r3/R8 修订:CLONE/MOVE/DROP 对 collections 是**支持**操作
+  ——CLONE 深克隆[F822-R8-01:独立 buffer+逐元素访客],MOVE 整根转移[共享
+  语义由 R3-02 保留],DROP 逆序清理);place/view 类槽不在 CLONE 面;Str/record
+  域行为逐字节不变。
   Str/record 域行为逐字节不变。
 
 ## 5. 预算与资源(冻结;沿 D 交集,不放宽旧合同)
