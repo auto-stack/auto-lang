@@ -25,14 +25,17 @@ pub mod portable;
 
 #[cfg(test)]
 mod tests {
-    use crate::contract::{fnv1a64, RecordValue, StrHandle, StrView, StrViewSrc, Value};
+    use crate::contract::{
+        fnv1a64, ListHandle, RecordValue, StrHandle, StrView, StrViewSrc, Value, VariantValue,
+    };
     use crate::dynamic::{
         DynPackError, DynTakeError, DynType, DynValue, TraversalOptions, TraversalStop,
         MAX_DYN_NODES,
     };
     use crate::owned_text::StrArena;
     use crate::portable::{
-        freeze, unfreeze, PortableError, RecordBinding, RestoreContext, PORTABLE_MAGIC,
+        freeze, unfreeze, ArmSig, PortableError, RecordBinding, RestoreContext, VariantBinding,
+        PORTABLE_MAGIC,
     };
     use std::cell::Cell;
     use std::rc::Rc;
@@ -49,6 +52,18 @@ mod tests {
         Value::Str(StrHandle::detached(
             s.as_bytes().to_vec().into_boxed_slice(),
         ))
+    }
+
+    fn listv(elems: Vec<Value>) -> Value {
+        Value::List(ListHandle::detached(elems))
+    }
+
+    fn variant(ty: u32, disc: u32, payload: Option<Value>) -> Value {
+        Value::Variant(VariantValue {
+            ty,
+            disc,
+            payload: payload.map(Rc::new),
+        })
     }
 
     /// The nested demo tree used by most cases:
@@ -92,8 +107,11 @@ mod tests {
         DynValue::pack(v, t).expect("demo tree is whitelisted")
     }
 
-    fn default_ctx<'a>(bindings: &'a [RecordBinding<'a>]) -> RestoreContext<'a> {
-        RestoreContext::new(bindings)
+    fn ctx<'a>(
+        records: &'a [RecordBinding<'a>],
+        variants: &'a [VariantBinding<'a>],
+    ) -> RestoreContext<'a> {
+        RestoreContext::new(records, variants)
     }
 
     // ------------------------------------------------------------------
@@ -123,7 +141,7 @@ mod tests {
         for (v, t) in scalars {
             let dv = DynValue::pack(v.clone(), t.clone()).unwrap();
             let bytes = freeze(&dv, &TraversalOptions::default()).unwrap();
-            let back = unfreeze(&bytes, &default_ctx(&[]), &TraversalOptions::default()).unwrap();
+            let back = unfreeze(&bytes, &ctx(&[], &[]), &TraversalOptions::default()).unwrap();
             assert!(back.is(&t), "type survived for {:?}", v);
             assert_eq!(back.as_value(), &v, "bit-exact roundtrip for {:?}", v);
         }
@@ -134,13 +152,13 @@ mod tests {
         for s in ["", "auto", "héllo→中文🦀", "e\u{0301}"] {
             let dv = DynValue::pack(strv(s), DynType::Str).unwrap();
             let bytes = freeze(&dv, &TraversalOptions::default()).unwrap();
-            let back = unfreeze(&bytes, &default_ctx(&[]), &TraversalOptions::default()).unwrap();
+            let back = unfreeze(&bytes, &ctx(&[], &[]), &TraversalOptions::default()).unwrap();
             assert_eq!(back.as_value(), &strv(s), "Str bytes for {:?}", s);
         }
         for c in ['a', '中', '\u{10FFFF}', '\u{0301}'] {
             let dv = DynValue::pack(Value::Char(c), DynType::Char).unwrap();
             let bytes = freeze(&dv, &TraversalOptions::default()).unwrap();
-            let back = unfreeze(&bytes, &default_ctx(&[]), &TraversalOptions::default()).unwrap();
+            let back = unfreeze(&bytes, &ctx(&[], &[]), &TraversalOptions::default()).unwrap();
             assert_eq!(back.as_value(), &Value::Char(c));
         }
     }
@@ -150,12 +168,7 @@ mod tests {
         let dv = pack_demo();
         let (_, _, bindings) = demo_tree();
         let bytes = freeze(&dv, &TraversalOptions::default()).unwrap();
-        let back = unfreeze(
-            &bytes,
-            &default_ctx(&bindings),
-            &TraversalOptions::default(),
-        )
-        .unwrap();
+        let back = unfreeze(&bytes, &ctx(&bindings, &[]), &TraversalOptions::default()).unwrap();
         assert!(back.is(dv.ty()), "nominal type identity survives");
         assert_eq!(back.as_value(), dv.as_value(), "value tree equals");
         // The positional index came from the CURRENT context (Point→7).
@@ -166,6 +179,105 @@ mod tests {
             },
             _ => panic!("root"),
         }
+    }
+
+    #[test]
+    fn av_dynamic_824_portable_roundtrip_list_variant() {
+        // List<Record>: two notes; PLUS the empty-list identity probe —
+        // an empty List<Str> must restore as List<Str>, not List<i32>.
+        let note_ty = DynType::record(
+            "demo",
+            "Note",
+            vec![("text", DynType::Str), ("n", DynType::I32)],
+        );
+        let list_ty = DynType::list(note_ty.clone());
+        let list_val = listv(vec![
+            record(4, vec![strv("a"), Value::I32(1)]),
+            record(4, vec![strv("b"), Value::I32(2)]),
+        ]);
+        let dv = DynValue::pack(list_val, list_ty.clone()).unwrap();
+        let records = [RecordBinding {
+            owner: "demo",
+            name: "Note",
+            fields: &["text", "n"],
+            ty_index: 4,
+        }];
+        let bytes = freeze(&dv, &TraversalOptions::default()).unwrap();
+        let back = unfreeze(&bytes, &ctx(&records, &[]), &TraversalOptions::default()).unwrap();
+        assert!(back.is(&list_ty), "structural list identity survives");
+        assert_eq!(back.as_value(), dv.as_value());
+
+        let empty = DynValue::pack(listv(vec![]), DynType::list(DynType::Str)).unwrap();
+        let ebytes = freeze(&empty, &TraversalOptions::default()).unwrap();
+        let eback = unfreeze(&ebytes, &ctx(&[], &[]), &TraversalOptions::default()).unwrap();
+        assert!(
+            eback.is(&DynType::list(DynType::Str)),
+            "empty list keeps its element type"
+        );
+        assert!(matches!(eback.as_value(), Value::List(h) if h.rc.borrow().elems.is_empty()));
+
+        // Variant: Option-like (None / Some payload) + Result-like Ok with
+        // an unused Err arm.
+        let opt_ty = DynType::variant(
+            "demo",
+            "Opt",
+            vec![("none", None), ("some", Some(DynType::I64))],
+        );
+        let variants = [VariantBinding {
+            owner: "demo",
+            name: "Opt",
+            arms: &[
+                ArmSig {
+                    name: "none",
+                    has_payload: false,
+                },
+                ArmSig {
+                    name: "some",
+                    has_payload: true,
+                },
+            ],
+            ty_index: 9,
+        }];
+        for (val, disc) in [
+            (variant(9, 0, None), 0),
+            (variant(9, 1, Some(Value::I64(-1))), 1),
+        ] {
+            let dv = DynValue::pack(val, opt_ty.clone()).unwrap();
+            let bytes = freeze(&dv, &TraversalOptions::default()).unwrap();
+            let back =
+                unfreeze(&bytes, &ctx(&[], &variants), &TraversalOptions::default()).unwrap();
+            assert!(back.is(&opt_ty), "nominal variant identity survives");
+            assert_eq!(back.as_value(), dv.as_value(), "disc {} roundtrip", disc);
+        }
+        let res_ty = DynType::variant(
+            "demo",
+            "Res",
+            vec![("ok", Some(DynType::U64)), ("err", Some(DynType::Str))],
+        );
+        let res_variants = [VariantBinding {
+            owner: "demo",
+            name: "Res",
+            arms: &[
+                ArmSig {
+                    name: "ok",
+                    has_payload: true,
+                },
+                ArmSig {
+                    name: "err",
+                    has_payload: true,
+                },
+            ],
+            ty_index: 10,
+        }];
+        let ok_val = DynValue::pack(variant(10, 0, Some(Value::U64(5))), res_ty.clone()).unwrap();
+        let bytes = freeze(&ok_val, &TraversalOptions::default()).unwrap();
+        let back = unfreeze(
+            &bytes,
+            &ctx(&[], &res_variants),
+            &TraversalOptions::default(),
+        )
+        .unwrap();
+        assert!(back.is(&res_ty), "unused arms' payload types survive");
     }
 
     #[test]
@@ -195,7 +307,7 @@ mod tests {
     fn av_dynamic_824_take_wrong_type_preserves_source() {
         let dv = pack_demo();
         let (_, root_ty, _) = demo_tree();
-        // Same-width DIFFERENT-name record never matches (820 nominal rule).
+        // Same-width DIFFERENT-name record never matches (nominal rule).
         let stranger = DynType::record(
             "demo",
             "Stranger",
@@ -223,12 +335,7 @@ mod tests {
         assert!(source.borrow_as(&root_ty).is_some());
         let (_, _, bindings) = demo_tree();
         let bytes = freeze(&source, &TraversalOptions::default()).unwrap();
-        let back = unfreeze(
-            &bytes,
-            &default_ctx(&bindings),
-            &TraversalOptions::default(),
-        )
-        .unwrap();
+        let back = unfreeze(&bytes, &ctx(&bindings, &[]), &TraversalOptions::default()).unwrap();
         assert_eq!(back.as_value(), source.as_value());
         let v = source.take_as(&root_ty).expect("right type now succeeds");
         assert!(matches!(v, Value::Record(_)));
@@ -248,14 +355,19 @@ mod tests {
             err.into_source().take_as(&DynType::I32),
             Ok(Value::I32(1))
         ));
-        // A Str-typed take of an i32 pack is a checked failure too.
         let s = DynValue::pack(strv("x"), DynType::Str).unwrap();
         assert!(s.take_as(&DynType::I32).is_err());
+        // List vs Variant vs Record are distinct kinds; a List<i32> is not
+        // a List<i64> (structural element identity).
+        let li = DynValue::pack(listv(vec![Value::I32(1)]), DynType::list(DynType::I32)).unwrap();
+        assert!(!li.is(&DynType::list(DynType::I64)));
+        assert!(!li.is(&DynType::record("o", "R", vec![])));
+        assert!(!li.is(&DynType::variant("o", "V", vec![])));
     }
 
     #[test]
     fn av_dynamic_824_deep_clone_independent_expands_sharing() {
-        // Shared DAG (legal in-memory 820 pure-value sharing): one Point Rc
+        // Shared DAG (legal in-memory pure-value sharing): one Point Rc
         // referenced by two fields.
         let point_ty = DynType::record(
             "demo",
@@ -290,7 +402,7 @@ mod tests {
             },
             _ => panic!(),
         };
-        assert_ne!(Rc::as_ptr(a), Rc::as_ptr(b), "sharing was expanded");
+        assert_ne!(Rc::as_ptr(a), Rc::as_ptr(b), "record sharing was expanded");
         // The ORIGINAL still shares (untouched).
         let (oa, ob) = match dv.as_value() {
             Value::Record(r) => match (&r.fields[0], &r.fields[1]) {
@@ -300,10 +412,27 @@ mod tests {
             _ => panic!(),
         };
         assert_eq!(Rc::as_ptr(oa), Rc::as_ptr(ob));
-        // Str deep clone mints an independent detached buffer.
+        // List deep clone mints an independent buffer; Str an independent
+        // detached buffer.
+        let lv = DynValue::pack(
+            listv(vec![Value::I32(3), Value::I32(4)]),
+            DynType::list(DynType::I32),
+        )
+        .unwrap();
+        let lc = lv.deep_clone(&TraversalOptions::default()).unwrap();
+        match (lv.as_value(), lc.as_value()) {
+            (Value::List(a), Value::List(b)) => {
+                assert_ne!(Rc::as_ptr(&a.rc) as usize, Rc::as_ptr(&b.rc) as usize);
+            }
+            _ => panic!(),
+        }
         let s = DynValue::pack(strv("payload"), DynType::Str).unwrap();
-        let sc = s.deep_clone(&TraversalOptions::default()).unwrap();
-        assert_eq!(sc.as_value(), s.as_value());
+        assert_eq!(
+            s.deep_clone(&TraversalOptions::default())
+                .unwrap()
+                .as_value(),
+            s.as_value()
+        );
     }
 
     // ------------------------------------------------------------------
@@ -319,7 +448,7 @@ mod tests {
         // (resource-boundary equivalence), nothing half-installed.
         let mut opts = TraversalOptions::default();
         opts.fail_after_nodes = Some(3);
-        let err = unfreeze(&bytes, &default_ctx(&bindings), &opts).unwrap_err();
+        let err = unfreeze(&bytes, &ctx(&bindings, &[]), &opts).unwrap_err();
         assert_eq!(
             err,
             PortableError::Budget {
@@ -327,12 +456,7 @@ mod tests {
             }
         );
         // The bytes are NOT consumed: a clean retry fully succeeds.
-        let back = unfreeze(
-            &bytes,
-            &default_ctx(&bindings),
-            &TraversalOptions::default(),
-        )
-        .unwrap();
+        let back = unfreeze(&bytes, &ctx(&bindings, &[]), &TraversalOptions::default()).unwrap();
         assert_eq!(back.as_value(), dv.as_value());
     }
 
@@ -353,7 +477,7 @@ mod tests {
         let val = record(5, vec![Value::Str(h.clone()), Value::Str(h)]);
         let dv = DynValue::pack(val, ty.clone()).unwrap();
         // No fault injection needed: the second reference to the shared
-        // buffer IS the deterministic rejection (the fault seam never fires).
+        // buffer IS the deterministic rejection (the seam never fires).
         let err = freeze(&dv, &TraversalOptions::default()).unwrap_err();
         assert_eq!(
             err,
@@ -384,7 +508,7 @@ mod tests {
     // ------------------------------------------------------------------
 
     #[test]
-    fn av_dynamic_824_reject_nested_borrows() {
+    fn av_dynamic_824_reject_nested_borrows_and_place() {
         // A StrView smuggled at depth 2 (a record field) is rejected with
         // the depth where it was found — the outer record does not mask it.
         let view = Value::StrView(StrView {
@@ -410,7 +534,7 @@ mod tests {
             },
             "borrow categories are unsupported at any depth"
         );
-        // Direct pack of a view / a MutRef: same admission.
+        // Direct pack of a view / a MutRef / a Place: same admission.
         let direct = DynValue::pack(
             Value::StrView(StrView {
                 src: StrViewSrc::Static {
@@ -437,6 +561,27 @@ mod tests {
             DynPackError::Unsupported {
                 category: "mut-ref",
                 ..
+            }
+        ));
+        // PLAN-822 index Place token nested in a list element: rejected
+        // like any borrow category (r2 closed whitelist).
+        let pl = DynValue::pack(
+            listv(vec![Value::Place(crate::contract::ListPlaceV {
+                frame: 0,
+                slot: 0,
+                buf_id: 1,
+                epoch: 0,
+                index: 0,
+                elem_gen: 0,
+            })]),
+            DynType::list(DynType::I32),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            pl,
+            DynPackError::Unsupported {
+                category: "place",
+                depth: 2
             }
         ));
         // A declared-type/value-kind mismatch is a DIFFERENT class (invalid
@@ -490,13 +635,37 @@ mod tests {
         let bytes = freeze(&tree, &TraversalOptions::default()).unwrap();
         assert!(!bytes.is_empty());
         drop(v);
+        // A shared LIST buffer in two fields is the same rejection.
+        let shared_list = ListHandle::detached(vec![Value::I32(7)]);
+        let lt = DynType::record(
+            "demo",
+            "LT",
+            vec![
+                ("a", DynType::list(DynType::I32)),
+                ("b", DynType::list(DynType::I32)),
+            ],
+        );
+        let lv = DynValue::pack(
+            record(
+                11,
+                vec![Value::List(shared_list.clone()), Value::List(shared_list)],
+            ),
+            lt,
+        )
+        .unwrap();
+        assert_eq!(
+            freeze(&lv, &TraversalOptions::default()),
+            Err(PortableError::Unsupported {
+                category: "shared-graph"
+            })
+        );
     }
 
     #[test]
-    fn av_dynamic_824_type_surface_closed_no_fn_or_list() {
+    fn av_dynamic_824_type_surface_closed_no_fn_or_borrow_category() {
         // Exhaustive match WITHOUT a wildcard arm: `DynType` provably has
-        // no Fn/closure/borrow/List/Variant category — the whitelist is
-        // closed by construction (V-12: no fake future categories).
+        // no Fn/closure/borrow/Place category — the whitelist is closed by
+        // construction (V-12: no fake future categories).
         fn kind(t: &DynType) -> &'static str {
             match t {
                 DynType::Bool
@@ -508,10 +677,14 @@ mod tests {
                 | DynType::Char
                 | DynType::Str => "scalar",
                 DynType::Record { .. } => "record",
+                DynType::List(_) => "list",
+                DynType::Variant { .. } => "variant",
             }
         }
         assert_eq!(kind(&DynType::Str), "scalar");
         assert_eq!(kind(&DynType::record("o", "R", vec![])), "record");
+        assert_eq!(kind(&DynType::list(DynType::I32)), "list");
+        assert_eq!(kind(&DynType::variant("o", "V", vec![])), "variant");
     }
 
     #[test]
@@ -541,10 +714,44 @@ mod tests {
                 reason: "field-count"
             }
         );
+        // Duplicate variant arm names / disc / payload-presence mismatch.
+        let dup_arm = DynType::variant("demo", "DV", vec![("a", None), ("a", Some(DynType::I32))]);
+        let err = DynValue::pack(variant(1, 0, None), dup_arm).unwrap_err();
+        assert_eq!(
+            err,
+            DynPackError::InvalidType {
+                reason: "duplicate-arm"
+            }
+        );
         // Arity mismatch between value and declared type.
         let ty = DynType::record("demo", "R2", vec![("a", DynType::I32)]);
         let err = DynValue::pack(record(1, vec![]), ty).unwrap_err();
         assert!(matches!(err, DynPackError::TypeMismatch { .. }));
+        let err = DynValue::pack(
+            variant(1, 5, None),
+            DynType::variant("demo", "O", vec![("n", None), ("s", Some(DynType::I32))]),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, DynPackError::TypeMismatch { .. }),
+            "disc out of range"
+        );
+        let err = DynValue::pack(
+            variant(1, 1, None),
+            DynType::variant("demo", "O2", vec![("n", None), ("s", Some(DynType::I32))]),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, DynPackError::TypeMismatch { .. }),
+            "payload presence"
+        );
+        // List longer than MAX_LIST_ELEMS (65_536).
+        let long = DynValue::pack(
+            listv((0..=MAX_DYN_NODES).map(|_| Value::I32(1)).collect()),
+            DynType::list(DynType::I32),
+        )
+        .unwrap_err();
+        assert_eq!(long.code(), "av.dyn.invalid-type");
     }
 
     /// Unique `&'static str` field names without leaking per iteration:
@@ -581,23 +788,75 @@ mod tests {
         out
     }
 
-    fn scalar_body(v: i32) -> Vec<u8> {
-        let mut b = vec![0u8];
+    /// Test-side type-descriptor writer (mirrors the frozen wire grammar).
+    fn tydesc(t: &DynType) -> Vec<u8> {
+        fn rec(t: &DynType, out: &mut Vec<u8>) {
+            match t {
+                DynType::Bool => out.push(0),
+                DynType::I32 => out.push(1),
+                DynType::I64 => out.push(2),
+                DynType::U64 => out.push(3),
+                DynType::F32 => out.push(4),
+                DynType::F64 => out.push(5),
+                DynType::Char => out.push(6),
+                DynType::Str => out.push(7),
+                DynType::List(e) => {
+                    out.push(8);
+                    rec(e, out);
+                }
+                DynType::Record {
+                    owner,
+                    name,
+                    fields,
+                } => {
+                    out.push(9);
+                    out.extend_from_slice(&(owner.len() as u16).to_le_bytes());
+                    out.extend_from_slice(owner.as_bytes());
+                    out.extend_from_slice(&(name.len() as u16).to_le_bytes());
+                    out.extend_from_slice(name.as_bytes());
+                    out.extend_from_slice(&(fields.len() as u16).to_le_bytes());
+                    for f in fields {
+                        out.extend_from_slice(&(f.name.len() as u16).to_le_bytes());
+                        out.extend_from_slice(f.name.as_bytes());
+                        rec(&f.ty, out);
+                    }
+                }
+                DynType::Variant { owner, name, arms } => {
+                    out.push(10);
+                    out.extend_from_slice(&(owner.len() as u16).to_le_bytes());
+                    out.extend_from_slice(owner.as_bytes());
+                    out.extend_from_slice(&(name.len() as u16).to_le_bytes());
+                    out.extend_from_slice(name.as_bytes());
+                    out.extend_from_slice(&(arms.len() as u16).to_le_bytes());
+                    for a in arms {
+                        out.extend_from_slice(&(a.name.len() as u16).to_le_bytes());
+                        out.extend_from_slice(a.name.as_bytes());
+                        match &a.payload {
+                            Some(p) => {
+                                out.push(1);
+                                rec(p, out);
+                            }
+                            None => out.push(0),
+                        }
+                    }
+                }
+            }
+        }
+        let mut out = Vec::new();
+        rec(t, &mut out);
+        out
+    }
+
+    fn i32_node(v: i32) -> Vec<u8> {
+        let mut b = tydesc(&DynType::I32);
+        b.push(0);
         b.extend_from_slice(&v.to_le_bytes());
         b
     }
 
-    fn record_node(owner: &str, name: &str, fields: &[&str], children: &[&[u8]]) -> Vec<u8> {
-        let mut b = vec![8u8];
-        b.extend_from_slice(&(owner.len() as u16).to_le_bytes());
-        b.extend_from_slice(owner.as_bytes());
-        b.extend_from_slice(&(name.len() as u16).to_le_bytes());
-        b.extend_from_slice(name.as_bytes());
-        b.extend_from_slice(&(fields.len() as u16).to_le_bytes());
-        for f in fields {
-            b.extend_from_slice(&(f.len() as u16).to_le_bytes());
-            b.extend_from_slice(f.as_bytes());
-        }
+    fn record_node(ty: &DynType, children: &[&[u8]]) -> Vec<u8> {
+        let mut b = tydesc(ty);
+        b.push(8);
         for c in children {
             b.extend_from_slice(c);
         }
@@ -606,9 +865,9 @@ mod tests {
 
     #[test]
     fn av_dynamic_824_wire_header_negatives() {
-        let good_body = scalar_body(7);
+        let good_body = i32_node(7);
         let good = wire(1, &good_body);
-        let ctx = default_ctx(&[]);
+        let empty = ctx(&[], &[]);
         // Bad magic.
         let mut m = good.clone();
         m[0] = b'X';
@@ -616,7 +875,7 @@ mod tests {
         let sum = fnv1a64(&m);
         m.extend_from_slice(&sum.to_le_bytes());
         assert_eq!(
-            unfreeze(&m, &ctx, &TraversalOptions::default()),
+            unfreeze(&m, &empty, &TraversalOptions::default()),
             Err(PortableError::Invalid { reason: "magic" })
         );
         // Bad version (2) — a different format generation.
@@ -626,7 +885,7 @@ mod tests {
         let sum = fnv1a64(&v);
         v.extend_from_slice(&sum.to_le_bytes());
         assert_eq!(
-            unfreeze(&v, &ctx, &TraversalOptions::default()),
+            unfreeze(&v, &empty, &TraversalOptions::default()),
             Err(PortableError::Invalid { reason: "version" })
         );
         // Unknown kind / nonzero flags / nonzero reserved.
@@ -637,7 +896,7 @@ mod tests {
             let sum = fnv1a64(&g);
             g.extend_from_slice(&sum.to_le_bytes());
             assert_eq!(
-                unfreeze(&g, &ctx, &TraversalOptions::default()),
+                unfreeze(&g, &empty, &TraversalOptions::default()),
                 Err(PortableError::Invalid { reason }),
                 "header byte {}",
                 pos
@@ -646,7 +905,7 @@ mod tests {
         // Declared node count above the ceiling: resource, before parsing.
         let big = wire(MAX_DYN_NODES + 1, &good_body);
         assert_eq!(
-            unfreeze(&big, &ctx, &TraversalOptions::default()),
+            unfreeze(&big, &empty, &TraversalOptions::default()),
             Err(PortableError::Budget {
                 code: "av.resource.dyn-nodes"
             })
@@ -655,44 +914,65 @@ mod tests {
 
     #[test]
     fn av_dynamic_824_wire_payload_negatives() {
-        let ctx = default_ctx(&[]);
-        // Unknown tag.
-        let t = wire(1, &[9u8, 1, 0, 0, 0]);
+        let empty = ctx(&[], &[]);
+        // Unknown payload tag (after a valid tydesc).
+        let t = wire(1, &{
+            let mut b = tydesc(&DynType::I32);
+            b.push(11);
+            b
+        });
         assert_eq!(
-            unfreeze(&t, &ctx, &TraversalOptions::default()),
+            unfreeze(&t, &empty, &TraversalOptions::default()),
             Err(PortableError::Invalid { reason: "tag" })
         );
-        // Bool domain: 2 is neither false nor true.
-        let b = wire(1, &[1u8, 2]);
+        // Unknown tydesc tag.
+        let t2 = wire(1, &[99u8, 0, 1, 0, 0, 0]);
         assert_eq!(
-            unfreeze(&b, &ctx, &TraversalOptions::default()),
+            unfreeze(&t2, &empty, &TraversalOptions::default()),
+            Err(PortableError::Invalid { reason: "tydesc" })
+        );
+        // Bool domain: 2 is neither false nor true.
+        let b = wire(1, &{
+            let mut b = tydesc(&DynType::Bool);
+            b.push(1);
+            b.push(2);
+            b
+        });
+        assert_eq!(
+            unfreeze(&b, &empty, &TraversalOptions::default()),
             Err(PortableError::Invalid {
                 reason: "bool-domain"
             })
         );
         // Char domain: a UTF-16 surrogate is not a Unicode scalar.
-        let mut cbody = vec![6u8];
-        cbody.extend_from_slice(&0xD800u32.to_le_bytes());
-        let c = wire(1, &cbody);
+        let c = wire(1, &{
+            let mut b = tydesc(&DynType::Char);
+            b.push(6);
+            b.extend_from_slice(&0xD800u32.to_le_bytes());
+            b
+        });
         assert_eq!(
-            unfreeze(&c, &ctx, &TraversalOptions::default()),
+            unfreeze(&c, &empty, &TraversalOptions::default()),
             Err(PortableError::Invalid {
                 reason: "char-domain"
             })
         );
         // Bad UTF-8 in a Str payload.
-        let mut sbody = vec![7u8];
-        sbody.extend_from_slice(&2u32.to_le_bytes());
-        sbody.extend_from_slice(&[0xFF, 0xFE]);
-        let s = wire(1, &sbody);
+        let s = wire(1, &{
+            let mut b = tydesc(&DynType::Str);
+            b.push(7);
+            b.extend_from_slice(&2u32.to_le_bytes());
+            b.extend_from_slice(&[0xFF, 0xFE]);
+            b
+        });
         assert_eq!(
-            unfreeze(&s, &ctx, &TraversalOptions::default()),
+            unfreeze(&s, &empty, &TraversalOptions::default()),
             Err(PortableError::Invalid { reason: "utf8" })
         );
         // Truncated mid-node and missing fields.
-        let half = wire(1, &[0u8, 7]);
+        let half = wire(1, &[1u8, 7]);
         assert_eq!(
-            unfreeze(&half, &ctx, &TraversalOptions::default()),
+            unfreeze(&half, &empty, &TraversalOptions::default()),
             Err(PortableError::Invalid {
                 reason: "truncated"
             })
@@ -703,38 +983,118 @@ mod tests {
             fields: &["a"],
             ty_index: 1,
         }];
-        let rctx = default_ctx(&binding);
-        let missing = wire(
-            2,
-            &record_node("d", "R", &["a"], &[]), // child never arrives
-        );
+        let rctx = ctx(&binding, &[]);
+        let rt = DynType::record("d", "R", vec![("a", DynType::I32)]);
+        let missing = wire(2, &record_node(&rt, &[])); // child never arrives
         assert_eq!(
             unfreeze(&missing, &rctx, &TraversalOptions::default()),
             Err(PortableError::Invalid {
                 reason: "truncated"
             })
         );
-        // Duplicate field names in one record header.
-        let dupf = wire(
-            2,
-            &record_node("d", "R", &["a", "a"], &[&scalar_body(1), &scalar_body(2)]),
-        );
+        // Duplicate field names in one record tydesc.
+        let dupf = {
+            let mut b = vec![9u8];
+            b.extend_from_slice(&1u16.to_le_bytes());
+            b.push(b'd');
+            b.extend_from_slice(&1u16.to_le_bytes());
+            b.push(b'R');
+            b.extend_from_slice(&2u16.to_le_bytes());
+            for _ in 0..2 {
+                b.extend_from_slice(&1u16.to_le_bytes());
+                b.push(b'a');
+                b.push(1); // field tydesc: I32
+            }
+            b.push(8); // TAG_RECORD
+            b.extend_from_slice(&i32_node(1));
+            b.extend_from_slice(&i32_node(2));
+            b
+        };
+        let dup_wire = wire(3, &dupf);
         assert_eq!(
-            unfreeze(&dupf, &rctx, &TraversalOptions::default()),
+            unfreeze(&dup_wire, &rctx, &TraversalOptions::default()),
             Err(PortableError::Invalid {
                 reason: "duplicate-field"
             })
         );
         // Trailing bytes after a complete root.
-        let mut trail = wire(1, &scalar_body(1));
+        let mut trail = wire(1, &i32_node(1));
         let body_len = trail.len() - 8;
         trail.insert(body_len, 0);
         trail.truncate(trail.len() - 8);
         let sum = fnv1a64(&trail);
         trail.extend_from_slice(&sum.to_le_bytes());
         assert_eq!(
-            unfreeze(&trail, &ctx, &TraversalOptions::default()),
+            unfreeze(&trail, &empty, &TraversalOptions::default()),
             Err(PortableError::Invalid { reason: "trailing" })
+        );
+    }
+
+    #[test]
+    fn av_dynamic_824_wire_type_consistency_negatives() {
+        // A list node whose tydesc says List<i32> but whose child carries
+        // an f32 tydesc: declared-vs-observed mismatch is Invalid.
+        let bad_list = {
+            let mut child = tydesc(&DynType::F32);
+            child.push(4); // TAG_F32
+            child.extend_from_slice(&1.0f32.to_bits().to_le_bytes());
+            let mut b = tydesc(&DynType::list(DynType::I32));
+            b.push(9); // TAG_LIST
+            b.extend_from_slice(&1u32.to_le_bytes());
+            b.extend_from_slice(&child);
+            b
+        };
+        let w = wire(2, &bad_list);
+        assert_eq!(
+            unfreeze(&w, &ctx(&[], &[]), &TraversalOptions::default()),
+            Err(PortableError::Invalid { reason: "type" })
+        );
+        // A record whose field type disagrees with the observed child.
+        let rt = DynType::record("d", "R", vec![("a", DynType::I32)]);
+        let binding = [RecordBinding {
+            owner: "d",
+            name: "R",
+            fields: &["a"],
+            ty_index: 1,
+        }];
+        let bad_rec = {
+            let mut child = tydesc(&DynType::I64);
+            child.push(2); // TAG_I64
+            child.extend_from_slice(&1i64.to_le_bytes());
+            let mut b = tydesc(&rt);
+            b.push(8);
+            b.extend_from_slice(&child);
+            b
+        };
+        let w2 = wire(2, &bad_rec);
+        assert_eq!(
+            unfreeze(&w2, &ctx(&binding, &[]), &TraversalOptions::default()),
+            Err(PortableError::Invalid { reason: "type" })
+        );
+        // Variant disc out of range of the declared arms.
+        let vt = DynType::variant("d", "V", vec![("n", None), ("s", Some(DynType::I32))]);
+        let vsig = [VariantBinding {
+            owner: "d",
+            name: "V",
+            arms: &[
+                ArmSig {
+                    name: "n",
+                    has_payload: false,
+                },
+                ArmSig {
+                    name: "s",
+                    has_payload: true,
+                },
+            ],
+            ty_index: 2,
+        }];
+        let mut vbody = tydesc(&vt);
+        vbody.push(10);
+        vbody.extend_from_slice(&7u32.to_le_bytes());
+        let w3 = wire(1, &vbody);
+        assert_eq!(
+            unfreeze(&w3, &ctx(&[], &vsig), &TraversalOptions::default()),
+            Err(PortableError::Invalid { reason: "type" })
         );
     }
 
@@ -742,28 +1102,28 @@ mod tests {
     fn av_dynamic_824_wire_checksum_and_node_count_integrity() {
         let dv = pack_demo();
         let (_, _, bindings) = demo_tree();
-        let ctx = default_ctx(&bindings);
+        let c = ctx(&bindings, &[]);
         let good = freeze(&dv, &TraversalOptions::default()).unwrap();
-        assert!(unfreeze(&good, &ctx, &TraversalOptions::default()).is_ok());
+        assert!(unfreeze(&good, &c, &TraversalOptions::default()).is_ok());
         // Good structure + bad checksum: flip only the trailer.
         let mut badsum = good.clone();
         let last = badsum.len() - 1;
         badsum[last] ^= 0xFF;
         assert_eq!(
-            unfreeze(&badsum, &ctx, &TraversalOptions::default()),
+            unfreeze(&badsum, &c, &TraversalOptions::default()),
             Err(PortableError::Invalid { reason: "checksum" })
         );
         // Bad structure with a RE-COMPUTED checksum is still rejected by
         // the structural gate (a good hash never launders bad bytes).
         let mut badtag = good.clone();
-        badtag[HEADER] = 9; // unknown tag at the root
         const HEADER: usize = 16;
+        badtag[HEADER] = 99; // unknown tydesc tag at the root
         badtag.truncate(badtag.len() - 8);
         let sum = fnv1a64(&badtag);
         badtag.extend_from_slice(&sum.to_le_bytes());
         assert_eq!(
-            unfreeze(&badtag, &ctx, &TraversalOptions::default()),
-            Err(PortableError::Invalid { reason: "tag" })
+            unfreeze(&badtag, &c, &TraversalOptions::default()),
+            Err(PortableError::Invalid { reason: "tydesc" })
         );
         // A lying node_count (declared != parsed) with a valid checksum.
         for delta in [1i64, -1] {
@@ -774,7 +1134,7 @@ mod tests {
             let sum = fnv1a64(&lie);
             lie.extend_from_slice(&sum.to_le_bytes());
             assert_eq!(
-                unfreeze(&lie, &ctx, &TraversalOptions::default()),
+                unfreeze(&lie, &c, &TraversalOptions::default()),
                 Err(PortableError::Invalid {
                     reason: "node-count"
                 }),
@@ -788,7 +1148,7 @@ mod tests {
         let body_end = flip.len() - 8;
         flip[body_end - 1] ^= 0x01;
         assert_eq!(
-            unfreeze(&flip, &ctx, &TraversalOptions::default()),
+            unfreeze(&flip, &c, &TraversalOptions::default()),
             Err(PortableError::Invalid { reason: "checksum" })
         );
     }
@@ -799,7 +1159,7 @@ mod tests {
         let (_, _, bindings) = demo_tree();
         let bytes = freeze(&dv, &TraversalOptions::default()).unwrap();
         // No bindings at all: unknown nominal type at the decode gate.
-        let empty = default_ctx(&[]);
+        let empty = ctx(&[], &[]);
         assert_eq!(
             unfreeze(&bytes, &empty, &TraversalOptions::default()),
             Err(PortableError::Admission {
@@ -814,7 +1174,7 @@ mod tests {
             ty_index: 3,
         }];
         assert_eq!(
-            unfreeze(&bytes, &default_ctx(&renamed), &TraversalOptions::default()),
+            unfreeze(&bytes, &ctx(&renamed, &[]), &TraversalOptions::default()),
             Err(PortableError::Admission {
                 code: "portable.layout-mismatch"
             })
@@ -827,22 +1187,35 @@ mod tests {
             ty_index: 3,
         }];
         assert_eq!(
-            unfreeze(
-                &bytes,
-                &default_ctx(&reordered),
-                &TraversalOptions::default()
-            ),
+            unfreeze(&bytes, &ctx(&reordered, &[]), &TraversalOptions::default()),
+            Err(PortableError::Admission {
+                code: "portable.layout-mismatch"
+            })
+        );
+        // Variant admission: payload-ness flip is a layout mismatch.
+        let vt = DynType::variant("demo", "Opt", vec![("n", None)]);
+        let vsig = [VariantBinding {
+            owner: "demo",
+            name: "Opt",
+            arms: &[ArmSig {
+                name: "n",
+                has_payload: true,
+            }], // wire says none
+            ty_index: 5,
+        }];
+        let vw = freeze(
+            &DynValue::pack(variant(5, 0, None), vt).unwrap(),
+            &TraversalOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            unfreeze(&vw, &ctx(&[], &vsig), &TraversalOptions::default()),
             Err(PortableError::Admission {
                 code: "portable.layout-mismatch"
             })
         );
         // Nothing was consumed: the correct context still restores.
-        let back = unfreeze(
-            &bytes,
-            &default_ctx(&bindings),
-            &TraversalOptions::default(),
-        )
-        .unwrap();
+        let back = unfreeze(&bytes, &ctx(&bindings, &[]), &TraversalOptions::default()).unwrap();
         assert_eq!(back.as_value(), dv.as_value());
     }
 
@@ -908,7 +1281,7 @@ mod tests {
         let mut padded = small.clone();
         padded.resize(small.len() + 9 * 1024 * 1024, 0);
         assert_eq!(
-            unfreeze(&padded, &default_ctx(&[]), &TraversalOptions::default()),
+            unfreeze(&padded, &ctx(&[], &[]), &TraversalOptions::default()),
             Err(PortableError::Budget {
                 code: "av.resource.dyn-bytes"
             })
@@ -929,9 +1302,12 @@ mod tests {
         assert_eq!(err.code(), "av.resource.dyn-depth");
         // A 300-deep hand-built wire is rejected at the same budget by
         // unfreeze (admission consistent across pack and decode).
-        let mut body = scalar_body(1);
+        let mut body = i32_node(1);
         for _ in 0..299 {
-            body = record_node("deep", "N", &["x"], &[&body]);
+            let mut b = tydesc(&DynType::record("deep", "N", vec![("x", DynType::I32)]));
+            b.push(8);
+            b.extend_from_slice(&body);
+            body = b;
         }
         let wire300 = wire(300, &body);
         let binding = [RecordBinding {
@@ -941,11 +1317,7 @@ mod tests {
             ty_index: 1,
         }];
         assert_eq!(
-            unfreeze(
-                &wire300,
-                &default_ctx(&binding),
-                &TraversalOptions::default()
-            ),
+            unfreeze(&wire300, &ctx(&binding, &[]), &TraversalOptions::default()),
             Err(PortableError::Budget {
                 code: "av.resource.dyn-depth"
             })
@@ -1002,16 +1374,11 @@ mod tests {
         ];
         on.set(true);
         assert_eq!(
-            unfreeze(&bytes, &default_ctx(&bindings), &opts),
+            unfreeze(&bytes, &ctx(&bindings, &[]), &opts),
             Err(PortableError::Cancelled)
         );
         on.set(false);
-        assert!(unfreeze(
-            &bytes,
-            &default_ctx(&bindings),
-            &TraversalOptions::default()
-        )
-        .is_ok());
+        assert!(unfreeze(&bytes, &ctx(&bindings, &[]), &TraversalOptions::default()).is_ok());
     }
 
     /// The 1024 field names of `Mid` as one `&'static [&'static str]`.

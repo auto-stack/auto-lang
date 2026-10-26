@@ -1,5 +1,5 @@
 //! PLAN-824 `av.dynamic/1` — the DynValue container (T-10 module subset,
-//! contract-decision.md §2–§3/§7).
+//! contract-decision.md §2–§3/§7; r2: D822 whitelist expansion).
 //!
 //! Same-source note: this file is NOT declared in core's `lib.rs` (the
 //! T-10 private module). The `parallel/824` harness compiles it via
@@ -9,13 +9,14 @@
 //!
 //! Contract surface (frozen in docs/plans/attachments/824/contract-decision.md):
 //! - `pack` is the ONLY constructor of `DynValue`: explicit type erasure of
-//!   the 821-delivered whitelist (bool/scalars/char/owned Str/pure owned
-//!   records). `StrView`/`MutRef` are rejected at ANY depth (§5.1.1);
-//!   Fn/closure/List/Variant have no category here at all (D822 pending).
-//! - Type equivalence is the 820 frozen rule: derived `PartialEq` over the
-//!   nominal record identity (owner + name + fields in declaration order).
-//!   Same-width different-name records never compare equal; no cross-kind
-//!   coercion anywhere.
+//!   the delivered whitelist (r1: bool/scalars/char/owned Str/pure owned
+//!   records; r2: + `List`/`Variant` from PLAN-822). `StrView`/`MutRef`/
+//!   `Place` are rejected at ANY depth (§5.1.1); Fn/closure has no category
+//!   here at all.
+//! - Type equivalence mirrors the frozen MIR rules: records and variants
+//!   are NOMINAL (owner + name + fields/arms in declaration order), lists
+//!   are STRUCTURAL (element type alone). Same-width different-name records
+//!   never compare equal; no cross-kind coercion anywhere.
 //! - `borrow_as` grants a read-only share (no drop/copy right); `take_as`
 //!   on a wrong type is a RUNTIME CHECKED failure that returns the source
 //!   unconsumed (§5.5); copying must go through the budgeted `deep_clone`.
@@ -23,7 +24,10 @@
 //!   steps / bytes / depth, §7 "有界显式遍历"): no host-stack recursion,
 //!   so no value tree can stack-bomb a later freeze/clone/drop.
 
-use crate::contract::{RecordValue, StrHandle, Value, CANCEL_CHECK_INTERVAL, MAX_RECORD_FIELDS};
+use crate::contract::{
+    ListHandle, RecordValue, StrHandle, Value, VariantValue, CANCEL_CHECK_INTERVAL, MAX_LIST_ELEMS,
+    MAX_RECORD_FIELDS,
+};
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -36,7 +40,8 @@ pub const MAX_DYN_STEPS: u64 = 2_000_000;
 pub const MAX_DYN_BYTES: usize = 8 * 1024 * 1024;
 /// Value-tree depth ceiling. Source-derived values are frontend-nesting
 /// bounded (≤128); 256 covers that with margin while keeping every later
-/// recursive `Rc` drop trivially stack-safe.
+/// recursive `Rc` drop trivially stack-safe. Also bounds the portable
+/// type-descriptor nesting (contract §4).
 pub const MAX_DYN_DEPTH: u32 = 256;
 
 // ---------------------------------------------------------------------------
@@ -167,10 +172,10 @@ impl<'a> Traversal<'a> {
 // DynType — the self-contained whitelisted type tree
 // ---------------------------------------------------------------------------
 
-/// The whitelisted dynamic type tree (§2). Records carry their NOMINAL
-/// identity (`owner` + `name` + declaration-order fields); derived
-/// `PartialEq` IS the frozen 820 type-equivalence applied at `is` /
-/// `borrow_as` / `take_as`. No Fn/closure/borrow/List category exists here.
+/// The whitelisted dynamic type tree (§2; r2 adds List/Variant mirroring
+/// PLAN-822's `MirType` rules: records/variants nominal, lists structural).
+/// Derived `PartialEq` IS the frozen type-equivalence applied at `is` /
+/// `borrow_as` / `take_as`. No Fn/closure/borrow/Place category exists here.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum DynType {
     Bool,
@@ -186,12 +191,28 @@ pub enum DynType {
         name: String,
         fields: Vec<DynField>,
     },
+    /// Structural: identity is the element type alone (MirType::List).
+    List(Box<DynType>),
+    /// Nominal: owner + name + arms in declaration order (MirType::Variant;
+    /// Option/Result/enums lower to this shape).
+    Variant {
+        owner: String,
+        name: String,
+        arms: Vec<DynArm>,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct DynField {
     pub name: String,
     pub ty: DynType,
+}
+
+/// One variant arm: a name and an optional payload type (PLAN-822 shape).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct DynArm {
+    pub name: String,
+    pub payload: Option<DynType>,
 }
 
 impl DynType {
@@ -203,8 +224,8 @@ impl DynType {
             DynType::I32 => "i32".into(),
             DynType::I64 => "i64".into(),
             DynType::U64 => "u64".into(),
-            DynType::F32 => "f32".into(),
             DynType::F64 => "f64".into(),
+            DynType::F32 => "f32".into(),
             DynType::Char => "char".into(),
             DynType::Str => "Str".into(),
             DynType::Record {
@@ -213,6 +234,10 @@ impl DynType {
                 fields,
             } => {
                 format!("record {}/{}[{}]", owner, name, fields.len())
+            }
+            DynType::List(elem) => format!("List<{}>", elem.describe()),
+            DynType::Variant { owner, name, arms } => {
+                format!("variant {}/{}[{}]", owner, name, arms.len())
             }
         }
     }
@@ -231,6 +256,25 @@ impl DynType {
                 .collect(),
         }
     }
+
+    /// Convenience constructor from `(name, Option<DynType>)` arm pairs.
+    pub fn variant(owner: &str, name: &str, arms: Vec<(&str, Option<DynType>)>) -> DynType {
+        DynType::Variant {
+            owner: owner.to_string(),
+            name: name.to_string(),
+            arms: arms
+                .into_iter()
+                .map(|(n, p)| DynArm {
+                    name: n.to_string(),
+                    payload: p,
+                })
+                .collect(),
+        }
+    }
+
+    pub fn list(elem: DynType) -> DynType {
+        DynType::List(Box::new(elem))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -239,16 +283,17 @@ impl DynType {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DynPackError {
-    /// Recursive whitelist rejection: `str-view` / `mut-ref` at any depth.
+    /// Recursive whitelist rejection: `str-view` / `mut-ref` / `place` at
+    /// any depth (r2 adds the PLAN-822 index-token category).
     Unsupported { category: &'static str, depth: u32 },
-    /// Value shape does not match the declared type (kind or arity).
+    /// Value shape does not match the declared type (kind, arity, arm).
     TypeMismatch {
         expected: String,
         actual: String,
         depth: u32,
     },
-    /// The declared type itself is malformed (duplicate field names,
-    /// record wider than the core `MAX_RECORD_FIELDS` guard).
+    /// The declared type itself is malformed (duplicate field/arm names,
+    /// width guards) or a list value longer than `MAX_LIST_ELEMS`.
     InvalidType { reason: &'static str },
     /// Traversal budget rejection (depth — §7).
     Budget { code: &'static str },
@@ -333,21 +378,29 @@ impl DynValue {
         }
     }
 
-    /// Explicit independent deep copy (§3): fresh `Rc`s and fresh Str
-    /// buffers — a shared DAG is EXPANDED into a tree (expanded nodes are
-    /// what the node budget counts). Budgeted and cancellable like every
-    /// traversal; module-level copies mint detached Str handles (id 0, no
-    /// arena) — in-execution clones route through the real arena at T-02+.
+    /// Explicit independent deep copy (§3): fresh `Rc`s, fresh Str buffers
+    /// and fresh list buffers — a shared DAG is EXPANDED into a tree
+    /// (expanded nodes are what the node budget counts). Budgeted and
+    /// cancellable like every traversal; module-level copies mint detached
+    /// Str/List handles (id 0, no arena) — in-execution clones route
+    /// through the real arena at T-02+.
     pub fn deep_clone(&self, opts: &TraversalOptions) -> Result<DynValue, TraversalStop> {
         let mut t = Traversal::new(opts, MAX_DYN_BYTES);
         let mut root: Option<(Value, DynType)> = None;
 
         match (&self.value, &self.ty) {
-            // The root itself is a record: seed the build stack.
-            (Value::Record(_), DynType::Record { .. }) => {}
+            // A container root seeds the build stack.
+            (Value::Record(_), DynType::Record { .. })
+            | (Value::List(_), DynType::List(_))
+            | (Value::Variant(_), DynType::Variant { .. }) => {}
             // Inconsistent pairing is unreachable for a packed DynValue;
             // refuse rather than clone across kinds.
-            (Value::Record(_), _) | (_, DynType::Record { .. }) => {
+            (Value::Record(_), _)
+            | (Value::List(_), _)
+            | (Value::Variant(_), _)
+            | (_, DynType::Record { .. })
+            | (_, DynType::List(_))
+            | (_, DynType::Variant { .. }) => {
                 return Err(TraversalStop::Nodes);
             }
             // The root is a leaf: one node, done.
@@ -358,29 +411,121 @@ impl DynValue {
             }
         }
 
-        // Explicit post-order build stack: a frame accumulates its finished
-        // children; record children push a frame, leaves complete in place,
-        // a full frame pops and rebuilds one level with a FRESH Rc.
+        // Explicit post-order build stack: a frame opens by materializing
+        // SHALLOW-owned child values (handle bumps — a ListBuf RefCell is
+        // read exactly once at open, never re-borrowed mid-build),
+        // accumulates finished children, and pops into a fresh container.
         struct Frame<'a> {
-            src: &'a Value,
-            ty: &'a DynType,
+            kids: Vec<Value>,
+            kid_tys: Vec<&'a DynType>,
+            rebuild: Rebuild<'a>,
+            enter_cost: usize,
             vals: Vec<Value>,
             tys: Vec<DynType>,
             next: usize,
             depth: u32,
             entered: bool,
         }
+        enum Rebuild<'a> {
+            Record {
+                owner: &'a str,
+                name: &'a str,
+                fields: &'a [DynField],
+                ty_index: u32,
+            },
+            List {
+                elem: &'a DynType,
+            },
+            Variant {
+                owner: &'a str,
+                name: &'a str,
+                arms: &'a [DynArm],
+                disc: u32,
+                ty_index: u32,
+            },
+        }
+        fn open_frame<'a>(
+            val: &Value,
+            ty: &'a DynType,
+            depth: u32,
+        ) -> Option<(Vec<Value>, Vec<&'a DynType>, Rebuild<'a>, usize)> {
+            let _ = depth;
+            match (val, ty) {
+                (
+                    Value::Record(rec),
+                    DynType::Record {
+                        owner,
+                        name,
+                        fields,
+                    },
+                ) => {
+                    let kids: Vec<Value> = rec.fields.iter().cloned().collect();
+                    let kid_tys: Vec<&DynType> = fields.iter().map(|f| &f.ty).collect();
+                    Some((
+                        kids,
+                        kid_tys,
+                        Rebuild::Record {
+                            owner,
+                            name,
+                            fields,
+                            ty_index: rec.ty,
+                        },
+                        byte_cost_cell() + byte_cost_record_extra(),
+                    ))
+                }
+                (Value::List(h), DynType::List(elem)) => {
+                    let kids: Vec<Value> = h.rc.borrow().elems.clone();
+                    let kid_tys: Vec<&DynType> = kids.iter().map(|_| elem.as_ref()).collect();
+                    Some((
+                        kids,
+                        kid_tys,
+                        Rebuild::List { elem },
+                        byte_cost_cell() + byte_cost_list_extra(),
+                    ))
+                }
+                (Value::Variant(v), DynType::Variant { owner, name, arms }) => {
+                    let mut kids = Vec::new();
+                    let mut kid_tys: Vec<&DynType> = Vec::new();
+                    if let (Some(p), Some(Some(pt))) = (
+                        v.payload.as_deref(),
+                        arms.get(v.disc as usize).map(|a| &a.payload),
+                    ) {
+                        kids.push(p.clone());
+                        kid_tys.push(pt);
+                    }
+                    Some((
+                        kids,
+                        kid_tys,
+                        Rebuild::Variant {
+                            owner,
+                            name,
+                            arms,
+                            disc: v.disc,
+                            ty_index: v.ty,
+                        },
+                        byte_cost_cell(),
+                    ))
+                }
+                _ => None,
+            }
+        }
+
         let mut stack: Vec<Frame<'_>> = Vec::new();
         if root.is_none() {
-            stack.push(Frame {
-                src: &self.value,
-                ty: &self.ty,
-                vals: Vec::new(),
-                tys: Vec::new(),
-                next: 0,
-                depth: 1,
-                entered: false,
-            });
+            match open_frame(&self.value, &self.ty, 1) {
+                Some((kids, kid_tys, rebuild, enter_cost)) => stack.push(Frame {
+                    kids,
+                    kid_tys,
+                    rebuild,
+                    enter_cost,
+                    vals: Vec::new(),
+                    tys: Vec::new(),
+                    next: 0,
+                    depth: 1,
+                    entered: false,
+                }),
+                None => return Err(TraversalStop::Nodes),
+            }
         }
 
         while !stack.is_empty() {
@@ -388,74 +533,108 @@ impl DynValue {
             if !stack[idx].entered {
                 stack[idx].entered = true;
                 let depth = stack[idx].depth;
+                let cost = stack[idx].enter_cost;
                 t.enter_node(depth)?;
-                t.charge_bytes(byte_cost_record_extra() + byte_cost_cell())?;
+                t.charge_bytes(cost)?;
             }
-            let nfields = match stack[idx].ty {
-                DynType::Record { fields, .. } => fields.len(),
-                _ => unreachable!("only record frames are pushed"),
-            };
-            if stack[idx].next < nfields {
+            let nkids = stack[idx].kids.len();
+            if stack[idx].next < nkids {
                 let i = stack[idx].next;
                 stack[idx].next += 1;
-                let (cv, ct) = match (stack[idx].src, stack[idx].ty) {
-                    (Value::Record(rec), DynType::Record { fields, .. }) => {
-                        (&rec.fields[i], &fields[i].ty)
+                let cv = stack[idx].kids[i].clone();
+                let ct = stack[idx].kid_tys[i];
+                match &cv {
+                    Value::Record(_) | Value::List(_) | Value::Variant(_) => {
+                        let depth = stack[idx].depth + 1;
+                        match open_frame(&cv, ct, depth) {
+                            Some((kids, kid_tys, rebuild, enter_cost)) => stack.push(Frame {
+                                kids,
+                                kid_tys,
+                                rebuild,
+                                enter_cost,
+                                vals: Vec::new(),
+                                tys: Vec::new(),
+                                next: 0,
+                                depth,
+                                entered: false,
+                            }),
+                            None => return Err(TraversalStop::Nodes),
+                        }
                     }
-                    _ => unreachable!("frame sources are records"),
-                };
-                if let Value::Record(_) = cv {
-                    let depth = stack[idx].depth + 1;
-                    let src = cv;
-                    let ty = ct;
-                    stack.push(Frame {
-                        src,
-                        ty,
-                        vals: Vec::new(),
-                        tys: Vec::new(),
-                        next: 0,
-                        depth,
-                        entered: false,
-                    });
-                } else {
-                    let d = stack[idx].depth + 1;
-                    t.enter_node(d)?;
-                    t.charge_bytes(leaf_cost(cv))?;
-                    stack[idx].vals.push(clone_leaf(cv));
-                    stack[idx].tys.push(ct.clone());
+                    leaf => {
+                        let d = stack[idx].depth + 1;
+                        t.enter_node(d)?;
+                        t.charge_bytes(leaf_cost(leaf))?;
+                        stack[idx].vals.push(clone_leaf(leaf));
+                        stack[idx].tys.push(ct.clone());
+                    }
                 }
             } else {
-                // All children finished: rebuild with a FRESH Rc — sharing
-                // is deliberately broken (deep copy expands shared DAGs).
-                let done = stack.pop().unwrap();
-                let (owner, name, src_index) = match (&done.ty, done.src) {
-                    (DynType::Record { owner, name, .. }, Value::Record(rec)) => {
-                        (owner.clone(), name.clone(), rec.ty)
+                // All children finished: rebuild with FRESH allocations —
+                // sharing is deliberately broken (deep copy expands DAGs).
+                let mut done = stack.pop().unwrap();
+                let (value, ty) = match done.rebuild {
+                    Rebuild::Record {
+                        owner,
+                        name,
+                        fields,
+                        ty_index,
+                    } => {
+                        let value = Value::Record(Rc::new(RecordValue {
+                            // DynType never carries the positional index
+                            // (§5.1.5) — the module-level copy reuses the
+                            // source node's index verbatim; real resolution
+                            // belongs to the T-02+ RestoreContext.
+                            ty: ty_index,
+                            fields: done.vals,
+                        }));
+                        let ty = DynType::Record {
+                            owner: owner.to_string(),
+                            name: name.to_string(),
+                            fields: fields
+                                .iter()
+                                .map(|f| f.name.clone())
+                                .zip(done.tys)
+                                .map(|(name, ty)| DynField { name, ty })
+                                .collect(),
+                        };
+                        (value, ty)
                     }
-                    _ => unreachable!("frame sources are records"),
-                };
-                let field_names: Vec<String> = match &done.ty {
-                    DynType::Record { fields, .. } => {
-                        fields.iter().map(|f| f.name.clone()).collect()
+                    Rebuild::List { elem } => {
+                        let value = Value::List(ListHandle::detached(done.vals));
+                        let ty = DynType::List(Box::new(elem.clone()));
+                        (value, ty)
                     }
-                    _ => unreachable!(),
-                };
-                let value = Value::Record(Rc::new(RecordValue {
-                    // DynType never carries the positional index (§5.1.5:
-                    // the wire must not persist it) — the module-level copy
-                    // reuses the source node's index verbatim; real index
-                    // resolution belongs to the T-02+ RestoreContext.
-                    ty: src_index,
-                    fields: done.vals,
-                }));
-                let ty = DynType::Record {
-                    owner,
-                    name,
-                    fields: field_names
-                        .into_iter()
-                        .zip(done.tys)
-                        .map(|(name, ty)| DynField { name, ty })
-                        .collect(),
+                    Rebuild::Variant {
+                        owner,
+                        name,
+                        arms,
+                        disc,
+                        ty_index,
+                    } => {
+                        let payload = done.vals.pop().map(Rc::new);
+                        let value = Value::Variant(VariantValue {
+                            ty: ty_index,
+                            disc,
+                            payload,
+                        });
+                        // Arms clone from the source; the LIVE arm's payload
+                        // type is replaced by the freshly built child type.
+                        let mut built_arms: Vec<DynArm> = arms.to_vec();
+                        if let Some(arm) = built_arms.get_mut(disc as usize) {
+                            if arm.payload.is_some() {
+                                if let Some(built) = done.tys.pop() {
+                                    arm.payload = Some(built);
+                                }
+                            }
+                        }
+                        let ty = DynType::Variant {
+                            owner: owner.to_string(),
+                            name: name.to_string(),
+                            arms: built_arms,
+                        };
+                        (value, ty)
+                    }
                 };
                 match stack.last_mut() {
                     Some(parent) => {
@@ -496,8 +675,8 @@ impl DynTakeError {
 // Pack helpers (iterative — no host-stack recursion anywhere)
 // ---------------------------------------------------------------------------
 
-/// Validate the TYPE tree itself: unique field names per record, the core
-/// `MAX_RECORD_FIELDS` width guard, per-node depth ceiling.
+/// Validate the TYPE tree itself: unique field/arm names, the core width
+/// guards (`MAX_RECORD_FIELDS`; arms reuse it, r2-frozen), per-node depth.
 fn validate_type(ty: &DynType) -> Result<(), DynPackError> {
     let mut stack: Vec<(&DynType, u32)> = vec![(ty, 1)];
     while let Some((t, depth)) = stack.pop() {
@@ -506,21 +685,43 @@ fn validate_type(ty: &DynType) -> Result<(), DynPackError> {
                 code: "av.resource.dyn-depth",
             });
         }
-        if let DynType::Record { fields, .. } = t {
-            if fields.len() > MAX_RECORD_FIELDS {
-                return Err(DynPackError::InvalidType {
-                    reason: "field-count",
-                });
-            }
-            let mut names: HashSet<&str> = HashSet::new();
-            for f in fields {
-                if !names.insert(f.name.as_str()) {
+        match t {
+            DynType::Record { fields, .. } => {
+                if fields.len() > MAX_RECORD_FIELDS {
                     return Err(DynPackError::InvalidType {
-                        reason: "duplicate-field",
+                        reason: "field-count",
                     });
                 }
-                stack.push((&f.ty, depth + 1));
+                let mut names: HashSet<&str> = HashSet::new();
+                for f in fields {
+                    if !names.insert(f.name.as_str()) {
+                        return Err(DynPackError::InvalidType {
+                            reason: "duplicate-field",
+                        });
+                    }
+                    stack.push((&f.ty, depth + 1));
+                }
             }
+            DynType::Variant { arms, .. } => {
+                if arms.len() > MAX_RECORD_FIELDS {
+                    return Err(DynPackError::InvalidType {
+                        reason: "arm-count",
+                    });
+                }
+                let mut names: HashSet<&str> = HashSet::new();
+                for a in arms {
+                    if !names.insert(a.name.as_str()) {
+                        return Err(DynPackError::InvalidType {
+                            reason: "duplicate-arm",
+                        });
+                    }
+                    if let Some(p) = &a.payload {
+                        stack.push((p, depth + 1));
+                    }
+                }
+            }
+            DynType::List(elem) => stack.push((elem, depth + 1)),
+            _ => {}
         }
     }
     Ok(())
@@ -528,9 +729,11 @@ fn validate_type(ty: &DynType) -> Result<(), DynPackError> {
 
 /// Recursive-shape admission of (value, type): whitelist at every depth +
 /// structural match, with the same per-node depth rule freeze applies
-/// (a packable tree is exactly a freezable one).
+/// (a packable tree is exactly a freezable one). The work stack holds
+/// SHALLOW-cloned values (handle bumps — RefCell buffers are read once,
+/// guards never outlive an iteration).
 fn check_shape(value: &Value, ty: &DynType) -> Result<(), DynPackError> {
-    let mut stack: Vec<(&Value, &DynType, u32)> = vec![(value, ty, 1)];
+    let mut stack: Vec<(Value, &DynType, u32)> = vec![(value.clone(), ty, 1)];
     while let Some((v, t, depth)) = stack.pop() {
         if depth > MAX_DYN_DEPTH {
             return Err(DynPackError::Budget {
@@ -538,7 +741,7 @@ fn check_shape(value: &Value, ty: &DynType) -> Result<(), DynPackError> {
             });
         }
         use DynType as T;
-        let ok = match (v, t) {
+        let ok = match (&v, t) {
             (Value::Bool(_), T::Bool)
             | (Value::I32(_), T::I32)
             | (Value::I64(_), T::I64)
@@ -556,13 +759,52 @@ fn check_shape(value: &Value, ty: &DynType) -> Result<(), DynPackError> {
                     });
                 }
                 for (fv, ft) in rec.fields.iter().zip(fields.iter()) {
-                    stack.push((fv, &ft.ty, depth + 1));
+                    stack.push((fv.clone(), &ft.ty, depth + 1));
                 }
                 true
             }
+            (Value::List(h), T::List(elem)) => {
+                let n = h.rc.borrow().elems.len();
+                if n > MAX_LIST_ELEMS {
+                    return Err(DynPackError::InvalidType {
+                        reason: "list-length",
+                    });
+                }
+                let elems = h.rc.borrow().elems.clone();
+                for ev in elems.iter() {
+                    stack.push((ev.clone(), elem, depth + 1));
+                }
+                true
+            }
+            (Value::Variant(var), T::Variant { arms, .. }) => {
+                let arm = match arms.get(var.disc as usize) {
+                    Some(a) => a,
+                    None => {
+                        return Err(DynPackError::TypeMismatch {
+                            expected: t.describe(),
+                            actual: format!("arm #{} out of range", var.disc),
+                            depth,
+                        })
+                    }
+                };
+                match (&var.payload, &arm.payload) {
+                    (Some(p), Some(pt)) => {
+                        stack.push(((**p).clone(), pt, depth + 1));
+                        true
+                    }
+                    (None, None) => true,
+                    _ => {
+                        return Err(DynPackError::TypeMismatch {
+                            expected: t.describe(),
+                            actual: "arm payload presence mismatch".to_string(),
+                            depth,
+                        })
+                    }
+                }
+            }
             // Whitelist rejections fire BEFORE the generic mismatch arm: a
-            // borrow category is unsupported at any depth even when the
-            // declared type would otherwise disagree (§5.1.1, V-12).
+            // borrow/index-token category is unsupported at any depth even
+            // when the declared type would otherwise disagree (§5.1.1, V-12).
             (Value::StrView(_), _) => {
                 return Err(DynPackError::Unsupported {
                     category: "str-view",
@@ -572,6 +814,12 @@ fn check_shape(value: &Value, ty: &DynType) -> Result<(), DynPackError> {
             (Value::MutRef(_), _) => {
                 return Err(DynPackError::Unsupported {
                     category: "mut-ref",
+                    depth,
+                })
+            }
+            (Value::Place(_), _) => {
+                return Err(DynPackError::Unsupported {
+                    category: "place",
                     depth,
                 })
             }
@@ -591,7 +839,7 @@ fn check_shape(value: &Value, ty: &DynType) -> Result<(), DynPackError> {
 // ---------------------------------------------------------------------------
 // Shared size accounting (same cost model as Value::deep_size, computed
 // iteratively by the callers so every node is charged exactly ONCE: one
-// `Value` cell per node, one Vec header per record level, Str payload
+// `Value` cell per node, container headers at container nodes, Str payload
 // bytes at their leaf)
 // ---------------------------------------------------------------------------
 
@@ -601,6 +849,11 @@ pub(crate) fn byte_cost_cell() -> usize {
 
 pub(crate) fn byte_cost_record_extra() -> usize {
     std::mem::size_of::<Vec<Value>>()
+}
+
+/// A list rebuild allocates `elems` AND `elem_gens` (two Vec headers).
+pub(crate) fn byte_cost_list_extra() -> usize {
+    std::mem::size_of::<Vec<Value>>() * 2
 }
 
 pub(crate) fn leaf_cost(v: &Value) -> usize {
