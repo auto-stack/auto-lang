@@ -5,6 +5,11 @@
 所要求的支持矩阵、profile/codec 命名、访问面、预算与 oracle 映射；未知项不留给
 下游猜。任何变更须回到本文件并记 revision。
 
+> **r1（2026-10-26 T-10 落地）**：§3 签名按实现定稿——`commit` 只收 **move 源**
+> （第 k 个绑定第 k 个 Move spec，clone 源始终留创建者，符合 §2.1"clone 不消费源"）；
+> 错误变体携带上下文字段；`EnvPlan`/`ClosureEnv` 带 Drop（逆序清理即回滚律）。
+> 其余决策不变。
+
 ## 1. 调查基面与依赖门核实
 
 | 项 | 实际状态（2026-10-26 核实） |
@@ -64,20 +69,23 @@ pub struct CaptureSpec<'a> { pub mode: CaptureMode, pub src: &'a Value }
 
 pub struct EnvLimits { pub max_fields: usize, pub max_env_bytes: usize } // Default 取 §4 冻结值
 
-pub enum EnvPrepareError { TooManyFields, EnvBytesBudget, UnsupportedKind(&'static str), FaultedClone(u64) }
-pub enum EnvCommitError  { SourceCountMismatch{expected, got}, SourceKind{index}, EnvBytesBudget }
+pub enum EnvPrepareError { TooManyFields{got, max}, EnvBytesBudget{would, max},
+                           UnsupportedKind{kind}, FaultedClone{attempt} }
+pub enum EnvCommitError  { SourceCountMismatch{expected, got}, SourceKind{index, expected, got},
+                           EnvBytesBudget{would, max} }
 
 pub struct EnvAccounting { pub bytes: usize, pub fields: u64 } // 计量回传，executor 记 fuel
 
-pub struct EnvPlan { /* 私有：staged clones + 每 spec 的源 kind 标记 + limits */ }
+pub struct EnvPlan { limits: EnvLimits, planned: Vec<PlannedCapture> } // PlannedCapture 私有：Move{kind}/Clone{staged}
 impl EnvPlan {
     pub fn prepare(arena: &StrArena, specs: &[CaptureSpec<'_>], limits: &EnvLimits)
-        -> Result<(EnvPlan, EnvAccounting), EnvPrepareError>;          // 借引、可失败、失败逆序清理
-    pub fn commit(self, sources: Vec<Value>)
-        -> Result<(ClosureEnv, EnvAccounting), (EnvCommitError, Vec<Value>)>; // 无分配；失败返还 sources
+        -> Result<(EnvPlan, EnvAccounting), EnvPrepareError>;   // 借引、可失败、失败逆序清理（Drop 即回滚律）
+    pub fn commit(mut self, move_sources: Vec<Value>)           // 只收 move 源：第 k 个绑定第 k 个 Move spec；
+        -> Result<(ClosureEnv, EnvAccounting),                  //   clone 源始终留创建者，不提交
+           (EnvCommitError, Vec<Value>)>;                       // 无分配；失败原样返还 move 源
 }
 
-pub struct ClosureEnv { /* 私有 fields: Vec<Value> */ }
+pub struct ClosureEnv { fields: Vec<Value> }                    // 私有；按捕获序
 impl ClosureEnv {
     pub fn field_count(&self) -> usize;
     pub fn field(&self, i: usize) -> Option<&Value>;
