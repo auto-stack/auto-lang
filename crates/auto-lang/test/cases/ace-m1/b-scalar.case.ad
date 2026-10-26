@@ -3,7 +3,7 @@
 # with the SAME frozen oracle (T-02 observational evidence). B08/B11 are
 # NOT here: the legacy engine computes 10/-7 against the frozen oracle 7
 # (shadowing / named-arg binding differences) — difference rows in
-# binding.tsv. a2r-snapshot checks and oracle/ goldens land with T-03.
+# binding.tsv. a2r-snapshot checks freeze the reviewed T-03 goldens under oracle/.
 
 ```test-case
 case {
@@ -22,6 +22,9 @@ case {
       expect: { completion: "success", exit: 14 } },
     { id: "autovm", adapter: "avm", action: "run",
       expect: { completion: "success", result: { format: "legacy-display", text: "14" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_b01" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_b01.rs", file: "oracle/m1_b01.rs", compare: "bytes" } ] } }
   ]
 }
 ```
@@ -43,6 +46,9 @@ case {
       expect: { completion: "success", exit: -21 } },
     { id: "autovm", adapter: "avm", action: "run",
       expect: { completion: "success", result: { format: "legacy-display", text: "-21" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_b02" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_b02.rs", file: "oracle/m1_b02.rs", compare: "bytes" } ] } }
   ]
 }
 ```
@@ -64,6 +70,9 @@ case {
       expect: { completion: "success", exit: 42 } },
     { id: "autovm", adapter: "avm", action: "run",
       expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_b03" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_b03.rs", file: "oracle/m1_b03.rs", compare: "bytes" } ] } }
   ]
 }
 ```
@@ -85,6 +94,9 @@ case {
       expect: { completion: "success", exit: 42 } },
     { id: "autovm", adapter: "avm", action: "run",
       expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_b04" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_b04.rs", file: "oracle/m1_b04.rs", compare: "bytes" } ] } }
   ]
 }
 ```
@@ -106,6 +118,9 @@ case {
       expect: { completion: "success", exit: 42 } },
     { id: "autovm", adapter: "avm", action: "run",
       expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_b05" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_b05.rs", file: "oracle/m1_b05.rs", compare: "bytes" } ] } }
   ]
 }
 ```
@@ -127,6 +142,9 @@ case {
       expect: { completion: "success", exit: 0 } },
     { id: "autovm", adapter: "avm", action: "run",
       expect: { completion: "success", result: { format: "legacy-display", text: "0" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_b06" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_b06.rs", file: "oracle/m1_b06.rs", compare: "bytes" } ] } }
   ]
 }
 ```
@@ -148,6 +166,9 @@ case {
       expect: { completion: "success", exit: 30 } },
     { id: "autovm", adapter: "avm", action: "run",
       expect: { completion: "success", result: { format: "legacy-display", text: "30" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_b07" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_b07.rs", file: "oracle/m1_b07.rs", compare: "bytes" } ] } }
   ]
 }
 ```
@@ -169,6 +190,9 @@ case {
       expect: { completion: "success", exit: 120 } },
     { id: "autovm", adapter: "avm", action: "run",
       expect: { completion: "success", result: { format: "legacy-display", text: "120" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_b09" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_b09.rs", file: "oracle/m1_b09.rs", compare: "bytes" } ] } }
   ]
 }
 ```
@@ -190,6 +214,9 @@ case {
       expect: { completion: "success", exit: 42 } },
     { id: "autovm", adapter: "avm", action: "run",
       expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_b10" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_b10.rs", file: "oracle/m1_b10.rs", compare: "bytes" } ] } }
   ]
 }
 ```
@@ -211,6 +238,9 @@ case {
       expect: { completion: "success", exit: -2 } },
     { id: "autovm", adapter: "avm", action: "run",
       expect: { completion: "success", result: { format: "legacy-display", text: "-2" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_b12" },
+      expect: { completion: "success", artifacts: [
+        { path: "m1_b12.rs", file: "oracle/m1_b12.rs", compare: "bytes" } ] } }
   ]
 }
 ```

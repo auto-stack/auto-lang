@@ -26,9 +26,11 @@ fn temp_root(tag: &str) -> PathBuf {
     dir
 }
 
-/// The committed base corpus runs END TO END green: 34 cases / 67 checks —
-/// 10 scalar value cases on ac-native+av+autovm, 4 traps, 4 diagnostics,
-/// 14 legacy-only composite values, 2 legacy parse rejections.
+/// The committed base corpus runs END TO END green: 34 cases / 91 checks —
+/// 10 scalar value cases on all FOUR paths (ac-native + av + autovm +
+/// a2r-snapshot against reviewed goldens), 4 traps, 4 diagnostics, 14
+/// legacy-only composite values (autovm + a2r snapshot), 2 legacy parse
+/// rejections.
 #[test]
 fn ace_m1_base_suite_green() {
     let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
@@ -61,7 +63,7 @@ fn ace_m1_base_suite_green() {
         "ace-m1 base suite has non-PASS checks:\n{}",
         failing.join("\n")
     );
-    assert_eq!(report.results.len(), 67, "base suite check count");
+    assert_eq!(report.results.len(), 91, "base suite check count");
     assert!(report.coverage_gaps.is_empty(), "no coverage gaps");
 }
 
@@ -107,6 +109,40 @@ fn ace_m1_base_negative_oracle_fails() {
         .map(|r| r.case_id.as_str())
         .collect();
     assert!(other_reds.is_empty(), "unexpected extra reds: {:?}", other_reds);
+}
+
+/// Golden-drift control (PLAN-852 G04): when the emitted bytes stop matching
+/// the frozen golden, the a2r-snapshot check must be RED — a drift is never
+/// silently absorbed, and goldens are only updated through explicit review.
+#[test]
+fn ace_m1_golden_drift_is_red() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let suite_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/cases/ace-m1");
+    let root = temp_root("drift");
+    let corpus = root.join("corpus");
+    copy_tree(&suite_dir, &corpus);
+    let golden = corpus.join("oracle/m1_b01.rs");
+    let bytes = std::fs::read(&golden).unwrap();
+    // A visible, semantics-bearing mutation (not whitespace).
+    let mutated: Vec<u8> = bytes
+        .iter()
+        .map(|&b| if b == b'+' { b'*' } else { b })
+        .collect();
+    assert_ne!(mutated, bytes, "mutation must change the golden");
+    std::fs::write(&golden, mutated).unwrap();
+    let report = run_suite(&corpus.join("ace-m1-base.suite.ad"), &root.join("out"), &Limits::defaults())
+        .expect("mutated suite still runs");
+    let snap = report
+        .results
+        .iter()
+        .find(|r| r.case_id == "ace.m1.b01" && r.check_id == "a2r-snapshot")
+        .expect("B01 a2r-snapshot check present");
+    assert_eq!(snap.status, Status::Fail, "golden drift must be RED");
+    assert!(
+        snap.mismatches.iter().any(|m| m.observation.contains("m1_b01.rs")),
+        "the failure must name the drifted artifact: {:?}",
+        snap.mismatches
+    );
 }
 
 /// Minimal recursive copy for the mutation fixture (the corpus is small;

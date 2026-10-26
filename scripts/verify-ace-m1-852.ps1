@@ -120,15 +120,18 @@ switch ($Scope) {
         }
 
         # 4. frozen scalar baseline (contract-decision 2026-10-26): the four
-        #    minimum required positives are all-path bindable with exact values.
+        #    minimum required positives are bound on all four paths with exact
+        #    values (a2r binds as ok-emit once its reviewed golden is frozen —
+        #    T-03; behavior certification is the separate certify axis).
         $baseline = @{ B01 = '14'; B02 = '-21'; B04 = '42'; B09 = '120' }
         foreach ($k in $baseline.Keys) {
             $row = $rows | Where-Object { $_.ns -eq 'corpus' -and $_.id -eq $k }
             if (-not $row) { Fail "baseline case $k missing" }
             if ($row.expected -ne $baseline[$k]) { Fail "baseline $k expected $($row.expected), frozen contract says $($baseline[$k])" }
-            foreach ($p in 'ac', 'av', 'avm', 'a2r') {
-                if ($row.$p -ne 'ok') { Fail "baseline $k path $p is '$($row.$p)' — the frozen baseline requires bindable (ok) on all four paths" }
+            foreach ($p in 'ac', 'av', 'avm') {
+                if ($row.$p -ne 'ok') { Fail "baseline $k path $p is '$($row.$p)' — the frozen baseline requires bindable (ok)" }
             }
+            if ($row.a2r -notin @('ok', 'ok-emit')) { Fail "baseline $k path a2r is '$($row.a2r)' — requires ok/ok-emit (golden-bound)" }
         }
 
         # 5. every gap/wait row names an owner or owning plan in its note.
@@ -183,8 +186,52 @@ switch ($Scope) {
     }
 
     'snapshot' {
-        Write-Host "verify-ace-m1-852 [snapshot]: FAIL — scope owned by T-03, not implemented yet" -ForegroundColor Red
-        exit 3
+        if (-not $OutDir) { Write-Host "usage: -Scope snapshot requires -OutDir (scratch)" -ForegroundColor Red; exit 2 }
+
+        # G02 structural guard: the daily a2r face emits and compares bytes
+        # IN-PROCESS — the adapter must not spawn any PROCESS (in-process
+        # threads are fine; process-spawn vocabulary is not).
+        $adapter = Join-Path $RepoRoot 'crates/auto-lang-core/src/test_cases/a2r.rs'
+        if (-not (Test-Path $adapter)) { Fail "a2r adapter missing: $adapter" }
+        $spawnHits = Select-String -Path $adapter -Pattern 'Command::new|std::process|use std::os::windows::process|creation_flags'
+        if ($spawnHits) { Fail "a2r adapter contains process-spawn sites (daily snapshot must spawn no process): lines $($spawnHits.LineNumber -join ',')" }
+
+        $bin = if ($env:AUTO_CASE_BIN) { $env:AUTO_CASE_BIN } else {
+            $ErrorActionPreference = 'Continue'
+            & cargo @('build', '-p', 'auto-lang', '--features', 'test-cases', '--bin', 'auto-case', '--quiet') 2>$null
+            $code = $LASTEXITCODE
+            $ErrorActionPreference = 'Stop'
+            if ($code -ne 0) { Fail "auto-case build failed (exit $code)" }
+            Join-Path $RepoRoot 'target/debug/auto-case.exe'
+        }
+        $suite = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad'
+        $report = Join-Path $OutDir 'ace-m1-a2r-report.json'
+        # Full-suite run (a partial selection can never gate 0 by F-04 design);
+        # the a2r axis is asserted from the report below.
+        $ErrorActionPreference = 'Continue'
+        & $bin @('run', '--suite', $suite, '--out', $OutDir, '--format', 'console', '--json-out', $report) *> $null
+        $code = $LASTEXITCODE
+        $ErrorActionPreference = 'Stop'
+        if ($code -ne 0) { Fail "base suite gate exit $code under the snapshot scope (expected 0)" }
+        $r = Get-Content $report -Raw | ConvertFrom-Json
+        $a2r = @($r.results | Where-Object adapter -eq 'a2r')
+        $nonPass = @($a2r | Where-Object status -ne 'PASS')
+        if ($nonPass.Count -gt 0) {
+            Fail ("a2r snapshot has {0} non-PASS check(s); first: {1}:{2} {3}" -f $nonPass.Count, $nonPass[0].case, $nonPass[0].check, $nonPass[0].status)
+        }
+        if ($a2r.Count -lt 26) { Fail "a2r snapshot check count $($a2r.Count) < 26" }
+
+        # Two-axis honesty (G06): emit-green does NOT claim certified behavior.
+        # Report per-golden certificate presence; the certify scope owns the
+        # certificates themselves.
+        $certDir = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/oracle/certs'
+        $goldens = Get-ChildItem (Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/oracle') -Filter 'm1_*.rs'
+        $certified = 0
+        if (Test-Path $certDir) { $certified = (Get-ChildItem $certDir -Filter '*.json').Count }
+        Write-Host "verify-ace-m1-852 [snapshot]: PASS — $($a2r.Count) a2r checks green (emit + byte-compare," `
+            "process-spawn=0 by structural guard; full base suite $($r.results.Count) checks green). Goldens: $($goldens.Count); certificates: $certified" `
+            "(certified-behavior axis is the separate certify scope; emit PASS is not a behavior claim)."
+        exit 0
     }
 
     'certify' {

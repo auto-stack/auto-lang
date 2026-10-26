@@ -19,18 +19,18 @@
 #
 # status: designed-not-executed for every row until its enabling task runs it.
 #id	ns	feature	outcome	expected	ac	av	avm	a2r	status	enabling	owner_or_note
-B01	corpus	整数/优先级	value	14	ok	ok	ok	ok	designed-not-executed	T-01/T-02	frozen baseline; T-01 probe PASS 4/4 paths (exit 14 / 14 / result "14" / b01.rs)
-B02	corpus	有符号除余	value	-21	ok	ok	ok	ok	designed-not-executed	T-01/T-02	frozen baseline; T-01 probe PASS incl. negative (-21 all paths; cert wrapper+ref i32:-21)
-B03	corpus	比较与布尔	value	42	ok	ok	ok	ok	source-bound	T-02	scalar subset
-B04	corpus	短路AND	value	42	ok	ok	ok	ok	designed-not-executed	T-01/T-02	frozen baseline; T-01 probe PASS (42 all paths)
-B05	corpus	短路OR	value	42	ok	ok	ok	ok	source-bound	T-02	scalar subset
-B06	corpus	零次条件循环	value	0	ok	ok	ok	ok	source-bound	T-02	while/for shape vs 827 conditional-for probe
-B07	corpus	嵌套循环/break/continue	value	30	ok	ok	ok	ok	source-bound	T-02	break/continue support in mn/av frontends unverified
+B01	corpus	整数/优先级	value	14	ok	ok	ok	ok-emit	source-bound	T-01/T-02	frozen baseline; T-01 probe PASS 4/4 paths (exit 14 / 14 / result "14" / b01.rs) | T-03: golden oracle/m1_b01.rs frozen from real a2r (snapshot green); behavior cert = T-04
+B02	corpus	有符号除余	value	-21	ok	ok	ok	ok-emit	source-bound	T-01/T-02	frozen baseline; T-01 probe PASS incl. negative (-21 all paths; cert wrapper+ref i32:-21) | T-03: golden oracle/m1_b02.rs frozen from real a2r (snapshot green); behavior cert = T-04
+B03	corpus	比较与布尔	value	42	ok	ok	ok	ok-emit	source-bound	T-02	scalar subset | T-03: golden oracle/m1_b03.rs frozen from real a2r (snapshot green); behavior cert = T-04
+B04	corpus	短路AND	value	42	ok	ok	ok	ok-emit	source-bound	T-01/T-02	frozen baseline; T-01 probe PASS (42 all paths) | T-03: golden oracle/m1_b04.rs frozen from real a2r (snapshot green); behavior cert = T-04
+B05	corpus	短路OR	value	42	ok	ok	ok	ok-emit	source-bound	T-02	scalar subset | T-03: golden oracle/m1_b05.rs frozen from real a2r (snapshot green); behavior cert = T-04
+B06	corpus	零次条件循环	value	0	ok	ok	ok	ok-emit	source-bound	T-02	while/for shape vs 827 conditional-for probe | T-03: golden oracle/m1_b06.rs frozen from real a2r (snapshot green); behavior cert = T-04
+B07	corpus	嵌套循环/break/continue	value	30	ok	ok	ok	ok-emit	source-bound	T-02	break/continue support in mn/av frontends unverified | T-03: golden oracle/m1_b07.rs frozen from real a2r (snapshot green); behavior cert = T-04
 B08	corpus	词法作用域/遮蔽	value	7	ok	ok	diff-legacy-value	emit-ok-run-unverified	diff-registered	T-02	scalar; shadowing support probe | T-02: avm computes 10/-7 vs oracle 7 (shadowing/named-arg binding)
-B09	corpus	递归/显式返回	value	120	ok	ok	ok	ok	designed-not-executed	T-01/T-02	frozen baseline; T-01 probe PASS (120 all paths, multi-function)
-B10	corpus	前向引用/相互递归	value	42	ok	ok	ok	ok	source-bound	T-02	forward refs in mn/av frontends probe
+B09	corpus	递归/显式返回	value	120	ok	ok	ok	ok-emit	source-bound	T-01/T-02	frozen baseline; T-01 probe PASS (120 all paths, multi-function) | T-03: golden oracle/m1_b09.rs frozen from real a2r (snapshot green); behavior cert = T-04
+B10	corpus	前向引用/相互递归	value	42	ok	ok	ok	ok-emit	source-bound	T-02	forward refs in mn/av frontends probe | T-03: golden oracle/m1_b10.rs frozen from real a2r (snapshot green); behavior cert = T-04
 B11	corpus	命名实参绑定	value	7	ok	ok	diff-legacy-value	emit-ok-run-unverified	diff-registered	T-02	named args support unknown on all engines (E01 owns order) | T-02: avm computes 10/-7 vs oracle 7 (shadowing/named-arg binding)
-B12	corpus	一元运算	value	-2	ok	ok	ok	ok	source-bound	T-02	unary minus/neg frontends probe
+B12	corpus	一元运算	value	-2	ok	ok	ok	ok-emit	source-bound	T-02	unary minus/neg frontends probe | T-03: golden oracle/m1_b12.rs frozen from real a2r (snapshot green); behavior cert = T-04
 B13	corpus	精确i32溢出	trap	overflow	ok	ok	diff-old-int-i64	cert-diff	source-bound	T-02	avm old int=i64 no trap; a2r emits i64 arithmetic — difference rows, owner=语言语义裁定
 B14	corpus	除零	trap	div-by-zero	ok	ok	ok	cert-diff	source-bound	T-01/T-02	T-01 probe: mn exit70 frozen / av av.trap.div-by-zero / avm Run:DivisionByZero; a2r emits golden, Rust run panics — cert-diff row
 B15	corpus	MIN余负一	trap	rem-overflow	ok	ok	diff-old-int-i64	cert-diff	source-bound	T-02	frozen profile=trap; old engines wrap — difference rows
@@ -43,18 +43,18 @@ T01	corpus	Unicode标量/UTF8字节	value	38	gap:mn-scalar-only	wait:av-text-822
 T02	corpus	标量索引切片	value	27	gap:mn-scalar-only	wait:av-text-822	diff-legacy-runtime(NoneType +)	emit-ok-run-unverified	diff-registered	T-02	same family as T01
 T03	corpus	Str深clone/move/拼接	value	23	gap:mn-scalar-only	wait:av-text-822	diff-legacy-value	emit-ok-run-unverified	diff-registered	T-02	owned text; av waits D822 | T-02: avm value differs from oracle (see obs report)
 T04	corpus	Unicode字符码点	value	128512	gap:mn-scalar-only	wait:av-text-822	diff-legacy-value	emit-ok-run-unverified	diff-registered	T-02	full i32 observation >255; avm result channel is full decimal (probe) | T-02: avm value differs from oracle (see obs report) | T-02: avm returns false vs 128512
-T05	corpus	文本NUL比较	value	42	gap:mn-scalar-only	wait:av-text-822	ok	ok-emit	source-bound	T-02	embedded NUL text handling
+T05	corpus	文本NUL比较	value	42	gap:mn-scalar-only	wait:av-text-822	ok	snapshot-only-cert-gap	source-bound	T-02	embedded NUL text handling | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
 T06	corpus	借用不外逃	diagnostic	borrow-escape	gap:mn-scalar-only	wait:av-text-822	diff-legacy-accepts	probe	diff-registered	T-02	legacy resource model differs — difference candidate
 T07	corpus	非法Unicode标量	diagnostic	invalid-scalar	gap:mn-scalar-only	wait:av-text-822	ok	ok-parse-reject	source-bound	T-02	lexer-level rejection
 T08	corpus	切片越界	trap	slice-oob	gap:mn-scalar-only	wait:av-text-822	ok	probe	designed-not-executed	T-02	trap channel per engine
 R01	corpus	type值复制	value	19	gap:mn-scalar-only	wait:av-record-822	diff-legacy-value	emit-ok-run-unverified	diff-registered	T-02	Auto `type` on legacy engines probe | T-02: avm value differs from oracle (see obs report)
-R02	corpus	嵌套type字段	value	9	gap:mn-scalar-only	wait:av-record-822	ok	ok-emit	source-bound	T-02	same family
+R02	corpus	嵌套type字段	value	9	gap:mn-scalar-only	wait:av-record-822	ok	snapshot-only-cert-gap	source-bound	T-02	same family | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
 R03	corpus	命名type构造映射	value	23	gap:mn-scalar-only	wait:av-record-822	diff-legacy-value	emit-ok-run-unverified	diff-registered	T-02	ctor field order also E02 | T-02: avm value differs from oracle (see obs report)
 R04	corpus	拥有文本字段深clone	value	51	gap:mn-scalar-only	wait:av-record-822	diff-legacy-value	emit-ok-run-unverified	diff-registered	T-02	owned text in records | T-02: avm value differs from oracle (see obs report)
-R05	corpus	move参数/返回	value	42	gap:mn-scalar-only	wait:av-record-822	ok	ok-emit	source-bound	T-02	move semantics on legacy probe
-R06	corpus	重叠赋值先物化RHS	value	21	gap:mn-scalar-only	wait:av-record-822	ok	ok-emit	source-bound	T-02	RHS materialization
+R05	corpus	move参数/返回	value	42	gap:mn-scalar-only	wait:av-record-822	ok	snapshot-only-cert-gap	source-bound	T-02	move semantics on legacy probe | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
+R06	corpus	重叠赋值先物化RHS	value	21	gap:mn-scalar-only	wait:av-record-822	ok	snapshot-only-cert-gap	source-bound	T-02	RHS materialization | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
 R07	corpus	mut参数写回	value	42	gap:mn-scalar-only	wait:av-record-822	diff-legacy-runtime(2-owners mut)	diff-a2r-refuses-emit(untyped)	diff-registered	T-02	mut params on legacy probe
-R08	corpus	static与只读方法	value	42	gap:mn-scalar-only	gap:av-lower-method	ok	ok-emit	source-bound	T-02	case note: AV lower.method rejects — required gap kept
+R08	corpus	static与只读方法	value	42	gap:mn-scalar-only	gap:av-lower-method	ok	snapshot-only-cert-gap	source-bound	T-02	case note: AV lower.method rejects — required gap kept | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
 R09	corpus	同布局不同名不兼容	diagnostic	nominal-type	gap:mn-scalar-only	wait:av-record-822	diff-legacy-accepts	probe	diff-registered	T-02	nominal typing on legacy probe
 R10	corpus	move后读取	diagnostic	use-after-move	gap:mn-scalar-only	wait:av-record-822	diff-legacy-accepts	probe	diff-registered	T-02	legacy copy semantics may allow — difference candidate
 L01	corpus	类型化List基本操作	value	42	gap:mn-scalar-only	gap:av-unsupported-list	diff-legacy-value	emit-ok-run-unverified	diff-registered	T-02	827 evidence: av source front door rejects List (source.unsupported); collections owner=822 | T-02: avm value differs from oracle (see obs report)
@@ -64,19 +64,19 @@ L04	corpus	List拥有type/借用读	value	42	gap:mn-scalar-only	gap:av-unsupport
 L05	corpus	List移出owned值	value	42	gap:mn-scalar-only	gap:av-unsupported-list	diff-legacy-value	emit-ok-run-unverified	diff-registered	T-02	case note: legacy List return protocol to verify | T-02: avm value differs from oracle (see obs report)
 L06	corpus	List越界	trap	list-oob	gap:mn-scalar-only	gap:av-unsupported-list	diff-legacy-accepts	ok	diff-registered	T-02	case note: legacy get default vs trap — difference candidate
 L07	corpus	List元素替换	value	42	gap:mn-scalar-only	gap:av-unsupported-list	diff-legacy-value	emit-ok-run-unverified	diff-registered	T-02	same family | T-02: avm value differs from oracle (see obs report)
-V01	corpus	Option Some/None	value	42	gap:mn-scalar-only	wait:av-variants-822	ok	ok-emit	source-bound	T-02	a2r conformance corpus 025 exists; avm probe
-V02	corpus	Result Ok	value	42	gap:mn-scalar-only	wait:av-variants-822	ok	ok-emit	source-bound	T-02	a2r conformance 026 exists
+V01	corpus	Option Some/None	value	42	gap:mn-scalar-only	wait:av-variants-822	ok	snapshot-only-cert-gap	source-bound	T-02	a2r conformance corpus 025 exists; avm probe | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
+V02	corpus	Result Ok	value	42	gap:mn-scalar-only	wait:av-variants-822	ok	snapshot-only-cert-gap	source-bound	T-02	a2r conformance 026 exists | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
 V03	corpus	Result拥有错误载荷	value	3	gap:mn-scalar-only	wait:av-variants-822	diff-legacy-runtime(Option.len missing)	ok	diff-registered	T-02	owned error payload
-V04	corpus	有限enum带载荷	value	42	gap:mn-scalar-only	wait:av-variants-822	ok	ok-emit	source-bound	T-02	a2r conformance 020 exists
-V05	corpus	enum拥有type载荷	value	42	gap:mn-scalar-only	wait:av-variants-822	ok	ok-emit	source-bound	T-02	owned payload
-V06	corpus	切换活分支	value	42	gap:mn-scalar-only	wait:av-variants-822	ok	ok-emit	source-bound	T-02	exact-once release needs resource oracle (scn:R04)
-V07	corpus	Option None分支	value	42	gap:mn-scalar-only	wait:av-variants-822	ok	ok-emit	source-bound	T-02	None branch
-K01	corpus	move闭包捕获	value	42	gap:mn-scalar-only	wait:av-closures-823	ok	ok-emit	source-bound	T-02	a2r 19_ownership/009 exists; avm legacy closures
+V04	corpus	有限enum带载荷	value	42	gap:mn-scalar-only	wait:av-variants-822	ok	snapshot-only-cert-gap	source-bound	T-02	a2r conformance 020 exists | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
+V05	corpus	enum拥有type载荷	value	42	gap:mn-scalar-only	wait:av-variants-822	ok	snapshot-only-cert-gap	source-bound	T-02	owned payload | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
+V06	corpus	切换活分支	value	42	gap:mn-scalar-only	wait:av-variants-822	ok	snapshot-only-cert-gap	source-bound	T-02	exact-once release needs resource oracle (scn:R04) | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
+V07	corpus	Option None分支	value	42	gap:mn-scalar-only	wait:av-variants-822	ok	snapshot-only-cert-gap	source-bound	T-02	None branch | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
+K01	corpus	move闭包捕获	value	42	gap:mn-scalar-only	wait:av-closures-823	ok	snapshot-only-cert-gap	source-bound	T-02	a2r 19_ownership/009 exists; avm legacy closures | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
 K02	corpus	创建者退出后owned闭包	value	42	gap:mn-scalar-only	wait:av-closures-823	diff-legacy-grammar(parse)	diff-legacy-grammar(parse)	diff-registered	T-02	case note: no shared-RC bypass | T-02: both legacy paths cannot parse move-closure syntax; owner 823 freezes source syntax
-K03	corpus	同步非逃逸借用捕获	value	42	gap:mn-scalar-only	wait:av-closures-823	ok	ok-emit	source-bound	T-02	sync borrow capture
+K03	corpus	同步非逃逸借用捕获	value	42	gap:mn-scalar-only	wait:av-closures-823	ok	snapshot-only-cert-gap	source-bound	T-02	sync borrow capture | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
 K04	corpus	借用闭包逃逸拒绝	diagnostic	borrow-escape	gap:mn-scalar-only	wait:av-closures-823	ok-parse-reject	ok-parse-reject	source-bound	T-02	case note: legacy auto-lift difference candidate
 K05	corpus	闭包环境显式深clone	value	42	gap:mn-scalar-only	wait:av-closures-823	diff-legacy-grammar(parse)	diff-legacy-grammar(parse)	diff-registered	T-02	independence oracle = scn:R05 | T-02: both legacy paths cannot parse move-closure syntax; owner 823 freezes source syntax
-K06	corpus	owned闭包可变环境	value	42	gap:mn-scalar-only	wait:av-closures-823	ok	ok-emit	source-bound	T-02	823 real contract carries view/mut signatures
+K06	corpus	owned闭包可变环境	value	42	gap:mn-scalar-only	wait:av-closures-823	ok	snapshot-only-cert-gap	source-bound	T-02	823 real contract carries view/mut signatures | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
 W01	corpus	i64位型typed入口	value	8000000000000000	gap:mn-no-typed-entry	ok:av-data-typed	gap:avm-no-typed-entry	gap:a2r-no-typed-entry	designed-not-executed	T-05	AV data recipe typed:<id> is the only delivered typed entry channel
 W02	corpus	u64位型typed入口	value	ffffffffffffffff	gap:mn-no-typed-entry	ok:av-data-typed	gap:avm-no-typed-entry	gap:a2r-no-typed-entry	designed-not-executed	T-05	same channel
 W03	corpus	f64负零typed入口	value	8000000000000000	gap:mn-no-typed-entry	ok:av-data-typed	gap:avm-no-typed-entry	gap:a2r-no-typed-entry	designed-not-executed	T-05	-0 vs +0 distinguishable
@@ -97,11 +97,11 @@ E03	scenario	静态合法性与可达性分离	group	-	ok	ok	ok	diff-no-name-che
 C01	scenario	标量CTE执行/回灌	value	42	ok	ok	n/a	n/a	designed-not-executed	T-05	817 ac_cte recipe delivered (cte-first-sum42 evidence)
 C02	scenario	Meta负依赖/权限	value	-	ok	ok	n/a	n/a	designed-not-executed	T-05	817 cte-meta-arg / permission faces
 R01	scenario	owned作用域LIFO	events	lifo	gap:ac-composite-native	probe	diff-legacy-value	emit-ok-run-unverified	diff-registered	T-05	av resources recipe front-door delivered; per-owner event oracle needs scn tooling | T-02: avm value differs from oracle (see obs report)
-R02	scenario	构造/clone失败注入	events	-	gap:ac-composite-native	gap:av-alloc-fault	ok	ok-emit	source-bound	T-05登记	fault injection channel owner=852 T-05 investigation
+R02	scenario	构造/clone失败注入	events	-	gap:ac-composite-native	gap:av-alloc-fault	ok	snapshot-only-cert-gap	source-bound	T-05登记	fault injection channel owner=852 T-05 investigation | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
 R03	scenario	活借用/旧buffer	events	-	gap:ac-composite-native	gap:av-821-gen	diff-legacy-value	emit-ok-run-unverified	diff-registered	T-05登记	821 gen field is not runtime validation | T-02: avm value differs from oracle (see obs report)
 R04	scenario	variant切换释放	events	once	gap:ac-composite-native	wait:av-variants-822	diff-legacy-value	emit-ok-run-unverified	diff-registered	T-05	pairs corpus V06 | T-02: avm value differs from oracle (see obs report)
-R05	scenario	closure创建者退出	events	42	gap:ac-composite-native	wait:av-closures-823	ok	ok-emit	source-bound	T-05	pairs corpus K02
-R06	scenario	budget/cancel/trap退出	events	-	probe	probe	ok	ok-emit	source-bound	T-05登记	per-profile promise faces
+R05	scenario	closure创建者退出	events	42	gap:ac-composite-native	wait:av-closures-823	ok	snapshot-only-cert-gap	source-bound	T-05	pairs corpus K02 | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
+R06	scenario	budget/cancel/trap退出	events	-	probe	probe	ok	snapshot-only-cert-gap	source-bound	T-05登记	per-profile promise faces | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
 I01	scenario	稳定body编辑30修订	value	edits	ok	ok	n/a	n/a	designed-not-executed	T-05	mn/av session steps (edit-source/restart) delivered by 818/798
 I02	scenario	callee-only-body编辑	value	edits	ok	ok	n/a	n/a	designed-not-executed	T-05	same channel
 I03	scenario	callee签名改变	value	edits	ok	ok	n/a	n/a	designed-not-executed	T-05	same channel
