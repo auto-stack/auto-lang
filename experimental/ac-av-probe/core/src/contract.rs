@@ -582,43 +582,60 @@ impl Value {
     /// traversed record node AND field (the frozen "deep_size 按字段计"
     /// fuel rule) — scalar-only programs never enter the record branch and
     /// keep their exact historic step counts.
+    /// F822-R12-01: EXPLICIT worklist over OWNED shallow snapshots (Value
+    /// clones are Rc/handle bumps for every supported kind) — the frozen
+    /// domain admits arbitrarily deep acyclic Variant/Record nesting with
+    /// no language depth cap, so the metering walk must not ride the host
+    /// stack (same explicit-traversal invariant as cleanup/order-key
+    /// discovery). The increment scheme mirrors the historical recursive
+    /// one exactly — one node visit per Record/Str/List/Variant item and
+    /// one edge visit per pushed field/element/payload — so `visited` and
+    /// byte totals are bit-identical to the recursive walk and every
+    /// pinned step count is preserved. The dropped snapshots never reach
+    /// the last reference (the source still holds each), so no free event
+    /// can fire here.
     pub fn deep_size(&self, visited: &mut u64) -> usize {
-        let mut b = std::mem::size_of::<Value>();
-        match self {
-            Value::Record(r) => {
-                *visited += 1;
-                b += std::mem::size_of::<Vec<Value>>(); // Vec header (len-based)
-                for f in r.fields.iter() {
+        let mut total = 0usize;
+        let mut stack: Vec<Value> = vec![self.clone()];
+        while let Some(x) = stack.pop() {
+            let mut b = std::mem::size_of::<Value>();
+            match &x {
+                Value::Record(r) => {
                     *visited += 1;
-                    b += f.deep_size(visited);
+                    b += std::mem::size_of::<Vec<Value>>(); // Vec header (len-based)
+                    for f in r.fields.iter() {
+                        *visited += 1; // the field edge
+                        stack.push(f.clone());
+                    }
                 }
-            }
-            Value::Str(s) => {
-                *visited += 1;
-                b += s.bytes().len();
-            }
-            // PLAN-822: every element is counted individually (the frozen
-            // per-element fuel rule — a list never hides its data volume
-            // behind one cheap instruction).
-            Value::List(l) => {
-                *visited += 1;
-                b += std::mem::size_of::<Vec<Value>>();
-                let buf = l.rc.borrow();
-                for e in buf.elems.iter() {
+                Value::Str(s) => {
                     *visited += 1;
-                    b += e.deep_size(visited);
+                    b += s.bytes().len();
                 }
-            }
-            Value::Variant(v) => {
-                *visited += 1;
-                if let Some(p) = v.payload.as_ref() {
+                // PLAN-822: every element is counted individually (the frozen
+                // per-element fuel rule — a list never hides its data volume
+                // behind one cheap instruction).
+                Value::List(l) => {
                     *visited += 1;
-                    b += p.deep_size(visited);
+                    b += std::mem::size_of::<Vec<Value>>();
+                    let buf = l.rc.borrow();
+                    for e in buf.elems.iter() {
+                        *visited += 1; // the element edge
+                        stack.push(e.clone());
+                    }
                 }
+                Value::Variant(v) => {
+                    *visited += 1;
+                    if let Some(p) = v.payload.as_ref() {
+                        *visited += 1; // the payload edge
+                        stack.push(p.as_ref().clone());
+                    }
+                }
+                _ => {}
             }
-            _ => {}
+            total += b;
         }
-        b
+        total
     }
 }
 

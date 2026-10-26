@@ -607,7 +607,13 @@ fn commit_slot_write(
         st.slot_bytes += delta;
         st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
     }
-    fr.slots[slot] = val;
+    let dying = std::mem::replace(&mut fr.slots[slot], val);
+    // (the frame borrow ends at the replace above — NLL)
+    // F822-R12-01: the replaced value releases through the EXPLICIT
+    // reverse cleanup — VariantSwitch's old live-arm payload, FieldSet's
+    // old field chain, re-assignments over owned slots — never the host
+    // drop glue, which recurses through arbitrarily deep chains.
+    drop_owned_reverse(st, dying);
     Ok(())
 }
 
@@ -931,68 +937,119 @@ fn cleanup_owned_frames(st: &mut LoopState) {
     }
 }
 
+/// F822-R12-01: the minimum ledger buffer id reachable from a value —
+/// the LIFO release ORDER KEY for frame sweeps. EXPLICIT worklist over
+/// OWNED shallow snapshots (Value clones are Rc/handle bumps for every
+/// supported kind, so the plan never rides the host stack): the frozen
+/// domain admits arbitrarily deep acyclic Variant/Record nesting with NO
+/// language depth cap, so order discovery must not recurse (§5.1.6's
+/// explicit-traversal rule reaches every value walk over the supported
+/// graph, not only the clone visitor). The dropped snapshots never reach
+/// the last reference (the source value still holds each one), so no
+/// free event can fire here.
 fn min_buffer_id(val: &Value) -> u64 {
-    // Direct recursion: record nesting is verified acyclic and containers
-    // are one layer deep (the frozen domain), so the depth is table-
-    // bounded — and the RefCell borrows of nested list buffers cannot
-    // outlive their guard in an explicit-stack shape.
-    match val {
-        Value::Str(h) => h.rc.id,
-        Value::List(h) => {
-            let buf = h.rc.borrow();
-            let mut min = buf.id;
-            for e in buf.elems.iter() {
-                min = min.min(min_buffer_id(e));
+    let mut min = u64::MAX;
+    let mut stack: Vec<Value> = vec![val.clone()];
+    while let Some(x) = stack.pop() {
+        match &x {
+            Value::Str(h) => min = min.min(h.rc.id),
+            Value::List(h) => {
+                let buf = h.rc.borrow();
+                min = min.min(buf.id);
+                for e in buf.elems.iter() {
+                    stack.push(e.clone());
+                }
             }
-            min
-        }
-        Value::Variant(var) => match var.payload.as_deref() {
-            Some(p) => min_buffer_id(p),
-            None => u64::MAX,
-        },
-        Value::Record(r) => {
-            let mut min = u64::MAX;
-            let mut stack: Vec<&Value> = r.fields.iter().collect();
-            while let Some(x) = stack.pop() {
-                min = min.min(min_buffer_id(x));
+            Value::Variant(var) => {
+                if let Some(p) = var.payload.as_deref() {
+                    stack.push(p.clone());
+                }
             }
-            min
+            Value::Record(r) => {
+                for f in r.fields.iter() {
+                    stack.push(f.clone());
+                }
+            }
+            _ => {}
         }
-        _ => u64::MAX,
     }
+    min
 }
 
 /// F822-R2-03: REVERSE-order responsibility cleanup of an owned value
 /// (contract §4 / V-06): list elements release last-pushed-first (the
 /// reverse of insertion order — `pop()` from the tail), each element
-/// recursively cleaning its own payload (variant payloads included);
-/// the container's own buffer frees only after its elements. Scalars and
-/// non-container values drop directly. Cleanup fuel is reserved per
-/// element (the cancel-point rule).
+/// cleaning its own payload (variant payloads included); the container's
+/// own buffer frees only after its elements. Scalars and non-container
+/// values drop directly. Cleanup fuel is reserved per element/payload
+/// (the cancel-point rule).
+/// F822-R12-01: the release is a FULLY EXPLICIT worklist — every
+/// supported kind (arbitrarily deep acyclic Variant chains, nested
+/// records, lists) releases through bounded work items. Containers are
+/// UNWRAPPED rather than dropped whole: a last-reference payload/field
+/// set is taken out of its Rc and queued, so the final drops are leaves
+/// and the host drop glue never recurses through a nested chain. A
+/// shared handle (Rc::strong_count > 1) is a responsibility transfer
+/// (F822-R3-02 MOVE/COPY/kill-after-move-in semantics): nothing drains,
+/// the handle clone just releases.
 fn drop_owned_reverse(st: &mut LoopState, val: Value) {
-    match val {
-        Value::List(h) => {
-            // F822-R3-02: a handle clone releasing a SHARED buffer is a
-            // responsibility transfer (MOVE/COPY/kill-after-push-in), not
-            // the final destruction — draining it here would empty the
-            // destination's list. Only the LAST handle reverse-cleans the
-            // elements, then the buffer frees.
-            if std::rc::Rc::strong_count(&h.rc) == 1 {
-                let mut elems = std::mem::take(&mut h.rc.borrow_mut().elems);
-                while let Some(e) = elems.pop() {
-                    st.steps += 1; // reserved cleanup fuel (cancel point)
-                    drop_owned_reverse(st, e);
+    let mut stack: Vec<Value> = vec![val];
+    while let Some(v) = stack.pop() {
+        match v {
+            Value::List(h) => {
+                if std::rc::Rc::strong_count(&h.rc) == 1 {
+                    let elems = std::mem::take(&mut h.rc.borrow_mut().elems);
+                    if elems.is_empty() {
+                        // The drained (or born-empty) buffer: its free
+                        // event fires HERE — after its elements, because
+                        // the marker pushed below pops last.
+                        drop(h);
+                    } else {
+                        // Buffer marker FIRST (pops LAST, event after its
+                        // elements); elements pushed in declaration order
+                        // pop in REVERSE — the contracted order.
+                        stack.push(Value::List(h));
+                        for e in elems.into_iter() {
+                            st.steps += 1; // reserved cleanup fuel (cancel point)
+                            stack.push(e);
+                        }
+                    }
                 }
+                // else: shared buffer — the handle drop is a transfer.
             }
-            drop(h); // the buffer itself frees after its elements
-        }
-        Value::Variant(var) => {
-            if let Some(p) = var.payload.as_ref() {
-                st.steps += 1;
-                drop_owned_reverse(st, p.as_ref().clone());
+            Value::Variant(mut var) => {
+                if let Some(p) = var.payload.take() {
+                    st.steps += 1; // reserved cleanup fuel (cancel point)
+                    if std::rc::Rc::strong_count(&p) == 1 {
+                        // Last reference: take the inner value OUT so the
+                        // empty variant shell drops without glue recursion
+                        // and the payload processes as its own work item.
+                        if let Ok(inner) = std::rc::Rc::try_unwrap(p) {
+                            stack.push(inner);
+                        }
+                    }
+                    // else: shared payload — the clone release transfers.
+                }
+                drop(var); // payload-less shell: plain drop, no chain
             }
+            Value::Record(r) => {
+                if std::rc::Rc::strong_count(&r) == 1 {
+                    if let Ok(rv) = std::rc::Rc::try_unwrap(r) {
+                        let mut fields = rv.fields;
+                        // Fields pushed REVERSED pop in DECLARATION order
+                        // — the same free-event order the previous plain
+                        // Vec drop glue produced.
+                        while let Some(f) = fields.pop() {
+                            stack.push(f);
+                        }
+                    }
+                }
+                // else: shared record — handle drop is a transfer.
+            }
+            // Str/scalar/leaf: the handle drop reports the free event at
+            // the last reference; nothing nests below.
+            other => drop(other),
         }
-        other => drop(other),
     }
 }
 
@@ -2305,15 +2362,15 @@ fn dispatch<V: ModuleView>(
                         }
                     }
                     // COMMIT: the swap-in and the old element's single
-                    // drop happen only after the budget admitted them.
-                    {
+                    // release happen only after the budget admitted them.
+                    let old_elem = {
                         let fr = st.frames.last_mut().expect("frame present");
                         match fr.slots[*root as usize].clone() {
                             Value::List(h) => {
                                 let mut buf = h.rc.borrow_mut();
                                 let old = std::mem::replace(&mut buf.elems[idx], val.clone());
                                 buf.elem_gens[idx] = buf.elem_gens[idx].wrapping_add(1);
-                                drop(old);
+                                old
                             }
                             other => {
                                 return Some(ExecOutcome::Infra(format!(
@@ -2322,7 +2379,11 @@ fn dispatch<V: ModuleView>(
                                 )))
                             }
                         }
-                    }
+                    };
+                    // F822-R12-01: the replaced element (any supported
+                    // nested shape) releases through the explicit reverse
+                    // cleanup, not the host drop glue.
+                    drop_owned_reverse(st, old_elem);
                     if new_deep > old_deep {
                         st.slot_bytes += new_deep - old_deep;
                     } else {
@@ -2527,15 +2588,15 @@ fn dispatch<V: ModuleView>(
                         }
                     };
                     // COMMIT: swap the rebuilt element in; the old
-                    // element's replaced field chain drops here, once.
-                    {
+                    // element's replaced field chain releases here, once.
+                    let old_elem = {
                         let fr = st.frames.last_mut().expect("frame present");
                         match fr.slots[*root as usize].clone() {
                             Value::List(h) => {
                                 let mut buf = h.rc.borrow_mut();
                                 let old = std::mem::replace(&mut buf.elems[idx], new_elem.0);
                                 buf.elem_gens[idx] = buf.elem_gens[idx].wrapping_add(1);
-                                drop(old);
+                                old
                             }
                             other => {
                                 return Some(ExecOutcome::Infra(format!(
@@ -2544,7 +2605,10 @@ fn dispatch<V: ModuleView>(
                                 )))
                             }
                         }
-                    }
+                    };
+                    // F822-R12-01: explicit reverse cleanup for the
+                    // replaced chain (no host drop-glue recursion).
+                    drop_owned_reverse(st, old_elem);
                     if new_elem.1 > new_elem.2 {
                         st.slot_bytes += new_elem.1 - new_elem.2;
                     } else {
@@ -2852,12 +2916,12 @@ fn dispatch<V: ModuleView>(
                     }
                     // COMMIT: replace the element, bump its generation
                     // (retiring THIS place and every sibling minted before
-                    // the replacement), drop the old element once.
+                    // the replacement), release the old element once.
                     // F822-R5-01: the OWNER frame (by activation sequence)
                     // carries the root — the same frame the precheck just
                     // validated — never the CURRENT frame's same-numbered
                     // slot.
-                    {
+                    let old_elem = {
                         let fr = st
                             .frames
                             .iter_mut()
@@ -2869,11 +2933,14 @@ fn dispatch<V: ModuleView>(
                                 let idx = place.index as usize;
                                 let old = std::mem::replace(&mut buf.elems[idx], val.clone());
                                 buf.elem_gens[idx] = buf.elem_gens[idx].wrapping_add(1);
-                                drop(old);
+                                old
                             }
                             _ => unreachable!("precheck validated the owner slot holds the list"),
                         }
-                    }
+                    };
+                    // F822-R12-01: explicit reverse cleanup for the
+                    // replaced element (no host drop-glue recursion).
+                    drop_owned_reverse(st, old_elem);
                     if new_deep > old_deep {
                         st.slot_bytes += new_deep - old_deep;
                     } else {

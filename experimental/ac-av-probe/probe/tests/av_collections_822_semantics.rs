@@ -3506,3 +3506,285 @@ fn av_collections_822_semantics_clone_visitor_full_control() {
     assert_eq!(arena.free_events().len(), 5);
     assert_eq!(arena.live(), 0);
 }
+
+// -- F822-R12-01: explicit (nonrecursive) cleanup over deep chains ------
+
+/// F822-R12-01 chain-module kit: `depth` distinct Variant types, each
+/// wrapping the previous; the innermost wraps a Str CONST so the finished
+/// chain owns a REAL ledger buffer (cleanup observability). Modes:
+/// "plain" returns 7; "trap" appends a div-by-zero (the chain must
+/// unwind at the trap exit); "switch" guards the outer type's no-payload
+/// arm and switches to it (the old chain then dies inside
+/// commit_slot_write's replaced-value release).
+fn deep_variant_chain_module(depth: usize, mode: &str) -> MirModule {
+    let mut m = MirModule::new_collections(OwnerScope {
+        schema: auto_av_core::contract::MIR_COLLECTIONS_SCHEMA.to_string(),
+        module: "cleanup822".to_string(),
+    });
+    let ti = m.intern_type(MirType::I32);
+    let tb = m.intern_type(MirType::Bool);
+    let ts = m.intern_type(MirType::Str);
+    let sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: vec![],
+        result: ti,
+    }));
+    let cs = m.intern_const(MirConst::Str(Box::from(*b"leaf")));
+    let ci7 = m.intern_const(MirConst::I32(7));
+    let ci0 = m.intern_const(MirConst::I32(0));
+    // slots: 0=the Str leaf, 1..3=i32 scratch (a/b/ret), 4=bool guard.
+    let mut slots: Vec<MirSlot> = vec![
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: ts,
+            name: None,
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: ti,
+            name: None,
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: ti,
+            name: None,
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: ti,
+            name: None,
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: tb,
+            name: None,
+        },
+    ];
+    let mut ins = vec![MirInstr::Const { dst: 0, value: cs }];
+    let mut inner = ts;
+    let mut chain_slot = 0u32;
+    for n in 0..depth {
+        // The OUTERMOST type gains a second no-payload arm for the
+        // switch shape (disc 1).
+        let arms = if n + 1 == depth && mode == "switch" {
+            vec![
+                VariantArm {
+                    name: "Some".into(),
+                    payload: Some(inner),
+                },
+                VariantArm {
+                    name: "None".into(),
+                    payload: None,
+                },
+            ]
+        } else {
+            vec![VariantArm {
+                name: "Some".into(),
+                payload: Some(inner),
+            }]
+        };
+        let vt = m.intern_type(MirType::Variant(VariantTypeRef {
+            owner_module: "cleanup822".to_string(),
+            name: format!("V{n}"),
+            arms,
+        }));
+        let dst = slots.len() as u32;
+        slots.push(MirSlot {
+            kind: SlotKind::Local,
+            ty: vt,
+            name: None,
+        });
+        ins.push(MirInstr::VariantPack {
+            dst,
+            variant_ty: vt,
+            disc: 0,
+            payload: Some(chain_slot),
+        });
+        chain_slot = dst;
+        inner = vt;
+    }
+    let ret = match mode {
+        "plain" => {
+            ins.push(MirInstr::Const { dst: 3, value: ci7 });
+            3
+        }
+        "trap" => {
+            // 7 / 0 — the trap fires with the whole chain live in its
+            // slot.
+            ins.push(MirInstr::Const { dst: 1, value: ci7 });
+            ins.push(MirInstr::Const { dst: 2, value: ci0 });
+            ins.push(MirInstr::Bin {
+                op: BinOp::DivI32,
+                dst: 3,
+                lhs: 1,
+                rhs: 2,
+            });
+            3
+        }
+        "switch" => {
+            // Guard disc 1 (the fact is recorded statically regardless of
+            // the runtime truth — the V-04 shape), then SWITCH the outer
+            // variant to its no-payload arm: the old deep chain dies in
+            // the replaced value's release.
+            ins.push(MirInstr::VariantGuard {
+                dst: 4,
+                src: chain_slot,
+                disc: 1,
+            });
+            ins.push(MirInstr::VariantSwitch {
+                root: chain_slot,
+                disc: 1,
+                payload: None,
+            });
+            ins.push(MirInstr::Const { dst: 3, value: ci7 });
+            3
+        }
+        _ => unreachable!(),
+    };
+    m.funcs.push(MirFunction {
+        owner: m.owner.clone(),
+        name: "main".to_string(),
+        sig,
+        slots,
+        blocks: vec![MirBlock {
+            instrs: ins,
+            term: Terminator::Return { value: ret },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+    });
+    m.entry = 0;
+    m
+}
+
+/// The reviewer's F822-R12-01 domain control, permanent: 64 distinct
+/// legal acyclic Variant types packed through REAL production
+/// instructions (verify → encode → admit → execute) — nested Variant
+/// cleanup is a reachable support path, and the whole-path release
+/// balances the ledger (allocs == frees, live=0).
+#[test]
+fn av_collections_822_semantics_nested_variant_cleanup_domain_control() {
+    let m = deep_variant_chain_module(64, "plain");
+    verify_mir(&m).unwrap_or_else(|e| panic!("legal nested type: {e:?}"));
+    let wire = encode_abc(&m).unwrap();
+    let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap();
+    let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    let arena = trace.arena.expect("arena");
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(7),
+                ..
+            }
+        ),
+        "{out:?}"
+    );
+    assert_eq!(arena.alloc_events().len(), arena.free_events().len());
+    assert_eq!(arena.live(), 0);
+}
+
+/// F822-R12-01 nonrecursion witness: a 3,072-level chain (far past any
+/// plausible host-frame budget) is BUILT and CLEANED on a 256 KiB-stack
+/// thread. Every walk on the build/commit/cleanup path — dispatch, the
+/// deep_size metering walk, order-key discovery, the reverse release —
+/// is an explicit worklist, so the green path needs only a bounded
+/// frame; any reintroduced host recursion through the chain (hundreds of
+/// KiB of frames) aborts the small stack. The chain owns a real Str
+/// leaf: the ledger must balance (allocs == frees, live=0).
+#[test]
+fn av_collections_822_semantics_deep_chain_cleanup_small_stack() {
+    // Everything (module build, verify/encode/admit, execute) runs ON the
+    // small-stack thread — the whole production path must be worklist-
+    // flat; no capture crosses the boundary (the loaded program carries
+    // Rc's, which are not Send).
+    let handle = std::thread::Builder::new()
+        .stack_size(256 * 1024)
+        .spawn(move || {
+            let m = deep_variant_chain_module(3_072, "plain");
+            verify_mir(&m).unwrap_or_else(|e| panic!("{e:?}"));
+            let wire = encode_abc(&m).unwrap();
+            let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap();
+            let limits = ExecLimits {
+                max_steps: 200_000_000,
+                wall: std::time::Duration::from_secs(120),
+                ..ExecLimits::default()
+            };
+            let (out, trace) = execute(&loaded, &limits, &CancelFlag::new(false));
+            let arena = trace.arena.expect("arena");
+            // Assert INSIDE the thread: the outcome carries Rc's (not
+            // Send); a panic here propagates through join().unwrap().
+            assert!(
+                matches!(
+                    out,
+                    ExecOutcome::Success {
+                        value: Value::I32(7),
+                        ..
+                    }
+                ),
+                "{out:?}"
+            );
+            assert_eq!(
+                arena.alloc_events().len(),
+                arena.free_events().len(),
+                "the deep chain's leaf released exactly once"
+            );
+            assert_eq!(arena.live(), 0);
+        })
+        .expect("spawn");
+    handle.join().expect("join");
+}
+
+/// F822-R12-01 failure-exit control: a 300-level chain is live when a
+/// div-by-zero traps — the unwind path (cleanup_owned_frames → order-key
+/// discovery → reverse release) must free the chain's leaf with the
+/// ledger balanced (allocs == frees, live=0), never leaking through the
+/// trap exit.
+#[test]
+fn av_collections_822_semantics_deep_chain_trap_exit_cleanup() {
+    let m = deep_variant_chain_module(300, "trap");
+    verify_mir(&m).unwrap_or_else(|e| panic!("{e:?}"));
+    let wire = encode_abc(&m).unwrap();
+    let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap();
+    let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Trap {
+                kind: TrapKind::DivByZero,
+                ..
+            }
+        ),
+        "{out:?}"
+    );
+    let arena = trace.arena.expect("arena");
+    assert_eq!(arena.alloc_events().len(), arena.free_events().len());
+    assert_eq!(arena.live(), 0);
+}
+
+/// F822-R12-01 replaced-value control: switching the outer variant of a
+/// 300-level chain to its no-payload arm kills the WHOLE old chain inside
+/// commit_slot_write's replaced-value release — the explicit reverse
+/// cleanup (not the host drop glue) handles it; the leaf releases exactly
+/// once and the ledger balances.
+#[test]
+fn av_collections_822_semantics_variant_switch_deep_chain_release() {
+    let m = deep_variant_chain_module(300, "switch");
+    verify_mir(&m).unwrap_or_else(|e| panic!("{e:?}"));
+    let wire = encode_abc(&m).unwrap();
+    let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap();
+    let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    let arena = trace.arena.expect("arena");
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(7),
+                ..
+            }
+        ),
+        "{out:?}"
+    );
+    assert_eq!(arena.alloc_events().len(), arena.free_events().len());
+    assert_eq!(arena.live(), 0);
+}

@@ -160,6 +160,10 @@ $REQ = @{
         'av_collections_822_semantics_clone_visitor_wall_seam_zero_remaining',
         'av_collections_822_semantics_clone_visitor_byte_scaled_fuel',
         'av_collections_822_semantics_clone_byte_fuel_production_witness',
+        'av_collections_822_semantics_nested_variant_cleanup_domain_control',
+        'av_collections_822_semantics_deep_chain_cleanup_small_stack',
+        'av_collections_822_semantics_deep_chain_trap_exit_cleanup',
+        'av_collections_822_semantics_variant_switch_deep_chain_release',
         'av_collections_822_semantics_nested_variant_clone_control',
         # F822-R11/T-06: the two R9 two-phase ids that stood here
         # (clone_cancel_mid_traversal / clone_wall_mid_traversal) were
