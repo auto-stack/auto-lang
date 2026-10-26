@@ -27,8 +27,11 @@
 
 `parse_ui` 只经 `Parser::parse_domain(&UiDialect)` 取得原始 `UiCode`；
 `parse_validated_ui` 与 `lower_ui` 共用 dialect 的 `validate_ui`；
-`validate_ui_file_with_modules` 向工程工具提供文件及直接导入模块准入。
-公开转译、Vue/Rust/Jet/Ark request 工程、incremental、组件包和跨文件
+`validate_ui_file_with_modules` 向工程工具提供文件及直接导入模块准入；
+主文件和每个直接导入模块均先按各自目录执行
+`prepare_style_recipe_imports`，再解析/lowering，冷态命名/通配符配方
+不依赖前一文件注册残留。公开转译、Vue/Rust/Jet/Ark request 工程、
+incremental、组件包和跨文件
 模块在缓存、预扫描、aura 提取、生成或写盘前完成校验/lowering；准入错误
 不得被 warn-and-continue 吞成成功或半壳工程，Rust 先编译再创建输出。
 四生成器不再匹配 Core `Stmt` UI 兼容臂。旧 `assemble_ui_grammar` 空桩
