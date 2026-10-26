@@ -68,7 +68,7 @@ pub fn collections_owner_scope() -> OwnerScope {
     }
 }
 
-fn collections_envelope<'a>(
+pub fn collections_envelope<'a>(
     owner: &'a str,
     _entry: &'a str,
     snapshot: u64,
@@ -333,6 +333,8 @@ pub struct CollectionsRequestOutcome {
     pub wall_ms: f64,
     pub arena: Option<auto_av_core::owned_text::StrArena>,
     pub type_names: std::collections::BTreeMap<u32, String>,
+    /// The types-fingerprint dependency axis (the restore seam's key).
+    pub types_fp: String,
 }
 
 /// Run one collections fixture through the REAL pipeline; persist the
@@ -401,6 +403,7 @@ pub fn request_collections(
         wall_ms: started.elapsed().as_secs_f64() * 1000.0,
         arena,
         type_names,
+        types_fp,
     })
 }
 
