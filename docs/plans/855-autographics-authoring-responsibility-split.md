@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-855
-status: execution_done
+status: reviewed
 feature_name: AutoGraphics作者宿主职责与入口整理
 author: [Codex]
 created_at: 2026-10-26
@@ -14,7 +14,7 @@ supersedes_spec_components:
 new_spec_components: []
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 5
+current_step: 6
 total_steps: 9
 ---
 
@@ -129,7 +129,7 @@ T-02写`attachments/855/work/responsibility-map.md`，按真实结构列：谁�
 | T-03 | work | T-02 | 移编辑/项目命令和Play接线，公开门面不变；V-01/03/04定向回归 | AC-02/03/04 | [x] |
 | T-04 | work | T-03 | 移呈现/输入及CLI/probe，不改oracle/路径；V-02/05与必要反例 | AC-03/05 | [x] |
 | T-05 | work | T-03/04 | 当前855 identity/verifier/consumer、能力/入口表、854字节与853对照；提交代码/SD/定向证据，不跑整档 | AC-01..05 | [x] |
-| T-06 | review | T-05 | 独立最终review，核状态/owner/默认及probe路径；merge门pending | AC-06 | [ ] |
+| T-06 | review | T-05 | 独立最终review，核状态/owner/默认及probe路径；merge门pending | AC-06 | [x] |
 | T-07 | merge | T-06 pass | 冻结两端完整/原native-owner-content/新面，核不可变产物与选中ID/复用 | AC-07 | [ ] |
 | T-08 | merge | T-07 | 源码合autographics-dev；main沉淀SD/overview/plans/ADR/ledger/索引并归档 | AC-08 | [ ] |
 | T-09 | merge | T-08 | guard clean后清树/临时分支、实际9/9；总结S0结果与残余风险，供S1/S2细化，不打M2标签 | AC-08 | [ ] |
@@ -147,6 +147,11 @@ T-02写`attachments/855/work/responsibility-map.md`，按真实结构列：谁�
 
 2026-10-27 work最终交接：`stage: work | plan_id: PLAN-855 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-855/auto-lang | branch: plan-855-dev | base_commit: 523d27b863dbe306c89af0ea546334225a29f8e9 | code_commit: 70f1addf0 | dependency_revisions: SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467 / AGP与两锁/API/assets/samples不变 | task_ids: T-01..05 | evidence: attachments/855/work/readiness.md + handoff.json.txt | blockers: [] | next_responsible_role: independent review`。work AC-01..05闭合、execution_done5/9。producer59具名定向例+CLI完成5例、consumer5例、工具7永久例、native手势正例及两原阶段负例、六owner反控+恢复全通过；50进程1500暖tick与853/854语义/像素/owner/资源一致，21生成文件逐字节相同，CPU实测略高如实并列，不宣称加速。当前455来源/681SDK/已提交blob闭合，check/fmt/diff通过，SDK146原warnings、driver0新。源码树clean写权冻结；open findings/必需work覆盖缺口/合同决策为空。完整两端/原native-owner-content/新面及AGP复用核准仍由最终独立review后的merge负责；T-06..09未完成，未合入/发布canonical或ledger/归档/清树，不宣称M2交付。
 
+2026-10-27 independent final R1：`stage: review | review_scope: final | reviewer_identity: independent child context /root/review_855_r1 (未参与实现；不虚构模型/会话ID) | plan_id: PLAN-855 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-855/auto-lang | branch: plan-855-dev | reviewed_commit: 70f1addf0a12a6af7f3b9bf447428f558a779d26 | base_commit: 523d27b863dbe306c89af0ea546334225a29f8e9 | dependency_revisions: SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467；AGP/两锁/API/assets/samples及共享配置无diff | spec_inputs: attachments/855/review-r1/baseline-audit.json | acceptance_results: AC-01..06、V-01..06、SD-01..04 pass；AC-07/08 pending merge | findings: [] | evidence: attachments/855/review-r1/review.md + final-binding.json | next: merge T-07`。完整59个Host/Panel方法及11个App/测试方法、CLI/字段/字串对照，455提交blob及consumer闭包、14原始日志hash、50实测记录/1500tick与853/854语义及21生成文件逐字节独立核准。新跑Play取消1例、手势失败/重复release恢复1例、完成门5例、source工具2例全部通过，实际默认native两帧exit0、无probe及错误；source/fmt通过，SDK146预存warnings、driver0新。冻结SD SHA256=`895509e625699eec0f6a654524348dc6760d9395bb72f9dae209d098bdaef709`。实施树HEAD/clean复核不变；reviewed6/9。**merge-owned gates pending**：T-07冻结完整producer/fresh own-SDK consumer、原native-owner-content/新面/85槽映射及合格AGP23复用核准；T-08源码仅合autographics-dev与main规范/ledger/归档；T-09guard清理与实际9/9。未跑整档、未合入/发布canonical/ledger/归档/清树，review pass不等于交付或M2完成。
+
+
+2026-10-27 merge entry：用户授权合并；独立final R1 pass绑定70f1addf0与冻结SD895509e6。唯一树/branch/HEAD/clean和autographics-dev前置523d27b86核准；T-07启动冻结producer/fresh own-SDK consumer与原native-owner-content门。基面/主检出其他WIP快照见 attachments/855/merge-r1/baseline.json.txt；不改既有crates/test未跟踪内容。当前reviewed6/9，未合入/归档/清理；根Cargo档不因实验类推触发。
+
 ## 10. 待澄清事项
 
-853/854交付前置已闭合；T-02职责方案已取证，无未决work合同问题。改变所有权/发布时序、CLI/公共契约/预算、SDK/生产边界仍须回new；后继Grid/游戏功能另立。review/merge-owned门仍pending。
+853/854交付前置已闭合；T-02职责方案已取证，无未决work合同问题。改变所有权/发布时序、CLI/公共契约/预算、SDK/生产边界仍须回new；后继Grid/游戏功能另立。独立final review R1通过；merge-owned门仍pending。
