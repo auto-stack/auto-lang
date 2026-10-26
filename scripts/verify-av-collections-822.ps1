@@ -157,9 +157,15 @@ $REQ = @{
         'av_collections_822_semantics_clone_visitor_cancel_seam',
         'av_collections_822_semantics_clone_visitor_fuel_seam',
         'av_collections_822_semantics_clone_visitor_full_control',
+        'av_collections_822_semantics_clone_visitor_wall_seam_zero_remaining',
+        'av_collections_822_semantics_clone_visitor_byte_scaled_fuel',
+        'av_collections_822_semantics_clone_byte_fuel_production_witness',
         'av_collections_822_semantics_nested_variant_clone_control',
-        'av_collections_822_semantics_clone_cancel_mid_traversal',
-        'av_collections_822_semantics_clone_wall_mid_traversal',
+        # F822-R11/T-06: the two R9 two-phase ids that stood here
+        # (clone_cancel_mid_traversal / clone_wall_mid_traversal) were
+        # deleted by the R10 oracle rewrite but the list kept requiring
+        # them — the frozen semantics scope was red before R11 (stale
+        # mandatory ids, no such tests exist in the bin).
         'av_collections_822_semantics_place_get_wrong_type_rejected',
         'av_collections_822_semantics_place_set_wrong_type_rejected',
         'av_collections_822_semantics_place_mint_binds_referent',

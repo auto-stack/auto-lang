@@ -3236,7 +3236,191 @@ fn av_collections_822_semantics_clone_visitor_cancel_seam() {
     assert_eq!(arena.live(), 0);
 }
 
-/// SEAM ORACLE, wall branch: a ZERO remaining wall budget fires the same
+/// SEAM ORACLE, wall branch (F822-R11-02): the wall contract is the
+/// PASSED remaining allowance measured from helper entry — no hidden
+/// thread-local origin participates. A ZERO allowance rejects at the
+/// visitor's own entry poll: deterministically, at ANY graph size, on a
+/// thread that never saw a dispatch segment, and even right after a full
+/// successful clone on the same thread (no leftover state can revive an
+/// exhausted budget).
+#[test]
+fn av_collections_822_semantics_clone_visitor_wall_seam_zero_remaining() {
+    let elems: Vec<Value> = (0..1_300)
+        .map(|_| {
+            Value::Str(auto_av_core::contract::StrHandle::detached(Box::from(
+                *b"x",
+            )))
+        })
+        .collect();
+    let list = Value::List(auto_av_core::contract::ListHandle::detached(elems));
+    let arena = auto_av_core::owned_text::StrArena::new();
+    // Prior success on the same thread/arena: a generous allowance clones
+    // to completion — the zero-allowance calls below must still reject.
+    let mut fuel = 0u64;
+    let ok = auto_av_core::av::clone_owned_value(
+        &list,
+        &arena,
+        &auto_av_core::av::CancelFlag::new(false),
+        std::time::Duration::from_secs(3600),
+        &mut fuel,
+        u64::MAX,
+    );
+    assert!(ok.is_ok(), "{ok:?}");
+    // The receiver releases the fresh buffers explicitly — the ledger
+    // balance assertions below see a clean baseline (live allocation is
+    // ownership, not a leak).
+    drop(ok);
+    // ZERO remaining allowance, unlimited fuel: ExecutionWall at the
+    // visitor's own poll, ledger clean.
+    let mut fuel = 0u64;
+    let out = auto_av_core::av::clone_owned_value(
+        &list,
+        &arena,
+        &auto_av_core::av::CancelFlag::new(false),
+        std::time::Duration::ZERO,
+        &mut fuel,
+        u64::MAX,
+    );
+    assert!(
+        matches!(&out, Err(ExecOutcome::Resource { kind, .. }) if *kind == auto_av_core::contract::ResourceKind::ExecutionWall),
+        "{out:?}"
+    );
+    assert_eq!(arena.alloc_events().len(), arena.free_events().len());
+    assert_eq!(arena.live(), 0);
+    // Determinism at ANY size: a single-scalar graph with a ZERO
+    // allowance rejects at the entry poll too (no size-dependent escape).
+    let mut fuel = 0u64;
+    let out = auto_av_core::av::clone_owned_value(
+        &Value::I32(7),
+        &arena,
+        &auto_av_core::av::CancelFlag::new(false),
+        std::time::Duration::ZERO,
+        &mut fuel,
+        u64::MAX,
+    );
+    assert!(
+        matches!(&out, Err(ExecOutcome::Resource { kind, .. }) if *kind == auto_av_core::contract::ResourceKind::ExecutionWall),
+        "{out:?}"
+    );
+}
+
+/// SEAM ORACLE, byte-scaled fuel (F822-R11-01): the clone charges the
+/// shared counter one structural unit per node PLUS the output byte
+/// volume of every fresh Str buffer, charged before the copy. A bare Str
+/// of L bytes costs exactly L + 2 (phase-1 visit + phase-2 node + L
+/// output bytes); the exact budget sides are pinned, small/large
+/// same-shape controls discriminate data volume, and a mid-assembly byte
+/// charge rejection unwinds every minted buffer.
+#[test]
+fn av_collections_822_semantics_clone_visitor_byte_scaled_fuel() {
+    let arena = auto_av_core::owned_text::StrArena::new();
+    let cancel = auto_av_core::av::CancelFlag::new(false);
+    let wall = std::time::Duration::from_secs(3600);
+    let str_of = |len: usize| {
+        Value::Str(auto_av_core::contract::StrHandle::detached(Box::from(
+            vec![b'x'; len].into_boxed_slice(),
+        )))
+    };
+    // Same-shape small/large controls under one budget: 4 bytes fit 60,
+    // 4096 do not (the reviewer's discriminating pair).
+    let mut fuel = 0u64;
+    assert!(
+        auto_av_core::av::clone_owned_value(&str_of(4), &arena, &cancel, wall, &mut fuel, 60)
+            .is_ok()
+    );
+    let mut fuel = 0u64;
+    let out =
+        auto_av_core::av::clone_owned_value(&str_of(4096), &arena, &cancel, wall, &mut fuel, 60);
+    assert!(
+        matches!(&out, Err(ExecOutcome::Resource { kind, .. }) if *kind == auto_av_core::contract::ResourceKind::InstrSteps),
+        "{out:?}"
+    );
+    // Exact budget sides: a bare Str of 100 bytes costs exactly 102 —
+    // 102 suffices (rejection only on EXCEED, the dispatch semantic),
+    // 101 rejects at the final byte charge.
+    let mut fuel = 0u64;
+    assert!(auto_av_core::av::clone_owned_value(
+        &str_of(100),
+        &arena,
+        &cancel,
+        wall,
+        &mut fuel,
+        102
+    )
+    .is_ok());
+    assert_eq!(fuel, 102, "the byte-scaled total is exact and observable");
+    let mut fuel = 0u64;
+    let out =
+        auto_av_core::av::clone_owned_value(&str_of(100), &arena, &cancel, wall, &mut fuel, 101);
+    assert!(
+        matches!(&out, Err(ExecOutcome::Resource { kind, .. }) if *kind == auto_av_core::contract::ResourceKind::InstrSteps),
+        "{out:?}"
+    );
+    // Mid-assembly rejection with byte charging: the LAST element
+    // assembles first (reverse id) and its fresh buffer mints, then the
+    // big FIRST element's byte charge exceeds the budget — every minted
+    // buffer unwinds (ledger balanced, live 0) and the source list keeps
+    // both elements.
+    let list = Value::List(auto_av_core::contract::ListHandle::detached(vec![
+        str_of(4096),
+        str_of(1),
+    ]));
+    let mut fuel = 0u64;
+    let out = auto_av_core::av::clone_owned_value(&list, &arena, &cancel, wall, &mut fuel, 100);
+    assert!(
+        matches!(&out, Err(ExecOutcome::Resource { kind, .. }) if *kind == auto_av_core::contract::ResourceKind::InstrSteps),
+        "{out:?}"
+    );
+    assert_eq!(arena.alloc_events().len(), arena.free_events().len());
+    assert_eq!(arena.live(), 0);
+    match &list {
+        Value::List(h) => assert_eq!(h.rc.borrow().elems.len(), 2),
+        _ => unreachable!(),
+    }
+}
+
+/// PRODUCTION WITNESS (F822-R11-01): through the REAL gates (verify →
+/// ABC → execute), a CLONE of an owned Str costs output-byte-scaled fuel
+/// — the step delta between otherwise identical modules with and without
+/// the CLONE grows with the copied byte length. An accounting oracle,
+/// not a latency threshold.
+#[test]
+fn av_collections_822_semantics_clone_byte_fuel_production_witness() {
+    for len in [4usize, 4096] {
+        let build = |clone_it: bool| {
+            let mut f = Fx::new();
+            let src = f.slot(2, "src");
+            let dst = f.slot(2, "dst");
+            let ret = f.slot(0, "ret");
+            let c = f.c_str(&"x".repeat(len));
+            f.i(MirInstr::Const { dst: src, value: c });
+            if clone_it {
+                f.i(MirInstr::Clone { dst, src });
+            }
+            let c = f.c_i32(7);
+            f.i(MirInstr::Const { dst: ret, value: c });
+            f.ret(ret);
+            f.build()
+        };
+        let steps = |m: &MirModule| {
+            verify_mir(m).unwrap();
+            let wire = encode_abc(m).unwrap();
+            let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap();
+            let (out, _) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+            match out {
+                ExecOutcome::Success { steps, .. } => steps,
+                other => panic!("{other:?}"),
+            }
+        };
+        let plain = steps(&build(false));
+        let cloned = steps(&build(true));
+        assert!(
+            cloned - plain >= len as u64,
+            "CLONE must charge output-byte-scaled fuel: len={len}, delta={}",
+            cloned - plain
+        );
+    }
+}
 
 /// SEAM ORACLE, fuel branch: a step budget 60 nodes deep aborts
 /// mid-visitor with InstrSteps; the partial assembly unwinds fully.

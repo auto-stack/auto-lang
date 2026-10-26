@@ -404,13 +404,6 @@ struct LoopState {
     frame_seq: u64,
 }
 
-thread_local! {
-    /// F822-R10-01: the dispatch segment's start instant — the clone
-    /// visitor polls the segment's REMAINING wall, never a fresh timer.
-    static SEGMENT_STARTED_AT: std::cell::Cell<Option<std::time::Instant>> =
-        const { std::cell::Cell::new(None) };
-}
-
 /// The shared flat dispatch loop: explicit frames, budgets and traps.
 /// Fresh state seeds the root frame (entry lookup, argument admission,
 /// root budgets); non-empty state resumes the chain untouched. Returns
@@ -656,12 +649,22 @@ fn owned_alloc_precheck(
     Ok(())
 }
 
-/// Depth-bounded deep clone. Record nesting is acyclic and verify-bounded
-/// by the frozen frontend nesting cap (MAX_FRONTEND_NESTING = 128), so the
-/// host recursion depth is input-frozen small; the explicit depth counter
-/// turns any contract violation into a controlled infra rejection instead
-/// of a stack overflow (F821-R1-06). Fuel (bytes + fields) is charged by
-/// the CALLER before the walk — the budget check bounds the traversal.
+/// Deep clone of one owned value (782 `clone()`): iterative over the full
+/// supported graph (R9 — no host recursion for any kind). Fuel is charged
+/// INCREMENTALLY on the shared cumulative counter as the work happens: one
+/// structural unit per visited/assembled node plus the OUTPUT byte volume
+/// of every fresh Str buffer, charged BEFORE its copy (R11 — a clone's
+/// cost scales with its data volume; a memory precheck alone is not
+/// execution fuel). Cancellation and the wall budget poll at the same
+/// shared-counter cadence as dispatch (`CANCEL_CHECK_INTERVAL`), so the
+/// traversal is interruptible before and during data copies with the
+/// partial assembly fully unwound.
+/// Wall coordinate (R11): `wall_left` is the REMAINING allowance measured
+/// from THIS helper entry — the dispatch caller derives it from the
+/// segment budget, and helper entry + `wall_left` reproduces the segment's
+/// absolute deadline exactly. No hidden thread-local origin participates:
+/// the argument is the whole contract (a ZERO allowance rejects at the
+/// entry poll).
 /// Internal observation seam (F822-R10-01): exposed for the bounded-
 /// traversal oracle tests — NOT a public execution API.
 #[doc(hidden)]
@@ -681,48 +684,58 @@ pub fn clone_owned_value(
     // fields, List elements and Variant payloads (nested Variants
     // included) are all children. Phase 2 assembles leaves-first: a
     // child's parent id is always SMALLER, so REVERSE id order has every
-    // child ready when its parent reads it. Both loops poll CANCEL, the
-    // WALL deadline and count fuel every node (the same
-    // CANCEL_CHECK_INTERVAL cadence as the dispatch loop), so the clone's
-    // work is interruptible mid-traversal (§5.1.6/§5.4); any abort drops
-    // the partial assembly and every minted buffer frees through the
-    // ledger — nothing half-committed.
+    // child ready when its parent reads it.
     struct Node {
         src: Value,
         parent: usize, // usize::MAX for the root
     }
-    // F822-R10-01: the polls carry the caller's REAL state — the shared
-    // cumulative fuel (charged per node, exhaustible mid-clone as
-    // InstrSteps) and the dispatch segment's REMAINING wall (not a fresh
-    // timer). Cancellation stays on the dispatch cadence.
-    macro_rules! poll {
-        () => {{
-            *fuel += 1;
-            if *fuel >= max_fuel {
+    // F822-R11-01/02: ONE charge/poll discipline on the shared cumulative
+    // counter — a structural unit per node in BOTH phases plus the OUTPUT
+    // byte volume of each fresh Str buffer charged BEFORE its copy, with
+    // cancel/wall polls at the dispatch cadence (a last_poll cursor, not
+    // a modulo — batch byte charges cannot skip the boundary). The wall
+    // compares the helper's OWN origin against the passed REMAINING
+    // allowance; helper entry + wall_left reproduces the caller segment's
+    // absolute deadline exactly (no double subtraction, no thread-local
+    // leftovers), and a ZERO allowance rejects at the entry poll.
+    let wall_origin = std::time::Instant::now();
+    let mut last_poll = *fuel;
+    macro_rules! poll_cancel_wall {
+        () => {
+            if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err(ExecOutcome::Cancelled);
+            }
+            if wall_origin.elapsed() >= wall_left {
                 return Err(ExecOutcome::Resource {
-                    kind: ResourceKind::InstrSteps,
-                    message: "deep clone exhausted the execution step budget".to_string(),
+                    kind: ResourceKind::ExecutionWall,
+                    message: "deep clone exceeded the execution wall budget".to_string(),
                 });
             }
-            if *fuel % crate::contract::CANCEL_CHECK_INTERVAL == 0 {
-                if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-                    return Err(ExecOutcome::Cancelled);
-                }
-                if SEGMENT_STARTED_AT.with(|c| c.get().map(|t| t.elapsed()).unwrap_or_default())
-                    > wall_left
-                {
-                    return Err(ExecOutcome::Resource {
-                        kind: ResourceKind::ExecutionWall,
-                        message: "deep clone exceeded the execution wall budget".to_string(),
-                    });
-                }
+        };
+    }
+    macro_rules! charge {
+        ($units:expr) => {{
+            *fuel = fuel.saturating_add($units as u64);
+            if *fuel > max_fuel {
+                return Err(ExecOutcome::Resource {
+                    kind: ResourceKind::InstrSteps,
+                    message: "deep clone exceeded the execution step budget".to_string(),
+                });
+            }
+            if *fuel - last_poll >= crate::contract::CANCEL_CHECK_INTERVAL {
+                last_poll = *fuel;
+                poll_cancel_wall!();
             }
         }};
     }
+    // Entry poll: a pre-exhausted allowance (or a raised cancel flag)
+    // rejects before ANY planning work — deterministic at any graph size
+    // and independent of prior calls on this thread.
+    poll_cancel_wall!();
     let mut nodes: Vec<Node> = Vec::new();
     let mut stack: Vec<(usize, Value)> = vec![(usize::MAX, val.clone())];
     while let Some((parent, v)) = stack.pop() {
-        poll!();
+        charge!(1);
         let id = nodes.len();
         match &v {
             // Children are pushed REVERSED so the LIFO worklist pops them
@@ -766,17 +779,23 @@ pub fn clone_owned_value(
         next_child[id] = 0; // cursor into child_list[id]
     }
     for id in (0..nodes.len()).rev() {
-        poll!();
+        charge!(1);
         let v = nodes[id].src.clone();
         let assembled = match &v {
-            Value::Str(h) => match arena.try_alloc(h.bytes()) {
-                Ok(nh) => Value::Str(nh),
-                Err(n) => {
-                    return Err(ExecOutcome::Infra(format!(
-                        "fault-injected at owned allocation attempt #{n}"
-                    )))
+            Value::Str(h) => {
+                // F822-R11-01: output-byte-scaled fuel charged BEFORE the
+                // copy — the step-budget rejection precedes the allocation
+                // attempt (nothing minted for this node on rejection).
+                charge!(h.bytes().len());
+                match arena.try_alloc(h.bytes()) {
+                    Ok(nh) => Value::Str(nh),
+                    Err(n) => {
+                        return Err(ExecOutcome::Infra(format!(
+                            "fault-injected at owned allocation attempt #{n}"
+                        )))
+                    }
                 }
-            },
+            }
             Value::Record(r) => {
                 let fields: Vec<Value> = child_list[id]
                     .iter()
@@ -1184,7 +1203,6 @@ fn dispatch<V: ModuleView>(
     budget: Option<u64>,
 ) -> Option<ExecOutcome> {
     let started = Instant::now();
-    SEGMENT_STARTED_AT.with(|c| c.set(Some(started)));
     // B2-C04: the step budget is PER SEGMENT (this dispatch call's own
     // budget — `resume(.., Some(n))` grants n MORE steps); the cumulative
     // hard fuel (`limits.max_steps`) below still spans the whole chain.
@@ -1635,16 +1653,20 @@ fn dispatch<V: ModuleView>(
                     if let Err(out) = owned_alloc_precheck(st, new_size, *dst as usize, limits) {
                         return Some(out);
                     }
-                    // F822-R10-01: NO precharge — the visitor charges the
-                    // SHARED cumulative fuel per node, the true
-                    // interruptible budget (the byte-scaled shape stays
-                    // visible through the precheck's deep-size estimate
-                    // above).
-                    // F822-R10-01: the helper charges the SHARED cumulative
-                    // fuel per node (no unenforceable precharge) and polls
-                    // the dispatch segment's REMAINING wall — Cancelled,
-                    // wall and fuel outcomes surface mid-clone with the
-                    // partial assembly fully unwound.
+                    // F822-R11-01: no precharge and no memory-check
+                    // substitute — the visitor charges the shared
+                    // cumulative fuel INCREMENTALLY: one structural unit
+                    // per node plus the OUTPUT bytes of every fresh Str
+                    // buffer, so the clone's cost scales with its data
+                    // volume and is exhaustible mid-clone (InstrSteps).
+                    // F822-R11-02: wall_left is the segment's remaining
+                    // allowance AT THIS POINT; the helper measures elapsed
+                    // against ITS OWN entry origin, so helper entry +
+                    // wall_left reproduces the segment's absolute deadline
+                    // exactly (one coordinate system, explicitly passed —
+                    // no thread-local segment state participates).
+                    // Cancelled, wall and fuel outcomes surface mid-clone
+                    // with the partial assembly fully unwound.
                     let wall_left = limits.wall.saturating_sub(started.elapsed());
                     let cloned = match clone_owned_value(
                         &sv,
