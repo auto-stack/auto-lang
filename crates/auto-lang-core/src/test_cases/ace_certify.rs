@@ -426,7 +426,7 @@ fn run_with_wall(exe: &Path, wall: Duration) -> Result<RunOutcome, String> {
     });
     let status = loop {
         if started.elapsed() > wall {
-            child.kill();
+            let _ = child.kill();
             drop(job.take());
             let _ = child.wait();
             let _ = reader.join();
@@ -501,7 +501,7 @@ fn run_contained(mut cmd: Command, wall: Duration, what: &str) -> Result<(), Str
     });
     let status = loop {
         if started.elapsed() > wall {
-            child.kill();
+            let _ = child.kill();
             drop(job.take());
             let _ = child.wait();
             let _ = reader.join();
