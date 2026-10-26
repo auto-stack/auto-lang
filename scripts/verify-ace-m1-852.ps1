@@ -324,25 +324,62 @@ switch ($Scope) {
             try { $cert = Get-Content $certPath -Raw | ConvertFrom-Json }
             catch { Fail "certificate $module.cert.json is not valid JSON (possible tampering): $_" }
             $oracle = "i32:$($row.expected)`n"
-            if ($cert.schema -ne 'ace.m1.cert/1') { Fail "certificate $module REJECTED: schema is '$($cert.schema)'" }
-            if ($cert.verdict -ne 'certified') { Fail "certificate $module REJECTED: verdict is '$($cert.verdict)'" }
+
+            # ---- R2-B: STRICT typed schema — exact key sets at every level,
+            # declared types, unknown/missing/wrong-typed elements REJECT.
+            function Assert-Keys($obj, $expected, $where) {
+                if ($null -eq $obj -or -not $obj.PSObject) { Fail "certificate $module REJECTED: $where is not an object" }
+                $have = @($obj.PSObject.Properties.Name)
+                foreach ($k in $have) { if ($expected -notcontains $k) { Fail "certificate $module REJECTED: unknown field '$k' in $where (strict schema)" } }
+                foreach ($k in $expected) { if ($have -notcontains $k) { Fail "certificate $module REJECTED: missing field '$k' in $where" } }
+            }
+            Assert-Keys $cert @('schema','case','module','wrapper_file','expected_oracle','identity','toolchain','deps','observed','verdict','produced_by','created_at') 'receipt root'
+            Assert-Keys $cert.identity @('source_sha256','golden_sha256','actual_sha256','wrapper_sha256','oracle_sha256','reference_sha256') 'identity'
+            Assert-Keys $cert.toolchain @('identity','identity_source','default_identity_at_certify','flags') 'toolchain'
+            Assert-Keys $cert.deps @('external','closure') 'deps'
+            Assert-Keys $cert.observed @('actual_run','reference_run') 'observed'
+            Assert-Keys $cert.observed.actual_run @('exit','stdout') 'observed.actual_run'
+            Assert-Keys $cert.observed.reference_run @('exit','stdout') 'observed.reference_run'
+
+            if ($cert.schema -isnot [string] -or $cert.schema -ne 'ace.m1.cert/1') { Fail "certificate $module REJECTED: schema is '$($cert.schema)'" }
+            if ($cert.verdict -isnot [string] -or $cert.verdict -ne 'certified') { Fail "certificate $module REJECTED: verdict is '$($cert.verdict)'" }
             if ($cert.case -ne $row.id -or $cert.module -ne $module) { Fail "certificate $module REJECTED: case/module mismatch" }
-            if ($cert.expected_oracle -ne $oracle) { Fail "certificate $module REJECTED: oracle text '$($cert.expected_oracle)' is not the frozen registry value '$oracle'" }
-            if ($cert.observed.actual_run.stdout -ne $oracle -or $cert.observed.reference_run.stdout -ne $oracle) {
-                Fail "certificate $module REJECTED: observed runs do not equal the fixed oracle"
+            if ($cert.wrapper_file -isnot [string] -or $cert.wrapper_file -ne 'oracle/wrapper-main-v1.rs') { Fail "certificate $module REJECTED: wrapper_file is not the frozen file" }
+            if ($cert.expected_oracle -isnot [string] -or $cert.expected_oracle -ne $oracle) { Fail "certificate $module REJECTED: oracle text is not the frozen registry value" }
+            if ($cert.created_at -isnot [long] -and $cert.created_at -isnot [int]) { Fail "certificate $module REJECTED: created_at is not an integer" }
+            # Observed runs: TYPED equality (a "0" string exit or a numeric
+            # stdout is a type violation, never a pass — PS would otherwise
+            # coerce).
+            foreach ($side in @('actual_run', 'reference_run')) {
+                $run = $cert.observed.$side
+                if ($run.stdout -isnot [string] -or $run.stdout -ne $oracle) { Fail "certificate $module REJECTED: observed.$side.stdout does not equal the fixed oracle (or wrong type)" }
+                if (($run.exit -isnot [long] -and $run.exit -isnot [int]) -or $run.exit -ne 0) { Fail "certificate $module REJECTED: observed.$side.exit is not the integer 0" }
             }
-            if ($cert.observed.actual_run.exit -ne 0 -or $cert.observed.reference_run.exit -ne 0) {
-                Fail "certificate $module REJECTED: observed run exits are not 0"
-            }
+            # flags: array of STRINGS, exact frozen tokens (typed per element).
             $toks = @($cert.toolchain.flags)
-            if ($toks.Count -ne 2 -or $toks[0] -ne '--edition=2021' -or $toks[1] -ne '-O') {
-                Fail "certificate $module REJECTED: toolchain.flags is not the frozen set ['--edition=2021','-O'] (recorded: $($toks -join ' '))"
+            if ($toks.Count -ne 2) { Fail "certificate $module REJECTED: toolchain.flags is not the frozen 2-token set" }
+            for ($ti = 0; $ti -lt $toks.Count; $ti++) {
+                if ($toks[$ti] -isnot [string]) { Fail "certificate $module REJECTED: toolchain.flags[$ti] is not a string" }
             }
-            if ($cert.deps.closure -ne 'std-only' -or @($cert.deps.external).Count -ne 0) {
-                Fail "certificate $module REJECTED: deps closure is not std-only/empty"
+            if ($toks[0] -ne '--edition=2021' -or $toks[1] -ne '-O') {
+                Fail "certificate $module REJECTED: toolchain.flags is not the frozen set ['--edition=2021','-O']"
             }
+            # toolchain identity axes: identity binds the compiler the pass
+            # LAUNCHED (frozen evidence — daily consumes it without spawning);
+            # identity_source must be a frozen selection rule; the DEFAULT
+            # axis is what daily can recompute and is compared below.
+            if ($cert.toolchain.identity -isnot [string] -or -not $cert.toolchain.identity.Trim()) { Fail "certificate $module REJECTED: toolchain.identity is not a non-empty string" }
+            if ($cert.toolchain.identity_source -isnot [string] -or $cert.toolchain.identity_source -notin @('--rustc override', 'env RUSTC', 'PATH')) {
+                Fail "certificate $module REJECTED: identity_source is not a frozen selection rule"
+            }
+            if ($cert.deps.closure -isnot [string] -or $cert.deps.closure -ne 'std-only') { Fail "certificate $module REJECTED: deps.closure is not std-only" }
+            if (@($cert.deps.external).Count -ne 0) { Fail "certificate $module REJECTED: deps.external is not empty" }
             if ($cert.identity.actual_sha256 -ne $cert.identity.golden_sha256) {
                 Fail "certificate $module REJECTED: actual_sha256 != golden_sha256 (self-inconsistent)"
+            }
+            foreach ($hk in @('source_sha256','golden_sha256','actual_sha256','wrapper_sha256','oracle_sha256','reference_sha256')) {
+                $hv = $cert.identity.$hk
+                if ($hv -isnot [string] -or $hv -notmatch '^[0-9a-f]{64}$') { Fail "certificate $module REJECTED: identity.$hk is not a 64-char lowercase hex string" }
             }
             foreach ($axis in @(
                 @{ k = 'golden_sha256'; f = "oracle/$module.rs"; label = 'golden' },
@@ -354,14 +391,21 @@ switch ($Scope) {
             }
             if ($wrapperHash -ne $cert.identity.wrapper_sha256) { Fail "certificate $module is STALE: wrapper drifted" }
             if ((Sha256Text $oracle) -ne $cert.identity.oracle_sha256) { Fail "certificate $module REJECTED: oracle text identity mismatch" }
-            if ($cert.toolchain.identity -ne $buildIdentity) {
-                Fail "certificate $module is STALE: toolchain identity drifted from the current build (certified under a different toolchain)"
+            # R2-A daily rule: the DEFAULT toolchain axis (recomputed zero-spawn
+            # from this run's own report) must equal the default frozen at
+            # certification. The certification `identity` itself is frozen
+            # evidence of the compiler that WAS launched; daily never passes
+            # the harness build identity off as certification evidence.
+            if ($cert.toolchain.default_identity_at_certify -isnot [string] -or $cert.toolchain.default_identity_at_certify -ne $buildIdentity) {
+                Fail "certificate $module is STALE: default toolchain drifted since certification (re-certify to re-bind; certified default: $($cert.toolchain.default_identity_at_certify))"
             }
         }
         $goldens = @(Get-ChildItem (Join-Path $corpusDir 'oracle') -Filter 'm1_*.rs')
         Write-Host "verify-ace-m1-852 [snapshot]: PASS — $($a2r.Count) a2r checks green (emit + byte-compare);" `
-            "$($certRows.Count) certificates STRICTLY valid (structure + file axes + build-time toolchain axis;" `
-            "ancestry-checked spawn count 0). Full base suite $($r.results.Count) checks green." `
+            "$($certRows.Count) certificates STRICTLY valid (typed exact-key schema + file axes + default-toolchain" `
+            "axis vs this run's build identity). Certification-face process watch: 0 direct-rustc/m1_* spawns" `
+            "observed in periodic CIM ancestry sampling (a sampling observer, not a lossless creation count)." `
+            "Full base suite $($r.results.Count) checks green." `
             "Emit PASS is not a behavior claim; re-certification is the explicit certify scope."
         exit 0
     }
@@ -392,7 +436,8 @@ switch ($Scope) {
                   '--ignored', '--exact', '--nocapture',
                   'test_cases::ace_certify::tests::stream_governance_no_deadlock_on_any_pipe_order',
                   'test_cases::ace_certify::tests::stream_overflow_kills_and_surfaces',
-                  'test_cases::ace_certify::tests::wall_kills_a_hanging_binary') 2>$null
+                  'test_cases::ace_certify::tests::wall_kills_a_hanging_binary',
+                  'test_cases::ace_certify::tests::identity_binds_the_launched_compiler_and_scratch_never_strands') 2>$null
         $code = $LASTEXITCODE
         $ErrorActionPreference = 'Stop'
         if ($code -ne 0) { Fail "certifier governance controls failed (exit $code)" }

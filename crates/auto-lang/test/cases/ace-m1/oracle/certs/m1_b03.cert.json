@@ -14,6 +14,8 @@
   },
   "toolchain": {
     "identity": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.0\nLLVM version: 22.1.8",
+    "identity_source": "PATH",
+    "default_identity_at_certify": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.0\nLLVM version: 22.1.8",
     "flags": [
       "--edition=2021",
       "-O"
@@ -38,5 +40,5 @@
     "tool": "ace-certify",
     "schema_note": "transpiler identity is audit-only, not a staleness axis"
   },
-  "created_at": 1793014195
+  "created_at": 1793016677
 }

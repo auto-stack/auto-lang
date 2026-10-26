@@ -136,15 +136,25 @@ pub fn certify(args: &CertifyArgs) -> Result<Vec<CaseSummary>, String> {
     };
     let _ = std::fs::remove_dir_all(&scratch_root);
     std::fs::create_dir_all(&scratch_root).map_err(|e| format!("scratch: {e}"))?;
-    let rustc = args
-        .rustc
-        .clone()
-        .unwrap_or_else(|| std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()));
-    let toolchain_identity = match &args.rustc {
-        None => BUILD_TOOLCHAIN_IDENTITY.trim().to_string(),
-        Some(path) => capture_toolchain_contained(path)?,
-    };
+    // The cleanup guard spans EVERYTHING that follows — identity capture
+    // included (F-852-R2-C: an identity failure must not strand scratch).
     let result = (|| {
+        // R2-A: the recorded identity is the identity of the EXACT compiler
+        // this pass launches (CLI --rustc > env RUSTC > PATH), captured
+        // through the contained bounded channel — never the unrelated
+        // build-time constant.
+        let rustc = args
+            .rustc
+            .clone()
+            .unwrap_or_else(|| std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()));
+        let identity_source = if args.rustc.is_some() {
+            "--rustc override"
+        } else if std::env::var("RUSTC").is_ok() {
+            "env RUSTC"
+        } else {
+            "PATH"
+        };
+        let toolchain_identity = capture_toolchain_contained(&rustc)?;
         let mut summaries = Vec::new();
         for (id, expected) in selected {
             let summary = certify_one(
@@ -154,6 +164,7 @@ pub fn certify(args: &CertifyArgs) -> Result<Vec<CaseSummary>, String> {
                 &scratch_root,
                 &rustc,
                 &toolchain_identity,
+                identity_source,
             );
             summaries.push(summary);
         }
@@ -183,9 +194,79 @@ pub struct CurrentAxes {
     pub reference_sha: String,
 }
 
-/// STRICT receipt validation (F-852-R1-01). Every structural field is
-/// checked against the frozen contract; every file axis against the current
-/// tree. `Ok(())` means the receipt is valid AND current (reusable).
+/// Receipt key sets at every nesting level (F-852-R2-B: unknown fields
+/// REJECT; missing fields REJECT; nothing is defaulted away).
+const RECEIPT_ROOT_KEYS: &[&str] = &[
+    "schema",
+    "case",
+    "module",
+    "wrapper_file",
+    "expected_oracle",
+    "identity",
+    "toolchain",
+    "deps",
+    "observed",
+    "verdict",
+    "produced_by",
+    "created_at",
+];
+const RECEIPT_IDENTITY_KEYS: &[&str] = &[
+    "source_sha256",
+    "golden_sha256",
+    "actual_sha256",
+    "wrapper_sha256",
+    "oracle_sha256",
+    "reference_sha256",
+];
+const RECEIPT_TOOLCHAIN_KEYS: &[&str] = &[
+    "identity",
+    "identity_source",
+    "default_identity_at_certify",
+    "flags",
+];
+const RECEIPT_DEPS_KEYS: &[&str] = &["external", "closure"];
+const RECEIPT_RUN_KEYS: &[&str] = &["exit", "stdout"];
+const RECEIPT_PRODUCED_KEYS: &[&str] = &["tool", "schema_note"];
+
+/// Exact key-set check: unknown -> Invalid; missing -> Invalid.
+fn exact_keys(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    expected: &[&str],
+    where_: &str,
+) -> Result<(), ReceiptProblem> {
+    for k in obj.keys() {
+        if !expected.contains(&k.as_str()) {
+            return Err(ReceiptProblem::Invalid(format!(
+                "unknown field {k:?} in {where_} (strict schema: exact keys only)"
+            )));
+        }
+    }
+    for e in expected {
+        if !obj.contains_key(*e) {
+            return Err(ReceiptProblem::Invalid(format!(
+                "missing field {e:?} in {where_}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn is_hash64(v: &serde_json::Value) -> bool {
+    match v.as_str() {
+        Some(s) => {
+            s.len() == 64
+                && s.chars()
+                    .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+        }
+        None => false,
+    }
+}
+
+/// STRICT receipt validation (F-852-R1-01 + R2-B). Every level is an exact
+/// key set with declared TYPES — wrong-typed or unknown elements REJECT and
+/// nothing is filtered into a valid empty set; file axes compare against the
+/// current tree. `Ok(())` means the receipt is valid AND current.
+#[allow(clippy::too_many_lines)]
 pub fn validate_receipt(
     cert: &serde_json::Value,
     case_id: &str,
@@ -194,6 +275,11 @@ pub fn validate_receipt(
     toolchain_identity: &str,
 ) -> Result<(), ReceiptProblem> {
     let invalid = |what: String| ReceiptProblem::Invalid(what);
+    let root = match cert.as_object() {
+        Some(o) => o,
+        None => return Err(invalid("receipt root is not an object".to_string())),
+    };
+    exact_keys(root, RECEIPT_ROOT_KEYS, "receipt root")?;
     if cert.get("schema").and_then(|v| v.as_str()) != Some(CERT_SCHEMA) {
         return Err(invalid(format!("schema is not {CERT_SCHEMA}")));
     }
@@ -204,6 +290,11 @@ pub fn validate_receipt(
     if cert.get("module").and_then(|v| v.as_str()) != Some(&module) {
         return Err(invalid(format!("module is not {module}")));
     }
+    if cert.get("wrapper_file").and_then(|v| v.as_str()) != Some("oracle/wrapper-main-v1.rs") {
+        return Err(invalid(
+            "wrapper_file is not the frozen oracle/wrapper-main-v1.rs".to_string(),
+        ));
+    }
     if cert.get("verdict").and_then(|v| v.as_str()) != Some("certified") {
         return Err(invalid("verdict is not certified".to_string()));
     }
@@ -212,66 +303,125 @@ pub fn validate_receipt(
             "expected_oracle is not the frozen registry value {expected_oracle:?}"
         )));
     }
-    // Observed runs must equal the oracle text (self-consistent evidence).
+    if cert.get("created_at").and_then(|v| v.as_u64()).is_none() {
+        return Err(invalid("created_at is not an unsigned integer".to_string()));
+    }
+    // produced_by: exact keys, string values.
+    let produced = cert
+        .get("produced_by")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| invalid("produced_by is not an object".to_string()))?;
+    exact_keys(produced, RECEIPT_PRODUCED_KEYS, "produced_by")?;
+    for k in RECEIPT_PRODUCED_KEYS {
+        if produced.get(*k).and_then(|v| v.as_str()).is_none() {
+            return Err(invalid(format!("produced_by.{k} is not a string")));
+        }
+    }
+    // Observed runs: exact keys; stdout a STRING equal to the oracle; exit a
+    // JSON INTEGER (a "0" string is a type violation, not a pass).
+    let observed = cert
+        .get("observed")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| invalid("observed is not an object".to_string()))?;
+    exact_keys(observed, &["actual_run", "reference_run"], "observed")?;
     for side in ["actual_run", "reference_run"] {
-        let stdout = cert
-            .pointer(&format!("/observed/{side}/stdout"))
-            .and_then(|v| v.as_str());
+        let run = observed
+            .get(side)
+            .and_then(|v| v.as_object())
+            .ok_or_else(|| invalid(format!("observed.{side} is not an object")))?;
+        exact_keys(run, RECEIPT_RUN_KEYS, &format!("observed.{side}"))?;
+        let stdout = run.get("stdout").and_then(|v| v.as_str());
         if stdout != Some(expected_oracle) {
             return Err(invalid(format!(
                 "observed.{side}.stdout does not equal the fixed oracle"
             )));
         }
-        let exit = cert
-            .pointer(&format!("/observed/{side}/exit"))
-            .and_then(|v| v.as_i64());
+        let exit = run.get("exit").and_then(|v| v.as_i64());
         if exit != Some(0) {
-            return Err(invalid(format!("observed.{side}.exit is not 0")));
+            return Err(invalid(format!(
+                "observed.{side}.exit is not the integer 0 (wrong type or value)"
+            )));
         }
     }
-    // Frozen contract constants recorded verbatim.
-    let flags: Vec<&str> = cert
+    // toolchain: exact keys; flags an array of STRINGS exactly equal to the
+    // frozen tokens (no filtered comparison); identity/source/default are
+    // non-empty strings.
+    let toolchain = cert
         .get("toolchain")
-        .and_then(|t| t.get("flags"))
-        .and_then(|f| f.as_array())
-        .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
-        .unwrap_or_default();
-    if flags != RUSTC_FLAG_TOKENS {
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| invalid("toolchain is not an object".to_string()))?;
+    exact_keys(toolchain, RECEIPT_TOOLCHAIN_KEYS, "toolchain")?;
+    let flags_value = toolchain
+        .get("flags")
+        .ok_or_else(|| invalid("toolchain.flags missing".to_string()))?;
+    let flags_array = flags_value
+        .as_array()
+        .ok_or_else(|| invalid("toolchain.flags is not an array".to_string()))?;
+    if flags_array.len() != RUSTC_FLAG_TOKENS.len()
+        || flags_array.iter().any(|v| v.as_str().is_none())
+        || flags_array
+            .iter()
+            .zip(RUSTC_FLAG_TOKENS.iter())
+            .any(|(v, want)| v.as_str() != Some(*want))
+    {
         return Err(invalid(format!(
-            "toolchain.flags is not the frozen set {:?} (recorded {:?})",
-            RUSTC_FLAG_TOKENS, flags
+            "toolchain.flags is not the frozen set {:?} of strings (recorded {flags_value})",
+            RUSTC_FLAG_TOKENS
         )));
     }
-    let deps = cert
-        .pointer("/deps/closure")
+    for k in ["identity", "identity_source", "default_identity_at_certify"] {
+        let v = toolchain.get(k).and_then(|v| v.as_str()).unwrap_or("");
+        if v.trim().is_empty() {
+            return Err(invalid(format!("toolchain.{k} is not a non-empty string")));
+        }
+    }
+    if !matches!(
+        toolchain.get("identity_source").and_then(|v| v.as_str()),
+        Some("--rustc override") | Some("env RUSTC") | Some("PATH")
+    ) {
+        return Err(invalid(
+            "toolchain.identity_source is not one of the frozen selection rules".to_string(),
+        ));
+    }
+    // deps: exact keys; external an ARRAY that is EMPTY (any entry of any
+    // type rejects — never filtered into a valid empty set); closure string.
+    let deps_obj = cert
+        .get("deps")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| invalid("deps is not an object".to_string()))?;
+    exact_keys(deps_obj, RECEIPT_DEPS_KEYS, "deps")?;
+    let external = deps_obj
+        .get("external")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| invalid("deps.external is not an array".to_string()))?;
+    if !external.is_empty() {
+        return Err(invalid("deps.external is not empty".to_string()));
+    }
+    let deps = deps_obj
+        .get("closure")
         .and_then(|v| v.as_str())
-        .unwrap_or_default();
+        .unwrap_or("");
     if deps != DEPS_CLOSURE {
         return Err(invalid(format!(
             "deps.closure is not {DEPS_CLOSURE:?} (recorded {deps:?})"
         )));
     }
-    let external: Vec<&str> = cert
-        .pointer("/deps/external")
-        .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
-        .unwrap_or_default();
-    if !external.is_empty() {
-        return Err(invalid("deps.external is not empty".to_string()));
+    // identity: exact keys; every axis a 64-char lowercase hex string.
+    let id = cert
+        .get("identity")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| invalid("identity is not an object".to_string()))?;
+    exact_keys(id, RECEIPT_IDENTITY_KEYS, "identity")?;
+    for k in RECEIPT_IDENTITY_KEYS {
+        if !is_hash64(id.get(*k).unwrap_or(&serde_json::Value::Null)) {
+            return Err(invalid(format!(
+                "identity.{k} is not a 64-char lowercase hex string"
+            )));
+        }
     }
-    let id = match cert.get("identity") {
-        Some(i) => i,
-        None => return Err(invalid("identity object missing".to_string())),
-    };
-    let actual = id
-        .get("actual_sha256")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let golden = id
-        .get("golden_sha256")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    if actual != golden {
+    if id.get("actual_sha256").and_then(|v| v.as_str())
+        != id.get("golden_sha256").and_then(|v| v.as_str())
+    {
         return Err(invalid(
             "identity.actual_sha256 != golden_sha256 (self-inconsistent)".to_string(),
         ));
@@ -290,12 +440,26 @@ pub fn validate_receipt(
             return Err(stale(format!("{label} drifted (receipt axis {key})")));
         }
     }
-    let recorded_tc = cert
-        .pointer("/toolchain/identity")
+    // R2-A: the certification identity must equal the identity of the
+    // compiler this validation context considers current.
+    let recorded_tc = toolchain
+        .get("identity")
         .and_then(|v| v.as_str())
         .unwrap_or("");
     if recorded_tc != toolchain_identity {
         return Err(stale("toolchain identity drifted".to_string()));
+    }
+    // Default-toolchain drift (zero-spawn daily face): the receipt froze the
+    // build-time default at certification; a changed current default means
+    // the NEXT certify would bind a different compiler — re-certify.
+    let recorded_default = toolchain
+        .get("default_identity_at_certify")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if recorded_default != BUILD_TOOLCHAIN_IDENTITY.trim() {
+        return Err(stale(
+            "default toolchain drifted since certification (re-certify to re-bind)".to_string(),
+        ));
     }
     Ok(())
 }
@@ -329,6 +493,7 @@ fn certify_one(
     scratch_root: &Path,
     rustc: &str,
     toolchain_identity: &str,
+    identity_source: &str,
 ) -> CaseSummary {
     let module = format!("m1_{}", id.to_lowercase());
     let oracle_text = format!("i32:{expected}\n");
@@ -502,7 +667,15 @@ fn certify_one(
             "reference_sha256": axes.reference_sha,
         },
         "toolchain": {
+            // R2-A: `identity` is the -vV of the EXACT compiler this pass
+            // launches (captured contained); `identity_source` records the
+            // selection rule; `default_identity_at_certify` freezes the
+            // build-time default so the daily face can detect default
+            // toolchain drift WITHOUT spawning and WITHOUT passing build
+            // identity off as certification evidence.
             "identity": toolchain_identity,
+            "identity_source": identity_source,
+            "default_identity_at_certify": BUILD_TOOLCHAIN_IDENTITY.trim(),
             "flags": RUSTC_FLAG_TOKENS,
         },
         "deps": { "external": [], "closure": DEPS_CLOSURE },
@@ -868,8 +1041,10 @@ fn main() { loop { std::io::stderr().write_all(&vec![b'y'; 4096]).unwrap(); } }"
         );
     }
 
-    /// F-852-R1-01: structurally invalid receipts are REJECTED — never
-    /// reused, never silently overwritten. Pure-JSON unit faces (no spawn),
+    /// F-852-R1-01 + R2-B: structurally invalid receipts are REJECTED —
+    /// never reused, never silently overwritten; unknown fields and
+    /// wrong-typed elements reject at EVERY nesting level (nothing is
+    /// filtered into a valid empty set). Pure-JSON unit faces (no spawn),
     /// replaying the reviewer's tamper variants field by field.
     #[test]
     fn invalid_receipts_are_rejected_in_memory() {
@@ -886,8 +1061,11 @@ fn main() { loop { std::io::stderr().write_all(&vec![b'y'; 4096]).unwrap(); } }"
             "schema": CERT_SCHEMA,
             "case": "B01",
             "module": "m1_b01",
+            "wrapper_file": "oracle/wrapper-main-v1.rs",
             "verdict": "certified",
             "expected_oracle": oracle,
+            "created_at": 1793000000u64,
+            "produced_by": { "tool": "ace-certify", "schema_note": "audit-only" },
             "identity": {
                 "source_sha256": "a".repeat(64),
                 "golden_sha256": "b".repeat(64),
@@ -896,77 +1074,224 @@ fn main() { loop { std::io::stderr().write_all(&vec![b'y'; 4096]).unwrap(); } }"
                 "oracle_sha256": "d".repeat(64),
                 "reference_sha256": "e".repeat(64),
             },
-            "toolchain": { "identity": tc, "flags": RUSTC_FLAG_TOKENS },
+            "toolchain": {
+                "identity": tc,
+                "identity_source": "PATH",
+                "default_identity_at_certify": BUILD_TOOLCHAIN_IDENTITY.trim(),
+                "flags": RUSTC_FLAG_TOKENS,
+            },
             "deps": { "external": [], "closure": DEPS_CLOSURE },
             "observed": {
                 "actual_run": { "exit": 0, "stdout": oracle },
                 "reference_run": { "exit": 0, "stdout": oracle },
             },
         });
-        assert!(matches!(
-            validate_receipt(&base, "B01", oracle, &axes, tc),
-            Ok(())
-        ));
+        assert!(
+            matches!(validate_receipt(&base, "B01", oracle, &axes, tc), Ok(())),
+            "valid base must validate"
+        );
+        let assert_invalid = |v: &serde_json::Value, what: &str| {
+            assert!(
+                matches!(
+                    validate_receipt(v, "B01", oracle, &axes, tc),
+                    Err(ReceiptProblem::Invalid(_))
+                ),
+                "{what} must be Invalid"
+            );
+        };
+        let assert_stale = |v: &serde_json::Value, what: &str| {
+            assert!(
+                matches!(
+                    validate_receipt(v, "B01", oracle, &axes, tc),
+                    Err(ReceiptProblem::Stale(_))
+                ),
+                "{what} must be Stale"
+            );
+        };
         for (field, value) in [
             ("schema", serde_json::json!("invalid/999")),
             ("verdict", serde_json::json!("maybe")),
             ("expected_oracle", serde_json::json!("i32:999\n")),
+            ("wrapper_file", serde_json::json!("oracle/other.rs")),
         ] {
             let mut v = base.clone();
             v[field] = value;
-            assert!(
-                matches!(
-                    validate_receipt(&v, "B01", oracle, &axes, tc),
-                    Err(ReceiptProblem::Invalid(_))
-                ),
-                "{field} tamper must be Invalid"
-            );
+            assert_invalid(&v, field);
         }
+        // R2-B replays: wrong-typed / unknown elements previously filtered.
+        let mut v = base.clone();
+        v["toolchain"]["flags"] =
+            serde_json::json!(["--edition=2021", serde_json::Value::Null, "-O"]);
+        assert_invalid(&v, "null flag entry");
+        let mut v = base.clone();
+        v["toolchain"]["flags"] = serde_json::json!(["--edition=2021", 17]);
+        assert_invalid(&v, "number flag entry");
         let mut v = base.clone();
         v["toolchain"]["flags"] = serde_json::json!(["--wrong-flag"]);
-        assert!(matches!(
-            validate_receipt(&v, "B01", oracle, &axes, tc),
-            Err(ReceiptProblem::Invalid(_))
-        ));
+        assert_invalid(&v, "wrong flag token");
+        let mut v = base.clone();
+        v["deps"]["external"] = serde_json::json!([serde_json::Value::Null, 17]);
+        assert_invalid(&v, "non-empty external (mixed types)");
+        let mut v = base.clone();
+        v["deps"]["external"] = serde_json::json!(["some-dep"]);
+        assert_invalid(&v, "non-empty external (string)");
+        let mut v = base.clone();
+        v["unknown_contract"] = serde_json::json!("must reject");
+        assert_invalid(&v, "unknown top-level field");
+        let mut v = base.clone();
+        v["identity"]["unknown_axis"] = serde_json::json!("x");
+        assert_invalid(&v, "unknown identity field");
+        let mut v = base.clone();
+        v["toolchain"]["unknown_axis"] = serde_json::json!("x");
+        assert_invalid(&v, "unknown toolchain field");
+        let mut v = base.clone();
+        v["observed"]["actual_run"]["exit"] = serde_json::json!("0");
+        assert_invalid(&v, "string-typed exit");
+        let mut v = base.clone();
+        v["observed"]["actual_run"]["stdout"] = serde_json::json!(14);
+        assert_invalid(&v, "number-typed stdout");
+        let mut v = base.clone();
+        v["observed"]["reference_run"]["extra"] = serde_json::json!(1);
+        assert_invalid(&v, "unknown observed run field");
+        let mut v = base.clone();
+        v["identity"]["source_sha256"] = serde_json::json!("NOThex");
+        assert_invalid(&v, "non-hex hash axis");
+        let mut v = base.clone();
+        v["identity"]["source_sha256"] = serde_json::json!(64);
+        assert_invalid(&v, "number-typed hash axis");
+        let mut v = base.clone();
+        if let Some(o) = v.as_object_mut() {
+            o.remove("created_at");
+        }
+        assert_invalid(&v, "missing created_at");
+        let mut v = base.clone();
+        v["toolchain"]["identity_source"] = serde_json::json!("guessed");
+        assert_invalid(&v, "unknown identity_source rule");
         let mut v = base.clone();
         v["deps"]["closure"] = serde_json::json!("changed-dependency");
-        assert!(matches!(
-            validate_receipt(&v, "B01", oracle, &axes, tc),
-            Err(ReceiptProblem::Invalid(_))
-        ));
+        assert_invalid(&v, "changed deps closure");
         let mut v = base.clone();
         v["observed"]["actual_run"]["stdout"] = serde_json::json!("i32:999");
-        assert!(matches!(
-            validate_receipt(&v, "B01", oracle, &axes, tc),
-            Err(ReceiptProblem::Invalid(_))
-        ));
+        assert_invalid(&v, "tampered observed stdout");
         let mut v = base.clone();
         v["identity"]["actual_sha256"] = serde_json::json!("0".repeat(64));
-        assert!(matches!(
-            validate_receipt(&v, "B01", oracle, &axes, tc),
-            Err(ReceiptProblem::Invalid(_))
-        ));
+        assert_invalid(&v, "self-inconsistent actual hash");
         // File-axis drift is STALE (the honest re-certify path), not Invalid.
         let mut v = base.clone();
         v["identity"]["golden_sha256"] = serde_json::json!("f".repeat(64));
         v["identity"]["actual_sha256"] = serde_json::json!("f".repeat(64));
-        assert!(matches!(
-            validate_receipt(&v, "B01", oracle, &axes, tc),
-            Err(ReceiptProblem::Stale(_))
-        ));
+        assert_stale(&v, "golden drift");
         let mut v = base.clone();
         v["toolchain"]["identity"] = serde_json::json!("rustc other identity");
-        assert!(matches!(
-            validate_receipt(&v, "B01", oracle, &axes, tc),
-            Err(ReceiptProblem::Stale(_))
-        ));
+        assert_stale(&v, "toolchain identity drift");
+        let mut v = base.clone();
+        v["toolchain"]["default_identity_at_certify"] = serde_json::json!("rustc older default");
+        assert_stale(&v, "default toolchain drift");
         // Wrapper hash comes from the CURRENT frozen wrapper file.
         let live = hex(&sha256(WRAPPER_MAIN_RS.as_bytes()));
         let mut v = base.clone();
         v["identity"]["wrapper_sha256"] = serde_json::json!(live);
-        assert!(matches!(
-            validate_receipt(&v, "B01", oracle, &axes, tc),
-            Err(ReceiptProblem::Stale(_))
-        ));
+        assert_stale(&v, "wrapper drift");
+    }
+
+    /// F-852-R2-A: the recorded identity MUST be the identity of the EXACT
+    /// compiler the pass launches — never the unrelated build-time constant.
+    /// A shim rustc that rewrites `-vV` (and forwards compiles to the real
+    /// compiler) proves the binding: the receipt records the SHIM identity.
+    /// Also F-852-R2-C: an unreachable --rustc must fail BEFORE any compile
+    /// and still clean up its scratch. Explicit-only (compiles real Rust).
+    #[test]
+    #[ignore = "PLAN-852 F-852-R2-A/C: compiles real Rust — invoke explicitly with --ignored"]
+    fn identity_binds_the_launched_compiler_and_scratch_never_strands() {
+        let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+        let dir = std::env::temp_dir().join(format!("ace-cert-shim-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // An .exe shim (a real compiled program — cmd quoting cannot be
+        // trusted for argument forwarding): `-vV` -> a distinctive fake
+        // identity; every other invocation forwards verbatim to the real
+        // compiler from $RUSTC.
+        let shim = compile_tmp(
+            &rustc,
+            "shim",
+            r#"fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(|a| a == "-vV").unwrap_or(false) {
+        println!("rustc 99.99.0-shim identity-honesty-probe 2026-10-26");
+        return;
+    }
+    let real = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+    let status = std::process::Command::new(&real)
+        .args(&args)
+        .status()
+        .expect("shim: run the real rustc");
+    std::process::exit(status.code().unwrap_or(1));
+}
+"#,
+        );
+
+        // R2-C first: an unreachable compiler fails the pass with the scratch
+        // REMOVED (cleanup guard spans identity capture).
+        let scratch_c = dir.join("scratch-c");
+        let args = CertifyArgs {
+            corpus: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../crates/auto-lang/test/cases/ace-m1"),
+            certs_dir: dir.join("certs-c"),
+            only: vec!["b01".to_string()],
+            force: true,
+            rustc: Some("X:/definitely/missing/rustc.exe".to_string()),
+            scratch: Some(scratch_c.clone()),
+        };
+        let err = match certify(&args) {
+            Err(e) => e,
+            Ok(summaries) => panic!(
+                "missing rustc must fail the whole pass, got: {:?}",
+                summaries
+                    .iter()
+                    .map(|s| (s.outcome.clone(), s.detail.clone()))
+                    .collect::<Vec<_>>()
+            ),
+        };
+        assert!(err.contains("spawn") || err.contains("identity"), "{err}");
+        assert!(
+            !scratch_c.exists(),
+            "R2-C: scratch must be cleaned even when identity capture fails"
+        );
+
+        // R2-A: the shim's distinctive identity is what lands in the receipt.
+        let certs = dir.join("certs-shim");
+        let args = CertifyArgs {
+            corpus: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../crates/auto-lang/test/cases/ace-m1"),
+            certs_dir: certs.clone(),
+            only: vec!["b01".to_string()],
+            force: true,
+            rustc: Some(shim.to_string_lossy().to_string()),
+            scratch: Some(dir.join("scratch-shim")),
+        };
+        let summaries = certify(&args).expect("shim pass certifies via the real compiler");
+        assert_eq!(summaries[0].outcome, "certified", "{}", summaries[0].detail);
+        let receipt: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(certs.join("m1_b01.cert.json")).unwrap())
+                .unwrap();
+        let identity = receipt["toolchain"]["identity"].as_str().unwrap();
+        assert!(
+            identity.contains("99.99.0-shim"),
+            "identity must bind the LAUNCHED compiler (shim), recorded: {identity}"
+        );
+        assert_ne!(
+            identity,
+            BUILD_TOOLCHAIN_IDENTITY.trim(),
+            "identity must never be the unrelated build-time constant"
+        );
+        assert_eq!(
+            receipt["toolchain"]["identity_source"].as_str(),
+            Some("--rustc override")
+        );
+        assert_eq!(
+            receipt["toolchain"]["default_identity_at_certify"].as_str(),
+            Some(BUILD_TOOLCHAIN_IDENTITY.trim())
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

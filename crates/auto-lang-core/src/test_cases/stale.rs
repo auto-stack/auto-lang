@@ -76,7 +76,9 @@ pub fn toolchain_axes(limits: &Limits) -> BTreeMap<String, String> {
     // check can detect toolchain drift WITHOUT spawning rustc (G02).
     m.insert(
         "build-rustc-identity".to_string(),
-        crate::test_cases::ace_certify::BUILD_TOOLCHAIN_IDENTITY.trim().to_string(),
+        crate::test_cases::ace_certify::BUILD_TOOLCHAIN_IDENTITY
+            .trim()
+            .to_string(),
     );
     m
 }

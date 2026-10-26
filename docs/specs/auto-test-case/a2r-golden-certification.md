@@ -37,9 +37,13 @@ Rust 进程 spawn=0（verify snapshot scope 的结构守卫 + 认证器代码边
 - 文件轴（source/golden/wrapper/oracle/reference）漂移 → STALE，显式 certify 重认证；
   日常 snapshot scope 对全部 ok-emit 行做同套严格验证（零 spawn），缺证书=显式缺口
   红而非静默。
-- **toolchain 漂移日常即检出（零 spawn）**：build.rs 捕获 `$RUSTC -vV` 为
-  `BUILD_TOOLCHAIN_IDENTITY` 常量并作为 `build-rustc-identity` 轴随每次 suite 报告
-  输出；snapshot 将证书 toolchain.identity 与该轴比对（G05，无延迟核查弱化）。
+- **身份绑定实际启动的编译器（F-852-R2-A）**：证书 `toolchain.identity` = 认证当次
+  实际启动的 rustc 的完整 `-vV`（经 contained 有界通道捕获；CLI --rustc > env RUSTC
+  > PATH 单一规则，`identity_source` 记录来源）——绝不以构建期常量冒充认证证据。
+- **toolchain 漂移日常即检出（零 spawn）**：证书另冻结 `default_identity_at_certify`
+  （认证时构建期默认）；suite 报告携带 `build-rustc-identity` 轴（build.rs 捕获），
+  snapshot 将两者比对——默认工具链漂移即 STALE（G05，无延迟核查弱化）；显式覆盖
+  编译的身份属冻结证据，日常消费不重算。
 - 认证只证明冻结平台/依赖 profile，非所有平台证明；Rust 编译失败/缺工具/超时
   /panic 均为 infra 或编译失败，永不满足 Auto 语言负例。
 
