@@ -16,7 +16,7 @@
   AUTO_LANG_CRATE/CARGO_TARGET_DIR 等）不进入生成物。定位待拷贝源的
   producer 根解析序 = AUTO_DELIVERY_SOURCE_ROOT → AUTO_LANG_ROOT →
   CWD 仓库漫步 → 编译期上溯（仅生成期事实，记录于 delivery-manifest）。
-- 两模式共享同一编译相位（auto-man `compile_rust_ui_app`）：main.rs
+- 两模式共享同一编译相位（auto-ui-tools `compile_rust_ui_app`）：main.rs
   逐字节同源；sidecar/`__InitLoaded` 改写/exe_name 契约同源。
 
 ## 交付 bundle 布局（镜像生产仓根布局）
@@ -206,3 +206,17 @@ shadcn/根级输入):
 ## PLAN-832 Man 与三仓发行（SD-05，as-built）
 
 `auto` 与 auto-ui-tool 分属 Man/UI owner；792 driver 分别定位两仓实际二进制，producer 仍按固定语言/UI 源取件，不借主 target。Man 的 Core/full 安装复用受管 staging、hash/profile/source 校验、交换/备份和恢复语义，另补 CLI 所需的独立 workspace/锁与双 profile 布局。独立 clone、重定位、升级失败、等长篡改、缺 tool、取消和恢复均有真实正反控；详见 [man-three-repository-delivery](man-three-repository-delivery.md)。jet/ark 真实构建经 2026-10-25 用户正式裁定转 v0.7 环境门控渠道，未实测不冒称通过，其他发行与恢复验收不变。
+
+
+## PLAN-841 UI 领域模型与三仓来源（SD-04）
+
+受管 bundle 现含 25 个源码 crate；UI owned AST/codec 随 auto-ui-dialect，
+compiler/runtime/tools 均消费 `UiCode`。生成 import 只指向 canonical
+auto-ui-runtime/auto-lang-core/auto-ui-dialect，不由 Core AST 兼容臂提供
+第二来源。Man 的 `scripts/man-distribution.py` 固定 UI revision；792
+driver 的收据同时记录 lang/UI/down 实际 HEAD 与随包工具二进制 SHA256。
+
+PLAN-841 验收使用真实外部工程完成 fresh resolve、locked build、A→B
+重定位、metadata/path/source 身份、资源与失败负控，并覆盖四生成器、
+Iced 窗口、VM 服务/取消和工具协议，39/39 通过。jet/ark 构建仍只按既有
+环境门控披露，不把生成成功冒称宿主工具链已安装。

@@ -54,18 +54,17 @@
   （canonical 双直依赖=生成工程镜像形态，5/5+fresh+locked，闭包零
   旧包）。
 
-## 装配语义（单点+r3 登记权）
+## 装配语义与 UI 准入（PLAN-841）
 
-- `install_ui_host_capabilities()`（pub，any(ui,ui-dialog) 门）=
-  provider 全族装配单点：frame/clipboard×2/scroll/terminal/
-  code-editor/dnd/dialog + autodown 引擎 + i18n lookup 钩子。
-  no-op 边界精确为 `not(any(ui, ui-dialog))`——bare ui/headless/
-  dialog-only 形态仍装配其 feature 内能力（R10 审定口径澄清，
-  非无宿主化）。
-- **不登记 UI 文法**：auto-ui-dialect 依赖与 `UiGrammarSource`/
-  `UiCompatInstaller` submit 权属旧 auto-lang 兼容包与
-  auto-ui-compiler（r3 §5.3）；本包零 inventory submit——纯 SDK
-  缺席/显式拒绝语义不受本包链接影响（T-08 缺席臂回归即违反本条）。
+- `install_ui_host_capabilities()`（pub，any(ui,ui-dialog) 门）只装配
+  provider：frame/clipboard×2/scroll/terminal/code-editor/dnd/dialog +
+  autodown 引擎 + i18n lookup；no-op 边界仍为
+  `not(any(ui, ui-dialog))`。UI 文法由调用方经 `parse_domain` 显式组合，
+  没有进程级注册表或 inventory 兜底。
+- dynamic_build/dynamic/vm_bridge/aura_view_builder/renderer 消费校验与
+  lowering 后的 `UiCode`，不匹配 Core `Stmt` UI 兼容臂。外部组件名由
+  UI-owned `register_imported_components` 提供；Aura 的旧 import 扫描
+  已删除，构造函数的末参仅为交 842 的源码形兼容，不再保存或读取。
 
 ## 单源状态与生命周期
 

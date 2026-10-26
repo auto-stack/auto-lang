@@ -990,7 +990,6 @@ dependencies = [
  "auto-parser-api",
  "auto-ui-dialect",
  "auto-val",
- "inventory",
  "log",
  "miette",
  "regex",

@@ -20,6 +20,7 @@ auto-lang = { path = "../../../../crates/auto-lang" }
 dialect-api-consumer = { path = "../dialect-api-consumer" }
 # PLAN-801：端口类型（ParseContext/ParseCheckpoint——driver 测试直接命名）。
 auto-parser-api = { path = "../../../../crates/auto-parser-api" }
+auto-ui-dialect = { path = "../../../../../auto-ui/crates/auto-ui-dialect" }
 
 # 独立 workspace（见上）；无锁文件、无成员。
 [workspace]

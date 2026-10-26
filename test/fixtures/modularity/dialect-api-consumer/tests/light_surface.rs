@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use auto_parser_api::session::{CompilerSession, Scenario};
-use auto_parser_api::ExternalDialect;
+use auto_parser_api::DomainDialect;
 use dialect_api_consumer::{ExternalModelDialect, Probe};
 
 #[test]

@@ -1,7 +1,7 @@
 # PLAN-799 V01 外部 AST 模型消费方 gate（独立 fixture crate）。
 #
 # 角色：模拟"外部 crate"——manifest 即验收证据：唯一依赖是 auto-ast（path），
-# 构建+测试成功证明 AST 模型（Core/UI 兼容节点、类型表达、ToNode/ToAtom/
+# 构建+测试成功证明 AST 模型（Core/Scene 节点、类型表达、ToNode/ToAtom/
 # AtomWriter 序列化、ModulePath）可脱离 auto-lang/Parser/TypeStore/推断/VM/
 # renderer/Man 独立消费（AC-01：正常 DAG 无反向边、不借主库 rlib）。
 #

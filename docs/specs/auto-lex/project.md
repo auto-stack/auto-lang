@@ -48,8 +48,9 @@ auto-diagnostics：结构化五变体 → `AutoError::Lexer`，raw-block 字符�
 - `on` 不是 `keyword_kind` 成员：它是 newstart 条件下的 header 关键字
   （`Lexer::header_keyword`），`all_keywords()` 不含 `on`（LSP 工具面契约，
   Plan 416 单一来源）。
-- UI 关键字（`view`/`take`/`hold` 等）保留在共享词法层——UI 专属 AST 的
-  外置属下一批（完整 UI 文法外置），不在本 crate 裁撤。
+- `View`/`On` 保留在共享词法层：前者还服务 Core 不可变借用与参数模式，
+  后者还服务 Core on-events/task；`take`/`hold` 等同理。PLAN-841 起 UI
+  专属 AST 归 auto-ui-dialect，词法层不复制 UI 领域分类。
 - `Lexer` 在 auto-lang 内保持 crate 私有（`mod lexer` 不公开，抽取前同构）；
   auto-lang 的 `ParserBridge` checkpoint（`BridgeCheckpoint` 持 `LexerState`）
   字段不透明、恢复语义不变（PLAN-778 冻结矩阵）。

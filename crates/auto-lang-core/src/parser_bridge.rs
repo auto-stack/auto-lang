@@ -5,9 +5,8 @@
 //! core expr/type / context / diagnostics），不接触 `Parser` 本体、lexer、
 //! scope/符号表或 db/type_store —— 这些不在外部契约中。
 //!
-//! PLAN-810：内建 UiDialect 曾经的 `pub(crate) parser()` 完整 Parser 逃逸口
-//! 已删除——内建方言与外部方言同样只经端口面消费（ParseContext +
-//! UiParseContext），无第二份 UI 算法留在 Parser。
+//! PLAN-841：UI 由 `Parser::parse_domain` 显式组合；本桥面同时实现
+//! 中立 `DomainParseContext`，不包含 UI 类型或第二份 UI 算法。
 //!
 //! 恢复不变量由派发器（`Parser::try_dialect_stmt` / `try_token_dialect_stmt`）
 //! 兜底保证，不依赖方言自律：Ok(None) 后强制 `restore(checkpoint)` 回滚游标；
@@ -267,17 +266,8 @@ impl<'p, 'a> auto_parser_api::ParseContext for ParserBridge<'p, 'a> {
     }
 }
 
-// ---- PLAN-810：完整 UI 文法端口（`UiParseContext`，PLAN-814 R3-03b 起
-// 定义于 auto-parser-api，原 auto-ui-dialect 路径经 re-export 不变）----
-//
-// 能力面与事务合同冻结见 docs/plans/attachments/810/contract-baseline.md §2/§3。
-// 全部委托 Parser 既有单一份实现（含私有 helper——同 crate），不复制算法；
-// 文法 crate 侧不接触 Parser/lexer/scope/TypeStore 引用。
-//
-// PLAN-814 R3-03b：本 impl 无条件编译（原 `ui-dialect` feature 门删除）
-// ——纯 SDK 闭包仍零 auto-ui-dialect。PLAN-841 T-01 起 UI 文法不再经
-// UiGrammar 函数表装配：本 impl 是 `DomainParseContext` 的 Parser 侧实现，
-// 由 `Parser::parse_domain(&D)` 显式驱动（dialect 由调用方传入）。
+// ---- PLAN-841：DomainParseContext 的 Parser 侧实现 ----
+// 仅委托 Core 既有实现，不包含 UI 类型；由 parse_domain 显式驱动。
 
 impl<'p, 'a> auto_parser_api::DomainParseContext for ParserBridge<'p, 'a> {
     fn prev_pos(&mut self) -> Pos {

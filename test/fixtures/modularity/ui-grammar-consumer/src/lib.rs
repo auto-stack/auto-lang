@@ -15,7 +15,7 @@
 
 use auto_lex::lexer::Lexer;
 use auto_lex::token::{Pos, Token, TokenKind};
-use auto_parser_api::ast::{Body, Expr, OnEvents, Pair, Stmt, StyleRecipeDecl, Type};
+use auto_parser_api::ast::{Body, Expr, OnEvents, Pair, Stmt, Type};
 use auto_parser_api::context::ParseContext;
 use auto_parser_api::error::{AutoError, AutoResult};
 use auto_parser_api::session::{CompilerSession, Scenario};
@@ -41,7 +41,6 @@ pub struct ToyUiContext {
     warnings: std::cell::RefCell<Vec<String>>,
     binds: std::cell::RefCell<Vec<(String, String)>>,
     defined: std::cell::RefCell<Vec<String>>,
-    recipes: std::cell::RefCell<Vec<String>>,
     pending_docs: Vec<String>,
     snapshots: std::cell::RefCell<Vec<Option<Snap>>>,
     gen_next: u64,
@@ -96,7 +95,6 @@ impl ToyUiContext {
             warnings: std::cell::RefCell::new(Vec::new()),
             binds: std::cell::RefCell::new(Vec::new()),
             defined: std::cell::RefCell::new(Vec::new()),
-            recipes: std::cell::RefCell::new(Vec::new()),
             pending_docs,
             snapshots: std::cell::RefCell::new(Vec::new()),
             gen_next: 0,
@@ -147,11 +145,6 @@ impl ToyUiContext {
 
     pub fn defined(&self) -> std::cell::Ref<'_, Vec<String>> {
         self.defined.borrow()
-    }
-
-    /// register_style_recipe 观察口。
-    pub fn recipes(&self) -> std::cell::Ref<'_, Vec<String>> {
-        self.recipes.borrow()
     }
 }
 
@@ -516,10 +509,6 @@ impl UiParseContext for ToyUiContext {
         self.warnings
             .borrow_mut()
             .push(format!("{}~{}", found, suggestion));
-    }
-
-    fn register_style_recipe(&mut self, decl: &StyleRecipeDecl) {
-        self.recipes.borrow_mut().push(decl.name.to_string());
     }
 }
 

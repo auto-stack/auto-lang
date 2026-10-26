@@ -1,7 +1,7 @@
 # PLAN-810 V-06 轻消费方 fixture（独立 workspace crate）。
 #
 # 角色：证明 auto-ui-dialect 的**完整 UI 文法**（PLAN-810 迁出的 widget/
-# store/component/view/fragment/on/actions/style/scene 族）在**无 auto-lang**
+# store/component/view/fragment/on/actions/style 族；Scene 留 Core）在**无 auto-lang**
 # 闭包内真实可用（真算法而非转调 Parser）——本 crate 自带一个消费方最小
 # UiParseContext（预词法 token 向量游标 + 受限真实端口：raw CSS 由 token
 # 重建、expr/type/body 等核心文法为桩），驱动

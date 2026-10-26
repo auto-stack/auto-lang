@@ -13,43 +13,35 @@ use auto_lang::error::AutoResult;
 use auto_lang::parser::Parser;
 use auto_lang::session::CompilerSession;
 use auto_parser_api::{ExternalDialect, ParseContext};
-use dialect_api_consumer::{ExternalModelDialect, Probe};
+use auto_ui_dialect::{UiCode, UiStmt};
+use dialect_api_consumer::{ExternalUiDialect, Probe};
 use ui_dialect_consumer::{LegacyProbe, LegacyProbeDialect};
 
-/// 新旧混排：Override 段新接口 model 方言 + Append 段旧 trait probe 方言，
-/// 与内建 UiDialect（widget/model）同表共存——各自关键字各自接管，互不串扰。
+/// UI 领域组合与非 UI 旧 trait 分别经各自公开入口真实接管。
 #[test]
 fn v03_mixed_new_and_old_dialects_dispatch_independently() {
     let model_probe = Arc::new(Probe::default());
     let legacy_probe = Arc::new(LegacyProbe::default());
-    let code = "model { count int = 1 }\nprobe 7";
-    let ast = Parser::from(code)
+    let model_ast = Parser::from("model { count int = 1 }")
         .with_session(CompilerSession::ui())
-        .with_external_dialect(
-            Box::new(ExternalModelDialect::new(model_probe.clone())),
-            auto_parser_api::DialectPriority::Override,
-        )
+        .parse_domain(&ExternalUiDialect::new(model_probe.clone()))
+        .map(UiCode)
+        .expect("domain model parse");
+    let legacy_ast = Parser::from("probe 7")
+        .with_session(CompilerSession::ui())
         .with_dialect(
             Box::new(LegacyProbeDialect::new(legacy_probe.clone())),
             auto_lang::dialect::DialectPriority::Append,
         )
         .parse()
-        .expect("新旧方言同表混排必须照常解析");
-    assert_eq!(
-        model_probe.accepts.load(Ordering::SeqCst),
-        1,
-        "model 由新接口方言接管"
-    );
-    assert_eq!(
-        legacy_probe.accepts.load(Ordering::SeqCst),
-        1,
-        "probe 由旧 trait 方言接管"
-    );
-    assert!(matches!(&ast.stmts[0], Stmt::ModelBlock(_)));
-    assert!(
-        matches!(&ast.stmts[1], Stmt::Expr(Expr::Int(7))),
-        "probe 产出表达式语句"
-    );
+        .expect("legacy Core parse");
+    assert_eq!(model_probe.accepts.load(Ordering::SeqCst), 1);
+    assert_eq!(legacy_probe.accepts.load(Ordering::SeqCst), 1);
+    assert!(matches!(
+        model_ast.domain_stmts().next(),
+        Some(UiStmt::ModelBlock(_))
+    ));
+    assert!(matches!(&legacy_ast.stmts[0], Stmt::Expr(Expr::Int(7))));
 }
 
 /// 同段（Override）内按注册顺序咨询：先注册者先被调用，其 Ok(None) 让行后
@@ -129,43 +121,29 @@ impl ExternalDialect for RecordingPickerDialect {
     }
 }
 
-/// with_session 只重建内建段：新接口注册跨 with_session 保留（V-03 传播
-/// 不变量在新路径成立；先注册、后设 session 的顺序不得清空外部注册）。
+/// 显式领域组合在 session 设置后仍由同一实例执行。
 #[test]
 fn v03_new_registration_survives_with_session() {
     let probe = Arc::new(Probe::default());
     let ast = Parser::from("model { count int = 1 }")
-        .with_external_dialect(
-            Box::new(ExternalModelDialect::new(probe.clone())),
-            auto_parser_api::DialectPriority::Override,
-        )
         .with_session(CompilerSession::ui())
-        .parse()
+        .parse_domain(&ExternalUiDialect::new(probe.clone()))
+        .map(UiCode)
         .unwrap();
-    assert_eq!(
-        probe.accepts.load(Ordering::SeqCst),
-        1,
-        "with_session 不得丢弃已注册新接口方言"
-    );
-    assert!(matches!(&ast.stmts[0], Stmt::ModelBlock(_)));
+    assert_eq!(probe.accepts.load(Ordering::SeqCst), 1);
+    assert!(matches!(
+        ast.domain_stmts().next(),
+        Some(UiStmt::ModelBlock(_))
+    ));
 }
 
-/// Core 场景门控在新路径派发时生效：matches() 拒绝即零咨询（与 v02_core
-/// 同 oracle，换注册入口复验——matches 契约不因接口迁移漂移）。
+/// Core 场景门控在新路径派发时生效：matches() 拒绝即零咨询。
 #[test]
 fn v03_core_scenario_gates_new_dialect_at_dispatch() {
     let probe = Arc::new(Probe::default());
     let ast = Parser::from("model = 1")
-        .with_external_dialect(
-            Box::new(ExternalModelDialect::new(probe.clone())),
-            auto_parser_api::DialectPriority::Override,
-        )
-        .parse()
+        .parse_domain(&ExternalUiDialect::new(probe.clone()))
         .expect("Core 下 model = 1 必须按普通赋值解析");
-    assert_eq!(
-        probe.attempts.load(Ordering::SeqCst),
-        0,
-        "Core 场景不得咨询外部方言"
-    );
-    assert!(!matches!(&ast.stmts[0], Stmt::ModelBlock(_)));
+    assert_eq!(probe.attempts.load(Ordering::SeqCst), 0);
+    assert_eq!(ast.items.len(), 1);
 }

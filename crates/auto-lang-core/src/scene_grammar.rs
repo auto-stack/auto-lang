@@ -4,9 +4,9 @@
 use auto_parser_api::ast::*;
 use auto_parser_api::error::{pos_to_span, AutoResult, SyntaxError};
 use auto_parser_api::token::TokenKind;
-use auto_parser_api::DomainParseContext as UiParseContext;
+use auto_parser_api::DomainParseContext;
 
-fn parse_string_lit(cx: &mut dyn UiParseContext) -> AutoResult<AutoStr> {
+fn parse_string_lit(cx: &mut dyn DomainParseContext) -> AutoResult<AutoStr> {
     if cx.is_kind(TokenKind::Str) {
         let value = cx.cur_text();
         cx.advance();
@@ -24,7 +24,7 @@ fn parse_string_lit(cx: &mut dyn UiParseContext) -> AutoResult<AutoStr> {
 /// Check if the current position is `scene <Ident>` — a scene declaration.
 /// Uses one-token lookahead so `scene.foo()` or `scene()` still parse as
 /// ordinary expressions/statements.
-pub fn looks_like_scene_decl(cx: &mut dyn UiParseContext) -> bool {
+pub fn looks_like_scene_decl(cx: &mut dyn DomainParseContext) -> bool {
     if !(cx.cur_kind() == TokenKind::Ident && cx.cur_text() == "scene") {
         return false;
     }
@@ -44,7 +44,7 @@ pub fn looks_like_scene_decl(cx: &mut dyn UiParseContext) -> bool {
 ///     connect signal from "NodePath" to "NodePath" method "method_name"
 /// }
 /// ```
-pub fn parse_scene_decl(cx: &mut dyn UiParseContext) -> AutoResult<Stmt> {
+pub fn parse_scene_decl(cx: &mut dyn DomainParseContext) -> AutoResult<Stmt> {
     cx.expect_ident("scene")?;
     let name = cx.cur_text();
     cx.advance();
@@ -108,7 +108,7 @@ pub fn parse_scene_decl(cx: &mut dyn UiParseContext) -> AutoResult<Stmt> {
 }
 
 /// Parse a child scene node: `node Type ["Name"] { props; children }`
-pub(crate) fn parse_scene_node(cx: &mut dyn UiParseContext) -> AutoResult<SceneNode> {
+pub(crate) fn parse_scene_node(cx: &mut dyn DomainParseContext) -> AutoResult<SceneNode> {
     cx.expect_ident("node")?;
     let node_type = cx.cur_text();
     cx.advance();
@@ -153,7 +153,7 @@ pub(crate) fn parse_scene_node(cx: &mut dyn UiParseContext) -> AutoResult<SceneN
 }
 
 /// Parse a scene instance: `instance Name "res://path.tscn"`
-pub(crate) fn parse_scene_instance(cx: &mut dyn UiParseContext) -> AutoResult<SceneNode> {
+pub(crate) fn parse_scene_instance(cx: &mut dyn DomainParseContext) -> AutoResult<SceneNode> {
     cx.expect_ident("instance")?;
     let name = cx.cur_text();
     cx.advance();
@@ -166,7 +166,9 @@ pub(crate) fn parse_scene_instance(cx: &mut dyn UiParseContext) -> AutoResult<Sc
 
 /// Parse a signal connection:
 /// `connect <signal> from "NodePath" to "NodePath" method "method_name"`
-pub(crate) fn parse_scene_connection(cx: &mut dyn UiParseContext) -> AutoResult<SceneConnection> {
+pub(crate) fn parse_scene_connection(
+    cx: &mut dyn DomainParseContext,
+) -> AutoResult<SceneConnection> {
     cx.expect_ident("connect")?;
     let signal = cx.cur_text();
     cx.advance();
@@ -188,7 +190,7 @@ pub(crate) fn parse_scene_connection(cx: &mut dyn UiParseContext) -> AutoResult<
 /// `signal name` or `signal name(p1 T1, p2 T2)`.
 /// Params use Auto space syntax (`p1 T1`) and are emitted as GDScript
 /// typed signal params (`p1: T1`).
-pub(crate) fn parse_scene_signal(cx: &mut dyn UiParseContext) -> AutoResult<SceneSignal> {
+pub(crate) fn parse_scene_signal(cx: &mut dyn DomainParseContext) -> AutoResult<SceneSignal> {
     cx.expect_ident("signal")?;
     let name = cx.cur_text();
     cx.advance();
@@ -223,7 +225,7 @@ pub(crate) fn parse_scene_signal(cx: &mut dyn UiParseContext) -> AutoResult<Scen
 ///
 /// Shared by the scene root, child nodes, and inline sub-resources. The
 /// value may be an ordinary expression or a typed inline sub-resource.
-pub(crate) fn parse_scene_prop(cx: &mut dyn UiParseContext) -> AutoResult<SceneProp> {
+pub(crate) fn parse_scene_prop(cx: &mut dyn DomainParseContext) -> AutoResult<SceneProp> {
     let prop_name = cx.cur_text();
     cx.advance();
     cx.expect(TokenKind::Asn)?;
@@ -236,7 +238,7 @@ pub(crate) fn parse_scene_prop(cx: &mut dyn UiParseContext) -> AutoResult<SceneP
 
 /// Parse a scene property value — either a typed inline sub-resource
 /// (`TypeName { ... }`) or a regular expression.
-pub(crate) fn parse_scene_value(cx: &mut dyn UiParseContext) -> AutoResult<SceneValue> {
+pub(crate) fn parse_scene_value(cx: &mut dyn DomainParseContext) -> AutoResult<SceneValue> {
     if looks_like_subresource(cx) {
         Ok(SceneValue::SubResource(parse_scene_subresource(cx)?))
     } else {
@@ -246,7 +248,7 @@ pub(crate) fn parse_scene_value(cx: &mut dyn UiParseContext) -> AutoResult<Scene
 
 /// Two-token lookahead: is this `Ident {`? (a typed inline sub-resource).
 /// Fully restores the cursor regardless of the answer.
-pub(crate) fn looks_like_subresource(cx: &mut dyn UiParseContext) -> bool {
+pub(crate) fn looks_like_subresource(cx: &mut dyn DomainParseContext) -> bool {
     if !cx.is_kind(TokenKind::Ident) {
         return false;
     }
@@ -256,7 +258,9 @@ pub(crate) fn looks_like_subresource(cx: &mut dyn UiParseContext) -> bool {
 }
 
 /// Parse an inline typed sub-resource: `TypeName { name = value; ... }`.
-pub(crate) fn parse_scene_subresource(cx: &mut dyn UiParseContext) -> AutoResult<SceneSubResource> {
+pub(crate) fn parse_scene_subresource(
+    cx: &mut dyn DomainParseContext,
+) -> AutoResult<SceneSubResource> {
     let res_type = cx.cur_text();
     cx.advance(); // consume type identifier
     cx.expect(TokenKind::LBrace)?;

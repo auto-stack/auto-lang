@@ -72,12 +72,10 @@ UI 运行/renderer/宿主域在 `auto-ui-runtime`
 旧 `auto_lang::*` 公开路径经再导出保类型身份；UI 特性族（ui-iced/ui/
 autodown/ui-headless/code-editor 等）在此转发。
 
-**r3 具名登记例外**（合同见 PLAN-814 §5.3）：本包经源码可见
-`inventory::submit!` 登记轻量 UI 文法函数表/宿主安装器函数指针（启动
-构造器机制，只登记不执行 UI 业务/I/O），覆盖不经装配入口的旧直达
-调用；`install_ui_host_capabilities()`（run 族漏斗/旧公开入口包装/SDK
-钩子回调汇点）首句显式 `set_ui_grammar` 装配优先。纯 SDK 的无 UI
-闭包/缺席语义不受影响。
+**PLAN-841 领域组合**：UI 由调用方经 `Parser::parse_domain(&UiDialect)`
+显式组合；本包不再提交 `UiGrammarSource` 或调用 `set_ui_grammar`。
+`install_ui_host_capabilities()` 只装配 runtime provider 与 SDK 宿主钩子，
+纯 SDK 的无 UI 闭包不受影响。
 
 ## PLAN-814 B 增量（T-08；M814-B 发布落库）
 

@@ -103,20 +103,12 @@ fn trans_rust_exit_produces_source() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// 行为负控（AC-01/02 边界）：纯 SDK（UI 文法表未装配——R3-03b 起经
-/// 函数表端口，SDK 清单零 auto-ui-dialect）中 UI 文法公开门面签名恒在但
-/// 显式拒绝——不静默降级、不 panic。
+/// 纯 SDK 没有隐式 UI 文法；UI 声明只能由上层经显式领域端口组合。
 #[test]
 fn ui_grammar_explicitly_refused() {
     let mut parser = Parser::from("msg M { A }");
-    let err = parser
-        .parse_msg_decl()
-        .expect_err("pure SDK must refuse UI grammar");
-    let msg = format!("{err}");
-    assert!(
-        msg.contains("UI dialect grammar") && msg.contains("not assembled"),
-        "unexpected refusal diagnostic: {msg}"
-    );
+    let err = parser.parse().expect_err("pure SDK must refuse UI grammar");
+    assert!(!format!("{err:?}").is_empty());
 }
 
 /// Core 场景显式装配：非 UI session 解析普通语言程序（SDK 的主场景），

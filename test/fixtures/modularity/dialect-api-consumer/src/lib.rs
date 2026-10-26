@@ -1,8 +1,7 @@
 //! PLAN-801 外部方言 API 消费方：真实 model 子集解析器（单份实现）。
 //!
-//! 本 crate 是**真实外部文法实现**：只依赖 `auto-parser-api` 轻端口
-//! （`ExternalDialect` + `ParseContext` + 轻 `CompilerSession`）与公开
-//! AST/token/诊断类型。**不**接触 `Parser` 本体、lexer、scope/符号表，
+//! 本 crate 是**真实外部文法实现**：依赖 `DomainDialect` 中立端口与
+//! UI-owned `UiStmt`，**不**接触 `Parser` 本体、lexer、scope/符号表，
 //! normal/build 闭包不含 auto-lang（AC-01，见 Cargo.toml 与 verify-deps.sh）。
 //!
 //! 本文件是 PLAN-778 `ui-dialect-consumer` 外部 model 探针的**收编迁位**
@@ -23,10 +22,10 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use auto_parser_api::ast::Stmt;
 use auto_parser_api::error::AutoResult;
 use auto_parser_api::session::{CompilerSession, Scenario};
-use auto_parser_api::{ExternalDialect, ParseContext};
+use auto_parser_api::{DomainDialect, DomainParseContext, DomainStmt};
+use auto_ui_dialect::{UiDialect, UiStmt};
 
 /// 探针计数：证明外部方言真实被派发（attempt）与真实接管（accept）。
 /// V-01 反控点——accept > 0 证明不是内建 parse_model_block 替跑。
@@ -47,7 +46,9 @@ impl ExternalModelDialect {
     }
 }
 
-impl ExternalDialect for ExternalModelDialect {
+impl DomainDialect for ExternalModelDialect {
+    type Output = UiStmt;
+
     fn matches(&self, session: &CompilerSession) -> bool {
         session.scenario == Scenario::UI
     }
@@ -58,41 +59,83 @@ impl ExternalDialect for ExternalModelDialect {
 
     fn try_parse_stmt(
         &self,
-        ctx: &mut dyn ParseContext,
+        ctx: &mut dyn DomainParseContext,
         keyword: &str,
-    ) -> AutoResult<Option<Stmt>> {
-        if keyword != "model" {
-            return Ok(None);
-        }
-        // 镜像内建护栏：on/fn 体内的 `model` 是标识符用法，让行。
-        if ctx.in_on_body() || ctx.in_fn_body() {
+    ) -> AutoResult<Option<DomainStmt<UiStmt>>> {
+        if keyword != "model" || ctx.in_on_body() || ctx.in_fn_body() {
             return Ok(None);
         }
         self.probe.attempts.fetch_add(1, Ordering::SeqCst);
-        // 子集解析前取 checkpoint：未迁形态（注解）整块回滚后 Ok(None)，
-        // 由内建方言从语句原位重新解析。
         let cp = ctx.checkpoint();
-        match parse_model_subset(ctx) {
-            Ok(Some(stmt)) => {
+        match auto_ui_dialect::parse_model_block_subset(ctx)? {
+            auto_ui_dialect::ModelSubset::Block(block) => {
                 self.probe.accepts.fetch_add(1, Ordering::SeqCst);
-                Ok(Some(stmt))
+                Ok(Some(DomainStmt::Domain(UiStmt::ModelBlock(block))))
             }
-            Ok(None) => {
+            auto_ui_dialect::ModelSubset::NotClaimed => {
                 ctx.restore(cp)?;
                 Ok(None)
             }
-            Err(e) => Err(e),
         }
     }
 }
 
-/// 冻结子集解析入口（游标在 `model` 上）——PLAN-806 T-04 起委托
-/// `auto-ui-dialect` 的单份字段算法（`ModelGrammar::ExternalSubset`
-/// 策略：裸字段允许、注解让行 NotClaimed→Ok(None)），本 crate 不再
-/// 保有第二份 model 文法；字段类型/初值仍经端口委托核心文法。
-fn parse_model_subset(ctx: &mut dyn ParseContext) -> AutoResult<Option<Stmt>> {
-    match auto_ui_dialect::parse_model_block_subset(ctx)? {
-        auto_ui_dialect::ModelSubset::Block(block) => Ok(Some(Stmt::ModelBlock(block))),
-        auto_ui_dialect::ModelSubset::NotClaimed => Ok(None),
+pub struct ExternalUiDialect {
+    model: ExternalModelDialect,
+}
+
+impl ExternalUiDialect {
+    pub fn new(probe: Arc<Probe>) -> Self {
+        Self {
+            model: ExternalModelDialect::new(probe),
+        }
+    }
+}
+
+impl DomainDialect for ExternalUiDialect {
+    type Output = UiStmt;
+
+    fn matches(&self, session: &CompilerSession) -> bool {
+        self.model.matches(session)
+    }
+
+    fn keywords(&self) -> &'static [&'static str] {
+        &[
+            "model",
+            "widget",
+            "msg",
+            "component",
+            "actions",
+            "style",
+            "store",
+        ]
+    }
+
+    fn try_parse_stmt(
+        &self,
+        ctx: &mut dyn DomainParseContext,
+        keyword: &str,
+    ) -> AutoResult<Option<DomainStmt<UiStmt>>> {
+        if keyword == "model" {
+            if let Some(stmt) = self.model.try_parse_stmt(ctx, keyword)? {
+                return Ok(Some(stmt));
+            }
+        }
+        UiDialect.try_parse_stmt(ctx, keyword)
+    }
+
+    fn try_parse_token_stmt(
+        &self,
+        ctx: &mut dyn DomainParseContext,
+        kind: auto_parser_api::token::TokenKind,
+    ) -> AutoResult<Option<DomainStmt<UiStmt>>> {
+        UiDialect.try_parse_token_stmt(ctx, kind)
+    }
+
+    fn try_parse_pub_stmt(
+        &self,
+        ctx: &mut dyn DomainParseContext,
+    ) -> AutoResult<Option<DomainStmt<UiStmt>>> {
+        UiDialect.try_parse_pub_stmt(ctx)
     }
 }

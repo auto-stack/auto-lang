@@ -27,20 +27,19 @@
   parse/compile/VM 真实执行、手工字节码管线、trans_rust 产物、UI 文法
   显式拒绝负控）。
 
-## UI 文法装配端口（r3 合同 §5.3）
+## 中立领域端口（PLAN-841）
 
-- `UiGrammar` 函数表（定义在 auto-parser-api）：11 项文法函数指针
-  （widget/msg/model/component/actions/style/view×2/store/scene/门），
-  内建 UiDialect 与 Parser 公开 UI 门面经表派发；**表缺席=原 feature off
-  语义逐位一致**（Scenario::UI 方言表空、公开门面显式拒绝诊断
-  "not assembled ... UI grammar table"、scene/store 门恒 false）。
-- `set_ui_grammar(UiGrammar)`：显式装配（幂等，首装优先）。
-- `UiGrammarSource`（inventory 收集点）：SDK 零提交；上层兼容包/
-  compiler 经源码可见 submit 语句登记（启动构造器机制，只登记不执行
-  UI 业务/I/O），仅覆盖不经装配入口的直达 `Parser::from(..)
-  .with_session(UI)` 构造——r3 §5.3 具名例外。
-- `UiParseContext for ParserBridge`：无条件编译（trait 定义在
-  auto-parser-api；孤儿规则下 impl 落类型所属 crate）。
+- `Parser::parse()` 只产 Core `Code`，不含 UI 兼容臂；排他 UI 声明未经
+  显式组合时确定性拒绝。Core `.view` 借用、普通 `msg`、SceneDecl 与
+  on/task 语义保持。
+- `Parser::parse_domain(&D)` 经 auto-parser-api 的中立
+  `DomainParseContext` 返回 `DomainCode<D::Output>`。UI 由上层显式传
+  `UiDialect`，产物归 UI owner；SDK 不知道 `UiStmt` 或 UI codec。
+- 旧 `UiGrammar`/`set_ui_grammar`/`UiGrammarSource`/Parser UI 返回门面
+  已删除。`DomainParseContext for ParserBridge` 只提供通用游标、scope、
+  Core expr/type/stmt 委托与快照能力，无 UI 字段或全局 side-table。
+- `design_tokens` 等跨域名称查询经中立 `set_external_ident_checker`
+  末位咨询，不把 UI 注册表或 AST 类型反灌进 SDK。
 
 ## 生成器指纹与 UI 缓存身份（PLAN-698 分包精确化）
 

@@ -4,10 +4,8 @@
 //! ——修复后收编为永久组合控制，覆盖"外部回调委托期间的注册可见性"与
 //! "委托 Err 后的 context 恢复"，含 Ident/token 两路派发与正控。
 //!
-//! PLAN-801：model 方言改由 dialect-api-consumer 新接口实现（注册换
-//! with_external_dialect）；文件内联的 ContextProbe/TokenNone/TokenRetry
-//! 旧 trait 方言保持旧注册——新旧两臂在同一文件内互为对照（递归/恢复
-//! 不变量跨接口一致）。
+//! UI model 使用显式领域组合；ContextProbe 保持非 UI 旧 trait 对照，
+//! TokenNone/TokenRetry 使用 DomainDialect 委托与错误恢复控制。
 
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -19,44 +17,35 @@ use auto_lang::parser::Parser;
 use auto_lang::parser_bridge::ParserBridge;
 use auto_lang::session::CompilerSession;
 use auto_lang::token::TokenKind;
-use dialect_api_consumer::{ExternalModelDialect, Probe};
+use auto_parser_api::{DomainDialect, DomainParseContext, DomainStmt};
+use auto_ui_dialect::{UiCode, UiDialect, UiStmt};
+use dialect_api_consumer::{ExternalUiDialect, Probe};
 
-/// F778-R1-01 反例（P1）：外部 model 方言解析初值中的闭包时，活跃方言自身
-/// 不得从注册表消失——闭包 body 内嵌 model 再派发必须仍由外部方言接管
-/// （accepts=2，内外两层都是）。旧实现 remove/insert 期间内层落回内建。
+/// 外部 UI model 只拥有顶层领域语句，不潜入 Core 闭包体。
 #[test]
 fn r1_nested_expression_keeps_active_registration() {
     let probe = Arc::new(Probe::default());
     let input = "model { child = () => { model { count int = 1 } } }";
     let result = Parser::from(input)
         .with_session(CompilerSession::ui())
-        .with_external_dialect(
-            Box::new(ExternalModelDialect::new(probe.clone())),
-            DialectPriority::Override,
-        )
-        .parse();
-    assert!(result.is_ok(), "冻结子集允许的 core 表达式初值必须解析成功");
-    assert_eq!(
-        probe.accepts.load(Ordering::SeqCst),
-        2,
-        "外层与嵌套语句都必须由已注册外部方言接管"
-    );
+        .parse_domain(&ExternalUiDialect::new(probe.clone()));
+    assert!(result.is_err());
+    assert_eq!(probe.accepts.load(Ordering::SeqCst), 1);
 }
 
-/// F778-R1-01 兄弟控制：非回调期间的普通嵌套（裸块 + 顶层）accepts=2——
-/// 区别只在派发回调是否活跃，排除"一律不工作"解释。
+/// Core 裸块同样不承接 UI model；后续顶层领域语句由显式组合接管。
 #[test]
 fn r1_sibling_nested_block_control() {
     let probe = Arc::new(Probe::default());
-    let result = Parser::from("{ model { count int = 1 } }\nmodel { count int = 2 }")
+    assert!(Parser::from("{ model { count int = 1 } }")
         .with_session(CompilerSession::ui())
-        .with_external_dialect(
-            Box::new(ExternalModelDialect::new(probe.clone())),
-            DialectPriority::Override,
-        )
-        .parse();
+        .parse_domain(&ExternalUiDialect::new(probe.clone()))
+        .is_err());
+    let result = Parser::from("model { count int = 2 }")
+        .with_session(CompilerSession::ui())
+        .parse_domain(&ExternalUiDialect::new(probe.clone()));
     assert!(result.is_ok());
-    assert_eq!(probe.accepts.load(Ordering::SeqCst), 2);
+    assert_eq!(probe.accepts.load(Ordering::SeqCst), 1);
 }
 
 /// F778-R1-02 观察方言：每次派发记录 in_fn_body，`probe` 委托核心表达式解析。
@@ -152,30 +141,37 @@ fn r1_successful_delegation_context_control() {
     assert_eq!(*seen.lock().unwrap(), vec![false, false]);
 }
 
-/// token 路径 None 回滚：消费 token 后返回 None 的 token 方言必须被派发器
-/// 回滚游标，内建 view 块解析不受影响。
+/// token 路径显式回滚后委托内建 UI view 文法。
 struct TokenNoneDialect {
     calls: Arc<Mutex<usize>>,
 }
 
-impl Dialect for TokenNoneDialect {
+impl DomainDialect for TokenNoneDialect {
+    type Output = UiStmt;
+
     fn matches(&self, _s: &CompilerSession) -> bool {
         true
     }
     fn keywords(&self) -> &'static [&'static str] {
-        &[]
+        UiDialect.keywords()
     }
-    fn try_parse_stmt(&self, _b: &mut ParserBridge<'_, '_>, _kw: &str) -> AutoResult<Option<Stmt>> {
-        Ok(None)
+    fn try_parse_stmt(
+        &self,
+        cx: &mut dyn DomainParseContext,
+        keyword: &str,
+    ) -> AutoResult<Option<DomainStmt<UiStmt>>> {
+        UiDialect.try_parse_stmt(cx, keyword)
     }
     fn try_parse_token_stmt(
         &self,
-        b: &mut ParserBridge<'_, '_>,
-        _kind: TokenKind,
-    ) -> AutoResult<Option<Stmt>> {
+        cx: &mut dyn DomainParseContext,
+        kind: TokenKind,
+    ) -> AutoResult<Option<DomainStmt<UiStmt>>> {
         *self.calls.lock().unwrap() += 1;
-        b.advance();
-        Ok(None)
+        let cp = cx.checkpoint();
+        cx.advance();
+        cx.restore(cp)?;
+        UiDialect.try_parse_token_stmt(cx, kind)
     }
 }
 
@@ -184,45 +180,46 @@ fn r1_token_none_restores_cursor_for_builtin() {
     let calls = Arc::new(Mutex::new(0));
     let result = Parser::from("view { col { text \"hi\" } }")
         .with_session(CompilerSession::ui())
-        .with_dialect(
-            Box::new(TokenNoneDialect {
-                calls: calls.clone(),
-            }),
-            DialectPriority::Override,
-        )
-        .parse();
-    assert!(result.is_ok(), "None 回滚后内建 view 块必须照常解析");
+        .parse_domain(&TokenNoneDialect {
+            calls: calls.clone(),
+        });
+    assert!(result.is_ok(), "回滚后内建 view 块必须照常解析");
     assert!(*calls.lock().unwrap() > 0, "token 方言必须真实被咨询");
 }
 
-/// token 路径 Err 后注册仍在：首个 view 派发 Err、恢复点（skip_empty_lines）
-/// 后第二个 view 仍由同一方言接管（calls=2 且成功产出）。
+/// token 路径 Err 后同一显式组合实例可供下一次解析使用。
 struct TokenRetryDialect {
     calls: Arc<Mutex<usize>>,
 }
 
-impl Dialect for TokenRetryDialect {
+impl DomainDialect for TokenRetryDialect {
+    type Output = UiStmt;
+
     fn matches(&self, _s: &CompilerSession) -> bool {
         true
     }
     fn keywords(&self) -> &'static [&'static str] {
         &[]
     }
-    fn try_parse_stmt(&self, _b: &mut ParserBridge<'_, '_>, _kw: &str) -> AutoResult<Option<Stmt>> {
+    fn try_parse_stmt(
+        &self,
+        _cx: &mut dyn DomainParseContext,
+        _keyword: &str,
+    ) -> AutoResult<Option<DomainStmt<UiStmt>>> {
         Ok(None)
     }
     fn try_parse_token_stmt(
         &self,
-        b: &mut ParserBridge<'_, '_>,
+        cx: &mut dyn DomainParseContext,
         _kind: TokenKind,
-    ) -> AutoResult<Option<Stmt>> {
+    ) -> AutoResult<Option<DomainStmt<UiStmt>>> {
         let mut n = self.calls.lock().unwrap();
         *n += 1;
-        b.advance();
+        cx.advance();
         if *n == 1 {
-            Err(b.syntax_error("first token failure"))
+            Err(cx.syntax_error("first token failure".into()))
         } else {
-            Ok(Some(Stmt::Expr(Expr::Int(43))))
+            Ok(Some(DomainStmt::Core(Stmt::Expr(Expr::Int(43)))))
         }
     }
 }
@@ -230,22 +227,21 @@ impl Dialect for TokenRetryDialect {
 #[test]
 fn r1_token_err_keeps_registration_for_next_statement() {
     let calls = Arc::new(Mutex::new(0));
-    let mut p = Parser::from("view\nview")
+    let dialect = TokenRetryDialect {
+        calls: calls.clone(),
+    };
+    assert!(Parser::from("view")
         .with_session(CompilerSession::ui())
-        .with_dialect(
-            Box::new(TokenRetryDialect {
-                calls: calls.clone(),
-            }),
-            DialectPriority::Override,
-        );
-    assert!(p.parse_stmt().is_err(), "首个 view 派发按方言设定报错");
-    {
-        let mut b = ParserBridge::new(&mut p);
-        b.skip_empty_lines();
-    }
-    assert!(
-        matches!(p.parse_stmt(), Ok(Stmt::Expr(Expr::Int(43)))),
-        "Err 后注册仍在：第二个 view 仍由同一方言接管"
-    );
+        .parse_domain(&dialect)
+        .is_err());
+    let second = Parser::from("view")
+        .with_session(CompilerSession::ui())
+        .parse_domain(&dialect)
+        .map(UiCode)
+        .unwrap();
+    assert!(matches!(
+        second.core_stmts().next(),
+        Some(Stmt::Expr(Expr::Int(43)))
+    ));
     assert_eq!(*calls.lock().unwrap(), 2);
 }

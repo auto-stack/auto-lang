@@ -21,16 +21,13 @@ execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
   `AutoError::Msg`，旧臂一致）；`Lexer` 在本 crate 仍不公开（`mod lexer`
   私有，外部消费者直接依赖 auto-lex）。规范见
   [auto-lex/project.md](../../auto-lex/project.md)。
-- PLAN-799 起 AST 模型外置为底层 crate **auto-ast**（`crates/auto-ast`，
-  `Code`/`Stmt`/`Expr`/`Type`/UI 兼容节点与 `ToNode`/`ToAtom`/`AtomWriter`
-  序列化单一实现，依赖仅 auto-val+auto-lex+serde）：本模块 `ast.rs` 是其
-  **薄门面**（单行 glob re-export，同一类型身份，旧 `crate::ast::*`/
-  `auto_lang::ast::*` 路径与 `pub mod ui/cover/fstr` 子路径全部保持）；
-  解析便利层归上层——`ParserExt` 对 `Code`/`Name`/`Expr`/`Is`/`Arrow`/
-  `OnEvents` 的六类 impl（含 OnEvents `skip_check`）与 Parser 耦合测试
-  （`test/ast/*.test.md` oracle）在私有模块 `ast_parse_ext`（旧
-  `ast::parsers` 本就非 pub，无外部路径消费）。规范见
-  [auto-ast/project.md](../../auto-ast/project.md)。
+- Core AST 模型单源为 **auto-ast**（`Code`/`Stmt`/`Expr`/`Type`/
+  `SceneDecl` 与 `ToNode`/`ToAtom`/`AtomWriter`）；`crate::ast` 为同型
+  re-export。PLAN-841 起 UI owned AST 单源为 auto-ui-dialect，旧
+  `ast::ui` 与 Core `Stmt` UI 兼容臂已删除。`ParserExt` 与 markdown
+  oracle 仍归上层 `ast_parse_ext`。规范见
+  [auto-ast/project.md](../../auto-ast/project.md) 和
+  [ui-domain-model/project.md](../../ui-domain-model/project.md)。
 - **未迁事实**（不得冒称完整前端独立）：`Parser` 仍持有 `Lexer`（经兼容
   出口）、`TypeStore`、`InferenceContext`、`ModuleTracker`、session 与方言表，
   不再依赖 `Universe`（plan-090）；PLAN-793 起通用诊断整体外置为底层 crate
@@ -41,25 +38,16 @@ execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
   `AutoStr` 同一类型）——残留边与 owner 见
   `docs/plans/attachments/793/t05-t06-gates-and-dag.md` §6（下一批 UI 文法
   外置）。规范见 [auto-diagnostics/project.md](../../auto-diagnostics/project.md)。
-- 方言体系（轴 A）已实现：`Dialect` trait + `UiDialect`（`Scenario::UI` 下接管
-  `widget`/`msg`/`model`/`view`/`on`），产出仍是基础 `Stmt` 变体；PLAN-778 起
-  支持外部 crate 经 `ParserBridge` 显式注册方言（见"方言外部化"节）。
-- PLAN-806 起 UI **声明文法**（msg/model + 字段注解）外置为轻 crate
-  **auto-ui-dialect**（`crates/auto-ui-dialect`，依赖仅 auto-parser-api）：
-  完整算法自 Parser 逐字迁出，单一份实现经 `dyn ParseContext` 驱动；
-  顶层 `UiDialect` 派发与 widget/component/store 结构路径、import 新建
-  Parser 的 `with_session` 默认装配全部真实委托，旧公开
-  `parse_msg_decl`/`parse_model_block` 仅薄兼容委托（Rust 调用形状与 AST
-  类型身份不变），原算法已删除。PLAN-810 起完整 UI 文法（widget/store/
-  component/view/fragment/节点族/on 块/actions/style/timer/routes/menubar/
-  toolbar/scene/use/setup/expose/watch/computed/bind）亦单源迁入
-  auto-ui-dialect `grammar` 模块，经 `UiParseContext` 端口驱动；Parser 上
-  仅余同签名薄委托门面。未迁（现行事实）：顶层 on-events/arrow 事件
-  文法（Core 共享——非 UI 回退与 `ast_parse_ext` 同源，归 Core）、
-  View/On TokenKind 兼容基础 AST（R10）与 `scan_use_statements` 字符串
-  级 use 扫描（语言所有者）。规范见
-  [auto-ui-dialect/project.md](../../auto-ui-dialect/project.md) 与
-  [design/full-grammar.md](../../auto-ui-dialect/design/full-grammar.md)。
+- Core `Dialect`/`ExternalDialect` 继续服务非 UI 方言；UI 则由
+  `Parser::parse_domain(&UiDialect)` 显式组合，直接产出 `UiCode`，不再
+  经三段表或 Core `Stmt` 传递。`DomainParseContext` 只承载中立游标、
+  scope 与 Core 委托能力。规范见
+  [auto-parser-api/project.md](../../auto-parser-api/project.md)。
+- 完整 UI 文法与 UI owned AST 单源为 auto-ui-dialect；旧 Parser UI 门面、
+  `UiGrammar` 函数表、inventory 默认装配均已删除。Core on-events/arrow、
+  SceneDecl、View/On Token 与 `scan_use_statements` 仍归语言所有者；
+  类型/VM/四生成器/runtime 只消费校验和 lowering 后的领域产物。规范见
+  [auto-ui-dialect/project.md](../../auto-ui-dialect/project.md)。
 - `use` 体系两层：预处理用 `scan_use_statements`（字符串级，免解析）；
   解析后用 `ModulePath`（`pac`/`super` 前缀）+ `ModuleResolver`/`FilesystemResolver` 落盘。
 - AST 序列化三件套 `ToNode`/`ToAtom`/`AtomWriter` 覆盖全部 AST 类型（S 表达式文本）。
@@ -124,9 +112,10 @@ execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
 - `crates/auto-lang/src/ast.rs:Code`、`ast.rs:Stmt`、`ast.rs:Expr`
 - `crates/auto-lang/src/ast.rs:ToNode`、`ast.rs:ToAtom`、`ast.rs:AtomWriter`
 - `crates/auto-lang/src/ast/module_path.rs:ModulePath`、`module_path.rs:PathPrefix`
-- `crates/auto-lang/src/dialect.rs:Dialect`、`dialect/ui.rs:UiDialect`
-- `crates/auto-lang/src/parser_bridge.rs:ParserBridge`（PLAN-778 方言外部化最小桥面）、
-  `dialect.rs:DialectPriority`
+- `crates/auto-lang-core/src/dialect.rs:Dialect`、`parser.rs:Parser::parse_domain`
+- `crates/auto-lang-core/src/parser_bridge.rs:ParserBridge`（中立 ParseContext/
+  DomainParseContext 实现）、`dialect.rs:DialectPriority`
+- auto-ui 仓 `crates/auto-ui-dialect/src/{grammar,model,codec}.rs`
 - `crates/auto-lang/src/use_scanner.rs:scan_use_statements`、`use_scanner.rs:UseStatement`
 - `crates/auto-lang/src/resolver.rs:ModuleResolver`、`resolver.rs:FilesystemResolver`
 - 一键入口：`crates/auto-lang/src/lib.rs:parse`（`parse(code) -> AutoResult<Code>`；
@@ -162,18 +151,11 @@ TypeStore，不提供通用 warning 出口。
 with_header/body_depth 五个上下文旗标。Err 时注册不丢失，恢复这五个旗标，游标保留
 失败位置；errors/warnings 单调追加。checkpoint 不承诺符号表等全部解析副作用的事务回滚。
 
-独立外部 consumer 已验证无注解的 `model { [var] name [type] [= expr] }` 字段子集：
-类型和初值可同时省略；裸字段在行界/块界形成字段，类型 Unknown、初值 Nil；EOF 后仍须
-满足 model 块闭合。类型或初值存在时委托核心解析。字段注解走 None 回退内建；其他 UI
-文法保持内建，UI AST/consumer 继续兼容。
-
-裸字段支持属于显式注册的外部 pilot，默认内建 model 仍要求类型或初值，行为不变。生产
-入口和导入中新建的 Parser 不自动继承外部注册；需要各入口显式注入。widget 体内 model
-由结构解析器直连内建，不经过语句方言派发——PLAN-810 起 widget/msg/component/
-actions/style/view/on/store 的**完整文法**已单源外置 auto-ui-dialect，全部
-直连/派发臂经 `UiParseContext` 端口消费同一实现（`ParserBridge::parser()`
-escape hatch 已删除）；仍未完成的是 UI AST/关键词所有权迁移（R10）与
-renderer/生成器/Man 搬仓（R04/R08），不属解析文法范围。
+外部 model 子集保留裸字段与注解让行语义，但现在实现
+`DomainDialect<Output=UiStmt>`，经显式 `ExternalUiDialect` 与内建 UI
+文法组合。字段注解回退内建，widget 内 model 由 UI 结构解析器直连；
+Core 闭包/裸块不自动承接 UI 领域语句。`ParserBridge::parser()` 与旧
+Core UI AST 返回面均已删除。
 
 ### 方言接口独立与 Parser 依赖倒置（PLAN-801）
 
@@ -187,19 +169,11 @@ auto-ast/auto-lex/auto-diagnostics，lang-core 域）：`ExternalDialect` trait 
 verify-deps.sh 无 auto-lang/auto-man/auto-vm/auto-ui）；解析集成测试在
 上层 driver `ui-dialect-consumer`（auto-lang + 轻实现）。
 
-生产接入走**同一张**三段派发表：`Parser::register_external_dialect`/
-`with_external_dialect` 经 `ExternalDialectAdapter`（协议转换，不重复语法）
-注册，Override→builtin→Append 与恢复不变量（Arc 留表/None 回滚/Err 边界
-恢复）全部由既有派发器兜底。端口 checkpoint 为有作用域句柄表后端：
-凭据一次性、跨上下文/过期使用受控拒绝（语法错误 Err）、方言调用退出按
-**签发作用域**失效（槽位记录归属调用，与 tombstone 复用无关；嵌套派发
-保外层存活快照）；旧 `ParserBridge` by-value checkpoint 路径
-零漂移，旧 trait/桥面/注册入口全部保持（`probe <expr>` 兼容用例在
-driver `LegacyProbeDialect`）。剩余边如实保留：内建 UiDialect 经
-`pub(crate)` escape hatch **已删除**（PLAN-810：完整 UI 文法单源在
-auto-ui-dialect，内建方言与外部方言同样只经端口面）；生产入口/import
-注册注入与 widget 结构直连
-边界未变，属后续按族外置合同。
+三段派发表继续只服务 Core/非 UI 方言。UI 使用 `DomainDialect` 与显式
+组合实例，不走 Override/Append；parse_domain 直接 Err 与旧 parse 聚合
+恢复的差异已由测试明确记录。端口 checkpoint 仍为一次性、跨上下文/
+过期受控拒绝、按签发作用域失效；旧 `ParserBridge` by-value checkpoint
+与非 UI `probe <expr>` 兼容用例保持。
 
 ## 已知坑
 
@@ -233,18 +207,11 @@ auto-ui-dialect，内建方言与外部方言同样只经端口面）；生产�
   types/infer/session/module_cache/dialect/ui 归前端外置批次（Design 37
   A 波后续），不冒称整个前端已无环。
 
-## PLAN-814 r3：Scenario::UI 内建方言装配（M814-A）
+## PLAN-841：UI owned AST 与 lowering 终态
 
-内建 `UiDialect` 与 Parser 公开 UI 门面（parse_msg_decl/parse_widget_decl
-等十项）经 `UiGrammar` 函数表端口派发（auto-ui-dialect 单源构造）：
-- 表缺席（纯 SDK）＝原 feature off 语义逐位一致：方言表空、UI 语句回退
-  非 UI 路径、公开门面显式拒绝诊断；
-- 装配来源双层：具名入口显式 `set_ui_grammar` 优先；上层经 r3 §5.3
-  具名 inventory 登记兜底直达构造（`Parser::from(..).with_session(UI)`）。
-`UiParseContext for ParserBridge` 无条件编译（trait 归 auto-parser-api，
-r3）。86 项 UI 文法回归测试随文法 owner 迁 auto-ui-dialect
-`src/regression/`（dev-dep 驱动真 Parser；选择面经 t/tf/tt 别名保持，
-映射证据=PLAN-814 r5-closeout 18 件清单+strict proof）。
-
-> **PLAN-814 B 事实注记（M814-B）**：Parser 公开面/装配语义 B 期未变；
-> 唯一新增消费面为 UI 特性族经 runtime 转发组合（feature 逐项保持）。
+`Parser::parse()` 只产 Core；`Parser::parse_domain(&UiDialect)` 产
+`UiCode`，由 UI owner 校验/lowering 后进入类型、VM、四生成器与 renderer。
+`UiGrammar`/`set_ui_grammar`/inventory/Parser UI 返回门面均已删除，
+不再以 feature-off 函数表模拟领域准入。原 UI 文法测试 ID 保留在
+auto-ui-dialect 与上层 SDK driver；scene 门测试归 Core，compiler
+doctest 使用 auto_ui_compiler 自身路径。

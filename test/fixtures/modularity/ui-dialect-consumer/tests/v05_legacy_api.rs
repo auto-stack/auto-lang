@@ -17,8 +17,9 @@ use auto_lang::ast::{Expr, Stmt};
 use auto_lang::error::{AutoError, SyntaxError};
 use auto_lang::parser::Parser;
 use auto_lang::session::CompilerSession;
-use auto_parser_api::ExternalDialect;
-use dialect_api_consumer::{ExternalModelDialect, Probe};
+use auto_parser_api::DomainDialect;
+use auto_ui_dialect::{UiCode, UiStmt};
+use dialect_api_consumer::{ExternalUiDialect, Probe};
 use ui_dialect_consumer::{LegacyProbe, LegacyProbeDialect};
 
 /// 旧 trait 方言经旧注册入口真实解析：`probe 7` → `Stmt::Expr(Int(7))`，
@@ -95,22 +96,21 @@ fn v05_session_type_identity_across_facades() {
     // 反向：auto_lang 构造值作为 auto_parser_api trait 的 matches 入参
     //（trait 方法签名吃 auto_parser_api 类型——同型才编译）。
     fn matches_ui(s: &auto_parser_api::CompilerSession) -> bool {
-        let d = ExternalModelDialect::new(Arc::new(Probe::default()));
+        let d = ExternalUiDialect::new(Arc::new(Probe::default()));
         d.matches(s)
     }
     assert!(matches_ui(&CompilerSession::ui()));
     assert!(!matches_ui(&CompilerSession::core()));
 
-    // DialectPriority 同型：旧路径枚举值直接传入新注册入口。
     let probe = Arc::new(Probe::default());
     let ast = Parser::from("model { count int = 1 }")
         .with_session(CompilerSession::ui())
-        .with_external_dialect(
-            Box::new(ExternalModelDialect::new(probe.clone())),
-            auto_lang::dialect::DialectPriority::Override,
-        )
-        .parse()
+        .parse_domain(&ExternalUiDialect::new(probe.clone()))
+        .map(UiCode)
         .unwrap();
-    assert!(matches!(&ast.stmts[0], Stmt::ModelBlock(_)));
+    assert!(matches!(
+        ast.domain_stmts().next(),
+        Some(UiStmt::ModelBlock(_))
+    ));
     assert_eq!(probe.accepts.load(Ordering::SeqCst), 1);
 }

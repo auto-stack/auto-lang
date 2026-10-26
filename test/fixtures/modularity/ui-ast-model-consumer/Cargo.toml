@@ -1,0 +1,11 @@
+[package]
+name = "ui-ast-model-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+auto-ast = { path = "../../../../crates/auto-ast" }
+auto-ui-dialect = { path = "../../../../../auto-ui/crates/auto-ui-dialect" }

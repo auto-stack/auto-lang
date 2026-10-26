@@ -5,14 +5,15 @@
 //! VM/转译）/auto-man/UI 的依赖树里真实构造、检查、序列化，不借主库
 //! rlib。V02 投影保持的 golden 重放在 tests/v02_replay.rs。
 
+#[cfg(test)]
 use auto_ast::ast::{
     AtomWriter, AutoStr, Body, Closure, ClosureParam, Code, Expr, Fn, FnKind, GenericInstance,
     ModulePath, Name, OnEvents, Op, Pair, PathPrefix, Stmt, ToAtom, ToAtomStr, ToNode, Type, Use,
-    UseKind, Value, WidgetDecl,
+    UseKind, Value,
 };
 
 #[test]
-fn consumer_constructs_core_and_ui_nodes_without_compiler_stack() {
+fn consumer_constructs_core_nodes_without_compiler_stack() {
     // Core：语句/表达式/泛型类型构造 + 序列化三投影
     let mut code = Code::new();
     code.stmts.push(Stmt::Expr(Expr::Int(42)));
@@ -31,13 +32,6 @@ fn consumer_constructs_core_and_ui_nodes_without_compiler_stack() {
 
     let ty_atom = list_int.to_atom();
     assert_eq!(ty_atom.as_str(), "List<int>");
-
-    // UI 兼容节点构造（无 renderer 依赖的共享模型面）
-    let widget = WidgetDecl {
-        name: Name::from("Counter"),
-        ..empty_widget()
-    };
-    assert_eq!(widget.name.as_str(), "Counter");
 }
 
 #[test]
@@ -116,29 +110,7 @@ fn consumer_traits_and_type_identity() {
 
 // —— 构造脚手架（字段全集见模型定义；此处只填最小面）——
 
-fn empty_widget() -> WidgetDecl {
-    WidgetDecl {
-        name: Name::new(),
-        messages: Vec::new(),
-        model: None,
-        computed: None,
-        view: None,
-        named_views: Vec::new(),
-        on: None,
-        bind: None,
-        props: Vec::new(),
-        routes: None,
-        lifecycle: Vec::new(),
-        style: None,
-        ext_imports: Vec::new(),
-        watch: Vec::new(),
-        setup: None,
-        expose: Vec::new(),
-        actions: None,
-        timer: None,
-    }
-}
-
+#[cfg(test)]
 fn empty_fn() -> Fn {
     Fn {
         kind: FnKind::Function,

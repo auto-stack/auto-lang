@@ -441,87 +441,8 @@ fn v02_imports_and_paths() {
     project("import-dep", &dep);
 }
 
-fn v02_ui_compat_nodes() {
-    // UI 兼容节点：WidgetDecl/StoreDecl/ViewFragmentDecl/StyleRecipeDecl/
-    // ActionsDecl/MsgDecl/ModelBlock/ViewBlock/SceneDecl/UseWeb
-    let widget = Stmt::WidgetDecl(WidgetDecl {
-        name: name("Counter"),
-        messages: Vec::new(),
-        model: None,
-        computed: None,
-        view: None,
-        named_views: Vec::new(),
-        on: None,
-        bind: None,
-        props: Vec::new(),
-        routes: None,
-        lifecycle: Vec::new(),
-        style: None,
-        ext_imports: Vec::new(),
-        watch: Vec::new(),
-        setup: None,
-        expose: Vec::new(),
-        actions: None,
-        timer: None,
-    });
-
-    let store_decl = Stmt::StoreDecl(ui::StoreDecl {
-        name: name("counter"),
-        messages: Vec::new(),
-        model: None,
-        computed: None,
-        on: None,
-        watch: Vec::new(),
-        timer: None,
-    });
-
-    let view_frag = Stmt::ViewFragmentDecl(ui::ViewFragmentDecl {
-        name: name("row"),
-        params: vec![(name("n"), "int".to_string())],
-        body: ui::ViewNode::Element {
-            tag: "col".to_string(),
-            props: Vec::new(),
-            events: Vec::new(),
-            children: Vec::new(),
-            span: None,
-        },
-    });
-
-    let style_recipe = Stmt::StyleRecipeDecl(ui::StyleRecipeDecl {
-        name: name("btn-primary"),
-        params: Vec::new(),
-        body: Expr::Int(1),
-        is_pub: false,
-        doc: None,
-    });
-
-    let actions = Stmt::ActionsDecl(ui::ActionsBlock {
-        actions: Vec::new(),
-        menubar: None,
-        toolbar: None,
-    });
-
-    let use_web = Stmt::UseWeb(vec![ui::ExtImport {
-        kind: ui::ExtImportKind::Composable,
-        symbols: vec![name("useCounter")],
-        path: name("@/composables/counter"),
-        call_args: Vec::new(),
-        ref_fields: Vec::new(),
-    }]);
-
-    let model_block = Stmt::ModelBlock(ui::ModelBlock { fields: Vec::new() });
-
-    let view_block = Stmt::ViewBlock(ui::ViewBlock {
-        root: ui::ViewNode::Element {
-            tag: "button".to_string(),
-            props: Vec::new(),
-            events: Vec::new(),
-            children: Vec::new(),
-            span: None,
-        },
-    });
-
-    let scene = Stmt::SceneDecl(ui::SceneDecl {
+fn v02_scene_core_node() {
+    let scene = Stmt::SceneDecl(SceneDecl {
         name: name("Main"),
         node_type: name("Control"),
         props: Vec::new(),
@@ -530,26 +451,7 @@ fn v02_ui_compat_nodes() {
         connections: Vec::new(),
         signals: Vec::new(),
     });
-
-    let msg_decl = Stmt::MsgDecl(MsgDecl {
-        variants: vec![MsgVariant {
-            name: name("Increment"),
-            quoted: false,
-            payload: Vec::new(),
-            payload_names: Vec::new(),
-        }],
-    });
-
-    project("ui-widget-decl", &widget);
-    project("ui-store-decl", &store_decl);
-    project("ui-view-fragment", &view_frag);
-    project("ui-style-recipe", &style_recipe);
-    project("ui-actions-decl", &actions);
-    project("ui-use-web", &use_web);
-    project("ui-model-block", &model_block);
-    project("ui-view-block", &view_block);
     project("ui-scene-decl", &scene);
-    project("ui-msg-decl", &msg_decl);
 }
 
 fn v02_nested_deep() {
@@ -606,6 +508,32 @@ fn v02_nested_deep() {
     project("comptime-hash-if", &comptime);
 }
 
+fn core_golden() -> String {
+    let golden = include_str!("v02-golden.txt");
+    let ui_labels = [
+        "ui-widget-decl",
+        "ui-store-decl",
+        "ui-view-fragment",
+        "ui-style-recipe",
+        "ui-actions-decl",
+        "ui-use-web",
+        "ui-model-block",
+        "ui-view-block",
+        "ui-msg-decl",
+    ];
+    let mut selected = String::new();
+    for section in golden.split("### ").skip(1) {
+        if !ui_labels
+            .iter()
+            .any(|label| section.starts_with(&format!("{label}\n")))
+        {
+            selected.push_str("### ");
+            selected.push_str(section);
+        }
+    }
+    selected
+}
+
 #[test]
 fn v02_golden_replay_auto_ast() {
     v02_core_statements_and_exprs();
@@ -615,15 +543,15 @@ fn v02_golden_replay_auto_ast() {
     v02_nested_deep();
     v02_patterns_and_covers();
     v02_task_and_events();
-    v02_ui_compat_nodes();
+    v02_scene_core_node();
     let produced = OUT.with(|o| std::mem::take(&mut *o.borrow_mut()));
-    let golden = include_str!("v02-golden.txt");
+    let golden = core_golden();
     assert!(
         produced.trim_end() == golden.trim_end(),
         "auto_ast projection drifted from frozen old-implementation golden;
 --- first diff around ---
 {}",
-        first_diff(&produced, golden)
+        first_diff(&produced, &golden)
     );
 }
 

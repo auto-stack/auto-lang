@@ -23,14 +23,16 @@
   Vue SFC 生成出口+指纹+style+lucide，4/4；闭包=SDK+显式文法组合零
   旧包边）。
 
-## 显式文法装配（r3 合同 §5.3）
+## UI owned AST 与显式领域组合（PLAN-841）
 
-`assemble_ui_grammar()`（公开，幂等）：三个生成入口
-（`transpile_aura`/`transpile_vue_aura`/`generate_component_from_file`）
-首选显式组合；另经 `UiGrammarSource` submit 登记兜底（同上层兼容包
-边界）。`ui`/`ui-headless` 空 feature：T-03 迁移代码 cfg 门归位
-（pac.at ui_config 装载实臂/生成器测试门），旧包 default 链
-ui-iced→ui→本包转发恢复恒开语义。
+`parse_ui` 经 `Parser::parse_domain(&UiDialect)` 取得 `UiCode`，校验和
+lowering 后才进入 aura 提取与 vue/jet/ark/rust 四生成器。生成器不再匹配
+Core `Stmt` UI 兼容臂；旧 `assemble_ui_grammar` 空桩与 `UiGrammarSource`
+登记已删除。`ui`/`ui-headless` 空 feature 仅保留原编译面开关。
+
+`UI_AST_SCHEMA_VERSION` 与生成器指纹共同组成缓存身份；旧 schema 缓存
+失效并重建。compiler doctest 直接使用 `auto_ui_compiler` 当前 crate
+路径，不再引用已迁出的 `auto_lang` 实现路径。
 
 ## feature 面
 

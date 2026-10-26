@@ -721,7 +721,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    // ---- PLAN-810：UiParseContext 端口后端（完整 UI 文法能力面，T-01 冻结） ----
+    // ---- PLAN-841：DomainParseContext 中立端口后端 ----
 
     /// 原始游标投机的回滚：与 `port_restore` 同凭据校验/一次性消费，但
     /// **只**恢复 lexer + cur/prev——不恢复五旗标、不回滚诊断（与旧臂
