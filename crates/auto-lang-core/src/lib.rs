@@ -58,6 +58,7 @@ pub mod parser_bridge;
 pub mod parser_helpers;
 pub mod query;
 pub mod resolver;
+mod scene_grammar;
 pub mod trait_checker;
 pub mod type_registry;
 pub mod typeck;
@@ -77,7 +78,6 @@ pub mod compile;
 pub mod comptime;
 pub mod config;
 pub mod dep;
-pub mod design_tokens;
 pub mod execution_engine;
 pub mod ffi;
 pub mod hash;
@@ -947,57 +947,6 @@ pub fn resolve_module_path(base_dir: &std::path::Path, module: &str) -> Option<s
     None
 }
 
-/// Plan 442 A2: outcome of resolving one `use` statement's module in the
-/// VM-render loader.
-pub enum UseModuleResolution {
-    /// Direct module file (`{module}.at` / `{module}/mod.at`).
-    Module(std::path::PathBuf),
-    /// Legacy `use store: X` facade — resolved StoreDecl files by store name.
-    StoreFiles(std::collections::HashMap<String, std::path::PathBuf>),
-    /// Nothing resolvable.
-    None,
-}
-
-/// Resolve a use statement's module for the VM-render loader: direct module
-/// path first; on failure, the legacy store facade (`use store: X` — module
-/// name is literally "store", StoreDecls live in sibling files). Shared by
-/// the root use loop, the `collect_module_imports` recursion, and the
-/// plan370/plan442 test support so tests exercise the production logic.
-pub fn resolve_use_module(
-    base_dir: &std::path::Path,
-    use_stmt: &crate::use_scanner::UseStatement,
-) -> UseModuleResolution {
-    if let Some(p) = resolve_module_path(base_dir, &use_stmt.module) {
-        return UseModuleResolution::Module(p);
-    }
-    if use_stmt.module == "store" && !use_stmt.items.is_empty() {
-        return UseModuleResolution::StoreFiles(find_store_decl_files(base_dir, &use_stmt.items));
-    }
-    // PLAN-632 F2: dep 目录 item 命名文件探测——`use settings: SettingsPopover`
-    // → `deps/settings/settings_popover.at`。此前 dep 目录候选只认
-    // `{dep}.at`/`mod.at`/`app.at`,item 命名的组件文件永不命中,组件实例
-    // 在 VM 渲染目标整体缺席(006 实证)。探测走 resolve_module_path 的
-    // dotted-module 形态(`{dep}.{item_snake}` 的 sub 臂已含
-    // `deps/{dep}/{sub}.at` 平铺候选),deps 走查/pac.at path dep 零重复。
-    // item 优先 snake_case(PascalCase 组件 ↔ 文件命名惯例,与
-    // find_store_decl_files 同款);裸 item 兜底。
-    if !use_stmt.items.is_empty() {
-        for item in &use_stmt.items {
-            let mut cands = vec![store_name_snake(item)];
-            if *cands.last().unwrap() != *item {
-                cands.push(item.clone());
-            }
-            for cand in cands {
-                let dotted = format!("{}.{}", use_stmt.module, cand);
-                if let Some(p) = resolve_module_path(base_dir, &dotted) {
-                    return UseModuleResolution::Module(p);
-                }
-            }
-        }
-    }
-    UseModuleResolution::None
-}
-
 /// Plan 442 A3 (ext link): load `use.web` ext imports for the VM render
 /// target. Previously UseWeb was ignored entirely — pure-Auto helpers
 /// imported via `use.web X from "…/port.at"` never got a definition, and any
@@ -1330,54 +1279,6 @@ pub fn install_ui_host_capabilities() {
     for installer in inventory::iter::<UiCompatInstaller> {
         (installer.0)();
     }
-}
-
-// ---- PLAN-814 R3-03b：UI 文法函数表端口（替代原 `ui-dialect` feature） ----
-// SDK 清单不再引用 auto-ui-dialect：内置 UiDialect 派发与 Parser 公开 UI
-// 门面经 auto_parser_api::UiGrammar 函数表间接调用文法单源实现（构造器
-// = auto-ui-dialect::ui_grammar()，装配方为上层组合点）。表缺席（纯 SDK）
-// 语义与原 feature off 逐位一致：Scenario::UI 方言表为空、UI 语句回退非
-// UI 路径、公开门面显式拒绝诊断。
-//
-// 装配通道与 UiCompatInstaller 同机制（R3-01 已验证形态）：SDK 不提交
-// 任何来源——纯 SDK 消费者零 submit、表缺席=拒绝/回退语义不变；上层
-// （旧 auto-lang 兼容包 / auto-ui-compiler）被链接即其 submit 生效，
-// 首次方言装配/公开门面调用时惰性收集——不经 run 族漏斗的直达
-// `Parser::from(..).with_session(UI)` 构造同样覆盖。
-static UI_GRAMMAR: OnceLock<auto_parser_api::UiGrammar> = OnceLock::new();
-
-/// 显式装配 UI 文法函数表（上层组合点调用；重复装配首个生效）。
-pub fn set_ui_grammar(g: auto_parser_api::UiGrammar) -> bool {
-    UI_GRAMMAR.set(g).is_ok()
-}
-
-/// 上层自注册的 UI 文法表来源。语义边界（与 [`UiCompatInstaller`] 同构；
-/// R4-01/R5 对账见 docs/plans/attachments/814/r4-01-assembly-contract.md）：
-/// SDK **不提交**任何来源——纯 SDK 消费者零 submit、表缺席=空方言回退/
-/// 公开门面显式拒绝（与原 feature off 语义逐位一致）、无 Core 硬编码
-/// UI factory。上层兼容包/compiler 经**源码中显式可见的
-/// `inventory::submit!` 语句**注册；其生效机制**是启动期构造器**——
-/// inventory 0.3.25 的 submit 宏生成 `__ctor` 并经 `.CRT$XCU`（Windows）
-/// 在进程启动时登记节点（R5 复核实录），属 r2 AC-02"无隐式链接装配"
-/// 约束下的**待批准合同修订项**（提案见对账附件；未获批前本兜底不得
-/// 视为已对账的最终形态）。全部具名装配入口（run 族漏斗/旧公开入口
-/// 包装/compiler 生成入口）以 [`set_ui_grammar`] 显式装配为第一来源，
-/// 本收集点仅覆盖不经装配入口的直达 `Parser::from(..).with_session(UI)`
-/// 构造。多来源共存时首个收集生效——各来源均自 auto-ui-dialect 单源
-/// 构造，内容等价。
-pub struct UiGrammarSource(pub fn() -> auto_parser_api::UiGrammar);
-inventory::collect!(UiGrammarSource);
-
-/// UI 文法表是否可用（显式装配或上层 inventory 来源）。
-pub fn ui_grammar() -> Option<&'static auto_parser_api::UiGrammar> {
-    if let Some(g) = UI_GRAMMAR.get() {
-        return Some(g);
-    }
-    for source in inventory::iter::<UiGrammarSource> {
-        let _ = UI_GRAMMAR.set((source.0)());
-        break;
-    }
-    UI_GRAMMAR.get()
 }
 
 pub mod heavy_gate;
@@ -2026,102 +1927,6 @@ pub fn store_name_snake(name: &str) -> String {
         }
     }
     out
-}
-
-pub fn find_store_decl_files(
-    base_dir: &std::path::Path,
-    names: &[String],
-) -> std::collections::HashMap<String, std::path::PathBuf> {
-    use std::collections::HashMap;
-    let mut found: HashMap<String, std::path::PathBuf> = HashMap::new();
-    let mut missing: Vec<&String> = Vec::new();
-    // Convention probe: snake_case(Name).at (covers musk's nine stores) and
-    // the `_store` suffix variant (for stores whose decl name has no Store
-    // suffix, e.g. `store Notes` in notes_store.at).
-    for name in names {
-        let snake = store_name_snake(name);
-        let mut hit = None;
-        for cand in [
-            format!("{}.at", snake),
-            format!("{}_store.at", snake.trim_end_matches("_store")),
-        ] {
-            let p = base_dir.join(&cand);
-            if p.exists() {
-                hit = Some(p);
-                break;
-            }
-        }
-        match hit {
-            Some(p) => {
-                found.insert(name.clone(), p);
-            }
-            None => missing.push(name),
-        }
-    }
-    if missing.is_empty() {
-        return found;
-    }
-    // Bounded scan fallback: walk the source dir (and its parent, mirroring
-    // resolve_module_path's sibling layout) for .at files declaring the
-    // missing stores. Heavy dirs (gen output / node_modules / build caches)
-    // are skipped; the walk is capped so a stray huge tree cannot stall the
-    // loader.
-    let mut budget = 400usize;
-    let mut scan = |root: &std::path::Path,
-                    found: &mut HashMap<String, std::path::PathBuf>,
-                    missing: &[&String]| {
-        let mut stack = vec![root.to_path_buf()];
-        while let Some(dir) = stack.pop() {
-            let Ok(entries) = std::fs::read_dir(&dir) else {
-                continue;
-            };
-            let mut entries: Vec<_> = entries.flatten().collect();
-            entries.sort_by_key(|e| e.file_name());
-            for entry in entries {
-                let path = entry.path();
-                let fname = entry.file_name();
-                let fname = fname.to_string_lossy();
-                if path.is_dir() {
-                    if matches!(
-                        fname.as_ref(),
-                        "gen" | "node_modules" | "target" | "dist" | ".git" | "build"
-                    ) {
-                        continue;
-                    }
-                    stack.push(path);
-                } else if fname.ends_with(".at") && budget > 0 {
-                    budget -= 1;
-                    let Ok(code) = std::fs::read_to_string(&path) else {
-                        continue;
-                    };
-                    let code = crate::back_prefix::apply(&path, code);
-                    let session = crate::session::CompilerSession::ui();
-                    let mut parser = Parser::from(code.as_str()).with_session(session);
-                    let Ok(ast) = parser.parse() else { continue };
-                    for stmt in &ast.stmts {
-                        if let crate::ast::Stmt::StoreDecl(sd) = stmt {
-                            let n = sd.name.as_str().to_string();
-                            if missing.iter().any(|m| *m == &n) && !found.contains_key(&n) {
-                                found.insert(n, path.clone());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    };
-    scan(base_dir, &mut found, &missing);
-    let still: Vec<&String> = missing
-        .iter()
-        .filter(|m| !found.contains_key(m.as_str()))
-        .copied()
-        .collect();
-    if !still.is_empty() {
-        if let Some(parent) = base_dir.parent() {
-            scan(parent, &mut found, &still);
-        }
-    }
-    found
 }
 
 // ---- T-02 终批根项（runners/FFI init/错误定位/remap/结果提取）----

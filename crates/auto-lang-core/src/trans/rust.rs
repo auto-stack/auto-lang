@@ -15208,13 +15208,6 @@ impl RustTrans {
                 Ok(true)
             }
 
-            // PLAN-037 T7: web ecosystem imports are vue-render only — fail
-            // fast on the Rust target instead of silently dropping them.
-            Stmt::UseWeb(entries) => Err(AutoError::Msg(format!(
-                "use.web requires the vue render target (pac.at render: vue); found {} web import(s)",
-                entries.len()
-            ))),
-
             Stmt::TypeDecl(type_decl) => {
                 // Plan 417-E2 followup (F1): install this type's associated-
                 // type bindings for the whole emission — method signatures,
@@ -15284,14 +15277,16 @@ impl RustTrans {
             Stmt::Return(expr) => {
                 // If this is a unit-return function (Void or no explicit type), emit plain return;
                 // Auto void functions may return 0, Nil, None, or any expr — all become return;
-                let is_unit_fn = self.current_fn_ret_type.as_ref()
+                let is_unit_fn = self
+                    .current_fn_ret_type
+                    .as_ref()
                     .map(|t| matches!(t, Type::Void | Type::Unknown))
                     .unwrap_or(true);
                 if is_unit_fn {
                     // Check if the return expression is trivially void-compatible
-                    let is_void_expr = matches!(expr.as_ref(),
-                        Expr::Nil | Expr::None | Expr::Null
-                        | Expr::Bool(_)
+                    let is_void_expr = matches!(
+                        expr.as_ref(),
+                        Expr::Nil | Expr::None | Expr::Null | Expr::Bool(_)
                     );
                     if is_void_expr {
                         sink.body.write(b"return;")?;
@@ -15329,12 +15324,11 @@ impl RustTrans {
                     }
                 }
                 // If return type is String and expr produces &str, add .to_string()
-                let needs_to_string = self.ret_type_needs_string_coercion()
-                    && self.expr_needs_string_coercion(expr);
+                let needs_to_string =
+                    self.ret_type_needs_string_coercion() && self.expr_needs_string_coercion(expr);
                 // Plan 013 (B1/BUG2): returning `self.field` of an owned
                 // non-Copy type from a &self method needs `.clone()`.
-                let needs_self_clone = Self::is_self_dot(expr)
-                    && self.ret_type_is_owned_noncopy();
+                let needs_self_clone = Self::is_self_dot(expr) && self.ret_type_is_owned_noncopy();
                 // Plan 399 Phase 11.3: returning a global var (Lazy<Mutex<Vec<T>>>)
                 // emits `*G.lock().unwrap()` — the Vec is borrowed from a temporary
                 // guard. To return an owned Vec, emit `G.lock().unwrap().clone()`
@@ -15342,7 +15336,9 @@ impl RustTrans {
                 // it inline (skipping self.expr which prepends `*`) avoids the
                 // `*guard.clone()` precedence trap (MutexGuard isn't Clone).
                 let global_ret_name = match expr.as_ref() {
-                    Expr::Ident(name) if self.is_global_var(name) && self.ret_type_is_owned_noncopy() => {
+                    Expr::Ident(name)
+                        if self.is_global_var(name) && self.ret_type_is_owned_noncopy() =>
+                    {
                         Some(name.clone())
                     }
                     _ => None,
@@ -15467,12 +15463,13 @@ impl RustTrans {
                 }
                 let try_body = body;
                 if propagate {
-                    let ret_ty = self.rust_type_name(
-                        self.current_fn_ret_type.as_ref().expect("checked above"),
-                    );
+                    let ret_ty = self
+                        .rust_type_name(self.current_fn_ret_type.as_ref().expect("checked above"));
                     write!(sink.body, "match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Option<{ret_ty}> {{\n")?;
                 } else {
-                    sink.body.write(b"match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {\n")?;
+                    sink.body.write(
+                        b"match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {\n",
+                    )?;
                 }
                 self.indent();
                 for inner in &try_body.stmts {
@@ -28343,22 +28340,6 @@ impl Trans for RustTrans {
                         sink.set_source_line(line);
                         self.use_stmt(&use_stmt, &mut sink.body)?;
                         sink.body.write(b"\n")?;
-                    }
-                    // PLAN-037 T7: web imports never compile on the Rust target.
-                    Stmt::UseWeb(entries) => {
-                        return Err(AutoError::Msg(format!(
-                            "use.web requires the vue render target (pac.at render: vue); found {} web import(s)",
-                            entries.len()
-                        )));
-                    }
-                    // Plan 436 T1(决策 1-A):setup 承载的 widget 在逻辑
-                    // 转译路径下原本落入下方 wildcard 静默消失——显式报错
-                    // 止血(UI 轨的真实 a2r 路径见 ui_gen/rust.rs 同款守卫)。
-                    Stmt::WidgetDecl(w) if w.setup.is_some() => {
-                        return Err(AutoError::Msg(format!(
-                            "widget `{}` declares a `setup {{}}` block; setup is vue-render only (Plan 436 决策 1-A)",
-                            w.name
-                        )));
                     }
                     Stmt::Dep(dep) => {
                         // Record dep name so crate.func() → crate::func()

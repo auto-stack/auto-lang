@@ -212,18 +212,9 @@ fn stmt_kind(s: &Stmt) -> &'static str {
         Stmt::TypeAlias(_) => "TypeAlias",
         Stmt::Reply(_) => "Reply",
         Stmt::Ext(_) => "Ext",
-        Stmt::WidgetDecl(_) => "WidgetDecl",
-        Stmt::StoreDecl(_) => "StoreDecl",
-        Stmt::ActionsDecl(_) => "ActionsDecl",
-        Stmt::ViewFragmentDecl(_) => "ViewFragmentDecl",
-        Stmt::StyleRecipeDecl(_) => "StyleRecipeDecl",
-        Stmt::MsgDecl(_) => "MsgDecl",
-        Stmt::ModelBlock(_) => "ModelBlock",
-        Stmt::ViewBlock(_) => "ViewBlock",
         Stmt::SceneDecl(_) => "SceneDecl",
         Stmt::TaskDef(_) => "TaskDef",
         Stmt::HashIf(_) => "HashIf",
-        Stmt::UseWeb(_) => "UseWeb",
         _ => "Stmt",
     }
 }

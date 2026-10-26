@@ -75,8 +75,3 @@ pub use auto_parser_api::DialectPriority;
 pub use auto_parser_api::ExternalDialect;
 
 pub mod external;
-// PLAN-814 R3-03b：UI 方言 adapter 无条件编译——文法调用经 UiGrammar
-// 函数表端口（auto-parser-api 定义，上层组合点装配 auto-ui-dialect 单源
-// 构造器）。表缺席（纯 SDK）时 build_dialects 不装配本方言，Scenario::UI
-// 方言表为空，UI 语句回退非 UI 路径；外部方言体系（external）不受影响。
-pub mod ui;

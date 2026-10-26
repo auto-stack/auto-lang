@@ -29,13 +29,13 @@
 
 pub mod context;
 pub mod dialect;
+pub mod domain;
 pub mod session;
-pub mod ui_context;
 
 pub use context::{ParseCheckpoint, ParseContext};
 pub use dialect::{DialectPriority, ExternalDialect};
+pub use domain::{DomainCode, DomainDialect, DomainParseContext, DomainStmt};
 pub use session::{CompilerSession, Scenario};
-pub use ui_context::{UiGrammar, UiParseContext};
 
 // 轻层门面 re-export：端口方法签名所暴露的类型（AST 值 / token / 诊断）
 // 的所属模块，模块名与旧 `auto_lang::{ast,token,error}` 对齐——外部方言

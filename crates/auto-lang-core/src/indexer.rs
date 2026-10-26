@@ -52,9 +52,6 @@ impl<'db> Indexer<'db> {
 
         for stmt in &ast.stmts {
             match stmt {
-                // PLAN-037 T6: web imports are not indexed fragments.
-                Stmt::UseWeb(_) => {}
-
                 // Function declarations
                 Stmt::Fn(fn_decl) => {
                     let frag_id = self.index_function(fn_decl, file_id)?;
@@ -156,19 +153,7 @@ impl<'db> Indexer<'db> {
                     self.index_dep_stmt(dep, file_id)?;
                 }
 
-                // Plan 096: UI scenario statements
-                Stmt::WidgetDecl(_)
-                | Stmt::StoreDecl(_)
-                | Stmt::ViewFragmentDecl(_)
-                | Stmt::StyleRecipeDecl(_)
-                | Stmt::Try(_)
-                | Stmt::MsgDecl(_)
-                | Stmt::ModelBlock(_)
-                | Stmt::ViewBlock(_)
-                | Stmt::ActionsDecl(_) => {
-                    // For now, skip UI declarations
-                    // Phase 2: Could index widget declarations
-                }
+                Stmt::Try(_) => {}
 
                 // Plan 306: Godot scene declaration - skip for indexing
                 Stmt::SceneDecl(_) => {}

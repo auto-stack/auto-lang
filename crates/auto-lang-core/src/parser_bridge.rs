@@ -278,7 +278,7 @@ impl<'p, 'a> auto_parser_api::ParseContext for ParserBridge<'p, 'a> {
 // ——纯 SDK 闭包仍零 auto-ui-dialect（impl 只依赖 auto-parser-api 的
 // trait 定义；文法调用经 UiGrammar 函数表，表缺席=拒绝/回退语义）。
 
-impl<'p, 'a> auto_parser_api::UiParseContext for ParserBridge<'p, 'a> {
+impl<'p, 'a> auto_parser_api::DomainParseContext for ParserBridge<'p, 'a> {
     fn prev_pos(&mut self) -> Pos {
         self.parser.port_prev_pos()
     }
@@ -392,9 +392,5 @@ impl<'p, 'a> auto_parser_api::UiParseContext for ParserBridge<'p, 'a> {
     fn warn_suspicious_block_keyword(&mut self, found: String, suggestion: String) {
         self.parser
             .port_warn_suspicious_block_keyword(found, suggestion)
-    }
-
-    fn register_style_recipe(&mut self, decl: &crate::ast::ui::StyleRecipeDecl) {
-        crate::design_tokens::recipe::register_style_recipe(decl);
     }
 }

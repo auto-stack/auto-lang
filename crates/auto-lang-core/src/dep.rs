@@ -48,9 +48,6 @@ impl<'db> DepScanner<'db> {
     /// Walk a statement to find dependencies
     fn walk_stmt(&self, stmt: &Stmt, deps: &mut HashSet<FragId>) {
         match stmt {
-            // PLAN-037 T6: web ecosystem imports carry no fragment deps.
-            Stmt::UseWeb(_) => {}
-
             // Expression statements - check for calls
             Stmt::Expr(expr) => self.walk_expr(expr, deps),
 
@@ -124,14 +121,7 @@ impl<'db> DepScanner<'db> {
             Stmt::EmptyLine(_) => {}
             Stmt::Dep(_) => {} // Plan 092: Dependency declaration - no fragment deps
 
-            // Plan 096: UI scenario statements
-            Stmt::WidgetDecl(_) => {}
-            Stmt::StoreDecl(_) | Stmt::ViewFragmentDecl(_) => {}
-            Stmt::ActionsDecl(_) | Stmt::StyleRecipeDecl(_) => {}
             Stmt::Try(_) => {}
-            Stmt::MsgDecl(_) => {}
-            Stmt::ModelBlock(_) => {}
-            Stmt::ViewBlock(_) => {}
             // Plan 306: Godot scene declaration - no fragment deps
             Stmt::SceneDecl(_) => {}
             // Plan 121: Task/Msg system

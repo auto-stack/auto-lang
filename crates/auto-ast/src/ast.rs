@@ -54,10 +54,8 @@ mod use_;
 pub use use_::*;
 mod range;
 pub use range::*;
-pub mod ui;
-pub use ui::*;
-mod route;
-pub use route::*;
+mod scene;
+pub use scene::*;
 
 // Plan 095: Compile-time execution AST nodes
 mod comptime;
@@ -209,12 +207,6 @@ pub enum Stmt {
     Node(Node),
     Use(Use),
 
-    /// PLAN-037 T6: top-level `use.web` statement — web (Vue/TS/npm) ecosystem
-    /// imports, the frontend sibling of `use.rust` / `use.py`. Each entry is
-    /// an ExtImport (kind modifier component/composable, default plain import).
-    /// Consumed by the Vue codegen; other backends must fail with an explicit
-    /// "requires vue render" error.
-    UseWeb(Vec<crate::ast::ui::ExtImport>),
     Dep(DepStmt), // Plan 092: Dependency declaration
     OnEvents(OnEvents),
     Comment(AutoStr),
@@ -226,24 +218,6 @@ pub enum Stmt {
     Return(Box<Expr>), // Return statement with value
     Reply(Box<Expr>),  // Plan 124 Phase 2.3: reply statement for ask/reply RPC
     Ext(Ext),          // Type extension (like Rust's impl)
-    // Plan 096: UI scenario statements
-    WidgetDecl(WidgetDecl),
-    // Plan 351: shared store (scene:ui)
-    StoreDecl(crate::ast::ui::StoreDecl),
-    /// Plan 451 P3: top-level `actions { ... }` declaration — the widget
-    /// block's actions lifted to module level so it can live in its own
-    /// file and travel to the host widget via `use`. Merge priority (both
-    /// vm and vue): host widget's own block > same-file top-level > first
-    /// `use`d module's block (in import order). Handler refs are validated
-    /// against the HOST widget's on{} after merge, not at parse time.
-    ActionsDecl(crate::ast::ui::ActionsBlock),
-    /// Plan 367 P2-3: view fragment declaration
-    ViewFragmentDecl(crate::ast::ui::ViewFragmentDecl),
-    /// PLAN-607: top-level style recipe declaration (Design 29 Phase 3)
-    StyleRecipeDecl(crate::ast::ui::StyleRecipeDecl),
-    MsgDecl(MsgDecl),
-    ModelBlock(ModelBlock),
-    ViewBlock(ViewBlock),
     // Plan 306: Godot scene declaration (.tscn generation)
     SceneDecl(SceneDecl),
     // Plan 121: Task/Msg system
@@ -298,12 +272,6 @@ impl fmt::Display for Stmt {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Stmt::Use(use_stmt) => write!(f, "{}", use_stmt),
-            Stmt::UseWeb(entries) => write!(
-                f,
-                "use.web ({} web import{})",
-                entries.len(),
-                if entries.len() == 1 { "" } else { "s" }
-            ),
             Stmt::Expr(expr) => write!(f, "{}", expr),
             Stmt::If(if_stmt) => write!(f, "{}", if_stmt),
             Stmt::For(for_stmt) => write!(f, "{}", for_stmt),
@@ -328,16 +296,7 @@ impl fmt::Display for Stmt {
             Stmt::Reply(expr) => write!(f, "(reply {})", expr), // Plan 124 Phase 2.3
             Stmt::Ext(ext) => write!(f, "{}", ext),
             Stmt::Dep(dep) => write!(f, "{}", dep),
-            // Plan 096: UI scenario statements
-            Stmt::WidgetDecl(widget) => write!(f, "(widget {})", widget.name),
-            Stmt::StoreDecl(store) => write!(f, "(store {})", store.name),
-            Stmt::ViewFragmentDecl(frag) => write!(f, "(view fn {})", frag.name),
-            Stmt::StyleRecipeDecl(recipe) => write!(f, "(style-recipe {})", recipe.name),
-            Stmt::ActionsDecl(_) => write!(f, "(actions)"),
             Stmt::Try(_) => write!(f, "(try)"),
-            Stmt::MsgDecl(msg) => write!(f, "(msg {} variants)", msg.variants.len()),
-            Stmt::ModelBlock(model) => write!(f, "(model {} fields)", model.fields.len()),
-            Stmt::ViewBlock(_view) => write!(f, "(view)"),
             // Plan 306: Godot scene declaration
             Stmt::SceneDecl(scene) => write!(f, "(scene {} : {})", scene.name, scene.node_type),
             // Plan 121: Task/Msg system
@@ -1191,8 +1150,6 @@ impl ToNode for Stmt {
             Stmt::SpecDecl(spec_decl) => spec_decl.to_node(),
             Stmt::Node(node) => node.to_node(),
             Stmt::Use(use_) => use_.to_node(),
-            // PLAN-037 T6: use.web entries carry no node payload.
-            Stmt::UseWeb(_) => AutoNode::new("use.web"),
             Stmt::OnEvents(on_events) => on_events.to_node(),
             Stmt::Comment(comment) => {
                 let mut node = AutoNode::new("comment");
@@ -1211,40 +1168,7 @@ impl ToNode for Stmt {
             Stmt::Return(_) => AutoNode::new("return"),
             Stmt::Ext(ext) => ext.to_node(),
             Stmt::Dep(dep) => dep.to_node(),
-            // Plan 096: UI scenario statements
-            Stmt::WidgetDecl(widget) => {
-                let mut node = AutoNode::new("widget");
-                node.add_arg(auto_val::Arg::Pos(Value::str(widget.name.as_str())));
-                node
-            }
-            Stmt::ActionsDecl(_) => AutoNode::new("actions"),
-            Stmt::StyleRecipeDecl(recipe) => {
-                let mut node = AutoNode::new("style-recipe");
-                node.add_arg(auto_val::Arg::Pos(Value::str(recipe.name.as_str())));
-                node
-            }
-            Stmt::StoreDecl(store) => {
-                let mut node = AutoNode::new("store");
-                node.add_arg(auto_val::Arg::Pos(Value::str(store.name.as_str())));
-                node
-            }
-            Stmt::ViewFragmentDecl(frag) => {
-                let mut node = AutoNode::new("view-fn");
-                node.add_arg(auto_val::Arg::Pos(Value::str(frag.name.as_str())));
-                node
-            }
             Stmt::Try(_) => AutoNode::new("try"),
-            Stmt::MsgDecl(msg) => {
-                let mut node = AutoNode::new("msg");
-                node.set_prop("variants", Value::Int(msg.variants.len() as i32));
-                node
-            }
-            Stmt::ModelBlock(model) => {
-                let mut node = AutoNode::new("model");
-                node.set_prop("fields", Value::Int(model.fields.len() as i32));
-                node
-            }
-            Stmt::ViewBlock(_) => AutoNode::new("view"),
             // Plan 306: Godot scene declaration
             Stmt::SceneDecl(scene) => {
                 let mut node = AutoNode::new("scene");
@@ -1281,7 +1205,6 @@ impl AtomWriter for Stmt {
 impl ToAtom for Stmt {
     fn to_atom(&self) -> AutoStr {
         match self {
-            Stmt::UseWeb(_) => AutoStr::from("use.web"),
             Stmt::Expr(expr) => expr.to_atom(),
             Stmt::If(if_) => if_.to_atom(),
             Stmt::For(for_) => for_.to_atom(),
@@ -1306,16 +1229,7 @@ impl ToAtom for Stmt {
             Stmt::Return(expr) => format!("(return {})", expr.to_atom()).into(),
             Stmt::Ext(ext) => ext.to_atom(),
             Stmt::Dep(dep) => dep.to_atom(),
-            // Plan 096: UI scenario statements
-            Stmt::WidgetDecl(widget) => format!("(widget {})", widget.name).into(),
-            Stmt::StoreDecl(store) => format!("(store {})", store.name).into(),
-            Stmt::ViewFragmentDecl(frag) => format!("(view fn {})", frag.name).into(),
-            Stmt::StyleRecipeDecl(recipe) => format!("(style-recipe {})", recipe.name).into(),
-            Stmt::ActionsDecl(_) => "(actions)".into(),
             Stmt::Try(_) => "(try)".into(),
-            Stmt::MsgDecl(msg) => format!("(msg {} variants)", msg.variants.len()).into(),
-            Stmt::ModelBlock(model) => format!("(model {} fields)", model.fields.len()).into(),
-            Stmt::ViewBlock(_) => "(view)".into(),
             // Plan 306: Godot scene declaration
             Stmt::SceneDecl(scene) => {
                 format!("(scene {} : {})", scene.name, scene.node_type).into()

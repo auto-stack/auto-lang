@@ -155,6 +155,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [42-semantic-metadata-inference-and-comptime](42-semantic-metadata-inference-and-comptime.md) | v0.6语义meta/类型推导/泛型与AV驱动CTE；双期反射、runtime保留、统一查询/依赖及可缓存冻结结果 | 📝 目标态设计（2026-10-16；支持矩阵/Schema/API/预算待Plan冻结，未实施） |
 | [43-ac-av-typed-mir-and-abc](43-ac-av-typed-mir-and-abc.md) | ACE的AC/AV/AJ、Typed MIR/ABC/CTE与函数增量 | 📝 §6.4/6.5：798完成后优先828；817/818、820–827扩展须保持全链路函数增量 |
 | [44-av-data-layout-place-and-ownership](44-av-data-layout-place-and-ownership.md) | AV布局、Place/owned、集合/闭包/Dyn；820–824扩面与825/826性能分工 | 📝 先798交付→优先828→其余ACE扩展；各Plan强制保留全链路增量，实际能力查Spec |
+| [48-ui-domain-ast-and-lowering](48-ui-domain-ast-and-lowering.md) | UI owned领域模型、泛型领域解析、受检lowering与Core准入 | PLAN-841 架构合同 |
 | [autoplan-spec-ledger](autoplan-spec-ledger.md)（原 26） | auto-plan 四技能范式 + 6 段账本 + 路径映射 | ✅ **现行**（开发范式权威描述） |
 | [plan-spec-hybrid-model](plan-spec-hybrid-model.md) | Plan+Spec v1 五环流程（2026-07-23） | ⚠️ 已被取代（诊断与反模式清单仍有效） |
 

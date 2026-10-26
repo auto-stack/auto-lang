@@ -64,9 +64,6 @@ use miette::SourceSpan;
 /// ```
 pub fn check_stmt(ctx: &mut InferenceContext, stmt: &Stmt) -> Result<Type, AutoError> {
     match stmt {
-        // PLAN-037 T6: web ecosystem imports — nothing to infer.
-        Stmt::UseWeb(_) => Ok(Type::Void),
-
         // Variable declaration (let/mut/var)
         Stmt::Store(store) => check_store(ctx, store),
 
@@ -113,16 +110,7 @@ pub fn check_stmt(ctx: &mut InferenceContext, stmt: &Stmt) -> Result<Type, AutoE
         | Stmt::Is(_)
         | Stmt::Dep(_) => Ok(Type::Void),
 
-        // Plan 096: UI scenario statements - no type checking needed
-        Stmt::WidgetDecl(_)
-        | Stmt::StoreDecl(_)
-        | Stmt::ViewFragmentDecl(_)
-        | Stmt::StyleRecipeDecl(_)
-        | Stmt::Try(_)
-        | Stmt::MsgDecl(_)
-        | Stmt::ModelBlock(_)
-        | Stmt::ViewBlock(_)
-        | Stmt::ActionsDecl(_) => Ok(Type::Void),
+        Stmt::Try(_) => Ok(Type::Void),
 
         // Plan 306: Godot scene declaration - declarative, no type checking
         Stmt::SceneDecl(_) => Ok(Type::Void),

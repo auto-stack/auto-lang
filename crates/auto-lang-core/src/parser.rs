@@ -877,18 +877,9 @@ impl<'a> Parser<'a> {
     /// 按 session 装配内建方言表。集中所有内建方言注册，便于一眼看清
     /// "当前有哪些内建方言"（外部方言经 register_dialect 显式注册，不在此）。
     fn build_dialects(
-        session: &crate::session::CompilerSession,
+        _session: &crate::session::CompilerSession,
     ) -> Vec<std::sync::Arc<dyn crate::dialect::Dialect>> {
-        let mut v: Vec<std::sync::Arc<dyn crate::dialect::Dialect>> = Vec::new();
-        // PLAN-814 R3-03b：内建 UiDialect 仅在 UI 文法表已装配时注册
-        // （上层组合点经 set_ui_grammar/UiGrammarSource inventory 注入
-        // auto-ui-dialect 单源构造器）；纯 SDK 表缺席，Scenario::UI 方言表
-        // 为空，语句回退非 UI 路径。
-        if session.scenario == crate::session::Scenario::UI && crate::ui_grammar().is_some() {
-            v.push(std::sync::Arc::new(crate::dialect::ui::UiDialect));
-        }
-        // 未来内建方言（Shell 等）在此注册
-        v
+        Vec::new()
     }
 
     // ---- PLAN-778 方言派发（三段，恢复不变量核心保证） ----
@@ -1449,11 +1440,6 @@ impl<'a> Parser<'a> {
         // py constants/functions fail with "undefined variable" outside
         // method-call position (e.g. `uuid5(NAMESPACE_DNS, ...)`).
         if self.py_item_imports.iter().any(|n| n.as_str() == name) {
-            return true;
-        }
-
-        // PLAN-607: style recipes are valid identifiers in expressions
-        if crate::design_tokens::recipe::has_style_recipe(name) {
             return true;
         }
 
@@ -2320,6 +2306,281 @@ impl<'a> Parser<'a> {
             source_lines,
             file_attrs: std::mem::take(&mut self.file_attrs),
         })
+    }
+
+    pub fn parse_domain<D: auto_parser_api::DomainDialect>(
+        &mut self,
+        dialect: &D,
+    ) -> AutoResult<auto_parser_api::DomainCode<D::Output>> {
+        self.body_depth = 0;
+        self.parse_domain_impl(dialect)
+    }
+
+    fn try_domain_item<D: auto_parser_api::DomainDialect>(
+        &mut self,
+        dialect: &D,
+    ) -> AutoResult<Option<auto_parser_api::DomainStmt<D::Output>>> {
+        use auto_parser_api::DomainDialect;
+
+        if !dialect.matches(&self.session) {
+            return Ok(None);
+        }
+        let kind = self.kind();
+        let keyword = if kind == TokenKind::Ident {
+            self.cur.text.to_string()
+        } else {
+            String::new()
+        };
+        let is_pub = kind == TokenKind::Ident && keyword == "pub";
+        if !is_pub && kind == TokenKind::Ident && !dialect.keywords().contains(&keyword.as_str()) {
+            return Ok(None);
+        }
+
+        let cp = self.bridge_checkpoint();
+        let prev_port_scope = self.port_call_scope;
+        self.port_call_scope += 1;
+        let call_scope = self.port_call_scope;
+        let outcome = {
+            let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+            if is_pub {
+                dialect.try_parse_pub_stmt(&mut bridge)
+            } else if kind == TokenKind::Ident {
+                dialect.try_parse_stmt(&mut bridge, &keyword)
+            } else {
+                dialect.try_parse_token_stmt(&mut bridge, kind)
+            }
+        };
+        self.port_release_scope(call_scope);
+        self.port_call_scope = prev_port_scope;
+        match outcome {
+            Ok(Some(item)) => Ok(Some(item)),
+            Ok(None) => {
+                self.bridge_restore(cp);
+                Ok(None)
+            }
+            Err(e) => {
+                self.restore_context_flags(&cp);
+                Err(e)
+            }
+        }
+    }
+
+    fn parse_domain_impl<D: auto_parser_api::DomainDialect>(
+        &mut self,
+        dialect: &D,
+    ) -> AutoResult<auto_parser_api::DomainCode<D::Output>> {
+        use auto_parser_api::{DomainCode, DomainStmt};
+
+        let mut items = Vec::new();
+        let mut source_lines = Vec::new();
+        self.skip_empty_lines();
+        let mut current_section = CodeSection::None;
+        let mut stmt_index = 0;
+
+        while !self.is_kind(TokenKind::EOF) {
+            if self.is_kind(TokenKind::Hash) {
+                let saved_cur = self.cur.clone();
+                self.next();
+                let is_annotation = self.is_kind(TokenKind::LSquare);
+                self.lexer.push_token(self.cur.clone());
+                self.cur = saved_cur;
+
+                if !is_annotation {
+                    self.next();
+                    let section = self.parse_name()?;
+                    if !self.is_kind(TokenKind::Newline)
+                        && !self.is_kind(TokenKind::EOF)
+                        && !self.is_kind(TokenKind::RBrace)
+                    {
+                        let _ = self.skip_line();
+                        continue;
+                    }
+                    match section.as_str() {
+                        "C" => current_section = CodeSection::C,
+                        "RUST" => current_section = CodeSection::Rust,
+                        "AUTO" => current_section = CodeSection::Auto,
+                        _ => {
+                            let error = SyntaxError::Generic {
+                                message: format!("Unknown section {}", section),
+                                span: pos_to_span(self.cur.pos),
+                            }
+                            .into();
+                            if !self.add_error(error) {
+                                return Err(self.error_limit_exceeded());
+                            }
+                            self.synchronize();
+                            continue;
+                        }
+                    }
+                    let _ = self.skip_line();
+                    continue;
+                }
+            }
+
+            if !self.is_kind(TokenKind::Hash) {
+                let include = match self.compile_dest {
+                    CompileDest::Interp | CompileDest::Config => {
+                        matches!(current_section, CodeSection::None | CodeSection::Auto)
+                    }
+                    CompileDest::TransC => {
+                        matches!(current_section, CodeSection::None | CodeSection::C)
+                    }
+                    CompileDest::TransRust => {
+                        matches!(current_section, CodeSection::None | CodeSection::Rust)
+                    }
+                };
+                if !include {
+                    self.skip_line()?;
+                    continue;
+                }
+            }
+
+            let stmt_line = self.cur.pos.line;
+            let parsed = match self.try_domain_item(dialect)? {
+                Some(item) => Ok(item),
+                None => self.parse_stmt().map(DomainStmt::Core),
+            };
+            match parsed {
+                Ok(item) => {
+                    if let DomainStmt::Core(Stmt::Expr(Expr::Pair(Pair { key, value }))) = &item {
+                        if let Some(name) = key.name() {
+                            self.define(
+                                name,
+                                Meta::Store(Store {
+                                    name: name.into(),
+                                    kind: StoreKind::Var,
+                                    attrs: vec![],
+                                    is_pub: false,
+                                    ty: Type::Unknown,
+                                    expr: *value.clone(),
+                                }),
+                            );
+                        }
+                    }
+                    items.push(item);
+                    source_lines.push(stmt_line);
+                    let is_first = stmt_index == 0;
+                    let newline_count = match self.expect_eos(is_first) {
+                        Ok(count) => count,
+                        Err(e) => {
+                            if e.to_string().contains("[non-recoverable]")
+                                || e.to_string().contains("Ambiguous syntax")
+                            {
+                                return Err(e);
+                            }
+                            if !self.add_error(e) {
+                                return Err(self.error_limit_exceeded());
+                            }
+                            self.synchronize();
+                            0
+                        }
+                    };
+                    if newline_count > 1 {
+                        items.push(DomainStmt::Core(Stmt::EmptyLine(newline_count - 1)));
+                        source_lines.push(stmt_line);
+                    }
+                    stmt_index += 1;
+                }
+                Err(e) => {
+                    if e.to_string().contains("Ambiguous syntax") {
+                        return Err(e);
+                    }
+                    if !self.add_error(e) {
+                        return Err(self.error_limit_exceeded());
+                    }
+                    self.synchronize();
+                }
+            }
+        }
+
+        if !self.errors.is_empty() {
+            return Err(AutoError::MultipleErrors {
+                count: self.errors.len(),
+                plural: if self.errors.len() > 1 { "s" } else { "" }.to_string(),
+                errors: self.errors.clone(),
+            });
+        }
+
+        if matches!(items.last(), Some(DomainStmt::Core(_))) {
+            let Some(DomainStmt::Core(last)) = items.pop() else {
+                unreachable!()
+            };
+            let converted = self.convert_last_block(vec![last])?;
+            items.push(DomainStmt::Core(converted.into_iter().next().unwrap()));
+        }
+        let mut code = DomainCode {
+            items,
+            source_lines,
+            file_attrs: std::mem::take(&mut self.file_attrs),
+        };
+        self.merge_domain_ext_blocks(&mut code)?;
+        Ok(code)
+    }
+
+    fn merge_domain_ext_blocks<D>(
+        &self,
+        code: &mut auto_parser_api::DomainCode<D>,
+    ) -> AutoResult<()> {
+        use auto_parser_api::DomainStmt;
+
+        let mut type_decl_indices: std::collections::HashMap<Name, usize> =
+            std::collections::HashMap::new();
+        let mut ext_statements: Vec<(usize, crate::ast::Ext)> = Vec::new();
+        for (i, item) in code.items.iter().enumerate() {
+            let DomainStmt::Core(stmt) = item else {
+                continue;
+            };
+            match stmt {
+                Stmt::TypeDecl(decl) => {
+                    type_decl_indices.insert(decl.name.clone(), i);
+                }
+                Stmt::Ext(ext) if ext.trait_name.is_none() => {
+                    ext_statements.push((i, ext.clone()));
+                }
+                _ => {}
+            }
+        }
+
+        let mut merged_ext_indices = Vec::new();
+        for (ext_idx, ext) in ext_statements {
+            let Some(&decl_idx) = type_decl_indices.get(&ext.target) else {
+                continue;
+            };
+            let DomainStmt::Core(Stmt::TypeDecl(decl)) = &code.items[decl_idx] else {
+                continue;
+            };
+            let mut merged_decl = decl.clone();
+            for ext_field in ext.fields.clone() {
+                merged_decl.members.retain(|m| m.name != ext_field.name);
+                merged_decl.members.push(ext_field);
+            }
+            for ext_method in ext.methods.clone() {
+                merged_decl.methods.retain(|m| m.name != ext_method.name);
+                merged_decl.methods.push(ext_method);
+            }
+            for ext_const in ext.consts.clone() {
+                merged_decl.consts.retain(|c| c.name != ext_const.name);
+                merged_decl.consts.push(ext_const);
+            }
+            merged_decl.impl_attrs.extend(ext.attrs.iter().cloned());
+            code.items[decl_idx] = DomainStmt::Core(Stmt::TypeDecl(merged_decl));
+            merged_ext_indices.push(ext_idx);
+        }
+
+        let mut index = 0;
+        code.items.retain(|item| {
+            let keep = !matches!(item, DomainStmt::Core(Stmt::Ext(_)))
+                || !merged_ext_indices.contains(&index);
+            index += 1;
+            keep
+        });
+        let mut index = 0;
+        code.source_lines.retain(|_| {
+            let keep = !merged_ext_indices.contains(&index);
+            index += 1;
+            keep
+        });
+        Ok(())
     }
 
     /// Merge ext blocks into their target TypeDecl
@@ -5413,20 +5674,6 @@ impl<'a> Parser<'a> {
                     }
                     stmt
                 }
-                TokenKind::Ident if self.cur.text.as_str() == "style" => {
-                    if let Some(mut stmt) = self.parse_style_recipe_decl_stmt()? {
-                        if let Stmt::StyleRecipeDecl(ref mut r) = stmt {
-                            r.is_pub = true;
-                        }
-                        stmt
-                    } else {
-                        // Not a recognized pub declaration — put the token back
-                        self.lexer.push_token(self.cur.clone());
-                        self.cur = saved_cur;
-                        self.prev = saved_prev;
-                        return self.parse_stmt_inner();
-                    }
-                }
                 _ => {
                     // Not a recognized pub declaration — put the token back
                     self.lexer.push_token(self.cur.clone());
@@ -5710,10 +5957,7 @@ impl<'a> Parser<'a> {
                     self.parse_scene_decl()?
                 } else {
                     let ident = self.cur.text.to_string();
-                    // Plan 351: store decl handled directly (not yet in dialect table)
-                    if self.store_decl_branch(&ident) {
-                        self.parse_store_decl()?
-                    } else if let Some(stmt) = self.try_dialect_stmt(&ident)? {
+                    if let Some(stmt) = self.try_dialect_stmt(&ident)? {
                         stmt
                     } else {
                         self.parse_node_or_call_stmt()?
@@ -7219,133 +7463,6 @@ impl<'a> Parser<'a> {
     /// be a function, object, or constant (ES imports don't distinguish).
     /// `component` additionally registers instantiable view tags;
     /// `composable` auto-invokes once at setup and binds the result.
-    pub fn use_web_stmt(&mut self) -> AutoResult<Stmt> {
-        // Already consumed: use . web
-
-        // PLAN-051 C4: 点分 kind 限定符——`use.web.fn/component/composable`
-        // 与 use.rust/use.py 点分家族一致（用户裁定 2026-08-29）；旧空格
-        // 形式（`use.web component X`）与裸形式（无 kind = Fn）兼容等价。
-        let kind = if self.is_kind(TokenKind::Dot) {
-            self.next();
-            // `fn` 是关键字 token（TokenKind::Fn），不能走 expect_ident_str。
-            let k = if self.cur.text.as_str() == "fn" {
-                self.next();
-                "fn".to_string()
-            } else {
-                self.expect_ident_str()?.to_string()
-            };
-            match k.as_str() {
-                "fn" => ExtImportKind::ExplicitFn,
-                "component" => ExtImportKind::Component,
-                "composable" => ExtImportKind::Composable,
-                other => {
-                    return Err(SyntaxError::Generic {
-                        message: format!(
-                            "Unknown use.web.<kind> '{}' — expected fn / component / composable",
-                            other
-                        ),
-                        span: pos_to_span(self.cur.pos),
-                    }
-                    .into());
-                }
-            }
-        } else {
-            match self.cur.text.as_str() {
-                "component" => {
-                    self.next();
-                    ExtImportKind::Component
-                }
-                "composable" => {
-                    self.next();
-                    ExtImportKind::Composable
-                }
-                _ => ExtImportKind::Fn,
-            }
-        };
-
-        let mut symbols: Vec<Name> = Vec::new();
-        loop {
-            if !self.is_kind(TokenKind::Ident) {
-                return Err(SyntaxError::Generic {
-                    message: format!(
-                        "Expected symbol name in use.web statement, got '{}'",
-                        self.cur.text
-                    ),
-                    span: pos_to_span(self.cur.pos),
-                }
-                .into());
-            }
-            symbols.push(self.cur.text.clone().into());
-            self.next();
-            if self.is_kind(TokenKind::Comma) {
-                self.next();
-                continue;
-            }
-            break;
-        }
-
-        // Optional composable call args: `useX(.arg) from ...`
-        let mut call_args: Vec<crate::ast::Expr> = Vec::new();
-        if self.is_kind(TokenKind::LParen) {
-            self.next();
-            while !self.is_kind(TokenKind::RParen) {
-                let arg = self.parse_expr()?;
-                call_args.push(arg);
-                if self.is_kind(TokenKind::Comma) {
-                    self.next();
-                }
-            }
-            self.expect(TokenKind::RParen)?;
-        }
-
-        // Optional composable ref-field annotation: `useX(refs: [a, b])`
-        let mut ref_fields: Vec<Name> = Vec::new();
-        if self.cur.text.as_str() == "refs" {
-            self.next();
-            self.expect(TokenKind::Colon)?;
-            self.expect(TokenKind::LSquare)?;
-            while !self.is_kind(TokenKind::RSquare) {
-                ref_fields.push(self.cur.text.clone().into());
-                self.next();
-                if self.is_kind(TokenKind::Comma) {
-                    self.next();
-                }
-            }
-            self.expect(TokenKind::RSquare)?;
-        }
-
-        let ident = self.expect_ident_str()?;
-        if ident != "from" {
-            return Err(SyntaxError::Generic {
-                message: format!("Expected 'from' in use.web statement, got '{}'", ident),
-                span: pos_to_span(self.cur.pos),
-            }
-            .into());
-        }
-        if !self.is_kind(TokenKind::Str) {
-            return Err(SyntaxError::Generic {
-                message: "Expected module path string after 'from' in use.web statement".into(),
-                span: pos_to_span(self.cur.pos),
-            }
-            .into());
-        }
-        let path: AutoStr = self.cur.text.clone().into();
-        self.next();
-
-        // Register imported names so the symbol checker treats bare
-        // references as defined (mirrors use.py item registration).
-        for sym in &symbols {
-            self.define(sym.as_str(), Meta::Use(sym.to_string().into()));
-        }
-
-        Ok(Stmt::UseWeb(vec![ExtImport {
-            kind,
-            symbols,
-            path,
-            call_args,
-            ref_fields,
-        }]))
-    }
     // 1. auto: use std.io: println
     // 2. c: use c <stdio.h>
     // 3. rust: use rust std::fs
@@ -7403,9 +7520,6 @@ impl<'a> Parser<'a> {
                 return self.use_rust_stmt();
             } else if name == "py" {
                 return self.use_py_stmt();
-            } else if name == "web" {
-                // PLAN-037 T6: `use.web` — web (Vue/TS/npm) ecosystem import.
-                return self.use_web_stmt();
             } else {
                 segments.push(name.into());
             }
@@ -13308,134 +13422,14 @@ impl<'a> Parser<'a> {
     // Plan 306: Godot scene declaration parsing
     // ========================================================================
 
-    // ========================================================================
-    // PLAN-814 R3-03b：以下 UI 文法公开门面经 `UiGrammar` 函数表端口派发
-    // （auto-parser-api 定义；上层组合点装配 auto-ui-dialect 单源构造器，
-    // PLAN-806/810 端口合同不变）。表缺席（纯 SDK）：签名保持（旧 API
-    // 编译面），执行返回显式诊断错误，不静默降级——与原 `ui-dialect`
-    // feature off 语义一致；旧默认行为经上层 auto-lang 装配保持。
-    // ========================================================================
-
-    /// 纯 SDK（UI 文法表未装配）的统一拒绝诊断。
-    fn ui_grammar_unavailable(&self, api: &str) -> AutoError {
-        SyntaxError::Generic {
-            message: format!(
-                "UI dialect grammar is not assembled in this build: `{}` requires the \
-                 UI grammar table (set_ui_grammar / upper compat layer)",
-                api
-            ),
-            span: pos_to_span(self.cur.pos),
-        }
-        .into()
-    }
-
-    /// Parse msg declaration (UI scenario only)
-    ///（PLAN-806 单源迁 auto-ui-dialect；PLAN-810 起经端口薄委托。）
-    pub fn parse_msg_decl(&mut self) -> AutoResult<Stmt> {
-        let Some(g) = crate::ui_grammar() else {
-            return Err(self.ui_grammar_unavailable("parse_msg_decl"));
-        };
-        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
-        let msg = (g.parse_msg_decl)(&mut bridge)?;
-        Ok(Stmt::MsgDecl(msg))
-    }
-
-    /// Parse model block (UI scenario only)
-    ///（PLAN-806 单源迁 auto-ui-dialect；PLAN-810 起经端口薄委托。）
-    pub fn parse_model_block(&mut self) -> AutoResult<Stmt> {
-        let Some(g) = crate::ui_grammar() else {
-            return Err(self.ui_grammar_unavailable("parse_model_block"));
-        };
-        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
-        let model = (g.parse_model_block)(&mut bridge)?;
-        Ok(Stmt::ModelBlock(model))
-    }
-
-    /// PLAN-810：以下公开 parse_* 为薄委托门面——完整 UI 文法已迁
-    /// auto-ui-dialect::grammar（单一份实现），经 ParserBridge 的
-    /// UiParseContext 端口驱动。
-    pub fn parse_widget_decl(&mut self) -> AutoResult<Stmt> {
-        let Some(g) = crate::ui_grammar() else {
-            return Err(self.ui_grammar_unavailable("parse_widget_decl"));
-        };
-        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
-        (g.parse_widget_decl)(&mut bridge)
-    }
-
-    pub fn parse_store_decl(&mut self) -> AutoResult<Stmt> {
-        let Some(g) = crate::ui_grammar() else {
-            return Err(self.ui_grammar_unavailable("parse_store_decl"));
-        };
-        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
-        (g.parse_store_decl)(&mut bridge)
-    }
-
     pub fn parse_scene_decl(&mut self) -> AutoResult<Stmt> {
-        let Some(g) = crate::ui_grammar() else {
-            return Err(self.ui_grammar_unavailable("parse_scene_decl"));
-        };
         let mut bridge = crate::parser_bridge::ParserBridge::new(self);
-        (g.parse_scene_decl)(&mut bridge)
+        crate::scene_grammar::parse_scene_decl(&mut bridge)
     }
 
-    pub fn parse_actions_decl_stmt(&mut self) -> AutoResult<Option<Stmt>> {
-        let Some(g) = crate::ui_grammar() else {
-            return Err(self.ui_grammar_unavailable("parse_actions_decl_stmt"));
-        };
-        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
-        (g.parse_actions_decl_stmt)(&mut bridge)
-    }
-
-    pub fn parse_style_recipe_decl_stmt(&mut self) -> AutoResult<Option<Stmt>> {
-        let Some(g) = crate::ui_grammar() else {
-            return Err(self.ui_grammar_unavailable("parse_style_recipe_decl_stmt"));
-        };
-        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
-        (g.parse_style_recipe_decl_stmt)(&mut bridge)
-    }
-
-    pub fn parse_view_block(&mut self) -> AutoResult<Stmt> {
-        let Some(g) = crate::ui_grammar() else {
-            return Err(self.ui_grammar_unavailable("parse_view_block"));
-        };
-        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
-        (g.parse_view_block)(&mut bridge)
-    }
-
-    pub fn parse_view_block_or_fragment(&mut self) -> AutoResult<Stmt> {
-        let Some(g) = crate::ui_grammar() else {
-            return Err(self.ui_grammar_unavailable("parse_view_block_or_fragment"));
-        };
-        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
-        (g.parse_view_block_or_fragment)(&mut bridge)
-    }
-
-    pub fn parse_component_fn_decl(&mut self) -> AutoResult<Stmt> {
-        let Some(g) = crate::ui_grammar() else {
-            return Err(self.ui_grammar_unavailable("parse_component_fn_decl"));
-        };
-        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
-        (g.parse_component_fn_decl)(&mut bridge)
-    }
-
-    /// scene 门（Plan 306；任意 scenario）——文法侧 lookahead 经端口。
-    /// 表缺席（纯 SDK）恒 false，标识符回退普通节点/调用路径（与方言表
-    /// 为空的回退语义一致）。
     fn looks_like_scene_decl(&mut self) -> bool {
-        let Some(g) = crate::ui_grammar() else {
-            return false;
-        };
         let mut bridge = crate::parser_bridge::ParserBridge::new(self);
-        (g.looks_like_scene_decl)(&mut bridge)
-    }
-
-    /// Plan 351 store 分支门——仅 UI 文法表已装配时接管（表缺席时
-    /// `store` 回退普通 ident 路径，不进文法）。
-    fn store_decl_branch(&self, ident: &str) -> bool {
-        ident == "store"
-            && self.is_ui_scenario()
-            && !self.in_on_body
-            && crate::ui_grammar().is_some()
+        crate::scene_grammar::looks_like_scene_decl(&mut bridge)
     }
 
     /// Helper: expect an identifier with specific text
