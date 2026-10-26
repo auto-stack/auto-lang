@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-822
-status: executing
+status: execution_done
 feature_name: AV类型化集合与Variant载荷访问
 plan_revision: 5
 author: [Codex]
 created_at: 2026-10-20
 updated_at: 2026-10-26
-current_step: 6
+current_step: 7
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-av/resident-function-install.md
@@ -216,11 +216,13 @@ T-09 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳
 | [x] T-04 | work | T-03 | 实现必须的拒绝/回滚/cleanup/资源hook与V-02..07补充对照，先完成所有findings再送审 [✅ 已完成 2026-10-26:av_collections_822_resources 6/6 绿——LIST_NEW cap 两侧(65536 执行/65537 admission Resource ListElems 拒)、紧 slot-bytes 预算在写前拒(SlotBytes + 台账 allocs==frees/live=0 零泄漏)、arena fault 注入(attempt≥1/successful_alloc=0/Infra/无半提交)、budget-is-only-delta 对照、peak 记账与正常退出 drain、len/cap/index checked 算术回归;V-03/07 资源轴 + admission 轴已随 first_case/semantics 档落地] | AC-03/04/05；admission/resources及真实边界事件；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 |
 | [x] T-05 | work | T-04 | probe真实缓存依赖/重启重验、来源/身份；注册与旧consumer兼容，串行更新唯一公共写面 [✅ 已完成 2026-10-26:av_collections_822_cache_compat 5/5 绿——同store恢复身份一致+snapshot 轴 clean miss、好 envelope 坏 payload 在重验拒且零 dispatch(783 内容寻址 Conflict 防篡改同面冻结)、AVAD v3 与 v2 世代隔离(schema-profile 拒)、A22/plan822 层与 A21 不混淆、合法恢复确定性重放(步数一致);V-09 旧 corpus 重放归 T-06 compatibility scope 汇总] | AC-06；V-08/09，cache/compatibility；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 |
 | [x] T-06 | work | T-05 | 脚本聚合所有Scope并透传失败；正式AutoDown V-10反控、fmt/check、受管/进程峰值，整理SD草案/任务证据 [✅ 已完成 2026-10-26:scripts/verify-av-collections-822.ps1 九 Scope(first-case/semantics/admission/resources/cache/compatibility/autodown/incremental/acceptance)——单 Scope 必选、selected>0 守卫、compatibility 重放 798/817/818/820/821 既有语料入口(V-09)、autodown 跑正式 recipe+反控(V-10)、incremental FAIL CLOSED(T-09 未完不绿)、acceptance 子进程重放防 seam 泄漏;first-case/autodown scope 实跑绿;SD 草案六条整理于 attachments/822/sd-draft.md;**受管/进程峰值 128MiB 线实测(821 式 worker 采样)未跑——归并 T-09 收尾批跑,不冒领**] | AC-01..06；acceptance，0例/漏必需用例/skip均非绿；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 |
-| [ ] T-09 | work | D828及本计划其他work实现完成 | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-13 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage [进行中 2026-10-26:**部分完成**——V-13 子case 2/3 已落地(av_collections_822_incremental 3/3 绿:body-only 修订未改函数 Arc 身份/代际保持(F-02)、签名变化在真 verify 门精确拒(mir.return-type));单元经真 verify→encode→abc-admit 链+MIR owner 重盖章入 FunctionCode/ProgramSnapshot;**未完成**:子case 1(828 30 修订战役基线重放接线)、子case 4 完整强制退化 gate、脚本 incremental scope 由 FAIL CLOSED 解封、受管/进程峰值 128MiB 实测、SD-06 按实测登记——完成前不勾、不送审] | AC-09；共同基线+新增能力兼容定向验收，未实测不勾；送审前不跑整档 |
+| [x] T-09 | work | D828及本计划其他work实现完成 | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-13 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage [✅ 已完成 2026-10-26:四子case全落地——1)冻结 828 基线战役(273575B/115fn/30 修订 fn_037 位点)经共享 core 在 collections 扩展后重放双门绿(all-correct+structural+P95<1s);2)body-only 修订未改函数 Arc 身份/代际保持;3)签名变化在真 verify 门精确拒(mir.return-type);4)强制退化反控:未改函数换对象(同内容 hash)gate 位非零且逐函数局部化、诚实修订为零;128MiB worker B 线父侧采样硬门 4 fresh release 进程实测绿(hot≤8/staging≤16/exec≤8 独立维度);脚本 incremental scope 解封;**acceptance 全 9 scope 端到端通过,compatibility 抓到真实回归(ac-mn 穷尽 match 被 15 新指令破坏→两处最小接线:fingerprint 渲染+lower 受控拒)818 corpus 24/24 恢复绿**] | AC-09；共同基线+新增能力兼容定向验收，未实测不勾；送审前不跑整档 |
 | [ ] T-07 | review | work-owned完成且提交冻结、T-09 完成 | 同唯一树独立复核AC/V/SD、遗漏/workaround/债及健康，核依赖输入未变，填规范影响和审查结论 | AC-07；merge-owned全档仍pending |
 | [ ] T-08 | merge | T-07 pass | 冻结门禁→合入→SD/ledger/catalog→archive；到期批回归主检出单实例；wt-guard后移除唯一树/分支 | AC-08；真实门禁/合入/清理收据 |
 
 ## 9. 复审记录
+
+2026-10-26 stage:work(收尾) | PLAN-822 r5 | outcome:pass(work-owned 全部完成,execution_done 送审) | worktree:D:/autostack/.wt/lang-822/auto-lang | branch:plan-822-dev | base:de93bacc0 | code_commits:40631d41d→9bf26b9dd 共 10 枚 | task_ids:T-01..T-06+T-09 全勾(T-07 review/T-08 merge 非 work-owned) | evidence:**完整 9-scope acceptance 端到端通过**(scripts/verify-av-collections-822.ps1 -Scope acceptance:first-case 4+semantics 13+admission 1+resources 7(含 128MiB 父侧采样硬门)+cache 5+compatibility(821 5/7/3、798/820 15、817 5、818 24)+autodown 3+incremental 4+1);V-13 四子case全绿;ac-mn 兼容回归被 acceptance 抓获并修复(fingerprint 渲染+lower 受控拒,818 24/24 恢复);822 新测试共 36(33 probe+3 主仓) | blockers:无 | 已知边界(review 核):①guard 事实为块内线性语义(BRANCH then-edge 路径传播未实现——较合同保守,拒绝面更大非更小,全部 V 案例以块内形态覆盖);②collections fixture 无 source sidecar(V-11 strip-debug 子面以默认无-spans 形态覆盖);③LIST_SET 极端预算序(旧值 drop 后才判超)按 Resource 上报、极端路径由 V-03 fault 面覆盖 | merge-owned 门禁 pending(显式):冻结 HEAD 上裸 cargo t + 触面 cargo tv + 新 workspace 完整有限合同档(cargo test --manifest-path experimental/ac-av-probe/Cargo.toml)+ 按 diff 选 tt/tb/tu 触面;tf 批量档按仓规到期判定 | next:T-07 独立 review(独立上下文、同树只读)
 
 2026-10-26 stage:work | PLAN-822 r5 | outcome:pass(本会话 work 范畴 6/8 任务完成,T-09 部分完成继续 executing) | worktree:D:/autostack/.wt/lang-822/auto-lang | branch:plan-822-dev | base:de93bacc0(基面钉 master,含 849 已合入;probe/注册写面与 5009dc629 等价) | code_commits:40631d41d→4dfc59420 共 8 枚(core/fixture/recipe/semantics/resources/cache/script/incremental) | 组内:auto-ui detached worktree 补入(auto-lang crate 硬 path 依赖解析,非 junction,822 不改它);auto-down 兄弟随组建树 | task_ids:T-01..T-06 完成,T-09 部分(V-13 子case 2/3 落地,子case 1/4 与 128MiB 实测待续) | evidence:probe 五 bin 4+13+6+5+3 全绿;主仓 av_collections_822 3/3 绿(corpus/negative-oracle/worker-faults);回归 av_owned_821 corpus 3/3、821 first-case/semantics 31 测、instr_spec coverage 全绿;脚本 first-case/autodown scope 实跑绿 | blockers:无;剩余=T-09 未完部分(见 §8 行内记录)与 merge-owned 门禁(裸 cargo t + tv + 新 workspace 有限合同档,review pass 后由 merge 在冻结 HEAD 执行) | next:work 继续 T-09(828 战役重放接线+gate 解封+128MiB 实测),完成后送独立 review
 
