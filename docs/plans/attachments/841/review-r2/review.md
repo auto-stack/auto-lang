@@ -12,7 +12,7 @@
 
 本轮按 R1 的三个 finding 和 [work 修复收据冻结副本](repair-r1-closeout.md) 检查实际修复及相邻不变量：生产入口接线/失败前零产物、codec 新解码器的合法/非法输入，以及触面格式。原收据位置为实施树 `docs/plans/attachments/841/repair-r1-closeout.md`。未重跑全档、整套 792/777 或无关已闭验收。
 
-主计划从语言主检出读取，语义合同仍 revision 1。输入 hash、依赖 Cargo/配置 hash、主检出与候选 Spec 逐文件 hash、probe hash 见 [baseline.json](baseline.json)。完整候选 SD 冻结于 [spec-delta-reviewed.diff](spec-delta-reviewed.diff)，SHA256 `84019277499b4edc6c73d68f6db3bc58a0074c37c2a8e8b902de96da2a90379f`。不是批准沉淀的规范。
+主计划从语言主检出读取，语义合同仍 revision 1。输入 hash、依赖 Cargo/配置 hash、主检出与候选 Spec 逐文件 hash、probe hash 见 [baseline.json.txt](baseline.json.txt)。完整候选 SD 冻结于 [spec-delta-reviewed.diff](spec-delta-reviewed.diff)，SHA256 `84019277499b4edc6c73d68f6db3bc58a0074c37c2a8e8b902de96da2a90379f`。不是批准沉淀的规范。
 
 ## Finding closure
 
@@ -20,7 +20,7 @@
 |---|---|---|
 | F841-R1-01 P1 | **OPEN，旧例关闭/全不变量未关闭** | 原 Rust/Vue 高层函数确实拒绝重复 widget；compiler 永久 3 测、runtime 根/导入 2 测、SDK 1 测通过。但真实工具工程 Rust/Jet/Ark 仍绕过 validator，见下。 |
 | F841-R1-02 P2 | **CLOSED，本基线** | 原 48 层 4253B 反例及 4/16/32 对照都可 decode；既有/新增 codec 7 测通过。新解码器引入另一个失败退出回归，独立编号 F841-R2-01，不把它冒充旧反例未修。 |
-| F841-R1-03 P2 | **CLOSED，本基线** | 与 R1 相同 rustfmt 命令检查三仓完整 Plan 差量内存在的 181 个 Rust 文件，0 fail；三个修复 diff 的 `git diff --check` 通过。见 [fmt.log](fmt.log)。 |
+| F841-R1-03 P2 | **CLOSED，本基线** | 与 R1 相同 rustfmt 命令检查三仓完整 Plan 差量内存在的 181 个 Rust 文件，0 fail；三个修复 diff 的 `git diff --check` 通过。见 [fmt.log.txt](fmt.log.txt)。 |
 
 ### F841-R1-01 / P1 / OPEN — 工程生成入口仍消费未校验领域模型
 
@@ -45,7 +45,7 @@ widget App { view { text "ok" {} } }
 
 **预期**：三路坏输入均返回具名领域验证错误，零生成输出；三路单 widget 成功。
 
-**观察**：[engineering-entrypoints.log](engineering-entrypoints.log) 的 6 次真实生成调用中，三个合法对照成功；三个重复 widget 输入均 `accepted=true, output_exists=true, error=None`。Jet/Ark 的实际工程日志显示 `Widgets: App, App` 并生成同名文件；Rust 也报告成功生成。测试 exit 101，断言报告三路全不满足拒绝/零输出。无需 Gradle/DevEco/Rust 宿主构建环境即可复现。
+**观察**：[engineering-entrypoints.log.txt](engineering-entrypoints.log.txt) 的 6 次真实生成调用中，三个合法对照成功；三个重复 widget 输入均 `accepted=true, output_exists=true, error=None`。Jet/Ark 的实际工程日志显示 `Widgets: App, App` 并生成同名文件；Rust 也报告成功生成。测试 exit 101，断言报告三路全不满足拒绝/零输出。无需 Gradle/DevEco/Rust 宿主构建环境即可复现。
 
 **已证原因**：上述正式入口和私有编译 helper 未调用当前单源 validator/lowering；不是 probe 绕开正式入口或用不合法 pac 配置。SDK 的 jet 分支已修，并不意味着工程工具的 jet 分支也已修。
 
@@ -61,7 +61,7 @@ widget App { view { text "ok" {} } }
 
 **预期**：三个非空白后缀受控拒绝，单信封/合法空白成功；保留深视图和旧 domain/schema/tag 的既有断言。
 
-**观察**：[codec-trailing-controls.log](codec-trailing-controls.log) 中三个后缀全部 `accepted=true`，exit 101；同测试中的完整 JSON 解析控制 `serde_json::from_slice::<serde_json::Value>` 对三者均拒绝，排除输入未实际追加或只是合法空白。合法空白对照成功。原 `from_slice` 处理整个输入，新调用只消费合法前缀，属本轮明确行为变化。
+**观察**：[codec-trailing-controls.log.txt](codec-trailing-controls.log.txt) 中三个后缀全部 `accepted=true`，exit 101；同测试中的完整 JSON 解析控制 `serde_json::from_slice::<serde_json::Value>` 对三者均拒绝，排除输入未实际追加或只是合法空白。合法空白对照成功。原 `from_slice` 处理整个输入，新调用只消费合法前缀，属本轮明确行为变化。
 
 **关闭 oracle**：恢复单 artifact 的完整消费检查，三个后缀均明确拒绝；合法空白、4/16/32/48 层、字段/span/source_lines、坏 domain/schema/tag/语义与 Weak 控制保持。检查新手动解码流程的相关失败出口，不通过退回固定 128 层限制或修改信封承诺来关闭。
 
@@ -69,13 +69,13 @@ widget App { view { text "ok" {} } }
 
 | Check | Result | Scope |
 |---|---|---|
-| R1 原始 probe + codec 尾随 holdout | 4 pass / 1 fail | 原 Rust/Vue、嵌套48、codec基本控制、Core parity expr/fn/scene/task 均通过；失败为新 suffix case。见 [independent-probe.log](independent-probe.log)。 |
+| R1 原始 probe + codec 尾随 holdout | 4 pass / 1 fail | 原 Rust/Vue、嵌套48、codec基本控制、Core parity expr/fn/scene/task 均通过；失败为新 suffix case。见 [independent-probe.log.txt](independent-probe.log.txt)。 |
 | 后缀三兄弟及完整 JSON/合法空白控制 | 1 test fail，三坏值全被误收 | 新手动 decoder 失败退出；未扩大深度/内存要求。 |
 | request 工程入口 | 1 test fail，6 次实际调用 | 三合法成功，三无效生成仍成功。 |
-| compiler `ui_domain_validation` | 3 pass | 本次新增的高层校验/根/单层跨文件；[log](compiler-validation.log)。 |
-| dialect `codec::tests` | 7 pass | 深度修复、语义拒绝、旧信封、字段/span/source_lines/Weak；[log](codec.log)。 |
-| runtime `plan841_domain_validation` | 2 pass | 根和导入模块的新校验与恢复合法对照；其他过滤为0的不计证据；[log](runtime-validation.log)。 |
-| SDK `plan841_ui_domain_validation` | 1 pass | rust/vue/jet/shadcn 写盘前拒绝与合法控制；[log](sdk-validation.log)。 |
+| compiler `ui_domain_validation` | 3 pass | 本次新增的高层校验/根/单层跨文件；[log](compiler-validation.log.txt)。 |
+| dialect `codec::tests` | 7 pass | 深度修复、语义拒绝、旧信封、字段/span/source_lines/Weak；[log](codec.log.txt)。 |
+| runtime `plan841_domain_validation` | 2 pass | 根和导入模块的新校验与恢复合法对照；其他过滤为0的不计证据；[log](runtime-validation.log.txt)。 |
+| SDK `plan841_ui_domain_validation` | 1 pass | rust/vue/jet/shadcn 写盘前拒绝与合法控制；[log](sdk-validation.log.txt)。 |
 | rustfmt | 181 files / 0 fail | 全 Plan 触面，不含临时审查 probe；三仓 diff-check 通过。 |
 
 AC 更新：AC-01 保留 R1 已审中立分类/无反向实现依赖证据（本轮 validator 在 UI owner，Core 端口未改）；AC-02/04 因 F841-R1-01 仍 fail，已通过的高层子路径证据保留；AC-03 原深度项 pass，但新 F841-R2-01 使整体 fail；AC-05/06 fail；AC-07 merge-owned pending。
@@ -90,4 +90,7 @@ R1 的未变语义/模型/golden 证据按对应文件范围保留。792/777 原
 
 主计划回到 **executing 4/12**：重开 T-02/T-05/T-06/T-08/T-09；保留 T-01/T-03/T-04/T-07 已完成子产出。F841-R1-02/03 记录 CLOSED，F841-R1-01 OPEN，新 F841-R2-01 OPEN。统一裸 cargo t、适用 tv/tt/tu、三仓交付/Spec-ledger/归档/guard 收尾仍 merge-owned pending。未合入，不放行 U841。
 
-临时 probe 源与日志已复制到本目录，并从原实施树撤去；没有产品实现改动。实施代码保持上述冻结 commit，最终状态见 final-state.json。
+临时 probe 源与日志已复制到本目录，并从原实施树撤去；没有产品实现改动。实施代码保持上述冻结 commit，最终状态见 final-state.json.txt。
+
+
+存证说明（merge）：Git 将可读差量规范化为 LF；若核对原复审 CRLF 字节的 SHA256，解码 [原字节 base64](spec-delta-reviewed.crlf.base64.txt)。行尾映射与 hash 见 [存证映射](../merge-r1/evidence-line-endings.json.txt)，原 verdict 与规范内容未改。

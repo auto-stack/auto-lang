@@ -9,7 +9,7 @@
 - lang `6892bad1ae9556f93da743bb1af265625330d809`，repair base `a0473d515129ad1016a164fc0f3201c9334805cc`；本轮语言树仅文档/候选 Spec，无 Rust 变化。
 - Man `ebfbb37903d24bcea3cbd81c6a0a5602da605982` 未变；down clean clone `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` 未变。
 - 主计划读自主检出，revision 1。依据 [work 诊断/关闭矩阵冻结副本](repair-r2-closeout.md)，检查 R2 两开放项及新增共享预检的合法输入、状态和失败传播；不重跑无关已闭验收或全档。
-- 提交、Plan 输入 hash、依赖/配置和主检出/候选 Spec hash 见 [baseline.json](baseline.json)。完整候选规范差量 [spec-delta-reviewed.diff](spec-delta-reviewed.diff)，SHA256 `a25d999e4d9b3b325eecadf547463870c9d87bb0c73d96b96e9025e0e0faf11b`。未发布 canonical 或 ledger。
+- 提交、Plan 输入 hash、依赖/配置和主检出/候选 Spec hash 见 [baseline.json.txt](baseline.json.txt)。完整候选规范差量 [spec-delta-reviewed.diff](spec-delta-reviewed.diff)，SHA256 `a25d999e4d9b3b325eecadf547463870c9d87bb0c73d96b96e9025e0e0faf11b`。未发布 canonical 或 ledger。
 
 ## Prior finding closure
 
@@ -53,7 +53,7 @@ widget App { view { button (style: chip) { text "ok" {} } } }
 
 预期：named/wildcard/local 合法源码在 full/incremental 冷状态都正常准入与生成，不依赖此前同线程处理过哪些文件；实际 class 包含 `rounded-full`。
 
-[recipe-final-controls.log](recipe-final-controls.log) 是最终 probe 的完整原始记录：
+[recipe-final-controls.log.txt](recipe-final-controls.log.txt) 是最终 probe 的完整原始记录：
 
 | Case | Cold | After legitimate component generation |
 |---|---|---|
@@ -76,12 +76,12 @@ work 先修该共享状态/时序问题与永久 cold 控制，再提交受影�
 
 | Check | Result | Bound evidence |
 |---|---|---|
-| 原 R2 工具反例 | 1 pass，含6次真实生成调用 | [original-tools.log](original-tools.log)；三合法成功、三无效拒绝且零输出。 |
-| 原 compiler/codec/Core probe | 5 pass | [original-codec-and-compiler.log](original-codec-and-compiler.log)；尾随、深度、Core expr/fn/scene/task 及旧高层拒绝保持。 |
-| tools 永久 `ui_domain_validation` | 4 pass | [permanent-tools.log](permanent-tools.log)；实际断言/循环已读，无“banner当覆盖”的推断。 |
-| codec 永久 `codec::tests` | 9 pass | [permanent-codec.log](permanent-codec.log)；合法/坏形状/payload/尾随/寿命。 |
-| 新合法配方兼容 probe | **2 fail** | [recipe-final-controls.log](recipe-final-controls.log)；冷态、命名/通配符/local/full/incremental/实际 class 对照。较早同组日志保留为探索记录，以此最终版本为准。 |
-| repair touched rustfmt / diff-check | 8 files / 0 fail | [format.log](format.log)；保留 R2 未变文件的格式证据，不重放181文件。 |
+| 原 R2 工具反例 | 1 pass，含6次真实生成调用 | [original-tools.log.txt](original-tools.log.txt)；三合法成功、三无效拒绝且零输出。 |
+| 原 compiler/codec/Core probe | 5 pass | [original-codec-and-compiler.log.txt](original-codec-and-compiler.log.txt)；尾随、深度、Core expr/fn/scene/task 及旧高层拒绝保持。 |
+| tools 永久 `ui_domain_validation` | 4 pass | [permanent-tools.log.txt](permanent-tools.log.txt)；实际断言/循环已读，无“banner当覆盖”的推断。 |
+| codec 永久 `codec::tests` | 9 pass | [permanent-codec.log.txt](permanent-codec.log.txt)；合法/坏形状/payload/尾随/寿命。 |
+| 新合法配方兼容 probe | **2 fail** | [recipe-final-controls.log.txt](recipe-final-controls.log.txt)；冷态、命名/通配符/local/full/incremental/实际 class 对照。较早同组日志保留为探索记录，以此最终版本为准。 |
+| repair touched rustfmt / diff-check | 8 files / 0 fail | [format.log.txt](format.log.txt)；保留 R2 未变文件的格式证据，不重放181文件。 |
 
 编译使用既有基线警告；未发现本次新增未处理 warning/debug 输出。未运行裸 cargo t/tv/tt/tb/tu/taa/tf 或整体 792。
 
@@ -95,4 +95,7 @@ work 先修该共享状态/时序问题与永久 cold 控制，再提交受影�
 
 主计划回到 **executing 6/12**：重开 T-05/T-08/T-09，保留 T-01/T-02/T-03/T-04/T-06/T-07 已完成产出与全部历史 review。F841-R1-01、F841-R2-01 本轮关闭，F841-R1-02/03 保持关闭，新增 F841-R3-01 OPEN。统一裸 cargo t 与适用 tv/tt/tu、三仓交付/Spec-ledger/归档/guard 等仍 merge-owned pending。未合入，不放行 U841。
 
-临时 probe 已从实施树撤去，源码/日志保存在本目录；最终状态与 hash 见 final-state.json。
+临时 probe 已从实施树撤去，源码/日志保存在本目录；最终状态与 hash 见 final-state.json.txt。
+
+
+存证说明（merge）：Git 将可读差量规范化为 LF；若核对原复审 CRLF 字节的 SHA256，解码 [原字节 base64](spec-delta-reviewed.crlf.base64.txt)。行尾映射与 hash 见 [存证映射](../merge-r1/evidence-line-endings.json.txt)，原 verdict 与规范内容未改。

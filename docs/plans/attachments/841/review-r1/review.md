@@ -9,7 +9,7 @@
 - Man `ebfbb37903d24bcea3cbd81c6a0a5602da605982`，base `1b7a9ce0de9055f7953129d78a25777662508258`。
 - 既有树 `D:/autostack/.wt/lang-841/{auto-lang,auto-ui,auto-man}`，分支均 `codex/plan-841-dev`；进入及退出审查三树均 clean、HEAD 未漂移。down 固定 clean clone `auto-down-clean` 为 `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`；未纳入原 down 兄弟的其他 WIP。
 - 主计划从语言主检出读取；主检出已有其他会话文档 WIP，不作变更/提交。G841 的 831/832 终态及来源交接有主计划与归档证据，未发现越门依据。
-- [baseline.json](baseline.json) 冻结主计划输入 hash、各 commit、当前主检出 Spec 与候选 Spec 的逐文件 hash。候选规范差量完整冻结在 [spec-delta-reviewed.diff](spec-delta-reviewed.diff)，SHA256 `9a15abe00455fd72e9aab9b11380db42702b8ee2e54ab1045f42ec502191f2a6`。此副本用于复审，不代表批准沉淀。
+- [baseline.json.txt](baseline.json.txt) 冻结主计划输入 hash、各 commit、当前主检出 Spec 与候选 Spec 的逐文件 hash。候选规范差量完整冻结在 [spec-delta-reviewed.diff](spec-delta-reviewed.diff)，SHA256 `9a15abe00455fd72e9aab9b11380db42702b8ee2e54ab1045f42ec502191f2a6`。此副本用于复审，不代表批准沉淀。
 
 ## 发现与可复现关闭条件
 
@@ -26,7 +26,7 @@ widget App { view { text "ok" {} } }
 widget App { view { text "ok" {} } }
 ```
 
-入口：同目录 `review841_probe.rs::review841_public_generators_enforce_domain_validation`。`parse_ui` 成功，`lower_ui` 明确报 `UI domain validation failed: duplicate widget declaration App`；但 `transpile_aura`、`transpile_vue_aura` 都返回 Ok 并生成。合法单 widget 两路均成功。见 [review841-confirmed.log](review841-confirmed.log)：`public Rust accepted=true, public Vue accepted=true`。
+入口：同目录 `review841_probe.rs::review841_public_generators_enforce_domain_validation`。`parse_ui` 成功，`lower_ui` 明确报 `UI domain validation failed: duplicate widget declaration App`；但 `transpile_aura`、`transpile_vue_aura` 都返回 Ok 并生成。合法单 widget 两路均成功。见 [review841-confirmed.log.txt](review841-confirmed.log.txt)：`public Rust accepted=true, public Vue accepted=true`。
 
 已证原因是上述两个公开入口缺失已存在的 validator 调用；runtime/SDK 的相同结构为源码确认的相邻风险，未声称本轮已运行其重复声明反例。不能仅修改测试或把重复声明标记为历史行为来关闭既定准入合同。
 
@@ -36,7 +36,7 @@ widget App { view { text "ok" {} } }
 
 合同内缺口；AC-03/05，T-02/T-06/T-08/T-09。计划 V-03 和 T-01 contract-baseline §4 明确合法嵌套/序列化往返，沿既有 parser 支持边界，不新增任意限额。
 
-输入构造：`widget App { view { ` + `col { ` 重复 48 次 + `text "leaf" {}` + ` }` 重复 48 次 + ` } }`。在同一 32MiB 测试线程内真实 `parse_ui`、`lower_ui`、`encode_ui_code` 全部成功，编码仅 **4253 bytes**；`decode_ui_code` 返回 `UI AST schema/tag validation failed: recursion limit exceeded at line 1 column 2505`。深度 4/16/32 合法对照均成功，非大输入压力承诺。见 `review841_codec_roundtrips_supported_nested_views` 与 [确认日志](review841-confirmed.log)。
+输入构造：`widget App { view { ` + `col { ` 重复 48 次 + `text "leaf" {}` + ` }` 重复 48 次 + ` } }`。在同一 32MiB 测试线程内真实 `parse_ui`、`lower_ui`、`encode_ui_code` 全部成功，编码仅 **4253 bytes**；`decode_ui_code` 返回 `UI AST schema/tag validation failed: recursion limit exceeded at line 1 column 2505`。深度 4/16/32 合法对照均成功，非大输入压力承诺。见 `review841_codec_roundtrips_supported_nested_views` 与 [确认日志](review841-confirmed.log.txt)。
 
 原因位置 `auto-ui-dialect/src/codec.rs:24..26`：直接 `serde_json::from_slice` 的默认递归限制成为新解码边界，encoder/parser/lowering 没有对应拒绝，版本相同的自身产物无法 roundtrip。测试线程栈只防探针线程栈成为混淆因素，不修改生产预算。
 
@@ -44,7 +44,7 @@ widget App { view { text "ok" {} } }
 
 ### F841-R1-03 / P2 / OPEN — 触面格式门未通过
 
-AC-05/06，T-09（相关 T-05 文件）。主仓 AGENTS §3 的独立复审健康要求为 clean formatting。按三仓完整差量筛选存在的 Rust 文件，执行 `rustfmt --check --edition 2021 --config skip_children=true <file>`，**30 文件失败**（lang 2、UI 28、Man 0），见 [fmt.log](fmt.log)。
+AC-05/06，T-09（相关 T-05 文件）。主仓 AGENTS §3 的独立复审健康要求为 clean formatting。按三仓完整差量筛选存在的 Rust 文件，执行 `rustfmt --check --edition 2021 --config skip_children=true <file>`，**30 文件失败**（lang 2、UI 28、Man 0），见 [fmt.log.txt](fmt.log.txt)。
 
 包括全新 fixture `test/fixtures/modularity/ui-ast-model-consumer/tests/v02_ui_golden.rs:34`、本次新增的 recipe 签名空行、`dynamic_build.rs` 的 parse_domain 链和循环缩进、runtime 测试的 UiCode imports。新文件及本次新增行足以排除“只有旧 lib.rs 预存问题”的归因；不要求顺手格式化整个仓。
 
@@ -75,7 +75,7 @@ AC-05/06，T-09（相关 T-05 文件）。主仓 AGENTS §3 的独立复审健�
 ## 证据适用与环境限制
 
 - 792 最终收据绑定 lang `338c95021`，到当前 `acd8d99d2` 仅多出该收据文件，UI/Man 代码均未再改；故生成与发行证据未因最终 receipt 提交自动失效。未重跑成本高的完整发行矩阵，也不以旧 39/39 覆盖新反例。
-- 外部 `ui-dialect-consumer` 本轮编译停于 `rustc-LLVM ERROR: IO failure on output stream: no space on device`，原始 [external log](review841-external.log) 保留。没有改 Cargo feature/锁/预算绕过；初始没有的三个 fixture Cargo.lock 已撤去。
+- 外部 `ui-dialect-consumer` 本轮编译停于 `rustc-LLVM ERROR: IO failure on output stream: no space on device`，原始 [external log](review841-external.log.txt) 保留。没有改 Cargo feature/锁/预算绕过；初始没有的三个 fixture Cargo.lock 已撤去。
 - 探索性 Core on 输入在 Core/domain 两路均不合法，属于 probe setup error，**不是产品 finding**。可用的 Core parity 表达式/fn/scene 已过；task 的简单形式在探索中成功，更复杂未定义事件/错误语句分隔未计入验收。修正后的 probe 源保留，最终只复跑与产品两缺陷直接相关且函数内容未变的三个 case（跳过该探索性 parity case），确认 1 pass/2 fail；无从失败控制得出 Core 支持退化结论。
 - 为重放临时将 probe 置于 UI compiler 的 tests 目录，之后已移出；最终三仓 clean。部分失败编译缓存清理被自动审批拒绝（`blocked by policy`，未给更细理由），未继续尝试替代删除；不删除任何已有成功产物/工作树。
 
@@ -86,3 +86,6 @@ AC-05/06，T-09（相关 T-05 文件）。主仓 AGENTS §3 的独立复审健�
 3. work 同树修复本轮全部 findings、补永久反例/相邻合法控制、处理触面格式并提交；刷新受影响来源/SD/ready receipt，再交受影响复审。未变证据可按 hash/配置/输入一致性复用。
 
 本次重开 T-02/T-05/T-06/T-08/T-09，保留 T-01/T-03/T-04/T-07 的具体已完成产出，主计划 **executing 4/12**。统一裸 `cargo t` 与适用 `tv/tt/tu`、三仓统一交付门仍 pending，由修复后的 final pass 之后的 merge 角色在冻结输入执行；tf 只按批量到期规则在主检出串行。当前不得合入、归档或放行 U841。
+
+
+存证说明（merge）：Git 将可读差量规范化为 LF；若核对原复审 CRLF 字节的 SHA256，解码 [原字节 base64](spec-delta-reviewed.crlf.base64.txt)。行尾映射与 hash 见 [存证映射](../merge-r1/evidence-line-endings.json.txt)，原 verdict 与规范内容未改。
