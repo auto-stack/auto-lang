@@ -139,3 +139,5 @@ G841未满足前禁止创建/认领以下组、分支或work agent。未来组`D
 ## 10. 待澄清事项
 
 当前调度/范围已明确，不需重复确认；T-01负责§2机制、实际三仓路径/消费者与资源策略的有界冻结，门前不得提前probe。无法保持合同或需改变长期支持/源码语义/后端/远端动作则具体needs_replan；不静默缩面、豁免源身份或把本Plan必需集成延期给后继。全部实施等前置完整交付合入/归档收尾，不以status/单阶段pass越门。
+
+**T-02 盘点的破损拓扑（供 T-03..T-05 排期，不需用户裁定但须知晓）**：`cargo check -p auto-ui-runtime`（UI 树，组内 ../auto-lang 解析生效）= 83 错两组——①runtime 自身消费已删 Core UI 臂/`ast::ui`/`resolve_use_module`（owner=T-05）；②feature 统一点点亮的 auto-lang-core 门控面（vm/native.rs 72、ffi/engine/trans 等，owner=T-04 VM 准入或 T-05 视具体面）。`auto-ui-runtime` 是 SDK `auto-lang` 的**无条件**依赖（default-features=false 仍必选），故 SDK（含其 lib.rs 内 4 处 `set_ui_grammar(ui_grammar())` 悬空引用与 inventory UiGrammarSource 装配，owner=T-03）在 T-05 完成前任何配置都不可编译——T-03 的 SDK 侧改动只能以 core/parser-api/dialect/compiler 档验证，SDK 自身验证顺延至 T-05 后补，merge 门（AC-06/07）前必须全绿闭环。
