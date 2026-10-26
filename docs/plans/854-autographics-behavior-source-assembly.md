@@ -139,6 +139,8 @@ T-04新增当前`research/plan854-identity.json`/verifier，沿853明确当前�
 
 2026-10-26 merge entry：用户明确授权 /auto-plan:merge；独立final R1 pass绑定523d27b863dbe306c89af0ea546334225a29f8e9及SD SHA6a29da3e8857594c97f22aecf0f762ba6ee62643f533661fbef96a44e96f4b9a。唯一树/plan-854-dev/HEAD/clean及autographics-dev前置c1961665d已核。T-07启动冻结完整producer/fresh own-SDK consumer与原native/owner/content门；沿用853完整执行器显式重绑854，不削原分母。独立实验共同合同不触发根Cargo整档。主检出其他会话docs WIP和既有未跟踪code/test锁保持不动，快照见attachments/854/merge-r1/baseline.json.txt。当前仍reviewed6/9，未合入/归档/清理。
 
+2026-10-26 merge进度（T-07未关闭）：生产者/全新own-SDK空target消费者完整测试各79块/287通过/0failed/0ignored，原280逐binary ID包含；两端21生成文件逐字节等于853原产物，工具各7永久例通过。生产者全部原native（含motion14+4重开/6负owner+恢复）已通过，消费者native与两端剩余owner矩阵进行。clock-controls首次restore-v在phase2未建立Run、未到100ms注入而拒绝；原现场保留，完全同SHA payload重放达到phase21并恢复，完整六例矩阵重跑五正+原负全通过，闭环见attachments/854/merge-r1/clock-recovery.json.txt与failure-closures.json.txt；没有改代码/预算/oracle。其他已过组按同基线复用未重跑。仍reviewed6/9、未合入/归档/清理。
+
 ## 10. 待澄清事项
 
 853实际交付前置已闭合；T-02组织决策已记录。当前无work阻塞、必需覆盖缺口或未决合同问题。需要改变公共身份/接受规则/预算、Auto算法或生产仓边界时，先据证据回new修订，不在work静默扩面。
