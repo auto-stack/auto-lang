@@ -4592,7 +4592,31 @@
  "created_at": 1792954475,
  "modified_at": 1792954475,
  "completed_at": 1792954475
-}],
+},
+        {
+          "id": "P850-MERGE",
+          "title": "PLAN-850 delivered complete regression ownership",
+          "content": "Delivery 7750f8d3399fe8aa620b7eecb6c7390ca810df05; main-checkout exclusive full batch language/UI/tt/tb all exit0, original selected counts3218/3073/3553/3109. Ledger is a guarded offline projection from canonical Specs; archival and cleanup receipts are in Plan850.",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-850"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-lang/plans.md",
+          "milestone": null,
+          "module": null,
+          "tags": [
+            "PLAN-850",
+            "commit:7750f8d3399fe8aa620b7eecb6c7390ca810df05",
+            "sha256:3632e1230e5c1d85083c7cae67055d6bb3dabf2ff3752b832fafa3cdaa95e552"
+          ],
+          "created_at": 1792972939,
+          "modified_at": 1792972939,
+          "completed_at": null
+        }],
       "section_type": "Reports",
       "title": "📊 Reports",
       "status": "empty",
@@ -15389,10 +15413,12 @@
         {
           "id": "P840-P2-AUTO-LANG",
           "title": "Auto-lang timing and fixture resource contracts",
-          "content": "PLAN-840 phase2: Two unchanged real wall-clock oracles use shared phase boundaries and reserve num-test-threads in default/full/t3; all existing aliases/filters, inputs, P95<1000ms and tiling bounds retained. Runner-local pool reservation does not claim external machine isolation.\n\nPLAN-840 r8: Explicit full/t3 configuration replaces daily configuration: existing ffi-dual serial group binds all23 real family IDs in both files. No selected tests/features/layout oracles removed. Original timing shared-boundary and pool-reservation contract retained.",
+          "content": "PLAN-840 phase2: Two unchanged real wall-clock oracles use shared phase boundaries and reserve num-test-threads in default/full/t3; all existing aliases/filters, inputs, P95<1000ms and tiling bounds retained. Runner-local pool reservation does not claim external machine isolation.\n\nPLAN-840 r8: Explicit full/t3 configuration replaces daily configuration: existing ffi-dual serial group binds all23 real family IDs in both files. No selected tests/features/layout oracles removed. Original timing shared-boundary and pool-reservation contract retained.\n\nPLAN-850: cargo tf/taa/ta/t3 dispatch real language/UI owners serially. Every formal feature child has independent complete/required ID baselines; failures, empty selection and suppressed required IDs reject. Original profiles/oracles remain unchanged.",
           "status": "verified",
           "depends_on": [],
-          "related": [],
+          "related": [
+            "PLAN-850"
+          ],
           "priority": null,
           "assignee": null,
           "test_file": null,
@@ -15407,10 +15433,13 @@
             "phase2+phase4",
             "reviewed:ba6479da53b7999e490dd0e8ac8d701d5ffe86b2",
             "source-sha256:55bef47f3ca6de45f026a5f61ea0ac6d637961d4cea4152271d306e8d891f358",
-            "source-path:docs/specs/auto-lang/project.md"
+            "source-path:docs/specs/auto-lang/project.md",
+            "PLAN-850",
+            "commit:7750f8d3399fe8aa620b7eecb6c7390ca810df05",
+            "sha256:839eedb556f84c776177b411aba479c7c964ce7e2a0ae2cb95086d056bb92eca"
           ],
           "created_at": 1792835257,
-          "modified_at": 1792838779,
+          "modified_at": 1792972939,
           "completed_at": 1792838779
         },
         {
@@ -15535,10 +15564,12 @@
         {
           "id": "P831-AUTO-UI-REPO",
           "title": "auto-ui 独立仓（五包 owner）",
-          "content": "auto-ui 仓持有 auto-ui-dialect/compiler/runtime/tools/shell-pack 五包；语言 SDK/project-model/api-gen 留语言仓单源；旧 auto-lang 为上层兼容再导出不入纯 SDK 闭包；三仓组布局+受管锁；tu 863 唯一 ID 恒等基线。",
+          "content": "auto-ui 仓持有 auto-ui-dialect/compiler/runtime/tools/shell-pack 五包；语言 SDK/project-model/api-gen 留语言仓单源；旧 auto-lang 为上层兼容再导出不入纯 SDK 闭包；三仓组布局+受管锁；tu 863 唯一 ID 恒等基线。\n\nPLAN-850: UI full retains compiler/dialect/runtime lib, compiler/ui and the original full configuration including ui_gen. UI daily t is not a full substitute; 3091 unique inherited IDs remain covered.",
           "status": "verified",
           "depends_on": [],
-          "related": [],
+          "related": [
+            "PLAN-850"
+          ],
           "priority": null,
           "assignee": null,
           "test_file": null,
@@ -15550,8 +15581,13 @@
             "r3",
             "lang:d7f378b67",
             "ui:aee499e87",
-            "review-pass:review-r7"
-          ]
+            "review-pass:review-r7",
+            "PLAN-850",
+            "commit:7750f8d3399fe8aa620b7eecb6c7390ca810df05",
+            "sha256:ff19acaf953b6fe5b5f08fc436dcc74aa968114e2e8ca04ab2e2a6be79974bb0"
+          ],
+          "modified_at": 1792972939,
+          "completed_at": null
         },
         {
           "id": "P831-UI-REPO-DELIVERY",
@@ -19438,7 +19474,31 @@
  "created_at": 1792954475,
  "modified_at": 1792954475,
  "completed_at": 1792954475
-}],
+},
+        {
+          "id": "P850-FULL-GUARDS",
+          "title": "Full-regression owner and coverage guards",
+          "content": "Independent whole-tier ID/required snapshots, real-owner metadata, process/machine/WIP controls. F850-R1-01 closed by per-feature baselines, five real positive/scoped inputs and fifteen distinguishing mutations; sixteen permanent unittest methods pass.",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-850"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-lang/project.md",
+          "milestone": null,
+          "module": null,
+          "tags": [
+            "PLAN-850",
+            "commit:7750f8d3399fe8aa620b7eecb6c7390ca810df05",
+            "sha256:839eedb556f84c776177b411aba479c7c964ce7e2a0ae2cb95086d056bb92eca"
+          ],
+          "created_at": 1792972939,
+          "modified_at": 1792972939,
+          "completed_at": null
+        }],
       "section_type": "Tests",
       "title": "🧪 Tests",
       "status": "empty",
@@ -26074,7 +26134,31 @@
  "created_at": 1792954475,
  "modified_at": 1792954475,
  "completed_at": 1792954475
-}],
+},
+        {
+          "id": "P850-REVIEW",
+          "title": "PLAN-850 independent final pass",
+          "content": "Independent read-only /root/review_850 final pass after F850-R1-01 repair and post-832 rebase. Frozen 7750f8d3399fe8aa620b7eecb6c7390ca810df05. AC01-03 verified; actual full batch is separately admitted at merge.",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-850"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/plans/attachments/850/merge/independent-review.md",
+          "milestone": null,
+          "module": null,
+          "tags": [
+            "PLAN-850",
+            "commit:7750f8d3399fe8aa620b7eecb6c7390ca810df05",
+            "sha256:24adc1b535044f4b1365175b1522e8239fe2739bd312523094716b225d02682d"
+          ],
+          "created_at": 1792972939,
+          "modified_at": 1792972939,
+          "completed_at": null
+        }],
       "section_type": "Reviews",
       "title": "🔍 Reviews",
       "status": "empty",
@@ -26085,5 +26169,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 89
+  "version": 90
 }

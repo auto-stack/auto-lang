@@ -2,4 +2,4 @@
 
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |---|---|---|---|---|
-| 850 | 恢复迁仓后的跨 workspace 全量回归编排 | executing | 待归档 | 按真实 owner 串行执行，逐 ID 与必选状态守恒，失败传播与 WIP 报告保护。 |
+| 850 | 恢复迁仓后的跨 workspace 全量回归编排 | archived | [850](../../plans/archive/850-restore-cross-workspace-full-regression.md) | 按真实 owner 串行执行，逐 ID 与必选状态守恒，失败传播与 WIP 报告保护。 |
