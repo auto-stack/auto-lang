@@ -86,11 +86,14 @@ pub enum MirType {
     /// this one shape. `arms` in declaration order carry optional payload
     /// type indices; the arm INDEX is the runtime discriminant.
     Variant(VariantTypeRef),
-    /// Index Place/token (PLAN-822 §5.1.3, wire tag 15): a slot type whose
-    /// values are retained element references (one per instruction); the
-    /// runtime re-validates buffer identity, structural epoch and element
-    /// generation at every use — a stale place traps before any access.
-    Place,
+    /// Index Place/token (PLAN-822 §5.1.3, wire tag 15): a retained
+    /// element reference type PARAMETERIZED by its referent list
+    /// (F822-R3-01: the element type is bound at typing — LIST_PLACE
+    /// mints only over a matching list, PLACE_GET/SET type against the
+    /// bound element). The runtime additionally re-validates buffer
+    /// identity, structural epoch and element generation at every use —
+    /// a stale place traps before any access.
+    Place(ListTypeRef),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -722,7 +725,7 @@ impl MirModule {
             | MirType::MutRef
             | MirType::List(_)
             | MirType::Variant(_)
-            | MirType::Place => None,
+            | MirType::Place(_) => None,
         }
     }
 
@@ -884,7 +887,7 @@ impl MirModule {
                 // PLAN-822: List carries one element index inline; Variant
                 // owns its arm table (names + payload indices); Place is
                 // an inline capability type.
-                MirType::List(_) | MirType::Place => 0,
+                MirType::List(_) | MirType::Place(_) => 0,
                 MirType::Variant(v) => {
                     v.owner_module.len()
                         + v.name.len()

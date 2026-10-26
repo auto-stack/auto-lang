@@ -370,10 +370,20 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<u32> {
                 | MirType::Char
                 | MirType::Str
                 | MirType::StrView
-                | MirType::MutRef
-                | MirType::Place => {
+                | MirType::MutRef => {
                     map[i] = merged.intern_type(t.clone());
                     progress = true;
+                }
+                // PLAN-822 R3: a Place interns once its REFERENT element
+                // type is mapped (same fixpoint rule as List).
+                MirType::Place(l) => {
+                    if map[l.elem as usize] != u32::MAX {
+                        let np = ListTypeRef {
+                            elem: map[l.elem as usize],
+                        };
+                        map[i] = merged.intern_type(MirType::Place(np));
+                        progress = true;
+                    }
                 }
                 // Record-view types intern once every FIELD type is
                 // mapped (PLAN-821 R1-F08) - same nominal identity rule.

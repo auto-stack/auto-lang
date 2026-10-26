@@ -437,18 +437,42 @@ fn beta_trapping_unit() -> MirModule {
         name: "beta".to_string(),
         sig: t_sig,
         slots: vec![
-            MirSlot { kind: SlotKind::Local, ty: t_list, name: Some("list".into()) },
-            MirSlot { kind: SlotKind::Local, ty: t_i32, name: Some("v".into()) },
-            MirSlot { kind: SlotKind::Local, ty: t_i32, name: Some("i".into()) },
-            MirSlot { kind: SlotKind::Local, ty: t_i32, name: Some("got".into()) },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_list,
+                name: Some("list".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_i32,
+                name: Some("v".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_i32,
+                name: Some("i".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_i32,
+                name: Some("got".into()),
+            },
         ],
         blocks: vec![MirBlock {
             instrs: vec![
                 MirInstr::Const { dst: 1, value: c7 },
-                MirInstr::ListNew { dst: 0, list_ty: t_list, cap: 0 },
+                MirInstr::ListNew {
+                    dst: 0,
+                    list_ty: t_list,
+                    cap: 0,
+                },
                 MirInstr::ListPush { root: 0, value: 1 },
                 MirInstr::Const { dst: 2, value: c9 },
-                MirInstr::ListGet { dst: 3, base: 0, index: 2 }, // traps at runtime
+                MirInstr::ListGet {
+                    dst: 3,
+                    base: 0,
+                    index: 2,
+                }, // traps at runtime
             ],
             term: Terminator::Return { value: 3 },
         }],

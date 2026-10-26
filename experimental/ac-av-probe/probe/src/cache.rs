@@ -1279,10 +1279,18 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<TypeIdx> {
                 | MirType::Char
                 | MirType::Str
                 | MirType::StrView
-                | MirType::MutRef
-                | MirType::Place => {
+                | MirType::MutRef => {
                     map[i] = merged.intern_type(t.clone());
                     progress = true;
+                }
+                MirType::Place(l) => {
+                    if map[l.elem as usize] != u32::MAX {
+                        let np = ListTypeRef {
+                            elem: map[l.elem as usize],
+                        };
+                        map[i] = merged.intern_type(MirType::Place(np));
+                        progress = true;
+                    }
                 }
                 MirType::List(l) => {
                     if map[l.elem as usize] != u32::MAX {
@@ -1525,7 +1533,7 @@ pub fn render_unit_sig(unit: &MirModule) -> String {
             Some(MirType::RecordView(r)) => format!("recview:{}", r.name),
             Some(MirType::List(_)) => "list".to_string(),
             Some(MirType::Variant(v)) => format!("variant:{}", v.name),
-            Some(MirType::Place) => "place".to_string(),
+            Some(MirType::Place(_)) => "place".to_string(),
             None => "?".to_string(),
         }
     };

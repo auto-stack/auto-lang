@@ -135,7 +135,14 @@ $REQ = @{
         'av_collections_822_semantics_place_stale_after_push',
         'av_collections_822_semantics_place_stale_after_remove_fresh_reads_shift',
         'av_collections_822_semantics_place_retired_by_element_replacement',
-        'av_collections_822_semantics_place_mint_out_of_range_traps'
+        'av_collections_822_semantics_place_mint_out_of_range_traps',
+        'av_collections_822_semantics_place_get_wrong_type_rejected',
+        'av_collections_822_semantics_place_set_wrong_type_rejected',
+        'av_collections_822_semantics_place_mint_binds_referent',
+        'av_collections_822_semantics_move_preserves_list',
+        'av_collections_822_semantics_move_preserves_owned_elements',
+        'av_collections_822_semantics_copy_share_drop_source_preserves_dst',
+        'av_collections_822_semantics_call_move_in_preserves_list'
     )
     'admission' = @(
         'av_collections_822_first_case_admission_negatives'

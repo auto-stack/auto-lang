@@ -541,7 +541,7 @@ pub(crate) fn typed_zero(t: Option<&MirType>) -> Value {
         }),
         // PLAN-822 R2: a never-read place placeholder (definite
         // initialization gates every use; never observed).
-        Some(MirType::Place) => Value::Place(crate::contract::ListPlaceV {
+        Some(MirType::Place(_)) => Value::Place(crate::contract::ListPlaceV {
             frame: u32::MAX,
             slot: u32::MAX,
             buf_id: u64::MAX,
@@ -859,10 +859,17 @@ fn min_buffer_id(val: &Value) -> u64 {
 fn drop_owned_reverse(st: &mut LoopState, val: Value) {
     match val {
         Value::List(h) => {
-            let mut elems = std::mem::take(&mut h.rc.borrow_mut().elems);
-            while let Some(e) = elems.pop() {
-                st.steps += 1; // reserved cleanup fuel (cancel point)
-                drop_owned_reverse(st, e);
+            // F822-R3-02: a handle clone releasing a SHARED buffer is a
+            // responsibility transfer (MOVE/COPY/kill-after-push-in), not
+            // the final destruction — draining it here would empty the
+            // destination's list. Only the LAST handle reverse-cleans the
+            // elements, then the buffer frees.
+            if std::rc::Rc::strong_count(&h.rc) == 1 {
+                let mut elems = std::mem::take(&mut h.rc.borrow_mut().elems);
+                while let Some(e) = elems.pop() {
+                    st.steps += 1; // reserved cleanup fuel (cancel point)
+                    drop_owned_reverse(st, e);
+                }
             }
             drop(h); // the buffer itself frees after its elements
         }

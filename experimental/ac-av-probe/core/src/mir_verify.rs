@@ -357,8 +357,11 @@ impl<'a> Verifier<'a> {
                         ),
                     ));
                 }
-                // PLAN-822: the List/Variant surface is collections-only.
-                MirType::List(_) | MirType::Variant(_) if !self.is_collections => {
+                // PLAN-822: the List/Variant/Place surface is
+                // collections-only.
+                MirType::List(_) | MirType::Variant(_) | MirType::Place(_)
+                    if !self.is_collections =>
+                {
                     return Err(MirVerifyError::uns(
                         "mir.profile-type",
                         format!(
@@ -2149,16 +2152,31 @@ impl<'a> Verifier<'a> {
                                 "LIST_PLACE exists only in the collections profile".to_string(),
                             ));
                         }
-                        // The element domain was validated at the type
-                        // table; the mint only needs the index shape.
-                        self.list_elem_of(f, *base, sp)?;
+                        // F822-R3-01: the referent element type BINDS at
+                        // the mint — dst must be Place{elem == base's
+                        // element}. A Place over a different element is a
+                        // typed-admission rejection.
+                        let elem = self.list_elem_of(f, *base, sp)?;
                         self.check_list_index_slot(f, *index, sp)?;
                         let dt = slot_ty_of(f, *dst, sp, "list-place dst")?;
-                        if !matches!(self.module.types.get(dt as usize), Some(MirType::Place)) {
-                            return Err(err(
-                                "mir.list-type",
-                                format!("list-place dst {} is not a Place type", dt),
-                            ));
+                        match self.module.types.get(dt as usize) {
+                            Some(MirType::Place(want)) => {
+                                if want.elem != elem {
+                                    return Err(err(
+                                        "mir.list-type",
+                                        format!(
+                                            "list-place dst Place refers to element {}, but the base list holds {}",
+                                            want.elem, elem
+                                        ),
+                                    ));
+                                }
+                            }
+                            _ => {
+                                return Err(err(
+                                    "mir.list-type",
+                                    format!("list-place dst {} is not a Place type", dt),
+                                ))
+                            }
                         }
                     }
                     MirInstr::PlaceGet { dst, src } => {
@@ -2169,24 +2187,34 @@ impl<'a> Verifier<'a> {
                             ));
                         }
                         let st = slot_ty_of(f, *src, sp, "place source")?;
-                        if !matches!(self.module.types.get(st as usize), Some(MirType::Place)) {
+                        let elem = match self.module.types.get(st as usize) {
+                            Some(MirType::Place(want)) => want.elem,
+                            _ => {
+                                return Err(err(
+                                    "mir.list-type",
+                                    format!("place-get source {} is not a Place type", st),
+                                ))
+                            }
+                        };
+                        // F822-R3-01: the destination must BE the bound
+                        // element type — a bool destination over a
+                        // List<i32> place is rejected at typing.
+                        let dt = slot_ty_of(f, *dst, sp, "place-get dst")?;
+                        if !self.ty_equiv(dt, elem) {
                             return Err(err(
                                 "mir.list-type",
-                                format!("place-get source {} is not a Place type", st),
+                                format!(
+                                    "place-get dst {} != the place's bound element type {}",
+                                    dt, elem
+                                ),
                             ));
                         }
-                        // The element type is checked against dst at
-                        // runtime through the place's root; statically we
-                        // require dst to be a COPY element kind (the
-                        // place's list cannot be recovered without data
-                        // flow — the runtime validates the actual element).
-                        let dt = slot_ty_of(f, *dst, sp, "place-get dst")?;
-                        if crate::ownership::type_is_owned(self.module, dt) {
+                        if crate::ownership::type_is_owned(self.module, elem) {
                             return Err(err(
                                 "mir.list-type",
                                 format!(
                                     "place-get of owned element type {} (places read Copy elements; use LIST_REMOVE)",
-                                    dt
+                                    elem
                                 ),
                             ));
                         }
@@ -2199,15 +2227,27 @@ impl<'a> Verifier<'a> {
                             ));
                         }
                         let st = slot_ty_of(f, *place, sp, "place source")?;
-                        if !matches!(self.module.types.get(st as usize), Some(MirType::Place)) {
+                        let elem = match self.module.types.get(st as usize) {
+                            Some(MirType::Place(want)) => want.elem,
+                            _ => {
+                                return Err(err(
+                                    "mir.list-type",
+                                    format!("place-set source {} is not a Place type", st),
+                                ))
+                            }
+                        };
+                        // F822-R3-01: the value must BE the bound element
+                        // type — writing a bool into a List<i32> through a
+                        // place is rejected at typing, before any access.
+                        let vt = slot_ty_of(f, *value, sp, "place-set value")?;
+                        if !self.ty_equiv(vt, elem) {
                             return Err(err(
                                 "mir.list-type",
-                                format!("place-set source {} is not a Place type", st),
+                                format!(
+                                    "place-set value {} != the place's bound element type {}",
+                                    vt, elem
+                                ),
                             ));
-                        }
-                        let vt = slot_ty_of(f, *value, sp, "place-set value")?;
-                        if crate::ownership::type_is_owned(self.module, vt) {
-                            // Allowed: an owned element replace via place.
                         }
                     }
                     MirInstr::BorrowEnd { token } => {

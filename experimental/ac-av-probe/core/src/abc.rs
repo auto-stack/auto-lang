@@ -633,7 +633,7 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                     }
                 }
             }
-            MirType::Place => {
+            MirType::Place(l) => {
                 if !family.allows_collections_tags() {
                     return Err(AbcDecodeError::fmt_err(
                         "abc.encode.profile",
@@ -641,6 +641,7 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                     ));
                 }
                 put_u8(&mut w, TY_PLACE);
+                put_u32(&mut w, l.elem);
             }
         }
     }
@@ -1237,8 +1238,7 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                         if !family.allows_collections_tags() {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
-                                "place operations in a non-collections-profile module"
-                                    .to_string(),
+                                "place operations in a non-collections-profile module".to_string(),
                             ));
                         }
                         put_u8(&mut w, OP_LIST_PLACE);
@@ -1250,8 +1250,7 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                         if !family.allows_collections_tags() {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
-                                "place operations in a non-collections-profile module"
-                                    .to_string(),
+                                "place operations in a non-collections-profile module".to_string(),
                             ));
                         }
                         put_u8(&mut w, OP_PLACE_GET);
@@ -1262,8 +1261,7 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                         if !family.allows_collections_tags() {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
-                                "place operations in a non-collections-profile module"
-                                    .to_string(),
+                                "place operations in a non-collections-profile module".to_string(),
                             ));
                         }
                         put_u8(&mut w, OP_PLACE_SET);
@@ -1871,9 +1869,11 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                     arms,
                 }));
             }
-            // PLAN-822 R2: the retained-element-reference capability type.
+            // PLAN-822 R2/R3: the retained-element-reference capability
+            // type, parameterized by its referent element.
             TY_PLACE if family.allows_collections_tags() => {
-                module.types.push(MirType::Place);
+                let elem = c.u32()?;
+                module.types.push(MirType::Place(ListTypeRef { elem }));
             }
             other => {
                 return Err(AbcDecodeError::fmt_err(
