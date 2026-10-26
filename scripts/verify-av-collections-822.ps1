@@ -86,9 +86,12 @@ switch ($Scope) {
     }
     'incremental' {
         # V-13 (T-09): the D828 incremental seam over the collections
-        # capability. Owned by T-09; until its suite lands this scope
-        # FAILS closed (a missing mandatory scope may never read green).
-        throw "incremental: the T-09 suite is not wired yet — FAIL closed (V-13 pending)"
+        # capability — the frozen 30-revision baseline campaign replay
+        # (dual gate), the identity axes, the precise-invalidation and
+        # forced-degradation counter-controls, and the parent-sampled
+        # worker B-line memory gate.
+        Run-Probe-Tests -Bin 'av_collections_822_incremental' -Label 'incremental: V-13 identity/baseline/gate'
+        Run-Probe-Tests -Bin 'av_collections_822_resources' -Filter 'av_collections_822_worker_memory_hard_gate_parent_sampled' -Label 'incremental: worker B-line memory gate'
     }
     'acceptance' {
         # Replay EVERY scope in a CHILD process (env seams cannot leak).

@@ -103,7 +103,7 @@ fn admit(m: &MirModule) -> Arc<auto_av_core::function_code::FunctionCode> {
     // The REAL gates first (untrusted builder output).
     verify_mir(m).unwrap_or_else(|e| panic!("verify {e:?}"));
     let wire = encode_abc(m).unwrap_or_else(|e| panic!("encode"));
-    let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap_or_else(|e| panic!("{e:?}"));
+    let _loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap_or_else(|e| panic!("{e:?}"));
     // Rebuild the unit shape with the MIR-side owner schema (the wire
     // carries the ABC schema; verify_mir binds the MIR schema).
     let dec = decode_abc(&wire.to_flat()).unwrap();
@@ -176,18 +176,102 @@ fn av_collections_822_incremental_signature_change_precise() {
     }
 }
 
-/// V-13 sub-case 4 (gate-closed flavor): the collections incremental
-/// script scope FAILS CLOSED until the full T-09 wiring (baseline
-/// campaign replay + forced-degradation gate) lands — asserted here by
-/// convention: this file pins the IDENTITY axes only; the script scope
-/// owns the closed gate. The `incremental` scope throwing is the
-/// non-zero gate (a pending mandatory scope may never read green).
+// -- T-09: V-13 sub-case 1 — the D828 baseline campaign replay ------------
+
+/// V-13 sub-case 1: the FROZEN D828 baseline (273 575 B / 115 functions,
+/// >= 30 distinct body revisions at fn_037's multiplier site) replays
+/// GREEN through the shared core AFTER the collections extension — the
+/// dual gate (P95 < 1000 ms AND all-correct AND structural green) proves
+/// the 822 core edits did not regress the incremental machinery.
 #[test]
-fn av_collections_822_incremental_scope_is_fail_closed() {
-    // The script's incremental scope throws until T-09 completes; this
-    // test pins that the WORK-owned identity axes (sub-cases 2/3) are
-    // complete while the merge-owned campaign replay stays pending.
-    // (Assertion is structural: this file's two siblings above ARE the
-    // completed axes.)
-    assert!(true, "identity axes covered by the sibling tests");
+fn av_collections_822_incremental_baseline_campaign_replay() {
+    use auto_av_probe::formal_campaign::{
+        run_formal_campaign, CampaignConfig, FORMAL_GATE_MS, FORMAL_MIN_REVISIONS,
+    };
+    let cfg = CampaignConfig {
+        revisions: FORMAL_MIN_REVISIONS,
+        gate_ms: FORMAL_GATE_MS,
+    };
+    let worker = std::path::PathBuf::from(env!("CARGO_BIN_EXE_av_probe_worker"));
+    let report = run_formal_campaign(&worker, &cfg).expect("the baseline campaign completes");
+    assert!(report.failures.is_empty(), "{:?}", report.failures);
+    assert!(
+        report.all_correct,
+        "every baseline revision matched its independent expectation"
+    );
+    assert!(report.structural_ok, "the structural gate stays green");
+    assert!(report.gate_pass, "P95 < {} ms holds", FORMAL_GATE_MS);
+}
+
+// -- T-09: V-13 sub-case 4 — the forced-degradation counter-control --------
+
+/// V-13 sub-case 4: a FORCED whole-recompute revision (the unchanged
+/// function re-admitted into a fresh object — "only the hash kept, the
+/// object/generation swapped") MUST be caught by the structural gate:
+/// the identity predicate reports a non-zero degraded-unit count where
+/// the honest incremental revision reports zero. A gate that could not
+/// distinguish them would let silent whole-recompute pass as incremental.
+#[test]
+fn av_collections_822_incremental_forced_degradation_gate_nonzero() {
+    let fa1 = admit(&unit_fn("alpha", 1, false));
+    let fb1 = admit(&unit_fn("beta", 2, false));
+    let snap1 = ProgramSnapshot::link(vec![fa1.clone(), fb1.clone()], "alpha", 1)
+        .unwrap_or_else(|e| panic!("link: {e}"));
+
+    // The honest revision: alpha's body changes, beta's Arc is carried.
+    let fa2 = admit(&unit_fn("alpha", 9, false));
+    let snap2 = ProgramSnapshot::link(vec![fa2.clone(), fb1.clone()], "alpha", 2)
+        .unwrap_or_else(|e| panic!("link2: {e}"));
+
+    // The FORCED whole-recompute revision: beta re-admitted into a FRESH
+    // object under the same content (hash identical, object swapped).
+    let fb1_rebuilt = admit(&unit_fn("beta", 2, false));
+    let snap3 = ProgramSnapshot::link(vec![fa2.clone(), fb1_rebuilt.clone()], "alpha", 3)
+        .unwrap_or_else(|e| panic!("link3: {e}"));
+
+    // The structural gate over the unchanged (beta) slot, per revision:
+    // honest -> 0 degraded units; forced -> exactly the swapped one.
+    let degraded = |prev: &ProgramSnapshot, next: &ProgramSnapshot| -> usize {
+        let mut n = 0;
+        for i in 0..next.code().len().max(prev.code().len()) {
+            let same = match (prev.code().get(i), next.code().get(i)) {
+                (Some(x), Some(y)) => Arc::ptr_eq(x, y),
+                _ => false,
+            };
+            if !same {
+                n += 1;
+            }
+        }
+        n
+    };
+    // Revision 1 -> 2 (honest): only the EDITED function degrades; the
+    // unchanged function's gate bit reads ZERO.
+    assert_eq!(
+        degraded(&snap1, &snap2),
+        1,
+        "the honest edit degrades exactly alpha"
+    );
+    assert!(
+        Arc::ptr_eq(snap2.find_code("beta").unwrap(), &fb1),
+        "honest revision: beta's gate bit is zero"
+    );
+    // Revision 2 -> 3 (forced whole recompute): the UNCHANGED function's
+    // object was swapped under the same content — its gate bit reads
+    // NON-ZERO (the count is exactly the swapped unchanged unit; alpha,
+    // genuinely re-edited here only by carry-over, keeps its object).
+    assert!(!Arc::ptr_eq(
+        snap3.find_code("beta").unwrap(),
+        snap2.find_code("beta").unwrap()
+    ), "forced degradation: beta's gate bit must be non-zero (object swapped under an identical hash)");
+    assert_eq!(
+        degraded(&snap2, &snap3),
+        1,
+        "the forced revision degrades exactly the swapped unchanged unit"
+    );
+    // Alpha's object IS carried in the forced shape (the whole-recompute
+    // lie is about BETA), so the gate localizes the degradation.
+    assert!(Arc::ptr_eq(
+        snap3.find_code("alpha").unwrap(),
+        snap2.find_code("alpha").unwrap()
+    ));
 }

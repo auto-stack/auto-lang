@@ -31,6 +31,7 @@ fn main() {
         "data-mem-envelope" => data_mem_envelope(&args[1..]),
         "request" => request(&args[1..]),
         "owned-request" => owned_request(&args[1..]),
+        "collections-request" => collections_request(&args[1..]),
         "owned-restore-run" => owned_restore_run(&args[1..]),
         "gc-loop" => gc_loop(&args[1..]),
         "case-serve" => case_serve(),
@@ -53,6 +54,7 @@ fn usage() -> ! {
     eprintln!("       av_probe_worker data-mem-envelope [--rounds N] [--store DIR] [--transient MIB] [--hold-ms N]   (PLAN-820 F820-R1-02: parent-sampled memory-envelope worker modes)");
     eprintln!("       av_probe_worker request --store DIR --src-file FILE --entry FN [--project P] [--caps C1,C2]");
     eprintln!("       av_probe_worker owned-request --store DIR --src-file FILE --entry FN   (PLAN-821 T-02: owned whole path + arena ledger + sampled peak, one JSON line)");
+    eprintln!("       av_probe_worker collections-request --store DIR --fixture ID   (PLAN-822 T-09: collections whole path + ledger face + sampled peaks, one JSON line)");
     eprintln!("       av_probe_worker owned-restore-run --store DIR --owner NAME --entry FN --snapshot HEX --types-fp FP   (PLAN-821 R1-F10: owned new-process restore, re-verify + execute)");
     eprintln!("       av_probe_worker gc-loop --store DIR --stop-file FILE [--interval-ms N]");
     eprintln!("       av_probe_worker bench-turnaround --samples N --gate-ms MS --out FILE");
@@ -372,6 +374,83 @@ fn owned_request(args: &[String]) -> ! {
                 "peak_staging_bytes": r.peak_staging_bytes,
                 "peak_exec_slot_bytes": r.peak_exec_slot_bytes,
                 "owned": owned,
+                "snapshot": format!("{:016x}", r.snapshot),
+            })
+        }
+        Err(e) => serde_json::json!({
+            "ok": false,
+            "wall_ms": wall_ms,
+            "private_bytes_peak": peak,
+            "error": e,
+        }),
+    };
+    let mut line = serde_json::to_string(&payload).unwrap_or_default();
+    line.push('\n');
+    std::io::stdout().write_all(line.as_bytes()).ok();
+    exit(if payload["ok"].as_bool() == Some(true) {
+        0
+    } else {
+        4
+    })
+}
+
+/// PLAN-822 T-09: one collections whole-path request in THIS fresh
+/// process — the CPU/memory evidence entry over the frozen fixture (the
+/// collections profile has no source surface; the input is the worker's
+/// programmatic typed fixture admitted by the real gates). Mirrors
+/// owned-request: the parent samples the private-bytes peak, the JUDGE is
+/// always the caller.
+fn collections_request(args: &[String]) -> ! {
+    let store_dir = flag(args, "--store").unwrap_or_else(|| usage());
+    let fixture = flag(args, "--fixture").unwrap_or_else(|| usage());
+    let started = std::time::Instant::now();
+    let sampler = auto_av_probe::mempeek::PeakSampler::start(5);
+    let r = auto_av_probe::collections_fixture::request_collections(
+        Some(&PathBuf::from(&store_dir)),
+        "collections-evidence",
+        &fixture,
+    );
+    let wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+    let peak = sampler.stop();
+    let payload = match r {
+        Ok(mut r) => {
+            let av = r.av.take().expect("request_collections sets av");
+            let ok = matches!(av, auto_av_core::contract::ExecOutcome::Success { .. });
+            let collections = match av {
+                auto_av_core::contract::ExecOutcome::Success { value, .. } => {
+                    let face = auto_av_probe::owned_fixture::canonical_owned(&value, &r.type_names);
+                    match face {
+                        Some(face) => {
+                            // Host release before the ledger read (the
+                            // live=0 oracle's ordering).
+                            drop(value);
+                            let arena = r.arena.as_ref().expect("collections arena");
+                            serde_json::json!({
+                                "result": face,
+                                "live_after_release": arena.live(),
+                                "allocs": arena.alloc_events().iter()
+                                    .map(|a| serde_json::json!({ "id": a.id, "bytes": a.bytes }))
+                                    .collect::<Vec<_>>(),
+                                "frees": arena.free_events().iter()
+                                    .map(|e| serde_json::json!({ "id": e.id, "bytes": e.bytes }))
+                                    .collect::<Vec<_>>(),
+                            })
+                        }
+                        None => serde_json::json!({
+                            "error": "non-canonicalizable collections result"
+                        }),
+                    }
+                }
+                other => serde_json::json!({ "av": format!("{:?}", other) }),
+            };
+            serde_json::json!({
+                "ok": ok,
+                "wall_ms": wall_ms,
+                "private_bytes_peak": peak,
+                "peak_hot_bytes": r.peak_hot_bytes,
+                "peak_staging_bytes": r.peak_staging_bytes,
+                "peak_exec_slot_bytes": r.peak_exec_slot_bytes,
+                "collections": collections,
                 "snapshot": format!("{:016x}", r.snapshot),
             })
         }

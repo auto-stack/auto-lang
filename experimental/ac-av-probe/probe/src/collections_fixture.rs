@@ -335,6 +335,13 @@ pub struct CollectionsRequestOutcome {
     pub type_names: std::collections::BTreeMap<u32, String>,
     /// The types-fingerprint dependency axis (the restore seam's key).
     pub types_fp: String,
+    /// R3-F09-style managed-memory partition peaks (informational budget
+    /// evidence): `hot` = the loaded closure retained through execution,
+    /// `staging` = the transient codec/verification working set's peak,
+    /// `exec_slot` = the guest live-data peak (V-07's 8MiB line).
+    pub peak_hot_bytes: u64,
+    pub peak_staging_bytes: u64,
+    pub peak_exec_slot_bytes: u64,
 }
 
 /// Run one collections fixture through the REAL pipeline; persist the
@@ -391,6 +398,11 @@ pub fn request_collections(
     }
 
     let loaded = verify_abc_bytes(&flat, &mir.owner).map_err(|e| format!("abc admit: {e}"))?;
+    // Managed partition peaks (mirror the owned driver's R3-F09 formula).
+    let hot_bytes = flat.len() + mir.heap_estimate() + loaded.module().heap_estimate();
+    let staging_peak = (flat.len() + mir.heap_estimate())
+        + loaded.stats().analysis_bytes as usize
+        + loaded.module().heap_estimate();
     let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
     let arena = trace.arena.clone();
     Ok(CollectionsRequestOutcome {
@@ -404,6 +416,9 @@ pub fn request_collections(
         arena,
         type_names,
         types_fp,
+        peak_hot_bytes: hot_bytes as u64,
+        peak_staging_bytes: staging_peak as u64,
+        peak_exec_slot_bytes: trace.peak_slot_bytes,
     })
 }
 
