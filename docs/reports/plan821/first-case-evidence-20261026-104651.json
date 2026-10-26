@@ -1,0 +1,143 @@
+﻿{
+    "stamp":  "20261026-104651",
+    "scope":  "first-case",
+    "worker_sha256":  "13AF68ECD5F7738BA6DC2178DB38E4DBC2C3C1DB949C8F7B6309D300408F3618",
+    "git_head":  "3fc11e9b64be13b9b6485f257458ac9ae0748074",
+    "machine_note":  "single-instance serial, fresh process per sample (poll-quantized peaks)",
+    "samples":  [
+                    {
+                        "seed":  "first-case.at",
+                        "sample":  0,
+                        "wall_ms":  24.3573,
+                        "private_bytes_peak":  1679360,
+                        "result":  {
+                                       "kind":  "record",
+                                       "name":  "t_rec_Note",
+                                       "fields":  [
+                                                      {
+                                                          "kind":  "str",
+                                                          "utf8":  "Auto"
+                                                      },
+                                                      {
+                                                          "kind":  "i32",
+                                                          "bits":  "4"
+                                                      }
+                                                  ]
+                                   }
+                    },
+                    {
+                        "seed":  "first-case.at",
+                        "sample":  1,
+                        "wall_ms":  25.5302,
+                        "private_bytes_peak":  1662976,
+                        "result":  {
+                                       "kind":  "record",
+                                       "name":  "t_rec_Note",
+                                       "fields":  [
+                                                      {
+                                                          "kind":  "str",
+                                                          "utf8":  "Auto"
+                                                      },
+                                                      {
+                                                          "kind":  "i32",
+                                                          "bits":  "4"
+                                                      }
+                                                  ]
+                                   }
+                    },
+                    {
+                        "seed":  "first-case.at",
+                        "sample":  2,
+                        "wall_ms":  25.2836,
+                        "private_bytes_peak":  1617920,
+                        "result":  {
+                                       "kind":  "record",
+                                       "name":  "t_rec_Note",
+                                       "fields":  [
+                                                      {
+                                                          "kind":  "str",
+                                                          "utf8":  "Auto"
+                                                      },
+                                                      {
+                                                          "kind":  "i32",
+                                                          "bits":  "4"
+                                                      }
+                                                  ]
+                                   }
+                    },
+                    {
+                        "seed":  "first-case.at",
+                        "sample":  3,
+                        "wall_ms":  24.3303,
+                        "private_bytes_peak":  1671168,
+                        "result":  {
+                                       "kind":  "record",
+                                       "name":  "t_rec_Note",
+                                       "fields":  [
+                                                      {
+                                                          "kind":  "str",
+                                                          "utf8":  "Auto"
+                                                      },
+                                                      {
+                                                          "kind":  "i32",
+                                                          "bits":  "4"
+                                                      }
+                                                  ]
+                                   }
+                    },
+                    {
+                        "seed":  "first-case.at",
+                        "sample":  4,
+                        "wall_ms":  24.2011,
+                        "private_bytes_peak":  1646592,
+                        "result":  {
+                                       "kind":  "record",
+                                       "name":  "t_rec_Note",
+                                       "fields":  [
+                                                      {
+                                                          "kind":  "str",
+                                                          "utf8":  "Auto"
+                                                      },
+                                                      {
+                                                          "kind":  "i32",
+                                                          "bits":  "4"
+                                                      }
+                                                  ]
+                                   }
+                    },
+                    {
+                        "seed":  "first-case-int-twin.at",
+                        "sample":  0,
+                        "wall_ms":  26.1441,
+                        "private_bytes_peak":  1720320,
+                        "result":  {
+                                       "kind":  "i32",
+                                       "bits":  "194"
+                                   }
+                    },
+                    {
+                        "seed":  "first-case-int-twin.at",
+                        "sample":  1,
+                        "wall_ms":  24.5391,
+                        "private_bytes_peak":  1662976,
+                        "result":  {
+                                       "kind":  "i32",
+                                       "bits":  "194"
+                                   }
+                    },
+                    {
+                        "seed":  "first-case-int-twin.at",
+                        "sample":  2,
+                        "wall_ms":  25.8125,
+                        "private_bytes_peak":  1699840,
+                        "result":  {
+                                       "kind":  "i32",
+                                       "bits":  "194"
+                                   }
+                    }
+                ],
+    "wall_ms_p95":  25.812,
+    "wall_ms_max":  26.144,
+    "peak_bytes_max":  1720320,
+    "budget_note":  "worker B-line increment gate (128MiB) is the T-04/T-06 tier; these are the T-02 baseline samples"
+}
