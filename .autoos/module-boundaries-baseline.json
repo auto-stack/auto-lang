@@ -1,6 +1,6 @@
 {
-  "base_revision": "6eedb594e9c08a030ce369dadd81a9c8f54852e0",
-  "config_sha256": "d9116fe01059df9fdb426140c9167b7827a3bcc1a4aa0e40fd69c9d6c051abd7",
+  "base_revision": "400954998e43f89709dccf87bf2ea9c10330f9f8",
+  "config_sha256": "c2eb60abc6fb8a36ffea4c31ff35ec17b01344bc2826350e2ec85f87b4408e44",
   "declared_edges": [
     {
       "dep_key": "auto-lang-core",
@@ -634,6 +634,6 @@
   "text_scan_totals": {
     "core_to_ui": 250,
     "man_to_language": 4,
-    "ui_to_language": 93
+    "ui_to_language": 64
   }
 }
