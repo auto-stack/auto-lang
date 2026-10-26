@@ -4,6 +4,7 @@
 
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |------|------|------|------|-----------|
+| 821 | av-owned recipe（ac-av/owned-run-v1） | ✅（delivered，R6 最终 PASS） | [计划](../../plans/archive/821-av-place-owned-access.md) | owned recipe 三缝注册+sabotage 双面+故障三态+corpus 借入/mut 写回正控；见 [architecture.md](architecture.md) PLAN-821 节 |
 | 847 | 恢复 probe 可选依赖测试门控 | ✅ delivered；全局新红归850 | [计划](../../plans/archive/847-restore-probe-test-feature-boundary.md) | 旧probe与MIR-native各自受test-cases门控，optional/default-off保持；2177完整ID恒等、独立审查及裸t3181通过，主tb3109通过；tf跨workspace与tt执行状态另归850，未推进全局绿色锚点 |
 | 827 | 源码程序 corpus/验证消费者（ac-av/core-run-v1 复用） | ✅（delivered） | [archive/827-av-source-program-baseline.md](../../plans/archive/827-av-source-program-baseline.md) | 源文件 corpus av-source-827 复用既有 recipe/worker/父侧判定，worker 只收字节永不读期望；见 [architecture.md](architecture.md) PLAN-827 节 |
 | 818 | ac-shared-mir-native-parity（runner 面） | ✅（delivered，R1–R4 四轮复审链收敛） | [archive/818-ac-shared-mir-native-parity.md](../../plans/archive/818-ac-shared-mir-native-parity.md) | mn recipe/rounds 协议（常驻 worker×逐步一问一答/失败活跃性与限额边界夹具化）+有效计时语义（父侧观测连续窗口含独立期望比较，观察者缝期望不入 worker）；[architecture.md](architecture.md) 818 节 |

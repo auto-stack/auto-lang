@@ -177,3 +177,14 @@ i32/bool 算术+RecordCtor（源序求值→声明序映射）/FieldGet/FieldPat
 拒）/Method 含 static 显式拒（lower.method）；前端 compile_record_source
 前门复用（4MiB/128 深）。非扩大：core/scalar 域消费面不变。V-02/05/06、
 semantics 族 13/13。
+
+
+## PLAN-821：TextRecord→owned 消费面
+
+text-record 域（auto.hir.text-record.draft）到 av.owned/1 的实际消费面：
+借入 record 参数（RecordView 签名/无 caller kill/调用后有效）；move 参数
+（move-in 整根转移）；**mut record 参数（782 ABI-E `*mut`）排他写回全形状
+落地**——callee 包装 t_MutRet 结果、caller 按 callee mut 参数位逐字段
+FIELDMOVE/MOVE 回写（永久例 808/810/8917/801，mut 循环 9）；owned Str 文本
+接收者 view 派发；语句尾临时 view 终结。多参 `.move` 调用标记关联错位为
+782 源域已知缝（KNOWN-DEBT 归 782 owner）。

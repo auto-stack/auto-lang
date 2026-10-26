@@ -165,3 +165,14 @@ PLAN-827 新增已交付 `ac-av/core-run-v1` recipe 的源码程序 corpus 与�
 期望结果。父侧拥有 typed actual 比较与 source/worker 身份准入。私有 overlay
 与同 store/新 worker 路径保留实际执行。不支持的 source、infra 失败与 guest
 trap 保持既有区分判定。不新增 recipe 注册、协议 decoder 或第二执行引擎。
+
+
+## PLAN-821：ac-av/owned-run-v1 recipe
+
+PLAN-821 新增 `ac-av/owned-run-v1` recipe：三缝 append-only 注册
+（auto-test-case 围栏 REGISTERED_PROBE_RECIPES / 父侧判决 ac_av.rs 冻结表
+OWNED_CASES / mod.rs 分派），owned 面准入与逐面判决；V-10 sabotage 双面
+（result→owned-result 轴、ledger→owned-frees 轴）与 worker 故障三态
+（exit9/extra-frame/wrong-hash 均非绿）。corpus `av-data/821`：借入正控
+（exit 15）与 mut 写回正控（exit 808）。沿实际 auto-lang-core test_cases
+owner，无新执行器。

@@ -65,3 +65,13 @@ worker restore 都执行 AV 并获得新的父侧比较；不使用缓存 PASS/a
 可达性。错误 owner/body 身份、损坏帧与自洽坏内层载荷被拒绝。冲突发布保留
 已提交的好工件。执行槽位所有权与持久 store lease 是分离的资源轴；失败清理
 证据必须覆盖每条所声称的轴。
+
+
+## PLAN-821：owned A21 层与新进程恢复
+
+PLAN-821 交付 owned A21 工件层（producer `plan821/av-owned`，AVAD v2，
+键轴含 types-fp 与 source-snapshot）。worker `owned-restore-run` 为真新进程
+恢复：信封校验→decode→深授信→执行，跨进程 canonical 面同结果；自洽坏内层
+（正确 checksum 重封）在深验证拒且 dispatched=0（exit 4）。types-fp 变化为
+clean miss；producer/schema/profile 身份三向隔离。恢复永不信任磁盘；活帧/
+borrow/宿主地址不入缓存。证据：av_owned_821_cache_compat 7 例。

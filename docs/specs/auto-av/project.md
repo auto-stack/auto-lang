@@ -8,6 +8,7 @@ Checked HIR → Typed MIR → ABC decode/verify → 私有LoadedModule → Rust 
 
 - [ABC与执行](abc-core-i32.md)
 - [数据布局与纯值 record（av.data/1，PLAN-820）](data-layout.md)
+- [owned Place 与清理（av.owned/1，PLAN-821）](place-ownership.md)
 - [缓存、资源与验收](cache-and-conformance.md)
 - [MIR](../auto-mir/core-i32.md) | [数据 MIR](../auto-mir/data-place-profile.md)
 
@@ -27,3 +28,16 @@ AP-01/AP-22 执行、AP-23 精确 trap；G0 库存与语义差异保持显式。
 CLI/UI/CTE，不新增通用脚本/stdlib/host IO，不退役旧 VM。源码支持与未来
 能力缺口记录于 [language-support](language-support.md) 与
 [source-program-conformance](source-program-conformance.md)。
+
+
+## PLAN-821：av.owned/1 owned Place profile
+
+PLAN-821 交付独立 owned profile `av.owned/1`（profile id 3，AVAD wire v2，
+语义版本 1/1/1）：char/borrowed str/owned Str 与拥有 Str 字段 record 的
+Place 拥有型读写、借入 record（RecordView）、mut record 写回全部参数形状
+（单 mut/混只读/双 mut/owned Str 返回）与全部 owned 指令（含 FIELDMOVE
+逐字段语义）。合同见 [place-ownership](place-ownership.md) 与
+[owned-access-profile](../auto-mir/owned-access-profile.md)。**当前无运行期
+失效句柄校验、旧帧/跨 store 拒绝或 generation 回绕退役保证**（r6 用户裁定
+的静态类型/借用检查边界）。非目标：部分字段 move（源值层面）/完整 NLL/
+用户析构/循环共享/GC/List/闭包/Dyn/async/native ABI。

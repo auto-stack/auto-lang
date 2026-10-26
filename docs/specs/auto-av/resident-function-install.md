@@ -88,3 +88,40 @@ PLAN-827 的源码编辑消费已交付 D828 会话。签名/依赖/profile/配�
 新帧槽位 reserve 失败使用同一生产 dispatch 缝并保留这些所有权规则。持久化
 raw 观测必须包含实际基线与当前身份、可归因于受审输入/运行时，并在失败
 verdict 下留存。cold/整源/重启路径分开报告；有限源语法拒绝不退回整编译。
+
+
+## PLAN-821：owned 双通道生产安装会话
+
+PLAN-821 交付 owned 生产安装通道 `owned_session`（828 接口
+lower→admit_unit→link→execute 之上）：
+
+- **双通道按编辑真实形状路由**（会话自身结构性证明）：纯单 body 编辑（恰一
+  个自由函数声明被触及、全部编辑严格在其 span 内、零 `type` 声明触及）走
+  D828 单函数常驻前端——被编函数切片一次 fn-item parse +
+  `prepare_candidate_document` 对保留 CheckedEnv 的 re-check/单 body 发射
+  （BodyEmitReceipt 生产者证明：real_body_plans=1、其余 body-less scaffold）
+  +单单元 lower/verify/encode/admit；**未改单元 parse/recheck/emit 生产
+  工作=0**。接口/上下文编辑（type-context 变化、签名漂移被 recheck 接口门
+  拒、多声明/声明集变化）走整模块通道——全单元重前端+重产（正确失效语义，
+  非静默降级）。
+- **scaffold 模式事实**：单函数文档的 body-less scaffold 无参数模式表，
+  t_MutRet 包装 ABI 所需 callee mut-record 参数位由会话保留接口事实
+  （sig_mode_overrides，冷/整轮捕获）注入 probe 侧 lower；文档自带 body
+  恒优先。
+- **候选事务化**：前端→失效→逐单元生产→整集受检 LINK→entry RUN 全部成功
+  后原子发布（EnvStep 分段：单 body 提交 FnCandidate::commit 一次、整轮
+  重建环境，均在发布点应用）；任何失败保 source/revision/identity/
+  residents/production/可运行性。**保留声明坐标随发布原子平移**：单 body
+  发布携带 (decl_idx, old_hi, delta)——编辑函数 hi 平移、其后全部声明整体
+  平移；连续变长编辑恒以当前源坐标路由单 body 道，拒绝编辑不平移；整轮
+  路径重建全部坐标。
+- **计量**：heap_estimate 计 RecordView 载荷与 FieldMove 路径（解码卫哨
+  镜像）——同时存活载荷进保守上界，超 hot 预算输入不估算绿。Production
+  六计数（parse/recheck/emit/lower/encode/admit 逐单元）+整模块前端计数；
+  **incremental_gate 通道感知**：单 body 编辑整模块前端必须零增、前端三元组
+  仅期望集推进；整模块编辑恰 +1 前端、全单元前端三元组推进、backend 仅失效
+  集；居民 Arc 身份+mint 代际双保与成员关系（forced whole、对象换不换代际、
+  漏失效、静默移除、虚报期望集都红）。
+
+证据：av_owned_821_incremental 7 例（main-only 零未改前端工作、虚报整集
+反控、连续变长 1234→8/107→108、失败候选三保）。
