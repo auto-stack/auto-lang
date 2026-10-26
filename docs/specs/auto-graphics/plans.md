@@ -32,3 +32,7 @@ Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-
 | 849 | Finite swept AABB and script-controlled stop | delivered | [PLAN-849](../../plans/archive/849-autographics-swept-aabb-and-stop-before-impact.md) | Explicit v4/profile10, fixed-volume Minkowski query/typed result, Dash2D/Dash3D/source relocation/owner/content; I2/I3 pending |
 
 | 851 | Bounded Auto move-and-slide | delivered | [PLAN-851](../../plans/archive/851-autographics-bounded-move-and-slide.md) | v5/profile11, two contacts, f32 final admission, Maze2D/Corridor3D, original limits/closure; I2/I3 pending |
+
+| 853 | M2/S0 performance, resource and evidence baseline | delivered | [PLAN-853](../../plans/archive/853-autographics-m2-baselines-and-evidence.md) | Comparable five-workload measurements, current closure/consumer and immutable complete evidence; no new M2 capability or I2/I3 completion |
+
+Provenance: [PLAN-853](../../plans/archive/853-autographics-m2-baselines-and-evidence.md), [independent final R3 review](../../plans/attachments/853/review-r3/review.md), [merge receipt](../../plans/attachments/853/merge-r1/receipt.md). Source: autographics-dev at c1961665d1a90a8705994085fd4344a1d6a9a564; SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467. This delivers M2/S0 research baselines; production I2/I3 remain pending.
