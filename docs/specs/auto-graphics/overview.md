@@ -31,3 +31,7 @@ Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-
 - [Finite swept AABB queries](swept-aabb-profile.md): explicit v4/profile10, typed shared cast/sweep latest result, actual Auto fixed-volume translation and Dash2D/Dash3D stop/clearance projects; original limits/denominator and I2/I3 production boundary retained (PLAN-849).
 
 - [Bounded move-and-slide](bounded-motion-profile.md): explicit v5/profile11, maximum two contacts and actual f32 candidate admission; portable Maze2D/Corridor3D, original budgets/SDK/resource denominator and I2/I3 boundary retained (PLAN-851).
+
+- [Research quality baseline](research-quality-baseline.md): named CPU/resource boundaries, bounded default-off observation, five real Host workloads and comparable off/on sampling; complete source/consumer/test/runner evidence (PLAN-853, M2/S0).
+
+Provenance: [PLAN-853](../../plans/archive/853-autographics-m2-baselines-and-evidence.md), [independent final R3 review](../../plans/attachments/853/review-r3/review.md), [merge receipt](../../plans/attachments/853/merge-r1/receipt.md). Source: autographics-dev at c1961665d1a90a8705994085fd4344a1d6a9a564; SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467. This delivers M2/S0 research baselines; production I2/I3 remain pending.

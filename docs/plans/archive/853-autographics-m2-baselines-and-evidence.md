@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-853
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: AutoGraphics M2性能资源基线与证据收敛
 author: [Codex]
 created_at: 2026-10-26
@@ -13,7 +14,7 @@ new_spec_components:
   - docs/specs/auto-graphics/research-quality-baseline.md
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 6
+current_step: 9
 total_steps: 9
 ---
 
@@ -30,7 +31,7 @@ M2/S0第一份优化合同：建立可比较的性能/资源与版本身份基�
 3. 逐组保留851最终85组历史门与原语义分母，形成当前映射；独立消费者、坏输入与真实内容仍可区别假绿。
 4. 为854冻结behavior/1..5真实生成产物身份，为855冻结主要状态路径与可比性能入口。
 
-非目标：优化Auto数学、改变API/源码身份、改SDK/预算、拆Host、迁移资产、建仓/发布/下载器、Grid/角色/动态节点、生产UI/HIR/ACE。[共同合同](attachments/853/planning/optimization-contract.md)是本Plan的保持面、工作树与门禁合同组成部分。
+非目标：优化Auto数学、改变API/源码身份、改SDK/预算、拆Host、迁移资产、建仓/发布/下载器、Grid/角色/动态节点、生产UI/HIR/ACE。[共同合同](../attachments/853/planning/optimization-contract.md)是本Plan的保持面、工作树与门禁合同组成部分。
 
 ## 2. 架构方案
 
@@ -46,9 +47,9 @@ M2/S0第一份优化合同：建立可比较的性能/资源与版本身份基�
 
 授权：用户2026-10-26要求M2设计/战略与先期优化计划，优化为M2起始阶段，新增功能后才算M2。本轮仅new，未开始work，无新agent/仓库/推送授权，也无额外时间/token预算。
 
-先读[全局概览](../specs/overview.md)、[模块概览](../specs/auto-graphics/overview.md)、[行为API](../specs/auto-graphics/behavior-api.md)、[Play](../specs/auto-graphics/scene-play-session.md)、[运动](../specs/auto-graphics/bounded-motion-profile.md)。Specs按历史追加，早期profile/schema不能直接视为最新；当前v5/scene4及851交付以对应专题为准。统一分段测量/交接合同尚缺，SD-01补齐。
+先读[全局概览](../../specs/overview.md)、[模块概览](../../specs/auto-graphics/overview.md)、[行为API](../../specs/auto-graphics/behavior-api.md)、[Play](../../specs/auto-graphics/scene-play-session.md)、[运动](../../specs/auto-graphics/bounded-motion-profile.md)。Specs按历史追加，早期profile/schema不能直接视为最新；当前v5/scene4及851交付以对应专题为准。统一分段测量/交接合同尚缺，SD-01补齐。
 
-[source-observation](attachments/853/planning/source-observation.json.txt)记录22个实际源码/工具和12份Spec的SHA。源码M1=`11911a4a6d809bfd515f745b77d00bc8f04f6ba9`，SDK=`7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467`。`Host::resource_snapshot`已有run/stop/pump、帧、upload/owner观测；`Play::pump_until/accept`有事务耗时，不能据此认定逐标量桥是瓶颈。98yield和49223B不是实际耗时或精确指令。
+[source-observation](../attachments/853/planning/source-observation.json.txt)记录22个实际源码/工具和12份Spec的SHA。源码M1=`11911a4a6d809bfd515f745b77d00bc8f04f6ba9`，SDK=`7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467`。`Host::resource_snapshot`已有run/stop/pump、帧、upload/owner观测；`Play::pump_until/accept`有事务耗时，不能据此认定逐标量桥是瓶颈。98yield和49223B不是实际耗时或精确指令。
 
 `verify_source.py`/`package_consumer.py`目前优先选plan851；新源码需要新identity，不能改历史hash。`check_bounded_motion.py`已有`--executable`，owner工具会重建target。851旧测试误判/consumer中断已解决，本Plan降低复发成本，不重开851。
 
@@ -74,7 +75,7 @@ T-02先写`attachments/853/work/measurement-contract.md`：起止边界、重叠
 
 ### 5.3 来源与产物
 
-T-02将[继承85组](attachments/853/planning/inherited-gate-inventory.json.txt)逐组绑定当前命令/选中ID/oracle或允许复用的输入证明。旧绝对路径仅溯源，重绑本树、独立消费者和新输出；总数不能抵扣漏项。
+T-02将[继承85组](../attachments/853/planning/inherited-gate-inventory.json.txt)逐组绑定当前命令/选中ID/oracle或允许复用的输入证明。旧绝对路径仅溯源，重绑本树、独立消费者和新输出；总数不能抵扣漏项。
 
 新增`tools/m2_evidence.py`，约定`--self-check`、`--record-runner <exe> --output <new-receipt>`：测试前复制到仓外不可变SHA路径，记录producer/consumer、源码/SDK/锁/配置、路径/SHA、命令/完成/选中ID。缺失/篡改runner、0selected/skip/中断、不同runner与报告不符须整体非零；预期拒绝须命中原oracle且恢复正例可通过。复用已有`--executable`或明确保留产物顺序，只修改绑定必需工具，不重写全部执行器。
 
@@ -128,9 +129,9 @@ T-02将[继承85组](attachments/853/planning/inherited-gate-inventory.json.txt)
 | T-04 | work | T-02 | 新m2_evidence/853 identity/verifier，更新当前source/consumer和必要native绑定；V-01/03/04 | AC-01/04/05 | [x] |
 | T-05 | work | T-03/04 | 五类采样/on-off/五API生成基线，命名定向测试与所改native面，提交代码/SD/证据，不跑整档 | AC-01..05 | [x] |
 | T-06 | review | T-05 | 独立最终review；R3 affected pass，完整门pending，不修实现 | AC-06 | [x] |
-| T-07 | merge | T-06 pass | 冻结提交两端完整/原native-owner-content/新面，核SHA、选中ID和复用 | AC-07 | [ ] |
-| T-08 | merge | T-07 | 源码合autographics-dev，main沉淀SD/overview/plans/ADR/ledger/索引并归档，清理仍如实pending | AC-08 | [ ] |
-| T-09 | merge | T-08 | guard clean后移除树/临时分支；仓外产物路径/SHA和实际9/9，交854实际提交 | AC-08 | [ ] |
+| T-07 | merge | T-06 pass | 冻结提交两端完整/原native-owner-content/新面，核SHA、选中ID和复用 | AC-07 | [x] |
+| T-08 | merge | T-07 | 源码合autographics-dev，main沉淀SD/overview/plans/ADR/ledger/索引并归档，清理仍如实pending | AC-08 | [x] |
+| T-09 | merge | T-08 | guard clean后移除树/临时分支；仓外产物路径/SHA和实际9/9，交854实际提交 | AC-08 | [x] |
 
 ## 9. 复审记录
 
@@ -139,27 +140,33 @@ T-02将[继承85组](attachments/853/planning/inherited-gate-inventory.json.txt)
 
 2026-10-26 work entry：用户明确启动实施；唯一树 D:/autostack/.wt/lang-853/auto-lang，plan-853-dev，base/M1=11911a4a6d809bfd515f745b77d00bc8f04f6ba9，SDK=7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467。主检出既有未跟踪 crates/Cargo.lock、test fixtures、tools/ 等已向用户披露，保持不动。历史runner与聚合保存于 attachments/853/work/m1-preserved.json.txt；当前work仍 executing。
 
-2026-10-26 work进度（非final review）：T-01/02/03完成，3/9。见[测量合同](attachments/853/work/measurement-contract.md)、[85组当前映射/原280ID](attachments/853/work/inherited-gate-map.json.txt)、[M1原runner/254汇总](attachments/853/work/m1-preserved.json.txt)。默认off/4096上限；五类50进程、1500暖tick通过数值/来源/像素/资源/owner对照，原始数据 D:/autostack/plan-artifacts/plan-853/baseline-r2；两个采样校验失败及有据修正均保留。r1把额外pump动态上传误作身份漂移，r2完整采样后生成校验混淆了历史bridge凭据与最终输出字节；不改runner/SDK/用户输入，通过原始文件冻结+定向校验修正恢复。实际API/bridge区域hash独立计算、兼容字段不变。T-04消费者构建/实际运行与T-05收口仍进行，未交review。
+2026-10-26 work进度（非final review）：T-01/02/03完成，3/9。见[测量合同](../attachments/853/work/measurement-contract.md)、[85组当前映射/原280ID](../attachments/853/work/inherited-gate-map.json.txt)、[M1原runner/254汇总](../attachments/853/work/m1-preserved.json.txt)。默认off/4096上限；五类50进程、1500暖tick通过数值/来源/像素/资源/owner对照，原始数据 D:/autostack/plan-artifacts/plan-853/baseline-r2；两个采样校验失败及有据修正均保留。r1把额外pump动态上传误作身份漂移，r2完整采样后生成校验混淆了历史bridge凭据与最终输出字节；不改runner/SDK/用户输入，通过原始文件冻结+定向校验修正恢复。实际API/bridge区域hash独立计算、兼容字段不变。T-04消费者构建/实际运行与T-05收口仍进行，未交review。
 
-2026-10-26 work最终交接：`stage: work | plan_id: PLAN-853 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-853/auto-lang | branch: plan-853-dev | base_commit: 11911a4a6d809bfd515f745b77d00bc8f04f6ba9 | code_commit: 760c232f4c1185591bfef029435101fa4fd6b594 | dependency_revisions: SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467 / AGP与两锁=M1 | task_ids: T-01..05 | evidence: attachments/853/work/readiness.md + handoff.json.txt | blockers: [] | next_responsible_role: independent review`。T-01..05完成，5/9，AC-01..05 work通过；[逐V/AC就绪记录](attachments/853/work/readiness.md)、[冻结身份](attachments/853/work/final-code-binding.json.txt)、[定向测试实际退出/选中ID](attachments/853/work/scoped-receipts.json.txt)。五类50进程/1500暖tick、十份真实生成物、当前439来源/SDK681、独立消费者自身空target构建与真实Move、native14+4重开、owner六负+恢复均有实际证据；open findings/coverage gaps/contract decisions为空。后续证据工具/元数据修改未改变Rust/SDK/锁/样本/配置，原测量runner SHA保留；重建仅链接时间戳/GUID变化，未替换原测产物。完整两端与原85/AGP23/native/owner/content门均由merge在独立review通过后执行/核复用，仍pending；未运行整档/未合入/未归档/未清理，不宣称M2交付。实现写权冻结，保留同一树交review。
+2026-10-26 work最终交接：`stage: work | plan_id: PLAN-853 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-853/auto-lang | branch: plan-853-dev | base_commit: 11911a4a6d809bfd515f745b77d00bc8f04f6ba9 | code_commit: 760c232f4c1185591bfef029435101fa4fd6b594 | dependency_revisions: SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467 / AGP与两锁=M1 | task_ids: T-01..05 | evidence: attachments/853/work/readiness.md + handoff.json.txt | blockers: [] | next_responsible_role: independent review`。T-01..05完成，5/9，AC-01..05 work通过；[逐V/AC就绪记录](../attachments/853/work/readiness.md)、[冻结身份](../attachments/853/work/final-code-binding.json.txt)、[定向测试实际退出/选中ID](../attachments/853/work/scoped-receipts.json.txt)。五类50进程/1500暖tick、十份真实生成物、当前439来源/SDK681、独立消费者自身空target构建与真实Move、native14+4重开、owner六负+恢复均有实际证据；open findings/coverage gaps/contract decisions为空。后续证据工具/元数据修改未改变Rust/SDK/锁/样本/配置，原测量runner SHA保留；重建仅链接时间戳/GUID变化，未替换原测产物。完整两端与原85/AGP23/native/owner/content门均由merge在独立review通过后执行/核复用，仍pending；未运行整档/未合入/未归档/未清理，不宣称M2交付。实现写权冻结，保留同一树交review。
 
 
 2026-10-26 independent final review R1：`stage: review | review_scope: final | reviewer_identity: delegated /root/review_853 independent implementation-free context | plan_id: PLAN-853 | plan_revision: 1 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-853/auto-lang | branch: plan-853-dev | reviewed_commit: 760c232f4c1185591bfef029435101fa4fd6b594 | base_commit: 11911a4a6d809bfd515f745b77d00bc8f04f6ba9 | dependency_revisions: SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467 / AGP与两锁=M1 | spec_inputs: attachments/853/review-r1/audit.json | acceptance_results: AC-01/04/05 partial-fail, AC-02/03 frozen evidence pass, AC-06 pending repair, AC-07/08 merge pending | findings: F-853-R1-01(P1) 未登记root build.rs被来源门/导出接受而Cargo实际编译且消费者漏导出；F-853-R1-02(P2) v3..v5 API兼容凭据坏hash不拒；F-853-R1-03(P2) 新test binary头未完成仍可计整体完成 | evidence: attachments/853/review-r1/review.md + raw probes + frozen-spec-delta.md | next: work repair in same tree; no merge`。逐组85/原每端280ID保留，50原始进程/1500tick重放、native14+4与owner6负+恢复、实际PE篡改/缺失/恢复、两端21生成文件逐字节一致、命名m2测试2例与fmt均通过。三项为合同内阻塞，不以记债豁免；T-04/T-05重开，T-01..03保留，executing3/9，T-06未完成。完整两端/原native-owner-content/新面和AGP23复用证明或重跑等统一门仍merge-owned pending。未修实现、未改SDK/锁/API/样本、未合入/归档/清树；退出HEAD仍冻结且clean。
 
-2026-10-26 R1修复启动：用户授权按独立复审报告修复 F-853-R1-01..03，写权回work；沿用同一树/plan-853-dev/760c232f4 基线，status executing，3/9。[逐finding不变量/路径/相邻状态与定向验证映射](attachments/853/repair-r1/closure.md)。三项原始反例已重现；当前修复仅证据工具及其闭包元数据，不改Rust/SDK/锁/Auto算法/样本，不触发完整档。
+2026-10-26 R1修复启动：用户授权按独立复审报告修复 F-853-R1-01..03，写权回work；沿用同一树/plan-853-dev/760c232f4 基线，status executing，3/9。[逐finding不变量/路径/相邻状态与定向验证映射](../attachments/853/repair-r1/closure.md)。三项原始反例已重现；当前修复仅证据工具及其闭包元数据，不改Rust/SDK/锁/Auto算法/样本，不触发完整档。
 
-2026-10-26 R1修复交接：`stage: work | plan_id: PLAN-853 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-853/auto-lang | branch: plan-853-dev | base_commit: 11911a4a6d809bfd515f745b77d00bc8f04f6ba9 | repair_base_commit: 760c232f4c1185591bfef029435101fa4fd6b594 | code_commit: 5e3f5b65f145fb127a4e206b626d3e2e3dc0ab8b | dependency_revisions: SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467 / Rust与AGP/两锁/API/样本不变 | task_ids: T-04/T-05 | evidence: attachments/853/repair-r1/closure.md + handoff.json.txt | blockers: [] | next_responsible_role: independent affected re-review`。F-853-R1-01/02/03 work闭环，T-04/05恢复完成，status execution_done，5/9；[逐finding路径、永久用例、实际重放与边界](attachments/853/repair-r1/closure.md)。五个具名永久测试覆盖全五API/LF-CRLF、header/summary/Doc-test/嵌套状态、包根构建/配置/自动target及缺清单/缺校验器；最终来源面30次实际调用、原复审反例和恢复正例通过，两端实际21生成文件相同，原76块/280 ID各端及当前定向日志保留。441来源/681 SDK；原50进程/1500tick及native/owner测量输入未变，重放证据而未重跑性能或完整档。修复未改变Rust/SDK/锁/Auto算法/样本/生产规格，未运行cargo整档/docs_gen。AC-01/04/05当前work通过声明须由下一次独立复审核验，旧R1 needs_fix保留；T-06与merge-owned完整门仍pending。实现提交后干净并冻结，保留同一树，不合入/归档/清理。
+2026-10-26 R1修复交接：`stage: work | plan_id: PLAN-853 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-853/auto-lang | branch: plan-853-dev | base_commit: 11911a4a6d809bfd515f745b77d00bc8f04f6ba9 | repair_base_commit: 760c232f4c1185591bfef029435101fa4fd6b594 | code_commit: 5e3f5b65f145fb127a4e206b626d3e2e3dc0ab8b | dependency_revisions: SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467 / Rust与AGP/两锁/API/样本不变 | task_ids: T-04/T-05 | evidence: attachments/853/repair-r1/closure.md + handoff.json.txt | blockers: [] | next_responsible_role: independent affected re-review`。F-853-R1-01/02/03 work闭环，T-04/05恢复完成，status execution_done，5/9；[逐finding路径、永久用例、实际重放与边界](../attachments/853/repair-r1/closure.md)。五个具名永久测试覆盖全五API/LF-CRLF、header/summary/Doc-test/嵌套状态、包根构建/配置/自动target及缺清单/缺校验器；最终来源面30次实际调用、原复审反例和恢复正例通过，两端实际21生成文件相同，原76块/280 ID各端及当前定向日志保留。441来源/681 SDK；原50进程/1500tick及native/owner测量输入未变，重放证据而未重跑性能或完整档。修复未改变Rust/SDK/锁/Auto算法/样本/生产规格，未运行cargo整档/docs_gen。AC-01/04/05当前work通过声明须由下一次独立复审核验，旧R1 needs_fix保留；T-06与merge-owned完整门仍pending。实现提交后干净并冻结，保留同一树，不合入/归档/清理。
 
 
 2026-10-26 independent affected final review R2：`stage: review | review_scope: final | reviewer_identity: delegated /root/review_853_r2 independent implementation-free context | plan_id: PLAN-853 | plan_revision: 1 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-853/auto-lang | branch: plan-853-dev | reviewed_commit: 5e3f5b65f145fb127a4e206b626d3e2e3dc0ab8b | repair_base_commit: 760c232f4c1185591bfef029435101fa4fd6b594 | base_commit: 11911a4a6d809bfd515f745b77d00bc8f04f6ba9 | dependency_revisions: SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467 / Rust与AGP/锁/API/样本/config不变 | spec_inputs: attachments/853/review-r2/independent-probes.json | acceptance_results: AC-01/05 affected pass, AC-02/03 frozen evidence pass, AC-04 partial-fail, AC-06 pending repair, AC-07/08 merge pending | finding: F-853-R2-01(P2) 已进入块内的未完成test case在summary或下一test行被吞掉，check_selection及真实validate_run均接受 | evidence: attachments/853/review-r2/review.md + raw counterexamples + review-binding.json + frozen-spec-delta.md | next: work diagnosis and bounded repair in same tree`。原R1三个反例均拒绝，来源/五API不变量独立验闭；completion仅原header例闭环，新pending-case状态仍有合同内缺陷。五永久测试、两端实际21生成文件/10fixture、441来源/681SDK和额外来源反控通过；原85/每端76块280ID、50进程1500tick、native14+4/owner6负恢复原始证据重放通过。T04/T05及依赖证据重开，executing3/9，T06未完成。连续两次final needs_fix（R1/R2）；下次work送审前必须先诊断状态机/为何漏测及oracle调整，具体表见R2报告。完整两端/原native-owner-content/新增面和AGP23证明或重跑仍merge-owned pending。未修实现、未跑Cargo/全性能/native整档、未改SDK/锁/API/资产或canonical/ledger、未合入/归档/清树；退出实现HEAD不变且clean。
 
-2026-10-26 R2修复启动：用户授权修复 F-853-R2-01；先执行连续两次最终needs_fix后的[原因诊断与状态/覆盖调整](attachments/853/repair-r2/diagnosis.md)。原三份持久日志在实际check_selection/validate_run均重现错误接受。沿用同一树/plan-853-dev/5e3f5b65f基线，写权回work；仅修case状态机及定向反例，R1来源/API及未变运行证据不重启整档。
+2026-10-26 R2修复启动：用户授权修复 F-853-R2-01；先执行连续两次最终needs_fix后的[原因诊断与状态/覆盖调整](../attachments/853/repair-r2/diagnosis.md)。原三份持久日志在实际check_selection/validate_run均重现错误接受。沿用同一树/plan-853-dev/5e3f5b65f基线，写权回work；仅修case状态机及定向反例，R1来源/API及未变运行证据不重启整档。
 
-2026-10-26 R2修复交接：`stage: work | plan_id: PLAN-853 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-853/auto-lang | branch: plan-853-dev | base_commit: 11911a4a6d809bfd515f745b77d00bc8f04f6ba9 | repair_base_commit: 5e3f5b65f145fb127a4e206b626d3e2e3dc0ab8b | code_commit: c1961665d1a90a8705994085fd4344a1d6a9a564 | dependency_revisions: SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467 / Runtime与来源/API门不变 | task_ids: T-04/T-05 | evidence: attachments/853/repair-r2/closure.md + handoff.json.txt | blockers: [] | next_responsible_role: independent affected re-review`。已先完成[两次失败原因诊断](attachments/853/repair-r2/diagnosis.md)，并验证其case所有权/开始完成集合/父子块状态调整；F-853-R2-01 work闭环，[原始反例与实际validate_run双入口重放](attachments/853/repair-r2/replay-results.json.txt)、[定向四方法及代码/输入未变证明](attachments/853/repair-r2/checks.json.txt)通过。原三份R2及两份R1坏日志拒绝，恢复/真实嵌套正例接受；父子pending/覆盖/零Doc/重复无主完成/多case多层child均有永久控制，原每端76块/280ID和当前定向日志保留。T-04/05恢复完成，execution_done，5/9；R2通过的来源/API/实际消费者与未变运行测量/native/owner证据复用，不重跑整档/性能/生成/来源全campaign。441来源/681SDK正向核对通过，Rust/SDK/锁/样本未改。旧两轮最终needs_fix记录保留，本次不是第三轮最终复审或独立通过；下一职责为同树独立受影响复审，T-06及merge完整门仍pending，不合入/归档/清理，实现提交后干净并冻结。
+2026-10-26 R2修复交接：`stage: work | plan_id: PLAN-853 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-853/auto-lang | branch: plan-853-dev | base_commit: 11911a4a6d809bfd515f745b77d00bc8f04f6ba9 | repair_base_commit: 5e3f5b65f145fb127a4e206b626d3e2e3dc0ab8b | code_commit: c1961665d1a90a8705994085fd4344a1d6a9a564 | dependency_revisions: SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467 / Runtime与来源/API门不变 | task_ids: T-04/T-05 | evidence: attachments/853/repair-r2/closure.md + handoff.json.txt | blockers: [] | next_responsible_role: independent affected re-review`。已先完成[两次失败原因诊断](../attachments/853/repair-r2/diagnosis.md)，并验证其case所有权/开始完成集合/父子块状态调整；F-853-R2-01 work闭环，[原始反例与实际validate_run双入口重放](../attachments/853/repair-r2/replay-results.json.txt)、[定向四方法及代码/输入未变证明](../attachments/853/repair-r2/checks.json.txt)通过。原三份R2及两份R1坏日志拒绝，恢复/真实嵌套正例接受；父子pending/覆盖/零Doc/重复无主完成/多case多层child均有永久控制，原每端76块/280ID和当前定向日志保留。T-04/05恢复完成，execution_done，5/9；R2通过的来源/API/实际消费者与未变运行测量/native/owner证据复用，不重跑整档/性能/生成/来源全campaign。441来源/681SDK正向核对通过，Rust/SDK/锁/样本未改。旧两轮最终needs_fix记录保留，本次不是第三轮最终复审或独立通过；下一职责为同树独立受影响复审，T-06及merge完整门仍pending，不合入/归档/清理，实现提交后干净并冻结。
 
 2026-10-26 independent affected final review R3：`stage: review | review_scope: final | reviewer_identity: delegated /root/review_853_r3 fresh independent implementation-free context | plan_id: PLAN-853 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-853/auto-lang | branch: plan-853-dev | reviewed_commit: c1961665d1a90a8705994085fd4344a1d6a9a564 | repair_base_commit: 5e3f5b65f145fb127a4e206b626d3e2e3dc0ab8b | base_commit: 11911a4a6d809bfd515f745b77d00bc8f04f6ba9 | dependency_revisions: SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467 / Rust与AGP/锁/API/样本/config不变 | spec_inputs: attachments/853/review-r3/independent-results.json | acceptance_results: AC-01..06 pass（不变面明确复用）, AC-07/08 merge pending | findings: [] | evidence: attachments/853/review-r3/review.md + replay.py + reuse-proof.json + frozen-spec-delta.md | next: merge-owned frozen full gates before landing`。独立核两次失败诊断及实际每frame announced/pending/completed所有权调整；原R2三坏日志、原false-green receipt及R1两原例均在两入口拒绝，独立34条双入口控制（24拒/10受）、四永久方法及CLI通过，子块不吞父case完成。原85映射、两端各76块/280ID及当前scoped日志重放通过；441来源/681SDK、两端各21真实生成文件、50报告/raw日志、native14+4/owner6负恢复与原测runner复用绑定核对通过，未重跑来源/API/生成/性能/native全campaign或Cargo整档。SD冻结SHA `4b5c7ca7670e9a93420635c7bd90e313a2952dbffaa4f8b53d5a9e16e7f2145f`；当前增量与实际闭合一致，无未授权延后/绕行。T-06完成，reviewed6/9；T-07..09仍pending，完整冻结producer/fresh own-SDK空target consumer、原native/owner/content/新面及AGP23完整输入复用证明或重跑由merge承担，通过前不得合入/称交付。实现退出仍同HEAD且clean；未修实现、未改canonical/ledger、未合入/归档/清树；保留R1/R2全部历史。
 
 2026-10-26 merge entry：用户明确授权 /auto-plan:merge；reviewed_commit=c1961665d1a90a8705994085fd4344a1d6a9a564，SD SHA4b5c7ca7670e9a93420635c7bd90e313a2952dbffaa4f8b53d5a9e16e7f2145f。沿用独立实验共同合同，根Cargo整档不触发。生产者完整78块/282ID（原280包含）、原native/content、sweep/motion及owner门通过；fresh own-SDK/空target consumer完整门正在运行。首次asset受外部输入、segment受focus-lost暂停的失败现场与同payload恢复完整组通过均保留于merge-r1/environment-recovery.json.txt，未改代码/oracle/预算；用户已明确桌面空闲继续测试。新工具7永久测试/自检、50进程1500tick原始统计重验通过；AGP23完整输入不变证明保留。当前仍reviewed6/9，未合入/归档/清理。其他会话WIP保持不动，先提交本Plan及证据以提供耐久引用；规划阶段审计用原字节快照修复引用，不发布其他会话未跟踪报告。
+
+2026-10-26 merge gate完成：T-07/AC-07通过，reviewed7/9。当前producer/fresh own-SDK空target consumer完整各78顶层块/282通过/0failed/0ignored，原280ID逐binary包含；当前85执行组、原85映射/AGP23完整输入复用、两端全部原native/owner/content与motion14+4重开/6负+恢复、新工具7永久测试与两端21真实生成文件通过。50原始进程/1500tick按不变输入与实际runner重验统计，不冒称重采样。详见[最终审计](../attachments/853/merge-r1/validated.json.txt)、[实际产物/原始日志索引](../attachments/853/merge-r1/evidence-index.json.txt)、[全部失败闭环](../attachments/853/merge-r1/failure-closures.json.txt)。桌面输入/focus、时钟注入前置未到与额外display-gap内容拒绝均保留，最终原完整组通过；调度误选重建runner导致重复UI输出目录拒绝的错误已诊断，原必需UI正例/原payload证据保留，未放宽oracle或丢弃失败。源码/SDK/锁/预算/SD无改动，源树clean；尚未合入/归档/清理。
+
+2026-10-26 consolidation PLAN-853:r1：`stage: merge | outcome: publication pass, cleanup pending | delivery_commit: c1961665d1a90a8705994085fd4344a1d6a9a564 | source_branch: autographics-dev | canonical_commit: 6d427a4a7165d5cb69bcfae2c9bdc668d26811d0 | ledger_commit: 32e239a45852efce5263d71ee1ad5219b401399e`。源码与master知识均ff-only，无rebase/merge commit；[规范准备](../attachments/853/merge-r1/canonical-prepared.json.txt)、[实际落地](../attachments/853/merge-r1/landed.json.txt)、[账本v94/7ID与字节级守护](../attachments/853/merge-r1/ledger-projection.json.txt)回读通过。主检出其他会话WIP完整保留，INDEX重生成无语义差异；本模块无独立ADR，已审定边界写新专题/现有索引。T-08完成，archived/delivered8/9；实际归档引用/计数检查后提交，T-09清理仍pending，不提前声称9/9。仅M2/S0基线交付，I2/I3与新增M2功能仍pending。
+
+2026-10-26 cleaned最终闭环：`stage: merge | plan_id: PLAN-853 | plan_revision: 1 | outcome: pass | completion_kind: delivered | delivery_commit: c1961665d1a90a8705994085fd4344a1d6a9a564 | canonical_commit: 6d427a4a7165d5cb69bcfae2c9bdc668d26811d0 | ledger_commit: 32e239a45852efce5263d71ee1ad5219b401399e | archive_commit: 0f968c62e | task_ids: T-01..09 | blockers: []`。T-09及AC-08完成，archived/delivered9/9。[fresh guard](../attachments/853/merge-r1/cleanup-guard.log.txt) clean，树/plan-853-dev/codex临时分支/空组已核移除，[清理收据](../attachments/853/merge-r1/cleaned.json.txt)。源码只留autographics-dev，master仅知识/账本/证据；源码未rebase，交854的实际前置提交为c1961665d。仓外实际runner/consumer/runtime恢复路径与SHA保留；[产物观察](../attachments/853/merge-r1/artifact-observations.json.txt)明确生产backend/daemon/web不消费本实验增量，未宣称部署。[批量到期检查](../attachments/853/merge-r1/batch-due.json.txt)另存，未到期不跑根tf。最终状态/计数/引用与Git闭环检查后提交清理记录，其他会话WIP保持不动。
 
 ## 10. 待澄清事项
 
