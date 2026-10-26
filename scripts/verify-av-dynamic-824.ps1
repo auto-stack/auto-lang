@@ -7,7 +7,7 @@
 [CmdletBinding()]
 param(
     [Parameter(ParameterSetName = 'Scope', Mandatory = $true)]
-    [ValidateSet("first-case", "autodown", "acceptance")]
+    [ValidateSet("first-case", "semantics", "autodown", "acceptance")]
     [string]$Scope,
 
     [Parameter(ParameterSetName = 'Guard')]
@@ -71,6 +71,22 @@ function Run-Lang-Tests {
     }
 }
 
+function Run-Harness-Tests {
+    # The parallel/824 same-source harness: the SAME production files
+    # (core/src/{dynamic,portable}.rs) compiled through the harness's
+    # #[path] seam — the V-14 dual-compilation axis (module tests).
+    param([string]$Label)
+    $manifest = Join-Path $probe 'parallel/824/Cargo.toml'
+    # --lib: exactly one result line (the doc-test target's `0 passed`
+    # banner must not trip the zero-selected guard).
+    $out = & cargo test --manifest-path $manifest --lib 2>&1 | Out-String
+    Write-Host $out
+    Assert-Selected -Output $out -Bin 'parallel/824' -Filter '' -Label $Label
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Label : cargo exited $LASTEXITCODE"
+    }
+}
+
 $REQ = @{
     'first-case' = @(
         'av_dynamic_824_first_case_executes_success',
@@ -82,6 +98,28 @@ $REQ = @{
         'av_dynamic_824_corpus_green',
         'av_dynamic_824_negative_oracle_fails',
         'av_dynamic_824_worker_faults_are_infra'
+    )
+    'semantics' = @(
+        'av_dynamic_824_semantics_pack_source_stays_readable',
+        'av_dynamic_824_semantics_two_packs_two_dyns',
+        'av_dynamic_824_semantics_take_share_dyn_still_takeable',
+        'av_dynamic_824_semantics_is_false_never_traps_dyn_usable',
+        'av_dynamic_824_semantics_same_width_different_name_unequal',
+        'av_dynamic_824_semantics_unknown_type_operand_rejected',
+        'av_dynamic_824_semantics_frozen_payload_carries_no_authority',
+        'av_dynamic_824_semantics_f64_bits_preserved_through_dyn',
+        'av_dynamic_824_semantics_f32_bits_preserved_through_dyn',
+        'av_dynamic_824_semantics_int_extremes_and_id_collision_stay_integers',
+        'av_dynamic_824_semantics_restored_handles_detached',
+        'av_dynamic_824_semantics_shared_dag_pack_ok_freeze_rejects',
+        'av_dynamic_824_semantics_list_of_fn_not_declarable',
+        'av_dynamic_824_semantics_record_with_fn_not_declarable',
+        'av_dynamic_824_semantics_record_with_place_not_declarable',
+        'av_dynamic_824_semantics_place_slot_pack_rejected',
+        'av_dynamic_824_semantics_nested_dyn_rejected',
+        'av_dynamic_824_semantics_portable_admission_two_domains_and_refusals',
+        'av_dynamic_824_semantics_unfreeze_fault_retry_clean',
+        'av_dynamic_824_semantics_production_same_source_byte_equivalence'
     )
 }
 
@@ -114,13 +152,19 @@ switch ($Scope) {
     'first-case' {
         Run-Probe-Tests -Bin 'av_dynamic_824_first_case' -Label 'first-case' -RequiredIds $REQ['first-case']
     }
+    'semantics' {
+        # T-03: the full §5 support surface (V-02/03/04/05/11/12/14 axes)
+        # through the real gates, plus the same-source harness module axis.
+        Run-Probe-Tests -Bin 'av_dynamic_824_semantics' -Label 'semantics' -RequiredIds $REQ['semantics']
+        Run-Harness-Tests -Label 'semantics-harness'
+    }
     'autodown' {
         Run-Lang-Tests -Filter 'av_dynamic_824' -Label 'autodown' -RequiredIds $REQ['autodown']
     }
     'acceptance' {
         # Replay every implemented scope in child processes (isolated
         # working directories, same shapes the docs promise).
-        foreach ($s in @('first-case', 'autodown')) {
+        foreach ($s in @('first-case', 'semantics', 'autodown')) {
             & pwsh -File $PSCommandPath -Scope $s
             if ($LASTEXITCODE -ne 0) {
                 throw "acceptance: scope $s failed"
