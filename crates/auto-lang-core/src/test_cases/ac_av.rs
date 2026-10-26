@@ -1351,25 +1351,49 @@ fn malformed_owned(steps: &[StepOut]) -> Option<String> {
                     s.op, why
                 ))
             };
-            let o = o.as_object()?;
-            if !o.get("result")?.is_object() {
-                return bad("result is not an object");
+            // Every structural defect is an EXPLICIT rejection — a
+            // missing key must never `?`-skip the validator (the merge
+            // gate caught an alloc entry without `bytes` slipping
+            // through as "not malformed").
+            let Some(o) = o.as_object() else {
+                return bad("owned face is not an object");
+            };
+            match o.get("result") {
+                Some(v) if v.is_object() => {}
+                Some(_) => return bad("result is not an object"),
+                None => return bad("missing result"),
             }
-            if !o.get("live_after_release")?.is_u64() {
-                return bad("live_after_release is not a u64");
+            match o.get("live_after_release") {
+                Some(v) if v.is_u64() => {}
+                Some(_) => return bad("live_after_release is not a u64"),
+                None => return bad("missing live_after_release"),
             }
             for key in ["allocs", "frees"] {
-                let arr = o.get(key)?.as_array()?;
+                let arr = match o.get(key) {
+                    Some(v) => match v.as_array() {
+                        Some(a) => a,
+                        None => return bad(&format!("{key} is not an array")),
+                    },
+                    None => return bad(&format!("missing {key}")),
+                };
                 if arr.len() > 65536 {
                     return bad(&format!("{key} exceeds the table-entry family cap"));
                 }
                 for ev in arr {
-                    let e = ev.as_object()?;
-                    if !e.get("id")?.is_u64() {
-                        return bad(&format!("{key} entry id is not a u64"));
+                    let Some(e) = ev.as_object() else {
+                        return bad(&format!("{key} entry is not an object"));
+                    };
+                    match e.get("id") {
+                        Some(v) if v.is_u64() => {}
+                        Some(_) => return bad(&format!("{key} entry id is not a u64")),
+                        None => return bad(&format!("{key} entry missing id")),
                     }
-                    if key == "allocs" && !e.get("bytes")?.is_u64() {
-                        return bad("allocs entry bytes is not a u64");
+                    if key == "allocs" {
+                        match e.get("bytes") {
+                            Some(v) if v.is_u64() => {}
+                            Some(_) => return bad("allocs entry bytes is not a u64"),
+                            None => return bad("allocs entry missing bytes"),
+                        }
                     }
                 }
             }
@@ -1901,6 +1925,12 @@ mod judge_tests {
             serde_json::json!({ "result": { "kind": "str", "utf8": "x" },
                                 "live_after_release": 0,
                                 "allocs": [], "frees": [ { "id": "0" } ] }),
+            // Missing-key faces (merge-gate repair): a `?`-skip used to
+            // let these through as "not malformed".
+            serde_json::json!({ "live_after_release": 0,
+                                "allocs": [], "frees": [] }),
+            serde_json::json!({ "result": { "kind": "str", "utf8": "x" },
+                                "live_after_release": 0, "allocs": [] }),
         ] {
             let mut b = step(None, None);
             b.owned = Some(bad);
