@@ -222,12 +222,40 @@ switch ($Scope) {
         if ($a2r.Count -lt 26) { Fail "a2r snapshot check count $($a2r.Count) < 26" }
 
         # Two-axis honesty (G06): emit-green does NOT claim certified behavior.
-        # Report per-golden certificate presence; the certify scope owns the
-        # certificates themselves.
+        # Check each certificate's FILE-CONTENT identity axes (G05): golden,
+        # oracle text, reference and source must still hash to the certified
+        # values — a drift turns the certificate STALE right here (toolchain
+        # axes are validated only by the explicit certify scope; the daily
+        # face spawns nothing).
         $certDir = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/oracle/certs'
         $goldens = Get-ChildItem (Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/oracle') -Filter 'm1_*.rs'
         $certified = 0
-        if (Test-Path $certDir) { $certified = (Get-ChildItem $certDir -Filter '*.json').Count }
+        if (Test-Path $certDir) {
+            foreach ($certFile in Get-ChildItem $certDir -Filter '*.cert.json') {
+                $cert = Get-Content $certFile.FullName -Raw | ConvertFrom-Json
+                $module = $cert.module
+                $goldenHash = (Get-FileHash (Join-Path $certDir "..\$module.rs") -Algorithm SHA256).Hash.ToLower()
+                if ($goldenHash -ne $cert.identity.golden_sha256) {
+                    Fail "certificate $($certFile.Name) is STALE: golden drifted ($module)"
+                }
+                $refHash = (Get-FileHash (Join-Path $RepoRoot "crates/auto-lang/test/cases/ace-m1/reference/$($cert.case).rs") -Algorithm SHA256).Hash.ToLower()
+                if ($refHash -ne $cert.identity.reference_sha256) {
+                    Fail "certificate $($certFile.Name) is STALE: reference drifted ($($cert.case))"
+                }
+                $srcHash = (Get-FileHash (Join-Path $RepoRoot "crates/auto-lang/test/cases/ace-m1/src/$($cert.case).at") -Algorithm SHA256).Hash.ToLower()
+                if ($srcHash -ne $cert.identity.source_sha256) {
+                    Fail "certificate $($certFile.Name) is STALE: source drifted ($($cert.case))"
+                }
+                $oracleText = "i32:$($cert.expected_oracle -replace '^i32:', '' )"
+                $oracleHashByteArray = [System.Text.Encoding]::UTF8.GetBytes($cert.expected_oracle)
+                $sha = [System.Security.Cryptography.SHA256]::Create()
+                $oracleHash = -join ($sha.ComputeHash($oracleHashByteArray) | ForEach-Object { $_.ToString('x2') })
+                if ($oracleHash -ne $cert.identity.oracle_sha256) {
+                    Fail "certificate $($certFile.Name) is STALE: oracle text identity mismatch"
+                }
+                $certified++
+            }
+        }
         Write-Host "verify-ace-m1-852 [snapshot]: PASS — $($a2r.Count) a2r checks green (emit + byte-compare," `
             "process-spawn=0 by structural guard; full base suite $($r.results.Count) checks green). Goldens: $($goldens.Count); certificates: $certified" `
             "(certified-behavior axis is the separate certify scope; emit PASS is not a behavior claim)."
@@ -236,9 +264,25 @@ switch ($Scope) {
 
     'certify' {
         # Certification is an explicit, separate operation by contract; it is
-        # never triggered implicitly by any other scope.
-        Write-Host "verify-ace-m1-852 [certify]: FAIL — scope owned by T-04, not implemented yet" -ForegroundColor Red
-        exit 3
+        # never triggered implicitly by any other scope (G08).
+        $bin = if ($env:AUTO_CERTIFY_BIN) { $env:AUTO_CERTIFY_BIN } else {
+            $ErrorActionPreference = 'Continue'
+            & cargo @('build', '-p', 'auto-lang', '--features', 'test-cases', '--bin', 'ace-certify', '--quiet') 2>$null
+            $code = $LASTEXITCODE
+            $ErrorActionPreference = 'Stop'
+            if ($code -ne 0) { Fail "ace-certify build failed (exit $code)" }
+            Join-Path $RepoRoot 'target/debug/ace-certify.exe'
+        }
+        $corpus = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1'
+        $ErrorActionPreference = 'Continue'
+        & $bin @('--corpus', $corpus) 2>$null
+        $code = $LASTEXITCODE
+        $ErrorActionPreference = 'Stop'
+        if ($code -ne 0) { Fail "certification exit $code (0 = certified/reused, 1 = failure)" }
+        Write-Host "verify-ace-m1-852 [certify]: PASS — every ok-emit row certified or reused" `
+            "(real rustc compile+run of actual and reference under containment, or an" `
+            "axes-identical receipt). Receipts live in oracle/certs and are versioned."
+        exit 0
     }
 
     'lifecycle' {

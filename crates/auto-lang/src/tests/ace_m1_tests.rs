@@ -145,6 +145,52 @@ fn ace_m1_golden_drift_is_red() {
     );
 }
 
+/// PLAN-852 T-04: the explicit certification entry, driven directly. A fresh
+/// run into a temp certs dir certifies every ok-emit row (actual==golden,
+/// wrapper AND hand-written reference each print the fixed oracle through a
+/// REAL rustc compile+run under containment); a tampered golden must FAIL
+/// certification (drift is never re-certified silently — G04/G07).
+#[test]
+fn ace_m1_certify_fresh_and_tamper() {
+    let suite_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/cases/ace-m1");
+    let root = temp_root("cert");
+    let corpus = root.join("corpus");
+    copy_tree(&suite_dir, &corpus);
+    // binding.tsv drives the certifiable set (the 10 scalar ok-emit rows).
+    let certs = root.join("certs");
+    let args = crate::test_cases::ace_certify::CertifyArgs {
+        corpus: corpus.clone(),
+        certs_dir: certs.clone(),
+        only: vec![],
+        force: true,
+        rustc: std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string()),
+    };
+    let summaries = crate::test_cases::ace_certify::certify(&args)
+        .expect("certification pass runs");
+    assert_eq!(summaries.len(), 10, "certifiable set size");
+    for s in &summaries {
+        assert_eq!(s.outcome, "certified", "{}: {}", s.case, s.detail);
+    }
+    assert_eq!(std::fs::read_dir(&certs).unwrap().count(), 10);
+
+    // Tamper one golden byte: that case must FAIL and never rewrite the cert.
+    let golden = corpus.join("oracle/m1_b01.rs");
+    let bytes = std::fs::read(&golden).unwrap();
+    let tampered: Vec<u8> = bytes
+        .iter()
+        .map(|&b| if b == b'+' { b'*' } else { b })
+        .collect();
+    std::fs::write(&golden, tampered).unwrap();
+    let before = std::fs::read(&certs.join("m1_b01.cert.json")).unwrap();
+    let summaries = crate::test_cases::ace_certify::certify(&args)
+        .expect("tampered pass still runs");
+    let b01 = summaries.iter().find(|s| s.case == "B01").expect("B01 present");
+    assert_eq!(b01.outcome, "fail", "golden drift must fail certification");
+    assert!(b01.detail.contains("actual != golden"), "{}", b01.detail);
+    let after = std::fs::read(&certs.join("m1_b01.cert.json")).unwrap();
+    assert_eq!(before, after, "a failed certification never touches the cert");
+}
+
 /// Minimal recursive copy for the mutation fixture (the corpus is small;
 /// symlinks never appear — the tree is plain files).
 fn copy_tree(src: &Path, dst: &Path) {

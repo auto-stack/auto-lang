@@ -38,6 +38,9 @@ use auto_test_case::sha256::{hex, sha256};
 use auto_test_case::suite::apply_defaults;
 
 pub mod a2r;
+/// PLAN-852 T-04: the explicit independent a2r certification entry. Never
+/// invoked by the suite runner or any daily scope.
+pub mod ace_certify;
 pub mod abi;
 pub mod ac;
 pub mod ac_av;
