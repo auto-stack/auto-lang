@@ -1988,24 +1988,29 @@ fn dispatch<V: ModuleView>(
                         Some(i) => i,
                         None => return Some(list_index_trap(v, func_idx, func, flat)),
                     };
+                    // F822-R1-01: PRECHECK before any mutation — a budget
+                    // rejection leaves the element, the source slot and
+                    // the ledger untouched (§5.1.2 失败旧列表/源不变).
                     let mut visited = 0u64;
                     let new_deep = val.deep_size(&mut visited);
                     st.steps += visited;
                     let old_deep = {
-                        let fr = st.frames.last_mut().expect("frame present");
-                        match fr.slots[*root as usize].clone() {
+                        let fr = st.frames.last().expect("frame present");
+                        match &fr.slots[*root as usize] {
                             Value::List(h) => {
-                                let mut buf = h.rc.borrow_mut();
-                                if idx >= buf.elems.len() {
-                                    drop(buf);
-                                    return Some(list_index_trap(v, func_idx, func, flat));
+                                let buf = h.rc.borrow();
+                                match buf.elems.get(idx) {
+                                    Some(old) => {
+                                        let mut v2 = 0u64;
+                                        let d = old.deep_size(&mut v2);
+                                        st.steps += v2;
+                                        d
+                                    }
+                                    None => {
+                                        drop(buf);
+                                        return Some(list_index_trap(v, func_idx, func, flat));
+                                    }
                                 }
-                                let old = std::mem::replace(&mut buf.elems[idx], val.clone());
-                                let mut v2 = 0u64;
-                                let old_d = old.deep_size(&mut v2);
-                                st.steps += v2;
-                                drop(old);
-                                old_d
                             }
                             other => {
                                 return Some(ExecOutcome::Infra(format!(
@@ -2015,15 +2020,9 @@ fn dispatch<V: ModuleView>(
                             }
                         }
                     };
-                    // Deep-delta accounting for the in-place replacement.
                     if new_deep > old_deep {
                         let delta = new_deep - old_deep;
                         if st.slot_bytes.saturating_add(delta) > limits.max_slot_bytes {
-                            // Roll the element back so nothing is
-                            // half-committed (the old value was already
-                            // dropped — this is the budget-seam contract:
-                            // reject BEFORE the write; here we restore the
-                            // accounting path by rejecting the whole op).
                             return Some(ExecOutcome::Resource {
                                 kind: ResourceKind::SlotBytes,
                                 message: format!(
@@ -2033,7 +2032,27 @@ fn dispatch<V: ModuleView>(
                                 ),
                             });
                         }
-                        st.slot_bytes += delta;
+                    }
+                    // COMMIT: the swap-in and the old element's single
+                    // drop happen only after the budget admitted them.
+                    {
+                        let fr = st.frames.last_mut().expect("frame present");
+                        match fr.slots[*root as usize].clone() {
+                            Value::List(h) => {
+                                let mut buf = h.rc.borrow_mut();
+                                let old = std::mem::replace(&mut buf.elems[idx], val.clone());
+                                drop(old);
+                            }
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "list operand holds {} (admission violation)",
+                                    other.type_name()
+                                )))
+                            }
+                        }
+                    }
+                    if new_deep > old_deep {
+                        st.slot_bytes += new_deep - old_deep;
                     } else {
                         st.slot_bytes = st.slot_bytes.saturating_sub(old_deep - new_deep);
                     }
@@ -2049,17 +2068,48 @@ fn dispatch<V: ModuleView>(
                         Some(i) => i,
                         None => return Some(list_index_trap(v, func_idx, func, flat)),
                     };
+                    // F822-R1-01 (same-cause sibling): precheck the
+                    // destination's budget BEFORE the element moves out —
+                    // a rejection leaves the list (contents AND epoch)
+                    // untouched; the tail shift is billed per element.
+                    let removed_deep = {
+                        let fr = st.frames.last().expect("frame present");
+                        match &fr.slots[*root as usize] {
+                            Value::List(h) => {
+                                let buf = h.rc.borrow();
+                                match buf.elems.get(idx) {
+                                    Some(e) => {
+                                        st.steps += (buf.elems.len() - 1 - idx) as u64;
+                                        let mut v2 = 0u64;
+                                        let d = e.deep_size(&mut v2);
+                                        st.steps += v2;
+                                        d
+                                    }
+                                    None => {
+                                        drop(buf);
+                                        return Some(list_index_trap(v, func_idx, func, flat));
+                                    }
+                                }
+                            }
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "list operand holds {} (admission violation)",
+                                    other.type_name()
+                                )))
+                            }
+                        }
+                    };
+                    if let Err(out) = owned_alloc_precheck(st, removed_deep, *dst as usize, limits)
+                    {
+                        return Some(out);
+                    }
+                    // COMMIT: the transfer-out and the epoch bump happen
+                    // only after the budget admitted the destination.
                     let removed = {
                         let fr = st.frames.last_mut().expect("frame present");
                         match fr.slots[*root as usize].clone() {
                             Value::List(h) => {
                                 let mut buf = h.rc.borrow_mut();
-                                if idx >= buf.elems.len() {
-                                    drop(buf);
-                                    return Some(list_index_trap(v, func_idx, func, flat));
-                                }
-                                // The tail shift is billed per moved element.
-                                st.steps += (buf.elems.len() - 1 - idx) as u64;
                                 let out = buf.elems.remove(idx);
                                 buf.epoch = buf.epoch.wrapping_add(1);
                                 out
@@ -2072,6 +2122,8 @@ fn dispatch<V: ModuleView>(
                             }
                         }
                     };
+                    // The root shed the element; the destination gains it.
+                    st.slot_bytes = st.slot_bytes.saturating_sub(removed_deep);
                     if let Err(out) = commit_slot_write(st, *dst as usize, removed, limits) {
                         return Some(out);
                     }
@@ -2141,8 +2193,15 @@ fn dispatch<V: ModuleView>(
                         Some(i) => i,
                         None => return Some(list_index_trap(v, func_idx, func, flat)),
                     };
-                    {
-                        let fr = st.frames.last_mut().expect("frame present");
+                    // F822-R1-01 (same-cause sibling): PRECHECK the rebuilt
+                    // element's deep delta BEFORE committing — a budget
+                    // rejection leaves the field, the list and the source
+                    // untouched; the old field chain drops once at commit.
+                    let mut visited = 0u64;
+                    let _val_deep = val.deep_size(&mut visited);
+                    st.steps += visited;
+                    let new_elem = {
+                        let fr = st.frames.last().expect("frame present");
                         let handle = match fr.slots[*root as usize].clone() {
                             Value::List(h) => h,
                             other => {
@@ -2152,25 +2211,72 @@ fn dispatch<V: ModuleView>(
                                 )))
                             }
                         };
-                        let mut buf = handle.rc.borrow_mut();
-                        if idx >= buf.elems.len() {
-                            drop(buf);
-                            return Some(list_index_trap(v, func_idx, func, flat));
-                        }
-                        let elem = buf.elems[idx].clone();
-                        match crate::place::record_set_path(&elem, path, val.clone()) {
-                            Some(new_elem) => {
-                                buf.elems[idx] = new_elem;
-                            }
+                        let buf = handle.rc.borrow();
+                        match buf.elems.get(idx) {
                             None => {
                                 drop(buf);
+                                return Some(list_index_trap(v, func_idx, func, flat));
+                            }
+                            Some(elem) => {
+                                match crate::place::record_set_path(elem, path, val.clone()) {
+                                    Some(ne) => {
+                                        let mut v2 = 0u64;
+                                        let nd = ne.deep_size(&mut v2);
+                                        st.steps += v2;
+                                        let mut v3 = 0u64;
+                                        let od = elem.deep_size(&mut v3);
+                                        st.steps += v3;
+                                        if nd > od {
+                                            let delta = nd - od;
+                                            if st.slot_bytes.saturating_add(delta)
+                                                > limits.max_slot_bytes
+                                            {
+                                                return Some(ExecOutcome::Resource {
+                                                    kind: ResourceKind::SlotBytes,
+                                                    message: format!(
+                                                        "live slot data would reach {} bytes, above budget {}",
+                                                        st.slot_bytes + delta,
+                                                        limits.max_slot_bytes
+                                                    ),
+                                                });
+                                            }
+                                        }
+                                        (ne, nd, od)
+                                    }
+                                    None => {
+                                        return Some(ExecOutcome::Infra(format!(
+                                            "list-field-set path {:?} does not resolve (admission violation)",
+                                            path
+                                        )))
+                                    }
+                                }
+                            }
+                        }
+                    };
+                    // COMMIT: swap the rebuilt element in; the old
+                    // element's replaced field chain drops here, once.
+                    {
+                        let fr = st.frames.last_mut().expect("frame present");
+                        match fr.slots[*root as usize].clone() {
+                            Value::List(h) => {
+                                let mut buf = h.rc.borrow_mut();
+                                let old = std::mem::replace(&mut buf.elems[idx], new_elem.0);
+                                drop(old);
+                            }
+                            other => {
                                 return Some(ExecOutcome::Infra(format!(
-                                    "list-field-set path {:?} does not resolve (admission violation)",
-                                    path
-                                )));
+                                    "list operand holds {} (admission violation)",
+                                    other.type_name()
+                                )))
                             }
                         }
                     }
+                    if new_elem.1 > new_elem.2 {
+                        st.slot_bytes += new_elem.1 - new_elem.2;
+                    } else {
+                        st.slot_bytes = st.slot_bytes.saturating_sub(new_elem.2 - new_elem.1);
+                    }
+                    st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
                     kill_value_slot(v, func_idx, func, st, *value as usize);
                 }
                 MirInstr::VariantPack {
@@ -2258,29 +2364,47 @@ fn dispatch<V: ModuleView>(
                         func_idx,
                         variant_payload_ty(v, func_idx, root_slot_ty, *disc),
                     );
-                    let taken = {
-                        let fr = st.frames.last_mut().expect("frame present");
-                        match &mut fr.slots[*root as usize] {
-                            Value::Variant(var) => var.payload.take().expect("checked above"),
-                            other => {
-                                let _ = other;
-                                return Some(ExecOutcome::Infra(
-                                    "variant operand shape changed mid-instruction".to_string(),
-                                ));
-                            }
-                        }
-                    };
                     if payload_owned {
-                        // The payload moved out: shrink the root's live-data
-                        // accounting, then grow the destination.
+                        // F822-R1-01 (same-cause sibling): precheck the
+                        // destination BEFORE the payload moves out — a
+                        // budget rejection leaves the variant's arm intact.
                         let mut visited = 0u64;
-                        let deep = taken.deep_size(&mut visited);
+                        let deep = {
+                            let fr = st.frames.last().expect("frame present");
+                            match &fr.slots[*root as usize] {
+                                Value::Variant(var) => var
+                                    .payload
+                                    .as_ref()
+                                    .expect("checked above")
+                                    .deep_size(&mut visited),
+                                _ => unreachable!("checked above"),
+                            }
+                        };
                         st.steps += visited;
+                        if let Err(out) = owned_alloc_precheck(st, deep, *dst as usize, limits) {
+                            return Some(out);
+                        }
+                        // COMMIT: take the payload, shrink the root's
+                        // live-data accounting, grow the destination.
+                        let taken = {
+                            let fr = st.frames.last_mut().expect("frame present");
+                            match &mut fr.slots[*root as usize] {
+                                Value::Variant(var) => var.payload.take().expect("checked above"),
+                                _ => unreachable!("checked above"),
+                            }
+                        };
                         st.slot_bytes = st.slot_bytes.saturating_sub(deep);
                         if let Err(out) = commit_slot_write(st, *dst as usize, *taken, limits) {
                             return Some(out);
                         }
                     } else {
+                        let taken = {
+                            let fr = st.frames.last_mut().expect("frame present");
+                            match &mut fr.slots[*root as usize] {
+                                Value::Variant(var) => var.payload.take().expect("checked above"),
+                                _ => unreachable!("checked above"),
+                            }
+                        };
                         // Copy payload: the arm keeps its value.
                         let copy = taken.as_ref().clone();
                         {

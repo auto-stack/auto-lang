@@ -423,3 +423,447 @@ fn av_collections_822_worker_memory_hard_gate_parent_sampled() {
     }
     let _ = std::fs::remove_dir_all(&root);
 }
+
+// -- F822-R1-01: transactional precheck/commit counter-examples ----------
+
+/// The shared probe of the failure-seam contract: run `m` once under a
+/// wide budget to learn its EXACT live-data peak, then rerun at
+/// peak (exactly enough — must succeed) and peak-1 (exactly short — must
+/// be a SlotBytes resource with a clean ledger). A half-committed
+/// implementation leaks or reorders frees at the seam.
+fn both_sides_of_budget(
+    m: &MirModule,
+) -> (
+    u64,                                               // the exact peak
+    ExecOutcome,                                       // exactly-enough outcome
+    (ExecOutcome, auto_av_core::owned_text::StrArena), // exactly-short
+) {
+    use auto_av_core::mir_verify::verify_mir;
+    verify_mir(m).unwrap_or_else(|e| panic!("verify: {e:?}"));
+    let wire = encode_abc(m).unwrap_or_else(|e| panic!("encode"));
+    let loaded =
+        verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap_or_else(|e| panic!("admit: {e:?}"));
+    let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(
+        matches!(out, ExecOutcome::Success { .. }),
+        "wide run: {out:?}"
+    );
+    let peak = trace.peak_slot_bytes;
+    let mut tight = ExecLimits::default();
+    tight.max_slot_bytes = peak as usize;
+    let (enough, _) = execute(&loaded, &tight, &CancelFlag::new(false));
+    let mut short = ExecLimits::default();
+    short.max_slot_bytes = (peak - 1) as usize;
+    let (short_out, short_trace) = execute(&loaded, &short, &CancelFlag::new(false));
+    let arena = short_trace.arena.clone().expect("arena");
+    (peak, enough, (short_out, arena))
+}
+
+fn assert_clean_ledger(arena: &auto_av_core::owned_text::StrArena) {
+    assert_eq!(
+        arena.alloc_events().len(),
+        arena.free_events().len(),
+        "alloc/free ledger balanced at the seam: allocs {:?} frees {:?}",
+        arena.alloc_events(),
+        arena.free_events()
+    );
+    assert_eq!(arena.live(), 0, "nothing leaks past the rejection");
+}
+
+/// Minimal fixture vocabulary for the transaction tests:
+/// 0=i32 1=bool 2=Str 3=Note{text:Str,n:i32} 4=List<Str> 5=List<Note>
+/// 6=Outcome{Ok(Note),Err(Str)}
+struct TxFx {
+    m: MirModule,
+    slots: Vec<MirSlot>,
+    instrs: Vec<MirInstr>,
+    ret: u32,
+}
+
+#[allow(dead_code)]
+impl TxFx {
+    fn new() -> TxFx {
+        let mut m = MirModule::new_collections(OwnerScope {
+            schema: auto_av_core::contract::MIR_COLLECTIONS_SCHEMA.to_string(),
+            module: "collections822".to_string(),
+        });
+        m.types = vec![
+            MirType::I32,
+            MirType::Bool,
+            MirType::Str,
+            MirType::Record(auto_av_core::mir::RecordTypeRef {
+                owner_module: "collections822".to_string(),
+                name: "Note".to_string(),
+                fields: vec![
+                    auto_av_core::mir::MirFieldDef {
+                        name: "text".into(),
+                        ty: 2,
+                    },
+                    auto_av_core::mir::MirFieldDef {
+                        name: "n".into(),
+                        ty: 0,
+                    },
+                ],
+            }),
+            MirType::List(ListTypeRef { elem: 2 }),
+            MirType::List(ListTypeRef { elem: 3 }),
+            MirType::Variant(auto_av_core::mir::VariantTypeRef {
+                owner_module: "collections822".to_string(),
+                name: "Outcome".to_string(),
+                arms: vec![
+                    auto_av_core::mir::VariantArm {
+                        name: "Ok".into(),
+                        payload: Some(3),
+                    },
+                    auto_av_core::mir::VariantArm {
+                        name: "Err".into(),
+                        payload: Some(2),
+                    },
+                ],
+            }),
+        ];
+        TxFx {
+            m,
+            slots: Vec::new(),
+            instrs: Vec::new(),
+            ret: u32::MAX,
+        }
+    }
+    fn slot(&mut self, ty: u32, name: &str) -> u32 {
+        self.slots.push(MirSlot {
+            kind: SlotKind::Local,
+            ty,
+            name: Some(name.into()),
+        });
+        (self.slots.len() - 1) as u32
+    }
+    fn slot_list_str(&mut self) -> u32 {
+        self.slot(4, "list")
+    }
+    fn slot_list_note(&mut self) -> u32 {
+        self.slot(5, "list")
+    }
+    fn slot_str(&mut self, n: &str) -> u32 {
+        self.slot(2, n)
+    }
+    fn slot_i32(&mut self, n: &str) -> u32 {
+        self.slot(0, n)
+    }
+    fn slot_bool(&mut self, n: &str) -> u32 {
+        self.slot(1, n)
+    }
+    fn slot_note(&mut self, n: &str) -> u32 {
+        self.slot(3, n)
+    }
+    fn slot_variant(&mut self, n: &str) -> u32 {
+        self.slot(6, n)
+    }
+    fn t_list_str(&self) -> u32 {
+        4
+    }
+    fn t_list_note(&self) -> u32 {
+        5
+    }
+    fn t_note(&self) -> u32 {
+        3
+    }
+    fn t_outcome(&self) -> u32 {
+        6
+    }
+    fn c_str_owned(&mut self, s: &str) -> u32 {
+        self.m.intern_const(MirConst::Str(Box::from(s.as_bytes())))
+    }
+    fn c_i32v(&mut self, v: i32) -> u32 {
+        self.m.intern_const(MirConst::I32(v))
+    }
+    fn i(&mut self, instr: MirInstr) {
+        self.instrs.push(instr);
+    }
+    fn ret(&mut self, s: u32) {
+        self.ret = s;
+    }
+    fn build(mut self) -> MirModule {
+        assert_ne!(self.ret, u32::MAX);
+        let sig = self.m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+            params: vec![],
+            result: 0,
+        }));
+        self.m.funcs = vec![MirFunction {
+            owner: self.m.owner.clone(),
+            name: "main".into(),
+            sig,
+            slots: self.slots,
+            blocks: vec![MirBlock {
+                instrs: self.instrs,
+                term: Terminator::Return { value: self.ret },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: Vec::new(),
+        }];
+        self.m.entry = 0;
+        self.m
+    }
+}
+
+/// List<Str> in-place replace, small -> BIG (F822-R1-01 primary): at
+/// exactly-short budget the rejection fires BEFORE the swap — the old
+/// element's buffer is not freed mid-instruction (the unwind-order
+/// assertion catches a swap-then-check implementation), the source keeps
+/// its materialization, and the ledger balances; at exactly-enough the
+/// replacement succeeds.
+#[test]
+fn av_collections_822_resources_listset_transaction_both_sides() {
+    let big = "B".repeat(4096);
+    let mut f = TxFx::new();
+    let s0 = f.slot_list_str();
+    let s1 = f.slot_str("a");
+    let s2 = f.slot_str("big");
+    let s3 = f.slot_i32("idx");
+    let s4 = f.slot_i32("r");
+    let ca = f.c_str_owned("a");
+    let cb = f.c_str_owned(&big);
+    let c0 = f.c_i32v(0);
+    let c42 = f.c_i32v(42);
+    f.i(MirInstr::ListNew {
+        dst: s0,
+        list_ty: f.t_list_str(),
+        cap: 0,
+    });
+    let v1 = ca;
+    f.i(MirInstr::Const { dst: s1, value: v1 });
+    f.i(MirInstr::ListPush {
+        root: s0,
+        value: s1,
+    });
+    let v2 = cb;
+    f.i(MirInstr::Const { dst: s2, value: v2 });
+    let v3 = c0;
+    f.i(MirInstr::Const { dst: s3, value: v3 });
+    f.i(MirInstr::ListSet {
+        root: s0,
+        index: s3,
+        value: s2,
+    });
+    let v4 = c42;
+    f.i(MirInstr::Const { dst: s4, value: v4 });
+    f.ret(s4);
+    let (_peak, enough, (short, arena)) = both_sides_of_budget(&f.build());
+    assert!(
+        matches!(enough, ExecOutcome::Success { .. }),
+        "exactly-enough: {enough:?}"
+    );
+    match &short {
+        ExecOutcome::Resource { kind, .. } => assert_eq!(*kind, ResourceKind::SlotBytes),
+        other => panic!("exactly-short must be a SlotBytes resource: {other:?}"),
+    }
+    assert_clean_ledger(&arena);
+    // The OLD buffer (id 0, materialized first) frees only in the
+    // unwind — a swap-then-check implementation frees it MID-instruction,
+    // making it the FIRST free event (nothing else has died yet); the
+    // precheck implementation's first free is the unwound BIG buffer
+    // (id 2, still held by the source slot at rejection).
+    let ids: Vec<u64> = arena.free_events().iter().map(|e| e.id).collect();
+    assert_eq!(
+        ids.first(),
+        Some(&2),
+        "first free = the unwound big buffer; got {ids:?}"
+    );
+    assert_eq!(
+        ids.len(),
+        3,
+        "exactly the three materialized buffers: {ids:?}"
+    );
+    assert!(
+        ids.contains(&0) && ids.contains(&1),
+        "the list and its old element unwind too: {ids:?}"
+    );
+}
+
+/// List<Note> in-place FIELD replace, text "a" -> BIG (same-cause
+/// sibling): identical both-sides contract.
+#[test]
+fn av_collections_822_resources_listfieldset_transaction_both_sides() {
+    let big = "B".repeat(4096);
+    let mut f = TxFx::new();
+    let s0 = f.slot_list_note();
+    let s1 = f.slot_str("a");
+    let s2 = f.slot_i32("n");
+    let s3 = f.slot_note("note");
+    let s4 = f.slot_i32("idx");
+    let s5 = f.slot_str("big");
+    let s6 = f.slot_i32("r");
+    let ca = f.c_str_owned("a");
+    let c1 = f.c_i32v(1);
+    let cb = f.c_str_owned(&big);
+    let c0 = f.c_i32v(0);
+    let c42 = f.c_i32v(42);
+    f.i(MirInstr::ListNew {
+        dst: s0,
+        list_ty: f.t_list_note(),
+        cap: 0,
+    });
+    let v1 = ca;
+    f.i(MirInstr::Const { dst: s1, value: v1 });
+    let v2 = c1;
+    f.i(MirInstr::Const { dst: s2, value: v2 });
+    f.i(MirInstr::Aggregate {
+        dst: s3,
+        record_ty: f.t_note(),
+        operands: vec![s1, s2],
+    });
+    f.i(MirInstr::ListPush {
+        root: s0,
+        value: s3,
+    });
+    let v5 = cb;
+    f.i(MirInstr::Const { dst: s5, value: v5 });
+    let v4 = c0;
+    f.i(MirInstr::Const { dst: s4, value: v4 });
+    f.i(MirInstr::ListFieldSet {
+        root: s0,
+        index: s4,
+        path: vec![0],
+        value: s5,
+    });
+    let v6 = c42;
+    f.i(MirInstr::Const { dst: s6, value: v6 });
+    f.ret(s6);
+    let (_p, enough, (short, arena)) = both_sides_of_budget(&f.build());
+    assert!(
+        matches!(enough, ExecOutcome::Success { .. }),
+        "exactly-enough: {enough:?}"
+    );
+    assert!(
+        matches!(
+            &short,
+            ExecOutcome::Resource {
+                kind: ResourceKind::SlotBytes,
+                ..
+            }
+        ),
+        "{short:?}"
+    );
+    assert_clean_ledger(&arena);
+}
+
+/// LIST_REMOVE under an exactly-short destination budget: the rejection
+/// fires BEFORE the element moves out — contents and epoch untouched.
+#[test]
+fn av_collections_822_resources_listremove_transaction_both_sides() {
+    let big = "B".repeat(4096);
+    let mut f = TxFx::new();
+    let s0 = f.slot_list_note();
+    let s1 = f.slot_str("a");
+    let s2 = f.slot_i32("n");
+    let s3 = f.slot_note("note");
+    let s4 = f.slot_i32("idx");
+    let s5 = f.slot_note("removed");
+    let s6 = f.slot_i32("r");
+    let ca = f.c_str_owned(&big);
+    let c1 = f.c_i32v(1);
+    let c0 = f.c_i32v(0);
+    let c42 = f.c_i32v(42);
+    f.i(MirInstr::ListNew {
+        dst: s0,
+        list_ty: f.t_list_note(),
+        cap: 0,
+    });
+    let v1 = ca;
+    f.i(MirInstr::Const { dst: s1, value: v1 });
+    let v2 = c1;
+    f.i(MirInstr::Const { dst: s2, value: v2 });
+    f.i(MirInstr::Aggregate {
+        dst: s3,
+        record_ty: f.t_note(),
+        operands: vec![s1, s2],
+    });
+    f.i(MirInstr::ListPush {
+        root: s0,
+        value: s3,
+    });
+    let v4 = c0;
+    f.i(MirInstr::Const { dst: s4, value: v4 });
+    f.i(MirInstr::ListRemove {
+        dst: s5,
+        root: s0,
+        index: s4,
+    });
+    let v6 = c42;
+    f.i(MirInstr::Const { dst: s6, value: v6 });
+    f.ret(s6);
+    let (_p, enough, (short, arena)) = both_sides_of_budget(&f.build());
+    assert!(
+        matches!(enough, ExecOutcome::Success { .. }),
+        "exactly-enough: {enough:?}"
+    );
+    assert!(
+        matches!(
+            &short,
+            ExecOutcome::Resource {
+                kind: ResourceKind::SlotBytes,
+                ..
+            }
+        ),
+        "{short:?}"
+    );
+    assert_clean_ledger(&arena);
+}
+
+/// VARIANT_PROJECT of an OWNED payload under an exactly-short destination
+/// budget: the rejection fires BEFORE the take — the arm keeps its
+/// payload.
+#[test]
+fn av_collections_822_resources_variantproject_transaction_both_sides() {
+    let big = "B".repeat(4096);
+    let mut f = TxFx::new();
+    let s0 = f.slot_str("text");
+    let s1 = f.slot_variant("err");
+    let s2 = f.slot_bool("g");
+    let s3 = f.slot_str("msg");
+    let s4 = f.slot_i32("r");
+    let cb = f.c_str_owned(&big);
+    let c42 = f.c_i32v(42);
+    f.i(MirInstr::Const {
+        dst: s0,
+        value: {
+            let v = cb;
+            v
+        },
+    });
+    f.i(MirInstr::VariantPack {
+        dst: s1,
+        variant_ty: f.t_outcome(),
+        disc: 1,
+        payload: Some(s0),
+    });
+    f.i(MirInstr::VariantGuard {
+        dst: s2,
+        src: s1,
+        disc: 1,
+    });
+    f.i(MirInstr::VariantProject {
+        dst: s3,
+        root: s1,
+        disc: 1,
+    });
+    let v4 = c42;
+    f.i(MirInstr::Const { dst: s4, value: v4 });
+    f.ret(s4);
+    let (_p, enough, (short, arena)) = both_sides_of_budget(&f.build());
+    assert!(
+        matches!(enough, ExecOutcome::Success { .. }),
+        "exactly-enough: {enough:?}"
+    );
+    assert!(
+        matches!(
+            &short,
+            ExecOutcome::Resource {
+                kind: ResourceKind::SlotBytes,
+                ..
+            }
+        ),
+        "{short:?}"
+    );
+    assert_clean_ledger(&arena);
+}
