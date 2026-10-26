@@ -17,3 +17,7 @@ The independent experimental contract excludes root Cargo t/tf/tv/tu/docs_gen ti
 - prepared: frozen review/source/delta/dependencies and complete gates verified; canonical targets checked unchanged. Source landing, canonical/ledger publication, archive and cleanup are still pending at this preparation commit.
 
 This delivers M2/S0 baseline and evidence work only. New M2 capabilities and production AutoUI/RQHost I2, Forge/distribution I3 remain pending. The module has no separate ADR file; enduring measurement/evidence boundaries belong to the reviewed new canonical topic and existing module indexes.
+
+- landed: source `11911a4a6→c1961665d` on autographics-dev ff-only, exact reviewed identity; master `548500e91→32e239a45` ff-only with canonical commit `6d427a4a7` and ledger commit `32e239a45`. No rebased hashes or merge commits. See [landing receipt](landed.json.txt).
+- ledger_refreshed: [guarded offline projection](ledger-projection.json.txt), workspace `D:/autostack/auto-lang`, version93→94,7 affected IDs,1243 unrelated raw items untouched; schema/IDs/canonical hashes/file links read back. Byte-exact backup: `D:/autostack/plan-artifacts/plan-853/ledger-recovery`. No store success is claimed.
+- Runtime remnants were preserved under `D:/autostack/plan-artifacts/plan-853/retired-worktree-runtime` after the same tree changed from source to deposit role; no tracked source was moved and no payload recovery depends on disposable target paths.
