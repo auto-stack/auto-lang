@@ -6,7 +6,7 @@ plan_revision: 2
 author: [Codex]
 created_at: 2026-10-26
 updated_at: 2026-10-26
-current_step: 3
+current_step: 5
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/auto-test-case/project.md
@@ -195,18 +195,20 @@ D852=本revision底座独立review、冻结门禁、实际合入、Spec/merge收
 | T-01 | work | [x] 真语法/入口探针；冻结最低标量基线与通用报告/认证合同；全分母分类已有/未绑定/差异，未交付源API只登记owner/需求/关闭oracle；预算及版本化策略落contract-decision，不等823～826 | contract scope和实际入口正反控；AC-01/02/05/06。[✅ 已完成] 探针四路径基线全真值（B01=14/B02=-21/B04=42/B09=120，exit含符号/result十进制/emit bytes）；B14/B16负例通道实测；认证wrapper实测（rustc 0.12–0.19s/例）+认证键/复用/预算冻结；binding.tsv 103行+verify-ace-m1-852.ps1 contract scope PASS（篡改反控FAIL）；决策见[contract-decision](attachments/852/contract-decision.md)，实现提交38c651163 |
 | T-02 | work | [x] T-01后接通B01/B02/B04/B09同源四路径，审阅58源码/43参考/5typed设计；提升已绑定项，其余保留设计和明确M1 gap；不实现新语言、复合native或loader | source scope，完整typed返回及真实语言诊断/infra分类；AC-01/02/05。[✅ 已完成] 全58例观测探针；正式语料 crates/auto-lang/test/cases/ace-m1（58源+43参考byte-identical）；base套件34例67检查全绿（gate 0）+cargo测试2绿+负例oracle红；差异行如实入binding（B08=10/B11=-7 vs oracle7、T01/T02/V03/R07旧运行时、K02/K05旧语法、T04=false等）；a2r emit检查按任务边界归T-03；提交5e6e5ceaa |
 | T-03 | work | [x] T-02后真实a2r生成审阅金样，建立普通emit快照与认证身份核查；通用增量binding按已交付能力接线，不等下游新family | snapshot scope，G02/03零编译运行spawn；AC-04/05/06。[✅ 已完成] 24金样冻结（标量10+复合14，byte-exact a2r输出）；a2r检查26绿/全套件91绿；verify snapshot scope PASS（进程spawn=0结构守卫+G04金样漂移红+证书两轴报告）；复合伪Rust（List<int>/int不可编译）→认证gap登记owner=a2r复合lowering；提交7fcebf511 |
-| T-04 | work | T-03后显式独立认证入口，contained编译运行基线actual/reference，保存证书；仅实际支持代表项继续认证，未支持复合项有gap即可 | certify独立scope，G01/04～08；AC-03/04/06/07 |
-| T-05 | work | T-02及T-04后绑定已交付标量cache/会话的fresh/hit/重启/body编辑和工具资源负控；复合/在线native缺口登记owner；交付下游T-11所需binding入口及D852清单 | lifecycle scope，原始计数/身份/结果/治理证据；AC-02/05/07 |
+| T-04 | work | [x] T-03后显式独立认证入口，contained编译运行基线actual/reference，保存证书；仅实际支持代表项继续认证，未支持复合项有gap即可 | certify独立scope，G01/04～08；AC-03/04/06/07。[✅ 已完成] ace-certify入口（挂起态Jobcontained rustc，120s/30s墙/1MB cap/scratch清理）；10证书入库（actual==golden+wrapper与手写reference各符合固定oracle）；G08二次运行零编译复用；G04篡改金样FAIL且证书不动；G05证书STALE轴核查；提交40b607727 |
+| T-05 | work | [x] T-02及T-04后绑定已交付标量cache/会话的fresh/hit/重启/body编辑和工具资源负控；复合/在线native缺口登记owner；交付下游T-11所需binding入口及D852清单 | lifecycle scope，原始计数/身份/结果/治理证据；AC-02/05/07。[✅ 已完成] session-lifecycle.case.ad（B09同源：av warm120/hot120/体编辑720/跨进程编辑持久720+cache_hit_abc；mn fresh120/edit+重启720+cache_hit_coff=2）；认证器墙钟杀树负控真实rustc挂起程序2.17s绿；I01/02/05/06 scalar-subset证据+保留缺口；I08/复合native gap登记；提交b19c6b2d8 |
 | T-06 | work | T-03～05后验852最低基线/框架/证书及完整gap清单，分别报告底座验收与M1完整性；SD/交接说明齐全，不以未交付能力阻塞底座，也不将其算M1 PASS | acceptance scope与定向新增测试家族；AC-01～07；无整档/隐式认证 |
 | T-07 | review | 同树独立上下文逐AC/SD/固定oracle核验，不自修，出revision-bound结论 | AC-08，merge-owned裸t及触面档pending |
 | T-08 | merge | 最终审查后在冻结提交跑实际Rust触面门禁，Spec/ledger/归档/guard清理 | AC-09；纯设计资产不跑cargo t/docs_gen |
 
 拟新脚本`powershell -File scripts/verify-ace-m1-852.ps1 -Scope contract|source|snapshot|certify|lifecycle|acceptance`各Scope由以上任务建立，目前不存在、未运行；certify始终独立显式操作，acceptance只核已有证据不暗中重认证。
-下一执行入口T-04；T-03完成（3/8）。标量与旧引擎基线不等822～826全体；新增family未就绪保留M1 gap，不阻塞852基础层交付。关闭测试计划不关闭M1缺口；M1全绿需要所有required真实满足。
+下一执行入口T-06；T-04/T-05完成（5/8）。标量与旧引擎基线不等822～826全体；新增family未就绪保留M1 gap，不阻塞852基础层交付。关闭测试计划不关闭M1缺口；M1全绿需要所有required真实满足。
 
 2026-10-26 stage:work | PLAN-852 r2 | work启动 | worktree: D:/autostack/.wt/lang-852/auto-lang | branch: codex/plan-852-dev | base_commit: 2e09547ee | 主检出crates/test无已跟踪WIP（仅未跟踪Cargo.lock与fixtures产物） | next: T-01真语法/入口探针与合同冻结。
 
 ## 9. 复审记录
+
+2026-10-26 stage:work | PLAN-852 r2 | T-04+T-05完成 | worktree: D:/autostack/.wt/lang-852/auto-lang | branch: codex/plan-852-dev | codes: 40b607727 / b19c6b2d8 | tasks: T-04, T-05 | evidence: 10证书+G03~G08正反控绿；lifecycle scope PASS（6检查真实观测+墙钟杀树）；base套件97/97 | blockers: 无 | next: T-06验收与两轴报告
 
 2026-10-26 stage:work | PLAN-852 r2 | T-03完成 | worktree: D:/autostack/.wt/lang-852/auto-lang | branch: codex/plan-852-dev | code: 7fcebf511 | tasks: T-03 | evidence: 24金样（oracle/m1_*.rs）+a2r 26检查绿+全套件91绿+snapshot scope PASS+G04漂移红测试 | blockers: 无 | next: T-04独立认证
 
