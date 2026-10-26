@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-821
-status: executing
+status: archived
 feature_name: AV Place拥有型读写与全出口清理
-plan_revision: 5
+plan_revision: 6
 author: [Codex]
 created_at: 2026-10-20
 updated_at: 2026-10-26
-current_step: 7
+current_step: 9
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-av/resident-function-install.md
@@ -25,8 +25,7 @@ affects: [auto-av, auto-mir, auto-test-case]
 
 ## 0. 变更摘要
 
-承接Design44/43的owned Place与清理合同。2026-10-26 final R4 **needs_fix**（[报告](attachments/821/review-r4/review.md)）后同树修复完成（R4 提交 `40f4c594f`）：F07' 保留声明坐标随单 body 发布原子平移（连续变长编辑恒以当前源坐标路由，1234→8/107→108 翻转）；F08' moved_fields 随完整重初始化清零（mut 循环=9）+ field_moved 改前缀重叠判定（父后子/子后父授信前拒）；F09' heap_estimate/解码卫哨计入 RecordView 动态载荷与逐字段名（3000×~1000B 反例 hot 估算 9.43MB>8MiB 且≥载荷下界）。V-05 运行期句柄探测按 R4 指示具名路由 new/用户决策（三选一合同修订，§10）。当前 executing 7/9（work-owned 完成，待 R5 独立复审）。
-
+2026-10-26 用户裁定后 r5→r6：V-05 修订为实际静态类型／借用检查与拥有权行为，明确不承诺运行期失效句柄校验；未交付旧帧复用、跨 store、generation 回绕/退役探测，也不新增解引用指令。R4 三项 P1 已由 [R5独立证据](attachments/821/review-r5/review.md)关闭，21 定向检查通过、无警告。其余支持面、资源上限、兼容和增量合同不变。r6最终复审pass、reviewed8/9；8项定向测试和7个实际选择器控制通过，T-08及merge-owned冻结门禁pending；当前复核见 [r6合同与验收记录](attachments/821/review-r6/review.md)。历史合同和任务叙述保留在 §9 及本轮冻结附件。
 ## 1. 目标
 
 在820布局/字段Place上，沿774/782接入char、borrowed str、owned Str及拥有Str字段的record，统一ReadCopy/Borrow/Move/Initialize/Replace/Drop。提供LHS reservation、明确初始化/所有权状态和AV所有受控退出的清理。已有text/text-record源码路径必须真实接入；不是只模拟RC计数。
@@ -60,9 +59,13 @@ Rust、D依赖交付的 `experimental/ac-av-probe/` 独立workspace（已观察p
 
 ## 4. 需求分析与背景调查
 
+用户2026-10-26明确选择：**“修订为现有静态类型／借用检查，明确不承诺运行期无效句柄校验（推荐）”**。据此仅修订 V-05、§5.1.6/§5.5、AC-02/04、T-03/04/06 及 SD-01/02/04 的相关承诺；保留已有验证和稳定 ID。该授权不新增机器能力，不变更预算、仓库范围或其他验收，不授权本轮合入/清树。当前实施授权见 §9 的2026-10-25 work入口，早期“先不写代码”仅是历史授权阶段。
+
 用户2026-10-21确认：828之后优先推进817/818、827与820功能线，825/826择机插入；全链路增量、D828门和原硬依赖保留。授权本轮更新计划/战略及单写交接规则，不启动实施、不改变已有进度/预算/支持面；当前合同以§5–8及共同排期为准，旧排期/待裁定记录为历史。
 
 授权：2026-10-20用户认可方向并明确要求正式架构、衔接43/798、拆分计划，**先不写代码**。本轮允许主检出设计/计划簿记；未授权实施、开树、建/联系代理、改canonical Spec或切换产品。未指定实施者/模型/时间预算。
+
+当前取材版本/hash见 [r6输入收据](attachments/821/review-r6/baseline.json)：canonical auto-av/auto-mir及text域Spec、验证配置/输入与技能版本均绑定；SD两个add目标目前不存在，五个modify目标存在。原R5关注的resident/cache Spec哈希未变。
 
 取材：[overview](../specs/overview.md)、[HIR阶段](../specs/auto-hir/stage-contract.md)、[774资源合同](../specs/auto-ac/data-resource-contract.md)、[record](../specs/auto-ac/source-record.md)、[text](../specs/auto-ac/source-text.md)、[782组合](../specs/auto-ac/source-text-record.md)、[796](../specs/auto-semantics/project.md)、[artifact](../specs/auto-ac/artifact-contract.md)、[测试v2](../specs/auto-test-case/profile-v2-native.md)。路径/提交/文件SHA-256见[共同输入收据](attachments/av-data-20261020/planning-inputs.json.txt)。
 
@@ -70,7 +73,7 @@ Rust、D依赖交付的 `experimental/ac-av-probe/` 独立workspace（已观察p
 
 **D-820**=前序profile实际交付，且独立最终review、冻结门禁、合入、Spec与merge收据齐全；实际启动重验提交祖先/Spec，不只看frontmatter。T-01只读准备可先做，T-02及依赖构建等D和用户执行授权。797不是本计划前置；817/818共享API消费映射按Design44 §12单写交接，不能修改其在途合同。若仍在改公共定义，先等owner交接/实际合入，不从其分支抄代码开工。
 
-拟唯一实施树 `D:/autostack/.wt/lang-821/auto-lang`，分支 `plan-821-dev`；本轮未创建。实施/内部检查/最终独立review在同树顺序进行，主检出只记计划。
+当前唯一实施树 `D:/autostack/.wt/lang-821/auto-lang`，分支 `plan-821-dev`，受审提交 `40f4c594fd6cfdc8d051a980c64f5e57baa67e4a`；本轮只修订合同并复核，实施代码未变。实施/内部检查/最终独立review在同树顺序进行，主检出只记计划。
 
 ## 5. 详细设计
 
@@ -81,7 +84,7 @@ Rust、D依赖交付的 `experimental/ac-av-probe/` 独立workspace（已观察p
 3. 复制定位handle不复制拥有权；复合Value不能延用798标量Copy derive。BorrowRead/Write使用受限token，权限和存活单独检查；move源Uninit，分支/循环must分析随状态验证。
 4. Replace先准备新值，再一次提交init/move状态，后清理旧值；失败保留旧值和源责任。纯Copy自赋值合法；owned自move及重叠move拒绝。分配器/shim失败使用明确resource/infra，不以Null成功。
 5. 正常return/break/continue/语句尾临时按逆建立序清理；AV trap/cancel/fuel/frame/memory耗尽与构造失败同样回滚。内建drop无guest分配/回调/挂起，用显式栈和预留记账；cleanup失败单报并保留原错误。
-6. 帧实例/store/槽位generation和borrow token隔离；generation回绕退役。内建owned数据不形成环；shared/weak、借用逃逸和跨挂起明确拒绝，不拿运行期兜底冒称静态完整。
+6. V-05 按 r6 授权限定为 typed Value 与类型门的整数/借用隔离、静态活 loan 的冲突拒绝及 BorrowEnd 后合法重定义的值/释放行为。MutRefV 的 frame/slot/gen 是排他 token 的内部字段，当前没有通过该 token 解引用的消费入口；StrView 为 Share/Static buffer，不按帧/槽代际查表。不承诺运行期失效句柄校验、旧帧复用/跨 store 拒绝或 generation 回绕退役；这些能力未交付，后续如需须另定合同。内建 owned 数据不形成环；shared/weak 语言能力、借用逃逸和跨挂起仍按原支持边界拒绝。
 7. 新profile的typed entry/result建立宿主接收owned结果的唯一责任，不放松798旧入口。borrow返回追踪真实owner，合法静态字面量/借入参数view在callee返回后继续有效；局部/move-in/活mut来源沿774拒绝，不把所有跨callee token一概判死。
 
 ### 5.2 有界首例与资源政策
@@ -100,7 +103,7 @@ T-01冻结支持/拒绝、类型/指令/wire版本、生命周期、输入前门
 
 首例沿783真实代码producer、root/lease/GC，cache恢复重走MIR/ABC门；类型/字段集/layout/profile/语义版本入依赖，坏内层即使好hash也不得执行。活帧/borrow/宿主地址不存cache。首例独立recipe注册和父侧expected比较是T-02交付，不允许“有fixture但execution pending”结项。
 
-共享注册入口现观察为 `crates/auto-lang/src/test_cases/{sema,mod,stale}.rs`（若已迁移以816交付为准）。只追加自己的recipe/身份和独立worker处理，不复制整个sema worker，不修改v1/v2解码或他方recipe合同。若协议不足，在T-01由实际owner决定最小版本化增量，依赖实施暂停。
+当前共享注册owner为 `crates/auto-lang-core/src/test_cases/{sema,mod,stale,ac_av}.rs`，正式测试在 `crates/auto-lang/src/tests/av_owned_821_tests.rs`；沿已迁移owner追加本recipe。只追加自己的recipe/身份和独立worker处理，不复制整个sema worker，不修改v1/v2解码或他方recipe合同。若协议不足，在T-01由实际owner决定最小版本化增量，依赖实施暂停。
 
 旧标量语料与实际已合入817/818路径必须重放：仅保证原profile兼容及未知新profile明确拒绝；不强制其他后端实现新数据。既有text/text-record合法语料使用770/782的旧HIR-native；AV取消/trap清理另用真实资源事件与分配故障oracle，native进程退出不能代证。
 
@@ -116,7 +119,7 @@ T-01冻结支持/拒绝、类型/指令/wire版本、生命周期、输入前门
 
 初始化合流取交集，可能活owner/loan保守并集；cleanup按动态init/drop guard清理实际活根，不用must-init集合代替清理表。分支一侧move、条件构造、零次循环及loop back-edge均求有界不动点；活loan任一路径存在都阻止冲突写，返回view所有路径来源合法。正常/取消/耗尽都核跨类型LIFO。
 
-准入错误在decode/verify/load门拒绝、dispatch=0；已准入程序的越界、失效句柄/guard、错型take、取消等允许此前合法执行，须断言危险目标访问/提交/目标callee计数0及原值/清理，不要求整次dispatch=0。prepare/commit只保护尚未提交的转移；已发生的guest求值/调用效果不回滚。
+准入错误在decode/verify/load门拒绝、dispatch=0；已准入程序已支持的越界、guard、错型take、取消等允许此前合法执行（不包含未交付的运行期失效句柄访问），须断言危险目标访问/提交/目标callee计数0及原值/清理，不要求整次dispatch=0。prepare/commit只保护尚未提交的转移；已发生的guest求值/调用效果不回滚。
 
 消费前冻结已合入(profile, wire/schema, semantic-version, producer)矩阵；825/826可前置但不是本计划硬依赖，820指令表尚未交付时它们沿D798现有合同，不反向等待本计划。当前core/注册窗口只能在依赖满足后持有，不持锁等其他owner。注册的最小接线是范围内例外，不等于修改旧VM或产品默认；814–816只按实际已迁移owner交接。
 
@@ -126,13 +129,13 @@ T-01在contract-decision冻结case→子case→Scope→真实入口→阶段/码
 
 ### 全链路增量兼容与828优先排期（r4）
 
-798实际交付后优先828，本计划在原依赖和D828均满足后取得共享写窗口。D828=当前revision最终review/冻结门禁/实际合入/Spec与merge收据齐全，不消费WIP；只读调研/合同准备可先，已有准备保留。共同合同见[ACE顺序与兼容](reports/ace-execution-order-and-incremental-compatibility-2026-10-20.md)与[828](828-av-function-incremental-session.md)。
+798实际交付后优先828，本计划在原依赖和D828均满足后取得共享写窗口。D828=当前revision最终review/冻结门禁/实际合入/Spec与merge收据齐全，不消费WIP；只读调研/合同准备可先，已有准备保留。共同合同见[ACE顺序与兼容](reports/ace-execution-order-and-incremental-compatibility-2026-10-20.md)与[828](archive/828-av-function-incremental-session.md)。
 
 专项：函数局部init/owner/loan/cleanup复用，旧snapshot的layout/drop在引用期间保活；无活值布局迁移支持时拒绝不兼容安装。
 
 T-09 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳定函数身份、私有凭证与实际依赖。纯body编辑、签名/实际依赖/profile/配置/授权不变时，未改HIR/MIR/代码对象和代际不变，未改生产阶段及读盘/decode/verify/load为0。元数据更新单列，不能用全source hash/总revision使所有函数失效。新工件仍走适用准入，恢复不可信。
 
-四必需子case：1)D828真实source edit基线273575B/115函数，至少30不同修订，结构与稳定会话P95<1s双门；2)本计划新增能力真实支持入口两函数局部body更新，未改单元保留且语义/清理正确；3)实际接口/layout/helper body/授权事实变化的精确失效/拒绝正反控；4)强制whole前端/lower/重装载或只保hash却换对象/代际，正式gate必非零。仅手工HIR/MIR支持的新类型不能冒领该类型完整源码能力，但scalar全链仍须重放。由T-09 建立真实入口计数/身份/IO/反控，当前未有新增证据，review不得豁免或推给merge。
+四必需子case：1)D828真实source edit基线273575B/115函数，至少30不同修订，结构与稳定会话P95<1s双门；2)本计划新增能力真实支持入口两函数局部body更新，未改单元保留且语义/清理正确；3)实际接口/layout/helper body/授权事实变化的精确失效/拒绝正反控；4)强制whole前端/lower/重装载或只保hash却换对象/代际，正式gate必非零。仅手工HIR/MIR支持的新类型不能冒领该类型完整源码能力，但scalar全链仍须重放。由T-09 建立真实入口计数/身份/IO/反控，现已完成并由R5独立核验（见§8/§9）；review不得豁免或推给merge。
 
 原支持面/资源/原生等性能门不放宽；cold/restart/版本迁移或真实广泛失效另报，不掩盖正常body退化。旧帧/值/drop引用期间代码与布局保活，失败/取消/迟到不安装，退出后回收；不兼容布局按实际支持策略拒绝/扩大失效，不擅自迁移活值。
 
@@ -146,10 +149,10 @@ T-09 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-01 | add | docs/specs/auto-av/place-ownership.md | 无本profile→仅本计划已验证的数据/资源/拒绝规则；r2纳入§5.4/V-11的move-kill与清理分析及语义元数据规则；r3 §5.5/V-12的阶段计数、状态/资源及恢复规则 | 明确支持边界 | AC-01/02/03/04 |
-| SD-02 | add | docs/specs/auto-mir/owned-access-profile.md | 无本profile MIR→类型/Place/状态/准入及来源合同；r2纳入§5.4/V-11的move-kill与清理分析及语义元数据规则；r3 §5.5/V-12的阶段计数、状态/资源及恢复规则 | 防绕过验证 | AC-01/02/04 |
+| SD-01 | add | docs/specs/auto-av/place-ownership.md | 无本profile→仅本计划已验证的数据/资源/拒绝规则；r2纳入§5.4/V-11的move-kill与清理分析及语义元数据规则；r3 §5.5/V-12的阶段计数、状态/资源及恢复规则；r6 V-05仅静态类型/借用及重定义责任，不承诺运行期失效句柄校验或generation回绕退役 | 明确支持边界 | AC-01/02/03/04 |
+| SD-02 | add | docs/specs/auto-mir/owned-access-profile.md | 无本profile MIR→类型/Place/状态/准入及来源合同；r2纳入§5.4/V-11的move-kill与清理分析及语义元数据规则；r3 §5.5/V-12的阶段计数、状态/资源及恢复规则；r6 V-05仅静态类型/借用及重定义责任，不承诺运行期失效句柄校验或generation回绕退役 | 防绕过验证 | AC-01/02/04 |
 | SD-03 | modify | docs/specs/auto-av/cache-and-conformance.md | 前序profile实际交付→增加本producer身份/恢复/失效、oracle及资源边界；r2纳入§5.4/V-11的move-kill与清理分析及语义元数据规则；r3 §5.5/V-12的阶段计数、状态/资源及恢复规则 | 不冒领旧producer能力 | AC-05/06 |
-| SD-04 | modify | docs/specs/auto-av/project.md | 前序profile实际交付→登记本profile与明确非目标，原标量仍独立 | 现状准确 | AC-06/08 |
+| SD-04 | modify | docs/specs/auto-av/project.md | 前序profile实际交付→登记本profile与明确非目标，原标量仍独立；r6明确无运行期失效句柄校验能力 | 现状准确 | AC-06/08 |
 | SD-05 | modify | docs/specs/auto-test-case/architecture.md | 既有probe/run保持→登记av-data-821独立recipe/身份/父侧oracle与必需反控 | 正式执行非仅fixture | AC-01/04/06 |
 | SD-06 | modify | docs/specs/auto-hir/stage-contract.md | 已有HIR域语义保持→追加其到av.owned/1 MIR/ABC的实际消费支持/拒绝/资源责任 | 不将新后端能力反授旧域 | AC-01/02/04/06 |
 | SD-07 | modify | docs/specs/auto-av/resident-function-install.md | 继承D828函数IR/代码复用、受检安装/依赖/寿命；新增能力不退回整模块热重编/装载 | 用户明确的顺序与增量机制保留 | AC-09 |
@@ -160,7 +163,7 @@ T-09 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳
 
 排期交接沿本节既有兼容性入口与独立review核查：对照记录中的实际基面/API/版本/消费者验证结果；公共写面无交接、依赖未交付或旧证据失配时不得判就绪。不新增整档测试；原增量、AutoDown、P95/内存及反控门保持。
 
-不变量为Design44 I-01..12及§5。以下V均为**必需补充反例/正控**，T-02/T-04将其变为真实入口；固定语料总数不能替代。每案保存输入身份、阶段/码、result/trace/bits/owner与原始日志。期望由人工或独立小模型确定，不能由被测布局/清理算法生成。
+不变量为Design44 I-01..12及§5；其中涉及运行期失效句柄/代际退役的原设想，以本计划r6经用户批准的§5.1.6/V-05边界为准，未交付能力不计pass。以下V均为**必需补充反例/正控**，T-02/T-04将其变为真实入口；固定语料总数不能替代。每案保存输入身份、阶段/码、result/trace/bits/owner与原始日志。期望由人工或独立小模型确定，不能由被测布局/清理算法生成。
 
 | Case ID | AC / work owner | 输入/状态 | 实际或拟入口 | 可观察oracle与区分断言 | 覆盖边界 |
 |---|---|---|---|---|---|
@@ -168,7 +171,7 @@ T-09 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳
 | V-02 | AC-02/03；T-03/04 | move后读、两次move、只读写、重叠mut与合法多view | 新profile verify/ABC/AV，av_owned_821 family | 各自特定ownership诊断，合法对照不被误拒 | Move/borrow；仅声明支持面 |
 | V-03 | AC-03/05；T-03/04 | 第n次用户/记账分配失败、构造中途失败、重叠clone替换 | 新profile verify/ABC/AV，av_owned_821 family | 旧bytes/owner不变，未提交源未消耗，临时恰清理一次 | 事务失败；仅声明支持面 |
 | V-04 | AC-04；T-03/04 | return/break/continue/trap/cancel/fuel/frame/memory耗尽 | 新profile verify/ABC/AV，av_owned_821 family | 独立事件oracle证明逆序唯一drop；结果转出不误释放 | 所有退出；仅声明支持面 |
-| V-05 | AC-02/04；T-03/04 | 普通整数等于活资源id、旧帧复用、跨store、generation边界 | 新profile verify/ABC/AV，av_owned_821 family | 整数仍整数；无效访问在读取前受控拒绝 | 句柄碰撞；仅声明支持面 |
+| V-05 | AC-02/04；T-03/04/06 | 整数0与首个资源id相等；StrView误入整数运算；活MutRef冲突写与结束借用后的合法写；BorrowEnd后同槽重新定义 | semantics测试 v05 三例+v02 活mut/结束借用正反控；真实MIR verify→ABC decode/verify→AV | I32(0)；错型为mir.bin-type；活loan写mir.mut-conflict、结束后成功；重定义结果41且旧/新buffer各释放一次、live=0 | 静态类型/借用准入与实际拥有权行为；不承诺运行期失效句柄校验/旧帧跨store/generation回绕退役 |
 | V-06 | AC-02/03；T-03/04 | 空串/NUL/组合Unicode、view返回合法来源/局部逃逸、部分move | 新profile verify/ABC/AV，av_owned_821 family | 沿774结果/诊断；owned返回接收方释放后live=0 | 文本/拥有；仅声明支持面 |
 | V-07 | AC-05；T-04 | 合法输入cap内/超1单位、瞬态峰值、故障第n次 | 新worker+父侧budget/allocator hook | resource分态；预算前拒的该申请attempt=0，故障注入attempt存在但successful_alloc=0；先前合法事件保留，危险访问/提交0；cleanup/真实峰值断言触发，无panic | 不能只看终态RSS |
 | V-08 | AC-06；T-02/05 | fresh、同store新worker重启、改type/layout/profile、好hash坏payload | 783真实恢复→verify→AV | 合法恢复结果相同；依赖变化不复用；非法执行计数0 | 不缓存PASS或trusted |
@@ -179,13 +182,13 @@ T-09 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳
 
 资源观测为纯读；正常释放后live=0，不能由reap_all掩盖泄漏。返回owned结果时先确认责任转出，测试接收者显式drop后断言0。确需runtime拒绝的无效handle与应在verify拒绝的语言借用分别断言，不以一种替代另一种。
 
-拟命令（T-02/06创建后才能执行，当前未运行）：
+现有验证入口（以下为命令索引；本轮实际调用与复用范围见r6报告，不声称本轮整档执行）：
 - 定向：`cargo test --manifest-path experimental/ac-av-probe/Cargo.toml -p auto-av-core av_owned_821`；probe同前缀。需证明selected>0，0例不得PASS。
 - 首例/定向验收：`pwsh -File scripts/verify-av-owned-821.ps1 -Scope first-case|semantics|admission|resources|cache|compatibility|autodown|acceptance`（实际调用每次只给一个Scope）。
 - fmt/check按该独立manifest执行；开发与修复只定向测试。禁止work/internal/final review触发整档t/tv/tt/tb/tu/taa。
 - 合入：最终review后冻结HEAD，由merge执行裸`cargo t`+VM/编译器触面`cargo tv`，以及新workspace完整有限合同档；按实际diff再选其他触面，tf只主检出到期单实例。review pass必须记录merge门禁pending。
 
-角色：用户未指定模型或分离实现者。work负责实现和反例；内部检查只表示可送审；最终review必须独立上下文、同树只读核验，不修代码；merge负责冻结门禁/规范/归档/guard清树。当前未指派或启动任何角色/代理。
+角色：用户未指定模型或分离实现者。work负责实现和反例；内部检查只表示可送审；最终review必须独立上下文、同树只读核验，不修代码；merge负责冻结门禁/规范/归档/guard清树。当前复核由本Codex独立审查聊天进行，未参与实施；本次在同一审查聊天修订获批合同后核代码，不声称另有外部文档审稿人，未启动代理。
 
 ### 本轮新增的增量兼容验收（work-owned）
 
@@ -198,9 +201,9 @@ T-09 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳
 | ID | owner_stage | 可观察完成标准与方法 |
 |---|---|---|
 | AC-01 | work | T-02真实首例经source支持面/typed fixture→verify→ABC→AV，内容/位型/来源和独立oracle一致，V-01/10通过 |
-| AC-02 | work | §5支持语义和求值/Place规则成立；V-01/02/05/06实际反例与合法对照通过，无静默降级；§5.4及V-11对应move-kill与清理分析规则实际通过；§5.5/V-12及其明确阶段计数、资源与兼容规则通过 |
+| AC-02 | work | §5支持语义和求值/Place规则成立；V-01/02/05/06实际反例与合法对照通过，无静默降级；V-05仅按r6静态类型/借用及重定义责任验收，不含运行期失效句柄保证；§5.4及V-11对应move-kill与清理分析规则实际通过；§5.5/V-12及其明确阶段计数、资源与兼容规则通过 |
 | AC-03 | work | 已声明的copy/move/borrow/cleanup责任保真；V-02/03/06在适用面逐案断言（821含owned资源）；§5.4及V-11对应move-kill与清理分析规则实际通过；§5.5/V-12及其明确阶段计数、资源与兼容规则通过 |
-| AC-04 | work | 非法类型/owner/状态/未知profile在对应门拒绝，副作用/执行计数符合V-04/05/10，不以panic/timeout充负例；§5.4及V-11对应move-kill与清理分析规则实际通过；§5.5/V-12及其明确阶段计数、资源与兼容规则通过 |
+| AC-04 | work | 非法类型/owner/状态/未知profile在对应门拒绝，副作用/执行计数符合V-04/05/10（V-05错型/活loan在准入门拒绝；不声称运行期失效句柄拦截），不以panic/timeout充负例；§5.4及V-11对应move-kill与清理分析规则实际通过；§5.5/V-12及其明确阶段计数、资源与兼容规则通过 |
 | AC-05 | work | V-03/07适用故障/资源边界区分有效，真实峰值≤预算、失败回滚/清理、终态责任正确；§5.4及V-11对应move-kill与清理分析规则实际通过；§5.5/V-12及其明确阶段计数、资源与兼容规则通过 |
 | AC-06 | work | V-08/09/10真实store重启/失效/损坏与旧consumer兼容、正式AutoDown反控全部实际执行，门禁汇总失败不吞；§5.4及V-11对应move-kill与清理分析规则实际通过；§5.5/V-12及其明确阶段计数、资源与兼容规则通过 |
 | AC-07 | review | 独立核对AC-01..06、所有V与SD；无未处理findings，绑定HEAD/依赖/hash；merge门禁pending显式记录 |
@@ -209,21 +212,30 @@ T-09 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳
 
 ## 8. 执行步骤
 
-所有任务初始未完成；current_step仅计实际完成任务，不提前勾review/merge。T-01在本轮亦未执行实施调查，仅起草取材已完成。
+r6最终核验完成：T-01..06/T-09及T-07均完成，T-08未完成。当前行是唯一执行合同；r1–r5详细修复叙述移至[冻结任务历史](attachments/821/review-r6/task-history-through-r5.md)，不再将旧“当前重开”当成活动状态。current_step按真实勾选计数，merge门禁未执行。
 
 | Task | owner_stage | 依赖 | 文件/操作与可核成果 | AC / 验证 |
 |---|---|---|---|---|
-| [x] T-01 | work | 用户授权；只读准备可早于D-820 | 核对实际主检出/唯一树/Spec/API/817/818 owner；在attachments/821/contract-decision.md冻结支持矩阵、profile/codec/访问/预算和oracle，未知项不留给下游猜 [✅ 2026-10-25 已完成：冻结件 r1 落 attachments/821/contract-decision.md——D门核验（D-820/D828 archived、817/818 已合入）、av.owned/1=profile id 3/AVAD v2 路由、指令集 0A..1B+共享 opcode owned 语义扩展（InstructionSpec 行）、move-kill/借用/清理/reservation 分析冻结（ownership.rs 槽状态格+保守并集）、预算表（8MiB 合计含 Str buffer）、V-01..13 矩阵含 cap 两侧、写面登记与 T-02 解锁条件；零代码，只读] | AC-01..06；决策表含全部V、cap两侧输入、公开入口/分类；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 |
-| [ ] T-02 | work | T-01、D-820、注册owner交接、D828排期门、当前单写窗口交接 | D828后先刷新T-01接口/版本/预算合同，旧准备不冒领新依赖pass； §3入口完成§5.2最小whole-path；新增first-case脚本/真实recipe、同store新worker恢复；记录CPU/时间/内存与独立oracle；记录已合入基面/API版本/写面owner与接受交接，无公共写面则明确登记 | AC-01/06；first-case、V-01/08/10正控 [✅ 2026-10-25 已完成：首例全路径 37b51f2a1 + 收口 055ad06a9（证据 1bd 收据 docs/reports/plan821/first-case-evidence-20261025-163717.json，绑定 HEAD/worker sha）——recipe 注册 ac-av/owned-run-v1 三缝 append-only（contract 围栏 REGISTERED_PROBE_RECIPES+op/形状/av-binding、ac_av.rs RecipeFamily::Owned+父侧冻结表 OWNED_CASES+owned 面准入/逐面判决+V-10 sabotage 缝、mod.rs 分派）；worker case-serve owned 分支（fixture 面/源路径面，live=0 序入面）+ owned-request 证据子命令；corpus crates/auto-lang/test/cases/av-data/821/（两 case+suite+src SHA256 收据，827 模式）；scripts/verify-av-owned-821.ps1 八 Scope（first-case 全链绿：probe 5+3/corpus 3/回归 core 31+820 13/827 8 零退化；余 Scope Not-Wired 归 T-03..06）；CPU/内存：owned-request 采样 p95 wall 25.6ms、fresh 进程峰值 1720320B。附带修复首例提交两处预存问题（hir_adapter str eq/ne 死代码臂移正、probe fmt 归一）。组内新增 auto-ui@aee499e8/auto-down@c3464d0 兄弟 worktree（主 workspace 加载所需，merge 时随组清理）]  **R1 当前重开：F821-R1-09/10（首例进程资源与新worker恢复）；以上✅仅历史，关闭以[复审报告](attachments/821/review-r1/review.md)为准。** [✅ R1 2026-10-25 修复完成：R1 修复（e8e1e369d）：first-case 证据面按 F821-R1-09 补父侧内存硬门（8 fresh worker 父侧采样 B 线 128MiB+store 32MiB+采样计数/真实峰值控制）；其余证据链不变]  **R2 当前重开：F821-R1-09（受管内存分区及同门反控）；前述修复完成为work历史声明，[R2结论](attachments/821/review-r2/review.md)优先。** [✅ R2 2026-10-26 修复完成：R2 修复（18dee14f9）：F09 受管分区改 store 自身 space() 分区记账+owned_memory_gate 同一入口（B 线+hot8/staging16/execution8）+零阈值控制经同一 gate 必红（B 线与分区两面）]  **R3当前重开：F821-R1-09（space()仍磁盘，不能代受管内存分区）；前述工作完成标签为历史，关闭以[R3报告](attachments/821/review-r3/review.md)为准。** [✅ R3 2026-10-26 修复完成：F09' 资源门四线量纲重定（R3 提交 5fc1a0aa2）——worker 报 hot/staging/exec_slot 受管内存峰值（data 管线工作集同维度），checker 四线各按自身预算判定+逐线零阈值反控+超线反例+合法跨线正控（10MiB worker+1MiB guest 槽合法绿）；store space() 降为磁盘信息列；resources 7/7]  **R4 重开：F821-R1-09（hot 估算漏 RecordView 载荷）。** [✅ R4 2026-10-26 修复完成：heap_estimate/解码卫哨 RecordView 全量计费+逐字段名镜像（R4 提交 40f4c594f）——hot 估算覆盖同时存活载荷下界并使超预算输入红；resources 7/7+replay 12] |
-| [ ] T-03 | work | T-02 | §3共享核心/新模块完成§5全部支持语义，source支持面adapter明确；不偷改其他profile | AC-02/03；av_owned_821定向正反例；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 [✅ 2026-10-25 已完成：提交 7e9cceaed @ plan-821-dev——MutRef/Drop 三层落地（ownership 传输语义/mir_verify 类型检查/av 执行含 MutRefV generation 句柄与 owned_kill_slot 释放）；**修复真实分析缺口**：FieldGet StrView 未注册 token（V-12 反例实测暴露，782 字段读取=视图按 root=base 注册）；semantics 25 例（V-01/02/05/06/11/12 全矩阵，typed fixtures 过真实授信链）；verify 脚本 semantics scope 接线全绿（25+corpus）；回归 31/5/3/13/3/8 零退化。**边界记录**：(1) 陈旧读（view 跨根写）在受检 MIR 结构性不可达（root 保守门禁），值层 Share oracle 由 core place.rs 固定；(2) av.trap.invalid-handle 无消费指令（冻结指令集无句柄解引用）——V-05 以类型隔离+bin-type 拒+MutRefV generation 捕获实现，invalid-handle 保持不可达构造；两项均为合同边界非缺口，T-04 资源注入不改变该结论]  **R1 当前重开：F821-R1-01/02/03/04/05/06/08（状态/loan/单元来源/责任/预算/源码支持）；以上✅仅历史，关闭以[复审报告](attachments/821/review-r1/review.md)为准。** [✅ R1 2026-10-25 修复完成：R1 修复（e8e1e369d）：F01 终态/逃逸、F02 溯源/排他/目的地/源 loan、F03 静态跨单元、F04 提交后 kill、F05 稀疏分析内存（8192 槽实测 1.37MB vs bound 1.6MB）、F06 字节 fuel——复审反例全部翻转并转永久回放 av_owned_821_r1_replay 7 例；F08 借入 record 落地（RecordView 全链）]  **R2 当前重开：F821-R1-06/08（深度拒绝回归与mut源码缺口）；前述修复完成为work历史声明，[R2结论](attachments/821/review-r2/review.md)优先。** [✅ R2 2026-10-26 修复完成：R2 修复（18dee14f9）：F06' clone 改显式工作表迭代（无语言深度截断——R1 的 128 层截断错误拒 130 层合法类型链，复审反例 Success）；F08' mut record 写回全链落地（FIELDMOVE 0x1C+adapter move-in/t_MutRet 包装/调用点写回）——caller 可见 808 永久例×2+corpus 正控]  **R3当前重开：F821-R1-08（mut/只读混参panic、双mut及owned结果误拒）；前述工作完成标签为历史，关闭以[R3报告](attachments/821/review-r3/review.md)为准。** [✅ R3 2026-10-26 修复完成：F08' 全形状落地（R3 提交 5fc1a0aa2）——FIELDMOVE 逐字段消费（place::field_take+零值回填+代际 bump；稀疏 moved_fields 数据流+保守并集）；调用点按 callee 自身 mut-record 参数位驱动写回；f0 owned 结果 FIELD_MOVE 转出；文本接收者 owned Str 先 VIEW。R3 三反例翻转：混只读 810/双 mut 8917/owned Str 返回 801（808 正控保持），r1_replay 9/9 永久固化+逐字段不变量（同路径二次/整根读均 use-after-move）]  **R4 重开：F821-R1-08（moved_fields 不随重初始化清零；父子重叠路径漏前门）。** [✅ R4 2026-10-26 修复完成：define_slot 全 18 定义点清 moved_fields（mut 循环两次 set(a.mut)=9 翻转、typed 整根重初始化 Success）；field_moved 前缀重叠判定（父后子/子后父授信前 use-after-move，不再漏执行期 Infra；合法异根对照绿）——replay 12/12 永久固化] |
-| [ ] T-04 | work | T-03 | 实现必须的拒绝/回滚/cleanup/资源hook与V-02..07补充对照，先完成所有findings再送审 | AC-03/04/05；admission/resources及真实边界事件；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 [✅ 2026-10-25 已完成：提交 809fadbca @ plan-821-dev——arena 级 attempts/fault_at 记账+try_alloc 故障缝+owned_alloc_precheck（预算前拒 attempt=0，四分配点）+execute_with_arena 注入缝；**修复预检算术 bug**（新值须含槽头部 V=32B，否则预检少算 V 而 commit 拒时已分配）；resources 6 例（V-03 三故障事务/V-04 四出口分态全清 LIFO+cancel 线程/V-07 cap±1B 自校准）；corpus admission case（782 partial-move 源门码）；**预存债清偿**：首例 Value 扩展致 820 resources 两例 cap 校准溢出（首例时未跑该 bin），按 817 先例重校准 7/7 恢复。share 延长下成功出口释放序合法重排（恰一次+live=0 恒断言，严格 LIFO 限无 share）——774 快照设计与清理义务序的边界记录]  **R1 当前重开：F821-R1-01/02/04/05/06/09（拒绝/事务/清理/计量/资源硬门）；以上✅仅历史，关闭以[复审报告](attachments/821/review-r1/review.md)为准。** [✅ R1 2026-10-25 修复完成：R1 修复（e8e1e369d）：cap±1B/故障事务随字节 fuel 重校准（resources 7/7）；F09 父侧采样内存硬门入 resources Scope]  **R2 当前重开：F821-R1-06/09（有界资源路径与预算oracle）；前述修复完成为work历史声明，[R2结论](attachments/821/review-r2/review.md)优先。** [✅ R2 2026-10-26 修复完成：R2 修复（18dee14f9）：F06' 有界路径随 clone 迭代化关闭；F09' 同门预算反控（见 T-02 行）]  **R3当前重开：F821-R1-09（独立预算量纲/指标正确性）；前述工作完成标签为历史，关闭以[R3报告](attachments/821/review-r3/review.md)为准。** [✅ R3 2026-10-26 修复完成：量纲归位见 T-02 行 F09'（owned_driver 三元组=hot 裻留集/staging 暂态峰/guest 槽位峰，与父侧 128MiB B 线分立）；V-07 ±1B/四出口面不变] |
-| [x] T-05 | work | T-04 | probe真实缓存依赖/重启重验、来源/身份；注册与旧consumer兼容，串行更新唯一公共写面 | AC-06；V-08/09，cache/compatibility；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 [✅ 2026-10-25 已完成：提交 3cb7cd5e5 @ plan-821-dev——V-08 四态（改类型表 clean miss/own-fp 同结果/坏 payload checksum 拒+对照/producer·schema 身份三向隔离）；V-09 owned 送 data/core 授信路径受控拒+data restore 过 owned store 分层 miss；**预存断裂修复**：818 mn consumer 穷尽匹配被首例 16 新指令破坏（构建红），820 先例适配（fingerprint 渲染扩臂+lower 受控拒，零语义扩面）mn 24/24 恢复；cache/compatibility 两 Scope 接线绿]  **R1 当前重开：F821-R1-10（真实新worker及自洽坏内层恢复）；以上✅仅历史，关闭以[复审报告](attachments/821/review-r1/review.md)为准。** [✅ R1 2026-10-25 修复完成：R1 修复（e34a2c999）：F10 真新进程恢复（worker owned-restore-run）+自洽坏内层（重封正确 checksum→深验证拒+dispatch=0）——cache_compat 7/7] |
-| [ ] T-06 | work | T-05 | 脚本聚合所有Scope并透传失败；正式AutoDown V-10反控、fmt/check、受管/进程峰值，整理SD草案/任务证据 | AC-01..06；acceptance，0例/漏必需用例/skip均非绿；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总 [✅ 2026-10-25 已完成：提交 354316220 @ plan-821-dev——八 Scope 全接线（first-case/semantics/admission/resources/cache/compatibility/autodown/acceptance）；acceptance=七 Scope 真子进程重放聚合绿；V-10 双面反控（result→owned-result 轴/ledger→owned-frees 轴）+worker 故障三态；fmt 双 ws 触面零 diff（examples/ui_container 预存漂移/解析错误非本计划触面，归 KNOWN-DEBT 候选）；受管/进程峰值=T-02 证据收据（p95 25.6ms/1.7MB fresh 进程）+T-04 cap±1B/四出口；SD-01..07 草案落 attachments/821/sd-drafts.md（SD-07 标注 T-09 回填）]  **R1 当前重开：F821-R1-08/09/10/11（必需oracle与SD收口）；以上✅仅历史，关闭以[复审报告](attachments/821/review-r1/review.md)为准。** [✅ R1 2026-10-25 修复完成：R1 修复（e34a2c999）：F11 SD-01..07 草案按 R1 后实际面重生（attachments/821/sd-drafts.md）；V-10 面保持+corpus 借入正控；acceptance 八 Scope 全重放绿]  **R2 当前重开：F821-R1-08/09/11、F821-R2-01（支持/SD/oracle/health）；前述修复完成为work历史声明，[R2结论](attachments/821/review-r2/review.md)优先。** [✅ R2 2026-10-26 修复完成：R2 修复（18dee14f9）：F821-R2-01 警告清零（双包 check 0 警告）；F11 SD 按 R2 后实际面再重生（本次提交）；acceptance 八 Scope 聚合绿]  **R3当前重开：F821-R1-08/09/11、F821-R2-01（支持/oracle/SD/health）；前述工作完成标签为历史，关闭以[R3报告](attachments/821/review-r3/review.md)为准。** [✅ R3 2026-10-26 修复完成：SD-01..07 按 R3 后实际面再重生（attachments/821/sd-drafts.md——SD-07 双通道+六计数+通道感知 gate；V-05 保持具名 pending 不称不阻塞）；R2-01 警告清零（Production::bump 随会话重写移除，双包+tests --all-targets 零警告）]  **R4 重开：F821-R1-11（SD 占位/状态行）。** [✅ R4 2026-10-26 修复完成：SD 按 R4 后实际面再重生（真实提交哈希 40f4c594f、frontmatter 措辞对齐 executing 7/9、R4 三修复入 before/after）；V-05 合同差异具名路由 new（§10）] |
-| [ ] T-09 | work | D828及本计划其他work实现完成 | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-13 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage | AC-09；共同基线+新增能力兼容定向验收，未实测不勾；送审前不跑整档 [✅ 2026-10-25 已完成：提交 b90c78640 @ plan-821-dev——UnitView 类型空间落地（T-02 桩移除：三查询按所属单元类型表解析，owned FieldGet/move-in/zero 一致）；owned 单元走 D828 冻结接口全链（admit_unit/link/execute_program）；V-13 四子case 4 例（两函数局部更新=对象+generation 复用/零生产增量/精确 oracle+live=0；签名变更陈旧 link 拒+模块级 import 表全导入方失效如实断言；layout 混合拒；强制整体重算=计数+generation 全推进可见）；incremental Scope 接线（828 campaign 双门+827 先例 7+继承 22）。**发现并记债两条 782 缝**（多参 .move 标记关联错位；借入 record 参数调用侧 lower.borrow 占位——MIR 无 record-view 类型，须扩型回 new）→KNOWN-DEBT]  **R1 当前重开：F821-R1-03/07（静态view单元来源与真实全链路增量）；以上✅仅历史，关闭以[复审报告](attachments/821/review-r1/review.md)为准。** [✅ R1 2026-10-25 修复完成：R1 修复（e34a2c999）：F07 真 828 owned 会话（owned_session.rs：真前端编译/HIR 去 span 身份自动失效/真实生产计数/正式 incremental_gate 退化门红/原子批量/中间形回滚）——增量 5 例全部消费真会话，测试包装层删除]  **R2 当前重开：F821-R1-07（全前端/正式结构门与失败安装事务）；前述修复完成为work历史声明，[R2结论](attachments/821/review-r2/review.md)优先。** [✅ R2 2026-10-26 修复完成：R2 修复（18dee14f9）：F07' 会话事务化（候选 build-aside 原子发布：前端→失效→逐单元生产→整集 LINK→RUN 全成才发布；任何失败保 source/revision/identity/residents/production/可运行性——复审 mut 候选反例 revision 保 1/production_same/旧程序 7）；incremental_gate 覆盖整个生产面（前端恰一次/生产仅失效集/居民 Arc+代际双保/成员关系）；R2 holdout 全绿]  **R3当前重开：F821-R1-07（全前端仍gate通过；事务修复正证保留）；前述工作完成标签为历史，关闭以[R3报告](attachments/821/review-r3/review.md)为准。** [✅ R3 2026-10-26 修复完成：F07' 单函数常驻前端落地（R3 提交 5fc1a0aa2）——纯单 body 编辑（恰一自由函数声明触及+全部编辑在其 span 内+零 type 声明触及）走 D828 prepare_candidate_document（CheckedEnv re-check+单 body 发射+BodyEmitReceipt 生产者证明）；未改单元 parse/recheck/emit 生产=0；签名漂移=recheck_swap 接口门→整模块通道（正确失效语义）；scaffold 参数模式经会话保留接口事实注入 probe lower（ac-core 保持只读）；incremental_gate 通道感知（单 body 编辑整模块前端零增、虚报整集即红）。incremental 6/6 含 R3 永久反例（main-only 零未改前端工作+frontends 1→1）；R3 独立 probe 复验全绿]  **R4 重开：F821-R1-07（连续变长编辑用陈旧声明坐标）。** [✅ R4 2026-10-26 修复完成：CommitBody 携带 (decl_idx, old_hi, delta) 随发布原子平移保留坐标（编辑函数 hi 平移+后续声明整体平移；拒绝编辑不动；整轮路径重建）——R4 序列 1234→8、前函数变长后改后函数 107→108、缩回与整轮后单 body 恢复全部翻转（incremental 7/7 含永久序列）] |
-| [ ] T-07 | review | work-owned完成且提交冻结、T-09 完成 | 同唯一树独立复核AC/V/SD、遗漏/workaround/债及健康，核依赖输入未变，填规范影响和审查结论 | AC-07；merge-owned全档仍pending |
-| [ ] T-08 | merge | T-07 pass | 冻结门禁→合入→SD/ledger/catalog→archive；到期批回归主检出单实例；wt-guard后移除唯一树/分支 | AC-08；真实门禁/合入/清理收据 |
+| [x] T-01 | work | 用户授权；D门核验 | 冻结唯一树、依赖/写面、支持/profile/codec/预算及oracle；contract-decision已按r6授权同步V-05，原依赖/预算不变 | AC-01..06；contract-decision §5/§12、r6输入收据 |
+| [x] T-02 | work | T-01、D-820/D828、共享窗口交接 | 源码首例、MIR/ABC/AV、真实recipe/worker、CPU/内存与缓存恢复；资源P1已闭 | AC-01/06；R1–R5资源/新worker证据，R5报告 |
+| [x] T-03 | work | T-02 | 完成本profile语义/adapter及V-01/02/05/06/11/12；V-05仅静态类型/借用及重定义责任，不新增运行期句柄能力 | AC-02/03；R5 12永久回放、源码808/810/8917/801及mut循环9；r6定向V-05/V-02复核 |
+| [x] T-04 | work | T-03 | 拒绝/回滚/cleanup/资源hook和V-02..07对照；V-05按r6准入与拥有权oracle，不用运行期invalid-handle充数 | AC-03/04/05；R1–R5故障/资源四线与计量证据，r6定向正反控 |
+| [x] T-05 | work | T-04实现已具备 | 真实store新进程恢复/重验、来源/身份、旧consumer兼容 | AC-06；R5新worker合法/自洽坏内层2例独立通过，原未变兼容证据保留 |
+| [x] T-06 | work | T-05 | 必需case覆盖/正式recipe失败透传/health/资源证据及SD-01..07准确冻结；消除原V05待决和过度承诺 | AC-01..06；r6覆盖/SD收据，R5 21检查与前轮未变证据 |
+| [x] T-09 | work | D828和其他work实现 | 真实owned_session接D828单函数常驻前端/失效/事务安装/身份/正式反控，连续变长坐标随发布更新 | AC-09/V-13；R5 7增量例+独立probe，scalar campaign既有证据保留 |
+| [x] T-07 | review | work-owned完整且提交冻结、T-09 | 同唯一树独立核AC/V/SD、遗漏/workaround/债及健康，核依赖/输入未变，绑定代码与r6合同 | AC-07；最终review通过后merge统一门仍pending |
+| [x] T-08 | merge | T-07 pass | 冻结门禁→合入→SD/ledger/catalog→archive；到期批回归主检出单实例；wt-guard后清树分支 | AC-08；裸cargo t+tv+独立workspace完整有限合同档及实际触面，真实合入/清理收据 [✅ 2026-10-26 已完成：delivery=92b8daf60（ff-only 落 master；受审 40f4c594f rebase 补丁等价、代码逐字不变）；门禁 @ 3fc11e9b6：裸 t 3185/3186（唯一红 schema_drift_fence 归因组布局缺 auto-man 兄弟，主检出冒烟绿）+ tv 163/163 + acceptance 八 Scope 全绿；门禁归因修复 malformed_owned 缺键显式拒（3fc11e9b6，judge 5/5）；SD-01..07 canonical 沉淀+索引回写；ledger v90→v91（五项，Regime B 受控离线投影+备份读回）；归档+wt-guard 清树] |
 
 ## 9. 复审记录
+
+2026-10-26 stage:merge | PLAN-821 r6 | outcome:**pass（delivered）** | worktree:`D:/autostack/.wt/lang-821/auto-lang`（已清理）| branch:`plan-821-dev`（已删除）| delivery_commit:`92b8daf60`（ff-only；reviewed `40f4c594f` rebase 补丁等价，experimental/crates 代码逐字不变；二次 rebase 因 master 并发前进，内容零差异验证）| **门禁**（冻结基线 3fc11e9b6）：裸 cargo t **3185/3186**——唯一红 `schema_drift_fence` 归因=worktree 组无 auto-man 兄弟仓的跨仓布局依赖，主检出合入后冒烟绿；cargo tv **163/163**；`verify-av-owned-821.ps1 -Scope acceptance` **八 Scope 全绿**。门禁红归因修复一条：`malformed_owned` 缺键 `?` 静默跳过改显式拒（821 自有 V-10 判定缝；judge_tests 5/5 含两个缺键族新反例；fix=3fc11e9b6）。**合入**：wt-guard clean → ff-only 92b8daf60；主检出冒烟（schema_drift_fence + judge_tests）绿；plan818 收据翻新（预存本地改动）stash 保留、5 个 ffi oracle 未跟踪 Cargo.lock 移至临时目录保留。**沉淀**：SD-01..07 入 canonical（place-ownership.md / owned-access-profile.md 新增；cache-and-conformance / project / stage-contract / architecture / resident-function-install 增 821 节；四模块 overview+plans 索引回写；spec-index 再生零差异）；ledger v90→v91（P821-D1/D2/T/R6/MERGE 五项；Regime B 受控离线投影——无 store 服务，备份 .bak-plan821-merge + 外科范围 + schema + 读回四守卫全过）。**归档**：本文件 git mv 至 docs/plans/archive/，status: archived，completion_kind: delivered。**清理**：wt-guard clean → 移除唯一树/分支/组目录（含 auto-ui/auto-down 兄弟 detached）。merge-owned 门禁全部关闭。
+
+2026-10-26 stage:review | review_scope:final | reviewer_identity:当前Codex独立审查聊天，未参与实现；本次按用户裁定修订合同后同上下文核代码，不虚构外部文档审稿人/模型或会话ID | PLAN-821 r6 | outcome:**pass** | worktree:`D:/autostack/.wt/lang-821/auto-lang` | branch:`plan-821-dev` | reviewed_commit:`40f4c594fd6cfdc8d051a980c64f5e57baa67e4a` | base_commit:`b1b8b425e563ba8358e4adc99c3e6c819a8fc137` | dependencies:auto-ui=`aee499e87093ff727f68ac8467c506e9ecf6ecdc`、auto-down=`c3464d0a0d36e4f8a7988b0c0c26448fc52361b4`，三树clean、实现/配置/既有Spec输入未变 | acceptance_results:AC01..07/09 pass；AC08 merge-owned pending | findings:F821-R1-01..11与F821-R2-01无阻塞残项；V05原runtime要求由用户明确批准替换，不声称原oracle实现/通过；历史注释勘误记为非阻塞债 | evidence:[完整AC/V/SD映射与raw](attachments/821/review-r6/review.md)、[输入hash](attachments/821/review-r6/baseline.json)、[冻结SD](attachments/821/review-r6/spec-delta-reviewed.md)；本轮V05三例+V02五例=8测试通过/0ignored，实际选择器7控制通过；R5的21检查及其余有效前轮证据复用 | tasks:T03/04/06完成状态恢复、T07勾完，**reviewed8/9** | pending_closeout_gates:merge须先在冻结同树跑裸cargo t+tv+独立workspace完整有限合同档及实际触面；通过前不得合入/归档/清树，tf仅主检出到期单实例 | next:merge；本轮未改代码/canonical Spec/ledger，未运行整档或合入清理。
+
+2026-10-26 stage:new | PLAN-821 r5→r6 | outcome:pass（用户已授权V-05合同修订，非实现或merge门禁通过） | authority:本聊天用户选择“修订为现有静态类型／借用检查，明确不承诺运行期无效句柄校验” | changed:§5.1.6/§5.5、V-05、AC-02/04、T-03/04/06、SD-01/02/04、contract-decision §5/§12；稳定ID/其余语义/预算/范围不变 | history:原合同及任务行冻结在attachments/821/review-r6/，R5 needs_replan保留历史；受影响旧V05结论不移作新合同pass | next:同树在40f4c594f上定向核新合同及最终SD，完成后review，不需实现新能力。
+
+2026-10-26 stage:review | review_scope:final R5（定向修复复核，整体待V05合同决策） | reviewer_identity:延续R1–R4独立Codex审查聊天，未参与实施/未委派 | PLAN-821 r5 | outcome:**needs_replan（R4三项P1的修复定向pass；不是新增P1）** | worktree:`D:/autostack/.wt/lang-821/auto-lang` | branch:`plan-821-dev` | reviewed_commit:`40f4c594fd6cfdc8d051a980c64f5e57baa67e4a` | previous_reviewed_commit:`5fc1a0aa2d9848a9d6e652cb0798c8c0719fa653` | base:`b1b8b425e563ba8358e4adc99c3e6c819a8fc137` | dependency/spec/Plan hashes:[baseline](attachments/821/review-r5/baseline.json)，[冻结SD](attachments/821/review-r5/spec-delta-frozen.md) | findings/evidence:[完整R5报告](attachments/821/review-r5/review.md)：F07连续变长1234→8/107→108及SingleBody通过；F08整根重初始化/父子路径准入拒/mut循环9与808/810/8917/801对照通过；F09同3,035,011B wire hot估9,431,319B≥载荷下界9,068,791B且>8MiB——R4三P1 CLOSED；F10真实新进程恢复/自洽坏内层本轮独立2/2通过，原缺口CLOSED；R2-01保持无警告。7增量+12回放+2恢复=21/21、0ignored，check/diff-check绿，入出审实施树clean | remaining:V05原runtime句柄探测没有消费入口，当前静态门证据不等于该oracle；Plan§10及SD已明示三选一需授权，review不代豁免或新增能力。SD最终冻结及整体AC07 pending | tasks:仅V05责任使T03/T04/T06重开，保留T01/T02/T05/T09，executing4/9，三个P1修复不重开，plan_revision5未改 | next:用户选择后new修订V05/相关AC-SD/contract-decision一致合同，保留有效修复证据完成剩余验收。最终pass后merge-owned统一门仍pending，未整档/完整acceptance、未改实施/Spec-ledger/合入/归档/清树。
+
 
 2026-10-26 stage:work | PLAN-821 r5 | outcome:**pass（R4 修复完成——3 项 P1 关闭，work-owned 7/9 重递）** | worktree:`D:/autostack/.wt/lang-821/auto-lang` | branch:`plan-821-dev` | base:`5fc1a0aa2`(R3) | code_commit:R4=`40f4c594f` | **覆盖诊断（R4 要求的四个"为什么"）**：(1) *单例→连续变长编辑*——R3 的发布只 commit 环境槽、从不更新保留 decl 坐标，第二次编辑拿冷态 lo/hi 加本次 delta 截切片，等长样本永不触达；R4 修复：EnvStep::CommitBody 携带 (decl_idx, old_hi, delta)，发布点原子平移（编辑函数 hi、其后全部声明含 type；拒绝编辑不平移）；(2) *同槽新 owner/循环→旧字段事实*——R3 的 moved_fields 只增不清，一切 Initialize/Replace 仅清 moved/dropped 整槽位，回边合并把旧字段态带进下一轮，新 Call 包装/重聚合都不能重置；R4 修复：OwnState::define_slot 统一 18 个定义点（整槽三清+moved_fields 置空）；(3) *路径完全相等→前缀重叠*——field_moved 只做 Vec 全等比较，移出 [0] 后 [0,0]（子）与移出 [0,0] 后 [0]（父）都不命中，残骸交给执行器出 Infra；R4 修复：前缀重叠判定（较短前缀相等即死，双向）；(4) *inline 分支→真实 owned 堆载荷*——heap_estimate 把 RecordView(_) 归入 inline 零动态载荷分支（它直接拥有 RecordTypeRef 的 owner/name/字段 Vec/字段名 String 堆），abc 解码卫哨的 RecordView 分支同样零计费、两 record 分支逐字段名也不计；R4 修复：mir.rs RecordView 与 Record 同式计费+FieldMove 路径 Vec；abc.rs RecordView 分支全量 decode_mem+两 record 分支逐字段名计费（镜像语义合同）。**修复明细**：F07'=坐标平移；F08'=define_slot+前缀重叠；F09'=堆载荷计费双层同步；F11=SD 再生（真哈希/状态行/V-05 路由）。**验证**（受影响族+兄弟，未整档）：R4 独立 probe 全绿（1234→8/107→108/mut_loop=9/重初始化 Success/父子拒/hot 9.43MB>8MiB≥下界）；incremental 7/replay 12/semantics 25/resources 7/first 5/recipe 3/cache 7/core 31/820 全套/827 全套/828 族 180/mn 全绿；双包+tests --all-targets 零警告。**V-05 具名路由**：as-built 机制（类型隔离+静态排他门+代际退役）与原矩阵"运行期探测 oracle"的合同差异已按 R4 指示记录并回 new（三选一：扩解引用指令/授权故障注入探针/修订矩阵行）——需用户授权，非 work 可自决；未决前该行保持具名缺口。merge-owned 门禁保持 pending。next_responsible_role:review（R5，独立上下文同树只读）
 
@@ -285,8 +297,6 @@ stage: new；outcome: pass（合同静态预检，非实施验收）。用户认
 
 无须用户再裁定已认可的总体方向。精确opcode/布局实现/资源测量由有界T-01和T-02负责冻结，不能改变§5语义或预算；需要扩大支持/资源/兼容承诺时回new显式revision。当前依赖与执行授权门如§4；不以等待实施为由伪造通过或删AC。NaN-boxing、完整数值运算/用户泛型、共享图、async、native与CTE复合消费者另案，不是本计划“已完成后续”。
 
-**当前状态（2026-10-26 R4 修复完成）**：R4 三项 P1（连续变长编辑坐标/moved_fields 重置+前缀重叠/RecordView 堆载荷计费）已按原 ID 关闭（提交 `40f4c594f` @ plan-821-dev，树 clean），work-owned 7/9 重递待 R5 独立复审；F10 恢复面 R4 未触、上轮 work 证据保持待独立复核。
+**V-05 裁定已解决（2026-10-26，r6）**：用户明确选择现有静态类型／借用检查，并明确不承诺运行期无效句柄校验。旧帧、跨 store、generation回绕退役不计为交付或已测；保留原V05要求与R5 needs_replan为历史，不是静默豁免。当前合同以§5–8及已同步contract-decision/SD为准。
 
-**V-05 待用户裁定（已具名路由 new）**：原冻结矩阵要求运行期句柄探测 oracle（无效访问在读取前受控拒绝）；as-built 冻结指令集无句柄解引用指令（句柄是锁非指针——排他性静态门+kill 代际退役），运行期"无效访问"结构性不可达。三选一合同修订需授权：(a) 扩受检句柄解引用指令；(b) 授权测试专用故障注入探 MutRefV 域；(c) 修订矩阵行为 as-built 机制（静态门+代际退役+"整数仍整数"可执行例）。未决前该行保持具名缺口，不阻塞其余验收项的独立复核。
-
-**当前排期与验收**：D828后沿已接受的共享窗口在同树修复；T-09 / AC-09 / V-13 的现有测试未兑现真实全链路增量（F821-R1-07），须完成实际consumer与正式反控门。旧revision/测试总数不覆盖剩余义务；统一回归仍由最终pass后的merge承担。
+**当前状态**：r6定向复核与最终SD冻结已完成，final pass / reviewed8/9，下一责任阶段merge；R4三P1及其他未受影响的证据保留，不重跑无关全族。最终review通过也须等待merge-owned冻结门禁实际通过后才能合入/归档/清树。
