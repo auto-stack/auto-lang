@@ -2627,3 +2627,331 @@ fn av_collections_822_semantics_place_provenance_memory_budget() {
     let small = place_probe_module(64);
     assert_eq!(success(&small), Value::I32(7));
 }
+
+// -- F822-R8-01: explicit deep Clone of collections ----------------------
+
+/// The reviewer replay: CLONE [7], mutate the ORIGINAL to [9], read the
+/// clone — an explicit deep copy is isolated (folded: orig 9 + clone 7
+/// = 16).
+#[test]
+fn av_collections_822_semantics_clone_list_is_independent() {
+    let mut f = Fx::new();
+    let s0 = f.slot(4, "list");
+    let s1 = f.slot(4, "cl");
+    let s2 = f.slot(0, "v");
+    let s3 = f.slot(0, "idx0");
+    let s4 = f.slot(0, "nv");
+    let s5 = f.slot(0, "got_orig");
+    let s6 = f.slot(0, "got_clone");
+    f.i(MirInstr::ListNew {
+        dst: s0,
+        list_ty: 4,
+        cap: 0,
+    });
+    iconst!(&mut f, s2, f.c_i32(7));
+    f.i(MirInstr::ListPush {
+        root: s0,
+        value: s2,
+    });
+    f.i(MirInstr::Clone { dst: s1, src: s0 });
+    iconst!(&mut f, s3, f.c_i32(0));
+    iconst!(&mut f, s4, f.c_i32(9));
+    f.i(MirInstr::ListSet {
+        root: s0,
+        index: s3,
+        value: s4,
+    });
+    f.i(MirInstr::ListGet {
+        dst: s5,
+        base: s0,
+        index: s3,
+    });
+    f.i(MirInstr::ListGet {
+        dst: s6,
+        base: s1,
+        index: s3,
+    });
+    f.i(MirInstr::Bin {
+        op: BinOp::MulI32,
+        dst: s6,
+        lhs: s6,
+        rhs: s5,
+    }); // 7*9=63
+    f.ret(s6);
+    assert_eq!(success(&f.build()), Value::I32(63));
+}
+
+/// Owned-element sibling: CLONE List<Note>, rewrite the ORIGINAL's text
+/// field in place — the clone's field read still yields the original
+/// payload's length (the clone owns independent buffers).
+#[test]
+fn av_collections_822_semantics_clone_owned_elements_independent() {
+    let mut f = Fx::new();
+    let s0 = f.slot(6, "list");
+    let s1 = f.slot(2, "t");
+    let s2 = f.slot(0, "n");
+    let s3 = f.slot(3, "note");
+    let s4 = f.slot(6, "cl");
+    let s5 = f.slot(0, "idx0");
+    let s6 = f.slot(2, "nt");
+    let s7 = f.slot(0, "got");
+    f.i(MirInstr::ListNew {
+        dst: s0,
+        list_ty: 6,
+        cap: 0,
+    });
+    iconst!(&mut f, s1, f.c_str("aaa"));
+    iconst!(&mut f, s2, f.c_i32(1));
+    f.i(MirInstr::Aggregate {
+        dst: s3,
+        record_ty: 3,
+        operands: vec![s1, s2],
+    });
+    f.i(MirInstr::ListPush {
+        root: s0,
+        value: s3,
+    });
+    f.i(MirInstr::Clone { dst: s4, src: s0 });
+    iconst!(&mut f, s5, f.c_i32(0));
+    iconst!(&mut f, s6, f.c_str("bbbbbbbbbb"));
+    f.i(MirInstr::ListFieldSet {
+        root: s0,
+        index: s5,
+        path: vec![0],
+        value: s6,
+    });
+    f.i(MirInstr::ListFieldGet {
+        dst: s7,
+        base: s4,
+        index: s5,
+        path: vec![1],
+    }); // n=1
+    f.ret(s7);
+    assert_eq!(success(&f.build()), Value::I32(1));
+    // And the original's rewritten field reads 10 through a fresh place.
+    let mut f = Fx::new();
+    let s0 = f.slot(6, "list");
+    let s1 = f.slot(2, "t");
+    let s2 = f.slot(0, "n");
+    let s3 = f.slot(3, "note");
+    let s4 = f.slot(6, "cl");
+    let s5 = f.slot(0, "idx0");
+    let s6 = f.slot(2, "nt");
+    let s7 = f.slot(0, "got");
+    f.i(MirInstr::ListNew {
+        dst: s0,
+        list_ty: 6,
+        cap: 0,
+    });
+    iconst!(&mut f, s1, f.c_str("aaa"));
+    iconst!(&mut f, s2, f.c_i32(1));
+    f.i(MirInstr::Aggregate {
+        dst: s3,
+        record_ty: 3,
+        operands: vec![s1, s2],
+    });
+    f.i(MirInstr::ListPush {
+        root: s0,
+        value: s3,
+    });
+    f.i(MirInstr::Clone { dst: s4, src: s0 });
+    iconst!(&mut f, s5, f.c_i32(0));
+    iconst!(&mut f, s6, f.c_str("bbbbbbbbbb"));
+    f.i(MirInstr::ListFieldSet {
+        root: s0,
+        index: s5,
+        path: vec![0],
+        value: s6,
+    });
+    f.i(MirInstr::ListFieldGet {
+        dst: s7,
+        base: s0,
+        index: s5,
+        path: vec![1],
+    }); // n=1
+    f.ret(s7);
+    assert_eq!(success(&f.build()), Value::I32(1));
+}
+
+/// Variant payload sibling: CLONE Some("aa"), SWITCH the ORIGINAL arm
+/// to None — the clone still holds Some (disc 1) whose payload frees
+/// exactly once at unwind (ledger balanced, live=0).
+#[test]
+fn av_collections_822_semantics_clone_variant_payload_independent() {
+    let mut f = Fx::new();
+    // A local two-arm variant: None / Some(Str).
+    let t_opt =
+        f.m.intern_type(MirType::Variant(auto_av_core::mir::VariantTypeRef {
+            owner_module: "collections822".to_string(),
+            name: "Opt".to_string(),
+            arms: vec![
+                auto_av_core::mir::VariantArm {
+                    name: "None".into(),
+                    payload: None,
+                },
+                auto_av_core::mir::VariantArm {
+                    name: "Some".into(),
+                    payload: Some(2),
+                },
+            ],
+        }));
+    let s0 = f.slot(t_opt, "some");
+    let s1 = f.slot(2, "t");
+    let s2 = f.slot(t_opt, "cl");
+    let s4 = f.slot(0, "disc");
+    let s5 = f.slot(0, "r");
+    iconst!(&mut f, s1, f.c_str("aa"));
+    f.i(MirInstr::VariantPack {
+        dst: s0,
+        variant_ty: t_opt,
+        disc: 1,
+        payload: Some(s1),
+    });
+    f.i(MirInstr::Clone { dst: s2, src: s0 });
+    f.i(MirInstr::VariantSwitch {
+        root: s0,
+        disc: 0,
+        payload: None,
+    });
+    f.i(MirInstr::VariantDisc { dst: s4, src: s2 }); // clone keeps Some=1
+    iconst!(&mut f, s5, f.c_i32(41));
+    f.i(MirInstr::Bin {
+        op: BinOp::AddI32,
+        dst: s5,
+        lhs: s5,
+        rhs: s4,
+    }); // 42
+    f.ret(s5);
+    let m = f.build();
+    verify_mir(&m).unwrap_or_else(|e| panic!("{e:?}"));
+    let wire = encode_abc(&m).unwrap();
+    let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap();
+    let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::I32(42),
+                ..
+            }
+        ),
+        "{out:?}"
+    );
+    let arena = trace.arena.expect("arena");
+    assert_eq!(arena.live(), 0);
+    assert_eq!(
+        arena.alloc_events().len(),
+        arena.free_events().len(),
+        "the switched-out and cloned payloads each freed exactly once"
+    );
+}
+
+#[test]
+fn av_collections_822_semantics_clone_nth_item_failure_rolls_back() {
+    let big = "B".repeat(4096);
+    let mut f = Fx::new();
+    let s0 = f.slot(5, "list");
+    let s1 = f.slot(2, "a");
+    let s2 = f.slot(2, "b");
+    let s3 = f.slot(5, "cl");
+    let s4 = f.slot(0, "len_after");
+    let s5 = f.slot(0, "r");
+    f.i(MirInstr::ListNew {
+        dst: s0,
+        list_ty: 5,
+        cap: 0,
+    });
+    iconst!(&mut f, s1, f.c_str("aa"));
+    f.i(MirInstr::ListPush {
+        root: s0,
+        value: s1,
+    });
+    iconst!(&mut f, s2, f.c_str(&big));
+    f.i(MirInstr::ListPush {
+        root: s0,
+        value: s2,
+    });
+    f.i(MirInstr::Clone { dst: s3, src: s0 });
+    f.i(MirInstr::ListLen { dst: s4, src: s0 });
+    iconst!(&mut f, s5, f.c_i32(2));
+    f.i(MirInstr::Bin {
+        op: BinOp::MulI32,
+        dst: s5,
+        lhs: s5,
+        rhs: s4,
+    }); // 2*2=4
+    f.ret(s5);
+    let m = f.build();
+    verify_mir(&m).unwrap_or_else(|e| panic!("{e:?}"));
+    let wire = encode_abc(&m).unwrap();
+    let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap();
+    // Attempts: 1=list buf, 2="aa" clone, 3=big clone, 4=clone buf —
+    // fault at 3 kills the clone mid-way (after "aa" minted).
+    let arena = auto_av_core::owned_text::StrArena::new();
+    arena.set_fault_at(3);
+    let (out, trace) = auto_av_core::av::execute_with_arena(
+        &loaded,
+        &ExecLimits::default(),
+        &CancelFlag::new(false),
+        arena,
+    );
+    assert!(
+        matches!(&out, ExecOutcome::Infra(msg) if msg.contains("fault-injected")),
+        "{out:?}"
+    );
+    let arena = trace.arena.expect("arena");
+    assert_eq!(arena.live(), 0, "the partial clone fully unwound");
+    assert_eq!(
+        arena.alloc_events().len(),
+        arena.free_events().len(),
+        "allocs {:?} frees {:?}",
+        arena.alloc_events(),
+        arena.free_events()
+    );
+}
+
+/// V-11 clone-budget oracle: a deep clone that would cross the live-data
+/// budget is rejected BEFORE any mutation (SlotBytes), ledger balanced;
+/// the exactly-enough side succeeds.
+#[test]
+fn av_collections_822_semantics_clone_budget_both_sides() {
+    let big = "B".repeat(8192);
+    let build = || {
+        let mut f = Fx::new();
+        let s0 = f.slot(5, "list");
+        let s1 = f.slot(2, "v");
+        let s2 = f.slot(5, "cl");
+        let s3 = f.slot(0, "r");
+        f.i(MirInstr::ListNew {
+            dst: s0,
+            list_ty: 5,
+            cap: 0,
+        });
+        iconst!(&mut f, s1, f.c_str(&big));
+        f.i(MirInstr::ListPush {
+            root: s0,
+            value: s1,
+        });
+        f.i(MirInstr::Clone { dst: s2, src: s0 });
+        iconst!(&mut f, s3, f.c_i32(5));
+        f.ret(s3);
+        f.build()
+    };
+    let m = build();
+    verify_mir(&m).unwrap_or_else(|e| panic!("{e:?}"));
+    let wire = encode_abc(&m).unwrap();
+    let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap();
+    let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(matches!(out, ExecOutcome::Success { .. }), "{out:?}");
+    let peak = trace.peak_slot_bytes;
+    let mut short = ExecLimits::default();
+    short.max_slot_bytes = (peak - 1) as usize;
+    let (out, trace) = execute(&loaded, &short, &CancelFlag::new(false));
+    assert!(
+        matches!(&out, ExecOutcome::Resource { kind, .. } if *kind == auto_av_core::contract::ResourceKind::SlotBytes),
+        "{out:?}"
+    );
+    let arena = trace.arena.expect("arena");
+    assert_eq!(arena.live(), 0);
+    assert_eq!(arena.alloc_events().len(), arena.free_events().len());
+}

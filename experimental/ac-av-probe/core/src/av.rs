@@ -686,6 +686,11 @@ fn clone_owned_value(val: &Value, arena: &crate::owned_text::StrArena) -> Result
                 if let Value::Record(r) = v {
                     // children first (pushed reversed so they pop in
                     // declaration order), THEN the assemble marker.
+                    // (List/Variant elements live behind RefCell borrows
+                    // that cannot ride the plan — they are cloned at
+                    // ASSEMBLY time below, one visitor call per element;
+                    // the frozen element domain forbids nested lists, so
+                    // that per-element recursion is exactly one level.)
                     plan.push(Op::Assemble(id, r.ty));
                     for f in r.fields.iter().rev() {
                         plan.push(Op::Visit(id, f));
@@ -719,6 +724,38 @@ fn clone_owned_value(val: &Value, arena: &crate::owned_text::StrArena) -> Result
                     ty: r.ty,
                     fields,
                 }))
+            }
+            // F822-R8-01: a deep-cloned list lives in its OWN freshly
+            // ledgered buffer (arena mint, fault seam; later structural
+            // changes cannot reach the source). Every element clones
+            // independently — one visitor call each; the frozen element
+            // domain forbids nested lists, so the per-element recursion
+            // is exactly one level. A mid-clone fault leaves nothing
+            // half-committed: the partial assembly drops and every minted
+            // buffer frees through the ledger.
+            Value::List(h) => {
+                let buf = h.rc.borrow();
+                let mut elems = Vec::with_capacity(buf.elems.len());
+                for e in buf.elems.iter() {
+                    elems.push(clone_owned_value(e, arena)?);
+                }
+                drop(buf);
+                let cap = elems.len();
+                Value::List(arena.try_alloc_list(elems, cap)?)
+            }
+            // F822-R8-01: a deep-cloned variant keeps the live arm and
+            // its independently cloned payload (same one-level rule —
+            // the payload domain forbids nested lists).
+            Value::Variant(var) => {
+                let payload = match var.payload.as_ref() {
+                    Some(p) => Some(Box::new(clone_owned_value(p, arena)?)),
+                    None => None,
+                };
+                Value::Variant(crate::contract::VariantValue {
+                    ty: var.ty,
+                    disc: var.disc,
+                    payload,
+                })
             }
             other => other.clone(),
         });

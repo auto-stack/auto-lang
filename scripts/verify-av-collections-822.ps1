@@ -146,7 +146,12 @@ $REQ = @{
         'av_collections_822_semantics_merge_shapes_local_vs_external',
         'av_collections_822_semantics_mutate_after_place_copy_supported',
         'av_collections_822_semantics_helper_roundtrip_then_update_supported'
-        'av_collections_822_semantics_place_provenance_memory_budget',
+        'av_collections_822_semantics_place_provenance_memory_budget'
+        'av_collections_822_semantics_clone_list_is_independent',
+        'av_collections_822_semantics_clone_owned_elements_independent',
+        'av_collections_822_semantics_clone_variant_payload_independent',
+        'av_collections_822_semantics_clone_nth_item_failure_rolls_back',
+        'av_collections_822_semantics_clone_budget_both_sides',
         'av_collections_822_semantics_place_get_wrong_type_rejected',
         'av_collections_822_semantics_place_set_wrong_type_rejected',
         'av_collections_822_semantics_place_mint_binds_referent',
