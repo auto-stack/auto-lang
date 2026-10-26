@@ -3420,3 +3420,8 @@ r3 / lang `87f82d637ecd586c17a01c1c975e1456bc346991` + Man `ebfc88f8e66da05d192c
 ## R849-NATIVE-CLOCK — spatial native probe clock-pause recovery
 
 PLAN-849 merge observed one consumer dash3d-short reopen auto-Pause (tick backlog>4) after8ticks; phase4 waits for80 inputs without resuming clock pauses and timed out. Same frozen binary full14+4 isolated retry passed, no geometry/CPU fault or input interference shown. Preserve original clock guard; candidate follow-up should explicitly resume legitimate clock pauses through OS controls within unchanged deadline and retain counterexamples. [Failure and retry](attachments/849/merge-r1/sweep-clock-diagnostic.json.txt). This is verifier scheduling stability debt, not a waived gate.
+
+
+## PLAN-841 R5 — F841-R5-01 (OPEN, P2, acceptance blocker)
+
+The accepted compound props `[[.source]]` and `[{inner: .source}]` keep a borrowed nested VmRef without queue/replayed-container ownership. Real parser/lowering/view build accepts both and queues Child Init; replacing the parent's source field then forces collection of the still-referenced object. Direct-array control passes. This is not accepted deferred debt or approval to narrow nested input support. [Finding and replay](attachments/841/review-r5/finding-F841-R5-01.md); [review](attachments/841/review-r5/review.md). Original G04 graph/direct-ref examples now pass, but shared lifetime invariant remains partial. Plan executing6/12; work must fix full producer/container lifetime then obtain affected review. Unified gates remain merge-owned pending.
