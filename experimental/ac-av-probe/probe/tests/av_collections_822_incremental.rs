@@ -1,19 +1,18 @@
-//! PLAN-822 T-09 incremental tests (V-13 sub-cases over the D828 seam):
-//! the collections capability rides the function-code/snapshot identity
-//! machinery — unchanged functions keep their Arc object and generation
-//! across revisions; a signature/type change invalidates precisely; the
-//! baseline replay (30-revision campaign) is owned by the 828 suite the
-//! incremental script scope replays. Prefix `av_collections_822`.
+//! PLAN-822 T-09 incremental tests (V-13) over the REAL update consumer
+//! (`collections_session`): two-function revisions through the real
+//! verify→encode→abc-admit→link→execute chain with semantics + cleanup
+//! observation, unchanged-unit production/IO counters, real
+//! `fn:<name>` dependency changes (positive carry + link rejection), and
+//! the production structural gate that FAILS on a forced whole rebuild.
+//! Prefix `av_collections_822`.
 
-use auto_av_core::abc::{decode_abc, encode_abc};
-use auto_av_core::abc_verify::verify_abc_bytes;
-use auto_av_core::function_code::FunctionCode;
+use auto_av_core::av::{execute_program, CancelFlag, ExecLimits};
 use auto_av_core::mir::{
-    BinOp, ListTypeRef, MirBlock, MirConst, MirFunction, MirInstr, MirModule, MirSlot, MirType,
-    OwnerScope, SlotKind, Terminator,
+    BinOp, ListTypeRef, MirBlock, MirConst, MirFunction, MirImport, MirInstr, MirModule, MirSlot,
+    MirType, OwnerScope, SlotKind, Terminator,
 };
-use auto_av_core::mir_verify::verify_mir;
 use auto_av_core::program_snapshot::ProgramSnapshot;
+use auto_av_probe::collections_session::CollectionsUpdateSession;
 use std::sync::Arc;
 
 fn owner_scope() -> OwnerScope {
@@ -23,166 +22,322 @@ fn owner_scope() -> OwnerScope {
     }
 }
 
-/// A single-function UNIT: `fn <name>(i32) -> i32` whose body folds the
-/// arg with a list round trip. `bump` changes the folded constant — a
-/// body-only edit; `ret_str` changes the SIGNATURE (a dependency change).
-fn unit_fn(name: &str, bump: i32, ret_str: bool) -> MirModule {
+/// `fn main() i32 { beta() + a_bump }` — a REAL cross-unit caller: the
+/// callee is addressed through the `fn:beta` import (the unit model's
+/// only legal callee form), resolved and signature-checked at link time.
+fn alpha_unit(a_bump: i32) -> MirModule {
     let mut m = MirModule::collections_unit(owner_scope());
     let t_i32 = m.intern_type(MirType::I32);
-    let t_list = m.intern_type(MirType::List(ListTypeRef { elem: t_i32 }));
-    let cb = m.intern_const(MirConst::I32(bump)) as u32;
-    let c0 = m.intern_const(MirConst::I32(0)) as u32;
-    let result_ty = if ret_str {
-        m.intern_type(MirType::Str)
-    } else {
-        0
-    };
-    let sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
-        params: vec![0],
-        result: result_ty,
+    let t_sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: vec![],
+        result: t_i32,
     }));
+    let cb = m.intern_const(MirConst::I32(a_bump)) as u32;
+    m.imports = vec![MirImport {
+        symbol: "fn:beta".to_string(),
+        effect: auto_av_core::mir::Effect::Pure,
+        sig: t_sig,
+    }];
     m.funcs = vec![MirFunction {
         owner: owner_scope(),
-        name: name.to_string(),
-        sig,
+        name: "main".to_string(),
+        sig: t_sig,
         slots: vec![
             MirSlot {
-                kind: SlotKind::Param,
-                ty: 0,
-                name: Some("x".into()),
+                kind: SlotKind::Local,
+                ty: t_i32,
+                name: Some("call".into()),
             },
             MirSlot {
                 kind: SlotKind::Local,
-                ty: 1,
-                name: Some("list".into()),
-            },
-            MirSlot {
-                kind: SlotKind::Local,
-                ty: 0,
-                name: Some("v".into()),
-            },
-            MirSlot {
-                kind: SlotKind::Local,
-                ty: 0,
-                name: Some("r".into()),
+                ty: t_i32,
+                name: Some("bump".into()),
             },
         ],
         blocks: vec![MirBlock {
             instrs: vec![
-                MirInstr::Const { dst: 2, value: cb },
-                MirInstr::ListNew {
-                    dst: 1,
-                    list_ty: t_list,
-                    cap: 0,
+                MirInstr::Call {
+                    callee: auto_av_core::mir::CalleeRef::Import(0),
+                    dst: 0,
+                    args: vec![],
                 },
-                MirInstr::ListPush { root: 1, value: 2 },
-                MirInstr::Const { dst: 3, value: c0 },
-                MirInstr::ListGet {
-                    dst: 3,
-                    base: 1,
-                    index: 3,
-                },
+                MirInstr::Const { dst: 1, value: cb },
                 MirInstr::Bin {
                     op: BinOp::AddI32,
-                    dst: 3,
-                    lhs: 3,
-                    rhs: 0,
+                    dst: 0,
+                    lhs: 0,
+                    rhs: 1,
                 },
             ],
-            term: Terminator::Return { value: 3 },
+            term: Terminator::Return { value: 0 },
         }],
         entry: 0,
-        source_snapshot: bump as u64,
+        source_snapshot: a_bump as u64,
         spans: Vec::new(),
     }];
     m.entry = 0;
     m
 }
 
-fn admit(m: &MirModule) -> Arc<auto_av_core::function_code::FunctionCode> {
-    // The REAL gates first (untrusted builder output).
-    verify_mir(m).unwrap_or_else(|e| panic!("verify {e:?}"));
-    let wire = encode_abc(m).unwrap_or_else(|e| panic!("encode"));
-    let _loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap_or_else(|e| panic!("{e:?}"));
-    // Rebuild the unit shape with the MIR-side owner schema (the wire
-    // carries the ABC schema; verify_mir binds the MIR schema).
-    let dec = decode_abc(&wire.to_flat()).unwrap();
-    let mut unit_mod = dec.module;
-    unit_mod.is_unit = true;
-    let mir_owner = owner_scope();
-    unit_mod.owner = mir_owner.clone();
-    for f in unit_mod.funcs.iter_mut() {
-        f.owner = mir_owner.clone();
-    }
-    let wire_u = encode_abc(&unit_mod).unwrap();
-    let loaded_u =
-        verify_abc_bytes(&wire_u.to_flat(), &unit_mod.owner).unwrap_or_else(|e| panic!("{e:?}"));
-    FunctionCode::admit_unit(loaded_u, 1)
-        .map(Arc::new)
-        .unwrap_or_else(|e| panic!("admit: {e}"))
+/// `fn beta() i32 { list-roundtrip(b_bump) }` — the collections
+/// capability under update (a typed list materializes the bump and reads
+/// it back); `b_bump` varying = a body-only revision.
+fn beta_unit(b_bump: i32) -> MirModule {
+    let mut m = MirModule::collections_unit(owner_scope());
+    let t_i32 = m.intern_type(MirType::I32);
+    let t_list = m.intern_type(MirType::List(ListTypeRef { elem: t_i32 }));
+    let t_sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: vec![],
+        result: t_i32,
+    }));
+    let cb = m.intern_const(MirConst::I32(b_bump)) as u32;
+    let c0 = m.intern_const(MirConst::I32(0)) as u32;
+    m.funcs = vec![MirFunction {
+        owner: owner_scope(),
+        name: "beta".to_string(),
+        sig: t_sig,
+        slots: vec![
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_list,
+                name: Some("list".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_i32,
+                name: Some("v".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_i32,
+                name: Some("idx".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_i32,
+                name: Some("got".into()),
+            },
+        ],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::Const { dst: 1, value: cb },
+                MirInstr::ListNew {
+                    dst: 0,
+                    list_ty: t_list,
+                    cap: 0,
+                },
+                MirInstr::ListPush { root: 0, value: 1 },
+                MirInstr::Const { dst: 2, value: c0 },
+                MirInstr::ListGet {
+                    dst: 3,
+                    base: 0,
+                    index: 2,
+                },
+            ],
+            term: Terminator::Return { value: 3 },
+        }],
+        entry: 0,
+        source_snapshot: b_bump as u64,
+        spans: Vec::new(),
+    }];
+    m.entry = 0;
+    m
 }
 
-/// V-13 sub-case 2: a BODY-only revision of one function keeps the OTHER
-/// function's code object IDENTITY (same Arc) and generation; only the
-/// edited function mints a new generation.
+/// The dependency-change shape: `fn beta() bool` — a LEGAL unit on its
+/// own, but alpha's `fn:beta` import still declares `() -> i32`, so the
+/// LINK (the real interface check) must refuse the pair.
+fn beta_unit_bool() -> MirModule {
+    let mut m = MirModule::collections_unit(owner_scope());
+    let t_bool = m.intern_type(MirType::Bool);
+    let t_sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: vec![],
+        result: t_bool,
+    }));
+    let ctrue = m.intern_const(MirConst::Bool(true)) as u32;
+    m.funcs = vec![MirFunction {
+        owner: owner_scope(),
+        name: "beta".to_string(),
+        sig: t_sig,
+        slots: vec![MirSlot {
+            kind: SlotKind::Local,
+            ty: t_bool,
+            name: Some("r".into()),
+        }],
+        blocks: vec![MirBlock {
+            instrs: vec![MirInstr::Const {
+                dst: 0,
+                value: ctrue,
+            }],
+            term: Terminator::Return { value: 0 },
+        }],
+        entry: 0,
+        source_snapshot: 999,
+        spans: Vec::new(),
+    }];
+    m.entry = 0;
+    m
+}
+
+fn run_snapshot(snap: &ProgramSnapshot) -> i32 {
+    use auto_av_core::contract::{ExecOutcome, Value};
+    let (out, _) = execute_program(snap, &ExecLimits::default(), &CancelFlag::new(false));
+    match out {
+        ExecOutcome::Success {
+            value: Value::I32(v),
+            ..
+        } => v,
+        other => panic!("snapshot execution: {other:?}"),
+    }
+}
+
+/// V-13 sub-case 2 — the REAL update entry: install alpha(a=10) +
+/// beta(b=1), then three beta body revisions. EVERY revision must:
+/// execute to the folded truth (a + b), clean up (live=0,
+/// allocs == frees), keep alpha's code OBJECT carried by the session,
+/// and produce NOTHING for alpha (verified/encoded/admitted/store-writes
+/// all == 1 — beta only). The OLD snapshot keeps executing its OLD truth.
 #[test]
 fn av_collections_822_incremental_body_edit_identity() {
-    let fa1 = admit(&unit_fn("alpha", 1, false));
-    let fb1 = admit(&unit_fn("beta", 2, false));
-    let snap1 = ProgramSnapshot::link(vec![fa1.clone(), fb1.clone()], "alpha", 1)
-        .unwrap_or_else(|e| panic!("link: {e}"));
-    assert!(Arc::ptr_eq(snap1.find_code("beta").unwrap(), &fb1));
+    let root = std::env::temp_dir().join(format!(
+        "av822-session-body-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let store = root.join("store");
+    let mut s = CollectionsUpdateSession::new(Some(&store), "main");
 
-    // Body-only edit of alpha: beta's Arc object is REUSED as-is (the
-    // caller passes the SAME Arc), alpha mints a new generation.
-    let fa2 = admit(&unit_fn("alpha", 9, false));
-    assert_ne!(fa2.generation(), 0);
-    let snap2 = ProgramSnapshot::link(vec![fa2.clone(), fb1.clone()], "alpha", 2)
-        .unwrap_or_else(|e| panic!("link2: {e}"));
-    // Identity reuse: the snapshot dispatches the very same payload for
-    // the unchanged function (F-02 observation gate).
-    assert!(
-        Arc::ptr_eq(snap2.find_code("beta").unwrap(), &fb1),
-        "the unchanged unit keeps its Arc payload identity across revisions"
-    );
-    assert!(!Arc::ptr_eq(snap2.find_code("alpha").unwrap(), &fa1));
-    // Generation stability: the unchanged function's generation did not
-    // bump; the edited one is a fresh mint.
-    assert_eq!(snap2.generation_of("beta"), snap1.generation_of("beta"));
+    let out0 = s
+        .apply_revision(&[("main", alpha_unit(10)), ("beta", beta_unit(1))])
+        .expect("install");
+    assert_eq!(out0.value, Some(11), "x=0: beta(0)=1, alpha=+10");
+    assert_eq!(out0.live_after_release, 0, "cleanup: live drains");
+    assert_eq!(out0.allocs, out0.frees, "cleanup: ledger balanced");
+    assert_eq!(out0.production.verified, 2, "both units produced once");
+    assert_eq!(out0.production.store_writes, 2);
+    assert!(out0.gate.pass(), "a fresh install has no degraded units");
+    let alpha_obj = s.unit("main").expect("alpha installed").clone();
+    let snap_old = s.snapshot().expect("old snapshot links");
+
+    for (b, want) in [(2, 12), (3, 13), (4, 14)] {
+        let out = s
+            .apply_revision(&[("beta", beta_unit(b))])
+            .unwrap_or_else(|e| panic!("beta revision b={b}: {e}"));
+        assert_eq!(out.value, Some(want), "revision b={b} semantics");
+        assert_eq!(out.live_after_release, 0, "b={b}: live drains");
+        assert_eq!(out.allocs, out.frees, "b={b}: ledger balanced");
+        // Production/IO of the UNCHANGED unit is ZERO across every stage.
+        assert_eq!(out.production.verified, 1, "b={b}: only beta verified");
+        assert_eq!(out.production.encoded, 1, "b={b}: only beta encoded");
+        assert_eq!(out.production.admitted, 1, "b={b}: only beta admitted");
+        assert_eq!(out.production.store_writes, 1, "b={b}: only beta persisted");
+        assert_eq!(out.gate.rebuilt_units, 1);
+        assert_eq!(out.gate.unchanged_degraded, 0, "b={b}: honest revision");
+        assert!(out.gate.pass());
+        // Identity: the session carried the SAME alpha object.
+        assert!(
+            Arc::ptr_eq(s.unit("main").unwrap(), &alpha_obj),
+            "b={b}: alpha's code object is carried, not rebuilt"
+        );
+        // The OLD snapshot still executes its OLD truth (beta=1 → 11).
+        assert_eq!(
+            run_snapshot(&snap_old),
+            11,
+            "b={b}: old snapshot keeps its truth"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
 }
 
-/// V-13 sub-case 3: a SIGNATURE change is a precise invalidation — the
-/// stale unit no longer links against the new closure shape (the link
-/// gate rejects rather than silently re-binding).
+/// V-13 sub-case 3 — real dependency changes: the POSITIVE control (a
+/// body-only beta revision keeps alpha carried and executes) and the
+/// NEGATIVE control (a legal beta unit whose SIGNATURE changed makes the
+/// LINK refuse the pair — the real interface check, not a malformed
+/// MIR); after the refusal the session's prior state still updates fine.
 #[test]
 fn av_collections_822_incremental_signature_change_precise() {
-    let fa = admit(&unit_fn("alpha", 1, false));
-    let fb_i32 = admit(&unit_fn("beta", 2, false));
-    // alpha calls beta with an i32 result; link fine.
-    ProgramSnapshot::link(vec![fa.clone(), fb_i32.clone()], "alpha", 1)
-        .unwrap_or_else(|e| panic!("link: {e}"));
+    let mut s = CollectionsUpdateSession::new(None, "main");
+    s.apply_revision(&[("main", alpha_unit(5)), ("beta", beta_unit(1))])
+        .expect("install");
+    let alpha_obj = s.unit("main").unwrap().clone();
 
-    // beta's revision changes its RESULT type (a dependency fact). A body
-    // that still returns i32 under a Str-typed signature is rejected at
-    // the REAL gate — the precise-invalidations positive/negative pair:
-    // the type change is caught BEFORE any linkage, never silently
-    // re-bound.
-    let bad = unit_fn("beta", 2, true);
-    match verify_mir(&bad) {
-        Err(auto_av_core::mir_verify::MirVerifyError::Invalid { code, .. }) => {
-            assert_eq!(code, "mir.return-type");
-        }
-        other => panic!("the signature-changed unit must be rejected: {other:?}"),
-    }
+    // Positive: a body-only revision carries alpha and executes.
+    let ok = s
+        .apply_revision(&[("beta", beta_unit(2))])
+        .expect("body revision");
+    assert_eq!(ok.value, Some(7));
+    assert!(Arc::ptr_eq(s.unit("main").unwrap(), &alpha_obj));
+    assert!(ok.gate.pass());
+
+    // Negative: beta's SIGNATURE changed (i32 -> bool). The unit itself
+    // passes the real gates; the LINK refuses the interface mismatch.
+    let err = s
+        .apply_revision(&[("beta", beta_unit_bool())])
+        .expect_err("the link must refuse the signature change");
+    assert!(
+        err.contains("signature mismatch") || err.contains("does not resolve"),
+        "the real link check speaks: {err}"
+    );
+
+    // The refusal left the session's prior state intact — a subsequent
+    // honest revision still succeeds on the carried units.
+    let after = s
+        .apply_revision(&[("beta", beta_unit(3))])
+        .expect("the session survives the refused revision");
+    assert_eq!(after.value, Some(8));
+    assert!(Arc::ptr_eq(s.unit("main").unwrap(), &alpha_obj));
 }
 
-// -- T-09: V-13 sub-case 1 — the D828 baseline campaign replay ------------
+/// V-13 sub-case 4 — the forced-whole counter-control on the PRODUCTION
+/// gate: re-submitting alpha UNCHANGED (identical content) alongside a
+/// real beta edit swaps alpha's object under the same fingerprint — the
+/// gate reports it degraded-unchanged (NON-ZERO) and FAILS, while the
+/// honest revision's gate passes. The gate lives in the session (the
+/// production consumer), not in this test.
+#[test]
+fn av_collections_822_incremental_forced_degradation_gate_nonzero() {
+    let mut s = CollectionsUpdateSession::new(None, "main");
+    s.apply_revision(&[("main", alpha_unit(10)), ("beta", beta_unit(1))])
+        .expect("install");
 
-/// V-13 sub-case 1: the FROZEN D828 baseline (273 575 B / 115 functions,
-/// >= 30 distinct body revisions at fn_037's multiplier site) replays
-/// GREEN through the shared core AFTER the collections extension — the
-/// dual gate (P95 < 1000 ms AND all-correct AND structural green) proves
-/// the 822 core edits did not regress the incremental machinery.
+    // Honest: submit ONLY beta.
+    let honest = s.apply_revision(&[("beta", beta_unit(2))]).expect("honest");
+    assert_eq!(honest.gate.unchanged_degraded, 0);
+    assert!(
+        honest.gate.pass(),
+        "the honest revision passes the production gate"
+    );
+
+    // Forced whole: re-submit alpha's IDENTICAL module with beta's edit —
+    // alpha is re-produced (fresh object, same fingerprint).
+    let forced = s
+        .apply_revision(&[("main", alpha_unit(10)), ("beta", beta_unit(3))])
+        .expect("the forced revision still executes (the gate judges, not the run)");
+    assert_eq!(
+        forced.value,
+        Some(13),
+        "semantics stay correct under the forced shape"
+    );
+    assert_eq!(
+        forced.gate.unchanged_degraded, 1,
+        "the forced-whole rebuild degrades exactly the unchanged unit"
+    );
+    assert_eq!(forced.gate.rebuilt_units, 2);
+    assert!(
+        !forced.gate.pass(),
+        "the PRODUCTION gate fails non-zero on the forced whole rebuild"
+    );
+}
+
+/// V-13 sub-case 1 — the frozen D828 baseline campaign replays GREEN
+/// through the shared core AFTER the collections extension (dual gate:
+/// all-correct + structural + P95 < 1000 ms). The scalar campaign is the
+/// shared-core baseline; sub-cases 2/3/4 above cover the collections
+/// capability itself through its real update entry.
 #[test]
 fn av_collections_822_incremental_baseline_campaign_replay() {
     use auto_av_probe::formal_campaign::{
@@ -201,77 +356,4 @@ fn av_collections_822_incremental_baseline_campaign_replay() {
     );
     assert!(report.structural_ok, "the structural gate stays green");
     assert!(report.gate_pass, "P95 < {} ms holds", FORMAL_GATE_MS);
-}
-
-// -- T-09: V-13 sub-case 4 — the forced-degradation counter-control --------
-
-/// V-13 sub-case 4: a FORCED whole-recompute revision (the unchanged
-/// function re-admitted into a fresh object — "only the hash kept, the
-/// object/generation swapped") MUST be caught by the structural gate:
-/// the identity predicate reports a non-zero degraded-unit count where
-/// the honest incremental revision reports zero. A gate that could not
-/// distinguish them would let silent whole-recompute pass as incremental.
-#[test]
-fn av_collections_822_incremental_forced_degradation_gate_nonzero() {
-    let fa1 = admit(&unit_fn("alpha", 1, false));
-    let fb1 = admit(&unit_fn("beta", 2, false));
-    let snap1 = ProgramSnapshot::link(vec![fa1.clone(), fb1.clone()], "alpha", 1)
-        .unwrap_or_else(|e| panic!("link: {e}"));
-
-    // The honest revision: alpha's body changes, beta's Arc is carried.
-    let fa2 = admit(&unit_fn("alpha", 9, false));
-    let snap2 = ProgramSnapshot::link(vec![fa2.clone(), fb1.clone()], "alpha", 2)
-        .unwrap_or_else(|e| panic!("link2: {e}"));
-
-    // The FORCED whole-recompute revision: beta re-admitted into a FRESH
-    // object under the same content (hash identical, object swapped).
-    let fb1_rebuilt = admit(&unit_fn("beta", 2, false));
-    let snap3 = ProgramSnapshot::link(vec![fa2.clone(), fb1_rebuilt.clone()], "alpha", 3)
-        .unwrap_or_else(|e| panic!("link3: {e}"));
-
-    // The structural gate over the unchanged (beta) slot, per revision:
-    // honest -> 0 degraded units; forced -> exactly the swapped one.
-    let degraded = |prev: &ProgramSnapshot, next: &ProgramSnapshot| -> usize {
-        let mut n = 0;
-        for i in 0..next.code().len().max(prev.code().len()) {
-            let same = match (prev.code().get(i), next.code().get(i)) {
-                (Some(x), Some(y)) => Arc::ptr_eq(x, y),
-                _ => false,
-            };
-            if !same {
-                n += 1;
-            }
-        }
-        n
-    };
-    // Revision 1 -> 2 (honest): only the EDITED function degrades; the
-    // unchanged function's gate bit reads ZERO.
-    assert_eq!(
-        degraded(&snap1, &snap2),
-        1,
-        "the honest edit degrades exactly alpha"
-    );
-    assert!(
-        Arc::ptr_eq(snap2.find_code("beta").unwrap(), &fb1),
-        "honest revision: beta's gate bit is zero"
-    );
-    // Revision 2 -> 3 (forced whole recompute): the UNCHANGED function's
-    // object was swapped under the same content — its gate bit reads
-    // NON-ZERO (the count is exactly the swapped unchanged unit; alpha,
-    // genuinely re-edited here only by carry-over, keeps its object).
-    assert!(!Arc::ptr_eq(
-        snap3.find_code("beta").unwrap(),
-        snap2.find_code("beta").unwrap()
-    ), "forced degradation: beta's gate bit must be non-zero (object swapped under an identical hash)");
-    assert_eq!(
-        degraded(&snap2, &snap3),
-        1,
-        "the forced revision degrades exactly the swapped unchanged unit"
-    );
-    // Alpha's object IS carried in the forced shape (the whole-recompute
-    // lie is about BETA), so the gate localizes the degradation.
-    assert!(Arc::ptr_eq(
-        snap3.find_code("alpha").unwrap(),
-        snap2.find_code("alpha").unwrap()
-    ));
 }

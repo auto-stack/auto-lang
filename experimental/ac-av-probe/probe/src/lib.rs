@@ -8,6 +8,7 @@
 pub mod bench;
 pub mod cache;
 pub mod collections_fixture;
+pub mod collections_session;
 pub mod data_driver;
 pub mod data_session;
 pub mod driver;
