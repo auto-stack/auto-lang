@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-10-25
 updated_at: 2026-10-26
 plan_revision: 1
-current_step: 9
+current_step: 10
 total_steps: 10
 depends_on: [PLAN-848]
 supersedes_spec_components:
@@ -234,7 +234,7 @@ T-08给准确merge矩阵和Spec proposal；T-09独立final pass后，T-10在冻�
 | T-07 [x] | work | T-06 | new tools/check_swept_aabb.py、OS/GPU/仓外reopen | V-10同binary两项目/全mesh/改源/停止位置/正反/partial无gap；AC-08 |
 | T-08 [x] | work | T-07 | new tests/sweep_owners.rs、tools/check_sweep_owners.py、849 source/verifier、research/swept-aabb-handoff.md/Spec proposal | V-01/11/12、20轮owner/旧受影响定向/check/fmt/精确merge矩阵；AC-01, AC-07, AC-08 |
 | T-09 [x] | review | T-08 | 同树冻结code/Plan/Spec/raw；主检出独立review附件 | 逐项AC-01..08/SD/遗漏/延后/workaround/健康和revision+code结论；AC-09 |
-| T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出Spec/ledger/archive/wt-guard/到期 | AC-10真实全部收尾，改代码先受影响复审，不提前标交付 |
+| T-10 [x] | merge | T-09 pass | 冻结完整门→autographics-dev；主检出Spec/ledger/archive/wt-guard/到期 | AC-10真实全部收尾，改代码先受影响复审，不提前标交付 |
 
 ## 9. 复审记录
 
@@ -295,3 +295,11 @@ stage:review | review_scope:final | reviewer_identity:/root/review_849_final_r1�
 stage:merge | plan_id:PLAN-849 | plan_revision:1 | outcome:delivery_verified_cleanup_pending | source_branch:autographics-dev | source_commit:6bb85f354e718f6541256f4b3d75ca97af75b8c4 | canonical_commit:8087a6bbd6bc81518e469e0a65592a856b4caf3d | ledger_commit:fa7711d0222c9e9852f56eb32fe986fa16dab45e | ledger_version:92 | ledger_channel:guarded offline projection, no store writer reachable | canonical_targets:15 (INDEX regeneration unchanged) | ledger_items:15 | untouched_items:1227 | archived:true | cleaned:pending。
 
 实际15目标及SD01..04对照、台账六section/字段/hash/链接/读回、主检出无关WIP保留见[规范审计](../attachments/849/merge-r1/canonical-review.md)、[知识落地](../attachments/849/merge-r1/knowledge-landed.json.txt)、[投影](../attachments/849/merge-r1/ledger-projection.json.txt)。源码只入autographics-dev；原生二进制独立留存。R849-NATIVE-CLOCK已入KNOWN-DEBT-AND-RISKS；相同binary完整隔离重测通过，无时钟阈值放宽，原失败保留。原始JSON/scene以字节一致sidecar保存见[manifest](../attachments/849/merge-r1/raw-sidecars.json.txt)。实际归档状态核验及提交后才移除工作树。
+
+### 最终实际收尾核验
+
+stage:merge | plan_id:PLAN-849 | plan_revision:1 | outcome:pass | completion_kind:delivered | source_commit:6bb85f354e718f6541256f4b3d75ca97af75b8c4 | canonical_commit:8087a6bbd6bc81518e469e0a65592a856b4caf3d | ledger_commit:fa7711d0222c9e9852f56eb32fe986fa16dab45e | ledger_version:92 | archived:true | cleaned:true | current_step:10/10。上述cleanup pending为当时检查点历史，当前T-01..T-10全部完成。
+
+[清理恢复收据](../attachments/849/merge-r1/cleaned.json.txt)：原唯一worktree与两临时分支移除，普通consumer/构建资产同卷移至仓外恢复目录，fresh guard clean、实际组目录移除及保留binary hash均已核。其他会话WIP保留。
+
+[产物观察](../attachments/849/merge-r1/deployment-observations.json.txt)：逐项记录主检出release/web产物日期或不存在，本次验证runner独立留存，不声称生产部署。[批量到期](../attachments/849/merge-r1/batch-due.json.txt)：现有850收据覆盖ID且距今不足48h，849未触发新到期；旧B845-FEATURE-01/847描述是历史，850已完成全档修复回归，本计划没有追加运行tf。

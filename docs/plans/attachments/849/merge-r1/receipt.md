@@ -7,3 +7,5 @@ R849-NATIVE-CLOCK: inherited spatial probe phase4 waits for80 input ticks but do
 Prepared gate baseline verified; fresh guard clean. Landing/canonical/ledger/archive/cleanup pending.
 
 Landed source6bb85f354 on autographics-dev, canonical8087a6bbd and ledgerfa7711d02/v92 on master; 15 projected items/1227 untouched verified. Archive actual-state validation and guard cleanup pending.
+
+Final actual merge pass: archived10/10; fresh guards clean; worktree, both temporary branches and empty group removed. Source6bb85f354 on autographics-dev; canonical8087a6bbd, ledgerfa7711d02/v92 and archive committed master.15 items/1227 unrelated originals preserved. Batch not due (current850 receipt <48h); no production deployment claim. R849-NATIVE-CLOCK remains documented verifier stability candidate with same-binary isolated full retry pass, no waived limits.
