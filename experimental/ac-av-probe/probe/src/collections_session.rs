@@ -109,6 +109,14 @@ impl CollectionsUpdateSession {
         self.host_grants = grants;
     }
 
+    /// F822-R18-01: the production counters of the LATEST revision
+    /// ATTEMPT — including a REJECTED one (the authorization preflight
+    /// performs none; a shortfall leaves every stage at zero, observable
+    /// here).
+    pub fn production_counters(&self) -> ProductionCounters {
+        self.counters
+    }
+
     /// The linked snapshot of the current units (executable as-is).
     pub fn snapshot(&self) -> Result<ProgramSnapshot, String> {
         let code = self.units.values().cloned().collect();
@@ -214,21 +222,39 @@ impl CollectionsUpdateSession {
                 order.push(name.to_string());
             }
         }
+        // F822-R18-01: authorize the COMPLETE candidate closure against
+        // the CURRENT host grants BEFORE any production stage. A carried
+        // unit's code is reused, not re-derived — its required
+        // capabilities still bind every NEW revision that would execute
+        // it; a submitted replacement supplies its OWN requirements (it
+        // does not inherit the carried unit's). This is a decision about
+        // the new candidate only — snapshots already published under an
+        // earlier, live grant fact keep executing (authorization binds at
+        // revision time, not retroactively).
+        for name in &order {
+            let required: &[String] = match submitted.iter().find(|(n, _)| *n == name.as_str()) {
+                Some((_, m)) => &m.capabilities,
+                None => {
+                    &self
+                        .units
+                        .get(name)
+                        .expect("carried name came from the session")
+                        .unit()
+                        .module()
+                        .capabilities
+                }
+            };
+            for c in required {
+                if !self.host_grants.iter().any(|g| g == c) {
+                    return Err(format!(
+                        "unit `{name}` requires capability `{c}` not granted by the current host grants"
+                    ));
+                }
+            }
+        }
         for name in &order {
             match submitted.iter().find(|(n, _)| *n == name.as_str()) {
                 Some((_, m)) => {
-                    // F822-R17-01: capability admission — every capability
-                    // the INPUT requires must be granted by the CURRENT
-                    // host grant set; a shortfall rejects the revision
-                    // BEFORE any production stage, link or installation
-                    // (the session keeps its prior state).
-                    for c in m.capabilities.iter() {
-                        if !self.host_grants.iter().any(|g| g == c) {
-                            return Err(format!(
-                                "unit `{name}` requires capability `{c}` not granted by the current host grants"
-                            ));
-                        }
-                    }
                     let (fc, fp) = self.produce_unit(m)?;
                     next.insert(name.clone(), (fc, fp));
                 }

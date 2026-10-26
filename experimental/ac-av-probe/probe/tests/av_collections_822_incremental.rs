@@ -935,3 +935,94 @@ fn av_collections_822_incremental_host_grant_lifecycle() {
     assert_eq!(out2.value, Some(12));
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// F822-R18-01: the authorization preflight covers the COMPLETE candidate
+/// closure — CARRIED units included. After a granted install of a
+/// capability-requiring beta, a REVOKED grant set refuses any new
+/// revision that would still execute the carried beta: a caller-only
+/// edit AND an EMPTY submission both refuse with ZERO production, no
+/// installation, the prior state intact; under a LIVE grant the same
+/// carried shape succeeds (the reuse is legal — the grant is the fact
+/// that changed); re-granting admits the previously refused revision.
+/// Snapshots published under the earlier live grant keep executing
+/// (authorization binds at revision time, not retroactively).
+#[test]
+fn av_collections_822_incremental_host_grant_carried_closure() {
+    let root = std::env::temp_dir().join(format!(
+        "av822-session-grant-carried-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let store = root.join("store");
+    let mut s = CollectionsUpdateSession::new(Some(&store), "main");
+    let grant = vec![auto_av_core::contract::TRACE_CAPABILITY.to_string()];
+
+    s.set_host_grants(grant.clone());
+    let out0 = s
+        .apply_revision(&[("main", alpha_unit(10)), ("beta", beta_unit_trace(1))])
+        .expect("granted install");
+    assert_eq!(out0.value, Some(11));
+    let beta_obj = s.unit("beta").expect("beta installed").clone();
+    let snap_old = s.snapshot().expect("old snapshot links");
+
+    // Revoked: a caller-only revision that would REUSE the carried
+    // restricted beta refuses — zero production, nothing installs.
+    s.set_host_grants(vec![]);
+    for (label, submitted) in [
+        ("caller-only", vec![("main", alpha_unit(20))]),
+        ("empty", Vec::<(&str, MirModule)>::new()),
+    ] {
+        let err = s
+            .apply_revision(&submitted)
+            .err()
+            .unwrap_or_else(|| panic!("{label}: the carried restricted unit must refuse"));
+        assert!(
+            err.contains("not granted"),
+            "{label}: the refusal names the gap: {err}"
+        );
+        let c = s.production_counters();
+        assert_eq!(
+            (c.verified, c.encoded, c.admitted, c.store_writes),
+            (0, 0, 0, 0),
+            "{label}: a refused revision produces nothing"
+        );
+        assert!(
+            Arc::ptr_eq(s.unit("beta").unwrap(), &beta_obj),
+            "{label}: no swap"
+        );
+    }
+    assert_eq!(
+        run_snapshot(&snap_old),
+        11,
+        "the prior snapshot keeps executing"
+    );
+
+    // Live grant: the SAME carried shape succeeds (reuse is legal).
+    s.set_host_grants(grant.clone());
+    let out1 = s
+        .apply_revision(&[("main", alpha_unit(20))])
+        .expect("carried restricted unit under a live grant");
+    assert_eq!(out1.value, Some(21));
+    assert!(
+        Arc::ptr_eq(s.unit("beta").unwrap(), &beta_obj),
+        "beta carried"
+    );
+    assert_eq!(out1.live_after_release, 0);
+
+    // Re-grant after a refusal: the previously refused edit applies.
+    s.set_host_grants(vec![]);
+    assert!(
+        s.apply_revision(&[("main", alpha_unit(30))]).is_err(),
+        "revoked again refuses"
+    );
+    s.set_host_grants(grant);
+    let out2 = s
+        .apply_revision(&[("main", alpha_unit(30))])
+        .expect("re-granting admits the refused revision");
+    assert_eq!(out2.value, Some(31));
+    let _ = std::fs::remove_dir_all(&root);
+}
