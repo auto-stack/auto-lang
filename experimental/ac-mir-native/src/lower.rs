@@ -389,11 +389,9 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     None => return Err(format!("out-of-range constant {value}")),
                     // PLAN-820 shared-core widening: wide constants are a
                     // controlled lower rejection (mn keeps its scalar ABI).
-                    Some(_) => {
-                        return Err(format!(
-                            "constant {value} is an av.data/1 wide value outside the mn scalar surface"
-                        ))
-                    }
+                    Some(_) => return Err(format!(
+                        "constant {value} is an av.data/1 wide value outside the mn scalar surface"
+                    )),
                 };
                 self.def_slot(*dst, val);
             }
@@ -459,7 +457,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             // (mn owner reviews at its own merge).
             MirInstr::FieldGet { .. } | MirInstr::FieldSet { .. } | MirInstr::Aggregate { .. } => {
                 return Err(
-                    "av.data/1 record instructions are outside the mn scalar surface".to_string()
+                    "av.data/1 record instructions are outside the mn scalar surface".to_string(),
                 )
             }
             // PLAN-821 shared-core widening: the owned-profile instructions
@@ -481,8 +479,30 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             | MirInstr::CharToCodepoint { .. }
             | MirInstr::CharFromCodepoint { .. }
             | MirInstr::FieldMove { .. } => {
+                return Err("av.owned/1 instructions are outside the mn scalar surface".to_string())
+            }
+            // PLAN-822 shared-core widening: the collections-profile
+            // instructions (av.collections/1) are likewise a controlled
+            // lower rejection — mn keeps its scalar ABI; no semantic
+            // widening, no silent fallback.
+            MirInstr::ListNew { .. }
+            | MirInstr::ListLen { .. }
+            | MirInstr::ListCap { .. }
+            | MirInstr::ListGet { .. }
+            | MirInstr::ListPush { .. }
+            | MirInstr::ListInsert { .. }
+            | MirInstr::ListSet { .. }
+            | MirInstr::ListRemove { .. }
+            | MirInstr::ListFieldGet { .. }
+            | MirInstr::ListFieldSet { .. }
+            | MirInstr::VariantPack { .. }
+            | MirInstr::VariantDisc { .. }
+            | MirInstr::VariantGuard { .. }
+            | MirInstr::VariantProject { .. }
+            | MirInstr::VariantSwitch { .. } => {
                 return Err(
-                    "av.owned/1 instructions are outside the mn scalar surface".to_string()
+                    "av.collections/1 list/variant instructions are outside the mn scalar surface"
+                        .to_string(),
                 )
             }
         }

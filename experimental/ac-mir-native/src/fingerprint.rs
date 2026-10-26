@@ -165,7 +165,11 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
         MirInstr::FieldSet { root, path, value } => {
             format!("fieldset {root} {:?} {value}", path)
         }
-        MirInstr::Aggregate { dst, record_ty, operands } => {
+        MirInstr::Aggregate {
+            dst,
+            record_ty,
+            operands,
+        } => {
             format!("aggregate {dst} {record_ty} {:?}", operands)
         }
         // PLAN-821 shared-core widening: the owned-profile instructions
@@ -190,12 +194,7 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
         } => format!("strslice {dst} {view} {start} {end}"),
         MirInstr::StrConcat { dst, lhs, rhs } => format!("strconcat {dst} {lhs} {rhs}"),
         MirInstr::StrToOwned { dst, view } => format!("toowned {dst} {view}"),
-        MirInstr::StrCmp {
-            eq,
-            dst,
-            lhs,
-            rhs,
-        } => format!("strcmp {eq} {dst} {lhs} {rhs}"),
+        MirInstr::StrCmp { eq, dst, lhs, rhs } => format!("strcmp {eq} {dst} {lhs} {rhs}"),
         MirInstr::CharToCodepoint { dst, ch } => format!("char2cp {dst} {ch}"),
         MirInstr::CharFromCodepoint { dst, code } => format!("cp2char {dst} {code}"),
         // PLAN-821 R2-F08' widening: the write-back extraction renders;
@@ -203,6 +202,63 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
         MirInstr::FieldMove { dst, root, path } => {
             format!("fieldmove {dst} {root} {:?}", path)
         }
+        // PLAN-822 shared-core widening: the collections-profile
+        // instructions render (pure formatting — a fingerprint must not
+        // panic on them); the lower surface rejects them.
+        MirInstr::ListNew { dst, list_ty, cap } => {
+            format!("listnew {dst} t{list_ty} c{cap}")
+        }
+        MirInstr::ListLen { dst, src } => format!("listlen {dst} {src}"),
+        MirInstr::ListCap { dst, src } => format!("listcap {dst} {src}"),
+        MirInstr::ListGet { dst, base, index } => {
+            format!("listget {dst} {base} {index}")
+        }
+        MirInstr::ListPush { root, value } => format!("listpush {root} {value}"),
+        MirInstr::ListInsert { root, index, value } => {
+            format!("listinsert {root} {index} {value}")
+        }
+        MirInstr::ListSet { root, index, value } => {
+            format!("listset {root} {index} {value}")
+        }
+        MirInstr::ListRemove { dst, root, index } => {
+            format!("listremove {dst} {root} {index}")
+        }
+        MirInstr::ListFieldGet {
+            dst,
+            base,
+            index,
+            path,
+        } => format!("listfieldget {dst} {base} {index} {:?}", path),
+        MirInstr::ListFieldSet {
+            root,
+            index,
+            path,
+            value,
+        } => format!("listfieldset {root} {index} {:?} {value}", path),
+        MirInstr::VariantPack {
+            dst,
+            variant_ty,
+            disc,
+            payload,
+        } => format!(
+            "variantpack {dst} t{variant_ty} d{disc} p{}",
+            payload.map(|p| p.to_string()).unwrap_or_else(|| "-".into())
+        ),
+        MirInstr::VariantDisc { dst, src } => format!("variantdisc {dst} {src}"),
+        MirInstr::VariantGuard { dst, src, disc } => {
+            format!("variantguard {dst} {src} d{disc}")
+        }
+        MirInstr::VariantProject { dst, root, disc } => {
+            format!("variantproject {dst} {root} d{disc}")
+        }
+        MirInstr::VariantSwitch {
+            root,
+            disc,
+            payload,
+        } => format!(
+            "variantswitch {root} d{disc} p{}",
+            payload.map(|p| p.to_string()).unwrap_or_else(|| "-".into())
+        ),
     })
 }
 
