@@ -87,6 +87,18 @@ switch ($Scope) {
     'targeted' {
         Run-Probe -Bin 'av_runtime_825_semantics' -RequiredIds $TARGETED
     }
+    'compat' {
+        Run-Probe -Bin 'cache_tier'
+        Run-Probe -Bin 'av_data_820_cache_compat'
+        Run-Probe -Bin 'av_owned_821_cache_compat'
+        Run-Probe -Bin 'av_collections_822_cache_compat'
+        Run-Probe -Bin 'av_data_820_semantics'
+        Run-Probe -Bin 'av_owned_821_semantics'
+        Run-Probe -Bin 'av_collections_822_semantics'
+        Run-Runner -Filter 'ac_av_probe'
+        Run-Runner -Filter 'av_owned_821'
+        Run-Runner -Filter 'av_collections_822'
+    }
     default {
         throw "PLAN-825 scope '$Scope' is not implemented yet; this is an explicit acceptance gap, not PASS"
     }
