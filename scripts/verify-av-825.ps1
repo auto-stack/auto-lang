@@ -90,14 +90,13 @@ function Invoke-Benchmark {
     $guard = Join-Path $raw 'guard'
     if (Test-Path $guard) { Remove-Item -LiteralPath $guard -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $guard | Out-Null
-    Get-ChildItem -LiteralPath $raw -Filter '*.jsonl' -File | ForEach-Object { Copy-Item $_.FullName -Destination $guard }
+    Get-ChildItem -LiteralPath $raw -Filter '*.jsonl' -File | Where-Object { $_.Name -in @('av.jsonl', 'js.jsonl', 'liftoff.jsonl', 'turbofan.jsonl') } | ForEach-Object { Copy-Item $_.FullName -Destination $guard }
     $peakFile = Join-Path $guard 'js.jsonl'
     $withoutPeak = @(Get-Content -LiteralPath $peakFile -Encoding UTF8 | Where-Object { $_ -notmatch 'process-peak' })
     Set-Content -LiteralPath $peakFile -Value $withoutPeak -Encoding UTF8
     $failed = $false
-    try {
-        & powershell -NoProfile -File (Join-Path $root 'scripts/av-825-bench-report.ps1') -RawDir $guard -OutFile (Join-Path $guard 'bad.json') 2>$null
-    } catch { $failed = $true }
+    & powershell -NoProfile -File (Join-Path $root 'scripts/av-825-bench-report.ps1') -RawDir $guard -OutFile (Join-Path $guard 'bad.json') 2>$null
+    if ($LASTEXITCODE -ne 0) { $failed = $true }
     if (-not $failed) { throw 'missing process-peak counter-control was accepted' }
     Remove-Item -LiteralPath $guard -Recurse -Force
 }
