@@ -82,6 +82,11 @@
 
 ---
 
+
+### UI 领域模型与 Core 边界（PLAN-841）
+
+[UI domain model](ui-domain-model/project.md) 由独立 auto-ui 的 dialect 包拥有；语言 AST/词法/Parser API 只保通用模型和中立端口，UI 经校验/lowering 进入生成与执行。迁移支持、codec/生命周期及来源见 [PLAN-841](../plans/archive/841-ui-domain-ast-token-lowering-finalization.md)。
+
 ## auto-lang 九模块状态（详见各 module spec）
 
 | 模块 | 职责 | 近期演进（plans） |

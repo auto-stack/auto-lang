@@ -6,3 +6,5 @@
 Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md), [affected final review](../../plans/attachments/840/review-r2/review.md), [complete merge receipt](../../plans/attachments/840/merge-r1/receipt.md). Graphics source: autographics-dev. Production I2/I3 remain pending.
 
 可选 Case 测试与阶段计量的当前边界见[项目规范](project.md)，实施来源见[计划索引](plans.md)。
+
+PLAN-841：纯语言 SDK 保持无 UI 实现反向依赖；UI 上层经显式领域端口与受检 lowering 消费。 见 [project.md](project.md)。

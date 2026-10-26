@@ -101,3 +101,7 @@ DELETE_PENDING(303)同为需在调用方既定截止时间内重试的竞争。�
 ## PLAN-832 Man 固定消费（SD-06，as-built）
 
 Man 的 runtime、CLI、three-repository-consumer 均从语言仓固定 source 消费 SDK；语言仓不因 Man 迁移反向依赖 Man 实现。独立 Core 安装与第三方工程真实 parse/compile/VM 通过，类型和 source 唯一；旧 Man/CLI 原件已从语言仓删除。
+
+## PLAN-841 来源与验证
+
+纯语言 SDK 保持无 UI 实现反向依赖；UI 上层经显式领域端口与受检 lowering 消费。 规范与验收来源：[PLAN-841](../../plans/archive/841-ui-domain-ast-token-lowering-finalization.md)；复审及统一门证据见其归档记录。

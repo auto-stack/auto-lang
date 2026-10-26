@@ -55,3 +55,7 @@ UI owner 校验/lowering 后进入类型、执行与生成器。未组合 UI 方
 旧三段派发表只承担 Core/非 UI 兼容，不是 UI 类型回流传输层。过渡期的
 旧注册/优先级的测试差额列入 PLAN-842 适配器退役清单。auto-parser-api
 仍在 792 受管交付闭包内，fresh/locked/重定位与缺源负控继续适用。
+
+## PLAN-841 来源与验证
+
+中立 DomainParseContext/DomainDialect 传递 owned 领域产物，旧 UI 专属函数表与返回门面退出。 规范与验收来源：[PLAN-841](../../plans/archive/841-ui-domain-ast-token-lowering-finalization.md)；复审及统一门证据见其归档记录。

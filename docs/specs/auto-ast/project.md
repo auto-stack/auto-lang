@@ -46,3 +46,7 @@ auto-lang 的 `crate::ast` 仅为同类型 re-export 门面；旧 `ast::ui` 和 
 - Core 不提供 UI 领域 enum 的兼容臂或全局类型擦除载荷。需要 UI 时由上层
   显式组合 `Parser::parse_domain(&UiDialect)` 并取得 `UiCode`；未 lowering
   的领域产物不能进入 Core compile/VM。
+
+## PLAN-841 来源与验证
+
+Core AST 仅保通用节点与 Godot Scene；UI 专属 Stmt/模型归 auto-ui-dialect，投影 golden 保持。 规范与验收来源：[PLAN-841](../../plans/archive/841-ui-domain-ast-token-lowering-finalization.md)；复审及统一门证据见其归档记录。

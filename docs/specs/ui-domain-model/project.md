@@ -38,3 +38,7 @@ V-01..V-05 分别覆盖 Core 独立消费、UI/Core 同名语义、codec/缓存/
 投影 golden 不由新实现重生成。旧全局文法装配、Core UI facade、Aura
 `with_registry_and_imports` 的最后形参及旧方言优先级测试适配，列入
 PLAN-842 退役清单；这些过渡入口不承载第二份 UI 实现。
+
+## PLAN-841 来源与验证
+
+冻结 UI 领域所有权、准入/lowering、版本 codec、源位置/生命周期与842上层过渡适配边界。 规范与验收来源：[PLAN-841](../../plans/archive/841-ui-domain-ast-token-lowering-finalization.md)；复审及统一门证据见其归档记录。

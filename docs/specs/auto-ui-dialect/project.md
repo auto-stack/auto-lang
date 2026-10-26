@@ -54,3 +54,7 @@ Core；on-handler 无论成功或错误都恢复 on 旗标并退出参数 scope�
 `msg { Inc` 未闭合到 EOF 的无界怪癖不因迁移冒称已修复；未闭合 fragment
 的隔离探针也只能经外部截止时间执行。合法输入继续沿用 Parser 的
 body_depth/既有截止，不新增任意限额。
+
+## PLAN-841 来源与验证
+
+UI AST/visitor/codec/validate_ui 单一 owner；版本信封完整消费，合法深视图与最后 owner 生命周期保持。 规范与验收来源：[PLAN-841](../../plans/archive/841-ui-domain-ast-token-lowering-finalization.md)；复审及统一门证据见其归档记录。

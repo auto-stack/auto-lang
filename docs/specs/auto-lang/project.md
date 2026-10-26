@@ -115,3 +115,7 @@ autodown/ui-headless/code-editor 等）在此转发。
 ## PLAN-831 上层兼容与切源（SD-06，as-built）
 
 五 UI 包生产 owner=独立 auto-ui 仓（组内兄弟相对 path + 受管锁）；本包作为上层兼容组合保留：公开路径经真实 UI owner 再导出，不进入纯 SDK 闭包。旧 auto-lang 巨包不再被 UI 仓反向依赖。
+
+## PLAN-841 来源与验证
+
+Core/领域 AST 终态解耦；兼容上层只保同类型转发，真实工程/VM/生成入口遵循领域准入。 规范与验收来源：[PLAN-841](../../plans/archive/841-ui-domain-ast-token-lowering-finalization.md)；复审及统一门证据见其归档记录。

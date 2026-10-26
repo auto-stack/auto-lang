@@ -145,3 +145,7 @@ rq_update 的退出逻辑不变。
 ## PLAN-831 仓属与来源（SD-05，as-built）
 
 本 crate 物理属 auto-ui 仓（迁移基线=语言仓 e199caf8a 内容）。字体/.at 资产与测试随 owner 迁移；同步测试完成态约束（PLAN-840 节）继续适用（840 修复已随 T-11 并集移植入本仓副本）。VM/Iced 运行面：run_ui 真实运行验收=子应用服务级观测（Launched(url) 端点探活 + cancel 后同端点确证关闭，连接拒绝唯一计关闭；超时/未知探测不可判定期不充当任一结论）。
+
+## PLAN-841 来源与验证
+
+VM/Iced/runtime 使用 UI owned 声明与受检路径，导入失败在 VM 构造前传播；Core 不再承载 UI 兼容臂。 规范与验收来源：[PLAN-841](../../plans/archive/841-ui-domain-ast-token-lowering-finalization.md)；复审及统一门证据见其归档记录。

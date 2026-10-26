@@ -59,3 +59,7 @@ auto-diagnostics：结构化五变体 → `AutoError::Lexer`，raw-block 字符�
   `docs/plans/attachments/789/t01-frontend-dag.md`（原"`error.rs` 的
   `ast::Name` 边"已由 PLAN-793 切断，载荷=底层 `AutoStr` 同一类型，
   见 [auto-diagnostics/project.md](../auto-diagnostics/project.md)）。
+
+## PLAN-841 来源与验证
+
+View/On 的 Core 共享分类保持，UI 领域文法经显式 Domain 组合，不按同名词法误删。 规范与验收来源：[PLAN-841](../../plans/archive/841-ui-domain-ast-token-lowering-finalization.md)；复审及统一门证据见其归档记录。

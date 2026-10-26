@@ -559,3 +559,4 @@
 - [repository-boundaries](repository-boundaries/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
 - [tool-execution](tool-execution/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
 - [tool-protocol](tool-protocol/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
+- [ui-domain-model](ui-domain-model/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
