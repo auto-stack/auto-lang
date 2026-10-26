@@ -111,12 +111,14 @@ fn plan502_m1_vm_svgdoc_text_and_overlay() {
 fn plan502_m1_vue_svg_text_passthrough() {
     let session = crate::session::CompilerSession::ui();
     let mut parser = crate::parser::Parser::from(PROBE_SRC).with_session(session);
-    let ast = parser.parse().expect("probe must parse");
+    let ast = parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("probe must parse");
     let decl = ast
-        .stmts
-        .iter()
+        .domain_stmts()
         .find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            auto_ui_dialect::UiStmt::WidgetDecl(d) => Some(d),
             _ => None,
         })
         .expect("widget decl");
@@ -181,11 +183,13 @@ widget W {
 "#;
     let session = crate::session::CompilerSession::ui();
     let mut parser = crate::parser::Parser::from(code).with_session(session);
-    let ast = parser.parse().expect("link positional form must parse");
+    let ast = parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("link positional form must parse");
     assert!(ast
-        .stmts
-        .iter()
-        .any(|s| matches!(s, crate::ast::Stmt::WidgetDecl(_))));
+        .domain_stmts()
+        .any(|s| matches!(s, auto_ui_dialect::UiStmt::WidgetDecl(_))));
 }
 
 /// Plan 502 M3:Sugiyama-lite 布局几何对拍(端到端,真实组件)。

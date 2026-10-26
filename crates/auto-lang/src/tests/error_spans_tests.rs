@@ -4,15 +4,19 @@
 //! the offending token, or (b) that a formerly-broken syntax now parses
 //! (self-healed by an earlier batch — kept as a regression guard).
 
-use crate::ast::{Expr, Stmt, ViewNode, ViewPropValue};
+use crate::ast::Expr;
 use crate::error::AutoError;
 use crate::parser::Parser;
 use crate::session::CompilerSession;
+use auto_ui_dialect::ast::{ViewNode, ViewPropValue, WidgetDecl};
+use auto_ui_dialect::UiStmt as Stmt;
 use miette::Diagnostic;
 
-fn parse_ui(code: &str) -> Result<crate::ast::Code, AutoError> {
+fn parse_ui(code: &str) -> Result<auto_ui_dialect::UiCode, AutoError> {
     let mut parser = Parser::from(code).with_session(CompilerSession::ui());
-    parser.parse()
+    parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
 }
 
 /// Offset of the first miette label of an error (delegates into the first
@@ -21,9 +25,8 @@ fn first_label_offset(e: &AutoError) -> Option<usize> {
     e.labels().and_then(|mut it| it.next()).map(|l| l.offset())
 }
 
-fn widget_decl(code: &crate::ast::Code) -> &crate::ast::WidgetDecl {
-    code.stmts
-        .iter()
+fn widget_decl(code: &auto_ui_dialect::UiCode) -> &WidgetDecl {
+    code.domain_stmts()
         .find_map(|s| match s {
             Stmt::WidgetDecl(w) => Some(w),
             _ => None,

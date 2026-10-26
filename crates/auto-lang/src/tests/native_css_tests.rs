@@ -11,12 +11,15 @@ mod native_css_tests {
     use crate::session::CompilerSession;
 
     /// Parse source in UI scenario and return the first WidgetDecl.
-    fn parse_widget(code: &str) -> crate::ast::ui::WidgetDecl {
+    fn parse_widget(code: &str) -> auto_ui_dialect::ast::WidgetDecl {
         let session = CompilerSession::ui();
         let mut parser = crate::Parser::from(code).with_session(session);
-        let ast = parser.parse().expect("parse failed");
-        for stmt in &ast.stmts {
-            if let crate::ast::Stmt::WidgetDecl(w) = stmt {
+        let ast = parser
+            .parse_domain(&auto_ui_dialect::UiDialect)
+            .map(auto_ui_dialect::UiCode)
+            .expect("parse failed");
+        for stmt in ast.domain_stmts() {
+            if let auto_ui_dialect::UiStmt::WidgetDecl(w) = stmt {
                 return w.clone();
             }
         }
@@ -156,7 +159,7 @@ mod native_css_tests {
 "#,
         )
         .with_session(session);
-        assert!(parser.parse().is_err());
+        assert!(parser.parse_domain(&auto_ui_dialect::UiDialect).is_err());
     }
 
     #[test]
@@ -196,11 +199,17 @@ mod native_css_tests {
 "#,
         )
         .with_session(session);
-        let ast = parser.parse().expect("parse failed");
-        let decl = match &ast.stmts[0] {
-            crate::ast::Stmt::WidgetDecl(w) => w,
-            _ => panic!("expected widget"),
-        };
+        let ast = parser
+            .parse_domain(&auto_ui_dialect::UiDialect)
+            .map(auto_ui_dialect::UiCode)
+            .expect("parse failed");
+        let decl = ast
+            .domain_stmts()
+            .find_map(|stmt| match stmt {
+                auto_ui_dialect::UiStmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("expected widget");
         let widget = crate::aura::extract_widget_from_decl(decl).expect("extract failed");
         assert!(widget.style_css.is_some());
 

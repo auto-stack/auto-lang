@@ -2074,12 +2074,14 @@ mod plan808_vm_bridge_assembly {
         let src = std::fs::read_to_string(&at).expect("read minimal terminal app");
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src.as_str()).with_session(session);
-        let ast = parser.parse().expect("parse minimal terminal app");
+        let ast = parser
+            .parse_domain(&auto_ui_dialect::UiDialect)
+            .map(auto_ui_dialect::UiCode)
+            .expect("parse minimal terminal app");
         let decl = ast
-            .stmts
-            .iter()
+            .domain_stmts()
             .find_map(|stmt| match stmt {
-                crate::ast::Stmt::WidgetDecl(decl) => Some(decl),
+                auto_ui_dialect::UiStmt::WidgetDecl(decl) => Some(decl),
                 _ => None,
             })
             .expect("widget decl");

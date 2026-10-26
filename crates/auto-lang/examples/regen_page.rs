@@ -18,12 +18,14 @@ fn main() {
     let code = std::fs::read_to_string(&args[1]).expect("read .at");
     let session = auto_lang::session::CompilerSession::ui();
     let mut parser = auto_lang::Parser::from(code.as_str()).with_session(session);
-    let ast = parser.parse().expect("parse");
+    let ast = parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("parse");
     let decl = ast
-        .stmts
-        .iter()
+        .domain_stmts()
         .find_map(|s| match s {
-            auto_lang::ast::Stmt::WidgetDecl(d) => Some(d),
+            auto_ui_dialect::UiStmt::WidgetDecl(d) => Some(d),
             _ => None,
         })
         .expect("widget decl");

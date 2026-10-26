@@ -6,18 +6,20 @@
 
 #[cfg(test)]
 mod m2_primary_shorthand_bracket {
-    use crate::ast::ui::{ViewNode, ViewPropValue};
+    use auto_ui_dialect::ast::{ViewNode, ViewPropValue};
 
     /// 返回 widget decl 的顶层 view 节点列表(parse 层,不经 aura 提取)。
-    fn parse_view_nodes(src: &str) -> Vec<crate::ast::ui::ViewNode> {
+    fn parse_view_nodes(src: &str) -> Vec<ViewNode> {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src).with_session(session);
-        let ast = parser.parse().expect("parse");
+        let ast = parser
+            .parse_domain(&auto_ui_dialect::UiDialect)
+            .map(auto_ui_dialect::UiCode)
+            .expect("parse");
         let decl = ast
-            .stmts
-            .iter()
+            .domain_stmts()
             .find_map(|s| match s {
-                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                auto_ui_dialect::UiStmt::WidgetDecl(d) => Some(d),
                 _ => None,
             })
             .expect("widget decl");

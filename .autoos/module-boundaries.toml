@@ -457,16 +457,6 @@ status = "active"
 coverage_group = "grammar-ast-dialect"
 evidence = "调研 §4.2：Dialect trait 存在但不具备外部实现能力（方法收 &mut Parser、in_on_body 等 pub(crate) 状态、with_session 重建方言表）；先最小 ParserBridge 再迁全部文法"
 
-[[ownership]]
-id = "weld-dialect-ui"
-kind = "weld"
-path = "crates/auto-lang-core/src/dialect/ui.rs"
-owner = "auto-ui"
-exit_phase = "R1"
-status = "active"
-coverage_group = "grammar-ast-dialect"
-evidence = "调研 §4.1/§4.2：UiDialect 仍调 Parser 内 UI 方法；widget/msg/model/component/actions/style 经 Ident 上下文派发；core view 参数模式与 task on 必须保留"
-
 # —— UI 侧反向焊点（调研 §5.3）——
 [[ownership]]
 id = "weld-ui-app-registry-pac"

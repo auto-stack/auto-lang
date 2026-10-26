@@ -97,14 +97,16 @@ mod plan408_tests {
         let src = "view fn RenderT(a: Any) { div { text .a } }\nwidget W { view { RenderT(a: .x) } model { var x str = \"\" } }";
         let session = CompilerSession::ui();
         let mut parser = crate::Parser::from(src).with_session(session);
-        let ast = parser.parse().expect("view fn must still parse");
+        let ast = parser
+            .parse_domain(&auto_ui_dialect::UiDialect)
+            .map(auto_ui_dialect::UiCode)
+            .expect("view fn must still parse");
         // Exactly one view fn (inline) + one widget — no `component fn`.
         // Plan 425: ViewFragmentDecl is view-fn-only now (component fn
         // sugars to WidgetDecl), so every fragment counts as inline.
         let view_fns = ast
-            .stmts
-            .iter()
-            .filter(|s| matches!(s, crate::ast::Stmt::ViewFragmentDecl(_)))
+            .domain_stmts()
+            .filter(|s| matches!(s, auto_ui_dialect::UiStmt::ViewFragmentDecl(_)))
             .count();
         assert_eq!(view_fns, 1, "expected exactly one inline view fn");
     }
@@ -710,13 +712,13 @@ mod plan408_tests {
         let session = CompilerSession::ui();
         let mut parser = crate::Parser::from(src).with_session(session);
         let ast = parser
-            .parse()
+            .parse_domain(&auto_ui_dialect::UiDialect)
+            .map(auto_ui_dialect::UiCode)
             .expect("host global document must NOT be flagged as undefined variable");
         // Parsed cleanly — document was not blocked by check_symbol.
         assert!(
-            ast.stmts
-                .iter()
-                .any(|s| matches!(s, crate::ast::Stmt::WidgetDecl(_))),
+            ast.domain_stmts()
+                .any(|s| matches!(s, auto_ui_dialect::UiStmt::WidgetDecl(_))),
             "widget must parse"
         );
     }

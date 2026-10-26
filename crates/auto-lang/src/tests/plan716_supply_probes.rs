@@ -14,18 +14,19 @@ mod plan716_supply {
     fn build_probe_bridge(src: &str) -> crate::ui::vm_bridge::VmBridge {
         let session = crate::session::CompilerSession::ui();
         let mut parser = Parser::from(src).with_session(session);
-        let ast = parser.parse().expect("parse");
+        let ast = parser
+            .parse_domain(&auto_ui_dialect::UiDialect)
+            .map(auto_ui_dialect::UiCode)
+            .expect("parse");
         let decl = ast
-            .stmts
-            .iter()
+            .domain_stmts()
             .find_map(|st| match st {
-                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                auto_ui_dialect::UiStmt::WidgetDecl(d) => Some(d.clone()),
                 _ => None,
             })
             .expect("decl");
         let fns: Vec<crate::ast::Stmt> = ast
-            .stmts
-            .iter()
+            .core_stmts()
             .filter(|st| matches!(st, crate::ast::Stmt::Fn(_)))
             .cloned()
             .collect();
@@ -75,12 +76,14 @@ widget App {{
         );
         let session = crate::session::CompilerSession::ui().with_backend("rust");
         let mut parser = crate::Parser::from(src.as_str()).with_session(session);
-        let ast = parser.parse().expect("parse");
+        let ast = parser
+            .parse_domain(&auto_ui_dialect::UiDialect)
+            .map(auto_ui_dialect::UiCode)
+            .expect("parse");
         let decl = ast
-            .stmts
-            .iter()
+            .domain_stmts()
             .find_map(|s| match s {
-                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                auto_ui_dialect::UiStmt::WidgetDecl(d) => Some(d),
                 _ => None,
             })
             .expect("widget decl");

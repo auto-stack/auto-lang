@@ -728,6 +728,7 @@ dependencies = [
  "hmac",
  "hyper",
  "hyper-util",
+ "iced",
  "insta",
  "inventory",
  "lazy_static",

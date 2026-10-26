@@ -204,9 +204,12 @@ widget Pump {
 fn pump_bridge() -> crate::ui::vm_bridge::VmBridge {
     let session = crate::session::CompilerSession::ui();
     let mut parser = crate::Parser::from(PUMP_WIDGET).with_session(session);
-    let ast = parser.parse().expect("parse widget source");
-    for stmt in &ast.stmts {
-        if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+    let ast = parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("parse widget source");
+    for stmt in ast.domain_stmts() {
+        if let auto_ui_dialect::UiStmt::WidgetDecl(decl) = stmt {
             let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
             return crate::ui::vm_bridge::VmBridge::new(&widget).expect("bridge");
         }

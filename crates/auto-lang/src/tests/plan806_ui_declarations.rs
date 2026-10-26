@@ -6,14 +6,16 @@
 //! 生产 import 新建 Parser（with_session 默认装配，真实被导入文件）、
 //! Core 护栏（fn/on 体同名词不拦截）、未知注解错误文本冻结。
 
-use crate::ast::Stmt;
 use crate::session::{CompilerSession, Scenario};
 use crate::Parser;
+use auto_ui_dialect::UiStmt as Stmt;
 
-fn ui_parse(code: &str) -> crate::error::AutoResult<crate::ast::Code> {
+fn ui_parse(code: &str) -> crate::error::AutoResult<auto_ui_dialect::UiCode> {
     let session = CompilerSession::new(Scenario::UI);
     let mut parser = Parser::from(code).with_session(session);
-    parser.parse()
+    parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
 }
 
 /// 顶层（语句位置，UiDialect builtin 派发段）：canonical/旧名/quoted/
@@ -26,7 +28,7 @@ fn top_level_declarations_via_default_assembly() {
     .expect("top-level msg/model parse");
     let mut saw_msg = false;
     let mut saw_model = false;
-    for s in &ast.stmts {
+    for s in ast.domain_stmts() {
         match s {
             Stmt::MsgDecl(m) => {
                 saw_msg = true;
@@ -41,7 +43,6 @@ fn top_level_declarations_via_default_assembly() {
                 assert!(b.fields[0].is_primary);
                 assert!(b.fields[1].mutable);
             }
-            Stmt::EmptyLine(_) => {}
             _ => panic!("unexpected stmt {:?}", s),
         }
     }
@@ -56,8 +57,7 @@ fn widget_structure_path_delegates() {
     )
     .expect("widget parses");
     let w = ast
-        .stmts
-        .iter()
+        .domain_stmts()
         .find_map(|s| match s {
             Stmt::WidgetDecl(w) => Some(w),
             _ => None,
@@ -88,11 +88,10 @@ fn component_and_store_paths_delegate() {
     .expect("component fn + store parse");
     let mut component_msg = None;
     let mut store = None;
-    for s in &ast.stmts {
+    for s in ast.domain_stmts() {
         match s {
             Stmt::WidgetDecl(w) if w.name.as_str() == "C" => component_msg = Some(w),
             Stmt::StoreDecl(s) => store = Some(s),
-            Stmt::EmptyLine(_) => {}
             _ => panic!("unexpected stmt {:?}", s),
         }
     }
@@ -125,9 +124,10 @@ fn import_created_parser_uses_default_declarations() {
     let session = CompilerSession::ui();
     let mut parser = Parser::from(code.as_str()).with_session(session);
     let ast = parser
-        .parse()
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
         .expect("real imported file parses through default UI declarations");
-    let has_decl = ast.stmts.iter().any(|s| {
+    let has_decl = ast.domain_stmts().any(|s| {
         matches!(s, Stmt::MsgDecl(_))
             || matches!(s, Stmt::ModelBlock(_))
             || matches!(
@@ -147,8 +147,7 @@ fn core_guards_keep_body_identifiers() {
     )
     .expect("guards keep identifiers");
     let w = ast
-        .stmts
-        .iter()
+        .domain_stmts()
         .find_map(|s| match s {
             Stmt::WidgetDecl(w) => Some(w),
             _ => None,
@@ -185,7 +184,10 @@ fn default_grammar_rejects_bare_field() {
 fn msg_probe(src: &str) -> (String, Vec<String>, Option<String>, crate::token::TokenKind) {
     let session = CompilerSession::new(Scenario::UI);
     let mut p = Parser::from(src).with_session(session);
-    let result = p.parse_msg_decl();
+    let result = {
+        let mut bridge = crate::parser_bridge::ParserBridge::new(&mut p);
+        auto_ui_dialect::parse_msg_decl(&mut bridge)
+    };
     let errors: Vec<String> = p.errors.iter().map(|e| format!("{:?}", e)).collect();
     let docs = p.take_docs().map(|d| d.to_string());
     let cur = p.peek().kind;

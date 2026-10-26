@@ -13,24 +13,30 @@
 
 #![cfg(feature = "ui-interpreter")]
 
-use auto_lang::Parser;
-use auto_lang::session::CompilerSession;
 use auto_lang::aura::extract_widget_from_decl;
+use auto_lang::session::CompilerSession;
 use auto_lang::ui::dynamic::DynamicComponent;
+use auto_lang::Parser;
 
 /// Parse inline .at code and construct a DynamicComponent.
 fn load_inline(code: &str) -> DynamicComponent {
     let session = CompilerSession::ui();
     let mut parser = Parser::from(code).with_session(session);
-    let ast = parser.parse().expect("Failed to parse");
+    let ast = parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("Failed to parse");
 
-    let widget = ast.stmts.iter().find_map(|s| {
-        if let auto_lang::ast::Stmt::WidgetDecl(decl) = s {
-            Some(extract_widget_from_decl(decl).expect("Failed to extract"))
-        } else {
-            None
-        }
-    }).expect("No widget found");
+    let widget = ast
+        .domain_stmts()
+        .find_map(|s| {
+            if let auto_ui_dialect::UiStmt::WidgetDecl(decl) = s {
+                Some(extract_widget_from_decl(decl).expect("Failed to extract"))
+            } else {
+                None
+            }
+        })
+        .expect("No widget found");
 
     DynamicComponent::new(&widget).expect("Failed to create DynamicComponent")
 }
@@ -55,7 +61,11 @@ widget Counter {
 "#;
     let dc = load_inline(code);
     let fields = dc.state_fields();
-    assert!(fields.contains(&"count".to_string()), "Should have count field: {:?}", fields);
+    assert!(
+        fields.contains(&"count".to_string()),
+        "Should have count field: {:?}",
+        fields
+    );
 
     let count = dc.read_state("count").expect("Should read count");
     assert_eq!(count, auto_val::Value::Int(0), "Initial count should be 0");
@@ -86,12 +96,20 @@ widget Counter {
     dc.on_with_input("Inc", None);
 
     let count = dc.read_state("count").expect("Should read count");
-    assert_eq!(count, auto_val::Value::Int(3), "After 3 Inc, count should be 3");
+    assert_eq!(
+        count,
+        auto_val::Value::Int(3),
+        "After 3 Inc, count should be 3"
+    );
 
     // Decrement once
     dc.on_with_input("Dec", None);
     let count = dc.read_state("count").expect("Should read count");
-    assert_eq!(count, auto_val::Value::Int(2), "After Dec, count should be 2");
+    assert_eq!(
+        count,
+        auto_val::Value::Int(2),
+        "After Dec, count should be 2"
+    );
 }
 
 // ============================================================================
@@ -151,7 +169,11 @@ widget ThemeSwitcher {
 
     dc.on_with_input("Toggle", None);
     let dark = dc.read_state("dark").expect("Should read dark");
-    assert_eq!(dark, auto_val::Value::Bool(false), "After second Toggle, dark=false");
+    assert_eq!(
+        dark,
+        auto_val::Value::Bool(false),
+        "After second Toggle, dark=false"
+    );
 }
 
 // ============================================================================
@@ -181,7 +203,11 @@ widget Clamper {
     dc.on_with_input("Add", None);
     dc.on_with_input("Add", None);
     let val = dc.read_state("val").expect("Should read val");
-    assert_eq!(val, auto_val::Value::Int(8), "After 3 Add (clamped at 10), val=8");
+    assert_eq!(
+        val,
+        auto_val::Value::Int(8),
+        "After 3 Add (clamped at 10), val=8"
+    );
 
     // Add 5 more times → should clamp at 10
     for _ in 0..5 {
@@ -246,21 +272,33 @@ widget AppWithInit {
 
     // Before Init
     let loaded = dc.read_state("loaded").expect("Should read loaded");
-    assert_eq!(loaded, auto_val::Value::Bool(false), "Before Init, loaded=false");
+    assert_eq!(
+        loaded,
+        auto_val::Value::Bool(false),
+        "Before Init, loaded=false"
+    );
 
     // Fire Init
     dc.fire_init();
 
     // After Init, loaded should be true
     let loaded = dc.read_state("loaded").expect("Should read loaded");
-    assert_eq!(loaded, auto_val::Value::Bool(true), "After Init, loaded=true");
+    assert_eq!(
+        loaded,
+        auto_val::Value::Bool(true),
+        "After Init, loaded=true"
+    );
 
     // data field may or may not be accessible depending on how Init handler
     // writes it. Check state_fields to see what's available.
     let fields = dc.state_fields();
     if fields.contains(&"data".to_string()) {
         let data = dc.read_state("data").expect("Should read data");
-        assert_eq!(data, auto_val::Value::str("initialized"), "After Init, data='initialized'");
+        assert_eq!(
+            data,
+            auto_val::Value::str("initialized"),
+            "After Init, data='initialized'"
+        );
     } else {
         // data may be a VM-internal field not exposed via read_state
         // The key assertion is that loaded=true (Init handler ran)
@@ -305,7 +343,10 @@ widget MultiState {
 
     // Update
     dc.on_with_input("SetAll", None);
-    assert_eq!(dc.read_state("name").unwrap(), auto_val::Value::str("updated"));
+    assert_eq!(
+        dc.read_state("name").unwrap(),
+        auto_val::Value::str("updated")
+    );
     assert_eq!(dc.read_state("count").unwrap(), auto_val::Value::Int(100));
 }
 
@@ -341,13 +382,22 @@ fn plan488_dnd_bridge_app_handlers() {
             "on_native_drop",
             vec![
                 ("text".into(), RecordValue::Str("dropped-text".into())),
-                ("files".into(), RecordValue::StrList(vec!["C:/tmp/a.txt".into()])),
-                ("image_path".into(), RecordValue::Str("C:/tmp/img.png".into())),
+                (
+                    "files".into(),
+                    RecordValue::StrList(vec!["C:/tmp/a.txt".into()]),
+                ),
+                (
+                    "image_path".into(),
+                    RecordValue::Str("C:/tmp/img.png".into()),
+                ),
                 ("image_w".into(), RecordValue::Int(64)),
                 ("image_h".into(), RecordValue::Int(48)),
                 ("screen_x".into(), RecordValue::Int(100)),
                 ("screen_y".into(), RecordValue::Int(200)),
-                ("formats".into(), RecordValue::StrList(vec!["CF_HDROP".into()])),
+                (
+                    "formats".into(),
+                    RecordValue::StrList(vec!["CF_HDROP".into()]),
+                ),
             ],
         )
         .expect("on_native_drop 注入");
@@ -358,7 +408,10 @@ fn plan488_dnd_bridge_app_handlers() {
     assert!(log.contains("CF_HDROP"), "formats 入日志: {log}");
     assert!(log.contains("dropped-text"), "text 入日志: {log}");
     assert!(log.contains("C:/tmp/a.txt"), "files 入日志: {log}");
-    assert!(log.contains("C:/tmp/img.png"), "嵌套 image.path 入日志: {log}");
+    assert!(
+        log.contains("C:/tmp/img.png"),
+        "嵌套 image.path 入日志: {log}"
+    );
 
     // on_native_paste：纯文本载荷。
     dc.bridge_mut()

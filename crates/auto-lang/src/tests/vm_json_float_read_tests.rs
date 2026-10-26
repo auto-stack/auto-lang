@@ -313,15 +313,18 @@ widget App {
 "#;
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(code).with_session(session);
-        let ast = match parser.parse() {
+        let ast = match parser
+            .parse_domain(&auto_ui_dialect::UiDialect)
+            .map(auto_ui_dialect::UiCode)
+        {
             Ok(a) => a,
             Err(e) => {
                 eprintln!("[P474] probe widget parse error: {:?}", e);
                 return None;
             }
         };
-        let root_decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+        let root_decl = ast.domain_stmts().find_map(|s| match s {
+            auto_ui_dialect::UiStmt::WidgetDecl(d) => Some(d.clone()),
             _ => None,
         })?;
         let widget = crate::aura::extract_widget_from_decl(&root_decl).ok()?;

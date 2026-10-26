@@ -130,13 +130,16 @@ widget W(a: str) {
                 .expect("sidebar.at style recipe imports must resolve");
         let session = CompilerSession::ui();
         let mut parser = crate::Parser::from(code.as_str()).with_session(session);
-        let ast = parser.parse().expect("sidebar.at must parse cleanly");
+        let ast = parser
+            .parse_domain(&auto_ui_dialect::UiDialect)
+            .map(auto_ui_dialect::UiCode)
+            .expect("sidebar.at must parse cleanly");
         let _ = crate::design_tokens::recipe::load_and_validate_style_recipes_with_imports(
             &recipe_imports,
-            &ast.stmts,
+            &ast,
         );
-        let has_navtree = ast.stmts.iter().any(
-            |s| matches!(s, crate::ast::Stmt::WidgetDecl(d) if d.name.to_string() == "NavTree"),
+        let has_navtree = ast.domain_stmts().any(
+            |s| matches!(s, auto_ui_dialect::UiStmt::WidgetDecl(d) if d.name.to_string() == "NavTree"),
         );
         assert!(has_navtree, "sidebar.at must declare the NavTree widget");
     }

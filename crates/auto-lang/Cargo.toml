@@ -273,6 +273,8 @@ tokio-tungstenite = { version = "0.30.0", default-features = false, features = [
 
 
 [dev-dependencies]
+# 示例直接使用 iced::daemon/application；版本与 auto-ui-runtime 锁定同源。
+iced = { version = "0.14.0", features = ["tokio", "image", "svg", "advanced", "canvas", "unconditional-rendering"] }
 
 # PLAN-619 §8.5 回归锚用：把 lucide 文档栅格化后断言 ink 充满度=几何值。
 # 两者已在依赖图中（经 iced_wgpu），此处只作测试期直接依赖。

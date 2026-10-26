@@ -27,14 +27,16 @@ fn test_style_recipe_in_widget_extraction() {
         }
     "#;
     let mut p = Parser::from(code).with_session(auto_lang_core::session::CompilerSession::ui());
-    let ast = p.parse().unwrap();
-    load_and_validate_style_recipes(&ast.stmts).unwrap();
+    let ast = p
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .unwrap();
+    load_and_validate_style_recipes(&ast).unwrap();
 
     let widget_decl = ast
-        .stmts
-        .iter()
+        .domain_stmts()
         .find_map(|s| {
-            if let crate::ast::Stmt::WidgetDecl(d) = s {
+            if let auto_ui_dialect::UiStmt::WidgetDecl(d) = s {
                 Some(d)
             } else {
                 None
@@ -100,14 +102,16 @@ fn test_style_recipe_in_vue_gen() {
         }
     "#;
     let mut p = Parser::from(code).with_session(auto_lang_core::session::CompilerSession::ui());
-    let ast = p.parse().unwrap();
-    load_and_validate_style_recipes(&ast.stmts).unwrap();
+    let ast = p
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .unwrap();
+    load_and_validate_style_recipes(&ast).unwrap();
 
     let widget_decl = ast
-        .stmts
-        .iter()
+        .domain_stmts()
         .find_map(|s| {
-            if let crate::ast::Stmt::WidgetDecl(d) = s {
+            if let auto_ui_dialect::UiStmt::WidgetDecl(d) = s {
                 Some(d)
             } else {
                 None
@@ -150,8 +154,11 @@ fn plan635_load(base: &std::path::Path) {
     let imports = prepare_style_recipe_imports(base, &code).unwrap();
     let mut p =
         Parser::from(code.as_str()).with_session(auto_lang_core::session::CompilerSession::ui());
-    let ast = p.parse().unwrap();
-    load_and_validate_style_recipes_with_imports(&imports, &ast.stmts).unwrap();
+    let ast = p
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .unwrap();
+    load_and_validate_style_recipes_with_imports(&imports, &ast).unwrap();
 }
 
 fn plan635_load_err(base: &std::path::Path) -> StyleRecipeError {
@@ -161,8 +168,11 @@ fn plan635_load_err(base: &std::path::Path) -> StyleRecipeError {
         Ok(imports) => {
             let mut p = Parser::from(code.as_str())
                 .with_session(auto_lang_core::session::CompilerSession::ui());
-            let ast = p.parse().unwrap();
-            load_and_validate_style_recipes_with_imports(&imports, &ast.stmts).unwrap_err()
+            let ast = p
+                .parse_domain(&auto_ui_dialect::UiDialect)
+                .map(auto_ui_dialect::UiCode)
+                .unwrap();
+            load_and_validate_style_recipes_with_imports(&imports, &ast).unwrap_err()
         }
     }
 }

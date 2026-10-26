@@ -12,8 +12,7 @@ use auto_lang::ui_gen::widget::{ComponentRegistry, ComponentResolution, Componen
 /// 目录经 `resolve_os_top_dir` 解析序定位(env AUTO_OS_ROOT → 兄弟 → 主
 /// 检出);solo 检出 → None,依赖画廊包的测试整体 SKIP(不炸)。
 fn gallery_components_dir() -> Option<std::path::PathBuf> {
-    let sibling_base =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let sibling_base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     auto_lang::os_paths::resolve_os_top_dir(&sibling_base, "widgets-gallery")
         .map(|g| g.join("src/front/components"))
 }
@@ -40,14 +39,15 @@ fn minimal_widget(name: &str) -> auto_lang::aura::AuraWidget {
         "widget {} {{\n    msg M {{ Go }}\n    model {{ n int = 0 }}\n    on {{ .Go -> {{ }} }}\n    view {{ col {{ text \"x\" {{}} }} }}\n}}\n",
         name
     );
-    let session = auto_lang::session::CompilerSession::new(
-        auto_lang::session::Scenario::UI,
-    );
+    let session = auto_lang::session::CompilerSession::new(auto_lang::session::Scenario::UI);
     let mut parser = auto_lang::Parser::from(code.as_str());
     parser = parser.with_session(session);
-    let ast = parser.parse().expect("parse minimal widget");
-    for stmt in &ast.stmts {
-        if let auto_lang::ast::Stmt::WidgetDecl(d) = stmt {
+    let ast = parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("parse minimal widget");
+    for stmt in ast.domain_stmts() {
+        if let auto_ui_dialect::UiStmt::WidgetDecl(d) = stmt {
             return auto_lang::aura::extract_widget_from_decl(d).expect("extract");
         }
     }
@@ -109,11 +109,15 @@ fn resolution_priority_builtin_local_package() {
 fn builtin_tags_cannot_be_shadowed() {
     let mut reg = ComponentRegistry::new();
     let rejected = reg.register_local(&[
-        minimal_widget("Button"),     // 与内置 button 折叠冲突
+        minimal_widget("Button"),      // 与内置 button 折叠冲突
         minimal_widget("AlertDialog"), // 与内置 alert-dialog 折叠冲突
-        minimal_widget("FineWidget"), // 无冲突
+        minimal_widget("FineWidget"),  // 无冲突
     ]);
-    assert_eq!(rejected.len(), 2, "Button/AlertDialog 应被拒绝: {rejected:?}");
+    assert_eq!(
+        rejected.len(),
+        2,
+        "Button/AlertDialog 应被拒绝: {rejected:?}"
+    );
     assert_eq!(reg.shadow_violations().len(), 2);
     // 被拒后 resolve 仍命中内置
     assert!(matches!(
@@ -178,7 +182,10 @@ fn official_package_bootstrap_via_unified_mechanism() {
         "carousel 家族应注册: {:?}",
         pkg.widgets.keys().take(8).collect::<Vec<_>>()
     );
-    assert!(!pkg.widgets.contains_key("button"), "内置冲突者不入包注册表");
+    assert!(
+        !pkg.widgets.contains_key("button"),
+        "内置冲突者不入包注册表"
+    );
 }
 
 #[test]
@@ -204,8 +211,7 @@ fn e2e_use_package_generates_component() {
          \x20   }}\n\
          }}\n"
     );
-    let fixture =
-        std::env::temp_dir().join(format!("pkg_app_p590_{}.at", std::process::id()));
+    let fixture = std::env::temp_dir().join(format!("pkg_app_p590_{}.at", std::process::id()));
     std::fs::write(&fixture, src).expect("write temp pkg_app fixture");
     let opts = auto_lang::ui_gen::ComponentGenOptions::default();
     let result = match auto_lang::ui_gen::generate_component_from_file(&fixture, opts) {
@@ -297,7 +303,12 @@ fn package_families_modeled() {
         .load_package(&components, std::path::Path::new("."))
         .expect("gallery components load");
     let carousel = pkg.families.get("Carousel").expect("Carousel 家族");
-    for child in ["CarouselContent", "CarouselItem", "CarouselNext", "CarouselPrevious"] {
+    for child in [
+        "CarouselContent",
+        "CarouselItem",
+        "CarouselNext",
+        "CarouselPrevious",
+    ] {
         assert!(
             carousel.contains(&child.to_string()),
             "Carousel 子件缺 {child}: {carousel:?}"
@@ -312,7 +323,9 @@ fn package_families_modeled() {
     assert!(reg.family_children_of("NoSuchWidget").is_empty());
     // 第 5 个子件是 CarouselDemo(同文件 demo widget,前缀推导合理收入)
     assert_eq!(reg.family_children_of("Carousel").len(), 5);
-    assert!(reg.family_children_of("Carousel").contains(&"CarouselDemo".to_string()));
+    assert!(reg
+        .family_children_of("Carousel")
+        .contains(&"CarouselDemo".to_string()));
 }
 
 /// Plan 435 P8-6(D13):桌面端接入 —— ①WidgetRegistry 折叠桥接(kebab tag
@@ -327,10 +340,10 @@ fn desktop_registry_bridges_package_components() {
     #[cfg(feature = "ui-interpreter")]
     {
         let mut reg_ui = WidgetRegistry::new();
-    reg_ui.register(minimal_widget("CopyButton"));
-    assert!(reg_ui.get("CopyButton").is_some(), "精确命中");
-    assert!(reg_ui.get("copy-button").is_some(), "kebab 折叠命中");
-    assert!(reg_ui.get("Copy-Button").is_some(), "混合折叠命中");
+        reg_ui.register(minimal_widget("CopyButton"));
+        assert!(reg_ui.get("CopyButton").is_some(), "精确命中");
+        assert!(reg_ui.get("copy-button").is_some(), "kebab 折叠命中");
+        assert!(reg_ui.get("Copy-Button").is_some(), "混合折叠命中");
     }
 
     // ② 包组件全量对:视图 + decl 齐备
@@ -342,7 +355,10 @@ fn desktop_registry_bridges_package_components() {
     assert!(
         pkg.full_widgets.iter().any(|(_, w)| w.name == "Carousel"),
         "full_widgets 应含 Carousel: {:?}",
-        pkg.full_widgets.iter().map(|(_, w)| w.name.clone()).collect::<Vec<_>>()
+        pkg.full_widgets
+            .iter()
+            .map(|(_, w)| w.name.clone())
+            .collect::<Vec<_>>()
     );
     assert!(
         pkg.full_widgets

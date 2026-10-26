@@ -10,19 +10,21 @@
 
 #[cfg(test)]
 mod plan024_named_view_tests {
-    use crate::ast::{Stmt, ViewNode};
     use crate::error::AutoError;
     use crate::parser::Parser;
     use crate::session::CompilerSession;
+    use auto_ui_dialect::ast::{ViewNode, WidgetDecl};
+    use auto_ui_dialect::UiStmt as Stmt;
 
-    fn parse_ui(code: &str) -> Result<crate::ast::Code, AutoError> {
+    fn parse_ui(code: &str) -> Result<auto_ui_dialect::UiCode, AutoError> {
         let mut parser = Parser::from(code).with_session(CompilerSession::ui());
-        parser.parse()
+        parser
+            .parse_domain(&auto_ui_dialect::UiDialect)
+            .map(auto_ui_dialect::UiCode)
     }
 
-    fn widget_decl(code: &crate::ast::Code) -> &crate::ast::WidgetDecl {
-        code.stmts
-            .iter()
+    fn widget_decl(code: &auto_ui_dialect::UiCode) -> &WidgetDecl {
+        code.domain_stmts()
             .find_map(|s| match s {
                 Stmt::WidgetDecl(w) => Some(w),
                 _ => None,

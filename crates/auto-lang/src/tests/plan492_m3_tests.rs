@@ -20,12 +20,14 @@ widget W {{
         );
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src.as_str()).with_session(session);
-        let ast = parser.parse().expect("parse");
+        let ast = parser
+            .parse_domain(&auto_ui_dialect::UiDialect)
+            .map(auto_ui_dialect::UiCode)
+            .expect("parse");
         let decl = ast
-            .stmts
-            .iter()
+            .domain_stmts()
             .find_map(|s| match s {
-                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                auto_ui_dialect::UiStmt::WidgetDecl(d) => Some(d),
                 _ => None,
             })
             .expect("widget decl");
@@ -60,12 +62,14 @@ widget W {{
         );
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src.as_str()).with_session(session);
-        let ast = parser.parse().expect("parse");
+        let ast = parser
+            .parse_domain(&auto_ui_dialect::UiDialect)
+            .map(auto_ui_dialect::UiCode)
+            .expect("parse");
         let decl = ast
-            .stmts
-            .iter()
+            .domain_stmts()
             .find_map(|s| match s {
-                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                auto_ui_dialect::UiStmt::WidgetDecl(d) => Some(d),
                 _ => None,
             })
             .expect("widget decl");

@@ -81,9 +81,12 @@ widget Tick {
 fn extract_widget(source: &str, name: &str) -> crate::aura::AuraWidget {
     let session = crate::session::CompilerSession::ui();
     let mut parser = crate::Parser::from(source).with_session(session);
-    let ast = parser.parse().expect("parse widget source");
-    for stmt in &ast.stmts {
-        if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+    let ast = parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("parse widget source");
+    for stmt in ast.domain_stmts() {
+        if let auto_ui_dialect::UiStmt::WidgetDecl(decl) = stmt {
             if decl.name.to_string() == name {
                 return crate::aura::extract_widget_from_decl(decl).expect("extract widget");
             }

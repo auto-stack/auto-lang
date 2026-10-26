@@ -7,7 +7,7 @@
 // 消费位置（表达式块）才可省。修复：`join_stmt_block` 语句位置块尾恒补
 // `;`（rust.rs），取代旧 let 特判。
 
-use crate::ast::Stmt;
+use auto_ui_dialect::UiStmt as Stmt;
 
 /// 内联 widget 源 → rust 发射产物（plan627 范式）。
 fn gen_rust(body: &str) -> String {
@@ -34,12 +34,14 @@ widget App {{
     );
     let session = crate::session::CompilerSession::ui().with_backend("rust");
     let mut parser = crate::Parser::from(src.as_str()).with_session(session);
-    let ast = parser.parse().expect("parse");
+    let ast = parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("parse");
     let decl = ast
-        .stmts
-        .iter()
+        .domain_stmts()
         .find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            auto_ui_dialect::UiStmt::WidgetDecl(d) => Some(d),
             _ => None,
         })
         .expect("widget decl");
@@ -177,10 +179,12 @@ widget App {
 "#;
     let session = crate::session::CompilerSession::ui().with_backend("rust");
     let mut parser = crate::Parser::from(src).with_session(session);
-    let ast = parser.parse().expect("parse");
+    let ast = parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("parse");
     let decl = ast
-        .stmts
-        .iter()
+        .domain_stmts()
         .find_map(|s| match s {
             Stmt::WidgetDecl(d) => Some(d),
             _ => None,

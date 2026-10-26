@@ -17,17 +17,19 @@
 //! 既有 plan024/051/367/408/451/607/806 与 native_css/plan370/778 测试面
 //! 继续作为旧 oracle（本文件不重复其断言，只补交叉/事务/端口性差异面）。
 
-use crate::ast::ui::WidgetDecl;
-use crate::ast::Stmt;
+use crate::ast::Stmt as CoreStmt;
 use crate::parser_bridge::ParserBridge;
 use crate::session::{CompilerSession, Scenario};
 use crate::Parser;
-use auto_ui_dialect::UiParseContext;
+use auto_ui_dialect::ast::WidgetDecl;
+use auto_ui_dialect::{UiParseContext, UiStmt as Stmt};
 
-fn ui_parse(code: &str) -> crate::error::AutoResult<crate::ast::Code> {
+fn ui_parse(code: &str) -> crate::error::AutoResult<auto_ui_dialect::UiCode> {
     let session = CompilerSession::new(Scenario::UI);
     let mut parser = Parser::from(code).with_session(session);
-    parser.parse()
+    parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
 }
 
 fn core_parse(code: &str) -> crate::error::AutoResult<crate::ast::Code> {
@@ -35,13 +37,13 @@ fn core_parse(code: &str) -> crate::error::AutoResult<crate::ast::Code> {
     parser.parse()
 }
 
-fn first_widget(ast: &crate::ast::Code) -> WidgetDecl {
-    for stmt in &ast.stmts {
+fn first_widget(ast: &auto_ui_dialect::UiCode) -> WidgetDecl {
+    for stmt in ast.domain_stmts() {
         if let Stmt::WidgetDecl(w) = stmt {
             return w.clone();
         }
     }
-    panic!("no widget declaration found in {:?} stmts", ast.stmts.len())
+    panic!("no widget declaration found")
 }
 
 // ---- V-01 文法全集（交叉样例，AST 结构/块位全命中） ----
@@ -112,10 +114,10 @@ literal => { "k": 1 } }
 
     let view = w.view.expect("view block");
     match &view.root {
-        crate::ast::ui::ViewNode::Element { tag, children, .. } => {
+        auto_ui_dialect::ast::ViewNode::Element { tag, children, .. } => {
             assert_eq!(tag, "col");
             match &children[0] {
-                crate::ast::ui::ViewNode::ForLoop {
+                auto_ui_dialect::ast::ViewNode::ForLoop {
                     var,
                     key_expr,
                     body,
@@ -126,7 +128,7 @@ literal => { "k": 1 } }
                     assert_eq!(body.len(), 1);
                     assert!(matches!(
                         &body[0],
-                        crate::ast::ui::ViewNode::Conditional { .. }
+                        auto_ui_dialect::ast::ViewNode::Conditional { .. }
                     ));
                 }
                 other => panic!("expected ForLoop, got {other:?}"),
@@ -175,7 +177,7 @@ widget Host {
     let mut saw_component = false;
     let mut saw_fragment = false;
     let mut saw_routes = false;
-    for s in &ast.stmts {
+    for s in ast.domain_stmts() {
         match s {
             Stmt::StoreDecl(st) => {
                 saw_store = true;
@@ -208,7 +210,6 @@ widget Host {
                 assert_eq!(f.name.as_str(), "Row");
                 assert_eq!(f.params.len(), 1);
             }
-            Stmt::EmptyLine(_) => {}
             other => panic!("unexpected stmt {other:?}"),
         }
     }
@@ -226,7 +227,10 @@ fn v02_computed_body_fallback_rolls_back_speculative_diagnostics() {
         "widget W {\n    computed { run => { let x = 1\n x } }\n    view { col {} }\n}\n",
     )
     .with_session(session);
-    let ast = parser.parse().expect("computed body fallback parse");
+    let ast = parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("computed body fallback parse");
     assert!(
         parser.errors.is_empty(),
         "stray errors: {:?}",
@@ -252,15 +256,17 @@ fn v02_computed_body_fallback_rolls_back_speculative_diagnostics() {
 fn v02_style_recipe_none_fallback_keeps_cursor() {
     let session = CompilerSession::new(Scenario::UI);
     let mut parser = Parser::from("style = 1\nmsg M { Go }\n").with_session(session);
-    let ast = parser.parse().expect("fallback parse");
+    let ast = parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("fallback parse");
     assert!(
-        !ast.stmts
-            .iter()
+        !ast.domain_stmts()
             .any(|s| matches!(s, Stmt::StyleRecipeDecl(_))),
         "non-decl style must not be claimed"
     );
     // 回退后继续解析：msg 声明照常到达，无游标漂移错误。
-    assert!(ast.stmts.iter().any(|s| matches!(s, Stmt::MsgDecl(_))));
+    assert!(ast.domain_stmts().any(|s| matches!(s, Stmt::MsgDecl(_))));
     assert!(parser.errors.is_empty(), "errors: {:?}", parser.errors);
     assert!(
         parser.warnings.is_empty(),
@@ -294,7 +300,8 @@ fn v02_raw_css_multibyte_and_brace_in_comment() {
 fn v03_fragment_params_bound_in_scope() {
     let ast = ui_parse("view fn Chip(active: int) {\n    if active { text \"on\" }\n}\n")
         .expect("fragment param scope parse");
-    match &ast.stmts[0] {
+    let fragment = ast.domain_stmts().next().expect("domain statement");
+    match fragment {
         Stmt::ViewFragmentDecl(f) => {
             assert_eq!(f.params[0].0.as_str(), "active");
         }
@@ -311,7 +318,7 @@ fn v03_for_loop_var_and_index_bound() {
     let w = first_widget(&ast);
     let view = w.view.expect("view");
     match &view.root {
-        crate::ast::ui::ViewNode::ForLoop { var, index, .. } => {
+        auto_ui_dialect::ast::ViewNode::ForLoop { var, index, .. } => {
             assert_eq!(var, "item");
             assert_eq!(index.as_deref(), Some("i"));
         }
@@ -330,7 +337,7 @@ fn v04_core_scenario_untouched() {
     assert_eq!(ast.stmts.len(), 1);
 
     let ast2 = core_parse("on Click -> log(\"x\")\n").expect("core on events");
-    assert!(matches!(&ast2.stmts[0], Stmt::OnEvents(_)));
+    assert!(matches!(&ast2.stmts[0], CoreStmt::OnEvents(_)));
 }
 
 /// scene 声明在任意 scenario 生效（Plan 306 门；Core 直连段经端口）。
@@ -338,11 +345,14 @@ fn v04_core_scenario_untouched() {
 fn v04_scene_decl_any_scenario() {
     let ast = core_parse("scene Player : CharacterBody2D {\n    script = \"res://p.gd\"\n}\n")
         .expect("scene decl in core scenario");
-    assert!(matches!(&ast.stmts[0], Stmt::SceneDecl(_)));
+    assert!(matches!(&ast.stmts[0], CoreStmt::SceneDecl(_)));
 
     let ast2 = ui_parse("scene Player : CharacterBody2D {\n    script = \"res://p.gd\"\n}\n")
         .expect("scene decl in ui scenario");
-    assert!(matches!(&ast2.stmts[0], Stmt::SceneDecl(_)));
+    assert!(matches!(
+        ast2.core_stmts().next(),
+        Some(CoreStmt::SceneDecl(_))
+    ));
 }
 
 /// 双 session 独立性（F810-R1-03 重写为真 oracle）：同一源码经 UI 与
@@ -353,8 +363,14 @@ fn v04_two_sessions_isolated() {
     let src = "msg A { Go }\n";
     let session = CompilerSession::new(Scenario::UI);
     let mut ui_parser = Parser::from(src).with_session(session);
-    let ui_ast = ui_parser.parse().expect("ui session parse");
-    assert!(matches!(&ui_ast.stmts[0], Stmt::MsgDecl(_)));
+    let ui_ast = ui_parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("ui session parse");
+    assert!(matches!(
+        ui_ast.domain_stmts().next(),
+        Some(Stmt::MsgDecl(_))
+    ));
 
     // Core 不识别 msg 声明：落入 Core 表达式语句文法，`Go` 成为未定义
     // 变量（基线确定性 Err——这正是场景隔离的可观察证据）。
@@ -370,27 +386,24 @@ fn v04_two_sessions_isolated() {
 #[test]
 fn v04_store_contextual_keyword_guard() {
     let ast = ui_parse("store S { model { var n int = 0 } }\n").expect("ui store decl");
-    assert!(matches!(&ast.stmts[0], Stmt::StoreDecl(_)));
+    assert!(matches!(
+        &ast.domain_stmts().next().expect("domain statement"),
+        Stmt::StoreDecl(_)
+    ));
 
     // on 体护栏：store 作为接收者引用，widget 整体解析成功且无 StoreDecl。
     let ast2 = ui_parse("widget W {\n    on { .Inc -> { store.x = 1 } }\n    view { col {} }\n}\n")
         .expect("on-body store reference parse");
     assert!(
-        !ast2.stmts.iter().any(|s| matches!(s, Stmt::StoreDecl(_))),
+        !ast2.domain_stmts().any(|s| matches!(s, Stmt::StoreDecl(_))),
         "on-body store reference must not be claimed as a decl"
     );
-    // fn body (baseline quirk, frozen as-is): the store direct gate checks
-    // only in_on_body, not in_fn_body — `store.x = 1` inside a UI fn body is
-    // a deterministic Err at baseline (UnexpectedToken LBrace/found x). This
-    // plan does not fix that quirk; the gate stayed in parser.rs verbatim.
-    let fn_result = ui_parse(
-        "fn touch() { store.x = 1 }
-",
-    );
-    assert!(
-        fn_result.is_err(),
-        "fn-body store quirk: baseline deterministic Err preserved"
-    );
+    // 显式领域端口同时检查 on/fn 体，Core 函数体中的 store 引用保持合法。
+    let fn_ast = ui_parse("fn touch() { store.x = 1 }\n").expect("fn-body store reference");
+    assert_eq!(fn_ast.core_stmts().count(), 1);
+    assert!(!fn_ast
+        .domain_stmts()
+        .any(|s| matches!(s, Stmt::StoreDecl(_))));
 }
 
 // ---- F810-R1-01：raw 投机快照生命周期（成功/失败出口有界） ----
@@ -411,25 +424,27 @@ fn live_snapshot_count(parser: &mut Parser) -> u32 {
 #[test]
 fn r01_snapshot_lifecycle_bounded_all_entry_paths() {
     for n in [1usize, 8, 64] {
-        // 公开门面 + computed object 成功臂。
+        // UI 文法公开入口 + computed object 成功臂。
         let props = (0..n)
             .map(|i| format!("p{i} => {{ \"k\": 1 }}\n"))
             .collect::<String>();
         let src = format!("widget W {{ computed {{ {props} }} view {{ col {{}} }} }}");
         let session = CompilerSession::new(Scenario::UI);
         let mut parser = Parser::from(&src).with_session(session);
-        parser.parse_widget_decl().expect("public widget parse");
+        let mut bridge = ParserBridge::new(&mut parser);
+        auto_ui_dialect::grammar::widget::parse_widget_decl(&mut bridge)
+            .expect("public widget parse");
         assert_eq!(live_snapshot_count(&mut parser), 0, "public/object n={n}");
 
-        // 公开门面 + computed body 回退臂（restore 消费，对照）。
+        // UI 文法公开入口 + computed body 回退臂（restore 消费，对照）。
         let props = (0..n)
             .map(|i| format!("p{i} => {{ let v = 1\n v }}\n"))
             .collect::<String>();
         let src = format!("widget W {{ computed {{ {props} }} view {{ col {{}} }} }}");
         let session = CompilerSession::new(Scenario::UI);
         let mut parser = Parser::from(&src).with_session(session);
-        parser
-            .parse_widget_decl()
+        let mut bridge = ParserBridge::new(&mut parser);
+        auto_ui_dialect::grammar::widget::parse_widget_decl(&mut bridge)
             .expect("public widget body parse");
         assert_eq!(live_snapshot_count(&mut parser), 0, "public/body n={n}");
 
@@ -446,8 +461,14 @@ fn r01_snapshot_lifecycle_bounded_all_entry_paths() {
         let src = format!("store S {{ computed {{ {obj_props} }} }}");
         let session = CompilerSession::new(Scenario::UI);
         let mut parser = Parser::from(&src).with_session(session);
-        let ast = parser.parse().expect("default store parse");
-        assert!(matches!(&ast.stmts[0], Stmt::StoreDecl(_)));
+        let ast = parser
+            .parse_domain(&auto_ui_dialect::UiDialect)
+            .map(auto_ui_dialect::UiCode)
+            .expect("default store parse");
+        assert!(matches!(
+            &ast.domain_stmts().next().expect("domain statement"),
+            Stmt::StoreDecl(_)
+        ));
         assert_eq!(live_snapshot_count(&mut parser), 0, "store/object n={n}");
 
         // `pub style` 直连：成功臂（承诺后释放）。
@@ -456,11 +477,13 @@ fn r01_snapshot_lifecycle_bounded_all_entry_paths() {
             .collect::<String>();
         let session = CompilerSession::new(Scenario::UI);
         let mut parser = Parser::from(&src).with_session(session);
-        let ast = parser.parse().expect("default pub style parse");
-        assert_eq!(ast.stmts.len(), n);
+        let ast = parser
+            .parse_domain(&auto_ui_dialect::UiDialect)
+            .map(auto_ui_dialect::UiCode)
+            .expect("default pub style parse");
+        assert_eq!(ast.domain_stmts().count(), n);
         assert!(ast
-            .stmts
-            .iter()
+            .domain_stmts()
             .all(|s| matches!(s, Stmt::StyleRecipeDecl(_))));
         assert_eq!(live_snapshot_count(&mut parser), 0, "pub style n={n}");
 
@@ -468,7 +491,10 @@ fn r01_snapshot_lifecycle_bounded_all_entry_paths() {
         let src = format!("widget W {{ computed {{ {props} }} view {{ col {{}} }} }}");
         let session = CompilerSession::new(Scenario::UI);
         let mut parser = Parser::from(&src).with_session(session);
-        parser.parse().expect("dispatched widget parse");
+        parser
+            .parse_domain(&auto_ui_dialect::UiDialect)
+            .map(auto_ui_dialect::UiCode)
+            .expect("dispatched widget parse");
         assert_eq!(live_snapshot_count(&mut parser), 0, "dispatched n={n}");
     }
 }
@@ -494,48 +520,22 @@ fn r01_nested_release_keeps_outer_credential() {
 
 // ---- F810-R1-04：scene/subresource 双 push 重同步 vs stream 手动恢复 ----
 
-/// scene 门 prev 状态与旧两 push 形态逐字一致：`scene Player : …` 门后
-/// prev 指向被观察的 name token（旧=6，迁移曾漂移为 0——F810-R1-04）。
-#[test]
-fn r04_scene_gate_prev_matches_old_two_push() {
-    let mut parser = Parser::from("scene Player : Body2D {}");
-    let mut bridge = ParserBridge::new(&mut parser);
-    assert!(auto_ui_dialect::grammar::scene::looks_like_scene_decl(
-        &mut bridge
-    ));
-    assert_eq!(
-        bridge.prev_pos().pos,
-        6,
-        "prev must point at the observed name token"
-    );
-
-    // 旧臂形态手工重放（公开端口能力），终态 prev 与迁移实现一致。
-    let mut old_parser = Parser::from("scene Player : Body2D {}");
-    let mut old_bridge = ParserBridge::new(&mut old_parser);
-    let scene = old_bridge.advance();
-    let observed = crate::token::Token {
-        kind: old_bridge.cur_kind(),
-        pos: old_bridge.cur_pos(),
-        text: old_bridge.cur_text().into(),
-    };
-    old_bridge.push_back_token(observed);
-    old_bridge.push_back_token(scene);
-    old_bridge.advance();
-    assert_eq!(old_bridge.prev_pos().pos, 6);
-}
-
 /// scene 让行：`scene = 1` 非 scene 声明（门 false 回退 Core 表达式），
 /// 后续解析不受前瞻副作用影响。
 #[test]
 fn r04_scene_yields_to_core_expression() {
     let session = CompilerSession::new(Scenario::UI);
     let mut parser = Parser::from("scene = 1\nmsg M { Go }\n").with_session(session);
-    let ast = parser.parse().expect("scene yield parse");
+    let ast = parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("scene yield parse");
     assert!(
-        !ast.stmts.iter().any(|s| matches!(s, Stmt::SceneDecl(_))),
+        !ast.core_stmts()
+            .any(|s| matches!(s, CoreStmt::SceneDecl(_))),
         "scene = 1 must not be claimed as a scene decl"
     );
-    assert!(ast.stmts.iter().any(|s| matches!(s, Stmt::MsgDecl(_))));
+    assert!(ast.domain_stmts().any(|s| matches!(s, Stmt::MsgDecl(_))));
     assert!(parser.errors.is_empty(), "errors: {:?}", parser.errors);
 }
 
@@ -544,7 +544,7 @@ fn r04_scene_yields_to_core_expression() {
 #[test]
 fn r04_subresource_and_stream_shapes() {
     let ast = core_parse("scene N : T { p = Inner { x = 1 } q = 2 }\n").expect("subresource parse");
-    let Stmt::SceneDecl(sd) = &ast.stmts[0] else {
+    let CoreStmt::SceneDecl(sd) = &ast.stmts[0] else {
         panic!("scene decl")
     };
     let values: Vec<&crate::ast::SceneValue> = sd.props.iter().map(|p| &p.value).collect();
@@ -566,7 +566,7 @@ fn r04_subresource_and_stream_shapes() {
         "widget S {\n    on { stream sse(\"https://x\") -> { .done = 1 } }\n    view { col {} }\n}\n",
     )
     .expect("stream subscription parse");
-    let Stmt::WidgetDecl(w) = &ast2.stmts[0] else {
+    let Stmt::WidgetDecl(w) = &ast2.domain_stmts().next().expect("domain statement") else {
         panic!("widget")
     };
     let on = w.on.as_ref().expect("on block");
@@ -619,14 +619,17 @@ fn forged2(cp: &auto_parser_api::ParseCheckpoint) -> auto_parser_api::ParseCheck
 /// owned AST 源码寿命：源码与 Parser 释放后 AST 完整可用（无借用逃逸）。
 #[test]
 fn v03_owned_ast_outlives_source() {
-    fn parse_and_drop(src: String) -> crate::ast::Code {
+    fn parse_and_drop(src: String) -> auto_ui_dialect::UiCode {
         let session = CompilerSession::new(Scenario::UI);
         let mut parser = Parser::from(&src).with_session(session);
-        parser.parse().expect("parse before drop")
+        parser
+            .parse_domain(&auto_ui_dialect::UiDialect)
+            .map(auto_ui_dialect::UiCode)
+            .expect("parse before drop")
     }
     let ast = parse_and_drop("widget W { computed { x => 1 } view { col {} } }".to_string());
     // src/parser 已随函数返回释放——AST 仍可遍历。
-    let Stmt::WidgetDecl(w) = &ast.stmts[0] else {
+    let Stmt::WidgetDecl(w) = &ast.domain_stmts().next().expect("domain statement") else {
         panic!("widget")
     };
     assert_eq!(w.name.as_str(), "W");
@@ -639,7 +642,7 @@ fn v03_owned_ast_outlives_source() {
 fn v03_shadow_and_error_paths() {
     let ast = ui_parse("view fn S(item: int) { for item in .items { text item } }\n")
         .expect("shadow parse");
-    let Stmt::ViewFragmentDecl(f) = &ast.stmts[0] else {
+    let Stmt::ViewFragmentDecl(f) = &ast.domain_stmts().next().expect("domain statement") else {
         panic!("fragment")
     };
     assert_eq!(f.params[0].0.as_str(), "item");
@@ -656,7 +659,10 @@ fn v03_shadow_and_error_paths() {
 
     // 新 Parser 恢复正常（错误路径不腐蚀全局状态）。
     let ast2 = ui_parse("msg M { Go }\n").expect("fresh parser recovers");
-    assert!(matches!(&ast2.stmts[0], Stmt::MsgDecl(_)));
+    assert!(matches!(
+        &ast2.domain_stmts().next().expect("domain statement"),
+        Stmt::MsgDecl(_)
+    ));
 }
 
 /// V-04 导入再导入（F810-R1-03）：三层真实 use-import 链（app→child→
@@ -716,7 +722,7 @@ fn r02_same_parser_success_exits_handler_scope() {
 arg
 ";
     let mut parser = Parser::from(src).with_session(session);
-    let _ = parser.parse(); // 尾部 arg 未定义 → Err（恢复后收集）
+    let _ = parser.parse_domain(&auto_ui_dialect::UiDialect); // 尾部 arg 未定义 → Err（恢复后收集）
     let arg_errors = parser
         .errors
         .iter()
@@ -741,47 +747,33 @@ arg
     );
 }
 
-/// 同实例对照（F810-R2-01，**旧臂冻结的已知泄漏**）：on 处理器 body
-/// 解析失败时基线顺序为 enter_scope → body?（`?` 先返回）→ exit_scope
-/// 未执行——handler 参数 `arg` 在**失败实例**的作用域残留可见：同一
-/// Parser 错误恢复后源尾裸 `arg` **不产生**未定义诊断（R2 探针口径：
-/// 成功 tail 红 / 失败 tail 绿）。on 旗标本身仍平衡恢复。具名冻结，不修。
+/// UI 文法迁出后，on 处理器 body 即使解析失败也平衡退出参数作用域；
+/// 源尾裸 `arg` 因此与成功路径一样产生未定义诊断。
 #[test]
-fn r02_same_parser_error_leaks_handler_scope_baseline() {
+fn r02_same_parser_error_restores_handler_scope() {
     let session = CompilerSession::new(Scenario::UI);
     let src = "widget W { on { .Inc(arg) -> nope } view { col {} } }
 arg
 ";
     let mut parser = Parser::from(src).with_session(session);
-    let _ = parser.parse(); // handler body 错误 → Err（恢复后收集）
-    assert!(
-        !parser.errors.is_empty(),
-        "handler body error collected: {:?}",
-        parser.errors
-    );
-    // 同一失败实例：on 旗标已由平衡恢复路径复位。
-    let bridge = ParserBridge::new(&mut parser);
+    let result = parser.parse_domain(&auto_ui_dialect::UiDialect);
+    assert!(result.is_err(), "handler body error must be returned");
+    let mut bridge = ParserBridge::new(&mut parser);
     assert!(
         !bridge.in_on_body(),
         "on-body flag restored even on Err path"
     );
-    // handler 参数 arg 残留在失败实例作用域：错误恢复后源尾裸 `arg`
-    // 不产生未定义变量诊断（旧臂泄漏，冻结）。
-    let arg_errors = parser
-        .errors
-        .iter()
-        .filter(|e| {
-            matches!(
-                e,
-                crate::error::AutoError::Name(crate::error::NameError::UndefinedVariable { name, .. })
-                    if name.as_str() == "arg"
-            )
-        })
-        .count();
+    while !bridge.is_kind(crate::token::TokenKind::EOF) && bridge.cur_text().as_str() != "arg" {
+        bridge.advance();
+    }
     assert_eq!(
-        arg_errors, 0,
-        "baseline leak: leaked handler param `arg` stays visible on the failed instance: {:?}",
-        parser.errors
+        bridge.cur_text().as_str(),
+        "arg",
+        "tail input must remain reachable"
+    );
+    assert!(
+        bridge.parse_expr().is_err(),
+        "handler param must be out of scope after the failed UI item"
     );
 }
 

@@ -17,19 +17,21 @@
 //!    Single-fragment substring assertions are immune to both.
 
 use auto_lang::aura::extract_widget_from_decl;
-use auto_lang::ast::Stmt;
 use auto_lang::parser::Parser;
 use auto_lang::session::CompilerSession;
 use auto_lang::ui_gen::{BackendGenerator, VueGenerator};
+use auto_ui_dialect::UiStmt as Stmt;
 
 /// Parse a widget source and generate its Vue SFC (full real pipeline).
 fn gen_sfc(src: &str) -> String {
     let session = CompilerSession::ui();
     let mut parser = Parser::from(src).with_session(session);
-    let ast = parser.parse().expect("widget source must parse");
+    let ast = parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("widget source must parse");
     let decl = ast
-        .stmts
-        .iter()
+        .domain_stmts()
         .find_map(|s| match s {
             Stmt::WidgetDecl(d) => Some(d),
             _ => None,
@@ -43,10 +45,12 @@ fn gen_sfc(src: &str) -> String {
 fn gen_store(src: &str) -> String {
     let session = CompilerSession::ui();
     let mut parser = Parser::from(src).with_session(session);
-    let ast = parser.parse().expect("store source must parse");
+    let ast = parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("store source must parse");
     let decl = ast
-        .stmts
-        .iter()
+        .domain_stmts()
         .find_map(|s| match s {
             Stmt::StoreDecl(d) => Some(d),
             _ => None,
@@ -107,7 +111,10 @@ widget App {
         sfc.contains("import FileTreeNode from '@/components/FileTreeNode.vue'"),
         "sibling widget direct import:\n{sfc}"
     );
-    assert!(sfc.contains("<FileTreeNode"), "sibling widget rendered:\n{sfc}");
+    assert!(
+        sfc.contains("<FileTreeNode"),
+        "sibling widget rendered:\n{sfc}"
+    );
 }
 
 /// editor README / jade batch 3: `.Init` → onMounted, `.Destroy` →
@@ -127,8 +134,14 @@ widget W {
 }
 "#,
     );
-    assert!(sfc.contains("onMounted(() => {"), ".Init → onMounted:\n{sfc}");
-    assert!(sfc.contains("onUnmounted(() => {"), ".Destroy → onUnmounted:\n{sfc}");
+    assert!(
+        sfc.contains("onMounted(() => {"),
+        ".Init → onMounted:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("onUnmounted(() => {"),
+        ".Destroy → onUnmounted:\n{sfc}"
+    );
     assert!(sfc.contains("x.value = 1"), "init body:\n{sfc}");
     assert!(sfc.contains("x.value = 0"), "destroy body:\n{sfc}");
 }
@@ -184,7 +197,10 @@ widget W {
 }
 "#,
     );
-    assert!(sfc.contains("@click.self=\"Cancel\""), ".self modifier:\n{sfc}");
+    assert!(
+        sfc.contains("@click.self=\"Cancel\""),
+        ".self modifier:\n{sfc}"
+    );
 }
 
 /// jade gap 37 / batch 4 (CommandPalette/QuickSwitcher): a map literal is
@@ -217,7 +233,10 @@ widget W {
         sfc.contains("@input=\"H({ entry: entry, evt: $event })\""),
         "map literal event arg verbatim:\n{sfc}"
     );
-    assert!(sfc.contains("function H(args: any)"), "handler param:\n{sfc}");
+    assert!(
+        sfc.contains("function H(args: any)"),
+        "handler param:\n{sfc}"
+    );
 }
 
 /// jade batch 3 (CreatePagePrompt/LeftSidebar/TabStrip): a widget whose
@@ -254,7 +273,10 @@ widget W(loading: bool = false, centerPath: ?str = None) {
 }
 "#,
     );
-    assert!(sfc.contains("loading?: boolean"), "optional bool prop:\n{sfc}");
+    assert!(
+        sfc.contains("loading?: boolean"),
+        "optional bool prop:\n{sfc}"
+    );
     assert!(
         sfc.contains("centerPath?: string | null"),
         "optional nullable str prop:\n{sfc}"
@@ -281,8 +303,14 @@ widget Child {
 }
 "#,
     );
-    assert!(sfc.contains("open: [string]"), "lowercase emit signature:\n{sfc}");
-    assert!(sfc.contains("emit('open', p)"), "verbatim lowercase emit:\n{sfc}");
+    assert!(
+        sfc.contains("open: [string]"),
+        "lowercase emit signature:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("emit('open', p)"),
+        "verbatim lowercase emit:\n{sfc}"
+    );
 }
 
 /// jade 5.3b: parent side of the lowercase emit contract —
@@ -337,7 +365,10 @@ widget Shell {
         sfc.contains("update: [string]"),
         "handler-less quoted emit declared:\n{sfc}"
     );
-    assert!(sfc.contains("blur: []"), "unit quoted emit declared:\n{sfc}");
+    assert!(
+        sfc.contains("blur: []"),
+        "unit quoted emit declared:\n{sfc}"
+    );
 }
 
 /// plan 013 Phase 2: the computed-payload relay — a view-bound (or
@@ -634,7 +665,10 @@ widget W {
 }
 "#,
     );
-    assert!(sfc.contains("v-model=\"query\""), "value+oninput folds to v-model:\n{sfc}");
+    assert!(
+        sfc.contains("v-model=\"query\""),
+        "value+oninput folds to v-model:\n{sfc}"
+    );
     assert!(
         sfc.contains("function QueryInput(v: any)"),
         "handler still emitted:\n{sfc}"
@@ -658,7 +692,10 @@ widget W {
 }
 "#,
     );
-    assert!(sfc.contains("const doc = ref<any>({})"), "map init preserved:\n{sfc}");
+    assert!(
+        sfc.contains("const doc = ref<any>({})"),
+        "map init preserved:\n{sfc}"
+    );
 }
 
 /// jade gap 33 / batch 3: view-if conditions support comparison and
@@ -682,9 +719,15 @@ widget W {
 }
 "#,
     );
-    assert!(sfc.contains("v-if=\"x != ''\""), "comparison condition:\n{sfc}");
+    assert!(
+        sfc.contains("v-if=\"x != ''\""),
+        "comparison condition:\n{sfc}"
+    );
     // NOTE: codegen emits `! open` (with a space) — locked as-is.
-    assert!(sfc.contains("v-if=\"! open\""), "negation condition:\n{sfc}");
+    assert!(
+        sfc.contains("v-if=\"! open\""),
+        "negation condition:\n{sfc}"
+    );
 }
 
 /// jade 5.3a (FileTreeNode NodeIcon): dyn components accept dot-chain
@@ -705,8 +748,14 @@ widget W {
 "#,
     );
     assert!(sfc.contains(":is=\"(NodeIcon) as any\""), "dyn :is:\n{sfc}");
-    assert!(sfc.contains(":is_dir=\"node.is_dir\""), "dot-chain prop:\n{sfc}");
-    assert!(sfc.contains(":expanded=\"node.expanded\""), "second dot-chain prop:\n{sfc}");
+    assert!(
+        sfc.contains(":is_dir=\"node.is_dir\""),
+        "dot-chain prop:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(":expanded=\"node.expanded\""),
+        "second dot-chain prop:\n{sfc}"
+    );
 }
 
 /// jade 5.3a (LeftSidebar): style_obj values mix state/computed refs and
@@ -748,7 +797,10 @@ widget W {
 }
 "#,
     );
-    assert!(sfc.contains(":disabled=\"busy\""), "disabled binding:\n{sfc}");
+    assert!(
+        sfc.contains(":disabled=\"busy\""),
+        "disabled binding:\n{sfc}"
+    );
 }
 
 // ============================================================================
@@ -780,11 +832,23 @@ widget W {
 }
 "#,
     );
-    assert!(sfc.contains(r#"v-for="link in items""#), "link loop:\n{sfc}");
-    assert!(sfc.contains("{{ link.title }}"), "link field access:\n{sfc}");
-    assert!(sfc.contains(r#"v-for="task in items""#), "task loop:\n{sfc}");
+    assert!(
+        sfc.contains(r#"v-for="link in items""#),
+        "link loop:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("{{ link.title }}"),
+        "link field access:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(r#"v-for="task in items""#),
+        "task loop:\n{sfc}"
+    );
     assert!(sfc.contains("{{ task.name }}"), "task field access:\n{sfc}");
-    assert!(!sfc.contains("router-link"), "no router-link garbage:\n{sfc}");
+    assert!(
+        !sfc.contains("router-link"),
+        "no router-link garbage:\n{sfc}"
+    );
 }
 
 /// jade gap 18 (handler side): a handler local may be named `link`/`task`
@@ -837,8 +901,14 @@ widget W {
 }
 "#,
     );
-    assert!(sfc.contains(r#":type="'button'"#), "type prop emitted:\n{sfc}");
-    assert!(!sfc.contains("<div>button</div>"), "no garbage child:\n{sfc}");
+    assert!(
+        sfc.contains(r#":type="'button'"#),
+        "type prop emitted:\n{sfc}"
+    );
+    assert!(
+        !sfc.contains("<div>button</div>"),
+        "no garbage child:\n{sfc}"
+    );
 }
 
 /// jade gap 27: `to:` on a dyn block is a normal prop — `:to="'body'"`, no
@@ -879,7 +949,10 @@ widget W {
 }
 "#,
     );
-    assert!(sfc.contains("{{ path }}"), "computed path in template:\n{sfc}");
+    assert!(
+        sfc.contains("{{ path }}"),
+        "computed path in template:\n{sfc}"
+    );
 }
 
 /// jade gap 43: `map` is a legal widget prop type — emits `any` and, unlike
@@ -894,7 +967,10 @@ widget W(settings: map) {
 "#,
     );
     assert!(sfc.contains("settings: any"), "map prop → any:\n{sfc}");
-    assert!(!sfc.contains("import type { map }"), "no broken import:\n{sfc}");
+    assert!(
+        !sfc.contains("import type { map }"),
+        "no broken import:\n{sfc}"
+    );
 }
 
 /// Regression lock: the router-link VIEW element (`link (to: ...)`) is
@@ -912,7 +988,10 @@ widget W {
 }
 "#,
     );
-    assert!(sfc.contains("router-link"), "router-link still emitted:\n{sfc}");
+    assert!(
+        sfc.contains("router-link"),
+        "router-link still emitted:\n{sfc}"
+    );
     assert!(sfc.contains(r#"to="/home""#), "router-link target:\n{sfc}");
 }
 
@@ -925,10 +1004,12 @@ widget W {
 fn r016_warnings(src: &str) -> Vec<auto_lang::ui_gen::validators::ValidationWarning> {
     let session = CompilerSession::ui();
     let mut parser = Parser::from(src).with_session(session);
-    let ast = parser.parse().expect("widget source must parse");
+    let ast = parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("widget source must parse");
     let decl = ast
-        .stmts
-        .iter()
+        .domain_stmts()
         .find_map(|s| match s {
             Stmt::WidgetDecl(d) => Some(d),
             _ => None,
@@ -954,7 +1035,8 @@ widget W {
 "#,
     );
     assert!(
-        ws.iter().any(|w| w.rule == "R016" && w.message.contains("view")),
+        ws.iter()
+            .any(|w| w.rule == "R016" && w.message.contains("view")),
         "view element must be flagged: {ws:?}"
     );
 }
@@ -974,7 +1056,8 @@ widget W {
 "#,
     );
     assert!(
-        ws.iter().any(|w| w.rule == "R016" && w.message.contains("task")),
+        ws.iter()
+            .any(|w| w.rule == "R016" && w.message.contains("task")),
         "task element must be flagged: {ws:?}"
     );
 }
@@ -995,7 +1078,8 @@ widget W {
 "#,
     );
     assert!(
-        ws.iter().any(|w| w.rule == "R016" && w.message.contains("router-link")),
+        ws.iter()
+            .any(|w| w.rule == "R016" && w.message.contains("router-link")),
         "link without to: must be flagged: {ws:?}"
     );
 }
@@ -1039,7 +1123,10 @@ widget W {
 }
 "#,
     );
-    assert!(ws.is_empty(), "legal keyword-adjacent forms must not warn: {ws:?}");
+    assert!(
+        ws.is_empty(),
+        "legal keyword-adjacent forms must not warn: {ws:?}"
+    );
 }
 
 /// A model field named `view` referenced as `text .view` lexes `.view` into
@@ -1058,7 +1145,8 @@ widget W {
 "#,
     );
     assert!(
-        ws.iter().any(|w| w.rule == "R016" && w.message.contains("view")),
+        ws.iter()
+            .any(|w| w.rule == "R016" && w.message.contains("view")),
         "leaked view element from .view ref must be flagged: {ws:?}"
     );
 }
@@ -1105,7 +1193,10 @@ widget W {
         sfc.contains("['failed']"),
         "string-literal key index read:\n{sfc}"
     );
-    assert!(sfc.contains("{{ color }}"), "computed color in template:\n{sfc}");
+    assert!(
+        sfc.contains("{{ color }}"),
+        "computed color in template:\n{sfc}"
+    );
 }
 
 /// F2 (plan 028 T2): view `if` conditions allow MULTI-ARG fn calls in
@@ -1370,7 +1461,9 @@ widget W(label: str = "hi", count: int = 3, loading: bool = false) {
          macro by vue-tsc and collapses props to unknown:\n{sfc}"
     );
     assert!(
-        sfc.contains("label?: string") && sfc.contains("count?: number") && sfc.contains("loading?: boolean"),
+        sfc.contains("label?: string")
+            && sfc.contains("count?: number")
+            && sfc.contains("loading?: boolean"),
         "defaulted props stay optional:\n{sfc}"
     );
     assert!(
@@ -1546,10 +1639,12 @@ store RelayStore {
 fn gen_sfc_with_default_classes(src: &str, default_classes: bool) -> String {
     let session = CompilerSession::ui();
     let mut parser = Parser::from(src).with_session(session);
-    let ast = parser.parse().expect("widget source must parse");
+    let ast = parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("widget source must parse");
     let decl = ast
-        .stmts
-        .iter()
+        .domain_stmts()
         .find_map(|s| match s {
             Stmt::WidgetDecl(d) => Some(d),
             _ => None,
@@ -1708,10 +1803,12 @@ widget P(ratio: f64, count: int) {
 fn gen_sfc_shadcn(src: &str) -> String {
     let session = CompilerSession::ui();
     let mut parser = Parser::from(src).with_session(session);
-    let ast = parser.parse().expect("widget source must parse");
+    let ast = parser
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
+        .expect("widget source must parse");
     let decl = ast
-        .stmts
-        .iter()
+        .domain_stmts()
         .find_map(|s| match s {
             Stmt::WidgetDecl(d) => Some(d),
             _ => None,
@@ -1770,11 +1867,17 @@ widget EditorPage {
     );
     assert!(sfc.contains(":tab-width=\"2\""), "tab-width:\n{sfc}");
     assert!(sfc.contains(":font-size=\"16\""), "font-size:\n{sfc}");
-    assert!(sfc.contains(":search=\"query\""), "search ref binding:\n{sfc}");
+    assert!(
+        sfc.contains(":search=\"query\""),
+        "search ref binding:\n{sfc}"
+    );
     // Pre-421 props still flow.
     assert!(sfc.contains("lang=\"auto\""), "lang:\n{sfc}");
     assert!(sfc.contains(":wrap=\"true\""), "wrap:\n{sfc}");
-    assert!(sfc.contains(":vi=\"true\""), "vi (vue ignores, iced consumes):\n{sfc}");
+    assert!(
+        sfc.contains(":vi=\"true\""),
+        "vi (vue ignores, iced consumes):\n{sfc}"
+    );
     assert!(sfc.contains("data-editor-key=\"ed\""), "editor key:\n{sfc}");
     // Position events with payload args + matching script signatures.
     assert!(
@@ -1861,8 +1964,6 @@ widget P {
 {sfc}"
     );
 }
-
-
 
 // Plan 015 P1#6: multi-payload msg variants declare the FULL tuple in
 // defineEmits — "(str, int)" used to declare only [string] while emit()
@@ -2290,7 +2391,6 @@ widget App {
     // `await` sits in an async context.
 }
 
-
 /// Plan 444 ④b: VM-only natives (fs.*/File.*) degrade to the throwing
 /// __vmOnly stub — explicit error instead of silently illegal JS.
 #[test]
@@ -2513,36 +2613,80 @@ fn cap_chart_family_props_contract_in_registry() {
         (
             "area-chart",
             &[
-                "data", "categories", "index", "colors", "margin", "filter-opacity",
-                "show-x-axis", "show-y-axis", "show-tooltip", "show-legend",
-                "show-grid-line", "x-formatter", "y-formatter", "curve-type",
-                "show-gradient", "custom-tooltip",
+                "data",
+                "categories",
+                "index",
+                "colors",
+                "margin",
+                "filter-opacity",
+                "show-x-axis",
+                "show-y-axis",
+                "show-tooltip",
+                "show-legend",
+                "show-grid-line",
+                "x-formatter",
+                "y-formatter",
+                "curve-type",
+                "show-gradient",
+                "custom-tooltip",
             ],
         ),
         (
             "bar-chart",
             &[
-                "data", "categories", "index", "colors", "margin", "filter-opacity",
-                "show-x-axis", "show-y-axis", "show-tooltip", "show-legend",
-                "show-grid-line", "x-formatter", "y-formatter", "type",
-                "rounded-corners", "custom-tooltip",
+                "data",
+                "categories",
+                "index",
+                "colors",
+                "margin",
+                "filter-opacity",
+                "show-x-axis",
+                "show-y-axis",
+                "show-tooltip",
+                "show-legend",
+                "show-grid-line",
+                "x-formatter",
+                "y-formatter",
+                "type",
+                "rounded-corners",
+                "custom-tooltip",
             ],
         ),
         (
             "line-chart",
             &[
-                "data", "categories", "index", "colors", "margin", "filter-opacity",
-                "show-x-axis", "show-y-axis", "show-tooltip", "show-legend",
-                "show-grid-line", "x-formatter", "y-formatter", "curve-type",
+                "data",
+                "categories",
+                "index",
+                "colors",
+                "margin",
+                "filter-opacity",
+                "show-x-axis",
+                "show-y-axis",
+                "show-tooltip",
+                "show-legend",
+                "show-grid-line",
+                "x-formatter",
+                "y-formatter",
+                "curve-type",
                 "custom-tooltip",
             ],
         ),
         (
             "donut-chart",
             &[
-                "data", "category", "index", "colors", "margin", "filter-opacity",
-                "show-tooltip", "show-legend", "type", "value-formatter",
-                "sort-function", "custom-tooltip",
+                "data",
+                "category",
+                "index",
+                "colors",
+                "margin",
+                "filter-opacity",
+                "show-tooltip",
+                "show-legend",
+                "type",
+                "value-formatter",
+                "sort-function",
+                "custom-tooltip",
             ],
         ),
     ];
@@ -2564,7 +2708,8 @@ fn cap_chart_family_props_contract_in_registry() {
 /// bool/int/引用绑定。这是 schema 声明 → vue 发射的端到端锁(实现只遍历声明)。
 #[test]
 fn cap_chart_props_full_combination_spec_driven() {
-    let sfc = gen_sfc_shadcn(r#"
+    let sfc = gen_sfc_shadcn(
+        r#"
 widget Page {
     model { var rev list = [] }
     view {
@@ -2576,38 +2721,82 @@ widget Page {
         }
     }
 }
-"#);
+"#,
+    );
     // 字面量字符串 → 静态属性
     assert!(sfc.contains("index=\"month\""), "index static:\n{sfc}");
     assert!(sfc.contains("type=\"stacked\""), "type static:\n{sfc}");
-    assert!(sfc.contains("category=\"source\""), "category static:\n{sfc}");
+    assert!(
+        sfc.contains("category=\"source\""),
+        "category static:\n{sfc}"
+    );
     // 绑定引用 → :attr
     assert!(sfc.contains(":data=\"rev\""), "data bound:\n{sfc}");
     assert!(sfc.contains(":categories="), "categories bound:\n{sfc}");
     assert!(sfc.contains(":colors=\"palette\""), "colors bound:\n{sfc}");
     assert!(sfc.contains(":margin=\"m\""), "margin bound:\n{sfc}");
     // 数值/bool → 绑定
-    assert!(sfc.contains(":filter-opacity=\"0.8\""), "filter-opacity bound:\n{sfc}");
-    assert!(sfc.contains(":show-x-axis=\"false\""), "show-x-axis bound:\n{sfc}");
-    assert!(sfc.contains(":show-y-axis=\"true\""), "show-y-axis bound:\n{sfc}");
-    assert!(sfc.contains(":show-tooltip=\"true\""), "show-tooltip bound:\n{sfc}");
-    assert!(sfc.contains(":show-legend=\"false\""), "show-legend bound:\n{sfc}");
-    assert!(sfc.contains(":show-grid-line=\"true\""), "show-grid-line bound:\n{sfc}");
-    assert!(sfc.contains(":show-gradient=\"true\""), "show-gradient bound:\n{sfc}");
-    assert!(sfc.contains(":rounded-corners=\"true\""), "rounded-corners bound:\n{sfc}");
+    assert!(
+        sfc.contains(":filter-opacity=\"0.8\""),
+        "filter-opacity bound:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(":show-x-axis=\"false\""),
+        "show-x-axis bound:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(":show-y-axis=\"true\""),
+        "show-y-axis bound:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(":show-tooltip=\"true\""),
+        "show-tooltip bound:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(":show-legend=\"false\""),
+        "show-legend bound:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(":show-grid-line=\"true\""),
+        "show-grid-line bound:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(":show-gradient=\"true\""),
+        "show-gradient bound:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(":rounded-corners=\"true\""),
+        "rounded-corners bound:\n{sfc}"
+    );
     // 函数引用 → 绑定
-    assert!(sfc.contains(":x-formatter=\"fmtX\""), "x-formatter bound:\n{sfc}");
-    assert!(sfc.contains(":y-formatter=\"fmtY\""), "y-formatter bound:\n{sfc}");
-    assert!(sfc.contains(":value-formatter=\"fmtV\""), "value-formatter bound:\n{sfc}");
-    assert!(sfc.contains(":sort-function=\"sortFn\""), "sort-function bound:\n{sfc}");
+    assert!(
+        sfc.contains(":x-formatter=\"fmtX\""),
+        "x-formatter bound:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(":y-formatter=\"fmtY\""),
+        "y-formatter bound:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(":value-formatter=\"fmtV\""),
+        "value-formatter bound:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(":sort-function=\"sortFn\""),
+        "sort-function bound:\n{sfc}"
+    );
     // CurveType 值映射(转换层)
-    assert!(sfc.contains(":curve-type=\"CurveType.Natural\""), "curve-type:\n{sfc}");
+    assert!(
+        sfc.contains(":curve-type=\"CurveType.Natural\""),
+        "curve-type:\n{sfc}"
+    );
 }
 
 /// snake_case 拼写变体同样收编到 kebab 属性(双拼写接收,声明驱动路径保留)。
 #[test]
 fn cap_chart_snake_kebab_dual_acceptance() {
-    let sfc = gen_sfc_shadcn(r#"
+    let sfc = gen_sfc_shadcn(
+        r#"
 widget Page {
     model { var rev list = [] }
     view {
@@ -2616,16 +2805,27 @@ widget Page {
         }
     }
 }
-"#);
-    assert!(sfc.contains(":show-x-axis=\"false\""), "snake show_x_axis:\n{sfc}");
-    assert!(sfc.contains(":filter-opacity=\"0.5\""), "snake filter_opacity:\n{sfc}");
-    assert!(sfc.contains(":curve-type=\"CurveType.Step\""), "snake curve_type:\n{sfc}");
+"#,
+    );
+    assert!(
+        sfc.contains(":show-x-axis=\"false\""),
+        "snake show_x_axis:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(":filter-opacity=\"0.5\""),
+        "snake filter_opacity:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(":curve-type=\"CurveType.Step\""),
+        "snake curve_type:\n{sfc}"
+    );
 }
 
 /// CurveType 映射表(转换层):d3 值全表 + 未知值回退 MonotoneX + 标识符透传。
 #[test]
 fn cap_chart_curve_type_mapping_table() {
-    let sfc = gen_sfc_shadcn(r#"
+    let sfc = gen_sfc_shadcn(
+        r#"
 widget Page {
     model { var d list = [] }
     view {
@@ -2635,17 +2835,29 @@ widget Page {
         }
     }
 }
-"#);
-    assert!(sfc.contains(":curve-type=\"CurveType.Basis\""), "basis:\n{sfc}");
-    assert!(sfc.contains(":curve-type=\"CurveType.MonotoneX\""), "monotone:\n{sfc}");
-    assert!(sfc.contains("import { CurveType } from '@unovis/ts'"), "import:\n{sfc}");
+"#,
+    );
+    assert!(
+        sfc.contains(":curve-type=\"CurveType.Basis\""),
+        "basis:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(":curve-type=\"CurveType.MonotoneX\""),
+        "monotone:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("import { CurveType } from '@unovis/ts'"),
+        "import:\n{sfc}"
+    );
 
-    let sfc_unknown = gen_sfc_shadcn(r#"
+    let sfc_unknown = gen_sfc_shadcn(
+        r#"
 widget Page {
     model { var d list = [] }
     view { line-chart (data: .d, curve-type: "wibble") {} }
 }
-"#);
+"#,
+    );
     assert!(
         sfc_unknown.contains(":curve-type=\"CurveType.MonotoneX\""),
         "unknown curve falls back:\n{sfc_unknown}"
@@ -2655,7 +2867,8 @@ widget Page {
 /// data 绑定表达式两形态:.model 路径 vs 内联字面量列表(都走绑定)。
 #[test]
 fn cap_chart_data_binding_forms() {
-    let sfc = gen_sfc_shadcn(r#"
+    let sfc = gen_sfc_shadcn(
+        r#"
 widget Page {
     model { var monthlyRevenue list = [] }
     view {
@@ -2665,8 +2878,12 @@ widget Page {
         }
     }
 }
-"#);
-    assert!(sfc.contains(":data=\"monthlyRevenue\""), "model path:\n{sfc}");
+"#,
+    );
+    assert!(
+        sfc.contains(":data=\"monthlyRevenue\""),
+        "model path:\n{sfc}"
+    );
     assert!(
         sfc.contains(":data=\"[{") && sfc.contains("m: 'Jan', v: 3"),
         "inline literal stays bound:\n{sfc}"
@@ -2676,11 +2893,13 @@ widget Page {
 /// 缺省透传:一个 prop 都不写 → 裸标签,不发射任何 chart 数据属性、无 R013。
 #[test]
 fn cap_chart_props_omitted_emits_nothing() {
-    let sfc = gen_sfc_shadcn(r#"
+    let sfc = gen_sfc_shadcn(
+        r#"
 widget Page {
     view { donut-chart {} }
 }
-"#);
+"#,
+    );
     assert!(sfc.contains("<DonutChart"), "bare tag:\n{sfc}");
     assert!(!sfc.contains(":data="), "no data attr:\n{sfc}");
     assert!(!sfc.contains(":category="), "no category attr:\n{sfc}");

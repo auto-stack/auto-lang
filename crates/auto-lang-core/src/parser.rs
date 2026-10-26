@@ -13731,6 +13731,34 @@ mod tests {
         assert!(matches!(core.stmts.as_slice(), [Stmt::Fn(_)]));
     }
 
+    /// PLAN-841 T-07：scene 门测试归 Core owner（原 SDK plan810 同名用例）。
+    #[test]
+    fn r04_scene_gate_prev_matches_old_two_push() {
+        use auto_parser_api::DomainParseContext;
+
+        let mut parser = Parser::from("scene Player : Body2D {}");
+        let mut bridge = crate::parser_bridge::ParserBridge::new(&mut parser);
+        assert!(crate::scene_grammar::looks_like_scene_decl(&mut bridge));
+        assert_eq!(
+            bridge.prev_pos().pos,
+            6,
+            "prev must point at the observed name token"
+        );
+
+        let mut old_parser = Parser::from("scene Player : Body2D {}");
+        let mut old_bridge = crate::parser_bridge::ParserBridge::new(&mut old_parser);
+        let scene = old_bridge.advance();
+        let observed = crate::token::Token {
+            kind: old_bridge.cur_kind(),
+            pos: old_bridge.cur_pos(),
+            text: old_bridge.cur_text().into(),
+        };
+        old_bridge.push_back_token(observed);
+        old_bridge.push_back_token(scene);
+        old_bridge.advance();
+        assert_eq!(old_bridge.prev_pos().pos, 6);
+    }
+
     #[test]
     fn test_parser() {
         let code = "1+2+3";
