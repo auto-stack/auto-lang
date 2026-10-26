@@ -1,9 +1,9 @@
 {
-  "last_covered_plan_id": 840,
-  "timestamp": "2026-10-24T10:56:11.965207+00:00",
-  "covered_commit": "53298cd273e0c04fabc508745ce342655394f1a4",
-  "covered_note": "PLAN-840 modulo5 postlanding complete batch; in-plan Phase2/3/4 repairs preserve all original support. All tf/tt/tb pass, including original FFI wide layout, state-file counter and SSE wait failures; no waiver or selection reduction.",
-  "window": "6991731ab3e6fb7f64865a2962b9cbd2e2a3bab5..53298cd273e0c04fabc508745ce342655394f1a4",
+  "last_covered_plan_id": 850,
+  "timestamp": "2026-10-26T00:02:10.122452+00:00",
+  "covered_commit": "7750f8d3399fe8aa620b7eecb6c7390ca810df05",
+  "covered_note": "PLAN-850 complete frozen main-only cross-workspace batch. All language/UI/tt/tb tests pass; original ID sets, features, profiles, inputs and limits preserved. UI fixture-root L0 repair independently reviewed. No waiver.",
+  "window": "53298cd273e0c04fabc508745ce342655394f1a4..7750f8d3399fe8aa620b7eecb6c7390ca810df05",
   "legs": [
     "tf",
     "tt",
@@ -16,32 +16,51 @@
       "failed": 0,
       "timed_out": 0,
       "skipped": 518,
-      "test_seconds": 96.466,
+      "test_seconds": 126.274,
       "exit": 0,
-      "evidence": "docs/plans/attachments/840/batch-r3/tf.txt",
-      "seconds": 148.661
+      "evidence": "docs/plans/attachments/850/batch-r4/receipt.json.txt",
+      "sublegs": {
+        "language": {
+          "run": 3218,
+          "passed": 3218,
+          "failed": 0,
+          "timed_out": 0,
+          "skipped": 500,
+          "test_seconds": 75.044,
+          "exit": 0,
+          "evidence": "docs/plans/attachments/850/batch-r4/language-run.log.txt"
+        },
+        "ui-full": {
+          "run": 3073,
+          "passed": 3073,
+          "failed": 0,
+          "timed_out": 0,
+          "skipped": 18,
+          "test_seconds": 51.23,
+          "exit": 0,
+          "evidence": "docs/plans/attachments/850/batch-r4/ui-full-run.log.txt"
+        }
+      }
     },
     "tt": {
-      "run": 5717,
-      "passed": 5717,
+      "run": 3553,
+      "passed": 3553,
       "failed": 0,
       "timed_out": 0,
-      "skipped": 1800,
-      "test_seconds": 184.173,
+      "skipped": 916,
+      "test_seconds": 382.705,
       "exit": 0,
-      "evidence": "docs/plans/attachments/840/batch-r3/tt.txt",
-      "seconds": 231.846
+      "evidence": "docs/plans/attachments/850/batch-r4/tt-run.log.txt"
     },
     "tb": {
-      "run": 5316,
-      "passed": 5316,
+      "run": 3109,
+      "passed": 3109,
       "failed": 0,
       "timed_out": 0,
-      "skipped": 1548,
-      "test_seconds": 94.594,
+      "skipped": 664,
+      "test_seconds": 54.289,
       "exit": 0,
-      "evidence": "docs/plans/attachments/840/batch-r3/tb.txt",
-      "seconds": 113.828
+      "evidence": "docs/plans/attachments/850/batch-r4/tb-run.log.txt"
     }
   },
   "verdict": "pass",
@@ -49,7 +68,10 @@
   "known_reds_seen": [],
   "prior_failed_batches": [
     "docs/plans/attachments/840/batch-r1",
-    "docs/plans/attachments/840/batch-r2"
+    "docs/plans/attachments/840/batch-r2",
+    "docs/plans/attachments/850/batch-r1",
+    "docs/plans/attachments/850/batch-r2",
+    "docs/plans/attachments/850/batch-r3"
   ],
   "repaired_findings": [
     "optional CTE feature boundary",
@@ -61,138 +83,27 @@
   ],
   "aavm_trigger_paths": [],
   "single_instance": true,
-  "evidence": "docs/plans/attachments/840/batch-r3",
+  "evidence": "docs/plans/attachments/850/batch-r4",
   "main_report_restored_exactly": true,
   "last_attempt": {
-    "last_covered_plan_id": 848,
-    "repair_plan": 847,
-    "timestamp": "2026-10-25T16:30:20.783131+00:00",
-    "covered_commit": "2ff1286c5e3a33abc2e4ded96ab5773ee042a9d8",
-    "window": "53298cd273e0c04fabc508745ce342655394f1a4..2ff1286c5e3a33abc2e4ded96ab5773ee042a9d8",
-    "legs": [
-      "tf",
-      "tt",
-      "tb"
-    ],
-    "leg_results": {
-      "tf": {
-        "command": [
-          "cargo",
-          "tf",
-          "--no-fail-fast"
-        ],
-        "exit": 101,
-        "seconds": 1.0851788520812988,
-        "evidence": "docs/plans/attachments/847/batch-r1/tf.log.txt",
-        "sha256": "7a1a54afa0de8365b3d1964167562cf2fc2add417d36804ef8898569a3c07a03",
-        "stage": "compile",
-        "tests_executed": 0,
-        "coverage_complete": false
-      },
-      "tt": {
-        "command": [
-          "cargo",
-          "tt",
-          "--no-fail-fast"
-        ],
-        "exit": 100,
-        "seconds": 506.8478946685791,
-        "evidence": "docs/plans/attachments/847/batch-r1/tt.log.txt",
-        "sha256": "bb1c40d8f7b0e593ec9b7ae8d2c5c712c9ef97f058166d190fc7468c065233b3",
-        "stage": "tests",
-        "run": 3553,
-        "passed": 3547,
-        "failed": 5,
-        "timed_out": 1,
-        "skipped": 916,
-        "test_seconds": 383.33,
-        "coverage_complete": true
-      },
-      "tb": {
-        "command": [
-          "cargo",
-          "tb",
-          "--no-fail-fast"
-        ],
-        "exit": 0,
-        "seconds": 133.16490602493286,
-        "evidence": "docs/plans/attachments/847/batch-r1/tb.log.txt",
-        "sha256": "454c455d11eb19e11660dd5a2600a724c9948e8319b5c85a58a319aa5e4ed69e",
-        "stage": "tests",
-        "run": 3109,
-        "passed": 3109,
-        "failed": 0,
-        "timed_out": 0,
-        "skipped": 664,
-        "test_seconds": 51.906,
-        "coverage_complete": true
-      }
-    },
-    "aavm_trigger_paths": [],
-    "new_reds": [
-      {
-        "id": "B847-FULL-OWNER-01",
-        "legs": [
-          "tf"
-        ],
-        "stage": "selection/compile",
-        "introduced_commit": "abd34a355",
-        "attributed_plan": 831,
-        "fix_forward_plan": 850,
-        "fix_forward_path": "docs/plans/850-restore-cross-workspace-full-regression.md",
-        "evidence": "docs/plans/attachments/847/batch-r1/tf.log.txt",
-        "error": "External auto-ui-compiler requires dev-dependencies but is not a language-workspace member; zero tests executed; do not delete UI coverage."
-      },
-      {
-        "id": "B847-TT-STATE-02",
-        "legs": [
-          "tt"
-        ],
-        "stage": "tests",
-        "attributed_code_owners": [
-          818,
-          "FFI dual regression"
-        ],
-        "introduced_by_847": false,
-        "fix_forward_plan": 850,
-        "fix_forward_path": "docs/plans/850-restore-cross-workspace-full-regression.md",
-        "evidence": "docs/plans/attachments/847/batch-r1/tt.log.txt",
-        "error": "6 test outcomes:4 report writes Windows1224 mapped-file rejection,1 stdout-cap control received session wall,1 FFI018 120s timeout. Full Plan-tree t passed all corresponding cases; FFI018 passes tb1.243s. Exact global conditions unresolved; T01 investigates execution state without weakening limits; product repair requires separate scoped contract.",
-        "report_probe": "docs/plans/attachments/847/batch-r1/report-state-probe.json.txt",
-        "probe_result": "Same-size file probes now succeed with byte-exact preservation, RestartManager currently found no owner; does not identify original mapper or prove complete tt green."
-      }
-    ],
-    "known_reds_seen": [],
-    "outcome": "new-reds",
-    "coverage_complete": false,
-    "completed_legs": [
-      "tt",
-      "tb"
-    ],
-    "compile_blocked_legs": [
-      "tf"
-    ],
-    "closed_findings": [
-      "B845-FEATURE-01"
-    ],
-    "fix_forward_plan": 850,
-    "retry_required": true,
-    "single_instance": true,
-    "scope": "Bare daily3181 passes before landing; main full batch sequential with exclusive mutex, unchanged inputs/limits/config, all legs no-fail-fast for complete attribution, generated reports preserved and original WIP restored."
+    "plan_id": 850,
+    "outcome": "pass",
+    "timestamp": "2026-10-26T00:02:10.122452+00:00",
+    "evidence": "docs/plans/attachments/850/batch-r4",
+    "retry_required": false
   },
-  "pending_retry": true,
-  "coverage_policy": "Retain last complete green Plan840/time/commit: latest tf executed zero tests. B845-FEATURE-01 closed by847; B847-FULL-OWNER-01 and TT execution-state findings route850 draft. No current full-green coverage claimed.",
+  "pending_retry": false,
+  "coverage_policy": "Complete real language/UI/tt/tb execution verified; last complete green advances to850. Historical failed attempts retained.",
   "last_due_check": {
-    "plan_id": 847,
-    "checked_at": "2026-10-25T16:40:19.048983+00:00",
-    "checked_commit": "2e5db724f31de767e534d51e09d6e4c2fca26a5f",
-    "due": true,
-    "outcome": "due-new-blockers-routed",
-    "owner_plan": 850,
-    "coverage_anchor_preserved": 840,
-    "retry_required": true,
+    "plan_id": 850,
+    "checked_at": "2026-10-26T00:02:10.122452+00:00",
+    "checked_commit": "7750f8d3399fe8aa620b7eecb6c7390ca810df05",
+    "due": false,
+    "outcome": "complete-green-current",
+    "coverage_anchor_preserved": 850,
+    "retry_required": false,
     "rerun": false,
-    "reason": "Complete latest batch just executed; tf owner selection blocked and tt execution-state results routed850. No changed conditions warrant blind repeat; all old thresholds/inputs preserved. 850 drafting, implementation authorization pending."
+    "reason": "Current Plan850 modulo5 obligation discharged by this actual complete batch; subsequent closeout is documentation/ledger only."
   },
   "prior_attempts": [
     {
@@ -287,7 +198,140 @@
       ],
       "implementation_action": "none; fix-forward draft only",
       "retry_required": true
+    },
+    {
+      "last_covered_plan_id": 848,
+      "repair_plan": 847,
+      "timestamp": "2026-10-25T16:30:20.783131+00:00",
+      "covered_commit": "2ff1286c5e3a33abc2e4ded96ab5773ee042a9d8",
+      "window": "53298cd273e0c04fabc508745ce342655394f1a4..2ff1286c5e3a33abc2e4ded96ab5773ee042a9d8",
+      "legs": [
+        "tf",
+        "tt",
+        "tb"
+      ],
+      "leg_results": {
+        "tf": {
+          "command": [
+            "cargo",
+            "tf",
+            "--no-fail-fast"
+          ],
+          "exit": 101,
+          "seconds": 1.0851788520812988,
+          "evidence": "docs/plans/attachments/847/batch-r1/tf.log.txt",
+          "sha256": "7a1a54afa0de8365b3d1964167562cf2fc2add417d36804ef8898569a3c07a03",
+          "stage": "compile",
+          "tests_executed": 0,
+          "coverage_complete": false
+        },
+        "tt": {
+          "command": [
+            "cargo",
+            "tt",
+            "--no-fail-fast"
+          ],
+          "exit": 100,
+          "seconds": 506.8478946685791,
+          "evidence": "docs/plans/attachments/847/batch-r1/tt.log.txt",
+          "sha256": "bb1c40d8f7b0e593ec9b7ae8d2c5c712c9ef97f058166d190fc7468c065233b3",
+          "stage": "tests",
+          "run": 3553,
+          "passed": 3547,
+          "failed": 5,
+          "timed_out": 1,
+          "skipped": 916,
+          "test_seconds": 383.33,
+          "coverage_complete": true
+        },
+        "tb": {
+          "command": [
+            "cargo",
+            "tb",
+            "--no-fail-fast"
+          ],
+          "exit": 0,
+          "seconds": 133.16490602493286,
+          "evidence": "docs/plans/attachments/847/batch-r1/tb.log.txt",
+          "sha256": "454c455d11eb19e11660dd5a2600a724c9948e8319b5c85a58a319aa5e4ed69e",
+          "stage": "tests",
+          "run": 3109,
+          "passed": 3109,
+          "failed": 0,
+          "timed_out": 0,
+          "skipped": 664,
+          "test_seconds": 51.906,
+          "coverage_complete": true
+        }
+      },
+      "aavm_trigger_paths": [],
+      "new_reds": [
+        {
+          "id": "B847-FULL-OWNER-01",
+          "legs": [
+            "tf"
+          ],
+          "stage": "selection/compile",
+          "introduced_commit": "abd34a355",
+          "attributed_plan": 831,
+          "fix_forward_plan": 850,
+          "fix_forward_path": "docs/plans/850-restore-cross-workspace-full-regression.md",
+          "evidence": "docs/plans/attachments/847/batch-r1/tf.log.txt",
+          "error": "External auto-ui-compiler requires dev-dependencies but is not a language-workspace member; zero tests executed; do not delete UI coverage."
+        },
+        {
+          "id": "B847-TT-STATE-02",
+          "legs": [
+            "tt"
+          ],
+          "stage": "tests",
+          "attributed_code_owners": [
+            818,
+            "FFI dual regression"
+          ],
+          "introduced_by_847": false,
+          "fix_forward_plan": 850,
+          "fix_forward_path": "docs/plans/850-restore-cross-workspace-full-regression.md",
+          "evidence": "docs/plans/attachments/847/batch-r1/tt.log.txt",
+          "error": "6 test outcomes:4 report writes Windows1224 mapped-file rejection,1 stdout-cap control received session wall,1 FFI018 120s timeout. Full Plan-tree t passed all corresponding cases; FFI018 passes tb1.243s. Exact global conditions unresolved; T01 investigates execution state without weakening limits; product repair requires separate scoped contract.",
+          "report_probe": "docs/plans/attachments/847/batch-r1/report-state-probe.json.txt",
+          "probe_result": "Same-size file probes now succeed with byte-exact preservation, RestartManager currently found no owner; does not identify original mapper or prove complete tt green."
+        }
+      ],
+      "known_reds_seen": [],
+      "outcome": "new-reds",
+      "coverage_complete": false,
+      "completed_legs": [
+        "tt",
+        "tb"
+      ],
+      "compile_blocked_legs": [
+        "tf"
+      ],
+      "closed_findings": [
+        "B845-FEATURE-01"
+      ],
+      "fix_forward_plan": 850,
+      "retry_required": true,
+      "single_instance": true,
+      "scope": "Bare daily3181 passes before landing; main full batch sequential with exclusive mutex, unchanged inputs/limits/config, all legs no-fail-fast for complete attribution, generated reports preserved and original WIP restored."
     }
   ],
-  "current_batch_status": "new-reds"
+  "current_batch_status": "pass",
+  "dependencies": {
+    "language": {
+      "head": "7750f8d3399fe8aa620b7eecb6c7390ca810df05",
+      "diff_sha256": "2e524e2e08387404d1ea895ee82b13720a7b78cee12707d7a6af21f149bca490",
+      "lock_sha256": "d2ce1eae115231ed7a164ba9a086d40df5f725796249ddebc44371f2cdda8577"
+    },
+    "ui": {
+      "head": "b4fe0000e56cddaf7d3cf70e348431f2258aacde",
+      "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "lock_sha256": "b0e0006416a4579705235f52e39d5f87b8fe986af80b0c0521abdcb48e90b2f6"
+    }
+  },
+  "auto_man_input": {
+    "head": "1b7a9ce0de9055f7953129d78a25777662508258",
+    "cmd_vue_sha256": "CAE8DB35732C1F115D72118EBC53A824F39B7C5E6758B863410C5A0CE8FBAE6C"
+  }
 }

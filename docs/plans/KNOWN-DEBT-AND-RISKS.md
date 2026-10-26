@@ -3316,9 +3316,12 @@ Merge onae1a87e15 exposed hierarchy phase0 scroll before initial focus/pointer p
 
 Closure847: independently reviewed60f0bb033; frozen t3181/3181 and main feature-off tb3109/3109 pass, optional/default-off and2177IDs unchanged. [Delivery](attachments/847/merge-r1/receipt.md). Existing847 blocker closed; last complete global green remains840.
 
-### B847-FULL-OWNER-01 / B847-TT-STATE-02 — OPEN / draft PLAN-850 (2026-10-26)
+### B847-FULL-OWNER-01 / B847-TT-STATE-02 — CLOSED / delivered PLAN-850 (2026-10-26)
 
-Main2ff1286c5 full batch: tf cannot select external auto-ui packages after831 abd34a355 (zero tests); tt3547pass/5fail/1timeout includes4Windows1224 report-output writes, stdout-cap classified wall, FFI018timeout; tb3109pass and prior frozen t3181pass remain valid. Cause beyond observed output/selection failures is not invented. [Full triage](attachments/847/batch-r1/triage.json.txt), [fix-forward850](850-restore-cross-workspace-full-regression.md). Preserve all IDs/limits/inputs, no global green anchor advance; product repair beyond orchestration needs its own concrete contract.
+Main2ff1286c5 full batch: tf cannot select external auto-ui packages after831 abd34a355 (zero tests); tt3547pass/5fail/1timeout includes4Windows1224 report-output writes, stdout-cap classified wall, FFI018timeout; tb3109pass and prior frozen t3181pass remain valid. Cause beyond observed output/selection failures is not invented. [Full triage](attachments/847/batch-r1/triage.json.txt), [fix-forward850](archive/850-restore-cross-workspace-full-regression.md). Preserve all IDs/limits/inputs, no global green anchor advance; product repair beyond orchestration needs its own concrete contract.
+
+PLAN-850 final closure: independent final pass at7750f8d33, UI fixture-root repair b4fe000; actual frozen main batch-r4 language3218/UI3073/tt3553/tb3109 all passed. Per-feature full/required identity guards and producer-only738/796/818/827 report preservation verified. No test/profile/input/threshold reduction or performance waiver. Earlier failed r1/r2/r3 receipts retained; r2 signature timing cause is not asserted from concurrent-process presence. [Final evidence](attachments/850/batch-r4/receipt.json.txt), [archive](archive/850-restore-cross-workspace-full-regression.md).
+
 
 ### PLAN-845 final closeout — closed findings / optional fixture observation
 
