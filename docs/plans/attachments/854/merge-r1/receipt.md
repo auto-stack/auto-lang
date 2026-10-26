@@ -22,3 +22,10 @@ prepared: current review/dependencies/frozen delta and all complete gates verifi
 - ledger_refreshed: guarded offline projection, no store reachable; v95→96,6 affected IDs,1252 unrelated raw items unchanged. Backup/readback/hash guards passed; no store success claimed.
 - canonical: existing behavior/source topics, module overview/plans and GOAL-008 updated; no new architectural module/ADR. INDEX regeneration has no semantic diff; foreign working INDEX preserved.
 - archive preparation: actual archive path/status delivered8/9, cleanup still pending until committed actual-state check.
+
+- archived: actual docs/plans/archive/854-autographics-behavior-source-assembly.md, delivered8/9 committed in2a99834d1;147 actual references and state/source/ledger checks pass before cleanup.
+- cleaned: fresh wt-guard clean, unique tree and both temporary branches removed, empty group removed and checked. Runtime source/SDK/target recovery and immutable payloads preserved. Plan final9/9 actual-state check is recorded in cleaned-check.json.txt.
+- artifacts: artifact-observations.json.txt verifies retained native debug payloads/recovery roots and explicit non-consumption by production backend/daemon/web; no deployment.
+- batch: batch-due.json.txt not due; no root tf invoked.
+
+Final outcome: **pass**, PLAN-854:r1 delivered9/9. Source523d27b863dbe306c89af0ea546334225a29f8e9 only on autographics-dev; canonical and ledger on master, documentation rebase/provenance mapping explicit, no source SHA rewrite. Other sessions' WIP preserved. Successor855 must start from this actual source delivery; no successor implementation or remote push performed.

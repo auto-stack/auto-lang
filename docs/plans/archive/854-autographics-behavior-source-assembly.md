@@ -13,7 +13,7 @@ supersedes_spec_components:
 new_spec_components: []
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 8
+current_step: 9
 total_steps: 9
 ---
 
@@ -122,7 +122,7 @@ T-04新增当前`research/plan854-identity.json`/verifier，沿853明确当前�
 | T-06 | review | T-05 | 独立最终review R1 pass；[完整AC/V/SD证据](../attachments/854/review-r1/review.md)，merge门仍pending | AC-06 | [x] |
 | T-07 | merge | T-06 pass | 冻结两端完整/受影响原native-owner-content/新面，核不可变runner/选中ID | AC-07 | [x] |
 | T-08 | merge | T-07 | 源码只合autographics-dev；main沉淀SD/overview/plans/ADR/ledger/索引并归档 | AC-08 | [x] |
-| T-09 | merge | T-08 | guard clean后清树/临时分支，保留恢复产物/实际9/9，交接855 | AC-08 | [ ] |
+| T-09 | merge | T-08 | guard clean后清树/临时分支，保留恢复产物/实际9/9，交接855 | AC-08 | [x] |
 
 ## 9. 复审记录
 
@@ -145,6 +145,8 @@ T-04新增当前`research/plan854-identity.json`/verifier，沿853明确当前�
 2026-10-26 merge gate完成：T-07/AC-07通过，reviewed7/9。两端各79块/287通过/0failed/0ignored，原280逐binary ID包含；85当前调用组、AGP23完整输入复用和原85映射、两端全部原native/content/owner与新生成/工具面均通过。[最终审计](../attachments/854/merge-r1/validated.json.txt)、[真实payload与原始日志索引](../attachments/854/merge-r1/evidence-index.json.txt)、[收口收据](../attachments/854/merge-r1/receipt.md)。唯一clock setup失败已由同SHA重放和完整六例闭环，没有代码/预算/oracle改动；最终两端来源门再次通过，523d27b86/clean未变。仅审计工具初次缺运行目录内AGP证明副本，按原字节复制已提交证明后审计通过，不重跑其他门。源码合入/规范账本发布/归档/清理尚待执行。
 
 2026-10-27 consolidation PLAN-854:r1：`stage: merge | outcome: publication pass, cleanup pending | delivery_commit: 523d27b863dbe306c89af0ea546334225a29f8e9 | source_branch: autographics-dev | canonical_commit: 8ea8da946dd32e9b660127d432442f88dd262084 | ledger_commit: 3c909aeaf36a926d180e2dea98cbe4fb49149ee6`。源码exact reviewed SHA快进到autographics-dev，master只沉淀SD-01/02、module overview/plans/GOAL-008与派生账本；[实际落地](../attachments/854/merge-r1/landed.json.txt)、[规范准备](../attachments/854/merge-r1/canonical-prepared.json.txt)、[账本v95→96/六ID守护](../attachments/854/merge-r1/ledger-projection.json.txt)。主线新增822簿记后，仅规范/账本两提交rebase；初始range-diff2/2等价，后只重绑六个source-commit标签到等价规范提交，源码审查/测试SHA无改写。1252无关原始条目与主检出其他会话工作字节未扰动。默认bash解析到WSL无法读Windows路径，改Git for Windows bash执行同一wt-guard已clean，未绕过守护。原SDK/target与47research/4pycache运行文件已保留仓外，见runtime-recovery.json.txt；同树切换deposit用途未移动任何tracked源文件。T-08完成，archived/delivered8/9；归档实际检查/提交后再做T-09清理，不能提前宣称9/9。交855的真实前置为523d27b86，未开始855实施。
+
+2026-10-27 cleaned最终闭环：`stage: merge | plan_id: PLAN-854 | plan_revision: 1 | outcome: pass | completion_kind: delivered | delivery_commit: 523d27b863dbe306c89af0ea546334225a29f8e9 | canonical_commit: 8ea8da946（等价文档重放） | ledger_commit: 3c909aeaf | archive_commit: 2a99834d1 | task_ids: T-01..09 | blockers: []`。T-09与AC-08完成，archived/delivered9/9。归档实际147链接/8任务检查先通过并提交，再执行[fresh guard](../attachments/854/merge-r1/cleanup-guard.log.txt) clean、移除树/两临时分支/空组并核实，[清理收据](../attachments/854/merge-r1/cleaned.json.txt)。[产物观察](../attachments/854/merge-r1/artifact-observations.json.txt)说明原生debug payload和consumer/SDK/target恢复路径实际存在，生产backend/daemon/web不消费该实验增量，未宣称部署。[批量到期检查](../attachments/854/merge-r1/batch-due.json.txt)未到期，不跑根tf。源码仅在autographics-dev，master只知识/账本/耐久证据，其他会话工作保持不动；855真实前置523d27b86已交接，未启动后续实现。最终9/9及引用检查后提交清理闭环记录。
 
 ## 10. 待澄清事项
 
