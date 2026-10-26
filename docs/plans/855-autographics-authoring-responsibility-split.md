@@ -14,7 +14,7 @@ supersedes_spec_components:
 new_spec_components: []
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 6
+current_step: 7
 total_steps: 9
 ---
 
@@ -130,7 +130,7 @@ T-02写`attachments/855/work/responsibility-map.md`，按真实结构列：谁�
 | T-04 | work | T-03 | 移呈现/输入及CLI/probe，不改oracle/路径；V-02/05与必要反例 | AC-03/05 | [x] |
 | T-05 | work | T-03/04 | 当前855 identity/verifier/consumer、能力/入口表、854字节与853对照；提交代码/SD/定向证据，不跑整档 | AC-01..05 | [x] |
 | T-06 | review | T-05 | 独立最终review，核状态/owner/默认及probe路径；merge门pending | AC-06 | [x] |
-| T-07 | merge | T-06 pass | 冻结两端完整/原native-owner-content/新面，核不可变产物与选中ID/复用 | AC-07 | [ ] |
+| T-07 | merge | T-06 pass | 冻结两端完整/原native-owner-content/新面，核不可变产物与选中ID/复用 | AC-07 | [x] |
 | T-08 | merge | T-07 | 源码合autographics-dev；main沉淀SD/overview/plans/ADR/ledger/索引并归档 | AC-08 | [ ] |
 | T-09 | merge | T-08 | guard clean后清树/临时分支、实际9/9；总结S0结果与残余风险，供S1/S2细化，不打M2标签 | AC-08 | [ ] |
 
@@ -167,6 +167,9 @@ T-02写`attachments/855/work/responsibility-map.md`，按真实结构列：谁�
 
 
 2026-10-27 merge resumed R3：新冻结05fdc81c5，R3 pass与新SD绑定；raw round切至plan-artifacts/plan-855/merge-r2，旧merge-r1原始失败/23rows保持。producer完整覆盖采用R3核准的逐binary组合：原287保留真实code_commit与未变证明，当前authoring bin整块6例替换旧5例，得79块288；不称新SHA整命令重跑。fresh consumer完整288及当前native/owner/content全新执行，见reuse-r2.json.txt。整档仍merge-owned，当前reviewed6/9未合入。
+
+
+2026-10-27 T-07 complete：冻结05fdc81c5/R3 pass；86 current groups/90 attempts、原85槽/AGP23证明通过，无open failure。producer79块288为R3核准的原287逐binary未变复用+当前bin6替换旧5；fresh own-SDK/空target consumer实际全79块288，0failed/ignored。两端原native/content/owner、motion14+4重开/六负+恢复、21生成文件与工具各7例全部通过；四原生/编排失败按事实闭环，raw保持。见 attachments/855/merge-r1/validated.json.txt + evidence-index.json.txt + receipt.md。当前reviewed7/9，wt-guard clean；源码合入、规范/ledger、归档清理尚未执行。
 
 ## 10. 待澄清事项
 
