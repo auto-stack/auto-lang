@@ -9,6 +9,8 @@
 > （第 k 个绑定第 k 个 Move spec，clone 源始终留创建者，符合 §2.1"clone 不消费源"）；
 > 错误变体携带上下文字段；`EnvPlan`/`ClosureEnv` 带 Drop（逆序清理即回滚律）。
 > 其余决策不变。
+>
+> **r2（2026-10-27 T-02 集成窗口，D822 已合入）**：见 §8。
 
 ## 1. 调查基面与依赖门核实
 
@@ -189,3 +191,19 @@ experimental/ac-av-probe/parallel/823/          # 独立 workspace（空 [worksp
 无遗留未知项：List 接缝按 D822 记录（不可表达≠拒绝）；借用分析/invoke/env 身份
 属 T-03/T-04 集成（§5.2 已映射）；wire 编号待窗口由核心 owner 定（不猜）；commit 期
 "无取消观察"由纯代码性质结构保证，运行期取消语义 T-04 用 executor 注入验证。
+
+## 8. r2 集成窗口定稿（2026-10-27，D822 合入后 T-02 落地）
+
+**基面**：master@c6c5ddb25（822 archived 9/9 后），plan-823-dev rebase 至 b095dc460，T-02 交付 @e9bb30606。
+
+| 项 | r2 定稿（原"请求"已由本窗口登记为实际编号） |
+|---|---|
+| wire/编号 | **AVAD 族 wire version 4、profile id 5、类型 tag 16（TY_CLOSURE）、opcode 0x2F/0x30/0x31**（822 占 v3/id4/tag13-15/0x1D-0x2E 后的下一空位）；820 pin 46→49 刷新 |
+| 指令集（首例面） | `CreateClosure{dst,callee,captures:[CaptureOperand{clone,src}]}`、`CallClosure{dst,closure,args}`、`EnvGet{dst,field}`；闭包释放**复用 Drop**（typed 槽派发 env store 释放路径） |
+| env 模型 | 执行器 LoopState 持 `closure_envs: HashMap<u64, ClosureEnv>`，handle 单调不复用（gen=handle）；env 字节计入 slot_bytes 单行（值数据 8MiB 口径）；ClosureRefV{func,sig,env,gen} 为 Copy 元数据，**Return 转义时先零槽再帧清扫**（元数据无共享计数——§6"返回owned结果先确认责任转出"的闭包实例）；帧清扫/Drop 经 release_owned_worklist 显式工作清单 |
+| 唯一 site 规则 | verify 预扫描：每 callee 恰一个 CreateClosure site，其捕获源槽类型序列 = env 布局（EnvGet 类型依据）；重复/冲突 site、entry 为 body、直接 Call body 均拒绝（`mir.closure.site-*`/`entry-body`/`body-direct-call`） |
+| 捕获矩阵（实测） | 标量/Str/List/Variant/Record ✓；StrView/MutRef/**Place**/Closure 值拒绝（`mir.capture.kind`，attempt=0）；嵌套闭包捕获=T-03/T-04 面（诚实拒绝） |
+| 深克隆收敛 | **closures.rs 委托 `av::clone_owned_value`**（822 已升 pub 的规范访客：cancel/wall/fuel/部分回滚）——T-10 本地走查退役，单一实现，822 clone 族重放为等价 oracle |
+| CaptureOperand 所有权 | clone 读不杀；move 经 ownership 分析杀源（镜像 MOVE：活跃借用冲突拒绝）；CallClosure 参数按 Closure 签名 sig 驱动 move-in 杀（镜像 CALL） |
+| 首例 oracle（实测） | 手算结果 **29**（2*10+4+5）、ledger 5 alloc/5 free、live=0、decode→re-encode byte-stable、code-cache 恢复同果+types-fp/entry/snapshot 身份轴 clean miss、四负控真实拒绝 |
+| 遗留 T-03+ 面 | borrow 捕获与逃逸前门、V-02..07 反控、环境嵌套/帧复用（V-03）、错签名/generation/跨 store（V-04）、824 交叠拒绝、AutoDown 正式 recipe（V-10 正控全集）、P95/内存——按原 §5.2 映射推进 |
