@@ -402,8 +402,8 @@ fn r3_probe_doc_comment_not_collected_and_plain_ident_idempotent() {
 /// review-r2-import.rs 探针；R3-F02 补 feature 门控——本测试消费
 /// `build_dynamic_component`，与该 API 同条件）：两文件项目（host
 /// `use child: Imported`），导入组件的 msg handler 实改 model 状态；
-/// 再实改被导入文件的注解，模块错误表出现 Bad806——证明真实读取并经
-/// 同一默认实现解析。
+/// 再实改被导入文件的注解，构造错误包含 Bad806 和子文件路径——证明真实
+/// 读取并经同一默认实现解析；错误登记表被消费，修复文件后再次构造成功。
 #[cfg(feature = "ui-iced")]
 #[test]
 fn r2_real_use_import_chain_uses_default_declarations() {
@@ -446,11 +446,20 @@ view { col { Imported() {} } }
     )
     .unwrap();
     crate::ui_module_parse_failures().lock().unwrap().clear();
-    let _ = crate::build_dynamic_component(host, Some(&path));
-    let failures = crate::ui_module_parse_failures().lock().unwrap().clone();
+    let error = crate::build_dynamic_component(host, Some(&path))
+        .err()
+        .expect("invalid imported annotation must reject component construction");
+    let detail = error.to_string();
     assert!(
-        failures.iter().any(|e| e.contains("Bad806")),
-        "mutated imported file must reach production parsing: {failures:?}"
+        detail.contains("Bad806") && detail.contains("child.at"),
+        "mutated imported file must reach production parsing: {detail}"
     );
+    assert!(
+        crate::ui_module_parse_failures().lock().unwrap().is_empty(),
+        "construction must consume its module errors instead of poisoning later builds"
+    );
+    std::fs::write(root.join("child.at"), child).unwrap();
+    crate::build_dynamic_component(host, Some(&path))
+        .expect("repaired import must build without stale module errors");
     let _ = std::fs::remove_dir_all(&root);
 }
