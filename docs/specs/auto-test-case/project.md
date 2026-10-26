@@ -23,6 +23,19 @@ TestCase 协议核心（`autolang.case/1` / `autolang.suite/1` / `autolang.test-
 
 ## 模块清单
 
+### PLAN-852 ace-m1 语料与认证（正式资产，非本 crate）
+
+- 语料/分母登记：`crates/auto-lang/test/cases/ace-m1/`（binding.tsv 103 行 =
+  58 主源 + 43 参考 + 5 typed + 40 场景；base 套件 36 例 97 检查；金样
+  `oracle/m1_*.rs` + 单源 wrapper `oracle/wrapper-main-v1.rs` + 证书 registry
+  `oracle/certs/*.cert.json`，schema `ace.m1.cert/1` 随库版本化）。
+- 验证入口：`scripts/verify-ace-m1-852.ps1` 六+一 scope
+  （contract/source/snapshot/certify/lifecycle/acceptance/receipts 直达面）；
+  认证 bin `ace-certify`。合同与差异行语义见
+  [ace-m1-conformance.md](ace-m1-conformance.md) /
+  [a2r-golden-certification.md](a2r-golden-certification.md)。
+
+
 | 模块 | 职责 | 状态 |
 |---|---|---|
 | document / raw_ranges | pinned 块树 ↔ 原始 fence 字节区间双向校验 | active |

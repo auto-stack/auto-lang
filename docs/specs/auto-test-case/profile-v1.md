@@ -72,3 +72,11 @@
 
 > 来源：docs/plans/773-autodown-testcase-protocol-pilot.md（Design 35 A 阶段，
 > R1 修复轮后冻结）；解码器/裁决实现即合同细节的单一事实来源。
+
+## 外部资产身份合同导航（PLAN-852）
+
+v1 case/suite/report 解码器合同**不变**（接受/拒绝集保持，未知字段仍拒）。
+ace-m1 的收据（`ace.m1.cert/1`）、分母登记（`ace.m1.binding/1`）与 wrapper 身份是
+**语料侧独立版本化资产**，不进本解码器；其严格验证由
+`verify-ace-m1-852.ps1` 与 `ace-certify` 承载，见
+[a2r-golden-certification.md](a2r-golden-certification.md)。

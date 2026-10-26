@@ -176,3 +176,27 @@ OWNED_CASES / mod.rs 分派），owned 面准入与逐面判决；V-10 sabotage 
 （exit9/extra-frame/wrong-hash 均非绿）。corpus `av-data/821`：借入正控
 （exit 15）与 mut 写回正控（exit 808）。沿实际 auto-lang-core test_cases
 owner，无新执行器。
+
+## PLAN-852：ace-m1 认证拓扑与身份分离
+
+认证器是**独立 bin**（`ace-certify` → `auto-lang-core/src/test_cases/ace_certify.rs`），
+不属 suite runner 派发面，任何日常 scope 不隐式调用（G08）。三个身份轴各归其位：
+
+- **证书 `toolchain.identity`** = 认证当次实际启动的 rustc 的完整 `-vV`（CLI
+  `--rustc` > env `RUSTC` > PATH 单一规则，经 contained 有界通道实测；R2-A 裁定：
+  构建期常量不得冒充认证证据）；
+- **`default_identity_at_certify`** = 构建期默认（build.rs 捕获
+  `BUILD_TOOLCHAIN_IDENTITY`，并作为 `build-rustc-identity` 轴随每次 suite 报告
+  输出），供日常快照**零 spawn** 漂移比对；
+- **收据身份**：source/golden/actual/wrapper/oracle/reference 六 hash 轴（wrapper
+  单源=`oracle/wrapper-main-v1.rs` 版本化文件，代码 include_str 引用）+ 冻结
+  flags `["--edition=2021","-O"]` + deps std-only + 双侧 observed 输出。
+
+收据验证为**类型化精确键集 schema**（`ace.m1.cert/1`）：每层未知/缺失/错型字段
+拒绝，无 filter 宽松；Rust（`validate_receipt`）与 PowerShell
+（`verify-ace-m1-852.ps1` 共享 `Invoke-ReceiptValidation`）双消费者一致，结构破损
+=REJECTED（--force 亦不覆盖），文件轴漂移=STALE 显式重认证。日常快照 face =
+emit+byte-compare+严格收据验证+周期性 CIM 祖先采样进程观察（采样器而非无损创建
+计数；引擎 worker memoized 维护构建属 818 纪律单列，不算认证面）。wrapper 单源、
+认证 `--scratch`、流治理（双独立读线程/溢出杀树/墙钟）见
+[a2r-golden-certification.md](a2r-golden-certification.md)。

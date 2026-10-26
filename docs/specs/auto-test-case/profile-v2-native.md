@@ -102,3 +102,11 @@
   数值/有限/正值，违规即 FAIL 不默认 0ms）再重算百分位；完整编辑请求窗口
   （请求准备→worker→父侧准入）P95<1000ms@1MiB（gen796-1mi/v1），连续分段
   铺满可对账；六类变异控制入 verify 脚本 selftest。
+
+## 外部资产身份合同导航（PLAN-852）
+
+v2 case/suite/report 解码器合同**不变**（接受/拒绝集保持，未知字段仍拒）。
+ace-m1 的收据（`ace.m1.cert/1`）、分母登记（`ace.m1.binding/1`）与 wrapper 身份是
+**语料侧独立版本化资产**，不进本解码器；其严格验证由
+`verify-ace-m1-852.ps1` 与 `ace-certify` 承载，见
+[a2r-golden-certification.md](a2r-golden-certification.md)。
