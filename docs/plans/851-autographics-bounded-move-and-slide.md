@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-851
-status: execution_done
+status: reviewed
 feature_name: AutoGraphics有界移动与滑动响应
 author: [Codex]
 created_at: 2026-10-26
 updated_at: 2026-10-26
 plan_revision: 4
-current_step: 8
+current_step: 9
 total_steps: 10
 depends_on: [PLAN-849]
 supersedes_spec_components:
@@ -34,7 +34,7 @@ affects: [auto-graphics, authoring-experimental, bounded-motion]
 
 拟显式`autographics.behavior/5`、profile11及`ag_move_and_slide`，保持v1..v4原managed身份、查询/初始闭接触政策和收费。新动作单次24credits，留8次结果读取；内部最多两次扫掠和一次最终候选准入，不靠公开sweep16反复调用。32总额度与原128节点/CPU/源大小上限不变，先做整路径可行性。
 
-规划时849尚在候选阶段；现已核正式849交付并基于`6bb85f354e718f6541256f4b3d75ca97af75b8c4`实施。851 r4 work已完成并提交`75452a3e1daaba74c5557e78b83eeab2cc1e0763`，独立final review及merge完整门仍pending。[850](archive/850-restore-cross-workspace-full-regression.md)已用于迁仓后跨workspace全量回归编排，与图形路线无功能依赖；本路线为848→849→851。
+规划时849尚在候选阶段；现已核正式849交付并基于`6bb85f354e718f6541256f4b3d75ca97af75b8c4`实施。851 r4 work已完成并提交`75452a3e1daaba74c5557e78b83eeab2cc1e0763`，独立final review已pass，merge完整门仍pending。[850](archive/850-restore-cross-workspace-full-regression.md)已用于迁仓后跨workspace全量回归编排，与图形路线无功能依赖；本路线为848→849→851。
 
 ## 1. 目标
 
@@ -235,7 +235,7 @@ T-08列准确merge矩阵/Spec proposal；T-09独立final pass后T-10冻结完整
 
 ## 8. 执行步骤
 
-当前execution_done8/10；G849/GSTART/T-01..08已关闭，代码冻结75452a3e1。未来T-01..08全部work无必需gap才execution_done8/10，T-09独立pass为reviewed9/10且完整门pending，T-10真实收尾才10/10。原入口T-01→T-02已关闭；下一负责角色为独立review，禁止把work自查当final pass。
+当前reviewed9/10；G849/GSTART/T-01..09已关闭，代码冻结75452a3e1；merge完整门pending。未来T-01..08全部work无必需gap才execution_done8/10，T-09独立pass为reviewed9/10且完整门pending，T-10真实收尾才10/10。原入口T-01→T-02已关闭；下一负责角色为merge T-10；独立final pass不代完整merge门。
 
 | task_id | owner_stage | 依赖 | 实际触点/拟新增路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -247,7 +247,7 @@ T-08列准确merge矩阵/Spec proposal；T-09独立final pass后T-10冻结完整
 | T-06 | work | T-05 | [x] Host::Panel/bin；new tests/motion_cli.rs、samples/motion_projects/maze2d和corridor3d| V-09/10正式UI/CLI/绑定和两维实际滑动/角落用户逻辑；AC-06 |
 | T-07 | work | T-06 | [x] new tools/check_bounded_motion.py、OS/GPU/仓外reopen| V-10同runner/新进程/全mesh/改源/状态/正反/partial无gap；AC-08 |
 | T-08 | work | T-07 | [x] new tests/motion_owners.rs、tools/check_motion_owners.py、851来源闭包/verifier、research/bounded-motion-handoff.md/Spec proposal| V-01/11/12、64存储/20owner、原受影响定向/check/fmt、准确merge矩阵；AC-01, AC-07, AC-08 |
-| T-09 | review | T-08 | 同树冻结code/Plan/Spec/raw；主检出独立review附件 | AC-01..08/SD/遗漏/延后/workaround/健康逐项及revision+code结论；AC-09 |
+| T-09 | review | T-08 | [x] 同树冻结code/Plan/Spec/raw；主检出独立review附件 | AC-01..08/SD/遗漏/延后/workaround/健康逐项及revision+code结论；AC-09 |
 | T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出Spec/ledger/archive/guard/到期 | AC-10全部真实关闭，改代码先受影响复审，不提前标交付 |
 
 ## 9. 复审记录
@@ -305,8 +305,18 @@ T-02原100000steps反例已关闭；r4原128两接触实际2D78/3D88slices，12�
 
 当前证据/全部AC闭合与Spec proposal/准确merge矩阵见851树 `experimental/autographics-auto-driver/research/bounded-motion-handoff.md`、`bounded-motion-spec-delta.md`、`motion-evidence/receipt.json`，共享收据见[work r4](attachments/851/work-r4/handoff.json)。无work-owned findings/必需gap/待用户语义决策；execution_done8/10。执行自查不等于独立final pass；T-09待独立上下文绑定r4+上述commit审查AC/SD/遗漏/延后/workaround/健康，T-10在pass后跑冻结完整locked driver/AGP及原全部native/owner/source/package/fresh own-SDK own-target consumer+motion门。原247分母+33新增=预期280，merge必须实数重核，不能当作280已跑绿。原AGP23slots/163tests/16native及87graphics语义分母不缩。根全档/docs_gen未跑；到期batch仅merge按850主检出单实例。未合入、未改canonical/ledger、未归档/移树。
 
+### 2026-10-26 independent final review R1（r4）
+
+stage: review | review_scope: final | reviewer_identity: 独立子代理 `/root/review_851`（与实现上下文分离；用户后续明确授权独立复审子代理与继续后续阶段） | plan_id: 851 | plan_revision: 4 | outcome: pass | worktree_path: D:/autostack/.wt/lang-851/auto-lang | branch: plan-851-dev | reviewed_commit: 75452a3e1daaba74c5557e78b83eeab2cc1e0763 | base_commit: 6bb85f354e718f6541256f4b3d75ca97af75b8c4 | dependency_revisions: SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467；三锁/source-lock SHA不变 | acceptance_results: AC-01..08 pass、AC-09关闭；AC-10 pending merge | findings: none | next: merge T-10（完整冻结门先过，才允许合入）
+
+独立逐项核实际Auto两扫描/终值准入、f32/初始方向性/坏匹配几何、typed身份/兼容、leaf-world同步/整帧Fault、128难例/CPU、项目来源/事务、OS/GPU内容及owner边界。独立重跑motion_geometry10+motion_host4及mixed-sign unequal128单例全部pass，0ignored；后者98slices/32credits，不冒称精确steps。另在主检出附件建立只读实现的独立Session探针，20组全有效轴双边界向内/离开+2组先穿插后坏几何/隐藏控制全部通过。直接rustc探针初始漏Windows链接目录及Cargo既有16MiB栈环境导致setup失败，按原配置修正后绿，不当产品红。
+
+157份raw Git blob、430来源hash、681SDKfiles/17locals/479packages/29edges、三锁/source-lock均独立核；原native六正向/四额外reopen/八负向及两Dash、owner六变异红/恢复绿按未变源码/依赖/配置/输入复用，并检查实际断言和拒绝阶段。未跑完整driver/AGP/根全档或全native矩阵。fmt/diff check绿；固定SDK146预存warning、driver新增0。无合同内遗漏/未批延后/workaround或新债务，保留R849-NATIVE-CLOCK边界。未改实现/SDK/锁/canonical/ledger，未合入/归档/移树，保留主检出他人WIP。
+
+详见[独立复审及AC/SD映射](attachments/851/review-r4/review.md)、[revision/Spec/锁/raw核验](attachments/851/review-r4/audit.json)及[冻结Spec proposal](attachments/851/review-r4/spec-delta-reviewed.md)（SHA256 088e6803a8aa2e5ece6de1be0f10522fb6c1f7149dc21931d7ea4a6772f9c509）。SD-01..04 pass，frontmatter impacts保持，current_step=9/10、status=reviewed。review不代表交付完成：T-10完整locked driver/AGP/build、原835..849/双游戏/合成counter AND content/native/owners/source/package、fresh own-SDK own-target consumer及motion门全部merge-owned pending，预期280driver须实际重核；原AGP23/163/16native和87graphics分母不缩。定向Cargo重建当前exe SHA e129d8944bff6a4c0feb85fd98c4f261c1ca008ac4888375cd2b66e855208d9c；旧native证据仍绑定13a6d0cb…，merge需重新绑定真实producer/consumer runner，不冒用旧SHA。若代码漂移先受影响复审；根全档不是851门，到期batch按850在主检出单实例判断/执行。
+
 ## 10. 待澄清事项
 
-无必须另问用户的产品问题。两接触/静态AABB/有限方向性初始接触、24credits/40逻辑标量、显式v5与错误/正常停止边界已明确；实现可行性由T-02有界验证，849正式交付与启动授权已核；r4 work已完成，当前待独立review。
+无必须另问用户的产品问题。两接触/静态AABB/有限方向性初始接触、24credits/40逻辑标量、显式v5与错误/正常停止边界已明确；实现可行性由T-02有界验证，849正式交付与启动授权已核；r4 work及独立final review已完成，当前待merge完整门。
 
 若849验收改变正式接口/几何/f32政策，T-01先审影响，实质变化回new修订。增加接触数/滑行范围、重力/解穿插、改节点/CPU/源码上限、SDK/AGP/生产写面或Schema/ACE/HMR需新合同，不通过PrecisionStop、减测试分母/隐藏反例绕过原验收。
