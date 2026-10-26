@@ -2488,6 +2488,12 @@ impl FunctionIncrementalSession {
                 );
             }
         };
+        self.counters
+            .set("loaded_index_build", next.loaded_program().builds());
+        self.counters
+            .set("loaded_index_reuse", next.loaded_program().reuses());
+        self.counters
+            .set("loaded_index_bytes", next.loaded_program().usage().0 as u64);
         self.phase_walls
             .insert("link_us".into(), elapsed_us(t_link));
         // Link succeeded — NOW apply the per-record updates: origins, the

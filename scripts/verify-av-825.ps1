@@ -3,7 +3,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("first", "targeted", "compat", "bench", "baseline", "acceptance")]
+    [ValidateSet("first", "targeted", "compat", "incremental", "bench", "baseline", "acceptance")]
     [string]$Scope
 )
 
@@ -78,6 +78,12 @@ $TARGETED = @(
     'av_runtime_825_call_budget_both_sides_and_cleanup',
     'av_runtime_825_cancel_exhausted_then_next_request_clean'
 )
+$INCREMENTAL = @(
+    'av_runtime_825_incremental_two_function_edit_identity_and_zero_work',
+    'av_runtime_825_incremental_content_hit_reuses_every_index',
+    'av_runtime_825_incremental_signature_reject_then_exact_invalidation',
+    'av_runtime_825_incremental_forced_copy_cannot_claim_reuse'
+)
 
 switch ($Scope) {
     'first' {
@@ -98,6 +104,12 @@ switch ($Scope) {
         Run-Runner -Filter 'ac_av_probe'
         Run-Runner -Filter 'av_owned_821'
         Run-Runner -Filter 'av_collections_822'
+    }
+    'incremental' {
+        Run-Probe -Bin 'av_runtime_825_incremental' -RequiredIds $INCREMENTAL
+        Run-Probe -Bin 'function_incremental_828_t08' -Filter 't08_formal_campaign_v08_dual_gate_30_revisions' -RequiredIds @('t08_formal_campaign_v08_dual_gate_30_revisions')
+        Run-Probe -Bin 'function_incremental_828_contract' -Filter 'contract_828_hotpath_old_synth_pipeline_same_window_is_red' -RequiredIds @('contract_828_hotpath_old_synth_pipeline_same_window_is_red')
+        Run-Probe -Bin 'function_incremental_828_r1' -Filter 'r2_trace_in_unchanged_function_survives_body_edit' -RequiredIds @('r2_trace_in_unchanged_function_survives_body_edit')
     }
     default {
         throw "PLAN-825 scope '$Scope' is not implemented yet; this is an explicit acceptance gap, not PASS"
