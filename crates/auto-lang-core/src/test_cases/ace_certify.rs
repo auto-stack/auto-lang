@@ -26,7 +26,6 @@
 
 use crate::test_cases::sema::containment;
 use auto_test_case::sha256::{hex, sha256};
-use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};

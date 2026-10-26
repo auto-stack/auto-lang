@@ -341,7 +341,61 @@ switch ($Scope) {
     }
 
     'acceptance' {
-        Write-Host "verify-ace-m1-852 [acceptance]: FAIL — scope owned by T-06, not implemented yet" -ForegroundColor Red
-        exit 3
+        if (-not $OutDir) { Write-Host "usage: -Scope acceptance requires -OutDir (scratch)" -ForegroundColor Red; exit 2 }
+        # T-06: base-layer acceptance ORCHESTRATES the five delivered scopes
+        # and reports M1 completeness as a SEPARATE axis — exit 0 certifies
+        # the base layer only, never "M1 is green".
+        $self = $PSCommandPath
+        foreach ($s in @('contract', 'certify')) {
+            & $self -Scope $s | Write-Host
+            if ($LASTEXITCODE -ne 0) { Fail "base-layer scope '$s' failed (exit $LASTEXITCODE)" }
+        }
+        foreach ($s in @('snapshot', 'lifecycle', 'source')) {
+            & $self -Scope $s -OutDir (Join-Path $OutDir $s) | Write-Host
+            if ($LASTEXITCODE -ne 0) { Fail "base-layer scope '$s' failed (exit $LASTEXITCODE)" }
+        }
+
+        # ---- M1 completeness axis (from the frozen denominator registry) ----
+        $rows = Load-Binding
+        $corpus = @($rows | Where-Object ns -eq 'corpus')
+        $scenario = @($rows | Where-Object ns -eq 'scenario')
+        $greenCells = 0; $totalCells = 0; $blockers = @{}
+        foreach ($r in $corpus) {
+            foreach ($p in 'ac', 'av', 'avm', 'a2r') {
+                $totalCells++
+                $v = $r.$p
+                $isGreen = switch ($p) {
+                    'a2r' { $v -in @('ok', 'ok-emit') }   # snapshot-only needs behavior cert for M1
+                    default { $v -eq 'ok' }
+                }
+                if ($isGreen) { $greenCells++ }
+                elseif ($v -match '^(gap|wait):([^|]+)') {
+                    $owner = $Matches[2]; $blockers[$owner] = ($blockers[$owner] + 1)
+                }
+                else { $blockers['semantic-difference'] = ($blockers['semantic-difference'] + 1) }
+            }
+        }
+        $scenarioOpen = @($scenario | Where-Object { $_.ac -notmatch '^ok' -or $_.av -notmatch '^ok' }).Count
+
+        # The frozen four-path baseline must carry valid certificates.
+        $certDir = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/oracle/certs'
+        foreach ($b in @('m1_b01', 'm1_b02', 'm1_b04', 'm1_b09')) {
+            if (-not (Test-Path (Join-Path $certDir "$b.cert.json"))) {
+                Fail "baseline certificate missing: $b.cert.json (four-path baseline needs certified a2r)"
+            }
+        }
+
+        Write-Host ""
+        Write-Host "==== two-axis verdict ====" -ForegroundColor Cyan
+        Write-Host "BASE-LAYER (852 acceptance): PASS — contract/source/snapshot/certify/lifecycle" `
+            "all green; frozen baseline B01/B02/B04/B09 four-path with valid certificates."
+        Write-Host "M1 COMPLETENESS: NOT claimable from this gate — corpus path-cells green:" `
+            "$greenCells/$totalCells; scenario rows fully open: $scenarioOpen/$($scenario.Count)." `
+            "Registered blockers by owner/cause:" 
+        foreach ($k in ($blockers.Keys | Sort-Object)) { Write-Host ("  {0}: {1} cell(s)" -f $k, $blockers[$k]) }
+        Write-Host "Base-layer PASS does not imply M1 green; full M1 needs every required row" `
+            "real on all four paths (owners: 822/823/824, a2r composite lowering, native" `
+            "expansion + online loader, legacy semantic rulings)."
+        exit 0
     }
 }
