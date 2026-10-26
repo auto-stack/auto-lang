@@ -17,9 +17,9 @@ Review raw JSON/log files are retained with committed .json.txt/.log.txt transpo
 ## Checkpoints
 
 - prepared: R3 baseline/dependencies/frozen delta and all gate inputs verified. Git wt-guard reports clean before landing. Actual gate audit: validated.json.txt; immutable payload/raw source bindings: evidence-index.json.txt.
-- landed: pending.
-- ledger_refreshed: pending.
-- archived: pending.
+- landed: source523d27b86 ->05fdc81c5 exact ff-only on autographics-dev. Canonical248eaf1be and ledger29688a77d ff-only on master; source absent from master. No rebase/hash mapping needed.
+- ledger_refreshed: guarded offline projection, no store writer reachable; version97 ->98, eight targeted IDs, 1258 unrelated raw items unchanged. Backup/schema/readback guards pass; no store success claimed.
+- archive preparation: delivered8/9; actual archive commit/reference check before cleanup.
 - cleaned: pending.
 
 No root Cargo tier used as a per-plan experimental gate; independent due-triggered batch follows cleanup. No production deployment, new M2 feature, Grid/navigation or production I2/I3 completion claimed. S0 completion is distinct from M2 delivery.
