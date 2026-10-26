@@ -5,3 +5,5 @@ Stage: merge. Frozen reviewed source6bb85f354e718f6541256f4b3d75ca97af75b8c4; so
 R849-NATIVE-CLOCK: inherited spatial probe phase4 waits for80 input ticks but does not resume legitimate runtime clock auto-Pause. One consumer dash3d-short reopened process paused after8ticks due backlog>4; unchanged binary full isolated14+4 retry passed. Geometry and original timing guard unmodified. Follow-up verifier recovery is a debt candidate, not a waived test.
 
 Prepared gate baseline verified; fresh guard clean. Landing/canonical/ledger/archive/cleanup pending.
+
+Landed source6bb85f354 on autographics-dev, canonical8087a6bbd and ledgerfa7711d02/v92 on master; 15 projected items/1227 untouched verified. Archive actual-state validation and guard cleanup pending.

@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-849
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: AutoGraphics有限AABB扫掠与遇障停止
 author: [Codex]
 created_at: 2026-10-25
@@ -33,7 +34,7 @@ affects: [auto-graphics, authoring-experimental, swept-aabb]
 
 新增显式`autographics.behavior/4`及profile10，沿用受检AABB代理、Auto求交和原整帧准入。原v1/v2/v3源身份/保留名及既有语义不变，scene4只增加可接受的Binding.api。扫掠只查询，不移动节点；样例停止/留隙是用户Auto逻辑。滑动、重力、刚体和通用角色控制器留待后继。
 
-本次只制定草案。核对期间848由executing1/10更新为r2 execution_done8/10，work报告完成，独立最终review和merge仍pending。849以848最终正式交付为前置，不以在途candidate充当实施基面。未实施、建树、提交、运行构建或测试。
+当前交付：源码6bb85f354已快进autographics-dev；独立final review及冻结81组完整门通过，producer/consumer各247tests；15项canonical目标与ledger15项/v92已落主分支。下文旧草案/work/review/失败状态均为历史记录，当前归档后仅guard清理pending。
 
 ## 1. 目标
 
@@ -78,9 +79,9 @@ L1实验driver局部增量，只写`experimental/autographics-auto-driver/`，�
 
 用户2026-10-25要求“848已经快实施完了，请规划本路线的下一个计划”，授权调查与落一份后继合同；没有本轮实施/合并、新建chat或SDK扩面授权。按滚动规划，只取849一个编号。
 
-已读[全局overview](../specs/overview.md)、[图形overview](../specs/auto-graphics/overview.md)、[空间查询](../specs/auto-graphics/spatial-query-profile.md)、[行为API](../specs/auto-graphics/behavior-api.md)、[行为项目](../specs/auto-graphics/behavior-project.md)、[Play](../specs/auto-graphics/scene-play-session.md)、[资产](../specs/auto-graphics/scene-assets.md)、[集成边界](../specs/auto-graphics/integration-contract.md)、[848合同](848-autographics-segment-casts-and-nearest-hit-interactions.md)及其候选feasibility/handoff。固定Git对象及文档hash见[来源清单](attachments/849/planning/source-observation.json.txt)。
+已读[全局overview](../../specs/overview.md)、[图形overview](../../specs/auto-graphics/overview.md)、[空间查询](../../specs/auto-graphics/spatial-query-profile.md)、[行为API](../../specs/auto-graphics/behavior-api.md)、[行为项目](../../specs/auto-graphics/behavior-project.md)、[Play](../../specs/auto-graphics/scene-play-session.md)、[资产](../../specs/auto-graphics/scene-assets.md)、[集成边界](../../specs/auto-graphics/integration-contract.md)、[848合同](848-autographics-segment-casts-and-nearest-hit-interactions.md)及其候选feasibility/handoff。固定Git对象及文档hash见[来源清单](../attachments/849/planning/source-observation.json.txt)。
 
-设计沿[Design45](../design/45-autographics-wgpu-engine-and-game-prototypes.md)既有有限游戏/Auto能力路线；完整AutoUI/默认设计、Schema/841/ACE/HMR按后继分期，849不依赖未交付生产端口。847是另一条可选测试feature修复，不是本路线功能前置；批量回归状态由收尾按实际收据判断。
+设计沿[Design45](../../design/45-autographics-wgpu-engine-and-game-prototypes.md)既有有限游戏/Auto能力路线；完整AutoUI/默认设计、Schema/841/ACE/HMR按后继分期，849不依赖未交付生产端口。847是另一条可选测试feature修复，不是本路线功能前置；批量回归状态由收尾按实际收据判断。
 
 ### 4.2 真实路径与缺口
 
@@ -220,7 +221,7 @@ T-08给准确merge矩阵和Spec proposal；T-09独立final pass后，T-10在冻�
 
 ## 8. 执行步骤
 
-当前reviewed9/10，G848/GSTART/GSOURCE关闭，T-01..08完成并提交6bb85f354；T-09独立最终复审pass，完整merge门pending。T-10真实收尾才10/10；唯一849树保持冻结，尚未合入。
+当前归档9/10，G848/GSTART/GSOURCE关闭，T-01..09完成；冻结完整门、源码落地、canonical/ledger已验证，T-10仅guard清理待完成。
 
 | task_id | owner_stage | 依赖 | 实际触点/拟新增路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -239,7 +240,7 @@ T-08给准确merge矩阵和Spec proposal；T-09独立final pass后，T-10在冻�
 
 2026-10-25：stage:new；PLAN-849 revision1；outcome:blocked（G848正式交付pending，草案可评审）；next:848完成独立验收/冻结合入和知识收尾，再按后续work指令由849 T-01冻结正式基面、T-02验证有界可行性。changed:T-01..10、AC-01..10、V-01..12、SD-01..04；drafting0/10。
 
-规划静态检查见[preflight](attachments/849/planning/preflight.md)。本轮无代码/依赖/Spec/ledger修改、worktree创建、运行测试/构建或agent/chat分派；未改848合同/进度。候选与簿记不同步如实记录，不替848补勾选。新接口/fixture/期望为未来合同，静态pass不表示可越过G848实施。
+规划静态检查见[preflight](../attachments/849/planning/preflight.md)。本轮无代码/依赖/Spec/ledger修改、worktree创建、运行测试/构建或agent/chat分派；未改848合同/进度。候选与簿记不同步如实记录，不替848补勾选。新接口/fixture/期望为未来合同，静态pass不表示可越过G848实施。
 
 ### 2026-10-26 work T-01关闭 / T-02执行入口
 
@@ -263,9 +264,9 @@ work发现F849-local-nonfinite：local NaN初报Arithmetic12，永久反例要�
 
 ### 2026-10-26 independent final review R1 — pass / reviewed9/10
 
-stage:review | review_scope:final | reviewer_identity:/root/review_849_final_r1（独立子上下文，未参与实施；模型身份未暴露） | plan_id:PLAN-849 | plan_revision:1 | outcome:pass | worktree_path:D:/autostack/.wt/lang-849/auto-lang | branch:plan-849-dev | reviewed_commit:6bb85f354e718f6541256f4b3d75ca97af75b8c4 | base_commit:dd7076a7f40b35ffda6b876c36f826af3443fb97 | implementation_clean:true（入口/结论均核） | dependency_revisions:SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467、三锁/source-lock匹配冻结值、AGP未变 | spec_inputs:canonical逐文件SHA见[baseline](attachments/849/review-r1-final/baseline.json.txt) | spec_delta_sha256:5c9844c4674579115e39807544cec6de5ba83d0b3eca9a89dc230911d2d03099（[冻结副本](attachments/849/review-r1-final/spec-delta-frozen.md)） | acceptance_results:AC-01..08 pass、AC-09 pass；AC-10 pending merge | findings:none | next:merge-owned冻结完整门，暂不合并。
+stage:review | review_scope:final | reviewer_identity:/root/review_849_final_r1（独立子上下文，未参与实施；模型身份未暴露） | plan_id:PLAN-849 | plan_revision:1 | outcome:pass | worktree_path:D:/autostack/.wt/lang-849/auto-lang | branch:plan-849-dev | reviewed_commit:6bb85f354e718f6541256f4b3d75ca97af75b8c4 | base_commit:dd7076a7f40b35ffda6b876c36f826af3443fb97 | implementation_clean:true（入口/结论均核） | dependency_revisions:SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467、三锁/source-lock匹配冻结值、AGP未变 | spec_inputs:canonical逐文件SHA见[baseline](../attachments/849/review-r1-final/baseline.json.txt) | spec_delta_sha256:5c9844c4674579115e39807544cec6de5ba83d0b3eca9a89dc230911d2d03099（[冻结副本](../attachments/849/review-r1-final/spec-delta-frozen.md)） | acceptance_results:AC-01..08 pass、AC-09 pass；AC-10 pending merge | findings:none | next:merge-owned冻结完整门，暂不合并。
 
-完整逐项AC→T→路径/断言/证据及SD-01..04、遗漏/延后/workaround/健康审查见[独立review](attachments/849/review-r1-final/review.md)，机器收据见[receipt](attachments/849/review-r1-final/receipt.json.txt)。新执行28项定向测试/36组方向偏心混轴holdout/681SDK+402source+479metadata闭包通过；原生3D改源保存新进程重开通过，漏part反控phase5像素oracle拒绝；20轮实际owner/warm counter AND双画布内容及最后pin释放通过。复核work原14主例+4reopen、6owner反控/恢复和样例/旧兼容raw，复用边界与未变身份明确，不把work raw重标独立运行。原77唯一命令组无遗漏，新增4组全pending，原87graphics及AGP163/16native分母保持。独立runner因定向cargo重新构建，hash656e8c35…，与work2591a08e…分别记录；均不冒称完整merge门。
+完整逐项AC→T→路径/断言/证据及SD-01..04、遗漏/延后/workaround/健康审查见[独立review](../attachments/849/review-r1-final/review.md)，机器收据见[receipt](../attachments/849/review-r1-final/receipt.json.txt)。新执行28项定向测试/36组方向偏心混轴holdout/681SDK+402source+479metadata闭包通过；原生3D改源保存新进程重开通过，漏part反控phase5像素oracle拒绝；20轮实际owner/warm counter AND双画布内容及最后pin释放通过。复核work原14主例+4reopen、6owner反控/恢复和样例/旧兼容raw，复用边界与未变身份明确，不把work raw重标独立运行。原77唯一命令组无遗漏，新增4组全pending，原87graphics及AGP163/16native分母保持。独立runner因定向cargo重新构建，hash656e8c35…，与work2591a08e…分别记录；均不冒称完整merge门。
 
 无实现/依赖/规范/ledger修改，无新增合同内finding或债务候选；主检出其他WIP保留。T-09关闭，status reviewed/current_step9/total10；T-10保持开放。完整locked driver/AGP必要面/原生/owner/fresh own-SDK-own-target consumer等81组、autographics-dev落地、Spec/ledger/归档/guard/批量到期归因均merge-owned pending；这些门通过前不得宣称交付。未运行root t/tv/tt/tb/tu/taa/tf/docs_gen、完整driver或AGP套件，未合并/发布/清理。
 
@@ -277,7 +278,7 @@ stage:review | review_scope:final | reviewer_identity:/root/review_849_final_r1�
 
 ### 2026-10-26 merge:r1 gates verified — landing pending
 
-冻结6bb85f354未改源码/依赖/测试/阈值。producer与fresh own-SDK/empty-target consumer完整各247 tests，81当前命令组、两边旧原生/owner及新增sweep14主例+4reopen/6owner反控+恢复通过，审计见[validated](attachments/849/merge-r1/validated.json.txt)。AGP未变23槽163tests/16native明确复用，不冒称新运行。首次输入受扰、一次临时链接错误和consumer sweep重开clock backlog auto-Pause超时均留档；后者同binary隔离完整矩阵重测通过，R849-NATIVE-CLOCK作为验证器稳定性风险保留，非产品geometry/CPU故障；未放宽时钟守护。直接键鼠原生阶段结束。git guard clean。源码快进/15项canonical与ledger/实际归档及清理仍pending，当前reviewed9/10。
+冻结6bb85f354未改源码/依赖/测试/阈值。producer与fresh own-SDK/empty-target consumer完整各247 tests，81当前命令组、两边旧原生/owner及新增sweep14主例+4reopen/6owner反控+恢复通过，审计见[validated](../attachments/849/merge-r1/validated.json.txt)。AGP未变23槽163tests/16native明确复用，不冒称新运行。首次输入受扰、一次临时链接错误和consumer sweep重开clock backlog auto-Pause超时均留档；后者同binary隔离完整矩阵重测通过，R849-NATIVE-CLOCK作为验证器稳定性风险保留，非产品geometry/CPU故障；未放宽时钟守护。直接键鼠原生阶段结束。git guard clean。源码快进/15项canonical与ledger/实际归档及清理仍pending，当前reviewed9/10。
 
 ## 10. 待澄清事项
 
@@ -288,3 +289,9 @@ stage:review | review_scope:final | reviewer_identity:/root/review_849_final_r1�
 ### 2026-10-26 work 启动记录
 
 用户明确授权实施，GSTART关闭。848 archive最终pass及cleaned收据已核，G848关闭。唯一工作树 D:/autostack/.wt/lang-849/auto-lang，branch plan-849-dev，base/current dd7076a7f40b35ffda6b876c36f826af3443fb97（正式autographics-dev）。主检出既有文档及未跟踪锁文件保留。首次verify-only因新树尚无.sdk-source失败；随后按原prepare_sdk从固定Git对象恢复，681文件/17本地包验证通过。verify_source通过374源/资产hash、479包/29路径边、forbidden=0。未修改实现、未运行Cargo；T-01尚需完整冻结记录，T-02..08未实施，保持0/10，不构成ready-for-review。下一责任角色work，同树继续。
+
+### 2026-10-26 merge:r1 publication verified, cleanup pending
+
+stage:merge | plan_id:PLAN-849 | plan_revision:1 | outcome:delivery_verified_cleanup_pending | source_branch:autographics-dev | source_commit:6bb85f354e718f6541256f4b3d75ca97af75b8c4 | canonical_commit:8087a6bbd6bc81518e469e0a65592a856b4caf3d | ledger_commit:fa7711d0222c9e9852f56eb32fe986fa16dab45e | ledger_version:92 | ledger_channel:guarded offline projection, no store writer reachable | canonical_targets:15 (INDEX regeneration unchanged) | ledger_items:15 | untouched_items:1227 | archived:true | cleaned:pending。
+
+实际15目标及SD01..04对照、台账六section/字段/hash/链接/读回、主检出无关WIP保留见[规范审计](../attachments/849/merge-r1/canonical-review.md)、[知识落地](../attachments/849/merge-r1/knowledge-landed.json.txt)、[投影](../attachments/849/merge-r1/ledger-projection.json.txt)。源码只入autographics-dev；原生二进制独立留存。R849-NATIVE-CLOCK已入KNOWN-DEBT-AND-RISKS；相同binary完整隔离重测通过，无时钟阈值放宽，原失败保留。原始JSON/scene以字节一致sidecar保存见[manifest](../attachments/849/merge-r1/raw-sidecars.json.txt)。实际归档状态核验及提交后才移除工作树。
