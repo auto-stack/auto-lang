@@ -957,20 +957,15 @@ impl<'a> Verifier<'a> {
             color[root] = GRAY;
             while let Some((node, cur)) = stack.last_mut() {
                 self.tick(1)?;
-                let fields = match &self.module.types[*node] {
-                    MirType::Record(r) => &r.fields,
-                    _ => {
-                        color[*node] = BLACK;
-                        stack.pop();
-                        continue;
-                    }
-                };
+                // F822-R9-02: the EDGE SET drives every node kind — the
+                // old Record-only filter here blacked Variants out before
+                // this match could extract their payload edges, so a
+                // by-value Variant cycle passed the gate.
                 let edges: Vec<TypeIdx> = match &self.module.types[*node] {
                     MirType::Record(r) => r.fields.iter().map(|f| f.ty).collect(),
                     MirType::Variant(v) => v.arms.iter().filter_map(|a| a.payload).collect(),
                     _ => vec![],
                 };
-                let _ = fields;
                 if *cur >= edges.len() {
                     color[*node] = BLACK;
                     stack.pop();

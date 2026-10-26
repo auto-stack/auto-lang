@@ -151,7 +151,12 @@ $REQ = @{
         'av_collections_822_semantics_clone_owned_elements_independent',
         'av_collections_822_semantics_clone_variant_payload_independent',
         'av_collections_822_semantics_clone_nth_item_failure_rolls_back',
-        'av_collections_822_semantics_clone_budget_both_sides',
+        'av_collections_822_semantics_clone_budget_both_sides'
+        'av_collections_822_semantics_variant_self_cycle_rejected',
+        'av_collections_822_semantics_variant_indirect_cycle_rejected',
+        'av_collections_822_semantics_nested_variant_clone_control',
+        'av_collections_822_semantics_clone_cancel_mid_traversal',
+        'av_collections_822_semantics_clone_wall_mid_traversal',
         'av_collections_822_semantics_place_get_wrong_type_rejected',
         'av_collections_822_semantics_place_set_wrong_type_rejected',
         'av_collections_822_semantics_place_mint_binds_referent',

@@ -653,70 +653,108 @@ fn owned_alloc_precheck(
 /// turns any contract violation into a controlled infra rejection instead
 /// of a stack overflow (F821-R1-06). Fuel (bytes + fields) is charged by
 /// the CALLER before the walk — the budget check bounds the traversal.
-fn clone_owned_value(val: &Value, arena: &crate::owned_text::StrArena) -> Result<Value, u64> {
-    // F821-R2/F06 close: EXPLICIT-STACK deep clone — no host recursion and
-    // NO language depth cutoff (the R1 cap wrongly rejected legal deep
-    // type chains; MIR type-graph depth is bounded by the admission table
-    // budgets). The walk is bounded by the byte+field fuel the CALLER
-    // charged before it. Scheme: (1) FLATTEN the value graph with an
-    // explicit DFS worklist into a post-order slot table (each record
-    // gets child slot ids); (2) assemble leaves-first so every child is
-    // cloned before its parent reads it.
-    // The flatten above loses record Leave ordering; use the SIMPLE
-    // two-phase scheme instead: phase 1 walks with an explicit stack
-    // building a POST-ORDER plan; phase 2 executes the plan.
-    #[derive(Clone, Copy)]
-    enum Op<'a> {
-        Visit(usize, &'a Value), // (parent id or MAX, value)
-        Assemble(usize, u32),    // (node id, record type)
+fn clone_owned_value(
+    val: &Value,
+    arena: &crate::owned_text::StrArena,
+    cancel: &CancelFlag,
+    wall_budget: std::time::Duration,
+) -> Result<Value, ExecOutcome> {
+    // F821-R2/F06 + F822-R9-01: EXPLICIT-STACK deep clone — no host
+    // recursion for ANY supported kind and NO language depth cutoff.
+    // Phase 1 flattens the value graph with an explicit DFS worklist over
+    // OWNED SHALLOW SNAPSHOTS (a Value clone is an Rc/handle bump, never
+    // a content copy), so RefCell borrows never ride the plan; Record
+    // fields, List elements and Variant payloads (nested Variants
+    // included) are all children. Phase 2 assembles leaves-first: a
+    // child's parent id is always SMALLER, so REVERSE id order has every
+    // child ready when its parent reads it. Both loops poll CANCEL, the
+    // WALL deadline and count fuel every node (the same
+    // CANCEL_CHECK_INTERVAL cadence as the dispatch loop), so the clone's
+    // work is interruptible mid-traversal (§5.1.6/§5.4); any abort drops
+    // the partial assembly and every minted buffer frees through the
+    // ledger — nothing half-committed.
+    struct Node {
+        src: Value,
+        parent: usize, // usize::MAX for the root
     }
-    // node table built during planning
-    let mut srcs: Vec<&Value> = Vec::new();
-    let mut kids: Vec<Vec<usize>> = Vec::new();
-    let mut plan: Vec<Op> = vec![Op::Visit(usize::MAX, val)];
-    while let Some(op) = plan.pop() {
-        match op {
-            Op::Visit(parent, v) => {
-                let id = srcs.len();
-                srcs.push(v);
-                kids.push(Vec::new());
-                if parent != usize::MAX {
-                    kids[parent].push(id);
+    let started = std::time::Instant::now();
+    let mut visited: u64 = 0;
+    macro_rules! poll {
+        () => {{
+            visited += 1;
+            if visited % crate::contract::CANCEL_CHECK_INTERVAL == 0 {
+                if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                    return Err(ExecOutcome::Cancelled);
                 }
-                if let Value::Record(r) = v {
-                    // children first (pushed reversed so they pop in
-                    // declaration order), THEN the assemble marker.
-                    // (List/Variant elements live behind RefCell borrows
-                    // that cannot ride the plan — they are cloned at
-                    // ASSEMBLY time below, one visitor call per element;
-                    // the frozen element domain forbids nested lists, so
-                    // that per-element recursion is exactly one level.)
-                    plan.push(Op::Assemble(id, r.ty));
-                    for f in r.fields.iter().rev() {
-                        plan.push(Op::Visit(id, f));
-                    }
+                if started.elapsed() > wall_budget {
+                    return Err(ExecOutcome::Resource {
+                        kind: ResourceKind::ExecutionWall,
+                        message: "deep clone exceeded the execution wall budget".to_string(),
+                    });
                 }
             }
-            Op::Assemble(id, ty) => {
-                let _ = ty;
-                let _ = id;
-                // assembly happens in execution phase below
+        }};
+    }
+    let mut nodes: Vec<Node> = Vec::new();
+    let mut stack: Vec<(usize, Value)> = vec![(usize::MAX, val.clone())];
+    while let Some((parent, v)) = stack.pop() {
+        poll!();
+        let id = nodes.len();
+        match &v {
+            // Children are pushed REVERSED so the LIFO worklist pops them
+            // in DECLARATION order — the child_list built below therefore
+            // preserves field/element order.
+            Value::Record(r) => {
+                for f in r.fields.iter().rev() {
+                    stack.push((id, f.clone()));
+                }
             }
+            Value::List(h) => {
+                let buf = h.rc.borrow();
+                for e in buf.elems.iter().rev() {
+                    stack.push((id, e.clone()));
+                }
+            }
+            Value::Variant(var) => {
+                if let Some(pl) = var.payload.as_ref() {
+                    stack.push((id, pl.as_ref().clone()));
+                }
+            }
+            _ => {}
+        }
+        nodes.push(Node { src: v, parent });
+    }
+    // Phase 2: children have LARGER ids than their parent (the DFS
+    // pushes children with the just-allocated id). Assemble in reverse id
+    // order; a parent consumes its children by scanning the parent map.
+    let mut out: Vec<Option<Value>> = vec![None; nodes.len()];
+    let mut next_child: Vec<usize> = vec![usize::MAX; nodes.len()];
+    // next_child[id] = the SMALLEST node index whose parent == id (they
+    // are NOT contiguous — sibling subtrees interleave — so each parent
+    // keeps a cursor into a per-parent child list).
+    let mut child_list: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
+    for (k, n) in nodes.iter().enumerate() {
+        if n.parent != usize::MAX {
+            child_list[n.parent].push(k);
         }
     }
-    // Execute: clone in planning order — nodes are appended in
-    // visit-first order, but a parent's children are all planned before
-    // the parent's Assemble... we lost the assemble order. Simplest
-    // correct EXECUTION: process ids in REVERSE planning order — a node
-    // is visited before its children in id order, so reverse order
-    // guarantees children (higher ids) clone first.
-    let mut out: Vec<Option<Value>> = vec![None; srcs.len()];
-    for id in (0..srcs.len()).rev() {
-        let v = srcs[id];
-        out[id] = Some(match v {
-            Value::Str(h) => Value::Str(arena.try_alloc(h.bytes())?),
+    for id in 0..nodes.len() {
+        next_child[id] = 0; // cursor into child_list[id]
+    }
+    for id in (0..nodes.len()).rev() {
+        poll!();
+        let v = nodes[id].src.clone();
+        let assembled = match &v {
+            Value::Str(h) => match arena.try_alloc(h.bytes()) {
+                Ok(nh) => Value::Str(nh),
+                Err(n) => {
+                    return Err(ExecOutcome::Infra(format!(
+                        "fault-injected at owned allocation attempt #{n}"
+                    )))
+                }
+            },
             Value::Record(r) => {
-                let fields: Vec<Value> = kids[id]
+                let fields: Vec<Value> = child_list[id]
                     .iter()
                     .map(|k| out[*k].take().expect("child cloned first"))
                     .collect();
@@ -725,32 +763,25 @@ fn clone_owned_value(val: &Value, arena: &crate::owned_text::StrArena) -> Result
                     fields,
                 }))
             }
-            // F822-R8-01: a deep-cloned list lives in its OWN freshly
-            // ledgered buffer (arena mint, fault seam; later structural
-            // changes cannot reach the source). Every element clones
-            // independently — one visitor call each; the frozen element
-            // domain forbids nested lists, so the per-element recursion
-            // is exactly one level. A mid-clone fault leaves nothing
-            // half-committed: the partial assembly drops and every minted
-            // buffer frees through the ledger.
-            Value::List(h) => {
-                let buf = h.rc.borrow();
-                let mut elems = Vec::with_capacity(buf.elems.len());
-                for e in buf.elems.iter() {
-                    elems.push(clone_owned_value(e, arena)?);
-                }
-                drop(buf);
+            Value::List(_) => {
+                let elems: Vec<Value> = child_list[id]
+                    .iter()
+                    .map(|k| out[*k].take().expect("child cloned first"))
+                    .collect();
                 let cap = elems.len();
-                Value::List(arena.try_alloc_list(elems, cap)?)
+                match arena.try_alloc_list(elems, cap) {
+                    Ok(h) => Value::List(h),
+                    Err(n) => {
+                        return Err(ExecOutcome::Infra(format!(
+                            "fault-injected at owned allocation attempt #{n}"
+                        )))
+                    }
+                }
             }
-            // F822-R8-01: a deep-cloned variant keeps the live arm and
-            // its independently cloned payload (same one-level rule —
-            // the payload domain forbids nested lists).
             Value::Variant(var) => {
-                let payload = match var.payload.as_ref() {
-                    Some(p) => Some(Box::new(clone_owned_value(p, arena)?)),
-                    None => None,
-                };
+                let payload = child_list[id]
+                    .first()
+                    .map(|k| Box::new(out[*k].take().expect("child cloned first")));
                 Value::Variant(crate::contract::VariantValue {
                     ty: var.ty,
                     disc: var.disc,
@@ -758,8 +789,10 @@ fn clone_owned_value(val: &Value, arena: &crate::owned_text::StrArena) -> Result
                 })
             }
             other => other.clone(),
-        });
+        };
+        out[id] = Some(assembled);
     }
+    let _ = &mut next_child;
     Ok(out[0].take().expect("root cloned"))
 }
 
@@ -1581,13 +1614,13 @@ fn dispatch<V: ModuleView>(
                     // visits every field — byte- and field-scaled fuel
                     // (contract-decision §4: CLONE 按输出字节数计量).
                     st.steps += new_size as u64 + visited;
-                    let cloned = match clone_owned_value(&sv, &st.arena) {
+                    // F822-R9-01: the traversal carries its own in-loop
+                    // cancel/wall/fuel polls — Cancelled and wall-budget
+                    // outcomes surface HERE, mid-clone, with the partial
+                    // assembly fully unwound.
+                    let cloned = match clone_owned_value(&sv, &st.arena, &cancel, limits.wall) {
                         Ok(v) => v,
-                        Err(n) => {
-                            return Some(ExecOutcome::Infra(format!(
-                                "fault-injected at owned allocation attempt #{n}"
-                            )))
-                        }
+                        Err(out) => return Some(out),
                     };
                     if let Err(out) = commit_slot_write(st, *dst as usize, cloned, limits) {
                         return Some(out);

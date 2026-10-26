@@ -2955,3 +2955,388 @@ fn av_collections_822_semantics_clone_budget_both_sides() {
     assert_eq!(arena.live(), 0);
     assert_eq!(arena.alloc_events().len(), arena.free_events().len());
 }
+
+/// A legal collections whole-module base for the R9 probes:
+/// 0=i32 1=bool 2=Str, main() -> i32 with placeholder slots.
+fn r9_base() -> MirModule {
+    let mut m = MirModule::new_collections(OwnerScope {
+        schema: auto_av_core::contract::MIR_COLLECTIONS_SCHEMA.to_string(),
+        module: "collections822".to_string(),
+    });
+    m.types = vec![MirType::I32, MirType::Bool, MirType::Str];
+    let sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: vec![],
+        result: 0,
+    }));
+    let c0 = m.intern_const(MirConst::I32(0)) as u32;
+    m.funcs = vec![MirFunction {
+        owner: m.owner.clone(),
+        name: "main".to_string(),
+        sig,
+        slots: vec![MirSlot {
+            kind: SlotKind::Local,
+            ty: 0,
+            name: Some("r".into()),
+        }],
+        blocks: vec![MirBlock {
+            instrs: vec![MirInstr::Const { dst: 0, value: c0 }],
+            term: Terminator::Return { value: 0 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+    }];
+    m.entry = 0;
+    m
+}
+
+// -- F822-R9-01/02: acyclic Variant admission + bounded clone traversal --
+
+/// F822-R9-02 replay: a nominal SELF-REFERENTIAL Variant type — even as
+/// an UNUSED table entry on an otherwise legal module — is rejected at
+/// the MIR gate and at the ABC credential (both run the walker).
+#[test]
+fn av_collections_822_semantics_variant_self_cycle_rejected() {
+    let mut m = r9_base();
+    m.intern_type(MirType::Variant(auto_av_core::mir::VariantTypeRef {
+        owner_module: "collections822".to_string(),
+        name: "Recursive".to_string(),
+        arms: vec![
+            auto_av_core::mir::VariantArm {
+                name: "End".into(),
+                payload: None,
+            },
+            // The payload index is filled AFTER interning (self reference).
+        ],
+    }));
+    // Self-reference: point arm 1's payload at the just-interned slot.
+    let self_idx = (m.types.len() - 1) as u32;
+    if let MirType::Variant(v) = &mut m.types[self_idx as usize] {
+        v.arms.push(auto_av_core::mir::VariantArm {
+            name: "Next".into(),
+            payload: Some(self_idx),
+        });
+    }
+    match verify_mir(&m) {
+        Err(auto_av_core::mir_verify::MirVerifyError::Invalid { code, .. }) => {
+            assert_eq!(code, "mir.type-cycle");
+        }
+        other => panic!("a self-referential Variant must be refused: {other:?}"),
+    }
+    // The wire encodes structurally; the ABC credential refuses (its
+    // verification runs the same walker).
+    m.funcs[0].source_snapshot = 1; // keep the module otherwise legal
+    let wire = encode_abc(&m).expect("encode is structural");
+    match verify_abc_bytes(&wire.to_flat(), &m.owner) {
+        Err(auto_av_core::abc_verify::AbcAdmissionError::Verify(
+            auto_av_core::mir_verify::MirVerifyError::Invalid { code, .. },
+        )) => assert_eq!(code, "mir.type-cycle"),
+        other => panic!("the ABC credential must refuse the cycle: {other:?}"),
+    }
+}
+
+/// Indirect cycles across two Variants (A→B→A), with the table order
+/// REVERSED (B declared before A) — the walker catches it regardless of
+/// declaration order.
+#[test]
+fn av_collections_822_semantics_variant_indirect_cycle_rejected() {
+    let mut m = r9_base();
+    // B first (its payload references A, declared after).
+    let b_idx = m.intern_type(MirType::Variant(auto_av_core::mir::VariantTypeRef {
+        owner_module: "collections822".to_string(),
+        name: "VB".to_string(),
+        arms: vec![auto_av_core::mir::VariantArm {
+            name: "S".into(),
+            payload: None,
+        }],
+    })) as u32;
+    let a_idx = m.intern_type(MirType::Variant(auto_av_core::mir::VariantTypeRef {
+        owner_module: "collections822".to_string(),
+        name: "VA".to_string(),
+        arms: vec![auto_av_core::mir::VariantArm {
+            name: "ToB".into(),
+            payload: Some(b_idx),
+        }],
+    })) as u32;
+    if let MirType::Variant(v) = &mut m.types[b_idx as usize] {
+        v.arms[0].payload = Some(a_idx); // B → A → B
+    }
+    match verify_mir(&m) {
+        Err(auto_av_core::mir_verify::MirVerifyError::Invalid { code, .. }) => {
+            assert_eq!(code, "mir.type-cycle")
+        }
+        other => panic!("an indirect Variant cycle must be refused: {other:?}"),
+    }
+}
+
+/// F822-R9-02/01 positive control: a THREE-LAYER acyclic nested Variant
+/// admits at both gates, executes, and CLONES correctly through the
+/// explicit visitor (the reviewer's acyclic control).
+#[test]
+fn av_collections_822_semantics_nested_variant_clone_control() {
+    let mut m = r9_base();
+    // Innermost: Opt0 = { None, Some(Str) }
+    let t0 = m.intern_type(MirType::Variant(auto_av_core::mir::VariantTypeRef {
+        owner_module: "collections822".to_string(),
+        name: "Opt0".to_string(),
+        arms: vec![
+            auto_av_core::mir::VariantArm {
+                name: "None".into(),
+                payload: None,
+            },
+            auto_av_core::mir::VariantArm {
+                name: "Some".into(),
+                payload: Some(2),
+            },
+        ],
+    })) as u32;
+    let t1 = m.intern_type(MirType::Variant(auto_av_core::mir::VariantTypeRef {
+        owner_module: "collections822".to_string(),
+        name: "Opt1".to_string(),
+        arms: vec![
+            auto_av_core::mir::VariantArm {
+                name: "None".into(),
+                payload: None,
+            },
+            auto_av_core::mir::VariantArm {
+                name: "Some".into(),
+                payload: Some(t0),
+            },
+        ],
+    })) as u32;
+    let t2 = m.intern_type(MirType::Variant(auto_av_core::mir::VariantTypeRef {
+        owner_module: "collections822".to_string(),
+        name: "Opt2".to_string(),
+        arms: vec![
+            auto_av_core::mir::VariantArm {
+                name: "None".into(),
+                payload: None,
+            },
+            auto_av_core::mir::VariantArm {
+                name: "Some".into(),
+                payload: Some(t1),
+            },
+        ],
+    })) as u32;
+    let c_s = m.intern_const(MirConst::Str(Box::from(*b"deep"))) as u32;
+    let c0 = m.intern_const(MirConst::I32(0)) as u32;
+    // main: pack Opt0(Some "deep") → Opt1(Some) → Opt2(Some); clone the
+    // Opt2; switch the ORIGINAL to None; the clone still disc 1.
+    m.funcs[0] = MirFunction {
+        owner: m.owner.clone(),
+        name: "main".to_string(),
+        sig: m.funcs[0].sig,
+        slots: vec![
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: 2,
+                name: Some("s".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t0,
+                name: Some("o0".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t1,
+                name: Some("o1".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t2,
+                name: Some("o2".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t2,
+                name: Some("cl".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: 0,
+                name: Some("disc".into()),
+            },
+        ],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::Const { dst: 0, value: c_s },
+                MirInstr::VariantPack {
+                    dst: 1,
+                    variant_ty: t0,
+                    disc: 1,
+                    payload: Some(0),
+                },
+                MirInstr::VariantPack {
+                    dst: 2,
+                    variant_ty: t1,
+                    disc: 1,
+                    payload: Some(1),
+                },
+                MirInstr::VariantPack {
+                    dst: 3,
+                    variant_ty: t2,
+                    disc: 1,
+                    payload: Some(2),
+                },
+                MirInstr::Clone { dst: 4, src: 3 },
+                MirInstr::VariantSwitch {
+                    root: 3,
+                    disc: 0,
+                    payload: None,
+                },
+                MirInstr::VariantDisc { dst: 5, src: 4 },
+            ],
+            term: Terminator::Return { value: 5 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+    };
+    assert_eq!(success(&m), Value::I32(1), "the clone keeps the deep arm");
+}
+
+/// F822-R9-01: CANCELLATION lands mid-traversal — a large clone (1,501
+/// visitor nodes) with the flag already raised returns Cancelled at the
+/// first in-loop poll; the partial assembly fully unwound (ledger
+/// balanced, live=0).
+#[test]
+fn av_collections_822_semantics_clone_cancel_mid_traversal() {
+    let mut m = r9_base();
+    let t_list = m.intern_type(MirType::List(ListTypeRef { elem: 2 })) as u32;
+    let c_x = m.intern_const(MirConst::Str(Box::from(*b"x"))) as u32;
+    let c0 = m.intern_const(MirConst::I32(0)) as u32;
+    let c5 = m.intern_const(MirConst::I32(5)) as u32;
+    let mut instrs = vec![MirInstr::ListNew {
+        dst: 0,
+        list_ty: t_list,
+        cap: 0,
+    }];
+    for _ in 0..1_500 {
+        // An owned Str element kills its source slot at push — rematerialize
+        // the literal per push (1,500 Str nodes + the list = 1,501 visitors).
+        instrs.push(MirInstr::Const { dst: 1, value: c_x });
+        instrs.push(MirInstr::ListPush { root: 0, value: 1 });
+    }
+    instrs.push(MirInstr::Clone { dst: 2, src: 0 });
+    instrs.push(MirInstr::Const { dst: 3, value: c5 });
+    m.funcs[0] = MirFunction {
+        owner: m.owner.clone(),
+        name: "main".to_string(),
+        sig: m.funcs[0].sig,
+        slots: vec![
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_list,
+                name: Some("l".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: 2,
+                name: Some("v".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_list,
+                name: Some("cl".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: 0,
+                name: Some("r".into()),
+            },
+        ],
+        blocks: vec![MirBlock {
+            instrs,
+            term: Terminator::Return { value: 3 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+    };
+    verify_mir(&m).unwrap_or_else(|e| panic!("{e:?}"));
+    let wire = encode_abc(&m).unwrap();
+    let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap();
+    let cancel = auto_av_core::av::CancelFlag::new(true);
+    let (out, trace) = auto_av_core::av::execute_with_arena(
+        &loaded,
+        &ExecLimits::default(),
+        &cancel,
+        auto_av_core::owned_text::StrArena::new(),
+    );
+    assert!(matches!(out, ExecOutcome::Cancelled), "{out:?}");
+    let arena = trace.arena.expect("arena");
+    assert_eq!(arena.live(), 0, "the partial clone fully unwound");
+    assert_eq!(arena.alloc_events().len(), arena.free_events().len());
+    let _ = c0;
+}
+
+/// F822-R9-01: a zero wall budget hits the SAME in-loop poll — the clone
+/// returns the wall Resource outcome mid-traversal with a clean ledger.
+#[test]
+fn av_collections_822_semantics_clone_wall_mid_traversal() {
+    let mut m = r9_base();
+    let t_list = m.intern_type(MirType::List(ListTypeRef { elem: 2 })) as u32;
+    let c_x = m.intern_const(MirConst::Str(Box::from(*b"x"))) as u32;
+    let c5 = m.intern_const(MirConst::I32(5)) as u32;
+    let mut instrs = vec![MirInstr::ListNew {
+        dst: 0,
+        list_ty: t_list,
+        cap: 0,
+    }];
+    for _ in 0..1_500 {
+        // An owned Str element kills its source slot at push — rematerialize
+        // the literal per push (1,500 Str nodes + the list = 1,501 visitors).
+        instrs.push(MirInstr::Const { dst: 1, value: c_x });
+        instrs.push(MirInstr::ListPush { root: 0, value: 1 });
+    }
+    instrs.push(MirInstr::Clone { dst: 2, src: 0 });
+    instrs.push(MirInstr::Const { dst: 3, value: c5 });
+    m.funcs[0] = MirFunction {
+        owner: m.owner.clone(),
+        name: "main".to_string(),
+        sig: m.funcs[0].sig,
+        slots: vec![
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_list,
+                name: Some("l".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: 2,
+                name: Some("v".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_list,
+                name: Some("cl".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: 0,
+                name: Some("r".into()),
+            },
+        ],
+        blocks: vec![MirBlock {
+            instrs,
+            term: Terminator::Return { value: 3 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+    };
+    verify_mir(&m).unwrap_or_else(|e| panic!("{e:?}"));
+    let wire = encode_abc(&m).unwrap();
+    let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap();
+    let mut limits = ExecLimits::default();
+    limits.wall = std::time::Duration::ZERO;
+    let (out, trace) = execute(&loaded, &limits, &auto_av_core::av::CancelFlag::new(false));
+    assert!(
+        matches!(&out, ExecOutcome::Resource { kind, .. } if *kind == auto_av_core::contract::ResourceKind::ExecutionWall),
+        "{out:?}"
+    );
+    let arena = trace.arena.expect("arena");
+    assert_eq!(arena.live(), 0);
+    assert_eq!(arena.alloc_events().len(), arena.free_events().len());
+}
