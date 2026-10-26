@@ -2507,3 +2507,123 @@ fn av_collections_822_semantics_helper_roundtrip_then_update_supported() {
     let _ = c0;
     assert_eq!(success(&m), Value::I32(9));
 }
+
+// -- F822-R7-01: retained Place root matrices pay the analysis budget ---
+
+/// The reviewer's memory-probe shape: one whole-module function builds
+/// List<i32>[7], mints `count` Place<i32> locals over its valid element,
+/// then reads the element fresh. Acyclic, no escapes, no huge runtime
+/// list — the only scale axis is the count of RETAINED ROOT SETS.
+fn place_probe_module(count: usize) -> MirModule {
+    let mut m = MirModule::new_collections(OwnerScope {
+        schema: auto_av_core::contract::MIR_COLLECTIONS_SCHEMA.to_string(),
+        module: "collections822".to_string(),
+    });
+    let t_i32 = m.intern_type(MirType::I32);
+    let t_list = m.intern_type(MirType::List(ListTypeRef { elem: t_i32 }));
+    let t_place = m.intern_type(MirType::Place(ListTypeRef { elem: t_i32 }));
+    let sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: vec![],
+        result: t_i32,
+    }));
+    let c7 = m.intern_const(MirConst::I32(7)) as u32;
+    let c0 = m.intern_const(MirConst::I32(0)) as u32;
+    // slots: 0=list, 1=v, 2=idx0, 3=got, 4..=4+count-1=places
+    let mut slots = vec![
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: t_list,
+            name: Some("list".into()),
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: t_i32,
+            name: Some("v".into()),
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: t_i32,
+            name: Some("idx0".into()),
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: t_i32,
+            name: Some("got".into()),
+        },
+    ];
+    for p in 0..count {
+        slots.push(MirSlot {
+            kind: SlotKind::Local,
+            ty: t_place,
+            name: Some(format!("p{p}")),
+        });
+    }
+    let mut instrs = vec![
+        MirInstr::ListNew {
+            dst: 0,
+            list_ty: t_list,
+            cap: 0,
+        },
+        MirInstr::Const { dst: 1, value: c7 },
+        MirInstr::ListPush { root: 0, value: 1 },
+        MirInstr::Const { dst: 2, value: c0 },
+    ];
+    for p in 0..count {
+        instrs.push(MirInstr::ListPlace {
+            dst: 4 + p as u32,
+            base: 0,
+            index: 2,
+        });
+    }
+    instrs.push(MirInstr::ListGet {
+        dst: 3,
+        base: 0,
+        index: 2,
+    });
+    m.funcs = vec![MirFunction {
+        owner: m.owner.clone(),
+        name: "main".to_string(),
+        sig,
+        slots,
+        blocks: vec![MirBlock {
+            instrs,
+            term: Terminator::Return { value: 3 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+    }];
+    m.entry = 0;
+    m
+}
+
+/// F822-R7-01: 12,000 retained Places exceed the frozen 16MiB analysis
+/// budget — BOTH real gates (MIR verify and ABC admission, whose
+/// credential construction runs the same analysis) reject with a
+/// VerifyMemory resource outcome BEFORE the allocations.
+#[test]
+fn av_collections_822_semantics_place_provenance_memory_budget() {
+    let big = place_probe_module(12_000);
+    match verify_mir(&big) {
+        Err(auto_av_core::mir_verify::MirVerifyError::Resource { kind, .. }) => {
+            assert_eq!(kind, auto_av_core::contract::ResourceKind::VerifyMemory);
+        }
+        other => panic!("the oversized Place input must be resource-refused: {other:?}"),
+    }
+    // The ABC gate funnels through the same analysis: the wire encodes,
+    // but the credential refuses.
+    let wire = encode_abc(&big).expect("encode is structural");
+    match verify_abc_bytes(&wire.to_flat(), &big.owner) {
+        Err(auto_av_core::abc_verify::AbcAdmissionError::Verify(
+            auto_av_core::mir_verify::MirVerifyError::Resource { kind, .. },
+        )) => {
+            assert_eq!(kind, auto_av_core::contract::ResourceKind::VerifyMemory);
+        }
+        other => panic!("the ABC credential must refuse the same allocation: {other:?}"),
+    }
+
+    // The small legitimate control (64 Places) passes BOTH gates and
+    // executes to the fresh read.
+    let small = place_probe_module(64);
+    assert_eq!(success(&small), Value::I32(7));
+}

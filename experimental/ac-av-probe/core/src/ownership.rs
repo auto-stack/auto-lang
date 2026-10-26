@@ -256,7 +256,13 @@ pub fn verify_owned_function(
         .filter(|(_, s)| {
             matches!(
                 m.types.get(s.ty as usize),
-                Some(MirType::StrView) | Some(MirType::MutRef)
+                Some(MirType::StrView)
+                    | Some(MirType::MutRef)
+                    // F822-R7-01: a Place slot carries a RETAINED root
+                    // set (minted by LIST_PLACE, aliased by Copy) — it
+                    // pays the same per-token root-matrix bound as a
+                    // view token, charged BEFORE the allocations.
+                    | Some(MirType::Place(_))
             )
         })
         .map(|(i, _)| i)
@@ -1599,9 +1605,6 @@ pub fn verify_owned_function(
 }
 
 impl OwnState {
-    fn is_token_live(&self, t: usize) -> bool {
-        self.tokens_live.get(t)
-    }
     /// in-state equality (drives the worklist).
     fn eq_of(&self, o: &OwnState) -> bool {
         self.init.eq(&o.init)
