@@ -174,6 +174,8 @@ $REQ = @{
         'av_collections_822_incremental_signature_change_precise',
         'av_collections_822_incremental_forced_degradation_gate_nonzero',
         'av_collections_822_incremental_baseline_campaign_replay',
+        'av_collections_822_incremental_place_referent_out_of_range_refused',
+        'av_collections_822_incremental_place_referent_boundary_and_domain',
         'av_collections_822_worker_memory_hard_gate_parent_sampled'
     )
 }

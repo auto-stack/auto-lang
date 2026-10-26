@@ -11,6 +11,7 @@ use auto_av_core::mir::{
     BinOp, ListTypeRef, MirBlock, MirConst, MirFunction, MirImport, MirInstr, MirModule, MirSlot,
     MirType, OwnerScope, SlotKind, Terminator,
 };
+use auto_av_core::mir_verify::verify_mir;
 use auto_av_core::program_snapshot::ProgramSnapshot;
 use auto_av_probe::collections_session::CollectionsUpdateSession;
 use std::sync::Arc;
@@ -482,4 +483,106 @@ fn beta_trapping_unit() -> MirModule {
     }];
     m.entry = 0;
     m
+}
+
+// -- F822-R4-01: Place referent type-table validation ---------------------
+
+/// A beta unit carrying ONE extra unused type-table entry
+/// Place{elem: <referent>}. The body itself is the legal list roundtrip;
+/// the malformed (or legal-control) referent lives in the table only —
+/// exactly the reviewer's minimal input shape.
+fn beta_with_place_entry(b_bump: i32, referent: u32) -> MirModule {
+    let mut m = beta_unit(b_bump);
+    let idx = m.intern_type(MirType::Place(ListTypeRef { elem: referent })) as u32;
+    let _ = idx;
+    m
+}
+
+/// The reviewer replay: an out-of-range referent (u32::MAX, an unused
+/// entry) must be refused at the MIR/ABC admission gate — the REAL
+/// update consumer returns Err (no FunctionCode, no link) and never
+/// panics; the legal Place<i32> entry travels the identical path and
+/// executes to 7.
+#[test]
+fn av_collections_822_incremental_place_referent_out_of_range_refused() {
+    // The real gates reject the malformed table at verify.
+    let bad = beta_with_place_entry(7, u32::MAX);
+    match verify_mir(&bad) {
+        Err(auto_av_core::mir_verify::MirVerifyError::Invalid { code, .. }) => {
+            assert_eq!(code, "mir.type-ref");
+        }
+        other => panic!("out-of-range referent must be refused: {other:?}"),
+    }
+    // The REAL consumer surfaces the refusal as an Err — no panic.
+    let mut s = CollectionsUpdateSession::new(None, "main");
+    s.apply_revision(&[("main", alpha_unit(0)), ("beta", beta_unit(1))])
+        .expect("install a legal session first");
+    let err = s
+        .apply_revision(&[("beta", beta_with_place_entry(7, u32::MAX))])
+        .expect_err("the malformed candidate must be refused");
+    assert!(err.contains("verify beta"), "{err}");
+    // And the prior session still executes.
+    let snap = s.snapshot().expect("prior snapshot links");
+    assert_eq!(run_snapshot(&snap), 1);
+
+    // The legal control: a Place<i32> entry (referent = the i32 index 0)
+    // travels the identical produce/link/execute path and returns 7.
+    let legal = beta_with_place_entry(7, 0);
+    let mut s2 = CollectionsUpdateSession::new(None, "main");
+    let out = s2
+        .apply_revision(&[("main", alpha_unit(0)), ("beta", legal)])
+        .expect("the legal Place entry admits");
+    assert_eq!(out.value, Some(7));
+}
+
+/// Boundary and domain siblings: exactly-at-len referent, a container
+/// referent (Place over a List) and a self/cyclic referent are all
+/// refused deterministically at the type-table pass.
+#[test]
+fn av_collections_822_incremental_place_referent_boundary_and_domain() {
+    // Boundary: elem == the table length AFTER interning points at the
+    // Place's own slot (a self reference — the domain check refuses it;
+    // one FURTHER past is a hard out-of-range).
+    let base = beta_unit(7);
+    let len = base.types.len() as u32;
+    let mut selfref = base.clone();
+    selfref.intern_type(MirType::Place(ListTypeRef { elem: len }));
+    match verify_mir(&selfref) {
+        Err(auto_av_core::mir_verify::MirVerifyError::Unsupported { code, .. }) => {
+            assert_eq!(code, "mir.type.place-elem");
+        }
+        other => panic!("self-at-boundary referent must be refused: {other:?}"),
+    }
+    let mut boundary = base.clone();
+    boundary.intern_type(MirType::Place(ListTypeRef { elem: len + 1 }));
+    match verify_mir(&boundary) {
+        Err(auto_av_core::mir_verify::MirVerifyError::Invalid { code, .. }) => {
+            assert_eq!(code, "mir.type-ref");
+        }
+        other => panic!("boundary referent must be refused: {other:?}"),
+    }
+
+    // Domain: a Place whose referent is a List type (an unsupported
+    // element kind — no list can ever hold lists).
+    let mut domain = beta_unit(7);
+    let list_idx = domain.intern_type(MirType::List(ListTypeRef { elem: 0 }));
+    domain.intern_type(MirType::Place(ListTypeRef { elem: list_idx }));
+    match verify_mir(&domain) {
+        Err(auto_av_core::mir_verify::MirVerifyError::Unsupported { code, .. }) => {
+            assert_eq!(code, "mir.type.place-elem");
+        }
+        other => panic!("container referent must be refused: {other:?}"),
+    }
+
+    // Self/cyclic: the Place's own table slot as its referent (the
+    // element domain rejects Place kinds, covering the cycle).
+    let mut cyc = beta_unit(7);
+    let slot = cyc.types.len() as u32;
+    cyc.intern_type(MirType::Place(ListTypeRef { elem: slot }));
+    match verify_mir(&cyc) {
+        Err(auto_av_core::mir_verify::MirVerifyError::Unsupported { code, .. }) => {
+            assert_eq!(code, "mir.type.place-elem");
+        }
+        other => panic!("self referent must be refused: {other:?}"),
+    }
 }

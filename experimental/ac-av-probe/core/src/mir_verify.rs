@@ -386,6 +386,24 @@ impl<'a> Verifier<'a> {
                 }
                 self.check_element_domain(l.elem, ti, "mir.type.list-elem")?;
             }
+            // F822-R4-01: the Place referent is a module TypeIdx exactly
+            // like a List element — an unused table entry is still
+            // untrusted input. Out-of-range AND out-of-domain referents
+            // (including self/cyclic and container referents) are
+            // rejected HERE, before any checked credential exists; the
+            // snapshot merger indexes the referent unguarded.
+            if let MirType::Place(l) = t {
+                if l.elem as usize >= self.module.types.len() {
+                    return Err(MirVerifyError::inv(
+                        "mir.type-ref",
+                        format!(
+                            "place type #{ti} references out-of-range element {}",
+                            l.elem
+                        ),
+                    ));
+                }
+                self.check_element_domain(l.elem, ti, "mir.type.place-elem")?;
+            }
             if let MirType::Variant(v) = t {
                 if v.arms.is_empty() {
                     return Err(MirVerifyError::inv(
