@@ -192,3 +192,88 @@ fn av_collections_822_cache_deterministic_replay_steps() {
     let _ = execute; // the seam the restore path uses internally
     let _ = std::fs::remove_dir_all(&store);
 }
+
+/// F822-R14-01: restore binds the PAYLOAD's actual type-table fingerprint
+/// to the requested identity. A structurally legal, self-consistent ABC
+/// whose type table differs (one unused I64 appended — MIR/ABC both
+/// admit it) is stored in a REAL ManagedStore under the ORIGINAL
+/// types-fp key with a fully matching envelope (owner/entry/snapshot all
+/// consistent): the re-verification gates alone would admit it; the
+/// identity check must refuse to dispatch BEFORE execution (V-08:
+/// dispatch=0 — the restore returns Err and no guest instruction runs).
+#[test]
+fn av_collections_822_cache_restore_payload_types_fp_mismatch_rejected() {
+    let r = request_collections(None, "cache822", "first-case").unwrap();
+    // The foreign module: same body, same snapshot, one MORE type — legal
+    // everywhere, but a different type-table fingerprint.
+    let mut m = first_case_module();
+    m.funcs[0].source_snapshot = r.snapshot;
+    m.types.push(auto_av_core::mir::MirType::I64);
+    verify_mir(&m).expect("foreign type table remains structurally valid");
+    let actual_fp = collections_types_fp_of(&m);
+    assert_ne!(actual_fp, r.types_fp, "the fixture needs a real fp delta");
+    let wire = encode_abc(&m).unwrap();
+    verify_abc_bytes(&wire.to_flat(), &m.owner).expect("self-consistent valid ABC");
+    // Store under the ORIGINAL identity (the attacker-controlled axis):
+    // original key + envelope carrying the ORIGINAL owner/entry/snapshot.
+    let store = std::env::temp_dir().join(format!(
+        "cache822-r14-fp-binding-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let s = ManagedStore::open(&store).unwrap();
+    s.put_artifact(PutRequest {
+        layer: COLLECTIONS_ABC_LAYER.id,
+        key: collections_module_key(&r.owner, &r.entry, &r.types_fp, r.snapshot),
+        kind: ChunkKind::LayoutData,
+        payload: envelope_wrap(
+            &wire.to_flat(),
+            &collections_envelope(&r.owner, &r.entry, r.snapshot),
+        ),
+        edges: vec![],
+        project: Some("cache822".into()),
+    })
+    .unwrap();
+    drop(s);
+    // The mismatch is refused BEFORE dispatch — the error names both
+    // fingerprints, and the outcome is an Err (never a Success).
+    let out = restore_collections(&store, &r.owner, &r.entry, r.snapshot, &r.types_fp);
+    let msg = out.expect_err("a foreign type table under an expected key must not dispatch");
+    assert!(
+        msg.contains("types-fp mismatch"),
+        "the refusal names the identity gap: {msg}"
+    );
+    assert!(
+        msg.contains(&r.types_fp) && msg.contains(&actual_fp),
+        "{msg}"
+    );
+    // The positive control: an HONEST store (its own directory — the
+    // poisoned key above is content-addressed and refuses overwrites)
+    // re-serving the ORIGINAL payload still restores and executes.
+    let honest_store = std::env::temp_dir().join(format!(
+        "cache822-r14-fp-honest-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let r2 = request_collections(Some(&honest_store), "cache822", "first-case").unwrap();
+    assert_eq!(r2.types_fp, r.types_fp);
+    let ok = restore_collections(
+        &honest_store,
+        &r2.owner,
+        &r2.entry,
+        r2.snapshot,
+        &r2.types_fp,
+    );
+    assert!(
+        matches!(&ok, Ok(ExecOutcome::Success { .. })),
+        "an honest restore still executes: {ok:?}"
+    );
+    let _ = std::fs::remove_dir_all(&store);
+    let _ = std::fs::remove_dir_all(&honest_store);
+}

@@ -457,6 +457,19 @@ pub fn restore_collections(
         module: owner.to_string(),
     };
     let loaded = verify_abc_bytes(&payload, &owner_scope).map_err(|e| format!("re-verify: {e}"))?;
+    // F822-R14-01: the re-run gates prove the payload SELF-consistent,
+    // not that it is the module the caller asked for. The requested
+    // `types_fp` is an IDENTITY axis of the store key: a structurally
+    // legal foreign type table stored under an expected key (envelope
+    // owner/entry/snapshot all matching) is an identity mismatch — the
+    // payload's ACTUAL type-table fingerprint must equal the requested
+    // one, rejected BEFORE dispatch (V-08: the mismatch never executes).
+    let actual_types_fp = collections_types_fp_of(loaded.module());
+    if actual_types_fp != types_fp {
+        return Err(format!(
+            "payload types-fp mismatch: requested {types_fp}, payload carries {actual_types_fp} — refusing to dispatch"
+        ));
+    }
     let (out, _) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
     Ok(out)
 }
