@@ -240,7 +240,7 @@ T-08列准确merge矩阵/Spec proposal；T-09独立final pass后T-10冻结完整
 | task_id | owner_stage | 依赖 | 实际触点/拟新增路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
 | T-01 | work | G849/GSTART | [x] 正式849/Spec/收据、唯一851树、SDK/三锁/source/原分母| path/branch/base/HEAD/正式闭包及未闭债务冻结；AC-01 |
-| T-02 | work | T-01 | [x] behavior.rs/Play/Descriptor；new api/behavior_motion_v5.at初核、research/bounded-motion-feasibility.md、tests/motion_feasibility.rs| r2局部标量提升/三扫描方案，永久128反例及完整128难例/2contacts/24+8/终world/managed与反控通过；AC-02, AC-04, AC-05 |
+| T-02 | work | T-01 | [x] behavior.rs/Play/Descriptor；new api/behavior_motion_v5.at初核、research/bounded-motion-feasibility.md、tests/motion_feasibility.rs| r4标量提升/逐轴延迟/同图leaf同步方案，永久128反例及完整128难例/2contacts/24+8/终world/managed与反控通过；AC-02, AC-04, AC-05 |
 | T-03 | work | T-02 | [x] behavior.rs/behavior_project/Host typed选择；new tests/motion_api.rs、motion_project.rs| v5/11全身份/准入/版本隔离/旧helper与scene4事务、V-05/09；AC-03, AC-06 |
 | T-04 | work | T-03 | [x] motion Auto核；new tests/motion_geometry.rs| V-02/03/04/06几何/方向接触/状态/留隙/精度/实际local-world、独立参考/反控；AC-02, AC-04 |
 | T-05 | work | T-04 | [x] Play/callback/最终候选/whole-frame/consumer；new tests/motion_host.rs| V-04/06/07/08、CPU/原生命周期/错误/最后world无gap；AC-04, AC-05 |
@@ -310,4 +310,3 @@ T-02原100000steps反例已关闭；r4原128两接触实际2D78/3D88slices，12�
 无必须另问用户的产品问题。两接触/静态AABB/有限方向性初始接触、24credits/40逻辑标量、显式v5与错误/正常停止边界已明确；实现可行性由T-02有界验证，849正式交付与启动授权已核；r4 work已完成，当前待独立review。
 
 若849验收改变正式接口/几何/f32政策，T-01先审影响，实质变化回new修订。增加接触数/滑行范围、重力/解穿插、改节点/CPU/源码上限、SDK/AGP/生产写面或Schema/ACE/HMR需新合同，不通过PrecisionStop、减测试分母/隐藏反例绕过原验收。
-
