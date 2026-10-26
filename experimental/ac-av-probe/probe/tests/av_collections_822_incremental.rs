@@ -586,3 +586,352 @@ fn av_collections_822_incremental_place_referent_boundary_and_domain() {
         other => panic!("self referent must be refused: {other:?}"),
     }
 }
+
+// -- F822-R17-01: V-13 sub-case 3 layout & host-grant axes ---------------
+
+/// F822-R17-01 kit: beta variants whose INTERNAL LAYOUT changes while the
+/// interface stays `() -> i32` — the list element type moves i32 → Str
+/// (a collections layout fact: the unit's type-table/data layout), still
+/// executing the same folded truth family.
+fn beta_unit_layout(b_bump: i32) -> MirModule {
+    let mut m = MirModule::collections_unit(owner_scope());
+    let t_i32 = m.intern_type(MirType::I32);
+    let t_str = m.intern_type(MirType::Str);
+    let t_list = m.intern_type(MirType::List(ListTypeRef { elem: t_str }));
+    let t_sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: vec![],
+        result: t_i32,
+    }));
+    let cb = m.intern_const(MirConst::I32(b_bump)) as u32;
+    let cs = m.intern_const(MirConst::Str(Box::from(*b"x"))) as u32;
+    m.funcs = vec![MirFunction {
+        owner: owner_scope(),
+        name: "beta".to_string(),
+        sig: t_sig,
+        slots: vec![
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_list,
+                name: Some("list".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_str,
+                name: Some("v".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_i32,
+                name: Some("len".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_i32,
+                name: Some("r".into()),
+            },
+        ],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::Const { dst: 1, value: cs },
+                MirInstr::ListNew {
+                    dst: 0,
+                    list_ty: t_list,
+                    cap: 0,
+                },
+                MirInstr::ListPush { root: 0, value: 1 },
+                MirInstr::ListLen { dst: 2, src: 0 },
+                MirInstr::Const { dst: 3, value: cb },
+                MirInstr::Bin {
+                    op: BinOp::AddI32,
+                    dst: 2,
+                    lhs: 2,
+                    rhs: 3,
+                },
+            ],
+            term: Terminator::Return { value: 2 },
+        }],
+        entry: 0,
+        source_snapshot: b_bump as u64,
+        spans: Vec::new(),
+    }];
+    m.entry = 0;
+    m
+}
+
+/// F822-R17-01 kit: a cross-unit pair whose INTERFACE carries a
+/// collections LAYOUT fact — alpha passes a `List<i32>` argument through
+/// its `fn:beta` import (`(List<i32>) -> i32`).
+fn alpha_unit_list() -> MirModule {
+    let mut m = MirModule::collections_unit(owner_scope());
+    let t_i32 = m.intern_type(MirType::I32);
+    let t_list = m.intern_type(MirType::List(ListTypeRef { elem: t_i32 }));
+    let t_sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: vec![t_list],
+        result: t_i32,
+    }));
+    let c7 = m.intern_const(MirConst::I32(7)) as u32;
+    let t_entry = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: vec![],
+        result: t_i32,
+    }));
+    m.imports = vec![MirImport {
+        symbol: "fn:beta".to_string(),
+        effect: auto_av_core::mir::Effect::Pure,
+        sig: t_sig,
+    }];
+    m.funcs = vec![MirFunction {
+        owner: owner_scope(),
+        name: "main".to_string(),
+        sig: t_entry,
+        slots: vec![
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_list,
+                name: Some("list".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_i32,
+                name: Some("v".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_i32,
+                name: Some("got".into()),
+            },
+        ],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::ListNew {
+                    dst: 0,
+                    list_ty: t_list,
+                    cap: 0,
+                },
+                MirInstr::Const { dst: 1, value: c7 },
+                MirInstr::ListPush { root: 0, value: 1 },
+                MirInstr::Call {
+                    callee: auto_av_core::mir::CalleeRef::Import(0),
+                    dst: 2,
+                    args: vec![0],
+                },
+            ],
+            term: Terminator::Return { value: 2 },
+        }],
+        entry: 0,
+        source_snapshot: 11,
+        spans: Vec::new(),
+    }];
+    m.entry = 0;
+    m
+}
+
+/// F822-R17-01 kit: beta taking a LIST parameter — `(elem) -> i32`
+/// returning the list length. `elem_str` selects the element layout:
+/// `List<i32>` (the compatible interface twin) or `List<Str>` (a LEGAL
+/// unit whose param LAYOUT differs — the link must refuse the pair).
+fn beta_unit_param(elem_str: bool) -> MirModule {
+    let mut m = MirModule::collections_unit(owner_scope());
+    let t_i32 = m.intern_type(MirType::I32);
+    let t_elem = if elem_str {
+        m.intern_type(MirType::Str)
+    } else {
+        t_i32
+    };
+    let t_list = m.intern_type(MirType::List(ListTypeRef { elem: t_elem }));
+    let t_sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: vec![t_list],
+        result: t_i32,
+    }));
+    m.funcs = vec![MirFunction {
+        owner: owner_scope(),
+        name: "beta".to_string(),
+        sig: t_sig,
+        slots: vec![
+            MirSlot {
+                kind: SlotKind::Param,
+                ty: t_list,
+                name: Some("list".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t_i32,
+                name: Some("len".into()),
+            },
+        ],
+        blocks: vec![MirBlock {
+            instrs: vec![MirInstr::ListLen { dst: 1, src: 0 }],
+            term: Terminator::Return { value: 1 },
+        }],
+        entry: 0,
+        source_snapshot: if elem_str { 21 } else { 20 },
+        spans: Vec::new(),
+    }];
+    m.entry = 0;
+    m
+}
+
+/// F822-R17-01 kit: beta with a DECLARED required capability (the input's
+/// required-capabilities fact, separate from the host grants).
+fn beta_unit_trace(b_bump: i32) -> MirModule {
+    let mut m = beta_unit(b_bump);
+    m.capabilities = vec![auto_av_core::contract::TRACE_CAPABILITY.to_string()];
+    m
+}
+
+/// V-13 sub-case 3 LAYOUT axis, positive control: an INTERNAL layout
+/// revision (beta's list element type i32 → Str; same `() -> i32`
+/// interface) is a legal honest revision — only beta rebuilds (every
+/// production stage == 1, alpha's code object carried, gate honest),
+/// the new layout executes its folded truth and the prior snapshot
+/// keeps the old one.
+#[test]
+fn av_collections_822_incremental_layout_internal_revision_precise() {
+    let root = std::env::temp_dir().join(format!(
+        "av822-session-layout-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let store = root.join("store");
+    let mut s = CollectionsUpdateSession::new(Some(&store), "main");
+    let out0 = s
+        .apply_revision(&[("main", alpha_unit(10)), ("beta", beta_unit(1))])
+        .expect("install");
+    assert_eq!(out0.value, Some(11));
+    assert!(out0.gate.pass());
+    let alpha_obj = s.unit("main").expect("alpha installed").clone();
+    let snap_old = s.snapshot().expect("old snapshot links");
+
+    // The LAYOUT revision: List<Str> internally, interface unchanged.
+    let out = s
+        .apply_revision(&[("beta", beta_unit_layout(2))])
+        .expect("internal layout revision is legal");
+    assert_eq!(out.value, Some(13), "len(1) + b(2), alpha +10");
+    assert_eq!(out.live_after_release, 0);
+    assert_eq!(out.allocs, out.frees);
+    assert_eq!(out.production.verified, 1, "only the layout-revised unit");
+    assert_eq!(out.production.encoded, 1);
+    assert_eq!(out.production.admitted, 1);
+    assert_eq!(out.gate.rebuilt_units, 1);
+    assert_eq!(out.gate.unchanged_degraded, 0);
+    assert!(
+        Arc::ptr_eq(s.unit("main").unwrap(), &alpha_obj),
+        "alpha carried"
+    );
+    assert_eq!(
+        run_snapshot(&snap_old),
+        11,
+        "prior snapshot keeps its truth"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// V-13 sub-case 3 LAYOUT axis, negative control: a collections layout
+/// fact flowing through the INTERFACE — beta's param moves
+/// `List<i32>` → `List<Str>` (a legal unit alone); alpha's `fn:beta`
+/// import still declares `(List<i32>) -> i32`, so the LINK's
+/// content-equal signature check refuses the pair; the session keeps
+/// its prior revision, units and executable snapshot.
+#[test]
+fn av_collections_822_incremental_layout_interface_change_rejected() {
+    let root = std::env::temp_dir().join(format!(
+        "av822-session-layout-iface-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let store = root.join("store");
+    let mut s = CollectionsUpdateSession::new(Some(&store), "main");
+    let out0 = s
+        .apply_revision(&[
+            ("main", alpha_unit_list()),
+            ("beta", beta_unit_param(false)),
+        ])
+        .expect("compatible container interface installs");
+    assert_eq!(out0.value, Some(1), "len of alpha's one-element list");
+    let beta_obj = s.unit("beta").expect("beta installed").clone();
+    let snap_old = s.snapshot().expect("old snapshot links");
+
+    let err = s
+        .apply_revision(&[("beta", beta_unit_param(true))])
+        .expect_err("a param layout change under a stable import must be refused");
+    assert!(
+        err.contains("signature"),
+        "the link's signature check names the refusal: {err}"
+    );
+    assert!(
+        Arc::ptr_eq(s.unit("beta").unwrap(), &beta_obj),
+        "beta not swapped"
+    );
+    assert_eq!(
+        run_snapshot(&snap_old),
+        1,
+        "the prior snapshot still executes its truth"
+    );
+    // The session remains USABLE after the refusal.
+    let out = s
+        .apply_revision(&[("beta", beta_unit_param(false))])
+        .expect("re-submitting the compatible twin still installs");
+    assert_eq!(out.value, Some(1));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// V-13 sub-case 3 HOST-GRANT axis: the input's REQUIRED capabilities
+/// and the CURRENT host grants are separate facts. A capability-requiring
+/// beta installs under a live grant; the SAME unit's next revision under
+/// a REVOKED grant set is refused before any installation (session state
+/// intact); restoring the legal grant makes the revision apply again.
+#[test]
+fn av_collections_822_incremental_host_grant_lifecycle() {
+    let root = std::env::temp_dir().join(format!(
+        "av822-session-grant-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let store = root.join("store");
+    let mut s = CollectionsUpdateSession::new(Some(&store), "main");
+    let grant = vec![auto_av_core::contract::TRACE_CAPABILITY.to_string()];
+
+    // (a) Legal allow: the grant set covers the required capability.
+    s.set_host_grants(grant.clone());
+    let out0 = s
+        .apply_revision(&[("main", alpha_unit(10)), ("beta", beta_unit_trace(1))])
+        .expect("granted capability admits");
+    assert_eq!(out0.value, Some(11));
+    let beta_obj = s.unit("beta").expect("beta installed").clone();
+    let snap_old = s.snapshot().expect("old snapshot links");
+
+    // (b) Revoked: the next revision of the SAME capability-requiring
+    // unit under an EMPTY host grant set is refused — nothing installs.
+    s.set_host_grants(vec![]);
+    let err = s
+        .apply_revision(&[("beta", beta_unit_trace(2))])
+        .expect_err("a revoked grant must refuse the revision");
+    assert!(
+        err.contains("not granted"),
+        "the refusal names the capability gap: {err}"
+    );
+    assert!(
+        Arc::ptr_eq(s.unit("beta").unwrap(), &beta_obj),
+        "failure installs nothing"
+    );
+    assert_eq!(run_snapshot(&snap_old), 11, "prior state still executes");
+
+    // (c) Restoring the legal fact: the same revision applies.
+    s.set_host_grants(grant);
+    let out2 = s
+        .apply_revision(&[("beta", beta_unit_trace(2))])
+        .expect("re-granting admits the revision");
+    assert_eq!(out2.value, Some(12));
+    let _ = std::fs::remove_dir_all(&root);
+}

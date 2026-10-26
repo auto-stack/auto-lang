@@ -80,6 +80,13 @@ pub struct CollectionsUpdateSession {
     revision: u64,
     counters: ProductionCounters,
     entry: String,
+    /// F822-R17-01: the CURRENT host grants. A submitted module's
+    /// declared capabilities (the input's REQUIRED capabilities) are
+    /// admitted only against this set — required and granted stay
+    /// SEPARATE facts (the F798-R3-02 restore pattern, applied at the
+    /// revision seam): an ungranted capability rejects the revision
+    /// BEFORE any production stage or installation.
+    host_grants: Vec<String>,
 }
 
 impl CollectionsUpdateSession {
@@ -91,7 +98,15 @@ impl CollectionsUpdateSession {
             revision: 0,
             counters: ProductionCounters::default(),
             entry: entry.to_string(),
+            host_grants: Vec::new(),
         }
+    }
+
+    /// F822-R17-01: set the host's CURRENT capability grants (empty by
+    /// default — a capability-requiring unit is never admitted unless the
+    /// host explicitly grants it).
+    pub fn set_host_grants(&mut self, grants: Vec<String>) {
+        self.host_grants = grants;
     }
 
     /// The linked snapshot of the current units (executable as-is).
@@ -202,6 +217,18 @@ impl CollectionsUpdateSession {
         for name in &order {
             match submitted.iter().find(|(n, _)| *n == name.as_str()) {
                 Some((_, m)) => {
+                    // F822-R17-01: capability admission — every capability
+                    // the INPUT requires must be granted by the CURRENT
+                    // host grant set; a shortfall rejects the revision
+                    // BEFORE any production stage, link or installation
+                    // (the session keeps its prior state).
+                    for c in m.capabilities.iter() {
+                        if !self.host_grants.iter().any(|g| g == c) {
+                            return Err(format!(
+                                "unit `{name}` requires capability `{c}` not granted by the current host grants"
+                            ));
+                        }
+                    }
                     let (fc, fp) = self.produce_unit(m)?;
                     next.insert(name.clone(), (fc, fp));
                 }

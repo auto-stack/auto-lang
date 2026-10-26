@@ -215,6 +215,9 @@ $REQ = @{
         'av_collections_822_incremental_baseline_campaign_replay',
         'av_collections_822_incremental_place_referent_out_of_range_refused',
         'av_collections_822_incremental_place_referent_boundary_and_domain',
+        'av_collections_822_incremental_layout_internal_revision_precise',
+        'av_collections_822_incremental_layout_interface_change_rejected',
+        'av_collections_822_incremental_host_grant_lifecycle',
         'av_collections_822_worker_memory_hard_gate_parent_sampled'
     )
 }
