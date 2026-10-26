@@ -2331,8 +2331,6 @@ impl<'a> Parser<'a> {
         &mut self,
         dialect: &D,
     ) -> AutoResult<Option<auto_parser_api::DomainStmt<D::Output>>> {
-        use auto_parser_api::DomainDialect;
-
         if !dialect.matches(&self.session) {
             return Ok(None);
         }
@@ -13699,18 +13697,38 @@ mod tests {
 
     #[test]
     fn test_plan841_plain_parse_rejects_ui_statements() {
-        // 反控：无领域端口时 UI 语句在 Core 与 UI 场景下都必须解析失败——
+        // 反控：无领域端口时排他的 UI 声明在 Core 与 UI 场景下都必须失败——
         // 文法只经 Parser::parse_domain(&D) 显式装配，不再有进程级注入。
-        let ui_src = "widget App { view { text \"x\" {} } }";
-        let core_err = Parser::from(ui_src).parse();
-        assert!(core_err.is_err(), "Core session must reject UI statements");
-        let ui_err = Parser::from(ui_src)
-            .with_session(crate::session::CompilerSession::ui())
-            .parse();
-        assert!(
-            ui_err.is_err(),
-            "plain parse under UI session must not gain UI grammar implicitly"
-        );
+        let ui_sources = [
+            "widget App { view { text \"x\" {} } }",
+            "store Shared { model { count int = 0 } }",
+            "msg Msg { Save }",
+            "model { count int = 0 }",
+            "component fn Card() { view { text \"x\" {} } }",
+            "view fn Item() { text \"x\" {} }",
+            "style card = \"bg-card\"",
+            "pub style card = \"bg-card\"",
+            "use.web.fn fetch from \"web\"",
+        ];
+        for ui_src in ui_sources {
+            let core_err = Parser::from(ui_src).parse();
+            assert!(
+                core_err.is_err(),
+                "Core session must reject UI statement: {ui_src}"
+            );
+            let ui_err = Parser::from(ui_src)
+                .with_session(crate::session::CompilerSession::ui())
+                .parse();
+            assert!(
+                ui_err.is_err(),
+                "plain parse under UI session must not gain UI grammar implicitly: {ui_src}"
+            );
+        }
+
+        let core = Parser::from("fn main() { actions { 1 } }")
+            .parse()
+            .expect("actions remains a valid Core identifier");
+        assert!(matches!(core.stmts.as_slice(), [Stmt::Fn(_)]));
     }
 
     #[test]

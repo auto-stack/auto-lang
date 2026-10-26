@@ -10,12 +10,11 @@ use serde::{Deserialize, Serialize};
 
 use super::ui_artifact::UIArtifact;
 
-/// PLAN-814 T-03：生成器指纹注入槽（生成器源在 auto-ui-compiler，SDK 不
-/// 反依赖——compiler UI 构建入口经 [`set_generator_fingerprint`] 装配；
-/// 未装配 = None，语义同原 option_env! 的 foreign build 缺省）。
+/// 生成器/持久数据身份注入槽（生成器源与 AST schema 在 auto-ui 侧组合，
+/// SDK 不反依赖；未装配 = None，语义同原 option_env! 的 foreign build 缺省）。
 static GENERATOR_FINGERPRINT: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
 
-/// 注入生成器源指纹（PLAN-814 R3-02/R4 语义）：
+/// 注入生成器/持久数据身份指纹（PLAN-814 R3-02/R4 语义）：
 ///
 /// - **None → Some = 升级**：晚装配不阻断真实身份（R3-02 反例：OnceLock
 ///   首 None 永久遮蔽后续装配——auto-man/compiler 的 load 前注入是正序，
