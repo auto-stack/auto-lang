@@ -13,6 +13,7 @@ pub mod data_driver;
 pub mod data_session;
 pub mod driver;
 pub mod dynamic_fixture;
+pub mod dynamic_session;
 pub mod fn_hir_codec;
 pub mod formal_828;
 pub mod formal_campaign;

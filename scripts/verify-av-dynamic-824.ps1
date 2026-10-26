@@ -7,7 +7,7 @@
 [CmdletBinding()]
 param(
     [Parameter(ParameterSetName = 'Scope', Mandatory = $true)]
-    [ValidateSet("first-case", "semantics", "admission", "resources", "cache", "compatibility", "autodown", "acceptance")]
+    [ValidateSet("first-case", "semantics", "admission", "resources", "cache", "compatibility", "incremental", "autodown", "acceptance")]
     [string]$Scope,
 
     [Parameter(ParameterSetName = 'Guard')]
@@ -114,6 +114,12 @@ $REQ = @{
         'av_dynamic_824_resources_take_trap_drains_ledger',
         'av_dynamic_824_resources_cancel_is_its_own_state',
         'av_dynamic_824_resources_worker_memory_hard_gate_parent_sampled'
+    )
+    'incremental' = @(
+        'av_dynamic_824_incremental_body_edit_identity',
+        'av_dynamic_824_incremental_signature_and_grant_lifecycle',
+        'av_dynamic_824_incremental_forced_degradation_gate_nonzero',
+        'av_dynamic_824_incremental_baseline_campaign_replay'
     )
     'cache' = @(
         'av_dynamic_824_cache_restore_identity_and_miss',
@@ -229,13 +235,19 @@ switch ($Scope) {
             'tests::ac_mn_probe_tests::mir_native_adapter_restart_session_reuses_cache_across_processes'
         )
     }
+    'incremental' {
+        # T-09: the four V-13 sub-cases through the REAL D828 update
+        # session (baseline campaign replay + dynamic capability identity
+        # + precise refusals/grant lifecycle + forced-degradation gate).
+        Run-Probe-Tests -Bin 'av_dynamic_824_incremental' -Label 'incremental' -RequiredIds $REQ['incremental']
+    }
     'autodown' {
         Run-Lang-Tests -Filter 'av_dynamic_824' -Label 'autodown' -RequiredIds $REQ['autodown']
     }
     'acceptance' {
         # Replay every implemented scope in child processes (isolated
         # working directories, same shapes the docs promise).
-        foreach ($s in @('first-case', 'semantics', 'admission', 'resources', 'cache', 'compatibility', 'autodown')) {
+        foreach ($s in @('first-case', 'semantics', 'admission', 'resources', 'cache', 'compatibility', 'incremental', 'autodown')) {
             & pwsh -File $PSCommandPath -Scope $s
             if ($LASTEXITCODE -ne 0) {
                 throw "acceptance: scope $s failed"
