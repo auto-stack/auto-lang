@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-849
-status: execution_done
+status: reviewed
 feature_name: AutoGraphics有限AABB扫掠与遇障停止
 author: [Codex]
 created_at: 2026-10-25
 updated_at: 2026-10-26
 plan_revision: 1
-current_step: 8
+current_step: 9
 total_steps: 10
 depends_on: [PLAN-848]
 supersedes_spec_components:
@@ -220,7 +220,7 @@ T-08给准确merge矩阵和Spec proposal；T-09独立final pass后，T-10在冻�
 
 ## 8. 执行步骤
 
-当前execution_done8/10，G848/GSTART/GSOURCE关闭，T-01..08完成并提交6bb85f354。独立T-09待复审，pass后为reviewed9/10且完整merge门pending；T-10真实收尾才10/10。实施与复审沿唯一849树，暂停实现写入。
+当前reviewed9/10，G848/GSTART/GSOURCE关闭，T-01..08完成并提交6bb85f354；T-09独立最终复审pass，完整merge门pending。T-10真实收尾才10/10；唯一849树保持冻结，尚未合入。
 
 | task_id | owner_stage | 依赖 | 实际触点/拟新增路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -232,7 +232,7 @@ T-08给准确merge矩阵和Spec proposal；T-09独立final pass后，T-10在冻�
 | T-06 [x] | work | T-05 | Host/Panel/bin、new tests/sweep_cli.rs、samples/sweep_projects/dash2d和dash3d | UI/CLI/绑定事务、两Auto业务/有限clearance/初始接触反馈，V-09/10；AC-06 |
 | T-07 [x] | work | T-06 | new tools/check_swept_aabb.py、OS/GPU/仓外reopen | V-10同binary两项目/全mesh/改源/停止位置/正反/partial无gap；AC-08 |
 | T-08 [x] | work | T-07 | new tests/sweep_owners.rs、tools/check_sweep_owners.py、849 source/verifier、research/swept-aabb-handoff.md/Spec proposal | V-01/11/12、20轮owner/旧受影响定向/check/fmt/精确merge矩阵；AC-01, AC-07, AC-08 |
-| T-09 | review | T-08 | 同树冻结code/Plan/Spec/raw；主检出独立review附件 | 逐项AC-01..08/SD/遗漏/延后/workaround/健康和revision+code结论；AC-09 |
+| T-09 [x] | review | T-08 | 同树冻结code/Plan/Spec/raw；主检出独立review附件 | 逐项AC-01..08/SD/遗漏/延后/workaround/健康和revision+code结论；AC-09 |
 | T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出Spec/ledger/archive/wt-guard/到期 | AC-10真实全部收尾，改代码先受影响复审，不提前标交付 |
 
 ## 9. 复审记录
@@ -260,6 +260,14 @@ work发现F849-local-nonfinite：local NaN初报Arithmetic12，永久反例要�
 402源/资产、681SDK/17local/29edges/479metadata闭包及四漂移反控通过，849新manifest与848旧收据分开。已导出仓外独立SDK/无构建target的source-consumer，其同样source/SDK/metadata/四反控通过；完整own-target消费者编译/测试仍merge-owned。最终cargo check --locked --all-targets、cargo fmt -p autographics-auto-driver -- --check和diff check通过；fmt --all遇固定SDK嵌套workspace边界，按848既有package范围等价覆盖可写Rust，未改SDK。固定146SDK预存warnings，无新增driver warning。
 
 实现已提交且唯一树clean，写权限交给独立review，当前会话不自称最终独立pass，不新建/联系agent或chat。T-09独立AC/SD复审、T-10冻结完整门/合入/规范沉淀/归档/guard均pending。精确merge矩阵77原有当前命令组+4新双端命令组，原87graphics语义槽及23未变AGP收据槽（163tests/16native）不缩；全locked driver/AGP必要面/原生/owner/fresh consumer归merge。未跑root t/tv/tt/tb/tu/taa/docs_gen/tf；主检出批量due与B845-FEATURE-01/847边界保留，无合入master代码/发布规范ledger/清理或交付宣称。
+
+### 2026-10-26 independent final review R1 — pass / reviewed9/10
+
+stage:review | review_scope:final | reviewer_identity:/root/review_849_final_r1（独立子上下文，未参与实施；模型身份未暴露） | plan_id:PLAN-849 | plan_revision:1 | outcome:pass | worktree_path:D:/autostack/.wt/lang-849/auto-lang | branch:plan-849-dev | reviewed_commit:6bb85f354e718f6541256f4b3d75ca97af75b8c4 | base_commit:dd7076a7f40b35ffda6b876c36f826af3443fb97 | implementation_clean:true（入口/结论均核） | dependency_revisions:SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467、三锁/source-lock匹配冻结值、AGP未变 | spec_inputs:canonical逐文件SHA见[baseline](attachments/849/review-r1-final/baseline.json.txt) | spec_delta_sha256:5c9844c4674579115e39807544cec6de5ba83d0b3eca9a89dc230911d2d03099（[冻结副本](attachments/849/review-r1-final/spec-delta-frozen.md)） | acceptance_results:AC-01..08 pass、AC-09 pass；AC-10 pending merge | findings:none | next:merge-owned冻结完整门，暂不合并。
+
+完整逐项AC→T→路径/断言/证据及SD-01..04、遗漏/延后/workaround/健康审查见[独立review](attachments/849/review-r1-final/review.md)，机器收据见[receipt](attachments/849/review-r1-final/receipt.json.txt)。新执行28项定向测试/36组方向偏心混轴holdout/681SDK+402source+479metadata闭包通过；原生3D改源保存新进程重开通过，漏part反控phase5像素oracle拒绝；20轮实际owner/warm counter AND双画布内容及最后pin释放通过。复核work原14主例+4reopen、6owner反控/恢复和样例/旧兼容raw，复用边界与未变身份明确，不把work raw重标独立运行。原77唯一命令组无遗漏，新增4组全pending，原87graphics及AGP163/16native分母保持。独立runner因定向cargo重新构建，hash656e8c35…，与work2591a08e…分别记录；均不冒称完整merge门。
+
+无实现/依赖/规范/ledger修改，无新增合同内finding或债务候选；主检出其他WIP保留。T-09关闭，status reviewed/current_step9/total10；T-10保持开放。完整locked driver/AGP必要面/原生/owner/fresh own-SDK-own-target consumer等81组、autographics-dev落地、Spec/ledger/归档/guard/批量到期归因均merge-owned pending；这些门通过前不得宣称交付。未运行root t/tv/tt/tb/tu/taa/tf/docs_gen、完整driver或AGP套件，未合并/发布/清理。
 
 ## 10. 待澄清事项
 
