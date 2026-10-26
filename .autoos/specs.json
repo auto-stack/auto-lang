@@ -4663,6 +4663,31 @@
  "modified_at": 1792985455,
  "completed_at": 1792985455
 }
+,
+{
+ "id": "P851-MERGE",
+ "title": "PLAN-851 canonical consolidation",
+ "content": "PLAN-851:r4 source delivery on autographics-dev only; master carries canonical bounded-motion/version/project/session rules and derived ledger. Exact gates/commits/archive/guard/artifact/batch checkpoints are in docs/plans/attachments/851/merge-r4/receipt.md and archived Plan; I2/I3 pending.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/plans.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-851",
+  "r4",
+  "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "source-commit:4fabe4931997d7636c11bc683fa54f405683e6cb",
+  "source-sha256:16474429500f841497adcd7687cf25d800abb81ee2dd833589c9e97c14285d01"
+ ],
+ "created_at": 1792998181,
+ "modified_at": 1792998181,
+ "completed_at": 1792998181
+}
 ],
       "section_type": "Reports",
       "title": "📊 Reports",
@@ -6352,7 +6377,7 @@
         {
  "id": "GOAL-007",
  "title": "AutoUI cross-backend visual parity",
- "content": "Canonical GOAL-007 remains in progress. PLAN-849 contributes finite experimental native-view/OS/GPU swept-query and resource/content verification; production AutoUI/RQHost I2 and cross-backend migration remain pending.",
+ "content": "Canonical GOAL-007 remains in progress. PLAN-851 adds experimental native OS/GPU bounded-motion and resource/content verification; production AutoUI/RQHost I2 remains pending.",
  "status": "in_progress",
  "depends_on": [],
  "related": [],
@@ -6369,17 +6394,20 @@
   "PLAN-849",
   "r1",
   "reviewed:6bb85f354e718f6541256f4b3d75ca97af75b8c4",
-  "source-commit:8087a6bbd6bc81518e469e0a65592a856b4caf3d",
-  "source-sha256:597d43c00120864efb36a3b29b3377df2ac7a7583d0976f8a3f282800589ab51"
+  "PLAN-851",
+  "r4",
+  "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "source-commit:4fabe4931997d7636c11bc683fa54f405683e6cb",
+  "source-sha256:31157b7b4354fea8ce0381167b3efc00054a528ff9a0adba04eff637b5d983a4"
  ],
  "created_at": 1792941529,
- "modified_at": 1792985455,
+ "modified_at": 1792998181,
  "completed_at": null
 },
         {
  "id": "GOAL-008",
  "title": "App generation and AI Authoring",
- "content": "Canonical GOAL-008 remains in progress. PLAN-849 contributes portable user-owned Auto Dash2D/Dash3D sweep/clearance/stop projects and source/asset closure. It does not deliver production Forge/distribution/I3.",
+ "content": "Canonical GOAL-008 remains in progress. PLAN-851 adds portable user Auto Maze2D/Corridor3D and source/asset closure; production Forge/distribution I3 remains pending.",
  "status": "in_progress",
  "depends_on": [],
  "related": [],
@@ -6396,11 +6424,14 @@
   "PLAN-849",
   "r1",
   "reviewed:6bb85f354e718f6541256f4b3d75ca97af75b8c4",
-  "source-commit:8087a6bbd6bc81518e469e0a65592a856b4caf3d",
-  "source-sha256:597d43c00120864efb36a3b29b3377df2ac7a7583d0976f8a3f282800589ab51"
+  "PLAN-851",
+  "r4",
+  "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "source-commit:4fabe4931997d7636c11bc683fa54f405683e6cb",
+  "source-sha256:31157b7b4354fea8ce0381167b3efc00054a528ff9a0adba04eff637b5d983a4"
  ],
  "created_at": 1792941529,
- "modified_at": 1792985455,
+ "modified_at": 1792998181,
  "completed_at": null
 }
       ],
@@ -14941,7 +14972,7 @@
         {
  "id": "P829-AGP",
  "title": "AutoGraphics project",
- "content": "Finite portable scene4 behavior binding and verified source/GLB closure on autographics-dev. Actual Auto/OS/GPU and same-binary fresh-process relocation; production I2/I3/general engine remain pending.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.",
+ "content": "Finite portable scene4 behavior binding and verified source/GLB closure on autographics-dev. Actual Auto/OS/GPU and same-binary fresh-process relocation; production I2/I3/general engine remain pending.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.\n\nPLAN-851:r4 explicit behavior/5/profile11 bounded Auto move-and-slide, maximum two contacts, directional initial-boundary policy, actual f32 final candidate admission and typed cast/sweep/motion latest slot. Original128-node/CPU/32credits/SDK/source/resource boundaries and old versions remain; canonical target is authoritative and production I2/I3 remain pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -14963,12 +14994,15 @@
   "PLAN-849",
   "r1",
   "reviewed:6bb85f354e718f6541256f4b3d75ca97af75b8c4",
-  "source-commit:8087a6bbd6bc81518e469e0a65592a856b4caf3d",
-  "source-sha256:122f1bf84f0512e68d02a574f2219d472abdd4f8d66784897e0ef5fb9d1ee5fd"
+  "PLAN-851",
+  "r4",
+  "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "source-commit:4fabe4931997d7636c11bc683fa54f405683e6cb",
+  "source-sha256:84a0af4138aca1ea8240119b87c8ec4c4d3e658197648302e6071a3eea3f5b78"
  ],
  "created_at": 1792685069,
- "modified_at": 1792985455,
- "completed_at": 1792985455
+ "modified_at": 1792998181,
+ "completed_at": 1792998181
 },
         {
           "id": "P830-SURF",
@@ -15011,7 +15045,7 @@
         {
  "id": "P830-PROFILE",
  "title": "AutoGraphics prototype-profile",
- "content": "UserV1/profile7 adds finite trusted single-file behavior with public graph/input functions. User256KiB/managed64KiB/combined320KiB,128nodes; inherited queue/time limits; no general sandbox or arbitrary heap hard quota.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.",
+ "content": "UserV1/profile7 adds finite trusted single-file behavior with public graph/input functions. User256KiB/managed64KiB/combined320KiB,128nodes; inherited queue/time limits; no general sandbox or arbitrary heap hard quota.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.\n\nPLAN-851:r4 explicit behavior/5/profile11 bounded Auto move-and-slide, maximum two contacts, directional initial-boundary policy, actual f32 final candidate admission and typed cast/sweep/motion latest slot. Original128-node/CPU/32credits/SDK/source/resource boundaries and old versions remain; canonical target is authoritative and production I2/I3 remain pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15034,17 +15068,20 @@
   "PLAN-849",
   "r1",
   "reviewed:6bb85f354e718f6541256f4b3d75ca97af75b8c4",
-  "source-commit:8087a6bbd6bc81518e469e0a65592a856b4caf3d",
-  "source-sha256:6a8ea078456914b185602dcd4d3c2a91f66598c1959dfbdc375515a400b5e952"
+  "PLAN-851",
+  "r4",
+  "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "source-commit:4fabe4931997d7636c11bc683fa54f405683e6cb",
+  "source-sha256:6685aa75d2c6e6e4283bb86cf902759b680277c5dab663608f995302783b249f"
  ],
  "created_at": 1792685069,
- "modified_at": 1792985455,
- "completed_at": 1792985455
+ "modified_at": 1792998181,
+ "completed_at": 1792998181
 },
         {
  "id": "P830-IH",
  "title": "AutoGraphics integration-contract",
- "content": "Finite single-source persistence replaces former no-binding exclusion only; old profiles/temporary sources and all old/new owner/native/counter AND content gates remain. No production integration or distribution.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.",
+ "content": "Finite single-source persistence replaces former no-binding exclusion only; old profiles/temporary sources and all old/new owner/native/counter AND content gates remain. No production integration or distribution.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.\n\nPLAN-851:r4 explicit behavior/5/profile11 bounded Auto move-and-slide, maximum two contacts, directional initial-boundary policy, actual f32 final candidate admission and typed cast/sweep/motion latest slot. Original128-node/CPU/32credits/SDK/source/resource boundaries and old versions remain; canonical target is authoritative and production I2/I3 remain pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15066,12 +15103,15 @@
   "PLAN-849",
   "r1",
   "reviewed:6bb85f354e718f6541256f4b3d75ca97af75b8c4",
-  "source-commit:8087a6bbd6bc81518e469e0a65592a856b4caf3d",
-  "source-sha256:97c1e608a2fbd43f27925400cc43713dc1a8650e974cce074fb11ad30ded51ae"
+  "PLAN-851",
+  "r4",
+  "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "source-commit:4fabe4931997d7636c11bc683fa54f405683e6cb",
+  "source-sha256:02ab2753a9c3f171c0160c1a42b5ad4e896220575d7e7dd3b251f0d8eddcf90f"
  ],
  "created_at": 1792685069,
- "modified_at": 1792985455,
- "completed_at": 1792985455
+ "modified_at": 1792998181,
+ "completed_at": 1792998181
 },
         {
           "id": "P815-B-D1",
@@ -15101,7 +15141,7 @@
         {
  "id": "P833-AUTO-SOURCE",
  "title": "AutoGraphics auto-source-driver",
- "content": "One source-only runner opens complete scene/assets/scripts projects; same binary Move/Patrol/source-speed logic, actual UI-output relocation, full old/new compatibility and independent consumer gates.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.",
+ "content": "One source-only runner opens complete scene/assets/scripts projects; same binary Move/Patrol/source-speed logic, actual UI-output relocation, full old/new compatibility and independent consumer gates.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.\n\nPLAN-851:r4 explicit behavior/5/profile11 bounded Auto move-and-slide, maximum two contacts, directional initial-boundary policy, actual f32 final candidate admission and typed cast/sweep/motion latest slot. Original128-node/CPU/32credits/SDK/source/resource boundaries and old versions remain; canonical target is authoritative and production I2/I3 remain pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15123,12 +15163,15 @@
   "PLAN-849",
   "r1",
   "reviewed:6bb85f354e718f6541256f4b3d75ca97af75b8c4",
-  "source-commit:8087a6bbd6bc81518e469e0a65592a856b4caf3d",
-  "source-sha256:86efc02ada421320c1638cb79394bc36acfc178dfc0b67501c6d25196f8b5df5"
+  "PLAN-851",
+  "r4",
+  "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "source-commit:4fabe4931997d7636c11bc683fa54f405683e6cb",
+  "source-sha256:d41b43087279ee4d804157aded8584476921cbf29bcf25d3428b4f0069811ca7"
  ],
  "created_at": 1792685069,
- "modified_at": 1792985455,
- "completed_at": 1792985455
+ "modified_at": 1792998181,
+ "completed_at": 1792998181
 },
         {
           "id": "P828-SRC",
@@ -15392,7 +15435,7 @@
         {
  "id": "P839-PLAY",
  "title": "AutoGraphics scene-play-session",
- "content": "Project default consumes accepted bytes/nullable actors; explicit external/Builtin stays temporary. Correct verified-root or memory/hash attribution; original Auto frame/time/Stop/owner behavior unchanged.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.",
+ "content": "Project default consumes accepted bytes/nullable actors; explicit external/Builtin stays temporary. Correct verified-root or memory/hash attribution; original Auto frame/time/Stop/owner behavior unchanged.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.\n\nPLAN-851:r4 explicit behavior/5/profile11 bounded Auto move-and-slide, maximum two contacts, directional initial-boundary policy, actual f32 final candidate admission and typed cast/sweep/motion latest slot. Original128-node/CPU/32credits/SDK/source/resource boundaries and old versions remain; canonical target is authoritative and production I2/I3 remain pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15414,17 +15457,20 @@
   "PLAN-849",
   "r1",
   "reviewed:6bb85f354e718f6541256f4b3d75ca97af75b8c4",
-  "source-commit:8087a6bbd6bc81518e469e0a65592a856b4caf3d",
-  "source-sha256:4d935b5096d9ee0d8cabcea2fe5cad70c9e680714c4f0cad13a13bfe8c3c9e36"
+  "PLAN-851",
+  "r4",
+  "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "source-commit:4fabe4931997d7636c11bc683fa54f405683e6cb",
+  "source-sha256:5c55dceb8bec3bf1faa8e9fe9dfee9ec68783243f49535f5398bb57b10e1b35d"
  ],
  "created_at": 1792814102,
- "modified_at": 1792985455,
- "completed_at": 1792985455
+ "modified_at": 1792998181,
+ "completed_at": 1792998181
 },
         {
  "id": "P840-BEHAVIOR-API",
  "title": "AutoGraphics behavior-api",
- "content": "Existing behavior1 functions/callbacks/limits unchanged; bound scene default and exact accepted bytes complement temporary per-Run file selection without changing API semantics.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.",
+ "content": "Existing behavior1 functions/callbacks/limits unchanged; bound scene default and exact accepted bytes complement temporary per-Run file selection without changing API semantics.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.\n\nPLAN-851:r4 explicit behavior/5/profile11 bounded Auto move-and-slide, maximum two contacts, directional initial-boundary policy, actual f32 final candidate admission and typed cast/sweep/motion latest slot. Original128-node/CPU/32credits/SDK/source/resource boundaries and old versions remain; canonical target is authoritative and production I2/I3 remain pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15446,12 +15492,15 @@
   "PLAN-849",
   "r1",
   "reviewed:6bb85f354e718f6541256f4b3d75ca97af75b8c4",
-  "source-commit:8087a6bbd6bc81518e469e0a65592a856b4caf3d",
-  "source-sha256:e9dd67037db25a9553dd7aff7817d2fef3c98c03fbe0a0df134ddf009f9bc291"
+  "PLAN-851",
+  "r4",
+  "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "source-commit:4fabe4931997d7636c11bc683fa54f405683e6cb",
+  "source-sha256:f5985a7bd3ab8bfe014cd3939e87bc09f75c598589f9b869a60ffcb9b8a7612c"
  ],
  "created_at": 1792828504,
- "modified_at": 1792985455,
- "completed_at": 1792985455
+ "modified_at": 1792998181,
+ "completed_at": 1792998181
 },
         {
           "id": "P840-SDK",
@@ -15515,7 +15564,7 @@
         {
  "id": "P845-BEHAVIOR-PROJECT",
  "title": "AutoGraphics behavior-project",
- "content": "Current bounded byte-exact source/actor project contract: strict scene4, immutable owners/history, verified closure save/Open, default accepted-source Run and honest memory/hash or verified-root provenance.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.",
+ "content": "Current bounded byte-exact source/actor project contract: strict scene4, immutable owners/history, verified closure save/Open, default accepted-source Run and honest memory/hash or verified-root provenance.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.\n\nPLAN-851:r4 explicit behavior/5/profile11 bounded Auto move-and-slide, maximum two contacts, directional initial-boundary policy, actual f32 final candidate admission and typed cast/sweep/motion latest slot. Original128-node/CPU/32credits/SDK/source/resource boundaries and old versions remain; canonical target is authoritative and production I2/I3 remain pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15537,12 +15586,15 @@
   "PLAN-849",
   "r1",
   "reviewed:6bb85f354e718f6541256f4b3d75ca97af75b8c4",
-  "source-commit:8087a6bbd6bc81518e469e0a65592a856b4caf3d",
-  "source-sha256:ceef24452070d01fa7cc2d9b7be9ea92e3031b233b3a9d58c17618336168df3a"
+  "PLAN-851",
+  "r4",
+  "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "source-commit:4fabe4931997d7636c11bc683fa54f405683e6cb",
+  "source-sha256:9ed44de2cb0b454cfd440d6a9ff63e2b8470fb1adc5f870e643448bf7f2b02a4"
  ],
  "created_at": 1792871770,
- "modified_at": 1792985455,
- "completed_at": 1792985455
+ "modified_at": 1792998181,
+ "completed_at": 1792998181
 },
         {
           "id": "P820-AVDATA-LAYOUT",
@@ -15707,7 +15759,7 @@
         {
  "id": "P846-AUTO-GRAPHICS-SPATIAL-QUERY-PROFILE",
  "title": "AutoGraphics spatial-query-profile",
- "content": "PLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.",
+ "content": "PLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.\n\nPLAN-851:r4 explicit behavior/5/profile11 bounded Auto move-and-slide, maximum two contacts, directional initial-boundary policy, actual f32 final candidate admission and typed cast/sweep/motion latest slot. Original128-node/CPU/32credits/SDK/source/resource boundaries and old versions remain; canonical target is authoritative and production I2/I3 remain pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15726,12 +15778,15 @@
   "PLAN-849",
   "r1",
   "reviewed:6bb85f354e718f6541256f4b3d75ca97af75b8c4",
-  "source-commit:8087a6bbd6bc81518e469e0a65592a856b4caf3d",
-  "source-sha256:f91d44def764189970e8aa4c301aa76490a6c030bf71ae595cb13c15361b6791"
+  "PLAN-851",
+  "r4",
+  "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "source-commit:4fabe4931997d7636c11bc683fa54f405683e6cb",
+  "source-sha256:63b83429d6c69cc562279b54ccc0f2bfbfcbe8cc9500b7d613415a678ac28590"
  ],
  "created_at": 1792903815,
- "modified_at": 1792985455,
- "completed_at": 1792985455
+ "modified_at": 1792998181,
+ "completed_at": 1792998181
 },
         {
           "id": "P846-AUTO-VAL-PROJECT",
@@ -15783,7 +15838,7 @@
         {
  "id": "P848-SEGMENT-QUERY-PROFILE",
  "title": "AutoGraphics segment-query-profile",
- "content": "PLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.",
+ "content": "PLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.\n\nPLAN-851:r4 explicit behavior/5/profile11 bounded Auto move-and-slide, maximum two contacts, directional initial-boundary policy, actual f32 final candidate admission and typed cast/sweep/motion latest slot. Original128-node/CPU/32credits/SDK/source/resource boundaries and old versions remain; canonical target is authoritative and production I2/I3 remain pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15800,12 +15855,15 @@
   "PLAN-849",
   "r1",
   "reviewed:6bb85f354e718f6541256f4b3d75ca97af75b8c4",
-  "source-commit:8087a6bbd6bc81518e469e0a65592a856b4caf3d",
-  "source-sha256:0e382a54639ad609b2f0fc17800f88739bf7ec2796cdb4704fe97efc744b49e8"
+  "PLAN-851",
+  "r4",
+  "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "source-commit:4fabe4931997d7636c11bc683fa54f405683e6cb",
+  "source-sha256:6337e8508fc2af3a785507b11fc0781971843ea7b2cdca385be22059525b3c64"
  ],
  "created_at": 1792941529,
- "modified_at": 1792985455,
- "completed_at": 1792985455
+ "modified_at": 1792998181,
+ "completed_at": 1792998181
 },
         {
           "id": "P832-D1",
@@ -15884,7 +15942,7 @@
 {
  "id": "P849-SWEPT-AABB-PROFILE",
  "title": "AutoGraphics swept-aabb-profile",
- "content": "PLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.",
+ "content": "PLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.\n\nPLAN-851:r4 explicit behavior/5/profile11 bounded Auto move-and-slide, maximum two contacts, directional initial-boundary policy, actual f32 final candidate admission and typed cast/sweep/motion latest slot. Original128-node/CPU/32credits/SDK/source/resource boundaries and old versions remain; canonical target is authoritative and production I2/I3 remain pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15898,12 +15956,40 @@
   "PLAN-849",
   "r1",
   "reviewed:6bb85f354e718f6541256f4b3d75ca97af75b8c4",
-  "source-commit:8087a6bbd6bc81518e469e0a65592a856b4caf3d",
-  "source-sha256:e259a72eea25120f44746538f40234c079f117dc8d85acd1deaa8b81891be4e4"
+  "PLAN-851",
+  "r4",
+  "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "source-commit:4fabe4931997d7636c11bc683fa54f405683e6cb",
+  "source-sha256:349df4451fa3957c0d85574f15087ce6ed1b943dda49f69a0cd2e010bb8967e9"
  ],
  "created_at": 1792985455,
- "modified_at": 1792985455,
- "completed_at": 1792985455
+ "modified_at": 1792998181,
+ "completed_at": 1792998181
+}
+,
+{
+ "id": "P851-BOUNDED-MOTION-PROFILE",
+ "title": "AutoGraphics bounded-motion-profile",
+ "content": "PLAN-851:r4 explicit behavior/5/profile11 bounded Auto move-and-slide, maximum two contacts, directional initial-boundary policy, actual f32 final candidate admission and typed cast/sweep/motion latest slot. Original128-node/CPU/32credits/SDK/source/resource boundaries and old versions remain; canonical target is authoritative and production I2/I3 remain pending.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/bounded-motion-profile.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-851",
+  "r4",
+  "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "source-commit:4fabe4931997d7636c11bc683fa54f405683e6cb",
+  "source-sha256:5384e34fc328f9c2fe928bb3eae2d081ec3d06ed74a7d4f117cef52404edfa78"
+ ],
+ "created_at": 1792998181,
+ "modified_at": 1792998181,
+ "completed_at": 1792998181
 }
 ],
       "section_type": "Designs",
@@ -19696,6 +19782,31 @@
  "created_at": 1792985455,
  "modified_at": 1792985455,
  "completed_at": 1792985455
+}
+,
+{
+ "id": "P851-TESTS",
+ "title": "PLAN-851 frozen motion verification",
+ "content": "Frozen producer and fresh own-SDK/empty-target consumer full suites/build and original/new native/source/owner/counter AND content matrices audited. Permanent128 two-contact, f32 admission/second-scan mutations and independent geometry holdouts preserve original limits. AGP23 unchanged-input slots retain163tests/16native. Actual results in docs/plans/attachments/851/merge-r4/receipt.md.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/bounded-motion-profile.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-851",
+  "r4",
+  "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "source-commit:4fabe4931997d7636c11bc683fa54f405683e6cb",
+  "source-sha256:5384e34fc328f9c2fe928bb3eae2d081ec3d06ed74a7d4f117cef52404edfa78"
+ ],
+ "created_at": 1792998181,
+ "modified_at": 1792998181,
+ "completed_at": 1792998181
 }
 ],
       "section_type": "Tests",
@@ -26404,6 +26515,31 @@
  "modified_at": 1792985455,
  "completed_at": 1792985455
 }
+,
+{
+ "id": "P851-R4",
+ "title": "PLAN-851 r4 independent final PASS",
+ "content": "Independent final R1 plus affected R2 review pass binds11911a4a6; AC01..08/SD01..04 and22 independent combinations checked. R2 verifies old unknown-version control updated to /6 while explicitly accepting /5; no product changes. Review did not waive merge-owned gates.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/attachments/851/review-r4/review.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-851",
+  "r4",
+  "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "source-commit:4fabe4931997d7636c11bc683fa54f405683e6cb",
+  "source-sha256:2de3380d2afeb7c9840c9fc545cd18873a6e6bff72b189260e2a91ba84b0e3ed"
+ ],
+ "created_at": 1792998181,
+ "modified_at": 1792998181,
+ "completed_at": 1792998181
+}
 ],
       "section_type": "Reviews",
       "title": "🔍 Reviews",
@@ -26415,5 +26551,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 92
+  "version": 93
 }
