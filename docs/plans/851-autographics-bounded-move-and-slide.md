@@ -235,7 +235,7 @@ T-08列准确merge矩阵/Spec proposal；T-09独立final pass后T-10冻结完整
 
 ## 8. 执行步骤
 
-当前reviewed9/10；G849/GSTART/T-01..09已关闭，代码冻结75452a3e1；merge完整门pending。未来T-01..08全部work无必需gap才execution_done8/10，T-09独立pass为reviewed9/10且完整门pending，T-10真实收尾才10/10。原入口T-01→T-02已关闭；下一负责角色为merge T-10；独立final pass不代完整merge门。
+当前reviewed9/10；G849/GSTART/T-01..09已关闭，代码冻结11911a4a6（旧兼容断言修复后受影响复审pass）；merge完整门pending。未来T-01..08全部work无必需gap才execution_done8/10，T-09独立pass为reviewed9/10且完整门pending，T-10真实收尾才10/10。原入口T-01→T-02已关闭；下一负责角色为merge T-10；独立final pass不代完整merge门。
 
 | task_id | owner_stage | 依赖 | 实际触点/拟新增路径与动作 | 关闭条件；AC |
 |---|---|---|---|---|
@@ -314,6 +314,12 @@ stage: review | review_scope: final | reviewer_identity: 独立子代理 `/root/
 157份raw Git blob、430来源hash、681SDKfiles/17locals/479packages/29edges、三锁/source-lock均独立核；原native六正向/四额外reopen/八负向及两Dash、owner六变异红/恢复绿按未变源码/依赖/配置/输入复用，并检查实际断言和拒绝阶段。未跑完整driver/AGP/根全档或全native矩阵。fmt/diff check绿；固定SDK146预存warning、driver新增0。无合同内遗漏/未批延后/workaround或新债务，保留R849-NATIVE-CLOCK边界。未改实现/SDK/锁/canonical/ledger，未合入/归档/移树，保留主检出他人WIP。
 
 详见[独立复审及AC/SD映射](attachments/851/review-r4/review.md)、[revision/Spec/锁/raw核验](attachments/851/review-r4/audit.json)及[冻结Spec proposal](attachments/851/review-r4/spec-delta-reviewed.md)（SHA256 088e6803a8aa2e5ece6de1be0f10522fb6c1f7149dc21931d7ea4a6772f9c509）。SD-01..04 pass，frontmatter impacts保持，current_step=9/10、status=reviewed。review不代表交付完成：T-10完整locked driver/AGP/build、原835..849/双游戏/合成counter AND content/native/owners/source/package、fresh own-SDK own-target consumer及motion门全部merge-owned pending，预期280driver须实际重核；原AGP23/163/16native和87graphics分母不缩。定向Cargo重建当前exe SHA e129d8944bff6a4c0feb85fd98c4f261c1ca008ac4888375cd2b66e855208d9c；旧native证据仍绑定13a6d0cb…，merge需重新绑定真实producer/consumer runner，不冒用旧SHA。若代码漂移先受影响复审；根全档不是851门，到期batch按850在主检出单实例判断/执行。
+
+### 2026-10-26 independent affected re-review R2（r4）
+
+stage: review | review_scope: final affected re-review | reviewer_identity: `/root/review_851` 独立上下文 | plan_revision:4 | outcome:pass | reviewed_commit:11911a4a6d809bfd515f745b77d00bc8f04f6ba9 | previous_reviewed_commit:75452a3e1daaba74c5557e78b83eeab2cc1e0763 | base_commit:6bb85f354e718f6541256f4b3d75ca97af75b8c4 | worktree_path:D:/autostack/.wt/lang-851/auto-lang | branch:plan-851-dev | findings:none | next:merge T-10重跑冻结完整门；仍reviewed9/10。
+
+T-10 producer完整门捕获旧segment_api测试要求/5 unsupported的过期断言（该target7pass/1fail），与r4显式/5合同冲突；未合入且原始失败保留。实际仅改该测试为/5==MotionV5并保/6拒绝，及430hashmanifest内该文件一项；独立核parsed manifest其余完全一致。v1/v2旧managed hash、raw/旧helper/实际Session版本profile及combined区别断言保留。独立定向重跑1selected/pass、0ignored、7filtered，source681/17/430/479/29/forbidden0及fmt/diff通过，唯一树clean/HEAD一致。AC-01/03/08受影响证据刷新，其余AC与SD依据产品代码、SDK/三锁/配置/其余fixture/native输入/157raw/Spec proposal完全未变复用R1，非新全量绿。见[受影响复审](attachments/851/review-r4/review.md)、[新revision/hash附件](attachments/851/review-r4/audit-r2.json)。完整producer及关联consumer/package等merge门全部pending，失败invocation不能算通过；新冻结完整门通过前不得合入。
 
 ## 10. 待澄清事项
 
