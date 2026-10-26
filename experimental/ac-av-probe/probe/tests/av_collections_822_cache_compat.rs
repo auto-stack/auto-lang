@@ -277,3 +277,83 @@ fn av_collections_822_cache_restore_payload_types_fp_mismatch_rejected() {
     let _ = std::fs::remove_dir_all(&store);
     let _ = std::fs::remove_dir_all(&honest_store);
 }
+
+/// F822-R15-01: restore binds the payload's ACTUAL entry identity — the
+/// entry function NAME and its `source_snapshot` (the envelope never
+/// carried the entry; its snapshot is outer metadata, not decoded
+/// content). Two same-fingerprint payloads (the ORIGINAL type table, so
+/// the R14 types-fp check passes), each legally admitted by MIR/ABC, are
+/// stored under the ORIGINAL key with a fully matching envelope:
+///  (a) the entry function renamed to `foreign_entry`;
+///  (b) the entry function's source_snapshot bumped +1.
+/// Both must be refused BEFORE dispatch; the honest store still restores.
+#[test]
+fn av_collections_822_cache_restore_payload_entry_identity_rejected() {
+    let r = request_collections(None, "cache822", "first-case").unwrap();
+    for mode in ["entry", "snapshot"] {
+        let mut m = first_case_module();
+        m.funcs[0].source_snapshot = r.snapshot;
+        match mode {
+            "entry" => m.funcs[0].name = "foreign_entry".into(),
+            "snapshot" => m.funcs[0].source_snapshot = r.snapshot.wrapping_add(1),
+            _ => unreachable!(),
+        }
+        verify_mir(&m).expect("foreign payload remains structurally valid");
+        assert_eq!(collections_types_fp_of(&m), r.types_fp, "same type table");
+        let wire = encode_abc(&m).unwrap();
+        verify_abc_bytes(&wire.to_flat(), &m.owner).expect("self-consistent valid ABC");
+        let store = std::env::temp_dir().join(format!(
+            "cache822-r15-entry-binding-{}-{}-{mode}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let s = ManagedStore::open(&store).unwrap();
+        s.put_artifact(PutRequest {
+            layer: COLLECTIONS_ABC_LAYER.id,
+            key: collections_module_key(&r.owner, &r.entry, &r.types_fp, r.snapshot),
+            kind: ChunkKind::LayoutData,
+            payload: envelope_wrap(
+                &wire.to_flat(),
+                &collections_envelope(&r.owner, &r.entry, r.snapshot),
+            ),
+            edges: vec![],
+            project: Some("cache822".into()),
+        })
+        .unwrap();
+        drop(s);
+        let out = restore_collections(&store, &r.owner, &r.entry, r.snapshot, &r.types_fp);
+        let msg =
+            out.expect_err("a foreign entry identity under an expected key must not dispatch");
+        assert!(
+            msg.contains(mode) || msg.contains("mismatch"),
+            "the refusal names the identity gap ({mode}): {msg}"
+        );
+        let _ = std::fs::remove_dir_all(&store);
+    }
+    // The positive control: an honest store's ORIGINAL payload (same
+    // entry name, same snapshot) still restores and executes.
+    let honest_store = std::env::temp_dir().join(format!(
+        "cache822-r15-entry-honest-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let r2 = request_collections(Some(&honest_store), "cache822", "first-case").unwrap();
+    let ok = restore_collections(
+        &honest_store,
+        &r2.owner,
+        &r2.entry,
+        r2.snapshot,
+        &r2.types_fp,
+    );
+    assert!(
+        matches!(&ok, Ok(ExecOutcome::Success { .. })),
+        "an honest restore still executes: {ok:?}"
+    );
+    let _ = std::fs::remove_dir_all(&honest_store);
+}

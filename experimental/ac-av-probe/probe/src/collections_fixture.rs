@@ -470,6 +470,28 @@ pub fn restore_collections(
             "payload types-fp mismatch: requested {types_fp}, payload carries {actual_types_fp} — refusing to dispatch"
         ));
     }
+    // F822-R15-01: bind the payload's ACTUAL entry identity — the envelope
+    // never carried the entry (its builder drops the argument) and its
+    // snapshot is outer metadata, not decoded content. A legal payload
+    // renamed to a foreign entry, or stamped with a different
+    // source_snapshot, stored under an expected key is an identity
+    // mismatch: refuse BEFORE dispatch (V-08). (The owner axis needs no
+    // content check: verify_abc_bytes RE-STAMPS the decoded owner from
+    // the envelope — the payload cannot self-assert one.)
+    let module = loaded.module();
+    let entry_fn = &module.funcs[module.entry as usize];
+    if entry_fn.name != entry {
+        return Err(format!(
+            "payload entry mismatch: requested `{entry}`, payload carries `{}` — refusing to dispatch",
+            entry_fn.name
+        ));
+    }
+    if entry_fn.source_snapshot != snapshot {
+        return Err(format!(
+            "payload source-snapshot mismatch: requested {:016x}, payload carries {:016x} — refusing to dispatch",
+            snapshot, entry_fn.source_snapshot
+        ));
+    }
     let (out, _) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
     Ok(out)
 }
