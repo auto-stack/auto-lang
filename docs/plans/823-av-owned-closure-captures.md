@@ -2,7 +2,7 @@
 plan_id: PLAN-823
 status: executing
 feature_name: AV类型化闭包环境与捕获生命周期
-plan_revision: 7
+plan_revision: 8
 author: [Codex]
 created_at: 2026-10-20
 updated_at: 2026-10-27
@@ -176,6 +176,11 @@ T-06最后汇总原门及新V-15，T-07独立核AC-11。避免T-09“其他work�
 单写交接，关联MIR/AV变更另守核心窗口，不复制runner/VM/store。a2r有效认证按内容/依赖复用，
 日常只emit+金样比较，不由T-11重复编译认证。原P95/内存/磁盘及负控不降，work仍只定向测试。
 
+
+### T-09 env 契约阶段（r8，2026-10-27 用户裁定在计划内加 phase）
+
+D828 增量机制是单元级，CREATE_CLOSURE 原 callee:FuncIdx 与单元纪律（callee 走 import）冲突，且 body 单元独立验证看不到创建者 site 的 env 布局。冻结有界修订：**闭包 body 自带 env 声明**——`MirFunction.env: Option<Vec<TypeIdx>>`（Some=闭包体；声明即 env 布局，borrow 捕获条目=StrView）；`ENV_GET` 对本函数声明定型（单元独立可验）；`CREATE_CLOSURE.callee: CalleeRef`（模块=Func、单元=Import，import 表携 env 声明），captures 逐位等于被调 env 声明；link 期 `fn:` 绑定加 env 等价检查（V-13 子 case 3 精确失效轴）。wire v4 未发布、原位扩展。site 唯一规则保留（模块内）；既有 fixture 全部补 env 声明。本阶段不改变 borrow 纪律/资源门/旧 profile 面。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
@@ -277,6 +282,8 @@ T-06最后汇总原门及新V-15，T-07独立核AC-11。避免T-09“其他work�
 
 
 ## 9. 复审记录
+
+2026-10-27 stage:work | PLAN-823 r8 | env 契约阶段核心落地（用户裁定在计划内加 phase） | code:9468704ac | 交付：MirFunction.env/MirImport.env 声明、CREATE_CLOSURE.callee:CalleeRef（单元经 import 绑定闭包体、模块走 Func）、captures 逐位等于被调声明（borrow 条目=StrView）、wire v4 原位扩展（函数/import 记录 env 字段+callee 判别字节）、入口体/直接 Call 门改按声明判定 | evidence:closures 全族 40 例+回归 149 例全绿（820/821/822+abc/cache/mir；65 处旧 fixture 补 env:None） | blockers（T-09 剩余）：①closures 更新会话消费者（镜像 822 CollectionsUpdateSession）②link 期 fn: 绑定的 env 等价检查（program_snapshot）③V-13 子 case 2/3/4 测试接线——三者均为纯消费者侧，核心合同已就绪 | next:下会话完成上述三项后 T-09 勾选；T-07 review 等 work 全收口；merge-owned 整档 pending
 
 2026-10-27 stage:work | PLAN-823 r7 | T-03/T-04/T-05/T-06 完成（全支持语义+资源分态+缓存兼容+聚合收口）；T-09 部分推进后定位精确设计缺口 | worktree:`D:/autostack/.wt/lang-823/auto-lang` | branch:plan-823-dev | base:e9bb30606(T-02) | code:fa06bfe8b(T-03)、81a29f1d7(T-04..T-06) | deps:D822/D828/D821✅（核心窗口本树持续持有） | tasks:T-03..T-06 | evidence:semantics 10/10、resources 3/3、cache_compat 4/4、recipe 3/3、harness 12/12、first-case 4/4 —— **acceptance 36 例全绿**（ps1 全 Scope 聚合透传）；回归 149 例（820/821/822+abc/cache 档）零回归零警告；borrow 语义冻结=share 视图+静态钉住（保守扫描，§5.1.6 允许集） | blockers:**T-09 闭包体单元化**：D828 增量机制是单元级（FunctionCode::admit_unit），而 CREATE_CLOSURE 在单元中被禁（callee 走 FuncIdx、单元只准 import）；将 callee 扩为 CalleeRef 后仍余一个真设计缺口——**body 单元独立验证时看不到创建者 site 的 env 布局，EnvGet 无法定型**，需要"env 布局进入 body 单元契约"（类签名声明）的有界合同修订；不硬做、不弱化单元纪律，交回 new 做有界修订或下会话按修订后合同实现。子 case 1（D828 基线 273575B/30 修订）为 828 自有交付、822 已按同型会话重放，823 consumer 待上述修订后接线 | next:T-09 需先解 env 契约设计（建议 /auto-plan:new 有界修订 T-01 合同）；T-11 等 D852；T-07 review 等 work-owned 全部完成；merge-owned 整档门禁 pending
 
