@@ -952,9 +952,11 @@ fn av_data_820_instruction_contract_round_trip_all_opcodes() {
     // core instr_spec tests. The table is the SHARED union: 820's twelve
     // plus PLAN-821's owned additions (16 rows incl. FIELDMOVE 0x1C);
     // the count pin guards silent table growth beyond a known edition.
+    // PLAN-822 merge-stage refresh: + 18 collections rows (0x1D..0x2E)
+    // = 28 + 18 = 46.
     let all_mnemonics: Vec<&str> = instr_spec::SPECS
         .iter()
         .map(|s: &InstructionSpec| s.name)
         .collect();
-    assert_eq!(all_mnemonics.len(), 28);
+    assert_eq!(all_mnemonics.len(), 46);
 }
