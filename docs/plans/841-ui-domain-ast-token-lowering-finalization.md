@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-24
 updated_at: 2026-10-26
 plan_revision: 1
-current_step: 2
+current_step: 6
 total_steps: 12
 supersedes_spec_components: [docs/specs/auto-ast/project.md, docs/specs/auto-lex/project.md, docs/specs/auto-parser-api/project.md, docs/specs/auto-ui-dialect/project.md, docs/specs/auto-ui-compiler/project.md, docs/specs/auto-ui-runtime/project.md, docs/specs/language-sdk/project.md, docs/specs/auto-lang/frontend/overview.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/ui-domain-model/project.md]
@@ -113,10 +113,10 @@ work/review只必要check（真实SDK/被改包）、相关包/模块/fixture和
 |---|---|---|---|---|---|
 | [x] | T-01 | work | G841完整核验 | [✅ 已完成] [contract-baseline](attachments/841/contract-baseline.md)：三仓消费图/语法分类/寿命与资源边界冻结；泛型 DomainCode/UiStmt 整链实证（Core check、UI两包check、全部测试目标构建、代表lower→Codegen→VM=1、四生成器、跨文件导入与Core同名对照） | AC-01..05 |
 | [x] | T-02 | work | G841；T-01 | [✅ 已完成] UI owned 模型/visitor/codec 与 Core serde 中立契约落地：`UI_AST_SCHEMA_VERSION` 版本信封（domain/schema/tag 具名拒绝）、递归 `UiAstVisitor`（UI/View/Core 全走）、`Shared<T>` 仅经显式 serde adapter（无全局对象表）、Core `ast/route.rs` 模型副本删除（RouteDef 单源归 dialect）；回归套件全部迁 `parse_domain(&UiDialect)` 显式端口（55 项文法回归 + plan778 回滚不变量经新端口复证 + design_tokens 9 项迁 compiler/tests + trans 两族纯 Core）；codec 含真实解析 span/源行/字段往返与坏 domain/version/tag 反例 | AC-01,03 |
-| [ ] | T-03 | work | G841；T-02 | 迁UI专属Token分类/文法端口/ParserBridge返回与默认/显式装配；Core同名语义正反控 | AC-01,02 |
-| [ ] | T-04 | work | G841；T-03 | 实现完整校验/lowering和类型/编译/VM消费准入；删除低层UI专属Stmt/投影臂，保源诊断与求值序 | AC-01,02 |
-| [ ] | T-05 | work | G841；T-04 | 迁UI分析/四生成器/registry/runtime/renderer生产消费到新owned模型，非UI trans保持 | AC-02,04 |
-| [ ] | T-06 | work | G841；T-05 | 跨文件/Clone/投影/缓存版本与重启/资源last-owner拒绝路径完整V-03；过渡上层adapter逐项登记 | AC-03 |
+| [x] | T-03 | work | G841；T-02 | [✅ 已完成] View/On 共享 Token 保留，UI 文法仅经 `Parser::parse_domain(&UiDialect)`；SDK 安装器/入口函数表装配退役，Core `.view`/普通 `msg` 与裸 parse 拒绝面 3 项控制绿 | AC-01,02 |
+| [x] | T-04 | work | G841；T-03 | [✅ 已完成] Core UI Stmt/投影与旧 Parser UI 返回门面退出；`lower_ui` 校验后分离 UI owned/Core Code，十类语句裸 parse 拒绝 + 领域正控，Core 3 项与 ui_ast 4 项绿；代表 lower→VM/四生成器保持 | AC-01,02 |
+| [x] | T-05 | work | G841；T-04 | [✅ 已完成] UI 分析/四生成器/registry/runtime/renderer 生产消费迁 `UiCode`；dialect 90、compiler 1121、runtime 1873 过/7 败，基线对照证明零迁移致败（3 预存环境红、1 T-07 桩、3 污染受害者） | AC-02,04 |
+| [x] | T-06 | work | G841；T-05 | [✅ 已完成] [V-03 证据与 adapter 清单](attachments/841/v03-closeout.md)：缓存身份加入 AST schema，compiler/Vue/Jet 三入口接线；codec 5、缓存重载/旧版本 1、ui_ast 4 绿，Weak 验证 Clone/decode 最后 owner，跨文件模块 owner 独立 | AC-03 |
 | [ ] | T-07 | work | G841；T-06 | 三仓调用方/manifest/固定版本/生成import/数据迁移/777与792、测试ID选择面同步 | AC-04,05 |
 | [ ] | T-08 | work | G841；T-07 | V-01..05完整正反控、真正UI与外部工程fresh/locked/重定位，类型/source/资源/失败归因齐备 | AC-01..05 |
 | [ ] | T-09 | work | G841；T-08 | 删除原模型实现并复核零残边，冻结SD-01..05及attachments/841/handoff.md、交842的过渡清单，提交送审 | AC-05 |
@@ -127,6 +127,8 @@ work/review只必要check（真实SDK/被改包）、相关包/模块/fixture和
 G841未满足前禁止创建/认领以下组、分支或work agent。未来组`D:/autostack/.wt/lang-841/{auto-lang,auto-ui,auto-man}`，每个实际需写仓各一树/分支`codex/plan-841-dev`；只读consumer用固定版本clone而非借其他计划WIP，未需写仓不多建树。work/review/merge沿同组顺序交接，不建第二审查树；若auto-down为现有可选依赖则具名固定版本/detached兄弟，只解析不改实现。禁止junction/symlink，主检出只簿记，清理前每树fresh guard clean且保留实际交付/legacy恢复源。
 
 ## 9. 复审记录
+
+2026-10-26 / stage: work（T-03..T-06 阶段收口） / plan_id: PLAN-841 / plan_revision: 1 / outcome: **executing（6/12；T-03/T-04/T-05/T-06 已核验勾选，整体未送审）** / worktree_path: `D:/autostack/.wt/lang-841/{auto-lang,auto-ui}` / branch: `codex/plan-841-dev` / base_commit: lang `1fed8a306`、UI `471c7f9` / code_commit: lang `6edb3fbae7bb15b0d13118016e7d4e576dc7c526`、UI `4f6104612dd60e5c81814bb9bb6d19b7e30d0b2c` / dependency_revisions: down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`（只读）、Man `1b7a9ce0de9055f7953129d78a25777662508258` / task_ids: T-03,T-04,T-05,T-06 / evidence: Core plan841 3、dialect codec 5、compiler ui_ast 4、`ui_cache_schema` 1、design_tokens 9 全绿；`cargo check -p auto-ui-runtime` PASS；缓存真实落盘/重载与旧 schema 失效、Weak 最后 owner、跨文件 owner 见 [V-03 证据](attachments/841/v03-closeout.md)；迁移触面警告按基线 diff 交叉仅 4 条且全清，runtime 余 216 为预存，不记作本计划迁移警告 / blockers: T-07 待迁 `auto-ui-tools` 23 个旧 Core UI AST 编译错及 auto-lang `vue_capabilities`/`component_registry_test`/`regen_page` 等旧消费点；3 个预存环境红与 aura plan050 桩仍按既有归因，merge 统一裸 `cargo t` + 触面档 pending / next_responsible_role: work——T-07 三仓调用方/manifest/固定版本/生成 import/测试 ID 选择面同步
 
 2026-10-26 / stage: work（T-05 行为验证收口：零迁移致败） / plan_id: PLAN-841 / plan_revision: 1 / outcome: **executing（runtime 全量 1873 过/7 败，7 败全部归因为非迁移因素——基线对照实证）** / worktree_path: `D:/autostack/.wt/lang-841/{auto-lang,auto-ui}` / branch: `codex/plan-841-dev` / code_commit: UI `471c7f9`（p370 timer 携带修复——plan370_test_support 三处 store-as-child 转换原 `timer: None`，靠已退役的构造器兜底补 timer；现与生产一致携带 `store_decl.timer`，plan536 T1 三探针全绿） / evidence: **基线对照**（lang `100172980` + UI `aee499e` 双仓检出实测）：`launch_provision_lifecycle`（os error 10013 端口/Hyper-V 保留段——AGENTS.md 已载环境类）、`hatch_provisions`、`desktop_mcp_switcher`（跨线程时序 flake，两次运行败点不同）三者在 T-01 前基线**本就红**；`autocenter_translates`/`p656_scroll`/`diff_dirs_envelope` 单跑绿（序列失败=上述预存红的下游状态污染）；`aura plan050`=退役路径占位桩（T-07 oracle 重写）。**结论：迁移致败已清零** / 累计 T-05 交付：编译链全绿（runtime/SDK/workspace 除 auto-cosmic-demo 预存）+ 1873/7（含 drain-on-check 测试隔离修复与中立 external-ident 端口两根因修复） / blockers: 无迁移致败；7 败中 3 预存环境红建议按 KNOWN-DEBT 流程登记（非本计划修复面）、1 桩待 T-07、3 污染受害者随预存红修复自愈 / next_responsible_role: work——T-04 剩余（旧 Parser UI 门面 parse_widget_decl 等死代码删除+Core 拒绝面复核）→ 测试面 ~215 迁移遗留警告清理 → T-06 codec/缓存/last-owner 完整 V-03
 
