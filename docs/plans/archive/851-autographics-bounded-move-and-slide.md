@@ -7,9 +7,9 @@ created_at: 2026-10-26
 updated_at: 2026-10-26
 plan_revision: 4
 completion_kind: delivered
-merge_checkpoint: archived
-cleanup: pending
-current_step: 9
+merge_checkpoint: cleaned
+cleanup: complete
+current_step: 10
 total_steps: 10
 depends_on: [PLAN-849]
 supersedes_spec_components:
@@ -251,7 +251,7 @@ T-08列准确merge矩阵/Spec proposal；T-09独立final pass后T-10冻结完整
 | T-07 | work | T-06 | [x] new tools/check_bounded_motion.py、OS/GPU/仓外reopen| V-10同runner/新进程/全mesh/改源/状态/正反/partial无gap；AC-08 |
 | T-08 | work | T-07 | [x] new tests/motion_owners.rs、tools/check_motion_owners.py、851来源闭包/verifier、research/bounded-motion-handoff.md/Spec proposal| V-01/11/12、64存储/20owner、原受影响定向/check/fmt、准确merge矩阵；AC-01, AC-07, AC-08 |
 | T-09 | review | T-08 | [x] 同树冻结code/Plan/Spec/raw；主检出独立review附件 | AC-01..08/SD/遗漏/延后/workaround/健康逐项及revision+code结论；AC-09 |
-| T-10 | merge | T-09 pass | 冻结完整门→autographics-dev；主检出Spec/ledger/archive/guard/到期 | AC-10全部真实关闭，改代码先受影响复审，不提前标交付 |
+| T-10 | merge | T-09 pass | [x] 冻结完整门→autographics-dev；主检出Spec/ledger/archive/guard/到期 | AC-10全部真实关闭，改代码先受影响复审，不提前标交付 |
 
 ## 9. 复审记录
 
@@ -342,3 +342,8 @@ stage:merge | plan_id:851 | plan_revision:4 | outcome:pass（落地/账本；cle
 ## spec-sync 回写记录
 
 新增docs/specs/auto-graphics/bounded-motion-profile.md；更新swept/segment/spatial query、behavior-api/project、scene-play-session、auto-source-driver/prototype/project/integration、module overview/plans及GOAL-007/008进度说明。spec-index已再生，无结构变化；独立canonical复核pass。Regime B store不可达后采用有字节备份/六段schema/单writer/读回保护的offline投影：16受影响项、1230无关原条目保持，v92→93。两文档提交在并发Plan841簿记后重放，range-diff两项完全等价，源码/依赖/测试基线未变。
+
+
+### 2026-10-26 最终 cleaned 收据
+
+stage:merge | outcome:pass | checkpoint:cleaned | completion_kind:delivered | status:archived | current_step:10/10 | task_ids:T-01..10全部关闭。源码11911a4a6保留于autographics-dev；canonical33f0c76de与ledger671d89522/v93及归档/证据提交保留master。实际归档后Plan与新增canonical链接全过，16ledger项/1230无关项/六段schema读回通过。最新guard为clean，无reparse point；唯一worktree、两临时branch及空组目录均已验证移除。Fresh consumer与32生成binary/debug产物按hash留在D:/autostack/plan-artifacts/plan-851，未混入Git；实际runner可恢复。批量回归仍未到期，production I2/I3未在本计划交付范围。主检出其他WIP保留。

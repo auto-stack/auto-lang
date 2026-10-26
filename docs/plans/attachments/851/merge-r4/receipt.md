@@ -9,3 +9,5 @@ First complete producer attempt failed the obsolete unknown-/5 test; repaired /5
 Source landed by non-forced fast-forward on autographics-dev. Canonical/ledger/archive/cleanup pending. Production I2/I3 remain pending; no production deployment claim.
 
 Canonical33f0c76de and ledger671d89522/v93 landed master after exact equal two-patch range-diff over concurrent unrelated Plan841 bookkeeping.16projected items/1230untouched verified by exact byte readback. Archive and cleanup pending.
+
+Final merge pass: archived10/10 and cleaned; fresh guard clean, sole tree/two temporary branches/empty group removed, consumer and generated artifacts retained outside Git. Source11911a4a6 on autographics-dev; canonical33f0c76de/ledger671d89522/v93 and16items/1230untouched on master. Actual archived affected links resolve. Batch not due; no production deployment claim.
