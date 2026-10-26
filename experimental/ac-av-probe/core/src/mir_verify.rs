@@ -524,7 +524,8 @@ impl<'a> Verifier<'a> {
                         // place values only (contract-decision §2).
                         Some(MirType::StrView)
                         | Some(MirType::MutRef)
-                        | Some(MirType::RecordView(_)) => {
+                        | Some(MirType::RecordView(_))
+                        | Some(MirType::Place(_)) => {
                             return Err(MirVerifyError::inv(
                                 "mir.field-borrow",
                                 format!(

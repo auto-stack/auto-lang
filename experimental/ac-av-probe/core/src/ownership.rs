@@ -367,7 +367,7 @@ pub fn verify_owned_function(
         .map(|s| {
             matches!(
                 m.types.get(s.ty as usize),
-                Some(MirType::StrView) | Some(MirType::MutRef)
+                Some(MirType::StrView) | Some(MirType::MutRef) | Some(MirType::Place(_))
             )
         })
         .collect();
@@ -387,7 +387,7 @@ pub fn verify_owned_function(
             s.kind == SlotKind::Param
                 && matches!(
                     m.types.get(s.ty as usize),
-                    Some(MirType::StrView) | Some(MirType::RecordView(_))
+                    Some(MirType::StrView) | Some(MirType::RecordView(_)) | Some(MirType::Place(_))
                 )
         })
         .collect();
@@ -406,9 +406,19 @@ pub fn verify_owned_function(
         for (si, s) in f.slots.iter().enumerate() {
             if s.kind == SlotKind::Param {
                 st.init.set(si);
-                if is_token[si] {
+                if is_token[si] && !matches!(m.types.get(s.ty as usize), Some(MirType::Place(_))) {
                     // A view param flows in LIVE, rooted EXTERNALLY.
                     st.tokens_live.set(si);
+                    let mut roots = Bitsets::new(root_bits);
+                    roots.set(n); // sentinel index
+                    st.token_roots[si] = Some(roots);
+                }
+                if matches!(m.types.get(s.ty as usize), Some(MirType::Place(_))) {
+                    // A PLACE param references the CALLER's frame — the
+                    // root is external (returning it is legal while the
+                    // caller lives), and a place is a retained reference,
+                    // NOT an exclusive borrow (structural changes retire
+                    // places via epoch, not via a live-borrow conflict).
                     let mut roots = Bitsets::new(root_bits);
                     roots.set(n); // sentinel index
                     st.token_roots[si] = Some(roots);
@@ -1402,6 +1412,13 @@ pub fn verify_owned_function(
                 MirInstr::ListPlace { dst, base, index } => {
                     check_read!(base, "list-place base");
                     check_read!(index, "list-place index");
+                    // F822-R5-02: the minted place references THIS frame's
+                    // base slot — a returned local-root place is a borrow
+                    // escape (the root dies with the frame). Recorded as
+                    // provenance only; a place is not an exclusive borrow.
+                    let mut roots = Bitsets::new(root_bits);
+                    roots.set(*base as usize);
+                    st.token_roots[*dst as usize] = Some(roots);
                     st.define_slot(*dst as usize);
                 }
                 MirInstr::PlaceGet { dst, src } => {

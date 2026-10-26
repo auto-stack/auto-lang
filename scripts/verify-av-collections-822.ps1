@@ -135,7 +135,12 @@ $REQ = @{
         'av_collections_822_semantics_place_stale_after_push',
         'av_collections_822_semantics_place_stale_after_remove_fresh_reads_shift',
         'av_collections_822_semantics_place_retired_by_element_replacement',
-        'av_collections_822_semantics_place_mint_out_of_range_traps',
+        'av_collections_822_semantics_place_mint_out_of_range_traps'
+        'av_collections_822_semantics_cross_frame_place_write_no_panic',
+        'av_collections_822_semantics_cross_frame_place_read_control',
+        'av_collections_822_semantics_callee_local_place_escape_refused',
+        'av_collections_822_semantics_record_place_token_refused',
+        'av_collections_822_semantics_place_param_roundtrip_supported',
         'av_collections_822_semantics_place_get_wrong_type_rejected',
         'av_collections_822_semantics_place_set_wrong_type_rejected',
         'av_collections_822_semantics_place_mint_binds_referent',

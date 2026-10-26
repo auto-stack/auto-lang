@@ -1739,3 +1739,343 @@ fn av_collections_822_semantics_call_move_in_preserves_list() {
     let _ = c0;
     assert_eq!(success(&m), Value::I32(1));
 }
+
+// -- F822-R5-01/R5-02: cross-frame Place access + borrow-escape gates ----
+
+/// A two-function fixture vocabulary for the cross-frame probes:
+/// 0=i32 1=bool 2=Str 3=Note 4=List<i32> 5=List<Str> 6=List<Note>
+/// 7=Outcome 8=List<Outcome> 9=Place<i32>.
+fn cross_frame_module(mode: &str) -> MirModule {
+    let mut m = MirModule::new_collections(OwnerScope {
+        schema: auto_av_core::contract::MIR_COLLECTIONS_SCHEMA.to_string(),
+        module: "collections822".to_string(),
+    });
+    m.types = vec![
+        MirType::I32,
+        MirType::Bool,
+        MirType::Str,
+        MirType::Record(auto_av_core::mir::RecordTypeRef {
+            owner_module: "collections822".to_string(),
+            name: "Note".to_string(),
+            fields: vec![
+                auto_av_core::mir::MirFieldDef {
+                    name: "text".into(),
+                    ty: 2,
+                },
+                auto_av_core::mir::MirFieldDef {
+                    name: "n".into(),
+                    ty: 0,
+                },
+            ],
+        }),
+        MirType::List(ListTypeRef { elem: 0 }),
+        MirType::List(ListTypeRef { elem: 2 }),
+        MirType::List(ListTypeRef { elem: 3 }),
+        MirType::Variant(auto_av_core::mir::VariantTypeRef {
+            owner_module: "collections822".to_string(),
+            name: "Outcome".to_string(),
+            arms: vec![
+                auto_av_core::mir::VariantArm {
+                    name: "Ok".into(),
+                    payload: Some(3),
+                },
+                auto_av_core::mir::VariantArm {
+                    name: "Err".into(),
+                    payload: Some(2),
+                },
+            ],
+        }),
+        MirType::List(ListTypeRef { elem: 7 }),
+        MirType::Place(ListTypeRef { elem: 0 }),
+    ];
+    let c7 = m.intern_const(MirConst::I32(7)) as u32;
+    let c9 = m.intern_const(MirConst::I32(9)) as u32;
+    let c0 = m.intern_const(MirConst::I32(0)) as u32;
+
+    // main slots: 0=list, 1=v, 2=idx0, 3=place, 4=got
+    // helper slots (write mode): 0=place param, 1=nv
+    // helper slots (read mode): 0=place param, 1=got
+    let main_sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: vec![],
+        result: 0,
+    }));
+    let helper_sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: vec![9],
+        result: if mode == "escape" { 9 } else { 0 },
+    }));
+    let main_instrs = vec![
+        MirInstr::ListNew {
+            dst: 0,
+            list_ty: 4,
+            cap: 0,
+        },
+        MirInstr::Const { dst: 1, value: c7 },
+        MirInstr::ListPush { root: 0, value: 1 },
+        MirInstr::Const { dst: 2, value: c0 },
+        MirInstr::ListPlace {
+            dst: 3,
+            base: 0,
+            index: 2,
+        },
+        MirInstr::Call {
+            callee: auto_av_core::mir::CalleeRef::Func(1),
+            dst: 4,
+            args: vec![3],
+        },
+        MirInstr::ListGet {
+            dst: 4,
+            base: 0,
+            index: 2,
+        },
+    ];
+    let helper_instrs = match mode {
+        "write" => vec![
+            MirInstr::Const { dst: 1, value: c9 },
+            MirInstr::PlaceSet { place: 0, value: 1 },
+            MirInstr::Const { dst: 1, value: c0 },
+        ],
+        "read" => vec![MirInstr::PlaceGet { dst: 1, src: 0 }],
+        "escape" => vec![MirInstr::Const { dst: 1, value: c0 }],
+        _ => unreachable!(),
+    };
+    let helper_ret = if mode == "escape" { 0 } else { 1 };
+    let _ = helper_ret;
+    m.funcs = vec![
+        MirFunction {
+            owner: m.owner.clone(),
+            name: "main".to_string(),
+            sig: main_sig,
+            slots: vec![
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: 4,
+                    name: Some("list".into()),
+                },
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: 0,
+                    name: Some("v".into()),
+                },
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: 0,
+                    name: Some("idx0".into()),
+                },
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: 9,
+                    name: Some("p".into()),
+                },
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: 0,
+                    name: Some("got".into()),
+                },
+            ],
+            blocks: vec![MirBlock {
+                instrs: main_instrs,
+                term: Terminator::Return { value: 4 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: Vec::new(),
+        },
+        MirFunction {
+            owner: m.owner.clone(),
+            name: "helper".to_string(),
+            sig: helper_sig,
+            slots: vec![
+                MirSlot {
+                    kind: SlotKind::Param,
+                    ty: 9,
+                    name: Some("p".into()),
+                },
+                MirSlot {
+                    kind: SlotKind::Local,
+                    ty: 0,
+                    name: Some("r".into()),
+                },
+            ],
+            blocks: vec![MirBlock {
+                instrs: helper_instrs,
+                term: Terminator::Return {
+                    value: if mode == "escape" { 0 } else { 1 },
+                },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: Vec::new(),
+        },
+    ];
+    m.entry = 0;
+    m
+}
+
+/// F822-R5-01 replay: a cross-frame PLACE_SET (the helper writes through
+/// the CALLER's place — matching types, live owner frame) writes the
+/// referenced CALLER element: the caller's read yields 9. No panic; the
+/// helper's own same-numbered slot (which holds the place, not a list)
+/// is never indexed.
+#[test]
+fn av_collections_822_semantics_cross_frame_place_write_no_panic() {
+    assert_eq!(success(&cross_frame_module("write")), Value::I32(9));
+}
+
+/// The reviewer's passing read control, made permanent: the same caller
+/// token read in the helper yields 7.
+#[test]
+fn av_collections_822_semantics_cross_frame_place_read_control() {
+    assert_eq!(success(&cross_frame_module("read")), Value::I32(7));
+}
+
+/// F822-R5-02 replay: a helper returning a LOCALLY minted place (the
+/// root dies with the helper's frame) is refused at the MIR gate as a
+/// borrow escape — never admitted to wait for a dead-frame InvalidHandle.
+#[test]
+fn av_collections_822_semantics_callee_local_place_escape_refused() {
+    let mut m = cross_frame_module("escape");
+    // helper: mint over its OWN list and return the token.
+    let c7 = m.intern_const(MirConst::I32(7)) as u32;
+    let c0 = m.intern_const(MirConst::I32(0)) as u32;
+    let no_param_sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: vec![],
+        result: 9,
+    }));
+    let helper = &mut m.funcs[1];
+    // dst0=list, dst1=i32 value, dst2=i32 index, dst3=the minted place.
+    helper.slots = vec![
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: 4,
+            name: Some("hlist".into()),
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: 0,
+            name: Some("hv".into()),
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: 0,
+            name: Some("hi".into()),
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: 9,
+            name: Some("hp".into()),
+        },
+    ];
+    helper.blocks = vec![MirBlock {
+        instrs: vec![
+            MirInstr::Const { dst: 1, value: c7 },
+            MirInstr::ListNew {
+                dst: 0,
+                list_ty: 4,
+                cap: 0,
+            },
+            MirInstr::ListPush { root: 0, value: 1 },
+            MirInstr::Const { dst: 2, value: c0 },
+            MirInstr::ListPlace {
+                dst: 3,
+                base: 0,
+                index: 2,
+            },
+        ],
+        term: Terminator::Return { value: 3 },
+    }];
+    // The helper's declared param list changes: no param.
+    helper.sig = no_param_sig;
+    // main passes nothing and PLACE_GETs the returned token.
+    let main = &mut m.funcs[0];
+    main.blocks = vec![MirBlock {
+        instrs: vec![
+            MirInstr::Call {
+                callee: auto_av_core::mir::CalleeRef::Func(1),
+                dst: 3,
+                args: vec![],
+            },
+            MirInstr::PlaceGet { dst: 4, src: 3 },
+        ],
+        term: Terminator::Return { value: 4 },
+    }];
+    assert_eq!(reject_code(&m), "mir.borrow-escape");
+}
+
+/// F822-R5-02 replay: a record field of Place kind (even in an UNUSED
+/// record type on an otherwise legal module) is refused as a borrowed
+/// token field — same gate as StrView/MutRef/RecordView.
+#[test]
+fn av_collections_822_semantics_record_place_token_refused() {
+    let mut m = cross_frame_module("read");
+    m.intern_type(MirType::Record(auto_av_core::mir::RecordTypeRef {
+        owner_module: "collections822".to_string(),
+        name: "EscapedToken".to_string(),
+        fields: vec![auto_av_core::mir::MirFieldDef {
+            name: "token".to_string(),
+            ty: 9, // Place<i32>
+        }],
+    }));
+    assert_eq!(reject_code(&m), "mir.field-borrow");
+}
+
+/// F822-R5-02 positive control: a place PARAM (externally rooted — the
+/// caller's frame owns the list) may be USED and RETURNED while the
+/// caller lives; the caller reads through the returned token.
+#[test]
+fn av_collections_822_semantics_place_param_roundtrip_supported() {
+    let mut m = cross_frame_module("read");
+    let place_sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: vec![9],
+        result: 9,
+    }));
+    let c7b = m.intern_const(MirConst::I32(7)) as u32;
+    let c0b = m.intern_const(MirConst::I32(0)) as u32;
+    // helper returns its param token (slot 0).
+    let helper = &mut m.funcs[1];
+    helper.blocks = vec![MirBlock {
+        instrs: vec![MirInstr::PlaceGet { dst: 1, src: 0 }],
+        term: Terminator::Return { value: 0 },
+    }];
+    // Bump the helper sig result to Place and let main read through it.
+    helper.sig = place_sig;
+    let main = &mut m.funcs[0];
+    main.slots[4] = MirSlot {
+        kind: SlotKind::Local,
+        ty: 9,
+        name: Some("back".into()),
+    };
+    let got_slot = main.slots.len() as u32;
+    main.slots.push(MirSlot {
+        kind: SlotKind::Local,
+        ty: 0,
+        name: Some("final".into()),
+    });
+    main.blocks = vec![MirBlock {
+        instrs: vec![
+            MirInstr::ListNew {
+                dst: 0,
+                list_ty: 4,
+                cap: 0,
+            },
+            MirInstr::Const { dst: 1, value: c7b },
+            MirInstr::ListPush { root: 0, value: 1 },
+            MirInstr::Const { dst: 2, value: c0b },
+            MirInstr::ListPlace {
+                dst: 3,
+                base: 0,
+                index: 2,
+            },
+            MirInstr::Call {
+                callee: auto_av_core::mir::CalleeRef::Func(1),
+                dst: 4,
+                args: vec![3],
+            },
+            MirInstr::PlaceGet {
+                dst: got_slot,
+                src: 4,
+            },
+        ],
+        term: Terminator::Return { value: got_slot },
+    }];
+    assert_eq!(success(&m), Value::I32(7));
+}

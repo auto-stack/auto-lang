@@ -2722,8 +2722,16 @@ fn dispatch<V: ModuleView>(
                     // COMMIT: replace the element, bump its generation
                     // (retiring THIS place and every sibling minted before
                     // the replacement), drop the old element once.
+                    // F822-R5-01: the OWNER frame (by activation sequence)
+                    // carries the root — the same frame the precheck just
+                    // validated — never the CURRENT frame's same-numbered
+                    // slot.
                     {
-                        let fr = st.frames.last_mut().expect("frame present");
+                        let fr = st
+                            .frames
+                            .iter_mut()
+                            .find(|f| f.seq as u32 == place.frame)
+                            .expect("precheck located the owner frame");
                         match &fr.slots[place.slot as usize] {
                             Value::List(h) => {
                                 let mut buf = h.rc.borrow_mut();
@@ -2732,7 +2740,7 @@ fn dispatch<V: ModuleView>(
                                 buf.elem_gens[idx] = buf.elem_gens[idx].wrapping_add(1);
                                 drop(old);
                             }
-                            _ => unreachable!("validated above"),
+                            _ => unreachable!("precheck validated the owner slot holds the list"),
                         }
                     }
                     if new_deep > old_deep {
