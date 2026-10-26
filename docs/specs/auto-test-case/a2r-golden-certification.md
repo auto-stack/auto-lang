@@ -53,8 +53,10 @@ Rust 进程 spawn=0（verify snapshot scope 的结构守卫 + 认证器代码边
 二进制）以 CREATE_SUSPENDED + Job Object（kill-on-close）contained 执行；stdout 与
 stderr 由**独立**有界读线程并发排水（一管满不阻塞另一管，F-852-R1-03 复现例
 stderr-first 128KiB 1.3s 通过）；任一流超 cap 即**杀全树**并向父侧报溢出错误，
-绝不静默截断；墙到同样杀树（真实挂起程序墙控负控绿）。工具身份默认取 build.rs
-构建期捕获（零 spawn）；显式 `--rustc` 覆盖时经同一 contained 有界通道捕获。
+绝不静默截断；墙到同样杀树（真实挂起程序墙控负控绿）。证书身份恒为**实际启动的
+编译器**经 contained 有界通道实测的 `-vV`（CLI --rustc > env RUSTC > PATH 单一
+规则，无"默认取构建期常量"路径）；构建期常量仅作 `default_identity_at_certify`
+旁轴入证书，供日常零 spawn 漂移比对，不作认证身份。
 scratch：显式 `--scratch <dir>` 或隔离 temp（PID 域），全退出路径整体清理。
 
 ## 范围边界

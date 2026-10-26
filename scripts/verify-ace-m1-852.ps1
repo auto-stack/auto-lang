@@ -26,14 +26,19 @@
 
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('contract', 'source', 'snapshot', 'certify', 'lifecycle', 'acceptance')]
+    [ValidateSet('contract', 'source', 'snapshot', 'certify', 'lifecycle', 'acceptance', 'receipts')]
     [string]$Scope,
 
     # Root of the auto-lang checkout (defaults to the script's parent).
     [string]$RepoRoot,
 
     # Scratch dir for scopes that execute anything (created, never a source tree).
-    [string]$OutDir
+    [string]$OutDir,
+
+    # receipts scope: the build-rustc-identity axis to compare receipts
+    # against (normally taken from a fresh suite report; the direct receipt
+    # matrix seam has no suite run, so it must be supplied).
+    [string]$BuildIdentity
 )
 
 $ErrorActionPreference = 'Stop'
@@ -88,6 +93,128 @@ function Find-Prebuilt([string]$name) {
     if (Test-Path $exe) { return $exe }
     Fail "$name.exe not prebuilt at $exe — build it first (cargo build -p auto-lang --features test-cases --bin $name); this scope never builds (G02)."
 }
+
+# ---- STRICT receipt validation (shared by the snapshot scope and the
+# direct `receipts` matrix seam) — F-852-R1-01/R2-B/R3/R4: typed exact-key
+# schema, case-sensitive comparisons, scalar string guards on EVERY declared
+# string field (PowerShell collection-filter semantics on -cne must never
+# turn a wrong-typed JSON value into a pass), unsigned created_at, lowercase
+# hex hashes, file axes, and the default-toolchain axis. Zero spawns.
+function Invoke-ReceiptValidation {
+    param([string]$RepoRoot, [string]$corpusDir, [string]$buildIdentity)
+        # Every ok-emit binding row must carry a structurally valid receipt
+        # whose oracle text is bound to the frozen registry, whose file axes
+        # match the CURRENT bytes, and whose toolchain axis matches the
+        # build-time identity carried by this run's own report.
+    $rows = Load-Binding
+    $certRows = @($rows | Where-Object { $_.ns -eq 'corpus' -and $_.outcome -eq 'value' -and $_.a2r -eq 'ok-emit' })
+    if ($certRows.Count -lt 1) { Fail "no ok-emit rows found in binding" }
+    if (-not $buildIdentity) { Fail "no build-rustc-identity supplied (snapshot derives it from the run report; the receipts seam takes -BuildIdentity)" }
+    $certDir = Join-Path $corpusDir 'oracle/certs'
+    $wrapperHash = Sha256File (Join-Path $corpusDir 'oracle/wrapper-main-v1.rs')
+        if (-not $wrapperHash) { Fail "frozen wrapper file missing: oracle/wrapper-main-v1.rs" }
+    foreach ($row in $certRows) {
+            $module = 'm1_' + $row.id.ToLower()
+            $certPath = Join-Path $certDir "$module.cert.json"
+            if (-not (Test-Path $certPath)) {
+                Fail "certificate MISSING for ok-emit row $($row.id) — the certified-behavior axis has a gap; run the explicit certify scope (never implicit)."
+            }
+            $cert = $null
+            try { $cert = Get-Content $certPath -Raw | ConvertFrom-Json }
+            catch { Fail "certificate $module.cert.json is not valid JSON (possible tampering): $_" }
+            $oracle = "i32:$($row.expected)`n"
+
+            # ---- R2-B + F-852-R3-01: STRICT typed schema — exact key sets at
+            # EVERY level (produced_by included), declared types, unknown/
+            # missing/wrong-typed elements REJECT. All key/value comparisons
+            # are CASE-SENSITIVE (-c* operators) to match Rust's exact JSON
+            # matching; a "Schema"/"STD-ONLY"/uppercase-hex receipt must fail
+            # here exactly as it fails in the Rust validator.
+            function Assert-Keys($obj, $expected, $where) {
+                if ($null -eq $obj -or -not $obj.PSObject) { Fail "certificate $module REJECTED: $where is not an object" }
+                $have = @($obj.PSObject.Properties.Name)
+                foreach ($k in $have) { if (-not ($expected | Where-Object { $_ -ceq $k })) { Fail "certificate $module REJECTED: unknown field '$k' in $where (strict schema)" } }
+                foreach ($k in $expected) { if (-not ($have | Where-Object { $_ -ceq $k })) { Fail "certificate $module REJECTED: missing field '$k' in $where" } }
+            }
+            Assert-Keys $cert @('schema','case','module','wrapper_file','expected_oracle','identity','toolchain','deps','observed','verdict','produced_by','created_at') 'receipt root'
+            Assert-Keys $cert.identity @('source_sha256','golden_sha256','actual_sha256','wrapper_sha256','oracle_sha256','reference_sha256') 'identity'
+            Assert-Keys $cert.toolchain @('identity','identity_source','default_identity_at_certify','flags') 'toolchain'
+            Assert-Keys $cert.deps @('external','closure') 'deps'
+            Assert-Keys $cert.observed @('actual_run','reference_run') 'observed'
+            Assert-Keys $cert.observed.actual_run @('exit','stdout') 'observed.actual_run'
+            Assert-Keys $cert.observed.reference_run @('exit','stdout') 'observed.reference_run'
+            # produced_by: exact two keys with STRING values (F-852-R3-01 —
+            # the Rust validator rejects here, so must the daily face).
+            Assert-Keys $cert.produced_by @('tool','schema_note') 'produced_by'
+            if ($cert.produced_by.tool -isnot [string] -or $cert.produced_by.schema_note -isnot [string]) {
+                Fail "certificate $module REJECTED: produced_by fields are not strings"
+            }
+
+            if ($cert.schema -isnot [string] -or $cert.schema -cne 'ace.m1.cert/1') { Fail "certificate $module REJECTED: schema is '$($cert.schema)'" }
+            if ($cert.verdict -isnot [string] -or $cert.verdict -cne 'certified') { Fail "certificate $module REJECTED: verdict is '$($cert.verdict)'" }
+            if ($cert.case -isnot [string] -or $cert.module -isnot [string] -or $cert.case -cne $row.id -or $cert.module -cne $module) { Fail "certificate $module REJECTED: case/module mismatch (wrong type or value)" }
+            if ($cert.wrapper_file -isnot [string] -or $cert.wrapper_file -cne 'oracle/wrapper-main-v1.rs') { Fail "certificate $module REJECTED: wrapper_file is not the frozen file" }
+            if ($cert.expected_oracle -isnot [string] -or $cert.expected_oracle -cne $oracle) { Fail "certificate $module REJECTED: oracle text is not the frozen registry value" }
+            if (($cert.created_at -isnot [long] -and $cert.created_at -isnot [int]) -or $cert.created_at -lt 0) { Fail "certificate $module REJECTED: created_at is not an unsigned integer (negative or wrong type)" }
+            # Observed runs: TYPED equality (a "0" string exit or a numeric
+            # stdout is a type violation, never a pass — PS would otherwise
+            # coerce).
+            foreach ($side in @('actual_run', 'reference_run')) {
+                $run = $cert.observed.$side
+                if ($run.stdout -isnot [string] -or $run.stdout -cne $oracle) { Fail "certificate $module REJECTED: observed.$side.stdout does not equal the fixed oracle (or wrong type)" }
+                if (($run.exit -isnot [long] -and $run.exit -isnot [int]) -or $run.exit -ne 0) { Fail "certificate $module REJECTED: observed.$side.exit is not the integer 0" }
+            }
+            # flags: array of STRINGS, exact frozen tokens (typed per element).
+            $toks = @($cert.toolchain.flags)
+            if ($toks.Count -ne 2) { Fail "certificate $module REJECTED: toolchain.flags is not the frozen 2-token set" }
+            for ($ti = 0; $ti -lt $toks.Count; $ti++) {
+                if ($toks[$ti] -isnot [string]) { Fail "certificate $module REJECTED: toolchain.flags[$ti] is not a string" }
+            }
+            if ($toks[0] -cne '--edition=2021' -or $toks[1] -cne '-O') {
+                Fail "certificate $module REJECTED: toolchain.flags is not the frozen set ['--edition=2021','-O']"
+            }
+            # toolchain identity axes: identity binds the compiler the pass
+            # LAUNCHED (frozen evidence — daily consumes it without spawning);
+            # identity_source must be a frozen selection rule; the DEFAULT
+            # axis is what daily can recompute and is compared below.
+            if ($cert.toolchain.identity -isnot [string] -or -not $cert.toolchain.identity.Trim()) { Fail "certificate $module REJECTED: toolchain.identity is not a non-empty string" }
+            if ($cert.toolchain.identity_source -isnot [string] -or -not (@('--rustc override', 'env RUSTC', 'PATH') | Where-Object { $_ -ceq $cert.toolchain.identity_source })) {
+                Fail "certificate $module REJECTED: identity_source is not a frozen selection rule"
+            }
+            if ($cert.deps.closure -isnot [string] -or $cert.deps.closure -cne 'std-only') { Fail "certificate $module REJECTED: deps.closure is not std-only" }
+            if (@($cert.deps.external).Count -ne 0) { Fail "certificate $module REJECTED: deps.external is not empty" }
+            if ($cert.identity.actual_sha256 -isnot [string] -or $cert.identity.golden_sha256 -isnot [string] -or $cert.identity.actual_sha256 -cne $cert.identity.golden_sha256) {
+                Fail "certificate $module REJECTED: actual_sha256 != golden_sha256 (wrong type or self-inconsistent)"
+            }
+            foreach ($hk in @('source_sha256','golden_sha256','actual_sha256','wrapper_sha256','oracle_sha256','reference_sha256')) {
+                $hv = $cert.identity.$hk
+                # -cnotmatch: PowerShell -match is case-INSENSITIVE by default;
+                # the contract is lowercase hex, so uppercase must fail here
+                # exactly as it fails in the Rust validator.
+                if ($hv -isnot [string] -or $hv -cnotmatch '^[0-9a-f]{64}$') { Fail "certificate $module REJECTED: identity.$hk is not a 64-char lowercase hex string" }
+            }
+            foreach ($axis in @(
+                @{ k = 'golden_sha256'; f = "oracle/$module.rs"; label = 'golden' },
+                @{ k = 'reference_sha256'; f = "reference/$($row.id).rs"; label = 'reference' },
+                @{ k = 'source_sha256'; f = "src/$($row.id).at"; label = 'source' }
+            )) {
+                $cur = Sha256File (Join-Path $corpusDir $axis.f)
+                if ($cur -cne $cert.identity.($axis.k)) { Fail "certificate $module is STALE: $($axis.label) drifted" }
+            }
+            if ($wrapperHash -cne $cert.identity.wrapper_sha256) { Fail "certificate $module is STALE: wrapper drifted" }
+            if ((Sha256Text $oracle) -cne $cert.identity.oracle_sha256) { Fail "certificate $module REJECTED: oracle text identity mismatch" }
+            # R2-A daily rule: the DEFAULT toolchain axis (recomputed zero-spawn
+            # from this run's own report) must equal the default frozen at
+            # certification. The certification `identity` itself is frozen
+            # evidence of the compiler that WAS launched; daily never passes
+            # the harness build identity off as certification evidence.
+            if ($cert.toolchain.default_identity_at_certify -isnot [string] -or $cert.toolchain.default_identity_at_certify -cne $buildIdentity) {
+                Fail "certificate $module is STALE: default toolchain drifted since certification (re-certify to re-bind; certified default: $($cert.toolchain.default_identity_at_certify))"
+            }
+        }
+    return $certRows.Count
+}
+
 
 switch ($Scope) {
     'contract' {
@@ -301,125 +428,35 @@ switch ($Scope) {
         }
         if ($a2r.Count -lt 26) { Fail "a2r snapshot check count $($a2r.Count) < 26" }
 
-        # ---- STRICT certificate validity (F-852-R1-01), zero spawns --------
-        # Every ok-emit binding row must carry a structurally valid receipt
-        # whose oracle text is bound to the frozen registry, whose file axes
-        # match the CURRENT bytes, and whose toolchain axis matches the
-        # build-time identity carried by this run's own report.
-        $rows = Load-Binding
-        $certRows = @($rows | Where-Object { $_.ns -eq 'corpus' -and $_.outcome -eq 'value' -and $_.a2r -eq 'ok-emit' })
-        if ($certRows.Count -lt 1) { Fail "no ok-emit rows found in binding" }
+        # ---- STRICT certificate validity (shared function) ----
         $buildIdentity = $r.toolchain.'build-rustc-identity'
         if (-not $buildIdentity) { Fail "suite report lacks the build-rustc-identity toolchain axis (rebuild auto-case)" }
-        $certDir = Join-Path $corpusDir 'oracle/certs'
-        $wrapperHash = Sha256File (Join-Path $corpusDir 'oracle/wrapper-main-v1.rs')
-        if (-not $wrapperHash) { Fail "frozen wrapper file missing: oracle/wrapper-main-v1.rs" }
-        foreach ($row in $certRows) {
-            $module = 'm1_' + $row.id.ToLower()
-            $certPath = Join-Path $certDir "$module.cert.json"
-            if (-not (Test-Path $certPath)) {
-                Fail "certificate MISSING for ok-emit row $($row.id) — the certified-behavior axis has a gap; run the explicit certify scope (never implicit)."
-            }
-            $cert = $null
-            try { $cert = Get-Content $certPath -Raw | ConvertFrom-Json }
-            catch { Fail "certificate $module.cert.json is not valid JSON (possible tampering): $_" }
-            $oracle = "i32:$($row.expected)`n"
+        $certCount = Invoke-ReceiptValidation -RepoRoot $RepoRoot -corpusDir $corpusDir -buildIdentity $buildIdentity
 
-            # ---- R2-B + F-852-R3-01: STRICT typed schema — exact key sets at
-            # EVERY level (produced_by included), declared types, unknown/
-            # missing/wrong-typed elements REJECT. All key/value comparisons
-            # are CASE-SENSITIVE (-c* operators) to match Rust's exact JSON
-            # matching; a "Schema"/"STD-ONLY"/uppercase-hex receipt must fail
-            # here exactly as it fails in the Rust validator.
-            function Assert-Keys($obj, $expected, $where) {
-                if ($null -eq $obj -or -not $obj.PSObject) { Fail "certificate $module REJECTED: $where is not an object" }
-                $have = @($obj.PSObject.Properties.Name)
-                foreach ($k in $have) { if (-not ($expected | Where-Object { $_ -ceq $k })) { Fail "certificate $module REJECTED: unknown field '$k' in $where (strict schema)" } }
-                foreach ($k in $expected) { if (-not ($have | Where-Object { $_ -ceq $k })) { Fail "certificate $module REJECTED: missing field '$k' in $where" } }
-            }
-            Assert-Keys $cert @('schema','case','module','wrapper_file','expected_oracle','identity','toolchain','deps','observed','verdict','produced_by','created_at') 'receipt root'
-            Assert-Keys $cert.identity @('source_sha256','golden_sha256','actual_sha256','wrapper_sha256','oracle_sha256','reference_sha256') 'identity'
-            Assert-Keys $cert.toolchain @('identity','identity_source','default_identity_at_certify','flags') 'toolchain'
-            Assert-Keys $cert.deps @('external','closure') 'deps'
-            Assert-Keys $cert.observed @('actual_run','reference_run') 'observed'
-            Assert-Keys $cert.observed.actual_run @('exit','stdout') 'observed.actual_run'
-            Assert-Keys $cert.observed.reference_run @('exit','stdout') 'observed.reference_run'
-            # produced_by: exact two keys with STRING values (F-852-R3-01 —
-            # the Rust validator rejects here, so must the daily face).
-            Assert-Keys $cert.produced_by @('tool','schema_note') 'produced_by'
-            if ($cert.produced_by.tool -isnot [string] -or $cert.produced_by.schema_note -isnot [string]) {
-                Fail "certificate $module REJECTED: produced_by fields are not strings"
-            }
-
-            if ($cert.schema -isnot [string] -or $cert.schema -cne 'ace.m1.cert/1') { Fail "certificate $module REJECTED: schema is '$($cert.schema)'" }
-            if ($cert.verdict -isnot [string] -or $cert.verdict -cne 'certified') { Fail "certificate $module REJECTED: verdict is '$($cert.verdict)'" }
-            if ($cert.case -cne $row.id -or $cert.module -cne $module) { Fail "certificate $module REJECTED: case/module mismatch" }
-            if ($cert.wrapper_file -isnot [string] -or $cert.wrapper_file -cne 'oracle/wrapper-main-v1.rs') { Fail "certificate $module REJECTED: wrapper_file is not the frozen file" }
-            if ($cert.expected_oracle -isnot [string] -or $cert.expected_oracle -cne $oracle) { Fail "certificate $module REJECTED: oracle text is not the frozen registry value" }
-            if (($cert.created_at -isnot [long] -and $cert.created_at -isnot [int]) -or $cert.created_at -lt 0) { Fail "certificate $module REJECTED: created_at is not an unsigned integer (negative or wrong type)" }
-            # Observed runs: TYPED equality (a "0" string exit or a numeric
-            # stdout is a type violation, never a pass — PS would otherwise
-            # coerce).
-            foreach ($side in @('actual_run', 'reference_run')) {
-                $run = $cert.observed.$side
-                if ($run.stdout -isnot [string] -or $run.stdout -cne $oracle) { Fail "certificate $module REJECTED: observed.$side.stdout does not equal the fixed oracle (or wrong type)" }
-                if (($run.exit -isnot [long] -and $run.exit -isnot [int]) -or $run.exit -ne 0) { Fail "certificate $module REJECTED: observed.$side.exit is not the integer 0" }
-            }
-            # flags: array of STRINGS, exact frozen tokens (typed per element).
-            $toks = @($cert.toolchain.flags)
-            if ($toks.Count -ne 2) { Fail "certificate $module REJECTED: toolchain.flags is not the frozen 2-token set" }
-            for ($ti = 0; $ti -lt $toks.Count; $ti++) {
-                if ($toks[$ti] -isnot [string]) { Fail "certificate $module REJECTED: toolchain.flags[$ti] is not a string" }
-            }
-            if ($toks[0] -cne '--edition=2021' -or $toks[1] -cne '-O') {
-                Fail "certificate $module REJECTED: toolchain.flags is not the frozen set ['--edition=2021','-O']"
-            }
-            # toolchain identity axes: identity binds the compiler the pass
-            # LAUNCHED (frozen evidence — daily consumes it without spawning);
-            # identity_source must be a frozen selection rule; the DEFAULT
-            # axis is what daily can recompute and is compared below.
-            if ($cert.toolchain.identity -isnot [string] -or -not $cert.toolchain.identity.Trim()) { Fail "certificate $module REJECTED: toolchain.identity is not a non-empty string" }
-            if ($cert.toolchain.identity_source -isnot [string] -or -not (@('--rustc override', 'env RUSTC', 'PATH') | Where-Object { $_ -ceq $cert.toolchain.identity_source })) {
-                Fail "certificate $module REJECTED: identity_source is not a frozen selection rule"
-            }
-            if ($cert.deps.closure -isnot [string] -or $cert.deps.closure -cne 'std-only') { Fail "certificate $module REJECTED: deps.closure is not std-only" }
-            if (@($cert.deps.external).Count -ne 0) { Fail "certificate $module REJECTED: deps.external is not empty" }
-            if ($cert.identity.actual_sha256 -cne $cert.identity.golden_sha256) {
-                Fail "certificate $module REJECTED: actual_sha256 != golden_sha256 (self-inconsistent)"
-            }
-            foreach ($hk in @('source_sha256','golden_sha256','actual_sha256','wrapper_sha256','oracle_sha256','reference_sha256')) {
-                $hv = $cert.identity.$hk
-                # -cnotmatch: PowerShell -match is case-INSENSITIVE by default;
-                # the contract is lowercase hex, so uppercase must fail here
-                # exactly as it fails in the Rust validator.
-                if ($hv -isnot [string] -or $hv -cnotmatch '^[0-9a-f]{64}$') { Fail "certificate $module REJECTED: identity.$hk is not a 64-char lowercase hex string" }
-            }
-            foreach ($axis in @(
-                @{ k = 'golden_sha256'; f = "oracle/$module.rs"; label = 'golden' },
-                @{ k = 'reference_sha256'; f = "reference/$($row.id).rs"; label = 'reference' },
-                @{ k = 'source_sha256'; f = "src/$($row.id).at"; label = 'source' }
-            )) {
-                $cur = Sha256File (Join-Path $corpusDir $axis.f)
-                if ($cur -cne $cert.identity.($axis.k)) { Fail "certificate $module is STALE: $($axis.label) drifted" }
-            }
-            if ($wrapperHash -cne $cert.identity.wrapper_sha256) { Fail "certificate $module is STALE: wrapper drifted" }
-            if ((Sha256Text $oracle) -cne $cert.identity.oracle_sha256) { Fail "certificate $module REJECTED: oracle text identity mismatch" }
-            # R2-A daily rule: the DEFAULT toolchain axis (recomputed zero-spawn
-            # from this run's own report) must equal the default frozen at
-            # certification. The certification `identity` itself is frozen
-            # evidence of the compiler that WAS launched; daily never passes
-            # the harness build identity off as certification evidence.
-            if ($cert.toolchain.default_identity_at_certify -isnot [string] -or $cert.toolchain.default_identity_at_certify -cne $buildIdentity) {
-                Fail "certificate $module is STALE: default toolchain drifted since certification (re-certify to re-bind; certified default: $($cert.toolchain.default_identity_at_certify))"
-            }
-        }
         $goldens = @(Get-ChildItem (Join-Path $corpusDir 'oracle') -Filter 'm1_*.rs')
         Write-Host "verify-ace-m1-852 [snapshot]: PASS — $($a2r.Count) a2r checks green (emit + byte-compare);" `
-            "$($certRows.Count) certificates STRICTLY valid (typed exact-key schema + file axes + default-toolchain" `
+            "$certCount certificates STRICTLY valid (typed exact-key schema + file axes + default-toolchain" `
             "axis vs this run's build identity). Certification-face process watch: 0 direct-rustc/m1_* spawns" `
             "observed in periodic CIM ancestry sampling (a sampling observer, not a lossless creation count)." `
             "Full base suite $($r.results.Count) checks green." `
             "Emit PASS is not a behavior claim; re-certification is the explicit certify scope."
+        exit 0
+    }
+
+    'receipts' {
+        # F-852-R4-01 direct production-validator seam: STRICT receipt
+        # validation ONLY (no suite run, no build, no spawn) for the
+        # cross-consumer malformed-receipt matrix and fast repair replays.
+        # The authoritative daily face remains `snapshot` (which also binds
+        # the build identity from a real run); here the identity axis must
+        # be supplied via -BuildIdentity (e.g. a valid receipt's recorded
+        # default_identity_at_certify).
+        if (-not $BuildIdentity) {
+            Write-Host "usage: -Scope receipts requires -BuildIdentity <axis> (take it from a valid receipt's default_identity_at_certify)" -ForegroundColor Red
+            exit 2
+        }
+        $count = Invoke-ReceiptValidation -RepoRoot $RepoRoot -corpusDir $corpusDir -buildIdentity $BuildIdentity
+        Write-Host "verify-ace-m1-852 [receipts]: PASS — $count certificates STRICTLY valid (direct seam; no suite run)."
         exit 0
     }
 

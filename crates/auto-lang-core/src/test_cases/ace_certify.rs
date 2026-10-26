@@ -58,10 +58,11 @@ const EMIT_STACK_BYTES: usize = 128 * 1024 * 1024;
 pub const WRAPPER_MAIN_RS: &str =
     include_str!("../../../../crates/auto-lang/test/cases/ace-m1/oracle/wrapper-main-v1.rs");
 
-/// Build-time toolchain identity (`$RUSTC -vV`: rustc version, release,
-/// host triple, commit hash) captured by build.rs. Used as the certificate
-/// toolchain identity on the default path so neither the certifier nor the
-/// daily validity check ever spawns rustc for identity.
+/// Build-time toolchain identity (`$RUSTC -vV`) captured by build.rs. This
+/// is the HARNESS build default — recorded on receipts only as the
+/// `default_identity_at_certify` side axis for the zero-spawn daily drift
+/// check. It is NEVER the certificate identity: that is always measured
+/// contained from the exact compiler the certification pass launches.
 pub const BUILD_TOOLCHAIN_IDENTITY: &str =
     include_str!(concat!(env!("OUT_DIR"), "/build_toolchain.txt"));
 
@@ -1204,6 +1205,72 @@ fn main() { loop { std::io::stderr().write_all(&vec![b'y'; 4096]).unwrap(); } }"
         let mut v = base.clone();
         v["toolchain"]["default_identity_at_certify"] = serde_json::json!("rustc older default");
         assert_stale(&v, "default toolchain drift");
+        // F-852-R4-01: full per-field wrong-type sweep — EVERY declared
+        // scalar field rejects arrays/objects/null/number/bool (Rust's
+        // as_str/as_u64/as_array do; the matrix proves it end to end).
+        let scalar_paths: &[&str] = &[
+            "schema",
+            "case",
+            "module",
+            "wrapper_file",
+            "expected_oracle",
+            "verdict",
+            "identity/source_sha256",
+            "identity/golden_sha256",
+            "identity/actual_sha256",
+            "identity/wrapper_sha256",
+            "identity/oracle_sha256",
+            "identity/reference_sha256",
+            "toolchain/identity",
+            "toolchain/identity_source",
+            "toolchain/default_identity_at_certify",
+            "deps/closure",
+            "observed/actual_run/stdout",
+            "observed/reference_run/stdout",
+            "produced_by/tool",
+            "produced_by/schema_note",
+        ];
+        let wrong_types = [
+            serde_json::json!(["x"]),
+            serde_json::json!({"x": 1}),
+            serde_json::Value::Null,
+            serde_json::json!(1),
+            serde_json::json!(false),
+        ];
+        for path in scalar_paths {
+            for wrong in &wrong_types {
+                let mut v = base.clone();
+                {
+                    let mut cur = &mut v;
+                    for seg in path.split('/').collect::<Vec<_>>() {
+                        cur = &mut cur[seg];
+                    }
+                    *cur = wrong.clone();
+                }
+                assert_invalid(&v, &format!("wrong type {wrong:?} on {path}"));
+            }
+        }
+        // created_at (integer field) and flags (array field) wrong types.
+        for wrong in [
+            serde_json::json!(["x"]),
+            serde_json::json!("now"),
+            serde_json::Value::Null,
+            serde_json::json!(-1),
+        ] {
+            let mut v = base.clone();
+            v["created_at"] = wrong;
+            assert_invalid(&v, "wrong type on created_at");
+        }
+        for wrong in [
+            serde_json::json!("--edition=2021 -O"),
+            serde_json::Value::Null,
+            serde_json::json!([1, 2]),
+        ] {
+            let mut v = base.clone();
+            v["toolchain"]["flags"] = wrong;
+            assert_invalid(&v, "wrong type on flags");
+        }
+
         // Wrapper hash comes from the CURRENT frozen wrapper file.
         let live = hex(&sha256(WRAPPER_MAIN_RS.as_bytes()));
         let mut v = base.clone();
