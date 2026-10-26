@@ -99,6 +99,9 @@ pub struct ExecTrace {
     pub reference_pc_lookups: u64,
     pub loaded_param_map_queries: u64,
     pub reference_param_map_copies: u64,
+    pub root_frame_commits: u64,
+    pub call_frame_commits: u64,
+    pub frames_remaining: u64,
 }
 
 /// One dispatched payload's identity evidence (see [`ExecTrace::dispatched`]).
@@ -282,6 +285,7 @@ fn execute_module_impl(
     if !st.frames.is_empty() {
         cleanup_owned_frames(&mut st);
     }
+    st.trace.frames_remaining = st.frames.len() as u64;
     (out, st.trace)
 }
 
@@ -348,6 +352,7 @@ fn execute_program_impl(
     if !st.frames.is_empty() {
         cleanup_owned_frames(&mut st);
     }
+    st.trace.frames_remaining = st.frames.len() as u64;
     (out, st.trace)
 }
 
@@ -421,7 +426,13 @@ pub fn execute_program_steps(
         &mut st,
         Some(max_steps),
     ) {
-        Some(out) => SteppedOutcome::Finished(out, st.trace),
+        Some(out) => {
+            if !st.frames.is_empty() {
+                cleanup_owned_frames(&mut st);
+            }
+            st.trace.frames_remaining = st.frames.len() as u64;
+            SteppedOutcome::Finished(out, st.trace)
+        }
         None => SteppedOutcome::Paused(PausedRun {
             prog: prog.clone(),
             limits: *limits,
@@ -458,7 +469,13 @@ pub fn resume_program(
         &mut state,
         max_steps,
     ) {
-        Some(out) => SteppedOutcome::Finished(out, state.trace),
+        Some(out) => {
+            if !state.frames.is_empty() {
+                cleanup_owned_frames(&mut state);
+            }
+            state.trace.frames_remaining = state.frames.len() as u64;
+            SteppedOutcome::Finished(out, state.trace)
+        }
         None => SteppedOutcome::Paused(PausedRun {
             prog,
             limits,
@@ -1998,6 +2015,7 @@ fn dispatch<V: ModuleView>(
         // cancel) carries the real high-water (F798-R3-04).
         st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
         st.frames.push(frame);
+        st.trace.root_frame_commits += 1;
     }
 
     loop {
@@ -2319,6 +2337,7 @@ fn dispatch<V: ModuleView>(
                     st.slot_bytes = prospective;
                     st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
                     st.frames.push(nf);
+                    st.trace.call_frame_commits += 1;
                 }
                 // -- PLAN-823 closure surface (av.closures/1) ----------------
                 MirInstr::CreateClosure {

@@ -68,11 +68,24 @@ $FIRST_PROBE = @(
     'av_runtime_825_first_case_unit_never_dispatches'
 )
 $FIRST_RUNNER = @('tests::av_runtime_825_tests::av_runtime_825_first_case_corpus_green')
+$TARGETED = @(
+    'av_runtime_825_pc_short_long_and_terminal_source',
+    'av_runtime_825_calls_params_and_recursion',
+    'av_runtime_825_entry_signature_and_unit_zero_dispatch',
+    'av_runtime_825_numeric_traps_and_short_circuit_match_reference',
+    'av_runtime_825_fuel_boundary_matches_reference',
+    'av_runtime_825_root_budget_both_sides',
+    'av_runtime_825_call_budget_both_sides_and_cleanup',
+    'av_runtime_825_cancel_exhausted_then_next_request_clean'
+)
 
 switch ($Scope) {
     'first' {
         Run-Probe -Bin 'av_runtime_825_first_case' -RequiredIds $FIRST_PROBE
         Run-Runner -Filter 'av_runtime_825_first_case_corpus_green' -RequiredIds $FIRST_RUNNER
+    }
+    'targeted' {
+        Run-Probe -Bin 'av_runtime_825_semantics' -RequiredIds $TARGETED
     }
     default {
         throw "PLAN-825 scope '$Scope' is not implemented yet; this is an explicit acceptance gap, not PASS"
