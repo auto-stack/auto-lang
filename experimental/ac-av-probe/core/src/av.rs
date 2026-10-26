@@ -539,6 +539,16 @@ pub(crate) fn typed_zero(t: Option<&MirType>) -> Value {
             disc: 0,
             payload: None,
         }),
+        // PLAN-822 R2: a never-read place placeholder (definite
+        // initialization gates every use; never observed).
+        Some(MirType::Place) => Value::Place(crate::contract::ListPlaceV {
+            frame: u32::MAX,
+            slot: u32::MAX,
+            buf_id: u64::MAX,
+            epoch: u64::MAX,
+            index: u32::MAX,
+            elem_gen: u32::MAX,
+        }),
         // I32 and (unusable) Fn slots keep the historic scalar zero.
         _ => Value::I32(0),
     }
@@ -778,13 +788,26 @@ fn release_frame_owned_lifo(st: &mut LoopState, frame: &mut Frame) {
                 owned.push((min_id, slot_val.clone()));
                 *slot_val = Value::I32(0);
             }
+            // F822-R2-03: lists join the LIFO sweep by their creation-
+            // order identity; their elements release REVERSE inside
+            // drop_owned_reverse (contract §4 / V-06).
+            Value::List(_) => {
+                let min_id = min_buffer_id(slot_val);
+                owned.push((min_id, slot_val.clone()));
+                *slot_val = Value::I32(0);
+            }
+            Value::Variant(_) => {
+                let min_id = min_buffer_id(slot_val);
+                owned.push((min_id, slot_val.clone()));
+                *slot_val = Value::I32(0);
+            }
             _ => {}
         }
     }
     owned.sort_by(|a, b| b.0.cmp(&a.0));
     for (_, val) in owned {
         st.steps += 1; // reserved cleanup fuel
-        drop(val);
+        drop_owned_reverse(st, val);
     }
 }
 
@@ -796,21 +819,60 @@ fn cleanup_owned_frames(st: &mut LoopState) {
 }
 
 fn min_buffer_id(val: &Value) -> u64 {
+    // Direct recursion: record nesting is verified acyclic and containers
+    // are one layer deep (the frozen domain), so the depth is table-
+    // bounded — and the RefCell borrows of nested list buffers cannot
+    // outlive their guard in an explicit-stack shape.
     match val {
         Value::Str(h) => h.rc.id,
+        Value::List(h) => {
+            let buf = h.rc.borrow();
+            let mut min = buf.id;
+            for e in buf.elems.iter() {
+                min = min.min(min_buffer_id(e));
+            }
+            min
+        }
+        Value::Variant(var) => match var.payload.as_deref() {
+            Some(p) => min_buffer_id(p),
+            None => u64::MAX,
+        },
         Value::Record(r) => {
             let mut min = u64::MAX;
             let mut stack: Vec<&Value> = r.fields.iter().collect();
             while let Some(x) = stack.pop() {
-                match x {
-                    Value::Str(h) => min = min.min(h.rc.id),
-                    Value::Record(inner) => stack.extend(inner.fields.iter()),
-                    _ => {}
-                }
+                min = min.min(min_buffer_id(x));
             }
             min
         }
         _ => u64::MAX,
+    }
+}
+
+/// F822-R2-03: REVERSE-order responsibility cleanup of an owned value
+/// (contract §4 / V-06): list elements release last-pushed-first (the
+/// reverse of insertion order — `pop()` from the tail), each element
+/// recursively cleaning its own payload (variant payloads included);
+/// the container's own buffer frees only after its elements. Scalars and
+/// non-container values drop directly. Cleanup fuel is reserved per
+/// element (the cancel-point rule).
+fn drop_owned_reverse(st: &mut LoopState, val: Value) {
+    match val {
+        Value::List(h) => {
+            let mut elems = std::mem::take(&mut h.rc.borrow_mut().elems);
+            while let Some(e) = elems.pop() {
+                st.steps += 1; // reserved cleanup fuel (cancel point)
+                drop_owned_reverse(st, e);
+            }
+            drop(h); // the buffer itself frees after its elements
+        }
+        Value::Variant(var) => {
+            if let Some(p) = var.payload {
+                st.steps += 1;
+                drop_owned_reverse(st, *p);
+            }
+        }
+        other => drop(other),
     }
 }
 
@@ -820,13 +882,19 @@ fn min_buffer_id(val: &Value) -> u64 {
 /// seam here, V-03's attempt accounting lives in the allocating op).
 fn owned_kill_slot(st: &mut LoopState, slot: usize, zero: Value) {
     let mut visited = 0u64;
-    let fr = st.frames.last_mut().expect("frame present");
-    let old = fr.slots[slot].deep_size(&mut visited);
-    let new = zero.deep_size(&mut visited);
-    st.steps += visited;
-    st.slot_bytes = st.slot_bytes.saturating_sub(old.saturating_sub(new));
-    fr.slots[slot] = zero;
-    fr.gens[slot] = fr.gens[slot].wrapping_add(1);
+    {
+        let fr = st.frames.last_mut().expect("frame present");
+        let old = fr.slots[slot].deep_size(&mut visited);
+        let new = zero.deep_size(&mut visited);
+        st.steps += visited;
+        st.slot_bytes = st.slot_bytes.saturating_sub(old.saturating_sub(new));
+        // Take the dying value OUT before the placeholder lands so its
+        // cleanup runs the contracted REVERSE element order (lists), not
+        // whatever drop order the assignment would choose.
+        let dying = std::mem::replace(&mut fr.slots[slot], zero);
+        fr.gens[slot] = fr.gens[slot].wrapping_add(1);
+        drop_owned_reverse(st, dying);
+    }
 }
 
 // -- PLAN-822 collections helpers -------------------------------------------
@@ -874,6 +942,73 @@ fn variant_payload_ty(v: &dyn ModuleView, func_idx: u32, variant_slot_ty: u32, d
             .unwrap_or(u32::MAX),
         _ => u32::MAX,
     }
+}
+
+/// Resolve a place to its CURRENT element reference: find the root frame
+/// by activation sequence, read the root slot's list buffer, and re-
+/// validate buffer identity + structural epoch + element generation + the
+/// index bound. Any mismatch is the contracted `av.trap.stale-place`
+/// (F822-R2-02) — checked BEFORE any buffer access.
+fn resolve_place_elem(
+    st: &LoopState,
+    place: &crate::contract::ListPlaceV,
+) -> Result<Value, crate::contract::TrapKind> {
+    let fr = st
+        .frames
+        .iter()
+        .find(|f| f.seq as u32 == place.frame)
+        .ok_or(crate::contract::TrapKind::InvalidHandle)?;
+    let list = fr
+        .slots
+        .get(place.slot as usize)
+        .ok_or(crate::contract::TrapKind::InvalidHandle)?;
+    let h = match list {
+        Value::List(h) => h,
+        _ => return Err(crate::contract::TrapKind::StalePlace),
+    };
+    let buf = h.rc.borrow();
+    if buf.id != place.buf_id || buf.epoch != place.epoch {
+        // A structural change (realloc / element shift) happened after
+        // the mint — the OLD place may not touch the new buffer.
+        return Err(crate::contract::TrapKind::StalePlace);
+    }
+    let idx = place.index as usize;
+    if idx >= buf.elems.len() || buf.elem_gens[idx] != place.elem_gen {
+        // In-place replacement retired this element's places.
+        return Err(crate::contract::TrapKind::StalePlace);
+    }
+    Ok(buf.elems[idx].clone())
+}
+
+/// Same validation, returning the current element's deep size for the
+/// PLACE_SET precheck (the write path's old-value half).
+fn validate_place_for_write(
+    st: &LoopState,
+    place: &crate::contract::ListPlaceV,
+) -> Result<usize, crate::contract::TrapKind> {
+    let fr = st
+        .frames
+        .iter()
+        .find(|f| f.seq as u32 == place.frame)
+        .ok_or(crate::contract::TrapKind::InvalidHandle)?;
+    let list = fr
+        .slots
+        .get(place.slot as usize)
+        .ok_or(crate::contract::TrapKind::InvalidHandle)?;
+    let h = match list {
+        Value::List(h) => h,
+        _ => return Err(crate::contract::TrapKind::StalePlace),
+    };
+    let buf = h.rc.borrow();
+    if buf.id != place.buf_id || buf.epoch != place.epoch {
+        return Err(crate::contract::TrapKind::StalePlace);
+    }
+    let idx = place.index as usize;
+    if idx >= buf.elems.len() || buf.elem_gens[idx] != place.elem_gen {
+        return Err(crate::contract::TrapKind::StalePlace);
+    }
+    let mut visited = 0u64;
+    Ok(buf.elems[idx].deep_size(&mut visited))
 }
 
 /// Kill a source slot after its value transferred into a container/variant:
@@ -1890,6 +2025,7 @@ fn dispatch<V: ModuleView>(
                                     buf.cap = new_cap;
                                 }
                                 buf.elems.push(val.clone());
+                                buf.elem_gens.push(0);
                                 buf.epoch = buf.epoch.wrapping_add(1);
                             }
                             other => {
@@ -1960,6 +2096,7 @@ fn dispatch<V: ModuleView>(
                                 // The tail shift is billed per moved element.
                                 st.steps += (buf.elems.len() - idx) as u64;
                                 buf.elems.insert(idx, val.clone());
+                                buf.elem_gens.insert(idx, 0);
                                 buf.epoch = buf.epoch.wrapping_add(1);
                                 buf.elems.len() - idx - 1
                             }
@@ -2041,6 +2178,7 @@ fn dispatch<V: ModuleView>(
                             Value::List(h) => {
                                 let mut buf = h.rc.borrow_mut();
                                 let old = std::mem::replace(&mut buf.elems[idx], val.clone());
+                                buf.elem_gens[idx] = buf.elem_gens[idx].wrapping_add(1);
                                 drop(old);
                             }
                             other => {
@@ -2111,6 +2249,7 @@ fn dispatch<V: ModuleView>(
                             Value::List(h) => {
                                 let mut buf = h.rc.borrow_mut();
                                 let out = buf.elems.remove(idx);
+                                buf.elem_gens.remove(idx);
                                 buf.epoch = buf.epoch.wrapping_add(1);
                                 out
                             }
@@ -2261,6 +2400,7 @@ fn dispatch<V: ModuleView>(
                             Value::List(h) => {
                                 let mut buf = h.rc.borrow_mut();
                                 let old = std::mem::replace(&mut buf.elems[idx], new_elem.0);
+                                buf.elem_gens[idx] = buf.elem_gens[idx].wrapping_add(1);
                                 drop(old);
                             }
                             other => {
@@ -2457,6 +2597,144 @@ fn dispatch<V: ModuleView>(
                     if let Some(p) = payload {
                         kill_value_slot(v, func_idx, func, st, *p as usize);
                     }
+                }
+                // -- PLAN-822 R2 index-place surface (execution) ---------
+                MirInstr::ListPlace { dst, base, index } => {
+                    let iv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*index as usize].clone()
+                    };
+                    let idx = match list_index_of(&iv) {
+                        Some(i) => i,
+                        None => return Some(list_index_trap(v, func_idx, func, flat)),
+                    };
+                    let place = {
+                        let fr = st.frames.last().expect("frame present");
+                        match &fr.slots[*base as usize] {
+                            Value::List(h) => {
+                                let buf = h.rc.borrow();
+                                if idx >= buf.elems.len() {
+                                    drop(buf);
+                                    return Some(list_index_trap(v, func_idx, func, flat));
+                                }
+                                crate::contract::ListPlaceV {
+                                    frame: fr.seq as u32,
+                                    slot: *base as u32,
+                                    buf_id: buf.id,
+                                    epoch: buf.epoch,
+                                    index: idx as u32,
+                                    elem_gen: buf.elem_gens[idx],
+                                }
+                            }
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "list operand holds {} (admission violation)",
+                                    other.type_name()
+                                )))
+                            }
+                        }
+                    };
+                    if let Err(out) =
+                        commit_slot_write(st, *dst as usize, Value::Place(place), limits)
+                    {
+                        return Some(out);
+                    }
+                }
+                MirInstr::PlaceGet { dst, src } => {
+                    let pv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*src as usize].clone()
+                    };
+                    let place = match pv {
+                        Value::Place(p) => p,
+                        other => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "place operand holds {} (admission violation)",
+                                other.type_name()
+                            )))
+                        }
+                    };
+                    // Root resolution + stale validation BEFORE any access.
+                    let elem = match resolve_place_elem(st, &place) {
+                        Ok(e) => e,
+                        Err(kind) => {
+                            return Some(ExecOutcome::Trap {
+                                kind,
+                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                            })
+                        }
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, elem, limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::PlaceSet { place, value } => {
+                    let (pv, val) = {
+                        let fr = st.frames.last().expect("frame present");
+                        (
+                            fr.slots[*place as usize].clone(),
+                            fr.slots[*value as usize].clone(),
+                        )
+                    };
+                    let place = match pv {
+                        Value::Place(p) => p,
+                        other => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "place operand holds {} (admission violation)",
+                                other.type_name()
+                            )))
+                        }
+                    };
+                    // PRECHECK (F822-R1-01 discipline): stale validation and
+                    // budget before any mutation.
+                    let mut visited = 0u64;
+                    let new_deep = val.deep_size(&mut visited);
+                    st.steps += visited;
+                    let old_deep = match validate_place_for_write(st, &place) {
+                        Ok(d) => d,
+                        Err(kind) => {
+                            return Some(ExecOutcome::Trap {
+                                kind,
+                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                            })
+                        }
+                    };
+                    if new_deep > old_deep {
+                        let delta = new_deep - old_deep;
+                        if st.slot_bytes.saturating_add(delta) > limits.max_slot_bytes {
+                            return Some(ExecOutcome::Resource {
+                                kind: ResourceKind::SlotBytes,
+                                message: format!(
+                                    "live slot data would reach {} bytes, above budget {}",
+                                    st.slot_bytes + delta,
+                                    limits.max_slot_bytes
+                                ),
+                            });
+                        }
+                    }
+                    // COMMIT: replace the element, bump its generation
+                    // (retiring THIS place and every sibling minted before
+                    // the replacement), drop the old element once.
+                    {
+                        let fr = st.frames.last_mut().expect("frame present");
+                        match &fr.slots[place.slot as usize] {
+                            Value::List(h) => {
+                                let mut buf = h.rc.borrow_mut();
+                                let idx = place.index as usize;
+                                let old = std::mem::replace(&mut buf.elems[idx], val.clone());
+                                buf.elem_gens[idx] = buf.elem_gens[idx].wrapping_add(1);
+                                drop(old);
+                            }
+                            _ => unreachable!("validated above"),
+                        }
+                    }
+                    if new_deep > old_deep {
+                        st.slot_bytes += new_deep - old_deep;
+                    } else {
+                        st.slot_bytes = st.slot_bytes.saturating_sub(old_deep - new_deep);
+                    }
+                    st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
+                    kill_value_slot(v, func_idx, func, st, *value as usize);
                 }
                 MirInstr::Trace { event } => {
                     st.trace.events.push(*event);

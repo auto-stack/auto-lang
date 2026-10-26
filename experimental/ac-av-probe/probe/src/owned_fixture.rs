@@ -93,6 +93,9 @@ pub fn canonical_owned(
         }
         // A view/token never crosses the entry boundary (§6).
         Value::StrView(_) | Value::MutRef(_) => return None,
+        // PLAN-822 R2: a retained element reference is a place value —
+        // never an entry result.
+        Value::Place(_) => return None,
         // PLAN-822: containers canonicalize their content element/arm-wise.
         Value::List(h) => {
             let buf = h.rc.borrow();

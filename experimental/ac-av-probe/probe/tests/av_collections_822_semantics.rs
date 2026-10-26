@@ -78,6 +78,8 @@ impl Fx {
                 ],
             }),
             MirType::List(ListTypeRef { elem: 7 }),
+            // 9: Place (F822-R2-02 retained element references).
+            MirType::Place,
         ];
         Fx {
             m,
@@ -810,7 +812,7 @@ fn av_collections_822_semantics_domain_rejections() {
             payload: Some(list_ty),
         }],
     }));
-    let s0 = f.slot(v, "x");
+    let _s0 = f.slot(v, "x");
     let s1 = f.slot(0, "r");
     let c0 = f.c_i32(0);
     f.i(MirInstr::Const { dst: s1, value: c0 });
@@ -861,4 +863,352 @@ fn av_collections_822_semantics_set_keeps_neighbors() {
     }); // 1 untouched
     f.ret(s5);
     assert_eq!(success(&f.build()), Value::I32(1));
+}
+
+// -- F822-R2-03: reverse-order element cleanup (contract §4 / V-06) ------
+
+/// F822-R2-03 replay shape: List<Str> with FIRST then SECOND pushed, the
+/// list retained at normal function exit. The frozen oracle: SECOND
+/// frees before FIRST (reverse insertion) and the list buffer frees
+/// LAST — free ids exactly [2, 1, 0] with live=0 after.
+#[test]
+fn av_collections_822_semantics_list_drop_reverse_elements() {
+    let mut f = Fx::new();
+    let s0 = f.slot(5, "list"); // List<Str>
+    let s1 = f.slot(2, "a");
+    let s2 = f.slot(2, "b");
+    let s3 = f.slot(0, "r");
+    let c1 = f.c_str("first");
+    let c2 = f.c_str("second");
+    let c0 = f.c_i32(0);
+    f.i(MirInstr::ListNew { dst: s0, list_ty: 5, cap: 0 });
+    f.i(MirInstr::Const { dst: s1, value: c1 });
+    f.i(MirInstr::ListPush { root: s0, value: s1 });
+    f.i(MirInstr::Const { dst: s2, value: c2 });
+    f.i(MirInstr::ListPush { root: s0, value: s2 });
+    f.i(MirInstr::Const { dst: s3, value: c0 });
+    f.ret(s3);
+    let m = f.build();
+    verify_mir(&m).unwrap_or_else(|e| panic!("{e:?}"));
+    let wire = encode_abc(&m).unwrap();
+    let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap();
+    let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(matches!(out, ExecOutcome::Success { .. }), "{out:?}");
+    let arena = trace.arena.expect("arena");
+    let frees: Vec<u64> = arena.free_events().iter().map(|e| e.id).collect();
+    assert_eq!(
+        frees,
+        vec![2, 1, 0],
+        "reverse element order then the buffer; got {frees:?}"
+    );
+    assert_eq!(arena.live(), 0);
+}
+
+/// F822-R2-03: the trap exit takes the SAME reverse path — a mid-run trap
+/// unwinds the retained list with SECOND before FIRST and live=0 after
+/// (no reaping may hide the order).
+#[test]
+fn av_collections_822_semantics_list_drop_reverse_on_trap() {
+    let mut f = Fx::new();
+    let s0 = f.slot(5, "list");
+    let s1 = f.slot(2, "a");
+    let s2 = f.slot(2, "b");
+    let s3 = f.slot(0, "badidx");
+    let s4 = f.slot(2, "got");
+    let c1 = f.c_str("first");
+    let c2 = f.c_str("second");
+    let c9 = f.c_i32(9);
+    f.i(MirInstr::ListNew { dst: s0, list_ty: 5, cap: 0 });
+    f.i(MirInstr::Const { dst: s1, value: c1 });
+    f.i(MirInstr::ListPush { root: s0, value: s1 });
+    f.i(MirInstr::Const { dst: s2, value: c2 });
+    f.i(MirInstr::ListPush { root: s0, value: s2 });
+    f.i(MirInstr::Const { dst: s3, value: c9 }); // out of range
+    f.i(MirInstr::ListRemove { dst: s4, root: s0, index: s3 }); // traps
+    f.ret(s3);
+    let m = f.build();
+    verify_mir(&m).unwrap_or_else(|e| panic!("{e:?}"));
+    let wire = encode_abc(&m).unwrap();
+    let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap();
+    let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(matches!(out, ExecOutcome::Trap { .. }), "{out:?}");
+    let arena = trace.arena.expect("arena");
+    let frees: Vec<u64> = arena.free_events().iter().map(|e| e.id).collect();
+    assert_eq!(frees, vec![2, 1, 0], "trap unwind keeps the reverse order; got {frees:?}");
+    assert_eq!(arena.live(), 0);
+}
+
+/// F822-R2-03 sibling: a retained List<Outcome<Note, Str>> — each element
+/// is a variant whose Ok payload owns a Note's Str; the elements release
+/// reverse (second element's payload before the first's), buffer last.
+#[test]
+fn av_collections_822_semantics_nested_variant_list_drop_reverse() {
+    let mut f = Fx::new();
+    let s0 = f.slot(8, "list"); // List<Outcome>
+    let s1 = f.slot(2, "t1");
+    let s2 = f.slot(0, "n1");
+    let s3 = f.slot(3, "note1");
+    let s4 = f.slot(7, "ok1");
+    let s5 = f.slot(2, "t2");
+    let s6 = f.slot(0, "n2");
+    let s7 = f.slot(3, "note2");
+    let s8 = f.slot(7, "ok2");
+    let s9 = f.slot(0, "r");
+    let c0 = f.c_i32(0);
+    f.i(MirInstr::ListNew { dst: s0, list_ty: 8, cap: 0 });
+    iconst!(&mut f, s1, f.c_str("AA"));
+    iconst!(&mut f, s2, f.c_i32(1));
+    f.i(MirInstr::Aggregate { dst: s3, record_ty: 3, operands: vec![s1, s2] });
+    f.i(MirInstr::VariantPack { dst: s4, variant_ty: 7, disc: 0, payload: Some(s3) });
+    f.i(MirInstr::ListPush { root: s0, value: s4 });
+    iconst!(&mut f, s5, f.c_str("BBB"));
+    iconst!(&mut f, s6, f.c_i32(2));
+    f.i(MirInstr::Aggregate { dst: s7, record_ty: 3, operands: vec![s5, s6] });
+    f.i(MirInstr::VariantPack { dst: s8, variant_ty: 7, disc: 0, payload: Some(s7) });
+    f.i(MirInstr::ListPush { root: s0, value: s8 });
+    f.i(MirInstr::Const { dst: s9, value: c0 });
+    f.ret(s9);
+    let m = f.build();
+    verify_mir(&m).unwrap_or_else(|e| panic!("{e:?}"));
+    let wire = encode_abc(&m).unwrap();
+    let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap();
+    let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(matches!(out, ExecOutcome::Success { .. }), "{out:?}");
+    let arena = trace.arena.expect("arena");
+    let frees: Vec<u64> = arena.free_events().iter().map(|e| e.id).collect();
+    // ids: 0=list buffer, 1="AA", 2="BBB" — reverse: BBB(2), AA(1), buf(0).
+    assert_eq!(frees, vec![2, 1, 0], "nested payload order; got {frees:?}");
+    assert_eq!(arena.live(), 0);
+}
+
+// -- F822-R2-02: the index Place/token surface (V-02/V-11/V-12) ---------
+
+/// Positive control: a minted place reads its element, repeatedly, and a
+/// place over a DIFFERENT index reads its own element.
+#[test]
+fn av_collections_822_semantics_place_positive_reads() {
+    let mut f = Fx::new();
+    let s0 = f.slot(4, "list");
+    let s1 = f.slot(0, "v1");
+    let s2 = f.slot(0, "v2");
+    let s3 = f.slot(0, "i0");
+    let s4 = f.slot(0, "i1");
+    let s5 = f.slot(9, "p0");
+    let s6 = f.slot(9, "p1");
+    let s7 = f.slot(0, "g0");
+    let s8 = f.slot(0, "g1");
+    f.i(MirInstr::ListNew { dst: s0, list_ty: 4, cap: 0 });
+    iconst!(&mut f, s1, f.c_i32(30));
+    f.i(MirInstr::ListPush { root: s0, value: s1 });
+    iconst!(&mut f, s2, f.c_i32(40));
+    f.i(MirInstr::ListPush { root: s0, value: s2 });
+    iconst!(&mut f, s3, f.c_i32(0));
+    iconst!(&mut f, s4, f.c_i32(1));
+    f.i(MirInstr::ListPlace { dst: s5, base: s0, index: s3 });
+    f.i(MirInstr::ListPlace { dst: s6, base: s0, index: s4 });
+    f.i(MirInstr::PlaceGet { dst: s7, src: s5 });
+    f.i(MirInstr::PlaceGet { dst: s8, src: s6 });
+    f.i(MirInstr::Bin { op: BinOp::AddI32, dst: s7, lhs: s7, rhs: s8 });
+    f.ret(s7);
+    assert_eq!(success(&f.build()), Value::I32(70));
+}
+
+/// V-02: a place minted BEFORE a push (structural epoch bump) traps
+/// stale-place on use; a place minted AFTER reads the appended element.
+#[test]
+fn av_collections_822_semantics_place_stale_after_push() {
+    // Old place after push -> trap.
+    let mut f = Fx::new();
+    let s0 = f.slot(4, "list");
+    let s1 = f.slot(0, "v");
+    let s2 = f.slot(0, "i0");
+    let s3 = f.slot(9, "p");
+    let s4 = f.slot(0, "g");
+    f.i(MirInstr::ListNew { dst: s0, list_ty: 4, cap: 0 });
+    iconst!(&mut f, s1, f.c_i32(7));
+    f.i(MirInstr::ListPush { root: s0, value: s1 });
+    iconst!(&mut f, s2, f.c_i32(0));
+    f.i(MirInstr::ListPlace { dst: s3, base: s0, index: s2 });
+    iconst!(&mut f, s1, f.c_i32(7));
+    f.i(MirInstr::ListPush { root: s0, value: s1 }); // epoch bump
+    f.i(MirInstr::PlaceGet { dst: s4, src: s3 }); // stale
+    f.ret(s4);
+    assert_eq!(trap_kind(&f.build()), TrapKind::StalePlace);
+
+    // Fresh place after the push reads the appended element.
+    let mut f = Fx::new();
+    let s0 = f.slot(4, "list");
+    let s1 = f.slot(0, "v");
+    let s3 = f.slot(0, "i1");
+    let s4 = f.slot(9, "p");
+    let s5 = f.slot(0, "g");
+    f.i(MirInstr::ListNew { dst: s0, list_ty: 4, cap: 0 });
+    iconst!(&mut f, s1, f.c_i32(7));
+    f.i(MirInstr::ListPush { root: s0, value: s1 });
+    iconst!(&mut f, s1, f.c_i32(8));
+    f.i(MirInstr::ListPush { root: s0, value: s1 });
+    iconst!(&mut f, s3, f.c_i32(1));
+    f.i(MirInstr::ListPlace { dst: s4, base: s0, index: s3 });
+    f.i(MirInstr::PlaceGet { dst: s5, src: s4 });
+    f.ret(s5);
+    assert_eq!(success(&f.build()), Value::I32(8));
+}
+
+/// V-12: after remove(0), a place minted before the remove traps
+/// stale-place; a FRESH place at the same index reads the SHIFTED value.
+#[test]
+fn av_collections_822_semantics_place_stale_after_remove_fresh_reads_shift() {
+    // Old place after remove -> trap.
+    let mut f = Fx::new();
+    let s0 = f.slot(4, "list");
+    let s1 = f.slot(0, "v1");
+    let s2 = f.slot(0, "v2");
+    let s3 = f.slot(0, "i0");
+    let s4 = f.slot(9, "p");
+    let s5 = f.slot(0, "g");
+    let s6 = f.slot(0, "removed");
+    f.i(MirInstr::ListNew { dst: s0, list_ty: 4, cap: 0 });
+    iconst!(&mut f, s1, f.c_i32(10));
+    f.i(MirInstr::ListPush { root: s0, value: s1 });
+    iconst!(&mut f, s2, f.c_i32(20));
+    f.i(MirInstr::ListPush { root: s0, value: s2 });
+    iconst!(&mut f, s3, f.c_i32(0));
+    f.i(MirInstr::ListPlace { dst: s4, base: s0, index: s3 });
+    f.i(MirInstr::ListRemove { dst: s6, root: s0, index: s3 }); // epoch + shift
+    f.i(MirInstr::PlaceGet { dst: s5, src: s4 }); // stale
+    f.ret(s5);
+    assert_eq!(trap_kind(&f.build()), TrapKind::StalePlace);
+
+    // Fresh place at index 0 reads the SHIFTED value (20).
+    let mut f = Fx::new();
+    let s0 = f.slot(4, "list");
+    let s1 = f.slot(0, "v1");
+    let s2 = f.slot(0, "v2");
+    let s3 = f.slot(0, "i0");
+    let s4 = f.slot(9, "p");
+    let s5 = f.slot(0, "g");
+    let s6 = f.slot(0, "removed");
+    f.i(MirInstr::ListNew { dst: s0, list_ty: 4, cap: 0 });
+    iconst!(&mut f, s1, f.c_i32(10));
+    f.i(MirInstr::ListPush { root: s0, value: s1 });
+    iconst!(&mut f, s2, f.c_i32(20));
+    f.i(MirInstr::ListPush { root: s0, value: s2 });
+    iconst!(&mut f, s3, f.c_i32(0));
+    f.i(MirInstr::ListRemove { dst: s6, root: s0, index: s3 });
+    f.i(MirInstr::ListPlace { dst: s4, base: s0, index: s3 });
+    f.i(MirInstr::PlaceGet { dst: s5, src: s4 });
+    f.ret(s5);
+    assert_eq!(success(&f.build()), Value::I32(20));
+}
+
+/// V-12 per-element replacement validity: an in-place LIST_SET retires
+/// places minted over THAT element (generation bump) while a place over a
+/// DIFFERENT element stays live; PLACE_SET retires its own place the same
+/// way; fresh places always see the current value.
+#[test]
+fn av_collections_822_semantics_place_retired_by_element_replacement() {
+    // LIST_SET[1] keeps p0 live.
+    let mut f = Fx::new();
+    let s0 = f.slot(4, "list");
+    let s1 = f.slot(0, "v1");
+    let s2 = f.slot(0, "v2");
+    let s3 = f.slot(0, "nv");
+    let s4 = f.slot(0, "i0");
+    let s5 = f.slot(0, "i1");
+    let s6 = f.slot(9, "p0");
+    let s8 = f.slot(0, "g");
+    f.i(MirInstr::ListNew { dst: s0, list_ty: 4, cap: 0 });
+    iconst!(&mut f, s1, f.c_i32(10));
+    f.i(MirInstr::ListPush { root: s0, value: s1 });
+    iconst!(&mut f, s2, f.c_i32(20));
+    f.i(MirInstr::ListPush { root: s0, value: s2 });
+    iconst!(&mut f, s4, f.c_i32(0));
+    iconst!(&mut f, s5, f.c_i32(1));
+    f.i(MirInstr::ListPlace { dst: s6, base: s0, index: s4 });
+    iconst!(&mut f, s3, f.c_i32(99));
+    f.i(MirInstr::ListSet { root: s0, index: s5, value: s3 }); // gen bump at 1
+    f.i(MirInstr::PlaceGet { dst: s8, src: s6 }); // p0 still live -> 10
+    f.ret(s8);
+    assert_eq!(success(&f.build()), Value::I32(10));
+
+    // Same shape but using p1 after the replacement -> stale trap.
+    let mut f = Fx::new();
+    let s0 = f.slot(4, "list");
+    let s1 = f.slot(0, "v1");
+    let s2 = f.slot(0, "v2");
+    let s3 = f.slot(0, "nv");
+    let s4 = f.slot(0, "i0");
+    let s5 = f.slot(0, "i1");
+    let s7 = f.slot(9, "p1");
+    let s8 = f.slot(0, "g");
+    f.i(MirInstr::ListNew { dst: s0, list_ty: 4, cap: 0 });
+    iconst!(&mut f, s1, f.c_i32(10));
+    f.i(MirInstr::ListPush { root: s0, value: s1 });
+    iconst!(&mut f, s2, f.c_i32(20));
+    f.i(MirInstr::ListPush { root: s0, value: s2 });
+    iconst!(&mut f, s4, f.c_i32(0));
+    iconst!(&mut f, s5, f.c_i32(1));
+    f.i(MirInstr::ListPlace { dst: s7, base: s0, index: s5 });
+    iconst!(&mut f, s3, f.c_i32(99));
+    f.i(MirInstr::ListSet { root: s0, index: s5, value: s3 });
+    f.i(MirInstr::PlaceGet { dst: s8, src: s7 }); // stale (element gen)
+    f.ret(s8);
+    assert_eq!(trap_kind(&f.build()), TrapKind::StalePlace);
+
+    // PLACE_SET commits, retires its own place at commit time.
+    let mut f = Fx::new();
+    let s0 = f.slot(4, "list");
+    let s1 = f.slot(0, "v1");
+    let s3 = f.slot(0, "nv");
+    let s4 = f.slot(0, "i0");
+    let s7 = f.slot(9, "p1");
+    let s8 = f.slot(0, "g");
+    f.i(MirInstr::ListNew { dst: s0, list_ty: 4, cap: 0 });
+    iconst!(&mut f, s1, f.c_i32(10));
+    f.i(MirInstr::ListPush { root: s0, value: s1 });
+    iconst!(&mut f, s4, f.c_i32(0));
+    f.i(MirInstr::ListPlace { dst: s7, base: s0, index: s4 });
+    iconst!(&mut f, s3, f.c_i32(123));
+    f.i(MirInstr::PlaceSet { place: s7, value: s3 });
+    f.i(MirInstr::PlaceGet { dst: s8, src: s7 }); // stale (own retirement)
+    f.ret(s8);
+    assert_eq!(trap_kind(&f.build()), TrapKind::StalePlace);
+
+    // A FRESH place after the PLACE_SET reads 123.
+    let mut f = Fx::new();
+    let s0 = f.slot(4, "list");
+    let s1 = f.slot(0, "v1");
+    let s3 = f.slot(0, "nv");
+    let s4 = f.slot(0, "i0");
+    let s7 = f.slot(9, "p1");
+    let s9 = f.slot(9, "p2");
+    let s8 = f.slot(0, "g");
+    f.i(MirInstr::ListNew { dst: s0, list_ty: 4, cap: 0 });
+    iconst!(&mut f, s1, f.c_i32(10));
+    f.i(MirInstr::ListPush { root: s0, value: s1 });
+    iconst!(&mut f, s4, f.c_i32(0));
+    f.i(MirInstr::ListPlace { dst: s7, base: s0, index: s4 });
+    iconst!(&mut f, s3, f.c_i32(123));
+    f.i(MirInstr::PlaceSet { place: s7, value: s3 });
+    f.i(MirInstr::ListPlace { dst: s9, base: s0, index: s4 }); // fresh
+    f.i(MirInstr::PlaceGet { dst: s8, src: s9 });
+    f.ret(s8);
+    assert_eq!(success(&f.build()), Value::I32(123));
+}
+
+/// V-02: an out-of-range place mint traps before any access.
+#[test]
+fn av_collections_822_semantics_place_mint_out_of_range_traps() {
+    let mut f = Fx::new();
+    let s0 = f.slot(4, "list");
+    let s1 = f.slot(0, "v");
+    let s2 = f.slot(0, "i9");
+    let s3 = f.slot(9, "p");
+    f.i(MirInstr::ListNew { dst: s0, list_ty: 4, cap: 0 });
+    iconst!(&mut f, s1, f.c_i32(7));
+    f.i(MirInstr::ListPush { root: s0, value: s1 });
+    iconst!(&mut f, s2, f.c_i32(9));
+    f.i(MirInstr::ListPlace { dst: s3, base: s0, index: s2 });
+    f.ret(s2);
+    assert_eq!(trap_kind(&f.build()), TrapKind::ListIndex);
 }

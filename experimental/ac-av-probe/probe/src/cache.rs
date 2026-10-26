@@ -1279,7 +1279,8 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<TypeIdx> {
                 | MirType::Char
                 | MirType::Str
                 | MirType::StrView
-                | MirType::MutRef => {
+                | MirType::MutRef
+                | MirType::Place => {
                     map[i] = merged.intern_type(t.clone());
                     progress = true;
                 }
@@ -1524,6 +1525,7 @@ pub fn render_unit_sig(unit: &MirModule) -> String {
             Some(MirType::RecordView(r)) => format!("recview:{}", r.name),
             Some(MirType::List(_)) => "list".to_string(),
             Some(MirType::Variant(v)) => format!("variant:{}", v.name),
+            Some(MirType::Place) => "place".to_string(),
             None => "?".to_string(),
         }
     };

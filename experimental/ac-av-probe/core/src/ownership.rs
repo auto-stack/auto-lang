@@ -1399,6 +1399,33 @@ pub fn verify_owned_function(
                     }
                     st.define_slot(*dst as usize);
                 }
+                MirInstr::ListPlace { dst, base, index } => {
+                    check_read!(base, "list-place base");
+                    check_read!(index, "list-place index");
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::PlaceGet { dst, src } => {
+                    check_read!(src, "place source");
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::PlaceSet { place, value } => {
+                    check_read!(place, "place source");
+                    check_read!(value, "place-set value");
+                    if is_owned[*value as usize] {
+                        if root_has_live_token(&st, *value as usize) {
+                            fail = Some(err(
+                                "mir.mut-conflict",
+                                format!(
+                                    "place-set of `{}` conflicts an active borrow on the value",
+                                    slot_name(f, *value as usize)
+                                ),
+                                flat,
+                            ));
+                            break 'blk;
+                        }
+                        st.moved.set(*value as usize);
+                    }
+                }
                 MirInstr::VariantSwitch { root, payload, .. } => {
                     if let Some(p) = payload {
                         check_read!(p, "variant-switch payload");

@@ -238,14 +238,21 @@ impl CollectionsUpdateSession {
                 }
             }
         }
-        // Link (real dependency checks) and execute.
-        self.revision += 1;
-        self.units = next
+        // F822-R2-01: BUILD-ASIDE + ATOMIC COMMIT (resident-function-install
+        // transaction): the candidate set links and executes BEFORE any
+        // session state changes; a rejected candidate (link refusal or
+        // execution failure) leaves the prior revision/units/identity
+        // untouched and the prior snapshot stays usable.
+        let candidate_units = next
             .iter()
             .map(|(k, (fc, _))| (k.clone(), fc.clone()))
-            .collect();
-        self.identity = next;
-        let snapshot = self.snapshot()?;
+            .collect::<Vec<_>>();
+        let candidate_rev = self.revision + 1;
+        let snapshot = ProgramSnapshot::link(
+            candidate_units.iter().map(|(_, fc)| fc.clone()).collect(),
+            &self.entry,
+            candidate_rev,
+        )?;
         let (out, trace) =
             execute_program(&snapshot, &ExecLimits::default(), &CancelFlag::new(false));
         let arena = trace.arena.clone().expect("execute attaches the ledger");
@@ -265,6 +272,10 @@ impl CollectionsUpdateSession {
             },
             other => return Err(format!("revision did not execute: {other:?}")),
         };
+        // COMMIT: only a fully verified+executed candidate installs.
+        self.revision = candidate_rev;
+        self.units = candidate_units.into_iter().collect();
+        self.identity = next;
         Ok(ApplyOutcome {
             revision: self.revision,
             value,

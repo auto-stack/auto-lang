@@ -148,7 +148,7 @@ fn av_collections_822_resources_slot_bytes_rejects_before_write() {
 fn av_collections_822_resources_fault_injection_attempt_semantics() {
     let m = push_module(1, 1, 0);
     verify_mir(&m).unwrap_or_else(|e| panic!("verify: {e:?}"));
-    let wire = encode_abc(&m).unwrap_or_else(|e| panic!("encode"));
+    let wire = encode_abc(&m).unwrap_or_else(|_e| panic!("encode"));
     let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap_or_else(|e| panic!("{e:?}"));
     // The collections fault seam is the ARENA ledger (V-07 allocator
     // axis): fail the FIRST allocation attempt — the list buffer itself.
@@ -199,7 +199,7 @@ fn av_collections_822_resources_budget_is_the_only_delta() {
 fn av_collections_822_resources_peak_and_drain() {
     let m = push_module(3, 1, 0);
     verify_mir(&m).unwrap_or_else(|e| panic!("verify: {e:?}"));
-    let wire = encode_abc(&m).unwrap_or_else(|e| panic!("encode"));
+    let wire = encode_abc(&m).unwrap_or_else(|_e| panic!("encode"));
     let loaded = verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap_or_else(|e| panic!("{e:?}"));
     let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
     assert!(matches!(out, ExecOutcome::Success { .. }));
@@ -440,7 +440,7 @@ fn both_sides_of_budget(
 ) {
     use auto_av_core::mir_verify::verify_mir;
     verify_mir(m).unwrap_or_else(|e| panic!("verify: {e:?}"));
-    let wire = encode_abc(m).unwrap_or_else(|e| panic!("encode"));
+    let wire = encode_abc(m).unwrap_or_else(|_e| panic!("encode"));
     let loaded =
         verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap_or_else(|e| panic!("admit: {e:?}"));
     let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));

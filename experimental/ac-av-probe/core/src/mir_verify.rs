@@ -2141,6 +2141,75 @@ impl<'a> Verifier<'a> {
                         }
                         self.check_variant_arm(f, rt, *disc, payload.as_ref(), sp)?;
                     }
+                    // -- PLAN-822 R2 index-place surface (typing arms) -----
+                    MirInstr::ListPlace { dst, base, index } => {
+                        if !self.is_collections {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "LIST_PLACE exists only in the collections profile".to_string(),
+                            ));
+                        }
+                        // The element domain was validated at the type
+                        // table; the mint only needs the index shape.
+                        self.list_elem_of(f, *base, sp)?;
+                        self.check_list_index_slot(f, *index, sp)?;
+                        let dt = slot_ty_of(f, *dst, sp, "list-place dst")?;
+                        if !matches!(self.module.types.get(dt as usize), Some(MirType::Place)) {
+                            return Err(err(
+                                "mir.list-type",
+                                format!("list-place dst {} is not a Place type", dt),
+                            ));
+                        }
+                    }
+                    MirInstr::PlaceGet { dst, src } => {
+                        if !self.is_collections {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "PLACE_GET exists only in the collections profile".to_string(),
+                            ));
+                        }
+                        let st = slot_ty_of(f, *src, sp, "place source")?;
+                        if !matches!(self.module.types.get(st as usize), Some(MirType::Place)) {
+                            return Err(err(
+                                "mir.list-type",
+                                format!("place-get source {} is not a Place type", st),
+                            ));
+                        }
+                        // The element type is checked against dst at
+                        // runtime through the place's root; statically we
+                        // require dst to be a COPY element kind (the
+                        // place's list cannot be recovered without data
+                        // flow — the runtime validates the actual element).
+                        let dt = slot_ty_of(f, *dst, sp, "place-get dst")?;
+                        if crate::ownership::type_is_owned(self.module, dt) {
+                            return Err(err(
+                                "mir.list-type",
+                                format!(
+                                    "place-get of owned element type {} (places read Copy elements; use LIST_REMOVE)",
+                                    dt
+                                ),
+                            ));
+                        }
+                    }
+                    MirInstr::PlaceSet { place, value } => {
+                        if !self.is_collections {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "PLACE_SET exists only in the collections profile".to_string(),
+                            ));
+                        }
+                        let st = slot_ty_of(f, *place, sp, "place source")?;
+                        if !matches!(self.module.types.get(st as usize), Some(MirType::Place)) {
+                            return Err(err(
+                                "mir.list-type",
+                                format!("place-set source {} is not a Place type", st),
+                            ));
+                        }
+                        let vt = slot_ty_of(f, *value, sp, "place-set value")?;
+                        if crate::ownership::type_is_owned(self.module, vt) {
+                            // Allowed: an owned element replace via place.
+                        }
+                    }
                     MirInstr::BorrowEnd { token } => {
                         if !self.is_owned && !self.is_collections {
                             return Err(err(
@@ -2715,9 +2784,14 @@ impl MirInstr {
             | MirInstr::VariantPack { dst, .. }
             | MirInstr::VariantDisc { dst, .. }
             | MirInstr::VariantGuard { dst, .. }
-            | MirInstr::VariantProject { dst, .. } => Some(*dst),
+            | MirInstr::VariantProject { dst, .. }
+            | MirInstr::ListPlace { dst, .. }
+            | MirInstr::PlaceGet { dst, .. } => Some(*dst),
             MirInstr::FieldSet { root, .. } => Some(*root),
-            MirInstr::Trace { .. } | MirInstr::BorrowEnd { .. } | MirInstr::Drop { .. } => None,
+            MirInstr::Trace { .. }
+            | MirInstr::BorrowEnd { .. }
+            | MirInstr::Drop { .. }
+            | MirInstr::PlaceSet { .. } => None,
             MirInstr::ListPush { .. }
             | MirInstr::ListInsert { .. }
             | MirInstr::ListSet { .. }
@@ -2785,6 +2859,9 @@ impl MirInstr {
                 Some(p) => vec![*p],
                 None => vec![],
             },
+            MirInstr::ListPlace { base, index, .. } => vec![*base, *index],
+            MirInstr::PlaceGet { src, .. } => vec![*src],
+            MirInstr::PlaceSet { place, value } => vec![*place, *value],
         }
     }
 }

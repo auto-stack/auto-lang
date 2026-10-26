@@ -163,6 +163,7 @@ pub fn canonical_typed(value: &Value) -> Option<(&'static str, String)> {
         // PLAN-822 containers never occur on the scalar typed face
         // (entry results only); the collections face uses canonical_owned.
         Value::List(_) | Value::Variant(_) => return None,
+        Value::Place(_) => return None,
     })
 }
 

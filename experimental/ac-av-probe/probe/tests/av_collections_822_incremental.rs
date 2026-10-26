@@ -357,3 +357,105 @@ fn av_collections_822_incremental_baseline_campaign_replay() {
     assert!(report.structural_ok, "the structural gate stays green");
     assert!(report.gate_pass, "P95 < {} ms holds", FORMAL_GATE_MS);
 }
+
+/// F822-R2-01: a REJECTED candidate never becomes current — the
+/// signature-changed beta passes its own gates but the LINK refuses the
+/// pair; the session's CURRENT beta object, identity and snapshot stay
+/// untouched and executable (result 7). The reviewer replay shape: query
+/// the current object IMMEDIATELY after the refusal, before any other
+/// submission.
+#[test]
+fn av_collections_822_incremental_rejected_revision_preserves_session() {
+    let mut s = CollectionsUpdateSession::new(None, "main");
+    let out = s
+        .apply_revision(&[("main", alpha_unit(5)), ("beta", beta_unit(2))])
+        .expect("install");
+    assert_eq!(out.value, Some(7));
+    let beta_obj = s.unit("beta").expect("beta installed").clone();
+    let alpha_obj = s.unit("main").expect("alpha installed").clone();
+
+    // The rejected candidate: a SEPARATELY VALID bool-returning beta.
+    let err = s
+        .apply_revision(&[("beta", beta_unit_bool())])
+        .expect_err("the link must refuse the signature change");
+    assert!(
+        err.contains("signature mismatch") || err.contains("does not resolve"),
+        "{err}"
+    );
+
+    // IMMEDIATELY after the refusal: the current beta object is UNCHANGED
+    // (not the rejected candidate), the prior revision/identity stand, and
+    // the CURRENT snapshot still links and executes to 7.
+    assert!(
+        Arc::ptr_eq(s.unit("beta").unwrap(), &beta_obj),
+        "a rejected candidate must not become the current object"
+    );
+    assert!(Arc::ptr_eq(s.unit("main").unwrap(), &alpha_obj));
+    let snap = s.snapshot().expect("the prior snapshot still links");
+    assert_eq!(run_snapshot(&snap), 7);
+}
+
+/// F822-R2-01 second seam: an EXECUTION failure after a successful link
+/// is also a non-installing candidate — the prior state survives.
+#[test]
+fn av_collections_822_incremental_execution_failure_preserves_session() {
+    let mut s = CollectionsUpdateSession::new(None, "main");
+    let out = s
+        .apply_revision(&[("main", alpha_unit(5)), ("beta", beta_unit(2))])
+        .expect("install");
+    assert_eq!(out.value, Some(7));
+    let beta_obj = s.unit("beta").unwrap().clone();
+
+    // An executing-but-trapping beta (list index out of range at run
+    // time): verify/link pass; the EXECUTION fails; nothing installs.
+    let err = s
+        .apply_revision(&[("beta", beta_trapping_unit())])
+        .expect_err("the trapping revision must not install");
+    assert!(err.contains("did not execute"), "{err}");
+    assert!(
+        Arc::ptr_eq(s.unit("beta").unwrap(), &beta_obj),
+        "a run-failed candidate must not become the current object"
+    );
+    let snap = s.snapshot().expect("prior snapshot still links");
+    assert_eq!(run_snapshot(&snap), 7);
+}
+
+/// The trapping beta shape: `fn beta() i32 { list[9] }` — legal MIR, real
+/// gates pass, the RUNTIME traps (out-of-range read).
+fn beta_trapping_unit() -> MirModule {
+    let mut m = MirModule::collections_unit(owner_scope());
+    let t_i32 = m.intern_type(MirType::I32);
+    let t_list = m.intern_type(MirType::List(ListTypeRef { elem: t_i32 }));
+    let t_sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: vec![],
+        result: t_i32,
+    }));
+    let c7 = m.intern_const(MirConst::I32(7)) as u32;
+    let c9 = m.intern_const(MirConst::I32(9)) as u32;
+    m.funcs = vec![MirFunction {
+        owner: owner_scope(),
+        name: "beta".to_string(),
+        sig: t_sig,
+        slots: vec![
+            MirSlot { kind: SlotKind::Local, ty: t_list, name: Some("list".into()) },
+            MirSlot { kind: SlotKind::Local, ty: t_i32, name: Some("v".into()) },
+            MirSlot { kind: SlotKind::Local, ty: t_i32, name: Some("i".into()) },
+            MirSlot { kind: SlotKind::Local, ty: t_i32, name: Some("got".into()) },
+        ],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::Const { dst: 1, value: c7 },
+                MirInstr::ListNew { dst: 0, list_ty: t_list, cap: 0 },
+                MirInstr::ListPush { root: 0, value: 1 },
+                MirInstr::Const { dst: 2, value: c9 },
+                MirInstr::ListGet { dst: 3, base: 0, index: 2 }, // traps at runtime
+            ],
+            term: Terminator::Return { value: 3 },
+        }],
+        entry: 0,
+        source_snapshot: 777,
+        spans: Vec::new(),
+    }];
+    m.entry = 0;
+    m
+}

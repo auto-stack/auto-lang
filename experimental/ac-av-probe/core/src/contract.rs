@@ -250,6 +250,27 @@ pub enum Value {
     /// owned payload) also carries `None` — verification keeps those states
     /// apart; the runtime re-check is defense in depth.
     Variant(VariantValue),
+    /// Index Place/token (PLAN-822, §5.1.3): a retained reference to ONE
+    /// list element — its root (frame, slot), the buffer identity and
+    /// STRUCTURAL epoch at mint time, the element index, and the element's
+    /// per-element generation at mint time. Structural changes (realloc /
+    /// element shift) bump the epoch; in-place element replacement bumps
+    /// the element generation — a stale place read/write traps
+    /// `av.trap.stale-place` BEFORE any buffer access (defense in depth;
+    /// verification gates the admitted shapes).
+    Place(ListPlaceV),
+}
+
+/// The `Value::Place` payload: (frame, slot) root + buffer identity +
+/// structural epoch + element index + element generation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ListPlaceV {
+    pub frame: u32,
+    pub slot: u32,
+    pub buf_id: u64,
+    pub epoch: u64,
+    pub index: u32,
+    pub elem_gen: u32,
 }
 
 /// One pure-value record: the owning type-table index plus the field values
@@ -390,6 +411,12 @@ pub struct ListBuf {
     pub epoch: u64,
     pub cap: u32,
     pub elems: Vec<Value>,
+    /// Per-element replacement generations (PLAN-822 §4): position i's
+    /// generation bumps on every in-place replacement of that element
+    /// (LIST_SET / LIST_FIELD_SET / PLACE_SET); structural shifts carry
+    /// the generations WITH their elements. A retained place compares
+    /// its mint-time generation against the current one.
+    pub elem_gens: Vec<u32>,
 }
 
 /// Owning handle to a [`ListBuf`] (the `Value::List` payload). Cloning adds
@@ -405,12 +432,14 @@ pub struct ListHandle {
 impl ListHandle {
     /// A handle with NO arena hook (placeholder / out-of-execution value).
     pub fn detached(elems: Vec<Value>) -> Self {
+        let gens = vec![0u32; elems.len()];
         ListHandle {
             rc: std::rc::Rc::new(std::cell::RefCell::new(ListBuf {
                 id: 0,
                 epoch: 0,
                 cap: elems.len() as u32,
                 elems,
+                elem_gens: gens,
             })),
             hook: None,
         }
@@ -422,12 +451,14 @@ impl ListHandle {
         elems: Vec<Value>,
         hook: std::rc::Rc<std::cell::RefCell<crate::owned_text::ArenaCore>>,
     ) -> Self {
+        let gens = vec![0u32; elems.len()];
         ListHandle {
             rc: std::rc::Rc::new(std::cell::RefCell::new(ListBuf {
                 id,
                 epoch: 0,
                 cap: elems.len() as u32,
                 elems,
+                elem_gens: gens,
             })),
             hook: Some(hook),
         }
@@ -498,6 +529,7 @@ impl PartialEq for Value {
                 ra.elems == rb.elems
             }
             (Variant(a), Variant(b)) => a.ty == b.ty && a.disc == b.disc && a.payload == b.payload,
+            (Place(a), Place(b)) => a == b,
             _ => false,
         }
     }
@@ -520,6 +552,7 @@ impl Value {
             Value::MutRef(_) => "mut-ref",
             Value::List(_) => "list",
             Value::Variant(_) => "variant",
+            Value::Place(_) => "place",
         }
     }
 

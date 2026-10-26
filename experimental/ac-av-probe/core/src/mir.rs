@@ -86,6 +86,11 @@ pub enum MirType {
     /// this one shape. `arms` in declaration order carry optional payload
     /// type indices; the arm INDEX is the runtime discriminant.
     Variant(VariantTypeRef),
+    /// Index Place/token (PLAN-822 §5.1.3, wire tag 15): a slot type whose
+    /// values are retained element references (one per instruction); the
+    /// runtime re-validates buffer identity, structural epoch and element
+    /// generation at every use — a stale place traps before any access.
+    Place,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -515,6 +520,34 @@ pub enum MirInstr {
         disc: u32,
         payload: Option<SlotId>,
     },
+    /// LIST_PLACE (PLAN-822 §5.1.3, opcode 0x2C): mint `dst` (a `Place`
+    /// slot) as a retained reference to `base[index]`, snapshotting the
+    /// buffer id, the STRUCTURAL epoch and the element's per-element
+    /// generation at mint time. Out-of-range indices trap
+    /// `av.trap.list-index` before any access.
+    ListPlace {
+        dst: SlotId,
+        base: SlotId,
+        index: SlotId,
+    },
+    /// PLACE_GET (opcode 0x2D): read the Copy element value a place
+    /// refers to. A place whose buffer id, structural epoch or element
+    /// generation no longer matches traps `av.trap.stale-place` BEFORE
+    /// any buffer access (structural change after mint, or an in-place
+    /// replacement of that element).
+    PlaceGet {
+        dst: SlotId,
+        src: SlotId,
+    },
+    /// PLACE_SET (opcode 0x2E): replace the element a place refers to
+    /// (the same precheck/commit transaction as LIST_SET; the element's
+    /// generation bumps at commit, retiring THIS place and any sibling
+    /// place minted before the replacement). Stale validation as
+    /// PLACE_GET.
+    PlaceSet {
+        place: SlotId,
+        value: SlotId,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -688,7 +721,8 @@ impl MirModule {
             | MirType::StrView
             | MirType::MutRef
             | MirType::List(_)
-            | MirType::Variant(_) => None,
+            | MirType::Variant(_)
+            | MirType::Place => None,
         }
     }
 
@@ -744,7 +778,10 @@ impl MirInstr {
             | MirInstr::ListRemove { .. }
             | MirInstr::ListFieldGet { .. }
             | MirInstr::ListFieldSet { .. }
-            | MirInstr::VariantProject { .. } => true,
+            | MirInstr::VariantProject { .. }
+            | MirInstr::ListPlace { .. }
+            | MirInstr::PlaceGet { .. }
+            | MirInstr::PlaceSet { .. } => true,
             _ => false,
         }
     }
@@ -845,8 +882,9 @@ impl MirModule {
                 | MirType::MutRef => 0, // inline enum, table vec counted below
                 MirType::Fn(s) => s.params.len() * std::mem::size_of::<TypeIdx>() + VEC,
                 // PLAN-822: List carries one element index inline; Variant
-                // owns its arm table (names + payload indices).
-                MirType::List(_) => 0,
+                // owns its arm table (names + payload indices); Place is
+                // an inline capability type.
+                MirType::List(_) | MirType::Place => 0,
                 MirType::Variant(v) => {
                     v.owner_module.len()
                         + v.name.len()

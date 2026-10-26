@@ -83,6 +83,10 @@ pub const OP_VARIANT_DISC: u8 = 0x28;
 pub const OP_VARIANT_GUARD: u8 = 0x29;
 pub const OP_VARIANT_PROJECT: u8 = 0x2A;
 pub const OP_VARIANT_SWITCH: u8 = 0x2B;
+// PLAN-822 R2 index-place opcodes (review F822-R2-02).
+pub const OP_LIST_PLACE: u8 = 0x2C;
+pub const OP_PLACE_GET: u8 = 0x2D;
+pub const OP_PLACE_SET: u8 = 0x2E;
 pub const TERM_JUMP: u8 = 0x10;
 pub const TERM_BRANCH: u8 = 0x11;
 pub const TERM_RETURN: u8 = 0x12;
@@ -119,6 +123,7 @@ pub const TY_RECORD: u8 = 7;
 /// PLAN-822 collections type tags.
 pub const TY_LIST: u8 = 13;
 pub const TY_VARIANT: u8 = 14;
+pub const TY_PLACE: u8 = 15;
 
 // const tags (data profile adds 2..5)
 pub const CONST_I32: u8 = 0;
@@ -627,6 +632,15 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                         None => put_u8(&mut w, 0),
                     }
                 }
+            }
+            MirType::Place => {
+                if !family.allows_collections_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "place type in a non-collections-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_PLACE);
             }
         }
     }
@@ -1218,6 +1232,43 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                             }
                             None => put_u8(&mut w, 0),
                         }
+                    }
+                    MirInstr::ListPlace { dst, base, index } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "place operations in a non-collections-profile module"
+                                    .to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_LIST_PLACE);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *base);
+                        put_u32(&mut w, *index);
+                    }
+                    MirInstr::PlaceGet { dst, src } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "place operations in a non-collections-profile module"
+                                    .to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_PLACE_GET);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *src);
+                    }
+                    MirInstr::PlaceSet { place, value } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "place operations in a non-collections-profile module"
+                                    .to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_PLACE_SET);
+                        put_u32(&mut w, *place);
+                        put_u32(&mut w, *value);
                     }
                     MirInstr::Trace { event } => {
                         put_u8(&mut w, OP_TRACE);
@@ -1820,6 +1871,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                     arms,
                 }));
             }
+            // PLAN-822 R2: the retained-element-reference capability type.
+            TY_PLACE if family.allows_collections_tags() => {
+                module.types.push(MirType::Place);
+            }
             other => {
                 return Err(AbcDecodeError::fmt_err(
                     "abc.decode.type-tag",
@@ -2358,6 +2413,22 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                             disc,
                             payload,
                         }
+                    }
+                    OP_LIST_PLACE if family.allows_collections_tags() => {
+                        let dst = c.u32()?;
+                        let base = c.u32()?;
+                        let index = c.u32()?;
+                        MirInstr::ListPlace { dst, base, index }
+                    }
+                    OP_PLACE_GET if family.allows_collections_tags() => {
+                        let dst = c.u32()?;
+                        let src = c.u32()?;
+                        MirInstr::PlaceGet { dst, src }
+                    }
+                    OP_PLACE_SET if family.allows_collections_tags() => {
+                        let place = c.u32()?;
+                        let value = c.u32()?;
+                        MirInstr::PlaceSet { place, value }
                     }
                     other => {
                         return Err(AbcDecodeError::fmt_err(

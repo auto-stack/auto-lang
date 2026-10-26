@@ -474,6 +474,39 @@ pub const SPECS: &[InstructionSpec] = &[
         ownership: "owned transfer out; re-projection of a moved arm is mir.variant.payload-moved / runtime av.trap.variant-branch",
     },
     InstructionSpec {
+        opcode: 0x2C,
+        name: "LIST_PLACE",
+        family: "instr",
+        operands: &[("dst", "W"), ("base", "R"), ("index", "R")],
+        type_rule: "base: List<T>, index: I32 in [0,len) -> dst Place; snapshots buffer id + structural epoch + element generation",
+        traps: true,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "retained element reference; out-of-range traps av.trap.list-index before access",
+    },
+    InstructionSpec {
+        opcode: 0x2D,
+        name: "PLACE_GET",
+        family: "instr",
+        operands: &[("dst", "W"), ("src", "R")],
+        type_rule: "src: Place over List<T> -> dst T (Copy elements only); buffer/epoch/element-generation re-validated at use",
+        traps: true,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "Copy out; stale place traps av.trap.stale-place before any access",
+    },
+    InstructionSpec {
+        opcode: 0x2E,
+        name: "PLACE_SET",
+        family: "instr",
+        operands: &[("place", "R"), ("value", "R/K")],
+        type_rule: "place: Place over List<T>, value: T; LIST_SET transaction; element generation bumps at commit",
+        traps: true,
+        fuel: 1,
+        profiles: &["collections"],
+        ownership: "in-place replace: old element dropped once, value transferred at commit, mint-time places retire",
+    },
+    InstructionSpec {
         opcode: 0x2B,
         name: "VARIANT_SWITCH",
         family: "instr",
@@ -585,6 +618,9 @@ pub fn coverage_check() -> Result<(), String> {
         "VARIANT_GUARD",
         "VARIANT_PROJECT",
         "VARIANT_SWITCH",
+        "LIST_PLACE",
+        "PLACE_GET",
+        "PLACE_SET",
         "JUMP",
         "BRANCH",
         "RETURN",
@@ -648,6 +684,9 @@ pub fn mnemonic_of_instr(i: &MirInstr) -> &'static str {
         MirInstr::VariantGuard { .. } => "VARIANT_GUARD",
         MirInstr::VariantProject { .. } => "VARIANT_PROJECT",
         MirInstr::VariantSwitch { .. } => "VARIANT_SWITCH",
+        MirInstr::ListPlace { .. } => "LIST_PLACE",
+        MirInstr::PlaceGet { .. } => "PLACE_GET",
+        MirInstr::PlaceSet { .. } => "PLACE_SET",
     }
 }
 
@@ -684,6 +723,9 @@ mod tests {
                 "LIST_FIELD_GET",
                 "LIST_FIELD_SET",
                 "VARIANT_PROJECT",
+                "LIST_PLACE",
+                "PLACE_GET",
+                "PLACE_SET",
             ]
         );
         // Owned-introduced surface frozen (rows whose profile set contains
@@ -738,6 +780,9 @@ mod tests {
                 "VARIANT_DISC",
                 "VARIANT_GUARD",
                 "VARIANT_PROJECT",
+                "LIST_PLACE",
+                "PLACE_GET",
+                "PLACE_SET",
                 "VARIANT_SWITCH",
             ]
         );

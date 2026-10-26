@@ -499,7 +499,10 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             | MirInstr::VariantDisc { .. }
             | MirInstr::VariantGuard { .. }
             | MirInstr::VariantProject { .. }
-            | MirInstr::VariantSwitch { .. } => {
+            | MirInstr::VariantSwitch { .. }
+            | MirInstr::ListPlace { .. }
+            | MirInstr::PlaceGet { .. }
+            | MirInstr::PlaceSet { .. } => {
                 return Err(
                     "av.collections/1 list/variant instructions are outside the mn scalar surface"
                         .to_string(),

@@ -259,6 +259,11 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
             "variantswitch {root} d{disc} p{}",
             payload.map(|p| p.to_string()).unwrap_or_else(|| "-".into())
         ),
+        MirInstr::ListPlace { dst, base, index } => {
+            format!("listplace {dst} {base} {index}")
+        }
+        MirInstr::PlaceGet { dst, src } => format!("placeget {dst} {src}"),
+        MirInstr::PlaceSet { place, value } => format!("placeset {place} {value}"),
     })
 }
 

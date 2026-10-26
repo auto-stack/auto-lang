@@ -370,7 +370,8 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<u32> {
                 | MirType::Char
                 | MirType::Str
                 | MirType::StrView
-                | MirType::MutRef => {
+                | MirType::MutRef
+                | MirType::Place => {
                     map[i] = merged.intern_type(t.clone());
                     progress = true;
                 }

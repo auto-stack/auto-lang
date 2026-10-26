@@ -51,6 +51,10 @@ pub fn scalar_layout(t: &MirType) -> Option<ScalarLayout> {
         // payload is inline, sized by its own type at execution).
         MirType::List(_) => ScalarLayout { size: 16, align: 8 },
         MirType::Variant(_) => ScalarLayout { size: 16, align: 8 },
+        // PLAN-822 R2: a retained element reference — frame/slot root plus
+        // buffer identity/epoch/index/generation, {u32,u32,u64,u64,u32,u32}
+        // = 28 rounded to 32 at align 8.
+        MirType::Place => ScalarLayout { size: 32, align: 8 },
         MirType::Fn(_)
         | MirType::Record(_)
         | MirType::RecordView(_)
