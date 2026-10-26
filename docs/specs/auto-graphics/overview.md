@@ -35,3 +35,7 @@ Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-
 - [Research quality baseline](research-quality-baseline.md): named CPU/resource boundaries, bounded default-off observation, five real Host workloads and comparable off/on sampling; complete source/consumer/test/runner evidence (PLAN-853, M2/S0).
 
 Provenance: [PLAN-853](../../plans/archive/853-autographics-m2-baselines-and-evidence.md), [independent final R3 review](../../plans/attachments/853/review-r3/review.md), [merge receipt](../../plans/attachments/853/merge-r1/receipt.md). Source: autographics-dev at c1961665d1a90a8705994085fd4344a1d6a9a564; SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467. This delivers M2/S0 research baselines; production I2/I3 remain pending.
+
+- [Checked behavior assembly](behavior-api.md): single exhaustive trusted source recipe, explicit marker/component rejection and byte-identical five-version source/consumer evidence (PLAN-854, M2/S0).
+
+Provenance: [PLAN-854](../../plans/archive/854-autographics-behavior-source-assembly.md), [independent final R1 review](../../plans/attachments/854/review-r1/review.md), [merge receipt](../../plans/attachments/854/merge-r1/receipt.md). Source: autographics-dev at 523d27b863dbe306c89af0ea546334225a29f8e9; SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467. M2/S0 compatibility/maintenance work; new M2 capabilities and production I2/I3 remain pending.

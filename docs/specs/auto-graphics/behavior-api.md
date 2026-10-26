@@ -149,3 +149,13 @@ Malformed behavior CLI options fail with exit2 before inspect/run or native wind
 Explicit autographics.behavior/5 selects MotionV5/profile11: ag_move_and_slide(node,visible_only,dx,dy,dz,clearance) and ag_motion_status/contacts/node/origin/delta/unapplied/normal getters. Choose v5 in Editing or --behavior-api v5; typed source/header/Play/consumer identity agrees. Only v5 reserves the new names; v1..v4 legal helpers and managed/entry identities remain. No guessing, fallback or auto-upgrade. See [bounded-motion contract](bounded-motion-profile.md) for statuses, errors, snapshots and budgets.
 
 Provenance: [PLAN-851](../../plans/archive/851-autographics-bounded-move-and-slide.md), [independent final review](../../plans/attachments/851/review-r4/review.md), [frozen merge receipt](../../plans/attachments/851/merge-r4/receipt.md). Source stays on autographics-dev; production I2/I3 remain pending.
+
+## Checked trusted source assembly (PLAN-854)
+
+The driver-local authoring/behavior/assembly.rs is the single trusted construction entry. An exhaustive Api recipe selects the existing raw transport, version-specific API, entry and region label. Named pure steps preserve transformation order and exact output bytes without reading or rewriting the user unit. SourceSnapshot still applies user admission, trusted namespace mapping, source limits, compatibility credentials and complete region/scene validation before actual Play consumption.
+
+Before admission/namespace, required component sentinels, unique ordered transport delimiters and exact setter/token/entry transformation cardinalities are checked. Missing, duplicate or changed required boundaries return a distinct internal assembly error; generation never falls back to another version or returns partial units. Local mutation/restoration tests protect these boundaries. V1..v5 original bytes, hashes, API/bridge credentials, managed region labels, diagnostics and runtime budgets remain unchanged.
+
+The historical v5 pre-namespace `_ag_derive` text replacement had no match because the transport was still named `derive`. Its removal deliberately preserves emitted bytes; it does not activate the guard, change Auto algorithms or claim runtime acceleration. No user-visible API, version inference, template language or new cache is added.
+
+Provenance: [PLAN-854](../../plans/archive/854-autographics-behavior-source-assembly.md), [independent final R1 review](../../plans/attachments/854/review-r1/review.md), [merge receipt](../../plans/attachments/854/merge-r1/receipt.md). Source: autographics-dev at 523d27b863dbe306c89af0ea546334225a29f8e9; SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467. M2/S0 compatibility/maintenance work; new M2 capabilities and production I2/I3 remain pending.

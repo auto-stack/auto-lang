@@ -36,3 +36,7 @@ Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-
 | 853 | M2/S0 performance, resource and evidence baseline | delivered | [PLAN-853](../../plans/archive/853-autographics-m2-baselines-and-evidence.md) | Comparable five-workload measurements, current closure/consumer and immutable complete evidence; no new M2 capability or I2/I3 completion |
 
 Provenance: [PLAN-853](../../plans/archive/853-autographics-m2-baselines-and-evidence.md), [independent final R3 review](../../plans/attachments/853/review-r3/review.md), [merge receipt](../../plans/attachments/853/merge-r1/receipt.md). Source: autographics-dev at c1961665d1a90a8705994085fd4344a1d6a9a564; SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467. This delivers M2/S0 research baselines; production I2/I3 remain pending.
+
+| 854 | Trusted behavior source assembly and compatibility | delivered | [PLAN-854](../../plans/archive/854-autographics-behavior-source-assembly.md) | Single checked five-version assembler, frozen original byte identities, independent consumer and same-condition resource evidence; no speedup or I2/I3 claim |
+
+Provenance: [PLAN-854](../../plans/archive/854-autographics-behavior-source-assembly.md), [independent final R1 review](../../plans/attachments/854/review-r1/review.md), [merge receipt](../../plans/attachments/854/merge-r1/receipt.md). Source: autographics-dev at 523d27b863dbe306c89af0ea546334225a29f8e9; SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467. M2/S0 compatibility/maintenance work; new M2 capabilities and production I2/I3 remain pending.
