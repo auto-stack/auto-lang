@@ -125,3 +125,22 @@ lower→admit_unit→link→execute 之上）：
 
 证据：av_owned_821_incremental 7 例（main-only 零未改前端工作、虚报整集
 反控、连续变长 1234→8/107→108、失败候选三保）。
+
+
+## PLAN-822：collections 更新会话（SD-06）
+
+沿 828 增量模型的真实 collections 消费者 `collections_session`：单元仅经真门
+（verify→encode→abc-admit→unit-admit，可选 store 持久）入会话；修订仅重建
+被提交函数，未改单元由会话携带**同一 Arc 对象/代际不变**、生产阶段与产物
+IO=0；`fn:<name>` 经 link 内容等值签名绑定（容器型接口变化结构性拒）。
+
+- **build-aside 原子提交**：候选先 link+执行成功才安装；拒绝/执行失败候选
+  不覆盖当前状态，prior snapshot 保持可用。
+- **内容指纹域结构 gate**：同内容换对象（强制全量重建形态）unchanged_degraded
+  非零 → gate FAIL；诚实修订 pass。
+- **授权预检（R18 完整闭包）**：输入 required capabilities 与当前 host
+  grants 分离；每次修订对**完整候选闭包**（submitted+carried）逐单元核对能
+  力对当前 grants——缺口在任何生产/link/执行/安装前拒（零生产可观察）；
+  替换单元以自身声明为准；已发布 snapshot 保留其准入时点授权事实（不回溯）。
+- 依赖变化控制：标量签名/容器型接口 layout（link 拒）/内部 layout（精确
+  单元重建）/helper body 四轴正反控齐备（V-13 子case 3）。

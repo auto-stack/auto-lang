@@ -75,3 +75,22 @@ PLAN-821 交付 owned A21 工件层（producer `plan821/av-owned`，AVAD v2，
 （正确 checksum 重封）在深验证拒且 dispatched=0（exit 4）。types-fp 变化为
 clean miss；producer/schema/profile 身份三向隔离。恢复永不信任磁盘；活帧/
 borrow/宿主地址不入缓存。证据：av_owned_821_cache_compat 7 例。
+
+
+## PLAN-822：A22 collections 层与恢复身份绑定
+
+新 producer `plan822/av-collections` + A22 层（AVAD v3，键轴 producer/owner/
+entry/profile/types-fp/codec×3 语义/source-snapshot）。恢复零信任盘面：信封
+（producer/owner/snapshot/语义外层核对）→ decode → 深验后，**载荷实际身份四
+绑定**先于 dispatch（V-08）——
+
+- **实际 profile**：解码 profile id 必须 = collections（id 4；合法 core-i32
+  wire 于 collections 身份下拒——通用门按载荷自身 profile 选版本元组，不代
+  请求方强制，R17）；
+- **实际 types-fp**：解码模块类型表指纹与键轴同式比对（异型表拒，R14）；
+- **实际入口名**（R15；封套从不携带 entry——builder 忽略该参数）与**入口
+  函数 source_snapshot**（R15）逐项等于请求身份。
+
+owner 轴由准入门**重盖章**（载荷无自证权，不发明 wire 自证字段）。世代隔离
+v1/v2/v3 互不可读；好信封坏内层、内容寻址同键冲突（防篡改）拒；确定性重放
+步数一致。证据：av_collections_822_cache_compat 8 例 + review-r14..r17。

@@ -200,3 +200,12 @@ emit+byte-compare+严格收据验证+周期性 CIM 祖先采样进程观察（�
 计数；引擎 worker memoized 维护构建属 818 纪律单列，不算认证面）。wrapper 单源、
 认证 `--scratch`、流治理（双独立读线程/溢出杀树/墙钟）见
 [a2r-golden-certification.md](a2r-golden-certification.md)。
+
+## PLAN-822：ac-av/collections-run-v1 recipe
+
+新 recipe `ac-av/collections-run-v1`：沿 821 三缝 append-only 注册模式
+（REGISTERED_PROBE_RECIPES / 父侧冻结表 COLLECTIONS_CASES / 分派）；avworker/1
+域 `collections:<id>` fixture 入口，typed 面准入与逐面判决；语料身份
+`av-data/822`。父侧持独立冻结期望表（value/allocs/frees/live 台账面）；V-10
+反控 seam：`AV822_COLLECTIONS_EXPECT_SABOTAGE`（期望破坏缝）+ AV798_FAULT
+复用（worker 三故障态）。未注册/跨 recipe 拒与三 recipe 既有围栏一致。

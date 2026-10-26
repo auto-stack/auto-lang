@@ -10,6 +10,7 @@ Checked HIR → Typed MIR → ABC decode/verify → 私有LoadedModule → Rust 
 - [数据布局与纯值 record（av.data/1，PLAN-820）](data-layout.md)
 - [owned Place 与清理（av.owned/1，PLAN-821）](place-ownership.md)
 - [缓存、资源与验收](cache-and-conformance.md)
+- [类型化集合与 Variant（av.collections/1，PLAN-822）](collections-variants.md)
 - [MIR](../auto-mir/core-i32.md) | [数据 MIR](../auto-mir/data-place-profile.md)
 
 798不是在线函数替换/完整AJ/发布器。实际增量边界以缓存合同为准。
@@ -41,3 +42,15 @@ Place 拥有型读写、借入 record（RecordView）、mut record 写回全部�
 失效句柄校验、旧帧/跨 store 拒绝或 generation 回绕退役保证**（r6 用户裁定
 的静态类型/借用检查边界）。非目标：部分字段 move（源值层面）/完整 NLL/
 用户析构/循环共享/GC/List/闭包/Dyn/async/native ABI。
+
+
+## PLAN-822：av.collections/1 类型化集合 profile
+
+PLAN-822 交付第四 profile `av.collections/1`（AVAD v3/profile id 4，语义
+版本 1/1/1）：受控 List、Option/Result/有限名义 Variant 与 Index Place 的
+typed 元素存取/转移/清理。合同见
+[collections-variants](collections-variants.md) 与
+[collection-place-profile](../auto-mir/collection-place-profile.md)。
+**非目标**：source 支持面（fixture-only）、Map/Set/迭代器/借用元素容器/
+循环共享、record 容器字段、List 嵌 List、native/CTE 扩面。后继增量消费与
+授权面见 [resident-function-install](resident-function-install.md)。
