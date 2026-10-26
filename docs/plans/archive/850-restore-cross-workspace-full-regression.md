@@ -7,7 +7,7 @@ created_at: 2026-10-26
 updated_at: 2026-10-26
 plan_revision: 1
 completion_kind: delivered
-current_step: 4
+current_step: 5
 total_steps: 5
 supersedes_spec_components:
   - docs/specs/auto-ui/project.md
@@ -88,7 +88,7 @@ T01先闭合上述批量执行状态归因，保留每条失败和重放条件�
 | T02 | work | T01 | [x] F850-R1-01 修复冻结 f112d2737 | AC01/02 |
 | T03 | work | T02 | [x] 各真实输入15项删除/ignore/过滤负控及正控/scope闭合 | AC01/02 |
 | T04 | review | T03 | [x] 独立final repair review pass @f112d2737，F850-R1-01 CLOSED | AC03 |
-| T05 | merge | T04 pass | 必要日常门、落地、主检出完整批量、知识与归档guard清理；成功才更新覆盖锚点 | AC04 |
+| T05 | merge | T04 pass | [x] 完整batch-r4、规范台账、归档提交与三个工作树/分支/组目录清理均实证完成 | AC04 |
 
 ## 9. 复审记录
 
@@ -161,10 +161,19 @@ M850-REPORT-738独立pass @5acd60ab8；main新增c3ad09602仅821计划及SD草�
 - merge-owned gates：Category A（lang无crates Rust实现）不额外裸t/docs_gen；正式主检出单实例batch-r4四子门全部实际pass：language3218/3218（75.044s，skip500）、UI3073/3073（51.230s，skip18）、tt3553/3553（382.705s，skip916）、tb3109/3109（54.289s，skip664）。每子门10份报告前后hash与当前字节一致；完整receipt=pass、所有list/run exit0、输入identity不变。原signature30样本P95 796.4324ms<1000ms。无AAVM触发路径，不额外taa/t3。原r1/r2/r3失败、定向诊断与负载记录完整保留，无豁免、缩面或阈值放宽。
 - ledger_refreshed：docs/specs/auto-lang及auto-ui project/plans沉淀；.autoos/specs.json guarded offline projection（无可达store writer，检查端口8080及进程），v89→90，SHA256 69d24aa29ad257adb4b6ca4f2f8816b3614e902aa71056d35496cb44ad069acf。受影响designs=P840-P2-AUTO-LANG/P831-AUTO-UI-REPO，tests=P850-FULL-GUARDS，reviews=P850-REVIEW，reports=P850-MERGE；file/related/tags/来源SHA完整，其他1212条原始片段逐字相同。byte-exact v89备份、投影脚本、schema/readback及独立核验有据。
 - 绿锚点：仅在四门实际全过后推进last_covered_plan_id850/covered_commit7750f8d33；旧840锚点字节备份及845/847/850失败历史保留。modulo5本轮义务已清偿，随后仅文档/台账后代，无重复批量触发。
-- archived：当前文件已实际移至docs/plans/archive/850-restore-cross-workspace-full-regression.md，status archived、completion_kind delivered；两个模块索引指向此处。归档/证据提交后再核实际链接与Git追踪。
-- cleaned：pending。实现/复审及所有门禁已完，T05最后的三个工作树、两个临时分支及组目录guard清理待执行；完成后补实际收据及5/5计数。
+- archived：当前文件已实际移至docs/plans/archive/850-restore-cross-workspace-full-regression.md，status archived、completion_kind delivered；两个模块索引指向此处。归档/主证据已提交120b419993429127122db2339be977c3eb876c2a，实际链接与Git追踪核验通过。
+- cleaned：verified。三个工作树、两个临时分支和组目录均已按guard流程移除，T05完成、总计5/5；各项实际证据见最终清理与核验。
 - 生产产物：变更仅测试编排、standalone Cargo入口、测试fixture路径与规范；无生产代码、后端/daemon/web bundle变更，无部署或服务重启需求。实际cargo tf入口已编译执行launcher，不宣称无关运行中服务更新。
 - 其他会话现有docs/design/roadmap/报告与fixture Cargo.lock WIP均保留；“clean”仅指本计划专用树及交付范围，不冒称主检出全局clean。
 
 [独立复审](../attachments/850/merge/independent-review.md) · [完整批量收据](../attachments/850/batch-r4/receipt.json.txt) · [回归统计准入](../attachments/850/merge/batch-admission.json.txt) · [台账投影](../attachments/850/merge/ledger-projection.json.txt) · [语言规范](../../specs/auto-lang/project.md) · [UI规范](../../specs/auto-ui/project.md)
 原始range-diff/测试日志保留原空白及字节，不为whitespace检查改写证据；所有非raw .txt的编排/规范/计划变更diff检查通过。
+
+### 最终清理与完成核验
+
+归档/主证据提交120b419993429127122db2339be977c3eb876c2a已验证追踪；实际归档6个证据/规范链接均存在。lang、UI、down三个专用工作树清理前均重新核绝对路径、owner、clean状态、已落地祖先关系（down detached身份）；逐树wt-guard均clean后移除。plan-850-dev和codex/fix-850-ui-fixture-root均已删除。组内73份scratch逐hash与已追踪证据一致，组guard clean；按明确清单逐文件移除，仅删除确认空目录，D:/autostack/.wt/lang-850实际不存在。
+
+stage: merge | PLAN-850:r1 | outcome: pass | completion_kind: delivered | tasks: T01,T02,T03,T04,T05 = 5/5 | AC01-04: pass | tested_commit: 7750f8d3399fe8aa620b7eecb6c7390ca810df05 | delivery_commit: 6dd05a0a78385349ece99c3c11dffc13fa272810 | archived_commit: 120b419993429127122db2339be977c3eb876c2a | ledger: v90 | cleaned: verified | remaining_owned_work: none
+
+prepared/landed/ledger_refreshed/archived/cleaned五检查点全部实证闭合。B847-FULL-OWNER-01/B847-TT-STATE-02已关闭，F850-R1-01、M850-UI-ROOT、M850-REPORT-738均修复独立复审及完整门闭合。本轮850到期批量已完成，之后只有本计划文档/台账收尾，无需重复整档。后续更高计划的批量义务按其自身到期判断，不提前代跑。
+[最终实际状态核验](../attachments/850/merge/final-closeout.json.txt)
