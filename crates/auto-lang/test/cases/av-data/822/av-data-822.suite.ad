@@ -1,0 +1,9 @@
+# PLAN-822 av-data-822 suite — the collections-profile corpus through the
+# formal ac-av/collections-run-v1 recipe, judged parent-side (the frozen
+# expectation table lives in the runner; identity receipts in README.md).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "av-data-822", include: [
+  "av-collections-first-case.case.ad",
+] }
+```

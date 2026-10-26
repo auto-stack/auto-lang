@@ -1,0 +1,26 @@
+# PLAN-822 V-01 first case (formal path, frozen fixture): the frozen
+# collections fixture `first-case` (programmatic typed input, untrusted
+# builder output admitted by the real verify/ABC gates in the worker)
+# through the real `ac-av/collections-run-v1` recipe. The PARENT judges
+# the canonical result face + live=0 + alloc/free order against its OWN
+# frozen table (the worker never sees expected outcomes).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.collections.first"
+  tags: ["av-data-822", "probe"]
+  links: ["PLAN-822"]
+  source: { file: "src/first-case.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-collections-fixture", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/collections-run-v1",
+        av: { entry: "collections:first-case" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success" } }
+  ]
+}
+```

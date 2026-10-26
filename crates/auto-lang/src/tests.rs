@@ -33,6 +33,7 @@ mod ace_m1_tests;
 // PLAN-827: av-source-827 corpus — real Auto source files (AP seeds) through
 // the formal ac-av/core-run-v1 recipe, parent-side judgement.
 #[cfg(feature = "test-cases")]
+mod av_collections_822_tests;
 mod av_owned_821_tests;
 mod av_source_827_tests;
 // PLAN-701 供④/供⑥: time 族三面对拍 + shell_recent 签名冒烟

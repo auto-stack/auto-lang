@@ -1422,6 +1422,11 @@ fn decode_options(
                             "ac-av/owned-run-v1" => {
                                 matches!(op.as_str(), "run" | "edit-source")
                             }
+                            // PLAN-822: the collections recipe shares the av
+                            // step vocabulary (runs + discriminating edits).
+                            "ac-av/collections-run-v1" => {
+                                matches!(op.as_str(), "run" | "edit-source")
+                            }
                             // PLAN-818 T-06: runs + discriminating edits +
                             // restart session boundaries (`query` stays a
                             // sema/abi op — recipes never borrow ops).
@@ -1475,6 +1480,7 @@ fn decode_options(
                     if recipe == "ac-av/core-run-v1"
                         || recipe == "ac-av/data-run-v1"
                         || recipe == "ac-av/owned-run-v1"
+                        || recipe == "ac-av/collections-run-v1"
                     {
                         // PLAN-798 T-07 edit-session shape (F798-R3-07): runs
                         // plus discriminating edit-source steps; a sequence
@@ -1601,6 +1607,7 @@ fn decode_options(
                     if recipe == "ac-av/core-run-v1"
                         || recipe == "ac-av/data-run-v1"
                         || recipe == "ac-av/owned-run-v1"
+                        || recipe == "ac-av/collections-run-v1"
                     {
                         return Err(err(
                             &f.path_of("av"),
@@ -1613,6 +1620,7 @@ fn decode_options(
                     if recipe != "ac-av/core-run-v1"
                         && recipe != "ac-av/data-run-v1"
                         && recipe != "ac-av/owned-run-v1"
+                        && recipe != "ac-av/collections-run-v1"
                     {
                         return Err(err(
                             &f.path_of("av"),
@@ -1826,6 +1834,8 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     "ac-av/data-run-v1",
     // PLAN-821: the av.owned/1 owned recipe, same seam contract.
     "ac-av/owned-run-v1",
+    // PLAN-822: the av.collections/1 collections recipe, same seam contract.
+    "ac-av/collections-run-v1",
 ];
 /// Probe step-count cap (frozen with the seam; mirrors the syntax edit cap).
 pub const PROBE_MAX_STEPS: usize = 64;

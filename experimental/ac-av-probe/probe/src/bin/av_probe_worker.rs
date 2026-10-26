@@ -617,6 +617,47 @@ fn case_serve() -> ! {
                 }
             }
             Some("run") => {
+                // PLAN-822 T-02: the collections-profile pipeline. A frozen
+                // `collections:<id>` fixture carries its own face (result +
+                // post-release ledger); there is NO source surface for this
+                // profile (contract non-goal), so the fixture entry is the
+                // only run shape. The PARENT judges against its own frozen
+                // expectations — never the worker's word.
+                if collections_recipe {
+                    let Some(fid) = &collections_fixture_id else {
+                        eprintln!("collections recipe requires a collections:<id> entry");
+                        exit(2);
+                    };
+                    let f = match auto_av_probe::collections_fixture::collections_fixture(fid) {
+                        Some(f) => f,
+                        None => {
+                            eprintln!("unknown collections fixture {fid}");
+                            exit(2);
+                        }
+                    };
+                    let started = std::time::Instant::now();
+                    match auto_av_probe::collections_fixture::run_collections_fixture(
+                        f.id,
+                        Some(&store_dir),
+                        "autodown-collections-case",
+                    ) {
+                        Ok(collections) => step_outs.push(serde_json::json!({
+                            "op": "run",
+                            "outcome": "success",
+                            "value": null,
+                            "collections": collections,
+                            "trap": null,
+                            "diag": null,
+                            "source_hash": format!("{:016x}", auto_av_core::contract::fnv1a64(entry.as_bytes())),
+                            "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+                        })),
+                        Err(e) => {
+                            eprintln!("collections fixture {fid}: {e}");
+                            exit(2);
+                        }
+                    }
+                    continue;
+                }
                 if owned_recipe {
                     // PLAN-821 T-02: the owned-profile pipeline. A frozen
                     // `owned:<id>` fixture carries its own face (result +
@@ -624,37 +665,6 @@ fn case_serve() -> ! {
                     // owned face for its success value. The PARENT judges
                     // against its own frozen expectations — never the
                     // worker's word.
-                    if let Some(fid) = &collections_fixture_id {
-                        let f = match auto_av_probe::collections_fixture::collections_fixture(fid) {
-                            Some(f) => f,
-                            None => {
-                                eprintln!("unknown collections fixture {fid}");
-                                exit(2);
-                            }
-                        };
-                        let started = std::time::Instant::now();
-                        match auto_av_probe::collections_fixture::run_collections_fixture(
-                            f.id,
-                            Some(&store_dir),
-                            "autodown-collections-case",
-                        ) {
-                            Ok(collections) => step_outs.push(serde_json::json!({
-                                "op": "run",
-                                "outcome": "success",
-                                "value": null,
-                                "collections": collections,
-                                "trap": null,
-                                "diag": null,
-                                "source_hash": format!("{:016x}", auto_av_core::contract::fnv1a64(fid.as_bytes())),
-                                "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
-                            })),
-                            Err(e) => {
-                                eprintln!("collections fixture {fid}: {e}");
-                                exit(2);
-                            }
-                        }
-                        continue;
-                    }
                     if let Some(fid) = &owned_fixture {
                         let f = match auto_av_probe::owned_fixture::owned_fixture(fid) {
                             Some(f) => f,

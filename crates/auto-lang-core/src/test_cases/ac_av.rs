@@ -53,6 +53,13 @@ pub const EXPECTED_AV_DATA_CORE_VERSION: &str = "av.data/1";
 /// live=0 + alloc/free order), never the worker's word.
 pub const AV_OWNED_RECIPE: &str = "ac-av/owned-run-v1";
 pub const EXPECTED_AV_OWNED_CORE_VERSION: &str = "av.owned/1";
+/// PLAN-822: the collections-profile recipe (`av.collections/1`, profile
+/// id 4) — programmatic typed fixture -> collections Typed MIR -> AVAD v3
+/// -> AV with the arena-ledger face. Same append-only registration rules;
+/// the collections face is judged parent-side against THIS crate's frozen
+/// expectations, never the worker's word.
+pub const AV_COLLECTIONS_RECIPE: &str = "ac-av/collections-run-v1";
+pub const EXPECTED_AV_COLLECTIONS_CORE_VERSION: &str = "av.collections/1";
 
 /// Which registered av recipe a check runs under.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -60,6 +67,7 @@ pub enum RecipeFamily {
     Core,
     Data,
     Owned,
+    Collections,
 }
 
 impl RecipeFamily {
@@ -68,6 +76,7 @@ impl RecipeFamily {
             RecipeFamily::Core => AV_RECIPE,
             RecipeFamily::Data => AV_DATA_RECIPE,
             RecipeFamily::Owned => AV_OWNED_RECIPE,
+            RecipeFamily::Collections => AV_COLLECTIONS_RECIPE,
         }
     }
     pub fn expected_core_version(&self) -> &'static str {
@@ -75,6 +84,7 @@ impl RecipeFamily {
             RecipeFamily::Core => EXPECTED_AV_CORE_VERSION,
             RecipeFamily::Data => EXPECTED_AV_DATA_CORE_VERSION,
             RecipeFamily::Owned => EXPECTED_AV_OWNED_CORE_VERSION,
+            RecipeFamily::Collections => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
         }
     }
 }
@@ -172,9 +182,11 @@ mod worker_identity_tests {
             }
         }
         std::fs::remove_file(&path).unwrap();
-        assert!(worker_file_sha256(&path)
-            .unwrap_err()
-            .starts_with("read worker exe:"));
+        assert!(
+            worker_file_sha256(&path)
+                .unwrap_err()
+                .starts_with("read worker exe:")
+        );
     }
 }
 
@@ -481,6 +493,11 @@ struct StepOut {
     /// is an admission violation.
     #[serde(default)]
     owned: Option<serde_json::Value>,
+    /// PLAN-822: the collections face of a collections-recipe run step —
+    /// the canonical result plus the post-release arena ledger. A
+    /// collections-recipe increment only.
+    #[serde(default)]
+    collections: Option<serde_json::Value>,
 }
 
 /// Spawn the av worker and run ONE `case-serve` request under the bounded
@@ -683,13 +700,13 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
             return Err(format!(
                 "av worker response exceeded the {}-byte read cap (saw {})",
                 READ_CAP, n
-            ))
+            ));
         }
         None => match out_rx.recv_timeout(READER_GRACE) {
             Ok(Ok(b)) => b,
             Ok(Err(n)) => return Err(format!("av worker response exceeded the read cap ({n})")),
             Err(_) => {
-                return Err("av worker stdout reader did not finish within the drain grace".into())
+                return Err("av worker stdout reader did not finish within the drain grace".into());
             }
         },
     };
@@ -817,6 +834,44 @@ const OWNED_CASES: &[(&str, &str, &[usize], &[u64])] = &[
     ),
 ];
 
+/// PLAN-822 T-02: the PARENT's frozen av-collections expectation table —
+/// an INDEPENDENT hand-audited copy of the frozen fixture truths: the
+/// canonical result face, allocation byte sizes in CREATION order, and
+/// free ids in RELEASE order (live must reach 0). The collections judge
+/// compares against THIS, never against anything the worker reports.
+const COLLECTIONS_CASES: &[(&str, &str, &[usize], &[u64])] = &[
+    // first-case: Note { text: "first" replaced in place, n: 1 };
+    // push/field-replace/remove/Ok-pack/guard/project/drop. Hand-audited:
+    // "first"(5B) materializes then frees at the field replace; the list
+    // buffer (0-elem ledger entry) frees at frame exit; "replaced"(8B)
+    // frees at the explicit projected-value drop. live=0 after release.
+    (
+        "first-case",
+        r#"{"bits":"0","kind":"i32"}"#,
+        &[5, 0, 8],
+        &[0, 2, 1],
+    ),
+];
+
+pub fn run_collections_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::Collections,
+    )
+}
+
 pub fn run_owned_check(
     case: &ResolvedCase,
     check: &CheckSpec,
@@ -917,7 +972,7 @@ fn run_check_impl(
                 None => {
                     return Err(format!(
                         "av.data typed fixture `{id}` is not registered (parent table)"
-                    ))
+                    ));
                 }
             },
         }
@@ -936,7 +991,25 @@ fn run_check_impl(
                 None => {
                     return Err(format!(
                         "av.owned fixture `{id}` is not registered (parent table)"
-                    ))
+                    ));
+                }
+            },
+        }
+    } else {
+        None
+    };
+    // PLAN-822: a `collections:<id>` entry (collections recipe only)
+    // selects a frozen collections fixture; the PARENT validates the id
+    // against its OWN frozen table before any request.
+    let collections_fixture = if family == RecipeFamily::Collections {
+        match av.entry.strip_prefix("collections:") {
+            None => None,
+            Some(id) => match COLLECTIONS_CASES.iter().find(|(fid, ..)| *fid == id) {
+                Some(_) => Some(id.to_string()),
+                None => {
+                    return Err(format!(
+                        "av collections fixture `{id}` is not registered (parent table)"
+                    ));
                 }
             },
         }
@@ -957,6 +1030,9 @@ fn run_check_impl(
     }
     if let Some(id) = &owned_fixture {
         request["owned_fixture"] = serde_json::json!(id);
+    }
+    if let Some(id) = &collections_fixture {
+        request["collections_fixture"] = serde_json::json!(id);
     }
     if let Some(session) = &av.session {
         request["session"] = serde_json::json!(session);
@@ -1115,7 +1191,10 @@ fn run_check_impl(
                 // FIXTURE ENTRY (the frozen input that actually ran); a
                 // source run binds the current source revision
                 // (F820-R6-01; PLAN-821 same rule for owned).
-                let expect_hash = if typed_fixture.is_some() || owned_fixture.is_some() {
+                let expect_hash = if typed_fixture.is_some()
+                    || owned_fixture.is_some()
+                    || collections_fixture.is_some()
+                {
                     fnv1a64_hex(av.entry.as_bytes())
                 } else {
                     fnv1a64_hex(current_source.as_bytes())
@@ -1218,6 +1297,10 @@ fn run_check_impl(
         // alloc/free order against the parent's frozen table — fully
         // independent of `value` and of anything the worker claims.
         judge_owned_fixture(id, &step, &mut mismatches);
+    } else if let Some(id) = &collections_fixture {
+        // PLAN-822: the collections-fixture judge face — same axes as the
+        // owned judge (result + live=0 + alloc/free order), its own table.
+        judge_collections_fixture(id, &step, &mut mismatches);
     } else {
         judge_expectation(family, &step, oracle, &mut mismatches);
     }
@@ -1408,6 +1491,118 @@ fn malformed_owned(steps: &[StepOut]) -> Option<String> {
 /// Counter-control seam (V-10 wrong-result / wrong-ledger): the test-only
 /// sabotage mutates the PARENT's expectation copy so a legal fixture run
 /// must FAIL. Never set in production.
+/// The collections-fixture judge: same face axes as the owned judge
+/// (canonical result, live=0, alloc bytes in creation order, free ids in
+/// release order) against the PARENT's frozen collections table.
+/// Counter-control seam (V-10): AV822_COLLECTIONS_EXPECT_SABOTAGE.
+fn judge_collections_fixture(id: &str, step: &StepOut, mismatches: &mut Vec<Mismatch>) {
+    let (_, want_result, want_allocs, want_frees) = COLLECTIONS_CASES
+        .iter()
+        .find(|(fid, ..)| *fid == id)
+        .expect("validated above");
+    let mut want_result: serde_json::Value =
+        serde_json::from_str(want_result).expect("frozen table JSON parses");
+    let mut want_frees: Vec<u64> = want_frees.to_vec();
+    match std::env::var("AV822_COLLECTIONS_EXPECT_SABOTAGE")
+        .ok()
+        .as_deref()
+    {
+        Some("result") => {
+            want_result["bits"] =
+                serde_json::json!(format!("{}!", want_result["bits"].as_str().unwrap_or("")));
+        }
+        Some("ledger") => {
+            want_frees.rotate_left(1);
+        }
+        _ => {}
+    }
+    if step.outcome != "success" {
+        mismatches.push(Mismatch {
+            observation: "completion".into(),
+            kind: "collections-outcome".into(),
+            expected: "success".into(),
+            actual: step_summary(step),
+            first_diff: None,
+        });
+        return;
+    }
+    let collections = match &step.collections {
+        Some(o) => o,
+        None => {
+            mismatches.push(Mismatch {
+                observation: "collections".into(),
+                kind: "collections-report".into(),
+                expected: "the collections face on the step".into(),
+                actual: "no collections report".into(),
+                first_diff: None,
+            });
+            return;
+        }
+    };
+    let got_result = collections
+        .get("result")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    if got_result != want_result {
+        mismatches.push(Mismatch {
+            observation: "collections".into(),
+            kind: "collections-result".into(),
+            expected: want_result.to_string(),
+            actual: got_result.to_string(),
+            first_diff: None,
+        });
+    }
+    let live = collections
+        .get("live_after_release")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(u64::MAX);
+    if live != 0 {
+        mismatches.push(Mismatch {
+            observation: "collections".into(),
+            kind: "collections-live".into(),
+            expected: "0 (host release empties the ledger)".into(),
+            actual: format!("{live}"),
+            first_diff: None,
+        });
+    }
+    let got_allocs: Vec<usize> = collections
+        .get("allocs")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|e| e.get("bytes").and_then(|b| b.as_u64()).map(|b| b as usize))
+                .collect()
+        })
+        .unwrap_or_default();
+    if got_allocs != want_allocs.to_vec() {
+        mismatches.push(Mismatch {
+            observation: "collections".into(),
+            kind: "collections-allocs".into(),
+            expected: format!("{:?}", want_allocs),
+            actual: format!("{:?}", got_allocs),
+            first_diff: None,
+        });
+    }
+    let got_frees: Vec<u64> = collections
+        .get("frees")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|e| e.get("id").and_then(|b| b.as_u64()))
+                .collect()
+        })
+        .unwrap_or_default();
+    if got_frees != want_frees {
+        mismatches.push(Mismatch {
+            observation: "collections".into(),
+            kind: "collections-frees".into(),
+            expected: format!("{:?}", want_frees),
+            actual: format!("{:?}", got_frees),
+            first_diff: None,
+        });
+    }
+}
+
 fn judge_owned_fixture(id: &str, step: &StepOut, mismatches: &mut Vec<Mismatch>) {
     let (_, want_result, want_allocs, want_frees) = OWNED_CASES
         .iter()
@@ -1772,6 +1967,7 @@ mod judge_tests {
             trace: Vec::new(),
             spans: Vec::new(),
             owned: None,
+            collections: None,
         }
     }
 
@@ -1834,9 +2030,11 @@ mod judge_tests {
         // now family-isolated to data).
         assert!(mismatches(RecipeFamily::Data, &step(None, typed("bool", "1"))).is_empty());
         assert!(mismatches(RecipeFamily::Data, &step(Some(42), None)).is_empty());
-        assert!(mismatches(RecipeFamily::Data, &step(None, None))
-            .iter()
-            .any(|m| m.kind == "missing"));
+        assert!(
+            mismatches(RecipeFamily::Data, &step(None, None))
+                .iter()
+                .any(|m| m.kind == "missing")
+        );
     }
 
     #[test]

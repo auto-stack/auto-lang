@@ -796,6 +796,21 @@ fn dispatch_check(
                 run_dir,
             )
         }
+        // PLAN-822: the collections-profile av recipe (append-only
+        // registration; prior recipe contracts untouched; avworker/1
+        // envelope domain — the recipe id itself discriminates).
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref() == Some(ac_av::AV_COLLECTIONS_RECIPE) =>
+        {
+            ac_av::run_collections_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
         (Adapter::Probe, auto_test_case::contract::Action::Run)
             if check.options.probe_recipe.as_deref() == Some(abi::ABI_RECIPE) =>
         {
