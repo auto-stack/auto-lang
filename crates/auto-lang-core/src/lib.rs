@@ -1262,6 +1262,22 @@ pub fn set_ui_host_install_hook(install: fn()) {
     let _ = UI_HOST_INSTALL_HOOK.set(install);
 }
 
+// ---- PLAN-841 T-05：中立外部标识符存在性检查端口 ----
+// 领域自有符号族（如导入的 style recipe）不在 Core 词法/作用域内；其
+// owner（auto-ui-compiler 的 recipe 注册表）注册类型化 `fn(&str) -> bool`
+// 存在性检查，Core 解析器在 name-checker 末位咨询。未注册=零效果；不
+// 载荷任何 UI 数据/类型进 Core（对照 PLAN-841 合同"中立扩展只承载具名
+// 契约"）。替代已退役的 core 侧 design_tokens 直连查询。
+static EXTERNAL_IDENT_CHECKER: OnceLock<fn(&str) -> bool> = OnceLock::new();
+
+pub fn set_external_ident_checker(check: fn(&str) -> bool) {
+    let _ = EXTERNAL_IDENT_CHECKER.set(check);
+}
+
+pub(crate) fn external_ident_checker() -> Option<fn(&str) -> bool> {
+    EXTERNAL_IDENT_CHECKER.get().copied()
+}
+
 /// PLAN-814 R3-01/R3-04：上层兼容装配的进程期自注册收集点。语义边界
 /// （对照 r2 §2 "不靠 linker inventory 偶然拉入初始化"）：SDK **不提交**
 /// 任何安装器——纯 SDK 消费者零 submit、钩子缺席=显式拒绝/回退语义不

@@ -3,12 +3,12 @@
 pub use auto_lang_core::{
     block_on_autovm_local, bootstrap_lib_source, execute_autovm,
     execute_autovm_with_deadline_and_input, execute_autovm_with_path, extract_autovm_result,
-    extract_undefined_symbol, find_project_root, find_store_decl_files, find_use_symbol_span,
+    extract_undefined_symbol, find_project_root, find_use_symbol_span,
     get_error_limit, get_global_runtime, init_py_ffi, init_rust_ffi, is_vm_debug,
     is_vm_hot_trace, is_vm_trace_ops, join_execution, p510_audit, pac_declares_dep,
     pac_dep_version_violation, pac_workspace_member_dir, parse, parse_preserve_error,
     pool_log_all, pool_log_seq, pool_trace_idx, read_auto_lib, resolve_module_path,
-    resolve_use_module, run_abt, run_with_capture_and_bytecode,
+    run_abt, run_with_capture_and_bytecode,
     run_with_capture_and_bytecode_with_deadline, run_with_capture_and_bytecode_with_input,
     run_with_capture_and_bytecode_with_meta, run_with_capture_and_path_and_bytecode,
     run_with_capture_and_path_and_bytecode_with_deadline,
@@ -16,7 +16,7 @@ pub use auto_lang_core::{
     run_with_capture_and_path_and_bytecode_with_meta, script_args, set_error_limit,
     set_external_back_root, set_script_args, set_ui_host_install_hook, set_vm_debug,
     store_name_snake, trans_c, trans_c_with_session, trans_rust, trans_rust_with_session,
-    validate_rust_output, vm_thread_stack_size, UseModuleResolution,
+    validate_rust_output, vm_thread_stack_size,
 };
 
 // Plan 565 P0: counting global allocator for memory attribution — installed
@@ -104,13 +104,18 @@ pub use auto_lang_core::test_cases;
 // Plan 096 Phase 0: AURA (Auto UI Representation Abstract)
 // PLAN-814 T-03 Batch 2：UI 分析/生成域迁 auto-ui-compiler；旧路径经再导出保持。
 pub use auto_ui_compiler::aura;
+// PLAN-841: use-module resolution moved with the UI-owned parse pipeline
+// (auto-ui-compiler::ui_ast); old facade paths stay valid for consumers.
+pub use auto_ui_compiler::ui_ast::{
+    find_store_decl_files, resolve_use_module, UseModuleResolution,
+};
 // PLAN-814 R3-02：生成器源指纹公开面（auto-man 管线在 UICache::load 前
 // 注入——Plan 698 SD-01 失效合同时序）。
 pub use auto_ui_compiler::generator_fingerprint;
 // Plan 217: A2UI Protocol Bridge (AURA ↔ A2UI JSON)
 pub use auto_ui_compiler::a2ui;
 // Plan 096 Phase 2: UI Backend Generators (Vue, Rust)
-pub use auto_lang_core::design_tokens;
+pub use auto_ui_compiler::design_tokens;
 pub use auto_ui_compiler::ui_gen;
 // Stage B P-5（PLAN-590）：跨仓解析序定位 auto-os 侧资产（无 feature 门——
 // ui_gen/docs 管线与 CLI 的无 ui 构建形态也要消费）。
@@ -688,27 +693,33 @@ pub fn ui_build(
     // Parse with scenario
     let mut parser = Parser::from(code.as_str());
     parser = parser.with_session(session.clone());
+    // PLAN-841: UI sources enter via the explicit domain port.
     let ast = parser
-        .parse()
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
         .map_err(|e| format!("Parse error: {:?}", e))?;
 
     // Extract AURA widgets from AST
     crate::aura::extract::clear_view_fragments();
-    for stmt in &ast.stmts {
-        if let crate::ast::Stmt::ViewFragmentDecl(frag) = stmt {
-            crate::aura::extract::register_view_fragment(frag);
-        }
+    for frag in ast.domain_stmts().filter_map(|s| match s {
+        auto_ui_dialect::UiStmt::ViewFragmentDecl(f) => Some(f),
+        _ => None,
+    }) {
+        crate::aura::extract::register_view_fragment(frag);
     }
     // PLAN-607: register and validate style recipes before extracting widget.
     // PLAN-635: replay imported (source-tagged) + local recipes in order.
     crate::design_tokens::recipe::load_and_validate_style_recipes_with_imports(
         &recipe_imports,
-        &ast.stmts,
+        &ast,
     )
     .map_err(|e| e.to_string())?;
     let mut widgets = Vec::new();
-    for stmt in &ast.stmts {
-        if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+    for widget_decl in ast.domain_stmts().filter_map(|s| match s {
+        auto_ui_dialect::UiStmt::WidgetDecl(d) => Some(d),
+        _ => None,
+    }) {
+        {
             // Convert WidgetDecl to AuraWidget
             let aura_widget =
                 crate::aura::extract_widget_from_decl(widget_decl).map_err(|e| e.to_string())?;
@@ -814,27 +825,33 @@ pub fn ui_build_shadcn(path: &str, output: Option<&str>) -> AutoResult<String> {
     let session = CompilerSession::ui().with_backend("vue");
     let mut parser = Parser::from(code.as_str());
     parser = parser.with_session(session);
+    // PLAN-841: UI sources enter via the explicit domain port.
     let ast = parser
-        .parse()
+        .parse_domain(&auto_ui_dialect::UiDialect)
+        .map(auto_ui_dialect::UiCode)
         .map_err(|e| format!("Parse error: {:?}", e))?;
 
     // Extract AURA widgets from AST
     crate::aura::extract::clear_view_fragments();
-    for stmt in &ast.stmts {
-        if let crate::ast::Stmt::ViewFragmentDecl(frag) = stmt {
-            crate::aura::extract::register_view_fragment(frag);
-        }
+    for frag in ast.domain_stmts().filter_map(|s| match s {
+        auto_ui_dialect::UiStmt::ViewFragmentDecl(f) => Some(f),
+        _ => None,
+    }) {
+        crate::aura::extract::register_view_fragment(frag);
     }
     // PLAN-607: register and validate style recipes before extracting widget.
     // PLAN-635: replay imported (source-tagged) + local recipes in order.
     crate::design_tokens::recipe::load_and_validate_style_recipes_with_imports(
         &recipe_imports,
-        &ast.stmts,
+        &ast,
     )
     .map_err(|e| e.to_string())?;
     let mut widgets = Vec::new();
-    for stmt in &ast.stmts {
-        if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+    for widget_decl in ast.domain_stmts().filter_map(|s| match s {
+        auto_ui_dialect::UiStmt::WidgetDecl(d) => Some(d),
+        _ => None,
+    }) {
+        {
             let aura_widget =
                 crate::aura::extract_widget_from_decl(widget_decl).map_err(|e| e.to_string())?;
             widgets.push(aura_widget);

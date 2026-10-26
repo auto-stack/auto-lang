@@ -1443,6 +1443,17 @@ impl<'a> Parser<'a> {
             return true;
         }
 
+        // PLAN-841 T-05: neutral external-identifier port. UI-owned symbol
+        // families (e.g. imported style recipes) live outside Core; their
+        // owner registers a typed existence check here so bare references
+        // parse (the old core-side design_tokens consult retired with the
+        // grammar-table port). No UI names or data flow into Core.
+        if let Some(check) = crate::external_ident_checker() {
+            if check(name) {
+                return true;
+            }
+        }
+
         // Plan 091: Removed Universe fallback
         false
     }
