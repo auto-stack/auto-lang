@@ -102,12 +102,12 @@ R03	scenario	活借用/旧buffer	events	-	gap:ac-composite-native	gap:av-821-gen
 R04	scenario	variant切换释放	events	once	gap:ac-composite-native	wait:av-variants-822	diff-legacy-value	emit-ok-run-unverified	diff-registered	T-05	pairs corpus V06 | T-02: avm value differs from oracle (see obs report)
 R05	scenario	closure创建者退出	events	42	gap:ac-composite-native	wait:av-closures-823	ok	snapshot-only-cert-gap	source-bound	T-05	pairs corpus K02 | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
 R06	scenario	budget/cancel/trap退出	events	-	probe	probe	ok	snapshot-only-cert-gap	source-bound	T-05登记	per-profile promise faces | T-03: golden frozen (snapshot green) but emitted pseudo-Rust (List<int>/int) cannot compile — certified-run gap, owner=a2r composite lowering
-I01	scenario	稳定body编辑30修订	value	edits	ok	ok	n/a	n/a	designed-not-executed	T-05	mn/av session steps (edit-source/restart) delivered by 818/798
-I02	scenario	callee-only-body编辑	value	edits	ok	ok	n/a	n/a	designed-not-executed	T-05	same channel
+I01	scenario	稳定body编辑30修订	value	edits	ok	ok	n/a	n/a	scalar-subset-evidence	T-05	T-05: 单源单编辑真实观测（session-lifecycle.case.ad）；30修订全谱未跑，保留缺口
+I02	scenario	callee-only-body编辑	value	edits	ok	ok	n/a	n/a	scalar-subset-evidence	T-05	T-05: fact体编辑真实生效（720）；多callee谱未跑
 I03	scenario	callee签名改变	value	edits	ok	ok	n/a	n/a	designed-not-executed	T-05	same channel
 I04	scenario	type/layout改变	value	edits	gap:ac-composite-native	wait:av-record-822	n/a	n/a	designed-not-executed	T-05登记	needs records
-I05	scenario	改回历史内容	value	hit	ok	ok	n/a	n/a	designed-not-executed	T-05	content-addressed reuse
-I06	scenario	fresh/hot/重启/跨工程	value	same	ok	ok	n/a	n/a	designed-not-executed	T-05	cte-restart-cross-process evidence
+I05	scenario	改回历史内容	value	hit	ok	ok	n/a	n/a	scalar-subset-evidence	T-05	T-05: av store内容寻址复用真实观测（edit-persist-across-workers, cache_hit_abc=2）
+I06	scenario	fresh/hot/重启/跨工程	value	same	ok	ok	n/a	n/a	scalar-subset-evidence	T-05	T-05: warm/hot/跨worker/重启四态真实观测；跨工程标签/依赖缺失态未跑
 I07	scenario	AV旧调用暂停/恢复	value	pins	gap:ac-composite-native	ok	n/a	n/a	designed-not-executed	T-05	AV store pinning
 I08	scenario	native在线热重载	value	hot-swap	gap:ac-native-loader	gap:av-online	n/a	n/a	designed-not-executed	T-05登记	owner: native loader能力包; 重新链接后重启exe不满足
 I09	scenario	布局不兼容/活状态	value	reject	probe	probe	n/a	n/a	designed-not-executed	T-05登记	per actual policy

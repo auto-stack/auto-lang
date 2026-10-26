@@ -2,7 +2,9 @@
 # (T-02). Every check here is green on the current tree by real execution.
 # The FULL M1 denominator (with skip-marked gap rows) is assembled by T-06
 # on top of binding.tsv; this suite never silently absorbs a gap. a2r
-# emit-snapshot checks for value cases join in T-03 with reviewed goldens.
+# emit-snapshot checks for value cases joined in T-03; the T-05 session
+# lifecycle (warm/hot/body-edit/post-restart on the same B09 source) rides
+# the same suite.
 
 ```test-suite
 suite { schema: "autolang.suite/2", id: "ace-m1-base", include: [
@@ -11,5 +13,6 @@ suite { schema: "autolang.suite/2", id: "ace-m1-base", include: [
   "b-diags.case.ad",
   "legacy-composite.case.ad",
   "legacy-negative.case.ad",
+  "session-lifecycle.case.ad",
 ] }
 ```

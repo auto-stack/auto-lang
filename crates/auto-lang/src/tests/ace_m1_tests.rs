@@ -26,7 +26,7 @@ fn temp_root(tag: &str) -> PathBuf {
     dir
 }
 
-/// The committed base corpus runs END TO END green: 34 cases / 91 checks —
+/// The committed base corpus runs END TO END green: 36 cases / 97 checks —
 /// 10 scalar value cases on all FOUR paths (ac-native + av + autovm +
 /// a2r-snapshot against reviewed goldens), 4 traps, 4 diagnostics, 14
 /// legacy-only composite values (autovm + a2r snapshot), 2 legacy parse
@@ -63,7 +63,7 @@ fn ace_m1_base_suite_green() {
         "ace-m1 base suite has non-PASS checks:\n{}",
         failing.join("\n")
     );
-    assert_eq!(report.results.len(), 91, "base suite check count");
+    assert_eq!(report.results.len(), 97, "base suite check count (incl. T-05 lifecycle)");
     assert!(report.coverage_gaps.is_empty(), "no coverage gaps");
 }
 

@@ -350,6 +350,7 @@ fn compile(rustc: &str, input: &Path, out_exe: &Path, crate_name: &str) -> Resul
     run_contained(cmd, COMPILE_WALL, "rustc compile")
 }
 
+#[derive(Debug)]
 pub struct RunOutcome {
     pub success: bool,
     pub exit: i32,
@@ -358,6 +359,11 @@ pub struct RunOutcome {
 
 /// Run a certified binary under containment with the run wall and caps.
 fn run_capped(exe: &Path) -> Result<RunOutcome, String> {
+    run_with_wall(exe, RUN_WALL)
+}
+
+/// Same, with an explicit wall (the unit-test seam for the kill control).
+fn run_with_wall(exe: &Path, wall: Duration) -> Result<RunOutcome, String> {
     let mut cmd = Command::new(exe);
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     #[cfg(windows)]
@@ -420,12 +426,12 @@ fn run_capped(exe: &Path) -> Result<RunOutcome, String> {
         (out, err)
     });
     let status = loop {
-        if started.elapsed() > RUN_WALL {
+        if started.elapsed() > wall {
             child.kill();
             drop(job.take());
             let _ = child.wait();
             let _ = reader.join();
-            return Err(format!("run exceeded the {}s wall", RUN_WALL.as_secs()));
+            return Err(format!("run exceeded the {}s wall", wall.as_secs()));
         }
         match child.try_wait() {
             Ok(Some(st)) => break st,
@@ -547,5 +553,39 @@ pub fn certify_and_report(args: &CertifyArgs) -> i32 {
             eprintln!("ace-certify: {e}");
             2
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The certify kill control (AC-07): a deliberately hanging binary is
+    /// killed by the bounded run inside a short wall — the deadline, not a
+    /// human, reaps the tree (Job containment closes on every exit path).
+    #[test]
+    fn wall_kills_a_hanging_binary() {
+        let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+        let dir = std::env::temp_dir().join(format!("ace-cert-wall-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("hang.rs");
+        std::fs::write(
+            &src,
+            "fn main() { loop { std::thread::sleep(std::time::Duration::from_millis(50)); } }
+",
+        )
+        .unwrap();
+        let exe = dir.join("hang.exe");
+        compile(&rustc, &src, &exe, "hang").expect("compile the hanging control");
+        let started = Instant::now();
+        let err = run_with_wall(&exe, Duration::from_secs(2)).expect_err("the wall must fire");
+        assert!(err.contains("wall"), "wall error: {err}");
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "the kill must be timely (took {:?})",
+            started.elapsed()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

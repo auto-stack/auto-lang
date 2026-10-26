@@ -286,8 +286,58 @@ switch ($Scope) {
     }
 
     'lifecycle' {
-        Write-Host "verify-ace-m1-852 [lifecycle]: FAIL — scope owned by T-05, not implemented yet" -ForegroundColor Red
-        exit 3
+        if (-not $OutDir) { Write-Host "usage: -Scope lifecycle requires -OutDir (scratch)" -ForegroundColor Red; exit 2 }
+        $bin = if ($env:AUTO_CASE_BIN) { $env:AUTO_CASE_BIN } else {
+            $ErrorActionPreference = 'Continue'
+            & cargo @('build', '-p', 'auto-lang', '--features', 'test-cases', '--bin', 'auto-case', '--quiet') 2>$null
+            $code = $LASTEXITCODE
+            $ErrorActionPreference = 'Stop'
+            if ($code -ne 0) { Fail "auto-case build failed (exit $code)" }
+            Join-Path $RepoRoot 'target/debug/auto-case.exe'
+        }
+        $suite = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad'
+        $report = Join-Path $OutDir 'ace-m1-lifecycle-report.json'
+        $ErrorActionPreference = 'Continue'
+        & $bin @('run', '--suite', $suite, '--out', $OutDir, '--format', 'console', '--json-out', $report) *> $null
+        $code = $LASTEXITCODE
+        $ErrorActionPreference = 'Stop'
+        if ($code -ne 0) { Fail "base suite gate exit $code under the lifecycle scope (expected 0)" }
+        $r = Get-Content $report -Raw | ConvertFrom-Json
+        # The six lifecycle checks must be present AND green with the real
+        # observations (warm 120, hot 120, body edit 720, edit persistence
+        # across fresh workers 720, AC fresh 120, AC edit+restart 720).
+        $lifecycle = @($r.results | Where-Object { $_.case -like 'ace.m1.session*' })
+        if ($lifecycle.Count -lt 6) { Fail "lifecycle checks missing (found $($lifecycle.Count) of 6)" }
+        $expected = @{
+            'ace.m1.session.av:warm-run' = 120
+            'ace.m1.session.av:hot-run' = 120
+            'ace.m1.session.av:body-edit-run' = 720
+            'ace.m1.session.av:edit-persist-across-workers' = 720
+            'ace.m1.session.mn:fresh-run' = 120
+            'ace.m1.session.mn:edit-then-restart-run' = 720
+        }
+        foreach ($k in $expected.Keys) {
+            $parts = $k.Split(':')
+            $check = $lifecycle | Where-Object { $_.case -eq $parts[0] -and $_.check -eq $parts[1] }
+            if (-not $check) { Fail "lifecycle check missing: $k" }
+            if ($check.status -ne 'PASS') { Fail "lifecycle check $k is $($check.status)" }
+            if ($check.native.exit_code -ne $expected[$k]) {
+                Fail "lifecycle $k observed exit $($check.native.exit_code), expected $($expected[$k])"
+            }
+        }
+        # Tool-governance negative control: the certifier's deadline must
+        # kill a hanging binary (a real rustc-compiled loop, 2s wall). The
+        # filter is the FULL test path with --exact so a typo cannot
+        # silently match zero tests and pass.
+        $ErrorActionPreference = 'Continue'
+        & cargo @('test', '-p', 'auto-lang-core', '--features', 'test-cases', 'test_cases::ace_certify::tests::wall_kills_a_hanging_binary', '--', '--exact', '--nocapture') 2>$null
+        $code = $LASTEXITCODE
+        $ErrorActionPreference = 'Stop'
+        if ($code -ne 0) { Fail "certifier wall-kill negative control failed (exit $code)" }
+        Write-Host "verify-ace-m1-852 [lifecycle]: PASS — warm/hot/body-edit/edit-persistence on av," `
+            "fresh/edit+restart on mn, all judged green; certifier wall-kill control green." `
+            "Native online HMR (I08) and composite/native gaps stay registered in binding.tsv."
+        exit 0
     }
 
     'acceptance' {
