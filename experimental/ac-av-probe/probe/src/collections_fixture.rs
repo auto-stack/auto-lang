@@ -456,7 +456,25 @@ pub fn restore_collections(
         schema: MIR_COLLECTIONS_SCHEMA.to_string(),
         module: owner.to_string(),
     };
-    let loaded = verify_abc_bytes(&payload, &owner_scope).map_err(|e| format!("re-verify: {e}"))?;
+    // F822-R16-01: bind the payload's ACTUAL wire profile. The generic
+    // admission validates every payload against the version tuple of ITS
+    // OWN decoded profile (core-i32 included) — it never enforces the
+    // REQUESTER's profile — so a legal core-i32 AVAB under a collections
+    // key/envelope passed every earlier axis (same types table, entry,
+    // snapshot). Decode first and refuse a non-collections profile BEFORE
+    // the deep verification and dispatch (V-08/V-09: the collections
+    // identity never executes foreign wire). The generic gate and the old
+    // profiles' own consumers keep their contracts unchanged.
+    let decoded = auto_av_core::abc::decode_abc(&payload).map_err(|e| format!("decode: {e:?}"))?;
+    if decoded.profile != auto_av_core::contract::ABC_PROFILE_COLLECTIONS {
+        return Err(format!(
+            "payload profile mismatch: requested collections profile id {}, payload carries profile id {} — refusing to dispatch",
+            auto_av_core::contract::ABC_PROFILE_COLLECTIONS,
+            decoded.profile
+        ));
+    }
+    let loaded = auto_av_core::abc_verify::verify_abc(decoded, &owner_scope)
+        .map_err(|e| format!("re-verify: {e}"))?;
     // F822-R14-01: the re-run gates prove the payload SELF-consistent,
     // not that it is the module the caller asked for. The requested
     // `types_fp` is an IDENTITY axis of the store key: a structurally

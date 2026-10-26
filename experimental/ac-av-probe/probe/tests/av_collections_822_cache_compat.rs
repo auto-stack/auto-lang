@@ -357,3 +357,95 @@ fn av_collections_822_cache_restore_payload_entry_identity_rejected() {
     );
     let _ = std::fs::remove_dir_all(&honest_store);
 }
+
+/// F822-R16-01: restore binds the payload's ACTUAL wire profile. The
+/// generic admission validates every payload against the version tuple
+/// of its OWN decoded profile (core-i32 included) — never the
+/// requester's — so a legal core-i32 AVAB whose types/entry/snapshot
+/// all match (passing the R14/R15 bindings) executed under the
+/// collections identity. A scalar collections module (types=[I32, Fn];
+/// main returns 7) is re-stamped as a legal core-i32 profile/schema
+/// module — SAME types_fp — encoded as AVAB and stored under the
+/// collections key + collections envelope: it must be refused BEFORE
+/// dispatch. The honest control: the SAME module kept on the
+/// collections profile restores and executes (the fix rejects foreign
+/// WIRE, not legal scalar-only collections programs).
+#[test]
+fn av_collections_822_cache_restore_payload_profile_rejected() {
+    let build = |as_core: bool| -> (String, Vec<u8>) {
+        let owner = auto_av_probe::collections_fixture::collections_owner_scope();
+        let mut m = auto_av_core::mir::MirModule::new_collections(owner.clone());
+        let ti = m.intern_type(auto_av_core::mir::MirType::I32);
+        let sig = m.intern_type(auto_av_core::mir::MirType::Fn(auto_av_core::mir::FnSig {
+            params: vec![],
+            result: ti,
+        }));
+        let c = m.intern_const(auto_av_core::mir::MirConst::I32(7));
+        m.funcs.push(auto_av_core::mir::MirFunction {
+            owner: owner.clone(),
+            name: "main".into(),
+            sig,
+            slots: vec![auto_av_core::mir::MirSlot {
+                kind: auto_av_core::mir::SlotKind::Local,
+                ty: ti,
+                name: None,
+            }],
+            blocks: vec![auto_av_core::mir::MirBlock {
+                instrs: vec![auto_av_core::mir::MirInstr::Const { dst: 0, value: c }],
+                term: auto_av_core::mir::Terminator::Return { value: 0 },
+            }],
+            entry: 0,
+            source_snapshot: 123,
+            spans: vec![],
+        });
+        verify_mir(&m).unwrap();
+        let fp = collections_types_fp_of(&m);
+        if as_core {
+            m.profile = auto_av_core::contract::AV_PROFILE.into();
+            m.owner.schema = auto_av_core::contract::MIR_SCHEMA.into();
+            m.funcs[0].owner = m.owner.clone();
+            verify_mir(&m).unwrap();
+            assert_eq!(collections_types_fp_of(&m), fp, "same types table");
+        }
+        let wire = encode_abc(&m).unwrap().to_flat();
+        (fp, wire)
+    };
+    for (as_core, must_err) in [(true, true), (false, false)] {
+        let (fp, wire) = build(as_core);
+        let root = std::env::temp_dir().join(format!(
+            "cache822-r16-profile-{}-{}-{as_core}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let store = ManagedStore::open(&root).unwrap();
+        store
+            .put_artifact(PutRequest {
+                layer: COLLECTIONS_ABC_LAYER.id,
+                key: collections_module_key("collections822", "main", &fp, 123),
+                kind: ChunkKind::LayoutData,
+                payload: envelope_wrap(&wire, &collections_envelope("collections822", "main", 123)),
+                edges: vec![],
+                project: Some("cache822".into()),
+            })
+            .unwrap();
+        drop(store);
+        let out = restore_collections(&root, "collections822", "main", 123, &fp);
+        if must_err {
+            let msg = out
+                .expect_err("a foreign core wire under the collections identity must not dispatch");
+            assert!(
+                msg.contains("profile mismatch"),
+                "the refusal names the identity gap: {msg}"
+            );
+        } else {
+            assert!(
+                matches!(&out, Ok(ExecOutcome::Success { .. })),
+                "an honest collections scalar module still restores: {out:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}

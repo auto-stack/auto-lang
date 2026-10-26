@@ -203,7 +203,8 @@ $REQ = @{
         'av_collections_822_compat_layer_separation',
         'av_collections_822_cache_deterministic_replay_steps',
         'av_collections_822_cache_restore_payload_types_fp_mismatch_rejected',
-        'av_collections_822_cache_restore_payload_entry_identity_rejected'
+        'av_collections_822_cache_restore_payload_entry_identity_rejected',
+        'av_collections_822_cache_restore_payload_profile_rejected'
     )
     'incremental' = @(
         'av_collections_822_incremental_body_edit_identity',
