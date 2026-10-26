@@ -16,8 +16,9 @@
 
 生产调用为 `Parser::parse_domain(&UiDialect) -> UiCode`，随后由 dialect
 `validate_ui` 与 compiler `lower_ui` 校验/lowering；公开生成、runtime、
-SDK 与跨文件模块均在消费或写盘前经过该路径。codec decode 同样执行领域
-校验，并以扩展递归工作栈支持 parser 已接受的合法深层视图往返。
+SDK、Vue/Rust/Jet/Ark 工程与 incremental 路径均在缓存、消费或写盘前
+经过该路径。codec decode 同样执行领域校验，以扩展递归工作栈支持合法
+深层视图往返，并完整消费单份 artifact，拒绝非空白后缀或第二份 JSON。
 `dialect/ui.rs` 全局 adapter、Parser UI 返回门面、
 `with_session` 默认装配和 `UiGrammar` 函数表均已退出。Godot SceneDecl
 文法与 AST 归 Core `scene_grammar.rs`，不在 UI 模块复制。
