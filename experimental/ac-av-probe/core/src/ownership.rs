@@ -377,6 +377,14 @@ pub fn verify_owned_function(
         .iter()
         .map(|s| matches!(m.types.get(s.ty as usize), Some(MirType::MutRef)))
         .collect();
+    // F822-R6: a Place slot carries RETAINED provenance (roots) that
+    // propagates through joins independently of the exclusive/live-borrow
+    // state, and never becomes an active borrow itself.
+    let is_place: Vec<bool> = f
+        .slots
+        .iter()
+        .map(|s| matches!(m.types.get(s.ty as usize), Some(MirType::Place(_))))
+        .collect();
     // R1-F08: BORROWED view params (StrView / RecordView kinds) root
     // EXTERNALLY — a field view rooted at such a param is legal to
     // return (the caller owns the root); any other local root is not.
@@ -521,12 +529,14 @@ pub fn verify_owned_function(
                     .extend(arms.iter().copied());
             }
             for t in 0..n {
-                if new_in.is_token_live(t) && po.tokens_live.get(t) {
-                    match (&mut new_in.token_roots[t], po.token_roots[t].as_ref()) {
-                        (Some(r), Some(pr)) => r.union_with(pr),
-                        (None, Some(pr)) => new_in.token_roots[t] = Some(pr.clone()),
-                        _ => {}
-                    }
+                // F822-R6-01: root PROVENANCE is a may-fact — it merges
+                // across predecessors regardless of liveness. A retained
+                // place (never live) must keep its roots across block
+                // edges; live views merge exactly as before.
+                match (&mut new_in.token_roots[t], po.token_roots[t].as_ref()) {
+                    (Some(r), Some(pr)) => r.union_with(pr),
+                    (None, Some(pr)) => new_in.token_roots[t] = Some(pr.clone()),
+                    _ => {}
                 }
                 // R3-F08: moved field paths are MAY facts — union across
                 // predecessors (a path moved on ANY path stays moved).
@@ -627,9 +637,17 @@ pub fn verify_owned_function(
                         check_def_conflict!(dst, "copy destination");
                     }
                     if is_token[*dst as usize] && is_token[*src as usize] {
-                        // View alias: the copy shares the borrow.
-                        st.token_roots[*dst as usize] = st.token_roots[*src as usize].clone();
-                        st.tokens_live.set(*dst as usize);
+                        if is_place[*dst as usize] {
+                            // F822-R6-02: a Place alias is RETAINED
+                            // provenance, not an active borrow — the copy
+                            // shares the roots without blocking the root
+                            // (structural change retires it via epoch).
+                            st.token_roots[*dst as usize] = st.token_roots[*src as usize].clone();
+                        } else {
+                            // View alias: the copy shares the borrow.
+                            st.token_roots[*dst as usize] = st.token_roots[*src as usize].clone();
+                            st.tokens_live.set(*dst as usize);
+                        }
                     } else if is_token[*dst as usize] {
                         st.token_roots[*dst as usize] = None;
                     }
@@ -700,7 +718,12 @@ pub fn verify_owned_function(
                             }
                         }
                         st.token_roots[*dst as usize] = Some(roots);
-                        st.tokens_live.set(*dst as usize);
+                        // F822-R6-02: a Place RESULT is retained provenance
+                        // (an externally-rooted token passed through), not
+                        // an active borrow.
+                        if !is_place[*dst as usize] {
+                            st.tokens_live.set(*dst as usize);
+                        }
                     }
                     st.define_slot(*dst as usize);
                     // PLAN-822 (§5.5): a possibly-writing call invalidates
@@ -1603,7 +1626,10 @@ impl OwnState {
     /// must keep the worklist converging (F821-R1-05 hardening).
     fn roots_eq(&self, o: &OwnState) -> bool {
         (0..self.token_roots.len()).all(|t| {
-            if !self.tokens_live.get(t) && !o.tokens_live.get(t) {
+            // F822-R6-01: provenance participates in equality whenever
+            // EITHER side carries roots (a retained place is never live
+            // but its roots must still drive the worklist).
+            if self.token_roots[t].is_none() && o.token_roots[t].is_none() {
                 return true;
             }
             match (&self.token_roots[t], &o.token_roots[t]) {

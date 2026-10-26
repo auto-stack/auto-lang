@@ -140,7 +140,12 @@ $REQ = @{
         'av_collections_822_semantics_cross_frame_place_read_control',
         'av_collections_822_semantics_callee_local_place_escape_refused',
         'av_collections_822_semantics_record_place_token_refused',
-        'av_collections_822_semantics_place_param_roundtrip_supported',
+        'av_collections_822_semantics_place_param_roundtrip_supported'
+        'av_collections_822_semantics_local_place_escape_across_jump_refused',
+        'av_collections_822_semantics_place_param_return_across_jump_supported',
+        'av_collections_822_semantics_merge_shapes_local_vs_external',
+        'av_collections_822_semantics_mutate_after_place_copy_supported',
+        'av_collections_822_semantics_helper_roundtrip_then_update_supported',
         'av_collections_822_semantics_place_get_wrong_type_rejected',
         'av_collections_822_semantics_place_set_wrong_type_rejected',
         'av_collections_822_semantics_place_mint_binds_referent',

@@ -2079,3 +2079,431 @@ fn av_collections_822_semantics_place_param_roundtrip_supported() {
     }];
     assert_eq!(success(&m), Value::I32(7));
 }
+
+// -- F822-R6-01/02: cross-block provenance + retained-alias policy -------
+
+/// A two-function probe kit for the R6 shapes:
+/// 0=i32 1=bool 2=Str 3=Note 4=List<i32> 9=Place<i32>.
+/// helper_modes: "jump-local" (mint then Jump; return in block 1),
+/// "jump-param" (Jump; return the param in block 1),
+/// "merge-local" (mint before a Branch; both edges join one return block
+/// that returns the minted place), "merge-param" (same CFG, returns the
+/// external param).
+fn r6_module(helper_mode: &str) -> MirModule {
+    let mut m = MirModule::new_collections(OwnerScope {
+        schema: auto_av_core::contract::MIR_COLLECTIONS_SCHEMA.to_string(),
+        module: "collections822".to_string(),
+    });
+    m.types = vec![
+        MirType::I32,
+        MirType::Bool,
+        MirType::Str,
+        MirType::Record(auto_av_core::mir::RecordTypeRef {
+            owner_module: "collections822".to_string(),
+            name: "Note".to_string(),
+            fields: vec![
+                auto_av_core::mir::MirFieldDef {
+                    name: "text".into(),
+                    ty: 2,
+                },
+                auto_av_core::mir::MirFieldDef {
+                    name: "n".into(),
+                    ty: 0,
+                },
+            ],
+        }),
+        MirType::List(ListTypeRef { elem: 0 }),
+        MirType::List(ListTypeRef { elem: 2 }),
+        MirType::List(ListTypeRef { elem: 3 }),
+        MirType::Variant(auto_av_core::mir::VariantTypeRef {
+            owner_module: "collections822".to_string(),
+            name: "Outcome".to_string(),
+            arms: vec![
+                auto_av_core::mir::VariantArm {
+                    name: "Ok".into(),
+                    payload: Some(3),
+                },
+                auto_av_core::mir::VariantArm {
+                    name: "Err".into(),
+                    payload: Some(2),
+                },
+            ],
+        }),
+        MirType::List(ListTypeRef { elem: 7 }),
+        MirType::Place(ListTypeRef { elem: 0 }),
+    ];
+    let c7 = m.intern_const(MirConst::I32(7)) as u32;
+    let c0 = m.intern_const(MirConst::I32(0)) as u32;
+    let ctrue = m.intern_const(MirConst::Bool(true)) as u32;
+    let param_sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: vec![9],
+        result: 9,
+    }));
+    let main_sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: vec![],
+        result: 0,
+    }));
+
+    // helper slots: 0=list, 1=v, 2=idx0, 3=minted place, 4=param place,
+    // 5=cond. (Local-only modes leave slot 4 unused; the param modes use
+    // it as the param.)
+    let helper_blocks = match helper_mode {
+        "jump-local" => vec![
+            MirBlock {
+                instrs: vec![
+                    MirInstr::Const { dst: 1, value: c7 },
+                    MirInstr::ListNew {
+                        dst: 0,
+                        list_ty: 4,
+                        cap: 0,
+                    },
+                    MirInstr::ListPush { root: 0, value: 1 },
+                    MirInstr::Const { dst: 2, value: c0 },
+                    MirInstr::ListPlace {
+                        dst: 3,
+                        base: 0,
+                        index: 2,
+                    },
+                ],
+                term: Terminator::Jump { target: 1 },
+            },
+            MirBlock {
+                instrs: vec![],
+                term: Terminator::Return { value: 3 },
+            },
+        ],
+        "jump-param" => vec![
+            MirBlock {
+                instrs: vec![],
+                term: Terminator::Jump { target: 1 },
+            },
+            MirBlock {
+                instrs: vec![],
+                term: Terminator::Return { value: 4 },
+            },
+        ],
+        "merge-local" | "merge-param" => vec![
+            MirBlock {
+                instrs: vec![
+                    MirInstr::Const { dst: 1, value: c7 },
+                    MirInstr::ListNew {
+                        dst: 0,
+                        list_ty: 4,
+                        cap: 0,
+                    },
+                    MirInstr::ListPush { root: 0, value: 1 },
+                    MirInstr::Const { dst: 2, value: c0 },
+                    MirInstr::ListPlace {
+                        dst: 3,
+                        base: 0,
+                        index: 2,
+                    },
+                    MirInstr::Const {
+                        dst: 5,
+                        value: ctrue,
+                    },
+                ],
+                term: Terminator::Branch {
+                    cond: 5,
+                    then: 1,
+                    else_: 1,
+                },
+            },
+            MirBlock {
+                instrs: vec![],
+                term: Terminator::Return {
+                    value: if helper_mode == "merge-local" { 3 } else { 4 },
+                },
+            },
+        ],
+        _ => unreachable!(),
+    };
+    let uses_param = helper_mode.ends_with("param");
+    let mut helper_slots = vec![
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: 4,
+            name: Some("h".into()),
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: 0,
+            name: Some("v".into()),
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: 0,
+            name: Some("i".into()),
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: 9,
+            name: Some("p".into()),
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: 9,
+            name: Some("arg".into()),
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: 1,
+            name: Some("c".into()),
+        },
+    ];
+    if uses_param {
+        helper_slots[4] = MirSlot {
+            kind: SlotKind::Param,
+            ty: 9,
+            name: Some("arg".into()),
+        };
+    }
+    let helper_sig = if uses_param {
+        param_sig
+    } else {
+        m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+            params: vec![],
+            result: 9,
+        }))
+    };
+
+    // main: build the caller list + place; call helper accordingly; read
+    // through the returned place (param modes) or just fold (local modes
+    // are expected to be REFUSED at admission anyway).
+    let main_slots = vec![
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: 4,
+            name: Some("list".into()),
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: 0,
+            name: Some("v".into()),
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: 0,
+            name: Some("idx0".into()),
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: 9,
+            name: Some("p".into()),
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: 9,
+            name: Some("back".into()),
+        },
+        MirSlot {
+            kind: SlotKind::Local,
+            ty: 0,
+            name: Some("got".into()),
+        },
+    ];
+    let mut main_instrs = vec![
+        MirInstr::ListNew {
+            dst: 0,
+            list_ty: 4,
+            cap: 0,
+        },
+        MirInstr::Const { dst: 1, value: c7 },
+        MirInstr::ListPush { root: 0, value: 1 },
+        MirInstr::Const { dst: 2, value: c0 },
+        MirInstr::ListPlace {
+            dst: 3,
+            base: 0,
+            index: 2,
+        },
+    ];
+    let call_args: Vec<u32> = if uses_param { vec![3] } else { vec![] };
+    main_instrs.push(MirInstr::Call {
+        callee: auto_av_core::mir::CalleeRef::Func(1),
+        dst: 4,
+        args: call_args,
+    });
+    main_instrs.push(MirInstr::PlaceGet { dst: 5, src: 4 });
+
+    m.funcs = vec![
+        MirFunction {
+            owner: m.owner.clone(),
+            name: "main".to_string(),
+            sig: main_sig,
+            slots: main_slots,
+            blocks: vec![MirBlock {
+                instrs: main_instrs,
+                term: Terminator::Return { value: 5 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: Vec::new(),
+        },
+        MirFunction {
+            owner: m.owner.clone(),
+            name: "helper".to_string(),
+            sig: helper_sig,
+            slots: helper_slots,
+            blocks: helper_blocks,
+            entry: 0,
+            source_snapshot: 0,
+            spans: Vec::new(),
+        },
+    ];
+    m.entry = 0;
+    m
+}
+
+/// F822-R6-01 replay: a LOCALLY minted place returned across a Jump edge
+/// is refused at the MIR gate (the provenance survives the block edge).
+#[test]
+fn av_collections_822_semantics_local_place_escape_across_jump_refused() {
+    assert_eq!(reject_code(&r6_module("jump-local")), "mir.borrow-escape");
+}
+
+/// Positive control: an EXTERNALLY rooted place param returned across the
+/// same Jump edge is supported — the caller reads 7 through it.
+#[test]
+fn av_collections_822_semantics_place_param_return_across_jump_supported() {
+    assert_eq!(success(&r6_module("jump-param")), Value::I32(7));
+}
+
+/// Branch-merge shapes: a LOCAL place crossing a two-predecessor merge
+/// into the return is refused; the same CFG returning the external param
+/// place is supported.
+#[test]
+fn av_collections_822_semantics_merge_shapes_local_vs_external() {
+    assert_eq!(reject_code(&r6_module("merge-local")), "mir.borrow-escape");
+    assert_eq!(success(&r6_module("merge-param")), Value::I32(7));
+}
+
+/// F822-R6-02 replay: mutating the list after minting a place is
+/// supported DIRECTLY and THROUGH A COPY ALIAS identically — a retained
+/// reference never blocks the update (retirement is epoch/generation,
+/// not a live-borrow conflict). Both shapes return 9 via the fresh index.
+#[test]
+fn av_collections_822_semantics_mutate_after_place_copy_supported() {
+    let build = |with_copy: bool| {
+        let mut m = r6_module("jump-param");
+        // Replace main with the single-function mutation shape.
+        let c9 = m.intern_const(MirConst::I32(9)) as u32;
+        let c0 = m.intern_const(MirConst::I32(0)) as u32;
+        let c7 = m.intern_const(MirConst::I32(7)) as u32;
+        let main = &mut m.funcs[0];
+        main.slots = vec![
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: 4,
+                name: Some("list".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: 0,
+                name: Some("v".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: 0,
+                name: Some("idx0".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: 9,
+                name: Some("p".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: 9,
+                name: Some("alias".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: 0,
+                name: Some("nv".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: 0,
+                name: Some("got".into()),
+            },
+        ];
+        let mut instrs = vec![
+            MirInstr::ListNew {
+                dst: 0,
+                list_ty: 4,
+                cap: 0,
+            },
+            MirInstr::Const { dst: 1, value: c7 },
+            MirInstr::ListPush { root: 0, value: 1 },
+            MirInstr::Const { dst: 2, value: c0 },
+            MirInstr::ListPlace {
+                dst: 3,
+                base: 0,
+                index: 2,
+            },
+        ];
+        if with_copy {
+            instrs.push(MirInstr::Copy { dst: 4, src: 3 });
+        }
+        instrs.push(MirInstr::Const { dst: 5, value: c9 });
+        instrs.push(MirInstr::ListSet {
+            root: 0,
+            index: 2,
+            value: 5,
+        });
+        instrs.push(MirInstr::ListGet {
+            dst: 6,
+            base: 0,
+            index: 2,
+        });
+        main.blocks = vec![MirBlock {
+            instrs,
+            term: Terminator::Return { value: 6 },
+        }];
+        m
+    };
+    assert_eq!(
+        success(&build(false)),
+        Value::I32(9),
+        "direct mint: update supported"
+    );
+    assert_eq!(
+        success(&build(true)),
+        Value::I32(9),
+        "copy alias: the retained reference still never blocks the update"
+    );
+}
+
+/// F822-R6-02 sibling: an externally-rooted helper roundtrip (param in,
+/// token back) followed by a LIST UPDATE on the caller's list — the
+/// returned token stays retained; the update succeeds and the fresh
+/// index reads the new value.
+#[test]
+fn av_collections_822_semantics_helper_roundtrip_then_update_supported() {
+    let mut m = r6_module("jump-param");
+    let c9 = m.intern_const(MirConst::I32(9)) as u32;
+    let c0 = m.intern_const(MirConst::I32(0)) as u32;
+    let main = &mut m.funcs[0];
+    let mut instrs = main.blocks[0].instrs.clone();
+    // Drop the trailing PlaceGet; instead mutate through a fresh LIST_SET
+    // and read the new value (the returned token stays retained and never
+    // blocks the update).
+    instrs.pop();
+    instrs.push(MirInstr::Const { dst: 1, value: c9 });
+    instrs.push(MirInstr::ListSet {
+        root: 0,
+        index: 2,
+        value: 1,
+    });
+    instrs.push(MirInstr::ListGet {
+        dst: 5,
+        base: 0,
+        index: 2,
+    });
+    main.blocks = vec![MirBlock {
+        instrs,
+        term: Terminator::Return { value: 5 },
+    }];
+    let _ = c0;
+    assert_eq!(success(&m), Value::I32(9));
+}
