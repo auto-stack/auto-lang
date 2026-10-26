@@ -1,0 +1,8 @@
+fn make(move s Str) fn(int) int {
+    return move (n int) => { return s.len() + n }
+}
+fn main() int {
+    let s Str = "hello"
+    let f = make(s.move)
+    return f(37)
+}

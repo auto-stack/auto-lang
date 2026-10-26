@@ -1,0 +1,7 @@
+type Item { name Str; code int }
+fn main() int {
+    var a Item = Item("hello", 1)
+    let b Item = a.clone()
+    a.name = "x"
+    return b.name.len() * 10 + a.name.len()
+}

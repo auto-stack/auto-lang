@@ -1,0 +1,4 @@
+type A { value int }
+type B { value int }
+fn read(x A) int { return x.value }
+fn main() int { return read(B(42)) }

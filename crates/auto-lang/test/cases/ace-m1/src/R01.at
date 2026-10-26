@@ -1,0 +1,7 @@
+type Pair { left int; right int }
+fn main() int {
+    var p Pair = Pair(1, 2)
+    let q Pair = p
+    p.left = 9
+    return q.left * 10 + p.left
+}

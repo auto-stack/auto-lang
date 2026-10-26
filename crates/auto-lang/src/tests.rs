@@ -26,6 +26,10 @@ mod ac_mn_probe_tests;
 // PLAN-796 R4: turnaround hard gate over the REAL adapter/IPC path
 #[cfg(feature = "test-cases")]
 mod probe_adapter_turnaround_ipc;
+// PLAN-852: ace-m1 base corpus — four-engine conformance denominator,
+// evidence-green subset (real mn/av workers + legacy VM + typed channels).
+#[cfg(feature = "test-cases")]
+mod ace_m1_tests;
 // PLAN-827: av-source-827 corpus — real Auto source files (AP seeds) through
 // the formal ac-av/core-run-v1 recipe, parent-side judgement.
 #[cfg(feature = "test-cases")]

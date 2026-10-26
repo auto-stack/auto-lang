@@ -1,0 +1,85 @@
+# PLAN-852 ace-m1 scalar trap cases. AC: the 818 frozen experiment
+# contract — a language trap IS the PE exit code 70. AV: typed trap
+# codes. AutoVM: typed run-stage DivisionByZero (B14/B20 only; B13/B15
+# wrap in the old i64 int — difference rows in binding.tsv).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b13"
+  tags: ["ace-m1", "trap"]
+  links: ["PLAN-852"]
+  source: { file: "src/B13.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 70 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "run", code: "av.trap.int-overflow" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b14"
+  tags: ["ace-m1", "trap"]
+  links: ["PLAN-852"]
+  source: { file: "src/B14.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 70 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "run", code: "av.trap.div-by-zero" } } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: { stage: "run", code: "DivisionByZero" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b15"
+  tags: ["ace-m1", "trap"]
+  links: ["PLAN-852"]
+  source: { file: "src/B15.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 70 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "run", code: "av.trap.rem-overflow" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b20"
+  tags: ["ace-m1", "trap"]
+  links: ["PLAN-852"]
+  source: { file: "src/B20.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 70 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "run", code: "av.trap.div-by-zero" } } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: { stage: "run", code: "DivisionByZero" } } },
+  ]
+}
+```
+

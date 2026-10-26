@@ -1,0 +1,11 @@
+fn divide(a int, b int) Result<int, Str> {
+    if b == 0 { return Err("bad") }
+    return Ok(a / b)
+}
+fn main() int {
+    let r = divide(84, 2)
+    is r {
+        Ok(v) -> { return v }
+        Err(e) -> { return e.len() }
+    }
+}

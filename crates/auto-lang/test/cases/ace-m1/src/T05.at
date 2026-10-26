@@ -1,0 +1,6 @@
+fn main() int {
+    let a str = "A\0B"
+    if a == "A" { return 1 }
+    if a != "A\0B" { return 2 }
+    return 42
+}

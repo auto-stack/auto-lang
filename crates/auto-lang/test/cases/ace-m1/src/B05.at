@@ -1,0 +1,4 @@
+fn main() int {
+    if true || 1 / 0 > 0 { return 42 }
+    return 1
+}

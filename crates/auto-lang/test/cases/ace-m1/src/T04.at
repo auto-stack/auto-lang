@@ -1,0 +1,4 @@
+fn main() int {
+    let c char = '😀'
+    return c.to_codepoint()
+}

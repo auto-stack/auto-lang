@@ -1,0 +1,40 @@
+# PLAN-852 ace-m1 negative cases rejected by BOTH legacy paths with
+# typed codes (error completions need no oracle sidecar). T07 invalid
+# unicode scalar: lexer E0001 on both. K04 borrow-escaping closure: the
+# legacy grammar rejects the source at parse (auto_syntax_E0001); the
+# designed type-level rule differs — channel frozen as observed.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t07"
+  tags: ["ace-m1", "diagnostic", "legacy"]
+  links: ["PLAN-852"]
+  source: { file: "src/T07.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: { stage: "parse", code: "auto_lexer_E0001" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_t07" },
+      expect: { completion: { stage: "parse", code: "auto_lexer_E0001" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.k04"
+  tags: ["ace-m1", "diagnostic", "legacy"]
+  links: ["PLAN-852"]
+  source: { file: "src/K04.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: { stage: "parse", code: "auto_syntax_E0001" } } },
+    { id: "a2r-snapshot", adapter: "a2r", action: "emit", options: { module_name: "m1_k04" },
+      expect: { completion: { stage: "parse", code: "auto_syntax_E0001" } } }
+  ]
+}
+```
+

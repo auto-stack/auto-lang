@@ -1,0 +1,2 @@
+fn sub(a int, b int) int { return a - b }
+fn main() int { return sub(b: 3, a: 10) }

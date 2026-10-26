@@ -1,0 +1,6 @@
+type Item { name Str; code int }
+fn main() int {
+    let a Item = Item("x", 41)
+    let b Item = a.move
+    return a.code + b.code
+}

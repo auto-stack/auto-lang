@@ -1,0 +1,7 @@
+type Inner { value int }
+type Outer { inner Inner; extra int }
+fn main() int {
+    var p Outer = Outer(Inner(3), 2)
+    p.inner.value = 7
+    return p.inner.value + p.extra
+}

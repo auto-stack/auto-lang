@@ -1,0 +1,8 @@
+fn bad() fn(int) int {
+    let s Str = "local"
+    return (n int) => { return s.len() + n }
+}
+fn main() int {
+    let f = bad()
+    return f(37)
+}

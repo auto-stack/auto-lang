@@ -1,0 +1,7 @@
+fn main() int {
+    var xs = List<int>.new()
+    if xs.len() != 0 { return 1 }
+    xs.push(42)
+    xs.clear()
+    return xs.len()
+}

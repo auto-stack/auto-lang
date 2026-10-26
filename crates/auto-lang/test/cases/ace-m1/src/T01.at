@@ -1,0 +1,4 @@
+fn main() int {
+    let s str = "A中😀"
+    return s.len() * 10 + s.len_bytes()
+}

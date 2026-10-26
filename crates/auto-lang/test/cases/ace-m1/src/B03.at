@@ -1,0 +1,4 @@
+fn main() int {
+    if !(3 >= 4) && 4 <= 4 && 3 != 4 && 3 == 3 { return 42 }
+    return 1
+}

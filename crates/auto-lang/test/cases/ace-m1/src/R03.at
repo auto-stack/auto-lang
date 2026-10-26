@@ -1,0 +1,5 @@
+type Pair { left int; right int }
+fn main() int {
+    let p Pair = Pair { right: 3, left: 2 }
+    return p.left * 10 + p.right
+}

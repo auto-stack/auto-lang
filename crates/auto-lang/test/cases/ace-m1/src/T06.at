@@ -1,0 +1,5 @@
+fn bad() str {
+    let s Str = "temporary"
+    return s.to(str)
+}
+fn main() int { return bad().len() }

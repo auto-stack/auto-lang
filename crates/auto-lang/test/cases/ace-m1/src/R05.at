@@ -1,0 +1,7 @@
+type Item { name Str; code int }
+fn relay(move x Item) Item { return x.move }
+fn main() int {
+    let a Item = Item("x", 41)
+    let b Item = relay(a.move)
+    return b.code + b.name.len()
+}

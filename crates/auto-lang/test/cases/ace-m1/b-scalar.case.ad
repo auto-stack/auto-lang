@@ -1,0 +1,217 @@
+# PLAN-852 ace-m1 scalar value cases — the B01..B12 subset that is green
+# on ac-native (mn exit), av (exit) and autovm (legacy-display result)
+# with the SAME frozen oracle (T-02 observational evidence). B08/B11 are
+# NOT here: the legacy engine computes 10/-7 against the frozen oracle 7
+# (shadowing / named-arg binding differences) — difference rows in
+# binding.tsv. a2r-snapshot checks and oracle/ goldens land with T-03.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b01"
+  tags: ["ace-m1", "four-path", "scalar"]
+  links: ["PLAN-852"]
+  source: { file: "src/B01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 14 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 14 } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "14" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b02"
+  tags: ["ace-m1", "four-path", "scalar"]
+  links: ["PLAN-852"]
+  source: { file: "src/B02.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: -21 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: -21 } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "-21" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b03"
+  tags: ["ace-m1", "four-path", "scalar"]
+  links: ["PLAN-852"]
+  source: { file: "src/B03.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b04"
+  tags: ["ace-m1", "four-path", "scalar"]
+  links: ["PLAN-852"]
+  source: { file: "src/B04.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b05"
+  tags: ["ace-m1", "four-path", "scalar"]
+  links: ["PLAN-852"]
+  source: { file: "src/B05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b06"
+  tags: ["ace-m1", "four-path", "scalar"]
+  links: ["PLAN-852"]
+  source: { file: "src/B06.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 0 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 0 } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "0" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b07"
+  tags: ["ace-m1", "four-path", "scalar"]
+  links: ["PLAN-852"]
+  source: { file: "src/B07.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 30 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 30 } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "30" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b09"
+  tags: ["ace-m1", "four-path", "scalar"]
+  links: ["PLAN-852"]
+  source: { file: "src/B09.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 120 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 120 } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "120" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b10"
+  tags: ["ace-m1", "four-path", "scalar"]
+  links: ["PLAN-852"]
+  source: { file: "src/B10.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "42" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b12"
+  tags: ["ace-m1", "four-path", "scalar"]
+  links: ["PLAN-852"]
+  source: { file: "src/B12.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: -2 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: -2 } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "-2" } } },
+  ]
+}
+```
+

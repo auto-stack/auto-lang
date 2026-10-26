@@ -1,0 +1,12 @@
+type Item { name Str; code int }
+enum Token {
+    Data(Item)
+    End
+}
+fn main() int {
+    let t = Token.Data(Item("hello", 37))
+    is t {
+        Token.Data(v) -> { return v.name.len() + v.code }
+        Token.End -> { return 1 }
+    }
+}

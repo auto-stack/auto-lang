@@ -1,0 +1,11 @@
+enum Token {
+    Number(int)
+    End
+}
+fn main() int {
+    let t = Token.Number(42)
+    is t {
+        Token.Number(v) -> { return v }
+        Token.End -> { return 1 }
+    }
+}

@@ -1,0 +1,1 @@
+fn main() int { let c char = '\u{D800}'; return 0 }

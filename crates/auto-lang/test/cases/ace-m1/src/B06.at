@@ -1,0 +1,5 @@
+fn main() int {
+    var total int = 0
+    for false { total = total + 1 }
+    return total
+}

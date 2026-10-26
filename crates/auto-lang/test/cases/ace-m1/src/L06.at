@@ -1,0 +1,5 @@
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(42)
+    return xs.get(1)
+}

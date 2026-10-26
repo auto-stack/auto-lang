@@ -1,0 +1,15 @@
+# PLAN-852 ace-m1 BASE suite — the evidence-green subset of the M1 corpus
+# (T-02). Every check here is green on the current tree by real execution.
+# The FULL M1 denominator (with skip-marked gap rows) is assembled by T-06
+# on top of binding.tsv; this suite never silently absorbs a gap. a2r
+# emit-snapshot checks for value cases join in T-03 with reviewed goldens.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-base", include: [
+  "b-scalar.case.ad",
+  "b-traps.case.ad",
+  "b-diags.case.ad",
+  "legacy-composite.case.ad",
+  "legacy-negative.case.ad",
+] }
+```

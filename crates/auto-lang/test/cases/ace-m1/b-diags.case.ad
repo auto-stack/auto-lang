@@ -1,0 +1,83 @@
+# PLAN-852 ace-m1 scalar diagnostic cases, rejected by AC (mn) and AV
+# through their typed frontend channels. B16 is also rejected by AutoVM
+# (typed auto_link_E0401). B17/B18/B19: legacy accepts or rejects with
+# an untyped message (B18 classifies infra) — difference rows, no green.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b16"
+  tags: ["ace-m1", "diagnostic"]
+  links: ["PLAN-852"]
+  source: { file: "src/B16.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "mn.unsupported.frontend" } } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "source.undefined" } } },
+    { id: "autovm", adapter: "avm", action: "run",
+      expect: { completion: { stage: "type", code: "auto_link_E0401" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b17"
+  tags: ["ace-m1", "diagnostic"]
+  links: ["PLAN-852"]
+  source: { file: "src/B17.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "mn.unsupported.frontend" } } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "source.type-mismatch" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b18"
+  tags: ["ace-m1", "diagnostic"]
+  links: ["PLAN-852"]
+  source: { file: "src/B18.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "mn.unsupported.frontend" } } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "verify.immutable-write" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.b19"
+  tags: ["ace-m1", "diagnostic"]
+  links: ["PLAN-852"]
+  source: { file: "src/B19.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "mn.unsupported.frontend" } } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "verify.no-return-path" } } },
+  ]
+}
+```
+

@@ -1,0 +1,12 @@
+fn even(n int) bool {
+    if n == 0 { return true }
+    return odd(n - 1)
+}
+fn odd(n int) bool {
+    if n == 0 { return false }
+    return even(n - 1)
+}
+fn main() int {
+    if even(6) { return 42 }
+    return 1
+}

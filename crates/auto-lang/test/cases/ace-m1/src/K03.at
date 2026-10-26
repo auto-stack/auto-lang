@@ -1,0 +1,5 @@
+fn main() int {
+    let base int = 40
+    let f = (n int) => { return base + n }
+    return f(2)
+}

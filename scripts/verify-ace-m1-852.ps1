@@ -92,6 +92,23 @@ switch ($Scope) {
             $checked++
         }
 
+        # 2b. formal corpus sources are byte-identical to the design package
+        #     (hash equality against the same frozen identity).
+        $formalSrc = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/src'
+        if (Test-Path $formalSrc) {
+            foreach ($file in Get-ChildItem $formalSrc -Filter '*.at') {
+                $row = $design.cases | Where-Object { $_.source -eq "src/$($file.Name)" }
+                if (-not $row) { Fail "formal corpus file not in cases.json: $($file.Name)" }
+                $h = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
+                if ($h -ne $row.source_sha256) { Fail "formal corpus source drifted: $($file.Name)" }
+            }
+            if ((Get-ChildItem $formalSrc -Filter '*.at').Count -ne $design.cases.Count) {
+                Fail "formal corpus src count mismatch vs cases.json ($($design.cases.Count))"
+            }
+        } else {
+            Fail "formal corpus src dir missing: $formalSrc"
+        }
+
         # 3. scenario coverage: every SCENARIOS.md group row is bound.
         $scenarioRows = $rows | Where-Object ns -eq 'scenario'
         foreach ($gid in @('D01','D02','D03','D04','D05','D06','D07','D08','D09',
@@ -133,9 +150,36 @@ switch ($Scope) {
     }
 
     'source' {
-        if (-not $OutDir) { Write-Host "usage: -Scope source requires -OutDir" -ForegroundColor Red; exit 2 }
-        Write-Host "verify-ace-m1-852 [source]: FAIL — scope owned by T-02, not implemented yet" -ForegroundColor Red
-        exit 3
+        if (-not $OutDir) { Write-Host "usage: -Scope source requires -OutDir (scratch)" -ForegroundColor Red; exit 2 }
+        $bin = if ($env:AUTO_CASE_BIN) { $env:AUTO_CASE_BIN } else {
+            # External tools write progress to stderr; PS5.1 + Stop turns that
+            # into a terminating error — relax around the call, judge by exit code.
+            $ErrorActionPreference = 'Continue'
+            & cargo @('build', '-p', 'auto-lang', '--features', 'test-cases', '--bin', 'auto-case', '--quiet') 2>$null
+            $code = $LASTEXITCODE
+            $ErrorActionPreference = 'Stop'
+            if ($code -ne 0) { Fail "auto-case build failed (exit $code)" }
+            Join-Path $RepoRoot 'target/debug/auto-case.exe'
+        }
+        $suite = Join-Path $RepoRoot 'crates/auto-lang/test/cases/ace-m1/ace-m1-base.suite.ad'
+        $report = Join-Path $OutDir 'ace-m1-base-report.json'
+        $ErrorActionPreference = 'Continue'
+        & $bin @('run', '--suite', $suite, '--out', $OutDir, '--format', 'console', '--json-out', $report) *> $null
+        $code = $LASTEXITCODE
+        $ErrorActionPreference = 'Stop'
+        if ($code -ne 0) { Fail "base suite gate exit $code (expected 0)" }
+        $r = Get-Content $report -Raw | ConvertFrom-Json
+        $nonPass = @($r.results | Where-Object status -ne 'PASS')
+        if ($nonPass.Count -gt 0) {
+            $first = $nonPass[0]
+            Fail ("base suite has {0} non-PASS check(s); first: {1}:{2} {3}" -f $nonPass.Count, $first.case, $first.check, $first.status)
+        }
+        if ($r.results.Count -lt 67) { Fail "base suite check count $($r.results.Count) < 67 (checks were dropped)" }
+        if ($r.coverage_gaps.Count -gt 0) { Fail "coverage gaps: $($r.coverage_gaps -join ', ')" }
+        Write-Host "verify-ace-m1-852 [source]: PASS — base suite $($r.results.Count)/$($r.results.Count) checks green" `
+            "(ac-native/av/autovm + legacy negatives). a2r snapshot/certification axes are separate" `
+            "scopes (snapshot/certify); M1 completeness is NOT implied."
+        exit 0
     }
 
     'snapshot' {

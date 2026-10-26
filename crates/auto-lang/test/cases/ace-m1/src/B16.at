@@ -1,0 +1,4 @@
+fn main() int {
+    if false { return missing() }
+    return 42
+}
