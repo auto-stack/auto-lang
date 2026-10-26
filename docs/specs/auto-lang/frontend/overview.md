@@ -115,7 +115,7 @@ execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
 - `crates/auto-lang-core/src/dialect.rs:Dialect`、`parser.rs:Parser::parse_domain`
 - `crates/auto-lang-core/src/parser_bridge.rs:ParserBridge`（中立 ParseContext/
   DomainParseContext 实现）、`dialect.rs:DialectPriority`
-- auto-ui 仓 `crates/auto-ui-dialect/src/{grammar,model,codec}.rs`
+- auto-ui 仓 `crates/auto-ui-dialect/src/{grammar,model,validation,codec}.rs`
 - `crates/auto-lang/src/use_scanner.rs:scan_use_statements`、`use_scanner.rs:UseStatement`
 - `crates/auto-lang/src/resolver.rs:ModuleResolver`、`resolver.rs:FilesystemResolver`
 - 一键入口：`crates/auto-lang/src/lib.rs:parse`（`parse(code) -> AutoResult<Code>`；

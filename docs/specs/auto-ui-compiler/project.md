@@ -25,10 +25,12 @@
 
 ## UI owned AST 与显式领域组合（PLAN-841）
 
-`parse_ui` 经 `Parser::parse_domain(&UiDialect)` 取得 `UiCode`，校验和
-lowering 后才进入 aura 提取与 vue/jet/ark/rust 四生成器。生成器不再匹配
-Core `Stmt` UI 兼容臂；旧 `assemble_ui_grammar` 空桩与 `UiGrammarSource`
-登记已删除。`ui`/`ui-headless` 空 feature 仅保留原编译面开关。
+`parse_ui` 只经 `Parser::parse_domain(&UiDialect)` 取得原始 `UiCode`；
+`parse_validated_ui` 与 `lower_ui` 共用 dialect 的 `validate_ui`。Rust/Vue
+公开转译、文件生成、组件包和跨文件模块在实际 aura 提取、生成或写盘前
+完成校验/lowering；四生成器不再匹配 Core `Stmt` UI 兼容臂。旧
+`assemble_ui_grammar` 空桩与 `UiGrammarSource` 登记已删除。
+`ui`/`ui-headless` 空 feature 仅保留原编译面开关。
 
 `UI_AST_SCHEMA_VERSION` 与生成器指纹共同组成缓存身份；旧 schema 缓存
 失效并重建。compiler doctest 直接使用 `auto_ui_compiler` 当前 crate

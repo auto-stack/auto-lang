@@ -1,7 +1,7 @@
 # ui-domain-model
 
 > **Status**: active（PLAN-841 SD-05）
-> 路径：auto-ui 仓 `crates/auto-ui-dialect/src/{ast,model,codec}.rs`
+> 路径：auto-ui 仓 `crates/auto-ui-dialect/src/{ast,model,validation,codec}.rs`
 > 关联：[auto-ui-dialect](../auto-ui-dialect/project.md)、[auto-parser-api](../auto-parser-api/project.md)
 
 ## 所有权与数据流

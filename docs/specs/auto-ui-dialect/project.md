@@ -32,8 +32,13 @@ Core；on-handler 无论成功或错误都恢复 on 旗标并退出参数 scope�
 
 ## codec、投影与寿命
 
+- `validate_ui` 在本 crate 单一定义重复 widget/store/model/message 与
+  payload 形状校验；compiler lowering、生产入口和 codec decode 共用，
+  未准入数据在生成、执行或文件输出前具名拒绝。
 - `UI_AST_SCHEMA_VERSION` 信封同时校验 domain/schema/tag；未知 domain、
   旧版本与坏 tag 在 decode/compile 前具名拒绝，不把旧字节当新模型。
+  decode 使用 `serde_stacker` 扩展递归工作栈，不以 serde_json 默认 128
+  层限制截断 parser 已支持的合法嵌套视图，也不另设任意深度上限。
 - 缓存身份包含生成器指纹与 AST schema；旧缓存失效并重新生成。真实解析
   的 span、源行、字段与跨文件模块 owner 经 roundtrip 保持。
 - `UiAstVisitor` 递归覆盖 UI/View/Core 节点；Clone/解码对象随 `UiCode`

@@ -31,7 +31,10 @@ fn ui_golden() -> String {
     ];
     let mut selected = String::new();
     for section in golden.split("### ").skip(1) {
-        if labels.iter().any(|label| section.starts_with(&format!("{label}\n"))) {
+        if labels
+            .iter()
+            .any(|label| section.starts_with(&format!("{label}\n")))
+        {
             selected.push_str("### ");
             selected.push_str(section);
         }

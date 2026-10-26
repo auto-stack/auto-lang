@@ -3,12 +3,11 @@
 pub use auto_lang_core::{
     block_on_autovm_local, bootstrap_lib_source, execute_autovm,
     execute_autovm_with_deadline_and_input, execute_autovm_with_path, extract_autovm_result,
-    extract_undefined_symbol, find_project_root, find_use_symbol_span,
-    get_error_limit, get_global_runtime, init_py_ffi, init_rust_ffi, is_vm_debug,
-    is_vm_hot_trace, is_vm_trace_ops, join_execution, p510_audit, pac_declares_dep,
-    pac_dep_version_violation, pac_workspace_member_dir, parse, parse_preserve_error,
-    pool_log_all, pool_log_seq, pool_trace_idx, read_auto_lib, resolve_module_path,
-    run_abt, run_with_capture_and_bytecode,
+    extract_undefined_symbol, find_project_root, find_use_symbol_span, get_error_limit,
+    get_global_runtime, init_py_ffi, init_rust_ffi, is_vm_debug, is_vm_hot_trace, is_vm_trace_ops,
+    join_execution, p510_audit, pac_declares_dep, pac_dep_version_violation,
+    pac_workspace_member_dir, parse, parse_preserve_error, pool_log_all, pool_log_seq,
+    pool_trace_idx, read_auto_lib, resolve_module_path, run_abt, run_with_capture_and_bytecode,
     run_with_capture_and_bytecode_with_deadline, run_with_capture_and_bytecode_with_input,
     run_with_capture_and_bytecode_with_meta, run_with_capture_and_path_and_bytecode,
     run_with_capture_and_path_and_bytecode_with_deadline,
@@ -38,8 +37,7 @@ pub use auto_lang_core::{take_use_diags, use_diag};
 // PLAN-814 T-06：#[test] 执行入口族下沉 SDK（纯 Core 面；宿主装配经 SDK
 // 钩子分发器），旧 crate 根路径经再导出保持。
 pub use auto_lang_core::{
-    test_code, test_code_with_deadline_and_input, test_code_with_path_deadline_and_input,
-    test_file,
+    test_code, test_code_with_deadline_and_input, test_code_with_path_deadline_and_input, test_file,
 };
 
 pub use auto_lang_core::api;
@@ -80,7 +78,6 @@ pub use auto_lang_core::autovm_client; // Plan 269: AutoVM client for req comman
 pub use auto_lang_core::autovm_daemon; // Plan 269: AutoVM daemon (serve/req)
 pub use auto_lang_core::autovm_persistent; // Plan 068 Phase 9.6: Persistent AutoVM REPL
 pub use auto_lang_core::back_prefix; // PLAN-037: launch 期作用域化模块源前缀化 overlay（桌面后端供给——un-gated，模块读点在本文核心装载链）
-pub use auto_ui_runtime::back_proxy; // PLAN-658: 单进程多后端宿主（画廊内嵌 demo 后端 session）；PLAN-814 T-04 随 UI 运行域迁 auto-ui-runtime
 pub use auto_lang_core::compile;
 pub use auto_lang_core::config;
 pub use auto_lang_core::database;
@@ -93,10 +90,12 @@ pub use auto_lang_core::http_service_observability; // PLAN-736: 服务观测（
 pub use auto_lang_core::http_upload_service; // PLAN-730: 服务端上传宿主 executor（VM/生成 Rust 共用；无 axum 类型）
 pub use auto_lang_core::mcp; // Plan 265: MCP server for AI agent interaction
 pub use auto_lang_core::module_cache;
-pub use auto_lang_core::stdlib_assembly; // PLAN-738: stdlib 装配契约（inventory/manifest/provider 目录纯模型层）
-                                         // Plan 096 Phase 0: Scenario-based compilation
-                                         // Plan 768: AutoDown TestCase adapters (avm/run, a2r/emit) + runner
-                                         // orchestration; depends on the dependency-light `auto-test-case` core.
+pub use auto_lang_core::stdlib_assembly;
+pub use auto_ui_runtime::back_proxy; // PLAN-658: 单进程多后端宿主（画廊内嵌 demo 后端 session）；PLAN-814 T-04 随 UI 运行域迁 auto-ui-runtime
+                                     // PLAN-738: stdlib 装配契约（inventory/manifest/provider 目录纯模型层）
+                                     // Plan 096 Phase 0: Scenario-based compilation
+                                     // Plan 768: AutoDown TestCase adapters (avm/run, a2r/emit) + runner
+                                     // orchestration; depends on the dependency-light `auto-test-case` core.
 pub use auto_lang_core::session;
 #[cfg(feature = "test-cases")]
 #[cfg(feature = "test-cases")]
@@ -460,7 +459,6 @@ pub fn run_with_session_and_scope(
     run_with_session(session, code)
 }
 
-
 pub fn run_file(path: &str) -> AutoResult<String> {
     // PLAN-816 T-05：单源在 SDK（auto_lang_core::script_entry）；本包为兼容转发。
     auto_lang_core::script_entry::run_file(path)
@@ -697,7 +695,8 @@ pub fn ui_build(
     let ast = parser
         .parse_domain(&auto_ui_dialect::UiDialect)
         .map(auto_ui_dialect::UiCode)
-        .map_err(|e| format!("Parse error: {:?}", e))?;
+        .and_then(|ui| auto_ui_compiler::ui_ast::lower_ui(&ui).map(|lowered| lowered.ui))
+        .map_err(|e| format!("Parse/validation error: {:?}", e))?;
 
     // Extract AURA widgets from AST
     crate::aura::extract::clear_view_fragments();
@@ -829,7 +828,8 @@ pub fn ui_build_shadcn(path: &str, output: Option<&str>) -> AutoResult<String> {
     let ast = parser
         .parse_domain(&auto_ui_dialect::UiDialect)
         .map(auto_ui_dialect::UiCode)
-        .map_err(|e| format!("Parse error: {:?}", e))?;
+        .and_then(|ui| auto_ui_compiler::ui_ast::lower_ui(&ui).map(|lowered| lowered.ui))
+        .map_err(|e| format!("Parse/validation error: {:?}", e))?;
 
     // Extract AURA widgets from AST
     crate::aura::extract::clear_view_fragments();
@@ -1399,10 +1399,10 @@ pub use ui::iced::{ComponentIced, IntoIcedElement};
 // PLAN-814 T-04：UI 动态构建管线兼容再导出（原 lib.rs 根项；实装随迁
 // auto-ui-runtime::dynamic_build——run 族漏斗/CLI/examples/测试树旧路径保持）。
 #[cfg(feature = "ui-iced")]
-pub use auto_ui_runtime::{build_dynamic_component, has_ui_keywords, run_file_dynamic_ui};
-#[cfg(feature = "ui-iced")]
 pub use auto_ui_runtime::run_file_dynamic_ui_with_scenario;
 pub use auto_ui_runtime::ui_module_parse_failures;
+#[cfg(feature = "ui-iced")]
+pub use auto_ui_runtime::{build_dynamic_component, has_ui_keywords, run_file_dynamic_ui};
 // Plan 446 批一 (C1-2) parse 错误定位换算回归：随 positioned_parse_errors
 // 实装迁 auto-ui-runtime::dynamic_build（PLAN-814 T-04）。
 
@@ -1472,7 +1472,6 @@ mod back_proxy_tests;
 #[cfg(all(test, feature = "test-http-e2e"))]
 #[path = "tests/plan707_stream_e2e_tests.rs"]
 mod plan707_stream_e2e_tests;
-
 
 // ---- PLAN-814：run 入口族的上层装配包装（原三处隐式扇入收敛点） ----
 // ui/ui-dialog 构建下，run 管线先装兼容宿主能力（if-absent 补缺，不覆盖

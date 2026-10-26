@@ -62,7 +62,9 @@
   `not(any(ui, ui-dialog))`。UI 文法由调用方经 `parse_domain` 显式组合，
   没有进程级注册表或 inventory 兜底。
 - dynamic_build/dynamic/vm_bridge/aura_view_builder/renderer 消费校验与
-  lowering 后的 `UiCode`，不匹配 Core `Stmt` UI 兼容臂。外部组件名由
+  lowering 后的 `UiCode`，不匹配 Core `Stmt` UI 兼容臂。根模块与导入
+  模块均在 VM 构造前校验；`new_with_children` 和 `new_from_decls` 共用
+  模块错误 drain-on-check，不能由 decl 路径绕过失败。外部组件名由
   UI-owned `register_imported_components` 提供；Aura 的旧 import 扫描
   已删除，构造函数的末参仅为交 842 的源码形兼容，不再保存或读取。
 

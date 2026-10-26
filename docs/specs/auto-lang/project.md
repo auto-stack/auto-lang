@@ -74,6 +74,8 @@ autodown/ui-headless/code-editor 等）在此转发。
 
 **PLAN-841 领域组合**：UI 由调用方经 `Parser::parse_domain(&UiDialect)`
 显式组合；本包不再提交 `UiGrammarSource` 或调用 `set_ui_grammar`。
+`ui_build` 的 rust/vue/jet 与 `ui_build_shadcn` 门面在 aura 提取、生成及
+写盘前调用同一 `lower_ui`，拒绝重复声明等未准入领域数据。
 `install_ui_host_capabilities()` 只装配 runtime provider 与 SDK 宿主钩子，
 纯 SDK 的无 UI 闭包不受影响。
 
