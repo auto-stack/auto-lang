@@ -15,7 +15,7 @@ supersedes_spec_components:
 new_spec_components: []
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 8
+current_step: 9
 total_steps: 9
 ---
 
@@ -56,7 +56,7 @@ M1调查SHA见[source-observation](../attachments/853/planning/source-observatio
 
 ### 5.1 前置与可执行入口
 
-唯一树`D:/autostack/.wt/lang-855/auto-lang`、`plan-855-dev`，基于854实际交付图形提交，最终只合`autographics-dev`。2026-10-27已核853/854 archived/delivered9/9，基面为523d27b863dbe306c89af0ea546334225a29f8e9；T-01..08完成，源码/知识已落地；当前只余T-09守护清理。853工具/测量与854生成身份已核，无生产迁入/新API/预算变化。
+唯一树`D:/autostack/.wt/lang-855/auto-lang`、`plan-855-dev`，基于854实际交付图形提交，最终只合`autographics-dev`。2026-10-27已核853/854 archived/delivered9/9，基面为523d27b863dbe306c89af0ea546334225a29f8e9；T-01..09完成，源码/知识/归档/守护清理已落地。853工具/测量与854生成身份已核，无生产迁入/新API/预算变化。
 
 写面限`experimental/autographics-auto-driver/src/authoring/{host.rs,play.rs,mod.rs}`、`src/bin/autographics-authoring.rs`及必要driver-local新子模块、定向测试、当前身份/consumer入口/README。`session/document/storage/assets/interaction/spatial`原语义不改；需要改其所有权/事务合同则回new。
 
@@ -133,7 +133,7 @@ T-02写`../attachments/855/work/responsibility-map.md`，按真实结构列：�
 | T-06 | review | T-05 | 独立最终review，核状态/owner/默认及probe路径；merge门pending | AC-06 | [x] |
 | T-07 | merge | T-06 pass | 冻结两端完整/原native-owner-content/新面，核不可变产物与选中ID/复用 | AC-07 | [x] |
 | T-08 | merge | T-07 | 源码合autographics-dev；main沉淀SD/overview/plans/ADR/ledger/索引并归档 | AC-08 | [x] |
-| T-09 | merge | T-08 | guard clean后清树/临时分支、实际9/9；总结S0结果与残余风险，供S1/S2细化，不打M2标签 | AC-08 | [ ] |
+| T-09 | merge | T-08 | guard clean后清树/临时分支、实际9/9；总结S0结果与残余风险，供S1/S2细化，不打M2标签 | AC-08 | [x] |
 
 ## 9. 复审记录
 
@@ -183,3 +183,5 @@ T-02写`../attachments/855/work/responsibility-map.md`，按真实结构列：�
 ## spec-sync 回写记录
 
 SD-01→docs/specs/auto-graphics/authoring-session.md；SD-02→scene-play-session.md；SD-03→viewport-interaction.md；SD-04→auto-source-driver.md；module overview/plans与GOAL-008同步。source455/SDK681与current入口、实际采样中心的等价内容判定已沉淀，不改业务规则。spec-index再生无语义差异，main他会话INDEX未改。账本八条为canonical派生摘要/独立review/测试/合入历史，未复制Plan章节；guarded offline projection与字节备份/未触条目守护有收据。仅S0准备完成；新M2能力与生产I2/I3仍pending。
+
+2026-10-27 cleaned最终闭环：stage=merge；plan_id=PLAN-855；plan_revision=1；outcome=pass；completion_kind=delivered；source_delivery=05fdc81c546aff735eefdb6c39fbc5fb35dc546a；canonical248eaf1be；ledger29688a77d；archive b5f5047fe。T-09/AC-08完成，archived/delivered9/9。fresh wt-guard clean后实际移除同树、已合入的两临时分支及空组，cleaned.json.txt绑定实际状态；SDK/target/source恢复与debug产物仓外保留。197引用与状态/来源/账本实际检查后才清理，不宣称生产部署或M2新能力完成。批量到期检查另行执行，不把实验门替代全局批量义务。

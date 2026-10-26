@@ -19,7 +19,12 @@ Review raw JSON/log files are retained with committed .json.txt/.log.txt transpo
 - prepared: R3 baseline/dependencies/frozen delta and all gate inputs verified. Git wt-guard reports clean before landing. Actual gate audit: validated.json.txt; immutable payload/raw source bindings: evidence-index.json.txt.
 - landed: source523d27b86 ->05fdc81c5 exact ff-only on autographics-dev. Canonical248eaf1be and ledger29688a77d ff-only on master; source absent from master. No rebase/hash mapping needed.
 - ledger_refreshed: guarded offline projection, no store writer reachable; version97 ->98, eight targeted IDs, 1258 unrelated raw items unchanged. Backup/schema/readback guards pass; no store success claimed.
-- archive preparation: delivered8/9; actual archive commit/reference check before cleanup.
-- cleaned: pending.
+- archived: docs/plans/archive/855-autographics-authoring-responsibility-split.md delivered8/9 committed in b5f5047fe; actual197 references/status/source/ledger check passed before cleanup.
+- cleaned: fresh wt-guard clean; authoritative worktree, merged temporary branches and empty group actually removed. Runtime/SDK/target and immutable native payloads preserved. Final actual task/count check in cleaned-check.json.txt.
 
 No root Cargo tier used as a per-plan experimental gate; independent due-triggered batch follows cleanup. No production deployment, new M2 feature, Grid/navigation or production I2/I3 completion claimed. S0 completion is distinct from M2 delivery.
+
+- artifacts: artifact-observations.json.txt verifies retained debug payloads/recovery and explicit non-consumption by production backend/daemon/web; no deployment.
+- batch: due check/complete batch pending; separate from already-passed experimental merge gates.
+
+Source/canonical/ledger/archive/cleanup delivery outcome: pass,9/9. Batch obligation is reported separately and must not be silently skipped.
