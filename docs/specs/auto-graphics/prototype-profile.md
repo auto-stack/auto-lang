@@ -222,3 +222,9 @@ Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-
 The finite authoring profile includes explicit behavior/3/profile9 segment queries and Beam2D/Sight3D alongside unchanged old profiles. AABB proxies are not exact model picking, physics, sweep or camera unprojection. All original128-node/32-credit/CPU/owner/source/input limits and production I2/I3 exclusions remain; see [segment profile](segment-query-profile.md).
 
 Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-nearest-hit-interactions.md), [independent affected final review](../../plans/attachments/848/review-r4-final/review.md), [frozen merge receipt](../../plans/attachments/848/merge-r2/receipt.md). Source: autographics-dev; production I2/I3 remain pending.
+
+## Swept-query extension (PLAN-849)
+
+The finite experiment now includes behavior/4/profile10 swept fixed world-axis AABB queries and Dash2D/Dash3D. Query does not move nodes; clearance/stop feedback belongs to user Auto, not implicit engine skin. Original limits/resources/older profiles remain. No rotational/OBB/dynamic collision, slide/penetration solver or production migration is claimed.
+
+Provenance: [PLAN-849](../../plans/archive/849-autographics-swept-aabb-and-stop-before-impact.md), [independent final review](../../plans/attachments/849/review-r1-final/review.md), [frozen merge receipt](../../plans/attachments/849/merge-r1/receipt.md). Graphics source: autographics-dev; production I2/I3 remain pending.

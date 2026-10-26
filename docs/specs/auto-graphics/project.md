@@ -126,3 +126,9 @@ Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-
 The experimental authoring consumer includes [finite segment queries](segment-query-profile.md), explicit behavior/3/profile9 and portable Beam2D/Sight3D user projects. Old v1/v2 profiles and the original dual-game denominator remain. Source lands only autographics-dev; I2/I3/ACE/production integration is still pending.
 
 Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-nearest-hit-interactions.md), [independent affected final review](../../plans/attachments/848/review-r4-final/review.md), [frozen merge receipt](../../plans/attachments/848/merge-r2/receipt.md). Source: autographics-dev; production I2/I3 remain pending.
+
+## Swept-query extension (PLAN-849)
+
+PLAN-849 adds explicit finite swept-AABB behavior/4, typed shared cast/sweep result identity, unchanged32credit/128node/CPU contract and portable Auto dash-stop examples. Source remains autographics-dev only; [sweep profile](swept-aabb-profile.md) is the current contract. This is not a complete physics/character engine or production integration.
+
+Provenance: [PLAN-849](../../plans/archive/849-autographics-swept-aabb-and-stop-before-impact.md), [independent final review](../../plans/attachments/849/review-r1-final/review.md), [frozen merge receipt](../../plans/attachments/849/merge-r1/receipt.md). Graphics source: autographics-dev; production I2/I3 remain pending.

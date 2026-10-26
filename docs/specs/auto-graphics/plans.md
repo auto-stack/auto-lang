@@ -28,3 +28,5 @@ Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-
 | 846 | 空间查询与用户触发交互 | delivered | [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md) | 显式v2有限AABB/点/对查询、Auto触发双示例；SDK非有限编码纠正，生产I2/I3 pending |
 
 | 848 | Finite segment queries and nearest-hit interaction | delivered | [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-nearest-hit-interactions.md) | Explicit v3/profile9,128-node/32-credit finite Auto slab, bounded result token and OS/GPU/portable examples; I2/I3 pending |
+
+| 849 | Finite swept AABB and script-controlled stop | delivered | [PLAN-849](../../plans/archive/849-autographics-swept-aabb-and-stop-before-impact.md) | Explicit v4/profile10, fixed-volume Minkowski query/typed result, Dash2D/Dash3D/source relocation/owner/content; I2/I3 pending |

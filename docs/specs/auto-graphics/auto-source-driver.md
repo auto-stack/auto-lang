@@ -158,3 +158,9 @@ Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-
 Beam2D and Sight3D add finite world segment/AABB nearest-query examples, implemented by user Auto with versioned v3 sources, same-callback writes/queries and snapshot results. Same-binary source Update/Save/moved-root reopen changes behavior; real OS input and complete GLB top-pixel witnesses remain required. See [segment profile](segment-query-profile.md). SDK/AGP/three locks and production I2/I3/ACE boundaries are unchanged.
 
 Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-nearest-hit-interactions.md), [independent affected final review](../../plans/attachments/848/review-r4-final/review.md), [frozen merge receipt](../../plans/attachments/848/merge-r2/receipt.md). Source: autographics-dev; production I2/I3 remain pending.
+
+## Swept-query extension (PLAN-849)
+
+Dash2D/Dash3D add user-owned finite-volume sweep and explicit user clearance/stop policy under behavior/4. Native OS inputs, held-query fields, actual stop locations, all-mesh pixels, source Update/Save/SaveAs and relocated new-process reopens are verified. Same binary/changed source changes speed/clearance and stop gap. Original dual-game/Move-Patrol/Zone/Beam-Sight denominator and production I2/I3 boundaries remain.
+
+Provenance: [PLAN-849](../../plans/archive/849-autographics-swept-aabb-and-stop-before-impact.md), [independent final review](../../plans/attachments/849/review-r1-final/review.md), [frozen merge receipt](../../plans/attachments/849/merge-r1/receipt.md). Graphics source: autographics-dev; production I2/I3 remain pending.

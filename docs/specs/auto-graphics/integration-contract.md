@@ -234,3 +234,9 @@ This acceptance policy does not claim that the experimental graphics driver has 
 PLAN-848 delivers only the finite experimental world-segment/AABB user query profile and its two portable Auto examples on autographics-dev. It preserves128nodes/32credits/originalCPU, explicit versions and original geometry/owner/source/OS-GPU evidence. It does not complete production AutoUI/RQHost I2, Forge/distribution I3, ACE/HMR, triangle/OBB picking or physics/sweep/camera unprojection. Master receives canonical knowledge only.
 
 Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-nearest-hit-interactions.md), [independent affected final review](../../plans/attachments/848/review-r4-final/review.md), [frozen merge receipt](../../plans/attachments/848/merge-r2/receipt.md). Source: autographics-dev; production I2/I3 remain pending.
+
+## Swept-query extension (PLAN-849)
+
+PLAN-849 extends only the independent experimental driver with explicit Auto swept-AABB/profile10 and script-controlled stop/clearance projects. Original I1 game/graphics denominator and source/resource/owner/pixel controls remain; production AutoUI/RQHost I2, Forge/distribution I3, default UI/Schema/ACE/HMR and dynamic physics remain pending. Source lands only autographics-dev; master carries canonical knowledge.
+
+Provenance: [PLAN-849](../../plans/archive/849-autographics-swept-aabb-and-stop-before-impact.md), [independent final review](../../plans/attachments/849/review-r1-final/review.md), [frozen merge receipt](../../plans/attachments/849/merge-r1/receipt.md). Graphics source: autographics-dev; production I2/I3 remain pending.

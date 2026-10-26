@@ -8,7 +8,7 @@ engine SDK, multi-module package or production AutoUI/RQHost integration.
 ## Scene and source identity
 
 `autographics.scene/4` requires `behavior`: null or an object with exact `api`,
-`source` and `actors`. API is explicitly `autographics.behavior/1`, `/2` or `/3`. Source has
+`source` and `actors`. API is explicitly `autographics.behavior/1`, `/2`, `/3` or `/4`. Source has
 `format: auto-source`, a lowercase 64-hex SHA256 and positive `byte_length` at most
 256KiB. `actors.two_d` and `actors.three_d` are explicit nulls or existing,
 same-dimension leaf u64 IDs, including values above32bits. No group, missing,
@@ -117,3 +117,9 @@ Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-
 Scene4 accepts exact behavior/1,/2,/3 bindings. Same raw bytes may share an Arc, while admission/compiled credentials remain API-specific. Switching API is a real dirty/history transaction; failed admission preserves the prior source/binding. Default binding and temporary CLI/UI overrides, Save/SaveAs/Undo/Redo/Open and verified source closure retain their existing rules. Older readers reject unknown v3 explicitly.
 
 Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-nearest-hit-interactions.md), [independent affected final review](../../plans/attachments/848/review-r4-final/review.md), [frozen merge receipt](../../plans/attachments/848/merge-r2/receipt.md). Source: autographics-dev; production I2/I3 remain pending.
+
+## Swept-query extension (PLAN-849)
+
+Scene4 accepts exact /1,/2,/3,/4 APIs; older readers reject unknown /4. Raw source may share an Arc while admission/compiled credentials include API and managed identity. V4 selection is a real dirty/history transaction, preserving failed-update old state, Undo/Redo/Save/SaveAs/Open/Verify/new-root/epoch/source-provenance rules. Store only accepted source/binding/assets, never runtime result slots.
+
+Provenance: [PLAN-849](../../plans/archive/849-autographics-swept-aabb-and-stop-before-impact.md), [independent final review](../../plans/attachments/849/review-r1-final/review.md), [frozen merge receipt](../../plans/attachments/849/merge-r1/receipt.md). Graphics source: autographics-dev; production I2/I3 remain pending.

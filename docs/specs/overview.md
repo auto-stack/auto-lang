@@ -142,3 +142,5 @@ PLAN-845 adds [finite bound behavior projects](auto-graphics/behavior-project.md
 PLAN-846 adds the experimental [finite spatial-query profile](auto-graphics/spatial-query-profile.md), explicit v2 alongside v1, and a scoped upstream nonfinite value correction; production I2/I3 remain pending.
 
 PLAN-848 adds the experimental [finite segment-query profile](auto-graphics/segment-query-profile.md) on autographics-dev; master retains knowledge only, production I2/I3 remain pending.
+
+PLAN-849 adds experimental [finite swept-AABB queries](auto-graphics/swept-aabb-profile.md), explicit behavior/4 and portable Auto stop/clearance examples on autographics-dev. Original limits/denominator remain; production I2/I3 remain pending.

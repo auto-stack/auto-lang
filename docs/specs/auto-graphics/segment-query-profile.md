@@ -81,3 +81,9 @@ policy, action counts, pixel assertions and original phase deadlines remain.
 Production I2/I3/ACE integration and arbitrary-script heap quotas are separate.
 
 Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-nearest-hit-interactions.md), [independent affected final review](../../plans/attachments/848/review-r4-final/review.md), [frozen merge receipt](../../plans/attachments/848/merge-r2/receipt.md). Source: autographics-dev; production I2/I3 remain pending.
+
+## Swept-query extension (PLAN-849)
+
+Explicit v4 inherits this unchanged v3 segment geometry but shares its latest cast/sweep result slot and positive i32 sequence with [swept AABB](swept-aabb-profile.md). V4 getters check result kind and use InvalidQueryResult13; v3 retains its original cast-only identity, fees and InvalidResult13 name. V4 sweep16/cast8/getter1/AABB1 share32credits; AABB never overwrites a token.
+
+Provenance: [PLAN-849](../../plans/archive/849-autographics-swept-aabb-and-stop-before-impact.md), [independent final review](../../plans/attachments/849/review-r1-final/review.md), [frozen merge receipt](../../plans/attachments/849/merge-r1/receipt.md). Graphics source: autographics-dev; production I2/I3 remain pending.

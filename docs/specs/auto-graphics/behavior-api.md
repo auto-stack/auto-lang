@@ -135,3 +135,11 @@ Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-
 Explicit behavior/3/profile9 adds the finite segment cast/result table in [segment-query-profile](segment-query-profile.md). Select API v3 segment in Editing or --behavior main.at --behavior-api v3; bound defaults retain their selected API. V1/v2 managed hashes/reserved names remain unchanged. No keyword inference or automatic upgrade occurs.
 
 Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-nearest-hit-interactions.md), [independent affected final review](../../plans/attachments/848/review-r4-final/review.md), [frozen merge receipt](../../plans/attachments/848/merge-r2/receipt.md). Source: autographics-dev; production I2/I3 remain pending.
+
+## Swept-query extension (PLAN-849)
+
+Explicit behavior/4/profile10 adds ag_sweep_aabb plus hit/node/t/origin/normal/start_overlap getters; see [sweep profile](swept-aabb-profile.md). Choose API v4 sweep in Editing or --behavior main.at --behavior-api v4. Old v1..v3 managed hashes and legal ag_sweep_* user helpers remain unchanged; the new functions are reserved only in v4. Defaults remain explicit, no keyword/version inference, fallback or auto-upgrade.
+
+Provenance: [PLAN-849](../../plans/archive/849-autographics-swept-aabb-and-stop-before-impact.md), [independent final review](../../plans/attachments/849/review-r1-final/review.md), [frozen merge receipt](../../plans/attachments/849/merge-r1/receipt.md). Graphics source: autographics-dev; production I2/I3 remain pending.
+
+Malformed behavior CLI options fail with exit2 before inspect/run or native window creation; explicit `--behavior-api v4` is admitted.

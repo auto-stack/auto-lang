@@ -2,7 +2,7 @@
 
 PLAN-846 delivered finite experimental profile; source on autographics-dev.
 Behavior/2 explicitly selects UserSpatialV2/profile8, beside unchanged behavior/1
-and profile7. Scene4 structure is unchanged; Binding.api accepts exactly /1, /2 or /3. Unknown APIs fail, old readers reject /2 instead of falling back.
+and profile7. Scene4 structure is unchanged; Binding.api accepts exactly /1, /2, /3 or /4. Unknown APIs fail, old readers reject /2 instead of falling back.
 
 A Run binds accepted node order/stable IDs, dimensions, actual resource hashes,
 static scale/yaw/pitch, geometry algorithm aabb-TRyRxS-f32/1 and source/API/bridge/
@@ -51,3 +51,9 @@ Provenance: [PLAN-846](../../plans/archive/846-autographics-spatial-queries-and-
 Explicit v3 inherits the same Descriptor/geometry/instant-world AABB functions and adds [finite segment queries](segment-query-profile.md). V3 charges32 weighted credits (cast8/getter1/AABB1); v2 retains32 original AABB attempts. Shape availability and filtered-candidate/finite-geometry ordering are unchanged; no new geometry cache or per-frame rescan/upload is introduced.
 
 Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-nearest-hit-interactions.md), [independent affected final review](../../plans/attachments/848/review-r4-final/review.md), [frozen merge receipt](../../plans/attachments/848/merge-r2/receipt.md). Source: autographics-dev; production I2/I3 remain pending.
+
+## Swept-query extension (PLAN-849)
+
+Explicit v4/profile10 inherits these all-mesh static offsets/current-world AABB functions and adds [swept AABB](swept-aabb-profile.md). Scene4 accepts /4 without changing fields or older versions. Visible-only filters targets, not the moving actor, and alpha is independent. No new Descriptor/geometry cache, per-frame scan/upload/readback or local movement is hidden in a query.
+
+Provenance: [PLAN-849](../../plans/archive/849-autographics-swept-aabb-and-stop-before-impact.md), [independent final review](../../plans/attachments/849/review-r1-final/review.md), [frozen merge receipt](../../plans/attachments/849/merge-r1/receipt.md). Graphics source: autographics-dev; production I2/I3 remain pending.
