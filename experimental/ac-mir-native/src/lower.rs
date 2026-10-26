@@ -508,6 +508,15 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                         .to_string(),
                 )
             }
+            // PLAN-824 shared-core widening: the dynamic-profile Dyn
+            // instructions (av.dynamic/1) are likewise a controlled lower
+            // rejection — mn keeps its scalar ABI; no semantic widening,
+            // no silent fallback.
+            MirInstr::DynPack { .. } | MirInstr::DynIs { .. } | MirInstr::DynTake { .. } => {
+                return Err(
+                    "av.dynamic/1 dyn instructions are outside the mn scalar surface".to_string(),
+                )
+            }
         }
         Ok(())
     }

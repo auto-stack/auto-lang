@@ -264,6 +264,12 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
         }
         MirInstr::PlaceGet { dst, src } => format!("placeget {dst} {src}"),
         MirInstr::PlaceSet { place, value } => format!("placeset {place} {value}"),
+        // PLAN-824 shared-core widening: the dynamic-profile instructions
+        // render (pure formatting — a fingerprint must not panic on
+        // them); the lower surface rejects them below.
+        MirInstr::DynPack { dst, src } => format!("dynpack {dst} {src}"),
+        MirInstr::DynIs { dst, src, ty } => format!("dynis {dst} {src} t{ty}"),
+        MirInstr::DynTake { dst, src, ty } => format!("dyntake {dst} {src} t{ty}"),
     })
 }
 

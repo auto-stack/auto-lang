@@ -7,7 +7,7 @@
 [CmdletBinding()]
 param(
     [Parameter(ParameterSetName = 'Scope', Mandatory = $true)]
-    [ValidateSet("first-case", "semantics", "admission", "resources", "autodown", "acceptance")]
+    [ValidateSet("first-case", "semantics", "admission", "resources", "cache", "compatibility", "autodown", "acceptance")]
     [string]$Scope,
 
     [Parameter(ParameterSetName = 'Guard')]
@@ -115,6 +115,17 @@ $REQ = @{
         'av_dynamic_824_resources_cancel_is_its_own_state',
         'av_dynamic_824_resources_worker_memory_hard_gate_parent_sampled'
     )
+    'cache' = @(
+        'av_dynamic_824_cache_restore_identity_and_miss',
+        'av_dynamic_824_cache_portable_restore_identity_and_miss',
+        'av_dynamic_824_cache_good_envelope_bad_payload_rejected',
+        'av_dynamic_824_cache_portable_good_checksum_bad_structure_rejected',
+        'av_dynamic_824_cache_restore_payload_types_fp_mismatch_rejected',
+        'av_dynamic_824_cache_restore_payload_entry_identity_rejected',
+        'av_dynamic_824_cache_restore_payload_profile_rejected',
+        'av_dynamic_824_compat_wire_generation_isolation',
+        'av_dynamic_824_compat_layer_separation'
+    )
     'semantics' = @(
         'av_dynamic_824_semantics_pack_source_stays_readable',
         'av_dynamic_824_semantics_two_packs_two_dyns',
@@ -184,13 +195,47 @@ switch ($Scope) {
         # memory hard gate (V-06/V-07 axes).
         Run-Probe-Tests -Bin 'av_dynamic_824_resources' -Label 'resources' -RequiredIds $REQ['resources']
     }
+    'cache' {
+        # T-05: same-store restore identity (A23/A24), the R14/R15/R16
+        # identity bindings, tampered-payload refusals, wire-generation
+        # isolation and layer separation (V-08 axes).
+        Run-Probe-Tests -Bin 'av_dynamic_824_cache_compat' -Label 'cache' -RequiredIds $REQ['cache']
+    }
+    'compatibility' {
+        # V-09: the PRIOR profiles replay unchanged through their own
+        # frozen corpora (798/817/818/820/821/822); the dynamic wire is a
+        # new AVAD generation the old consumers reject by design.
+        Run-Probe-Tests -Bin 'av_owned_821_first_case' -Label 'compatibility: 821 first-case'
+        Run-Probe-Tests -Bin 'av_owned_821_cache_compat' -Label 'compatibility: 821 cache'
+        Run-Probe-Tests -Bin 'av_collections_822_first_case' -Label 'compatibility: 822 first-case'
+        Run-Lang-Tests -Filter 'av_owned_821' -Label 'compatibility: 821 corpus' -RequiredIds @(
+            'tests::av_owned_821_tests::av_owned_821_corpus_green',
+            'tests::av_owned_821_tests::av_owned_821_negative_oracle_fails',
+            'tests::av_owned_821_tests::av_owned_821_worker_faults_are_infra'
+        )
+        Run-Lang-Tests -Filter 'av_collections_822' -Label 'compatibility: 822 corpus' -RequiredIds @(
+            'tests::av_collections_822_tests::av_collections_822_corpus_green',
+            'tests::av_collections_822_tests::av_collections_822_negative_oracle_fails',
+            'tests::av_collections_822_tests::av_collections_822_worker_faults_are_infra'
+        )
+        Run-Lang-Tests -Filter 'ac_av_probe' -Label 'compatibility: 798/820 corpus'
+        Run-Lang-Tests -Filter 'cte_probe' -Label 'compatibility: 817 corpus'
+        Run-Lang-Tests -Filter 'ac_mn_probe' -Label 'compatibility: 818 corpus' -RequiredIds @(
+            'tests::ac_mn_probe_tests::ac_mn_probe_corpus_executes_green',
+            'tests::ac_mn_probe_tests::ac_mn_probe_negative_oracle_fails',
+            'tests::ac_mn_probe_tests::mir_native_adapter_bad_actual_oracles_are_red',
+            'tests::ac_mn_probe_tests::mir_native_adapter_diagnosed_rejection_faces',
+            'tests::ac_mn_probe_tests::mir_native_adapter_edit_source_materializes_and_judges',
+            'tests::ac_mn_probe_tests::mir_native_adapter_restart_session_reuses_cache_across_processes'
+        )
+    }
     'autodown' {
         Run-Lang-Tests -Filter 'av_dynamic_824' -Label 'autodown' -RequiredIds $REQ['autodown']
     }
     'acceptance' {
         # Replay every implemented scope in child processes (isolated
         # working directories, same shapes the docs promise).
-        foreach ($s in @('first-case', 'semantics', 'admission', 'resources', 'autodown')) {
+        foreach ($s in @('first-case', 'semantics', 'admission', 'resources', 'cache', 'compatibility', 'autodown')) {
             & pwsh -File $PSCommandPath -Scope $s
             if ($LASTEXITCODE -ne 0) {
                 throw "acceptance: scope $s failed"
