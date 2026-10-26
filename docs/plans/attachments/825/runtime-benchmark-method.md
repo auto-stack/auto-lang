@@ -26,3 +26,5 @@ Status: proposed for merge, not canonical Spec content.
 - The original 798 editing workload remains a separate hard gate: P95 below
   one second and the original managed/process memory limits. New benchmark
   microcases do not replace that workload or its dual-line memory evidence.
+  AV worker measurements use `--release`, matching the established 798 formal
+  runner; debug-worker timings are never substituted for that contract.
