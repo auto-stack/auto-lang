@@ -164,3 +164,9 @@ Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-ne
 Dash2D/Dash3D add user-owned finite-volume sweep and explicit user clearance/stop policy under behavior/4. Native OS inputs, held-query fields, actual stop locations, all-mesh pixels, source Update/Save/SaveAs and relocated new-process reopens are verified. Same binary/changed source changes speed/clearance and stop gap. Original dual-game/Move-Patrol/Zone/Beam-Sight denominator and production I2/I3 boundaries remain.
 
 Provenance: [PLAN-849](../../plans/archive/849-autographics-swept-aabb-and-stop-before-impact.md), [independent final review](../../plans/attachments/849/review-r1-final/review.md), [frozen merge receipt](../../plans/attachments/849/merge-r1/receipt.md). Graphics source: autographics-dev; production I2/I3 remain pending.
+
+## Bounded-motion extension (PLAN-851)
+
+Maze2D and Corridor3D are real user Auto two-contact move-and-slide projects. Corridor uses the frozen eccentric multipart GLB, parent/static TRS and actual transformed XZ-wall proxies. Independent native f32 replay, every-part pixels, OS v5 Bind/SaveAs, moved-root new-process reopen and source-only speed/clearance changes bind the same runner. Existing Move/Patrol/Zone/Beam/Sight/Dash and dual-game/resource/content/source/owner denominators remain; production I2/I3 stay pending.
+
+Provenance: [PLAN-851](../../plans/archive/851-autographics-bounded-move-and-slide.md), [independent final review](../../plans/attachments/851/review-r4/review.md), [frozen merge receipt](../../plans/attachments/851/merge-r4/receipt.md). Source stays on autographics-dev; production I2/I3 remain pending.

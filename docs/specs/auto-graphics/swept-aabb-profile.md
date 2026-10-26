@@ -96,3 +96,9 @@ Production AutoUI/RQHost I2, Forge/distribution I3, Schema/ACE/HMR, rotation swe
 sliding, relative dynamics and a full character controller remain separate work.
 
 Provenance: [PLAN-849](../../plans/archive/849-autographics-swept-aabb-and-stop-before-impact.md), [independent final review](../../plans/attachments/849/review-r1-final/review.md), [frozen merge receipt](../../plans/attachments/849/merge-r1/receipt.md). Graphics source: autographics-dev; production I2/I3 remain pending.
+
+## Bounded-motion extension (PLAN-851)
+
+Explicit v5/profile11 inherits public swept-query geometry and closed initial-contact semantics. Its cast/sweep/motion results share one typed latest slot and positive Run sequence; sweep16/cast8/motion24/getter1/AABB1 share32 credits. V4 identities and behavior remain unchanged. The separate [bounded-motion profile](bounded-motion-profile.md) defines movement response, directional initial-boundary exception and final actual-local admission; these do not change the public sweep query.
+
+Provenance: [PLAN-851](../../plans/archive/851-autographics-bounded-move-and-slide.md), [independent final review](../../plans/attachments/851/review-r4/review.md), [frozen merge receipt](../../plans/attachments/851/merge-r4/receipt.md). Source stays on autographics-dev; production I2/I3 remain pending.

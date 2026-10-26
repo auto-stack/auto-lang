@@ -57,3 +57,9 @@ Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-ne
 Explicit v4/profile10 inherits these all-mesh static offsets/current-world AABB functions and adds [swept AABB](swept-aabb-profile.md). Scene4 accepts /4 without changing fields or older versions. Visible-only filters targets, not the moving actor, and alpha is independent. No new Descriptor/geometry cache, per-frame scan/upload/readback or local movement is hidden in a query.
 
 Provenance: [PLAN-849](../../plans/archive/849-autographics-swept-aabb-and-stop-before-impact.md), [independent final review](../../plans/attachments/849/review-r1-final/review.md), [frozen merge receipt](../../plans/attachments/849/merge-r1/receipt.md). Graphics source: autographics-dev; production I2/I3 remain pending.
+
+## Bounded-motion extension (PLAN-851)
+
+Explicit v5/profile11 inherits actual all-mesh offsets, current-world and visibility rules. Scene4 accepts /5 without structural change. [Bounded motion](bounded-motion-profile.md) publishes one accepted leaf-local candidate to the same world array; no second graph, per-tick vertex rescan, model upload or readback is introduced. Older profiles retain their original behavior.
+
+Provenance: [PLAN-851](../../plans/archive/851-autographics-bounded-move-and-slide.md), [independent final review](../../plans/attachments/851/review-r4/review.md), [frozen merge receipt](../../plans/attachments/851/merge-r4/receipt.md). Source stays on autographics-dev; production I2/I3 remain pending.

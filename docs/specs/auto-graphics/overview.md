@@ -29,3 +29,5 @@ Provenance: [PLAN-840](../../plans/archive/840-autographics-public-behavior-api-
 - [Finite segment queries](segment-query-profile.md): explicit v3/profile9, deterministic nearest/token/weighted32credits, portable Beam2D/Sight3D; original128/CPU and production boundaries retained (PLAN-848).
 
 - [Finite swept AABB queries](swept-aabb-profile.md): explicit v4/profile10, typed shared cast/sweep latest result, actual Auto fixed-volume translation and Dash2D/Dash3D stop/clearance projects; original limits/denominator and I2/I3 production boundary retained (PLAN-849).
+
+- [Bounded move-and-slide](bounded-motion-profile.md): explicit v5/profile11, maximum two contacts and actual f32 candidate admission; portable Maze2D/Corridor3D, original budgets/SDK/resource denominator and I2/I3 boundary retained (PLAN-851).

@@ -143,3 +143,9 @@ Explicit behavior/4/profile10 adds ag_sweep_aabb plus hit/node/t/origin/normal/s
 Provenance: [PLAN-849](../../plans/archive/849-autographics-swept-aabb-and-stop-before-impact.md), [independent final review](../../plans/attachments/849/review-r1-final/review.md), [frozen merge receipt](../../plans/attachments/849/merge-r1/receipt.md). Graphics source: autographics-dev; production I2/I3 remain pending.
 
 Malformed behavior CLI options fail with exit2 before inspect/run or native window creation; explicit `--behavior-api v4` is admitted.
+
+## Bounded-motion extension (PLAN-851)
+
+Explicit autographics.behavior/5 selects MotionV5/profile11: ag_move_and_slide(node,visible_only,dx,dy,dz,clearance) and ag_motion_status/contacts/node/origin/delta/unapplied/normal getters. Choose v5 in Editing or --behavior-api v5; typed source/header/Play/consumer identity agrees. Only v5 reserves the new names; v1..v4 legal helpers and managed/entry identities remain. No guessing, fallback or auto-upgrade. See [bounded-motion contract](bounded-motion-profile.md) for statuses, errors, snapshots and budgets.
+
+Provenance: [PLAN-851](../../plans/archive/851-autographics-bounded-move-and-slide.md), [independent final review](../../plans/attachments/851/review-r4/review.md), [frozen merge receipt](../../plans/attachments/851/merge-r4/receipt.md). Source stays on autographics-dev; production I2/I3 remain pending.

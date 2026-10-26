@@ -132,3 +132,9 @@ Provenance: [PLAN-848](../../plans/archive/848-autographics-segment-casts-and-ne
 PLAN-849 adds explicit finite swept-AABB behavior/4, typed shared cast/sweep result identity, unchanged32credit/128node/CPU contract and portable Auto dash-stop examples. Source remains autographics-dev only; [sweep profile](swept-aabb-profile.md) is the current contract. This is not a complete physics/character engine or production integration.
 
 Provenance: [PLAN-849](../../plans/archive/849-autographics-swept-aabb-and-stop-before-impact.md), [independent final review](../../plans/attachments/849/review-r1-final/review.md), [frozen merge receipt](../../plans/attachments/849/merge-r1/receipt.md). Graphics source: autographics-dev; production I2/I3 remain pending.
+
+## Bounded-motion extension (PLAN-851)
+
+PLAN-851 adds explicit behavior/5/profile11 bounded Auto move-and-slide, one typed cast/sweep/motion latest slot and portable Maze2D/Corridor3D. Original128nodes/two-contact cap/CPU/32credits/SDK/resource boundaries and old game/graphics denominator remain. [Bounded-motion profile](bounded-motion-profile.md) defines the current contract. Source remains autographics-dev; production I2/I3 and general character physics remain pending.
+
+Provenance: [PLAN-851](../../plans/archive/851-autographics-bounded-move-and-slide.md), [independent final review](../../plans/attachments/851/review-r4/review.md), [frozen merge receipt](../../plans/attachments/851/merge-r4/receipt.md). Source stays on autographics-dev; production I2/I3 remain pending.
