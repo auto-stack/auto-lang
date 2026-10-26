@@ -40,3 +40,5 @@ Provenance: [PLAN-853](../../plans/archive/853-autographics-m2-baselines-and-evi
 | 854 | Trusted behavior source assembly and compatibility | delivered | [PLAN-854](../../plans/archive/854-autographics-behavior-source-assembly.md) | Single checked five-version assembler, frozen original byte identities, independent consumer and same-condition resource evidence; no speedup or I2/I3 claim |
 
 Provenance: [PLAN-854](../../plans/archive/854-autographics-behavior-source-assembly.md), [independent final R1 review](../../plans/attachments/854/review-r1/review.md), [merge receipt](../../plans/attachments/854/merge-r1/receipt.md). Source: autographics-dev at 523d27b863dbe306c89af0ea546334225a29f8e9; SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467. M2/S0 compatibility/maintenance work; new M2 capabilities and production I2/I3 remain pending.
+
+| [855](../../plans/archive/855-autographics-authoring-responsibility-split.md) | Host private responsibility modules and current CLI/probe/source entries; original ownership and semantics retained | autographics-dev 05fdc81c546aff735eefdb6c39fbc5fb35dc546a | M2/S0 complete; new M2/I2/I3 pending |

@@ -56,3 +56,11 @@ OS probes account for Panel's actual clamped scroll translation; no fixed-coordi
 acceptance substitute.
 
 Provenance: [PLAN-839](../../plans/archive/839-autographics-scene-play-mode-and-auto-runtime.md), [independent final R2](../../plans/attachments/839/review-r2/independent/review.md), [affected independent R3](../../plans/attachments/839/review-r3/independent/review.md), [merge receipt](../../plans/attachments/839/merge-r1/receipt.md). Source remains autographics-dev; production I2/I3 pending.
+
+## Current Host input and publication placement (PLAN-855)
+
+Picking/gesture primitives and state remain in authoring/interaction.rs. Host pointer/key/blur/resize/camera/scroll routing, capture/cancel, real Auto gesture candidate preparation, frame presentation and publication now live in host/viewport.rs. They consume the same Surface/presented snapshot and Host fields; there is no duplicate input state or new public gesture API.
+
+The epoch/revision/target/token contract, duplicate release/noop, busy/stale/late result rejection, Esc/focus/DPI/resize/Play switching and accepted-only history publication remain unchanged. Native wrong-target phase1 and missing-release phase4 negatives retain their original oracle. Grid and camera navigation remain pending; this move adds neither.
+
+Provenance: [PLAN-855](../../plans/archive/855-autographics-authoring-responsibility-split.md), [independent final R3 review](../../plans/attachments/855/review-r3/review.md), [merge receipt](../../plans/attachments/855/merge-r1/receipt.md). Source: autographics-dev at 05fdc81c546aff735eefdb6c39fbc5fb35dc546a; SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467. M2/S0 responsibility and entrypoint maintenance; new M2 capabilities and production I2/I3 remain pending.
