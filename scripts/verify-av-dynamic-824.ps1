@@ -7,7 +7,7 @@
 [CmdletBinding()]
 param(
     [Parameter(ParameterSetName = 'Scope', Mandatory = $true)]
-    [ValidateSet("first-case", "semantics", "autodown", "acceptance")]
+    [ValidateSet("first-case", "semantics", "admission", "resources", "autodown", "acceptance")]
     [string]$Scope,
 
     [Parameter(ParameterSetName = 'Guard')]
@@ -99,6 +99,22 @@ $REQ = @{
         'av_dynamic_824_negative_oracle_fails',
         'av_dynamic_824_worker_faults_are_infra'
     )
+    'admission' = @(
+        'av_dynamic_824_admission_negatives'
+    )
+    'resources' = @(
+        'av_dynamic_824_resources_slot_bytes_rejects_before_write',
+        'av_dynamic_824_resources_value_alloc_fault_no_half_commit',
+        'av_dynamic_824_resources_arena_fault_attempt_semantics',
+        'av_dynamic_824_resources_arena_fault_preserves_prior_legal_events',
+        'av_dynamic_824_resources_budget_is_the_only_delta',
+        'av_dynamic_824_resources_boundary_both_sides',
+        'av_dynamic_824_resources_deep_chain_roundtrip_within_bound',
+        'av_dynamic_824_resources_deep_chain_beyond_bound_rejected',
+        'av_dynamic_824_resources_take_trap_drains_ledger',
+        'av_dynamic_824_resources_cancel_is_its_own_state',
+        'av_dynamic_824_resources_worker_memory_hard_gate_parent_sampled'
+    )
     'semantics' = @(
         'av_dynamic_824_semantics_pack_source_stays_readable',
         'av_dynamic_824_semantics_two_packs_two_dyns',
@@ -158,13 +174,23 @@ switch ($Scope) {
         Run-Probe-Tests -Bin 'av_dynamic_824_semantics' -Label 'semantics' -RequiredIds $REQ['semantics']
         Run-Harness-Tests -Label 'semantics-harness'
     }
+    'admission' {
+        # T-04: the untrusted-builder admission negatives (verify-gate
+        # rejections; nothing executes).
+        Run-Probe-Tests -Bin 'av_dynamic_824_first_case' -Filter 'av_dynamic_824_admission_negatives' -Label 'admission' -RequiredIds $REQ['admission']
+    }
+    'resources' {
+        # T-04: budgets/faults/cleanup states + the parent-sampled worker
+        # memory hard gate (V-06/V-07 axes).
+        Run-Probe-Tests -Bin 'av_dynamic_824_resources' -Label 'resources' -RequiredIds $REQ['resources']
+    }
     'autodown' {
         Run-Lang-Tests -Filter 'av_dynamic_824' -Label 'autodown' -RequiredIds $REQ['autodown']
     }
     'acceptance' {
         # Replay every implemented scope in child processes (isolated
         # working directories, same shapes the docs promise).
-        foreach ($s in @('first-case', 'semantics', 'autodown')) {
+        foreach ($s in @('first-case', 'semantics', 'admission', 'resources', 'autodown')) {
             & pwsh -File $PSCommandPath -Scope $s
             if ($LASTEXITCODE -ne 0) {
                 throw "acceptance: scope $s failed"
