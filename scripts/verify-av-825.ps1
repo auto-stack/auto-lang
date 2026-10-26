@@ -65,6 +65,53 @@ function Assert-TierEvidence {
     if ([regex]::Matches($turbo, 'using TurboFan').Count -lt 8) { throw 'Wasm optimizing-tier evidence missing for required workloads' }
 }
 
+function Assert-MissingPeakControl {
+    $raw = Join-Path $root 'docs/plans/attachments/825/bench-r6'
+    $guard = Join-Path $raw 'guard'
+    if (Test-Path $guard) { Remove-Item -LiteralPath $guard -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $guard | Out-Null
+    Get-ChildItem -LiteralPath $raw -Filter '*.jsonl' -File | Where-Object { $_.Name -in @('av.jsonl', 'js.jsonl', 'liftoff.jsonl', 'turbofan.jsonl') } | ForEach-Object { Copy-Item $_.FullName -Destination $guard }
+    $peakFile = Join-Path $guard 'js.jsonl'
+    $withoutPeak = @(Get-Content -LiteralPath $peakFile -Encoding UTF8 | Where-Object { $_ -notmatch 'process-peak' })
+    Set-Content -LiteralPath $peakFile -Value $withoutPeak -Encoding UTF8
+    $failed = $false
+    try {
+        & powershell -NoProfile -File (Join-Path $root 'scripts/av-825-bench-report.ps1') -RawDir $guard -OutFile (Join-Path $guard 'bad.json') 2>$null
+        if ($LASTEXITCODE -ne 0) { $failed = $true }
+    } catch { $failed = $true }
+    if (-not $failed) { throw 'missing process-peak counter-control was accepted' }
+    Remove-Item -LiteralPath $guard -Recurse -Force
+    exit 0
+}
+
+function Get-Fnv64Hex {
+    param([string]$Path)
+    [uint64]$hash = 14695981039346656037
+    foreach ($byte in [IO.File]::ReadAllBytes($Path)) {
+        $hash = ($hash -bxor [uint64]$byte) * 1099511628211
+    }
+    $hash.ToString('x16')
+}
+
+function Assert-BenchmarkEvidence {
+    $raw = Join-Path $root 'docs/plans/attachments/825/bench-r6'
+    $summaryPath = Join-Path $raw 'summary.json'
+    $turnaroundPath = Join-Path $raw 'turnaround-summary.json'
+    $summary = Get-Content -LiteralPath $summaryPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($summary.total_rows -ne 1720 -or $summary.groups.Count -ne 40) { throw 'benchmark group/row completeness mismatch' }
+    foreach $file in $summary.raw_files {
+        if ((Get-FileHash $file.path -Algorithm SHA256).Hash.ToLower() -ne $file.sha256) { throw "benchmark raw identity changed: $($file.path)" }
+    }
+    $avFirst = Get-Content -LiteralPath (Join-Path $raw 'av.jsonl') -TotalCount 1 -Encoding UTF8 | ConvertFrom-Json
+    $currentFp = Get-Fnv64Hex -Path (Join-Path $probe 'target/release/av_runtime_825_bench.exe')
+    if ($avFirst.binary_fnv64 -ne $currentFp) { throw 'benchmark binary identity is stale' }
+    Assert-TierEvidence -JsLog (Join-Path $raw 'js-tier.log') -LiftoffLog (Join-Path $raw 'liftoff-tier.log') -TurboLog (Join-Path $raw 'turbofan-tier.log')
+    $turnaround = Get-Content -LiteralPath $turnaroundPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($turnaround.hard_gate_failures.Count -ne 0 -or $turnaround.single_body_edit.p95_ms -ge 1000.0) { throw 'original editing P95 gate failed' }
+    if ($turnaround.frontend_transient_target_met -ne $true -or $turnaround.worker_private_bytes_target_met -ne $true) { throw 'original editing memory gate failed' }
+    Assert-MissingPeakControl
+}
+
 function Invoke-Benchmark {
     $raw = Join-Path $root 'docs/plans/attachments/825/bench-r6'
     New-Item -ItemType Directory -Force -Path $raw | Out-Null
@@ -87,21 +134,7 @@ function Invoke-Benchmark {
     if ($turnaround.hard_gate_failures.Count -ne 0 -or $turnaround.single_body_edit.p95_ms -ge 1000.0) { throw 'original editing P95 gate failed' }
     if ($turnaround.frontend_transient_target_met -ne $true -or $turnaround.worker_private_bytes_target_met -ne $true) { throw 'original editing memory gate failed' }
 
-    $guard = Join-Path $raw 'guard'
-    if (Test-Path $guard) { Remove-Item -LiteralPath $guard -Recurse -Force }
-    New-Item -ItemType Directory -Force -Path $guard | Out-Null
-    Get-ChildItem -LiteralPath $raw -Filter '*.jsonl' -File | Where-Object { $_.Name -in @('av.jsonl', 'js.jsonl', 'liftoff.jsonl', 'turbofan.jsonl') } | ForEach-Object { Copy-Item $_.FullName -Destination $guard }
-    $peakFile = Join-Path $guard 'js.jsonl'
-    $withoutPeak = @(Get-Content -LiteralPath $peakFile -Encoding UTF8 | Where-Object { $_ -notmatch 'process-peak' })
-    Set-Content -LiteralPath $peakFile -Value $withoutPeak -Encoding UTF8
-    $failed = $false
-    try {
-        & powershell -NoProfile -File (Join-Path $root 'scripts/av-825-bench-report.ps1') -RawDir $guard -OutFile (Join-Path $guard 'bad.json') 2>$null
-        if ($LASTEXITCODE -ne 0) { $failed = $true }
-    } catch { $failed = $true }
-    if (-not $failed) { throw 'missing process-peak counter-control was accepted' }
-    Remove-Item -LiteralPath $guard -Recurse -Force
-    exit 0
+    Assert-MissingPeakControl
 }
 
 function Run-Probe {
@@ -218,10 +251,11 @@ switch ($Scope) {
     'acceptance' {
         & $PSCommandPath -GuardSelfTest
         if ($LASTEXITCODE -ne 0) { throw 'guard self-test failed' }
-        foreach ($required in @('first', 'targeted', 'compat', 'incremental', 'baseline', 'bench')) {
+        foreach ($required in @('first', 'targeted', 'compat', 'incremental', 'baseline') {
             & $PSCommandPath -Scope $required
             if ($LASTEXITCODE -ne 0) { throw "acceptance scope '$required' failed" }
         }
+        Assert-BenchmarkEvidence
     }
     default {
         throw "PLAN-825 scope '$Scope' is not implemented yet; this is an explicit acceptance gap, not PASS"
