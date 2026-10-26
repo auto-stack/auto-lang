@@ -204,10 +204,14 @@ fn av_data_820_fault_at_nth_allocation_preserves_prior_state() {
         ),
         other => panic!("expected fault Infra, got {other:?}"),
     }
-    // Two aggregates' worth of record data (~32 KiB) was live and STAYS
-    // accounted; nothing beyond the fault point committed.
+    // Two aggregates' worth of record data was live and STAYS accounted;
+    // nothing beyond the fault point committed. PLAN-822 merge-stage band
+    // refresh: Value gained the Place variant (size_of 32→40B, F-822-R2-02),
+    // so a 1024-field record's deep_size account moved from ~25KB to ~41KB
+    // (cell × 1025 + Vec header). The band stays SEMANTIC: ≥ two committed
+    // aggregates, < three.
     assert!(
-        trace.peak_slot_bytes >= 2 * 24000 && trace.peak_slot_bytes < 3 * 26000,
+        trace.peak_slot_bytes >= 2 * 40000 && trace.peak_slot_bytes < 3 * 42000,
         "two committed aggregates' peak survives the fault: {}",
         trace.peak_slot_bytes
     );
