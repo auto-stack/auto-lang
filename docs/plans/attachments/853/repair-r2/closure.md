@@ -1,0 +1,21 @@
+# PLAN-853 R2 repair closure
+
+Work outcome pass to independent affected re-review. Frozen code `c1961665d1a90a8705994085fd4344a1d6a9a564`,branch plan-853-dev,sole tree D:/autostack/.wt/lang-853/auto-lang; repair base5e3f5b65f145fb127a4e206b626d3e2e3dc0ab8b. Clean implementation tree.5/9 tasks complete,T-06 and all merge work still pending. This is work-owned evidence, not a third final-review verdict.
+
+## Two-failure diagnosis and verified adjustment
+
+[diagnosis.md](diagnosis.md) was recorded before implementation, per the second consecutive final needs_fix checkpoint. R1/R2 both missed case-level ownership because completed-ID counts could describe a surviving subset. The verified correction tracks every announced name in each frame, forbids overwriting a pending case, requires an explicit owner for completions, rejects starts beyond declared count, and requires exact announced/completed/declared equality with no pending case at summary. Child completion leaves its parent open until the parent's own completion. Recognized control lines normalize whitespace; stray terminal status/result lines cannot silently disappear.
+
+| Finding | Invariant / applicable states | Actual fix and permanent checks | Current closure / boundary |
+|---|---|---|---|
+| F-853-R2-01 | every observed case closes once in its owning parent/child frame; pending->new case/summary,zeroDoc,unowned/duplicate completion,block EOF | selected_tests seen/pending/completed ownership; SelectionCompletionTests four methods through selection AND validate_run; pending parent/child,unused-count overwrite,missing parent completion,duplicate/unowned completion,whitespace controls | three exact R2 inputs rejected via both check_selection and real PE-bound validate_run; valid restored/nested/empty/multi-case/multi-child controls accepted; no admitted gap |
+
+## Actual bounded checks
+
+- checks.json.txt records actual commands, exits and raw log hashes:four targeted SelectionCompletionTests pass, CLI self-check new completion controls pass, current source verification441files/681SDK pass. No Rust/Cargo test/check/full-tier/docs_gen or broad probe package was executed in this repair.
+- replay.py is a durable finding-specific replay, not a global scheduler. replay-results.json.txt binds original R2/R1 bad raw input hashes and actual rejection messages through both selection and validate_run using the real retained runner; restored exact reviewer control and actual saved nested-child control pass.
+- Original producer and consumer raw logs remain76blocks/280IDs each, exact per-binary identities; current scoped Rust log hashes/selections unchanged. This is parser replay, not new test execution or resampling.
+- Source identity `d27a662ba4b488d7016172afeba34f9b6904e4fdab7c0516153a973ea2db4ad4` binds this repair's actual code. The pre-commit check results use the same identity; commit changes only Git metadata. Runtime/src/SDK/locks/API/assets/source-verifier/API-credential/measurement code paths are unchanged against5e3f5b65f; scoped Git diff/status proof is in checks.json.txt. sha/record_runner/verify_runner/check_selection/validate_run ASTs are unchanged; validate_run's changed selected_tests callee is explicitly replayed. R2 accepted source/API/consumer/runtime/native/owner/measurement/type/fmt/warnings evidence is reused only on these unchanged dependencies/config/inputs.
+- No full source/API campaign, real50-process performance experiment, native14+4 or owner suite repeated; they remain bound to prior immutable runners. Proposed SD copy proposed-spec-delta.md SHA `4b5c7ca7670e9a93420635c7bd90e313a2952dbffaa4f8b53d5a9e16e7f2145f` implements the unchanged partial/interruption rejection contract, with case-level detail; canonical/ledger not edited.
+
+Open in-contract findings, coverage gaps and contract decisions:empty as a work readiness claim. Prior R1/R2 needs_fix records remain intact. Next:independent affected re-review on this same committed tree. Merge-owned complete frozen producer/consumer gates,original85/native/owner/content,new surface and AGP23 proof or rerun remain pending. Source lands only autographics-dev; no landing/archive/guard cleanup performed. Implementation writes pause for reviewer ownership.
