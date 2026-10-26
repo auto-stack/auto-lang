@@ -9,9 +9,7 @@
 use auto_av_core::abc::encode_abc;
 use auto_av_core::abc_verify::verify_abc_bytes;
 use auto_av_core::av::{execute, execute_with_arena, CancelFlag, ExecLimits};
-use auto_av_core::contract::{
-    ExecOutcome, ResourceKind, TrapKind, Value, SLOT_CELL_BYTES,
-};
+use auto_av_core::contract::{ExecOutcome, ResourceKind, TrapKind, Value, SLOT_CELL_BYTES};
 use auto_av_core::dynamic::{DynType, DynValue, TraversalOptions};
 use auto_av_core::mir::{
     MirBlock, MirConst, MirFieldDef, MirFunction, MirInstr, MirModule, MirSlot, MirType,
@@ -227,10 +225,7 @@ fn admit(m: &MirModule) -> auto_av_core::abc_verify::LoadedModule {
     verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap_or_else(|e| panic!("admit: {e:?}"))
 }
 
-fn run_with(
-    m: &MirModule,
-    limits: &ExecLimits,
-) -> (ExecOutcome, StrArena) {
+fn run_with(m: &MirModule, limits: &ExecLimits) -> (ExecOutcome, StrArena) {
     let loaded = admit(m);
     let (out, trace) = execute(&loaded, limits, &CancelFlag::new(false));
     (
@@ -348,8 +343,16 @@ fn av_dynamic_824_resources_arena_fault_preserves_prior_legal_events() {
         "{out:?}"
     );
     assert!(arena.attempts() >= 2);
-    assert_eq!(arena.successful_allocs(), 1, "exactly the first attempt landed");
-    assert_eq!(arena.alloc_events().len(), 1, "the prior legal event is preserved");
+    assert_eq!(
+        arena.successful_allocs(),
+        1,
+        "exactly the first attempt landed"
+    );
+    assert_eq!(
+        arena.alloc_events().len(),
+        1,
+        "the prior legal event is preserved"
+    );
     assert_eq!(arena.live(), 0, "the unwind freed the survivor");
     assert_eq!(arena.free_events().len(), 1);
 }
@@ -367,7 +370,10 @@ fn av_dynamic_824_resources_budget_is_the_only_delta() {
     assert_clean_ledger(&tight_arena);
 
     let (wide_out, _) = run_with(&m, &ExecLimits::default());
-    assert!(matches!(wide_out, ExecOutcome::Success { .. }), "{wide_out:?}");
+    assert!(
+        matches!(wide_out, ExecOutcome::Success { .. }),
+        "{wide_out:?}"
+    );
 }
 
 /// V-06/V-07 both sides of the boundary: the wide run learns the true
@@ -385,7 +391,10 @@ fn av_dynamic_824_resources_boundary_both_sides() {
     let mut at = ExecLimits::default();
     at.max_slot_bytes = peak as usize;
     let (out, arena) = run_with(&m, &at);
-    assert!(matches!(out, ExecOutcome::Success { .. }), "at the peak: {out:?}");
+    assert!(
+        matches!(out, ExecOutcome::Success { .. }),
+        "at the peak: {out:?}"
+    );
     assert_clean_ledger(&arena);
 
     let mut below = ExecLimits::default();
@@ -408,20 +417,21 @@ fn chain_module(depth: u32) -> MirModule {
     m.types = vec![MirType::I32, MirType::Str];
     for d in 0..depth {
         let field_ty = if d == 0 { 0 } else { 2 + d - 1 };
-        m.types.push(MirType::Record(auto_av_core::mir::RecordTypeRef {
-            owner_module: "dynamic824".to_string(),
-            name: format!("Rec{d}"),
-            fields: vec![
-                MirFieldDef {
-                    name: "v".to_string(),
-                    ty: 0,
-                },
-                MirFieldDef {
-                    name: "r".to_string(),
-                    ty: field_ty,
-                },
-            ],
-        }));
+        m.types
+            .push(MirType::Record(auto_av_core::mir::RecordTypeRef {
+                owner_module: "dynamic824".to_string(),
+                name: format!("Rec{d}"),
+                fields: vec![
+                    MirFieldDef {
+                        name: "v".to_string(),
+                        ty: 0,
+                    },
+                    MirFieldDef {
+                        name: "r".to_string(),
+                        ty: field_ty,
+                    },
+                ],
+            }));
     }
     m.types.push(MirType::Dyn); // index 2+depth: the erased container
     let dyn_ty = 2 + depth;
@@ -502,7 +512,11 @@ fn av_dynamic_824_resources_deep_chain_roundtrip_within_bound() {
     // The chain DynType ladder (module-side) + a matching decode domain
     // (all 255 nominal bindings).
     let mut tys: Vec<DynType> = Vec::new();
-    let leaf = DynType::record("dynamic824", "Rec0", vec![("v", DynType::I32), ("r", DynType::I32)]);
+    let leaf = DynType::record(
+        "dynamic824",
+        "Rec0",
+        vec![("v", DynType::I32), ("r", DynType::I32)],
+    );
     tys.push(leaf);
     for d in 1..DEPTH {
         let prev = tys[d as usize - 1].clone();
@@ -538,8 +552,8 @@ fn av_dynamic_824_resources_deep_chain_roundtrip_within_bound() {
         .collect();
     let vars: Vec<VariantBinding> = Vec::new();
     let ctx = RestoreContext::new(&recs, &vars);
-    let back = unfreeze(&bytes, &ctx, &TraversalOptions::default())
-        .expect("unfreeze the deep chain");
+    let back =
+        unfreeze(&bytes, &ctx, &TraversalOptions::default()).expect("unfreeze the deep chain");
     assert_eq!(back, packed, "round-tripped chain equals the source");
     // take + deepest-leaf read still works on the restored container.
     let taken = back

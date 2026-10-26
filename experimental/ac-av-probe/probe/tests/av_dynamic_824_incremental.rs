@@ -128,10 +128,7 @@ fn beta_unit_impl(b_bump: i32, trace: bool) -> MirModule {
             record_ty: t_note,
             operands: vec![0, 1],
         },
-        MirInstr::DynPack {
-            dst: 3,
-            src: 2,
-        },
+        MirInstr::DynPack { dst: 3, src: 2 },
         MirInstr::DynTake {
             dst: 4,
             src: 3,
@@ -254,7 +251,11 @@ fn av_dynamic_824_incremental_body_edit_identity() {
         let out = s
             .apply_revision(&[("beta", beta_unit(b))])
             .unwrap_or_else(|e| panic!("beta revision b={b}: {e}"));
-        assert_eq!(out.value, Some(want), "revision b={b} semantics (dyn round trip)");
+        assert_eq!(
+            out.value,
+            Some(want),
+            "revision b={b} semantics (dyn round trip)"
+        );
         assert_eq!(out.live_after_release, 0, "b={b}: live drains");
         assert_eq!(out.allocs, out.frees, "b={b}: ledger balanced");
         // Production/IO of the UNCHANGED unit is ZERO across every stage.
@@ -364,11 +365,12 @@ fn av_dynamic_824_incremental_forced_degradation_gate_nonzero() {
         .expect("install");
 
     // Honest: submit ONLY beta.
-    let honest = s
-        .apply_revision(&[("beta", beta_unit(2))])
-        .expect("honest");
+    let honest = s.apply_revision(&[("beta", beta_unit(2))]).expect("honest");
     assert_eq!(honest.gate.unchanged_degraded, 0);
-    assert!(honest.gate.pass(), "the honest revision passes the production gate");
+    assert!(
+        honest.gate.pass(),
+        "the honest revision passes the production gate"
+    );
 
     // Forced whole: re-submit alpha's IDENTICAL module with beta's edit —
     // alpha is re-produced (fresh object, same fingerprint).
@@ -376,7 +378,8 @@ fn av_dynamic_824_incremental_forced_degradation_gate_nonzero() {
         .apply_revision(&[("main", alpha_unit(10)), ("beta", beta_unit(3))])
         .expect("the forced revision still executes (the gate judges, not the run)");
     assert_eq!(
-        forced.value, Some(13),
+        forced.value,
+        Some(13),
         "semantics stay correct under the forced shape"
     );
     assert_eq!(

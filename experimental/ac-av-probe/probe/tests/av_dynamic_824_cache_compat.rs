@@ -82,8 +82,9 @@ fn av_dynamic_824_cache_portable_restore_identity_and_miss() {
     let bytes = r.portable_bytes.clone();
     let value_fp = format!("{:016x}", auto_av_core::contract::fnv1a64(&bytes));
 
-    let back = restore_dynamic_portable(&store, &owner, &entry, &types_fp, &value_fp, snapshot, &ctx)
-        .expect("portable restore");
+    let back =
+        restore_dynamic_portable(&store, &owner, &entry, &types_fp, &value_fp, snapshot, &ctx)
+            .expect("portable restore");
     let ExecOutcome::Success {
         value: auto_av_core::contract::Value::Dyn(d),
         ..
@@ -95,11 +96,23 @@ fn av_dynamic_824_cache_portable_restore_identity_and_miss() {
 
     // Foreign axes: clean misses, never a reuse.
     let miss = restore_dynamic_portable(
-        &store, &owner, &entry, &types_fp, "ffffffffffffffff", snapshot, &ctx,
+        &store,
+        &owner,
+        &entry,
+        &types_fp,
+        "ffffffffffffffff",
+        snapshot,
+        &ctx,
     );
     assert!(miss.is_err(), "a foreign value-fp must miss");
     let miss = restore_dynamic_portable(
-        &store, &owner, &entry, "deadbeefdeadbeef", &value_fp, snapshot, &ctx,
+        &store,
+        &owner,
+        &entry,
+        "deadbeefdeadbeef",
+        &value_fp,
+        snapshot,
+        &ctx,
     );
     assert!(miss.is_err(), "a foreign types-fp must miss");
 
@@ -183,13 +196,7 @@ fn av_dynamic_824_cache_portable_good_checksum_bad_structure_rejected() {
     drop(s);
 
     let res = restore_dynamic_portable(
-        &store,
-        &r.owner,
-        &r.entry,
-        &types_fp,
-        &value_fp,
-        r.snapshot,
-        &ctx,
+        &store, &r.owner, &r.entry, &types_fp, &value_fp, r.snapshot, &ctx,
     );
     match res {
         Err(e) => assert!(
@@ -256,8 +263,7 @@ fn av_dynamic_824_cache_restore_payload_entry_identity_rejected() {
     for variant in ["rename", "snapshot"] {
         let honest_store = tmp_store(&format!("r15-honest-{variant}"));
         let forge_store = tmp_store(&format!("r15-forge-{variant}"));
-        let r =
-            request_dynamic(Some(&honest_store), "r15-probe", "first-case").expect("persist");
+        let r = request_dynamic(Some(&honest_store), "r15-probe", "first-case").expect("persist");
         let types_fp = dynamic_types_fp_of(&fixture_module("first-case").unwrap());
 
         let mut foreign = fixture_module("first-case").unwrap();
@@ -371,8 +377,10 @@ fn av_dynamic_824_compat_layer_separation() {
     let store = tmp_store("layers");
     let r = request_dynamic(Some(&store), "layer-probe", "dyn-out").expect("persist");
     let types_fp = dynamic_types_fp_of(&fixture_module("dyn-out").unwrap());
-    let value_fp =
-        format!("{:016x}", auto_av_core::contract::fnv1a64(&r.portable_bytes));
+    let value_fp = format!(
+        "{:016x}",
+        auto_av_core::contract::fnv1a64(&r.portable_bytes)
+    );
     let s = ManagedStore::open(&store).expect("open");
 
     let code_key = dynamic_module_key(&r.owner, &r.entry, &types_fp, r.snapshot);
@@ -411,7 +419,9 @@ fn av_dynamic_824_compat_layer_separation() {
         ),
     ] {
         assert!(
-            s.get_artifact(layer_id, &code_key).expect("lookup").is_none(),
+            s.get_artifact(layer_id, &code_key)
+                .expect("lookup")
+                .is_none(),
             "{name} never carries the dynamic code artifact"
         );
         assert!(

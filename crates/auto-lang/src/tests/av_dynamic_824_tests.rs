@@ -131,6 +131,31 @@ fn av_dynamic_824_negative_oracle_fails() {
             "the mismatch must name the {want_axis} axis: {:?}",
             row.mismatches
         );
+
+        // V-10 (T-06): the SAME judge-side sabotage reddens EVERY row it
+        // can distinguish. The result seam corrupts the take-probe row's
+        // expected bits too (its ledger has a single free event — a
+        // rotation cannot change it, so the ledger seam honestly leaves
+        // that row green; only the distinguishing axis is claimed).
+        if seam == "result" {
+            let tp = report
+                .results
+                .iter()
+                .find(|r| r.check_id == "run-dynamic-take-probe")
+                .expect("take-probe check present");
+            assert_eq!(
+                tp.status,
+                auto_test_case::report::Status::Fail,
+                "the result sabotage must redden the take-probe row: {:?} {:?}",
+                tp.detail,
+                tp.mismatches
+            );
+            assert!(
+                tp.mismatches.iter().any(|m| m.kind == "dynamic-result"),
+                "the take-probe mismatch must name the dynamic-result axis: {:?}",
+                tp.mismatches
+            );
+        }
     }
 }
 

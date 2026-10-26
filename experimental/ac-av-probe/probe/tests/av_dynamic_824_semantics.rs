@@ -268,7 +268,12 @@ fn run_entry(m: &MirModule, args: &[Value]) -> ExecOutcome {
     let wire = encode_abc(m).unwrap_or_else(|e| panic!("encode: {}", e.code()));
     let loaded =
         verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap_or_else(|e| panic!("admit: {e:?}"));
-    let (out, _) = execute_entry(&loaded, &ExecLimits::default(), &CancelFlag::new(false), args);
+    let (out, _) = execute_entry(
+        &loaded,
+        &ExecLimits::default(),
+        &CancelFlag::new(false),
+        args,
+    );
     out
 }
 
@@ -314,7 +319,11 @@ fn note_dyn(text: &str, n: i32) -> DynValue {
                 Value::I32(n),
             ],
         })),
-        DynType::record("dynamic824", "Note", vec![("text", DynType::Str), ("n", DynType::I32)]),
+        DynType::record(
+            "dynamic824",
+            "Note",
+            vec![("text", DynType::Str), ("n", DynType::I32)],
+        ),
     )
     .expect("module-level pack")
 }
@@ -332,7 +341,10 @@ fn pack_note_module(text: &[u8], n: i32) -> MirModule {
         dst: s_text,
         value: c_text,
     });
-    f.i(MirInstr::Const { dst: s_n, value: c_n });
+    f.i(MirInstr::Const {
+        dst: s_n,
+        value: c_n,
+    });
     f.i(MirInstr::Aggregate {
         dst: note,
         record_ty: 3,
@@ -553,7 +565,10 @@ fn av_dynamic_824_semantics_is_false_never_traps_dyn_usable() {
     let t = f.slot(3, "t");
     let got = f.slot(0, "got");
     let c_zero = f.c(MirConst::I32(0));
-    f.i(MirInstr::Const { dst: ret, value: c_zero });
+    f.i(MirInstr::Const {
+        dst: ret,
+        value: c_zero,
+    });
     f.i(MirInstr::DynTake {
         dst: t,
         src: d,
@@ -630,7 +645,10 @@ fn av_dynamic_824_semantics_same_width_different_name_unequal() {
     let t = f.slot(3, "t");
     let got = f.slot(0, "got");
     let c_zero = f.c(MirConst::I32(0));
-    f.i(MirInstr::Const { dst: ret, value: c_zero });
+    f.i(MirInstr::Const {
+        dst: ret,
+        value: c_zero,
+    });
     f.i(MirInstr::DynTake {
         dst: t,
         src: d,
@@ -680,13 +698,19 @@ fn av_dynamic_824_semantics_same_width_different_name_unequal() {
         dst: text2,
         value: c_text2,
     });
-    g.i(MirInstr::Const { dst: n2, value: c_n2 });
+    g.i(MirInstr::Const {
+        dst: n2,
+        value: c_n2,
+    });
     g.i(MirInstr::Aggregate {
         dst: note2,
         record_ty: 3,
         operands: vec![text2, n2],
     });
-    g.i(MirInstr::DynPack { dst: d2, src: note2 });
+    g.i(MirInstr::DynPack {
+        dst: d2,
+        src: note2,
+    });
     g.i(MirInstr::DynTake {
         dst: t2,
         src: d2,
@@ -808,7 +832,8 @@ fn av_dynamic_824_semantics_f64_bits_preserved_through_dyn() {
         assert!(got.is(&DynType::F64), "erased type must be F64");
         // freeze → unfreeze → take, all bit-exact.
         let bytes = freeze(&got, &TraversalOptions::default()).expect("freeze");
-        let back = unfreeze(&bytes, &empty_ctx().get(), &TraversalOptions::default()).expect("unfreeze");
+        let back =
+            unfreeze(&bytes, &empty_ctx().get(), &TraversalOptions::default()).expect("unfreeze");
         match back.take_as(&DynType::F64).expect("take F64") {
             Value::F64(x) => assert_eq!(x.to_bits(), bits, "round trip must be bit-exact"),
             other => panic!("not an F64: {other:?}"),
@@ -831,7 +856,8 @@ fn av_dynamic_824_semantics_f32_bits_preserved_through_dyn() {
         f.ret(d);
         let got = entry_dyn(&f.build(), &[Value::F32(f32::from_bits(bits))]);
         let bytes = freeze(&got, &TraversalOptions::default()).expect("freeze");
-        let back = unfreeze(&bytes, &empty_ctx().get(), &TraversalOptions::default()).expect("unfreeze");
+        let back =
+            unfreeze(&bytes, &empty_ctx().get(), &TraversalOptions::default()).expect("unfreeze");
         match back.take_as(&DynType::F32).expect("take F32") {
             Value::F32(x) => assert_eq!(x.to_bits(), bits),
             other => panic!("not an F32: {other:?}"),
@@ -856,7 +882,8 @@ fn av_dynamic_824_semantics_int_extremes_and_id_collision_stay_integers() {
         f.ret(d);
         let got = entry_dyn(&f.build(), &[arg.clone()]);
         let bytes = freeze(&got, &TraversalOptions::default()).expect("freeze");
-        let back = unfreeze(&bytes, &empty_ctx().get(), &TraversalOptions::default()).expect("unfreeze");
+        let back =
+            unfreeze(&bytes, &empty_ctx().get(), &TraversalOptions::default()).expect("unfreeze");
         let taken = back.take_as(&ty).expect("take");
         assert_eq!(taken, arg, "extreme integer must round trip");
     }
@@ -920,7 +947,9 @@ fn av_dynamic_824_semantics_restored_handles_detached() {
     // The ORIGINAL is an in-execution arena value: second alloc → id 1.
     match got.as_value() {
         Value::Record(rec) => match &rec.fields[0] {
-            Value::Str(h) => assert_eq!(h.rc.id, 1, "in-execution payload str carries its arena id"),
+            Value::Str(h) => {
+                assert_eq!(h.rc.id, 1, "in-execution payload str carries its arena id")
+            }
             other => panic!("field 0 not a Str: {other:?}"),
         },
         other => panic!("expected a record, got {other:?}"),
@@ -976,7 +1005,10 @@ fn av_dynamic_824_semantics_shared_dag_pack_ok_freeze_rejects() {
         list_ty: 4,
         cap: 2,
     });
-    f.i(MirInstr::ListPush { root: list, value: note });
+    f.i(MirInstr::ListPush {
+        root: list,
+        value: note,
+    });
     f.i(MirInstr::ListPush {
         root: list,
         value: note2,
@@ -987,7 +1019,12 @@ fn av_dynamic_824_semantics_shared_dag_pack_ok_freeze_rejects() {
     // The portable boundary rejects the shared graph...
     let err = freeze(&got, &TraversalOptions::default()).expect_err("shared DAG must not freeze");
     assert!(
-        matches!(err, PortableError::Unsupported { category: "shared-graph" }),
+        matches!(
+            err,
+            PortableError::Unsupported {
+                category: "shared-graph"
+            }
+        ),
         "unexpected error: {err:?}"
     );
     // ...and the source is unconsumed: the take still works.
@@ -1013,7 +1050,10 @@ fn av_dynamic_824_semantics_list_of_fn_not_declarable() {
     let _ = l;
     let ret = f.slot(0, "ret");
     let c_zero = f.c(MirConst::I32(0));
-    f.i(MirInstr::Const { dst: ret, value: c_zero });
+    f.i(MirInstr::Const {
+        dst: ret,
+        value: c_zero,
+    });
     f.ret(ret);
     let mut m = f.build();
     let fn_ty = m.intern_type(MirType::Fn(FnSig {
@@ -1086,7 +1126,10 @@ fn av_dynamic_824_semantics_place_slot_pack_rejected() {
         list_ty: 13,
         cap: 0,
     });
-    f.i(MirInstr::Const { dst: idx, value: c_zero });
+    f.i(MirInstr::Const {
+        dst: idx,
+        value: c_zero,
+    });
     f.i(MirInstr::ListPlace {
         dst: p,
         base: list,
@@ -1109,7 +1152,10 @@ fn av_dynamic_824_semantics_nested_dyn_rejected() {
     let rec = f.slot(3, "rec"); // placeholder type, swapped below
     let d = f.slot(6, "d");
     let c_one = f.c(MirConst::I32(1));
-    f.i(MirInstr::Const { dst: v, value: c_one });
+    f.i(MirInstr::Const {
+        dst: v,
+        value: c_one,
+    });
     f.i(MirInstr::DynPack { dst: inner, src: v });
     f.i(MirInstr::Aggregate {
         dst: rec,
@@ -1141,9 +1187,18 @@ fn av_dynamic_824_semantics_nested_dyn_rejected() {
     let inner2 = g.slot(6, "inner");
     let outer = g.slot(6, "outer");
     let c_one = g.c(MirConst::I32(1));
-    g.i(MirInstr::Const { dst: v2, value: c_one });
-    g.i(MirInstr::DynPack { dst: inner2, src: v2 });
-    g.i(MirInstr::DynPack { dst: outer, src: inner2 });
+    g.i(MirInstr::Const {
+        dst: v2,
+        value: c_one,
+    });
+    g.i(MirInstr::DynPack {
+        dst: inner2,
+        src: v2,
+    });
+    g.i(MirInstr::DynPack {
+        dst: outer,
+        src: inner2,
+    });
     g.ret(outer);
     assert_eq!(reject_code(&g.build()), "mir.dyn.whitelist");
 }

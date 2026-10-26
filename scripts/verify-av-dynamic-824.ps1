@@ -296,14 +296,30 @@ switch ($Scope) {
         Run-Lang-Tests -Filter 'av_dynamic_824' -Label 'autodown' -RequiredIds $REQ['autodown']
     }
     'acceptance' {
-        # Replay every implemented scope in child processes (isolated
-        # working directories, same shapes the docs promise).
+        # T-06: replay EVERY implemented scope in child processes (isolated
+        # working directories, same shapes the docs promise) — failures
+        # propagate; a green banner with zero selected cases cannot pass.
         foreach ($s in @('first-case', 'semantics', 'admission', 'resources', 'cache', 'compatibility', 'incremental', 'baseline', 'autodown')) {
             & pwsh -File $PSCommandPath -Scope $s
             if ($LASTEXITCODE -ne 0) {
                 throw "acceptance: scope $s failed"
             }
         }
+        # Health: the touched crates stay fmt-clean and check-clean (zero
+        # warnings — the repo rule the module gates also enforce). The fmt
+        # scope is PACKAGE-level: the probe workspace's --all would walk
+        # main-repo crates with pre-existing drift outside this plan.
+        Push-Location $probe
+        try {
+            & cargo fmt -p auto-av-probe -p auto-av-core -- --check
+            if ($LASTEXITCODE -ne 0) { throw "acceptance: cargo fmt --check failed" }
+            & cargo check -p auto-av-probe -p auto-av-core 2>&1 | Tee-Object -Variable checkOut | Write-Host
+            if ($LASTEXITCODE -ne 0) { throw "acceptance: cargo check failed" }
+            if (($checkOut | Out-String) -match 'warning') {
+                throw "acceptance: cargo check emitted warnings (the zero-warning rule)"
+            }
+        }
+        finally { Pop-Location }
     }
 }
 Write-Host "PLAN-824 verify [$Scope]: PASS"
