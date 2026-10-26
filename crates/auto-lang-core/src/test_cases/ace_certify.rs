@@ -25,9 +25,11 @@
 //! INDEPENDENT reader threads (a child filling one pipe can never deadlock
 //! the other); exceeding a stream cap kills the whole job tree and surfaces
 //! a parent-visible overflow error (nothing is silently truncated); the
-//! compile face counts stdout too. Tool identity comes from the BUILD-TIME
-//! captured `$RUSTC -vV` (zero spawns on the default path; an explicit
-//! `--rustc` override is captured through the same contained, bounded run).
+//! compile face counts stdout too. The certificate toolchain identity is
+//! captured CONTAINED from the EXACT compiler this pass launches (CLI
+//! --rustc > env RUSTC > PATH — one rule, always measured); the unrelated
+//! build-time constant is recorded separately as
+//! `default_identity_at_certify` for the zero-spawn daily drift check.
 //!
 //! Contained-tool governance (contract-decision §3 budgets): rustc and the
 //! certified binaries start SUSPENDED, join a kill-on-close Job Object
@@ -1167,6 +1169,21 @@ fn main() { loop { std::io::stderr().write_all(&vec![b'y'; 4096]).unwrap(); } }"
         let mut v = base.clone();
         v["toolchain"]["identity_source"] = serde_json::json!("guessed");
         assert_invalid(&v, "unknown identity_source rule");
+        // F-852-R3-01: produced_by nested strictness (both consumers).
+        let mut v = base.clone();
+        v["produced_by"]["unknown_field"] = serde_json::json!("strict schema must reject");
+        assert_invalid(&v, "unknown produced_by field");
+        let mut v = base.clone();
+        if let Some(o) = v["produced_by"].as_object_mut() {
+            o.remove("schema_note");
+        }
+        assert_invalid(&v, "missing produced_by field");
+        let mut v = base.clone();
+        v["produced_by"]["tool"] = serde_json::Value::Null;
+        assert_invalid(&v, "null produced_by field");
+        let mut v = base.clone();
+        v["produced_by"]["tool"] = serde_json::json!(17);
+        assert_invalid(&v, "number-typed produced_by field");
         let mut v = base.clone();
         v["deps"]["closure"] = serde_json::json!("changed-dependency");
         assert_invalid(&v, "changed deps closure");
