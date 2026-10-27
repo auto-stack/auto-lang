@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-857
-status: execution_done
+status: reviewed
 feature_name: AutoGraphics 3D编辑视口导航与深度网格
 author: [Codex]
 created_at: 2026-10-27
@@ -14,7 +14,7 @@ supersedes_spec_components:
 new_spec_components: []
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 6
+current_step: 7
 total_steps: 10
 ---
 
@@ -139,7 +139,7 @@ T-02最多两种depth网格接法＋一条透视drag全路径探针，产出`att
 | T-04 | work | T-03 | interaction/Host投影拾取/轴drag/snap/view revision/输入登记/Play；V-03..05 | AC-04/05 | [x] |
 | T-05 | work | T-03/04 | 新native probe/check、真实旧相机/深度变异恢复、current identity/consumer；V-06 | AC-01/06 | [x] |
 | T-06 | work | T-05 | 原默认与新辅助性能/资源对照、定向收口、提交代码/SD/证据，不跑整档 | AC-01..06 | [x] |
-| T-07 | review | T-06 | 独立最终review，核深度/实际相机/透视手势/计量；merge门pending | AC-07 | [ ] |
+| T-07 | review | T-06 | 独立最终review，核深度/实际相机/透视手势/计量；merge门pending | AC-07 | [x] |
 | T-08 | merge | T-07 pass | 冻结两端/受影响AGP完整/原新native-owner-content门与复用审计 | AC-08 | [ ] |
 | T-09 | merge | T-08 | 源码合autographics-dev，main沉淀SD/overview/plans/ADR/ledger/索引并归档 | AC-09 | [ ] |
 | T-10 | merge | T-09 | guard clean清树/临时分支、实际10/10/恢复产物，记录S1剩余边界供S2 | AC-09 | [ ] |
@@ -165,6 +165,8 @@ T-02最多两种depth网格接法＋一条透视drag全路径探针，产出`att
 2026-10-27 independent final R3：`stage: review | review_scope: final | reviewer_identity: 独立子agent /root/review_857（未参与实施） | plan_id: PLAN-857 | plan_revision: 1 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-857/auto-lang | branch: plan-857-dev | reviewed_commit: 4d9fa8e8c4ad00f5c88d9d1c5be619f0c592b837 | base_commit: e20b95e175f9184e13c00c78efa7b63349165276 | dependency_revisions: SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467、两锁实际未变 | spec_inputs: attachments/857/review-r3/baseline.json.txt、spec-delta.md | acceptance_results: R1行为与性能证据按无关差异证明复用；R2原8负控和真实正控通过；AC-01/06身份链partial | pending_closeout_gates: 完整双端/受影响AGP/原新native-owner-content门仍归merge | findings: F-857-R3-01/02 OPEN | evidence: attachments/857/review-r3/review.md | next: auto-plan-work按diagnosis-r3.md收口身份不变量并定向验证后复审`。两份收据同时将locks改成README/Cargo.toml的真实hash，比较器仍exit 0且摘要误标锁；实际Cargo.lock文件未改。真实旧提交runner可由record_runner附会当前checkout身份，复制其真实旧Home报告并重组负控receipt后比较器仍将旧runner归为当前提交；旧/新Rust源码未变不能代替显式跨提交复用证明。原R2缺失/partial/错runner、截图与像素8负控已关闭，额外单侧错锁/SDK/commit/phase等8例正确拒绝。[三次未通过诊断](attachments/857/review-r3/diagnosis-r3.md)已记录；T-05/06重开，executing4/10；源码未修改，合入整档未运行。
 
 2026-10-27 work repair R3：`stage: work | plan_id: PLAN-857 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-857/auto-lang | branch: plan-857-dev | base_commit: 4d9fa8e8c4ad00f5c88d9d1c5be619f0c592b837 | code_commit: 81b0974ac2512126790b0ef2af79235edf45b485 | dependency_revisions: SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467、两锁不变 | task_ids: T-05/06 | evidence: attachments/857/work/repair-r3/completion.md、evidence.json.txt、current-controls.json.txt、reuse-controls.json.txt | blockers: 无已知work内未完成项 | next_responsible_role: 独立复审受影响内容`。F-857-R3-01固定精确锁路径并核收据/实际锁/两份来源；F-857-R3-02绑定受控构建来源，缺证明旧runner不标为当前，显式跨提交复用保留真实旧构建提交。原双侧伪锁及真实旧Home反例拒绝；当前构建及明确复用各12项比较负控与实际856/默认/Home正控通过，未授权复用与配置变化拒绝，2D相邻窗口通过。execution_done、6/10；尚未独立复审或合入，完整双端、AGP和原新native-owner-content等门仍归merge。
+
+2026-10-27 independent final R4：`stage: review | review_scope: final | reviewer_identity: 独立子agent（未参与实施） | plan_id: PLAN-857 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-857/auto-lang | branch: plan-857-dev | reviewed_commit: 81b0974ac2512126790b0ef2af79235edf45b485 | base_commit: 4d9fa8e8c4ad00f5c88d9d1c5be619f0c592b837 | dependency_revisions: SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467、两锁实测未变（2b131d3dd3…/c3df168e72…，跨e20b95e1→4d9fa8e8→81b0974a逐字节同） | spec_inputs: attachments/857/review-r4/baseline.json.txt、spec-delta.md（与R3冻结副本逐字同） | acceptance_results: AC-01通过；AC-06通过（R3两项身份缺口关闭）；AC-02..05实现与输入未变按无关差异复用且本轮真实856/857双80帧窗口正控重证默认/Home逐像素等；AC-07通过 | pending_closeout_gates: 完整双端/受影响AGP/原新native-owner-content门仍归merge（T-08） | findings: F-857-R3-01 CLOSED、F-857-R3-02 CLOSED、无新发现 | evidence: attachments/857/review-r4/review.md | next: auto-plan:merge（T-08..T-10），merge前执行冻结提交上的完整门，门禁通过前不得合入`。核实方式：静态审查9文件diff（全在tools/与来源清单，全部为新增检查或收紧，无删检/放宽）；被审方29个证据文件SHA-256逐项重算全符；独立重放锁/身份/复用类全部负控与正控（provenance套件12例、current与reuse两矩阵各12负控+真实窗口正控、无授权复用与配置变化拒绝、注册表回退record/verify_runner），且5个关键结果文件与被审方收据SHA逐字节一致；另自构4个收据外对抗用例全拒（AD-01单侧锁键伪造、AD-02重签名换芯构建证明、AD-03复用收据code_commit改标、AD-04重复JSON键），原始日志与SHA见review-r4。健康：py_compile 8工具过、无杂散调试输出、退出码语义明确；SDK 146项历史warnings未新增。merge-owned门禁pending显式登记，本pass不含这些门。
 
 ## 10. 待澄清事项
 
