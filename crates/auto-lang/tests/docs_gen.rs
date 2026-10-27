@@ -113,7 +113,7 @@ const DOC_EXCLUDE: &[&str] = &[
     "pre",           // 语义 HTML 等宽块,随 Layout 组(语义 HTML 行)文档化
     "dropdownmenulabel", // dropdownmenu 页(kebab 拼写变体,同 dropdownlabel)
     // Plan 435 P8-3(D11)批量归类配套:家族件随家族页文档化(父族在
-    // cmd_vue.rs 安装表或官方包;tier 已归 web_component,文档面随页)。
+    // auto-ui-tools/src/vue.rs 安装表或官方包;tier 已归 web_component,文档面随页)。
     "autocomplete", "autocompleteempty", "autocompleteinput", // combobox 页
     "autocompleteitem", "autocompletelist",
     "buttongroup",      // button 页(变体分组)

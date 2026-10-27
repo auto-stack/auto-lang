@@ -2,7 +2,7 @@
 //
 // Convention (the actual "gap" was undocumented convention, not a codegen bug):
 // route-target pages MUST live in `src/front/pages/<name>.at`. The generator
-// (cmd_vue.rs) emits each to `src/pages/<name>.vue` — exactly the path that
+// (auto-ui-tools/src/vue.rs) emits each to `src/pages/<name>.vue` — exactly the path that
 // the generated `router/index.ts` imports (`@/pages/<name>.vue`). Declaring
 // page widgets inline in app.at does NOT work — they won't be emitted, and the
 // router's imports dangle (the original RED failure).

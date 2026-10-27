@@ -58,7 +58,7 @@ pub fn pop() -> Option<ShellExecRequest> {
 /// string #7ec699、comment #999、number/boolean/function #f08d49、
 /// punctuation #ccc、operator #67cdcc;function = 标识符后随 `(`)。
 pub fn highlight_rgb(code: &str) -> Vec<(String, Option<(u8, u8, u8)>)> {
-    // 与 vue 生成器(cmd_vue.rs)自定义 'auto' 语言的 keyword 正则同源。
+    // 与 vue 生成器(auto-ui-tools/src/vue.rs)自定义 'auto' 语言的 keyword 正则同源。
     // null/nil 在该正则中属 keyword;true/false 走 boolean(橙)。
     const KW: &[&str] = &[
         "widget", "fn", "let", "mut", "const", "var", "if", "else", "for", "in", "loop", "while",

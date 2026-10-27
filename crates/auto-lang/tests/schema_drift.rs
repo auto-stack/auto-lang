@@ -1336,7 +1336,7 @@ const TIER_OVERRIDES: &[(&str, &str)] = &[
     ("datetime", "web_component"),
     ("datetimeinput", "web_component"),
     // Plan 435 P8-3(D11)批量归类:shadcn 家族件(gallery 在用,父族可经
-    // cmd_vue.rs 安装表或官方包解析;子件折叠拼写与父族同源)。归类依据
+    // auto-ui-tools/src/vue.rs 安装表或官方包解析;子件折叠拼写与父族同源)。归类依据
     // = 家族面,不逐件判断 —— 与上文 dialog-*/dropdown-menu-* 条目同哲学。
     ("toaster", "builtin_widget"), // toast-provider 同族(iced 有宿主实现)
     ("autocomplete", "web_component"),

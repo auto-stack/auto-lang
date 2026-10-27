@@ -6,7 +6,7 @@
 //! 失败只打 Warning 跳页 → router 引用悬空 → widgets-gallery 整站 500。
 //! (解析器后续修复已顺带治愈该文件;本测试钉住防线,杜绝复发。)
 //!
-//! 冒烟口径与 vue serve 完全一致(cmd_vue.rs Phase 3):逐页调
+//! 冒烟口径与 vue serve 完全一致(auto-ui-tools/src/vue.rs Phase 3):逐页调
 //! `ui_build_shadcn_with_widgets`,要求 Ok 且产出非空 SFC。
 //!
 //! PLAN-590(Stage B P-5):widgets-gallery 物理迁 auto-os 顶层,语料锚改经
