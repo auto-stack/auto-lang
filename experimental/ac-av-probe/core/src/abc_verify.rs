@@ -8,6 +8,7 @@
 //! pass through here — including bytes this same compiler produced.
 
 use crate::abc::DecodedAbc;
+use crate::compact_abc::{DecodedCompactAbc, COMPACT_ABC_PROFILE, COMPACT_ABC_VERSION};
 use crate::contract::AvSemanticsVersion;
 use crate::mir::MirModule;
 use crate::mir_verify::{verify_mir_with_deadline, CheckedMir, MirVerifyError};
@@ -151,20 +152,7 @@ pub fn verify_abc(
     // Every public entry (raw bytes, hand-built DecodedAbc, driver closure,
     // restore) funnels through this one constructor, so the unit/complete
     // split is uniform across all of them.
-    let executable = !module.is_unit
-        && !module.funcs.iter().any(|f| {
-            f.blocks.iter().any(|b| {
-                b.instrs.iter().any(|i| {
-                    matches!(
-                        i,
-                        crate::mir::MirInstr::Call {
-                            callee: crate::mir::CalleeRef::Import(_),
-                            ..
-                        }
-                    )
-                })
-            })
-        });
+    let executable = executable_closure(&module);
     Ok(LoadedModule {
         checked,
         av_semantics,
@@ -183,4 +171,80 @@ pub fn verify_abc_bytes(
 ) -> Result<LoadedModule, AbcAdmissionError> {
     let decoded = crate::abc::decode_abc(bytes).map_err(AbcAdmissionError::Decode)?;
     verify_abc(decoded, expected_owner)
+}
+
+/// Executable-closure credential shared by every admission entry: a
+/// re-verifiable UNIT is never an executable entry, and any `Call`
+/// targeting an import means the closure is unresolved (pending unit
+/// linkage or a host-side symbol).
+fn executable_closure(module: &MirModule) -> bool {
+    !module.is_unit
+        && !module.funcs.iter().any(|f| {
+            f.blocks.iter().any(|b| {
+                b.instrs.iter().any(|i| {
+                    matches!(
+                        i,
+                        crate::mir::MirInstr::Call {
+                            callee: crate::mir::CalleeRef::Import(_),
+                            ..
+                        }
+                    )
+                })
+            })
+        })
+}
+
+/// PLAN-826: the compact wire (AVAC/1) admission — the SAME deep admission
+/// contract as [`verify_abc`] (envelope owner re-stamp, MIR verification
+/// with deadline, executable-closure credential) for the compact encoding
+/// of the scalar profile. The compact profile id 1 denotes the SAME
+/// `av.core-i32/1` profile and AV semantics as the legacy AVAB core wire:
+/// the wire GENERATION differs, the admitted semantics do not. AVAC bytes
+/// never admit through `verify_abc` and AVAB bytes never admit here — the
+/// magic isolates the generations at decode.
+pub fn verify_compact_abc(
+    decoded: DecodedCompactAbc,
+    expected_owner: &crate::mir::OwnerScope,
+) -> Result<LoadedModule, AbcAdmissionError> {
+    // Version/profile re-check on the PUBLIC struct (same rule as
+    // verify_abc): decode rejects unknown wire values, but a
+    // hand-constructed DecodedCompactAbc must not smuggle them past this
+    // constructor.
+    if decoded.profile != COMPACT_ABC_PROFILE {
+        return Err(AbcAdmissionError::Identity(format!(
+            "decoded compact profile id {} is not the admitted compact profile id {}",
+            decoded.profile, COMPACT_ABC_PROFILE
+        )));
+    }
+    if decoded.version != COMPACT_ABC_VERSION {
+        return Err(AbcAdmissionError::Identity(format!(
+            "decoded compact version {} is not the admitted compact wire version {}",
+            decoded.version, COMPACT_ABC_VERSION
+        )));
+    }
+    let mut module = decoded.module;
+    // Identity re-stamp: same rule as verify_abc — wire bytes never carry
+    // their own authority.
+    module.owner = expected_owner.clone();
+    for f in module.funcs.iter_mut() {
+        f.owner = expected_owner.clone();
+    }
+    let checked =
+        verify_mir_with_deadline(&module, deadline()).map_err(AbcAdmissionError::Verify)?;
+    let executable = executable_closure(&module);
+    Ok(LoadedModule {
+        checked,
+        av_semantics: crate::contract::AV_SEMANTICS,
+        executable,
+    })
+}
+
+/// Admit compact wire bytes (AVAC magic) from raw bytes.
+pub fn verify_compact_abc_bytes(
+    bytes: &[u8],
+    expected_owner: &crate::mir::OwnerScope,
+) -> Result<LoadedModule, AbcAdmissionError> {
+    let decoded =
+        crate::compact_abc::decode_compact_abc(bytes).map_err(AbcAdmissionError::Decode)?;
+    verify_compact_abc(decoded, expected_owner)
 }

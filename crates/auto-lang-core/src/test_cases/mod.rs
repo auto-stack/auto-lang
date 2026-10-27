@@ -853,6 +853,18 @@ fn dispatch_check(
             )
         }
         (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref() == Some(ac_av::AV_COMPACT_RECIPE) =>
+        {
+            ac_av::run_compact_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
             if check.options.probe_recipe.as_deref() == Some(abi::ABI_RECIPE) =>
         {
             abi::run_check(

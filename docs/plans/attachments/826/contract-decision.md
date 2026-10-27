@@ -109,3 +109,39 @@ T-10 固定反例：operand `0/1/127/128/255/256/16383/16384/65535/65536/u32::MA
 - 65535/65536/u32::MAX 使用手算字节 oracle；非最短/溢出/截断 ULEB 拒绝。slot 65536 和非法控制目标能 decode 为未授信 MIR，但真实 verifier 分别以 `mir.slot-ref`/`mir.jump-target` 拒绝。
 - 截断、总输入尾随、section 重复/缺失/重叠/未知 required、函数 section 与 body 尾随、未知 opcode 均受控拒绝；未知 optional debug 按长度跳过且合法模块仍 verify。
 - 超 4 MiB 输入、65537 module entries 和小 wire 大结构展开均在对应分配前以 resource 拒绝。该记录只覆盖 V-13 的 T-10 模块子集，不声称 V-01 全路径、V-08 测量、生产 adapter/cache/restore 或整 Plan AC-10 完成。
+
+## 10. T-02 集成刷新记录（2026-10-28）
+
+D825 已交付合入（master `9eb9ebca3`，LoadedProgram/loaded_program.rs 可用），D798/D828 此前已归档。
+本树同步 master（merge commit `9c7c71a1b`，无冲突），核心/注册窗口空闲（825 随合并释放，843 触面在
+crates/auto-lang-core 重构域、与本格式无交集），本计划按 §5 并行合同接受核心窗口并登记：
+
+- **基面**：plan-826-dev `9c7c71a1b`（= e417247a5 基础上 T-10 提交 8190551fd + master 同步）。
+- **接口刷新（PLAN-823 r8 env 合同）**：`MirFunction::env`/`MirImport::env: Option<Vec<TypeIdx>>`
+  为 T-10 写作基面后合入。compact 编码器对携带 env 布局的函数/导入以
+  `compact.encode.profile` 拒绝（标量子集外，与旧 AVAB 编码器对 core profile 的同型拒绝一致）；
+  解码侧 `env: None`。同源壳 9/9 复跑绿。
+- **正式路由（核心窗口）**：`core/src/compact_abc.rs` 注册入 `core/lib.rs`（`pub mod` + re-export）；
+  `abc_verify::{verify_compact_abc, verify_compact_abc_bytes}` 为 AVAC/1 的唯一 LoadedModule 准入入口
+  （owner 重盖章 + verify_mir_with_deadline + executable-closure 凭证，共享 `executable_closure` 助手；
+  profile 1 = 同一 `av.core-i32/1` 语义，仅 wire 世代不同）。
+- **producer/query key 登记**：A09 键新增 `abc-codec` 维度取值 `auto.abc.av-compact-core-i32/1`
+  （`abc_unit_key_with_codec`）；manifest 新增 `abc_codec` 字段（serde 默认 = 旧 AVAB schema，旧
+  manifest 恢复行为不变；不入 fingerprint——codec 差异已由 payload_fp 区分）。两世代键空间不相交，
+  跨世代为确定性 miss/rebuild（O(1) 世代闸门按策略判 magic+version）。
+- **driver/worker**：`probe/src/wire.rs` WireCodec 策略（LegacyAbc 默认/CompactAbc opt-in
+  `set_wire_compact`）；driver 的 A09 发射/命中/闭包准入与 restore 的单元/闭包解码准入均按策略路由；
+  compact wire 不携带函数名（合同 §3），单元名自 A09 信封/manifest link 重绑定
+  （`rebind_unit_name`；legacy 保留 payload 名 vs 声明名校验）。worker binary 接受
+  `ac-av/compact-run-v1`。
+- **正式 recipe**：`AV_COMPACT_RECIPE = "ac-av/compact-run-v1"` 注册于
+  `auto-lang-core/test_cases/ac_av.rs`（RecipeFamily::Compact，核心版本轴 = EXPECTED_AV_CORE_VERSION，
+  工具身份轴 `av-wire-codec=auto.abc.av-compact-core-i32/1`）与 `auto-test-case/contract.rs`
+  （REGISTERED_PROBE_RECIPES + 步骤词汇/av binding）。父侧 `judge_compact_runtime` 以
+  `abc_wire_compact_units`/`abc_wire_compact_closure`/loaded 计数器判真（AV826_JUDGE_SABOTAGE 反控）。
+- **组内兄弟树**：按组解析序补 `D:/autostack/.wt/lang-826/{auto-ui@bd228b0, auto-down@c3464d0}`
+  只读固定版本（与 825/843 组同约定；根 workspace check 需要）。
+- **首例验证**：`powershell -NoProfile -File scripts/verify-av-826.ps1 -Scope first` 退出 0：
+  同源壳 9/9、probe 首例 5/5（往返/跨代隔离/cache-hit+新worker恢复/legacy共存+双键空间/unit不派发）、
+  父侧 corpus 1/1 + 敏感性反控 1/1。回归：av_runtime_825_first_case 4/4、cache_tier 20/20、
+  825 corpus runner 1/1。其余 scope（targeted/compat/bench/baseline/acceptance）显式未实现。

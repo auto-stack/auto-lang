@@ -18,10 +18,11 @@ use crate::cache::{
     assemble_closure, decode_sidecar, get_by_artifact_id, merge_spans, render_unit_sig,
     EnvelopeIdentity,
 };
+use crate::wire::WireCodec;
 use ac_artifact_probe::store::ManagedStore;
 use auto_av_core::contract::{ExecOutcome, TRACE_CAPABILITY};
 use auto_av_core::mir::OwnerScope;
-use auto_av_core::{abc_verify, decode_abc, execute, CancelFlag, ExecLimits, ExecTrace};
+use auto_av_core::{execute, CancelFlag, ExecLimits, ExecTrace};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -115,9 +116,14 @@ fn restore_and_run_inner(
             auto_av_core::contract::AV_SEMANTICS.0
         ));
     }
+    // PLAN-826: the wire GENERATION routes decode/admission — the manifest
+    // names the codec its unit payloads and closure are encoded in; an
+    // unknown codec is refused, never guessed (the two generations never
+    // cross-decode: their magic isolates them at the codec entry).
+    let codec = WireCodec::from_schema(&manifest.abc_codec)?;
     // Units: per-artifact envelope + decode + verify; sidecar re-binds spans.
     let owner_scope = OwnerScope {
-        schema: auto_av_core::contract::ABC_SCHEMA.to_string(),
+        schema: codec.owner_schema().to_string(),
         module: owner.to_string(),
     };
     let package = crate::semrefs::av_package();
@@ -170,7 +176,8 @@ fn restore_and_run_inner(
                 link.name, link.payload_fp, payload_fp
             ));
         }
-        let decoded = decode_abc(&payload)
+        let decoded = codec
+            .decode(&payload)
             .map_err(|e| format!("unit `{}` decode: {}", link.name, e.code()))?;
         // F798-R15-02: the manifest's unit link (and the unit envelope it
         // was published under) declares a UNIT — a complete-module payload
@@ -184,19 +191,28 @@ fn restore_and_run_inner(
         // F798-R6-01: the decoded payload's actual function must BE the
         // declaration the link names — a renamed link over another unit's
         // artifact is rejected, not executed under the wrong name.
-        let actual_name = decoded
-            .module
-            .funcs
-            .first()
-            .map(|f| f.name.clone())
-            .unwrap_or_default();
-        if actual_name != link.name {
-            return Err(format!(
-                "unit `{}` payload actually contains function `{}` — declaration/payload mismatch",
-                link.name, actual_name
-            ));
-        }
+        // PLAN-826: the compact wire carries no function names (the
+        // directory index is the wire identity); the envelope-bound link
+        // name re-binds onto the decoded payload, with the artifact-level
+        // identity already admitted by the envelope + sema-ref checks
+        // above. The name-mismatch check keeps guarding the legacy wire,
+        // which carries the name itself.
         let mut module = decoded.module;
+        if codec == WireCodec::CompactAbc {
+            codec.rebind_unit_name(&mut module, &link.name);
+        } else {
+            let actual_name = module
+                .funcs
+                .first()
+                .map(|f| f.name.clone())
+                .unwrap_or_default();
+            if actual_name != link.name {
+                return Err(format!(
+                    "unit `{}` payload actually contains function `{}` — declaration/payload mismatch",
+                    link.name, actual_name
+                ));
+            }
+        }
         module.owner = owner_scope.clone();
         for f in module.funcs.iter_mut() {
             f.owner = owner_scope.clone();
@@ -219,8 +235,8 @@ fn restore_and_run_inner(
                 ));
             }
         }
-        match abc_verify::verify_abc(
-            auto_av_core::DecodedAbc {
+        match codec.admit_decoded(
+            crate::wire::DecodedWire {
                 version: decoded.version,
                 profile: decoded.profile,
                 module: module.clone(),
@@ -277,11 +293,14 @@ fn restore_and_run_inner(
     }
     let loaded = units.len();
     let merged = assemble_closure(&units, owner, entry).map_err(|e| format!("closure: {}", e))?;
-    let bytes =
-        auto_av_core::encode_abc(&merged).map_err(|e| format!("closure encode: {}", e.code()))?;
-    let decoded =
-        decode_abc(&bytes.to_flat()).map_err(|e| format!("closure decode: {}", e.code()))?;
-    let loaded_module = abc_verify::verify_abc(decoded, &owner_scope)
+    let payload = codec
+        .encode(&merged)
+        .map_err(|e| format!("closure encode: {}", e.code()))?;
+    let decoded = codec
+        .decode(&payload)
+        .map_err(|e| format!("closure decode: {}", e.code()))?;
+    let loaded_module = codec
+        .admit_decoded(decoded, &owner_scope)
         .map_err(|e| format!("closure verify: {}", e))?;
     let cancel = CancelFlag::new(false);
     let (outcome, trace): (ExecOutcome, ExecTrace) =

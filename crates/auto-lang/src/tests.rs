@@ -45,6 +45,8 @@ mod av_owned_821_tests;
 #[cfg(feature = "test-cases")]
 mod av_runtime_825_tests;
 mod av_source_827_tests;
+#[cfg(feature = "test-cases")]
+mod av_wire_826_tests;
 // PLAN-701 供④/供⑥: time 族三面对拍 + shell_recent 签名冒烟
 mod plan701_supply_probes;
 mod plan728_bench; // PLAN-728 T-08: 阶梯基准谱（#[ignore] 显式跑，JSONL 入 docs/reports）

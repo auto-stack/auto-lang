@@ -72,6 +72,13 @@ pub const AV_LOADED_RECIPE: &str = "ac-av/loaded-run-v1";
 /// frozen expectations, never the worker's word.
 pub const AV_DYNAMIC_RECIPE: &str = "ac-av/dynamic-run-v1";
 pub const EXPECTED_AV_DYNAMIC_CORE_VERSION: &str = "av.dynamic/1";
+/// PLAN-826: the compact-wire recipe — the SAME scalar `av.core-i32/1`
+/// profile (same core identity) over the AVAC wire generation
+/// (`auto.abc.av-compact-core-i32/1`): codec-dimensioned cache namespace,
+/// compact admission and AVAC persist/restore. Append-only registration;
+/// earlier recipe contracts untouched. The wire face is judged parent-side
+/// against the compact-codec counters, never the worker's word.
+pub const AV_COMPACT_RECIPE: &str = "ac-av/compact-run-v1";
 
 /// Which registered av recipe a check runs under.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -83,6 +90,7 @@ pub enum RecipeFamily {
     Loaded,
     Closures,
     Dynamic,
+    Compact,
 }
 
 impl RecipeFamily {
@@ -95,6 +103,7 @@ impl RecipeFamily {
             RecipeFamily::Loaded => AV_LOADED_RECIPE,
             RecipeFamily::Closures => AV_CLOSURES_RECIPE,
             RecipeFamily::Dynamic => AV_DYNAMIC_RECIPE,
+            RecipeFamily::Compact => AV_COMPACT_RECIPE,
         }
     }
     pub fn expected_core_version(&self) -> &'static str {
@@ -105,6 +114,9 @@ impl RecipeFamily {
             RecipeFamily::Collections => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
             RecipeFamily::Closures => EXPECTED_AV_CLOSURES_CORE_VERSION,
             RecipeFamily::Dynamic => EXPECTED_AV_DYNAMIC_CORE_VERSION,
+            // PLAN-826: the compact wire is a WIRE generation of the same
+            // scalar profile — the core identity is unchanged.
+            RecipeFamily::Compact => EXPECTED_AV_CORE_VERSION,
         }
     }
 }
@@ -151,6 +163,15 @@ fn probe_toolchain_axes(exe_sha: &str, family: RecipeFamily) -> Vec<(String, Str
     // the frozen profile id (3) explicitly (core/data receipts unchanged).
     if family == RecipeFamily::Owned {
         v.push(("av-profile".into(), "3".into()));
+    }
+    // PLAN-826: the compact-wire tool-identity axis carries the AVAC wire
+    // schema explicitly — the receipt names the wire generation the run
+    // actually used (same scalar core identity as the loaded recipe).
+    if family == RecipeFamily::Compact {
+        v.push((
+            "av-wire-codec".into(),
+            "auto.abc.av-compact-core-i32/1".into(),
+        ));
     }
     // PLAN-824: the dynamic tool-identity axis carries profile id 5.
     if family == RecipeFamily::Dynamic {
@@ -829,6 +850,27 @@ pub fn run_loaded_check(
     )
 }
 
+/// PLAN-826 T-02: the compact-wire recipe entry — same executor/judgement
+/// contract, scalar profile over the AVAC wire generation.
+pub fn run_compact_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::Compact,
+    )
+}
+
 /// PLAN-820: the data-recipe entry — same executor/judgement contract,
 /// data-profile pipeline (record source front door in the worker).
 /// PLAN-820 F820-R6-01: the PARENT's frozen av.data-fixture/1 expectation
@@ -1484,6 +1526,9 @@ fn run_check_impl(
         judge_expectation(family, &step, oracle, &mut mismatches);
         if family == RecipeFamily::Loaded {
             judge_loaded_runtime(&step, &mut mismatches);
+        }
+        if family == RecipeFamily::Compact {
+            judge_compact_runtime(&step, &mut mismatches);
         }
     }
 
@@ -2204,6 +2249,51 @@ fn judge_loaded_runtime(step: &StepOut, mismatches: &mut Vec<Mismatch>) {
                 first_diff: None,
             });
         }
+    }
+}
+
+/// PLAN-826 T-02: the compact-wire judge face. A run under
+/// `ac-av/compact-run-v1` is only green when the WORKER'S OWN COUNTERS
+/// prove the compact generation actually carried the units AND the whole
+/// closure (emission + admission under the AVAC codec) and the executed
+/// closure rode the D825 loaded representation — a legacy-wire run of the
+/// same source must redden this face.
+fn judge_compact_runtime(step: &StepOut, mismatches: &mut Vec<Mismatch>) {
+    if step.outcome != "success" {
+        return;
+    }
+    let sabotage = std::env::var("AV826_JUDGE_SABOTAGE").unwrap_or_default();
+    let observed = |key: &str| {
+        if sabotage == key {
+            0
+        } else {
+            step.counters.get(key).copied().unwrap_or(0)
+        }
+    };
+    for (key, minimum) in [
+        ("abc_wire_compact_units", 1),
+        ("abc_wire_compact_closure", 1),
+        ("loaded_index_builds", 1),
+        ("loaded_pc_lookups", 1),
+    ] {
+        if observed(key) < minimum {
+            mismatches.push(Mismatch {
+                observation: "compact-wire".into(),
+                kind: key.into(),
+                expected: format!(">= {minimum}"),
+                actual: observed(key).to_string(),
+                first_diff: None,
+            });
+        }
+    }
+    if observed("reference_pc_lookups") != 0 {
+        mismatches.push(Mismatch {
+            observation: "compact-wire".into(),
+            kind: "reference_pc_lookups".into(),
+            expected: "0".into(),
+            actual: observed("reference_pc_lookups").to_string(),
+            first_diff: None,
+        });
     }
 }
 

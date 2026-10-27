@@ -202,6 +202,16 @@ fn encode_terminator(out: &mut Vec<u8>, term: &Terminator) {
 
 fn encode_function(f: &MirFunction) -> Result<Vec<u8>, AbcDecodeError> {
     check_function_tables(f)?;
+    // PLAN-823 r8 env contract refresh (PLAN-826 T-02): a function with a
+    // DECLARED closure env layout is a closure body — outside the scalar
+    // av.core-i32/1 subset this wire carries. Refused at encode, never
+    // silently dropped: the compact wire has no env section.
+    if f.env.is_some() {
+        return Err(format_err(
+            "compact.encode.profile",
+            "closure env layout is outside av.core-i32/1",
+        ));
+    }
     let mut out = Vec::new();
     put_uleb(&mut out, f.sig);
     put_uleb(
@@ -371,6 +381,15 @@ pub fn encode_compact_abc(m: &MirModule) -> Result<Vec<u8>, AbcDecodeError> {
             .map_err(|_| format_err("compact.encode.imports", "import count exceeds u32"))?,
     );
     for import in &m.imports {
+        // PLAN-823 r8 env contract refresh (PLAN-826 T-02): an import
+        // binding a closure body declares an env layout — outside the
+        // scalar subset; refused at encode.
+        if import.env.is_some() {
+            return Err(format_err(
+                "compact.encode.profile",
+                "closure env import is outside av.core-i32/1",
+            ));
+        }
         put_string(&mut imports, &import.symbol)?;
         imports.push(match import.effect {
             Effect::Observable => 0,
@@ -914,6 +933,9 @@ fn decode_function(
         slots,
         blocks,
         entry,
+        // PLAN-826 T-02 (PLAN-823 r8 env refresh): the scalar wire carries
+        // no closure env layout — decoded functions are ordinary bodies.
+        env: None,
         source_snapshot: 0,
         spans: Vec::new(),
     })
@@ -1068,6 +1090,8 @@ pub fn decode_compact_abc(bytes: &[u8]) -> Result<DecodedCompactAbc, AbcDecodeEr
             symbol,
             effect,
             sig,
+            // PLAN-826 T-02: scalar-wire imports never bind closure envs.
+            env: None,
         });
     }
     c.finish("import section")?;
@@ -1163,6 +1187,7 @@ mod tests {
             slots,
             blocks,
             entry: 0,
+            env: None,
             source_snapshot: 0,
             spans: Vec::new(),
         }
@@ -1339,6 +1364,7 @@ mod tests {
                 symbol: symbol.into(),
                 effect: Effect::Observable,
                 sig,
+                env: None,
             });
         }
         m.capabilities.push(TRACE_CAPABILITY.into());
@@ -1412,6 +1438,7 @@ mod tests {
             symbol: "fn:helper".into(),
             effect: Effect::Pure,
             sig: unit_sig,
+            env: None,
         });
         unit.funcs.push(function(
             &unit,

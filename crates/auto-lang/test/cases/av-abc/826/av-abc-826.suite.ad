@@ -1,0 +1,7 @@
+# PLAN-826 compact AVAC wire formal corpus.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "av-abc-826", include: [
+  "av-compact-first-case.case.ad",
+] }
+```

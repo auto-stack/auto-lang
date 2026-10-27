@@ -1633,7 +1633,10 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
         } else if f.env.is_some() {
             return Err(AbcDecodeError::fmt_err(
                 "abc.encode.profile",
-                format!("function `{}` declares an env outside the closures profile", f.name),
+                format!(
+                    "function `{}` declares an env outside the closures profile",
+                    f.name
+                ),
             ));
         }
     }

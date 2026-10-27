@@ -650,6 +650,11 @@ fn case_serve() -> ! {
     let closures_fixture_id = req["closures_fixture"].as_str().map(|s| s.to_string());
     // PLAN-824: the dynamic-profile recipe (avworker/1 envelope domain).
     let dynamic_recipe = recipe == "ac-av/dynamic-run-v1";
+    // PLAN-826: the compact-wire recipe (avworker/1 envelope domain; the
+    // recipe id is the discriminator) — the scalar profile over the AVAC
+    // wire generation (codec-dimensioned cache namespace + compact
+    // admission).
+    let compact_recipe = recipe == "ac-av/compact-run-v1";
     // PLAN-820 F820-R6-01: the typed-fixture entry (`av.entry` of the
     // form `typed:<id>`, validated by the parent against its OWN frozen
     // table before the request) selects a frozen av.data-fixture/1 input
@@ -671,6 +676,7 @@ fn case_serve() -> ! {
         && !loaded_recipe
         && !closures_recipe
         && !dynamic_recipe
+        && !compact_recipe
     {
         eprintln!("unknown recipe {recipe}");
         exit(2);
@@ -746,14 +752,15 @@ fn case_serve() -> ! {
     let mut d = if data_recipe {
         None
     } else {
-        Some(
-            auto_av_probe::driver::Driver::with_store(&store_dir, "autodown-case").unwrap_or_else(
-                |e| {
-                    eprintln!("store: {e}");
-                    exit(3)
-                },
-            ),
-        )
+        let mut driver = auto_av_probe::driver::Driver::with_store(&store_dir, "autodown-case")
+            .unwrap_or_else(|e| {
+                eprintln!("store: {e}");
+                exit(3)
+            });
+        if compact_recipe {
+            driver.set_wire_compact();
+        }
+        Some(driver)
     };
 
     let replace_once = |src: &str, from: &str, to: &str| -> Result<String, String> {

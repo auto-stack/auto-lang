@@ -20,6 +20,7 @@ pub mod abc;
 pub mod abc_verify;
 pub mod av;
 pub mod closures;
+pub mod compact_abc;
 pub mod contract;
 // PLAN-824 `av.dynamic/1` (T-02 core window): the DynValue container and
 // the portable freeze/restore codec — same-source files previously
@@ -40,11 +41,18 @@ pub mod program_snapshot;
 pub mod span_map;
 
 pub use abc::{decode_abc, encode_abc, AbcDecodeError, DecodedAbc};
-pub use abc_verify::{verify_abc, verify_abc_bytes, AbcAdmissionError, LoadedModule};
+pub use abc_verify::{
+    verify_abc, verify_abc_bytes, verify_compact_abc, verify_compact_abc_bytes, AbcAdmissionError,
+    LoadedModule,
+};
 pub use av::{
     execute, execute_entry, execute_entry_reference, execute_program, execute_program_reference,
     execute_program_steps, execute_reference, resume_program, CancelCheck, CancelFlag, ExecLimits,
     ExecTrace, PausedRun, SteppedOutcome,
+};
+pub use compact_abc::{
+    decode_compact_abc, encode_compact_abc, DecodedCompactAbc, COMPACT_ABC_MAGIC,
+    COMPACT_ABC_PROFILE, COMPACT_ABC_SCHEMA, COMPACT_ABC_VERSION,
 };
 pub use contract::{
     AvSemanticsVersion, ExecOutcome, MirSemanticsVersion, ResourceKind, SpanInfo, TrapKind, Value,

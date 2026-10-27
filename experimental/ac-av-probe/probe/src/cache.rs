@@ -1601,7 +1601,20 @@ pub struct ModuleManifest {
     pub entry: String,
     pub profile: String,
     pub av_sem: u32,
+    /// PLAN-826: the ABC wire generation this manifest's unit payloads and
+    /// closure are encoded in. Absent on legacy manifests = the delivered
+    /// AVAB core schema; a restore routes decode/admission on THIS value
+    /// and refuses unknown codecs rather than guessing a generation.
+    /// (Deliberately NOT part of `fingerprint()`: the codec already
+    /// differentiates manifests through its unit payload fingerprints, and
+    /// the manifest key formula stays byte-identical for legacy rows.)
+    #[serde(default = "legacy_abc_codec")]
+    pub abc_codec: String,
     pub units: Vec<UnitLink>,
+}
+
+fn legacy_abc_codec() -> String {
+    ABC_SCHEMA.to_string()
 }
 
 impl ModuleManifest {
@@ -1717,6 +1730,21 @@ pub fn mir_unit_key(owner: &str, unit: &str, body_fp: &str, caps_fp: &str) -> Qu
 }
 
 pub fn abc_unit_key(owner: &str, unit: &str, body_fp: &str, caps_fp: &str) -> QueryKey {
+    abc_unit_key_with_codec(owner, unit, body_fp, caps_fp, ABC_SCHEMA)
+}
+
+/// PLAN-826: the codec-dimensioned A09 unit key. The `abc-codec` axis is
+/// the wire schema, so the compact generation (`av-compact-core-i32/1`)
+/// and the legacy AVAB generation never share a cache namespace — a
+/// generation switch is a deterministic miss/rebuild, never an in-place
+/// reinterpretation of the other generation's rows.
+pub fn abc_unit_key_with_codec(
+    owner: &str,
+    unit: &str,
+    body_fp: &str,
+    caps_fp: &str,
+    codec_schema: &str,
+) -> QueryKey {
     QueryKey::new(
         &ABC_LAYER,
         vec![
@@ -1725,7 +1753,7 @@ pub fn abc_unit_key(owner: &str, unit: &str, body_fp: &str, caps_fp: &str) -> Qu
             ("unit".into(), unit.into()),
             ("profile".into(), AV_PROFILE.into()),
             ("body-sig".into(), body_fp.into()),
-            ("abc-codec".into(), ABC_SCHEMA.into()),
+            ("abc-codec".into(), codec_schema.into()),
             ("abc-sem".into(), ABC_SEMANTICS.0.to_string()),
             ("av-sem".into(), AV_SEMANTICS.0.to_string()),
             ("caps".into(), caps_fp.into()),

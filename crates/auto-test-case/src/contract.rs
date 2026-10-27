@@ -1427,6 +1427,11 @@ fn decode_options(
                             "ac-av/collections-run-v1" | "ac-av/loaded-run-v1" => {
                                 matches!(op.as_str(), "run" | "edit-source")
                             }
+                            // PLAN-826: the compact-wire recipe shares the
+                            // av step vocabulary.
+                            "ac-av/compact-run-v1" => {
+                                matches!(op.as_str(), "run" | "edit-source")
+                            }
                             "ac-av/closures-run-v1" => {
                                 matches!(op.as_str(), "run" | "edit-source")
                             }
@@ -1492,6 +1497,7 @@ fn decode_options(
                         || recipe == "ac-av/loaded-run-v1"
                         || recipe == "ac-av/closures-run-v1"
                         || recipe == "ac-av/dynamic-run-v1"
+                        || recipe == "ac-av/compact-run-v1"
                     {
                         // PLAN-798 T-07 edit-session shape (F798-R3-07): runs
                         // plus discriminating edit-source steps; a sequence
@@ -1622,6 +1628,7 @@ fn decode_options(
                         || recipe == "ac-av/loaded-run-v1"
                         || recipe == "ac-av/closures-run-v1"
                         || recipe == "ac-av/dynamic-run-v1"
+                        || recipe == "ac-av/compact-run-v1"
                     {
                         return Err(err(
                             &f.path_of("av"),
@@ -1638,6 +1645,7 @@ fn decode_options(
                         && recipe != "ac-av/loaded-run-v1"
                         && recipe != "ac-av/closures-run-v1"
                         && recipe != "ac-av/dynamic-run-v1"
+                        && recipe != "ac-av/compact-run-v1"
                     {
                         return Err(err(
                             &f.path_of("av"),
@@ -1859,6 +1867,9 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     "ac-av/closures-run-v1",
     // PLAN-824: the av.dynamic/1 dynamic recipe, same seam contract.
     "ac-av/dynamic-run-v1",
+    // PLAN-826: the compact AVAC wire recipe (scalar profile over the new
+    // wire generation), same seam contract.
+    "ac-av/compact-run-v1",
 ];
 /// Probe step-count cap (frozen with the seam; mirrors the syntax edit cap).
 pub const PROBE_MAX_STEPS: usize = 64;

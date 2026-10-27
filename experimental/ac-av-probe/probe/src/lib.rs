@@ -33,4 +33,5 @@ pub mod owned_session;
 pub mod semrefs;
 pub mod session;
 pub mod typed_fixture;
+pub mod wire;
 pub mod worker_restore;

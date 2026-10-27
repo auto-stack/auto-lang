@@ -10,9 +10,9 @@
 //! hit STILL executes AV — nothing here caches PASS or run results.
 
 use crate::cache::{
-    abc_unit_key, assemble_closure, caps_fingerprint, decode_sidecar, encode_sidecar, manifest_key,
-    merge_spans, open_store, payload_fingerprint, put_enveloped, sidecar_key, split_units,
-    Counters, EnvelopeIdentity, ModuleManifest, SemaRefSer, UnitLink,
+    abc_unit_key_with_codec, assemble_closure, caps_fingerprint, decode_sidecar, encode_sidecar,
+    manifest_key, merge_spans, open_store, payload_fingerprint, put_enveloped, sidecar_key,
+    split_units, Counters, EnvelopeIdentity, ModuleManifest, SemaRefSer, UnitLink,
 };
 use crate::hir_adapter::{lower_checked, AdapterError};
 use crate::observations::{Obs, SpanRec};
@@ -23,7 +23,7 @@ use auto_av_core::contract::{
 };
 use auto_av_core::mir::{MirModule, OwnerScope, TraceEvent};
 use auto_av_core::{
-    abc_verify, decode_abc, encode_abc, execute, verify_mir, CancelFlag, ExecLimits, LoadedModule,
+    decode_abc, encode_abc, execute, verify_mir, CancelFlag, ExecLimits, LoadedModule,
 };
 use serde::{Deserialize, Serialize};
 
@@ -97,6 +97,11 @@ pub struct Driver {
     store: Option<ac_artifact_probe::store::ManagedStore>,
     project: String,
     owner_override: Option<String>,
+    /// PLAN-826: the A09/closure wire generation this driver encodes,
+    /// caches and admits under. Defaults to the delivered legacy AVAB core
+    /// wire; the compact AVAC policy is opt-in per driver so every legacy
+    /// consumer path is byte-identical until a caller switches.
+    wire: crate::wire::WireCodec,
 }
 
 impl Driver {
@@ -107,6 +112,7 @@ impl Driver {
             store: None,
             project: String::new(),
             owner_override: None,
+            wire: crate::wire::WireCodec::LegacyAbc,
         }
     }
 
@@ -117,11 +123,20 @@ impl Driver {
             store: Some(store),
             project: project.to_string(),
             owner_override: None,
+            wire: crate::wire::WireCodec::LegacyAbc,
         })
     }
 
     pub fn set_owner(&mut self, owner: Option<String>) {
         self.owner_override = owner;
+    }
+
+    /// PLAN-826: switch this driver's A09/closure wire to the compact
+    /// AVAC generation (codec-dimensioned cache namespace + compact
+    /// admission). Legacy rows under the same store are a deterministic
+    /// miss for this policy — never reinterpreted.
+    pub fn set_wire_compact(&mut self) {
+        self.wire = crate::wire::WireCodec::CompactAbc;
     }
 
     /// One full request. `entry` selects the zero-param i32 entry function.
@@ -278,7 +293,13 @@ impl Driver {
                 // stored under another body's key fails identity admission
                 // (controlled rejection), never a wrong-body hit.
                 let expect = EnvelopeIdentity::abc_bound(&owner, &info.name, &info.fp);
-                let key = abc_unit_key(&owner, &info.name, &info.fp, &caps_fp);
+                let key = abc_unit_key_with_codec(
+                    &owner,
+                    &info.name,
+                    &info.fp,
+                    &caps_fp,
+                    self.wire.schema(),
+                );
                 match crate::cache::get_enveloped_with_id(store, &key, "A09", &expect) {
                     Ok(Some((artifact_id, payload))) => {
                         // F798-R12-03 (K14-06): a payload of a DIFFERENT
@@ -289,7 +310,10 @@ impl Driver {
                         // current source and is re-verified through the
                         // real pipeline. Current-generation payloads deep-
                         // decode at closure assembly (tamper = rejection).
-                        if !payload_is_current_generation(&payload) {
+                        // PLAN-826: the generation gate is policy-aware —
+                        // under the compact policy an AVAB payload is the
+                        // other generation (and vice versa).
+                        if !self.wire.is_current_generation(&payload) {
                             obs.counter("cache_stale_abc_miss", 1);
                             stale_rebuilds.insert(info.name.clone());
                             continue;
@@ -719,7 +743,7 @@ impl Driver {
                 };
                 let mut spanless = (*unit).clone();
                 std::mem::take(&mut spanless.funcs[0].spans);
-                let bytes = match encode_abc(&spanless) {
+                let payload = match self.wire.encode(&spanless) {
                     Ok(b) => b,
                     Err(e) => {
                         return (
@@ -734,19 +758,28 @@ impl Driver {
                         )
                     }
                 };
-                staging_now += spanless.heap_estimate() + bytes.total_len;
+                staging_now += spanless.heap_estimate() + payload.len();
                 staging_peak = staging_peak.max(staging_now);
-                let payload_fp = payload_fingerprint(&bytes.to_flat());
+                let payload_fp = payload_fingerprint(&payload);
                 abc_emitted += 1;
+                if self.wire == crate::wire::WireCodec::CompactAbc {
+                    obs.counter("abc_wire_compact_units", 1);
+                }
                 if let Some(store) = self.store.as_ref() {
-                    let key = abc_unit_key(&owner, &name, &info.fp, &caps_fp);
+                    let key = abc_unit_key_with_codec(
+                        &owner,
+                        &name,
+                        &info.fp,
+                        &caps_fp,
+                        self.wire.schema(),
+                    );
                     let expect = EnvelopeIdentity::abc_bound(&owner, &name, &info.fp);
                     if let Err(e) = put_enveloped(
                         store,
                         &key,
                         "A09",
                         &expect,
-                        &bytes.to_flat(),
+                        &payload,
                         vec![],
                         Some(&self.project),
                     ) {
@@ -784,12 +817,14 @@ impl Driver {
         // Hits: decode + verify each restored unit (never trusted).
         let mut decoded_units: Vec<MirModule> = Vec::new();
         let owner_scope = OwnerScope {
-            schema: auto_av_core::contract::ABC_SCHEMA.to_string(),
+            schema: self.wire.owner_schema().to_string(),
             module: owner.clone(),
         };
         for info in infos.iter().filter(|i| i.abc_hit.is_some()) {
             let payload = info.abc_hit.as_ref().expect("filtered");
-            let decoded = match obs.span("abc_load", Some("request"), |_| decode_abc(payload)) {
+            let wire = self.wire;
+            let mut decoded = match obs.span("abc_load", Some("request"), |_| wire.decode(payload))
+            {
                 Ok(d) => d,
                 Err(e) => {
                     return (
@@ -822,6 +857,11 @@ impl Driver {
                     None,
                 );
             }
+            // PLAN-826: the compact wire carries no function names — the
+            // envelope-bound unit name re-binds onto the decoded payload
+            // (same envelope-responsibility rule as the owner re-stamp).
+            let wire = self.wire;
+            wire.rebind_unit_name(&mut decoded.module, &info.name);
             // F798-R15-01: capability re-admission against the CURRENT
             // request grants.
             for c in decoded.module.capabilities.iter() {
@@ -842,7 +882,14 @@ impl Driver {
                 }
             }
             match obs.span("abc_verify", Some("request"), |_| {
-                abc_verify::verify_abc(decoded_clone(&decoded), &owner_scope)
+                wire.admit_decoded(
+                    crate::wire::DecodedWire {
+                        version: decoded.version,
+                        profile: decoded.profile,
+                        module: decoded.module.clone(),
+                    },
+                    &owner_scope,
+                )
             }) {
                 Ok(loaded) => {
                     verify_analysis_bytes += loaded.stats().analysis_bytes as usize;
@@ -1024,29 +1071,33 @@ impl Driver {
             }
         }
         // Whole-closure admission through the REAL codec + verifier (the
-        // executor accepts only this credential).
+        // executor accepts only this credential). PLAN-826: the closure
+        // roundtrips through THIS driver's wire policy — the compact
+        // policy encodes, decodes and admits the whole closure as AVAC.
         let mut closure_bytes_total: usize = 0;
+        let wire = self.wire;
         let loaded: LoadedModule = match obs.span("verify_load", Some("request"), |_| {
-            encode_abc(&merged)
+            wire.encode(&merged)
                 .map_err(|e| StageDiag {
                     stage: "abc-emit".to_string(),
                     code: e.code(),
                     message: "closure re-encode failed".to_string(),
                 })
-                .and_then(|bytes| {
-                    closure_bytes_total = bytes.total_len;
-                    decode_abc(&bytes.to_flat()).map_err(|e| StageDiag {
+                .and_then(|payload| {
+                    closure_bytes_total = payload.len();
+                    wire.decode(&payload).map_err(|e| StageDiag {
                         stage: "abc-load".to_string(),
                         code: e.code(),
                         message: "closure roundtrip decode failed".to_string(),
                     })
                 })
                 .and_then(|decoded| {
-                    abc_verify::verify_abc(decoded, &owner_scope).map_err(|e| StageDiag {
-                        stage: "abc-verify".to_string(),
-                        code: format!("{}", e),
-                        message: "closure verification failed".to_string(),
-                    })
+                    wire.admit_decoded(decoded, &owner_scope)
+                        .map_err(|e| StageDiag {
+                            stage: "abc-verify".to_string(),
+                            code: format!("{}", e),
+                            message: "closure verification failed".to_string(),
+                        })
                 })
         }) {
             Ok(l) => l,
@@ -1055,6 +1106,9 @@ impl Driver {
         verify_analysis_bytes += loaded.stats().analysis_bytes as usize;
         obs.set_counter("verify_load", 1);
         obs.counter("closure_encodes", 1);
+        if wire == crate::wire::WireCodec::CompactAbc {
+            obs.counter("abc_wire_compact_closure", 1);
+        }
         // F798-R3-08: partition accounting over REAL working-set estimates.
         // Hot = the loaded closure retained through execution (wire + the
         // decoded module structure + the credential's own clone); staging
@@ -1074,7 +1128,13 @@ impl Driver {
         if let Some(store) = self.store.as_ref() {
             let mut links: Vec<UnitLink> = Vec::new();
             for info in infos.iter() {
-                let key = abc_unit_key(&owner, &info.name, &info.fp, &caps_fp);
+                let key = abc_unit_key_with_codec(
+                    &owner,
+                    &info.name,
+                    &info.fp,
+                    &caps_fp,
+                    self.wire.schema(),
+                );
                 // F798-R3-02: bind the link to the EXACT payload bytes this
                 // request loaded/emitted (fingerprinted where the bytes
                 // were in hand — no per-unit store re-read on the warm
@@ -1122,6 +1182,7 @@ impl Driver {
                 entry: entry.to_string(),
                 profile: auto_av_core::contract::AV_PROFILE.to_string(),
                 av_sem: 1,
+                abc_codec: self.wire.schema().to_string(),
                 units: links,
             };
             let key = manifest_key(&owner, entry, &manifest.fingerprint());
@@ -1217,14 +1278,6 @@ impl Driver {
             obs.set_counter("av_steps", *steps);
         }
         (None, Some(outcome), trace.events.clone(), manifest_out)
-    }
-}
-
-fn decoded_clone(d: &auto_av_core::DecodedAbc) -> auto_av_core::DecodedAbc {
-    auto_av_core::DecodedAbc {
-        version: d.version,
-        profile: d.profile,
-        module: d.module.clone(),
     }
 }
 

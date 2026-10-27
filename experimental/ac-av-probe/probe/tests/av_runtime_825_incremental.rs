@@ -66,9 +66,7 @@ fn av_runtime_825_incremental_two_function_edit_identity_and_zero_work() {
     // counters and surface as reuse only on the loaded_program()
     // aggregates asserted above.
     assert_eq!(
-        session
-            .counters()
-            .stage_of("loaded_index_build", "helper"),
+        session.counters().stage_of("loaded_index_build", "helper"),
         1
     );
     for name in ["main", "tail"] {
