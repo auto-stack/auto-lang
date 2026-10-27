@@ -1,0 +1,10 @@
+# PLAN-828：下一轮同树 work 指示
+
+当前基线 `plan-828-dev@23a6b35a0e94a6c948230df94c0e686129c2e8ae`，实施树 `D:/autostack/.wt/lang-828/auto-lang`。先读主检出 [Plan](D:/autostack/auto-lang/docs/plans/828-av-function-incremental-session.md) §§5.6–9 和 [本轮复审](review.md)，核 HEAD/branch/clean；本指示替代旧 3e60 基线的当前修复清单，沿用既有授权，不另开 Plan/树，不开始 T-02 全面换接或 merge。
+
+1. **先写短诊断及覆盖调整，再一次处理 C04/C05。** 旧 T01-C01/C02/C03 已 CLOSED，不重新实现或删除其合法控制。诊断须解释公共缺 body 为什么越过完整授信，以及 current/candidate 环境的真实持有/发布点；避免再以局部成功推断共享入口安全。保留已有真实 producer 窗口门和单 body 工作边界。
+2. **T01-C04/P1：恢复完整模块准入。** 直接收编本目录 `boundary_missing_body_*` 的五 profile 原始输入、旧 descriptor 拒绝对照与合法完整文档控制。让缺 body 的完整输入在 binder 或完整 verify 受控拒绝，不能产生完整 CheckedModule；混合文档和未被调用的无 body 声明也要拒绝。函数级合法无 body callee 仍能 bind/verify，未改 body 零重建。优先在授信边界解决，不只在 native 捕 panic、只查 entry、补空 body 或退回整程序 stub 工作。实现方案可用现有消费者事实决定，不要求新增公共 ABI。
+3. **T01-C05/P2：冻结一个满足隔离的候选机制并做最小事务首例。** 从 `boundary_post_recheck_verify_rejection_leaves_mutated_env_demonstration` 已证的后置失败状态出发，采用有界单槽事务/候选表示等；禁止全 env 深 clone。prepare/失败/取消不替换当前环境，成功 commit 才与根/source/revision/来源一致发布。T-01 先证同基面双候选取消后合法继续、一次 recheck 成功后真实 verify/lower/link 拒绝仍保持 current；迟到/foreign/closed 等完整矩阵仍归原 T-02/T-06，先写清 owner/接口。close 明确释放环境所拥有 body，不能仅说“字段在 session 内”，预算照计 F09。当前 session 尚未接新环境，不必修一个被报告成已发生的 runtime 污染；修的是决策及其真实最小机制。
+4. **对齐永久断言与当前决策。** `unit_view_first_case` 的 before 必须在 edit 前 capture，可收编本轮真实跨修订/实际 copy 执行、真实缺 import/错签名 link 拒绝控制；保留默认 merged 路径仍 OPEN 的实测描述。删除当前文档已失效的 stub_resolved 描述、frontend 5/5 及 D03“两语义都不提前发布”等结论，明确原型运行时查名与未来链接表的边界。不要把 dispatch 两例再叠加到 contract 六例重复计数。
+5. **修齐后再定向验证并提交。** 重跑本轮 11 项边界（其中五个缺 body 必须转绿）、原合同6/收编4、旧两个合法 frontend 控制、关闭9；按实际触面重跑 session17/r1 86/core22、相关 ac-core profile/binder 验证，九文件或新实际文件的格式检查。原冻结旧弱谓词的失败输出保留；同额外旧工作在新 producer 门下红才是 C02 闭合证据，不把旧谓词改名当新观测。不要跑整档 t/tv/tt/tb/tu/taa/tf、docs_gen 或合入门。
+6. **交接一份可核查的关闭表。** 每项给机制/符号、原输入与合法对照、实际断言及 raw、准确选择数和未覆盖边界；提交后报告完整 SHA、依赖/配置和树状态。Plan 主检出只做簿记，executing0/11；不擅改 profile、阈值、预算、AC/V/C/SD、验收 owner。新冻结根先受影响面复审；通过后才开始 T-02 热路径换接。失败若确需改原合同，给具体阻碍/备选回 new，不以文档反向放宽验收。
