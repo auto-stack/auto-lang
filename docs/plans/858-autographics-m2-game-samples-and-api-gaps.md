@@ -10,7 +10,7 @@ supersedes_spec_components: [docs/specs/auto-ac/mir-native-cache.md, docs/specs/
 new_spec_components: []
 touched_goals: []
 affects: [auto-graphics, auto-test-case, auto-lang, auto-ac, auto-av, auto-cte, auto-semantics, auto-abi]
-current_step: 10
+current_step: 11
 total_steps: 14
 ---
 
@@ -196,7 +196,7 @@ T-08/T-09 只跑反例和受影响测试/必要编译，不运行整档 `t/tv/tt
 | T-08 | work | Phase 1 已交付 | 创建并核实本阶段唯一树；追溯 821/822/827 引入链和全部同族消费者，修复 feature cfg；V-06 | AC-08 | [x]（`c20c08a0cb5f45bb64f4feb3e2a1a41d65775fc8`；默认及book no-run、`cargo check -p auto-lang` exit0；分别移除821/827门控均重现E0432/E0433且源码逐字节恢复） |
 | T-09 | work | T-08 | 对 V-06/07 做定向编译、测试 ID 及真实正负例检查；提交修复和证据，整档 merge-owned pending | AC-08/09 | [x]（`c20c08a0c` 代码；`f098e8d70` 证据：功能启用清单与修复前源码 14/14 一致，821/822/827 实际 3+3+8 全通过，0 failed/ignored；格式与diff检查通过） |
 | T-10 | review | T-09 | 独立复核 Phase 2 全部 AC/V、未删断言/未默认开 feature、冻结身份 | AC-10 | [x]（Phase 2 final R1 pass @f098e8d707c4774e0c5a2f7dc459c9065e515488；见[复审报告](attachments/858/review-phase2-r1/review.md)，合入门禁 pending） |
-| T-12 | work | T-10 pass / 用户 r3 裁定 | 在现有唯一工作树核对主线及同组依赖；逐项盘点 ACE 性能门、producer/consumer/CLI/report、样本/测试 ID、当前规范和在途工作冲突，确定完整矩阵与 r3 规范增量草案 | AC-12 | [ ] |
+| T-12 | work | T-10 pass / 用户 r3 裁定 | 在现有唯一工作树核对主线及同组依赖；逐项盘点 ACE 性能门、producer/consumer/CLI/report、样本/测试 ID、当前规范和在途工作冲突，确定完整矩阵与 r3 规范增量草案 | AC-12 | [x]（`771557e4b929e887eb55aa688946e89140e844eb`：[盘点](D:/autostack/.wt/lang-858/auto-lang/docs/plans/attachments/858/phase3-work/inventory.md)和[SD草案](D:/autostack/.wt/lang-858/auto-lang/docs/plans/attachments/858/phase3-work/spec-delta-draft.md)，含16个规范/设计输入哈希；另有主检出六项设计WIP及823/824同文件交叉，沉淀/合入前须协调） |
 | T-13 | work | T-12 | 在同一树实施所有 ACE 适用正式门 P90≤2000ms、原采样数和真实路径/结构不变；完成 V-09/10 边界/负控/定向测试及冻结证据，提交代码和规范草案，不跑整档 | AC-12 | [ ] |
 | T-14 | review | T-13 | 独立复核 r3 全范围、实际统计/边界、原有正确性/样本/测试 ID、规范草案及 Phase 2 复用有效性，给出受影响复审结论 | AC-13 | [ ] |
 | T-11 | merge | T-10/T-14 pass | 在最终冻结提交执行适用合入门并合 main；按 r3 冻结 SD 沉淀当前规范与 ledger；保留 Phase 1 历史快照到 attachments、修复其相对链接后以 r3 归档文件替换原历史快照路径；guard 清树；主检出单实例跑官方完整 batch，成功后更新覆盖锚 | AC-11 | [ ] |
@@ -239,6 +239,8 @@ T-08/T-09 只跑反例和受影响测试/必要编译，不运行整档 `t/tv/tt
 2026-10-27 Phase 2 merge attempt R1：stage=merge | plan_id=PLAN-858 | plan_revision=2 | outcome=gate_failed，未合入 | reviewed_commit=f098e8d707c4774e0c5a2f7dc459c9065e515488 | rebased_tip=ee91830f9aadb6434af84509d6ae343a75b8f55f（两次 rebase range-diff 均全等） | cargo t 三次均未完成：首次 83 pass/20 timeout（辅助程序冷编译）；第二次 895 pass/1 fail/4 timeout，原生限额失败在预构建后定向复核通过；第三次 904 pass/1 fail，signature-rebuild P95 1245.5ms，门限 <1000ms，其余 2288 未运行。测试中存在其他工作树构建；性能失败与负载的因果尚未确认。完整证据及 hashes 见 [merge attempt](attachments/858/phase2-merge-attempt/receipt.md)。所有辅助程序已按原测试命令预构建，未改测试/阈值。共享机器其他任务仍在运行；待空闲后复核性能项并在最终冻结提交重跑裸 cargo t，确认 main 基线后才可 ff 合入。规范账本投影仅在计划树提交、未发布到 main；官方完整 batch、覆盖锚、归档与 guard 清理均 pending，保留计划树供恢复。
 
 2026-10-27 new r3：stage=new | plan_id=PLAN-858 | plan_revision=3 | outcome=pass | 用户明确授予 ACE 开发初期由 P95<1000ms 改为 P90≤2000ms（10 次最多 1 次超过）的范围；沿用 858、保留现有树和历史阶段，新增 T-12..14、AC-12/13、V-09..11、SD-02..04，T-11 等待 r3 复审。比例解释与 formal 样本数保留见 §5.6；现有正确性、资源、结构门不撤销。r2 复审只覆盖原代码与无 SD，不是 r3 新口径的复审；之前 cargo t 失败记录有效，未经复审不得直接合入。next=work/T-12。
+
+2026-10-27 r3 work/T-12：stage=work | plan_id=PLAN-858 | plan_revision=3 | outcome=inventory-pass，implementation ongoing | worktree=D:/autostack/.wt/lang-858/auto-lang | branch=plan-858-dev | baseline=97ad76691578957b9c35f62dfbc72eb4bda83660 | inventory_commit=771557e4b929e887eb55aa688946e89140e844eb | deps=auto-down:c3464d0a0d36e4f8a7988b0c0c26448fc52361b4,auto-ui:b4fe0000e56cddaf7d3cf70e348431f2258aacde | evidence=ACE producer/consumer、CLI、报告及现行规范逐族盘点；各正式样本数及非时延门保持；同组依赖无旧目标直接命中。主检出 design 39/40/43/44 和两份 strategy 文件带其他未提交修改，823/824 在途树有同文件变更，禁止覆盖；合入前重新比对并协调。 | pending=T-13 实施/完整定向验证，T-14 独立复审，T-11 冻结门禁及沉淀。next=work/T-13。
 
 ## 10. 待澄清事项
 
