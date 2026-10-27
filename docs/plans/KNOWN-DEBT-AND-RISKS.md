@@ -3428,7 +3428,7 @@ The accepted compound props `[[.source]]` and `[{inner: .source}]` keep a borrow
 
 ### B855-FEATURE-01 — AV corpus optional dependency boundary (2026-10-27)
 
-Main batch7f966bfa3 language listing failed with24 E0432/E0433 in821/827 test modules;822 insertion displaced existing cfg. Zero tests ran; UI/tt/tb not reached. Fix-forward [PLAN-859](859-restore-av-corpus-feature-boundaries.md); evidence [build](attachments/855/batch-r1/language-build.log.txt). Last complete green remains850; retry required. No855 graphics source attribution or rollback.
+Main batch7f966bfa3 language listing failed with24 E0432/E0433 in821/827 test modules;822 insertion displaced existing cfg. Zero tests ran; UI/tt/tb not reached. Fix-forward [PLAN-858 Phase 2](858-autographics-m2-game-samples-and-api-gaps.md); evidence [build](attachments/855/batch-r1/language-build.log.txt). Last complete green remains850; retry required. No855 graphics source attribution or rollback.
 
 
 ### PLAN-841 R6 — F841-R5-01 CLOSED（2026-10-27，受影响final pass）

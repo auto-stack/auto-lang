@@ -1,11 +1,12 @@
 ---
 plan_id: PLAN-859
-status: drafting
+status: archived
 feature_name: restore-av-corpus-feature-boundaries
 author: [Codex]
 created_at: 2026-10-27
 updated_at: 2026-10-27
 plan_revision: 1
+completion_kind: superseded
 current_step: 0
 total_steps: 3
 supersedes_spec_components: []
@@ -14,7 +15,9 @@ touched_goals: []
 affects: [auto-test-case]
 ---
 
-# [PLAN-859] 恢复 AV 语料测试的可选依赖边界
+# [PLAN-859] 历史草案：已转入 PLAN-858 Phase 2
+
+2026-10-27 用户要求不用独立 PLAN-859；本草案未实施、未复审、未交付，范围转入 [PLAN-858 r2 Phase 2](../858-autographics-m2-game-samples-and-api-gaps.md)。保留原草案和失败记录供追溯，编号不重用。
 
 ## 0. 变更摘要
 855 合并后的主检出批量回归在 language listing 编译阶段出现 24 个 E0432/E0433，尚未执行任何测试。保留850全绿覆盖点，以独立修复计划承接，不回滚855。

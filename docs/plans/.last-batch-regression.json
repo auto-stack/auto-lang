@@ -75,8 +75,8 @@
         822
       ],
       "evidence": "docs/plans/attachments/855/batch-r1/language-build.log.txt",
-      "fix_forward_plan": 859,
-      "fix_forward_path": "docs/plans/859-restore-av-corpus-feature-boundaries.md",
+      "fix_forward_plan": 858,
+      "fix_forward_path": "docs/plans/858-autographics-m2-game-samples-and-api-gaps.md",
       "source_changed_by_855": false
     }
   ],
@@ -121,8 +121,8 @@
           822
         ],
         "evidence": "docs/plans/attachments/855/batch-r1/language-build.log.txt",
-        "fix_forward_plan": 859,
-        "fix_forward_path": "docs/plans/859-restore-av-corpus-feature-boundaries.md",
+        "fix_forward_plan": 858,
+        "fix_forward_path": "docs/plans/858-autographics-m2-game-samples-and-api-gaps.md",
         "source_changed_by_855": false
       }
     ],

@@ -1,6 +1,6 @@
 ---
-plan_id: PLAN-858
-status: archived
+historical_plan_id: PLAN-858
+historical_status: archived
 feature_name: AutoGraphics M2双游戏样本冻结与公共接口缺口调查
 author: [Codex]
 created_at: 2026-10-27
@@ -11,11 +11,13 @@ new_spec_components:
   - docs/specs/auto-graphics/m2-game-sample-research.md
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 7
-total_steps: 7
+historical_current_step: 7
+historical_total_steps: 7
 ---
 
-# [PLAN-858] AutoGraphics M2双游戏样本冻结与公共接口缺口调查
+# [PLAN-858] Phase 1 已交付历史快照（r1）
+
+本文件保留原研究阶段 archived 7/7 及其复审、沉淀和清理证据；2026-10-27 用户要求同一计划增加 Phase 2，当前执行合同见 [PLAN-858 r2](../858-autographics-m2-game-samples-and-api-gaps.md)。本快照不是第二个活动计划。
 
 ## 0. 变更摘要
 
@@ -165,4 +167,4 @@ T-04每个G需求映射到现行Spec＋固定代码符号/API/profile，分类`d
 
 2026-10-27 独立 final review R1：stage=review | review_scope=final | reviewer_identity=Codex 当前独立检查上下文（未参与本次实现；环境未暴露模型/会话ID，未另开agent） | plan_id=PLAN-858 | plan_revision=1 | outcome=pass | worktree_path=D:/autostack/.wt/lang-858/auto-lang | branch=plan-858-dev | reviewed_commit=a4812981e72df3d54ecb555dae5f77c3fabbd959 | base_commit=7e498e4ccbce5f0a7b7b8008d8303b170d6f373e | dependency_revisions=854:523d27b863dbe306c89af0ea546334225a29f8e9,855:05fdc81c546aff735eefdb6c39fbc5fb35dc546a,SDK:7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467,Godot:b761b4cd5718a7118f2c95eb55f181d0a5f004f1,Kenney:3fa8a04b1c01ab23db43123d4ce814a34c3fc7f0 | spec_inputs=[baseline.json](../attachments/858/review-r1/baseline.json) 中11个实际Spec输入SHA | acceptance_results=AC-01..06 pass,AC-07 pending merge；V-01..05 pass；全部13项源输入SHA/长度/固定blob、4GLB外部闭包/动画、分组总数、17项G语义分类及后继需求独立复核 | findings=无阻塞finding；派生帧/真实Auto预算/正式包仍为后继风险，未核Godot/FLA排除；原始字体两处保留名措辞与MIT/CC0通知来源精度见报告 | evidence=[R1报告](../attachments/858/review-r1/review.md)、[逐文件重放](../attachments/858/review-r1/source-replay.json)、[可重放检查](../attachments/858/review-r1/check_sources.py)、[冻结SD](../attachments/858/review-r1/spec-delta-frozen.md) SHA256=9b2ca30398ff0533bde7df4c0f633314e107c4d561cfee0c21edd54a827e8a9a | pending_closeout_gates=T-06文档/链接检查与实际合入/规范-ledger-index/归档、T-07实际guard-clean/清树分支与7/7；Category A不运行Cargo或docs_gen，不存在待补Cargo整档 | next=merge。状态reviewed5/7；仅研究验收通过，未宣称M2游戏/新API/离线包完成，未合入归档或清树。
 
-2026-10-27 batch due-check：上一成功覆盖850，855落地后到期；855批量已在编译/list阶段 exit101（B855-FEATURE-01），跟进 [PLAN-859](../859-restore-av-corpus-feature-boundaries.md) 仍 drafting。失败基线 `7f966bfa3d416a746b44cfe7abbde897e450e4da` 至当前代码、Cargo配置与锁无diff；无新条件不重复同一失败，Category A不跑Cargo/docs_gen。批量维持due/compile-blocked，待859修复后主检出单实例重跑；不影响858研究交付和归档。
+2026-10-27 batch due-check：上一成功覆盖850，855落地后到期；855批量已在编译/list阶段 exit101（B855-FEATURE-01），跟进 [PLAN-859](859-restore-av-corpus-feature-boundaries.md) 仍 drafting。失败基线 `7f966bfa3d416a746b44cfe7abbde897e450e4da` 至当前代码、Cargo配置与锁无diff；无新条件不重复同一失败，Category A不跑Cargo/docs_gen。批量维持due/compile-blocked，待859修复后主检出单实例重跑；不影响858研究交付和归档。
