@@ -9,7 +9,11 @@ default = []
 # #[derive(Deserialize)] struct read directly from a parsed .at, replacing
 # hand-written opt_string/opt_uint field extraction. Also enables the
 # Serialize direction (Plan 332 S1): #[derive(Serialize)] -> Value/Node.
-serde = ["dep:serde"]
+# PLAN-841 (M841-GATE-06): AutoStr 是 ecow::EcoString 的别名——serde 面必须
+# 自链 ecow/serde，否则独立闭包（安装态 Core SDK）编译 auto-ast 的 derive
+# 时 AutoStr 缺 Serialize/Deserialize（主工作区被 workspace 级 ecow/serde
+# feature 统一掩盖，发行门 DST-2 揭出）。
+serde = ["dep:serde", "ecow/serde"]
 
 [dependencies]
 ecow = { workspace = true }
