@@ -538,8 +538,41 @@ mod plan842_tests {
         fs::create_dir_all(lang.join("crates/auto-lang")).unwrap();
         fs::write(lang.join("crates/auto-lang/Cargo.toml"), "").unwrap();
         fs::create_dir_all(ui.join("crates/auto-ui-runtime")).unwrap();
+        fs::write(
+            ui.join("crates/auto-ui-runtime/Cargo.toml"),
+            "[package]\nname = \"auto-ui-runtime\"\nversion = \"0.2.0\"\n",
+        )
+        .unwrap();
+        fs::create_dir_all(ui.join("crates/auto-ui-runtime/src")).unwrap();
+        fs::write(ui.join("crates/auto-ui-runtime/src/lib.rs"), "").unwrap();
+        for (dir, content) in [
+            ("partial-ui", None),
+            ("malformed-ui", Some("[package")),
+            (
+                "wrong-ui",
+                Some("[package]\nname = \"other\"\nversion = \"0.2.0\"\n"),
+            ),
+            (
+                "missing-src",
+                Some("[package]\nname = \"auto-ui-runtime\"\nversion = \"0.2.0\"\n"),
+            ),
+        ] {
+            let path = tmp.path().join(dir).join("crates/auto-ui-runtime");
+            fs::create_dir_all(&path).unwrap();
+            if let Some(content) = content {
+                fs::write(path.join("Cargo.toml"), content).unwrap();
+            }
+        }
         fs::create_dir_all(&ws).unwrap();
-        for mode in ["bad-lang", "bad-ui", "valid"] {
+        for mode in [
+            "bad-lang",
+            "bad-ui",
+            "partial-ui",
+            "malformed-ui",
+            "wrong-ui",
+            "missing-src",
+            "valid",
+        ] {
             fs::write(ws.join("Cargo.toml"), b"previous manifest").unwrap();
             let result = std::process::Command::new(std::env::current_exe().unwrap())
                 .args(["--exact", "rust_workspace::plan842_tests::workspace_explicit_roots_fail_before_overwriting_manifest", "--nocapture"])
@@ -549,7 +582,7 @@ mod plan842_tests {
                 .env_remove("AUTO_DELIVERY_SOURCE_ROOT")
                 .env_remove("AUTO_LANG_CRATE")
                 .env("AUTO_LANG_ROOT", if mode == "bad-lang" { tmp.path().join("missing-lang") } else { lang.clone() })
-                .env("AUTO_UI_SOURCE_ROOT", if mode == "bad-ui" { tmp.path().join("missing-ui") } else { ui.clone() })
+                .env("AUTO_UI_SOURCE_ROOT", match mode { "bad-ui" => tmp.path().join("missing-ui"), "partial-ui" | "malformed-ui" | "wrong-ui" | "missing-src" => tmp.path().join(mode), _ => ui.clone() })
                 .output().unwrap();
             assert!(
                 result.status.success(),
@@ -573,6 +606,13 @@ mod plan842_tests {
         let lang_rel = compute_relative_path(&ws, &lang.join("crates/auto-lang"));
         assert!(compute_auto_ui_runtime_rel_path(&lang_rel, &ws).is_err());
         fs::create_dir_all(&canonical).unwrap();
+        fs::write(
+            canonical.join("Cargo.toml"),
+            "[package]\nname = \"auto-ui-runtime\"\nversion = \"0.2.0\"\n",
+        )
+        .unwrap();
+        fs::create_dir_all(canonical.join("src")).unwrap();
+        fs::write(canonical.join("src/lib.rs"), "").unwrap();
         let chosen = compute_auto_ui_runtime_rel_path(&lang_rel, &ws).unwrap();
         assert_eq!(
             fs::canonicalize(ws.join(chosen)).unwrap(),

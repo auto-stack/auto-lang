@@ -124,6 +124,31 @@ pub fn installed_ui_source(
     Ok(Some(root))
 }
 
+// A directory alone is not a usable Cargo package. Validate before callers
+// write generated workspaces or stage a delivery, including explicit roots.
+fn valid_ui_crate(source: &Path, name: &str) -> bool {
+    let Some(manifest) = std::fs::read_to_string(source.join("Cargo.toml"))
+        .ok()
+        .and_then(|text| text.parse::<toml::Value>().ok())
+    else {
+        return false;
+    };
+    if manifest
+        .get("package")
+        .and_then(|package| package.get("name"))
+        .and_then(toml::Value::as_str)
+        != Some(name)
+    {
+        return false;
+    }
+    let lib_path = manifest
+        .get("lib")
+        .and_then(|lib| lib.get("path"))
+        .and_then(toml::Value::as_str)
+        .unwrap_or("src/lib.rs");
+    source.join(lib_path).is_file()
+}
+
 /// UI crates are selected from their UI owner or a receipt-validated
 /// installation. Other crates must come from the language producer itself.
 pub fn ui_crate_source(producer_root: &Path, name: &str) -> AutoResult<PathBuf> {
@@ -141,21 +166,29 @@ pub fn ui_crate_source(producer_root: &Path, name: &str) -> AutoResult<PathBuf> 
     if let Some(value) = std::env::var_os("AUTO_UI_SOURCE_ROOT") {
         let root = PathBuf::from(value);
         let source = root.join("crates").join(name);
-        return source.is_dir().then_some(source).ok_or_else(|| {
-            format!(
-                "delivery: producer 显式 AUTO_UI_SOURCE_ROOT 无效或缺少 crates/{name}: {}",
-                root.display()
-            )
-            .into()
-        });
+        return valid_ui_crate(&source, name)
+            .then_some(source)
+            .ok_or_else(|| {
+                format!(
+                    "delivery: producer 显式 AUTO_UI_SOURCE_ROOT 无效或缺少 crates/{name}: {}",
+                    root.display()
+                )
+                .into()
+            });
     }
     if let Some(source) = installed_ui_source(producer_root, name, None)? {
-        return Ok(source);
+        if valid_ui_crate(&source, name) {
+            return Ok(source);
+        }
+        return Err(format!("delivery: producer 安装 UI 包无效: crates/{name}").into());
     }
     if let Some(parent) = producer_root.parent() {
         let source = parent.join("auto-ui/crates").join(name);
         if source.is_dir() {
-            return Ok(source);
+            if valid_ui_crate(&source, name) {
+                return Ok(source);
+            }
+            return Err(format!("delivery: producer 组内 UI 包无效: crates/{name}").into());
         }
     }
     Err(format!(

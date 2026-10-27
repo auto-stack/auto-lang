@@ -572,6 +572,7 @@ dependencies = [
  "sha2",
  "tauri",
  "tempfile",
+ "toml 0.8.23",
 ]
 
 [[package]]
