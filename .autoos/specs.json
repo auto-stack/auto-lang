@@ -4820,6 +4820,31 @@
  "modified_at": 1793061727,
  "completed_at": 1793061727
 }
+,
+{
+ "id": "P856-MERGE",
+ "title": "PLAN-856 2D viewport consolidation",
+ "content": "PLAN-856:r1 source lands only on autographics-dev; master holds reviewed canonical knowledge and derived ledger. Evidence and cleanup are recorded in docs/plans/attachments/856/merge-r1/receipt.md; archive is docs/plans/archive/856-autographics-2d-viewport-grid-and-navigation.md. Production I2/I3 and 3D navigation remain pending.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/plans.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-856",
+  "r1",
+  "reviewed:4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7",
+  "source-commit:2334f2326c3d46a9f82cbb8349af316197439784",
+  "source-sha256:5fe352fd8caea59d20918522c30d40284aef9fdea6a1ed1dac320cd0708ebf64"
+ ],
+ "created_at": 1793072380,
+ "modified_at": 1793072380,
+ "completed_at": 1793072380
+}
 ],
       "section_type": "Reports",
       "title": "📊 Reports",
@@ -6539,7 +6564,7 @@
         {
  "id": "GOAL-008",
  "title": "App generation and AI Authoring",
- "content": "Canonical GOAL-008 remains in progress. PLAN-851 adds portable user Auto Maze2D/Corridor3D and source/asset closure; production Forge/distribution I3 remains pending.\n\nPLAN-853 adds experimental M2/S0 comparable performance/resource baselines and complete portable source/test/runner evidence. GOAL-008 remains in progress; new M2 capabilities and production Forge/distribution I3 remain pending.\n\nPLAN-854 adds experimental M2/S0 checked behavior source generation and exact compatibility/consumer evidence. GOAL-008 remains in progress; no new M2 capability or production Forge/distribution I3 delivery.\n\nPLAN-855 completes experimental M2/S0 preparation: finite authoring-host responsibilities, unchanged ownership/semantics and current entry/evidence closure. Goal remains in progress; new M2 capabilities and production I2/I3 not delivered.\n\nPLAN-858 delivers experimental M2 sample and public capability-gap research; game implementations, new public services and production I2/I3 remain pending.",
+ "content": "Canonical GOAL-008 remains in progress. PLAN-851 adds portable user Auto Maze2D/Corridor3D and source/asset closure; production Forge/distribution I3 remains pending.\n\nPLAN-853 adds experimental M2/S0 comparable performance/resource baselines and complete portable source/test/runner evidence. GOAL-008 remains in progress; new M2 capabilities and production Forge/distribution I3 remain pending.\n\nPLAN-854 adds experimental M2/S0 checked behavior source generation and exact compatibility/consumer evidence. GOAL-008 remains in progress; no new M2 capability or production Forge/distribution I3 delivery.\n\nPLAN-855 completes experimental M2/S0 preparation: finite authoring-host responsibilities, unchanged ownership/semantics and current entry/evidence closure. Goal remains in progress; new M2 capabilities and production I2/I3 not delivered.\n\nPLAN-858 delivers experimental M2 sample and public capability-gap research; game implementations, new public services and production I2/I3 remain pending.\n\nPLAN-856 adds finite 2D editor navigation and bounded grid/world snapping to experimental M2. The broader goal remains in progress; 3D editor navigation and production I2/I3 are pending.",
  "status": "in_progress",
  "depends_on": [],
  "related": [],
@@ -6567,11 +6592,13 @@
   "reviewed:05fdc81c546aff735eefdb6c39fbc5fb35dc546a",
   "PLAN-858",
   "reviewed:a4812981e72df3d54ecb555dae5f77c3fabbd959",
-  "source-commit:58d8918520b9cddcc5ecad1ad39922d397c9d16f",
-  "source-sha256:9039e9939c17cf401f0529daccfa094c077d0c2e4e84e43435d3e50d6dc9e744"
+  "PLAN-856",
+  "reviewed:4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7",
+  "source-commit:2334f2326c3d46a9f82cbb8349af316197439784",
+  "source-sha256:17f85547494ca043fe9517a9579d60e945f3e102149f6258fbac05ab3305d59c"
  ],
  "created_at": 1792941529,
- "modified_at": 1793061727,
+ "modified_at": 1793072380,
  "completed_at": null
 }
       ],
@@ -15265,42 +15292,44 @@
           "completed_at": 1792998181
         },
         {
-          "id": "P830-IH",
-          "title": "AutoGraphics integration-contract",
-          "content": "Finite single-source persistence replaces former no-binding exclusion only; old profiles/temporary sources and all old/new owner/native/counter AND content gates remain. No production integration or distribution.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.\n\nPLAN-851:r4 explicit behavior/5/profile11 bounded Auto move-and-slide, maximum two contacts, directional initial-boundary policy, actual f32 final candidate admission and typed cast/sweep/motion latest slot. Original128-node/CPU/32credits/SDK/source/resource boundaries and old versions remain; canonical target is authoritative and production I2/I3 remain pending.\n\nPLAN-853:r1 M2/S0 establishes comparable monotonic CPU/resource observation, default-off bounded scalar samples, five real Host workloads and raw off/on/process statistics; explicit current441-source/681-SDK consumer closure, five API credential/emitted-byte distinction, immutable actual runners and complete owned test frames preserve historical85-group/original IDs and semantic oracles. The canonical target is authoritative; no new M2 capability or production I2/I3 completion.",
-          "status": "verified",
-          "depends_on": [],
-          "related": [],
-          "priority": null,
-          "assignee": null,
-          "test_file": null,
-          "file": "docs/specs/auto-graphics/integration-contract.md",
-          "milestone": null,
-          "module": "auto-graphics",
-          "tags": [
-            "PLAN-845",
-            "r2",
-            "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
-            "PLAN-846",
-            "r3",
-            "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
-            "PLAN-848",
-            "reviewed:dd7076a7f40b35ffda6b876c36f826af3443fb97",
-            "PLAN-849",
-            "r1",
-            "reviewed:6bb85f354e718f6541256f4b3d75ca97af75b8c4",
-            "PLAN-851",
-            "r4",
-            "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
-            "PLAN-853",
-            "reviewed:c1961665d1a90a8705994085fd4344a1d6a9a564",
-            "source-commit:6d427a4a7165d5cb69bcfae2c9bdc668d26811d0",
-            "source-sha256:a4b04eb96ff3eb8516fe86b678c713c92747ce8d19b6396372df76c1c223ca10"
-          ],
-          "created_at": 1792685069,
-          "modified_at": 1793023495,
-          "completed_at": 1793023495
-        },
+ "id": "P830-IH",
+ "title": "AutoGraphics integration-contract",
+ "content": "Finite single-source persistence replaces former no-binding exclusion only; old profiles/temporary sources and all old/new owner/native/counter AND content gates remain. No production integration or distribution.\n\nPLAN-846: canonical finite spatial-query v2 contract beside unchanged v1, actual Auto queries/user trigger state, bounded configuration/lifetimes and SDK nonfinite correction. See the canonical target for enduring rules; full gates and separate root/graphics landing are recorded in the merge receipt. Production I2/I3 remain pending.\n\nPLAN-848: explicit behavior/3 finite world segment/AABB nearest query, deterministic f32/tie/normal, callback token and32 weighted credits under original128-node/CPU limits. Canonical target defines current rules; old v1/v2 and production I2/I3/ACE boundaries remain.\n\nPLAN-849: explicit behavior/4 fixed-world-AABB swept translation, deterministic f32/initial-contact/origin, typed shared latest cast/sweep result and32 weighted credits under original128-node/CPU limits. User Auto controls clearance/stop. Canonical target defines current rules; oldv1..3 and production I2/I3 boundaries remain.\n\nPLAN-851:r4 explicit behavior/5/profile11 bounded Auto move-and-slide, maximum two contacts, directional initial-boundary policy, actual f32 final candidate admission and typed cast/sweep/motion latest slot. Original128-node/CPU/32credits/SDK/source/resource boundaries and old versions remain; canonical target is authoritative and production I2/I3 remain pending.\n\nPLAN-853:r1 M2/S0 establishes comparable monotonic CPU/resource observation, default-off bounded scalar samples, five real Host workloads and raw off/on/process statistics; explicit current441-source/681-SDK consumer closure, five API credential/emitted-byte distinction, immutable actual runners and complete owned test frames preserve historical85-group/original IDs and semantic oracles. The canonical target is authoritative; no new M2 capability or production I2/I3 completion.\n\nPLAN-856:r1 adds a finite 2D editing viewport, bounded world-aligned grid, navigation and optional world-origin snapping. Drawing, picking, group outlines and Auto drags use the same presented transform. Edit state and accepted content remain separated. Canonical Spec is authoritative; 3D navigation and production I2/I3 remain pending.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/integration-contract.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-845",
+  "r2",
+  "reviewed:231957020cc855485adfc4b15be75457a94ef2d8",
+  "PLAN-846",
+  "r3",
+  "reviewed:bf22db3465203f3babd649494f4b37aa2a012027",
+  "PLAN-848",
+  "reviewed:dd7076a7f40b35ffda6b876c36f826af3443fb97",
+  "PLAN-849",
+  "r1",
+  "reviewed:6bb85f354e718f6541256f4b3d75ca97af75b8c4",
+  "PLAN-851",
+  "r4",
+  "reviewed:11911a4a6d809bfd515f745b77d00bc8f04f6ba9",
+  "PLAN-853",
+  "reviewed:c1961665d1a90a8705994085fd4344a1d6a9a564",
+  "PLAN-856",
+  "reviewed:4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7",
+  "source-commit:2334f2326c3d46a9f82cbb8349af316197439784",
+  "source-sha256:fb10fb0da3adac81fceb2c40b7dcba61a57dbd5e4c1d5fea4f9319c4528f7f5e"
+ ],
+ "created_at": 1792685069,
+ "modified_at": 1793072380,
+ "completed_at": 1793072380
+},
         {
           "id": "P815-B-D1",
           "title": "UI 工程工具唯一 owner 全量交付（PLAN-815 M815-B，SD-01..07）",
@@ -15495,7 +15524,7 @@
         {
  "id": "P835-SESSION",
  "title": "AutoGraphics authoring-session",
- "content": "Atomic bound source/roles/detach with immutable current/pending/history/save owners;8identity/2MiB source union, original history and stale/cancel semantics, no callback at compile/Open.\n\nPLAN-855:r1 preserves public Host/Play/Editor APIs, single state and ownership, accepted publication, input/cancellation/Stop, resources and old behavior/1..5 profiles while organizing Host into private commands/panel/play_adapter/viewport impls. CLI/probe/current455-source closure locations are explicit. Canonical target is authoritative; M2/S0 complete, new M2 capabilities and production I2/I3 pending.",
+ "content": "Atomic bound source/roles/detach with immutable current/pending/history/save owners;8identity/2MiB source union, original history and stale/cancel semantics, no callback at compile/Open.\n\nPLAN-855:r1 preserves public Host/Play/Editor APIs, single state and ownership, accepted publication, input/cancellation/Stop, resources and old behavior/1..5 profiles while organizing Host into private commands/panel/play_adapter/viewport impls. CLI/probe/current455-source closure locations are explicit. Canonical target is authoritative; M2/S0 complete, new M2 capabilities and production I2/I3 pending.\n\nPLAN-856:r1 adds a finite 2D editing viewport, bounded world-aligned grid, navigation and optional world-origin snapping. Drawing, picking, group outlines and Auto drags use the same presented transform. Edit state and accepted content remain separated. Canonical Spec is authoritative; 3D navigation and production I2/I3 remain pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15512,17 +15541,19 @@
   "PLAN-855",
   "r1",
   "reviewed:05fdc81c546aff735eefdb6c39fbc5fb35dc546a",
-  "source-commit:248eaf1bebba8a4c7dadd82878f89b70ad27adfe",
-  "source-sha256:cb9173435e5e746264c1e432aadfa1837f059e32640e70c7263d0a00d2725e88"
+  "PLAN-856",
+  "reviewed:4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7",
+  "source-commit:2334f2326c3d46a9f82cbb8349af316197439784",
+  "source-sha256:63e9876ff74174ac485e2f23d14ab87f4665ebf63629015c28287325d45661b6"
  ],
  "created_at": 1792720163,
- "modified_at": 1793040438,
- "completed_at": 1793040438
+ "modified_at": 1793072380,
+ "completed_at": 1793072380
 },
         {
  "id": "P836-VIEWPORT",
  "title": "AutoGraphics viewport-interaction",
- "content": "Actual CompositionInput focuses one canvas, excludes panel input and clears held/parity/debt on cancellation. Starting cancellation persists through complete initialization into Paused until explicit Resume.\n\nPLAN-855:r1 preserves public Host/Play/Editor APIs, single state and ownership, accepted publication, input/cancellation/Stop, resources and old behavior/1..5 profiles while organizing Host into private commands/panel/play_adapter/viewport impls. CLI/probe/current455-source closure locations are explicit. Canonical target is authoritative; M2/S0 complete, new M2 capabilities and production I2/I3 pending.",
+ "content": "Actual CompositionInput focuses one canvas, excludes panel input and clears held/parity/debt on cancellation. Starting cancellation persists through complete initialization into Paused until explicit Resume.\n\nPLAN-855:r1 preserves public Host/Play/Editor APIs, single state and ownership, accepted publication, input/cancellation/Stop, resources and old behavior/1..5 profiles while organizing Host into private commands/panel/play_adapter/viewport impls. CLI/probe/current455-source closure locations are explicit. Canonical target is authoritative; M2/S0 complete, new M2 capabilities and production I2/I3 pending.\n\nPLAN-856:r1 adds a finite 2D editing viewport, bounded world-aligned grid, navigation and optional world-origin snapping. Drawing, picking, group outlines and Auto drags use the same presented transform. Edit state and accepted content remain separated. Canonical Spec is authoritative; 3D navigation and production I2/I3 remain pending.",
  "status": "verified",
  "depends_on": [],
  "related": [],
@@ -15539,12 +15570,14 @@
   "source-path:docs/specs/auto-graphics/viewport-interaction.md",
   "PLAN-855",
   "reviewed:05fdc81c546aff735eefdb6c39fbc5fb35dc546a",
-  "source-commit:248eaf1bebba8a4c7dadd82878f89b70ad27adfe",
-  "source-sha256:3a1d002a13cb9049b8c50fd8b8e2e75a5d7f1c404dc5fcf9cd2881b3c6643915"
+  "PLAN-856",
+  "reviewed:4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7",
+  "source-commit:2334f2326c3d46a9f82cbb8349af316197439784",
+  "source-sha256:b8c2563697edfc1ce403d7fa9e21c8c6009698603704baa5b3697beec84e7ea6"
  ],
  "created_at": 1792738768,
- "modified_at": 1793040438,
- "completed_at": 1793040438
+ "modified_at": 1793072380,
+ "completed_at": 1793072380
 },
         {
           "id": "P837-HIERARCHY",
@@ -16266,6 +16299,31 @@
  "created_at": 1793061727,
  "modified_at": 1793061727,
  "completed_at": 1793061727
+}
+,
+{
+ "id": "P856-EDITOR-VIEWPORTS",
+ "title": "AutoGraphics editor-viewports",
+ "content": "PLAN-856:r1 adds a finite 2D editing viewport, bounded world-aligned grid, navigation and optional world-origin snapping. Drawing, picking, group outlines and Auto drags use the same presented transform. Edit state and accepted content remain separated. Canonical Spec is authoritative; 3D navigation and production I2/I3 remain pending.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/editor-viewports.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-856",
+  "r1",
+  "reviewed:4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7",
+  "source-commit:2334f2326c3d46a9f82cbb8349af316197439784",
+  "source-sha256:f31732ed187b67b5021f8f1564db1175509ec02984d99bf9a7e9ef8c87645736"
+ ],
+ "created_at": 1793072380,
+ "modified_at": 1793072380,
+ "completed_at": 1793072380
 }
 ],
       "section_type": "Designs",
@@ -20189,6 +20247,31 @@
  "created_at": 1793040438,
  "modified_at": 1793040438,
  "completed_at": 1793040438
+}
+,
+{
+ "id": "P856-TESTS",
+ "title": "PLAN-856 viewport and compatibility verification",
+ "content": "Reviewed source includes 11 viewport regressions and one physical-pixel handoff test. The complete producer and independent consumer tests preserve all inherited cases; the merge receipt binds actual two-sided native, content and ownership controls. Existing timed budget assertion is known timing-sensitive and its SDK error text can misattribute CPU budget to HTTP.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/editor-viewports.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-856",
+  "r1",
+  "reviewed:4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7",
+  "source-commit:2334f2326c3d46a9f82cbb8349af316197439784",
+  "source-sha256:f31732ed187b67b5021f8f1564db1175509ec02984d99bf9a7e9ef8c87645736"
+ ],
+ "created_at": 1793072380,
+ "modified_at": 1793072380,
+ "completed_at": 1793072380
 }
 ],
       "section_type": "Tests",
@@ -27055,6 +27138,31 @@
  "modified_at": 1793061727,
  "completed_at": 1793061727
 }
+,
+{
+ "id": "P856-R2",
+ "title": "PLAN-856 independent affected final R2 PASS",
+ "content": "Final independent R2 binds 4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7; original DPI and cancellation findings closed, with merge gates pending at review time. See raw review and merge receipts for evidence and limitations.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/attachments/856/review-r2/review.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-856",
+  "r1",
+  "reviewed:4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7",
+  "source-commit:2334f2326c3d46a9f82cbb8349af316197439784",
+  "source-sha256:4807b478c7ed350233b4d30bb18ac86cd8175d7051f03ece4f1ef6ce0135f327"
+ ],
+ "created_at": 1793072380,
+ "modified_at": 1793072380,
+ "completed_at": 1793072380
+}
 ],
       "section_type": "Reviews",
       "title": "🔍 Reviews",
@@ -27066,5 +27174,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 99
+  "version": 100
 }
