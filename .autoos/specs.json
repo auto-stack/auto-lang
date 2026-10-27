@@ -4931,6 +4931,29 @@
  "created_at": 1793081626,
  "modified_at": 1793081626,
  "completed_at": 1793081626
+},
+{
+  "id": "P824-REL",
+  "title": "PLAN-824 r9 规范投影及交付证据",
+  "content": "规范来源、旧条目扩充、新增索引及验证记录见准备报告；最终合入和清理以归档计划收据为准。",
+  "status": "verified",
+  "depends_on": [],
+  "related": [],
+  "priority": null,
+  "assignee": null,
+  "test_file": null,
+  "file": "docs/plans/attachments/824/review-r3/merge-gates/r9-spec-projection.md",
+  "milestone": null,
+  "module": "auto-av",
+  "tags": [
+    "PLAN-824",
+    "plan-revision:9",
+    "source-sha256:f5a5fa57ab789f002e9a2222b4b23cb87c946f70fa381f5862e1f00823377ad3",
+    "source-commit:02614b1b00664a91daa4d9ea3a1e7d6a920cd2ac"
+  ],
+  "created_at": 1793085866,
+  "modified_at": 1793085866,
+  "completed_at": 1793085866
 }
 ],
       "section_type": "Reports",
@@ -9201,7 +9224,7 @@
         {
           "id": "P852-DESIGN-CONFORMANCE",
           "title": "ACE M1 四路径一致性语料（ace-m1）",
-          "content": "PLAN-852:r2 delivers the same-source four-path conformance corpus (AC shared-MIR-native / AV ABC / legacy AutoVM / a2r certified snapshot), the 103-row denominator registry binding.tsv (58 source+43 reference+5 typed+40 scenario) with honest diff/gap/wait classification, and the 97-check green base suite incl. real session lifecycle. Two-axis verdicts: base-layer PASS never claims M1 complete (75/252 corpus path-cells green; blockers by owner 822/823/824, a2r composite lowering, native expansion+online loader, legacy semantic rulings).",
+          "content": "PLAN-852:r2 delivers the same-source four-path conformance corpus (AC shared-MIR-native / AV ABC / legacy AutoVM / a2r certified snapshot), the 103-row denominator registry binding.tsv (58 source+43 reference+5 typed+40 scenario) with honest diff/gap/wait classification, and the 97-check green base suite incl. real session lifecycle. Two-axis verdicts: base-layer PASS never claims M1 complete (75/252 corpus path-cells green; blockers by owner 822/823/824, a2r composite lowering, native expansion+online loader, legacy semantic rulings).\nPLAN-824:r9 补充dynamic能力验证和绑定；基础层通过不代表M1全量完成。",
           "status": "stable",
           "depends_on": [],
           "related": [],
@@ -9215,10 +9238,13 @@
             "PLAN-852",
             "r2",
             "impl:d3b4fe90e",
-            "schema:ace.m1.binding/1"
+            "schema:ace.m1.binding/1",
+            "PLAN-824:r9",
+            "plan824-source-sha256:9bfe21e5c1a5f40543f854510f8489b60a99fdc50e9032213bdbb1395bfb2db3",
+            "plan824-source-commit:ca7b5e186176597ab18fc370211804a6b175bb24"
           ],
           "created_at": 1793026401,
-          "modified_at": 1793026401,
+          "modified_at": 1793085866,
           "completed_at": 1793026401
         },
         {
@@ -13806,32 +13832,35 @@
           "completed_at": null
         },
         {
- "id": "P773-2",
- "title": "TestCase v2 测试架构（含 ac-av/data-run-v1 recipe）",
- "content": "probe/run 架构 + 注册 recipe 白名单。PLAN-820 追加 ac-av/data-run-v1：typed:<id> 入口（av.data-fixture/1 冻结八样本）经真实准入链，worker 报实际产值规范 {kind,bits}，父侧独立冻结表比对 tag+rawbits；typed 存在性 family 隔离（core 必须旧 value 通道、非 data 带 typed=准入违规）；形状校验 oracle 无关准入层（bool 恰 0/1、i32 不补零且唯一零 \"0\" 合法）；V-10 九反控。 PLAN-858：ACE 开发期周转当前 P90≤2000ms，原正式样本数、真实窗口及正确性/结构/资源门保留；P95 是诊断和历史，长期目标待架构成形后实测。",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-test-case/architecture.md",
- "milestone": null,
- "module": "auto-test-case",
- "tags": [
-  "PLAN-820",
-  "r7",
-  "reviewed:18d031102",
-  "review-pass:review-r11",
-  "PLAN-858",
-  "revision:4",
-  "source-sha256:b34027aaab9dc0127de94ace73afed47105343556f060d190a651a8b0f1e7c55",
-  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
- ],
- "modified_at": 1793081626,
- "created_at": 1791936000,
- "completed_at": null
-},
+          "id": "P773-2",
+          "title": "TestCase v2 测试架构（含 ac-av/data-run-v1 recipe）",
+          "content": "probe/run 架构 + 注册 recipe 白名单。PLAN-820 追加 ac-av/data-run-v1：typed:<id> 入口（av.data-fixture/1 冻结八样本）经真实准入链，worker 报实际产值规范 {kind,bits}，父侧独立冻结表比对 tag+rawbits；typed 存在性 family 隔离（core 必须旧 value 通道、非 data 带 typed=准入违规）；形状校验 oracle 无关准入层（bool 恰 0/1、i32 不补零且唯一零 \"0\" 合法）；V-10 九反控。 PLAN-858：ACE 开发期周转当前 P90≤2000ms，原正式样本数、真实窗口及正确性/结构/资源门保留；P95 是诊断和历史，长期目标待架构成形后实测。\nPLAN-824:r9 增加dynamic recipe、父侧独立oracle及worker错误分态。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-test-case/architecture.md",
+          "milestone": null,
+          "module": "auto-test-case",
+          "tags": [
+            "PLAN-820",
+            "r7",
+            "reviewed:18d031102",
+            "review-pass:review-r11",
+            "PLAN-858",
+            "revision:4",
+            "source-sha256:b34027aaab9dc0127de94ace73afed47105343556f060d190a651a8b0f1e7c55",
+            "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b",
+            "PLAN-824:r9",
+            "plan824-source-sha256:3cf829e9ab3a5e64727f7e493395b7e5eaf601fb4b2d5bb26c31c160695bd847",
+            "plan824-source-commit:ca7b5e186176597ab18fc370211804a6b175bb24"
+          ],
+          "modified_at": 1793085866,
+          "created_at": 1791936000,
+          "completed_at": null
+        },
         {
           "id": "P744-1",
           "title": "sqlite VM 调用面（PLAN-744）",
@@ -15196,7 +15225,7 @@
         {
           "id": "P798-AV",
           "title": "ABC与Rust AV受管恢复合同",
-          "content": "ABC wire/schema/semantic与profile轴分离，当前grant重授、来源快照绑定恢复manifest及lease闭包。",
+          "content": "ABC wire/schema/semantic与profile轴分离，当前grant重授、来源快照绑定恢复manifest及lease闭包。\nPLAN-824:r9 动态profile与portable边界已追加至现行 AV 规范。",
           "status": "verified",
           "depends_on": [],
           "related": [],
@@ -15209,10 +15238,13 @@
           "tags": [
             "PLAN-798:r7",
             "source_commit:216d139aba888760963d12a5f2cbe693489b06c4",
-            "sha256:c3b14094911feae1e69f571741c4c7106299e3ed8af8e6a5bec298b8f9326a6c"
+            "sha256:c3b14094911feae1e69f571741c4c7106299e3ed8af8e6a5bec298b8f9326a6c",
+            "PLAN-824:r9",
+            "plan824-source-sha256:c9fd46cdedf6d40f7e60069645fb757d2b4f81a1f78e5b765ce48d27cac52b26",
+            "plan824-source-commit:ca7b5e186176597ab18fc370211804a6b175bb24"
           ],
           "created_at": 1792500947,
-          "modified_at": 1792500947,
+          "modified_at": 1793085866,
           "completed_at": 1792500947
         },
         {
@@ -15564,33 +15596,36 @@
           "completed_at": 1792686169
         },
         {
- "id": "P828-AV",
- "title": "常驻函数安装与增量合同（828→820 数据域）",
- "content": "828 函数级增量接口：未改函数 IR/代码复用、受检安装/依赖/寿命、退化仅记录性。PLAN-820 数据域接入（lower_function_data_unit→admit_unit→link）：纯 body 编辑 828 单体事务全链增量（分段 diff+掩码单函数解析+CheckedEnv recheck+BodyEmitReceipt+body_work 生产窗+结构门内建生产路径）；依赖事实精确失效（mention 嵌套闭包+签名形状等价）；caps 三面同发布点同步（含驻留前端环境）；失败/陷阱零安装；双退化反控同一门非零。817 CTE 与 818 mn 消费者按 §5.1.6 最小受控拒适配。 PLAN-822 增补：collections 更新会话（build-aside 原子提交/未改单元同 Arc 零生产/内容指纹结构 gate/完整候选 submitted+carried 授权预检先于一切生产；已发布 snapshot 保留其准入时点授权）。 PLAN-858：ACE 开发期周转当前 P90≤2000ms，原正式样本数、真实窗口及正确性/结构/资源门保留；P95 是诊断和历史，长期目标待架构成形后实测。",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-av/resident-function-install.md",
- "milestone": null,
- "module": "auto-av",
- "tags": [
-  "PLAN-820",
-  "r7",
-  "reviewed:18d031102",
-  "review-pass:review-r11",
-  "plan:822 rev:5 commit:a6127fc1f",
-  "PLAN-858",
-  "revision:4",
-  "source-sha256:8a1ecd480e15c22846948882468e1873130be099bf6dd3433086ce2f23fde97e",
-  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
- ],
- "modified_at": 1793081626,
- "created_at": 1792686169,
- "completed_at": null
-},
+          "id": "P828-AV",
+          "title": "常驻函数安装与增量合同（828→820 数据域）",
+          "content": "828 函数级增量接口：未改函数 IR/代码复用、受检安装/依赖/寿命、退化仅记录性。PLAN-820 数据域接入（lower_function_data_unit→admit_unit→link）：纯 body 编辑 828 单体事务全链增量（分段 diff+掩码单函数解析+CheckedEnv recheck+BodyEmitReceipt+body_work 生产窗+结构门内建生产路径）；依赖事实精确失效（mention 嵌套闭包+签名形状等价）；caps 三面同发布点同步（含驻留前端环境）；失败/陷阱零安装；双退化反控同一门非零。817 CTE 与 818 mn 消费者按 §5.1.6 最小受控拒适配。 PLAN-822 增补：collections 更新会话（build-aside 原子提交/未改单元同 Arc 零生产/内容指纹结构 gate/完整候选 submitted+carried 授权预检先于一切生产；已发布 snapshot 保留其准入时点授权）。 PLAN-858：ACE 开发期周转当前 P90≤2000ms，原正式样本数、真实窗口及正确性/结构/资源门保留；P95 是诊断和历史，长期目标待架构成形后实测。\nPLAN-824:r9 dynamic consumer接入真实函数级会话，保留增量身份、依赖、授权与退化控制。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-av/resident-function-install.md",
+          "milestone": null,
+          "module": "auto-av",
+          "tags": [
+            "PLAN-820",
+            "r7",
+            "reviewed:18d031102",
+            "review-pass:review-r11",
+            "plan:822 rev:5 commit:a6127fc1f",
+            "PLAN-858",
+            "revision:4",
+            "source-sha256:8a1ecd480e15c22846948882468e1873130be099bf6dd3433086ce2f23fde97e",
+            "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b",
+            "PLAN-824:r9",
+            "plan824-source-sha256:ef06e51ad422f6c74c2961530e06ca49222f9d1e2b3567b9fed9fe70e055343e",
+            "plan824-source-commit:ca7b5e186176597ab18fc370211804a6b175bb24"
+          ],
+          "modified_at": 1793085866,
+          "created_at": 1792686169,
+          "completed_at": null
+        },
         {
           "id": "P834-3D",
           "title": "AutoGraphics auto-3d-game-profile",
@@ -16629,6 +16664,52 @@
  "created_at": 1793081626,
  "modified_at": 1793081626,
  "completed_at": 1793081626
+},
+{
+  "id": "P824-DYN",
+  "title": "AV 动态值与可移植冻结（PLAN-824）",
+  "content": "av.dynamic/1 的动态值类型擦除、owned 树、portable 类型/布局/授权重验和受控错误边界；类型展开、临时字节、取消及深度预算见 canonical。",
+  "status": "verified",
+  "depends_on": [],
+  "related": [],
+  "priority": null,
+  "assignee": null,
+  "test_file": null,
+  "file": "docs/specs/auto-av/dynamic-portable-values.md",
+  "milestone": null,
+  "module": "auto-av",
+  "tags": [
+    "PLAN-824",
+    "plan-revision:9",
+    "source-sha256:3710942c7f5b9d49eb71451151b75961b53d2b67912f582335eb9eb75307b4cd",
+    "source-commit:ca7b5e186176597ab18fc370211804a6b175bb24"
+  ],
+  "created_at": 1793085866,
+  "modified_at": 1793085866,
+  "completed_at": 1793085866
+},
+{
+  "id": "P824-MIR",
+  "title": "MIR 动态擦除与受检恢复（PLAN-824）",
+  "content": "profile 5 与动态 pack/is/take 的受检类型、兼容与生命周期边界，见 canonical。",
+  "status": "verified",
+  "depends_on": [],
+  "related": [],
+  "priority": null,
+  "assignee": null,
+  "test_file": null,
+  "file": "docs/specs/auto-mir/dynamic-cast-profile.md",
+  "milestone": null,
+  "module": "auto-mir",
+  "tags": [
+    "PLAN-824",
+    "plan-revision:9",
+    "source-sha256:4874f59f2cbc4e58a90a5ead82cffd2737f630ee3495f5c7b66175e08750b6ec",
+    "source-commit:ca7b5e186176597ab18fc370211804a6b175bb24"
+  ],
+  "created_at": 1793085866,
+  "modified_at": 1793085866,
+  "completed_at": 1793085866
 }
 ],
       "section_type": "Designs",
@@ -19810,32 +19891,35 @@
  "test_file": ""
 },
         {
- "id": "P798-T",
- "title": "MIR/AV正确性与受管生命周期覆盖",
- "content": "冻结原始测试与资源/恢复/周转证据；最终四档5320/163/105/30通过，真函数增量结构验收归828。\nPLAN-828 增量覆盖：probe function_incremental_828 全族（主 21/三件 512、r1 86、contract 22、t01r 4、b1 11、b2 14、t07 8、t08 5、mig 9）+cache_tier 20 兼容面——冻结负载正式双门战役（PLAN-858 当前 P90≤2000ms ∧ 结构门 ∧ 双线预算；历史 P95 留作诊断）与完整存储轴 512（persist/GC 水位/重启/哨兵）为永久断言。",
- "status": "verified",
- "depends_on": [],
- "related": [],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-av/cache-and-conformance.md",
- "milestone": null,
- "module": null,
- "tags": [
-  "PLAN-798:r7",
-  "source_commit:216d139aba888760963d12a5f2cbe693489b06c4",
-  "sha256:f1a9c0826738be4881cd0e35f7cdbd5a5a23923ce554675a6149a56e4f1e4b40",
-  "PLAN-828:r3",
-  "PLAN-858",
-  "revision:4",
-  "source-sha256:97fc7af6a1d3e99837938a94f0bffe10f9a008d43ea50801b2af6b34d573b3e9",
-  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
- ],
- "created_at": 1792500947,
- "modified_at": 1793081626,
- "completed_at": 1792500947
-},
+          "id": "P798-T",
+          "title": "MIR/AV正确性与受管生命周期覆盖",
+          "content": "冻结原始测试与资源/恢复/周转证据；最终四档5320/163/105/30通过，真函数增量结构验收归828。\nPLAN-828 增量覆盖：probe function_incremental_828 全族（主 21/三件 512、r1 86、contract 22、t01r 4、b1 11、b2 14、t07 8、t08 5、mig 9）+cache_tier 20 兼容面——冻结负载正式双门战役（PLAN-858 当前 P90≤2000ms ∧ 结构门 ∧ 双线预算；历史 P95 留作诊断）与完整存储轴 512（persist/GC 水位/重启/哨兵）为永久断言。\nPLAN-824:r9 增加动态语义、portable恢复、预算/取消及统一能力验证；采用858现行周转门。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-av/cache-and-conformance.md",
+          "milestone": null,
+          "module": null,
+          "tags": [
+            "PLAN-798:r7",
+            "source_commit:216d139aba888760963d12a5f2cbe693489b06c4",
+            "sha256:f1a9c0826738be4881cd0e35f7cdbd5a5a23923ce554675a6149a56e4f1e4b40",
+            "PLAN-828:r3",
+            "PLAN-858",
+            "revision:4",
+            "source-sha256:97fc7af6a1d3e99837938a94f0bffe10f9a008d43ea50801b2af6b34d573b3e9",
+            "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b",
+            "PLAN-824:r9",
+            "plan824-source-sha256:aa41e9573b08e424e513e6a45da1efacbce404a8b7b47319a59ecf3183482557",
+            "plan824-source-commit:ca7b5e186176597ab18fc370211804a6b175bb24"
+          ],
+          "created_at": 1792500947,
+          "modified_at": 1793085866,
+          "completed_at": 1792500947
+        },
         {
           "id": "P814-UIR-T",
           "title": "auto-ui-runtime 消费者 fixture 与比较类型探针族",
@@ -20668,6 +20752,29 @@
  "created_at": 1793081626,
  "modified_at": 1793081626,
  "completed_at": 1793081626
+},
+{
+  "id": "P824-T",
+  "title": "动态值和 portable 验证（PLAN-824）",
+  "content": "覆盖类型错配、名义依赖重验、预算与取消、合法深度256及257拒绝、M1能力绑定、旧消费者和实际增量会话；源测试与验收入口见 canonical。",
+  "status": "verified",
+  "depends_on": [],
+  "related": [],
+  "priority": null,
+  "assignee": null,
+  "test_file": null,
+  "file": "docs/specs/auto-av/cache-and-conformance.md",
+  "milestone": null,
+  "module": "auto-av",
+  "tags": [
+    "PLAN-824",
+    "plan-revision:9",
+    "source-sha256:aa41e9573b08e424e513e6a45da1efacbce404a8b7b47319a59ecf3183482557",
+    "source-commit:ca7b5e186176597ab18fc370211804a6b175bb24"
+  ],
+  "created_at": 1793085866,
+  "modified_at": 1793085866,
+  "completed_at": 1793085866
 }
 ],
       "section_type": "Tests",
@@ -27641,6 +27748,29 @@
  "created_at": 1793081626,
  "modified_at": 1793081626,
  "completed_at": 1793081626
+},
+{
+  "id": "P824-R",
+  "title": "PLAN-824 r9 独立审查与修复",
+  "content": "R3关闭F01/F02/F03；r9主干858交集、深度分类、证据映射与串行采样经独立复审；冻结门与环境记录见报告。",
+  "status": "verified",
+  "depends_on": [],
+  "related": [],
+  "priority": null,
+  "assignee": null,
+  "test_file": null,
+  "file": "docs/plans/attachments/824/review-r3/merge-gates/r9-fix-independent-review.md",
+  "milestone": null,
+  "module": "auto-av",
+  "tags": [
+    "PLAN-824",
+    "plan-revision:9",
+    "source-sha256:83a07dbbdb194d740aa2f22918da255d514de16a942c070b0a2c0d76b8dd3dc6",
+    "source-commit:02614b1b00664a91daa4d9ea3a1e7d6a920cd2ac"
+  ],
+  "created_at": 1793085866,
+  "modified_at": 1793085866,
+  "completed_at": 1793085866
 }
 ],
       "section_type": "Reviews",
@@ -27653,5 +27783,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 103
+  "version": 104
 }
