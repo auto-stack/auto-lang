@@ -116,7 +116,11 @@ function Assert-CompatEvidence {
     if (-not (Test-Path $receiptPath)) { throw 'compat evidence receipt missing; run -Scope compat first' }
     $receipt = Get-Content -LiteralPath $receiptPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $head = & git rev-parse HEAD
-    if ($receipt.head -ne $head) { throw 'compat evidence HEAD is stale' }
+    & git merge-base --is-ancestor $receipt.head $head
+    if ($LASTEXITCODE -ne 0) { throw 'compat evidence HEAD is not an ancestor' }
+    $productionChanges = @(& git diff --name-only $receipt.head $head -- crates experimental test) + @(& git status --porcelain -- crates experimental test)
+    if ($LASTEXITCODE -ne 0) { throw 'compat evidence production status is unavailable' }
+    if ($productionChanges) { throw "compat evidence has stale production changes: $productionChanges" }
     $scriptHash = (Get-FileHash $PSCommandPath -Algorithm SHA256).Hash.ToLower()
     if ($receipt.script_sha256 -ne $scriptHash) { throw 'compat evidence script identity is stale' }
     $logPath = Join-Path (Split-Path -Parent $receiptPath) $receipt.evidence_log
