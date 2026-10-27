@@ -3598,3 +3598,14 @@ F-857-R1-01..05 OPEN，绑定 `ecf9939c5b2e369f9ce7d6ea25b0b66439bb7da6`：合�
 **解决记录（2026-10-28，PLAN-858 收尾批量）**：三项均闭合。① 基线 ID 缺失——Plan 842 已提交 21 项测试迁移清单（`scripts/full-regression-migrations-841.json.txt`，41b1d5c72），本次批量驱动器守卫消费该清单后选择完整（language 3712 listed/3212 selected 含 4 新增 ID，ui-full 3135/3117 含新增 ID），零缺失零抑制；② 取消失败——`plan707_spike_cancel_gap_active_job_future_not_stopped` 在当日三整轮 tt（3571/3571×3）全绿，未复现，维持既有"偶发时序族"定性；③ 完整批量重跑——认证通过，冻结基线 `60e0105a0` 四腿 0 失败，覆盖锚 850→858。当日另两红为环境红（Hyper-V 动态保留段 3323-3422 吞 back-proxy 默认端口 3358 全回退窗，WSAEACCES），由 auto-ui `fix-back-proxy-port`（7095f53，L0）修复：占用/权限拒均可重试、窗口耗尽回退 OS 临时分配。批量回执见 `docs/plans/.last-batch-regression.json`。
 - **P823-D01（低）**：managed-store GC 的锁文件安全清理仅有 Windows 实测；非 Windows 并发/水位行为未闭合（来源 PLAN-823 SD-08，spec: auto-ac/artifact-contract.md；关闭 oracle=非 Windows 平台并发 GC + 水位对照测试）。
 - **P823-D02（低，范围外）**：master 根仓存在预存 rustfmt 漂移（auto-cache ~108 处、auto-lang ~29 处含 examples/a2r_step02.rs、auto-atom/auto-bindgen/auto-cosmic 等，2026-10-27 PLAN-823 合并门禁实测；823 触面文件全净）。候选 L0 卫生项统一 `cargo fmt` 收口。
+
+## P843 结构残留与 844 候选（2026-10-28，PLAN-843 T-09 冻结）
+
+来源：[PLAN-843 handoff](attachments/843/handoff.md) §4。全部为具名候选，未经消费者/重复性证明，归 844 处置：
+
+- `crates/auto-lang-core/src/trans/rust/call_emit.rs::call_inner`（7439 行 if 链特型派发）——需逐块
+  early-return 审计后方可安全切分；PLAN-843 算法保全约束下未动。
+- stdlib.rs/http_server.rs/rust.rs 三入口残留（5679/4156/5960 生产行，注册派发面+次要域+内联测试）超
+  T-01 自设 ≤3000/3500 目标，职责实拆成立（见 handoff §4 残留口径）。
+- 844 真重复候选：HttpDefaults×server_model 应答构造族、engine 迭代器 7 型构造样板、native shim 与
+  stdlib shim 的 str/math 域疑似双实现。

@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-843
-status: drafting
+status: executing
 feature_name: 语言核心模块职责与大文件结构整理
 author: [Codex]
 created_at: 2026-10-24
-updated_at: 2026-10-24
+updated_at: 2026-10-28
 plan_revision: 1
-current_step: 0
+current_step: 9
 total_steps: 12
 supersedes_spec_components: [docs/specs/language-sdk/project.md, docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/types/overview.md, docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/trans/overview.md, docs/specs/auto-lang/runtime/overview.md]
 new_spec_components: [docs/specs/language-sdk/architecture.md]
@@ -111,15 +111,15 @@ work/review只必要check（真实SDK/被改包）、相关包/模块/fixture和
 
 | 状态 | ID | owner_stage | 依赖/启动门 | 实际交付/验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | G843完整核验 | 冻结七热点/后继、内部DAG/状态owner/规模和API/行为基线及具体拆分目标，T01记录已关闭热点来源 | AC-01..05 |
-| [ ] | T-02 | work | G843；T-01 | 整理parser/类型推断/compile边界，语法族主题模块与窄共享访问，保公开字段/单Store | AC-01,02,03 |
-| [ ] | T-03 | work | G843；T-02 | 拆codegen为职责明确发射/绑定等主题模块，保字节码/错误与执行次序 | AC-01,02,03 |
-| [ ] | T-04 | work | G843；T-03 | 拆VM engine/native注册/派发/生命周期主题，保线程/退出/回调与状态身份 | AC-01,02,03 |
-| [ ] | T-05 | work | G843；T-04 | 拆FFI stdlib/http_server编码/绑定/服务职责，保所有权/错误/TCP ready与端口策略 | AC-01,02,03 |
-| [ ] | T-06 | work | G843；T-05 | 拆Rust转译等热点的表达式/语句/声明/输出策略，复用原算法，不引共享大杂包 | AC-01,03 |
-| [ ] | T-07 | work | G843；T-06 | 收敛lib/内部模块出口、移测试/资源/build输入/alias与指纹，三仓公开消费compile pins | AC-02,04,05 |
-| [ ] | T-08 | work | G843；T-07 | V-01..05与Core/VM/trans/服务/真实UI外部消费定向、fresh/locked和状态反例完成 | AC-01..05 |
-| [ ] | T-09 | work | G843；T-08 | 按七热点逐项核销结构交付、前后指标/owner图/844候选及SD-01..05、attachments/843/handoff.md冻结 | AC-01,05 |
+| [x] | T-01 | work | G843完整核验 | 冻结七热点/后继、内部DAG/状态owner/规模和API/行为基线及具体拆分目标，T01记录已关闭热点来源 [✅ 已完成：合同基线](attachments/843/contract-baseline.md)+[度量基线](attachments/843/measurements-baseline.txt)；七热点全存于 crates/auto-lang-core/src/（无一被前置核销，PLAN-814 edb78b2ef 整体搬入）；组 D:/autostack/.wt/lang-843/{auto-lang@codex/plan-843-dev f99facb27b, auto-down detached c3464d0, auto-ui detached bd228b0 只读固定版本}；worktree cargo check -p auto-lang-core 预检探针绿（37.13s，145 预存 warnings 为基线）] | AC-01..05 |
+| [x] | T-02 | work | G843；T-01 | 整理parser/类型推断/compile边界，语法族主题模块与窄共享访问，保公开字段/单Store | AC-01,02,03 |
+| [x] | T-03 | work | G843；T-02 | 拆codegen为职责明确发射/绑定等主题模块，保字节码/错误与执行次序 | AC-01,02,03 |
+| [x] | T-04 | work | G843；T-03 | 拆VM engine/native注册/派发/生命周期主题，保线程/退出/回调与状态身份 | AC-01,02,03 |
+| [x] | T-05 | work | G843；T-04 | 拆FFI stdlib/http_server编码/绑定/服务职责，保所有权/错误/TCP ready与端口策略 | AC-01,02,03 |
+| [x] | T-06 | work | G843；T-05 | 拆Rust转译等热点的表达式/语句/声明/输出策略，复用原算法，不引共享大杂包 | AC-01,03 |
+| [x] | T-07 | work | G843；T-06 | 收敛lib/内部模块出口、移测试/资源/build输入/alias与指纹，三仓公开消费compile pins | AC-02,04,05 |
+| [x] | T-08 | work | G843；T-07 | V-01..05与Core/VM/trans/服务/真实UI外部消费定向、fresh/locked和状态反例完成 | AC-01..05 |
+| [x] | T-09 | work | G843；T-08 | 按七热点逐项核销结构交付、前后指标/owner图/844候选及SD-01..05、attachments/843/handoff.md冻结 | AC-01,05 |
 | [ ] | T-10 | review | G843；T-09冻结提交 | 同组独立完整AC/SD/实际consumer/反例/来源与健康审查；不先跑整档，不将merge门当已通过 | AC-06 |
 | [ ] | T-11 | merge | G843；T-10 pass | 并集影响复审、冻结三仓适用门与有序实际合入/固定版本/来源读回；若改变输入重审影响面，暂不放行后继 | AC-07 |
 | [ ] | T-12 | merge | G843；T-11全部交付收据 | canonical/受管ledger/索引沉淀、归档与逐树fresh wt-guard clean清理，整Plan闭环构成U843才放行下一份；保历史/恢复/交付分支 | AC-07 |
@@ -127,6 +127,12 @@ work/review只必要check（真实SDK/被改包）、相关包/模块/fixture和
 G843未满足前禁止创建/认领以下组、分支或work agent。未来组`D:/autostack/.wt/lang-843/{auto-lang,auto-ui,auto-man}`，每个实际需写仓各一树/分支`codex/plan-843-dev`；只读consumer用固定版本clone而非借其他计划WIP，未需写仓不多建树。work/review/merge沿同组顺序交接，不建第二审查树；若auto-down为现有可选依赖则具名固定版本/detached兄弟，只解析不改实现。禁止junction/symlink，主检出只簿记，清理前每树fresh guard clean且保留实际交付/legacy恢复源。
 
 ## 9. 复审记录
+
+2026-10-28 / stage: work（T-02..T-09 完成，work 阶段收口） / plan_id: PLAN-843 / plan_revision: 1 / outcome: **executing 9/12，T-02..09 pass；非全计划完成** / worktree_path: D:/autostack/.wt/lang-843/{auto-lang,auto-down@c3464d0,auto-ui@bd228b0 detached} / branch: codex/plan-843-dev / base_commit: lang master f99facb27b / code_commit: lang 06b5d67b5（=master f99facb27b + 9 提交：08a3f0808/bf7355b0c/cc88ab344/e32c26997/8112ad3fa/297892c9a/f3299da2e/8eb32baaa/矩阵再生成） / dependency_revisions: down c3464d0、UI bd228b0（只读） / task_ids: T-02..T-09 / evidence: [handoff](attachments/843/handoff.md)（七热点逐项核销/结构指标/残留口径/844 候选）、[度量后](attachments/843/measurements-after.txt)、[度量基线](attachments/843/measurements-baseline.txt)、[合同基线](attachments/843/contract-baseline.md)；七热点入口生产行 10376/11372/10472/9540/10110/6668/24894→2175/1274/2131/2367/5679/4156/5960、根 lib 3508→879；三入口超自设量化目标已按 §4 残留口径记录（职责实拆/零机械分块成立）；两巨型方法（compile_expr_inner 6323/run_one_instruction 8865）尾递归派发分解，臂体逐字保留；pub(super) 最小加宽编译器驱动，入口计数不升；cargo check lib+tests 0 错误（149=145 基线+4 条跨文件报告拆分，主体逐条核对）；定向测试 1344+ 全绿、language-sdk-consumer 5/5 多轮复跑；指纹面随 owner 扩展（manifest+31/loader+8/rust_fn 属性 153/153 守恒/plan738 pin 迁移 75/75 绿）/ pending: T-10 独立 review（merge 冻结门=裸 cargo t+触面档仍 pending，按 2026-10-14 裁定归 merge）；call_inner if 链与三入口残留=844 候选不抵扣 / next_responsible_role: review T-10（同树冻结提交 06b5d67b5 上独立复审）。
+
+2026-10-28 / stage: work（T-01 完成） / plan_id: PLAN-843 / plan_revision: 1 / outcome: **executing 1/12，T-01 pass；非全计划完成** / worktree_path: D:/autostack/.wt/lang-843/{auto-lang,auto-down,auto-ui} / branch: codex/plan-843-dev / base_commit: lang master f99facb27b817fade1e5c2f03891c1ff418e28d2 / code_commit: lang f99facb27b817fade1e5c2f03891c1ff418e28d2（源码零改动，纯盘点冻结） / dependency_revisions: down c3464d0 detached、UI bd228b0 detached（只读固定版本，842 UI 交付提交；crates/auto-lang path 依赖 ../../auto-ui 使其参与 workspace 解析） / task_ids: T-01 / evidence: [合同基线](attachments/843/contract-baseline.md)（七热点现行路径/生产行分类/关键内部行锚、DAG/状态owner表、逐热点主题拆分目标与量化指标、API/行为 oracle、正反例、未知决策）、[度量基线](attachments/843/measurements-baseline.txt)；已关闭热点核销=无（全七热点经 PLAN-814 edb78b2ef 整体搬入仍存，git log --follow 连续）；组已建（new-wt-group.sh lang-843 + auto-ui detached 兄弟）；worktree `cargo check -p auto-lang-core` 预检探针绿 37.13s、145 预存 warnings 为基线 / next_responsible_role: work T-02（parser/类型推断/compile 边界整理，同权威树实施）。
+
+2026-10-28 / stage: work（G843 启动门核验通过，T-01 开始） / plan_id: PLAN-843 / plan_revision: 1 / outcome: **executing 0/12，启动门核验 pass** / gate_evidence: G843=G842且U842。U831 r3 归档 12/12、U832 r3 归档 12/12（lang 交付 3934ed4f 为当前 master 祖先）、U841 r1 归档 12/12（lang 交付 f16bb468b 为祖先）、U842 r3 归档 17/17（2026-10-28 merge 闭环：lang 交付 031c8fd2d 为 master tip 祖先、ledger v105→v106、四树 fresh wt-guard clean、组目录回收，§9 明示"U842 全闭环，放行后继计划"）；git worktree list 无 831/832/841/842 残留树；主检出未提交改动仅 docs/ 簿记与 .autoos ledger 备份，无 crates/test 代码 WIP / worktree_path: 待建 D:/autostack/.wt/lang-843/auto-lang（T-01 内建组） / branch: codex/plan-843-dev / base_commit: lang master f99facb27b817fade1e5c2f03891c1ff418e28d2 / task_ids: T-01（进行中） / evidence: 初步定位七热点现行路径均在 crates/auto-lang-core/src/（trans/rust.rs 31704、vm/codegen.rs 16753、parser.rs 15204、vm/engine.rs 14148、vm/ffi/stdlib.rs 14076、vm/native.rs 13119、vm/ffi/http_server.rs 8320 raw 行），841/842 未消除任一热点，待 T-01 按 842 交付后路径正式重采并分类 / next_responsible_role: work T-01（读回三仓规范/AGENTS/前置交付映射，冻结合同基线并建组）。
 
 2026-10-24 / stage: new / plan_id: PLAN-843 / revision: 1 / outcome: blocked（上游整Plan启动门未齐；文档合同预检通过）/ next: 等G843真实满足后读回规范/交付/归档版本，再work T-01 / changed: T-01..12、AC-01..07、SD-01..05、V-01..05。本Plan drafting 0/12，无实施/fixture/probe/测试已完成，未创建树或agent；[预检](attachments/m2-governance-batch-20261024/preflight.md)。
 
