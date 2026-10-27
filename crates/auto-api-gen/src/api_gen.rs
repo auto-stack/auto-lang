@@ -606,10 +606,8 @@ pub(crate) fn transpile_back_module_to_rs_with_proofs(
 ///   regardless of return position (`rust.rs:1184`), no owned-Vec rewrite.
 /// - str param → String field missing `.to_string()` : no such logic in a2r.
 /// Do NOT delete these rewrites unless the a2r root cause is fixed first.
-/// Plan 405/396-B3: generated backends depend on `auto-lang.workspace` (not
-/// the standalone a2r-std crate), so re-qualify the bare `a2r_std` preamble
-/// and paths that the a2r transpiler now emits (see rust.rs Plan 396/B3
-/// comment) into the `auto_lang::` form that resolves against our deps.
+/// Generated backends use the embedded standard library from auto-lang-core.
+/// Qualify the transpiler preamble and paths while preserving standalone faces.
 fn qualify_a2r_std(code: String) -> String {
     // Plan 742 R3 (F-742-R3-01): single-pass, priority-ordered scan over
     // code regions only — NO placeholder/restore round-trip. A restore step
@@ -643,10 +641,27 @@ fn qualify_a2r_std(code: String) -> String {
             let mut i = 0;
             while i < bytes.len() {
                 if mask[i] && at_ident_boundary(i) {
-                    // Already qualified — copy verbatim (idempotency).
-                    if l[i..].starts_with("auto_lang::a2r_std::") {
-                        out.push_str("auto_lang::a2r_std::");
-                        i += "auto_lang::a2r_std::".len();
+                    // Canonical paths stay idempotent; old generated paths
+                    // migrate in code regions only, preserving literal bytes.
+                    let mut consumed = false;
+                    for (prefix, replacement) in [
+                        ("auto_lang_core::a2r_std", "auto_lang_core::a2r_std"),
+                        ("auto_lang::a2r_std", "auto_lang_core::a2r_std"),
+                    ] {
+                        if let Some(after) = l[i..].strip_prefix(prefix) {
+                            if after
+                                .as_bytes()
+                                .first()
+                                .map_or(true, |b| !(b.is_ascii_alphanumeric() || *b == b'_'))
+                            {
+                                out.push_str(replacement);
+                                i += prefix.len();
+                                consumed = true;
+                                break;
+                            }
+                        }
+                    }
+                    if consumed {
                         continue;
                     }
                     // Standalone-only faces — keep their direct form.
@@ -662,7 +677,7 @@ fn qualify_a2r_std(code: String) -> String {
                     }
                     // Generic qualification.
                     if l[i..].starts_with("a2r_std::") {
-                        out.push_str("auto_lang::a2r_std::");
+                        out.push_str("auto_lang_core::a2r_std::");
                         i += "a2r_std::".len();
                         continue;
                     }
@@ -670,7 +685,7 @@ fn qualify_a2r_std(code: String) -> String {
                     if is_use_line && l[i..].starts_with("a2r_std") {
                         let after = &l[i + "a2r_std".len()..];
                         if after.starts_with(';') || after.starts_with("::*") {
-                            out.push_str("auto_lang::a2r_std");
+                            out.push_str("auto_lang_core::a2r_std");
                             i += "a2r_std".len();
                             continue;
                         }
@@ -1458,7 +1473,8 @@ futures = \"0.3\"";
     // (StringBuilder 等), 而 a2r_std 在 auto-lang crate 里 → 必须加 auto-lang
     // 依赖, 否则 `unresolved import a2r_std`。任何用字符串的后端都会触发。
     let runtime_deps = "
-auto-lang = { workspace = true, features = [\"ui\", \"image-pipeline\"] }
+auto-lang-core = { workspace = true }
+auto-ui-runtime = { workspace = true, features = [\"ui\", \"image-pipeline\"] }
 # PLAN-811: 生成后端直接消费媒体基础公开入口（auto_media_core::）。
 auto-media-core = { workspace = true }
 a2r-std = { workspace = true }
@@ -2280,7 +2296,7 @@ static __INFLIGHT_SEM: std::sync::OnceLock<std::sync::Arc<tokio::sync::Semaphore
 
 #[allow(dead_code)]
 static __SERVICE_RT: std::sync::OnceLock<
-    std::sync::Arc<auto_lang::http_service_config::ServiceRuntime>,
+    std::sync::Arc<auto_lang_core::http_service_config::ServiceRuntime>,
 > = std::sync::OnceLock::new();
 
 /// PLAN-736 T-04：Host/可信代理身份/限速/CORS 纯策略 gate（peer 由连接层
@@ -2299,7 +2315,7 @@ async fn __policy_gate(
         .get("host")
         .and_then(|v| v.to_str().ok());
     if !c.host_allowed(authority) {
-        auto_lang::http_service_observability::emit_event(serde_json::json!({
+        auto_lang_core::http_service_observability::emit_event(serde_json::json!({
             "event": "request_rejected", "reason": "host_not_allowed",
         }));
         return axum::response::Response::builder()
@@ -2317,8 +2333,8 @@ async fn __policy_gate(
         xfp,
     );
     if let Some(rl) = &rt.limiter {
-        if let auto_lang::http_service_config::RateDecision::Limited { retry_after_secs } =
-            rl.check(identity.client, auto_lang::http_service_config::ServiceRuntime::now_ms())
+        if let auto_lang_core::http_service_config::RateDecision::Limited { retry_after_secs } =
+            rl.check(identity.client, auto_lang_core::http_service_config::ServiceRuntime::now_ms())
         {
             return axum::response::Response::builder()
                 .status(axum::http::StatusCode::TOO_MANY_REQUESTS)
@@ -2368,7 +2384,7 @@ async fn __policy_gate(
     }
     let mut resp = next.run(req).await;
     if let Some(origin) = origin {
-        if let auto_lang::http_service_config::CorsOutcome::Allowed { allow_origin, vary_origin } =
+        if let auto_lang_core::http_service_config::CorsOutcome::Allowed { allow_origin, vary_origin } =
             c.cors.actual_request(Some(origin))
         {
             if let Ok(v) = axum::http::HeaderValue::from_str(&allow_origin) {
@@ -2394,8 +2410,8 @@ async fn __inflight_gate(
     let permit = match sem.try_acquire_owned() {
         Ok(p) => p,
         Err(_) => {
-            auto_lang::http_service_observability::counter_add(
-                auto_lang::http_service_observability::CounterName::RequestsRejected503,
+            auto_lang_core::http_service_observability::counter_add(
+                auto_lang_core::http_service_observability::CounterName::RequestsRejected503,
                 1,
             );
             return axum::response::Response::builder()
@@ -2406,8 +2422,8 @@ async fn __inflight_gate(
                 .unwrap();
         }
     };
-    auto_lang::http_service_observability::counter_add(
-        auto_lang::http_service_observability::CounterName::RequestsTotal,
+    auto_lang_core::http_service_observability::counter_add(
+        auto_lang_core::http_service_observability::CounterName::RequestsTotal,
         1,
     );
     let resp = next.run(req).await;
@@ -2439,7 +2455,7 @@ fn __json_resp(status: u16, body: serde_json::Value) -> axum::response::Response
 async fn __health_live() -> axum::response::Response {
     __json_resp(
         200,
-        serde_json::json!({ "state": auto_lang::http_service_observability::service_state().as_str() }),
+        serde_json::json!({ "state": auto_lang_core::http_service_observability::service_state().as_str() }),
     )
 }
 
@@ -2448,7 +2464,7 @@ fn __assembly_fingerprint() -> Option<&'static str> { None }
 
 #[allow(dead_code)]
 async fn __health_ready() -> axum::response::Response {
-    use auto_lang::http_service_observability as obs;
+    use auto_lang_core::http_service_observability as obs;
     if obs::is_ready() {
         let mut identity = obs::service_identity().unwrap_or_else(|| serde_json::json!({}));
         identity["assembly_fingerprint"] = serde_json::json!(__assembly_fingerprint());
@@ -2460,7 +2476,7 @@ async fn __health_ready() -> axum::response::Response {
 
 #[allow(dead_code)]
 async fn __health_snapshot(req: axum::extract::Request) -> axum::response::Response {
-    use auto_lang::http_service_observability as obs;
+    use auto_lang_core::http_service_observability as obs;
     let peer = req.extensions().get::<std::net::SocketAddr>().copied();
     if !peer.map(|p| p.ip().is_loopback()).unwrap_or(false) {
         return __json_resp(403, serde_json::json!({ "error": "loopback only" }));
@@ -2477,7 +2493,7 @@ async fn __health_snapshot(req: axum::extract::Request) -> axum::response::Respo
 
 #[allow(dead_code)]
 async fn __shutdown(req: axum::extract::Request) -> axum::response::Response {
-    use auto_lang::http_service_observability as obs;
+    use auto_lang_core::http_service_observability as obs;
     let peer = req.extensions().get::<std::net::SocketAddr>().copied();
     if !peer.map(|p| p.ip().is_loopback()).unwrap_or(false) {
         return __json_resp(403, serde_json::json!({ "error": "loopback only" }));
@@ -2501,10 +2517,10 @@ const SERVICE_RUN_LOOP: &str = r#"
             .set(Arc::new(Semaphore::new(c.limits.max_inflight_requests)))
             .ok();
         __SERVICE_RT.set(Arc::new(
-            auto_lang::http_service_config::ServiceRuntime::new(c.clone()),
+            auto_lang_core::http_service_config::ServiceRuntime::new(c.clone()),
         ))
         .ok();
-        use auto_lang::http_service_observability as obs;
+        use auto_lang_core::http_service_observability as obs;
         obs::init_instance_id();
         obs::set_service_identity(&bound, c.profile.as_str(), c.effective_config_hash());
         obs::set_service_state(obs::ServiceState::Ready);
@@ -2563,20 +2579,20 @@ const SERVICE_RUN_LOOP: &str = r#"
                     let permit = match conn_sem.clone().try_acquire_owned() {
                         Ok(p) => p,
                         Err(_) => {
-                            auto_lang::http_service_observability::counter_add(
-                                auto_lang::http_service_observability::CounterName::ConnRejected,
+                            auto_lang_core::http_service_observability::counter_add(
+                                auto_lang_core::http_service_observability::CounterName::ConnRejected,
                                 1,
                             );
                             drop(stream);
                             continue;
                         }
                     };
-                    auto_lang::http_service_observability::counter_add(
-                        auto_lang::http_service_observability::CounterName::ConnAccepted,
+                    auto_lang_core::http_service_observability::counter_add(
+                        auto_lang_core::http_service_observability::CounterName::ConnAccepted,
                         1,
                     );
-                    auto_lang::http_service_observability::counter_add(
-                        auto_lang::http_service_observability::CounterName::ConnActive,
+                    auto_lang_core::http_service_observability::counter_add(
+                        auto_lang_core::http_service_observability::CounterName::ConnActive,
                         1,
                     );
                     let peer_addr = stream.peer_addr().ok();
@@ -2610,8 +2626,8 @@ const SERVICE_RUN_LOOP: &str = r#"
                             svc,
                         );
                         let _ = watcher.watch(conn).await;
-                        auto_lang::http_service_observability::counter_sub(
-                            auto_lang::http_service_observability::CounterName::ConnActive,
+                        auto_lang_core::http_service_observability::counter_sub(
+                            auto_lang_core::http_service_observability::CounterName::ConnActive,
                             1,
                         );
                     });
@@ -2626,8 +2642,8 @@ const SERVICE_RUN_LOOP: &str = r#"
             "AUTO_SERVICE_STOPPED {{\"bound\":\"{}\"}}",
             bound
         );
-        auto_lang::http_service_observability::set_service_state(
-            auto_lang::http_service_observability::ServiceState::Stopped,
+        auto_lang_core::http_service_observability::set_service_state(
+            auto_lang_core::http_service_observability::ServiceState::Stopped,
         );
     }
 "#;
@@ -2725,10 +2741,10 @@ async fn __file_reply(
 ) -> axum::response::Response {
     let hdrs = __file_header_pairs(headers);
     let deadline =
-        std::time::Instant::now() + auto_lang::http_file_service::file_serve_limits().prepare_timeout;
-    let reply = auto_lang::http_file_service::serve_file_response(
+        std::time::Instant::now() + auto_lang_core::http_file_service::file_serve_limits().prepare_timeout;
+    let reply = auto_lang_core::http_file_service::serve_file_response(
         &descriptor,
-        auto_lang::http_file_service::ServeFileRequest {
+        auto_lang_core::http_file_service::ServeFileRequest {
             method: method.as_str(),
             request_headers: &hdrs,
             prepare_deadline: deadline,
@@ -2750,13 +2766,13 @@ async fn __file_reply(
         }
     }
     match reply.body {
-        auto_lang::http_file_service::FileReplyBody::None => {
+        auto_lang_core::http_file_service::FileReplyBody::None => {
             builder.body(axum::body::Body::empty()).unwrap()
         }
-        auto_lang::http_file_service::FileReplyBody::Inline(b) => {
+        auto_lang_core::http_file_service::FileReplyBody::Inline(b) => {
             builder.body(axum::body::Body::from(b)).unwrap()
         }
-        auto_lang::http_file_service::FileReplyBody::Stream(s) => {
+        auto_lang_core::http_file_service::FileReplyBody::Stream(s) => {
             builder.body(axum::body::Body::from_stream(s)).unwrap()
         }
     }
@@ -3464,7 +3480,7 @@ async fn auto_media_stream(
 // PLAN-043 Part 1: local photo file service routes (029-photo-gallery).
 // Mirrors MEDIA_SERVICE_HANDLERS: hand-written routes emitted by the
 // generator, answering /api/photos/scan + /api/photos/thumb/:id +
-// /api/photos/full/:id from the filesystem via auto_lang::ui::photo_service.
+// /api/photos/full/:id from the filesystem via auto_ui_runtime::ui::photo_service.
 // Thumbnails render on demand behind a disk cache; originals stream through
 // tokio-util so a multi-GB panorama is never read whole. Scan URLs are
 // absolute (AUTO_HTTP_BASE inherited from `auto run`) because VM-native
@@ -3511,7 +3527,7 @@ fn photo_base() -> String {
 async fn auto_photos_scan(
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> axum::response::Response {
-    use auto_lang::ui::photo_service as ps;
+    use auto_ui_runtime::ui::photo_service as ps;
     // 非递归浏览模型：`?dir=<相对路径>`（缺省根目录）；非法段 400。
     let dir = params.get("dir").cloned().unwrap_or_default();
     let Some(root) = ps::resolve_root(None) else {
@@ -3582,17 +3598,17 @@ async fn auto_photos_scan(
 }
 
 /// token 反查公共臂（生成后端形态：注册表按 root 分桶，miss → None）。
-fn photo_entry_for(id: &str) -> Option<auto_lang::ui::photo_service::PhotoEntry> {
-    let root = auto_lang::ui::photo_service::resolve_root(None)?;
-    let rel = auto_lang::ui::photo_service::resolve_token(&root, id)?;
-    auto_lang::ui::photo_service::photo_from_rel(&root, &rel)
+fn photo_entry_for(id: &str) -> Option<auto_ui_runtime::ui::photo_service::PhotoEntry> {
+    let root = auto_ui_runtime::ui::photo_service::resolve_root(None)?;
+    let rel = auto_ui_runtime::ui::photo_service::resolve_token(&root, id)?;
+    auto_ui_runtime::ui::photo_service::photo_from_rel(&root, &rel)
 }
 
 async fn auto_photos_thumb(
     axum::extract::Path(id): axum::extract::Path<String>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> axum::response::Response {
-    use auto_lang::ui::photo_service as ps;
+    use auto_ui_runtime::ui::photo_service as ps;
     let width = params.get("w").and_then(|v| v.parse::<u32>().ok()).unwrap_or(260);
     let Some(entry) = photo_entry_for(&id) else {
         return photo_plain(404, "unknown photo id".to_string());
@@ -3616,7 +3632,7 @@ async fn auto_photos_thumb(
 async fn auto_photos_full(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> axum::response::Response {
-    use auto_lang::ui::photo_service as ps;
+    use auto_ui_runtime::ui::photo_service as ps;
     use tokio::io::AsyncReadExt;
     let Some(entry) = photo_entry_for(&id) else {
         return photo_plain(404, "unknown photo id".to_string());
@@ -5359,7 +5375,7 @@ fn generate_main_rs(
         s.push_str("async fn main() {\n");
         // PLAN-730 T-06: 上传宿主 executor 安装（幂等——无上传端点时
         // 轻量 no-op 面；a2r facade 的 receive/commit/reject 经此执行）。
-        s.push_str("    auto_lang::http_upload_service::install_upload_executor_service();\n");
+        s.push_str("    auto_lang_core::http_upload_service::install_upload_executor_service();\n");
         // Resolve the bind port from AUTO_HTTP_PORT (default 8080) so multiple
         // `auto run` instances — or other services sharing the host — can coexist.
         // PLAN-736 AC-01/02: 服务配置面（AUTO_HTTP_SERVICE_JSON，由 `auto
@@ -5369,7 +5385,7 @@ fn generate_main_rs(
             "    let service_cfg = match std::env::var(\"AUTO_HTTP_SERVICE_JSON\") {
 ",
         );
-        s.push_str("        Ok(json) => match auto_lang::http_service_config::resolve_service_config(&json, None) {
+        s.push_str("        Ok(json) => match auto_lang_core::http_service_config::resolve_service_config(&json, None) {
 ");
         s.push_str(
             "            Ok(c) => Some(std::sync::Arc::new(c)),
@@ -5491,7 +5507,7 @@ fn generate_main_rs(
         s.push_str("async fn main() {\n");
         // PLAN-730 T-06: 上传宿主 executor 安装（幂等——无上传端点时
         // 轻量 no-op 面；a2r facade 的 receive/commit/reject 经此执行）。
-        s.push_str("    auto_lang::http_upload_service::install_upload_executor_service();\n");
+        s.push_str("    auto_lang_core::http_upload_service::install_upload_executor_service();\n");
         // PLAN-736 AC-01/02: 服务配置面（AUTO_HTTP_SERVICE_JSON，由 `auto
         // service --server rust` 注入的解析后规范形）优先；legacy 面维持
         // env/8080 链不变。坏配置 = 指名诊断 + 退出码 2（不假装 ready）。
@@ -5499,7 +5515,7 @@ fn generate_main_rs(
             "    let service_cfg = match std::env::var(\"AUTO_HTTP_SERVICE_JSON\") {
 ",
         );
-        s.push_str("        Ok(json) => match auto_lang::http_service_config::resolve_service_config(&json, None) {
+        s.push_str("        Ok(json) => match auto_lang_core::http_service_config::resolve_service_config(&json, None) {
 ");
         s.push_str(
             "            Ok(c) => Some(std::sync::Arc::new(c)),
@@ -6430,16 +6446,36 @@ fn main() {{
                     let q = auto_lang::a2r_std::f();
 ";
         let out = qualify_a2r_std(code.to_string());
-        assert!(out.contains("auto_lang::a2r_std::list::new()"), "{out}");
-        assert!(out.contains("use auto_lang::a2r_std;"), "{out}");
-        assert!(out.contains("use auto_lang::a2r_std::*;"), "{out}");
+        assert!(
+            out.contains("auto_lang_core::a2r_std::list::new()"),
+            "{out}"
+        );
+        assert!(out.contains("use auto_lang_core::a2r_std;"), "{out}");
+        assert!(out.contains("use auto_lang_core::a2r_std::*;"), "{out}");
         // standalone-only faces keep their direct form
         assert!(out.contains("a2r_std::sys::now()"), "{out}");
         assert!(out.contains("::a2r_std::sqlite::open(p)"), "{out}");
-        assert!(!out.contains("auto_lang::a2r_std::sqlite"), "{out}");
+        assert!(!out.contains("auto_lang_core::a2r_std::sqlite"), "{out}");
         // idempotency: already-qualified paths are not double-qualified
-        assert_eq!(out.matches("auto_lang::auto_lang").count(), 0, "{out}");
-        assert!(out.contains("auto_lang::a2r_std::f();"), "{out}");
+        assert_eq!(
+            out.matches("auto_lang_core::auto_lang_core").count(),
+            0,
+            "{out}"
+        );
+        assert!(out.contains("auto_lang_core::a2r_std::f();"), "{out}");
+        let qualified = "use auto_lang::a2r_std;\nuse auto_lang_core::a2r_std;\nlet x = auto_lang_core::a2r_std::f();\n";
+        let rewritten = qualify_a2r_std(qualified.to_string());
+        assert_eq!(rewritten, "use auto_lang_core::a2r_std;\nuse auto_lang_core::a2r_std;\nlet x = auto_lang_core::a2r_std::f();\n");
+        assert_eq!(qualify_a2r_std(rewritten.clone()), rewritten);
+        let spaced = "use auto_lang::a2r_std ;\nuse auto_lang_core::a2r_std ;\n";
+        let spaced_out = qualify_a2r_std(spaced.to_string());
+        assert_eq!(
+            spaced_out,
+            "use auto_lang_core::a2r_std ;\nuse auto_lang_core::a2r_std ;\n"
+        );
+        assert_eq!(qualify_a2r_std(spaced_out.clone()), spaced_out);
+        let legacy_literal = "let text = \"auto_lang::a2r_std::f()\"; // auto_lang::a2r_std::x\n";
+        assert_eq!(qualify_a2r_std(legacy_literal.to_string()), legacy_literal);
 
         let literal = "let m = \"__AUTO_A2R_STD_QUAL__ __AUTO_A2R_STD_SQLITE__ __AUTO_A2R_STD_SYS__ a2r_std::x\".to_string();
 ";
@@ -6780,7 +6816,7 @@ mod axum {
     pub mod http { pub struct Method; pub struct HeaderMap; }
     pub mod response { #[derive(Debug)] pub struct Response(pub String); }
 }
-mod auto_lang {
+mod auto_lang_core {
     pub mod a2r_std {
         pub mod http {
             pub struct FileResponse(pub String);
@@ -6791,7 +6827,7 @@ mod auto_lang {
     }
 }
 async fn __file_reply(
-    d: auto_lang::a2r_std::http::FileResponse,
+    d: auto_lang_core::a2r_std::http::FileResponse,
     _: &axum::http::Method,
     _: &axum::http::HeaderMap,
 ) -> axum::response::Response {
@@ -7540,7 +7576,8 @@ serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 tower-http = {{ version = "0.5", features = ["cors"] }}
 hyper-util = {{ version = "0.1", features = ["tokio", "server-auto", "service", "http1"] }}
-auto-lang = {{ path = {auto_lang:?}, features = ["ui", "image-pipeline"] }}
+auto-lang-core = {{ path = {auto_lang_core:?} }}
+auto-ui-runtime = {{ path = {auto_ui_runtime:?}, features = ["ui", "image-pipeline"] }}
 auto-media-core = {{ path = {auto_media_core:?} }}
 a2r-std = {{ path = {a2r_std:?} }}
 
@@ -7550,7 +7587,11 @@ path = "src/main.rs"
 
 [workspace]
 "#,
-                    auto_lang = repo_root.join("crates/auto-lang"),
+                    auto_lang_core = repo_root.join("crates/auto-lang-core"),
+                    auto_ui_runtime = repo_root
+                        .parent()
+                        .unwrap()
+                        .join("auto-ui/crates/auto-ui-runtime"),
                     auto_media_core = repo_root.join("crates/auto-media-core"),
                     a2r_std = repo_root.join("crates/a2r-std"),
                 ),
@@ -7767,7 +7808,7 @@ pub fn stream() ~Stream<Message> {
             let module = try_full_parse(API_AT).expect("full parse");
             let db_rs = post_process_db_rs(transpile_db_to_rs(DB_AT).expect("db transpile"));
             let db_fns = extract_db_fn_names(&db_rs);
-            let mut api_rs = generate_api_rs(&module, Some(&db_fns), false);
+            let mut api_rs = generate_api_rs(&module, Some(&db_fns), false, &[]);
             api_rs = qualify_a2r_std(api_rs);
             api_rs = borrow_string_db_call_args(&api_rs, &db_rs);
             let main_rs = generate_main_rs(&module, Some(DB_AT), false, &[], false);
@@ -7796,7 +7837,8 @@ serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 tower-http = {{ version = "0.5", features = ["cors"] }}
 hyper-util = {{ version = "0.1", features = ["tokio", "server-auto", "service", "http1"] }}
-auto-lang = {{ path = {:?}, features = ["ui", "image-pipeline"] }}
+auto-lang-core = {{ path = {:?} }}
+auto-ui-runtime = {{ path = {:?}, features = ["ui", "image-pipeline"] }}
 auto-media-core = {{ path = {:?} }}
 a2r-std = {{ path = {:?} }}
 
@@ -7806,7 +7848,11 @@ path = "src/main.rs"
 
 [workspace]
 "#,
-                    repo_root.join("crates/auto-lang"),
+                    repo_root.join("crates/auto-lang-core"),
+                    repo_root
+                        .parent()
+                        .unwrap()
+                        .join("auto-ui/crates/auto-ui-runtime"),
                     repo_root.join("crates/auto-media-core"),
                     repo_root.join("crates/a2r-std"),
                 ),
@@ -8134,7 +8180,8 @@ serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 tower-http = {{ version = "0.5", features = ["cors"] }}
 hyper-util = {{ version = "0.1", features = ["tokio", "server-auto", "service", "http1"] }}
-auto-lang = {{ path = {auto_lang:?}, features = ["ui", "image-pipeline"] }}
+auto-lang-core = {{ path = {auto_lang_core:?} }}
+auto-ui-runtime = {{ path = {auto_ui_runtime:?}, features = ["ui", "image-pipeline"] }}
 auto-media-core = {{ path = {auto_media_core:?} }}
 a2r-std = {{ path = {a2r_std:?} }}
 
@@ -8144,7 +8191,11 @@ path = "src/main.rs"
 
 [workspace]
 "#,
-                    auto_lang = repo_root.join("crates/auto-lang"),
+                    auto_lang_core = repo_root.join("crates/auto-lang-core"),
+                    auto_ui_runtime = repo_root
+                        .parent()
+                        .unwrap()
+                        .join("auto-ui/crates/auto-ui-runtime"),
                     auto_media_core = repo_root.join("crates/auto-media-core"),
                     a2r_std = repo_root.join("crates/a2r-std"),
                 ),
@@ -9468,6 +9519,26 @@ pub fn get_item(id int) Item {
     }
 
     #[test]
+    fn plan842_generated_backend_uses_canonical_owners() {
+        let module = extract_api_lenient(
+            r#"#[api(method = "GET", path = "/api/items")]
+pub fn list_items() []str { return [] }"#,
+        )
+        .expect("API fixture");
+        let generated = generate_main_rs(&module, None, false, &[], false);
+        let manifest = generate_cargo_toml("plan842-back", false, false);
+        assert!(
+            !generated.contains("auto_lang::"),
+            "backend uses legacy facade"
+        );
+        assert!(generated.contains("auto_lang_core::http_service_config"));
+        assert!(generated.contains("auto_ui_runtime::ui::photo_service"));
+        assert!(manifest.contains("auto-lang-core = { workspace = true"));
+        assert!(manifest.contains("auto-ui-runtime = { workspace = true"));
+        assert!(!manifest.contains("auto-lang = { workspace = true"));
+    }
+
+    #[test]
     fn media_route_is_emitted_for_stateful_and_full_cover_servers() {
         let api = r#"
 #[api(method = "GET", path = "/api/items")]
@@ -9509,12 +9580,12 @@ pub fn list_items() []str { return [] }
                 "photo full route missing: {generated}"
             );
             assert!(
-                generated.contains("auto_lang::ui::photo_service"),
+                generated.contains("auto_ui_runtime::ui::photo_service"),
                 "photo runtime missing: {generated}"
             );
         }
         assert!(generate_cargo_toml("media-back", false, false)
-            .contains("auto-lang = { workspace = true"));
+            .contains("auto-lang-core = { workspace = true"));
     }
 
     #[test]
@@ -9522,7 +9593,7 @@ pub fn list_items() []str { return [] }
         let rs_api = include_str!("../../../stdlib/auto/image.rs.at");
         assert!(rs_api.contains("pub fn queue") && rs_api.contains("pub fn stats"));
         let cargo = crate::api_gen::generate_cargo_toml("image-back", false, false);
-        assert!(cargo.contains("auto-lang = { workspace = true"));
+        assert!(cargo.contains("auto-lang-core = { workspace = true"));
     }
 }
 

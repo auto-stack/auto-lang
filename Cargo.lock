@@ -564,6 +564,7 @@ dependencies = [
  "auto-lang-core",
  "auto-project-model",
  "auto-val",
+ "blake3",
  "erased-serde 0.4.0-rc.1",
  "regex",
  "serde",

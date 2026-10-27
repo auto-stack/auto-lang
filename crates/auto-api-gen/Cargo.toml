@@ -19,6 +19,7 @@ serde_json = { workspace = true }
 test-http-e2e = []
 
 [dev-dependencies]
+blake3 = "1.5"
 tempfile = { workspace = true }
 serde = { workspace = true }
 # plan734 fixture compile-check uses #[tauri::command] (same spec as auto-man).
