@@ -116,3 +116,20 @@ CAS），producer=`plan817/cte-probe` 仅由真实 AV 成功结果铸造；全�
   持久化——**单元缓存项不带 project**、manifest 顺序发布摘旧 root（787
   R3-03，否则体量 churn 不可水位收敛）、无上游活缓存仍可合法 link/run；
   key 轴与失效规则见 [mir-native-cache.md](mir-native-cache.md)。
+
+
+## PLAN-823：独占 GC 的终态元数据清理
+
+GC 在独占生存期锁内额外清理两类终态元数据（真实 512 次编辑+周期 GC 实测
+驱动——已删除块与已提交事务元数据随编辑数线性增长，历史"根数量有界"不代表
+物理空间有界）：
+
+- **已删除块的元数据**：块状态为 `deleted` 且无任何工件引用时，块行及关联
+  元数据一并删除；仍被引用或非 deleted 状态的块不动。
+- **已提交事务的终态记录**：`committed` 状态事务的终态元数据在其全部效果
+  落定后清理；`tombstoned`、进行中/中断事务与未提交状态保留，确保中断恢复、
+  受阻删除和再次发布不退化。
+
+物理水位对照（512 修订前/后 store 字节）与用户哨兵/他方工件不动为验收轴；
+锁文件清理实测面为 Windows（非 Windows 并发/水位为登记缺口）。实现：
+`experimental/ac-artifact-probe/src/store/gc.rs` + `tests/plan823_gc_metadata.rs`。

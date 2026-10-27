@@ -7,3 +7,5 @@ PLAN-798：Typed MIR与独立验证器；实际位于auto-av-core，不是单独
 [计划来源](plans.md)；[架构决策](architecture.md)。
 
 PLAN-824 增加 [av.dynamic/1 类型擦除 MIR](dynamic-cast-profile.md)，递归白名单和名义身份在准入/执行边界受检。
+
+PLAN-823 增加 [av.closures/1 闭包捕获 MIR](closure-capture-profile.md)：闭包体自带 env 声明、捕获三态纪律与 link 期 env 等价检查。

@@ -57,3 +57,12 @@ SDK adapter 须拿 852 交付后的测试窗口（关联核心合同另拿核心
 ## PLAN-824：动态 typed 能力绑定
 
 D01–D09 的 `av-dyn-824` 行绑定 `ac-av/dynamic-run-v1` 和真实 typed MIR/ABC/AV、portable 恢复及父侧 oracle；W01–W05 保留整数和浮点精确位型验证，I04–I06/I10–I12 追加动态会话、失效与资源证据。源码、复合 native/CTE 及旧 AVM/a2r 的 Dyn API 未由 typed fixture 关闭，仍按各自 owner/gap 记录。
+
+## PLAN-823：闭包 typed 能力绑定
+
+K01–K06 与 scenario R05 的 `av-closures-823` 行绑定 `ac-av/closures-run-v1`
+（AVAD v5/profile 6）真实 typed MIR→ABC→AV、代码缓存恢复与父侧 oracle；
+I01/I02/I04–I06/I10/I12 追加闭包会话身份、env 漂移、跨工程身份、512 修订
+churn 与 judge 反控证据（`-Scope baseline` 常驻，stale-evidence 身份控制钉
+41 文件 hash+依赖 HEAD）。源码闭包语法（两 legacy 路径 parse 拒）、a2r 伪 Rust
+复合认证与 native 闭包 ABI 仍按各自 owner/gap 记录，不因 typed 行关闭。

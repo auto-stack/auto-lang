@@ -216,3 +216,16 @@ emit+byte-compare+严格收据验证+周期性 CIM 祖先采样进程观察（�
 ## PLAN-824：ac-av/dynamic-run-v1
 
 正式注册 `ac-av/dynamic-run-v1` 与 `av-data-824` typed fixture 语料；worker 执行真实 MIR→ABC→AV 和 portable 恢复，父侧持独立冻结期望，检查值/资源与失败反控。漏例、跳过、错误结果或 worker 故障不能冒充通过。M1 中 typed 动态证据与不支持的源码/native 路径分开登记，见 [ace-m1-conformance](ace-m1-conformance.md)。
+
+## PLAN-823：ac-av/closures-run-v1 recipe
+
+新 recipe `ac-av/closures-run-v1`：沿 822/824 append-only 三缝注册模式；语料
+`av-data/823`，avworker/1 域 `closures:<id>` fixture 入口（首例=move 捕获
+List<record> 的 creator-exit 调用+可变 env+drop，手算 29/台账 5alloc 5free/
+live=0）。父侧持独立冻结期望表 CLOSURES_CASES（value/allocs/frees/live 面），
+worker 身份/漏例/跳过/错结果=非绿；V-10 反控沿 judge 谎言族与 worker 故障缝。
+`scripts/verify-av-closures-823.ps1` 九 Scope 聚合（first-case/semantics/
+admission/resources/cache/compatibility/autodown/baseline/turnaround），缺
+case/worker、脚本控制与 stale-evidence 身份（41 文件 hash+依赖 HEAD）都有常驻
+负控。交叉 owner/类别拒绝与 824 正控由 av_closures_823_dynamic_824_compat
+常驻。

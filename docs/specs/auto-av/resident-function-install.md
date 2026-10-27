@@ -151,3 +151,15 @@ IO=0；`fn:<name>` 经 link 内容等值签名绑定（容器型接口变化结�
 ## PLAN-824：动态 profile 的增量消费者
 
 `DynamicUpdateSession` 消费既有受检单元、link 和快照接口；body-only 编辑、签名/依赖/profile/授权不变时保留未修改函数身份及其生产/IO 零重做。类型、布局或授权变化按当前绑定重验或拒绝，不迁移旧活值。该 typed profile 不证明新增源码或 native Dyn 支持。
+
+## PLAN-823：closures 更新会话与 env 契约
+
+`ClosuresUpdateSession`（822 同型真门会话）消费 828 单元接口：闭包 body 自带
+`env` 声明（`MirFunction.env`/`MirImport.env`），`CREATE_CLOSURE.callee` 走
+`CalleeRef`（单元经 import 绑定闭包体），captures 逐位等于被调声明；link 期
+`fn:` 绑定做 env 等价检查——声明漂移精确拒绝且会话可恢复，不用全模块退化。
+body-only 修订未改单元 Arc 同对象/同代际、生产阶段与产物 IO=0；强制退化
+（unchanged_degraded）必红。V-13 四子case（body-only 身份/IO、env 漂移精确
+失效、强制退化非零、单元独立验证）与 512 真实修订长会话（结构绿 + P90≤2s
+r9 口径：10 样本至少 9 次 ≤2000ms，全部正确性门必过）为常驻回归面。cache
+抽取/合并透传 env 声明（含 CalleeRef 重写携带被调声明）。

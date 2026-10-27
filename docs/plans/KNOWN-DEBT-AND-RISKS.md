@@ -3594,3 +3594,5 @@ F-857-R1-01..05 OPEN，绑定 `ecf9939c5b2e369f9ce7d6ea25b0b66439bb7da6`：合�
 ### D-824-BATCH-20261027 — 批量回归失败延后处理
 
 用户于 2026-10-27 明确同意将本轮全仓批量回归失败延迟到后续计划处理；当前后续计划编号和 owner 尚未指定。语言完整档 12 项、UI 完整档 9 项基线 ID 缺失，未运行两条完整档；tt 3562/3563（取消测试失败，根因待查），tb 3102/3102。原始输出和 ID 映射线索见 [824 批量报告](attachments/824/batch-r1/review.md)。不得将失败记为通过、删减基线或推定由 824/842 引入；后续需逐项核对迁移及断言、诊断取消失败，并按仓规重跑完整批量回归。最新完整成功覆盖点仍为 850；824 已合入，其独立清理问题另行跟踪。
+- **P823-D01（低）**：managed-store GC 的锁文件安全清理仅有 Windows 实测；非 Windows 并发/水位行为未闭合（来源 PLAN-823 SD-08，spec: auto-ac/artifact-contract.md；关闭 oracle=非 Windows 平台并发 GC + 水位对照测试）。
+- **P823-D02（低，范围外）**：master 根仓存在预存 rustfmt 漂移（auto-cache ~108 处、auto-lang ~29 处含 examples/a2r_step02.rs、auto-atom/auto-bindgen/auto-cosmic 等，2026-10-27 PLAN-823 合并门禁实测；823 触面文件全净）。候选 L0 卫生项统一 `cargo fmt` 收口。

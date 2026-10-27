@@ -101,3 +101,16 @@ v1/v2/v3 互不可读；好信封坏内层、内容寻址同键冲突（防篡�
 ## PLAN-824：动态代码与 portable 值分域
 
 `plan824/av-dynamic` 的 `av.dynamic/1`（profile 5、AVAD v4）沿现有受检代码缓存恢复链，portable 值以 `auto.portable.av-dynamic/1` 分域；恢复重验当前类型/字段/分支及授权，不从保存的载荷恢复信任。动态与旧 profile 的 schema/producer/语义身份隔离，坏内层或改变依赖受控拒绝。资源和 typed 支持边界见 [dynamic-portable-values](dynamic-portable-values.md)。
+
+## PLAN-823：A23 closures 层与恢复身份
+
+新 producer `plan823/av-closures` + A23 层（AVAD v5、profile id 6，键轴
+producer/owner/entry/profile/types-fp/codec×3 语义/source-snapshot）。缓存只
+持久化代码与可持久依赖，活 env/borrow/宿主地址不入缓存；新 worker 恢复零信任
+盘面：信封→decode→深验（含 env 声明逐位一致）→载荷身份绑定（profile id 必须
+=closures 6、types-fp、entry 名与 source_snapshot 逐项等于请求身份）后执行。
+好 hash 坏内层拒；types-fp/entry/snapshot 轴 clean miss；与 dynamic/collections/
+owned/data 各 profile 的 schema-producer-语义身份互斥，交叉 owner 工件在准入门
+拒绝（av_closures_823_dynamic_824_compat 常驻正反控）。闭包层与 824 的直接/
+嵌套 pack/freeze 拒绝（任意深度）为两 profile 共同边界。恢复与增量会话合同见
+[resident-function-install](resident-function-install.md)。

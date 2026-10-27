@@ -6,4 +6,4 @@ PLAN-798：有限ABC/验证/AV执行与持久产物探针；不改变旧VM产品
 
 [计划来源](plans.md)；[架构决策](architecture.md)。
 
-PLAN-824 增加实验性 [av.dynamic/1 类型擦除与 portable owned 树](dynamic-portable-values.md)；保留 typed 入口和源码/native 缺口。
+PLAN-824 增加实验性 [av.dynamic/1 类型擦除与 portable owned 树](dynamic-portable-values.md)；保留 typed 入口和源码/native 缺口。PLAN-823 增加实验性 [av.closures/1 类型化闭包环境](closure-environments.md)（move/clone 逃逸捕获、同步借用纪律、增量会话与 824 身份互斥）；源码闭包/native ABI 缺口保留。

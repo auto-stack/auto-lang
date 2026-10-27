@@ -11,6 +11,7 @@ Checked HIR → Typed MIR → ABC decode/verify → 私有LoadedModule → Rust 
 - [owned Place 与清理（av.owned/1，PLAN-821）](place-ownership.md)
 - [缓存、资源与验收](cache-and-conformance.md)
 - [类型化集合与 Variant（av.collections/1，PLAN-822）](collections-variants.md)
+- [类型化闭包环境（av.closures/1，PLAN-823）](closure-environments.md)
 - [MIR](../auto-mir/core-i32.md) | [数据 MIR](../auto-mir/data-place-profile.md)
 
 798不是在线函数替换/完整AJ/发布器。实际增量边界以缓存合同为准。
@@ -54,6 +55,17 @@ typed 元素存取/转移/清理。合同见
 **非目标**：source 支持面（fixture-only）、Map/Set/迭代器/借用元素容器/
 循环共享、record 容器字段、List 嵌 List、native/CTE 扩面。后继增量消费与
 授权面见 [resident-function-install](resident-function-install.md)。
+
+## PLAN-823：av.closures/1 闭包环境 profile
+
+PLAN-823 交付 `av.closures/1`（profile id 6、AVAD wire v5、TY_CLOSURE tag 17、
+语义版本 1/1/1）：typed owned 闭包环境、move/显式 clone 逃逸捕获、静态可证
+非逃逸同步借用、受检间接调用与 env/frame 身份；A23 代码层与新进程恢复。
+合同见 [closure-environments](closure-environments.md) 与
+[closure-capture-profile](../auto-mir/closure-capture-profile.md)。
+**非目标**：源码闭包语法/前端推导、共享 RC/Copy 闭包、async/生成器、跨线程、
+native ABI/JIT、持久闭包。与 824 的身份划分（v5/6/17/0x32-0x34 vs
+v4/5/16/0x2F-0x31）与交叉拒绝为现行合同，整合前旧登记为历史。
 
 ## PLAN-824：av.dynamic/1 动态值 profile
 
