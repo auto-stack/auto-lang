@@ -119,6 +119,10 @@ $COMPACT_COMPAT = @(
     'av_wire_826_compat_restore_requires_current_authorization',
     'av_wire_826_compat_codec_routing_gate_and_delivered_wire_untouched'
 )
+$BASELINE = @(
+    'av_wire_826_baseline_sources_match_independent_oracles_over_both_wires',
+    'av_wire_826_baseline_resume_old_call_after_new_version'
+)
 $INCREMENTAL = @(
     'av_wire_826_incremental_two_function_edit_identity_and_zero_work',
     'av_wire_826_incremental_content_hit_reuses_every_index',
@@ -139,6 +143,22 @@ switch ($Scope) {
         Run-Probe -Bin 'av_wire_826_first_case' -RequiredIds $FIRST_PROBE
         Run-Probe -Bin 'av_wire_826_targeted' -RequiredIds $TARGETED
         Run-Probe -Bin 'av_wire_826_security' -RequiredIds $SECURITY
+        Run-Runner -Filter 'av_wire_826_first_case_corpus_green' -RequiredIds $FIRST_RUNNER
+    }
+    'baseline' {
+        Run-ParallelHarness
+        Run-Probe -Bin 'av_wire_826_baseline' -RequiredIds $BASELINE
+        # I01/I11: the shared D828 30-revision dual-gate campaign.
+        Run-Probe -Bin 'function_incremental_828_t08' -Filter 't08_formal_campaign_v08_dual_gate_30_revisions' -RequiredIds @('t08_formal_campaign_v08_dual_gate_30_revisions')
+        # I10: the executor-level resource churn tier (wire-independent).
+        Run-Probe -Bin 'resources_tier' -Filter 'av_resources_32mib_product_random_read_and_churn' -RequiredIds @('av_resources_32mib_product_random_read_and_churn')
+        # Delivered data/owned/collections consumer faces over their own
+        # AVAD wires must not regress behind the compact integration.
+        Run-Probe -Bin 'av_data_820_cache_compat'
+        Run-Probe -Bin 'av_owned_821_cache_compat'
+        Run-Probe -Bin 'av_collections_822_cache_compat'
+        # I12: parent-side sensitivity controls.
+        Run-Runner -Filter 'av_wire_826_parent_sensitivity_controls_non_green' -RequiredIds $SENSITIVITY
         Run-Runner -Filter 'av_wire_826_first_case_corpus_green' -RequiredIds $FIRST_RUNNER
     }
     'incremental' {
