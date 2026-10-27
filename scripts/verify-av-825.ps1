@@ -127,7 +127,10 @@ function Assert-CompatEvidence {
     if (-not (Test-Path $logPath)) { throw 'compat evidence log missing' }
     if ((Get-FileHash $logPath -Algorithm SHA256).Hash.ToLower() -ne $receipt.evidence_log_sha256) { throw 'compat evidence log identity changed' }
     $log = Get-Content -LiteralPath $logPath -Raw -Encoding UTF8
-    if ($log -notmatch 'ac_av_probe_formal_turnaround_gates \.\.\. ok' -or $log -notmatch 'test result: ok\. 15 passed; 0 failed') { throw 'compat evidence does not contain a passing formal turnaround gate' }
+    # The formal-runner count froze at 15 pre-823/824 landings; their merge
+    # grew the shared ac_av_probe family to 16, so the exact-count oracle
+    # follows the current consumer union.
+    if ($log -notmatch 'ac_av_probe_formal_turnaround_gates \.\.\. ok' -or $log -notmatch 'test result: ok\. 16 passed; 0 failed') { throw 'compat evidence does not contain a passing formal turnaround gate' }
 }
 
 function Invoke-Benchmark {
@@ -238,21 +241,30 @@ switch ($Scope) {
         Run-Probe -Bin 'av_runtime_825_semantics' -RequiredIds $TARGETED
     }
     'compat' {
-        Run-Probe -Bin 'cache_tier'
-        Run-Probe -Bin 'av_data_820_cache_compat'
-        Run-Probe -Bin 'av_owned_821_cache_compat'
-        Run-Probe -Bin 'av_collections_822_cache_compat'
-        Run-Probe -Bin 'av_data_820_semantics'
-        Run-Probe -Bin 'av_owned_821_semantics'
-        Run-Probe -Bin 'av_collections_822_semantics'
-        Run-Runner -Filter 'ac_av_probe'
-        Run-Runner -Filter 'av_owned_821'
-        Run-Runner -Filter 'av_collections_822'
-        $receiptPath = Join-Path $root 'docs/plans/attachments/825/compat-receipt.json.txt'
+        $receiptDir = Join-Path $root 'docs/plans/attachments/825'
+        $logPath = Join-Path $receiptDir 'compat.log.txt'
+        Start-Transcript -LiteralPath $logPath -Force | Out-Null
+        try {
+            Run-Probe -Bin 'cache_tier'
+            Run-Probe -Bin 'av_data_820_cache_compat'
+            Run-Probe -Bin 'av_owned_821_cache_compat'
+            Run-Probe -Bin 'av_collections_822_cache_compat'
+            Run-Probe -Bin 'av_data_820_semantics'
+            Run-Probe -Bin 'av_owned_821_semantics'
+            Run-Probe -Bin 'av_collections_822_semantics'
+            Run-Runner -Filter 'ac_av_probe'
+            Run-Runner -Filter 'av_owned_821'
+            Run-Runner -Filter 'av_collections_822'
+        } finally {
+            Stop-Transcript | Out-Null
+        }
+        $receiptPath = Join-Path $receiptDir 'compat-receipt.json.txt'
         $receipt = [pscustomobject]@{
             head = (& git rev-parse HEAD)
             script_sha256 = (Get-FileHash $PSCommandPath -Algorithm SHA256).Hash.ToLower()
             generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            evidence_log = 'compat.log.txt'
+            evidence_log_sha256 = (Get-FileHash $logPath -Algorithm SHA256).Hash.ToLower()
         }
         $receipt | ConvertTo-Json | Set-Content -LiteralPath $receiptPath -Encoding UTF8
     }
