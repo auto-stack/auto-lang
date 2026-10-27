@@ -43,4 +43,6 @@ Provenance: [PLAN-854](../../plans/archive/854-autographics-behavior-source-asse
 
 | [855](../../plans/archive/855-autographics-authoring-responsibility-split.md) | Host private responsibility modules and current CLI/probe/source entries; original ownership and semantics retained | autographics-dev 05fdc81c546aff735eefdb6c39fbc5fb35dc546a | M2/S0 complete; new M2/I2/I3 pending |
 
+| 856 | Finite 2D editor viewport/grid/navigation | delivered | [PLAN-856](../../plans/archive/856-autographics-2d-viewport-grid-and-navigation.md) | Presented-view navigation, bounded grid and optional world snap; 3D/runtime camera and I2/I3 remain pending |
+
 | 858 | M2 dual game sample research and public API gaps | delivered | [PLAN-858](../../plans/archive/858-autographics-m2-game-samples-and-api-gaps.md) | Pinned source assets, 17 game requirements and capability/follow-on matrix; research only, no new game or runtime capability |

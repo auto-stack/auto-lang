@@ -47,3 +47,7 @@ Provenance: [PLAN-855](../../plans/archive/855-autographics-authoring-responsibi
 - [M2 game sample research](m2-game-sample-research.md): two original small-level denominators, pinned reference/source-asset identities, public capability gaps and follow-on acceptance requirements (PLAN-858). Research only; games, new public services and distribution remain pending.
 
 Provenance: [PLAN-858](../../plans/archive/858-autographics-m2-game-samples-and-api-gaps.md), [independent final review](../../plans/attachments/858/review-r1/review.md). Graphics baseline `05fdc81c546aff735eefdb6c39fbc5fb35dc546a`; SDK `7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467`.
+
+- [Finite 2D editor viewport](editor-viewports.md): editing-only navigation, bounded world-aligned grid and optional world-origin snap, with a shared presented transform for drawing, picking and real Auto gestures (PLAN-856).
+
+Provenance: [PLAN-856](../../plans/archive/856-autographics-2d-viewport-grid-and-navigation.md), [independent final R2](../../plans/attachments/856/review-r2/review.md), [merge receipt](../../plans/attachments/856/merge-r1/receipt.md). Source: autographics-dev at `4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7`; SDK `7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467`. Production I2/I3 and 3D editor navigation remain pending.
