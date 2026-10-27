@@ -9,6 +9,10 @@ AutoABI↔AutoABI、AutoABI↔C 双向互调的有限边界合同与 conformance
 与 [ABI RFC](../../design/strategy/auto-native-abi-rfc.md)——它们是目标文档，
 本目录记录的是**已实现并经独立复审的候选现状**。
 
+**周转目标（PLAN-858）**：ACE 开发初期正式样本的当前时间门为
+P90≤2000ms；计时和原资源、正确性约束详见 [conformance-cache.md](conformance-cache.md)。
+历史 P95 测量保留，长期目标在架构基本成形后另行实测。
+
 ## 目标与范围
 
 - 冻结首个有界 Windows x64 候选 profile 的域/版本/符号/descriptor/类型

@@ -1,5 +1,8 @@
 # auto-lang（语言核心）
 
+> **PLAN-858 开发期周转口径**：ACE 有效样本按升序取第 `N-floor(N/10)` 项（从 1 开始）为 P90，硬门为 P90≤2000ms；正式样本数不减少，10 项最多 1 项超过 2000ms，等值通过。缺失、非法或错误结果不得计入绿；保留各路径原有零值准入、真实窗口、结构与资源断言。P95/P99 作为诊断与历史数据保留；架构基本成形后以实测另定长期目标。详见 [TestCase v2 周转口径](../auto-test-case/profile-v2-native.md)。
+
+
 > **Status**: active
 > 路径：`crates/auto-lang`  | 技术栈：Rust 库（巨型，全 workspace 的依赖中心）
 
@@ -15,7 +18,7 @@ Auto 语言的核心实现：lexer/parser/AST、类型系统、解释器、AutoV
 
 完整测试编排（PLAN-850）：`cargo tf/taa/ta/t3` 经 `scripts/full-regression-driver` 调用标准库 Python 编排器，在语言与 UI 各自 workspace 串行执行原完整选择。tf 保留三项语言集成目标；taa/ta/t3 保留各自 feature/profile，作用域子串过滤可显式传入，作用域运行不构成全量覆盖证据。`cargo tf --batch` 追加原语言 tt/tb，正式批量仅主检出单实例运行；`--list-only` 只构建、清点选择面，供 work/review 验收使用。
 
-编排器以机器锁保护全程，清点真实 nextest JSON 中的逐 ID、必选状态与非零选择，记录新增项、实际命令、配置和依赖身份。缺 owner、零选择、子门失败、超时或中断均返回非零并保留收据，首红停止；现有测试输入、profile、P95 与资源隔离不变。根目录按显式环境覆盖→组内兄弟→主检出解析，并校验语言依赖真实 UI 路径；不重定向 worker 的 target 目录。既存 738 矩阵（JSON/Markdown）、796 IPC、818 turnaround、827 inventory 输出报告先保护、运行后恢复并保存生成证据；无法安全保护报告时在运行前拒绝，不覆盖用户 WIP。
+编排器以机器锁保护全程，清点真实 nextest JSON 中的逐 ID、必选状态与非零选择，记录新增项、实际命令、配置和依赖身份。缺 owner、零选择、子门失败、超时或中断均返回非零并保留收据，首红停止；现有测试输入、profile、非 ACE 周转指标与资源隔离不变；ACE 开发期时间门按 PLAN-858 调整。根目录按显式环境覆盖→组内兄弟→主检出解析，并校验语言依赖真实 UI 路径；不重定向 worker 的 target 目录。既存 738 矩阵（JSON/Markdown）、796 IPC、818 turnaround、827 inventory 输出报告先保护、运行后恢复并保存生成证据；无法安全保护报告时在运行前拒绝，不覆盖用户 WIP。
 
 ## 模块架构
 
@@ -91,21 +94,21 @@ autodown/ui-headless/code-editor 等）在此转发。
 ## PLAN-840 Phase 2：计时验收的调度前提
 
 `diff_window_census` 与 `probe_adapter_turnaround_ipc_hard_gate_p95` 保持原有
-输入、真实调用路径和所有断言：窗口体量/语义、窗口墙钟不劣于全量、30 样本
-完整 edit-session P95 <1000ms，以及 prep/worker/admit 窗口边界与间隙限制。
+输入、真实调用路径和非时延断言：窗口体量/语义、窗口墙钟不劣于全量、30 样本
+完整 edit-session P90 ≤2000ms，以及 prep/worker/admit 窗口边界与间隙限制。
 这两项在 nextest 日常、full 与 t3 配置中通过 `threads-required =
 "num-test-threads"` 独占当前运行池，随 `-j` 自动调整；其他测试仍照原选择面
 执行。单个 max-threads=1 测试组不足以排除无关测试争用，不能作为替代。
 
 此调度只约束同一 nextest 实例，不隔离其他会话的构建/测试。计时证据须记录
-外部负载与精确代码/依赖/输入；受干扰失败保留，不通过放宽阈值、删除样本、
+外部负载与精确代码/依赖/输入；受干扰失败保留，除经用户批准的 PLAN-858 口径调整外，不通过放宽阈值、删除样本、
 缩小输入或 ignore 测试变绿。feature-on/off 的编译与完整 ID 选择面分别核验，
 配置解析或单项通过不能代替 merge 阶段的完整档验收。
 
 阶段计量使用开始、worker 开始、admit 开始、准入完成四个共享时间标记；
 相邻分段共享同一边界，调度停顿也归入某一阶段。完整 wall 与三段之和仅允许
 微秒取整误差（至多 2us），不能由分别调用 elapsed()/now() 留下未测量间隙。
-原真实路径、P95 与窗口 tiling 断言保持；资源隔离不替代计量正确性。
+原真实路径与窗口 tiling 断言保持，P95 继续作为诊断记录；资源隔离不替代计量正确性。
 
 共享 methods-pack fixture 的 ffi_dual 测试沿用既定 max-threads=1 串行资源
 约定；daily/full/t3 均须实际把整族绑定至 ffi-dual 组。显式 config-file

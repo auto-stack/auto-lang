@@ -1,5 +1,8 @@
 # auto-ac MIR-native 单元缓存/链接/周转（PLAN-818）
 
+> **PLAN-858 开发期周转口径**：ACE 有效样本按升序取第 `N-floor(N/10)` 项（从 1 开始）为 P90，硬门为 P90≤2000ms；正式样本数不减少，10 项最多 1 项超过 2000ms，等值通过。缺失、非法或错误结果不得计入绿；保留各路径原有零值准入、真实窗口、结构与资源断言。P95/P99 作为诊断与历史数据保留；架构基本成形后以实测另定长期目标。详见 [TestCase v2 周转口径](../auto-test-case/profile-v2-native.md)。
+
+
 > Status: active（实现=`experimental/ac-mir-native/src/{cache,link_driver,driver,
 > incremental}.rs` + 783/787/788 受管 store 复用）。与
 > [mir-native-scalar.md](mir-native-scalar.md)（语言面）配套。
@@ -51,7 +54,7 @@
 - 水位 GC 真物理删除至低水位；lease 活则 manifest 存活、释放后全量回收；
   root 哨兵不动；≥32MiB 真不同 COFF 冷集+512 轮真实编辑/churn 门实测。
 - **时间门**（§5.5）：warm session 单函数 body 编辑与合法签名重建的
-  「请求准备→当前正确 PE 结果经父侧准入/比较」P95<1000ms，含真实 link/run，
+  「请求准备→当前正确 PE 结果经父侧准入/比较」P90≤2000ms，含真实 link/run，
   不扣编译/IPC/排队——计时语义见
   [auto-test-case/architecture.md](../auto-test-case/architecture.md) 的
   rounds 协议（父侧观测连续窗口，含独立期望比较）。

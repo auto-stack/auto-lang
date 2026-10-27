@@ -4,6 +4,7 @@
 
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |---|---|---|---|---|
+| 858 | ACE 开发期周转口径与 feature 边界 | 已复审（r4） | [858](../../plans/archive/858-autographics-m2-game-samples-and-api-gaps.md) | 当前 ACE 周转门 P90≤2000ms、真实样本和非时延约束保持；历史 P95 数据不改写，长期目标待架构成形后实测。 |
 | 818 | ac-shared-mir-native-parity | ✅（delivered，R1–R4 四轮复审链收敛） | [archive/818-ac-shared-mir-native-parity.md](../../plans/archive/818-ac-shared-mir-native-parity.md) | MIR-native 有限标量后端：CheckedMir→CLIF→函数COFF→PE 新通道与 AV/旧native/独立expected 三路对拍；单元缓存/D828 增量消费+history 复用+记录性语法回退（前缀保留）；AutoDown 正式 recipe rounds 协议（失败活跃性/限额边界/父侧观测连续窗口含独立比较 P95<1s）；[mir-native-scalar.md](mir-native-scalar.md)+[mir-native-cache.md](mir-native-cache.md) |
 | 797 | autoabi-v01-bidirectional-probe | ✅（delivered，r17；R1–R17 十七轮复审链收敛） | [archive/797-autoabi-v01-bidirectional-probe.md](../../plans/archive/797-autoabi-v01-bidirectional-probe.md) | 公共 AutoABI 候选 profile `autoabi.win-x64.v0.1-candidate`：descriptor/3 调用前边界（出参列表/handle 归属/callback ctx/record mut-out 一等形态+独立 header oracle）、三腿真实互调、cl 观测依赖+候选位置全集适用域缓存（信封版本入代际键）、两阶段精确内存预算门、正式父路径 P95 硬门与一请求一原始行；canonical [auto-abi/](../auto-abi/)（project/windows-x64-v01/conformance-cache）+ 本 project ABI 导航与 data-resource 分域 |
 | 788 | autodown-ac-native-turnaround | ✅（delivered，r10） | [archive/788-autodown-ac-native-turnaround.md](../../plans/archive/788-autodown-ac-native-turnaround.md) | AutoDown v2 引用式导入：ac 源码/HIR 检查构建执行 + trace-marks 支持库（p15/p16）+ 产品腿字节保真；语料 42 case 对账；通道合同属 auto-test-case profile-v2-native |

@@ -1,5 +1,8 @@
 # auto-semantics 查询缓存与周转（783 store 消费）
 
+> **PLAN-858 开发期周转口径**：ACE 有效样本按升序取第 `N-floor(N/10)` 项（从 1 开始）为 P90，硬门为 P90≤2000ms；正式样本数不减少，10 项最多 1 项超过 2000ms，等值通过。缺失、非法或错误结果不得计入绿；保留各路径原有零值准入、真实窗口、结构与资源断言。P95/P99 作为诊断与历史数据保留；架构基本成形后以实测另定长期目标。详见 [TestCase v2 周转口径](../auto-test-case/profile-v2-native.md)。
+
+
 > **Status**: experimental（PLAN-796 冻结；现行规则以 D21–D24 为准）。
 > 登记实现 = `experimental/ac-semantics/probe/src/{store,budget,ipc,
 > turnaround}.rs`；持久化经 783 ManagedStore（层 `S796`、载体
@@ -47,7 +50,7 @@ caps；逐查询轴：
   spawn→assign→resume，子孙收割）、4MiB 请求/响应元数据上限、工具身份
   四轴（protocol/recipe/exe-sha256/worker-version）入报告与 stale 判定。
 - **周转硬门**（冻结参考负载 gen796-1mi/v1，1MiB 模块局部 body 编辑）：
-  P95 < 1000ms，计时窗口 = **请求准备（steps/nonce/base64/JSON/hash）
+  P90 ≤ 2000ms，计时窗口 = **请求准备（steps/nonce/base64/JSON/hash）
   → worker 调用 → 父侧准入至当前结果可用**的单一完整墙钟；连续分段
   `prep/worker/admit`（µs 计数器）铺满窗口可对账（早/迟阶段反控）；
   冷 warm-up 会话单列 total，不并入编辑指标；30 原始样本 + 阶段 trace

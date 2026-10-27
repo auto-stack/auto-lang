@@ -1,5 +1,8 @@
 # auto-abi / conformance-cache
 
+> **PLAN-858 开发期周转口径**：ACE 有效样本按升序取第 `N-floor(N/10)` 项（从 1 开始）为 P90，硬门为 P90≤2000ms；正式样本数不减少，10 项最多 1 项超过 2000ms，等值通过。缺失、非法或错误结果不得计入绿；保留各路径原有零值准入、真实窗口、结构与资源断言。P95/P99 作为诊断与历史数据保留；架构基本成形后以实测另定长期目标。详见 [TestCase v2 周转口径](../auto-test-case/profile-v2-native.md)。
+
+
 > **Status**: candidate（互调基准与缓存规范，PLAN-797 R17 final pass）
 > 实现：`experimental/auto-abi-probe`（tests t02–t06 为永久反例族）
 
@@ -58,7 +61,7 @@ rust-lld 链接、PE 执行与 R4–R17 独立反例链支持。
 
 ## 性能硬门（正式口径）
 
-7. 六场景×30；硬门 P95 body-edit <1000ms、descriptor-reject <1000ms。
+7. 六场景×30；硬门 body-edit 与 descriptor-reject 的 P90 均 ≤2000ms。
    - 每个 query 请求携带编辑后 deck（edit 为父侧本地替换，耗时计入
      样本 `edit_ms`）；计时边界 = **父入口→该请求 typed 判定完成→
      原始行落盘完成**（含请求构建/IPC/等待/解码/admission/判定/写行；

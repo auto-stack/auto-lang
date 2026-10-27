@@ -4,4 +4,5 @@
 
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |---|---|---|---|---|
+| 858 | ACE 开发期周转口径与 feature 边界 | 已复审（r4） | [858](../../plans/archive/858-autographics-m2-game-samples-and-api-gaps.md) | 当前 ACE 周转门 P90≤2000ms、真实样本和非时延约束保持；历史 P95 数据不改写，长期目标待架构成形后实测。 |
 | 817 | AV驱动的CTE查询与冻结缓存闭环 | ✅ delivered | [计划](../../plans/archive/817-av-cte-query-frozen-cache.md) | 有限 i32/bool 真实 AV 查询/依赖环诊断/冻结 envelope 与跨进程缓存/consumer HIR 回灌/AutoDown 正式 recipe/资源预算与 P95 门/828 snapshot 车道；[scalar-query-profile.md](scalar-query-profile.md) + [frozen-cache.md](frozen-cache.md) |

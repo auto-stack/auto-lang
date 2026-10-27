@@ -1,0 +1,11 @@
+# PLAN-858 r4 merge preparation
+
+Final independent review [review-final-r1](../review-final-r1/review.md) on `e3c2654496703ec0b7228132054cc21ccf96a960`; frozen Spec delta SHA256 `b77d1dd28af9eae239c38513d3dff1c8080f376f371655a46a042cec0571523f`. First rebase to main `b4ba4b8c2a2f7921bac05070b87fbd94d1b69158` yielded `7bb1302d8f6b49366a9039711c9358b200c658db`; all 14 range-diff entries `=`. Later main advances are other-plan bookkeeping; reconcile delivery identity before landing.
+
+Worktree `D:/autostack/.wt/lang-858/auto-lang`, branch `plan-858-dev`; clean siblings auto-down `c3464d0a0d36e4f8a7988b0c0c26448fc52361b4`, auto-ui `4903bef64532750d1597627b1197f3d2cac1effc`, auto-man `9a75d3bab6eaeda961d5dcbf7932258f89e650af`. auto-man is newly added detached sibling for schema fence; `cmd_vue.rs` SHA256 `cae8db35732c1f115d72118ebc53a824f39b7c5e6758b863410c5a0ce8fbae6c`, same as prior full-batch receipt. No junction/symlink was created.
+
+Frozen implementation @7bb1302d8, default nested target path: **cargo t 3188/3188 passed**, 673 skipped, 359.544s; **cargo tb 3102/3102 passed**, 664 skipped, 38.441s. No VM/compiler/trans/UI-generation/aavm trigger source changed; `tv`/`tt`/`tu`/`taa` are not claimed as per-plan gates. Official main-only batch remains pending.
+
+Earlier external-target run: 893 passed, FFI 019 wide value was 705032704 rather than 5000000000; 2294 unrun. Same case failed targeted. `methods_pack.rs` reads fixed `build_dir/target/doc` while inherited `CARGO_TARGET_DIR` redirects cargo output; identical test binary passed with default internal target and final full run passed. First default-target run: 3187/3188 passed but schema fence lacked auto-man sibling. Added the clean pinned sibling and verified its input hash, schema targeted passed, then full run passed. The failures remain failures, never rewritten as success. Generated report files were captured and pre-test tracked bytes restored.
+
+[gates.json.txt](gates.json.txt) binds original log paths/hashes; failure and pass excerpts are retained alongside. Canonical SD-02..04 edits in nine `docs/specs` targets, six module plan indexes and auto-abi project navigation are under review. Main design WIP is excluded and must be reconciled without overwrite. Landed/ledger/archive/cleanup and user-required complete batch are pending.
