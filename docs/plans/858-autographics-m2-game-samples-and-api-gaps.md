@@ -5,7 +5,7 @@ feature_name: AutoGraphics M2双游戏样本冻结与公共接口缺口调查
 author: [Codex]
 created_at: 2026-10-27
 updated_at: 2026-10-27
-plan_revision: 3
+plan_revision: 4
 supersedes_spec_components: [docs/specs/auto-ac/mir-native-cache.md, docs/specs/auto-av/cache-and-conformance.md, docs/specs/auto-av/resident-function-install.md, docs/specs/auto-cte/frozen-cache.md, docs/specs/auto-semantics/query-cache.md, docs/specs/auto-abi/conformance-cache.md, docs/specs/auto-test-case/profile-v2-native.md, docs/specs/auto-test-case/architecture.md, docs/specs/auto-lang/project.md]
 new_spec_components: []
 touched_goals: []
@@ -111,13 +111,13 @@ T-04每个G需求映射到现行Spec＋固定代码符号/API/profile，分类`d
 现有engine行为无变化；overview/plans在merge登记“研究交付”，不把所需API写成已支持。新增文件内容由独立review核实后才canonical化。
 
 
-### 5.6 Phase 3：ACE 开发初期周转目标统一（r3）
+### 5.6 Phase 3：ACE 开发初期周转目标统一（r4）
 
-用户新授权 ACE 全线路从 P95<1000ms 调整到 **P90≤2000ms**：对于有效样本数 N，按 nearest-rank 取排序后第 `ceil(0.9*N)` 项（1-based），该值≤2000ms；等价于超过 2000ms 的有效样本数不超过 `floor(N/10)`。10 个有效样本中允许 1 个超限、2 个超限必失败；恰好 2000ms 不算超过。将用户的“10次”作为比例的明确例子，保留各正式测量已有的 N≥30 以免降低证据量；不可把测量次数减到 10 来缩短验证。smoke/反控用例可按其明确的非正式参数保持较小样本，不能冒称正式结果。每个请求的计时起止、真实路径、正确结果/诊断、数据身份、全部场景、原始记录及结构/资源/生命周期等非时延要求均不降级；无效、缺失、NaN/非有限或非正时间、错误结果与未执行样本不得计入绿。
+用户新授权 ACE 全线路从 P95<1000ms 调整到 **P90≤2000ms**：对于有效样本数 N，按 nearest-rank 取排序后第 `ceil(0.9*N)` 项（1-based），该值≤2000ms；等价于超过 2000ms 的有效样本数不超过 `floor(N/10)`。10 个有效样本中允许 1 个超限、2 个超限必失败；恰好 2000ms 不算超过。将用户的“10次”作为比例的明确例子，保留各正式测量已有的 N≥30 以免降低证据量；不可把测量次数减到 10 来缩短验证。smoke/反控用例可按其明确的非正式参数保持较小样本，不能冒称正式结果。每个请求的计时起止、真实路径、正确结果/诊断、数据身份、全部场景、原始记录及结构/资源/生命周期等非时延要求均不降级；无效、缺失、NaN/非有限、错误结果与未执行样本不得计入绿；既有明确拒绝零值的路径继续拒零。788 路径用整数毫秒 `as_millis()`，真实亚毫秒操作可能量化为 0，不能仅因该合法零值拒绝样本。
 
 T-12 首先全仓核对 ACE 主线（AC/MIR-native、AV、CTE、语义、ABI、AutoDown test-case 和调用/正式验收路径）的现行合同、实际门禁、测试 ID、样本/数据消费者及在途 823/824/828 等工作，形成逐项映射；其他独立项目（图形帧、HTTP、UI 等）的性能 SLO 不自动改变。P95/P99 可继续作为诊断及历史测量输出，不能作为仍阻断 ACE 开发期交付的隐含旧 1s 硬门。历史计划、历史审查和已有历史测量忠实保留；当前适用规范给出 supersession 与用户裁定，不回写过去的测试结果为新政策通过。后续精确性能目标待整个架构基本成形后另行测量和确定，不预先承诺数值。
 
-当前初筛实际入口包括 `crates/auto-lang/src/tests/{ac_mn_probe_tests.rs,ac_av_probe_tests.rs,probe_adapter_tests.rs,probe_adapter_turnaround_ipc.rs}`、`experimental/{ac-av-probe,ac-cte-probe,ac-semantics,auto-abi-probe}/` 的正式周转 producer/消费者；T-12 还须扩展扫描及逐项证据，不能只修复 858 遇到的单例。先编写并复审 Phase 3 的规范增量草案，canonical Spec 由 merge 按冻结草案沉淀。已有 r2 账本投影为准备态，不构成最终 r3 规范沉淀。
+当前初筛实际入口包括 `crates/auto-lang/src/tests/{ac_mn_probe_tests.rs,ac_av_probe_tests.rs,probe_adapter_tests.rs,probe_adapter_turnaround_ipc.rs}`、`experimental/{ac-av-probe,ac-cte-probe,ac-semantics,auto-abi-probe}/` 的正式周转 producer/消费者；T-12 已按清单扩展扫描并记录逐项证据，不能只修复 858 遇到的单例。先编写并复审 Phase 3 的规范增量草案，canonical Spec 由 merge 按冻结草案沉淀。已有 r2 账本投影为准备态，不构成最终 r4 规范沉淀。
 
 ### 规范增量（Phase 3，待复审）
 
@@ -156,7 +156,7 @@ T-08/T-09 只跑反例和受影响测试/必要编译，不运行整档 `t/tv/tt
 
 | ID | 入口/不变量 | 可区分的结果 | 责任 |
 |---|---|---|---|
-| V-09 | 逐个实际 producer→报告→gate 消费者与规范，含 CTE/语义/ABI/AV/MIR native | 10 条有效值 9×≤2000+1×>2000 必过；8×≤2000+2×>2000 必红；恰好 2000 通过；30 条 27/3 通过、26/4 必红。空值、NaN/Inf、非正、缺样本或错误结果必红；旧 P95 仅诊断；真实连续窗口/结构断言保留 | T-12/13 work |
+| V-09 | 逐个实际 producer→报告→gate 消费者与规范，含 CTE/语义/ABI/AV/MIR native | 10 条有效值 9×≤2000+1×>2000 必过；8×≤2000+2×>2000 必红；恰好 2000 通过；30 条 27/3 通过、26/4 必红。空值、NaN/Inf、缺样本或错误结果必红；既有拒零路径拒零，788 整数毫秒合法零可通过；旧 P95 仅诊断；真实连续窗口/结构断言保留 | T-12/13 work |
 | V-10 | 原有真实场景与选中测试 ID；各入口的默认参数、CLI/报告/消费者 | 定向测试验证标准使用 P90/2000、场景与正式 N 不减少，输出同时如实记录 P90/P95；负控证明两条超限/篡改正确性/结构退化不通过；涉及的 Spec 草案和真实测试一致 | T-13 work |
 | V-11 | 独立对照 T-12 全域矩阵、实际差异、spec delta 与 in-flight 冲突 | 无残存可阻断交付的旧 P95/1s 门，无无关 SLO 被改；复审绑定代码、依赖和 SD；merge 在新冻结版本跑裸 cargo t、适用触面和 V-08 | T-14 review / T-11 merge |
 
@@ -179,7 +179,7 @@ T-08/T-09 只跑反例和受影响测试/必要编译，不运行整档 `t/tv/tt
 
 
 | AC-12 | work | ACE 全线路现行 P95<1s 门完成逐项归属与引用盘点；正式门使用 P90≤2000ms，10 样本 9/1 与 8/2 的有效/失败边界、2000ms 等值及30样本边界真实可区分；非时延的正确性、结构和资源边界不退化；V-09/10 |
-| AC-13 | review | 独立复审 r3 的代码、全域矩阵、用户裁定与规范增量；复审 Phase 2 未受影响证据并确认有效，合入门禁仍 pending；V-11 |
+| AC-13 | review | 独立复审 r4 的代码、全域矩阵、用户裁定与规范增量；复审 Phase 2 未受影响证据并确认有效，合入门禁仍 pending；V-11 |
 
 ## 8. 执行步骤
 
@@ -198,8 +198,8 @@ T-08/T-09 只跑反例和受影响测试/必要编译，不运行整档 `t/tv/tt
 | T-10 | review | T-09 | 独立复核 Phase 2 全部 AC/V、未删断言/未默认开 feature、冻结身份 | AC-10 | [x]（Phase 2 final R1 pass @f098e8d707c4774e0c5a2f7dc459c9065e515488；见[复审报告](attachments/858/review-phase2-r1/review.md)，合入门禁 pending） |
 | T-12 | work | T-10 pass / 用户 r3 裁定 | 在现有唯一工作树核对主线及同组依赖；逐项盘点 ACE 性能门、producer/consumer/CLI/report、样本/测试 ID、当前规范和在途工作冲突，确定完整矩阵与 r3 规范增量草案 | AC-12 | [x]（`771557e4b929e887eb55aa688946e89140e844eb`：[盘点](D:/autostack/.wt/lang-858/auto-lang/docs/plans/attachments/858/phase3-work/inventory.md)和[SD草案](D:/autostack/.wt/lang-858/auto-lang/docs/plans/attachments/858/phase3-work/spec-delta-draft.md)，含16个规范/设计输入哈希；另有主检出六项设计WIP及823/824同文件交叉，沉淀/合入前须协调） |
 | T-13 | work | T-12 | 在同一树实施所有 ACE 适用正式门 P90≤2000ms、原采样数和真实路径/结构不变；完成 V-09/10 边界/负控/定向测试及冻结证据，提交代码和规范草案，不跑整档 | AC-12 | [ ] |
-| T-14 | review | T-13 | 独立复核 r3 全范围、实际统计/边界、原有正确性/样本/测试 ID、规范草案及 Phase 2 复用有效性，给出受影响复审结论 | AC-13 | [ ] |
-| T-11 | merge | T-10/T-14 pass | 在最终冻结提交执行适用合入门并合 main；按 r3 冻结 SD 沉淀当前规范与 ledger；保留 Phase 1 历史快照到 attachments、修复其相对链接后以 r3 归档文件替换原历史快照路径；guard 清树；主检出单实例跑官方完整 batch，成功后更新覆盖锚 | AC-11 | [ ] |
+| T-14 | review | T-13 | 独立复核 r4 全范围、实际统计/边界、原有正确性/样本/测试 ID、规范草案及 Phase 2 复用有效性，给出受影响复审结论 | AC-13 | [ ] |
+| T-11 | merge | T-10/T-14 pass | 在最终冻结提交执行适用合入门并合 main；按 r4 冻结 SD 沉淀当前规范与 ledger；保留 Phase 1 历史快照到 attachments、修复其相对链接后以 r4 归档文件替换原历史快照路径；guard 清树；主检出单实例跑官方完整 batch，成功后更新覆盖锚 | AC-11 | [ ] |
 
 ## 9. 复审记录
 
@@ -241,6 +241,8 @@ T-08/T-09 只跑反例和受影响测试/必要编译，不运行整档 `t/tv/tt
 2026-10-27 new r3：stage=new | plan_id=PLAN-858 | plan_revision=3 | outcome=pass | 用户明确授予 ACE 开发初期由 P95<1000ms 改为 P90≤2000ms（10 次最多 1 次超过）的范围；沿用 858、保留现有树和历史阶段，新增 T-12..14、AC-12/13、V-09..11、SD-02..04，T-11 等待 r3 复审。比例解释与 formal 样本数保留见 §5.6；现有正确性、资源、结构门不撤销。r2 复审只覆盖原代码与无 SD，不是 r3 新口径的复审；之前 cargo t 失败记录有效，未经复审不得直接合入。next=work/T-12。
 
 2026-10-27 r3 work/T-12：stage=work | plan_id=PLAN-858 | plan_revision=3 | outcome=inventory-pass，implementation ongoing | worktree=D:/autostack/.wt/lang-858/auto-lang | branch=plan-858-dev | baseline=97ad76691578957b9c35f62dfbc72eb4bda83660 | inventory_commit=771557e4b929e887eb55aa688946e89140e844eb | deps=auto-down:c3464d0a0d36e4f8a7988b0c0c26448fc52361b4,auto-ui:b4fe0000e56cddaf7d3cf70e348431f2258aacde | evidence=ACE producer/consumer、CLI、报告及现行规范逐族盘点；各正式样本数及非时延门保持；同组依赖无旧目标直接命中。主检出 design 39/40/43/44 和两份 strategy 文件带其他未提交修改，823/824 在途树有同文件变更，禁止覆盖；合入前重新比对并协调。 | pending=T-13 实施/完整定向验证，T-14 独立复审，T-11 冻结门禁及沉淀。next=work/T-13。
+
+2026-10-27 r4 有界更正：stage=new | plan_id=PLAN-858 | plan_revision=4 | outcome=pass | 用户原定 P90≤2000ms、正式样本/路径/非时延约束不变；T-13 实查 788 使用 `Instant::elapsed().as_millis()`，合法亚毫秒样本量化为0，r3 曾笼统写“非正均非法”会误拒原有合法输入，现仅明确保留各路径原零值准入规则（796等原本拒零保持不变），788 的整数毫秒0合法。T-12 盘点和 Phase 2 验收可继续复用，r4 整体须最终独立复审。next=work/T-13。
 
 ## 10. 待澄清事项
 
