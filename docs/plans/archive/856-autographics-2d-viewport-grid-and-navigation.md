@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-856
-status: reviewed
+status: archived
 feature_name: AutoGraphics 2D编辑视口网格与导航
 author: [Codex]
 created_at: 2026-10-27
@@ -14,7 +14,7 @@ new_spec_components:
   - docs/specs/auto-graphics/editor-viewports.md
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 8
+current_step: 9
 total_steps: 10
 ---
 
@@ -22,7 +22,7 @@ total_steps: 10
 
 ## 0. 变更摘要
 
-M2/S1第一片：让现有2D创作窗口具备网格/轴、平移/锚点缩放、聚焦/重置和可选世界平移吸附；同步修正绘制、拾取、组轮廓和真实Auto拖动的坐标来源。work已在855实际交付基面提交；独立final R2已确认R1逻辑pixel缩放与失败态导航取消两项修复闭合，冻结4150a8bea，reviewed7/10。完整两端/native-owner-content及受影响AGP门仍由merge负责，尚未合入或交付。
+M2/S1第一片：让现有2D创作窗口具备网格/轴、平移/锚点缩放、聚焦/重置和可选世界平移吸附；同步修正绘制、拾取、组轮廓和真实Auto拖动的坐标来源。work已在855实际交付基面提交；独立final R2已确认R1逻辑pixel缩放与失败态导航取消两项修复闭合，冻结4150a8bea；完整两端/native-owner-content与AGP门已通过，源码、规范与台账已落地并进入归档，清理仍待完成。
 
 ## 1. 目标
 
@@ -31,7 +31,7 @@ M2/S1第一片：让现有2D创作窗口具备网格/轴、平移/锚点缩放�
 3. 对象手势、导航捕获、面板/文本与Play输入分离，取消/失败/旧事件不能污染内容或历史。
 4. 保持原游戏/脚本/保存/预算、默认视图和全部原验收分母，独立消费者实际可用。
 
-非目标：3D导航（857）、旋转/缩放gizmo、多选/框选、TileMap、精灵资源、运行相机、UI组件/主题改版、游戏服务、仓迁移/生产UI/HIR/ACE、新平台。[共同视口合同](attachments/856/planning/viewport-contract.md)是本Plan保持面和门禁的一部分，S0优化附件不自动禁止本Plan新增视图状态。
+非目标：3D导航（857）、旋转/缩放gizmo、多选/框选、TileMap、精灵资源、运行相机、UI组件/主题改版、游戏服务、仓迁移/生产UI/HIR/ACE、新平台。[共同视口合同](../attachments/856/planning/viewport-contract.md)是本Plan保持面和门禁的一部分，S0优化附件不自动禁止本Plan新增视图状态。
 
 ## 2. 架构方案
 
@@ -45,11 +45,11 @@ M2/S1第一片：让现有2D创作窗口具备网格/轴、平移/锚点缩放�
 
 ## 4. 需求分析与背景调查
 
-用户2026-10-27确认规划2D视口、3D视口、双游戏调查三份计划，规划轮仅new；2026-10-27本轮用户已明确授权work实施，没有新agent/外仓写入/推送授权。已确认M2/S1范围见[设计§4](../design/autographics/m2-editor-and-public-game-prototypes.md#4-编辑视口)、[战略](../design/strategy/autographics-m2-v06.md)。
+用户2026-10-27确认规划2D视口、3D视口、双游戏调查三份计划，规划轮仅new；2026-10-27本轮用户已明确授权work实施，没有新agent/外仓写入/推送授权。已确认M2/S1范围见[设计§4](../../design/autographics/m2-editor-and-public-game-prototypes.md#4-编辑视口)、[战略](../../design/strategy/autographics-m2-v06.md)。
 
-取材[全局概览](../specs/overview.md)、[模块概览](../specs/auto-graphics/overview.md)、[当前视口](../specs/auto-graphics/viewport-interaction.md)、[作者会话](../specs/auto-graphics/authoring-session.md)、[场景](../specs/auto-graphics/scene-document.md)、[测量基线](../specs/auto-graphics/research-quality-baseline.md)。现行Spec明确没有camera motion/grid snapping，本文提出有版本溯源的编辑扩展，不把目标写成既有能力。
+取材[全局概览](../../specs/overview.md)、[模块概览](../../specs/auto-graphics/overview.md)、[当前视口](../../specs/auto-graphics/viewport-interaction.md)、[作者会话](../../specs/auto-graphics/authoring-session.md)、[场景](../../specs/auto-graphics/scene-document.md)、[测量基线](../../specs/auto-graphics/research-quality-baseline.md)。现行Spec明确没有camera motion/grid snapping，本文提出有版本溯源的编辑扩展，不把目标写成既有能力。
 
-[source-observation](attachments/856/planning/source-observation.json.txt)绑定已交付854=`523d27b863dbe306c89af0ea546334225a29f8e9`与855观察提交`70f1addf0a12a6af7f3b9bf447428f558a779d26`及具体文件SHA；该引用来自work交接，不能替代855最终review/merge收据，当前未实际交付。其实际Host分为`host/{panel,commands,play_adapter,viewport}.rs`；`interaction::pick2`、`Gesture::document`、prepare/group_geometry等重复固定800×380映射。QuadPipeline容量4096，旧overlay_line每边最多241个quad，网格不能耗尽该池后截掉内容。
+[source-observation](../attachments/856/planning/source-observation.json.txt)绑定已交付854=`523d27b863dbe306c89af0ea546334225a29f8e9`与855观察提交`70f1addf0a12a6af7f3b9bf447428f558a779d26`及具体文件SHA；该引用来自work交接，不能替代855最终review/merge收据，当前未实际交付。其实际Host分为`host/{panel,commands,play_adapter,viewport}.rs`；`interaction::pick2`、`Gesture::document`、prepare/group_geometry等重复固定800×380映射。QuadPipeline容量4096，旧overlay_line每边最多241个quad，网格不能耗尽该池后截掉内容。
 
 ## 5. 详细设计
 
@@ -135,7 +135,7 @@ pick2、group_geometry、轮廓、2D组原点、拖动候选和probe全部消费
 | T-06 | work | T-05 | 定向收口、资源/性能原始对照、提交代码/SD/证据，不跑整档 | AC-01..06 | [x] |
 | T-07 | review | T-06 | 独立final R2 pass，4150a8bea；两finding闭合，完整merge门pending，见review-r2/review.md | AC-07 | [x] |
 | T-08 | merge | T-07 pass | 冻结完整两端/原新native-owner-content/AGP触面与复用审计 | AC-08 | [x] |
-| T-09 | merge | T-08 | 源码合autographics-dev，main沉淀SD/overview/plans/ADR/ledger/索引并归档 | AC-09 | [ ] |
+| T-09 | merge | T-08 | 源码合autographics-dev，main沉淀SD/overview/plans/ADR/ledger/索引并归档 | AC-09 | [x] |
 | T-10 | merge | T-09 | guard clean后清树/临时分支、产物恢复路径/SHA与实际10/10；给857真实提交 | AC-09 | [ ] |
 
 ## 9. 复审记录
@@ -187,6 +187,8 @@ pick2、group_geometry、轮廓、2D组原点、拖动候选和probe全部消费
 
 2026-10-27 merge T-08 pass：用户确认桌面可交互后，原bind-patrol同冻结代码/SDK在新目录成功，producer完整项目15项重跑通过并保留旧遮挡现场；producer/consumer所有native、sweep、motion、owner与content负控通过。实际双端各300/300，继承288 ID及新增12 ID；21生成文件一致、双端各7控制通过，AGP23槽逐项不变复用审计通过。合并前证据索引与原始报表审计见attachments/856/merge-r1/validated.json.txt、evidence-index.json.txt及failure-closures.json.txt；此前无诊断中断根因未知、旧预算文案断言时序不稳定继续记录，不称修复。T-08完成，reviewed8/10；源码落autographics-dev、规范ledger/归档与guard清理仍pending。
 
+2026-10-27 merge delivered/archive checkpoint：`stage: merge | plan_id: PLAN-856 | plan_revision: 1 | completion_kind: delivered | code_commit: 4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7 | autographics-dev: 05fdc81c546aff735eefdb6c39fbc5fb35dc546a → 4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7 (ff-only) | canonical_spec_commit: 2334f2326c3d46a9f82cbb8349af316197439784 | ledger_commit: 186965390aee93bdefbb52b85b32c46775a9565e | ledger_channel: guarded offline projection | ledger_version: 99→100 | gate: attachments/856/merge-r1/validated.json.txt | archive: docs/plans/archive/856-autographics-2d-viewport-grid-and-navigation.md | cleanup: pending`。规范七目标与复审草稿逐项哈希一致，索引生成后仅换行差异，保留用户现有INDEX工作；台账8项回读hash/引用通过。门禁完整通过后源码与规范分别快进，历史失败未覆盖；注意本次疏漏：landing之前未执行预期wt-guard，落地后补扫Git Bash结果clean，清理前仍须立即再扫，不能把补扫记为事前检查。当前归档实态9/10，T-10清理尚待guard、保留需要的验证证据及目标缓存回收；未称最终清理完成。
+
 ## 10. 待澄清事项
 
-855实际交付前置已闭合；T-02 CPU统一接法已取证冻结，未改AGP/SDK/锁/公共算法，未突破4096容量。既定r1合同不变；R1的F-856-R1-01/02已在4150a8bea修复，独立受影响final R2确认闭合，详见review-r2/review.md。work/review合同结论未改变；merge T-08完整门通过，沉淀/归档/清理仍pending。原遮挡/phase0超时现场及历史预算断言风险保留，见attachments/856/merge-r1/blocker.md与budget-diagnosis.md。独立pass只覆盖冻结代码/验收/SD，不代表已合入或交付。
+855实际交付前置已闭合；T-02 CPU统一接法已取证冻结，未改AGP/SDK/锁/公共算法，未突破4096容量。既定r1合同不变；R1的F-856-R1-01/02已在4150a8bea修复，独立受影响final R2确认闭合，详见review-r2/review.md。work/review合同结论未改变；merge T-08完整门通过，源码、规范与台账已落地；归档已进入收据核验，清理仍pending。原遮挡/phase0超时现场及历史预算断言风险保留，见attachments/856/merge-r1/blocker.md与budget-diagnosis.md。独立pass只覆盖冻结代码/验收/SD，不代表已合入或交付。
