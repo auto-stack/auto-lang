@@ -173,7 +173,14 @@
       "B824-BATCH-COVERAGE-01",
       "B824-BATCH-CANCEL-01"
     ],
-    "fix_forward": "pending triage; shared plan allocator contains prior uncommitted state"
+    "fix_forward": "pending triage; shared plan allocator contains prior uncommitted state",
+    "deferral": {
+      "authorized_by": "user",
+      "date": "2026-10-27",
+      "scope": "defer incomplete batch triage, fix-forward and full rerun to a later plan",
+      "owner_plan": "unassigned",
+      "evidence": "docs/plans/KNOWN-DEBT-AND-RISKS.md#d-824-batch-20261027--批量回归失败延后处理"
+    }
   },
   "pending_retry": true,
   "coverage_policy": "Complete real language/UI/tt/tb execution verified; last complete green advances to850. Historical failed attempts retained.",

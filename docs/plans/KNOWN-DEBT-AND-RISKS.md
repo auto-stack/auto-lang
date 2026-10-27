@@ -3434,3 +3434,8 @@ Main batch7f966bfa3 language listing failed with24 E0432/E0433 in821/827 test mo
 ### PLAN-841 R6 — F841-R5-01 CLOSED（2026-10-27，受影响final pass）
 
 冻结 lang `ecc2f54a7ada58cd5cd015a9f21bea48debb4284` / UI `bfad5149f8f1d1981465d06d759e95cc8127ab75` / Man `6330ce00e594c99a4ef0a931dc85137ac47474fb`。实际递归Array/Object属性由快照逐边持有，重播逐层物化为ListData/ObjectData并配平最后释放；原两败例与直接对照、混合Init/视图读取、Failed后共享别名与所有中间容器回收均通过。18个具名定向行为测试全绿（原producer重播与永久控制有重叠），无新增合同内阻断。历史R5 OPEN保留为旧基线诊断，以本次修订绑定关闭为准；[R6报告与完整边界](attachments/841/review-r6/review.md)。Plan reviewed10/12，三实施树clean；裸t与适用tv/tt/tu、UI/Man自有门、冻结777/792/发行/三仓合入及Specs-ledger/归档/guard仍merge-owned pending，未宣称U841。
+
+
+### D-824-BATCH-20261027 — 批量回归失败延后处理
+
+用户于 2026-10-27 明确同意将本轮全仓批量回归失败延迟到后续计划处理；当前后续计划编号和 owner 尚未指定。语言完整档 12 项、UI 完整档 9 项基线 ID 缺失，未运行两条完整档；tt 3562/3563（取消测试失败，根因待查），tb 3102/3102。原始输出和 ID 映射线索见 [824 批量报告](attachments/824/batch-r1/review.md)。不得将失败记为通过、删减基线或推定由 824/842 引入；后续需逐项核对迁移及断言、诊断取消失败，并按仓规重跑完整批量回归。最新完整成功覆盖点仍为 850；824 已合入，其独立清理问题另行跟踪。

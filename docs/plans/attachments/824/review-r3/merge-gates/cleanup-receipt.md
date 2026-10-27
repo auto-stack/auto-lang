@@ -1,3 +1,7 @@
+# 2026-10-27 user decision — defer global batch follow-up
+
+The user explicitly permits deferring the failed repository-wide batch regression to a later Plan. The coverage gaps, cancellation failure, historical result, and retry obligation remain open; the future Plan is not yet identified. The last successful batch coverage remains Plan 850. This does not reopen or undo 824's landed delivery. The independent cache-cleanup safety refusal remains unresolved, so `cleaned` and T-08 remain pending. See [batch evidence](../../batch-r1/review.md) and `D-824-BATCH-20261027` in the shared risks ledger.
+
 # 2026-10-27 batch retry — still blocked
 
 842 work turn ended and no other Cargo/Rust compiler was observed before the main-only retry. The full driver stopped at coverage validation: 12 language IDs and 9 UI IDs were missing in separate owner listings. The remaining tiers ran under the machine gate: `tt` 3,562/3,563, one cancellation failure; `tb` 3,102/3,102. Batch coverage remains incomplete; the Plan 850 successful anchor is unchanged and no new fix-forward plan has yet been assigned. Raw evidence and attribution limits are in [batch-r1](../../batch-r1/review.md). The ledger checker build cache still exists after the earlier automatic policy refusal; `cleaned` and T-08 remain pending.
