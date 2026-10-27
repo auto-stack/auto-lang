@@ -141,10 +141,15 @@ pub fn is_managed_sdk(producer_root: &Path) -> bool {
     if producer_root.file_name().and_then(|s| s.to_str()) != Some("sdk") {
         return false;
     }
-    if producer_root
-        .parent()
-        .is_some_and(|p| p.join("install-manifest.json").exists())
-    {
+    if producer_root.parent().is_some_and(|parent| {
+        parent.join("install-manifest.json").exists()
+            || (parent
+                .join(format!("auto{}", std::env::consts::EXE_SUFFIX))
+                .is_file()
+                && parent
+                    .join(format!("auto-ui-tool{}", std::env::consts::EXE_SUFFIX))
+                    .is_file())
+    }) {
         return true;
     }
     std::env::current_exe()
@@ -394,6 +399,34 @@ pub fn ui_crate_source(producer_root: &Path, name: &str) -> AutoResult<PathBuf> 
 mod plan842_receipt_tests {
     use super::*;
     use sha2::{Digest, Sha256};
+
+    #[test]
+    fn detached_full_install_sdk_is_managed_even_without_receipt() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sdk = tmp.path().join("sdk");
+        fs::create_dir_all(&sdk).unwrap();
+        assert!(
+            !is_managed_sdk(&sdk),
+            "standalone development source remains supported"
+        );
+        fs::write(
+            tmp.path()
+                .join(format!("auto{}", std::env::consts::EXE_SUFFIX)),
+            "",
+        )
+        .unwrap();
+        fs::write(
+            tmp.path()
+                .join(format!("auto-ui-tool{}", std::env::consts::EXE_SUFFIX)),
+            "",
+        )
+        .unwrap();
+        assert!(
+            is_managed_sdk(&sdk),
+            "a Full install remains managed when its receipt is missing"
+        );
+        assert!(validate_installed_language_source(&sdk).is_err());
+    }
 
     #[test]
     fn installed_sdk_rejects_transitive_changes_missing_and_extra() {
