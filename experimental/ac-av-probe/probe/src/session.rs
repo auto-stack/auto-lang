@@ -2490,19 +2490,17 @@ impl FunctionIncrementalSession {
         };
         // Per-function index attribution: module-level aggregate keys would
         // trip the 827 whole-module structure gate (only fn-scoped
-        // `axis:function` counters may grow on an edit). The link's fresh
-        // index accrues under the changed function's name; reused
-        // residents accrue under theirs.
+        // `axis:function` counters may grow on an edit), while reused
+        // residents must NOT surface either — mn's structural_deltas reads
+        // any unchanged-function `axis:fn` growth as prohibited work. Only
+        // the changed function's fresh build accrues under its own name
+        // (exempt on both gates); reuse evidence stays on the
+        // loaded_program() API aggregates instead of session counters.
         let fn_builds = next.loaded_program().fn_builds();
-        let fn_reuses = next.loaded_program().fn_reuses();
         for (i, rec) in self.fns.iter().enumerate() {
             if let Some(&b) = fn_builds.get(i) {
                 self.counters
                     .add(&format!("loaded_index_build:{}", rec.name), b as u64);
-            }
-            if let Some(&r) = fn_reuses.get(i) {
-                self.counters
-                    .add(&format!("loaded_index_reuse:{}", rec.name), r as u64);
             }
         }
         self.phase_walls
