@@ -14,8 +14,8 @@
 //! # Example
 //!
 //! ```rust
-//! use auto_lang::infer::{InferenceContext, check_stmt};
-//! use auto_lang::ast::{Stmt, Store, StoreKind, Expr, Type, Name};
+//! use auto_lang_core::infer::{InferenceContext, check_stmt};
+//! use auto_lang_core::ast::{Stmt, Store, StoreKind, Expr, Type, Name};
 //!
 //! let mut ctx = InferenceContext::new();
 //! let store = Store {
@@ -54,8 +54,8 @@ use miette::SourceSpan;
 /// # Example
 ///
 /// ```rust
-/// use auto_lang::infer::{InferenceContext, check_stmt};
-/// use auto_lang::ast::{Stmt, Expr};
+/// use auto_lang_core::infer::{InferenceContext, check_stmt};
+/// use auto_lang_core::ast::{Stmt, Expr};
 ///
 /// let mut ctx = InferenceContext::new();
 /// let stmt = Stmt::Expr(Expr::Int(42));

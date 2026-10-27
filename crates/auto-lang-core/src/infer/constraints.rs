@@ -14,8 +14,8 @@
 //! # 示例
 //!
 //! ```rust
-//! use auto_lang::infer::TypeConstraint;
-//! use auto_lang::ast::Type;
+//! use auto_lang_core::infer::TypeConstraint;
+//! use auto_lang_core::ast::Type;
 //! use miette::SourceSpan;
 //!
 //! // 创建相等性约束

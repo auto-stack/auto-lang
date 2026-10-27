@@ -20,8 +20,8 @@
 //! # 示例
 //!
 //! ```rust
-//! use auto_lang::infer::unification::unify;
-//! use auto_lang::ast::{Type, ArrayType};
+//! use auto_lang_core::infer::unification::unify;
+//! use auto_lang_core::ast::{Type, ArrayType};
 //! use miette::SourceSpan;
 //!
 //! let span = SourceSpan::new(0.into(), 0);

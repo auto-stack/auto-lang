@@ -12,8 +12,8 @@
 //! # 示例
 //!
 //! ```rust
-//! use auto_lang::infer::InferenceContext;
-//! use auto_lang::ast::{Type, Name};
+//! use auto_lang_core::infer::InferenceContext;
+//! use auto_lang_core::ast::{Type, Name};
 //!
 //! let mut ctx = InferenceContext::new();
 //!

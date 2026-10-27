@@ -15,8 +15,8 @@
 //! # Example
 //!
 //! ```rust
-//! use auto_lang::infer::errors::{suggest_type, suggest_variable};
-//! use auto_lang::ast::{Name, Type};
+//! use auto_lang_core::infer::errors::{suggest_type, suggest_variable};
+//! use auto_lang_core::ast::{Name, Type};
 //!
 //! // Suggest similar types
 //! let suggestions = suggest_type("int", &["Int".to_string(), "Uint".to_string()]);
@@ -102,7 +102,7 @@ pub fn format_error_with_suggestion(error: &TypeError, suggestion: Option<&str>)
 /// # Example
 ///
 /// ```rust
-/// use auto_lang::infer::errors::suggest_type;
+/// use auto_lang_core::infer::errors::suggest_type;
 ///
 /// let candidates = vec![
 ///     "Int".to_string(),
@@ -135,8 +135,8 @@ pub fn suggest_type(target: &str, candidates: &[String]) -> Option<String> {
 /// # Example
 ///
 /// ```rust
-/// use auto_lang::infer::errors::suggest_variable;
-/// use auto_lang::ast::Name;
+/// use auto_lang_core::infer::errors::suggest_variable;
+/// use auto_lang_core::ast::Name;
 ///
 /// let candidates = vec![
 ///     Name::from("count"),
@@ -201,8 +201,8 @@ pub fn suggest_primitive_type(target: &str) -> Option<String> {
 /// # Example
 ///
 /// ```rust
-/// use auto_lang::infer::errors::suggest_type_mismatch_fix;
-/// use auto_lang::ast::Type;
+/// use auto_lang_core::infer::errors::suggest_type_mismatch_fix;
+/// use auto_lang_core::ast::Type;
 ///
 /// let expected = Type::Int;
 /// let found = Type::Uint;

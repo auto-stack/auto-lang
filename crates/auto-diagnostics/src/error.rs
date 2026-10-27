@@ -1219,7 +1219,7 @@ pub fn attach_source(err: AutoError, name: String, code: String) -> AutoError {
 /// # Example
 ///
 /// ```rust,ignore
-/// use auto_lang::error::{print_error, AutoError};
+/// use auto_diagnostics::error::{print_error, AutoError};
 ///
 /// if let Err(e) = some_operation() {
 ///     print_error(&e);

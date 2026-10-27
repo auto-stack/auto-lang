@@ -20,8 +20,8 @@
 //! # 示例
 //!
 //! ```rust
-//! use auto_lang::infer::{InferenceContext, infer_expr};
-//! use auto_lang::ast::{Expr, Type};
+//! use auto_lang_core::infer::{InferenceContext, infer_expr};
+//! use auto_lang_core::ast::{Expr, Type};
 //!
 //! let mut ctx = InferenceContext::new();
 //! let expr = Expr::Int(42);
@@ -52,8 +52,8 @@ use std::rc::Rc;
 /// # 示例
 ///
 /// ```rust
-/// # use auto_lang::infer::{InferenceContext, infer_expr};
-/// # use auto_lang::ast::{Expr, Type};
+/// # use auto_lang_core::infer::{InferenceContext, infer_expr};
+/// # use auto_lang_core::ast::{Expr, Type};
 /// let mut ctx = InferenceContext::new();
 /// let expr = Expr::Int(42);
 /// let ty = infer_expr(&mut ctx, &expr);

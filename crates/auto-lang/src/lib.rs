@@ -418,7 +418,7 @@ pub(crate) fn aavm2_lib_source(project_root: &std::path::Path) -> AutoResult<Str
 /// // Second run - can reuse cached data from first run
 /// let result2 = run_with_session(&mut session, "add(10, 20)")?;
 ///
-/// # Ok::<(), auto_lang::error::AutoError>(())
+/// # Ok::<(), auto_lang_core::error::AutoError>(())
 /// ```
 pub fn run_with_session(session: &mut CompileSession, code: &str) -> AutoResult<String> {
     // Phase 2: Compile source with incremental support

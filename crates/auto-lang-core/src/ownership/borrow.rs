@@ -175,9 +175,9 @@ impl Borrow {
     ///
     /// # Example
     /// ```
-    /// # use auto_lang::ownership::borrow::{Borrow, BorrowKind};
-    /// # use auto_lang::ownership::lifetime::Lifetime;
-    /// # use auto_lang::ast::Expr;
+    /// # use auto_lang_core::ownership::borrow::{Borrow, BorrowKind};
+    /// # use auto_lang_core::ownership::lifetime::Lifetime;
+    /// # use auto_lang_core::ast::Expr;
     /// let borrow1 = Borrow::new(BorrowKind::View, Lifetime::new(1), Expr::Int(42));
     /// let borrow2 = Borrow::new(BorrowKind::Mut, Lifetime::new(2), Expr::Int(42));
     ///
@@ -277,10 +277,10 @@ impl Borrow {
 ///
 /// # Example
 /// ```
-/// # use auto_lang::ownership::borrow::BorrowChecker;
-/// # use auto_lang::ownership::borrow::BorrowKind;
-/// # use auto_lang::ownership::lifetime::Lifetime;
-/// # use auto_lang::ast::Expr;
+/// # use auto_lang_core::ownership::borrow::BorrowChecker;
+/// # use auto_lang_core::ownership::borrow::BorrowKind;
+/// # use auto_lang_core::ownership::lifetime::Lifetime;
+/// # use auto_lang_core::ast::Expr;
 /// let mut checker = BorrowChecker::new();
 ///
 /// // Check a view borrow
