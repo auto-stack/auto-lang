@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-825
-status: reviewed
+status: archived
 feature_name: AV装载执行表示与运行效率
 plan_revision: 6
 author: [Codex]
@@ -250,6 +250,8 @@ worktree及build/test仅在本Plan树，簿记主检出。work/review不运行�
 
 
 ## 9. 复审记录
+
+2026-10-28 stage:merge | PLAN-825:r6 | outcome:delivered | delivery_commit:9eb9ebca3（rebase 自 80c6acb6d，代码树 diff=0；range-diff 等价记录，摊平丢失的 bench env 修复已补回 9eb9ebca3） | checkpoints:prepared=SD canonical 八文件（feedbdef0）+冻结 delta SHA 180584...568f；landed=master ff-only 前进至 9eb9ebca3（master 侧并行含 858 收尾/843 簿记，crates/experimental 零交集）；ledger_refreshed=guarded offline projection（store 无响应；.autoos/specs.json v108→v109，+P825-LOADED-RUNTIME/P825-TESTS/P825-REVIEW-R2/P825-MERGE，零删除零无关变更，备份 .bak-p825-merge）；archived=git mv 至 docs/plans/archive/ | merge_gates:裸 cargo t 3203/3203（362.5s，新基线 80c6acb6d）；cargo tv 163/163；probe workspace 全档 691/691；incremental scope exit 0；门禁失败归因=mn structural_deltas 与 827 全模块门对计数器键的相反合同（未改函数 axis:fn 键增长被 mn 判禁做工作），修复 3b6d3cf3a（仅被改函数 build 键暴露）后全部定向面复验绿；首轮 TIMEOUT 族=worktree 冷 target 现场构建（ac-case-worker/mn-worker 预热后消失） | production_artifacts:auto-lang 为编译器仓无常驻服务；release 二进制已由 bench 档重建验证（fnv 身份绑定 bench-r6 证据） | batch_regression:825%5=0 到期，移交 /auto-plan:regress 主检出单实例 | next:wt-guard 清树（cleaned checkpoint 待补）。
 
 2026-10-28 stage:review | review_scope:final R2（T-07） | reviewer_identity/limitations:本轮ZCode(GLM-5.3)会话即本轮work实施会话，无独立外部会话；从合同、冻结diff、源码与原始证据重建，不以下方work总结为据 | PLAN-825 r6 | outcome:pass | worktree_path:D:/autostack/.wt/lang-825/auto-lang | branch:plan-825-dev | reviewed_commit:b1e90a06ccbff4913e9632b4266fe57acc838331（树clean） | base_commit:0f9ecb013（merge 4f5733780后） | dependency_revisions:master=0f9ecb013（823/824/842/857已合入，核心窗口已释放并实际调和）；auto-ui=bd228b0、auto-down=c3464d0a0组内只读detached | spec_inputs:spec-delta-reviewed.md SHA256=1805848638c5b8e9d8e6666fba277513e56e33b6d82ec72b502a1e4052ff568f（与R1冻结件逐位一致，本轮r6合同未变）；sd-draft.md的`ac-av/loaded-run-v1`注册与生产REGISTERED_PROBE_RECIPES一致 | acceptance_results:AC-01..06/09/10/11 pass——抽查实物：①2f02c3a35仅4文件（core账本+session归因+两个825测试），827测试文件未触碰（末次修改均master侧858），结构门通过是真实归因修复非弱化；②run路径trace.loaded_index_bytes仍在av.rs:296/378/462生产设置，session编辑路径删除的仅是无读者的模块级重复gauge，V-09峰值可观测不损；③计数器exact-count反控15→16为823/824并集如实扩数（有注释），反控语义保留；④兼容并集av_族453/453、827 7/7、828 b2 14+contract 22、cache 20、mir 8、主仓closures 5/dynamic 3/825 3；⑤安静窗口release P95=823.5651ms<1000、signature 25.96ms、内存双门绿（worker delta 51.5MB<128MiB）、40组1720样本、缺峰值/假tier反控经acceptance断言实际执行；⑥compat收据head=2acccf6d5为reviewed HEAD祖先且生产差异空、transcript log身份断言过；⑦纪律合规：work轮未跑整档 | pending_closeout_gates:merge-owned——冻结提交裸`cargo t`全日常面+适用触面档（VM/编译器面→`cargo tv`）、独立workspace完整合同档、SD canonical沉淀/ledger、archive/wt-guard清树、批量回归到期判定 | findings:无新增finding；历史F-825-R1-01/02保持关闭（本轮时间门/compat复验为其收口条件且已达成）；bench-r6 raw与compat收据为已跟踪legacy证据文件的延续更新，按2026-10-28证据政策already-pushed条处理，不回滚 | evidence:本记录内嵌关键数字+worktree docs/plans/attachments/825/{bench-r6/summary.json,compat-receipt.json.txt,compat.log.txt}；命令与exit code见§9下方work记录 | next:/auto-plan:merge——冻结b1e90a06c执行merge-owned门禁、沉淀、归档；门禁失败先归因再按受影响面修复复审。
 
