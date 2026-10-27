@@ -61,6 +61,7 @@ fn one_slot_module() -> MirModule {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m
 }
@@ -109,6 +110,7 @@ fn chain_module(blocks: usize, width: usize) -> MirModule {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m
 }
@@ -205,6 +207,7 @@ fn av_runtime_825_entry_signature_and_unit_zero_dispatch() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     let wire = encode_abc(&m).expect("unit encode").to_flat();
     let loaded = auto_av_core::verify_abc_bytes(&wire, &m.owner).expect("unit admission");

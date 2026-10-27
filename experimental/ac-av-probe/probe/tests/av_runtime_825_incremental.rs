@@ -58,8 +58,33 @@ fn av_runtime_825_incremental_two_function_edit_identity_and_zero_work() {
 
     assert_eq!(after.loaded_program().builds(), 1);
     assert_eq!(after.loaded_program().reuses(), 2);
-    assert_eq!(session.counters().get("loaded_index_build"), 1);
-    assert_eq!(session.counters().get("loaded_index_reuse"), 2);
+    // Fn-scoped attribution (the 827 whole-module gate only lets
+    // `axis:function` counters grow on an edit): the edited function
+    // rebuilt its index; the untouched residents were reused.
+    assert_eq!(
+        session
+            .counters()
+            .stage_of("loaded_index_build", "helper"),
+        1
+    );
+    assert_eq!(
+        session
+            .counters()
+            .stage_of("loaded_index_reuse", "main"),
+        1
+    );
+    assert_eq!(
+        session
+            .counters()
+            .stage_of("loaded_index_reuse", "tail"),
+        1
+    );
+    assert_eq!(
+        session
+            .counters()
+            .stage_of("loaded_index_build", "main"),
+        0
+    );
     assert!(!Arc::ptr_eq(&helper, after.find_code("d_helper").unwrap()));
     assert!(!Arc::ptr_eq(
         &index(&before, "d_helper"),

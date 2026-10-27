@@ -363,6 +363,8 @@ pub struct ResidentProgram {
     _functions_charge: Charge,
     builds: u64,
     reuses: u64,
+    fn_builds: Vec<u8>,
+    fn_reuses: Vec<u8>,
 }
 
 impl ResidentProgram {
@@ -375,6 +377,8 @@ impl ResidentProgram {
             _functions_charge: functions_charge,
             builds: 0,
             reuses: 0,
+            fn_builds: Vec::new(),
+            fn_reuses: Vec::new(),
         }
     }
 
@@ -400,9 +404,13 @@ impl ResidentProgram {
         }
         let mut builds = 0;
         let mut reuses = 0;
+        let mut fn_builds = Vec::with_capacity(code.len());
+        let mut fn_reuses = Vec::with_capacity(code.len());
         for function in code {
             if function.unit().module().profile != AV_PROFILE {
                 functions.push(None);
+                fn_builds.push(0);
+                fn_reuses.push(0);
                 continue;
             }
             let old = previous.and_then(|p| {
@@ -414,8 +422,12 @@ impl ResidentProgram {
             let index = ResidentFunctionIndex::prepare(function.clone(), old, &budget)?;
             if old.is_some_and(|old| Arc::ptr_eq(old, &index)) {
                 reuses += 1;
+                fn_builds.push(0);
+                fn_reuses.push(1);
             } else {
                 builds += 1;
+                fn_builds.push(1);
+                fn_reuses.push(0);
             }
             functions.push(Some(index));
         }
@@ -425,6 +437,8 @@ impl ResidentProgram {
             _functions_charge: functions_charge,
             builds,
             reuses,
+            fn_builds,
+            fn_reuses,
         })
     }
 
@@ -464,6 +478,21 @@ impl ResidentProgram {
 
     pub fn reuses(&self) -> u64 {
         self.reuses
+    }
+
+    /// Per-slot attribution of the link that produced this program: 1 where
+    /// that link built a fresh index for the slot, 0 where it reused the
+    /// previous resident (or the slot carries no scalar index). Fn-scoped
+    /// consumers (the 827 whole-module structure gate only lets
+    /// `axis:function` counters grow on an edit) judge per function from
+    /// these instead of the module-level aggregates.
+    pub fn fn_builds(&self) -> &[u8] {
+        &self.fn_builds
+    }
+
+    /// Per-slot reuse attribution, counterpart of [`Self::fn_builds`].
+    pub fn fn_reuses(&self) -> &[u8] {
+        &self.fn_reuses
     }
 
     pub fn work(&self) -> BuildWork {
@@ -540,6 +569,7 @@ mod tests {
             entry: 0,
             source_snapshot: 1,
             spans: vec![],
+            env: None,
         });
         m
     }
@@ -784,6 +814,7 @@ mod failure_tests {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         });
         m
     }
@@ -902,6 +933,7 @@ mod candidate_tests {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         });
         let checked = verify_mir(&m).unwrap();
         let f = &checked.module().funcs[0];
