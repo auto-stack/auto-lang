@@ -1012,7 +1012,7 @@ dependencies = [
 
 [[package]]
 name = "auto-ui-dialect"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "auto-ast",
  "auto-parser-api",
@@ -1024,7 +1024,7 @@ dependencies = [
 
 [[package]]
 name = "auto-ui-runtime"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "a2r-std",
  "arboard",
@@ -1054,6 +1054,7 @@ dependencies = [
  "image",
  "kamadak-exif",
  "lazy_static",
+ "libloading",
  "log",
  "miette",
  "notify",
