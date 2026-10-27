@@ -111,6 +111,21 @@ function Assert-BenchmarkEvidence {
     Assert-MissingPeakControl
 }
 
+function Assert-CompatEvidence {
+    $receiptPath = Join-Path $root 'docs/plans/attachments/825/compat-receipt.json.txt'
+    if (-not (Test-Path $receiptPath)) { throw 'compat evidence receipt missing; run -Scope compat first' }
+    $receipt = Get-Content -LiteralPath $receiptPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $head = & git rev-parse HEAD
+    if ($receipt.head -ne $head) { throw 'compat evidence HEAD is stale' }
+    $scriptHash = (Get-FileHash $PSCommandPath -Algorithm SHA256).Hash.ToLower()
+    if ($receipt.script_sha256 -ne $scriptHash) { throw 'compat evidence script identity is stale' }
+    $logPath = Join-Path (Split-Path -Parent $receiptPath) $receipt.evidence_log
+    if (-not (Test-Path $logPath)) { throw 'compat evidence log missing' }
+    if ((Get-FileHash $logPath -Algorithm SHA256).Hash.ToLower() -ne $receipt.evidence_log_sha256) { throw 'compat evidence log identity changed' }
+    $log = Get-Content -LiteralPath $logPath -Raw -Encoding UTF8
+    if ($log -notmatch 'ac_av_probe_formal_turnaround_gates \.\.\. ok' -or $log -notmatch 'test result: ok\. 15 passed; 0 failed') { throw 'compat evidence does not contain a passing formal turnaround gate' }
+}
+
 function Invoke-Benchmark {
     $raw = Join-Path $root 'docs/plans/attachments/825/bench-r6'
     New-Item -ItemType Directory -Force -Path $raw | Out-Null
@@ -229,6 +244,13 @@ switch ($Scope) {
         Run-Runner -Filter 'ac_av_probe'
         Run-Runner -Filter 'av_owned_821'
         Run-Runner -Filter 'av_collections_822'
+        $receiptPath = Join-Path $root 'docs/plans/attachments/825/compat-receipt.json.txt'
+        $receipt = [pscustomobject]@{
+            head = (& git rev-parse HEAD)
+            script_sha256 = (Get-FileHash $PSCommandPath -Algorithm SHA256).Hash.ToLower()
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        }
+        $receipt | ConvertTo-Json | Set-Content -LiteralPath $receiptPath -Encoding UTF8
     }
     'incremental' {
         Run-Probe -Bin 'av_runtime_825_incremental' -RequiredIds $INCREMENTAL
@@ -250,10 +272,11 @@ switch ($Scope) {
     'acceptance' {
         & $PSCommandPath -GuardSelfTest
         if ($LASTEXITCODE -ne 0) { throw 'guard self-test failed' }
-        foreach ($required in @('first', 'targeted', 'compat', 'incremental', 'baseline')) {
+        foreach ($required in @('first', 'targeted', 'incremental', 'baseline')) {
             & $PSCommandPath -Scope $required
             if ($LASTEXITCODE -ne 0) { throw "acceptance scope '$required' failed" }
         }
+        Assert-CompatEvidence
         Assert-BenchmarkEvidence
     }
     default {
