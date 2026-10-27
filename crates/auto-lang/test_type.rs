@@ -1,4 +1,4 @@
-use auto_lang::parser::Parser;
+use auto_lang_core::parser::Parser;
 use auto_lang::Universe;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -14,7 +14,7 @@ fn new_point(x int, y int) Point {
     let ast = parser.parse().unwrap();
     
     if let Some(stmt) = ast.stmts.first() {
-        if let auto_lang::ast::Stmt::Fn(fn_decl) = stmt {
+        if let auto_lang_core::ast::Stmt::Fn(fn_decl) = stmt {
             println!("Return type: {:?}", fn_decl.ret);
             println!("Return type Display: {}", fn_decl.ret);
             println!("Return type to_atom: {}", fn_decl.ret.to_atom());

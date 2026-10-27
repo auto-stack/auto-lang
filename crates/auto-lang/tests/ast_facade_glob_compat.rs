@@ -1,19 +1,19 @@
-//! PLAN-799 F-799-R1-01 永久回归：旧门面 glob 兼容（编译期断言）。
+//! PLAN-799 F-799-R1-01 永久回归：SDK glob 兼容（编译期断言）。
 //!
 //! 反例（review-r1/glob-compat.rs）：模型 crate 曾把 `auto_val::AutoResult`
-// 公开再导出，经 `auto_lang::ast` 单行 glob 门面泄漏后，既有合法组合
-//! `use auto_lang::ast::*; use auto_lang::error::*;` 中 `AutoResult` 产生
+// 历史上经 `auto_lang::ast` 单行 glob 门面泄漏；迁移后的合法组合
+//! `use auto_lang_core::ast::*; use auto_lang_core::error::*;` 中 `AutoResult` 产生
 //! E0659 歧义（两个**不同 item**：auto_val 的 Box<dyn Error> 版 vs
 //! error/auto_diagnostics 的富 AutoError 版）。
 //!
-//! 不变量：`auto_lang::ast::*` 不得新增与其他常用 glob 面（error/token/
+//! 不变量：`auto_lang_core::ast::*` 不得新增与其他常用 glob 面（error/token/
 //! lexer/parser/vm）**不同 item** 同名的公开导出。本文件编译即断言——
 //! 歧义或类型漂移都在构建期红；`token::*` 组合同时钉住 Pos 的同一 item
 //! 性（同 item 经两个 glob 进入不歧义）。
 
-use auto_lang::ast::*;
-use auto_lang::error::*;
-use auto_lang::parser::ParserExt;
+use auto_lang_core::ast::*;
+use auto_lang_core::error::*;
+use auto_lang_core::parser::ParserExt;
 use auto_lang::token::Pos as TokenPos;
 
 // AutoResult 必须仍唯一解析到 error::AutoResult（Result<T, AutoError>）——

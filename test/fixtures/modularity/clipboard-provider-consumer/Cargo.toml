@@ -32,6 +32,7 @@ ui-host = ["auto-lang/ui-iced"]
 
 [dependencies]
 auto-lang = { path = "../../../../crates/auto-lang", default-features = false }
+auto-lang-core = { path = "../../../../crates/auto-lang-core" }
 # 仅用于类型名 auto_val::ValueKey（object_keys 元数据形）——与 auto-lang
 # 同源 path 依赖，单一版本。
 auto-val = { path = "../../../../crates/auto-val" }

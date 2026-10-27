@@ -1,7 +1,7 @@
 //! PLAN-793 V03 互操作消费方（AC-02/03）。
 //!
 //! 本 crate 模拟同时消费 auto-lang 与 auto-diagnostics 的外部使用者，
-//! 证明 `auto_lang::error::*` 兼容门面与 `auto_diagnostics::error::*`
+//! 证明 `auto_lang_core::error::*` SDK 路径与 `auto_diagnostics::error::*`
 //! 新路径是**同一类型**（编译期互传 + 运行期投影一致）：真实 parse/
 //! type/name/route 管线错误经 auto_lang 入口产生，再经 auto_diagnostics
 //! 的 attach_source/format_error/From 走完整链路，错误阶段保持、?
@@ -13,7 +13,7 @@ mod tests {
     use auto_diagnostics::error::{
         attach_source, format_error, AutoError as DiagError, SyntaxError as DiagSyntaxError,
     };
-    use auto_lang::error::{AutoError as LangError, AutoResult, SyntaxError as LangSyntaxError};
+    use auto_lang_core::error::{AutoError as LangError, AutoResult, SyntaxError as LangSyntaxError};
     use miette::Diagnostic;
 
     // ---------- 编译期同一性（编译通过即证明） ----------
@@ -32,7 +32,7 @@ mod tests {
     fn same_type_compiles_both_directions() {
         let via_lang: LangError = LangSyntaxError::Generic {
             message: "same".into(),
-            span: auto_lang::error::span_from(0, 4),
+            span: auto_lang_core::error::span_from(0, 4),
         }
         .into();
         // LangError → DiagError 函数 → String（零转换互传）
@@ -50,7 +50,7 @@ mod tests {
         }
 
         // span 助手两路径产同一类型值
-        let a = auto_lang::error::span_from(7, 3);
+        let a = auto_lang_core::error::span_from(7, 3);
         let b = auto_diagnostics::error::span_from(7, 3);
         assert_eq!((a.offset(), a.len()), (b.offset(), b.len()));
     }
@@ -91,9 +91,9 @@ mod tests {
     /// UI 会话解析入口（真实生产路径：CompilerSession::ui()，与
     /// error_spans_tests::parse_ui 同一形态；check_field_type 的类型检查
     /// 只在该场景接线触发）。
-    fn parse_ui(src: &str) -> Result<auto_lang::ast::Code, LangError> {
-        auto_lang::parser::Parser::from(src)
-            .with_session(auto_lang::session::CompilerSession::ui())
+    fn parse_ui(src: &str) -> Result<auto_lang_core::ast::Code, LangError> {
+        auto_lang_core::parser::Parser::from(src)
+            .with_session(auto_lang_core::session::CompilerSession::ui())
             .parse()
     }
 
@@ -237,7 +237,7 @@ mod tests {
 
     #[test]
     fn question_mark_propagation_is_monotonic() {
-        use auto_lang::error::AutoError as E;
+        use auto_lang_core::error::AutoError as E;
 
         fn inner() -> Result<String, E> {
             // String → AutoError（From 在 auto-diagnostics 单一定义）

@@ -14,7 +14,7 @@
 #![cfg(feature = "ui-interpreter")]
 
 use auto_lang::aura::extract_widget_from_decl;
-use auto_lang::session::CompilerSession;
+use auto_parser_api::session::CompilerSession;
 use auto_lang::ui::dynamic::DynamicComponent;
 use auto_lang::Parser;
 

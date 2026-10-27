@@ -16,7 +16,7 @@ fn main() {
         _ => auto_lang::ui_gen::vue::VueMode::Shadcn,
     };
     let code = std::fs::read_to_string(&args[1]).expect("read .at");
-    let session = auto_lang::session::CompilerSession::ui();
+    let session = auto_parser_api::session::CompilerSession::ui();
     let mut parser = auto_lang::Parser::from(code.as_str()).with_session(session);
     let ast = parser
         .parse_domain(&auto_ui_dialect::UiDialect)

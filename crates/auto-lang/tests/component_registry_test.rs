@@ -39,7 +39,7 @@ fn minimal_widget(name: &str) -> auto_lang::aura::AuraWidget {
         "widget {} {{\n    msg M {{ Go }}\n    model {{ n int = 0 }}\n    on {{ .Go -> {{ }} }}\n    view {{ col {{ text \"x\" {{}} }} }}\n}}\n",
         name
     );
-    let session = auto_lang::session::CompilerSession::new(auto_lang::session::Scenario::UI);
+    let session = auto_parser_api::session::CompilerSession::new(auto_parser_api::session::Scenario::UI);
     let mut parser = auto_lang::Parser::from(code.as_str());
     parser = parser.with_session(session);
     let ast = parser

@@ -91,7 +91,7 @@ fn compile_program(src: &str) -> CompiledProgram {
     use auto_lang::vm::opcode::OpCode;
 
     auto_lang::vm::native_registry::register_builtin_natives();
-    let mut parser = auto_lang::parser::Parser::from(src);
+    let mut parser = auto_lang_core::parser::Parser::from(src);
     let ast = parser.parse().expect("parse");
 
     let mut codegen = Codegen::new();

@@ -1,7 +1,7 @@
 # PLAN-793 V03 互操作消费方 gate（独立 fixture crate）。
 #
 # 角色：模拟同时消费 auto-lang 与 auto-diagnostics 的外部 crate——证明
-# `auto_lang::error::*` 兼容门面与 `auto_diagnostics::error::*` 新路径是
+# `auto_lang_core::error::*` SDK 路径与 `auto_diagnostics::error::*` 新路径是
 # **同一类型**（编译期互传 + 运行期投影一致）：真实 parse/compile/route
 # 管线错误经 auto_lang 入口产生，再经 auto_diagnostics 的 attach_source/
 # format_error/From 走完整链路，错误阶段保持、坏输入不成功/不吞错。
@@ -20,6 +20,7 @@ publish = false
 
 [dependencies]
 auto-lang = { path = "../../../../crates/auto-lang" }
+auto-lang-core = { path = "../../../../crates/auto-lang-core" }
 auto-diagnostics = { path = "../../../../crates/auto-diagnostics" }
 # Diagnostic trait 投影面（code/severity/labels/help）。
 miette = "7.2"

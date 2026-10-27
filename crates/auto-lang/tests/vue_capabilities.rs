@@ -17,8 +17,8 @@
 //!    Single-fragment substring assertions are immune to both.
 
 use auto_lang::aura::extract_widget_from_decl;
-use auto_lang::parser::Parser;
-use auto_lang::session::CompilerSession;
+use auto_lang_core::parser::Parser;
+use auto_parser_api::session::CompilerSession;
 use auto_lang::ui_gen::{BackendGenerator, VueGenerator};
 use auto_ui_dialect::UiStmt as Stmt;
 

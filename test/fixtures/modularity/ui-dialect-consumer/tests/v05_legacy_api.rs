@@ -74,7 +74,7 @@ fn v05_legacy_generic_syntax_error_and_by_value_checkpoint() {
     assert!(matches!(&ast2.stmts[0], Stmt::Expr(Expr::Int(3))));
 }
 
-/// session 字段构造 + 跨门面类型互传：`auto_lang::session`（薄门面 re-export）
+/// session 字段构造 + 跨门面类型互传：`auto_lang_core::session`（SDK re-export）
 /// 与 `auto_parser_api::session` 是**同一类型**——字段构造、builder、以及
 /// 双向赋值/传参都编译且行为一致（V05"同一 session 类型身份"）。
 #[test]
