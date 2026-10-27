@@ -1,0 +1,153 @@
+{
+  "schema": "test-id-migrations/1",
+  "plan": 841,
+  "migrations": [
+    {
+      "source": "language",
+      "target": "ui-full",
+      "old": "auto-lang-core\tdesign_tokens::decl::tests::compose_overrides_and_normalizes",
+      "new": "auto-ui-compiler\tdesign_tokens::decl::tests::compose_overrides_and_normalizes",
+      "reason": "841 moved unchanged design-token tests to the UI compiler owner"
+    },
+    {
+      "source": "language",
+      "target": "ui-full",
+      "old": "auto-lang-core\tdesign_tokens::decl::tests::depth_limit_and_cycle",
+      "new": "auto-ui-compiler\tdesign_tokens::decl::tests::depth_limit_and_cycle",
+      "reason": "841 moved unchanged design-token tests to the UI compiler owner"
+    },
+    {
+      "source": "language",
+      "target": "ui-full",
+      "old": "auto-lang-core\tdesign_tokens::decl::tests::named_chain_layering_and_mode_inheritance",
+      "new": "auto-ui-compiler\tdesign_tokens::decl::tests::named_chain_layering_and_mode_inheritance",
+      "reason": "841 moved unchanged design-token tests to the UI compiler owner"
+    },
+    {
+      "source": "language",
+      "target": "ui-full",
+      "old": "auto-lang-core\tdesign_tokens::decl::tests::negative_cases",
+      "new": "auto-ui-compiler\tdesign_tokens::decl::tests::negative_cases",
+      "reason": "841 moved unchanged design-token tests to the UI compiler owner"
+    },
+    {
+      "source": "language",
+      "target": "ui-full",
+      "old": "auto-lang-core\tdesign_tokens::registry::tests::accent_table_fingerprint",
+      "new": "auto-ui-compiler\tdesign_tokens::registry::tests::accent_table_fingerprint",
+      "reason": "841 moved unchanged design-token tests to the UI compiler owner"
+    },
+    {
+      "source": "language",
+      "target": "ui-full",
+      "old": "auto-lang-core\tdesign_tokens::registry::tests::dual_face_consistency",
+      "new": "auto-ui-compiler\tdesign_tokens::registry::tests::dual_face_consistency",
+      "reason": "841 moved unchanged design-token tests to the UI compiler owner"
+    },
+    {
+      "source": "language",
+      "target": "ui-full",
+      "old": "auto-lang-core\tdesign_tokens::registry::tests::render_fingerprint",
+      "new": "auto-ui-compiler\tdesign_tokens::registry::tests::render_fingerprint",
+      "reason": "841 moved unchanged design-token tests to the UI compiler owner"
+    },
+    {
+      "source": "language",
+      "target": "ui-full",
+      "old": "auto-lang-core\tdesign_tokens::registry::tests::scaffold_extended_tokens_dual_face",
+      "new": "auto-ui-compiler\tdesign_tokens::registry::tests::scaffold_extended_tokens_dual_face",
+      "reason": "841 moved unchanged design-token tests to the UI compiler owner"
+    },
+    {
+      "source": "language",
+      "target": "ui-full",
+      "old": "auto-lang-core\tdesign_tokens::registry::tests::theme_palettes_js_shape",
+      "new": "auto-ui-compiler\tdesign_tokens::registry::tests::theme_palettes_js_shape",
+      "reason": "841 moved unchanged design-token tests to the UI compiler owner"
+    },
+    {
+      "source": "language",
+      "target": "ui-full",
+      "old": "auto-lang-core\tdesign_tokens::registry::tests::themes_core_complete",
+      "new": "auto-ui-compiler\tdesign_tokens::registry::tests::themes_core_complete",
+      "reason": "841 moved unchanged design-token tests to the UI compiler owner"
+    },
+    {
+      "source": "language",
+      "target": "language",
+      "old": "auto-lang\ttests::plan810_full_ui_grammar::r02_same_parser_error_leaks_handler_scope_baseline",
+      "new": "auto-lang\ttests::plan810_full_ui_grammar::r02_same_parser_error_restores_handler_scope",
+      "reason": "841 replaced the error-scope leak baseline with restored scope semantics"
+    },
+    {
+      "source": "language",
+      "target": "language",
+      "old": "auto-lang\ttests::plan810_full_ui_grammar::r04_scene_gate_prev_matches_old_two_push",
+      "new": "auto-lang-core\tparser::tests::r04_scene_gate_prev_matches_old_two_push",
+      "reason": "841 moved the unchanged scene gate into the core parser owner"
+    },
+    {
+      "source": "ui-full",
+      "target": "ui-full",
+      "old": "auto-ui-dialect\tregression::design_tokens_recipe::tests::test_plan635_cross_package_deps_layout",
+      "new": "auto-ui-compiler::design_tokens_recipe\ttests::test_plan635_cross_package_deps_layout",
+      "reason": "841 moved this recipe regression into the UI compiler integration target"
+    },
+    {
+      "source": "ui-full",
+      "target": "ui-full",
+      "old": "auto-ui-dialect\tregression::design_tokens_recipe::tests::test_plan635_name_collision_is_error",
+      "new": "auto-ui-compiler::design_tokens_recipe\ttests::test_plan635_name_collision_is_error",
+      "reason": "841 moved this recipe regression into the UI compiler integration target"
+    },
+    {
+      "source": "ui-full",
+      "target": "ui-full",
+      "old": "auto-ui-dialect\tregression::design_tokens_recipe::tests::test_plan635_named_import_non_pub_is_error",
+      "new": "auto-ui-compiler::design_tokens_recipe\ttests::test_plan635_named_import_non_pub_is_error",
+      "reason": "841 moved this recipe regression into the UI compiler integration target"
+    },
+    {
+      "source": "ui-full",
+      "target": "ui-full",
+      "old": "auto-ui-dialect\tregression::design_tokens_recipe::tests::test_plan635_named_import_registers_and_desugars",
+      "new": "auto-ui-compiler::design_tokens_recipe\ttests::test_plan635_named_import_registers_and_desugars",
+      "reason": "841 moved this recipe regression into the UI compiler integration target"
+    },
+    {
+      "source": "ui-full",
+      "target": "ui-full",
+      "old": "auto-ui-dialect\tregression::design_tokens_recipe::tests::test_plan635_transitive_import",
+      "new": "auto-ui-compiler::design_tokens_recipe\ttests::test_plan635_transitive_import",
+      "reason": "841 moved this recipe regression into the UI compiler integration target"
+    },
+    {
+      "source": "ui-full",
+      "target": "ui-full",
+      "old": "auto-ui-dialect\tregression::design_tokens_recipe::tests::test_plan635_wildcard_imports_pub_only",
+      "new": "auto-ui-compiler::design_tokens_recipe\ttests::test_plan635_wildcard_imports_pub_only",
+      "reason": "841 moved this recipe regression into the UI compiler integration target"
+    },
+    {
+      "source": "ui-full",
+      "target": "ui-full",
+      "old": "auto-ui-dialect\tregression::design_tokens_recipe::tests::test_style_recipe_desugar_engine",
+      "new": "auto-ui-compiler::design_tokens_recipe\ttests::test_style_recipe_desugar_engine",
+      "reason": "841 moved this recipe regression into the UI compiler integration target"
+    },
+    {
+      "source": "ui-full",
+      "target": "ui-full",
+      "old": "auto-ui-dialect\tregression::design_tokens_recipe::tests::test_style_recipe_lint_palette_warnings",
+      "new": "auto-ui-compiler::design_tokens_recipe\ttests::test_style_recipe_lint_palette_warnings",
+      "reason": "841 moved this recipe regression into the UI compiler integration target"
+    },
+    {
+      "source": "ui-full",
+      "target": "ui-full",
+      "old": "auto-ui-dialect\tregression::design_tokens_recipe::tests::test_style_recipe_semantic_validation",
+      "new": "auto-ui-compiler::design_tokens_recipe\ttests::test_style_recipe_semantic_validation",
+      "reason": "841 moved this recipe regression into the UI compiler integration target"
+    }
+  ]
+}

@@ -190,7 +190,7 @@ def validate_ids(ids, selected, expected, required_selected):
 
 
 def migrations():
-    path = HERE / "scripts/full-regression-migrations-841.json"
+    path = HERE / "scripts/full-regression-migrations-841.json.txt"
     doc = json.loads(path.read_text(encoding="utf-8"))
     if doc.get("schema") != "test-id-migrations/1" or doc.get("plan") != 841:
         raise ValueError("unsupported test migration manifest")
