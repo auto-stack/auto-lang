@@ -4795,6 +4795,31 @@
  "modified_at": 1793040438,
  "completed_at": 1793040438
 }
+,
+{
+ "id": "P858-MERGE",
+ "title": "PLAN-858 sample research consolidation",
+ "content": "PLAN-858:r1 deposits reviewed research and source references; archived record docs/plans/archive/858-autographics-m2-game-samples-and-api-gaps.md. This is not game implementation, resource publication or production delivery.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/plans.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-858",
+  "r1",
+  "reviewed:a4812981e72df3d54ecb555dae5f77c3fabbd959",
+  "source-commit:58d8918520b9cddcc5ecad1ad39922d397c9d16f",
+  "source-sha256:ce8a0f5f737d8b356b151422243371f08ce3481bac725897f5c2aa1f7ed1c2fe"
+ ],
+ "created_at": 1793061727,
+ "modified_at": 1793061727,
+ "completed_at": 1793061727
+}
 ],
       "section_type": "Reports",
       "title": "📊 Reports",
@@ -6514,7 +6539,7 @@
         {
  "id": "GOAL-008",
  "title": "App generation and AI Authoring",
- "content": "Canonical GOAL-008 remains in progress. PLAN-851 adds portable user Auto Maze2D/Corridor3D and source/asset closure; production Forge/distribution I3 remains pending.\n\nPLAN-853 adds experimental M2/S0 comparable performance/resource baselines and complete portable source/test/runner evidence. GOAL-008 remains in progress; new M2 capabilities and production Forge/distribution I3 remain pending.\n\nPLAN-854 adds experimental M2/S0 checked behavior source generation and exact compatibility/consumer evidence. GOAL-008 remains in progress; no new M2 capability or production Forge/distribution I3 delivery.\n\nPLAN-855 completes experimental M2/S0 preparation: finite authoring-host responsibilities, unchanged ownership/semantics and current entry/evidence closure. Goal remains in progress; new M2 capabilities and production I2/I3 not delivered.",
+ "content": "Canonical GOAL-008 remains in progress. PLAN-851 adds portable user Auto Maze2D/Corridor3D and source/asset closure; production Forge/distribution I3 remains pending.\n\nPLAN-853 adds experimental M2/S0 comparable performance/resource baselines and complete portable source/test/runner evidence. GOAL-008 remains in progress; new M2 capabilities and production Forge/distribution I3 remain pending.\n\nPLAN-854 adds experimental M2/S0 checked behavior source generation and exact compatibility/consumer evidence. GOAL-008 remains in progress; no new M2 capability or production Forge/distribution I3 delivery.\n\nPLAN-855 completes experimental M2/S0 preparation: finite authoring-host responsibilities, unchanged ownership/semantics and current entry/evidence closure. Goal remains in progress; new M2 capabilities and production I2/I3 not delivered.\n\nPLAN-858 delivers experimental M2 sample and public capability-gap research; game implementations, new public services and production I2/I3 remain pending.",
  "status": "in_progress",
  "depends_on": [],
  "related": [],
@@ -6540,11 +6565,13 @@
   "reviewed:523d27b863dbe306c89af0ea546334225a29f8e9",
   "PLAN-855",
   "reviewed:05fdc81c546aff735eefdb6c39fbc5fb35dc546a",
-  "source-commit:248eaf1bebba8a4c7dadd82878f89b70ad27adfe",
-  "source-sha256:721b799654791b63d5d51da2b60c82863f556a17f04d60be33ff6bbf92fef5fd"
+  "PLAN-858",
+  "reviewed:a4812981e72df3d54ecb555dae5f77c3fabbd959",
+  "source-commit:58d8918520b9cddcc5ecad1ad39922d397c9d16f",
+  "source-sha256:9039e9939c17cf401f0529daccfa094c077d0c2e4e84e43435d3e50d6dc9e744"
  ],
  "created_at": 1792941529,
- "modified_at": 1793040438,
+ "modified_at": 1793061727,
  "completed_at": null
 }
       ],
@@ -16215,7 +16242,32 @@
           ],
           "content": "MIR 层：List/Variant/Place（tag 13/14/15，Place 参照参数化）类型域检查（list-elem/variant-payload/嵌套/无环，未用表项同拒）；guard 事实 must-intersect join 格点（PACK/SWITCH/写调用失效；块内线性为历史口径）、payload-moved may-union；局部根 place 逃逸门/record token 域拒；Place 槽并入 token_slots 预算先于分配；程序化 typed fixture 为未信任输入（真 verify 授信）；link 签名共享 scratch 空间内容等值（容器型接口变化结构性拒）。"
         }
-      ],
+      ,
+{
+ "id": "P858-M2-GAME-RESEARCH",
+ "title": "AutoGraphics M2 game sample research",
+ "content": "PLAN-858:r1 freezes two original small-level denominators, pinned reference and selected source-asset identities, delivered public versus specialized/missing/unverified capability boundaries, and future acceptance needs. Canonical research and matrix are authoritative; games, conversions and public game services remain pending.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-graphics/m2-game-sample-research.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-858",
+  "r1",
+  "reviewed:a4812981e72df3d54ecb555dae5f77c3fabbd959",
+  "source-commit:58d8918520b9cddcc5ecad1ad39922d397c9d16f",
+  "source-sha256:4d73ad385f36890f6adc86163cc52acbd2ee952e7b8f27de5c5633b7f7eefe23"
+ ],
+ "created_at": 1793061727,
+ "modified_at": 1793061727,
+ "completed_at": 1793061727
+}
+],
       "section_type": "Designs",
       "title": "🎨 Designs",
       "status": "empty",
@@ -26978,6 +27030,31 @@
  "modified_at": 1793040438,
  "completed_at": 1793040438
 }
+,
+{
+ "id": "P858-R1",
+ "title": "PLAN-858 r1 independent final review PASS",
+ "content": "Independent final R1 binds reviewed a4812981e72df3d54ecb555dae5f77c3fabbd959 and SD SHA 9b2ca30398ff0533bde7df4c0f633314e107c4d561cfee0c21edd54a827e8a9a. AC01..06 and V01..05 pass; 13 source files, 4 GLBs and 17 requirements reviewed; merge remains separate.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/attachments/858/review-r1/review.md",
+ "milestone": null,
+ "module": "auto-graphics",
+ "tags": [
+  "PLAN-858",
+  "r1",
+  "reviewed:a4812981e72df3d54ecb555dae5f77c3fabbd959",
+  "source-commit:58d8918520b9cddcc5ecad1ad39922d397c9d16f",
+  "source-sha256:909d01c6051973651e2b1648ae489ddcaf6df2af3b6b32947bb90bc61954d17a"
+ ],
+ "created_at": 1793061727,
+ "modified_at": 1793061727,
+ "completed_at": 1793061727
+}
 ],
       "section_type": "Reviews",
       "title": "🔍 Reviews",
@@ -26989,5 +27066,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 98
+  "version": 99
 }
