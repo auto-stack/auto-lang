@@ -43,3 +43,7 @@ Provenance: [PLAN-854](../../plans/archive/854-autographics-behavior-source-asse
 - [Authoring responsibilities](authoring-session.md), [Play seam](scene-play-session.md), [viewport input](viewport-interaction.md) and [current entries](auto-source-driver.md): one Host with private commands/panel/play_adapter/viewport impls, unchanged owners/state/contracts, explicit CLI/probe boundary and complete455-source consumer evidence (PLAN-855). M2/S0 optimization preparation is complete; new M2 features remain pending.
 
 Provenance: [PLAN-855](../../plans/archive/855-autographics-authoring-responsibility-split.md), [independent final R3 review](../../plans/attachments/855/review-r3/review.md), [merge receipt](../../plans/attachments/855/merge-r1/receipt.md). Source: autographics-dev at 05fdc81c546aff735eefdb6c39fbc5fb35dc546a; SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467. M2/S0 responsibility and entrypoint maintenance; new M2 capabilities and production I2/I3 remain pending.
+
+- [M2 game sample research](m2-game-sample-research.md): two original small-level denominators, pinned reference/source-asset identities, public capability gaps and follow-on acceptance requirements (PLAN-858). Research only; games, new public services and distribution remain pending.
+
+Provenance: [PLAN-858](../../plans/archive/858-autographics-m2-game-samples-and-api-gaps.md), [independent final review](../../plans/attachments/858/review-r1/review.md). Graphics baseline `05fdc81c546aff735eefdb6c39fbc5fb35dc546a`; SDK `7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467`.
