@@ -347,6 +347,89 @@ pub(crate) fn valid_source_crate(source: &Path, name: &str) -> bool {
     source.join(lib_path).is_file()
 }
 
+/// Validate local Cargo path dependencies for an unmanaged development
+/// source before generating a workspace. Cargo resolves local paths even when
+/// optional; registry dependencies and ordinary source edits remain allowed.
+pub(crate) fn validate_development_dependencies(source: &Path) -> AutoResult<()> {
+    fn workspace(dir: &Path, manifest: &toml::Value) -> Option<(PathBuf, toml::Value)> {
+        if let Some(relative) = manifest
+            .get("package")
+            .and_then(|p| p.get("workspace"))
+            .and_then(toml::Value::as_str)
+        {
+            let root = dir.join(relative);
+            let doc = fs::read_to_string(root.join("Cargo.toml"))
+                .ok()?
+                .parse::<toml::Value>()
+                .ok()?;
+            return doc.get("workspace").map(|_| (root.clone(), doc.clone()));
+        }
+        for parent in dir.ancestors().skip(1) {
+            if let Ok(text) = fs::read_to_string(parent.join("Cargo.toml")) {
+                if let Ok(doc) = text.parse::<toml::Value>() {
+                    if doc.get("workspace").is_some() {
+                        return Some((parent.to_path_buf(), doc));
+                    }
+                }
+            }
+        }
+        None
+    }
+    fn walk(dir: &Path, seen: &mut std::collections::BTreeSet<PathBuf>) -> AutoResult<()> {
+        let canonical = fs::canonicalize(dir)
+            .map_err(|e| format!("producer 路径依赖缺失 {}: {e}", dir.display()))?;
+        if !seen.insert(canonical.clone()) {
+            return Ok(());
+        }
+        let text = fs::read_to_string(canonical.join("Cargo.toml"))
+            .map_err(|e| format!("producer 路径依赖缺清单 {}: {e}", canonical.display()))?;
+        let doc: toml::Value = text
+            .parse()
+            .map_err(|e| format!("producer 路径依赖清单无效 {}: {e}", canonical.display()))?;
+        let name = doc
+            .get("package")
+            .and_then(|p| p.get("name"))
+            .and_then(toml::Value::as_str)
+            .ok_or_else(|| format!("producer 路径依赖缺包名: {}", canonical.display()))?;
+        if !valid_source_crate(&canonical, name) {
+            return Err(format!("producer 路径依赖缺库入口: {}", canonical.display()).into());
+        }
+        let ws = workspace(&canonical, &doc);
+        let mut owners = vec![&doc];
+        if let Some(targets) = doc.get("target").and_then(toml::Value::as_table) {
+            owners.extend(targets.values());
+        }
+        for owner in owners {
+            for section in ["dependencies", "dev-dependencies", "build-dependencies"] {
+                let Some(deps) = owner.get(section).and_then(toml::Value::as_table) else {
+                    continue;
+                };
+                for (key, spec) in deps {
+                    let (base, resolved) =
+                        if spec.get("workspace").and_then(toml::Value::as_bool) == Some(true) {
+                            let (root, ws_doc) = ws
+                                .as_ref()
+                                .ok_or_else(|| format!("producer 路径依赖缺工作区: {key}"))?;
+                            let value = ws_doc
+                                .get("workspace")
+                                .and_then(|w| w.get("dependencies"))
+                                .and_then(|d| d.get(key))
+                                .ok_or_else(|| format!("producer 工作区依赖缺声明: {key}"))?;
+                            (root.as_path(), value)
+                        } else {
+                            (canonical.as_path(), spec)
+                        };
+                    if let Some(path) = resolved.get("path").and_then(toml::Value::as_str) {
+                        walk(&base.join(path), seen)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+    walk(source, &mut std::collections::BTreeSet::new())
+}
+
 /// UI crates are selected from their UI owner or a receipt-validated
 /// installation. Other crates must come from the language producer itself.
 pub fn ui_crate_source(producer_root: &Path, name: &str) -> AutoResult<PathBuf> {
@@ -364,15 +447,22 @@ pub fn ui_crate_source(producer_root: &Path, name: &str) -> AutoResult<PathBuf> 
     if let Some(value) = std::env::var_os("AUTO_UI_SOURCE_ROOT") {
         let root = PathBuf::from(value);
         let source = root.join("crates").join(name);
-        return valid_source_crate(&source, name)
-            .then_some(source)
-            .ok_or_else(|| {
-                format!(
-                    "delivery: producer 显式 AUTO_UI_SOURCE_ROOT 无效或缺少 crates/{name}: {}",
-                    root.display()
-                )
-                .into()
-            });
+        if !valid_source_crate(&source, name) {
+            return Err(format!(
+                "delivery: producer 显式 AUTO_UI_SOURCE_ROOT 无效或缺少 crates/{name}: {}",
+                root.display()
+            )
+            .into());
+        }
+        if is_managed_sdk(&root) {
+            validate_installed_language_source(&root)?;
+            installed_ui_source(&root, name, None)?.ok_or("producer 显式 UI 安装清单缺失")?;
+        } else {
+            validate_development_dependencies(&source).map_err(|err| {
+                format!("producer 显式 AUTO_UI_SOURCE_ROOT 的本地依赖无效: {err}")
+            })?;
+        }
+        return Ok(source);
     }
     if let Some(source) = installed_ui_source(producer_root, name, None)? {
         if valid_source_crate(&source, name) {
@@ -384,6 +474,8 @@ pub fn ui_crate_source(producer_root: &Path, name: &str) -> AutoResult<PathBuf> 
         let source = parent.join("auto-ui/crates").join(name);
         if source.is_dir() {
             if valid_source_crate(&source, name) {
+                validate_development_dependencies(&source)
+                    .map_err(|err| format!("producer 组内 UI 包依赖无效: {err}"))?;
                 return Ok(source);
             }
             return Err(format!("delivery: producer 组内 UI 包无效: crates/{name}").into());
@@ -399,6 +491,35 @@ pub fn ui_crate_source(producer_root: &Path, name: &str) -> AutoResult<PathBuf> 
 mod plan842_receipt_tests {
     use super::*;
     use sha2::{Digest, Sha256};
+
+    #[test]
+    fn developer_source_checks_inherited_target_paths_and_cycles() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\n[workspace.dependencies]\nshared = { path = \"crates/shared\" }\n",
+        )
+        .unwrap();
+        let make = |name: &str, extra: &str| {
+            let path = root.join("crates").join(name);
+            fs::create_dir_all(path.join("src")).unwrap();
+            fs::write(path.join("src/lib.rs"), "").unwrap();
+            fs::write(
+                path.join("Cargo.toml"),
+                format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n{extra}"),
+            )
+            .unwrap();
+        };
+        make("app", "[dependencies]\nshared.workspace = true\n[target.'cfg(windows)'.dependencies]\nextra = { path = \"../extra\" }\n");
+        make("shared", "[dependencies]\napp = { path = \"../app\" }\n");
+        assert!(
+            validate_development_dependencies(&root.join("crates/app")).is_err(),
+            "missing target path"
+        );
+        make("extra", "");
+        validate_development_dependencies(&root.join("crates/app")).unwrap();
+    }
 
     #[test]
     fn detached_full_install_sdk_is_managed_even_without_receipt() {

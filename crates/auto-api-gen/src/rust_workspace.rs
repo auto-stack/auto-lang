@@ -164,6 +164,16 @@ fn validate_language_candidate(candidate: &Path, origin: &str) -> AutoResult<()>
     if let Some(root) = root {
         if crate::source_owner::is_managed_sdk(root) {
             crate::source_owner::validate_installed_language_source(root)?;
+        } else {
+            for name in ["auto-lang", "auto-lang-core", "a2r-std", "auto-media-core"] {
+                let package = if name == "auto-lang" {
+                    candidate.to_path_buf()
+                } else {
+                    crates.unwrap().join(name)
+                };
+                crate::source_owner::validate_development_dependencies(&package)
+                    .map_err(|error| format!("producer {origin} 的本地依赖无效: {error}"))?;
+            }
         }
     }
     Ok(())
@@ -581,6 +591,18 @@ mod plan842_tests {
             fs::copy(source.join("Cargo.toml"), target.join("Cargo.toml")).unwrap();
             fs::copy(source.join("src/lib.rs"), target.join("src/lib.rs")).unwrap();
         }
+        let missing_transitive = tmp.path().join("bad-lang-transitive");
+        fs::create_dir_all(&missing_transitive).unwrap();
+        fs::write(missing_transitive.join("Cargo.toml"), "[workspace]\n").unwrap();
+        for name in ["auto-lang", "auto-lang-core", "a2r-std", "auto-media-core"] {
+            let source = lang.join("crates").join(name);
+            let target = missing_transitive.join("crates").join(name);
+            fs::create_dir_all(target.join("src")).unwrap();
+            fs::copy(source.join("Cargo.toml"), target.join("Cargo.toml")).unwrap();
+            fs::copy(source.join("src/lib.rs"), target.join("src/lib.rs")).unwrap();
+        }
+        fs::write(missing_transitive.join("crates/auto-lang/Cargo.toml"),
+            "[package]\nname = \"auto-lang\"\nversion = \"0.1.0\"\n[dependencies]\nauto-val = { path = \"../auto-val\" }\n").unwrap();
         for (name, manifest) in [
             ("bad-lang-manifest", "[package"),
             (
@@ -622,17 +644,23 @@ mod plan842_tests {
                 fs::write(path.join("Cargo.toml"), content).unwrap();
             }
         }
+        let bad_ui_transitive = tmp.path().join("bad-ui-transitive/crates/auto-ui-runtime");
+        fs::create_dir_all(bad_ui_transitive.join("src")).unwrap();
+        fs::write(bad_ui_transitive.join("Cargo.toml"), "[package]\nname = \"auto-ui-runtime\"\nversion = \"0.2.0\"\n[dependencies]\nauto-ui-compiler = { path = \"../auto-ui-compiler\" }\n").unwrap();
+        fs::write(bad_ui_transitive.join("src/lib.rs"), "").unwrap();
         fs::create_dir_all(&ws).unwrap();
         for mode in [
             "bad-lang",
             "bad-lang-manifest",
             "bad-lang-sibling",
             "bad-lang-workspace",
+            "bad-lang-transitive",
             "bad-ui",
             "partial-ui",
             "malformed-ui",
             "wrong-ui",
             "missing-src",
+            "bad-ui-transitive",
             "valid",
         ] {
             fs::write(ws.join("Cargo.toml"), b"previous manifest").unwrap();
@@ -643,8 +671,8 @@ mod plan842_tests {
                 .env("AUTO_RUST_WORKSPACE", &ws)
                 .env_remove("AUTO_DELIVERY_SOURCE_ROOT")
                 .env_remove("AUTO_LANG_CRATE")
-                .env("AUTO_LANG_ROOT", match mode { "bad-lang" => tmp.path().join("missing-lang"), "bad-lang-manifest" | "bad-lang-sibling" | "bad-lang-workspace" => tmp.path().join(mode), _ => lang.clone() })
-                .env("AUTO_UI_SOURCE_ROOT", match mode { "bad-ui" => tmp.path().join("missing-ui"), "partial-ui" | "malformed-ui" | "wrong-ui" | "missing-src" => tmp.path().join(mode), _ => ui.clone() })
+                .env("AUTO_LANG_ROOT", match mode { "bad-lang" => tmp.path().join("missing-lang"), "bad-lang-manifest" | "bad-lang-sibling" | "bad-lang-workspace" | "bad-lang-transitive" => tmp.path().join(mode), _ => lang.clone() })
+                .env("AUTO_UI_SOURCE_ROOT", match mode { "bad-ui" => tmp.path().join("missing-ui"), "partial-ui" | "malformed-ui" | "wrong-ui" | "missing-src" | "bad-ui-transitive" => tmp.path().join(mode), _ => ui.clone() })
                 .output().unwrap();
             assert!(
                 result.status.success(),
