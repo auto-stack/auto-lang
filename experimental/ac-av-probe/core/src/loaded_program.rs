@@ -284,11 +284,14 @@ pub struct LoadedProgram<'a> {
 }
 
 impl<'a> LoadedProgram<'a> {
-    pub fn build(module: &'a crate::abc_verify::LoadedModule) -> Result<Self, IndexError> {
+    pub fn build(
+        module: &'a crate::abc_verify::LoadedModule,
+        execution_budget_bytes: usize,
+    ) -> Result<Self, IndexError> {
         if module.module().profile != AV_PROFILE {
             return Err(IndexError::UnsupportedProfile);
         }
-        let budget = IndexBudget::new(crate::contract::MAX_AV_SLOT_BYTES);
+        let budget = IndexBudget::new(execution_budget_bytes);
         let functions_bytes = module
             .module()
             .funcs
@@ -734,7 +737,7 @@ mod tests {
             result,
         }));
         let loaded = verify_abc_bytes(&encode_abc(&m).unwrap().to_flat(), &m.owner).unwrap();
-        let program = LoadedProgram::build(&loaded).unwrap();
+        let program = LoadedProgram::build(&loaded, crate::contract::MAX_AV_SLOT_BYTES).unwrap();
         let expected = size_of::<Tables>() + Tables::requested_bytes(&m.funcs[0]).unwrap();
         assert_eq!(program.usage().0, expected);
 

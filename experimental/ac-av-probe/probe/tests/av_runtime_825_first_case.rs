@@ -82,6 +82,31 @@ fn av_runtime_825_first_case_snapshot_and_resume_use_same_loaded_program() {
         execute_program_reference(&snap, &ExecLimits::default(), &cancel);
     assert_42(reference, &reference_trace.events);
 
+    let constrained = ExecLimits {
+        max_slot_bytes: trace.loaded_index_bytes as usize - 1,
+        ..ExecLimits::default()
+    };
+    let (out, constrained_trace) = execute_program(&snap, &constrained, &cancel);
+    assert!(matches!(
+        out,
+        ExecOutcome::Resource {
+            kind: auto_av_core::contract::ResourceKind::SlotBytes,
+            ..
+        }
+    ));
+    assert_eq!(constrained_trace.loaded_pc_lookups, 0);
+    assert_eq!(constrained_trace.frames_remaining, 0);
+    assert!(matches!(
+        execute_program_steps(&snap, &constrained, &cancel, 1),
+        SteppedOutcome::Finished(
+            ExecOutcome::Resource {
+                kind: auto_av_core::contract::ResourceKind::SlotBytes,
+                ..
+            },
+            _
+        )
+    ));
+
     let mut stepped = execute_program_steps(&snap, &ExecLimits::default(), &cancel, 1);
     let mut final_trace = None;
     for _ in 0..32 {

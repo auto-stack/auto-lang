@@ -305,7 +305,15 @@ fn av_runtime_825_root_budget_both_sides() {
         assert_eq!(trace.root_frame_commits, accepted as u64);
         assert_eq!(trace.frames_remaining, 0);
     }
-    for (bytes, accepted) in [(SLOT_CELL_BYTES - 1, false), (SLOT_CELL_BYTES, true)] {
+    let (_, baseline) = execute(&loaded, &ExecLimits::default(), &cancel);
+    let index_bytes = baseline.loaded_index_bytes as usize;
+    assert!(index_bytes > 0);
+    for (bytes, accepted) in [
+        (index_bytes - 1, false),
+        (index_bytes, false),
+        (index_bytes + SLOT_CELL_BYTES - 1, false),
+        (index_bytes + SLOT_CELL_BYTES, true),
+    ] {
         let (out, trace) = execute(
             &loaded,
             &ExecLimits {
@@ -315,6 +323,15 @@ fn av_runtime_825_root_budget_both_sides() {
             &cancel,
         );
         assert_eq!(matches!(out, ExecOutcome::Success { .. }), accepted);
+        if !accepted {
+            assert!(matches!(
+                out,
+                ExecOutcome::Resource {
+                    kind: ResourceKind::SlotBytes,
+                    ..
+                }
+            ));
+        }
         assert_eq!(trace.root_frame_commits, accepted as u64);
         assert_eq!(trace.frames_remaining, 0);
     }
@@ -347,9 +364,12 @@ fn av_runtime_825_call_budget_both_sides_and_cleanup() {
         }
     }
     let (_, baseline) = execute(&loaded, &ExecLimits::default(), &cancel);
+    let frame_bytes = baseline.peak_slot_bytes as usize;
+    let index_bytes = baseline.loaded_index_bytes as usize;
+    assert!(index_bytes > 0);
     for (bytes, accepted) in [
-        (baseline.peak_slot_bytes as usize - 1, false),
-        (baseline.peak_slot_bytes as usize, true),
+        (index_bytes + frame_bytes - 1, false),
+        (index_bytes + frame_bytes, true),
     ] {
         let (out, trace) = execute(
             &loaded,

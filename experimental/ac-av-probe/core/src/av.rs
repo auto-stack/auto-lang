@@ -256,8 +256,20 @@ fn execute_module_impl(
         );
     }
     let loaded = if optimize && m.profile == crate::contract::AV_PROFILE {
-        match crate::loaded_program::LoadedProgram::build(module) {
+        match crate::loaded_program::LoadedProgram::build(module, limits.max_slot_bytes) {
             Ok(loaded) => Some(loaded),
+            Err(crate::loaded_program::IndexError::Budget) => {
+                return (
+                    ExecOutcome::Resource {
+                        kind: ResourceKind::SlotBytes,
+                        message: format!(
+                            "loaded-program indexes exceed execution budget {}",
+                            limits.max_slot_bytes
+                        ),
+                    },
+                    ExecTrace::default(),
+                )
+            }
             Err(e) => {
                 return (
                     ExecOutcome::Infra(format!("loaded-program preparation: {e}")),
@@ -273,13 +285,18 @@ fn execute_module_impl(
         ..Default::default()
     };
     st.trace.arena = Some(st.arena.clone());
+    let index_bytes = loaded.as_ref().map_or(0, |loaded| loaded.usage().0);
+    let limits = match limits_with_loaded_index(limits, index_bytes) {
+        Ok(limits) => limits,
+        Err(out) => return (out, st.trace),
+    };
     let out = if let Some(loaded) = loaded.as_ref() {
         st.trace.loaded_index_builds = loaded.builds();
         st.trace.loaded_index_reuses = loaded.reuses();
         st.trace.loaded_index_bytes = loaded.usage().1 as u64;
-        dispatch(&LoadedView(m, loaded), limits, cancel, args, &mut st, None)
+        dispatch(&LoadedView(m, loaded), &limits, cancel, args, &mut st, None)
     } else {
-        dispatch(&MergedView(m), limits, cancel, args, &mut st, None)
+        dispatch(&MergedView(m), &limits, cancel, args, &mut st, None)
     }
     .expect("no budget: the loop always terminates with an outcome");
     if !st.frames.is_empty() {
@@ -287,6 +304,24 @@ fn execute_module_impl(
     }
     st.trace.frames_remaining = st.frames.len() as u64;
     (out, st.trace)
+}
+
+fn limits_with_loaded_index(
+    limits: &ExecLimits,
+    index_bytes: usize,
+) -> Result<ExecLimits, ExecOutcome> {
+    let mut remaining = *limits;
+    remaining.max_slot_bytes = limits
+        .max_slot_bytes
+        .checked_sub(index_bytes)
+        .ok_or_else(|| ExecOutcome::Resource {
+            kind: ResourceKind::SlotBytes,
+            message: format!(
+                "resident indexes {index_bytes} bytes exceed execution budget {}",
+                limits.max_slot_bytes
+            ),
+        })?;
+    Ok(remaining)
 }
 
 /// Execute a linked [`ProgramSnapshot`]'s entry (PLAN-828 T-01): the
@@ -342,12 +377,19 @@ fn execute_program_impl(
         st.trace.loaded_index_reuses = prog.loaded_program().reuses();
         st.trace.loaded_index_bytes = prog.loaded_program().usage().1 as u64;
     }
+    let index_bytes = optimize
+        .then(|| prog.loaded_program().usage().0)
+        .unwrap_or(0);
+    let limits = match limits_with_loaded_index(limits, index_bytes) {
+        Ok(limits) => limits,
+        Err(out) => return (out, st.trace),
+    };
     let view = if optimize {
         prog.unit_view()
     } else {
         prog.reference_unit_view()
     };
-    let out = dispatch(&view, limits, cancel, &[], &mut st, None)
+    let out = dispatch(&view, &limits, cancel, &[], &mut st, None)
         .expect("no budget: the loop always terminates with an outcome");
     if !st.frames.is_empty() {
         cleanup_owned_frames(&mut st);
@@ -418,9 +460,13 @@ pub fn execute_program_steps(
     st.trace.loaded_index_builds = prog.loaded_program().builds();
     st.trace.loaded_index_reuses = prog.loaded_program().reuses();
     st.trace.loaded_index_bytes = prog.loaded_program().usage().1 as u64;
+    let dispatch_limits = match limits_with_loaded_index(limits, prog.loaded_program().usage().0) {
+        Ok(limits) => limits,
+        Err(out) => return SteppedOutcome::Finished(out, st.trace),
+    };
     match dispatch(
         &prog.unit_view(),
-        limits,
+        &dispatch_limits,
         cancel,
         &[],
         &mut st,
@@ -461,9 +507,19 @@ pub fn resume_program(
     if state.trace.dispatched.is_empty() {
         state.trace.dispatched = observe_dispatched(&prog);
     }
+    let dispatch_limits = match limits_with_loaded_index(&limits, prog.loaded_program().usage().0) {
+        Ok(limits) => limits,
+        Err(out) => {
+            if !state.frames.is_empty() {
+                cleanup_owned_frames(&mut state);
+            }
+            state.trace.frames_remaining = state.frames.len() as u64;
+            return SteppedOutcome::Finished(out, state.trace);
+        }
+    };
     match dispatch(
         &prog.unit_view(),
-        &limits,
+        &dispatch_limits,
         cancel,
         &[],
         &mut state,

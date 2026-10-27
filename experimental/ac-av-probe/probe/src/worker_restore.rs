@@ -304,7 +304,9 @@ fn restore_and_run_inner(
             units_loaded: loaded,
             units_verified: verified,
             steps: Some(steps),
-            av_peak_slot_bytes: trace.peak_slot_bytes,
+            av_peak_slot_bytes: trace
+                .peak_slot_bytes
+                .saturating_add(trace.loaded_index_bytes),
             loaded_index_builds: trace.loaded_index_builds,
             loaded_pc_lookups: trace.loaded_pc_lookups,
             reference_pc_lookups: trace.reference_pc_lookups,
@@ -324,7 +326,9 @@ fn restore_and_run_inner(
             units_loaded: loaded,
             units_verified: verified,
             steps: None,
-            av_peak_slot_bytes: trace.peak_slot_bytes,
+            av_peak_slot_bytes: trace
+                .peak_slot_bytes
+                .saturating_add(trace.loaded_index_bytes),
             loaded_index_builds: trace.loaded_index_builds,
             loaded_pc_lookups: trace.loaded_pc_lookups,
             reference_pc_lookups: trace.reference_pc_lookups,
