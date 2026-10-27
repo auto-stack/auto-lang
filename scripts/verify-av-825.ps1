@@ -99,7 +99,7 @@ function Assert-BenchmarkEvidence {
     $turnaroundPath = Join-Path $raw 'turnaround-summary.json'
     $summary = Get-Content -LiteralPath $summaryPath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($summary.total_rows -ne 1720 -or $summary.groups.Count -ne 40) { throw 'benchmark group/row completeness mismatch' }
-    foreach $file in $summary.raw_files {
+    foreach ($file in $summary.raw_files) {
         if ((Get-FileHash $file.path -Algorithm SHA256).Hash.ToLower() -ne $file.sha256) { throw "benchmark raw identity changed: $($file.path)" }
     }
     $avFirst = Get-Content -LiteralPath (Join-Path $raw 'av.jsonl') -TotalCount 1 -Encoding UTF8 | ConvertFrom-Json
@@ -251,7 +251,7 @@ switch ($Scope) {
     'acceptance' {
         & $PSCommandPath -GuardSelfTest
         if ($LASTEXITCODE -ne 0) { throw 'guard self-test failed' }
-        foreach ($required in @('first', 'targeted', 'compat', 'incremental', 'baseline') {
+        foreach ($required in @('first', 'targeted', 'compat', 'incremental', 'baseline')) {
             & $PSCommandPath -Scope $required
             if ($LASTEXITCODE -ne 0) { throw "acceptance scope '$required' failed" }
         }
