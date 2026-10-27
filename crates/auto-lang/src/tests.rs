@@ -44,6 +44,7 @@ mod av_dynamic_824_tests;
 mod av_owned_821_tests;
 #[cfg(feature = "test-cases")]
 mod av_runtime_825_tests;
+#[cfg(feature = "test-cases")]
 mod av_source_827_tests;
 #[cfg(feature = "test-cases")]
 mod av_wire_826_tests;
