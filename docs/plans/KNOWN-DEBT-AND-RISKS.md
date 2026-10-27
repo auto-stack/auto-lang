@@ -3591,8 +3591,10 @@ F-857-R1-01..05 OPEN，绑定 `ecf9939c5b2e369f9ce7d6ea25b0b66439bb7da6`：合�
 绑定 `4d9fa8e8c4ad00f5c88d9d1c5be619f0c592b837`。R2原8负控及真实正控通过；F-857-R3-01/02 OPEN：两侧锁收据同时使用两个非锁文件仍通过且摘要误报；旧提交runner可被当前checkout收据误标为新提交并通过Home像素比较。实际两份Cargo.lock未更改，旧/新Rust源码不变亦不代替无证明的复用。T-05/06重开、executing4/10；完整双端/AGP/native-owner-content仍归merge pending。[独立R3报告](attachments/857/review-r3/review.md)；[三次诊断](attachments/857/review-r3/diagnosis-r3.md)。
 
 
-### D-824-BATCH-20261027 — 批量回归失败延后处理
+### D-824-BATCH-20261027 — 批量回归失败延后处理（已解决 2026-10-28）
 
 用户于 2026-10-27 明确同意将本轮全仓批量回归失败延迟到后续计划处理；当前后续计划编号和 owner 尚未指定。语言完整档 12 项、UI 完整档 9 项基线 ID 缺失，未运行两条完整档；tt 3562/3563（取消测试失败，根因待查），tb 3102/3102。原始输出和 ID 映射线索见 [824 批量报告](attachments/824/batch-r1/review.md)。不得将失败记为通过、删减基线或推定由 824/842 引入；后续需逐项核对迁移及断言、诊断取消失败，并按仓规重跑完整批量回归。最新完整成功覆盖点仍为 850；824 已合入，其独立清理问题另行跟踪。
+
+**解决记录（2026-10-28，PLAN-858 收尾批量）**：三项均闭合。① 基线 ID 缺失——Plan 842 已提交 21 项测试迁移清单（`scripts/full-regression-migrations-841.json.txt`，41b1d5c72），本次批量驱动器守卫消费该清单后选择完整（language 3712 listed/3212 selected 含 4 新增 ID，ui-full 3135/3117 含新增 ID），零缺失零抑制；② 取消失败——`plan707_spike_cancel_gap_active_job_future_not_stopped` 在当日三整轮 tt（3571/3571×3）全绿，未复现，维持既有"偶发时序族"定性；③ 完整批量重跑——认证通过，冻结基线 `60e0105a0` 四腿 0 失败，覆盖锚 850→858。当日另两红为环境红（Hyper-V 动态保留段 3323-3422 吞 back-proxy 默认端口 3358 全回退窗，WSAEACCES），由 auto-ui `fix-back-proxy-port`（7095f53，L0）修复：占用/权限拒均可重试、窗口耗尽回退 OS 临时分配。批量回执见 `docs/plans/.last-batch-regression.json`。
 - **P823-D01（低）**：managed-store GC 的锁文件安全清理仅有 Windows 实测；非 Windows 并发/水位行为未闭合（来源 PLAN-823 SD-08，spec: auto-ac/artifact-contract.md；关闭 oracle=非 Windows 平台并发 GC + 水位对照测试）。
 - **P823-D02（低，范围外）**：master 根仓存在预存 rustfmt 漂移（auto-cache ~108 处、auto-lang ~29 处含 examples/a2r_step02.rs、auto-atom/auto-bindgen/auto-cosmic 等，2026-10-27 PLAN-823 合并门禁实测；823 触面文件全净）。候选 L0 卫生项统一 `cargo fmt` 收口。
