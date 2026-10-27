@@ -2190,6 +2190,7 @@ mod judge_tests {
             spans: Vec::new(),
             owned: None,
             collections: None,
+            dynamic: None,
         }
     }
 
