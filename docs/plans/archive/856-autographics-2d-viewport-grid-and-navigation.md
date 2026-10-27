@@ -191,6 +191,8 @@ pick2、group_geometry、轮廓、2D组原点、拖动候选和probe全部消费
 
 2026-10-27 merge cleaned：`stage: merge | outcome: pass | completion_kind: delivered | source_commit: 4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7 | main_deposit: 186965390aee93bdefbb52b85b32c46775a9565e | archive_commit: cf2477516eb4ca4ae39417672ecbe74c03c090b7 | cleaned: yes | guard: clean immediately before removal | retained: D:/autostack/plan-artifacts/plan-856/recovery/inventory.json.txt | next: PLAN-857 T-01`。工作树及两个已落地临时分支已移除，5处均带CACHEDIR.TAG且扫描无reparse的专属target缓存已删除，目录组为空并移除；966 SDK/research文件完整复制并逐项SHA复核。原始gate日志、执行文件和失败现场保留。任务实际10/10；事前guard遗漏及落地后补扫见前项，不追溯改写。批量回归到期状态另行检查，不等同于本计划门禁。
 
+2026-10-27 batch due-check：上一成功覆盖850，855已落地使批量门到期；855批量B855-FEATURE-01在编译/选择阶段失败、0测试，现由用户裁定的858后续阶段承接。失败基面7f966bfa3d416a746b44cfe7abbde897e450e4da至当前HEAD在相关crates、Cargo配置和锁上无diff，且其他Cargo任务正在运行；无新条件不重复同一失败，也不并行运行机器独占全档。保留已有due/compile-blocked记录，待858修复并完成其受审/落地后由主检出单实例重试。该批量状态不否定856已通过的专用实验门。
+
 ## 10. 待澄清事项
 
 855实际交付前置已闭合；T-02 CPU统一接法已取证冻结，未改AGP/SDK/锁/公共算法，未突破4096容量。既定r1合同不变；R1的F-856-R1-01/02已在4150a8bea修复，独立受影响final R2确认闭合，详见review-r2/review.md。work/review合同结论未改变；merge T-08完整门通过，源码、规范与台账已落地；归档与清理完成。原遮挡/phase0超时现场及历史预算断言风险保留，见attachments/856/merge-r1/blocker.md与budget-diagnosis.md。独立pass只覆盖冻结代码/验收/SD，不代表已合入或交付。
