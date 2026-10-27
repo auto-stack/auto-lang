@@ -4872,25 +4872,25 @@
 {
  "id": "P858-P3-MERGE",
  "title": "PLAN-858 r4 consolidation and gates",
- "content": "受审 ACE P90 开发期口径及原 feature 边界修复的规范与验证记录。合入、账本、批量、归档和清理以收据中的实际检查点为准。",
+ "content": "受审 ACE P90 开发期口径及原 feature 边界修复的规范与验证记录。合入、账本、批量、归档和清理以 docs/plans/attachments/858/merge-r4/receipt.md 的实际检查点为准。",
  "status": "verified",
  "depends_on": [],
  "related": [],
  "priority": null,
  "assignee": null,
  "test_file": null,
- "file": "docs/plans/attachments/858/merge-r4/receipt.md",
+ "file": "docs/specs/auto-abi/conformance-cache.md",
  "milestone": null,
  "module": "auto-test-case",
  "tags": [
   "PLAN-858",
   "revision:4",
-  "source-sha256:b51820d85dce86ec499f14efe38875167d54ea4a895fa235a503f2a369ae4211",
-  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+  "source-sha256:08b472dea821875b2539f886bc3b2b189a2b206752fb8e01916efc8691dbd46c",
+  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
  ],
- "created_at": 1793081431,
- "modified_at": 1793081431,
- "completed_at": 1793081431
+ "created_at": 1793081626,
+ "modified_at": 1793081626,
+ "completed_at": 1793081626
 }
 ],
       "section_type": "Reports",
@@ -13785,9 +13785,9 @@
   "PLAN-858",
   "revision:4",
   "source-sha256:b34027aaab9dc0127de94ace73afed47105343556f060d190a651a8b0f1e7c55",
-  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
  ],
- "modified_at": 1793081431,
+ "modified_at": 1793081626,
  "created_at": 1791936000,
  "completed_at": null
 },
@@ -14832,7 +14832,7 @@
   "PLAN-858",
   "revision:4",
   "source-sha256:a3b21891b605628e7cd92a41690d4a137dc9d310a349749381593b346fc708f8",
-  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
  ],
  "depends_on": [],
  "related": [],
@@ -14842,7 +14842,7 @@
  "milestone": null,
  "module": null,
  "created_at": 0,
- "modified_at": 1793081431,
+ "modified_at": 1793081626,
  "completed_at": null
 },
         {
@@ -15528,9 +15528,9 @@
   "PLAN-858",
   "revision:4",
   "source-sha256:8a1ecd480e15c22846948882468e1873130be099bf6dd3433086ce2f23fde97e",
-  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
  ],
- "modified_at": 1793081431,
+ "modified_at": 1793081626,
  "created_at": 1792686169,
  "completed_at": null
 },
@@ -15858,10 +15858,10 @@
   "PLAN-858",
   "revision:4",
   "source-sha256:fcdff3d58b024d5c1a4bb74f4ea154321aca487edbf2a2c0db263ba2ae373daa",
-  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
  ],
  "created_at": 1792835257,
- "modified_at": 1793081431,
+ "modified_at": 1793081626,
  "completed_at": 1792838779
 },
         {
@@ -15988,10 +15988,10 @@
   "PLAN-858",
   "revision:4",
   "source-sha256:9a9cd3b1b682276108c49d84ad983749abfe013235a3f90e6dad74f0f478dcd3",
-  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
  ],
  "created_at": 1793000000,
- "modified_at": 1793081431,
+ "modified_at": 1793081626,
  "completed_at": null
 },
         {
@@ -16437,11 +16437,11 @@
   "PLAN-858",
   "revision:4",
   "source-sha256:97fc7af6a1d3e99837938a94f0bffe10f9a008d43ea50801b2af6b34d573b3e9",
-  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
  ],
- "created_at": 1793081431,
- "modified_at": 1793081431,
- "completed_at": 1793081431
+ "created_at": 1793081626,
+ "modified_at": 1793081626,
+ "completed_at": 1793081626
 },
 {
  "id": "P858-P3-D-CTE",
@@ -16460,11 +16460,11 @@
   "PLAN-858",
   "revision:4",
   "source-sha256:f1599de88fe905499b2b50b433e2d5efe1c3f5986dbc16b042713caf80b65bd6",
-  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
  ],
- "created_at": 1793081431,
- "modified_at": 1793081431,
- "completed_at": 1793081431
+ "created_at": 1793081626,
+ "modified_at": 1793081626,
+ "completed_at": 1793081626
 },
 {
  "id": "P858-P3-D-SEMA",
@@ -16483,11 +16483,11 @@
   "PLAN-858",
   "revision:4",
   "source-sha256:eac2f203ee775cd082747a1f4f8a3d394c99e6eabd75512a208eefcceba608ef",
-  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
  ],
- "created_at": 1793081431,
- "modified_at": 1793081431,
- "completed_at": 1793081431
+ "created_at": 1793081626,
+ "modified_at": 1793081626,
+ "completed_at": 1793081626
 },
 {
  "id": "P858-P3-D-ABI",
@@ -16506,11 +16506,11 @@
   "PLAN-858",
   "revision:4",
   "source-sha256:08b472dea821875b2539f886bc3b2b189a2b206752fb8e01916efc8691dbd46c",
-  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
  ],
- "created_at": 1793081431,
- "modified_at": 1793081431,
- "completed_at": 1793081431
+ "created_at": 1793081626,
+ "modified_at": 1793081626,
+ "completed_at": 1793081626
 }
 ],
       "section_type": "Designs",
@@ -19677,7 +19677,7 @@
   "PLAN-858",
   "revision:4",
   "source-sha256:08b472dea821875b2539f886bc3b2b189a2b206752fb8e01916efc8691dbd46c",
-  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
  ],
  "module": "",
  "milestone": "",
@@ -19686,7 +19686,7 @@
  "depends_on": [],
  "related": [],
  "created_at": 1792485000,
- "modified_at": 1793081431,
+ "modified_at": 1793081626,
  "completed_at": 1792485000,
  "test_file": ""
 },
@@ -19711,10 +19711,10 @@
   "PLAN-858",
   "revision:4",
   "source-sha256:97fc7af6a1d3e99837938a94f0bffe10f9a008d43ea50801b2af6b34d573b3e9",
-  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
  ],
  "created_at": 1792500947,
- "modified_at": 1793081431,
+ "modified_at": 1793081626,
  "completed_at": 1792500947
 },
         {
@@ -20509,11 +20509,11 @@
   "PLAN-858",
   "revision:4",
   "source-sha256:a3b21891b605628e7cd92a41690d4a137dc9d310a349749381593b346fc708f8",
-  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
  ],
- "created_at": 1793081431,
- "modified_at": 1793081431,
- "completed_at": 1793081431
+ "created_at": 1793081626,
+ "modified_at": 1793081626,
+ "completed_at": 1793081626
 }
 ],
       "section_type": "Tests",
@@ -27446,11 +27446,11 @@
   "PLAN-858",
   "revision:4",
   "source-sha256:c3d5953469f409298aa639576c2d17ed49b51714ad9f57d84f408246869e78e1",
-  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
  ],
- "created_at": 1793081431,
- "modified_at": 1793081431,
- "completed_at": 1793081431
+ "created_at": 1793081626,
+ "modified_at": 1793081626,
+ "completed_at": 1793081626
 }
 ],
       "section_type": "Reviews",
