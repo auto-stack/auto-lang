@@ -229,3 +229,7 @@ admission/resources/cache/compatibility/autodown/baseline/turnaround），缺
 case/worker、脚本控制与 stale-evidence 身份（41 文件 hash+依赖 HEAD）都有常驻
 负控。交叉 owner/类别拒绝与 824 正控由 av_closures_823_dynamic_824_compat
 常驻。
+
+## PLAN-825：ac-av/loaded-run-v1 recipe
+
+append-only 注册 `ac-av/loaded-run-v1`（与 closures/dynamic 等既有 recipe 互不复用 id）；`av-abc-825` 语料（B01/B04/B09/B13/B14 + first-case/lifecycle）走真实 source→HIR→MIR→ABC→AV→store→新 worker 恢复。父侧 judge 按独立 expected 判定并要求运行计数轴：成功优化 run 的 loaded build/PC/参数计数非零、reference PC 扫描/拷贝为零（反向 reference 路径要求对偶计数）。零选择、ignored、重复、伪 tier、抹峰值与错结果 counter-control 必使门非零；compat 收据绑定 HEAD 祖先 + 证据 log hash + 脚本身份。

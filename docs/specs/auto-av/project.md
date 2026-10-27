@@ -70,3 +70,7 @@ v4/5/16/0x2F-0x31）与交叉拒绝为现行合同，整合前旧登记为历史
 ## PLAN-824：av.dynamic/1 动态值 profile
 
 实验 profile `av.dynamic/1`（profile 5、AVAD v4）：受检显式擦除、类型查询/恢复与独立 portable owned 树冻结。实际类型、预算、取消和恢复边界见 [dynamic-portable-values](dynamic-portable-values.md) 与 [MIR profile](../auto-mir/dynamic-cast-profile.md)。不交付通用源码 Dyn、复合 CTE、native/FFI 或闭包冻结。
+
+## PLAN-825：标量 LoadedProgram 优化执行层
+
+`av.core-i32/1` 的私有装载执行层与受检参考路径共存：O(1) 逻辑 PC 查表、驻留参数表、按函数身份复用索引与共享执行预算。实际边界、可观测与 recipe 规则见 [loaded-program-runtime](loaded-program-runtime.md)；对标口径见 [runtime-benchmark-method](runtime-benchmark-method.md)。不扩 source/类型/CTE/native 面，不引入 JIT/unsafe/NaN-boxing；data/owned/collections 等已交付 profile 保持具名受检参考路径，未获标量优化 fallback。

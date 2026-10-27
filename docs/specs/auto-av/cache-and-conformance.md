@@ -114,3 +114,7 @@ owned/data 各 profile 的 schema-producer-语义身份互斥，交叉 owner 工
 拒绝（av_closures_823_dynamic_824_compat 常驻正反控）。闭包层与 824 的直接/
 嵌套 pack/freeze 拒绝（任意深度）为两 profile 共同边界。恢复与增量会话合同见
 [resident-function-install](resident-function-install.md)。
+
+## PLAN-825：LoadedProgram 恢复与索引重建
+
+恢复的 portable 工件先进既有 envelope/decode/verifier 门再重建执行索引：默认恢复路径重建 `LoadedProgram`，从不反序列化执行索引、宿主地址或恢复 trusted 标记。cache 命中不恢复已序列化索引、不直接 PASS——重验后仍真实执行。装载索引的编辑会话计数按函数归因（`loaded_index_build:<fn>`），全模块门只看 `axis:function` 键增长。执行表示与预算合同见 [loaded-program-runtime](loaded-program-runtime.md)。

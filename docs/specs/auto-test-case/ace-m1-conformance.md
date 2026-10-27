@@ -66,3 +66,7 @@ I01/I02/I04–I06/I10/I12 追加闭包会话身份、env 漂移、跨工程身�
 churn 与 judge 反控证据（`-Scope baseline` 常驻，stale-evidence 身份控制钉
 41 文件 hash+依赖 HEAD）。源码闭包语法（两 legacy 路径 parse 拒）、a2r 伪 Rust
 复合认证与 native 闭包 ABI 仍按各自 owner/gap 记录，不因 typed 行关闭。
+
+## PLAN-825：标量 Loaded 能力绑定
+
+B01/B04/B09/B13/B14 五源（852 `src` 与 825 fixture SHA-256 逐位同源）绑定 `ac-av/loaded-run-v1` 与 loaded/reference 双路径独立 oracle：优化路径索引 build/PC/参数计数非零、reference 扫描/拷贝为零，B13/B14 绑定 overflow/div-by-zero trap。I01/I02/I05–I07/I10–I12 追加 30 修订结构+P95、两函数编辑身份、内容命中零重建、暂停/恢复同 pinned LoadedProgram、512 修订+GC 资源与 judge 反控证据（`-Scope baseline` 常驻）。源码四路径/native/M1 缺口按各自 owner 保留，typed/loaded 行不冒领同源 source 能力；绑定与 raw 见计划 attachments/825/852-validation（提交 97cecc89d）。
