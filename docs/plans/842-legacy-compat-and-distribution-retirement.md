@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-842
-status: executing
+status: execution_done
 feature_name: 旧兼容入口与旧发行路径退役
 author: [Codex]
 created_at: 2026-10-24
 updated_at: 2026-10-27
 plan_revision: 3
-current_step: 10
+current_step: 14
 total_steps: 17
 supersedes_spec_components: [docs/specs/auto-lang/project.md, docs/specs/language-sdk/project.md, docs/specs/auto-parser-api/project.md, docs/specs/auto-ui-dialect/project.md, docs/specs/auto-ui-compiler/project.md, docs/specs/auto-ui-runtime/project.md, docs/specs/auto-man/project.md, docs/specs/auto-cli/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md, docs/specs/repository-boundaries/man-three-repository-delivery.md, docs/specs/auto-diagnostics/project.md, docs/specs/auto-lex/project.md, docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-ui-dialect/design/full-grammar.md, docs/specs/auto-lang/frontend/design/dialect-system.md, docs/specs/auto-lang/ui/design/scenario-dialect.md, docs/specs/ui-domain-model/project.md]
 new_spec_components: [docs/specs/repository-boundaries/compatibility-retirement.md]
@@ -147,13 +147,13 @@ work/review只必要check（真实SDK/被改包）、相关包/模块/fixture和
 | [x] | T-00 | work | G842已核验；用户r2授权 | 合法安装投影及 TOML 作用域修复、永久反例与真实 Full/锁定构建/失败保旧恢复/Core 对照完成；[最终证据](attachments/842/t00-scoped-verification/report.md) | AC-08 |
 | [x] | T-01 | work | G842完整核验；T-00 | [退役矩阵与迁移合同](attachments/842/retirement-matrix.md)冻结：过渡/正式 API、0.2.0 破坏域、旧源恢复、逐项消费者与后续实际关闭控制；定向探针见链接 | AC-01..05 |
 | [x] | T-02 | work | G842；T-01 | UI 文法、视图注册、LSP、外部方言/宿主/诊断与示例迁至现有单源；[验证与版本](attachments/842/t02-progress/report.md)；生成器/安装迁移属 T-03，旧声明删除属 T-04 | AC-01,02 |
-| [ ] | T-03 | work | G842；T-02 | 生成器/来源/第一方消费迁移及实际 Full 安装、锁定构建、坏源保旧恢复通过；[工作期冻结与日志](attachments/842/t03-progress/report.md)，最终源在 T-07 重验 | AC-02 |
+| [x] | T-03 | work | G842；T-02 | 生成器/来源/第一方消费迁移及实际 Full 安装、锁定构建、坏源保旧恢复通过；[工作期冻结与日志](attachments/842/t03-progress/report.md)；r3 后源码/安装已在 [r11 重绑](attachments/842/t13-t16-r3/r11-rebinding/)（lang 6f71646ac/UI bd228b0/Man 4cc912e：Full 6813 verify、Rust 交付 fresh lock/locked build/资源校验、Vue 生成+生产构建） | AC-02 |
 | [x] | T-04 | work | G842；T-03 | 已退出四个语言门面、两处文法别名及旧 builder；[移除清单和真实消费者验证](attachments/842/t04-verification/report.md) | AC-01,02 |
 | [x] | T-05 | work | G842；T-04 | 0.2.0 版本/锁、未知清单保护、模型与缓存及真实 Core/Full 升级恢复通过；[证据](attachments/842/t05-progress/report.md) | AC-04 |
 | [x] | T-06 | work | G842；T-05 | use-bigvm 已退出；默认/显式/缺席、实例、线程/退出验证通过；[必要自动登记的消融与保留依据](attachments/842/t06-progress/report.md) | AC-03 |
-| [ ] | T-07 | work | G842；T-06 | 审计源码说明后最终 Core/Full、独立消费者、Rust/Vue 和失败恢复已重验；[证据](attachments/842/t07-progress/report.md) | AC-01..04 |
-| [ ] | T-08 | work | G842；T-07 | 矩阵逐行、旧引用、测试 ID/alias/锁及 777/792 已核销；[审计与锁快照](attachments/842/t08-audit/report.md) | AC-01,02,05 |
-| [ ] | T-09 | work | G842；T-08 | [版本迁移说明](attachments/842/migration-0.2.md)、[精确 SD 与交接](attachments/842/handoff.md)冻结，实际放行须等完整交付 | AC-05 |
+| [x] | T-07 | work | G842；T-06 | 审计源码说明后最终 Core/Full、独立消费者、Rust/Vue 和失败恢复已重验；[证据](attachments/842/t07-progress/report.md)；r3 后 r11 重绑全绿：Core 636 verify/SDK locked check/独立消费者 3/3/安装 exe 真实程序、Full 6813 verify/Rust 交付 locked build/资源校验/Vue 生产构建；失败恢复按输入身份复用（保护逻辑未改+耐久反例新代码 1/1），见 [handoff r3 增补](attachments/842/handoff.md) | AC-01..04 |
+| [x] | T-08 | work | G842；T-07 | 矩阵逐行、旧引用、测试 ID/alias/锁及 777/792 已核销；[审计与锁快照](attachments/842/t08-audit/report.md)；r3 增量已记入 [handoff](attachments/842/handoff.md)（UI lib 新增 3 项测试，无删除/改名） | AC-01,02,05 |
+| [x] | T-09 | work | G842；T-08 | [版本迁移说明](attachments/842/migration-0.2.md)、[精确 SD 与交接](attachments/842/handoff.md)冻结（r3 增补 SD-07/08、AC-09..12 与 r11 源码/安装重绑记录已入 handoff）；实际放行须等完整交付 | AC-05 |
 | [ ] | T-10 | review | G842；T-09、T-13..16完成并冻结提交 | 同组独立完整AC-01..12/SD-01..08/实际consumer/反例/来源与健康审查；重审预检诊断新提交及 r3 变更；不先跑整档，不将merge门当已通过 | AC-06 |
 | [ ] | T-11 | merge | G842；T-10 pass | 并集影响复审、冻结三仓适用门与有序实际合入/固定版本/来源读回；若改变输入重审影响面，暂不放行后继 | AC-07 |
 | [ ] | T-12 | merge | G842；T-11全部交付收据 | canonical/受管ledger/索引沉淀、归档与逐树fresh wt-guard clean清理，整Plan闭环构成U842才放行下一份；保历史/恢复/交付分支 | AC-07 |
@@ -165,6 +165,8 @@ work/review只必要check（真实SDK/被改包）、相关包/模块/fixture和
 G842未满足前禁止创建/认领计划组；该门已满足，现有组 `D:/autostack/.wt/lang-842/{auto-lang,auto-ui,auto-man}`，每个写仓各一树/分支 `codex/plan-842-dev`；只读consumer用固定版本clone而非借其他计划WIP，未需写仓不多建树。work/review/merge沿同组顺序交接，不建第二审查树；auto-down 为具名固定版本/detached兄弟，只解析不改实现。禁止junction/symlink，主检出只簿记，清理前每树fresh guard clean且保留实际交付/legacy恢复源。
 
 ## 9. 复审记录
+
+2026-10-27 / stage: work（r11 源码/安装证据重绑） / plan_id: PLAN-842 / plan_revision: 3 / outcome: **execution_done 14/17，T-03/07..09 已按 r3 后源码重绑，待独立最终复审** / worktree_path: D:/autostack/.wt/lang-842/{auto-lang,auto-ui,auto-man} / branch: codex/plan-842-dev / code_commit: lang 6f71646aca2b5d6c162ccdcd6c534f49761bc0ef（代码面=1e776d22e+规范文档）、UI bd228b03bc50ebf73a1d3ce2d7b55193721f80ac、Man 4cc912e9ffd96a2a3bef5470ecfec128bdd80601 / dependency_revisions: down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 / task_ids: T-03、T-07、T-08、T-09 / evidence: [r11 重绑日志](attachments/842/t13-t16-r3/r11-rebinding/)与 [handoff r3 增补](attachments/842/handoff.md)——Full 实装 6813 文件 verify（清单 SHA-256 955FA96E3BF0349953FE6258D9E128901387CECC5176CE8651F095F3C293F0C8）、安装 CLI 真实 Rust 交付 5434 文件 + fresh lock + locked build + 资源校验 PASS、真实 Vue 生成（产物含 8 status token 双面正确值）+ 生产构建 dist、Core 实装 636 文件 verify + SDK locked check + 独立外部消费者 3/3 + 安装 exe 真实程序 plan842-core-ok；失败恢复/staging 保护按输入身份复用（Man 仅测试文件变更、UI r3 不触交付保护码、耐久反例 delivery_redelivery_failure_preserves_old 新代码 1/1 绿）；三树 clean / next_responsible_role: review T-10（独立复审须覆盖 r3 三仓新提交、SD-07/08、AC-09..12 与 r11 重绑证据）；merge-owned 裸 cargo t、触面档、批量回归、合入归档 pending。
 
 2026-10-27 / stage: work（r3 四项历史基面缺口修复） / plan_id: PLAN-842 / plan_revision: 3 / outcome: **T-13..16 pass（executing 10/17；T-03/07..09 重验与 T-10 独立复审 pending）** / worktree_path: D:/autostack/.wt/lang-842/{auto-lang,auto-ui,auto-man} / branch: codex/plan-842-dev / base_commit: lang 1e776d22e100fdaf5d6e37b0e9f872e49f853666、UI e4aa3daf0454edc9bd70ab654d2ba410207e8287、Man 010ef7e8dcf2370e79259857b71846ca927e20a5 / code_commit: lang 6f71646ac（仅 SD-07/08 规范增量，代码面仍 1e776d22e）、UI bd228b0（= e4aa3da + 1c4d864 + bd228b0）、Man 4cc912e / dependency_revisions: down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 / task_ids: T-13、T-14、T-15、T-16 / evidence: [t13-t16-r3 汇总报告](attachments/842/t13-t16-r3/report.md)——T-13 真实首帧定位点击 1/1；T-14 金样 55 对保留+8 值精确锁定+变异检查；T-15 有界决策（臂优先级/契约收口/route A 门控三分+可观测停用标记）+ merged 4/4 + 独立 crate 真实编译运行（route A 真体 vs 兜底 id 分配行为差异、编译期类型反例）；T-16 双轨决策 + 定向扩展断言 + Plan 841 集成 6/6 保绿；SD-07/08 规范增量提交于 lang 6f71646ac / 已知边界: auto-ui-tools lib 全套 4 项预存环境红 + 2 项并行 env flake（stash 对照证实与本修复无关，见报告）；cargo fmt 对 rust_ui.rs 仅白空改动 / authorization: 用户 2026-10-27「下一步开始修复」恢复 r3 实施 / next_responsible_role: 按 §5.4 重绑 T-03/07..09 源码与安装证据后送独立最终复审（T-10，预检须覆盖 r3 三仓新提交）；merge-owned 裸 cargo t、触面档、批量回归、合入归档均 pending。
 
