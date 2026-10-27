@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-841
-status: reviewed
+status: archived
 feature_name: UI领域模型、AST与Token及lowering终态解耦
 author: [Codex]
 created_at: 2026-10-24
