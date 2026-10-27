@@ -51,3 +51,7 @@ Provenance: [PLAN-858](../../plans/archive/858-autographics-m2-game-samples-and-
 - [Finite 2D editor viewport](editor-viewports.md): editing-only navigation, bounded world-aligned grid and optional world-origin snap, with a shared presented transform for drawing, picking and real Auto gestures (PLAN-856).
 
 Provenance: [PLAN-856](../../plans/archive/856-autographics-2d-viewport-grid-and-navigation.md), [independent final R2](../../plans/attachments/856/review-r2/review.md), [merge receipt](../../plans/attachments/856/merge-r1/receipt.md). Source: autographics-dev at `4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7`; SDK `7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467`. Production I2/I3 and 3D editor navigation remain pending.
+
+- [Finite 3D editor viewport](editor-viewports.md): editing-only orbit/pan/zoom with focus/reset and perspective/orthographic toggle, camera-true picking and perspective axis dragging, and a bounded world-aligned depth-correct ground grid with metered auxiliary resources and controlled build provenance (PLAN-857).
+
+Provenance: [PLAN-857](../../plans/archive/857-autographics-3d-viewport-navigation-and-grid.md), [independent final R4](../../plans/attachments/857/review-r4/review.md), [merge receipt](../../plans/attachments/857/merge-r1/receipt.md). Source: autographics-dev at `81b0974ac2512126790b0ef2af79235edf45b485`; SDK `7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467`. Runtime game cameras and production I2/I3 remain pending.

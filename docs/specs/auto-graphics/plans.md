@@ -45,4 +45,6 @@ Provenance: [PLAN-854](../../plans/archive/854-autographics-behavior-source-asse
 
 | 856 | Finite 2D editor viewport/grid/navigation | delivered | [PLAN-856](../../plans/archive/856-autographics-2d-viewport-grid-and-navigation.md) | Presented-view navigation, bounded grid and optional world snap; 3D/runtime camera and I2/I3 remain pending |
 
+| 857 | AutoGraphics 3D编辑视口导航与深度网格 | delivered | [PLAN-857](../../plans/archive/857-autographics-3d-viewport-navigation-and-grid.md) | 有限View3d环绕/平移/缩放/聚焦/投影切换、真实相机拾取与透视轴拖动/吸附、世界对齐深度网格与计量、受控构建来源/精确锁证明；autographics-dev 81b0974ac，运行时相机与I2/I3仍pending |
+
 | 858 | M2 dual game sample research and public API gaps | delivered | [PLAN-858](../../plans/archive/858-autographics-m2-game-samples-and-api-gaps.md) | Pinned source assets, 17 game requirements and capability/follow-on matrix; research only, no new game or runtime capability |

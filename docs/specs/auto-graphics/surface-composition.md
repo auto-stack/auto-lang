@@ -90,3 +90,18 @@ AutoShader/CAP 生成与热重载。
 跳过），因此“本帧输出是否变化”由 adapter 事实（message/捕获事件/重绘请求/
 布局/真实 caret、3D 内容指纹）判定并传播给消费者；不做逐像素比较、不做每帧
 readback。快照/候选窗逐像素模板比对不在本版证据范围内。
+
+## PLAN-857 有限编辑深度辅助网格扩展
+
+编辑 3D 视口可在**同一 device/queue**、同一已呈现相机与深度规则下挂载默认关闭的
+有界深度辅助 pass：与模型共用实际 view/depth（无 depth write、无阴影 caster、
+无场景节点/碰撞/Auto 调用），实际合成同时证明网格可见线与被前景模型遮挡线；
+强制置顶或改写模型深度是同名变异，使同一遮挡门红。辅助几何/buffer/uniform
+按实际分配单独计量（CPU ≤64KiB、GPU ≤64KiB），与不可变 mesh 上传分开报告；
+close/resize/cancel 循环释放最后 owner，关闭场景可保留有界 owner 供复用（弱
+owner 释放）。Grid 关闭不绘制、不上传，默认像素与 856 冻结基线逐像素相等；
+相机变化只更新合法 camera/grid 动态上传，不重建 pipeline/target、不重传静态
+mesh。曲面 Portal/跨进程共享等既有非目标不变，本扩展不使屏幕 overlay 获得深度
+语义。
+
+Provenance: [PLAN-857](../../plans/archive/857-autographics-3d-viewport-navigation-and-grid.md), [independent final R4](../../plans/attachments/857/review-r4/review.md), [merge receipt](../../plans/attachments/857/merge-r1/receipt.md). Source: autographics-dev at `81b0974ac2512126790b0ef2af79235edf45b485`。
