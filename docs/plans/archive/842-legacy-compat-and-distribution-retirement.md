@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-842
-status: reviewed
+status: archived
 feature_name: 旧兼容入口与旧发行路径退役
 author: [Codex]
 created_at: 2026-10-24
-updated_at: 2026-10-27
+updated_at: 2026-10-28
 plan_revision: 3
-current_step: 14
+current_step: 17
 total_steps: 17
 supersedes_spec_components: [docs/specs/auto-lang/project.md, docs/specs/language-sdk/project.md, docs/specs/auto-parser-api/project.md, docs/specs/auto-ui-dialect/project.md, docs/specs/auto-ui-compiler/project.md, docs/specs/auto-ui-runtime/project.md, docs/specs/auto-man/project.md, docs/specs/auto-cli/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md, docs/specs/repository-boundaries/man-three-repository-delivery.md, docs/specs/auto-diagnostics/project.md, docs/specs/auto-lex/project.md, docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-ui-dialect/design/full-grammar.md, docs/specs/auto-lang/frontend/design/dialect-system.md, docs/specs/auto-lang/ui/design/scenario-dialect.md, docs/specs/ui-domain-model/project.md]
 new_spec_components: [docs/specs/repository-boundaries/compatibility-retirement.md]
@@ -154,9 +154,9 @@ work/review只必要check（真实SDK/被改包）、相关包/模块/fixture和
 | [x] | T-07 | work | G842；T-06 | 审计源码说明后最终 Core/Full、独立消费者、Rust/Vue 和失败恢复已重验；[证据](attachments/842/t07-progress/report.md)；r3 后 r11 重绑全绿：Core 636 verify/SDK locked check/独立消费者 3/3/安装 exe 真实程序、Full 6813 verify/Rust 交付 locked build/资源校验/Vue 生产构建；失败恢复按输入身份复用（保护逻辑未改+耐久反例新代码 1/1），见 [handoff r3 增补](attachments/842/handoff.md) | AC-01..04 |
 | [x] | T-08 | work | G842；T-07 | 矩阵逐行、旧引用、测试 ID/alias/锁及 777/792 已核销；[审计与锁快照](attachments/842/t08-audit/report.md)；r3 增量已记入 [handoff](attachments/842/handoff.md)（UI lib 新增 3 项测试，无删除/改名） | AC-01,02,05 |
 | [x] | T-09 | work | G842；T-08 | [版本迁移说明](attachments/842/migration-0.2.md)、[精确 SD 与交接](attachments/842/handoff.md)冻结（r3 增补 SD-07/08、AC-09..12 与 r11 源码/安装重绑记录已入 handoff）；实际放行须等完整交付 | AC-05 |
-| [ ] | T-10 | review | G842；T-09、T-13..16完成并冻结提交 | 同组独立完整AC-01..12/SD-01..08/实际consumer/反例/来源与健康审查；重审预检诊断新提交及 r3 变更；不先跑整档，不将merge门当已通过 | AC-06 |
-| [ ] | T-11 | merge | G842；T-10 pass | 并集影响复审、冻结三仓适用门与有序实际合入/固定版本/来源读回；若改变输入重审影响面，暂不放行后继 | AC-07 |
-| [ ] | T-12 | merge | G842；T-11全部交付收据 | canonical/受管ledger/索引沉淀、归档与逐树fresh wt-guard clean清理，整Plan闭环构成U842才放行下一份；保历史/恢复/交付分支 | AC-07 |
+| [x] | T-10 | review | G842；T-09、T-13..16完成并冻结提交 | 同组独立完整AC-01..12/SD-01..08/实际consumer/反例/来源与健康审查；重审预检诊断新提交及 r3 变更；不先跑整档，不将merge门当已通过；[R8 记录](attachments/842/review-r8/report.md) pass 零 finding | AC-06 |
+| [x] | T-11 | merge | G842；T-10 pass | 并集影响复审（master 自 a547f52 仅 docs+scripts，与分支零文件交集）；冻结三仓适用门全绿（[merge-gates-r3](attachments/842/merge-gates-r3/)：lang 裸 t 3192/3192+tv 163/tb 3102/tt 3563、man t 281/tcore 23/ti 43 全绿含 smoke 修复、ui t 2441（先例端口覆盖）/tu/ti 28）；lang rebase 29/29 range-diff 全等后 ff-only 落 031c8fd2d，UI bd228b0/Man 4cc912e 纯快进 | AC-07 |
+| [x] | T-12 | merge | G842；T-11全部交付收据 | ledger v105→v106 受控离线投影（备份+回读验证、5 项新增）；归档与逐树 fresh wt-guard clean 清理完成；批量回归按用户 2026-10-27 授权延后（KNOWN-DEBT 在案）；保历史/恢复/交付分支 | AC-07 |
 | [x] | T-13 | work | 用户恢复实施；G842 | Man `crates/auto/tests/autodesk_client_smoke.rs` 按真实首帧定位 `+` 按钮（标签→包含 quad→中心+窗口偏移），双点击/帧/L2Detach/退出断言逐字保留；定向测试真实双进程 1/1（[t13 日志](attachments/842/t13-t16-r3/t13-man-smoke.log)）；Man 4cc912e | AC-09 |
 | [x] | T-14 | work | 用户恢复实施；G842 | UI `vue.rs` golden：旧 55 对金样逐字保留（移除 8 已知对后全等），亮/暗各四 status token 键+值+面内位置精确锁定，缺项/漂移/重复/意外额外均红（值漂移变异检查红→恢复绿）；定向 1/1（[t14 日志](attachments/842/t13-t16-r3/t14-css-golden.log)）；UI bd228b0 | AC-10 |
 | [x] | T-15 | work | 用户恢复实施；G842 | §5.4 CRUD/route A/声明类型有界决策成形（[报告](attachments/842/t13-t16-r3/report.md)）：臂优先级维持、兜底按 PLAN-710 D-7 契约收口+补 `Vec<…>` 缺省（修 Null 占位不可编译缺陷）、route A 门控三分+转译失败生成物留 `⚠` 标记；merged 定向 4/4、V-09 真实生成/编译/运行（route A 真体 `["alpha","beta"]` 实际观测 vs 兜底 id 分配 102→103）、类型反例=编译期差异；UI 1c4d864 | AC-11 |
@@ -165,6 +165,10 @@ work/review只必要check（真实SDK/被改包）、相关包/模块/fixture和
 G842未满足前禁止创建/认领计划组；该门已满足，现有组 `D:/autostack/.wt/lang-842/{auto-lang,auto-ui,auto-man}`，每个写仓各一树/分支 `codex/plan-842-dev`；只读consumer用固定版本clone而非借其他计划WIP，未需写仓不多建树。work/review/merge沿同组顺序交接，不建第二审查树；auto-down 为具名固定版本/detached兄弟，只解析不改实现。禁止junction/symlink，主检出只簿记，清理前每树fresh guard clean且保留实际交付/legacy恢复源。
 
 ## 9. 复审记录
+
+2026-10-28 / stage: merge / checkpoint: **cleaned**（U842 全闭环） / evidence: 四树 fresh wt-guard clean（auto-lang/auto-ui/auto-man/auto-down 各报 clean、`git status --porcelain` 全空、全部分支合入后删除：lang 031c8fd2d/UI bd228b0/Man 4cc912e）；worktree 经各仓 `git worktree remove` 正规移除；组目录 `D:/autostack/.wt/lang-842/` 内 r1..r11/t00..t10/probe-*/gate-*/t15-verify 等探针脚手架、临时安装与生成物全部删除（耐久证据已先行提交至 `docs/plans/attachments/842/`——含 merge-gates-r3 全部门禁日志、r11 重绑日志、turnaround 报告 7 份、range-diff 证明、生成码快照与收据；无 plan-artifacts/plan-842 目录）；组目录整体回收，磁盘空闲 305G / next: U842 成立，放行后继计划。
+
+2026-10-28 / stage: merge / plan_id: PLAN-842 / plan_revision: 3 / outcome: **pass（17/17 交付闭环）** / delivery_commit: lang `031c8fd2d10974a7c9f916fc9d71e69df1c1fb4c`（= reviewed 6f71646ac rebase 到 master e5ee32fd9，29/29 `git range-diff` 全等，[证明](attachments/842/merge-gates-r3/range-diff-proof.txt)）、UI `bd228b03bc50ebf73a1d3ce2d7b55193721f80ac`、Man `4cc912e9ffd96a2a3bef5470ecfec128bdd80601` / checkpoints: prepared=R8 pass 绑 6f71646ac/bd228b0/4cc912e；landed=三仓 master tip==交付提交（lang/Man/UI 各 ff-only 零合并提交；lang 合入时主检出 Cargo.lock 再生副作用经 stash-pop 保他方 WIP、弹回后零残留）；ledger_refreshed=受控离线投影 v105→v106（备份 .autoos/specs.json.bak-p842-r3-merge、新增 P842-MERGED-API-ARMS/P842-ADMISSION-DUAL-TRACK/P842-R8/P842-MERGE-R3/P842-R3-TESTS、回读验证）；archived=本文件移入 archive/ + 状态翻转 + 全部门禁/收据提交入库 / gates: lang 裸 t 3192/3192（366s）+ tv 163/163 + tb 3102/3102 + tt 3563/3563；man t 281/281 + tcore 23/23 + ti **43/43（autodesk 双进程 smoke 历史红首次门禁级全绿）**；ui t 2441/2441（AUTO_GALLERY_PROXY_PORT=14478 先例端口覆盖，首轮首红=已知保留段环境项）+ tu 全绿 + ti 28/28——[全部日志](attachments/842/merge-gates-r3/)；两轮中间红均为磁盘清理副作用的环境冷态（AV/ACE/CTE/MN worker、ffi_dual oracle、te-child 预构建产物被清），按历史先例串行预构建后全绿，非代码回归 / 批量回归: 到期判定=due（857 落地 > 850 覆盖锚），按用户 2026-10-27 授权延后（[KNOWN-DEBT D-824](KNOWN-DEBT-AND-RISKS.md) 在案），不由本计划代跑 / landing-is-not-deployment 观察: 主检出 release 二进制/发行安装未随合入重建（r11 实装为探针性质；生产再发行由后续发行流程/批量回归后进行）/ cleaned: 见归档后清理收据 / next: U842 闭环，放行后继计划。
 
 2026-10-27 / stage: review / review_scope: final / reviewer_identity: 独立子代理 R8（本会话派发，与实施异上下文，独立核验代码/日志/可复跑命令） / plan_id: PLAN-842 / plan_revision: 3 / outcome: **pass（AC-09..12 全 pass，零新 finding）** / worktree_path: D:/autostack/.wt/lang-842/{auto-lang,auto-ui,auto-man} / branch: codex/plan-842-dev / reviewed_commit: lang 6f71646aca2b5d6c162ccdcd6c534f49761bc0ef、UI bd228b03bc50ebf73a1d3ce2d7b55193721f80ac、Man 4cc912e9ffd96a2a3bef5470ecfec128bdd80601 / dependency_revisions: down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 / evidence: [R8 报告](attachments/842/review-r8/report.md)——基线三树 clean 零漂移；D-842-G1 预检（e4aa3da）前缀/详情/拒绝顺序保留+耐久反例 1/1；AC-09 Man 双进程 smoke 断言逐字保留、pointer_down 宿主坐标语义经实现核实、真实双进程 1/1（两次 handler 调用可观察）；AC-10 golden 旧 55 对金样全等+金样文件零改动+8 值精确锁定+受控变异红→恢复绿+1/1；AC-11 臂序未变（db→route A→声明类型→viewer→CRUD）、⚠ 标记仅 TranspileFailed 发/Inapplicable 不发、Vec::new() 补齐、merged 4/4、route A 真体 `["alpha","beta"]` 与兜底 id 102→103 真实运行日志与生成码快照一致；AC-12 双轨决策与既有 handle_compile_error 同构、841 集成 6/6 保绿；SD-07/08 与实现逐项一致（back 侧 skeleton 回落锚于 api_gen.rs:1220 实证）、与既有 841/route A 规范无冲突；r11 重绑 Full 6813/Core 636 verify、清单 SHA-256 重算逐字一致（955FA96E…3C293F0C8）、Rust fresh lock/locked build/资源校验 PASS、Vue 生成 CSS 8 token 值逐字一致、Core 消费者 3/3+plan842-core-ok；复用论证裁定成立（Man 仅测试文件、UI r3 hunk 全避交付保护段、耐久反例亲证绿）；健康面 22 warnings 全预存（位置均不在 r3 hunk）、r3 diff 零 debug print/TODO；4 项预存红+2 项 flake 归因可接受（隔离复核绿、不属 AC-09..12 面） / findings: 无 / next_responsible_role: merge T-11；merge-owned 裸 cargo t、tv/tt/tu 触面档、UI/Man 跨仓档、到期批量回归、合入/沉淀/归档/清理 pending，门禁通过前不得宣称交付完成。
 
