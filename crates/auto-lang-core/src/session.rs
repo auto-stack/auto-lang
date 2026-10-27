@@ -5,8 +5,8 @@
 //!
 //! PLAN-801：轻 session 单一定义已迁至 auto-parser-api
 //!（`auto_parser_api::session`，含其原单元测试），本模块是其**薄门面**——
-//! re-export 同一类型，`auto_lang::session::*` / `crate::session::*` 旧路径
-//! 全部保持可用（类型身份跨 crate 互传，不保留第二份实现）。执行会话
+//! re-export 同一类型；SDK `crate::session::*` 与 parser API 类型身份相同。
+//! auto-lang 0.2 已退出旧公开模块。执行会话
 //!（`compile::CompileSession` 等重上下文）不随迁，仍在 auto-lang。
 //!
 //! ## Usage

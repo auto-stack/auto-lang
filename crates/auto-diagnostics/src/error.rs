@@ -5,7 +5,7 @@
 //!
 //! PLAN-793：本模块自 auto-lang/src/error.rs 逐字迁入（诊断 code/severity/
 //! help/labels/span/Display 零漂移，V02 冻结 golden 对拍）；auto-lang 侧
-//! 保留薄门面 re-export 本模块同一类型。
+//! SDK `auto_lang_core::error` 保留同一类型；auto-lang 0.2 不再公开旧模块。
 
 // Allow unused assignments in error structs - these fields are used by the Diagnostic macro
 #![allow(unused_assignments)]
@@ -15,8 +15,8 @@ use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
 // PLAN-789：词法层错误/位置助手的单一实现已迁至 auto-lex，此处 re-export
-// 同一类型与函数（`auto_lang::error::LexerError`/`span_from`/`pos_to_span`
-// 旧路径保持可用，诊断 code/label/span 零转换损失）。
+// 同一类型与函数（`auto_diagnostics::error::LexerError`/`span_from`/`pos_to_span`，
+// 诊断 code/label/span 零转换损失）。
 pub use auto_lex::error::{pos_to_span, span_from, LexerError};
 
 fn multiple_errors_display(errors: &[AutoError], count: &usize, plural: &str) -> String {

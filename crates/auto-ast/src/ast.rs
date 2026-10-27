@@ -71,8 +71,8 @@ pub use atom_helpers::*;
 // auto_lang 全部常用 glob 面（error/token/lexer/parser/vm）无不同 item
 // 撞名（Pos 与 auto_lang::token::Pos 同为 auto_lex 同一 item，同 item 不
 // 歧义）。`auto_val::AutoResult` **保持模型内部私有**（F-799-R1-01）：
-// `auto_lang::error::AutoResult`（富 AutoError 版）是不同 item，公开会破
-// 坏旧门面 `ast::* + error::*` glob 兼容（E0659）——永久回归测试
+// `auto_diagnostics::error::AutoResult`（富 AutoError 版）是不同 item，
+// 公开会破坏 SDK `ast::* + error::*` glob 兼容（E0659）——永久回归测试
 // crates/auto-lang/tests/ast_facade_glob_compat.rs 钉住。语法级
 // Type/Node/Arg 保持模型原名；auto_val::Arg/Type 因模型已有同名项不导出。
 pub use auto_lex::token::Pos;

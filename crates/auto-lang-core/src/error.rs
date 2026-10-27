@@ -4,8 +4,8 @@
 //! error codes, and helpful suggestions using the `miette` diagnostic library.
 //!
 //! PLAN-793：诊断单一实现已迁至 auto-diagnostics（`auto_diagnostics::error`），
-//! 本模块是其**薄门面**——re-export 同一类型与函数，`auto_lang::error::*`
-//! 旧路径全部保持可用（类型身份跨 crate 互传，不保留第二份实现）。
+//! 本模块是其**薄门面**——re-export 同一类型与函数，SDK 路径与
+//! `auto_diagnostics::error` 类型身份相同；auto-lang 0.2 已退出旧模块。
 //! `error → ast::Name` 依赖边随迁出切断：TypeError::CannotModifyViewParam
 //! 载荷在底层直接使用 `auto_val::AutoStr`（= `ast::Name` 的同一底层类型）。
 //!
