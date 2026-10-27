@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-857
-status: executing
+status: execution_done
 feature_name: AutoGraphics 3D编辑视口导航与深度网格
 author: [Codex]
 created_at: 2026-10-27
@@ -14,7 +14,7 @@ supersedes_spec_components:
 new_spec_components: []
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 2
+current_step: 6
 total_steps: 10
 ---
 
@@ -135,10 +135,10 @@ T-02最多两种depth网格接法＋一条透视drag全路径探针，产出`att
 |---|---|---|---|---|---|
 | T-01 | work | 856交付 | 核实际基面/ViewState/工具/分母/允许diff，创建唯一树并记录入口 | AC-01 | [x] |
 | T-02 | work | T-01 | view3d-decision：两种有限depth接法/实际透视drag探针，冻结公式/退化/计量/原默认兼容 | AC-02/03/04 | [x] |
-| T-03 | work | T-02 | View3d、相机导航与grid depth接点、同device资源/计量；V-01/02 | AC-02/03 | [ ] |
-| T-04 | work | T-03 | interaction/Host投影拾取/轴drag/snap/view revision/输入登记/Play；V-03..05 | AC-04/05 | [ ] |
-| T-05 | work | T-03/04 | 新native probe/check、真实旧相机/深度变异恢复、current identity/consumer；V-06 | AC-01/06 | [ ] |
-| T-06 | work | T-05 | 原默认与新辅助性能/资源对照、定向收口、提交代码/SD/证据，不跑整档 | AC-01..06 | [ ] |
+| T-03 | work | T-02 | View3d、相机导航与grid depth接点、同device资源/计量；V-01/02 | AC-02/03 | [x] |
+| T-04 | work | T-03 | interaction/Host投影拾取/轴drag/snap/view revision/输入登记/Play；V-03..05 | AC-04/05 | [x] |
+| T-05 | work | T-03/04 | 新native probe/check、真实旧相机/深度变异恢复、current identity/consumer；V-06 | AC-01/06 | [x] |
+| T-06 | work | T-05 | 原默认与新辅助性能/资源对照、定向收口、提交代码/SD/证据，不跑整档 | AC-01..06 | [x] |
 | T-07 | review | T-06 | 独立最终review，核深度/实际相机/透视手势/计量；merge门pending | AC-07 | [ ] |
 | T-08 | merge | T-07 pass | 冻结两端/受影响AGP完整/原新native-owner-content门与复用审计 | AC-08 | [ ] |
 | T-09 | merge | T-08 | 源码合autographics-dev，main沉淀SD/overview/plans/ADR/ledger/索引并归档 | AC-09 | [ ] |
@@ -155,6 +155,8 @@ T-02最多两种depth网格接法＋一条透视drag全路径探针，产出`att
 2026-10-27 work T-03..06：stage=work | plan_id=PLAN-857 | plan_revision=1 | outcome=pass | worktree_path=`D:/autostack/.wt/lang-857/auto-lang` | branch=`plan-857-dev` | base_commit=`4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7` | code_commit=`ecf9939c5b2e369f9ce7d6ea25b0b66439bb7da6` | dependency_revisions=SDK `7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467`，两锁未变 | task_ids=T-03..06 | evidence=[工作完成记录](attachments/857/work/completion.md)，含当前来源身份、20项最终consumer定向测试、双端实际OS/GPU、三项实际变异及恢复、单场景性能/资源、原兼容定向档与证据复用边界 | blockers=无已知work内阻塞 | next_responsible_role=独立review。状态execution_done、6/10；尚未复审/合入。AGP受影响全量与producer/consumer完整及原新native-owner-content门均为merge-owned pending，不能以此工作记录代替。旧SDK 146项既有warnings保留；共面zero-bias单例仍通过，不声称bias必要或跨GPU证明。
 
 2026-10-27 independent final R1：`stage: review | review_scope: final | reviewer_identity: 独立子agent /root/review_857（未参与实施） | plan_id: PLAN-857 | plan_revision: 1 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-857/auto-lang | branch: plan-857-dev | reviewed_commit: ecf9939c5b2e369f9ce7d6ea25b0b66439bb7da6 | base_commit: 4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7 | dependency_revisions: SDK7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467、两锁不变 | spec_inputs: attachments/857/review-r1/baseline.json.txt；delta快照spec-delta.md | acceptance_results: AC-01通过；AC-02/06部分；AC-03现有定向通过；AC-04/05失败；AC-07未通过 | pending_closeout_gates: 完整双端/受影响AGP/原新native-owner-content门仍归merge | findings: F-857-R1-01..05 OPEN | evidence: attachments/857/review-r1/review.md、持久反例及原始日志SHA | next: auto-plan-work在同树修复并定向验证，提交后复审受影响内容`。真实Host+GPU正控证明有效distance4096的21像素半高对象可见却无法选择；完全被近/远平面裁剪的组仍可触发手柄；中/右键交叉release均提前结束另一个捕获。另缺原默认3D像素与856冻结基线对照及855同条件性能/工作集对照。20+2+1个计划内定向测试通过不能覆盖这些反例；原合入整档未运行。T-03/04/05/06重开，执行进度2/10；所有发现为合同内阻塞，不能记债延期后判通过。
+
+2026-10-27 work repair R1：`stage: work | plan_id: PLAN-857 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-857/auto-lang | branch: plan-857-dev | base_commit: ecf9939c5b2e369f9ce7d6ea25b0b66439bb7da6 | code_commit: e20b95e175f9184e13c00c78efa7b63349165276 | dependency_revisions: SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467、两锁不变 | task_ids: T-03..06 | evidence: attachments/857/work/repair-r1/completion.md、evidence.json.txt、repair-r1-performance.json.txt | blockers: 无已知work内未完成项 | next_responsible_role: 独立复审受影响内容`。F-857-R1-01..03原始反例、邻接路径与正控已定向修复验证；F-04补856冻结默认/重置真实像素对照及变异灵敏度；F-05补855与857同条件CPU/工作集/上传/owner测量并标明导航附加负载。生产/全新consumer实际窗口及partial通过，源码树已提交；复审前不称reviewed，完整合入门仍由merge执行。此前SDK 146项warnings保留；主检出其他会话WIP及风险登记保留。
 
 ## 10. 待澄清事项
 
