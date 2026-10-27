@@ -6,7 +6,7 @@ plan_revision: 6
 author: [Codex]
 created_at: 2026-10-20
 updated_at: 2026-10-28
-current_step: 7
+current_step: 8
 total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-av/resident-function-install.md
@@ -245,7 +245,7 @@ T-01已冻结实际输入与独立expected，T-10模块子集已定向运行；�
 | [x] T-05 | work | T-04 | probe cache/worker/兼容consumer最小适配，错版本/授权/代际/损坏及真实restart；按§5核已交付消费者并集/类别拒绝及同源，完成V-13适用轴 | [✅ 已完成 @5d99e566e] compat矩阵：跨进程edit-session三段（冷run miss/闭包AVAC准入+计数器、body编辑仅改单元重建+未改side()命中1/2、位置编辑双命中+snapshot位移语义仍42）；restore无--caps→能力门前置拒绝（错误具名capability）；codec路由门（from_schema未知schema拒绝）+旧AVAB wire位型恒等未扰动；V-09兼容轴=data/owned/collections三族cache_compat回归5+7+8全绿；`-Scope compat` exit 0（壳9/9+first5/5+compat3/3+三族+corpus1/1） |
 | [ ] T-06 | work | T-05/T-09/T-11 | scripts/verify-av-826.ps1汇总、WASM/V8真实bench、父侧反控、SD草案及证据；fmt和独立workspace scoped check；正式脚本汇总V-13/AC-10，无模块通过冒领集成或缺适用必需例 | acceptance V-01..10非0例/漏例/skip；AC-01..06；r2按§5.6负责V-11及清单对应决策/实施/反控/恢复/汇总；最终汇总AC-11/V-14，不以852基础层PASS代替本能力验证 |
 | [x] T-09 | work | D828、T-02～05/T-10（不等T-06/T-11） | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-12 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage | [✅ 已完成 @01b3eb8cc] session.rs 接 WireCodec（warmup/restore/persist/edit 全路径+单元名信封重绑定，新增 warmup_with_codec/restore_with_codec/warmup_persisted_with_codec，默认legacy行为逐字节不变）；V-12四子例compact版5例：两函数局部更新（builds=1/reuses=2、未改函数对象/索引恒等且六阶段计数全零）、内容命中全复用（builds=0/reuses=3）、签名热编辑拒绝+真实签名变更精确失效（helper+main重建/tail恒等）、强制整备无法冒领reuse（builds=3/reuses=0）、持久行codec命名空间（同策略温重启restore_units_admitted=3、legacy跨代冷回退=0）；子例1共享D828基线本树不退化（t08战役30修订双门+hotpath红控绿）；`-Scope incremental` exit 0；回归828主档21/21+t07 11/11+b1 8/8、825增量4/4 |
-| [ ] T-11 | work | T-05/T-09、D852、原D门及所需测试/核心窗口 | 执行§5统一能力验证phase：source:B01/B04/B09及B13/B14；scenario:I01/04～07/10～12逐行映射到真实起点/recipe/V子例；标量新旧wire策略、decode/verify/AV执行、坏输入拒绝、store恢复、体积/装载成本及原预算；已交付data/owned旧codec和受检执行支持不退化；在attachments/826/852-validation记录binding与raw，范围外M1 gap保留owner；不实现额外前端/native/AJ | AC-11/V-14；本计划既有正式脚本新增显式`-Scope baseline`（T-11建立），acceptance最终包含其结果；定向执行/反控，selected>0且无漏适用项，不触发整档或隐式Rust认证 |
+| [x] T-11 | work | T-05/T-09、D852、原D门及所需测试/核心窗口 | 执行§5统一能力验证phase | [✅ 已完成 @9badc3c8d] binding表见[852-validation/binding](attachments/826/852-validation/binding.md)（语义ID→起点→V子例→正式入口→独立oracle→证据逐行）；B01/B04/B09正控+B13/B14故障经legacy+compact双wire对拍冻结期望（optimized==reference双路径）；I07暂停→新版→恢复旧链compact版；raw体积compact=917/legacy=1739（ratio 0.527）；I01/11战役双门、I10资源churn 104s、I12父侧反控、data/owned/collections三族不退化；`-Scope baseline` exit 0（9段全绿）；范围外M1 gap（复合类型编辑/source/native/AJ）保留owner |
 | [ ] T-07 | review | T-01..06完成、T-09 完成、T-10及AC-10完成、T-11/AC-11完成 | 同树独立验收、复核SD/遗漏和峰值/测量原始证据，记录绑定版本review；独立核依赖/同源与窗口并集及V-13 | AC-07，merge-owned门禁pending；不提前跑整档；独立核AC-11/V-14，新证据未验不得沿用旧结论 |
 | [ ] T-08 | merge | T-07 pass | 冻结提交执行独立workspace完整有限合同测试及按实际触面裸cargo t/必要tv；SD沉淀、merge/archive/ledger、到期回归及清树 | AC-08；门禁失败归因，代码改变先受影响复审，清树前wt-guard |
 
@@ -255,6 +255,8 @@ worktree及build/test仅在本Plan树，簿记主检出。work/review不运行�
 ## 9. 复审记录
 
 2026-10-28 stage:work | plan_id:PLAN-826 | plan_revision:6 | outcome:pass（T-02正式首例完成，整Plan保持executing 3/11） | worktree_path:D:/autostack/.wt/lang-826/auto-lang | branch:plan-826-dev | base_commit:9c7c71a1b（e417247a5+T-10 8190551fd后merge master@9eb9ebca3） | code_commit:99776f37f（树clean） | dependency_revisions:D798/D828已归档；D825=master 9eb9ebca3已合入归档；组内兄弟auto-ui@bd228b0/auto-down@c3464d0只读 | task_ids:T-02 | evidence:[contract-decision §10](attachments/826/contract-decision.md)；`scripts/verify-av-826.ps1 -Scope first` exit 0：同源壳9/9、probe首例5/5（compact往返+D825执行/跨代magic隔离/persist→cache-hit→新worker AVAC恢复重验/legacy共存双键空间/unit不派发）、父侧corpus 1/1+敏感性反控1/1（AV826_JUDGE_SABOTAGE四轴+错oracle）；回归av_runtime_825_first_case 4/4、cache_tier 20/20、825 corpus runner 1/1；fmt/无新警告（预存基线除外） | blockers:T-03..T-06/T-09/T-11未做（targeted/compat/bench/baseline/acceptance scope显式pending）；merge-owned整档门禁pending | next_responsible_role:work T-03（core/abc生产集成与V-02/03密度矩阵）。
+
+2026-10-28 stage:work | plan_id:PLAN-826 | plan_revision:6 | outcome:pass（T-11 852统一能力验证完成，AC-11/V-14关闭，整Plan保持executing 8/11） | worktree_path:D:/autostack/.wt/lang-826/auto-lang | branch:plan-826-dev | base_commit:01b3eb8cc | code_commit:9badc3c8d（树clean） | task_ids:T-11 | evidence:`verify-av-826.ps1 -Scope baseline` exit 0（壳9/9+baseline 2/2+t08战役12.3s+资源churn 104.4s+data/owned/collections 5+7+8+父侧反控+corpus）；[binding](attachments/826/852-validation/binding.md) 逐行映射；raw 917/1739=0.527 | blockers:仅T-06未做；merge-owned门禁pending | next_responsible_role:work T-06（bench汇总与SD草案）。
 
 2026-10-28 stage:work | plan_id:PLAN-826 | plan_revision:6 | outcome:pass（T-09 828增量接入与V-12四子例完成，整Plan保持executing 7/11） | worktree_path:D:/autostack/.wt/lang-826/auto-lang | branch:plan-826-dev | base_commit:5d99e566e | code_commit:01b3eb8cc（树clean） | task_ids:T-09 | evidence:`verify-av-826.ps1 -Scope incremental` exit 0（826增量5/5+825增量4/4+t08战役30修订双门1/1@12.8s+hotpath红控1/1）；session WireCodec全路径接入（warmup/restore/persist/edit，默认legacy不变）；回归828主档21/21（332s）/t07/b1、825增量 | blockers:T-11/T-06未做；merge-owned门禁pending | next_responsible_role:work T-11（852统一能力验证V-14）。
 
@@ -286,4 +288,4 @@ stage:review；review_scope:文档合同定向复核（非实现final）；revie
 
 用户已授权本次依赖/并行合同修订，无需重新批准同范围方向。T-01的真实公开API/独立harness接缝与适用矩阵、T-10独立codec均已完成；T-02正式首例与集成仍须D825/D828及核心/注册窗口。只解除独立codec对D825的等待；T-02首例、正式版本路由/准入→LoadedProgram→AV与最终集成仍要求D825/D828和核心窗口。825的私有帧表示不是wire编码算法的输入。
 
-不得把新wire填成旧DecodedAbc版本绕过入口；正式新wire准入在D825后接真实loader，T-10字节/密度通过不能声称V-01全路径/V-08 loaded体积或执行性能通过。已交付data/owned codec路由保留。 若后续实际接口无法兑现，应给具体输入/符号/预算反例并回new，不静默复制WIP、弱化验证/资源门或退回第二实现。当前executing 7/11（T-01/T-10/T-02..T-05/T-09完成）；T-03起按依赖推进，merge-owned门禁pending，不宣布Plan完成；旧§9串行排期为历史。
+不得把新wire填成旧DecodedAbc版本绕过入口；正式新wire准入在D825后接真实loader，T-10字节/密度通过不能声称V-01全路径/V-08 loaded体积或执行性能通过。已交付data/owned codec路由保留。 若后续实际接口无法兑现，应给具体输入/符号/预算反例并回new，不静默复制WIP、弱化验证/资源门或退回第二实现。当前executing 8/11（T-01/T-10/T-02..T-05/T-09/T-11完成，仅T-06在途）；T-03起按依赖推进，merge-owned门禁pending，不宣布Plan完成；旧§9串行排期为历史。
