@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-857
-status: reviewed
+status: archived
 feature_name: AutoGraphics 3D编辑视口导航与深度网格
 author: [Codex]
 created_at: 2026-10-27
@@ -14,7 +14,7 @@ supersedes_spec_components:
 new_spec_components: []
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 7
+current_step: 9
 total_steps: 10
 ---
 
@@ -141,7 +141,7 @@ T-02最多两种depth网格接法＋一条透视drag全路径探针，产出`att
 | T-06 | work | T-05 | 原默认与新辅助性能/资源对照、定向收口、提交代码/SD/证据，不跑整档 | AC-01..06 | [x] |
 | T-07 | review | T-06 | 独立最终review，核深度/实际相机/透视手势/计量；merge门pending | AC-07 | [x] |
 | T-08 | merge | T-07 pass | 冻结完整两端/受影响AGP/原新native-owner-content门与复用审计：producer 全量331/331（attempt1桌面焦点干扰中止，3/3隔离重放过，attempt2绿）、AGP全量163/163、fresh consumer全量331/331（85目标/307用例名双端一致）、身份480项+负控双端、producer受控runner 2D/3D窗口门normal+partial过；consumer侧独立窗口探针被交付来源模型拒（无git树无法 mint 受控证明，边界披露见收据）；复用审计=AGP改面全重跑、R4身份/变异控制按同提交复用 | AC-08 | [x] |
-| T-09 | merge | T-08 | 源码合autographics-dev，main沉淀SD/overview/plans/ADR/ledger/索引并归档 | AC-09 | [ ] |
+| T-09 | merge | T-08 | 源码合autographics-dev（4150a8bea→81b0974ac ff-only），main沉淀SD四目标/overview/plans/goals（b897e4cf7）+ledger 106→107（0738200fd，含842并发提交后重读基线）并归档 | AC-09 | [x] |
 | T-10 | merge | T-09 | guard clean清树/临时分支、实际10/10/恢复产物，记录S1剩余边界供S2 | AC-09 | [ ] |
 
 ## 9. 复审记录
@@ -171,6 +171,8 @@ T-02最多两种depth网格接法＋一条透视drag全路径探针，产出`att
 2026-10-28 merge T-08 attempt1：producer 端冻结 81b0974ac 全量 `cargo test --locked -- --test-threads=1 --nocapture` 于 `authoring_probe_exit::asset_preparation_precedes_clipped_widget_scroll` 失败（`asset phase 13: imported leaf selection`，147.83s，cargo exit 101 中止，17/80 入口已跑其余全绿）后中止；原日志 `D:/autostack/plan-artifacts/plan-857/merge-r1/producer-full.log.txt` 保留。失败报告输入流含真实桌面干扰特征：frame 186 拖动中途 `focus-lost`、frame 38 `cursor-left`（856 merge 同类先例）。同二进制/同冻结源码/同配置隔离重放 3/3 通过（50.1/50.4/49.7s，`probe-exit-isolated-replay{1,2,3}.log.txt`），归因瞬时桌面焦点抢占，非代码回归。快速门先已通过：verify_plan857 --controls（480 项+负控）、m2 --self-check、all-target check（SDK 146 预存 warnings、零新增）、fmt。attempt2 同基线完整重跑进行中；T-08 仍 pending。
 
 2026-10-28 merge T-08 pass：`stage: merge | plan_id: PLAN-857 | plan_revision: 1 | outcome: pass | task_ids: T-08 | code_commit: 81b0974ac2512126790b0ef2af79235edf45b485 | dependency_revisions: SDK 7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467、两锁不变 | evidence: attachments/857/merge-r1/gates.json.txt（各日志SHA256在内） | gates: 源身份480项+负控双端、m2自检、all-target check/fmt（SDK 146预存零新增）、producer全量331/331（attempt1于authoring_probe_exit资产用例遭瞬时桌面焦点抢占中止，同二进制隔离重放3/3绿后attempt2全绿，原始失败日志保留）、AGP全量163/163（857改AGP故全重跑不复用23槽）、fresh own-SDK空target consumer全量331/331、双端清单审计85/85目标+307/307用例名一致、producer受控构建runner（50d8e51b+注册证明）3D normal/partial与2D normal/partial真实OS/GPU门全过 | disclosures: ①consumer侧独立2D/3D窗口探针被交付来源模型拒绝——R3修复（F-857-R3-02，R4已审）要求git检出受控构建证明，consumer导出包无git故其自建二进制按设计标unverified，未绕过；consumer真实窗口覆盖由全量档内真实窗口族（authoring_probe_exit等，双端绿）+逐字节一致导出身份+同提交producer侧证明门组成 ②门禁首跑环境两处我侧失配（RUSTC_WRAPPER unset≠proof记录的空串；桌面焦点抢占）均已归因留痕，未掩盖 | next: T-09 源码落autographics-dev与规范/ledger/归档`。
+
+2026-10-28 merge delivered/archive checkpoint：`stage: merge | plan_id: PLAN-857 | plan_revision: 1 | completion_kind: delivered | code_commit: 81b0974ac2512126790b0ef2af79235edf45b485 | autographics-dev: 4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7 → 81b0974ac2512126790b0ef2af79235edf45b485 (ff-only) | canonical_spec_commit: b897e4cf7500efe3b6baacf81e0c3dbea1373d8a | ledger_commit: 0738200fd | ledger_channel: guarded offline projection | ledger_version: 106→107 | gate: attachments/857/merge-r1/gates.json.txt | archive: docs/plans/archive/857-autographics-3d-viewport-navigation-and-grid.md | cleanup: pending`。规范四 SD 目标+overview/plans/goals 按 R4 冻结增量落库；ledger 六项守卫通过（仅允许项变化，备份 specs.json.bak-p857-merge）；并发 PLAN-842 ledger 提交（105/106）已先入库，本次投影重读其上基线零裹挟（diff 零 P842 内容）。landing 前后 wt-guard 各一次 clean。T-10 清理尚待。
 
 ## 10. 待澄清事项
 
