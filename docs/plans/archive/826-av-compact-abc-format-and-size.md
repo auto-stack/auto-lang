@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-826
-status: reviewed
+status: archived
 feature_name: AV紧凑ABC格式与字节码体积
 plan_revision: 6
 author: [Codex]
 created_at: 2026-10-20
 updated_at: 2026-10-28
-current_step: 10
+current_step: 11
 total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-av/resident-function-install.md
@@ -247,10 +247,20 @@ T-01已冻结实际输入与独立expected，T-10模块子集已定向运行；�
 | [x] T-09 | work | D828、T-02～05/T-10（不等T-06/T-11） | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-12 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage | [✅ 已完成 @01b3eb8cc] session.rs 接 WireCodec（warmup/restore/persist/edit 全路径+单元名信封重绑定，新增 warmup_with_codec/restore_with_codec/warmup_persisted_with_codec，默认legacy行为逐字节不变）；V-12四子例compact版5例：两函数局部更新（builds=1/reuses=2、未改函数对象/索引恒等且六阶段计数全零）、内容命中全复用（builds=0/reuses=3）、签名热编辑拒绝+真实签名变更精确失效（helper+main重建/tail恒等）、强制整备无法冒领reuse（builds=3/reuses=0）、持久行codec命名空间（同策略温重启restore_units_admitted=3、legacy跨代冷回退=0）；子例1共享D828基线本树不退化（t08战役30修订双门+hotpath红控绿）；`-Scope incremental` exit 0；回归828主档21/21+t07 11/11+b1 8/8、825增量4/4 |
 | [x] T-11 | work | T-05/T-09、D852、原D门及所需测试/核心窗口 | 执行§5统一能力验证phase | [✅ 已完成 @9badc3c8d] binding表见[852-validation/binding](attachments/826/852-validation/binding.md)（语义ID→起点→V子例→正式入口→独立oracle→证据逐行）；B01/B04/B09正控+B13/B14故障经legacy+compact双wire对拍冻结期望（optimized==reference双路径）；I07暂停→新版→恢复旧链compact版；raw体积compact=917/legacy=1739（ratio 0.527）；I01/11战役双门、I10资源churn 104s、I12父侧反控、data/owned/collections三族不退化；`-Scope baseline` exit 0（9段全绿）；范围外M1 gap（复合类型编辑/source/native/AJ）保留owner |
 | [x] T-07 | review | T-01..06完成、T-09 完成、T-10及AC-10完成、T-11/AC-11完成 | 同树独立验收、复核SD/遗漏和峰值/测量原始证据，记录绑定版本review；独立核依赖/同源与窗口并集及V-13 | AC-07，merge-owned门禁pending；不提前跑整档；独立核AC-11/V-14，新证据未验不得沿用旧结论 | [✅ 已完成 2026-10-28] final pass（reviewer=同会话声明局限，工件重建结论）；AC-01..06/09/10/11逐项绑定scope证据核对；V-12断言抽查（builds/reuses/六阶段/Arc恒等）为真实区分性oracle；V-10负控亲验；SD-01..08草案与实测数字核对一致；F1警告已修复@a9e2b1673并复验；merge-owned裸cargo t+触面档显式pending；详见§9复审记录 |
-| [ ] T-08 | merge | T-07 pass | 冻结提交执行独立workspace完整有限合同测试及按实际触面裸cargo t/必要tv；SD沉淀、merge/archive/ledger、到期回归及清树 | AC-08；门禁失败归因，代码改变先受影响复审，清树前wt-guard |
+| [x] T-08 | merge | T-07 pass | 冻结提交执行独立workspace完整有限合同测试及按实际触面裸cargo t/必要tv；SD沉淀、merge/archive/ledger、到期回归及清树 | AC-08；门禁失败归因，代码改变先受影响复审，清树前wt-guard | | [✅ 已完成 2026-10-28] SD-01..08 沉淀@89574bb8d（canonical compact-abc-format 新建+七处增量+索引/overview/plans 回写）；rebase 展平（10提交无冲突，旧→新映射：8190551fd→自身..,3ae243626→aa3040ab1,a9e2b1673→faff49d1c,851f23481→89574bb8d）；冻结门禁：裸cargo t（jobs=6 等价，3205/3205，全并发3次饥饿已归因=worktree冷native缓存、挂点均非826触面且master/worktree单跑双绿）、cargo tv 163/163、parallel壳9/9、probe六族21/21；ff-only合入master@89574bb8d；ledger Regime B guarded offline projection v110→v111（designs/tests/reviews/reports 四条目读回验证，备份specs.json.bak-826）；批量回归判定见§10 |
 
 worktree及build/test仅在本Plan树，簿记主检出。work/review不运行整档t/tv/tt等；定向验收必做，最终review后的merge统一冻结门禁。tf只按到期在主检出单实例。未改Rust的本轮严格不跑cargo/docs_gen。
 
+
+## PLAN-826:r6 合并收据（2026-10-28）
+
+- prepared: reviewed@a9e2b1673 + spec delta 冻结（sd-draft/compact-abc-format）；SD-01..08 canonical 沉淀于 worktree 提交 851f23481（docs-only descendant→delivery）。
+- landed: rebase master 无冲突（旧→新：3ae243626→aa3040ab1、a9e2b1673→faff49d1c、851f23481→89574bb8d），主检出 `git merge --ff-only` → master tip = 89574bb8d，无 merge commit。
+- ledger_refreshed: Regime B guarded offline projection（store 服务未起；HTTP 探测无响应）；.autoos/specs.json v110→v111，designs(AV-COMPACT-ABC-FORMAT)/tests(AV-WIRE-826-CONTRACTS)/reviews(P826-MERGE)/reports(PLAN-826-DEPOSIT) 四条目读回验证；备份 .autoos/specs.json.bak-826。
+- gates（delivery 89574bb8d）: 裸 cargo t（alias t 全参数 + --jobs 6 等价）3205/3205 exit 0；全并发三次饥饿已归因（worktree 冷 native 构建缓存，挂点 ac_mn_probe/ffi_dual_018/ace_m1 均非 826 触面，master+worktree 单跑双绿）；cargo tv 163/163；parallel/826 壳 9/9；probe av_wire_826 六族 21/21；acceptance scope exit 0（@3ae243626，rebase 未触 probe 输入）。
+- archived: git mv docs/plans/826-*.md → archive/，status: archived，11/11 delivered；提交 52f873096（含 ledger v111）。
+- cleaned: wt-guard clean → worktree/plan-826-dev 分支/auto-down+auto-ui 兄弟 registered worktree/组目录全部移除（worktree list 仅剩主检出+lang-860 他方在途）；证据留档 D:/autostack/plan-artifacts/plan-826/（bench-r1 原始采样+日志 25MB，无 target 树需回收）；plan-artifacts 无中间产物。
+- 批量回归: 到期判定=due（PLAN-825 id%5==0 于 858 收据后 landed，825 due_check 已判 due-blocked；826 id%5=1 不新增触发），按仓规交 /auto-plan:regress 主检出单实例执行。
 
 ## 9. 复审记录
 
@@ -292,4 +302,4 @@ stage:review；review_scope:文档合同定向复核（非实现final）；revie
 
 用户已授权本次依赖/并行合同修订，无需重新批准同范围方向。T-01的真实公开API/独立harness接缝与适用矩阵、T-10独立codec均已完成；T-02正式首例与集成仍须D825/D828及核心/注册窗口。只解除独立codec对D825的等待；T-02首例、正式版本路由/准入→LoadedProgram→AV与最终集成仍要求D825/D828和核心窗口。825的私有帧表示不是wire编码算法的输入。
 
-不得把新wire填成旧DecodedAbc版本绕过入口；正式新wire准入在D825后接真实loader，T-10字节/密度通过不能声称V-01全路径/V-08 loaded体积或执行性能通过。已交付data/owned codec路由保留。 若后续实际接口无法兑现，应给具体输入/符号/预算反例并回new，不静默复制WIP、弱化验证/资源门或退回第二实现。当前reviewed 10/11（T-01..T-11除T-08外全部完成，复审final pass绑定@a9e2b1673）；merge-owned门禁pending，不宣布Plan完成；旧§9串行排期为历史。
+不得把新wire填成旧DecodedAbc版本绕过入口；正式新wire准入在D825后接真实loader，T-10字节/密度通过不能声称V-01全路径/V-08 loaded体积或执行性能通过。已交付data/owned codec路由保留。 若后续实际接口无法兑现，应给具体输入/符号/预算反例并回new，不静默复制WIP、弱化验证/资源门或退回第二实现。已archived 11/11 delivered（merge收据见§9，delivery=89574bb8d）；merge-owned门禁pending，不宣布Plan完成；旧§9串行排期为历史。
