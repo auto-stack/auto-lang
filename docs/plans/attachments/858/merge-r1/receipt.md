@@ -1,0 +1,9 @@
+# PLAN-858:r1 merge receipt
+
+- `prepared`: independent final R1 reviewed `a4812981e72df3d54ecb555dae5f77c3fabbd959`; frozen SD SHA-256 `9b2ca30398ff0533bde7df4c0f633314e107c4d561cfee0c21edd54a827e8a9a`. Review and exact source assets are referenced in [review](../review-r1/review.md). Rebased research commits were all patch-identical by `git range-diff`; mapping and canonical commit are in [prepared](prepared.md).
+- `landed`: master fast-forwarded from `8a2347384e78b55f9533e44a4cd15cf34a5d1538` to delivery `43d1c7766c0c5b9a8f6497862a97f7107d3b817b`. Canonical `docs/specs/auto-graphics/m2-game-sample-research.md`, overview/plans and GOAL-008 references are present. No implementation or dependencies changed.
+- `ledger_refreshed`: tracked `D:/autostack/auto-lang/.autoos/specs.json`, guarded offline projection after local store connection refused; version 98→99. Readback validates four IDs and source hashes; 1265 unrelated raw items preserved. Exact hashes and backup in [projection](ledger-projection.json.txt). Module/global index generator had no semantic change; existing main INDEX bytes remained SHA-256 `761499939e4778cf71a8e4934b9c0400de76b68a92c01bef236823fc31a3b16b`.
+- `archived`: actual `docs/plans/archive/858-autographics-m2-game-samples-and-api-gaps.md` at archived/delivered 6/7, with T-07 pending. Actual-state check found all seven task IDs, six completed, local links resolving and ledger version 99. Archive bookkeeping must be committed before cleanup.
+- `cleaned`: pending fresh guard, confirmed branch/worktree removal and final 7/7 receipt.
+
+Category A research only: no Cargo tier, docs generator, native/GPU or performance test was run. Unproduced sprites, runtime game services and complete/offline packages remain future work; no production deployment or M2 game completion is claimed.

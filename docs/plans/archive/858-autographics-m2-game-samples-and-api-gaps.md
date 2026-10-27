@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-858
-status: reviewed
+status: archived
 feature_name: AutoGraphics M2双游戏样本冻结与公共接口缺口调查
 author: [Codex]
 created_at: 2026-10-27
@@ -11,7 +11,7 @@ new_spec_components:
   - docs/specs/auto-graphics/m2-game-sample-research.md
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 5
+current_step: 6
 total_steps: 7
 ---
 
@@ -44,7 +44,7 @@ M2/S2的前置调查：固定2D横版平台与3D第三人称平台探索两款**
 
 用户2026-10-27授权建立本批三份计划；本轮仅new，后续work需启动，无新agent/远端仓库/发布/推送授权。M2已确认两款自有小关卡与独立示例/按需资源方向；具体commit、资源选择与公共能力缺口正是本Plan任务，不假定已经冻结。
 
-取材[全局概览](../specs/overview.md)、[AG概览](../specs/auto-graphics/overview.md)、[行为API](../specs/auto-graphics/behavior-api.md)、[静态资产](../specs/auto-graphics/scene-assets.md)、[源码/双游戏](../specs/auto-graphics/auto-source-driver.md)、[运动](../specs/auto-graphics/bounded-motion-profile.md)、[M2设计§5–7](../design/autographics/m2-editor-and-public-game-prototypes.md#5-游戏样本与能力牵引)。
+取材[全局概览](../../specs/overview.md)、[AG概览](../../specs/auto-graphics/overview.md)、[行为API](../../specs/auto-graphics/behavior-api.md)、[静态资产](../../specs/auto-graphics/scene-assets.md)、[源码/双游戏](../../specs/auto-graphics/auto-source-driver.md)、[运动](../../specs/auto-graphics/bounded-motion-profile.md)、[M2设计§5–7](../../design/autographics/m2-editor-and-public-game-prototypes.md#5-游戏样本与能力牵引)。
 
 当前交付源码854=`523d27b863dbe306c89af0ea546334225a29f8e9`，SDK=`7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467`；855观察`70f1addf0a12a6af7f3b9bf447428f558a779d26`未交付。公共behavior/1..5拓扑固定、平移/显隐与有限AABB查询/两接触移动；静态GLB不接受纹理/蒙皮/动画等，原完整Squash的专用能力不能直接算成公共API。
 
@@ -131,8 +131,8 @@ T-04每个G需求映射到现行Spec＋固定代码符号/API/profile，分类`d
 | T-02 | work | T-01 | 固定三来源中的样本commit和所选两小关卡G表/差异/完整流程，产出新sample-matrix设计 | AC-02 | [x]（`8cb7dbcc5`：17 个 G ID、固定几何/输入/状态与失败/获胜重开，2D Godot 与 3D Kenney 来源差异；V-01 静态表/ID 检查，非试玩） |
 | T-03 | work | T-02 | 仓外所选资源闭包读取/hash/许可/大小/派生状态；attachments资源manifest与分组/预算建议 | AC-03/05 | [x]（`11d9de467`：13项所选原始输入逐文件SHA/长度与固定Git blob重算；2D 149188、3D 198763、去重203825字节；四GLB色图引用闭包核查，CC0/OFL区分；派生/ZIP待制作，不宣称发行） |
 | T-04 | work | T-02/03 | 每G项对应现行Spec/交付代码和缺口/后继探针，核最终交付变化；提交研究产物/SD草案/自查 | AC-01/04/05 | [x]（`a4812981e`：17项现状矩阵、四类能力/限制和后继反例、SD-01草案；854→855 API 无diff，855为已交付；文档/资源索引定向自查通过） |
-| T-05 | review | T-04 | 独立来源/资源/范围/API分类与SD复审；不实施服务或代签新游戏验收 | AC-06 | [x]（独立 final R1 pass，受审 `a4812981e72df3d54ecb555dae5f77c3fabbd959`；13/13资源及4GLB闭包、17G分类、V-01..05/SD-01核对，见[复审报告](attachments/858/review-r1/review.md)；T-06/T-07 pending） |
-| T-06 | merge | T-05 pass | 文档合main、知识/overview/plans/ledger/索引沉淀并归档；仅文档检查，无Cargo | AC-07 | [ ] |
+| T-05 | review | T-04 | 独立来源/资源/范围/API分类与SD复审；不实施服务或代签新游戏验收 | AC-06 | [x]（独立 final R1 pass，受审 `a4812981e72df3d54ecb555dae5f77c3fabbd959`；13/13资源及4GLB闭包、17G分类、V-01..05/SD-01核对，见[复审报告](../attachments/858/review-r1/review.md)；T-06/T-07 pending） |
+| T-06 | merge | T-05 pass | 文档合main、知识/overview/plans/ledger/索引沉淀并归档；仅文档检查，无Cargo | AC-07 | [x]（快进 `43d1c7766c0c5b9a8f6497862a97f7107d3b817b`；canonical/overview/plans/goals、账本98→99、生成索引无语义变更；归档实际检查及提交见merge收据） |
 | T-07 | merge | T-06 | guard clean后清研究树/临时分支，保留必要来源恢复路径/SHA和真实7/7；交后继研究结论 | AC-07 | [ ] |
 
 ## 9. 复审记录
@@ -151,6 +151,8 @@ T-04每个G需求映射到现行Spec＋固定代码符号/API/profile，分类`d
 
 2026-10-27 work 最终交接：stage=work | plan_id=PLAN-858 | plan_revision=1 | outcome=pass | worktree_path=D:/autostack/.wt/lang-858/auto-lang | branch=plan-858-dev | base_commit=7e498e4ccbce5f0a7b7b8008d8303b170d6f373e | code_commit=a4812981e72df3d54ecb555dae5f77c3fabbd959 | dependency_revisions=854:523d27b863dbe306c89af0ea546334225a29f8e9,855:05fdc81c546aff735eefdb6c39fbc5fb35dc546a,SDK:7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467,Godot:b761b4cd5718a7118f2c95eb55f181d0a5f004f1,Kenney:3fa8a04b1c01ab23db43123d4ce814a34c3fc7f0 | task_ids=T-01..T-04 | evidence=17项G表及分类ID/四类能力结构核对；13项所选源文件实际SHA/长度与固定Git blob、GLB图像依赖、分组字节重算通过；854→855 API无diff，856 executing/857 drafting；选中目录reparse扫描clean；git diff --check通过且工作树干净；仅研究无Cargo/native/GPU，实际转换、运行/包及性能未宣称 | blockers=无工作阶段阻塞；未知Godot素材与FLA未入所选闭包 | next_responsible_role=review/T-05。AC-01..05为工作自查结果，须独立语义核对完整来源、各项许可和资源映射；T-06/T-07及其文档沉淀/归档/guard清理由merge负责且pending。
 
+2026-10-27 consolidation PLAN-858:r1：stage=merge | outcome=publication pass, cleanup pending | reviewed_commit=a4812981e72df3d54ecb555dae5f77c3fabbd959 | delivery_commit=43d1c7766c0c5b9a8f6497862a97f7107d3b817b | canonical=docs/specs/auto-graphics/m2-game-sample-research.md | ledger=.autoos/specs.json version 98→99, P858-M2-GAME-RESEARCH/P858-R1/P858-MERGE/GOAL-008, guarded offline projection | archive=docs/plans/archive/858-autographics-m2-game-samples-and-api-gaps.md | completion_kind=delivered | evidence=[准备记录](../attachments/858/merge-r1/prepared.md)、[账本校验](../attachments/858/merge-r1/ledger-projection.json.txt)；Category A 文档/字节检查通过，不运行Cargo/docs_gen；实际归档检查和清理仍待完成。
+
 ## 10. 待澄清事项
 
 无阻塞new草案的问题。T-02/03负责在限定来源与既定必需分母内选资源/冻结来源，常规判断无需重复批准。若需要删必需功能、换游戏类型、改变独立仓/离线交付目标，或将未知许可资产算入可发行闭包，须先提出具体选择由用户决定；本Plan不能以“研究”名义静默变更M2目标。
@@ -159,4 +161,4 @@ T-04每个G需求映射到现行Spec＋固定代码符号/API/profile，分类`d
 
 2026-10-27 交接补充：此前 Godot 素材许可阻塞已通过选择同一允许来源 Kenney 的 CC0 模型/精灵/声音及带 OFL 许可的字体解除；原 Godot 素材与许可未核的制作源不计入发行闭包。派生帧、最终游戏源码与 ZIP 尚未存在，后继工作须制作并验收，本研究不声称其已完成。
 
-2026-10-27 独立 final review R1：stage=review | review_scope=final | reviewer_identity=Codex 当前独立检查上下文（未参与本次实现；环境未暴露模型/会话ID，未另开agent） | plan_id=PLAN-858 | plan_revision=1 | outcome=pass | worktree_path=D:/autostack/.wt/lang-858/auto-lang | branch=plan-858-dev | reviewed_commit=a4812981e72df3d54ecb555dae5f77c3fabbd959 | base_commit=7e498e4ccbce5f0a7b7b8008d8303b170d6f373e | dependency_revisions=854:523d27b863dbe306c89af0ea546334225a29f8e9,855:05fdc81c546aff735eefdb6c39fbc5fb35dc546a,SDK:7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467,Godot:b761b4cd5718a7118f2c95eb55f181d0a5f004f1,Kenney:3fa8a04b1c01ab23db43123d4ce814a34c3fc7f0 | spec_inputs=[baseline.json](attachments/858/review-r1/baseline.json) 中11个实际Spec输入SHA | acceptance_results=AC-01..06 pass,AC-07 pending merge；V-01..05 pass；全部13项源输入SHA/长度/固定blob、4GLB外部闭包/动画、分组总数、17项G语义分类及后继需求独立复核 | findings=无阻塞finding；派生帧/真实Auto预算/正式包仍为后继风险，未核Godot/FLA排除；原始字体两处保留名措辞与MIT/CC0通知来源精度见报告 | evidence=[R1报告](attachments/858/review-r1/review.md)、[逐文件重放](attachments/858/review-r1/source-replay.json)、[可重放检查](attachments/858/review-r1/check_sources.py)、[冻结SD](attachments/858/review-r1/spec-delta-frozen.md) SHA256=9b2ca30398ff0533bde7df4c0f633314e107c4d561cfee0c21edd54a827e8a9a | pending_closeout_gates=T-06文档/链接检查与实际合入/规范-ledger-index/归档、T-07实际guard-clean/清树分支与7/7；Category A不运行Cargo或docs_gen，不存在待补Cargo整档 | next=merge。状态reviewed5/7；仅研究验收通过，未宣称M2游戏/新API/离线包完成，未合入归档或清树。
+2026-10-27 独立 final review R1：stage=review | review_scope=final | reviewer_identity=Codex 当前独立检查上下文（未参与本次实现；环境未暴露模型/会话ID，未另开agent） | plan_id=PLAN-858 | plan_revision=1 | outcome=pass | worktree_path=D:/autostack/.wt/lang-858/auto-lang | branch=plan-858-dev | reviewed_commit=a4812981e72df3d54ecb555dae5f77c3fabbd959 | base_commit=7e498e4ccbce5f0a7b7b8008d8303b170d6f373e | dependency_revisions=854:523d27b863dbe306c89af0ea546334225a29f8e9,855:05fdc81c546aff735eefdb6c39fbc5fb35dc546a,SDK:7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467,Godot:b761b4cd5718a7118f2c95eb55f181d0a5f004f1,Kenney:3fa8a04b1c01ab23db43123d4ce814a34c3fc7f0 | spec_inputs=[baseline.json](../attachments/858/review-r1/baseline.json) 中11个实际Spec输入SHA | acceptance_results=AC-01..06 pass,AC-07 pending merge；V-01..05 pass；全部13项源输入SHA/长度/固定blob、4GLB外部闭包/动画、分组总数、17项G语义分类及后继需求独立复核 | findings=无阻塞finding；派生帧/真实Auto预算/正式包仍为后继风险，未核Godot/FLA排除；原始字体两处保留名措辞与MIT/CC0通知来源精度见报告 | evidence=[R1报告](../attachments/858/review-r1/review.md)、[逐文件重放](../attachments/858/review-r1/source-replay.json)、[可重放检查](../attachments/858/review-r1/check_sources.py)、[冻结SD](../attachments/858/review-r1/spec-delta-frozen.md) SHA256=9b2ca30398ff0533bde7df4c0f633314e107c4d561cfee0c21edd54a827e8a9a | pending_closeout_gates=T-06文档/链接检查与实际合入/规范-ledger-index/归档、T-07实际guard-clean/清树分支与7/7；Category A不运行Cargo或docs_gen，不存在待补Cargo整档 | next=merge。状态reviewed5/7；仅研究验收通过，未宣称M2游戏/新API/离线包完成，未合入归档或清树。
