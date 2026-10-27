@@ -1,6 +1,6 @@
 # PLAN-858：M2 双游戏样本研究（工作草稿）
 
-T-02 冻结的玩法分母与来源见下；T-04 尚待完成。本稿不证明游戏、接口或资源包已实现、可发行或通过性能验证。来源在 `D:/autostack/plan-artifacts/plan-858/`；候选索引见 `../../plans/attachments/858/candidate-resource-index.json`。读取日 2026-10-27。
+玩法分母、来源与现状对照见下；研究结论待独立复审。本稿不证明游戏、接口或资源包已实现、可发行或通过性能验证。来源在 `D:/autostack/plan-artifacts/plan-858/`；候选索引见 `../../plans/attachments/858/candidate-resource-index.json`。读取日 2026-10-27。
 
 ## 来源和基线
 
@@ -36,13 +36,13 @@ T-02 冻结的玩法分母与来源见下；T-04 尚待完成。本稿不证明�
 
 ## 已证实边界
 
-`docs/specs/auto-graphics/behavior-api.md` 与 854 `experimental/autographics-auto-driver/api/behavior_v1.at` 给出节点查找、平移、显隐、离散 `ag_input_x/y`、`ag_toggle`、tick；拓扑固定，句柄仅在 Run 内有效。`behavior_motion_v5.at::ag_move_and_slide` 与 `bounded-motion-profile.md` 提供有限 AABB 平移、最多两次接触，不能当作完整角色控制。`scene-assets.md` 的静态 GLB 禁止 URI、纹理、动画和蒙皮；候选四个 Kenney GLB 均引用 `Textures/colormap.png`，角色有四条动画，原文件不能直接进入该接口。专用 Squash 音画不等于公开通用音频/HUD；相机矩阵不等于公开游戏相机。逐 G 分类、代码证据及生命周期负例尚待补齐。
+`docs/specs/auto-graphics/behavior-api.md` 与 854 `experimental/autographics-auto-driver/api/behavior_v1.at` 给出节点查找、平移、显隐、离散 `ag_input_x/y`、`ag_toggle`、tick；拓扑固定，句柄仅在 Run 内有效。`behavior_motion_v5.at::ag_move_and_slide` 与 `bounded-motion-profile.md` 提供有限 AABB 平移、最多两次接触，不能当作完整角色控制。`scene-assets.md` 的静态 GLB 禁止 URI、纹理、动画和蒙皮；候选四个 Kenney GLB 均引用 `Textures/colormap.png`，角色有四条动画，原文件不能直接进入该接口。专用 Squash 音画不等于公开通用音频/HUD；相机矩阵不等于公开游戏相机。逐 G 分类、代码证据及生命周期负例见下文。
 
 ## 未闭合
 
 1. `candidate-resource-index.json` 是早期候选，不是所选闭包；Godot 2D 逐文件归属/许可未确定，故不选作运行素材。所选输入见下方索引；Kenney 字体需 OFL/保留名称，制作源未选且许可待核。转换后的文件未生产，不能称资源包可发行。
 2. 源输入按 2D/3D/共享分组并复算见下；并非最终下载或 ZIP 实际体积。真正的游戏源码、派生文件和离线包仍待后继项目。
-3. 补逐 G 现状分类、后继合同、生命周期/负例与探针、独立仓 manifest 与离线验收；复核期间的交付变化。不得以纯研究声称性能通过。
+3. 本研究提出逐 G 现状分类、后继合同、生命周期/负例与探针及独立仓/离线验收；这些后继运行验证仍未执行，不得以纯研究声称性能通过。
 
 ## 关卡参数与未来验收入口
 
@@ -56,7 +56,7 @@ T-02 冻结的玩法分母与来源见下；T-04 尚待完成。本稿不证明�
 
 未来按固定种子/步长分别驱动输入与无输入对照，采样实际 Auto 状态、屏幕内容和音频事件：覆盖正常到达、未集齐终点、重复收集、四边和顶碰撞、空中二次跳、敌人/危险和越界失败、胜利/失败新局、相机环绕/边界、动画转场以及一次事件仅一次音效。测试须检查对象真实身份与状态重置，不能仅检查日志或命令发出。上列几何、输入和结束状态是研究合同，而不是已运行结果。
 
-## 初步需求到能力对照（尚待逐行复核）
+## 需求到已交付能力对照
 
 下表“缺失”表示完整需求没有被证实为交付的公共接口；并非否认表中列出的部分能力。`v1` 指 854 的 `api/behavior_v1.at`；`v5` 指 `api/behavior_motion_v5.at`；现行约束以 `behavior-api.md`、`spatial-query-profile.md`、`bounded-motion-profile.md`、`scene-assets.md`、`scene-play-session.md` 为准。下面名字均为需求，不是新增签名承诺。
 
@@ -68,7 +68,7 @@ T-02 冻结的玩法分母与来源见下；T-04 尚待完成。本稿不证明�
 | G2-04 | missing；v2 有 AABB 查询，v1 可显隐 | 稳定触发进入/离开及一次收集语义；同对象多帧不能多次加分，失效身份不可复用 |
 | G2-05 | missing；v1 可移动固定节点 | 巡逻、触发和失败由 Auto 驱动；角色敌人两者移动时事件身份和顺序明确 |
 | G2-06 | missing；scene Play 有 Stop/Run、编辑内容恢复 | 会话状态、胜负、重开清理与输入边沿；新局不得沿用旧状态/资源/句柄 |
-| G2-07 | missing；854 `authoring/host.rs::camera` 是编辑器视图 | 公共运行跟随、边界和投影；旧帧/编辑导航不得替代实际游戏摄像机 |
+| G2-07 | missing；854 `authoring/host.rs::camera`、855 `authoring/host/viewport.rs::camera` 是编辑器视图 | 公共运行跟随、边界和投影；旧帧/编辑导航不得替代实际游戏摄像机 |
 | G2-08 | missing；scene-assets 只规定静态 GLB | sprite 图像、帧序、方向及生命周期；错帧或遮挡不能被状态日志掩盖 |
 | G2-09 | delivered-specialized；854 `src/host.rs::enable_audio` 和 score 绘制是既有特定样本 | 尚缺公共音效/HUD 服务；单事件仅一次，停止释放后不得继续播放，显示与 Auto 状态一致 |
 | G3-01 | missing；v1 仅 x/y 离散轴且节点仅平移 | 相机相对动作、角色朝向及归一；视角旋转后行动仍沿世界轴应失败 |
@@ -76,11 +76,11 @@ T-02 冻结的玩法分母与来源见下；T-04 尚待完成。本稿不证明�
 | G3-03 | missing；v2/v5 是有限静态 AABB 运算 | 触发与角色碰撞顺序、越界；危险触发不应因显隐或事件复用丢失 |
 | G3-04 | missing；v1 `ag_set_visible` 非销毁 | 物品身份/生命周期与一次触发；陈旧句柄、重开后的新代次不得影响新物品 |
 | G3-05 | missing；Play Stop 只恢复编辑态 | Auto 拥有胜负、新局和资源清理；重启之后旧输入/异步事件不得生效 |
-| G3-06 | missing；854 `authoring/host.rs::camera` 固定编辑视图 | 运行相机跟随/环绕/缩放、输入与界限；编辑相机改变不得冒充游戏相机 |
+| G3-06 | missing；854 `authoring/host.rs::camera`、855 `authoring/host/viewport.rs::camera` 是编辑视图 | 运行相机跟随/环绕/缩放、输入与界限；编辑相机改变不得冒充游戏相机 |
 | G3-07 | missing；scene-assets 支持有限静态 GLB | 模型/纹理和动画的公共使用，或经审核派生适配；原外部纹理 GLB 必须明确拒绝，不能渲染空白算通过 |
 | G3-08 | delivered-specialized；`auto-3d-game-profile.md` 说明 Squash 的固定 HUD/音乐 | 公共事件音效、字体/HUD 和所有者释放；用不同项目/素材辨别硬编码，单事件不能多次播放 |
 
-共用已经交付的通用基元：v1 节点读取和有限平移/显隐、v2 AABB 查询及 v5 有界平移各自按其版本/限制可用。尚需逐行检查该基线的代码和现行规格、具体生命周期及负例，不能将本表视作完成的 T-04。
+共用已经交付的通用基元：v1 节点读取和有限平移/显隐、v2 AABB 查询及 v5 有界平移各自按其版本/限制可用。各完整 G 条目未因基元存在而标为已交付；共同生命周期及反例见下方后继合同。
 
 后续候选顺序：先做真实 Auto 资源/CPU 和 128 节点负载探针及角色运动可行性；再定义输入/角色与资源对象生命周期；在身份和顺序确定后定义触发/游戏状态；并行研究运行相机及资源表现（2D 精灵、3D 模型/动画）；最后音效/HUD、独立游戏端到端闭环。编辑视口 856/857 不自动交付运行相机；不隐含 ACE 前置。每片都需正例、边界失败、停止与释放的可观察证据。
 
@@ -114,7 +114,7 @@ T-02 冻结的玩法分母与来源见下；T-04 尚待完成。本稿不证明�
 | 两关跳跃/收集、3D 落地 | `sounds/jump.ogg` / `sounds/coin.ogg` / `sounds/land.ogg` | 输入字节已核，格式支持及播放服务待实现 |
 | 两关 HUD 字体 | `fonts/lilita_one_regular.ttf`，`fonts/license.txt` | OFL 1.1，保留版权声明与完整许可；修改字体须处理 Reserved Font Name |
 
-独立重算：2D 候选输入 9 文件 149188 字节、3D 12 文件 198763 字节；共享并集 13 文件 203825 字节，最大均为 character.glb 87624 字节，均包含对应说明文件；这是未压缩源输入大小，重复使用时实际分发布局可不同。13 项 SHA/长度与固定提交 blob 二次核对通过、均非 LFS 指针。四 GLB 唯一声明的 buffer 内嵌，图像均外链到已列色图，`extensionsUsed` 均含 `KHR_texture_transform`、无 `extensionsRequired`；character 有 `static/idle/walk/jump` 四轨道、无 skin。非必需音乐选零；`vector/sprites.fla` 50762 字节是候选可选制作源，其许可未确定，当前不纳入任何可发行闭包。尚未生成正式运行文件或 ZIP，所以最小下载与完整包实际值未知；一个可重算的原始参考输入下限分别是 149188、198763 字节，再加未来引擎、代码、派生资源与发布封装，压缩后大小也必须等真实打包测量，不能把输入总数伪装成 ZIP 大小。
+独立重算：2D 候选输入 9 文件 149188 字节、3D 12 文件 198763 字节；共享并集 13 文件 203825 字节，最大均为 character.glb 87624 字节，均包含对应说明文件；这是未压缩源输入大小，重复使用时实际分发布局可不同。13 项 SHA/长度与固定提交 blob 二次核对通过、均非 LFS 指针。四 GLB 唯一声明的 buffer 内嵌，图像均外链到已列色图，`extensionsUsed` 均含 `KHR_texture_transform`、无 `extensionsRequired`；character 有 `static/idle/walk/jump` 四轨道、无 skin。非必需音乐选零；`vector/sprites.fla` 50762 字节是候选可选制作源，其许可未确定，当前不纳入任何可发行闭包。尚未生成正式运行文件或 ZIP，所以最小下载与完整包实际值未知；若保留完整所选参考原件，原始输入分别为 149188、198763 字节；实际运行只使用派生文件时不必包含这些原件，未来引擎、代码、派生资源与发布封装的大小均未知，压缩后大小必须等真实打包测量，不能把输入总数伪装成 ZIP 大小。
 
 ### 后继合同共同约束与探针草案
 
@@ -123,3 +123,12 @@ T-02 冻结的玩法分母与来源见下；T-04 尚待完成。本稿不证明�
 建议先构造两组未来独立 Auto 工程和固定输入轨迹：合法对照运行和至少一种导致不变量被破坏的变异。每关分别检验无输入、方向反转、空中重跳、穿墙/顶、平台边缘与连续两接触、首次/重复收集、接触失败、早到终点、三币胜利、两种结束后重开；相机加边缘/旋转/缩放极值、图像加空图/错帧、音效加漏播/重复播与失焦、生命周期加旧句柄/在途结果。实际通过必须检查 Auto 状态、每次渲染内容、触发身份和真实声音消费者；停止后使用真实弱引用或所有者而非计数清零检查释放。源代码身份、引擎/SDK/配置、轨迹、CPU/内存测量范围必须绑定；不得以解析成功或代码符号存在替代跨消费者运行结果。
 
 下载规划建议的预算而非实测：每款默认运行资源目标不超过 1 MiB，单个未来大于 1 MiB 的资源作为可按需且带长度/SHA 的包候选；固定引擎另计。源码与资源完整包目标为所选引擎发行包实测大小加至多 2 MiB 的游戏内容，压缩前后分别计量；若派生结果超过预算需解释并重新确定，不得丢弃必需表现以适配预算。当前只能报告原始输入大小，无法估算引擎、生成资源、ZIP 的真实字节；后继制作时测得数据后才可证明预算。
+
+### 交付基元的分类和版本核对
+
+- **delivered-public**：855 源 `experimental/autographics-auto-driver/api/behavior_v1.at::ag_move_local` 对选定已有节点做有限平移；`behavior_spatial_v2.at::ag_aabb_overlaps` 查询同维有限 AABB。其可用性受 behavior-api/spatial-query-profile 中版本、场景与预算约束，不等于节点创建或事件回调。
+- **delivered-specialized**：855 的 `src/host.rs::enable_audio` 与固定 score 绘制，以及 `src/squash_host.rs::enable_audio`/`Score` 消费特定样本；这些不构成其他项目可绑定资源的公共音效或 HUD。
+- **missing**：逐 G 行列出的角色、生命周期、运行相机、精灵/纹理/动画及游戏服务没有被以上公开接口完整覆盖；`ag_move_and_slide` 接触次数上限及 AABB 限制使之不能单独宣称通用角色控制。
+- **unverified**：将选定 character.glb 渲染成可辨识 2D 玩家/敌人帧、适配 3D 的实际转换效果、正式游戏在真实 Auto 下的 CPU/资源预算及完整离线包均未做，不能视为交付或性能通过。
+
+核对时主检出已从 `7e498e4ccbce5f0a7b7b8008d8303b170d6f373e` 前进到 `1a4ef0759fbedfbc8bc7a77ed5fcd84a3654be86`，差异仅为 Plan 823 簿记，`docs/specs/auto-graphics` 无差异；`autographics-dev` 仍是 855 的 `05fdc81c546aff735eefdb6c39fbc5fb35dc546a`。854→855 的 `api/` 无文件差异；855 已拆出 `authoring/host/viewport.rs::camera`，保留 854 旧路径与新路径用于分别定位。856 执行中、857 草拟中，不算交付。
