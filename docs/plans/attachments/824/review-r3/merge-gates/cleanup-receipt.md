@@ -1,3 +1,11 @@
+# 2026-10-27 retry — worktree recovered and removed; artifact cleanup remains blocked
+
+- The records below describe the earlier interrupted attempt. On retry, `git worktree repair` recreated the missing `.git` link despite reporting a broken link; `git rev-parse` confirmed the correct checkout. Its tracked status contained only 42,487 deletions from that interruption and no other tracked changes. Those files were restored from the recorded landed HEAD; the worktree then reported clean and the branch was confirmed to be an ancestor of `master`.
+- Before removal, 1,020 remaining non-debug, non-`.pdb` files under the worktree's target were copied with SHA-256 verification into `D:/autostack/plan-artifacts/plan-824/worktree-evidence/`; `worktree-evidence.json` records paths and hashes. The earlier 72 remaining `.exe` backups and the uncertainty about files removed before the interruption are unchanged.
+- A fresh path check and `wt-guard.sh` passed; `git worktree remove` completed. The 824 worktree registration was absent afterward, merged branch `plan-824-dev` was deleted, and the group directory was removed only after confirming it was empty. The three dependency worktrees were already removed.
+- The ledger checker cache remains at `D:/autostack/plan-artifacts/plan-824/ledger-schema-check/target` and is a Cargo cache (`CACHEDIR.TAG` present). The previously rejected removal has not been retried or bypassed; all 14 `.exe` backups remain. Reclaiming this cache and its `.pdb` files is pending.
+- A current batch check still finds the last successful coverage at Plan 850 with the Plan 855 batch marked compile-blocked. The user explicitly requested the full batch. Plan 842 is actively executing tests/builds in another worktree, so the required machine-exclusive full tier was not started. Batch receipt remains unchanged. Production artifact observation and completion of T-08 remain pending.
+
 # Plan 824 merge closeout — cleanup blocked (2026-10-27)
 
 - Outcome: `blocked` at cleanup; delivery has landed at `99fd2c07a8c2df74abbf2f23d5d12cef47d726b3` and the Plan was archived in `9a9ec22567f9c5328ff6bbc51c5388f23dc57303`. T-08 remains pending; no `cleaned` claim.
