@@ -92,7 +92,7 @@ fn generate(at: &Path) -> String {
 
 /// Plan 435 P6-2(D1,方案 a):gallery SFC 实际发射的 `@/components/ui/<pkg>`
 /// import 必须能被独立源解析 —— 官方包目录(packages/widgets/registry/<pkg>)、
-/// cmd_vue.rs 的 shadcn 安装表、或 LOCAL_UI_PKGS 本地手写白名单。
+/// UI 工具 vue.rs 的 shadcn 安装表、或 LOCAL_UI_PKGS 本地手写白名单。
 /// 覆盖 vue.rs 一切发射路径(含绕过 schema 的硬编码 import),schema 侧
 /// 同款校验见 schema_drift.rs。
 fn assert_ui_imports_resolve(full_text: &str) {
@@ -110,11 +110,11 @@ fn assert_ui_imports_resolve(full_text: &str) {
     }
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let registry_root = root.join("packages/widgets/registry");
-    let cmd_vue =
-        fs::read_to_string(root.join("crates/auto/src/cmd_vue.rs")).expect("read cmd_vue.rs");
+    let ui_vue = fs::read_to_string(root.join("../auto-ui/crates/auto-ui-tools/src/vue.rs"))
+        .expect("read UI owner vue.rs");
     // 安装表行形如 ("@/components/ui/button", "button"),
     let mut installable: BTreeSet<String> = BTreeSet::new();
-    for line in cmd_vue.lines() {
+    for line in ui_vue.lines() {
         let t = line.trim();
         if t.starts_with("(\"@/components/ui/") {
             let q: Vec<usize> = t.match_indices('"').map(|(i, _)| i).collect();
@@ -142,9 +142,24 @@ fn assert_ui_imports_resolve(full_text: &str) {
     assert!(
         bad.is_empty(),
         "P6-2:gallery SFC 发射了无独立来源的 ui import(D1 去自指围栏):\n  {}\n\
-         修复三选一:官方包补目录;cmd_vue.rs 安装表补条目;本地手写组件登记",
+         修复三选一:官方包补目录;auto-ui-tools/vue.rs 安装表补条目;本地手写组件登记",
         bad.join(", ")
     );
+}
+
+#[test]
+fn plan842_gallery_import_checker_uses_live_ui_table() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let ui_source = fs::read_to_string(root.join("../auto-ui/crates/auto-ui-tools/src/vue.rs"))
+        .expect("live UI generator");
+    assert!(ui_source.contains("(\"@/components/ui/input-otp\", \"input-otp\")"));
+    assert!(!root.join("packages/widgets/registry/input-otp").is_dir());
+    assert!(!root.join("../auto-ui/crates/auto-ui-tools/assets/shadcn-ui/input-otp").is_dir());
+    assert_ui_imports_resolve("import X from '@/components/ui/input-otp';");
+    let invalid = std::panic::catch_unwind(|| {
+        assert_ui_imports_resolve("import X from '@/components/ui/plan842-missing';");
+    });
+    assert!(invalid.is_err(), "unregistered import must fail the fence");
 }
 
 #[test]
