@@ -59,6 +59,14 @@ All AI coding assistants working in this repository must strictly adhere to the 
   >5MB 的暂存文件（防二进制/大日志/大量截图误入跟踪；已跟踪存量不受影响），单次提交
   暂存总量 >100MB 仅警告（证据批量沉淀合法）。豁免：`AUTO_LANG_ALLOW_LARGE=1 git commit`
   并在对应 plan 记录理由；证据一律提交截断/摘要（2026-10-21 裁定）。
+- **复审证据不入库（2026-10-28 用户裁定）**：`docs/plans/attachments/**` 下的复审/执行
+  证据（探针源码与输出、日志、截图、gate/ledger 转储、delivery 拷贝）一律**本地保留、
+  禁止 git add/commit/push**——attachments 的 .gitignore 只放行 `*.md`（摘要/契约/治理
+  文档），pre-commit 钩子拒绝暂存非 md 证据路径（`git add -f` 与已跟踪文件再暂存同样
+  拦截；豁免 `AUTO_LANG_ALLOW_EVIDENCE=1`，须在 plan 记录理由）。证据只在复审与修复
+  期间有意义；摘要（结论/命令/退出码/关键数字/本地路径+内容哈希）写入 plan 文件即可。
+  已 push 的存量证据不动；未 push 的存量证据在全部在途 worktree 合并后做历史过滤再
+  push。auto-plan-* 技能已同步此政策（auto-musk 源 b98aacd）。
 - **Fast Iteration during Development**:
   - During development, **DO NOT run full test suites repeatedly**. Use fast syntax/type checks:
     - Fast type check: `cargo check -p auto-lang`

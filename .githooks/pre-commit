@@ -19,6 +19,19 @@ if ! git diff --cached --name-only --diff-filter=d -z > "$tmp"; then
 fi
 [ -s "$tmp" ] || exit 0   # 无暂存文件(或仅删除),放行
 
+# 复审证据路径门禁(2026-10-28 用户裁定):attachments 下仅 *.md 入库。
+# 覆盖 gitignore 之外的强制路径(add -f / 已跟踪文件再暂存同样拦截)。
+if [ -z "$AUTO_LANG_ALLOW_EVIDENCE" ]; then
+  evbad=$(tr '\0' '\n' < "$tmp" | grep '^docs/plans/attachments/' | grep -v '\.md$' | grep -v '^docs/plans/attachments/\.gitignore$' | head -5)
+  if [ -n "$evbad" ]; then
+    echo "pre-commit 拒绝:复审证据不入库(2026-10-28 用户裁定),以下暂存路径非 *.md:" >&2
+    printf '%s\n' "$evbad" >&2
+    echo "证据留本地 attachments(gitignore 已排除),摘要写入 plan 文件;确需入库用" >&2
+    echo "AUTO_LANG_ALLOW_EVIDENCE=1 git commit,并在对应 plan 记录理由。" >&2
+    exit 1
+  fi
+fi
+
 want=$(tr -cd '\0' < "$tmp" | wc -c | tr -d ' ')
 measured=$(xargs -0 -r wc -c < "$tmp" 2>/dev/null)
 if [ -z "$measured" ]; then
