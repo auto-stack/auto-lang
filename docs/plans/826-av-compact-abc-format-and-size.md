@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-826
-status: drafting
+status: executing
 feature_name: AV紧凑ABC格式与字节码体积
-plan_revision: 3
+plan_revision: 6
 author: [Codex]
 created_at: 2026-10-20
-updated_at: 2026-10-20
-current_step: 0
-total_steps: 9
+updated_at: 2026-10-28
+current_step: 3
+total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-av/resident-function-install.md
   - docs/specs/auto-av/project.md
@@ -15,6 +15,7 @@ supersedes_spec_components:
   - docs/specs/auto-test-case/architecture.md
   - docs/specs/auto-av/abc-core-i32.md
   - docs/specs/auto-av/runtime-benchmark-method.md
+  - docs/specs/auto-test-case/ace-m1-conformance.md
 new_spec_components:
   - docs/specs/auto-av/compact-abc-format.md
 touched_goals: []
@@ -25,7 +26,9 @@ affects: [auto-av, auto-mir, auto-test-case]
 
 ## 0. 变更摘要
 
-承接[Design43 §12](../design/43-ac-av-typed-mir-and-abc.md#12-abc评审采纳与实施责任)、[Design44](../design/44-av-data-layout-place-and-ownership.md)及[ABC评审](reports/798-abc-design-review-2026-10-20.md)。本计划是后续性能草案，**不阻塞798交付，不成为820–824功能链硬依赖**。当前只写文档，未开树或执行测试。
+本次r6仅新增**T-11统一能力验证阶段 / AC-11 / V-14**，消费852已交付底座；原T-01/T-10完成项、私有模块证据及其他原验收/预算保留，任务总数10→11，current_step不增加。范围与无环交接见[共同合同](reports/ace-852-baseline-and-capability-validation-2026-10-26.md)。当前已实施，旧稿“仅起草/尚未创建”措辞属于历史，实际进度以§8和§9为准。
+
+承接[Design43 §12](../design/43-ac-av-typed-mir-and-abc.md#12-abc评审采纳与实施责任)、[Design44](../design/44-av-data-layout-place-and-ownership.md)及[ABC评审](reports/798-abc-design-review-2026-10-20.md)。本计划是后续性能草案，**不阻塞798交付，不成为820–824功能链硬依赖**。T-01/T-10已于唯一实施树完成独立codec切片并定向验证；T-02起正式集成尚未启动。
 
 ## 1. 目标
 
@@ -37,21 +40,25 @@ affects: [auto-av, auto-mir, auto-test-case]
 
 ## 2. 架构方案
 
-798提供正确的语义MIR/portable ABC和受检执行合同，825提供私有装载执行层，826提供新版本紧凑wire。磁盘和执行表示独立，能力、资源和所有权语义保持。功能链D798→820→821→822→823→824和可选优化链D798→825→826共享核心，**实现按实际单写窗口串行交接**，不是可并发改同一公共定义。
+798提供语义MIR/portable ABC和受检执行合同，825提供私有装载执行层，826提供紧凑wire。正式功能集成链为820→821→822→{823，824}，优化正式集成825→826；各Plan T-10私有同源模块可按§5并行，**公共定义/装配与实际派发仍按单写窗口串行交接**，不是整计划全部串行，也不是允许同时改同一公共合同。
 
-**D-825**=该计划最终独立review、冻结门禁通过、实际合入、Spec与merge收据齐全；不能只看状态或复制在途分支。T-01可先只读准备，T-02及依赖构建等D和本计划实施授权。可将825/826安排在820前，也可等一个功能Plan实际交付后接续；不添加环或把未交付data变成依赖。
+**D-825**=上游独立最终review、冻结门禁、合入、Spec/merge收据齐全，不消费WIP。只解除独立codec对D825的等待；T-02首例、正式版本路由/准入→LoadedProgram→AV与最终集成仍要求D825/D828和核心窗口。825的私有帧表示不是wire编码算法的输入。 T-01只读准备可先；T-10在D798/D828及私有写面登记后可做真实独立模块开发，不占公共核心窗口。实际全路径构建T-02起遵守本阶段D门/窗口与原授权。具体规则见§5并行合同。
 
 ## 3. 技术栈
 
-Rust与D-798共享的独立workspace；观察位置为 `D:/autostack/.wt/lang-798/auto-lang/experimental/ac-av-probe/`。code owner是其 `core/src/{mir,mir_verify,abc,abc_verify,av,contract}.rs` 与 `probe/src/{cache,driver,worker_restore}.rs` 相关符号，T-01以实际交付树定位，不从本轮主检出不存在的源码推断。适配D825已交付LoadedProgram接口，codec/profile版本在T-01冻结。
+Rust与D-798共享的独立workspace；当前已合入源码为 `experimental/ac-av-probe/`，实施时在本Plan唯一树读取；原798实施树是历史位置，不作为依赖。code owner是其 `core/src/{mir,mir_verify,abc,abc_verify,av,contract}.rs` 与 `probe/src/{cache,driver,worker_restore}.rs` 相关符号，T-01以实际交付树定位，不从本轮主检出不存在的源码推断。适配D825已交付LoadedProgram接口，codec/profile版本在T-01冻结。
 
 拟新增 `scripts/verify-av-826.ps1`，Scope=first/targeted/compat/bench/acceptance，测试前缀 `av_wire_826`、fixtures `test/cases/av-abc/826/`、AutoDown recipe `av-abc-826`。这些未来入口由T-02/06建立，当前不存在、未运行；不得把建议命令写成已验证证据。
 
-唯一拟实施树 `D:/autostack/.wt/lang-826/auto-lang`、分支 `plan-826-dev`；本轮未创建。根workspace成员/产品manifest、旧VM/UI/产品SDK不在范围；正式recipe在当前真实owner处的最小注册/父侧判定接线为明确例外，按实际根Rust触面验证。正式recipe注册位置服从814–816实际owner交接，不复制协议/runner。
+唯一实施树 `D:/autostack/.wt/lang-826/auto-lang`、分支 `plan-826-dev` 已建立并保留给复审/merge。根workspace成员/产品manifest、旧VM/UI/产品SDK不在范围；正式recipe在当前真实owner处的最小注册/父侧判定接线为明确例外，按实际根Rust触面验证。正式recipe注册位置服从814–816实际owner交接，不复制协议/runner。
 
 ## 4. 需求分析与背景调查
 
-用户2026-10-20确认798完成后优先828，所有ACE扩展保留全链路增量。D828为共享核心实施/集成排期门；只读准备可先，既有准备/进度保留。原其他依赖仍有效，无对798/828的反向依赖。旧revision/排期记录仅为历史，当前以本轮§5–8为准。
+2026-10-26用户明确授权修订852及823～826，先交付测试底座，再由在途计划加入本范围验证phase。本次r5→r6只修订合同，不启动实现/会话、不改822或实施树，不追加语言/native/AJ能力。新增验收属于用户明确授权，原已完成任务和证据按其实际范围保留；新AC-11尚无执行证据。
+
+2026-10-26用户授权审计/修订823–826并行边界，本轮仅改计划与战略，不启动实现或其他会话。取材初始821 archived r6、822 executing 6/9；期间822 R1 needs_fix重开至4/9，两次均非D822（他方进度原样保留）；实际输入/代码接缝与指纹见[依赖审计](reports/ace-parallel-dependency-audit-2026-10-26.md)及[inputs](attachments/ace-parallel-20261026/inputs.json)。旧“整计划串行/仅只读准备”排期按下文两阶段合同更新，原目标/非目标/预算和已有进度保留。
+
+用户2026-10-21确认：828之后优先推进817/818、827与820功能线，825/826择机插入；全链路增量、D828门和原硬依赖保留。授权本轮更新计划/战略及单写交接规则，不启动实施、不改变已有进度/预算/支持面；当前合同以§5–8及共同排期为准，旧排期/待裁定记录为历史。
 
 用户于2026-10-20认可ABC评审建议，要求补入Design43/44与实施计划，区分798正确性和后续性能，**先不写代码**。仅授权文档修订/计划起草；没有新模型、代理、安装工具或性能百分比授权，不自动进入work。已有798工作授权及R10finding保持，不能由本计划替其宣告交付。
 
@@ -95,7 +102,7 @@ invalid/unsupported、语言trap、resource/cancel、infra分态，错误在规�
 
 ### 5.6 文档复审补充合同（r2）
 
-硬依赖和版本路由按Design43 §12.5：825只等D798，826等D825；820–824不是反向前置。820指令表尚未交付时消费D798真实opcode/type/fuel合同，T-01制作已有操作覆盖清单，待820接手合并唯一表，不提前要求820新API。若功能profile已交付则其既有受检路径/codec必须保留并实际回归；未知profile不静默放入标量执行层。只在满足依赖后申请公共写入窗口，不持窗口等待owner。
+硬依赖和版本路由按Design43 §12.5及当前排期：825等D798/D828，826等D825/D828；820–824不是反向前置。820指令表尚未交付时消费D798真实opcode/type/fuel合同，T-01制作已有操作覆盖清单，待820接手合并唯一表，不提前要求820新API。若功能profile已交付则其既有受检路径/codec必须保留并实际回归；未知profile不静默放入标量执行层。只在满足依赖后申请公共写入窗口，不持窗口等待owner。
 
 准入非法dispatch=0；已准入执行的trap/fuel/cancel允许合法前缀，要求危险目标操作/提交/目标callee为0及实际frame/slot/资源清理正确。标量面不要求未交付owner token。模块类型+常量+导入+函数合计≤65536，每函数槽+块+指令合计≤65536，不是各表各领；32MiB受管分区和128MiB进程增量分别计量，不从worker实际峰值扣前端；T-01核798已交付同口径证据，不能用历史目标未达归因充依赖PASS。
 
@@ -117,22 +124,61 @@ T-09 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳
 
 原支持面/资源/原生等性能门不放宽；cold/restart/版本迁移或真实广泛失效另报，不掩盖正常body退化。旧帧/值/drop引用期间代码与布局保活，失败/取消/迟到不安装，退出后回收；不兼容布局按实际支持策略拒绝/扩大失效，不擅自迁移活值。
 
+### 并行模块与集成两阶段合同（2026-10-26）
+
+只解除独立codec对D825的等待；T-02首例、正式版本路由/准入→LoadedProgram→AV与最终集成仍要求D825/D828和核心窗口。825的私有帧表示不是wire编码算法的输入。
+
+**T-01→T-10独立模块门**：依D798/D828及已合入公开接口开展消费已交付标量MirModule/指令合同的新版字节编解码、section/函数目录、密度/非法长度与整数边界；decode只产未授信MIR并走真实verify_mir，不构造LoadedModule。单一生产源为`core/src/compact_abc.rs`（拟新增），测试壳拟为`experimental/ac-av-probe/parallel/826/`独立workspace/lock，仅用同树已合入auto-av-core。T-01冻结可达符号、具体路径/owner、支持子集和预算；T-10先证明最小可编译接缝，再实现真实模块与故障oracle。可由harness重导出已交付core公开模块并路径编译同一源，生产阶段只加薄adapter；不复制值/IR/store/VM，不改core/lib.rs/父members，不产生依赖环。若需要pub(crate)私有符号，不绕过权限，登记具体缺口并申请独立验收合入的小接缝；不能从上游WIP取代码。
+
+**T-02集成门**：T-10通过不等于profile/Plan交付。满足原D门后同步最新master，刷新接口/版本/预算，取得共享核心/注册窗口，完成原首例真实verify→ABC→AV/store/new-worker/AutoDown和trace/资源；继续T-03..06/T-09及最终review。所有模块独立通过不能代替原全路径、精确增量、P95/内存或反控。T-10测试命令为`cargo test --manifest-path experimental/ac-av-probe/parallel/826/Cargo.toml`（入口已建立，9 selected/9 passed/0 ignored @8190551fd），正式脚本必须汇总新V-13，不是独立壳绿就全计划绿。
+
+**写面与交接**：本计划只写上述私有新增源、parallel/826及自身fixture/报告；现有mir/contract/ownership/place/layout/instr_spec、codec/verifier、av派发/装载/snapshot、公共lib/manifest和共用driver/recipe注册默认一个核心窗口。基面/版本/文件符号、前后owner、兼容证据及接受/释放需记录；公共tag/opcode/version由核心owner统一登记。复审期间其他Plan可以继续无公共写面的T-10，不能拿未审公共定义开工或持窗等上游。最后集成者重核已交付消费者并集，复审独立、整档仍merge-owned，测量单实例。详见[共同审计/窗口表](reports/ace-parallel-dependency-audit-2026-10-26.md)。
+
+不得把新wire填成旧DecodedAbc版本绕过入口；正式新wire准入在D825后接真实loader，T-10字节/密度通过不能声称V-01全路径/V-08 loaded体积或执行性能通过。已交付data/owned codec路由保留。
+
+### 852底座交付后的统一能力验证phase（r6）
+
+本计划新增T-11，原实现可以继续；仅T-11及最终汇总/送审消费D852。D852是852当前revision的独立review、
+冻结门禁、实际合入、Spec和merge收据齐全的**底座交付**，不要求M1全绿；852不反向等待本计划。
+不消费852草案/工作分支WIP。原D门、单写窗口与原非目标不变，详见[共同合同](reports/ace-852-baseline-and-capability-validation-2026-10-26.md)。
+
+固定映射：**source:B01/B04/B09及B13/B14；scenario:I01/04～07/10～12**，对照本计划原V表。T-11工作入口先记录每个ID的实际profile/version、
+source/checked HIR/未信任typed MIR起点、正式recipe、具体V子例、独立oracle及raw证据。
+本范围必须实测：标量新旧wire策略、decode/verify/AV执行、坏输入拒绝、store恢复、体积/装载成本及原预算；已交付data/owned旧codec和受检执行支持不退化。
+边界：不要求全部复合类型进入紧凑wire，不扩大标量编码语义，不把保留旧codec算作新格式支持，不实现AJ/发布器。不得删必需适用行、以skip/模型/旧VM回退补绿。
+
+typed验证与Auto源码验证分轴；对应源码尚不支持时，保留M1源码/native缺口及明确owner/关闭条件，
+不得把同号typed fixture当作同源四路径通过。真正范围外且有明确owner的M1缺口不阻塞本计划，
+但本计划原已承诺的能力/实际适用T-11项缺证据仍阻止AC-11。
+
+T-09在T-02～05/T-10后做既有增量验证（不等待T-06/T-11）；T-11在T-05/T-09和D852后完成；
+T-06最后汇总原门及新V-14，T-07独立核AC-11。避免T-09“其他work完成”与T-11/T-06互等。
+原T-01/T-10已验子集证据保持；新增AC/V不能用旧模块绿关闭，受影响内容按实际输入/代码/依赖变化重验。
+
+852拥有通用case/证书/报告合同；本计划只追加自身binding/证据，协议/registry/SDK adapter按共享测试窗口
+单写交接，关联MIR/AV变更另守核心窗口，不复制runner/VM/store。a2r有效认证按内容/依赖复用，
+日常只emit+金样比较，不由T-11重复编译认证。原P95/内存/磁盘及负控不降，work仍只定向测试。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | target | before/after rule | rationale | AC |
 |---|---|---|---|---|---|
-| SD-01 | add | docs/specs/auto-av/compact-abc-format.md | 无本Plan合同→§5已验证的版本化紧凑wire/section/密度、拒绝及资源规则；r2纳入§5.6/V-11版本依赖/阶段计数与预算规则 | 设计与实物一致 | AC-01/02/03/04 |
+| SD-01 | add | docs/specs/auto-av/compact-abc-format.md | 无本Plan合同→§5已验证的版本化紧凑wire/section/密度、拒绝及资源规则；r2纳入§5.6/V-11版本依赖/阶段计数与预算规则；记录独立模块/正式集成支持边界、同源消费与准入责任 | 设计与实物一致 | AC-01/02/03/04 |
 | SD-02 | modify | docs/specs/auto-av/cache-and-conformance.md | 已交付profile→本Plan恢复/版本/当前能力准入及测量反控；r2纳入§5.6/V-11版本依赖/阶段计数与预算规则 | 不恢复trusted或PASS | AC-04/05/06 |
 | SD-03 | modify | docs/specs/auto-av/project.md | 已交付能力保持→登记本Plan实际优化/边界与未实现面 | 不冒领data/JIT | AC-06/08 |
 | SD-04 | modify | docs/specs/auto-test-case/architecture.md | 保留既有runner→独立av-abc-826 recipe/父侧结果/统计反控 | 真实路径验收 | AC-01/06 |
 | SD-05 | modify | docs/specs/auto-av/abc-core-i32.md | 旧profile单一wire→同一语义profile的版本路由/旧缓存策略与必需元数据 | 不重解释旧版本 | AC-02/04/06 |
 | SD-06 | modify | docs/specs/auto-av/runtime-benchmark-method.md | D825测量合同→追加新wire分段/压缩/loaded体积及编码域与准入域区分、可比边界 | 体积口径唯一来源 | AC-02/05/06 |
 | SD-07 | modify | docs/specs/auto-av/resident-function-install.md | 继承D828函数IR/代码复用、受检安装/依赖/寿命；新增能力不退回整模块热重编/装载 | 用户明确的顺序与增量机制保留 | AC-09 |
+| SD-08 | modify | docs/specs/auto-test-case/ace-m1-conformance.md | 852底座分母→追加本计划实际支持起点/recipe/证据与范围外gap；不冒领source/native能力 | 统一验证且不扩原语义范围 | AC-11 / V-14 |
+
 
 
 ## 6. 测试设计
 
-当前均为待实现fixture/观测要求，未运行。T-01冻结实际输入、独立expected和原始测量脚本，T-02建立真实首例及recipe，T-03/04完成补充反例，T-05覆盖cache/兼容，T-06汇总；核心补充矩阵如下。
+排期交接沿本节既有兼容性入口与独立review核查：对照记录中的实际基面/API/版本/消费者验证结果；公共写面无交接、依赖未交付或旧证据失配时不得判就绪。不新增整档测试；原增量、AutoDown、P95/内存及反控门保持。
+
+T-01已冻结实际输入与独立expected，T-10模块子集已定向运行；其余fixture/正式测量仍未实现。T-02建立真实首例及recipe，T-03/04完成补充反例，T-05覆盖cache/兼容，T-06冻结原始测量脚本并汇总；核心补充矩阵如下。
 
 | Case | AC / owner | 输入/状态 | 真实入口 | 结果/区分错误实现的断言 |
 |---|---|---|---|---|
@@ -158,6 +204,18 @@ T-09 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳
 |---|---|---|---|---|---|
 | V-12 | AC-09 / T-09 | D828 source30修订+新增能力两函数+依赖变化+强制退化四子case | 本计划真实consumer/正式recipe与D828 edit接口，由T-09 接线 | 未改对象/代际相同、未改函数生产阶段/产物IO=0，结果/清理正确，P95<1s；强制退化非零 | 当前profile真实起点，不冒领未交付源码/迁移能力，四子case无skip |
 
+### 并行同源与依赖边界验收（新增work-owned）
+
+| Case ID | AC / owner | 输入与真实入口 | 区分性oracle | 覆盖边界 |
+|---|---|---|---|---|
+| V-13 | AC-10；T-10/T-03/T-05 | 同一拟新增生产源由parallel/826构建并在核心窗口后由真实生产adapter消费；坏输入/失败分配/版本或窗口负控 | 真实MIR同源codec往返，0/127/128/255/256及溢出/截断/重复section有手算oracle与分配前预算；decode不能直接执行，D825后生产同源codec经真实准入/AV/store恢复，禁止旧version伪装；同源hash/函数映射一致，越写公共面、WIP依赖或适用必需组合缺例不得就绪 | T-10只证明已交付子集模块；T-02..06补正式profile/cache/AutoDown，未知/未交付类别诚实拒绝，不冒领全路径 |
+
+### 852统一能力验证（新增work-owned）
+
+| Case ID | AC / owner | 输入/实际入口 | 可观察oracle与反控 | 边界 |
+|---|---|---|---|---|
+| V-14 | AC-11；T-11 | source:B01/B04/B09及B13/B14；scenario:I01/04～07/10～12；D852已合入runner及本计划真实recipe/V子例 | 标量新旧wire策略、decode/verify/AV执行、坏输入拒绝、store恢复、体积/装载成本及原预算；已交付data/owned旧codec和受检执行支持不退化；错结果/漏适用行/假source起点/旧证据错版必非绿；保留原资源/增量及独立expected | 不要求全部复合类型进入紧凑wire，不扩大标量编码语义，不把保留旧codec算作新格式支持，不实现AJ/发布器；实际起点/范围外缺口有owner，无source支持不冒领M1 |
+
 ## 7. 验收标准
 
 | ID | owner_stage | 可观察结果/证据 |
@@ -168,27 +226,43 @@ T-09 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳
 | AC-04 | work | 版本/cache/current grants及恢复重验成立，准入非法dispatch=0；V-01/06及适用V-04通过；§5.6/V-11逐项通过（不把运行期故障当准入零执行） |
 | AC-05 | work | 所有新表/暂存真实峰值受预算，旧消费者无扩面或退化；V-05/07/09适用路径通过；§5.6/V-11逐项通过（不把运行期故障当准入零执行） |
 | AC-06 | work | V-08..10真实WASM/V8分层对标、原编辑负载和父侧反控齐全，0例/skip/缺工具不报PASS；报告结论可由原始数据重算；§5.6/V-11逐项通过（不把运行期故障当准入零执行） |
-| AC-07 | review | 独立核对所有AC/V/SD和遗漏/延后/绕行，绑定实现及依赖hash、无未处理findings；显式记merge-owned门禁pending |
+| AC-07 | review | 独立核对所有AC/V/SD和遗漏/延后/绕行，绑定实现及依赖hash、无未处理findings；显式记merge-owned门禁pending ；核AC-10及V-13的真实模块/集成边界；同时独立核AC-11/V-14 |
 | AC-08 | merge | 冻结门禁过检、SD沉淀、索引/实际合入归档/收据齐全；wt-guard clean后清唯一树，批量回归到期按仓规 |
 | AC-09 | work | D828与新增能力保持全链路增量，V-12 四子case及结构/身份/资源/时间/反控raw齐全；未改函数不重编/重装载，时间绿不替代粒度绿 |
+| AC-10 | work | V-13的T-10独立同源模块与T-03/T-05真实集成证据齐全，D门/公共写面接受释放/版本与消费者矩阵可核；不以模块绿替代原全路径，适用拒绝/失败控制与原增量/资源门不减 |
+| AC-11 | work | T-11及V-14映射/真实执行/负控/证据齐全，消费D852已交付身份；本计划适用行不得漏测/skip，范围外source/native/M1 gap保留owner且不冒领；日常a2r复用有效认证、零Rust重编译；原AC/V/预算不减 |
+
 
 ## 8. 执行步骤
 
 | Task | owner_stage | 依赖 | 文件/操作/输出 | 验证与AC |
 |---|---|---|---|---|
-| [ ] T-01 | work | 本Plan实施授权；只读准备可早于D-825 | 核对§3实际源码/owner/Spec/依赖身份；新增attachments/826/contract-decision.md，冻结§5全部决策/反例/基准及预算边界 | 决策表无无主问题，V/AC/SD完整；AC-01..06；r2按§5.6负责V-11及清单对应决策/实施/反控/恢复/汇总 |
-| [ ] T-02 | work | T-01、D-825、共享核心单写交接、D828排期门 | D828后先刷新T-01接口/版本/预算合同，旧准备不冒领新依赖pass； §3真实核心/adapter、fixtures/脚本与正式recipe首例，persist→新worker恢复 | first scope，42/trace/真实阶段与独立oracle；AC-01/04 |
-| [ ] T-03 | work | T-02 | core/abc、abc_verify及loader：实现紧凑wire/section与密度；保留参考路径/版本边界 | targeted scope V-02/03及合法反控；AC-02；r2按§5.6负责V-11及清单对应决策/实施/反控/恢复/汇总 |
-| [ ] T-04 | work | T-03 | codec异常长度/required section/语义必需信息及所有§5安全/资源反例；先完成findings | targeted V-04/05/07；AC-02/03/05；r2按§5.6负责V-11及清单对应决策/实施/反控/恢复/汇总 |
-| [ ] T-05 | work | T-04 | probe cache/worker/兼容consumer最小适配，错版本/授权/代际/损坏及真实restart | compat V-01/06/07/09；AC-04/05；r2按§5.6负责V-11及清单对应决策/实施/反控/恢复/汇总 |
-| [ ] T-06 | work | T-05 | scripts/verify-av-826.ps1汇总、WASM/V8真实bench、父侧反控、SD草案及证据；fmt和独立workspace scoped check | acceptance V-01..10非0例/漏例/skip；AC-01..06；r2按§5.6负责V-11及清单对应决策/实施/反控/恢复/汇总 |
-| [ ] T-09 | work | D828及本计划其他work实现完成 | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-12 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage | AC-09；共同基线+新增能力兼容定向验收，未实测不勾；送审前不跑整档 |
-| [ ] T-07 | review | T-01..06完成、T-09 完成 | 同树独立验收、复核SD/遗漏和峰值/测量原始证据，记录绑定版本review | AC-07，merge-owned门禁pending；不提前跑整档 |
+| [x] T-01 | work | 用户实施授权；只读准备可先 | 核对§3实际源码/owner/Spec/依赖身份；新增attachments/826/contract-decision.md，冻结§5全部决策/反例/基准及预算边界；冻结§5私有同源模块/harness可编译接缝、T-10子集与集成门、实际公开API和窗口登记 | [✅ 已完成 @8190551fd] canonical ULEB/AVAC1、section/预算/完整V-AC-SD清单与候选25B/39B反控已冻结；详见contract-decision §1–8 |
+| [x] T-10 | work | T-01、D798、D828、独立私有写面登记 | 新`core/src/compact_abc.rs`与parallel/826独立harness/lock；最小接缝先编译，再完成消费已交付标量MirModule/指令合同的新版字节编解码、section/函数目录、密度/非法长度与整数边界；decode只产未授信MIR并走真实verify_mir，不构造LoadedModule；不改公共装配 | [✅ 已完成 @8190551fd] 同源harness 9/9、0 ignored、fmt/diff-check过；真实MIR/5-3-2B/目录/边界/损坏/分配前预算与真实verify已验，仅V-13模块子集，生产同源/cache/恢复待T-03/05 |
+| [x] T-02 | work | T-01/T-10、D825、D828、核心/注册窗口接受 | D828后先刷新T-01接口/版本/预算合同，旧准备不冒领新依赖pass； §3真实核心/adapter、fixtures/脚本与正式recipe首例，persist→新worker恢复；记录已合入基面/API版本/写面owner与接受交接，无公共写面则明确登记；只消费T-10同源模块，不另实现；刷新已交付基面/版本、记录接受 | [✅ 已完成 @99776f37f] D825合入(9eb9ebca3)后同步master(merge 9c7c71a1b)，核心/注册窗口空闲并接受登记；compact_abc入core/lib、abc_verify新增AVAC唯一准入、A09键abc-codec维度、manifest abc_codec路由、driver/worker WireCodec策略+信封单元名重绑定、recipe ac-av/compact-run-v1双注册+judge_compact_runtime；env接口刷新见contract-decision §10；`verify-av-826.ps1 -Scope first` exit 0（壳9/9+probe 5/5+父侧2/2），回归825首例4/4+cache_tier 20/20+825 corpus 1/1；AC-01/04 首例轴关闭（targeted/compat/bench等scope仍pending T-03..06） |
+| [ ] T-03 | work | T-02 | core/abc、abc_verify及loader：实现紧凑wire/section与密度；保留参考路径/版本边界；生产直接消费T-10同源，完成适用V-13集成轴 | targeted scope V-02/03及合法反控；AC-02；r2按§5.6负责V-11及清单对应决策/实施/反控/恢复/汇总 |
+| [ ] T-04 | work | T-03 | codec异常长度/required section/语义必需信息及所有§5安全/资源反例；先完成findings；按§5核已交付消费者并集/类别拒绝及同源，完成V-13适用轴 | targeted V-04/05/07；AC-02/03/05；r2按§5.6负责V-11及清单对应决策/实施/反控/恢复/汇总 |
+| [ ] T-05 | work | T-04 | probe cache/worker/兼容consumer最小适配，错版本/授权/代际/损坏及真实restart；按§5核已交付消费者并集/类别拒绝及同源，完成V-13适用轴 | compat V-01/06/07/09；AC-04/05；r2按§5.6负责V-11及清单对应决策/实施/反控/恢复/汇总 |
+| [ ] T-06 | work | T-05/T-09/T-11 | scripts/verify-av-826.ps1汇总、WASM/V8真实bench、父侧反控、SD草案及证据；fmt和独立workspace scoped check；正式脚本汇总V-13/AC-10，无模块通过冒领集成或缺适用必需例 | acceptance V-01..10非0例/漏例/skip；AC-01..06；r2按§5.6负责V-11及清单对应决策/实施/反控/恢复/汇总；最终汇总AC-11/V-14，不以852基础层PASS代替本能力验证 |
+| [ ] T-09 | work | D828、T-02～05/T-10（不等T-06/T-11） | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-12 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage | AC-09；共同基线+新增能力兼容定向验收，未实测不勾；送审前不跑整档 |
+| [ ] T-11 | work | T-05/T-09、D852、原D门及所需测试/核心窗口 | 执行§5统一能力验证phase：source:B01/B04/B09及B13/B14；scenario:I01/04～07/10～12逐行映射到真实起点/recipe/V子例；标量新旧wire策略、decode/verify/AV执行、坏输入拒绝、store恢复、体积/装载成本及原预算；已交付data/owned旧codec和受检执行支持不退化；在attachments/826/852-validation记录binding与raw，范围外M1 gap保留owner；不实现额外前端/native/AJ | AC-11/V-14；本计划既有正式脚本新增显式`-Scope baseline`（T-11建立），acceptance最终包含其结果；定向执行/反控，selected>0且无漏适用项，不触发整档或隐式Rust认证 |
+| [ ] T-07 | review | T-01..06完成、T-09 完成、T-10及AC-10完成、T-11/AC-11完成 | 同树独立验收、复核SD/遗漏和峰值/测量原始证据，记录绑定版本review；独立核依赖/同源与窗口并集及V-13 | AC-07，merge-owned门禁pending；不提前跑整档；独立核AC-11/V-14，新证据未验不得沿用旧结论 |
 | [ ] T-08 | merge | T-07 pass | 冻结提交执行独立workspace完整有限合同测试及按实际触面裸cargo t/必要tv；SD沉淀、merge/archive/ledger、到期回归及清树 | AC-08；门禁失败归因，代码改变先受影响复审，清树前wt-guard |
 
 worktree及build/test仅在本Plan树，簿记主检出。work/review不运行整档t/tv/tt等；定向验收必做，最终review后的merge统一冻结门禁。tf只按到期在主检出单实例。未改Rust的本轮严格不跑cargo/docs_gen。
 
+
 ## 9. 复审记录
+
+2026-10-28 stage:work | plan_id:PLAN-826 | plan_revision:6 | outcome:pass（T-02正式首例完成，整Plan保持executing 3/11） | worktree_path:D:/autostack/.wt/lang-826/auto-lang | branch:plan-826-dev | base_commit:9c7c71a1b（e417247a5+T-10 8190551fd后merge master@9eb9ebca3） | code_commit:99776f37f（树clean） | dependency_revisions:D798/D828已归档；D825=master 9eb9ebca3已合入归档；组内兄弟auto-ui@bd228b0/auto-down@c3464d0只读 | task_ids:T-02 | evidence:[contract-decision §10](attachments/826/contract-decision.md)；`scripts/verify-av-826.ps1 -Scope first` exit 0：同源壳9/9、probe首例5/5（compact往返+D825执行/跨代magic隔离/persist→cache-hit→新worker AVAC恢复重验/legacy共存双键空间/unit不派发）、父侧corpus 1/1+敏感性反控1/1（AV826_JUDGE_SABOTAGE四轴+错oracle）；回归av_runtime_825_first_case 4/4、cache_tier 20/20、825 corpus runner 1/1；fmt/无新警告（预存基线除外） | blockers:T-03..T-06/T-09/T-11未做（targeted/compat/bench/baseline/acceptance scope显式pending）；merge-owned整档门禁pending | next_responsible_role:work T-03（core/abc生产集成与V-02/03密度矩阵）。
+
+2026-10-26 stage:new | PLAN-826 r5→r6 | outcome:pass（验证phase合同可交work，非实现/独立最终review） | authority:用户确认先852底座、再接本范围验证 | changed:T-11/AC-11/V-14/SD-08、T-09/T-06/T-07无环依赖；total10→11，原完成项/current_step/状态保留 | 原模块与旧review证据保持历史，新验收尚pending；若代码/依赖/输入变化重验受影响项 | next:原D门/窗口下继续已有work，D852后做T-11 | evidence:[共同合同](reports/ace-852-baseline-and-capability-validation-2026-10-26.md)、[修订预检](attachments/852-phase-integration-20261026/preflight.json)。本轮不启动实施。
+
+2026-10-26 stage:work | plan_id:PLAN-826 | plan_revision:5 | outcome:pass（仅T-01/T-10授权切片完成，整Plan保持executing 2/10） | worktree_path:D:/autostack/.wt/lang-826/auto-lang | branch:plan-826-dev | base_commit:e417247a5ca51aa3ba305215be52b9d543071a19 | code_commit:8190551fd38cee179514ed7da609469430bd6d1e（树clean） | dependency_revisions:D798/D828已归档交付，消费同基面已合入auto-av-core；D825未消费 | task_ids:T-01,T-10 | evidence:[contract-decision](attachments/826/contract-decision.md) §1–9；独立harness `cargo test --manifest-path experimental/ac-av-probe/parallel/826/Cargo.toml` 9/9、0 ignored，fmt/diff-check过、无警告；canonical ULEB、真实MIR+verify、目录/整数/损坏/分配前预算通过 | blockers:T-02起等D825交付和公共核心/注册窗口；生产adapter同源、AV/store/new-worker/AutoDown、V-08测量及完整AC-10未做 | next_responsible_role:review（仅本切片）；merge-owned统一整档/触面门禁pending，未合入/未发布Spec/未清树。
+
+2026-10-26 stage:new | PLAN-826 r4→r5 | outcome:pass（依赖/并行合同可交work，非实现通过或D门自动解锁） | authority:用户明确要求实际依赖审计与独立模块并行 | changed:§4–8两阶段门、T-10/AC-10/V-13、SD-01和当前入口；total9→10，原0进度/drafting及预算保持 | next:T-01后依D798/D828和私有写面登记做T-10，T-02仍等D825/D828与核心窗；不代启实施 | evidence:[审计](reports/ace-parallel-dependency-audit-2026-10-26.md)、[预检](attachments/ace-parallel-20261026/preflight.md)。
+
+2026-10-21 stage:new | PLAN-826 r3→r4 | outcome:pass（排期/交接合同静态修订，非实现验收或依赖解锁） | authority:用户确认828后优先817/818、827和820功能线，825/826择机插入 | changed:§4授权、§5排期/共享单写、§6交接核查、T-02及§10当前入口；T/AC/V/SD ID、数量、状态和原进度保留 | next:只读准备可先，D828及本计划原D门/单写交接满足后work；不自动启动 | evidence:[本轮预检](attachments/ace-order-20261021/preflight.md)。
 
 2026-10-20 stage:new | PLAN-826 r2→r3 | outcome:pass（规划修订，非实现通过） | authority: 用户指定798→828优先/后继保留全链路增量 | delta: AC-09 / V-12四子case / SD-07 / T-09；review依赖新work项，D828排期/集成门，原D门不减 | 原进度保留，total 8→9，新证据pending | next:只读准备可先，D828后串行实施；无代码/测试/Spec发布/合入。
 
@@ -200,7 +274,8 @@ stage:review；review_scope:文档合同定向复核（非实现final）；revie
 
 ## 10. 待澄清事项
 
-没有本轮必须询问用户的问题。T-01负责实际合入版本、核心owner窗口、ULEB/窄+Wide候选选择、最短编码政策和旧版策略、可用WASM/V8工具及精确输入的有界决策；材料不足则带实际冲突回new，不擅自改支持面、提高资源上限或删除必需oracle。未知工具不视为用户授权安装。
+当前r6已获得用户对新增验证phase的授权，无需再次确认方向。原实现按原D门/窗口推进；T-11及最终汇总/送审须D852，当前没有新验证执行证据。未实现source/native/JIT等仅保留M1 owner/gap，不扩大本计划。任务总数11，current_step沿原完成项。
 
+用户已授权本次依赖/并行合同修订，无需重新批准同范围方向。T-01的真实公开API/独立harness接缝与适用矩阵、T-10独立codec均已完成；T-02正式首例与集成仍须D825/D828及核心/注册窗口。只解除独立codec对D825的等待；T-02首例、正式版本路由/准入→LoadedProgram→AV与最终集成仍要求D825/D828和核心窗口。825的私有帧表示不是wire编码算法的输入。
 
-**当前排期与验收**：798→828→本计划（原前置仍需满足）；T-09 / AC-09 / V-12 未完成，旧revision/测试总数不覆盖新增义务。用户已确认该顺序/目标，不重复请求同范围授权。
+不得把新wire填成旧DecodedAbc版本绕过入口；正式新wire准入在D825后接真实loader，T-10字节/密度通过不能声称V-01全路径/V-08 loaded体积或执行性能通过。已交付data/owned codec路由保留。 若后续实际接口无法兑现，应给具体输入/符号/预算反例并回new，不静默复制WIP、弱化验证/资源门或退回第二实现。当前executing 3/11（T-01/T-10/T-02完成）；T-03起按依赖推进，merge-owned门禁pending，不宣布Plan完成；旧§9串行排期为历史。
