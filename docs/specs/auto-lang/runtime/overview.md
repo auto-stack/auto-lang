@@ -2,6 +2,15 @@
 
 > **Status**: partial（核心结构已实现并接入；Plan 064 分层迁移未收尾，`Scope` 遗留）
 
+## 结构（PLAN-843 结构半部，2026-10-28）
+
+FFI/服务/根 lib 职责分界：`vm/ffi/stdlib.rs` 收敛注册/派发入口 + `stdlib/{file_io,http_client,
+crash_trace,strings_json,math,image,sqlite,sys_env}` 域族；`vm/ffi/http_server.rs` 服务装配 +
+`http_server/{server_route,server_model,server_dispatch,server_scope,server_argbind}`；crate 根
+`lib.rs`（879 生产行）仅组合与再导出，`entry.rs` 承载 run* 执行入口族、`flags.rs` 承载进程级
+全局旗标（crate 根路径经 pub use 恒等）。guard 生命周期（RequestFileRootGuard/HttpBaseEnvGuard）、
+TCP ready/端口策略与退出清理语义不变；stdlib_assembly 源码指纹输入清单覆盖全部族文件。
+
 ## 职责
 
 解释器/编译器侧的运行时支撑层，与 `vm/`（AutoVM 字节码虚拟机）是两个层次：

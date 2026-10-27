@@ -2,6 +2,12 @@
 
 > **Status**: implemented（核心可用；借检查、参数检查集成仍 partial）
 
+## 结构（PLAN-843 结构半部，2026-10-28）
+
+`TypeStore`（types.rs）保持唯一类型/符号/模块表 owner，未拆分未复制；推断实现维持 `infer/`
+既有模块族（context/constraints/unification/expr/stmt/functions/task_types）。parser 拆分后
+跨域访问仍经窄接口，无第二 Store。
+
 ## 职责
 
 AutoLang 编译器的类型系统：类型表示（`Type` 枚举）、类型推断与统一（Hindley-Milner /

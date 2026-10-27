@@ -2,6 +2,13 @@
 
 > **Status**: implemented
 
+## 结构（PLAN-843 结构半部，2026-10-28）
+
+`trans/rust.rs`（5960 生产行）为组合入口；发射算法按职责归 `trans/rust/{expr_emit,stmt_emit,
+decl_emit,ty,call_emit,project_fixups}`；`auto_cabi_kit` 系 emit_cabi_kit 内嵌模板串（随
+call_emit 原样）；`call_inner` 特型派发 if 链单体保全（844 候选）。同算法复用、Sink 产物
+逐字节可比；无跨目标共享大杂包。源码 pin 型断言随 owner 迁移扫描面（plan716 先例）。
+
 ## 职责
 
 把 Auto AST 转译为目标语言源码：C（a2c）、Rust（a2r）、TypeScript（a2ts）、

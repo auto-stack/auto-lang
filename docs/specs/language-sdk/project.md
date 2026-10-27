@@ -11,6 +11,9 @@
 
 ## 职责与边界
 
+- **内部结构（PLAN-843 结构半部）**：七热点已按语义职责拆主题模块——parser/{expressions,statements,decls,type_syntax,scenario}、
+  vm/codegen|engine|native|ffi 家族、trans/rust 家族；crate 根=组合面（entry.rs run* 入口族 + flags.rs 全局旗标，pub use 保路径恒等）。
+  职责 DAG/状态 owner 表/结构规则见 [architecture.md](architecture.md)。
 - **单源面**：前端门面组（ast/token/error/session/lexer 门面、symbols/
   scope）、类型系统/infer、parser+dialect、compile/解释器、VM（engine/
   codegen/native/ffi）、trans（rust/c/gdscript/tscn...）、libs/http 服务、

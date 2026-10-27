@@ -2,6 +2,14 @@
 
 > **Status**: implemented（核心管线完整；方言体系 PR-2 已落地；`.?`/`.*`/`.@` 等符号属性、位操作、Auto Flow 未实现）
 
+## 结构（PLAN-843 结构半部，2026-10-28）
+
+`parser.rs`（2175 生产行）仅保 Parser 构造/方言装配/游标/错误恢复与 parse() 入口；解析算法按
+语法族归 `parser/{expressions,statements,decls,type_syntax,scenario}`（+tests.rs，模块路径不变
+零测试 ID 变化）。Parser 17 pub 字段合同与方言派发序（pre→builtin→post，Arc 共享句柄递归可见）
+不变；类型/推断边界维持窄接口（types.rs TypeStore 单源 + infer/* 既有多模块）。详见
+[language-sdk/architecture.md](../../language-sdk/architecture.md)。
+
 ## 职责
 
 源码 → AST：词法分析（含 f-string 插值 `$var`/`${expr}`）、递归下降语法分析、
