@@ -10,7 +10,7 @@ use auto_lang_core::session::CompilerSession;
 use auto_ui_dialect::{UiCode, UiDialect, UiStmt};
 use dialect_api_consumer::{ExternalUiDialect, Probe};
 
-fn parse_override(code: &str, probe: Arc<Probe>) -> AutoResult<UiCode> {
+fn parse_with_external_ui(code: &str, probe: Arc<Probe>) -> AutoResult<UiCode> {
     Parser::from(code)
         .with_session(CompilerSession::ui())
         .parse_domain(&ExternalUiDialect::new(probe))
@@ -28,7 +28,7 @@ fn parse_builtin(code: &str) -> UiCode {
 #[test]
 fn v01_external_model_subset_produces_typed_block() {
     let probe = Arc::new(Probe::default());
-    let ast = parse_override("model { count int = 1 }", probe.clone()).unwrap();
+    let ast = parse_with_external_ui("model { count int = 1 }", probe.clone()).unwrap();
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
     assert_eq!(probe.accepts.load(Ordering::SeqCst), 1);
     let Some(UiStmt::ModelBlock(block)) = ast.domain_stmts().next() else {
@@ -48,7 +48,7 @@ fn v01_external_model_subset_produces_typed_block() {
 fn v01_subset_var_untyped_and_core_expr_init() {
     let probe = Arc::new(Probe::default());
     let code = "model {\n  count int = 1\n  var name str = \"hi\"\n  items = [1, 2]\n}";
-    let ast = parse_override(code, probe.clone()).unwrap();
+    let ast = parse_with_external_ui(code, probe.clone()).unwrap();
     assert_eq!(probe.accepts.load(Ordering::SeqCst), 1);
     let Some(UiStmt::ModelBlock(block)) = ast.domain_stmts().next() else {
         panic!("expected ModelBlock")
@@ -73,10 +73,10 @@ fn v02_core_assignment_not_swallowed() {
 #[test]
 fn v02_ui_view_param_on_and_scene_unchanged() {
     let probe = Arc::new(Probe::default());
-    let ast = parse_override("fn f(view x int) { }", probe.clone()).unwrap();
+    let ast = parse_with_external_ui("fn f(view x int) { }", probe.clone()).unwrap();
     assert!(matches!(ast.core_stmts().next(), Some(Stmt::Fn(_))));
 
-    let ast = parse_override("scene Main : Node2D { }", probe.clone()).unwrap();
+    let ast = parse_with_external_ui("scene Main : Node2D { }", probe.clone()).unwrap();
     assert!(matches!(ast.core_stmts().next(), Some(Stmt::SceneDecl(_))));
 
     let code = concat!(
@@ -87,7 +87,7 @@ fn v02_ui_view_param_on_and_scene_unchanged() {
         "  on { .S -> { .e = \"after\" } }\n",
         "}"
     );
-    let ast = parse_override(code, probe).unwrap();
+    let ast = parse_with_external_ui(code, probe).unwrap();
     let widget = ast
         .domain_stmts()
         .find_map(|stmt| match stmt {
@@ -116,11 +116,11 @@ fn v03_registration_survives_with_session() {
 #[test]
 fn v03_registration_propagates_into_nested_bodies() {
     let probe = Arc::new(Probe::default());
-    assert!(parse_override("{ model { count int = 1 } }", probe.clone()).is_err());
+    assert!(parse_with_external_ui("{ model { count int = 1 } }", probe.clone()).is_err());
 
     let code =
         "widget W {\n  msg Msg { S }\n  model { e int = 0 }\n  view { col { text \"hi\" } }\n}";
-    let ast = parse_override(code, probe.clone()).unwrap();
+    let ast = parse_with_external_ui(code, probe.clone()).unwrap();
     assert!(ast
         .domain_stmts()
         .any(|stmt| matches!(stmt, UiStmt::WidgetDecl(_))));
@@ -130,7 +130,7 @@ fn v03_registration_propagates_into_nested_bodies() {
 #[test]
 fn v03_two_parser_instances_isolated() {
     let probe = Arc::new(Probe::default());
-    let _ = parse_override("model { count int = 1 }", probe.clone()).unwrap();
+    let _ = parse_with_external_ui("model { count int = 1 }", probe.clone()).unwrap();
     assert_eq!(probe.accepts.load(Ordering::SeqCst), 1);
     let ast = parse_builtin("model { count int = 1 }");
     assert!(matches!(
@@ -143,9 +143,9 @@ fn v03_two_parser_instances_isolated() {
 #[test]
 fn v04_err_keeps_registry_and_recovers_to_legal_stmts() {
     let probe = Arc::new(Probe::default());
-    let err = parse_override("model 123\nfn bridge() { }", probe.clone()).unwrap_err();
+    let err = parse_with_external_ui("model 123\nfn bridge() { }", probe.clone()).unwrap_err();
     assert!(matches!(err, AutoError::Syntax(_)));
-    let ast = parse_override("model { ok int = 2 }", probe.clone()).unwrap();
+    let ast = parse_with_external_ui("model { ok int = 2 }", probe.clone()).unwrap();
     assert!(matches!(
         ast.domain_stmts().next(),
         Some(UiStmt::ModelBlock(_))
@@ -156,7 +156,7 @@ fn v04_err_keeps_registry_and_recovers_to_legal_stmts() {
 #[test]
 fn v04_error_position_points_at_offending_token() {
     let probe = Arc::new(Probe::default());
-    let err = parse_override("model { = 5 }", probe).unwrap_err();
+    let err = parse_with_external_ui("model { = 5 }", probe).unwrap_err();
     match &err {
         AutoError::Syntax(SyntaxError::Generic { message, span }) => {
             assert!(message.contains("model field name expected identifier"));
@@ -169,7 +169,7 @@ fn v04_error_position_points_at_offending_token() {
 #[test]
 fn v04_none_rolls_back_cursor_annotated_model_falls_back_to_builtin() {
     let probe = Arc::new(Probe::default());
-    let ast = parse_override("model { #[primary] count int = 1 }", probe.clone()).unwrap();
+    let ast = parse_with_external_ui("model { #[primary] count int = 1 }", probe.clone()).unwrap();
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
     assert_eq!(probe.accepts.load(Ordering::SeqCst), 0);
     let Some(UiStmt::ModelBlock(block)) = ast.domain_stmts().next() else {
@@ -193,7 +193,7 @@ fn v05_conflict_resolution_distinguishable() {
     let code =
         "widget W {\n  msg Msg { S }\n  view { col { text \"hi\" } }\n}\nmodel { count int = 1 }";
     let probe = Arc::new(Probe::default());
-    let ast = parse_override(code, probe.clone()).unwrap();
+    let ast = parse_with_external_ui(code, probe.clone()).unwrap();
     assert!(ast
         .domain_stmts()
         .any(|stmt| matches!(stmt, UiStmt::WidgetDecl(_))));
