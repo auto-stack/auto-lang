@@ -189,11 +189,51 @@ def validate_ids(ids, selected, expected, required_selected):
     return sorted(ids - expected)
 
 
-def baseline_for(tier, label):
-    owner = "ui" if label == "ui-full" else label if label in ("tt", "tb") else "language" if tier == "tf" else tier
+def migrations():
+    path = HERE / "scripts/full-regression-migrations-841.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    if doc.get("schema") != "test-id-migrations/1" or doc.get("plan") != 841:
+        raise ValueError("unsupported test migration manifest")
+    rows = doc["migrations"]
+    if len({row["old"] for row in rows}) != len(rows) or len({row["new"] for row in rows}) != len(rows):
+        raise ValueError("duplicate test migration identity")
+    for row in rows:
+        if (row["source"], row["target"]) not in (("language", "language"), ("language", "ui-full"), ("ui-full", "ui-full")):
+            raise ValueError("invalid test migration owners")
+        if not row.get("reason") or "\t" not in row["old"] or "\t" not in row["new"]:
+            raise ValueError("incomplete test migration")
+    return rows
+
+
+def raw_baseline(owner):
     base = HERE / "scripts" / f"full-regression-{owner}"
     return (set(base.with_name(base.name + "-ids.txt").read_text(encoding="utf-8").splitlines()),
             set(base.with_name(base.name + "-selected.txt").read_text(encoding="utf-8").splitlines()))
+
+
+def baseline_for(tier, label):
+    owner = "ui" if label == "ui-full" else label if label in ("tt", "tb") else "language" if tier == "tf" else tier
+    expected, required = raw_baseline(owner)
+    records = migrations()
+    source = "ui-full" if label == "ui-full" else "language"
+    for row in records:
+        if row["source"] != source:
+            continue
+        for values in (expected, required):
+            if row["old"] in values:
+                values.remove(row["old"])
+                if row["target"] == source:
+                    values.add(row["new"])
+    if label == "ui-full":
+        language_owner = "language" if tier == "tf" else tier
+        language_expected, language_required = raw_baseline(language_owner)
+        for row in records:
+            if row["source"] == "language" and row["target"] == "ui-full":
+                if row["old"] in language_expected:
+                    expected.add(row["new"])
+                if row["old"] in language_required:
+                    required.add(row["new"])
+    return expected, required
 
 
 def legs(tier, lang, ui, batch=False):
@@ -210,7 +250,9 @@ def legs(tier, lang, ui, batch=False):
         language += ["--features", features]
     ui_args = [arg for package in UI_PACKAGES for arg in ("-p", package)]
     # The old joint workspace unified compiler/ui through auto-lang/ui-iced.
-    ui_args += [*common, "--features", "auto-ui-compiler/ui"]
+    # PLAN-841 moved nine recipe controls from a lib module into this exact
+    # integration target. Keep them in the full tier, with lib tests unchanged.
+    ui_args += [*common, "--test", "design_tokens_recipe", "--features", "auto-ui-compiler/ui"]
     result = [("language", lang, language), ("ui-full", ui, ui_args)]
     if batch:
         result += [("tt", lang, ["-p", "auto-lang", "-p", "auto-lang-core", "--lib", "--features",
@@ -241,6 +283,7 @@ def main(argv=None):
             if not args.list_only and not args.filters:
                 require_main(lang)
             receipt["roots"] = {"language": str(lang), "ui": str(ui)}
+            receipt["test_migrations"] = migrations()
             before = {"language": identity(lang), "ui": identity(ui)}
             receipt["identities"] = before
             total_selected = 0

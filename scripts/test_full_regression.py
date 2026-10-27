@@ -254,6 +254,44 @@ class Controls(unittest.TestCase):
             self.assertNotEqual(child.returncode, 0)
             self.assertNotIn(b"unexpected admission", child.stdout)
 
+    def test_plan841_migration_preserves_selection_and_rejects_lost_targets(self):
+        migrations = full.migrations()
+        self.assertEqual(len(migrations), 21)
+        self.assertEqual(len({m["old"] for m in migrations}), 21)
+        self.assertEqual(len({m["new"] for m in migrations}), 21)
+        for migration in migrations:
+            owner = "language" if migration["source"] == "language" else "ui"
+            original_ids, original_required = full.raw_baseline(owner)
+            self.assertIn(migration["old"], original_ids)
+            self.assertIn(migration["old"], original_required)
+        for tier in ("tf", "taa", "ta", "t3"):
+            for label in ("language", "ui-full"):
+                expected, required = full.baseline_for(tier, label)
+                for migration in migrations:
+                    if migration["target"] != label:
+                        continue
+                    target = migration["new"]
+                    self.assertIn(target, expected, (tier, label, target))
+                    self.assertIn(target, required, (tier, label, target))
+                    with self.assertRaisesRegex(ValueError, "baseline coverage lost"):
+                        full.validate_ids(expected - {target}, required, expected, required)
+                    with self.assertRaisesRegex(ValueError, "baseline coverage lost"):
+                        full.validate_ids(expected, required - {target}, expected, required)
+        for label in ("tt", "tb"):
+            expected, required = full.baseline_for("tf", label)
+            for migration in migrations:
+                if migration["source"] == "language":
+                    self.assertNotIn(migration["old"], expected)
+                    if migration["target"] == "language":
+                        self.assertIn(migration["new"], required)
+
+    def test_migrated_recipe_target_is_in_every_full_owner_selection(self):
+        for tier in ("tf", "taa", "ta", "t3"):
+            ui = full.legs(tier, Path("language"), Path("ui"))[1][2]
+            self.assertIn("--lib", ui)
+            self.assertIn("--test", ui)
+            self.assertIn("design_tokens_recipe", ui)
+
     def test_full_owner_commands_and_batch_order(self):
         rows = full.legs("tf", Path("language"), Path("ui"), True)
         self.assertEqual([row[0] for row in rows], ["language", "ui-full", "tt", "tb"])
