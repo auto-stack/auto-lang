@@ -114,6 +114,11 @@ $SECURITY = @(
     'av_wire_826_security_strip_equivalence_and_inner_invariants',
     'av_wire_826_security_execution_budgets_unchanged'
 )
+$COMPACT_COMPAT = @(
+    'av_wire_826_compat_edit_session_over_compact_cache',
+    'av_wire_826_compat_restore_requires_current_authorization',
+    'av_wire_826_compat_codec_routing_gate_and_delivered_wire_untouched'
+)
 
 switch ($Scope) {
     'first' {
@@ -127,6 +132,18 @@ switch ($Scope) {
         Run-Probe -Bin 'av_wire_826_first_case' -RequiredIds $FIRST_PROBE
         Run-Probe -Bin 'av_wire_826_targeted' -RequiredIds $TARGETED
         Run-Probe -Bin 'av_wire_826_security' -RequiredIds $SECURITY
+        Run-Runner -Filter 'av_wire_826_first_case_corpus_green' -RequiredIds $FIRST_RUNNER
+    }
+    'compat' {
+        Run-ParallelHarness
+        Run-Probe -Bin 'av_wire_826_first_case' -RequiredIds $FIRST_PROBE
+        Run-Probe -Bin 'av_wire_826_compat' -RequiredIds $COMPACT_COMPAT
+        # V-09 compat axis: the delivered consumer families re-run
+        # unchanged over their own AVAD wires (no support-face regression
+        # from the compact integration).
+        Run-Probe -Bin 'av_data_820_cache_compat'
+        Run-Probe -Bin 'av_owned_821_cache_compat'
+        Run-Probe -Bin 'av_collections_822_cache_compat'
         Run-Runner -Filter 'av_wire_826_first_case_corpus_green' -RequiredIds $FIRST_RUNNER
     }
     default {
