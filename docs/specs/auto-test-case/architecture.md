@@ -212,3 +212,7 @@ emit+byte-compare+严格收据验证+周期性 CIM 祖先采样进程观察（�
 `av-data/822`。父侧持独立冻结期望表（value/allocs/frees/live 台账面）；V-10
 反控 seam：`AV822_COLLECTIONS_EXPECT_SABOTAGE`（期望破坏缝）+ AV798_FAULT
 复用（worker 三故障态）。未注册/跨 recipe 拒与三 recipe 既有围栏一致。
+
+## PLAN-824：ac-av/dynamic-run-v1
+
+正式注册 `ac-av/dynamic-run-v1` 与 `av-data-824` typed fixture 语料；worker 执行真实 MIR→ABC→AV 和 portable 恢复，父侧持独立冻结期望，检查值/资源与失败反控。漏例、跳过、错误结果或 worker 故障不能冒充通过。M1 中 typed 动态证据与不支持的源码/native 路径分开登记，见 [ace-m1-conformance](ace-m1-conformance.md)。

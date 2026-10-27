@@ -53,3 +53,7 @@ native loader 能力包，重启 exe 不满足。
 下游仅在本目录**追加** binding/证据行；改 binding schema、金样、通用合同或
 SDK adapter 须拿 852 交付后的测试窗口（关联核心合同另拿核心窗口）。消费时记录
 输入 profile/wire/semantic 版本与脚本/证书身份。
+
+## PLAN-824：动态 typed 能力绑定
+
+D01–D09 的 `av-dyn-824` 行绑定 `ac-av/dynamic-run-v1` 和真实 typed MIR/ABC/AV、portable 恢复及父侧 oracle；W01–W05 保留整数和浮点精确位型验证，I04–I06/I10–I12 追加动态会话、失效与资源证据。源码、复合 native/CTE 及旧 AVM/a2r 的 Dyn API 未由 typed fixture 关闭，仍按各自 owner/gap 记录。

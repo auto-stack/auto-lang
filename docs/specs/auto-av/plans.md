@@ -10,3 +10,5 @@
 | 828 | av-function-incremental-session | ✅（delivered，T-10 最终 PASS） | [计划](../../plans/archive/828-av-function-incremental-session.md) | 常驻函数安装完整切片：单元派发（无 merged 载荷）+事务快照与寿命+执行器内派发身份观测+512/GC/存储水位+正式双门战役与双线预算；[resident-function-install.md](resident-function-install.md) |
 | 817 | AV驱动的CTE查询与冻结缓存闭环 | ✅ delivered | [计划](../../plans/archive/817-av-cte-query-frozen-cache.md) | 828 session 消费：exec snapshot 车道（缓存身份轴/增量纯度双观测/退化门） |
 | 822 | AV类型化集合与Variant载荷访问 | ✅（delivered，R19 最终 PASS） | [计划](../../plans/archive/822-av-typed-collections-variants.md) | av.collections/1 第四 profile：18 指令 typed 集合/Variant/Index Place、数据量计费克隆、显式清理全链（含部分回滚）、恢复身份四绑定（profile/types-fp/entry/snapshot）、collections 会话完整候选授权预检；[collections-variants.md](collections-variants.md) |
+
+| 824 | AV动态Variant与可移植冻结 | ✅ delivered（R3 最终 PASS） | [计划](../../plans/archive/824-av-dynamic-values-freeze.md) | av.dynamic/1 的受检类型擦除、portable 树及类型资源/取消边界；[dynamic-portable-values.md](dynamic-portable-values.md) |

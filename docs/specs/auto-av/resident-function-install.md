@@ -147,3 +147,7 @@ IO=0；`fn:<name>` 经 link 内容等值签名绑定（容器型接口变化结�
   替换单元以自身声明为准；已发布 snapshot 保留其准入时点授权事实（不回溯）。
 - 依赖变化控制：标量签名/容器型接口 layout（link 拒）/内部 layout（精确
   单元重建）/helper body 四轴正反控齐备（V-13 子case 3）。
+
+## PLAN-824：动态 profile 的增量消费者
+
+`DynamicUpdateSession` 消费既有受检单元、link 和快照接口；body-only 编辑、签名/依赖/profile/授权不变时保留未修改函数身份及其生产/IO 零重做。类型、布局或授权变化按当前绑定重验或拒绝，不迁移旧活值。该 typed profile 不证明新增源码或 native Dyn 支持。

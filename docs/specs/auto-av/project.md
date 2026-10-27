@@ -54,3 +54,7 @@ typed 元素存取/转移/清理。合同见
 **非目标**：source 支持面（fixture-only）、Map/Set/迭代器/借用元素容器/
 循环共享、record 容器字段、List 嵌 List、native/CTE 扩面。后继增量消费与
 授权面见 [resident-function-install](resident-function-install.md)。
+
+## PLAN-824：av.dynamic/1 动态值 profile
+
+实验 profile `av.dynamic/1`（profile 5、AVAD v4）：受检显式擦除、类型查询/恢复与独立 portable owned 树冻结。实际类型、预算、取消和恢复边界见 [dynamic-portable-values](dynamic-portable-values.md) 与 [MIR profile](../auto-mir/dynamic-cast-profile.md)。不交付通用源码 Dyn、复合 CTE、native/FFI 或闭包冻结。

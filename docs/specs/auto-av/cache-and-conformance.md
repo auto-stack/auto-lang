@@ -97,3 +97,7 @@ entry/profile/types-fp/codec×3 语义/source-snapshot）。恢复零信任盘�
 owner 轴由准入门**重盖章**（载荷无自证权，不发明 wire 自证字段）。世代隔离
 v1/v2/v3 互不可读；好信封坏内层、内容寻址同键冲突（防篡改）拒；确定性重放
 步数一致。证据：av_collections_822_cache_compat 8 例 + review-r14..r17。
+
+## PLAN-824：动态代码与 portable 值分域
+
+`plan824/av-dynamic` 的 `av.dynamic/1`（profile 5、AVAD v4）沿现有受检代码缓存恢复链，portable 值以 `auto.portable.av-dynamic/1` 分域；恢复重验当前类型/字段/分支及授权，不从保存的载荷恢复信任。动态与旧 profile 的 schema/producer/语义身份隔离，坏内层或改变依赖受控拒绝。资源和 typed 支持边界见 [dynamic-portable-values](dynamic-portable-values.md)。

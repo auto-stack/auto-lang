@@ -13,3 +13,5 @@ Checked HIR → Typed MIR → verify_mir/CheckedMir → ABC/AV。MIR采用显式
 
 798有函数持久产物，不具全链路函数增量：miss仍whole-module lower/verify/split。单函数前端/HIR/MIR/装载替换已由 828 交付（见
 [auto-av/resident-function-install](../auto-av/resident-function-install.md)）；PLAN-820 在数据域消费该接口（record 域单函数 AVAD unit + 全链增量），不扩大 native/CTE 默认 profile。
+
+PLAN-824 在实验 typed MIR 增加 [dynamic-cast-profile](dynamic-cast-profile.md)，以验证过的类型擦除及 checked 恢复接入 ABC/AV，不扩大源码或 native 支持面。
