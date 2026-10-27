@@ -1,5 +1,5 @@
 pub fn p90_ms(windows: &[f64]) -> Option<f64> {
-    if windows.is_empty() || windows.iter().any(|w| !w.is_finite() || *w <= 0.0) {
+    if windows.is_empty() || windows.iter().any(|w| !w.is_finite() || *w < 0.0) {
         return None;
     }
     let mut v = windows.to_vec();
@@ -22,5 +22,6 @@ fn p90_nearest_rank_boundaries() {
     assert!(p90_ms(&[]).is_none());
     assert!(p90_ms(&[f64::NAN]).is_none());
     assert!(p90_ms(&[f64::INFINITY]).is_none());
-    assert!(p90_ms(&[0.0]).is_none());
+    assert_eq!(p90_ms(&[0.0]), Some(0.0));
+    assert!(p90_ms(&[-1.0]).is_none());
 }

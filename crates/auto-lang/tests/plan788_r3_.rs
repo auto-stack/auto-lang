@@ -311,7 +311,7 @@ fn object_hit(v: &serde_json::Value) -> Option<String> {
 }
 
 fn p90(samples: &[u128]) -> u128 {
-    assert!(!samples.is_empty() && samples.iter().all(|v| *v > 0), "valid measured samples");
+    assert!(!samples.is_empty(), "measured samples must not be empty");
     let mut s = samples.to_vec();
     s.sort_unstable();
     s[s.len() - s.len() / 10 - 1]
@@ -319,6 +319,7 @@ fn p90(samples: &[u128]) -> u128 {
 
 #[test]
 fn ace_p90_nearest_rank_boundaries() {
+    assert_eq!(p90(&[0]), 0, "sub-millisecond durations can round down to zero");
     let mut ten = vec![2000; 10];
     ten[9] = 2001;
     assert_eq!(p90(&ten), 2000);

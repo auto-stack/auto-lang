@@ -101,7 +101,7 @@ impl Obs {
 
 /// ACE development-stage gate: nearest-rank P90 over every valid window.
 pub fn latency_p90_ms(samples: &[f64]) -> Option<f64> {
-    if samples.is_empty() || samples.iter().any(|w| !w.is_finite() || *w <= 0.0) {
+    if samples.is_empty() || samples.iter().any(|w| !w.is_finite() || *w < 0.0) {
         return None;
     }
     let mut sorted = samples.to_vec();
@@ -124,7 +124,8 @@ fn latency_p90_nearest_rank_boundaries() {
     assert!(latency_p90_ms(&[]).is_none());
     assert!(latency_p90_ms(&[f64::NAN]).is_none());
     assert!(latency_p90_ms(&[f64::INFINITY]).is_none());
-    assert!(latency_p90_ms(&[0.0]).is_none());
+    assert_eq!(latency_p90_ms(&[0.0]), Some(0.0));
+    assert!(latency_p90_ms(&[-1.0]).is_none());
 }
 
 /// Percentile helper over sorted sample milliseconds.

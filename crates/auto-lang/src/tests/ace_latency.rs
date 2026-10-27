@@ -1,8 +1,8 @@
 //! Shared ACE development-stage latency percentile for integration tests.
 
-/// Nearest-rank P90. All raw windows must be finite and strictly positive.
+/// Nearest-rank P90. All raw windows must be finite and non-negative; callers retain their path-specific zero rules.
 pub(super) fn p90_ms(windows: &[f64]) -> Result<f64, &'static str> {
-    if windows.is_empty() || windows.iter().any(|w| !w.is_finite() || *w <= 0.0) {
+    if windows.is_empty() || windows.iter().any(|w| !w.is_finite() || *w < 0.0) {
         return Err("missing or invalid latency sample");
     }
     let mut sorted = windows.to_vec();
@@ -26,5 +26,6 @@ fn p90_nearest_rank_boundaries() {
     assert!(p90_ms(&[]).is_err());
     assert!(p90_ms(&[1.0, f64::NAN]).is_err());
     assert!(p90_ms(&[1.0, f64::INFINITY]).is_err());
-    assert!(p90_ms(&[0.0]).is_err());
+    assert_eq!(p90_ms(&[0.0]), Ok(0.0));
+    assert!(p90_ms(&[-1.0]).is_err());
 }

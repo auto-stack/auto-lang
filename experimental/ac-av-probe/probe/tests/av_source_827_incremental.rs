@@ -494,7 +494,9 @@ fn av_source_827_incremental_failing_verdict_still_writes_raw() {
         "status": "fail",
         "reason": "controlled negative: P90 exceeded the 2000ms gate",
         "structure": "pass",
+        "p90_ms": 2100.0,
         "p95_ms": 2100.0,
+        "time_gate_ms": 2000.0,
         "time_gate": false,
     }));
     // The failing run's raw EXISTS on disk, parses, and carries the failing

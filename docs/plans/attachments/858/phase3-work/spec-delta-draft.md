@@ -1,6 +1,6 @@
-# PLAN-858 r3 Phase 3 — frozen baseline and policy delta draft
+# PLAN-858 r4 Phase 3 — frozen baseline and policy delta draft
 
-The following is a review draft, not an applied canonical change. User ruling: development-stage ACE turnaround gates use nearest-rank P90 <= 2000 ms; 10 valid measurements allow at most one above 2000 ms. Keep existing formal sample counts, actual timing boundaries, results, structure, resources, failures, and raw observations. Preserve historical P95/P99 measurements as measurements, not new-policy evidence. Later architecture-wide measurement will establish final targets.
+The following is a review draft, not an applied canonical change. User ruling: development-stage ACE turnaround gates use nearest-rank P90 <= 2000 ms; 10 valid measurements allow at most one above 2000 ms. Keep existing formal sample counts, actual timing boundaries, results, structure, resources, failures, and raw observations. Preserve existing per-path zero rules: 788 measures integer milliseconds and valid sub-millisecond observations may round to zero; 796 paths that already reject zero continue to reject it. Preserve historical P95/P99 measurements as measurements, not new-policy evidence. Later architecture-wide measurement will establish final targets.
 
 | Delta | Target | Before → proposed after |
 |---|---|---|

@@ -177,7 +177,7 @@ fn measure_built(
 }
 
 fn latency_p90_ms(sorted: &[f64]) -> Option<f64> {
-    if sorted.is_empty() || sorted.iter().any(|w| !w.is_finite() || *w <= 0.0) {
+    if sorted.is_empty() || sorted.iter().any(|w| !w.is_finite() || *w < 0.0) {
         return None;
     }
     Some(sorted[sorted.len() - sorted.len() / 10 - 1])
@@ -198,7 +198,8 @@ fn latency_p90_nearest_rank_boundaries() {
     assert!(latency_p90_ms(&[]).is_none());
     assert!(latency_p90_ms(&[f64::NAN]).is_none());
     assert!(latency_p90_ms(&[f64::INFINITY]).is_none());
-    assert!(latency_p90_ms(&[0.0]).is_none());
+    assert_eq!(latency_p90_ms(&[0.0]), Some(0.0));
+    assert!(latency_p90_ms(&[-1.0]).is_none());
 }
 
 fn percentile(sorted: &[f64], p: f64) -> f64 {

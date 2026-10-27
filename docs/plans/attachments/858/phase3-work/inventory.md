@@ -1,4 +1,4 @@
-# PLAN-858 r3 ACE latency policy inventory
+# PLAN-858 r4 ACE latency policy inventory
 
 Baseline `97ad76691578957b9c35f62dfbc72eb4bda83660`, main `e5f1ccf331adc99b6b37e6717f50577c9b4f803a`; original final review `f098e8d707c4774e0c5a2f7dc459c9065e515488` applies to Phase 2 only. AutoDown `c3464d0a0d36e4f8a7988b0c0c26448fc52361b4` and AutoUI `b4fe0000e56cddaf7d3cf70e348431f2258aacde`; searches of those sibling trees found no P95/1000 ACE contract. Their state must be rechecked before handoff.
 
@@ -15,3 +15,5 @@ Baseline `97ad76691578957b9c35f62dfbc72eb4bda83660`, main `e5f1ccf331adc99b6b37e
 Historical spec-plan summaries remain history, while current contracts and forward-looking design sections require supersession. `docs/design/39`, `40`, `43`, `44`, `strategy/auto-native-backend-evolution.md`, `strategy/av-source-programs-and-avm-replacement-roadmap.md` carry existing unrelated WIP on main; do not overwrite or silently include it. `plan-823-dev` overlaps `av_probe_worker.rs` and `av_collections_822_incremental.rs`; `plan-824-dev` overlaps `tests.rs` and `av_probe_worker.rs`. Reconcile actual tips and affected evidence before integration; do not modify those worktrees.
 
 Review checklist and exact target baseline hashes: [spec delta draft](spec-delta-draft.md). This is an implementation inventory, not a claim that final review, full performance runs, cargo t, or main batch passed.
+
+Revision r4 preserves the r3 user decision and corrects the invented blanket zero rejection: the 788 path records integer milliseconds, so a real sub-millisecond value may quantize to zero. Existing 796 strict positive-sample checks remain.
