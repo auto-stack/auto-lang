@@ -18,7 +18,7 @@
 //! persistence (warm session only — restore/GC arrive with T-07).
 
 use crate::cache::{
-    abc_unit_key, canonical_hir_function, caps_fingerprint, decode_unit_sidecar,
+    abc_unit_key_with_codec, canonical_hir_function, caps_fingerprint, decode_unit_sidecar,
     encode_unit_sidecar, get_enveloped_opt, get_enveloped_with_id, merge_spans, open_store,
     payload_fingerprint, put_enveloped, split_units, unit_sidecar_usable_for_current,
     unit_span_sidecar_key, unit_span_sidecar_repair_key, EnvelopeIdentity, UnitSidecar,
@@ -31,6 +31,7 @@ use crate::fn_hir_codec::{
 use crate::function_queries::{BodyFactRead, FnEnv};
 use crate::hir_adapter::{lower_checked, lower_function_unit};
 use crate::semrefs::content_version_of;
+use crate::wire::WireCodec;
 use ac_syntax_core_adapter::{project_decl_strict, project_strict, CoreKinds};
 use ac_syntax_grammar::compile as compile_grammar;
 use ac_syntax_rt::edit::incremental_reparse;
@@ -47,8 +48,6 @@ use auto_ac_prototype::source::{
     FnCandidate, SourceProfile,
 };
 use auto_ac_prototype::verify::{verify_function, CheckedFunction};
-use auto_av_core::abc::{decode_abc, encode_abc};
-use auto_av_core::abc_verify::verify_abc;
 use auto_av_core::av::{execute_program, CancelFlag, ExecLimits, ExecTrace};
 use auto_av_core::contract::{ExecOutcome, Value};
 use auto_av_core::function_code::FunctionCode;
@@ -383,6 +382,10 @@ pub struct FunctionIncrementalSession {
     /// refuses new work and has released its bounded content history and
     /// store handle; snapshots pinned elsewhere stay alive and correct.
     closed: bool,
+    /// PLAN-826 T-09: the wire generation this session's unit admission,
+    /// cache rows and restores ride (default = the delivered legacy AVAB
+    /// core wire; the compact AVAC policy is opt-in per session).
+    wire: WireCodec,
     /// B3-C03 (F-02 axis AT THE REAL CONSUMER): the dispatched-payload
     /// evidence of the LAST `run`, taken from THE trace that execution
     /// returned — the identities the executor actually dispatched for
@@ -418,6 +421,19 @@ pub fn warmup(
     src: &str,
     entry_def_id: &str,
     caps: &[String],
+) -> Result<FunctionIncrementalSession, String> {
+    warmup_with_codec(src, entry_def_id, caps, WireCodec::LegacyAbc)
+}
+
+/// PLAN-826 T-09: warm-up under an explicit ABC wire policy — the
+/// compact AVAC generation rides the same 828 compile/admission/cache
+/// seams (codec-dimensioned rows, compact admission, envelope-bound unit
+/// names).
+pub fn warmup_with_codec(
+    src: &str,
+    entry_def_id: &str,
+    caps: &[String],
+    wire: WireCodec,
 ) -> Result<FunctionIncrementalSession, String> {
     // Input admission BEFORE any allocation (F-828-R1-09): the same frozen
     // size/nesting front door the 798 driver runs, not a session exemption.
@@ -526,13 +542,20 @@ pub fn warmup(
             .iter()
             .find(|u| u.funcs[0].name == d.id_text.as_str())
             .ok_or_else(|| format!("no MIR unit for def `{}`", d.id_text))?;
-        // Unit admission is real even at warm-up: encode→decode→verify_abc.
-        let flat = encode_abc(unit)
-            .map_err(|e| format!("warm-up encode: {e:?}"))?
-            .to_flat();
-        let decoded = decode_abc(&flat).map_err(|e| format!("warm-up decode: {e:?}"))?;
-        let loaded =
-            verify_abc(decoded, &unit.owner).map_err(|e| format!("warm-up admit: {e:?}"))?;
+        // Unit admission is real even at warm-up: encode→decode→admit
+        // under the session's wire policy (PLAN-826 T-09).
+        let flat = wire
+            .encode(unit)
+            .map_err(|e| format!("warm-up encode: {e:?}"))?;
+        let mut decoded = wire
+            .decode(&flat)
+            .map_err(|e| format!("warm-up decode: {e:?}"))?;
+        // The compact wire carries no function names — the in-memory
+        // unit's def id re-binds before admission (envelope rule).
+        wire.rebind_unit_name(&mut decoded.module, &unit.funcs[0].name);
+        let loaded = wire
+            .admit_decoded(decoded, &unit.owner)
+            .map_err(|e| format!("warm-up admit: {e:?}"))?;
         let code = Arc::new(
             FunctionCode::admit_unit(loaded, 0)
                 .map_err(|e| format!("warm-up function code: {e}"))?,
@@ -633,6 +656,7 @@ pub fn warmup(
         counters: SessionCounters::default(),
         store: None,
         closed: false,
+        wire,
         last_run_publication: std::cell::RefCell::new((Vec::new(), None, 0)),
         phase_walls: BTreeMap::new(),
         phase_io: BTreeMap::new(),
@@ -651,7 +675,28 @@ pub fn warmup_persisted(
     store_root: &Path,
     project: &str,
 ) -> Result<FunctionIncrementalSession, String> {
-    let mut session = warmup(src, entry_def_id, caps)?;
+    warmup_persisted_with_codec(
+        src,
+        entry_def_id,
+        caps,
+        store_root,
+        project,
+        WireCodec::LegacyAbc,
+    )
+}
+
+/// PLAN-826 T-09: a persisted session under an explicit wire policy —
+/// the compact rows land in the codec-dimensioned namespace and a same-
+/// policy restart restores from them.
+pub fn warmup_persisted_with_codec(
+    src: &str,
+    entry_def_id: &str,
+    caps: &[String],
+    store_root: &Path,
+    project: &str,
+    wire: WireCodec,
+) -> Result<FunctionIncrementalSession, String> {
+    let mut session = warmup_with_codec(src, entry_def_id, caps, wire)?;
     let store = open_store(store_root).map_err(|e| format!("store open: {e:?}"))?;
     session.store = Some((store, project.to_string()));
     let edges = session
@@ -758,12 +803,33 @@ pub fn restore(
     store_root: &Path,
     project: &str,
 ) -> Result<FunctionIncrementalSession, String> {
-    let cold = || warmup_persisted(src, entry_def_id, caps, store_root, project);
+    restore_with_codec(
+        src,
+        entry_def_id,
+        caps,
+        store_root,
+        project,
+        WireCodec::LegacyAbc,
+    )
+}
+
+/// PLAN-826 T-09: warm restart under an explicit wire policy — the
+/// compact rows restore through the codec-dimensioned namespace; the
+/// other generation's rows are a deterministic miss (cold fallback).
+pub fn restore_with_codec(
+    src: &str,
+    entry_def_id: &str,
+    caps: &[String],
+    store_root: &Path,
+    project: &str,
+    wire: WireCodec,
+) -> Result<FunctionIncrementalSession, String> {
+    let cold = || warmup_persisted_with_codec(src, entry_def_id, caps, store_root, project, wire);
     let store = match open_store(store_root) {
         Ok(s) => s,
         Err(_) => return cold(),
     };
-    let mut session = match warmup(src, entry_def_id, caps) {
+    let mut session = match warmup_with_codec(src, entry_def_id, caps, wire) {
         Ok(s) => s,
         Err(_) => return cold(),
     };
@@ -821,13 +887,19 @@ pub fn restore(
             Some(v) => v,
             None => return cold(),
         };
-        let key = abc_unit_key(&owner, &rec.def_id, &body_cv, &caps_fp);
+        let key = abc_unit_key_with_codec(
+            &owner,
+            &rec.def_id,
+            &body_cv,
+            &caps_fp,
+            session.wire.schema(),
+        );
         let expect = EnvelopeIdentity::abc_bound(&owner, &rec.def_id, &body_cv);
         let payload = match get_enveloped_opt(&store, &key, "A09", &expect) {
             Ok(Some(b)) => b,
             _ => return cold(),
         };
-        let mut decoded = match auto_av_core::abc::decode_abc(&payload) {
+        let mut decoded = match session.wire.decode(&payload) {
             Ok(d) => d,
             Err(_) => return cold(),
         };
@@ -913,7 +985,13 @@ pub fn restore(
             schema: auto_av_core::contract::MIR_SCHEMA.to_string(),
             module: owner.clone(),
         };
-        let loaded = match verify_abc(decoded, &unit_owner) {
+        // PLAN-826 T-09: the compact wire carries no function names —
+        // the envelope-bound def id re-binds before admission (legacy
+        // keeps its payload-name admission unchanged).
+        session
+            .wire
+            .rebind_unit_name(&mut decoded.module, &rec.def_id);
+        let loaded = match session.wire.admit_decoded(decoded, &unit_owner) {
             Ok(l) => l,
             Err(_) => return cold(),
         };
@@ -1571,10 +1649,12 @@ impl FunctionIncrementalSession {
                 continue;
             };
             let spans = std::mem::take(&mut f.spans);
-            let bytes = auto_av_core::abc::encode_abc(&spanless)
-                .map_err(|e| format!("encode {}: {e:?}", rec.def_id))?
-                .to_flat();
-            let key = abc_unit_key(&owner, &rec.def_id, &cv, &caps_fp);
+            let bytes = self
+                .wire
+                .encode(&spanless)
+                .map_err(|e| format!("encode {}: {e:?}", rec.def_id))?;
+            let key =
+                abc_unit_key_with_codec(&owner, &rec.def_id, &cv, &caps_fp, self.wire.schema());
             let expect = EnvelopeIdentity::abc_bound(&owner, &rec.def_id, &cv);
             // T07-R2-02: the ABC row is STORE-INTERNAL (no soft root) —
             // its liveness rides the manifest's required edge, so
@@ -2009,17 +2089,26 @@ impl FunctionIncrementalSession {
             .insert("verify_mir_us".into(), elapsed_us(t));
         self.counters.bump(&format!("verify_mir:{changed_name}"));
         let t = std::time::Instant::now();
-        let flat = encode_abc(&unit)
-            .map_err(|e| format!("abc encode: {e:?}"))?
-            .to_flat();
+        let flat = self
+            .wire
+            .encode(&unit)
+            .map_err(|e| format!("abc encode: {e:?}"))?;
         self.phase_walls.insert("abc_emit_us".into(), elapsed_us(t));
         self.counters.bump(&format!("abc_emit:{changed_name}"));
         let t = std::time::Instant::now();
-        let decoded = decode_abc(&flat).map_err(|e| format!("abc decode: {e:?}"))?;
+        let mut decoded = self
+            .wire
+            .decode(&flat)
+            .map_err(|e| format!("abc decode: {e:?}"))?;
         self.phase_walls.insert("decode_us".into(), elapsed_us(t));
         self.counters.bump(&format!("decode:{changed_name}"));
+        self.wire
+            .rebind_unit_name(&mut decoded.module, &unit.funcs[0].name);
         let t = std::time::Instant::now();
-        let loaded = verify_abc(decoded, &unit.owner).map_err(|e| format!("abc verify: {e:?}"))?;
+        let loaded = self
+            .wire
+            .admit_decoded(decoded, &unit.owner)
+            .map_err(|e| format!("abc verify: {e:?}"))?;
         self.phase_walls
             .insert("verify_abc_us".into(), elapsed_us(t));
         self.counters.bump(&format!("verify_abc:{changed_name}"));
@@ -2760,11 +2849,10 @@ mod batch2_commit_link_failure {
             .find(|i| i.symbol == "fn:d_main")
             .unwrap();
         imp.symbol = "fn:missing_target".into();
-        let loaded = verify_abc(
-            decode_abc(&encode_abc(&m).unwrap().to_flat()).unwrap(),
-            &m.owner,
-        )
-        .unwrap();
+        let legacy = crate::wire::WireCodec::LegacyAbc;
+        let loaded = legacy
+            .admit_bytes(&legacy.encode(&m).unwrap(), &m.owner)
+            .unwrap();
         bad.code = Arc::new(FunctionCode::admit_unit(loaded, 1).unwrap());
         let rejected = s.commit(bad);
         assert!(!rejected.ok);

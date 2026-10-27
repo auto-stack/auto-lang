@@ -4,7 +4,7 @@
 [CmdletBinding()]
 param(
     [Parameter(ParameterSetName = 'Scope', Mandatory = $true)]
-    [ValidateSet("first", "targeted", "compat", "bench", "baseline", "acceptance")]
+    [ValidateSet("first", "targeted", "compat", "incremental", "bench", "baseline", "acceptance")]
     [string]$Scope,
     [Parameter(ParameterSetName = 'Guard')]
     [switch]$GuardSelfTest
@@ -119,6 +119,13 @@ $COMPACT_COMPAT = @(
     'av_wire_826_compat_restore_requires_current_authorization',
     'av_wire_826_compat_codec_routing_gate_and_delivered_wire_untouched'
 )
+$INCREMENTAL = @(
+    'av_wire_826_incremental_two_function_edit_identity_and_zero_work',
+    'av_wire_826_incremental_content_hit_reuses_every_index',
+    'av_wire_826_incremental_signature_reject_then_exact_invalidation',
+    'av_wire_826_incremental_forced_copy_cannot_claim_reuse',
+    'av_wire_826_incremental_persisted_rows_are_codec_namespaced'
+)
 
 switch ($Scope) {
     'first' {
@@ -133,6 +140,15 @@ switch ($Scope) {
         Run-Probe -Bin 'av_wire_826_targeted' -RequiredIds $TARGETED
         Run-Probe -Bin 'av_wire_826_security' -RequiredIds $SECURITY
         Run-Runner -Filter 'av_wire_826_first_case_corpus_green' -RequiredIds $FIRST_RUNNER
+    }
+    'incremental' {
+        Run-Probe -Bin 'av_wire_826_incremental' -RequiredIds $INCREMENTAL
+        Run-Probe -Bin 'av_runtime_825_incremental'
+        # V-12 sub-case 1 (shared D828 baseline): the 30-revision dual-gate
+        # campaign and the hot-path red control must hold unchanged on
+        # this tree.
+        Run-Probe -Bin 'function_incremental_828_t08' -Filter 't08_formal_campaign_v08_dual_gate_30_revisions' -RequiredIds @('t08_formal_campaign_v08_dual_gate_30_revisions')
+        Run-Probe -Bin 'function_incremental_828_contract' -Filter 'contract_828_hotpath_old_synth_pipeline_same_window_is_red' -RequiredIds @('contract_828_hotpath_old_synth_pipeline_same_window_is_red')
     }
     'compat' {
         Run-ParallelHarness
