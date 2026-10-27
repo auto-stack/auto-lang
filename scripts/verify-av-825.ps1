@@ -86,11 +86,10 @@ function Assert-MissingPeakControl {
 
 function Get-Fnv64Hex {
     param([string]$Path)
-    [uint64]$hash = 14695981039346656037
-    foreach ($byte in [IO.File]::ReadAllBytes($Path)) {
-        $hash = ($hash -bxor [uint64]$byte) * 1099511628211
-    }
-    $hash.ToString('x16')
+    $code = "import sys`nd=open(sys.argv[1],'rb').read()`nh=14695981039346656037`nfor b in d:`n    h=((h^b)*1099511628211)&0xffffffffffffffff`nprint(f'{h:016x}')"
+    $result = & python -c $code $Path
+    if ($LASTEXITCODE -ne 0) { throw "FNV-1a calculation failed for $Path" }
+    $result
 }
 
 function Assert-BenchmarkEvidence {
