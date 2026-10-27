@@ -7,6 +7,8 @@ implemented_by_plans: []
 first_followup_plan: PLAN-827
 ---
 
+> **PLAN-858 口径更新（2026-10-27）**：本文历史 ACE P95<1s 目标在开发初期由用户调整为 P90≤2000ms；原正式样本和正确性、结构、资源约束保持，架构基本成形后以实测另定长期目标。其他 P95 数值作为历史或诊断保留，不再作为 ACE 开发期交付硬门。当前规则见 [TestCase v2 周转口径](../../specs/auto-test-case/profile-v2-native.md)。
+
 # AV真实源码运行与旧AVM替换路线
 
 上层入口：[ACE总路线 §0](auto-native-backend-evolution.md)（原称AC/AV/AJ总路线）。后续规划先按其步骤核实现状与依赖，再由本路线选择G阶段/工作包，已有匹配Plan优先复用，不因候选排序自动新建或执行计划。

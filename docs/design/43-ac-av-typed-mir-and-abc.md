@@ -6,6 +6,8 @@ updated_at: 2026-10-20
 implemented_by_plans: []
 ---
 
+> **PLAN-858 口径更新（2026-10-27）**：本文历史 ACE P95<1s 目标在开发初期由用户调整为 P90≤2000ms；原正式样本和正确性、结构、资源约束保持，架构基本成形后以实测另定长期目标。其他 P95 数值作为历史或诊断保留，不再作为 ACE 开发期交付硬门。当前规则见 [TestCase v2 周转口径](../specs/auto-test-case/profile-v2-native.md)。
+
 # Design 43：ACE统一架构、Typed MIR、ABC、CTE与增量发布
 
 规划导航：[ACE总路线 §0](strategy/auto-native-backend-evolution.md)汇总共同设计、AV能力矩阵、真实程序替换路线及Plan入口，并规定后续规划的现状/依赖核验步骤。继续规划可只指定该总入口；本文负责统一技术合同。
