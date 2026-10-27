@@ -109,6 +109,11 @@ $TARGETED = @(
     'av_wire_826_targeted_numeric_domain_roundtrip_and_ref_separation',
     'av_wire_826_targeted_section_directory_and_mutation_rejections'
 )
+$SECURITY = @(
+    'av_wire_826_security_duplicate_missing_and_unknown_required_sections',
+    'av_wire_826_security_strip_equivalence_and_inner_invariants',
+    'av_wire_826_security_execution_budgets_unchanged'
+)
 
 switch ($Scope) {
     'first' {
@@ -121,6 +126,7 @@ switch ($Scope) {
         Run-ParallelHarness
         Run-Probe -Bin 'av_wire_826_first_case' -RequiredIds $FIRST_PROBE
         Run-Probe -Bin 'av_wire_826_targeted' -RequiredIds $TARGETED
+        Run-Probe -Bin 'av_wire_826_security' -RequiredIds $SECURITY
         Run-Runner -Filter 'av_wire_826_first_case_corpus_green' -RequiredIds $FIRST_RUNNER
     }
     default {
