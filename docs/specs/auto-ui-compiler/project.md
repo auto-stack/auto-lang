@@ -38,6 +38,15 @@ incremental、组件包和跨文件
 与 `UiGrammarSource` 登记已删除。`ui`/`ui-headless` 空 feature 仅保留
 原编译面开关。
 
+准入与解析失败双轨（PLAN-842 r3 SD-08）：前置预校验（含工程侧
+`validate_ui_tree` 整树扫描）的硬拒绝对象是**受信准入失败**——即本节
+domain/module 校验错误（错误串 `UI domain validation failed` /
+`UI module validation failed`）——任何模式、先于缓存/输出；语法解析
+失败不属受信准入：普通（非严格）模式保持逐文件 warn-and-skip 统一
+语义（坏文件跳过、正常文件照常产出），严格模式硬失败，fresh 与
+incremental 一致。双轨不得互相吞并：预校验不得把非严格解析宽容变成
+硬拒绝，逐文件处理也不得把准入失败降级为警告。
+
 `UI_AST_SCHEMA_VERSION` 与生成器指纹共同组成缓存身份；旧 schema 缓存
 失效并重建。compiler doctest 直接使用 `auto_ui_compiler` 当前 crate
 路径，不再引用已迁出的 `auto_lang` 实现路径。

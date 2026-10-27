@@ -427,3 +427,11 @@ UI 生产算法(vue/rust_ui/jet/ark/tauri/vscode/shadcn/gallery/wm 等)已全部
 ## PLAN-842：生成来源与安装交付
 
 Man 与生成后端消费语言 SDK、UI compiler/runtime 的 canonical owner。Full 安装 SDK 可作为真实 producer 交付：语言和 UI 若各自来自受管安装，则分别冻结对应 `man-install/1` 收据，核验所选 owner、路径、实际 staging 副本字节及提交前收据；源身份按各自收据记录。显式来源无效时具名失败，不回退；普通开发源按本地 Cargo 依赖闭包、包身份和版本校验，保留合法别名与 dev 环。失败保留旧交付。详见 [generated-ui-distribution](../repository-boundaries/generated-ui-distribution.md) 和 [man-three-repository-delivery](../repository-boundaries/man-three-repository-delivery.md)。来源：[PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)
+
+## merged API 客户端臂语义（PLAN-842 r3 SD-07）
+
+merged 进程内 API 客户端（auto-ui-tools `generate_merged_api_client`）臂优先级：①db.at 吸收（同名真实现委托）②route A（无 primary pub type、无 db.at 且伴生/端点体转译成功；`[]str/[]int` 属标量面——端点体嵌入 `api_impl` 委派，真实业务体优先）③声明类型臂（返回为 back `pub type`：契约签名 + Default 空态）④viewer 媒体面 ⑤CRUD 脚手架（其余端点）。CRUD 兜底内 GET/POST 按契约收口（PLAN-710 D-7）：签名/返回按声明类型（`[]str → Vec<String>`），列表返回缺省 `Vec::new()`；POST 保留 API_DATA id 分配插入（PLAN-648 结构性保留）。PLAN-648 的 GET 无参 `Vec<Value>` 全量列表形态按 PLAN-681/710 后续裁定退役。route A 转译失败不静默：生成物留 `⚠ route A inactive` 诊断标记后照常兜底（对齐 back 侧转译失败回落 skeleton + 告警的既有语义，不引入硬失败）；设计门（primary pub type / db.at 在案）不触发标记。来源：[PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)
+
+## 解析失败与受信准入双轨（PLAN-842 r3 SD-08）
+
+vue/jet/ark 生成的前置整树预校验（`validate_ui_tree`）只对**受信准入失败**（UI domain/module 校验：重复 widget/store/model 字段/message 变体声明、坏模块导入）在任何模式硬拒绝且先于缓存/输出（PLAN-841 合同）；语法解析失败不在此列——普通（非严格）模式交还各生成路径的逐文件统一语义（PLAN-012 Batch B：警告 + 跳过坏文件、正常文件照常产出；严格模式硬失败），fresh 与 incremental 一致。不得以删除前置校验放宽受信准入，也不得以前置校验吞掉非严格模式的解析宽容；Rust 后端路径的前置文件校验行为不变。规范锚见 [auto-ui-compiler](../auto-ui-compiler/project.md)。来源：[PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)
