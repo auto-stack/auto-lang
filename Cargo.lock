@@ -567,6 +567,7 @@ dependencies = [
  "blake3",
  "erased-serde 0.4.0-rc.1",
  "regex",
+ "semver 1.0.28",
  "serde",
  "serde_json",
  "sha2",

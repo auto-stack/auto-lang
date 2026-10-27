@@ -13,6 +13,7 @@ auto-project-model = { path = "../auto-project-model" }
 auto-val = { path = "../auto-val" }
 sha2 = "0.10"
 toml = "0.8"
+semver = "1"
 regex = { workspace = true }
 serde_json = { workspace = true }
 

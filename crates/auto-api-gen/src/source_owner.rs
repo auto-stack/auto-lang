@@ -350,7 +350,8 @@ pub(crate) fn valid_source_crate(source: &Path, name: &str) -> bool {
 /// Validate local Cargo path dependencies for an unmanaged development
 /// source before generating a workspace. Cargo resolves local paths even when
 /// optional; registry dependencies and ordinary source edits remain allowed.
-pub(crate) fn validate_development_dependencies(source: &Path) -> AutoResult<()> {
+pub fn validate_development_dependencies(source: &Path) -> AutoResult<()> {
+    use std::collections::{BTreeMap, BTreeSet};
     fn workspace(dir: &Path, manifest: &toml::Value) -> Option<(PathBuf, toml::Value)> {
         if let Some(relative) = manifest
             .get("package")
@@ -375,12 +376,9 @@ pub(crate) fn validate_development_dependencies(source: &Path) -> AutoResult<()>
         }
         None
     }
-    fn walk(dir: &Path, seen: &mut std::collections::BTreeSet<PathBuf>) -> AutoResult<()> {
+    fn read_package(dir: &Path) -> AutoResult<(PathBuf, toml::Value)> {
         let canonical = fs::canonicalize(dir)
             .map_err(|e| format!("producer 路径依赖缺失 {}: {e}", dir.display()))?;
-        if !seen.insert(canonical.clone()) {
-            return Ok(());
-        }
         let text = fs::read_to_string(canonical.join("Cargo.toml"))
             .map_err(|e| format!("producer 路径依赖缺清单 {}: {e}", canonical.display()))?;
         let doc: toml::Value = text
@@ -394,11 +392,40 @@ pub(crate) fn validate_development_dependencies(source: &Path) -> AutoResult<()>
         if !valid_source_crate(&canonical, name) {
             return Err(format!("producer 路径依赖缺库入口: {}", canonical.display()).into());
         }
+        Ok((canonical, doc))
+    }
+    fn package_version(dir: &Path, doc: &toml::Value) -> AutoResult<semver::Version> {
+        let value = doc.get("package").and_then(|p| p.get("version"));
+        let text = match value {
+            None => "0.0.0".to_owned(),
+            Some(value) if value.as_str().is_some() => value.as_str().unwrap().to_owned(),
+            Some(value) if value.get("workspace").and_then(toml::Value::as_bool) == Some(true) => {
+                let (_, ws) = workspace(dir, doc)
+                    .ok_or_else(|| format!("producer 路径包版本缺工作区: {}", dir.display()))?;
+                ws.get("workspace")
+                    .and_then(|w| w.get("package"))
+                    .and_then(|p| p.get("version"))
+                    .and_then(toml::Value::as_str)
+                    .ok_or("producer 工作区包版本缺失")?
+                    .to_owned()
+            }
+            _ => return Err(format!("producer 路径包版本无效: {}", dir.display()).into()),
+        };
+        semver::Version::parse(&text)
+            .map_err(|e| format!("producer 路径包版本无效 {text}: {e}").into())
+    }
+    fn walk(dir: &Path, graph: &mut BTreeMap<PathBuf, Vec<PathBuf>>) -> AutoResult<()> {
+        let (canonical, doc) = read_package(dir)?;
+        if graph.contains_key(&canonical) {
+            return Ok(());
+        }
         let ws = workspace(&canonical, &doc);
         let mut owners = vec![&doc];
         if let Some(targets) = doc.get("target").and_then(toml::Value::as_table) {
             owners.extend(targets.values());
         }
+        let mut all = Vec::new();
+        let mut normal = Vec::new();
         for owner in owners {
             for section in ["dependencies", "dev-dependencies", "build-dependencies"] {
                 let Some(deps) = owner.get(section).and_then(toml::Value::as_table) else {
@@ -419,15 +446,73 @@ pub(crate) fn validate_development_dependencies(source: &Path) -> AutoResult<()>
                         } else {
                             (canonical.as_path(), spec)
                         };
-                    if let Some(path) = resolved.get("path").and_then(toml::Value::as_str) {
-                        walk(&base.join(path), seen)?;
+                    let Some(path) = resolved.get("path").and_then(toml::Value::as_str) else {
+                        continue;
+                    };
+                    let (target, target_doc) = read_package(&base.join(path))?;
+                    let actual = target_doc["package"]["name"].as_str().unwrap();
+                    let expected = resolved
+                        .get("package")
+                        .and_then(toml::Value::as_str)
+                        .unwrap_or(key);
+                    if actual != expected {
+                        return Err(format!(
+                            "producer 路径依赖 {key} 包身份不符：期望 {expected}，实际 {actual}"
+                        )
+                        .into());
                     }
+                    if let Some(version) = resolved.get("version").and_then(toml::Value::as_str) {
+                        let req = semver::VersionReq::parse(version)
+                            .map_err(|e| format!("producer 依赖 {key} 版本约束无效: {e}"))?;
+                        let actual = package_version(&target, &target_doc)?;
+                        if !req.matches(&actual) {
+                            return Err(format!(
+                                "producer 路径依赖 {key} 版本不符：{version} / {actual}"
+                            )
+                            .into());
+                        }
+                    }
+                    if section != "dev-dependencies" {
+                        normal.push(target.clone());
+                    }
+                    all.push(target);
                 }
             }
         }
+        graph.insert(canonical, normal);
+        for target in all {
+            walk(&target, graph)?;
+        }
         Ok(())
     }
-    walk(source, &mut std::collections::BTreeSet::new())
+    fn visit(
+        node: &PathBuf,
+        graph: &BTreeMap<PathBuf, Vec<PathBuf>>,
+        active: &mut BTreeSet<PathBuf>,
+        done: &mut BTreeSet<PathBuf>,
+    ) -> AutoResult<()> {
+        if done.contains(node) {
+            return Ok(());
+        }
+        if !active.insert(node.clone()) {
+            return Err(format!("producer 普通/构建路径依赖存在循环: {}", node.display()).into());
+        }
+        if let Some(edges) = graph.get(node) {
+            for edge in edges {
+                visit(edge, graph, active, done)?;
+            }
+        }
+        active.remove(node);
+        done.insert(node.clone());
+        Ok(())
+    }
+    let mut graph = BTreeMap::new();
+    walk(source, &mut graph)?;
+    let mut done = BTreeSet::new();
+    for node in graph.keys() {
+        visit(node, &graph, &mut BTreeSet::new(), &mut done)?;
+    }
+    Ok(())
 }
 
 /// UI crates are selected from their UI owner or a receipt-validated
@@ -518,7 +603,50 @@ mod plan842_receipt_tests {
             "missing target path"
         );
         make("extra", "");
+        assert!(
+            validate_development_dependencies(&root.join("crates/app")).is_err(),
+            "ordinary cycle must be rejected"
+        );
+        make(
+            "shared",
+            "[dev-dependencies]\napp = { path = \"../app\" }\n",
+        );
         validate_development_dependencies(&root.join("crates/app")).unwrap();
+    }
+
+    #[test]
+    fn developer_source_checks_package_identity_alias_and_version() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join("Cargo.toml"), "[workspace]\n[workspace.package]\nversion = \"1.2.3\"\n[workspace.dependencies]\nrenamed = { package = \"shared\", path = \"crates/shared\", version = \"^1.2\" }\n").unwrap();
+        for name in ["app", "shared", "other"] {
+            let path = root.join("crates").join(name);
+            fs::create_dir_all(path.join("src")).unwrap();
+            fs::write(path.join("src/lib.rs"), "").unwrap();
+            fs::write(
+                path.join("Cargo.toml"),
+                format!("[package]\nname = \"{name}\"\nversion.workspace = true\n"),
+            )
+            .unwrap();
+        }
+        let app = root.join("crates/app/Cargo.toml");
+        let header = "[package]\nname = \"app\"\nversion.workspace = true\n[dependencies]\n";
+        fs::write(&app, format!("{header}renamed.workspace = true\n")).unwrap();
+        validate_development_dependencies(&root.join("crates/app")).unwrap();
+        fs::write(
+            &app,
+            format!("{header}renamed = {{ package = \"shared\", path = \"../other\" }}\n"),
+        )
+        .unwrap();
+        assert!(
+            validate_development_dependencies(&root.join("crates/app")).is_err(),
+            "wrong package identity"
+        );
+        fs::write(&app, format!("{header}renamed = {{ package = \"shared\", path = \"../shared\", version = \"=9.9.9\" }}\n")).unwrap();
+        assert!(
+            validate_development_dependencies(&root.join("crates/app")).is_err(),
+            "wrong package version"
+        );
     }
 
     #[test]
