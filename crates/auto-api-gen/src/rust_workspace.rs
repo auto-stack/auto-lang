@@ -150,10 +150,35 @@ fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> AutoResult<S
             } else {
                 path.join("crates/auto-lang")
             };
-            if candidate.join("Cargo.toml").is_file() {
+            // All four packages are written into the generated workspace.
+            // Validate them before any manifest or app output is changed.
+            let crates = candidate.parent();
+            let valid_workspace = crates
+                .and_then(Path::parent)
+                .and_then(|root| fs::read_to_string(root.join("Cargo.toml")).ok())
+                .and_then(|text| text.parse::<toml::Value>().ok())
+                .and_then(|manifest| {
+                    manifest
+                        .get("workspace")
+                        .and_then(toml::Value::as_table)
+                        .cloned()
+                })
+                .is_some();
+            let valid = valid_workspace
+                && crate::source_owner::valid_source_crate(&candidate, "auto-lang")
+                && crates.is_some_and(|dir| {
+                    ["auto-lang-core", "a2r-std", "auto-media-core"]
+                        .iter()
+                        .all(|name| crate::source_owner::valid_source_crate(&dir.join(name), name))
+                });
+            if valid {
                 return Ok(compute_relative_path(ws_dir, &candidate));
             }
-            return Err(format!("producer 显式 {key} 无效: {}", path.display()).into());
+            return Err(format!(
+                "producer 显式 {key} 无效或缺少工作区依赖: {}",
+                path.display()
+            )
+            .into());
         }
     }
     // PLAN-816 B-R3-07：安装形态 SDK 闭包——CLI 可执行文件邻接 sdk/
@@ -516,7 +541,7 @@ mod plan842_tests {
             } else {
                 let error = result.unwrap_err().to_string();
                 assert!(
-                    error.contains(if mode == "bad-lang" {
+                    error.contains(if mode.starts_with("bad-lang") {
                         "AUTO_LANG_ROOT"
                     } else {
                         "AUTO_UI_SOURCE_ROOT"
@@ -535,8 +560,43 @@ mod plan842_tests {
         let ws = project.join("workspace");
         let lang = tmp.path().join("auto-lang");
         let ui = tmp.path().join("auto-ui");
-        fs::create_dir_all(lang.join("crates/auto-lang")).unwrap();
-        fs::write(lang.join("crates/auto-lang/Cargo.toml"), "").unwrap();
+        fs::create_dir_all(&lang).unwrap();
+        fs::write(lang.join("Cargo.toml"), "[workspace]\n").unwrap();
+        for name in ["auto-lang", "auto-lang-core", "a2r-std", "auto-media-core"] {
+            let package = lang.join("crates").join(name);
+            fs::create_dir_all(package.join("src")).unwrap();
+            fs::write(
+                package.join("Cargo.toml"),
+                format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n"),
+            )
+            .unwrap();
+            fs::write(package.join("src/lib.rs"), "").unwrap();
+        }
+        let broken_workspace = tmp.path().join("bad-lang-workspace");
+        fs::create_dir_all(&broken_workspace).unwrap();
+        fs::write(broken_workspace.join("Cargo.toml"), "[workspace").unwrap();
+        for name in ["auto-lang", "auto-lang-core", "a2r-std", "auto-media-core"] {
+            let source = lang.join("crates").join(name);
+            let target = broken_workspace.join("crates").join(name);
+            fs::create_dir_all(target.join("src")).unwrap();
+            fs::copy(source.join("Cargo.toml"), target.join("Cargo.toml")).unwrap();
+            fs::copy(source.join("src/lib.rs"), target.join("src/lib.rs")).unwrap();
+        }
+        for (name, manifest) in [
+            ("bad-lang-manifest", "[package"),
+            (
+                "bad-lang-sibling",
+                "[package]\nname = \"auto-lang\"\nversion = \"0.1.0\"\n",
+            ),
+        ] {
+            let root = tmp.path().join(name);
+            fs::create_dir_all(&root).unwrap();
+            fs::write(root.join("Cargo.toml"), "[workspace]\n").unwrap();
+            let package = root.join("crates/auto-lang");
+            fs::create_dir_all(package.join("src")).unwrap();
+            fs::write(package.join("Cargo.toml"), manifest).unwrap();
+            fs::write(package.join("src/lib.rs"), "").unwrap();
+        }
         fs::create_dir_all(ui.join("crates/auto-ui-runtime")).unwrap();
         fs::write(
             ui.join("crates/auto-ui-runtime/Cargo.toml"),
@@ -566,6 +626,9 @@ mod plan842_tests {
         fs::create_dir_all(&ws).unwrap();
         for mode in [
             "bad-lang",
+            "bad-lang-manifest",
+            "bad-lang-sibling",
+            "bad-lang-workspace",
             "bad-ui",
             "partial-ui",
             "malformed-ui",
@@ -581,7 +644,7 @@ mod plan842_tests {
                 .env("AUTO_RUST_WORKSPACE", &ws)
                 .env_remove("AUTO_DELIVERY_SOURCE_ROOT")
                 .env_remove("AUTO_LANG_CRATE")
-                .env("AUTO_LANG_ROOT", if mode == "bad-lang" { tmp.path().join("missing-lang") } else { lang.clone() })
+                .env("AUTO_LANG_ROOT", match mode { "bad-lang" => tmp.path().join("missing-lang"), "bad-lang-manifest" | "bad-lang-sibling" | "bad-lang-workspace" => tmp.path().join(mode), _ => lang.clone() })
                 .env("AUTO_UI_SOURCE_ROOT", match mode { "bad-ui" => tmp.path().join("missing-ui"), "partial-ui" | "malformed-ui" | "wrong-ui" | "missing-src" => tmp.path().join(mode), _ => ui.clone() })
                 .output().unwrap();
             assert!(

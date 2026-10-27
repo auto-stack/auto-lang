@@ -126,7 +126,7 @@ pub fn installed_ui_source(
 
 // A directory alone is not a usable Cargo package. Validate before callers
 // write generated workspaces or stage a delivery, including explicit roots.
-fn valid_ui_crate(source: &Path, name: &str) -> bool {
+pub(crate) fn valid_source_crate(source: &Path, name: &str) -> bool {
     let Some(manifest) = std::fs::read_to_string(source.join("Cargo.toml"))
         .ok()
         .and_then(|text| text.parse::<toml::Value>().ok())
@@ -166,7 +166,7 @@ pub fn ui_crate_source(producer_root: &Path, name: &str) -> AutoResult<PathBuf> 
     if let Some(value) = std::env::var_os("AUTO_UI_SOURCE_ROOT") {
         let root = PathBuf::from(value);
         let source = root.join("crates").join(name);
-        return valid_ui_crate(&source, name)
+        return valid_source_crate(&source, name)
             .then_some(source)
             .ok_or_else(|| {
                 format!(
@@ -177,7 +177,7 @@ pub fn ui_crate_source(producer_root: &Path, name: &str) -> AutoResult<PathBuf> 
             });
     }
     if let Some(source) = installed_ui_source(producer_root, name, None)? {
-        if valid_ui_crate(&source, name) {
+        if valid_source_crate(&source, name) {
             return Ok(source);
         }
         return Err(format!("delivery: producer 安装 UI 包无效: crates/{name}").into());
@@ -185,7 +185,7 @@ pub fn ui_crate_source(producer_root: &Path, name: &str) -> AutoResult<PathBuf> 
     if let Some(parent) = producer_root.parent() {
         let source = parent.join("auto-ui/crates").join(name);
         if source.is_dir() {
-            if valid_ui_crate(&source, name) {
+            if valid_source_crate(&source, name) {
                 return Ok(source);
             }
             return Err(format!("delivery: producer 组内 UI 包无效: crates/{name}").into());
