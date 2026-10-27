@@ -5,6 +5,7 @@
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |------|------|------|------|-----------|
 | 858 | ACE 开发期周转口径与 feature 边界 | 已复审（r4） | [858](../../plans/archive/858-autographics-m2-game-samples-and-api-gaps.md) | 当前 ACE 周转门 P90≤2000ms、真实样本和非时延约束保持；历史 P95 数据不改写，长期目标待架构成形后实测。 |
+| 824 | AV动态Variant与可移植冻结 | ✅ delivered（R3 最终 PASS） | [计划](../../plans/archive/824-av-dynamic-values-freeze.md) | 动态 recipe、父侧 oracle 与 typed M1 绑定；[architecture.md](architecture.md) |
 | 821 | av-owned recipe（ac-av/owned-run-v1） | ✅（delivered，R6 最终 PASS） | [计划](../../plans/archive/821-av-place-owned-access.md) | owned recipe 三缝注册+sabotage 双面+故障三态+corpus 借入/mut 写回正控；见 [architecture.md](architecture.md) PLAN-821 节 |
 | 847 | 恢复 probe 可选依赖测试门控 | ✅ delivered；全局新红归850 | [计划](../../plans/archive/847-restore-probe-test-feature-boundary.md) | 旧probe与MIR-native各自受test-cases门控，optional/default-off保持；2177完整ID恒等、独立审查及裸t3181通过，主tb3109通过；tf跨workspace与tt执行状态另归850，未推进全局绿色锚点 |
 | 827 | 源码程序 corpus/验证消费者（ac-av/core-run-v1 复用） | ✅（delivered） | [archive/827-av-source-program-baseline.md](../../plans/archive/827-av-source-program-baseline.md) | 源文件 corpus av-source-827 复用既有 recipe/worker/父侧判定，worker 只收字节永不读期望；见 [architecture.md](architecture.md) PLAN-827 节 |
@@ -21,5 +22,3 @@
 | 828 | av-function-incremental-session | ✅（delivered，T-10 最终 PASS） | [计划](../../plans/archive/828-av-function-incremental-session.md) | 正式持续会话入口（session-serve worker+父侧 judge 测量窗/三门/证据先落盘）；one-shot recipe 保留 |
 | 817 | AV驱动的CTE查询与冻结缓存闭环 | ✅ delivered | [计划](../../plans/archive/817-av-cte-query-frozen-cache.md) | cte/scalar-query-v1 recipe + cte-worker stale 轴 + outcome admission（隔离态=ERROR） |
 | 822 | AV类型化集合与Variant载荷访问 | ✅（delivered，R19 最终 PASS） | [计划](../../plans/archive/822-av-typed-collections-variants.md) | ac-av/collections-run-v1 recipe+av-data-822 语料+父侧冻结期望表与 sabotage/故障反控；[architecture.md](architecture.md) |
-
-| 824 | AV动态Variant与可移植冻结 | ✅ delivered（R3 最终 PASS） | [计划](../../plans/archive/824-av-dynamic-values-freeze.md) | 动态 recipe、父侧 oracle 与 typed M1 绑定；[architecture.md](architecture.md) |
