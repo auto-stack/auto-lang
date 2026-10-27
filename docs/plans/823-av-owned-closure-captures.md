@@ -6,7 +6,7 @@ plan_revision: 8
 author: [Codex]
 created_at: 2026-10-20
 updated_at: 2026-10-27
-current_step: 8
+current_step: 9
 total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-av/resident-function-install.md
@@ -276,12 +276,14 @@ D828 增量机制是单元级，CREATE_CLOSURE 原 callee:FuncIdx 与单元纪�
 | [ ] T-05 | work | T-04 | probe真实缓存依赖/重启重验、来源/身份；注册与旧consumer兼容，串行更新唯一公共写面；按§5核已交付消费者并集/类别拒绝及同源，完成V-14适用轴 | AC-06；V-08/09，cache/compatibility；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总。[✅ 已完成 2026-10-27 @ plan-823-dev 81a29f1d7] entry/snapshot 轴 clean miss；全新 store 句柄重验重放同果（code-only 缓存）；V-09 隔离：closures wire 对 owned/collections scope 深验证拒绝（schema-profile，dispatch 前控制=同 wire 闭包 scope 准入）；旧 consumer 重放=compatibility scope+回归族（820/821/822 全绿 149 例）；cache_compat 4/4 |
 | [ ] T-06 | work | T-05/T-09/T-11 | 脚本聚合所有Scope并透传失败；正式AutoDown V-10反控、fmt/check、受管/进程峰值，整理SD草案/任务证据；正式脚本汇总V-14/AC-10，无模块通过冒领集成或缺适用必需例 | AC-01..06；acceptance，0例/漏必需用例/skip均非绿；r2 §5.4/V-11由本步负责对应冻结/实现/反控/恢复/汇总证据；r3本步按§5.5负责V-12及case清单对应冻结/实现/反控/恢复/汇总；最终汇总AC-11/V-15，不以852基础层PASS代替本能力验证。[✅ 已完成（AC-01..06 面）2026-10-27 @ plan-823-dev 81a29f1d7] ps1 全 Scope 聚合透传失败（first-case/semantics/admission/resources/cache/compatibility/autodown/acceptance）；V-10 worker 侧 oracle=手算 truths 表+judge 六类谎言反控（错bits/泄漏/漏例/错形状/清理短缺/缺节，3/3）；受管峰值观测（hot/staging/exec high-water ≤8MiB 线）；acceptance **36 例全绿**；AC-11/V-15/T-11 与 -Scope baseline 仍待 D852 后 T-11；fmt/零警告；SD 草案证据在案 |
 | [x] T-09 | work | D828、T-02～05/T-10（不等T-06/T-11） | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-13 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage | AC-09；共同基线+新增能力兼容定向验收，未实测不勾；送审前不跑整档。[✅ 已完成 2026-10-27 @ plan-823-dev 5535b6e4d（r8 env 契约 9468704ac 之上）] ClosuresUpdateSession（真门生产计数/结构退化门/原子提交，镜像822）；program_snapshot link 对 `fn:` 绑定 env 等价检查；单元入口体豁免；cache 抽取/合并 env 透传。V-13 四测全绿：子case2 body-only修订（未改单元 Arc::ptr_eq 保留+生产/IO全零+语义 5/8/13 手算）、子case3 env 漂移精确 link 拒绝+会话恢复、子case4 强制退化非零门、r8 单元独立验证；子case1（D828 基线 273575B/115函数/30修订）为 828 自有交付、822 已按同型会话重放，823 消费同一机制（非重复语料）。回归 ~170 例零回归（含 828 增量族）；acceptance PASS |
-| [ ] T-11 | work | T-05/T-09、D852、原D门及所需测试/核心窗口 | 执行§5统一能力验证phase：source:K01～K06；scenario:R05/I01/02/04～07/10～12逐行映射到真实起点/recipe/V子例；闭包捕获/创建者退出/clone独立/mutable环境、非逃逸借用及逃逸拒绝，真实MIR→ABC→AV、store新worker恢复、清理与原T-09增量；在attachments/823/852-validation记录binding与raw，范围外M1 gap保留owner；不实现额外前端/native/AJ | AC-11/V-15；本计划既有正式脚本新增显式`-Scope baseline`（T-11建立），acceptance最终包含其结果；定向执行/反控，selected>0且无漏适用项，不触发整档或隐式Rust认证 |
+| [ ] T-11 | work | T-05/T-09、D852、原D门及所需测试/核心窗口 | 执行§5统一能力验证phase：source:K01～K06；scenario:R05/I01/02/04～07/10～12逐行映射到真实起点/recipe/V子例；闭包捕获/创建者退出/clone独立/mutable环境、非逃逸借用及逃逸拒绝，真实MIR→ABC→AV、store新worker恢复、清理与原T-09增量；在attachments/823/852-validation记录binding与raw，范围外M1 gap保留owner；不实现额外前端/native/AJ | AC-11/V-15；本计划既有正式脚本新增显式`-Scope baseline`（T-11建立），acceptance最终包含其结果；定向执行/反控，selected>0且无漏适用项，不触发整档或隐式Rust认证 。[✅ 已完成 2026-10-27 @ plan-823-dev ed6997394] D852=archived 已消费；binding.tsv 仅翻自有 7 格（wait:av-closures-823→ok，K01..K06+scenario R05 按 id+ns 双键防 corpus record R05 误伤）+I01/02/04/05/06/10/11/12 指针追加，schema/金样/他方行零改；[binding.md](attachments/823/852-validation/binding.md) 逐行映射（语义ID→真实recipe入口→V子case→手算oracle）+raw 收据；K01..K06/R05 全部真实执行（typed 证据关 av 层，源码列 M1 缺口原样保留 owner=a2r复合/823-future-source）；I07 范围外缺口保留；I10/I11 闭包轴实测：**512 真实 body 修订**全门绿（Arc::ptr_eq 身份、生产零 IO、退化门 0），warm 会话 P95<1000ms（全程 0.05s 量级）；I12=judge 六谎言+退化门非零；`-Scope baseline` 5 入口全绿并入 acceptance（全 PASS）；零 a2r 认证/零 Rust 重编译 |
 | [ ] T-07 | review | work-owned完成且提交冻结、T-09 完成、T-10及AC-10完成、T-11/AC-11完成 | 同唯一树独立复核AC/V/SD、遗漏/workaround/债及健康，核依赖输入未变，填规范影响和审查结论；独立核依赖/同源与窗口并集及V-14 | AC-07；merge-owned全档仍pending；独立核AC-11/V-15，新证据未验不得沿用旧结论 |
 | [ ] T-08 | merge | T-07 pass | 冻结门禁→合入→SD/ledger/catalog→archive；到期批回归主检出单实例；wt-guard后移除唯一树/分支 | AC-08；真实门禁/合入/清理收据 |
 
 
 ## 9. 复审记录
+
+2026-10-27 stage:work | PLAN-823 r8 | T-11 完成（852 统一能力验证 phase）——**work-owned 任务全部完成** | code:ed6997394 | deps:D852✅ archived | evidence:binding.tsv 自有 7 格翻 ok+指针（零改共享面）；attachments/823/852-validation（binding.md+raw）；baseline 5 入口+acceptance 全 PASS；512 修订 churn+P95 实测 | blockers:无 work 侧 | next:**T-07 独立复审**（同树冻结上下文核 AC-01..11/V-01..15/SD、绑定 HEAD ed6997394）；复审 pass 后 T-08 merge（merge-owned 裸 t+tv+新 workspace 完整合同档照常 pending）
 
 2026-10-27 stage:work | PLAN-823 r8 | T-09 完成（增量消费者+V-13） | code:5535b6e4d | 交付：closures_session（822同型真门会话）、link 期 env 等价检查（fn: 绑定漂移精确拒绝）、单元入口体豁免（单元非可执行入口）、cache env 透传（含 CalleeRef 重写携带被调声明） | evidence:V-13 四测 4/4（body-only 身份/生产零 IO、env 漂移精确拒绝+恢复、强制退化非零、单元独立验证）；closures 全族 28 例；回归 ~170 例零回归（820/821/822/828/abc/cache/mir）；acceptance PASS | blockers:无（T-09 面） | next:work-owned 仅余 T-11（等 D852）；其后 T-07 独立复审→T-08 merge；merge-owned 整档 pending
 
