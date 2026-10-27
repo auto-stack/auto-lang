@@ -8,6 +8,7 @@ The following is a review draft, not an applied canonical change. User ruling: d
 | SD-02 | `docs/specs/auto-av/cache-and-conformance.md`; `docs/specs/auto-av/resident-function-install.md` | Formal persistent and parent-verified AV gates P95<1s → P90≤2s with ≥30 raw revisions, exact changed-function installation and all independently checked results. Treat earlier 798 r7 measurement as historical, not present-day 1s mandate. |
 | SD-03 | `docs/specs/auto-cte/frozen-cache.md` | Formal release body/meta/resident edits P95<1s → P90≤2s; preserve 115-function ≥256KiB load, hash identity, correct results, resource and no-full-rewarm gates. |
 | SD-03 | `docs/specs/auto-semantics/query-cache.md`; `docs/specs/auto-test-case/profile-v2-native.md` | 1MiB body edit at producer and IPC parent path P95<1s → P90≤2s; preserve prep/worker/admit windows, per-sample status and tiling. |
+| SD-03 | `docs/specs/auto-test-case/profile-v2-native.md` | 788 native hot/body-edit and syntax-edit end-to-end gates P95<1s → P90≤2s; keep measured boundaries, real worker paths and all selected IDs. |
 | SD-03 | `docs/specs/auto-abi/conformance-cache.md` | Body-edit and descriptor-reject P95<1s → P90≤2s, preserve six scenarios ×30 and C/worker parent paths and resource gates. |
 | SD-04 | `docs/specs/auto-test-case/architecture.md`; `docs/specs/auto-lang/project.md` | Change current dual time gate to P90≤gate and current 796 gate to P90≤2s; preserve test IDs (including historical names), full batch selection, P95 diagnostic history and window/resource isolation. |
 

@@ -1,12 +1,15 @@
 //! PLAN-797 T-05: unified cache from the first case, precise
 //! invalidation, restart/cross-project hits, tamper/missing controls,
 //! 512-revision churn with lease/GC convergence, and the six-scenario
-//! turnaround measurement with the two P95<1000ms hard gates
+//! turnaround measurement with the two P90<=2000ms hard gates
 //! (plan §8 T-05; V-06..V-09).
 //!
 //! Naming: `abi_cache_`, `abi_turnaround_`.
 
 #![cfg(windows)]
+
+#[path = "common/ace_latency.rs"]
+mod ace_latency;
 
 use auto_abi_probe::cache::{
     autoabi_object_key, c_object_key, canonical_decl_set, emitter_identity, produce_with_cache,
@@ -466,7 +469,7 @@ fn abi_cache_512_revision_churn_gc_convergence() {
 }
 
 // ---------------------------------------------------------------------------
-// abi_turnaround_ — six scenarios x 30 samples, two hard P95 gates (V-09)
+// abi_turnaround_ — six scenarios x 30 samples, two hard P90 gates (V-09)
 // ---------------------------------------------------------------------------
 
 /// One probe request: admission -> layout -> callee produce (cached) ->
@@ -639,18 +642,18 @@ fn reject_request(
     (ok, tr.finish(ok))
 }
 
-fn p95_of(samples: &[f64]) -> f64 {
-    percentiles(samples.to_vec()).1
+fn p90_of(samples: &[f64]) -> f64 {
+    ace_latency::p90_ms(samples).expect("valid latency samples")
 }
 
 /// Six scenarios x 30 samples each, serially in one test (parallel
 /// sampling would contend and inflate the numbers). Hard gates:
-/// body-edit request -> correct PE result P95 < 1000ms; descriptor-only
-/// reject request -> correct diagnosis P95 < 1000ms. Raw JSONL lines
+/// body-edit request -> correct PE result P90 <= 2000ms; descriptor-only
+/// reject request -> correct diagnosis P90 <= 2000ms. Raw JSONL lines
 /// and a summary land under target/autoabi-t05/turnaround/.
 /// R4: the six-scenario run builds 210 PEs — serialize it against the
 /// cache tests in this binary so machine contention cannot flip the
-/// hard-gate P95 (observed flake in full-suite runs).
+/// hard-gate P90 (observed flake in full-suite runs).
 static SCEN_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[test]
@@ -815,7 +818,7 @@ fn abi_turnaround_six_scenarios_30_samples() {
     //    DISTINCT mix-alt seed — an exactly-semantics-preserving body
     //    whose canonical form differs, so each sample is a COLD producer
     //    run (no hot-hit majority); the C consumer object is reused from
-    //    the store. P95 of request->correct PE result < 1000ms.
+    //    the store. P90 of request->correct PE result <= 2000ms.
     {
         let store = fresh_store(&root, "body-edit-store");
         {
@@ -905,12 +908,13 @@ fn abi_turnaround_six_scenarios_30_samples() {
         assert_eq!(s.oks, 30, "scenario {} lost green samples", s.name);
     }
 
-    // HARD GATES (contract-decision §9): both P95 < 1000ms.
+    // HARD GATES (contract-decision §9): both P90 <= 2000ms.
     let body_edit = scenarios.iter().find(|s| s.name == "body-edit").unwrap();
+    println!("body-edit gate P90 {:.1}ms", p90_of(&body_edit.totals));
     assert!(
-        p95_of(&body_edit.totals) < 1000.0,
-        "HARD GATE body-edit P95={:.1}ms >= 1000ms",
-        p95_of(&body_edit.totals)
+        p90_of(&body_edit.totals) <= 2000.0,
+        "HARD GATE body-edit P90={:.1}ms > 2000ms",
+        p90_of(&body_edit.totals)
     );
 
     let mut reject_totals = Vec::new();
@@ -926,10 +930,11 @@ fn abi_turnaround_six_scenarios_30_samples() {
 ",
         "descriptor-reject", r50, r95, r99
     ));
+    println!("descriptor-reject gate P90 {:.1}ms", p90_of(&reject_totals));
     assert!(
-        p95_of(&reject_totals) < 1000.0,
-        "HARD GATE descriptor-reject P95={:.1}ms >= 1000ms",
-        p95_of(&reject_totals)
+        p90_of(&reject_totals) <= 2000.0,
+        "HARD GATE descriptor-reject P90={:.1}ms > 2000ms",
+        p90_of(&reject_totals)
     );
 
     std::fs::write(root.join("summary.md"), &summary).unwrap();

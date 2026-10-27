@@ -21,7 +21,7 @@
 #     target and a real red must all FAIL; a genuine green control must
 #     PASS. F-796-R10-02 adds the V-07 raw-report admission controls:
 #     missing/null/zero/negative edit-session times (all or one sample)
-#     must FAIL the report gate; a legal report and a slow (1001ms)
+#     must FAIL the report gate; a legal report and a slow (2001ms)
 #     report are the positive/high controls. Exit 0 only when every
 #     control behaves as specified.
 #
@@ -114,6 +114,13 @@ function Get-P95Ms([double[]]$Values) {
     return [double]$sorted[[int]$idx]
 }
 
+function Get-P90Ms([double[]]$Values) {
+    if ($Values.Count -eq 0) { return [double]::MaxValue }
+    $sorted = @($Values | Sort-Object)
+    $idx = $sorted.Count - [int][math]::Floor($sorted.Count / 10) - 1
+    return [double]$sorted[$idx]
+}
+
 function Test-HasStages($Stages) {
     $names = @($Stages | ForEach-Object { $_[0] })
     foreach ($want in @('request', 'cache-read-validate', 'infer', 'publish')) {
@@ -156,12 +163,13 @@ function Get-IpcReportOutcome($Ipc) {
     $samples = @($Ipc.samples)
     $adm = Get-AdmittedTimes $samples 'edit_session_ms' 1.0
     $p95 = Get-P95Ms $adm.Times
+    $p90 = Get-P90Ms $adm.Times
     $allPass = @($samples | Where-Object { $_.status -ne 'Pass' }).Count -eq 0
     $stages = @($samples | Where-Object { -not (Test-HasStages $_.edit_query_stages) }).Count -eq 0
-    $ok = ($adm.Bad.Count -eq 0) -and ($samples.Count -ge 30) -and ($p95 -lt 1000.0) -and $allPass -and $stages `
+    $ok = ($adm.Bad.Count -eq 0) -and ($samples.Count -ge 30) -and ($p90 -le 2000.0) -and $allPass -and $stages `
         -and ($Ipc.verdict -eq 'PASS') -and ($Ipc.generator -eq 'gen796-1mi/v1') `
         -and ([int]$Ipc.reference_bytes -ge 1048576) -and ($null -ne $Ipc.total_p95_ms)
-    [pscustomobject]@{ Ok = $ok; P95 = $p95; N = $samples.Count; Bad = $adm.Bad; AllPass = $allPass; Stages = $stages }
+    [pscustomobject]@{ Ok = $ok; P90 = $p90; P95 = $p95; N = $samples.Count; Bad = $adm.Bad; AllPass = $allPass; Stages = $stages }
 }
 
 # Selftest fixture for Get-IpcReportOutcome: 30 samples whose
@@ -219,7 +227,7 @@ if ($Scope -eq 'selftest') {
 
     # F-796-R10-02: V-07 raw-report admission controls — the report gate
     # must reject missing/null/zero/negative edit times (all-or-one) and
-    # recompute the threshold; a legal report passes, a 1001ms report
+    # recompute the threshold; a legal report passes, a 2001ms report
     # fails on the SLOW side (high control).
     $v07Cases = @(
         @{ Name = 'v07-legit-report'; Report = New-IpcControlReport @(1..30 | ForEach-Object { 274.0 }); Expect = $true },
@@ -228,17 +236,19 @@ if ($Scope -eq 'selftest') {
         @{ Name = 'v07-zero-all'; Report = New-IpcControlReport @(1..30 | ForEach-Object { 0.0 }); Expect = $false },
         @{ Name = 'v07-negative-all'; Report = New-IpcControlReport @(1..30 | ForEach-Object { -1.0 }); Expect = $false },
         @{ Name = 'v07-one-missing'; Report = New-IpcControlReport (@(1..29 | ForEach-Object { 274.0 }) + @('MISSING')); Expect = $false },
-        @{ Name = 'v07-slow-1001ms'; Report = New-IpcControlReport @(1..30 | ForEach-Object { 1001.0 }); Expect = $false }
+        @{ Name = 'v07-p90-equality-three-over'; Report = New-IpcControlReport (@(1..27 | ForEach-Object { 2000.0 }) + @(2001.0, 2001.0, 2001.0)); Expect = $true },
+        @{ Name = 'v07-p90-four-over'; Report = New-IpcControlReport (@(1..26 | ForEach-Object { 2000.0 }) + @(2001.0, 2001.0, 2001.0, 2001.0)); Expect = $false },
+        @{ Name = 'v07-slow-2001ms'; Report = New-IpcControlReport @(1..30 | ForEach-Object { 2001.0 }); Expect = $false }
     )
     foreach ($c in $v07Cases) {
         $r = Get-IpcReportOutcome $c.Report
         if ($r.Ok -eq $c.Expect) {
-            Add-Result "S-$($c.Name)" 'PASS' ("gate verdict {0} as expected (n={1}, p95={2}, bad={3})" -f $r.Ok, $r.N, $r.P95, $r.Bad.Count)
+            Add-Result "S-$($c.Name)" 'PASS' ("gate verdict {0} as expected (n={1}, p90={2}, bad={3})" -f $r.Ok, $r.N, $r.P90, $r.Bad.Count)
         }
         else {
             $bad++
             $firstBad = ($r.Bad | Select-Object -First 1)
-            Add-Result "S-$($c.Name)" 'FAIL' ("gate verdict {0}, expected {1} (n={2}, p95={3}, bad={4}: {5})" -f $r.Ok, $c.Expect, $r.N, $r.P95, $r.Bad.Count, $firstBad)
+            Add-Result "S-$($c.Name)" 'FAIL' ("gate verdict {0}, expected {1} (n={2}, p90={3}, bad={4}: {5})" -f $r.Ok, $c.Expect, $r.N, $r.P90, $r.Bad.Count, $firstBad)
         }
     }
     Write-Host ''
@@ -346,18 +356,19 @@ if ($Scope -eq 'acceptance') {
         # instead of defaulting to 0ms.
         $libAdm = Get-AdmittedTimes $libSamples 'total_ns' 1e6
         $libP95 = Get-P95Ms $libAdm.Times
+        $libP90 = Get-P90Ms $libAdm.Times
         $libPublished = @($libSamples | Where-Object { $_.status -ne 'published' -or [int]$_.compute_calls -ne 1 }).Count -eq 0
         $genOk = $json.machine.generator -eq 'gen796-1mi/v1'
-        $libOk = ($libSamples.Count -ge 30) -and ($libAdm.Bad.Count -eq 0) -and ($libP95 -lt 1000.0) -and $libPublished -and $genOk
+        $libOk = ($libSamples.Count -ge 30) -and ($libAdm.Bad.Count -eq 0) -and ($libP90 -le 2000.0) -and $libPublished -and $genOk
 
         $ipcOutcome = Get-IpcReportOutcome $ipc
         if ($libOk -and $ipcOutcome.Ok) {
-            Add-Result 'V-07' 'PASS' ("recomputed library P95 {0:N2}ms ({1} raw) + REAL IPC edit-session P95 {2:N2}ms ({3} raw, full request-to-admission window, 1MiB local edit); generator {4}" -f $libP95, $libSamples.Count, $ipcOutcome.P95, $ipcOutcome.N, $json.machine.generator)
+            Add-Result 'V-07' 'PASS' ("recomputed library P90 {0:N2}ms ({1} raw) + REAL IPC edit-session P90 {2:N2}ms ({3} raw, full request-to-admission window, 1MiB local edit); generator {4}" -f $libP90, $libSamples.Count, $ipcOutcome.P90, $ipcOutcome.N, $json.machine.generator)
         }
         else {
             $libBad = ($libAdm.Bad | Select-Object -First 3) -join '; '
             $ipcBad = ($ipcOutcome.Bad | Select-Object -First 3) -join '; '
-            Add-Result 'V-07' 'FAIL' "libOk=$libOk (n=$($libSamples.Count) p95=$libP95 published=$libPublished) ipcOk=$($ipcOutcome.Ok) (n=$($ipcOutcome.N) p95=$($ipcOutcome.P95) allPass=$($ipcOutcome.AllPass) stages=$($ipcOutcome.Stages) gen=$($ipc.generator) bytes=$($ipc.reference_bytes)) raw-admission: lib[$libBad] ipc[$ipcBad]"
+            Add-Result 'V-07' 'FAIL' "libOk=$libOk (n=$($libSamples.Count) p90=$libP90 published=$libPublished) ipcOk=$($ipcOutcome.Ok) (n=$($ipcOutcome.N) p90=$($ipcOutcome.P90) allPass=$($ipcOutcome.AllPass) stages=$($ipcOutcome.Stages) gen=$($ipc.generator) bytes=$($ipc.reference_bytes)) raw-admission: lib[$libBad] ipc[$ipcBad]"
         }
     }
 }

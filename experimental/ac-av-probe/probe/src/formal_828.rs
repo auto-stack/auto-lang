@@ -6,7 +6,7 @@
 //! verified-current-result publication (the edit + the run that proves the
 //! new value — initialization is excluded, single-listed), and captures
 //! the structural counters that must be zero for every UNCHANGED function.
-//! The dual gate: P95 < `gate_ms` AND every structural gate AND every
+//! The dual gate: P90 <= `gate_ms` AND every structural gate AND every
 //! result correct — a timing pass can never cover a granularity failure,
 //! and the gate negatives (V-09) prove each axis can go red on its own.
 
@@ -48,6 +48,7 @@ pub struct StructuralSnapshot {
 pub struct FormalReport {
     pub samples: Vec<FormalSample>,
     pub p50_ms: f64,
+    pub p90_ms: f64,
     pub p95_ms: f64,
     pub p99_ms: f64,
     pub all_correct: bool,
@@ -140,6 +141,7 @@ pub fn run_formal_series_retained(
     times.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let report = FormalReport {
         p50_ms: percentile(&times, 0.50),
+        p90_ms: crate::observations::latency_p90_ms(&times).unwrap_or(0.0),
         p95_ms: percentile(&times, 0.95),
         p99_ms: percentile(&times, 0.99),
         all_correct: true,
@@ -224,8 +226,11 @@ pub fn validate_and_gate(report: &FormalReport, gate_ms: f64, min_samples: usize
     if !report.all_correct {
         failures.push("not all results correct".to_string());
     }
-    if report.p95_ms >= gate_ms {
-        failures.push(format!("P95 {:.3}ms >= gate {gate_ms}ms", report.p95_ms));
+    let walls: Vec<f64> = report.samples.iter().map(|s| s.edit_to_result_ms).collect();
+    match crate::observations::latency_p90_ms(&walls) {
+        Some(p90) if gate_ms.is_finite() && p90 <= gate_ms => {}
+        Some(p90) => failures.push(format!("P90 {p90:.3}ms > gate {gate_ms}ms")),
+        None => failures.push("missing or invalid latency windows".to_string()),
     }
     for s in &report.samples {
         if s.structural.unaffected_stage_total != 0 {
@@ -280,4 +285,58 @@ pub fn diff_edit(cur: &str, next: &str) -> Result<(u64, u64, Vec<u8>), String> {
         (a.len() - tail) as u64,
         b[start..b.len() - tail].to_vec(),
     ))
+}
+
+#[test]
+fn ace_p90_gate_preserves_correctness_and_structure() {
+    let mut report = FormalReport {
+        samples: (0..10)
+            .map(|n| FormalSample {
+                revision: n,
+                edit_to_result_ms: 2000.0,
+                expected: 0,
+                structural: StructuralSnapshot {
+                    unaffected_stage_total: 0,
+                    whole_module_total: 0,
+                    install_set_len: 1,
+                    reparsed_decls: 1,
+                    reused_decls: 0,
+                },
+            })
+            .collect(),
+        p50_ms: 2000.0,
+        p90_ms: 2000.0,
+        p95_ms: 2000.0,
+        p99_ms: 2000.0,
+        all_correct: true,
+        peak_slot_bytes: 0,
+    };
+    report.samples[9].edit_to_result_ms = 2001.0;
+    assert!(
+        validate_and_gate(&report, 2000.0, 10).is_empty(),
+        "one outlier permitted"
+    );
+    report.samples[8].edit_to_result_ms = 2001.0;
+    assert!(
+        !validate_and_gate(&report, 2000.0, 10).is_empty(),
+        "two outliers rejected even with forged p90 field"
+    );
+    report.samples[8].edit_to_result_ms = 2000.0;
+    report.samples[0].structural.whole_module_total = 1;
+    assert!(
+        !validate_and_gate(&report, 2000.0, 10).is_empty(),
+        "structure remains mandatory"
+    );
+    report.samples[0].structural.whole_module_total = 0;
+    report.all_correct = false;
+    assert!(
+        !validate_and_gate(&report, 2000.0, 10).is_empty(),
+        "correctness remains mandatory"
+    );
+    report.all_correct = true;
+    report.samples[0].edit_to_result_ms = f64::NAN;
+    assert!(
+        !validate_and_gate(&report, 2000.0, 10).is_empty(),
+        "invalid observations cannot pass"
+    );
 }

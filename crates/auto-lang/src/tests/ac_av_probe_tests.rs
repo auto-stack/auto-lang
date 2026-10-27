@@ -221,7 +221,7 @@ fn ac_av_probe_formal_turnaround_gates() {
     let _guard = AV_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
 
     // Sample count/gate overridable by the verify script (release-grade
-    // run keeps the frozen 30/1000ms).
+    // run keeps 30 samples; ACE policy uses P90/2000ms).
     let samples: usize = std::env::var("AV798_FORMAL_SAMPLES")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -229,7 +229,7 @@ fn ac_av_probe_formal_turnaround_gates() {
     let gate_ms: f64 = std::env::var("AV798_FORMAL_GATE_MS")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(1000.0);
+        .unwrap_or(2000.0);
     assert!(samples >= 1);
 
     let root = temp_root("formal");
@@ -527,8 +527,11 @@ suite { schema: \"autolang.suite/2\", id: \"s\", include: [\"c.case.ad\"] }
         sig_walls.push(window);
     }
 
+    let p90_edit = super::ace_latency::p90_ms(&edit_walls).expect("valid edit windows");
+    let p90_sig = super::ace_latency::p90_ms(&sig_walls).expect("valid signature windows");
     let p95_edit = percentile(&edit_walls, 95.0);
     let p95_sig = percentile(&sig_walls, 95.0);
+    eprintln!("formal P90: edit {p90_edit:.1}ms, signature {p90_sig:.1}ms");
     eprintln!(
         "formal turnaround (continuous request-to-publish windows): edit P50/P95/P99 = {:.1}/{:.1}/{:.1} ms; sig P95 = {:.1} ms (gate {:.1} ms, {} samples)",
         percentile(&edit_walls, 50.0),
@@ -539,12 +542,12 @@ suite { schema: \"autolang.suite/2\", id: \"s\", include: [\"c.case.ad\"] }
         samples
     );
     assert!(
-        p95_edit < gate_ms,
-        "formal edit-path P95 {p95_edit:.1}ms >= gate {gate_ms}ms"
+        p90_edit <= gate_ms,
+        "formal edit-path P90 {p90_edit:.1}ms > gate {gate_ms}ms"
     );
     assert!(
-        p95_sig < gate_ms,
-        "formal sig-path P95 {p95_sig:.1}ms >= gate {gate_ms}ms"
+        p90_sig <= gate_ms,
+        "formal sig-path P90 {p90_sig:.1}ms > gate {gate_ms}ms"
     );
     // Session stores are parent-owned scratch: remove the shared roots.
     for i in 1..=samples {

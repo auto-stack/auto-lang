@@ -4,6 +4,9 @@ mod a2c_tests;
 // Plan 768: TestCase protocol adapter + runner integration (real VM/a2r)
 #[cfg(feature = "test-cases")]
 mod test_cases_tests;
+// PLAN-858: ACE latency gate uses nearest-rank P90 over valid samples.
+#[cfg(feature = "test-cases")]
+mod ace_latency;
 // PLAN-788: ac native adapter integration (real ac-case-worker process)
 #[cfg(feature = "test-cases")]
 mod ac_case_tests;

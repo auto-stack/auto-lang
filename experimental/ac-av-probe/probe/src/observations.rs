@@ -99,6 +99,34 @@ impl Obs {
     }
 }
 
+/// ACE development-stage gate: nearest-rank P90 over every valid window.
+pub fn latency_p90_ms(samples: &[f64]) -> Option<f64> {
+    if samples.is_empty() || samples.iter().any(|w| !w.is_finite() || *w <= 0.0) {
+        return None;
+    }
+    let mut sorted = samples.to_vec();
+    sorted.sort_by(f64::total_cmp);
+    Some(sorted[sorted.len() - sorted.len() / 10 - 1])
+}
+
+#[test]
+fn latency_p90_nearest_rank_boundaries() {
+    let mut ten = vec![2000.0; 10];
+    ten[9] = 2001.0;
+    assert!(latency_p90_ms(&ten).unwrap() <= 2000.0);
+    ten[8] = 2001.0;
+    assert!(latency_p90_ms(&ten).unwrap() > 2000.0);
+    let mut thirty = vec![2000.0; 30];
+    thirty[27..].fill(2001.0);
+    assert!(latency_p90_ms(&thirty).unwrap() <= 2000.0);
+    thirty[26] = 2001.0;
+    assert!(latency_p90_ms(&thirty).unwrap() > 2000.0);
+    assert!(latency_p90_ms(&[]).is_none());
+    assert!(latency_p90_ms(&[f64::NAN]).is_none());
+    assert!(latency_p90_ms(&[f64::INFINITY]).is_none());
+    assert!(latency_p90_ms(&[0.0]).is_none());
+}
+
 /// Percentile helper over sorted sample milliseconds.
 pub fn percentile_ms(samples: &[f64], p: f64) -> f64 {
     if samples.is_empty() {

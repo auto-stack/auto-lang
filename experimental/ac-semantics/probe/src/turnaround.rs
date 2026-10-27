@@ -3,8 +3,8 @@
 //! Stage traces exist from the first case; this module turns them into
 //! the six measured scenarios with RAW samples (failures kept), the
 //! hard gate (single-fn body edit on the 1 MiB reference module:
-//! request → current correct inference/diagnostic published, P95 <
-//! 1000 ms), and the report writer. Tool preparation (generating and
+//! request → current correct inference/diagnostic published, P90 <=
+//! 2000 ms), and the report writer. Tool preparation (generating and
 //! parsing the reference module, warming the store) is EXCLUDED from
 //! the measured window and reported separately — it is never
 //! subtracted from a user path that actually waited.
@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 pub const REFERENCE_GENERATOR: &str = "gen796-1mi/v1";
 
 /// The hard gate threshold (§5.5).
-pub const HARD_GATE: Duration = Duration::from_millis(1000);
+pub const HARD_GATE: Duration = Duration::from_millis(2000);
 
 /// The number of raw samples per scenario (§5.5: 各30样本).
 pub const SAMPLES: usize = 30;
@@ -67,11 +67,37 @@ fn pct(raw: &[u128], p: f64) -> u128 {
     v[idx.min(v.len() - 1)]
 }
 
+fn p90(raw: &[u128]) -> u128 {
+    if raw.is_empty() || raw.contains(&0) {
+        return 0;
+    }
+    let mut v = raw.to_vec();
+    v.sort_unstable();
+    v[v.len() - v.len() / 10 - 1]
+}
+
+#[test]
+fn p90_nearest_rank_boundaries() {
+    let mut ten = vec![2000; 10];
+    ten[9] = 2001;
+    assert_eq!(p90(&ten), 2000);
+    ten[8] = 2001;
+    assert_eq!(p90(&ten), 2001);
+    let mut thirty = vec![2000; 30];
+    thirty[27..].fill(2001);
+    assert_eq!(p90(&thirty), 2000);
+    thirty[26] = 2001;
+    assert_eq!(p90(&thirty), 2001);
+    assert_eq!(p90(&[]), 0);
+    assert_eq!(p90(&[0]), 0);
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct ScenarioStats {
     pub scenario: &'static str,
     pub samples: usize,
     pub p50_ns: u128,
+    pub p90_ns: u128,
     pub p95_ns: u128,
     pub p99_ns: u128,
     pub max_ns: u128,
@@ -93,6 +119,7 @@ pub fn stats_of(scenario: &'static str, samples: &[Sample]) -> ScenarioStats {
         scenario,
         samples: samples.len(),
         p50_ns: pct(&totals, 0.50),
+        p90_ns: p90(&totals),
         p95_ns: pct(&totals, 0.95),
         p99_ns: pct(&totals, 0.99),
         max_ns: totals.iter().copied().max().unwrap_or(0),
@@ -616,7 +643,7 @@ pub fn write_report(
     )?;
     let mut md = String::from("# PLAN-796 T-05 周转报告\n\n");
     md.push_str(&format!(
-        "- 机器: {} | 并行度 {} | rustc {}\n- 参考负载: {}（1 MiB 等价 core 模块，确定性生成）\n- 每场景原始样本: {}（含失败/超时，不删样本）\n- 硬门: 单函数 body 编辑 请求→正确推导/诊断发布 P95 < {} ms\n\n",
+        "- 机器: {} | 并行度 {} | rustc {}\n- 参考负载: {}（1 MiB 等价 core 模块，确定性生成）\n- 每场景原始样本: {}（含失败/超时，不删样本）\n- 硬门: 单函数 body 编辑 请求→正确推导/诊断发布 P90 ≤ {} ms\n\n",
         machine.os,
         machine.parallelism,
         machine.rustc,
@@ -624,13 +651,14 @@ pub fn write_report(
         machine.samples_per_scenario,
         machine.hard_gate_ms,
     ));
-    md.push_str("| 场景 | 样本 | P50 (ms) | P95 (ms) | P99 (ms) | max (ms) | compute | hits | 状态分布 |\n|---|---|---|---|---|---|---|---|---|\n");
+    md.push_str("| 场景 | 样本 | P50 (ms) | P90 (ms) | P95 (ms) | P99 (ms) | max (ms) | compute | hits | 状态分布 |\n|---|---|---|---|---|---|---|---|---|---|\n");
     for s in &stats {
         md.push_str(&format!(
-            "| {} | {} | {:.2} | {:.2} | {:.2} | {:.2} | {} | {} | {} |\n",
+            "| {} | {} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {} | {} | {} |\n",
             s.scenario,
             s.samples,
             s.p50_ns as f64 / 1e6,
+            s.p90_ns as f64 / 1e6,
             s.p95_ns as f64 / 1e6,
             s.p99_ns as f64 / 1e6,
             s.max_ns as f64 / 1e6,
@@ -646,12 +674,18 @@ pub fn write_report(
     let hard = stats
         .iter()
         .find(|s| s.scenario == "local-body-edit")
-        .map(|s| s.p95_ns)
+        .filter(|s| {
+            s.samples == SAMPLES
+                && s.statuses
+                    .iter()
+                    .all(|(st, _)| *st == "published" || *st == "hit")
+        })
+        .map(|s| if s.p90_ns > 0 { s.p90_ns } else { u128::MAX })
         .unwrap_or(u128::MAX);
     md.push_str(&format!(
-        "\n硬门判定: local-body-edit P95 = {:.2} ms → {}\n",
+        "\n硬门判定: local-body-edit P90 = {:.2} ms → {}\n",
         hard as f64 / 1e6,
-        if hard < HARD_GATE.as_nanos() {
+        if hard <= HARD_GATE.as_nanos() {
             "PASS"
         } else {
             "FAIL"

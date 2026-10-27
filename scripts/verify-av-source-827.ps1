@@ -145,8 +145,8 @@ function Test-BenchSummary([string]$Path, [bool]$ExpectGateFailure) {
         if ($null -eq $s.gate_ms -or [double]$s.gate_ms -ne 0) { return $false }
         $f = @($s.hard_gate_failures)
         if ($f.Count -eq 0 -or ($a.exit_code -eq 0)) { return $false }
-        $patSig = '^(hard gate: )?signature-conflict P95 [0-9.]+ms >= 0\.0ms$'
-        $patSbe = '^(hard gate: )?single-body-edit P95 [0-9.]+ms >= 0\.0ms$'
+        $patSig = '^(hard gate: )?signature-conflict P90 [0-9.]+ms > 0\.0ms$'
+        $patSbe = '^(hard gate: )?single-body-edit P90 [0-9.]+ms > 0\.0ms$'
         foreach ($x in $f) {
             if (($x -notmatch $patSig) -and ($x -notmatch $patSbe)) { return $false }
         }
@@ -306,7 +306,7 @@ switch ($Scope) {
         #    stale/foreign binaries are rejected BEFORE any campaign runs;
         # 1. gate-0 counter-control: bench-turnaround with --gate-ms 0 MUST
         #    fail (a threshold of 0 can never be green);
-        # 2. the real P95 gate: 30 samples, gate 1000ms, raw JSONL kept;
+        # 2. the real P90 gate: 30 samples, gate 2000ms, raw JSONL kept;
         # 3. Line-A frontend attribution + Line-B residual via the frozen
         #    828 formal-session campaign (V-08 dual gate, >=30 revisions).
         # Small-file cold data is reported separately by the first-case log.
@@ -415,9 +415,9 @@ switch ($Scope) {
             exit 1
         }
         Write-Host "   gate-0 red as required (exit $g0code; retained summary shows the intended rejection; tampered negative red)"
-        Write-Host "== resources: bench-turnaround 30 samples gate 1000ms"
+        Write-Host "== resources: bench-turnaround 30 samples gate 2000ms"
         Push-Location $probeWs
-        & $worker bench-turnaround --samples 30 --gate-ms 1000 --out "$reportDir/bench-30-$stamp.jsonl" 2>&1 | Tee-Object -Variable b30 | Write-Host
+        & $worker bench-turnaround --samples 30 --gate-ms 2000 --out "$reportDir/bench-30-$stamp.jsonl" 2>&1 | Tee-Object -Variable b30 | Write-Host
         $b30code = $LASTEXITCODE
         Pop-Location
         # R8 F-827-R8-01: persist the actual summary + exact exit FIRST (a
@@ -430,7 +430,7 @@ switch ($Scope) {
             exit 1
         }
         Save-BenchSummaryArtifact -Path $b30SummaryPath -Stamp $stamp -ExeSha256 $exeHash -GitHead $gitHead `
-            -BenchArgs "bench-turnaround --samples 30 --gate-ms 1000 --out bench-30-$stamp.jsonl" `
+            -BenchArgs "bench-turnaround --samples 30 --gate-ms 2000 --out bench-30-$stamp.jsonl" `
             -ExitCode $b30code -RawRel "bench-30-$stamp.jsonl" -Summary $b30Summary `
             -RawPath (Join-Path $reportDir "bench-30-$stamp.jsonl")
         if (!(Test-BenchSummary $b30SummaryPath $false)) {
@@ -617,36 +617,36 @@ switch ($Scope) {
             } | ConvertTo-Json -Depth 6 | Out-File (Join-Path $sumDir $file) -Encoding utf8
         }
         & $mkSummary 'gate0-ok.json' 5 @(
-            'hard gate: signature-conflict P95 33.5ms >= 0.0ms',
-            'hard gate: single-body-edit P95 495.8ms >= 0.0ms'
+            'hard gate: signature-conflict P90 33.5ms > 0.0ms',
+            'hard gate: single-body-edit P90 495.8ms > 0.0ms'
         ) $true $false 0
         if (!(Test-BenchSummary (Join-Path $sumDir 'gate0-ok.json') $true)) { Write-Host "CONTROL FAILED: a corroborating gate-0 summary must be green"; $fails++ }
-        & $mkSummary 'normal-ok.json' 0 @() $true $false 1000
+        & $mkSummary 'normal-ok.json' 0 @() $true $false 2000
         if (!(Test-BenchSummary (Join-Path $sumDir 'normal-ok.json') $false)) { Write-Host "CONTROL FAILED: a corroborating normal summary must be green"; $fails++ }
         if (Test-BenchSummary (Join-Path $sumDir 'absent.json') $false) { Write-Host "CONTROL FAILED: a missing summary file must be red"; $fails++ }
-        & $mkSummary 'normal-failures.json' 0 @('hard gate: single-body-edit P95 1190.7ms >= 1000.0ms') $true $false 1000
+        & $mkSummary 'normal-failures.json' 0 @('hard gate: single-body-edit P90 2190.7ms > 2000.0ms') $true $false 2000
         if (Test-BenchSummary (Join-Path $sumDir 'normal-failures.json') $false) { Write-Host "CONTROL FAILED: exit 0 with recorded gate failures must be red"; $fails++ }
         & $mkSummary 'gate0-unrelated-nonzero.json' 5 @() $true $false 0
         if (Test-BenchSummary (Join-Path $sumDir 'gate0-unrelated-nonzero.json') $true) { Write-Host "CONTROL FAILED: an unrelated nonzero exit (no gate failures) must be red"; $fails++ }
         # R9 sibling (review-r9's minimal counterexample): healthy 1000ms
         # threshold + an unrelated correctness failure is NOT the gate-0
         # threshold rejection, even with exit 5 and complete peaks.
-        & $mkSummary 'gate0-unrelated-failure.json' 5 @('fresh: failing samples [0]') $true $false 1000
+        & $mkSummary 'gate0-unrelated-failure.json' 5 @('fresh: failing samples [0]') $true $false 2000
         if (Test-BenchSummary (Join-Path $sumDir 'gate0-unrelated-failure.json') $true) { Write-Host "CONTROL FAILED: a healthy-threshold unrelated failure must be red as the gate-0 control"; $fails++ }
         # R9 sibling: the 0ms gate with a non-threshold failure text.
         & $mkSummary 'gate0-foreign-failure-text.json' 5 @('fresh: failing samples [0]') $true $false 0
         if (Test-BenchSummary (Join-Path $sumDir 'gate0-foreign-failure-text.json') $true) { Write-Host "CONTROL FAILED: a non-threshold failure text must be red as the gate-0 control"; $fails++ }
         # R9 sibling: threshold rejections of only ONE frozen path.
-        & $mkSummary 'gate0-one-path.json' 5 @('hard gate: single-body-edit P95 495.8ms >= 0.0ms') $true $false 0
+        & $mkSummary 'gate0-one-path.json' 5 @('hard gate: single-body-edit P90 495.8ms > 0.0ms') $true $false 0
         if (Test-BenchSummary (Join-Path $sumDir 'gate0-one-path.json') $true) { Write-Host "CONTROL FAILED: one-path-only threshold rejection must be red as the gate-0 control"; $fails++ }
-        & $mkSummary 'normal-missing-peak.json' 0 @() $true $true 1000
+        & $mkSummary 'normal-missing-peak.json' 0 @() $true $true 2000
         if (Test-BenchSummary (Join-Path $sumDir 'normal-missing-peak.json') $false) { Write-Host "CONTROL FAILED: a summary missing peak fields must be red"; $fails++ }
         # R9 writer control: the retained args text must equal the exact
         # nonempty invocation text (the `Args`-named parameter previously
         # collided with the automatic variable and wrote "").
         $writerOut = Join-Path $sumDir 'writer-args.json'
         $writerSummary = [pscustomobject]@{
-            gate_ms = 0; hard_gate_failures = @('hard gate: single-body-edit P95 1.0ms >= 0.0ms')
+            gate_ms = 0; hard_gate_failures = @('hard gate: single-body-edit P90 1.0ms > 0.0ms')
             frontend_peak_bytes = 1; private_bytes_peak = 1; child_private_bytes_peak = 1
             worker_private_bytes_delta = 1
             frontend_transient_target_met = $true; worker_private_bytes_target_met = $true

@@ -1008,19 +1008,25 @@ fn av_resources_peak_sampler_distinguishes_transient_spike() {
 /// charges the whole peak). Neither line is advisory.
 #[test]
 fn av_turnaround_two_line_memory_gate() {
-    use auto_av_probe::bench::{validate_and_gate, BenchSummary};
-    // Empty rows + 0 samples: every scenario count and edit-hash check
-    // passes, so the failure list isolates the memory lines.
-    let rows = [];
+    use auto_av_probe::bench::{validate_and_gate, BenchSummary, SampleRow, SCENARIOS};
+    // Supply valid raw windows so only the memory lines can fail.
+    let rows: Vec<SampleRow> = SCENARIOS.iter().map(|&scenario| SampleRow {
+        scenario, sample: 0, revision: 1, wall_ms: 1.0, ok: true,
+        value: None, expected: None, diag: None, source_hash: scenario.to_string(),
+        cache_hit_abc: 0, cache_miss_abc: 0, mir_lower_modules: 0,
+        mir_units_persisted: 0, abc_units_emitted: 0, closure_encodes: 0,
+        av_execute: 0, peak_staging_bytes: 0, peak_hot_bytes: 0, av_peak_slot_bytes: 0,
+    }).collect();
     let mk = |frontend: Option<u64>, overall: Option<u64>| BenchSummary {
         frontend_peak_bytes: frontend,
         private_bytes_peak: overall,
+        gate_ms: 2000.0,
         ..BenchSummary::default()
     };
     // Both lines within budget: no failures.
     let ok = mk(Some(210 * 1024 * 1024), Some(216 * 1024 * 1024));
     assert!(
-        validate_and_gate(&rows, &ok, 0).is_empty(),
+        validate_and_gate(&rows, &ok, 1).is_empty(),
         "both lines within budget"
     );
     // Line A breach: the frontend line fires, the residual stays quiet.
@@ -1028,7 +1034,7 @@ fn av_turnaround_two_line_memory_gate() {
         Some(auto_av_probe::bench::BUDGET_FRONTEND_TRANSIENT_PEAK_BYTES + 1),
         Some(auto_av_probe::bench::BUDGET_FRONTEND_TRANSIENT_PEAK_BYTES + 5 * 1024 * 1024),
     );
-    let failures = validate_and_gate(&rows, &a_over, 0);
+    let failures = validate_and_gate(&rows, &a_over, 1);
     assert!(
         failures
             .iter()
@@ -1045,7 +1051,7 @@ fn av_turnaround_two_line_memory_gate() {
         Some(150 * 1024 * 1024),
         Some(150 * 1024 * 1024 + auto_av_probe::bench::BUDGET_WORKER_PRIVATE_PEAK_BYTES + 1),
     );
-    let failures = validate_and_gate(&rows, &b_over, 0);
+    let failures = validate_and_gate(&rows, &b_over, 1);
     assert!(
         failures.iter().any(|f| f.contains("probe-owned residual")),
         "Line B breach reported: {failures:?}"
@@ -1059,7 +1065,7 @@ fn av_turnaround_two_line_memory_gate() {
     // Missing attribution: the WHOLE peak is charged to Line B
     // (conservative — no decomposition, no waiver).
     let no_attr = mk(None, Some(200 * 1024 * 1024));
-    let failures = validate_and_gate(&rows, &no_attr, 0);
+    let failures = validate_and_gate(&rows, &no_attr, 1);
     assert!(
         failures.iter().any(|f| f.contains("probe-owned residual")),
         "unattributed peak charged to the probe line: {failures:?}"
@@ -1068,7 +1074,7 @@ fn av_turnaround_two_line_memory_gate() {
 
 /// V-11 smoke: the six-scenario bench runs end-to-end on a scaled load
 /// (3 samples) with correct results, real hit/miss counters and diagnosed
-/// signature conflicts. The 30-sample release-grade run with the P95 hard
+/// signature conflicts. The 30-sample release-grade run with the P90 hard
 /// gate is driven by scripts/verify-ac-av-798.ps1 -Scope turnaround.
 #[test]
 fn av_turnaround_six_scenarios_smoke() {
@@ -1082,7 +1088,7 @@ fn av_turnaround_six_scenarios_smoke() {
         load: small,
         conflict: conflicted,
         samples: 3,
-        gate_ms: f64::INFINITY,
+        gate_ms: f64::MAX,
         self_exe: std::path::PathBuf::from(env!("CARGO_BIN_EXE_av_probe_worker")),
         revision_target: 24 * 1024,
     };
@@ -1129,10 +1135,10 @@ fn av_turnaround_six_scenarios_smoke() {
             .map(|r| (r.mir_lower_modules, r.abc_units_emitted))
             .collect::<Vec<_>>()
     );
-    // Row/sample validation must pass with a non-binding gate (INF): the
-    // release-grade gate runs in the worker with the frozen 1000 ms bound.
+    // Row/sample validation must pass with a non-binding finite gate: the
+    // release-grade gate runs in the worker with the 2000 ms bound.
     let mut s = summary.clone();
-    s.gate_ms = f64::INFINITY;
+    s.gate_ms = f64::MAX;
     let failures = auto_av_probe::bench::validate_and_gate(&rows, &s, 3);
     assert!(failures.is_empty(), "validation failures: {failures:?}");
     let _ = std::fs::remove_dir_all(&root);

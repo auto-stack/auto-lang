@@ -5,7 +5,7 @@
 //! admission and judging) on a ~1 MiB-equivalent core module (the SAME
 //! `gen796-1mi/v1` generator as the library report), performs a LOCAL
 //! `main` body edit via the `edit-source` step, and queries again. 30
-//! raw samples, P95 < 1000ms, stage spans per query, statuses kept. The
+//! raw samples, P90 <= 2000ms, stage spans per query, statuses kept. The
 //! report lands in `docs/reports/plan796/turnaround-ipc.json`.
 
 #![cfg(windows)]
@@ -244,7 +244,7 @@ fn probe_adapter_edit_session_window_tiles_prep_worker_admit() {
 /// The hard gate over the REAL adapter/IPC path on the frozen 1MiB
 /// reference load with a local body edit: 30 raw samples, every one
 /// must PASS (a red sample is a failure, not a timing footnote),
-/// P95 < 1000ms over the FULL edit-request window, per-query stage
+/// P90 <= 2000ms over the FULL edit-request window, per-query stage
 /// spans recorded, and every sample's window tiled by its segments.
 #[test]
 fn probe_adapter_turnaround_ipc_hard_gate_p95() {
@@ -265,10 +265,10 @@ fn probe_adapter_turnaround_ipc_hard_gate_p95() {
         // F-796-R10-01: per-sample window tiling (early/late controls)
         assert_edit_window_tiles(i, s);
     }
-    let p95 = pct(edit_times.clone(), 0.95);
+    let p90 = super::ace_latency::p90_ms(&edit_times).expect("valid edit windows");
     assert!(
-        p95 < 1000.0,
-        "edit-session P95 {p95:.2}ms exceeds the 1000ms gate"
+        p90 <= 2000.0,
+        "edit-session P90 {p90:.2}ms exceeds the 2000ms gate"
     );
     // every sample carries the real stage spans for BOTH queries, and
     // the edit-query group is complete (request/cache/infer/publish)
@@ -304,11 +304,12 @@ fn probe_adapter_turnaround_ipc_hard_gate_p95() {
         })).collect::<Vec<_>>(),
         "gate": "edit session (request preparation + spawn/IPC + worker execution + parent-side admission), cold warm-up query excluded; prep/worker/admit segments tile the window",
         "p50_ms": pct(edit_times.clone(), 0.50),
+        "p90_ms": p90,
         "p95_ms": pct(edit_times.clone(), 0.95),
         "p99_ms": pct(edit_times.clone(), 0.99),
         "total_p95_ms": pct(total_times, 0.95),
-        "hard_gate_ms": 1000,
-        "verdict": if p95 < 1000.0 { "PASS" } else { "FAIL" },
+        "hard_gate_ms": 2000,
+        "verdict": if p90 <= 2000.0 { "PASS" } else { "FAIL" },
     });
     let out = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../docs/reports/plan796/turnaround-ipc.json");

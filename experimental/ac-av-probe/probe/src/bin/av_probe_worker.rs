@@ -11,7 +11,7 @@
 //! - `gc-loop`: run store GC repeatedly until a stop file appears
 //!   (concurrent-GC scenario driver).
 //! - `bench-turnaround`: the six-scenario turnaround tier (plan §5.5 r2
-//!   semantics). Enforces the hard gate: `--gate-ms` is the enforced P95
+//!   semantics). Enforces the hard gate: `--gate-ms` is the enforced P90
 //!   bound; `--gate-ms 0` MUST fail (review F798-R1-03 countercontrol).
 //!   Writes raw JSONL samples, prints a REAL summary object, exits non-zero
 //!   on any gate/validation failure.
@@ -1222,7 +1222,7 @@ fn bench_turnaround(args: &[String]) -> ! {
         .unwrap_or(30);
     let gate_ms: f64 = flag(args, "--gate-ms")
         .and_then(|s| s.parse().ok())
-        .unwrap_or(1000.0);
+        .unwrap_or(2000.0);
     let out_path = flag(args, "--out").unwrap_or_else(|| "-".into());
     let self_exe = std::env::current_exe().expect("self exe");
 

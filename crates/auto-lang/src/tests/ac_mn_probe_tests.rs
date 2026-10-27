@@ -613,7 +613,7 @@ fn mir_native_adapter_old_protocol_and_mixed_compat() {
 // PLAN-818 T-07 — the `mir_native_turnaround_` formal legs (V-09; AC-06):
 // the frozen reference workload through the REAL formal runner — fresh
 // cold, restart/warm store (a real new worker process per call), the
-// body-edit and signature P95 < 1000 ms gates, and the diagnosed
+// body-edit and signature P90 <= 2000 ms gates, and the diagnosed
 // signature conflict. Each scenario is its OWN test (nextest terminates
 // at 120 s; the frozen 30 samples per scenario fit one test each) with
 // its own session namespace and raw file. The driver-tier legs
@@ -645,12 +645,12 @@ fn mn_t07_gate_ms() -> f64 {
     std::env::var("MN818_FORMAL_GATE_MS")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(1000.0)
+        .unwrap_or(2000.0)
 }
 
 // PLAN-846:r3: AutoGraphics currently gates incremental correctness only.
 // This explicit policy changes no test inputs, cache or execution assertions.
-fn mn_incremental_latency_result(p95: f64, gate: f64, policy: Option<&str>) -> Result<(), String> {
+fn mn_incremental_latency_result(p90: f64, gate: f64, policy: Option<&str>) -> Result<(), String> {
     let observe = match policy {
         None => false,
         Some("observe") => true,
@@ -660,13 +660,16 @@ fn mn_incremental_latency_result(p95: f64, gate: f64, policy: Option<&str>) -> R
             ))
         }
     };
-    if !p95.is_finite() || p95 <= 0.0 {
+    if !p90.is_finite() || p90 <= 0.0 {
         return Err("missing or invalid incremental latency observation".into());
     }
-    if observe || p95 < gate {
+    if !gate.is_finite() || gate <= 0.0 {
+        return Err("invalid incremental latency gate".into());
+    }
+    if observe || p90 <= gate {
         Ok(())
     } else {
-        Err(format!("P95 {p95:.1}ms >= gate {gate}ms"))
+        Err(format!("P90 {p90:.1}ms > gate {gate}ms"))
     }
 }
 
@@ -678,19 +681,20 @@ fn mn_incremental_perf_observation_only() -> bool {
     }
 }
 
-fn mn_check_incremental_latency(scenario: &str, p95: f64, gate: f64) {
+fn mn_check_incremental_latency(scenario: &str, walls: &[f64], gate: f64) {
+    let p90 = super::ace_latency::p90_ms(walls).expect("valid latency windows");
     let observe = mn_incremental_perf_observation_only();
-    mn_incremental_latency_result(p95, gate, observe.then_some("observe"))
+    mn_incremental_latency_result(p90, gate, observe.then_some("observe"))
         .unwrap_or_else(|error| panic!("{scenario}: {error}"));
     if observe {
-        eprintln!("AutoGraphics functional-only acceptance: {scenario} P95 {p95:.1}ms observed; latency is not a delivery gate (PLAN-846:r3)");
+        eprintln!("AutoGraphics functional-only acceptance: {scenario} P90 {p90:.1}ms observed; latency is not a delivery gate (PLAN-846:r3)");
     }
 }
 
 #[test]
 fn mn_incremental_latency_policy_controls() {
-    assert!(mn_incremental_latency_result(1250.0, 1000.0, None).is_err());
-    assert!(mn_incremental_latency_result(999.0, 1000.0, None).is_ok());
+    assert!(mn_incremental_latency_result(2001.0, 2000.0, None).is_err());
+    assert!(mn_incremental_latency_result(2000.0, 2000.0, None).is_ok());
     assert!(mn_incremental_latency_result(1250.0, 1000.0, Some("observe")).is_ok());
     assert!(mn_incremental_latency_result(1250.0, 1000.0, Some("typo")).is_err());
     assert!(mn_incremental_latency_result(f64::NAN, 1000.0, Some("observe")).is_err());
@@ -857,9 +861,10 @@ fn mn_t07_finish_raw(scenario: &str, note: &str, walls: &[f64]) -> (f64, f64, f6
         "tier": "t07-formal-turnaround",
         "incremental_latency_required": matches!(scenario, "body-edit" | "signature-rebuild" | "signature-conflict") && !mn_incremental_perf_observation_only(),
         "scenario": scenario,
-        "note": if mn_incremental_perf_observation_only() { note.replace("P95 GATED", "latency observed, not gated") } else { note.to_string() },
+        "note": if mn_incremental_perf_observation_only() { note.replace("P90 GATED", "latency observed, not gated") } else { note.to_string() },
         "count": walls.len(),
         "p50_ms": p50,
+        "p90_ms": super::ace_latency::p90_ms(walls).expect("valid latency windows"),
         "p95_ms": p95,
         "p99_ms": p99,
         "max_ms": walls.iter().cloned().fold(0.0f64, f64::max),
@@ -976,7 +981,7 @@ fn mir_native_turnaround_restart_warm_30() {
 
 /// Scenario 3 — body edit (THE gate): per revision, a warm-up `[run]` on
 /// the previous revision, then the MEASURED `[edit-source, run]` call
-/// applying the frozen fn_041 A0 edit (golden.md §2.3); P95 < gate.
+/// applying the frozen fn_041 A0 edit (golden.md §2.3); P90 <= gate.
 #[test]
 #[cfg(windows)]
 fn mir_native_turnaround_body_edit_gate() {
@@ -1098,12 +1103,12 @@ fn mir_native_turnaround_body_edit_gate() {
         prev_src = rev_src;
         prev_exp = rev_exp;
     }
-    let (_, p95, _) = mn_t07_finish_raw(
+    let _ = mn_t07_finish_raw(
         "body-edit",
-        "warm-up outside window; measured [edit-source, run]; 1 miss / 114 hits; P95 GATED",
+        "warm-up outside window; measured [edit-source, run]; 1 miss / 114 hits; P90 GATED",
         &walls,
     );
-    mn_check_incremental_latency("body-edit", p95, gate_ms);
+    mn_check_incremental_latency("body-edit", &walls, gate_ms);
     let _ = std::fs::remove_dir_all(std::env::temp_dir().join(format!("mn818-session-{session}")));
     let _ = std::fs::remove_dir_all(session_base.join(format!("mn818-inc-{session}")));
     std::env::remove_var("AC_MN_SESSION_ROOT");
@@ -1114,7 +1119,7 @@ fn mir_native_turnaround_body_edit_gate() {
 /// Scenario 4 — legal signature rebuild (THE second gate): fn_leaf_2
 /// gains a parameter USED consistently at every call site (w=0 cancels —
 /// the mirror expectation is unchanged); the signature fp change re-keys
-/// the leaf AND its callers, everything else hits; P95 < gate.
+/// the leaf AND its callers, everything else hits; P90 <= gate.
 #[test]
 #[cfg(windows)]
 fn mir_native_turnaround_signature_rebuild_gate() {
@@ -1200,12 +1205,12 @@ fn mir_native_turnaround_signature_rebuild_gate() {
         );
         walls.push(r["request_wall_ms"].as_f64().unwrap_or(0.0));
     }
-    let (_, p95, _) = mn_t07_finish_raw(
+    let _ = mn_t07_finish_raw(
         "signature-rebuild",
-        "fn_leaf_2 +w param used consistently (w=0); leaf+8 callers re-key; P95 GATED",
+        "fn_leaf_2 +w param used consistently (w=0); leaf+8 callers re-key; P90 GATED",
         &walls,
     );
-    mn_check_incremental_latency("signature-rebuild", p95, gate_ms);
+    mn_check_incremental_latency("signature-rebuild", &walls, gate_ms);
     let _ = std::fs::remove_dir_all(std::env::temp_dir().join(format!("mn818-session-{session}")));
     let _ = std::fs::remove_dir_all(session_base.join(format!("mn818-inc-{session}")));
     std::env::remove_var("AC_MN_SESSION_ROOT");
@@ -1215,7 +1220,7 @@ fn mir_native_turnaround_signature_rebuild_gate() {
 
 /// Scenario 5 — diagnosed signature conflict (av parity gate): the frozen
 /// conflict edit (fn_leaf_2 gains an UNUSED param — call sites break) is
-/// a green DIAGNOSED negative, window-measured; P95 < gate.
+/// a green DIAGNOSED negative, window-measured; P90 <= gate.
 #[test]
 #[cfg(windows)]
 fn mir_native_turnaround_signature_conflict_gate() {
@@ -1247,12 +1252,12 @@ fn mir_native_turnaround_signature_conflict_gate() {
         );
         walls.push(r["request_wall_ms"].as_f64().unwrap_or(0.0));
     }
-    let (_, p95, _) = mn_t07_finish_raw(
+    let _ = mn_t07_finish_raw(
         "signature-conflict",
-        "frozen conflict edit; green diagnosed parse rejection; P95 GATED",
+        "frozen conflict edit; green diagnosed parse rejection; P90 GATED",
         &walls,
     );
-    mn_check_incremental_latency("conflict", p95, gate_ms);
+    mn_check_incremental_latency("conflict", &walls, gate_ms);
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -1448,7 +1453,7 @@ fn mir_native_incremental_series_formal() {
     let gate_ms: f64 = std::env::var("MN818_FORMAL_GATE_MS")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(1000.0);
+        .unwrap_or(2000.0);
     let root = mn_t07_root("t11-series");
     let mut revs = Vec::with_capacity(samples + 1);
     for n in 0..=samples {
@@ -1578,7 +1583,7 @@ fn mir_native_incremental_series_formal() {
         p95,
         mn_t07_percentile(&walls, 99.0),
     );
-    mn_check_incremental_latency("formal series parent-observed", p95, gate_ms);
+    mn_check_incremental_latency("formal series parent-observed", &walls, gate_ms);
     // Raw evidence.
     let report = serde_json::json!({
         "plan": "PLAN-818",
@@ -1588,6 +1593,7 @@ fn mir_native_incremental_series_formal() {
         "gate_ms": gate_ms,
         "samples": samples,
         "p50_ms": mn_t07_percentile(&walls, 50.0),
+        "p90_ms": super::ace_latency::p90_ms(&walls).expect("valid latency windows"),
         "p95_ms": p95,
         "p99_ms": mn_t07_percentile(&walls, 99.0),
         "windows_ms": walls,

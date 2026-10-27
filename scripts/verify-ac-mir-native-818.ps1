@@ -9,7 +9,7 @@ param(
     [ValidateSet("first-case", "admission", "semantics", "cache", "resources", "autodown", "turnaround", "acceptance", "closeout")]
     [string]$Scope,
     [int]$Samples = 30,
-    [double]$GateMs = 1000.0
+    [double]$GateMs = 2000.0
 )
 
 $ErrorActionPreference = "Continue"  # cargo writes progress to stderr; exit codes are the gate

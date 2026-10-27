@@ -9,6 +9,9 @@
 
 #![cfg(windows)]
 
+#[path = "common/ace_latency.rs"]
+mod ace_latency;
+
 /// Every test in this binary spawns real worker sessions and PEs —
 /// serialize them all so machine contention cannot flip perf gates
 /// (observed flake in full-suite runs; R4).
@@ -251,7 +254,7 @@ fn p95(xs: &mut Vec<f64>) -> f64 {
 /// bodies: sample i runs `[body: mix-w{i}]` — every sample is a NEW
 /// producer input (no sample can ride a cache hit), the C consumer is
 /// reused from the store, and the request → correct PE result must be
-/// P95 < 1000ms. (F-797-R4-09: the alternating two-body sampler that
+/// P90 <= 2000ms. (F-797-R4-09: the alternating two-body sampler that
 /// measured hot hits is retired; parent-path end-to-end gates live in
 /// probe_adapter_tests.rs.)
 #[test]
@@ -289,16 +292,17 @@ fn abi_turnaround_formal_body_edit_hard_gate() {
         times.push(ms);
     }
     let p95v = p95(&mut times);
-    println!("formal body-edit (uniform-cold) P95 = {p95v:.1}ms over 30 samples");
+    let p90v = ace_latency::p90_ms(&times).expect("valid latency samples");
+    println!("formal body-edit P90 = {p90v:.1}ms, P95 = {p95v:.1}ms over 30 samples");
     assert!(
-        p95v < 1000.0,
-        "HARD GATE body-edit (formal IPC, uniform-cold) P95={p95v:.1}ms >= 1000ms"
+        p90v <= 2000.0,
+        "HARD GATE body-edit P90={p90v:.1}ms > 2000ms"
     );
 }
 
 /// §5.5 hard gate 2 over the WORKER transport: a descriptor-edit
 /// (signature) request produces the CORRECT typed diagnosis with no
-/// native call, P95 < 1000ms across 30 samples.
+/// native call, P90 <= 2000ms across 30 samples.
 #[test]
 fn abi_turnaround_formal_reject_hard_gate() {
     let _gate = GATE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
@@ -327,11 +331,9 @@ fn abi_turnaround_formal_reject_hard_gate() {
         times.push(ms);
     }
     let p95v = p95(&mut times);
-    println!("formal descriptor-reject P95 = {p95v:.1}ms over 30 samples");
-    assert!(
-        p95v < 1000.0,
-        "HARD GATE reject (formal IPC) P95={p95v:.1}ms >= 1000ms"
-    );
+    let p90v = ace_latency::p90_ms(&times).expect("valid latency samples");
+    println!("formal descriptor-reject P90 = {p90v:.1}ms, P95 = {p95v:.1}ms over 30 samples");
+    assert!(p90v <= 2000.0, "HARD GATE reject P90={p90v:.1}ms > 2000ms");
 }
 
 /// F-797-R4-10 (R8): REAL worker full-chain evidence for the budget GC

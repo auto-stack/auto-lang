@@ -7,13 +7,13 @@
 //! (edit ENQUEUE → parent-side verification of the published result —
 //! IPC, queueing and the run are inside the window, exactly as §5.5
 //! requires) and the independent expectations. The dual gate stays the
-//! plan's: P95 < `gate_ms` AND every result correct AND the structural
+//! plan's: P90 <= `gate_ms` AND every result correct AND the structural
 //! axes green — a timing pass can never cover a granularity failure,
 //! and `gate_ms == 0` MUST fail (V-09 countercontrol).
 //!
 //! Scaffold boundary: the protocol, judge, gates and cross-process tests
 //! below are the production surfaces; the FORMAL measurement campaign
-//! (frozen 273 575 B load, ≥30 revisions, P95 verdict, dual-line memory
+//! (frozen 273 575 B load, ≥30 revisions, P90 verdict, dual-line memory
 //! budget) runs on the reviewed execution core after the batch-2
 //! re-review — not from this scaffold.
 
@@ -210,6 +210,7 @@ pub struct JudgeReport {
     pub session_id: u64,
     pub samples: Vec<JudgeSample>,
     pub p50_ms: f64,
+    pub p90_ms: f64,
     pub p95_ms: f64,
     pub p99_ms: f64,
     pub gate_ms: f64,
@@ -255,7 +256,7 @@ pub struct JudgeConfig {
     /// The independent expectation for the READY (initial) value.
     pub expected_initial: i32,
     pub edits: Vec<JudgeEdit>,
-    /// The enforced P95 bound. `0.0` MUST fail (V-09 countercontrol).
+    /// The enforced P90 bound. `0.0` MUST fail (V-09 countercontrol).
     pub gate_ms: f64,
 }
 
@@ -690,18 +691,27 @@ pub fn run_formal_session_judge(
         percentile(&times, 0.95),
         percentile(&times, 0.99),
     );
+    let p90 = crate::observations::latency_p90_ms(&times);
     // The dual gate. gate_ms == 0 is the V-09 countercontrol and MUST
     // fail — a zero gate can never pass by accident.
-    let positive_gate = cfg.gate_ms > 0.0;
+    let positive_gate = cfg.gate_ms.is_finite() && cfg.gate_ms > 0.0;
     let complete = samples.len() == cfg.edits.len();
     let gate_pass = failures.is_empty()
         && all_correct
         && structural_ok
         && complete
         && positive_gate
-        && p95 < cfg.gate_ms;
+        && p90.is_some_and(|p| p <= cfg.gate_ms);
     if !positive_gate {
         failures.push(format!("gate-ms {} is not a positive bound", cfg.gate_ms));
+    }
+    if p90.is_none() {
+        failures.push("missing or invalid latency windows".to_string());
+    }
+    if let Some(value) = p90 {
+        if positive_gate && value > cfg.gate_ms {
+            failures.push(format!("P90 {value:.3}ms > gate {}ms", cfg.gate_ms));
+        }
     }
     // B3-C04: even an aborted handshake yields a report (session_id 0)
     // so the caller's evidence write always has this run's artifacts.
@@ -710,6 +720,7 @@ pub fn run_formal_session_judge(
         session_id,
         samples,
         p50_ms: p50,
+        p90_ms: p90.unwrap_or(0.0),
         p95_ms: p95,
         p99_ms: p99,
         gate_ms: cfg.gate_ms,

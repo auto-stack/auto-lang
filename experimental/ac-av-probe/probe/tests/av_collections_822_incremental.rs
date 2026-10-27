@@ -336,7 +336,7 @@ fn av_collections_822_incremental_forced_degradation_gate_nonzero() {
 
 /// V-13 sub-case 1 — the frozen D828 baseline campaign replays GREEN
 /// through the shared core AFTER the collections extension (dual gate:
-/// all-correct + structural + P95 < 1000 ms). The scalar campaign is the
+/// all-correct + structural + P90 <= 2000 ms). The scalar campaign is the
 /// shared-core baseline; sub-cases 2/3/4 above cover the collections
 /// capability itself through its real update entry.
 #[test]
@@ -356,7 +356,7 @@ fn av_collections_822_incremental_baseline_campaign_replay() {
         "every baseline revision matched its independent expectation"
     );
     assert!(report.structural_ok, "the structural gate stays green");
-    assert!(report.gate_pass, "P95 < {} ms holds", FORMAL_GATE_MS);
+    assert!(report.gate_pass, "P90 <= {} ms holds", FORMAL_GATE_MS);
 }
 
 /// F822-R2-01: a REJECTED candidate never becomes current — the

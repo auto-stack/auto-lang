@@ -1,7 +1,7 @@
 //! cte_turnaround_ — the turnaround tier (PLAN-817 T-07, V-09): the
 //! bench-turnaround worker runs six scenarios x >=30 raw samples with
 //! the two EDIT hard gates (helper body + Meta set, warm store,
-//! P95 < 1000ms), every row bound to its input hash; the gate-ms-0 and
+//! P90 <= 2000ms), every row bound to its input hash; the gate-ms-0 and
 //! injected-spike controls turn the SAME machinery deterministically
 //! red. Independent expectations: 42+pad and 2+extra_fields.
 //!
@@ -32,13 +32,13 @@ fn cte_turnaround_six_scenarios_hard_gates_pass() {
     let tmp = tempfile::tempdir().unwrap();
     let raw = tmp.path().join("raw.jsonl");
     // The formal tier is RELEASE (798 discipline): debug runs the same
-    // machinery at smoke scale under a smoke gate; the 1000ms hard gate
+    // machinery at smoke scale under a smoke gate; the 2000ms hard gate
     // is asserted in release (and by the verify script's formal bench).
     let samples = if cfg!(debug_assertions) { "3" } else { "30" };
     let gate = if cfg!(debug_assertions) {
         "5000"
     } else {
-        "1000"
+        "2000"
     };
     let want_samples: u64 = if cfg!(debug_assertions) { 3 } else { 30 };
     let (code, s, _) = run_bench(&[
@@ -69,21 +69,21 @@ fn cte_turnaround_six_scenarios_hard_gates_pass() {
     let body_gate = if cfg!(debug_assertions) {
         5000.0
     } else {
-        1000.0
+        2000.0
     };
     assert!(
-        s["body-edit"]["p95_ms"].as_f64().unwrap() < body_gate,
-        "helper body edit P95 < {body_gate}ms (formal 1000ms gate is the release tier): {}",
+        s["body-edit"]["p90_ms"].as_f64().unwrap() <= body_gate,
+        "helper body edit P90 <= {body_gate}ms (formal 2000ms gate is the release tier): {}",
         s["body-edit"]
     );
     let meta_gate = if cfg!(debug_assertions) {
         5000.0
     } else {
-        1000.0
+        2000.0
     };
     assert!(
-        s["meta-edit"]["p95_ms"].as_f64().unwrap() < meta_gate,
-        "Meta set edit P95 < {meta_gate}ms (formal 1000ms gate is the release tier): {}",
+        s["meta-edit"]["p90_ms"].as_f64().unwrap() <= meta_gate,
+        "Meta set edit P90 <= {meta_gate}ms (formal 2000ms gate is the release tier): {}",
         s["meta-edit"]
     );
     // Raw report: >= 6*30 rows + warmups + summary line, every row with
@@ -152,14 +152,14 @@ fn cte_turnaround_gate_ms_zero_control_is_red() {
 
 #[test]
 fn cte_turnaround_injected_spike_control_is_red() {
-    // A deterministic 1500ms spike on the first TWO body-edit samples drives
-    // its P95 over the gate — the SAME gate that was green.
-    let (code, s, _) = run_bench(&["--samples", "30", "--inject-delay-ms", "1500"]);
+    // A deterministic 2500ms spike on four body-edit samples drives
+    // its P90 over the gate — the SAME gate that was green.
+    let (code, s, _) = run_bench(&["--samples", "30", "--inject-delay-ms", "2500"]);
     assert_ne!(code, 0, "the spike turns the gate red");
     assert_eq!(s["target_met"], serde_json::json!(false));
     assert!(
-        s["body-edit"]["p95_ms"].as_f64().unwrap() >= 1500.0,
-        "the spike is visible in the P95: {}",
+        s["body-edit"]["p90_ms"].as_f64().unwrap() >= 2500.0,
+        "the spike is visible in the P90: {}",
         s["body-edit"]
     );
 }

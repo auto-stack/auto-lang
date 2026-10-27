@@ -10,7 +10,7 @@ param(
     [ValidateSet("admission", "semantics", "cache", "resources", "turnaround", "binding", "autodown", "acceptance", "closeout")]
     [string]$Scope,
     [int]$Samples = 30,
-    [double]$GateMs = 1000.0
+    [double]$GateMs = 2000.0
 )
 
 $ErrorActionPreference = "Continue"  # cargo writes progress to stderr; exit codes are the gate
@@ -66,7 +66,7 @@ switch ($Scope) {
         # T-07 (D-788 + D-796 merged): the formal ac-av/core-run-v1 recipe on
         # the unified probe/run seam — corpus, negative oracle, decode
         # admission negatives and the FORMAL warm-edit hard gate (frozen
-        # 30 samples / 1000 ms; AV798_FORMAL_SAMPLES/GATE_MS override).
+        # 30 samples / 2000 ms; AV798_FORMAL_SAMPLES/GATE_MS override).
         Push-Location $repo
         & cargo test -p auto-lang --lib --features test-cases ac_av_probe -- --test-threads=1 --nocapture 2>&1 | Tee-Object -Variable out | Write-Host
         $code = $LASTEXITCODE
@@ -76,7 +76,7 @@ switch ($Scope) {
         Write-Host "autodown: formal recipe green incl. hard gate (see autodown-formal.log)"
     }
     "turnaround" {
-        Write-Host "== turnaround release bench: 6 scenarios x $Samples samples, hard gate P95 < $GateMs ms"
+        Write-Host "== turnaround release bench: 6 scenarios x $Samples samples, hard gate P90 <= $GateMs ms"
         Push-Location $ws
         & cargo build --release -p auto-av-probe --bin av_probe_worker 2>&1 | Write-Host
         if ($LASTEXITCODE -ne 0) { Pop-Location; exit 1 }

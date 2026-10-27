@@ -6,7 +6,7 @@
 //! once, then ≥30 REAL body edits at fn_037's frozen multiplier site.
 //! The judged window is edit ENQUEUE (parent side, IPC included) → the
 //! parent's verification of the published CURRENT result against the
-//! revision's independent expectation. The dual gate: P95 < `gate_ms`
+//! revision's independent expectation. The dual gate: P90 <= `gate_ms`
 //! AND every result correct AND every structural axis green (unchanged
 //! functions zero stage work, zero whole-module movement, exactly one
 //! install per revision). Dual-line memory: the worker's sampled peak
@@ -23,11 +23,11 @@ use std::path::Path;
 pub struct CampaignConfig {
     /// Revisions to measure (>= 30 for the formal gate).
     pub revisions: u32,
-    /// The enforced P95 bound in ms (V-08: 1000.0).
+    /// The enforced P90 bound in ms (PLAN-858 r3: 2000.0).
     pub gate_ms: f64,
 }
 
-pub const FORMAL_GATE_MS: f64 = 1000.0;
+pub const FORMAL_GATE_MS: f64 = 2000.0;
 pub const FORMAL_MIN_REVISIONS: u32 = 30;
 
 /// Build the judged edit script for the frozen load: revision n's source

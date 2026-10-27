@@ -1,7 +1,7 @@
 //! PLAN-828 T-08 scaffold controls — the formal worker protocol over
 //! REAL cross-process IPC (the persistent `session-serve` worker + the
 //! parent-side judge), on a small fixture. The FORMAL measurement
-//! campaign (frozen 273 575 B load, ≥30 revisions, the P95<1000 ms
+//! campaign (frozen 273 575 B load, ≥30 revisions, the P90<=2000 ms
 //! verdict, dual-line memory budget) runs on the reviewed execution core
 //! after the batch-2 re-review — these controls prove the protocol, the
 //! judged window and every V-09 gate axis, not the campaign numbers.
@@ -189,7 +189,7 @@ fn t08_ready_with_wrong_initial_expectation_fails_before_edits() {
 /// V-08 FORMAL CAMPAIGN over the persistent worker: the frozen
 /// 273 575 B / 115-function load, 30 REAL body edits at fn_037's frozen
 /// multiplier site, the judged window = edit ENQUEUE (IPC included) →
-/// parent-verified publication. The dual gate: P95 < 1000 ms AND all
+/// parent-verified publication. The dual gate: P90 <= 2000 ms AND all
 /// correct AND structural green. Initialization is excluded (single
 /// listed in the report), the ready value is judged independently, and
 /// the raw stream covers every sample. Dual-line memory peaks are
@@ -252,9 +252,9 @@ fn t08_formal_campaign_v08_dual_gate_30_revisions() {
     // B3-C04: the initialization window is single-listed and excluded.
     assert!(report.init_ms > 0.0);
     assert!(
-        report.p95_ms < FORMAL_GATE_MS,
-        "P95 {:.1} ms must be < {:.0} ms",
-        report.p95_ms,
+        report.p90_ms <= FORMAL_GATE_MS,
+        "P90 {:.1} ms must be <= {:.0} ms",
+        report.p90_ms,
         FORMAL_GATE_MS
     );
     assert!(report.gate_pass);

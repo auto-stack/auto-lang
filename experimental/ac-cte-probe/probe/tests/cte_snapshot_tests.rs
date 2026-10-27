@@ -451,7 +451,7 @@ fn cte_snapshot_resident_lane_baseline_30_revisions() {
     // 30 DISTINCT body revisions through the resident lane: every
     // request is a real driver round (projection, scheduling, manifest,
     // execution); only the touched helpers recompile; every other
-    // function keeps compile-count 0 and its generation; P95 < 1000ms.
+    // function keeps compile-count 0 and its generation; P90 <= 2000ms.
     let mut walls: Vec<f64> = Vec::new();
     for k in 1..=30i64 {
         let deck = baseline_deck(FNS, k);
@@ -476,16 +476,16 @@ fn cte_snapshot_resident_lane_baseline_30_revisions() {
         assert_eq!(got, base_value + k, "rev {k} value");
     }
     walls.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let p95 = walls[(((walls.len() as f64 - 1.0) * 0.95).round()) as usize];
+    let p90 = walls[walls.len() - walls.len() / 10 - 1];
     assert!(
         if cfg!(debug_assertions) {
             // Debug is smoke-only (the 798 discipline): correctness
-            // asserted, the 1000ms gate is a RELEASE measurement.
-            p95 < 5000.0
+            // asserted, the 2000ms gate is a RELEASE measurement.
+            p90 <= 5000.0
         } else {
-            p95 < 1000.0
+            p90 <= 2000.0
         },
-        "resident-lane revision P95 < 1000ms (debug smoke <5s): {p95:.0}ms"
+        "resident-lane revision P90 <= 2000ms (debug smoke <=5s): {p90:.0}ms"
     );
 
     let lane = d.snapshot_lane().expect("resident lane");

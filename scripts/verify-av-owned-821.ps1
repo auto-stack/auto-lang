@@ -354,7 +354,7 @@ switch ($Scope) {
     "incremental" {
         # T-09 V-13: (1) the SHARED scalar baseline — the frozen 828
         # formal-session campaign dual gate (30 revisions, structure +
-        # P95 <1s, dual memory lines) replays green, plus the 827
+        # P90 <=2s, dual memory lines) replays green, plus the 827
         # incremental family (the scalar V-13 precedent, unchanged);
         # (2..4) the owned faces — two-fn local body updates (object +
         # generation reuse, zero production deltas), precise refusals

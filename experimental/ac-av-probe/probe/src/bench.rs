@@ -86,6 +86,7 @@ pub const BUDGET_WORKER_PRIVATE_PEAK_BYTES: u64 = 128 * 1024 * 1024;
 pub struct ScenarioStat {
     pub samples: usize,
     pub p50_ms: f64,
+    pub p90_ms: f64,
     pub p95_ms: f64,
     pub p99_ms: f64,
     pub min_ms: f64,
@@ -104,6 +105,7 @@ pub struct BenchSummary {
     pub gc_concurrent: ScenarioStat,
     pub gate_ms: f64,
     pub hard_gate_p95_ms: std::collections::BTreeMap<String, f64>,
+    pub hard_gate_p90_ms: std::collections::BTreeMap<String, f64>,
     /// Worker private-bytes DELTA (informational) and the sampled PEAK
     /// across the bench (worker + max child), which is what the budget
     /// gates on (F798-R2-02). None off Windows.
@@ -346,6 +348,18 @@ pub fn run_six_scenarios(b: &BenchInputs) -> (Vec<SampleRow>, BenchSummary) {
     ]
     .into_iter()
     .collect();
+    summary.hard_gate_p90_ms = [
+        (
+            "single-body-edit".to_string(),
+            summary.single_body_edit.p90_ms,
+        ),
+        (
+            "signature-conflict".to_string(),
+            summary.signature_conflict.p90_ms,
+        ),
+    ]
+    .into_iter()
+    .collect();
     let _ = std::fs::remove_dir_all(&root);
     (rows, summary)
 }
@@ -388,13 +402,23 @@ pub fn validate_and_gate(
             ));
         }
     }
-    // Hard gate: both gated paths P95 < gate_ms (0 always fails).
-    for (name, p95) in &summary.hard_gate_p95_ms {
-        if *p95 >= summary.gate_ms {
-            failures.push(format!(
-                "hard gate: {} P95 {:.1}ms >= {:.1}ms",
-                name, p95, summary.gate_ms
-            ));
+    // Gate the raw windows; P95 remains diagnostic. Invalid inputs fail.
+    for name in ["single-body-edit", "signature-conflict"] {
+        let walls: Vec<f64> = rows
+            .iter()
+            .filter(|r| r.scenario == name)
+            .map(|r| r.wall_ms)
+            .collect();
+        match crate::observations::latency_p90_ms(&walls) {
+            Some(p90)
+                if summary.gate_ms.is_finite()
+                    && summary.gate_ms > 0.0
+                    && p90 <= summary.gate_ms => {}
+            Some(p90) => failures.push(format!(
+                "hard gate: {name} P90 {p90:.1}ms > {:.1}ms",
+                summary.gate_ms
+            )),
+            None => failures.push(format!("hard gate: {name} missing or invalid windows")),
         }
     }
     // r5 two-line worker-memory policy (plan §5.9 / F798-R12-04): both
@@ -452,6 +476,7 @@ fn stat(rows: &[SampleRow], scenario: &str) -> ScenarioStat {
     ScenarioStat {
         samples: rs.len(),
         p50_ms: percentile_ms(&walls, 50.0),
+        p90_ms: crate::observations::latency_p90_ms(&walls).unwrap_or(0.0),
         p95_ms: percentile_ms(&walls, 95.0),
         p99_ms: percentile_ms(&walls, 99.0),
         min_ms: walls.iter().cloned().fold(f64::INFINITY, f64::min),
@@ -536,7 +561,6 @@ fn subprocess_row(
 /// The frozen hard gate kept for direct library callers (worker applies it
 /// via [`validate_and_gate`]).
 pub fn hard_gate(rows: &[SampleRow], gate_ms: f64) -> Vec<String> {
-    use crate::observations::percentile_ms;
     let mut failures = Vec::new();
     for scenario in ["single-body-edit", "signature-conflict"] {
         let walls: Vec<f64> = rows
@@ -544,12 +568,12 @@ pub fn hard_gate(rows: &[SampleRow], gate_ms: f64) -> Vec<String> {
             .filter(|r| r.scenario == scenario)
             .map(|r| r.wall_ms)
             .collect();
-        let p95 = percentile_ms(&walls, 95.0);
-        if p95 >= gate_ms {
-            failures.push(format!(
-                "hard gate: {} P95 {:.1}ms >= {:.1}ms",
-                scenario, p95, gate_ms
-            ));
+        match crate::observations::latency_p90_ms(&walls) {
+            Some(p90) if gate_ms.is_finite() && gate_ms > 0.0 && p90 <= gate_ms => {}
+            Some(p90) => failures.push(format!(
+                "hard gate: {scenario} P90 {p90:.1}ms > {gate_ms:.1}ms"
+            )),
+            None => failures.push(format!("hard gate: {scenario} missing or invalid windows")),
         }
         if rows.iter().any(|r| r.scenario == scenario && !r.ok) {
             failures.push(format!("hard gate: {} has failing samples", scenario));

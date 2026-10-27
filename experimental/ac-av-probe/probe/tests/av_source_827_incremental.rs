@@ -5,7 +5,7 @@
 //! (1.1) the D828 frozen baseline (273 575 B / 115 functions) x >=30
 //!       distinct body revisions through THIS consumer, dual gate:
 //!       structure (unchanged functions' stages all-zero, exactly one
-//!       install per edit) AND edit->verified-result P95 < 1000 ms;
+//!       install per edit) AND edit->verified-result P90 <= 2000 ms;
 //! (1.2) two-function local body updates on the AP-01-derived entry —
 //!       only the edited unit re-keys/installs, the other function's
 //!       stages stay zero, results/semantics propagate correctly;
@@ -385,7 +385,8 @@ fn av_source_827_incremental_d828_baseline_30_structure_and_p95() {
     }
     let p50 = percentile(&walls, 50.0);
     let p95 = percentile(&walls, 95.0);
-    let time_gate = p95 < 1000.0;
+    let p90 = auto_av_probe::observations::latency_p90_ms(&walls).expect("valid latency windows");
+    let time_gate = p90 <= 2000.0;
     // R7 F-827-R7-01: persist structure + time verdict BEFORE asserting it —
     // a red P95 leaves its per-run raw on disk with `verdict.status=fail`.
     validate_raw_shape(&raw.doc).expect("completed campaign raw shape");
@@ -393,13 +394,14 @@ fn av_source_827_incremental_d828_baseline_30_structure_and_p95() {
         "status": if time_gate { "pass" } else { "fail" },
         "structure": "pass",
         "p50_ms": p50,
+        "p90_ms": p90,
         "p95_ms": p95,
-        "time_gate_ms": 1000.0,
+        "time_gate_ms": 2000.0,
         "time_gate": time_gate,
     }));
     assert!(
         time_gate,
-        "edit->verified-result P95 {p95:.1}ms over {samples} revisions must be < 1000ms"
+        "edit->verified-result P90 {p90:.1}ms over {samples} revisions must be <= 2000ms"
     );
     eprintln!(
         "av827 incremental baseline: P50 {:.1}ms P95 {:.1}ms (raw run {run_id})",
@@ -490,7 +492,7 @@ fn av_source_827_incremental_failing_verdict_still_writes_raw() {
     run.push_revision(revision(2, 2100.0));
     run.finish(serde_json::json!({
         "status": "fail",
-        "reason": "controlled negative: P95 exceeded the 1000ms gate",
+        "reason": "controlled negative: P90 exceeded the 2000ms gate",
         "structure": "pass",
         "p95_ms": 2100.0,
         "time_gate": false,

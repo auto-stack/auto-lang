@@ -310,6 +310,27 @@ fn object_hit(v: &serde_json::Value) -> Option<String> {
         .and_then(|a| a.iter().find(|h| h[0] == "object").map(|h| h[1].as_str().unwrap().to_string()))
 }
 
+fn p90(samples: &[u128]) -> u128 {
+    assert!(!samples.is_empty() && samples.iter().all(|v| *v > 0), "valid measured samples");
+    let mut s = samples.to_vec();
+    s.sort_unstable();
+    s[s.len() - s.len() / 10 - 1]
+}
+
+#[test]
+fn ace_p90_nearest_rank_boundaries() {
+    let mut ten = vec![2000; 10];
+    ten[9] = 2001;
+    assert_eq!(p90(&ten), 2000);
+    ten[8] = 2001;
+    assert_eq!(p90(&ten), 2001);
+    let mut thirty = vec![2000; 30];
+    thirty[27..].fill(2001);
+    assert_eq!(p90(&thirty), 2000);
+    thirty[26] = 2001;
+    assert_eq!(p90(&thirty), 2001);
+}
+
 fn p95(samples: &[u128]) -> u128 {
     let mut s = samples.to_vec();
     s.sort_unstable();
@@ -1466,7 +1487,7 @@ fn r6_invalid_utf8_read_recorded() {
 
 const SAMPLES: usize = 30;
 const WARMUP: usize = 3;
-const P95_GATE_MS: u128 = 1000;
+const P90_GATE_MS: u128 = 2000;
 
 #[test]
 fn turnaround_native_six_scenarios_p95_gates() {
@@ -1520,6 +1541,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
     let hot_store = root.join("hot");
     std::fs::create_dir_all(&hot_store).unwrap();
     let hot_p95;
+    let hot_p90;
     let prep_ms;
     {
         let t_prep = Instant::now();
@@ -1573,6 +1595,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
         }
         s.close();
         hot_p95 = p95(&samples);
+        hot_p90 = p90(&samples);
         let (p50, _, p99) = stats(&samples);
         println!("hot: n={SAMPLES} p50={p50}ms p95={hot_p95}ms p99={p99}ms (session prep {prep_ms}ms, {WARMUP} warmup discarded; wall = build→IPC→parse→admission→manifest-verify→persist→exit-oracle)");
     }
@@ -1660,6 +1683,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
     let edit_store = root.join("edit");
     std::fs::create_dir_all(&edit_store).unwrap();
     let edit_p95;
+    let edit_p90;
     {
         let (mut s, work) = Sess::spawn("edit");
         let mut samples = Vec::new();
@@ -1701,6 +1725,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
         }
         s.close();
         edit_p95 = p95(&samples);
+        edit_p90 = p90(&samples);
         let (p50, _, p99) = stats(&samples);
         println!("body-edit: n={SAMPLES} p50={p50}ms p95={edit_p95}ms p99={p99}ms (bound 3<->4 alternating + unique marker; every sample parse=1, object=lowered)");
     }
@@ -1801,8 +1826,8 @@ fn turnaround_native_six_scenarios_p95_gates() {
     println!("raw samples (JSONL, per-sample before gates): {}", rec.path.display());
     println!("worker exe sha256: {}", rec.worker_sha);
 
-    assert!(hot_p95 < P95_GATE_MS, "HARD GATE hot P95 {hot_p95}ms >= {P95_GATE_MS}ms");
-    assert!(edit_p95 < P95_GATE_MS, "HARD GATE body-edit P95 {edit_p95}ms >= {P95_GATE_MS}ms");
+    assert!(hot_p90 <= P90_GATE_MS, "HARD GATE hot P90 {hot_p90}ms > {P90_GATE_MS}ms");
+    assert!(edit_p90 <= P90_GATE_MS, "HARD GATE body-edit P90 {edit_p90}ms > {P90_GATE_MS}ms");
 }
 
 // ---------------------------------------------------------------------------
@@ -1905,6 +1930,7 @@ fn turnaround_syntax_gate_and_revision_stream() {
     // ---- syntax local-edit gate: 30 single-edit requests, wall through
     //      admission + projection persistence + byte oracle.
     let syntax_p95;
+    let syntax_p90;
     {
         let (mut s, work) = Sess::spawn("syn");
         let base = "fn helper() int { return 7 }\nfn main() int { var i = 0; while i < 3 { i = i + 1 }; return i }";
@@ -1968,6 +1994,7 @@ fn turnaround_syntax_gate_and_revision_stream() {
         }
         s.close();
         syntax_p95 = p95(&samples);
+        syntax_p90 = p90(&samples);
         let (p50, _, p99) = stats(&samples);
         println!("syntax-edit: n={SAMPLES} p50={p50}ms p95={syntax_p95}ms p99={p99}ms (wall through admission+persist+byte oracle)");
     }
@@ -2317,8 +2344,8 @@ fn turnaround_syntax_gate_and_revision_stream() {
     let raw_path = rec.path.clone();
     println!("raw samples (JSONL): {}", raw_path.display());
     assert!(
-        syntax_p95 < P95_GATE_MS,
-        "HARD GATE syntax edit P95 {syntax_p95}ms >= {P95_GATE_MS}ms"
+        syntax_p90 <= P90_GATE_MS,
+        "HARD GATE syntax edit P90 {syntax_p90}ms > {P90_GATE_MS}ms"
     );
 }
 
