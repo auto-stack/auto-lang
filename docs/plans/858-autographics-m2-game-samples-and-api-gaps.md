@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-858
-status: executing
+status: execution_done
 feature_name: AutoGraphics M2双游戏样本冻结与公共接口缺口调查
 author: [Codex]
 created_at: 2026-10-27
@@ -10,7 +10,7 @@ supersedes_spec_components: [docs/specs/auto-ac/mir-native-cache.md, docs/specs/
 new_spec_components: []
 touched_goals: []
 affects: [auto-graphics, auto-test-case, auto-lang, auto-ac, auto-av, auto-cte, auto-semantics, auto-abi]
-current_step: 11
+current_step: 12
 total_steps: 14
 ---
 
@@ -197,7 +197,7 @@ T-08/T-09 只跑反例和受影响测试/必要编译，不运行整档 `t/tv/tt
 | T-09 | work | T-08 | 对 V-06/07 做定向编译、测试 ID 及真实正负例检查；提交修复和证据，整档 merge-owned pending | AC-08/09 | [x]（`c20c08a0c` 代码；`f098e8d70` 证据：功能启用清单与修复前源码 14/14 一致，821/822/827 实际 3+3+8 全通过，0 failed/ignored；格式与diff检查通过） |
 | T-10 | review | T-09 | 独立复核 Phase 2 全部 AC/V、未删断言/未默认开 feature、冻结身份 | AC-10 | [x]（Phase 2 final R1 pass @f098e8d707c4774e0c5a2f7dc459c9065e515488；见[复审报告](attachments/858/review-phase2-r1/review.md)，合入门禁 pending） |
 | T-12 | work | T-10 pass / 用户 r3 裁定 | 在现有唯一工作树核对主线及同组依赖；逐项盘点 ACE 性能门、producer/consumer/CLI/report、样本/测试 ID、当前规范和在途工作冲突，确定完整矩阵与 r3 规范增量草案 | AC-12 | [x]（`771557e4b929e887eb55aa688946e89140e844eb`：[盘点](D:/autostack/.wt/lang-858/auto-lang/docs/plans/attachments/858/phase3-work/inventory.md)和[SD草案](D:/autostack/.wt/lang-858/auto-lang/docs/plans/attachments/858/phase3-work/spec-delta-draft.md)，含16个规范/设计输入哈希；另有主检出六项设计WIP及823/824同文件交叉，沉淀/合入前须协调） |
-| T-13 | work | T-12 | 在同一树实施所有 ACE 适用正式门 P90≤2000ms、原采样数和真实路径/结构不变；完成 V-09/10 边界/负控/定向测试及冻结证据，提交代码和规范草案，不跑整档 | AC-12 | [ ] |
+| T-13 | work | T-12 | 在同一树实施所有 ACE 适用正式门 P90≤2000ms、原采样数和真实路径/结构不变；完成 V-09/10 边界/负控/定向测试及冻结证据，提交代码和规范草案，不跑整档 | AC-12 | [x]（handoff `447fb53c08516f6fe1c4af31bd83639bacb20561`；真实30样本与正负控、二轮主线同步后的检查见[工作证据](D:/autostack/.wt/lang-858/auto-lang/docs/plans/attachments/858/phase3-work/evidence-final.md)；完整复审和合入门仍 pending） |
 | T-14 | review | T-13 | 独立复核 r4 全范围、实际统计/边界、原有正确性/样本/测试 ID、规范草案及 Phase 2 复用有效性，给出受影响复审结论 | AC-13 | [ ] |
 | T-11 | merge | T-10/T-14 pass | 在最终冻结提交执行适用合入门并合 main；按 r4 冻结 SD 沉淀当前规范与 ledger；保留 Phase 1 历史快照到 attachments、修复其相对链接后以 r4 归档文件替换原历史快照路径；guard 清树；主检出单实例跑官方完整 batch，成功后更新覆盖锚 | AC-11 | [ ] |
 
@@ -244,9 +244,11 @@ T-08/T-09 只跑反例和受影响测试/必要编译，不运行整档 `t/tv/tt
 
 2026-10-27 r4 有界更正：stage=new | plan_id=PLAN-858 | plan_revision=4 | outcome=pass | 用户原定 P90≤2000ms、正式样本/路径/非时延约束不变；T-13 实查 788 使用 `Instant::elapsed().as_millis()`，合法亚毫秒样本量化为0，r3 曾笼统写“非正均非法”会误拒原有合法输入，现仅明确保留各路径原零值准入规则（796等原本拒零保持不变），788 的整数毫秒0合法。T-12 盘点和 Phase 2 验收可继续复用，r4 整体须最终独立复审。next=work/T-13。
 
+2026-10-27 r4 work 交接：stage=work | plan_id=PLAN-858 | plan_revision=4 | outcome=pass（仅 work-owned AC-12/V-09/10，非交付） | worktree_path=D:/autostack/.wt/lang-858/auto-lang | branch=plan-858-dev | base_commit=e263a71dd735b86233e75e38d524b6492eb81bc9 | code_commit=1690d1313f779f12f457f08a16acda0209a26ae8 | handoff_commit=447fb53c08516f6fe1c4af31bd83639bacb20561 | dependency_revisions=auto-down:c3464d0a0d36e4f8a7988b0c0c26448fc52361b4,auto-ui:4903bef64532750d1597627b1197f3d2cac1effc（均 clean） | spec_delta=[草案](D:/autostack/.wt/lang-858/auto-lang/docs/plans/attachments/858/phase3-work/spec-delta-draft.md) SHA256=b77d1dd28af9eae239c38513d3dff1c8080f376f371655a46a042cec0571523f；新基线 nine specs 与 design 哈希在案 | evidence=[最终定向记录](D:/autostack/.wt/lang-858/auto-lang/docs/plans/attachments/858/phase3-work/evidence-final.md)，47项日志/原始样本哈希；ACE 各实际入口、10/30样本边界、原结构/资源/错误结果负控，MN/AV/CTE/语义/ABI/788真实场景通过；841 后重新 cargo check、book no-run、821/822/827 3+3+8；机器环境不宣称隔离。历史 858 merge 日常测试三次失败与 ABI 预热首试失败保留；后者换环境复试通过。 | reconciliation=841 主线与 UI 依赖变化后重跑受影响检查；range-diff 实现等价，旧v100未发布账本投影因上游v101保留而撤回，merge复审通过后须基于当前版本重新生成。 | blockers=无未完成 work-owned 实施项；其他任务在主检出 design 39/40/43/44 及两份 strategy 存在 WIP，823/824 有重叠文件，沉淀/合入时不得覆盖，须核对最新状态并协调。 | pending=独立最终复审 T-14/AC-13/V-11；merge T-11 的冻结版裸cargo t、实际触面档、主检出单实例完整batch、规范/ledger、历史迁存/归档/guard清理；旧P95失败不因新政策被改写，未合入。 | next_responsible_role=review/T-14。
+
 ## 10. 待澄清事项
 
-无阻塞new草案的问题。T-02/03负责在限定来源与既定必需分母内选资源/冻结来源，常规判断无需重复批准。若需要删必需功能、换游戏类型、改变独立仓/离线交付目标，或将未知许可资产算入可发行闭包，须先提出具体选择由用户决定；本Plan不能以“研究”名义静默变更M2目标。
+r4 工作无待澄清的用户决策；合入前须保留并协调上面记录的其他会话 design WIP 与在途交叉，不得覆盖。历史 Phase 1：无阻塞new草案的问题。T-02/03负责在限定来源与既定必需分母内选资源/冻结来源，常规判断无需重复批准。若需要删必需功能、换游戏类型、改变独立仓/离线交付目标，或将未知许可资产算入可发行闭包，须先提出具体选择由用户决定；本Plan不能以“研究”名义静默变更M2目标。
 
 2026-10-27 work 未闭合：官方项目整体 MIT 声明及 Godot 贡献指南允许多种美术许可不足以确定候选文件各自许可。已追溯 2023 美术重制提交 c17d803a1becb2b0fac47fa87d3572486fd77131 及 2020 音效引入提交 e323bead2ecee69c13cd26895042917985532916，但提交作者不等于逐文件权利人/许可。下一步需取得所选文件原始权利人及具体许可证据，或在允许的三来源内选择可核实许可的替代素材，重新核对引用闭包与候选关卡，不得把未知许可标作可发行。已完成的候选 SHA/长度仅供追溯；T-02/03/04 保持未完成。
 
