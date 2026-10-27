@@ -1,6 +1,6 @@
 [package]
 name = "auto-lang"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Auto is a programming language for automations in various scenarios"
 homepage = "https://gitee.com/auto-stack/auto-lang"

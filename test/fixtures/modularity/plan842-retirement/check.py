@@ -73,6 +73,36 @@ fn main() { let _ = builder; let _ = context; }
             elif run.returncode == 0 or expected_code not in output or expected_item not in output:
                 raise RuntimeError(f"{name}: expected {expected_code} naming {expected_item}: {args.output / (name + '.log')}")
             print(f"{name}: {'canonical passes' if expected_code is None else 'retired path rejected'}", flush=True)
+        # Each old exact Cargo version must reject the new source rather than
+        # resolving a breaking API under the old identity.
+        paths = {
+            "auto-lang": ROOT / "crates/auto-lang",
+            "auto-ui-dialect": UI / "crates/auto-ui-dialect",
+            "auto-ui-runtime": UI / "crates/auto-ui-runtime",
+        }
+        pinned = manifest
+        for name, path in paths.items():
+            pinned = pinned.replace(f'{name} = {{ path = {cargo_path(path)}',
+                                    f'{name} = {{ version = "=0.2.0", path = {cargo_path(path)}')
+        (project / "src/main.rs").write_text(cases["canonical"][0], encoding="utf-8")
+        for name in paths:
+            previous = pinned.replace(f'{name} = {{ version = "=0.2.0"',
+                                      f'{name} = {{ version = "=0.1.0"')
+            (project / "Cargo.toml").write_text(previous, encoding="utf-8")
+            run = subprocess.run(["cargo", "check", "--offline", "--target-dir", str(ROOT / "target")],
+                                 cwd=project, capture_output=True, text=True, encoding="utf-8", errors="replace")
+            output = run.stdout + "\n" + run.stderr
+            (args.output / (name + "-old-version.log")).write_text(output, encoding="utf-8")
+            if run.returncode == 0 or name not in output or "0.2.0" not in output:
+                raise RuntimeError(f"{name}: old exact version did not reject new source")
+            print(f"{name}: old exact version rejected", flush=True)
+        (project / "Cargo.toml").write_text(pinned, encoding="utf-8")
+        run = subprocess.run(["cargo", "check", "--offline", "--target-dir", str(ROOT / "target")],
+                             cwd=project, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        (args.output / "new-versions.log").write_text(run.stdout + "\n" + run.stderr, encoding="utf-8")
+        if run.returncode:
+            raise RuntimeError("new exact versions failed to resolve")
+        print("all 0.2.0 exact versions: canonical consumer passes", flush=True)
     return 0
 
 
