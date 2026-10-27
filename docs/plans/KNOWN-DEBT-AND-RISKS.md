@@ -1,3 +1,9 @@
+### Plan 823 r8（2026-10-27，R2 needs_fix；部分原finding关闭）
+
+绑定0d5d58f6b93bbf3f7e687b103f4b19b7ae8fe6ef。F-823-R1-05（当前代码source campaign重放）/06（fmt）CLOSED，T09完成，进度executing3/11；真进程restore单项通过。F01 OPEN：ENV_GET→局部Move→Move capture仍过验/Success29，别名不变量未闭；F02 OPEN：case-serve正式closures recipe仍unknown/exit2，身份映射与父judge调用遗漏；F03资源/旧consumer兼容oracle仍partial；F04 OPEN：新增park30取消仍停在clone前（三alloc），未到env发布。新增F-823-R2-01 P1：未信任EnvGet dst=u32::MAX在新增别名预扫描panic；F-823-R2-02 P2：新增unused_mut警告。25定向通过不抵消反例。全部OPEN为合同内阻塞，不可债务延期后放行；整档/merge仍pending。[R2证据与关闭要求](attachments/823/review-r2/review.md)。
+### Plan 823 r8（2026-10-27，R1 needs_fix，合同内阻塞）
+
+F-823-R1-01..06 OPEN，绑定ed69973940839c0c52042dad5fb4e40971215a6d：父env字段经ENV_GET别名再move入子环境并销毁后，父仍可重读，实际受检执行Success(29)；正式AutoDown父侧recipe/新worker进程缺失；128MiB父侧瞬态采样及旧scalar/817/818兼容性能未完成；“提交后取消”实际停在prepare clone，代际/store/frame等必需状态反控不足；V13源基线被上游历史声明替代；实验包fmt check失败。29个现有定向测试全绿不能证明上述合同。均为原合同缺口，不可记债延期后判完成。T02/03/04/05/06/09重开，T11未完成，executing2/11；T01/T10已完成子集保留。规范/最终依赖窗口认证pending，整档仍merge-owned pending，未合入。[R1报告及重放](attachments/823/review-r1/review.md)。
 ### Plan 848 r3（2026-10-25，原生backlog验证器修复独立pass）
 
 M848-NATIVE-BACKLOG CLOSED，绑定dd7076a7f/r3。合法clock自动暂停后探针误把未接受刺激用于动作/隐藏断言；修复仅原生验证状态机，实际OS Resume/恢复目标、未接受V重投/已接受不重放、原动作数量与phase deadline保持。独立display-gap文本/3D held/wrong-focus及强制重投已接受V变异均具区分性。生产clock/Host/Auto/128/32credits/CPU未改。[独立R4](attachments/848/review-r4-final/review.md)，reviewed9/10，当前冻结merge统一门仍pending，未合入。下方OPEN仅历史。
@@ -3404,7 +3410,7 @@ r3 / lang `cd603e418accde3bb85327cc1b6affd49b2ce93f` + Man `356f2c8186d07bc18567
   （`bump(mut t Tok, d int)`+`bump(a.mut, 5)`）与静态方法形
   （`Tok.new(fresh.move, 9)`）均正常。实测于 plan-821 T-09（owned 增量签名
   变更形状选型时绕开）；782 owner 复核多参 move 标记的参数关联。
-- **借入 record 参数的 owned 调用侧降层未落地**：hir_adapter 的
+- **已关闭（2026-10-26 R6，原R1修复/R5独立确认）——借入 record 参数的旧占位记录，仅保留历史**：hir_adapter 的
   `ExprKind::BorrowView` owned 臂仍为 `lower.borrow` 占位拒（原注释"land with
   PLAN-821 T-03"，T-03 实测未触达）；782 源域支持借入 record 参数
   （`fn bump(u Note) str { return u.body }` 编译过 verify），但 owned MIR 冻结
@@ -3417,9 +3423,113 @@ r3 / lang `cd603e418accde3bb85327cc1b6affd49b2ce93f` + Man `356f2c8186d07bc18567
 
 r3 / lang `87f82d637ecd586c17a01c1c975e1456bc346991` + Man `ebfc88f8e66da05d192c88c11a8a946e8b5bbc7f`：[完整R2/复现/关闭oracle与覆盖诊断](attachments/832/review-r2/review.md)。F832-R1-01独立Core来源/锁/640安装/真实管理语言和F832-R1-02实际AccessDenied/live/dead/unknown保护均独立CLOSED。仅F03(P2) PARTIAL/OPEN：Cargo父测试先解析再给CLI注入tool，原例1/1绿；直接生产CLI清CARGO_MANIFEST_DIR/AUTO后仍exit1只尝试Man邻接target；合法工程仅加tool/manifest/UI根各exit0产App.vue，安装邻接与显式缺tool正反控成立。F04(P2) PARTIAL/OPEN：旧am/虚拟manifest说明及release退役已修，新文档从真实升级backup移回后verify因额外.man-backup.marker返回2，移走唯一标记其余字节不动即640/exit0，备份数据无丢失。原CI/helper定向、Core和owner有效证据保持，文档与默认发现不变量未闭合；记债不批准延期，jet/ark r3裁定继续有效。只重开T08/T09、executing7/12；这是第二次final needs_fix，work下一handoff前须记录真实CLI子环境与真实backup往返的覆盖诊断/oracle调整，提交后仅复审受影响面。未改实现/跑整档/合入/发布Spec-ledger/归档清树，merge-owned统一门仍pending。
 
+## PLAN-821 final R1 — 2026-10-25 needs_fix（原合同内OPEN，不授权延期）
+
+受审 r5 / `7c72d657dd16a0865216258684645f342550a808`；[报告、AC/V/SD映射与可重放输入](attachments/821/review-r1/review.md)。F821-R1-01..09=P1，10..11=P2：RETURN漏Dropped/借用结束绕逃逸；Call返回来源及loan双向门漏传；静态view跨unit错误常量域；Aggregate/FieldSet未kill源、显式Drop延迟释放；8192标量槽验证实配35,176,954B却记4160B；1MiB clone与16B同为14步；owned增量仍测试内整模块前端+手工挑def且强制全算测试PASS；borrow/mut源码仍T03占位；owned缺父侧32/128MiB硬门；新worker/自洽坏内层恢复未验；SD07仍T09执行中且支持/资源现状不实。全部OPEN，属于原AC必修；前文将借入record视为可延后债的记录不构成批准缩减，表达力冲突须按new显式修订。现有40定向测试与scoped check/fmt通过不覆盖这些反例。T02..06/T09重开，executing1/9，保留T01与全部历史。下一步同树work修齐、定向检查/提交后复审；最终pass后merge统一门pending，未改实施/Spec-ledger/合入/归档/清树。
+
+### PLAN-832 final R3 — 2026-10-25 reviewed10/12（全部原finding关闭）
+
+r3 / lang `e320abf4fa1ae2d00d3e2bc91a35eea53345f409` + Man `f52cd93b09401f358a89a19058fbf1fa7673fd16`：[完整R3/冻结SD/实际对照](attachments/832/review-r3/review.md)。F832-R1-01/02保持CLOSED；F03直接CLI在清Cargo/AUTO环境下实际发现同组UI，七格加release布局/平放无回退九格全部符合预期，永久无注入测试1/1通过；F04从真实升级backup实际执行文档PowerShell，marker移出具名保存后640verify0、旧manifest字节相等且旧脚本可运行，陌生extra2/移出复绿0，full永久恢复driver已核。二次失败覆盖诊断与调整有效，当前无open in-contract finding或必需oracle gap；AC01..07/SD pass，T10完成，reviewed10/12。历史R1/R2开放记录保留，当前以R3 closure为准；jet/ark仍属用户r3批准的v0.7环境承接，不冒称构建已实测。T11/T12、merge-owned冻结裸t/适用触面、Man t/tcore/ti及consumer/UI/跨仓发行门、实际合入/Spec-ledger/归档guard仍pending；未改实现/跑整档/合入/发布canonical或ledger/归档清树，不能据此宣称交付完成。
+
+## PLAN-821 final R2 — 2026-10-25 needs_fix（修复就绪性定向审查）
+
+受审`e34a2c99940c0fec8558deffa27447a067a7553a`/r5；[R2报告/closure/独立输入与raw](attachments/821/review-r2/review.md)。7回放+5增量全过，原F01/03/04/05独立关闭；F02旧反例闭、新RecordView完整路径待核。F06字节计步改善但新增128层clone拒绝，5619B合法130类型链准入后Infra；F07仍whole frontend且gate绿，后端lower拒绝候选后revision1→2、删旧callee使旧程序panic（原ID下修复回归）；F08 borrowed record已落地但mut仍受控拒、未授权缩减；F09父侧采样已补但磁盘目录大小不能代32MiB内存分区，同门失败反控未闭；F10本轮独立复核pending；F11 SD/当前完成记录与残项冲突。新增F821-R2-01=P2：core两条、replay测试两条未用变量警告。T02/03/04/06/T09重开，保留T01/T05，executing2/9。第二次final失败，下次ready前须提交整前端/失败安装/深度新分支/受控拒误判完成的覆盖诊断及新oracle，逐项closure而非11/11总数；原合同内不授权延期，统一回归仍merge-owned pending。未改实施/Spec-ledger/合入/归档/清树。
+
+## PLAN-821 final R3 — 2026-10-26 needs_fix
+
+受审`18dee14f9b5a7181a94cc2f48e3431e8a8108898`/r5；[报告/输入/原始输出/关闭oracle](attachments/821/review-r3/review.md)。F06合法130层clone独立Success、F07候选Trap运行失败保revision/production/旧结果7的修复有效；F07全前端仍1→2且gateOk，计量可见不等于原合同零未改前端生产；F08单mut808过，但合法mut+只读record在hir_adapter1643越界panic、双mut第二FieldMove读死wrapper、owned Str返回FieldGet类型误拒；F09 store.space()仍磁盘量，checker又把whole private-bytes当8MiB execution，不能代真实hot/staging/exec内存峰值；F11 SD单方面写入whole前端完成边界与mut全链支持；R2-01旧4警告清但新Production::bump dead_code，health仍OPEN。12定向通过不覆盖上述机制；T02/03/04/06/T09重开，保留T01/T05，executing2/9；F10/V05未独立闭，所有历史有效证据保留。同树work补全共享不变量与第二次失败后的覆盖诊断，或回new明确不可执行方案；不授权缩合同/延期，统一回归仍merge-owned pending。未改实施/Spec-ledger/合入/归档/清树。
+
+## PLAN-821 final R4 — 2026-10-26 needs_fix
+
+受审`5fc1a0aa2d9848a9d6e652cb0798c8c0719fa653`/r5；[报告/独立probe/raw/关闭oracle](attachments/821/review-r4/review.md)。原R3 probe全翻转（含single-body1→1、mut808/810/8917/801）、health R2-01闭；16定向测试通过/0ignored，check无警告。原ID残项：F07成功变长编辑未更新decl坐标，同函数第二次/前方函数变长后编辑后方函数均错误parse拒；F08 moved_fields随新owner未清，合法mut循环及typed整根重建误拒，父字段移出后子字段路径仍获ABC授信至Infra；F09维度与同gate反控改善，但RecordView字段名/Vec等动态堆漏计，3,035,011B合法wire下hot估算3,037,375B而活flat+两份字段名载荷下界9,068,791B>8MiB；F11/V05必需矩阵未闭，F10完整独立验证仍pending。T02/03/04/06/T09重开，保留T01/T05，executing2/9，全部有效历史证据保留。下一work诊断须覆盖连续变长坐标/整根新owner与回边/前缀投影/新类型真实载荷，不能用样例总绿再算全闭；统一门仍merge-owned pending。未改实施/Spec-ledger/合入/归档/清树。
+
+## PLAN-821 R5 — 2026-10-26 R4三P1关闭，V05待决
+
+受审`40f4c594fd6cfdc8d051a980c64f5e57baa67e4a`/r5；[报告/定向关闭证据/合同决策说明](attachments/821/review-r5/review.md)。F07连续变长坐标、F08新owner重置/前缀重叠、F09RecordView/FieldMove载荷漏计均独立CLOSED，原probe所有反例翻转、合法对照保持；21定向检查（7增量/12回放/2新进程恢复）通过、0ignored，check无警告。F10原恢复缺口本轮CLOSED。没有新增P1，不重开这三个修复。整体needs_replan原因仅当前具名V05 runtime oracle与无解引用指令的as-built差异，Plan§10三选一需用户决策后new同步合同；review不能默示豁免，F11最终SD与AC07尚未pass。T03/T04/T06仅保留V05责任，T01/T02/T05/T09完成，executing4/9。旧有效证据保留、未改实施/Spec-ledger/合入/归档/清树；统一门仍merge-owned pending。
+
+
+## PLAN-821 R6 — 2026-10-26 用户裁定后 final pass / reviewed8/9
+
+受审`40f4c594fd6cfdc8d051a980c64f5e57baa67e4a`/r6；[最终报告与完整AC/V/SD映射](attachments/821/review-r6/review.md)。用户明确选择V-05改为现有静态类型／借用检查、不承诺运行期无效句柄校验；Plan/contract-decision/SD已同步。原runtime旧帧/跨store/generation回绕退役能力未交付，不记为已实现或原oracle通过。F821-R1-01..11和F821-R2-01阻塞残项全部CLOSED，前述R1–R5 OPEN/pending文字仅历史。R5三P1独立关闭与21定向检查保持；本轮8定向测试通过/0ignored，实际脚本选择器7正反控制通过。T03/04/06与T07勾回，reviewed8/9；T08/AC08及merge-owned裸cargo t+tv+独立workspace完整有限合同档/实际触面pending，未合入/归档/清树或发布Spec-ledger。
+
+非阻塞注释勘误（owner=821 experimental AV）：core/src/av.rs中Frame.gens/resolve_view_bytes以及contract.rs中MutRefV的历史注释仍提“generation at use/stale-handle rejection”，实际StrView为Share/Static且MutRef token无解引用消费入口。r6合同和拟Spec明确不承诺该运行期能力；这些注释不作通过证据，后续注释维护应据实际机制纠正。不是运行期已实现保证，也不扩大原本次实施范围。既有782多参move关联错位仍归原owner；borrowed-record旧占位已关闭，不继续列未完成债。
+
 ## R849-NATIVE-CLOCK — spatial native probe clock-pause recovery
 
 PLAN-849 merge observed one consumer dash3d-short reopen auto-Pause (tick backlog>4) after8ticks; phase4 waits for80 inputs without resuming clock pauses and timed out. Same frozen binary full14+4 isolated retry passed, no geometry/CPU fault or input interference shown. Preserve original clock guard; candidate follow-up should explicitly resume legitimate clock pauses through OS controls within unchanged deadline and retain counterexamples. [Failure and retry](attachments/849/merge-r1/sweep-clock-diagnostic.json.txt). This is verifier scheduling stability debt, not a waived gate.
+
+- 2026-10-26 PLAN-822 R1: F-822-R1-01 ListSet 预算拒绝发生于写入/drop 后；F-822-R1-02 V-13 集合增量真实入口与依赖/正式反控缺失。均为合同内阻塞，不能以记债豁免；详见 Plan 822 R1。
+
+- 2026-10-26 PLAN-822 R2：R1-01 ListSet 缺陷已闭；R1-02 部分修复。R2-01(P1)拒绝候选先发布、R2-02(P1)Index Place/token 校验缺失、R2-03(P1)列表清理正序、R2-04(P2)汇总遗漏/skip 防线不足。均为合同内待修复，不以记债替代验收；详见 attachments/822/review-r2/report.md。
+
+- 2026-10-26 PLAN-822 R3：受审 bf9e92cb472495037ce73daab5b0c1d2a4f09f7d。R2-01 link/trap拒绝安装、R2-04四坏形状独立关闭；原Place五控和逆序三控绿但不变量未闭。F-822-R3-01(P1)错型Place读写准入与执行均未检查，List<i32>实返Bool(true)；F-822-R3-02(P1)逆序清理修复在Move源kill时清空目标共享buffer，一元素列表移动后len=0。合同内必修，不授权延期；见[报告/反例/日志](attachments/822/review-r3/report.md)。T03/04/06重开，executing4/9；统一门禁仍merge-owned pending。
+
+- 2026-10-26 PLAN-822 R4：受审7239e8f4774bc4f6ea7cc6354bd78f99f780b55a，R3错型Place与共享转移原缺陷/受测同类独立验闭(28语义+2会话绿)。新F-822-R4-01(P1)新增Place.elem未纳入全表验证，unused越界TypeIdx经MIR/ABC授信后真实consumer链接越界panic；合法对照返回7。合同内必修，不批准延期；[报告/重放/关闭oracle](attachments/822/review-r4/report.md)。T03/04/06重开executing4/9，其余历史证据保留、完整AC/V/SD及merge-owned统一门pending。
+
+- 2026-10-26 PLAN-822 R5：受审ad9a69ffa12919ac8812b18b78a0b481b6f319bb，F-R4-01原MIR/ABC/真实consumer反例独立验闭(1+2+8定向绿)。新F-822-R5-01(P1)跨帧PLACE_SET预检caller却提交callee槽，已准入程序在av.rs:2735 panic；F-822-R5-02(P1)Place漏借用provenance/escape与record字段域，内部callee本地根token返回获准、caller使用才InvalidHandle，record{Place}亦获准。新独立5例2绿3红；合同内必修，不批准延期。T03/04/06重开、executing4/9；[完整报告/耐久重放/关闭oracle](attachments/822/review-r5/report.md)，统一门禁仍merge-owned pending。
+
+- 2026-10-26 PLAN-822 R6：受审352cbc5c4e1afe4dd1a515e856d4986503506a22；F-R5-01跨帧提交CLOSED，R5原5控与Place13控绿，F-R5-02仅原同块/字段实例关闭。F-822-R6-01(P1，R5-02残余)：局部Place跨Jump返回时根被live-only合流丢弃，MIR/ABC均授信，caller使用才InvalidHandle。F-822-R6-02(P2，修复回归)：Copy将保留引用意外升为活借，同一ListSet直接mint可返回9、加Copy却mir.list.place-borrowed拒。新独立5例3绿2红，含外部根跨块返回与跨块读正控；合同内必修不批准延期。T03/04/06重开、executing4/9；[R6报告/最小重放/关闭oracle](attachments/822/review-r6/report.md)，merge-owned整档仍pending，未修实现/合入/归档/清树。
+
+- 2026-10-26 PLAN-822 R7：受审3afbcbd3f74ed3d59e562dd901c419678f92f58e；R6-01/02独立关闭（原5控、混合根合流三子形态、Place16控+helper-update1控绿）。F-822-R7-01(P1)保留Place根漏ownership预分配计量：216192B/12000引用输入两门准入，计2340928B，生产分析函数allocator新增live峰21217630B超冻结16MiB；小正控通过。F-822-R7-02(P2)产品is_token_live闲置导致dead_code warning。合同内必修不批准延期；[R7报告/最小重放/关闭oracle](attachments/822/review-r7/report.md)。T03/04/06重开、executing4/9；统一门仍merge-owned pending，未修实现/合入/归档/清树。
+
+- 2026-10-26 PLAN-822 R8：受审952c2b586；R7内存预算/死方法警告两项独立关闭。F-822-R8-01(P1，原集合集成遗漏)：真实MIR/ABC准入的List深CLONE实际上共享Rc，原[7]改[9]后克隆读9而非7；clone_owned_value未扩展List/Variant遍历。原V-03/11要求的clone故障/取消oracle仍未闭，冻结文档称拒集合CLONE也与实现不符。合同内必修、不批准延期；见[报告/重放/关闭oracle](attachments/822/review-r8/report.md)。T03/04/06重开executing4/9；merge-owned统一门pending。
+
+
+## PLAN-853 independent final R1 — 2026-10-26 needs_fix
+
+冻结760c232f4/r1；F-853-R1-01(P1)根build.rs自动编译输入未列入来源集合、校验/导出仍绿且消费包漏源；F-853-R1-02(P2)v3/v4/v5 API兼容凭据全零hash不拒；F-853-R1-03(P2)新test binary头未完成仍整体接受。均为合同内必修，不是延期豁免；[报告/持久反例/合法对照/最小关闭oracle](attachments/853/review-r1/review.md)。T04/T05重开，executing3/9，统一完整门仍merge-owned pending；原85/每端280ID、50进程/1500tick重放、native14+4/owner6负+恢复和两端实际生成一致证据保留。
+- 2026-10-26 PLAN-822 R9：受审7402022b5，R8原浅共享实例独立关闭，clone五控绿；F-822-R9-01(P1)修复访客对List/Variant递归且无中途取消，合法三层Variant证伪一层界；F-822-R9-02(P1)图验证前置Record-only筛选跳过Variant，自环类型两门授信。合同内必修、不批准延期；[报告/反例/关闭oracle](attachments/822/review-r9/report.md)。T03/04/06重开executing4/9，merge-owned统一门pending。
+
+### PLAN-852 review R1 — in-contract repair blockers (2026-10-26)
+
+F-852-R1-01～04: invalid/underbound certification receipt accepted; acceptance/daily test implicit recertification; sequential stdout/stderr deadlock and incomplete cap/identity-tool governance; formatting and durable frozen-contract/Spec delta handoff unfinished. These are **in-contract blockers**, not waived M1 capability debt. Owner: PLAN-852 work T-03～T-06; status: open. Reproducer, expected/actual, targeted closing oracles and frozen baseline: [review R1](attachments/852/review-r1/report.md). Collection/closure/Dyn/native-online gaps retain their original downstream owners and do not block the r2 baseline by themselves.- 2026-10-26 PLAN-822 R10：受审9e65e606d；R9 Variant环准入原反例独立关闭。F-822-R10-01(P1，R9残余) Value::Variant派生Clone递归复制Box载荷，所谓浅快照仍隐式递归；删除CLONE后两个中途取消/墙用例仍绿，未证明生产helper中途退出。F-822-R10-02(P2)原committed语义bin有unused c0警告。合同内必修不批准延期；[报告/反控/关闭oracle](attachments/822/review-r10/report.md)。T03/04/06重开executing4/9，merge-owned统一门pending。
+
+
+## PLAN-853 final R2 — in-contract pending completion gap
+
+2026-10-26，5e3f5b65f/r1；原R1来源/五API/新header反例独立关闭。F-853-R2-01(P2)块内未完成case在summary或后继case行被吞，真实validate_run假绿；合同内必修、不批准延期。T04/T05重开executing3/9；第二次连续final needs_fix，下次work先诊断状态/覆盖调整再送审。[反例、合法控制、实际消费者与最小关闭oracle](attachments/853/review-r2/review.md)。完整门仍merge-owned pending。
+
+### PLAN-852 review R2 — repair invariant gaps (2026-10-26)
+
+F-852-R1-01 remains partially open: R2-A(P1) runtime RUSTC uses nightly1.90 while certificate stores build stable1.98 (daily snapshot accepts); R2-B(P2) receipt filter_map silently discards wrong-type flags/deps elements and unknown fields are ignored. R1-02 implicit certification removal confirmed. R1-03 deadlock/overflow/wall controls pass, but R2-C(P2) identity-capture error skips scratch cleanup. R1-04 durable contract/SD present, added stale.rs insertion still fails rustfmt. Owner=852 work T-03～06; these are in-contract blockers, not waived downstream M1 capability debt. Full replay/closure scope: [R2 report](attachments/852/review-r2/report.md). Preserve confirmed closures and unchanged source/lifecycle evidence. No whole-tier gates during repair/re-review.
+
+### Plan 841 r1（2026-10-26，独立final needs_fix）
+
+F841-R1-01 P1 / F841-R1-02 P2 / F841-R1-03 P2 **OPEN（合同内阻断，不是获准延期债务）**：冻结lang `acd8d99d2`、UI `f7eeb82d0`、Man `ebfbb3790`。Rust/Vue公开生成接受lower_ui已拒绝的重复widget；合法48层视图4253B编码后decode自身数据触发递归上限；触面rustfmt30文件未过。原codec5/lowering4/cache1与Core/SDK/UI golden/Man CLI等定向检查通过，但未覆盖新反例。重开T-02/T-05/T-06/T-08/T-09，executing4/12；work同树修复全部finding与永久/邻接控制、格式/SD/来源后提交复审，统一门仍merge-owned pending。外部方言fixture本轮磁盘满属环境中止，未冒称绿；无合入/归档/放行。[独立报告与可复现关闭条件](attachments/841/review-r1/review.md)。
+- 2026-10-26 PLAN-822 R11：受审b5c226214；R10 unused警告关闭、Rc浅快照子面修复；F-822-R11-01(P1)Clone移除字节fuel，真实双门执行4B/4096B克隆增量均5步；F-822-R11-02(P1)helper把segment累计耗时与剩余墙比导致双扣，fresh helper剩余墙0仍成功。合同内必修不批准延期；[报告/反例/关闭oracle](attachments/822/review-r11/report.md)。T03/04/06重开executing4/9，merge-owned统一门pending。
+
+### PLAN-852 review R3 — daily receipt consumer consistency (2026-10-26)
+
+R2 original counterexamples closed: actual compiler identity, malformed array/root samples, scratch identity-failure cleanup and formatting. F-852-R3-01(P2) remains in-contract: unknown produced_by nested field rejected by Rust but accepted as STRICTLY valid by daily PS5.1 snapshot; typed/key-set consistency needs shared-invariant closure. Owner=852 T-03/T-06; SD-02 old identity paragraph/comments must align. Preserve closed T-04/T-05 and unchanged oracle/lifecycle evidence. Reproducer and minimal scope: [R3 report](attachments/852/review-r3/report.md). Not waived as downstream M1 capability debt; no full-tier replay required during repair.
+### PLAN-852 review R4 — strict scalar types (2026-10-26)
+
+R3 produced_by original replay now rejects in both consumers. F-852-R4-01(P2), same typed-schema invariant: case/module single-element arrays rejected by Rust but accepted by daily snapshot as STRICTLY valid; PowerShell -cne collection filtering bypasses missing scalar string guards. Owner852 T-03/T-06; SD-02 resource text and BUILD_TOOLCHAIN_IDENTITY comment still stale despite closure claim. Preserve prior identity/cleanup/stream/oracle closures. [R4 report/replay](attachments/852/review-r4/report.md). In-contract blocker, not downstream M1 capability debt.- 2026-10-26 PLAN-822 R12：受审90074e87f，R11字节fuel/墙坐标两项独立关闭，clone12控绿；F-822-R12-01(P1，原集合集成遗漏) min_buffer_id/drop_owned_reverse对合法嵌套Variant递归，违反§5.1.6清理显式遍历；64层真管线绿证明可达，未声称栈溢出实测。合同内必修非可延期债；[报告/控制/关闭oracle](attachments/822/review-r12/report.md)。T03/04/06重开executing4/9，merge-owned统一门pending。
+
+### Plan 841 r1（2026-10-26，R2受影响final needs_fix）
+
+F841-R1-01 P1 **仍OPEN（旧例关闭、全不变量未闭）**：正式request工程入口Jet/Ark/Rust全部接受重复widget且写盘；compiler/SDK同名backend绿不覆盖tools生产入口。F841-R1-02/03 **CLOSED**：48层codec及181文件格式复证通过。新增F841-R2-01 P2 **OPEN（修复回归）**：手动codec只读合法前缀，追加garbage、{}、旧schema信封均被误收；完整JSON/合法空白对照具区分性。冻结lang a0473d515/UI a056dd601/Man ebfbb3790，重开T-02/T-05/T-06/T-08/T-09，executing4/12。work同树先补两轮final失败后的诊断/入口覆盖与失败出口映射，修全部finding与永久定向对照后提交复审；统一门仍merge-owned pending，无合入/归档/放行。[R2完整报告与复现](attachments/841/review-r2/review.md)。
+
+### PLAN-852 review R5 closure (2026-10-26)
+
+Status: R1～R4 in-contract review blockers CLOSED on reviewed_commit826e3472c04b4e20b5db7fea5e8c109d694eb2db (implementation d3b4fe90e). F-852-R4-01 original replay rejects in both consumers; independent shared production-validator matrix105 malformed controls reject+valid10 accept; Rust schema1pass; full valid snapshot97 checks/10 receipts pass. Prior compiler identity/cleanup/stream/implicit-certification findings retain verified closures. [R5 final report](attachments/852/review-r5/report.md), [frozen SD](attachments/852/review-r5/spec-delta-reviewed.md). Base layer final review pass; bare cargo t/actual surface merge gates and deposits still PENDING. Downstream M1 capability gaps remain open with original owners; this closure does not close M1.- 2026-10-26 PLAN-822 R13：受审5490d6678，R12正常/frame/替换值显式清理子面及深链/逆序/transfer控制绿；F-822-R13-01(P1，R12残余) helper-local部分clone输出/装配临时值在资源退出仍默认递归析构，独立同3072层256KiB/fuel5572触发STATUS_STACK_OVERFLOW；小partial/同深planning早拒/full成功对照绿。合同内必修不批准延期；[报告/反例/关闭oracle](attachments/822/review-r13/report.md)。T03/04/06重开executing4/9，merge-owned统一门pending。
+
+### Plan 841 r1（2026-10-26，R3受影响final needs_fix）
+
+F841-R1-01原无效数据/工具准入、F841-R2-01尾随JSON项 **CLOSED**，R1深度/格式保持CLOSED。新增 **F841-R3-01 P2 OPEN（修复回归，非获准延期债务）**：UI60011b302的共享file预检未建立导入recipe可见性，Vue full/incremental冷态合法named/wildcard样式报undefined variable；同源码原组件入口真实class成功、已装载状态工程成功，本地配方正常。冻结lang6892bad1a/UI60011b302/Manebfbb3790；重开T-05/T-08/T-09，executing6/12。原工具反例1/原compiler-codec-Core probe5/tools永久4/codec9通过，新兼容2测试失败，8触面fmt通过。work同树修正确源文件导入上下文与永久cold控制、保留无效拒绝后提交复审；整档仍merge-owned pending，未合入/归档/放行。[R3报告与输入/关闭oracle](attachments/841/review-r3/review.md)。
+
+- F-822-R14-01 (P1, PLAN-822 r5, fab5f492a): collections restore 未绑定载荷实际 types-fp 与请求缓存身份，合法异类型表可在旧键下执行；AC-06/V-08 合同内必修，非批准延期债。详 attachments/822/review-r14/report.md；T-05/T-06 重开。
+
+- F-822-R15-01 (P1, PLAN-822 r5,14b6a9df2): collections restore 未绑定实际入口名/source_snapshot与请求，两个合法异身份载荷在旧键下执行。AC-06/V-08合同内必修，非批准延期债；见 attachments/822/review-r15/report.md。
+
+### Plan 841 r1（2026-10-27，R4受影响final pass，merge门pending）
+
+F841-R3-01 **CLOSED**，R1/R2 findings保持CLOSED。冻结 lang `ecfa187f7` / UI `eb50ce679` / Man `ebfbb3790`：共享file/module预检在各自目录先prepare imports再parse/lower；cold local/named/wildcard full/incremental实际class、同名stale拒绝和恢复、主/子目录红蓝class控制均通过。独立4/tools6/recipe9/compiler3共22项定向全绿，本轮fmt/diff-check通过；无新增阻断。Plan reviewed10/12，T-10完成；裸cargo t及适用tv/tt/tu、完整发行/777/792与三仓实际交付、Specs-ledger/归档/guard仍merge-owned pending。未合入或放行U841；历史OPEN均以本记录的修订绑定关闭为准。[R4报告与证据适用范围](attachments/841/review-r4/review.md)。
+
+- F-822-R16-01 (P1, PLAN-822 r5,f1d31632b): collections恢复未绑定实际profile/wire，合法core-i32 AVAB在collections封套/键下执行；AC-06/V-08/09合同内必修，非延期债。见 attachments/822/review-r16/report.md。
+
+- F-822-R17-01 (P1,PLAN-822 r5,a26b8e71c): AC-09/V-13子case3的新增集合layout/host授权事实变化正反控缺证，签名与body测试不等于全轴覆盖；合同内必需验收，非批准延期债。T-09/T-06重开，见 attachments/822/review-r17/report.md。
+
+- F-822-R18-01 (P1,PLAN-822 r5,7de289d47): 授权撤销只核submitted，carried受限函数仍随新候选执行/安装；AC-09/V-13合同内必修，R17完整关闭仍partial，非批准延期债。见 attachments/822/review-r18/report.md。
 
 
 ## PLAN-841 R5 — F841-R5-01 (OPEN, P2, acceptance blocker)
@@ -3434,6 +3544,51 @@ Main batch7f966bfa3 language listing failed with24 E0432/E0433 in821/827 test mo
 ### PLAN-841 R6 — F841-R5-01 CLOSED（2026-10-27，受影响final pass）
 
 冻结 lang `ecc2f54a7ada58cd5cd015a9f21bea48debb4284` / UI `bfad5149f8f1d1981465d06d759e95cc8127ab75` / Man `6330ce00e594c99a4ef0a931dc85137ac47474fb`。实际递归Array/Object属性由快照逐边持有，重播逐层物化为ListData/ObjectData并配平最后释放；原两败例与直接对照、混合Init/视图读取、Failed后共享别名与所有中间容器回收均通过。18个具名定向行为测试全绿（原producer重播与永久控制有重叠），无新增合同内阻断。历史R5 OPEN保留为旧基线诊断，以本次修订绑定关闭为准；[R6报告与完整边界](attachments/841/review-r6/review.md)。Plan reviewed10/12，三实施树clean；裸t与适用tv/tt/tu、UI/Man自有门、冻结777/792/发行/三仓合入及Specs-ledger/归档/guard仍merge-owned pending，未宣称U841。
+
+### PLAN-824 final review R1 (2026-10-27, in-contract blockers)
+
+F-824-R1-01/02/03: portable叶类型与payload不匹配、恢复未验证完整当前类型/空容器名义依赖、Dyn类型DAG展开绕过工作/临时内存预算。均为合同内阻塞，不可记债豁免。实施基线2093675731fb1fe1b9aaa7291cdbbdee672bf9b5；可重放输入、预期/实际、合法对照和最小修复复验范围见 [R1](attachments/824/review-r1/review.md)。现有25例定向测试绿但漏反例；test target另有unused import警告。责任Plan824 work，修齐提交后受影响面复审；merge-owned整档pending，未合入。
+
+
+### PLAN-856 final review R1 (2026-10-27, in-contract blockers)
+
+F-856-R1-01/02 (P2)：PixelDelta物理像素未归一到child逻辑像素（DPI2/80px预期zoom1.1、实际1.21）；连续导航在资源拒绝时取消无法恢复起始view/图像（cancel/blur/resize/after-upload同因）。冻结3c39a96d21346e06b5c0ebf93b6e80ec4e5bb7a2，合法控制和实际GPU读回反例见 [R1报告](attachments/856/review-r1/review.md) 与耐久replay。均是合同内待修复项，不是可记债豁免；Plan executing2/10，同树work修齐后受影响面复审，完整merge门pending，未合入。
+
+2026-10-27 work修复提交4150a8bea：原反例与同因路径定向验证通过；合同内finding待独立affected final review确认，完整merge门仍pending。详见 [修复闭合](attachments/856/repair-r1/closure.md)。R1探针exe/PDB被重放脚本覆盖、旧audit二进制哈希失配，原输入/结果及其他证据未变，详见闭合记录。
+
+2026-10-27 independent final R2：F-856-R1-01/02 CLOSED，冻结4150a8bea7b66aff9eca87a319d5cd1c6b4b50a7；[R2报告与受影响检查映射](attachments/856/review-r2/review.md)。原7输入/新独立9控、四个具名永久定向测试、当前OS20阶段与partial负控均通过，覆盖单次逻辑pixel换算、两类资源失败下快照取消/迟到输入/恢复呈现与下一次合法导航。462提交blob及consumer来源、125work/18repair证据hash核实；仅已披露R1 exe/PDB失配不再作原二进制凭证，其余原证据保留；新R2重建runner与输入/结果另存hash。无新增开放合同债；Plan reviewed7/10，完整merge门/规范沉淀/归档/guard清理仍pending，未合入。
+
+### PLAN-858 final review R1 (2026-10-27, follow-on research risks)
+
+受审 `a4812981e72df3d54ecb555dae5f77c3fabbd959`，研究合同 final pass，reviewed5/7；无合同内阻塞finding。后继风险候选：R858-D01，Kenney角色生成2D玩家/敌人帧的可辨识性与3D纹理/动画适配尚未制作验证；R858-D02，真实Auto CPU/managed/128节点与角色运动预算须先有界探针；R858-D03，正式派生manifest/包大小/离线搬迁和损坏恢复尚无产物或实测。责任为各后继功能合同，不预分配Plan号；不得据本研究宣称游戏或新服务交付。源字体附带通知与TTF保留名措辞不同，后继修改字体时保留核对两处原文；MIT在LICENSE、资产CC0在README，未来manifest按真实通知分列。Godot未知许可素材及FLA仍排除。证据与边界见 [R1报告](attachments/858/review-r1/review.md)，T-06/T-07规范沉淀/归档/guard清理仍merge-owned pending。
+
+### PLAN-858 Phase 2 final R1 (2026-10-27)
+受审 f098e8d707c4774e0c5a2f7dc459c9065e515488，r2 final pass；无新增阻塞finding/债务。B855-FEATURE-01 的821/827独立feature边界经book无开关编译、14/14实际定向测试及历史逐cfg撤销负控核实恢复；完整批量门尚未执行，覆盖锚仍850，不能标记全局回归已恢复。T-11/AC-11/V-08仍merge-owned pending。详[复审报告](attachments/858/review-phase2-r1/review.md)。
+
+
+### PLAN-824 final repair review R2 (2026-10-27)
+
+F-824-R1-01/02及unused import已在6a68240e89bdfd141ecfb893f83c7718bf503056关闭。F-824-R1-03仍为合同内P1：节点上限未保护临时类型字节，16011B合法ABC展开至少38796208B仍成功/peak240B；1026类型节点的portable freeze/unfreeze取消回调均0次且成功。[R2报告/重放](attachments/824/review-r2/review.md)。原17层反例已正确拒绝，不等于不变量闭合。责任824 work；补实际诊断/覆盖调整后修齐、提交、受影响面复审，不可作为债务豁免合入。merge-owned整档pending。
+
+### M841-KNOWN-FLAKE-01 — plan492 金丝雀恢复段整档负载 flake（PLAN-841 merge-r2 登记，2026-10-27）
+
+`pkg_canary_undefined_var_kills_bar_init` 的 :460 修复恢复断言（recovered 36 vs healthy 44 MouseArea）在同冻结提交（UI 4903bef）整档 ui-t 下 1/4 频率红（A2/a4/a5 过、A3 红）；隔离与 2 并发（与 plan437 gallery 同跑 6 轮）恒绿。A3 失败运行内三个 parked Init 全部 slice-resumed to completion、无任何 `[VM-INIT] FAILED`/resume FAILED 日志——所有 Init 终态 Done 而 dump 少约一图带面，指向渲染/重播物化面的负载敏感非确定性，无产品失败证据；金丝雀核心负控语义（GATE-04 准入/Init 失败隔离、GATE-05 相位记账）在全部 4 跑与定向一致通过。:482 相位断言 4/4 全绿（GATE-05 修复生效）。证据：docs/plans/attachments/841/merge-r2/preexisting-reds-attribution.md（含 a2-a5 日志）。后续批量回归命中时按本债项路由；根因排查需带仪表整档复现。
+
+### PLAN-824 final repair review R3 closure (2026-10-27)
+
+F-824-R1-03在29b6eeea98d1b75e2ea18ea5f62eea96866e9d60关闭；F01/F02与warning关闭保留。[R3报告/原始重放/独立边界](attachments/824/review-r3/review.md)：长名临时数据分配前拒，1866拒/1867过，默认8MiB拒；类型取消轮询生效，24项受影响定向测试通过。无新的合同内债务；之前R1/R2开放记录保留历史但不再当前开放。Plan reviewed 10/11；merge-owned整档与823实际集成仍pending，本记录不证明已合入。
+
+### Plan 857（2026-10-27，独立R1 needs_fix，合同内阻塞）
+
+F-857-R1-01..05 OPEN，绑定 `ecf9939c5b2e369f9ce7d6ea25b0b66439bb7da6`：合法宽视野实际可见大对象拾取被绝对残差误拒；近/远裁剪外3D组仍暴露可触发手柄；非捕获按键release提前终止中/右键导航；原默认3D像素与856基线对照、855同条件性能/工作集对照尚未完成。前23个定向测试绿不抵消真实Host/GPU反例；原合同内阻塞，不能记债延后后放行。T-03..06重开、executing2/10，完整双端/AGP/native-owner-content门仍属merge pending。[复审报告及可重放反例](attachments/857/review-r1/review.md)。
+
+### Plan 857（2026-10-27，独立R2 needs_fix，比较器合同内阻塞）
+
+绑定 `e20b95e175f9184e13c00c78efa7b63349165276`。R1-01/02/03原反例与正控、R1-05性能证据复核通过；R1-04实际默认/Home正例成立，但新增 F-857-R2-01 OPEN：像素比较器在Home报告缺失或真实partial时仍exit 0，且错runner SHA仍exit 0并称重置相等。必需失败传播/冻结身份未闭合，不可记债延后放行；T-05/06重开、executing4/10。此前R1记录保留为历史。[独立R2报告](attachments/857/review-r2/review.md)；[两次未通过诊断](attachments/857/review-r2/diagnosis-r2.md)。
+
+### Plan 857（2026-10-27，独立R3 needs_fix，身份链合同内阻塞）
+
+绑定 `4d9fa8e8c4ad00f5c88d9d1c5be619f0c592b837`。R2原8负控及真实正控通过；F-857-R3-01/02 OPEN：两侧锁收据同时使用两个非锁文件仍通过且摘要误报；旧提交runner可被当前checkout收据误标为新提交并通过Home像素比较。实际两份Cargo.lock未更改，旧/新Rust源码不变亦不代替无证明的复用。T-05/06重开、executing4/10；完整双端/AGP/native-owner-content仍归merge pending。[独立R3报告](attachments/857/review-r3/review.md)；[三次诊断](attachments/857/review-r3/diagnosis-r3.md)。
 
 
 ### D-824-BATCH-20261027 — 批量回归失败延后处理
