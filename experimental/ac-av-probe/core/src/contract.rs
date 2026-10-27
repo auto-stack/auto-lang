@@ -706,16 +706,26 @@ fn dyn_type_bytes(ty: &crate::dynamic::DynType, visited: &mut u64) -> usize {
             } => {
                 total += owner.len() + name.len();
                 for DynField { name, ty } in fields {
-                    total += name.len();
+                    *visited += 1;
+                    // The embedded DynType cell is counted when visited.
+                    total = total.saturating_add(name.len()).saturating_add(
+                        std::mem::size_of::<DynField>() - std::mem::size_of::<DynType>(),
+                    );
                     stack.push(ty);
                 }
             }
             DynType::Variant { owner, name, arms } => {
                 total += owner.len() + name.len();
                 for DynArm { name, payload } in arms {
-                    total += name.len();
+                    *visited += 1;
+                    total = total.saturating_add(name.len()).saturating_add(
+                        std::mem::size_of::<DynArm>() - std::mem::size_of::<DynType>(),
+                    );
                     if let Some(p) = payload {
                         stack.push(p);
+                    } else {
+                        // A payload-less arm still occupies its inline option.
+                        total = total.saturating_add(std::mem::size_of::<DynType>());
                     }
                 }
             }

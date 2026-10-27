@@ -839,7 +839,7 @@ fn dag_module(k: u32) -> MirModule {
 /// compact sibling one level UNDER the ceiling (2^16-1 = 65535 nodes)
 /// executes with its resolution work visible in `steps`; one level OVER
 /// (131071) and the review's 17-level shape (262143, ~20 MiB of DynType
-/// storage alone) are refused `av.resource.dyn-nodes` BEFORE the
+/// storage alone) are refused by the node or tighter byte budget BEFORE the
 /// allocation storm — a tight step budget refuses with the step resource,
 /// never "Success at 8 steps".
 #[test]
@@ -879,7 +879,8 @@ fn av_dynamic_824_resources_type_dag_expansion_bounded_and_charged() {
     lim.max_steps = 100;
     lim.max_slot_bytes = 4096;
     let (out, trace) = execute(&loaded, &lim, &CancelFlag::new(false));
-    assert_eq!(resource_kind(&out), ResourceKind::DynTypeNodes);
+    // The byte budget can now stop the expansion before the node limit.
+    assert_eq!(resource_kind(&out), ResourceKind::SlotBytes);
     assert!(
         trace.peak_slot_bytes <= 4096,
         "no storm lands in the slots: peak {}",
@@ -894,4 +895,237 @@ fn av_dynamic_824_resources_type_dag_expansion_bounded_and_charged() {
     lim.max_steps = 100;
     let (out, _) = execute(&loaded, &lim, &CancelFlag::new(false));
     assert_eq!(resource_kind(&out), ResourceKind::InstrSteps);
+}
+
+#[test]
+fn av_dynamic_824_resources_r2_long_names_are_accounted_before_expansion() {
+    let mut m = dag_module(15);
+    for ty in &mut m.types {
+        if let MirType::Variant(v) = ty {
+            v.name.push_str(&"x".repeat(1024));
+        }
+    }
+    let wire = encode_abc(&m).unwrap().to_flat();
+    assert!(wire.len() < 17_000);
+    let loaded = verify_abc_bytes(&wire, &m.owner).unwrap();
+    let limits = ExecLimits {
+        max_steps: 1_000_000,
+        max_slot_bytes: 4096,
+        ..ExecLimits::default()
+    };
+    let (out, trace) = execute(&loaded, &limits, &CancelFlag::new(false));
+    assert_eq!(resource_kind(&out), ResourceKind::SlotBytes);
+    assert!(trace.peak_slot_bytes > 240 && trace.peak_slot_bytes <= 4096);
+    let default_limits = ExecLimits {
+        max_steps: 1_000_000,
+        ..ExecLimits::default()
+    };
+    let (out, trace) = execute(&loaded, &default_limits, &CancelFlag::new(false));
+    assert_eq!(resource_kind(&out), ResourceKind::SlotBytes);
+    assert!(
+        trace.peak_slot_bytes > 4096
+            && trace.peak_slot_bytes <= default_limits.max_slot_bytes as u64
+    );
+    let control = admit(&dag_module(3));
+    let (out, trace) = execute(&control, &limits, &CancelFlag::new(false));
+    assert!(matches!(
+        out,
+        ExecOutcome::Success {
+            value: Value::Bool(false),
+            ..
+        }
+    ));
+    assert!(trace.peak_slot_bytes > 240 && trace.peak_slot_bytes <= 4096);
+}
+
+#[test]
+fn av_dynamic_824_resources_r2_binding_long_names_are_bounded() {
+    let mut m = dag_module(13);
+    for ty in &mut m.types {
+        if let MirType::Variant(v) = ty {
+            v.name.push_str(&"x".repeat(1024));
+        }
+    }
+    let err = match auto_av_probe::dynamic_fixture::portable_bindings_of(&m) {
+        Ok(_) => panic!("expanded binding metadata must be budgeted"),
+        Err(err) => err,
+    };
+    assert!(err.contains("dyn budget"), "{err}");
+    assert!(auto_av_probe::dynamic_fixture::portable_bindings_of(&dag_module(3)).is_ok());
+}
+
+#[test]
+fn av_dynamic_824_resources_r2_pack_take_type_operands_bounded() {
+    for operation in ["pack", "take"] {
+        for large in [false, true] {
+            let mut m = dag_module(if large { 15 } else { 3 });
+            if large {
+                for ty in &mut m.types {
+                    if let MirType::Variant(v) = ty {
+                        v.name.push_str(&"x".repeat(1024));
+                    }
+                }
+            }
+            let ty = match m.funcs[0].blocks[0].instrs[2] {
+                MirInstr::DynIs { ty, .. } => ty,
+                _ => unreachable!(),
+            };
+            if operation == "pack" {
+                let MirType::Variant(v) = &mut m.types[ty as usize] else {
+                    unreachable!()
+                };
+                v.arms.push(VariantArm {
+                    name: "empty".into(),
+                    payload: None,
+                });
+            }
+            let c_bool = m.intern_const(MirConst::Bool(false)) as u32;
+            m.funcs[0].slots.push(slot(ty, "variant"));
+            if operation == "pack" {
+                m.funcs[0].blocks[0].instrs = vec![
+                    MirInstr::VariantPack {
+                        dst: 3,
+                        variant_ty: ty,
+                        disc: 2,
+                        payload: None,
+                    },
+                    MirInstr::DynPack { dst: 1, src: 3 },
+                    MirInstr::Const {
+                        dst: 2,
+                        value: c_bool,
+                    },
+                ];
+            } else {
+                m.funcs[0].blocks[0].instrs[2] = MirInstr::Const {
+                    dst: 2,
+                    value: c_bool,
+                };
+                m.funcs[0].blocks[0]
+                    .instrs
+                    .push(MirInstr::DynTake { dst: 3, src: 1, ty });
+            }
+            let loaded = admit(&m);
+            let limits = ExecLimits {
+                max_steps: 1_000_000,
+                max_slot_bytes: 4096,
+                ..ExecLimits::default()
+            };
+            let (out, trace) = execute(&loaded, &limits, &CancelFlag::new(false));
+            if large {
+                assert_eq!(resource_kind(&out), ResourceKind::SlotBytes, "{operation}");
+                assert!(trace.peak_slot_bytes <= 4096);
+            } else if operation == "pack" {
+                assert!(
+                    matches!(
+                        out,
+                        ExecOutcome::Success {
+                            value: Value::Bool(false),
+                            ..
+                        }
+                    ),
+                    "{out:?}"
+                );
+            } else {
+                assert!(
+                    matches!(
+                        out,
+                        ExecOutcome::Trap {
+                            kind: TrapKind::DynTypeMismatch,
+                            ..
+                        }
+                    ),
+                    "{out:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn av_dynamic_824_resources_r2_cancel_during_type_expansion() {
+    let loaded = admit(&dag_module(15));
+    let (out, trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(true));
+    assert!(matches!(out, ExecOutcome::Cancelled), "{out:?}");
+    assert!(trace.peak_slot_bytes > 240);
+    assert_clean_ledger(&trace.arena.unwrap());
+    let (out, _) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::Bool(false),
+                ..
+            }
+        ),
+        "{out:?}"
+    );
+}
+
+#[test]
+fn av_dynamic_824_resources_r2_binding_skips_nonerasable_nominal() {
+    let mut m = dag_module(3);
+    let fn_ty = m.funcs[0].sig;
+    m.intern_type(MirType::Record(auto_av_core::mir::RecordTypeRef {
+        owner_module: "dynamic824".into(),
+        name: "Unsupported".into(),
+        fields: vec![MirFieldDef {
+            name: "callback".into(),
+            ty: fn_ty,
+        }],
+    }));
+    let (records, variants) = auto_av_probe::dynamic_fixture::portable_bindings_of(&m).unwrap();
+    assert!(!records.iter().any(|r| r.name == "Unsupported"));
+    assert_eq!(variants.len(), 3);
+}
+
+#[test]
+fn av_dynamic_824_resources_r2_pack_admission_consumes_fuel() {
+    let mut m = dag_module(1);
+    let ty = match m.funcs[0].blocks[0].instrs[2] {
+        MirInstr::DynIs { ty, .. } => ty,
+        _ => unreachable!(),
+    };
+    let MirType::Variant(v) = &mut m.types[ty as usize] else {
+        unreachable!()
+    };
+    v.arms = (0..1024)
+        .map(|i| VariantArm {
+            name: format!("a{i}"),
+            payload: None,
+        })
+        .collect();
+    let c_bool = m.intern_const(MirConst::Bool(false)) as u32;
+    m.funcs[0].slots.push(slot(ty, "variant"));
+    m.funcs[0].blocks[0].instrs = vec![
+        MirInstr::VariantPack {
+            dst: 3,
+            variant_ty: ty,
+            disc: 0,
+            payload: None,
+        },
+        MirInstr::DynPack { dst: 1, src: 3 },
+        MirInstr::Const {
+            dst: 2,
+            value: c_bool,
+        },
+    ];
+    let loaded = admit(&m);
+    let limits = ExecLimits {
+        max_steps: 1500,
+        ..ExecLimits::default()
+    };
+    let (out, trace) = execute(&loaded, &limits, &CancelFlag::new(false));
+    assert_eq!(resource_kind(&out), ResourceKind::InstrSteps);
+    assert_clean_ledger(&trace.arena.unwrap());
+    let (out, _) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Success {
+                value: Value::Bool(false),
+                ..
+            }
+        ),
+        "{out:?}"
+    );
 }

@@ -248,6 +248,221 @@ pub fn portable_bindings_of(
 ) -> Result<(Vec<PortableRecordBinding<'_>>, Vec<VariantBinding<'_>>), String> {
     use auto_av_core::dynamic::{DynArm, DynField, DynType, MAX_DYN_DEPTH, MAX_DYN_NODES};
 
+    // An unsupported declaration never yields a binding. Classify it
+    // before measuring or constructing its other fields so irrelevant
+    // non-erasable declarations cannot exhaust the domain budget.
+    fn height(
+        mir: &MirModule,
+        idx: u32,
+        path: &mut Vec<u32>,
+        memo: &mut HashMap<u32, Option<u32>>,
+    ) -> Option<u32> {
+        if path.contains(&idx) || path.len() >= MAX_DYN_DEPTH as usize {
+            return None;
+        }
+        if let Some(h) = memo.get(&idx) {
+            return h.and_then(|n| {
+                if path.len() + n as usize <= MAX_DYN_DEPTH as usize {
+                    Some(n)
+                } else {
+                    None
+                }
+            });
+        }
+        path.push(idx);
+        let children: Box<dyn Iterator<Item = u32> + '_> = match mir.types.get(idx as usize) {
+            Some(
+                MirType::Bool
+                | MirType::I32
+                | MirType::I64
+                | MirType::U64
+                | MirType::F32
+                | MirType::F64
+                | MirType::Char
+                | MirType::Str,
+            ) => Box::new(std::iter::empty()),
+            Some(MirType::List(l)) => Box::new(std::iter::once(l.elem)),
+            Some(MirType::Record(r)) => Box::new(r.fields.iter().map(|f| f.ty)),
+            Some(MirType::Variant(v)) => Box::new(v.arms.iter().filter_map(|a| a.payload)),
+            _ => {
+                path.pop();
+                memo.insert(idx, None);
+                return None;
+            }
+        };
+        let mut max_child = 0;
+        for child in children {
+            let Some(h) = height(mir, child, path, memo) else {
+                path.pop();
+                return None;
+            };
+            max_child = max_child.max(h);
+        }
+        path.pop();
+        let h = max_child + 1;
+        memo.insert(idx, Some(h));
+        Some(h)
+    }
+    fn eligible(mir: &MirModule, ty: &MirType, memo: &mut HashMap<u32, Option<u32>>) -> bool {
+        match ty {
+            MirType::Record(r) => r
+                .fields
+                .iter()
+                .all(|f| height(mir, f.ty, &mut Vec::new(), memo).is_some()),
+            MirType::Variant(v) => v.arms.iter().all(|a| {
+                a.payload
+                    .map_or(true, |p| height(mir, p, &mut Vec::new(), memo).is_some())
+            }),
+            _ => false,
+        }
+    }
+    let mut admissible = HashMap::new();
+
+    // Preflight every reachable binding subtree before constructing any
+    // owned copies. Memo entries are shared by type index, but each DynType
+    // itself contains owned descendants; sum those copies, including names.
+    // Checked/saturating arithmetic makes a compact DAG refuse without
+    // materializing its exponentially larger descriptor.
+    fn measure(
+        mir: &MirModule,
+        idx: u32,
+        path: &mut Vec<u32>,
+        memo: &mut HashMap<u32, Option<(u64, usize)>>,
+        totals: &mut (u64, usize),
+    ) -> Result<Option<(u64, usize)>, String> {
+        use auto_av_core::dynamic::{MAX_DYN_BYTES, MAX_DYN_DEPTH, MAX_DYN_NODES};
+        if path.len() >= MAX_DYN_DEPTH as usize || path.contains(&idx) {
+            return Ok(None);
+        }
+        if let Some(x) = memo.get(&idx) {
+            return Ok(*x);
+        }
+        path.push(idx);
+        let mut nodes = 1u64;
+        let mut bytes = std::mem::size_of::<DynType>();
+        let (children, embedded): (Box<dyn Iterator<Item = u32> + '_>, bool) =
+            match mir.types.get(idx as usize) {
+                Some(
+                    MirType::Bool
+                    | MirType::I32
+                    | MirType::I64
+                    | MirType::U64
+                    | MirType::F32
+                    | MirType::F64
+                    | MirType::Char
+                    | MirType::Str,
+                ) => (Box::new(std::iter::empty()), false),
+                Some(MirType::List(l)) => (Box::new(std::iter::once(l.elem)), false),
+                Some(MirType::Record(r)) => {
+                    bytes = bytes
+                        .saturating_add(r.owner_module.len())
+                        .saturating_add(r.name.len())
+                        .saturating_add(
+                            r.fields
+                                .len()
+                                .saturating_mul(std::mem::size_of::<DynField>()),
+                        )
+                        .saturating_add(
+                            r.fields
+                                .iter()
+                                .fold(0usize, |sum, f| sum.saturating_add(f.name.len())),
+                        );
+                    (Box::new(r.fields.iter().map(|f| f.ty)), true)
+                }
+                Some(MirType::Variant(v)) => {
+                    bytes = bytes
+                        .saturating_add(v.owner_module.len())
+                        .saturating_add(v.name.len())
+                        .saturating_add(v.arms.len().saturating_mul(std::mem::size_of::<DynArm>()))
+                        .saturating_add(
+                            v.arms
+                                .iter()
+                                .fold(0usize, |sum, a| sum.saturating_add(a.name.len())),
+                        );
+                    (Box::new(v.arms.iter().filter_map(|a| a.payload)), true)
+                }
+                _ => {
+                    path.pop();
+                    memo.insert(idx, None);
+                    return Ok(None);
+                }
+            };
+        for child in children {
+            let Some((n, b)) = measure(mir, child, path, memo, totals)? else {
+                path.pop();
+                memo.insert(idx, None);
+                return Ok(None);
+            };
+            nodes = nodes.saturating_add(n);
+            // An inline field/payload is already included in its vector cell.
+            bytes = bytes.saturating_add(if embedded {
+                b.saturating_sub(std::mem::size_of::<DynType>())
+            } else {
+                b
+            });
+            if nodes > MAX_DYN_NODES as u64 || bytes > MAX_DYN_BYTES {
+                return Err("portable binding type expansion exceeds dyn budget".into());
+            }
+        }
+        path.pop();
+        totals.0 = totals.0.saturating_add(nodes);
+        totals.1 = totals
+            .1
+            .saturating_add(bytes)
+            .saturating_add(2 * std::mem::size_of::<usize>());
+        if totals.0 > MAX_DYN_NODES as u64 || totals.1 > MAX_DYN_BYTES {
+            return Err("portable binding domain exceeds dyn budget".into());
+        }
+        memo.insert(idx, Some((nodes, bytes)));
+        Ok(Some((nodes, bytes)))
+    }
+    let mut measured = HashMap::new();
+    let mut totals = (0, 0usize);
+    // Binding arrays borrow names and share Rc nodes, but their own storage
+    // also exists before unfreeze begins.
+    for ty in &mir.types {
+        if !eligible(mir, ty, &mut admissible) {
+            continue;
+        }
+        let bytes = match ty {
+            MirType::Record(r) => std::mem::size_of::<PortableRecordBinding<'_>>().saturating_add(
+                r.fields
+                    .len()
+                    .saturating_mul(std::mem::size_of::<(&str, Rc<DynType>)>()),
+            ),
+            MirType::Variant(v) => std::mem::size_of::<VariantBinding<'_>>().saturating_add(
+                v.arms
+                    .len()
+                    .saturating_mul(std::mem::size_of::<ArmSig<'_>>()),
+            ),
+            _ => 0,
+        };
+        totals.1 = totals.1.saturating_add(bytes);
+        if totals.1 > auto_av_core::dynamic::MAX_DYN_BYTES {
+            return Err("portable binding domain exceeds dyn budget".into());
+        }
+    }
+    for ty in &mir.types {
+        if !eligible(mir, ty, &mut admissible) {
+            continue;
+        }
+        match ty {
+            MirType::Record(r) => {
+                for f in &r.fields {
+                    measure(mir, f.ty, &mut Vec::new(), &mut measured, &mut totals)?;
+                }
+            }
+            MirType::Variant(v) => {
+                for a in &v.arms {
+                    if let Some(p) = a.payload {
+                        measure(mir, p, &mut Vec::new(), &mut measured, &mut totals)?;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     // Resolves one type index to a shared (Rc) DynType plus its node
     // count. PATH-based cycle detection; each completed subtree charges
     // its node count to the shared budget and aborts the walk on
@@ -344,6 +559,9 @@ pub fn portable_bindings_of(
     let mut records = Vec::new();
     let mut variants = Vec::new();
     for (i, t) in mir.types.iter().enumerate() {
+        if !eligible(mir, t, &mut admissible) {
+            continue;
+        }
         match t {
             MirType::Record(r) => {
                 let mut fields = Vec::with_capacity(r.fields.len());

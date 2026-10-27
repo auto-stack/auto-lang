@@ -127,13 +127,20 @@ impl<'a> Traversal<'a> {
                 return Err(TraversalStop::Nodes);
             }
         }
-        self.steps += 1;
+        self.charge_steps(1)
+    }
+
+    /// Charge traversal work and poll at each work interval, including type
+    /// descriptors and bulk work. Poll before the caller performs that work.
+    pub(crate) fn charge_steps(&mut self, n: u64) -> Result<(), TraversalStop> {
+        self.steps = self.steps.saturating_add(n);
         if self.steps > MAX_DYN_STEPS {
             return Err(TraversalStop::Steps);
         }
-        self.since_cancel += 1;
-        if self.since_cancel >= CANCEL_CHECK_INTERVAL as u32 {
-            self.since_cancel = 0;
+        let interval = CANCEL_CHECK_INTERVAL as u64;
+        let total = self.since_cancel as u64 + n;
+        self.since_cancel = (total % interval) as u32;
+        for _ in 0..total / interval {
             if let Some(cancel) = self.opts.cancel {
                 if cancel() {
                     return Err(TraversalStop::Cancelled);
@@ -143,23 +150,33 @@ impl<'a> Traversal<'a> {
         Ok(())
     }
 
-    /// Charge `n` work steps (per-element costs: names, lengths, fields).
-    pub(crate) fn charge_steps(&mut self, n: u64) -> Result<(), TraversalStop> {
-        self.steps += n;
-        if self.steps > MAX_DYN_STEPS {
-            return Err(TraversalStop::Steps);
-        }
-        Ok(())
-    }
-
     /// Charge `n` data bytes against the shared 8 MiB line (emitted bytes
     /// on freeze, rebuilt value estimate on unfreeze/clone).
     pub(crate) fn charge_bytes(&mut self, n: usize) -> Result<(), TraversalStop> {
-        self.bytes += n;
+        self.bytes = self.bytes.saturating_add(n);
         if self.bytes > self.max_bytes {
             return Err(TraversalStop::Bytes);
         }
         Ok(())
+    }
+
+    /// Check a yet-uncommitted temporary buffer before it grows. Its bytes
+    /// are charged once when that buffer is appended to the final output.
+    pub(crate) fn check_pending_bytes(&self, n: usize) -> Result<(), TraversalStop> {
+        if self.bytes.saturating_add(n) > self.max_bytes {
+            Err(TraversalStop::Bytes)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub(crate) fn bytes_used(&self) -> usize {
+        self.bytes
+    }
+
+    /// Release a temporary descriptor after it has been compared and dropped.
+    pub(crate) fn release_bytes(&mut self, n: usize) {
+        self.bytes = self.bytes.saturating_sub(n);
     }
 
     /// Nodes entered so far (freeze patches the wire header with this).
@@ -322,14 +339,97 @@ pub struct DynValue {
     pub(crate) ty: DynType,
 }
 
+/// Copy an owned descriptor with the same depth bound enforced by pack.
+/// Charge and poll during the actual copy, before each allocation.
+fn copy_type(ty: &DynType, t: &mut Traversal, embedded: bool) -> Result<DynType, TraversalStop> {
+    t.charge_steps(1)?;
+    if !embedded {
+        t.charge_bytes(std::mem::size_of::<DynType>())?;
+    }
+    Ok(match ty {
+        DynType::Bool => DynType::Bool,
+        DynType::I32 => DynType::I32,
+        DynType::I64 => DynType::I64,
+        DynType::U64 => DynType::U64,
+        DynType::F32 => DynType::F32,
+        DynType::F64 => DynType::F64,
+        DynType::Char => DynType::Char,
+        DynType::Str => DynType::Str,
+        DynType::List(elem) => DynType::List(Box::new(copy_type(elem, t, false)?)),
+        DynType::Record {
+            owner,
+            name,
+            fields,
+        } => {
+            t.charge_bytes(
+                owner
+                    .len()
+                    .saturating_add(name.len())
+                    .saturating_add(fields.len().saturating_mul(std::mem::size_of::<DynField>())),
+            )?;
+            let mut copied = Vec::with_capacity(fields.len());
+            for field in fields {
+                t.charge_steps(1)?;
+                t.charge_bytes(field.name.len())?;
+                copied.push(DynField {
+                    name: field.name.clone(),
+                    ty: copy_type(&field.ty, t, true)?,
+                });
+            }
+            DynType::Record {
+                owner: owner.clone(),
+                name: name.clone(),
+                fields: copied,
+            }
+        }
+        DynType::Variant { owner, name, arms } => {
+            t.charge_bytes(
+                owner
+                    .len()
+                    .saturating_add(name.len())
+                    .saturating_add(arms.len().saturating_mul(std::mem::size_of::<DynArm>())),
+            )?;
+            let mut copied = Vec::with_capacity(arms.len());
+            for arm in arms {
+                t.charge_steps(1)?;
+                t.charge_bytes(arm.name.len())?;
+                let payload = match &arm.payload {
+                    Some(p) => Some(copy_type(p, t, true)?),
+                    None => None,
+                };
+                copied.push(DynArm {
+                    name: arm.name.clone(),
+                    payload,
+                });
+            }
+            DynType::Variant {
+                owner: owner.clone(),
+                name: name.clone(),
+                arms: copied,
+            }
+        }
+    })
+}
+
 impl DynValue {
     /// Explicit type erasure with full recursive admission (§2): the value
     /// must contain only whitelisted categories at every depth AND match
     /// `ty` structurally. Consumes `value` (move semantics — §5.1.2);
     /// rejected values are dropped with normal cleanup before returning.
     pub fn pack(value: Value, ty: DynType) -> Result<DynValue, DynPackError> {
-        validate_type(&ty)?;
-        check_shape(&value, &ty)?;
+        Self::pack_with_work(value, ty, &mut || true)
+    }
+
+    /// Executor seam: its fuel/cancel check runs during admission, including
+    /// wide inactive arms and the value-shape walk. The callback's owner
+    /// carries the actual resource or cancellation outcome.
+    pub(crate) fn pack_with_work(
+        value: Value,
+        ty: DynType,
+        work: &mut dyn FnMut() -> bool,
+    ) -> Result<DynValue, DynPackError> {
+        validate_type(&ty, work)?;
+        check_shape(&value, &ty, work)?;
         Ok(DynValue { value, ty })
     }
 
@@ -388,7 +488,8 @@ impl DynValue {
     /// through the real arena at T-02+.
     pub fn deep_clone(&self, opts: &TraversalOptions) -> Result<DynValue, TraversalStop> {
         let mut t = Traversal::new(opts, MAX_DYN_BYTES);
-        let mut root: Option<(Value, DynType)> = None;
+        let cloned_ty = copy_type(&self.ty, &mut t, false)?;
+        let mut root: Option<Value> = None;
 
         match (&self.value, &self.ty) {
             // A container root seeds the build stack.
@@ -406,10 +507,10 @@ impl DynValue {
                 return Err(TraversalStop::Nodes);
             }
             // The root is a leaf: one node, done.
-            (leaf, ty) => {
+            (leaf, _) => {
                 t.enter_node(1)?;
                 t.charge_bytes(leaf_cost(leaf))?;
-                root = Some((clone_leaf(leaf), ty.clone()));
+                root = Some(clone_leaf(leaf));
             }
         }
 
@@ -420,58 +521,32 @@ impl DynValue {
         struct Frame<'a> {
             kids: Vec<Value>,
             kid_tys: Vec<&'a DynType>,
-            rebuild: Rebuild<'a>,
+            rebuild: Rebuild,
             enter_cost: usize,
             vals: Vec<Value>,
-            tys: Vec<DynType>,
             next: usize,
             depth: u32,
             entered: bool,
         }
-        enum Rebuild<'a> {
-            Record {
-                owner: &'a str,
-                name: &'a str,
-                fields: &'a [DynField],
-                ty_index: u32,
-            },
-            List {
-                elem: &'a DynType,
-            },
-            Variant {
-                owner: &'a str,
-                name: &'a str,
-                arms: &'a [DynArm],
-                disc: u32,
-                ty_index: u32,
-            },
+        enum Rebuild {
+            Record { ty_index: u32 },
+            List,
+            Variant { disc: u32, ty_index: u32 },
         }
         fn open_frame<'a>(
             val: &Value,
             ty: &'a DynType,
             depth: u32,
-        ) -> Option<(Vec<Value>, Vec<&'a DynType>, Rebuild<'a>, usize)> {
+        ) -> Option<(Vec<Value>, Vec<&'a DynType>, Rebuild, usize)> {
             let _ = depth;
             match (val, ty) {
-                (
-                    Value::Record(rec),
-                    DynType::Record {
-                        owner,
-                        name,
-                        fields,
-                    },
-                ) => {
+                (Value::Record(rec), DynType::Record { fields, .. }) => {
                     let kids: Vec<Value> = rec.fields.iter().cloned().collect();
                     let kid_tys: Vec<&DynType> = fields.iter().map(|f| &f.ty).collect();
                     Some((
                         kids,
                         kid_tys,
-                        Rebuild::Record {
-                            owner,
-                            name,
-                            fields,
-                            ty_index: rec.ty,
-                        },
+                        Rebuild::Record { ty_index: rec.ty },
                         byte_cost_cell() + byte_cost_record_extra(),
                     ))
                 }
@@ -481,11 +556,11 @@ impl DynValue {
                     Some((
                         kids,
                         kid_tys,
-                        Rebuild::List { elem },
+                        Rebuild::List,
                         byte_cost_cell() + byte_cost_list_extra(),
                     ))
                 }
-                (Value::Variant(v), DynType::Variant { owner, name, arms }) => {
+                (Value::Variant(v), DynType::Variant { arms, .. }) => {
                     let mut kids = Vec::new();
                     let mut kid_tys: Vec<&DynType> = Vec::new();
                     if let (Some(p), Some(Some(pt))) = (
@@ -499,9 +574,6 @@ impl DynValue {
                         kids,
                         kid_tys,
                         Rebuild::Variant {
-                            owner,
-                            name,
-                            arms,
                             disc: v.disc,
                             ty_index: v.ty,
                         },
@@ -521,7 +593,6 @@ impl DynValue {
                     rebuild,
                     enter_cost,
                     vals: Vec::new(),
-                    tys: Vec::new(),
                     next: 0,
                     depth: 1,
                     entered: false,
@@ -555,7 +626,6 @@ impl DynValue {
                                 rebuild,
                                 enter_cost,
                                 vals: Vec::new(),
-                                tys: Vec::new(),
                                 next: 0,
                                 depth,
                                 entered: false,
@@ -568,87 +638,34 @@ impl DynValue {
                         t.enter_node(d)?;
                         t.charge_bytes(leaf_cost(leaf))?;
                         stack[idx].vals.push(clone_leaf(leaf));
-                        stack[idx].tys.push(ct.clone());
                     }
                 }
             } else {
                 // All children finished: rebuild with FRESH allocations —
                 // sharing is deliberately broken (deep copy expands DAGs).
                 let mut done = stack.pop().unwrap();
-                let (value, ty) = match done.rebuild {
-                    Rebuild::Record {
-                        owner,
-                        name,
-                        fields,
-                        ty_index,
-                    } => {
-                        let value = Value::Record(Rc::new(RecordValue {
-                            // DynType never carries the positional index
-                            // (§5.1.5) — the module-level copy reuses the
-                            // source node's index verbatim; real resolution
-                            // belongs to the T-02+ RestoreContext.
-                            ty: ty_index,
-                            fields: done.vals,
-                        }));
-                        let ty = DynType::Record {
-                            owner: owner.to_string(),
-                            name: name.to_string(),
-                            fields: fields
-                                .iter()
-                                .map(|f| f.name.clone())
-                                .zip(done.tys)
-                                .map(|(name, ty)| DynField { name, ty })
-                                .collect(),
-                        };
-                        (value, ty)
-                    }
-                    Rebuild::List { elem } => {
-                        let value = Value::List(ListHandle::detached(done.vals));
-                        let ty = DynType::List(Box::new(elem.clone()));
-                        (value, ty)
-                    }
-                    Rebuild::Variant {
-                        owner,
-                        name,
-                        arms,
+                let value = match done.rebuild {
+                    Rebuild::Record { ty_index, .. } => Value::Record(Rc::new(RecordValue {
+                        ty: ty_index,
+                        fields: done.vals,
+                    })),
+                    Rebuild::List => Value::List(ListHandle::detached(done.vals)),
+                    Rebuild::Variant { disc, ty_index, .. } => Value::Variant(VariantValue {
+                        ty: ty_index,
                         disc,
-                        ty_index,
-                    } => {
-                        let payload = done.vals.pop().map(Rc::new);
-                        let value = Value::Variant(VariantValue {
-                            ty: ty_index,
-                            disc,
-                            payload,
-                        });
-                        // Arms clone from the source; the LIVE arm's payload
-                        // type is replaced by the freshly built child type.
-                        let mut built_arms: Vec<DynArm> = arms.to_vec();
-                        if let Some(arm) = built_arms.get_mut(disc as usize) {
-                            if arm.payload.is_some() {
-                                if let Some(built) = done.tys.pop() {
-                                    arm.payload = Some(built);
-                                }
-                            }
-                        }
-                        let ty = DynType::Variant {
-                            owner: owner.to_string(),
-                            name: name.to_string(),
-                            arms: built_arms,
-                        };
-                        (value, ty)
-                    }
+                        payload: done.vals.pop().map(Rc::new),
+                    }),
                 };
                 match stack.last_mut() {
                     Some(parent) => {
                         parent.vals.push(value);
-                        parent.tys.push(ty);
                     }
-                    None => root = Some((value, ty)),
+                    None => root = Some(value),
                 }
             }
         }
 
-        root.map(|(value, ty)| DynValue::from_parts(value, ty))
+        root.map(|value| DynValue::from_parts(value, cloned_ty))
             .ok_or(TraversalStop::Nodes)
     }
 }
@@ -682,10 +699,15 @@ impl DynTakeError {
 /// and a node ceiling (`MAX_DYN_NODES` — a hand-built owned tree wider
 /// than what freeze/unfreeze/clone would ever admit is rejected here, at
 /// the single constructor gate every DynValue passes through).
-fn validate_type(ty: &DynType) -> Result<(), DynPackError> {
+fn validate_type(ty: &DynType, work: &mut dyn FnMut() -> bool) -> Result<(), DynPackError> {
     let mut stack: Vec<(&DynType, u32)> = vec![(ty, 1)];
     let mut nodes: u32 = 0;
     while let Some((t, depth)) = stack.pop() {
+        if !work() {
+            return Err(DynPackError::Budget {
+                code: "av.dyn.work-stopped",
+            });
+        }
         if depth > MAX_DYN_DEPTH {
             return Err(DynPackError::Budget {
                 code: "av.resource.dyn-depth",
@@ -706,6 +728,11 @@ fn validate_type(ty: &DynType) -> Result<(), DynPackError> {
                 }
                 let mut names: HashSet<&str> = HashSet::new();
                 for f in fields {
+                    if !work() {
+                        return Err(DynPackError::Budget {
+                            code: "av.dyn.work-stopped",
+                        });
+                    }
                     if !names.insert(f.name.as_str()) {
                         return Err(DynPackError::InvalidType {
                             reason: "duplicate-field",
@@ -722,6 +749,11 @@ fn validate_type(ty: &DynType) -> Result<(), DynPackError> {
                 }
                 let mut names: HashSet<&str> = HashSet::new();
                 for a in arms {
+                    if !work() {
+                        return Err(DynPackError::Budget {
+                            code: "av.dyn.work-stopped",
+                        });
+                    }
                     if !names.insert(a.name.as_str()) {
                         return Err(DynPackError::InvalidType {
                             reason: "duplicate-arm",
@@ -744,9 +776,18 @@ fn validate_type(ty: &DynType) -> Result<(), DynPackError> {
 /// (a packable tree is exactly a freezable one). The work stack holds
 /// SHALLOW-cloned values (handle bumps — RefCell buffers are read once,
 /// guards never outlive an iteration).
-fn check_shape(value: &Value, ty: &DynType) -> Result<(), DynPackError> {
+fn check_shape(
+    value: &Value,
+    ty: &DynType,
+    work: &mut dyn FnMut() -> bool,
+) -> Result<(), DynPackError> {
     let mut stack: Vec<(Value, &DynType, u32)> = vec![(value.clone(), ty, 1)];
     while let Some((v, t, depth)) = stack.pop() {
+        if !work() {
+            return Err(DynPackError::Budget {
+                code: "av.dyn.work-stopped",
+            });
+        }
         if depth > MAX_DYN_DEPTH {
             return Err(DynPackError::Budget {
                 code: "av.resource.dyn-depth",
@@ -771,6 +812,11 @@ fn check_shape(value: &Value, ty: &DynType) -> Result<(), DynPackError> {
                     });
                 }
                 for (fv, ft) in rec.fields.iter().zip(fields.iter()) {
+                    if !work() {
+                        return Err(DynPackError::Budget {
+                            code: "av.dyn.work-stopped",
+                        });
+                    }
                     stack.push((fv.clone(), &ft.ty, depth + 1));
                 }
                 true
@@ -784,6 +830,11 @@ fn check_shape(value: &Value, ty: &DynType) -> Result<(), DynPackError> {
                 }
                 let elems = h.rc.borrow().elems.clone();
                 for ev in elems.iter() {
+                    if !work() {
+                        return Err(DynPackError::Budget {
+                            code: "av.dyn.work-stopped",
+                        });
+                    }
                     stack.push((ev.clone(), elem, depth + 1));
                 }
                 true

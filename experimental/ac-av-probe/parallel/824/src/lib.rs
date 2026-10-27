@@ -1754,4 +1754,231 @@ mod tests {
             other => panic!("not a record: {other:?}"),
         }
     }
+    #[test]
+    fn av_dynamic_824_r2_type_work_cancel_and_retry() {
+        use crate::dynamic::DynArm;
+        let names: Vec<String> = (0..1024).map(|i| format!("a{i}")).collect();
+        let arms = names
+            .iter()
+            .map(|n| DynArm {
+                name: n.clone(),
+                payload: Some(DynType::I32),
+            })
+            .collect();
+        let ty = DynType::list(DynType::Variant {
+            owner: "review824".into(),
+            name: "V".into(),
+            arms,
+        });
+        let source = DynValue::pack(listv(vec![]), ty).unwrap();
+        let polls = Cell::new(0);
+        let cancel = || {
+            polls.set(polls.get() + 1);
+            true
+        };
+        let opts = TraversalOptions {
+            fail_after_nodes: None,
+            cancel: Some(&cancel),
+        };
+        assert_eq!(
+            freeze(&source, &opts).unwrap_err(),
+            PortableError::Cancelled
+        );
+        assert!(polls.get() > 0);
+        let wire = freeze(&source, &TraversalOptions::default()).unwrap();
+        let bindings = [VariantBinding {
+            owner: "review824",
+            name: "V",
+            ty_index: 7,
+            arms: names
+                .iter()
+                .map(|n| ArmSig {
+                    name: n,
+                    payload: Some(Rc::new(DynType::I32)),
+                })
+                .collect(),
+        }];
+        let ctx = RestoreContext::new(&[], &bindings);
+        polls.set(0);
+        assert!(matches!(
+            unfreeze(&wire, &ctx, &opts),
+            Err(PortableError::Cancelled)
+        ));
+        assert!(polls.get() > 0);
+        let restored = unfreeze(&wire, &ctx, &TraversalOptions::default()).unwrap();
+        assert_eq!(
+            freeze(&restored, &TraversalOptions::default()).unwrap(),
+            wire
+        );
+        assert_eq!(freeze(&source, &TraversalOptions::default()).unwrap(), wire);
+    }
+
+    #[test]
+    fn av_dynamic_824_r2_type_clone_budget_cancel_and_retry() {
+        use crate::dynamic::{DynArm, MAX_DYN_BYTES};
+        let small_arms = (0..1024)
+            .map(|i| DynArm {
+                name: format!("a{i}"),
+                payload: None,
+            })
+            .collect();
+        let source = DynValue::pack(
+            listv(vec![]),
+            DynType::list(DynType::Variant {
+                owner: "review824".into(),
+                name: "V".into(),
+                arms: small_arms,
+            }),
+        )
+        .unwrap();
+        let polls = Cell::new(0);
+        let cancel = || {
+            polls.set(polls.get() + 1);
+            true
+        };
+        let opts = TraversalOptions {
+            fail_after_nodes: None,
+            cancel: Some(&cancel),
+        };
+        assert!(matches!(
+            source.deep_clone(&opts),
+            Err(TraversalStop::Cancelled)
+        ));
+        assert!(polls.get() > 0);
+        assert_eq!(
+            source.deep_clone(&TraversalOptions::default()).unwrap(),
+            source
+        );
+        let arms = (0..130)
+            .map(|i| DynArm {
+                name: format!("{i:03}{}", "x".repeat(65_000)),
+                payload: None,
+            })
+            .collect();
+        let big = DynValue::pack(
+            listv(vec![]),
+            DynType::list(DynType::Variant {
+                owner: "review824".into(),
+                name: "V".into(),
+                arms,
+            }),
+        )
+        .unwrap();
+        assert!(130 * 65_000 > MAX_DYN_BYTES);
+        assert!(matches!(
+            big.deep_clone(&TraversalOptions::default()),
+            Err(TraversalStop::Bytes)
+        ));
+        assert!(matches!(
+            freeze(&big, &TraversalOptions::default()),
+            Err(PortableError::Budget {
+                code: "av.resource.dyn-bytes"
+            })
+        ));
+        assert!(matches!(big.as_value(), Value::List(_)));
+    }
+
+    #[test]
+    fn av_dynamic_824_r2_restore_descriptor_bytes_before_construction() {
+        use crate::dynamic::DynArm;
+        let arms = (0..120)
+            .map(|i| DynArm {
+                name: format!("{i:03}{}", "x".repeat(65_000)),
+                payload: None,
+            })
+            .collect();
+        let source = DynValue::pack(
+            listv(vec![]),
+            DynType::list(DynType::Variant {
+                owner: "review824".into(),
+                name: "V".into(),
+                arms,
+            }),
+        )
+        .unwrap();
+        let wire = freeze(&source, &TraversalOptions::default()).unwrap();
+        assert!(wire.len() < crate::dynamic::MAX_DYN_BYTES);
+        assert!(matches!(
+            unfreeze(&wire, &ctx(&[], &[]), &TraversalOptions::default()),
+            Err(PortableError::Budget {
+                code: "av.resource.dyn-bytes"
+            })
+        ));
+        assert_eq!(freeze(&source, &TraversalOptions::default()).unwrap(), wire);
+    }
+
+    #[test]
+    fn av_dynamic_824_r2_cancel_in_admission() {
+        use crate::dynamic::DynArm;
+        let names: Vec<String> = (0..1024).map(|i| format!("a{i}")).collect();
+        let arms = names
+            .iter()
+            .map(|n| DynArm {
+                name: n.clone(),
+                payload: Some(DynType::I32),
+            })
+            .collect();
+        let source = DynValue::pack(
+            listv(vec![]),
+            DynType::list(DynType::Variant {
+                owner: "review824".into(),
+                name: "V".into(),
+                arms,
+            }),
+        )
+        .unwrap();
+        let wire = freeze(&source, &TraversalOptions::default()).unwrap();
+        let bindings = [VariantBinding {
+            owner: "review824",
+            name: "V",
+            ty_index: 7,
+            arms: names
+                .iter()
+                .map(|n| ArmSig {
+                    name: n,
+                    payload: Some(Rc::new(DynType::I32)),
+                })
+                .collect(),
+        }];
+        let ctx = RestoreContext::new(&[], &bindings);
+        let polls = Cell::new(0);
+        let cancel = || {
+            let n = polls.get() + 1;
+            polls.set(n);
+            n == 3
+        };
+        let opts = TraversalOptions {
+            fail_after_nodes: None,
+            cancel: Some(&cancel),
+        };
+        assert!(matches!(
+            unfreeze(&wire, &ctx, &opts),
+            Err(PortableError::Cancelled)
+        ));
+        assert_eq!(polls.get(), 3);
+        assert!(unfreeze(&wire, &ctx, &TraversalOptions::default()).is_ok());
+    }
+    #[test]
+    fn av_dynamic_824_r2_clone_depth_at_type_limit() {
+        std::thread::Builder::new()
+            .stack_size(1024 * 1024)
+            .spawn(|| {
+                let mut ty = DynType::I32;
+                for _ in 0..255 {
+                    ty = DynType::list(ty);
+                }
+                let source = DynValue::pack(listv(vec![]), ty).unwrap();
+                let copy = source.deep_clone(&TraversalOptions::default()).unwrap();
+                let mut cursor = copy.ty();
+                let mut n = 0;
+                while let DynType::List(elem) = cursor {
+                    n += 1;
+                    cursor = elem;
+                }
+                assert_eq!(n, 255);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
 }

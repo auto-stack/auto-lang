@@ -184,16 +184,34 @@ impl<'a> RestoreContext<'a> {
         RestoreContext { records, variants }
     }
 
-    fn record(&self, owner: &str, name: &str) -> Option<&'a RecordBinding<'a>> {
-        self.records
-            .iter()
-            .find(|b| b.owner == owner && b.name == name)
+    fn record(
+        &self,
+        owner: &str,
+        name: &str,
+        t: &mut Traversal,
+    ) -> Result<Option<&'a RecordBinding<'a>>, PortableError> {
+        for binding in self.records {
+            t.charge_steps(1)?;
+            if binding.owner == owner && binding.name == name {
+                return Ok(Some(binding));
+            }
+        }
+        Ok(None)
     }
 
-    fn variant(&self, owner: &str, name: &str) -> Option<&'a VariantBinding<'a>> {
-        self.variants
-            .iter()
-            .find(|b| b.owner == owner && b.name == name)
+    fn variant(
+        &self,
+        owner: &str,
+        name: &str,
+        t: &mut Traversal,
+    ) -> Result<Option<&'a VariantBinding<'a>>, PortableError> {
+        for binding in self.variants {
+            t.charge_steps(1)?;
+            if binding.owner == owner && binding.name == name {
+                return Ok(Some(binding));
+            }
+        }
+        Ok(None)
     }
 }
 
@@ -231,37 +249,37 @@ pub fn freeze(v: &DynValue, opts: &TraversalOptions) -> Result<Vec<u8>, Portable
         let mut children: Vec<(Value, &DynType)> = Vec::new();
         match &val {
             Value::I32(x) => {
-                write_tydesc(&mut node, ty, 1)?;
+                write_tydesc(&mut node, ty, 1, &mut t)?;
                 node.push(TAG_I32);
                 node.extend_from_slice(&x.to_le_bytes());
             }
             Value::Bool(b) => {
-                write_tydesc(&mut node, ty, 1)?;
+                write_tydesc(&mut node, ty, 1, &mut t)?;
                 node.push(TAG_BOOL);
                 node.push(*b as u8);
             }
             Value::I64(x) => {
-                write_tydesc(&mut node, ty, 1)?;
+                write_tydesc(&mut node, ty, 1, &mut t)?;
                 node.push(TAG_I64);
                 node.extend_from_slice(&x.to_le_bytes());
             }
             Value::U64(x) => {
-                write_tydesc(&mut node, ty, 1)?;
+                write_tydesc(&mut node, ty, 1, &mut t)?;
                 node.push(TAG_U64);
                 node.extend_from_slice(&x.to_le_bytes());
             }
             Value::F32(x) => {
-                write_tydesc(&mut node, ty, 1)?;
+                write_tydesc(&mut node, ty, 1, &mut t)?;
                 node.push(TAG_F32);
                 node.extend_from_slice(&x.to_bits().to_le_bytes());
             }
             Value::F64(x) => {
-                write_tydesc(&mut node, ty, 1)?;
+                write_tydesc(&mut node, ty, 1, &mut t)?;
                 node.push(TAG_F64);
                 node.extend_from_slice(&x.to_bits().to_le_bytes());
             }
             Value::Char(c) => {
-                write_tydesc(&mut node, ty, 1)?;
+                write_tydesc(&mut node, ty, 1, &mut t)?;
                 node.push(TAG_CHAR);
                 node.extend_from_slice(&(*c as u32).to_le_bytes());
             }
@@ -271,7 +289,7 @@ pub fn freeze(v: &DynValue, opts: &TraversalOptions) -> Result<Vec<u8>, Portable
                         category: "shared-graph",
                     });
                 }
-                write_tydesc(&mut node, ty, 1)?;
+                write_tydesc(&mut node, ty, 1, &mut t)?;
                 node.push(TAG_STR);
                 node.extend_from_slice(&(h.bytes().len() as u32).to_le_bytes());
                 payload = Some((node.len(), h.bytes()));
@@ -290,7 +308,7 @@ pub fn freeze(v: &DynValue, opts: &TraversalOptions) -> Result<Vec<u8>, Portable
                         category: "shared-graph",
                     });
                 }
-                write_tydesc(&mut node, ty, 1)?;
+                write_tydesc(&mut node, ty, 1, &mut t)?;
                 node.push(TAG_RECORD);
                 for (fv, ft) in rec.fields.iter().zip(fields.iter()) {
                     children.push((fv.clone(), &ft.ty));
@@ -314,7 +332,7 @@ pub fn freeze(v: &DynValue, opts: &TraversalOptions) -> Result<Vec<u8>, Portable
                         code: "av.resource.dyn-nodes",
                     });
                 }
-                write_tydesc(&mut node, ty, 1)?;
+                write_tydesc(&mut node, ty, 1, &mut t)?;
                 node.push(TAG_LIST);
                 node.extend_from_slice(&(elems.len() as u32).to_le_bytes());
                 for ev in elems.iter() {
@@ -336,7 +354,7 @@ pub fn freeze(v: &DynValue, opts: &TraversalOptions) -> Result<Vec<u8>, Portable
                         });
                     }
                 }
-                write_tydesc(&mut node, ty, 1)?;
+                write_tydesc(&mut node, ty, 1, &mut t)?;
                 node.push(TAG_VARIANT);
                 node.extend_from_slice(&var.disc.to_le_bytes());
                 if let Some(p) = &var.payload {
@@ -385,12 +403,19 @@ pub fn freeze(v: &DynValue, opts: &TraversalOptions) -> Result<Vec<u8>, Portable
 /// Write one inline type descriptor. Recursive with a hard depth bound
 /// (`MAX_DYN_DEPTH`): a packed DynValue's type tree is already within it,
 /// so the guard is pure defense.
-fn write_tydesc(out: &mut Vec<u8>, ty: &DynType, depth: u32) -> Result<(), PortableError> {
+fn write_tydesc(
+    out: &mut Vec<u8>,
+    ty: &DynType,
+    depth: u32,
+    t: &mut Traversal,
+) -> Result<(), PortableError> {
     if depth > MAX_DYN_DEPTH {
         return Err(PortableError::Budget {
             code: "av.resource.dyn-depth",
         });
     }
+    t.charge_steps(1)?;
+    t.check_pending_bytes(out.len().saturating_add(1))?;
     match ty {
         DynType::Bool => out.push(TY_BOOL),
         DynType::I32 => out.push(TY_I32),
@@ -402,7 +427,7 @@ fn write_tydesc(out: &mut Vec<u8>, ty: &DynType, depth: u32) -> Result<(), Porta
         DynType::Str => out.push(TY_STR),
         DynType::List(elem) => {
             out.push(TY_LIST);
-            write_tydesc(out, elem, depth + 1)?;
+            write_tydesc(out, elem, depth + 1, t)?;
         }
         DynType::Record {
             owner,
@@ -410,25 +435,30 @@ fn write_tydesc(out: &mut Vec<u8>, ty: &DynType, depth: u32) -> Result<(), Porta
             fields,
         } => {
             out.push(TY_RECORD);
-            push_name(out, owner)?;
-            push_name(out, name)?;
+            push_name(out, owner, t)?;
+            push_name(out, name, t)?;
+            t.check_pending_bytes(out.len().saturating_add(2))?;
             out.extend_from_slice(&(fields.len() as u16).to_le_bytes());
             for f in fields {
-                push_name(out, &f.name)?;
-                write_tydesc(out, &f.ty, depth + 1)?;
+                t.charge_steps(1)?;
+                push_name(out, &f.name, t)?;
+                write_tydesc(out, &f.ty, depth + 1, t)?;
             }
         }
         DynType::Variant { owner, name, arms } => {
             out.push(TY_VARIANT);
-            push_name(out, owner)?;
-            push_name(out, name)?;
+            push_name(out, owner, t)?;
+            push_name(out, name, t)?;
+            t.check_pending_bytes(out.len().saturating_add(2))?;
             out.extend_from_slice(&(arms.len() as u16).to_le_bytes());
             for a in arms {
-                push_name(out, &a.name)?;
+                t.charge_steps(1)?;
+                push_name(out, &a.name, t)?;
+                t.check_pending_bytes(out.len().saturating_add(1))?;
                 match &a.payload {
                     Some(p) => {
                         out.push(1);
-                        write_tydesc(out, p, depth + 1)?;
+                        write_tydesc(out, p, depth + 1, t)?;
                     }
                     None => out.push(0),
                 }
@@ -438,12 +468,13 @@ fn write_tydesc(out: &mut Vec<u8>, ty: &DynType, depth: u32) -> Result<(), Porta
     Ok(())
 }
 
-fn push_name(out: &mut Vec<u8>, s: &str) -> Result<(), PortableError> {
+fn push_name(out: &mut Vec<u8>, s: &str, t: &Traversal) -> Result<(), PortableError> {
     if s.len() > u16::MAX as usize {
         return Err(PortableError::Invalid {
             reason: "name-length",
         });
     }
+    t.check_pending_bytes(out.len().saturating_add(2).saturating_add(s.len()))?;
     out.extend_from_slice(&(s.len() as u16).to_le_bytes());
     out.extend_from_slice(s.as_bytes());
     Ok(())
@@ -500,26 +531,33 @@ pub fn unfreeze(
         b: &bytes[..body_len],
         pos: HEADER_LEN,
     };
-    // F-824-R1-02: the ROOT descriptor is admitted once, in full (see
-    // `admit_tydesc`); every downstream node's descriptor is a subtree of
-    // it, and the declared-vs-observed rollup below rejects any node that
-    // disagrees with its parent — so one charged walk covers the whole
-    // wire's type identity without re-comparing shared subtrees at every
-    // nesting level.
-    let mut root_admitted = false;
-
-    // One open container being rebuilt; after `want` children it pops into
-    // a fresh value + type that rolls up the attach cascade.
-    struct Frame {
-        ty: DynType,
+    // Retain exactly one root descriptor. A child descriptor is read,
+    // compared to the parent's declared subtree, then dropped immediately;
+    // open value frames borrow subtrees from the root rather than retaining
+    // one complete owned descriptor per depth.
+    t.enter_node(1)?;
+    let root_ty = read_tydesc(&mut r, &mut t, 1, false)?;
+    admit_tydesc(&root_ty, ctx, &mut t)?;
+    struct Frame<'a> {
+        ty: &'a DynType,
         want: usize,
         ty_index: u32,
         disc: Option<u32>,
         vals: Vec<Value>,
-        tys: Vec<DynType>,
     }
-    let mut stack: Vec<Frame> = Vec::new();
-    let mut root: Option<(Value, DynType)> = None;
+    fn expected_child<'a>(f: &Frame<'a>) -> Result<&'a DynType, PortableError> {
+        match (f.ty, f.vals.len(), f.disc) {
+            (DynType::Record { fields, .. }, i, _) => fields.get(i).map(|f| &f.ty),
+            (DynType::List(elem), _, _) => Some(elem.as_ref()),
+            (DynType::Variant { arms, .. }, _, Some(disc)) => {
+                arms.get(disc as usize).and_then(|a| a.payload.as_ref())
+            }
+            _ => None,
+        }
+        .ok_or(PortableError::Invalid { reason: "type" })
+    }
+    let mut stack: Vec<Frame<'_>> = Vec::new();
+    let mut root: Option<Value> = None;
     let mut parsed_nodes: u32 = 0;
 
     loop {
@@ -527,7 +565,6 @@ pub fn unfreeze(
             if stack.is_empty() {
                 break;
             }
-            // A frame still expects children: the tree is missing fields.
             return Err(PortableError::Invalid {
                 reason: "truncated",
             });
@@ -535,23 +572,35 @@ pub fn unfreeze(
         if root.is_some() {
             return Err(PortableError::Invalid { reason: "trailing" });
         }
-        let depth = stack.len() as u32 + 1;
-        t.enter_node(depth)?;
+        let node_ty = if parsed_nodes == 0 {
+            &root_ty
+        } else {
+            let expected = expected_child(
+                stack
+                    .last()
+                    .ok_or(PortableError::Invalid { reason: "trailing" })?,
+            )?;
+            t.enter_node(stack.len() as u32 + 1)?;
+            let before = t.bytes_used();
+            let observed = read_tydesc(&mut r, &mut t, 1, false)?;
+            if !ty_ident(&observed, expected, &mut t)? {
+                return Err(PortableError::Invalid { reason: "type" });
+            }
+            drop(observed);
+            let temporary = t.bytes_used().saturating_sub(before);
+            t.release_bytes(temporary);
+            expected
+        };
         parsed_nodes += 1;
-        let node_ty = read_tydesc(&mut r, &mut t, 1)?;
-        if !root_admitted {
-            root_admitted = true;
-            admit_tydesc(&node_ty, ctx, &mut t)?;
-        }
         let tag = r.u8()?;
         // F-824-R1-01: a scalar payload pairs with EXACTLY its own
         // descriptor kind — a tampered descriptor (even one with a
         // recomputed checksum) is a structural `type` rejection, never a
         // checked-type lie. Container tags carry their own kind checks in
         // the arms below.
-        expect_leaf_kind(tag, &node_ty)?;
-        let (mut item_v, mut item_t): (Value, DynType) = match tag {
-            TAG_I32 => (Value::I32(r.i32()?), node_ty),
+        expect_leaf_kind(tag, node_ty)?;
+        let mut item_v: Value = match tag {
+            TAG_I32 => Value::I32(r.i32()?),
             TAG_BOOL => {
                 let b = r.u8()?;
                 if b > 1 {
@@ -559,44 +608,44 @@ pub fn unfreeze(
                         reason: "bool-domain",
                     });
                 }
-                (Value::Bool(b == 1), node_ty)
+                Value::Bool(b == 1)
             }
-            TAG_I64 => (Value::I64(r.i64()?), node_ty),
-            TAG_U64 => (Value::U64(r.u64()?), node_ty),
-            TAG_F32 => (Value::F32(f32::from_bits(r.u32()?)), node_ty),
-            TAG_F64 => (Value::F64(f64::from_bits(r.u64()?)), node_ty),
+            TAG_I64 => Value::I64(r.i64()?),
+            TAG_U64 => Value::U64(r.u64()?),
+            TAG_F32 => Value::F32(f32::from_bits(r.u32()?)),
+            TAG_F64 => Value::F64(f64::from_bits(r.u64()?)),
             TAG_CHAR => {
                 let c = char::from_u32(r.u32()?).ok_or(PortableError::Invalid {
                     reason: "char-domain",
                 })?;
-                (Value::Char(c), node_ty)
+                Value::Char(c)
             }
             TAG_STR => {
                 let len = r.u32()? as usize;
                 let raw = r.take(len)?;
                 let s = std::str::from_utf8(raw)
                     .map_err(|_| PortableError::Invalid { reason: "utf8" })?;
-                (
-                    Value::Str(StrHandle::detached(
-                        s.as_bytes().to_vec().into_boxed_slice(),
-                    )),
-                    node_ty,
-                )
+                t.check_pending_bytes(len)?;
+                Value::Str(StrHandle::detached(
+                    s.as_bytes().to_vec().into_boxed_slice(),
+                ))
             }
             TAG_RECORD => {
-                let (owner, name) = match &node_ty {
-                    DynType::Record { owner, name, .. } => (owner.clone(), name.clone()),
+                let (owner, name) = match node_ty {
+                    DynType::Record { owner, name, .. } => (owner.as_str(), name.as_str()),
                     _ => return Err(PortableError::Invalid { reason: "type" }),
                 };
-                let nfields = match &node_ty {
+                let nfields = match node_ty {
                     DynType::Record { fields, .. } => fields.len(),
                     _ => unreachable!(),
                 };
-                let binding = ctx.record(&owner, &name).ok_or(PortableError::Admission {
-                    code: "portable.unknown-type",
-                })?;
+                let binding = ctx
+                    .record(owner, name, &mut t)?
+                    .ok_or(PortableError::Admission {
+                        code: "portable.unknown-type",
+                    })?;
                 let names_ok = binding.fields.len() == nfields && {
-                    let fields = match &node_ty {
+                    let fields = match node_ty {
                         DynType::Record { fields, .. } => fields,
                         _ => unreachable!(),
                     };
@@ -619,22 +668,18 @@ pub fn unfreeze(
                         ty_index: binding.ty_index,
                         disc: None,
                         vals: Vec::new(),
-                        tys: Vec::new(),
                     });
                     continue;
                 }
                 // A 0-field record completes immediately — no children will
                 // arrive, so it rolls up the attach cascade like a leaf.
-                (
-                    Value::Record(Rc::new(RecordValue {
-                        ty: binding.ty_index,
-                        fields: Vec::new(),
-                    })),
-                    node_ty,
-                )
+                Value::Record(Rc::new(RecordValue {
+                    ty: binding.ty_index,
+                    fields: Vec::new(),
+                }))
             }
             TAG_LIST => {
-                if !matches!(&node_ty, DynType::List(_)) {
+                if !matches!(node_ty, DynType::List(_)) {
                     return Err(PortableError::Invalid { reason: "type" });
                 }
                 let count = r.u32()? as usize;
@@ -651,20 +696,19 @@ pub fn unfreeze(
                         ty_index: 0,
                         disc: None,
                         vals: Vec::new(),
-                        tys: Vec::new(),
                     });
                     continue;
                 }
                 // An empty list completes immediately (its element identity
                 // lives in the inline tydesc, not in children).
-                (Value::List(ListHandle::detached(Vec::new())), node_ty)
+                Value::List(ListHandle::detached(Vec::new()))
             }
             TAG_VARIANT => {
                 let disc = r.u32()?;
-                let (owner, name, arms_len, arm_has_payload) = match &node_ty {
+                let (owner, name, arms_len, arm_has_payload) = match node_ty {
                     DynType::Variant { owner, name, arms } => (
-                        owner.clone(),
-                        name.clone(),
+                        owner.as_str(),
+                        name.as_str(),
                         arms.len(),
                         arms.get(disc as usize).map(|a| a.payload.is_some()),
                     ),
@@ -673,11 +717,13 @@ pub fn unfreeze(
                 if disc as usize >= arms_len {
                     return Err(PortableError::Invalid { reason: "type" });
                 }
-                let binding = ctx.variant(&owner, &name).ok_or(PortableError::Admission {
-                    code: "portable.unknown-type",
-                })?;
+                let binding =
+                    ctx.variant(owner, name, &mut t)?
+                        .ok_or(PortableError::Admission {
+                            code: "portable.unknown-type",
+                        })?;
                 let sigs_ok = binding.arms.len() == arms_len && {
-                    let arms = match &node_ty {
+                    let arms = match node_ty {
                         DynType::Variant { arms, .. } => arms,
                         _ => unreachable!(),
                     };
@@ -698,55 +744,33 @@ pub fn unfreeze(
                         ty_index: binding.ty_index,
                         disc: Some(disc),
                         vals: Vec::new(),
-                        tys: Vec::new(),
                     });
                     continue;
                 }
                 // A payload-less arm completes immediately.
-                (
-                    Value::Variant(VariantValue {
-                        ty: binding.ty_index,
-                        disc,
-                        payload: None,
-                    }),
-                    node_ty,
-                )
+                Value::Variant(VariantValue {
+                    ty: binding.ty_index,
+                    disc,
+                    payload: None,
+                })
             }
             _ => return Err(PortableError::Invalid { reason: "tag" }),
         };
-        // A leaf completed — charge its rebuilt size, check it against the
-        // enclosing frame's declared child type, then roll everything (and
-        // any frames completing) up the tree.
+        // The descriptor has already been checked against its parent.
         t.charge_bytes(leaf_cost(&item_v))?;
         loop {
             match stack.last_mut() {
                 None => {
-                    root = Some((item_v, item_t));
+                    root = Some(item_v);
                     break;
                 }
                 Some(f) => {
-                    // Declared-vs-observed child type check (frozen
-                    // equivalence — a tampered stream cannot desync them).
-                    let expected = match (&f.ty, f.vals.len(), f.disc) {
-                        (DynType::Record { fields, .. }, i, _) => &fields[i].ty,
-                        (DynType::List(elem), _, _) => elem.as_ref(),
-                        (DynType::Variant { arms, .. }, _, Some(disc)) => arms[disc as usize]
-                            .payload
-                            .as_ref()
-                            .expect("variant frames with a child declared one"),
-                        _ => return Err(PortableError::Invalid { reason: "type" }),
-                    };
-                    if &item_t != expected {
-                        return Err(PortableError::Invalid { reason: "type" });
-                    }
                     f.vals.push(item_v);
-                    f.tys.push(item_t);
                     if f.vals.len() < f.want {
                         break;
                     }
                     let mut done = stack.pop().unwrap();
-                    item_t = done.ty;
-                    item_v = match (&item_t, done.disc) {
+                    item_v = match (done.ty, done.disc) {
                         (DynType::Record { .. }, _) => Value::Record(Rc::new(RecordValue {
                             ty: done.ty_index,
                             fields: done.vals,
@@ -764,7 +788,7 @@ pub fn unfreeze(
         }
     }
 
-    let (root_v, root_t) = root.ok_or(PortableError::Invalid {
+    let root_v = root.ok_or(PortableError::Invalid {
         reason: "truncated",
     })?;
     if parsed_nodes != node_count {
@@ -777,17 +801,25 @@ pub fn unfreeze(
     if sum != want {
         return Err(PortableError::Invalid { reason: "checksum" });
     }
-    Ok(DynValue::from_parts(root_v, root_t))
+    Ok(DynValue::from_parts(root_v, root_ty))
 }
 
 /// Read one inline type descriptor (see `write_tydesc`).
-fn read_tydesc(r: &mut Reader, t: &mut Traversal, depth: u32) -> Result<DynType, PortableError> {
+fn read_tydesc(
+    r: &mut Reader,
+    t: &mut Traversal,
+    depth: u32,
+    embedded: bool,
+) -> Result<DynType, PortableError> {
     if depth > MAX_DYN_DEPTH {
         return Err(PortableError::Invalid {
             reason: "type-depth",
         });
     }
     t.charge_steps(1)?;
+    if !embedded {
+        t.charge_bytes(std::mem::size_of::<DynType>())?;
+    }
     let tag = r.u8()?;
     Ok(match tag {
         TY_BOOL => DynType::Bool,
@@ -798,27 +830,31 @@ fn read_tydesc(r: &mut Reader, t: &mut Traversal, depth: u32) -> Result<DynType,
         TY_F64 => DynType::F64,
         TY_CHAR => DynType::Char,
         TY_STR => DynType::Str,
-        TY_LIST => DynType::List(Box::new(read_tydesc(r, t, depth + 1)?)),
+        TY_LIST => DynType::List(Box::new(read_tydesc(r, t, depth + 1, false)?)),
         TY_RECORD => {
-            let owner = r.str16()?;
-            let name = r.str16()?;
+            let owner = r.str16(t, false)?;
+            let name = r.str16(t, false)?;
             let nf = r.u16()? as usize;
             if nf > MAX_RECORD_FIELDS {
                 return Err(PortableError::Invalid {
                     reason: "field-count",
                 });
             }
-            t.charge_steps(nf as u64 + 1)?;
+            t.charge_steps(1)?;
+            t.charge_bytes(nf.saturating_mul(
+                std::mem::size_of::<DynField>().saturating_add(2 * std::mem::size_of::<String>()),
+            ))?;
             let mut fields = Vec::with_capacity(nf);
             let mut uniq: HashSet<String> = HashSet::new();
             for _ in 0..nf {
-                let fname = r.str16()?;
+                t.charge_steps(1)?;
+                let fname = r.str16(t, true)?;
                 if !uniq.insert(fname.clone()) {
                     return Err(PortableError::Invalid {
                         reason: "duplicate-field",
                     });
                 }
-                let fty = read_tydesc(r, t, depth + 1)?;
+                let fty = read_tydesc(r, t, depth + 1, true)?;
                 fields.push(DynField {
                     name: fname,
                     ty: fty,
@@ -831,19 +867,23 @@ fn read_tydesc(r: &mut Reader, t: &mut Traversal, depth: u32) -> Result<DynType,
             }
         }
         TY_VARIANT => {
-            let owner = r.str16()?;
-            let name = r.str16()?;
+            let owner = r.str16(t, false)?;
+            let name = r.str16(t, false)?;
             let na = r.u16()? as usize;
             if na > MAX_RECORD_FIELDS {
                 return Err(PortableError::Invalid {
                     reason: "arm-count",
                 });
             }
-            t.charge_steps(na as u64 + 1)?;
+            t.charge_steps(1)?;
+            t.charge_bytes(na.saturating_mul(
+                std::mem::size_of::<DynArm>().saturating_add(2 * std::mem::size_of::<String>()),
+            ))?;
             let mut arms = Vec::with_capacity(na);
             let mut uniq: HashSet<String> = HashSet::new();
             for _ in 0..na {
-                let aname = r.str16()?;
+                t.charge_steps(1)?;
+                let aname = r.str16(t, true)?;
                 if !uniq.insert(aname.clone()) {
                     return Err(PortableError::Invalid {
                         reason: "duplicate-arm",
@@ -851,7 +891,7 @@ fn read_tydesc(r: &mut Reader, t: &mut Traversal, depth: u32) -> Result<DynType,
                 }
                 let has = r.u8()?;
                 let payload = if has == 1 {
-                    Some(read_tydesc(r, t, depth + 1)?)
+                    Some(read_tydesc(r, t, depth + 1, true)?)
                 } else if has == 0 {
                     None
                 } else {
@@ -895,7 +935,10 @@ fn admit_tydesc(
                 fields,
             } => {
                 admit_record(ctx, owner, name, fields, t)?;
-                walk.extend(fields.iter().map(|f| &f.ty));
+                for field in fields {
+                    t.charge_steps(1)?;
+                    walk.push(&field.ty);
+                }
             }
             DynType::Variant { owner, name, arms } => {
                 admit_variant(ctx, owner, name, arms, t)?;
@@ -921,15 +964,18 @@ fn admit_record(
     fields: &[DynField],
     t: &mut Traversal,
 ) -> Result<(), PortableError> {
-    let binding = ctx.record(owner, name).ok_or(PortableError::Admission {
-        code: "portable.unknown-type",
-    })?;
+    let binding = ctx
+        .record(owner, name, t)?
+        .ok_or(PortableError::Admission {
+            code: "portable.unknown-type",
+        })?;
     if binding.fields.len() != fields.len() {
         return Err(PortableError::Admission {
             code: "portable.layout-mismatch",
         });
     }
     for ((bn, bt), f) in binding.fields.iter().zip(fields.iter()) {
+        t.charge_steps(1)?;
         if *bn != f.name.as_str() || !ty_ident(&f.ty, bt, t)? {
             return Err(PortableError::Admission {
                 code: "portable.layout-mismatch",
@@ -947,15 +993,18 @@ fn admit_variant(
     arms: &[DynArm],
     t: &mut Traversal,
 ) -> Result<(), PortableError> {
-    let binding = ctx.variant(owner, name).ok_or(PortableError::Admission {
-        code: "portable.unknown-type",
-    })?;
+    let binding = ctx
+        .variant(owner, name, t)?
+        .ok_or(PortableError::Admission {
+            code: "portable.unknown-type",
+        })?;
     if binding.arms.len() != arms.len() {
         return Err(PortableError::Admission {
             code: "portable.layout-mismatch",
         });
     }
     for (sig, a) in binding.arms.iter().zip(arms.iter()) {
+        t.charge_steps(1)?;
         let same = sig.name == a.name.as_str()
             && match (&sig.payload, &a.payload) {
                 (Some(bt), Some(wire)) => ty_ident(wire, bt, t)?,
@@ -999,6 +1048,7 @@ fn ty_ident(wire: &DynType, current: &DynType, t: &mut Traversal) -> Result<bool
                     return Ok(false);
                 }
                 for (x, y) in af.iter().zip(bf.iter()) {
+                    t.charge_steps(1)?;
                     if x.name != y.name {
                         return Ok(false);
                     }
@@ -1021,6 +1071,7 @@ fn ty_ident(wire: &DynType, current: &DynType, t: &mut Traversal) -> Result<bool
                     return Ok(false);
                 }
                 for (x, y) in aa.iter().zip(ba.iter()) {
+                    t.charge_steps(1)?;
                     if x.name != y.name {
                         return Ok(false);
                     }
@@ -1123,9 +1174,10 @@ impl<'b> Reader<'b> {
         Ok(s)
     }
     /// A `u16`-length UTF-8 name (owner / record / field / arm names).
-    fn str16(&mut self) -> Result<String, PortableError> {
+    fn str16(&mut self, t: &mut Traversal, duplicate: bool) -> Result<String, PortableError> {
         let len = self.u16()? as usize;
         let raw = self.take(len)?;
+        t.charge_bytes(len.saturating_mul(if duplicate { 2 } else { 1 }))?;
         std::str::from_utf8(raw)
             .map(|s| s.to_string())
             .map_err(|_| PortableError::Invalid { reason: "utf8" })

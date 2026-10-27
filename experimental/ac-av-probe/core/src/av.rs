@@ -571,42 +571,191 @@ fn frame_slots_bytes(slots: &[Value], visited: &mut u64) -> usize {
 /// path is a cycle); the 256 depth bound matches the verifier's
 /// `dyn_whitelisted`.
 ///
-/// F-824-R1-03: resolution MATERIALIZES an owned tree from the shared
-/// DAG — the expansion itself is bounded work (`MAX_DYN_NODES`, the same
-/// frozen ceiling freeze/unfreeze/clone apply) and the produced node
-/// count is returned so the caller charges it to the step budget. A
-/// compact DAG whose expansion exceeds the ceiling is
-/// [`DynTypeResolve::NodesOverCeiling`] — a resource refusal BEFORE the
-/// allocation storm, never a guest value. `OutsideClosure` (depth /
-/// cycle / non-erasable kind) remains the admission violation it was.
+/// Every materialized node, name and vector allocation is checked against
+/// the execution budget before construction; cancellation is polled during
+/// the traversal rather than after the complete tree has been allocated.
 enum DynTypeResolve {
-    Ready(crate::dynamic::DynType, u64),
+    Ready(crate::dynamic::DynType),
     OutsideClosure,
-    NodesOverCeiling,
+    Stopped(ExecOutcome),
 }
 
-fn resolve_dyn_type<V: ModuleView>(v: &V, func: u32, idx: u32) -> DynTypeResolve {
+fn dyn_exec_work(
+    st: &mut LoopState,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    started: Instant,
+) -> Result<(), ExecOutcome> {
+    st.steps = st.steps.saturating_add(1);
+    if st.steps > limits.max_steps {
+        return Err(ExecOutcome::Resource {
+            kind: ResourceKind::InstrSteps,
+            message: format!("execution exceeded {} instruction steps", limits.max_steps),
+        });
+    }
+    if st.steps - st.last_poll >= CANCEL_CHECK_INTERVAL {
+        st.last_poll = st.steps;
+        if CancelCheck::poll(cancel) {
+            return Err(ExecOutcome::Cancelled);
+        }
+        if started.elapsed() > limits.wall {
+            return Err(ExecOutcome::Resource {
+                kind: ResourceKind::ExecutionWall,
+                message: "execution exceeded wall budget".to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Compare only after charging every visited node and every field/arm,
+/// including payload-less arms, to the executor's fuel and poll cadence.
+fn dyn_type_equal(
+    a: &crate::dynamic::DynType,
+    b: &crate::dynamic::DynType,
+    st: &mut LoopState,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    started: Instant,
+) -> Result<bool, ExecOutcome> {
+    use crate::dynamic::DynType;
+    let mut stack = vec![(a, b)];
+    while let Some((a, b)) = stack.pop() {
+        dyn_exec_work(st, limits, cancel, started)?;
+        match (a, b) {
+            (DynType::List(a), DynType::List(b)) => stack.push((a, b)),
+            (
+                DynType::Record {
+                    owner: ao,
+                    name: an,
+                    fields: af,
+                },
+                DynType::Record {
+                    owner: bo,
+                    name: bn,
+                    fields: bf,
+                },
+            ) => {
+                if ao != bo || an != bn || af.len() != bf.len() {
+                    return Ok(false);
+                }
+                for (x, y) in af.iter().zip(bf) {
+                    dyn_exec_work(st, limits, cancel, started)?;
+                    if x.name != y.name {
+                        return Ok(false);
+                    }
+                    stack.push((&x.ty, &y.ty));
+                }
+            }
+            (
+                DynType::Variant {
+                    owner: ao,
+                    name: an,
+                    arms: aa,
+                },
+                DynType::Variant {
+                    owner: bo,
+                    name: bn,
+                    arms: ba,
+                },
+            ) => {
+                if ao != bo || an != bn || aa.len() != ba.len() {
+                    return Ok(false);
+                }
+                for (x, y) in aa.iter().zip(ba) {
+                    dyn_exec_work(st, limits, cancel, started)?;
+                    if x.name != y.name {
+                        return Ok(false);
+                    }
+                    match (&x.payload, &y.payload) {
+                        (Some(x), Some(y)) => stack.push((x, y)),
+                        (None, None) => {}
+                        _ => return Ok(false),
+                    }
+                }
+            }
+            (DynType::Bool, DynType::Bool)
+            | (DynType::I32, DynType::I32)
+            | (DynType::I64, DynType::I64)
+            | (DynType::U64, DynType::U64)
+            | (DynType::F32, DynType::F32)
+            | (DynType::F64, DynType::F64)
+            | (DynType::Char, DynType::Char)
+            | (DynType::Str, DynType::Str) => {}
+            _ => return Ok(false),
+        }
+    }
+    Ok(true)
+}
+
+/// Account each allocation and unit of work before constructing the owned
+/// descriptor. The temporary tree shares the execution data partition with
+/// live slots, and its high water is observable even for is/take operands.
+fn resolve_dyn_type<V: ModuleView>(
+    v: &V,
+    func: u32,
+    idx: u32,
+    st: &mut LoopState,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    started: Instant,
+) -> DynTypeResolve {
     use crate::dynamic::{DynArm, DynField, DynType, MAX_DYN_NODES};
     use crate::mir::MirType;
+    struct Budget {
+        nodes: u64,
+        bytes: usize,
+    }
+    fn reserve(
+        b: &mut Budget,
+        n: usize,
+        st: &mut LoopState,
+        limits: &ExecLimits,
+    ) -> Result<(), ExecOutcome> {
+        let next = b.bytes.saturating_add(n);
+        let total = st.slot_bytes.saturating_add(next);
+        if next > crate::dynamic::MAX_DYN_BYTES || total > limits.max_slot_bytes {
+            return Err(ExecOutcome::Resource {
+                kind: ResourceKind::SlotBytes,
+                message: format!("dyn type temporary data exceeds execution byte budget ({total})"),
+            });
+        }
+        b.bytes = next;
+        st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(total as u64);
+        Ok(())
+    }
     fn go<V: ModuleView>(
         v: &V,
         func: u32,
         idx: u32,
         depth: u32,
         path: &mut Vec<u32>,
-        nodes: &mut u64,
-    ) -> Option<DynType> {
+        b: &mut Budget,
+        embedded: bool,
+        st: &mut LoopState,
+        limits: &ExecLimits,
+        cancel: &CancelFlag,
+        started: Instant,
+    ) -> Result<Option<DynType>, ExecOutcome> {
         if depth > crate::dynamic::MAX_DYN_DEPTH || path.contains(&idx) {
-            return None;
+            return Ok(None);
         }
-        *nodes += 1;
-        if *nodes > MAX_DYN_NODES as u64 {
-            // Abort the walk NOW — the remaining expansion is never
-            // materialized (the wrapper classifies by the overrun).
-            return None;
+        b.nodes += 1;
+        if b.nodes > MAX_DYN_NODES as u64 {
+            return Err(ExecOutcome::Resource {
+                kind: ResourceKind::DynTypeNodes,
+                message: format!("dyn type operand expands beyond {MAX_DYN_NODES} nodes"),
+            });
         }
+        dyn_exec_work(st, limits, cancel, started)?;
+        if !embedded {
+            reserve(b, std::mem::size_of::<DynType>(), st, limits)?;
+        }
+        let Some(ty) = v.mir_type_of(func, idx) else {
+            return Ok(None);
+        };
         path.push(idx);
-        let out = match v.mir_type_of(func, idx)? {
+        let out = match ty {
             MirType::Bool => Some(DynType::Bool),
             MirType::I32 => Some(DynType::I32),
             MirType::I64 => Some(DynType::I64),
@@ -615,98 +764,134 @@ fn resolve_dyn_type<V: ModuleView>(v: &V, func: u32, idx: u32) -> DynTypeResolve
             MirType::F64 => Some(DynType::F64),
             MirType::Char => Some(DynType::Char),
             MirType::Str => Some(DynType::Str),
-            MirType::Record(r) => {
-                let fields: Option<Vec<DynField>> = r
-                    .fields
-                    .iter()
-                    .map(|f| {
-                        Some(DynField {
-                            name: f.name.clone(),
-                            ty: go(v, func, f.ty, depth + 1, path, nodes)?,
-                        })
-                    })
-                    .collect();
-                Some(DynType::Record {
-                    owner: r.owner_module.clone(),
-                    name: r.name.clone(),
-                    fields: fields?,
-                })
-            }
-            MirType::List(l) => Some(DynType::List(Box::new(go(
+            MirType::List(l) => match go(
                 v,
                 func,
                 l.elem,
                 depth + 1,
                 path,
-                nodes,
-            )?))),
+                b,
+                false,
+                st,
+                limits,
+                cancel,
+                started,
+            )? {
+                Some(t) => Some(DynType::List(Box::new(t))),
+                None => None,
+            },
+            MirType::Record(r) => {
+                let extra = r
+                    .owner_module
+                    .len()
+                    .saturating_add(r.name.len())
+                    .saturating_add(
+                        r.fields
+                            .len()
+                            .saturating_mul(std::mem::size_of::<DynField>()),
+                    );
+                reserve(b, extra, st, limits)?;
+                let mut fields = Vec::with_capacity(r.fields.len());
+                for f in &r.fields {
+                    dyn_exec_work(st, limits, cancel, started)?;
+                    reserve(b, f.name.len(), st, limits)?;
+                    let Some(ty) = go(
+                        v,
+                        func,
+                        f.ty,
+                        depth + 1,
+                        path,
+                        b,
+                        true,
+                        st,
+                        limits,
+                        cancel,
+                        started,
+                    )?
+                    else {
+                        path.pop();
+                        return Ok(None);
+                    };
+                    fields.push(DynField {
+                        name: f.name.clone(),
+                        ty,
+                    });
+                }
+                Some(DynType::Record {
+                    owner: r.owner_module.clone(),
+                    name: r.name.clone(),
+                    fields,
+                })
+            }
             MirType::Variant(vt) => {
-                let arms: Option<Vec<DynArm>> = vt
-                    .arms
-                    .iter()
-                    .map(|a| match a.payload {
-                        Some(p) => Some(DynArm {
-                            name: a.name.clone(),
-                            payload: Some(go(v, func, p, depth + 1, path, nodes)?),
-                        }),
-                        None => Some(DynArm {
-                            name: a.name.clone(),
-                            payload: None,
-                        }),
-                    })
-                    .collect();
+                // Empty arms still occupy their inline Option<DynType>.
+                let extra = vt
+                    .owner_module
+                    .len()
+                    .saturating_add(vt.name.len())
+                    .saturating_add(vt.arms.len().saturating_mul(std::mem::size_of::<DynArm>()));
+                reserve(b, extra, st, limits)?;
+                let mut arms = Vec::with_capacity(vt.arms.len());
+                for a in &vt.arms {
+                    dyn_exec_work(st, limits, cancel, started)?;
+                    reserve(b, a.name.len(), st, limits)?;
+                    let payload = if let Some(p) = a.payload {
+                        match go(
+                            v,
+                            func,
+                            p,
+                            depth + 1,
+                            path,
+                            b,
+                            true,
+                            st,
+                            limits,
+                            cancel,
+                            started,
+                        )? {
+                            Some(t) => Some(t),
+                            None => {
+                                path.pop();
+                                return Ok(None);
+                            }
+                        }
+                    } else {
+                        None
+                    };
+                    arms.push(DynArm {
+                        name: a.name.clone(),
+                        payload,
+                    });
+                }
                 Some(DynType::Variant {
                     owner: vt.owner_module.clone(),
                     name: vt.name.clone(),
-                    arms: arms?,
+                    arms,
                 })
             }
             _ => None,
         };
         path.pop();
-        out
+        Ok(out)
     }
-    let mut nodes = 0u64;
-    let out = go(v, func, idx, 1, &mut Vec::new(), &mut nodes);
-    if nodes > MAX_DYN_NODES as u64 {
-        DynTypeResolve::NodesOverCeiling
-    } else if let Some(t) = out {
-        DynTypeResolve::Ready(t, nodes)
-    } else {
-        DynTypeResolve::OutsideClosure
+    let mut b = Budget { nodes: 0, bytes: 0 };
+    match go(
+        v,
+        func,
+        idx,
+        1,
+        &mut Vec::new(),
+        &mut b,
+        false,
+        st,
+        limits,
+        cancel,
+        started,
+    ) {
+        Ok(Some(t)) => DynTypeResolve::Ready(t),
+        Ok(None) => DynTypeResolve::OutsideClosure,
+        Err(out) => DynTypeResolve::Stopped(out),
     }
-}
-
-/// F-824-R1-03: materialized DynType nodes are WORK — charged to the
-/// step budget like every other deep traversal (a compact 721-byte DAG
-/// no longer executes as "8 steps"). `Some(outcome)` = the charge itself
-/// crossed `max_steps`.
-fn charge_dyn_type_nodes(
-    st: &mut LoopState,
-    nodes: u64,
-    limits: &ExecLimits,
-) -> Option<ExecOutcome> {
-    st.steps += nodes;
-    if st.steps > limits.max_steps {
-        Some(ExecOutcome::Resource {
-            kind: ResourceKind::InstrSteps,
-            message: format!("execution exceeded {} instruction steps", limits.max_steps),
-        })
-    } else {
-        None
-    }
-}
-
-/// F-824-R1-03: the DAG→tree expansion ceiling refusal (resource, with
-/// cleanup owned by the executor's normal unwind).
-fn dyn_type_nodes_refusal() -> Option<ExecOutcome> {
-    Some(ExecOutcome::Resource {
-        kind: ResourceKind::DynTypeNodes,
-        message: format!(
-            "dyn type operand expands beyond {} nodes",
-            crate::dynamic::MAX_DYN_NODES
-        ),
-    })
 }
 
 /// Commit one slot write with deep delta accounting: a positive delta is
@@ -3138,32 +3323,41 @@ fn dispatch<V: ModuleView>(
                         fr.slots[*src as usize].clone()
                     };
                     let src_ty = func.slots[*src as usize].ty;
-                    let dyn_ty = match resolve_dyn_type(v, func_idx, src_ty) {
-                        DynTypeResolve::Ready(t, nodes) => {
-                            if let Some(out) = charge_dyn_type_nodes(st, nodes, limits) {
-                                return Some(out);
-                            }
-                            t
-                        }
-                        DynTypeResolve::NodesOverCeiling => return dyn_type_nodes_refusal(),
-                        DynTypeResolve::OutsideClosure => {
-                            return Some(ExecOutcome::Infra(
-                                "dyn-pack source type is outside the erasable closure \
+                    let dyn_ty =
+                        match resolve_dyn_type(v, func_idx, src_ty, st, limits, cancel, started) {
+                            DynTypeResolve::Ready(t) => t,
+                            DynTypeResolve::Stopped(out) => return Some(out),
+                            DynTypeResolve::OutsideClosure => {
+                                return Some(ExecOutcome::Infra(
+                                    "dyn-pack source type is outside the erasable closure \
                                  (admission violation)"
-                                    .to_string(),
-                            ))
-                        }
-                    };
+                                        .to_string(),
+                                ))
+                            }
+                        };
                     // The executor re-checks the admission the verifier
                     // gated (defense in depth): a mismatch here is an
                     // admission violation, never a silent degrade.
-                    let packed = match crate::dynamic::DynValue::pack(val, dyn_ty) {
+                    let mut admission_stop = None;
+                    let packed = crate::dynamic::DynValue::pack_with_work(val, dyn_ty, &mut || {
+                        match dyn_exec_work(st, limits, cancel, started) {
+                            Ok(()) => true,
+                            Err(out) => {
+                                admission_stop = Some(out);
+                                false
+                            }
+                        }
+                    });
+                    let packed = match packed {
                         Ok(p) => std::rc::Rc::new(p),
                         Err(e) => {
+                            if let Some(out) = admission_stop {
+                                return Some(out);
+                            }
                             return Some(ExecOutcome::Infra(format!(
                                 "dyn-pack admission rejected the value ({})",
                                 e.code()
-                            )))
+                            )));
                         }
                     };
                     st.steps += 1;
@@ -3178,14 +3372,10 @@ fn dispatch<V: ModuleView>(
                         let fr = st.frames.last().expect("frame present");
                         fr.slots[*src as usize].clone()
                     };
-                    let want = match resolve_dyn_type(v, func_idx, *ty) {
-                        DynTypeResolve::Ready(t, nodes) => {
-                            if let Some(out) = charge_dyn_type_nodes(st, nodes, limits) {
-                                return Some(out);
-                            }
-                            t
-                        }
-                        DynTypeResolve::NodesOverCeiling => return dyn_type_nodes_refusal(),
+                    let want = match resolve_dyn_type(v, func_idx, *ty, st, limits, cancel, started)
+                    {
+                        DynTypeResolve::Ready(t) => t,
+                        DynTypeResolve::Stopped(out) => return Some(out),
                         DynTypeResolve::OutsideClosure => {
                             return Some(ExecOutcome::Infra(
                                 "dyn-is type operand is outside the erasable closure \
@@ -3195,7 +3385,12 @@ fn dispatch<V: ModuleView>(
                         }
                     };
                     let hits = match &sv {
-                        Value::Dyn(d) => d.is(&want),
+                        Value::Dyn(d) => {
+                            match dyn_type_equal(d.ty(), &want, st, limits, cancel, started) {
+                                Ok(same) => same,
+                                Err(out) => return Some(out),
+                            }
+                        }
                         other => {
                             return Some(ExecOutcome::Infra(format!(
                                 "dyn-is operand holds {} (admission violation)",
@@ -3215,14 +3410,10 @@ fn dispatch<V: ModuleView>(
                         let fr = st.frames.last().expect("frame present");
                         fr.slots[*src as usize].clone()
                     };
-                    let want = match resolve_dyn_type(v, func_idx, *ty) {
-                        DynTypeResolve::Ready(t, nodes) => {
-                            if let Some(out) = charge_dyn_type_nodes(st, nodes, limits) {
-                                return Some(out);
-                            }
-                            t
-                        }
-                        DynTypeResolve::NodesOverCeiling => return dyn_type_nodes_refusal(),
+                    let want = match resolve_dyn_type(v, func_idx, *ty, st, limits, cancel, started)
+                    {
+                        DynTypeResolve::Ready(t) => t,
+                        DynTypeResolve::Stopped(out) => return Some(out),
                         DynTypeResolve::OutsideClosure => {
                             return Some(ExecOutcome::Infra(
                                 "dyn-take type operand is outside the erasable closure \
@@ -3234,7 +3425,12 @@ fn dispatch<V: ModuleView>(
                     st.steps += 1;
                     match &sv {
                         Value::Dyn(d) => {
-                            if d.is(&want) {
+                            let same =
+                                match dyn_type_equal(d.ty(), &want, st, limits, cancel, started) {
+                                    Ok(same) => same,
+                                    Err(out) => return Some(out),
+                                };
+                            if same {
                                 // v1 take materializes a SHARE of the inner
                                 // value (Value::clone — the Value model's
                                 // own semantics): the Dyn keeps its share,
