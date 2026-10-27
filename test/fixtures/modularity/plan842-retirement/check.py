@@ -103,6 +103,31 @@ fn main() { let _ = builder; let _ = context; }
         if run.returncode:
             raise RuntimeError("new exact versions failed to resolve")
         print("all 0.2.0 exact versions: canonical consumer passes", flush=True)
+        old_feature = pinned.replace(
+            'auto-lang = { version = "=0.2.0",',
+            'auto-lang = { features = ["use-bigvm"], version = "=0.2.0",',
+        )
+        (project / "Cargo.toml").write_text(old_feature, encoding="utf-8")
+        run = subprocess.run(["cargo", "check", "--offline", "--target-dir", str(ROOT / "target")],
+                             cwd=project, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        output = run.stdout + "\n" + run.stderr
+        (args.output / "old-use-bigvm.log").write_text(output, encoding="utf-8")
+        if run.returncode == 0 or "use-bigvm" not in output:
+            raise RuntimeError("removed use-bigvm feature did not produce a named rejection")
+        print("old use-bigvm feature rejected", flush=True)
+        (project / "Cargo.toml").write_text(pinned, encoding="utf-8")
+        (project / "src/main.rs").write_text(
+            'fn main() { let (_, out) = auto_lang::run_with_capture("fn main() { print(\\\"plan842-vm-ok\\\") }").unwrap(); assert!(out.contains("plan842-vm-ok")); println!("{out}"); }\n',
+            encoding="utf-8",
+        )
+        env = os.environ.copy()
+        env.pop("AUTO_EXECUTION_ENGINE", None)
+        run = subprocess.run(["cargo", "run", "--offline", "--target-dir", str(ROOT / "target")],
+                             cwd=project, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        (args.output / "default-vm.log").write_text(run.stdout + "\n" + run.stderr, encoding="utf-8")
+        if run.returncode or "plan842-vm-ok" not in run.stdout:
+            raise RuntimeError("default VM consumer did not run successfully")
+        print("default VM actual execution passed", flush=True)
     return 0
 
 

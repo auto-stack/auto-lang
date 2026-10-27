@@ -2,6 +2,8 @@
 
 This guide helps you migrate from the old feature flag system to the new mode selection approach.
 
+**Version 0.2.0:** `auto-lang/use-bigvm` has been removed. Remove it from dependency feature lists and build commands before upgrading; the old commands below are historical examples. Pin the previous 0.1.0 source and lock if you need its compatibility feature.
+
 ## What Changed?
 
 ### Old System (Deprecated)
@@ -60,9 +62,8 @@ use-bigvm = []
 [features]
 default = []
 
-# The use-bigvm feature is kept for compatibility but is a no-op
-# You can remove it entirely or keep it for backward compatibility
-use-bigvm = []  # Deprecated: has no effect
+# Remove use-bigvm from auto-lang dependency feature lists.
+# AutoVM is enabled by default.
 ```
 
 ### Step 2: Update Build Scripts
@@ -219,7 +220,7 @@ app("mixed_app") {
 
 ### 1. Feature Flag Removed
 
-**Impact**: `--features use-bigvm` is now a no-op
+**Impact**: `--features use-bigvm` is rejected in auto-lang 0.2.0
 
 **Migration**: Remove the flag from all build scripts
 
@@ -259,7 +260,7 @@ cargo build
 | Old Command | New Equivalent | Notes |
 |-------------|----------------|-------|
 | `cargo build` | `cargo build` | Now uses AutoVM by default |
-| `cargo build --features use-bigvm` | `cargo build` | Feature flag is no-op |
+| `cargo build --features use-bigvm` | `cargo build` | Removed in auto-lang 0.2.0 |
 | `cargo test -p auto-lang -- trans` | `auto trans_c file.at` | Now part of main CLI |
 | N/A | `export AUTO_EXECUTION_ENGINE=evaluator` | New runtime override |
 

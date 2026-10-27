@@ -48,10 +48,8 @@ test-http-e2e = []
 build-examples = []
 with-file-history = []
 # Plan 081: AutoVM is now the default execution engine (no feature flag required)
-# DEPRECATED: The use-bigvm feature is kept for compatibility but has no effect
-# AutoVM is always enabled. Use environment variable AUTO_EXECUTION_ENGINE=evaluator
-# to switch to the TreeWalker evaluator for debugging/comparison.
-use-bigvm = []
+# AutoVM is always enabled. Use AUTO_EXECUTION_ENGINE=evaluator to select
+# the TreeWalker evaluator for debugging or comparison.
 # Fallback to TreeWalker evaluator (for debugging/comparison)
 use-evaluator = []
 # Plan 152: SSE parsing + advanced streaming support (futures now unconditional per Plan 341)
