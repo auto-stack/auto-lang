@@ -1,9 +1,8 @@
 {
-  "last_covered_plan_id": 858,
-  "timestamp": "2026-10-28T03:05:00+00:00",
-  "covered_commit": "60e0105a0b3759739fd934bf1d83b49763ae985f",
-  "covered_note": "PLAN-858 closeout certified batch on frozen main 60e0105a0 (auto-ui 7095f53 with fix-back-proxy-port). All four legs green: language 3212/3212, ui-full 3117/3117, tt 3571/3571, tb 3102/3102, 0 failed. B855-FEATURE-01 closed by 858 Phase 2 (compiles+green); B824-BATCH-COVERAGE-01 closed: Plan 842 migration manifest (21 IDs) consumed by the guard, selection complete (language selected 3212 incl. 4 added IDs, ui-full selected 3117 incl. added IDs); B824-BATCH-CANCEL-01 not reproduced: plan707 cancel test green in 3 consecutive full tt runs today.",
-  "window": "7750f8d3399fe8aa620b7eecb6c7390ca810df05..60e0105a0b3759739fd934bf1d83b49763ae985f",
+  "last_covered_plan_id": 859,
+  "timestamp": "2026-10-28T05:55:00+00:00",
+  "covered_commit": "32706fc10",
+  "covered_note": "Batch gate triggered by PLAN-825 (id%5==0) landing after the 858 receipt (due_check was blocked on foreign load); PLAN-826 landed meanwhile. First tf attempt exposed B826-BATCH-CFG-01: PLAN-825 commit 95fcf8df9 inserted mod av_runtime_825_tests between the test-cases cfg line and mod av_source_827_tests, stealing the gate (15 default-feature compile errors, E0432/E0433). Fixed by L0 fix-av827-cfg-gate@32706fc10 (one cfg line restored; default-feature --no-run green, av_source_827 8/8 scoped). Rerun all legs green.",
   "legs": [
     "tf",
     "tt",
@@ -11,545 +10,65 @@
   ],
   "leg_results": {
     "tf": {
-      "run": 6329,
-      "passed": 6329,
-      "failed": 0,
-      "timed_out": 0,
-      "skipped": 518,
-      "test_seconds": 102.2,
-      "exit": 0,
-      "evidence": "D:/autostack/full-regression-receipts/1793127313566821100",
-      "sublegs": {
-        "language": {
-          "run": 3212,
-          "passed": 3212,
-          "failed": 0,
-          "timed_out": 0,
-          "skipped": 500,
-          "test_seconds": 57.923,
-          "exit": 0,
-          "evidence": "D:/autostack/full-regression-receipts/1793127313566821100/language-run.log"
-        },
-        "ui-full": {
-          "run": 3117,
-          "passed": 3117,
-          "failed": 0,
-          "timed_out": 0,
-          "skipped": 18,
-          "test_seconds": 44.285,
-          "exit": 0,
-          "evidence": "D:/autostack/full-regression-receipts/1793127313566821100/ui-full-run.log"
-        }
+      "language": {
+        "run": 3212,
+        "passed": 3212,
+        "failed": 0,
+        "skipped": 500,
+        "exit": 0,
+        "evidence": "D:/autostack/full-regression-receipts/1793138975373088000/language-run.log"
+      },
+      "ui-full": {
+        "run": 3117,
+        "passed": 3117,
+        "failed": 0,
+        "skipped": 18,
+        "exit": 0,
+        "evidence": "D:/autostack/full-regression-receipts/1793138975373088000/ui-full-run.log"
       }
     },
     "tt": {
-      "run": 3571,
-      "passed": 3571,
+      "run": 3576,
+      "passed": 3576,
       "failed": 0,
-      "timed_out": 0,
       "skipped": 921,
-      "test_seconds": 382.284,
-      "exit": 0,
-      "evidence": "D:/autostack/full-regression-receipts/1793127313566821100/tt-run.log"
+      "test_seconds": 352.7,
+      "exit": 0
     },
     "tb": {
       "run": 3102,
       "passed": 3102,
       "failed": 0,
-      "timed_out": 0,
       "skipped": 664,
-      "test_seconds": 38.083,
-      "exit": 0,
-      "evidence": "D:/autostack/full-regression-receipts/1793127313566821100/tb-run.log"
+      "test_seconds": 33.9,
+      "exit": 0
     }
   },
   "verdict": "pass",
-  "new_reds": [],
-  "known_reds_seen": [],
-  "prior_failed_batches": [
-    "docs/plans/attachments/840/batch-r1",
-    "docs/plans/attachments/840/batch-r2",
-    "docs/plans/attachments/850/batch-r1",
-    "docs/plans/attachments/850/batch-r2",
-    "docs/plans/attachments/850/batch-r3",
-    "docs/plans/attachments/855/batch-r1"
+  "new_reds": [
+    {
+      "id": "B826-BATCH-CFG-01",
+      "stage": "tf-language-compile",
+      "attributed_plan": 825,
+      "introduced_commit": "95fcf8df9",
+      "status": "fixed",
+      "fix": "L0 fix-av827-cfg-gate 32706fc10 restores #[cfg(feature=\"test-cases\")] on mod av_source_827_tests",
+      "error": "E0432/E0433 x15: av_source_827_tests lost its test-cases cfg gate when av_runtime_825_tests was inserted between the cfg line and the module declaration"
+    }
   ],
-  "repaired_findings": [
-    "optional CTE feature boundary",
-    "shared timing boundaries and pool reservation",
-    "test-only Init/RQHost producer completion",
-    "full/t3 FFI group binding",
-    "Windows transient lock namespace contention",
-    "SSE/nested generator task-map shard re-entry"
+  "known_reds_seen": [
+    {
+      "id": "plan077-downcast-flake",
+      "stage": "tt-first-attempt",
+      "error": "benchmark_downcast_performance 19ns vs 10ns target under full-tier parallel load; single-threaded rerun green (0.11s); Plan-466 precedent 3896cf663 documents the 1ns margin / stable false positive under load"
+    }
   ],
-  "aavm_trigger_paths": [],
   "single_instance": true,
-  "evidence": "docs/plans/attachments/850/batch-r4",
-  "main_report_restored_exactly": true,
-  "last_attempt": {
-    "plan_id": 824,
-    "timestamp": "2026-10-27T10:42:09.224677Z",
-    "head": "bfefde1a6469e46153e822bcd5b3efde361dc073",
-    "outcome": "coverage-blocked-and-test-failure",
-    "coverage_complete": false,
-    "retry_required": true,
-    "evidence": "docs/plans/attachments/824/batch-r1/review.md",
-    "legs": {
-      "tf-language": {
-        "list_exit": 0,
-        "ids": 3711,
-        "selected": 3211,
-        "missing": 12,
-        "suppressed": 12,
-        "tests_executed": 0
-      },
-      "tf-ui": {
-        "list_exit": 0,
-        "ids": 3126,
-        "selected": 3108,
-        "missing": 9,
-        "suppressed": 9,
-        "tests_executed": 0
-      },
-      "tt": {
-        "exit": 100,
-        "run": 3563,
-        "passed": 3562,
-        "failed": 1,
-        "skipped": 921,
-        "wall_seconds": 459.36,
-        "failure": "tests::plan707_spike_tests::plan707_spike_cancel_gap_active_job_future_not_stopped"
-      },
-      "tb": {
-        "exit": 0,
-        "run": 3102,
-        "passed": 3102,
-        "failed": 0,
-        "skipped": 664,
-        "wall_seconds": 48.51
-      }
-    },
-    "identities_unchanged": true,
-    "aavm_trigger_paths": [],
-    "previous_compile_error_recurred": false,
-    "unresolved_findings": [
-      "B824-BATCH-COVERAGE-01",
-      "B824-BATCH-CANCEL-01"
-    ],
-    "fix_forward": "pending triage; shared plan allocator contains prior uncommitted state",
-    "deferral": {
-      "authorized_by": "user",
-      "date": "2026-10-27",
-      "scope": "defer incomplete batch triage, fix-forward and full rerun to a later plan",
-      "owner_plan": "unassigned",
-      "evidence": "docs/plans/KNOWN-DEBT-AND-RISKS.md#d-824-batch-20261027--批量回归失败延后处理"
-    }
-  },
-  "pending_retry": false,
-  "coverage_policy": "Complete real language/UI/tt/tb execution verified; last complete green advances to850. Historical failed attempts retained.",
   "last_due_check": {
-    "plan_id": 825,
-    "checked_at": "2026-10-27T19:41:43+00:00",
+    "plan_id": 826,
+    "checked_at": "2026-10-28T05:10:00+00:00",
     "due": true,
-    "reason": "PLAN-825 (id%5==0) landed at 9eb9ebca3 after the 858-certified receipt (60e0105a0); window 60e0105a0..eddc30ffd touches no aavm paths (taa not triggered)",
-    "blocked": "main checkout has a foreign session's cargo/nextest tier running (sustained 8-12 procs across a 10-min poll with one brief idle gap); the batch full tier must run single-instance in an idle window per the 2026-09-30 ruling",
-    "next_action": "run /auto-plan:regress (tf+tt+tb) on the main checkout when the machine is idle"
-  },
-  "prior_attempts": [
-    {
-      "plan_id": 858,
-      "attempt": 1,
-      "timestamp": "2026-10-28T01:57:00+00:00",
-      "head": "fa24d31ecf53a5ce4b31cec98aa952ed13c0521d",
-      "outcome": "ui-full-2-env-reds",
-      "evidence": "D:/autostack/full-regression-receipts/1793123959825066300",
-      "legs": {
-        "language": "3212/3212 pass",
-        "ui-full": "3115/3117, 2 failed"
-      },
-      "new_reds": [
-        {
-          "id": "B-ENV-WSAEACCES-3358",
-          "stage": "ui-full-run",
-          "error": "back_provision::launch_provision_lifecycle_via_resolver + session::hatch_provisions_backend_apps_and_still_refuses_exe: back-proxy bind 10013 (WSAEACCES); Hyper-V dynamic TCP exclusion 3323-3422 covers DEFAULT_PROXY_PORT 3358 and the whole +1..+10 fallback window; PermissionDenied was a hard error in bind_with_fallback",
-          "attributed_plans": [],
-          "environment_red": true,
-          "fix_forward": "auto-ui fix-back-proxy-port 7095f53 (L0): AddrInUse+PermissionDenied retryable, OS-assigned fallback after window exhaustion",
-          "evidence": "D:/autostack/full-regression-receipts/1793123959825066300/ui-full-run.log"
-        }
-      ],
-      "note": "850 batch-r4 (2026-10-26, ui b4fe0000e) same code green: exclusion ranges drift per boot, not a plan regression; ran before fix-back-proxy-port landed (ui bd228b03)",
-      "ui_head": "bd228b03bc50ebf73a1d3ce2d7b5519372"
-    },
-    {
-      "plan_id": 858,
-      "attempt": 2,
-      "timestamp": "2026-10-28T02:12:00+00:00",
-      "outcome": "precondition-rejected",
-      "error": "main checkout had code/configuration WIP: Cargo.lock auto-updated by attempt-1 cross-workspace build (auto-ui 0.2.0 + libloading)",
-      "resolution": "committed 377febc52 chore(deps): sync Cargo.lock with auto-ui master",
-      "evidence": "D:/autostack/full-regression-receipts/1793125137304850600"
-    },
-    {
-      "plan_id": 858,
-      "attempt": 3,
-      "timestamp": "2026-10-28T02:32:00+00:00",
-      "head": "377febc52",
-      "outcome": "all-legs-green-identity-invalidated",
-      "error": "foreign session committed fb5170992 (fix-evidence-policy, gitignore+hooks) mid-run; identity(head) mismatch by design",
-      "legs": {
-        "language": "3212/3212",
-        "ui-full": "3117/3117 (port fix effective)",
-        "tt": "3571/3571",
-        "tb": "3102/3102"
-      },
-      "evidence": "D:/autostack/full-regression-receipts/1793125200324793100"
-    },
-    {
-      "plan_id": 858,
-      "attempt": 4,
-      "timestamp": "2026-10-28T02:44:00+00:00",
-      "head": "fb5170992",
-      "outcome": "all-legs-green-identity-invalidated",
-      "error": "foreign PLAN-825 session committed docs-only 60e0105a0 mid-run; identity(head) includes HEAD sha, docs-only commits also invalidate",
-      "legs": {
-        "language": "3212/3212",
-        "ui-full": "3117/3117",
-        "tt": "3571/3571",
-        "tb": "3102/3102"
-      },
-      "evidence": "D:/autostack/full-regression-receipts/1793126412200172500"
-    },
-    {
-      "last_covered_plan_id": 850,
-      "timestamp": "2026-10-26T00:02:10.122452+00:00",
-      "covered_commit": "7750f8d3399fe8aa620b7eecb6c7390ca810df05",
-      "window": "53298cd273e0c04fabc508745ce342655394f1a4..7750f8d3399fe8aa620b7eecb6c7390ca810df05",
-      "legs": [
-        "tf",
-        "tt",
-        "tb"
-      ],
-      "leg_results": {
-        "tf": {
-          "run": 6291,
-          "passed": 6291,
-          "failed": 0,
-          "timed_out": 0,
-          "skipped": 518,
-          "test_seconds": 126.274,
-          "exit": 0,
-          "evidence": "docs/plans/attachments/850/batch-r4/receipt.json.txt",
-          "sublegs": {
-            "language": {
-              "run": 3218,
-              "passed": 3218,
-              "failed": 0,
-              "timed_out": 0,
-              "skipped": 500,
-              "test_seconds": 75.044,
-              "exit": 0,
-              "evidence": "docs/plans/attachments/850/batch-r4/language-run.log.txt"
-            },
-            "ui-full": {
-              "run": 3073,
-              "passed": 3073,
-              "failed": 0,
-              "timed_out": 0,
-              "skipped": 18,
-              "test_seconds": 51.23,
-              "exit": 0,
-              "evidence": "docs/plans/attachments/850/batch-r4/ui-full-run.log.txt"
-            }
-          }
-        },
-        "tt": {
-          "run": 3553,
-          "passed": 3553,
-          "failed": 0,
-          "timed_out": 0,
-          "skipped": 916,
-          "test_seconds": 382.705,
-          "exit": 0,
-          "evidence": "docs/plans/attachments/850/batch-r4/tt-run.log.txt"
-        },
-        "tb": {
-          "run": 3109,
-          "passed": 3109,
-          "failed": 0,
-          "timed_out": 0,
-          "skipped": 664,
-          "test_seconds": 54.289,
-          "exit": 0,
-          "evidence": "docs/plans/attachments/850/batch-r4/tb-run.log.txt"
-        }
-      },
-      "verdict": "pass",
-      "evidence": "docs/plans/attachments/850/batch-r4",
-      "plan_id": 850,
-      "outcome": "pass",
-      "retry_required": false
-    },
-    {
-      "last_covered_plan_id": 845,
-      "timestamp": "2026-10-24T20:18:12.118272+00:00",
-      "covered_commit": "c9ab21ea69ff70ed8f53bbbef87f9a89ff26b891",
-      "window": "53298cd273e0c04fabc508745ce342655394f1a4..c9ab21ea69ff70ed8f53bbbef87f9a89ff26b891",
-      "legs": [
-        "tf",
-        "tt",
-        "tb"
-      ],
-      "leg_results": {
-        "tf": {
-          "command": [
-            "cargo",
-            "tf",
-            "--no-fail-fast"
-          ],
-          "exit": 101,
-          "seconds": 30.46,
-          "evidence": "docs/plans/attachments/845/batch-r1/tf.txt",
-          "sha256": "6be71a2f1f6fd6d3f1bc585561faea17c2b80d4cf925ba377ca2a35bbad0c116",
-          "stage": "compile",
-          "tests_executed": 0,
-          "coverage_complete": false,
-          "unresolved_errors": 44
-        },
-        "tt": {
-          "command": [
-            "cargo",
-            "tt",
-            "--no-fail-fast"
-          ],
-          "exit": 0,
-          "seconds": 460.963,
-          "evidence": "docs/plans/attachments/845/batch-r1/tt.txt",
-          "sha256": "54c245e5211441c5caf68228aa15c78d967e236fc4e533a38a07d2f9ab71877f",
-          "run": 5740,
-          "test_seconds": 445.193,
-          "passed": 5740,
-          "failed": 0,
-          "skipped": 1800,
-          "timed_out": 0,
-          "stage": "tests",
-          "coverage_complete": true
-        },
-        "tb": {
-          "command": [
-            "cargo",
-            "tb",
-            "--no-fail-fast"
-          ],
-          "exit": 101,
-          "seconds": 9.256,
-          "evidence": "docs/plans/attachments/845/batch-r1/tb.txt",
-          "sha256": "775519a38730fcddd115c5df144b05a23968d456e5ec8b0ca56d381e01e0b4ea",
-          "stage": "compile",
-          "tests_executed": 0,
-          "coverage_complete": false,
-          "unresolved_errors": 44
-        }
-      },
-      "aavm_trigger_paths": [],
-      "new_reds": [
-        {
-          "id": "B845-FEATURE-01",
-          "legs": [
-            "tf",
-            "tb"
-          ],
-          "stage": "compile",
-          "error": "E0432/E0433 unresolved optional auto_test_case in ungated probe_adapter_tests",
-          "introduced_commit": "5bebb0ad02c9807f157968bc6b34bf59f7431d66",
-          "attributed_plan": 818,
-          "fix_forward_plan": 847,
-          "fix_forward_path": "docs/plans/847-restore-probe-test-feature-boundary.md",
-          "source_changed_by_845": false,
-          "reason": "Existing cfg was displaced onto new ac_mn_probe_tests; two attributes now protect new module and none protect old module. tt enables test-cases; default/full and book do not."
-        }
-      ],
-      "known_reds_seen": [],
-      "scope": "Main checkout single-instance due PLAN-845 modulo5; no-fail-fast preserves complete selection and every assertion while collecting full attribution; shared bookkeeping preserved; generated turnaround report restored byte-exact.",
-      "outcome": "new-reds",
-      "coverage_complete": false,
-      "completed_legs": [
-        "tt"
-      ],
-      "compile_blocked_legs": [
-        "tf",
-        "tb"
-      ],
-      "implementation_action": "none; fix-forward draft only",
-      "retry_required": true
-    },
-    {
-      "last_covered_plan_id": 848,
-      "repair_plan": 847,
-      "timestamp": "2026-10-25T16:30:20.783131+00:00",
-      "covered_commit": "2ff1286c5e3a33abc2e4ded96ab5773ee042a9d8",
-      "window": "53298cd273e0c04fabc508745ce342655394f1a4..2ff1286c5e3a33abc2e4ded96ab5773ee042a9d8",
-      "legs": [
-        "tf",
-        "tt",
-        "tb"
-      ],
-      "leg_results": {
-        "tf": {
-          "command": [
-            "cargo",
-            "tf",
-            "--no-fail-fast"
-          ],
-          "exit": 101,
-          "seconds": 1.0851788520812988,
-          "evidence": "docs/plans/attachments/847/batch-r1/tf.log.txt",
-          "sha256": "7a1a54afa0de8365b3d1964167562cf2fc2add417d36804ef8898569a3c07a03",
-          "stage": "compile",
-          "tests_executed": 0,
-          "coverage_complete": false
-        },
-        "tt": {
-          "command": [
-            "cargo",
-            "tt",
-            "--no-fail-fast"
-          ],
-          "exit": 100,
-          "seconds": 506.8478946685791,
-          "evidence": "docs/plans/attachments/847/batch-r1/tt.log.txt",
-          "sha256": "bb1c40d8f7b0e593ec9b7ae8d2c5c712c9ef97f058166d190fc7468c065233b3",
-          "stage": "tests",
-          "run": 3553,
-          "passed": 3547,
-          "failed": 5,
-          "timed_out": 1,
-          "skipped": 916,
-          "test_seconds": 383.33,
-          "coverage_complete": true
-        },
-        "tb": {
-          "command": [
-            "cargo",
-            "tb",
-            "--no-fail-fast"
-          ],
-          "exit": 0,
-          "seconds": 133.16490602493286,
-          "evidence": "docs/plans/attachments/847/batch-r1/tb.log.txt",
-          "sha256": "454c455d11eb19e11660dd5a2600a724c9948e8319b5c85a58a319aa5e4ed69e",
-          "stage": "tests",
-          "run": 3109,
-          "passed": 3109,
-          "failed": 0,
-          "timed_out": 0,
-          "skipped": 664,
-          "test_seconds": 51.906,
-          "coverage_complete": true
-        }
-      },
-      "aavm_trigger_paths": [],
-      "new_reds": [
-        {
-          "id": "B847-FULL-OWNER-01",
-          "legs": [
-            "tf"
-          ],
-          "stage": "selection/compile",
-          "introduced_commit": "abd34a355",
-          "attributed_plan": 831,
-          "fix_forward_plan": 850,
-          "fix_forward_path": "docs/plans/850-restore-cross-workspace-full-regression.md",
-          "evidence": "docs/plans/attachments/847/batch-r1/tf.log.txt",
-          "error": "External auto-ui-compiler requires dev-dependencies but is not a language-workspace member; zero tests executed; do not delete UI coverage."
-        },
-        {
-          "id": "B847-TT-STATE-02",
-          "legs": [
-            "tt"
-          ],
-          "stage": "tests",
-          "attributed_code_owners": [
-            818,
-            "FFI dual regression"
-          ],
-          "introduced_by_847": false,
-          "fix_forward_plan": 850,
-          "fix_forward_path": "docs/plans/850-restore-cross-workspace-full-regression.md",
-          "evidence": "docs/plans/attachments/847/batch-r1/tt.log.txt",
-          "error": "6 test outcomes:4 report writes Windows1224 mapped-file rejection,1 stdout-cap control received session wall,1 FFI018 120s timeout. Full Plan-tree t passed all corresponding cases; FFI018 passes tb1.243s. Exact global conditions unresolved; T01 investigates execution state without weakening limits; product repair requires separate scoped contract.",
-          "report_probe": "docs/plans/attachments/847/batch-r1/report-state-probe.json.txt",
-          "probe_result": "Same-size file probes now succeed with byte-exact preservation, RestartManager currently found no owner; does not identify original mapper or prove complete tt green."
-        }
-      ],
-      "known_reds_seen": [],
-      "outcome": "new-reds",
-      "coverage_complete": false,
-      "completed_legs": [
-        "tt",
-        "tb"
-      ],
-      "compile_blocked_legs": [
-        "tf"
-      ],
-      "closed_findings": [
-        "B845-FEATURE-01"
-      ],
-      "fix_forward_plan": 850,
-      "retry_required": true,
-      "single_instance": true,
-      "scope": "Bare daily3181 passes before landing; main full batch sequential with exclusive mutex, unchanged inputs/limits/config, all legs no-fail-fast for complete attribution, generated reports preserved and original WIP restored."
-    },
-    {
-      "plan_id": 850,
-      "outcome": "pass",
-      "timestamp": "2026-10-26T00:02:10.122452+00:00",
-      "evidence": "docs/plans/attachments/850/batch-r4",
-      "retry_required": false
-    },
-    {
-      "plan_id": 855,
-      "outcome": "compile-blocked",
-      "timestamp": "2026-10-26T19:00:51.605491+00:00",
-      "head": "7f966bfa3d416a746b44cfe7abbde897e450e4da",
-      "evidence": "docs/plans/attachments/855/batch-r1",
-      "retry_required": true,
-      "coverage_complete": false,
-      "tests_executed": 0,
-      "new_reds": [
-        {
-          "id": "B855-FEATURE-01",
-          "stage": "language-list/compile",
-          "error": "24 E0432/E0433: av_owned_821_tests and av_source_827_tests consume optional test-cases dependencies without module cfg",
-          "attributed_plans": [
-            821,
-            827,
-            822
-          ],
-          "evidence": "docs/plans/attachments/855/batch-r1/language-build.log.txt",
-          "fix_forward_plan": 858,
-          "fix_forward_path": "docs/plans/858-autographics-m2-game-samples-and-api-gaps.md",
-          "source_changed_by_855": false
-        }
-      ],
-      "unexecuted_legs": [
-        "ui-full",
-        "tt",
-        "tb"
-      ]
-    }
-  ],
-  "current_batch_status": "pass",
-  "dependencies": {
-    "language": {
-      "head": "60e0105a0b3759739fd934bf1d83b49763ae985f"
-    },
-    "ui": {
-      "head": "7095f53"
-    }
-  },
-  "auto_man_input": {
-    "head": "1b7a9ce0de9055f7953129d78a25777662508258",
-    "cmd_vue_sha256": "CAE8DB35732C1F115D72118EBC53A824F39B7C5E6758B863410C5A0CE8FBAE6C"
+    "reason": "PLAN-825 (id%5==0) landed after 858 receipt",
+    "resolved": "batch executed this receipt"
   }
 }
