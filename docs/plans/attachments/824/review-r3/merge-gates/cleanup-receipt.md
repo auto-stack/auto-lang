@@ -1,3 +1,7 @@
+# 2026-10-27 user-requested cleanup retry — policy blocked
+
+Confirmed all 824 worktrees, the branch and group directory are absent. The sole Cargo build cache remaining is `D:/autostack/plan-artifacts/plan-824/ledger-schema-check/target`: 361 files, 171,771,014 bytes, including 15 `.pdb` and 14 `.exe`. Every `.exe` was rechecked against its preserved copy; all hashes matched. The exact resolved directory, `CACHEDIR.TAG`, and a fresh `wt-guard.sh` clean result were verified. At the user's explicit request a direct removal of that exact cache directory was submitted; automatic safety review rejected it as `blocked by policy`, without further detail. No alternative deletion was attempted. The cache and all evidence remain; `cleaned` and T-08 are still pending.
+
 # 2026-10-27 user decision — defer global batch follow-up
 
 The user explicitly permits deferring the failed repository-wide batch regression to a later Plan. The coverage gaps, cancellation failure, historical result, and retry obligation remain open; the future Plan is not yet identified. The last successful batch coverage remains Plan 850. This does not reopen or undo 824's landed delivery. The independent cache-cleanup safety refusal remains unresolved, so `cleaned` and T-08 remain pending. See [batch evidence](../../batch-r1/review.md) and `D-824-BATCH-20261027` in the shared risks ledger.
