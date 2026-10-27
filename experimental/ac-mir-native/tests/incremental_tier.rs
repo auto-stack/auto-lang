@@ -129,6 +129,9 @@ fn mir_native_incremental_d828_baseline_30_structure_and_p95() {
         prev_src = rev.source;
     }
     let p95 = percentile(&walls, 95.0);
+    let mut p90_samples = walls.clone();
+    p90_samples.sort_by(f64::total_cmp);
+    let p90 = p90_samples[p90_samples.len() - p90_samples.len() / 10 - 1];
     // R1 note: the P90 GATE for V-12.1 lives in the FORMAL series test
     // (`mir_native_incremental_series_formal`: one stable release-worker
     // session carrying the whole series, real margins). This debug-tier
@@ -138,9 +141,10 @@ fn mir_native_incremental_d828_baseline_30_structure_and_p95() {
     // across consecutive loaded runs), so a debug-tier hard gate would
     // measure the machine, not the pipeline.
     eprintln!(
-        "t11 v12.1 (debug mirror): {} revisions, edit->PE P50/P95/P99 = {:.1}/{:.1}/{:.1} ms vs gate {gate_ms} [REPORTED - the parent-observed gate lives in mir_native_incremental_series_formal]",
+        "t11 v12.1 (debug mirror): {} revisions, edit->PE P50/P90/P95/P99 = {:.1}/{:.1}/{:.1}/{:.1} ms vs gate {gate_ms} [REPORTED - the parent-observed gate lives in mir_native_incremental_series_formal]",
         samples,
         percentile(&walls, 50.0),
+        p90,
         p95,
         percentile(&walls, 99.0),
     );

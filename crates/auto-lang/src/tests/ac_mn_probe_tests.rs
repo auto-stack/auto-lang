@@ -922,7 +922,7 @@ fn mir_native_turnaround_fresh_cold_30() {
         "each call a fresh session store; full 115-unit compile; reported (not gated)",
         &walls,
     );
-    eprintln!("t07 fresh: P50/P95/P99 = {p50:.1}/{p95:.1}/{p99:.1} ms");
+    eprintln!("t07 fresh: P50/P90/P95/P99 = {p50:.1}/{:.1}/{p95:.1}/{p99:.1} ms", super::ace_latency::p90_ms(&walls).expect("valid latency windows"));
     std::env::remove_var("AC_MN_SESSION_ROOT");
     let _ = std::fs::remove_dir_all(&session_base);
     let _ = std::fs::remove_dir_all(&root);
@@ -1578,8 +1578,9 @@ fn mir_native_incremental_series_formal() {
     assert_eq!(run_rec["exit_code"].as_i64(), Some(judged));
     let p95 = mn_t07_percentile(&walls, 95.0);
     eprintln!(
-        "t11 v12.1-formal: {samples} revisions in one stable session, PARENT-OBSERVED (prep -> IPC -> worker -> admission -> independent comparison) P50/P95/P99 = {:.1}/{:.1}/{:.1} ms (gate {gate_ms})",
+        "t11 v12.1-formal: {samples} revisions in one stable session, PARENT-OBSERVED (prep -> IPC -> worker -> admission -> independent comparison) P50/P90/P95/P99 = {:.1}/{:.1}/{:.1}/{:.1} ms (gate {gate_ms})",
         mn_t07_percentile(&walls, 50.0),
+        super::ace_latency::p90_ms(&walls).expect("valid latency windows"),
         p95,
         mn_t07_percentile(&walls, 99.0),
     );

@@ -363,7 +363,7 @@ if ($Scope -eq 'acceptance') {
 
         $ipcOutcome = Get-IpcReportOutcome $ipc
         if ($libOk -and $ipcOutcome.Ok) {
-            Add-Result 'V-07' 'PASS' ("recomputed library P90 {0:N2}ms ({1} raw) + REAL IPC edit-session P90 {2:N2}ms ({3} raw, full request-to-admission window, 1MiB local edit); generator {4}" -f $libP90, $libSamples.Count, $ipcOutcome.P90, $ipcOutcome.N, $json.machine.generator)
+            Add-Result 'V-07' 'PASS' ("recomputed library P90 {0:N2}ms / P95 {1:N2}ms ({2} raw) + REAL IPC edit-session P90 {3:N2}ms / P95 {4:N2}ms ({5} raw, full request-to-admission window, 1MiB local edit); generator {6}" -f $libP90, $libP95, $libSamples.Count, $ipcOutcome.P90, $ipcOutcome.P95, $ipcOutcome.N, $json.machine.generator)
         }
         else {
             $libBad = ($libAdm.Bad | Select-Object -First 3) -join '; '

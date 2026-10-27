@@ -242,6 +242,7 @@ switch ($Scope) {
             git_head          = $gitHead
             machine_note      = "single-instance serial, fresh process per sample (poll-quantized peaks)"
             samples           = $samples
+            wall_ms_p90       = [math]::Round((($samples | ForEach-Object { $_.wall_ms } | Sort-Object)[($samples.Count - [int][math]::Floor($samples.Count / 10) - 1)]), 3)
             wall_ms_p95       = [math]::Round((($samples | ForEach-Object { $_.wall_ms } | Sort-Object)[[int][math]::Floor(($samples.Count - 1) * 0.95)]), 3)
             wall_ms_max       = [math]::Round(($samples | ForEach-Object { $_.wall_ms } | Measure-Object -Maximum).Maximum, 3)
             peak_bytes_max    = ($samples | ForEach-Object { $_.private_bytes_peak } | Measure-Object -Maximum).Maximum
@@ -249,7 +250,7 @@ switch ($Scope) {
         }
         $evPath = Join-Path $reportDir "first-case-evidence-$stamp.json"
         $evidence | ConvertTo-Json -Depth 8 | Out-File $evPath -Encoding utf8
-        Write-Host "   evidence: $evPath (p95 wall $($evidence.wall_ms_p95)ms, max peak $($evidence.peak_bytes_max) bytes)"
+        Write-Host "   evidence: $evPath (p90 wall $($evidence.wall_ms_p90)ms, p95 wall $($evidence.wall_ms_p95)ms, max peak $($evidence.peak_bytes_max) bytes)"
     }
     "semantics" {
         # T-03: the full frozen semantics matrices — V-01 reservation /

@@ -1598,7 +1598,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
         hot_p95 = p95(&samples);
         hot_p90 = p90(&samples);
         let (p50, _, p99) = stats(&samples);
-        println!("hot: n={SAMPLES} p50={p50}ms p95={hot_p95}ms p99={p99}ms (session prep {prep_ms}ms, {WARMUP} warmup discarded; wall = build→IPC→parse→admission→manifest-verify→persist→exit-oracle)");
+        println!("hot: n={SAMPLES} p50={p50}ms p90={hot_p90}ms p95={hot_p95}ms p99={p99}ms (session prep {prep_ms}ms, {WARMUP} warmup discarded; wall = build→IPC→parse→admission→manifest-verify→persist→exit-oracle)");
     }
 
     // 3) restart disk-hot — a NEW process per sample, SAME store.
@@ -1728,7 +1728,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
         edit_p95 = p95(&samples);
         edit_p90 = p90(&samples);
         let (p50, _, p99) = stats(&samples);
-        println!("body-edit: n={SAMPLES} p50={p50}ms p95={edit_p95}ms p99={p99}ms (bound 3<->4 alternating + unique marker; every sample parse=1, object=lowered)");
+        println!("body-edit: n={SAMPLES} p50={p50}ms p90={edit_p90}ms p95={edit_p95}ms p99={p99}ms (bound 3<->4 alternating + unique marker; every sample parse=1, object=lowered)");
     }
 
     // 6) gc-concurrent — the REAL 783 GC as a concurrent PROCESS against
@@ -1814,15 +1814,15 @@ fn turnaround_native_six_scenarios_p95_gates() {
             "every GC sample must overlap its request (barrier-proven; got {overlaps}/{SAMPLES})"
         );
         let (p50, p95v, p99) = stats(&samples);
-        println!("gc-concurrent: n={SAMPLES} p50={p50}ms p95={p95v}ms p99={p99}ms (real GC process per sample, {overlaps} barrier-proven overlaps)");
+        println!("gc-concurrent: n={SAMPLES} p50={p50}ms p90={}ms p95={p95v}ms p99={p99}ms (real GC process per sample, {overlaps} barrier-proven overlaps)", p90(&samples));
     }
 
     let fs_ = stats(&fresh);
     let rs = stats(&restart);
     let cs = stats(&cross);
     println!(
-        "fresh: p50={}ms p95={}ms p99={}ms | restart-disk-hot: p50={}ms p95={}ms p99={}ms | cross: p50={}ms p95={}ms p99={}ms",
-        fs_.0, fs_.1, fs_.2, rs.0, rs.1, rs.2, cs.0, cs.1, cs.2
+        "fresh: p50={}ms p90={}ms p95={}ms p99={}ms | restart-disk-hot: p50={}ms p90={}ms p95={}ms p99={}ms | cross: p50={}ms p90={}ms p95={}ms p99={}ms",
+        fs_.0, p90(&fresh), fs_.1, fs_.2, rs.0, p90(&restart), rs.1, rs.2, cs.0, p90(&cross), cs.1, cs.2
     );
     println!("raw samples (JSONL, per-sample before gates): {}", rec.path.display());
     println!("worker exe sha256: {}", rec.worker_sha);
@@ -1997,7 +1997,7 @@ fn turnaround_syntax_gate_and_revision_stream() {
         syntax_p95 = p95(&samples);
         syntax_p90 = p90(&samples);
         let (p50, _, p99) = stats(&samples);
-        println!("syntax-edit: n={SAMPLES} p50={p50}ms p95={syntax_p95}ms p99={p99}ms (wall through admission+persist+byte oracle)");
+        println!("syntax-edit: n={SAMPLES} p50={p50}ms p90={syntax_p90}ms p95={syntax_p95}ms p99={p99}ms (wall through admission+persist+byte oracle)");
     }
 
     // ---- V-13: the concurrent revision stream (F01).

@@ -1282,20 +1282,22 @@ fn abi_recipe_formal_turnaround_hard_gates() {
     }
     let rj_p95 = p95_of(&mut reject_times);
 
+    let be_p90 = super::ace_latency::p90_ms(&body_times).expect("valid body-edit windows");
+    let rj_p90 = super::ace_latency::p90_ms(&reject_times).expect("valid reject windows");
     std::fs::write(
         raw_dir.join("summary.txt"),
         format!(
-            "C-leg per-request acceptance-boundary gates (each request carries the edited deck; span closes at judged+persisted): body-edit(edit+request) P50/P95/P99 = {:.1}/{:.1}/{:.1} ms; reject P50/P95 = {:.1}/{:.1} ms (31/30 samples; per-request raw rows persisted by the adapter before the next request, tagged copies beside)",
+            "C-leg per-request acceptance-boundary gates (each request carries the edited deck; span closes at judged+persisted): body-edit(edit+request) P50/P90/P95/P99 = {:.1}/{:.1}/{:.1}/{:.1} ms; reject P50/P90/P95 = {:.1}/{:.1}/{:.1} ms (31/30 samples; per-request raw rows persisted by the adapter before the next request, tagged copies beside)",
             p50_of(&mut body_times.clone()),
+            be_p90,
             be_p95,
             p99_of(&mut body_times.clone()),
             p50_of(&mut reject_times.clone()),
+            rj_p90,
             rj_p95,
         ),
     )
     .unwrap();
-    let be_p90 = super::ace_latency::p90_ms(&body_times).expect("valid body-edit windows");
-    let rj_p90 = super::ace_latency::p90_ms(&reject_times).expect("valid reject windows");
     println!("parent-path gates: C-leg body-edit P90={be_p90:.1}ms reject P90={rj_p90:.1}ms");
     assert!(
         be_p90 <= 2000.0,

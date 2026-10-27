@@ -896,12 +896,13 @@ fn abi_turnaround_six_scenarios_30_samples() {
     for s in &scenarios {
         let (p50, p95, p99) = percentiles(s.totals.clone());
         summary.push_str(&format!(
-            "{:16} n={} ok={} P50={:.1}ms P95={:.1}ms P99={:.1}ms
+            "{:16} n={} ok={} P50={:.1}ms P90={:.1}ms P95={:.1}ms P99={:.1}ms
 ",
             s.name,
             s.totals.len(),
             s.oks,
             p50,
+            p90_of(&s.totals),
             p95,
             p99
         ));
@@ -926,9 +927,9 @@ fn abi_turnaround_six_scenarios_30_samples() {
     }
     let (r50, r95, r99) = percentiles(reject_totals.clone());
     summary.push_str(&format!(
-        "{:16} n=30 ok=30 P50={:.1}ms P95={:.1}ms P99={:.1}ms
+        "{:16} n=30 ok=30 P50={:.1}ms P90={:.1}ms P95={:.1}ms P99={:.1}ms
 ",
-        "descriptor-reject", r50, r95, r99
+        "descriptor-reject", r50, p90_of(&reject_totals), r95, r99
     ));
     println!("descriptor-reject gate P90 {:.1}ms", p90_of(&reject_totals));
     assert!(
