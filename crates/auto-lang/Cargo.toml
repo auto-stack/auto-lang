@@ -17,9 +17,8 @@ keywords = ["automation", "language", "scripting"]
 # 统一同源 feature 集，消除档间切换的整库冷重编（Plan 507"tf 不带 ui-iced"
 # 保守残留随之作废）。python 维持可选（auto bin default 仍自带）。拆仓
 # （Design 32）落地后按新 crate 边界重新分档。
-# PLAN-814 R3-03b：default 不再转发 `ui-dialect`（feature 已随 SDK optional
-# 边删除）；旧"UI 文法恒可用"行为经本 crate 链接期的 UiGrammarSource
-# inventory 装配保持（Scenario::UI 默认装配与旧 Parser 公开 UI 门面不变）。
+# PLAN-841：default 不再隐式装配 UI 文法；UI 消费方通过领域端口显式
+# 组合 auto-ui-dialect，Core Parser 和 UI 文法的所有权保持分离。
 default = ["with-file-history", "ui-iced"]
 # Plan 289: Feature-gated test groups for faster daily development
 test-trans = []
@@ -36,10 +35,8 @@ test-aavm = []
 # Zero cost when off — the System allocator stays in place; when on, lib.rs
 # installs CountingAlloc as #[global_allocator] (lock-free AtomicU64 stats).
 mem-profile = ["auto-lang-core/mem-profile"]
-# PLAN-814 R3-03b：原 `ui-dialect` 转发 feature 已删除——SDK 侧 feature 与
-# optional auto-ui-dialect 清单边消除（无 UI checkout 源码消费）。本 crate
-# 直接依赖 auto-ui-dialect 并经 UiGrammarSource inventory 装配文法表，
-# 旧默认 UI 行为（Scenario::UI 内建方言）由装配保持。
+# PLAN-841：原 `ui-dialect` 转发 feature 与 UiGrammarSource inventory
+# 文法表已退出；UI 文法通过 DomainDialect 显式组合。
 # Plan 317 §11 Phase 11: HTTP e2e tests (start real TCP servers; run serially).
 # Off by default — enables `plan326_tests::http_e2e` submodule (the 7 former
 # `#[ignore]` e2e tests). CI runs them in `.github/workflows/http-e2e-ci.yml`.
