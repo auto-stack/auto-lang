@@ -390,7 +390,6 @@ pub const NATIVE_RUST_STDLIB_DISPATCH: u16 = 3000;
 // File Functions
 // ============================================================================
 
-
 /// Plan 673 §5 chunked-read envelope — the serde shape shared verbatim with
 /// the a2r-std mirror (`a2r_std::fs::read_text_range`): same field order,
 /// same EOF/error rules. P670-D1: both tracks emit byte-identical JSON.
@@ -410,16 +409,10 @@ fn read_text_range_json(text: String, total: i64, next_offset: Option<u64>) -> S
     .expect("read_text_range envelope serialization cannot fail")
 }
 
-
 /// Write text content to a file
 // ============================================================================
 // Environment Functions
 // ============================================================================
-
-
-
-
-
 
 // ── Plan 401: localStorage-style key/value store (Storage module) ────────
 // The VM/iced path has no browser, so back storage.get/set by an in-process
@@ -549,9 +542,6 @@ fn storage_mark_dirty(key: &str) {
     STORAGE_DIRTY.lock().unwrap().insert(key.to_string());
 }
 
-
-
-
 // Plan 442 B-support: raw accessors behind the JS-shaped localStorage
 // bridge (native.rs shims) — getItem returns None for a missing key (musk
 // sources test `saved != None`), unlike storage.get's "" default.
@@ -623,15 +613,9 @@ pub fn storage_host_read_fresh(key: &str) -> Option<String> {
 // commands (cmd_env_path) already provide this functionality for interactive
 // use. FFI is only needed for .at scripts calling Env.path_add() directly.
 
-
-
 // ============================================================================
 // Time Functions
 // ============================================================================
-
-
-
-
 
 // ============================================================================
 // Process Functions
@@ -1118,7 +1102,6 @@ fn format_panic_report(thread_name: &str, location: &str, message: &str) -> Stri
     )
 }
 
-
 #[cfg(test)]
 mod exit_audit_tests {
     use super::*;
@@ -1278,15 +1261,9 @@ mod exit_audit_tests {
     }
 }
 
-
-
-
 // ============================================================================
 // IO Functions
 // ============================================================================
-
-
-
 
 fn read_process_stdin_line() -> Option<String> {
     use std::io::BufRead;
@@ -1307,8 +1284,6 @@ fn read_process_stdin_line() -> Option<String> {
 // ============================================================================
 // Plan 353: IO stream natives (lines/chunks) + eprint/eprintln
 // ============================================================================
-
-
 
 /// `eprint(text: String)` — Write to stderr (no newline).
 pub fn shim_eprint(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
@@ -1331,9 +1306,6 @@ pub fn shim_eprintln(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // Plan 353 stages 3-8: fs.entries, buffered writer/reader, seek, async IO,
 // Path object, Scanner
 // ============================================================================
-
-
-
 
 /// `BufWriter.write_line(handle: i32, text: String) -> handle`
 /// Write a line to a buffered writer.
@@ -1428,15 +1400,6 @@ pub fn shim_bufreader_read_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     Ok(())
 }
 
-
-
-
-
-
-
-
-
-
 // ============================================================================
 // Plan 353 stage 6: Async file IO (non-blocking yield, same pattern as
 // Plan 349 step7's async HTTP)
@@ -1457,10 +1420,6 @@ pub enum AsyncResult {
     /// status is i32 to match LAST_HTTP_STATUS.
     Auth { status: i32, body: String },
 }
-
-
-
-
 
 /// Plan 394 Phase C: extract future ids from a stack list (array literal → ListData<Value>).
 fn pop_future_ids_from_list(task: &mut AutoTask, vm: &AutoVM) -> Result<Vec<u32>, VMError> {
@@ -1590,8 +1549,6 @@ pub fn shim_future_race(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     Ok(())
 }
 
-
-
 /// Execute a shell command string, capture stdout+stderr, truncate at 64KB.
 /// Takes: cmd (String), timeout_ms (i32) — timeout currently unused.
 /// Returns: JSON string {"exit_code": N, "stdout": "...", "stderr": "..."}
@@ -1677,16 +1634,9 @@ pub fn __shim_Path_join(
     Ok(())
 }
 
-
-
-
-
 // ============================================================================
 // String Functions (ID 1500-1599)
 // ============================================================================
-
-
-
 
 /// 运行时值类型名（PLAN-781 T-25 R05 r6）：`type_of(x) -> str`——
 /// int/float/str/bool/null/list/object/future。多态参数须裸 shim（rust_fn
@@ -1722,7 +1672,6 @@ pub fn shim_type_of(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     };
     push_string_result(task, vm, t.to_string())
 }
-
 
 /// PLAN-781 阶段 E（T-24）单测：UTF-8 字节口径 + 与
 /// `File.read_text_range`（nat#1016）游标语义的一致性——章 meta 索引
@@ -1792,40 +1741,9 @@ mod plan781_byte_len_tests {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // ============================================================================
 // Character Functions (ID 1600-1699)
 // ============================================================================
-
-
-
-
-
-
-
-
 
 // ============================================================================
 // Option Functions (ID 1550-1559) — Plan 200 Task 2.4
@@ -1882,16 +1800,6 @@ pub fn shim_option_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // Math Functions (ID 1700-1799)
 // ============================================================================
 
-
-
-
-
-
-
-
-
-
-
 // ============================================================================
 // PLAN-057 T6: web 内建 natives 补齐（等价性缺陷族③——未实现者原运行期
 // 静默 None 桩）。手动 shim（非 rust_fn 宏：需按 nv 标签分支/固 arity 弹栈），
@@ -1931,7 +1839,6 @@ fn heap_is_list(vm: &AutoVM, id: u64) -> bool {
         })
         .unwrap_or(false)
 }
-
 
 /// 栈 nv → `auto_val::Value`（stringify 序列化入口；标量直编码、堆引用
 /// 包 VmRef 交 vm_value_to_json 递归）。
@@ -1985,41 +1892,13 @@ fn nv_to_vm_value(vm: &AutoVM, nv: auto_val::NanoValue) -> auto_val::Value {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // ============================================================================
 // Log Functions (debug/info/warn/error = 1805-1808, noop = 1804;P499-7 移段)
 // ============================================================================
 
-
-
-
-
 // ============================================================================
 // JSON Functions (ID 1900-1999)
 // ============================================================================
-
-
-
 
 // ============================================================================
 // Plan 446 批三 D1(续): 文档类 json native 双态入参
@@ -2350,7 +2229,6 @@ fn json_to_vm_value_inner(
     }
 }
 
-
 /// Recursively serialize a VM heap object into a `serde_json::Value`.
 fn vm_value_to_json(
     vm: &AutoVM,
@@ -2457,35 +2335,9 @@ fn vm_value_to_json(
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // ============================================================================
 // URL Functions (ID 2000-2099)
 // ============================================================================
-
-
-
-
-
-
-
-
-
-
-
-
 
 /// Helper: extract path portion from a string that starts with /
 fn extract_path(s: String) -> String {
@@ -2558,22 +2410,6 @@ thread_local! {
     static TCP_STREAMS: std::cell::RefCell<std::collections::HashMap<u64, StdTcpStream>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // ============================================================================
 // HTTP Functions (ID 2200-2299)
@@ -2695,7 +2531,6 @@ struct HttpResponseData {
     body: Vec<u8>,
 }
 
-
 // Plan 547: VM handles contain only the opaque ticket id; decoded pixels stay
 // in the shared registry and are never pushed onto the VM stack.
 // PLAN-814: 811 前残留门（体纯 auto-media-core，renderer 中性）随 Core 迁 SDK 去门
@@ -2756,28 +2591,6 @@ fn insert_image_ticket_handle(
     }
     handles.push_back((handle, ticket));
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /// Plan 316 fix: Run the HTTP server in a blocking loop WITHOUT requiring an
 /// AutoTask parameter. This is the entry point for auto-starting the server
@@ -3012,13 +2825,6 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
     }
 }
 
-
-
-
-
-
-
-
 /// Plan 346 3c: server-side lookup of a pending response by handle. Lets the
 /// HTTP server serve a handler-returned Response object (status/headers/body,
 /// e.g. from `http.response.redirect(url, 302)` or `http.response()` +
@@ -3052,14 +2858,9 @@ pub fn insert_http_response(status: u16, headers: Vec<(String, String)>, body: V
     handle
 }
 
-
 // ============================================================================
 // Plan 352: Session management natives
 // ============================================================================
-
-
-
-
 
 // ============================================================================
 // Plan 352: OpenAPI auto-generation
@@ -3297,8 +3098,6 @@ fn is_truthy(val: &serde_json::Value) -> bool {
     }
 }
 
-
-
 /// PLAN-776 R1-F01：Http.ok/created/bad_request/not_found/internal_error 五个
 /// 真实服务端 Response producer 从"裸 i64 句柄 + HTTP_RESPONSES 表"迁移为
 /// **凭据对象**（owned 快照，marshal 资源臂按值分派）。查表命中制退役后
@@ -3313,11 +3112,6 @@ fn text_plain_response(status: u16, body: String) -> (u16, Vec<(String, String)>
         body.into_bytes(),
     )
 }
-
-
-
-
-
 
 inventory::submit! {
     crate::vm::ffi::StaticFFIRegistration {
@@ -3365,36 +3159,19 @@ inventory::submit! {
     }
 }
 
-
-
-
-
 // ============================================================================
 // Plan 195: RequestBuilder FFI
 // ============================================================================
 
-
-
-
-
-
-
 // ============================================================================
 // Plan 350: TLS configuration natives
 // ============================================================================
-
-
-
 
 // ============================================================================
 // Plan 349: Multipart file upload natives
 // ============================================================================
 // Plan 349 step 8: Cookie / retry / compression natives
 // ============================================================================
-
-
-
-
 
 // ============================================================================
 
@@ -3491,15 +3268,9 @@ const MULTIPART_MAX_TEXT_FIELDS: usize = 64;
 const MULTIPART_MAX_TEXT_VALUE: usize = 64 * 1024;
 const MULTIPART_MAX_TEXT_TOTAL: usize = 1024 * 1024;
 
-
-
-
 // ============================================================================
 // Plan 349: File download + resume + progress natives
 // ============================================================================
-
-
-
 
 /// Plan 349: Spawn a download with progress reporting (PLAN-727 T-05 起
 /// 经共享传输核心执行，观察句柄泵进度/终态进既有通道)。
@@ -3550,11 +3321,6 @@ fn read_response_payload(
     None
 }
 
-
-
-
-
-
 // ============================================================================
 // PLAN-707 T-04：真正的流式 HTTP 函数（异步非阻塞形态）
 // ============================================================================
@@ -3563,9 +3329,6 @@ fn read_response_payload(
 // next → str（EOF=`[DONE]`）；is_done → 0/1；close → void。
 // 变化在内部：建立与读取全部经 `http_stream` 资源表（异步生产者、
 // 独立许可、可取消），零阻塞线程、零 blocking read。
-
-
-
 
 /// stream_next 的 pull→推值主体（首调/重入共用）。
 fn push_stream_next_value(task: &mut AutoTask, vm: &AutoVM, handle: i64) -> Result<(), VMError> {
@@ -3592,14 +3355,6 @@ fn push_stream_next_value(task: &mut AutoTask, vm: &AutoVM, handle: i64) -> Resu
         }
     }
 }
-
-
-
-
-
-
-
-
 
 /// PLAN-698 T-02/SD-02: `auto.bus.subscribe() -> iterator_id`（VM 运行面）
 ///
@@ -3669,13 +3424,9 @@ pub fn shim_bus_subscribe(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     Ok(())
 }
 
-
 // ============================================================================
 // Regex Functions (Plan 159: 2400-2499)
 // ============================================================================
-
-
-
 
 /// 匹配结果列表推送（堆 List<Value::Str>；fresh 列表 rc_push(+1) 与
 /// Plan 419 配平——元素为 Str 非堆引用，无子份额需求）。无匹配 → 空列表
@@ -3734,9 +3485,6 @@ pub fn shim_i18n_t(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
-
-
-
 
 // ============================================================================
 // Plan 152: SSE Parser Functions
@@ -4190,9 +3938,6 @@ fn snapshot_default_headers() -> Vec<(String, String)> {
     http_defaults().lock().unwrap().headers.clone()
 }
 
-
-
-
 pub static WARNED_API_NOOP: std::sync::LazyLock<
     std::sync::Mutex<std::collections::HashSet<String>>,
 > = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
@@ -4431,8 +4176,6 @@ pub fn http_msg_split_target(event: &str) -> (String, String) {
     }
 }
 
-
-
 /// Push a response-handle result onto the stack: allocate a NET_HANDLE_COUNTER
 /// id, insert the structured data into the *calling thread's* HTTP_RESPONSES
 /// thread_local, push the handle as i32. Plan 349 步骤 7/8 (W1).
@@ -4462,11 +4205,6 @@ fn push_handle_result(
     };
     super::http_return_resource::push_response_resource(task, vm, status, headers, body)
 }
-
-
-
-
-
 
 /// Helper: push a response-body string onto the stack as a tagged string.
 fn push_string_result(task: &mut AutoTask, vm: &AutoVM, s: String) -> Result<(), VMError> {
@@ -4621,11 +4359,6 @@ fn push_auth_result(
     Ok(())
 }
 
-
-
-
-
-
 // ============================================================================
 // Task/Msg Functions (Plan 121)
 // ============================================================================
@@ -4648,16 +4381,6 @@ thread_local! {
 
 static TASK_HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
 
-
-
-
-
-
-
-
-
-
-
 /// Global TaskRegistry for TaskSystem operations
 static GLOBAL_TASK_REGISTRY: std::sync::OnceLock<TaskRegistry> = std::sync::OnceLock::new();
 
@@ -4665,9 +4388,6 @@ static GLOBAL_TASK_REGISTRY: std::sync::OnceLock<TaskRegistry> = std::sync::Once
 fn get_global_task_registry() -> &'static TaskRegistry {
     GLOBAL_TASK_REGISTRY.get_or_init(TaskRegistry::new)
 }
-
-
-
 
 /// Plan 224: Helper for executing async operations in FFI shims.
 /// Creates an independent tokio runtime and runs the future with block_on.
@@ -4739,16 +4459,6 @@ pub const SQLITE_NATIVE_NAMES: &[&str] = &[
 fn sqlite_from_handle(vm: &AutoVM, handle: i64) -> Option<SqliteDb> {
     vm.sqlite_handle(handle)
 }
-
-
-
-
-
-
-
-
-
-
 
 // ============================================================================
 // Registration Function
@@ -8141,10 +7851,6 @@ fn main() {
 // ============================================================================
 // Plan 263 Phase 2: Test runner FFI — run_a2r_dir
 // ============================================================================
-
-
-
-
 
 #[cfg(test)]
 mod plan536_date_format_tests {

@@ -2233,5 +2233,4 @@ impl RustTrans {
         self.inside_pub_type = false;
         Ok(())
     }
-
 }

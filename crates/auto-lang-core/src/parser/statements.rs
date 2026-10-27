@@ -1790,7 +1790,11 @@ impl<'a> Parser<'a> {
     /// and append them to the given args. Separate fn so node_or_call_expr /
     /// atom (hot recursive paths) don't grow their stack frames — godot scene
     /// files (dodge_player) barely fit in the 2MB test stack.
-    pub(super) fn parse_braced_struct_args(&mut self, ident: &Expr, mut args: Args) -> AutoResult<Args> {
+    pub(super) fn parse_braced_struct_args(
+        &mut self,
+        ident: &Expr,
+        mut args: Args,
+    ) -> AutoResult<Args> {
         let _ = ident; // name is used by object()/pair resolution implicitly
         let pairs = self.object()?;
         for p in pairs {
@@ -2905,5 +2909,4 @@ impl<'a> Parser<'a> {
             }
         }
     }
-
 }

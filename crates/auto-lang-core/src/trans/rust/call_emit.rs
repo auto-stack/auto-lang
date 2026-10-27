@@ -7550,5 +7550,4 @@ pub use auto_cabi_kit::*;"#
         )?;
         Ok(())
     }
-
 }

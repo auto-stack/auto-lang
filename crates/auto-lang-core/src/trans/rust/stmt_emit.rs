@@ -241,7 +241,12 @@ impl RustTrans {
         false
     }
 
-    pub(super) fn output_call(&mut self, call: &Call, out: &mut impl Write, newline: bool) -> AutoResult<()> {
+    pub(super) fn output_call(
+        &mut self,
+        call: &Call,
+        out: &mut impl Write,
+        newline: bool,
+    ) -> AutoResult<()> {
         // print("hello") / write("hello") -> println!("hello") / print!("hello")
         // print(value) / write(value)   -> println!("{}", value) / print!("{}", value)
         // print(f"...") / write(f"...") -> println!("...", args) / print!("...", args)
@@ -3332,5 +3337,4 @@ impl RustTrans {
         }
         Ok(())
     }
-
 }

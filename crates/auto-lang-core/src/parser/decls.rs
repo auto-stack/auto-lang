@@ -2561,5 +2561,4 @@ impl<'a> Parser<'a> {
         let ty = self.parse_type()?;
         Ok(UnionField { name, ty })
     }
-
 }

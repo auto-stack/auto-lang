@@ -2486,7 +2486,6 @@ impl<'a> Parser<'a> {
             }
         }
     }
-
 }
 
 /// Plan 312: Parse `#[api(method = "GET", path = "/api/notes/:id")]` argument string.
@@ -2863,7 +2862,6 @@ impl<'a> Parser<'a> {
     }
 }
 
-
 /// Plan 560 T07：中缀糖直产桥调用（`a @ b`→py_matmul、`a ** b`→py_pow）。
 fn mk_infix_sugar_call(name: &str, l: crate::ast::Expr, r: crate::ast::Expr) -> crate::ast::Expr {
     use crate::ast::{Arg, Args, Call, Expr, Type};
@@ -2884,6 +2882,6 @@ mod decls;
 mod expressions;
 mod scenario;
 mod statements;
-mod type_syntax;
 #[cfg(test)]
 mod tests;
+mod type_syntax;

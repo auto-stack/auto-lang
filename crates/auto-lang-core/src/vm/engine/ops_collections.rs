@@ -3,7 +3,12 @@ use super::*;
 
 impl AutoVM {
     /// PLAN-843 尾递归派发段（自 run_one_instruction 连续臂切片，臂体逐字保留）。
-    pub(super) fn ops_collections(&self, task: &mut AutoTask, op: OpCode, op_byte: u8) -> Result<StepResult, VMError> {
+    pub(super) fn ops_collections(
+        &self,
+        task: &mut AutoTask,
+        op: OpCode,
+        op_byte: u8,
+    ) -> Result<StepResult, VMError> {
         match op {
             OpCode::SET_GENERIC_FIELD => {
                 // Plan 087 Phase 2: Set field value in generic instance

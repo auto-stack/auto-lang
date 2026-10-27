@@ -196,7 +196,11 @@ impl RustTrans {
     /// String clone would break the call site. Unknown inferred types clone
     /// conservatively (mirrors the struct-field site in
     /// write_expr_for_struct_field, Plan 399 P11.4).
-    pub(super) fn maybe_clone_borrowed_iter_field(&self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
+    pub(super) fn maybe_clone_borrowed_iter_field(
+        &self,
+        expr: &Expr,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
         // Plan 396 §2.1 (bare loop var): passing the borrowed loop variable
         // ITSELF (`for t in &coll { f(t) }` with t: &Arc<..>) to an owned
         // param also needs .clone() — same gate as fields below.
@@ -816,7 +820,11 @@ impl RustTrans {
     }
 
     /// Inline for-loop for closures: outputs compact single-line for loop
-    pub(super) fn for_stmt_inline(&mut self, for_stmt: &For, out: &mut impl Write) -> AutoResult<()> {
+    pub(super) fn for_stmt_inline(
+        &mut self,
+        for_stmt: &For,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
         match &for_stmt.iter {
             Iter::Named(name) => {
                 // Plan 364 Phase 8 F1: for-over-Stream in inline (closure) context.
@@ -1561,7 +1569,11 @@ impl RustTrans {
     /// `<LIBRARY>_DLL` → exe same-dir → bare-name resolution. All unsafe
     /// stays inside the generated module; Auto call sites use the bare
     /// manifest function names.
-    pub(super) fn emit_use_c_ffi(&mut self, use_stmt: &Use, out: &mut impl Write) -> AutoResult<()> {
+    pub(super) fn emit_use_c_ffi(
+        &mut self,
+        use_stmt: &Use,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
         let raw = use_stmt
             .paths
             .first()
@@ -4511,5 +4523,4 @@ impl RustTrans {
             }
         }
     }
-
 }

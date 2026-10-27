@@ -1232,5 +1232,4 @@ impl<'a> Parser<'a> {
         // TODO: should check all types or print error
         Ok(Type::Unknown)
     }
-
 }

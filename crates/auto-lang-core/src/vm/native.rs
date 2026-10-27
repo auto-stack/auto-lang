@@ -1682,25 +1682,7 @@ for_each_native!(gen_native_constants);
 // Plan 178: Bit Operation Shims
 // ============================================================================
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 // === Phase 4: Dynamic bitfield views ===
-
-
-
-
-
 
 // ============================================================================
 // Plan 240 VM-1: Math shims for f64 methods (sin/cos/tan/sqrt/pow etc.)
@@ -1766,8 +1748,6 @@ math_unary_shim!(shim_math_to_degrees, to_degrees);
 math_binary_shim!(shim_math_pow, powf);
 math_binary_shim!(shim_math_powf, powf);
 
-
-
 // === Manual constants (registered via register_shim_by_name, not in catalog) ===
 
 // String methods (canonical IDs: auto.str.contains=1504, auto.str.starts_with=1505, auto.str.ends_with=1506)
@@ -1799,8 +1779,6 @@ pub const NATIVE_SHELL_RUN: u16 = 1805;
 
 // === Standard Shims ===
 
-
-
 // ============================================================================
 // Plan 011 (MS3-B): Shell-host bridge natives
 // ============================================================================
@@ -1819,9 +1797,6 @@ fn pop_string_arg(task: &mut AutoTask, vm: &AutoVM) -> String {
         String::new()
     }
 }
-
-
-
 
 // ── Plan 413: code editor payload accessors (UI bridge) ─────────────────
 // Read / jump live code_editor state by storage key from handler
@@ -1844,30 +1819,10 @@ fn pop_string_arg(task: &mut AutoTask, vm: &AutoVM) -> String {
 // `code-editor`+`ui-clipboard`），provider 在位但宿主无剪贴板面
 // （`Option<bool>` → None）时同文案。
 
-
-
-
-
-
-
-
-
-
 // ── PLAN-703 供⑤: diff engine consumption endpoints (9915/9916/9917) ──
 // Envelope JSON field-identical to the downstream replacement-seam
 // contracts (auto-edit diff-view.md SD-01/PLAN-011/012); errors are VALUES
 // in the envelope err field, never raises (669/687 convention).
-
-
-
-
-
-
-
-
-
-
-
 
 // ── PLAN-701 供④: time 族 VM 运行时 shim（catalog 1200/1201/1205 既有
 // 登记位的实装；此前裸/use 两形态均返 0——m1-supply §9 观察清偿）。语义
@@ -1942,10 +1897,7 @@ pub fn shell_add_recent(path: &str) -> bool {
     }
 }
 
-
 // ── Plan 428 P1: code folding natives ─────────────────────────────────
-
-
 
 // ── Plan 418: editor action natives (menu/toolbar handlers) ────────────
 // Same semantics as the editor's internal Ctrl+Z/Y/A/C/X/V handling, but
@@ -1953,12 +1905,6 @@ pub fn shell_add_recent(path: &str) -> bool {
 // PLAN-802: provider 供值；cut/copy/paste 的 `Option<bool>` None 臂 =
 // 宿主有编辑器面但无 OS 剪贴板面（= 迁移前 code-editor on +
 // ui-clipboard off 组合的 raise 臂，组合特征文案逐字面值）。
-
-
-
-
-
-
 
 // ── Plan 418: OS clipboard natives (arboard) ───────────────────────────
 // PLAN-785 依赖倒置：core 不再直引 `crate::ui::clipboard`——经本 VM
@@ -1968,8 +1914,6 @@ pub fn shell_add_recent(path: &str) -> bool {
 // 即 2925/2926 诊断定位面）；provider 在而 OS 不可用 = empty/false（值
 // 语义不变，非 raise）。shim 体因此 feature 中性——`ui-clipboard` 仅决定
 // adapter 是否编译/装配，不再决定本函数的编译形态。
-
-
 
 // ── Plan 485: native clipboard files/images (CF_HDROP / DIBV5+PNG) ─────
 // PLAN-790 依赖倒置：core 不再直引 `ui::clipboard_native`——经本 VM
@@ -1983,10 +1927,6 @@ pub fn shell_add_recent(path: &str) -> bool {
 // feature/平台中性——`native-clipboard` 仅决定 UI adapter 是否编译/装配，
 // 不再决定本函数的编译形态。
 
-
-
-
-
 // ── Plan 488: OLE 拖出（auto.dnd.start；拖入路由在 renderer 侧） ────────
 // 降级契约（G5）：无 provider（非 Windows / 未开 `native-dnd` / no-ui /
 // 未装配）返 false，事件不触发，.at 代码零条件分支。PLAN-804 依赖倒置：
@@ -1994,7 +1934,6 @@ pub fn shell_add_recent(path: &str) -> bool {
 // [`crate::vm::host_capabilities::DndHostProvider`] 唯一解释（UI adapter
 // 委托既有 parse_payload_json + win32::start_drag，windows ∧ native-dnd ∧
 // ui 三门控安装），shim 体因此 feature 中性。
-
 
 // ============================================================================
 // PLAN-656 T-03: scroll-pane controller natives
@@ -2010,7 +1949,6 @@ pub fn shell_add_recent(path: &str) -> bool {
 // 中性——`ui` 仅决定 UI adapter 是否编译/装配。ID/arity/返回形态与 781
 // 状态机语义冻结于计划 T-01 矩阵。
 // ============================================================================
-
 
 /// 弹出 controller 句柄实参。句柄是不透明非空串（`scroll_controller()`
 /// 分配的形态，或 .at 侧直接以字符串状态字段作柄——两者等价；绑定发生
@@ -2043,13 +1981,6 @@ fn pop_axis_arg(task: &mut AutoTask, vm: &AutoVM) -> crate::vm::host_capabilitie
     }
 }
 
-
-
-
-
-
-
-
 // ── Plan 418: native file dialogs（rfd，同步 API）──────────────────────
 // PLAN-804 依赖倒置：OS 对话框、父窗选择（原 dialog_parent，Win32
 // EnumWindows 最大可见自有顶层窗 + rfd set_parent）迁 crate 上层
@@ -2064,42 +1995,16 @@ fn pop_axis_arg(task: &mut AutoTask, vm: &AutoVM) -> crate::vm::host_capabilitie
 // 或不可用返回空串。Plan 428 债修（父窗锚定）语义由 VM 默认 adapter
 // （parented 策略）保持——见 host_adapters::dialog。
 
-
-
-
 // ── Plan 541: System Monitor Natives (auto.sys.*) ───────────────────────────
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // PLAN-802: code_editor 族 22 项已单态化（feature 中性，provider 装配）——
 // 本处原 feature-off stub 群（text/delta/edit/cursor_line/cursor_col/
 // selection_len/find/set_text/fold_toggle/fold_hidden_count/undo/redo/
 // select_all/cut/copy/paste）并入各 shim 的缺席臂，逐字面值保留。
 
-
 // ── Plan 413 follow-up: console natives (in-app Console panel) ──────────
 // Backed by the process-wide ring buffer in vm::ui_console (also fed by
 // vm_print, so plain `print()` lines show up in the panel too).
-
-
-
-
-
 
 /// Generic print that handles any value type.
 /// If the value is a tagged string index (negative), prints the string.
@@ -2122,11 +2027,6 @@ pub fn shim_print(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     }
     Ok(())
 }
-
-
-
-
-
 
 /// Format a RustStdlibObject for display.
 pub fn format_rust_stdlib_obj(obj: &RustStdlibObject) -> String {
@@ -2184,8 +2084,6 @@ pub fn format_rust_stdlib_obj(obj: &RustStdlibObject) -> String {
     }
 }
 
-
-
 pub fn shim_assert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
         let nv = crate::vm::native::pop_arg_nv(task);
@@ -2206,17 +2104,9 @@ pub fn shim_assert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
-
-
 // ============================================================================
 // List Native Shims
 // ============================================================================
-
-
-
-
-
-
 
 /// Get element at index.
 /// Stack: list_id, index -> elem
@@ -2383,11 +2273,6 @@ fn values_eq(a: &auto_val::Value, b: &auto_val::Value) -> bool {
     }
 }
 
-
-
-
-
-
 /// JS Array.splice start normalization: negative counts from the end,
 /// everything clamps into [0, len].
 #[inline]
@@ -2398,8 +2283,6 @@ fn normalize_splice_start(start_raw: i32, len: usize) -> usize {
         (start_raw as usize).min(len)
     }
 }
-
-
 
 // ============================================================
 // List Higher-Order Functions (Plan 206: Closure HOF)
@@ -2492,18 +2375,6 @@ fn vm_to_printable_bool(val: i32) -> i32 {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 // ============================================================================
 // Result HOF Native Shims
 // ============================================================================
@@ -2567,7 +2438,6 @@ pub fn shim_result_map_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 // ============================================================================
 // Iterator Native Shims
 // ============================================================================
-
 
 thread_local! {
     /// PLAN-696: only the top-level SSE iterator is budgeted. Nested iterator
@@ -2792,7 +2662,6 @@ fn generator_next_drive(
     return;
 }
 
-
 /// Get next element from iterator.
 /// Stack: iterator_id -> element (or -1 for nil)
 /// Returns: element value, or -1 if exhausted
@@ -2840,33 +2709,13 @@ pub fn push_derived_iterator(
     }
 }
 
-
-
-
-
 // ============================================================================
 // Terminal Operations
 // ============================================================================
 
-
-
-
 // ============================================================================
 // HashMap Shims (Plan 086)
 // ============================================================================
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // ============================================================================
 // Plan 046 (auto-musk T2): dynamic-receiver (`obj`) method family.
@@ -2927,61 +2776,21 @@ fn push_value_list(task: &mut AutoTask, vm: &AutoVM, items: Vec<auto_val::Value>
     vm.rc_push_id(task, list_id as u64); // Plan 419
 }
 
-
-
 // ============================================================================
 // HashSet Shims (Plan 118 Phase 3)
 // ============================================================================
-
-
-
-
-
-
-
 
 // ============================================================================
 // StringBuilder Shims (Plan 118 Phase 3)
 // ============================================================================
 
-
-
-
-
-
-
-
-
 // ============================================================================
 // VecDeque Shims (Plan 118 Phase 3)
 // ============================================================================
 
-
-
-
-
-
-
-
-
-
-
-
 // ============================================================================
 // BTreeMap Shims (Plan 118 Phase 3)
 // ============================================================================
-
-
-
-
-
-
-
-
-
-
-
-
 
 /// Helper: decode a NanoValue to a String (from string pool)
 fn nv_to_string(nv: auto_val::NanoValue, vm: &AutoVM) -> String {
@@ -2994,39 +2803,13 @@ fn nv_to_string(nv: auto_val::NanoValue, vm: &AutoVM) -> String {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 // ============================================================================
 // Mutable String Shims (177-186)
 // ============================================================================
 
-
-
-
-
-
-
-
-
-
-
 // ============================================================================
 // Memory Allocation Shims
 // ============================================================================
-
-
-
 
 // ============================================================================
 // Storage Shims (Heap, InlineInt64)
@@ -3108,14 +2891,9 @@ pub fn shim_heap_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
-
-
-
-
 // ============================================================================
 // List Extra Shims
 // ============================================================================
-
 
 // ============================================================================
 // Plan 212 Phase 2: Rand Native Shims
@@ -3148,12 +2926,6 @@ impl Xorshift64 {
     }
 }
 
-
-
-
-
-
-
 // ============================================================================
 // Plan 212 Phase 2.2: Regex Opaque Struct Shims
 // ============================================================================
@@ -3182,67 +2954,25 @@ fn push_vm_string(task: &mut AutoTask, vm: &AutoVM, s: &str) {
     vm.rc_push_str_idx(task, idx as usize);
 }
 
-
-
-
-
-
-
-
 // ============================================================================
 // Plan 212 Phase 2.2: Url Opaque Struct Shims
 // ============================================================================
-
-
-
-
-
-
-
-
-
-
-
-
 
 // ============================================================================
 // Plan 212 Phase 2.2: Semver Opaque Struct Shims
 // ============================================================================
 
-
-
-
-
-
-
-
-
-
 // ============================================================================
 // Plan 212 Phase 2.3: Chrono Opaque Struct Shims
 // ============================================================================
-
-
-
-
-
-
-
-
-
-
 
 // ============================================================================
 // Plan 212 Phase 2.3: Base64 Pure Function Shims
 // ============================================================================
 
-
-
 // ============================================================================
 // Plan 212 Phase 2.3: Hex Pure Function Shims
 // ============================================================================
-
-
 
 // ============================================================================
 // Plan 212 Phase 2.3: Sha2 Opaque Struct Shims
@@ -3328,37 +3058,22 @@ pub fn shim_sha2_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // Plan 212 Phase 2.3: Mime Guess Pure Function Shim
 // ============================================================================
 
-
 // Plan 240: Instant opaque shims for std::time::Instant
-
-
 
 // ============================================================================
 // Plan 442 A5: one-shot scheduler primitives (set_timeout / clear_timeout)
 // ============================================================================
-
-
 
 // ============================================================================
 // Plan 442 B-support: web-platform globals on the VM render target
 // (musk corpus runs single-source in both render modes)
 // ============================================================================
 
-
-
-
-
-
-
 // Plan 442 Phase B: `dom.*` / `location.reload()` web globals for the VM
 // target. The iced renderer is dark-fixed, so prefers_dark reports true and
 // set_dark/set_css_var are recorded no-ops; focus/click/reload are desktop
 // stubs; open_url really opens the OS browser. copy_text is routed by the
 // codegen to auto.clipboard.set_text (Plan 418) and has no shim here.
-
-
-
-
 
 /// PLAN-095 T-04: `ui.focus(target_key)` 请求槽（进程级，renderer update
 /// 轮询消费）。native 无 bridge 状态写面——经全局槽递交，命中/缺失结果由
@@ -3372,10 +3087,6 @@ pub fn take_ui_focus_request() -> Option<String> {
         .ok()
         .and_then(|mut slot| slot.take())
 }
-
-
-
-
 
 // Plan 240: File I/O opaque shims
 
@@ -3400,20 +3111,11 @@ fn pop_string(task: &mut AutoTask, vm: &AutoVM) -> String {
     }
 }
 
-
-
-
-
 // Plan 240: OnceCell opaque shims using RustStdlibObject wrapping Option<String>
-
-
-
 
 // ============================================================================
 // Plan 250: Stdlib Enhancement — New Native Shims
 // ============================================================================
-
-
 
 // --- Result shims (2760-2766) ---
 // Result<T,E> is represented as a tagged i32:
@@ -3497,59 +3199,21 @@ pub fn shim_result_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 
 // --- List Reverse (2770) ---
 
-
 // --- Random convenience (2780-2783) ---
-
-
-
-
 
 // --- DateTime extended (2790-2792) ---
 // These use the existing chrono_opaque infrastructure from stdlib.rs
 
-
-
-
 // --- CSV (2800-2803) ---
 // CSV functions return JSON strings, matching the pattern used by file.walk etc.
 
-
-
-
-
 // --- Hashing (2810-2813) ---
-
-
-
-
-
-
-
-
 
 // --- Test assertions (2820-2825) ---
 
-
-
-
-
-
-
 // --- Format (2830-2832) ---
 
-
-
-
 // --- FS extended (2840-2847) ---
-
-
-
-
-
-
-
-
-
 
 // ============================================================================
 // Plan 419: 消费型 pop(死区结算的补盲)
@@ -3619,13 +3283,6 @@ impl Drop for StakeGuard<'_> {
 // Plan 419: 引用计数诊断 natives(rc_stats 的脚本侧断言通道)
 // ============================================================================
 
-
-
-
-
-
-
-
 /// Simple recursive directory walker.
 fn walkdir_recursive(dir: &str) -> Result<Vec<String>, std::io::Error> {
     let mut result = Vec::new();
@@ -3644,7 +3301,6 @@ fn walkdir_recursive(dir: &str) -> Result<Vec<String>, std::io::Error> {
 }
 
 // --- FS more (2860-2865) ---
-
 
 /// Recursive directory walker returning ALL paths (files + dirs).
 fn walkdir_all(dir: &str) -> Result<Vec<String>, std::io::Error> {
@@ -3724,9 +3380,6 @@ pub fn fs_tree_walk(dir: &std::path::Path, root: &std::path::Path, depth: usize,
     }
 }
 
-
-
-
 fn copy_recursive(src: &str, dst: &str) -> Result<(), std::io::Error> {
     let src_path = std::path::Path::new(src);
     if src_path.is_dir() {
@@ -3744,30 +3397,15 @@ fn copy_recursive(src: &str, dst: &str) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-
-
-
 // --- Hash extended (2814-2816) ---
-
-
-
-
 
 // --- Random type (2870-2874) ---
 
-
-
-
-
-
 // --- Fmt (2752) ---
-
 
 // --- Cmp (2880) ---
 
-
 // --- DateTime cmp (2794) ---
-
 
 fn get_datetime_timestamp(vm: &AutoVM, handle: u64) -> i64 {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;

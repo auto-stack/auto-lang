@@ -116,28 +116,6 @@ pub mod vm;
 // Using OnceLock to ensure thread-safe lazy initialization
 static GLOBAL_RT: OnceLock<Arc<tokio::runtime::Runtime>> = OnceLock::new();
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 impl std::fmt::Display for StagedRunFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.error)
@@ -155,19 +133,6 @@ thread_local! {
     static LAST_RUN_TRAP_CODE: std::cell::RefCell<Option<&'static str>> =
         const { std::cell::RefCell::new(None) };
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 pub async fn execute_autovm(
     code: &str,
@@ -193,8 +158,6 @@ pub async fn execute_autovm(
 /// globals): random instructions got their bytes rewritten, producing wrong
 /// hashes. The walker below decodes instruction lengths precisely.
 
-
-
 // Plan 091 DEPRECATED: Universe removed
 // pub fn parse_with_scope(code: &str, scope: Rc<RefCell<Universe>>) -> AutoResult<ast::Code> {
 //     let mut parser = Parser::from(code);
@@ -211,11 +174,6 @@ pub async fn execute_autovm(
 
 /// Check if source code contains UI keywords (widget/app).
 
-
-
-
-
-
 /// PLAN-649 SD-01 (contract Q5): candidate path forms for a dotted use
 /// module — the literal dot→separator conversion first, then hyphen variants
 /// of underscore segments. bp packages are kebab-case on disk
@@ -225,32 +183,13 @@ pub async fn execute_autovm(
 /// Variant combinations enumerate per eligible segment in segment order and
 /// cap at 4 (real bp paths carry 1-2 eligible segments; the cap only bounds
 
-
-
-
-
-
-
-
-
-
-
 /// Transpile AutoLang file to C
 ///
 /// **Plan 091**: Now uses CompileSession internally (no Universe dependency)
 
-
-
-
-
-
 inventory::collect!(UiCompatInstaller);
 
-
 pub mod heavy_gate;
-
-
-
 
 // ---- 根别名（原 auto-lang 根 pub use，类型身份不变） ----
 pub use crate::error::{AutoError, AutoResult};
@@ -865,8 +804,6 @@ pub async fn execute_autovm_with_deadline_and_input(
     Ok((result, get_stdout(), bytecode_lines, bytecode_meta))
 }
 
-
-
 /// Extract and format the result value from a VM task after execution.
 /// Plan 225: Shared between execute_autovm and debug sessions.
 pub async fn extract_autovm_result(
@@ -1104,16 +1041,6 @@ pub async fn extract_autovm_result(
 
 // run_with_errors() removed in Plan 091 - use run() with built-in error recovery
 
-
-
-
-
-
-
-
-
-
-
 // ---- T-02 终批补充 ----
 pub(crate) const AUTO_LIB_FILES: &[&str] = &[
     // plan-431 E1:AAVM v1 归档路径(v2 由 432 写入 packages/aavm/lib/,runner 见 AUTO_LIB_FILES_V2)
@@ -1131,16 +1058,6 @@ pub(crate) const AUTO_LIB_FILES: &[&str] = &[
     "packages/aavm/lib-legacy/eval.at",
 ];
 
-
-
-
-
-
-
-
-
-
-
 // ---- T-02 补：ABT 运行入口（vm/abt 测试支持）----
 /// Plan 226 Phase 6: Run ABT text directly and return captured stdout.
 ///
@@ -1157,7 +1074,6 @@ pub async fn run_abt(abt_text: &str) -> AutoResult<String> {
 
 // ---- PLAN-814 T-03：store 扫描辅助下沉（原 auto-lang lib.rs 根项）----
 
-
 // Plan 351: thread-local for passing store composable files out-of-band
 // (avoids changing the return type of ui_build_* functions). PLAN-814 T-03：
 // 单源在此（UI 编译器 api.rs 扫描消费）；auto-lang 旧路径经再导出保持。
@@ -1165,7 +1081,6 @@ thread_local! {
     pub static STORE_EXTRA_FILES: std::cell::RefCell<Vec<(String, String)>> =
         std::cell::RefCell::new(Vec::new());
 }
-
 
 // PLAN-664 U-4：use 导入两类静默死面的编译期诊断汇聚点（P-15 模块解析
 // 失败 / P-16 导入符号与 model 字段撞名）。双出口：stderr 即时可见，
@@ -1175,8 +1090,6 @@ thread_local! {
 thread_local! {
     static USE_DIAGS: std::cell::RefCell<Vec<String>> = std::cell::RefCell::new(Vec::new());
 }
-
-
 
 // ============================================================================
 // Plan 260/327/746：#[test] 执行入口族（PLAN-814 T-06 自 auto-lang 上层
@@ -1351,7 +1264,6 @@ async fn test_code_with_options(
 
     Ok(result)
 }
-
 
 // ---- PLAN-843 结构拆分：入口/旗标分离（机制在子模块，crate 根保再导出） ----
 mod entry;

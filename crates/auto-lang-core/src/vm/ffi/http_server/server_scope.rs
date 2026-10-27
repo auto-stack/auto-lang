@@ -57,7 +57,9 @@ pub(super) fn life_permits() -> &'static std::sync::Arc<tokio::sync::Semaphore> 
             .lock()
             .unwrap()
             .take()
-            .unwrap_or_else(|| super::super::http_transport::TransportConfig::from_env().queue_capacity);
+            .unwrap_or_else(|| {
+                super::super::http_transport::TransportConfig::from_env().queue_capacity
+            });
         std::sync::Arc::new(tokio::sync::Semaphore::new(cap))
     })
 }
@@ -228,7 +230,11 @@ pub(super) fn placeholder_reply() -> ApiReply {
 
 /// 按返回 future 终态编组（Ready → 终值；Failed/缺失 → null；Pending →
 /// 继续等）。
-pub(super) fn probe_return_future(vm: &std::rc::Rc<AutoVM>, p: &mut ParkedRequest, fid: u32) -> ParkedResume {
+pub(super) fn probe_return_future(
+    vm: &std::rc::Rc<AutoVM>,
+    p: &mut ParkedRequest,
+    fid: u32,
+) -> ParkedResume {
     let Some(fut) = vm.futures.get(&fid) else {
         let reply = final_value_reply(vm, &p.ctx, None);
         vm.remove_task(p.task_id);
@@ -364,7 +370,10 @@ pub(super) fn wake_sse_generator(vm: &crate::vm::engine::AutoVM, iterator_id: u3
 
 /// PLAN-707 T-05（D-6）：读取 generator 任务的等待凭据（cooperative sleep
 /// 之外的凭据化等待源）——外部流 id 或外部 future id。
-pub(super) fn generator_wait_credential(vm: &crate::vm::engine::AutoVM, iterator_id: u32) -> GeneratorWait {
+pub(super) fn generator_wait_credential(
+    vm: &crate::vm::engine::AutoVM,
+    iterator_id: u32,
+) -> GeneratorWait {
     use crate::vm::engine::Iterator;
     let task_id = match vm.iterators.get(&iterator_id) {
         Some(state) => match &*state {

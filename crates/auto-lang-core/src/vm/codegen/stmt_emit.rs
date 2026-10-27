@@ -4115,5 +4115,4 @@ impl Codegen {
         // so the runtime arg-count byte is emitted.
         self.register_py_object_builtins();
     }
-
 }

@@ -2567,15 +2567,15 @@ mod plan423_p5_tests {
 }
 
 // ---- PLAN-843 结构拆分：语法族主题模块（原单文件热点，纯搬移） ----
-mod expr_emit;
-mod expr_containers;
-mod expr_ident;
-mod expr_dot_index;
-mod expr_ops;
-mod expr_calls;
-mod expr_control;
 mod expr_async;
+mod expr_calls;
+mod expr_containers;
+mod expr_control;
+mod expr_dot_index;
+mod expr_emit;
 mod expr_fallback;
+mod expr_ident;
+mod expr_ops;
 
 mod fn_emit;
 mod stmt_emit;

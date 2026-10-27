@@ -14,8 +14,6 @@
 use std::io::{BufRead, Read, Write};
 use std::net::TcpListener;
 
-
-
 // ============================================================================
 // PLAN-669: #[api] handler 形参签名侧信道
 // ============================================================================
@@ -26,12 +24,9 @@ use std::net::TcpListener;
 // （clear_api_param_sigs），e2e 隔离经 clear_http_routes 连带清空。
 // 条目缺失（legacy 生产者）→ 服务侧回退旧位序装配，行为不变。
 
-
 static API_PARAM_SIGS: std::sync::LazyLock<
     std::sync::Mutex<std::collections::HashMap<String, Vec<ApiParamSig>>>,
 > = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-
-
 
 /// PLAN-698 T-02/SD-02: #[api] fn 返回类型显示串侧信道（与 API_PARAM_SIGS
 /// 同生命周期模型）。SSE publisher 臂据此判 has_sse（任一 ~Stream 端点）
@@ -39,7 +34,6 @@ static API_PARAM_SIGS: std::sync::LazyLock<
 static API_RETURN_TYPES: std::sync::LazyLock<
     std::sync::Mutex<std::collections::HashMap<String, String>>,
 > = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-
 
 /// PLAN-776 T-06：用户同名遮蔽集——返回类型裸名命中编译单元类型声明
 ///（struct/type alias/enum，经 TypeStore）时登记。VM 编组门消费
@@ -49,9 +43,6 @@ static API_RETURN_SHADOWED: std::sync::LazyLock<
     std::sync::Mutex<std::collections::HashSet<String>>,
 > = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
 
-
-
-
 /// PLAN-705 T-04/SD-01: 声明 `~T`（Future<T>）返回的函数名集——HTTP 编组
 /// 阶段判定"返回值可能是 future bits"的**元数据门**（禁止把普通 int 的
 /// 位模式猜成 future ID 后误消费；AC-01 普通 int 反例由此挡住）。对全部
@@ -59,7 +50,6 @@ static API_RETURN_SHADOWED: std::sync::LazyLock<
 /// 依此判定；closure 经 func_addr → exports 反查名，同 resolve_params）。
 static API_ASYNC_RETURNS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
-
 
 /// 编组期判定：该函数（或 fn-ref closure 反查出的函数）声明 `~T` 返回。
 pub(crate) fn fn_is_api_async(fn_name: &str) -> bool {
@@ -69,15 +59,6 @@ pub(crate) fn fn_is_api_async(fn_name: &str) -> bool {
         .map(|t| t.contains(fn_name))
         .unwrap_or(false)
 }
-
-
-
-
-
-
-
-
-
 
 /// Plan 346 B6: process-wide rate limiter (fixed window per client IP) and
 /// request-id minting for `dispatch_api_request` (PLAN-699: the legacy
@@ -95,9 +76,6 @@ static RATE_BUCKETS: std::sync::Mutex<Option<std::collections::HashMap<String, (
 static REQ_ID_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 // ── Plan 346 5a (B6 multipart): server-side multipart/form-data parsing ──
-
-
-
 
 /// PLAN-730 T-07：legacy 落盘记录（files JSON 项 + provisional 清理路径）。
 pub(crate) struct LegacyStoredFile {
@@ -145,7 +123,6 @@ pub(crate) fn legacy_store_files(
     Ok(stored)
 }
 
-
 /// PLAN-730 T-07：宿主落盘结果 → files JSON 项（历史形状逐字节保持）。
 pub(crate) fn multipart_files_json(stored: &[LegacyStoredFile]) -> String {
     stored
@@ -168,17 +145,6 @@ pub(crate) fn multipart_handler_json(fields: &str, files: &str) -> String {
     format!("{{\"fields\":{{{}}},\"files\":[{}]}}", fields, files)
 }
 
-
-
-
-
-
-
-
-
-
-
-
 /// Escape a string as a JSON string literal (with surrounding quotes).
 pub(crate) fn json_escape_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
@@ -199,7 +165,6 @@ pub(crate) fn json_escape_string(s: &str) -> String {
     out.push('"');
     out
 }
-
 
 // =============================================================================
 // PLAN-755 T-02/R2（P755-R2-01）：e2e 启动结果有界上报共享核心
@@ -3013,16 +2978,9 @@ fn ping() str { "pong" }
     }
 }
 
-
-
 // ============================================================================
 // PLAN-699 T-02: owned request/reply bridge + VM-owner dispatch core
 // ============================================================================
-
-
-
-
-
 
 /// CORS response headers as typed pairs (the string block in `cors_headers`
 /// stays for the sync stdnet server's string writer).
@@ -3073,8 +3031,6 @@ pub(crate) fn compute_ws_accept(key: &str) -> String {
 /// 关闭入口；headless 测试的确定性注入路径——真实 Ctrl+C 证据范围见 SD-01）。
 static SERVICE_SHUTDOWN_TX: std::sync::Mutex<Option<tokio::sync::watch::Sender<bool>>> =
     std::sync::Mutex::new(None);
-
-
 
 /// PLAN-736 T-05/AC-02/05：服务控制面（`/__auto/*`，装配期与业务同名路由
 /// 冲突=启动诊断）。live/ready 开放（身份最小体）；snapshot/shutdown 仅
@@ -3159,11 +3115,6 @@ pub(crate) fn handle_service_control_path(
 static SERVE_FATAL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 /// PLAN-736 AC-02: 最近一次 serve 成功 bind 的真实地址（port=0 解析值）。
 static SERVE_BOUND_ADDR: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
-
-
-
-
-
 
 pub async fn serve_async(vm: std::rc::Rc<crate::vm::engine::AutoVM>, addr: &str) {
     // PLAN-699 T-03: Axum/Hyper HTTP/1.1 transport (Design 33 阶段 B). The VM
@@ -3455,8 +3406,6 @@ async fn serve_with(
     eprintln!("[HTTP] VM owner loop exited (port released)");
 }
 
-
-
 /// ============================================================================
 /// PLAN-705 T-04/SD-01: 段驱动的 owner dispatch——可 park 的请求状态机
 /// ============================================================================
@@ -3474,10 +3423,6 @@ async fn serve_with(
 /// 跨线程仍只有 owned `ApiRequest`/`ApiReply`。单执行段顺序执行、跨
 /// await 非原子事务（SD-01 契约：副作用不因取消/交错回滚）。
 use crate::vm::engine::{AutoVM, ParkedSegment, ParkedWait, SegmentOutcome};
-
-
-
-
 
 /// 段入口的产出：回复已发出（reply_tx 已消费），或请求 parked。
 pub(crate) enum DispatchOutcome {
@@ -3718,36 +3663,12 @@ pub(crate) fn dispatch_api_request_segment(
     advance_dispatch(vm, ctx, 0, Some(reply_tx))
 }
 
-
-
 /// PLAN-730 T-07：legacy 落盘结果表（op_id → Option<Result>；None=Pending）。
 lazy_static::lazy_static! {
     static ref LEGACY_STORE_RESULTS: std::sync::Mutex<
         std::collections::HashMap<u64, Option<Result<(Vec<String>, String), String>>>,
     > = std::sync::Mutex::new(std::collections::HashMap::new());
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // ============================================================================
 // PLAN-705 T-05: 请求作用域与生命期许可（queued+running+parked 总上限）
@@ -3765,8 +3686,6 @@ pub(crate) const SCOPE_RUNNING: u8 = 1;
 pub(crate) const SCOPE_PARKED: u8 = 2;
 pub(crate) const SCOPE_DONE: u8 = 3;
 pub(crate) const SCOPE_CANCELLED: u8 = 4;
-
-
 
 lazy_static::lazy_static! {
     static ref REQUEST_SCOPES: std::sync::Mutex<std::collections::HashMap<u64, std::sync::Arc<RequestScope>>> =
@@ -3787,16 +3706,10 @@ pub(crate) fn set_life_permit_capacity_for_test(cap: usize) {
     *TEST_PERMIT_CAPACITY.lock().unwrap() = Some(cap);
 }
 
-
-
-
-
 /// 正常完成（回复送达非 SSE / SSE 流结束）。
 pub(crate) fn complete_scope(scope: &RequestScope) {
     finalize_scope(scope, SCOPE_DONE);
 }
-
-
 
 /// 按 id 查 scope（owner 侧）。
 pub(crate) fn lookup_scope(id: u64) -> Option<std::sync::Arc<RequestScope>> {
@@ -3852,7 +3765,6 @@ thread_local! {
     static CURRENT_SCOPE_ID: std::cell::Cell<Option<u64>> =
         const { std::cell::Cell::new(None) };
 }
-
 
 impl Drop for ScopeGuard {
     fn drop(&mut self) {
@@ -3977,7 +3889,6 @@ pub(crate) fn register_scope_upload(upload_id: u64) {
         }
     }
 }
-
 
 /// 资源基线探针（测试）：可用生命期许可数。
 #[cfg(test)]
@@ -4270,9 +4181,6 @@ pub(crate) fn resume_parked_request(
     }
 }
 
-
-
-
 /// 事件驱动的就绪扫描：按 park 顺序恢复全部就绪条目（公平、零轮询——
 /// 扫描只发生在完成通知/事件唤醒后）。
 pub(crate) fn drain_ready_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<ParkedRequest>) {
@@ -4330,8 +4238,6 @@ pub(crate) fn drain_ready_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<Park
     }
 }
 
-
-
 /// Standard headers of a JSON `#[api]` reply (content-type + CORS + request id).
 fn json_reply_headers(request_id: &str) -> Vec<(String, String)> {
     let mut headers = vec![("Content-Type".to_string(), "application/json".to_string())];
@@ -4340,13 +4246,6 @@ fn json_reply_headers(request_id: &str) -> Vec<(String, String)> {
     headers
 }
 
-
-
-
-
-
-
-
 /// 测试访问器：next_sse_generator_value（私有 async）驱动。
 pub async fn next_sse_generator_value_for_test(
     vm: &std::rc::Rc<crate::vm::engine::AutoVM>,
@@ -4354,7 +4253,6 @@ pub async fn next_sse_generator_value_for_test(
 ) -> Option<u64> {
     next_sse_generator_value(vm, iterator_id).await
 }
-
 
 async fn next_sse_generator_value(
     vm: &std::rc::Rc<crate::vm::engine::AutoVM>,
@@ -4518,12 +4416,6 @@ pub(crate) fn encode_ws_text_frame(text: &str) -> Vec<u8> {
 // (Plan 317 Phase 11 opt-in — async site passes Some). Sites whose fn
 // has no API_PARAM_SIGS entry keep the legacy positional behavior unchanged.
 
-
-
-
-
-
-
 /// Bind `#[api]` handler args by name onto the task stack. Returns the
 /// number of args pushed. `body_json` is the parsed request body (when
 /// parseable); `whole_body` the body-source string (multipart fields JSON,
@@ -4639,7 +4531,6 @@ pub(crate) fn bind_api_args_by_name(
 /// receives `{"cookies":...,"auth":...}`). Case-insensitive.
 const META_PARAM_NAMES: [&str; 4] = ["meta", "metadata", "req", "request"];
 
-
 /// PLAN-669 sync-serve sites (serve_blocking_stdnet, run_http_server_blocking,
 /// shim_http_server_listen): by-name bind when the fn's sigs are published,
 /// else the legacy positional convention. Err → caller writes a 400/500
@@ -4692,10 +4583,6 @@ pub(crate) fn bind_api_args_or_legacy(
         Ok(n_args)
     }
 }
-
-
-
-
 
 /// PLAN-698 T-02/SD-02: POST 广播臂单测——事件 payload 形态与生成 Axum
 /// 侧（api_gen broadcast_event_name + events::broadcast）逐字段对拍。

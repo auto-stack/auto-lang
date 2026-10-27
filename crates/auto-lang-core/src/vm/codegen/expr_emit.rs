@@ -88,7 +88,11 @@ impl Codegen {
     /// Plan 060 M3:裸 #[api] 调用 → auto.host.call(name, args_json) 直调
     /// 宿主桥(ash-runner 注册),响应 JSON 经 auto.json.to_value 落栈。
     /// 参数序列化与 HTTP body 同构;返回类型映射与 HTTP 版一致。
-    pub(super) fn emit_api_host_call(&mut self, api: &ApiCallInfo, call: &crate::ast::Call) -> AutoResult<()> {
+    pub(super) fn emit_api_host_call(
+        &mut self,
+        api: &ApiCallInfo,
+        call: &crate::ast::Call,
+    ) -> AutoResult<()> {
         let arg_exprs: Vec<Expr> = call.args.args.iter().map(|a| a.get_expr()).collect();
 
         // 1. 桥函数名(= api.at 契约函数裸名;ash-runner 按端点名注册。
@@ -152,7 +156,11 @@ impl Codegen {
         Ok(())
     }
 
-    pub(super) fn emit_api_http_call(&mut self, api: &ApiCallInfo, call: &crate::ast::Call) -> AutoResult<()> {
+    pub(super) fn emit_api_http_call(
+        &mut self,
+        api: &ApiCallInfo,
+        call: &crate::ast::Call,
+    ) -> AutoResult<()> {
         // Collect positional arg expressions in order.
         let arg_exprs: Vec<Expr> = call.args.args.iter().map(|a| a.get_expr()).collect();
 
@@ -1184,7 +1192,11 @@ impl Codegen {
     /// - the bound names a spec known to the TypeStore;
     /// - the argument's TypeDecl is resolvable and lists neither the spec
     ///   (`type X as Spec`) nor a generic spec impl for it.
-    pub(super) fn check_generic_call_bounds(&self, callee: &str, args: &[crate::ast::Arg]) -> AutoResult<()> {
+    pub(super) fn check_generic_call_bounds(
+        &self,
+        callee: &str,
+        args: &[crate::ast::Arg],
+    ) -> AutoResult<()> {
         let Some(bounds) = self.fn_type_param_bounds.get(callee) else {
             return Ok(());
         };
@@ -1663,5 +1675,4 @@ impl Codegen {
     }
 
     // ========== Plan 073: Instance Method Call Support ==========
-
 }

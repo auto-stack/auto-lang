@@ -466,7 +466,6 @@ impl AutoVM {
         }
     }
 
-
     pub(super) fn nv_int_as_i64(nv: auto_val::NanoValue) -> i64 {
         if auto_val::is_i64(nv) {
             auto_val::decode_i64(nv)
@@ -717,5 +716,4 @@ impl AutoVM {
         let strings = self.strings.read().unwrap();
         strings.get(index as usize).cloned()
     }
-
 }

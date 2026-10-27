@@ -1124,5 +1124,4 @@ impl<'a> Parser<'a> {
         let mut bridge = crate::parser_bridge::ParserBridge::new(self);
         crate::scene_grammar::looks_like_scene_decl(&mut bridge)
     }
-
 }

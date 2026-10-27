@@ -4589,5 +4589,4 @@ impl RustTrans {
             _ => false,
         }
     }
-
 }

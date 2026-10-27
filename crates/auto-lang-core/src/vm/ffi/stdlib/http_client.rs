@@ -611,7 +611,11 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 
         // Route matching (PLAN-669: shared match_route — query-string split
         // + percent-decode, superseding the local find_route).
-        let route_match = match super::super::http_server::match_route(&routes, &req_method, &req_path) {
+        let route_match = match super::super::http_server::match_route(
+            &routes,
+            &req_method,
+            &req_path,
+        ) {
             Some(m) => m,
             None => {
                 let resp = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\nConnection: close\r\n\r\nNot Found";
@@ -719,8 +723,10 @@ pub fn shim_http_response_status(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     // 被销成 0，释放返回槽后全局合法 Response 被回收触发 UAF）。读取
     // 期间份额未动（release 只在 Drop）；错误早退同样恰一份。
     let stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
-    super::super::http_return_resource::mutate_response_snapshot(vm, res_nv, |s| s.status = code as u16)
-        .ok_or_else(|| {
+    super::super::http_return_resource::mutate_response_snapshot(vm, res_nv, |s| {
+        s.status = code as u16
+    })
+    .ok_or_else(|| {
         VMError::RuntimeError("response_status: expected a Response credential".into())
     })?;
     drop(stake);

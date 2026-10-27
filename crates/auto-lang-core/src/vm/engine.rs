@@ -3289,10 +3289,10 @@ mod tests_err_value_channel {
 // ---- PLAN-843 结构拆分：语法族主题模块（原单文件热点，纯搬移） ----
 mod futures_timers;
 mod heap;
-mod tasks;
-mod values;
-mod ops_construct;
-mod ops_collections;
 mod ops_arith;
 mod ops_calls;
+mod ops_collections;
+mod ops_construct;
 mod ops_flow;
+mod tasks;
+mod values;

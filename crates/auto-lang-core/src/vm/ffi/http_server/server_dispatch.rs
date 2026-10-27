@@ -587,7 +587,10 @@ pub(super) fn advance_dispatch(
 
 /// PLAN-730 T-07：落盘完成后的续跑（middleware 已在 park 前全过——从链尾
 /// 直达 handler）。
-pub(super) fn advance_after_legacy_store(vm: &std::rc::Rc<AutoVM>, p: &mut ParkedRequest) -> ParkedResume {
+pub(super) fn advance_after_legacy_store(
+    vm: &std::rc::Rc<AutoVM>,
+    p: &mut ParkedRequest,
+) -> ParkedResume {
     let ctx = std::mem::replace(&mut p.ctx, placeholder_ctx());
     match start_handler(vm, ctx, p.reply_tx.take()) {
         DispatchOutcome::Replied => ParkedResume::Consumed,

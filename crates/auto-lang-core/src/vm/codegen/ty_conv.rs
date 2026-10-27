@@ -1345,7 +1345,11 @@ impl Codegen {
     /// First checks the var_types map (tracked during let declarations)
     /// Plan 193: Infer precise source type for .to() conversion opcode selection.
     /// Uses var_types for identifiers, AST node type for literals.
-    pub(super) fn infer_expr_type_for_conv(&self, expr: &Expr, runtime_type: ObjectType) -> ConvSrcType {
+    pub(super) fn infer_expr_type_for_conv(
+        &self,
+        expr: &Expr,
+        runtime_type: ObjectType,
+    ) -> ConvSrcType {
         match expr {
             Expr::I64(_) => ConvSrcType::I64,
             Expr::U64(_) => ConvSrcType::U64,
@@ -1572,5 +1576,4 @@ impl Codegen {
 
         None
     }
-
 }
