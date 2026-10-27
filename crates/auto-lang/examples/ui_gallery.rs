@@ -8,8 +8,8 @@
 // Run with:
 //   cargo run -p auto-lang --example ui_gallery --features ui-iced
 
-use auto_lang::ui::{Component, View};
-use auto_lang::ui::view::{AccordionItem, NavigationRailItem, SidebarPosition};
+use auto_ui_runtime::ui::{Component, View};
+use auto_ui_runtime::ui::view::{AccordionItem, NavigationRailItem, SidebarPosition};
 
 #[derive(Debug)]
 struct GalleryApp {
@@ -554,10 +554,12 @@ impl Default for GalleryApp {
     }
 }
 
-fn main() -> auto_lang::ui::AppResult<()> {
+fn main() -> auto_ui_runtime::ui::AppResult<()> {
+    auto_lang_core::set_ui_host_install_hook(auto_ui_runtime::install_ui_host_capabilities);
+    auto_ui_runtime::install_ui_host_capabilities();
     #[cfg(feature = "ui-iced")]
     {
-        return auto_lang::ui::iced::run_app::<GalleryApp>();
+        return auto_ui_runtime::ui::iced::run_app::<GalleryApp>();
     }
 
 

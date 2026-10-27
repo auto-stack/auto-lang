@@ -8,11 +8,11 @@
 //! 运行：
 //!   cargo run --example ui_popover_probe2 --features ui-iced
 
-use auto_lang::ui::iced::renderer::{
+use auto_ui_runtime::ui::iced::renderer::{
     IntoIcedElement, INTER_FONT, INTER_FONT_MEDIUM, INTER_FONT_REGULAR, INTER_FONT_SEMIBOLD,
 };
-use auto_lang::ui::view::{PopoverAnchor, PopoverPlacement};
-use auto_lang::ui::{Component, View};
+use auto_ui_runtime::ui::view::{PopoverAnchor, PopoverPlacement};
+use auto_ui_runtime::ui::{Component, View};
 
 #[derive(Debug, Default)]
 struct Probe {
@@ -110,7 +110,9 @@ fn view(state: &Probe, _id: iced::window::Id) -> iced::Element<'_, DM> {
     el.map(|m| DM::App(1, m))
 }
 
-fn main() -> auto_lang::ui::AppResult<()> {
+fn main() -> auto_ui_runtime::ui::AppResult<()> {
+    auto_lang_core::set_ui_host_install_hook(auto_ui_runtime::install_ui_host_capabilities);
+    auto_ui_runtime::install_ui_host_capabilities();
     #[cfg(feature = "ui-iced")]
     {
         eprintln!("[probe-b] daemon+DM-wrapped popover probe starting");

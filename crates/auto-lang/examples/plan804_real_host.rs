@@ -13,6 +13,8 @@
 //! 发起方 on_dnd_finished → file.write_text 落盘 + Process.exit(0)。
 
 fn main() {
+    auto_lang_core::set_ui_host_install_hook(auto_ui_runtime::install_ui_host_capabilities);
+    auto_ui_runtime::install_ui_host_capabilities();
     // 反控钩子（仅验收设施，生产语义零改动）：STALL_MS=run 前停滞
     // （启动超时反控——测试窗口等待应超时并回收本进程）；NO_DRAG=
     // StartDrag handler 空转不发起会话（交付失败反控——测试 finish
@@ -101,7 +103,7 @@ fn main() {
     // （截图+零 CALL_HANDLER）：component[0] 被 60% 尺寸+48px 级联的后窗
     // 几乎全遮挡，充满窗的按钮零命中。完成事件锚定按发起者身份
     // （dispatch 环置位），与槽序/z 序无关——交换仅为可点性。
-    let out = auto_lang::ui::iced::renderer::run_dynamic_desktop(vec![other, initiator]);
+    let out = auto_ui_runtime::ui::iced::renderer::run_dynamic_desktop(vec![other, initiator]);
     eprintln!("[plan804-real-host] run out: {out:?}");
     std::process::exit(match out {
         Ok(_) => 0,

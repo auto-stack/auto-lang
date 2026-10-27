@@ -5,7 +5,7 @@
 // Run with:
 //   cargo run --example ui_counter --features ui-iced
 
-use auto_lang::ui::{Component, View};
+use auto_ui_runtime::ui::{Component, View};
 
 #[derive(Debug, Default)]
 struct Counter {
@@ -42,11 +42,13 @@ impl Component for Counter {
 // Unified main() — Plan 365 W1: uses the HostBackend entry point.
 // This replaces the former hand-written cfg-ladder. The backend is selected
 // by Cargo feature; see HostBackend::default_for_features() for priority.
-fn main() -> auto_lang::ui::AppResult<()> {
+fn main() -> auto_ui_runtime::ui::AppResult<()> {
+    auto_lang_core::set_ui_host_install_hook(auto_ui_runtime::install_ui_host_capabilities);
+    auto_ui_runtime::install_ui_host_capabilities();
     #[cfg(feature = "ui-iced")]
     {
         println!("🎨 Running with Iced backend");
-        return auto_lang::ui::HostBackend::Iced.run::<Counter>();
+        return auto_ui_runtime::ui::HostBackend::Iced.run::<Counter>();
     }
 
 
@@ -55,7 +57,7 @@ fn main() -> auto_lang::ui::AppResult<()> {
         Err(
             "❌ No backend enabled!\n\n\
              Please run with a backend feature:\n\
-             • cargo run --example ui_counter --features ui-iced\n\
+             • cargo run --example ui_counter --features ui-iced\n"
                 .into(),
         )
     }

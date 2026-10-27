@@ -11,9 +11,9 @@ fn main() {
         std::process::exit(2);
     }
     let mode = match args.get(3).map(|s| s.as_str()) {
-        Some("plain") => auto_lang::ui_gen::vue::VueMode::Plain,
-        Some("library") => auto_lang::ui_gen::vue::VueMode::Library,
-        _ => auto_lang::ui_gen::vue::VueMode::Shadcn,
+        Some("plain") => auto_ui_compiler::ui_gen::vue::VueMode::Plain,
+        Some("library") => auto_ui_compiler::ui_gen::vue::VueMode::Library,
+        _ => auto_ui_compiler::ui_gen::vue::VueMode::Shadcn,
     };
     let code = std::fs::read_to_string(&args[1]).expect("read .at");
     let session = auto_parser_api::session::CompilerSession::ui();
@@ -29,9 +29,9 @@ fn main() {
             _ => None,
         })
         .expect("widget decl");
-    let widget = auto_lang::aura::extract_widget_from_decl(decl).expect("extract");
-    use auto_lang::ui_gen::BackendGenerator;
-    let sfc = auto_lang::ui_gen::VueGenerator::new()
+    let widget = auto_ui_compiler::aura::extract_widget_from_decl(decl).expect("extract");
+    use auto_ui_compiler::ui_gen::BackendGenerator;
+    let sfc = auto_ui_compiler::ui_gen::VueGenerator::new()
         .with_mode(mode)
         .generate(&widget)
         .expect("vue gen");

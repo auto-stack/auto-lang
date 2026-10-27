@@ -625,7 +625,8 @@ name = "auto-cosmic-demo"
 version = "0.1.0"
 dependencies = [
  "auto-cosmic-ports",
- "auto-lang",
+ "auto-lang-core",
+ "auto-ui-runtime",
 ]
 
 [[package]]
@@ -633,7 +634,8 @@ name = "auto-cosmic-host-libcosmic"
 version = "0.1.0"
 dependencies = [
  "auto-cosmic-ports",
- "auto-lang",
+ "auto-lang-core",
+ "auto-ui-runtime",
 ]
 
 [[package]]
@@ -873,6 +875,7 @@ dependencies = [
  "auto-diagnostics",
  "auto-lang",
  "auto-lang-core",
+ "auto-ui-compiler",
  "auto-val",
  "env_logger",
  "futures",
@@ -1049,6 +1052,7 @@ dependencies = [
  "image",
  "kamadak-exif",
  "lazy_static",
+ "libloading",
  "log",
  "miette",
  "notify",

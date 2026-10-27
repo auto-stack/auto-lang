@@ -1,7 +1,7 @@
 //! PLAN-617 T-15 门控 spike 探针（**已改建在 T-16 的引擎之上**）。
 //!
 //! 本 example 是 T-15 那轮的**门控证据件**，现在复用它来复跑同一组数字：
-//! 门控 A（libmpv 的逐帧渲染代价）改为直接使用 [`auto_lang::ui::mpv`]——
+//! 门控 A（libmpv 的逐帧渲染代价）改为直接使用 [`auto_ui_runtime::ui::mpv`]——
 //! 也就是 T-16 落地的正式引擎（解析序 / LC_NUMERIC / 符号表 / 句柄与 render
 //! context 生命周期都在那里），example 里不再重复一份 FFI 绑定。
 //! 门控 B（帧上屏代价）仍留在本文件：它测的是 wgpu 侧，属 T-17 的输入。
@@ -22,8 +22,8 @@
 
 use std::time::Instant;
 
-use auto_lang::ui::mpv::frame::FrameBuffer;
-use auto_lang::ui::mpv::{locale, MpvEngine, MpvUnavailable};
+use auto_ui_runtime::ui::mpv::frame::FrameBuffer;
+use auto_ui_runtime::ui::mpv::{locale, MpvEngine, MpvUnavailable};
 
 /// 实测计时汇总。
 #[derive(Debug, Default)]
@@ -168,13 +168,13 @@ fn render_one(
 /// `write_texture` 的目标描述子（写成自由函数而非闭包：闭包无法表达
 /// 「返回值借用入参」的生命周期关系）。
 fn tex_copy_dest(
-    tex: &iced_wgpu::wgpu::Texture,
-) -> iced_wgpu::wgpu::TexelCopyTextureInfo<'_> {
-    iced_wgpu::wgpu::TexelCopyTextureInfo {
+    tex: &auto_ui_runtime::ui::mpv::channel::wgpu_reexport::Texture,
+) -> auto_ui_runtime::ui::mpv::channel::wgpu_reexport::TexelCopyTextureInfo<'_> {
+    auto_ui_runtime::ui::mpv::channel::wgpu_reexport::TexelCopyTextureInfo {
         texture: tex,
         mip_level: 0,
-        origin: iced_wgpu::wgpu::Origin3d::ZERO,
-        aspect: iced_wgpu::wgpu::TextureAspect::All,
+        origin: auto_ui_runtime::ui::mpv::channel::wgpu_reexport::Origin3d::ZERO,
+        aspect: auto_ui_runtime::ui::mpv::channel::wgpu_reexport::TextureAspect::All,
     }
 }
 
@@ -186,7 +186,7 @@ fn tex_copy_dest(
 ///   staging 可持久映射，mpv 的 SW renderer 直接写进去，故「帧 → GPU」只剩一次
 ///   设备侧拷贝。
 fn probe_wgpu_upload() -> Result<(), String> {
-    use iced_wgpu::wgpu;
+    use auto_ui_runtime::ui::mpv::channel::wgpu_reexport as wgpu;
 
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
     let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -382,7 +382,7 @@ fn block_on<F: std::future::Future>(f: F) -> F::Output {
 
 /// 缺库时必须**优雅降级**（AC-20 的门控前置）。
 fn selfcheck() {
-    match auto_lang::ui::mpv::loader::resolve_library() {
+    match auto_ui_runtime::ui::mpv::loader::resolve_library() {
         Some(p) => println!("[selfcheck] 本机解析到 libmpv：{}", p.display()),
         None => println!(
             "[selfcheck] 本机无 libmpv（AUTO_MPV_LIB 未设且 exe 同目录无运行库）\
@@ -399,7 +399,7 @@ fn selfcheck() {
         Err(e) => println!("[selfcheck] 引擎不可用：{e}"),
     }
     // 不存在的库必须返回 Err 而不是崩。
-    match auto_lang::ui::mpv::MpvApi::load(std::path::Path::new(
+    match auto_ui_runtime::ui::mpv::MpvApi::load(std::path::Path::new(
         r"Z:\definitely\not\here\libmpv-2.dll",
     )) {
         Ok(_) => println!("[selfcheck] FAIL: 加载不存在的库竟然成功"),
@@ -408,6 +408,8 @@ fn selfcheck() {
 }
 
 fn main() {
+    auto_lang_core::set_ui_host_install_hook(auto_ui_runtime::install_ui_host_capabilities);
+    auto_ui_runtime::install_ui_host_capabilities();
     let cmd = std::env::args().nth(1).unwrap_or_else(|| "all".to_string());
     println!("=== PLAN-617 T-15 门控 spike（建于 T-16 引擎之上）| 子命令: {cmd} ===");
 

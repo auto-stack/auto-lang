@@ -13,12 +13,14 @@
 //!   AUTOUI_PANIC_PROBE=1 cargo run -p auto-lang --features ui-iced --example ui_dual_app
 //!   （在一个窗口点 "Crash"，切另一窗口继续点 "+"——应照常工作）
 
-use auto_lang::ui::iced::run_dynamic_iced_multi;
+use auto_ui_runtime::ui::iced::run_dynamic_iced_multi;
 
 // PLAN-552：459-dual-app 探针迁 examples/capability-tests/（深度 ../../../ 不变）。
 const APP_SOURCE: &str = include_str!("../../../examples/capability-tests/459-dual-app/app.at");
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    auto_lang_core::set_ui_host_install_hook(auto_ui_runtime::install_ui_host_capabilities);
+    auto_ui_runtime::install_ui_host_capabilities();
     // 方案①：同一 .at 双实例 —— 两个独立 DynamicComponent（各自 VM/store），
     // 证明会话层状态隔离；组件注册表/路由互不污染属方案②（可选加深，454）。
     let comp_a = auto_lang::build_dynamic_component(APP_SOURCE, None)?;

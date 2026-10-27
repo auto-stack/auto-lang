@@ -23,8 +23,8 @@
 //! host owns the iced::Application subscription/update loop, routing messages
 //! back to the Auto `Component::on()`.
 
-use auto_lang::ui::{Component, VNodeKind, VTree};
-use auto_lang::ui::vnode_converter::view_to_vtree;
+use auto_ui_runtime::ui::{Component, VNodeKind, VTree};
+use auto_ui_runtime::ui::vnode_converter::view_to_vtree;
 
 /// Run a `Component` under the libcosmic host (Linux only).
 ///
@@ -36,7 +36,7 @@ use auto_lang::ui::vnode_converter::view_to_vtree;
 /// iced::application launch is gated behind `libcosmic` integration which
 /// is wired when building on Linux. For now, this builds the VTree and
 /// prints a diagnostic (proving the lowering pipeline works), then returns.
-pub fn run_libcosmic<C>() -> auto_lang::ui::AppResult<()>
+pub fn run_libcosmic<C>() -> auto_ui_runtime::ui::AppResult<()>
 where
     C: Component + Default + 'static,
     C::Msg: Clone + std::fmt::Debug + Send + 'static,

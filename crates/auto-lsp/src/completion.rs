@@ -192,8 +192,8 @@ fn cursor_in_view_block(before_cursor: &str) -> bool {
 /// Plan 435 P2:docs/schema/aura.at 驱动的 UI 元素补全(330 元素,含 tier/detail)。
 /// 官方/自定义 widget 名由 workspace 补全层补充(与本层不同源)。
 fn ui_element_completions() -> Vec<CompletionItem> {
-    use auto_lang::aura::schema::{ElementCategory, ElementTier};
-    let schema = match auto_lang::aura::load_default_schema() {
+    use auto_ui_compiler::aura::schema::{ElementCategory, ElementTier};
+    let schema = match auto_ui_compiler::aura::load_default_schema() {
         Ok(s) => s,
         Err(_) => return Vec::new(),
     };

@@ -5,7 +5,7 @@
 // Run with:
 //   cargo run -p auto-lang --example ui_scroll --features ui-iced
 
-use auto_lang::ui::{Component, View};
+use auto_ui_runtime::ui::{Component, View};
 
 #[derive(Debug)]
 struct ScrollApp {
@@ -151,11 +151,13 @@ impl ScrollApp {
 }
 
 // Unified main() - works with BOTH backends!
-fn main() -> auto_lang::ui::AppResult<()> {
+fn main() -> auto_ui_runtime::ui::AppResult<()> {
+    auto_lang_core::set_ui_host_install_hook(auto_ui_runtime::install_ui_host_capabilities);
+    auto_ui_runtime::install_ui_host_capabilities();
     #[cfg(feature = "ui-iced")]
     {
         println!("Running with Iced backend");
-        return auto_lang::ui::iced::run_app::<ScrollApp>();
+        return auto_ui_runtime::ui::iced::run_app::<ScrollApp>();
     }
 
 
@@ -164,7 +166,7 @@ fn main() -> auto_lang::ui::AppResult<()> {
         Err(
             "No backend enabled!\n\n\
              Please run with a backend feature:\n\
-             \u{2022} cargo run --features ui-iced\n\
+             \u{2022} cargo run --features ui-iced\n"
                 .into(),
         )
     }

@@ -60,6 +60,8 @@ fn push(stk: iced::widget::Stack<'static, u32>, el: Element<'static, u32>, w: &W
 }
 
 fn main() {
+    auto_lang_core::set_ui_host_install_hook(auto_ui_runtime::install_ui_host_capabilities);
+    auto_ui_runtime::install_ui_host_capabilities();
     real_main();
     real_vehicle();
     r4_case();
@@ -125,8 +127,8 @@ fn run(name: &str, build: fn() -> Element<'static, u32>, same_layer: bool) {
 }
 
 // ===== PART 2: 真实 into_iced 路径重放(每击 statuses) =====
-use auto_lang::ui::iced::renderer::IntoIcedElement;
-use auto_lang::ui::view::View;
+use auto_ui_runtime::ui::iced::renderer::IntoIcedElement;
+use auto_ui_runtime::ui::view::View;
 
 fn real_view(hit: Rc<Cell<u32>>, which: u32) -> View<u32> {
     View::col()
@@ -218,7 +220,7 @@ fn real_vehicle() {
                 on_release: Some(8),
                 on_move: None,
                 logical_extent: None,
-                style: auto_lang::ui::style::Style::parse("w-full h-full").ok(),
+                style: auto_ui_runtime::ui::style::Style::parse("w-full h-full").ok(),
             },
         )
         .build();
@@ -230,11 +232,11 @@ fn real_vehicle() {
         on_click: None,
         on_context_menu: None,
         on_release: Some(8),
-        on_move: Some(auto_lang::ui::view::PointerMoveHandler::new(
+        on_move: Some(auto_ui_runtime::ui::view::PointerMoveHandler::new(
             move |_x: f32, _y: f32| 9u32,
         )),
         logical_extent: Some((600.0, 300.0)),
-        style: auto_lang::ui::style::Style::parse(
+        style: auto_ui_runtime::ui::style::Style::parse(
             "absolute z-30 top-0 left-0 w-[0px] h-[0px]",
         )
         .ok(),
@@ -350,11 +352,11 @@ fn r6_pure_fixed_geometry() {
 }
 
 fn r7_style_parse_dump() {
-    let s = auto_lang::ui::style::Style::parse(
+    let s = auto_ui_runtime::ui::style::Style::parse(
         "absolute top-[100px] left-[100px] w-[100px] h-[100px] bg-[#404040]",
     )
     .unwrap();
-    let is = auto_lang::ui::style::iced_adapter::IcedStyle::from_style(&s);
+    let is = auto_ui_runtime::ui::style::iced_adapter::IcedStyle::from_style(&s);
     println!(
         "R7 top_offset={:?} left_offset={:?} width={:?} height={:?}",
         is.top_offset, is.left_offset, is.width, is.height

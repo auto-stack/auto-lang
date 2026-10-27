@@ -10,10 +10,10 @@
 // 由 pixels.rs 测试 `native_pixels_child_two_process`（AUTO_DESKTOP_E2E
 // 实机档）build + spawn。
 
-use auto_lang::ui::component::Component;
-use auto_lang::ui::desktop_protocol::pixels;
-use auto_lang::ui::desktop_protocol::transport;
-use auto_lang::ui::view::View;
+use auto_ui_runtime::ui::component::Component;
+use auto_ui_runtime::ui::desktop_protocol::pixels;
+use auto_ui_runtime::ui::desktop_protocol::transport;
+use auto_ui_runtime::ui::view::View;
 
 const PIPE_ENV: &str = "AUTO_020_NATIVE_PIXELS_PIPE";
 
@@ -50,6 +50,8 @@ impl Component for NativeCounter {
 }
 
 fn main() {
+    auto_lang_core::set_ui_host_install_hook(auto_ui_runtime::install_ui_host_capabilities);
+    auto_ui_runtime::install_ui_host_capabilities();
     let pipe = std::env::var(PIPE_ENV).expect("env AUTO_020_NATIVE_PIXELS_PIPE");
     let end = transport::connect(&pipe, 10_000).expect("connect");
     let exit = pixels::run_independent_native_child(

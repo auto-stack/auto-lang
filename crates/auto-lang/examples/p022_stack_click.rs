@@ -1,6 +1,6 @@
 // PLAN-022 最小对照:Stack 两个绝对浮层各含一个按钮,点击打印归属。
 // 运行:cargo run -p auto-lang --example p022_stack_click --features ui-iced
-use auto_lang::ui::{Component, View};
+use auto_ui_runtime::ui::{Component, View};
 
 #[derive(Debug, Default)]
 struct StackClickApp {
@@ -56,7 +56,9 @@ impl Component for StackClickApp {
     }
 }
 
-fn main() -> auto_lang::ui::AppResult<()> {
+fn main() -> auto_ui_runtime::ui::AppResult<()> {
+    auto_lang_core::set_ui_host_install_hook(auto_ui_runtime::install_ui_host_capabilities);
+    auto_ui_runtime::install_ui_host_capabilities();
     eprintln!("stack-click probe up");
-    auto_lang::ui::iced::run_app_devtools::<StackClickApp>()
+    auto_ui_runtime::ui::iced::run_app_devtools::<StackClickApp>()
 }

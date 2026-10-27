@@ -10,8 +10,8 @@
 
 use auto_cosmic_ports::mock::{MockClockPort, MockPowerPort};
 use auto_cosmic_ports::{ClockPort, PowerPort};
-use auto_lang::ui::host::HostBackend;
-use auto_lang::ui::{Component, View};
+use auto_ui_runtime::ui::host::HostBackend;
+use auto_ui_runtime::ui::{Component, View};
 use std::sync::Arc;
 
 /// Messages the applet responds to.
@@ -59,11 +59,14 @@ impl Component for ClockBatteryApplet {
         View::Text {
             content: label,
             style: None,
+            selectable: false,
         }
     }
 }
 
-fn main() -> auto_lang::ui::AppResult<()> {
+fn main() -> auto_ui_runtime::ui::AppResult<()> {
+    auto_lang_core::set_ui_host_install_hook(auto_ui_runtime::install_ui_host_capabilities);
+    auto_ui_runtime::install_ui_host_capabilities();
     let app = ClockBatteryApplet::default();
 
     // Print initial state (proves the mock ports work on Windows).

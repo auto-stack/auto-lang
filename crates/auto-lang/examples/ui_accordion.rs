@@ -4,8 +4,8 @@
 // Run with:
 //   cargo run -p auto-lang --example ui_accordion --features ui-iced
 
-use auto_lang::ui::{Component, View};
-use auto_lang::ui::view::AccordionItem;
+use auto_ui_runtime::ui::{Component, View};
+use auto_ui_runtime::ui::view::AccordionItem;
 
 #[derive(Debug)]
 struct AccordionApp {
@@ -87,14 +87,16 @@ impl Component for AccordionApp {
     }
 }
 
-fn main() -> auto_lang::ui::AppResult<()> {
+fn main() -> auto_ui_runtime::ui::AppResult<()> {
+    auto_lang_core::set_ui_host_install_hook(auto_ui_runtime::install_ui_host_capabilities);
+    auto_ui_runtime::install_ui_host_capabilities();
     // The same code works with both backends!
     // Just change the feature flag in Cargo.toml or CLI:
     //   --features ui-iced   -> Iced backend
 
     #[cfg(feature = "ui-iced")]
     {
-        return auto_lang::ui::iced::run_app::<AccordionApp>();
+        return auto_ui_runtime::ui::iced::run_app::<AccordionApp>();
     }
 
 

@@ -7,7 +7,7 @@
 //! panic 隔离演示沿用 459：`AUTOUI_PANIC_PROBE=1`（事件名 `__panic_probe`；
 //! PLAN-552 起 459-dual-app 源位于 examples/capability-tests/）。
 
-use auto_lang::ui::iced::{run_dynamic_desktop_fullscreen, run_dynamic_desktop_with_options, DesktopOptions};
+use auto_ui_runtime::ui::iced::{run_dynamic_desktop_fullscreen, run_dynamic_desktop_with_options, DesktopOptions};
 use std::path::PathBuf;
 
 // PLAN-552：459-dual-app 探针迁 examples/capability-tests/（深度 ../../../ 不变）。
@@ -29,11 +29,13 @@ fn default_apps_dir() -> PathBuf {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    auto_lang_core::set_ui_host_install_hook(auto_ui_runtime::install_ui_host_capabilities);
+    auto_ui_runtime::install_ui_host_capabilities();
     // PLAN-042 T-02：桌面轨宿主 log crate trap——ui_desktop 入口本无 logger
     // （`auto` CLI 的 simplelog 只在 CLI 子命令进程，与本进程无涉），装环即
     // 全量收 error/warn/info；已装（未来入口变更）= 降级 `syslog!` 宏面，
     // 不强拆既有链（PLAN-042 §5.2 定案）。
-    auto_lang::ui::syslog::install_host_logger();
+    auto_ui_runtime::ui::syslog::install_host_logger();
     // PLAN-016 R7：桌面在场标记——App 可用 Env.get 探测自身是否运行在
     // 虚拟桌面内（如 file-manager 的 open_with / 系统默认程序分流）。
     // 单 app 窗口（auto run -r vm）不设此变量。

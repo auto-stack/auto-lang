@@ -6,7 +6,8 @@ description = "Plan 365 W3: libcosmic host backend (VTree → libcosmic Element)
 
 [dependencies]
 # ui-headless gives us the fallback path (headless::run_headless) on non-Linux.
-auto-lang = { path = "../../auto-lang", features = ["ui", "ui-headless"] }
+auto-lang-core = { path = "../../auto-lang-core" }
+auto-ui-runtime = { path = "../../../../auto-ui/crates/auto-ui-runtime", features = ["ui-headless"] }
 auto-cosmic-ports = { path = "../ports" }
 
 # libcosmic is Linux/Wayland-only. On Windows the `fallback` module delegates

@@ -24,14 +24,16 @@ pub mod fallback;
 ///
 /// - **Linux**: lowers `Component::view()` → VTree → libcosmic Elements and
 ///   runs a real iced/libcosmic application (Wayland citizen).
-/// - **Non-Linux (dev)**: delegates to `auto_lang::ui::headless::run_headless`
+/// - **Non-Linux (dev)**: delegates to `auto_ui_runtime::ui::headless::run_headless`
 ///   (builds the VTree in memory, no window) — so the call site works on
 ///   Windows for testing the app logic without a Wayland compositor.
-pub fn run_libcosmic<C>() -> auto_lang::ui::AppResult<()>
+pub fn run_libcosmic<C>() -> auto_ui_runtime::ui::AppResult<()>
 where
-    C: auto_lang::ui::Component + Default + 'static,
+    C: auto_ui_runtime::ui::Component + Default + 'static,
     C::Msg: Clone + std::fmt::Debug + Send + 'static,
 {
+    auto_lang_core::set_ui_host_install_hook(auto_ui_runtime::install_ui_host_capabilities);
+    auto_ui_runtime::install_ui_host_capabilities();
     #[cfg(target_os = "linux")]
     {
         linux::run_libcosmic::<C>()
@@ -45,7 +47,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auto_lang::ui::{Component, View};
+    use auto_ui_runtime::ui::{Component, View};
 
     /// A minimal component for testing. On Linux this would be lowered to
     /// libcosmic Elements; on Windows it runs via the headless fallback.
@@ -59,6 +61,7 @@ mod tests {
             View::Text {
                 content: "libcosmic test".into(),
                 style: None,
+                selectable: false,
             }
         }
     }

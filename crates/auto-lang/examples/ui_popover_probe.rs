@@ -12,8 +12,8 @@
 //! 预期（stderr）：点 Open menu → [probe] Toggle → open=true；
 //! 点面板外任意处 → [probe] Dismissed → open=false（外点自动关闭）。
 
-use auto_lang::ui::view::{PopoverAnchor, PopoverPlacement};
-use auto_lang::ui::{Component, View};
+use auto_ui_runtime::ui::view::{PopoverAnchor, PopoverPlacement};
+use auto_ui_runtime::ui::{Component, View};
 
 #[derive(Debug, Default)]
 struct Probe {
@@ -77,11 +77,13 @@ impl Component for Probe {
     }
 }
 
-fn main() -> auto_lang::ui::AppResult<()> {
+fn main() -> auto_ui_runtime::ui::AppResult<()> {
+    auto_lang_core::set_ui_host_install_hook(auto_ui_runtime::install_ui_host_capabilities);
+    auto_ui_runtime::install_ui_host_capabilities();
     #[cfg(feature = "ui-iced")]
     {
         eprintln!("[probe] standalone popover probe starting");
-        return auto_lang::ui::HostBackend::Iced.run::<Probe>();
+        return auto_ui_runtime::ui::HostBackend::Iced.run::<Probe>();
     }
 
     #[cfg(not(feature = "ui-iced"))]

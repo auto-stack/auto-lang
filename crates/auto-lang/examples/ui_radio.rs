@@ -5,7 +5,7 @@
 // Run with:
 //   cargo run --example ui_radio --features ui-iced
 
-use auto_lang::ui::{Component, View};
+use auto_ui_runtime::ui::{Component, View};
 
 #[derive(Debug, Default)]
 struct RadioApp {
@@ -90,11 +90,13 @@ impl RadioApp {
 }
 
 // Unified main() - works with BOTH backends!
-fn main() -> auto_lang::ui::AppResult<()> {
+fn main() -> auto_ui_runtime::ui::AppResult<()> {
+    auto_lang_core::set_ui_host_install_hook(auto_ui_runtime::install_ui_host_capabilities);
+    auto_ui_runtime::install_ui_host_capabilities();
     #[cfg(feature = "ui-iced")]
     {
         println!("🎨 Running with Iced backend");
-        return auto_lang::ui::iced::run_app::<RadioApp>();
+        return auto_ui_runtime::ui::iced::run_app::<RadioApp>();
     }
 
 
@@ -103,7 +105,7 @@ fn main() -> auto_lang::ui::AppResult<()> {
         Err(
             "❌ No backend enabled!\n\n\
              Please run with a backend feature:\n\
-             • cargo run --example ui_radio --features ui-iced\n\
+             • cargo run --example ui_radio --features ui-iced\n"
                 .into(),
         )
     }

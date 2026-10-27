@@ -14,6 +14,7 @@ serde = { workspace = true, features = ["derive"] }
 miette = { workspace = true }
 auto-lang = { path = "../auto-lang" }
 auto-lang-core = { path = "../auto-lang-core" }
+auto-ui-compiler = { path = "../../../auto-ui/crates/auto-ui-compiler" }
 auto-ast = { path = "../auto-ast" }
 auto-diagnostics = { path = "../auto-diagnostics" }
 auto-val = { path = "../auto-val" }
