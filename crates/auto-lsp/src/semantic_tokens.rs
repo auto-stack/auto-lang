@@ -64,8 +64,8 @@ fn collect_ast_symbols(content: &str) -> (Vec<String>, Vec<String>, Vec<String>,
         params: Vec<String>,
         locals: Vec<String>,
     }
-    fn walk(stmts: &[auto_lang::ast::Stmt], out: &mut SymSets) {
-        use auto_lang::ast::Stmt;
+    fn walk(stmts: &[auto_ast::ast::Stmt], out: &mut SymSets) {
+        use auto_ast::ast::Stmt;
         for stmt in stmts {
             match stmt {
                 Stmt::Fn(f) => {
@@ -85,9 +85,9 @@ fn collect_ast_symbols(content: &str) -> (Vec<String>, Vec<String>, Vec<String>,
                 Stmt::For(f) => {
                     // Loop variables are locals.
                     match &f.iter {
-                        auto_lang::ast::Iter::Indexed(_, v)
-                        | auto_lang::ast::Iter::Named(v)
-                        | auto_lang::ast::Iter::Destructured(_, v) => {
+                        auto_ast::ast::Iter::Indexed(_, v)
+                        | auto_ast::ast::Iter::Named(v)
+                        | auto_ast::ast::Iter::Destructured(_, v) => {
                             out.locals.push(v.to_string());
                         }
                         _ => {}

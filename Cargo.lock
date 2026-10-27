@@ -867,7 +867,10 @@ dependencies = [
 name = "auto-lsp"
 version = "0.3.0"
 dependencies = [
+ "auto-ast",
+ "auto-diagnostics",
  "auto-lang",
+ "auto-lang-core",
  "auto-val",
  "env_logger",
  "futures",

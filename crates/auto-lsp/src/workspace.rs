@@ -6,10 +6,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use auto_lang::ast::ModulePath;
+use auto_ast::ast::ModulePath;
 use auto_lang::database::Database;
 use auto_lang::indexer::Indexer;
-use auto_lang::parser::Parser;
+use auto_lang_core::parser::Parser;
 use auto_lang::resolver::FilesystemResolver;
 use auto_lang::resolver::ModuleResolver;
 use auto_lang::types::TypeStore;
@@ -80,13 +80,13 @@ pub fn build_workspace_state(
 }
 
 /// Register all top-level symbols from an AST into a TypeStore
-fn register_ast_symbols(ast: &auto_lang::ast::Code, store: &mut TypeStore) {
+fn register_ast_symbols(ast: &auto_ast::ast::Code, store: &mut TypeStore) {
     for stmt in &ast.stmts {
         match stmt {
-            auto_lang::ast::Stmt::Fn(fn_decl) => store.register_fn_decl(fn_decl),
-            auto_lang::ast::Stmt::TypeDecl(type_decl) => store.register_type_decl(type_decl),
-            auto_lang::ast::Stmt::SpecDecl(spec_decl) => store.register_spec_decl(spec_decl),
-            auto_lang::ast::Stmt::Ext(ext) => store.register_ext_methods(ext),
+            auto_ast::ast::Stmt::Fn(fn_decl) => store.register_fn_decl(fn_decl),
+            auto_ast::ast::Stmt::TypeDecl(type_decl) => store.register_type_decl(type_decl),
+            auto_ast::ast::Stmt::SpecDecl(spec_decl) => store.register_spec_decl(spec_decl),
+            auto_ast::ast::Stmt::Ext(ext) => store.register_ext_methods(ext),
             _ => {}
         }
     }

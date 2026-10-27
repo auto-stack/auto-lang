@@ -403,16 +403,16 @@ fn get_typestore_docs(
 }
 
 /// Get documentation from AST traversal (for local variables and parameters)
-fn get_ast_docs(ast: &auto_lang::ast::Code, name: &str) -> Option<String> {
-    use auto_lang::ast::Stmt;
+fn get_ast_docs(ast: &auto_ast::ast::Code, name: &str) -> Option<String> {
+    use auto_ast::ast::Stmt;
     for stmt in ast.stmts.iter() {
         // Check top-level variables
         if let Stmt::Store(store) = stmt {
             if store.name.as_str() == name {
                 let ty_str = store.ty.unique_name().to_string();
                 let kind_str = match store.kind {
-                    auto_lang::ast::StoreKind::Let => "let",
-                    auto_lang::ast::StoreKind::Var => "var",
+                    auto_ast::ast::StoreKind::Let => "let",
+                    auto_ast::ast::StoreKind::Var => "var",
                     _ => "variable",
                 };
                 return Some(format!(
@@ -429,8 +429,8 @@ fn get_ast_docs(ast: &auto_lang::ast::Code, name: &str) -> Option<String> {
                     if store.name.as_str() == name {
                         let ty_str = store.ty.unique_name().to_string();
                         let kind_str = match store.kind {
-                            auto_lang::ast::StoreKind::Let => "let",
-                            auto_lang::ast::StoreKind::Var => "var",
+                            auto_ast::ast::StoreKind::Let => "let",
+                            auto_ast::ast::StoreKind::Var => "var",
                             _ => "variable",
                         };
                         return Some(format!(
@@ -458,7 +458,7 @@ fn get_ast_docs(ast: &auto_lang::ast::Code, name: &str) -> Option<String> {
 }
 
 /// Format a function signature
-fn format_function_signature(fn_decl: &auto_lang::ast::Fn) -> String {
+fn format_function_signature(fn_decl: &auto_ast::ast::Fn) -> String {
     let mut sig = format!("fn {}(", fn_decl.name);
 
     // Format parameters

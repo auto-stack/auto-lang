@@ -1,7 +1,7 @@
 //! PLAN-810：完整 UI 文法外置后的生产路径定向测试（V-01..V-04）。
 //!
 //! 完整 UI 结构/事件/样式文法单源在 crates/auto-ui-dialect::grammar
-//! （Parser 经 ParserBridge 的 UiParseContext 端口薄委托；escape hatch 已
+//! （Parser 经 ParserBridge 的 DomainParseContext 端口薄委托；escape hatch 已
 //! 删除）。本文件钉住迁移后**真实 Parser 全链路**的行为冻结：
 //!
 //! - V-01 文法全集：widget 壳/props/msg/model/computed/watch/style(raw
@@ -21,8 +21,9 @@ use crate::ast::Stmt as CoreStmt;
 use crate::parser_bridge::ParserBridge;
 use crate::session::{CompilerSession, Scenario};
 use crate::Parser;
+use auto_parser_api::DomainParseContext;
 use auto_ui_dialect::ast::WidgetDecl;
-use auto_ui_dialect::{UiParseContext, UiStmt as Stmt};
+use auto_ui_dialect::UiStmt as Stmt;
 
 fn ui_parse(code: &str) -> crate::error::AutoResult<auto_ui_dialect::UiCode> {
     let session = CompilerSession::new(Scenario::UI);

@@ -1,4 +1,4 @@
-use auto_lang::error::AutoError;
+use auto_diagnostics::error::AutoError;
 use tower_lsp_server::ls_types::*;
 
 /// Parse AutoLang code and convert errors to LSP diagnostics
@@ -75,7 +75,7 @@ fn auto_error_to_diagnostic(
 }
 
 /// Convert a Warning to an LSP Diagnostic
-fn warning_to_diagnostic(warning: &auto_lang::error::Warning, _content: &str) -> Diagnostic {
+fn warning_to_diagnostic(warning: &auto_diagnostics::error::Warning, _content: &str) -> Diagnostic {
     let message = format!("{}", warning);
     // Warnings may not have precise spans; default to start of file
     let range = Range {

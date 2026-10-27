@@ -16,7 +16,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use auto_lang::parser::Parser;
+use auto_lang_core::parser::Parser;
 use auto_parser_api::ast::{Expr, Stmt};
 use auto_parser_api::error::AutoResult;
 use auto_parser_api::session::CompilerSession;

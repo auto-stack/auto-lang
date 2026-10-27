@@ -58,7 +58,7 @@ fn build_index() -> StdlibIndex {
             Ok(s) => s,
             Err(_) => continue,
         };
-        let mut parser = auto_lang::parser::Parser::new(&source);
+        let mut parser = auto_lang_core::parser::Parser::new(&source);
         let code = match parser.parse() {
             Ok(c) => c,
             Err(_) => continue, // unreadable module — skip silently
@@ -66,7 +66,7 @@ fn build_index() -> StdlibIndex {
         let mut decls = Vec::new();
         for stmt in code.stmts {
             match stmt {
-                auto_lang::ast::Stmt::Fn(f) => {
+                auto_ast::ast::Stmt::Fn(f) => {
                     let params: Vec<String> = f
                         .params
                         .iter()
@@ -83,7 +83,7 @@ fn build_index() -> StdlibIndex {
                         kind: CompletionItemKind::FUNCTION,
                     });
                 }
-                auto_lang::ast::Stmt::TypeDecl(t) => {
+                auto_ast::ast::Stmt::TypeDecl(t) => {
                     decls.push(StdlibEntry {
                         label: t.name.to_string(),
                         detail: format!("type {}", t.name),

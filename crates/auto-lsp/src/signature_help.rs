@@ -43,7 +43,7 @@ pub fn get_signature_help_workspace(
 }
 
 /// Build a SignatureHelp from a function declaration
-fn build_signature_help(fn_decl: &auto_lang::ast::Fn, active_param: u32) -> Option<SignatureHelp> {
+fn build_signature_help(fn_decl: &auto_ast::ast::Fn, active_param: u32) -> Option<SignatureHelp> {
     let mut params = Vec::new();
     for param in &fn_decl.params {
         params.push(ParameterInformation {

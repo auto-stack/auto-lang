@@ -11,10 +11,10 @@
 
 use std::sync::{Arc, Mutex};
 
-use auto_lang::ast::{Expr, Stmt};
-use auto_lang::error::AutoResult;
-use auto_lang::parser::Parser;
-use auto_lang::session::CompilerSession;
+use auto_ast::ast::{Expr, Stmt};
+use auto_diagnostics::error::AutoResult;
+use auto_lang_core::parser::Parser;
+use auto_lang_core::session::CompilerSession;
 use auto_parser_api::session::Scenario;
 use auto_parser_api::{ExternalDialect, ParseCheckpoint, ParseContext};
 

@@ -13,6 +13,9 @@ serde_json = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 miette = { workspace = true }
 auto-lang = { path = "../auto-lang" }
+auto-lang-core = { path = "../auto-lang-core" }
+auto-ast = { path = "../auto-ast" }
+auto-diagnostics = { path = "../auto-diagnostics" }
 auto-val = { path = "../auto-val" }
 env_logger = "0.11"
 url = "2.5"

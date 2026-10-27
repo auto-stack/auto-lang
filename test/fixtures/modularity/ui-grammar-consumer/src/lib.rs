@@ -1,4 +1,4 @@
-//! PLAN-810 V-06 轻消费方：消费方最小 [`UiParseContext`]（toy 游标）。
+//! PLAN-810 V-06 轻消费方：消费方最小 [`DomainParseContext`]（toy 游标）。
 //!
 //! 本 crate 证明 auto-ui-dialect 的完整 UI 文法可在无 auto-lang 的闭包内
 //! 驱动（真算法，非转调 Parser）。核心 expr/type/body/stmt/closure 文法
@@ -19,8 +19,8 @@ use auto_parser_api::ast::{Body, Expr, OnEvents, Pair, Stmt, Type};
 use auto_parser_api::context::ParseContext;
 use auto_parser_api::error::{AutoError, AutoResult};
 use auto_parser_api::session::{CompilerSession, Scenario};
+use auto_parser_api::DomainParseContext;
 use auto_parser_api::ParseCheckpoint;
-use auto_ui_dialect::UiParseContext;
 
 /// 快照：游标下标 + 语句级旗标（checkpoint 用；raw save 只用下标）。
 #[derive(Clone)]
@@ -288,7 +288,7 @@ impl ParseContext for ToyUiContext {
     }
 }
 
-impl UiParseContext for ToyUiContext {
+impl DomainParseContext for ToyUiContext {
     fn prev_pos(&mut self) -> Pos {
         self.prev.pos
     }

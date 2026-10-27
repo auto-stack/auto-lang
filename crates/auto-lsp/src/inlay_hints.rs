@@ -26,7 +26,7 @@ fn get_inlay_hints_impl(content: &str, range: &Range) -> Vec<InlayHint> {
     // Build a map from variable name to inferred type
     let mut type_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for name in &var_names {
-        if let Some(ty) = infer_ctx.lookup_type(&auto_lang::ast::Name::from(name.as_str())) {
+        if let Some(ty) = infer_ctx.lookup_type(&auto_ast::ast::Name::from(name.as_str())) {
             let type_str = ty.unique_name().to_string();
             // Only show non-trivial types (skip "unknown", "any", etc.)
             if type_str != "unknown" && type_str != "any" && type_str != "_" {

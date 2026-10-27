@@ -1,8 +1,9 @@
 //! PLAN-810 V-06 轻文法测试：无 auto-lang 闭包内驱动 auto-ui-dialect
 //! **完整 UI 文法**真算法（widget/store/fragment/style recipe 族）。
 
+use auto_parser_api::DomainParseContext;
 use auto_ui_dialect::grammar::{actions, store, view, widget};
-use auto_ui_dialect::{UiParseContext, UiStmt};
+use auto_ui_dialect::UiStmt;
 use ui_grammar_consumer::ToyUiContext;
 
 #[test]
@@ -94,7 +95,7 @@ fn style_recipe_none_fallback_no_side_effect() {
 #[test]
 fn port_object_safety_and_upcast() {
     let mut cx = ToyUiContext::new("msg { Inc }");
-    let wide: &mut dyn UiParseContext = &mut cx;
+    let wide: &mut dyn DomainParseContext = &mut cx;
     let decl = auto_ui_dialect::parse_msg_decl(wide).expect("806 single source via upcast");
     assert_eq!(decl.variants.len(), 1);
 }

@@ -16,6 +16,9 @@ publish = false
 
 [dependencies]
 auto-lang = { path = "../../../../crates/auto-lang" }
+auto-lang-core = { path = "../../../../crates/auto-lang-core" }
+auto-ast = { path = "../../../../crates/auto-ast" }
+auto-diagnostics = { path = "../../../../crates/auto-diagnostics" }
 # PLAN-801：被测新接口方言（model 单份实现，轻闭包 crate）。
 dialect-api-consumer = { path = "../dialect-api-consumer" }
 # PLAN-801：端口类型（ParseContext/ParseCheckpoint——driver 测试直接命名）。

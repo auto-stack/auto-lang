@@ -3,10 +3,10 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use auto_lang::ast::Type;
-use auto_lang::error::AutoResult;
-use auto_lang::parser::Parser;
-use auto_lang::session::CompilerSession;
+use auto_ast::ast::Type;
+use auto_diagnostics::error::AutoResult;
+use auto_lang_core::parser::Parser;
+use auto_lang_core::session::CompilerSession;
 use auto_ui_dialect::{UiCode, UiDialect, UiStmt};
 use dialect_api_consumer::{ExternalUiDialect, Probe};
 
@@ -30,7 +30,7 @@ fn r2_both_type_and_init() {
     let ast = parse_ui("model { count int = 1 }", probe.clone()).unwrap();
     let block = only_model(&ast);
     assert!(matches!(block.fields[0].ty, Type::Int));
-    assert!(matches!(block.fields[0].init, auto_lang::ast::Expr::Int(1)));
+    assert!(matches!(block.fields[0].init, auto_ast::ast::Expr::Int(1)));
     assert_eq!(probe.accepts.load(Ordering::SeqCst), 1);
 }
 
@@ -40,7 +40,7 @@ fn r2_type_only_is_supported() {
     let ast = parse_ui("model { count int }", probe.clone()).unwrap();
     let block = only_model(&ast);
     assert!(matches!(block.fields[0].ty, Type::Int));
-    assert!(matches!(block.fields[0].init, auto_lang::ast::Expr::Nil));
+    assert!(matches!(block.fields[0].init, auto_ast::ast::Expr::Nil));
     assert_eq!(probe.accepts.load(Ordering::SeqCst), 1);
 }
 
@@ -50,7 +50,7 @@ fn r2_init_only_is_supported() {
     let ast = parse_ui("model { count = 1 }", probe.clone()).unwrap();
     let block = only_model(&ast);
     assert!(matches!(block.fields[0].ty, Type::Unknown));
-    assert!(matches!(block.fields[0].init, auto_lang::ast::Expr::Int(1)));
+    assert!(matches!(block.fields[0].init, auto_ast::ast::Expr::Int(1)));
     assert_eq!(probe.accepts.load(Ordering::SeqCst), 1);
 }
 
@@ -61,7 +61,7 @@ fn r2_bare_field_is_supported() {
     let block = only_model(&ast);
     assert_eq!(&*block.fields[0].name, "count");
     assert!(matches!(block.fields[0].ty, Type::Unknown));
-    assert!(matches!(block.fields[0].init, auto_lang::ast::Expr::Nil));
+    assert!(matches!(block.fields[0].init, auto_ast::ast::Expr::Nil));
     assert!(!block.fields[0].mutable);
     assert_eq!(probe.accepts.load(Ordering::SeqCst), 1);
 }
@@ -73,7 +73,7 @@ fn r2_bare_field_then_typed_field_multiline() {
     let block = only_model(&ast);
     assert_eq!(block.fields.len(), 2);
     assert!(matches!(block.fields[0].ty, Type::Unknown));
-    assert!(matches!(block.fields[0].init, auto_lang::ast::Expr::Nil));
+    assert!(matches!(block.fields[0].init, auto_ast::ast::Expr::Nil));
     assert!(matches!(block.fields[1].ty, Type::Int));
     assert_eq!(probe.accepts.load(Ordering::SeqCst), 1);
 }
@@ -85,7 +85,7 @@ fn r2_var_bare_field() {
     let block = only_model(&ast);
     assert!(block.fields[0].mutable);
     assert!(matches!(block.fields[0].ty, Type::Unknown));
-    assert!(matches!(block.fields[0].init, auto_lang::ast::Expr::Nil));
+    assert!(matches!(block.fields[0].init, auto_ast::ast::Expr::Nil));
 }
 
 #[test]

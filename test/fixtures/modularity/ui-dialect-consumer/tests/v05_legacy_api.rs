@@ -1,7 +1,7 @@
 //! PLAN-801 V05（AC-03）：旧公开调用/类型身份保持——旧 `Dialect` trait +
 //! `ParserBridge` 桥面（by-value checkpoint、泛型 `syntax_error`）、旧
 //! `with_dialect`/`register_dialect` Box 注册、session 字段构造与跨门面
-//! 类型互传（`auto_lang::session::CompilerSession` ≡
+//! 类型互传（`auto_lang_core::session::CompilerSession` ≡
 //! `auto_parser_api::CompilerSession` 同一类型）。
 //!
 //! 内建 escape hatch（`ParserBridge::parser()`，pub(crate)）外部不可访问
@@ -13,10 +13,10 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use auto_lang::ast::{Expr, Stmt};
-use auto_lang::error::{AutoError, SyntaxError};
-use auto_lang::parser::Parser;
-use auto_lang::session::CompilerSession;
+use auto_ast::ast::{Expr, Stmt};
+use auto_diagnostics::error::{AutoError, SyntaxError};
+use auto_lang_core::parser::Parser;
+use auto_lang_core::session::CompilerSession;
 use auto_parser_api::DomainDialect;
 use auto_ui_dialect::{UiCode, UiStmt};
 use dialect_api_consumer::{ExternalUiDialect, Probe};
@@ -79,8 +79,8 @@ fn v05_legacy_generic_syntax_error_and_by_value_checkpoint() {
 /// 双向赋值/传参都编译且行为一致（V05"同一 session 类型身份"）。
 #[test]
 fn v05_session_type_identity_across_facades() {
-    // 字段构造面（旧路径 builder 照常）。
-    let s = CompilerSession::new(auto_lang::session::Scenario::UI)
+    // 字段构造面（SDK builder 照常）。
+    let s = CompilerSession::new(auto_lang_core::session::Scenario::UI)
         .with_backend("gpui")
         .with_debug(false)
         .with_incremental(true);
@@ -89,11 +89,11 @@ fn v05_session_type_identity_across_facades() {
     assert!(!s.debug);
     assert!(s.incremental);
 
-    // 跨门面同型：auto_parser_api 构造值直接落入 auto_lang 类型标注。
+    // 跨门面同型：auto_parser_api 构造值直接落入 SDK 类型标注。
     let via_api: CompilerSession = auto_parser_api::session::CompilerSession::ui();
     assert!(via_api.is_ui());
 
-    // 反向：auto_lang 构造值作为 auto_parser_api trait 的 matches 入参
+    // 反向：SDK 构造值作为 auto_parser_api trait 的 matches 入参
     //（trait 方法签名吃 auto_parser_api 类型——同型才编译）。
     fn matches_ui(s: &auto_parser_api::CompilerSession) -> bool {
         let d = ExternalUiDialect::new(Arc::new(Probe::default()));

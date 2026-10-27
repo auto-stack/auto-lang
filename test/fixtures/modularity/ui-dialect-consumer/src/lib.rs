@@ -18,11 +18,11 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use auto_lang::ast::{Expr, Stmt};
+use auto_ast::ast::{Expr, Stmt};
 use auto_lang::dialect::Dialect;
-use auto_lang::error::AutoResult;
+use auto_diagnostics::error::AutoResult;
 use auto_lang::parser_bridge::ParserBridge;
-use auto_lang::session::{CompilerSession, Scenario};
+use auto_lang_core::session::{CompilerSession, Scenario};
 
 /// 探针计数：证明旧 trait 方言真实被派发（attempt）与真实接管（accept）。
 #[derive(Default)]

@@ -735,7 +735,7 @@ fn member_completions(content: &str, var_name: &str) -> Vec<CompletionItem> {
         if let Ok(ast) = auto_lang::parse_preserve_error(content) {
             // Look for the type definition
             for stmt in ast.stmts.iter() {
-                if let auto_lang::ast::Stmt::TypeDecl(type_decl) = stmt {
+                if let auto_ast::ast::Stmt::TypeDecl(type_decl) = stmt {
                     if type_decl.name.as_str() == type_name {
                         // Add fields
                         for member in &type_decl.members {
@@ -860,7 +860,7 @@ fn infer_variable_type_heuristic(content: &str, var_name: &str) -> Option<String
 }
 
 /// Format function signature for completion display
-fn format_function_signature_for_completion(fn_decl: &auto_lang::ast::Fn) -> String {
+fn format_function_signature_for_completion(fn_decl: &auto_ast::ast::Fn) -> String {
     let mut sig = format!("fn {}(", fn_decl.name);
 
     // Format parameters
@@ -1097,7 +1097,7 @@ fn user_defined_functions(content: &str) -> Vec<CompletionItem> {
 
 /// Extract variables in scope from the compiler's InferenceContext + AST
 fn extract_variables_from_ast(
-    _ast: &auto_lang::ast::Code,
+    _ast: &auto_ast::ast::Code,
     content: &str,
     _position: Position,
 ) -> Vec<CompletionItem> {
@@ -1118,7 +1118,7 @@ fn extract_variables_from_ast(
                 Meta::Store(store) => {
                     let type_name = store.ty.unique_name();
                     let kind = match store.kind {
-                        auto_lang::ast::StoreKind::Const => CompletionItemKind::CONSTANT,
+                        auto_ast::ast::StoreKind::Const => CompletionItemKind::CONSTANT,
                         _ => CompletionItemKind::VARIABLE,
                     };
                     items.push(completion_item(
@@ -1137,7 +1137,7 @@ fn extract_variables_from_ast(
     // (parameters may not be in InferenceContext if the function body hasn't been analyzed)
     if let Ok(ast) = auto_lang::parse_preserve_error(content) {
         for stmt in ast.stmts.iter() {
-            if let auto_lang::ast::Stmt::Fn(fn_decl) = stmt {
+            if let auto_ast::ast::Stmt::Fn(fn_decl) = stmt {
                 for param in &fn_decl.params {
                     let p_name = param.name.as_str();
                     // Avoid duplicates with InferenceContext

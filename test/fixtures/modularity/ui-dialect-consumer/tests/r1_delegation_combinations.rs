@@ -10,12 +10,12 @@
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
-use auto_lang::ast::{Expr, Stmt};
+use auto_ast::ast::{Expr, Stmt};
 use auto_lang::dialect::{Dialect, DialectPriority};
-use auto_lang::error::AutoResult;
-use auto_lang::parser::Parser;
+use auto_diagnostics::error::AutoResult;
+use auto_lang_core::parser::Parser;
 use auto_lang::parser_bridge::ParserBridge;
-use auto_lang::session::CompilerSession;
+use auto_lang_core::session::CompilerSession;
 use auto_lang::token::TokenKind;
 use auto_parser_api::{DomainDialect, DomainParseContext, DomainStmt};
 use auto_ui_dialect::{UiCode, UiDialect, UiStmt};
