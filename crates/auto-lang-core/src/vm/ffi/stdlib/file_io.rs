@@ -96,6 +96,12 @@ pub fn shim_file_read_text_range(path: String, offset: i32, limit: i32) -> Strin
     read_text_range_json(chunk, total as i64, next_offset)
 }
 
+#[auto_macros::rust_fn(
+    "File.write_text",
+    "auto.file.write_text",
+    "auto.fs.write_text",
+    "auto.fs.write"
+)]
 pub fn shim_file_write_text(path: String, content: String) -> i32 {
     if let Ok(path) = resolve_request_file_path(&path) {
         let _ = fs::write(path, &content);
