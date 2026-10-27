@@ -78,6 +78,28 @@
       "fix_forward_plan": 858,
       "fix_forward_path": "docs/plans/858-autographics-m2-game-samples-and-api-gaps.md",
       "source_changed_by_855": false
+    },
+    {
+      "id": "B824-BATCH-COVERAGE-01",
+      "stage": "tf-selection",
+      "error": "12 language and 9 UI baseline test IDs absent; no full-tier tests run",
+      "attributed_plans": [
+        841
+      ],
+      "evidence": "docs/plans/attachments/824/batch-r1/review.md",
+      "fix_forward": "pending ownership and equivalence triage"
+    },
+    {
+      "id": "B824-BATCH-CANCEL-01",
+      "stage": "tt-run",
+      "error": "plan707 cancellation job continued after cancel",
+      "attributed_plans": [
+        707,
+        705
+      ],
+      "attribution_note": "test owner only; cause and whether intermittent pre-existing remain unresolved",
+      "evidence": "docs/plans/attachments/824/batch-r1/tt-run.log.txt",
+      "fix_forward": "pending triage"
     }
   ],
   "known_reds_seen": [],
@@ -102,43 +124,64 @@
   "evidence": "docs/plans/attachments/850/batch-r4",
   "main_report_restored_exactly": true,
   "last_attempt": {
-    "plan_id": 855,
-    "outcome": "compile-blocked",
-    "timestamp": "2026-10-26T19:00:51.605491+00:00",
-    "head": "7f966bfa3d416a746b44cfe7abbde897e450e4da",
-    "evidence": "docs/plans/attachments/855/batch-r1",
-    "retry_required": true,
+    "plan_id": 824,
+    "timestamp": "2026-10-27T10:42:09.224677Z",
+    "head": "bfefde1a6469e46153e822bcd5b3efde361dc073",
+    "outcome": "coverage-blocked-and-test-failure",
     "coverage_complete": false,
-    "tests_executed": 0,
-    "new_reds": [
-      {
-        "id": "B855-FEATURE-01",
-        "stage": "language-list/compile",
-        "error": "24 E0432/E0433: av_owned_821_tests and av_source_827_tests consume optional test-cases dependencies without module cfg",
-        "attributed_plans": [
-          821,
-          827,
-          822
-        ],
-        "evidence": "docs/plans/attachments/855/batch-r1/language-build.log.txt",
-        "fix_forward_plan": 858,
-        "fix_forward_path": "docs/plans/858-autographics-m2-game-samples-and-api-gaps.md",
-        "source_changed_by_855": false
+    "retry_required": true,
+    "evidence": "docs/plans/attachments/824/batch-r1/review.md",
+    "legs": {
+      "tf-language": {
+        "list_exit": 0,
+        "ids": 3711,
+        "selected": 3211,
+        "missing": 12,
+        "suppressed": 12,
+        "tests_executed": 0
+      },
+      "tf-ui": {
+        "list_exit": 0,
+        "ids": 3126,
+        "selected": 3108,
+        "missing": 9,
+        "suppressed": 9,
+        "tests_executed": 0
+      },
+      "tt": {
+        "exit": 100,
+        "run": 3563,
+        "passed": 3562,
+        "failed": 1,
+        "skipped": 921,
+        "wall_seconds": 459.36,
+        "failure": "tests::plan707_spike_tests::plan707_spike_cancel_gap_active_job_future_not_stopped"
+      },
+      "tb": {
+        "exit": 0,
+        "run": 3102,
+        "passed": 3102,
+        "failed": 0,
+        "skipped": 664,
+        "wall_seconds": 48.51
       }
+    },
+    "identities_unchanged": true,
+    "aavm_trigger_paths": [],
+    "previous_compile_error_recurred": false,
+    "unresolved_findings": [
+      "B824-BATCH-COVERAGE-01",
+      "B824-BATCH-CANCEL-01"
     ],
-    "unexecuted_legs": [
-      "ui-full",
-      "tt",
-      "tb"
-    ]
+    "fix_forward": "pending triage; shared plan allocator contains prior uncommitted state"
   },
   "pending_retry": true,
   "coverage_policy": "Complete real language/UI/tt/tb execution verified; last complete green advances to850. Historical failed attempts retained.",
   "last_due_check": {
-    "plan_id": 855,
-    "checked_at": "2026-10-26T19:00:51.605491+00:00",
+    "plan_id": 824,
+    "checked_at": "2026-10-27T10:42:09.224677Z",
     "due": true,
-    "reason": "855 modulo5 landed; attempted official batch failed before test listing",
+    "reason": "Plan 855 landed after last successful 850; retry failed selection guards and a tt test",
     "coverage_anchor_preserved": 850,
     "retry_required": true
   },
@@ -359,9 +402,40 @@
       "timestamp": "2026-10-26T00:02:10.122452+00:00",
       "evidence": "docs/plans/attachments/850/batch-r4",
       "retry_required": false
+    },
+    {
+      "plan_id": 855,
+      "outcome": "compile-blocked",
+      "timestamp": "2026-10-26T19:00:51.605491+00:00",
+      "head": "7f966bfa3d416a746b44cfe7abbde897e450e4da",
+      "evidence": "docs/plans/attachments/855/batch-r1",
+      "retry_required": true,
+      "coverage_complete": false,
+      "tests_executed": 0,
+      "new_reds": [
+        {
+          "id": "B855-FEATURE-01",
+          "stage": "language-list/compile",
+          "error": "24 E0432/E0433: av_owned_821_tests and av_source_827_tests consume optional test-cases dependencies without module cfg",
+          "attributed_plans": [
+            821,
+            827,
+            822
+          ],
+          "evidence": "docs/plans/attachments/855/batch-r1/language-build.log.txt",
+          "fix_forward_plan": 858,
+          "fix_forward_path": "docs/plans/858-autographics-m2-game-samples-and-api-gaps.md",
+          "source_changed_by_855": false
+        }
+      ],
+      "unexecuted_legs": [
+        "ui-full",
+        "tt",
+        "tb"
+      ]
     }
   ],
-  "current_batch_status": "compile-blocked",
+  "current_batch_status": "coverage-blocked-and-test-failure",
   "dependencies": {
     "language": {
       "head": "7750f8d3399fe8aa620b7eecb6c7390ca810df05",
