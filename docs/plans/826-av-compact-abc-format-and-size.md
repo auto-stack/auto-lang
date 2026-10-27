@@ -6,7 +6,7 @@ plan_revision: 6
 author: [Codex]
 created_at: 2026-10-20
 updated_at: 2026-10-28
-current_step: 4
+current_step: 5
 total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-av/resident-function-install.md
@@ -241,7 +241,7 @@ T-01已冻结实际输入与独立expected，T-10模块子集已定向运行；�
 | [x] T-10 | work | T-01、D798、D828、独立私有写面登记 | 新`core/src/compact_abc.rs`与parallel/826独立harness/lock；最小接缝先编译，再完成消费已交付标量MirModule/指令合同的新版字节编解码、section/函数目录、密度/非法长度与整数边界；decode只产未授信MIR并走真实verify_mir，不构造LoadedModule；不改公共装配 | [✅ 已完成 @8190551fd] 同源harness 9/9、0 ignored、fmt/diff-check过；真实MIR/5-3-2B/目录/边界/损坏/分配前预算与真实verify已验，仅V-13模块子集，生产同源/cache/恢复待T-03/05 |
 | [x] T-02 | work | T-01/T-10、D825、D828、核心/注册窗口接受 | D828后先刷新T-01接口/版本/预算合同，旧准备不冒领新依赖pass； §3真实核心/adapter、fixtures/脚本与正式recipe首例，persist→新worker恢复；记录已合入基面/API版本/写面owner与接受交接，无公共写面则明确登记；只消费T-10同源模块，不另实现；刷新已交付基面/版本、记录接受 | [✅ 已完成 @99776f37f] D825合入(9eb9ebca3)后同步master(merge 9c7c71a1b)，核心/注册窗口空闲并接受登记；compact_abc入core/lib、abc_verify新增AVAC唯一准入、A09键abc-codec维度、manifest abc_codec路由、driver/worker WireCodec策略+信封单元名重绑定、recipe ac-av/compact-run-v1双注册+judge_compact_runtime；env接口刷新见contract-decision §10；`verify-av-826.ps1 -Scope first` exit 0（壳9/9+probe 5/5+父侧2/2），回归825首例4/4+cache_tier 20/20+825 corpus 1/1；AC-01/04 首例轴关闭（targeted/compat/bench等scope仍pending T-03..06） |
 | [x] T-03 | work | T-02 | core/abc、abc_verify及loader：实现紧凑wire/section与密度；保留参考路径/版本边界；生产直接消费T-10同源，完成适用V-13集成轴 | [✅ 已完成 @65ea26582] 生产targeted矩阵3例：BIN/COPY/CONST精确5/3/3B（section差分）、ULEB边界127→128/16383→16384各+1B且255→256为0、raw总长=头+目录+Σsections且连续覆盖到EOF、必需section恰一次；65534槽@cap合法round-trip与65536槽预分配前resource拒绝、悬空slot-ref编码可过但真实准入以mir.slot-ref拒（§5.6数值域/准入域分离）；全前缀截断/尾随/magic翻转/目录偏移/未知required id拒绝、SOURCE→0x81未知optional按长度跳过且语义不变、data profile encode拒绝；`verify-av-826.ps1 -Scope targeted` exit 0（壳9/9+first 5/5+targeted 3/3+corpus 1/1）；V-13集成轴=生产core与壳同源编译同一compact_abc.rs（结构事实）+脚本汇总壳；AC-02关闭 |
-| [ ] T-04 | work | T-03 | codec异常长度/required section/语义必需信息及所有§5安全/资源反例；先完成findings；按§5核已交付消费者并集/类别拒绝及同源，完成V-13适用轴 | targeted V-04/05/07；AC-02/03/05；r2按§5.6负责V-11及清单对应决策/实施/反控/恢复/汇总 |
+| [x] T-04 | work | T-03 | codec异常长度/required section/语义必需信息及所有§5安全/资源反例；先完成findings；按§5核已交付消费者并集/类别拒绝及同源，完成V-13适用轴 | [✅ 已完成 @bd1518fc8] security矩阵3例：目录手术（重复TYPES/缺IMPORTS/未知required id 0x06均拒、恒等重建可解锚）；strip等价（真实lowered wire含SOURCE、去除后准入+执行42/trace/capabilities完全一致）；内层不变量（悬空jump=mir.jump-target、类型错配拒、unit不派发Infra）；执行预算不变（fuel=1→InstrSteps、frames=0→Frames、无限循环+预取消→Cancelled，compact wire不放松AV预算）；`-Scope targeted` exit 0（5段全绿） |
 | [ ] T-05 | work | T-04 | probe cache/worker/兼容consumer最小适配，错版本/授权/代际/损坏及真实restart；按§5核已交付消费者并集/类别拒绝及同源，完成V-13适用轴 | compat V-01/06/07/09；AC-04/05；r2按§5.6负责V-11及清单对应决策/实施/反控/恢复/汇总 |
 | [ ] T-06 | work | T-05/T-09/T-11 | scripts/verify-av-826.ps1汇总、WASM/V8真实bench、父侧反控、SD草案及证据；fmt和独立workspace scoped check；正式脚本汇总V-13/AC-10，无模块通过冒领集成或缺适用必需例 | acceptance V-01..10非0例/漏例/skip；AC-01..06；r2按§5.6负责V-11及清单对应决策/实施/反控/恢复/汇总；最终汇总AC-11/V-14，不以852基础层PASS代替本能力验证 |
 | [ ] T-09 | work | D828、T-02～05/T-10（不等T-06/T-11） | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-12 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage | AC-09；共同基线+新增能力兼容定向验收，未实测不勾；送审前不跑整档 |
@@ -255,6 +255,8 @@ worktree及build/test仅在本Plan树，簿记主检出。work/review不运行�
 ## 9. 复审记录
 
 2026-10-28 stage:work | plan_id:PLAN-826 | plan_revision:6 | outcome:pass（T-02正式首例完成，整Plan保持executing 3/11） | worktree_path:D:/autostack/.wt/lang-826/auto-lang | branch:plan-826-dev | base_commit:9c7c71a1b（e417247a5+T-10 8190551fd后merge master@9eb9ebca3） | code_commit:99776f37f（树clean） | dependency_revisions:D798/D828已归档；D825=master 9eb9ebca3已合入归档；组内兄弟auto-ui@bd228b0/auto-down@c3464d0只读 | task_ids:T-02 | evidence:[contract-decision §10](attachments/826/contract-decision.md)；`scripts/verify-av-826.ps1 -Scope first` exit 0：同源壳9/9、probe首例5/5（compact往返+D825执行/跨代magic隔离/persist→cache-hit→新worker AVAC恢复重验/legacy共存双键空间/unit不派发）、父侧corpus 1/1+敏感性反控1/1（AV826_JUDGE_SABOTAGE四轴+错oracle）；回归av_runtime_825_first_case 4/4、cache_tier 20/20、825 corpus runner 1/1；fmt/无新警告（预存基线除外） | blockers:T-03..T-06/T-09/T-11未做（targeted/compat/bench/baseline/acceptance scope显式pending）；merge-owned整档门禁pending | next_responsible_role:work T-03（core/abc生产集成与V-02/03密度矩阵）。
+
+2026-10-28 stage:work | plan_id:PLAN-826 | plan_revision:6 | outcome:pass（T-04安全资源反例矩阵完成，整Plan保持executing 5/11） | worktree_path:D:/autostack/.wt/lang-826/auto-lang | branch:plan-826-dev | base_commit:65ea26582 | code_commit:bd1518fc8（树clean） | task_ids:T-04 | evidence:`verify-av-826.ps1 -Scope targeted` exit 0（壳9/9+first 5/5+targeted 3/3+security 3/3+corpus 1/1）；目录手术恒等锚+重复/缺失/未知required拒绝；strip等价（SOURCE真实存在/去除后语义完全一致）；内层不变量（jump-target/类型错配/unit零派发）；预算不变（InstrSteps/Frames/Cancelled，含无限循环取消） | blockers:T-05/T-09/T-11/T-06未做；merge-owned门禁pending | next_responsible_role:work T-05（cache/worker兼容矩阵V-06/09）。
 
 2026-10-28 stage:work | plan_id:PLAN-826 | plan_revision:6 | outcome:pass（T-03生产targeted矩阵完成，整Plan保持executing 4/11） | worktree_path:D:/autostack/.wt/lang-826/auto-lang | branch:plan-826-dev | base_commit:99776f37f | code_commit:65ea26582（树clean） | task_ids:T-03 | evidence:`scripts/verify-av-826.ps1 -Scope targeted` exit 0（同源壳9/9+first 5/5+targeted 3/3+父侧corpus 1/1）；密度差分BIN=5B/COPY=3B/CONST=3B精确、ULEB边界差分127→128=+1/255→256=0/16383→16384=+1；目录布局恒等式与全覆盖、必需section恰一次；§5.6编码数值域vs准入ref分离（65534槽@cap合法、65536槽resource、悬空ref=mir.slot-ref）；变异拒绝全集（截断/尾随/magic/目录/未知required/optional跳过/data profile） | blockers:T-04/T-05/T-09/T-11/T-06未做；merge-owned门禁pending | next_responsible_role:work T-04（V-04/05/07安全资源反例矩阵）。
 
@@ -280,4 +282,4 @@ stage:review；review_scope:文档合同定向复核（非实现final）；revie
 
 用户已授权本次依赖/并行合同修订，无需重新批准同范围方向。T-01的真实公开API/独立harness接缝与适用矩阵、T-10独立codec均已完成；T-02正式首例与集成仍须D825/D828及核心/注册窗口。只解除独立codec对D825的等待；T-02首例、正式版本路由/准入→LoadedProgram→AV与最终集成仍要求D825/D828和核心窗口。825的私有帧表示不是wire编码算法的输入。
 
-不得把新wire填成旧DecodedAbc版本绕过入口；正式新wire准入在D825后接真实loader，T-10字节/密度通过不能声称V-01全路径/V-08 loaded体积或执行性能通过。已交付data/owned codec路由保留。 若后续实际接口无法兑现，应给具体输入/符号/预算反例并回new，不静默复制WIP、弱化验证/资源门或退回第二实现。当前executing 4/11（T-01/T-10/T-02/T-03完成）；T-03起按依赖推进，merge-owned门禁pending，不宣布Plan完成；旧§9串行排期为历史。
+不得把新wire填成旧DecodedAbc版本绕过入口；正式新wire准入在D825后接真实loader，T-10字节/密度通过不能声称V-01全路径/V-08 loaded体积或执行性能通过。已交付data/owned codec路由保留。 若后续实际接口无法兑现，应给具体输入/符号/预算反例并回new，不静默复制WIP、弱化验证/资源门或退回第二实现。当前executing 5/11（T-01/T-10/T-02/T-03/T-04完成）；T-03起按依赖推进，merge-owned门禁pending，不宣布Plan完成；旧§9串行排期为历史。
