@@ -30,11 +30,12 @@ mod probe_adapter_turnaround_ipc;
 // evidence-green subset (real mn/av workers + legacy VM + typed channels).
 #[cfg(feature = "test-cases")]
 mod ace_m1_tests;
-// PLAN-827: av-source-827 corpus — real Auto source files (AP seeds) through
-// the formal ac-av/core-run-v1 recipe, parent-side judgement.
+// AV corpora use the optional TestCase adapter and must stay independently gated.
 #[cfg(feature = "test-cases")]
 mod av_collections_822_tests;
+#[cfg(feature = "test-cases")]
 mod av_owned_821_tests;
+#[cfg(feature = "test-cases")]
 mod av_source_827_tests;
 // PLAN-701 供④/供⑥: time 族三面对拍 + shell_recent 签名冒烟
 mod plan701_supply_probes;
