@@ -104,6 +104,11 @@ $FIRST_PROBE = @(
 )
 $FIRST_RUNNER = @('tests::av_wire_826_tests::av_wire_826_first_case_corpus_green')
 $SENSITIVITY = @('tests::av_wire_826_tests::av_wire_826_parent_sensitivity_controls_non_green')
+$TARGETED = @(
+    'av_wire_826_targeted_instruction_density_and_uleb_boundaries',
+    'av_wire_826_targeted_numeric_domain_roundtrip_and_ref_separation',
+    'av_wire_826_targeted_section_directory_and_mutation_rejections'
+)
 
 switch ($Scope) {
     'first' {
@@ -111,6 +116,12 @@ switch ($Scope) {
         Run-Probe -Bin 'av_wire_826_first_case' -RequiredIds $FIRST_PROBE
         Run-Runner -Filter 'av_wire_826_first_case_corpus_green' -RequiredIds $FIRST_RUNNER
         Run-Runner -Filter 'av_wire_826_parent_sensitivity_controls_non_green' -RequiredIds $SENSITIVITY
+    }
+    'targeted' {
+        Run-ParallelHarness
+        Run-Probe -Bin 'av_wire_826_first_case' -RequiredIds $FIRST_PROBE
+        Run-Probe -Bin 'av_wire_826_targeted' -RequiredIds $TARGETED
+        Run-Runner -Filter 'av_wire_826_first_case_corpus_green' -RequiredIds $FIRST_RUNNER
     }
     default {
         throw "PLAN-826 scope '$Scope' is not implemented yet; this is an explicit acceptance gap, not PASS"
