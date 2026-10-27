@@ -1,0 +1,40 @@
+#!/bin/sh
+# 大文件入库门禁(2026-10-28 用户裁定:防二进制/大日志/大量截图误入跟踪)
+# 规则:单个暂存文件 >5MB 拒绝;单次提交暂存总量 >100MB 仅警告(证据批量沉淀合法)。
+# 豁免:AUTO_LANG_ALLOW_LARGE=1 git commit(须在 plan 中记录理由);或 --no-verify(同上)。
+# 依据:已跟踪证据最大合法资产约 3MB(音频/jsonl),7MB+ 均为本门禁要拦的转储类文件。
+[ -n "$AUTO_LANG_ALLOW_LARGE" ] && exit 0
+
+MAX_FILE=5242880        # 5MB
+WARN_TOTAL=104857600    # 100MB
+
+# wc -c 按工作树测暂存路径;-z 原始字节流保证空格/Unicode 文件名不断裂;剔除删除项与 wc 的 total 行
+list=$(git diff --cached --name-only --diff-filter=d -z | xargs -0 -r wc -c 2>/dev/null | grep -v ' total$')
+[ -z "$list" ] && exit 0
+
+total=0
+blocked=''
+while IFS= read -r line; do
+  sz=${line%% *}
+  case "$sz" in ''|*[!0-9]*) continue ;; esac
+  total=$((total + sz))
+  if [ "$sz" -gt "$MAX_FILE" ]; then
+    blocked="$blocked$line
+"
+  fi
+done <<EOF
+$list
+EOF
+
+if [ -n "$blocked" ]; then
+  echo "pre-commit 拒绝:以下暂存文件超过 5MB(字节  路径):" >&2
+  printf '%s' "$blocked" >&2
+  echo "证据请提交截断/摘要(attachments/.gitignore 2026-10-21 裁定);确需大文件请用" >&2
+  echo "AUTO_LANG_ALLOW_LARGE=1 git commit,并在对应 plan 中记录豁免理由。" >&2
+  exit 1
+fi
+
+if [ "$total" -gt "$WARN_TOTAL" ]; then
+  echo "pre-commit 提示:本次提交暂存总量 $((total / 1024 / 1024))MB(>100MB)。继续前确认符合证据政策。" >&2
+fi
+exit 0

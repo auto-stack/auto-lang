@@ -54,6 +54,11 @@ All AI coding assistants working in this repository must strictly adhere to the 
 
 - Always perform code modifications, builds, and test runs within the plan's worktree (`D:/autostack/.wt/lang-<NNN>/auto-lang`; legacy in-flight plans keep their `.worktrees/` path until folded) to keep `master` clean (one worktree per plan per repo; multi-phase plans fold per phase and re-sync).
 - **Never place junctions/symlinks inside a worktree** (see red line above); resolve cross-repo deps via the documented order (env → group sibling → main checkout), never via links.
+- **大文件入库门禁（2026-10-28 用户裁定）**：`pre-commit` 钩子（`.githooks/pre-commit`，
+  经 `core.hooksPath=.githooks` 生效，主检出与各 plan worktree 共用该配置）拒绝单个
+  >5MB 的暂存文件（防二进制/大日志/大量截图误入跟踪；已跟踪存量不受影响），单次提交
+  暂存总量 >100MB 仅警告（证据批量沉淀合法）。豁免：`AUTO_LANG_ALLOW_LARGE=1 git commit`
+  并在对应 plan 记录理由；证据一律提交截断/摘要（2026-10-21 裁定）。
 - **Fast Iteration during Development**:
   - During development, **DO NOT run full test suites repeatedly**. Use fast syntax/type checks:
     - Fast type check: `cargo check -p auto-lang`
