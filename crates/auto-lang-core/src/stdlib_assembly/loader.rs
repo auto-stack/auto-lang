@@ -128,6 +128,14 @@ pub fn stdlib_assembly_fingerprint(
     // Host implementations are build inputs, independently of the .at API.
     mix(fnv1a64(include_str!("../a2r_std.rs")));
     mix(fnv1a64(include_str!("../vm/ffi/stdlib.rs")));
+    mix(fnv1a64(include_str!("../vm/ffi/stdlib/crash_trace.rs")));
+    mix(fnv1a64(include_str!("../vm/ffi/stdlib/file_io.rs")));
+    mix(fnv1a64(include_str!("../vm/ffi/stdlib/http_client.rs")));
+    mix(fnv1a64(include_str!("../vm/ffi/stdlib/image.rs")));
+    mix(fnv1a64(include_str!("../vm/ffi/stdlib/math.rs")));
+    mix(fnv1a64(include_str!("../vm/ffi/stdlib/sqlite.rs")));
+    mix(fnv1a64(include_str!("../vm/ffi/stdlib/strings_json.rs")));
+    mix(fnv1a64(include_str!("../vm/ffi/stdlib/sys_env.rs")));
     mix(fnv1a64(include_str!("../vm/native_catalog.rs")));
     mix(match target {
         super::model::AssemblyTarget::Vm => 1,

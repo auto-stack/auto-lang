@@ -614,7 +614,7 @@ mod t04_core_bindings {
                 .collect::<Vec<_>>()
         );
         // 裁决②冻结：read_text 族 shim 收敛单名（std 声明面）
-        let src = include_str!("../../../auto-lang-core/src/vm/ffi/stdlib.rs");
+        let src = include_str!("../../../auto-lang-core/src/vm/ffi/stdlib/file_io.rs");
         {
             let anno = "#[auto_macros::rust_fn(\"auto.fs.read_text\")]";
             assert!(src.contains(anno), "read_text 注解应为单权威名");
