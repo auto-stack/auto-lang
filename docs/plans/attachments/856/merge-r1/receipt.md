@@ -18,8 +18,8 @@
 
 ## archived
 
-实际归档路径 `docs/plans/archive/856-autographics-2d-viewport-grid-and-navigation.md`，交付基线/规范/台账已落地，任务9/10；归档提交与清理待核实。
+实际归档路径 `docs/plans/archive/856-autographics-2d-viewport-grid-and-navigation.md`，归档提交 `cf2477516eb4ca4ae39417672ecbe74c03c090b7`。
 
-## pending
+## cleaned
 
-工作树清理、可回收 target 缓存盘点及最终收据仍待执行。
+删除工作树前，确认实际绝对路径和分支归属，并立即运行 Git Bash 的 `wt-guard.sh`，结果 clean；工作树、已落地的开发及规范沉淀分支、空组目录均已移除。五处计划专属 Cargo target 已验证 CACHEDIR.TAG、无 reparse 并回收，见 cleanup.json.txt；SDK/research 的 966 个文件保留在 `D:/autostack/plan-artifacts/plan-856/recovery/` 并有逐文件 SHA 清单。原始日志和实际执行文件继续保留。归档任务10/10。批量回归到期状态单独核查。
