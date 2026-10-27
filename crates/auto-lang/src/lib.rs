@@ -41,7 +41,7 @@ pub use auto_lang_core::{
 };
 
 pub use auto_lang_core::api;
-pub use auto_lang_core::ast;
+use auto_lang_core::ast;
 // PLAN-799: 解析便利层（ParserExt 对 Code/Name/Expr/Is/Arrow/OnEvents 的
 // 六类 impl + Parser 耦合测试）——模型已在 auto-ast，解析注入留上层。
 // PLAN-814 R3-06/R5：crate 内测试消费面（cfg(test) 门——非测试构建下的
@@ -82,7 +82,7 @@ pub use auto_lang_core::compile;
 pub use auto_lang_core::config;
 pub use auto_lang_core::database;
 pub use auto_lang_core::dep;
-pub use auto_lang_core::error;
+use auto_lang_core::error;
 pub use auto_lang_core::host; // Plan 011 (MS3-B): ShellHost bridge for system()/exit()/export()
 pub use auto_lang_core::http_file_service; // PLAN-729: 服务端文件响应宿主执行（VM/生成 Rust 共用；无 ui 依赖）
 pub use auto_lang_core::http_service_config; // PLAN-736: 服务部署配置与纯策略（版本中立；两轨共用）
@@ -96,7 +96,7 @@ pub use auto_ui_runtime::back_proxy; // PLAN-658: 单进程多后端宿主（画
                                      // Plan 096 Phase 0: Scenario-based compilation
                                      // Plan 768: AutoDown TestCase adapters (avm/run, a2r/emit) + runner
                                      // orchestration; depends on the dependency-light `auto-test-case` core.
-pub use auto_lang_core::session;
+use auto_lang_core::session;
 #[cfg(feature = "test-cases")]
 #[cfg(feature = "test-cases")]
 pub use auto_lang_core::test_cases;
@@ -153,7 +153,7 @@ pub use auto_lang_core::maker;
 pub mod mem_profile;
 pub use auto_lang_core::dialect;
 pub use auto_lang_core::ownership;
-pub use auto_lang_core::parser;
+use auto_lang_core::parser;
 pub use auto_lang_core::query;
 pub use parser::Parser; // 方言扩展体系（PR-1 基建）
                         // PLAN-778: 方言外部化最小桥面 —— 外部 crate 实现 Dialect 时的唯一解析入口。
