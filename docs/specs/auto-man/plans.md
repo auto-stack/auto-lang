@@ -24,3 +24,7 @@
 - PLAN-734 [api-contract-and-generation-integrity](../../plans/734-api-contract-and-generation-integrity.md)——checked generation（strict/scaffold/ready 记录/错误传播）→ [design/api-generation-integrity.md](design/api-generation-integrity.md)
 | 811 | media-host-runtime-extraction（auto-man 侧） | ✅（reviewed→archived） | archive/811-media-host-runtime-extraction.md | api_gen/rust_ui 媒体生成/HTTP 桥与生成 manifest 消费 auto-media-core（生成物零第二份库源，同进程单实例）；真实消费验收 plan811_media_consumers + 生成 HTTP 真 TCP 13 项 + 792 fresh/locked/重定位 (Plan 811) |
 | 816 | tool-execution-protocol-and-thin-cli（auto-man 侧） | 🔄（executing→merge） | ../816-tool-execution-protocol-and-thin-cli.md | 单源分层：非 UI 模块迁 auto-man-runtime（Pac/Target/Automan 类型单源，旧 auto-man=pub use 门面全路径兼容）；语言 adapter=auto_lang_core（vm 轨不经 UI seam）；git.rs 四站点迁设施 git_capture；UiOps EXPLICIT/DEFAULT_OPS 双槽显式优先；runtime 闭包零 UI（777 man-ecosystem 域）；执行设施/客户端/CLI 终态见 tool-execution 与 auto-cli specs (Plan 816) |
+
+## PLAN-842
+
+- [PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)：兼容入口按 0.2.0 边界退役，正式保留面、来源校验和迁移见项目规格。

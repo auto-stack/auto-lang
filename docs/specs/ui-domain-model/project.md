@@ -35,9 +35,7 @@ codec 以 `UI_AST_SCHEMA_VERSION` 和 domain/tag 校验持久输入；旧 schema
 
 V-01..V-05 分别覆盖 Core 独立消费、UI/Core 同名语义、codec/缓存/寿命、
 真实四生成器与 VM/Iced/外部发行、原测试 ID 与失败归因。PLAN-799 的 UI
-投影 golden 不由新实现重生成。旧全局文法装配、Core UI facade、Aura
-`with_registry_and_imports` 的最后形参及旧方言优先级测试适配，列入
-PLAN-842 退役清单；这些过渡入口不承载第二份 UI 实现。
+投影 golden 不由新实现重生成。旧全局文法装配和 Core UI facade 已在 841 退出；Aura `with_registry_and_imports` 旧入口及旧方言优先级测试适配在 842 完成退役和迁移，不影响保留的 DynamicComponent 导入能力。
 
 ## PLAN-841 来源与验证
 

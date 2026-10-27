@@ -19,8 +19,7 @@ auto-lang/auto-man/auto-vm/UI/renderer 反向边（module-boundaries 域
 构建+测试即独立可消费证据。
 
 auto-lang 侧兼容出口：`crate::token`/`crate::lexer` 模块为纯 re-export
-（同一类型身份，跨 crate 互传），`auto_lang::error::LexerError` 经
-auto-diagnostics 链 re-export 本 crate 的 `error::LexerError`（PLAN-793 起
+（同一类型身份，跨 crate 互传）；词法错误经 `auto_diagnostics::error::LexerError` 与本 crate 的 `error::LexerError` 同源。`auto_lang::error` 在 0.2 已退役（PLAN-793 起
 `From<LexError> for AutoError` 等价投影随 `AutoError` 定义迁至
 auto-diagnostics：结构化五变体 → `AutoError::Lexer`，raw-block 字符串错误 →
 `AutoError::Msg`，与抽取前旧臂一致）。不保留第二份词法实现。

@@ -25,8 +25,7 @@ SDK、Vue/Rust/Jet/Ark 工程与 incremental 路径均在缓存、消费或写�
 
 ## 2. DomainParseContext 端口
 
-`UiParseContext` 只是 auto-ui-dialect 对中立 `DomainParseContext` 的别名；
-trait 定义不含 UI 类型。端口提供：
+`UiParseContext` 两处过渡别名已在 0.2 退役；直接使用 auto-parser-api 的中立 `DomainParseContext`，trait 定义不含 UI 类型。端口提供：
 
 - 游标/软关键字/owned token 回推、两类 advance-peek 与 probe；
 - raw cursor 保存/恢复/释放和 diagnostics mark/truncate；

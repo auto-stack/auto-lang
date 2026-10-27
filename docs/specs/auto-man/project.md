@@ -423,3 +423,7 @@ UI 生产算法(vue/rust_ui/jet/ark/tauri/vscode/shadcn/gallery/wm 等)已全部
 ## PLAN-832 Man 独立仓（SD-02，as-built）
 
 生产实现已迁入既有 auto-man 仓：`auto-man-runtime` 为非 UI 管理/服务单源，`auto-man` 为上层 compat facet（含 UI 转发，非 Core）；锁/resolver/toolchain/assets/core 与测试资源同属 Man。auto-api-gen 留语言 adapter，std-only execution 留语言中立设施。Core 与完整 profile 分开验收，不能以 compat 的 UI 链接证明 Core 纯净。语言仓原实现已删除，Man 消费固定 lang/UI 源且无反向实现边。独立发行、版本和恢复见 [man-three-repository-delivery](../repository-boundaries/man-three-repository-delivery.md)。
+
+## PLAN-842：生成来源与安装交付
+
+Man 与生成后端消费语言 SDK、UI compiler/runtime 的 canonical owner。Full 安装 SDK 可作为真实 producer 交付：语言和 UI 若各自来自受管安装，则分别冻结对应 `man-install/1` 收据，核验所选 owner、路径、实际 staging 副本字节及提交前收据；源身份按各自收据记录。显式来源无效时具名失败，不回退；普通开发源按本地 Cargo 依赖闭包、包身份和版本校验，保留合法别名与 dev 环。失败保留旧交付。详见 [generated-ui-distribution](../repository-boundaries/generated-ui-distribution.md) 和 [man-three-repository-delivery](../repository-boundaries/man-three-repository-delivery.md)。来源：[PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)

@@ -6,6 +6,8 @@
 
 ## 机制
 
+> 以下 scenario 自动注册 UI 的段落为历史迁移记录；PLAN-841 起 UI 通过 `parse_domain(&UiDialect)` 显式组合，不再注册 Core UI 方言；PLAN-842 删除旧 `UiParseContext` 别名。
+
 - **配置单一真源**：`pac.at` 声明 `scenario`（`ui`/`core`/`shell`）、后端目标与构建设置；LSP 初始化时读取它配置解析模式，诊断/hover/补全都尊重场景。
 - **会话传递**：`session.rs:CompilerSession` 携带 `Scenario` 贯穿管线。
 - **dialect 注册**：`dialect/ui.rs:UiDialect` 实现 `Dialect` trait，`matches()` 在 `scenario == Scenario::UI` 时生效。
@@ -15,7 +17,7 @@
 - `widget`/`msg`/`model` 是**普通标识符**（`TokenKind::Ident`），UI 场景下经 `Dialect::try_parse_stmt` 接管为声明语句；PLAN-806 起 `msg`/`model` 的**解析算法**单一份外置于轻 crate [auto-ui-dialect](../../../auto-ui-dialect/project.md)（顶层派发与 widget/component/store 结构路径、import 默认装配同源委托，默认文法与 778 冻结的外部裸字段子集边界不变）——PLAN-810 起 `widget` 壳与**全部其余 UI 文法**（view/on 块/actions/
 style/computed/setup/expose/watch/store/component/use/scene/timer/routes/
 menubar/toolbar/bind 及节点族）同样单源外置于 auto-ui-dialect `grammar`
-模块（经 `UiParseContext` 端口，主文件/结构路径/import 同源）；on-events
+模块（现经 `DomainParseContext` 端口，主文件/结构路径/import 同源）；on-events
 顶层事件文法为 Core 共享（非 UI 回退同源），归 Core 所有。
 - `view`/`on` 是**真实 TokenKind**，走 `try_parse_token_stmt`；`view` 与 core 语言的参数模式关键字（`fn foo(view x int)`）复用同一 token，靠语句位置区分。
 - `view fn` 前缀为 view fragment（plan-367 P2-3）——内联展开，调用点无独立组件。

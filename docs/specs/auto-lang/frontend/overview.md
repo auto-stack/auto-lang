@@ -96,30 +96,27 @@ execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
 ## 关键入口
 
 - `crates/auto-lex/src/lexer.rs:Lexer`、`lexer.rs:LexerState`（PLAN-789 单一
-  实现；auto-lang 经 `src/lexer.rs` 薄 re-export 私有消费）
+  实现；auto-lang 在 `lib.rs` 中仅对测试私有转发 SDK lexer）
 - `crates/auto-lex/src/token.rs:TokenKind`、`token.rs:Token`、`token.rs:Pos`
-  （auto-lang 经 `src/token.rs` re-export，`auto_lang::token` 公开路径不变）
-- `crates/auto-lex/src/error.rs:LexerError`/`LexError`（auto-lang `error.rs`
-  re-export + `From<LexError> for AutoError` 投影）
-- `crates/auto-lang/src/error.rs`（PLAN-793 薄门面：20 名冻结公开面
-  re-export，`auto_lang::error::*` 路径不变）
+  （auto-lang 在 `lib.rs` 中公开转发 SDK token，`auto_lang::token` 路径保持）
+- `crates/auto-lex/src/error.rs:LexerError`/`LexError`（经 auto-diagnostics 同源公开，`From<LexError> for AutoError` 在诊断 owner 投影）
+- PLAN-793 的 `auto_lang::error::*` 过渡门面已在 PLAN-842、auto-lang 0.2.0 退役；公开诊断经 `auto_diagnostics::error::*` 或 SDK 同源接口。
 - `crates/auto-diagnostics/src/error.rs`（PLAN-793 单一定义：`AutoError`
   聚合/各族诊断/WithSource/attach_source/format_error/find_best_match，
   诊断外置，规范见 [auto-diagnostics/project.md](../../auto-diagnostics/project.md)）
-- `crates/auto-lang/src/parser.rs:Parser`、`Parser::parse`、`Parser::parse_stmt`、`Parser::parse_expr`
-- `crates/auto-lang/src/parser.rs:Parser::build_dialects`、`Parser::try_dialect_stmt`
-- `crates/auto-lang/src/parser_helpers.rs:ModuleTracker`、`parser_helpers.rs:LambdaIdGenerator`
-- `crates/auto-lang/src/ast.rs:Code`、`ast.rs:Stmt`、`ast.rs:Expr`
-- `crates/auto-lang/src/ast.rs:ToNode`、`ast.rs:ToAtom`、`ast.rs:AtomWriter`
-- `crates/auto-lang/src/ast/module_path.rs:ModulePath`、`module_path.rs:PathPrefix`
+- `crates/auto-lang-core/src/parser.rs:Parser`、`Parser::parse`、`Parser::parse_stmt`、`Parser::parse_expr`
+- `crates/auto-lang-core/src/parser.rs:Parser::build_dialects`、`Parser::try_dialect_stmt`
+- `crates/auto-lang-core/src/parser_helpers.rs:ModuleTracker`、`parser_helpers.rs:LambdaIdGenerator`
+- `crates/auto-ast/src/ast.rs:Code`、`ast.rs:Stmt`、`ast.rs:Expr`
+- `crates/auto-ast/src/ast.rs:ToNode`、`ast.rs:ToAtom`、`ast.rs:AtomWriter`
+- `crates/auto-ast/src/ast/module_path.rs:ModulePath`、`module_path.rs:PathPrefix`
 - `crates/auto-lang-core/src/dialect.rs:Dialect`、`parser.rs:Parser::parse_domain`
 - `crates/auto-lang-core/src/parser_bridge.rs:ParserBridge`（中立 ParseContext/
   DomainParseContext 实现）、`dialect.rs:DialectPriority`
 - auto-ui 仓 `crates/auto-ui-dialect/src/{grammar,model,validation,codec}.rs`
-- `crates/auto-lang/src/use_scanner.rs:scan_use_statements`、`use_scanner.rs:UseStatement`
-- `crates/auto-lang/src/resolver.rs:ModuleResolver`、`resolver.rs:FilesystemResolver`
-- 一键入口：`crates/auto-lang/src/lib.rs:parse`（`parse(code) -> AutoResult<Code>`；
-  复现：`rg -n "pub fn parse\(" crates/auto-lang/src/lib.rs`，2026-09-07 快照 2490 行）
+- `crates/auto-lang-core/src/use_scanner.rs:scan_use_statements`、`use_scanner.rs:UseStatement`
+- `crates/auto-lang-core/src/resolver.rs:ModuleResolver`、`resolver.rs:FilesystemResolver`
+- 一键入口：`crates/auto-lang-core/src/lib.rs:parse`（`parse(code) -> AutoResult<Code>`）；auto-lang `lib.rs` 从 SDK 同源公开再导出 `auto_lang::parse`。
 
 ## 使用示例
 
@@ -162,8 +159,7 @@ Core UI AST 返回面均已删除。
 在 778 桥面之上新增 `crates/auto-parser-api` 轻端口 crate（依赖闭包 =
 auto-ast/auto-lex/auto-diagnostics，lang-core 域）：`ExternalDialect` trait +
 对象安全 `ParseContext` 端口 + 不透明快照凭据 `ParseCheckpoint` + 轻
-`CompilerSession`/`Scenario`/`DialectPriority` 单一定义（`auto_lang::session`
-与 `auto_lang::dialect::DialectPriority` 为薄 re-export，类型身份不变）。
+`CompilerSession`/`Scenario`/`DialectPriority` 单一定义；`auto_lang::session` 过渡模块在 0.2 退役，session 类型直接由 auto-parser-api 消费；保留的 `auto_lang::dialect::DialectPriority` 为薄 re-export。
 外部文法 crate 只依赖该端口 crate 即可实现方言——model 子集单份实现已迁
 `test/fixtures/modularity/dialect-api-consumer`（V01 闭包 oracle：
 verify-deps.sh 无 auto-lang/auto-man/auto-vm/auto-ui）；解析集成测试在
@@ -199,13 +195,8 @@ verify-deps.sh 无 auto-lang/auto-man/auto-vm/auto-ui）；解析集成测试在
 - `docs/design/01-architecture.md`、`docs/design/10-language-syntax.md`
 - `docs/plan-reports/01-ast-core.md`、`docs/plan-indices/01-ast-core.md`
 - `docs/design/dialect-extension-diagnosis.md`（方言体系来源，dialect.rs 头注指向）
-- 代码核对：`crates/auto-lang/src/{parser,parser_helpers,ast,dialect,use_scanner,resolver}.rs`、`ast/`、`dialect/`、
-  `crates/auto-lex/src/{token,lexer,error}.rs`（PLAN-789 词法外置）、
-  `crates/auto-lang/src/error.rs`（PLAN-793 诊断薄门面）+
-  `crates/auto-diagnostics/src/error.rs`（PLAN-793 诊断外置单一定义）
-- 外置进度：词法（789）+ 通用诊断（793）已外置；剩余环 parser→ast/
-  types/infer/session/module_cache/dialect/ui 归前端外置批次（Design 37
-  A 波后续），不冒称整个前端已无环。
+- 当前代码核对：`crates/auto-lang-core/src/{parser,parser_helpers,dialect,use_scanner,resolver}.rs`、`crates/auto-ast/src/ast.rs` 与 `ast/`、`crates/auto-lex/src/{token,lexer,error}.rs`、`crates/auto-diagnostics/src/error.rs`。auto-lang 对保留面经 `lib.rs` 转发，`ast/parser/session/error` 过渡模块已在 0.2 退出。
+- 历史外置进度见 PLAN-789/793/814/841；现行语言 SDK 与 UI 领域的 owner 与依赖边以对应项目规格为准。
 
 ## PLAN-841：UI owned AST 与 lowering 终态
 

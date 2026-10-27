@@ -59,3 +59,7 @@ UI owner 校验/lowering 后进入类型、执行与生成器。未组合 UI 方
 ## PLAN-841 来源与验证
 
 中立 DomainParseContext/DomainDialect 传递 owned 领域产物，旧 UI 专属函数表与返回门面退出。 规范与验收来源：[PLAN-841](../../plans/archive/841-ui-domain-ast-token-lowering-finalization.md)；复审及统一门证据见其归档记录。
+
+## PLAN-842：领域端口正式保留
+
+UI 组合统一使用 `DomainParseContext` 与 `DomainDialect`；UI dialect 的两处旧 `UiParseContext` 别名已在 0.2.0 移除。非 UI 的 `ExternalDialect`、`Dialect`、`ParserBridge`、Override/Append 优先级与作用域合同继续支持；UI 模型由领域 owner 显式组合，不保留旧 UI 类型适配。来源：[PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)

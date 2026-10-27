@@ -4954,6 +4954,30 @@
   "created_at": 1793085866,
   "modified_at": 1793085866,
   "completed_at": 1793085866
+},
+{
+  "id": "P842-DEPOSIT",
+  "title": "PLAN-842 规范投影与交付边界",
+  "content": "canonical 退役矩阵、来源与安装失败保护由受审规范维护；具体落地与门禁以计划归档收据为准。",
+  "status": "verified",
+  "depends_on": [],
+  "related": [],
+  "priority": null,
+  "assignee": null,
+  "test_file": null,
+  "file": "docs/specs/repository-boundaries/compatibility-retirement.md",
+  "milestone": null,
+  "module": "repository-boundaries",
+  "tags": [
+    "PLAN-842",
+    "plan-revision:2",
+    "source-sha256:831c1c17dc5d2e119a953bc7df0656fbd2ef9693fdf4c994573ac0afef4be507",
+    "lang-reviewed:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+    "ui-reviewed:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
+  ],
+  "created_at": 1793107646,
+  "modified_at": 1793107646,
+  "completed_at": 1793107646
 }
 ],
       "section_type": "Reports",
@@ -9508,12 +9532,16 @@
         {
           "id": "P789-D1",
           "title": "auto-lex 词法基础 crate（Token/Lexer 单一来源）",
-          "content": "PLAN-789 交付 auto-lex：Token/TokenKind/Pos 与 Lexer/LexerState 单一实现自 auto-lang 逐字抽取（token.rs R100 零差异、lexer.rs 仅 AutoResult→LexResult 签名重命名）；依赖闭包=auto-val+strum/miette/thiserror（module-boundaries lang-core 域+禁向规则 lang-core-no-monolith-no-man-no-tools，DAG auto-lang→auto-lex→auto-val 零违例）；错误=LexerError E0001..E0005 逐字+LexError 全集（Raw=raw-block 旧臂 Msg 投影），不倒灌 auto-lang 错误聚合器；外部消费门 test/fixtures/modularity/lex-consumer（独立 manifest 唯一依赖 auto-lex）。",
+          "content": "PLAN-789 交付 auto-lex：Token/TokenKind/Pos 与 Lexer/LexerState 单一实现自 auto-lang 逐字抽取（token.rs R100 零差异、lexer.rs 仅 AutoResult→LexResult 签名重命名）；依赖闭包=auto-val+strum/miette/thiserror（module-boundaries lang-core 域+禁向规则 lang-core-no-monolith-no-man-no-tools，DAG auto-lang→auto-lex→auto-val 零违例）；错误=LexerError E0001..E0005 逐字+LexError 全集（Raw=raw-block 旧臂 Msg 投影），不倒灌 auto-lang 错误聚合器；外部消费门 test/fixtures/modularity/lex-consumer（独立 manifest 唯一依赖 auto-lex）。\nPLAN-842:r2 诊断 owner 保持词法错误单源，已退役 auto_lang::error 路径不再作为现行出口。",
           "file": "docs/specs/auto-lex/project.md",
           "tags": [
             "PLAN-789",
             "r2",
-            "48dae3c48"
+            "48dae3c48",
+            "PLAN-842:r2",
+            "plan842-source-sha256:9a75ac7d4441be21d1ba4b1912a315c5b173d9099a889e4fc8a8a665edf4b29c",
+            "plan842-lang-commit:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+            "plan842-ui-commit:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
           ],
           "status": "stable",
           "depends_on": [],
@@ -9524,7 +9552,7 @@
           "milestone": null,
           "module": null,
           "created_at": 0,
-          "modified_at": 0,
+          "modified_at": 1793107646,
           "completed_at": null
         },
         {
@@ -14511,12 +14539,16 @@
         {
           "id": "P793-D1",
           "title": "auto-diagnostics 诊断基础 crate 合同（单一实现/门面/无 AST 闭包）",
-          "content": "PLAN-793 交付：AutoError 聚合与语法/类型/名称/运行时/comptime/警告各族诊断+WithSource 包装+attach_source/format_error/find_best_match 单一实现自 auto-lang/src/error.rs 逐字迁入 crates/auto-diagnostics（唯三补丁：Name→AutoStr×2+头注；TypeError::CannotModifyViewParam 载荷=auto_val::AutoStr 同一类型，error→AST 边切断）。normal 闭包仅 auto-lex+auto-val+miette/thiserror（module-boundaries 域 lang-core）；auto-lang error.rs=20 名冻结公开面薄门面（auto_lang::error::* 路径/身份零变化），owner 侧 From（route/discovery、infer/unification）合法留存；多错误收集上限留 auto-lang lib.rs。同一性合同 auto_lang::error::X ≡ auto_diagnostics::error::X，消费者不得降级 String。外部消费门 diagnostics-consumer+verify-deps；互操作门 interop-consumer（真实 parse/type/name/route 阶段保持）。",
+          "content": "PLAN-793 交付：AutoError 聚合与语法/类型/名称/运行时/comptime/警告各族诊断+WithSource 包装+attach_source/format_error/find_best_match 单一实现自 auto-lang/src/error.rs 逐字迁入 crates/auto-diagnostics（唯三补丁：Name→AutoStr×2+头注；TypeError::CannotModifyViewParam 载荷=auto_val::AutoStr 同一类型，error→AST 边切断）。normal 闭包仅 auto-lex+auto-val+miette/thiserror（module-boundaries 域 lang-core）；auto-lang error.rs=20 名冻结公开面薄门面（auto_lang::error::* 路径/身份零变化），owner 侧 From（route/discovery、infer/unification）合法留存；多错误收集上限留 auto-lang lib.rs。同一性合同 auto_lang::error::X ≡ auto_diagnostics::error::X，消费者不得降级 String。外部消费门 diagnostics-consumer+verify-deps；互操作门 interop-consumer（真实 parse/type/name/route 阶段保持）。\nPLAN-842:r2 auto-lang 0.2 退出 error 公开过渡门面，诊断及 SDK 同源类型继续支持。",
           "file": "docs/specs/auto-diagnostics/project.md",
           "tags": [
             "PLAN-793",
             "r2",
-            "2a2b15478"
+            "2a2b15478",
+            "PLAN-842:r2",
+            "plan842-source-sha256:80b3202884c5cb3bb777f00d1f869e38041816e140c73ee62d1e9dbf94ca9d4e",
+            "plan842-lang-commit:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+            "plan842-ui-commit:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
           ],
           "status": "stable",
           "depends_on": [],
@@ -14527,7 +14559,7 @@
           "milestone": null,
           "module": null,
           "created_at": 0,
-          "modified_at": 0,
+          "modified_at": 1793107646,
           "completed_at": null
         },
         {
@@ -14555,12 +14587,16 @@
         {
           "id": "P792-D1",
           "title": "生成式 Rust UI 可搬动交付合同（SD-01）",
-          "content": "PLAN-792 SD-01：镜像仓布局受管 bundle（crates/ 闭包+patch+stdlib/docs 根级编译输入）；消费根 [patch.crates-io] iced_widget 单源；应用独立锁+漂移家族精确 pin（wgpu/iced 12 项，windows 双包多槽冻结披露）；资源 allowlist SHA-256+随包 verify.py 正式校验入口；staging/backup 唯一属主名+事务标记，任何既存目录（含他应用合法交付包）不被认领删除，陈残 GC 双条件；边界自检 TOML 语义遍历（RootDir/Prefix/越界拒绝，解析失败 fail-closed）；投影修剪剥闭包外 optional path 依赖；producer 身份（git/ui_gen 指纹/根锁 SHA-256）入 delivery-manifest。闭包=auto-lang 全库等 10 crate（793 后含 auto-diagnostics）+patch+5 根级输入，如实披露非纯 core。",
+          "content": "PLAN-792 SD-01：镜像仓布局受管 bundle（crates/ 闭包+patch+stdlib/docs 根级编译输入）；消费根 [patch.crates-io] iced_widget 单源；应用独立锁+漂移家族精确 pin（wgpu/iced 12 项，windows 双包多槽冻结披露）；资源 allowlist SHA-256+随包 verify.py 正式校验入口；staging/backup 唯一属主名+事务标记，任何既存目录（含他应用合法交付包）不被认领删除，陈残 GC 双条件；边界自检 TOML 语义遍历（RootDir/Prefix/越界拒绝，解析失败 fail-closed）；投影修剪剥闭包外 optional path 依赖；producer 身份（git/ui_gen 指纹/根锁 SHA-256）入 delivery-manifest。闭包=auto-lang 全库等 10 crate（793 后含 auto-diagnostics）+patch+5 根级输入，如实披露非纯 core。\nPLAN-842:r2 多来源分别冻结收据和副本；源码、安装中间态及已投影态按结构准入，异常混态拒绝。",
           "file": "docs/specs/repository-boundaries/generated-ui-distribution.md",
           "tags": [
             "PLAN-792",
             "sd:01",
-            "delivery:e98c33f28088"
+            "delivery:e98c33f28088",
+            "PLAN-842:r2",
+            "plan842-source-sha256:67d5ff3089e1fddff7676d258ccf6fbc4cbcca45b8fd05349e7506ec845bf43c",
+            "plan842-lang-commit:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+            "plan842-ui-commit:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
           ],
           "status": "stable",
           "depends_on": [],
@@ -14571,7 +14607,7 @@
           "milestone": null,
           "module": null,
           "created_at": 0,
-          "modified_at": 0,
+          "modified_at": 1793107646,
           "completed_at": null
         },
         {
@@ -14846,13 +14882,17 @@
         {
           "id": "P801-D1",
           "title": "auto-parser-api 模块契约（方言端口 API 单一来源）",
-          "content": "SD-01：方言端口合同唯一实现——轻 CompilerSession/Scenario/DialectPriority + ExternalDialect trait + 对象安全 ParseContext 端口 + 快照凭据 ParseCheckpoint；依赖闭包仅 auto-ast/auto-lex/auto-diagnostics（lang-core 域，777 规则），轻层门面 re-export ast/token/error 与旧 auto_lang 模块名对齐；外部文法实现闭包零语言实现（dialect-api-consumer+verify-deps 钉住）。快照寿命按签发作用域失效（F-801-R1-01：槽位记 scope+port_release_scope 归属清理，tombstone 复用不可绕过；跨上下文/过期受控拒绝且游标不动；move-only 单用；无 unsafe/无源码静态生命要求/无全局池）。剩余边如实：内建 UiDialect escape hatch 完整文法在 Parser、生产入口注册不自动注入、widget 体 model 直连。",
+          "content": "SD-01：方言端口合同唯一实现——轻 CompilerSession/Scenario/DialectPriority + ExternalDialect trait + 对象安全 ParseContext 端口 + 快照凭据 ParseCheckpoint；依赖闭包仅 auto-ast/auto-lex/auto-diagnostics（lang-core 域，777 规则），轻层门面 re-export ast/token/error 与旧 auto_lang 模块名对齐；外部文法实现闭包零语言实现（dialect-api-consumer+verify-deps 钉住）。快照寿命按签发作用域失效（F-801-R1-01：槽位记 scope+port_release_scope 归属清理，tombstone 复用不可绕过；跨上下文/过期受控拒绝且游标不动；move-only 单用；无 unsafe/无源码静态生命要求/无全局池）。剩余边如实：内建 UiDialect escape hatch 完整文法在 Parser、生产入口注册不自动注入、widget 体 model 直连。\nPLAN-842:r2 UI 统一中立领域端口，非 UI 外部方言和优先级保持。",
           "file": "docs/specs/auto-parser-api/project.md",
           "tags": [
             "PLAN-801",
             "stage:merge",
             "delivery:786c49964",
-            "sha256:8070fd361984"
+            "sha256:8070fd361984",
+            "PLAN-842:r2",
+            "plan842-source-sha256:d9ab09bcf57c52d94d41ffe21bd42d5afa617cee7a6e3d81b3458684e4130ee5",
+            "plan842-lang-commit:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+            "plan842-ui-commit:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
           ],
           "status": "stable",
           "depends_on": [],
@@ -14863,19 +14903,23 @@
           "milestone": null,
           "module": null,
           "created_at": 0,
-          "modified_at": 0,
+          "modified_at": 1793107646,
           "completed_at": null
         },
         {
           "id": "P801-D2",
           "title": "auto-lang 前端方言双接口与同表派发（PLAN-801）",
-          "content": "SD-02/03：ParserBridge 在上层实现 ParseContext（泛型便利方法留具体门面，端口对象安全参数形态）；ExternalDialectAdapter 协议转换使新接口方言进同一三段派发表（register_external_dialect，Override→builtin→Append 与 778 恢复不变量零漂移）；session/DialectPriority 迁移单一定义+旧路径薄门面（类型身份不变）；dialect-system 陈旧 mem::take 描述修正为 Arc 派发+新端口；792 交付闭包 11→12 成员（SD-04）。",
+          "content": "SD-02/03：ParserBridge 在上层实现 ParseContext（泛型便利方法留具体门面，端口对象安全参数形态）；ExternalDialectAdapter 协议转换使新接口方言进同一三段派发表（register_external_dialect，Override→builtin→Append 与 778 恢复不变量零漂移）；session/DialectPriority 迁移单一定义+旧路径薄门面（类型身份不变）；dialect-system 陈旧 mem::take 描述修正为 Arc 派发+新端口；792 交付闭包 11→12 成员（SD-04）。\nPLAN-842:r2 前端当前 owner 源路径、领域上下文及退役入口已校正。",
           "file": "docs/specs/auto-lang/frontend/overview.md",
           "tags": [
             "PLAN-801",
             "stage:merge",
             "delivery:786c49964",
-            "sha256:1eac101d9306"
+            "sha256:1eac101d9306",
+            "PLAN-842:r2",
+            "plan842-source-sha256:a86b11583f5df6f0cd44f0f265498aefb0f9234d8b0d5fe78c4533634b465f43",
+            "plan842-lang-commit:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+            "plan842-ui-commit:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
           ],
           "status": "stable",
           "depends_on": [],
@@ -14886,7 +14930,7 @@
           "milestone": null,
           "module": null,
           "created_at": 0,
-          "modified_at": 0,
+          "modified_at": 1793107646,
           "completed_at": null
         },
         {
@@ -15082,14 +15126,18 @@
         {
           "id": "P810-D1",
           "title": "完整 UI 文法单源外置与 UiParseContext 端口（PLAN-810）",
-          "content": "widget/store/component/view/fragment/节点族/on 块/actions/style/timer/routes/menubar/toolbar/scene/use/setup/expose/watch/computed/bind 及全部依赖 helper（约 4.9k 行）自 auto-lang Parser 逐字迁 auto-ui-dialect grammar/{widget,view,scene,store,actions,helpers}，经对象安全子 trait UiParseContext:ParseContext（定义在文法 crate，不入 Core 包，ParseContext 面零改动）驱动；ParserBridge 实现+Parser 端口后端（raw_cursor_save/restore/release 投机生命周期：成功出口显式释放覆盖公开门面/Core 直连/派发/嵌套全入口；probe_next_token 失败上抛协议；advance_peek_kind 与 _resync 区分 stream 手动恢复与 scene/subresource 双 push 重同步两种 prev 终态；computed 局部诊断事务；raw CSS 捕获；bind_var/define_handler_param/register_style_recipe 副作用出口）。ParserBridge::parser() escape hatch 删除，dialect/ui 薄 adapter 全端口派发，Parser 留同签名薄委托门面；on-events/arrow 事件文法留 Core（共享）。具名冻结旧怪癖：on Err 参数作用域泄漏、未闭合 fragment 无界 EOF、fn 体 store 门。canonical 见 file+full-grammar.md。",
+          "content": "widget/store/component/view/fragment/节点族/on 块/actions/style/timer/routes/menubar/toolbar/scene/use/setup/expose/watch/computed/bind 及全部依赖 helper（约 4.9k 行）自 auto-lang Parser 逐字迁 auto-ui-dialect grammar/{widget,view,scene,store,actions,helpers}，经对象安全子 trait UiParseContext:ParseContext（定义在文法 crate，不入 Core 包，ParseContext 面零改动）驱动；ParserBridge 实现+Parser 端口后端（raw_cursor_save/restore/release 投机生命周期：成功出口显式释放覆盖公开门面/Core 直连/派发/嵌套全入口；probe_next_token 失败上抛协议；advance_peek_kind 与 _resync 区分 stream 手动恢复与 scene/subresource 双 push 重同步两种 prev 终态；computed 局部诊断事务；raw CSS 捕获；bind_var/define_handler_param/register_style_recipe 副作用出口）。ParserBridge::parser() escape hatch 删除，dialect/ui 薄 adapter 全端口派发，Parser 留同签名薄委托门面；on-events/arrow 事件文法留 Core（共享）。具名冻结旧怪癖：on Err 参数作用域泄漏、未闭合 fragment 无界 EOF、fn 体 store 门。canonical 见 file+full-grammar.md。\nPLAN-842:r2 删除 0.2 UI 旧上下文别名，schema 与中立端口继续支持。",
           "status": "stable",
           "file": "docs/specs/auto-ui-dialect/project.md",
           "tags": [
             "PLAN-810",
             "stage:merge",
             "delivery:2a284c779",
-            "scope:auto-ui-dialect"
+            "scope:auto-ui-dialect",
+            "PLAN-842:r2",
+            "plan842-source-sha256:48c9432e27913a038ad6393e640c32355c19279b00916e14dda86803cfda3c75",
+            "plan842-lang-commit:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+            "plan842-ui-commit:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
           ],
           "depends_on": [],
           "related": [],
@@ -15099,7 +15147,7 @@
           "milestone": null,
           "module": null,
           "created_at": 0,
-          "modified_at": 0,
+          "modified_at": 1793107646,
           "completed_at": null
         },
         {
@@ -15273,7 +15321,7 @@
         {
           "id": "P814-UIR",
           "title": "AutoUI synchronous fixture completion",
-          "content": "原 auto-lang src/ui/ 全树~20.4万行+host_adapters+back_proxy+assets+UI动态构建管线单源迁入;DAG: UIR→{SDK,UIC}不反依赖旧包,不被SDK/compiler反依赖;旧auto-lang依赖边default-features=false(no-UI缺席语义);feature面ui/ui-interpreter/ui-iced/ui-headless等与旧组合逐项保持(R9-F03六形态0错);装配单点install_ui_host_capabilities+零inventory submit(r3登记权);777 ui_to_language=0围栏;canonical import与生成工程双直依赖合同;并集归属:app_registry/i18n_lookup单源compiler+本包pub use。完整规则见 docs/specs/auto-ui-runtime/project.md\n\nPLAN-840 phase2: Test-only shared completion driver uses real render/demand, Init/CPU/I/O pumping and a bounded deadline before geometry assertions. All15 caller oracles retained; original production-helper early-exit control and new multi-slice/deadline controls remain. Production scheduler/helper unchanged; D-762-1 remains separately authorized debt.",
+          "content": "原 auto-lang src/ui/ 全树~20.4万行+host_adapters+back_proxy+assets+UI动态构建管线单源迁入;DAG: UIR→{SDK,UIC}不反依赖旧包,不被SDK/compiler反依赖;旧auto-lang依赖边default-features=false(no-UI缺席语义);feature面ui/ui-interpreter/ui-iced/ui-headless等与旧组合逐项保持(R9-F03六形态0错);装配单点install_ui_host_capabilities+零inventory submit(r3登记权);777 ui_to_language=0围栏;canonical import与生成工程双直依赖合同;并集归属:app_registry/i18n_lookup单源compiler+本包pub use。完整规则见 docs/specs/auto-ui-runtime/project.md\n\nPLAN-840 phase2: Test-only shared completion driver uses real render/demand, Init/CPU/I/O pumping and a bounded deadline before geometry assertions. All15 caller oracles retained; original production-helper early-exit control and new multi-slice/deadline controls remain. Production scheduler/helper unchanged; D-762-1 remains separately authorized debt.\nPLAN-842:r2 Aura 旧 builder 入口退役，DynamicComponent 导入语义及宿主能力保持。",
           "status": "verified",
           "depends_on": [],
           "related": [],
@@ -15289,16 +15337,20 @@
             "phase2+phase3",
             "reviewed:00c688867be040aa0f1d3e88d63b2b18a484f675",
             "source-sha256:a83c5df57846fa1b23fa19bbe1b3c0f947a28af7d16b50d263d236eb3e82baa7",
-            "source-path:docs/specs/auto-ui-runtime/project.md"
+            "source-path:docs/specs/auto-ui-runtime/project.md",
+            "PLAN-842:r2",
+            "plan842-source-sha256:ef43038730430580dcc9db7fa741d3a397d1ae4049bd3f7cdd5bbab355d64495",
+            "plan842-lang-commit:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+            "plan842-ui-commit:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
           ],
           "created_at": 1792835257,
-          "modified_at": 1792835257,
+          "modified_at": 1793107646,
           "completed_at": 1792835257
         },
         {
           "id": "P814-CMP-TYPING",
           "title": "比较位值投影完整表达式类型感知（PLAN-814 R9-R14 终局）",
-          "content": "dot访问处于值比较位(六比较符两方向完整消费/字段自身透明分组/调用括号判别保truthy)不得truthy包裹,投影按另一操作数完整表达式类型分流:形状已知shaped访问器/字面量/已声明引用(state_types宽度跟随float=f32,u32/i64/u64)/四则宽度合并(float支配,字面量弹性跟随声明侧)/布尔取反传播/括号内逻辑组合/比较子表达式结果bool(字符串字面量外);任意一侧分组剥壳递归,左右位对称;默认str语义保持。反例矩阵112组真实编译,规则见 docs/specs/auto-ui-compiler/project.md B增量节\n\nPLAN-050:r4：物理产品目录使用 apps/auto-*，稳定 manifest ID、应用 pin、端口保持；相邻清单按真实路径提供 ID，Vue/VM 共用容器展开。24 个对应远端与固定提交可取回，branch=main；syslog 经用户确认保留内部组件。",
+          "content": "dot访问处于值比较位(六比较符两方向完整消费/字段自身透明分组/调用括号判别保truthy)不得truthy包裹,投影按另一操作数完整表达式类型分流:形状已知shaped访问器/字面量/已声明引用(state_types宽度跟随float=f32,u32/i64/u64)/四则宽度合并(float支配,字面量弹性跟随声明侧)/布尔取反传播/括号内逻辑组合/比较子表达式结果bool(字符串字面量外);任意一侧分组剥壳递归,左右位对称;默认str语义保持。反例矩阵112组真实编译,规则见 docs/specs/auto-ui-compiler/project.md B增量节\n\nPLAN-050:r4：物理产品目录使用 apps/auto-*，稳定 manifest ID、应用 pin、端口保持；相邻清单按真实路径提供 ID，Vue/VM 共用容器展开。24 个对应远端与固定提交可取回，branch=main；syslog 经用户确认保留内部组件。\nPLAN-842:r2 生成应用直连 canonical SDK/UI 并显式装配宿主，保留旧测试的 owner 映射。",
           "status": "verified",
           "depends_on": [],
           "related": [],
@@ -15315,10 +15367,14 @@
             "PLAN-050:r4",
             "source_commit:ce055a5194649ad7c6251dbc46d0666bde08cfb6",
             "archive:docs/plans/archive/050-app-directory-product-names.md",
-            "source_sha256:4d37cd6032c7c1031f1e8f6cab99c51bd9a14cb3d4e1ae103a89c560f4a578a5"
+            "source_sha256:4d37cd6032c7c1031f1e8f6cab99c51bd9a14cb3d4e1ae103a89c560f4a578a5",
+            "PLAN-842:r2",
+            "plan842-source-sha256:47a2d1eea1527b6e292ca10030b8493afa7a52862fb3cccfce397667cb0a8eea",
+            "plan842-lang-commit:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+            "plan842-ui-commit:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
           ],
           "created_at": 1792644036,
-          "modified_at": 1792644036,
+          "modified_at": 1793107646,
           "completed_at": 1792644036
         },
         {
@@ -15783,14 +15839,18 @@
         {
           "id": "P816-CLI",
           "title": "薄 CLI 双形态与命令矩阵终态（PLAN-816 SD-02）",
-          "content": "auto 基座=auto-lang-core+auto-man-runtime+auto-tool-client；CLI 只保clap 解析/路由/显示。ui-extra(default) 承载五操作外 UI 静态面（18 处调用点门控）；Core（--no-default-features --features core）闭包零 UI/零旧大库，UI 能力具名失败不冒充完整。语言入口 15 入口 auto-lang-core::script_entry 单源；--format json 单 JSON（模板进度 stderr）；argv 透传/service 合同保持。",
+          "content": "auto 基座=auto-lang-core+auto-man-runtime+auto-tool-client；CLI 只保clap 解析/路由/显示。ui-extra(default) 承载五操作外 UI 静态面（18 处调用点门控）；Core（--no-default-features --features core）闭包零 UI/零旧大库，UI 能力具名失败不冒充完整。语言入口 15 入口 auto-lang-core::script_entry 单源；--format json 单 JSON（模板进度 stderr）；argv 透传/service 合同保持。\nPLAN-842:r2 Full 安装可作真实 producer，Core 不含 UI，坏源拒绝且保留旧产物。",
           "status": "stable",
           "file": "docs/specs/auto-cli/project.md",
           "tags": [
             "plan:816",
             "commit:ac7c1369c9",
             "spec-sha:57dc903f82166b14",
-            "channel:guarded-offline-projection"
+            "channel:guarded-offline-projection",
+            "PLAN-842:r2",
+            "plan842-source-sha256:76976de46bbaf3ae465776e7698ef3ec93af7e2e92d75297b53f054fd7f00790",
+            "plan842-lang-commit:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+            "plan842-ui-commit:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
           ],
           "depends_on": [],
           "related": [],
@@ -15801,19 +15861,23 @@
           "module": null,
           "completed_at": null,
           "created_at": 0,
-          "modified_at": 0
+          "modified_at": 1793107646
         },
         {
           "id": "P816-MAN",
           "title": "auto-man 单源分层与语言/Git adapter（PLAN-816 SD-03）",
-          "content": "非 UI 模块全部迁 auto-man-runtime（Pac/Target/Automan 类型单源）；旧 auto-man=pub use 门面全路径兼容。语言 adapter=auto_lang_core（vm 轨不经 UI seam）；git.rs 四站点迁设施 git_capture（显式 cwd/DirectChildOnly/退出分类）；UiOps EXPLICIT/DEFAULT_OPS 双槽显式优先；runtime 闭包零 UI 实现。",
+          "content": "非 UI 模块全部迁 auto-man-runtime（Pac/Target/Automan 类型单源）；旧 auto-man=pub use 门面全路径兼容。语言 adapter=auto_lang_core（vm 轨不经 UI seam）；git.rs 四站点迁设施 git_capture（显式 cwd/DirectChildOnly/退出分类）；UiOps EXPLICIT/DEFAULT_OPS 双槽显式优先；runtime 闭包零 UI 实现。\nPLAN-842:r2 独立受管语言/UI 来源各冻结收据，校验实际 staging 及各自 revision；开发源校验 Cargo 路径图。",
           "status": "stable",
           "file": "docs/specs/auto-man/project.md",
           "tags": [
             "plan:816",
             "commit:ac7c1369c9",
             "spec-sha:57dc903f82166b14",
-            "channel:guarded-offline-projection"
+            "channel:guarded-offline-projection",
+            "PLAN-842:r2",
+            "plan842-source-sha256:02629b807e763cd66cb8dcb12696758c35f3c6cf47077deb1f05bb0b2e0d760c",
+            "plan842-lang-commit:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+            "plan842-ui-commit:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
           ],
           "depends_on": [],
           "related": [],
@@ -15824,7 +15888,7 @@
           "module": null,
           "completed_at": null,
           "created_at": 0,
-          "modified_at": 0
+          "modified_at": 1793107646
         },
         {
           "id": "P816-SVC",
@@ -15926,7 +15990,7 @@
         {
           "id": "P840-SDK",
           "title": "Language SDK lexical, optional Case and state-file contracts",
-          "content": "Shared dependency_scan code-line lexical state prevents comment/multiline/triple/backtick/escaped string false use/dep declarations, preserving actual forms and ordered parameters. Exact four-file SDK patch; no Parser/VM/UI/Man dependency expansion.\n\nPLAN-840 phase2: Case/AV/CTE/probe registrations share explicit optional test-cases gates; feature-off tests compile and feature-on retains all original real CTE positive/error/identity controls; no default dependency expansion.\n\nPLAN-840 r8: Windows transient create_new namespace errors retry only within the existing deadline; hard errors/timeouts retain best-effort exactly-once closure execution. Actual legacy-delete-pending error5, timeout, release, counter100, stale and atomic-write controls pass. Original lexical and optional Case contracts retained.",
+          "content": "Shared dependency_scan code-line lexical state prevents comment/multiline/triple/backtick/escaped string false use/dep declarations, preserving actual forms and ordered parameters. Exact four-file SDK patch; no Parser/VM/UI/Man dependency expansion.\n\nPLAN-840 phase2: Case/AV/CTE/probe registrations share explicit optional test-cases gates; feature-off tests compile and feature-on retains all original real CTE positive/error/identity controls; no default dependency expansion.\n\nPLAN-840 r8: Windows transient create_new namespace errors retry only within the existing deadline; hard errors/timeouts retain best-effort exactly-once closure execution. Actual legacy-delete-pending error5, timeout, release, counter100, stale and atomic-write controls pass. Original lexical and optional Case contracts retained.\nPLAN-842:r2 保留纯 SDK 无 UI 缺席、已链接 UI 的单份宿主登记与显式 provider 优先。",
           "status": "verified",
           "depends_on": [],
           "related": [],
@@ -15944,48 +16008,56 @@
             "phase2+phase4",
             "reviewed:ba6479da53b7999e490dd0e8ac8d701d5ffe86b2",
             "source-sha256:b7538f05f34f4b6706eaeae1e21c3316606e13826409c9e67e939997c553a238",
-            "source-path:docs/specs/language-sdk/project.md"
+            "source-path:docs/specs/language-sdk/project.md",
+            "PLAN-842:r2",
+            "plan842-source-sha256:e39aa6b65bdcaa9f6659689fa6362034440a02339072d5b92021b172bc6c37db",
+            "plan842-lang-commit:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+            "plan842-ui-commit:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
           ],
           "created_at": 1792828504,
-          "modified_at": 1792838779,
+          "modified_at": 1793107646,
           "completed_at": 1792838779
         },
         {
- "id": "P840-P2-AUTO-LANG",
- "title": "Auto-lang timing and fixture resource contracts",
- "content": "PLAN-840 phase2: Two unchanged real wall-clock oracles use shared phase boundaries and reserve num-test-threads in default/full/t3; all existing aliases/filters, inputs and tiling bounds retained; PLAN-858 sets the ACE development gate to P90≤2000ms, while P95 remains diagnostic. Runner-local pool reservation does not claim external machine isolation.\n\nPLAN-840 r8: Explicit full/t3 configuration replaces daily configuration: existing ffi-dual serial group binds all23 real family IDs in both files. No selected tests/features/layout oracles removed. Original timing shared-boundary and pool-reservation contract retained.\n\nPLAN-850: cargo tf/taa/ta/t3 dispatch real language/UI owners serially. Every formal feature child has independent complete/required ID baselines; failures, empty selection and suppressed required IDs reject. Original profiles/oracles remain unchanged.",
- "status": "verified",
- "depends_on": [],
- "related": [
-  "PLAN-850"
- ],
- "priority": null,
- "assignee": null,
- "test_file": null,
- "file": "docs/specs/auto-lang/project.md",
- "milestone": null,
- "module": null,
- "tags": [
-  "PLAN-840",
-  "r6",
-  "phase2+phase3",
-  "r8",
-  "phase2+phase4",
-  "reviewed:ba6479da53b7999e490dd0e8ac8d701d5ffe86b2",
-  "source-sha256:55bef47f3ca6de45f026a5f61ea0ac6d637961d4cea4152271d306e8d891f358",
-  "source-path:docs/specs/auto-lang/project.md",
-  "PLAN-850",
-  "commit:7750f8d3399fe8aa620b7eecb6c7390ca810df05",
-  "sha256:839eedb556f84c776177b411aba479c7c964ce7e2a0ae2cb95086d056bb92eca",
-  "PLAN-858",
-  "revision:4",
-  "source-sha256:fcdff3d58b024d5c1a4bb74f4ea154321aca487edbf2a2c0db263ba2ae373daa",
-  "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b"
- ],
- "created_at": 1792835257,
- "modified_at": 1793081626,
- "completed_at": 1792838779
-},
+          "id": "P840-P2-AUTO-LANG",
+          "title": "Auto-lang timing and fixture resource contracts",
+          "content": "PLAN-840 phase2: Two unchanged real wall-clock oracles use shared phase boundaries and reserve num-test-threads in default/full/t3; all existing aliases/filters, inputs and tiling bounds retained; PLAN-858 sets the ACE development gate to P90≤2000ms, while P95 remains diagnostic. Runner-local pool reservation does not claim external machine isolation.\n\nPLAN-840 r8: Explicit full/t3 configuration replaces daily configuration: existing ffi-dual serial group binds all23 real family IDs in both files. No selected tests/features/layout oracles removed. Original timing shared-boundary and pool-reservation contract retained.\n\nPLAN-850: cargo tf/taa/ta/t3 dispatch real language/UI owners serially. Every formal feature child has independent complete/required ID baselines; failures, empty selection and suppressed required IDs reject. Original profiles/oracles remain unchanged.\nPLAN-842:r2 0.2 退役四个过渡模块与 use-bigvm；正式薄 API 保留，现状见 canonical。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-850"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-lang/project.md",
+          "milestone": null,
+          "module": null,
+          "tags": [
+            "PLAN-840",
+            "r6",
+            "phase2+phase3",
+            "r8",
+            "phase2+phase4",
+            "reviewed:ba6479da53b7999e490dd0e8ac8d701d5ffe86b2",
+            "source-sha256:55bef47f3ca6de45f026a5f61ea0ac6d637961d4cea4152271d306e8d891f358",
+            "source-path:docs/specs/auto-lang/project.md",
+            "PLAN-850",
+            "commit:7750f8d3399fe8aa620b7eecb6c7390ca810df05",
+            "sha256:839eedb556f84c776177b411aba479c7c964ce7e2a0ae2cb95086d056bb92eca",
+            "PLAN-858",
+            "revision:4",
+            "source-sha256:fcdff3d58b024d5c1a4bb74f4ea154321aca487edbf2a2c0db263ba2ae373daa",
+            "source-commit:9c762deedb095308e71d5869932b4cd8bbf8da4b",
+            "PLAN-842:r2",
+            "plan842-source-sha256:1c8b94f9148fa9cb4bf84bfcecf5259ccad6255f48c8eea13bb4043359c9ce5a",
+            "plan842-lang-commit:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+            "plan842-ui-commit:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
+          ],
+          "created_at": 1792835257,
+          "modified_at": 1793107646,
+          "completed_at": 1792838779
+        },
         {
           "id": "P845-BEHAVIOR-PROJECT",
           "title": "AutoGraphics behavior-project",
@@ -16309,7 +16381,7 @@
         {
           "id": "P832-D1",
           "title": "Man 独立仓与三仓 Core/full 交付（PLAN-832，SD-01..06）",
-          "content": "auto CLI、管理 runtime/core、包锁/resolver/toolchain/assets 与 I-TOOL client 归 auto-man；语言 SDK/AST/Value、I-PROJECT/I-TOOL 协议和 std-only owned 执行设施留 auto-lang，UI 实现归 auto-ui。Core 以独立 core workspace/lock/target 复用同一 CLI 源，仅需 Man/lang，无 UI 源码或工具；full 组合固定四仓源与真实 auto-ui-tool。开发发现按显式 env、Cargo 锚和 current_exe 布局解析 owner，安装态邻接；不搜索任意主检出。安装经 staging/hash/source/profile 校验与受管交换，仅确认死亡 owner 可清理 staging；真实 backup 恢复保存 owned marker 后严格 verify，陌生文件仍拒绝。canonical: docs/specs/repository-boundaries/man-three-repository-delivery.md 及 SD-01..06 目标。",
+          "content": "auto CLI、管理 runtime/core、包锁/resolver/toolchain/assets 与 I-TOOL client 归 auto-man；语言 SDK/AST/Value、I-PROJECT/I-TOOL 协议和 std-only owned 执行设施留 auto-lang，UI 实现归 auto-ui。Core 以独立 core workspace/lock/target 复用同一 CLI 源，仅需 Man/lang，无 UI 源码或工具；full 组合固定四仓源与真实 auto-ui-tool。开发发现按显式 env、Cargo 锚和 current_exe 布局解析 owner，安装态邻接；不搜索任意主检出。安装经 staging/hash/source/profile 校验与受管交换，仅确认死亡 owner 可清理 staging；真实 backup 恢复保存 owned marker 后严格 verify，陌生文件仍拒绝。canonical: docs/specs/repository-boundaries/man-three-repository-delivery.md 及 SD-01..06 目标。\nPLAN-842:r2 Full 安装投影与正式交付连通；未知或损坏安装在替换前拒绝并保留恢复载荷。",
           "status": "verified",
           "file": "docs/specs/repository-boundaries/man-three-repository-delivery.md",
           "tags": [
@@ -16318,7 +16390,11 @@
             "man-delivery:1b7a9ce0de9055f7953129d78a25777662508258",
             "freeze:6b70b8de",
             "guarded-offline-projection",
-            "source-sha256:7a0fa9f22e216ffd264d84596a9b51e2b013ce6af0d5a05bdcee8fa6e6aa88a7"
+            "source-sha256:7a0fa9f22e216ffd264d84596a9b51e2b013ce6af0d5a05bdcee8fa6e6aa88a7",
+            "PLAN-842:r2",
+            "plan842-source-sha256:26d3acc628da846c7a3400cc47acd7ca7b665a94a707047224f9a1f1e4bf7339",
+            "plan842-lang-commit:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+            "plan842-ui-commit:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
           ],
           "depends_on": [],
           "related": [],
@@ -16328,7 +16404,7 @@
           "milestone": "M1",
           "module": "repository-boundaries",
           "created_at": 1792954475,
-          "modified_at": 1792954475,
+          "modified_at": 1793107646,
           "completed_at": 1792954475
         },
         {
@@ -16549,7 +16625,7 @@
         {
           "id": "P841-D1",
           "title": "UI owned 领域模型与 Core 中立端口（PLAN-841，SD-01..05）",
-          "content": "UI 专属 AST/词法分类/解析产物归 auto-ui 的 ui-domain-model 拥有：UiAst/UiStmt 与版本化 UiCode codec、递归 visitor、快照/Weak 最后 owner 语义；Core AST/词法/Parser API 只保通用模型与中立领域端口（DomainDialect/parse_domain、external-ident checker），View/On 共享 Token 与 Core 同名语义不变，旧 UI 兼容臂/文法 inventory 装配退出。UI 经 lower_ui 校验/lowering 后进入类型、VM、四生成器与 SDK；导入失败在 VM 构造前拒绝，缓存身份按新模型版本化。运行期 Init demand 快照递归持有 typed VmRef、重播逐层物化 ListData/ObjectData，parked 段 resume 失败当场回写 Failed 终态（M841-GATE-05）。canonical: docs/specs/ui-domain-model/project.md 及 SD-01..05 各目标。",
+          "content": "UI 专属 AST/词法分类/解析产物归 auto-ui 的 ui-domain-model 拥有：UiAst/UiStmt 与版本化 UiCode codec、递归 visitor、快照/Weak 最后 owner 语义；Core AST/词法/Parser API 只保通用模型与中立领域端口（DomainDialect/parse_domain、external-ident checker），View/On 共享 Token 与 Core 同名语义不变，旧 UI 兼容臂/文法 inventory 装配退出。UI 经 lower_ui 校验/lowering 后进入类型、VM、四生成器与 SDK；导入失败在 VM 构造前拒绝，缓存身份按新模型版本化。运行期 Init demand 快照递归持有 typed VmRef、重播逐层物化 ListData/ObjectData，parked 段 resume 失败当场回写 Failed 终态（M841-GATE-05）。canonical: docs/specs/ui-domain-model/project.md 及 SD-01..05 各目标。\nPLAN-842:r2 Aura 旧入口及旧方言适配已退役，DynamicComponent 导入语义保留。",
           "status": "verified",
           "file": "docs/specs/ui-domain-model/project.md",
           "tags": [
@@ -16559,7 +16635,11 @@
             "man-delivery:9a75d3bab6eaeda961d5dcbf7932258f89e650af",
             "reviewed-spec:ecc2f54a",
             "guarded-offline-projection",
-            "source-sha256:6753c2489822e213fade8ebdd17de11e807cc612cf0b7c9a1e36a11444b76425"
+            "source-sha256:6753c2489822e213fade8ebdd17de11e807cc612cf0b7c9a1e36a11444b76425",
+            "PLAN-842:r2",
+            "plan842-source-sha256:7c0a4efd661ccd2bee9fd97811055871b61bd9b0fe0683037a888ad96df13c84",
+            "plan842-lang-commit:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+            "plan842-ui-commit:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
           ],
           "depends_on": [],
           "related": [],
@@ -16569,7 +16649,7 @@
           "milestone": "M2",
           "module": "ui-domain-model",
           "created_at": 1793073014,
-          "modified_at": 1793073014,
+          "modified_at": 1793107646,
           "completed_at": 1793073014
         }
       ,
@@ -16710,6 +16790,102 @@
   "created_at": 1793085866,
   "modified_at": 1793085866,
   "completed_at": 1793085866
+},
+{
+  "id": "P842-RETIREMENT",
+  "title": "兼容入口退役与 0.2 迁移",
+  "content": "四语言过渡模块、两 UI 上下文别名、旧 Aura builder 与 use-bigvm 退出；正式薄接口及必要宿主登记保持，迁移与版本边界见 canonical。",
+  "status": "verified",
+  "depends_on": [],
+  "related": [],
+  "priority": null,
+  "assignee": null,
+  "test_file": null,
+  "file": "docs/specs/repository-boundaries/compatibility-retirement.md",
+  "milestone": null,
+  "module": "repository-boundaries",
+  "tags": [
+    "PLAN-842",
+    "plan-revision:2",
+    "source-sha256:831c1c17dc5d2e119a953bc7df0656fbd2ef9693fdf4c994573ac0afef4be507",
+    "lang-reviewed:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+    "ui-reviewed:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
+  ],
+  "created_at": 1793107646,
+  "modified_at": 1793107646,
+  "completed_at": 1793107646
+},
+{
+  "id": "P842-UI-GRAMMAR",
+  "title": "UI 领域语法端口当前状态",
+  "content": "UI grammar 使用中立 DomainParseContext；0.2 删除旧 UiParseContext 别名。",
+  "status": "verified",
+  "depends_on": [],
+  "related": [],
+  "priority": null,
+  "assignee": null,
+  "test_file": null,
+  "file": "docs/specs/auto-ui-dialect/design/full-grammar.md",
+  "milestone": null,
+  "module": "auto-ui-dialect",
+  "tags": [
+    "PLAN-842",
+    "plan-revision:2",
+    "source-sha256:58ee39a3375158e36b15863fb99b5cef101387a7a31377fc0126b04d3a754893",
+    "lang-reviewed:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+    "ui-reviewed:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
+  ],
+  "created_at": 1793107646,
+  "modified_at": 1793107646,
+  "completed_at": 1793107646
+},
+{
+  "id": "P842-DIALECT-PORT",
+  "title": "方言系统与领域端口迁移",
+  "content": "旧 builtin UI 注册为历史；现行 UI 显式组合，非 UI 方言合同保留。",
+  "status": "verified",
+  "depends_on": [],
+  "related": [],
+  "priority": null,
+  "assignee": null,
+  "test_file": null,
+  "file": "docs/specs/auto-lang/frontend/design/dialect-system.md",
+  "milestone": null,
+  "module": "auto-lang",
+  "tags": [
+    "PLAN-842",
+    "plan-revision:2",
+    "source-sha256:4540ceded75dc9dfb1c4e26e88219d37a607cb7ae56eb27db87d31f04508a15f",
+    "lang-reviewed:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+    "ui-reviewed:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
+  ],
+  "created_at": 1793107646,
+  "modified_at": 1793107646,
+  "completed_at": 1793107646
+},
+{
+  "id": "P842-SCENARIO-PORT",
+  "title": "场景与 UI 领域组合",
+  "content": "旧 scenario 自动 UI 注册为历史；现行 UI 显式领域组合，采用中立端口。",
+  "status": "verified",
+  "depends_on": [],
+  "related": [],
+  "priority": null,
+  "assignee": null,
+  "test_file": null,
+  "file": "docs/specs/auto-lang/ui/design/scenario-dialect.md",
+  "milestone": null,
+  "module": "auto-lang",
+  "tags": [
+    "PLAN-842",
+    "plan-revision:2",
+    "source-sha256:9e791f3661bf176a21c1bea3a0af621c34a4504892ca82de897b7c40bcbd0ede",
+    "lang-reviewed:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+    "ui-reviewed:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
+  ],
+  "created_at": 1793107646,
+  "modified_at": 1793107646,
+  "completed_at": 1793107646
 }
 ],
       "section_type": "Designs",
@@ -20493,7 +20669,7 @@
         {
           "id": "P850-FULL-GUARDS",
           "title": "Full-regression owner and coverage guards",
-          "content": "Independent whole-tier ID/required snapshots, real-owner metadata, process/machine/WIP controls. F850-R1-01 closed by per-feature baselines, five real positive/scoped inputs and fifteen distinguishing mutations; sixteen permanent unittest methods pass.",
+          "content": "Independent whole-tier ID/required snapshots, real-owner metadata, process/machine/WIP controls. F850-R1-01 closed by per-feature baselines, five real positive/scoped inputs and fifteen distinguishing mutations; sixteen permanent unittest methods pass.\nPLAN-842:r2 841 迁移的 21 个旧测试 ID 经显式映射保留，新 UI owner integration 目标进入 full 选择。",
           "status": "verified",
           "depends_on": [],
           "related": [
@@ -20508,10 +20684,14 @@
           "tags": [
             "PLAN-850",
             "commit:7750f8d3399fe8aa620b7eecb6c7390ca810df05",
-            "sha256:839eedb556f84c776177b411aba479c7c964ce7e2a0ae2cb95086d056bb92eca"
+            "sha256:839eedb556f84c776177b411aba479c7c964ce7e2a0ae2cb95086d056bb92eca",
+            "PLAN-842:r2",
+            "plan842-source-sha256:1c8b94f9148fa9cb4bf84bfcecf5259ccad6255f48c8eea13bb4043359c9ce5a",
+            "plan842-lang-commit:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+            "plan842-ui-commit:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
           ],
           "created_at": 1792972939,
-          "modified_at": 1792972939,
+          "modified_at": 1793107646,
           "completed_at": null
         },
         {
@@ -20775,6 +20955,30 @@
   "created_at": 1793085866,
   "modified_at": 1793085866,
   "completed_at": 1793085866
+},
+{
+  "id": "P842-TESTS",
+  "title": "兼容退役与交付验证",
+  "content": "真实旧入口/替代、Full/Core、复制期及多来源收据失败保旧；21 迁移测试实际选择映射。最终合入与完整档以归档计划收据为准。",
+  "status": "verified",
+  "depends_on": [],
+  "related": [],
+  "priority": null,
+  "assignee": null,
+  "test_file": null,
+  "file": "docs/specs/repository-boundaries/compatibility-retirement.md",
+  "milestone": null,
+  "module": "repository-boundaries",
+  "tags": [
+    "PLAN-842",
+    "plan-revision:2",
+    "source-sha256:831c1c17dc5d2e119a953bc7df0656fbd2ef9693fdf4c994573ac0afef4be507",
+    "lang-reviewed:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+    "ui-reviewed:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
+  ],
+  "created_at": 1793107646,
+  "modified_at": 1793107646,
+  "completed_at": 1793107646
 }
 ],
       "section_type": "Tests",
@@ -27771,6 +27975,30 @@
   "created_at": 1793085866,
   "modified_at": 1793085866,
   "completed_at": 1793085866
+},
+{
+  "id": "P842-R7",
+  "title": "PLAN-842 r2 独立最终复审",
+  "content": "R7 核对 AC/SD、多个受管 UI 来源的独立复制期反例、来源版本和测试选择；合入门禁由 merge 单独执行。",
+  "status": "verified",
+  "depends_on": [],
+  "related": [],
+  "priority": null,
+  "assignee": null,
+  "test_file": null,
+  "file": "docs/plans/attachments/842/review-r7/report.md",
+  "milestone": null,
+  "module": "repository-boundaries",
+  "tags": [
+    "PLAN-842",
+    "plan-revision:2",
+    "source-sha256:ebf6e232e236ec225d5858354ea0f590f73b7986cd3f5cef77bcc3dab61e31ed",
+    "lang-reviewed:a8b4a5bcf53d9be484cc38f028453a4cebbc947f",
+    "ui-reviewed:bd0e0f38253c5fd0676c8ef729c8c030d372ae82"
+  ],
+  "created_at": 1793107646,
+  "modified_at": 1793107646,
+  "completed_at": 1793107646
 }
 ],
       "section_type": "Reviews",
@@ -27783,5 +28011,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 104
+  "version": 105
 }

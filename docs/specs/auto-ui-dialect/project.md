@@ -58,3 +58,7 @@ body_depth/既有截止，不新增任意限额。
 ## PLAN-841 来源与验证
 
 UI AST/visitor/codec/validate_ui 单一 owner；版本信封完整消费，合法深视图与最后 owner 生命周期保持。 规范与验收来源：[PLAN-841](../../plans/archive/841-ui-domain-ast-token-lowering-finalization.md)；复审及统一门证据见其归档记录。
+
+## PLAN-842：0.2 迁移
+
+`auto-ui-dialect 0.2.0` 删除根和 `grammar` 两处 `UiParseContext` 过渡别名；消费者迁至 `auto_parser_api::DomainParseContext`。UI schema 1 的合法往返保留，未知 domain/schema/tag 与非空尾随数据拒绝；非 UI 外部方言不因此删除。来源：[PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)

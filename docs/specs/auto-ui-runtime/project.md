@@ -66,7 +66,7 @@
   模块均在 VM 构造前校验；`new_with_children` 和 `new_from_decls` 共用
   模块错误 drain-on-check，不能由 decl 路径绕过失败。外部组件名由
   UI-owned `register_imported_components` 提供；Aura 的旧 import 扫描
-  已删除，构造函数的末参仅为交 842 的源码形兼容，不再保存或读取。
+  已删除；Aura 旧末参构造入口已随 PLAN-842 退役，使用 `with_registry`。
 
 ## 单源状态与生命周期
 
@@ -167,3 +167,7 @@ VmRef；重播时逐层物化为 ListData/ObjectData，使每个堆容器按既�
 
 验收保留原未定义变量输入的导入拒绝/同文件修复恢复控制；运行期金丝雀
 须先通过领域解析，再观测真实 Init 失败、健康兄弟完成及原命中区比较。
+
+## PLAN-842：0.2 builder 与宿主
+
+`auto-ui-runtime 0.2.0` 删除 `AuraViewBuilder::with_registry_and_imports` 的旧末参入口；调用改为 `AuraViewBuilder::with_registry`，注册表提供组件。`DynamicComponent::with_registry_and_imports` 是仍有真实导入语义的不同方法，保留。UI 运行能力、显式 provider 优先、默认/缺席、多实例、线程与退出语义不变；直接 SDK 默认宿主所需的 `UiCompatInstaller` 单份登记仍保留，不能与退役的文法 inventory 混为一谈。`mpv-native` 显式包含 libloading；本轮未实测真实 DLL/视频播放。来源：[PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)

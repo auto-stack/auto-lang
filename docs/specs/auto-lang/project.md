@@ -4,14 +4,13 @@
 
 
 > **Status**: active
-> 路径：`crates/auto-lang`  | 技术栈：Rust 库（巨型，全 workspace 的依赖中心）
+> 路径：`crates/auto-lang`  | 技术栈：Rust 库（默认组合和正式薄兼容面）
 
-Auto 语言的核心实现：lexer/parser/AST、类型系统、解释器、AutoVM、多目标转译器、UI 引擎全部在此 crate。
-所有应用层 crate（auto-cli、auto-lsp、auto-vm、auto-gen、auto-man、auto-playground）都依赖它。
+`auto-lang` 是上层默认组合与正式薄兼容包；非 UI 语言实现由 language-sdk 与各基础包持有，UI 编译和运行分别由 auto-ui-compiler、auto-ui-runtime 持有。应用按实际 owner 依赖，不要求全部经过本包。
 
 ## 目标与范围
 
-- 负责：Auto 语言从源码到执行/转译的全部语义；AURA/UI 代码生成；内建标准库绑定。
+- 负责：默认组合及兼容薄入口、特性转发与跨 owner 装配；语言、UI 编译和 UI 运行语义由对应 owner 实现。
 - 不负责：构建/包管理（auto-man）、LSP 协议层（auto-lsp）、CLI 命令分发（auto-cli）、独立运行时标准库（a2r-std）。
 - 重后端由 features 控制：`python`（PyO3 FFI）、`ui-iced`、`ui-interpreter` 等，default 为 `with-file-history` + `ui-iced`（2026-09-22 全档统一裁定）；`ui-gpui`（Zed GPUI 宿主后端）已随 PLAN-691 移除（全仓零启用者）。
 - 路线图：见 [docs/roadmap.md](../../roadmap.md)。
@@ -72,7 +71,7 @@ graph LR
 生成在 `auto-ui-compiler`（[auto-ui-compiler](../auto-ui-compiler/project.md)）、
 UI 运行/renderer/宿主域在 `auto-ui-runtime`
 （[auto-ui-runtime](../auto-ui-runtime/project.md)，M814-B T-04 迁移）。
-旧 `auto_lang::*` 公开路径经再导出保类型身份；UI 特性族（ui-iced/ui/
+已保留的 `auto_lang::*` 正式公开路径经再导出保类型身份；四个过渡模块按 PLAN-842 退役；UI 特性族（ui-iced/ui/
 autodown/ui-headless/code-editor 等）在此转发。
 
 **PLAN-841 领域组合**：UI 由调用方经 `Parser::parse_domain(&UiDialect)`
@@ -122,3 +121,9 @@ autodown/ui-headless/code-editor 等）在此转发。
 ## PLAN-841 来源与验证
 
 Core/领域 AST 终态解耦；兼容上层只保同类型转发，真实工程/VM/生成入口遵循领域准入。 规范与验收来源：[PLAN-841](../../plans/archive/841-ui-domain-ast-token-lowering-finalization.md)；复审及统一门证据见其归档记录。
+
+## PLAN-842：0.2 退役边界
+
+`auto-lang 0.2.0` 不再公开 `auto_lang::{ast,parser,session,error}` 四个过渡模块；分别使用 `auto_ast::ast`、`auto_lang_core::parser`、`auto_parser_api::{CompilerSession,Scenario}`、`auto_diagnostics::error`。`use-bigvm` 已退役，AutoVM 默认可用；`use-evaluator` 保留。根 `Parser`、正式 UI 特性及 `ui`/`back_proxy`/`host_adapters`、`ui_build*`、`find_store_decl_files`/`resolve_use_module`/`UseModuleResolution` 等薄入口继续支持。规范化新消费者直接依赖实际 owner。历史文段所称旧路径“全保持”不包含这里明确退役的四项。
+
+真实测试跨 owner 编排以 841 的 21 项旧测试 ID 到新 owner/目标的显式映射守恒，UI compiler 的 design_tokens_recipe integration target 在 full UI 清单中；list-only 为选择验证，不代表执行档通过。来源：[PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)

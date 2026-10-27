@@ -24,10 +24,7 @@
 （依赖 auto-diagnostics/auto-lex/miette）构建+测试 + `verify-deps.sh`
 闭包断言即独立可消费证据。
 
-auto-lang 侧兼容门面：`crates/auto-lang/src/error.rs` 为纯 re-export
-（同一类型身份，跨 crate 互传；`auto_lang::error::*` 20 名冻结公开面，
-见 docs/plans/attachments/793/t01-consumer-closure.md）。不保留第二份
-诊断实现。模块专有错误转换留 owner 侧（孤儿规则合法）：
+`auto_lang::error::*` 的 0.1 过渡公开门面已在 PLAN-842 的 auto-lang 0.2.0 退役；消费者直接使用 `auto_diagnostics::error::*` 或 SDK 同源接口。不保留第二份诊断实现。模块专有错误转换留 owner 侧（孤儿规则合法）：
 `From<RouteDiscoveryError> for AutoError`（route/discovery.rs）、
 `From<UnificationError> for TypeError`（infer/unification.rs）。
 
@@ -56,8 +53,7 @@ auto-lang 侧兼容门面：`crates/auto-lang/src/error.rs` 为纯 re-export
 - 本 crate 不承载 parser/AST/推断类型：多错误收集上限（parser 错误恢复
   的全局 error limit）留在 auto-lang `lib.rs`；route/discovery、
   infer/unification 等模块专有 From 留 owner 侧。
-- 同一性合同：`auto_lang::error::X` ≡ `auto_diagnostics::error::X`——
-  消费者不得把公开错误降级为 String（吞诊断 code）。
+- 同一性合同：正式 SDK 同源错误与 `auto_diagnostics::error::X` 保持类型身份；0.2 不再公开 `auto_lang::error::X`。消费者不得把公开错误降级为 String（吞诊断 code）。
   `test/fixtures/modularity/diagnostics-interop-consumer/`（依赖
   auto-lang + auto-diagnostics）为永久互传/阶段保持门（含真实
   parse/type/name/route 管线错误阶段保持用例）。

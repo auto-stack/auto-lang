@@ -127,3 +127,7 @@ VM/iced extra 根和 manifest 聚合时去重；空子模块继续按无入口/p
 ## PLAN-841 来源与验证
 
 四生成器消费 UI owned 模型；文件/模块准入按各自目录先初始化配方导入再校验，cold/负控均验证。 规范与验收来源：[PLAN-841](../../plans/archive/841-ui-domain-ast-token-lowering-finalization.md)；复审及统一门证据见其归档记录。
+
+## PLAN-842：生成消费与版本边界
+
+四类生成器、迁移示例和 Man 生产消费直接使用 UI runtime/compiler 及语言 SDK 的 canonical owner；生成的 Rust 应用不直接依赖旧 auto-lang 门面，入口显式安装 SDK hook 与 runtime provider。生成器指纹和 UI schema 共同决定缓存身份；旧身份失效后重建。原 design-token 测试及 recipe integration 测试跨 owner 映射并保留 full 测试选择。来源：[PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)

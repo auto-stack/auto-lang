@@ -39,3 +39,9 @@
 - R1 修复后 Core 独立安装 640 文件（29 packages，仅 Man/lang 来源）；full 安装 6608 文件。`tcore` 23/23（Core CLI 18+非 UI driver 5）、full CLI driver 7/7、discovery 6/6 及真实 client/te-child 正控通过；管理库 252、外部 consumer 23、tool client 30、compat 33 的未变证据保留，24/122/4 full 测试 ID 与基线逐字一致。
 - Vue/Rust/vscode 真实构建、VM 真运行与六 profile 生成通过。jet/ark 仅生成已验证；其真实构建经 2026-10-25 用户正式裁定转 v0.7 环境门控渠道（“暂时不测，等v0.7再考虑”），未实测不冒称通过，工具链在场且失败仍须非零。
 - 未执行远端 push、默认分支更名或 registry 发布；本地受管 CI 入口见 `docs/plans/attachments/832/ci-entrypoints.md`，不冒称远端 CI。
+
+## PLAN-842：Full 安装投影与失败保护
+
+Full 安装 SDK 是合法生成 producer，即使其 Cargo 清单处于安装阶段允许的中间投影，也可生成已核验的独立交付；源码、合法中间态和完整投影按 TOML 表作用域识别，异常混态拒绝。安装器在替换前验证现存 schema/profile/受管文件；陌生、未知或损坏状态拒绝，失败保留原安装与可恢复备份。Core 不引入 UI 包/工具；实际 Core 消费、Full fresh/locked、旧 0.1 安装升级/备份恢复与坏源保持按对应版本实测。
+
+每个独立受管语言/UI SDK 的收据分别绑定所有权、来源 revision 和 staged 原始副本；路径大小写别名不得将同一 SDK 降为开发源。收据 hash 是一致性检查，不是签名。保留历史固定源与恢复载荷；兼容退役及旧版迁移见 [compatibility-retirement](compatibility-retirement.md)。来源：[PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)

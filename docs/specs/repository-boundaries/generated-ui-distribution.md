@@ -15,7 +15,7 @@
   编译期 `CARGO_MANIFEST_DIR` 兜底**；环境覆盖（AUTO_RUST_WORKSPACE/
   AUTO_LANG_CRATE/CARGO_TARGET_DIR 等）不进入生成物。定位待拷贝源的
   producer 根解析序 = AUTO_DELIVERY_SOURCE_ROOT → AUTO_LANG_ROOT →
-  CWD 仓库漫步 → 编译期上溯（仅生成期事实，记录于 delivery-manifest）。
+  邻接安装 SDK → CWD 仓库漫步 → 编译期上溯（仅生成期事实，记录于 delivery-manifest）。
 - 两模式共享同一编译相位（auto-ui-tools `compile_rust_ui_app`）：main.rs
   逐字节同源；sidecar/`__InitLoaded` 改写/exe_name 契约同源。
 
@@ -28,7 +28,7 @@
                         # 表逐字节副本、[patch.crates-io] iced_widget（消费根）
   Cargo.lock            # 交付阶段 fresh 解析一次后冻结；消费侧 build --locked
   app/                  # 生成应用（自包含清单：相对 path 依赖 + drift pins）
-  crates/<交付闭包>      # 字节级副本（仅 auto-lang Cargo.toml 投影修剪）
+  crates/<交付闭包>      # 原始副本经收据校验，再按声明投影受影响清单
   crates/patches/iced_widget/  # 本地 patch 随包发行（PLAN-043 走查）
   stdlib/、docs/schema/ # 仓库根级编译期输入（include_str! 越界面）
   assets/               # 资源 allowlist（src/front 非 .at 文件 + SHA-256）
@@ -39,33 +39,17 @@
 - **镜像布局的硬理由**：auto-lang `build.rs` 以 `../../crates` 与根
   `Cargo.lock` 为编译期输入（缺失即 unwrap 红）；非镜像布局在受管 build
   阶段确定性失败。
-- **交付闭包**（14 crate + 1 patch + 5 根级输入；闭包清单随 auto-lang
-  必需 path 依赖演进——PLAN-793 后含 auto-diagnostics、PLAN-799 后含
-  auto-ast、PLAN-801 后含 auto-parser-api、PLAN-806 后含 auto-ui-dialect、
-  PLAN-811 后含 auto-media-core 及其 image codec 依赖闭包）：
-  auto-lang（全库，
-  含 UI——语言源码尚未拆完，**如实披露的受管包含，不冒称纯 core/独立
-  UI 仓**）、auto-val、auto-atom、auto-lex、auto-diagnostics、auto-ast、
-  auto-parser-api（方言端口 API；其自身依赖 auto-ast/auto-lex/
-  auto-diagnostics 已在闭包）、auto-ui-dialect（UI msg/model 声明文法
-  单一份实现，PLAN-806 起为 auto-lang 必需 path 依赖；其自身依赖
-  auto-parser-api 已在闭包，无新增闭包外依赖边）、auto-media-core
-  （renderer-neutral 媒体单源，PLAN-811 起为 auto-lang 必需 path 依赖；
-  其 image codec 为可关闭 feature，闭包按 auto-lang 实际启用形态收编）、
-  auto-cache、
-  shim-metadata、auto-bindgen、auto-macros、a2r-std + crates/patches/iced_widget +
-  stdlib/assembly-providers.json、stdlib/auto/image.{at,rs.at,vm.at}、
-  docs/schema/aura.at。
+- **交付闭包**：当前 24 个受管 crate、patch 与根级输入以 UI tools 的 `DELIVERY_CRATES`、`DELIVERY_PATCHES` 和根输入声明为准；语言包归语言 owner，UI 包归实际选中的 UI owner。生成应用直接依赖 SDK 与 UI runtime；闭包中保留的 auto-lang 不表示应用仍直接依赖旧门面。根 workspace、锁、patch、stdlib/schema 等实际编译输入随包核验。
 
 ## 身份与失败合同
 
-- **单一 source 身份**：iced_widget 仅以 patch 单源出现在交付根
+- **单一 package 身份**：iced_widget 仅以 patch 单源出现在交付根
   `[patch.crates-io]`（不写在依赖包内）；bundle 内 package.name 全局唯一
   （同包 source 重复显式拒绝）；应用包名不得与 vendored 撞名。
-- **投影修剪**（vendored auto-lang/Cargo.toml 的唯一变更）：剥交付闭包外
+- **投影修剪**（对受管 auto-lang、core、runtime 清单按实际结构处理）：剥交付闭包外
   optional path 依赖（autodown-core 跨仓 / auto-test-case 测试协议——
   cargo 对成员 optional path 依赖仍读 manifest，不剥则解析红）+ feature
-  行剥 `dep:` 引用保留 feature 名；修剪计数不足 = producer 结构漂移判红。
+  行剥 `dep:` 引用保留 feature 名；合法源码态、安装中间态和已投影态分别按结构准入，不因合法零编辑或部分编辑判红；缺项或异常混态判为 producer 结构漂移。
 - **锁与 pin**：交付应用清单对历史漂移家族（wgpu/iced 家族，来源=生成时
   producer 根 Cargo.lock 已验证版本）精确钉扎；与基础依赖同名者（iced）
   并入基础行；多槽成员（windows/windows-core 三槽）TOML 单键不可重复声明
@@ -220,3 +204,11 @@ PLAN-841 验收使用真实外部工程完成 fresh resolve、locked build、A�
 重定位、metadata/path/source 身份、资源与失败负控，并覆盖四生成器、
 Iced 窗口、VM 服务/取消和工具协议，39/39 通过。jet/ark 构建仍只按既有
 环境门控披露，不把生成成功冒称宿主工具链已安装。
+
+## PLAN-842：多来源冻结与版本退役
+
+`AUTO_DELIVERY_SOURCE_ROOT` 优先于 `AUTO_LANG_ROOT`，显式语言/UI 根权威；安装 SDK 的实际目录身份而非路径大小写决定受管分类。默认邻接安装存在但清单或 SDK 不完整时拒绝，不借外部开发源。合法 Full SDK 作为 producer 支持源码态、`man-install/1` 合法中间态及已投影态；TOML 表作用域识别投影，异常混态拒绝。
+
+语言和 UI 来自不同受管安装时各自冻结 `man-install/1` 收据，检查所选 owner/path、全受管文件集合及内容；每个复制到 staging 的受管 crate/patch 按相应收据核原始字节，根输入及锁按语言收据核验，swap 前复核各收据。可恢复的旧包不因失败重试删除。清单 SHA 为一致性校验而非签名或来源认证。普通开发源的本地 Cargo 路径图核目标包身份、自身版本与声明约束、workspace 继承及普通/构建依赖环；合法 dev 环和 package 重命名保留，该预检不要求 registry 联网。
+
+生成应用显式装配 SDK hook 和 UI runtime，不直接依赖旧 auto-lang；源根、各 UI/语言 revision、指纹和锁身份应指向实际选中来源。`generated-ui-delivery/1` 与 `man-install/1` 保持可用，未知 schema/profile、坏 producer 在改动旧产物前拒绝。真实 fresh/locked、资源校验和失败恢复范围见来源：[PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)

@@ -15,8 +15,7 @@
   scope）、类型系统/infer、parser+dialect、compile/解释器、VM（engine/
   codegen/native/ffi）、trans（rust/c/gdscript/tscn...）、libs/http 服务、
   stdlib_assembly、design_tokens（parser 通道）、a2r_std、use_scanner/
-  dep_scanner/mode/os_paths。旧 `auto_lang::*` 路径经上层兼容包再导出
-  保类型身份（消费者零改动）。
+  dep_scanner/mode/os_paths。仍支持的上层 `auto_lang::*` 正式路径保持同源类型；四个 `ast/parser/session/error` 过渡模块于 0.2 退役，消费者按迁移规格切换 owner。
 - **禁止边**：不依赖 auto-ui-dialect/auto-ui-compiler/auto-ui-runtime/
   auto-lang（旧包）/auto-man；不提交 UI 注册项、不硬编码 UI factory。
   777 域=lang-core；build 输入=具名清单（SDK 编译闭包 17 crate +
@@ -105,3 +104,7 @@ Man 的 runtime、CLI、three-repository-consumer 均从语言仓固定 source �
 ## PLAN-841 来源与验证
 
 纯语言 SDK 保持无 UI 实现反向依赖；UI 上层经显式领域端口与受检 lowering 消费。 规范与验收来源：[PLAN-841](../../plans/archive/841-ui-domain-ast-token-lowering-finalization.md)；复审及统一门证据见其归档记录。
+
+## PLAN-842：宿主装配与兼容边界
+
+纯 Core 不链接 UI 时 SDK hook 缺席或 no-op。已链接 UI 语言包但直接调用 SDK 的既有消费者仍依赖现有单份 `UiCompatInstaller` inventory 提供默认宿主能力；显式 provider 优先，默认、缺席、多实例、线程与退出语义保持。该宿主登记不同于已退出的 UI 文法 inventory；删除它会丢失实际默认能力。生成应用显式安装 SDK hook 与 UI runtime provider。来源：[PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)

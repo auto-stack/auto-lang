@@ -37,7 +37,7 @@
   与不透明快照凭据 `ParseCheckpoint`（有作用域句柄表：一次性、跨上下文/
   过期受控拒绝、方言调用退出按签发作用域失效）。旧 trait + by-value
   `BridgeCheckpoint` 公开面保持不变。
-- 内建声明文法经端口单源化（PLAN-806，`crates/auto-ui-dialect`）：完整
+- **历史迁移记录（PLAN-806/810）**：以下 builtin 注册/Parser UI 薄门面属于迁移前状态；PLAN-841 起 UI 由 `parse_domain(&UiDialect)` 显式组合，842 删除 `UiParseContext` 别名。内建声明文法经端口单源化（`crates/auto-ui-dialect`）：完整
   msg/model/字段注解算法自 Parser 逐字迁出为轻 crate 单一份实现，同样以
   `dyn ParseContext` 驱动（端口不再只是外部方言面——内建文法实现亦走
   端口，原算法与 `parse_model_field_annotations` 删除；PLAN-810 起完整
@@ -45,7 +45,7 @@
   `parse_msg_decl_inner`/`parse_model_block_inner` 桥接 inner 已随调用方
   迁出删除）。分派权限与恢复规约不变：顶层仍经 builtin 段 `UiDialect`
   同一分支（fn/on 体护栏前置让行）——薄注册 adapter 直调 auto-ui-dialect
-  单源实现（经 `UiParseContext` 端口，`ParserBridge::parser()` escape
+  单源实现（历史 `UiParseContext` 别名现改为 `DomainParseContext`，`ParserBridge::parser()` escape
   hatch 已删除）；widget/component/store 结构路径经 Parser 同签名薄委托
   门面消费同一实现，None/Err
   三态与游标/五旗标恢复由派发器兜底不变；778 冻结的外部 model 子集
