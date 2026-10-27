@@ -141,8 +141,14 @@ fn cte_turnaround_six_scenarios_hard_gates_pass() {
 fn cte_turnaround_release_gate_2000_boundary_control() {
     for (delay, should_pass) in [("1100", true), ("2200", false)] {
         let (code, summary, _) = run_bench(&[
-            "--samples", "10", "--gate-ms", "2000", "--only", "body-edit",
-            "--inject-delay-ms", delay,
+            "--samples",
+            "10",
+            "--gate-ms",
+            "2000",
+            "--only",
+            "body-edit",
+            "--inject-delay-ms",
+            delay,
         ]);
         assert_eq!(summary["body-edit"]["samples"], 10);
         assert_eq!(summary["body-edit"]["all_values_ok"], true);

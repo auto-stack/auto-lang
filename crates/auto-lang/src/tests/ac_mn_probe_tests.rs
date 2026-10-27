@@ -713,11 +713,15 @@ fn mn_receipt_request_wall_ms(receipt: &serde_json::Value) -> Result<f64, &'stat
 #[test]
 fn mn_formal_receipt_wall_admission_controls() {
     let good = serde_json::json!({"request_wall_ms": 2000.0});
-    let bad = [serde_json::json!({}), serde_json::json!({"request_wall_ms": null}),
+    let bad = [
+        serde_json::json!({}),
+        serde_json::json!({"request_wall_ms": null}),
         serde_json::json!({"request_wall_ms": "1000"}),
-        serde_json::json!({"request_wall_ms": 0}), serde_json::json!({"request_wall_ms": -1}),
+        serde_json::json!({"request_wall_ms": 0}),
+        serde_json::json!({"request_wall_ms": -1}),
         serde_json::json!({"request_wall_ms": f64::NAN}),
-        serde_json::json!({"request_wall_ms": f64::INFINITY})];
+        serde_json::json!({"request_wall_ms": f64::INFINITY}),
+    ];
     let mut receipts = vec![good.clone(); 30];
     let accepted: Result<Vec<f64>, _> = receipts.iter().map(mn_receipt_request_wall_ms).collect();
     let p90 = super::ace_latency::p90_ms(&accepted.unwrap()).unwrap();
@@ -727,7 +731,10 @@ fn mn_formal_receipt_wall_admission_controls() {
         let accepted: Result<Vec<f64>, _> = receipts.iter().map(mn_receipt_request_wall_ms).collect();
         assert!(accepted.is_err(), "one invalid receipt among 29 valid peers must fail");
     }
-    assert_eq!(mn_receipt_request_wall_ms(&serde_json::json!({"request_wall_ms": 0.1})), Ok(0.1));
+    assert_eq!(
+        mn_receipt_request_wall_ms(&serde_json::json!({"request_wall_ms": 0.1})),
+        Ok(0.1)
+    );
 }
 
 /// One formal mn call: write the case, run the suite, require green,
