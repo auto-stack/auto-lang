@@ -94,6 +94,13 @@ pub enum MirType {
     /// identity, structural epoch and element generation at every use —
     /// a stale place traps before any access.
     Place(ListTypeRef),
+    /// Owned closure type (PLAN-823, `av.closures/1`): identity is the
+    /// callee SIGNATURE (structural, like `Fn`) — but a `Closure` slot is a
+    /// DISTINCT type from `Fn`: an old `Fn`-typed slot never accepts an
+    /// arbitrary closure (§5.1.1), and only `CALL_CLOSURE` consumes a
+    /// `Closure` slot. The captured env layout is bound per callee (the
+    /// unique CREATE_CLOSURE site, contract-decision r2 §5).
+    Closure(FnSig),
     /// The type-erased dynamic type (PLAN-824, wire tag 16): a slot of
     /// this type holds a `Value::Dyn` — a checked DynValue share whose
     /// runtime type is the erased source type. Only the dynamic profile
@@ -180,6 +187,10 @@ pub struct MirImport {
     pub symbol: String,
     pub effect: Effect,
     pub sig: TypeIdx,
+    /// r8 env contract: the declared env layout when this import binds a
+    /// closure body (`None` for ordinary function imports); link-time
+    /// equivalence checks against the target unit's `MirFunction::env`.
+    pub env: Option<Vec<TypeIdx>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -556,6 +567,38 @@ pub enum MirInstr {
         place: SlotId,
         value: SlotId,
     },
+    // -- PLAN-823 closure surface (av.closures/1; contract-decision r2 §3) --
+    /// CREATE_CLOSURE (opcode 0x32): build the owned closure env from
+    /// `captures` in operand order (prepare/commit two-phase — all
+    /// fallible clone allocations happen before any source transfer), bind
+    /// `callee` + its signature, and publish the `Closure`-typed value to
+    /// `dst`. r8 env contract: the callee is a `CalleeRef` (Func in a
+    /// whole module, Import in a unit); its DECLARED env layout must equal
+    /// the captures' slot types position-by-position; the site-unique
+    /// rule stays (whole modules).
+    CreateClosure {
+        dst: SlotId,
+        callee: CalleeRef,
+        captures: Vec<CaptureOperand>,
+    },
+    /// CALL_CLOSURE (opcode 0x33): indirect call through the `Closure`
+    /// slot — runtime re-checks the env-store handle (stale handles trap
+    /// `av.trap.invalid-handle`), then pushes a fresh frame bound to the
+    /// env. `args` must match the closure signature's params.
+    CallClosure {
+        dst: SlotId,
+        closure: SlotId,
+        args: Vec<SlotId>,
+    },
+    /// ENV_GET (opcode 0x34): read ONE field of the CURRENT frame's bound
+    /// closure environment (capture-order index). The read is a handle
+    /// share — List/Str/Record/Variant values share (interior mutability
+    /// of lists is the mutable-env-field path); the env retains ownership.
+    /// Legal only inside the unique closure body.
+    EnvGet {
+        dst: SlotId,
+        field: u16,
+    },
     /// DYN_PACK (PLAN-824 `av.dynamic/1`, opcode 0x2F): erase the typed
     /// slot `src` into the Dyn slot `dst` — an explicit, checked type
     /// erasure. Verification admits only the whitelisted type closure
@@ -586,6 +629,34 @@ pub enum MirInstr {
         src: SlotId,
         ty: TypeIdx,
     },
+}
+
+/// One CREATE_CLOSURE capture operand's mode (PLAN-823 T-03, wire tag
+/// 0=move / 1=clone / 2=borrow inside the v5 closure opcode).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CaptureKind {
+    /// Whole-root MOVE transfer (kills the source slot).
+    Move,
+    /// Explicit deep CLONE (fresh independent buffers; source untouched).
+    Clone,
+    /// BORROW capture (§5.1.3): statically-provable non-escaping
+    /// synchronous use only — the env field is a SHARE view minted over
+    /// the creator's slot; the source is PINNED until the closure drops;
+    /// the closure value may never escape its creating function.
+    Borrow,
+    /// MOVE-FROM-ENV capture (r8/R1-F01, §5.1.4/§5.5): `src` is a FIELD
+    /// index of the CURRENT frame's bound env — the DEDICATED transfer
+    /// op. The parent field is taken out (moved-out state; re-reading or
+    /// re-transferring it in the same body rejects at verify) and lands
+    /// in the child env, which alone owns it from commit on.
+    MoveFromEnv,
+}
+
+/// One CREATE_CLOSURE capture operand: the mode plus the source slot.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CaptureOperand {
+    pub kind: CaptureKind,
+    pub src: SlotId,
 }
 
 #[derive(Clone, Debug)]
@@ -623,6 +694,10 @@ pub struct MirFunction {
     /// Source snapshot fingerprint this function was lowered from.
     pub source_snapshot: u64,
     pub spans: Vec<(u32, SpanInfo)>,
+    /// r8 env contract: `Some(layout)` marks a CLOSURE BODY and declares
+    /// its env field types in capture order (ENV_GET types against THIS,
+    /// so a body UNIT verifies standalone); `None` = ordinary function.
+    pub env: Option<Vec<TypeIdx>>,
 }
 
 impl MirFunction {
@@ -756,6 +831,29 @@ impl MirModule {
         self.profile == crate::contract::AV_COLLECTIONS_PROFILE
     }
 
+    /// A closures-profile module (`av.closures/1`, PLAN-823). The
+    /// closures profile SUBSUMES the collections feature set and adds the
+    /// closure surface (owned envs, checked indirect calls, capture
+    /// prepare/commit).
+    pub fn new_closures(owner: OwnerScope) -> Self {
+        let mut m = MirModule::new(owner);
+        m.profile = crate::contract::AV_CLOSURES_PROFILE.to_string();
+        m
+    }
+
+    /// A closures-profile single-function unit.
+    pub fn closures_unit(owner: OwnerScope) -> Self {
+        let mut m = MirModule::new_closures(owner);
+        m.is_unit = true;
+        m
+    }
+
+    /// Whether this module declares the closures profile (PLAN-823). The
+    /// closures profile SUBSUMES the collections feature set.
+    pub fn is_closures_profile(&self) -> bool {
+        self.profile == crate::contract::AV_CLOSURES_PROFILE
+    }
+
     /// Whether this module declares the dynamic profile (PLAN-824). The
     /// dynamic profile SUBSUMES the collections feature set.
     pub fn is_dynamic_profile(&self) -> bool {
@@ -783,6 +881,7 @@ impl MirModule {
             | MirType::List(_)
             | MirType::Variant(_)
             | MirType::Place(_)
+            | MirType::Closure(_)
             | MirType::Dyn => None,
         }
     }
@@ -946,6 +1045,8 @@ impl MirModule {
                 // owns its arm table (names + payload indices); Place is
                 // an inline capability type.
                 MirType::List(_) | MirType::Place(_) => 0,
+                // PLAN-823: a Closure owns its signature's param vec (like Fn).
+                MirType::Closure(s) => s.params.len() * std::mem::size_of::<TypeIdx>() + VEC,
                 // PLAN-824: the erased Dyn type is an inline capability
                 // type (no table payload).
                 MirType::Dyn => 0,
@@ -1019,12 +1120,21 @@ impl MirModule {
                         | MirInstr::ListFieldSet { path, .. } => {
                             b += path.len() * std::mem::size_of::<u16>() + VEC
                         }
+                        MirInstr::CallClosure { args, .. } => {
+                            b += args.len() * std::mem::size_of::<SlotId>() + VEC
+                        }
+                        MirInstr::CreateClosure { captures, .. } => {
+                            b += captures.len() * std::mem::size_of::<CaptureOperand>() + VEC
+                        }
                         _ => {}
                     }
                 }
                 b += blk.instrs.len() * std::mem::size_of::<MirInstr>() + VEC;
             }
             b += f.spans.len() * std::mem::size_of::<(u32, SpanInfo)>() + VEC;
+            if let Some(env) = &f.env {
+                b += env.len() * std::mem::size_of::<TypeIdx>() + VEC;
+            }
         }
         b
     }

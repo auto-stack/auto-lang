@@ -88,6 +88,7 @@ impl ProgramSnapshot {
         // (unit sig mapped into the scratch space, unit function name)
         let mut sigs: Vec<(u32, String)> = Vec::with_capacity(code.len());
         let mut ty_maps: Vec<Vec<u32>> = Vec::with_capacity(code.len());
+        let mut envs: Vec<Option<Vec<u32>>> = Vec::with_capacity(code.len());
         // B2-C01 owner context: a snapshot is ONE module's program — every
         // unit's admission owner (schema + module id) must be the SAME
         // owner. A unit verified for another owner — however matching its
@@ -121,6 +122,14 @@ impl ProgramSnapshot {
             }
             sigs.push((sig, u.funcs[0].name.clone()));
             ty_maps.push(ty_map);
+            // PLAN-823 r8: the unit's DECLARED env layout, mapped into the
+            // merged table — the link's env-equivalence axis (V-13
+            // sub-case 3: a layout drift refuses the binding precisely).
+            envs.push(u.funcs[0].env.as_ref().map(|e| {
+                e.iter()
+                    .map(|t| ty_maps.last().expect("just pushed")[*t as usize])
+                    .collect::<Vec<u32>>()
+            }));
         }
         {
             let mut sorted: Vec<&str> = sigs.iter().map(|(_, n)| n.as_str()).collect();
@@ -153,6 +162,25 @@ impl ProgramSnapshot {
                                 "snapshot signature mismatch for `fn:{target}`: call site type #{} != unit type #{}",
                                 call_site_sig, sigs[tslot].0
                             ));
+                        }
+                        // PLAN-823 r8 env contract: an import that BINDS a
+                        // closure body declares the env layout it captures
+                        // against — the target unit's declaration must be
+                        // interned-equal (a drift refuses the link BEFORE
+                        // the snapshot turns executable; a None import
+                        // binding a body unit is the same refusal).
+                        if imp.env.is_some() || envs[tslot].is_some() {
+                            let want = imp.env.as_ref().map(|e| {
+                                e.iter()
+                                    .map(|t| ty_maps[si][*t as usize])
+                                    .collect::<Vec<u32>>()
+                            });
+                            if want != envs[tslot] {
+                                return Err(format!(
+                                    "snapshot env-contract mismatch for `fn:{target}`: call site declares {:?} != unit declares {:?}",
+                                    imp.env, envs[tslot]
+                                ));
+                            }
                         }
                         Some(tslot as u32)
                     }
@@ -484,6 +512,28 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<u32> {
                         }
                         ns.result = map[sig.result as usize];
                         let idx = merged.intern_type(MirType::Fn(ns));
+                        map[i] = idx;
+                        progress = true;
+                    }
+                }
+                // PLAN-823: a Closure type interns like Fn (its signature's
+                // children map first).
+                MirType::Closure(sig) => {
+                    let pending = sig
+                        .params
+                        .iter()
+                        .chain(std::iter::once(&sig.result))
+                        .any(|p| map[*p as usize] == u32::MAX);
+                    if !pending {
+                        let mut ns = FnSig {
+                            params: Vec::with_capacity(sig.params.len()),
+                            result: 0,
+                        };
+                        for p in &sig.params {
+                            ns.params.push(map[*p as usize]);
+                        }
+                        ns.result = map[sig.result as usize];
+                        let idx = merged.intern_type(MirType::Closure(ns));
                         map[i] = idx;
                         progress = true;
                     }

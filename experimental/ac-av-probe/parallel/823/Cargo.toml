@@ -1,0 +1,17 @@
+# PLAN-823 T-10 independent harness workspace (r6 parallel contract): the
+# empty [workspace] table detaches this directory from the parent
+# ac-av-probe workspace (members stay core+probe, untouched) and gives this
+# tree its own lock. The harness compiles the SAME production source
+# (core/src/closures.rs, unregistered in core's lib.rs) via #[path] against
+# the delivered auto-av-core public API only.
+[workspace]
+
+[package]
+name = "av-closures-823-harness"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-823 T-10 same-source harness for core/src/closures.rs (owned capture prepare/commit, env container and cleanup)."
+publish = false
+
+[dependencies]
+auto-av-core = { path = "../../core" }

@@ -307,6 +307,7 @@ pub fn first_case_module() -> MirModule {
         entry: 0,
         source_snapshot: 0,
         spans: Vec::new(),
+        env: None,
     };
     m.funcs = vec![f];
     m.entry = 0;

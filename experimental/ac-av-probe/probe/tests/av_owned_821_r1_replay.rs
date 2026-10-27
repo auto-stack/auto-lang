@@ -87,6 +87,7 @@ fn main_i32(m: &mut MirModule, t: &T, slots: Vec<MirSlot>, blocks: Vec<MirBlock>
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = (m.funcs.len() - 1) as u32;
 }
@@ -109,6 +110,7 @@ fn extra(
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     (m.funcs.len() - 1) as u32
 }
@@ -337,6 +339,7 @@ fn av_owned_821_r1_static_view_across_units_resolves_in_owner() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     helper.entry = 0;
     helper.is_unit = true;
@@ -352,6 +355,7 @@ fn av_owned_821_r1_static_view_across_units_resolves_in_owner() {
         symbol: "fn:helper".into(),
         effect: Effect::Pure,
         sig: isig,
+        env: None,
     });
     let sig2 = caller.intern_type(MirType::Fn(FnSig {
         params: vec![],
@@ -381,6 +385,7 @@ fn av_owned_821_r1_static_view_across_units_resolves_in_owner() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     caller.entry = 0;
     caller.is_unit = true;
@@ -820,6 +825,7 @@ fn av_owned_821_r3_field_move_per_field_consumption_invariants() {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         });
         m
     };
@@ -1037,6 +1043,7 @@ fn av_owned_821_r4_field_state_reinit_and_overlap() {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         });
         m
     };
@@ -1103,6 +1110,7 @@ fn av_owned_821_r4_recordview_heap_payload_counted() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     // Admission budgets (16MiB decode/verify) still pass...
     let wire = encode_abc(&m).expect("encode");

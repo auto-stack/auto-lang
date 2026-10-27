@@ -19,6 +19,7 @@
 pub mod abc;
 pub mod abc_verify;
 pub mod av;
+pub mod closures;
 pub mod contract;
 // PLAN-824 `av.dynamic/1` (T-02 core window): the DynValue container and
 // the portable freeze/restore codec — same-source files previously

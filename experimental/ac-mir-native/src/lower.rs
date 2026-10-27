@@ -389,9 +389,11 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     None => return Err(format!("out-of-range constant {value}")),
                     // PLAN-820 shared-core widening: wide constants are a
                     // controlled lower rejection (mn keeps its scalar ABI).
-                    Some(_) => return Err(format!(
+                    Some(_) => {
+                        return Err(format!(
                         "constant {value} is an av.data/1 wide value outside the mn scalar surface"
-                    )),
+                    ))
+                    }
                 };
                 self.def_slot(*dst, val);
             }
@@ -507,6 +509,13 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     "av.collections/1 list/variant instructions are outside the mn scalar surface"
                         .to_string(),
                 )
+            }
+            MirInstr::CreateClosure { .. }
+            | MirInstr::CallClosure { .. }
+            | MirInstr::EnvGet { .. } => {
+                return Err(
+                    "av.closures/1 instructions are outside the mn scalar surface".to_string(),
+                );
             }
             // PLAN-824 shared-core widening: the dynamic-profile Dyn
             // instructions (av.dynamic/1) are likewise a controlled lower

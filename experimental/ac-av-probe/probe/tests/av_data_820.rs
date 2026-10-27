@@ -229,6 +229,7 @@ fn scalar_identity_module(t: MirType, const_extra: Option<MirConst>) -> MirModul
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     m
@@ -332,6 +333,7 @@ fn av_data_820_entry_rejects_wrong_kind_and_record() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     // Slot 1 (the i32 operand) is never initialized → also invalid, but the
@@ -419,6 +421,7 @@ fn av_data_820_same_width_owner_mismatch_rejected() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     let err = mir_verify::verify_mir(&m).unwrap_err();
@@ -483,6 +486,7 @@ fn av_data_820_same_width_owner_mismatch_rejected() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     mir_verify::verify_mir(&m).expect("same-owner control verifies");
@@ -546,6 +550,7 @@ fn av_data_820_wide_scalar_arith_rejected() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     let err = mir_verify::verify_mir(&m).unwrap_err();
@@ -593,6 +598,7 @@ fn av_data_820_type_cycle_and_empty_record_rejected() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     let err = mir_verify::verify_mir(&m).unwrap_err();
@@ -630,6 +636,7 @@ fn av_data_820_type_cycle_and_empty_record_rejected() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     let err = mir_verify::verify_mir(&m).unwrap_err();
@@ -672,6 +679,7 @@ fn av_data_820_wire_family_isolation() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     core.entry = 0;
     let core_wire = encode_abc(&core).expect("core encode").to_flat();

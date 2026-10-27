@@ -984,6 +984,9 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
     let mut units = Vec::with_capacity(m.funcs.len());
     for f in m.funcs.iter() {
         let mut unit = MirModule::unit(m.owner.clone());
+        // Carry the SOURCE profile (a collections/closures unit is not a
+        // core-profile unit — the feature gates key on the string).
+        unit.profile = m.profile.clone();
         unit.capabilities = m.capabilities.clone();
         let mut ty_map: Vec<TypeIdx> = vec![u32::MAX; m.types.len()];
         let mut c_map: Vec<u32> = vec![u32::MAX; m.consts.len()];
@@ -995,6 +998,12 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
         for b in &f.blocks {
             for i in &b.instrs {
                 if let MirInstr::Call { callee, .. } = i {
+                    match callee {
+                        CalleeRef::Func(t) => needed.push(m.funcs[*t as usize].sig),
+                        CalleeRef::Import(ii) => needed.push(m.imports[*ii as usize].sig),
+                    }
+                }
+                if let MirInstr::CreateClosure { callee, .. } = i {
                     match callee {
                         CalleeRef::Func(t) => needed.push(m.funcs[*t as usize].sig),
                         CalleeRef::Import(ii) => needed.push(m.imports[*ii as usize].sig),
@@ -1015,7 +1024,13 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
                     continue;
                 }
                 match &m.types[t as usize] {
-                    MirType::Fn(sig) => {
+                    // Composite children remap through the SAME fixpoint
+                    // (Fn sigs, Closure sigs, record/list/variant/place
+                    // interiors — a raw clone would leak SOURCE-table
+                    // indices into the unit-local table; surfaced by the
+                    // r8 closures unit split, latent for any record with
+                    // non-scalar-typed fields since 820).
+                    ty @ (MirType::Fn(sig) | MirType::Closure(sig)) => {
                         let mut children_pending = false;
                         for p in sig.params.iter().chain(std::iter::once(&sig.result)) {
                             if ty_map[*p as usize] == u32::MAX {
@@ -1034,7 +1049,75 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
                                 ns.params.push(ty_map[*p as usize]);
                             }
                             ns.result = ty_map[sig.result as usize];
-                            let idx = unit.intern_type(MirType::Fn(ns));
+                            let idx = unit.intern_type(match ty {
+                                MirType::Fn(_) => MirType::Fn(ns),
+                                _ => MirType::Closure(ns),
+                            });
+                            ty_map[t as usize] = idx;
+                            progress = true;
+                        }
+                    }
+                    MirType::Record(r) | MirType::RecordView(r) => {
+                        let mut children_pending = false;
+                        for fd in r.fields.iter() {
+                            if ty_map[fd.ty as usize] == u32::MAX {
+                                children_pending = true;
+                                if !needed.contains(&fd.ty) {
+                                    needed.push(fd.ty);
+                                }
+                            }
+                        }
+                        if !children_pending {
+                            let mut nr = r.clone();
+                            for fd in nr.fields.iter_mut() {
+                                fd.ty = ty_map[fd.ty as usize];
+                            }
+                            let idx = unit.intern_type(match &m.types[t as usize] {
+                                MirType::Record(_) => MirType::Record(nr),
+                                _ => MirType::RecordView(nr),
+                            });
+                            ty_map[t as usize] = idx;
+                            progress = true;
+                        }
+                    }
+                    MirType::List(l) | MirType::Place(l) => {
+                        if ty_map[l.elem as usize] == u32::MAX {
+                            if !needed.contains(&l.elem) {
+                                needed.push(l.elem);
+                            }
+                        } else {
+                            let idx = unit.intern_type(match &m.types[t as usize] {
+                                MirType::List(_) => MirType::List(ListTypeRef {
+                                    elem: ty_map[l.elem as usize],
+                                }),
+                                _ => MirType::Place(ListTypeRef {
+                                    elem: ty_map[l.elem as usize],
+                                }),
+                            });
+                            ty_map[t as usize] = idx;
+                            progress = true;
+                        }
+                    }
+                    MirType::Variant(v) => {
+                        let mut children_pending = false;
+                        for arm in v.arms.iter() {
+                            if let Some(pt) = arm.payload {
+                                if ty_map[pt as usize] == u32::MAX {
+                                    children_pending = true;
+                                    if !needed.contains(&pt) {
+                                        needed.push(pt);
+                                    }
+                                }
+                            }
+                        }
+                        if !children_pending {
+                            let mut nv = v.clone();
+                            for arm in nv.arms.iter_mut() {
+                                if let Some(pt) = arm.payload {
+                                    arm.payload = Some(ty_map[pt as usize]);
+                                }
+                            }
+                            let idx = unit.intern_type(MirType::Variant(nv));
                             ty_map[t as usize] = idx;
                             progress = true;
                         }
@@ -1066,6 +1149,26 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
                         }
                         *value = c_map[*value as usize];
                     }
+                    MirInstr::CreateClosure { callee, .. } => {
+                        // r8: a unit's CREATE_CLOSURE binds its closure
+                        // body through an IMPORT carrying the env decl
+                        // (indices remapped into the unit-local table).
+                        if let CalleeRef::Func(target) = *callee {
+                            let tdef = &m.funcs[target as usize];
+                            let local_sig = ty_map[tdef.sig as usize];
+                            let env = tdef
+                                .env
+                                .as_ref()
+                                .map(|e| e.iter().map(|t| ty_map[*t as usize]).collect());
+                            let idx = unit.intern_import(MirImport {
+                                symbol: format!("fn:{}", tdef.name),
+                                effect: Effect::Pure,
+                                sig: local_sig,
+                                env,
+                            });
+                            *callee = CalleeRef::Import(idx);
+                        }
+                    }
                     MirInstr::Call { callee, .. } => match *callee {
                         CalleeRef::Func(target) => {
                             let tdef = &m.funcs[target as usize];
@@ -1074,6 +1177,7 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
                                 symbol: format!("fn:{}", tdef.name),
                                 effect: Effect::Pure,
                                 sig: local_sig,
+                                env: tdef.env.clone(),
                             });
                             *callee = CalleeRef::Import(idx);
                         }
@@ -1083,6 +1187,7 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
                                 symbol: src.symbol.clone(),
                                 effect: src.effect,
                                 sig: ty_map[src.sig as usize],
+                                env: src.env.clone(),
                             });
                             *callee = CalleeRef::Import(idx);
                         }
@@ -1109,6 +1214,10 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
             entry: f.entry,
             source_snapshot: f.source_snapshot,
             spans: f.spans.clone(),
+            env: f
+                .env
+                .as_ref()
+                .map(|e| e.iter().map(|t| ty_map[*t as usize]).collect()),
         });
         unit.entry = 0;
         units.push(unit);
@@ -1176,6 +1285,7 @@ pub fn assemble_closure(
                                     symbol: imp.symbol.clone(),
                                     effect: imp.effect,
                                     sig: sig_merged,
+                                    env: imp.env.clone(),
                                 });
                                 *callee = CalleeRef::Import(idx);
                             }
@@ -1216,6 +1326,7 @@ pub fn assemble_closure(
             entry: u.funcs[0].entry,
             source_snapshot: u.funcs[0].source_snapshot,
             spans: u.funcs[0].spans.clone(),
+            env: u.funcs[0].env.clone(),
         });
     }
     // Duplicate unit names are a closure inconsistency.
@@ -1386,6 +1497,27 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<TypeIdx> {
                         progress = true;
                     }
                 }
+                // PLAN-823: a Closure type maps like Fn (children first).
+                MirType::Closure(sig) => {
+                    let pending = sig
+                        .params
+                        .iter()
+                        .chain(std::iter::once(&sig.result))
+                        .any(|p| map[*p as usize] == u32::MAX);
+                    if !pending {
+                        let mut ns = FnSig {
+                            params: Vec::with_capacity(sig.params.len()),
+                            result: 0,
+                        };
+                        for p in &sig.params {
+                            ns.params.push(map[*p as usize]);
+                        }
+                        ns.result = map[sig.result as usize];
+                        let idx = merged.intern_type(MirType::Closure(ns));
+                        map[i] = idx;
+                        progress = true;
+                    }
+                }
             }
         }
         if !progress {
@@ -1536,6 +1668,7 @@ pub fn render_unit_sig(unit: &MirModule) -> String {
             Some(MirType::List(_)) => "list".to_string(),
             Some(MirType::Variant(v)) => format!("variant:{}", v.name),
             Some(MirType::Place(_)) => "place".to_string(),
+            Some(MirType::Closure(_)) => "closure".to_string(),
             Some(MirType::Dyn) => "dyn".to_string(),
             None => "?".to_string(),
         }

@@ -207,3 +207,15 @@ experimental/ac-av-probe/parallel/823/          # 独立 workspace（空 [worksp
 | CaptureOperand 所有权 | clone 读不杀；move 经 ownership 分析杀源（镜像 MOVE：活跃借用冲突拒绝）；CallClosure 参数按 Closure 签名 sig 驱动 move-in 杀（镜像 CALL） |
 | 首例 oracle（实测） | 手算结果 **29**（2*10+4+5）、ledger 5 alloc/5 free、live=0、decode→re-encode byte-stable、code-cache 恢复同果+types-fp/entry/snapshot 身份轴 clean miss、四负控真实拒绝 |
 | 遗留 T-03+ 面 | borrow 捕获与逃逸前门、V-02..07 反控、环境嵌套/帧复用（V-03）、错签名/generation/跨 store（V-04）、824 交叠拒绝、AutoDown 正式 recipe（V-10 正控全集）、P95/内存——按原 §5.2 映射推进 |
+
+## 9. r10 整合重登记（2026-10-27，824 已交付后的编号冲突裁定）
+
+**背景**：824 先行合入 master 并把 `av.dynamic/1` 登记为 AVAD wire v4/profile id 5/类型 tag 16（TY_DYN）/opcode 0x2F–0x31，与本计划 §8 的登记撞号。用户裁定（计划 r10）：已交付的 824 身份不变；本计划闭包身份整体后移。
+
+| 项 | r10 现行登记（覆盖 §8 同栏） |
+|---|---|
+| wire/编号 | **AVAD 族 wire version 5、profile id 6、类型 tag 17（TY_CLOSURE）、opcode 0x32/0x33/0x34**；824 保留 v4/id5/tag16/0x2F–0x31。§8 的 v4/id5/tag16/0x2F–0x31 为整合前历史，不得再作为本 profile 身份 |
+| wire 族互斥 | `WireFamily::Closures` 与 `WireFamily::Dynamic` 分族：closures tag 集仅 Closures 族可载、dynamic tag 集仅 Dynamic 族可载（schema-profile 准入即拒，decode 前） |
+| 交叉正反控 | `av_closures_823_dynamic_824_compat`：两 profile 真实首例 (version,profile) 各自正确且互不相等；交叉 owner `verify_abc_bytes` 双向拒绝。closures 逃逸集新增拒绝 Dyn 值；824 `DynValue::pack`/portable freeze 拒绝 Closure（直接与任意深度嵌套，`plan823_824_closure_rejected_at_pack_and_freeze_at_every_depth`） |
+| 消费者并集 | 820 union pin 刷新 49→52（46 + dynamic 3 + closures 3；824 合入时漏刷的 46→49 一并补上）；mir-native scalar 面 双向受控拒绝（closures 与 dyn 指令均在 fingerprint/lower 显式拒绝） |
+| 语义版本轴 | 各 profile 语义版本独立（MIR/ABC/AV closures 三轴均 1），互不撞号，沿 §8 |

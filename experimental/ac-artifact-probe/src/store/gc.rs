@@ -21,6 +21,43 @@ use super::{now_secs, FileGuard, ManagedStore, StoreError};
 use rusqlite::{params, OptionalExtension};
 use std::collections::{HashMap, HashSet};
 
+// On Windows, an exclusive share-mode open proves that no reader,
+// publisher or lease holder still has the lock file open. Delete-on-close
+// keeps later opens blocked until the old name has been retired; unlike
+// unlink-after-unlock this cannot split a lock between two file objects.
+#[cfg(windows)]
+fn retire_quiescent_lock(path: &std::path::Path) -> Result<bool, StoreError> {
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        DELETE, FILE_FLAG_DELETE_ON_CLOSE, FILE_FLAG_OPEN_REPARSE_POINT,
+    };
+    if super::is_reparse(path) {
+        return Ok(false);
+    }
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .access_mode(DELETE)
+        .share_mode(0)
+        .custom_flags(FILE_FLAG_DELETE_ON_CLOSE | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+    {
+        Ok(file) => {
+            drop(file);
+            Ok(true)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(error) if matches!(error.raw_os_error(), Some(5 | 32 | 33)) => Ok(false),
+        Err(error) => Err(StoreError::Io(error.to_string())),
+    }
+}
+
+// Other platforms retain old lock files until their own safe quiescence
+// primitive is supplied; terminal metadata can still be compacted.
+#[cfg(not(windows))]
+fn retire_quiescent_lock(_path: &std::path::Path) -> Result<bool, StoreError> {
+    Ok(true)
+}
+
 /// Frozen experiment watermarks (§5.4): high 64 MiB, low 48 MiB, extra
 /// temp/staging cap 8 MiB.
 pub const GC_HIGH: u64 = 64 * 1024 * 1024;
@@ -395,6 +432,56 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
             }
         }
     }
+    // No publishers are in flight under exclusive liveness. Retire only
+    // terminal chunk/lease lock files whose names and OS handles are safe;
+    // keep busy rows so a later GC can retry without losing recovery state.
+    let deleted: Vec<String> = {
+        let db = store.db();
+        let mut stmt = db.prepare("SELECT chunk_id FROM chunks WHERE state='deleted' AND NOT EXISTS (SELECT 1 FROM artifacts WHERE payload_chunk=chunks.chunk_id)")?;
+        let rows = stmt
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    };
+    for id in deleted {
+        if id.len() != 67
+            || !id.starts_with("chk")
+            || !id[3..].bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            continue;
+        }
+        let chunk = store.lock_path_pub(&format!("chunk-{id}"));
+        let gate = store.lock_path_pub(&format!("gate-{id}"));
+        if retire_quiescent_lock(&chunk)? && retire_quiescent_lock(&gate)? {
+            store.db().execute(
+                "DELETE FROM chunks WHERE chunk_id=?1 AND state='deleted'",
+                params![id],
+            )?;
+        }
+    }
+    let released: Vec<String> = {
+        let db = store.db();
+        let mut stmt = db.prepare("SELECT lease_id FROM leases WHERE released=1")?;
+        let rows = stmt
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    };
+    for id in released {
+        if !id.starts_with("ls-") || !id[3..].bytes().all(|b| b.is_ascii_digit() || b == b'-') {
+            continue;
+        }
+        let lock = store.lock_path_pub(&format!("lease-{id}"));
+        if retire_quiescent_lock(&lock)? {
+            store.db().execute(
+                "DELETE FROM leases WHERE lease_id=?1 AND released=1",
+                params![id],
+            )?;
+        }
+    }
+    store
+        .db()
+        .execute("DELETE FROM txns WHERE phase='committed'", [])?;
     // Final shrink so the receipt's total_after reflects returned space.
     super::shrink_db(&store.db());
 

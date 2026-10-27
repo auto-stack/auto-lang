@@ -250,6 +250,7 @@ fn av_data_820_record_slot_uninitialized_read_rejected() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     // slot 1 never def'd either — the analysis reports the first use.
@@ -304,6 +305,7 @@ fn av_data_820_bits_survive_call_chain() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     // fn d_main(x f64) f64 { return d_inner(d_inner(x)) }
     m.funcs.push(MirFunction {
@@ -345,6 +347,7 @@ fn av_data_820_bits_survive_call_chain() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 1; // function #1 is d_main
     mir_verify::verify_mir(&m).expect("verify");
@@ -483,6 +486,7 @@ fn equiv_fixture(site: &str) -> MirModule {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     // helper: fn f(A) -> i32 { return arg.x } — only needed for call sites.
     match site {
@@ -514,6 +518,7 @@ fn equiv_fixture(site: &str) -> MirModule {
                 entry: 0,
                 source_snapshot: 0,
                 spans: vec![],
+                env: None,
             });
         }
         "return-direct" => {
@@ -546,6 +551,7 @@ fn equiv_fixture(site: &str) -> MirModule {
                 entry: 0,
                 source_snapshot: 0,
                 spans: vec![],
+                env: None,
             });
         }
         _ => {}
@@ -624,6 +630,7 @@ fn av_data_820_duplicate_primitive_entries_normalize() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     let checked = mir_verify::verify_mir(&m).expect("duplicate scalar entries unify");
@@ -675,6 +682,7 @@ fn av_data_820_record_field_count_and_path_depth_are_resource() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     let err = mir_verify::verify_mir(&m).unwrap_err();
@@ -740,6 +748,7 @@ fn av_data_820_record_field_count_and_path_depth_are_resource() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     let err = mir_verify::verify_mir(&m).unwrap_err();
@@ -784,6 +793,7 @@ fn av_data_820_unit_kind_never_executes() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     let wire = encode_abc(&m).expect("encode").to_flat();
@@ -869,6 +879,7 @@ fn av_data_820_instruction_contract_round_trip_all_opcodes() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     // Simplify: rebuild b0 with a complete legal sequence.
     m.funcs[0].blocks[0].instrs = vec![
@@ -954,9 +965,12 @@ fn av_data_820_instruction_contract_round_trip_all_opcodes() {
     // the count pin guards silent table growth beyond a known edition.
     // PLAN-822 merge-stage refresh: + 18 collections rows (0x1D..0x2E)
     // = 28 + 18 = 46.
+    // PLAN-824 merge: + 3 dynamic rows (0x2F..0x31) = 46 + 3 = 49.
+    // PLAN-823 r10 integration renumber: closures rows land at 0x32..0x34
+    // (824 keeps 0x2F..0x31) = 49 + 3 = 52.
     let all_mnemonics: Vec<&str> = instr_spec::SPECS
         .iter()
         .map(|s: &InstructionSpec| s.name)
         .collect();
-    assert_eq!(all_mnemonics.len(), 46);
+    assert_eq!(all_mnemonics.len(), 52);
 }

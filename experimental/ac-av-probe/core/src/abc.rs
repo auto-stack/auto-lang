@@ -87,6 +87,101 @@ pub const OP_VARIANT_SWITCH: u8 = 0x2B;
 pub const OP_LIST_PLACE: u8 = 0x2C;
 pub const OP_PLACE_GET: u8 = 0x2D;
 pub const OP_PLACE_SET: u8 = 0x2E;
+// PLAN-823 closure opcodes (contract-decision r2 §2.2 core-owner registry).
+pub const OP_CREATE_CLOSURE: u8 = 0x32;
+pub const OP_CALL_CLOSURE: u8 = 0x33;
+pub const OP_ENV_GET: u8 = 0x34;
+
+/// PLAN-823 T-03: the capture-mode tag inside the v5 CREATE_CLOSURE
+/// payload (0=move / 1=clone / 2=borrow).
+fn capture_kind_code(k: crate::mir::CaptureKind) -> u8 {
+    match k {
+        crate::mir::CaptureKind::Move => 0,
+        crate::mir::CaptureKind::Clone => 1,
+        crate::mir::CaptureKind::Borrow => 2,
+        crate::mir::CaptureKind::MoveFromEnv => 3,
+    }
+}
+
+/// r8 env contract: the declared env layout on a function record / a
+/// closure-binding import (flag + count + type indices).
+fn write_env_decl(w: &mut PageWriter, env: &Option<Vec<u32>>) {
+    match env {
+        None => put_u8(w, 0),
+        Some(layout) => {
+            put_u8(w, 1);
+            put_u8(w, layout.len() as u8);
+            for t in layout {
+                put_u32(w, *t);
+            }
+        }
+    }
+}
+
+fn read_env_decl(c: &mut Cursor) -> Result<Option<Vec<u32>>, AbcDecodeError> {
+    match c.u8()? {
+        0 => Ok(None),
+        1 => {
+            let n = c.u8()? as usize;
+            if n > crate::contract::MAX_ENV_FIELDS {
+                return Err(AbcDecodeError::fmt_err(
+                    "abc.decode.arity",
+                    format!(
+                        "env declaration with {} fields, above the frozen {} cap",
+                        n,
+                        crate::contract::MAX_ENV_FIELDS
+                    ),
+                ));
+            }
+            let mut v = Vec::with_capacity(n);
+            for _ in 0..n {
+                v.push(c.u32()?);
+            }
+            Ok(Some(v))
+        }
+        other => Err(AbcDecodeError::fmt_err(
+            "abc.decode.env-decl",
+            format!("unknown env-declaration flag {}", other),
+        )),
+    }
+}
+
+fn encode_callee(w: &mut PageWriter, callee: &crate::mir::CalleeRef) {
+    match callee {
+        crate::mir::CalleeRef::Func(idx) => {
+            put_u8(w, 0);
+            put_u32(w, *idx);
+        }
+        crate::mir::CalleeRef::Import(idx) => {
+            put_u8(w, 1);
+            put_u32(w, *idx);
+        }
+    }
+}
+
+fn decode_callee(c: &mut Cursor) -> Result<crate::mir::CalleeRef, AbcDecodeError> {
+    match c.u8()? {
+        0 => Ok(crate::mir::CalleeRef::Func(c.u32()?)),
+        1 => Ok(crate::mir::CalleeRef::Import(c.u32()?)),
+        other => Err(AbcDecodeError::fmt_err(
+            "abc.decode.callee",
+            format!("unknown callee discriminant {}", other),
+        )),
+    }
+}
+
+fn decode_capture_kind(b: u8) -> Result<crate::mir::CaptureKind, AbcDecodeError> {
+    match b {
+        0 => Ok(crate::mir::CaptureKind::Move),
+        1 => Ok(crate::mir::CaptureKind::Clone),
+        2 => Ok(crate::mir::CaptureKind::Borrow),
+        3 => Ok(crate::mir::CaptureKind::MoveFromEnv),
+        other => Err(AbcDecodeError::fmt_err(
+            "abc.decode.arity",
+            format!("unknown capture mode tag {}", other),
+        )),
+    }
+}
 // PLAN-824 dynamic-profile opcodes (contract-decision §6).
 pub const OP_DYN_PACK: u8 = 0x2F;
 pub const OP_DYN_IS: u8 = 0x30;
@@ -128,6 +223,8 @@ pub const TY_RECORD: u8 = 7;
 pub const TY_LIST: u8 = 13;
 pub const TY_VARIANT: u8 = 14;
 pub const TY_PLACE: u8 = 15;
+/// PLAN-823 closures type tag.
+pub const TY_CLOSURE: u8 = 17;
 /// PLAN-824 dynamic-profile type tag (the opaque erased Dyn type).
 pub const TY_DYN: u8 = 16;
 
@@ -158,6 +255,10 @@ pub enum WireFamily {
     /// wire version 3 (another separate generation — v1/v2/v3 mutually
     /// reject by the version field).
     Collections,
+    /// PLAN-823: the closures profile rides the `AVAD` magic FAMILY at
+    /// wire version 5 (another separate generation — v1..v5 mutually
+    /// reject by the version field).
+    Closures,
     /// PLAN-824: the dynamic profile rides the `AVAD` magic FAMILY at wire
     /// version 4 (v1/v2/v3/v4 are mutually unreadable generations; id 5).
     Dynamic,
@@ -170,6 +271,7 @@ impl WireFamily {
             WireFamily::Data
             | WireFamily::Owned
             | WireFamily::Collections
+            | WireFamily::Closures
             | WireFamily::Dynamic => crate::contract::ABC_DATA_MAGIC,
         }
     }
@@ -179,6 +281,7 @@ impl WireFamily {
             WireFamily::Data => crate::contract::ABC_DATA_VERSION,
             WireFamily::Owned => crate::contract::ABC_OWNED_VERSION,
             WireFamily::Collections => crate::contract::ABC_COLLECTIONS_VERSION,
+            WireFamily::Closures => crate::contract::ABC_CLOSURES_VERSION,
             WireFamily::Dynamic => crate::contract::ABC_DYNAMIC_VERSION,
         }
     }
@@ -188,28 +291,38 @@ impl WireFamily {
             WireFamily::Data => crate::contract::ABC_PROFILE_DATA,
             WireFamily::Owned => crate::contract::ABC_PROFILE_OWNED,
             WireFamily::Collections => crate::contract::ABC_PROFILE_COLLECTIONS,
+            WireFamily::Closures => crate::contract::ABC_PROFILE_CLOSURES,
             WireFamily::Dynamic => crate::contract::ABC_PROFILE_DYNAMIC,
         }
     }
     fn allows_data_tags(&self) -> bool {
         matches!(
             self,
-            WireFamily::Data | WireFamily::Owned | WireFamily::Collections | WireFamily::Dynamic
+            WireFamily::Data
+                | WireFamily::Owned
+                | WireFamily::Collections
+                | WireFamily::Closures
+                | WireFamily::Dynamic
         )
     }
     fn allows_owned_tags(&self) -> bool {
         matches!(
             self,
-            WireFamily::Owned | WireFamily::Collections | WireFamily::Dynamic
+            WireFamily::Owned
+                | WireFamily::Collections
+                | WireFamily::Closures
+                | WireFamily::Dynamic
         )
     }
-    /// PLAN-822: the List/Variant tags and collection opcodes exist only
-    /// in the collections generation and its dynamic successor.
     fn allows_collections_tags(&self) -> bool {
-        matches!(self, WireFamily::Collections | WireFamily::Dynamic)
+        matches!(
+            self,
+            WireFamily::Collections | WireFamily::Closures | WireFamily::Dynamic
+        )
     }
-    /// PLAN-824: the checked-erasure opcodes exist only in the dynamic
-    /// generation.
+    fn allows_closures_tags(&self) -> bool {
+        matches!(self, WireFamily::Closures)
+    }
     fn allows_dynamic_tags(&self) -> bool {
         matches!(self, WireFamily::Dynamic)
     }
@@ -383,6 +496,7 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
         crate::contract::AV_DATA_PROFILE => WireFamily::Data,
         crate::contract::AV_OWNED_PROFILE => WireFamily::Owned,
         crate::contract::AV_COLLECTIONS_PROFILE => WireFamily::Collections,
+        crate::contract::AV_CLOSURES_PROFILE => WireFamily::Closures,
         crate::contract::AV_DYNAMIC_PROFILE => WireFamily::Dynamic,
         other => {
             return Err(AbcDecodeError::fmt_err(
@@ -443,6 +557,22 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
             MirType::Bool => put_u8(&mut w, TY_BOOL),
             MirType::Fn(sig) => {
                 put_u8(&mut w, TY_FN);
+                put_u32(&mut w, sig.params.len() as u32);
+                for p in &sig.params {
+                    put_u32(&mut w, *p);
+                }
+                put_u32(&mut w, sig.result);
+            }
+            // PLAN-823: the Closure tag carries its signature exactly like
+            // Fn (the tag alone distinguishes the generations).
+            MirType::Closure(sig) => {
+                if !family.allows_closures_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "Closure type in a non-closures-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_CLOSURE);
                 put_u32(&mut w, sig.params.len() as u32);
                 for p in &sig.params {
                     put_u32(&mut w, *p);
@@ -774,6 +904,18 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
             },
         );
         put_u32(&mut w, imp.sig);
+        // r8 env declarations ride ONLY the closures generation: every
+        // other family's record format is frozen (a released wire
+        // generation never changes in place — stale-store artifacts of
+        // the same version must keep decoding).
+        if family == WireFamily::Closures {
+            write_env_decl(&mut w, &imp.env);
+        } else if imp.env.is_some() {
+            return Err(AbcDecodeError::fmt_err(
+                "abc.encode.profile",
+                "env declaration on an import outside the closures profile".to_string(),
+            ));
+        }
     }
     // Functions.
     for f in &m.funcs {
@@ -1298,6 +1440,68 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                         put_u32(&mut w, *place);
                         put_u32(&mut w, *value);
                     }
+                    // -- PLAN-823 closure opcodes --------------------------
+                    MirInstr::CreateClosure {
+                        dst,
+                        callee,
+                        captures,
+                    } => {
+                        if !family.allows_closures_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "closure operations in a non-closures-profile module".to_string(),
+                            ));
+                        }
+                        if captures.len() > u8::MAX as usize {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.arity",
+                                format!(
+                                    "create-closure with {} captures exceeds wire width",
+                                    captures.len()
+                                ),
+                            ));
+                        }
+                        put_u8(&mut w, OP_CREATE_CLOSURE);
+                        put_u32(&mut w, *dst);
+                        encode_callee(&mut w, callee);
+                        put_u8(&mut w, captures.len() as u8);
+                        for c in captures {
+                            put_u8(&mut w, capture_kind_code(c.kind));
+                            put_u32(&mut w, c.src);
+                        }
+                    }
+                    MirInstr::CallClosure { dst, closure, args } => {
+                        if !family.allows_closures_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "closure operations in a non-closures-profile module".to_string(),
+                            ));
+                        }
+                        if args.len() > u8::MAX as usize {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.arity",
+                                format!("call-closure with {} args exceeds wire width", args.len()),
+                            ));
+                        }
+                        put_u8(&mut w, OP_CALL_CLOSURE);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *closure);
+                        put_u8(&mut w, args.len() as u8);
+                        for a in args {
+                            put_u32(&mut w, *a);
+                        }
+                    }
+                    MirInstr::EnvGet { dst, field } => {
+                        if !family.allows_closures_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "closure operations in a non-closures-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_ENV_GET);
+                        put_u32(&mut w, *dst);
+                        put_u16(&mut w, *field);
+                    }
                     // -- PLAN-824 dynamic surface (encode) -----------------
                     MirInstr::DynPack { dst, src } => {
                         if !family.allows_dynamic_tags() {
@@ -1420,6 +1624,17 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                     put_u32(&mut w, *value);
                 }
             }
+        }
+        // r8 env contract: each function record closes with its declared
+        // env layout (read right after the blocks in the decoder) —
+        // closures generation only; other families' formats are frozen.
+        if family == WireFamily::Closures {
+            write_env_decl(&mut w, &f.env);
+        } else if f.env.is_some() {
+            return Err(AbcDecodeError::fmt_err(
+                "abc.encode.profile",
+                format!("function `{}` declares an env outside the closures profile", f.name),
+            ));
         }
     }
     // Source-map sidecar (diagnostics only; logical identity, no paths).
@@ -1568,7 +1783,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     } else if magic == crate::contract::ABC_DATA_MAGIC {
         // Same magic family, DIFFERENT format generations: the version
         // field (below) selects v1=data / v2=owned / v3=collections /
-        // v4=dynamic; a payload of another generation in this build's
+        // v4=dynamic / v5=closures; a payload of another generation in this build's
         // reader is a controlled `abc.decode.version` rejection (798 r6
         // generation isolation; never read as the other generation's
         // semantics).
@@ -1577,6 +1792,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             WireFamily::Owned
         } else if ver == Some(crate::contract::ABC_COLLECTIONS_VERSION) {
             WireFamily::Collections
+        } else if bytes.get(4..6).map(|v| u16::from_le_bytes([v[0], v[1]]))
+            == Some(crate::contract::ABC_CLOSURES_VERSION)
+        {
+            WireFamily::Closures
         } else if ver == Some(crate::contract::ABC_DYNAMIC_VERSION) {
             WireFamily::Dynamic
         } else {
@@ -1722,6 +1941,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             WireFamily::Data => crate::contract::AV_DATA_PROFILE.to_string(),
             WireFamily::Owned => crate::contract::AV_OWNED_PROFILE.to_string(),
             WireFamily::Collections => crate::contract::AV_COLLECTIONS_PROFILE.to_string(),
+            WireFamily::Closures => crate::contract::AV_CLOSURES_PROFILE.to_string(),
             WireFamily::Dynamic => crate::contract::AV_DYNAMIC_PROFILE.to_string(),
         },
         owner: OwnerScope {
@@ -1942,6 +2162,25 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                 let elem = c.u32()?;
                 module.types.push(MirType::Place(ListTypeRef { elem }));
             }
+            // PLAN-823: the closure type carries its signature (like Fn);
+            // the tag exists only in the closures generation.
+            TY_CLOSURE if family.allows_closures_tags() => {
+                let n = c.u32()? as usize;
+                if n > u8::MAX as usize {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.decode.arity",
+                        format!("closure signature with {} params exceeds wire width", n),
+                    ));
+                }
+                let mut params = Vec::with_capacity(n);
+                for _ in 0..n {
+                    params.push(c.u32()?);
+                }
+                let result = c.u32()?;
+                module
+                    .types
+                    .push(MirType::Closure(FnSig { params, result }));
+            }
             // PLAN-824: the opaque erased Dyn type (no operands — the
             // runtime type lives in the value, not the type table).
             TY_DYN if family.allows_dynamic_tags() => {
@@ -2040,16 +2279,28 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             }
         };
         let sig = c.u32()?;
+        let env = if family == WireFamily::Closures {
+            read_env_decl(&mut c)?
+        } else {
+            None
+        };
         module.imports.push(MirImport {
             symbol,
             effect,
             sig,
+            env,
         });
     }
     // Functions.
     let mut sidecar_needed = flags & FLAG_SOURCE_SIDECAR != 0;
-    let mut raw_funcs: Vec<(TypeIdx, String, Vec<MirSlot>, BlockId, Vec<MirBlock>)> =
-        Vec::with_capacity(n_funcs);
+    let mut raw_funcs: Vec<(
+        TypeIdx,
+        String,
+        Vec<MirSlot>,
+        BlockId,
+        Vec<MirBlock>,
+        Option<Vec<u32>>,
+    )> = Vec::with_capacity(n_funcs);
     // Per-TABLE-FAMILY probe (plan §3 r2): module tables were checked in
     // the header; each FUNCTION's slot/block/instruction table is checked
     // at its own boundary — never accumulated across the whole module.
@@ -2502,6 +2753,51 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                         let value = c.u32()?;
                         MirInstr::PlaceSet { place, value }
                     }
+                    // -- PLAN-823 closure opcodes --------------------------
+                    OP_CREATE_CLOSURE if family.allows_closures_tags() => {
+                        let dst = c.u32()?;
+                        let callee = decode_callee(&mut c)?;
+                        let n = c.u8()? as usize;
+                        if n > crate::contract::MAX_ENV_FIELDS {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.decode.arity",
+                                format!(
+                                    "create-closure declares {} captures, above the frozen {} cap",
+                                    n,
+                                    crate::contract::MAX_ENV_FIELDS
+                                ),
+                            ));
+                        }
+                        let mut captures = Vec::with_capacity(n);
+                        for _ in 0..n {
+                            let kind_byte = c.u8()?;
+                            let src = c.u32()?;
+                            captures.push(crate::mir::CaptureOperand {
+                                kind: decode_capture_kind(kind_byte)?,
+                                src,
+                            });
+                        }
+                        MirInstr::CreateClosure {
+                            dst,
+                            callee,
+                            captures,
+                        }
+                    }
+                    OP_CALL_CLOSURE if family.allows_closures_tags() => {
+                        let dst = c.u32()?;
+                        let closure = c.u32()?;
+                        let n = c.u8()? as usize;
+                        let mut args = Vec::with_capacity(n.min(64));
+                        for _ in 0..n {
+                            args.push(c.u32()?);
+                        }
+                        MirInstr::CallClosure { dst, closure, args }
+                    }
+                    OP_ENV_GET if family.allows_closures_tags() => {
+                        let dst = c.u32()?;
+                        let field = c.u16()?;
+                        MirInstr::EnvGet { dst, field }
+                    }
                     // -- PLAN-824 dynamic surface (decode) -----------------
                     OP_DYN_PACK if family.allows_dynamic_tags() => {
                         let dst = c.u32()?;
@@ -2548,7 +2844,12 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             };
             blocks.push(MirBlock { instrs, term });
         }
-        raw_funcs.push((sig, name, slots, entry_block, blocks));
+        let env = if family == WireFamily::Closures {
+            read_env_decl(&mut c)?
+        } else {
+            None
+        };
+        raw_funcs.push((sig, name, slots, entry_block, blocks, env));
     }
     // Sidecar.
     let mut snapshots: Vec<u64> = Vec::with_capacity(n_funcs);
@@ -2603,12 +2904,13 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             WireFamily::Data => crate::contract::ABC_DATA_SCHEMA.to_string(),
             WireFamily::Owned => crate::contract::ABC_OWNED_SCHEMA.to_string(),
             WireFamily::Collections => crate::contract::ABC_COLLECTIONS_SCHEMA.to_string(),
+            WireFamily::Closures => crate::contract::ABC_CLOSURES_SCHEMA.to_string(),
             WireFamily::Dynamic => crate::contract::ABC_DYNAMIC_SCHEMA.to_string(),
         },
         module: String::new(),
     };
     module.owner = owner;
-    for (fi, (sig, name, slots, entry_block, blocks)) in raw_funcs.into_iter().enumerate() {
+    for (fi, (sig, name, slots, entry_block, blocks, env)) in raw_funcs.into_iter().enumerate() {
         module.funcs.push(MirFunction {
             owner: module.owner.clone(),
             name,
@@ -2618,6 +2920,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             entry: entry_block,
             source_snapshot: snapshots[fi],
             spans: span_tables[fi].clone(),
+            env,
         });
     }
     Ok(DecodedAbc {
@@ -2667,6 +2970,7 @@ mod decode_budget_tests {
                 entry: 0,
                 source_snapshot: 0,
                 spans: vec![],
+                env: None,
             });
         }
         m.entry = 0;

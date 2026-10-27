@@ -90,6 +90,7 @@ impl F {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         });
         self.m.entry = (self.m.funcs.len() - 1) as u32;
     }
@@ -112,6 +113,7 @@ impl F {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         });
         (self.m.funcs.len() - 1) as u32
     }

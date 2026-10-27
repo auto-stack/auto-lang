@@ -264,6 +264,12 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
         }
         MirInstr::PlaceGet { dst, src } => format!("placeget {dst} {src}"),
         MirInstr::PlaceSet { place, value } => format!("placeset {place} {value}"),
+        MirInstr::CreateClosure { .. } | MirInstr::CallClosure { .. } | MirInstr::EnvGet { .. } => {
+            return Err(MnError::Unsupported(
+                "instruction",
+                "closure instructions are outside the scalar native surface".into(),
+            ));
+        }
         // PLAN-824 shared-core widening: the dynamic-profile instructions
         // render (pure formatting — a fingerprint must not panic on
         // them); the lower surface rejects them below.

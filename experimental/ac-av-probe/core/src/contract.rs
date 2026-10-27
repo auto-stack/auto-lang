@@ -106,6 +106,35 @@ pub const ABC_COLLECTIONS_SEMANTICS: AbcSemanticsVersion = AbcSemanticsVersion(1
 pub const AV_COLLECTIONS_SEMANTICS: AvSemanticsVersion = AvSemanticsVersion(1);
 
 // ---------------------------------------------------------------------------
+// PLAN-823 `av.closures/1` identities (contract-decision.md r2 §2.2)
+// ---------------------------------------------------------------------------
+
+/// Logical schema identity of the closures-profile Typed MIR.
+pub const MIR_CLOSURES_SCHEMA: &str = "auto.mir.av-closures/1";
+/// Wire schema identity of the closures-profile ABC format. Same `AVAD`
+/// magic FAMILY, wire VERSION 5 — v4 (dynamic) and v5 (closures) are
+/// mutually unreadable format generations (the 798 r6 isolation precedent).
+pub const ABC_CLOSURES_SCHEMA: &str = "auto.abc.av-closures/1";
+/// The closures execution profile (PLAN-823): typed owned closure
+/// environments, checked indirect calls and move / explicit-clone escape
+/// captures; subsumes the collections surface.
+pub const AV_CLOSURES_PROFILE: &str = "av.closures/1";
+/// Producer identity for closures-profile units in store envelopes/keys.
+pub const CLOSURES_PRODUCER_ID: &str = "plan823/av-closures";
+/// Wire version of the closures-profile ABC format (v5; profile id 6).
+pub const ABC_CLOSURES_VERSION: u16 = 5;
+/// Numeric profile id carried in the closures wire header.
+pub const ABC_PROFILE_CLOSURES: u16 = 6;
+
+/// PLAN-823 closures-profile semantic versions — an INDEPENDENT axis (all
+/// start at 1; the five profiles' artifacts key separately).
+pub const MIR_CLOSURES_SEMANTICS: MirSemanticsVersion = MirSemanticsVersion(1);
+pub const ABC_CLOSURES_SEMANTICS: AbcSemanticsVersion = AbcSemanticsVersion(1);
+pub const AV_CLOSURES_SEMANTICS: AvSemanticsVersion = AvSemanticsVersion(1);
+
+/// Per-env field-count guard (module table family, aligned with
+/// `MAX_RECORD_FIELDS`; contract-decision r2 §4).
+pub const MAX_ENV_FIELDS: usize = 1024;
 // PLAN-824 `av.dynamic/1` identities (contract-decision.md §6, frozen r2:
 // profile id 5 / AVAD v4 — id 4 and v3 were taken by `av.collections/1`)
 // ---------------------------------------------------------------------------
@@ -286,6 +315,13 @@ pub enum Value {
     /// `av.trap.stale-place` BEFORE any buffer access (defense in depth;
     /// verification gates the admitted shapes).
     Place(ListPlaceV),
+    /// Runtime closure reference (PLAN-823, `av.closures/1`): binds the
+    /// concrete callee, its signature type-table entry, the environment-
+    /// store handle and the binding generation. Copyable METADATA — the
+    /// env payload lives in the executor's per-execution env store, so
+    /// dropping the reference value itself never frees an env (release is
+    /// the executor's Drop/frame-exit path; the store outlives frames).
+    Closure(ClosureRefV),
     /// Type-erased dynamic value (PLAN-824, `av.dynamic/1`): an owning
     /// share of a checked [`crate::dynamic::DynValue`] — the whitelist-
     /// clean (value, DynType) pair whose only constructors are
@@ -293,6 +329,18 @@ pub enum Value {
     /// (like every handle); the DYN instructions are the only in-guest
     /// minting path (verification gates the erased closure).
     Dyn(std::rc::Rc<crate::dynamic::DynValue>),
+}
+
+/// The `Value::Closure` payload (PLAN-823 §5.1.1): the closure identity —
+/// callee function, signature TYPE-table entry, env-store handle and the
+/// binding generation (V-03/V-04 handle domains; handles are monotonic
+/// per execution, never reused).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ClosureRefV {
+    pub func: u32,
+    pub sig: u32,
+    pub env: u64,
+    pub gen: u64,
 }
 
 /// The `Value::Place` payload: (frame, slot) root + buffer identity +
@@ -567,6 +615,7 @@ impl PartialEq for Value {
             }
             (Variant(a), Variant(b)) => a.ty == b.ty && a.disc == b.disc && a.payload == b.payload,
             (Place(a), Place(b)) => a == b,
+            (Closure(a), Closure(b)) => a == b,
             // Dyn compares by the container's own (value, type) equality —
             // content identity, never the Rc pointer.
             (Dyn(a), Dyn(b)) => a == b,
@@ -593,6 +642,7 @@ impl Value {
             Value::List(_) => "list",
             Value::Variant(_) => "variant",
             Value::Place(_) => "place",
+            Value::Closure(_) => "closure",
             Value::Dyn(_) => "dyn",
         }
     }

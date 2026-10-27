@@ -35,6 +35,8 @@ mod probe_adapter_turnaround_ipc;
 mod ace_m1_tests;
 // AV corpora use the optional TestCase adapter and must stay independently gated.
 #[cfg(feature = "test-cases")]
+mod av_closures_823_tests;
+#[cfg(feature = "test-cases")]
 mod av_collections_822_tests;
 #[cfg(feature = "test-cases")]
 mod av_dynamic_824_tests;

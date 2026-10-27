@@ -59,6 +59,9 @@ pub const EXPECTED_AV_OWNED_CORE_VERSION: &str = "av.owned/1";
 /// the collections face is judged parent-side against THIS crate's frozen
 /// expectations, never the worker's word.
 pub const AV_COLLECTIONS_RECIPE: &str = "ac-av/collections-run-v1";
+/// PLAN-823 (R1-F02): the closures-profile av recipe (append-only
+/// registration; earlier recipe contracts untouched).
+pub const AV_CLOSURES_RECIPE: &str = "ac-av/closures-run-v1";
 pub const EXPECTED_AV_COLLECTIONS_CORE_VERSION: &str = "av.collections/1";
 
 /// PLAN-824: the dynamic-profile recipe (`av.dynamic/1`, profile id 5) —
@@ -76,6 +79,7 @@ pub enum RecipeFamily {
     Data,
     Owned,
     Collections,
+    Closures,
     Dynamic,
 }
 
@@ -86,6 +90,7 @@ impl RecipeFamily {
             RecipeFamily::Data => AV_DATA_RECIPE,
             RecipeFamily::Owned => AV_OWNED_RECIPE,
             RecipeFamily::Collections => AV_COLLECTIONS_RECIPE,
+            RecipeFamily::Closures => AV_CLOSURES_RECIPE,
             RecipeFamily::Dynamic => AV_DYNAMIC_RECIPE,
         }
     }
@@ -95,10 +100,14 @@ impl RecipeFamily {
             RecipeFamily::Data => EXPECTED_AV_DATA_CORE_VERSION,
             RecipeFamily::Owned => EXPECTED_AV_OWNED_CORE_VERSION,
             RecipeFamily::Collections => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
+            RecipeFamily::Closures => EXPECTED_AV_CLOSURES_CORE_VERSION,
             RecipeFamily::Dynamic => EXPECTED_AV_DYNAMIC_CORE_VERSION,
         }
     }
 }
+/// PLAN-823: the closures worker mirrors the core identity at the same
+/// profile identity (the avworker/1 protocol is profile-neutral).
+pub const EXPECTED_AV_CLOSURES_CORE_VERSION: &str = "av.closures/1";
 pub const AV_WORKER_PROTOCOL: &str = "avworker/1";
 /// Mirrored worker identity expectations — admission constants; a worker
 /// bump without a mirror update fails loudly.
@@ -511,6 +520,11 @@ struct StepOut {
     /// collections-recipe increment only.
     #[serde(default)]
     collections: Option<serde_json::Value>,
+    /// PLAN-823 (R1-F02): the closures face of a closures-recipe run
+    /// step — the canonical result plus the post-release arena ledger.
+    /// A closures-recipe increment only.
+    #[serde(default)]
+    closures: Option<serde_json::Value>,
     #[serde(default)]
     dynamic: Option<serde_json::Value>,
 }
@@ -868,6 +882,36 @@ const COLLECTIONS_CASES: &[(&str, &str, &[usize], &[u64])] = &[
     ),
 ];
 
+/// PLAN-823 (R1-F02): the frozen closures fixture table — the PARENT'S
+/// hand-audited expectations (never the worker's word). first-case:
+/// result 29 = 0x1d; allocs [4 "auto", 4 "auto"(note field), 0 list
+/// (0-elem ledger entry at mint), 4 capture clone, 6 "pushed"]; the
+/// deterministic free order [0, 4, 1, 2, 3]; live=0 after release.
+const CLOSURES_CASES: &[(&str, &str, &[usize], &[u64])] = &[(
+    "first-case",
+    r#"{"bits":"1d","kind":"i32"}"#,
+    &[4, 4, 0, 4, 6],
+    &[0, 4, 1, 2, 3],
+)];
+
+pub fn run_closures_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::Closures,
+    )
+}
 /// PLAN-824: the frozen dynamic-fixture faces the PARENT judges against.
 /// Same tuple shape as the collections table; the judge ADDITIONALLY
 /// asserts the Dyn face's portable axes when the fixture returns a Dyn
@@ -896,12 +940,7 @@ const DYNAMIC_CASES: &[(&str, &str, &[usize], &[u64])] = &[
     // (is List<Note> — false, never a trap), take RIGHT, read n → 7. The
     // success proves the failed probe left the container takeable; the
     // "prb" Str (3 bytes) frees at frame exit; live=0.
-    (
-        "take-probe",
-        r#"{"bits":"7","kind":"i32"}"#,
-        &[3],
-        &[0],
-    ),
+    ("take-probe", r#"{"bits":"7","kind":"i32"}"#, &[3], &[0]),
 ];
 
 pub fn run_collections_check(
@@ -1104,6 +1143,24 @@ fn run_check_impl(
     } else {
         None
     };
+    // PLAN-823 (R1-F02): a `closures:<id>` entry (closures recipe only)
+    // selects a frozen closures fixture; the PARENT validates the id
+    // against its OWN frozen table before any request.
+    let closures_fixture = if family == RecipeFamily::Closures {
+        match av.entry.strip_prefix("closures:") {
+            None => None,
+            Some(id) => match CLOSURES_CASES.iter().find(|(fid, ..)| *fid == id) {
+                Some(_) => Some(id.to_string()),
+                None => {
+                    return Err(format!(
+                        "av closures fixture `{id}` is not registered (parent table)"
+                    ));
+                }
+            },
+        }
+    } else {
+        None
+    };
     let mut request = serde_json::json!({
         "recipe": recipe,
         "nonce": nonce,
@@ -1124,6 +1181,9 @@ fn run_check_impl(
     }
     if let Some(id) = &collections_fixture {
         request["collections_fixture"] = serde_json::json!(id);
+    }
+    if let Some(id) = &closures_fixture {
+        request["closures_fixture"] = serde_json::json!(id);
     }
     if let Some(session) = &av.session {
         request["session"] = serde_json::json!(session);
@@ -1285,6 +1345,7 @@ fn run_check_impl(
                 let expect_hash = if typed_fixture.is_some()
                     || owned_fixture.is_some()
                     || collections_fixture.is_some()
+                    || closures_fixture.is_some()
                     || dynamic_fixture.is_some()
                 {
                     fnv1a64_hex(av.entry.as_bytes())
@@ -1393,6 +1454,8 @@ fn run_check_impl(
         // PLAN-822: the collections-fixture judge face — same axes as the
         // owned judge (result + live=0 + alloc/free order), its own table.
         judge_collections_fixture(id, &step, &mut mismatches);
+    } else if let Some(id) = &closures_fixture {
+        judge_closures_fixture(id, &step, &mut mismatches);
     } else if let Some(id) = &dynamic_fixture {
         judge_dynamic_fixture(id, &step, &mut mismatches);
     } else {
@@ -1690,6 +1753,118 @@ fn judge_collections_fixture(id: &str, step: &StepOut, mismatches: &mut Vec<Mism
         mismatches.push(Mismatch {
             observation: "collections".into(),
             kind: "collections-frees".into(),
+            expected: format!("{:?}", want_frees),
+            actual: format!("{:?}", got_frees),
+            first_diff: None,
+        });
+    }
+}
+
+/// PLAN-823 (R1-F02): the PARENT-side closures-fixture judgement — the
+/// frozen table above decides; the worker's word is never trusted. The
+/// AV823_CLOSURES_EXPECT_SABOTAGE seam is the V-10 negative control
+/// (a lying expectation must turn the verdict red).
+fn judge_closures_fixture(id: &str, step: &StepOut, mismatches: &mut Vec<Mismatch>) {
+    let (_, want_result, want_allocs, want_frees) = CLOSURES_CASES
+        .iter()
+        .find(|(fid, ..)| *fid == id)
+        .expect("validated above");
+    let mut want_result: serde_json::Value =
+        serde_json::from_str(want_result).expect("frozen table JSON parses");
+    let mut want_frees: Vec<u64> = want_frees.to_vec();
+    match std::env::var("AV823_CLOSURES_EXPECT_SABOTAGE")
+        .ok()
+        .as_deref()
+    {
+        Some("result") => {
+            want_result["bits"] =
+                serde_json::json!(format!("{}!", want_result["bits"].as_str().unwrap_or("")));
+        }
+        Some("ledger") => {
+            want_frees.rotate_left(1);
+        }
+        _ => {}
+    }
+    if step.outcome != "success" {
+        mismatches.push(Mismatch {
+            observation: "completion".into(),
+            kind: "closures-outcome".into(),
+            expected: "success".into(),
+            actual: step_summary(step),
+            first_diff: None,
+        });
+        return;
+    }
+    let closures = match &step.closures {
+        Some(o) => o,
+        None => {
+            mismatches.push(Mismatch {
+                observation: "closures".into(),
+                kind: "closures-report".into(),
+                expected: "the closures face on the step".into(),
+                actual: "no closures report".into(),
+                first_diff: None,
+            });
+            return;
+        }
+    };
+    let got_result = closures
+        .get("result")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    if got_result != want_result {
+        mismatches.push(Mismatch {
+            observation: "closures".into(),
+            kind: "closures-result".into(),
+            expected: want_result.to_string(),
+            actual: got_result.to_string(),
+            first_diff: None,
+        });
+    }
+    let live = closures
+        .get("live_after_release")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(u64::MAX);
+    if live != 0 {
+        mismatches.push(Mismatch {
+            observation: "closures".into(),
+            kind: "closures-live".into(),
+            expected: "0 (host release empties the ledger)".into(),
+            actual: format!("{live}"),
+            first_diff: None,
+        });
+    }
+    let got_allocs: Vec<usize> = closures
+        .get("allocs")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|e| e.get("bytes").and_then(|b| b.as_u64()).map(|b| b as usize))
+                .collect()
+        })
+        .unwrap_or_default();
+    if got_allocs != want_allocs.to_vec() {
+        mismatches.push(Mismatch {
+            observation: "closures".into(),
+            kind: "closures-allocs".into(),
+            expected: format!("{:?}", want_allocs),
+            actual: format!("{:?}", got_allocs),
+            first_diff: None,
+        });
+    }
+    let got_frees: Vec<u64> = closures
+        .get("frees")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|e| e.get("id").and_then(|b| b.as_u64()))
+                .collect()
+        })
+        .unwrap_or_default();
+    if got_frees != want_frees {
+        mismatches.push(Mismatch {
+            observation: "closures".into(),
+            kind: "closures-frees".into(),
             expected: format!("{:?}", want_frees),
             actual: format!("{:?}", got_frees),
             first_diff: None,
@@ -2190,6 +2365,7 @@ mod judge_tests {
             spans: Vec::new(),
             owned: None,
             collections: None,
+            closures: None,
             dynamic: None,
         }
     }
@@ -2416,5 +2592,79 @@ mod judge_tests {
         let mut ms = Vec::new();
         judge_owned_fixture("first-case", &step(None, None), &mut ms);
         assert!(ms.iter().any(|m| m.kind == "owned-report"));
+    }
+}
+
+#[cfg(test)]
+mod closures_judge_tests {
+    //! PLAN-823 (R1-F02): the PARENT-side closures judgement — the frozen
+    //! table decides; a lying worker face turns the verdict red.
+
+    use super::*;
+
+    fn cstep(face: serde_json::Value) -> StepOut {
+        StepOut {
+            op: "run".into(),
+            outcome: "success".into(),
+            value: None,
+            typed: None,
+            trap: None,
+            diag: None,
+            counters: Default::default(),
+            source_hash: String::new(),
+            wall_ms: 0.0,
+            trace: Vec::new(),
+            spans: Vec::new(),
+            owned: None,
+            collections: None,
+            closures: Some(face),
+            dynamic: None,
+        }
+    }
+
+    #[test]
+    fn av_closures_judge_passes_the_frozen_face() {
+        let face = serde_json::json!({
+            "result": { "kind": "i32", "bits": "1d" },
+            "live_after_release": 0,
+            "allocs": [
+                { "id": 0, "bytes": 4 }, { "id": 1, "bytes": 4 }, { "id": 2, "bytes": 0 },
+                { "id": 3, "bytes": 4 }, { "id": 4, "bytes": 6 },
+            ],
+            "frees": [
+                { "id": 0, "bytes": 4 }, { "id": 4, "bytes": 6 }, { "id": 1, "bytes": 4 },
+                { "id": 2, "bytes": 0 }, { "id": 3, "bytes": 4 },
+            ],
+        });
+        let mut ms = Vec::new();
+        judge_closures_fixture("first-case", &cstep(face), &mut ms);
+        assert!(ms.is_empty(), "{ms:?}");
+    }
+
+    #[test]
+    fn av_closures_judge_detects_lies() {
+        // wrong result bits
+        let mut face = serde_json::json!({
+            "result": { "kind": "i32", "bits": "2a" },
+            "live_after_release": 0,
+            "allocs": [], "frees": [],
+        });
+        let mut ms = Vec::new();
+        judge_closures_fixture("first-case", &cstep(face.clone()), &mut ms);
+        assert!(!ms.is_empty(), "a wrong result must go red");
+        // leak + wrong free order + missing face
+        face["live_after_release"] = serde_json::json!(1);
+        let mut ms2 = Vec::new();
+        judge_closures_fixture("first-case", &cstep(face), &mut ms2);
+        assert!(ms2.len() >= 2, "leak AND result both red: {ms2:?}");
+        let mut ms3 = Vec::new();
+        judge_closures_fixture("first-case", &cstep(serde_json::json!({})), &mut ms3);
+        assert!(!ms3.is_empty(), "an empty face must go red");
+        // non-success outcome
+        let mut ms4 = Vec::new();
+        let mut bad = cstep(serde_json::json!({}));
+        bad.outcome = "trap".into();
+        judge_closures_fixture("first-case", &bad, &mut ms4);
+        assert!(!ms4.is_empty(), "a trapped step must go red");
     }
 }

@@ -229,6 +229,7 @@ impl Fx {
         }];
         blocks.extend(tail);
         self.m.funcs = vec![MirFunction {
+            env: None,
             owner: self.m.owner.clone(),
             name: "main".to_string(),
             sig,
@@ -1058,8 +1059,9 @@ fn av_dynamic_824_semantics_shared_dag_pack_ok_freeze_rejects() {
 
 /// V-12: `List<Fn>` cannot even be DECLARED — Fn is not an element kind,
 /// the type-table gate refuses the category before any instruction exists
-/// (a closed surface one gate EARLIER than the whitelist; 823 is not
-/// merged: no closure category exists).
+/// (a closed surface one gate EARLIER than the whitelist; since the 823
+/// integration the Closure category exists at tag 17 but stays outside
+/// the dynamic erasable surface — same category refusal).
 #[test]
 fn av_dynamic_824_semantics_list_of_fn_not_declarable() {
     let mut f = Fx::new();

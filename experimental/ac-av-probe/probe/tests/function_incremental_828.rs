@@ -442,6 +442,7 @@ fn t04_unit_admission_negatives() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     whole.entry = 0;
     let bytes = encode_abc(&whole).unwrap().to_flat();
@@ -468,6 +469,7 @@ fn t04_unit_admission_negatives() {
         symbol: "fn:d_b".to_string(),
         effect: auto_av_core::mir::Effect::Pure,
         sig: wrong_sig,
+        env: None,
     });
     let _ = call_sig;
     let sig_a = unit_a.intern_type(MirType::Fn(FnSig {
@@ -494,6 +496,7 @@ fn t04_unit_admission_negatives() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     unit_a.entry = 0;
     let mut unit_b = MirModule::unit(owner.clone());
@@ -529,6 +532,7 @@ fn t04_unit_admission_negatives() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     unit_b.entry = 0;
     for u in [&unit_a, &unit_b] {
@@ -887,6 +891,7 @@ fn t08_v09_gate_negatives_redden_independently() {
                 })
                 .collect(),
             p50_ms: 10.0,
+            p90_ms: 10.0,
             p95_ms: 10.0,
             p99_ms: 10.0,
             all_correct: true,
@@ -909,16 +914,18 @@ fn t08_v09_gate_negatives_redden_independently() {
             .any(|f| f.contains("unaffected stage total")),
         "{failures:?}"
     );
-    // (d) timing axis alone: a slow-but-granular run still fails its P95.
+    // (d) timing axis alone: a slow-but-granular run still fails its P90
+    // (the r9 ruling gates P90; P95 stays a reported-for-the-record axis).
     let mut slow = clean(0, 30);
     for s in slow.samples.iter_mut() {
         s.edit_to_result_ms = 1500.0;
     }
     slow.p50_ms = 1500.0;
+    slow.p90_ms = 1500.0;
     slow.p95_ms = 1500.0;
     slow.p99_ms = 1500.0;
     let failures = validate_and_gate(&slow, 1000.0, 30);
-    assert!(failures.iter().any(|f| f.contains("P95")));
+    assert!(failures.iter().any(|f| f.contains("P90")));
 }
 
 #[test]

@@ -86,6 +86,7 @@ fn wide_record_module(n: u32) -> MirModule {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     m
@@ -163,6 +164,7 @@ fn av_data_820_slot_budget_one_unit_under_rejects() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     let loaded = admit(&m);
@@ -291,6 +293,7 @@ fn av_data_820_layout_overflow_real_input_rejected() {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         });
         m.entry = 0;
         (m, prev)
@@ -368,6 +371,7 @@ fn av_data_820_layout_work_shares_the_verify_budget() {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         });
         m.entry = 0;
     }

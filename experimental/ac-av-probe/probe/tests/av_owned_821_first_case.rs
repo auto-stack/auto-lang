@@ -261,6 +261,7 @@ fn av_owned_821_first_case_move_negative_controls() {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         });
         m.entry = 0;
         let _ = c_str;

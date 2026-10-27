@@ -86,6 +86,7 @@ fn main_i32(m: &mut MirModule, t: &T, slots: Vec<MirSlot>, blocks: Vec<MirBlock>
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
 }
@@ -410,6 +411,7 @@ fn av_owned_821_v04_all_exit_kinds_clean_lifo() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.funcs.push(MirFunction {
         owner: m.owner.clone(),
@@ -442,6 +444,7 @@ fn av_owned_821_v04_all_exit_kinds_clean_lifo() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     let arena = auto_av_core::owned_text::StrArena::new();

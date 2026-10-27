@@ -69,6 +69,7 @@ fn push_module(pushes: usize, _list_ty: u32, elem_ty: u32) -> MirModule {
         entry: 0,
         source_snapshot: 0,
         spans: Vec::new(),
+        env: None,
     }];
     m.entry = 0;
     m
@@ -600,6 +601,7 @@ impl TxFx {
             entry: 0,
             source_snapshot: 0,
             spans: Vec::new(),
+            env: None,
         }];
         self.m.entry = 0;
         self.m

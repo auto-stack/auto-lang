@@ -119,6 +119,7 @@ fn mir_admission_module_tables_over_budget_is_resource() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     let err = verify_mir(&m).unwrap_err();
@@ -187,6 +188,7 @@ fn mir_admission_combination_bound_is_verify_steps() {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         });
     }
     m.entry = 0;
@@ -270,6 +272,7 @@ fn mir_admission_merge_half_initialized_rejected() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     };
     m.funcs.push(f);
     m.entry = 0;

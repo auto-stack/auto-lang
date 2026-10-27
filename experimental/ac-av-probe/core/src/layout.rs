@@ -55,6 +55,10 @@ pub fn scalar_layout(t: &MirType) -> Option<ScalarLayout> {
         // buffer identity/epoch/index/generation, {u32,u32,u64,u64,u32,u32}
         // = 28 rounded to 32 at align 8.
         MirType::Place(_) => ScalarLayout { size: 32, align: 8 },
+        // PLAN-823: a closure reference is {func u32, sig u32, env u64,
+        // gen u64} = 24 bytes at align 8 (metadata only — the env payload
+        // lives in the executor's store).
+        MirType::Closure(_) => ScalarLayout { size: 24, align: 8 },
         // PLAN-824: the erased Dyn slot carries one owning Rc handle (the
         // (value, DynType) pair lives behind it) = 8 bytes at align 8;
         // payload bytes are counted per node by deep_size.

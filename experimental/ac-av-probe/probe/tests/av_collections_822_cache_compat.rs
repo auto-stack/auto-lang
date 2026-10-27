@@ -397,6 +397,7 @@ fn av_collections_822_cache_restore_payload_profile_rejected() {
             entry: 0,
             source_snapshot: 123,
             spans: vec![],
+            env: None,
         });
         verify_mir(&m).unwrap();
         let fp = collections_types_fp_of(&m);

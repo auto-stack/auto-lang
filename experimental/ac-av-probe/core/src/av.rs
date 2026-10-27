@@ -150,11 +150,14 @@ struct Frame {
     gens: Vec<u64>,
     /// This frame ACTIVATION's identity (monotonic; the MutRef token's
     /// runtime rooting key — PLAN-821 T-03).
-    #[allow(dead_code)]
     seq: u64,
     _allocation: Option<crate::frame_allocation::AllocationLease>,
     /// Caller bookkeeping: destination slot written on return (None = root).
     ret_dst: Option<u32>,
+    /// PLAN-823: the closure-env-store handle this frame ACTIVATION is
+    /// bound to (set by CALL_CLOSURE; the env itself is owned by the
+    /// store/closure value, never by the frame).
+    closure_env: Option<u64>,
 }
 
 /// Evaluation error: language traps vs. admission-violation internals stay
@@ -308,6 +311,23 @@ impl PausedRun {
     pub fn step_count(&self) -> u64 {
         self.state.steps
     }
+
+    /// The current closure frame and its published environment, if live.
+    pub fn active_closure_frame(&self) -> Option<(&str, u64)> {
+        let frame = self.state.frames.last()?;
+        let handle = frame.closure_env?;
+        if !self.state.closure_envs.contains_key(&handle) {
+            return None;
+        }
+        Some((self.prog.code().get(frame.func as usize)?.name(), handle))
+    }
+
+    /// The paused chain's owned-text ledger — the read-only seam for
+    /// mid-run state proofs (R1-F04: proving the committed env state
+    /// before triggering a cancellation).
+    pub fn arena(&self) -> &crate::owned_text::StrArena {
+        &self.state.arena
+    }
 }
 
 /// Result of a possibly-paused program execution.
@@ -402,6 +422,65 @@ struct LoopState {
     arena: crate::owned_text::StrArena,
     /// Monotonic frame ACTIVATION sequence (V-05 handle domain).
     frame_seq: u64,
+    /// PLAN-823 closure env store: handle → the owned env aggregate. The
+    /// store outlives frames (a closure escapes its creator's frame); env
+    /// bytes count toward `slot_bytes` (the one value-data line).
+    closure_envs: std::collections::HashMap<u64, ClosureEntry>,
+}
+
+struct ClosureEntry {
+    env: crate::closures::ClosureEnv,
+    func: u32,
+    sig: u32,
+    borrows: Vec<ClosureBorrow>,
+}
+
+#[derive(Clone, Copy)]
+struct ClosureBorrow {
+    frame: u64,
+    slot: u32,
+    generation: u64,
+}
+
+fn closure_borrows_valid(st: &LoopState, cref: crate::contract::ClosureRefV) -> bool {
+    st.closure_envs
+        .get(&cref.env)
+        .map(|entry| {
+            entry.borrows.iter().all(|b| {
+                st.frames
+                    .iter()
+                    .find(|frame| frame.seq == b.frame)
+                    .and_then(|frame| frame.gens.get(b.slot as usize))
+                    == Some(&b.generation)
+            })
+        })
+        .unwrap_or(false)
+}
+
+fn closure_binding_bytes(fields: usize, borrows: usize) -> usize {
+    // The entry includes the environment and vector headers; its backing
+    // field values are charged by deep_size, while moved flags and borrow
+    // metadata are charged here.
+    std::mem::size_of::<ClosureEntry>()
+        .saturating_add(fields.saturating_mul(std::mem::size_of::<bool>()))
+        .saturating_add(borrows.saturating_mul(std::mem::size_of::<ClosureBorrow>()))
+}
+static NEXT_CLOSURE_HANDLE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn reserve_closure_handle() -> Option<u64> {
+    use std::sync::atomic::Ordering;
+    NEXT_CLOSURE_HANDLE
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+        .ok()
+}
+
+fn closure_ref_valid(st: &LoopState, cref: crate::contract::ClosureRefV) -> bool {
+    cref.gen == cref.env
+        && st
+            .closure_envs
+            .get(&cref.env)
+            .map(|entry| entry.func == cref.func && entry.sig == cref.sig)
+            .unwrap_or(false)
 }
 
 /// The shared flat dispatch loop: explicit frames, budgets and traps.
@@ -1277,6 +1356,19 @@ fn release_frame_owned_lifo(st: &mut LoopState, frame: &mut Frame) {
                 owned.push((min_id, slot_val.clone()));
                 *slot_val = Value::I32(0);
             }
+            // PLAN-823: a closure slot's env payload lives in the STORE —
+            // the snapshot drop cannot reach it, so the env releases HERE
+            // (reverse capture order through the explicit worklist). The
+            // escaped-through-return case never reaches this sweep: the
+            // Return arm zeroes the returning slot first (responsibility
+            // transferred OUT in `rv`).
+            Value::Closure(cref) => {
+                // A stale reference must not release another live owner.
+                if closure_ref_valid(st, *cref) {
+                    release_closure_env(st, cref.env);
+                }
+                *slot_val = Value::I32(0);
+            }
             _ => {}
         }
     }
@@ -1287,10 +1379,35 @@ fn release_frame_owned_lifo(st: &mut LoopState, frame: &mut Frame) {
     }
 }
 
+/// PLAN-823: release one closure env from the store — take it out, subtract
+/// its byte share, and feed the fields (REVERSE capture order) through the
+/// shared explicit cleanup worklist (F822-R12 discipline: bounded work
+/// items, no host drop-glue recursion on deep chains).
+fn release_closure_env(st: &mut LoopState, handle: u64) {
+    if let Some(entry) = st.closure_envs.remove(&handle) {
+        let binding_bytes = closure_binding_bytes(entry.env.field_count(), entry.borrows.len());
+        let env = entry.env;
+        let mut visited = 0u64;
+        let env_bytes = env.deep_size(&mut visited).saturating_add(binding_bytes);
+        st.slot_bytes = st.slot_bytes.saturating_sub(env_bytes);
+        // The worklist pops from the end, so capture-order roots release
+        // in reverse capture order without reversing them twice.
+        release_owned_worklist(&mut st.steps, env.into_fields());
+    }
+}
+
 fn cleanup_owned_frames(st: &mut LoopState) {
     while let Some(mut frame) = st.frames.pop() {
         release_frame_owned_lifo(st, &mut frame);
         drop(frame);
+    }
+    // A rejected stale reference cannot release a different environment.
+    // Once every frame has unwound, reclaim any orphaned entries using the
+    // same bounded cleanup path, in reverse creation order.
+    let mut remaining: Vec<u64> = st.closure_envs.keys().copied().collect();
+    remaining.sort_unstable_by(|a, b| b.cmp(a));
+    for handle in remaining {
+        release_closure_env(st, handle);
     }
 }
 
@@ -1728,6 +1845,7 @@ fn dispatch<V: ModuleView>(
             seq: st.frame_seq,
             _allocation: allocation,
             ret_dst: None,
+            closure_env: None,
         };
         let mut arg_iter = args.iter().cloned();
         for s in &entry_fn.slots {
@@ -2015,6 +2133,7 @@ fn dispatch<V: ModuleView>(
                         seq,
                         _allocation: allocation,
                         ret_dst: Some(*dst),
+                        closure_env: None,
                     };
                     let caller = st.frames.last().expect("frame present");
                     let mut ai = args.iter().map(|a| caller.slots[*a as usize].clone());
@@ -2065,6 +2184,556 @@ fn dispatch<V: ModuleView>(
                     st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
                     st.frames.push(nf);
                 }
+                // -- PLAN-823 closure surface (av.closures/1) ----------------
+                MirInstr::CreateClosure {
+                    dst,
+                    callee,
+                    captures,
+                } => {
+                    let target = match v.resolve_callee(func_idx, callee) {
+                        Some(t) => t,
+                        None => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "closure callee resolution failed in func #{}: {:?}",
+                                func_idx, callee
+                            )))
+                        }
+                    };
+                    // Reserve a process-unique handle before capture commit.
+                    // Live environments never cross process boundaries.
+                    let Some(handle) = reserve_closure_handle() else {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::TableEntries,
+                            message: "closure handle space exhausted".into(),
+                        });
+                    };
+                    let borrow_count = captures
+                        .iter()
+                        .filter(|c| c.kind == crate::mir::CaptureKind::Borrow)
+                        .count();
+                    // Phase 1 (prepare) over BORROWED slots: every fallible
+                    // clone allocation happens BEFORE any source transfer
+                    // (§5.5 prepare/commit law). The clone walk rides the
+                    // shared visitor's cancel/wall/fuel discipline. BORROW
+                    // captures stage caller-minted share views (no
+                    // allocation, no drop right).
+                    let wall_left = limits.wall.saturating_sub(started.elapsed());
+                    let (plan, _prep) = {
+                        let fr = st.frames.last().expect("frame present");
+                        let env_handle = fr.closure_env;
+                        let mut specs: Vec<crate::closures::CaptureSpec> =
+                            Vec::with_capacity(captures.len());
+                        for c in captures.iter() {
+                            let mode = match c.kind {
+                                crate::mir::CaptureKind::Move => crate::closures::CaptureMode::Move,
+                                crate::mir::CaptureKind::Clone => {
+                                    crate::closures::CaptureMode::Clone
+                                }
+                                crate::mir::CaptureKind::Borrow => {
+                                    crate::closures::CaptureMode::Borrow
+                                }
+                                // R1-F01: the DEDICATED env-field transfer —
+                                // prepare borrows the PARENT env's live
+                                // field value (the take happens at commit).
+                                crate::mir::CaptureKind::MoveFromEnv => {
+                                    crate::closures::CaptureMode::Move
+                                }
+                            };
+                            let src: &Value = if c.kind == crate::mir::CaptureKind::MoveFromEnv {
+                                let h = env_handle.expect(
+                                    "MoveFromEnv in a frame without an env binding (admission violation)",
+                                );
+                                match st
+                                    .closure_envs
+                                    .get(&h)
+                                    .and_then(|e| e.env.field(c.src as usize))
+                                {
+                                    Some(v) => v,
+                                    None => {
+                                        return Some(ExecOutcome::Trap {
+                                            kind: TrapKind::InvalidHandle,
+                                            span: span_of(func, flat)
+                                                .map(|sp| v.map_span(func_idx, sp)),
+                                        })
+                                    }
+                                }
+                            } else {
+                                &fr.slots[c.src as usize]
+                            };
+                            specs.push(crate::closures::CaptureSpec { mode, src });
+                        }
+                        // Reserve the combined live-data budget before any
+                        // clone allocation or ownership transfer. Move slots
+                        // are replaced with their typed zero; parent env
+                        // fields become scalar placeholders on transfer.
+                        let mut visited = 0u64;
+                        let mut after_moves = st.slot_bytes;
+                        let mut env_bytes = closure_binding_bytes(captures.len(), borrow_count);
+                        let mut dst_after_moves = fr.slots[*dst as usize].deep_size(&mut visited);
+                        for (capture, spec) in captures.iter().zip(&specs) {
+                            let bytes = if capture.kind == crate::mir::CaptureKind::Borrow {
+                                std::mem::size_of::<Value>()
+                            } else {
+                                spec.src.deep_size(&mut visited)
+                            };
+                            env_bytes = env_bytes.saturating_add(bytes);
+                            if capture.kind == crate::mir::CaptureKind::Move {
+                                let old = fr.slots[capture.src as usize].deep_size(&mut visited);
+                                let zero = v
+                                    .zero_of(func_idx, func.slots[capture.src as usize].ty)
+                                    .deep_size(&mut visited);
+                                after_moves = after_moves.saturating_sub(old.saturating_sub(zero));
+                                if capture.src == *dst {
+                                    dst_after_moves = zero;
+                                }
+                            } else if capture.kind == crate::mir::CaptureKind::MoveFromEnv {
+                                // The parent field becomes an i32 placeholder
+                                // when its ownership moves to the child.
+                                after_moves = after_moves.saturating_sub(
+                                    bytes.saturating_sub(std::mem::size_of::<Value>()),
+                                );
+                            }
+                        }
+                        st.steps = st.steps.saturating_add(visited);
+                        let after_write = after_moves.saturating_add(
+                            std::mem::size_of::<Value>().saturating_sub(dst_after_moves),
+                        );
+                        let peak = after_moves.max(after_write).saturating_add(env_bytes);
+                        if peak > limits.max_slot_bytes {
+                            return Some(ExecOutcome::Resource {
+                                kind: ResourceKind::SlotBytes,
+                                message: format!(
+                                    "closure env reservation would reach {} bytes, above budget {}",
+                                    peak, limits.max_slot_bytes
+                                ),
+                            });
+                        }
+                        // Mint the borrow views over the creator's slots
+                        // (the SHARE keeps the bytes readable — snapshot
+                        // semantics; the static pin analysis guarantees the
+                        // source outlives the synchronous use).
+                        let staged_borrows: Vec<Value> = captures
+                            .iter()
+                            .filter(|c| c.kind == crate::mir::CaptureKind::Borrow)
+                            .map(|c| {
+                                let fr = st.frames.last().expect("frame present");
+                                match &fr.slots[c.src as usize] {
+                                    Value::Str(h) => {
+                                        let n = crate::owned_text::scalars(h.bytes()).len() as u32;
+                                        Value::StrView(crate::contract::StrView {
+                                            src: crate::contract::StrViewSrc::Share(h.clone()),
+                                            start: 0,
+                                            end: n,
+                                        })
+                                    }
+                                    // Unreachable for admitted programs (the
+                                    // typing pass restricts Borrow sources to
+                                    // Str slots; prepare re-rejects the kind)
+                                    // — the empty static view keeps this
+                                    // total instead of panicking mid-dispatch.
+                                    _ => Value::StrView(crate::contract::StrView {
+                                        src: crate::contract::StrViewSrc::Static {
+                                            buf: std::rc::Rc::new(Box::from(&b""[..])),
+                                        },
+                                        start: 0,
+                                        end: 0,
+                                    }),
+                                }
+                            })
+                            .collect();
+                        let mut ctx = crate::closures::CloneContext {
+                            cancel,
+                            wall_left,
+                            fuel: &mut st.steps,
+                            max_fuel: limits.max_steps,
+                        };
+                        match crate::closures::EnvPlan::prepare(
+                            &st.arena,
+                            &specs,
+                            &crate::closures::EnvLimits::default(),
+                            &mut ctx,
+                            staged_borrows,
+                        ) {
+                            Ok(x) => x,
+                            Err(e) => {
+                                return Some(match e {
+                                    crate::closures::EnvPrepareError::FaultedClone {
+                                        message,
+                                        ..
+                                    } => ExecOutcome::Infra(message),
+                                    crate::closures::EnvPrepareError::Allocation { what } => {
+                                        ExecOutcome::Resource {
+                                            kind: ResourceKind::SlotBytes,
+                                            message: format!("could not reserve {what}"),
+                                        }
+                                    }
+                                    crate::closures::EnvPrepareError::Cancelled => {
+                                        ExecOutcome::Cancelled
+                                    }
+                                    crate::closures::EnvPrepareError::CloneBudget {
+                                        code,
+                                        message,
+                                    } => {
+                                        if code == ResourceKind::InstrSteps.code() {
+                                            ExecOutcome::Resource {
+                                                kind: ResourceKind::InstrSteps,
+                                                message,
+                                            }
+                                        } else if code == ResourceKind::ExecutionWall.code() {
+                                            ExecOutcome::Resource {
+                                                kind: ResourceKind::ExecutionWall,
+                                                message,
+                                            }
+                                        } else {
+                                            ExecOutcome::Infra(format!(
+                                                "capture clone budget {}: {}",
+                                                code, message
+                                            ))
+                                        }
+                                    }
+                                    crate::closures::EnvPrepareError::EnvBytesBudget {
+                                        would,
+                                        max,
+                                    } => ExecOutcome::Resource {
+                                        kind: ResourceKind::SlotBytes,
+                                        message: format!(
+                                            "closure env data {} bytes would exceed budget {}",
+                                            would, max
+                                        ),
+                                    },
+                                    crate::closures::EnvPrepareError::TooManyFields {
+                                        got,
+                                        max,
+                                    } => ExecOutcome::Resource {
+                                        kind: ResourceKind::TableEntries,
+                                        message: format!(
+                                            "closure env has {} captures, above the frozen {}",
+                                            got, max
+                                        ),
+                                    },
+                                    crate::closures::EnvPrepareError::UnsupportedKind { kind } => {
+                                        ExecOutcome::Infra(format!(
+                                            "capture of a {} (admission violation)",
+                                            kind
+                                        ))
+                                    }
+                                    crate::closures::EnvPrepareError::BorrowStaging(msg) => {
+                                        ExecOutcome::Infra(msg)
+                                    }
+                                })
+                            }
+                        }
+                    };
+                    // Reserve the store entry and move-source list before
+                    // touching ownership. A failed reservation unwinds the
+                    // staged plan and leaves all capture sources intact.
+                    if st.closure_envs.try_reserve(1).is_err() {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::SlotBytes,
+                            message: "could not reserve closure store entry".into(),
+                        });
+                    }
+                    let borrows: Vec<ClosureBorrow> = {
+                        let fr = st.frames.last().expect("frame present");
+                        captures
+                            .iter()
+                            .filter(|c| c.kind == crate::mir::CaptureKind::Borrow)
+                            .map(|c| ClosureBorrow {
+                                frame: fr.seq,
+                                slot: c.src,
+                                generation: fr.gens[c.src as usize],
+                            })
+                            .collect()
+                    };
+                    // Phase 2 (commit): take the MOVE sources out of their
+                    // slots — whole-root transfer, typed zero lands, the
+                    // generation bump retires stale rooted views (mirror of
+                    // MOVE's transfer bookkeeping; clone sources keep their
+                    // slots untouched). The env's materialization is one
+                    // VALUE allocation on the fault seam (V-07: a fault
+                    // here reports the attempt and consumes NO source —
+                    // the kill loop below never runs).
+                    if let Some(n) = limits.fault_after_allocs {
+                        st.alloc_events += 1;
+                        if st.alloc_events == n {
+                            return Some(ExecOutcome::Infra(format!(
+                                "fault-injected at value allocation #{} (closure env)",
+                                n
+                            )));
+                        }
+                    }
+                    let parent_env_handle = st.frames.last().expect("frame present").closure_env;
+                    let mut move_sources: Vec<Value> = Vec::new();
+                    if move_sources.try_reserve_exact(captures.len()).is_err() {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::SlotBytes,
+                            message: "could not reserve capture sources".into(),
+                        });
+                    }
+                    // R1-F01: move sources are collected in CAPTURE order —
+                    // commit binds the k-th source to the k-th Move spec.
+                    // MoveFromEnv takes the PARENT env's field out
+                    // (moved-out state + placeholder): the child env alone
+                    // owns the value from commit on; plain Move takes the
+                    // whole slot (typed zero + generation bump).
+                    for c in captures.iter() {
+                        match c.kind {
+                            crate::mir::CaptureKind::MoveFromEnv => {
+                                let h =
+                                    parent_env_handle.expect("MoveFromEnv requires an env binding");
+                                let taken = st
+                                    .closure_envs
+                                    .get_mut(&h)
+                                    .and_then(|e| e.env.take_field(c.src as usize));
+                                match taken {
+                                    Some(v) => {
+                                        let mut visited = 0u64;
+                                        let old = v.deep_size(&mut visited);
+                                        st.steps = st.steps.saturating_add(visited);
+                                        st.slot_bytes = st.slot_bytes.saturating_sub(
+                                            old.saturating_sub(std::mem::size_of::<Value>()),
+                                        );
+                                        move_sources.push(v);
+                                    }
+                                    None => {
+                                        return Some(ExecOutcome::Trap {
+                                            kind: TrapKind::InvalidHandle,
+                                            span: span_of(func, flat)
+                                                .map(|sp| v.map_span(func_idx, sp)),
+                                        })
+                                    }
+                                }
+                            }
+                            crate::mir::CaptureKind::Move => {
+                                let taken = {
+                                    let mut visited = 0u64;
+                                    let fr = st.frames.last_mut().expect("frame present");
+                                    let old = fr.slots[c.src as usize].deep_size(&mut visited);
+                                    let zero = v.zero_of(func_idx, func.slots[c.src as usize].ty);
+                                    let new = zero.deep_size(&mut visited);
+                                    st.steps += visited;
+                                    st.slot_bytes =
+                                        st.slot_bytes.saturating_sub(old.saturating_sub(new));
+                                    fr.gens[c.src as usize] =
+                                        fr.gens[c.src as usize].wrapping_add(1);
+                                    std::mem::replace(&mut fr.slots[c.src as usize], zero)
+                                };
+                                move_sources.push(taken);
+                            }
+                            _ => {}
+                        }
+                    }
+                    let (env, commit_acc) = match plan.commit(move_sources) {
+                        Ok(x) => x,
+                        // Unreachable for executor-handed sources (the very
+                        // values prepare admitted); stays Infra, never a
+                        // silent pass.
+                        Err((e, _sources)) => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "closure commit rejected: {}",
+                                e.code()
+                            )))
+                        }
+                    };
+                    st.steps += commit_acc.fields;
+                    // The env joins the ONE value-data line (§5.2:
+                    // 槽+聚合+buffer+环境).
+                    let mut visited = 0u64;
+                    let env_bytes = env
+                        .deep_size(&mut visited)
+                        .saturating_add(closure_binding_bytes(env.field_count(), borrows.len()));
+                    st.steps += visited;
+                    if st.slot_bytes.saturating_add(env_bytes) > limits.max_slot_bytes {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::SlotBytes,
+                            message: format!(
+                                "live data incl. closure env would reach {} bytes, above budget {}",
+                                st.slot_bytes + env_bytes,
+                                limits.max_slot_bytes
+                            ),
+                        });
+                    }
+                    let sig_ty = func.slots[*dst as usize].ty;
+                    st.closure_envs.insert(
+                        handle,
+                        ClosureEntry {
+                            env,
+                            func: target,
+                            sig: sig_ty,
+                            borrows,
+                        },
+                    );
+                    let cref = Value::Closure(crate::contract::ClosureRefV {
+                        func: target,
+                        sig: sig_ty,
+                        env: handle,
+                        gen: handle,
+                    });
+                    if let Err(out) = commit_slot_write(st, *dst as usize, cref, limits) {
+                        return Some(out);
+                    }
+                    st.slot_bytes += env_bytes;
+                    st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
+                }
+                MirInstr::CallClosure { dst, closure, args } => {
+                    let cv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*closure as usize].clone()
+                    };
+                    let cref = match cv {
+                        Value::Closure(c) => c,
+                        other => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "call-closure operand holds {} (admission violation)",
+                                other.type_name()
+                            )))
+                        }
+                    };
+                    // V-04 runtime defense in depth: the store re-check (a
+                    // stale handle traps before any callee side effect).
+                    if !closure_ref_valid(st, cref) || !closure_borrows_valid(st, cref) {
+                        return Some(ExecOutcome::Trap {
+                            kind: TrapKind::InvalidHandle,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                        });
+                    }
+                    if st.frames.len() >= limits.max_frames {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::Frames,
+                            message: format!("guest frames exceeded {}", limits.max_frames),
+                        });
+                    }
+                    let callee_fn = v.fn_at(cref.func).expect("verify bound the closure callee");
+                    // Shallow pre-gate, then the authoritative deep check on
+                    // the FILLED frame (mirror of CALL's discipline).
+                    let prospective =
+                        st.slot_bytes + callee_fn.slots.len() * crate::contract::SLOT_CELL_BYTES;
+                    if prospective > limits.max_slot_bytes {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::SlotBytes,
+                            message: format!(
+                                "live slot data would reach {} bytes, above budget {}",
+                                prospective, limits.max_slot_bytes
+                            ),
+                        });
+                    }
+                    let (slots, allocation) =
+                        match crate::frame_allocation::reserve_slots(callee_fn.slots.len()) {
+                            Ok(v) => v,
+                            Err(()) => {
+                                return Some(ExecOutcome::Resource {
+                                    kind: ResourceKind::SlotBytes,
+                                    message: "callee frame slot allocation failed".into(),
+                                })
+                            }
+                        };
+                    st.frame_seq += 1;
+                    let mut nf = Frame {
+                        func: cref.func,
+                        block: callee_fn.entry,
+                        ip: 0,
+                        slots,
+                        gens: vec![0; callee_fn.slots.len()],
+                        seq: st.frame_seq,
+                        _allocation: allocation,
+                        ret_dst: Some(*dst),
+                        closure_env: Some(cref.env),
+                    };
+                    let caller = st.frames.last().expect("frame present");
+                    let mut ai = args.iter().map(|a| caller.slots[*a as usize].clone());
+                    for s in &callee_fn.slots {
+                        nf.slots.push(if s.kind == crate::mir::SlotKind::Param {
+                            ai.next().expect("arity verified at admission")
+                        } else {
+                            v.zero_of(cref.func, s.ty)
+                        });
+                    }
+                    // Sig-driven move-in kills (mirror CALL; the signature
+                    // comes from the Closure type, never an Fn slot).
+                    {
+                        let callee_sig_ty = v.mir_type_of(cref.func, callee_fn.sig);
+                        for (ai, a) in args.iter().enumerate() {
+                            let ty = func.slots[*a as usize].ty;
+                            let param_borrows = callee_sig_ty
+                                .and_then(|t| match t {
+                                    crate::mir::MirType::Closure(sig) => {
+                                        sig.params.get(ai).copied()
+                                    }
+                                    _ => None,
+                                })
+                                .map(|pt| !v.type_is_owned(cref.func, pt))
+                                .unwrap_or(false);
+                            if v.type_is_owned(func_idx, ty) && !param_borrows {
+                                let zero = v.zero_of(func_idx, ty);
+                                owned_kill_slot(st, *a as usize, zero);
+                            }
+                        }
+                    }
+                    let mut visited = 0u64;
+                    let callee_bytes = frame_slots_bytes(&nf.slots, &mut visited);
+                    st.steps += visited;
+                    let prospective = st.slot_bytes + callee_bytes;
+                    if prospective > limits.max_slot_bytes {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::SlotBytes,
+                            message: format!(
+                                "live slot data would reach {} bytes, above budget {}",
+                                prospective, limits.max_slot_bytes
+                            ),
+                        });
+                    }
+                    st.slot_bytes = prospective;
+                    st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
+                    st.frames.push(nf);
+                }
+                MirInstr::EnvGet { dst, field } => {
+                    let handle = {
+                        let fr = st.frames.last().expect("frame present");
+                        match fr.closure_env {
+                            Some(h) => h,
+                            None => {
+                                return Some(ExecOutcome::Infra(
+                                    "env-get in a frame with no closure binding \
+                                     (admission violation)"
+                                        .to_string(),
+                                ))
+                            }
+                        }
+                    };
+                    // Handle-share read: the env retains ownership; the
+                    // budget is commit_slot_write's deep delta (the frozen
+                    // conservative rule charges the shared deep size).
+                    let share = match st
+                        .closure_envs
+                        .get(&handle)
+                        .and_then(|e| e.env.field(*field as usize))
+                    {
+                        Some(v) => v.clone(),
+                        None => {
+                            return Some(ExecOutcome::Trap {
+                                kind: TrapKind::InvalidHandle,
+                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                            });
+                        }
+                    };
+                    let mut visited = 0u64;
+                    let deep = share.deep_size(&mut visited);
+                    st.steps += visited;
+                    if st.slot_bytes.saturating_add(deep) > limits.max_slot_bytes {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::SlotBytes,
+                            message: format!(
+                                "env field share {} bytes would reach {} bytes, above budget {}",
+                                deep,
+                                st.slot_bytes + deep,
+                                limits.max_slot_bytes
+                            ),
+                        });
+                    }
+                    if let Err(out) = commit_slot_write(st, *dst as usize, share, limits) {
+                        return Some(out);
+                    }
+                }
                 MirInstr::Clone { dst, src } => {
                     // Explicit deep clone (782): per-field independent
                     // buffers, scalars by value, empty Str zero-alloc.
@@ -2072,6 +2741,113 @@ fn dispatch<V: ModuleView>(
                         let fr = st.frames.last().expect("frame present");
                         fr.slots[*src as usize].clone()
                     };
+                    // PLAN-823 (§5.1.2): cloning a CLOSURE deep-clones its
+                    // ENV — the copy owns independent resources under a
+                    // fresh store handle (V-06: 副本资源独立). A stale
+                    // source handle traps before any copy (defense in
+                    // depth, mirroring CALL_CLOSURE).
+                    if let Value::Closure(cref) = sv {
+                        if !closure_ref_valid(st, cref)
+                            || st
+                                .closure_envs
+                                .get(&cref.env)
+                                .map(|e| !e.borrows.is_empty())
+                                .unwrap_or(true)
+                        {
+                            return Some(ExecOutcome::Trap {
+                                kind: TrapKind::InvalidHandle,
+                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                            });
+                        }
+                        if st.closure_envs.try_reserve(1).is_err() {
+                            return Some(ExecOutcome::Resource {
+                                kind: ResourceKind::SlotBytes,
+                                message: "could not reserve cloned closure store entry".into(),
+                            });
+                        }
+                        let env = match st.closure_envs.get(&cref.env) {
+                            Some(e) => &e.env,
+                            None => {
+                                return Some(ExecOutcome::Trap {
+                                    kind: TrapKind::InvalidHandle,
+                                    span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                                })
+                            }
+                        };
+                        let Some(handle) = reserve_closure_handle() else {
+                            return Some(ExecOutcome::Resource {
+                                kind: ResourceKind::TableEntries,
+                                message: "closure handle space exhausted".into(),
+                            });
+                        };
+                        let mut visited = 0u64;
+                        let env_bytes = env
+                            .deep_size(&mut visited)
+                            .saturating_add(closure_binding_bytes(env.field_count(), 0));
+                        st.steps += visited;
+                        if st.slot_bytes.saturating_add(env_bytes) > limits.max_slot_bytes {
+                            return Some(ExecOutcome::Resource {
+                                kind: ResourceKind::SlotBytes,
+                                message: format!(
+                                    "closure env clone {} bytes would reach {} bytes, above budget {}",
+                                    env_bytes,
+                                    st.slot_bytes + env_bytes,
+                                    limits.max_slot_bytes
+                                ),
+                            });
+                        }
+                        let wall_left = limits.wall.saturating_sub(started.elapsed());
+                        let mut new_fields = Vec::new();
+                        if new_fields.try_reserve_exact(env.field_count()).is_err() {
+                            return Some(ExecOutcome::Resource {
+                                kind: ResourceKind::SlotBytes,
+                                message: "could not reserve cloned environment fields".into(),
+                            });
+                        }
+                        for i in 0..env.field_count() {
+                            let f = env.field(i).expect("field_count bounds i");
+                            let cloned_field = match clone_owned_value(
+                                f,
+                                &st.arena,
+                                &cancel,
+                                wall_left,
+                                &mut st.steps,
+                                limits.max_steps,
+                            ) {
+                                Ok(v) => v,
+                                Err(out) => {
+                                    // Partial output unwinds through the
+                                    // fields' own handle drops (the visitor
+                                    // fully unwound each single clone).
+                                    return Some(out);
+                                }
+                            };
+                            new_fields.push(cloned_field);
+                        }
+                        let new_env = crate::closures::ClosureEnv::from_fields(new_fields);
+                        st.closure_envs.insert(
+                            handle,
+                            ClosureEntry {
+                                env: new_env,
+                                func: cref.func,
+                                sig: cref.sig,
+                                borrows: Vec::new(),
+                            },
+                        );
+                        st.slot_bytes += env_bytes;
+                        st.trace.peak_slot_bytes =
+                            st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
+                        let new_ref = Value::Closure(crate::contract::ClosureRefV {
+                            func: cref.func,
+                            sig: cref.sig,
+                            env: handle,
+                            gen: handle,
+                        });
+                        if let Err(out) = commit_slot_write(st, *dst as usize, new_ref, limits) {
+                            return Some(out);
+                        }
+                        continue;
+                    }
                     let mut visited = 0u64;
                     let new_size = sv.deep_size(&mut visited);
                     if let Err(out) = owned_alloc_precheck(st, new_size, *dst as usize, limits) {
@@ -2200,6 +2976,21 @@ fn dispatch<V: ModuleView>(
                     }
                 }
                 MirInstr::Drop { slot } => {
+                    // PLAN-823: dropping a CLOSURE releases its env from
+                    // the store FIRST (reverse capture order); the metadata
+                    // cell then dies through the ordinary kill path.
+                    {
+                        let fr = st.frames.last().expect("frame present");
+                        if let Value::Closure(cref) = fr.slots[*slot as usize] {
+                            if !closure_ref_valid(st, cref) {
+                                return Some(ExecOutcome::Trap {
+                                    kind: TrapKind::InvalidHandle,
+                                    span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                                });
+                            }
+                            release_closure_env(st, cref.env);
+                        }
+                    }
                     // Explicit drop: take the owned value out; its
                     // StrHandle drops report the frees to the arena
                     // (exactly-once, reverse-creation order inside the
@@ -3619,6 +4410,17 @@ fn dispatch<V: ModuleView>(
                     let fr = st.frames.last().expect("frame present");
                     (fr.slots[*value as usize].clone(), fr.ret_dst)
                 };
+                // PLAN-823: a returned Closure is Copy METADATA — the env
+                // responsibility leaves with `rv`; zero the slot BEFORE the
+                // frame sweep so the sweep cannot release the escaped env
+                // (shared-kind values need no such step: their handle
+                // clones keep the buffers alive through the sweep).
+                {
+                    let fr = st.frames.last_mut().expect("frame present");
+                    if matches!(fr.slots[*value as usize], Value::Closure(_)) {
+                        fr.slots[*value as usize] = Value::I32(0);
+                    }
+                }
                 // Deep live-data of the popped frame leaves the ledger.
                 let mut visited = 0u64;
                 let frame_bytes = {
@@ -3789,6 +4591,7 @@ mod tests {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         });
         m.entry = 0;
         let bytes = crate::abc::encode_abc(&m).expect("encode");
@@ -3870,6 +4673,7 @@ mod tests {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         });
         m.entry = 0;
         let bytes = crate::abc::encode_abc(&m).expect("encode");
@@ -3918,6 +4722,7 @@ mod tests {
                 entry: 0,
                 source_snapshot: 0,
                 spans: vec![],
+                env: None,
             });
             m.entry = 0;
             let bytes = crate::abc::encode_abc(&m).expect("encode");
@@ -3970,6 +4775,7 @@ mod tests {
             symbol: "hir.test.mark_a".to_string(),
             effect: Effect::Observable,
             sig: imp_sig,
+            env: None,
         });
         m.capabilities = vec![crate::contract::TRACE_CAPABILITY.to_string()];
         m.funcs.push(MirFunction {
@@ -3992,6 +4798,7 @@ mod tests {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         });
         m.entry = 0;
         let bytes = crate::abc::encode_abc(&m).expect("encode");
@@ -4019,6 +4826,681 @@ mod tests {
             trace.peak_slot_bytes,
             1 * SLOT_CELL_BYTES as u64,
             "peak must cover the root frame's live slot"
+        );
+    }
+
+    /// Fault injection into a live frame: stale generation and absent store
+    /// handles must trap at the real call instruction before callee entry.
+    #[test]
+    fn av_823_stale_closure_identity_traps_before_callee() {
+        let closure_owner = OwnerScope {
+            schema: crate::contract::MIR_CLOSURES_SCHEMA.into(),
+            module: "m".into(),
+        };
+        let mut m = MirModule::new_closures(closure_owner.clone());
+        let ti = m.intern_type(MirType::I32);
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: ti,
+        }));
+        let cl = m.intern_type(MirType::Closure(FnSig {
+            params: vec![],
+            result: ti,
+        }));
+        let n = m.intern_const(MirConst::I32(29));
+        let slot = |ty| MirSlot {
+            kind: SlotKind::Local,
+            ty,
+            name: None,
+        };
+        m.funcs.push(MirFunction {
+            owner: closure_owner.clone(),
+            name: "main".into(),
+            sig,
+            slots: vec![slot(cl), slot(ti)],
+            blocks: vec![MirBlock {
+                instrs: vec![
+                    MirInstr::CreateClosure {
+                        dst: 0,
+                        callee: CalleeRef::Func(1),
+                        captures: vec![],
+                    },
+                    MirInstr::CallClosure {
+                        dst: 1,
+                        closure: 0,
+                        args: vec![],
+                    },
+                    MirInstr::Drop { slot: 0 },
+                ],
+                term: Terminator::Return { value: 1 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+            env: None,
+        });
+        m.funcs.push(MirFunction {
+            owner: closure_owner.clone(),
+            name: "body".into(),
+            sig,
+            slots: vec![slot(ti)],
+            blocks: vec![MirBlock {
+                instrs: vec![MirInstr::Const { dst: 0, value: n }],
+                term: Terminator::Return { value: 0 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+            env: Some(vec![]),
+        });
+        m.entry = 0;
+        let limits = ExecLimits::default();
+        let cancel = CancelFlag::new(false);
+        for operation in ["call", "clone", "drop"] {
+            let mut variant = m.clone();
+            match operation {
+                "clone" => {
+                    variant.funcs[0].slots.push(slot(cl));
+                    variant.funcs[0].blocks[0]
+                        .instrs
+                        .insert(1, MirInstr::Clone { dst: 2, src: 0 });
+                    variant.funcs[0].blocks[0]
+                        .instrs
+                        .insert(2, MirInstr::Drop { slot: 2 });
+                }
+                "drop" => {
+                    variant.funcs[0].blocks[0].instrs = vec![
+                        MirInstr::CreateClosure {
+                            dst: 0,
+                            callee: CalleeRef::Func(1),
+                            captures: vec![],
+                        },
+                        MirInstr::Drop { slot: 0 },
+                        MirInstr::Const { dst: 1, value: n },
+                    ];
+                }
+                _ => {}
+            }
+            let wire = crate::abc::encode_abc(&variant).unwrap();
+            let loaded =
+                crate::abc_verify::verify_abc_bytes(&wire.to_flat(), &closure_owner).unwrap();
+            let (control, _) = execute(&loaded, &limits, &cancel);
+            assert!(
+                matches!(
+                    control,
+                    ExecOutcome::Success {
+                        value: Value::I32(29),
+                        ..
+                    }
+                ),
+                "{operation}: {control:?}"
+            );
+            for fault in [
+                "generation",
+                "handle",
+                "function",
+                "signature",
+                "foreign-store",
+            ] {
+                let mut st = LoopState::default();
+                let view = MergedView(loaded.module());
+                loop {
+                    let out = dispatch(&view, &limits, &cancel, &[], &mut st, Some(1));
+                    assert!(out.is_none(), "must pause before {operation}");
+                    if matches!(
+                        st.frames.last().and_then(|f| f.slots.first()),
+                        Some(Value::Closure(_))
+                    ) {
+                        break;
+                    }
+                    assert!(st.steps < 100, "closure creation was not reached");
+                }
+                let mut foreign = LoopState::default();
+                let foreign_reference = if fault == "foreign-store" {
+                    loop {
+                        let out = dispatch(&view, &limits, &cancel, &[], &mut foreign, Some(1));
+                        assert!(out.is_none(), "foreign execution must pause after creation");
+                        if let Some(Value::Closure(reference)) =
+                            foreign.frames.last().and_then(|f| f.slots.first())
+                        {
+                            break Some(*reference);
+                        }
+                        assert!(foreign.steps < 100);
+                    }
+                } else {
+                    None
+                };
+                let Value::Closure(reference) = &mut st.frames.last_mut().unwrap().slots[0] else {
+                    unreachable!()
+                };
+                let protected_handle = reference.env;
+                match fault {
+                    "generation" => reference.gen = reference.gen.wrapping_add(1),
+                    "handle" => reference.env = reference.env.wrapping_add(1),
+                    "function" => reference.func = 0,
+                    "signature" => reference.sig = reference.sig.wrapping_add(1),
+                    "foreign-store" => {
+                        let other = foreign_reference.unwrap();
+                        assert_ne!(
+                            other.env, protected_handle,
+                            "live stores need distinct handles"
+                        );
+                        *reference = other;
+                    }
+                    _ => unreachable!(),
+                }
+                let out = dispatch(&view, &limits, &cancel, &[], &mut st, None).unwrap();
+                assert!(
+                    matches!(
+                        out,
+                        ExecOutcome::Trap {
+                            kind: TrapKind::InvalidHandle,
+                            ..
+                        }
+                    ),
+                    "{operation}: {out:?}"
+                );
+                assert_eq!(st.frames.len(), 1, "target callee was never entered");
+                assert!(
+                    st.closure_envs.contains_key(&protected_handle),
+                    "{operation} must not release the protected environment"
+                );
+                cleanup_owned_frames(&mut st);
+                cleanup_owned_frames(&mut foreign);
+                assert!(
+                    st.closure_envs.is_empty(),
+                    "all-exit cleanup releases orphaned environments after frames unwind"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn av_823_env_budget_refusal_preserves_move_source() {
+        let own = OwnerScope {
+            schema: crate::contract::MIR_CLOSURES_SCHEMA.into(),
+            module: "budget".into(),
+        };
+        let mut m = MirModule::new_closures(own.clone());
+        let ti = m.intern_type(MirType::I32);
+        let ts = m.intern_type(MirType::Str);
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: ti,
+        }));
+        let cl = m.intern_type(MirType::Closure(FnSig {
+            params: vec![],
+            result: ti,
+        }));
+        let text = m.intern_const(MirConst::Str(Box::from(*b"owned")));
+        let ret = m.intern_const(MirConst::I32(1));
+        let slot = |ty| MirSlot {
+            kind: SlotKind::Local,
+            ty,
+            name: None,
+        };
+        m.funcs.push(MirFunction {
+            owner: own.clone(),
+            name: "main".into(),
+            sig,
+            slots: vec![slot(ts), slot(cl), slot(ti), slot(ts)],
+            blocks: vec![MirBlock {
+                instrs: vec![
+                    MirInstr::Const {
+                        dst: 0,
+                        value: text,
+                    },
+                    MirInstr::Const {
+                        dst: 3,
+                        value: text,
+                    },
+                    MirInstr::CreateClosure {
+                        dst: 1,
+                        callee: CalleeRef::Func(1),
+                        captures: vec![
+                            CaptureOperand {
+                                kind: CaptureKind::Move,
+                                src: 0,
+                            },
+                            CaptureOperand {
+                                kind: CaptureKind::Clone,
+                                src: 3,
+                            },
+                        ],
+                    },
+                    MirInstr::Drop { slot: 1 },
+                    MirInstr::Const { dst: 2, value: ret },
+                ],
+                term: Terminator::Return { value: 2 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+            env: None,
+        });
+        m.funcs.push(MirFunction {
+            owner: own.clone(),
+            name: "body".into(),
+            sig,
+            slots: vec![slot(ti)],
+            blocks: vec![MirBlock {
+                instrs: vec![MirInstr::Const { dst: 0, value: ret }],
+                term: Terminator::Return { value: 0 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+            env: Some(vec![ts, ts]),
+        });
+        m.entry = 0;
+        let wire = crate::abc::encode_abc(&m).unwrap();
+        let loaded = crate::abc_verify::verify_abc_bytes(&wire.to_flat(), &own).unwrap();
+        let view = MergedView(loaded.module());
+        let mut st = LoopState::default();
+        let cancel = CancelFlag::new(false);
+        let limits = ExecLimits::default();
+        loop {
+            let out = dispatch(&view, &limits, &cancel, &[], &mut st, Some(1));
+            assert!(out.is_none(), "must pause before capture");
+            if st.frames.last().map(|f| f.ip == 2).unwrap_or(false) {
+                break;
+            }
+            assert!(st.steps < 100);
+        }
+        let Value::Str(original) = &st.frames.last().unwrap().slots[0] else {
+            panic!("source must be initialized")
+        };
+        let id = original.rc.id;
+        let allocs_before = st.arena.alloc_events();
+        let mut visited = 0;
+        let old = st.frames.last().unwrap().slots[0].deep_size(&mut visited);
+        let zero = view.zero_of(0, ts).deep_size(&mut visited);
+        let clone_bytes = st.frames.last().unwrap().slots[3].deep_size(&mut visited);
+        let projected = st.slot_bytes.saturating_sub(old.saturating_sub(zero))
+            + old
+            + clone_bytes
+            + closure_binding_bytes(2, 0);
+        assert!(projected > st.slot_bytes);
+        let mut limited = limits;
+        limited.max_slot_bytes = projected - 1;
+        let outcome = dispatch(&view, &limited, &cancel, &[], &mut st, None).unwrap();
+        assert!(
+            matches!(
+                outcome,
+                ExecOutcome::Resource {
+                    kind: ResourceKind::SlotBytes,
+                    ..
+                }
+            ),
+            "{outcome:?}"
+        );
+        assert!(
+            matches!(&st.frames.last().unwrap().slots[0], Value::Str(h) if h.rc.id == id && h.bytes() == b"owned"),
+            "budget refusal must preserve the uncommitted source"
+        );
+        assert_eq!(
+            st.arena.alloc_events(),
+            allocs_before,
+            "budget failure must precede clone allocation"
+        );
+        assert!(
+            matches!(&st.frames.last().unwrap().slots[3], Value::Str(h) if h.bytes() == b"owned")
+        );
+        assert!(
+            st.closure_envs.is_empty(),
+            "failure must not publish an environment"
+        );
+        cleanup_owned_frames(&mut st);
+        limited.max_slot_bytes = projected;
+        let (control, trace) = execute(&loaded, &limited, &cancel);
+        assert!(
+            matches!(
+                control,
+                ExecOutcome::Success {
+                    value: Value::I32(1),
+                    ..
+                }
+            ),
+            "the exact boundary must remain admissible: {control:?}"
+        );
+        assert_eq!(trace.arena.unwrap().live(), 0);
+    }
+
+    #[test]
+    fn av_823_borrow_rejects_expired_frame_and_slot_generation() {
+        let own = OwnerScope {
+            schema: crate::contract::MIR_CLOSURES_SCHEMA.into(),
+            module: "borrow".into(),
+        };
+        let mut m = MirModule::new_closures(own.clone());
+        let ti = m.intern_type(MirType::I32);
+        let ts = m.intern_type(MirType::Str);
+        let tv = m.intern_type(MirType::StrView);
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: ti,
+        }));
+        let cl = m.intern_type(MirType::Closure(FnSig {
+            params: vec![],
+            result: ti,
+        }));
+        let text = m.intern_const(MirConst::Str(Box::from(*b"owned")));
+        let slot = |ty| MirSlot {
+            kind: SlotKind::Local,
+            ty,
+            name: None,
+        };
+        m.funcs.push(MirFunction {
+            owner: own.clone(),
+            name: "main".into(),
+            sig,
+            slots: vec![slot(ts), slot(cl), slot(ti)],
+            blocks: vec![MirBlock {
+                instrs: vec![
+                    MirInstr::Const {
+                        dst: 0,
+                        value: text,
+                    },
+                    MirInstr::CreateClosure {
+                        dst: 1,
+                        callee: CalleeRef::Func(1),
+                        captures: vec![CaptureOperand {
+                            kind: CaptureKind::Borrow,
+                            src: 0,
+                        }],
+                    },
+                    MirInstr::CallClosure {
+                        dst: 2,
+                        closure: 1,
+                        args: vec![],
+                    },
+                    MirInstr::Drop { slot: 1 },
+                ],
+                term: Terminator::Return { value: 2 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+            env: None,
+        });
+        m.funcs.push(MirFunction {
+            owner: own.clone(),
+            name: "body".into(),
+            sig,
+            slots: vec![slot(tv), slot(ti)],
+            blocks: vec![MirBlock {
+                instrs: vec![
+                    MirInstr::EnvGet { dst: 0, field: 0 },
+                    MirInstr::StrLen { dst: 1, view: 0 },
+                ],
+                term: Terminator::Return { value: 1 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+            env: Some(vec![tv]),
+        });
+        m.entry = 0;
+        let wire = crate::abc::encode_abc(&m).unwrap();
+        let loaded = crate::abc_verify::verify_abc_bytes(&wire.to_flat(), &own).unwrap();
+        let limits = ExecLimits::default();
+        let cancel = CancelFlag::new(false);
+        let (control, trace) = execute(&loaded, &limits, &cancel);
+        assert!(
+            matches!(
+                control,
+                ExecOutcome::Success {
+                    value: Value::I32(5),
+                    ..
+                }
+            ),
+            "{control:?}"
+        );
+        assert_eq!(trace.arena.unwrap().live(), 0);
+        for stale_frame in [true, false] {
+            let mut st = LoopState::default();
+            let view = MergedView(loaded.module());
+            loop {
+                let out = dispatch(&view, &limits, &cancel, &[], &mut st, Some(1));
+                assert!(out.is_none(), "must pause before the closure call");
+                if matches!(
+                    st.frames.last().and_then(|f| f.slots.get(1)),
+                    Some(Value::Closure(_))
+                ) {
+                    break;
+                }
+                assert!(st.steps < 100);
+            }
+            let frame = st.frames.last_mut().unwrap();
+            if stale_frame {
+                frame.seq = frame.seq.wrapping_add(1);
+            } else {
+                frame.gens[0] = frame.gens[0].wrapping_add(1);
+            }
+            let out = dispatch(&view, &limits, &cancel, &[], &mut st, None).unwrap();
+            assert!(
+                matches!(
+                    out,
+                    ExecOutcome::Trap {
+                        kind: TrapKind::InvalidHandle,
+                        ..
+                    }
+                ),
+                "{out:?}"
+            );
+            assert_eq!(
+                st.frames.len(),
+                1,
+                "invalid borrow must not enter the target callee"
+            );
+            cleanup_owned_frames(&mut st);
+            assert!(
+                st.closure_envs.is_empty(),
+                "owned closure environment is released"
+            );
+            assert_eq!(st.arena.live(), 0);
+        }
+    }
+
+    #[test]
+    fn av_823_nested_env_budget_refusal_preserves_parent_field() {
+        let own = OwnerScope {
+            schema: crate::contract::MIR_CLOSURES_SCHEMA.into(),
+            module: "nested-budget".into(),
+        };
+        let mut m = MirModule::new_closures(own.clone());
+        let ti = m.intern_type(MirType::I32);
+        let ts = m.intern_type(MirType::Str);
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: ti,
+        }));
+        let cl = m.intern_type(MirType::Closure(FnSig {
+            params: vec![],
+            result: ti,
+        }));
+        let text = m.intern_const(MirConst::Str(Box::from(*b"owned")));
+        let ret = m.intern_const(MirConst::I32(1));
+        let slot = |ty| MirSlot {
+            kind: SlotKind::Local,
+            ty,
+            name: None,
+        };
+        m.funcs.push(MirFunction {
+            owner: own.clone(),
+            name: "main".into(),
+            sig,
+            slots: vec![slot(ts), slot(cl), slot(ti)],
+            blocks: vec![MirBlock {
+                instrs: vec![
+                    MirInstr::Const {
+                        dst: 0,
+                        value: text,
+                    },
+                    MirInstr::CreateClosure {
+                        dst: 1,
+                        callee: CalleeRef::Func(1),
+                        captures: vec![CaptureOperand {
+                            kind: CaptureKind::Move,
+                            src: 0,
+                        }],
+                    },
+                    MirInstr::CallClosure {
+                        dst: 2,
+                        closure: 1,
+                        args: vec![],
+                    },
+                    MirInstr::Drop { slot: 1 },
+                ],
+                term: Terminator::Return { value: 2 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+            env: None,
+        });
+        m.funcs.push(MirFunction {
+            owner: own.clone(),
+            name: "parent".into(),
+            sig,
+            slots: vec![slot(cl), slot(ti)],
+            blocks: vec![MirBlock {
+                instrs: vec![
+                    MirInstr::CreateClosure {
+                        dst: 0,
+                        callee: CalleeRef::Func(2),
+                        captures: vec![CaptureOperand {
+                            kind: CaptureKind::MoveFromEnv,
+                            src: 0,
+                        }],
+                    },
+                    MirInstr::Drop { slot: 0 },
+                    MirInstr::Const { dst: 1, value: ret },
+                ],
+                term: Terminator::Return { value: 1 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+            env: Some(vec![ts]),
+        });
+        m.funcs.push(MirFunction {
+            owner: own.clone(),
+            name: "child".into(),
+            sig,
+            slots: vec![slot(ti)],
+            blocks: vec![MirBlock {
+                instrs: vec![MirInstr::Const { dst: 0, value: ret }],
+                term: Terminator::Return { value: 0 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+            env: Some(vec![ts]),
+        });
+        m.entry = 0;
+        let wire = crate::abc::encode_abc(&m).unwrap();
+        let loaded = crate::abc_verify::verify_abc_bytes(&wire.to_flat(), &own).unwrap();
+        let view = MergedView(loaded.module());
+        let mut st = LoopState::default();
+        let cancel = CancelFlag::new(false);
+        let limits = ExecLimits::default();
+        loop {
+            let out = dispatch(&view, &limits, &cancel, &[], &mut st, Some(1));
+            assert!(out.is_none(), "must pause in parent before nested capture");
+            if st
+                .frames
+                .last()
+                .map(|f| f.func == 1 && f.ip == 0)
+                .unwrap_or(false)
+            {
+                break;
+            }
+            assert!(st.steps < 200);
+        }
+        let handle = st.frames.last().unwrap().closure_env.unwrap();
+        let field = st.closure_envs.get(&handle).unwrap().env.field(0).unwrap();
+        assert!(matches!(field, Value::Str(h) if h.bytes() == b"owned"));
+        let mut visited = 0;
+        let field_bytes = field.deep_size(&mut visited);
+        let projected = st
+            .slot_bytes
+            .saturating_sub(field_bytes.saturating_sub(std::mem::size_of::<Value>()))
+            + field_bytes
+            + closure_binding_bytes(1, 0);
+        let mut limited = limits;
+        limited.max_slot_bytes = projected - 1;
+        let outcome = dispatch(&view, &limited, &cancel, &[], &mut st, None).unwrap();
+        assert!(
+            matches!(
+                outcome,
+                ExecOutcome::Resource {
+                    kind: ResourceKind::SlotBytes,
+                    ..
+                }
+            ),
+            "{outcome:?}"
+        );
+        assert!(
+            matches!(st.closure_envs.get(&handle).unwrap().env.field(0), Some(Value::Str(h)) if h.bytes() == b"owned"),
+            "parent field must remain owned on pre-commit refusal"
+        );
+        assert_eq!(
+            st.closure_envs.len(),
+            1,
+            "no child environment is published"
+        );
+        cleanup_owned_frames(&mut st);
+        assert_eq!(st.arena.live(), 0);
+        limited.max_slot_bytes = projected;
+        let (control, trace) = execute(&loaded, &limited, &cancel);
+        assert!(
+            matches!(
+                control,
+                ExecOutcome::Success {
+                    value: Value::I32(1),
+                    ..
+                }
+            ),
+            "{control:?}"
+        );
+        assert_eq!(trace.arena.unwrap().live(), 0);
+    }
+
+    #[test]
+    fn av_823_orphaned_env_cleanup_releases_in_reverse_order() {
+        let mut st = LoopState::default();
+        let arena = st.arena.clone();
+        let first = reserve_closure_handle().unwrap();
+        let second = reserve_closure_handle().unwrap();
+        st.closure_envs.insert(
+            first,
+            ClosureEntry {
+                env: crate::closures::ClosureEnv::from_fields(vec![
+                    Value::Str(arena.alloc(b"a")),
+                    Value::Str(arena.alloc(b"b")),
+                ]),
+                func: 1,
+                sig: 0,
+                borrows: Vec::new(),
+            },
+        );
+        st.closure_envs.insert(
+            second,
+            ClosureEntry {
+                env: crate::closures::ClosureEnv::from_fields(vec![Value::Str(arena.alloc(b"c"))]),
+                func: 1,
+                sig: 0,
+                borrows: Vec::new(),
+            },
+        );
+        assert_eq!(arena.live(), 3);
+        cleanup_owned_frames(&mut st);
+        assert!(st.closure_envs.is_empty());
+        assert_eq!(arena.live(), 0);
+        assert_eq!(
+            arena.free_events().iter().map(|e| e.id).collect::<Vec<_>>(),
+            vec![2, 1, 0]
         );
     }
 }

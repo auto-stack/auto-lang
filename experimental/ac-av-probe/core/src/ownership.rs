@@ -1519,6 +1519,88 @@ pub fn verify_owned_function(
                     // facts on the root die here (§5.5).
                     st.define_slot(*root as usize);
                 }
+                // -- PLAN-823 closure surface (av.closures/1) -----------------
+                MirInstr::CreateClosure { dst, captures, .. } => {
+                    for c in captures {
+                        if c.kind == crate::mir::CaptureKind::MoveFromEnv {
+                            // R1-F01: src is a PARENT ENV FIELD index, not a
+                            // slot — the env-field transfer has its own
+                            // conservative gate in the verify pre-scan.
+                            continue;
+                        }
+                        check_read!(&c.src, "capture source");
+                        if c.kind == crate::mir::CaptureKind::Move && is_owned[c.src as usize] {
+                            // Whole-root MOVE capture: the env owns the
+                            // value from commit on — the creator slot dies
+                            // here (mirrors MOVE's transfer gate).
+                            if root_has_live_token(&st, c.src as usize) {
+                                fail = Some(err(
+                                    "mir.mut-conflict",
+                                    format!(
+                                        "move capture of `{}` conflicts an active borrow",
+                                        slot_name(f, c.src as usize)
+                                    ),
+                                    flat,
+                                ));
+                                break 'blk;
+                            }
+                            st.moved.set(c.src as usize);
+                        }
+                        // A CLONE capture never kills its source (the
+                        // creator keeps its value).
+                    }
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "closure destination");
+                    }
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::CallClosure {
+                    dst, closure, args, ..
+                } => {
+                    check_read!(closure, "closure operand");
+                    // Sig-driven move-in, mirroring CALL: the kill is
+                    // driven by the closure signature's OWNED params (the
+                    // typing pass already checked the slot's `Closure`
+                    // type against the bound callee's signature).
+                    let callee_sig = m.types.get(f.slots[*closure as usize].ty as usize).cloned();
+                    for (ai, a) in args.iter().enumerate() {
+                        check_read!(a, "closure-call argument");
+                        let param_borrows = callee_sig
+                            .as_ref()
+                            .and_then(|t| match t {
+                                MirType::Closure(sig) => sig.params.get(ai).copied(),
+                                _ => None,
+                            })
+                            .map(|pt| !type_is_owned(m, pt))
+                            .unwrap_or(false);
+                        if is_owned[*a as usize] && !param_borrows {
+                            if root_has_live_token(&st, *a as usize) {
+                                fail = Some(err(
+                                    "mir.mut-conflict",
+                                    format!(
+                                        "closure move-in argument `{}` conflicts an active borrow",
+                                        slot_name(f, *a as usize)
+                                    ),
+                                    flat,
+                                ));
+                                break 'blk;
+                            }
+                            st.moved.set(*a as usize);
+                        }
+                    }
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "closure-call result");
+                    }
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::EnvGet { dst, .. } => {
+                    // The env is not a slot: the field share materializes
+                    // into `dst` (a fresh root for the shared handle).
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "env-get destination");
+                    }
+                    st.define_slot(*dst as usize);
+                }
             }
         }
         if fail.is_none() {

@@ -886,6 +886,12 @@ fn check_shape(
                     depth,
                 })
             }
+            (Value::Closure(_), _) => {
+                return Err(DynPackError::Unsupported {
+                    category: "closure",
+                    depth,
+                })
+            }
             _ => false,
         };
         if !ok {

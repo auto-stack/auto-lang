@@ -45,8 +45,10 @@ fn alpha_unit(a_bump: i32) -> MirModule {
         symbol: "fn:beta".to_string(),
         effect: auto_av_core::mir::Effect::Pure,
         sig: t_sig,
+        env: None,
     }];
     m.funcs = vec![MirFunction {
+        env: None,
         owner: owner_scope(),
         name: "main".to_string(),
         sig: t_sig,
@@ -145,6 +147,7 @@ fn beta_unit_impl(b_bump: i32, trace: bool) -> MirModule {
         });
     }
     m.funcs = vec![MirFunction {
+        env: None,
         owner: owner_scope(),
         name: "beta".to_string(),
         sig: t_sig,
@@ -183,6 +186,7 @@ fn beta_unit_bool() -> MirModule {
     }));
     let ctrue = m.intern_const(MirConst::Bool(true)) as u32;
     m.funcs = vec![MirFunction {
+        env: None,
         owner: owner_scope(),
         name: "beta".to_string(),
         sig: t_sig,

@@ -1,0 +1,6 @@
+# PLAN-823 formal closures corpus.
+```test-suite
+suite { schema: "autolang.suite/2", id: "av-data-823", include: [
+  "av-closures-first-case.case.ad",
+] }
+```

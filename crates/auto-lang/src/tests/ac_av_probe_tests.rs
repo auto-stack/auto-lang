@@ -206,6 +206,27 @@ fn ac_av_probe_decode_negatives() {
     .expect("valid ac-av check decodes");
 }
 
+fn plan823_p90_10_gate(windows: &[f64], gate_ms: f64) -> bool {
+    windows.len() == 10
+        && gate_ms.is_finite()
+        && gate_ms > 0.0
+        && windows.iter().all(|v| v.is_finite() && *v >= 0.0)
+        && windows.iter().filter(|v| **v <= gate_ms).count() >= 9
+}
+
+#[test]
+fn plan823_798_p90_controls() {
+    let mut windows = [2000.0; 10];
+    assert!(plan823_p90_10_gate(&windows, 2000.0));
+    windows[9] = 2000.1;
+    assert!(plan823_p90_10_gate(&windows, 2000.0));
+    windows[8] = 2000.1;
+    assert!(!plan823_p90_10_gate(&windows, 2000.0));
+    assert!(!plan823_p90_10_gate(&windows[..9], 2000.0));
+    windows[8] = f64::NAN;
+    assert!(!plan823_p90_10_gate(&windows, 2000.0));
+}
+
 /// V-11 formal-runner leg (T-07/F798-R3-07): the hard gate measured as a
 /// CONTINUOUS parent-side window through the unified runner. Per revision
 /// the harness issues TWO real calls sharing an explicit session store:
@@ -542,14 +563,36 @@ suite { schema: \"autolang.suite/2\", id: \"s\", include: [\"c.case.ad\"] }
         gate_ms,
         samples
     );
-    assert!(
-        p90_edit <= gate_ms,
-        "formal edit-path P90 {p90_edit:.1}ms > gate {gate_ms}ms"
-    );
-    assert!(
-        p90_sig <= gate_ms,
-        "formal sig-path P90 {p90_sig:.1}ms > gate {gate_ms}ms"
-    );
+    if std::env::var("AV798_FORMAL_PLAN823_P90").as_deref() == Ok("1") {
+        assert_eq!(samples, 10, "plan 823 P90 requires exactly 10 samples");
+        assert_eq!(gate_ms, 2000.0, "plan 823 P90 uses the 2000ms bound");
+        let mut edit_sorted = edit_walls.clone();
+        let mut sig_sorted = sig_walls.clone();
+        edit_sorted.sort_by(f64::total_cmp);
+        sig_sorted.sort_by(f64::total_cmp);
+        eprintln!(
+            "plan823 798 P90: edit={:.1}ms sig={:.1}ms limit=2000ms n=10",
+            edit_sorted[8], sig_sorted[8]
+        );
+        eprintln!("plan823 798 raw: edit={edit_walls:?} sig={sig_walls:?}");
+        assert!(
+            plan823_p90_10_gate(&edit_walls, gate_ms),
+            "plan 823 edit P90 must satisfy 9/10 <= 2000ms"
+        );
+        assert!(
+            plan823_p90_10_gate(&sig_walls, gate_ms),
+            "plan 823 signature P90 must satisfy 9/10 <= 2000ms"
+        );
+    } else {
+        assert!(
+            p90_edit <= gate_ms,
+            "formal edit-path P90 {p90_edit:.1}ms > gate {gate_ms}ms"
+        );
+        assert!(
+            p90_sig <= gate_ms,
+            "formal sig-path P90 {p90_sig:.1}ms > gate {gate_ms}ms"
+        );
+    }
     // Session stores are parent-owned scratch: remove the shared roots.
     for i in 1..=samples {
         let _ = std::fs::remove_dir_all(

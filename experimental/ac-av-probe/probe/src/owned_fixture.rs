@@ -127,6 +127,10 @@ pub fn canonical_owned(
                 },
             })
         }
+        // PLAN-823: a closure reference is execution-internal metadata —
+        // the entry contract never returns one (admission violation if it
+        // would).
+        Value::Closure(_) => return None,
     })
 }
 

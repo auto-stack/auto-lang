@@ -97,6 +97,7 @@ fn av_resources_4096_block_chain_within_budget() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     assert!(m.table_entries() <= MAX_TABLE_ENTRIES);
@@ -138,6 +139,7 @@ fn av_resources_over_table_budget_is_resource() {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m.entry = 0;
     let err = verify_mir_with_deadline(&m, Instant::now() + Duration::from_secs(5)).unwrap_err();
@@ -760,6 +762,7 @@ fn av_resources_32mib_product_random_read_and_churn() {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         });
         m.entry = 0;
         let bytes = auto_av_core::encode_abc(&m).expect("encode");

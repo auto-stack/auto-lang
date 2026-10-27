@@ -145,6 +145,7 @@ pub fn lower_checked(
                         hir::Effect::Pure => Effect::Pure,
                     },
                     sig,
+                    env: None,
                 });
                 def_map.insert(di as u32, CalleeRef::Import(idx));
             }
@@ -275,6 +276,7 @@ pub fn lower_checked_data(
                         hir::Effect::Pure => Effect::Pure,
                     },
                     sig,
+                    env: None,
                 });
                 def_map.insert(di as u32, CalleeRef::Import(idx));
             }
@@ -490,6 +492,7 @@ pub fn lower_function_owned_unit_with_modes(
                     symbol: format!("fn:{}", d.id_text),
                     effect: Effect::Pure,
                     sig,
+                    env: None,
                 });
                 def_map.insert(di as u32, CalleeRef::Import(imp));
                 if d.id_text == def_id_text {
@@ -678,6 +681,7 @@ fn lower_function_unit_impl(
                         symbol: format!("fn:{}", d.id_text),
                         effect: Effect::Pure,
                         sig: self_sig,
+                        env: None,
                     });
                     def_map.insert(di as u32, CalleeRef::Import(imp));
                     target = Some((di as u32, *ty, *body));
@@ -694,6 +698,7 @@ fn lower_function_unit_impl(
                         symbol: format!("fn:{}", d.id_text),
                         effect: Effect::Pure,
                         sig,
+                        env: None,
                     });
                     def_map.insert(di as u32, CalleeRef::Import(idx));
                 }
@@ -727,6 +732,7 @@ fn lower_function_unit_impl(
                         hir::Effect::Pure => Effect::Pure,
                     },
                     sig,
+                    env: None,
                 });
                 def_map.insert(di as u32, CalleeRef::Import(idx));
             }
@@ -2616,5 +2622,6 @@ fn lower_function(
         entry: 0,
         source_snapshot,
         spans: lower.spans,
+        env: None,
     })
 }

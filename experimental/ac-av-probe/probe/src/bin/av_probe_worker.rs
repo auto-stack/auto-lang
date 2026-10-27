@@ -34,6 +34,8 @@ fn main() {
         "collections-request" => collections_request(&args[1..]),
         "dynamic-request" => dynamic_request(&args[1..]),
         "owned-restore-run" => owned_restore_run(&args[1..]),
+        "closures-restore-run" => closures_restore_run(&args[1..]),
+        "closures-request" => closures_request(&args[1..]),
         "gc-loop" => gc_loop(&args[1..]),
         "case-serve" => case_serve(),
         "load-revision" => load_revision(&args[1..]),
@@ -56,6 +58,8 @@ fn usage() -> ! {
     eprintln!("       av_probe_worker request --store DIR --src-file FILE --entry FN [--project P] [--caps C1,C2]");
     eprintln!("       av_probe_worker owned-request --store DIR --src-file FILE --entry FN   (PLAN-821 T-02: owned whole path + arena ledger + sampled peak, one JSON line)");
     eprintln!("       av_probe_worker collections-request --store DIR --fixture ID   (PLAN-822 T-09: collections whole path + ledger face + sampled peaks, one JSON line)");
+    eprintln!("       av_probe_worker closures-request --store DIR --fixture ID   (PLAN-823 R1-F02: closures whole path + ledger face + sampled peaks, one JSON line)");
+    eprintln!("       av_probe_worker closures-restore-run --store DIR --owner NAME --entry FN --snapshot HEX --types-fp FP   (PLAN-823 R1-F02: closures new-process restore, re-verify + execute)");
     eprintln!("       av_probe_worker dynamic-request --store DIR --fixture ID   (PLAN-824 T-02: dynamic whole path + portable round + sampled peaks, one JSON line)");
     eprintln!("       av_probe_worker owned-restore-run --store DIR --owner NAME --entry FN --snapshot HEX --types-fp FP   (PLAN-821 R1-F10: owned new-process restore, re-verify + execute)");
     eprintln!("       av_probe_worker gc-loop --store DIR --stop-file FILE [--interval-ms N]");
@@ -582,6 +586,7 @@ fn core_version_for(recipe: &str) -> &'static str {
         "ac-av/data-run-v1" => auto_av_core::contract::AV_DATA_PROFILE,
         "ac-av/owned-run-v1" => auto_av_core::contract::AV_OWNED_PROFILE,
         "ac-av/collections-run-v1" => auto_av_core::contract::AV_COLLECTIONS_PROFILE,
+        "ac-av/closures-run-v1" => auto_av_core::contract::AV_CLOSURES_PROFILE,
         "ac-av/dynamic-run-v1" => auto_av_core::contract::AV_DYNAMIC_PROFILE,
         _ => auto_av_core::contract::AV_PROFILE,
     }
@@ -640,6 +645,8 @@ fn case_serve() -> ! {
     // PLAN-822 T-02: the collections-profile recipe (avworker/1 envelope
     // domain; the recipe id is the discriminator).
     let collections_recipe = recipe == "ac-av/collections-run-v1";
+    let closures_recipe = recipe == "ac-av/closures-run-v1";
+    let closures_fixture_id = req["closures_fixture"].as_str().map(|s| s.to_string());
     // PLAN-824: the dynamic-profile recipe (avworker/1 envelope domain).
     let dynamic_recipe = recipe == "ac-av/dynamic-run-v1";
     // PLAN-820 F820-R6-01: the typed-fixture entry (`av.entry` of the
@@ -660,6 +667,7 @@ fn case_serve() -> ! {
         && !data_recipe
         && !owned_recipe
         && !collections_recipe
+        && !closures_recipe
         && !dynamic_recipe
     {
         eprintln!("unknown recipe {recipe}");
@@ -858,6 +866,44 @@ fn case_serve() -> ! {
                         })),
                         Err(e) => {
                             eprintln!("collections fixture {fid}: {e}");
+                            exit(2);
+                        }
+                    }
+                    continue;
+                }
+                // PLAN-823 T-11 (R1-F02): the closures-profile pipeline. A
+                // frozen `closures:<id>` fixture carries its own face;
+                // the PARENT judges against its own frozen expectations.
+                if closures_recipe {
+                    let Some(fid) = &closures_fixture_id else {
+                        eprintln!("closures recipe requires a closures:<id> entry");
+                        exit(2);
+                    };
+                    let f = match auto_av_probe::closures_fixture::closures_fixture(fid) {
+                        Some(f) => f,
+                        None => {
+                            eprintln!("unknown closures fixture {fid}");
+                            exit(2);
+                        }
+                    };
+                    let started = std::time::Instant::now();
+                    match auto_av_probe::closures_fixture::run_closures_fixture(
+                        f.id,
+                        Some(&store_dir),
+                        "autodown-closures-case",
+                    ) {
+                        Ok(closures) => step_outs.push(serde_json::json!({
+                            "op": "run",
+                            "outcome": "success",
+                            "value": null,
+                            "closures": closures,
+                            "trap": null,
+                            "diag": null,
+                            "source_hash": format!("{:016x}", auto_av_core::contract::fnv1a64(entry.as_bytes())),
+                            "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+                        })),
+                        Err(e) => {
+                            eprintln!("closures fixture {fid}: {e}");
                             exit(2);
                         }
                     }
@@ -1290,7 +1336,7 @@ fn case_serve() -> ! {
         "recipe": recipe,
         "steps": step_outs,
         "worker_version": EXPECTED_WORKER_VERSION,
-        "av_core_version": core_version_for(&recipe),
+        "av_core_version": if std::env::var("AV798_FAULT").as_deref() == Ok("wrong-core-version") { "invalid.profile/1" } else { core_version_for(&recipe) },
     }))
 }
 
@@ -1758,4 +1804,125 @@ fn data_restore_run(args: &[String]) -> ! {
             exit(1);
         }
     }
+}
+
+// -- PLAN-823 T-02/T-05 (R1-F02): the closures worker seam ---------------
+
+fn closures_restore_run(args: &[String]) -> ! {
+    let mut store: Option<PathBuf> = None;
+    let mut owner = String::new();
+    let mut entry = String::new();
+    let mut snapshot: Option<u64> = None;
+    let mut types_fp = String::new();
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--store" => store = Some(PathBuf::from(&args[i + 1])),
+            "--owner" => owner = args[i + 1].clone(),
+            "--entry" => entry = args[i + 1].clone(),
+            "--snapshot" => {
+                snapshot = Some(
+                    u64::from_str_radix(args[i + 1].trim_start_matches("0x"), 16)
+                        .expect("hex snapshot"),
+                )
+            }
+            "--types-fp" => types_fp = args[i + 1].clone(),
+            other => {
+                eprintln!("closures-restore-run: unknown flag `{}`", other);
+                exit(2);
+            }
+        }
+        i += 2;
+    }
+    let (Some(store), Some(snapshot)) = (store, snapshot) else {
+        eprintln!(
+            "closures-restore-run: --store/--owner/--entry/--snapshot/--types-fp are all required"
+        );
+        exit(2);
+    };
+    match auto_av_probe::closures_fixture::restore_closures(
+        &store, &owner, &entry, snapshot, &types_fp,
+    ) {
+        Ok(out) => {
+            println!("{:?}", out);
+            match out {
+                auto_av_core::contract::ExecOutcome::Success { .. } => exit(0),
+                _ => exit(3),
+            }
+        }
+        Err(e) => {
+            eprintln!("closures-restore-run failed: {}", e);
+            exit(1);
+        }
+    }
+}
+
+fn closures_request(args: &[String]) -> ! {
+    let store_dir = flag(args, "--store").unwrap_or_else(|| usage());
+    let fixture = flag(args, "--fixture").unwrap_or_else(|| usage());
+    let started = std::time::Instant::now();
+    let sampler = auto_av_probe::mempeek::PeakSampler::start(5);
+    let r = auto_av_probe::closures_fixture::request_closures(
+        Some(&PathBuf::from(&store_dir)),
+        "closures-evidence",
+        &fixture,
+    );
+    let wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+    let peak = sampler.stop();
+    let payload = match r {
+        Ok(mut r) => {
+            let av = r.av.take().expect("request_closures sets av");
+            let ok = matches!(av, auto_av_core::contract::ExecOutcome::Success { .. });
+            let face = match av {
+                auto_av_core::contract::ExecOutcome::Success { value, .. } => {
+                    let canonical =
+                        auto_av_probe::owned_fixture::canonical_owned(&value, &r.type_names);
+                    match canonical {
+                        Some(face) => {
+                            drop(value);
+                            let arena = r.arena.as_ref().expect("closures arena");
+                            serde_json::json!({
+                                "result": face,
+                                "live_after_release": arena.live(),
+                                "allocs": arena.alloc_events().iter()
+                                    .map(|a| serde_json::json!({ "id": a.id, "bytes": a.bytes }))
+                                    .collect::<Vec<_>>(),
+                                "frees": arena.free_events().iter()
+                                    .map(|f| serde_json::json!({ "id": f.id, "bytes": f.bytes }))
+                                    .collect::<Vec<_>>(),
+                            })
+                        }
+                        None => serde_json::json!({
+                            "error": "non-canonicalizable closures result"
+                        }),
+                    }
+                }
+                other => serde_json::json!({ "av": format!("{:?}", other) }),
+            };
+            serde_json::json!({
+                "ok": ok,
+                "wall_ms": wall_ms,
+                "private_bytes_peak": peak,
+                "peak_hot_bytes": r.peak_hot_bytes,
+                "peak_staging_bytes": r.peak_staging_bytes,
+                "peak_exec_slot_bytes": r.peak_exec_slot_bytes,
+                "closures": face,
+                "snapshot": format!("{:016x}", r.snapshot),
+            })
+        }
+        Err(e) => serde_json::json!({
+            "ok": false,
+            "wall_ms": wall_ms,
+            "private_bytes_peak": peak,
+            "error": e,
+        }),
+    };
+    let mut line = serde_json::to_string(&payload).unwrap_or_default();
+    line.push('\n');
+    std::io::stdout().write_all(line.as_bytes()).ok();
+    exit(if payload["ok"].as_bool() == Some(true) {
+        0
+    } else {
+        4
+    });
 }

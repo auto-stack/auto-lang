@@ -79,6 +79,7 @@ fn dyn_module() -> MirModule {
         slot(0, "ret"),
     ];
     m.funcs = vec![MirFunction {
+        env: None,
         owner,
         name: "main".to_string(),
         sig: m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
@@ -172,6 +173,7 @@ fn take_mismatch_module() -> MirModule {
     let c_n = m.intern_const(MirConst::I32(5)) as u32;
     let c_zero = m.intern_const(MirConst::I32(0)) as u32;
     m.funcs = vec![MirFunction {
+        env: None,
         owner,
         name: "main".to_string(),
         sig: m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
@@ -476,6 +478,7 @@ fn chain_module(depth: u32) -> MirModule {
         path: vec![0],
     });
     m.funcs = vec![MirFunction {
+        env: None,
         owner,
         name: "main".to_string(),
         sig: m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
@@ -811,6 +814,7 @@ fn dag_module(k: u32) -> MirModule {
     }));
     let c = m.intern_const(MirConst::I32(1)) as u32;
     m.funcs = vec![MirFunction {
+        env: None,
         owner: owner_scope(),
         name: "main".to_string(),
         sig,

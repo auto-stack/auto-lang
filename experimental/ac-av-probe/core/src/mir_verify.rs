@@ -122,6 +122,8 @@ pub fn verify_mir_with_deadline(
         is_data: module.is_data_profile(),
         is_owned: module.is_owned_profile(),
         is_collections: module.is_collections_profile(),
+        is_closures: module.is_closures_profile(),
+        closure_bodies: std::collections::BTreeSet::new(),
         is_dynamic: module.is_dynamic_profile(),
     };
     v.run()?;
@@ -149,6 +151,14 @@ struct Verifier<'a> {
     /// (PLAN-822): subsumes the owned surface and adds the List/Variant
     /// surface.
     is_collections: bool,
+    /// Whether the module declares the `av.closures/1` profile
+    /// (PLAN-823): subsumes the collections surface and adds the closure
+    /// surface (owned envs, checked indirect calls, capture prepare/
+    /// commit). Drives the closure-site registry below.
+    is_closures: bool,
+    /// PLAN-823 r8: the closure-body function indices (functions with a
+    /// declared env layout), for the entry-body and direct-call gates.
+    closure_bodies: std::collections::BTreeSet<u32>,
     /// Whether the module declares the `av.dynamic/1` profile (PLAN-824):
     /// subsumes the collections surface and adds the checked-erasure Dyn
     /// surface.
@@ -160,7 +170,7 @@ impl<'a> Verifier<'a> {
     /// instructions): admitted by `av.collections/1` and its dynamic
     /// successor (PLAN-824 subsumption).
     fn collections_surface(&self) -> bool {
-        self.is_collections || self.is_dynamic
+        self.is_collections || self.is_dynamic || self.is_closures
     }
     fn tick(&mut self, n: u64) -> Result<(), MirVerifyError> {
         self.steps += n;
@@ -194,17 +204,19 @@ impl<'a> Verifier<'a> {
             && self.module.profile != crate::contract::AV_DATA_PROFILE
             && self.module.profile != crate::contract::AV_OWNED_PROFILE
             && self.module.profile != crate::contract::AV_COLLECTIONS_PROFILE
+            && self.module.profile != crate::contract::AV_CLOSURES_PROFILE
             && self.module.profile != crate::contract::AV_DYNAMIC_PROFILE
         {
             return Err(MirVerifyError::uns(
                 "mir.profile",
                 format!(
-                    "profile `{}` is not one of the supported profiles (`{}` / `{}` / `{}` / `{}` / `{}`)",
+                    "profile `{}` is not one of the supported profiles (`{}` / `{}` / `{}` / `{}` / `{}` / `{}`)",
                     self.module.profile,
                     crate::contract::AV_PROFILE,
                     crate::contract::AV_DATA_PROFILE,
                     crate::contract::AV_OWNED_PROFILE,
                     crate::contract::AV_COLLECTIONS_PROFILE,
+                    crate::contract::AV_CLOSURES_PROFILE,
                     crate::contract::AV_DYNAMIC_PROFILE
                 ),
             ));
@@ -238,6 +250,16 @@ impl<'a> Verifier<'a> {
                     "collections-profile module owner schema `{}` is not `{}`",
                     self.module.owner.schema,
                     crate::contract::MIR_COLLECTIONS_SCHEMA
+                ),
+            ));
+        }
+        if self.is_closures && self.module.owner.schema != crate::contract::MIR_CLOSURES_SCHEMA {
+            return Err(MirVerifyError::inv(
+                "mir.schema-profile",
+                format!(
+                    "closures-profile module owner schema `{}` is not `{}`",
+                    self.module.owner.schema,
+                    crate::contract::MIR_CLOSURES_SCHEMA
                 ),
             ));
         }
@@ -391,6 +413,16 @@ impl<'a> Verifier<'a> {
                             "type #{ti} ({:?} …) exists only in the `{}`+ profiles",
                             t,
                             crate::contract::AV_COLLECTIONS_PROFILE
+                        ),
+                    ));
+                }
+                // PLAN-823: the Closure surface is closures-profile-only.
+                MirType::Closure(_) if !self.is_closures => {
+                    return Err(MirVerifyError::uns(
+                        "mir.profile-type",
+                        format!(
+                            "type #{ti} (Closure …) exists only in the `{}` profile",
+                            crate::contract::AV_CLOSURES_PROFILE
                         ),
                     ));
                 }
@@ -789,6 +821,153 @@ impl<'a> Verifier<'a> {
         }
         let _ = entry_sig;
 
+        // ---- PLAN-823 closure-site pre-pass ------------------------------
+        // The UNIQUE CREATE_CLOSURE site per callee defines the env layout
+        // (capture-order source slot TYPES) the body's ENV_GET
+        // instructions type against (first-case rule, contract-decision
+        // r2 §5; T-03 generalizes the env-layout binding).
+        if self.is_closures {
+            // r8 env contract: every CREATE_CLOSURE site's captures must
+            // equal the callee's DECLARED env layout position-by-position
+            // (a BORROW capture's declared entry is the StrView type).
+            // Whole modules keep the unique-site rule; units address
+            // closure bodies through imports carrying the same
+            // declaration (link-time equivalence pins the binding).
+            // The StrView type is only REQUIRED when a Borrow capture is
+            // present (a unit whose reached-type closure has no view type
+            // must not fail on an unused lookup).
+            let has_borrow = self.module.funcs.iter().any(|f| {
+                f.blocks.iter().any(|b| {
+                    b.instrs.iter().any(|i| {
+                        matches!(i, MirInstr::CreateClosure { captures, .. } if captures
+                            .iter()
+                            .any(|c| c.kind == crate::mir::CaptureKind::Borrow))
+                    })
+                })
+            });
+            let strview_ty = if has_borrow {
+                Some(self.strview_type_idx()?)
+            } else {
+                None
+            };
+            let mut bodies: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+            for (fi, f) in self.module.funcs.iter().enumerate() {
+                if f.env.is_some() {
+                    bodies.insert(fi as u32);
+                }
+            }
+            let mut sites: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+            for f in self.module.funcs.iter() {
+                for b in f.blocks.iter() {
+                    for instr in b.instrs.iter() {
+                        if let MirInstr::CreateClosure {
+                            callee, captures, ..
+                        } = instr
+                        {
+                            let declared: Option<&Vec<u32>> = match callee {
+                                crate::mir::CalleeRef::Func(idx) => {
+                                    if self.module.is_unit {
+                                        return Err(MirVerifyError::inv(
+                                            "mir.unit-callee",
+                                            "a unit must address closure bodies through imports"
+                                                .to_string(),
+                                        ));
+                                    }
+                                    if !sites.insert(*idx) {
+                                        return Err(MirVerifyError::inv(
+                                            "mir.closure.site-duplicate",
+                                            format!(
+                                                "function #{} has more than one CREATE_CLOSURE site (first-case rule)",
+                                                idx
+                                            ),
+                                        ));
+                                    }
+                                    self.module
+                                        .funcs
+                                        .get(*idx as usize)
+                                        .and_then(|t| t.env.as_ref())
+                                }
+                                crate::mir::CalleeRef::Import(idx) => {
+                                    if !self.module.is_unit {
+                                        return Err(MirVerifyError::inv(
+                                            "mir.closure.callee-kind",
+                                            "a whole-module CREATE_CLOSURE must target a function, not an import"
+                                                .to_string(),
+                                        ));
+                                    }
+                                    self.module
+                                        .imports
+                                        .get(*idx as usize)
+                                        .and_then(|i| i.env.as_ref())
+                                }
+                            };
+                            let Some(declared) = declared else {
+                                return Err(MirVerifyError::inv(
+                                    "mir.closure.env-contract",
+                                    format!(
+                                        "CREATE_CLOSURE callee {:?} lacks a declared env layout",
+                                        callee
+                                    ),
+                                ));
+                            };
+                            if captures.len() != declared.len() {
+                                return Err(MirVerifyError::inv(
+                                    "mir.closure.env-contract",
+                                    format!(
+                                        "captures ({}) do not match the declared env layout ({})",
+                                        captures.len(),
+                                        declared.len()
+                                    ),
+                                ));
+                            }
+                            for (ci, c) in captures.iter().enumerate() {
+                                let entry = match c.kind {
+                                    crate::mir::CaptureKind::MoveFromEnv => {
+                                        // R1-F01: the transferred field's
+                                        // declared type comes from the
+                                        // PARENT's own env layout.
+                                        match f.env.as_ref().and_then(|e| e.get(c.src as usize)) {
+                                            Some(t) => *t,
+                                            None => continue, // typing rejects the range
+                                        }
+                                    }
+                                    crate::mir::CaptureKind::Borrow => {
+                                        strview_ty.expect("has_borrow implies the lookup ran")
+                                    }
+                                    _ => match f.slots.get(c.src as usize) {
+                                        Some(sl) => sl.ty,
+                                        None => continue, // typing rejects the range
+                                    },
+                                };
+                                if entry != declared[ci] {
+                                    return Err(MirVerifyError::inv(
+                                        "mir.closure.env-contract",
+                                        format!(
+                                            "capture #{} type {} does not match the declared env field type {}",
+                                            ci, entry, declared[ci]
+                                        ),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // The entry can never be a closure body (no env binding at
+            // the root frame). A UNIT's single function is not an
+            // executable entry (re-verifiable only, linked via imports),
+            // so unit bodies are exempt.
+            if !self.module.is_unit && self.module.funcs[self.module.entry as usize].env.is_some() {
+                return Err(MirVerifyError::inv(
+                    "mir.closure.entry-body",
+                    format!(
+                        "module entry #{} is a closure body (env-bound bodies are reachable only through CALL_CLOSURE)",
+                        self.module.entry
+                    ),
+                ));
+            }
+            self.closure_bodies = bodies;
+        }
         // ---- per-function deep checks -----------------------------------
         for (fi, f) in self.module.funcs.iter().enumerate() {
             self.check_function(fi as u32, f)?;
@@ -1169,8 +1348,423 @@ impl<'a> Verifier<'a> {
         }
     }
 
-    fn check_function(&mut self, fi: u32, f: &MirFunction) -> Result<(), MirVerifyError> {
-        let _ = fi;
+    /// The StrView type-table index a BORROW capture's env-field layout
+    /// entry uses (the field holds a share view).
+    fn strview_type_idx(&self) -> Result<u32, MirVerifyError> {
+        self.module
+            .types
+            .iter()
+            .position(|t| matches!(t, MirType::StrView))
+            .map(|p| p as u32)
+            .ok_or_else(|| {
+                MirVerifyError::inv(
+                    "mir.capture.borrow-view-type",
+                    "a Borrow capture needs a StrView type in the table (the env field is a \
+                     share view)"
+                        .to_string(),
+                )
+            })
+    }
+
+    /// PLAN-823 T-03 (§5.1.3/§5.1.6): the conservative BORROW-capture
+    /// discipline. A borrow-capturing closure is SYNCHRONOUS-ONLY:
+    /// * its value never escapes the creating function — the only allowed
+    ///   consumers are CALL_CLOSURE on it and DROP of it, and it MUST be
+    ///   called and dropped there (`mir.borrow-closure.escape` /
+    ///   `mir.borrow-closure.synchronous`);
+    /// * every borrow SOURCE slot is PINNED for the whole function — its
+    ///   only allowed uses are the capture itself and VIEW minting
+    ///   (`mir.borrow-source-pinned`).
+    /// Deliberately a per-function scan (the conservative explicit allow
+    /// set of §5.1.6), not a dataflow proof; refinement belongs to a
+    /// later revision with the full borrow analysis.
+    fn check_borrow_discipline(&self, f: &MirFunction) -> Result<(), MirVerifyError> {
+        // (src slot, site position) pins and (dst slot, site) escapes.
+        let mut pins: Vec<(u32, (usize, usize))> = Vec::new();
+        let mut escs: Vec<(u32, (usize, usize))> = Vec::new();
+        for (bi, b) in f.blocks.iter().enumerate() {
+            for (ii, instr) in b.instrs.iter().enumerate() {
+                if let MirInstr::CreateClosure { dst, captures, .. } = instr {
+                    if captures
+                        .iter()
+                        .any(|c| c.kind == crate::mir::CaptureKind::Borrow)
+                    {
+                        escs.push((*dst, (bi, ii)));
+                        for c in captures {
+                            if c.kind == crate::mir::CaptureKind::Borrow {
+                                // Pin only the admissible borrow domain (a
+                                // Str-typed source): a non-Str borrow is
+                                // the typing arm's `borrow-domain`
+                                // rejection — pinning it here would mask
+                                // the right error code.
+                                let src_is_str = matches!(
+                                    f.slots
+                                        .get(c.src as usize)
+                                        .and_then(|s| self.module.types.get(s.ty as usize)),
+                                    Some(MirType::Str)
+                                );
+                                if src_is_str {
+                                    pins.push((c.src, (bi, ii)));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if pins.is_empty() {
+            return Ok(());
+        }
+        let mut calls = vec![0usize; escs.len()];
+        let mut drops = vec![0usize; escs.len()];
+        for (bi, b) in f.blocks.iter().enumerate() {
+            for (ii, instr) in b.instrs.iter().enumerate() {
+                let uses = instr.use_slots();
+                for (k, (dst, _)) in escs.iter().enumerate() {
+                    match instr {
+                        MirInstr::CallClosure { closure, .. } if closure == dst => {
+                            calls[k] += 1;
+                        }
+                        MirInstr::Drop { slot } if slot == dst => {
+                            drops[k] += 1;
+                        }
+                        _ => {
+                            if uses.contains(dst) {
+                                return Err(MirVerifyError::inv(
+                                    "mir.borrow-closure.escape",
+                                    format!(
+                                        "slot #{} of `{}` is a borrow-bound closure: its only \
+                                         allowed consumers are CALL_CLOSURE and DROP in the \
+                                         creating function (synchronous non-escaping use)",
+                                        dst, f.name
+                                    ),
+                                ));
+                            }
+                        }
+                    }
+                }
+                for (src, site) in pins.iter() {
+                    if uses.contains(src) {
+                        let is_site = (bi, ii) == *site;
+                        let is_view = matches!(instr, MirInstr::View { src: s, .. } if s == src);
+                        if !is_site && !is_view {
+                            return Err(MirVerifyError::inv(
+                                "mir.borrow-source-pinned",
+                                format!(
+                                    "slot #{} of `{}` is a borrow-capture source: pinned for \
+                                     the whole function (only the capture itself and VIEW \
+                                     minting may use it)",
+                                    src, f.name
+                                ),
+                            ));
+                        }
+                    }
+                }
+            }
+            // Terminators are uses too: RETURNING a borrow-bound closure is
+            // the canonical escape (Branch conditions are typing-rejected
+            // but land here first).
+            let term_uses: Vec<u32> = match &b.term {
+                crate::mir::Terminator::Return { value } => vec![*value],
+                crate::mir::Terminator::Branch { cond, .. } => vec![*cond],
+                crate::mir::Terminator::Jump { .. } => vec![],
+            };
+            for (dst, _) in escs.iter() {
+                if term_uses.contains(dst) {
+                    return Err(MirVerifyError::inv(
+                        "mir.borrow-closure.escape",
+                        format!(
+                            "slot #{} of `{}` is a borrow-bound closure: RETURN carries it out \
+                             of the creating function (synchronous non-escaping use only)",
+                            dst, f.name
+                        ),
+                    ));
+                }
+            }
+        }
+        for (k, (dst, _)) in escs.iter().enumerate() {
+            if calls[k] == 0 || drops[k] == 0 {
+                return Err(MirVerifyError::inv(
+                    "mir.borrow-closure.synchronous",
+                    format!(
+                        "borrow-bound closure slot #{} of `{}` must be CALLED and DROPPED in \
+                         the creating function (found {} calls, {} drops)",
+                        dst, f.name, calls[k], drops[k]
+                    ),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// R1-F01 (§5.1.4/§5.5): the conservative env-capture discipline.
+    /// (a) a slot whose value originates from ENV_GET is an ENV ALIAS (a
+    ///     share of the parent's field): a MOVE capture of an OWNED-typed
+    ///     alias never transfers the parent's responsibility — the
+    ///     dedicated MoveFromEnv op is the only transfer path
+    ///     (`mir.capture.env-alias`);
+    /// (b) a field moved out by MoveFromEnv may not be re-read (ENV_GET)
+    ///     or re-transferred anywhere in the same body
+    ///     (`mir.env.field-moved`).
+    /// Deliberately a per-function conservative scan (§5.1.6's allow-set).
+    fn check_env_capture_discipline(&mut self, f: &MirFunction) -> Result<(), MirVerifyError> {
+        fn alias(bits: &[u64], slot: u32) -> bool {
+            bits.get(slot as usize / 64)
+                .map(|w| w & (1u64 << (slot % 64)) != 0)
+                .unwrap_or(false)
+        }
+        fn assign(bits: &mut [u64], slot: u32, value: bool) {
+            if let Some(w) = bits.get_mut(slot as usize / 64) {
+                let mask = 1u64 << (slot % 64);
+                if value {
+                    *w |= mask;
+                } else {
+                    *w &= !mask;
+                }
+            }
+        }
+        fn transfer(bits: &mut [u64], instr: &MirInstr) {
+            match instr {
+                MirInstr::EnvGet { dst, .. } => assign(bits, *dst, true),
+                MirInstr::Clone { dst, .. } => assign(bits, *dst, false),
+                MirInstr::Move { dst, src } | MirInstr::Copy { dst, src } => {
+                    let source = alias(bits, *src);
+                    assign(bits, *dst, source);
+                }
+                MirInstr::FieldMove { dst, root, .. }
+                | MirInstr::VariantProject { dst, root, .. } => {
+                    let source = alias(bits, *root);
+                    assign(bits, *dst, source);
+                }
+                MirInstr::FieldGet { dst, base, .. }
+                | MirInstr::ListGet { dst, base, .. }
+                | MirInstr::ListFieldGet { dst, base, .. } => {
+                    let source = alias(bits, *base);
+                    assign(bits, *dst, source);
+                }
+                // In-place field writes retain the root's provenance.
+                MirInstr::FieldSet { .. } => {}
+                _ => {
+                    if let Some(dst) = instr.def_slot() {
+                        assign(bits, dst, false);
+                    }
+                }
+            }
+        }
+
+        let blocks = f.blocks.len();
+        let words = (f.slots.len().saturating_add(63)) / 64;
+        let instructions = f
+            .blocks
+            .iter()
+            .fold(0usize, |n, b| n.saturating_add(b.instrs.len()));
+        let capture_count = f
+            .blocks
+            .iter()
+            .flat_map(|b| &b.instrs)
+            .fold(0usize, |n, instr| match instr {
+                MirInstr::CreateClosure { captures, .. } => n.saturating_add(captures.len()),
+                _ => n,
+            });
+        let max_operands = f
+            .blocks
+            .iter()
+            .flat_map(|b| &b.instrs)
+            .map(|instr| match instr {
+                MirInstr::Aggregate { operands, .. }
+                | MirInstr::Call { args: operands, .. }
+                | MirInstr::CallClosure { args: operands, .. } => operands.len(),
+                MirInstr::CreateClosure { captures, .. } => captures.len(),
+                _ => 1,
+            })
+            .max()
+            .unwrap_or(0);
+        let analysis_bound = blocks
+            .saturating_mul(words)
+            .saturating_mul(std::mem::size_of::<u64>())
+            .saturating_mul(2)
+            .saturating_add(blocks.saturating_mul(80))
+            .saturating_add(instructions.saturating_mul(16))
+            .saturating_add(capture_count.saturating_mul(40))
+            .saturating_add(max_operands.saturating_mul(std::mem::size_of::<u32>()));
+        self.analysis_bytes = self.analysis_bytes.max(analysis_bound as u64);
+        if analysis_bound > MAX_VERIFY_ANALYSIS_BYTES {
+            return Err(MirVerifyError::Resource {
+                kind: ResourceKind::VerifyMemory,
+                message: format!(
+                    "environment alias analysis for `{}` needs up to {} bytes, above {}",
+                    f.name, analysis_bound, MAX_VERIFY_ANALYSIS_BYTES
+                ),
+            });
+        }
+        if f.entry as usize >= blocks {
+            return Err(MirVerifyError::inv(
+                "mir.block-ref",
+                format!("invalid entry block in `{}`", f.name),
+            ));
+        }
+        let mut moved_fields = std::collections::HashSet::<u32>::new();
+        let mut successors = Vec::with_capacity(blocks);
+        for b in &f.blocks {
+            let targets = match b.term {
+                Terminator::Jump { target } => vec![target],
+                Terminator::Branch { then, else_, .. } if then != else_ => vec![then, else_],
+                Terminator::Branch { then, .. } => vec![then],
+                Terminator::Return { .. } => Vec::new(),
+            };
+            if targets.iter().any(|target| *target as usize >= blocks) {
+                return Err(MirVerifyError::inv(
+                    "mir.block-ref",
+                    format!("invalid branch target in `{}`", f.name),
+                ));
+            }
+            successors.push(targets);
+            for instr in &b.instrs {
+                self.tick(1)?;
+                match instr {
+                    MirInstr::EnvGet { dst, .. } if *dst as usize >= f.slots.len() => {
+                        return Err(MirVerifyError::inv(
+                            "mir.slot-ref",
+                            format!("invalid ENV_GET destination slot #{dst} in `{}`", f.name),
+                        ));
+                    }
+                    MirInstr::Move { dst, src } | MirInstr::FieldMove { dst, root: src, .. }
+                        if *dst as usize >= f.slots.len() || *src as usize >= f.slots.len() =>
+                    {
+                        return Err(MirVerifyError::inv(
+                            "mir.slot-ref",
+                            format!("invalid MOVE slots in `{}`", f.name),
+                        ));
+                    }
+                    MirInstr::CreateClosure { captures, .. } => {
+                        self.tick(captures.len() as u64)?;
+                        for c in captures {
+                            if c.kind == crate::mir::CaptureKind::MoveFromEnv
+                                && !moved_fields.insert(c.src)
+                            {
+                                return Err(MirVerifyError::inv(
+                                    "mir.env.field-moved",
+                                    format!(
+                                        "env field {} of `{}` is transferred more than once",
+                                        c.src, f.name
+                                    ),
+                                ));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        // May-alias dataflow: union at branch joins, strong updates at each
+        // definition. Empty entry state; loops converge by monotone union.
+        let mut inputs = vec![vec![0u64; words]; blocks];
+        let mut outputs = vec![vec![0u64; words]; blocks];
+        let mut seen = vec![false; blocks];
+        let mut queued = vec![false; blocks];
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(f.entry as usize);
+        queued[f.entry as usize] = true;
+        while let Some(bi) = queue.pop_front() {
+            queued[bi] = false;
+            self.tick(1 + words as u64)?;
+            let mut live = inputs[bi].clone();
+            for instr in &f.blocks[bi].instrs {
+                self.tick(1)?;
+                transfer(&mut live, instr);
+            }
+            if !seen[bi] || live != outputs[bi] {
+                seen[bi] = true;
+                outputs[bi] = live;
+                for target in &successors[bi] {
+                    let ti = *target as usize;
+                    let mut changed = !seen[ti];
+                    for (dst, src) in inputs[ti].iter_mut().zip(&outputs[bi]) {
+                        let merged = *dst | *src;
+                        changed |= merged != *dst;
+                        *dst = merged;
+                    }
+                    if changed && !queued[ti] {
+                        queued[ti] = true;
+                        queue.push_back(ti);
+                    }
+                }
+            }
+        }
+        // Check the converged states, never a transient under-approximation.
+        for (bi, b) in f.blocks.iter().enumerate() {
+            if !seen[bi] {
+                continue;
+            }
+            let mut live = inputs[bi].clone();
+            for instr in &b.instrs {
+                self.tick(1)?;
+                if let MirInstr::EnvGet { field, .. } = instr {
+                    if moved_fields.contains(&(*field as u32)) {
+                        return Err(MirVerifyError::inv(
+                            "mir.env.field-moved",
+                            format!(
+                                "env field {} of `{}` was transferred out and re-read",
+                                field, f.name
+                            ),
+                        ));
+                    }
+                }
+                let consuming: Vec<u32> = match instr {
+                    MirInstr::Aggregate { operands, .. }
+                    | MirInstr::Call { args: operands, .. }
+                    | MirInstr::CallClosure { args: operands, .. } => operands.clone(),
+                    MirInstr::ListPush { value, .. }
+                    | MirInstr::ListInsert { value, .. }
+                    | MirInstr::ListSet { value, .. }
+                    | MirInstr::ListFieldSet { value, .. }
+                    | MirInstr::FieldSet { value, .. }
+                    | MirInstr::PlaceSet { value, .. } => vec![*value],
+                    MirInstr::VariantPack { payload, .. }
+                    | MirInstr::VariantSwitch { payload, .. } => payload.iter().copied().collect(),
+                    MirInstr::Drop { slot } => vec![*slot],
+                    MirInstr::FieldMove { root, .. } => vec![*root],
+                    MirInstr::CreateClosure { captures, .. } => captures
+                        .iter()
+                        .filter(|c| c.kind == crate::mir::CaptureKind::Move)
+                        .map(|c| c.src)
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                self.tick(consuming.len() as u64)?;
+                for src in consuming {
+                    if alias(&live, src)
+                        && f.slots
+                            .get(src as usize)
+                            .map(|slot| crate::ownership::type_is_owned(self.module, slot.ty))
+                            .unwrap_or(false)
+                    {
+                        return Err(MirVerifyError::inv("mir.capture.env-alias", format!("owned environment alias slot #{} of `{}` cannot be transferred by this instruction", src, f.name)));
+                    }
+                }
+                transfer(&mut live, instr);
+            }
+            if let Terminator::Return { value } = b.term {
+                if alias(&live, value)
+                    && f.slots
+                        .get(value as usize)
+                        .map(|slot| crate::ownership::type_is_owned(self.module, slot.ty))
+                        .unwrap_or(false)
+                {
+                    return Err(MirVerifyError::inv(
+                        "mir.capture.env-alias",
+                        format!(
+                            "owned environment alias slot #{} of `{}` cannot be returned",
+                            value, f.name
+                        ),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn check_function(&mut self, _fi: u32, f: &MirFunction) -> Result<(), MirVerifyError> {
         // Precomputed block bases (flat instruction offsets): the naive
         // per-call prefix sum made chain-shaped functions quadratic.
         let bases: Vec<u32> = {
@@ -1183,6 +1777,13 @@ impl<'a> Verifier<'a> {
             }
             v
         };
+        // PLAN-823 T-03: the conservative borrow-capture discipline (§5.1.3
+        // /§5.1.6) runs before the per-instruction walk so an escaping or
+        // unpinned borrow reports before any other shape complaint.
+        if self.is_closures {
+            self.check_borrow_discipline(f)?;
+            self.check_env_capture_discipline(f)?;
+        }
         // shape: sig
         let Some(sig) = self.module.sig_of(f.sig).cloned() else {
             return Err(MirVerifyError::inv(
@@ -1487,6 +2088,19 @@ impl<'a> Verifier<'a> {
                                         "a unit must address callees through imports".to_string(),
                                     ));
                                 }
+                                // PLAN-823: a closure body executes ONLY with
+                                // an env binding — a direct call can never
+                                // provide one.
+                                if self.closure_bodies.contains(idx) {
+                                    return Err(err(
+                                        "mir.closure.body-direct-call",
+                                        format!(
+                                            "direct call targets function #{} which is a \
+                                             closure body (reachable only through CALL_CLOSURE)",
+                                            idx
+                                        ),
+                                    ));
+                                }
                                 match self.module.funcs.get(*idx as usize) {
                                     Some(target) => match self.module.sig_of(target.sig) {
                                         Some(s) => s.clone(),
@@ -1786,8 +2400,14 @@ impl<'a> Verifier<'a> {
                             ));
                         }
                         // Clone is the EXPLICIT deep copy of owned data;
-                        // cloning a copyable is a plain COPY.
-                        if !crate::ownership::type_is_owned(self.module, st) {
+                        // cloning a copyable is a plain COPY. PLAN-823: a
+                        // Closure is deep-cloneable too (the env's fields
+                        // deep-clone under a fresh store handle).
+                        let is_closure_ty = matches!(
+                            self.module.types.get(st as usize),
+                            Some(MirType::Closure(_))
+                        );
+                        if !is_closure_ty && !crate::ownership::type_is_owned(self.module, st) {
                             return Err(err(
                                 "mir.ownership-required",
                                 format!("CLONE of copyable type {} (use COPY)", st),
@@ -1871,7 +2491,14 @@ impl<'a> Verifier<'a> {
                             ));
                         }
                         let st = slot_ty_of(f, *slot, sp, "drop slot")?;
-                        if !crate::ownership::type_is_owned(self.module, st) {
+                        // PLAN-823: a Closure slot drops too — the release
+                        // path is the env-store release (its fields own the
+                        // resources).
+                        let is_closure_ty = matches!(
+                            self.module.types.get(st as usize),
+                            Some(MirType::Closure(_))
+                        );
+                        if !is_closure_ty && !crate::ownership::type_is_owned(self.module, st) {
                             return Err(err(
                                 "mir.type-op",
                                 format!(
@@ -2366,6 +2993,244 @@ impl<'a> Verifier<'a> {
                                 format!(
                                     "place-set value {} != the place's bound element type {}",
                                     vt, elem
+                                ),
+                            ));
+                        }
+                    }
+                    // -- PLAN-823 closure surface (av.closures/1) ----------
+                    MirInstr::CreateClosure {
+                        dst,
+                        callee,
+                        captures,
+                    } => {
+                        if !self.is_closures {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "CREATE_CLOSURE exists only in the closures profile".to_string(),
+                            ));
+                        }
+                        let dt = slot_ty_of(f, *dst, sp, "create-closure dst")?;
+                        let callee_sig: crate::mir::FnSig = match callee {
+                            crate::mir::CalleeRef::Func(idx) => {
+                                let target = match self.module.funcs.get(*idx as usize) {
+                                    Some(t) => t,
+                                    None => {
+                                        return Err(err(
+                                            "mir.callee-ref",
+                                            format!(
+                                                "create-closure references out-of-range \
+                                                 function {}",
+                                                idx
+                                            ),
+                                        ))
+                                    }
+                                };
+                                match self.module.sig_of(target.sig) {
+                                    Some(s) => s.clone(),
+                                    None => {
+                                        return Err(err(
+                                            "mir.callee-sig",
+                                            format!("closure callee #{} has no function type", idx),
+                                        ))
+                                    }
+                                }
+                            }
+                            crate::mir::CalleeRef::Import(idx) => {
+                                let imp = match self.module.imports.get(*idx as usize) {
+                                    Some(t) => t,
+                                    None => {
+                                        return Err(err(
+                                            "mir.import-ref",
+                                            format!(
+                                                "create-closure references out-of-range \
+                                                 import {}",
+                                                idx
+                                            ),
+                                        ))
+                                    }
+                                };
+                                match self.module.sig_of(imp.sig) {
+                                    Some(s) => s.clone(),
+                                    None => {
+                                        return Err(err(
+                                            "mir.import-sig",
+                                            format!("closure import #{} has no function type", idx),
+                                        ))
+                                    }
+                                }
+                            }
+                        };
+                        // dst must be EXACTLY the callee's Closure type: an
+                        // Fn slot never accepts an arbitrary closure
+                        // (§5.1.1) — the bound signature is structural.
+                        match self.module.types.get(dt as usize) {
+                            Some(MirType::Closure(s)) if s == &callee_sig => {}
+                            other => {
+                                return Err(err(
+                                    "mir.closure.type",
+                                    format!(
+                                        "create-closure dst type {} is {:?}, must be the callee's Closure type",
+                                        dt, other
+                                    ),
+                                ))
+                            }
+                        }
+                        for (ci, c) in captures.iter().enumerate() {
+                            if c.kind == crate::mir::CaptureKind::MoveFromEnv {
+                                // R1-F01: src is a FIELD index of the
+                                // CURRENT frame's env — typed against the
+                                // parent's own declared layout by the
+                                // pre-scan and the alias/moved gates.
+                                if f.env.is_none() {
+                                    return Err(err(
+                                        "mir.capture.env-field",
+                                        format!(
+                                            "capture #{} moves an env field but `{}` declares no env layout",
+                                            ci, f.name
+                                        ),
+                                    ));
+                                }
+                                if c.src as usize >= f.env.as_ref().unwrap().len() {
+                                    return Err(err(
+                                        "mir.capture.env-field",
+                                        format!(
+                                            "capture #{} env field {} out of range ({} declared)",
+                                            ci,
+                                            c.src,
+                                            f.env.as_ref().unwrap().len()
+                                        ),
+                                    ));
+                                }
+                                continue;
+                            }
+                            let st = slot_ty_of(f, c.src, sp, &format!("capture #{}", ci))?;
+                            if c.kind == crate::mir::CaptureKind::Borrow {
+                                // The delivered borrow domain: an owned Str
+                                // source; the env field is a share view.
+                                if !matches!(self.module.types.get(st as usize), Some(MirType::Str))
+                                {
+                                    return Err(err(
+                                        "mir.capture.borrow-domain",
+                                        format!(
+                                            "borrow capture #{} type {} is not an owned Str",
+                                            ci, st
+                                        ),
+                                    ));
+                                }
+                                continue;
+                            }
+                            if matches!(
+                                self.module.types.get(st as usize),
+                                Some(MirType::StrView)
+                                    | Some(MirType::MutRef)
+                                    | Some(MirType::Place(_))
+                                    | Some(MirType::Closure(_))
+                                    | Some(MirType::Fn(_))
+                            ) {
+                                return Err(err(
+                                    "mir.capture.kind",
+                                    format!(
+                                        "capture #{} type {} is not escape-capturable \
+                                         (borrow/token/place/closure kinds are rejected)",
+                                        ci, st
+                                    ),
+                                ));
+                            }
+                        }
+                    }
+                    MirInstr::CallClosure { dst, closure, args } => {
+                        if !self.is_closures {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "CALL_CLOSURE exists only in the closures profile".to_string(),
+                            ));
+                        }
+                        let ct = slot_ty_of(f, *closure, sp, "call-closure operand")?;
+                        let sig = match self.module.types.get(ct as usize) {
+                            Some(MirType::Closure(s)) => s.clone(),
+                            other => {
+                                return Err(err(
+                                    "mir.closure.type",
+                                    format!(
+                                        "call-closure operand type {} is {:?}, not a Closure",
+                                        ct, other
+                                    ),
+                                ))
+                            }
+                        };
+                        if sig.params.len() != args.len() {
+                            return Err(err(
+                                "mir.closure.arity",
+                                format!(
+                                    "closure call passes {} args, signature takes {}",
+                                    args.len(),
+                                    sig.params.len()
+                                ),
+                            ));
+                        }
+                        for (ai, (a, want)) in args.iter().zip(sig.params.iter()).enumerate() {
+                            let at = slot_ty_of(f, *a, sp, &format!("closure arg #{}", ai))?;
+                            if !self.ty_equiv(at, *want) {
+                                return Err(err(
+                                    "mir.closure.arg-type",
+                                    format!(
+                                        "closure arg #{} has type {}, signature wants {}",
+                                        ai, at, want
+                                    ),
+                                ));
+                            }
+                        }
+                        let dt = slot_ty_of(f, *dst, sp, "call-closure dst")?;
+                        if !self.ty_equiv(dt, sig.result) {
+                            return Err(err(
+                                "mir.closure.result-type",
+                                format!(
+                                    "closure call dst type {} does not match signature result {}",
+                                    dt, sig.result
+                                ),
+                            ));
+                        }
+                    }
+                    MirInstr::EnvGet { dst, field } => {
+                        if !self.is_closures {
+                            return Err(err(
+                                "mir.profile-instr",
+                                "ENV_GET exists only in the closures profile".to_string(),
+                            ));
+                        }
+                        // r8: the env layout is the function's OWN
+                        // declaration — a body unit verifies standalone.
+                        let layout = match &f.env {
+                            Some(l) => l,
+                            None => {
+                                return Err(err(
+                                    "mir.env.not-closure-body",
+                                    format!(
+                                        "ENV_GET in `{}` which declares no env layout \
+                                         (env reads live only in closure bodies)",
+                                        f.name
+                                    ),
+                                ))
+                            }
+                        };
+                        if *field as usize >= layout.len() {
+                            return Err(err(
+                                "mir.env.field-range",
+                                format!(
+                                    "env field {} out of range (env layout has {} captures)",
+                                    field,
+                                    layout.len()
+                                ),
+                            ));
+                        }
+                        let dt = slot_ty_of(f, *dst, sp, "env-get dst")?;
+                        let want = layout[*field as usize];
+                        if !self.ty_equiv(dt, want) {
+                            return Err(err(
+                                "mir.env.field-type",
+                                format!(
+                                    "env-get dst type {} does not match captured field type {}",
+                                    dt, want
                                 ),
                             ));
                         }
@@ -3055,6 +3920,10 @@ impl MirInstr {
             | MirInstr::DynIs { dst, .. }
             | MirInstr::DynTake { dst, .. } => Some(*dst),
             MirInstr::FieldSet { root, .. } => Some(*root),
+            // PLAN-823: closure-surface value producers define their dst.
+            MirInstr::CreateClosure { dst, .. }
+            | MirInstr::CallClosure { dst, .. }
+            | MirInstr::EnvGet { dst, .. } => Some(*dst),
             MirInstr::Trace { .. }
             | MirInstr::BorrowEnd { .. }
             | MirInstr::Drop { .. }
@@ -3134,6 +4003,14 @@ impl MirInstr {
             MirInstr::ListPlace { base, index, .. } => vec![*base, *index],
             MirInstr::PlaceGet { src, .. } => vec![*src],
             MirInstr::PlaceSet { place, value } => vec![*place, *value],
+            // PLAN-823 closure reads: capture sources (clone reads, move
+            // reads-then-kills), the closure operand + call args, and the
+            // env (not a slot — ENV_GET reads nothing).
+            MirInstr::CreateClosure { captures, .. } => captures.iter().map(|c| c.src).collect(),
+            MirInstr::CallClosure { closure, args, .. } => std::iter::once(*closure)
+                .chain(args.iter().copied())
+                .collect(),
+            MirInstr::EnvGet { .. } => vec![],
         }
     }
 }
@@ -3235,6 +4112,7 @@ mod tests {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         };
         m.funcs.push(f);
         (m.funcs.len() - 1) as u32
@@ -3436,6 +4314,7 @@ mod tests {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         };
         m.funcs.push(f);
         m.entry = 0;
@@ -3471,6 +4350,7 @@ mod tests {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         });
         m.entry = 0;
         let err = verify_mir(&m).unwrap_err();
@@ -3567,6 +4447,7 @@ mod tests {
             symbol: "unknown.native.ffi".to_string(),
             effect: Effect::Pure,
             sig,
+            env: None,
         });
         m.entry = 0;
         let err = verify_mir(&m).unwrap_err();
@@ -3581,6 +4462,7 @@ mod tests {
             symbol: "hir.test.mark_a".to_string(),
             effect: Effect::Observable,
             sig,
+            env: None,
         });
         m.capabilities = vec![TRACE_CAPABILITY.to_string()];
         verify_mir(&m).expect("trace import with capability verifies");
@@ -3598,6 +4480,7 @@ mod tests {
             symbol: "fn:helper".to_string(),
             effect: Effect::Pure,
             sig,
+            env: None,
         });
         let f = MirFunction {
             owner: owner(),
@@ -3615,6 +4498,7 @@ mod tests {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         };
         m.funcs.push(f);
         m.entry = 0;
@@ -3664,6 +4548,7 @@ mod tests {
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
+            env: None,
         });
         m.entry = 0;
         let err = verify_mir(&m).unwrap_err();

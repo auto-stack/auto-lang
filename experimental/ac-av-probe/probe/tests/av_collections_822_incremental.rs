@@ -38,6 +38,7 @@ fn alpha_unit(a_bump: i32) -> MirModule {
         symbol: "fn:beta".to_string(),
         effect: auto_av_core::mir::Effect::Pure,
         sig: t_sig,
+        env: None,
     }];
     m.funcs = vec![MirFunction {
         owner: owner_scope(),
@@ -75,6 +76,7 @@ fn alpha_unit(a_bump: i32) -> MirModule {
         entry: 0,
         source_snapshot: a_bump as u64,
         spans: Vec::new(),
+        env: None,
     }];
     m.entry = 0;
     m
@@ -140,6 +142,7 @@ fn beta_unit(b_bump: i32) -> MirModule {
         entry: 0,
         source_snapshot: b_bump as u64,
         spans: Vec::new(),
+        env: None,
     }];
     m.entry = 0;
     m
@@ -175,6 +178,7 @@ fn beta_unit_bool() -> MirModule {
         entry: 0,
         source_snapshot: 999,
         spans: Vec::new(),
+        env: None,
     }];
     m.entry = 0;
     m
@@ -480,6 +484,7 @@ fn beta_trapping_unit() -> MirModule {
         entry: 0,
         source_snapshot: 777,
         spans: Vec::new(),
+        env: None,
     }];
     m.entry = 0;
     m
@@ -653,6 +658,7 @@ fn beta_unit_layout(b_bump: i32) -> MirModule {
         entry: 0,
         source_snapshot: b_bump as u64,
         spans: Vec::new(),
+        env: None,
     }];
     m.entry = 0;
     m
@@ -678,6 +684,7 @@ fn alpha_unit_list() -> MirModule {
         symbol: "fn:beta".to_string(),
         effect: auto_av_core::mir::Effect::Pure,
         sig: t_sig,
+        env: None,
     }];
     m.funcs = vec![MirFunction {
         owner: owner_scope(),
@@ -720,6 +727,7 @@ fn alpha_unit_list() -> MirModule {
         entry: 0,
         source_snapshot: 11,
         spans: Vec::new(),
+        env: None,
     }];
     m.entry = 0;
     m
@@ -765,6 +773,7 @@ fn beta_unit_param(elem_str: bool) -> MirModule {
         entry: 0,
         source_snapshot: if elem_str { 21 } else { 20 },
         spans: Vec::new(),
+        env: None,
     }];
     m.entry = 0;
     m

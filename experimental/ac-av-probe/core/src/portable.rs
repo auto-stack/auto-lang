@@ -368,6 +368,11 @@ pub fn freeze(v: &DynValue, opts: &TraversalOptions) -> Result<Vec<u8>, Portable
             Value::StrView(_) | Value::MutRef(_) | Value::Place(_) => {
                 return Err(PortableError::Unsupported { category: "borrow" });
             }
+            Value::Closure(_) => {
+                return Err(PortableError::Unsupported {
+                    category: "closure",
+                });
+            }
             Value::Dyn(_) => {
                 // A Dyn never nests inside a frozen tree in v1 (nested
                 // erasure is not a whitelisted category).
@@ -1181,5 +1186,62 @@ impl<'b> Reader<'b> {
         std::str::from_utf8(raw)
             .map(|s| s.to_string())
             .map_err(|_| PortableError::Invalid { reason: "utf8" })
+    }
+}
+
+#[cfg(test)]
+mod plan823_824_cross_profile_tests {
+    use super::*;
+    use crate::contract::{ClosureRefV, RecordValue};
+    use crate::dynamic::{DynPackError, DynType};
+    use std::rc::Rc;
+
+    fn closure() -> Value {
+        Value::Closure(ClosureRefV {
+            func: 1,
+            sig: 2,
+            env: 3,
+            gen: 4,
+        })
+    }
+
+    #[test]
+    fn plan823_824_closure_rejected_at_pack_and_freeze_at_every_depth() {
+        let ty = DynType::record("plan823", "Box", vec![("inner", DynType::I32)]);
+        let nested = Value::Record(Rc::new(RecordValue {
+            ty: 0,
+            fields: vec![closure()],
+        }));
+        assert!(matches!(
+            DynValue::pack(closure(), DynType::I32),
+            Err(DynPackError::Unsupported {
+                category: "closure",
+                depth: 1
+            })
+        ));
+        assert!(matches!(
+            DynValue::pack(nested.clone(), ty.clone()),
+            Err(DynPackError::Unsupported {
+                category: "closure",
+                depth: 2
+            })
+        ));
+        // from_parts is a crate-private defensive test seam: normal callers cannot mint an invalid Dyn.
+        let forged = DynValue::from_parts(nested, ty);
+        assert!(matches!(
+            freeze(&forged, &TraversalOptions::default()),
+            Err(PortableError::Unsupported {
+                category: "closure"
+            })
+        ));
+        let valid = DynValue::pack(Value::I32(42), DynType::I32).expect("824 legal scalar");
+        let bytes = freeze(&valid, &TraversalOptions::default()).expect("824 legal freeze");
+        let recovered = unfreeze(
+            &bytes,
+            &RestoreContext::new(&[], &[]),
+            &TraversalOptions::default(),
+        )
+        .expect("824 legal restore");
+        assert!(matches!(recovered.as_value(), Value::I32(42)));
     }
 }

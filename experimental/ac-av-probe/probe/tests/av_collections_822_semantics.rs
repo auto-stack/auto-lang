@@ -133,6 +133,7 @@ impl Fx {
             entry: 0,
             source_snapshot: 0,
             spans: Vec::new(),
+            env: None,
         }];
         self.m.entry = 0;
         self.m
@@ -1709,6 +1710,7 @@ fn av_collections_822_semantics_call_move_in_preserves_list() {
             entry: 0,
             source_snapshot: 0,
             spans: Vec::new(),
+            env: None,
         },
         MirFunction {
             owner: m.owner.clone(),
@@ -1733,6 +1735,7 @@ fn av_collections_822_semantics_call_move_in_preserves_list() {
             entry: 0,
             source_snapshot: 0,
             spans: Vec::new(),
+            env: None,
         },
     ];
     m.entry = 0;
@@ -1879,6 +1882,7 @@ fn cross_frame_module(mode: &str) -> MirModule {
             entry: 0,
             source_snapshot: 0,
             spans: Vec::new(),
+            env: None,
         },
         MirFunction {
             owner: m.owner.clone(),
@@ -1905,6 +1909,7 @@ fn cross_frame_module(mode: &str) -> MirModule {
             entry: 0,
             source_snapshot: 0,
             spans: Vec::new(),
+            env: None,
         },
     ];
     m.entry = 0;
@@ -2338,6 +2343,7 @@ fn r6_module(helper_mode: &str) -> MirModule {
             entry: 0,
             source_snapshot: 0,
             spans: Vec::new(),
+            env: None,
         },
         MirFunction {
             owner: m.owner.clone(),
@@ -2348,6 +2354,7 @@ fn r6_module(helper_mode: &str) -> MirModule {
             entry: 0,
             source_snapshot: 0,
             spans: Vec::new(),
+            env: None,
         },
     ];
     m.entry = 0;
@@ -2592,6 +2599,7 @@ fn place_probe_module(count: usize) -> MirModule {
         entry: 0,
         source_snapshot: 0,
         spans: Vec::new(),
+        env: None,
     }];
     m.entry = 0;
     m
@@ -2985,6 +2993,7 @@ fn r9_base() -> MirModule {
         entry: 0,
         source_snapshot: 0,
         spans: Vec::new(),
+        env: None,
     }];
     m.entry = 0;
     m
@@ -3191,6 +3200,7 @@ fn av_collections_822_semantics_nested_variant_clone_control() {
         entry: 0,
         source_snapshot: 0,
         spans: Vec::new(),
+        env: None,
     };
     assert_eq!(success(&m), Value::I32(1), "the clone keeps the deep arm");
 }
@@ -3652,6 +3662,7 @@ fn deep_variant_chain_module(depth: usize, mode: &str) -> MirModule {
         entry: 0,
         source_snapshot: 0,
         spans: Vec::new(),
+        env: None,
     });
     m.entry = 0;
     m

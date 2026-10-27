@@ -134,6 +134,7 @@ pub fn fixture_module(f: &TypedFixture) -> MirModule {
         }],
         entry: 0,
         source_snapshot: 0,
+        env: None,
         spans: vec![],
     });
     m.entry = 0;
@@ -176,6 +177,9 @@ pub fn canonical_typed(value: &Value) -> Option<(&'static str, String)> {
         // (entry results only); the collections face uses canonical_owned.
         Value::List(_) | Value::Variant(_) => return None,
         Value::Place(_) => return None,
+        // PLAN-823: closure metadata is execution-internal, never an entry
+        // result face.
+        Value::Closure(_) => return None,
     })
 }
 

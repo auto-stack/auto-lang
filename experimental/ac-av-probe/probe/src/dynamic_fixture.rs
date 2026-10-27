@@ -744,6 +744,7 @@ pub fn first_case_module() -> MirModule {
         slot(t_i32, "val"),
     ];
     let f = MirFunction {
+        env: None,
         owner,
         name: "main".to_string(),
         sig: m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
@@ -920,6 +921,7 @@ pub fn dyn_out_module() -> MirModule {
         slot(3, "out"),
     ];
     let f = MirFunction {
+        env: None,
         owner,
         name: "main".to_string(),
         sig: m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
@@ -1000,6 +1002,7 @@ pub fn take_probe_module() -> MirModule {
         slot(t_i32, "ret"),
     ];
     let f = MirFunction {
+        env: None,
         owner,
         name: "main".to_string(),
         sig: m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
@@ -1106,6 +1109,7 @@ pub fn take_mismatch_module() -> MirModule {
         slot(t_str, "wrong"),
     ];
     let f = MirFunction {
+        env: None,
         owner,
         name: "main".to_string(),
         sig: m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
