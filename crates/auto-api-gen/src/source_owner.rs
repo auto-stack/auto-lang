@@ -5,6 +5,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// Resolve the installed SDK by filesystem identity, not the spelling supplied
+/// by the caller. This also keeps case-sensitive filesystems distinct.
+fn sdk_install_parent(producer_root: &Path) -> Option<PathBuf> {
+    let actual = fs::canonicalize(producer_root).ok()?;
+    let parent = actual.parent()?;
+    let expected = fs::canonicalize(parent.join("sdk")).ok()?;
+    (actual == expected).then(|| parent.to_path_buf())
+}
+
 /// Verify the actual UI crate files against a managed Full installation's
 /// ownership and content receipt. This is consistency checking, not a signature.
 fn installed_crate_source(
@@ -14,10 +23,7 @@ fn installed_crate_source(
     owner: &str,
 ) -> AutoResult<Option<PathBuf>> {
     use sha2::{Digest, Sha256};
-    if producer_root.file_name().and_then(|s| s.to_str()) != Some("sdk") {
-        return Ok(None);
-    }
-    let Some(install) = producer_root.parent() else {
+    let Some(install) = sdk_install_parent(producer_root) else {
         return Ok(None);
     };
     let receipt = install.join("install-manifest.json");
@@ -138,18 +144,17 @@ pub fn installed_ui_source(
 /// when its receipt is missing; explicit overrides cannot reclassify it as a
 /// free-standing development source.
 pub fn is_managed_sdk(producer_root: &Path) -> bool {
-    if producer_root.file_name().and_then(|s| s.to_str()) != Some("sdk") {
+    let Some(parent) = sdk_install_parent(producer_root) else {
         return false;
-    }
-    if producer_root.parent().is_some_and(|parent| {
-        parent.join("install-manifest.json").exists()
-            || (parent
-                .join(format!("auto{}", std::env::consts::EXE_SUFFIX))
-                .is_file()
-                && parent
-                    .join(format!("auto-ui-tool{}", std::env::consts::EXE_SUFFIX))
-                    .is_file())
-    }) {
+    };
+    if parent.join("install-manifest.json").exists()
+        || (parent
+            .join(format!("auto{}", std::env::consts::EXE_SUFFIX))
+            .is_file()
+            && parent
+                .join(format!("auto-ui-tool{}", std::env::consts::EXE_SUFFIX))
+                .is_file())
+    {
         return true;
     }
     std::env::current_exe()
@@ -174,10 +179,7 @@ pub struct InstalledSdkReceipt {
 
 impl InstalledSdkReceipt {
     pub fn open(producer_root: &Path) -> AutoResult<Option<Self>> {
-        if producer_root.file_name().and_then(|s| s.to_str()) != Some("sdk") {
-            return Ok(None);
-        }
-        let Some(parent) = producer_root.parent() else {
+        let Some(parent) = sdk_install_parent(producer_root) else {
             return Ok(None);
         };
         let path = parent.join("install-manifest.json");
@@ -199,6 +201,11 @@ impl InstalledSdkReceipt {
             return Err("producer 安装 SDK 清单版本、来源或闭包无效".into());
         }
         Ok(Some(Self { path, raw, doc }))
+    }
+
+    /// Source identity from the exact receipt already validated for this run.
+    pub fn source_revision(&self, owner: &str) -> Option<String> {
+        self.doc["sources"][owner].as_str().map(str::to_owned)
     }
 
     pub fn verify_bytes(&self, rel: &str, bytes: &[u8]) -> AutoResult<()> {
@@ -365,6 +372,9 @@ pub fn validate_development_dependencies(source: &Path) -> AutoResult<()> {
                 .ok()?;
             return doc.get("workspace").map(|_| (root.clone(), doc.clone()));
         }
+        if manifest.get("workspace").is_some() {
+            return Some((dir.to_path_buf(), manifest.clone()));
+        }
         for parent in dir.ancestors().skip(1) {
             if let Ok(text) = fs::read_to_string(parent.join("Cargo.toml")) {
                 if let Ok(doc) = text.parse::<toml::Value>() {
@@ -416,6 +426,8 @@ pub fn validate_development_dependencies(source: &Path) -> AutoResult<()> {
     }
     fn walk(dir: &Path, graph: &mut BTreeMap<PathBuf, Vec<PathBuf>>) -> AutoResult<()> {
         let (canonical, doc) = read_package(dir)?;
+        // Cargo validates package versions even when every incoming edge is path-only.
+        package_version(&canonical, &doc)?;
         if graph.contains_key(&canonical) {
             return Ok(());
         }
@@ -646,6 +658,57 @@ mod plan842_receipt_tests {
         assert!(
             validate_development_dependencies(&root.join("crates/app")).is_err(),
             "wrong package version"
+        );
+    }
+
+    #[test]
+    fn developer_path_only_package_version_must_be_valid() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        for name in ["app", "dep"] {
+            let path = root.join(name);
+            fs::create_dir_all(path.join("src")).unwrap();
+            fs::write(path.join("src/lib.rs"), "").unwrap();
+        }
+        fs::write(
+            root.join("app/Cargo.toml"),
+            "[package]\nname = \"app\"\n[dependencies]\ndep = { path = \"../dep\" }\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("dep/Cargo.toml"),
+            "[package]\nname = \"dep\"\nversion = \"bogus\"\n",
+        )
+        .unwrap();
+        assert!(
+            validate_development_dependencies(&root.join("app")).is_err(),
+            "invalid version without an edge version requirement"
+        );
+        fs::write(root.join("dep/Cargo.toml"), "[package]\nname = \"dep\"\n").unwrap();
+        validate_development_dependencies(&root.join("app")).unwrap();
+        // A package may itself be the workspace root and inherit its version.
+        fs::write(root.join("app/Cargo.toml"), "[package]\nname = \"app\"\nversion.workspace = true\n[workspace]\n[workspace.package]\nversion = \"1.2.3\"\n[dependencies]\ndep = { path = \"../dep\" }\n").unwrap();
+        validate_development_dependencies(&root.join("app")).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_sdk_path_alias_is_managed() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(tmp.path().join("sdk")).unwrap();
+        fs::write(tmp.path().join("install-manifest.json"), b"invalid receipt").unwrap();
+        let alias = tmp.path().join("SDK");
+        assert!(
+            is_managed_sdk(&alias),
+            "same SDK with a different spelling is still managed"
+        );
+        assert!(
+            InstalledSdkReceipt::open(&alias).is_err(),
+            "invalid receipt must not be skipped"
+        );
+        assert!(
+            installed_ui_source(&alias, "auto-ui-runtime", None).is_err(),
+            "UI receipt must not be skipped"
         );
     }
 
