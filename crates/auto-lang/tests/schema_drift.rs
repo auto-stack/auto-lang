@@ -1076,8 +1076,7 @@ fn quote_at(s: &str) -> String {
     format!("\"{}\"", s)
 }
 
-/// Plan 435 P6-2(D1):`cmd_vue.rs::detect_shadcn_components` 安装表（PLAN-832
-/// 起随 CLI 迁独立 auto-man 仓，经兄弟树读取）——
+/// Plan 435 P6-2(D1):UI owner `vue.rs` 的实际 shadcn 安装表——
 /// 构建期 `shadcn-vue add` 可物化的 `@/components/ui/<pkg>` 路径集(vue 映射
 /// 的独立交叉源之一,不依赖 aura.at 自证)。
 fn scan_shadcn_install_table(src: &str) -> BTreeSet<String> {
@@ -1093,6 +1092,25 @@ fn scan_shadcn_install_table(src: &str) -> BTreeSet<String> {
         }
     }
     pkgs
+}
+
+#[test]
+fn plan842_schema_fence_reads_live_ui_install_table() {
+    let source = read("../../../auto-ui/crates/auto-ui-tools/src/vue.rs");
+    let marker = "(\"@/components/ui/button\", \"button\")";
+    assert_eq!(
+        source.matches(marker).count(),
+        1,
+        "probe must change the real entry once"
+    );
+    let packages = scan_shadcn_install_table(&source);
+    assert!(packages.contains("button"));
+    assert!(packages.contains("dialog"));
+    let removed = source.replacen(marker, "(\"@/components/ui/removed\", \"removed\")", 1);
+    assert!(
+        !scan_shadcn_install_table(&removed).contains("button"),
+        "a removed live entry must change the fence input"
+    );
 }
 
 /// Plan 435 P6-2(D1):官方包 `packages/widgets/registry/<pkg>/` 的导出面 ——
@@ -2210,7 +2228,7 @@ fn schema_drift_fence() {
     // import 的 vue 行,其 `@/components/ui/<pkg>` 必须三源之一可解析:
     //   1) 官方包 packages/widgets/registry/<pkg>/:component(含 extras)必须
     //      真被该包导出(index.ts `as <N>` 或 <N>.vue 文件);
-    //   2) cmd_vue.rs detect_shadcn_components 安装表(构建期 shadcn-vue add
+    //   2) auto-ui-tools/vue.rs detect_shadcn_components 安装表(构建期 shadcn-vue add
     //      物化文件);
     //   3) LOCAL_UI_PKGS 白名单(app 本地手写 ui 组件;新增 = 显式事件,
     //      必须在此登记并给出实现位置)。
@@ -2224,10 +2242,10 @@ fn schema_drift_fence() {
             // 双端 class 契约由 ui_gen/nav_contract.rs 单测锁定——482 落地时
             // 只登记了 nav-link,漏了本包(481 merge 修 Slot 红后围栏揭出)。
             ["data-table", "nav", "nav-link", "toast"].into_iter().collect();
-        // PLAN-832 迁仓:cmd_vue.rs(含 detect_shadcn_components 安装表)随 CLI
-        // 承接进独立 auto-man 仓,围栏随迁改读 auto-man 兄弟树——与本测试既有
-        // 的 ../../../auto-ui 兄弟依赖同一布局契约。
-        let installable = scan_shadcn_install_table(&read("../../../auto-man/crates/auto/src/cmd_vue.rs"));
+        // PLAN-842: 安装表真实 owner 为 auto-ui-tools；旧 CLI 文件未挂载，
+        // 不得让历史副本充当当前生成器的独立来源。
+        let installable =
+            scan_shadcn_install_table(&read("../../../auto-ui/crates/auto-ui-tools/src/vue.rs"));
         let registry_root = repo_file("../../packages/widgets/registry");
         let mut bad: Vec<String> = Vec::new();
         for (canon, meta) in &schema.meta {
@@ -2260,7 +2278,7 @@ fn schema_drift_fence() {
         assert!(
             bad.is_empty(),
             "P6-2:aura.at vue import 无法被独立源解析(D1 去自指围栏):\n  {}\n\
-             修复三选一:官方包补导出;cmd_vue.rs 安装表补条目;LOCAL_UI_PKGS \
+             修复三选一:官方包补导出;auto-ui-tools/vue.rs 安装表补条目;LOCAL_UI_PKGS \
              登记本地手写组件(写明实现位置)",
             bad.join("\n  ")
         );
