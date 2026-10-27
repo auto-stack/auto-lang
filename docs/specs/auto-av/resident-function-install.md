@@ -167,3 +167,9 @@ r9 口径：10 样本至少 9 次 ≤2000ms，全部正确性门必过）为常�
 ## PLAN-825：驻留索引身份与精确失效
 
 未改 code `Arc` 跨修订保留驻留索引身份与代际（链接时按 Arc 身份复用，同内容新对象不命中）；被改函数仅重建自身表，旧快照经 Arc 保活旧代码/旧表。索引字节并入共享执行 8 MiB 分区账本（跨代单账本），表构建/分配失败先于该函数可分派。编辑会话计数按函数归因，未改函数 build 恒 0 为常驻 oracle（详见 [loaded-program-runtime](loaded-program-runtime.md)）。
+
+## PLAN-826：WireCodec 增量会话
+
+- 828 增量接口（warmup/restore/persist/edit）带显式 wire 策略：`warmup_with_codec`/`restore_with_codec`/`warmup_persisted_with_codec`；默认 legacy 行为逐字节不变。
+- compact 行落 codec 维度命名空间：同策略温重启 `restore_units_admitted`=全量，跨代冷回退确定性 miss。
+- 未改函数零生产工作/对象/代际恒等在 compact wire 下保持（V-12 四子例实测：builds=1/reuses=2、六阶段计数全零、签名变更精确失效、强制整备无法冒领 reuse）。

@@ -118,3 +118,9 @@ owned/data 各 profile 的 schema-producer-语义身份互斥，交叉 owner 工
 ## PLAN-825：LoadedProgram 恢复与索引重建
 
 恢复的 portable 工件先进既有 envelope/decode/verifier 门再重建执行索引：默认恢复路径重建 `LoadedProgram`，从不反序列化执行索引、宿主地址或恢复 trusted 标记。cache 命中不恢复已序列化索引、不直接 PASS——重验后仍真实执行。装载索引的编辑会话计数按函数归因（`loaded_index_build:<fn>`），全模块门只看 `axis:function` 键增长。执行表示与预算合同见 [loaded-program-runtime](loaded-program-runtime.md)。
+
+## PLAN-826：紧凑 wire 世代与恢复路由
+
+- A09 单元键新增 `abc-codec` 维度（`abc_unit_key_with_codec`，取值 = wire schema）；AVAB 与 AVAC/1 两世代键空间不相交，跨世代查找为确定性 miss/rebuild（O(1) magic+version 世代闸门按策略判）。
+- `ModuleManifest` 新增 `abc_codec` 字段（serde 默认 = 旧 AVAB schema，旧 manifest 恢复行为不变；不入 fingerprint——codec 差异已由 payload_fp 区分）。restore 按 manifest codec 路由解码/准入，未知 codec 拒绝；恢复不继承授权，current grants 必检。
+- 新旧 wire 均不恢复 trusted；每一层 envelope→decode→verify 重验。cache 命中不恢复序列化执行索引或 PASS。

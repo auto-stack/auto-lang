@@ -233,3 +233,9 @@ case/worker、脚本控制与 stale-evidence 身份（41 文件 hash+依赖 HEAD
 ## PLAN-825：ac-av/loaded-run-v1 recipe
 
 append-only 注册 `ac-av/loaded-run-v1`（与 closures/dynamic 等既有 recipe 互不复用 id）；`av-abc-825` 语料（B01/B04/B09/B13/B14 + first-case/lifecycle）走真实 source→HIR→MIR→ABC→AV→store→新 worker 恢复。父侧 judge 按独立 expected 判定并要求运行计数轴：成功优化 run 的 loaded build/PC/参数计数非零、reference PC 扫描/拷贝为零（反向 reference 路径要求对偶计数）。零选择、ignored、重复、伪 tier、抹峰值与错结果 counter-control 必使门非零；compat 收据绑定 HEAD 祖先 + 证据 log hash + 脚本身份。
+
+## PLAN-826：ac-av/compact-run-v1 recipe
+
+- 追加 recipe `ac-av/compact-run-v1`（REGISTERED_PROBE_RECIPES + avworker/1 步骤词汇 run|edit-source + av binding；worker case-serve 接受并 `set_wire_compact`）。核心版本轴 = EXPECTED_AV_CORE_VERSION；工具身份轴 `av-wire-codec=auto.abc.av-compact-core-i32/1`。
+- fixtures `test/cases/av-abc/826/`（first-case 同 825 首例源）；父侧 `judge_compact_runtime` 以 `abc_wire_compact_units/closure` + loaded 计数器判真，`AV826_JUDGE_SABOTAGE` 四轴反控 + 错 oracle。
+- scoped 验证入口 `scripts/verify-av-826.ps1`：first/targeted/compat/incremental/baseline/bench 六 scope 聚合进 acceptance；Assert-Selected 拒绝 0 选择/ignored/缺失/重复必需例（guard self-test 自证）。

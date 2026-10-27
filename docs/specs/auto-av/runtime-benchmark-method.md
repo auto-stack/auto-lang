@@ -15,3 +15,9 @@ AV reference、AV LoadedProgram、V8 JS Ignition、V8 Wasm Liftoff、V8 Wasm 优
 ## 完整性与反控
 
 任一必需引擎/负载/tier、阶段、结果、进程峰值或 raw 样本缺失即不完整。零选择、ignored、重复、伪 tier、抹峰值与错结果反控必须使父侧门非零；未知工具或 tier 是缺口不是通过。原 798 编辑负载保持独立硬门：P95 低于一秒与原受管/进程内存上限；新基准微例不替代该负载及其双行内存证据。AV worker 测量用 `--release`（与 798 formal runner 一致），debug 计时不得顶替该合同。
+
+## PLAN-826：wire 体积与分段测量
+
+- 追加新 wire 分段/压缩/loaded 体积口径：raw（两代）+ gzip 同算法同参数（.NET GZipStream Optimal）+ loaded/执行计时；engine 行走 compact 准入路径；报告 schema `av.wire.826.bench/1`（13 工作负载 × 2 wire size 行 + 50 分布组，2176 原始行全量校验）。
+- 四组冻结引擎入口：av-reference/av-loaded（compact wire）、V8 JS Ignition（`--jitless --print-bytecode`）、V8 Wasm Liftoff（`--liftoff-only --no-wasm-tier-up --no-wasm-dynamic-tiering`）、V8 Wasm TurboFan（`--no-liftoff`）；tier 证据必须来自被 flags 钉住的实际运行输出。
+- 编码域 ≠ 准入域：ULEB 可表达的索引号与实际表长内合法 ref 分离断言；缺 process-peak 计数器的伪数据必须被分析器拒绝（负控），不得静默 PASS。

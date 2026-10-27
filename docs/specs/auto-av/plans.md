@@ -2,6 +2,7 @@
 
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |---|---|---|---|---|
+| 826 | AV紧凑ABC格式与字节码体积 | ✅（delivered，T-07 最终 PASS） | [计划](../../plans/archive/826-av-compact-abc-format-and-size.md) | av.core-i32/1 第二 wire 世代 AVAC/1：canonical ULEB/section 目录/有界解码、AVAB 双世代隔离与 A09 abc-codec 键、825 LoadedProgram 同深准入、828 WireCodec 增量会话、双 wire 体积/装载/V8·Wasm 四引擎对标（ratio 0.361–0.856）；[compact-abc-format.md](compact-abc-format.md) |
 | 858 | ACE 开发期周转口径与 feature 边界 | 已复审（r4） | [858](../../plans/archive/858-autographics-m2-game-samples-and-api-gaps.md) | 当前 ACE 周转门 P90≤2000ms、真实样本和非时延约束保持；历史 P95 数据不改写，长期目标待架构成形后实测。 |
 | 824 | AV动态Variant与可移植冻结 | ✅ delivered（R3 最终 PASS） | [计划](../../plans/archive/824-av-dynamic-values-freeze.md) | av.dynamic/1 的受检类型擦除、portable 树及类型资源/取消边界；[dynamic-portable-values.md](dynamic-portable-values.md) |
 | 821 | AV Place拥有型读写与全出口清理 | ✅（delivered，R6 最终 PASS） | [计划](../../plans/archive/821-av-place-owned-access.md) | av.owned/1 owned profile：FIELDMOVE 逐字段消费（前缀重叠/重初始化重置）+mut 写回全形状+四线资源量纲+D828 单函数常驻前端双通道会话（未改单元前端生产=0、坐标随发布平移、通道感知退化门）；[place-ownership.md](place-ownership.md) |

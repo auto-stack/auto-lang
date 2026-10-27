@@ -6,4 +6,4 @@ PLAN-798：有限ABC/验证/AV执行与持久产物探针；不改变旧VM产品
 
 [计划来源](plans.md)；[架构决策](architecture.md)。
 
-PLAN-824 增加实验性 [av.dynamic/1 类型擦除与 portable owned 树](dynamic-portable-values.md)；保留 typed 入口和源码/native 缺口。PLAN-823 增加实验性 [av.closures/1 类型化闭包环境](closure-environments.md)（move/clone 逃逸捕获、同步借用纪律、增量会话与 824 身份互斥）；源码闭包/native ABI 缺口保留。PLAN-825 增加 [av.core-i32/1 私有装载执行层](loaded-program-runtime.md)（O(1) PC 查表、函数级驻留索引、共享执行预算；参考路径保留）与 [运行基准方法](runtime-benchmark-method.md)。
+PLAN-824 增加实验性 [av.dynamic/1 类型擦除与 portable owned 树](dynamic-portable-values.md)；保留 typed 入口和源码/native 缺口。PLAN-823 增加实验性 [av.closures/1 类型化闭包环境](closure-environments.md)（move/clone 逃逸捕获、同步借用纪律、增量会话与 824 身份互斥）；源码闭包/native ABI 缺口保留。PLAN-825 增加 [av.core-i32/1 私有装载执行层](loaded-program-runtime.md)（O(1) PC 查表、函数级驻留索引、共享执行预算；参考路径保留）与 [运行基准方法](runtime-benchmark-method.md)。PLAN-826 增加 [AVAC/1 紧凑 wire 世代](compact-abc-format.md)（同一标量 profile 的第二 wire：canonical ULEB、section 目录、有界解码与双世代隔离路由；参考路径与旧 codec 保留）。

@@ -74,3 +74,9 @@ v4/5/16/0x2F-0x31）与交叉拒绝为现行合同，整合前旧登记为历史
 ## PLAN-825：标量 LoadedProgram 优化执行层
 
 `av.core-i32/1` 的私有装载执行层与受检参考路径共存：O(1) 逻辑 PC 查表、驻留参数表、按函数身份复用索引与共享执行预算。实际边界、可观测与 recipe 规则见 [loaded-program-runtime](loaded-program-runtime.md)；对标口径见 [runtime-benchmark-method](runtime-benchmark-method.md)。不扩 source/类型/CTE/native 面，不引入 JIT/unsafe/NaN-boxing；data/owned/collections 等已交付 profile 保持具名受检参考路径，未获标量优化 fallback。
+
+## PLAN-826：紧凑 ABC wire 世代（AVAC/1）
+
+- 实际优化面：同一标量语义 profile 的第二 wire 世代，raw 体积全组更小（13 组实测 ratio 0.361–0.856；852 五源基线 917/1739=0.527；gzip 同算法同参数分列见 bench 口径）。密度目标 BIN=5B/COPY=3B/RETURN=2B/CONST=3B（section 差分实测）。
+- 未实现面如实登记：短立即数/slot 复用/指令融合/常量池重写未实现（未来采用需新 wire version 与独立语义/密度反控）；不承诺公共稳定 ABI；无 lazy trust/JIT。
+- data/owned/collections/closures/dynamic 仍为 legacy 受检参考路径（compat 回归 5+7+8 无扩面/退化）。

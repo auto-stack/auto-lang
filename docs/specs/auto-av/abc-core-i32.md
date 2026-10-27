@@ -23,3 +23,9 @@ FLAG_IS_UNIT明确类别，不从函数数推断。单函数完整模块和unit�
 AV显式frame/slot栈，不以guest递归消耗宿主递归栈。默认≤100万逻辑指令、1024帧、8MiB活槽、2s墙钟；取消至多每1024条逻辑指令检查，测试trace≤64KiB。分配前检查根/子帧预算，成功/trap/fuel/cancel均报告实际峰值。成功值、语言trap、resource/cancel和infra分态；先前合法效果保留，不把未走分支trap提前为编译错误。
 
 来源sidecar与当前snapshot/函数适用性绑定；空或不覆盖可trap指令的sidecar不能抹掉诊断来源，必要时从当前source重推导。热编辑尚不复用完整LoadedModule：当前会重新组装、编码/解码/验证闭包，再执行入口。真实驻留函数装载/安装/旧调用保活属于828，尚未由798交付。
+
+## PLAN-826：同 profile 双 wire 世代路由
+
+- 同一语义 profile（`av.core-i32/1`）的两个 wire 世代：AVAB/2（legacy）与 AVAC/1（compact），按 magic 隔离、双向不互相解释/准入；旧缓存键确定性 miss。
+- `verify_compact_abc[_bytes]` 为 AVAC 唯一 LoadedModule 准入入口（与 verify_abc 同深准入：owner 重盖章 + deadline verify + executable-closure 凭证）。详见 [compact-abc-format](compact-abc-format.md)。
+- 未知 magic/profile 拒绝而非猜测；kind/entry/imports 等必需元数据消费 D798 已交付合同，不由函数数推断。
