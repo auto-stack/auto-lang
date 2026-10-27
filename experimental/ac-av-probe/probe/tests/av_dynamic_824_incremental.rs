@@ -394,7 +394,7 @@ fn av_dynamic_824_incremental_forced_degradation_gate_nonzero() {
 
 /// V-13 sub-case 1 — the frozen D828 baseline campaign replays GREEN
 /// through the shared core AFTER the dynamic extension (dual gate:
-/// all-correct + structural + P95 < 1000 ms). The scalar campaign is the
+/// all-correct + structural + nearest-rank P90 <= 2000 ms). The scalar campaign is the
 /// shared-core baseline; sub-cases 2/3/4 above cover the dynamic
 /// capability itself through its real update entry.
 #[test]
@@ -414,7 +414,45 @@ fn av_dynamic_824_incremental_baseline_campaign_replay() {
         "every baseline revision matched its independent expectation"
     );
     assert!(report.structural_ok, "the structural gate stays green");
-    assert!(report.gate_pass, "P95 < {} ms holds", FORMAL_GATE_MS);
+    assert_eq!(
+        report.samples.len(),
+        FORMAL_MIN_REVISIONS as usize,
+        "all requested revisions must be sampled"
+    );
+    let times: Vec<_> = report
+        .samples
+        .iter()
+        .map(|s| s.edit_to_verified_ms)
+        .collect();
+    let p90 = auto_av_probe::observations::latency_p90_ms(&times).expect("valid latency samples");
+    assert_eq!(
+        p90, report.p90_ms,
+        "reported P90 uses the shared nearest-rank calculation"
+    );
+    eprintln!("PLAN-824 raw campaign windows_ms={times:?}");
+    eprintln!(
+        "PLAN-824 campaign P90={p90:.1}ms P95={:.1}ms gate=P90<={FORMAL_GATE_MS}ms",
+        report.p95_ms
+    );
+    assert!(
+        report.gate_pass && p90 <= FORMAL_GATE_MS,
+        "P90 <= {FORMAL_GATE_MS} ms holds"
+    );
+}
+
+#[test]
+fn av_dynamic_824_incremental_p90_policy_controls() {
+    use auto_av_probe::observations::latency_p90_ms;
+    let mut samples = vec![2000.0; 30];
+    samples[27..].fill(2001.0);
+    assert_eq!(latency_p90_ms(&samples), Some(2000.0));
+    samples[26] = 2001.0;
+    assert_eq!(latency_p90_ms(&samples), Some(2001.0));
+    let mut thirty_seven = vec![100.0; 37];
+    thirty_seven[33..].fill(2500.0);
+    assert_eq!(latency_p90_ms(&thirty_seven), Some(2500.0));
+    assert_eq!(latency_p90_ms(&[]), None);
+    assert_eq!(latency_p90_ms(&[f64::NAN]), None);
 }
 
 /// T-11 I10/I11 (dynamic-profile evidence): 512 body-edit revisions

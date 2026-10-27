@@ -1362,8 +1362,8 @@ mod tests {
         }
         let err = DynValue::pack(val, ty).unwrap_err();
         assert_eq!(err.code(), "av.resource.dyn-depth");
-        // A 300-deep hand-built wire is rejected at the same budget by
-        // unfreeze (admission consistent across pack and decode).
+        // A child record under a field declared I32 is malformed. F02 must
+        // reject this mismatch before any later depth limit is reached.
         let mut body = i32_node(1);
         for _ in 0..299 {
             let mut b = tydesc(&DynType::record("deep", "N", vec![("x", DynType::I32)]));
@@ -1380,6 +1380,35 @@ mod tests {
         }];
         assert_eq!(
             unfreeze(&wire300, &ctx(&binding, &[]), &TraversalOptions::default()),
+            Err(PortableError::Invalid { reason: "type" })
+        );
+
+        // Independently encode a TYPE-CONSISTENT list chain: each node's
+        // descriptor is List^(remaining)<I32>, followed by one list child.
+        // This reaches the real depth limit without a nominal mismatch.
+        let list_chain = |nodes: usize| {
+            let mut body = Vec::new();
+            for remaining in (0..nodes).rev() {
+                body.extend(std::iter::repeat(8).take(remaining)); // TY_LIST
+                body.push(1); // TY_I32
+                if remaining > 0 {
+                    body.push(9); // TAG_LIST
+                    body.extend_from_slice(&1u32.to_le_bytes());
+                } else {
+                    body.push(0); // TAG_I32
+                    body.extend_from_slice(&1i32.to_le_bytes());
+                }
+            }
+            wire(nodes as u32, &body)
+        };
+        let within = list_chain(256);
+        assert!(
+            unfreeze(&within, &ctx(&[], &[]), &TraversalOptions::default()).is_ok(),
+            "a type-consistent depth-256 value must restore"
+        );
+        let beyond = list_chain(257);
+        assert_eq!(
+            unfreeze(&beyond, &ctx(&[], &[]), &TraversalOptions::default()),
             Err(PortableError::Budget {
                 code: "av.resource.dyn-depth"
             })

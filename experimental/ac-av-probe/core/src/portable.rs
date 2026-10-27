@@ -99,7 +99,7 @@ pub enum PortableError {
     /// Bad wire: magic / version / kind / flags / reserved / node-count /
     /// tag / tydesc / bool-domain / char-domain / utf8 / duplicate-field /
     /// duplicate-arm / name-length / field-count / arm-count / type /
-    /// type-depth / truncated / trailing / checksum.
+    /// truncated / trailing / checksum.
     Invalid {
         reason: &'static str,
     },
@@ -812,8 +812,8 @@ fn read_tydesc(
     embedded: bool,
 ) -> Result<DynType, PortableError> {
     if depth > MAX_DYN_DEPTH {
-        return Err(PortableError::Invalid {
-            reason: "type-depth",
+        return Err(PortableError::Budget {
+            code: "av.resource.dyn-depth",
         });
     }
     t.charge_steps(1)?;

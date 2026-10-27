@@ -49,6 +49,7 @@ function Run-Probe-Tests {
     try {
         $args = @('test', '-p', 'auto-av-probe', '--test', $Bin)
         if ($Filter) { $args += $Filter }
+        if ($Bin -eq 'av_dynamic_824_incremental') { $args += @('--', '--nocapture') }
         $out = & cargo @args 2>&1 | Out-String
         Write-Host $out
         Assert-Selected -Output $out -Bin $Bin -Filter $Filter -Label $Label -RequiredIds $RequiredIds
@@ -63,7 +64,7 @@ function Run-Probe-Tests {
 
 function Run-Lang-Tests {
     param([string]$Filter, [string]$Label, [string[]]$RequiredIds = @())
-    $out = & cargo test -p auto-lang --lib --features auto-lang/test-cases $Filter -- --test-threads=1 2>&1 | Out-String
+    $out = & cargo test -p auto-lang --lib --features auto-lang/test-cases $Filter -- --test-threads=1 --nocapture 2>&1 | Out-String
     Write-Host $out
     Assert-Selected -Output $out -Bin 'auto-lang/lib' -Filter $Filter -Label $Label -RequiredIds $RequiredIds
     if ($LASTEXITCODE -ne 0) {
@@ -159,6 +160,7 @@ $REQ = @{
         'av_dynamic_824_resources_worker_memory_hard_gate_parent_sampled'
     )
     'incremental' = @(
+        'av_dynamic_824_incremental_p90_policy_controls',
         'av_dynamic_824_incremental_body_edit_identity',
         'av_dynamic_824_incremental_signature_and_grant_lifecycle',
         'av_dynamic_824_incremental_forced_degradation_gate_nonzero',

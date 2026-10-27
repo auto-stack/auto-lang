@@ -1010,13 +1010,30 @@ fn av_resources_peak_sampler_distinguishes_transient_spike() {
 fn av_turnaround_two_line_memory_gate() {
     use auto_av_probe::bench::{validate_and_gate, BenchSummary, SampleRow, SCENARIOS};
     // Supply valid raw windows so only the memory lines can fail.
-    let rows: Vec<SampleRow> = SCENARIOS.iter().map(|&scenario| SampleRow {
-        scenario, sample: 0, revision: 1, wall_ms: 1.0, ok: true,
-        value: None, expected: None, diag: None, source_hash: scenario.to_string(),
-        cache_hit_abc: 0, cache_miss_abc: 0, mir_lower_modules: 0,
-        mir_units_persisted: 0, abc_units_emitted: 0, closure_encodes: 0,
-        av_execute: 0, peak_staging_bytes: 0, peak_hot_bytes: 0, av_peak_slot_bytes: 0,
-    }).collect();
+    let rows: Vec<SampleRow> = SCENARIOS
+        .iter()
+        .map(|&scenario| SampleRow {
+            scenario,
+            sample: 0,
+            revision: 1,
+            wall_ms: 1.0,
+            ok: true,
+            value: None,
+            expected: None,
+            diag: None,
+            source_hash: scenario.to_string(),
+            cache_hit_abc: 0,
+            cache_miss_abc: 0,
+            mir_lower_modules: 0,
+            mir_units_persisted: 0,
+            abc_units_emitted: 0,
+            closure_encodes: 0,
+            av_execute: 0,
+            peak_staging_bytes: 0,
+            peak_hot_bytes: 0,
+            av_peak_slot_bytes: 0,
+        })
+        .collect();
     let mk = |frontend: Option<u64>, overall: Option<u64>| BenchSummary {
         frontend_peak_bytes: frontend,
         private_bytes_peak: overall,
