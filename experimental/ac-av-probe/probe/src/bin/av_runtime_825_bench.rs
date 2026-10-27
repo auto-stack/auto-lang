@@ -61,6 +61,7 @@ fn chain(blocks: usize) -> MirModule {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m
 }
@@ -110,6 +111,7 @@ fn long_block() -> MirModule {
         entry: 0,
         source_snapshot: 0,
         spans: vec![],
+        env: None,
     });
     m
 }
