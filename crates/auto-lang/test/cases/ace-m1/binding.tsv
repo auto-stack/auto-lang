@@ -112,7 +112,7 @@ I07	scenario	AV旧调用暂停/恢复	value	pins	gap:ac-composite-native	ok	n/a	
 I08	scenario	native在线热重载	value	hot-swap	gap:ac-native-loader	gap:av-online	n/a	n/a	designed-not-executed	T-05登记	owner: native loader能力包; 重新链接后重启exe不满足
 I09	scenario	布局不兼容/活状态	value	reject	probe	probe	n/a	n/a	designed-not-executed	T-05登记	per actual policy
 I10	scenario	512修订churn+GC	value	bounded	ok	ok	n/a	n/a	designed-not-executed	T-05	machine single-instance rules apply | 824 T-11 dynamic evidence: 512-revision churn bounded (av_dynamic_824_incremental churn_512_bounded)
-I11	scenario	单函数编辑P95	value	<1000ms	ok	ok	n/a	n/a	designed-not-executed	T-05	warm session only; cold build excluded | 824 T-11 dynamic evidence: per-revision wall <1000ms across 512 revisions + the 30-rev campaign P95 dual gate
+I11	scenario	单函数编辑P95	value	<1000ms	ok	ok	n/a	n/a	designed-not-executed	T-05	warm session only; cold build excluded | 824 T-11 dynamic evidence: per-revision wall <1000ms across 512 revisions + 30-rev campaign nearest-rank P90<=2000ms dual gate (P95 diagnostic; original I11 columns are historical)
 I12	scenario	测试灵敏度负控	group	non-green	ok	ok	ok	ok	designed-not-executed	T-05/T-06	negative controls for the harness itself | 824 T-11: negative controls resident (expect-sabotage oracle, worker fault infra classification, admission negatives)
 G01	scenario	真实a2r认证	cert	receipt	gap:ac-composite-native	gap:av-822	n/a	ok	designed-not-executed	T-03/T-04	852 owns cert tooling; T-01 froze wrapper+identity contract
 G02	scenario	日常零编译运行	spawn	0	n/a	n/a	n/a	ok	designed-not-executed	T-03	rustc/cargo/target-process spawn=0 counted

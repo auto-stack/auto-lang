@@ -49,7 +49,10 @@ function Run-Probe-Tests {
     try {
         $args = @('test', '-p', 'auto-av-probe', '--test', $Bin)
         if ($Filter) { $args += $Filter }
-        if ($Bin -eq 'av_dynamic_824_incremental') { $args += @('--', '--nocapture') }
+        # All probe binaries run serially: resource peak sampling and the
+        # incremental timing cases must not compete inside one libtest.
+        $args += @('--', '--test-threads=1')
+        if ($Bin -eq 'av_dynamic_824_incremental') { $args += '--nocapture' }
         $out = & cargo @args 2>&1 | Out-String
         Write-Host $out
         Assert-Selected -Output $out -Bin $Bin -Filter $Filter -Label $Label -RequiredIds $RequiredIds

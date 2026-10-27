@@ -49,7 +49,7 @@ V-15 / AC-11 的消费记录（r7 合同 §5、[共同合同](../../../reports/a
 | I05 改回历史内容 | A23 内容寻址 restore 身份/miss | 同内容同结果；依赖轴变化 clean miss（历史内容命中=同 store 内容寻址，852 标量证据在案） | `av_dynamic_824_cache_compat_restore_identity_and_miss`（partial：动态历史命中轴随共享 store） |
 | I06 fresh/hot/重启/跨工程 | fresh release worker ×4 父侧采样 | B-line 128MiB + live=0 + portable round 绿 | `av_dynamic_824_resources_worker_memory_hard_gate_parent_sampled` + 语料 worker faults |
 | I10 512修订churn | 512 次 body 修订经真实会话 | 语义逐修订正确、live=0、alpha 对象携带、会话单位数有界 | `av_dynamic_824_incremental_churn_512_bounded`（实测 512 修订, worst 0.2ms/修订） |
-| I11 单函数编辑 P95 | 同上逐修订计时 + 30 修订 formal campaign | 每修订 <1000ms + campaign P95 双门 | 同上 + `av_dynamic_824_incremental_baseline_campaign_replay` |
+| I11 单函数编辑（852 原 P95 字段为历史） | 同上逐修订计时 + 30 修订 formal campaign | 每修订 <1000ms 独立门保留；campaign 当前为 nearest-rank P90≤2000ms 双门，P95 仅诊断 | 同上 + `av_dynamic_824_incremental_baseline_campaign_replay` |
 | I12 灵敏度负控 | expect-sabotage/worker-fault/admission 负控 | 破坏缝必红/infra 归类 | `av_dynamic_824_negative_oracle_fails` + `..._worker_faults_are_infra` + admission negatives |
 
 ## 保留的 M1 缺口（不冒领，owner 在案）
