@@ -1358,10 +1358,26 @@ fn fast() str {
 #[test]
 fn plan705_gate_default_callgraph_no_busy_wait() {
     let manifest = env!("CARGO_MANIFEST_DIR");
-    let src = std::fs::read_to_string(
-        std::path::Path::new(manifest).join("../auto-lang-core/src/vm/ffi/http_server.rs"),
-    )
-    .expect("read http_server.rs");
+    // PLAN-843：http_server 拆分后扫描面=入口+server_* 族文件（随 owner 迁移；
+    // 断言语义不变——全树恰 1 处 legacy 标记调用点）。
+    let base = std::path::Path::new(manifest).join("../auto-lang-core/src/vm/ffi");
+    let mut src =
+        std::fs::read_to_string(base.join("http_server.rs")).expect("read http_server.rs");
+    let fam_dir = base.join("http_server");
+    let mut fams: Vec<_> = std::fs::read_dir(&fam_dir)
+        .expect("read http_server family dir")
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().map_or(false, |x| x == "rs"))
+        .collect();
+    fams.sort();
+    for f in &fams {
+        src.push_str(
+            "
+",
+        );
+        src.push_str(&std::fs::read_to_string(f).expect("read family file"));
+    }
     let mut unmarked: Vec<String> = Vec::new();
     let mut legacy = 0usize;
     let lines: Vec<&str> = src.lines().collect();

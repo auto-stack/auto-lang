@@ -457,8 +457,16 @@ widget App {{
             !src.contains("(9920, NATIVE_DIFF_FILES_WINDOW"),
             "9920 撞号残留（ui.focus 独占位）"
         );
-        // trans 裸名臂（a2r 轨）。
-        let tr = include_str!("../../../auto-lang-core/src/trans/rust.rs");
+        // trans 裸名臂（a2r 轨）。PLAN-843：rust.rs 拆分后臂随 call_emit，
+        // 扫描面=入口+族文件（随 owner 迁移，断言语义不变）。
+        let mut tr = include_str!("../../../auto-lang-core/src/trans/rust.rs").to_string();
+        tr.push_str(
+            "
+",
+        );
+        tr.push_str(include_str!(
+            "../../../auto-lang-core/src/trans/rust/call_emit.rs"
+        ));
         assert!(tr.contains("diff_files_window"), "trans 裸名臂在册");
         // ui_gen handler 直调臂。
         let ug = // PLAN-814 T-03：rust 生成器迁 auto-ui-compiler；指纹探针引同仓单源。
