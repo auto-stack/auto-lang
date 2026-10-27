@@ -5042,6 +5042,41 @@
           "completed_at": null,
           "created_at": 0,
           "modified": 0
+        },
+        {
+          "id": "P825-MERGE",
+          "title": "PLAN-825 合并沉淀收据（r6）",
+          "status": "stable",
+          "file": "docs/plans/archive/825-av-loaded-program-runtime-efficiency.md",
+          "tags": [
+            "plan:825 rev:6",
+            "delivered:2026-10-28",
+            "commit:9eb9ebca3"
+          ],
+          "content": "交付 av.core-i32/1 私有装载执行层与运行基准方法（canonical specs：loaded-program-runtime.md 新建、runtime-benchmark-method.md 新建、cache/project/resident/architecture/ace-m1 五处增量）；master 同步 823/824 落地（merge 并集：Loaded+Closures+Dynamic recipe 注册、MirFunction env 适配、auto-ui 兄弟 bd228b0）；rebase 到 858/843 收尾后线性落地（代码树与门禁基线 80c6acb6d diff=0，range-diff 等价，bench env 修复摊平丢失已补回）。merge-owned 门禁：裸 cargo t 3203/3203、cargo tv 163/163、probe workspace 全档 691/691；门禁中发现并修复 mn structural_deltas 与 827 全模块门的计数器合同冲突。ledger 经 guarded offline projection 写入（store 无响应，备份 .bak-p825-merge 保留）。"
+        },
+        {
+          "id": "P843-MERGE-R1",
+          "title": "PLAN-843 合入收据 r1",
+          "status": "stable",
+          "file": "docs/plans/archive/843-language-core-structure-and-module-ownership.md",
+          "tags": [
+            "plan:843 rev:1",
+            "delivered:37cf4b19c"
+          ],
+          "content": "U843 合入闭环：G843 门核验→T-01..T-09 work→T-10 final pass→T-11 冻结门在重定基后全绿（裸 t 首两红=CTE 冷态 worker+plan705/716 pin 迁移均已修复；823 落地致基线前移、组合基线复跑）→ff-only 落地 37cf4b19c→SD-01..05 沉淀→ledger v109→110 离线投影（backup bak-p843-merge，无 store writer 可达）。"
+        },
+        {
+          "id": "PLAN-826-DEPOSIT",
+          "title": "PLAN-826 SD-01..08 canonical 沉淀",
+          "status": "stable",
+          "file": "docs/specs/auto-av/compact-abc-format.md",
+          "tags": [
+            "plan:826 rev:6",
+            "commit:89574bb8d",
+            "sd:01-08"
+          ],
+          "content": "SD-01 add compact-abc-format.md；SD-02..08 modify cache-and-conformance/project/abc-core-i32/runtime-benchmark-method/resident-function-install/auto-test-case architecture+ace-m1-conformance；bench-r1 实测：13 负载双 wire ratio 0.361-0.856、四引擎冻结入口 tier 证据、turnaround 六场景 P95=847ms、V-10 负控拒绝伪数据（证据本地 attachments/826/bench-r1，摘要入 plan 文件）。"
         }
       ],
       "section_type": "Reports",
@@ -17055,6 +17090,41 @@
           "completed_at": null,
           "created_at": 0,
           "modified": 0
+        },
+        {
+          "id": "P825-LOADED-RUNTIME",
+          "title": "PLAN-825 装载执行表示合同（av.core-i32/1 优化层）",
+          "status": "stable",
+          "file": "docs/specs/auto-av/loaded-program-runtime.md",
+          "tags": [
+            "plan:825 rev:6",
+            "delivered:2026-10-28",
+            "commit:9eb9ebca3"
+          ],
+          "content": "私有 LoadedProgram 执行层：O(1) 逻辑 PC 查表与驻留参数表替代每指令前置块累加；MIR/ABC 仍为唯一语义/持久合同，索引恢复后重建、从不序列化为可信状态。函数身份复用：未改 code Arc 跨修订保留索引身份与代际，同内容新对象不命中；编辑会话仅被改函数的 loaded_index_build:<fn> 计数可增长（827 全模块门只许 axis:function 键涨、mn structural_deltas 视未改函数键增长为禁做工作——两合同同时满足），复用证据走 loaded_program() 聚合 API。索引字节并入共享执行 8MiB 单账本（跨代）。recipe ac-av/loaded-run-v1 父侧 judge 要求独立结果+loaded 计数非零+reference 扫描/拷贝为零。对标口径 runtime-benchmark-method.md（引擎/tier 身份冻结、798 编辑 P95<1s 硬门保持）。"
+        },
+        {
+          "id": "P843-ARCH-CONTRACT",
+          "title": "language-sdk 内部架构：模块职责 DAG 与结构规则（PLAN-843 结构半部）",
+          "status": "stable",
+          "file": "docs/specs/language-sdk/architecture.md",
+          "tags": [
+            "plan:843 rev:1",
+            "delivered:37cf4b19c"
+          ],
+          "content": "七热点+根 lib 按语义职责拆主题模块（parser 六语法族/codegen 发射族+尾递归派发/engine 状态族+ops 段/native 12 域 pub use 门面/ffi stdlib·http_server 域族/trans rust 六族/lib→entry+flags）；入口仅组合派发、共享状态唯一 owner、跨族最小 pub(super)、巨型 match=连续臂切片尾递归链（臂体逐字/首匹配序不变）、巨型 if 链不手术；源码指纹面与源码 pin 测试随 owner 迁移。残留口径（stdlib 5679/http_server 4156/rust 5960 生产行与 call_inner if 链）记 KNOWN-DEBT P843 交 844。"
+        },
+        {
+          "id": "AV-COMPACT-ABC-FORMAT",
+          "title": "AV紧凑ABC wire世代（AVAC/1）格式合同",
+          "status": "stable",
+          "file": "docs/specs/auto-av/compact-abc-format.md",
+          "tags": [
+            "plan:826 rev:6",
+            "commit:89574bb8d",
+            "delivered:2026-10-28"
+          ],
+          "content": "av.core-i32/1 同一标量语义 profile 的第二 wire 世代：magic AVAC/1、canonical ULEB128/u32（≤5B 最短编码）、12B 头+9B 目录+5 必需 section 连续覆盖到 EOF、BIN=5B/COPY=3B/RETURN=2B 密度；编码域不等于准入域（decode 只产未授信 MIR，verify_compact_abc 是 AVAC 唯一 LoadedProgram 准入）；双世代键空间隔离与 abc_codec manifest 路由；分配前预算与 format/resource/semantic 分态。"
         }
       ],
       "section_type": "Designs",
@@ -21212,6 +21282,28 @@
           "completed_at": null,
           "created_at": 0,
           "modified": 0
+        },
+        {
+          "id": "P825-TESTS",
+          "title": "PLAN-825 测试资产（av_runtime_825 族与 loaded recipe）",
+          "status": "stable",
+          "file": "docs/specs/auto-test-case/architecture.md",
+          "tags": [
+            "plan:825 rev:6",
+            "delivered:2026-10-28"
+          ],
+          "content": "probe tests av_runtime_825_{first_case,semantics,incremental,baseline}（含函数级索引归因、身份/零工作 oracle）+ 主仓 av_runtime_825_tests（语料绿/父侧敏感反控）+ 语料 crates/auto-lang/test/cases/av-abc/825/（B01/B04/B09/B13/B14 五源 SHA 同源于 852）+ recipe ac-av/loaded-run-v1（append-only 注册）+ scripts/verify-av-825.ps1 六 Scope（first/targeted/incremental/baseline/bench/compat + acceptance 汇总，compat 收据五字段断言链）。828 b2/827 增量门为常驻回归面。"
+        },
+        {
+          "id": "AV-WIRE-826-CONTRACTS",
+          "title": "av_wire_826 六族合同测试与 compact-run-v1 recipe",
+          "status": "stable",
+          "file": "docs/specs/auto-test-case/architecture.md",
+          "tags": [
+            "plan:826 rev:6",
+            "commit:89574bb8d"
+          ],
+          "content": "probe av_wire_826_{first_case,targeted,security,compat,incremental,baseline} 六族 + parallel/826 同源壳 9/9 + recipe ac-av/compact-run-v1（工具身份轴 av-wire-codec）+ 父侧 judge_compact_runtime 计数器判真与 AV826_JUDGE_SABOTAGE 反控；scripts/verify-av-826.ps1 六 scope 聚合 acceptance（Assert-Selected 拒 0 例/ignored/缺失/重复）。"
         }
       ],
       "section_type": "Tests",
@@ -28295,6 +28387,40 @@
           "completed_at": null,
           "created_at": 0,
           "modified": 0
+        },
+        {
+          "id": "P825-REVIEW-R2",
+          "title": "PLAN-825 最终复审 R2 pass",
+          "status": "stable",
+          "file": "docs/plans/825-av-loaded-program-runtime-efficiency.md",
+          "tags": [
+            "plan:825 rev:6",
+            "reviewed:9eb9ebca3~b1e90a06c"
+          ],
+          "content": "final R2 pass（绑定 b1e90a06c，rebase 后 delivery=9eb9ebca3 代码树 diff=0）：F-825-R1-01/02 保持关闭；时间门阻塞解除（安静窗口 release P95=823.5651ms<1000、内存双门绿、三轮历史失败归因外部负载）；823/824 合并后消费者并集全绿（av_ 族 453、827 结构门经函数级计数器归因修复、828 b2 14+contract 22、cache 20、主仓 closures 5/dynamic 3/825 3）；SD delta 冻结件 SHA 180584...568f 复核一致。merge 门禁中发现并修复 mn/827 计数器合同冲突（未改函数计数键不得暴露），全部定向面+incremental scope 复验绿。"
+        },
+        {
+          "id": "P843-REVIEW-R1",
+          "title": "PLAN-843 最终复审 pass（T-10）",
+          "status": "stable",
+          "file": "docs/plans/843-language-core-structure-and-module-ownership.md",
+          "tags": [
+            "plan:843 rev:1",
+            "reviewed:8bad8002a~e3c0a53d0"
+          ],
+          "content": "final pass（与实施同会话，结论自工件重构）：逐热点内容守恒审计（基线 f99facb27b 行多重集精确对比，仅记录在案的机械变换残差）、尾递归链环归属与段首臂序独立核验、测试守恒 6259/6259+430/430、fmt F-1 修复后 crate fmt clean；定向面全绿+sdk-consumer 5/5+three-repo 3/3；merge 门后在重定基 37cf4b19c 上全绿（裸 t 3203/3203、tv 163/163、tt 3574/3574、plan705/716 源码 pin 随 owner 迁移修复）。"
+        },
+        {
+          "id": "P826-MERGE",
+          "title": "PLAN-826 合并沉淀收据（r6）",
+          "status": "stable",
+          "file": "docs/plans/archive/826-av-compact-abc-format-and-size.md",
+          "tags": [
+            "plan:826 rev:6",
+            "delivered:2026-10-28",
+            "commit:89574bb8d"
+          ],
+          "content": "交付 AVAC/1 紧凑 wire 世代（canonical specs：compact-abc-format.md 新建、cache/project/abc-core-i32/runtime-benchmark-method/resident-function-install/architecture/ace-m1 七处增量）；rebase 展平合入 master@89574bb8d（ff-only）；冻结门禁：裸 cargo t（jobs=6 等价，全并发下 worktree 冷 native 缓存饥饿已归因）3205/3205、cargo tv 163/163、parallel 壳 9/9、probe 六族 21/21、acceptance scope exit 0；T-07 final pass（F1 mut 警告修复后），reviewer=同会话声明局限。"
         }
       ],
       "section_type": "Reviews",
@@ -28307,5 +28433,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 108
+  "version": 111
 }
