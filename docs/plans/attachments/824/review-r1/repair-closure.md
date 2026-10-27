@@ -28,6 +28,7 @@
 
 ## 余项与门禁
 
-- compatibility 时序门（798 formal_turnaround_gates、818 turnaround_body_edit_gate + rounds_failure_liveness_and_caps）：等安静机器单实例复跑（后台看护已挂）；不阻塞受影响面送审——语义兼容面已全绿，时序门为 merge-owned 冻结门禁复跑项。
+- compatibility 时序门终局：**818 两门安静机器复跑 PASS**（turnaround_body_edit_gate、rounds_failure_liveness_and_caps）；798 formal_turnaround_gates 同提交隔离跑 PASS（164s），聚合形态红（edit P95 1308ms ≥ 1000ms）——**stash 基线对照同形态更红（P95 1715.6ms）**，属预存机器边缘条件（当日 P50 844-931ms、离群样本 1.3-2.4s 拖 P95；本日 acceptance#2 高负载下该族反而绿过），非本 diff 回归（修复代码路径不含 Dyn 指令/Dyn 值）。merge 冻结门禁复跑时按机器状态判定。
+- 过程事故（已恢复，如实记录）：验证期一次基线 stash 对照中，因 worktree 树已 clean（修复已提交）而 `git stash pop` 误弹共享 stash 栈顶的他方条目（plan-822 unowned WIP），在 collections_session.rs 半套用出 UU 冲突；立即 `git reset --hard 6a68240e8` 复位，stash 栈 5 条原样核对无损，本计划无未提交内容损失。教训：共享 stash 栈的多 worktree 仓禁用 stash 做基线对照（后续用临时 worktree/分支代替）。
 - merge-owned 门禁全程 pending（裸 cargo t + 触面 tv + 新 workspace 有限合同档）；tf 仅主检出批量档。
 - 823 并行编号冲突（id5/AVAD v4/opcode）仍归 merge 统一裁定。
