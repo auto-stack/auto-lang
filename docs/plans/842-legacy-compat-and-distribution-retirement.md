@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-842
-status: execution_done
+status: reviewed
 feature_name: 旧兼容入口与旧发行路径退役
 author: [Codex]
 created_at: 2026-10-24
@@ -165,6 +165,8 @@ work/review只必要check（真实SDK/被改包）、相关包/模块/fixture和
 G842未满足前禁止创建/认领计划组；该门已满足，现有组 `D:/autostack/.wt/lang-842/{auto-lang,auto-ui,auto-man}`，每个写仓各一树/分支 `codex/plan-842-dev`；只读consumer用固定版本clone而非借其他计划WIP，未需写仓不多建树。work/review/merge沿同组顺序交接，不建第二审查树；auto-down 为具名固定版本/detached兄弟，只解析不改实现。禁止junction/symlink，主检出只簿记，清理前每树fresh guard clean且保留实际交付/legacy恢复源。
 
 ## 9. 复审记录
+
+2026-10-27 / stage: review / review_scope: final / reviewer_identity: 独立子代理 R8（本会话派发，与实施异上下文，独立核验代码/日志/可复跑命令） / plan_id: PLAN-842 / plan_revision: 3 / outcome: **pass（AC-09..12 全 pass，零新 finding）** / worktree_path: D:/autostack/.wt/lang-842/{auto-lang,auto-ui,auto-man} / branch: codex/plan-842-dev / reviewed_commit: lang 6f71646aca2b5d6c162ccdcd6c534f49761bc0ef、UI bd228b03bc50ebf73a1d3ce2d7b55193721f80ac、Man 4cc912e9ffd96a2a3bef5470ecfec128bdd80601 / dependency_revisions: down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 / evidence: [R8 报告](attachments/842/review-r8/report.md)——基线三树 clean 零漂移；D-842-G1 预检（e4aa3da）前缀/详情/拒绝顺序保留+耐久反例 1/1；AC-09 Man 双进程 smoke 断言逐字保留、pointer_down 宿主坐标语义经实现核实、真实双进程 1/1（两次 handler 调用可观察）；AC-10 golden 旧 55 对金样全等+金样文件零改动+8 值精确锁定+受控变异红→恢复绿+1/1；AC-11 臂序未变（db→route A→声明类型→viewer→CRUD）、⚠ 标记仅 TranspileFailed 发/Inapplicable 不发、Vec::new() 补齐、merged 4/4、route A 真体 `["alpha","beta"]` 与兜底 id 102→103 真实运行日志与生成码快照一致；AC-12 双轨决策与既有 handle_compile_error 同构、841 集成 6/6 保绿；SD-07/08 与实现逐项一致（back 侧 skeleton 回落锚于 api_gen.rs:1220 实证）、与既有 841/route A 规范无冲突；r11 重绑 Full 6813/Core 636 verify、清单 SHA-256 重算逐字一致（955FA96E…3C293F0C8）、Rust fresh lock/locked build/资源校验 PASS、Vue 生成 CSS 8 token 值逐字一致、Core 消费者 3/3+plan842-core-ok；复用论证裁定成立（Man 仅测试文件、UI r3 hunk 全避交付保护段、耐久反例亲证绿）；健康面 22 warnings 全预存（位置均不在 r3 hunk）、r3 diff 零 debug print/TODO；4 项预存红+2 项 flake 归因可接受（隔离复核绿、不属 AC-09..12 面） / findings: 无 / next_responsible_role: merge T-11；merge-owned 裸 cargo t、tv/tt/tu 触面档、UI/Man 跨仓档、到期批量回归、合入/沉淀/归档/清理 pending，门禁通过前不得宣称交付完成。
 
 2026-10-27 / stage: work（r11 源码/安装证据重绑） / plan_id: PLAN-842 / plan_revision: 3 / outcome: **execution_done 14/17，T-03/07..09 已按 r3 后源码重绑，待独立最终复审** / worktree_path: D:/autostack/.wt/lang-842/{auto-lang,auto-ui,auto-man} / branch: codex/plan-842-dev / code_commit: lang 6f71646aca2b5d6c162ccdcd6c534f49761bc0ef（代码面=1e776d22e+规范文档）、UI bd228b03bc50ebf73a1d3ce2d7b55193721f80ac、Man 4cc912e9ffd96a2a3bef5470ecfec128bdd80601 / dependency_revisions: down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 / task_ids: T-03、T-07、T-08、T-09 / evidence: [r11 重绑日志](attachments/842/t13-t16-r3/r11-rebinding/)与 [handoff r3 增补](attachments/842/handoff.md)——Full 实装 6813 文件 verify（清单 SHA-256 955FA96E3BF0349953FE6258D9E128901387CECC5176CE8651F095F3C293F0C8）、安装 CLI 真实 Rust 交付 5434 文件 + fresh lock + locked build + 资源校验 PASS、真实 Vue 生成（产物含 8 status token 双面正确值）+ 生产构建 dist、Core 实装 636 文件 verify + SDK locked check + 独立外部消费者 3/3 + 安装 exe 真实程序 plan842-core-ok；失败恢复/staging 保护按输入身份复用（Man 仅测试文件变更、UI r3 不触交付保护码、耐久反例 delivery_redelivery_failure_preserves_old 新代码 1/1 绿）；三树 clean / next_responsible_role: review T-10（独立复审须覆盖 r3 三仓新提交、SD-07/08、AC-09..12 与 r11 重绑证据）；merge-owned 裸 cargo t、触面档、批量回归、合入归档 pending。
 
