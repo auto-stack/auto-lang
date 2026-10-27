@@ -162,11 +162,7 @@ fn validate_language_candidate(candidate: &Path, origin: &str) -> AutoResult<()>
         .into());
     }
     if let Some(root) = root {
-        if root.file_name().and_then(|s| s.to_str()) == Some("sdk")
-            && root
-                .parent()
-                .is_some_and(|parent| parent.join("install-manifest.json").exists())
-        {
+        if crate::source_owner::is_managed_sdk(root) {
             crate::source_owner::validate_installed_language_source(root)?;
         }
     }

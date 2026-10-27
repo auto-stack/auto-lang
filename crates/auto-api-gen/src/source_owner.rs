@@ -134,6 +134,31 @@ pub fn installed_ui_source(
     installed_crate_source(producer_root, name, copied_root, "auto-ui")
 }
 
+/// The SDK adjacent to this executable remains a managed installation even
+/// when its receipt is missing; explicit overrides cannot reclassify it as a
+/// free-standing development source.
+pub fn is_managed_sdk(producer_root: &Path) -> bool {
+    if producer_root.file_name().and_then(|s| s.to_str()) != Some("sdk") {
+        return false;
+    }
+    if producer_root
+        .parent()
+        .is_some_and(|p| p.join("install-manifest.json").exists())
+    {
+        return true;
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|p| p.join("sdk")))
+        .and_then(|adjacent| {
+            Some((
+                fs::canonicalize(adjacent).ok()?,
+                fs::canonicalize(producer_root).ok()?,
+            ))
+        })
+        .is_some_and(|(adjacent, source)| adjacent == source)
+}
+
 /// Frozen consistency receipt for one managed Full SDK. Hashes are integrity
 /// checks against the local receipt; they are not signatures.
 pub struct InstalledSdkReceipt {
