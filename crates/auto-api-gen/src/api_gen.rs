@@ -248,11 +248,15 @@ pub fn backend_generation_is_fresh(project_dir: &Path) -> bool {
     // 收据同口径）；**其它读取错误（权限/IO）不冒充 absent**——归 None
     // （不可核验=保守陈旧），防止 recorded="absent" × 读错误 → 假新鲜。
     let current_lock: Option<String> =
-        crate::rust_workspace::workspace_lock_identity(std::fs::read(
-            crate::rust_workspace::ensure_shared_workspace(project_dir).join("Cargo.lock"),
-        ))
-        .map(|identity| identity.unwrap_or_else(|| "absent".to_string()))
-        .ok();
+        crate::rust_workspace::try_ensure_shared_workspace(project_dir)
+            .ok()
+            .and_then(|workspace| {
+                crate::rust_workspace::workspace_lock_identity(std::fs::read(
+                    workspace.join("Cargo.lock"),
+                ))
+                .ok()
+            })
+            .map(|identity| identity.unwrap_or_else(|| "absent".to_string()));
     // PLAN-738 R5-01：一次绑定状态机。生成时未建 lock（收据记 absent）
     // → 首次出现实际 lock 时判新鲜**并把实际 lock 身份写回收据**（一次性
     // 物化绑定，收据升级）——此后严格比较：依赖版本漂移/lock 删除/读取
@@ -1071,7 +1075,7 @@ fn generate_rust_server(
     // Freeze actual selections and emitted body references before creating artifacts.
     let assembly = generated_api_assembly(root_dir, api_module)?;
     // Output to shared workspace at D:/.auto/rust-workspace/{name}-back/
-    let ws_dir = crate::rust_workspace::ensure_shared_workspace(root_dir);
+    let ws_dir = crate::rust_workspace::try_ensure_shared_workspace(root_dir)?;
     let back_name = crate::rust_workspace::back_member_name(root_dir);
     let rust_dir = ws_dir.join(&back_name);
     let receipt_path = rust_dir.join("generation.json");
@@ -1379,7 +1383,7 @@ fn generate_rust_server(
 
     // Update workspace members. MUST run after main.rs is written: ensure_shared_workspace
     // skips members with no src/main.rs (has_cargo_targets guard). Plan musk-022.
-    let _ = crate::rust_workspace::ensure_shared_workspace(root_dir);
+    crate::rust_workspace::try_ensure_shared_workspace(root_dir)?;
 
     println!("  ✓ Generated Rust server: {}/", back_name);
 
@@ -1411,7 +1415,7 @@ fn generate_rust_server(
         // 分类/指纹与复用门共用 workspace_lock_identity 单点——空文件
         // =实际内容身份 811c9dc5，两端不再漂移。
         let workspace_lock = match crate::rust_workspace::workspace_lock_identity(std::fs::read(
-            crate::rust_workspace::ensure_shared_workspace(root_dir).join("Cargo.lock"),
+            crate::rust_workspace::try_ensure_shared_workspace(root_dir)?.join("Cargo.lock"),
         )) {
             Ok(Some(fingerprint)) => fingerprint,
             Ok(None) => "absent".into(),

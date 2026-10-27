@@ -7,6 +7,7 @@
 //! (`auto-ui-tools::rust_ui`). Both migrated consumers plus auto-man's
 //! `http_service` reach these through re-export facades; do not fork copies.
 
+use auto_val::AutoResult;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -133,31 +134,37 @@ fn path_contains(root: &Path, dir: &Path) -> bool {
 
 /// Compute the relative path from the workspace dir (ws landing point) to
 /// the auto-lang crate.
-fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> String {
+fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> AutoResult<String> {
     // PLAN-025:AUTO_LANG_CRATE 环境覆盖(worktree 开发口子)——指向
     // auto-lang crate 目录(绝对或相对),跳过仓库漫步直用(双仓
     // worktree 联调惯例:主检出项目 + 依赖 worktree)。
-    if let Ok(p) = std::env::var("AUTO_LANG_CRATE") {
-        let t = p.trim().to_string();
-        if !t.is_empty() {
-            let cand = std::path::PathBuf::from(&t);
-            if cand.exists() {
-                return compute_relative_path(ws_dir, &cand);
+    for key in [
+        "AUTO_DELIVERY_SOURCE_ROOT",
+        "AUTO_LANG_ROOT",
+        "AUTO_LANG_CRATE",
+    ] {
+        if let Some(value) = std::env::var_os(key) {
+            let path = PathBuf::from(value);
+            let candidate = if key == "AUTO_LANG_CRATE" {
+                path.clone()
+            } else {
+                path.join("crates/auto-lang")
+            };
+            if candidate.join("Cargo.toml").is_file() {
+                return Ok(compute_relative_path(ws_dir, &candidate));
             }
+            return Err(format!("producer 显式 {key} 无效: {}", path.display()).into());
         }
     }
     // PLAN-816 B-R3-07：安装形态 SDK 闭包——CLI 可执行文件邻接 sdk/
     // 目录（install manifest 随附框架源闭包）优先于仓库漫步/主检出回退：
     // 安装机器无实施仓检出，路径不得借用开发树。env 覆盖仍是第一档
-    //（开发口子）；sdk/crates/auto-lang 与 sdk/auto-lang 两种布局都认。
+    //（开发口子）；受管 Full 使用 combined-crates 布局。
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            for cand in [
-                dir.join("sdk").join("crates").join("auto-lang"),
-                dir.join("sdk").join("auto-lang"),
-            ] {
+            for cand in [dir.join("sdk").join("crates").join("auto-lang")] {
                 if cand.exists() {
-                    return compute_relative_path(ws_dir, &cand);
+                    return Ok(compute_relative_path(ws_dir, &cand));
                 }
             }
         }
@@ -170,7 +177,7 @@ fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> String {
         // Direct: this dir has crates/auto-lang
         if dir.join("crates").join("auto-lang").exists() {
             let auto_lang_abs = dir.join("crates").join("auto-lang");
-            return compute_relative_path(ws_dir, &auto_lang_abs);
+            return Ok(compute_relative_path(ws_dir, &auto_lang_abs));
         }
         // Sibling: a sibling dir (e.g. ../auto-lang) has crates/auto-lang.
         // This covers the common layout where <project> and auto-lang are
@@ -179,7 +186,7 @@ fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> String {
             for sibling in ["auto-lang"] {
                 let candidate = parent.join(sibling).join("crates").join("auto-lang");
                 if candidate.exists() {
-                    return compute_relative_path(ws_dir, &candidate);
+                    return Ok(compute_relative_path(ws_dir, &candidate));
                 }
             }
         }
@@ -193,10 +200,9 @@ fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> String {
         .parent()
         .map(|parent| parent.join("auto-lang"));
     if let Some(crate_dir) = compiled_crate.filter(|path| path.join("Cargo.toml").is_file()) {
-        return compute_relative_path(ws_dir, &crate_dir);
+        return Ok(compute_relative_path(ws_dir, &crate_dir));
     }
-    // Fallback
-    "../../autostack/auto-lang/crates/auto-lang".to_string()
+    Err("producer 语言源缺失: crates/auto-lang".into())
 }
 
 /// Compute relative path from `from` to `to` using only `..` and directory names.
@@ -238,30 +244,15 @@ fn compute_relative_path(from: &Path, to: &Path) -> String {
 
 /// Compute the relative path from the workspace dir (ws landing point) to the
 /// auto-lang target/ directory.
-/// PLAN-831 T-06：auto-ui-runtime crate 的实际位解析（dev 形态 workspace
-/// 依赖用）。从已解析的 auto-lang crate 相对路径反推绝对位，沿祖先链取
-/// 首个在场布局：旧同根（`<lang-root>/crates/auto-ui-runtime`，迁移前
-/// 布局兼容）或现行组布局兄弟仓（`<组>/auto-ui/crates/auto-ui-runtime`）。
-/// 均缺席时退化历史字符串派生（错误面与修复前一致，由后续构建暴露）。
-fn compute_auto_ui_runtime_rel_path(auto_lang_rel: &str, ws_dir: &Path) -> String {
+/// Resolve the UI owner consistently for generated workspaces and delivery.
+fn compute_auto_ui_runtime_rel_path(auto_lang_rel: &str, ws_dir: &Path) -> AutoResult<String> {
     let lang_crate = ws_dir.join(auto_lang_rel.replace(char::from(92), "/"));
-    let mut ancestors = lang_crate.ancestors().skip(1);
-    while let Some(root) = ancestors.next() {
-        let same_root = root.join("crates").join("auto-ui-runtime");
-        if same_root.is_dir() {
-            return compute_relative_path(ws_dir, &same_root);
-        }
-        if root.file_name().map_or(false, |n| n == "auto-lang") {
-            if let Some(sibling) = root
-                .parent()
-                .map(|p| p.join("auto-ui").join("crates").join("auto-ui-runtime"))
-                .filter(|s| s.is_dir())
-            {
-                return compute_relative_path(ws_dir, &sibling);
-            }
-        }
-    }
-    auto_lang_rel.replace("crates/auto-lang", "crates/auto-ui-runtime")
+    let producer = lang_crate
+        .parent()
+        .and_then(Path::parent)
+        .ok_or("producer 语言源路径无效")?;
+    let source = crate::source_owner::ui_crate_source(producer, "auto-ui-runtime")?;
+    Ok(compute_relative_path(ws_dir, &source))
 }
 
 fn compute_target_rel_path(project_dir: &Path, ws_dir: &Path) -> String {
@@ -356,11 +347,16 @@ fn has_cargo_targets(dir: &Path) -> bool {
 ///
 /// Returns the workspace directory path.
 pub fn ensure_shared_workspace(project_dir: &Path) -> PathBuf {
+    try_ensure_shared_workspace(project_dir).expect("shared workspace producer 预检失败")
+}
+
+/// Fallible form used by generators so invalid sources cannot overwrite artifacts.
+pub fn try_ensure_shared_workspace(project_dir: &Path) -> AutoResult<PathBuf> {
     // Stage B P-2: landing point by resolution order (env → in-framework
     // shared ws → project-local); the rel-path anchors below are computed
     // from this actual landing dir.
     let ws_dir = resolve_rust_workspace_dir(project_dir);
-    fs::create_dir_all(&ws_dir).ok();
+    fs::create_dir_all(&ws_dir)?;
 
     let ws_cargo = ws_dir.join("Cargo.toml");
 
@@ -395,22 +391,16 @@ pub fn ensure_shared_workspace(project_dir: &Path) -> PathBuf {
     }
     members.sort();
 
-    let auto_lang_rel = compute_auto_lang_rel_path(project_dir, &ws_dir);
+    let auto_lang_rel = compute_auto_lang_rel_path(project_dir, &ws_dir)?;
     // PLAN-668 R-24：a2r-std 与 auto-lang 同根（crates/a2r-std）。
     let a2r_std_rel = auto_lang_rel.replace("crates/auto-lang", "crates/a2r-std");
     // PLAN-811：媒体基础与 auto-lang 同根（crates/auto-media-core）——生成
     // 物的 viewer 桥/媒体 HTTP 直接消费 `auto_media_core::` 公开入口。
     let auto_media_core_rel = auto_lang_rel.replace("crates/auto-lang", "crates/auto-media-core");
-    // PLAN-814 T-05 canonical 双直依赖（import_policy.rs；PLAN-815 T-07 子批2
-    // 接线）：rust 生成组件只 import `auto_ui_runtime::ui`/`auto_lang_core`，
-    // dev 成员经 workspace 继承直接依赖两包（同 auto-media-core 先例同根
-    // 窄接线；缺此两行则生成工程 cargo build E0433）。
-    // PLAN-831 T-06 起五包在独立 auto-ui 仓——auto-ui-runtime 不再与
-    // auto-lang 同根，字符串派生（replace 同根）会指向不存在的旧布局
-    // （生成工程 cargo build 即红）。按实际在场解析：旧同根布局兼容、
-    // 现行组布局取兄弟 auto-ui/crates/；交付形态不受影响（bundle 应用
-    // manifest 走 rust_ui.rs 包内 ../crates/ 模板，不经本函数）。
-    let auto_ui_runtime_rel = compute_auto_ui_runtime_rel_path(&auto_lang_rel, &ws_dir);
+    // The UI runtime has a distinct owner. An installed combined SDK is
+    // accepted only with its managed ownership and file receipt; development
+    // uses an explicit UI root or the sibling checkout, never a lang shadow.
+    let auto_ui_runtime_rel = compute_auto_ui_runtime_rel_path(&auto_lang_rel, &ws_dir)?;
     let auto_lang_core_rel = auto_lang_rel.replace("crates/auto-lang", "crates/auto-lang-core");
     let target_rel = compute_target_rel_path(project_dir, &ws_dir);
 
@@ -454,14 +444,14 @@ tower-http = {{ version = "0.5", features = ["cors"] }}
     );
 
     // Always rewrite to update members list
-    let _ = fs::write(&ws_cargo, &content);
+    fs::write(&ws_cargo, &content)?;
 
     // Write .cargo/config.toml with target-dir.
     // PLAN-039 T-04（批次 E 连带）：MSVC 主线程栈扩至 256MB——深视图
     // app（klondike 7 列×嵌套条件）的视图构造/drop 递归溢出默认栈
     // （minesweeper 浅视图无此面）；栈是上限非预留，浅 app 无扰。
     let config_dir = ws_dir.join(".cargo");
-    fs::create_dir_all(&config_dir).ok();
+    fs::create_dir_all(&config_dir)?;
     let mut config = format!(
         "[build]\ntarget-dir = \"{}\"\n",
         target_rel.replace('\\', "/")
@@ -469,9 +459,9 @@ tower-http = {{ version = "0.5", features = ["cors"] }}
     config.push_str(
         "\n[target.x86_64-pc-windows-msvc]\nrustflags = [\"-C\", \"link-arg=/STACK:268435456\"]\n",
     );
-    let _ = fs::write(config_dir.join("config.toml"), config);
+    fs::write(config_dir.join("config.toml"), config)?;
 
-    ws_dir
+    Ok(ws_dir)
 }
 
 /// Get the member directory name for a frontend project in the shared workspace.
@@ -502,5 +492,91 @@ pub fn workspace_lock_identity(
         Ok(bytes) => Ok(Some(format!("{:x}", crate::api_gen::fnv1a(&bytes)))),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e),
+    }
+}
+
+#[cfg(test)]
+mod plan842_tests {
+    use super::*;
+
+    #[test]
+    fn workspace_explicit_roots_fail_before_overwriting_manifest() {
+        const CHILD: &str = "PLAN842_WORKSPACE_ROOT_PROBE";
+        if let Ok(mode) = std::env::var(CHILD) {
+            let project = PathBuf::from(std::env::var_os("PLAN842_PROJECT").unwrap());
+            let ws = resolve_rust_workspace_dir(&project);
+            let result = try_ensure_shared_workspace(&project);
+            if mode == "valid" {
+                assert!(result.is_ok(), "{result:?}");
+                let content = fs::read_to_string(ws.join("Cargo.toml")).unwrap();
+                assert!(
+                    content.contains("auto-ui/crates/auto-ui-runtime"),
+                    "{content}"
+                );
+            } else {
+                let error = result.unwrap_err().to_string();
+                assert!(
+                    error.contains(if mode == "bad-lang" {
+                        "AUTO_LANG_ROOT"
+                    } else {
+                        "AUTO_UI_SOURCE_ROOT"
+                    }),
+                    "{error}"
+                );
+                assert_eq!(
+                    fs::read(ws.join("Cargo.toml")).unwrap(),
+                    b"previous manifest"
+                );
+            }
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("project");
+        let ws = project.join("workspace");
+        let lang = tmp.path().join("auto-lang");
+        let ui = tmp.path().join("auto-ui");
+        fs::create_dir_all(lang.join("crates/auto-lang")).unwrap();
+        fs::write(lang.join("crates/auto-lang/Cargo.toml"), "").unwrap();
+        fs::create_dir_all(ui.join("crates/auto-ui-runtime")).unwrap();
+        fs::create_dir_all(&ws).unwrap();
+        for mode in ["bad-lang", "bad-ui", "valid"] {
+            fs::write(ws.join("Cargo.toml"), b"previous manifest").unwrap();
+            let result = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "rust_workspace::plan842_tests::workspace_explicit_roots_fail_before_overwriting_manifest", "--nocapture"])
+                .env(CHILD, mode)
+                .env("PLAN842_PROJECT", &project)
+                .env("AUTO_RUST_WORKSPACE", &ws)
+                .env_remove("AUTO_DELIVERY_SOURCE_ROOT")
+                .env_remove("AUTO_LANG_CRATE")
+                .env("AUTO_LANG_ROOT", if mode == "bad-lang" { tmp.path().join("missing-lang") } else { lang.clone() })
+                .env("AUTO_UI_SOURCE_ROOT", if mode == "bad-ui" { tmp.path().join("missing-ui") } else { ui.clone() })
+                .output().unwrap();
+            assert!(
+                result.status.success(),
+                "{mode}: {} {}",
+                String::from_utf8_lossy(&result.stdout),
+                String::from_utf8_lossy(&result.stderr)
+            );
+        }
+    }
+
+    #[test]
+    fn workspace_chooses_ui_owner_and_rejects_lang_shadow() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lang = tmp.path().join("auto-lang");
+        let ws = tmp.path().join("project/workspace");
+        let shadow = lang.join("crates/auto-ui-runtime");
+        let canonical = tmp.path().join("auto-ui/crates/auto-ui-runtime");
+        fs::create_dir_all(lang.join("crates/auto-lang")).unwrap();
+        fs::create_dir_all(&ws).unwrap();
+        fs::create_dir_all(&shadow).unwrap();
+        let lang_rel = compute_relative_path(&ws, &lang.join("crates/auto-lang"));
+        assert!(compute_auto_ui_runtime_rel_path(&lang_rel, &ws).is_err());
+        fs::create_dir_all(&canonical).unwrap();
+        let chosen = compute_auto_ui_runtime_rel_path(&lang_rel, &ws).unwrap();
+        assert_eq!(
+            fs::canonicalize(ws.join(chosen)).unwrap(),
+            fs::canonicalize(canonical).unwrap()
+        );
     }
 }

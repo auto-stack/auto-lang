@@ -17,8 +17,7 @@
 //!   and `auto-project-model` for the `rust_sidecar` declaration single source (PLAN-831 T-05);
 //! - never depends on `auto-man` or `auto-ui-tools` (facade direction only:
 //!   those crates re-export from here);
-//! - generated-code template strings deliberately keep referencing the
-//!   `auto_lang` crate — that is the *generated app's* dependency, not ours.
+//! - generated Rust consumers use the canonical SDK and UI runtime owners.
 //!
 //! Historic public paths stay alive through the `auto-man` facade
 //! (`auto_man::api_gen::*`, `auto_man::sidecar::*`,
@@ -28,3 +27,4 @@
 pub mod api_gen;
 pub mod rust_workspace;
 pub mod sidecar;
+pub mod source_owner;
