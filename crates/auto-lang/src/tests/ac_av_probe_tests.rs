@@ -531,6 +531,7 @@ suite { schema: \"autolang.suite/2\", id: \"s\", include: [\"c.case.ad\"] }
     let p90_sig = super::ace_latency::p90_ms(&sig_walls).expect("valid signature windows");
     let p95_edit = percentile(&edit_walls, 95.0);
     let p95_sig = percentile(&sig_walls, 95.0);
+    eprintln!("formal raw windows: edit_ms={edit_walls:?}; signature_ms={sig_walls:?}");
     eprintln!("formal P90: edit {p90_edit:.1}ms, signature {p90_sig:.1}ms");
     eprintln!(
         "formal turnaround (continuous request-to-publish windows): edit P50/P95/P99 = {:.1}/{:.1}/{:.1} ms; sig P95 = {:.1} ms (gate {:.1} ms, {} samples)",
