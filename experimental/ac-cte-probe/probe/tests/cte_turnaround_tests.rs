@@ -135,6 +135,30 @@ fn cte_turnaround_six_scenarios_hard_gates_pass() {
     );
 }
 
+// The real worker and its ordinary body-edit oracle exercise both sides
+// of the release threshold; injected delays affect only the first two rows.
+#[test]
+fn cte_turnaround_release_gate_2000_boundary_control() {
+    for (delay, should_pass) in [("1100", true), ("2200", false)] {
+        let (code, summary, _) = run_bench(&[
+            "--samples", "10", "--gate-ms", "2000", "--only", "body-edit",
+            "--inject-delay-ms", delay,
+        ]);
+        assert_eq!(summary["body-edit"]["samples"], 10);
+        assert_eq!(summary["body-edit"]["all_values_ok"], true);
+        let p90 = summary["body-edit"]["p90_ms"].as_f64().unwrap();
+        if should_pass {
+            assert!(p90 > 1000.0 && p90 <= 2000.0, "legal measured window {p90}");
+            assert_eq!(code, 0, "legal release gate: {summary}");
+            assert_eq!(summary["target_met"], true);
+        } else {
+            assert!(p90 > 2000.0, "out-of-bound measured window {p90}");
+            assert_ne!(code, 0, "oversized release gate must fail: {summary}");
+            assert_eq!(summary["target_met"], false);
+        }
+    }
+}
+
 #[test]
 fn cte_turnaround_gate_ms_zero_control_is_red() {
     let (code, s, _) = run_bench(&["--samples", "3", "--gate-ms", "0"]);
@@ -203,7 +227,7 @@ fn cte_turnaround_resident_degrade_gate_and_control() {
     let gate = if cfg!(debug_assertions) {
         "5000"
     } else {
-        "1000"
+        "2000"
     };
     let exe = env!("CARGO_BIN_EXE_cte_probe_worker");
 

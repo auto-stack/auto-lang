@@ -701,6 +701,35 @@ fn mn_incremental_latency_policy_controls() {
     assert!(mn_incremental_latency_result(0.0, 1000.0, Some("observe")).is_err());
 }
 
+/// Each formal receipt must itself carry a finite, strictly positive wall.
+/// A missing/invalid peer must not become a zero and disappear below P90.
+fn mn_receipt_request_wall_ms(receipt: &serde_json::Value) -> Result<f64, &'static str> {
+    match receipt.get("request_wall_ms").and_then(serde_json::Value::as_f64) {
+        Some(ms) if ms.is_finite() && ms > 0.0 => Ok(ms),
+        _ => Err("missing or invalid request_wall_ms"),
+    }
+}
+
+#[test]
+fn mn_formal_receipt_wall_admission_controls() {
+    let good = serde_json::json!({"request_wall_ms": 2000.0});
+    let bad = [serde_json::json!({}), serde_json::json!({"request_wall_ms": null}),
+        serde_json::json!({"request_wall_ms": "1000"}),
+        serde_json::json!({"request_wall_ms": 0}), serde_json::json!({"request_wall_ms": -1}),
+        serde_json::json!({"request_wall_ms": f64::NAN}),
+        serde_json::json!({"request_wall_ms": f64::INFINITY})];
+    let mut receipts = vec![good.clone(); 30];
+    let accepted: Result<Vec<f64>, _> = receipts.iter().map(mn_receipt_request_wall_ms).collect();
+    let p90 = super::ace_latency::p90_ms(&accepted.unwrap()).unwrap();
+    assert!(mn_incremental_latency_result(p90, 2000.0, None).is_ok(), "equality passes");
+    for invalid in bad {
+        receipts[29] = invalid;
+        let accepted: Result<Vec<f64>, _> = receipts.iter().map(mn_receipt_request_wall_ms).collect();
+        assert!(accepted.is_err(), "one invalid receipt among 29 valid peers must fail");
+    }
+    assert_eq!(mn_receipt_request_wall_ms(&serde_json::json!({"request_wall_ms": 0.1})), Ok(0.1));
+}
+
 /// One formal mn call: write the case, run the suite, require green,
 /// return the receipt (whose request_wall_ms IS the gate window).
 fn mn_formal_call(
@@ -904,7 +933,7 @@ fn mir_native_turnaround_fresh_cold_30() {
             Some(&format!("p{pid}-fresh-{i}")),
             &format!(r#"{{ completion: "success", exit: {} }}"#, exp0),
         );
-        let w = r["request_wall_ms"].as_f64().unwrap_or(0.0);
+        let w = mn_receipt_request_wall_ms(&r).expect("valid formal request wall");
         let s = &r["sessions"][0];
         assert_eq!(
             mn_receipt_counter(s, "codegen_emit_units"),
@@ -965,7 +994,7 @@ fn mir_native_turnaround_restart_warm_30() {
             );
             assert_eq!(mn_receipt_counter(s, "cache_hit_coff"), 115);
         }
-        walls.push(r["request_wall_ms"].as_f64().unwrap_or(0.0));
+        walls.push(mn_receipt_request_wall_ms(&r).expect("valid formal request wall"));
     }
     let _ = mn_t07_finish_raw(
         "restart",
@@ -1203,7 +1232,7 @@ fn mir_native_turnaround_signature_rebuild_gate() {
             recompiled == want_recompiled && hits + recompiled == 115,
             "signature rebuild re-keys the call sites every iteration (recompiled {recompiled}, want {want_recompiled}, hits {hits})"
         );
-        walls.push(r["request_wall_ms"].as_f64().unwrap_or(0.0));
+        walls.push(mn_receipt_request_wall_ms(&r).expect("valid formal request wall"));
     }
     let _ = mn_t07_finish_raw(
         "signature-rebuild",
@@ -1250,7 +1279,7 @@ fn mir_native_turnaround_signature_conflict_gate() {
             None,
             r#"{ completion: { stage: "parse", code: "mn.unsupported.frontend" } }"#,
         );
-        walls.push(r["request_wall_ms"].as_f64().unwrap_or(0.0));
+        walls.push(mn_receipt_request_wall_ms(&r).expect("valid formal request wall"));
     }
     let _ = mn_t07_finish_raw(
         "signature-conflict",
