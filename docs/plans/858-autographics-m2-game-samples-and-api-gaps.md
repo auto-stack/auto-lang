@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-858
-status: executing
+status: reviewed
 feature_name: AutoGraphics M2双游戏样本冻结与公共接口缺口调查
 author: [Codex]
 created_at: 2026-10-27
@@ -10,7 +10,7 @@ supersedes_spec_components: []
 new_spec_components: []
 touched_goals: []
 affects: [auto-graphics, auto-test-case, auto-lang]
-current_step: 7
+current_step: 10
 total_steps: 11
 ---
 
@@ -161,9 +161,9 @@ T-08/T-09 只跑反例和受影响测试/必要编译，不运行整档 `t/tv/tt
 | T-06 | merge | T-05 pass | 文档合main、知识/overview/plans/ledger/索引沉淀并归档；仅文档检查，无Cargo | AC-07 | [x]（快进 `43d1c7766c0c5b9a8f6497862a97f7107d3b817b`；canonical/overview/plans/goals、账本98→99、生成索引无语义变更；归档实际检查及提交见merge收据） |
 | T-07 | merge | T-06 | guard clean后清研究树/临时分支，保留必要来源恢复路径/SHA和真实7/7；交后继研究结论 | AC-07 | [x]（归档提交 `90afcede9` 后 fresh wt-guard clean；`D:/autostack/.wt/lang-858/auto-lang`、分支 `plan-858-dev` 和空组已实际移除；固定来源可按索引恢复） |
 
-| T-08 | work | Phase 1 已交付 | 创建并核实本阶段唯一树；追溯 821/822/827 引入链和全部同族消费者，修复 feature cfg；V-06 | AC-08 | [ ] |
-| T-09 | work | T-08 | 对 V-06/07 做定向编译、测试 ID 及真实正负例检查；提交修复和证据，整档 merge-owned pending | AC-08/09 | [ ] |
-| T-10 | review | T-09 | 独立复核 Phase 2 全部 AC/V、未删断言/未默认开 feature、冻结身份 | AC-10 | [ ] |
+| T-08 | work | Phase 1 已交付 | 创建并核实本阶段唯一树；追溯 821/822/827 引入链和全部同族消费者，修复 feature cfg；V-06 | AC-08 | [x]（`c20c08a0cb5f45bb64f4feb3e2a1a41d65775fc8`；默认及book no-run、`cargo check -p auto-lang` exit0；分别移除821/827门控均重现E0432/E0433且源码逐字节恢复） |
+| T-09 | work | T-08 | 对 V-06/07 做定向编译、测试 ID 及真实正负例检查；提交修复和证据，整档 merge-owned pending | AC-08/09 | [x]（`c20c08a0c` 代码；`f098e8d70` 证据：功能启用清单与修复前源码 14/14 一致，821/822/827 实际 3+3+8 全通过，0 failed/ignored；格式与diff检查通过） |
+| T-10 | review | T-09 | 独立复核 Phase 2 全部 AC/V、未删断言/未默认开 feature、冻结身份 | AC-10 | [x]（Phase 2 final R1 pass @f098e8d707c4774e0c5a2f7dc459c9065e515488；见[复审报告](attachments/858/review-phase2-r1/review.md)，合入门禁 pending） |
 | T-11 | merge | T-10 pass | 在冻结提交执行适用合入门并合 main；保留 Phase 1 历史快照到 attachments、修复其相对链接后以 r2 归档文件替换原历史快照路径（canonical 链接不丢）；guard 清树；主检出单实例跑官方完整 batch，成功后更新覆盖锚 | AC-11 | [ ] |
 
 ## 9. 复审记录
@@ -187,6 +187,19 @@ T-08/T-09 只跑反例和受影响测试/必要编译，不运行整档 `t/tv/tt
 2026-10-27 cleaned：stage=merge | plan_id=PLAN-858 | plan_revision=1 | outcome=pass | completion_kind=delivered | delivery_commit=43d1c7766c0c5b9a8f6497862a97f7107d3b817b | canonical=docs/specs/auto-graphics/m2-game-sample-research.md | ledger=.autoos/specs.json v99 | archive=docs/plans/archive/858-autographics-m2-game-samples-and-api-gaps.md | cleanup=guard clean、worktree/branch/空组实际移除 | evidence=[merge收据](attachments/858/merge-r1/receipt.md)、[账本投影](attachments/858/merge-r1/ledger-projection.json.txt) | remaining=批量回归到期判定另记；无新游戏/引擎/发布交付。archived 7/7。
 
 2026-10-27 r2 新阶段：stage=new | plan_id=PLAN-858 | plan_revision=2 | outcome=pass | 用户明确要求取消独立859并在858追加Phase 2；Phase 1 受审/交付/归档及原7项证据保留在历史快照 | current=executing 7/11 | added=T-08..T-11, AC-08..AC-11, V-06..V-08 | next=work/T-08 | 批量仍 due/compile-blocked；本次仅计划修订，不声称修复或测试通过。
+
+2026-10-27 Phase 2 入口：stage=work | plan_id=PLAN-858 | plan_revision=2 | worktree=D:/autostack/.wt/lang-858/auto-lang | branch=plan-858-dev | base=243da2c5ebb0a2f657a89a117885a91b17a696ed | auto-down=c3464d0a0d36e4f8a7988b0c0c26448fc52361b4（组内detached、干净） | auto-ui=b4fe0000e56cddaf7d3cf70e348431f2258aacde（主检出干净） | T-08/T-09进行中。855 的24个未解析错误在 [language-build.log.txt](attachments/855/batch-r1/language-build.log.txt)；失败基线与当前受影响测试源码、Cargo配置和锁无diff，可作为预修复反例。源码追溯：821 `63703750697f95c61897f8e7e64a9fa721f2e2de`、827 `e1b91b4cc3204945d8d48fff5a6c6488541ff6cb`、822 `735f012423c84af55fcef803bc7ac166d37ea2cd`。主要同族直接消费者按模块逐一核对，a2r/vm 的 pilot 调用各自由 test-cases 函数级cfg保护；修复前尚需完成实际默认/book编译、feature启用14项和负控制。仅最终review后由merge跑整档。
+
+2026-10-27 Phase 2 依赖路径补齐：首次 `cargo test -p auto-lang --lib --no-run` 在读取 `auto-ui-compiler` manifest 前因组内 `../auto-ui` 缺失退出101，未执行测试；已在同组补建只读 detached auto-ui `b4fe0000e56cddaf7d3cf70e348431f2258aacde`，与前述主检出身份一致、干净，无链接。原因已变化，后续可重试；保留原日志 `D:/autostack/plan-artifacts/plan-858/phase2-work/default-no-run.log`。
+
+2026-10-27 Phase 2 磁盘保护：补齐 auto-ui 后，`cargo test -p auto-lang --lib --no-run` 默认配置实际 exit0（4m33s；原日志 `D:/autostack/plan-artifacts/plan-858/phase2-work/default-no-run-r2.log`）；遗留依赖编译 warning（auto-lang-core 146、auto-ui-compiler 40、auto-lang lib-test 41）保留日志，不当作新增问题掩盖。多会话并发写盘后 D 盘不足 400MB；本次独立新建的 plan858 target 经路径/reparse核验后移除以恢复空间，源码与日志未动。后续 Cargo 仍从唯一计划工作树调用，`CARGO_TARGET_DIR=C:/Users/zhaop/.codex/.chatgpt-projects/g-p-6aa9047652808191a99340cce4efab3b/plan-858-phase2/target` 为独立 C 盘产物目录，未建链接；`CARGO_INCREMENTAL=0`、dev/test debug=0、jobs=4，构建设置绑定后续证据。
+
+2026-10-27 Phase 2 T-08：修复提交 `c20c08a0cb5f45bb64f4feb3e2a1a41d65775fc8`，仅 `crates/auto-lang/src/tests.rs` 的两个模块新增各自 `test-cases` cfg，修正原共享注释。827 原先具 cfg（`e1b91b4cc`），821 插入 `637037506` 时占用该属性，822 插入 `735f01242` 时又占用它；按模块扫描所有直接 TestCase/AV probe 消费者，a2r/vm 聚合各自有函数级 cfg，其余相关模块已门控。默认 `cargo test -p auto-lang --lib --no-run`、`--features test-book --no-run`、`cargo check -p auto-lang` 均 exit0；分别撤销 821/827 单个 cfg 的 book 编译均 exit101 且对应源文件 E0432/E0433，恢复源码 SHA256 `04b3c25e521ffd731f3b8000f730a295e448bf7e58da606594223b74b9acffb6`。完整日志及负控结果在 `C:/Users/zhaop/.codex/.chatgpt-projects/g-p-6aa9047652808191a99340cce4efab3b/plan-858-phase2/`，默认正例原始日志在 `D:/autostack/plan-artifacts/plan-858/phase2-work/default-no-run-r2.log`。既有库 warning 保留原日志；T-09 的启用配置实际测试及 ID 对照尚待完成。
+
+2026-10-27 Phase 2 work 交接：stage=work | plan_id=PLAN-858 | plan_revision=2 | outcome=pass | worktree_path=D:/autostack/.wt/lang-858/auto-lang | branch=plan-858-dev | base_commit=243da2c5ebb0a2f657a89a117885a91b17a696ed | code_commit=c20c08a0cb5f45bb64f4feb3e2a1a41d65775fc8 | handoff_commit=f098e8d707c4774e0c5a2f7dc459c9065e515488（其后仅证据文档） | dependency_revisions=auto-down:c3464d0a0d36e4f8a7988b0c0c26448fc52361b4,auto-ui:b4fe0000e56cddaf7d3cf70e348431f2258aacde,AV-worker-SHA256:2f5c3df14101fff3f5902a7fe5364b3e2113992e5fc765d97dbe76dafd4cc501 | task_ids=T-08/T-09 | evidence=V-06：默认及book测试no-run、cargo check exit0，逐个移除821/827 cfg分别E0432/E0433且恢复；V-07：未启用book二进制无三组ID，启用时实际14/14 ID等于修复前测试源码（3/3/8），逐组真实运行14 passed、0 failed/ignored；rustfmt单文件及git diff --check通过。完整记录和日志哈希见工作树 [phase2-work/summary.md](D:/autostack/.wt/lang-858/auto-lang/docs/plans/attachments/858/phase2-work/summary.md)（交付树中，合入后须改为主检出相对路径），原日志保存在 C 盘项目产物目录（默认正例在 D 盘 plan-artifacts），构建输出使用独立C盘target。代码与依赖/锁/配置未改动；原855历史失败日志作为预修复输入，原Phase1验收不变。 | blockers=无工作阶段阻塞；无已知未解决的合同内finding/覆盖缺口 | pending=独立最终review T-10；合并阶段冻结提交裸cargo t/适用触面档与主检出单实例完整批量 V-08仍待执行，不可宣称回归通过或已合入 | next_responsible_role=review/T-10。
+
+
+2026-10-27 Phase 2 final R1：stage=review | review_scope=final | reviewer_identity=Codex 当前独立检查上下文，未参与本阶段实施、未另开agent，模型/会话ID未暴露 | plan_id=PLAN-858 | plan_revision=2 | outcome=pass | worktree_path=D:/autostack/.wt/lang-858/auto-lang | branch=plan-858-dev | reviewed_commit=f098e8d707c4774e0c5a2f7dc459c9065e515488 | code_commit=c20c08a0cb5f45bb64f4feb3e2a1a41d65775fc8 | base_commit=243da2c5ebb0a2f657a89a117885a91b17a696ed | dependency_revisions=auto-down:c3464d0a0d36e4f8a7988b0c0c26448fc52361b4,auto-ui:b4fe0000e56cddaf7d3cf70e348431f2258aacde,worker:2f5c3df14101fff3f5902a7fe5364b3e2113992e5fc765d97dbe76dafd4cc501 | spec_inputs=project/architecture SHA 见报告 | acceptance_results=AC-08/09/10 pass,V-06/07 pass；独立book no-run exit0、14/14实际定向测试全过；11项工作日志hash核对、默认/check及独立cfg撤销负控证据有效；源/锁/配置/语料未改 | findings=无阻塞项，无新债务 | evidence=[Phase2 R1](attachments/858/review-phase2-r1/review.md)、[冻结SD](attachments/858/review-phase2-r1/spec-delta-frozen.txt) SHA256=6ce45beea0cc49c26cd729de97312f55d82b674df45c406cfaaab4efda8b9cee | pending_closeout_gates=AC-11/T-11/V-08，merge冻结提交裸cargo t及主检出单实例官方完整batch，历史迁存/链接/归档/guard清理；批量覆盖锚仍850，未合入 | next=merge/T-11。reviewed10/11；Phase1历史不变，不声称全局回归或交付完成。
 
 ## 10. 待澄清事项
 
