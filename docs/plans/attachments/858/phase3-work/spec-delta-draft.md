@@ -18,7 +18,7 @@ Historical module plans.md summaries retain the result recorded at the time, wit
 
 ## Targets and input hashes
 
-| Path | SHA256 of source working-tree bytes at draft |
+| Path | SHA256 of source working-tree bytes after PLAN-841 rebase |
 |---|---|
 | `docs/specs/auto-ac/mir-native-cache.md` | `c8c3912c1397b4bb93f04c348eb5e2be9c5357d8285036c5f9669138f145ac0f` |
 | `docs/specs/auto-av/cache-and-conformance.md` | `f1e3d3d3010bca1930119d28c5234918dab14cfc1076789c8724acf5d0222575` |
@@ -28,7 +28,7 @@ Historical module plans.md summaries retain the result recorded at the time, wit
 | `docs/specs/auto-abi/conformance-cache.md` | `e4b5aeac7eb2be2cb464fb98740504750d93219c9abcace0c51aa6ea546f91d8` |
 | `docs/specs/auto-test-case/profile-v2-native.md` | `e8c1e491c7a424d6b4cc236613a1b91ab60e05b597cda294c1437470a31e73fc` |
 | `docs/specs/auto-test-case/architecture.md` | `ab061aaa2e87dc5a47156192f2f1922f8c473311389352f3668bd7b255581bcc` |
-| `docs/specs/auto-lang/project.md` | `839eedb556f84c776177b411aba479c7c964ce7e2a0ae2cb95086d056bb92eca` |
+| `docs/specs/auto-lang/project.md` | `efa2e490a26365ea0046cfb709949f34adcc0e6c846b8afed76a8888d7134070` |
 | `docs/design/35-autodown-test-cases.md` | `ec5a28e8d9591c09b7a14a60ec492bb235539c7fc8480a2f76b64eef2555a9da` |
 | `docs/design/39-ac-incremental-syntax-and-language-platform.md` | `fc2e36e5f5d1315ed37035a7aa35c322bd717852eb9c9e33105c30c2f91cd340` |
 | `docs/design/40-compiler-artifacts-and-cache-lifecycle.md` | `2b70ae539e3527d59ebceb74277353da07b7f339d0f244cda837c2b988a9f378` |
@@ -36,3 +36,5 @@ Historical module plans.md summaries retain the result recorded at the time, wit
 | `docs/design/44-av-data-layout-place-and-ownership.md` | `1b462ce63cf22ed4692270ea6d7943caf3d07e571b07aa9871109cb86c84c3d5` |
 | `docs/design/strategy/auto-native-backend-evolution.md` | `228d36c706f2b7f9ab940ecd770e6719d0faace8844c8ece2ac22768b1a9d60a` |
 | `docs/design/strategy/av-source-programs-and-avm-replacement-roadmap.md` | `357dbdd1ae930987263ae0105838251e0a0aa28e73b3f9ef59ffd75855e8a968` |
+
+Baseline refreshed after main PLAN-841 landing (`e263a71dd735b86233e75e38d524b6492eb81bc9`); inspect changed canonical source against this draft. The design-file WIP warning remains.

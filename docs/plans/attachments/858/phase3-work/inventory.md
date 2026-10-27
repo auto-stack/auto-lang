@@ -17,3 +17,5 @@ Historical spec-plan summaries remain history, while current contracts and forwa
 Review checklist and exact target baseline hashes: [spec delta draft](spec-delta-draft.md). This is an implementation inventory, not a claim that final review, full performance runs, cargo t, or main batch passed.
 
 Revision r4 preserves the r3 user decision and corrects the invented blanket zero rejection: the 788 path records integer milliseconds, so a real sub-millisecond value may quantize to zero. Existing 796 strict positive-sample checks remain.
+
+Post-inventory reconciliation: main advanced to `e263a71dd735b86233e75e38d524b6492eb81bc9` and group auto-ui was updated to clean detached `4903bef64532750d1597627b1197f3d2cac1effc`. Main ledger v101 was preserved; the unpublished v100 Phase 2 projection was removed from the rebased branch and must be recomputed from v101 after final review. Initial baseline results remain in evidence-initial.md, with impacted checks pending on the new baseline.
