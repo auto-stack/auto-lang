@@ -12,8 +12,8 @@ use auto_av_core::av::{execute, execute_with_arena, CancelFlag, ExecLimits};
 use auto_av_core::contract::{ExecOutcome, ResourceKind, TrapKind, Value, SLOT_CELL_BYTES};
 use auto_av_core::dynamic::{DynType, DynValue, TraversalOptions};
 use auto_av_core::mir::{
-    MirBlock, MirConst, MirFieldDef, MirFunction, MirInstr, MirModule, MirSlot, MirType,
-    OwnerScope, SlotKind, Terminator,
+    FnSig, MirBlock, MirConst, MirFieldDef, MirFunction, MirInstr, MirModule, MirSlot, MirType,
+    OwnerScope, SlotKind, Terminator, VariantArm, VariantTypeRef,
 };
 use auto_av_core::mir_verify::{verify_mir, MirVerifyError};
 use auto_av_core::owned_text::StrArena;
@@ -546,7 +546,17 @@ fn av_dynamic_824_resources_deep_chain_roundtrip_within_bound() {
         .map(|(d, n)| RecordBinding {
             owner: "dynamic824",
             name: n,
-            fields: vec!["v", "r"],
+            fields: vec![
+                ("v", std::rc::Rc::new(DynType::I32)),
+                (
+                    "r",
+                    if d == 0 {
+                        std::rc::Rc::new(DynType::I32)
+                    } else {
+                        std::rc::Rc::new(tys[d - 1].clone())
+                    },
+                ),
+            ],
             ty_index: 2 + d as u32,
         })
         .collect();
@@ -765,4 +775,123 @@ fn av_dynamic_824_resources_worker_memory_hard_gate_parent_sampled() {
         }
     }
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// F-824-R1-03 replay shape: a compact SHARED type DAG — k nested two-arm
+/// variants, both arms referencing the PRECEDING type. The module is a
+/// few hundred bytes and well under the 256 depth bound; the owned-tree
+/// EXPANSION is 2^(k+1)-1 DynType nodes (k=17 → 262143, the review's
+/// exact counterexample shape).
+fn dag_module(k: u32) -> MirModule {
+    let owner = owner_scope();
+    let mut m = MirModule::new_dynamic(owner);
+    let i = m.intern_type(MirType::I32);
+    let b = m.intern_type(MirType::Bool);
+    let d = m.intern_type(MirType::Dyn);
+    let mut t = i;
+    for j in 0..k {
+        t = m.intern_type(MirType::Variant(VariantTypeRef {
+            owner_module: "dynamic824".to_string(),
+            name: format!("V{j}"),
+            arms: vec![
+                VariantArm {
+                    name: "a".to_string(),
+                    payload: Some(t),
+                },
+                VariantArm {
+                    name: "b".to_string(),
+                    payload: Some(t),
+                },
+            ],
+        }));
+    }
+    let sig = m.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: b,
+    }));
+    let c = m.intern_const(MirConst::I32(1)) as u32;
+    m.funcs = vec![MirFunction {
+        owner: owner_scope(),
+        name: "main".to_string(),
+        sig,
+        slots: vec![slot(i, "v"), slot(d, "dyn"), slot(b, "hit")],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::Const { dst: 0, value: c },
+                MirInstr::DynPack { dst: 1, src: 0 },
+                MirInstr::DynIs {
+                    dst: 2,
+                    src: 1,
+                    ty: t,
+                },
+            ],
+            term: Terminator::Return { value: 2 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+    }];
+    m.entry = 0;
+    m
+}
+
+/// F-824-R1-03 close: type-DAG expansion is bounded AND charged. The
+/// compact sibling one level UNDER the ceiling (2^16-1 = 65535 nodes)
+/// executes with its resolution work visible in `steps`; one level OVER
+/// (131071) and the review's 17-level shape (262143, ~20 MiB of DynType
+/// storage alone) are refused `av.resource.dyn-nodes` BEFORE the
+/// allocation storm — a tight step budget refuses with the step resource,
+/// never "Success at 8 steps".
+#[test]
+fn av_dynamic_824_resources_type_dag_expansion_bounded_and_charged() {
+    // Under the ceiling: 65535 expanded nodes — success, work charged.
+    let loaded = admit(&dag_module(15));
+    let (out, _) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    let ExecOutcome::Success { value, steps } = out else {
+        panic!("the 65535-node sibling must execute: {out:?}")
+    };
+    assert_eq!(value, Value::Bool(false), "i32 is not the variant type");
+    assert!(
+        steps >= 65_535,
+        "the expansion is charged to the step budget: {steps} steps"
+    );
+
+    // One level over: 131071 nodes — resource refusal before
+    // materialization (verify still admits: the module is legal).
+    let loaded = admit(&dag_module(16));
+    let (out, _) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert_eq!(resource_kind(&out), ResourceKind::DynTypeNodes);
+    assert_eq!(resource_kind(&out).code(), "av.resource.dyn-nodes");
+
+    // The review's exact counterexample shape: a ~700-byte legal module
+    // under a tight budget that used to report Success/8 steps/160B peak.
+    let m = dag_module(17);
+    verify_mir(&m).unwrap_or_else(|e| panic!("verify: {e:?}"));
+    let wire = encode_abc(&m).unwrap_or_else(|e| panic!("encode: {}", e.code()));
+    assert!(
+        wire.to_flat().len() < 1024,
+        "the module stays compact: {} bytes",
+        wire.to_flat().len()
+    );
+    let loaded =
+        verify_abc_bytes(&wire.to_flat(), &m.owner).unwrap_or_else(|e| panic!("admission: {e:?}"));
+    let mut lim = ExecLimits::default();
+    lim.max_steps = 100;
+    lim.max_slot_bytes = 4096;
+    let (out, trace) = execute(&loaded, &lim, &CancelFlag::new(false));
+    assert_eq!(resource_kind(&out), ResourceKind::DynTypeNodes);
+    assert!(
+        trace.peak_slot_bytes <= 4096,
+        "no storm lands in the slots: peak {}",
+        trace.peak_slot_bytes
+    );
+
+    // The step charge is independently observable: an expansion larger
+    // than the step budget (65535 nodes vs 100 steps) refuses with the
+    // INSTR-STEPS resource — the old invisible-work path is gone.
+    let loaded = admit(&dag_module(15));
+    let mut lim = ExecLimits::default();
+    lim.max_steps = 100;
+    let (out, _) = execute(&loaded, &lim, &CancelFlag::new(false));
+    assert_eq!(resource_kind(&out), ResourceKind::InstrSteps);
 }

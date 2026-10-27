@@ -141,22 +141,30 @@ impl From<TraversalStop> for PortableError {
 // ---------------------------------------------------------------------------
 
 /// One current nominal RECORD binding: the declaration this decode domain
-/// accepts (owner + name + field names in declaration order) and the
-/// positional type-table index restored `RecordValue`s carry.
+/// accepts — owner + name + field names in declaration order WITH the
+/// CURRENT declared field types (complete recursive identity: a names-only
+/// shape cannot even express a changed field type — F-824-R1-02) — and
+/// the positional type-table index restored `RecordValue`s carry. Field
+/// types are `Rc` so a builder resolving a SHARED type table hands out one
+/// node set per type index instead of re-expanding the DAG per field.
+#[derive(Clone)]
 pub struct RecordBinding<'a> {
     pub owner: &'a str,
     pub name: &'a str,
-    pub fields: Vec<&'a str>,
+    pub fields: Vec<(&'a str, Rc<DynType>)>,
     pub ty_index: u32,
 }
 
-/// The arm signature of one current nominal VARIANT binding.
+/// The arm signature of one current nominal VARIANT binding: name + the
+/// CURRENT declared payload type (`None` = payload-less arm).
+#[derive(Clone)]
 pub struct ArmSig<'a> {
     pub name: &'a str,
-    pub has_payload: bool,
+    pub payload: Option<Rc<DynType>>,
 }
 
 /// One current nominal VARIANT binding (arms in declaration order).
+#[derive(Clone)]
 pub struct VariantBinding<'a> {
     pub owner: &'a str,
     pub name: &'a str,
@@ -492,6 +500,13 @@ pub fn unfreeze(
         b: &bytes[..body_len],
         pos: HEADER_LEN,
     };
+    // F-824-R1-02: the ROOT descriptor is admitted once, in full (see
+    // `admit_tydesc`); every downstream node's descriptor is a subtree of
+    // it, and the declared-vs-observed rollup below rejects any node that
+    // disagrees with its parent — so one charged walk covers the whole
+    // wire's type identity without re-comparing shared subtrees at every
+    // nesting level.
+    let mut root_admitted = false;
 
     // One open container being rebuilt; after `want` children it pops into
     // a fresh value + type that rolls up the attach cascade.
@@ -524,7 +539,17 @@ pub fn unfreeze(
         t.enter_node(depth)?;
         parsed_nodes += 1;
         let node_ty = read_tydesc(&mut r, &mut t, 1)?;
+        if !root_admitted {
+            root_admitted = true;
+            admit_tydesc(&node_ty, ctx, &mut t)?;
+        }
         let tag = r.u8()?;
+        // F-824-R1-01: a scalar payload pairs with EXACTLY its own
+        // descriptor kind — a tampered descriptor (even one with a
+        // recomputed checksum) is a structural `type` rejection, never a
+        // checked-type lie. Container tags carry their own kind checks in
+        // the arms below.
+        expect_leaf_kind(tag, &node_ty)?;
         let (mut item_v, mut item_t): (Value, DynType) = match tag {
             TAG_I32 => (Value::I32(r.i32()?), node_ty),
             TAG_BOOL => {
@@ -579,7 +604,7 @@ pub fn unfreeze(
                         .fields
                         .iter()
                         .zip(fields.iter())
-                        .all(|(a, f)| *a == f.name.as_str())
+                        .all(|((bn, _bt), f)| *bn == f.name.as_str())
                 };
                 if !names_ok {
                     return Err(PortableError::Admission {
@@ -657,7 +682,7 @@ pub fn unfreeze(
                         _ => unreachable!(),
                     };
                     binding.arms.iter().zip(arms.iter()).all(|(sig, a)| {
-                        sig.name == a.name.as_str() && sig.has_payload == a.payload.is_some()
+                        sig.name == a.name.as_str() && sig.payload.is_some() == a.payload.is_some()
                     })
                 };
                 if !sigs_ok {
@@ -841,6 +866,206 @@ fn read_tydesc(r: &mut Reader, t: &mut Traversal, depth: u32) -> Result<DynType,
         }
         _ => return Err(PortableError::Invalid { reason: "tydesc" }),
     })
+}
+
+/// Admit the ROOT type descriptor against the CURRENT dependencies
+/// (F-824-R1-02): EVERY nominal occurrence in the tree — including ones
+/// with no value node downstream (an empty List's element type, an
+/// inactive arm's payload type, an unused nested parameter) — is looked
+/// up (`portable.unknown-type`) and compared for COMPLETE recursive type
+/// identity: same owner/name/field/arm names AND the same field/payload
+/// TYPES at every depth (`portable.layout-mismatch`). Downstream node
+/// descriptors are subtrees of this root (the declared-vs-observed
+/// rollup rejects any disagreement structurally), so one walk here
+/// covers the whole wire's type identity. Explicit worklist (the
+/// module's no-host-stack-recursion discipline): every visited node and
+/// every compared node pair charges one traversal step.
+fn admit_tydesc(
+    ty: &DynType,
+    ctx: &RestoreContext,
+    t: &mut Traversal,
+) -> Result<(), PortableError> {
+    let mut walk: Vec<&DynType> = vec![ty];
+    while let Some(node) = walk.pop() {
+        t.charge_steps(1)?;
+        match node {
+            DynType::Record {
+                owner,
+                name,
+                fields,
+            } => {
+                admit_record(ctx, owner, name, fields, t)?;
+                walk.extend(fields.iter().map(|f| &f.ty));
+            }
+            DynType::Variant { owner, name, arms } => {
+                admit_variant(ctx, owner, name, arms, t)?;
+                for a in arms {
+                    if let Some(p) = &a.payload {
+                        walk.push(p);
+                    }
+                }
+            }
+            DynType::List(elem) => walk.push(elem),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Admit one decoded RECORD descriptor against the current bindings
+/// (see [`admit_tydesc`]'s F-824-R1-02 note).
+fn admit_record(
+    ctx: &RestoreContext,
+    owner: &str,
+    name: &str,
+    fields: &[DynField],
+    t: &mut Traversal,
+) -> Result<(), PortableError> {
+    let binding = ctx.record(owner, name).ok_or(PortableError::Admission {
+        code: "portable.unknown-type",
+    })?;
+    if binding.fields.len() != fields.len() {
+        return Err(PortableError::Admission {
+            code: "portable.layout-mismatch",
+        });
+    }
+    for ((bn, bt), f) in binding.fields.iter().zip(fields.iter()) {
+        if *bn != f.name.as_str() || !ty_ident(&f.ty, bt, t)? {
+            return Err(PortableError::Admission {
+                code: "portable.layout-mismatch",
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Admit one decoded VARIANT descriptor against the current bindings.
+fn admit_variant(
+    ctx: &RestoreContext,
+    owner: &str,
+    name: &str,
+    arms: &[DynArm],
+    t: &mut Traversal,
+) -> Result<(), PortableError> {
+    let binding = ctx.variant(owner, name).ok_or(PortableError::Admission {
+        code: "portable.unknown-type",
+    })?;
+    if binding.arms.len() != arms.len() {
+        return Err(PortableError::Admission {
+            code: "portable.layout-mismatch",
+        });
+    }
+    for (sig, a) in binding.arms.iter().zip(arms.iter()) {
+        let same = sig.name == a.name.as_str()
+            && match (&sig.payload, &a.payload) {
+                (Some(bt), Some(wire)) => ty_ident(wire, bt, t)?,
+                (None, None) => true,
+                _ => false,
+            };
+        if !same {
+            return Err(PortableError::Admission {
+                code: "portable.layout-mismatch",
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Full recursive type identity between the WIRE descriptor and the
+/// CURRENT declared binding type. Same owner/name/field-names is NOT
+/// enough (F-824-R1-02): a changed field or payload type at any depth is
+/// a mismatch. Explicit pair worklist (no host-stack recursion); every
+/// compared node pair charges one traversal step, so a wide comparison
+/// storm trips the steps budget instead of running unbilled.
+fn ty_ident(wire: &DynType, current: &DynType, t: &mut Traversal) -> Result<bool, PortableError> {
+    let mut stack: Vec<(&DynType, &DynType)> = vec![(wire, current)];
+    while let Some((w, c)) = stack.pop() {
+        t.charge_steps(1)?;
+        match (w, c) {
+            (DynType::List(a), DynType::List(b)) => stack.push((a, b)),
+            (
+                DynType::Record {
+                    owner: ao,
+                    name: an,
+                    fields: af,
+                },
+                DynType::Record {
+                    owner: bo,
+                    name: bn,
+                    fields: bf,
+                },
+            ) => {
+                if ao != bo || an != bn || af.len() != bf.len() {
+                    return Ok(false);
+                }
+                for (x, y) in af.iter().zip(bf.iter()) {
+                    if x.name != y.name {
+                        return Ok(false);
+                    }
+                    stack.push((&x.ty, &y.ty));
+                }
+            }
+            (
+                DynType::Variant {
+                    owner: ao,
+                    name: an,
+                    arms: aa,
+                },
+                DynType::Variant {
+                    owner: bo,
+                    name: bn,
+                    arms: ba,
+                },
+            ) => {
+                if ao != bo || an != bn || aa.len() != ba.len() {
+                    return Ok(false);
+                }
+                for (x, y) in aa.iter().zip(ba.iter()) {
+                    if x.name != y.name {
+                        return Ok(false);
+                    }
+                    match (&x.payload, &y.payload) {
+                        (Some(xp), Some(yp)) => stack.push((xp, yp)),
+                        (None, None) => {}
+                        _ => return Ok(false),
+                    }
+                }
+            }
+            (DynType::Bool, DynType::Bool)
+            | (DynType::I32, DynType::I32)
+            | (DynType::I64, DynType::I64)
+            | (DynType::U64, DynType::U64)
+            | (DynType::F32, DynType::F32)
+            | (DynType::F64, DynType::F64)
+            | (DynType::Char, DynType::Char)
+            | (DynType::Str, DynType::Str) => {}
+            _ => return Ok(false),
+        }
+    }
+    Ok(true)
+}
+
+/// Scalar leaf payload tags pair with EXACTLY the equal scalar descriptor
+/// kind (F-824-R1-01); container tags do their own structural checks in
+/// the unfreeze arms.
+fn expect_leaf_kind(tag: u8, ty: &DynType) -> Result<(), PortableError> {
+    use DynType as T;
+    let ok = match tag {
+        TAG_I32 => matches!(ty, T::I32),
+        TAG_BOOL => matches!(ty, T::Bool),
+        TAG_I64 => matches!(ty, T::I64),
+        TAG_U64 => matches!(ty, T::U64),
+        TAG_F32 => matches!(ty, T::F32),
+        TAG_F64 => matches!(ty, T::F64),
+        TAG_CHAR => matches!(ty, T::Char),
+        TAG_STR => matches!(ty, T::Str),
+        _ => true,
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(PortableError::Invalid { reason: "type" })
+    }
 }
 
 struct Reader<'b> {

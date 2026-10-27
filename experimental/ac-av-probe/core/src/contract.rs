@@ -670,9 +670,13 @@ impl Value {
                     }
                 }
                 // PLAN-824: a Dyn slot's data volume is its inner value's
-                // (the type descriptor is bookkeeping, not payload).
+                // PLUS the carried type-descriptor tree (F-824-R1-03: a
+                // resolved descriptor is real slot-resident data — the
+                // shared value-data line counts it, megabytes cannot hide
+                // behind "bookkeeping").
                 Value::Dyn(d) => {
                     *visited += 1;
+                    b += dyn_type_bytes(d.ty(), visited);
                     stack.push(d.as_value().clone());
                 }
                 _ => {}
@@ -681,6 +685,45 @@ impl Value {
         }
         total
     }
+}
+
+/// Structural byte estimate of one `DynType` tree: a node cell plus its
+/// name payloads per node (same conservative cost model as `deep_size`;
+/// explicit worklist — the type depth is bounded at construction, but the
+/// walk keeps the module's no-host-stack-recursion discipline).
+fn dyn_type_bytes(ty: &crate::dynamic::DynType, visited: &mut u64) -> usize {
+    use crate::dynamic::{DynArm, DynField, DynType};
+    let mut total = 0usize;
+    let mut stack: Vec<&DynType> = vec![ty];
+    while let Some(t) = stack.pop() {
+        *visited += 1;
+        total += std::mem::size_of::<DynType>();
+        match t {
+            DynType::Record {
+                owner,
+                name,
+                fields,
+            } => {
+                total += owner.len() + name.len();
+                for DynField { name, ty } in fields {
+                    total += name.len();
+                    stack.push(ty);
+                }
+            }
+            DynType::Variant { owner, name, arms } => {
+                total += owner.len() + name.len();
+                for DynArm { name, payload } in arms {
+                    total += name.len();
+                    if let Some(p) = payload {
+                        stack.push(p);
+                    }
+                }
+            }
+            DynType::List(elem) => stack.push(elem),
+            _ => {}
+        }
+    }
+    total
 }
 
 /// Language traps of the scalar contract (i32 arithmetic). These are
@@ -764,6 +807,10 @@ pub enum ResourceKind {
     DecodeMemory,
     /// PLAN-822: single-list element count over `MAX_LIST_ELEMS`.
     ListElems,
+    /// PLAN-824: a Dyn type operand's DAG→tree expansion exceeded the
+    /// frozen dyn node ceiling (`av.resource.dyn-nodes` — the same stop
+    /// family as the value-tree node budgets in `dynamic`/`portable`).
+    DynTypeNodes,
 }
 
 impl ResourceKind {
@@ -782,6 +829,7 @@ impl ResourceKind {
             ResourceKind::VerifyMemory => "av.resource.verify-memory",
             ResourceKind::DecodeMemory => "av.resource.decode-memory",
             ResourceKind::ListElems => "av.resource.list-elems",
+            ResourceKind::DynTypeNodes => "av.resource.dyn-nodes",
         }
     }
 }

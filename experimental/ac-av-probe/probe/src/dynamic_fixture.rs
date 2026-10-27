@@ -37,7 +37,9 @@ use auto_av_core::portable::{
     freeze, unfreeze, ArmSig, RecordBinding as PortableRecordBinding,
     RestoreContext as PortableRestoreContext, VariantBinding, PORTABLE_SCHEMA,
 };
+use std::collections::HashMap;
 use std::path::Path;
+use std::rc::Rc;
 
 use crate::cache::{envelope_unwrap, envelope_wrap, EnvelopeIdentity, EnvelopeKind};
 use ac_artifact_probe::identity::QueryKey;
@@ -227,38 +229,185 @@ pub fn dynamic_portable_key(
 
 /// The portable decode domain of one module: current nominal record and
 /// variant bindings derived from the (re-verified) type table — restoring
-/// re-admits every nominal identity against THIS table (§5.1.5). The
-/// returned bindings borrow only from `mir`.
-pub fn portable_bindings_of<'m>(
-    mir: &'m MirModule,
-) -> (Vec<PortableRecordBinding<'m>>, Vec<VariantBinding<'m>>) {
+/// re-admits every nominal identity AND its complete recursive type
+/// against THIS table (§5.1.5; F-824-R1-02: a names-only shape cannot
+/// express a changed field/payload type). The returned bindings borrow
+/// only the name strings from `mir`; field/payload types are shared per
+/// type index (`Rc`). Nominals whose declaration resolves outside the
+/// erasable closure (e.g. a record with a Fn field) can never appear in
+/// a legal frozen tree — they carry no binding, so any wire occurrence
+/// is `portable.unknown-type` at admission.
+///
+/// F-824-R1-03: the domain build itself is bounded — a shared type table
+/// resolves each index once and every materialized node counts against
+/// the frozen dyn node ceiling; a pathological table refuses here
+/// instead of turning binding construction into an invisible expansion
+/// storm.
+pub fn portable_bindings_of(
+    mir: &MirModule,
+) -> Result<(Vec<PortableRecordBinding<'_>>, Vec<VariantBinding<'_>>), String> {
+    use auto_av_core::dynamic::{DynArm, DynField, DynType, MAX_DYN_DEPTH, MAX_DYN_NODES};
+
+    // Resolves one type index to a shared (Rc) DynType plus its node
+    // count. PATH-based cycle detection; each completed subtree charges
+    // its node count to the shared budget and aborts the walk on
+    // overrun. `None` = outside the erasable closure OR budget overrun
+    // (the caller distinguishes the latter by re-checking the budget).
+    fn resolve(
+        mir: &MirModule,
+        idx: u32,
+        depth: u32,
+        path: &mut Vec<u32>,
+        memo: &mut HashMap<u32, Option<(Rc<DynType>, u64)>>,
+        budget: &mut u64,
+    ) -> Option<(Rc<DynType>, u64)> {
+        if depth > MAX_DYN_DEPTH || path.contains(&idx) {
+            return None;
+        }
+        if let Some(cached) = memo.get(&idx) {
+            return cached.clone();
+        }
+        path.push(idx);
+        let built: Option<(DynType, u64)> = match mir.types.get(idx as usize) {
+            Some(MirType::Bool) => Some((DynType::Bool, 1)),
+            Some(MirType::I32) => Some((DynType::I32, 1)),
+            Some(MirType::I64) => Some((DynType::I64, 1)),
+            Some(MirType::U64) => Some((DynType::U64, 1)),
+            Some(MirType::F32) => Some((DynType::F32, 1)),
+            Some(MirType::F64) => Some((DynType::F64, 1)),
+            Some(MirType::Char) => Some((DynType::Char, 1)),
+            Some(MirType::Str) => Some((DynType::Str, 1)),
+            Some(MirType::List(l)) => {
+                let (elem, n) = resolve(mir, l.elem, depth + 1, path, memo, budget)?;
+                Some((DynType::List(Box::new((*elem).clone())), n + 1))
+            }
+            Some(MirType::Record(r)) => {
+                let mut fields = Vec::with_capacity(r.fields.len());
+                let mut n = 1u64;
+                for f in &r.fields {
+                    let (ft, fnodes) = resolve(mir, f.ty, depth + 1, path, memo, budget)?;
+                    n += fnodes;
+                    fields.push(DynField {
+                        name: f.name.clone(),
+                        ty: (*ft).clone(),
+                    });
+                }
+                Some((
+                    DynType::Record {
+                        owner: r.owner_module.clone(),
+                        name: r.name.clone(),
+                        fields,
+                    },
+                    n,
+                ))
+            }
+            Some(MirType::Variant(v)) => {
+                let mut arms = Vec::with_capacity(v.arms.len());
+                let mut n = 1u64;
+                for a in &v.arms {
+                    let payload = match a.payload {
+                        Some(p) => {
+                            let (pt, pnodes) = resolve(mir, p, depth + 1, path, memo, budget)?;
+                            n += pnodes;
+                            Some((*pt).clone())
+                        }
+                        None => None,
+                    };
+                    arms.push(DynArm {
+                        name: a.name.clone(),
+                        payload,
+                    });
+                }
+                Some((
+                    DynType::Variant {
+                        owner: v.owner_module.clone(),
+                        name: v.name.clone(),
+                        arms,
+                    },
+                    n,
+                ))
+            }
+            _ => None,
+        };
+        path.pop();
+        *budget += built.as_ref().map(|(_, n)| *n).unwrap_or(0);
+        if *budget > MAX_DYN_NODES as u64 {
+            return None;
+        }
+        let out = built.map(|(t, n)| (Rc::new(t), n));
+        memo.insert(idx, out.clone());
+        out
+    }
+
+    let mut memo: HashMap<u32, Option<(Rc<DynType>, u64)>> = HashMap::new();
+    let mut budget = 0u64;
     let mut records = Vec::new();
     let mut variants = Vec::new();
     for (i, t) in mir.types.iter().enumerate() {
         match t {
-            MirType::Record(r) => records.push(PortableRecordBinding {
-                owner: r.owner_module.as_str(),
-                name: r.name.as_str(),
-                fields: r.fields.iter().map(|f| f.name.as_str()).collect(),
-                ty_index: i as u32,
-            }),
-            MirType::Variant(v) => variants.push(VariantBinding {
-                owner: v.owner_module.as_str(),
-                name: v.name.as_str(),
-                arms: v
-                    .arms
-                    .iter()
-                    .map(|a| ArmSig {
+            MirType::Record(r) => {
+                let mut fields = Vec::with_capacity(r.fields.len());
+                let mut ok = true;
+                for f in &r.fields {
+                    match resolve(mir, f.ty, 1, &mut Vec::new(), &mut memo, &mut budget) {
+                        Some((ft, _)) => fields.push((f.name.as_str(), ft)),
+                        None => {
+                            ok = false;
+                            break;
+                        }
+                    }
+                }
+                if ok {
+                    records.push(PortableRecordBinding {
+                        owner: r.owner_module.as_str(),
+                        name: r.name.as_str(),
+                        fields,
+                        ty_index: i as u32,
+                    });
+                }
+            }
+            MirType::Variant(v) => {
+                let mut arms = Vec::with_capacity(v.arms.len());
+                let mut ok = true;
+                for a in &v.arms {
+                    let payload = match a.payload {
+                        Some(p) => {
+                            match resolve(mir, p, 1, &mut Vec::new(), &mut memo, &mut budget) {
+                                Some((pt, _)) => Some(pt),
+                                None => {
+                                    ok = false;
+                                    break;
+                                }
+                            }
+                        }
+                        None => None,
+                    };
+                    if !ok {
+                        break;
+                    }
+                    arms.push(ArmSig {
                         name: a.name.as_str(),
-                        has_payload: a.payload.is_some(),
-                    })
-                    .collect(),
-                ty_index: i as u32,
-            }),
+                        payload,
+                    });
+                }
+                if ok {
+                    variants.push(VariantBinding {
+                        owner: v.owner_module.as_str(),
+                        name: v.name.as_str(),
+                        arms,
+                        ty_index: i as u32,
+                    });
+                }
+            }
             _ => {}
         }
+        if budget > MAX_DYN_NODES as u64 {
+            return Err(format!(
+                "portable binding domain exceeds {MAX_DYN_NODES} type nodes"
+            ));
+        }
     }
-    (records, variants)
+    Ok((records, variants))
 }
 
 /// One frozen dynamic fixture (programmatic typed input — the builder
@@ -1024,7 +1173,8 @@ pub fn restore_dynamic_portable(
         &dynamic_portable_envelope(owner, snapshot),
     )
     .map_err(|e| format!("envelope: {e}"))?;
-    let (records, variants) = portable_bindings_of(ctx_module);
+    let (records, variants) =
+        portable_bindings_of(ctx_module).map_err(|e| format!("portable binding domain: {e}"))?;
     let ctx = PortableRestoreContext::new(&records, &variants);
     unfreeze(&payload, &ctx, &TraversalOptions::default())
         .map_err(|e| format!("unfreeze: {} ({:?})", e.code(), e))

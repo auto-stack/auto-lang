@@ -569,10 +569,24 @@ fn frame_slots_bytes(slots: &[Value], visited: &mut u64) -> usize {
 /// instructions consume). PATH-based cycle detection (a type table is a
 /// DAG — shared children are fine, only a back-reference to the current
 /// path is a cycle); the 256 depth bound matches the verifier's
-/// `dyn_whitelisted`, so a verified operand always resolves — `None` is
-/// an admission violation, never a guest outcome.
-fn resolve_dyn_type<V: ModuleView>(v: &V, func: u32, idx: u32) -> Option<crate::dynamic::DynType> {
-    use crate::dynamic::{DynArm, DynField, DynType};
+/// `dyn_whitelisted`.
+///
+/// F-824-R1-03: resolution MATERIALIZES an owned tree from the shared
+/// DAG — the expansion itself is bounded work (`MAX_DYN_NODES`, the same
+/// frozen ceiling freeze/unfreeze/clone apply) and the produced node
+/// count is returned so the caller charges it to the step budget. A
+/// compact DAG whose expansion exceeds the ceiling is
+/// [`DynTypeResolve::NodesOverCeiling`] — a resource refusal BEFORE the
+/// allocation storm, never a guest value. `OutsideClosure` (depth /
+/// cycle / non-erasable kind) remains the admission violation it was.
+enum DynTypeResolve {
+    Ready(crate::dynamic::DynType, u64),
+    OutsideClosure,
+    NodesOverCeiling,
+}
+
+fn resolve_dyn_type<V: ModuleView>(v: &V, func: u32, idx: u32) -> DynTypeResolve {
+    use crate::dynamic::{DynArm, DynField, DynType, MAX_DYN_NODES};
     use crate::mir::MirType;
     fn go<V: ModuleView>(
         v: &V,
@@ -580,8 +594,15 @@ fn resolve_dyn_type<V: ModuleView>(v: &V, func: u32, idx: u32) -> Option<crate::
         idx: u32,
         depth: u32,
         path: &mut Vec<u32>,
+        nodes: &mut u64,
     ) -> Option<DynType> {
         if depth > crate::dynamic::MAX_DYN_DEPTH || path.contains(&idx) {
+            return None;
+        }
+        *nodes += 1;
+        if *nodes > MAX_DYN_NODES as u64 {
+            // Abort the walk NOW — the remaining expansion is never
+            // materialized (the wrapper classifies by the overrun).
             return None;
         }
         path.push(idx);
@@ -601,7 +622,7 @@ fn resolve_dyn_type<V: ModuleView>(v: &V, func: u32, idx: u32) -> Option<crate::
                     .map(|f| {
                         Some(DynField {
                             name: f.name.clone(),
-                            ty: go(v, func, f.ty, depth + 1, path)?,
+                            ty: go(v, func, f.ty, depth + 1, path, nodes)?,
                         })
                     })
                     .collect();
@@ -617,6 +638,7 @@ fn resolve_dyn_type<V: ModuleView>(v: &V, func: u32, idx: u32) -> Option<crate::
                 l.elem,
                 depth + 1,
                 path,
+                nodes,
             )?))),
             MirType::Variant(vt) => {
                 let arms: Option<Vec<DynArm>> = vt
@@ -625,7 +647,7 @@ fn resolve_dyn_type<V: ModuleView>(v: &V, func: u32, idx: u32) -> Option<crate::
                     .map(|a| match a.payload {
                         Some(p) => Some(DynArm {
                             name: a.name.clone(),
-                            payload: Some(go(v, func, p, depth + 1, path)?),
+                            payload: Some(go(v, func, p, depth + 1, path, nodes)?),
                         }),
                         None => Some(DynArm {
                             name: a.name.clone(),
@@ -644,7 +666,47 @@ fn resolve_dyn_type<V: ModuleView>(v: &V, func: u32, idx: u32) -> Option<crate::
         path.pop();
         out
     }
-    go(v, func, idx, 1, &mut Vec::new())
+    let mut nodes = 0u64;
+    let out = go(v, func, idx, 1, &mut Vec::new(), &mut nodes);
+    if nodes > MAX_DYN_NODES as u64 {
+        DynTypeResolve::NodesOverCeiling
+    } else if let Some(t) = out {
+        DynTypeResolve::Ready(t, nodes)
+    } else {
+        DynTypeResolve::OutsideClosure
+    }
+}
+
+/// F-824-R1-03: materialized DynType nodes are WORK — charged to the
+/// step budget like every other deep traversal (a compact 721-byte DAG
+/// no longer executes as "8 steps"). `Some(outcome)` = the charge itself
+/// crossed `max_steps`.
+fn charge_dyn_type_nodes(
+    st: &mut LoopState,
+    nodes: u64,
+    limits: &ExecLimits,
+) -> Option<ExecOutcome> {
+    st.steps += nodes;
+    if st.steps > limits.max_steps {
+        Some(ExecOutcome::Resource {
+            kind: ResourceKind::InstrSteps,
+            message: format!("execution exceeded {} instruction steps", limits.max_steps),
+        })
+    } else {
+        None
+    }
+}
+
+/// F-824-R1-03: the DAG→tree expansion ceiling refusal (resource, with
+/// cleanup owned by the executor's normal unwind).
+fn dyn_type_nodes_refusal() -> Option<ExecOutcome> {
+    Some(ExecOutcome::Resource {
+        kind: ResourceKind::DynTypeNodes,
+        message: format!(
+            "dyn type operand expands beyond {} nodes",
+            crate::dynamic::MAX_DYN_NODES
+        ),
+    })
 }
 
 /// Commit one slot write with deep delta accounting: a positive delta is
@@ -3077,8 +3139,14 @@ fn dispatch<V: ModuleView>(
                     };
                     let src_ty = func.slots[*src as usize].ty;
                     let dyn_ty = match resolve_dyn_type(v, func_idx, src_ty) {
-                        Some(t) => t,
-                        None => {
+                        DynTypeResolve::Ready(t, nodes) => {
+                            if let Some(out) = charge_dyn_type_nodes(st, nodes, limits) {
+                                return Some(out);
+                            }
+                            t
+                        }
+                        DynTypeResolve::NodesOverCeiling => return dyn_type_nodes_refusal(),
+                        DynTypeResolve::OutsideClosure => {
                             return Some(ExecOutcome::Infra(
                                 "dyn-pack source type is outside the erasable closure \
                                  (admission violation)"
@@ -3111,8 +3179,14 @@ fn dispatch<V: ModuleView>(
                         fr.slots[*src as usize].clone()
                     };
                     let want = match resolve_dyn_type(v, func_idx, *ty) {
-                        Some(t) => t,
-                        None => {
+                        DynTypeResolve::Ready(t, nodes) => {
+                            if let Some(out) = charge_dyn_type_nodes(st, nodes, limits) {
+                                return Some(out);
+                            }
+                            t
+                        }
+                        DynTypeResolve::NodesOverCeiling => return dyn_type_nodes_refusal(),
+                        DynTypeResolve::OutsideClosure => {
                             return Some(ExecOutcome::Infra(
                                 "dyn-is type operand is outside the erasable closure \
                                  (admission violation)"
@@ -3142,8 +3216,14 @@ fn dispatch<V: ModuleView>(
                         fr.slots[*src as usize].clone()
                     };
                     let want = match resolve_dyn_type(v, func_idx, *ty) {
-                        Some(t) => t,
-                        None => {
+                        DynTypeResolve::Ready(t, nodes) => {
+                            if let Some(out) = charge_dyn_type_nodes(st, nodes, limits) {
+                                return Some(out);
+                            }
+                            t
+                        }
+                        DynTypeResolve::NodesOverCeiling => return dyn_type_nodes_refusal(),
+                        DynTypeResolve::OutsideClosure => {
                             return Some(ExecOutcome::Infra(
                                 "dyn-take type operand is outside the erasable closure \
                                  (admission violation)"

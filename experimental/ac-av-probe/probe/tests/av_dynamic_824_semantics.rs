@@ -18,12 +18,29 @@ use auto_av_core::contract::{ExecOutcome, TrapKind, Value};
 use auto_av_core::dynamic::{DynType, DynValue, TraversalOptions};
 use auto_av_core::mir::{
     BinOp, FnSig, ListTypeRef, MirBlock, MirConst, MirFieldDef, MirFunction, MirInstr, MirModule,
-    MirSlot, MirType, OwnerScope, SlotKind, Terminator, VariantArm, VariantTypeRef,
+    MirSlot, MirType, OwnerScope, RecordTypeRef, SlotKind, Terminator, VariantArm, VariantTypeRef,
 };
 use auto_av_core::mir_verify::{verify_mir, MirVerifyError};
 use auto_av_core::portable::{
     freeze, unfreeze, PortableError, RecordBinding, RestoreContext, VariantBinding,
 };
+use std::rc::Rc;
+
+/// The (name, current-type) field list of the shared Note vocabulary:
+/// position 0 is the Str field, position 1 the I32 one (keeps the
+/// wrong-NAME controls differing from the wire only in names).
+fn note_fields_typed(fields: &[&'static str]) -> Vec<(&'static str, Rc<DynType>)> {
+    fields
+        .iter()
+        .enumerate()
+        .map(|(i, n)| {
+            (
+                *n,
+                Rc::new(if i == 0 { DynType::Str } else { DynType::I32 }),
+            )
+        })
+        .collect()
+}
 
 /// Owned decode-domain bindings (RestoreContext borrows slices).
 struct Ctx {
@@ -43,7 +60,7 @@ impl Ctx {
             recs: vec![RecordBinding {
                 owner: "dynamic824",
                 name: "Note",
-                fields: vec!["text", "n"],
+                fields: note_fields_typed(&["text", "n"]),
                 ty_index,
             }],
             vars: Vec::new(),
@@ -54,7 +71,7 @@ impl Ctx {
             recs: vec![RecordBinding {
                 owner: "dynamic824",
                 name: "Note",
-                fields,
+                fields: note_fields_typed(&fields),
                 ty_index,
             }],
             vars: Vec::new(),
@@ -65,7 +82,7 @@ impl Ctx {
             recs: vec![RecordBinding {
                 owner: "dynamic824",
                 name: "Other",
-                fields: vec!["text", "n"],
+                fields: note_fields_typed(&["text", "n"]),
                 ty_index,
             }],
             vars: Vec::new(),
@@ -1310,4 +1327,66 @@ fn av_dynamic_824_semantics_production_same_source_byte_equivalence() {
     assert_eq!(back, direct);
     // Determinism: a second freeze of the restored value is stable.
     assert_eq!(freeze(&back, &TraversalOptions::default()).unwrap(), a);
+}
+
+/// F-824-R1-02 (adapter axis): the REAL `portable_bindings_of` builder
+/// derives CURRENT field types from the module's type table. A same-name
+/// record whose field TYPE changed in the current module refuses the
+/// restore at admission — through the production adapter, not a hand
+/// binding; the honest module still restores bit-exactly.
+#[test]
+fn av_dynamic_824_semantics_restore_revalidates_current_field_types() {
+    fn module_with_bool_field(field_is_bool: bool) -> MirModule {
+        let mut m = MirModule::new_dynamic(owner_scope());
+        m.types = vec![
+            MirType::I32,
+            MirType::Bool,
+            MirType::Record(RecordTypeRef {
+                owner_module: "dynamic824".to_string(),
+                name: "R".to_string(),
+                fields: vec![MirFieldDef {
+                    name: "x".to_string(),
+                    ty: if field_is_bool { 1 } else { 0 },
+                }],
+            }),
+        ];
+        m
+    }
+    let wire_ty = DynType::record("dynamic824", "R", vec![("x", DynType::I32)]);
+    let d = DynValue::pack(
+        Value::Record(Rc::new(auto_av_core::contract::RecordValue {
+            ty: 2,
+            fields: vec![Value::I32(42)],
+        })),
+        wire_ty,
+    )
+    .expect("pack");
+    let bytes = freeze(&d, &TraversalOptions::default()).expect("freeze");
+
+    // Current schema says R.x is bool — the adapter's binding CARRIES the
+    // type, so the frozen i32 payload refuses (the review's Replay B
+    // through the production decode domain).
+    let changed_module = module_with_bool_field(true);
+    let (recs, vars) = auto_av_probe::dynamic_fixture::portable_bindings_of(&changed_module)
+        .expect("binding domain");
+    let changed = RestoreContext::new(&recs, &vars);
+    match unfreeze(&bytes, &changed, &TraversalOptions::default()) {
+        Err(PortableError::Admission { code }) => assert_eq!(code, "portable.layout-mismatch"),
+        other => panic!("changed field type must refuse: {other:?}"),
+    }
+
+    // The honest module restores; the positional index binds to its table.
+    let honest_module = module_with_bool_field(false);
+    let (recs, vars) = auto_av_probe::dynamic_fixture::portable_bindings_of(&honest_module)
+        .expect("binding domain");
+    let honest = RestoreContext::new(&recs, &vars);
+    let back = unfreeze(&bytes, &honest, &TraversalOptions::default()).expect("restore");
+    match back.as_value() {
+        Value::Record(r) => {
+            assert_eq!(r.ty, 2);
+            assert!(matches!(r.fields[0], Value::I32(42)));
+        }
+        other => panic!("not a record: {other:?}"),
+    }
+    assert_eq!(freeze(&back, &TraversalOptions::default()).unwrap(), bytes);
 }

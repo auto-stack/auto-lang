@@ -89,13 +89,17 @@ mod tests {
             RecordBinding {
                 owner: "demo",
                 name: "Root",
-                fields: vec!["id", "name", "point"],
+                fields: vec![
+                    ("id", Rc::new(DynType::I32)),
+                    ("name", Rc::new(DynType::Str)),
+                    ("point", Rc::new(point_ty.clone())),
+                ],
                 ty_index: 3,
             },
             RecordBinding {
                 owner: "demo",
                 name: "Point",
-                fields: vec!["x", "y"],
+                fields: vec![("x", Rc::new(DynType::I64)), ("y", Rc::new(DynType::U64))],
                 ty_index: 7,
             },
         ];
@@ -199,7 +203,10 @@ mod tests {
         let records = [RecordBinding {
             owner: "demo",
             name: "Note",
-            fields: vec!["text", "n"],
+            fields: vec![
+                ("text", Rc::new(DynType::Str)),
+                ("n", Rc::new(DynType::I32)),
+            ],
             ty_index: 4,
         }];
         let bytes = freeze(&dv, &TraversalOptions::default()).unwrap();
@@ -229,11 +236,11 @@ mod tests {
             arms: vec![
                 ArmSig {
                     name: "none",
-                    has_payload: false,
+                    payload: None,
                 },
                 ArmSig {
                     name: "some",
-                    has_payload: true,
+                    payload: Some(Rc::new(DynType::I64)),
                 },
             ],
             ty_index: 9,
@@ -260,11 +267,11 @@ mod tests {
             arms: vec![
                 ArmSig {
                     name: "ok",
-                    has_payload: true,
+                    payload: Some(Rc::new(DynType::U64)),
                 },
                 ArmSig {
                     name: "err",
-                    has_payload: true,
+                    payload: Some(Rc::new(DynType::Str)),
                 },
             ],
             ty_index: 10,
@@ -969,18 +976,27 @@ mod tests {
             unfreeze(&s, &empty, &TraversalOptions::default()),
             Err(PortableError::Invalid { reason: "utf8" })
         );
-        // Truncated mid-node and missing fields.
-        let half = wire(1, &[1u8, 7]);
+        // Truncated mid-node: an I32 node carrying only 2 of its 4 payload
+        // bytes (same-kind pair — pure truncation, no cross-kind noise).
+        let half = wire(1, &[1u8, 0, 0x11, 0x22]);
         assert_eq!(
             unfreeze(&half, &empty, &TraversalOptions::default()),
             Err(PortableError::Invalid {
                 reason: "truncated"
             })
         );
+        // Cross-kind scalar pair (F-824-R1-01): an I32 descriptor with a
+        // Str payload tag is rejected at the kind gate — descriptor/payload
+        // equivalence fires before any payload read, even truncated.
+        let cross = wire(1, &[1u8, 7]);
+        assert_eq!(
+            unfreeze(&cross, &empty, &TraversalOptions::default()),
+            Err(PortableError::Invalid { reason: "type" })
+        );
         let binding = [RecordBinding {
             owner: "d",
             name: "R",
-            fields: vec!["a"],
+            fields: vec![("a", Rc::new(DynType::I32))],
             ty_index: 1,
         }];
         let rctx = ctx(&binding, &[]);
@@ -1054,7 +1070,7 @@ mod tests {
         let binding = [RecordBinding {
             owner: "d",
             name: "R",
-            fields: vec!["a"],
+            fields: vec![("a", Rc::new(DynType::I32))],
             ty_index: 1,
         }];
         let bad_rec = {
@@ -1079,11 +1095,11 @@ mod tests {
             arms: vec![
                 ArmSig {
                     name: "n",
-                    has_payload: false,
+                    payload: None,
                 },
                 ArmSig {
                     name: "s",
-                    has_payload: true,
+                    payload: Some(Rc::new(DynType::I32)),
                 },
             ],
             ty_index: 2,
@@ -1167,12 +1183,34 @@ mod tests {
             })
         );
         // Renamed field: a layout/revision change never reuses stale data.
-        let renamed = [RecordBinding {
+        // (The nested Point binding is present so the ONLY difference is
+        // the renamed field — nested admission reports its own code.)
+        let point_binding = RecordBinding {
             owner: "demo",
-            name: "Root",
-            fields: vec!["id", "title", "point"], // was "name"
-            ty_index: 3,
-        }];
+            name: "Point",
+            fields: vec![("x", Rc::new(DynType::I64)), ("y", Rc::new(DynType::U64))],
+            ty_index: 7,
+        };
+        let renamed = [
+            RecordBinding {
+                owner: "demo",
+                name: "Root",
+                fields: vec![
+                    ("id", Rc::new(DynType::I32)),
+                    ("title", Rc::new(DynType::Str)), // was "name"
+                    (
+                        "point",
+                        Rc::new(DynType::record(
+                            "demo",
+                            "Point",
+                            vec![("x", DynType::I64), ("y", DynType::U64)],
+                        )),
+                    ),
+                ],
+                ty_index: 3,
+            },
+            point_binding.clone(),
+        ];
         assert_eq!(
             unfreeze(&bytes, &ctx(&renamed, &[]), &TraversalOptions::default()),
             Err(PortableError::Admission {
@@ -1180,12 +1218,26 @@ mod tests {
             })
         );
         // Reordered fields likewise.
-        let reordered = [RecordBinding {
-            owner: "demo",
-            name: "Root",
-            fields: vec!["name", "id", "point"],
-            ty_index: 3,
-        }];
+        let reordered = [
+            RecordBinding {
+                owner: "demo",
+                name: "Root",
+                fields: vec![
+                    ("name", Rc::new(DynType::Str)),
+                    ("id", Rc::new(DynType::I32)),
+                    (
+                        "point",
+                        Rc::new(DynType::record(
+                            "demo",
+                            "Point",
+                            vec![("x", DynType::I64), ("y", DynType::U64)],
+                        )),
+                    ),
+                ],
+                ty_index: 3,
+            },
+            point_binding,
+        ];
         assert_eq!(
             unfreeze(&bytes, &ctx(&reordered, &[]), &TraversalOptions::default()),
             Err(PortableError::Admission {
@@ -1199,7 +1251,7 @@ mod tests {
             name: "Opt",
             arms: vec![ArmSig {
                 name: "n",
-                has_payload: true,
+                payload: Some(Rc::new(DynType::I32)),
             }], // wire says none
             ty_index: 5,
         }];
@@ -1246,8 +1298,18 @@ mod tests {
 
     #[test]
     fn av_dynamic_824_budget_nodes_freeze() {
+        // 65601 TYPE nodes (F-824-R1-03: the type tree shares the frozen
+        // MAX_DYN_NODES ceiling): pack refuses BEFORE any value walk.
         let (v, t) = oversized_tree();
-        let dv = DynValue::pack(v, t).unwrap();
+        let err = DynValue::pack(v, t).unwrap_err();
+        assert_eq!(err.code(), "av.resource.dyn-nodes");
+        // Freeze-side value-node ceiling control: a 3-node TYPE tree with
+        // 65701 VALUE nodes (nested lists, each under MAX_LIST_ELEMS).
+        let inner = DynType::list(DynType::I32);
+        let outer_ty = DynType::list(inner.clone());
+        let mk_inner = || listv((0..218).map(|_| Value::I32(1)).collect());
+        let outer_val = listv((0..301).map(|_| mk_inner()).collect());
+        let dv = DynValue::pack(outer_val, outer_ty).unwrap();
         assert_eq!(
             freeze(&dv, &TraversalOptions::default()),
             Err(PortableError::Budget {
@@ -1313,7 +1375,7 @@ mod tests {
         let binding = [RecordBinding {
             owner: "deep",
             name: "N",
-            fields: vec!["x"],
+            fields: vec![("x", Rc::new(DynType::I32))],
             ty_index: 1,
         }];
         assert_eq!(
@@ -1358,17 +1420,25 @@ mod tests {
         assert!(freeze(&dv, &TraversalOptions::default()).is_ok());
         // Unfreeze-side cancellation on the same bytes.
         let bytes = freeze(&dv, &TraversalOptions::default()).unwrap();
+        let mid_ty_ref = Rc::new(DynType::record(
+            "big",
+            "Mid",
+            (0..1024).map(|i| (leak_name(i), DynType::I32)).collect(),
+        ));
         let bindings = [
             RecordBinding {
                 owner: "big",
                 name: "Root",
-                fields: vec!["a", "b"],
+                fields: vec![("a", mid_ty_ref.clone()), ("b", mid_ty_ref.clone())],
                 ty_index: 2,
             },
             RecordBinding {
                 owner: "big",
                 name: "Mid",
-                fields: leak_names_1024().to_vec(),
+                fields: leak_names_1024()
+                    .iter()
+                    .map(|n| (*n, Rc::new(DynType::I32)))
+                    .collect(),
                 ty_index: 1,
             },
         ];
@@ -1407,5 +1477,281 @@ mod tests {
             source: DynValue::pack(Value::I32(1), DynType::I32).unwrap(),
         };
         assert_eq!(take_err.code(), "av.dyn.take-type");
+    }
+
+    // ------------------------------------------------------------------
+    // F-824-R1-01 — scalar descriptor/payload kind equivalence
+    // ------------------------------------------------------------------
+
+    /// One scalar node: descriptor kind `desc`, payload tag `tag` (with a
+    /// minimal well-formed payload for that tag).
+    fn scalar_node(desc: u8, tag: u8) -> Vec<u8> {
+        let mut b = vec![desc];
+        b.push(tag);
+        match tag {
+            0 => b.extend_from_slice(&7i32.to_le_bytes()), // I32
+            1 => b.push(1),                                // Bool
+            2 => b.extend_from_slice(&7i64.to_le_bytes()), // I64
+            3 => b.extend_from_slice(&7u64.to_le_bytes()), // U64
+            4 => b.extend_from_slice(&1.0f32.to_bits().to_le_bytes()), // F32
+            5 => b.extend_from_slice(&1.0f64.to_bits().to_le_bytes()), // F64
+            6 => b.extend_from_slice(&0x4E2Du32.to_le_bytes()), // Char '中'
+            7 => {
+                // Str
+                b.extend_from_slice(&1u32.to_le_bytes());
+                b.push(b'a');
+            }
+            _ => unreachable!("scalar tag"),
+        }
+        b
+    }
+
+    #[test]
+    fn av_dynamic_824_wire_scalar_kind_equivalence() {
+        let empty = ctx(&[], &[]);
+        // Every scalar descriptor kind × every scalar payload tag at the
+        // ROOT. Matching kinds (TY k ↔ its own TAG) decode; every
+        // cross-kind pair — including with a RE-COMPUTED checksum — is a
+        // structural `type` rejection, never a checked-type lie.
+        // (TY_BOOL=0↔TAG_BOOL=1 and TY_I32=1↔TAG_I32=0 are swapped by
+        // design; 2..7 align.)
+        let tag_of_ty = [1u8, 0, 2, 3, 4, 5, 6, 7];
+        for desc in 0u8..8 {
+            for tag in 0u8..8 {
+                let w = wire(1, &scalar_node(desc, tag));
+                let out = unfreeze(&w, &empty, &TraversalOptions::default());
+                if tag == tag_of_ty[desc as usize] {
+                    assert!(out.is_ok(), "legal pair ty={desc} tag={tag}: {out:?}");
+                } else {
+                    assert_eq!(
+                        out,
+                        Err(PortableError::Invalid { reason: "type" }),
+                        "cross-kind pair ty={desc} tag={tag}"
+                    );
+                }
+            }
+        }
+        // The review replay verbatim: freeze Bool(true), flip the root
+        // descriptor byte TY_BOOL→TY_I32, recompute the FNV trailer —
+        // refused; there is no `take_as(I32) → Ok(Bool)` anymore.
+        let dv = DynValue::pack(Value::Bool(true), DynType::Bool).unwrap();
+        let mut tampered = freeze(&dv, &TraversalOptions::default()).unwrap();
+        tampered[16] = 1; // TY_I32 over the Bool payload
+        let n = tampered.len() - 8;
+        let sum = fnv1a64(&tampered[..n]);
+        tampered[n..].copy_from_slice(&sum.to_le_bytes());
+        assert_eq!(
+            unfreeze(&tampered, &empty, &TraversalOptions::default()),
+            Err(PortableError::Invalid { reason: "type" })
+        );
+        // The same cross-kind shape under a record field (the parent's
+        // declared child type and the child's own descriptor AGREE — the
+        // mismatch is descriptor-vs-payload, exactly the F01 seam).
+        let rt = DynType::record("d", "R", vec![("f", DynType::Bool)]);
+        let binding = [RecordBinding {
+            owner: "d",
+            name: "R",
+            fields: vec![("f", Rc::new(DynType::Bool))],
+            ty_index: 1,
+        }];
+        let under_record = wire(2, &{
+            let mut b = record_node(&rt, &[]);
+            b.extend_from_slice(&scalar_node(0, 0)); // desc Bool, TAG_I32
+            b
+        });
+        assert_eq!(
+            unfreeze(
+                &under_record,
+                &ctx(&binding, &[]),
+                &TraversalOptions::default()
+            ),
+            Err(PortableError::Invalid { reason: "type" })
+        );
+        // Under a List element (declared I32, child carries a Bool pair).
+        let lt = DynType::list(DynType::I32);
+        let under_list = wire(2, &{
+            let mut b = tydesc(&lt);
+            b.push(9); // TAG_LIST
+            b.extend_from_slice(&1u32.to_le_bytes());
+            b.extend_from_slice(&scalar_node(1, 1)); // desc I32, TAG_BOOL
+            b
+        });
+        assert_eq!(
+            unfreeze(&under_list, &empty, &TraversalOptions::default()),
+            Err(PortableError::Invalid { reason: "type" })
+        );
+        // Under an ACTIVE variant payload (declared F64, child Char pair).
+        let vt = DynType::variant("d", "V", vec![("s", Some(DynType::F64))]);
+        let vsig = [VariantBinding {
+            owner: "d",
+            name: "V",
+            arms: vec![ArmSig {
+                name: "s",
+                payload: Some(Rc::new(DynType::F64)),
+            }],
+            ty_index: 2,
+        }];
+        let under_variant = wire(2, &{
+            let mut b = tydesc(&vt);
+            b.push(10); // TAG_VARIANT
+            b.extend_from_slice(&0u32.to_le_bytes());
+            b.extend_from_slice(&scalar_node(5, 6)); // desc F64, TAG_CHAR
+            b
+        });
+        assert_eq!(
+            unfreeze(
+                &under_variant,
+                &ctx(&[], &vsig),
+                &TraversalOptions::default()
+            ),
+            Err(PortableError::Invalid { reason: "type" })
+        );
+        // Legal bit-exact roundtrip and wrong-type take keep working.
+        let good = freeze(&dv, &TraversalOptions::default()).unwrap();
+        let back = unfreeze(&good, &empty, &TraversalOptions::default()).unwrap();
+        assert_eq!(back.as_value(), &Value::Bool(true));
+        let err = back.take_as(&DynType::I32).expect_err("wrong type take");
+        assert_eq!(err.code(), "av.dyn.take-type");
+        assert!(
+            matches!(err.into_source().as_value(), Value::Bool(true)),
+            "the source survives the failed take"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // F-824-R1-02 — type-only nominal dependencies + changed TYPES
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn av_dynamic_824_admission_type_only_dependencies() {
+        // Replay A: an EMPTY List whose element type is a nominal that is
+        // NOT in the current domain — no record value ever visits, yet the
+        // restore must refuse (the element identity lives in the wire).
+        let ghost = DynType::record("gone-owner", "Gone", vec![("x", DynType::I32)]);
+        let d = DynValue::pack(listv(vec![]), DynType::list(ghost.clone())).unwrap();
+        let w = freeze(&d, &TraversalOptions::default()).unwrap();
+        assert_eq!(
+            unfreeze(&w, &ctx(&[], &[]), &TraversalOptions::default()),
+            Err(PortableError::Admission {
+                code: "portable.unknown-type"
+            })
+        );
+        // An INACTIVE arm's payload nominal is a dependency too: a `none`
+        // value of Opt{none, some(Gone)} never carries the payload — the
+        // tydesc admission still refuses.
+        let opt = DynType::variant("demo", "Opt2", vec![("none", None), ("some", Some(ghost))]);
+        let none_val = DynValue::pack(variant(1, 0, None), opt).unwrap();
+        let w2 = freeze(&none_val, &TraversalOptions::default()).unwrap();
+        assert_eq!(
+            unfreeze(&w2, &ctx(&[], &[]), &TraversalOptions::default()),
+            Err(PortableError::Admission {
+                code: "portable.unknown-type"
+            })
+        );
+        // Registering the ghost restores BOTH (empty list keeps its
+        // element identity; the inactive arm's type stays admitted).
+        let gone = [RecordBinding {
+            owner: "gone-owner",
+            name: "Gone",
+            fields: vec![("x", Rc::new(DynType::I32))],
+            ty_index: 9,
+        }];
+        let back = unfreeze(&w, &ctx(&gone, &[]), &TraversalOptions::default()).unwrap();
+        assert!(back.is(&DynType::list(DynType::record(
+            "gone-owner",
+            "Gone",
+            vec![("x", DynType::I32)]
+        ))));
+        let opt_binding = [VariantBinding {
+            owner: "demo",
+            name: "Opt2",
+            arms: vec![
+                ArmSig {
+                    name: "none",
+                    payload: None,
+                },
+                ArmSig {
+                    name: "some",
+                    payload: Some(Rc::new(DynType::record(
+                        "gone-owner",
+                        "Gone",
+                        vec![("x", DynType::I32)],
+                    ))),
+                },
+            ],
+            ty_index: 11,
+        }];
+        assert!(unfreeze(&w2, &ctx(&gone, &opt_binding), &TraversalOptions::default()).is_ok());
+    }
+
+    #[test]
+    fn av_dynamic_824_admission_changed_field_and_payload_types() {
+        // Replay B: same owner/name/field-NAMES with the current field
+        // TYPE changed i32→bool. The binding CARRIES the type now, so the
+        // restore refuses — the old names-only shape could not even
+        // express the change (a `RecordValue{ty: 77}` holding I32(42)
+        // used to restore fine).
+        let wire_ty = DynType::record("owner", "R", vec![("x", DynType::I32)]);
+        let d = DynValue::pack(record(5, vec![Value::I32(42)]), wire_ty).unwrap();
+        let w = freeze(&d, &TraversalOptions::default()).unwrap();
+        let changed = [RecordBinding {
+            owner: "owner",
+            name: "R",
+            fields: vec![("x", Rc::new(DynType::Bool))], // current schema
+            ty_index: 77,
+        }];
+        assert_eq!(
+            unfreeze(&w, &ctx(&changed, &[]), &TraversalOptions::default()),
+            Err(PortableError::Admission {
+                code: "portable.layout-mismatch"
+            })
+        );
+        // A changed VARIANT payload type likewise (names and
+        // payload-ness intact, i32 → bool) — refused even though the
+        // wire value carries NO payload at all (inactive arm).
+        let vt = DynType::variant(
+            "owner",
+            "Opt",
+            vec![("none", None), ("some", Some(DynType::I32))],
+        );
+        let d = DynValue::pack(variant(6, 0, None), vt).unwrap();
+        let w2 = freeze(&d, &TraversalOptions::default()).unwrap();
+        let changed_v = [VariantBinding {
+            owner: "owner",
+            name: "Opt",
+            arms: vec![
+                ArmSig {
+                    name: "none",
+                    payload: None,
+                },
+                ArmSig {
+                    name: "some",
+                    payload: Some(Rc::new(DynType::Bool)),
+                },
+            ],
+            ty_index: 6,
+        }];
+        assert_eq!(
+            unfreeze(&w2, &ctx(&[], &changed_v), &TraversalOptions::default()),
+            Err(PortableError::Admission {
+                code: "portable.layout-mismatch"
+            })
+        );
+        // Legal same-schema restore into a FRESH positional index stays
+        // supported (the index is current-table bookkeeping, not identity).
+        let same = [RecordBinding {
+            owner: "owner",
+            name: "R",
+            fields: vec![("x", Rc::new(DynType::I32))],
+            ty_index: 77,
+        }];
+        let back = unfreeze(&w, &ctx(&same, &[]), &TraversalOptions::default()).unwrap();
+        match back.as_value() {
+            Value::Record(r) => {
+                assert_eq!(r.ty, 77, "the positional index binds to the current table");
+                assert!(matches!(r.fields[0], Value::I32(42)));
+            }
+            other => panic!("not a record: {other:?}"),
+        }
     }
 }

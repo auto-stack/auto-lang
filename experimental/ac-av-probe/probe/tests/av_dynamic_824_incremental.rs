@@ -11,7 +11,6 @@ use auto_av_core::mir::{
     BinOp, MirBlock, MirConst, MirFieldDef, MirFunction, MirImport, MirInstr, MirModule, MirSlot,
     MirType, OwnerScope, SlotKind, Terminator,
 };
-use auto_av_core::mir_verify::verify_mir;
 use auto_av_core::program_snapshot::ProgramSnapshot;
 use auto_av_probe::dynamic_session::DynamicUpdateSession;
 use std::sync::Arc;

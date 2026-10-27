@@ -75,13 +75,13 @@ function Run-Harness-Tests {
     # The parallel/824 same-source harness: the SAME production files
     # (core/src/{dynamic,portable}.rs) compiled through the harness's
     # #[path] seam — the V-14 dual-compilation axis (module tests).
-    param([string]$Label)
+    param([string]$Label, [string[]]$RequiredIds = @())
     $manifest = Join-Path $probe 'parallel/824/Cargo.toml'
     # --lib: exactly one result line (the doc-test target's `0 passed`
     # banner must not trip the zero-selected guard).
     $out = & cargo test --manifest-path $manifest --lib 2>&1 | Out-String
     Write-Host $out
-    Assert-Selected -Output $out -Bin 'parallel/824' -Filter '' -Label $Label
+    Assert-Selected -Output $out -Bin 'parallel/824' -Filter '' -Label $Label -RequiredIds $RequiredIds
     if ($LASTEXITCODE -ne 0) {
         throw "$Label : cargo exited $LASTEXITCODE"
     }
@@ -113,7 +113,16 @@ $REQ = @{
         'av_dynamic_824_resources_deep_chain_beyond_bound_rejected',
         'av_dynamic_824_resources_take_trap_drains_ledger',
         'av_dynamic_824_resources_cancel_is_its_own_state',
-        'av_dynamic_824_resources_worker_memory_hard_gate_parent_sampled'
+        'av_dynamic_824_resources_worker_memory_hard_gate_parent_sampled',
+        # F-824-R1-03 close: bounded AND charged type-DAG expansion.
+        'av_dynamic_824_resources_type_dag_expansion_bounded_and_charged'
+    )
+    'harness' = @(
+        # F-824-R1-01/02 close: scalar kind equivalence + type-only
+        # nominal dependencies and changed field/payload TYPES.
+        'av_dynamic_824_wire_scalar_kind_equivalence',
+        'av_dynamic_824_admission_type_only_dependencies',
+        'av_dynamic_824_admission_changed_field_and_payload_types'
     )
     'baseline' = @(
         # D rows (the bound entries, exactly the binding.md table):
@@ -173,7 +182,10 @@ $REQ = @{
         'av_dynamic_824_semantics_nested_dyn_rejected',
         'av_dynamic_824_semantics_portable_admission_two_domains_and_refusals',
         'av_dynamic_824_semantics_unfreeze_fault_retry_clean',
-        'av_dynamic_824_semantics_production_same_source_byte_equivalence'
+        'av_dynamic_824_semantics_production_same_source_byte_equivalence',
+        # F-824-R1-02 close (adapter axis): current field TYPE changes
+        # refuse through the REAL binding builder.
+        'av_dynamic_824_semantics_restore_revalidates_current_field_types'
     )
 }
 
@@ -210,7 +222,7 @@ switch ($Scope) {
         # T-03: the full §5 support surface (V-02/03/04/05/11/12/14 axes)
         # through the real gates, plus the same-source harness module axis.
         Run-Probe-Tests -Bin 'av_dynamic_824_semantics' -Label 'semantics' -RequiredIds $REQ['semantics']
-        Run-Harness-Tests -Label 'semantics-harness'
+        Run-Harness-Tests -Label 'semantics-harness' -RequiredIds $REQ['harness']
     }
     'admission' {
         # T-04: the untrusted-builder admission negatives (verify-gate

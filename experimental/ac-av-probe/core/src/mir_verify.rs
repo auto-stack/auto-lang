@@ -930,29 +930,50 @@ impl<'a> Verifier<'a> {
     /// share one child type; only a reference back into the CURRENT path
     /// is a cycle, and such recursive types have no finite value). The
     /// frozen 256 depth bound keeps the walk stack-safe.
+    ///
+    /// F-824-R1-03: verdicts are memoized per `(idx, depth)` — a shared
+    /// child is visited once per distinct depth context, never once per
+    /// path, so a compact DAG (e.g. nested two-arm variants) costs linear
+    /// verify work instead of expanding its 2^n path count.
     fn dyn_whitelisted(&self, root: TypeIdx) -> bool {
         use crate::dynamic::MAX_DYN_DEPTH;
-        fn go(m: &MirModule, idx: TypeIdx, depth: u32, path: &mut Vec<TypeIdx>) -> bool {
-            if depth > MAX_DYN_DEPTH || path.contains(&idx) {
+        use std::collections::HashMap;
+        fn go(
+            m: &MirModule,
+            idx: TypeIdx,
+            depth: u32,
+            path: &mut Vec<TypeIdx>,
+            memo: &mut HashMap<(TypeIdx, u32), bool>,
+        ) -> bool {
+            if depth > MAX_DYN_DEPTH {
                 return false;
+            }
+            if path.contains(&idx) {
+                return false;
+            }
+            if let Some(&cached) = memo.get(&(idx, depth)) {
+                return cached;
             }
             path.push(idx);
             let ok = match m.types.get(idx as usize) {
                 Some(MirType::Bool) | Some(MirType::I32) | Some(MirType::I64)
                 | Some(MirType::U64) | Some(MirType::F32) | Some(MirType::F64)
                 | Some(MirType::Char) | Some(MirType::Str) => true,
-                Some(MirType::Record(r)) => r.fields.iter().all(|f| go(m, f.ty, depth + 1, path)),
-                Some(MirType::List(l)) => go(m, l.elem, depth + 1, path),
+                Some(MirType::Record(r)) => {
+                    r.fields.iter().all(|f| go(m, f.ty, depth + 1, path, memo))
+                }
+                Some(MirType::List(l)) => go(m, l.elem, depth + 1, path, memo),
                 Some(MirType::Variant(v)) => v.arms.iter().all(|a| match a.payload {
-                    Some(p) => go(m, p, depth + 1, path),
+                    Some(p) => go(m, p, depth + 1, path, memo),
                     None => true,
                 }),
                 _ => false,
             };
             path.pop();
+            memo.insert((idx, depth), ok);
             ok
         }
-        go(self.module, root, 1, &mut Vec::new())
+        go(self.module, root, 1, &mut Vec::new(), &mut HashMap::new())
     }
 
     /// PLAN-822: index operands are i32-typed slots (domain checked at

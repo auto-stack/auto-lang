@@ -295,7 +295,9 @@ pub enum DynPackError {
     /// The declared type itself is malformed (duplicate field/arm names,
     /// width guards) or a list value longer than `MAX_LIST_ELEMS`.
     InvalidType { reason: &'static str },
-    /// Traversal budget rejection (depth — §7).
+    /// Traversal budget rejection (depth/nodes — §7; the carried code is
+    /// the authoritative stop reason: `av.resource.dyn-depth` or
+    /// `av.resource.dyn-nodes`).
     Budget { code: &'static str },
 }
 
@@ -305,7 +307,7 @@ impl DynPackError {
             DynPackError::Unsupported { .. } => "av.dyn.unsupported",
             DynPackError::TypeMismatch { .. } => "av.dyn.pack-type",
             DynPackError::InvalidType { .. } => "av.dyn.invalid-type",
-            DynPackError::Budget { .. } => "av.resource.dyn-depth",
+            DynPackError::Budget { code } => code,
         }
     }
 }
@@ -676,13 +678,23 @@ impl DynTakeError {
 // ---------------------------------------------------------------------------
 
 /// Validate the TYPE tree itself: unique field/arm names, the core width
-/// guards (`MAX_RECORD_FIELDS`; arms reuse it, r2-frozen), per-node depth.
+/// guards (`MAX_RECORD_FIELDS`; arms reuse it, r2-frozen), per-node depth,
+/// and a node ceiling (`MAX_DYN_NODES` — a hand-built owned tree wider
+/// than what freeze/unfreeze/clone would ever admit is rejected here, at
+/// the single constructor gate every DynValue passes through).
 fn validate_type(ty: &DynType) -> Result<(), DynPackError> {
     let mut stack: Vec<(&DynType, u32)> = vec![(ty, 1)];
+    let mut nodes: u32 = 0;
     while let Some((t, depth)) = stack.pop() {
         if depth > MAX_DYN_DEPTH {
             return Err(DynPackError::Budget {
                 code: "av.resource.dyn-depth",
+            });
+        }
+        nodes += 1;
+        if nodes > MAX_DYN_NODES {
+            return Err(DynPackError::Budget {
+                code: "av.resource.dyn-nodes",
             });
         }
         match t {
