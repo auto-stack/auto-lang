@@ -4868,7 +4868,31 @@
           "modified_at": 1793073014,
           "completed_at": 1793073014
         }
-      ],
+      ,
+{
+ "id": "P858-P3-MERGE",
+ "title": "PLAN-858 r4 consolidation and gates",
+ "content": "受审 ACE P90 开发期口径及原 feature 边界修复的规范与验证记录。合入、账本、批量、归档和清理以收据中的实际检查点为准。",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/attachments/858/merge-r4/receipt.md",
+ "milestone": null,
+ "module": "auto-test-case",
+ "tags": [
+  "PLAN-858",
+  "revision:4",
+  "source-sha256:b51820d85dce86ec499f14efe38875167d54ea4a895fa235a503f2a369ae4211",
+  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+ ],
+ "created_at": 1793081431,
+ "modified_at": 1793081431,
+ "completed_at": 1793081431
+}
+],
       "section_type": "Reports",
       "title": "📊 Reports",
       "status": "empty",
@@ -13741,27 +13765,32 @@
           "completed_at": null
         },
         {
-          "id": "P773-2",
-          "title": "TestCase v2 测试架构（含 ac-av/data-run-v1 recipe）",
-          "content": "probe/run 架构 + 注册 recipe 白名单。PLAN-820 追加 ac-av/data-run-v1：typed:<id> 入口（av.data-fixture/1 冻结八样本）经真实准入链，worker 报实际产值规范 {kind,bits}，父侧独立冻结表比对 tag+rawbits；typed 存在性 family 隔离（core 必须旧 value 通道、非 data 带 typed=准入违规）；形状校验 oracle 无关准入层（bool 恰 0/1、i32 不补零且唯一零 \"0\" 合法）；V-10 九反控。",
-          "status": "verified",
-          "depends_on": [],
-          "related": [],
-          "priority": null,
-          "assignee": null,
-          "test_file": null,
-          "file": "docs/specs/auto-test-case/architecture.md",
-          "milestone": null,
-          "module": "auto-test-case",
-          "tags": [
-            "PLAN-820",
-            "r7",
-            "reviewed:18d031102",
-            "review-pass:review-r11"
-          ],
-          "modified_at": 1792896352,
-          "created_at": 1791936000
-        },
+ "id": "P773-2",
+ "title": "TestCase v2 测试架构（含 ac-av/data-run-v1 recipe）",
+ "content": "probe/run 架构 + 注册 recipe 白名单。PLAN-820 追加 ac-av/data-run-v1：typed:<id> 入口（av.data-fixture/1 冻结八样本）经真实准入链，worker 报实际产值规范 {kind,bits}，父侧独立冻结表比对 tag+rawbits；typed 存在性 family 隔离（core 必须旧 value 通道、非 data 带 typed=准入违规）；形状校验 oracle 无关准入层（bool 恰 0/1、i32 不补零且唯一零 \"0\" 合法）；V-10 九反控。 PLAN-858：ACE 开发期周转当前 P90≤2000ms，原正式样本数、真实窗口及正确性/结构/资源门保留；P95 是诊断和历史，长期目标待架构成形后实测。",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-test-case/architecture.md",
+ "milestone": null,
+ "module": "auto-test-case",
+ "tags": [
+  "PLAN-820",
+  "r7",
+  "reviewed:18d031102",
+  "review-pass:review-r11",
+  "PLAN-858",
+  "revision:4",
+  "source-sha256:b34027aaab9dc0127de94ace73afed47105343556f060d190a651a8b0f1e7c55",
+  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+ ],
+ "modified_at": 1793081431,
+ "created_at": 1791936000,
+ "completed_at": null
+},
         {
           "id": "P744-1",
           "title": "sqlite VM 调用面（PLAN-744）",
@@ -14791,27 +14820,31 @@
           "completed_at": null
         },
         {
-          "id": "P788-D1",
-          "title": "TestCase v2 native/syntax 通道合同（PLAN-788）",
-          "content": "autolang.case/2 严格超集：ac check/build/run（core/scalar，真实 COFF/PE/执行、typed 阶段、预算硬 cap 含解码后 1MiB 流 cap 与 stderr 超限即时杀树、合法部分产物 hir.atom/伪造 obj+exe 拒绝、783 cache 三模式不缓存 PASS）与 syntax parse/edit（787 runtime、三投影、fresh↔incremental 等价）；身份轴按行实际消费路径（worker-exe+协议恒在，lld/sdk 内容哈希仅链接行，support-lib 内容轴）。规范：docs/specs/auto-test-case/profile-v2-native.md；架构：architecture.md B 阶段节。",
-          "status": "stable",
-          "file": "docs/specs/auto-test-case/profile-v2-native.md",
-          "tags": [
-            "plan:788",
-            "commit:af9263f67",
-            "sha256:c587224ee40afb2a"
-          ],
-          "depends_on": [],
-          "related": [],
-          "priority": null,
-          "assignee": null,
-          "test_file": null,
-          "milestone": null,
-          "module": null,
-          "created_at": 0,
-          "modified_at": 0,
-          "completed_at": null
-        },
+ "id": "P788-D1",
+ "title": "TestCase v2 native/syntax 通道合同（PLAN-788）",
+ "content": "autolang.case/2 严格超集：ac check/build/run（core/scalar，真实 COFF/PE/执行、typed 阶段、预算硬 cap 含解码后 1MiB 流 cap 与 stderr 超限即时杀树、合法部分产物 hir.atom/伪造 obj+exe 拒绝、783 cache 三模式不缓存 PASS）与 syntax parse/edit（787 runtime、三投影、fresh↔incremental 等价）；身份轴按行实际消费路径（worker-exe+协议恒在，lld/sdk 内容哈希仅链接行，support-lib 内容轴）。规范：docs/specs/auto-test-case/profile-v2-native.md；架构：architecture.md B 阶段节。 PLAN-858：ACE 开发期周转当前 P90≤2000ms，原正式样本数、真实窗口及正确性/结构/资源门保留；P95 是诊断和历史，长期目标待架构成形后实测。",
+ "status": "stable",
+ "file": "docs/specs/auto-test-case/profile-v2-native.md",
+ "tags": [
+  "plan:788",
+  "commit:af9263f67",
+  "sha256:c587224ee40afb2a",
+  "PLAN-858",
+  "revision:4",
+  "source-sha256:a3b21891b605628e7cd92a41690d4a137dc9d310a349749381593b346fc708f8",
+  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+ ],
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "milestone": null,
+ "module": null,
+ "created_at": 0,
+ "modified_at": 1793081431,
+ "completed_at": null
+},
         {
           "id": "P788-D2",
           "title": "probe 真实 consumer 观察入口与 store-gc 工具（PLAN-788）",
@@ -15474,28 +15507,33 @@
           "completed_at": 1792686169
         },
         {
-          "id": "P828-AV",
-          "title": "常驻函数安装与增量合同（828→820 数据域）",
-          "content": "828 函数级增量接口：未改函数 IR/代码复用、受检安装/依赖/寿命、退化仅记录性。PLAN-820 数据域接入（lower_function_data_unit→admit_unit→link）：纯 body 编辑 828 单体事务全链增量（分段 diff+掩码单函数解析+CheckedEnv recheck+BodyEmitReceipt+body_work 生产窗+结构门内建生产路径）；依赖事实精确失效（mention 嵌套闭包+签名形状等价）；caps 三面同发布点同步（含驻留前端环境）；失败/陷阱零安装；双退化反控同一门非零。817 CTE 与 818 mn 消费者按 §5.1.6 最小受控拒适配。 PLAN-822 增补：collections 更新会话（build-aside 原子提交/未改单元同 Arc 零生产/内容指纹结构 gate/完整候选 submitted+carried 授权预检先于一切生产；已发布 snapshot 保留其准入时点授权）。",
-          "status": "verified",
-          "depends_on": [],
-          "related": [],
-          "priority": null,
-          "assignee": null,
-          "test_file": null,
-          "file": "docs/specs/auto-av/resident-function-install.md",
-          "milestone": null,
-          "module": "auto-av",
-          "tags": [
-            "PLAN-820",
-            "r7",
-            "reviewed:18d031102",
-            "review-pass:review-r11",
-            "plan:822 rev:5 commit:a6127fc1f"
-          ],
-          "modified_at": 1792896352,
-          "created_at": 1792686169
-        },
+ "id": "P828-AV",
+ "title": "常驻函数安装与增量合同（828→820 数据域）",
+ "content": "828 函数级增量接口：未改函数 IR/代码复用、受检安装/依赖/寿命、退化仅记录性。PLAN-820 数据域接入（lower_function_data_unit→admit_unit→link）：纯 body 编辑 828 单体事务全链增量（分段 diff+掩码单函数解析+CheckedEnv recheck+BodyEmitReceipt+body_work 生产窗+结构门内建生产路径）；依赖事实精确失效（mention 嵌套闭包+签名形状等价）；caps 三面同发布点同步（含驻留前端环境）；失败/陷阱零安装；双退化反控同一门非零。817 CTE 与 818 mn 消费者按 §5.1.6 最小受控拒适配。 PLAN-822 增补：collections 更新会话（build-aside 原子提交/未改单元同 Arc 零生产/内容指纹结构 gate/完整候选 submitted+carried 授权预检先于一切生产；已发布 snapshot 保留其准入时点授权）。 PLAN-858：ACE 开发期周转当前 P90≤2000ms，原正式样本数、真实窗口及正确性/结构/资源门保留；P95 是诊断和历史，长期目标待架构成形后实测。",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-av/resident-function-install.md",
+ "milestone": null,
+ "module": "auto-av",
+ "tags": [
+  "PLAN-820",
+  "r7",
+  "reviewed:18d031102",
+  "review-pass:review-r11",
+  "plan:822 rev:5 commit:a6127fc1f",
+  "PLAN-858",
+  "revision:4",
+  "source-sha256:8a1ecd480e15c22846948882468e1873130be099bf6dd3433086ce2f23fde97e",
+  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+ ],
+ "modified_at": 1793081431,
+ "created_at": 1792686169,
+ "completed_at": null
+},
         {
           "id": "P834-3D",
           "title": "AutoGraphics auto-3d-game-profile",
@@ -15791,37 +15829,41 @@
           "completed_at": 1792838779
         },
         {
-          "id": "P840-P2-AUTO-LANG",
-          "title": "Auto-lang timing and fixture resource contracts",
-          "content": "PLAN-840 phase2: Two unchanged real wall-clock oracles use shared phase boundaries and reserve num-test-threads in default/full/t3; all existing aliases/filters, inputs, P95<1000ms and tiling bounds retained. Runner-local pool reservation does not claim external machine isolation.\n\nPLAN-840 r8: Explicit full/t3 configuration replaces daily configuration: existing ffi-dual serial group binds all23 real family IDs in both files. No selected tests/features/layout oracles removed. Original timing shared-boundary and pool-reservation contract retained.\n\nPLAN-850: cargo tf/taa/ta/t3 dispatch real language/UI owners serially. Every formal feature child has independent complete/required ID baselines; failures, empty selection and suppressed required IDs reject. Original profiles/oracles remain unchanged.",
-          "status": "verified",
-          "depends_on": [],
-          "related": [
-            "PLAN-850"
-          ],
-          "priority": null,
-          "assignee": null,
-          "test_file": null,
-          "file": "docs/specs/auto-lang/project.md",
-          "milestone": null,
-          "module": null,
-          "tags": [
-            "PLAN-840",
-            "r6",
-            "phase2+phase3",
-            "r8",
-            "phase2+phase4",
-            "reviewed:ba6479da53b7999e490dd0e8ac8d701d5ffe86b2",
-            "source-sha256:55bef47f3ca6de45f026a5f61ea0ac6d637961d4cea4152271d306e8d891f358",
-            "source-path:docs/specs/auto-lang/project.md",
-            "PLAN-850",
-            "commit:7750f8d3399fe8aa620b7eecb6c7390ca810df05",
-            "sha256:839eedb556f84c776177b411aba479c7c964ce7e2a0ae2cb95086d056bb92eca"
-          ],
-          "created_at": 1792835257,
-          "modified_at": 1792972939,
-          "completed_at": 1792838779
-        },
+ "id": "P840-P2-AUTO-LANG",
+ "title": "Auto-lang timing and fixture resource contracts",
+ "content": "PLAN-840 phase2: Two unchanged real wall-clock oracles use shared phase boundaries and reserve num-test-threads in default/full/t3; all existing aliases/filters, inputs and tiling bounds retained; PLAN-858 sets the ACE development gate to P90≤2000ms, while P95 remains diagnostic. Runner-local pool reservation does not claim external machine isolation.\n\nPLAN-840 r8: Explicit full/t3 configuration replaces daily configuration: existing ffi-dual serial group binds all23 real family IDs in both files. No selected tests/features/layout oracles removed. Original timing shared-boundary and pool-reservation contract retained.\n\nPLAN-850: cargo tf/taa/ta/t3 dispatch real language/UI owners serially. Every formal feature child has independent complete/required ID baselines; failures, empty selection and suppressed required IDs reject. Original profiles/oracles remain unchanged.",
+ "status": "verified",
+ "depends_on": [],
+ "related": [
+  "PLAN-850"
+ ],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-lang/project.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-840",
+  "r6",
+  "phase2+phase3",
+  "r8",
+  "phase2+phase4",
+  "reviewed:ba6479da53b7999e490dd0e8ac8d701d5ffe86b2",
+  "source-sha256:55bef47f3ca6de45f026a5f61ea0ac6d637961d4cea4152271d306e8d891f358",
+  "source-path:docs/specs/auto-lang/project.md",
+  "PLAN-850",
+  "commit:7750f8d3399fe8aa620b7eecb6c7390ca810df05",
+  "sha256:839eedb556f84c776177b411aba479c7c964ce7e2a0ae2cb95086d056bb92eca",
+  "PLAN-858",
+  "revision:4",
+  "source-sha256:fcdff3d58b024d5c1a4bb74f4ea154321aca487edbf2a2c0db263ba2ae373daa",
+  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+ ],
+ "created_at": 1792835257,
+ "modified_at": 1793081431,
+ "completed_at": 1792838779
+},
         {
           "id": "P845-BEHAVIOR-PROJECT",
           "title": "AutoGraphics behavior-project",
@@ -15925,28 +15967,33 @@
           "modified_at": 1793000000
         },
         {
-          "id": "P818-D2",
-          "title": "auto-ac MIR-native 单元缓存/链接/周转合同（PLAN-818）",
-          "content": "SD-02 蒸馏：每函数可重定位COFF+manifest（key全轴）；单元缓存项无project+manifest顺序发布摘旧root（787 R3-03）；坏准入拒/Conflict保旧；stage→backup→commit事务；D828增量消费（未改不重编/内容命中=历史单元复用cv→fp/语法回退=记录性全请求从session当前源重建保前缀、永不标incremental）；资源硬门（48/512/768MiB+水位GC）；时间门P95<1s=父侧观测连续窗口（准备→IPC→worker→准入→独立期望比较）。canonical docs/specs/auto-ac/mir-native-cache.md。",
-          "status": "verified",
-          "depends_on": [],
-          "related": [
-            "PLAN-818"
-          ],
-          "priority": null,
-          "assignee": null,
-          "test_file": null,
-          "file": "docs/specs/auto-ac/mir-native-cache.md",
-          "milestone": null,
-          "module": "auto-ac",
-          "tags": [
-            "PLAN-818",
-            "delivery:176552d9d",
-            "experimental"
-          ],
-          "created_at": 1793000000,
-          "modified_at": 1793000000
-        },
+ "id": "P818-D2",
+ "title": "auto-ac MIR-native 单元缓存/链接/周转合同（PLAN-818）",
+ "content": "SD-02 蒸馏：每函数可重定位COFF+manifest（key全轴）；单元缓存项无project+manifest顺序发布摘旧root（787 R3-03）；坏准入拒/Conflict保旧；stage→backup→commit事务；D828增量消费（未改不重编/内容命中=历史单元复用cv→fp/语法回退=记录性全请求从session当前源重建保前缀、永不标incremental）；资源硬门（48/512/768MiB+水位GC）；时间门 P90≤2000ms（PLAN-858 开发期；原 P95 为历史）=父侧观测连续窗口（准备→IPC→worker→准入→独立期望比较）。canonical docs/specs/auto-ac/mir-native-cache.md。",
+ "status": "verified",
+ "depends_on": [],
+ "related": [
+  "PLAN-818"
+ ],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-ac/mir-native-cache.md",
+ "milestone": null,
+ "module": "auto-ac",
+ "tags": [
+  "PLAN-818",
+  "delivery:176552d9d",
+  "experimental",
+  "PLAN-858",
+  "revision:4",
+  "source-sha256:9a9cd3b1b682276108c49d84ad983749abfe013235a3f90e6dad74f0f478dcd3",
+  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+ ],
+ "created_at": 1793000000,
+ "modified_at": 1793081431,
+ "completed_at": null
+},
         {
           "id": "P831-AUTO-UI-REPO",
           "title": "auto-ui 独立仓（五包 owner）",
@@ -16372,7 +16419,100 @@
           "modified_at": 1793073014,
           "completed_at": 1793073014
         }
-      ],
+      ,
+{
+ "id": "P858-P3-D-AV",
+ "title": "auto-av current ACE latency policy (PLAN-858)",
+ "content": "ACE 开发初期 P90≤2000ms；正式真实样本、正确性、身份、结构、资源与原窗口不变；P95 为诊断及历史。长期目标待架构成形后实测。",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-av/cache-and-conformance.md",
+ "milestone": null,
+ "module": "auto-av",
+ "tags": [
+  "PLAN-858",
+  "revision:4",
+  "source-sha256:97fc7af6a1d3e99837938a94f0bffe10f9a008d43ea50801b2af6b34d573b3e9",
+  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+ ],
+ "created_at": 1793081431,
+ "modified_at": 1793081431,
+ "completed_at": 1793081431
+},
+{
+ "id": "P858-P3-D-CTE",
+ "title": "auto-cte current ACE latency policy (PLAN-858)",
+ "content": "ACE 开发初期 P90≤2000ms；正式真实样本、正确性、身份、结构、资源与原窗口不变；P95 为诊断及历史。长期目标待架构成形后实测。",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-cte/frozen-cache.md",
+ "milestone": null,
+ "module": "auto-cte",
+ "tags": [
+  "PLAN-858",
+  "revision:4",
+  "source-sha256:f1599de88fe905499b2b50b433e2d5efe1c3f5986dbc16b042713caf80b65bd6",
+  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+ ],
+ "created_at": 1793081431,
+ "modified_at": 1793081431,
+ "completed_at": 1793081431
+},
+{
+ "id": "P858-P3-D-SEMA",
+ "title": "auto-semantics current ACE latency policy (PLAN-858)",
+ "content": "ACE 开发初期 P90≤2000ms；正式真实样本、正确性、身份、结构、资源与原窗口不变；P95 为诊断及历史。长期目标待架构成形后实测。",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-semantics/query-cache.md",
+ "milestone": null,
+ "module": "auto-semantics",
+ "tags": [
+  "PLAN-858",
+  "revision:4",
+  "source-sha256:eac2f203ee775cd082747a1f4f8a3d394c99e6eabd75512a208eefcceba608ef",
+  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+ ],
+ "created_at": 1793081431,
+ "modified_at": 1793081431,
+ "completed_at": 1793081431
+},
+{
+ "id": "P858-P3-D-ABI",
+ "title": "auto-abi current ACE latency policy (PLAN-858)",
+ "content": "ACE 开发初期 P90≤2000ms；正式真实样本、正确性、身份、结构、资源与原窗口不变；P95 为诊断及历史。长期目标待架构成形后实测。",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-abi/conformance-cache.md",
+ "milestone": null,
+ "module": "auto-abi",
+ "tags": [
+  "PLAN-858",
+  "revision:4",
+  "source-sha256:08b472dea821875b2539f886bc3b2b189a2b206752fb8e01916efc8691dbd46c",
+  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+ ],
+ "created_at": 1793081431,
+ "modified_at": 1793081431,
+ "completed_at": 1793081431
+}
+],
       "section_type": "Designs",
       "title": "🎨 Designs",
       "status": "empty",
@@ -19524,51 +19664,59 @@
           "completed_at": 1792467247
         },
         {
-          "id": "P797-T",
-          "title": "AutoABI 定向反例族与统一 runner 语料（PLAN-797）",
-          "content": "probe workspace 88：t02 24（12 维 admission 矩阵/独立 C 布局 oracle/两阶段预算门含共享 DAG 与小图控制）、t03 7（三腿+swap/错offset/漏调用负控）、t04 6（真实 arena 账本/回滚/record mut-out 正反控制）、t05 26（缓存适用域反例族：同目录/子路径/无扩展名/传递/传递子路径/父逃逸/跨工程/异工具链/裸源/cwd 相对/config.tmp/同名异径/嵌套产物清理不变性 + 512 churn/GC 收据）、t06 7（真实绑定/双门/并发 GC/预算 seam）；父侧 abi_ 家族 13（含行真伪负控）；统一 runner autoabi 语料 4 checks；auto-test-case 87；正式硬门经 verify-autoabi-797.ps1 串行步。",
-          "status": "verified",
-          "file": "docs/specs/auto-abi/conformance-cache.md",
-          "tags": [
-            "PLAN-797",
-            "delivery:1799f86ca",
-            "guarded-offline-projection",
-            "source-sha256:e4b5aeac7eb2be2cb464fb98740504750d93219c9abcace0c51aa6ea546f91d8"
-          ],
-          "module": "",
-          "milestone": "",
-          "assignee": "",
-          "priority": "",
-          "depends_on": [],
-          "related": [],
-          "created_at": 1792485000,
-          "modified_at": 1792485000,
-          "completed_at": 1792485000,
-          "test_file": ""
-        },
+ "id": "P797-T",
+ "title": "AutoABI 定向反例族与统一 runner 语料（PLAN-797）",
+ "content": "probe workspace 88：t02 24（12 维 admission 矩阵/独立 C 布局 oracle/两阶段预算门含共享 DAG 与小图控制）、t03 7（三腿+swap/错offset/漏调用负控）、t04 6（真实 arena 账本/回滚/record mut-out 正反控制）、t05 26（缓存适用域反例族：同目录/子路径/无扩展名/传递/传递子路径/父逃逸/跨工程/异工具链/裸源/cwd 相对/config.tmp/同名异径/嵌套产物清理不变性 + 512 churn/GC 收据）、t06 7（真实绑定/双门/并发 GC/预算 seam）；父侧 abi_ 家族 13（含行真伪负控）；统一 runner autoabi 语料 4 checks；auto-test-case 87；正式硬门经 verify-autoabi-797.ps1 串行步。 PLAN-858：ACE 开发期周转当前 P90≤2000ms，原正式样本数、真实窗口及正确性/结构/资源门保留；P95 是诊断和历史，长期目标待架构成形后实测。",
+ "status": "verified",
+ "file": "docs/specs/auto-abi/conformance-cache.md",
+ "tags": [
+  "PLAN-797",
+  "delivery:1799f86ca",
+  "guarded-offline-projection",
+  "source-sha256:e4b5aeac7eb2be2cb464fb98740504750d93219c9abcace0c51aa6ea546f91d8",
+  "PLAN-858",
+  "revision:4",
+  "source-sha256:08b472dea821875b2539f886bc3b2b189a2b206752fb8e01916efc8691dbd46c",
+  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+ ],
+ "module": "",
+ "milestone": "",
+ "assignee": "",
+ "priority": "",
+ "depends_on": [],
+ "related": [],
+ "created_at": 1792485000,
+ "modified_at": 1793081431,
+ "completed_at": 1792485000,
+ "test_file": ""
+},
         {
-          "id": "P798-T",
-          "title": "MIR/AV正确性与受管生命周期覆盖",
-          "content": "冻结原始测试与资源/恢复/周转证据；最终四档5320/163/105/30通过，真函数增量结构验收归828。\nPLAN-828 增量覆盖：probe function_incremental_828 全族（主 21/三件 512、r1 86、contract 22、t01r 4、b1 11、b2 14、t07 8、t08 5、mig 9）+cache_tier 20 兼容面——冻结负载正式双门战役（P95<1000ms ∧ 结构门 ∧ 双线预算）与完整存储轴 512（persist/GC 水位/重启/哨兵）为永久断言。",
-          "status": "verified",
-          "depends_on": [],
-          "related": [],
-          "priority": null,
-          "assignee": null,
-          "test_file": null,
-          "file": "docs/specs/auto-av/cache-and-conformance.md",
-          "milestone": null,
-          "module": null,
-          "tags": [
-            "PLAN-798:r7",
-            "source_commit:216d139aba888760963d12a5f2cbe693489b06c4",
-            "sha256:f1a9c0826738be4881cd0e35f7cdbd5a5a23923ce554675a6149a56e4f1e4b40",
-            "PLAN-828:r3"
-          ],
-          "created_at": 1792500947,
-          "modified_at": 1792686169,
-          "completed_at": 1792500947
-        },
+ "id": "P798-T",
+ "title": "MIR/AV正确性与受管生命周期覆盖",
+ "content": "冻结原始测试与资源/恢复/周转证据；最终四档5320/163/105/30通过，真函数增量结构验收归828。\nPLAN-828 增量覆盖：probe function_incremental_828 全族（主 21/三件 512、r1 86、contract 22、t01r 4、b1 11、b2 14、t07 8、t08 5、mig 9）+cache_tier 20 兼容面——冻结负载正式双门战役（PLAN-858 当前 P90≤2000ms ∧ 结构门 ∧ 双线预算；历史 P95 留作诊断）与完整存储轴 512（persist/GC 水位/重启/哨兵）为永久断言。",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-av/cache-and-conformance.md",
+ "milestone": null,
+ "module": null,
+ "tags": [
+  "PLAN-798:r7",
+  "source_commit:216d139aba888760963d12a5f2cbe693489b06c4",
+  "sha256:f1a9c0826738be4881cd0e35f7cdbd5a5a23923ce554675a6149a56e4f1e4b40",
+  "PLAN-828:r3",
+  "PLAN-858",
+  "revision:4",
+  "source-sha256:97fc7af6a1d3e99837938a94f0bffe10f9a008d43ea50801b2af6b34d573b3e9",
+  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+ ],
+ "created_at": 1792500947,
+ "modified_at": 1793081431,
+ "completed_at": 1792500947
+},
         {
           "id": "P814-UIR-T",
           "title": "auto-ui-runtime 消费者 fixture 与比较类型探针族",
@@ -20343,7 +20491,31 @@
           "modified_at": 1793073014,
           "completed_at": 1793073014
         }
-      ],
+      ,
+{
+ "id": "P858-P3-T",
+ "title": "ACE development latency and feature-boundary verification",
+ "content": "保留正式样本和既有测试 ID；最近秩边界、非法样本、788 合法零、CTE 结构退化、真实报告与独立正确性控制。合入日常和 book 档通过，官方批量仍按收据执行。",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/specs/auto-test-case/profile-v2-native.md",
+ "milestone": null,
+ "module": "auto-test-case",
+ "tags": [
+  "PLAN-858",
+  "revision:4",
+  "source-sha256:a3b21891b605628e7cd92a41690d4a137dc9d310a349749381593b346fc708f8",
+  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+ ],
+ "created_at": 1793081431,
+ "modified_at": 1793081431,
+ "completed_at": 1793081431
+}
+],
       "section_type": "Tests",
       "title": "🧪 Tests",
       "status": "empty",
@@ -27256,7 +27428,31 @@
           "modified_at": 1793073014,
           "completed_at": 1793073014
         }
-      ],
+      ,
+{
+ "id": "P858-P3-FINAL",
+ "title": "PLAN-858 r4 final independent acceptance review",
+ "content": "三阶段独立验收通过；受审 e3c265449，Phase 3 R1/R2 finding 经 R3 关闭；统一门和交付另依实际 merge 收据。",
+ "status": "verified",
+ "depends_on": [],
+ "related": [],
+ "priority": null,
+ "assignee": null,
+ "test_file": null,
+ "file": "docs/plans/attachments/858/review-final-r1/review.md",
+ "milestone": null,
+ "module": "auto-test-case",
+ "tags": [
+  "PLAN-858",
+  "revision:4",
+  "source-sha256:c3d5953469f409298aa639576c2d17ed49b51714ad9f57d84f408246869e78e1",
+  "source-commit:5f4089be1663efe688a5a53320768a452e0adeac"
+ ],
+ "created_at": 1793081431,
+ "modified_at": 1793081431,
+ "completed_at": 1793081431
+}
+],
       "section_type": "Reviews",
       "title": "🔍 Reviews",
       "status": "empty",
@@ -27267,5 +27463,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 101
+  "version": 102
 }
