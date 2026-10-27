@@ -5326,7 +5326,7 @@
             "native_name": "auto.json.is_valid",
             "status": "unverified",
             "verification": "bound",
-            "reason": "return drift: int / bool (auto_lang_core::vm::ffi::stdlib::shim_json_is_valid)"
+            "reason": "return drift: int / bool (auto_lang_core::vm::ffi::stdlib::strings_json::shim_json_is_valid)"
           },
           {
             "symbol": "minify",
@@ -5340,7 +5340,7 @@
             "native_name": "auto.json.parse",
             "status": "unverified",
             "verification": "bound",
-            "reason": "return drift: ?JsonValue / str (auto_lang_core::vm::ffi::stdlib::shim_json_parse)"
+            "reason": "return drift: ?JsonValue / str (auto_lang_core::vm::ffi::stdlib::strings_json::shim_json_parse)"
           },
           {
             "symbol": "prettify",
