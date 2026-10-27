@@ -177,7 +177,7 @@ fn av_wire_826_baseline_resume_old_call_after_new_version() {
     let cancel = CancelFlag::new(false);
 
     // Old call pauses after its first step.
-    let mut stepped = execute_program_steps(&old_snap, &ExecLimits::default(), &cancel, 1);
+    let stepped = execute_program_steps(&old_snap, &ExecLimits::default(), &cancel, 1);
     let paused = match stepped {
         SteppedOutcome::Paused(p) => p,
         SteppedOutcome::Finished(out, _) => {
