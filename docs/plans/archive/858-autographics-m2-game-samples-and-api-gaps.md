@@ -11,7 +11,7 @@ new_spec_components:
   - docs/specs/auto-graphics/m2-game-sample-research.md
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 6
+current_step: 7
 total_steps: 7
 ---
 
@@ -133,7 +133,7 @@ T-04每个G需求映射到现行Spec＋固定代码符号/API/profile，分类`d
 | T-04 | work | T-02/03 | 每G项对应现行Spec/交付代码和缺口/后继探针，核最终交付变化；提交研究产物/SD草案/自查 | AC-01/04/05 | [x]（`a4812981e`：17项现状矩阵、四类能力/限制和后继反例、SD-01草案；854→855 API 无diff，855为已交付；文档/资源索引定向自查通过） |
 | T-05 | review | T-04 | 独立来源/资源/范围/API分类与SD复审；不实施服务或代签新游戏验收 | AC-06 | [x]（独立 final R1 pass，受审 `a4812981e72df3d54ecb555dae5f77c3fabbd959`；13/13资源及4GLB闭包、17G分类、V-01..05/SD-01核对，见[复审报告](../attachments/858/review-r1/review.md)；T-06/T-07 pending） |
 | T-06 | merge | T-05 pass | 文档合main、知识/overview/plans/ledger/索引沉淀并归档；仅文档检查，无Cargo | AC-07 | [x]（快进 `43d1c7766c0c5b9a8f6497862a97f7107d3b817b`；canonical/overview/plans/goals、账本98→99、生成索引无语义变更；归档实际检查及提交见merge收据） |
-| T-07 | merge | T-06 | guard clean后清研究树/临时分支，保留必要来源恢复路径/SHA和真实7/7；交后继研究结论 | AC-07 | [ ] |
+| T-07 | merge | T-06 | guard clean后清研究树/临时分支，保留必要来源恢复路径/SHA和真实7/7；交后继研究结论 | AC-07 | [x]（归档提交 `90afcede9` 后 fresh wt-guard clean；`D:/autostack/.wt/lang-858/auto-lang`、分支 `plan-858-dev` 和空组已实际移除；固定来源可按索引恢复） |
 
 ## 9. 复审记录
 
@@ -152,6 +152,8 @@ T-04每个G需求映射到现行Spec＋固定代码符号/API/profile，分类`d
 2026-10-27 work 最终交接：stage=work | plan_id=PLAN-858 | plan_revision=1 | outcome=pass | worktree_path=D:/autostack/.wt/lang-858/auto-lang | branch=plan-858-dev | base_commit=7e498e4ccbce5f0a7b7b8008d8303b170d6f373e | code_commit=a4812981e72df3d54ecb555dae5f77c3fabbd959 | dependency_revisions=854:523d27b863dbe306c89af0ea546334225a29f8e9,855:05fdc81c546aff735eefdb6c39fbc5fb35dc546a,SDK:7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467,Godot:b761b4cd5718a7118f2c95eb55f181d0a5f004f1,Kenney:3fa8a04b1c01ab23db43123d4ce814a34c3fc7f0 | task_ids=T-01..T-04 | evidence=17项G表及分类ID/四类能力结构核对；13项所选源文件实际SHA/长度与固定Git blob、GLB图像依赖、分组字节重算通过；854→855 API无diff，856 executing/857 drafting；选中目录reparse扫描clean；git diff --check通过且工作树干净；仅研究无Cargo/native/GPU，实际转换、运行/包及性能未宣称 | blockers=无工作阶段阻塞；未知Godot素材与FLA未入所选闭包 | next_responsible_role=review/T-05。AC-01..05为工作自查结果，须独立语义核对完整来源、各项许可和资源映射；T-06/T-07及其文档沉淀/归档/guard清理由merge负责且pending。
 
 2026-10-27 consolidation PLAN-858:r1：stage=merge | outcome=publication pass, cleanup pending | reviewed_commit=a4812981e72df3d54ecb555dae5f77c3fabbd959 | delivery_commit=43d1c7766c0c5b9a8f6497862a97f7107d3b817b | canonical=docs/specs/auto-graphics/m2-game-sample-research.md | ledger=.autoos/specs.json version 98→99, P858-M2-GAME-RESEARCH/P858-R1/P858-MERGE/GOAL-008, guarded offline projection | archive=docs/plans/archive/858-autographics-m2-game-samples-and-api-gaps.md | completion_kind=delivered | evidence=[准备记录](../attachments/858/merge-r1/prepared.md)、[账本校验](../attachments/858/merge-r1/ledger-projection.json.txt)；Category A 文档/字节检查通过，不运行Cargo/docs_gen；实际归档检查和清理仍待完成。
+
+2026-10-27 cleaned：stage=merge | plan_id=PLAN-858 | plan_revision=1 | outcome=pass | completion_kind=delivered | delivery_commit=43d1c7766c0c5b9a8f6497862a97f7107d3b817b | canonical=docs/specs/auto-graphics/m2-game-sample-research.md | ledger=.autoos/specs.json v99 | archive=docs/plans/archive/858-autographics-m2-game-samples-and-api-gaps.md | cleanup=guard clean、worktree/branch/空组实际移除 | evidence=[merge收据](../attachments/858/merge-r1/receipt.md)、[账本投影](../attachments/858/merge-r1/ledger-projection.json.txt) | remaining=批量回归到期判定另记；无新游戏/引擎/发布交付。archived 7/7。
 
 ## 10. 待澄清事项
 
