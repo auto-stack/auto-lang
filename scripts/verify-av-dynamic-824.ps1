@@ -115,14 +115,27 @@ $REQ = @{
         'av_dynamic_824_resources_cancel_is_its_own_state',
         'av_dynamic_824_resources_worker_memory_hard_gate_parent_sampled',
         # F-824-R1-03 close: bounded AND charged type-DAG expansion.
-        'av_dynamic_824_resources_type_dag_expansion_bounded_and_charged'
+        'av_dynamic_824_resources_type_dag_expansion_bounded_and_charged',
+        # F-824-R1-03 R2: byte limits, all three adapters, cancellation,
+        # binding construction, and DynPack admission work.
+        'av_dynamic_824_resources_r2_long_names_are_accounted_before_expansion',
+        'av_dynamic_824_resources_r2_binding_long_names_are_bounded',
+        'av_dynamic_824_resources_r2_binding_skips_nonerasable_nominal',
+        'av_dynamic_824_resources_r2_pack_take_type_operands_bounded',
+        'av_dynamic_824_resources_r2_cancel_during_type_expansion',
+        'av_dynamic_824_resources_r2_pack_admission_consumes_fuel'
     )
     'harness' = @(
         # F-824-R1-01/02 close: scalar kind equivalence + type-only
         # nominal dependencies and changed field/payload TYPES.
         'av_dynamic_824_wire_scalar_kind_equivalence',
         'av_dynamic_824_admission_type_only_dependencies',
-        'av_dynamic_824_admission_changed_field_and_payload_types'
+        'av_dynamic_824_admission_changed_field_and_payload_types',
+        'av_dynamic_824_r2_type_work_cancel_and_retry',
+        'av_dynamic_824_r2_cancel_in_admission',
+        'av_dynamic_824_r2_type_clone_budget_cancel_and_retry',
+        'av_dynamic_824_r2_restore_descriptor_bytes_before_construction',
+        'av_dynamic_824_r2_clone_depth_at_type_limit'
     )
     'baseline' = @(
         # D rows (the bound entries, exactly the binding.md table):
