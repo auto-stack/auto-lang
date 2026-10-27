@@ -134,10 +134,46 @@ fn path_contains(root: &Path, dir: &Path) -> bool {
 
 /// Compute the relative path from the workspace dir (ws landing point) to
 /// the auto-lang crate.
+fn validate_language_candidate(candidate: &Path, origin: &str) -> AutoResult<()> {
+    let crates = candidate.parent();
+    let root = crates.and_then(Path::parent);
+    let valid_workspace = root
+        .and_then(|root| fs::read_to_string(root.join("Cargo.toml")).ok())
+        .and_then(|text| text.parse::<toml::Value>().ok())
+        .and_then(|manifest| {
+            manifest
+                .get("workspace")
+                .and_then(toml::Value::as_table)
+                .cloned()
+        })
+        .is_some();
+    let valid = valid_workspace
+        && crate::source_owner::valid_source_crate(candidate, "auto-lang")
+        && crates.is_some_and(|dir| {
+            ["auto-lang-core", "a2r-std", "auto-media-core"]
+                .iter()
+                .all(|name| crate::source_owner::valid_source_crate(&dir.join(name), name))
+        });
+    if !valid {
+        return Err(format!(
+            "producer {origin} 无效或缺少工作区依赖: {}",
+            candidate.display()
+        )
+        .into());
+    }
+    if let Some(root) = root {
+        if root.file_name().and_then(|s| s.to_str()) == Some("sdk")
+            && root
+                .parent()
+                .is_some_and(|parent| parent.join("install-manifest.json").exists())
+        {
+            crate::source_owner::validate_installed_language_source(root)?;
+        }
+    }
+    Ok(())
+}
+
 fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> AutoResult<String> {
-    // PLAN-025:AUTO_LANG_CRATE 环境覆盖(worktree 开发口子)——指向
-    // auto-lang crate 目录(绝对或相对),跳过仓库漫步直用(双仓
-    // worktree 联调惯例:主检出项目 + 依赖 worktree)。
     for key in [
         "AUTO_DELIVERY_SOURCE_ROOT",
         "AUTO_LANG_ROOT",
@@ -146,86 +182,53 @@ fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> AutoResult<S
         if let Some(value) = std::env::var_os(key) {
             let path = PathBuf::from(value);
             let candidate = if key == "AUTO_LANG_CRATE" {
-                path.clone()
+                path
             } else {
                 path.join("crates/auto-lang")
             };
-            // All four packages are written into the generated workspace.
-            // Validate them before any manifest or app output is changed.
-            let crates = candidate.parent();
-            let valid_workspace = crates
-                .and_then(Path::parent)
-                .and_then(|root| fs::read_to_string(root.join("Cargo.toml")).ok())
-                .and_then(|text| text.parse::<toml::Value>().ok())
-                .and_then(|manifest| {
-                    manifest
-                        .get("workspace")
-                        .and_then(toml::Value::as_table)
-                        .cloned()
-                })
-                .is_some();
-            let valid = valid_workspace
-                && crate::source_owner::valid_source_crate(&candidate, "auto-lang")
-                && crates.is_some_and(|dir| {
-                    ["auto-lang-core", "a2r-std", "auto-media-core"]
-                        .iter()
-                        .all(|name| crate::source_owner::valid_source_crate(&dir.join(name), name))
-                });
-            if valid {
-                return Ok(compute_relative_path(ws_dir, &candidate));
-            }
-            return Err(format!(
-                "producer 显式 {key} 无效或缺少工作区依赖: {}",
-                path.display()
-            )
-            .into());
+            validate_language_candidate(&candidate, &format!("显式 {key}"))?;
+            return Ok(compute_relative_path(ws_dir, &candidate));
         }
     }
-    // PLAN-816 B-R3-07：安装形态 SDK 闭包——CLI 可执行文件邻接 sdk/
-    // 目录（install manifest 随附框架源闭包）优先于仓库漫步/主检出回退：
-    // 安装机器无实施仓检出，路径不得借用开发树。env 覆盖仍是第一档
-    //（开发口子）；受管 Full 使用 combined-crates 布局。
+    // An adjacent managed install owns its SDK even if it is damaged or
+    // incomplete; never borrow an ambient checkout or compiled-in path.
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            for cand in [dir.join("sdk").join("crates").join("auto-lang")] {
-                if cand.exists() {
-                    return Ok(compute_relative_path(ws_dir, &cand));
+            let sdk = dir.join("sdk");
+            if sdk.exists() || dir.join("install-manifest.json").exists() {
+                if !dir.join("install-manifest.json").is_file() {
+                    return Err("producer 安装清单缺失".into());
                 }
+                let candidate = sdk.join("crates/auto-lang");
+                validate_language_candidate(&candidate, "安装 SDK")?;
+                return Ok(compute_relative_path(ws_dir, &candidate));
             }
         }
     }
-    // Walk up from project_dir to find the workspace root (has crates/auto-lang).
-    // Also check sibling directories at each level — auto-lang may live in a
-    // sibling repo (e.g. auto-shell and auto-lang are both under autostack/).
     let mut dir = project_dir.to_path_buf();
     for _ in 0..10 {
-        // Direct: this dir has crates/auto-lang
-        if dir.join("crates").join("auto-lang").exists() {
-            let auto_lang_abs = dir.join("crates").join("auto-lang");
-            return Ok(compute_relative_path(ws_dir, &auto_lang_abs));
+        let direct = dir.join("crates/auto-lang");
+        if direct.exists() {
+            validate_language_candidate(&direct, "发现的语言源")?;
+            return Ok(compute_relative_path(ws_dir, &direct));
         }
-        // Sibling: a sibling dir (e.g. ../auto-lang) has crates/auto-lang.
-        // This covers the common layout where <project> and auto-lang are
-        // sibling repos under a common parent (autostack/).
         if let Some(parent) = dir.parent() {
-            for sibling in ["auto-lang"] {
-                let candidate = parent.join(sibling).join("crates").join("auto-lang");
-                if candidate.exists() {
-                    return Ok(compute_relative_path(ws_dir, &candidate));
-                }
+            let sibling = parent.join("auto-lang/crates/auto-lang");
+            if sibling.exists() {
+                validate_language_candidate(&sibling, "发现的语言兄弟源")?;
+                return Ok(compute_relative_path(ws_dir, &sibling));
             }
         }
         if !dir.pop() {
             break;
         }
     }
-    // A project outside the repository still uses this generator's framework.
-    // Resolve that real crate instead of inventing a project-relative checkout.
     let compiled_crate = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .map(|parent| parent.join("auto-lang"));
-    if let Some(crate_dir) = compiled_crate.filter(|path| path.join("Cargo.toml").is_file()) {
-        return Ok(compute_relative_path(ws_dir, &crate_dir));
+    if let Some(candidate) = compiled_crate.filter(|path| path.exists()) {
+        validate_language_candidate(&candidate, "编译期语言源")?;
+        return Ok(compute_relative_path(ws_dir, &candidate));
     }
     Err("producer 语言源缺失: crates/auto-lang".into())
 }
@@ -652,6 +655,105 @@ mod plan842_tests {
                 "{mode}: {} {}",
                 String::from_utf8_lossy(&result.stdout),
                 String::from_utf8_lossy(&result.stderr)
+            );
+        }
+    }
+
+    #[test]
+    fn workspace_discovery_rejects_broken_selected_root() {
+        const CHILD: &str = "PLAN842_DISCOVERY_PROBE";
+        if let Ok(mode) = std::env::var(CHILD) {
+            let base = PathBuf::from(std::env::var_os("PLAN842_DISCOVERY_DIR").unwrap());
+            let project = if mode == "direct" {
+                base.join("direct/project")
+            } else {
+                base.join("sibling/project")
+            };
+            let error = compute_auto_lang_rel_path(&project, &base.join("workspace"))
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("producer"), "{error}");
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        for (root, project) in [
+            (tmp.path().join("direct"), tmp.path().join("direct/project")),
+            (
+                tmp.path().join("sibling/auto-lang"),
+                tmp.path().join("sibling/project"),
+            ),
+        ] {
+            fs::create_dir_all(root.join("crates/auto-lang")).unwrap();
+            fs::write(root.join("crates/auto-lang/Cargo.toml"), "[package").unwrap();
+            fs::create_dir_all(project).unwrap();
+        }
+        for mode in ["direct", "sibling"] {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "rust_workspace::plan842_tests::workspace_discovery_rejects_broken_selected_root", "--nocapture"])
+                .env(CHILD, mode).env("PLAN842_DISCOVERY_DIR", tmp.path())
+                .env_remove("AUTO_DELIVERY_SOURCE_ROOT").env_remove("AUTO_LANG_ROOT").env_remove("AUTO_LANG_CRATE")
+                .output().unwrap();
+            assert!(
+                output.status.success(),
+                "{mode}: {} {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+
+    #[test]
+    fn workspace_discovery_accepts_complete_development_roots() {
+        const CHILD: &str = "PLAN842_DISCOVERY_VALID_PROBE";
+        if let Ok(mode) = std::env::var(CHILD) {
+            let base = PathBuf::from(std::env::var_os("PLAN842_DISCOVERY_DIR").unwrap());
+            let (root, project) = if mode == "direct" {
+                (base.join("direct"), base.join("direct/project"))
+            } else {
+                (base.join("sibling/auto-lang"), base.join("sibling/project"))
+            };
+            let ws = base.join("workspace");
+            let selected = compute_auto_lang_rel_path(&project, &ws).unwrap();
+            assert_eq!(
+                fs::canonicalize(ws.join(selected)).unwrap(),
+                fs::canonicalize(root.join("crates/auto-lang")).unwrap()
+            );
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(tmp.path().join("workspace")).unwrap();
+        for (root, project) in [
+            (tmp.path().join("direct"), tmp.path().join("direct/project")),
+            (
+                tmp.path().join("sibling/auto-lang"),
+                tmp.path().join("sibling/project"),
+            ),
+        ] {
+            fs::create_dir_all(&root).unwrap();
+            fs::write(root.join("Cargo.toml"), "[workspace]\n").unwrap();
+            for name in ["auto-lang", "auto-lang-core", "a2r-std", "auto-media-core"] {
+                let package = root.join("crates").join(name);
+                fs::create_dir_all(package.join("src")).unwrap();
+                fs::write(
+                    package.join("Cargo.toml"),
+                    format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n"),
+                )
+                .unwrap();
+                fs::write(package.join("src/lib.rs"), "").unwrap();
+            }
+            fs::create_dir_all(project).unwrap();
+        }
+        for mode in ["direct", "sibling"] {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "rust_workspace::plan842_tests::workspace_discovery_accepts_complete_development_roots", "--nocapture"])
+                .env(CHILD, mode).env("PLAN842_DISCOVERY_DIR", tmp.path())
+                .env_remove("AUTO_DELIVERY_SOURCE_ROOT").env_remove("AUTO_LANG_ROOT").env_remove("AUTO_LANG_CRATE")
+                .output().unwrap();
+            assert!(
+                output.status.success(),
+                "{mode}: {} {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
             );
         }
     }

@@ -7,10 +7,11 @@ use std::{
 
 /// Verify the actual UI crate files against a managed Full installation's
 /// ownership and content receipt. This is consistency checking, not a signature.
-pub fn installed_ui_source(
+fn installed_crate_source(
     producer_root: &Path,
     name: &str,
     copied_root: Option<&Path>,
+    owner: &str,
 ) -> AutoResult<Option<PathBuf>> {
     use sha2::{Digest, Sha256};
     if producer_root.file_name().and_then(|s| s.to_str()) != Some("sdk") {
@@ -25,12 +26,12 @@ pub fn installed_ui_source(
     }
     let doc: serde_json::Value = serde_json::from_slice(&fs::read(&receipt)?)
         .map_err(|e| format!("delivery: producer 安装清单无效: {e}"))?;
-    let ui_rev = doc["sources"]["auto-ui"].as_str().unwrap_or("");
+    let source_rev = doc["sources"][owner].as_str().unwrap_or("");
     if doc["schema"] != "man-install/1"
         || doc["profile"] != "full"
         || doc["source_closure"]["sdk_layout"] != "combined-crates"
-        || ui_rev.len() != 40
-        || !ui_rev.bytes().all(|b| b.is_ascii_hexdigit())
+        || source_rev.len() != 40
+        || !source_rev.bytes().all(|b| b.is_ascii_hexdigit())
     {
         return Err("delivery: producer 安装清单版本、profile 或 UI 来源无效".into());
     }
@@ -40,11 +41,11 @@ pub fn installed_ui_source(
     let owners: Vec<_> = packages.iter().filter(|p| p["name"] == name).collect();
     let expected_path = format!("crates/{name}");
     if owners.len() != 1
-        || owners[0]["source_repo"] != "auto-ui"
+        || owners[0]["source_repo"] != owner
         || owners[0]["installed_path"] != expected_path
         || owners[0]["source_path"] != expected_path
     {
-        return Err(format!("delivery: producer 安装 UI 源所有权无效: {name}").into());
+        return Err(format!("delivery: producer 安装 crate 源所有权无效: {name}").into());
     }
     let files = doc["files"]
         .as_object()
@@ -55,7 +56,7 @@ pub fn installed_ui_source(
         .filter(|(path, _)| path.starts_with(&prefix))
         .collect();
     if expected.is_empty() {
-        return Err(format!("delivery: producer 安装 UI 文件清单为空: {name}").into());
+        return Err(format!("delivery: producer 安装 crate 文件清单为空: {name}").into());
     }
     let root = producer_root.join("crates").join(name);
     let mut seen = std::collections::BTreeSet::new();
@@ -90,18 +91,18 @@ pub fn installed_ui_source(
                 let key = format!("{prefix}{child}");
                 let record = expected
                     .get(&key)
-                    .ok_or_else(|| format!("delivery: producer 安装 UI 文件未登记: {key}"))?;
+                    .ok_or_else(|| format!("delivery: producer 安装 crate 文件未登记: {key}"))?;
                 let bytes = fs::read(&path)?;
                 let hash = format!("{:x}", Sha256::digest(&bytes));
                 if record["bytes"].as_u64() != Some(bytes.len() as u64)
                     || record["sha256"].as_str() != Some(hash.as_str())
                 {
-                    return Err(format!("delivery: producer 安装 UI 文件校验失败: {key}").into());
+                    return Err(format!("delivery: producer 安装 crate 文件校验失败: {key}").into());
                 }
                 seen.insert(key);
             } else {
                 return Err(format!(
-                    "delivery: producer 安装 UI 源文件类型无效: {}",
+                    "delivery: producer 安装 crate 源文件类型无效: {}",
                     path.display()
                 )
                 .into());
@@ -119,9 +120,49 @@ pub fn installed_ui_source(
         &mut seen,
     )?;
     if seen.len() != expected.len() {
-        return Err(format!("delivery: producer 安装 UI 源缺少登记文件: {name}").into());
+        return Err(format!("delivery: producer 安装 crate 源缺少登记文件: {name}").into());
     }
     Ok(Some(root))
+}
+
+/// Verify UI source ownership and bytes against a managed installation.
+pub fn installed_ui_source(
+    producer_root: &Path,
+    name: &str,
+    copied_root: Option<&Path>,
+) -> AutoResult<Option<PathBuf>> {
+    installed_crate_source(producer_root, name, copied_root, "auto-ui")
+}
+
+/// A detected managed SDK is authoritative: validate its workspace manifest
+/// and language packages against its receipt before generating any output.
+pub fn validate_installed_language_source(producer_root: &Path) -> AutoResult<()> {
+    use sha2::{Digest, Sha256};
+    let receipt = producer_root
+        .parent()
+        .ok_or("producer 安装 SDK 路径无效")?
+        .join("install-manifest.json");
+    let doc: serde_json::Value = serde_json::from_slice(
+        &fs::read(&receipt).map_err(|e| format!("producer 安装清单缺失或不可读: {e}"))?,
+    )
+    .map_err(|e| format!("producer 安装清单无效: {e}"))?;
+    let manifest = fs::read(producer_root.join("Cargo.toml"))
+        .map_err(|e| format!("producer 安装 SDK 工作区清单缺失: {e}"))?;
+    let record = &doc["files"]["sdk/Cargo.toml"];
+    if record["bytes"].as_u64() != Some(manifest.len() as u64)
+        || record["sha256"].as_str() != Some(format!("{:x}", Sha256::digest(&manifest)).as_str())
+    {
+        return Err("producer 安装 SDK 工作区清单校验失败".into());
+    }
+    for name in ["auto-lang", "auto-lang-core", "a2r-std", "auto-media-core"] {
+        let source = installed_crate_source(producer_root, name, None, "auto-lang")
+            .map_err(|err| format!("producer 安装语言源校验失败 {name}: {err}"))?
+            .ok_or("producer 安装 SDK 清单缺失")?;
+        if !valid_source_crate(&source, name) {
+            return Err(format!("producer 安装语言包无效: crates/{name}").into());
+        }
+    }
+    Ok(())
 }
 
 // A directory alone is not a usable Cargo package. Validate before callers
