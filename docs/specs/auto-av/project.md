@@ -80,3 +80,11 @@ v4/5/16/0x2F-0x31）与交叉拒绝为现行合同，整合前旧登记为历史
 - 实际优化面：同一标量语义 profile 的第二 wire 世代，raw 体积全组更小（13 组实测 ratio 0.361–0.856；852 五源基线 917/1739=0.527；gzip 同算法同参数分列见 bench 口径）。密度目标 BIN=5B/COPY=3B/RETURN=2B/CONST=3B（section 差分实测）。
 - 未实现面如实登记：短立即数/slot 复用/指令融合/常量池重写未实现（未来采用需新 wire version 与独立语义/密度反控）；不承诺公共稳定 ABI；无 lazy trust/JIT。
 - data/owned/collections/closures/dynamic 仍为 legacy 受检参考路径（compat 回归 5+7+8 无扩面/退化）。
+
+
+PLAN-868 起 probe 不再是 HIR→MIR lowering 的提供者：唯一实现出库至共享 crate
+`experimental/auto-mir-lower`（字节级纯搬移，等价性以 11 族 151 check 双腿逐项比对
+证实），probe 仅为消费者之一（另两处：ac-mir-native、ac-cte-probe）。lowering 契约
+版本经 `mir-lowering` 报告轴上报（详见
+[auto-mir/hir-lowering-boundary](../auto-mir/hir-lowering-boundary.md)）；av-worker/
+会话/cache 宿主职责与 av 各 profile 合同不变。

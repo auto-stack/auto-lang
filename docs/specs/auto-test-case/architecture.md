@@ -239,3 +239,17 @@ append-only 注册 `ac-av/loaded-run-v1`（与 closures/dynamic 等既有 recipe
 - 追加 recipe `ac-av/compact-run-v1`（REGISTERED_PROBE_RECIPES + avworker/1 步骤词汇 run|edit-source + av binding；worker case-serve 接受并 `set_wire_compact`）。核心版本轴 = EXPECTED_AV_CORE_VERSION；工具身份轴 `av-wire-codec=auto.abc.av-compact-core-i32/1`。
 - fixtures `test/cases/av-abc/826/`（first-case 同 825 首例源）；父侧 `judge_compact_runtime` 以 `abc_wire_compact_units/closure` + loaded 计数器判真，`AV826_JUDGE_SABOTAGE` 四轴反控 + 错 oracle。
 - scoped 验证入口 `scripts/verify-av-826.ps1`：first/targeted/compat/incremental/baseline/bench 六 scope 聚合进 acceptance；Assert-Selected 拒绝 0 选择/ignored/缺失/重复必需例（guard self-test 自证）。
+
+
+## PLAN-868：lowering 契约版本轴（mir-lowering）
+
+HIR→Typed MIR lowering 的契约版本（`auto_mir_lower::MIR_LOWERING_VERSION`，初值
+"1"）作为**必报** toolchain 身份轴 `mir-lowering` 进入 av（全 8 族）/cte/mn 三族
+probe 报告与 mn 收据外层——测试侧以 admission 镜像常量
+`EXPECTED_MIR_LOWERING_VERSION` 上报（与 `EXPECTED_AV_WORKER_VERSION` 同模式，
+bump 未同步镜像即身份断言红）。stale 裁决 av/cte 分支 applicable 含该轴：旧报告缺
+轴判 STALE（`native.mir-lowering missing (now <v>)`），为声明的重构期一次性代价；
+判分/收据规则不变——`ace.m1.cert/1` 精确键集 schema 与 852 双消费者校验零改动，
+cache/store 键不含该轴（lowering 出库不改输出）。等价比对口径（逐 check
+status/actual，剔除 duration/spans/exe-sha/ledger_peak_* 等易变字段）由 PLAN-868
+T-02 冻结，驱动脚本 `scripts/verify-mir-lowering-868.ps1`。
