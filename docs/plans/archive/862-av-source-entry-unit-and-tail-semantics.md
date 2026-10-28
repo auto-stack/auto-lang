@@ -18,7 +18,7 @@ new_spec_components:
 touched_goals: [GOAL-002]   # 解释器/VM 快周转：热重载与真实源码执行底座
 
 affects: [auto-av, auto-mir, auto-ac, auto-test-case]
-current_step: 6
+current_step: 9
 total_steps: 9
 ---
 
@@ -207,17 +207,18 @@ T-02 必须产出 `attachments/862/work/entry-contract.md`，逐项冻结（未�
 | T-06 | work | T-05、D868 | M1 分母重绑定：实跑 24 个 `probe` + 27 个 `wait:*` 逐格定级、按决策件写状态、产出证据摘要与实测 `clean` 数；不改 expected/schema；执行V-07首例cache/文件化/周转/内存与兼容验证；**T-07 R1 已修**（F-862-R1-01/04/08；NA-4 已入 SD-06+决策件 §12，内存腿已实测） | AC-06/04 | [x] |
 | T-07 | review | T-06 | 独立最终review，核 AC/V/SD 与实际入口、`na` 反滥用；merge 门 pending | AC-07 | [ ] |
 | T-08 | merge | T-07 pass | 冻结提交上裸 `cargo t` + `tv`，失败归因不豁免；**已执行**（`0e62d8c4c` 重基基线）：`cargo t --no-fail-fast` **3199/3199**、`cargo tv` **163/163**；fail-fast 轮的唯一红为 867 预存红 `launcher_pickcat`（master 已由 867 T-12 修复）+ 4 个并行负载超时（隔离全绿），最终全量无红 | AC-08 | [x] |
-| T-09 | merge | T-08 | Spec/ledger 沉淀、归档、worktree guard clean 清树；**归档/ledger 已完成**（ledger v119 `61a5b904f`），cleanup 收尾中 | AC-09 | [ ] |
+| T-09 | merge | T-08 | Spec/ledger 沉淀、归档、worktree guard clean 清树；**已完成**：ledger v119 `61a5b904f`、归档 `2012b33dc`、三棵 worktree guard clean 后移除、分支与组目录删除（见 §9 cleaned） | AC-09 | [x] |
 
 ## 9. 复审记录
 
-2026-10-28 **merge T-08/T-09（delivered；cleanup 收尾中）**：`stage: merge | plan_id: PLAN-862 | plan_revision: 3 | outcome: pass | delivery_commit: 0e62d8c4cd33dd5b29a074690107601dc57dbe07 | base_commit: 13057957c6363c87f63bb2e2edc2d36ad3ad773a | rebase_map: d116ac82e→2a7bf0352→0e62d8c4c（reviewed e062edf4e→9d7604858→e9bca9472；两跳 git range-diff 均全等） | dependency_revisions: auto-down c3464d0、auto-ui f489c7b（只读，未写） | ledger: v118→v119（guarded offline projection；备份 tmp/862/specs.before.json，sha256 5005dfd5700e5d3e77df507448c2eae84d78910f431a8cb2b7b1393c01cd0e76） | archive: docs/plans/archive/862-av-source-entry-unit-and-tail-semantics.md | next: 无（archived 终态）`。
+2026-10-28 **merge T-08/T-09（delivered；archived；cleaned）**：`stage: merge | plan_id: PLAN-862 | plan_revision: 3 | outcome: pass | delivery_commit: 0e62d8c4cd33dd5b29a074690107601dc57dbe07 | base_commit: 13057957c6363c87f63bb2e2edc2d36ad3ad773a | rebase_map: d116ac82e→2a7bf0352→0e62d8c4c（reviewed e062edf4e→9d7604858→e9bca9472；两跳 git range-diff 均全等） | dependency_revisions: auto-down c3464d0、auto-ui f489c7b（只读，未写） | ledger: v118→v119（guarded offline projection；备份 tmp/862/specs.before.json，sha256 5005dfd5700e5d3e77df507448c2eae84d78910f431a8cb2b7b1393c01cd0e76） | archive: docs/plans/archive/862-av-source-entry-unit-and-tail-semantics.md | next: 无（archived 终态）`。
 
 - **prepared**：冻结基线 `reviewed e9bca9472`（= e062edf4e 重基后）→ 规范增量按 SD-01..06 落在 worktree（5 个 docs/specs 目标：新增 `auto-ac/source-entry-unit.md`、`auto-av/entry-and-unit-profile.md`；改 auto-ac/auto-av/auto-mir/auto-test-case 的 project/overview/plans 索引），形成 docs-only 后继 `0e62d8c4c`；`docs/specs/INDEX.md` 由 `scripts/spec-index.py` 复算为无变化（内容逐行相同）。实现/依赖未变（`git diff e062edf4e..0e62d8c4c --name-only` 仅 docs/specs）。
 - **landed**：master `git merge --ff-only plan-862-dev` → tip **0e62d8c4c**（无 merge commit）。期间其他会话两次推进 master（867/878：仅 docs/specs + `.autoos/specs.json` + docs，**零代码文件**，`git diff 8ae51d6af 51415cd8e --name-only | grep -v ^docs/` 仅 `.autoos/specs.json`），故两跳重基不改变代码基线；两跳 `git range-diff` 全等（7/7 提交 `=`）。
 - **merge 门（在重基后冻结基线上实跑）**：`cargo t --no-fail-fast` → **3199/3199 passed, 0 failed**（此前 fail-fast 轮出现的 1 红 = 867 的 `plan503_tests::launcher_rewrite::launcher_pickcat_filters_results`（F-867-NEWRED-01，master 上已由 867 T-12 `ec1d19a10` 修复）与 4 个 120s 超时（ac_cte_probe 3 + ac_av_probe 1；隔离重跑 5/5 与 1/1 全绿 = 并行负载超时，非回归），最终全量轮无红）；`cargo tv` → **163/163 passed**。基线身份：代码树 = 8ae51d6af + 本计划 7 提交（878 仅文档/ledger，不改代码）。
 - **ledger_refreshed**：`D:/autostack/auto-lang/.autoos/specs.json` v118→**v119**；guarded offline projection（Regime B；先备份、后手术式插入、读回校验）：designs +2（`P862-DESIGN-SOURCE-ENTRY-UNIT`、`P862-DESIGN-ENTRY-UNIT-PROFILE`）、tests +1（`P862-TESTS`）、reviews +1（`P862-REVIEW-R2`）、reports +1（`P862-MERGE`）；并按"复用既有当前知识项"更新 `P852-DESIGN-CONFORMANCE` 内容（不复制目标文件）；读回校验：version 118→119、section id 不变、无重复/缺失 id、其余条目逐项 byte-identical；`git diff --numstat` = 130 insertions / 2 deletions；提交 `61a5b904f`，投影后文件 sha256 `17cec18aa1685a5bd36a6a7d0c73b6e76837a560dd74c403f83fcad0cac4923f`。**通道说明**：本会话无 spec 工具/HTTP store（Regime B），且在 worktree 内改 ledger 会以 v115 旧基覆盖 878 的 v118 投影，故投影在主检出 master 上以单通道执行并记录（备份 `tmp/862/specs.before.json`，sha256 见下）。
-- **archived**：计划移入 `docs/plans/archive/`，frontmatter `status: archived`；链接按 archive 位置重写（`../`→`../../`、`x/`→`../x/`）并在真实父目录逐条校验；T-01..T-08 勾闭、T-09 本提交完成归档、cleanup 待收尾。
+- **archived**：计划移入 `docs/plans/archive/`，frontmatter `status: archived`；链接按 archive 位置重写（`../`→`../../`、`x/`→`../x/`）并在真实父目录逐条校验；T-01..T-09 勾闭（cleanup 见下条 `cleaned`）。
+- **cleaned**：移除前三棵 worktree 均过 wt-guard（本会话 bash 为 WSL，按 /mnt/d/... 调用并置 MSYS_NO_PATHCONV=1）：uto-lang/uto-down/uto-ui 全部 **clean**（无 reparse point）；随后 git worktree remove 三棵、git branch -d plan-862-dev（was 0e62d8c4c，已合入）、删除空组目录 D:/autostack/.wt/lang-862。中间产物：D:/autostack/plan-artifacts/plan-862 不存在（无可回收）；worktree 内 	arget/（约 15GB）随 worktree 一并移除；组内无 scratch-*/evidence 检出。终态核验：master tip 2012b33dc，git worktree list 无 862，git branch --list 'plan-862*' 为空，组目录不存在，delivery  e62d8c4c 为 master 祖先。
 - **production artifacts**：本计划改动全在 `experimental/**`（ac-core/ac-av-probe/auto-mir-lower 等独立 workspace）与 `auto-test-case`+`auto-lang-core` 的 test-cases 门内测试面（`test_cases::ac_av`）——产品 `auto` 默认二进制、UI bundle 与 release 产物不链接这些路径，**无生产制品需要重建**；`target/debug/auto.exe` 语义不受影响。
 - **batch regression due check**：`.last-batch-regression.json` 覆盖 860/`covered_commit 5613541d9`/2026-10-28T09:33Z；本计划 id%5=2 非触发；其后归档的 867/876/877/878 均非 5 倍数（865 未落地），收据龄 ~3h < 48h → **不 due**，未跑 regress。
 - **遗留**：D-862-R1-01（852 验证脚本装载器预存缺陷，`KNOWN-DEBT-AND-RISKS.md`）、决策件附录无规则 ID `na:m1` 行的全表回填待裁定（B2）、a2r 新金样（a2r 线）——均已在计划内登记，不阻塞本次交付。
