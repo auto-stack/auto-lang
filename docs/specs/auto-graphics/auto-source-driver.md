@@ -230,3 +230,13 @@ measured 100000-step envelope live in [game-character3d.md](game-character3d.md)
 Provenance: [PLAN-874](../../plans/874-autographics-public-character3d.md). Source
 integration remains autographics-dev; the runtime camera, dynamic instances and
 production I2/I3 remain pending.
+## PLAN-875 increment: runtime camera identities
+
+Two dimension-specific public profiles join the admission table:
+`autographics.runtime_camera2d/1` (number 103, profile 14) and
+`autographics.runtime_camera3d/1` (number 104, profile 15), assembled from
+the v5 chain plus the matching character unit plus the camera unit. Panel
+commands `behavior-api-camera2d`/`behavior-api-camera3d` and CLI
+`--behavior-api camera2d|camera3d` select them. Consumers bound by
+[verify_plan875.py] and the camera contract in
+[runtime-game-cameras.md](runtime-game-cameras.md).

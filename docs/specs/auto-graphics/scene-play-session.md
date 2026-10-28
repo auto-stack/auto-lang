@@ -135,3 +135,13 @@ Stop restores the editing view and a fresh Run starts from the document state
 with no inherited input or character state. The old `character/1` routing and
 frame contract are unchanged. The camera remains out of this slice: PLAN-875
 consumes the same dispatch and the user-source horizontal basis.
+## PLAN-875 increment: camera-actor same-tick publication
+
+With a runtime camera profile the camera outputs ride the same Play frame as
+the actor: frame and camera are prepared, admitted, accepted and published as
+one transaction; the camera matrix is built from THIS tick's accepted
+character position (never the previous tick's). A mid-transaction Pause does
+not decouple the in-flight camera echo from its candidate. Failure keeps the
+last-good frame+camera pair under the existing Fault/VM-close rules; Stop
+restores the editing view without static mesh re-upload; Pause/Step/Resume
+follow the camera contract in [runtime-game-cameras.md](runtime-game-cameras.md).
