@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-864
-status: execution_done
+status: reviewed
 feature_name: AV集合与变体源码闭环（R2-L 前半）
 author: [Codex]
 created_at: 2026-10-28
@@ -164,7 +164,7 @@ L/V 两族目前只有 **typed 语料**走协议（`ac-av/collections-run-v1` + 
 | T-03 | work | T-02 | 先以原L04/L05及List<Str>打通最小源码→共享lowering→既有822执行的全链可行性探针并核资源门，通过后扩前端语法/推导/诊断/descriptor；V-01/02/06，未取S窗不接线 | AC-01/02 | [✅] |
 | T-04 | work | T-03、S释放/接受 | 共享lowering的for-in/is/构造与拥有List方法 + 会话；复用822执行语义；V-02/03/04/06/07 | AC-01/02/03/04 | [✅] |
 | T-05 | work | T-04、H释放/接受 | 原L04/L05及新增List<Str>变体文件化绑定/oracle/资源与增量反控；V-05/06/07；提交代码及证据摘要，原始证据本地保留；执行V-08首例cache/文件化/周转/内存与兼容验证 | AC-01/03/04/05 | [✅] |
-| T-06 | review | T-05 | 独立最终review；merge 门 pending | AC-06 | [ ] |
+| T-06 | review | T-05 | 独立最终review；merge 门 pending | AC-06 | [✅] |
 | T-07 | merge | T-06 pass | 冻结提交裸 `cargo t` + `tv` | AC-07 | [ ] |
 | T-08 | merge | T-07 | Spec/矩阵/ledger/归档/guard | AC-08 | [ ] |
 | T-09 | merge | T-08 | 交接 865（闭包源码）与 866（在线重载）实际基面与限制 | AC-08 | [ ] |
@@ -182,6 +182,10 @@ L/V 两族目前只有 **typed 语料**走协议（`ac-av/collections-run-v1` + 
 - **负例矩阵（AC-02）**：12 个具名拒绝（pattern-non-exhaustive/duplicate/unknown-arm、view-escape、iterate-mutate、move-required、list-value-context×3、type-ambiguous、borrowed-str、record-methods）逐项测试通过。
 
 写面纪律：S 窗（ac-core source/hir/descriptor/verify + auto-mir-lower + probe session/driver/worker 接口）+ H 窗（contract.rs/ac_av.rs/mod.rs 派发/ace_m1_cases/binding.tsv）+ probe cache.rs split_units 修复（共享单元缝的内嵌类型操作数闭包，820 起潜伏，collections 源单元浮出；822 三元组回归绿）。probe crate 的 pre-existing fmt 债（data_driver/session/owned_driver/bench bins/820 测试文件的纯格式化行合并）未触碰语义。已交付 822 消费面零改动（fixture case 文件逐字节未动，822 三元组回归绿）。merge-owned 门禁 pending：裸 `cargo t` + `cargo tv`（VM/编译器触面）于冻结提交执行。`stage: goal | plan_id: PLAN-864 | plan_revision: r2 | round: 1 | from: drafting | to: work | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-864/auto-lang | commit: 见上 | next: review`
+
+2026-10-29 独立最终 review（T-06/AC-06，独立上下文于同一树，非二次检出）：**PASS** @ `38dc10e33`（复审后修复提交 `938a2ac7f`）。八项核对全过并逐项引用 file:line 证据：(1) AC-01 真源正向全绿且 14 个 852 源字节未动（diff 空），oracle 手算一致（L02=42/L03=0/V03=3/N01=51/N03=53）；(2) AC-02 单陷阱码 av.trap.list-index 冻结面无新编译期下标校验，12 具名拒绝逐项断言；(3) AC-03 profile-4 零漂移——core/{mir,mir_verify,abc,av,contract,ownership}.rs diff=0，lowering 新增行仅既有 822 指令（无隐藏 clone；clear=尾删循环展开）；(4) AC-04 会话计数器实证（fresh=2/body-edit=1+carry=1/hit=0+2/接口编辑精确失效），split_units 修复为真悬空类型索引修复且旧 profile 零漂移（822 三元组 3/3）；(5) H 面 append-only（0 删行；av-data/822 diff 空；binding.tsv 仅 status/owner 列、分母值列未动）；(6) 健康零新警告、无调试残留；(7) 写面披露（9 个文件在收据字面清单外，均为新 HIR 变体的编译必需穷尽臂/身份注册，旧行为保守）记录为 P2；(8) Spec delta 与实现一致且分支未动 docs/specs。acceptance 门由复审者重跑 GREEN。发现：P1×1（pattern-scrutinee 缺负例）已在修复提交闭合（13 具名拒绝全测）；P2×5（session 族入 verify 脚本——已闭合；fn_hir_codec tag-11 decode 不对称——latent 且响亮失败，记 866 后继；SD-05 目标不在 frontmatter——merge 沉淀时补；corpus 注释——已清；SEM-02 负下标无字面源码行——结构性覆盖充分，不阻塞）。merge-owned 门禁 pending：裸 `cargo t` + `cargo tv` 于冻结提交。
+
+`stage: goal | plan_id: PLAN-864 | plan_revision: r2 | round: 2 | from: work | to: review | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-864/auto-lang | commit: 38dc10e33 (review) / 938a2ac7f (repairs) | next: merge`
 
 2026-10-28 r1→r2（用户授权修订波次/写面，864纳入拥有型List、871补旧能力与删除门）：仅修订执行合同，不实施。原status/current_step/total_steps、任务勾选与历史记录保留；D868合同和进度不变。V-08补交接/消费者兼容与首例cache、文件化测试、周转及内存核验；详细依据与静态预检见[波次合同](reports/ace-wave-handoff-2026-10-28.md)和[修订收据](attachments/ace-wave-20261028/revision-summary.md)。本记录只说明文档修订，未执行AC、性能测试或独立实现review，merge-owned门禁仍待实施后完成。
 
