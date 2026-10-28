@@ -1,0 +1,9 @@
+# PLAN-864 collections SOURCE profile suite — the 852 L/V rows bound as
+# real-source executions (plus the append-only N01..N03 new variants).
+# Parent-side judgement; the worker never sees an expectation.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-collections-864", include: [
+  "collections-source-864.case.ad",
+] }
+```

@@ -55,6 +55,16 @@ pub enum TypeRef {
     Builtin(TypeWord),
     /// Nominal record type by declared name.
     Record(Ident),
+    /// PLAN-864: `?T` — the optional-type sugar for `Option<T>` (collections
+    /// surface). `inner` is the payload type.
+    Optional(Box<TypeAnn>),
+    /// PLAN-864: a parameterized nominal type — `List<T>` / `Result<T, E>`
+    /// (collections surface). `args` are the type arguments in written
+    /// order; arity is checked in resolve.
+    Generic {
+        name: Ident,
+        args: Vec<TypeAnn>,
+    },
 }
 
 /// Parameter ownership mode word (PLAN-770; old-language convention: the
@@ -135,6 +145,29 @@ pub struct TypeItem {
 pub enum Item {
     Fn(FnItem),
     Type(TypeItem),
+    /// PLAN-864: a finite `enum` declaration (collections surface) — one
+    /// nominal variant type whose arms carry at most one payload each.
+    Enum(EnumItem),
+}
+
+/// A `enum Name { Arm(T)? ... }` item (PLAN-864, collections surface).
+/// Arms are whitespace separated (optional `,` tolerated); declaration
+/// order is the runtime discriminant order.
+#[derive(Clone, Debug)]
+pub struct EnumItem {
+    pub name: Ident,
+    pub arms: Vec<EnumArm>,
+    /// `enum` keyword through the closing brace.
+    pub span: Span,
+}
+
+/// One variant arm: `Name` or `Name(PayloadType)`.
+#[derive(Clone, Debug)]
+pub struct EnumArm {
+    pub name: Ident,
+    pub payload: Option<TypeAnn>,
+    /// Arm name token through the payload type token.
+    pub span: Span,
 }
 
 #[derive(Clone, Debug)]
@@ -271,6 +304,13 @@ pub enum ExprKind {
     MutArg {
         name: Ident,
     },
+    /// PLAN-864: a parameterized type written in receiver position —
+    /// `List<int>.new()`. Only legal as the receiver of a constructor
+    /// method call; resolve owns the routing.
+    GenericType {
+        name: Ident,
+        args: Vec<TypeAnn>,
+    },
 }
 
 /// One `name: value` entry of a named constructor.
@@ -347,6 +387,39 @@ pub enum Stmt {
     Continue {
         span: Span,
     },
+    /// PLAN-864: `is <local> { Arm(v)? -> { .. } ... }` — exhaustive
+    /// variant dispatch (collections surface). Resolve checks
+    /// exhaustiveness/duplicates and lowers to guard/branch chains with
+    /// payload projections; there is no fall-through default.
+    IsMatch {
+        scrutinee: Ident,
+        arms: Vec<MatchArm>,
+        span: Span,
+    },
+    /// PLAN-864: `for x in <list-local> { .. }` — bounded List iteration
+    /// (collections surface). Resolve lowers to an index loop; the
+    /// binding is a copy for Copy elements and a checked read-only view
+    /// context for owned elements.
+    ForIn {
+        var: Ident,
+        iter: Expr,
+        body: Block,
+        span: Span,
+    },
+}
+
+/// One `is` arm: `Name -> { .. }`, `Enum.Name -> { .. }` or with a
+/// `(v)` payload binding (PLAN-864).
+#[derive(Clone, Debug)]
+pub struct MatchArm {
+    /// Qualified form `Enum.Arm` — the enum name; `None` for bare arms.
+    pub qual: Option<Ident>,
+    pub pattern: Ident,
+    /// `Some(v)` payload binding — a fresh local owned by the arm block.
+    pub binding: Option<Ident>,
+    pub body: Block,
+    /// Pattern token through the block's closing brace.
+    pub span: Span,
 }
 
 #[derive(Clone, Debug)]
@@ -459,6 +532,15 @@ impl Drop for Block {
                         }
                     }
                     Stmt::While { body, .. } | Stmt::Loop { body, .. } => {
+                        stack.push(std::mem::replace(body, dummy()));
+                    }
+                    // PLAN-864: both new statements carry nested blocks.
+                    Stmt::IsMatch { arms, .. } => {
+                        for a in arms.iter_mut() {
+                            stack.push(std::mem::replace(&mut a.body, dummy()));
+                        }
+                    }
+                    Stmt::ForIn { body, .. } => {
                         stack.push(std::mem::replace(body, dummy()));
                     }
                     _ => {}

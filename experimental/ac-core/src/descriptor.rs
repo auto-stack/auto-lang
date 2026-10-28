@@ -67,6 +67,7 @@ enum FieldType {
     BindingList,
     CtorBindingList,
     FieldDeclList,
+    ArmDeclList,
     FieldRefList,
     TypeRef,
     DefRef,
@@ -99,6 +100,7 @@ fn builtin_field_type(word: &str) -> Option<FieldType> {
         "BindingList" => FieldType::BindingList,
         "CtorBindingList" => FieldType::CtorBindingList,
         "FieldDeclList" => FieldType::FieldDeclList,
+        "ArmDeclList" => FieldType::ArmDeclList,
         "FieldRefList" => FieldType::FieldRefList,
         "TypeRef" => FieldType::TypeRef,
         "DefRef" => FieldType::DefRef,
@@ -281,6 +283,13 @@ impl Descriptor {
         {
             // PLAN-862: the entry/Unit domain (Unit result + script form).
             Some(hir::HirDomain::EntryUnit)
+        } else if self.schema == "auto.hir.collections.draft"
+            && self.revision == 1
+            && self.profile == "collections-draft"
+        {
+            // PLAN-864: the collections domain (List/Variant source twin of
+            // av.collections/1).
+            Some(hir::HirDomain::Collections)
         } else {
             None
         }
@@ -1176,6 +1185,105 @@ impl<'d> Binder<'d> {
                         continue;
                     }
                     hir::TypeKind::Record(shape)
+                }
+                "list" => {
+                    // PLAN-864: `List<T>` — one `elem` TypeUse; structural
+                    // identity. The element-closure rule (822 element
+                    // domain) is a verify-level rejection.
+                    let Some(f) = tfields.get("elem") else {
+                        self.error("bind.type-shape", "a list type requires `elem`", kind_span);
+                        continue;
+                    };
+                    let Some(elem) = self.resolve_typeuse(&f.value, f.value_span, &tables.types)
+                    else {
+                        continue;
+                    };
+                    hir::TypeKind::List { elem }
+                }
+                "variant" => {
+                    // PLAN-864: nominal variant arms — declaration order,
+                    // arm index = runtime discriminant; a payload-less arm
+                    // omits `payload`.
+                    let mut arms: Vec<hir::VariantArmDecl> = Vec::new();
+                    let mut ok = true;
+                    if let Some(f) = tfields.get("arms") {
+                        match &f.value {
+                            Value::List(items) => {
+                                for it in items {
+                                    let Value::Obj(obj) = it else {
+                                        self.error(
+                                            "bind.type-shape",
+                                            "arms entries must be (name: .., payload: ..?) objects",
+                                            f.value_span,
+                                        );
+                                        ok = false;
+                                        continue;
+                                    };
+                                    let mut aname: Option<String> = None;
+                                    let mut apayload: Option<Option<hir::TypeUse>> = Some(None);
+                                    for of in obj {
+                                        match of.name.as_str() {
+                                            "name" => {
+                                                aname = self.text_of(&of.value);
+                                                if aname.is_none() {
+                                                    self.error(
+                                                        "bind.type-shape",
+                                                        "arm name must be text",
+                                                        of.value_span,
+                                                    );
+                                                    ok = false;
+                                                }
+                                            }
+                                            "payload" => {
+                                                let p = self.resolve_typeuse(
+                                                    &of.value,
+                                                    of.value_span,
+                                                    &tables.types,
+                                                );
+                                                if p.is_none() {
+                                                    ok = false;
+                                                    apayload = Some(None);
+                                                } else {
+                                                    apayload = Some(p);
+                                                }
+                                            }
+                                            other => {
+                                                self.error(
+                                                    "bind.unknown-field",
+                                                    format!(
+                                                        "unknown field `{}` in variant arm decl",
+                                                        other
+                                                    ),
+                                                    of.name_span,
+                                                );
+                                                ok = false;
+                                            }
+                                        }
+                                    }
+                                    match (aname, apayload) {
+                                        (Some(name), Some(payload)) => {
+                                            arms.push(hir::VariantArmDecl { name, payload })
+                                        }
+                                        _ => {
+                                            ok = false;
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {
+                                self.error(
+                                    "bind.type-shape",
+                                    "arms must be a list of arm declarations",
+                                    f.value_span,
+                                );
+                                ok = false;
+                            }
+                        }
+                    }
+                    if !ok {
+                        continue;
+                    }
+                    hir::TypeKind::Variant { arms }
                 }
                 _ => {
                     self.check_enum_case("TypeKind", &word, kind_span);
@@ -2456,6 +2564,162 @@ impl<'d> Binder<'d> {
                 };
                 hir::ExprKind::Move { inner }
             }
+            // -- PLAN-864 collections surface --------------------------------
+            "list_new" => {
+                let Some((rt, rspan)) = self.text_ref(&fields, "record") else {
+                    return None;
+                };
+                let list = match self.resolve_in(&rt, rspan, "TypeRef", type_ids, def_sibs) {
+                    Some(t) => hir::TypeId(t),
+                    None => return None,
+                };
+                hir::ExprKind::ListNew { list }
+            }
+            "list_len" | "list_clear" => {
+                let Some((lt, lspan)) = self.text_ref(&fields, "list") else {
+                    return None;
+                };
+                let list = match self.resolve_in(&lt, lspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                if kind_word == "list_len" {
+                    hir::ExprKind::ListLen { list }
+                } else {
+                    hir::ExprKind::ListClear { list }
+                }
+            }
+            "list_push" => {
+                let Some((lt, lspan)) = self.text_ref(&fields, "list") else {
+                    return None;
+                };
+                let list = match self.resolve_in(&lt, lspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                let Some((vt, vspan)) = self.text_ref(&fields, "value") else {
+                    return None;
+                };
+                let value = match self.resolve_in(&vt, vspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                hir::ExprKind::ListPush { list, value }
+            }
+            "list_get" | "list_remove" => {
+                let Some((lt, lspan)) = self.text_ref(&fields, "list") else {
+                    return None;
+                };
+                let list = match self.resolve_in(&lt, lspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                let Some((it, ispan)) = self.text_ref(&fields, "index") else {
+                    return None;
+                };
+                let index = match self.resolve_in(&it, ispan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                if kind_word == "list_get" {
+                    hir::ExprKind::ListGet { list, index }
+                } else {
+                    hir::ExprKind::ListRemove { list, index }
+                }
+            }
+            "list_insert" | "list_set" => {
+                let Some((lt, lspan)) = self.text_ref(&fields, "list") else {
+                    return None;
+                };
+                let list = match self.resolve_in(&lt, lspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                let Some((it, ispan)) = self.text_ref(&fields, "index") else {
+                    return None;
+                };
+                let index = match self.resolve_in(&it, ispan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                let Some((vt, vspan)) = self.text_ref(&fields, "value") else {
+                    return None;
+                };
+                let value = match self.resolve_in(&vt, vspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                if kind_word == "list_insert" {
+                    hir::ExprKind::ListInsert { list, index, value }
+                } else {
+                    hir::ExprKind::ListSet { list, index, value }
+                }
+            }
+            "variant_ctor" => {
+                let Some((rt, rspan)) = self.text_ref(&fields, "record") else {
+                    return None;
+                };
+                let variant = match self.resolve_in(&rt, rspan, "TypeRef", type_ids, def_sibs) {
+                    Some(t) => hir::TypeId(t),
+                    None => return None,
+                };
+                let Some(f) = fields.get("disc") else {
+                    return None;
+                };
+                let Some(disc) = int_value(&f.value).and_then(|l| {
+                    l.to_u32()
+                        .filter(|_| matches!(l.suffix.as_deref(), None | Some("u32")))
+                }) else {
+                    self.error(
+                        "bind.type-shape",
+                        "variant_ctor disc must be u32",
+                        f.value_span,
+                    );
+                    return None;
+                };
+                let payload = match self.text_ref(&fields, "payload") {
+                    Some((pt, pspan)) => {
+                        match self.resolve_in(&pt, pspan, "ExprRef", &body.exprs, expr_sibs) {
+                            Some(e) => Some(hir::ExprId(e)),
+                            None => return None,
+                        }
+                    }
+                    None => None,
+                };
+                hir::ExprKind::VariantCtor {
+                    variant,
+                    disc,
+                    payload,
+                }
+            }
+            "variant_guard_test" | "variant_project" => {
+                let Some((ot, ospan)) = self.text_ref(&fields, "operand") else {
+                    return None;
+                };
+                let root = match self.resolve_in(&ot, ospan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                let Some(f) = fields.get("disc") else {
+                    return None;
+                };
+                let Some(disc) = int_value(&f.value).and_then(|l| {
+                    l.to_u32()
+                        .filter(|_| matches!(l.suffix.as_deref(), None | Some("u32")))
+                }) else {
+                    self.error(
+                        "bind.type-shape",
+                        "variant dispatch disc must be u32",
+                        f.value_span,
+                    );
+                    return None;
+                };
+                if kind_word == "variant_guard_test" {
+                    hir::ExprKind::VariantGuardTest { root, disc }
+                } else {
+                    hir::ExprKind::VariantProject { root, disc }
+                }
+            }
             _ => return None,
         };
         Some(hir::Expr {
@@ -2647,6 +2911,19 @@ impl<'d> Binder<'d> {
                     )?);
                     hir::Stmt::Drop { local }
                 }
+                "eval" => {
+                    // PLAN-864: unit-typed effect statement (push/insert/
+                    // set/clear); the value expr carries the unit type.
+                    let (t, span) = self.text_ref(&sfields, "value")?;
+                    let value = hir::ExprId(self.resolve_in(
+                        &t,
+                        span,
+                        "ExprRef",
+                        &body.exprs,
+                        block_sibs,
+                    )?);
+                    hir::Stmt::Eval { value }
+                }
                 _ => continue,
             };
             stmts.push(stmt_value);
@@ -2683,8 +2960,15 @@ impl<'d> Binder<'d> {
             // every other descriptor it stays a dangling reference exactly
             // like the text words above (no cross-domain borrowing).
             Value::Ident(word)
-                if word == "unit" && self.desc.domain() == Some(hir::HirDomain::EntryUnit) =>
+                if word == "unit"
+                    && matches!(
+                        self.desc.domain(),
+                        Some(hir::HirDomain::EntryUnit) | Some(hir::HirDomain::Collections)
+                    ) =>
             {
+                // PLAN-862: the entry-unit result word. PLAN-864: also the
+                // collections surface (the effect-statement values only —
+                // push/insert/set/clear produce no slot).
                 Some(hir::TypeUse::Builtin(hir::BuiltinType::Unit))
             }
             // The str/Str/char builtin type words exist only in the text
@@ -2695,9 +2979,14 @@ impl<'d> Binder<'d> {
             Value::Ident(word)
                 if matches!(
                     self.desc.domain(),
-                    Some(hir::HirDomain::Text) | Some(hir::HirDomain::TextRecord)
+                    Some(hir::HirDomain::Text)
+                        | Some(hir::HirDomain::TextRecord)
+                        | Some(hir::HirDomain::Collections)
                 ) && text_builtin(word).is_some() =>
             {
+                // PLAN-864: the collections surface admits `Str` (owned
+                // values/literals); `str`/`char` stay resolve-level
+                // rejections there and can never appear in a bound document.
                 Some(hir::TypeUse::Builtin(text_builtin(word).unwrap()))
             }
             Value::Ident(_) | Value::Str(_) => {
@@ -2837,6 +3126,31 @@ pub fn write_canonical(bundle: &hir::Bundle, desc: &Descriptor) -> Result<String
                         "type(id: {}, kind: record) {{ fields: [{}] }}",
                         quote(&t.id_text),
                         fields.join(", ")
+                    ));
+                }
+                hir::TypeKind::List { elem } => {
+                    w.line(&format!(
+                        "type(id: {}, kind: list) {{ elem: {} }}",
+                        quote(&t.id_text),
+                        type_use_text(elem, m)
+                    ));
+                }
+                hir::TypeKind::Variant { arms } => {
+                    let arm_texts: Vec<String> = arms
+                        .iter()
+                        .map(|a| match &a.payload {
+                            Some(p) => format!(
+                                "{{ name: {}, payload: {} }}",
+                                quote(&a.name),
+                                type_use_text(p, m)
+                            ),
+                            None => format!("{{ name: {} }}", quote(&a.name)),
+                        })
+                        .collect();
+                    w.line(&format!(
+                        "type(id: {}, kind: variant) {{ arms: [{}] }}",
+                        quote(&t.id_text),
+                        arm_texts.join(", ")
                     ));
                 }
             }
@@ -3012,6 +3326,18 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         hir::ExprKind::BorrowMut { .. } => "borrow_mut",
         hir::ExprKind::RecordClone { .. } => "record_clone",
         hir::ExprKind::Move { .. } => "move",
+        // -- PLAN-864 collections surface --------------------------------
+        hir::ExprKind::ListNew { .. } => "list_new",
+        hir::ExprKind::ListLen { .. } => "list_len",
+        hir::ExprKind::ListPush { .. } => "list_push",
+        hir::ExprKind::ListInsert { .. } => "list_insert",
+        hir::ExprKind::ListGet { .. } => "list_get",
+        hir::ExprKind::ListSet { .. } => "list_set",
+        hir::ExprKind::ListRemove { .. } => "list_remove",
+        hir::ExprKind::ListClear { .. } => "list_clear",
+        hir::ExprKind::VariantCtor { .. } => "variant_ctor",
+        hir::ExprKind::VariantGuardTest { .. } => "variant_guard_test",
+        hir::ExprKind::VariantProject { .. } => "variant_project",
     };
     let mut body_fields: Vec<String> = vec![format!("type: {}", type_use_text(&e.ty, m))];
     match &e.kind {
@@ -3186,6 +3512,79 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
                 quote(&b.exprs[inner.0 as usize].id_text)
             ));
         }
+        // -- PLAN-864 collections surface --------------------------------
+        hir::ExprKind::ListNew { list } => {
+            body_fields.push(format!(
+                "record: {}",
+                quote(&m.types[list.0 as usize].id_text)
+            ));
+        }
+        hir::ExprKind::ListLen { list } | hir::ExprKind::ListClear { list } => {
+            body_fields.push(format!(
+                "list: {}",
+                quote(&b.exprs[list.0 as usize].id_text)
+            ));
+        }
+        hir::ExprKind::ListPush { list, value } => {
+            body_fields.push(format!(
+                "list: {}",
+                quote(&b.exprs[list.0 as usize].id_text)
+            ));
+            body_fields.push(format!(
+                "value: {}",
+                quote(&b.exprs[value.0 as usize].id_text)
+            ));
+        }
+        hir::ExprKind::ListGet { list, index } | hir::ExprKind::ListRemove { list, index } => {
+            body_fields.push(format!(
+                "list: {}",
+                quote(&b.exprs[list.0 as usize].id_text)
+            ));
+            body_fields.push(format!(
+                "index: {}",
+                quote(&b.exprs[index.0 as usize].id_text)
+            ));
+        }
+        hir::ExprKind::ListInsert { list, index, value }
+        | hir::ExprKind::ListSet { list, index, value } => {
+            body_fields.push(format!(
+                "list: {}",
+                quote(&b.exprs[list.0 as usize].id_text)
+            ));
+            body_fields.push(format!(
+                "index: {}",
+                quote(&b.exprs[index.0 as usize].id_text)
+            ));
+            body_fields.push(format!(
+                "value: {}",
+                quote(&b.exprs[value.0 as usize].id_text)
+            ));
+        }
+        hir::ExprKind::VariantCtor {
+            variant,
+            disc,
+            payload,
+        } => {
+            body_fields.push(format!(
+                "record: {}",
+                quote(&m.types[variant.0 as usize].id_text)
+            ));
+            body_fields.push(format!("disc: {}u32", disc));
+            if let Some(p) = payload {
+                body_fields.push(format!(
+                    "payload: {}",
+                    quote(&b.exprs[p.0 as usize].id_text)
+                ));
+            }
+        }
+        hir::ExprKind::VariantGuardTest { root, disc }
+        | hir::ExprKind::VariantProject { root, disc } => {
+            body_fields.push(format!(
+                "operand: {}",
+                quote(&b.exprs[root.0 as usize].id_text)
+            ));
+            body_fields.push(format!("disc: {}u32", disc));
+        }
     }
     w.line(&format!(
         "expr(id: {}, kind: {}) {{ {} }}",
@@ -3238,6 +3637,10 @@ fn write_stmt(s: &hir::Stmt, b: &hir::Body, _m: &hir::Module) -> String {
         hir::Stmt::Drop { local } => format!(
             "drop(local: {}) {{}}",
             quote(&b.locals[local.0 as usize].id_text)
+        ),
+        hir::Stmt::Eval { value } => format!(
+            "eval(value: {}) {{}}",
+            quote(&b.exprs[value.0 as usize].id_text)
         ),
     }
 }

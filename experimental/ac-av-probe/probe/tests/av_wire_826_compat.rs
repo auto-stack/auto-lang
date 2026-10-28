@@ -210,8 +210,7 @@ fn av_wire_826_compat_codec_routing_gate_and_delivered_wire_untouched() {
         &[TRACE_CAPABILITY.to_string()],
     )
     .expect("compile");
-    let mir =
-        auto_mir_lower::lower_checked(&compiled.checked, "d_main", 826).expect("lower");
+    let mir = auto_mir_lower::lower_checked(&compiled.checked, "d_main", 826).expect("lower");
     verify_mir(&mir).expect("verify");
     let legacy_bytes = auto_av_core::encode_abc(&mir).expect("legacy encode");
     let legacy2 = auto_av_core::encode_abc(&mir).expect("legacy encode again");

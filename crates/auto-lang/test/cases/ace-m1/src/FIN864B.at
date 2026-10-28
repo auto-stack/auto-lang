@@ -1,0 +1,11 @@
+type Item { name Str; code int }
+fn main() int {
+    var xs = List<Item>.new()
+    xs.push(Item("ab", 1))
+    xs.push(Item("cde", 2))
+    var total = 0
+    for it in xs {
+        total = total + it.name.len() * 10 + it.code
+    }
+    return total
+}

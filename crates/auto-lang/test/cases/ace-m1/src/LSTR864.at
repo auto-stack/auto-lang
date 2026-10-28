@@ -1,0 +1,7 @@
+fn main() int {
+    var xs = List<Str>.new()
+    xs.push("hello")
+    xs.push("中")
+    let removed Str = xs.remove(0)
+    return removed.len() * 10 + xs.get(0).len()
+}

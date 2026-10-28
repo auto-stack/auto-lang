@@ -371,6 +371,191 @@ fn check_expr(
                     }
                 }
             }
+            // -- PLAN-864 collections surface: typing was resolved inline
+            // (list interning, ctor arms); here the element/arg type
+            // contracts are enforced and children walk.
+            RExprKind::ListNew { list } => {
+                if e.vt != VT::List(*list) {
+                    mismatch(diags, VT::List(*list), e.vt, e.span);
+                }
+            }
+            RExprKind::ListLen { list } => {
+                stack.push(list.as_ref());
+                if e.vt != VT::I32 {
+                    mismatch(diags, VT::I32, e.vt, e.span);
+                }
+                if !matches!(list.vt, VT::List(_)) {
+                    mismatch(diags, VT::List(0), list.vt, list.span);
+                }
+            }
+            RExprKind::ListClear { list } => {
+                stack.push(list.as_ref());
+                if e.vt != VT::Unit || !matches!(list.vt, VT::List(_)) {
+                    mismatch(diags, VT::Unit, e.vt, e.span);
+                }
+            }
+            RExprKind::ListPush { list, value } => {
+                stack.push(list.as_ref());
+                stack.push(value.as_ref());
+                if let VT::List(li) = list.vt {
+                    let elem = program.lists.get(li).copied().unwrap_or(VT::I32);
+                    if value.vt != elem {
+                        mismatch(diags, elem, value.vt, value.span);
+                    }
+                }
+                if e.vt != VT::Unit {
+                    mismatch(diags, VT::Unit, e.vt, e.span);
+                }
+            }
+            RExprKind::ListInsert { list, index, value }
+            | RExprKind::ListSet { list, index, value } => {
+                stack.push(list.as_ref());
+                stack.push(index.as_ref());
+                stack.push(value.as_ref());
+                if index.vt != VT::I32 {
+                    mismatch(diags, VT::I32, index.vt, index.span);
+                }
+                if let VT::List(li) = list.vt {
+                    let elem = program.lists.get(li).copied().unwrap_or(VT::I32);
+                    if value.vt != elem {
+                        mismatch(diags, elem, value.vt, value.span);
+                    }
+                }
+                if e.vt != VT::Unit {
+                    mismatch(diags, VT::Unit, e.vt, e.span);
+                }
+            }
+            RExprKind::ListGet { list, index } | RExprKind::ListRemove { list, index } => {
+                stack.push(list.as_ref());
+                stack.push(index.as_ref());
+                if index.vt != VT::I32 {
+                    mismatch(diags, VT::I32, index.vt, index.span);
+                }
+                if let VT::List(li) = list.vt {
+                    let elem = program.lists.get(li).copied().unwrap_or(VT::I32);
+                    if e.vt != elem {
+                        mismatch(diags, elem, e.vt, e.span);
+                    }
+                }
+            }
+            RExprKind::ListFieldGet { list, index, path } => {
+                stack.push(list.as_ref());
+                stack.push(index.as_ref());
+                if index.vt != VT::I32 {
+                    mismatch(diags, VT::I32, index.vt, index.span);
+                }
+                check_field_path_vt(program, path, e.vt, e.span, diags);
+            }
+            RExprKind::ElemView { list, index, path } => {
+                stack.push(list.as_ref());
+                stack.push(index.as_ref());
+                if index.vt != VT::I32 {
+                    mismatch(diags, VT::I32, index.vt, index.span);
+                }
+                check_field_path_vt(program, path, e.vt, e.span, diags);
+                if e.vt != VT::StrOwned {
+                    mismatch(diags, VT::StrOwned, e.vt, e.span);
+                }
+            }
+            RExprKind::VariantCtor {
+                variant,
+                disc,
+                payload,
+            } => {
+                if let Some(pl) = payload {
+                    stack.push(pl.as_ref());
+                }
+                if e.vt != VT::Variant(*variant) {
+                    mismatch(diags, VT::Variant(*variant), e.vt, e.span);
+                }
+                if let Some(v) = program.variants.get(*variant) {
+                    match (v.arms.get(*disc as usize), payload) {
+                        (Some((_, Some(pvt))), Some(pl)) => {
+                            if pl.vt != *pvt {
+                                mismatch(diags, *pvt, pl.vt, pl.span);
+                            }
+                        }
+                        (Some((_, None)), Some(pl)) => {
+                            mismatch(diags, VT::Unit, pl.vt, pl.span);
+                        }
+                        (Some((_, Some(_))), None) => {
+                            diags.push(Diagnostic::new(
+                                Stage::Verify,
+                                "source.argument",
+                                format!(
+                                    "arm `{}` requires a payload value",
+                                    v.arms[*disc as usize].0
+                                ),
+                                e.span,
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            RExprKind::CtorUnknown { name, .. } => {
+                diags.push(Diagnostic::new(
+                    Stage::Verify,
+                    "source.type-ambiguous",
+                    format!(
+                        "constructor `{}` has no expected type here (bare constructors bind in returns, annotated lets and assignments)",
+                        name
+                    ),
+                    e.span,
+                ));
+            }
+            RExprKind::VariantGuardTest { variant, disc, .. } => {
+                if e.vt != VT::Bool {
+                    mismatch(diags, VT::Bool, e.vt, e.span);
+                }
+                check_disc(program, *variant, *disc, e.span, diags);
+            }
+            RExprKind::VariantProject { variant, disc, .. } => {
+                check_disc(program, *variant, *disc, e.span, diags);
+            }
+        }
+    }
+}
+
+/// PLAN-864: the final type of a resolved field path through the record
+/// table must equal the declared expression type.
+fn check_field_path_vt(
+    program: &ResolvedProgram,
+    path: &[(usize, usize)],
+    want: VT,
+    span: crate::atom_text::Span,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let Some(&(ri, fi)) = path.last() else {
+        return;
+    };
+    let Some(rec) = program.records.get(ri) else {
+        return;
+    };
+    let Some(f) = rec.fields.get(fi) else {
+        return;
+    };
+    if f.vt != want {
+        mismatch(diags, f.vt, want, span);
+    }
+}
+
+/// PLAN-864: a dispatch discriminant must name an existing arm.
+fn check_disc(
+    program: &ResolvedProgram,
+    variant: usize,
+    disc: u32,
+    span: crate::atom_text::Span,
+    diags: &mut Vec<Diagnostic>,
+) {
+    if let Some(v) = program.variants.get(variant) {
+        if disc as usize >= v.arms.len() {
+            diags.push(Diagnostic::new(
+                Stage::Verify,
+                "source.pattern-unknown-arm",
+                format!("discriminant {} out of range for `{}`", disc, v.name),
+                span,
+            ));
         }
     }
 }

@@ -1,0 +1,301 @@
+# PLAN-864 collections SOURCE profile — the 852 L/V rows as real-source
+# executions through `ac-av/collections-source-run-v1` (frontend -> checked
+# HIR -> shared lowering -> the frozen 822 execution, profile 4 unchanged).
+#
+# Every expectation is an INDEPENDENT hand-computed oracle (852 denominator
+# values preserved; the source files stay byte-identical — new variants are
+# NEW files, never rewritten rows):
+#
+#   L01  List<int> push/get               -> 42
+#   L02  insert/remove/len                -> 42
+#   L03  empty len + clear                -> 0
+#   L04  List<Item> owned push(x.move),
+#        checked read-only field view     -> 42
+#   L05  remove transfers the owner out   -> 42
+#   L06  get(1) out of bounds             -> trap av.trap.list-index (SEM-02)
+#   L07  set                              -> 42
+#   V01  Option Some                      -> 42
+#   V02  Result Ok                        -> 42
+#   V03  Result Err payload len           -> 3
+#   V04  enum Number(int)                 -> 42
+#   V05  enum Data(Item) owned payload    -> 42
+#   V06  variant slot switch              -> 42
+#   V07  Option None branch               -> 42
+#   N01  List<Str> variant (NEW source):
+#        removed.len()*10 + get(0).len()
+#        = 5*10 + 1                       -> 51
+#   N02  for-in over copy elements (NEW)  -> 42
+#   N03  for-in over owned elements
+#        with field projections (NEW)     -> 53
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.l01-av864"
+  tags: ["ace-m1", "collections", "value"]
+  links: ["PLAN-864"]
+  source: { file: "src/L01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-l01-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.l02-av864"
+  tags: ["ace-m1", "collections", "value"]
+  links: ["PLAN-864"]
+  source: { file: "src/L02.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-l02-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.l03-av864"
+  tags: ["ace-m1", "collections", "value"]
+  links: ["PLAN-864"]
+  source: { file: "src/L03.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-l03-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 0 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.l04-av864"
+  tags: ["ace-m1", "collections", "owned"]
+  links: ["PLAN-864"]
+  source: { file: "src/L04.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-l04-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.l05-av864"
+  tags: ["ace-m1", "collections", "owned"]
+  links: ["PLAN-864"]
+  source: { file: "src/L05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-l05-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.l06-av864"
+  tags: ["ace-m1", "collections", "trap"]
+  links: ["PLAN-864"]
+  source: { file: "src/L06.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-l06-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "run", code: "av.trap.list-index" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.l07-av864"
+  tags: ["ace-m1", "collections", "value"]
+  links: ["PLAN-864"]
+  source: { file: "src/L07.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-l07-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v01-av864"
+  tags: ["ace-m1", "collections", "variant"]
+  links: ["PLAN-864"]
+  source: { file: "src/V01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-v01-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v02-av864"
+  tags: ["ace-m1", "collections", "variant"]
+  links: ["PLAN-864"]
+  source: { file: "src/V02.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-v02-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v03-av864"
+  tags: ["ace-m1", "collections", "variant"]
+  links: ["PLAN-864"]
+  source: { file: "src/V03.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-v03-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 3 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v04-av864"
+  tags: ["ace-m1", "collections", "variant"]
+  links: ["PLAN-864"]
+  source: { file: "src/V04.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-v04-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v05-av864"
+  tags: ["ace-m1", "collections", "variant", "owned"]
+  links: ["PLAN-864"]
+  source: { file: "src/V05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-v05-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v06-av864"
+  tags: ["ace-m1", "collections", "variant"]
+  links: ["PLAN-864"]
+  source: { file: "src/V06.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-v06-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.v07-av864"
+  tags: ["ace-m1", "collections", "variant"]
+  links: ["PLAN-864"]
+  source: { file: "src/V07.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-v07-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.n01-av864"
+  tags: ["ace-m1", "collections", "owned", "plan-864-variant"]
+  links: ["PLAN-864"]
+  source: { file: "src/LSTR864.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-n01-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 51 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.n02-av864"
+  tags: ["ace-m1", "collections", "for-in", "plan-864-variant"]
+  links: ["PLAN-864"]
+  source: { file: "src/FIN864A.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-n02-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.n03-av864"
+  tags: ["ace-m1", "collections", "for-in", "owned", "plan-864-variant"]
+  links: ["PLAN-864"]
+  source: { file: "src/FIN864B.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-n03-collections-source", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/collections-source-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 53 } }
+  ]
+}
+```

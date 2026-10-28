@@ -181,6 +181,23 @@ pub fn entry_unit_descriptor() -> &'static descriptor::Descriptor {
     })
 }
 
+/// The versioned collections descriptor this build accepts (PLAN-864): the
+/// source-domain twin of `av.collections/1` — List/Variant types, the
+/// collection/variant expression surface and the unit-effect `eval`
+/// statement — lowering exclusively onto the frozen 822 MIR instruction
+/// set.
+pub const COLLECTIONS_DESCRIPTOR_SCHEMA: &str = include_str!("../schema/collections.atom");
+
+/// Parse and return the embedded collections descriptor (PLAN-864).
+pub fn collections_descriptor() -> &'static descriptor::Descriptor {
+    use std::sync::OnceLock;
+    static DESC: OnceLock<descriptor::Descriptor> = OnceLock::new();
+    DESC.get_or_init(|| {
+        descriptor::Descriptor::parse(COLLECTIONS_DESCRIPTOR_SCHEMA)
+            .expect("embedded collections descriptor must parse")
+    })
+}
+
 /// Convenience: bind a source document with the embedded core descriptor.
 pub fn bind_source(source: &str) -> Result<hir::Bundle, Vec<atom_text::Diagnostic>> {
     descriptor::bind(descriptor(), source)
@@ -198,6 +215,7 @@ pub fn bind_document(source: &str) -> Result<hir::Bundle, Vec<atom_text::Diagnos
         (record_descriptor(), "record"),
         (text_record_descriptor(), "text-record"),
         (entry_unit_descriptor(), "entry-unit"),
+        (collections_descriptor(), "collections"),
     ];
     let header = match descriptor::peek_identity(source) {
         Ok(h) => h,

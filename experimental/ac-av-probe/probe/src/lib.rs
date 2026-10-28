@@ -11,6 +11,8 @@ pub mod bench;
 pub mod cache;
 pub mod closures_fixture;
 pub mod closures_session;
+pub mod collections_864_session;
+pub mod collections_864_support;
 pub mod collections_fixture;
 pub mod collections_session;
 pub mod data_driver;

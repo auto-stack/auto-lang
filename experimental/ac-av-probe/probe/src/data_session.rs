@@ -1405,6 +1405,13 @@ fn outline_of(
                 start: t.span.start,
                 end: t.span.end,
             }),
+            // PLAN-864: enum declarations outline like types.
+            Item::Enum(e) => out.push(OutlineEntry {
+                is_fn: false,
+                name: e.name.name.clone(),
+                start: e.span.start,
+                end: e.span.end,
+            }),
         }
     }
     Ok(out)

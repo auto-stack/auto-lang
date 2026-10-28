@@ -204,10 +204,15 @@ pub fn verify_function(
         return Err(v.diags);
     }
     for t in &m.types {
-        if matches!(
+        let text_kind = matches!(
             t.kind,
             hir::TypeKind::Str | hir::TypeKind::StrOwned | hir::TypeKind::Char
-        ) {
+        );
+        // PLAN-864: the collections domain owns owned-`Str` values (the
+        // `t_Str` table entry); `char`/borrowed `str` stay excluded.
+        let admitted =
+            matches!(t.kind, hir::TypeKind::StrOwned) && v.domain == HirDomain::Collections;
+        if text_kind && !admitted {
             v.error(
                 "verify.local-type",
                 format!(
@@ -409,6 +414,30 @@ fn context_fingerprint(m: &hir::Module) -> String {
                 Some(hir::TypeKind::StrOwned) => mix(h, "Str"),
                 Some(hir::TypeKind::Char) => mix(h, "char"),
                 Some(hir::TypeKind::Record(_)) => mix(h, "rec"),
+                // PLAN-864: List identity is its element; Variant identity is
+                // nominal (owner name) plus its arm/payload shape.
+                Some(hir::TypeKind::List { elem }) => {
+                    mix(h, "list[");
+                    mix_use(h, elem, m, depth - 1);
+                    mix(h, "]");
+                }
+                Some(hir::TypeKind::Variant { arms }) => {
+                    let name = m
+                        .types
+                        .get(tid.0 as usize)
+                        .map(|t| t.id_text.clone())
+                        .unwrap_or_default();
+                    mix(h, &format!("variant:{name}("));
+                    for a in arms {
+                        mix(h, &a.name);
+                        mix(h, "(");
+                        if let Some(p) = &a.payload {
+                            mix_use(h, p, m, depth - 1);
+                        }
+                        mix(h, ")");
+                    }
+                    mix(h, ")");
+                }
                 None => mix(h, "oob"),
             },
         }
@@ -704,6 +733,50 @@ pub fn verify_text_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diag
 ///   an `ExprKind::Unit` is only legal in this domain and only with declared
 ///   type `unit`; a `return` operand must match its function's result, so a
 ///   Unit body returns the unit value and an `int` body can never return it.
+/// PLAN-864: the collections-domain verifier entry. Enforces the shared
+/// structural/type/init/return walks plus the collections contracts on the
+/// new expression kinds (contract C4/C6/C10): variant dispatch roots are
+/// whole-local reads, ListGet never appears over an owned-element list
+/// outside a field/view projection (checked here as a structural pattern
+/// walk), and owned-terminal field projections are only consumed by
+/// `.len()` (the TextLen view shape). Cleanup carries no plan — profile 4
+/// releases frame-owned values at exits.
+pub fn verify_collections(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
+    if bundle.domain != HirDomain::Collections {
+        return Err(vec![Diagnostic::new(
+            Stage::Verify,
+            "verify.domain",
+            format!(
+                "bundle identity `{}` does not match this verifier entry (`{}`); use the entry of the document's own descriptor profile",
+                bundle.domain.as_str(),
+                HirDomain::Collections.as_str()
+            ),
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    let mut v = Verifier {
+        diags: Vec::new(),
+        domain: HirDomain::Collections,
+    };
+    v.check_bundle(&bundle);
+    for m in &bundle.modules {
+        v.check_module(m);
+        v.check_collections_rules(m);
+    }
+    if v.diags.is_empty() {
+        // no text resource plan: profile 4 releases frame-owned values at
+        // exits (runtime LIFO sweep), and this domain never emits the
+        // ac_rt text runtime.
+        Ok(CheckedModule {
+            bundle,
+            text_plan: None,
+            runtime_text_needed: false,
+        })
+    } else {
+        Err(v.diags)
+    }
+}
+
 pub fn verify_entry_unit(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
     let checked = verify_domain(bundle, HirDomain::EntryUnit)?;
     let mut diags = Vec::new();
@@ -901,6 +974,10 @@ pub(crate) enum ValueType {
     /// expression (ExprKind::Unit) and never a local, place, parameter or
     /// operator operand.
     Unit,
+    /// PLAN-864: an opaque composite (List/Variant type-table entry). The
+    /// shared record-domain walks treat it as a non-unifiable leaf; the
+    /// collections verification entry owns its real rules.
+    Opaque,
 }
 
 pub(crate) fn vt_name(v: ValueType) -> &'static str {
@@ -913,6 +990,7 @@ pub(crate) fn vt_name(v: ValueType) -> &'static str {
         ValueType::Char => "char",
         ValueType::Record(_) => "record",
         ValueType::Unit => "unit",
+        ValueType::Opaque => "composite",
     }
 }
 
@@ -967,24 +1045,45 @@ impl Verifier {
     /// every NON-RECORD domain rejects the record surface (record types,
     /// method declarations, record expressions, field-path places).
     fn check_profile_ops(&mut self, m: &hir::Module, body: &hir::Body) {
-        if !matches!(self.domain, HirDomain::Text | HirDomain::TextRecord) {
+        if !matches!(
+            self.domain,
+            HirDomain::Text | HirDomain::TextRecord | HirDomain::Collections
+        ) {
             for e in &body.exprs {
-                let text_kind = matches!(
-                    &e.kind,
-                    hir::ExprKind::StrLit { .. }
-                        | hir::ExprKind::CharLit { .. }
-                        | hir::ExprKind::TextLen { .. }
-                        | hir::ExprKind::TextLenBytes { .. }
-                        | hir::ExprKind::TextCharAt { .. }
-                        | hir::ExprKind::TextSlice { .. }
-                        | hir::ExprKind::TextConcat { .. }
-                        | hir::ExprKind::TextClone { .. }
-                        | hir::ExprKind::TextToOwned { .. }
-                        | hir::ExprKind::TextToBorrowed { .. }
-                        | hir::ExprKind::CharToCodepoint { .. }
-                        | hir::ExprKind::CharFromCodepoint { .. }
-                        | hir::ExprKind::Move { .. }
-                );
+                // PLAN-864: the collections surface admits exactly the
+                // restricted text face: literals, `.len()` and `.move`.
+                let text_kind = match self.domain {
+                    // PLAN-864: only the non-admitted text face rejects.
+                    HirDomain::Collections => matches!(
+                        &e.kind,
+                        hir::ExprKind::CharLit { .. }
+                            | hir::ExprKind::TextLenBytes { .. }
+                            | hir::ExprKind::TextCharAt { .. }
+                            | hir::ExprKind::TextSlice { .. }
+                            | hir::ExprKind::TextConcat { .. }
+                            | hir::ExprKind::TextClone { .. }
+                            | hir::ExprKind::TextToOwned { .. }
+                            | hir::ExprKind::TextToBorrowed { .. }
+                            | hir::ExprKind::CharToCodepoint { .. }
+                            | hir::ExprKind::CharFromCodepoint { .. }
+                    ),
+                    _ => matches!(
+                        &e.kind,
+                        hir::ExprKind::StrLit { .. }
+                            | hir::ExprKind::CharLit { .. }
+                            | hir::ExprKind::TextLen { .. }
+                            | hir::ExprKind::TextLenBytes { .. }
+                            | hir::ExprKind::TextCharAt { .. }
+                            | hir::ExprKind::TextSlice { .. }
+                            | hir::ExprKind::TextConcat { .. }
+                            | hir::ExprKind::TextClone { .. }
+                            | hir::ExprKind::TextToOwned { .. }
+                            | hir::ExprKind::TextToBorrowed { .. }
+                            | hir::ExprKind::CharToCodepoint { .. }
+                            | hir::ExprKind::CharFromCodepoint { .. }
+                            | hir::ExprKind::Move { .. }
+                    ),
+                };
                 if text_kind {
                     self.error(
                         "verify.profile-op",
@@ -1073,7 +1172,10 @@ impl Verifier {
                 }
             }
         }
-        if !matches!(self.domain, HirDomain::Record | HirDomain::TextRecord) {
+        if !matches!(
+            self.domain,
+            HirDomain::Record | HirDomain::TextRecord | HirDomain::Collections
+        ) {
             for t in &m.types {
                 if matches!(t.kind, hir::TypeKind::Record(_)) {
                     self.error(
@@ -1101,13 +1203,29 @@ impl Verifier {
                 }
             }
             for e in &body.exprs {
-                let record_kind = match &e.kind {
-                    hir::ExprKind::RecordCtor { .. } => Some("record_ctor"),
-                    hir::ExprKind::FieldGet { .. } => Some("field_get"),
-                    hir::ExprKind::BorrowView { .. } => Some("borrow_view"),
-                    hir::ExprKind::BorrowMut { .. } => Some("borrow_mut"),
-                    hir::ExprKind::RecordClone { .. } => Some("record_clone"),
-                    _ => None,
+                let record_kind = match (&e.kind, self.domain) {
+                    // PLAN-864: the collections surface admits construction
+                    // and field READS (records as elements/locals); borrows
+                    // and clone stay on the record/combination surfaces.
+                    (
+                        hir::ExprKind::BorrowView { .. }
+                        | hir::ExprKind::BorrowMut { .. }
+                        | hir::ExprKind::RecordClone { .. },
+                        HirDomain::Collections,
+                    ) => None,
+                    (_, HirDomain::Collections) => match &e.kind {
+                        hir::ExprKind::RecordCtor { .. } => Some("record_ctor"),
+                        hir::ExprKind::FieldGet { .. } => Some("field_get"),
+                        _ => None,
+                    },
+                    (_, _) => match &e.kind {
+                        hir::ExprKind::RecordCtor { .. } => Some("record_ctor"),
+                        hir::ExprKind::FieldGet { .. } => Some("field_get"),
+                        hir::ExprKind::BorrowView { .. } => Some("borrow_view"),
+                        hir::ExprKind::BorrowMut { .. } => Some("borrow_mut"),
+                        hir::ExprKind::RecordClone { .. } => Some("record_clone"),
+                        _ => None,
+                    },
                 };
                 if let Some(kind) = record_kind {
                     self.error(
@@ -1172,10 +1290,240 @@ impl Verifier {
                     hir::TypeKind::Char => ValueType::Char,
                     hir::TypeKind::Function(_) => ValueType::Function,
                     hir::TypeKind::Record(_) => ValueType::Record(i as u32),
+                    // PLAN-864: totality for the shared walk; collections
+                    // verification gives these types their own rules.
+                    hir::TypeKind::List { .. } => ValueType::Opaque,
+                    hir::TypeKind::Variant { .. } => ValueType::Opaque,
                 };
                 (i as u32, vt)
             })
             .collect()
+    }
+
+    /// PLAN-864: collections-domain contract checks (contract C4/C6):
+    /// - a whole owned element is never a value: ListGet over an
+    ///   owned-element list is legal ONLY as a FieldGet-chain base or a
+    ///   `.len()` operand (the checked read-only view shapes);
+    /// - an owned-terminal field projection is only consumed by `.len()`;
+    /// - variant dispatch/project roots are whole-local reads;
+    /// - `eval` statement values carry the unit type.
+    fn check_collections_rules(&mut self, m: &hir::Module) {
+        fn owned_elem(m: &hir::Module, list_ty: &hir::TypeUse, v: &Verifier) -> bool {
+            let hir::TypeUse::Ref(tid) = list_ty else {
+                return false;
+            };
+            let Some(hir::TypeKind::List { elem }) = m.types.get(tid.0 as usize).map(|t| &t.kind)
+            else {
+                return false;
+            };
+            match elem {
+                hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => true,
+                hir::TypeUse::Builtin(_) => false,
+                hir::TypeUse::Ref(e) => {
+                    matches!(
+                        m.types.get(e.0 as usize).map(|t| &t.kind),
+                        Some(hir::TypeKind::Variant { .. })
+                    ) || v.type_reaches_str(m, *e)
+                }
+            }
+        }
+        for body in &m.bodies {
+            // projection/consumption marks (expr indices)
+            let mut projected: BTreeSet<u32> = BTreeSet::new();
+            let mut len_consumed: BTreeSet<u32> = BTreeSet::new();
+            for e in &body.exprs {
+                match &e.kind {
+                    hir::ExprKind::FieldGet { base, .. } => {
+                        projected.insert(base.0);
+                    }
+                    hir::ExprKind::TextLen { operand } => {
+                        len_consumed.insert(operand.0);
+                    }
+                    _ => {}
+                }
+            }
+            for (ei, e) in body.exprs.iter().enumerate() {
+                match &e.kind {
+                    hir::ExprKind::ListGet { list, .. } => {
+                        if owned_elem(m, &body.exprs[list.0 as usize].ty, self)
+                            && !projected.contains(&(ei as u32))
+                            && !len_consumed.contains(&(ei as u32))
+                        {
+                            self.error(
+                                "verify.view-escape",
+                                format!(
+                                    "expr `{}`: a whole owned element is not a value; project a field or use `remove`",
+                                    e.id_text
+                                ),
+                                e.span,
+                            );
+                        }
+                    }
+                    hir::ExprKind::FieldGet { base, path } => {
+                        // walk to a ListGet root through FieldGet spines
+                        let mut cur = base.0;
+                        let mut root_list_ty = None;
+                        loop {
+                            match &body.exprs[cur as usize].kind {
+                                hir::ExprKind::FieldGet { base, .. } => cur = base.0,
+                                hir::ExprKind::ListGet { list, .. } => {
+                                    root_list_ty = Some(body.exprs[list.0 as usize].ty);
+                                    break;
+                                }
+                                _ => break,
+                            }
+                        }
+                        if let Some(list_ty) = root_list_ty {
+                            if owned_elem(m, &list_ty, self) {
+                                // terminal field type through the record table
+                                let term =
+                                    Self::field_terminal(m, &body.exprs[cur as usize].ty, path);
+                                let owned_term = match term {
+                                    Some(hir::TypeUse::Builtin(hir::BuiltinType::StrOwned)) => true,
+                                    Some(hir::TypeUse::Ref(t)) => self.type_reaches_str(m, t),
+                                    _ => false,
+                                };
+                                if owned_term && !len_consumed.contains(&(ei as u32)) {
+                                    self.error(
+                                        "verify.view-escape",
+                                        format!(
+                                            "expr `{}`: an owned field view is only consumed by `.len()` in this profile",
+                                            e.id_text
+                                        ),
+                                        e.span,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    hir::ExprKind::VariantGuardTest { root, .. }
+                    | hir::ExprKind::VariantProject { root, .. } => {
+                        if !matches!(
+                            &body.exprs[root.0 as usize].kind,
+                            hir::ExprKind::ReadLocal { .. }
+                        ) {
+                            self.error(
+                                "verify.pattern-scrutinee",
+                                format!(
+                                    "expr `{}`: variant dispatch roots must be whole-local reads",
+                                    e.id_text
+                                ),
+                                e.span,
+                            );
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            for bl in &body.blocks {
+                for st in &bl.stmts {
+                    if let hir::Stmt::Eval { value } = st {
+                        let ve = &body.exprs[value.0 as usize];
+                        let unit = matches!(ve.ty, hir::TypeUse::Builtin(hir::BuiltinType::Unit));
+                        // PLAN-864: a discarded `remove` is legal when the
+                        // element is copyable (the temp releases with the
+                        // frame); discarding an OWNED element transfer is
+                        // rejected — bind it or drop it explicitly.
+                        let copy_remove = match &ve.kind {
+                            hir::ExprKind::ListGet { list, .. } => {
+                                // the fused shape keeps ListGet at HIR for
+                                // owned lists; a bare (unprojected) ListGet
+                                // over a COPY-element list is the remove
+                                // discard's... no — bare ListGet is not a
+                                // statement form. Only real removes count.
+                                let _ = list;
+                                false
+                            }
+                            hir::ExprKind::ListRemove { list, .. } => {
+                                let lt = &body.exprs[list.0 as usize].ty;
+                                !Self::list_elem_owned(m, lt, self)
+                            }
+                            _ => false,
+                        };
+                        if !unit && !copy_remove {
+                            self.error(
+                                "verify.type-mismatch",
+                                "an expression statement discards only unit-typed calls (push/insert/set/clear) or a copy-element `remove`".to_string(),
+                                bl.span,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// PLAN-864: whether a List type's element is owned (Str / record
+    /// reaching Str / variant).
+    fn list_elem_owned(m: &hir::Module, list_ty: &hir::TypeUse, v: &Verifier) -> bool {
+        let hir::TypeUse::Ref(tid) = list_ty else {
+            return false;
+        };
+        let Some(hir::TypeKind::List { elem }) = m.types.get(tid.0 as usize).map(|t| &t.kind)
+        else {
+            return false;
+        };
+        match elem {
+            hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => true,
+            hir::TypeUse::Builtin(_) => false,
+            hir::TypeUse::Ref(e) => {
+                matches!(
+                    m.types.get(e.0 as usize).map(|t| &t.kind),
+                    Some(hir::TypeKind::Variant { .. })
+                ) || v.type_reaches_str(m, *e)
+            }
+        }
+    }
+
+    /// PLAN-864: transitive Str-reachability over the module type table.
+    fn type_reaches_str(&self, m: &hir::Module, t: hir::TypeId) -> bool {
+        let mut stack = vec![t.0];
+        let mut seen = BTreeSet::new();
+        while let Some(i) = stack.pop() {
+            if !seen.insert(i) {
+                continue;
+            }
+            match m.types.get(i as usize).map(|x| &x.kind) {
+                Some(hir::TypeKind::StrOwned) | Some(hir::TypeKind::Str) => return true,
+                Some(hir::TypeKind::Record(shape)) => {
+                    for f in &shape.fields {
+                        match f.ty {
+                            hir::TypeUse::Ref(t2) => stack.push(t2.0),
+                            hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => return true,
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    /// PLAN-864: the terminal field type of `path` walked from `base_ty`
+    /// through the record table (`None` when a segment does not resolve).
+    fn field_terminal(
+        m: &hir::Module,
+        base_ty: &hir::TypeUse,
+        path: &[hir::FieldId],
+    ) -> Option<hir::TypeUse> {
+        let hir::TypeUse::Ref(tid) = base_ty else {
+            return None;
+        };
+        let mut cur = tid.0;
+        for seg in path {
+            match m.types.get(cur as usize).map(|t| &t.kind) {
+                Some(hir::TypeKind::Record(shape)) => {
+                    let f = shape.fields.get(seg.0 as usize)?;
+                    match f.ty {
+                        hir::TypeUse::Ref(t) => cur = t.0,
+                        other => return Some(other),
+                    }
+                }
+                _ => return None,
+            }
+        }
+        Some(hir::TypeUse::Ref(hir::TypeId(cur)))
     }
 
     fn check_module(&mut self, m: &hir::Module) {
@@ -1191,12 +1539,20 @@ impl Verifier {
         // Text kinds in the type table exist only in the text profiles
         // (PLAN-770 isolation): a programmatic mutation cannot smuggle
         // str/Str/char named types into an older profile's signatures.
-        if !matches!(self.domain, HirDomain::Text | HirDomain::TextRecord) {
+        if !matches!(
+            self.domain,
+            HirDomain::Text | HirDomain::TextRecord | HirDomain::Collections
+        ) {
             for t in &m.types {
+                // PLAN-864: the collections domain owns the named owned-Str
+                // entry (`t_Str`); borrowed `str` and `char` stay excluded.
+                let admitted = matches!(t.kind, hir::TypeKind::StrOwned)
+                    && self.domain == HirDomain::Collections;
                 if matches!(
                     t.kind,
                     hir::TypeKind::Str | hir::TypeKind::StrOwned | hir::TypeKind::Char
-                ) {
+                ) && !admitted
+                {
                     self.error(
                         "verify.local-type",
                         format!(
@@ -1993,6 +2349,30 @@ impl Verifier {
                 hir::ExprKind::Move { inner } => children.push(inner.0),
                 hir::ExprKind::ReadLocal { .. } | hir::ExprKind::Constant { .. } => {}
                 hir::ExprKind::BorrowMut { .. } => {}
+                // PLAN-864 collections kinds: their child edges mirror the
+                // same operand fields the walk already understands.
+                hir::ExprKind::ListLen { list }
+                | hir::ExprKind::ListClear { list }
+                | hir::ExprKind::ListGet { list, .. }
+                | hir::ExprKind::ListRemove { list, .. } => children.push(list.0),
+                hir::ExprKind::ListPush { list, value }
+                | hir::ExprKind::ListSet { list, value, .. } => {
+                    children.push(list.0);
+                    children.push(value.0);
+                }
+                hir::ExprKind::ListInsert { list, index, value } => {
+                    children.push(list.0);
+                    children.push(index.0);
+                    children.push(value.0);
+                }
+                hir::ExprKind::ListNew { .. } => {}
+                hir::ExprKind::VariantCtor { payload, .. } => {
+                    if let Some(p) = payload {
+                        children.push(p.0);
+                    }
+                }
+                hir::ExprKind::VariantGuardTest { root, .. }
+                | hir::ExprKind::VariantProject { root, .. } => children.push(root.0),
                 // text kinds never appear in a record module (profile
                 // defense); totality only
                 hir::ExprKind::StrLit { .. }
@@ -2412,6 +2792,49 @@ impl Verifier {
                     }
                 }
                 hir::ExprKind::Constant { .. } => {}
+                // PLAN-864 collections kinds: operand bounds.
+                hir::ExprKind::ListNew { .. } => {}
+                hir::ExprKind::ListLen { list } | hir::ExprKind::ListClear { list } => {
+                    if (list.0 as usize) >= n_exprs {
+                        bad("expression", list.0, n_exprs, e.span);
+                    }
+                }
+                hir::ExprKind::ListPush { list, value } => {
+                    for id in [list, value] {
+                        if (id.0 as usize) >= n_exprs {
+                            bad("expression", id.0, n_exprs, e.span);
+                        }
+                    }
+                }
+                hir::ExprKind::ListGet { list, index }
+                | hir::ExprKind::ListRemove { list, index } => {
+                    for id in [list, index] {
+                        if (id.0 as usize) >= n_exprs {
+                            bad("expression", id.0, n_exprs, e.span);
+                        }
+                    }
+                }
+                hir::ExprKind::ListInsert { list, index, value }
+                | hir::ExprKind::ListSet { list, index, value } => {
+                    for id in [list, index, value] {
+                        if (id.0 as usize) >= n_exprs {
+                            bad("expression", id.0, n_exprs, e.span);
+                        }
+                    }
+                }
+                hir::ExprKind::VariantCtor { payload, .. } => {
+                    if let Some(p) = payload {
+                        if (p.0 as usize) >= n_exprs {
+                            bad("expression", p.0, n_exprs, e.span);
+                        }
+                    }
+                }
+                hir::ExprKind::VariantGuardTest { root, .. }
+                | hir::ExprKind::VariantProject { root, .. } => {
+                    if (root.0 as usize) >= n_exprs {
+                        bad("expression", root.0, n_exprs, e.span);
+                    }
+                }
             }
         }
         for bl in &body.blocks {
@@ -2469,6 +2892,11 @@ impl Verifier {
                             bad("local", local.0, n_locals, bl.span);
                         }
                     }
+                    hir::Stmt::Eval { value } => {
+                        if (value.0 as usize) >= n_exprs {
+                            bad("expression", value.0, n_exprs, bl.span);
+                        }
+                    }
                 }
             }
         }
@@ -2494,7 +2922,10 @@ impl Verifier {
                     ),
                     l.span,
                 );
-            } else if text_vt && !matches!(self.domain, HirDomain::Text | HirDomain::TextRecord) {
+            } else if text_vt
+                && !(matches!(self.domain, HirDomain::Text | HirDomain::TextRecord)
+                    || (self.domain == HirDomain::Collections && lvt == ValueType::StrOwned))
+            {
                 self.error(
                     "verify.local-type",
                     format!(
@@ -2796,12 +3227,57 @@ impl Verifier {
                             tm.gray.remove(&id.0);
                             tm.memo.insert(id.0, lt);
                         }
+                        // -- PLAN-864 collections kinds ----------------------
+                        // Operand traversal + memoization only; the
+                        // cross-expression invariants (element domain, disc
+                        // bounds, view discipline) live in the collections
+                        // verification pass.
+                        hir::ExprKind::ListNew { .. } => {
+                            tm.gray.remove(&id.0);
+                            tm.memo.insert(id.0, declared);
+                        }
+                        hir::ExprKind::ListLen { list }
+                        | hir::ExprKind::ListClear { list }
+                        | hir::ExprKind::ListPush { list, .. }
+                        | hir::ExprKind::ListInsert { list, .. }
+                        | hir::ExprKind::ListGet { list, .. }
+                        | hir::ExprKind::ListSet { list, .. }
+                        | hir::ExprKind::ListRemove { list, .. } => {
+                            stack.push(Visit::Exit(id));
+                            stack.push(Visit::Enter(*list));
+                        }
+                        hir::ExprKind::VariantCtor { payload, .. } => {
+                            stack.push(Visit::Exit(id));
+                            if let Some(p) = payload {
+                                stack.push(Visit::Enter(*p));
+                            }
+                        }
+                        hir::ExprKind::VariantGuardTest { root, .. }
+                        | hir::ExprKind::VariantProject { root, .. } => {
+                            stack.push(Visit::Exit(id));
+                            stack.push(Visit::Enter(*root));
+                        }
                     }
                 }
                 Visit::Exit(id) => {
                     let e = &body.exprs[id.0 as usize];
                     let declared = declared_of(e);
                     let computed = match &e.kind {
+                        // PLAN-864 collections kinds: the declared type IS
+                        // the computed type (list/variant ctors, len i32,
+                        // guard bool, projection payload); the operand
+                        // invariants are the collections pass's job.
+                        hir::ExprKind::ListNew { .. }
+                        | hir::ExprKind::ListLen { .. }
+                        | hir::ExprKind::ListPush { .. }
+                        | hir::ExprKind::ListInsert { .. }
+                        | hir::ExprKind::ListGet { .. }
+                        | hir::ExprKind::ListSet { .. }
+                        | hir::ExprKind::ListRemove { .. }
+                        | hir::ExprKind::ListClear { .. }
+                        | hir::ExprKind::VariantCtor { .. }
+                        | hir::ExprKind::VariantGuardTest { .. }
+                        | hir::ExprKind::VariantProject { .. } => declared,
                         // PLAN-862: leaf, already checked at Enter.
                         hir::ExprKind::Unit => declared,
                         hir::ExprKind::Binary { op, lhs, rhs, .. } => {
@@ -3541,6 +4017,19 @@ impl Verifier {
                             let bt =
                                 operand_type(tm, *base, declared_of(&body.exprs[base.0 as usize]));
                             match bt {
+                                // PLAN-864: composites (List/Variant) are never
+                                // view-borrowed in this surface.
+                                ValueType::Opaque => {
+                                    self.error(
+                                        "verify.type-mismatch",
+                                        format!(
+                                            "expr `{}`: a composite value has no view borrow",
+                                            e.id_text
+                                        ),
+                                        e.span,
+                                    );
+                                    ValueType::Opaque
+                                }
                                 // PLAN-862: a unit value can never be borrowed;
                                 // the mismatch below reports it (no record shape).
                                 ValueType::Unit => {
@@ -3811,7 +4300,8 @@ impl Verifier {
                 let owned: Vec<ExprId> = match s {
                     hir::Stmt::Let { value, .. }
                     | hir::Stmt::Return { value }
-                    | hir::Stmt::Assign { value, .. } => vec![*value],
+                    | hir::Stmt::Assign { value, .. }
+                    | hir::Stmt::Eval { value } => vec![*value],
                     hir::Stmt::If { cond, .. } => vec![*cond],
                     _ => vec![],
                 };
@@ -3885,6 +4375,34 @@ impl Verifier {
                 }
                 hir::ExprKind::Move { inner } => {
                     targets.push(inner.0);
+                }
+                // PLAN-864 collections kinds: operand edges.
+                hir::ExprKind::ListLen { list } | hir::ExprKind::ListClear { list } => {
+                    targets.push(list.0);
+                }
+                hir::ExprKind::ListPush { list, value } => {
+                    targets.push(list.0);
+                    targets.push(value.0);
+                }
+                hir::ExprKind::ListGet { list, index }
+                | hir::ExprKind::ListRemove { list, index } => {
+                    targets.push(list.0);
+                    targets.push(index.0);
+                }
+                hir::ExprKind::ListInsert { list, index, value }
+                | hir::ExprKind::ListSet { list, index, value } => {
+                    targets.push(list.0);
+                    targets.push(index.0);
+                    targets.push(value.0);
+                }
+                hir::ExprKind::VariantCtor { payload, .. } => {
+                    if let Some(p) = payload {
+                        targets.push(p.0);
+                    }
+                }
+                hir::ExprKind::VariantGuardTest { root, .. }
+                | hir::ExprKind::VariantProject { root, .. } => {
+                    targets.push(root.0);
                 }
                 _ => {}
             }
@@ -4257,6 +4775,9 @@ impl Verifier {
                             self.walk_value(value, body, &frame.cur);
                             frame.cur.insert(local);
                         }
+                        hir::Stmt::Eval { value } => {
+                            self.walk_value(value, body, &frame.cur);
+                        }
                         hir::Stmt::Return { value } => {
                             self.walk_value(value, body, &frame.cur);
                             let vt = self.expr_type(m, value, body, type_map, sigs, tm);
@@ -4517,6 +5038,22 @@ impl Verifier {
                 hir::ExprKind::Unary { operand, .. } => {
                     stack.push(*operand);
                 }
+                // PLAN-864 collections kinds: traverse operands.
+                hir::ExprKind::ListLen { list }
+                | hir::ExprKind::ListClear { list }
+                | hir::ExprKind::ListPush { list, .. }
+                | hir::ExprKind::ListInsert { list, .. }
+                | hir::ExprKind::ListGet { list, .. }
+                | hir::ExprKind::ListSet { list, .. }
+                | hir::ExprKind::ListRemove { list, .. } => stack.push(*list),
+                hir::ExprKind::ListNew { .. } => {}
+                hir::ExprKind::VariantCtor { payload, .. } => {
+                    if let Some(p) = payload {
+                        stack.push(*p);
+                    }
+                }
+                hir::ExprKind::VariantGuardTest { root, .. }
+                | hir::ExprKind::VariantProject { root, .. } => stack.push(*root),
                 hir::ExprKind::RecordClone { base, .. } => {
                     stack.push(*base);
                 }

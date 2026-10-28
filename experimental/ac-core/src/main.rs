@@ -93,6 +93,19 @@ fn check(file: &Path) -> Result<String, (u8, Vec<auto_ac_prototype::atom_text::D
                 )],
             ));
         }
+        // PLAN-864: the collections domain verifies through its own entry
+        // (wired with the collections emitter/verifier delivery).
+        auto_ac_prototype::hir::HirDomain::Collections => {
+            return Err((
+                EXIT_PIPELINE,
+                vec![auto_ac_prototype::atom_text::Diagnostic::new(
+                    auto_ac_prototype::atom_text::Stage::Verify,
+                    "verify.domain",
+                    "the collections HIR domain is not accepted by this standalone binary",
+                    auto_ac_prototype::atom_text::Span { start: 0, end: 0 },
+                )],
+            ));
+        }
     } {
         Ok(c) => c,
         Err(diags) => return Err((EXIT_PIPELINE, diags)),
@@ -265,6 +278,18 @@ fn check_source(
             &module_path,
             &args.capabilities,
         ),
+        // PLAN-864: the collections source profile rides its own entry.
+        SourceProfile::Collections => {
+            return Err((
+                EXIT_PIPELINE,
+                vec![auto_ac_prototype::atom_text::Diagnostic::new(
+                    auto_ac_prototype::atom_text::Stage::Verify,
+                    "verify.domain",
+                    "the collections source profile is not accepted by this standalone binary",
+                    auto_ac_prototype::atom_text::Span { start: 0, end: 0 },
+                )],
+            ));
+        }
     };
     match compile {
         Ok(c) => Ok(format!(
@@ -311,6 +336,15 @@ fn build_source(
             &module_path,
             &args.capabilities,
         ),
+        // PLAN-864: the collections pipeline rides its own compile entry.
+        SourceProfile::Collections => {
+            return fail(vec![auto_ac_prototype::atom_text::Diagnostic::new(
+                auto_ac_prototype::atom_text::Stage::Verify,
+                "verify.domain",
+                "the collections source profile is not accepted by this standalone binary",
+                auto_ac_prototype::atom_text::Span { start: 0, end: 0 },
+            )]);
+        }
     } {
         Ok(c) => c,
         Err(diags) => return fail(diags),
@@ -455,6 +489,15 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
                 auto_ac_prototype::atom_text::Stage::Verify,
                 "verify.domain",
                 "the entry-unit HIR domain has no verifier entry yet (PLAN-862 T-03b)",
+                auto_ac_prototype::atom_text::Span { start: 0, end: 0 },
+            )]);
+        }
+        // PLAN-864: the collections domain verifies through its own entry.
+        auto_ac_prototype::hir::HirDomain::Collections => {
+            return fail(vec![auto_ac_prototype::atom_text::Diagnostic::new(
+                auto_ac_prototype::atom_text::Stage::Verify,
+                "verify.domain",
+                "the collections HIR domain is not accepted by this standalone binary",
                 auto_ac_prototype::atom_text::Span { start: 0, end: 0 },
             )]);
         }

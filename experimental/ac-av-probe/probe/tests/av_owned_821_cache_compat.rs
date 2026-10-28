@@ -52,8 +52,7 @@ fn owned_mir_of(src: &str) -> auto_av_core::mir::MirModule {
     let compiled =
         auto_ac_prototype::source::compile_text_record_source(src, "c.at", &[]).expect("compile");
     let snap = auto_av_core::contract::fnv1a64(src.as_bytes());
-    auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", snap)
-        .expect("lower")
+    auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", snap).expect("lower")
 }
 
 fn types_fp_of(src: &str) -> String {

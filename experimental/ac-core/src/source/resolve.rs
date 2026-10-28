@@ -36,6 +36,13 @@ pub enum VT {
     /// `let`, param, field or expression may carry it; it exists so a
     /// function (and therefore the entry) can declare "no value".
     Unit,
+    /// PLAN-864: owned typed list by element type (structural identity —
+    /// index into [`CollTables::lists`], deduplicated).
+    List(usize),
+    /// PLAN-864: nominal variant (`?T` / `Result<T,E>` / declared `enum`)
+    /// by index into [`CollTables::variants`]. Arm declaration order is
+    /// the runtime discriminant order.
+    Variant(usize),
 }
 
 impl VT {
@@ -48,6 +55,19 @@ impl VT {
             VT::Char => "char",
             VT::Rec(_) => "record",
             VT::Unit => "unit",
+            VT::List(_) => "list",
+            VT::Variant(_) => "variant",
+        }
+    }
+
+    /// PLAN-864: whether this type owns resources under the collections
+    /// contract (List/Variant containers, owned Str, records reaching
+    /// Str). Copyable element types copy out; owned ones move.
+    pub fn is_owned_coll(self, prog: &ResolvedProgram) -> bool {
+        match self {
+            VT::StrOwned | VT::List(_) | VT::Variant(_) => true,
+            VT::Rec(ri) => record_reaches_str(ri, &prog.records),
+            _ => false,
         }
     }
 
@@ -245,6 +265,94 @@ pub enum RExprKind {
     RecordClone {
         base: Box<ResolvedExpr>,
     },
+    // -- PLAN-864 collections surface ------------------------------------
+    /// `List<T>.new()` — an empty list of the interned list type.
+    ListNew {
+        list: usize,
+    },
+    /// `xs.len()` — element count (i32).
+    ListLen {
+        list: Box<ResolvedExpr>,
+    },
+    /// `xs.push(v)` — append (unit result). Owned elements require a
+    /// move-source (checked here).
+    ListPush {
+        list: Box<ResolvedExpr>,
+        value: Box<ResolvedExpr>,
+    },
+    /// `xs.insert(i, v)` — insert (unit result).
+    ListInsert {
+        list: Box<ResolvedExpr>,
+        index: Box<ResolvedExpr>,
+        value: Box<ResolvedExpr>,
+    },
+    /// `xs.get(i)` — copy-out for Copy element types; owned elements go
+    /// through field views (FieldGet over this node) or `remove`.
+    ListGet {
+        list: Box<ResolvedExpr>,
+        index: Box<ResolvedExpr>,
+    },
+    /// `xs.set(i, v)` — replace (unit result; owned elements require a
+    /// move-source).
+    ListSet {
+        list: Box<ResolvedExpr>,
+        index: Box<ResolvedExpr>,
+        value: Box<ResolvedExpr>,
+    },
+    /// `xs.remove(i)` — element transfer/copy out.
+    ListRemove {
+        list: Box<ResolvedExpr>,
+        index: Box<ResolvedExpr>,
+    },
+    /// `xs.clear()` — unit result; lowered to a remove-from-tail loop.
+    ListClear {
+        list: Box<ResolvedExpr>,
+    },
+    /// `xs.get(i).f.g` — a scalar-terminal field projection on an owned
+    /// element (ListFieldGet in MIR). Str-terminal projections must ride
+    /// [`RExprKind::ElemView`] (under `.len()`).
+    ListFieldGet {
+        list: Box<ResolvedExpr>,
+        index: Box<ResolvedExpr>,
+        path: Vec<(usize, usize)>,
+    },
+    /// A checked read-only element/field view (PLAN-864 contract C4):
+    /// `xs.get(i)` (whole Str element) or `xs.get(i).f` (Str-terminal
+    /// field path), consumed only by `.len()`. The lowering expands the
+    /// view to remove/view/read/reinsert.
+    ElemView {
+        list: Box<ResolvedExpr>,
+        index: Box<ResolvedExpr>,
+        path: Vec<(usize, usize)>,
+    },
+    /// `Some(e)/None/Ok(e)/Err(e)/E.A/E.A(e)` — variant construction.
+    /// A transient [`RExprKind::CtorUnknown`] resolves here once the
+    /// expected type (or the payload type, for `Some`) is known.
+    VariantCtor {
+        variant: usize,
+        disc: u32,
+        payload: Option<Box<ResolvedExpr>>,
+    },
+    /// The transient bare-constructor form — never escapes resolution
+    /// (resolve with an expected type or it is `source.type-ambiguous`).
+    CtorUnknown {
+        name: String,
+        payload: Option<Box<ResolvedExpr>>,
+    },
+    /// `is` dispatch test (bool): true iff the variant local read holds
+    /// arm `disc`. Root must be a whole-local read.
+    VariantGuardTest {
+        local: LocalRef,
+        variant: usize,
+        disc: u32,
+    },
+    /// `is` payload projection — move-out for owned payloads, copy for
+    /// Copy payloads.
+    VariantProject {
+        local: LocalRef,
+        variant: usize,
+        disc: u32,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -308,6 +416,46 @@ impl Drop for ResolvedExpr {
                 for a in args.iter_mut() {
                     let v = std::mem::replace(&mut a.value, dummy());
                     stack.push(v);
+                }
+            }
+            // PLAN-864: collection/variant nodes hold boxed children.
+            RExprKind::ListNew { .. }
+            | RExprKind::VariantGuardTest { .. }
+            | RExprKind::VariantProject { .. } => {}
+            RExprKind::ListLen { list, .. } | RExprKind::ListClear { list } => {
+                let e = std::mem::replace(list.as_mut(), dummy());
+                stack.push(e);
+            }
+            RExprKind::ListPush { list, value } => {
+                for slot in [list.as_mut(), value.as_mut()] {
+                    let e = std::mem::replace(slot, dummy());
+                    stack.push(e);
+                }
+            }
+            RExprKind::ListGet { list, index } | RExprKind::ListRemove { list, index } => {
+                for slot in [list.as_mut(), index.as_mut()] {
+                    let e = std::mem::replace(slot, dummy());
+                    stack.push(e);
+                }
+            }
+            RExprKind::ListInsert { list, index, value }
+            | RExprKind::ListSet { list, index, value } => {
+                for slot in [list.as_mut(), index.as_mut(), value.as_mut()] {
+                    let e = std::mem::replace(slot, dummy());
+                    stack.push(e);
+                }
+            }
+            RExprKind::ListFieldGet { list, index, .. }
+            | RExprKind::ElemView { list, index, .. } => {
+                for slot in [list.as_mut(), index.as_mut()] {
+                    let e = std::mem::replace(slot, dummy());
+                    stack.push(e);
+                }
+            }
+            RExprKind::VariantCtor { payload, .. } | RExprKind::CtorUnknown { payload, .. } => {
+                if let Some(pl) = payload.as_mut() {
+                    let e = std::mem::replace(pl.as_mut(), dummy());
+                    stack.push(e);
                 }
             }
             RExprKind::IntLit(_)
@@ -451,6 +599,88 @@ pub struct ResolvedProgram {
     /// Nominal record types in declaration order (PLAN-771). `VT::Rec(i)`
     /// indexes here.
     pub records: Vec<ResolvedRecord>,
+    /// PLAN-864: List element types (structural, deduplicated).
+    /// `VT::List(i)` indexes here.
+    pub lists: Vec<VT>,
+    /// PLAN-864: nominal variant types (`?T`/`Result<T,E>`/declared
+    /// `enum`s). `VT::Variant(i)` indexes here.
+    pub variants: Vec<ResolvedVariant>,
+}
+
+/// One resolved variant type (PLAN-864): name plus arms in declaration
+/// order; each arm carries at most one payload type.
+#[derive(Clone, Debug)]
+pub struct ResolvedVariant {
+    pub name: String,
+    pub name_span: Span,
+    pub arms: Vec<(String, Option<VT>)>,
+}
+
+/// The mutable type tables grown while bodies resolve (PLAN-864): `List<T>`
+/// annotations and variant constructors intern entries on first use.
+#[derive(Default)]
+pub struct CollTables {
+    pub lists: Vec<VT>,
+    pub variants: Vec<ResolvedVariant>,
+    variant_names: BTreeMap<String, usize>,
+}
+
+impl CollTables {
+    fn intern_list(&mut self, elem: VT) -> usize {
+        if let Some(i) = self.lists.iter().position(|e| *e == elem) {
+            return i;
+        }
+        self.lists.push(elem);
+        self.lists.len() - 1
+    }
+
+    fn intern_variant(
+        &mut self,
+        name: &str,
+        name_span: Span,
+        arms: Vec<(String, Option<VT>)>,
+    ) -> usize {
+        if let Some(&i) = self.variant_names.get(name) {
+            return i;
+        }
+        let i = self.variants.len();
+        self.variant_names.insert(name.to_string(), i);
+        self.variants.push(ResolvedVariant {
+            name: name.to_string(),
+            name_span,
+            arms,
+        });
+        i
+    }
+
+    fn variant_by_name(&self, name: &str) -> Option<usize> {
+        self.variant_names.get(name).copied()
+    }
+
+    /// Rebuild the name index after restoring a saved table (recheck path).
+    pub(crate) fn reindex_variant(&mut self, name: &str, idx: usize) {
+        self.variant_names.insert(name.to_string(), idx);
+    }
+}
+
+/// Transitive Str-reachability over the record table (PLAN-782 derivation,
+/// reused by the collections owned-classification, PLAN-864).
+pub(crate) fn record_reaches_str(ri: usize, records: &[ResolvedRecord]) -> bool {
+    let mut stack: Vec<usize> = vec![ri];
+    let mut seen: BTreeSet<usize> = BTreeSet::new();
+    while let Some(r) = stack.pop() {
+        if !seen.insert(r) {
+            continue;
+        }
+        for f in &records[r].fields {
+            match f.vt {
+                VT::StrOwned => return true,
+                VT::Rec(inner) => stack.push(inner),
+                _ => {}
+            }
+        }
+    }
+    false
 }
 
 /// One resolved record type: fields in declaration order with their value
@@ -525,8 +755,13 @@ pub fn resolve_with(
     capabilities: &[String],
     surface: SourceProfile,
 ) -> Result<ResolvedProgram, Vec<Diagnostic>> {
-    let (fns, records, _) = resolve_detailed(program, capabilities, surface)?;
-    Ok(ResolvedProgram { fns, records })
+    let (fns, records, coll, _) = resolve_detailed(program, capabilities, surface)?;
+    Ok(ResolvedProgram {
+        fns,
+        records,
+        lists: coll.lists,
+        variants: coll.variants,
+    })
 }
 
 /// PLAN-828 D-01: the retained checked-environment indexes of one cold
@@ -544,9 +779,19 @@ fn resolve_detailed(
     program: &ast::Program,
     capabilities: &[String],
     surface: SourceProfile,
-) -> Result<(Vec<ResolvedFn>, Vec<ResolvedRecord>, DeclIndexes), Vec<Diagnostic>> {
+) -> Result<
+    (
+        Vec<ResolvedFn>,
+        Vec<ResolvedRecord>,
+        CollTables,
+        DeclIndexes,
+    ),
+    Vec<Diagnostic>,
+> {
     let trace_enabled = capabilities.iter().any(|c| c == TRACE_CAPABILITY);
     let mut diags = Vec::new();
+    let mut coll = CollTables::default();
+    let is_coll = surface.is_collections();
 
     // Pass 0 (PLAN-771): record types pre-register FIRST — field types may
     // reference records declared later (forward references are legal; the
@@ -592,12 +837,105 @@ fn resolve_detailed(
                         f.name.span,
                     ));
                 }
-                let vt = vt_of_ann(&f.ty, &rec_index, &mut diags);
+                let vt = if is_coll {
+                    vt_of_ann_coll(&f.ty, &rec_index, &mut coll, &mut diags, TypePos::Field)
+                } else {
+                    vt_of_ann(&f.ty, &rec_index, &mut diags)
+                };
                 records[ri].fields.push(ResolvedField {
                     name: f.name.name.clone(),
                     vt,
                     span: f.name.span,
                 });
+            }
+        }
+    }
+
+    // Pass 0b (PLAN-864): declared `enum`s pre-register as nominal
+    // variants — arm payloads may reference records declared earlier.
+    // Collections `type` blocks declare fields only (no methods).
+    if is_coll {
+        for item in &program.items {
+            match item {
+                ast::Item::Enum(e) => {
+                    if rec_index.contains_key(&e.name.name)
+                        || coll.variant_by_name(&e.name.name).is_some()
+                    {
+                        diags.push(Diagnostic::new(
+                            Stage::Bind,
+                            "source.duplicate",
+                            format!("type `{}` is declared more than once", e.name.name),
+                            e.name.span,
+                        ));
+                        continue;
+                    }
+                    let mut seen: BTreeSet<&str> = BTreeSet::new();
+                    let mut arms: Vec<(String, Option<VT>)> = Vec::new();
+                    let mut ok = true;
+                    for a in &e.arms {
+                        if !seen.insert(a.name.name.as_str()) {
+                            diags.push(Diagnostic::new(
+                                Stage::Bind,
+                                "source.pattern-duplicate",
+                                format!(
+                                    "arm `{}` is declared more than once in enum `{}`",
+                                    a.name.name, e.name.name
+                                ),
+                                a.name.span,
+                            ));
+                            ok = false;
+                            continue;
+                        }
+                        let payload = a.payload.as_ref().map(|pt| {
+                            vt_of_ann_coll(pt, &rec_index, &mut coll, &mut diags, TypePos::Local)
+                        });
+                        if let Some(VT::List(_)) = payload {
+                            diags.push(Diagnostic::new(
+                                Stage::Bind,
+                                "source.list-value-context",
+                                "List-typed payloads are not part of the 822 element domain"
+                                    .to_string(),
+                                a.span,
+                            ));
+                            ok = false;
+                            continue;
+                        }
+                        if let Some(pt) = &a.payload {
+                            if matches!(pt.kind, ast::TypeRef::Builtin(TypeWord::Void)) {
+                                diags.push(Diagnostic::new(
+                                    Stage::Bind,
+                                    "source.type-mismatch",
+                                    "an enum arm payload cannot be void".to_string(),
+                                    pt.span,
+                                ));
+                                ok = false;
+                                continue;
+                            }
+                        }
+                        arms.push((a.name.name.clone(), payload));
+                    }
+                    // Non-recursive: no arm payload may transitively reach
+                    // this enum itself (payloads resolve BEFORE the enum
+                    // name registers — a self-reference is an unknown type).
+                    let _ = ok;
+                    coll.intern_variant(&e.name.name, e.name.span, arms);
+                }
+                ast::Item::Type(t) => {
+                    if !t.methods.is_empty() {
+                        for m in &t.methods {
+                            diags.push(Diagnostic::new(
+                                Stage::Bind,
+                                "source.unsupported",
+                                format!(
+                                    "record methods are not part of this source profile (method `{}` on `{}`)",
+                                    m.name.name, t.name.name
+                                ),
+                                m.name.span,
+                            ));
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -621,6 +959,8 @@ fn resolve_detailed(
                     flat.push(m);
                 }
             }
+            // PLAN-864: enums carry no functions.
+            ast::Item::Enum(_) => {}
         }
     }
     for (i, f) in flat.iter().enumerate() {
@@ -653,7 +993,16 @@ fn resolve_detailed(
             }
             continue;
         }
-        let sig = fn_sig_of(f, fn_receiver[i], fn_owner[i], &rec_index, &mut diags, i);
+        let sig = fn_sig_of_coll(
+            f,
+            fn_receiver[i],
+            fn_owner[i],
+            &rec_index,
+            &mut coll,
+            &mut diags,
+            i,
+            is_coll,
+        );
         sigs.insert(sig_key.clone(), sig);
         // method-side registry on the owning record
         if let Some(oi) = fn_owner[i] {
@@ -697,6 +1046,7 @@ fn resolve_detailed(
             fn_owner[i],
             &records,
             &rec_index,
+            &mut coll,
         ));
     }
 
@@ -712,6 +1062,7 @@ fn resolve_detailed(
         Ok((
             fns,
             records,
+            coll,
             DeclIndexes {
                 rec_index,
                 sigs,
@@ -1119,9 +1470,14 @@ pub fn resolve_env(
     capabilities: &[String],
     surface: SourceProfile,
 ) -> Result<CheckedEnv, Vec<Diagnostic>> {
-    let (fns, records, ix) = resolve_detailed(program, capabilities, surface)?;
+    let (fns, records, coll, ix) = resolve_detailed(program, capabilities, surface)?;
     Ok(CheckedEnv {
-        program: ResolvedProgram { fns, records },
+        program: ResolvedProgram {
+            fns,
+            records,
+            lists: coll.lists,
+            variants: coll.variants,
+        },
         rec_index: ix.rec_index,
         sigs: ix.sigs,
         trace_enabled: ix.trace_enabled,
@@ -1219,14 +1575,40 @@ pub(crate) fn recheck_swap(
     // Signature drift guard: rebuild the item's signature with the cold
     // pass's exact rules; any difference is a controlled rejection.
     let mut guard_diags = Vec::new();
-    let rebuilt = fn_sig_of(
-        item,
-        ast::Receiver::Free,
-        None,
-        &env.rec_index,
-        &mut guard_diags,
-        fn_index,
-    );
+    let rebuilt = if env.profile.is_collections() {
+        let mut c2 = CollTables::default();
+        c2.lists = env.program.lists.clone();
+        let names2: Vec<(String, usize)> = env
+            .program
+            .variants
+            .iter()
+            .enumerate()
+            .map(|(k, v)| (v.name.clone(), k))
+            .collect();
+        c2.variants = env.program.variants.clone();
+        for (nm, k) in names2 {
+            c2.reindex_variant(&nm, k);
+        }
+        fn_sig_of_coll(
+            item,
+            ast::Receiver::Free,
+            None,
+            &env.rec_index,
+            &mut c2,
+            &mut guard_diags,
+            fn_index,
+            true,
+        )
+    } else {
+        fn_sig_of(
+            item,
+            ast::Receiver::Free,
+            None,
+            &env.rec_index,
+            &mut guard_diags,
+            fn_index,
+        )
+    };
     let expected = &env.sigs[&item.name.name];
     if !guard_diags.is_empty()
         || rebuilt.param_names != expected.param_names
@@ -1246,6 +1628,22 @@ pub(crate) fn recheck_swap(
     let mut diags = Vec::new();
     env.resolve_walks += 1;
     crate::body_work::record_resolve(&item.name.name);
+    // PLAN-864: rebuild the collections tables from the retained program
+    // (the same lists/variants the cold pass interned); new interning
+    // inside the rechecked body is rejected by the drift guards below it.
+    let mut coll = CollTables::default();
+    coll.lists = env.program.lists.clone();
+    let names: Vec<(String, usize)> = env
+        .program
+        .variants
+        .iter()
+        .enumerate()
+        .map(|(i, v)| (v.name.clone(), i))
+        .collect();
+    coll.variants = env.program.variants.clone();
+    for (name, i) in names {
+        coll.reindex_variant(&name, i);
+    }
     let resolved = resolve_fn(
         item,
         &env.sigs,
@@ -1256,6 +1654,7 @@ pub(crate) fn recheck_swap(
         None,
         &env.program.records,
         &env.rec_index,
+        &mut coll,
     );
     if !diags.is_empty() {
         return Err(diags);
@@ -1295,6 +1694,30 @@ fn fn_sig_of(
     diags: &mut Vec<Diagnostic>,
     index: usize,
 ) -> FnSig {
+    fn_sig_of_coll(
+        f,
+        recv,
+        owner_rec,
+        rec_index,
+        &mut CollTables::default(),
+        diags,
+        index,
+        false,
+    )
+}
+
+/// PLAN-864: signature construction with the collections type tables;
+/// `is_coll` selects the table-aware annotation grammar.
+fn fn_sig_of_coll(
+    f: &ast::FnItem,
+    recv: ast::Receiver,
+    owner_rec: Option<usize>,
+    rec_index: &BTreeMap<String, usize>,
+    coll: &mut CollTables,
+    diags: &mut Vec<Diagnostic>,
+    index: usize,
+    is_coll: bool,
+) -> FnSig {
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     for p in &f.params {
         if !seen.insert(p.name.name.as_str()) {
@@ -1322,9 +1745,17 @@ fn fn_sig_of(
     }
     for p in &f.params {
         param_names.push(p.name.name.clone());
-        params.push(vt_of_ann(&p.ty, rec_index, diags));
+        params.push(if is_coll {
+            vt_of_ann_coll(&p.ty, rec_index, coll, diags, TypePos::Param)
+        } else {
+            vt_of_ann(&p.ty, rec_index, diags)
+        });
     }
-    let result = vt_of_ann(&f.ret, rec_index, diags);
+    let result = if is_coll {
+        vt_of_ann_coll(&f.ret, rec_index, coll, diags, TypePos::Result)
+    } else {
+        vt_of_ann(&f.ret, rec_index, diags)
+    };
     FnSig {
         param_names,
         params,
@@ -1355,11 +1786,244 @@ fn vt_of_ann(
                 VT::I32
             }
         },
+        ast::TypeRef::Optional(_) => {
+            diags.push(Diagnostic::new(
+                Stage::Bind,
+                "source.unsupported",
+                "optional types (`?T`) are not part of this source profile".to_string(),
+                ann.span,
+            ));
+            VT::I32
+        }
+        ast::TypeRef::Generic { name, .. } => {
+            diags.push(Diagnostic::new(
+                Stage::Bind,
+                "source.unsupported",
+                format!(
+                    "type `{}<..>` is not part of this source profile",
+                    name.name
+                ),
+                ann.span,
+            ));
+            VT::I32
+        }
+    }
+}
+
+/// Where a type annotation appears — PLAN-864 value-context rules.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum TypePos {
+    /// Record field: composites are rejected (no container fields).
+    Field,
+    /// Parameter: List/Variant rejected in v1 (function-local lists).
+    Param,
+    /// Function result: Variant allowed, List rejected.
+    Result,
+    /// Local annotation: everything allowed.
+    Local,
+}
+
+/// PLAN-864: table-aware annotation resolution — `?T` sugar, `List<T>`,
+/// `Result<T,E>` and record names, with the value-context rejections of
+/// [`TypePos`].
+fn vt_of_ann_coll(
+    ann: &ast::TypeAnn,
+    rec_index: &BTreeMap<String, usize>,
+    coll: &mut CollTables,
+    diags: &mut Vec<Diagnostic>,
+    pos: TypePos,
+) -> VT {
+    let reject = |diags: &mut Vec<Diagnostic>, vt: VT, msg: String, span: Span| {
+        diags.push(Diagnostic::new(
+            Stage::Bind,
+            "source.list-value-context",
+            msg,
+            span,
+        ));
+        vt
+    };
+    match &ann.kind {
+        ast::TypeRef::Builtin(w) => vt_of_word(*w),
+        ast::TypeRef::Record(id) => match rec_index.get(&id.name) {
+            Some(&i) => VT::Rec(i),
+            None => {
+                diags.push(Diagnostic::new(
+                    Stage::Bind,
+                    "source.undefined",
+                    format!("no type named `{}` in this module", id.name),
+                    id.span,
+                ));
+                VT::I32
+            }
+        },
+        ast::TypeRef::Optional(inner) => {
+            if matches!(pos, TypePos::Field | TypePos::Param) {
+                return reject(
+                    diags,
+                    VT::I32,
+                    "variant-typed fields/parameters are not part of this source profile (v1 variants live in locals, returns and the entry channel)".to_string(),
+                    ann.span,
+                );
+            }
+            let inner_vt = vt_of_ann_coll(inner, rec_index, coll, diags, TypePos::Local);
+            if matches!(inner_vt, VT::List(_)) {
+                return reject(
+                    diags,
+                    VT::I32,
+                    "List-typed payloads are not part of the 822 element domain".to_string(),
+                    inner.span,
+                );
+            }
+            let vi = coll.intern_variant(
+                "Option",
+                ann.span,
+                vec![
+                    ("Some".to_string(), Some(inner_vt)),
+                    ("None".to_string(), None),
+                ],
+            );
+            VT::Variant(vi)
+        }
+        ast::TypeRef::Generic { name, args } => match (name.name.as_str(), args.len()) {
+            ("List", 1) => {
+                if matches!(pos, TypePos::Field | TypePos::Param | TypePos::Result) {
+                    return reject(
+                            diags,
+                            VT::I32,
+                            "List-typed fields/parameters/results are not part of this source profile (v1 lists are function-local values)".to_string(),
+                            ann.span,
+                        );
+                }
+                let elem = vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::Local);
+                match elem {
+                    VT::List(_) => reject(
+                        diags,
+                        VT::I32,
+                        "List does not nest List (822 element domain)".to_string(),
+                        args[0].span,
+                    ),
+                    VT::StrOwned | VT::I32 | VT::Bool | VT::Rec(_) | VT::Variant(_) => {
+                        VT::List(coll.intern_list(elem))
+                    }
+                    _ => reject(
+                        diags,
+                        VT::I32,
+                        format!(
+                            "element type `{}` is not in the 822 element domain",
+                            elem.as_str()
+                        ),
+                        args[0].span,
+                    ),
+                }
+            }
+            ("Result", 2) => {
+                if matches!(pos, TypePos::Field | TypePos::Param) {
+                    return reject(
+                        diags,
+                        VT::I32,
+                        "variant-typed fields/parameters are not part of this source profile"
+                            .to_string(),
+                        ann.span,
+                    );
+                }
+                let ok_vt = vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::Local);
+                let err_vt = vt_of_ann_coll(&args[1], rec_index, coll, diags, TypePos::Local);
+                for (a, label) in [(&args[0], "Ok"), (&args[1], "Err")] {
+                    if matches!(a.kind, ast::TypeRef::Builtin(TypeWord::Void))
+                        || matches!(
+                            vt_of_ann_coll(a, rec_index, coll, &mut Vec::new(), TypePos::Local),
+                            VT::Unit
+                        )
+                    {
+                        diags.push(Diagnostic::new(
+                            Stage::Bind,
+                            "source.type-mismatch",
+                            format!("`Result` payload `{label}` cannot be void"),
+                            a.span,
+                        ));
+                        return VT::I32;
+                    }
+                }
+                if matches!(ok_vt, VT::List(_)) || matches!(err_vt, VT::List(_)) {
+                    return reject(
+                        diags,
+                        VT::I32,
+                        "List-typed payloads are not part of the 822 element domain".to_string(),
+                        ann.span,
+                    );
+                }
+                let vi = coll.intern_variant(
+                    "Result",
+                    ann.span,
+                    vec![
+                        ("Ok".to_string(), Some(ok_vt)),
+                        ("Err".to_string(), Some(err_vt)),
+                    ],
+                );
+                VT::Variant(vi)
+            }
+            ("Option", _) => {
+                diags.push(Diagnostic::new(
+                    Stage::Bind,
+                    "source.syntax",
+                    "`Option` is written `?T` in this source profile".to_string(),
+                    name.span,
+                ));
+                VT::I32
+            }
+            (other, n) => {
+                diags.push(Diagnostic::new(
+                    Stage::Bind,
+                    "source.undefined",
+                    format!(
+                        "no parameterized type named `{}` taking {} type argument(s)",
+                        other, n
+                    ),
+                    name.span,
+                ));
+                VT::I32
+            }
+        },
     }
 }
 
 struct Scope {
     names: BTreeMap<String, LocalRef>,
+    /// PLAN-864: owned-element `for-in` bindings — a read-only projection
+    /// context, never a materialized local. Lookup falls here when `names`
+    /// misses; any use other than a field path / `.len()` is
+    /// `source.view-escape`.
+    views: BTreeMap<String, ViewBinding>,
+}
+
+/// One owned-element iteration binding (PLAN-864 contract C7).
+#[derive(Clone, Copy, Debug)]
+struct ViewBinding {
+    list: LocalRef,
+    index: LocalRef,
+    /// The element type (a record or `Str`).
+    elem: VT,
+}
+
+/// PLAN-864: how a method-call receiver was classified before its
+/// arguments resolve.
+#[derive(Clone, Copy, Debug)]
+enum RecvClass {
+    /// A value receiver (record instance / list / variant-free text).
+    Value,
+    /// A bare record type name selecting a static method.
+    Static,
+    /// `List<T>.new()` — the interned list type.
+    ListCtor(usize),
+    /// `E.A` / `E.A(e)` — qualified variant construction.
+    VariantArm { vi: usize, disc: u32 },
+    /// PLAN-864: `<list<Str>-local>.get(i).len()` — a whole-Str element
+    /// view consumed by len (contract C4).
+    ElemViewLen {
+        xl: LocalRef,
+        xvt: VT,
+        idx_slot: usize,
+    },
 }
 
 struct FnResolver<'a> {
@@ -1375,6 +2039,9 @@ struct FnResolver<'a> {
     /// PLAN-771: the module's record table (read-only here).
     records: &'a [ResolvedRecord],
     rec_index: &'a BTreeMap<String, usize>,
+    /// PLAN-864: the collections type tables (lists/variants; grown as
+    /// bodies intern new types).
+    coll: &'a mut CollTables,
     /// Every local name declared anywhere in this function (any scope), to
     /// distinguish "never declared" from "declared in a scope that ended".
     declared_names: BTreeSet<String>,
@@ -1383,6 +2050,10 @@ struct FnResolver<'a> {
     loop_stack: Vec<LoopRef>,
     loop_count: usize,
     used_intrinsics: BTreeSet<&'static str>,
+    /// PLAN-864: active `for-in` iterations — (iterated local, element
+    /// type). Method resolution rejects structural modification of the
+    /// iterated list inside the body (`source.iterate-mutate`).
+    iterate_targets: Vec<(LocalRef, VT, Span)>,
 }
 
 fn resolve_fn(
@@ -1395,8 +2066,14 @@ fn resolve_fn(
     owner_rec: Option<usize>,
     records: &[ResolvedRecord],
     rec_index: &BTreeMap<String, usize>,
+    coll: &mut CollTables,
 ) -> ResolvedFn {
-    let fn_result = vt_of_ann(&f.ret, &rec_index, diags);
+    let is_coll = surface.is_collections();
+    let fn_result = if is_coll {
+        vt_of_ann_coll(&f.ret, rec_index, coll, diags, TypePos::Result)
+    } else {
+        vt_of_ann(&f.ret, rec_index, diags)
+    };
     let mut r = FnResolver {
         sigs,
         trace_enabled,
@@ -1405,6 +2082,7 @@ fn resolve_fn(
         locals: Vec::new(),
         scopes: vec![Scope {
             names: BTreeMap::new(),
+            views: BTreeMap::new(),
         }],
         declared_names: BTreeSet::new(),
         fn_result,
@@ -1413,6 +2091,8 @@ fn resolve_fn(
         used_intrinsics: BTreeSet::new(),
         records,
         rec_index,
+        coll,
+        iterate_targets: Vec::new(),
     };
     let mut param_names: Vec<String> = Vec::new();
     let mut params: Vec<VT> = Vec::new();
@@ -1448,7 +2128,11 @@ fn resolve_fn(
                 p.name.span,
             );
         }
-        let vt = vt_of_ann(&p.ty, rec_index, &mut Vec::new());
+        let vt = if is_coll {
+            vt_of_ann_coll(&p.ty, rec_index, r.coll, &mut Vec::new(), TypePos::Param)
+        } else {
+            vt_of_ann(&p.ty, rec_index, &mut Vec::new())
+        };
         // mut mode is meaningful for record params (774 D-04) AND text
         // `mut str`/`mut Str` exclusive borrows (PLAN-770); scalar params
         // are by value on every profile
@@ -1537,6 +2221,577 @@ impl<'a> FnResolver<'a> {
         None
     }
 
+    /// PLAN-864: view-binding lookup (owned-element for-in bindings).
+    fn lookup_view(&self, name: &str) -> Option<ViewBinding> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(v) = scope.views.get(name) {
+                return Some(*v);
+            }
+        }
+        None
+    }
+
+    /// PLAN-864: the synthetic unreachable-path return filler of an
+    /// exhaustive `is` chain — typed from the function result (int 0 /
+    /// unit / empty Str). Exotic result types reject by name: a filler
+    /// value would need a payload we refuse to fabricate.
+    fn default_return_filler(&mut self, span: Span) -> ResolvedExpr {
+        match self.fn_result {
+            VT::I32 => ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::IntLit(0),
+            },
+            VT::Unit => ResolvedExpr {
+                span,
+                vt: VT::Unit,
+                kind: RExprKind::Unit,
+            },
+            VT::StrOwned => ResolvedExpr {
+                span,
+                vt: VT::StrOwned,
+                kind: RExprKind::StrLit(String::new()),
+            },
+            other => {
+                self.bind_err(
+                    "source.is-tail-return",
+                    format!(
+                        "an exhaustive `is` whose arms all return needs a fabricable filler for result type `{}` (supported: int/unit/Str)",
+                        other.as_str()
+                    ),
+                    span,
+                );
+                ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(0),
+                }
+            }
+        }
+    }
+
+    /// PLAN-864: resolve a projection spine (outermost-first segment
+    /// names) through the record table starting at `start_vt`; returns
+    /// (declaration-index path, terminal type). Errors on non-record
+    /// segments and unknown fields.
+    fn resolve_projection_path(
+        &mut self,
+        segs: &[&ast::Ident],
+        start_vt: VT,
+    ) -> Option<(Vec<(usize, usize)>, VT)> {
+        let mut path: Vec<(usize, usize)> = Vec::new();
+        let mut vt = start_vt;
+        for seg in segs.iter().rev() {
+            let VT::Rec(ri) = vt else {
+                self.bind_err(
+                    "source.view-escape",
+                    format!(
+                        "`{}` projects through records only (element type `{}`)",
+                        seg.name,
+                        vt.as_str()
+                    ),
+                    seg.span,
+                );
+                return None;
+            };
+            match self.records[ri]
+                .fields
+                .iter()
+                .position(|fl| fl.name == seg.name)
+            {
+                Some(fi) => {
+                    vt = self.records[ri].fields[fi].vt;
+                    path.push((ri, fi));
+                }
+                None => {
+                    self.bind_err(
+                        "source.undefined",
+                        format!(
+                            "record `{}` has no field named `{}`",
+                            self.records[ri].name, seg.name
+                        ),
+                        seg.span,
+                    );
+                    return None;
+                }
+            }
+        }
+        Some((path, vt))
+    }
+
+    /// PLAN-864: whether `name` is shadowed by a local or a user function
+    /// (bare constructor names never hijack user names).
+    fn ctor_name_is_free(&self, name: &str) -> bool {
+        self.lookup(name).is_none() && !self.sigs.contains_key(name)
+    }
+
+    fn vt_is_coll_owned(&self, vt: VT) -> bool {
+        match vt {
+            VT::StrOwned | VT::List(_) | VT::Variant(_) => true,
+            VT::Rec(ri) => record_reaches_str(ri, self.records),
+            _ => false,
+        }
+    }
+
+    fn fresh_local(&mut self, name: &str, vt: VT, mutable: bool) -> LocalRef {
+        let lref = LocalRef(self.locals.len());
+        self.locals.push(LocalDecl {
+            name: name.to_string(),
+            vt,
+            mutable,
+            is_param: false,
+            param_index: None,
+            mode: ast::ParamMode::Default,
+            span: Span { start: 0, end: 0 },
+        });
+        lref
+    }
+
+    /// PLAN-864: classify a `List<T>`-style generic receiver. Only
+    /// `List<one elem>` with a legal element type commits;
+    /// everything else is a named rejection.
+    fn classify_generic_recv(&mut self, name: &ast::Ident, args: &[ast::TypeAnn]) -> RecvClass {
+        if !self.profile.is_collections() {
+            self.bind_err(
+                "source.unsupported",
+                "parameterized type receivers are not part of this source profile".to_string(),
+                name.span,
+            );
+            return RecvClass::Value;
+        }
+        if name.name != "List" || args.len() != 1 {
+            self.bind_err(
+                "source.undefined",
+                format!(
+                    "no parameterized type named `{}` taking {} type argument(s) in this module",
+                    name.name,
+                    args.len()
+                ),
+                name.span,
+            );
+            return RecvClass::Value;
+        }
+        let elem = vt_of_ann_coll(
+            &args[0],
+            self.rec_index,
+            self.coll,
+            self.diags,
+            TypePos::Local,
+        );
+        match elem {
+            VT::List(_) => {
+                self.bind_err(
+                    "source.list-value-context",
+                    "List does not nest List (822 element domain)".to_string(),
+                    args[0].span,
+                );
+                RecvClass::Value
+            }
+            VT::I32 | VT::Bool | VT::StrOwned | VT::Rec(_) | VT::Variant(_) => {
+                RecvClass::ListCtor(self.coll.intern_list(elem))
+            }
+            other => {
+                self.bind_err(
+                    "source.list-value-context",
+                    format!(
+                        "element type `{}` is not in the 822 element domain",
+                        other.as_str()
+                    ),
+                    args[0].span,
+                );
+                RecvClass::Value
+            }
+        }
+    }
+
+    /// PLAN-864: resolve `EnumName.arm_name` to (variant, disc); `None`
+    /// when the receiver name is not a declared variant.
+    fn qualified_variant_arm(&self, enum_name: &str, arm_name: &str) -> Option<(usize, u32)> {
+        let vi = self.coll.variant_by_name(enum_name)?;
+        let arms = &self.coll.variants[vi].arms;
+        let disc = arms.iter().position(|(n, _)| n == arm_name)?;
+        Some((vi, disc as u32))
+    }
+
+    /// PLAN-864: a qualified ctor takes exactly the arm's payload arity.
+    fn check_qualified_ctor_args(&mut self, vi: usize, disc: u32, args: &[ast::Arg], span: Span) {
+        let has_payload = self.coll.variants[vi].arms[disc as usize].1.is_some();
+        let n = args.len();
+        match (has_payload, n) {
+            (true, 1) => {}
+            (false, 0) => {}
+            (true, _) => self.bind_err(
+                "source.argument",
+                "this variant arm takes exactly one payload value".to_string(),
+                span,
+            ),
+            (false, _) => self.bind_err(
+                "source.argument",
+                "this variant arm carries no payload".to_string(),
+                span,
+            ),
+        }
+    }
+
+    /// PLAN-864: resolve a bare constructor (`Some/None/Ok/Err`) against
+    /// the expected type. `Some` self-infers from its payload; `None`/
+    /// `Ok`/`Err` require the expected variant (`source.type-ambiguous`
+    /// otherwise).
+    fn resolve_bare_ctor(
+        &mut self,
+        cname: &str,
+        payload: Option<ResolvedExpr>,
+        expect: Option<VT>,
+        span: Span,
+    ) -> ResolvedExpr {
+        match (cname, payload, expect) {
+            ("Some", Some(mut pl), expect) => {
+                if let Some(VT::Variant(vi)) = expect {
+                    if self.coll.variants[vi].name == "Option" {
+                        if let Some(Some(pvt)) = self.coll.variants[vi].arms.get(0).map(|a| &a.1) {
+                            retag_literal(&mut pl, *pvt);
+                        }
+                    }
+                }
+                let t = pl.vt;
+                let vi = match expect {
+                    Some(VT::Variant(vi)) if self.coll.variants[vi].name == "Option" => vi,
+                    _ => {
+                        if matches!(t, VT::List(_)) {
+                            self.bind_err(
+                                "source.list-value-context",
+                                "List-typed payloads are not part of the 822 element domain"
+                                    .to_string(),
+                                span,
+                            );
+                        }
+                        self.coll.intern_variant(
+                            "Option",
+                            span,
+                            vec![("Some".to_string(), Some(t)), ("None".to_string(), None)],
+                        )
+                    }
+                };
+                ResolvedExpr {
+                    span,
+                    vt: VT::Variant(vi),
+                    kind: RExprKind::VariantCtor {
+                        variant: vi,
+                        disc: 0,
+                        payload: Some(Box::new(pl)),
+                    },
+                }
+            }
+            ("Some", None, _) => {
+                self.bind_err(
+                    "source.argument",
+                    "`Some` takes exactly one payload".to_string(),
+                    span,
+                );
+                ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(0),
+                }
+            }
+            ("None", None, Some(VT::Variant(vi))) if self.coll.variants[vi].name == "Option" => {
+                ResolvedExpr {
+                    span,
+                    vt: VT::Variant(vi),
+                    kind: RExprKind::VariantCtor {
+                        variant: vi,
+                        disc: 1,
+                        payload: None,
+                    },
+                }
+            }
+            ("Ok" | "Err", Some(mut pl), Some(VT::Variant(vi)))
+                if self.coll.variants[vi].name == "Result" =>
+            {
+                let disc = if cname == "Ok" { 0 } else { 1 };
+                if let Some(Some(pvt)) =
+                    self.coll.variants[vi].arms.get(disc as usize).map(|a| &a.1)
+                {
+                    retag_literal(&mut pl, *pvt);
+                }
+                if matches!(pl.vt, VT::List(_)) {
+                    self.bind_err(
+                        "source.list-value-context",
+                        "List-typed payloads are not part of the 822 element domain".to_string(),
+                        span,
+                    );
+                }
+                ResolvedExpr {
+                    span,
+                    vt: VT::Variant(vi),
+                    kind: RExprKind::VariantCtor {
+                        variant: vi,
+                        disc,
+                        payload: Some(Box::new(pl)),
+                    },
+                }
+            }
+            (other, _, _) => {
+                self.bind_err(
+                    "source.type-ambiguous",
+                    format!(
+                        "constructor `{}` needs an expected type (annotate the local, or return it from a typed function)",
+                        other
+                    ),
+                    span,
+                );
+                ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(0),
+                }
+            }
+        }
+    }
+
+    /// PLAN-864: resolve an expression whose ROOT may be a bare
+    /// constructor, with the context's expected type. Everything else
+    /// resolves bottom-up unchanged.
+    fn expr_with_expect(&mut self, v: &ast::Expr, expect: Option<VT>) -> ResolvedExpr {
+        let ctor: Option<(&str, Option<&ast::Expr>)> = match &v.kind {
+            ExprKind::Var(id) if id.name == "None" && self.ctor_name_is_free("None") => {
+                Some(("None", None))
+            }
+            ExprKind::Call { callee, args }
+                if args.len() == 1
+                    && matches!(callee.name.as_str(), "Some" | "Ok" | "Err")
+                    && matches!(&args[0], ast::Arg::Pos(_) | ast::Arg::MovePos(_))
+                    && self.ctor_name_is_free(&callee.name) =>
+            {
+                match &args[0] {
+                    ast::Arg::Pos(e) | ast::Arg::MovePos(e) => {
+                        Some((callee.name.as_str(), Some(e)))
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        match ctor {
+            Some((cname, payload_ast)) => {
+                let payload = payload_ast.map(|p| self.expr_iterative(p));
+                self.resolve_bare_ctor(cname, payload, expect, v.span)
+            }
+            None => self.expr_iterative(v),
+        }
+    }
+
+    /// PLAN-864: an `is` arm pattern against the scrutinee's variant —
+    /// bare `Arm` or qualified `Enum.Arm`; returns the discriminant.
+    fn is_arm_disc(
+        &mut self,
+        scrutinee_vt: VT,
+        qual: Option<&ast::Ident>,
+        pat: &ast::Ident,
+    ) -> Option<(usize, u32)> {
+        let VT::Variant(vi) = scrutinee_vt else {
+            return None;
+        };
+        if let Some(q) = qual {
+            if self.coll.variants[vi].name != q.name {
+                self.bind_err(
+                    "source.pattern-unknown-arm",
+                    format!(
+                        "arm `{}.{}` does not belong to the scrutinee's variant `{}`",
+                        q.name, pat.name, self.coll.variants[vi].name
+                    ),
+                    q.span.join(pat.span),
+                );
+                return None;
+            }
+        }
+        match self.coll.variants[vi]
+            .arms
+            .iter()
+            .position(|(n, _)| *n == pat.name)
+        {
+            Some(d) => Some((vi, d as u32)),
+            None => {
+                self.bind_err(
+                    "source.pattern-unknown-arm",
+                    format!(
+                        "variant `{}` has no arm named `{}`",
+                        self.coll.variants[vi].name, pat.name
+                    ),
+                    pat.span,
+                );
+                None
+            }
+        }
+    }
+
+    /// PLAN-864: a method call on a List-typed receiver (contract C3).
+    fn resolve_list_method(
+        &mut self,
+        li: usize,
+        name: &ast::Ident,
+        recv: ResolvedExpr,
+        mut rargs: Vec<ResolvedArg>,
+        span: Span,
+    ) -> ResolvedExpr {
+        // structural modification of an iterated list is a compile reject
+        if matches!(name.name.as_str(), "push" | "insert" | "remove" | "clear") {
+            if let RExprKind::ReadLocal(l) = recv.kind {
+                let hit: Option<Span> = self
+                    .iterate_targets
+                    .iter()
+                    .find(|(target, _, _)| *target == l)
+                    .map(|(_, _, sp)| *sp);
+                if let Some(sp) = hit {
+                    self.bind_err(
+                        "source.iterate-mutate",
+                        format!(
+                            "`{}` structurally modifies the list being iterated (legal: `set` and field writes)",
+                            name.name
+                        ),
+                        name.span.join(sp),
+                    );
+                }
+            }
+        }
+        let list = Box::new(recv);
+        let elem = self.coll.lists[li];
+        let mk = |vt: VT, kind: RExprKind| ResolvedExpr { span, vt, kind };
+        match name.name.as_str() {
+            "push" if rargs.len() == 1 => {
+                let mut value = rargs.remove(0).value;
+                self.check_push_value(&elem, &mut value, name.span);
+                mk(
+                    VT::Unit,
+                    RExprKind::ListPush {
+                        list,
+                        value: Box::new(value),
+                    },
+                )
+            }
+            "insert" if rargs.len() == 2 => {
+                let index = rargs.remove(0).value;
+                let mut value = rargs.remove(0).value;
+                self.check_push_value(&elem, &mut value, name.span);
+                mk(
+                    VT::Unit,
+                    RExprKind::ListInsert {
+                        list,
+                        index: Box::new(index),
+                        value: Box::new(value),
+                    },
+                )
+            }
+            "get" if rargs.len() == 1 => {
+                let index = rargs.remove(0).value;
+                if self.vt_is_coll_owned(elem) {
+                    self.bind_err(
+                        "source.view-escape",
+                        "a whole owned element is not a value; project a field (`xs.get(i).f`) or use `xs.remove(i)`".to_string(),
+                        span,
+                    );
+                }
+                mk(
+                    elem,
+                    RExprKind::ListGet {
+                        list,
+                        index: Box::new(index),
+                    },
+                )
+            }
+            "set" if rargs.len() == 2 => {
+                let index = rargs.remove(0).value;
+                let mut value = rargs.remove(0).value;
+                self.check_push_value(&elem, &mut value, name.span);
+                mk(
+                    VT::Unit,
+                    RExprKind::ListSet {
+                        list,
+                        index: Box::new(index),
+                        value: Box::new(value),
+                    },
+                )
+            }
+            "remove" if rargs.len() == 1 => {
+                let index = rargs.remove(0).value;
+                mk(
+                    elem,
+                    RExprKind::ListRemove {
+                        list,
+                        index: Box::new(index),
+                    },
+                )
+            }
+            "len" if rargs.is_empty() => mk(VT::I32, RExprKind::ListLen { list }),
+            "clear" if rargs.is_empty() => mk(VT::Unit, RExprKind::ListClear { list }),
+            "clone" if rargs.is_empty() => {
+                self.bind_err(
+                    "source.unsupported",
+                    "list clone is not part of this source profile (elements clone explicitly)"
+                        .to_string(),
+                    span,
+                );
+                mk(VT::I32, RExprKind::IntLit(0))
+            }
+            _ => {
+                self.bind_err(
+                    "source.undefined",
+                    format!(
+                        "no list method `{}` with {} argument(s) in this profile (legal: new/push/insert/get/set/remove/len/clear)",
+                        name.name,
+                        rargs.len()
+                    ),
+                    span,
+                );
+                mk(VT::I32, RExprKind::IntLit(0))
+            }
+        }
+    }
+
+    /// PLAN-864: push/insert/set values of owned element type must be a
+    /// move-source (`.move` local or a fresh rvalue); Copy elements pass
+    /// by value.
+    fn check_push_value(&mut self, elem: &VT, value: &mut ResolvedExpr, span: Span) {
+        if !self.vt_is_coll_owned(*elem) {
+            return;
+        }
+        match &value.kind {
+            RExprKind::Move { .. } => {}
+            RExprKind::CtorPos { .. } | RExprKind::CtorNamed { .. } => {
+                // a fresh rvalue transfers at commit; its Str-typed literal
+                // fields retag to the record's owned field types (AP-4 —
+                // the owning context constructs)
+                value.vt = *elem;
+                if let (RExprKind::CtorPos { args, .. }, VT::Rec(ri)) = (&mut value.kind, *elem) {
+                    for (ai, a) in args.iter_mut().enumerate() {
+                        if let Some(fvt) = self.records.get(ri).and_then(|r| r.fields.get(ai)) {
+                            retag_literal(&mut a.value, fvt.vt);
+                        }
+                    }
+                }
+            }
+            RExprKind::StrLit(_) | RExprKind::VariantCtor { .. } => {
+                // a fresh rvalue transfers at commit
+                value.vt = *elem;
+            }
+            RExprKind::ReadLocal(_) => {
+                self.bind_err(
+                    "source.move-required",
+                    "pushing an owned element requires `.move` (or a fresh value); an implicit transfer is rejected".to_string(),
+                    span,
+                );
+            }
+            _ => {
+                self.bind_err(
+                    "source.move-required",
+                    "an owned element value must be a whole-local `.move` or a fresh construction"
+                        .to_string(),
+                    span,
+                );
+            }
+        }
+    }
+
     /// Resolve one function body with an explicit block-frame stack (R6:
     /// block nesting is unlimited, so no recursion). Each frame owns a
     /// lexical scope (pushed on open, popped on close); while/loop frames
@@ -1576,6 +2831,7 @@ impl<'a> FnResolver<'a> {
         }
         self.scopes.push(Scope {
             names: BTreeMap::new(),
+            views: BTreeMap::new(),
         });
         let mut stack: Vec<RFrame> = vec![RFrame {
             src: root,
@@ -1606,6 +2862,7 @@ impl<'a> FnResolver<'a> {
                         Some(eb) => {
                             self.scopes.push(Scope {
                                 names: BTreeMap::new(),
+                                views: BTreeMap::new(),
                             });
                             stack.push(RFrame {
                                 src: eb,
@@ -1680,10 +2937,29 @@ impl<'a> FnResolver<'a> {
                     span,
                     ..
                 } => {
-                    // RHS resolves in the pre-declaration environment.
-                    let mut value = self.expr_iterative(value);
-                    let vt = match ann {
-                        Some(a) => vt_of_ann(a, self.rec_index, &mut Vec::new()),
+                    // RHS resolves in the pre-declaration environment. On
+                    // the collections surface an annotation is also the
+                    // bare-constructor context (`var r Result<int, Str> =
+                    // Err("old")`).
+                    let ann_vt: Option<VT> = match ann {
+                        Some(a) => {
+                            if self.profile.is_collections() {
+                                Some(vt_of_ann_coll(
+                                    a,
+                                    self.rec_index,
+                                    self.coll,
+                                    &mut Vec::new(),
+                                    TypePos::Local,
+                                ))
+                            } else {
+                                Some(vt_of_ann(a, self.rec_index, &mut Vec::new()))
+                            }
+                        }
+                        None => None,
+                    };
+                    let mut value = self.expr_with_expect(value, ann_vt);
+                    let vt = match ann_vt {
+                        Some(v) => v,
                         None => value.vt,
                     };
                     retag_literal(&mut value, vt);
@@ -1740,7 +3016,19 @@ impl<'a> FnResolver<'a> {
                     value,
                     span,
                 } => {
-                    let mut value = self.expr_iterative(value);
+                    // PLAN-864: an assigned VIEW binding is a view escape.
+                    if self.lookup_view(&target.base.name).is_some() {
+                        self.bind_err(
+                            "source.view-escape",
+                            format!(
+                                "`{}` is an owned-element view; views are read-only projections and cannot be assigned",
+                                target.base.name
+                            ),
+                            target.base.span,
+                        );
+                    }
+                    let expect = self.lookup(&target.base.name).map(|l| self.locals[l.0].vt);
+                    let mut value = self.expr_with_expect(value, expect);
                     // Immutability itself is re-checked by the semantic verifier
                     // on the emitted place/local pair (verify.immutable-write);
                     // here only resolution failures are reported.
@@ -1831,19 +3119,13 @@ impl<'a> FnResolver<'a> {
                     stack.last_mut().expect("resolve frame").stmts.push(rstmt);
                 }
                 Stmt::Return { value, span } => {
-                    let value = self.expr_iterative(value);
+                    let mut value = self.expr_with_expect(value, Some(self.fn_result));
+                    retag_literal(&mut value, self.fn_result);
                     stack
                         .last_mut()
                         .expect("resolve frame")
                         .stmts
-                        .push(RStmt::Return {
-                            value: {
-                                let mut v = value;
-                                retag_literal(&mut v, self.fn_result);
-                                v
-                            },
-                            span: *span,
-                        });
+                        .push(RStmt::Return { value, span: *span });
                 }
                 Stmt::ExprStmt { value, span } => {
                     let value = self.expr_iterative(value);
@@ -1862,6 +3144,7 @@ impl<'a> FnResolver<'a> {
                     let cond = self.expr_iterative(cond);
                     self.scopes.push(Scope {
                         names: BTreeMap::new(),
+                        views: BTreeMap::new(),
                     });
                     stack.push(RFrame {
                         src: then,
@@ -1883,6 +3166,7 @@ impl<'a> FnResolver<'a> {
                     self.loop_stack.push(target);
                     self.scopes.push(Scope {
                         names: BTreeMap::new(),
+                        views: BTreeMap::new(),
                     });
                     stack.push(RFrame {
                         src: body,
@@ -1901,6 +3185,7 @@ impl<'a> FnResolver<'a> {
                     self.loop_stack.push(target);
                     self.scopes.push(Scope {
                         names: BTreeMap::new(),
+                        views: BTreeMap::new(),
                     });
                     stack.push(RFrame {
                         src: body,
@@ -1934,12 +3219,408 @@ impl<'a> FnResolver<'a> {
                             span: *span,
                         });
                 }
+                // PLAN-864: exhaustive `is` dispatch — resolve the arm
+                // bodies, check exhaustiveness/duplicates, then synthesize
+                // the guard/branch chain (guard test → let-projection →
+                // arm body), nested as If/else with NO fall-through
+                // default (the last arm's else is empty: exhaustiveness
+                // makes it unreachable).
+                Stmt::IsMatch {
+                    scrutinee,
+                    arms,
+                    span,
+                } => {
+                    let Some(sl) = self.lookup(&scrutinee.name) else {
+                        self.bind_err(
+                            "source.undefined",
+                            format!("no local named `{}` in scope", scrutinee.name),
+                            scrutinee.span,
+                        );
+                        continue;
+                    };
+                    let VT::Variant(vi) = self.locals[sl.0].vt else {
+                        self.bind_err(
+                            "source.pattern-scrutinee",
+                            format!(
+                                "`is` scrutinee must be a variant-typed local, found `{}`",
+                                self.locals[sl.0].vt.as_str()
+                            ),
+                            scrutinee.span,
+                        );
+                        continue;
+                    };
+                    let mut resolved: Vec<(u32, Option<(LocalRef, VT)>, RBlock)> = Vec::new();
+                    let mut seen: BTreeMap<String, u32> = BTreeMap::new();
+                    let mut ok = true;
+                    for arm in arms {
+                        let Some((_, disc)) =
+                            self.is_arm_disc(self.locals[sl.0].vt, arm.qual.as_ref(), &arm.pattern)
+                        else {
+                            ok = false;
+                            continue;
+                        };
+                        match seen.get(arm.pattern.name.as_str()) {
+                            Some(_) => {
+                                self.bind_err(
+                                    "source.pattern-duplicate",
+                                    format!("arm `{}` appears more than once", arm.pattern.name),
+                                    arm.pattern.span,
+                                );
+                                ok = false;
+                                continue;
+                            }
+                            None => {
+                                seen.insert(arm.pattern.name.clone(), disc);
+                            }
+                        }
+                        // the binding local (if any) types from the arm's
+                        // payload; scope-isolated to the arm body
+                        let payload_vt = self.coll.variants[vi].arms[disc as usize].1;
+                        let pat_name = arm.pattern.name.clone();
+                        let bound: Option<(LocalRef, VT)> = match (&arm.binding, payload_vt) {
+                            (Some(b), Some(pvt)) => {
+                                self.scopes.push(Scope {
+                                    names: BTreeMap::new(),
+                                    views: BTreeMap::new(),
+                                });
+                                let lref = self.fresh_local(&b.name, pvt, false);
+                                self.scopes
+                                    .last_mut()
+                                    .unwrap()
+                                    .names
+                                    .insert(b.name.clone(), lref);
+                                Some((lref, pvt))
+                            }
+                            (Some(b), None) => {
+                                self.bind_err(
+                                    "source.type-mismatch",
+                                    format!(
+                                        "arm `{}` carries no payload; remove the binding `{}`",
+                                        pat_name, b.name
+                                    ),
+                                    b.span,
+                                );
+                                None
+                            }
+                            (None, _) => None,
+                        };
+                        let body = self.resolve_body(&arm.body);
+                        if bound.is_some() {
+                            self.scopes.pop();
+                        }
+                        resolved.push((disc, bound, body));
+                    }
+                    if !ok {
+                        continue;
+                    }
+                    // exhaustiveness: every arm of the variant covered
+                    if resolved.len() != self.coll.variants[vi].arms.len() {
+                        self.bind_err(
+                            "source.pattern-non-exhaustive",
+                            format!(
+                                "`is` on `{}` covers {} of {} arms",
+                                self.coll.variants[vi].name,
+                                resolved.len(),
+                                self.coll.variants[vi].arms.len()
+                            ),
+                            *span,
+                        );
+                        continue;
+                    }
+                    // Build the chain with EVERY arm guarded (the last
+                    // arm too — a projection needs its live guard fact);
+                    // the innermost else is a synthetic `return <default>`
+                    // filler: statically unreachable (exhaustiveness is
+                    // compile-checked above), present so the shared
+                    // no-return-path walk sees a Returned spine. The filler
+                    // value is typed from the function result.
+                    let filler = self.default_return_filler(*span);
+                    let mut current = Some(RBlock {
+                        stmts: vec![RStmt::Return {
+                            value: filler,
+                            span: *span,
+                        }],
+                        span: *span,
+                    });
+                    let resolved_rev: Vec<(u32, Option<(LocalRef, VT)>, RBlock)> =
+                        resolved.into_iter().rev().collect();
+                    for (disc, bind, mut body) in resolved_rev {
+                        let mut then_stmts: Vec<RStmt> = Vec::new();
+                        if let Some((lref, pvt)) = bind {
+                            then_stmts.push(RStmt::Let {
+                                local: lref,
+                                value: ResolvedExpr {
+                                    span: body.span,
+                                    vt: pvt,
+                                    kind: RExprKind::VariantProject {
+                                        local: sl,
+                                        variant: vi,
+                                        disc,
+                                    },
+                                },
+                                span: body.span,
+                            });
+                        }
+                        then_stmts.extend(std::mem::take(&mut body.stmts));
+                        let then_block = RBlock {
+                            stmts: then_stmts,
+                            span: body.span,
+                        };
+                        let cond = ResolvedExpr {
+                            span: *span,
+                            vt: VT::Bool,
+                            kind: RExprKind::VariantGuardTest {
+                                local: sl,
+                                variant: vi,
+                                disc,
+                            },
+                        };
+                        let if_stmt = RStmt::If {
+                            cond,
+                            then: then_block,
+                            els: current.take(),
+                            span: *span,
+                        };
+                        current = Some(RBlock {
+                            stmts: vec![if_stmt],
+                            span: *span,
+                        });
+                    }
+                    if let Some(mut block) = current {
+                        stack
+                            .last_mut()
+                            .expect("resolve frame")
+                            .stmts
+                            .extend(std::mem::take(&mut block.stmts));
+                    }
+                }
+                // PLAN-864: `for x in <list> { .. }` — lower to an index
+                // loop with the length read ONCE (contract C7). Copyable
+                // elements materialize a per-iteration copy binding; owned
+                // elements bind a checked read-only projection context.
+                Stmt::ForIn {
+                    var,
+                    iter,
+                    body,
+                    span,
+                } => {
+                    let ast::ExprKind::Var(id) = &iter.kind else {
+                        self.bind_err(
+                            "source.iterate-scrutinee",
+                            "for-in iterates a List local in this profile".to_string(),
+                            iter.span,
+                        );
+                        continue;
+                    };
+                    let Some(xsl) = self.lookup(&id.name) else {
+                        self.bind_err(
+                            "source.undefined",
+                            format!("no local named `{}` in scope", id.name),
+                            id.span,
+                        );
+                        continue;
+                    };
+                    let VT::List(li) = self.locals[xsl.0].vt else {
+                        self.bind_err(
+                            "source.iterate-scrutinee",
+                            format!(
+                                "`for x in {}` requires a List-typed local, found `{}`",
+                                id.name,
+                                self.locals[xsl.0].vt.as_str()
+                            ),
+                            iter.span,
+                        );
+                        continue;
+                    };
+                    let elem = self.coll.lists[li];
+                    let owned = self.vt_is_coll_owned(elem);
+                    let i_lref = self.fresh_local("__for_i", VT::I32, true);
+                    let n_lref = self.fresh_local("__for_n", VT::I32, false);
+                    let target = LoopRef(self.loop_count);
+                    self.loop_count += 1;
+                    self.loop_stack.push(target);
+                    self.iterate_targets.push((xsl, elem, *span));
+                    let zero = ResolvedExpr {
+                        span: *span,
+                        vt: VT::I32,
+                        kind: RExprKind::IntLit(0),
+                    };
+                    let xs_read = ResolvedExpr {
+                        span: iter.span,
+                        vt: VT::List(li),
+                        kind: RExprKind::ReadLocal(xsl),
+                    };
+                    let n_read = ResolvedExpr {
+                        span: *span,
+                        vt: VT::I32,
+                        kind: RExprKind::ReadLocal(n_lref),
+                    };
+                    let len_expr = ResolvedExpr {
+                        span: iter.span,
+                        vt: VT::I32,
+                        kind: RExprKind::ListLen {
+                            list: Box::new(xs_read),
+                        },
+                    };
+                    let mut prologue: Vec<RStmt> = vec![
+                        RStmt::Let {
+                            local: i_lref,
+                            value: zero,
+                            span: *span,
+                        },
+                        RStmt::Let {
+                            local: n_lref,
+                            value: len_expr,
+                            span: *span,
+                        },
+                    ];
+                    let body_res = if owned {
+                        self.scopes.push(Scope {
+                            names: BTreeMap::new(),
+                            views: BTreeMap::new(),
+                        });
+                        self.scopes.last_mut().unwrap().views.insert(
+                            var.name.clone(),
+                            ViewBinding {
+                                list: xsl,
+                                index: i_lref,
+                                elem,
+                            },
+                        );
+                        self.declared_names.insert(var.name.clone());
+                        let b = self.resolve_body(body);
+                        self.scopes.pop();
+                        b
+                    } else {
+                        self.scopes.push(Scope {
+                            names: BTreeMap::new(),
+                            views: BTreeMap::new(),
+                        });
+                        let blref = self.fresh_local(&var.name, elem, false);
+                        self.scopes
+                            .last_mut()
+                            .unwrap()
+                            .names
+                            .insert(var.name.clone(), blref);
+                        self.declared_names.insert(var.name.clone());
+                        let mut b = self.resolve_body(body);
+                        self.scopes.pop();
+                        let get = ResolvedExpr {
+                            span: iter.span,
+                            vt: elem,
+                            kind: RExprKind::ListGet {
+                                list: Box::new(ResolvedExpr {
+                                    span: iter.span,
+                                    vt: VT::List(li),
+                                    kind: RExprKind::ReadLocal(xsl),
+                                }),
+                                index: Box::new(ResolvedExpr {
+                                    span: *span,
+                                    vt: VT::I32,
+                                    kind: RExprKind::ReadLocal(i_lref),
+                                }),
+                            },
+                        };
+                        b.stmts.insert(
+                            0,
+                            RStmt::Let {
+                                local: blref,
+                                value: get,
+                                span: *span,
+                            },
+                        );
+                        b
+                    };
+                    self.iterate_targets.pop();
+                    self.loop_stack.pop();
+                    let one = ResolvedExpr {
+                        span: *span,
+                        vt: VT::I32,
+                        kind: RExprKind::IntLit(1),
+                    };
+                    let incr = RStmt::Assign {
+                        local: i_lref,
+                        path: Vec::new(),
+                        value: ResolvedExpr {
+                            span: *span,
+                            vt: VT::I32,
+                            kind: RExprKind::Binary {
+                                op: ast::BinOp::Add,
+                                lhs: Box::new(ResolvedExpr {
+                                    span: *span,
+                                    vt: VT::I32,
+                                    kind: RExprKind::ReadLocal(i_lref),
+                                }),
+                                rhs: Box::new(one),
+                            },
+                        },
+                        span: *span,
+                    };
+                    let mut body_res = body_res;
+                    let mut then_stmts = std::mem::take(&mut body_res.stmts);
+                    then_stmts.push(incr);
+                    let cond = ResolvedExpr {
+                        span: *span,
+                        vt: VT::Bool,
+                        kind: RExprKind::Binary {
+                            op: ast::BinOp::Lt,
+                            lhs: Box::new(ResolvedExpr {
+                                span: *span,
+                                vt: VT::I32,
+                                kind: RExprKind::ReadLocal(i_lref),
+                            }),
+                            rhs: Box::new(n_read),
+                        },
+                    };
+                    let else_block = RBlock {
+                        stmts: vec![RStmt::Break {
+                            target: Some(target),
+                            span: *span,
+                        }],
+                        span: *span,
+                    };
+                    let if_stmt = RStmt::If {
+                        cond,
+                        then: RBlock {
+                            stmts: then_stmts,
+                            span: body.span,
+                        },
+                        els: Some(else_block),
+                        span: *span,
+                    };
+                    prologue.push(RStmt::Loop {
+                        body: RBlock {
+                            stmts: vec![if_stmt],
+                            span: body.span,
+                        },
+                        span: *span,
+                        target,
+                    });
+                    stack
+                        .last_mut()
+                        .expect("resolve frame")
+                        .stmts
+                        .extend(prologue);
+                }
             }
         }
     }
 
     fn expr(&mut self, e: &Expr) -> ResolvedExpr {
         match &e.kind {
+            // PLAN-864: generic receivers ride the iterative machine only.
+            ExprKind::GenericType { name, .. } => {
+                self.bind_err(
+                    "source.unsupported",
+                    format!("receiver `{}` is not a value in this position", name.name),
+                    name.span,
+                );
+                ResolvedExpr {
+                    span: e.span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(0),
+                }
+            }
             ExprKind::IntLit(v) => ResolvedExpr {
                 span: e.span,
                 vt: VT::I32,
@@ -2694,6 +4375,7 @@ impl<'a> FnResolver<'a> {
                 name: ast::Ident,
                 dest: usize,
                 recv_slot: Option<usize>,
+                recv_kind: RecvClass,
                 arg_slots: Vec<usize>,
                 names: Vec<Option<ast::Ident>>,
                 spans: Vec<Span>,
@@ -2857,6 +4539,130 @@ impl<'a> FnResolver<'a> {
                         continue;
                     }
                     if let ExprKind::Field { base, name } = &node.kind {
+                        // PLAN-864: an owned-element field projection
+                        // (`xs.get(i).f[.g]`, or a for-in view binding) fuses
+                        // into one ListFieldGet/ElemView node — never a
+                        // materialized ListGet. Only the OUTERMOST Field of
+                        // the spine builds the fused node.
+                        if self.profile.is_collections() {
+                            let mut segs: Vec<&ast::Ident> = vec![name];
+                            let mut cur = base.as_ref();
+                            while let ExprKind::Field { base: b, name: n } = &cur.kind {
+                                segs.push(n);
+                                cur = b.as_ref();
+                            }
+                            let mut fused: Option<ResolvedExpr> = None;
+                            let mut view_hit = false;
+                            if let ExprKind::Var(id) = &cur.kind {
+                                view_hit = self.lookup_view(&id.name).is_some();
+                                if let Some(vb) = self.lookup_view(&id.name) {
+                                    if let Some((path, vt)) =
+                                        self.resolve_projection_path(&segs, vb.elem)
+                                    {
+                                        let xs_vt = self.locals[vb.list.0].vt;
+                                        let owned_term = matches!(vt, VT::StrOwned);
+                                        let mk = |kind| ResolvedExpr {
+                                            span: node.span,
+                                            vt,
+                                            kind,
+                                        };
+                                        fused = Some(if owned_term {
+                                            mk(RExprKind::ElemView {
+                                                list: Box::new(ResolvedExpr {
+                                                    span: node.span,
+                                                    vt: xs_vt,
+                                                    kind: RExprKind::ReadLocal(vb.list),
+                                                }),
+                                                index: Box::new(ResolvedExpr {
+                                                    span: node.span,
+                                                    vt: VT::I32,
+                                                    kind: RExprKind::ReadLocal(vb.index),
+                                                }),
+                                                path,
+                                            })
+                                        } else {
+                                            mk(RExprKind::ListFieldGet {
+                                                list: Box::new(ResolvedExpr {
+                                                    span: node.span,
+                                                    vt: xs_vt,
+                                                    kind: RExprKind::ReadLocal(vb.list),
+                                                }),
+                                                index: Box::new(ResolvedExpr {
+                                                    span: node.span,
+                                                    vt: VT::I32,
+                                                    kind: RExprKind::ReadLocal(vb.index),
+                                                }),
+                                                path,
+                                            })
+                                        });
+                                    }
+                                }
+                            }
+                            if fused.is_none() && !view_hit {
+                                if let ExprKind::MethodCall {
+                                    recv: r,
+                                    name: mn,
+                                    args: ma,
+                                } = &cur.kind
+                                {
+                                    if mn.name == "get" && ma.len() == 1 {
+                                        if let ExprKind::Var(id) = &r.kind {
+                                            if let Some(xl) = self.lookup(&id.name) {
+                                                let xvt = self.locals[xl.0].vt;
+                                                if let VT::List(li) = xvt {
+                                                    let elem = self.coll.lists[li];
+                                                    if self.vt_is_coll_owned(elem) {
+                                                        if let Some((path, vt)) = self
+                                                            .resolve_projection_path(&segs, elem)
+                                                        {
+                                                            let idx_ast = match &ma[0] {
+                                                                ast::Arg::Pos(e)
+                                                                | ast::Arg::MovePos(e) => e,
+                                                                _ => unreachable!(
+                                                                    "get takes one positional index"
+                                                                ),
+                                                            };
+                                                            let idx_read =
+                                                                self.expr_iterative(idx_ast);
+                                                            let xs_read = ResolvedExpr {
+                                                                span: node.span,
+                                                                vt: xvt,
+                                                                kind: RExprKind::ReadLocal(xl),
+                                                            };
+                                                            let owned_term =
+                                                                matches!(vt, VT::StrOwned);
+                                                            let mk =
+                                                                |kind: RExprKind| ResolvedExpr {
+                                                                    span: node.span,
+                                                                    vt,
+                                                                    kind,
+                                                                };
+                                                            fused = Some(if owned_term {
+                                                                mk(RExprKind::ElemView {
+                                                                    list: Box::new(xs_read),
+                                                                    index: Box::new(idx_read),
+                                                                    path,
+                                                                })
+                                                            } else {
+                                                                mk(RExprKind::ListFieldGet {
+                                                                    list: Box::new(xs_read),
+                                                                    index: Box::new(idx_read),
+                                                                    path,
+                                                                })
+                                                            });
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if let Some(fr) = fused {
+                                out[slot] = fr;
+                                continue;
+                            }
+                        }
                         let bslot = out.len();
                         out.push(dummy_resolved());
                         stack.push(Task::FieldOut {
@@ -2873,10 +4679,97 @@ impl<'a> FnResolver<'a> {
                         // static pre-classification: bare record type name
                         // receiver resolves to no local — the receiver
                         // expression is NOT evaluated for static calls.
-                        let static_recv = matches!(&recv.kind, ExprKind::Var(id)
+                        // PLAN-864: classify the receiver before resolving —
+                        // generic type ctors (`List<T>.new()`) and qualified
+                        // variant ctors (`E.A(e)`) carry a TYPE, not a value;
+                        // their receiver slot stays empty.
+                        let recv_class = if let ExprKind::GenericType { name, args } = &recv.kind {
+                            self.classify_generic_recv(name, args)
+                        } else if let ExprKind::Var(id) = &recv.kind {
                             if self.lookup(&id.name).is_none()
-                                && self.rec_index.contains_key(&id.name));
-                        let recv_slot = if static_recv { None } else { Some(out.len()) };
+                                && self.rec_index.contains_key(&id.name)
+                            {
+                                RecvClass::Static
+                            } else if self.lookup(&id.name).is_none()
+                                && self.profile.is_collections()
+                            {
+                                match self.qualified_variant_arm(&id.name, &name.name) {
+                                    Some((vi, disc)) => {
+                                        self.check_qualified_ctor_args(vi, disc, args, name.span);
+                                        RecvClass::VariantArm { vi, disc }
+                                    }
+                                    None => RecvClass::Value,
+                                }
+                            } else {
+                                RecvClass::Value
+                            }
+                        } else {
+                            RecvClass::Value
+                        };
+                        // PLAN-864: `xs.get(i).len()` over a List<Str>
+                        // local — the get receiver is a whole-element view,
+                        // not a value.
+                        let recv_class = if matches!(recv_class, RecvClass::Value)
+                            && name.name == "len"
+                            && args.is_empty()
+                        {
+                            if let ExprKind::MethodCall {
+                                recv: gr,
+                                name: gn,
+                                args: ga,
+                            } = &recv.kind
+                            {
+                                if gn.name == "get"
+                                    && ga.len() == 1
+                                    && matches!(&ga[0], ast::Arg::Pos(_) | ast::Arg::MovePos(_))
+                                {
+                                    if let ExprKind::Var(id) = &gr.kind {
+                                        if let Some(xl) = self.lookup(&id.name) {
+                                            let xvt = self.locals[xl.0].vt;
+                                            if let VT::List(li) = xvt {
+                                                let elem = self.coll.lists[li];
+                                                if matches!(elem, VT::StrOwned) {
+                                                    let idx_slot = out.len();
+                                                    out.push(dummy_resolved());
+                                                    let idx_ast = match &ga[0] {
+                                                        ast::Arg::Pos(e) | ast::Arg::MovePos(e) => {
+                                                            e
+                                                        }
+                                                        _ => unreachable!(
+                                                            "get takes one positional index"
+                                                        ),
+                                                    };
+                                                    stack.push(Task::Visit {
+                                                        node: idx_ast,
+                                                        slot: idx_slot,
+                                                    });
+                                                    RecvClass::ElemViewLen { xl, xvt, idx_slot }
+                                                } else {
+                                                    RecvClass::Value
+                                                }
+                                            } else {
+                                                RecvClass::Value
+                                            }
+                                        } else {
+                                            RecvClass::Value
+                                        }
+                                    } else {
+                                        RecvClass::Value
+                                    }
+                                } else {
+                                    RecvClass::Value
+                                }
+                            } else {
+                                RecvClass::Value
+                            }
+                        } else {
+                            recv_class
+                        };
+                        let recv_slot = match recv_class {
+                            RecvClass::Value => Some(out.len()),
+                            RecvClass::ElemViewLen { .. } => None,
+                            _ => None,
+                        };
                         if recv_slot.is_some() {
                             out.push(dummy_resolved());
                         }
@@ -2915,6 +4808,7 @@ impl<'a> FnResolver<'a> {
                             name: name.clone(),
                             dest: slot,
                             recv_slot,
+                            recv_kind: recv_class,
                             arg_slots,
                             names,
                             spans,
@@ -3051,7 +4945,14 @@ impl<'a> FnResolver<'a> {
                             // member-type guard), so this rewrites nothing
                             // there.
                             let vt = match self.records[ri].fields[fi].vt {
-                                VT::StrOwned => VT::Str,
+                                // PLAN-782 5.2: a field read is a borrowing
+                                // view on the combination surface.
+                                // PLAN-864: the collections surface keeps
+                                // the DECLARED type — profile 4's FieldGet
+                                // contract is exact-type (the runtime
+                                // handle-shares, never deep-copies), so
+                                // `.len()` reads ride the owned value.
+                                VT::StrOwned if !self.profile.is_collections() => VT::Str,
                                 v => v,
                             };
                             out[dest] = ResolvedExpr {
@@ -3084,6 +4985,7 @@ impl<'a> FnResolver<'a> {
                     name,
                     dest,
                     recv_slot,
+                    recv_kind,
                     arg_slots,
                     names,
                     spans,
@@ -3105,7 +5007,67 @@ impl<'a> FnResolver<'a> {
                             Some(Box::new(std::mem::replace(&mut out[rs], dummy_resolved())))
                         }
                     };
-                    out[dest] = self.method_call_out(rrecv, &name, rargs, node_span);
+                    match recv_kind {
+                        RecvClass::Value | RecvClass::Static => {
+                            out[dest] = self.method_call_out(rrecv, &name, rargs, node_span);
+                        }
+                        RecvClass::ListCtor(li) => {
+                            // PLAN-864: `List<T>.new()` — no receiver value;
+                            // zero args (enforced at classification).
+                            out[dest] = ResolvedExpr {
+                                span: node_span,
+                                vt: VT::List(li),
+                                kind: RExprKind::ListNew { list: li },
+                            };
+                        }
+                        RecvClass::ElemViewLen { xl, xvt, idx_slot } => {
+                            // PLAN-864: `xs.get(i).len()` on List<Str> — the
+                            // receiver is a whole-element view ( ElemView );
+                            // the lowering fuses remove/view/strlen/insert.
+                            let idx = std::mem::replace(&mut out[idx_slot], dummy_resolved());
+                            out[dest] = ResolvedExpr {
+                                span: node_span,
+                                vt: VT::I32,
+                                kind: RExprKind::Method {
+                                    recv: Box::new(ResolvedExpr {
+                                        span: node_span,
+                                        vt: VT::StrOwned,
+                                        kind: RExprKind::ElemView {
+                                            list: Box::new(ResolvedExpr {
+                                                span: node_span,
+                                                vt: xvt,
+                                                kind: RExprKind::ReadLocal(xl),
+                                            }),
+                                            index: Box::new(idx),
+                                            path: Vec::new(),
+                                        },
+                                    }),
+                                    method: crate::source::resolve::BuiltinMethod::Len,
+                                    to: None,
+                                    args: Vec::new(),
+                                },
+                            };
+                        }
+                        RecvClass::VariantArm { vi, disc } => {
+                            // PLAN-864: `E.A(e)` / `E.A` — qualified variant
+                            // construction; the payload (if any) is the
+                            // single resolved argument.
+                            let payload = match rargs.len() {
+                                0 => None,
+                                1 => Some(Box::new(rargs.remove(0).value)),
+                                _ => None, // rejected at classification
+                            };
+                            out[dest] = ResolvedExpr {
+                                span: node_span,
+                                vt: VT::Variant(vi),
+                                kind: RExprKind::VariantCtor {
+                                    variant: vi,
+                                    disc,
+                                    payload,
+                                },
+                            };
+                        }
+                    }
                 }
                 Task::CallOut {
                     callee,
@@ -3301,6 +5263,10 @@ impl<'a> FnResolver<'a> {
                     args,
                 },
             };
+        }
+        // PLAN-864: List receivers route to the collections method table.
+        if let VT::List(li) = recv.vt {
+            return self.resolve_list_method(li, name, recv, args, span);
         }
         let Some((method, params, _result)) = builtin_method(recv.vt, &name.name) else {
             self.bind_err(

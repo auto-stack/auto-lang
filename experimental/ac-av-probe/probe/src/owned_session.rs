@@ -304,6 +304,10 @@ fn decl_facts_of(
                     fast_path_ok = false;
                 }
             }
+            // PLAN-864: enum declarations occupy top-level spans too.
+            Item::Enum(e) => {
+                decl_types.push((e.span.start as u64, e.span.end as u64));
+            }
         }
     }
     let mut env = resolve_env(program, caps, SourceProfile::TextRecord).expect(

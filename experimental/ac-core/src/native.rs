@@ -131,6 +131,9 @@ fn value_of_type_use(u: &hir::TypeUse, m: &hir::Module) -> Option<Vt> {
             hir::TypeKind::Function(_) => Some(Vt::Function),
             hir::TypeKind::Str | hir::TypeKind::StrOwned | hir::TypeKind::Char => None,
             hir::TypeKind::Record(_) => Some(Vt::Record(*tid)),
+            // PLAN-864: List/Variant types live only in the collections
+            // domain, which never lowers through the old native backend.
+            hir::TypeKind::List { .. } | hir::TypeKind::Variant { .. } => None,
         },
     }
 }
@@ -245,7 +248,8 @@ fn record_mention_sets(body: &hir::Body, local_is_record: &[bool]) -> Vec<BTreeS
                 hir::Stmt::Loop { .. }
                 | hir::Stmt::Break { .. }
                 | hir::Stmt::Continue { .. }
-                | hir::Stmt::Drop { .. } => {}
+                | hir::Stmt::Drop { .. }
+                | hir::Stmt::Eval { .. } => {}
             }
         }
     }
@@ -1295,6 +1299,11 @@ impl<'c> FuncEmitter<'c> {
                 hir::Stmt::Drop { .. } => {
                     unreachable!("verifier: drop statements exist only in the text profile")
                 }
+                // PLAN-864: unit effect statements live only in the
+                // collections domain; the old native backend never sees them.
+                hir::Stmt::Eval { .. } => {
+                    unreachable!("verifier: eval statements exist only in the collections domain")
+                }
             }
         }
     }
@@ -1365,6 +1374,23 @@ impl<'c> FuncEmitter<'c> {
                         hir::ExprKind::Constant { value } => {
                             let v = self.fb.ins().iconst(types::I32, *value as i64);
                             slots.insert(id.0, Val::V(v));
+                        }
+                        // PLAN-864: collections expressions never reach the
+                        // native backends (domain gate).
+                        hir::ExprKind::ListNew { .. }
+                        | hir::ExprKind::ListLen { .. }
+                        | hir::ExprKind::ListPush { .. }
+                        | hir::ExprKind::ListInsert { .. }
+                        | hir::ExprKind::ListGet { .. }
+                        | hir::ExprKind::ListSet { .. }
+                        | hir::ExprKind::ListRemove { .. }
+                        | hir::ExprKind::ListClear { .. }
+                        | hir::ExprKind::VariantCtor { .. }
+                        | hir::ExprKind::VariantGuardTest { .. }
+                        | hir::ExprKind::VariantProject { .. } => {
+                            unreachable!(
+                                "PLAN-864: collections expressions have no native lowering (AV-only profile)"
+                            )
                         }
                         // PLAN-862: the unit value has no native lowering —
                         // the entry-unit profile is AV-only, so a verified
@@ -2063,6 +2089,8 @@ fn value_of_type_use_text(u: &hir::TypeUse, m: &hir::Module) -> Option<Vt2> {
             // PLAN-782: records exist on the combination surface; a text
             // module never reaches here (profile defense)
             hir::TypeKind::Record(_) => Some(Vt2::Record(tid.0)),
+            // PLAN-864: collections types have no native lowering.
+            hir::TypeKind::List { .. } | hir::TypeKind::Variant { .. } => None,
         },
     }
 }
@@ -3418,6 +3446,9 @@ impl<'c> TextEmitter<'c> {
                     // single free of the dropped owned local
                     self.emit_exit_frees(bid, Some(stmt_idx));
                 }
+                hir::Stmt::Eval { .. } => {
+                    unreachable!("verifier: eval statements exist only in the collections domain")
+                }
             }
         }
     }
@@ -3687,6 +3718,23 @@ impl<'c> TextEmitter<'c> {
                         hir::ExprKind::Constant { value } => {
                             let v = self.fb.ins().iconst(types::I32, *value as i64);
                             slots.insert(id.0, TVal::I(v));
+                        }
+                        // PLAN-864: collections expressions never reach the
+                        // native backends (domain gate).
+                        hir::ExprKind::ListNew { .. }
+                        | hir::ExprKind::ListLen { .. }
+                        | hir::ExprKind::ListPush { .. }
+                        | hir::ExprKind::ListInsert { .. }
+                        | hir::ExprKind::ListGet { .. }
+                        | hir::ExprKind::ListSet { .. }
+                        | hir::ExprKind::ListRemove { .. }
+                        | hir::ExprKind::ListClear { .. }
+                        | hir::ExprKind::VariantCtor { .. }
+                        | hir::ExprKind::VariantGuardTest { .. }
+                        | hir::ExprKind::VariantProject { .. } => {
+                            unreachable!(
+                                "PLAN-864: collections expressions have no native lowering (AV-only profile)"
+                            )
                         }
                         // PLAN-862: no native unit value (AV-only profile).
                         hir::ExprKind::Unit => {

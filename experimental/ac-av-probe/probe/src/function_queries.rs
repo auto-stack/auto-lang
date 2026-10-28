@@ -289,6 +289,9 @@ fn sig_debug_of(m: &hir::Module, d: &hir::Def) -> String {
         match u {
             hir::TypeUse::Builtin(b) => format!("{b:?}"),
             hir::TypeUse::Ref(tid) => match m.types.get(tid.0 as usize).map(|t| &t.kind) {
+                // PLAN-864: collections composites shape by name/kind.
+                Some(hir::TypeKind::List { .. }) => "list".to_string(),
+                Some(hir::TypeKind::Variant { .. }) => "variant".to_string(),
                 Some(hir::TypeKind::Function(sig)) => {
                     let params: Vec<String> =
                         sig.params.iter().map(|p| shape(p, m, depth - 1)).collect();

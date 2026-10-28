@@ -32,8 +32,8 @@ fn admit_source(src: &str) -> abc_verify::LoadedModule {
         &[TRACE_CAPABILITY.to_string()],
     )
     .expect("source compiles");
-    let mir = auto_mir_lower::lower_checked(&compiled.checked, "d_main", 825)
-        .expect("lower real HIR");
+    let mir =
+        auto_mir_lower::lower_checked(&compiled.checked, "d_main", 825).expect("lower real HIR");
     admit(&mir)
 }
 

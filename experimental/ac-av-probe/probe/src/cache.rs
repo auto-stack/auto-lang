@@ -865,6 +865,11 @@ pub fn canonical_hir_function(module: &hir::Module, body_id: hir::BodyId) -> Vec
                     c.w(" ret ");
                     c.w(&value.0.to_string());
                 }
+                // PLAN-864: unit-effect statement in the canonical dump.
+                hir::Stmt::Eval { value } => {
+                    c.w(" eval ");
+                    c.w(&value.0.to_string());
+                }
                 hir::Stmt::If { cond, then, els } => {
                     c.w(" if ");
                     c.w(&cond.0.to_string());
@@ -1014,6 +1019,23 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
                         CalleeRef::Import(ii) => needed.push(m.imports[*ii as usize].sig),
                     }
                 }
+                // PLAN-864: type-bearing instruction operands are part of
+                // the unit-local type closure (Aggregate's record, ListNew's
+                // list, VariantPack's variant, the Dyn surface's erased
+                // type) — a raw source-table index would dangle after the
+                // remap.
+                if let MirInstr::Aggregate { record_ty, .. } = i {
+                    needed.push(*record_ty);
+                }
+                if let MirInstr::ListNew { list_ty, .. } = i {
+                    needed.push(*list_ty);
+                }
+                if let MirInstr::VariantPack { variant_ty, .. } = i {
+                    needed.push(*variant_ty);
+                }
+                if let MirInstr::DynIs { ty, .. } | MirInstr::DynTake { ty, .. } = i {
+                    needed.push(*ty);
+                }
             }
         }
         // Transitive closure over Fn-sig param/result types: scalars intern
@@ -1153,6 +1175,20 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
                             c_map[*value as usize] = idx;
                         }
                         *value = c_map[*value as usize];
+                    }
+                    // PLAN-864: type-bearing operands remap into the
+                    // unit-local table (the needed-scan admitted them).
+                    MirInstr::Aggregate { record_ty, .. } => {
+                        *record_ty = ty_map[*record_ty as usize];
+                    }
+                    MirInstr::ListNew { list_ty, .. } => {
+                        *list_ty = ty_map[*list_ty as usize];
+                    }
+                    MirInstr::VariantPack { variant_ty, .. } => {
+                        *variant_ty = ty_map[*variant_ty as usize];
+                    }
+                    MirInstr::DynIs { ty, .. } | MirInstr::DynTake { ty, .. } => {
+                        *ty = ty_map[*ty as usize];
                     }
                     MirInstr::CreateClosure { callee, .. } => {
                         // r8: a unit's CREATE_CLOSURE binds its closure

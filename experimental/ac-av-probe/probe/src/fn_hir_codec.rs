@@ -451,6 +451,11 @@ pub fn encode_fn_hir(a: &FnHirArtifact) -> Result<Vec<u8>, String> {
                     e.out.push(1);
                     e.u32(value.0);
                 }
+                // PLAN-864: tag 11 = eval (unit-effect statement).
+                hir::Stmt::Eval { value } => {
+                    e.out.push(11);
+                    e.u32(value.0);
+                }
                 hir::Stmt::If { cond, then, els } => {
                     e.out.push(2);
                     e.u32(cond.0);

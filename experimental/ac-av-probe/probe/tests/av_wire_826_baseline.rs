@@ -20,8 +20,8 @@ fn lower(src: &str, tag: u64) -> auto_av_core::mir::MirModule {
         &[TRACE_CAPABILITY.to_string()],
     )
     .expect("852 source compiles");
-    let mir = auto_mir_lower::lower_checked(&compiled.checked, "d_main", tag)
-        .expect("lower 852 HIR");
+    let mir =
+        auto_mir_lower::lower_checked(&compiled.checked, "d_main", tag).expect("lower 852 HIR");
     auto_av_core::verify_mir(&mir).expect("MIR verifies");
     mir
 }

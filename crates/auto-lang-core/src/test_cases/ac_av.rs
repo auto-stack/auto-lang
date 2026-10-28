@@ -59,6 +59,10 @@ pub const EXPECTED_AV_OWNED_CORE_VERSION: &str = "av.owned/1";
 /// the collections face is judged parent-side against THIS crate's frozen
 /// expectations, never the worker's word.
 pub const AV_COLLECTIONS_RECIPE: &str = "ac-av/collections-run-v1";
+/// PLAN-864: the collections SOURCE recipe — real .at sources through the
+/// collections frontend onto the frozen 822 execution (profile 4 consumed
+/// unchanged; the 822 fixture case files stay byte-identical).
+pub const AV_COLLECTIONS_SOURCE_RECIPE: &str = "ac-av/collections-source-run-v1";
 /// PLAN-823 (R1-F02): the closures-profile av recipe (append-only
 /// registration; earlier recipe contracts untouched).
 pub const AV_CLOSURES_RECIPE: &str = "ac-av/closures-run-v1";
@@ -94,6 +98,9 @@ pub enum RecipeFamily {
     Data,
     Owned,
     Collections,
+    /// PLAN-864: real `.at` sources through the collections frontend onto
+    /// the frozen 822 execution (entry = the source function name).
+    CollectionsSource,
     Loaded,
     Closures,
     Dynamic,
@@ -107,6 +114,7 @@ impl RecipeFamily {
             RecipeFamily::Data => AV_DATA_RECIPE,
             RecipeFamily::Owned => AV_OWNED_RECIPE,
             RecipeFamily::Collections => AV_COLLECTIONS_RECIPE,
+            RecipeFamily::CollectionsSource => AV_COLLECTIONS_SOURCE_RECIPE,
             RecipeFamily::Loaded => AV_LOADED_RECIPE,
             RecipeFamily::Closures => AV_CLOSURES_RECIPE,
             RecipeFamily::Dynamic => AV_DYNAMIC_RECIPE,
@@ -119,6 +127,7 @@ impl RecipeFamily {
             RecipeFamily::Data => EXPECTED_AV_DATA_CORE_VERSION,
             RecipeFamily::Owned => EXPECTED_AV_OWNED_CORE_VERSION,
             RecipeFamily::Collections => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
+            RecipeFamily::CollectionsSource => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
             RecipeFamily::Closures => EXPECTED_AV_CLOSURES_CORE_VERSION,
             RecipeFamily::Dynamic => EXPECTED_AV_DYNAMIC_CORE_VERSION,
             // PLAN-826: the compact wire is a WIRE generation of the same
@@ -1044,6 +1053,29 @@ const DYNAMIC_CASES: &[(&str, &str, &[usize], &[u64])] = &[
     ("take-probe", r#"{"bits":"7","kind":"i32"}"#, &[3], &[0]),
 ];
 
+/// PLAN-864: the collections SOURCE recipe check — same request/judge
+/// shape as the other av families; the entry is the source function name
+/// and the worker compiles the real source through the collections
+/// frontend (no fixture table).
+pub fn run_collections_source_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::CollectionsSource,
+    )
+}
+
 pub fn run_collections_check(
     case: &ResolvedCase,
     check: &CheckSpec,
@@ -1249,6 +1281,17 @@ fn run_check_impl(
     } else {
         None
     };
+    if family == RecipeFamily::CollectionsSource {
+        if av.entry.starts_with("collections:") {
+            return Err(
+                "collections-source takes a source function name, not a collections:<id> fixture"
+                    .into(),
+            );
+        }
+        if av.entry.is_empty() {
+            return Err("collections-source requires a non-empty av.entry".into());
+        }
+    }
     let collections_fixture = if family == RecipeFamily::Collections {
         match av.entry.strip_prefix("collections:") {
             None => None,

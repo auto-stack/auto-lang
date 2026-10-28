@@ -305,7 +305,14 @@ pub fn encode_bundle(bundle: &Bundle) -> Result<Vec<u8>, CodecError> {
                     w.u8(2);
                     encode_sig(&mut w, sig)?;
                 }
-                TypeKind::Str | TypeKind::StrOwned | TypeKind::Char | TypeKind::Record(_) => {
+                TypeKind::Str
+                | TypeKind::StrOwned
+                | TypeKind::Char
+                | TypeKind::Record(_)
+                // PLAN-864: List/Variant types live only in the collections
+                // domain, which this core/scalar artifact codec never sees.
+                | TypeKind::List { .. }
+                | TypeKind::Variant { .. } => {
                     return Err(CodecError::UnsupportedFeature(
                         "type kind outside core/scalar subset",
                     ))
@@ -535,6 +542,13 @@ fn encode_stmt(w: &mut Writer, s: &Stmt) -> Result<(), CodecError> {
         Stmt::Drop { .. } => {
             return Err(CodecError::UnsupportedFeature(
                 "drop statement (text resource plan)",
+            ))
+        }
+        // PLAN-864: unit-effect statements live only in the collections
+        // domain, which this core/scalar artifact codec never sees.
+        Stmt::Eval { .. } => {
+            return Err(CodecError::UnsupportedFeature(
+                "eval statement (collections surface)",
             ))
         }
     }
@@ -1182,6 +1196,10 @@ fn validate_bundle(b: &Bundle) -> Result<(), CodecError> {
                     };
                     match s {
                         Stmt::Let { value, .. } | Stmt::Return { value } => check_e(value)?,
+                        // PLAN-864: unit-effect statements value-check like
+                        // returns (the artifact codec never sees them under
+                        // its core/scalar identity, but bounds stay total).
+                        Stmt::Eval { value } => check_e(value)?,
                         Stmt::Assign { place, value } => {
                             check_e(value)?;
                             if place.0 as u64 >= n_places {
@@ -1413,6 +1431,15 @@ pub fn canonical_type_word(t: &auto_ac_prototype::source::ast::TypeAnn) -> Strin
         // source profile only; the other profiles never parse it).
         TypeRef::Builtin(TypeWord::Void) => "unit".into(),
         TypeRef::Record(id) => format!("rec:{}", id.name),
+        // PLAN-864: collections type grammar (the canonical words keep the
+        // written form; this codec's core/scalar summary never emits them).
+        TypeRef::Optional(inner) => {
+            format!("?{}", canonical_type_word(inner))
+        }
+        TypeRef::Generic { name, args } => {
+            let a: Vec<String> = args.iter().map(canonical_type_word).collect();
+            format!("{}<{}>", name.name, a.join(", "))
+        }
     }
 }
 
@@ -1425,6 +1452,8 @@ pub fn build_decl_summary(
     let mut fns = Vec::new();
     for item in &program.items {
         match item {
+            // PLAN-864: enum declarations carry no functions.
+            Item::Enum(_) => {}
             Item::Fn(f) => {
                 fns.push(FnSummary {
                     name: f.name.name.clone(),

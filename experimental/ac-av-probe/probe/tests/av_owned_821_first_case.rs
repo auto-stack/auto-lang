@@ -189,9 +189,8 @@ fn av_owned_821_first_case_same_store_restore() {
             let compiled =
                 auto_ac_prototype::source::compile_text_record_source(FIRST_CASE, "p.at", &[])
                     .expect("compile");
-            let mir =
-                auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x821)
-                    .expect("lower");
+            let mir = auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x821)
+                .expect("lower");
             auto_av_probe::owned_driver::types_fp_of(&mir)
         },
     )

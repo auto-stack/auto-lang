@@ -825,6 +825,21 @@ fn dispatch_check(
                 run_dir,
             )
         }
+        // PLAN-864: the collections SOURCE recipe (real .at sources; entry
+        // = the source function name; append-only dispatch).
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref()
+                == Some(ac_av::AV_COLLECTIONS_SOURCE_RECIPE) =>
+        {
+            ac_av::run_collections_source_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
         // PLAN-824: the dynamic-profile av recipe (append-only
         // registration; prior recipe contracts untouched; avworker/1
         // envelope domain — the recipe id itself discriminates).

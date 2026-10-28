@@ -132,6 +132,26 @@ pub fn compile_text_source(
     })
 }
 
+/// Compile under the collections source profile (PLAN-864): the
+/// source-domain twin of `av.collections/1` — parse/resolve/typecheck on
+/// the collections surface, bind against the collections descriptor,
+/// verify through the collections entry (no text resource plan; profile 4
+/// owns cleanup at runtime).
+pub fn compile_collections_source(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+) -> Result<CompiledSource, Vec<Diagnostic>> {
+    let parts = compile_parts_with(src, module_path, capabilities, SourceProfile::Collections)?;
+    let checked = crate::verify::verify_collections(parts.bundle)?;
+    Ok(CompiledSource {
+        profile: super::COLLECTIONS_SOURCE_PROFILE,
+        input_hash: parts.input_hash,
+        atom_text: parts.atom_text,
+        checked,
+    })
+}
+
 /// Compile under the record source profile (PLAN-771): the scalar surface
 /// plus records — parse/resolve/typecheck, bind against the record
 /// descriptor, verify through the record entry.
@@ -318,6 +338,7 @@ pub fn emit_function_body(
         crate::hir::HirDomain::Record => crate::record_descriptor(),
         crate::hir::HirDomain::TextRecord => crate::text_record_descriptor(),
         crate::hir::HirDomain::EntryUnit => crate::entry_unit_descriptor(),
+        crate::hir::HirDomain::Collections => crate::collections_descriptor(),
     };
     let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
         Ok(b) => b,
@@ -593,6 +614,7 @@ fn compile_program_observed(
         crate::hir::HirDomain::Record => crate::record_descriptor(),
         crate::hir::HirDomain::TextRecord => crate::text_record_descriptor(),
         crate::hir::HirDomain::EntryUnit => crate::entry_unit_descriptor(),
+        crate::hir::HirDomain::Collections => crate::collections_descriptor(),
     };
     let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
         Ok(b) => b,
@@ -672,7 +694,12 @@ fn fnv1a_hex(bytes: &[u8]) -> String {
 /// `t_rec_<name>`, nominal by declaration; PLAN-862: Unit has no Atom type
 /// id because it is a RESULT-only type — reaching here with `VT::Unit`
 /// would mean a value of unit type, which the entry-unit profile rejects).
-fn ty_name(vt: VT, records: &[crate::source::resolve::ResolvedRecord]) -> String {
+fn ty_name(
+    vt: VT,
+    records: &[crate::source::resolve::ResolvedRecord],
+    lists: &[VT],
+    variants: &[crate::source::resolve::ResolvedVariant],
+) -> String {
     match vt {
         VT::I32 => "t_i32".to_string(),
         VT::Bool => "t_bool".to_string(),
@@ -680,6 +707,13 @@ fn ty_name(vt: VT, records: &[crate::source::resolve::ResolvedRecord]) -> String
         VT::StrOwned => "t_Str".to_string(),
         VT::Char => "t_char".to_string(),
         VT::Rec(i) => format!("t_rec_{}", records[i].name),
+        // PLAN-864: list identity is its element type; variants are
+        // nominal by name (the type-table entries render in plan_module).
+        VT::List(i) => format!(
+            "t_list_{}",
+            ty_name(lists[i], records, lists, variants).trim_start_matches("t_")
+        ),
+        VT::Variant(i) => format!("t_variant_{}", variants[i].name),
         // not reachable through a compiling entry-unit program (Unit is a
         // result type); the Atom id keeps the name meaningful for any
         // hand-built diagnostic path (T-03b wires the result-side emit).
@@ -762,6 +796,53 @@ enum EKind {
         rec: usize,
         base: usize,
     },
+    // -- PLAN-864 collections surface --
+    ListNew {
+        list: usize,
+    },
+    ListLen {
+        list: usize,
+    },
+    ListPush {
+        list: usize,
+        value: usize,
+    },
+    ListInsert {
+        list: usize,
+        index: usize,
+        value: usize,
+    },
+    ListGet {
+        list: usize,
+        index: usize,
+    },
+    ListSet {
+        list: usize,
+        index: usize,
+        value: usize,
+    },
+    ListRemove {
+        list: usize,
+        index: usize,
+    },
+    ListClear {
+        list: usize,
+    },
+    VariantCtor {
+        variant: usize,
+        disc: u32,
+        payload: Option<usize>,
+    },
+    VariantGuardTest {
+        root: usize,
+        variant: usize,
+        disc: u32,
+    },
+    VariantProject {
+        root: usize,
+        variant: usize,
+        disc: u32,
+    },
     /// First-class `.move` wrapper (PLAN-782 combination profile): the
     /// whole-root ownership transfer in let/assign/return/argument value
     /// positions.
@@ -803,6 +884,11 @@ enum SKind {
     },
     Continue {
         target: usize,
+    },
+    /// PLAN-864: a unit-effect statement (push/insert/set/clear) — the
+    /// value is evaluated for effect only; no result slot exists.
+    Eval {
+        value: usize,
     },
 }
 
@@ -1294,10 +1380,21 @@ impl PlanCtx<'_> {
                         },
                     });
                 }
-                // PLAN-862 T-03a: an expression statement exists only as
-                // the entry-unit SCRIPT tail, and that profile's emitter is
-                // gated off before planning — this arm is an exhaustiveness
-                // anchor, not a semantics (T-03b lowers the tail here).
+                // PLAN-862 T-03a: on the entry-unit surface an expression
+                // statement exists only as the SCRIPT tail (gated off before
+                // planning). PLAN-864: on the collections surface it is the
+                // unit-effect statement — the value is planned and emitted
+                // as an `eval` statement (unit result, no slot).
+                RStmt::ExprStmt { value, span }
+                    if value.vt == VT::Unit
+                        || matches!(value.kind, RExprKind::ListRemove { .. }) =>
+                {
+                    let v = self.plan_expr(plan, f, value);
+                    plan.blocks[home].stmts.push(SNode {
+                        kind: SKind::Eval { value: v },
+                        span: *span,
+                    });
+                }
                 RStmt::ExprStmt { .. } => {}
                 RStmt::Break { target, span } => {
                     let t = self.phantom_target(plan, home, *target, *span);
@@ -1962,6 +2059,166 @@ impl PlanCtx<'_> {
                 });
                 plan.exprs.len() - 1
             }
+            // -- PLAN-864 collections surface: leaf planning with child
+            // recursion through the driver, mirroring the RecordClone arm.
+            RExprKind::ListNew { list } => {
+                plan.exprs.push(ENode {
+                    kind: EKind::ListNew { list: *list },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::ListLen { list } | RExprKind::ListClear { list } => {
+                let l = self.plan_expr(plan, f, list);
+                let kind = match &e.kind {
+                    RExprKind::ListLen { .. } => EKind::ListLen { list: l },
+                    _ => EKind::ListClear { list: l },
+                };
+                plan.exprs.push(ENode {
+                    kind,
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::ListPush { list, value } => {
+                let l = self.plan_expr(plan, f, list);
+                let v = self.plan_expr(plan, f, value);
+                plan.exprs.push(ENode {
+                    kind: EKind::ListPush { list: l, value: v },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::ListGet { list, index } | RExprKind::ListRemove { list, index } => {
+                let l = self.plan_expr(plan, f, list);
+                let i = self.plan_expr(plan, f, index);
+                let kind = match &e.kind {
+                    RExprKind::ListGet { .. } => EKind::ListGet { list: l, index: i },
+                    _ => EKind::ListRemove { list: l, index: i },
+                };
+                plan.exprs.push(ENode {
+                    kind,
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::ListInsert { list, index, value }
+            | RExprKind::ListSet { list, index, value } => {
+                let l = self.plan_expr(plan, f, list);
+                let i = self.plan_expr(plan, f, index);
+                let v = self.plan_expr(plan, f, value);
+                let kind = match &e.kind {
+                    RExprKind::ListInsert { .. } => EKind::ListInsert {
+                        list: l,
+                        index: i,
+                        value: v,
+                    },
+                    _ => EKind::ListSet {
+                        list: l,
+                        index: i,
+                        value: v,
+                    },
+                };
+                plan.exprs.push(ENode {
+                    kind,
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::ListFieldGet { list, index, path }
+            | RExprKind::ElemView { list, index, path } => {
+                // PLAN-864: the HIR shape is `field_get` over a `list_get`
+                // (the lowering fuses the pair into LIST_FIELD_GET or the
+                // remove/view/read/reinsert sequence); a whole-element
+                // view renders as the bare list_get whose terminal type
+                // is Str. HIR verify owns the view-escape rules.
+                let l = self.plan_expr(plan, f, list);
+                let i = self.plan_expr(plan, f, index);
+                let elem_vt = match list.vt {
+                    VT::List(li) => self.program.lists.get(li).copied().unwrap_or(e.vt),
+                    _ => e.vt,
+                };
+                plan.exprs.push(ENode {
+                    kind: EKind::ListGet { list: l, index: i },
+                    vt: elem_vt,
+                    span: e.span,
+                });
+                let get_id = plan.exprs.len() - 1;
+                if path.is_empty() {
+                    return get_id;
+                }
+                let segs: Vec<u32> = path.iter().map(|(_, fi)| *fi as u32).collect();
+                plan.exprs.push(ENode {
+                    kind: EKind::FieldGet {
+                        base: get_id,
+                        path: segs,
+                    },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::VariantCtor {
+                variant,
+                disc,
+                payload,
+            } => {
+                let pl = payload.as_ref().map(|p| self.plan_expr(plan, f, p));
+                plan.exprs.push(ENode {
+                    kind: EKind::VariantCtor {
+                        variant: *variant,
+                        disc: *disc,
+                        payload: pl,
+                    },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::VariantGuardTest {
+                local,
+                variant,
+                disc,
+            }
+            | RExprKind::VariantProject {
+                local,
+                variant,
+                disc,
+            } => {
+                let r = plan.exprs.len();
+                plan.exprs.push(ENode {
+                    kind: EKind::Read(local.0),
+                    vt: f.locals[local.0].vt,
+                    span: e.span,
+                });
+                let kind = match &e.kind {
+                    RExprKind::VariantGuardTest { .. } => EKind::VariantGuardTest {
+                        root: r,
+                        variant: *variant,
+                        disc: *disc,
+                    },
+                    _ => EKind::VariantProject {
+                        root: r,
+                        variant: *variant,
+                        disc: *disc,
+                    },
+                };
+                plan.exprs.push(ENode {
+                    kind,
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::CtorUnknown { name, .. } => {
+                let _ = name;
+                unreachable!("resolver: CtorUnknown never escapes resolution")
+            }
             RExprKind::MethodCall {
                 fn_index,
                 recv,
@@ -2254,7 +2511,12 @@ impl<'p> Emitter<'p> {
     }
 
     fn ty_name(&self, vt: VT) -> String {
-        ty_name(vt, &self.program.records)
+        ty_name(
+            vt,
+            &self.program.records,
+            &self.program.lists,
+            &self.program.variants,
+        )
     }
 
     /// PLAN-862: a TypeUse reference as emitted text. Named types are the
@@ -2332,6 +2594,11 @@ impl<'p> Emitter<'p> {
             }
             // PLAN-862: the entry-unit emitter is gated off before render.
             crate::hir::HirDomain::EntryUnit => ("auto.hir.entry-unit.draft", "entry-unit-draft"),
+            // PLAN-864: the collections emitter renders the collections
+            // identity triple (List/Variant types + collection expressions).
+            crate::hir::HirDomain::Collections => {
+                ("auto.hir.collections.draft", "collections-draft")
+            }
         };
         frag!(
             &format!(
@@ -2394,6 +2661,13 @@ impl<'p> Emitter<'p> {
             spans.types.push(program_span);
             nl!(12);
         }
+        // PLAN-864: the collections surface owns `Str` values (literals,
+        // fields, elements) — the named entry the ty_name ref resolves to.
+        if self.profile.is_collections() {
+            frag!("type t_Str Str {}", program_span);
+            spans.types.push(program_span);
+            nl!(12);
+        }
 
         // PLAN-771: record types (declaration order; fields carry their
         // value types — builtin or record refs).
@@ -2407,7 +2681,12 @@ impl<'p> Emitter<'p> {
                         format!(
                             "{{ name: \"{}\", type: {} }}",
                             Self::esc(&fl.name),
-                            ty_name(fl.vt, &self.program.records)
+                            ty_name(
+                                fl.vt,
+                                &self.program.records,
+                                &self.program.lists,
+                                &self.program.variants,
+                            )
                         )
                     })
                     .collect();
@@ -2420,6 +2699,56 @@ impl<'p> Emitter<'p> {
                     rec.name_span
                 );
                 spans.types.push(rec.name_span);
+                nl!(12);
+            }
+        }
+        // PLAN-864: List/Variant type-table entries (collections surface).
+        if self.profile.is_collections() {
+            for (_li, elem) in self.program.lists.iter().enumerate() {
+                let ename = ty_name(
+                    *elem,
+                    &self.program.records,
+                    &self.program.lists,
+                    &self.program.variants,
+                );
+                frag!(
+                    &format!(
+                        "type t_list_{} list {{ elem: {} }}",
+                        ename.trim_start_matches("t_"),
+                        ename
+                    ),
+                    program_span
+                );
+                spans.types.push(program_span);
+                nl!(12);
+            }
+            for v in &self.program.variants {
+                let arms: Vec<String> = v
+                    .arms
+                    .iter()
+                    .map(|(n, p)| match p {
+                        Some(pvt) => format!(
+                            "{{ name: \"{}\", payload: {} }}",
+                            Self::esc(n),
+                            ty_name(
+                                *pvt,
+                                &self.program.records,
+                                &self.program.lists,
+                                &self.program.variants,
+                            )
+                        ),
+                        None => format!("{{ name: \"{}\" }}", Self::esc(n)),
+                    })
+                    .collect();
+                frag!(
+                    &format!(
+                        "type t_variant_{} variant {{ arms: [{}] }}",
+                        v.name,
+                        arms.join(", ")
+                    ),
+                    v.name_span
+                );
+                spans.types.push(v.name_span);
                 nl!(12);
             }
         }
@@ -2904,6 +3233,81 @@ impl<'p> Emitter<'p> {
                         EKind::Move { inner } => {
                             format!("expr e{} move {{ type: {}; operand: e{} }}", ei, ty, inner)
                         }
+                        // -- PLAN-864 collections surface --
+                        EKind::ListNew { list } => {
+                            let lname = self.ty_name(VT::List(*list));
+                            format!(
+                                "expr e{} list_new {{ type: {}; record: {} }}",
+                                ei, ty, lname
+                            )
+                        }
+                        EKind::ListLen { list } => {
+                            format!("expr e{} list_len {{ type: {}; list: e{} }}", ei, ty, list)
+                        }
+                        EKind::ListClear { list } => {
+                            format!(
+                                "expr e{} list_clear {{ type: {}; list: e{} }}",
+                                ei, ty, list
+                            )
+                        }
+                        EKind::ListPush { list, value } => {
+                            format!(
+                                "expr e{} list_push {{ type: {}; list: e{}; value: e{} }}",
+                                ei, ty, list, value
+                            )
+                        }
+                        EKind::ListInsert { list, index, value }
+                        | EKind::ListSet { list, index, value } => {
+                            let word = match &e.kind {
+                                EKind::ListInsert { .. } => "list_insert",
+                                _ => "list_set",
+                            };
+                            format!(
+                                "expr e{} {} {{ type: {}; list: e{}; index: e{}; value: e{} }}",
+                                ei, word, ty, list, index, value
+                            )
+                        }
+                        EKind::ListGet { list, index } => {
+                            format!(
+                                "expr e{} list_get {{ type: {}; list: e{}; index: e{} }}",
+                                ei, ty, list, index
+                            )
+                        }
+                        EKind::ListRemove { list, index } => {
+                            format!(
+                                "expr e{} list_remove {{ type: {}; list: e{}; index: e{} }}",
+                                ei, ty, list, index
+                            )
+                        }
+                        EKind::VariantCtor {
+                            variant,
+                            disc,
+                            payload,
+                        } => {
+                            let vname = self.ty_name(VT::Variant(*variant));
+                            match payload {
+                                Some(pl) => format!(
+                                    "expr e{} variant_ctor {{ type: {}; record: {}; disc: {}u32; payload: e{} }}",
+                                    ei, ty, vname, disc, pl
+                                ),
+                                None => format!(
+                                    "expr e{} variant_ctor {{ type: {}; record: {}; disc: {}u32 }}",
+                                    ei, ty, vname, disc
+                                ),
+                            }
+                        }
+                        EKind::VariantGuardTest { root, disc, .. } => {
+                            format!(
+                                "expr e{} variant_guard_test {{ type: {}; operand: e{}; disc: {}u32 }}",
+                                ei, ty, root, disc
+                            )
+                        }
+                        EKind::VariantProject { root, disc, .. } => {
+                            format!(
+                                "expr e{} variant_project {{ type: {}; operand: e{}; disc: {}u32 }}",
+                                ei, ty, root, disc
+                            )
+                        }
                     };
                     frag!(&line, e.span);
                     bs.exprs.push(e.span);
@@ -2942,6 +3346,9 @@ impl<'p> Emitter<'p> {
                         SKind::Break { target } => format!("break(target: q{}) {{}}", target),
                         SKind::Continue { target } => {
                             format!("continue(target: q{}) {{}}", target)
+                        }
+                        SKind::Eval { value } => {
+                            format!("eval(value: e{}) {{}}", value)
                         }
                     };
                     frag!(&line, s.span);
