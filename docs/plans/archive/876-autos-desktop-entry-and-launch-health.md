@@ -406,7 +406,11 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
   reports `P876-MERGE`）；`python scripts/spec-index.py` → 62 projects
   （`docs/specs/INDEX.md` 随提交）。
 - `archived`：本件 `git mv` → `docs/plans/archive/`，`status: archived`。
-- `cleaned`：见下条清理回执。
+- `cleaned`（2026-10-28）：`bash wt-guard.sh` 四树（auto-lang/auto-ui/auto-os/auto-down）
+  全部输出 `clean`；worktree 注销 ×4、分支 `plan-876-dev` 删除 ×4、组目录
+  `.wt/lang-876` 移除；清理后 `git worktree list` 无 876 残留。清理期发现并处置本会话
+  遗留的 `cmd.exe rqhost` 替身进程（PID 58880，AC-04 正向腿所用）。另：auto-os
+  `KNOWN-DEBT` 的一句措辞（去字面量）在 merge 后补提交 `e26e18a`，该仓 main 当前面 grep = 0。
 ## 10. 待澄清事项
 
 | ID | 问题 | 推荐 | 影响 |
