@@ -34,7 +34,7 @@ function Invoke-Native([string]$what, [scriptblock]$block) {
 function Run-CargoTest([string]$filter, [int]$min) {
     Write-Host "== cargo test $filter (min $min) =="
     Invoke-Native "frontend probes" { cargo test --manifest-path experimental/ac-core/Cargo.toml --test collections_864 --test collections_864_rejects 2>&1 }
-    Invoke-Native "full-chain probes" { cargo test --manifest-path experimental/ac-av-probe/probe/Cargo.toml --test av_collections_864 --test av_collections_864_corpus 2>&1 }
+    Invoke-Native "full-chain probes" { cargo test --manifest-path experimental/ac-av-probe/probe/Cargo.toml --test av_collections_864 --test av_collections_864_corpus --test av_collections_864_session 2>&1 }
     $ErrorActionPreference = "Continue"
     $out = cargo test -p auto-lang --lib --features test-cases -- $filter 2>&1
     $ErrorActionPreference = "Stop"

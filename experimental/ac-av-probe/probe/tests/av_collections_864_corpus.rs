@@ -1,9 +1,7 @@
 //! PLAN-864: the full 852 L/V corpus (L01–L07, V01–V07) through the real
 //! source pipeline, with the frozen oracles — every positive's hand-computed
-//! value, L06's trap, and the List<Str> variant (V-06: removed.len()*10 +
-//! xs.get(0).len() = 5*10 + 2 = 52? — Unicode scalars: "hello"=5, "中"=1 →
-//! wait, the V-06 oracle freezes 51: removed="hello"(5)*10 + get(0)="中"(1)
-//! = 51 — the push order and remove index decide; see the case source).
+//! value, L06's trap, and the List<Str> variant: removed="hello" (5
+//! scalars) *10 + xs.get(0)="中" (1 scalar) = 51.
 
 use auto_av_probe::collections_864_support::compile_and_execute;
 

@@ -50,6 +50,15 @@ fn reject_unknown_arm() {
 }
 
 #[test]
+fn reject_pattern_scrutinee_not_variant_local() {
+    rejects(
+        "is scrutinee is not a variant-typed local",
+        "fn main() int {\n    let x = 5\n    is x {\n        Some(v) -> { return v }\n        None -> { return 1 }\n    }\n}\n",
+        "source.pattern-scrutinee",
+    );
+}
+
+#[test]
 fn reject_view_escape_bare_get() {
     rejects(
         "bare get of owned element",
