@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-880
-status: drafting
+status: execution_done
 feature_name: AutoGraphics Gallery公共3D角色与两维运行相机（GY-B）
 author: [Codex]
 created_at: 2026-10-29
@@ -13,7 +13,7 @@ new_spec_components:
 touched_goals: [GOAL-008]
 affects: [auto-graphics, ag-examples]
 depends_on: [PLAN-874, PLAN-875, PLAN-877]
-current_step: 2
+current_step: 5
 total_steps: 10
 ---
 
@@ -144,9 +144,9 @@ OS自动化继续暂停。既有874/875真OS证据仅用于未改引擎/router�
 |---|---|---|---|---|---|
 | T-01 | work | 用户启动；874/875/877已交付 | 核既有repo/owner/唯一树、旧十入口/根锁指纹、新875输入/SDK准备边界 | AC-01/02 | [x] |
 | T-02 | work | T-01 | gallery-contract先冻结四入口/锁/CLI/补齐包/新runner/无窗口整路径可行性/OS证据边界；不足回new | AC-01..05 | [x] |
-| T-03 | work | T-02通过 | 按项锁/三API、validate/launch/package/catalog/acceptance兼容与结构反例V-01/04 | AC-02/05 | [ ] |
-| T-04 | work | T-03 | G07/G08工程/说明、仅验收public适配与真实Auto/无窗口图像、V-02/03 | AC-03/04 | [ ] |
-| T-05 | work | T-04 | 两包离线A→B/坏包修复、旧项无窗口抽样、Ready依据/SD/提交/摘要 | AC-01..05 | [ ] |
+| T-03 | work | T-02通过 | 按项锁/三API、validate/launch/package/catalog/acceptance兼容与结构反例V-01/04 | AC-02/05 | [x] |
+| T-04 | work | T-03 | G07/G08工程/说明、仅验收public适配与真实Auto/无窗口图像、V-02/03 | AC-03/04 | [x] |
+| T-05 | work | T-04 | 两包离线A→B/坏包修复、旧项无窗口抽样、Ready依据/SD/提交/摘要 | AC-01..05 | [x] |
 | T-06 | review | T-05 | 独立同树核四新入口/共同工具兼容/来源/SD，不接管实现 | AC-06 | [ ] |
 | T-07 | merge | T-06 pass | 冻结受影响抽样/未变证据复用审计，失败回work受影响复审 | AC-07 | [ ] |
 | T-08 | merge | T-07 | 内容本地合ag-examples master，engine-lock两代并列、无远端发布 | AC-08 | [ ] |
@@ -161,6 +161,8 @@ OS自动化继续暂停。既有874/875真OS证据仅用于未改引擎/router�
 
 2026-10-29 work T-01/T-02：`stage: work | plan_id: PLAN-880 | plan_revision: 1 | outcome: pass(T-01/T-02) | worktree_path: D:/autostack/.wt/lang-880/ag-examples | branch: codex/plan-880-dev | base_commit: 6a223d9b3637ee1ce9a00335c8ee4f46d3832b26（ag-examples master，clean） | dependency_revisions: AG=git 1cc68aba012f76951af2556763a5fb21be6a6c8b（autographics-dev 历史可达）→ 导出 consumer-package 1384文件（内容703+SDK681）+ plan880-consumer-identity.json 逐文件来源清单 ALL CHECKS PASS；SDK .sdk-source=plan-875保留包副本 prepare_sdk --verify-only PASS（681文件/17包/UI-Man旧包不存在）；两Cargo.lock blob=47176cc0/bc7287b5 与根锁一致 | task_ids: T-01,T-02 | evidence: (T-01)根锁指纹与计划§4逐字节一致；**身份偏差裁定**：875保留包12文件（api/runtime_camera2d_v1.at、authoring host/cli/probes族、tests/runtime_camera_api.rs、tools/{check_runtime_camera,package_consumer,verify_source}.py）为无Git来源第三态（≠身份≠git@1cc68aba0≠auto-ui@4adf2d0，保留包=R1前工作树快照）→ 按"无来源件不可借用"880全量消费git@1cc68aba0态，12件不消费、27个motion-evidence取git新态，代价由T-02探针+T-04全验收新鲜闭合。(T-02)[合同冻结](attachments/880/work/gallery-contract.md)：四入口源hash（10文件sha256）、每项锁schema（engine-locks/plan875.json + example.json engine.lock按项指向；根861锁逐字节不动）、真实CLI、runner=df0a8077eebf03bc29729cd786af0829fea20679a2a0d8b6a94fe1ac28af0130（debug 86,127,616字节，--locked --offline实测exit 0）、离线栈（registry缓存=明确前置）、负控矩阵、证据复用清单。**无窗口整路径先验VIABLE**：wholepath-probe 13/13 PASS exit 0——公共loader→真实Auto→Host发布→rt.capture无窗口GPU PNG全通；G07两布局真跑（a贴地z=-4.0、b坠坑y=-5.5、speed4→5位移比1.25）、G08/2d夹界(6,1)/follow∈[6,24]/双letterbox bar 115×380/PNG 800×380、G08/3d orbit dist8/pitch45°/perspective/相机相对位移；栈护栏=64MiB线程（875既有）、camera pitch单位=度。探针源码/输出本地：plan-artifacts/plan-880/wholepath-probe*/ | blockers: 无work内阻塞 | next_responsible_role: T-03（按项锁/三API工具升级+V-01/04结构反例）。
 
+2026-10-29 work T-03/T-04/T-05（execution_done 交接）：`stage: work | plan_id: PLAN-880 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-880/ag-examples | branch: codex/plan-880-dev | base_commit: 6a223d9b3637ee1ce9a00335c8ee4f46d3832b26 | code_commit: ba4cb7d（T-03 工具）+ 21ae99b（T-04 工程/适配）+ c36c412（T-05 身份修正） | dependency_revisions: AG=1cc68aba0（consumer-package 1385 文件含 .cargo/config.toml blob 992c9e1e）、runner=6c461c35125d75f957a79421ce53fb37ac2c6eef47e7d107f6fa791c350d6b59、identity manifest=6f100c8831fec918127b12a801a27042c445ca57e20c096fbc95132d4c0f44a6 | task_ids: T-03,T-04,T-05 | evidence: (T-03)gallery.py 按项锁路由/VALID_APIS+character3d-camera2d-camera3d/严格 acceptance 源绑定；结构测试 47 OK（新增 15 项：双锁路由、跨锁拒绝、strict 源漂移/空 oracle/陈记录、锁路径逃逸/绝对/未知 schema/坏身份、launch 跨锁引擎拒绝、独立包无根锁 validate、catalog 双引擎）；真仓 validate 回归 6/10/1 零破坏。(T-04)G07/G08 四子入口字节消费+README+catalog 8ID/14 入口/C07-C08；checks/gyb 无窗口适配（独立 workspace 由 verify_gyb.py 物化、显式 engine-root、64MiB 线程护栏）；**新鲜验收 32/32 oracle 绿**（G07：导入/真跑/贴地/冻结输入不动/speed4→5 敏感/对角 0.7071 归一/x 墙 5.498 接触包络/跳边沿一次；G08/2d：tick0 夹界(6,1)/follow∈[6,24]/同 tick 共发布/letterbox 115×380+alt 146.67/暂停不动/PNG 800×380；G08/3d：orbit 8-45-persp 源内读/独立 glam VP 恒等/同 tick 共发/yaw90 世界转 +x/像素随 orbit 变/暂停缩放丢弃/zoom 封顶/Stop 文档复原/重启原位/alt ortho 配置+VP/世界轴负控可区分）；PNG 落 out/gyb/artifacts（本地）。(T-05)**身份修正**：首构建 df0a8077 缺根 .cargo/config.toml（32MiB PE 栈）主线程 --inspect 溢出 → 补 blob 992c9e1e 重建 6c461c35、清单 1385 文件 ALL CHECKS PASS、验收重钉；8/8 单项包离线 A→B 重定位+tamper/repair 全绿（g07/g08 加零引擎源漂移负控）；引擎包重定位 A/B inspect 双绿；旧六项无窗口抽样=8 包门全 scene --inspect（861 runner 498ce814 原样）+内容字节未变复用 877 验收记录。**分母**：validate --all PASS 8 逻辑项/14 子入口/2 锁；未跑根 cargo t/tf/tv/tu/docs_gen（引擎源码零改动）；OS 自动化零调用；AG 全量套件=里程碑档 pending 归 merge 记录。门禁 pending（merge-owned）：受影响抽样/复用审计（T-07）。 | blockers: 无 | next_responsible_role: review（T-06 独立同树终审）。
+
 ## 10. 待澄清事项
 
-无新产品决策；本轮规划后等待用户启动work。若公开消费路径不足以在OS暂停政策下闭合四入口，T-02须回new提出具体缺口，不能修改引擎/降低分母或擅自运行OS探针。无需远端地址；本Plan不创建远端。既有大录屏/原始证据不迁入产品仓，资源/预览大小先盘点，遵守5MB入库门。
+无未决产品决策。work 已交付（T-01..T-05，execution_done）：唯一内容树消费 git@1cc68aba0 固定输入，runner 6c461c35（含 32MiB PE 栈配置），四入口 32/32 无窗口 oracle 绿，8/8 包 A→B 门绿，validate 8ID/14 入口/2 锁。T-02 的"OS 暂停下公开消费路径不足须回 new"情形未触发——整路径探针一次贯通。merge-owned 门禁 pending：T-07 冻结抽样/复用审计、AG 全量套件里程碑档、批回归到期判定。无需远端地址；本 Plan 不创建远端。既有大录屏/原始证据不迁入产品仓；新增 PNG/报告证据均在本地 plan-artifacts 与包 out/（gitignored），attachments 只入 md 合同/摘要。
