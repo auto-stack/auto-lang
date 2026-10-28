@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-844
-status: reviewed
+status: archived
 feature_name: 跨仓重复实现、废弃代码清理与净瘦身验收
 author: [Codex]
 created_at: 2026-10-24
 updated_at: 2026-10-28
 plan_revision: 1
-current_step: 9
+current_step: 12
 total_steps: 12
 supersedes_spec_components: [docs/specs/language-sdk/project.md, docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/types/overview.md, docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/trans/overview.md, docs/specs/auto-lang/runtime/overview.md, docs/specs/repository-boundaries/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/repository-boundaries/net-slimming.md]
@@ -123,8 +123,8 @@ work/review只必要check（真实SDK/被改包）、相关包/模块/fixture和
 | [x] | T-08 | work | G844；T-07 | V-01..05全部正反控与三仓真实消费者/外部fresh/locked/资源退出完成，清偿矩阵核销 | AC-01..05 | [✅ 2026-10-28] 正控：engine 55/55 + sdk-consumer 5/5 + three-repository-consumer 3/3（解析组内两写树）；负控：TypeRegistry/Scope 探针 E0432 删除可发现证明；清偿矩阵全核销（handoff §2/§3） |
 | [ ] | T-09 | work | G844；T-08 | 引用841/842/843实际交付逐项核M2有限退出、无目标内延期，SD-01..05及attachments/844/handoff.md冻结送审 | AC-04,05 | [✅ 2026-10-28 R1 复闭] M2 四项收据引用不变；SD-01..05 数字随 R1 更正（net-slimming.md 53cd0814a：−1,233/14 站点；runtime spec 14 处）；handoff §1/§2/§7 更正（冻结提交推进 lang 53cd0814a）重送审 |
 | [ ] | T-10 | review | G844；T-09冻结提交 | 同组独立完整AC/SD/实际consumer/反例/来源与健康审查；不先跑整档，不将merge门当已通过 | AC-06 |
-| [ ] | T-11 | merge | G844；T-10 pass | 并集影响复审、冻结三仓适用门与有序实际合入/固定版本/来源读回；若改变输入重审影响面，暂不放行后继 | AC-07 |
-| [ ] | T-12 | merge | G844；T-11全部交付收据 | canonical/受管ledger/索引沉淀、归档与逐树fresh wt-guard clean清理，整Plan闭环构成U844才放行下一份；保历史/恢复/交付分支 | AC-07 |
+| [x] | T-11 | merge | G844；T-10 pass | 并集影响复审、冻结三仓适用门与有序实际合入/固定版本/来源读回；若改变输入重审影响面，暂不放行后继 | AC-07 |[✅ 2026-10-28] 门禁@27b173b03：裸 t 3198/3198（353~365s；首轮两红=plan608 真回归已修 3c017b8e2+abi_worker 冷态 flake 单跑 1.0s 绿，842/843 同族）+tv 163/163+tt 3569/3569+tb/tu/taa 不适用；rebase×2（master 两轮 docs 前移）range-diff 9/9 全等；lang/man 均 ff-only 零合并提交（lang 27b173b03/man 873fa23）；landed 回读 tip==branch |
+| [x] | T-12 | merge | G844；T-11全部交付收据 | canonical/受管ledger/索引沉淀、归档与逐树fresh wt-guard clean清理，整Plan闭环构成U844才放行下一份；保历史/恢复/交付分支 | AC-07 |[✅ 2026-10-28] ledger 离线投影 v113（+3 条目零扰动回读）；git mv 归档+收据入库 7dfd1dbd4；四树 fresh wt-guard clean（lang/man/ui/down）→ worktree remove+分支 -d 证实已合入（27b173b03/873fa23）→ 组目录回收（空，无 target/pdb 残留；无 plan-artifacts/plan-844）；批量回归到期判定=**not due**（860 收据今日新鲜 <48h、844%5≠0 且其后无 5 倍数计划落地）；部署观察=主检出无 release 二进制/gen dist（前后均无构建物，无产物因本合入变陈旧） |
 
 G844未满足前禁止创建/认领以下组、分支或work agent。未来组`D:/autostack/.wt/lang-844/{auto-lang,auto-ui,auto-man}`，每个实际需写仓各一树/分支`codex/plan-844-dev`；只读consumer用固定版本clone而非借其他计划WIP，未需写仓不多建树。work/review/merge沿同组顺序交接，不建第二审查树；若auto-down为现有可选依赖则具名固定版本/detached兄弟，只解析不改实现。禁止junction/symlink，主检出只簿记，清理前每树fresh guard clean且保留实际交付/legacy恢复源。
 
@@ -143,6 +143,10 @@ G844未满足前禁止创建/认领以下组、分支或work agent。未来组`D
 2026-10-28 / stage: review / review_scope: final（T-10 R1 重审，needs_fix 后）/ reviewer_identity: 与实施同会话上下文（延续 R1 声明）——重审面=F-01..04 修复与受影响记录，未动证据按修复轮规则复用；所有关键声明在冻结提交上重新采集 / plan_id: PLAN-844 / plan_revision: 1 / outcome: **pass（final）** / worktree_path: D:/autostack/.wt/lang-844/{auto-lang@53cd0814a,auto-man@873fa23 写；ui@7095f536、down@c3464d0 只读} / branch: codex/plan-844-dev（两写仓，clean） / reviewed_commit: lang **53cd0814a**（R1 两提交 ae54bcaa0 修复/53cd0814a 收据，diff 恰限 findings 范围=5 代码文件+2 文档，零范围蔓延）、man 873fa23 / base_commit: lang fd64529df、man 4cc912e9 / spec_inputs: SD-01..05 读核含 R1 更正（runtime 14 处、net-slimming −1,233/307,676/14 站点） / findings 闭环: **F-01**=站点已转 register_iterator（diff hunk 读核）+族不变量成立（iterator_id_gen 全仓仅存 engine.rs 字段/单源 helper/初始化三处）+对照复现 str_bytes 1/1、iterator 12/12；**F-02**=三处注释文本读核；**F-04**=触面 unused import 清零、警告 150=基线 fd64529df 实测 150 零增长（149 之谜归因关闭）；**F-03**=四记录数字核对一致（−1,233/307,676 独立复算同值/14 站点/7 测试），并补全量分解：全 diff 移除测试 fn=31=核心退役面 7（a5aa62f71：4 具名+registry.rs 3 自带，全部死 API 自测）+孤儿 crate 整删自带 24（69bcb7701，随 R-1 批准整目录删除），无覆盖损失、无隐藏第三类 / acceptance_results: AC-01 pass（D-1..D-5 单源+14 站点+边界保留有证）；AC-02 pass；AC-03 pass（修复轮后受影响 consumer 复跑：sdk-consumer 5/5、three-repository-consumer 3/3 @53cd0814a）；AC-04 pass（净删 −1,233 可重算、真重复清偿、负控自证）；AC-05 pass（记录全准、M2 四收据、SD 落地）；AC-06 本记录（merge 门 pending 显式） / pending_closeout_gates: **merge-owned**——裸 cargo t（三仓适用）+ 触面档 tv（VM 触面）/tt（trans 面：set_scope/Evaluator）；tb/tu 不适用（零 book/UI 生成器触面，T-11 冻结输入判定）；tf 到期批量回归按现行规则主检出单实例；通过前不得合入或宣称交付完成 / evidence: 本记录命令与读核位置；R1 复审记录（前一条）与 work 记录的证据链未失效部分复用 / next: merge T-11（冻结 lang 53cd0814a / man 873fa23 上执行 merge-owned 门后有序合入）。
 
 2026-10-28 / stage: merge→work（T-11 门禁失败归因与修复）/ plan_id: PLAN-844 / plan_revision: 1 / 失败: 裸 cargo t 与 tt fail-fast 首红 plan608_dispatch_golden_tests::callspec_route_guard_registry_covers_dead_arms（`str.starts_with` resolve 失守）/ 根因: D-4 删除的纯 rust_fn shim 函数虽死（production 覆盖序恒 nv 版、VVM 入口不跑 inventory），其 inventory 注册是 `Str.X`/`auto.str.X` 名字解析唯一来源（build_from_inventory 每条注册三种名字形态；nv 版在 production() 覆盖块只重绑 id 不注册名字）——删名使 CALL_SPEC 路由回落内联死臂，PLAN-608 路由守护按设计拦截；T-01 三探查与 R1 复审均未识别该注册副作用（定向面不含 plan608，日常档 fail-fast 首 48 位即触发——分层验证实证）/ 修复: 3c017b8e2 register_std_shims Extra aliases 六行显式注册（NATIVE_STR_CONTAINS/STARTS_WITH/ENDS_WITH=1504/1505/1506），函数面保持删除 / 受影响面复审（同会话自工件重构）: PLAN-608 不变量恢复=守护测试 2/2 绿；D-4 单源性保持=无函数副本；callspec 5/5、string 137/137、str_contains 2/2、check 0 错、fmt clean / 记录更正: 终值 NET-PROD 307,688/净删 −1,221（net-slimming/handoff §8/contract-baseline D-4 行同步，854c45e9c） / next: 新冻结基线 854c45e9c 重跑裸 t+tv+tt 后 ff-only 合入。
+
+2026-10-28 / stage: merge / plan_id: PLAN-844 / plan_revision: 1 / outcome: **pass（T-11 交付完成，T-12 收尾中）** / checkpoints: prepared=T-10 R1 pass 绑 53cd0814a+SD 冻结；landed=lang master tip==**27b173b03**（rebase 链：work9 提交基 fd64529df→53cd0814a，两次 master docs 前移后重定基，range-diff 9/9 全等×2，最终树 vs 门禁绿树 854c45e9c 代码零差异仅他会话 docs）+man master tip==873fa23，均 ff-only 零合并提交；ledger_refreshed=受管离线投影 v112→113（HTTP 服务不可达；备份 .autoos/specs.json.bak-p844-merge；+P844-NET-SLIMMING-CONTRACT/P844-REVIEW-R1/P844-MERGE-R1，既有条目零扰动证明+回读验证）/ gates（最终基线 27b173b03）: 裸 t 3198/3198（365.3s；过程两红均归因：plan608 真回归=merge 门拦出并修复 3c017b8e2、abi_worker 117.6s→1.0s=冷态并行 flake 842/843 同族）；tv 163/163；tt 3569/3569；tb/tu 不适用（零 book/UI 生成器触面）；taa 不适用（零 aavm 触面）；tf 到期判定见 T-12 / next: T-12 归档+清理。
+
+2026-10-28 / stage: merge / checkpoint: **cleaned（U844 全闭环）** / evidence: 四树 fresh wt-guard clean → 各仓 git worktree remove 正规移除、分支 codex/plan-844-dev 删除（=交付提交已合入：lang 27b173b03、man 873fa23，-d 证实）；组目录 D:/autostack/.wt/lang-844/ 回收（移除时目标树 target 随树带走，组内零残留/零 target/pdb；无 plan-artifacts/plan-844 需回收）；.wt 下 844 残留=0 / 批量回归到期判定: **not due**——收据 last_covered_plan_id=860（2026-10-28T09:33 认证 pass，<48h），844%5≠0 且其后无 5 倍数计划落地；下次到期按现行规则由 /auto-plan:regress 主检出单实例执行 / landing-is-not-deployment 观察: 主检出无 release 二进制与 gen dist（本 Plan 前后均未构建，无已部署产物因本合入变陈旧）；生产再发行由后续发行流程进行 / archived: 本文件 git mv 至 docs/plans/archive/ + 全部收据入库（归档提交 7dfd1dbd4 + 本收据） / next: U844 成立。M2（841–844）四份全部 archived 终态。
 
 ## 10. 待澄清事项
 
