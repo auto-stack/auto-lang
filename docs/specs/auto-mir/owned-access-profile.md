@@ -44,3 +44,19 @@
 `experimental/ac-av-probe/probe/tests/av_owned_821_r1_replay.rs`（R3/R4
 永久例与逐字段不变量）、`av_owned_821_incremental.rs`（stale-link 拒）、
 corpus `av-owned-mut-writeback`（exit 808）。
+
+
+## native 消费者覆盖（PLAN-870）
+
+- mn 消费 av.owned/1 的 text/text-record 子集：本合同的指令语义在 native
+  侧以"死槽=零化指针"纪律+全出口 sweep 复现（合同全文见
+  [native-data-owned-lowering](native-data-owned-lowering.md)）；MutRet
+  写回（§mut record 参数写回）经 FieldMove/Move 实机三路验证。
+- 台账差分口径冻结为三级（alloc bytes 序/free 多重集+单次性/指令点释放
+  精确；exit 内部序仅非 clone 行逐序）——clone 派生 record 的宿主 Rc
+  drop 时点序不属冻结语义。
+- 视图 `==`/`!=` 源级形态被共享 lowering 阻塞（mir.bin-type，
+  `gap:upstream-s-eq`，S owner）；ACE-M1 T05 行据此具名排除。
+- ACE-M1 T*/R* 的 ac 列已实测判级（ok/gap:mn-text-move/
+  gap:mn-mut-param/gap:mn-lower-method——与 av 列判定逻辑逐行镜像，
+  见 [ace-m1-conformance](../auto-test-case/ace-m1-conformance.md)）。

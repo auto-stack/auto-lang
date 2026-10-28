@@ -85,3 +85,20 @@ B01/B04/B09/B13/B14 五源（852 `src` 与 825 fixture SHA-256 逐位同源）�
 - **本轮新增 owner token**：`a2r-golden`（发射成功但无冻结金样）、`scenario-tooling`（无源码的 scenario 行观测通道未交付）、`av-text-move`/`av-text-nul`（owned 源面对 Str move / NUL 比较的缺口）、`av-mut-param`（AV mut 参数未交付）、`P864`（集合/变体源码，PLAN-864）。
 - **实测口径**：24 `probe` + 27 `wait:*` 单元格逐格真实执行后定级（残留 0/0）；corpus 73 行（原 63 + U01–U10），实测 **clean = 20/73**；`probe`/`wait:*`/SKIP 均不计绿，`clean` 以脚本复算为准。决策件附录中无规则 ID 的 `na:m1` 行（C01/C02/I01–I11/G02–G08）在全表回填前仍需单独裁定。
 - 门：`powershell -File scripts/verify-av-862.ps1 -Scope <targeted|compat|entry|acceptance>`；旧 852 底座套件保持 97 检查绿（本计划未改 852 脚本、金样与 12 列 schema）。
+
+
+## PLAN-870：T*/R* 行 ac-native 实测绑定
+
+- 新增独立 suite `ace-m1-tr-native.suite.ad`（17 case/31 检查；**852 base
+  suite 不扩**）：值/trap 行携带 ac-native+av 双腿对同一冻结 oracle；诊断
+  行携带 mn 腿（家族码），av 腿仅限 862 已绑 ok 的行。T05 无腿
+  （`gap:upstream-s-eq` 具名排除）。
+- binding.tsv ac 列判级与 av 列逻辑逐行镜像：可执行值/trap/负诊断行=ok
+  （实测出口码注记）；T03=`gap:mn-text-move`、T05=`gap:upstream-s-eq`、
+  R07=`gap:mn-mut-param`、R08=`gap:mn-lower-method`（共享栈拒绝，与 av
+  gap 同因）。
+- mn 诊断的 case 级期望面：probe 合法 stage 集（parse/resolve/typecheck/
+  run）内的映射——前端拒绝=parse+`mn.unsupported.frontend`，adapter/MIR
+  拒绝=typecheck+`mn.unsupported.adapter`（管线边界由 mn.* 码命名）；
+  诊断行**具体码**由 mn 内 crate 差分层对同栈断言（强 oracle）。
+- V-06 反控：期望变异必红（T01 38→39 负 oracle 测试）。

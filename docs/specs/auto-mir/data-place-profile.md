@@ -24,3 +24,16 @@
 ## 验收
 
 V-01/02/04/11；core MIR/verifier 测试与 semantics 族（13/13）。
+
+
+## native 消费者覆盖（PLAN-870）
+
+- mn（`experimental/ac-mir-native`）按本合同消费 av.data/1 的**纯值 record**
+  子集：Copy/Aggregate/FieldGet/FieldSet 的机器语义=本合同的纯值语义
+  （字段声明序布局、结构重建写回、RHS 先物化）；三路差分与 ACE-M1
+  R01/R02/R03/R06 实测绑定见
+  [native-data-owned-lowering](native-data-owned-lowering.md)。
+- 宽标量**不在** mn 面（触达即具名拒绝，R2-N 保持关闭）；record 不出
+  entry（沿既有约束）。
+- mn 单元身份/cache：A09' 键轴不变；fp 渲染对 record 以名义身份
+  （owner|name:字段形状）入指纹（PLAN-870 修复了旧判别式标签碰撞）。
