@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-862
-status: executing
+status: execution_done
 feature_name: AV源码入口、Unit与尾值语义（R2-E/SEM-05）
 author: [Codex]
 created_at: 2026-10-28
