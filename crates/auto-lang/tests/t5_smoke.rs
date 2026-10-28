@@ -4,8 +4,9 @@
 //! 把指定标题的真实窗口拖到指定屏幕点。配合全屏 `ui_desktop` 实例执行
 //! 473 债务清偿冒烟（B1 拖入 / B5 模态 / B8 退出恢复 / D1 常驻）。
 //!
-//! 运行（先起桌面：`cargo run -p auto-lang --features ui-iced --example
-//! ui_desktop -- --fullscreen`）：
+//! 运行（先起桌面：PLAN-876 起入口在 auto-os——
+//! `cd <auto-os> && cargo build -p os-desktop --bin ui-desktop`，再
+//! `ui-desktop.exe --fullscreen`）：
 //! ```text
 //! T5_DRAG_TITLE="主页" T5_TARGET="1920,1100" \
 //!   cargo test -p auto-lang --features test-native-dock --test t5_smoke -- --ignored --nocapture

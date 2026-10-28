@@ -86,3 +86,24 @@ auto-ui 主检出带未提交 `M Cargo.lock`（原始字节已保全）；auto-m
 - 迁移：9 个管理/CLI package 与 6 个外部 consumer 迁入既有 auto-man 仓；语言仓原件实际删除，根 workspace 41→32。中立协议/执行/SDK 与 UI 实现未复制到 Man；旧 auto-up/automan 不挂入新 workspace。
 - 来源：185 项导入对账=173 same/10 manifest/1 hygiene/1 source-path rewrite，另补 wizard/pac 语料与媒体 fixture；无缺失或异常漂移。24/122/4 测试 ID 与迁移前逐字一致，集成目标 3/3/10。
 - 组合与切换：目标 Man 提交先经独立发行验收，再切语言消费者；三仓组合/恢复见 [man-three-repository-delivery](man-three-repository-delivery.md)。未 push、更名或 registry 发布。
+
+## PLAN-876 入口归属（as-built）
+
+iced 桌面入口自 auto-lang `examples/ui_desktop.rs` 迁入 auto-os 一等 bin
+（`host/desktop` → `ui-desktop.exe`），语言仓该 example 已删除；入口依赖闭包 =
+`auto-ui-runtime` + `auto-lang-core`，不含 `auto-lang` 编译器层。契约见
+[autos-desktop-entry](autos-desktop-entry.md)。本轮未 push、未改远端。
+
+## PLAN-876 计划与债的登记归属（2026-10-28 用户裁定）
+
+拆分的最后一处治理面是**计划簿记归属**：自 PLAN-876 起，以 auto-os 为主改面的
+工作（桌面入口/宿主、`shell/`、`apps/` 与 apps.manifest、AutoOS 装配与发行）在
+**auto-os 仓 `docs/plans/`** 取号登记（独立 `.next-id`，当前 052 起）与归档；其
+债/风险进 auto-os `docs/plans/KNOWN-DEBT-AND-RISKS.md`。auto-lang 仓
+`docs/plans/` 只为该域保留**指针行**，不再承接正文。跨仓计划正文放主改面所在仓，
+另一仓在计划/README 留指针与验收分工。
+
+PLAN-876 本身是**最后一份**该形态的例外：正文在 auto-lang（入口从语言仓迁出，
+改动首站是语言仓），auto-os 侧
+`docs/plans/autos-desktop-program.md` 留指针行 + `AGENTS.md` §1 记录生效规则。
+`autos-desktop-program.md` 的桌面域台账沿既有 Stage B P-5 裁定本就只记 auto-os 侧。

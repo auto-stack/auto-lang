@@ -3639,6 +3639,7 @@ ID，晚于最后批量收据（860，同日 09:33）——tf 非逐计划门禁
 不动）并闭包记 RETIRED；后续有意退役必选 ID 一律走该通道（新清单按计划号命名），
 避免批量间隙再藏同类脱同步。
 
+
 ### F-867-NEWRED-01 — launcher_pickcat 拆分窗口内确定性新增红（PLAN-867 T-07 阻塞，2026-10-28）
 
 `auto-lang tests::plan503_tests::launcher_rewrite::launcher_pickcat_filters_results` 在冻结
@@ -3652,3 +3653,14 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 列表读），超出 PLAN-867「仅验证设施」授权——等价出口（新增红=0）在修复+重跑
 `tf --batch --frozen-trees` 前保持未达成。证据链：PLAN-867 attachments/867/red-baseline.md
 §T-07。
+
+## PLAN-876 指针（2026-10-28）
+
+桌面入口迁 auto-os 后，该域的债与风险按 PLAN-876 裁定的归属登记在 auto-os
+`docs/plans/KNOWN-DEBT-AND-RISKS.md`（本文件只留指针）：
+
+- `OS876-APP-EXE`：4 个 app 声明 `desktop_exe` 但 clone 无产物（现降级解释态）。
+- `OS876-SUBMODULE`：24 个 app 子模块工作区被清空（已恢复；根因待查）。
+- `OS876-TERM-TICK`：auto-term `future_all/race` 复现——与本文件 **P723-D1**（L1224 旧记录）同源。
+- `OS876-USE-DIAG`：widgets-gallery `use { package ... }` 解析失败（P-15/plan 664 线转派）。
+- `OS876-DOC-SWEEP`：已 closed（2026-10-28，syslog README 为仓内跟踪文件，已改）。

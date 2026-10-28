@@ -104,6 +104,5 @@ recent 折扣: 名称在 recent 列表第 rk 位（0 起）→ 减 max(5-rk, 1)
 
 - vue：`auto run` + `node tests/vue_verify.mjs`（5 组断言）
 - vm：`auto run -r vm` + `python tests/desktop_mcp.py`（24 断言）
-- desktop：`cargo run -p auto-lang --features ui-iced --example ui_desktop --
-  --fullscreen`，Ctrl+Alt+Space（IME 安全召唤键；Ctrl+Space 同键位族，中文
+- desktop：`(cd <auto-os> && cargo build -p os-desktop --bin ui-desktop)` → `ui-desktop.exe --fullscreen`，Ctrl+Alt+Space（IME 安全召唤键；Ctrl+Space 同键位族，中文
   IME 激活时被系统抢占）→ 搜 `calc` → Enter

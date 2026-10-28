@@ -171,3 +171,14 @@ VmRef；重播时逐层物化为 ListData/ObjectData，使每个堆容器按既�
 ## PLAN-842：0.2 builder 与宿主
 
 `auto-ui-runtime 0.2.0` 删除 `AuraViewBuilder::with_registry_and_imports` 的旧末参入口；调用改为 `AuraViewBuilder::with_registry`，注册表提供组件。`DynamicComponent::with_registry_and_imports` 是仍有真实导入语义的不同方法，保留。UI 运行能力、显式 provider 优先、默认/缺席、多实例、线程与退出语义不变；直接 SDK 默认宿主所需的 `UiCompatInstaller` 单份登记仍保留，不能与退役的文法 inventory 混为一谈。`mpv-native` 显式包含 libloading；本轮未实测真实 DLL/视频播放。来源：[PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)
+
+## PLAN-876：桌面入口迁移后的宿主行为
+
+iced 桌面入口迁 auto-os（`host/desktop`，bin `ui-desktop`），本 crate 仍是渲染/
+会话/投影/桌面协议的唯一实现方。两处行为按 PLAN-876 定版：①`rqhost` 的 `auto`
+本体寻址扩为 `AUTO_BIN`/`AUTO_CLI` → 自身目录及上两级 → `PATH`，失败信息给出可
+执行动作（`cargo build -p auto`）；②`desktop_exe:` 声明只在其产物**在场**时命中
+原生启动，缺失时按 apps.manifest `launch` 字段裁定（`"native"` 严格失败，其余
+降级解释态并 warn）——旧"声明即信直接 spawn"会把缺失变成 `os error 3`。boot
+自检键集与边界见 [repository-boundaries/autos-desktop-entry](../repository-boundaries/autos-desktop-entry.md)。
+来源：[PLAN-876](../../plans/876-autos-desktop-entry-and-launch-health.md)

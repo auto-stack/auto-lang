@@ -140,3 +140,11 @@ VM/iced extra 根和 manifest 聚合时去重；空子模块继续按无入口/p
 ## PLAN-842：生成消费与版本边界
 
 四类生成器、迁移示例和 Man 生产消费直接使用 UI runtime/compiler 及语言 SDK 的 canonical owner；生成的 Rust 应用不直接依赖旧 auto-lang 门面，入口显式安装 SDK hook 与 runtime provider。生成器指纹和 UI schema 共同决定缓存身份；旧身份失效后重建。原 design-token 测试及 recipe integration 测试跨 owner 映射并保留 full 测试选择。来源：[PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)
+
+## PLAN-876：desktop_exe 语义澄清
+
+注册表对 `pac.at` 的 `desktop_exe:` 仍按"声明入册"（扫描/注册语义不变），但
+"声明即信、产物可缺"不再延伸为运行时语义：运行时是否走原生由 auto-ui-runtime
+按产物在场性与 apps.manifest `launch` 裁定，contract 见
+[autos-desktop-entry](../repository-boundaries/autos-desktop-entry.md)。
+来源：[PLAN-876](../../plans/876-autos-desktop-entry-and-launch-health.md)
