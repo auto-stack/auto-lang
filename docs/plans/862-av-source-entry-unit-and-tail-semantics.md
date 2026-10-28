@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-862
-status: execution_done
+status: reviewed
 feature_name: AV源码入口、Unit与尾值语义（R2-E/SEM-05）
 author: [Codex]
 created_at: 2026-10-28
@@ -210,6 +210,13 @@ T-02 必须产出 `attachments/862/work/entry-contract.md`，逐项冻结（未�
 | T-09 | merge | T-08 | Spec/ledger 沉淀、归档、worktree guard clean 清树 | AC-09 | [ ] |
 
 ## 9. 复审记录
+
+2026-10-28 **re-review T-07（R2，final pass）**：`stage: review | review_scope: final（re-review） | reviewer_identity/limitations: 同一实施会话复审，无独立外部/异模型上下文；结论由修复 diff（e062edf4e）、关闭行与在冻结提交上重跑的门重建 | plan_id: PLAN-862 | plan_revision: 3 | outcome: pass | worktree_path: D:/autostack/.wt/lang-862/auto-lang | branch: plan-862-dev | reviewed_commit: e062edf4e53db111a08fb2a3a511acaf5299996b（树 clean） | base_commit: 13057957c6363c87f63bb2e2edc2d36ad3ad773a | dependency_revisions: auto-down c3464d0、auto-ui f489c7b（只读） | spec_inputs: 计划 R1 基线 sha256 332e7afa…（R2 仅改 §5 SD-01/04/05/06 文本与 §9 记录，随本轮簿记提交冻结）、决策件新增 §12、entry-contract b364c10b…、ace-m1-conformance 976dfd60…（仍未改 canonical specs） | acceptance_results: AC-01 pass、AC-02 pass、AC-03 pass（双向身份拒绝已测）、AC-04 pass（内存腿已实测）、AC-05 pass、AC-06 pass（NA-4 已裁定并落 SD-06/决策件） | pending_closeout_gates: T-08 merge 裸 cargo t + tv（diff 触及前端/MIR/ABC/AV）；T-09 Spec/ledger/归档/清树；na 分布须在 852/862 acceptance 报告单列 | findings: F-862-R1-01..08 全部 CLOSED（无新增 finding） | next: merge T-08`。
+
+- **修复复现与关闭（本轮实际执行）**：① F-02 的红/绿对照——修复前同一输入返回 `source.unsupported`（R1 探针 `tmp/862/probe/`），修复后返回冻结码 `source.unit-placement`（新增 2 条负例 + 1 条 MIR 负例，`entry_unit_862` 26 passed、`av_entry_862` 13 passed）；② F-03 两条身份负例实跑绿（`verify.domain` / `mir.schema-profile`）；③ F-07 的 4 条准入负例落库（`contract_decode` 23 passed，含 `unit`+exit 0/1、未知 profile、非 core recipe）；④ F-08 采样：entry-unit 331,776–557,056 B、scalar 控制 45,056 B（`--test-threads=1 --nocapture`）；⑤ F-06 `rustfmt --check` 9 文件 exit 0；⑥ F-01/F-04 文本落地（SD-01/04/05/06 + 决策件 §12，NA-4 三条防扩散）。
+- **共享面回归（parser.rs 被所有 ac-core 源面共用，按受影响模块扩面）**：`experimental/ac-core` 全量 **146 passed / 0 failed**（13 个测试二进制）；`cargo test -p auto-test-case` 全量 **91 passed / 0 failed**。862 门在 `e062edf4e` 上重跑：`targeted`（13+23+9+26+13）、`compat`（97 例/26 a2r，scalar 身份轴不变）、`entry`（12/12 + `unit→value` 变异恰好红 U02/U04）、`acceptance`（**clean 20/73、probe 0、wait:* 0、NA-4=30**）。
+- **未被本轮修复改变（再核）**：`binding.tsv` expected/oracle 与 12 列 schema、既有 case/源、852 脚本、`docs/specs/**`；`void` 在 scalar/record/text 面仍 `source.unsupported`（既有测试 + 新增断言双重守护）。
+- **保留边界（非 finding，交 merge/后续）**：B2 决策件附录无规则 ID 的 `na:m1`（C01/C02/I01–I11/G02–G08）仍待单独裁定；D-862-R1-01（852 验证脚本装载器预存缺陷）仍在 `KNOWN-DEBT-AND-RISKS.md`；a2r 新金样归 a2r 线。
 
 2026-10-28 **work T-07 修复轮（F-862-R1-01..08 全部关闭）**：`stage: work | plan_id: PLAN-862 | plan_revision: 3 | outcome: 完成（T-05/T-06 重新勾闭，下一步 re-review） | worktree_path: D:/autostack/.wt/lang-862/auto-lang | branch: plan-862-dev | base_commit: 13057957c6363c87f63bb2e2edc2d36ad3ad773a | code_commit: e062edf4e（修复轮；其上 0e9c08189 / ea644f8e8 / 8cda9958a 与 327037b06） | dependency_revisions: auto-down c3464d0、auto-ui f489c7b（只读，未写） | task_ids: T-05, T-06 | findings: F-862-R1-01..08 CLOSED | next: review T-07（re-review）`。
 
