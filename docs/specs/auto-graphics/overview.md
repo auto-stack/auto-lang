@@ -56,3 +56,7 @@ Provenance: [PLAN-856](../../plans/archive/856-autographics-2d-viewport-grid-and
 - [Game runtime feasibility](game-runtime-feasibility.md): real-Auto G2/G3 character-motion and runtime-budget probes under the unchanged hard limits; two bounded candidates both satisfy the necessary semantics (decision go for the follow-up public character profile, PLAN-860). Probe-only evidence; no public API, OS input or game claim.
 
 Provenance: [PLAN-857](../../plans/archive/857-autographics-3d-viewport-navigation-and-grid.md), [independent final R4](../../plans/attachments/857/review-r4/review.md), [merge receipt](../../plans/attachments/857/merge-r1/receipt.md). Source: autographics-dev at `81b0974ac2512126790b0ef2af79235edf45b485`; SDK `7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467`. Runtime game cameras and production I2/I3 remain pending.
+
+- [Game actions and single 2D character](game-actions-and-character2d.md): the public `autographics.character/1` profile — explicit OS action input through one router, a single bounded 2D character on frozen static solids with geometric final support, all inside the unchanged budgets (PLAN-861).
+
+Provenance: [PLAN-861](../../plans/archive/861-autographics-public-actions-and-character-control.md), [independent final R2](../../plans/attachments/861/review-r2/review.md). Source: autographics-dev at `0f53f05da`; SDK `7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467`. 3D character, runtime camera framing, dynamic objects and production I2/I3 remain pending.

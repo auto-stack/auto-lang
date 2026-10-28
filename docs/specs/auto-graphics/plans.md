@@ -49,3 +49,5 @@ Provenance: [PLAN-854](../../plans/archive/854-autographics-behavior-source-asse
 
 | 858 | M2 dual game sample research and public API gaps | delivered | [PLAN-858](../../plans/archive/858-autographics-m2-game-samples-and-api-gaps.md) | Pinned source assets, 17 game requirements and capability/follow-on matrix; research only, no new game or runtime capability |
 | 860 | AutoGraphics real-Auto game runtime feasibility | delivered | [PLAN-860](../../plans/archive/860-autographics-game-runtime-feasibility.md) | Frozen G2/G3 probes under unchanged hard limits: candidate A v5 composition and candidate B probe-only support unit both satisfy necessary semantics (go for 861); source autographics-dev 7144526c3, budgets/credits unchanged |
+
+| 861 | AutoGraphics公共动作输入与2D角色控制 | delivered | [PLAN-861](../../plans/archive/861-autographics-public-actions-and-character-control.md) | 公开`autographics.character/1`：显式OS动作输入（单router、边沿语义）、单2D角色冻结静态solid与几何最终支撑（char_move 25cr池32不变）、只读强制与fault 20..26；autographics-dev 0f53f05da，3D角色/运行时相机/I2/I3仍pending |
