@@ -2,7 +2,7 @@
 
 绑定 plan-870-dev（base 9e847acf7）。三项移交 S owner（862 线）+ 两项本批裁定：
 
-- **上游 S 缺口（移交 862/auto-mir-lower）**：视图 `==`/`!=` 在 `hir_adapter.rs` 走通用 Bin 路径，StrCmp 守卫（lhs `type_of_expr`==StrView）未触发，最小源 `fn main() int { let a str = "A"; if a == "A" { return 1 } return 2 }` 在 verify 即 `mir.bin-type` 红。ACE-M1 T05 行据此具名排除（`gap:upstream-s-eq`）；mn 的 StrCmp/非法码点机器面在 R1 终审判定为零运行时覆盖（F-870-R1-02，修复中——手写 MIR 单元直发实跑）；S 修复后 T-05 差分门另补源级行。
+- **上游 S 缺口（移交 862/auto-mir-lower）**：视图 `==`/`!=` 在 `hir_adapter.rs` 走通用 Bin 路径，StrCmp 守卫（lhs `type_of_expr`==StrView）未触发，最小源 `fn main() int { let a str = "A"; if a == "A" { return 1 } return 2 }` 在 verify 即 `mir.bin-type` 红。ACE-M1 T05 行据此具名排除（`gap:upstream-s-eq`）；mn 的 StrCmp/非法码点机器面经 F-870-R1-02 修复关闭（手写 MIR 单元真 emit+link+run：eq/ne 静态视图 0/1/1、非法码点 exit70）；S 修复后 T-05 差分门另补源级行。
 - **split_units 指令内嵌类型索引不重映射（移交 S/probe）**：unit 内 `Aggregate.record_ty` 等仍持全模块索引（实证 R01：unit 表长 3、record_ty=3 悬空）。mn 侧以 verify 保证的 dst 槽类型等价解析（`lower.rs::resolve_record_ty`）；建议 S 侧在 split_units 重映射并补 fingerprint 渲染。
 - **AV clone 行 exit 内释放序为宿主实现细节（口径裁定）**：探针实证双裸 Str/双独立 record 为 sweep 内降序，clone 派生行（R04）部分释放在宿主 Rc drop 时点混合发火——静态调度不可复现。870 台账差分口径冻结为三级（alloc bytes 序精确 / free 多重集+单次性 / 指令点释放精确；exit 内部序仅非 clone 行逐序），见 freeze §5 与 coverage §4.6；T-05 差分门继承。
 - **D-868-DEBT-02 关闭**：Plan 868 登记的 ac-mn 测试夹具预存红（env/source_snapshot 字段、link_and_run 旧签名）本批已机械修复（N 写面内，`cargo check --all-targets` 零警告）。
