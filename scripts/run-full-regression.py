@@ -39,7 +39,7 @@ MAN_TI_COMPAT_TESTS = ("plan803_asset_facade_tests", "plan805_toolchain_parity",
 UI_TI_TESTS = ("legacy_build_semantics", "lifecycle", "resources_manifest", "tool_process",
                "osconfig_integration")
 MINIMUMS_PATH = HERE / "scripts" / "tier-selection-minimums.json.txt"
-NEXTEST_FAIL = re.compile(r"^\s*FAIL\s+\[[^\]]*\](?:\s+\(\s*\d+/\d+\))?\s+(\S+)\s+(\S+)", re.MULTILINE)
+NEXTEST_FAIL = re.compile(r"^\s*(?:FAIL|TIMEOUT)(?:\s*\+\s*LEAK)?\s+\[[^\]]*\](?:\s+\(\s*\d+/\d+\))?\s+(\S+)\s+(\S+)", re.MULTILINE)
 LIBTEST_FAIL = re.compile(r"^test\s+(\S+)\s+\.\.\.\s+FAILED", re.MULTILINE)
 
 
