@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-872
-status: reviewed
+status: archived
 feature_name: 内建语义双轨裁定与收敛（Str/Math/Time/Reply/nv_to_value）
 author: [DeepSeek Harness session]
 created_at: 2026-10-28
 updated_at: 2026-10-29
 plan_revision: 3
-current_step: 9
+current_step: 10
 total_steps: 10
 supersedes_spec_components: [docs/specs/stdlib/project.md, docs/specs/auto-lang/vm/overview.md]
 new_spec_components: []
@@ -181,7 +181,7 @@ Rust 实现面（`crates/auto-lang-core/src/vm/{native,ffi/stdlib}`）、`auto_m
 | [x] | T-07 | work | G872；T-06 | SD-01/02 proposal及handoff冻结送审，work不发布canonical | AC-02,AC-03 [✅ 2026-10-29] SD-01/SD-02 提案冻结 attachments/872/sd-proposals.md（stdlib/project.md 语义矩阵 + vm/overview.md 绑定序登记），work 未发布 canonical |
 | [x] | T-08 | work | G872；T-07 | 全 AC/V 自检与遗漏扫描；未闭项列 finding/pending | AC-01..AC-05 [✅ 2026-10-29] AC-01..05 自检全过（收据见 §9）；遗漏扫描产出 2 处订正（native.rs 过时注释、绑定表 math 遮蔽面）已闭合；无未闭 finding |
 | [x] | T-09 | review | G872；T-08 冻结提交 | [✅ 2026-10-29] 独立终审（子代理独立上下文，同树只读）：AC-01..05 全 pass；零行为变更结构性证明（auto-lang-core diff 非注释行=空）；V-01 双跑复算+V-02 源码抽验+V-03 槽位 pin 复核；finding F-872-R1-01（探针注释自矛盾，LOW）当轮修复 dfe3a5b93 并重绑 PASS；F-872-R1-02（附件行号漂移，INFO）no-action；merge 门（裸 t+tv）pending | AC-06 |
-| [ ] | T-10 | merge | G872；T-09 pass | 冻结输入触面档 + 三仓完整档；SD/ledger、归档、清理 | AC-07 |
+| [x] | T-10 | merge | G872；T-09 pass | [✅ 2026-10-29] 门禁=裸 t 3197/3198+ffi_dual_018 环境flake单跑绿（867 基线在案族；NEXTEST_JOBS=3 偏差=外部 93% CPU 负载，选择面不变）+ tv 163/163；tb/tu/tt/taa/docs_gen 不适用（零触面）；SD-01/02 落盘 af6b3f2bf（ff-only，rebase 全等 5/5）；ledger v124（5 条，受控离线投影+回读校验）；归档+清理收口 | AC-07 |
 
 **实施树**：`D:/autostack/.wt/lang-872/{auto-lang,auto-ui,auto-man}`（仅需写被裁定的仓），分支 `plan-872-dev`；禁止 junction/symlink；清理前 `wt-guard.sh` clean。
 **门禁**：work/review仅必要check、定向反例/模块/真实消费者；final review后merge冻结串行实际完整档与适用触面，覆盖相同选面可复用。语言空tu退役后由UI仓tu承接；tf批量主检出单实例。
@@ -205,12 +205,17 @@ Rust 实现面（`crates/auto-lang-core/src/vm/{native,ffi/stdlib}`）、`auto_m
 
 2026-10-29 / stage: work / plan_id: PLAN-872 / plan_revision: 3 / outcome: **pass（execution_done 8/10；T-09 review / T-10 merge 待续）** / worktree_path: D:/autostack/.wt/lang-872/auto-lang / branch: plan-872-dev / base_commit: 08ea8b35d / code_commit: 65943e083 + d57eaf23e + dc10ea723 / dependency_revisions: auto-ui@154a396（detached 只读）、auto-man@e6cc06f（detached 只读）、auto-down@c3464d0（组内 detached） / task_ids: T-01..T-08 / evidence: [绑定表](attachments/872/binding-table.md)、[行为收据](attachments/872/behavior-receipts.md)、[SD 提案](attachments/872/sd-proposals.md)、scripts/builtin-binding-table.json（复算守卫）；定向绿=plan872 13/plan755 2/plan781 10；cargo check -p auto-lang 0 错（警告预存非本面） / findings: ①生效实现与 844 表述反转——Math/Time 生效=纯 shim（inventory 同 ID 后写覆盖 catalog），nv tag 感知/unwrap_or(0) 版被遮蔽；②str.len 语义按派发路径分裂（.length 属性 nat#170=字符 / .len() nat#1500=字节 / CALL_SPEC 内联臂=字符）；③Str.to_int 双名同挂 1516 生效=nv 0 兜底裸 i32（纯 Result 版遮蔽）；④RETIRE 候选 3 项（math nv 宏 20/纯 parse_int/nv time）待单独签核未实施；⑤native.rs 手工 math 注册注释过时已订正 / blockers: 无 / pending_closeout_gates: merge-owned 裸 cargo t + cargo tv（VM/编译器触面档）于冻结提交统一执行；tb/tu/taa/docs_gen 不适用（book/ui_gen/aavm/文档生成面零触 diff）；tf 批量回归按到期规则另判 / next_responsible_role: review T-09（冻结提交 dc10ea723 上独立复审：绑定表重算、行为零变更对照重放、plan755 契约、文档一致性）
 
-2026-10-29 / stage: goal | plan_id: PLAN-872 | plan_revision: 3 | round: 1 | from: new(r3 blocked) | to: work | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-872/auto-lang | commit: dc10ea723 | next: review
+2026-10-29 / stage: goal | plan_id: PLAN-872 | plan_revision: 3 | round: 1 | from: new(r3 blocked) | to: work | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-872/auto-lang | commit: dc10ea723 | next: review
 
 
 2026-10-29 / stage: review / review_scope: final / reviewer: 独立子代理上下文（同 plan-872-dev 树只读复审+定向重跑；非第二检出；终审与修复重绑两轮）/ plan_id: PLAN-872 / plan_revision: 3 / outcome: **pass（reviewed；重绑至 dfe3a5b93）** / worktree_path: D:/autostack/.wt/lang-872/auto-lang / branch: plan-872-dev / reviewed_commit: dfe3a5b9369eba7b0d95e0b36e84dd9e46ce1a27（初审 dc10ea723 + F-872-R1-01 注释修复 dfe3a5b93）/ base_commit: 08ea8b35d / dependency_revisions: auto-ui@154a396、auto-man@e6cc06f、auto-down@c3464d0（detached 只读） / spec_inputs: stdlib/project.md sha256 4feb1247…、vm/overview.md sha256 e38aed54…（r3 合同预检指纹，未变） / acceptance_results: AC-01 pass（绑定表六族全覆盖+JSON 879 指纹+复算双跑）；AC-02 pass（diff 非注释实现行=空、零删除、零新注册、RETIRE 未实施）；AC-03 pass（F-3 三方矛盾消除，源/表/测试一致）；AC-04 pass（plan755 2 绿、server 零触面）；AC-05 pass（work 口径：867 红集零新增、金样输入集零触面、整档标 pending）/ pending_closeout_gates: merge-owned 裸 cargo t + cargo tv（冻结 dfe3a5b93 上）；tb/tu/taa/docs_gen 不适用面在案；tf 批量按到期另判 / findings: F-872-R1-01（LOW，探针注释自矛盾）已修复重绑；F-872-R1-02（INFO，附件行号漂移）no-action / evidence: 复审者独立重跑 plan872 13 绿/plan755 2 绿/plan781 10 绿/JSON 守卫双跑；零行为变更 grep 证明；五处源码抽验（shim_str_len/shim_str_to_int_nv/production() 序/strings_json 字节语义/过时注释订正）均与绑定表一致 / next: merge T-10（冻结 dfe3a5b93：先跑裸 cargo t + cargo tv 门禁，再 SD/ledger 落盘、归档、guard+清理）
 
-2026-10-29 / stage: goal | plan_id: PLAN-872 | plan_revision: 3 | round: 2 | from: work | to: review | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-872/auto-lang | commit: dfe3a5b93 | next: merge
+2026-10-29 / stage: goal | plan_id: PLAN-872 | plan_revision: 3 | round: 2 | from: work | to: review | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-872/auto-lang | commit: dfe3a5b93 | next: merge
+
+
+2026-10-29 / stage: merge / plan_id: PLAN-872 / plan_revision: 3 / outcome: **pass（delivered；completion_kind: delivered）** / delivery_commit: af6b3f2bf690d31bb046fa749373dfdeafbcd24f（master 尖，ff-only） / reviewed_commit: 368b886f2（=dfe3a5b93 重绑，rebase 全等 5/5 range-diff `=`；映射 65943e083→f976fe414 / d57eaf23e→5836a2083 / dc10ea723→8559dd9fa / dfe3a5b93→368b886f2 / efcce9880→af6b3f2bf） / checkpoints: prepared=SD-01/02 落盘 worktree efcce9880（docs-only 后裔合规升级为 delivery）；landed=master==af6b3f2bf ff-only 无合并提交；ledger_refreshed=.autoos/specs.json v124（regime B 受控离线投影：字节备份 bak-p872-merge→脚本改写仅 5 条插入→schema/回读/范围守卫全过；designs P872-D1/D2 + tests P872-T1 + reviews P872-R1 + reports P872-M1，全带 file+tags）；archived=docs/plans/archive/872-…md status:archived + 本收据；cleaned=待清理段回填 / gates: 裸 cargo t=3197/3198 PASS+1 TIMEOUT（ffi_dual_018_dep_fields，867 红基线在案负载 flake 族（red-baseline.md:71），单跑 2.07s 绿；执行偏差 NEXTEST_JOBS=3=外部 93% CPU 交互负载，选择面不变）；cargo tv=163/163；tb/tu/tt/taa/docs_gen=不适用（book/ui_gen/trans/aavm/文档生成面零触 diff）；首次两跑全并行负载超时（ac_av_probe/ace_m1 族）经定向复跑全绿归因为环境，未据此 waived / landing_artifacts: 零行为变更（注释级+测试+工件），release binary/daemon/vue bundle 语义无涉——显式观察项记录，不重建 / batch_regression_due: 872%5≠0；按 48h 规则另查 .last-batch-regression.json / next: done（U872 成立）
+
+2026-10-29 / stage: goal | plan_id: PLAN-872 | plan_revision: 3 | round: 3 | from: review | to: merge | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-872/auto-lang | commit: af6b3f2bf | next: done
 
 ## 10. 待澄清事项
 
