@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-867
-status: reviewed
+status: archived
 feature_name: 拆分等价性验收：拆分前测试全集在三仓的闭包
 author: [DeepSeek Harness session]
 created_at: 2026-10-28
