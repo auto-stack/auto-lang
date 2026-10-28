@@ -1211,7 +1211,7 @@ pub fn run_check(
     });
     std::fs::write(
         artifact_dir.join("mn-probe-receipt.json"),
-        serde_json::to_string_pretty(&receipt).unwrap_or_default()
+        serde_json::to_string_pretty(&receipt).unwrap_or_default(),
     )
     .map_err(|e| format!("write receipt: {e}"))?;
 
@@ -1881,7 +1881,7 @@ fn run_incremental(
     });
     std::fs::write(
         artifact_dir.join("mn-probe-receipt.json"),
-        serde_json::to_string_pretty(&receipt).unwrap_or_default()
+        serde_json::to_string_pretty(&receipt).unwrap_or_default(),
     )
     .map_err(|e| format!("write receipt: {e}"))?;
 

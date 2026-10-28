@@ -183,10 +183,7 @@ pub fn probe_toolchain_axes(exe_sha: &str) -> Vec<(String, String)> {
             EXPECTED_CTE_WORKER_VERSION.into(),
         ),
         // PLAN-868: mandatory lowering-contract axis (see ac_av).
-        (
-            "mir-lowering".into(),
-            EXPECTED_MIR_LOWERING_VERSION.into(),
-        ),
+        ("mir-lowering".into(), EXPECTED_MIR_LOWERING_VERSION.into()),
     ]
 }
 

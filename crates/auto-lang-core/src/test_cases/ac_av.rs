@@ -169,10 +169,7 @@ fn probe_toolchain_axes(exe_sha: &str, family: RecipeFamily) -> Vec<(String, Str
         // PLAN-868: the lowering contract identity shared by all av
         // families — reported per row, mandatory (old reports lacking the
         // axis adjudicate STALE by declaration).
-        (
-            "mir-lowering".into(),
-            EXPECTED_MIR_LOWERING_VERSION.into(),
-        ),
+        ("mir-lowering".into(), EXPECTED_MIR_LOWERING_VERSION.into()),
     ];
     // PLAN-821 contract-decision §10: the owned tool-identity axis carries
     // the frozen profile id (3) explicitly (core/data receipts unchanged).
