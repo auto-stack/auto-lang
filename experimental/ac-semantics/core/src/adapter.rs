@@ -121,6 +121,10 @@ fn vt_name(v: &auto_ac_prototype::source::resolve::VT) -> &'static str {
         // unit value channel, so it is reported as its own name (never
         // folded into "i32").
         VT::Unit => "unit",
+        // PLAN-864: collections composites are outside this adapter's
+        // limited inference surface; they report their own kind names.
+        VT::List(_) => "list",
+        VT::Variant(_) => "variant",
     }
 }
 
@@ -155,6 +159,9 @@ pub fn project(prog: &core_ast::Program, package: &str, module: &str) -> Result<
     for item in &prog.items {
         match item {
             core_ast::Item::Fn(f) => fns.push(project_fn(f)?),
+            // PLAN-864: enum declarations project nothing here (no
+            // functions; the sema input has no variant record shape).
+            core_ast::Item::Enum(_) => {}
             core_ast::Item::Type(t) => {
                 records.push(InputRecord {
                     name: t.name.name.clone(),
@@ -208,6 +215,11 @@ fn ann_of(a: &core_ast::TypeAnn) -> Result<Ann, String> {
             core_ast::TypeWord::Void => Ann::Unsupported("unit-annotation"),
         }),
         core_ast::TypeRef::Record(ident) => Ok(Ann::Record(record_static(&ident.name)?)),
+        // PLAN-864: the collections type grammar (?T / Name<..>) is outside
+        // this adapter's annotation model.
+        core_ast::TypeRef::Optional(_) | core_ast::TypeRef::Generic { .. } => {
+            Ok(Ann::Unsupported("collections-type-annotation"))
+        }
     }
 }
 
@@ -331,6 +343,16 @@ fn project_stmt(s: &core_ast::Stmt) -> Result<InputStmt, String> {
                 "expression statement (entry-unit script tail) is outside this adapter".into(),
             )
         }
+        // PLAN-864: the collections statements are outside this limited
+        // inference surface — controlled rejections, never silent drops.
+        core_ast::Stmt::IsMatch { span, .. } => {
+            let _ = span;
+            return Err("`is` dispatch is outside this adapter's inference surface".into());
+        }
+        core_ast::Stmt::ForIn { span, .. } => {
+            let _ = span;
+            return Err("`for-in` iteration is outside this adapter's inference surface".into());
+        }
     })
 }
 
@@ -394,6 +416,11 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
             what: "record-method-call",
         },
         core_ast::ExprKind::MutArg { .. } => InputExprKind::Unsupported { what: "mut-arg" },
+        // PLAN-864: a generic type receiver (List<T>.new()) is outside the
+        // limited inference surface.
+        core_ast::ExprKind::GenericType { .. } => InputExprKind::Unsupported {
+            what: "generic-type-receiver",
+        },
     };
     InputExpr { kind, span }
 }
