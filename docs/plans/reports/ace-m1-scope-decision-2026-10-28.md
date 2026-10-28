@@ -1,6 +1,6 @@
 # ACE-M1 对等口径决策件：单元格状态词表、`na:m1` 分类与差异裁定（2026-10-28）
 
-> **性质**：决策提案 + 逐行分类，**只动文档**。不建实施树、不改 `binding.tsv` 现状、不改 852 计划（已归档，终态不回开）、不改任何代码。
+> **性质**：**已裁定口径**（2026-10-28 用户问卷 4/4 采纳推荐项）+ 逐行分类。**只动文档**：不建实施树、不改 `binding.tsv` 现状、不改 852 计划（已归档，终态不回开）、不改任何代码。
 > 目的：让"M1 全绿"成为一个**可计数、可达**的目标，而不是一个永远收不了口的口号。
 > 关联：[852 底座合同](ace-852-baseline-and-capability-validation-2026-10-26.md)、[ACE-M1 语料 Spec](../../specs/auto-test-case/ace-m1-conformance.md)、[Design43 §12](../../design/43-ac-av-typed-mir-and-abc.md)、[Design49](../../design/49-native-single-mir-lowering.md)、[批次规划](ace-next-batch-2026-10-28.md)。
 
@@ -14,7 +14,7 @@
 
 本决策提案：**三轴分离 + 五态词表 + 6 项差异裁定 + 3 类 `na:m1`**，并给出 103 行的逐行重分类（附录 A）。
 
-按此口径测算：**50/103 行已"干净"**（ok / ok+cert-gap / na / accepted diff），**53 行有明确 owner 或待裁定项**——第一次给出了可收敛的账。
+按此（已裁定）口径测算：**50/103 行已"干净"**（ok / ok+cert-gap / na / accepted diff），**53 行有明确 owner、无待裁定项**——第一次给出了可收敛的账。
 
 ## 1. 为什么现在做
 
@@ -89,6 +89,8 @@
 
 裁定原则：**旧引擎的行为不自动成为新规范**（能力矩阵 §3 SEM-08 已定），但旧侧的差异必须**具名、可追溯**，不能"标绿了事"。`diff:accepted` 保留原 token 作为证据，不允许从表里消失。
 
+**裁定结果（2026-10-28 用户问卷，4/4 采纳推荐项）**：R-A / R-B / R-C / R-D 按推荐通过（旧侧已知差异，`diff:accepted`，不再阻塞 M1）；**R-E 按"不接受"通过**（a2r 名解析记为真缺口 `gap:a2r-resolve`）；R-F 按认证轴差异通过（`ok+cert-gap`）。适用范围补充：R-D 同时覆盖 L01–L07 与 R07 的旧引擎值差异；R07 的 a2r "拒绝发射未定型值"记为 `gap:a2r-untyped-emit`（a2r 能力缺口，非 pending）。
+
 ## 7. M1 收口的可计数定义
 
 **干净行（clean）** = 四路径单元格全部属于 {`ok`, `ok+cert-gap`, `na:m1`, `diff:accepted`}。
@@ -106,7 +108,8 @@
 | `gap:a2r-resolve` / `a2r-cert` | 2 / 39 | a2r 跟踪（242）/ 独立认证线 |
 | `gap:av-*`（method / alloc-fault / generation） | 3 | AV 侧三个小能力（待立项） |
 | `gap:P866` | 1 | [PLAN-866](../866-av-resident-online-hot-reload.md) |
-| `diff:pending` | 8 | 本件 §6 待裁定（R-A..R-F） |
+| `gap:a2r-untyped-emit` | 1 | a2r 跟踪（242） |
+| `diff:pending` | **0** | 原 8 个已按 R-A..R-D 裁定为 `diff:accepted` |
 
 **注意**：53 个阻塞行中有 **35 行**至少含一个 `probe` 单元格，其中 **7 行"仅因未真实跑过"而阻塞**（全部 `probe` 单元格共 53 个）。它们多半**不是缺口**——这正是"重绑定"能一次性清掉最多行的地方。
 
@@ -118,7 +121,7 @@
 | SD-02 | 同上（验收节） | acceptance scope 的计数改为**分轴**：clean / blocking-gap / na / accepted-diff / probe；`na` 单列且需规则分布 |
 | SD-03 | `docs/specs/auto-test-case/architecture.md` | 明确"a2r 认证轴独立于 M1 判据"，与 G08 对齐 |
 
-重绑定执行（不在本件范围）：一次真实重跑 → 把 27 个 `wait:*` 与 12 个 `probe` 定级；建议作为**独立小计划**（Category A/B：只改 binding 状态与追加证据，不改 Rust 源码）。**在重绑定完成前，"clean 行数"只能当估算，不能当验收。**
+重绑定执行（不在本件范围）：一次真实重跑 → 把 27 个 `wait:*` 与 24 个 `probe`（换算后共 **53 个 `probe` 单元格**）逐格定级；建议作为**独立小计划**（Category A/B：只改 binding 状态与追加证据，不改 Rust 源码）。**在重绑定完成前，"clean 行数"只能当估算，不能当验收。**
 
 ## 9. 与在途/待立计划的映射
 
@@ -132,23 +135,27 @@ native 第二阶段 → 关 14 + 5（collections/typed entry）
 a2r 线（242）→ 关 39 个认证缺口 + 2 个名解析
 ```
 
-## 10. 需要你裁定（4 项）
+## 10. 已裁定（2026-10-28，用户问卷）
 
-1. **NA-1 / NA-2 / NA-3 是否接受**（含"native 闭包/Dyn/在线 HMR 不入 M1"）。不接受则 M1 全绿不可达，必须改为给这些能力立项。
-2. **R-A / R-B / R-C / R-D 是否按"旧引擎缺陷/profile 差异"接受**（不阻塞 M1，但保留证据）。
-3. **R-E 是否不接受**（a2r 名解析记为真缺口）。
-4. **a2r 双轴拆分是否接受**（M1 只看金样轴，认证缺口另账）。
+| # | 问题 | 裁定 | 直接后果 |
+|---|---|---|---|
+| 1 | 三类"本阶段不要求"是否接受 | **接受**（NA-1 旧引擎/a2r 不测带位宽入口；NA-2 不测动态类型；NA-3 native 不测闭包/动态类型/在线热重载/暂停恢复） | 94 个格子转为 `na:m1`，并写明重新进入条件 |
+| 2 | 旧引擎算错/接受非法程序是否记为已知差异 | **接受**（R-A 遮蔽与命名实参、R-B 整数语义、R-C 接受非法程序、R-D 运行时与值缺陷，含 L01–L07、R07） | 33 个格子转为 `diff:accepted`，保留证据但不阻塞 |
+| 3 | a2r 不做名字检查 | **算真缺口**（`gap:a2r-resolve`，R-E 不接受） | 2 个格子保持阻塞，由 a2r 补 |
+| 4 | a2r 的"对金样"与"能编译"是否分开 | **分开记** | 39 个格子转为 `ok+cert-gap`；认证缺口另账，不阻塞 M1 |
+
+裁定只作用于**旧侧**（旧引擎 / a2r 的既有差异）；新引擎（AV / native）与冻结 oracle 的任何差异仍是 `diff:pending`，不得套用上述裁定。
 
 ## 11. 风险
 
 - **`na` 变成垃圾桶**：靠 §5 的四条反滥用规则；merge 报告单列分布。
 - **`diff:accepted` 掩盖新实现缺陷**：裁定只针对**旧侧**行为；新侧（AV/mn）与冻结 oracle 的任何差异仍是 `diff:pending`，不得套用 R-A..R-D。
 - **重绑定把 probe 直接翻成 ok**：必须有真实执行证据与父侧判定，不得据"契约已备"推断。
-- **本件与 852 归档状态冲突**：852 已归档，本件只写提案；`binding.tsv` 的实际改动由后续重绑定计划执行并在其 plan 内留证。
+- **本件与 852 归档状态冲突**：852 已归档，本件只写**口径**（不改 `binding.tsv`）；实际改状态由后续重绑定计划执行，并在其 plan 内留证。
 
 ## 附录 A：逐行重分类（103 行）
 
-列说明：`现状(ac / av)` 取自当前 `binding.tsv` 的 mn/av 两列原文；`新 ac/av/avm/a2r` 为本件提案值（`na:m1(NA-x)`、`diff:accepted(R-x)`、`ok+cert-gap` 为新 token）。avm/a2r 两列对同一族高度一致，逐行仍全列以保证可核。
+按 2026-10-28 已裁定口径生成。列说明：`现状(ac / av)` 取自当前 `binding.tsv` 的 mn/av 两列原文；`新 ac/av/avm/a2r` 为定稿值（`na:m1(NA-x)`、`diff:accepted(R-x)`、`ok+cert-gap` 为新 token）。avm/a2r 两列对同一族高度一致，逐行仍全列以保证可核。
 
 | ID | 能力 | 现状(ac / av) | 新 ac | 新 av | avm | a2r | owner / 依据 |
 |---|---|---|---|---|---|---|---|
@@ -186,24 +193,24 @@ a2r 线（242）→ 关 39 个认证缺口 + 2 个名解析
 | R04 | 拥有文本字段深clone | `gap:mn-scalar-only` / `wait:av-record-822` | gap:P870 | probe | diff:accepted(R-D) | ok+cert-gap | PLAN-870；需真实重跑后定级 |
 | R05 | move参数/返回 | `gap:mn-scalar-only` / `wait:av-record-822` | gap:P870 | probe | ok | ok+cert-gap | PLAN-870；需真实重跑后定级 |
 | R06 | 重叠赋值先物化RHS | `gap:mn-scalar-only` / `wait:av-record-822` | gap:P870 | probe | ok | ok+cert-gap | PLAN-870；需真实重跑后定级 |
-| R07 | mut参数写回 | `gap:mn-scalar-only` / `wait:av-record-822` | gap:P870 | probe | diff:pending | diff:pending(a2r) | PLAN-870；需真实重跑后定级 |
-| R08 | static与只读方法 | `gap:mn-scalar-only` / `gap:av-lower-method` | gap:P870 | gap:av-method | ok | ok+cert-gap | AV 实例方法 lowering（待立项）；PLAN-870 |
+| R07 | mut参数写回 | `gap:mn-scalar-only` / `wait:av-record-822` | gap:P870 | probe | diff:accepted(R-D) | gap:a2r-untyped-emit | PLAN-870；a2r 未定型发射（242 跟踪）；需真实重跑后定级 |
+| R08 | static与只读方法 | `gap:mn-scalar-only` / `gap:av-lower-method` | gap:P870 | gap:av-method | ok | ok+cert-gap | AV 实例方法（待立项）；PLAN-870 |
 | R09 | 同布局不同名不兼容 | `gap:mn-scalar-only` / `wait:av-record-822` | gap:P870 | probe | diff:accepted(R-C) | probe | PLAN-870；需真实重跑后定级 |
 | R10 | move后读取 | `gap:mn-scalar-only` / `wait:av-record-822` | gap:P870 | probe | diff:accepted(R-C) | probe | PLAN-870；需真实重跑后定级 |
-| L01 | 类型化List基本操作 | `gap:mn-scalar-only` / `gap:av-unsupported-list` | gap:mn-collections | gap:P864 | diff:pending | ok+cert-gap | PLAN-864；native 第二阶段（拟 872+） |
-| L02 | List插入/移除 | `gap:mn-scalar-only` / `gap:av-unsupported-list` | gap:mn-collections | gap:P864 | diff:pending | ok+cert-gap | PLAN-864；native 第二阶段（拟 872+） |
-| L03 | 空List/clear | `gap:mn-scalar-only` / `gap:av-unsupported-list` | gap:mn-collections | gap:P864 | diff:pending | ok+cert-gap | PLAN-864；native 第二阶段（拟 872+） |
-| L04 | List拥有type/借用读 | `gap:mn-scalar-only` / `gap:av-unsupported-list` | gap:mn-collections | gap:P864 | diff:pending | ok+cert-gap | PLAN-864；native 第二阶段（拟 872+） |
-| L05 | List移出owned值 | `gap:mn-scalar-only` / `gap:av-unsupported-list` | gap:mn-collections | gap:P864 | diff:pending | ok+cert-gap | PLAN-864；native 第二阶段（拟 872+） |
-| L06 | List越界 | `gap:mn-scalar-only` / `gap:av-unsupported-list` | gap:mn-collections | gap:P864 | diff:accepted(R-C) | ok | PLAN-864；native 第二阶段（拟 872+） |
-| L07 | List元素替换 | `gap:mn-scalar-only` / `gap:av-unsupported-list` | gap:mn-collections | gap:P864 | diff:pending | ok+cert-gap | PLAN-864；native 第二阶段（拟 872+） |
-| V01 | Option Some/None | `gap:mn-scalar-only` / `wait:av-variants-822` | gap:mn-collections | probe | ok | ok+cert-gap | native 第二阶段（拟 872+）；需真实重跑后定级 |
-| V02 | Result Ok | `gap:mn-scalar-only` / `wait:av-variants-822` | gap:mn-collections | probe | ok | ok+cert-gap | native 第二阶段（拟 872+）；需真实重跑后定级 |
-| V03 | Result拥有错误载荷 | `gap:mn-scalar-only` / `wait:av-variants-822` | gap:mn-collections | probe | diff:accepted(R-D) | ok | native 第二阶段（拟 872+）；需真实重跑后定级 |
-| V04 | 有限enum带载荷 | `gap:mn-scalar-only` / `wait:av-variants-822` | gap:mn-collections | probe | ok | ok+cert-gap | native 第二阶段（拟 872+）；需真实重跑后定级 |
-| V05 | enum拥有type载荷 | `gap:mn-scalar-only` / `wait:av-variants-822` | gap:mn-collections | probe | ok | ok+cert-gap | native 第二阶段（拟 872+）；需真实重跑后定级 |
-| V06 | 切换活分支 | `gap:mn-scalar-only` / `wait:av-variants-822` | gap:mn-collections | probe | ok | ok+cert-gap | native 第二阶段（拟 872+）；需真实重跑后定级 |
-| V07 | Option None分支 | `gap:mn-scalar-only` / `wait:av-variants-822` | gap:mn-collections | probe | ok | ok+cert-gap | native 第二阶段（拟 872+）；需真实重跑后定级 |
+| L01 | 类型化List基本操作 | `gap:mn-scalar-only` / `gap:av-unsupported-list` | gap:mn-collections | gap:P864 | diff:accepted(R-D) | ok+cert-gap | PLAN-864；native 第二阶段（待立项） |
+| L02 | List插入/移除 | `gap:mn-scalar-only` / `gap:av-unsupported-list` | gap:mn-collections | gap:P864 | diff:accepted(R-D) | ok+cert-gap | PLAN-864；native 第二阶段（待立项） |
+| L03 | 空List/clear | `gap:mn-scalar-only` / `gap:av-unsupported-list` | gap:mn-collections | gap:P864 | diff:accepted(R-D) | ok+cert-gap | PLAN-864；native 第二阶段（待立项） |
+| L04 | List拥有type/借用读 | `gap:mn-scalar-only` / `gap:av-unsupported-list` | gap:mn-collections | gap:P864 | diff:accepted(R-D) | ok+cert-gap | PLAN-864；native 第二阶段（待立项） |
+| L05 | List移出owned值 | `gap:mn-scalar-only` / `gap:av-unsupported-list` | gap:mn-collections | gap:P864 | diff:accepted(R-D) | ok+cert-gap | PLAN-864；native 第二阶段（待立项） |
+| L06 | List越界 | `gap:mn-scalar-only` / `gap:av-unsupported-list` | gap:mn-collections | gap:P864 | diff:accepted(R-C) | ok | PLAN-864；native 第二阶段（待立项） |
+| L07 | List元素替换 | `gap:mn-scalar-only` / `gap:av-unsupported-list` | gap:mn-collections | gap:P864 | diff:accepted(R-D) | ok+cert-gap | PLAN-864；native 第二阶段（待立项） |
+| V01 | Option Some/None | `gap:mn-scalar-only` / `wait:av-variants-822` | gap:mn-collections | probe | ok | ok+cert-gap | native 第二阶段（待立项）；需真实重跑后定级 |
+| V02 | Result Ok | `gap:mn-scalar-only` / `wait:av-variants-822` | gap:mn-collections | probe | ok | ok+cert-gap | native 第二阶段（待立项）；需真实重跑后定级 |
+| V03 | Result拥有错误载荷 | `gap:mn-scalar-only` / `wait:av-variants-822` | gap:mn-collections | probe | diff:accepted(R-D) | ok | native 第二阶段（待立项）；需真实重跑后定级 |
+| V04 | 有限enum带载荷 | `gap:mn-scalar-only` / `wait:av-variants-822` | gap:mn-collections | probe | ok | ok+cert-gap | native 第二阶段（待立项）；需真实重跑后定级 |
+| V05 | enum拥有type载荷 | `gap:mn-scalar-only` / `wait:av-variants-822` | gap:mn-collections | probe | ok | ok+cert-gap | native 第二阶段（待立项）；需真实重跑后定级 |
+| V06 | 切换活分支 | `gap:mn-scalar-only` / `wait:av-variants-822` | gap:mn-collections | probe | ok | ok+cert-gap | native 第二阶段（待立项）；需真实重跑后定级 |
+| V07 | Option None分支 | `gap:mn-scalar-only` / `wait:av-variants-822` | gap:mn-collections | probe | ok | ok+cert-gap | native 第二阶段（待立项）；需真实重跑后定级 |
 | K01 | move闭包捕获 | `gap:mn-scalar-only` / `ok:av-closures-823` | na:m1(NA-3) | ok | ok | ok+cert-gap | — |
 | K02 | 创建者退出后owned闭包 | `gap:mn-scalar-only` / `ok:av-closures-823` | na:m1(NA-3) | ok | diff:accepted(R-D) | diff:accepted(R-C) | accepted diff |
 | K03 | 同步非逃逸借用捕获 | `gap:mn-scalar-only` / `ok:av-closures-823` | na:m1(NA-3) | ok | ok | ok+cert-gap | — |
@@ -255,4 +262,3 @@ a2r 线（242）→ 关 39 个认证缺口 + 2 个名解析
 | G06 | 无证书不称通过 | `n/a` / `n/a` | na:m1 | na:m1 | na:m1 | ok | — |
 | G07 | 篡改/漏产物非绿 | `n/a` / `n/a` | na:m1 | na:m1 | na:m1 | ok | — |
 | G08 | 重复认证复用收据 | `n/a` / `n/a` | na:m1 | na:m1 | na:m1 | ok | — |
-
