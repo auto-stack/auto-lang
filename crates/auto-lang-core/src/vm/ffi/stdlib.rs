@@ -5607,7 +5607,7 @@ fn shim_rust_stdlib_dispatch_inner(
             };
             // Collect all records into a List of record heap objects
             use crate::vm::types::ListData;
-                    let mut outer_list: ListData<i32> = ListData::new();
+            let mut outer_list: ListData<i32> = ListData::new();
             {
                 let mut guard = obj.write().unwrap();
                 if let Some(rust_obj) = guard

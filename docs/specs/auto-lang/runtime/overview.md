@@ -1,6 +1,18 @@
 # runtime（运行时与内建库）
 
-> **Status**: partial（核心结构已实现并接入；Plan 064 分层迁移未收尾，`Scope` 遗留）
+> **Status**: partial（核心结构已实现并接入；Plan 064 分层迁移的 `Scope` 遗留已由 PLAN-844 退役清除）
+
+## 减法记录（PLAN-844，2026-10-28）
+
+- legacy `Scope`/Database scope API/`SymbolTable::from_scope` 桥/`StackedScope` 退役
+  （零消费者审定；活跃面 Sid/ScopeKind/SymbolTable/Meta 保留）。
+- 应答 JSON 头构造三份 → `server_model::cors_json_headers` 单源（pub(crate)）。
+- 迭代器注册样板 13 处 → `AutoVM::register_iterator`；Generator 构造三胞胎 →
+  `AutoVM::new_generator_state`（engine.rs 单点）。
+- 死纯 shim（Str.contains/starts_with/ends_with，id 1504-1506）删除——production()
+  绑定序恒被 nv 版覆盖、VVM 入口只绑 catalog，两路径均不活。
+- 保留有证：str.len 双版（chars vs bytes 两个活名字）、math/to_int 双轨（tag 感知/
+  错误语义边界不同）、error-reply 采样族（plan755 字节级契约钉住，收益/风险比低）。
 
 ## 结构（PLAN-843 结构半部，2026-10-28）
 

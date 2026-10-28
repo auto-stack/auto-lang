@@ -9,6 +9,14 @@
 > 清单（含 optional path）零 auto-ui-dialect，无 UI checkout 的源码快照
 > 可独立消费（fresh+locked，独立消费者 5/5）。
 
+## 减法记录（PLAN-844，2026-10-28）
+
+公开面退役（均 DEPRECATED 在案且零消费者，E0432 负控证明删除可发现）：
+`infer::TypeRegistry`（→ `types::TypeStore`/`vm::generic_registry`）、legacy `scope::Scope`
+与 Database scope API（→ `SymbolTable` + `StackFrame`）、`ExecutionEngine::Evaluator`
+（→ `AutoVM`）、`RustTrans::set_scope`（→ `with_database`）、`ListData::elems_mut`
+（→ typed methods）。宏 crate 唯一 owner = `auto-macros`（`auto-lang-macros` 逐字旧副本删除）。
+
 ## 职责与边界
 
 - **内部结构（PLAN-843 结构半部）**：七热点已按语义职责拆主题模块——parser/{expressions,statements,decls,type_syntax,scenario}、

@@ -12,6 +12,14 @@ v0.6 模块化（[Design 37](../../design/37-v06-modularization-and-repo-boundar
 auto-ui / auto-man 仓身份与远端 URL；不另建新仓。本页登记三仓**当前真实状态**与
 legacy 保全锚，目标态拆分不在本页冒称已完成。
 
+## 减法与单源记录（PLAN-844，2026-10-28）
+
+- `autoui-skill` 技能包单源化：唯一 owner = auto-man 仓（`auto` CLI `include_str!` 消费），
+  auto-lang 侧逐字副本（12 文件/32KB）删除；契约 spec 保留指针。
+- 孤儿清理：auto-lang 仓 `auto-lang-macros`/`auto-xml`/`ac-examples` 删除（零消费者审定）；
+  auto-man 仓拆仓 fixture 残留（`crates/auto-lang`）与 `auto-up` 遗留资产删除。
+- 统一净统计口径与基线/收据：[net-slimming](net-slimming.md)。
+
 ## 三仓身份（2026-10-15，PLAN-784 T01 冻结）
 
 | 仓 | 主检出 | 默认/当前分支 | 保全时 tip | 远端 |

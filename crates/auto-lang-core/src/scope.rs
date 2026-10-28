@@ -262,7 +262,6 @@ impl fmt::Display for Meta {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
 
@@ -343,5 +342,4 @@ mod tests {
         assert_eq!(table.kids[0], Sid::from("std.math"));
         assert_eq!(table.kids[1], Sid::from("std.io"));
     }
-
 }

@@ -292,7 +292,6 @@ pub struct Database {
     // =========================================================================
     // PHASE 3: COMPILE-TIME DATA FROM UNIVERSE (Plan 064)
     // =========================================================================
-
     symbol_tables: HashMap<Sid, SymbolTable>, // Phase 4.2: SymbolTable (compile-time only)
 
     // Type information storage (compile-time type registry)

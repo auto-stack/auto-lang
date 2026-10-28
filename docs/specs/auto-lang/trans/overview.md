@@ -2,6 +2,11 @@
 
 > **Status**: implemented
 
+## 减法记录（PLAN-844，2026-10-28）
+
+`RustTrans::set_scope` no-op 退役（deprecated Phase 066；JavaScript/Python 对应物此前已删，
+零调用者）。
+
 ## 结构（PLAN-843 结构半部，2026-10-28）
 
 `trans/rust.rs`（5960 生产行）为组合入口；发射算法按职责归 `trans/rust/{expr_emit,stmt_emit,

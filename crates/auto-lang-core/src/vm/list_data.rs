@@ -168,7 +168,6 @@ impl AutoVMListStorage {
             AutoVMListStorage::InlineInt64(storage) => &storage.buffer[..storage.len],
         }
     }
-
 }
 
 // ============================================================================

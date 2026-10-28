@@ -6,6 +6,13 @@
 
 AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后端（plan-081 设为默认，plan-091 起 evaluator 选项弃用并重定向到 AutoVM）。职责覆盖：AST → ABC 字节码编译（codegen）、栈式字节码执行引擎、堆对象统一管理、泛型单态化、Task/Msg 并发与 async/await、native/FFI 接口、交互式调试器、ABT 字节码文本格式，以及 REPL / 持久会话 / 守护进程等交互形态。与 a2r 转译后端存在语义一致性要求（`docs/conformance/`，plan-266）。
 
+## 减法记录（PLAN-844，2026-10-28）
+
+- `ExecutionEngine::Evaluator` 变体退役（deprecated 0.10.0；两臂恒重定向 AutoVM，
+  零外部构造）；`vm/list_data.rs elems_mut` 退役（零调用者）。
+- 迭代器/Generator 构造单源化见 runtime 页减法记录（engine.rs `register_iterator` /
+  `new_generator_state`，13+3 处样板收敛）。
+
 ## 现状
 
 - CALL_SPEC 内联数学分发已 nanbox 对齐（plan-474，plan011④ 根因）：一元分支接收者/结果按 NanoValue 透传（原 read_i32/push_i32/pop_i32 i32 化石把裸 f64 读成低 32 位、TAG_F32 读成 payload 位型），二元分支原地调用（rust_fn 宏逆序弹参，CALL_SPEC `[recv, arg0..argN-1]` 布局天然对齐）；回归载具 `tests/vm_json_float_read_tests.rs`（脚本/位级/widget handler 三层）。

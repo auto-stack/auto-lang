@@ -2,6 +2,12 @@
 
 > **Status**: implemented（核心可用；借检查、参数检查集成仍 partial）
 
+## 减法记录（PLAN-844，2026-10-28）
+
+`infer/registry.rs`（DEPRECATED TypeRegistry，Plan 089）退役删除——全仓零消费者，
+`InferenceContext` 持 `type_store`；`TypeStore` 唯一类型/符号/模块表 owner 的地位不再有
+并存残影（REPL 路径的 `type_registry::SharedTypeRegistry` 是另一活跃物，保留且有 API pin）。
+
 ## 结构（PLAN-843 结构半部，2026-10-28）
 
 `TypeStore`（types.rs）保持唯一类型/符号/模块表 owner，未拆分未复制；推断实现维持 `infer/`
