@@ -5,12 +5,12 @@ feature_name: autos-desktop-entry-and-launch-health（桌面入口迁 auto-os + 
 author: [DeepSeek Harness session]
 created_at: 2026-10-28
 updated_at: 2026-10-28
-plan_revision: 2
-current_step: 9
-total_steps: 11
+plan_revision: 3
+current_step: 11
+total_steps: 13
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
+supersedes_spec_components: [docs/specs/auto-ui-runtime/project.md, docs/specs/auto-ui-compiler/project.md, docs/specs/repository-boundaries/project.md]
 new_spec_components: [docs/specs/repository-boundaries/autos-desktop-entry.md]
 touched_goals: []             # 有意留空：不改 GOAL，只做归属与健康面
 affects: [repository-boundaries, auto-ui-runtime, auto-ui-compiler, auto-ui, auto-os]
@@ -160,11 +160,11 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 |---|---|---|
 | `apps_dir` / `apps_dir_src` | CLI/env/缺省 | 实际扫描根与来源（`--apps-dir`/`AUTO_OS_ROOT`/缺省探测） |
 | `registry` / `desktop_visible` | `app_registry` | 与 `[session] app registry: N entries` 同源，不另算一遍 |
-| `skip` | 注册表跳过原因聚合 | 形如 `no_pac_at=3,parse_fail=0` |
+| `skip` | `apps.manifest` repo 条目的 `pac.at` 缺席数 | 形如 `skip=no_pac_at:3`（解析失败等不单独统计，不虚构计数） |
 | `declared_exe_missing` | 各 spec `desktop_exe` stat | 逗号分隔 app id（当前应为 4 个） |
 | `apps_empty` | `apps/*` 目录存在但无 `pac.at` 且无 `.git` | 空壳目录数（当前应为 0） |
 | `shell_pack` / `shell_pack_src` | `ui::shell::resolve_shell_pack_dir` | env/兄弟/内嵌 |
-| `storage` / `orphan_icons` | `AUTO_VM_STORAGE_FILE` + `shell.desktop.icons` | 文件路径 + 无落点 id 数（当前 2） |
+| `storage` / `orphan_icons` | `AUTO_VM_STORAGE_FILE` + `shell.desktop.icons` | 文件路径 + **既无注册表落点也无 manifest 落点**的 id 数（`apps_empty>0` 时不给清理建议） |
 | `auto_cli` | PATH → 兄弟 → 主检出 | 路径或 `missing`（缺失即 rqhost 预判失败） |
 
 `hint=` 只在有缺口时出现，内容必须可执行（如 `run: cargo build -p auto`、
@@ -238,7 +238,7 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 | AC-04 | 无 `auto.exe` 时 boot 日志给出可执行提示（`cargo build -p auto`），桌面正常进入且不 panic；有 `auto.exe` 时出现 `rqhost daemon spawned` | work |
 | AC-05 | 夹具下 `[desktop-health]` 逐键正确：`apps_empty` / `declared_exe_missing` / `orphan_icons` / `auto_cli` 各自命中预期值，且 hint 可执行 | work |
 | AC-06 | 缺产物语义按 Q-1 裁定实现：非 strict 降级 in-proc 有 warn/toast；`launch:"native"` 严格 fail-fast 且提示含 `auto build -r rust`；单测覆盖两臂 | work |
-| AC-07 | auto-os 内 `--example ui_desktop` 引用 = 0；`desktop.ps1 -Track iced -DryRun` 打印新构建/运行命令 | work |
+| AC-07 | auto-os 仓内**当前面**（非 archive/attachments/reports）`--example ui_desktop` 引用 = 0，唯余子模块内容（转派 `OS876-DOC-SWEEP`）；`desktop.ps1 -Track iced -DryRun` 打印 `-p os-desktop --bin ui-desktop` 与 `target/debug/ui-desktop.exe`；051 launcher 测试全绿 | work |
 | AC-08 | auto-lang 仓无 `examples/ui_desktop.rs` 且无残留引用；`cargo check -p auto-lang --features ui-iced` 绿 | work |
 | AC-09 | `shell.desktop.icons` 中无落点 id = 0（或每个都有 manifest 落点），桌面不再出 "app not found" 通知 | work |
 | AC-10 | 本会话 5 类观察项各有归位：①入口 F-1..F-5（本计划）；②缺产物 F-6/F-7（本计划）；③空壳 apps F-9（健康面 + 文档）；④auto-term F-11（KNOWN-DEBT 指针更新）；⑤use-diag F-12（转派条目）。复审可逐条对账 | review |
@@ -260,6 +260,8 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 | T-09 | review | T-01..T-08 | 独立复审：AC 逐条对代码/日志；遗漏与延后扫描；spec delta 终稿 | 复审记录 | AC-10 |
 | T-10 | merge | T-09 | 三仓合并、spec 落地、债表更新（P723-D1 指针、use-diag 转派）、worktree 清理归档 | 归档与收据 | AC-11 |
 | T-11 | work | — | auto-os `AGENTS.md` §1 生效规则 + `docs/plans/autos-desktop-program.md` 指针行 + auto-lang 边界 spec 归属节（SD-06） | 治理规则成文 | AC-12 |
+| T-12 | work | T-05 | 051 三仓 launcher 与 876 语义 reconcile：`desktop.ps1/sh` iced 轨改 `-p os-desktop --bin ui-desktop`、产物 `target/debug/ui-desktop`（含 candidate 模式）、`scripts/tests/test_desktop_launcher.py` 断言更新 | 与 main 无冲突且新入口可用 | AC-07 |
+| T-13 | work | 终审 | 终审 findings 闭环：F-01 文档面、F-02 orphan 语义、F-03 `skip` 键、F-04 夹具腿、F-06 假警报/可见面、F-07 `auto.cmd`/3 级/单测、F-08 债指针 | 终审 9 条全部关闭或有据转派 | AC-05/06/07/10/12 |
 
 ### 执行证据（2026-10-28 work 轮；worktree 组 `.wt/lang-876/`）
 
@@ -284,6 +286,44 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 未执行：merge-owned 的裸 `cargo t`、spec 账本索引刷新、三仓合并与 worktree 清理。
 
 ## 9. 复审记录
+
+### 2026-10-28 /auto-plan:review 独立终审（review_scope: final）
+
+- `outcome: needs_fix`（复审者=独立子会话，未采信执行者自述；三仓复审期 clean）。
+- 基线：auto-lang `5c3b21f9a` / auto-os `b71cf9c` / auto-ui `fa06499`。
+- AC 结论：AC-01/02/03/08/09/12 **pass**；AC-04/05/06/10 **partial**；AC-07 **fail**；
+  AC-11 merge-owned pending。
+- Findings：
+  - `F-876-R-01`（P2，AC-07）：auto-os 内 `--example ui_desktop` 命中 10 文件，3 处为
+    当前面且给出失效命令（`docs/design/01-stage-b-desktop-migration.md:153/231`、
+    `apps/auto-syslog/README.md:21`、`ui-gallery/src/front/registry.at:43`）；T-05 的
+    "docs 4 处"实际 0 处。
+  - `F-876-R-02`（P2，AC-05/SD-01）：`orphan_icons` 只比对扫描 entries，未初始化子模块
+    的检出把 24 个合法 id 判 orphan，并给"清理 storage"破坏性建议。
+  - `F-876-R-03`（P2）：§5.3 `skip` 键未实现，SD-01 键集静默缩水；单测只断言子串。
+  - `F-876-R-04`（P2）：`supersedes_spec_components: []` 与 SD-02/03/04 的 modify 面不符。
+  - `F-876-R-05`（P3）：V-03 夹具腿未执行（无 `apps_empty>=1` 的 hint 证据）。
+  - `F-876-R-06`（P3，AC-06）：降级无用户可见 toast（只有 stderr）；`launch:"vm"` +
+    产物在场会打假"missing"警报。
+  - `F-876-R-07`（P3，AC-04）：正向腿（有 `auto.exe` → `rqhost daemon spawned`）未证；
+    `resolve_auto_cli` 无单测、不认 `auto.cmd`、上探 3→2 级。
+  - `F-876-R-08`（P2，AC-10）：④P723-D1 无 876 指针、⑤use-diag 转派条目不存在。
+  - `F-876-R-09`（P1，merge 阻塞）：auto-os main（051）的 launcher 仍构建已被删除的
+    auto-lang example，与本分支在 `desktop.ps1/sh` 冲突。
+
+### 2026-10-28 revision 3（REV2 修复闭环）
+
+| Finding | 修复 | 证据 |
+|---|---|---|
+| F-01 | `docs/design/01-stage-b-desktop-migration.md` 两处改新命令（旧命令降为历史注记并去字面量）；`ui-gallery/src/front/registry.at` 内嵌 SPEC 命令改新；`apps/auto-syslog/README.md` 属子模块内容不可代提交 → 转派 `OS876-DOC-SWEEP` | 当前面 grep 仅余该子模块 README；`git grep -F -- '--example ui_desktop'`（排除 archive/attachments/reports）= 1 |
+| F-02 | `orphan_icons` 判据改为"∉ (entries ∪ apps.manifest repo ids)"；`apps_empty>0` 时不给清理建议；SD-01 同步 | 单测 `orphan_requires_absence_from_registry_and_manifest`；夹具 boot `registry=31/declared=5/apps_empty=1/orphan_icons=0` 且无 "clean them" hint |
+| F-03 | 实现 `skip=no_pac_at:N`（manifest repo 条目 `pac.at` 缺席数；不虚构 parse_fail） | 夹具 boot 行含 `skip=no_pac_at:0`；单测改为**全键集**断言 |
+| F-04 | frontmatter `supersedes_spec_components` 补三张 modify 页 | 计划 frontmatter（revision 3） |
+| F-05 | 新增 `hint_when_apps_empty` 单测 + 真实夹具 boot（`apps_empty=1` → 子模块 hint） | `cargo test -p os-desktop` = 5 passed；夹具 boot 日志 |
+| F-06 | warn 只在 `launch!="vm"` 且产物缺失时打；可见面按 SD-01 记录为 stderr（宿主无 toast 通道） | `cargo test --lib -- p876` = 2 passed；SD-01 已注明 |
+| F-07 | `resolve_auto_cli` 恢复 3 级上探 + Windows `auto.exe/auto.cmd/auto` 候选 + `find_auto_in` 单测；正向腿用 `AUTO_BIN` 实跑 | 单测 `p876_find_auto_prefers_exe_then_cmd`；boot 日志 `rqhost daemon spawned at autodesk-rqhost-desktop-23528 (AUTO_DESKTOP_ENDPOINT published)`（其后 5s 未就绪=替身非真 daemon，已注明边界） |
+| F-08 | auto-os `KNOWN-DEBT-AND-RISKS.md` 增 PLAN-876 节（OS876-APP-EXE/SUBMODULE/TERM-TICK/USE-DIAG/DOC-SWEEP）；auto-lang 同名文件增指针节 | 两文件实测读回 |
+| F-09 | merge `main` → 分支，`desktop.ps1/sh` 采纳 051 结构并改 iced 轨为 `-p os-desktop --bin ui-desktop`（产物 `target/debug/ui-desktop`、candidate 同名）；launcher 测试断言同步 | `python scripts/tests/test_desktop_launcher.py` = **13 passed**；`git merge` 无残冲突 |
 
 ### 2026-10-28 revision 2（用户裁定：计划/债归属随拆分一同归位）
 
@@ -315,7 +355,7 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 
 ### 2026-10-28 /auto-plan:new 起草交接
 
-- `stage: new`；PLAN-876；`plan_revision: 2`。
+- `stage: new`；PLAN-876；`plan_revision: 1`。
 - `outcome: pass`（T-01..T-05、T-08 在既有授权内可执行；T-06/T-07 受 Q-1/Q-3 约束）。
 - `next: work`，起点 **T-01**；受约束项：T-06（Q-1）、T-07（Q-3）、T-08（Q-5 仅影响处置方式）。
 - 变更面：无（首版）。
