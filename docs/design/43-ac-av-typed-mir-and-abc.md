@@ -57,7 +57,7 @@ source/CST/AST → resolve / infer / instantiate ↔ CTE request
 
 MIR是编译器内部合同，但拥有可版本化Schema/缓存表示，不代表向第三方发布永远稳定的公共ABI。它不含CLIF私有对象、宿主指针或ABC物理指令编号。A2X按目标需要复用部分语义lowering，不强迫所有源码转译先失去结构再恢复循环。
 
-已有Checked HIR→Cranelift实验管线按原profile继续工作。未来共享MIR接线应另立迁移Plan，以native/AV对拍验证后逐步替换；设计更新不使既有成果失效，也不把旧直达路径冒称已采用MIR。
+已有Checked HIR→Cranelift实验管线按原profile继续工作。未来共享MIR接线应另立迁移Plan，以native/AV对拍验证后逐步替换；设计更新不使既有成果失效，也不把旧直达路径冒称已采用MIR。**2026-10-28 迁移合同已建立**：收敛路径、模块边界、布局/ABI、身份/cache 与逐 profile 切换/退役判据见 [Design49](49-native-single-mir-lowering.md)；实施链为 [868](../plans/868-hir-mir-lowering-shared-crate.md)→[870](../plans/870-ac-mn-record-text-native-expansion.md)→[871](../plans/871-ac-native-switch-and-old-lowering-retirement.md)，在 871 完成前本条“旧直达路径”仍是事实。
 
 ## 3. 最小MIR：正确性先于优化
 
@@ -258,6 +258,8 @@ A2X复用结构化HIR及来源/依赖，可将区域复用结果装配成合法�
 | 机器码持久化 | 符号/重定位/target/ABI/runtime及再生recipe | 首探针用现有对象产物验证身份/复用；native支持面内逐步交付 | 任意在线JIT代码的跨进程恢复/安装 |
 | 增量发布 | 快照/根/完整闭包、profile匹配、两类包、原子发布 | v0.6在已承诺native profile上落实复用/补编与真实链接；正式发布器另立有限计划，不塞入首个VM探针 | 全平台可移植包、复杂全局优化与原生切片分发 |
 | T1/T2执行 | 升级、失效/回退、权限与资源边界 | 本轮不新增完整分层JIT发行门，不阻塞CTE或796/797 | 热点快速JIT、优化JIT及收益驱动调度按专项Plan实现 |
+
+**2026-10-28**：本表中“native 按单独迁移接共享服务”的迁移合同已落在 [Design49](49-native-single-mir-lowering.md)（§3 模块边界 / §4 布局 ABI / §5 身份 cache / §6 逐 profile 切换与退役）；该迁移不改变本表其余能力边界。
 
 方向确认不等于上述全部已冻结或实现；v0.6新增发布接线也须重估容量。初始架构不能持久化进程指针、混用dev/release键或只记录直接callee而丢内联依赖，以免后续AJ/发布返工。AJ并不要求立即切换自主codegen，可先复用Cranelift；自制后端仍按性能和维护证据分期。
 
