@@ -9,9 +9,6 @@ use crate::error::AutoResult;
 pub enum ExecutionEngine {
     /// AutoVM bytecode VM (default, faster)
     AutoVM,
-    /// Legacy evaluator (deprecated, redirects to AutoVM)
-    #[deprecated(since = "0.10.0", note = "Use AutoVM instead (Plan 091)")]
-    Evaluator,
 }
 
 impl ExecutionEngine {
@@ -58,11 +55,6 @@ pub fn execute_with_engine(engine: ExecutionEngine, code: &str) -> AutoResult<St
             // Use AutoVM (compile to bytecode, execute)
             crate::run_autovm(code)
         }
-        #[allow(deprecated)]
-        ExecutionEngine::Evaluator => {
-            // Plan 091: Evaluator redirects to AutoVM
-            crate::run_autovm(code)
-        }
     }
 }
 
@@ -73,8 +65,6 @@ pub fn execute_with_engine_capture(
 ) -> AutoResult<(String, String)> {
     match engine {
         ExecutionEngine::AutoVM => crate::run_autovm_capture(code),
-        #[allow(deprecated)]
-        ExecutionEngine::Evaluator => crate::run_autovm_capture(code),
     }
 }
 

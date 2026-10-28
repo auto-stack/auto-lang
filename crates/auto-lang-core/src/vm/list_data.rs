@@ -169,23 +169,6 @@ impl AutoVMListStorage {
         }
     }
 
-    /// Get mutable access to elements (for legacy compatibility)
-    /// Note: This creates a new Vec for InlineInt64, changes won't persist
-    #[deprecated(note = "Use typed methods instead")]
-    pub fn elems_mut(&mut self) -> &mut Vec<Value> {
-        match self {
-            AutoVMListStorage::Heap(storage) => &mut storage.elems,
-            AutoVMListStorage::InlineInt64(_) => {
-                // This is a limitation - InlineInt64 can't return &mut Vec<Value>
-                // Callers should use the typed methods instead
-                static mut DUMMY: Vec<Value> = Vec::new();
-                #[allow(static_mut_refs)]
-                unsafe {
-                    &mut DUMMY
-                }
-            }
-        }
-    }
 }
 
 // ============================================================================

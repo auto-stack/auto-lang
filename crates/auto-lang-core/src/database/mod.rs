@@ -15,7 +15,7 @@
 // Phase 3: Add fragment-level hashing and fine-grained dependencies
 
 use crate::ast::{Fn, Type};
-use crate::scope::{Scope, Sid, SymbolTable, SID_PATH_GLOBAL};
+use crate::scope::{Sid, SymbolTable, SID_PATH_GLOBAL};
 use crate::symbols::{CodePak, SymbolLocation};
 use auto_val::{AutoStr, TypeInfoStore};
 use dashmap::DashMap;
@@ -293,8 +293,6 @@ pub struct Database {
     // PHASE 3: COMPILE-TIME DATA FROM UNIVERSE (Plan 064)
     // =========================================================================
 
-    // Scope management (compile-time scoping structure)
-    scopes: HashMap<Sid, Scope>, // Legacy Scope (will be deprecated)
     symbol_tables: HashMap<Sid, SymbolTable>, // Phase 4.2: SymbolTable (compile-time only)
 
     // Type information storage (compile-time type registry)
@@ -362,7 +360,6 @@ impl Database {
             dirty_files: std::collections::HashSet::new(),
             frag_iface_hashes: HashMap::new(),
             // Phase 3: Compile-time data from Universe (Plan 064)
-            scopes: HashMap::new(),        // Legacy Scope (will be deprecated)
             symbol_tables: HashMap::new(), // Phase 4.2: SymbolTable (compile-time only)
             type_info_store: TypeInfoStore::new(),
             type_aliases: HashMap::new(),
@@ -878,30 +875,6 @@ impl Database {
     // =========================================================================
 
     // -------------------------------------------------------------------------
-    // Scope Management
-    // -------------------------------------------------------------------------
-
-    /// Get a scope by its ID
-    pub fn get_scope(&self, sid: &Sid) -> Option<&Scope> {
-        self.scopes.get(sid)
-    }
-
-    /// Insert a scope into the database
-    pub fn insert_scope(&mut self, sid: Sid, scope: Scope) {
-        self.scopes.insert(sid, scope);
-    }
-
-    /// Remove a scope from the database
-    pub fn remove_scope(&mut self, sid: &Sid) -> Option<Scope> {
-        self.scopes.remove(sid)
-    }
-
-    /// Get all scopes
-    pub fn get_all_scopes(&self) -> &HashMap<Sid, Scope> {
-        &self.scopes
-    }
-
-    // -------------------------------------------------------------------------
     // Symbol Table Management (Phase 4.2 Plan 064)
     // -------------------------------------------------------------------------
 
@@ -928,16 +901,6 @@ impl Database {
     /// Get all symbol tables
     pub fn get_all_symbol_tables(&self) -> &HashMap<Sid, SymbolTable> {
         &self.symbol_tables
-    }
-
-    /// Convert a Scope to SymbolTable (migration helper for Plan 064)
-    ///
-    /// This extracts only the compile-time fields from Scope,
-    /// creating a SymbolTable. Runtime fields (vals, moved_vars, cur_block)
-    /// are discarded since they belong in StackFrame (ExecutionEngine).
-    pub fn scope_to_symbol_table(&self, sid: &Sid) -> Option<SymbolTable> {
-        let scope = self.scopes.get(sid)?;
-        Some(SymbolTable::from_scope(scope))
     }
 
     // -------------------------------------------------------------------------
@@ -1622,28 +1585,6 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_scope_management() {
-        use crate::scope::{Scope, ScopeKind};
-
-        let mut db = Database::new();
-        let sid = Sid::new("test_scope");
-
-        // Insert a scope
-        let scope = Scope::new(ScopeKind::Block, sid.clone());
-        db.insert_scope(sid.clone(), scope);
-
-        // Get scope
-        let retrieved = db.get_scope(&sid);
-        assert!(retrieved.is_some());
-        // Check kind using matches! instead of assert_eq! (ScopeKind doesn't impl Debug)
-        assert!(matches!(retrieved.unwrap().kind, ScopeKind::Block));
-
-        // Remove scope
-        db.remove_scope(&sid);
-        assert!(db.get_scope(&sid).is_none());
-    }
-
-    #[test]
     fn test_type_alias_management() {
         use crate::ast::Type;
 
@@ -1789,63 +1730,6 @@ mod tests {
 
         // Verify it's gone
         assert!(db.get_symbol_table(&sid).is_none());
-    }
-
-    #[test]
-    fn test_scope_to_symbol_table_migration() {
-        use crate::scope::{Scope, ScopeKind};
-
-        let mut db = Database::new();
-        let sid = Sid::new("test_migration");
-
-        // Create a scope with some data
-        let mut scope = Scope::new(ScopeKind::Block, sid.clone());
-        scope.symbols.insert(
-            AutoStr::from("x"),
-            Rc::new(crate::scope::Meta::Ref(crate::ast::Name::from("x"))),
-        );
-        scope.types.insert(
-            AutoStr::from("x"),
-            Rc::new(crate::scope::Meta::Type(crate::ast::Type::Int)),
-        );
-        db.insert_scope(sid.clone(), scope);
-
-        // Convert to symbol table
-        let symbol_table = db.scope_to_symbol_table(&sid);
-        assert!(symbol_table.is_some());
-
-        let st = symbol_table.unwrap();
-        assert_eq!(st.sid, sid);
-        assert!(matches!(st.kind, ScopeKind::Block));
-        assert_eq!(st.symbols.len(), 1);
-        assert!(st.symbols.contains_key("x"));
-        assert_eq!(st.types.len(), 1);
-        assert!(st.types.contains_key("x"));
-    }
-
-    #[test]
-    fn test_symbol_table_and_scope_coexistence() {
-        use crate::scope::{Scope, ScopeKind, SymbolTable};
-
-        let mut db = Database::new();
-        let sid = Sid::new("test_coexist");
-
-        // Create both Scope and SymbolTable with same ID
-        let scope = Scope::new(ScopeKind::Block, sid.clone());
-        db.insert_scope(sid.clone(), scope);
-
-        let symbol_table = SymbolTable::new(ScopeKind::Block, sid.clone());
-        db.insert_symbol_table(sid.clone(), symbol_table);
-
-        // Both should exist
-        assert!(db.get_scope(&sid).is_some());
-        assert!(db.get_symbol_table(&sid).is_some());
-
-        // Get all scopes and symbol tables
-        let all_scopes = db.get_all_scopes();
-        let all_symbol_tables = db.get_all_symbol_tables();
-        assert_eq!(all_scopes.len(), 1);
-        assert_eq!(all_symbol_tables.len(), 1);
     }
 
     #[test]

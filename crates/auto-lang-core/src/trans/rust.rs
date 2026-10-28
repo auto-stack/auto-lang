@@ -716,11 +716,6 @@ impl RustTrans {
         }
     }
 
-    #[deprecated(note = "Use with_database() instead (Phase 066)")]
-    pub fn set_scope(&mut self, _scope: Shared<crate::scope_manager::ScopeManager>) {
-        // Plan 091: scope removed, no-op
-    }
-
     /// Plan 400 Phase 2: transpile only body statements (no signature).
     /// `params` pre-populates local_var_types. Returns indented lines.
     /// PLAN-730 T-06: 独立体转译的 async 上下文置位（api_gen 的

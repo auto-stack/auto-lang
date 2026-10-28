@@ -10,7 +10,6 @@ pub mod context;
 pub mod errors;
 pub mod expr;
 pub mod functions;
-pub mod registry;
 pub mod stmt;
 // Plan 125 Phase 3.6: Task type checking
 pub mod task_types;
@@ -25,7 +24,6 @@ pub use errors::{
 };
 pub use expr::infer_expr;
 pub use functions::check_fn;
-pub use registry::TypeRegistry;
 pub use stmt::check_stmt;
 // Plan 125 Phase 3.6: Task type checking
 pub use task_types::{literal_to_type, EnvelopeInfo, TaskTypeChecker};
