@@ -219,7 +219,7 @@ R1 附注（非阻塞改进候选，不构成本轮 finding）：`verify-mir-low
 | `landed` | `git rebase master` 后 `git merge --ff-only plan-868-dev` 于主检出：master tip = 7754c4e4c = dev tip，无合并提交；old→new：aaf22f279→01e604fa7、89c551ee1→680ef3720、c9fe72b3f→71d8bb498、bcbb2edb7→7754c4e4c |
 | `ledger_refreshed` | 通道=guarded offline projection（HTTP 探活无 store writer；PLAN-861 先例）；v114→115，字节级格式复现（indent2+CRLF）；+4 条：P868-HIR-LOWERING-BOUNDARY(designs)/P868-REVIEW-R1R2(reviews)/P868-MERGE(reports)/P868-TESTS(tests)，各带 file+tags(spec hash/commit)；diff +87/-1（仅版本行+追加，结构性比对证明零扰动）；备份 attachments/868/work/specs.json.bak-pre-868；提交 "chore(specs): ledger projection for PLAN-868 (guarded offline, v114->115...)" |
 | `archived` | git mv docs/plans/868-hir-mir-lowering-shared-crate.md → docs/plans/archive/，status: archived，本收据随归档提交；plans/specs/ledger 链接均指向归档路径；862–865 前置解除注记已单独提交（仅追加行） |
-| `cleaned` | 见下（guard 输出与移除实录，随归档提交后补记） |
+| `cleaned` | wt-guard×3 clean（auto-lang/auto-ui/auto-down，全部输出 clean）；worktree 移除前 dirty=0；plan-868-dev 删除时指向 7754c4e4c（=master tip，全部落盘）；auto-ui/auto-down 兄弟经各自仓移除；组目录 .wt/lang-868 已删除；D:/autostack/plan-artifacts/plan-868/ 不存在（无可回收 intermediates，worktree target 随树移除） |
 
 merge 附注：
 - T-07 门禁归因记录：裸 t 完整面 3197/3198（唯一红 plan707_spike=AGENTS.md 预存红族；ac_native 首跑超时隔离复跑绿）；tv 163/163。
