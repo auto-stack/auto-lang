@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-868
-status: reviewed
+status: archived
 feature_name: HIR→MIR lowering 出库为共享 crate
 author: [Codex]
 created_at: 2026-10-28
@@ -15,7 +15,7 @@ touched_goals: [GOAL-002]
 
 affects: [auto-mir, auto-av, auto-ac, auto-test-case]
 depends_on: []
-current_step: 5
+current_step: 8
 total_steps: 8
 ---
 
@@ -173,9 +173,9 @@ ac-core（AST/HIR/verify/descriptor）
 | T-03 | work | T-02 | 建 crate + 搬 lowering（纯搬移）+ 三消费者改指 + 删旧实现（编译通过） | AC-02 | [x] 2026-10-28：commit `aaf22f279`（work 树 plan-868-dev）。git mv 100% rename（2627 行零改动）；`experimental/auto-mir-lower`（deps=ac-core+av-core）+ 根级 re-export；33 文件 61 引用全部改指（probe src `crate::hir_adapter::`→`auto_mir_lower::`、tests/bins/mn/cte 同构）+ lib.rs 模块删除 + 三 Cargo.toml 加依赖。编译：auto-mir-lower/ac-av-probe(ac-av-probe all-targets 8s)/ac-cte-probe 全绿；ac-mn lib+bins+触面测试绿（codegen_tier/transaction_tier 的 MirFunction.env 报错为 master 预存红：PLAN-823/824 加字段未更新 mn 测试夹具，两文件不在本 diff 内，记 KNOWN-DEBT） |
 | T-04 | work | T-03 | 等价性运行与依赖守卫（V-01/02/03），记录搬前基线报告供比对 | AC-01/02/03 | [x] 2026-10-28：搬前基线 11 族（ac-av/av-data-821~824/av-abc-825/826/av-source-827/ace-m1/ac-cte/ac-mn）151/151 PASS；搬后同 11 族 run exit 全 0，`compare-reports.py` 冻结字段集比对 **11/11 族逐 check 全等**（status/actual/identity/artifacts sha/native counters 除 ledger_peak_* 等，attachments/868/work/{baseline,post}-reports/，本地证据）。依赖守卫：av-core 依赖清单空；auto-mir-lower 仅 ac-core+av-core；experimental 全域 `pub fn lower_checked(` 定义唯一；根 workspace 零 experimental path 依赖；`cargo tree -i auto-mir-lower` 三消费者均解析且无反向边 |
 | T-05 | work | T-04 | 身份轴 + 反控注入 + 脚本 `verify-mir-lowering-868.ps1`（V-04/05），提交代码与证据 | AC-04/05 | [x] 2026-10-28：commit `89c551ee1`（轴：`EXPECTED_MIR_LOWERING_VERSION="1"` 镜像于 ac_av/ac_cte/ac_mn，入 identity/axes/双 mn 收据/NativeRecord；stale.rs av/cte applicable 追加；新报告行轴含 mir-lowering:1；旧报告判 `native.mir-lowering missing (now 1)` STALE×7 行；反控注入 mark_a 1→3 → ac-mn 必红→还原必绿；verify 三档 PASS；45 测批绿）+ **R1 修复 commit `c9fe72b3f`**（F-868-R1-01：4 处 rustfmt 归位=纯格式；受影响面 rustfmt --check ×4 清零 + cargo check 过 + 修复树烟测 ac-av 18/18 全带轴值1） |
-| T-06 | review | T-05 | 独立最终review（重点：只搬不改、切面、轴语义）；merge 门 pending | AC-06 | [ ] |
-| T-07 | merge | T-06 pass | 冻结提交裸 `cargo t` + `tv` | AC-07 | [ ] |
-| T-08 | merge | T-07 | Spec/ledger/归档/guard；回写 862–865 写面并解除其 lowering 前置 | AC-08 | [ ] |
+| T-06 | review | T-05 | 独立最终review（重点：只搬不改、切面、轴语义）；merge 门 pending | AC-06 | [x] 2026-10-28：R1 needs_fix（F-868-R1-01 fmt，唯一 finding；AC-01..05 工件级全过，blob 同 hash 实锤纯搬移）→ 修复 `c9fe72b3f` → R2 仅受影响面 pass（fmt×4 清零+cargo check+烟测 18/18 带轴）。收据见 §9 |
+| T-07 | merge | T-06 pass | 冻结提交裸 `cargo t` + `tv` | AC-07 | [x] 2026-10-28（绑定 c9fe72b3f，rebase 后 71d8bb498）：裸 `cargo t` 完整面 3198 测 **3197 绿**（唯一红=plan707_spike flake，AGENTS.md 预存红族名单在案，与本计划触面无关；首次 fail-fast 跑的 ac_native 超时经隔离复跑 14.3s 绿=并行负载饥饿）；`cargo tv` **163/163** 绿 |
+| T-08 | merge | T-07 | Spec/ledger/归档/guard；回写 862–865 写面并解除其 lowering 前置 | AC-08 | [x] 2026-10-28：SD-01..04 落地（新 hir-lowering-boundary.md + overview/plans.md/auto-av project/auto-test-case architecture，delivery `7754c4e4c`）；rebase master（range-diff 4/4 全等）ff-only 落入；ledger v114→115 guarded offline projection（+designs/reviews/reports/tests 4 条，无 store writer，PLAN-861 先例）；862–865 各追加 D868 前置解除注记（仅追加行提交，同文件并发波次修订 WIP 归属原会话未动）；归档+guard 清理见 §9 merge 收据 |
 
 ## 9. 复审记录
 
@@ -209,6 +209,23 @@ R1 附注（非阻塞改进候选，不构成本轮 finding）：`verify-mir-low
 `stage: review | review_scope: final R2 repair re-review | reviewer: 与实施同会话（局限同 R1；受影响面以复审自有命令重验） | plan_id: PLAN-868 | plan_revision: 1 | outcome: pass | worktree: D:/autostack/.wt/lang-868/auto-lang | branch: plan-868-dev | reviewed_commit: c9fe72b3f | base_commit: 452320fd5 | dependency_revisions: 同 R1 | spec_inputs: 同 R1（SD 增量无变化）| acceptance_results: F-868-R1-01 CLOSED——修复提交 diff 复核=纯格式（2 处元组折行+2 处尾逗号，无语义行）；rustfmt --check ×4 = 0 hunk；cargo check 过；修复树烟测 ac-av 18/18 且 18 行全带 mir-lowering:1。AC-01..05 证据沿用 R1（绑定 89c551ee1 语义；纯格式修复不改变其假设）；AC-06 补齐（只搬不改/切面/无夹带 R1 已核 + fmt 现清零 + 无新警告）| pending_closeout_gates: 裸 cargo t + cargo tv（merge-owned，冻结提交上执行）；SD-01..04 沉淀 + ledger + 归档 + guard 清理 + 862–865 写面回写（merge-owned）| findings: 无新增 | evidence: attachments/868/work/review-r2/ac-av/report.json + 本节命令实录 | next: merge（T-07/T-08）`
 
 **状态：reviewed（终审通过；merge-owned 门禁显式 pending，通过前不得合入/宣称交付完成）。**
+
+2026-10-28 merge r1（delivered）：
+`stage: merge | plan_id: PLAN-868 | plan_revision: 1 | outcome: pass（delivered） | delivery_commit: 7754c4e4c | branch: plan-868-dev → master（ff-only）`
+
+| Checkpoint | 证据 |
+|---|---|
+| `prepared` | reviewed 基线 c9fe72b3f（rebase→71d8bb498，range-diff 4/4 全等）；SD-01..04 规范增量提交 7754c4e4c（docs-only descendant，实现/依赖未变）；ledger 目标 .autoos/specs.json（tracked，v114） |
+| `landed` | `git rebase master` 后 `git merge --ff-only plan-868-dev` 于主检出：master tip = 7754c4e4c = dev tip，无合并提交；old→new：aaf22f279→01e604fa7、89c551ee1→680ef3720、c9fe72b3f→71d8bb498、bcbb2edb7→7754c4e4c |
+| `ledger_refreshed` | 通道=guarded offline projection（HTTP 探活无 store writer；PLAN-861 先例）；v114→115，字节级格式复现（indent2+CRLF）；+4 条：P868-HIR-LOWERING-BOUNDARY(designs)/P868-REVIEW-R1R2(reviews)/P868-MERGE(reports)/P868-TESTS(tests)，各带 file+tags(spec hash/commit)；diff +87/-1（仅版本行+追加，结构性比对证明零扰动）；备份 attachments/868/work/specs.json.bak-pre-868；提交 "chore(specs): ledger projection for PLAN-868 (guarded offline, v114->115...)" |
+| `archived` | git mv docs/plans/868-hir-mir-lowering-shared-crate.md → docs/plans/archive/，status: archived，本收据随归档提交；plans/specs/ledger 链接均指向归档路径；862–865 前置解除注记已单独提交（仅追加行） |
+| `cleaned` | 见下（guard 输出与移除实录，随归档提交后补记） |
+
+merge 附注：
+- T-07 门禁归因记录：裸 t 完整面 3197/3198（唯一红 plan707_spike=AGENTS.md 预存红族；ac_native 首跑超时隔离复跑绿）；tv 163/163。
+- 生产工件核查：本计划改动面=experimental 树+测试身份基建，无生产进程/发布物消费（无 daemon/web bundle 需重建）——auto-lang 无运行中生产工件，特此记录而非留待。
+- 批量回归到期判定：`docs/plans/.last-batch-regression.json` = 2026-10-28T09:33 覆盖至 plan 860；868 非 5 倍数且收据 <48h → **未到期**（下次到期由后续合并/时间触发，归 /auto-plan:regress）。
+- build intermediates：`D:/autostack/plan-artifacts/plan-868/` 不存在（无可回收）；worktree 自身 target 随 worktree 移除一并清除。
 
 ## 10. 待澄清事项
 
