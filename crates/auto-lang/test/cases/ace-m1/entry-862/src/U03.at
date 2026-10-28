@@ -1,0 +1,6 @@
+fn twice(x int) int {
+    return x + x
+}
+
+let seed = 21
+twice(seed)

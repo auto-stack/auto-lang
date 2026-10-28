@@ -80,6 +80,13 @@ pub const EXPECTED_AV_DYNAMIC_CORE_VERSION: &str = "av.dynamic/1";
 /// against the compact-codec counters, never the worker's word.
 pub const AV_COMPACT_RECIPE: &str = "ac-av/compact-run-v1";
 
+/// PLAN-862: the entry-unit execution profile the core recipe serves when a
+/// check selects `av: { profile: "entry-unit" }`. It is the SAME worker and
+/// the SAME recipe seam — a different SOURCE front door (`auto.source.
+/// entry-unit.draft`), a different MIR/ABC identity (`av.entry-unit/1`,
+/// `AVAU` v1) and the added Unit result channel.
+pub const EXPECTED_AV_ENTRY_UNIT_CORE_VERSION: &str = "av.entry-unit/1";
+
 /// Which registered av recipe a check runs under.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RecipeFamily {
@@ -153,7 +160,11 @@ pub fn current_toolchain_identity() -> std::collections::BTreeMap<String, String
     m
 }
 
-fn probe_toolchain_axes(exe_sha: &str, family: RecipeFamily) -> Vec<(String, String)> {
+fn probe_toolchain_axes(
+    exe_sha: &str,
+    family: RecipeFamily,
+    core_override: Option<&str>,
+) -> Vec<(String, String)> {
     let mut v = vec![
         ("av-protocol".into(), AV_WORKER_PROTOCOL.into()),
         ("recipe".into(), family.recipe().into()),
@@ -164,13 +175,22 @@ fn probe_toolchain_axes(exe_sha: &str, family: RecipeFamily) -> Vec<(String, Str
         ),
         (
             "av-core-version".into(),
-            family.expected_core_version().into(),
+            core_override
+                .unwrap_or_else(|| family.expected_core_version())
+                .to_string(),
         ),
         // PLAN-868: the lowering contract identity shared by all av
         // families — reported per row, mandatory (old reports lacking the
         // axis adjudicate STALE by declaration).
         ("mir-lowering".into(), EXPECTED_MIR_LOWERING_VERSION.into()),
     ];
+    // PLAN-862: the entry-unit generation carries its own profile id (7) and
+    // source profile in the receipt — the axis names what actually ran, so a
+    // scalar receipt can never be confused with an entry-unit one.
+    if core_override == Some(EXPECTED_AV_ENTRY_UNIT_CORE_VERSION) {
+        v.push(("av-profile".into(), "7".into()));
+        v.push(("av-source-profile".into(), "entry-unit".into()));
+    }
     // PLAN-821 contract-decision §10: the owned tool-identity axis carries
     // the frozen profile id (3) explicitly (core/data receipts unchanged).
     if family == RecipeFamily::Owned {
@@ -563,6 +583,11 @@ struct StepOut {
     closures: Option<serde_json::Value>,
     #[serde(default)]
     dynamic: Option<serde_json::Value>,
+    /// PLAN-862: the AV result channel of a run step — `"value"` for an
+    /// `i32` payload, `"unit"` for the Unit payload (which has no i32 form).
+    /// Absent on older responses and on trap/diag steps.
+    #[serde(default)]
+    channel: Option<String>,
 }
 
 /// Spawn the av worker and run ONE `case-serve` request under the bounded
@@ -1106,6 +1131,26 @@ fn run_check_impl(
     if check.options.probe_recipe.as_deref() != Some(recipe) {
         return Err("probe check with an unregistered recipe (contract violation)".into());
     }
+    // PLAN-862: the SOURCE-profile selector (append-only). Absent = the
+    // historical scalar profile, byte-identical for every existing case.
+    // `entry-unit` changes the front door, the wire family and the reported
+    // core identity — the admission below binds to THAT identity, so a
+    // worker reporting the scalar profile for an entry-unit request is a
+    // protocol violation, never a green.
+    let entry_unit_profile = match av.profile.as_deref() {
+        None => false,
+        Some("entry-unit") => true,
+        Some(other) => {
+            return Err(format!(
+                "unknown av profile `{other}` (the contract admits only entry-unit)"
+            ))
+        }
+    };
+    let expected_core_version = if entry_unit_profile {
+        EXPECTED_AV_ENTRY_UNIT_CORE_VERSION
+    } else {
+        family.expected_core_version()
+    };
     // F798-R3-07 shape: leading edit-source allowed (measured window);
     // the judged last step must be a run.
     if !matches!(steps.last(), Some(auto_test_case::contract::ProbeStep::Run)) {
@@ -1264,6 +1309,9 @@ fn run_check_impl(
     if let Some(session) = &av.session {
         request["session"] = serde_json::json!(session);
     }
+    if entry_unit_profile {
+        request["profile"] = serde_json::json!("entry-unit");
+    }
     let request_hash = hex(&sha256(request.to_string().as_bytes()));
     request["request_hash"] = serde_json::json!(request_hash);
 
@@ -1350,11 +1398,10 @@ fn run_check_impl(
             ));
             break 'admit;
         }
-        if ok.av_core_version != family.expected_core_version() {
+        if ok.av_core_version != expected_core_version {
             infra_detail = Some(format!(
                 "av core version `{}` does not match the admitted `{}`",
-                ok.av_core_version,
-                family.expected_core_version()
+                ok.av_core_version, expected_core_version
             ));
             break 'admit;
         }
@@ -1559,6 +1606,7 @@ fn run_check_impl(
             "op": step.op,
             "outcome": step.outcome,
             "value": step.value,
+            "channel": step.channel,
             "trap": step.trap,
             "diag": step.diag,
             "owned": step.owned,
@@ -1570,7 +1618,7 @@ fn run_check_impl(
         },
         "worker_us": worker_us,
         "request_wall_ms": request_wall_ms,
-        "toolchain": probe_toolchain_axes(&exe_sha, family),
+        "toolchain": probe_toolchain_axes(&exe_sha, family, entry_unit_profile.then_some(EXPECTED_AV_ENTRY_UNIT_CORE_VERSION)),
     });
     std::fs::write(
         artifact_dir.join("probe-receipt.json"),
@@ -1596,7 +1644,7 @@ fn run_check_impl(
             .iter()
             .map(|(k, v)| (k.clone(), *v as u32))
             .collect(),
-        toolchain: probe_toolchain_axes(&exe_sha, family),
+        toolchain: probe_toolchain_axes(&exe_sha, family, entry_unit_profile.then_some(EXPECTED_AV_ENTRY_UNIT_CORE_VERSION)),
         gaps: vec![],
     };
     let status = if mismatches.is_empty() {
@@ -1608,8 +1656,9 @@ fn run_check_impl(
         status,
         mismatches,
         detail: Some(format!(
-            "{recipe}: run step judged (outcome {}); receipt probe-receipt.json",
-            step.outcome
+            "{recipe}: run step judged (outcome {}; channel {}); receipt probe-receipt.json",
+            step.outcome,
+            step.channel.as_deref().unwrap_or("-")
         )),
         artifacts: vec![],
         native: Some(native),
@@ -2328,6 +2377,47 @@ fn judge_expectation(
                 });
                 return;
             }
+            // PLAN-862: the RESULT CHANNEL oracle. A Unit success has no i32
+            // payload, so the channel name is the only observable that
+            // separates it from an int entry returning 0; the payload rules
+            // below keep the two faces from being mixed (an int value on a
+            // unit channel, or a missing value on a value channel, is red).
+            if let Some(want) = &expect.av_channel {
+                if step.channel.as_deref() != Some(want.as_str()) {
+                    mismatches.push(Mismatch {
+                        observation: "av_channel".into(),
+                        kind: "channel".into(),
+                        expected: want.clone(),
+                        actual: step.channel.clone().unwrap_or_default(),
+                        first_diff: None,
+                    });
+                }
+                match want.as_str() {
+                    "unit" => {
+                        if step.value.is_some() {
+                            mismatches.push(Mismatch {
+                                observation: "av_channel".into(),
+                                kind: "payload".into(),
+                                expected: "no i32 payload on the unit channel".into(),
+                                actual: format!("{:?}", step.value),
+                                first_diff: None,
+                            });
+                        }
+                    }
+                    "value" => {
+                        if step.value.is_none() {
+                            mismatches.push(Mismatch {
+                                observation: "av_channel".into(),
+                                kind: "payload".into(),
+                                expected: "an i32 payload on the value channel".into(),
+                                actual: "none".into(),
+                                first_diff: None,
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            }
             if let Some(want) = expect.exit {
                 if step.value != Some(want) {
                     mismatches.push(Mismatch {
@@ -2338,7 +2428,10 @@ fn judge_expectation(
                         first_diff: None,
                     });
                 }
-            } else if expect.exit.is_none() && expect.stdout.is_none() && expect.stderr.is_none() {
+            } else if expect.av_channel.is_none()
+                && expect.stdout.is_none()
+                && expect.stderr.is_none()
+            {
                 // Success without a value oracle still requires a value
                 // present — FAMILY-ISOLATED (F820-R7-01): the typed
                 // channel is a DATA-recipe increment only. A core/i32
@@ -2534,6 +2627,7 @@ mod judge_tests {
             collections: None,
             closures: None,
             dynamic: None,
+            channel: None,
         }
     }
 
@@ -2554,6 +2648,7 @@ mod judge_tests {
             exit: None,
             perf: None,
             probe: None,
+            av_channel: None,
             oracle_sha256: String::new(),
         }
     }
@@ -2563,6 +2658,49 @@ mod judge_tests {
         let mut ms = Vec::new();
         judge_expectation(family, step, &oracle, &mut ms);
         ms
+    }
+
+    /// PLAN-862 (V-02): the Unit channel oracle is asserted on the CHANNEL,
+    /// and a Unit payload may never carry an i32 value — the negative
+    /// control proves the judge reddens a "unit→0" collapse instead of
+    /// accepting it.
+    #[test]
+    fn av_channel_oracle_separates_unit_from_zero() {
+        let unit_oracle = ResolvedOracle {
+            av_channel: Some("unit".into()),
+            ..oracle_no_exit()
+        };
+        let mut unit_step = step(None, None);
+        unit_step.channel = Some("unit".into());
+        let mut ms = Vec::new();
+        judge_expectation(RecipeFamily::Core, &unit_step, &unit_oracle, &mut ms);
+        assert!(ms.is_empty(), "a real unit channel must pass: {ms:?}");
+
+        // THE mutation: the pipeline starts reporting I32(0) for the unit
+        // entry — same payload shape an old consumer would print, different
+        // channel. The oracle must redden it.
+        let mut collapsed = step(Some(0), None);
+        collapsed.channel = Some("value".into());
+        let mut ms = Vec::new();
+        judge_expectation(RecipeFamily::Core, &collapsed, &unit_oracle, &mut ms);
+        assert!(
+            ms.iter().any(|m| m.kind == "channel"),
+            "unit→0 collapse must be red on the channel: {ms:?}"
+        );
+
+        // A value channel claiming a payload but reporting none is red too.
+        let value_oracle = ResolvedOracle {
+            av_channel: Some("value".into()),
+            ..oracle_no_exit()
+        };
+        let mut lying = step(None, None);
+        lying.channel = Some("value".into());
+        let mut ms = Vec::new();
+        judge_expectation(RecipeFamily::Core, &lying, &value_oracle, &mut ms);
+        assert!(
+            ms.iter().any(|m| m.kind == "payload"),
+            "value channel without a payload must be red: {ms:?}"
+        );
     }
 
     #[test]
@@ -2786,6 +2924,7 @@ mod closures_judge_tests {
             collections: None,
             closures: Some(face),
             dynamic: None,
+            channel: None,
         }
     }
 

@@ -499,6 +499,7 @@ fn r1_consumer_invalid_exe_is_error_not_pass() {
             exit: Some(3),
             perf: None,
             probe: None,
+            av_channel: None,
         },
         product_from: Some("upstream".into()),
         skip: None,

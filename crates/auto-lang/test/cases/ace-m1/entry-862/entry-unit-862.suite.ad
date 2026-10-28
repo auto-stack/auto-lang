@@ -1,0 +1,15 @@
+# PLAN-862 entry-unit source profile suite — the U01..U10 rows of the ACE M1
+# denominator, executed through the REAL `ac-av/core-run-v1` recipe with the
+# append-only `av: { profile: "entry-unit" }` selector (and the scalar
+# control checks on the same bytes). Parent-side judgement: the worker never
+# sees an expectation.
+#
+# Run with the built runner (no build is implied by running a suite):
+#   target/debug/auto-case.exe run --suite <this file> --out <scratch> \
+#       --format console --json-out <scratch>/report.json
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-entry-862", include: [
+  "entry-unit-862.case.ad",
+] }
+```

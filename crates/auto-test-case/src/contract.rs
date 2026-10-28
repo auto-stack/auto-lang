@@ -471,6 +471,12 @@ pub struct ExpectSpec {
     pub perf: Option<PerfExpect>,
     /// v2 probe only (PLAN-796): per-query-step structured expectations.
     pub probe: Option<Vec<ProbeStepExpect>>,
+    /// PLAN-862: the AV RESULT CHANNEL the run step must report —
+    /// `"value"` (an `i32` payload) or `"unit"` (the Unit payload, which has
+    /// no i32 form). Declaring it is how a Unit entry is distinguished from
+    /// an int entry returning 0 (T-02 entry-contract §4/§6: Unit ≠ 0, and a
+    /// consumer that prints only a number cannot tell them apart).
+    pub av_channel: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1657,8 +1663,39 @@ fn decode_options(
                     }
                     let apath = f.path_of("av");
                     let pairs = as_obj(v, &apath)?;
-                    let sf = Fields::new(&apath, pairs, &["entry", "caps", "session"])?;
+                    let sf = Fields::new(&apath, pairs, &["entry", "caps", "session", "profile"])?;
                     let entry = req_str(&sf, "entry")?;
+                    // PLAN-862: the SOURCE-profile selector (append-only). A
+                    // check that omits it keeps the historical scalar path
+                    // byte-for-byte (`auto.source.scalar-i32.draft`); the
+                    // entry-unit profile is the ONLY other value, and it is
+                    // served by the core recipe (it is the same AV worker /
+                    // pipeline, a different front door and wire family). Any
+                    // other combination is an admission error, never a
+                    // silent fallback to scalar.
+                    let profile = match sf.sub("profile") {
+                        None => None,
+                        Some(pv) => {
+                            let p = as_str(pv, &sf.path_of("profile"))?.to_string();
+                            if p != "entry-unit" {
+                                return Err(err(
+                                    &sf.path_of("profile"),
+                                    format!(
+                                        "unknown av profile {p:?} (supported: entry-unit; omit for the default scalar profile)"
+                                    ),
+                                ));
+                            }
+                            if recipe != "ac-av/core-run-v1" {
+                                return Err(err(
+                                    &sf.path_of("profile"),
+                                    format!(
+                                        "the entry-unit source profile belongs to ac-av/core-run-v1, not {recipe:?}"
+                                    ),
+                                ));
+                            }
+                            Some(p)
+                        }
+                    };
                     let session = match sf.sub("session") {
                         None => None,
                         Some(v) => {
@@ -1693,6 +1730,7 @@ fn decode_options(
                         entry,
                         caps,
                         session,
+                        profile,
                     })
                 }
             };
@@ -1905,6 +1943,13 @@ pub struct ProbeAvSpec {
     /// persistent per-session store across calls; absent = a private
     /// per-request store (cleaned up by the worker).
     pub session: Option<String>,
+    /// PLAN-862: optional SOURCE-profile selector. `None` = the historical
+    /// scalar profile (`auto.source.scalar-i32.draft`, byte-identical for
+    /// every existing case); `Some("entry-unit")` = the entry-unit profile
+    /// (`auto.source.entry-unit.draft` → `av.entry-unit/1`, the `AVAU` wire
+    /// family). Append-only: the field carries no default that could
+    /// reinterpret an old check.
+    pub profile: Option<String>,
 }
 
 /// cte/scalar-query-v1 binding (PLAN-817 T-02): the consumer entry
@@ -2026,7 +2071,8 @@ fn decode_expect(
         ]
     } else if probe_channels {
         // PLAN-798 T-07: + exit (value-reporting recipes).
-        &["completion", "probe", "exit"]
+        // PLAN-862: + av_channel (the Unit/value channel discriminant).
+        &["completion", "probe", "exit", "av_channel"]
     } else {
         &["completion", "result", "stdout", "stderr", "artifacts"]
     };
@@ -2240,6 +2286,49 @@ fn decode_expect(
         }
     };
 
+    // PLAN-862: the AV result-channel discriminant (probe recipes only). A
+    // Unit success has NO i32 value, so `exit` alone cannot tell it from an
+    // int entry returning 0; the channel name is the observable that does
+    // (entry-contract §4/§6). The consumer-side exit mapping that pairs with
+    // it is `0` (a Unit success is not an error), so a non-zero `exit`
+    // declared beside `unit` is contradictory and rejected here.
+    let av_channel = match f.sub("av_channel") {
+        None => None,
+        Some(cv) => {
+            if !probe_channels {
+                return Err(err(
+                    &f.path_of("av_channel"),
+                    "`av_channel` is a probe observation (the AV result channel of a run step)",
+                ));
+            }
+            let ch = as_str(cv, &f.path_of("av_channel"))?.to_string();
+            if ch != "value" && ch != "unit" {
+                return Err(err(
+                    &f.path_of("av_channel"),
+                    format!("unknown av_channel {ch:?} (supported: value, unit)"),
+                ));
+            }
+            if matches!(completion, Completion::Error { .. }) {
+                return Err(err(
+                    &f.path_of("av_channel"),
+                    "`av_channel` requires completion \"success\" (a trap/resource/infra exit is its own channel)",
+                ));
+            }
+            if ch == "unit" && exit.is_some() {
+                // The Unit channel has NO i32 payload, so an `exit` oracle
+                // would either be a type error or silently re-collapse Unit
+                // into 0. The consumer-side exit mapping (entry-contract §6,
+                // unit → 0) belongs to the consumer that ALSO prints the
+                // channel name; it is never expressed as an AV value oracle.
+                return Err(err(
+                    &f.path_of("exit"),
+                    "a `unit` av_channel carries no i32 payload — declare the channel, not an exit oracle (the consumer's exit mapping is a separate contract)",
+                ));
+            }
+            Some(ch)
+        }
+    };
+
     let perf = match f.sub("perf") {
         None => None,
         Some(pv) => {
@@ -2435,6 +2524,7 @@ fn decode_expect(
         exit,
         perf,
         probe,
+        av_channel,
     })
 }
 

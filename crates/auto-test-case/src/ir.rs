@@ -196,6 +196,10 @@ pub struct ResolvedOracle {
     /// admission as artifacts — mutating a bindings oracle changes the
     /// identity and invalidates old PASSes).
     pub probe: Option<Vec<ResolvedProbeStep>>,
+    /// PLAN-862: the AV result-channel oracle (`value` / `unit`) of a probe
+    /// run step — part of the content-bound identity (changing it
+    /// invalidates old PASSes).
+    pub av_channel: Option<String>,
     pub oracle_sha256: String,
 }
 
@@ -290,6 +294,9 @@ pub fn resolve_oracle(
     if let Some(pf) = &expect.perf {
         combined.push_str(&format!("perf\0{:?}\0", pf.total_ms_max));
     }
+    if let Some(ch) = &expect.av_channel {
+        combined.push_str(&format!("av_channel\0{}\0", ch));
+    }
     if let Some(r) = &expect.result {
         combined.push_str(&format!("result\0{}\0{}\0", r.format, r.text));
     }
@@ -326,6 +333,7 @@ pub fn resolve_oracle(
         exit: expect.exit,
         perf: expect.perf,
         probe,
+        av_channel: expect.av_channel.clone(),
         oracle_sha256,
     })
 }
@@ -372,6 +380,7 @@ mod tests {
                     exit: None,
                     perf: None,
                     probe: None,
+                    av_channel: None,
                 },
                 product_from: None,
                 skip: None,

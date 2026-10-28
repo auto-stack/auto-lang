@@ -963,6 +963,7 @@ fn consumer_check(id: &str, exit: i32) -> CheckSpec {
             exit: Some(exit),
             perf: None,
             probe: None,
+            av_channel: None,
         },
         product_from: Some("upstream".into()),
         skip: None,

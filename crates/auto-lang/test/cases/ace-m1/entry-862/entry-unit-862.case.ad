@@ -1,0 +1,189 @@
+# PLAN-862 entry-unit source profile — ACE M1 corpus rows U01..U10.
+#
+# One source x the AV entry-unit profile (and the scalar control on the same
+# bytes where the old path is the point). Every expectation here is an
+# INDEPENDENT, hand-computed oracle (T-02 entry-contract §2/§4/§6), not a
+# snapshot of what the pipeline happened to print:
+#
+#   U01  int entry: `return 42` on the value channel (and the scalar control
+#        on the SAME bytes, exit 42 — the old path does not move)
+#   U02  Unit entry: the channel is `unit`, NEVER an i32 0
+#   U03  script tail: twice(21) = 42 through the synthetic entry
+#   U04  script without a tail: the Unit channel
+#   U05  1/0 is a trap, not a value and not an error completion
+#   U06  no entry at all                      -> source.entry-missing
+#   U07  an entry with parameters             -> source.entry-params
+#   U08  a Unit entry returning a value       -> source.unit-return-value
+#   U09  an expression statement in an int fn -> source.entry-tail
+#   U10  a second `main`                      -> source.entry-duplicate
+#
+# The scalar checks (`av-scalar-*`) are the ZERO-DRIFT control: the old
+# profile still accepts the int entry byte-for-byte and still REJECTS the
+# new forms (settle: `source.unsupported`), so the new surface is never a
+# silent widening of the old one.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.u01"
+  tags: ["ace-m1", "entry-unit", "value"]
+  links: ["PLAN-862"]
+  source: { file: "src/U01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", profile: "entry-unit" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", av_channel: "value", exit: 42 } },
+    { id: "av-scalar-control", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.u02"
+  tags: ["ace-m1", "entry-unit", "unit"]
+  links: ["PLAN-862"]
+  source: { file: "src/U02.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", profile: "entry-unit" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", av_channel: "unit" } },
+    { id: "av-scalar-rejects", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "source.unsupported" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.u03"
+  tags: ["ace-m1", "entry-unit", "script"]
+  links: ["PLAN-862"]
+  source: { file: "src/U03.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", profile: "entry-unit" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", av_channel: "value", exit: 42 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.u04"
+  tags: ["ace-m1", "entry-unit", "script"]
+  links: ["PLAN-862"]
+  source: { file: "src/U04.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", profile: "entry-unit" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", av_channel: "unit" } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.u05"
+  tags: ["ace-m1", "entry-unit", "trap"]
+  links: ["PLAN-862"]
+  source: { file: "src/U05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", profile: "entry-unit" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "run", code: "av.trap.div-by-zero" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.u06"
+  tags: ["ace-m1", "entry-unit", "diagnostic"]
+  links: ["PLAN-862"]
+  source: { file: "src/U06.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", profile: "entry-unit" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "source.entry-missing" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.u07"
+  tags: ["ace-m1", "entry-unit", "diagnostic"]
+  links: ["PLAN-862"]
+  source: { file: "src/U07.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", profile: "entry-unit" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "source.entry-params" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.u08"
+  tags: ["ace-m1", "entry-unit", "diagnostic"]
+  links: ["PLAN-862"]
+  source: { file: "src/U08.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", profile: "entry-unit" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "source.unit-return-value" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.u09"
+  tags: ["ace-m1", "entry-unit", "diagnostic"]
+  links: ["PLAN-862"]
+  source: { file: "src/U09.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", profile: "entry-unit" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "source.entry-tail" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.u10"
+  tags: ["ace-m1", "entry-unit", "diagnostic"]
+  links: ["PLAN-862"]
+  source: { file: "src/U10.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", profile: "entry-unit" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "source.entry-duplicate" } } }
+  ]
+}
+```

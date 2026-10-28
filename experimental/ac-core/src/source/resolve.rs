@@ -634,12 +634,23 @@ fn resolve_detailed(
             format!("{}::{}", owner_ty, f.name.name)
         };
         if sigs.contains_key(&sig_key) {
-            diags.push(Diagnostic::new(
-                Stage::Bind,
-                "source.duplicate",
-                format!("function `{}` is declared more than once", f.name.name),
-                f.span,
-            ));
+            // PLAN-862 (entry-contract §2.2): in the entry-unit profile the
+            // ENTRY MATRIX owns the duplicate-`main` verdict — it reports
+            // `source.entry-duplicate`, and that is the diagnostic a caller
+            // must see. Emitting the generic duplicate-fn code here would
+            // surface FIRST and hide the entry-specific one; every other
+            // name (and every other profile) keeps the generic rule.
+            let entry_main_duplicate = surface == SourceProfile::EntryUnit
+                && fn_receiver[i] == ast::Receiver::Free
+                && f.name.name == "main";
+            if !entry_main_duplicate {
+                diags.push(Diagnostic::new(
+                    Stage::Bind,
+                    "source.duplicate",
+                    format!("function `{}` is declared more than once", f.name.name),
+                    f.span,
+                ));
+            }
             continue;
         }
         let sig = fn_sig_of(f, fn_receiver[i], fn_owner[i], &rec_index, &mut diags, i);

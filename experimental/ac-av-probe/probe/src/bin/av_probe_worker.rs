@@ -749,6 +749,23 @@ fn case_serve() -> ! {
     if session.is_none() {
         let _ = std::fs::remove_dir_all(&store_dir);
     }
+    // PLAN-862: the SOURCE-profile selector (append-only). Absent keeps the
+    // historical scalar path byte-for-byte; "entry-unit" serves
+    // `auto.source.entry-unit.draft` → `av.entry-unit/1` on the `AVAU` wire.
+    let entry_unit_profile = match req.get("profile").and_then(|p| p.as_str()) {
+        None => false,
+        Some("entry-unit") => {
+            if recipe != "ac-av/core-run-v1" {
+                eprintln!("the entry-unit profile belongs to ac-av/core-run-v1, not {recipe}");
+                exit(2);
+            }
+            true
+        }
+        Some(other) => {
+            eprintln!("unknown request profile {other:?}");
+            exit(2);
+        }
+    };
     let mut d = if data_recipe {
         None
     } else {
@@ -759,6 +776,9 @@ fn case_serve() -> ! {
             });
         if compact_recipe {
             driver.set_wire_compact();
+        }
+        if entry_unit_profile {
+            driver.set_profile(auto_av_probe::driver::RequestProfile::EntryUnit);
         }
         Some(driver)
     };
@@ -1225,9 +1245,10 @@ fn case_serve() -> ! {
                     .as_mut()
                     .expect("core driver")
                     .request(&current_source, &entry, &caps);
-                let (outcome, value, trap, diag) = if let Some(dg) = &r.diag {
+                let (outcome, value, channel, trap, diag) = if let Some(dg) = &r.diag {
                     (
                         "diag".to_string(),
+                        None,
                         None,
                         None,
                         Some(serde_json::json!({
@@ -1237,16 +1258,32 @@ fn case_serve() -> ! {
                 } else {
                     match &r.av {
                         Some(auto_av_core::contract::ExecOutcome::Success { value, .. }) => {
-                            ("success".to_string(), value.as_i32(), None, None)
+                            // PLAN-862: the channel is reported explicitly —
+                            // `Value::Unit` has NO i32 form, so a consumer
+                            // that printed only a number could never tell it
+                            // from an int 0 (entry-contract §4/§6).
+                            let channel = match value {
+                                auto_av_core::contract::Value::Unit => "unit",
+                                _ => "value",
+                            };
+                            (
+                                "success".to_string(),
+                                value.as_i32(),
+                                Some(channel.to_string()),
+                                None,
+                                None,
+                            )
                         }
                         Some(auto_av_core::contract::ExecOutcome::Trap { kind, .. }) => (
                             "trap".to_string(),
+                            None,
                             None,
                             Some(kind.code().to_string()),
                             None,
                         ),
                         other => (
                             "infra".to_string(),
+                            None,
                             None,
                             None,
                             Some(serde_json::json!({ "detail": format!("{:?}", other) })),
@@ -1266,6 +1303,7 @@ fn case_serve() -> ! {
                     "op": "run",
                     "outcome": outcome,
                     "value": value,
+                    "channel": channel,
                     "trap": trap,
                     "diag": diag,
                     "counters": counters,
@@ -1316,7 +1354,7 @@ fn case_serve() -> ! {
                         "recipe": recipe,
                         "steps": step_outs,
                         "worker_version": EXPECTED_WORKER_VERSION,
-                        "av_core_version": core_version_for(&recipe),
+                        "av_core_version": if entry_unit_profile { auto_av_core::contract::AV_ENTRY_UNIT_PROFILE } else { core_version_for(&recipe) },
                     },
                 });
                 let mut line = serde_json::to_string(&ok_out).unwrap_or_default();
@@ -1345,7 +1383,7 @@ fn case_serve() -> ! {
         "recipe": recipe,
         "steps": step_outs,
         "worker_version": EXPECTED_WORKER_VERSION,
-        "av_core_version": if std::env::var("AV798_FAULT").as_deref() == Ok("wrong-core-version") { "invalid.profile/1" } else { core_version_for(&recipe) },
+        "av_core_version": if std::env::var("AV798_FAULT").as_deref() == Ok("wrong-core-version") { "invalid.profile/1" } else if entry_unit_profile { auto_av_core::contract::AV_ENTRY_UNIT_PROFILE } else { core_version_for(&recipe) },
     }))
 }
 
