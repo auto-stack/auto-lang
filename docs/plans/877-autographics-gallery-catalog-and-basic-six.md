@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-877
-status: executing
+status: execution_done
 feature_name: AutoGraphics Gallery目录与基础六项示例（GY-A）
 author: [Codex]
 created_at: 2026-10-28
