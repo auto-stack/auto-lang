@@ -5,7 +5,7 @@ feature_name: 内建语义双轨裁定与收敛（Str/Math/Time/Reply/nv_to_valu
 author: [DeepSeek Harness session]
 created_at: 2026-10-28
 updated_at: 2026-10-28
-plan_revision: 1
+plan_revision: 2
 current_step: 0
 total_steps: 10
 supersedes_spec_components: [docs/specs/stdlib/project.md, docs/specs/auto-lang/vm/overview.md]
@@ -24,12 +24,14 @@ depends_on: [PLAN-867]
 
 844 在去重时冻结了 6 族"看起来重复、实际语义不同"的内建实现，并把它们排除在减法之外：`str.len`（字符 vs 字节）、`math` 20+ 族（0 兜底 vs Err）、`to_int`/`parse_int`、`time_now`（`unwrap_or(0)` vs `unwrap`）、HTTP error-reply 采样族 ×10、`nv_to_value` 双签名。它们的真实差别常常**不在函数体，而在注册/绑定序**：同名 builtin 由"纯 shim（catalog/inventory）"与"native 覆盖块"共同决定最终生效实现（844 D-4 已实证：纯版 `contains/starts_with/ends_with` 恒被覆盖，删纯版后须显式补名字注册）。
 
-因此本计划的第一步不是改代码，而是**冻结一张真实的 builtin 绑定表**（名字 → 注册面 → 直接实现 → 生效实现 → 语义 → 消费者 → 钉住它的测试），再对每族三选一处置：**MERGE 合并**／**DISTINGUISH 具名区分**／**RETIRE 退役**。已发现的具体矛盾示例：`Str.len` 纯 shim 的文档写 "length in bytes"、实现是 `s.len()`（字节），而同文件 `Str.byte_len` 的注释称 `str.len()` 是 PLAN-055 的**字符数**语义——三者至少有一个是错的，必须先判清谁在运行时真正生效。
+因此本计划的第一步不是改代码，而是**冻结一张真实的 builtin 绑定表**（名字 → 注册面 → 直接实现 → 生效实现 → 语义 → 消费者 → 钉住它的测试），再按用户 2026-10-28 的裁定对六族**统一按 DISTINGUISH 处置**（保留两侧、把名字/文档/测试讲清楚，零行为变更）；MERGE／RETIRE 均不在本轮实施面（RETIRE 仅在某侧完全无消费者时另行签核）。
+
+对比例的已见实例：`Str.len` 纯 shim 的文档写 "length in bytes"、实现是 `s.len()`（字节），而同文件 `Str.byte_len` 的注释称 `str.len()` 是 PLAN-055 的**字符数**语义——三者至少有一个是错的，DISTINGUISH 的活就是把"谁在运行时生效"实测钉死，再把名字/文档/测试对齐。
 
 ## 1. 目标
 
 - **G1 绑定表可复算**：6 族涉及的全部 builtin 名字，按真实注册/覆盖顺序列出"生效实现"，并可用最小程序实测覆核（不是读码猜测）。
-- **G2 每族有裁定**：六个族每族落在 MERGE／DISTINGUISH／RETIRE 之一，附消费者证据、公开承诺与语义依据；MERGE 属行为变更，须用户裁定后才实施。
+- **G2 每族有裁定（已定）**：用户 2026-10-28 裁定 **六族全部按 DISTINGUISH 落地**（保留两侧，把名字/文档/测试讲清楚，**零行为变更**）；MERGE 未获授权，本计划不得实施任何用户可观察的行为变更；RETIRE 仅在 T-02 证明某侧完全无消费者时提出，并需单独签核。
 - **G3 无静默漂移**：处置完成后，名字、文档注释、规范页、测试四者对同一语义一致；`str.len` 这类"名字/文档/实现三方矛盾"不得残留。
 - **G4 不破坏既有承诺**：`plan755` 的 HTTP 契约 body、JS/Vue 的 `.length` 语义、a2r 生成代码的调用形态保持；改变任一承诺须显式记录并取得用户同意。
 - **G5 门禁联动**：867 的三仓完整档复跑通过；被合并/退役实现的测试按 867 账本落 RETIRED 或 RENAMED 有据。
@@ -39,14 +41,14 @@ depends_on: [PLAN-867]
 ## 2. 架构方案
 
 1. **绑定表（T-01）**：从三处真源读：① `#[auto_macros::rust_fn("Name")]` 属性注册面（纯 shim 轨道，如 `ffi/stdlib/*.rs`）；② native 覆盖块/名字表（`vm/native.rs` 与 `vm/native/*.rs`）；③ 运行时 `production()` 绑定序（catalog → inventory → nv 覆盖）。产出 `name ⇥ 生效实现 ⇥ 语义 ⇥ 证据`，并用最小 Auto 程序实测对照（VM 侧"字符 vs 字节"等可直接观测）。
-2. **裁定（T-02/T-03）**：每族按证据三选一；MERGE 侧必须先给出"迁移说明 + 受影响消费者 + 版本/兼容口径"，再交用户点选。
-3. **实施（T-04）**：按裁定改实现/名字/文档/测试；MERGE 需保留旧名一个迁移窗口（或显式 breaking + 版本说明），DISTINGUISH 需补名字与文档并加测试。
+2. **裁定（T-02）**：六族已裁定为 **DISTINGUISH**；T-02 仍须逐族出证据（消费者/公开承诺/语义差异）并确认"不存在完全无消费者的单侧"（若存在则提 RETIRE 候选、单独签核）。**MERGE 未授权，不得作为实现路径**（未来若要合并，另开 revision 并取得用户裁定）。
+3. **实施（T-04）**：按 DISTINGUISH 改文档/补名字/补测试，**不改运行时行为**；MERGE 未授权，不保留迁移窗口（未来若要合并另开 revision）。
 4. **收据（T-05/T-06）**：行为对照收据（同程序两侧输出）、契约测试（plan755）复跑、867 门复跑、规范页更新。
 
 判定原则：
 
 - **以运行时实测为准**，不以文本相似或代码注释为准（844 的教训）。
-- MERGE 只在"两侧语义可被同一实现满足，且没有消费者依赖被放弃的一侧"时成立；若消费者分属不同语义（JS `.length` 字符 vs 文件偏移字节），正确处置是 DISTINGUISH。
+- MERGE 的成立条件（"两侧语义可被同一实现满足，且没有消费者依赖被放弃的一侧"）本轮未被认定成立；因此六族一律 DISTINGUISH。若消费者分属不同语义（JS `.length` 字符 vs 文件偏移字节），DISTINGUISH 是**唯一正确**处置。
 - 任何改变用户可观察行为的处置都必须有用户裁定记录，不能以"整理代码"名义静默改语义。
 
 ## 3. 技术栈
@@ -59,7 +61,7 @@ Rust 实现面（`crates/auto-lang-core/src/vm/{native,ffi/stdlib}`）、`auto_m
 
 - 用户 2026-10-28 要求把"867 之后的后续计划"写成文档；本计划是其中一份（语义双轨）。
 - 本轮只写合同：不建树、不改实现、不跑档、不改 canonical Specs。
-- **实施前需要用户对 MERGE 候选作语义裁定**（这是本计划的核心决策门，不是重复授权）。
+- **实施前不需要再裁定 MERGE**：用户 2026-10-28 已裁定六族全部 DISTINGUISH；若实施中发现某侧完全无消费者，才需就 RETIRE 单独签核。
 
 ### 4.2 已观察事实（2026-10-28）
 
@@ -85,7 +87,7 @@ Rust 实现面（`crates/auto-lang-core/src/vm/{native,ffi/stdlib}`）、`auto_m
 
 - **A1**：绑定表可从属性注册 + 覆盖块静态导出，并由最小程序实测覆核；若存在动态注册路径（宏/脚本生成），T-01 必须补查并在表内标注。
 - **A2**：行号引用（F-4/F-5/F-6）来自 844 T-01 时点，经过 844 的删除后可能漂移，T-01 以文件+名字为准重新定位。
-- **不声称**：本轮未读完全部 6 族实现细节、未做实测对照、未判定任一族应当 MERGE；F-3 的三方矛盾是**已读到的具体事实**，但"谁在运行时生效"仍需 T-01 实测。
+- **不声称**：本轮未读完全部 6 族实现细节、未做实测对照；六族处置已裁定为 DISTINGUISH，因此不需要再判"是否该 MERGE"。F-3 的三方矛盾是**已读到的具体事实**，但"谁在运行时生效"仍需 T-01 实测。
 
 ## 5. 详细设计
 
@@ -98,20 +100,20 @@ Rust 实现面（`crates/auto-lang-core/src/vm/{native,ffi/stdlib}`）、`auto_m
 
 ### 5.2 逐族裁定（T-02）
 
-| 族 | 现状（844 判定） | 可选处置 | 裁定前提 |
+| 族 | 现状（844 判定） | 处置（已裁定 2026-10-28） | 落地要点 |
 |---|---|---|---|
-| `str.len` / `str.byte_len` | 两个**活名字**（字符 vs 字节） | DISTINGUISH（默认）/ MERGE（仅当确认无人依赖字符语义） | JS `.length` 语义与 PLAN-055/781 的消费者；`str.len` 文档必须改成与实际生效一致 |
-| `math` 20+ 族 | 机制性双轨（tag 感知 pop vs Err） | DISTINGUISH 或 MERGE | 错误契约（0 兜底 vs Err）对用户程序可见；需用户裁定 |
-| `Str.to_int` / `parse_int` | 双版 | 同上 | 解析失败语义 |
-| `Time.now` 等 | 失败处理不同（0 vs unwrap） | DISTINGUISH（默认）或 MERGE | 不可用环境下的可观察行为 |
-| error-reply ×10 | 同构样板，非逐字；body 被契约钉住 | DISTINGUISH（保留）/ 抽 helper（仅当 body 字节不变且净删>0） | `plan755` 契约、净收益 |
-| `nv_to_value` | 双签名跨 FFI | DISTINGUISH（默认） | 跨边界签名差异是否有真实统一价值 |
+| `str.len` / `str.byte_len` | 两个**活名字**（字符 vs 字节） | **DISTINGUISH** | JS `.length` 语义与 PLAN-055/781 消费者各自保留；`str.len` 文档改成与实际生效一致 |
+| `math` 20+ 族 | 机制性双轨（tag 感知 pop vs Err） | **DISTINGUISH** | 两侧错误契约各自文档化并加区分性测试；合并留待未来 revision |
+| `Str.to_int` / `parse_int` | 双版 | **DISTINGUISH** | 解析失败语义分别写明 |
+| `Time.now` 等 | 失败处理不同（0 vs unwrap） | **DISTINGUISH** | 不可用环境下的行为写清；不改失败可见性 |
+| error-reply ×10 | 同构样板，非逐字；body 被契约钉住 | **DISTINGUISH**（可选抽 helper，仅当 body 字节不变且净删>0） | `plan755` 契约、净收益 |
+| `nv_to_value` | 双签名跨 FFI | **DISTINGUISH** | 跨边界签名差异保留并注明 |
 
-默认倾向 DISTINGUISH：**只有"两侧能被同一实现满足且无消费者依赖被放弃一侧"才 MERGE**。
+**已裁定：六族全部 DISTINGUISH**（2026-10-28）。原判据（"只有两侧能被同一实现满足且无消费者依赖被放弃一侧才 MERGE"）本轮未被认定成立，因此 MERGE 不在实施面；每族的处置是"补名字（若缺）+ 改文档 + 补区分性测试"，不改变运行时行为。
 
 ### 5.3 实施与兼容（T-03/T-04）
 
-- MERGE：先在绑定表里写"旧名 → 新实现"映射与迁移窗口；实施时保留旧名（deprecated 注释 + 指向新名）或按用户裁定的 breaking 口径发布；同步改文档/测试/生成器调用形态。
+- MERGE：**本轮未授权，不实施**（保留此条仅作未来 revision 的接口说明）。
 - DISTINGUISH：补名字（若缺）、补语义文档、补区分性测试（两侧各 ≥1 例，含边界：CJK、空串、负数、Unicode 数字、不可用时钟）。
 - error-reply：若抽 helper，必须证明 10 处 body 字节级不变（`plan755` 全绿），否则不做。
 
@@ -119,10 +121,10 @@ Rust 实现面（`crates/auto-lang-core/src/vm/{native,ffi/stdlib}`）、`auto_m
 
 | 字段 | 内容 |
 |---|---|
-| 规则与边界 | G1–G5；语义收敛；不改 844 保留项；MERGE 需用户裁定 |
+| 规则与边界 | G1–G5；六族 DISTINGUISH、**零行为变更**；不改 844 保留项；MERGE 未授权 |
 | 实际路径 | 属性注册 + 覆盖块 + `production()` → 绑定表 → 最小程序实测 → 逐族裁定 → 实现/文档/测试 → plan755 + 867 门 |
 | 所有权与状态 | 绑定表为验收输入（改需原因+哈希）；名字 owner=语言仓；a2r/vue 生成器调用面随名字变更同步 |
-| 区分性用例 | V-01..V-06：绑定表复算、实测覆核、MERGE 行为对照、DISTINGUISH 文档一致、契约 body 不变、867 门复跑 |
+| 区分性用例 | V-01..V-06：绑定表复算、实测覆核、**行为零变更对照**、DISTINGUISH 文档一致、契约 body 不变、867 门复跑 |
 | Oracle 与关闭 | 每 AC 绑命令与期望输出（含两侧程序输出的字节对照）；关闭需原始日志 + 哈希 |
 
 ### 规范增量
@@ -140,7 +142,7 @@ Rust 实现面（`crates/auto-lang-core/src/vm/{native,ffi/stdlib}`）、`auto_m
 |---|---|---|---|---|---|---|
 | V-01 | AC-01 绑定表可复算 | 冻结提交 + 同工具链 | 表生成脚本两次运行 | 逐字节一致；与注册面指纹一致 | 表 JSON + sha256 | 6 族名字集 |
 | V-02 | AC-01 实测覆核 | 最小 Auto 程序（CJK 取 len/byte_len、`Math.sqrt(-1)`、不可用时钟若有构造） | `auto`/VM 实际执行 | 生效实现与表一致；不一致即红 | 程序输出 + 表 | 可构造的名字；不可构造显式 pending |
-| V-03 | AC-02 MERGE 行为对照 | 同一程序在合并前后 | VM（及受影响 a2r/vue 调用面） | 输出差异必须与用户裁定一致；无裁定差异即红 | 两侧输出字节 | 仅 MERGE 族 |
+| V-03 | AC-02 行为零变更 | 同一组程序（CJK 串取 len/byte_len、非法数字解析、`Math.sqrt(-1)`、时钟、HTTP 应答）在处置前后 | VM + a2r/vue 生成调用面 + `plan755` | 除文档/注释外，**用户可观察输出与错误逐字节一致**；任何差异即红（DISTINGUISH 不改行为） | 前后输出字节对照 | 六族全部 |
 | V-04 | AC-03 DISTINGUISH 一致性 | 名字/文档/测试 | 规范页 + 代码注释 + 测试 | 三者对同一语义一致；`str.len` 文档必须与实际生效语义相同 | 文本对照 + 定点测试 | DISTINGUISH 族 |
 | V-05 | AC-04 契约不破 | error-reply 处置 | `plan755_http_contract_tests` | body 字节不变；全绿 | 测试输出 | HTTP 应答面 |
 | V-06 | AC-05 门禁联动 | 冻结三仓组合 | 867 三仓完整档 | 通过；被退役/改名测试在账本内为 RETIRED/RENAMED | 门收据 + 账本条目 | 867 覆盖档 |
@@ -150,7 +152,7 @@ Rust 实现面（`crates/auto-lang-core/src/vm/{native,ffi/stdlib}`）、`auto_m
 | ID | owner_stage | 可观察验收 |
 |---|---|---|
 | AC-01 | work | builtin 绑定表覆盖 6 族全部名字，可复算 + 实测覆核；不可构造项显式 pending |
-| AC-02 | work | 六族逐族裁定（MERGE/DISTINGUISH/RETIRE）+ 证据 + 用户裁定记录；无未裁定族 |
+| AC-02 | work | 六族全部按 DISTINGUISH 落地：每族有证据、名字/文档/测试一致；**行为零变更有对照证据**；MERGE 未实施；RETIRE 若有需单独签核 |
 | AC-03 | work | 处置落地后名字/文档/规范/测试一致；`str.len` 三方矛盾消除 |
 | AC-04 | work | `plan755` HTTP 契约绿；JS `.length`/生成器调用面按裁定保持 |
 | AC-05 | work | 867 三仓完整档复跑通过；测试处置在账本内有据 |
@@ -164,14 +166,14 @@ Rust 实现面（`crates/auto-lang-core/src/vm/{native,ffi/stdlib}`）、`auto_m
 | 状态 | ID | owner_stage | 依赖/启动门 | 实际交付/验证 | AC |
 |---|---|---|---|---|---|
 | [ ] | T-01 | work | G872 | builtin 绑定表（静态导出 + 最小程序实测覆核）；确认动态注册路径无遗漏 | AC-01 |
-| [ ] | T-02 | work | G872；T-01 | 六族裁定材料（消费者/承诺/语义差异/建议）+ 用户点选记录 | AC-02 |
-| [ ] | T-03 | work | G872；T-02 | 按裁定实施（名称/实现/迁移窗口/文档），MERGE 项保留迁移窗口 | AC-02, AC-03 |
-| [ ] | T-04 | work | G872；T-03 | 测试：区分性/边界例 + MERGE 对照 + plan755 契约；更新受影响生成器调用面 | AC-03, AC-04 |
+| [ ] | T-02 | work | G872；T-01 | 六族 DISTINGUISH 落地材料（消费者/承诺/语义差异/文档口径/是否需补名字）；确认无"完全无消费者的单侧"（否则提 RETIRE 并单独签核） | AC-02 |
+| [ ] | T-03 | work | G872；T-02 | 按 DISTINGUISH 实施：补名字/改文档/保持两侧实现，**零行为变更** | AC-02, AC-03 |
+| [ ] | T-04 | work | G872；T-03 | 测试：区分性/边界例 + **行为零变更对照** + `plan755` 契约；更新受影响生成器调用面（仅文档/名字，不改行为） | AC-03, AC-04 |
 | [ ] | T-05 | work | G872；T-04 | 行为对照收据（两侧程序输出字节）+ 绑定表更新 | AC-01, AC-03 |
 | [ ] | T-06 | work | G872；T-05 | 867 三仓完整档复跑 + 账本处置登记 | AC-05 |
 | [ ] | T-07 | work | G872；T-06 | SD-01/SD-02 落地 + `attachments/872/handoff.md` 冻结送审 | AC-02, AC-03 |
 | [ ] | T-08 | work | G872；T-07 | 全 AC/V 自检与遗漏扫描；未闭项列 finding/pending | AC-01..AC-05 |
-| [ ] | T-09 | review | G872；T-08 冻结提交 | 独立复审（绑定表重算、MERGE 对照重放、契约测试、文档一致性） | AC-06 |
+| [ ] | T-09 | review | G872；T-08 冻结提交 | 独立复审（绑定表重算、**行为零变更对照重放**、契约测试、文档一致性） | AC-06 |
 | [ ] | T-10 | merge | G872；T-09 pass | 冻结输入触面档 + 三仓完整档；SD/ledger、归档、清理 | AC-07 |
 
 **实施树**：`D:/autostack/.wt/lang-872/{auto-lang,auto-ui,auto-man}`（仅需写被裁定的仓），分支 `plan-872-dev`；禁止 junction/symlink；清理前 `wt-guard.sh` clean。
@@ -185,11 +187,13 @@ Rust 实现面（`crates/auto-lang-core/src/vm/{native,ffi/stdlib}`）、`auto_m
 - 本轮只写合同：未做实测对照、未定任何族的 MERGE、未建树、未改实现/规范/ledger。
 - 已发现并在计划内登记 F-3（`Str.len` 名字/文档/实现三方矛盾），但不预判谁生效。
 
+2026-10-28 / stage: new（r2 语义修订） / plan_id: PLAN-872 / plan_revision: 2 / outcome: **pass（六族处置已裁定为 DISTINGUISH，仍等 U867∧U869）** / ruling: 用户裁定 **六族全部 DISTINGUISH、零行为变更**；MERGE 未授权（D-1 关闭）、兼容口径问题随之不适用（D-2 关闭）/ changed: §1 G2、§2 裁定项、§5.2 默认、§5.3 MERGE 分支、AC-02、T-02/T-03、V-03（改为"行为零变更"对照）、§10 D-1/D-2 / next: 门成立后 work T-01；若未来要合并 `math` 等，另开 revision 并取得裁定。
+
 ## 10. 待澄清事项
 
 | ID | 事项 | 影响 | 处置 |
 |---|---|---|---|
-| D-1 | 六族里哪些允许 MERGE（行为变更） | 决定 T-03 实施面 | T-02 出材料，用户逐族点选；默认全部 DISTINGUISH |
-| D-2 | MERGE 的兼容口径：保留旧名 deprecated 窗口 vs 直接 breaking + 版本说明 | 用户程序兼容 | 随 D-1 一并裁定 |
+| D-1 | ~~六族里哪些允许 MERGE~~ **已裁定（2026-10-28）**：全部 DISTINGUISH，MERGE 未授权 | T-03 实施面 | 关闭：按 §5.3 DISTINGUISH 路径实施；未来要合并另开 revision |
+| D-2 | ~~MERGE 的兼容口径~~ **本轮不适用**（无 MERGE） | 用户程序兼容 | 关闭；若未来授权 MERGE 再定 |
 | D-3 | error-reply 是否值得抽 helper（收益/风险） | 净删与契约风险 | T-03 有界判定：仅当 body 字节不变且净删>0 |
 | D-4 | 不可构造的实测项（如不可用时钟）如何记 pending | AC-01 完备性 | 显式 pending + 环境说明，不计 pass |
