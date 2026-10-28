@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-862
-status: executing
+status: execution_done
 feature_name: AV源码入口、Unit与尾值语义（R2-E/SEM-05）
 author: [Codex]
 created_at: 2026-10-28
@@ -18,7 +18,7 @@ new_spec_components:
 touched_goals: [GOAL-002]   # 解释器/VM 快周转：热重载与真实源码执行底座
 
 affects: [auto-av, auto-mir, auto-ac, auto-test-case]
-current_step: 4
+current_step: 6
 total_steps: 9
 ---
 
@@ -158,12 +158,12 @@ T-02 必须产出 `attachments/862/work/entry-contract.md`，逐项冻结（未�
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-01 | add | docs/specs/auto-ac/source-entry-unit.md | 无该域 → 新源码 profile：入口形态/Unit/尾值/诊断矩阵/拒绝面 | 真实程序可进入 | AC-01/02 |
+| SD-01 | add | docs/specs/auto-ac/source-entry-unit.md | 无该域 → 新源码 profile：入口形态/Unit/尾值/诊断矩阵/拒绝面。**T-07 F-862-R1-02/F-04 增补**：① 结果位以外写 `void`（参数/局部）命名 `source.unit-placement`（可达并已测；entry-unit 面没有 `type` 声明，字段条款由 HIR/MIR 层守护）；② 入口矩阵另有两个码 `source.entry-order`（脚本序列后不得再有 item）与 `source.entry-result`（入口结果位规则），须一并入册；③ Unit 的 source/HIR/MIR 三层拒绝面与各自可达性 | 真实程序可进入 | AC-01/02 |
 | SD-02 | add | docs/specs/auto-av/entry-and-unit-profile.md | 无该域 → 新执行 profile：unit类型/entry kind/结果通道/恢复准入 | 结果可判定 | AC-02/03 |
 | SD-03 | modify | docs/specs/auto-av/project.md | 追加新 profile 条目，旧 profile 边界保持 | 模块可见 | AC-03 |
-| SD-04 | modify | docs/specs/auto-test-case/ace-m1-conformance.md | 追加入口/Unit case 行与判定轴，不改既有行语义 | 证据落点 | AC-05 |
-| SD-05 | modify | docs/specs/auto-mir/overview.md | 追加 unit 结果类型与 entry 类别的 MIR 侧约束 | IR 合同 | AC-02/03 |
-| SD-06 | modify | docs/specs/auto-test-case/ace-m1-conformance.md | 追加五态词表与 `na:m1`/`diff:accepted`/`ok+cert-gap` 判定（实现决策件 SD-01/02）；不改 12 列 schema | 重绑定需可判口径 | AC-06 |
+| SD-04 | modify | docs/specs/auto-test-case/ace-m1-conformance.md | 追加入口/Unit case 行（U01–U10）与判定轴（`av_channel` = value/unit；`unit` 与 `exit` 互斥），不改既有行语义 | 证据落点 | AC-05 |
+| SD-05 | modify | docs/specs/auto-mir/overview.md | 追加 unit 结果类型与 entry 类别的 MIR 侧约束（`mir.unit-placement`：Unit slot 仅作 unit 入口的 return 操作数；`mir.entry-kind` 双向一致） | IR 合同 | AC-02/03 |
+| SD-06 | modify | docs/specs/auto-test-case/ace-m1-conformance.md | 追加五态词表与 `na:m1(rule)`/`diff:accepted(rule)`/`ok+cert-gap` 判定（实现决策件 SD-01/02）；**T-07 F-862-R1-01/F-04 增补**：① 新规则 **NA-4**——入口/Unit 是 AV-only 执行 profile，native/legacy 不要求判它（2026-10-28 用户复审期间裁定；重新进入条件：有计划冻结 native/legacy 对该 profile 的支持时逐行改回 `gap:<plan>`）；② 本轮新增 owner token `a2r-golden`/`scenario-tooling`/`av-text-move`/`av-text-nul`/`av-mut-param`/`P864`；③ `probe`/`wait:*` 已清零、clean 以实测 20/73 记；不改 12 列 schema | 重绑定需可判口径 | AC-06 |
 
 ## 6. 测试设计
 
@@ -203,13 +203,30 @@ T-02 必须产出 `attachments/862/work/entry-contract.md`，逐项冻结（未�
 | T-02 | work | T-01 | 冻结 `entry-contract.md`：入口矩阵/Unit表示/结果通道/退出映射/profile 三元组；冲突项列用户决定；冻结fresh/hit/restart/body-edit、周转/内存口径与反控 | AC-01/02 | [x] |
 | T-03 | work | T-02、D868、S释放/接受 | 实现源码域：lexer/parser/resolve/typecheck/adapter + descriptor + 正反诊断，定向测试 V-01（**T-03a 前端半 + T-03b 发射/HIR 半均已交付**，见 §9） | AC-01 | [x] |
 | T-04 | work | T-03 | 实现共享lowering/MIR/ABC/AV：unit、entry kind、结果通道、恢复；V-02/03/04；核既有mn消费者受控拒绝新域、旧域保持，记录交接（**已交付**，见 §9） | AC-02/03/04 | [x] |
-| T-05 | work | T-04 | 语料/脚本/绑定：追加 ace-m1 行、独立 oracle、`verify-av-862.ps1`，跑定向面并提交代码及证据摘要（原始证据仅本地）；**R1 重开**（T-07 needs_fix：F-862-R1-02/03/05/06/07 在其写面内；已交付部分见 §9 work 记录） | AC-05 | [ ] |
-| T-06 | work | T-05、D868 | M1 分母重绑定：实跑 24 个 `probe` + 27 个 `wait:*` 逐格定级、按决策件写状态、产出证据摘要与实测 `clean` 数；不改 expected/schema；执行V-07首例cache/文件化/周转/内存与兼容验证；**R1 重开**（F-862-R1-01 NA-4 文档化、F-862-R1-04 规范增量、F-862-R1-08 内存采样；已交付部分见 §9 work 记录） | AC-06/04 | [ ] |
+| T-05 | work | T-04 | 语料/脚本/绑定：追加 ace-m1 行、独立 oracle、`verify-av-862.ps1`，跑定向面并提交代码及证据摘要（原始证据仅本地）；**T-07 R1 已修**（F-862-R1-02/03/05/06/07；修复轮 `e062edf4e`，关闭证据见 §9） | AC-05 | [x] |
+| T-06 | work | T-05、D868 | M1 分母重绑定：实跑 24 个 `probe` + 27 个 `wait:*` 逐格定级、按决策件写状态、产出证据摘要与实测 `clean` 数；不改 expected/schema；执行V-07首例cache/文件化/周转/内存与兼容验证；**T-07 R1 已修**（F-862-R1-01/04/08；NA-4 已入 SD-06+决策件 §12，内存腿已实测） | AC-06/04 | [x] |
 | T-07 | review | T-06 | 独立最终review，核 AC/V/SD 与实际入口、`na` 反滥用；merge 门 pending | AC-07 | [ ] |
 | T-08 | merge | T-07 pass | 冻结提交上裸 `cargo t` + `tv`，失败归因不豁免 | AC-08 | [ ] |
 | T-09 | merge | T-08 | Spec/ledger 沉淀、归档、worktree guard clean 清树 | AC-09 | [ ] |
 
 ## 9. 复审记录
+
+2026-10-28 **work T-07 修复轮（F-862-R1-01..08 全部关闭）**：`stage: work | plan_id: PLAN-862 | plan_revision: 3 | outcome: 完成（T-05/T-06 重新勾闭，下一步 re-review） | worktree_path: D:/autostack/.wt/lang-862/auto-lang | branch: plan-862-dev | base_commit: 13057957c6363c87f63bb2e2edc2d36ad3ad773a | code_commit: e062edf4e（修复轮；其上 0e9c08189 / ea644f8e8 / 8cda9958a 与 327037b06） | dependency_revisions: auto-down c3464d0、auto-ui f489c7b（只读，未写） | task_ids: T-05, T-06 | findings: F-862-R1-01..08 CLOSED | next: review T-07（re-review）`。
+
+| Finding | 修复（文件） | 关闭证据（命令 → 结果） |
+|---|---|---|
+| F-01 NA-4 未裁定 | 用户 2026-10-28 复审中批准；写入 SD-06 与[决策件 §12](reports/ace-m1-scope-decision-2026-10-28.md)（适用/依据/重新进入条件/防扩散三条） | 文档一致性复核；`-Scope acceptance` 的 `na` 分布仍 `NA-4=30` |
+| F-02 `source.unit-placement` 不可达 | `experimental/ac-core/src/source/parser.rs`：entry-unit 域 `param_type`/`decl_ann` 接受 `void` 词（scalar 等仍 `source.unsupported`）；字段条款（entry-unit 面无 `type` 声明）由 HIR/MIR 层守护，MIR 侧补负例 | `entry_unit_862` **26 passed**（param/local 两条新负例 + `verify.domain` 跨域一条）；`av_entry_862` **13 passed**（`mir.unit-placement` 新负例） |
+| F-03 AC-03 第二方向 | 新增两条身份负例：scalar 文档 → `verify_entry_unit` = `verify.domain`；`AVAU` 字节 + legacy owner schema = `mir.schema-profile`（受控拒绝，非重解释） | 同上（26 / 13 全绿） |
+| F-04 规范增量不完整 | 计划 §5 SD-01/04/05/06 增补：`source.entry-order`/`source.entry-result`、Unit 三层放置可达性、U01–U10 与 `av_channel` 轴、`mir.unit-placement`/`mir.entry-kind`、NA-4、六个新 owner token、`probe`/`wait:*` 清零与实测 clean | 计划 §5 表已更新（merge 沉淀） |
+| F-05 注释与实现不符 | `contract.rs` 注释改为"unit 通道没有任何 exit oracle（含 0）" | `contract_decode` 的 `unit+exit` 负例（0 与 1）覆盖 |
+| F-06 未 rustfmt | 对 9 个触及文件执行 `rustfmt` | `rustfmt --check`（9 文件）exit 0 |
+| F-07 准入负例无持久测试 | `crates/auto-test-case/tests/contract_decode.rs` 新增 4 条（profile+channel 正例、`unit`+`exit` 0/1 拒绝、未知 profile、非 core recipe 带 profile） | `cargo test -p auto-test-case --test contract_decode` → **23 passed** |
+| F-08 V-07 内存腿 | `av_entry_862` 新增 windows-only 进程峰值采样（`mempeek` 1ms、各取两次 warm 最大值、256MiB 粗门 + 实测打印） | `--test-threads=1 --nocapture`：entry-unit **331,776–557,056 B**（0.32–0.53 MiB）、scalar 控制组 **45,056 B**；远低于 128MiB worker 预算 |
+
+- **修复轮整体门（均在 `e062edf4e` 上，原始证据本地 `tmp/862/verify-acceptance-r2/`）**：`-Scope targeted` → 合同解码 13 / 准入负例 23 / 父侧判定 9 / 入口矩阵 26 / probe 首例 13 全绿；`-Scope compat` → 旧 97 例（26 a2r）绿且 scalar 身份轴未变；`-Scope entry` → 12/12 绿、`unit→value` 变异恰好红 U02/U04；`-Scope acceptance` → **clean = 20/73、probe 0、wait:* 0、NA-4=30**。
+- **未变（本轮再核）**：`binding.tsv` 的 expected/oracle 与 12 列 schema、既有 case/源、852 脚本、`docs/specs/**` 均零改动；未跑整档 `cargo t`/`tv`（merge 门 T-08）。
+- **复审注意**：F-02 的修法是"让冻结码可达"（推荐路径），未改任何既有 profile 的接受面（scalar/record/text 对 `void` 仍 `source.unsupported`，由 `void_is_not_part_of_the_other_profiles` 与新增断言双重守护）；F-03 的 wire 负例实际命中 `mir.schema-profile`（entry-unit 自有 owner schema 在 profile 门先拒），已在测试内写明原因。
 
 2026-10-28 **review T-07（final，needs_fix）**：`stage: review | review_scope: final | reviewer_identity/limitations: 本会话即 T-01..T-06 实施会话，无独立外部/异模型复审上下文；结论由冻结提交 diff、原始回执复算与独立探针重建，不采信 work 总结 | plan_id: PLAN-862 | plan_revision: 3 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-862/auto-lang | branch: plan-862-dev | reviewed_commit: 0e9c08189eeff8327f9b573b0620f84d4a12c1bd（树 clean） | base_commit: 13057957c6363c87f63bb2e2edc2d36ad3ad773a（master 复审时为 a27435014，merge 需调和） | dependency_revisions: auto-down c3464d0（只读）、auto-ui f489c7b（只读，本计划新增组内检出） | spec_inputs: 计划 sha256 332e7afa…、entry-contract b364c10b…、对等口径决策件 8ef5876d…、ace-m1-conformance 976dfd60…（本计划未改 docs/specs） | acceptance_results: AC-01 pass、AC-02 pass（resource/cancel/infra 腿见边界 B1）、AC-03 partial（F-03）、AC-04 partial（F-08）、AC-05 pass、AC-06 partial（F-01，NA-4 已由用户当轮裁定） | pending_closeout_gates: T-08 merge 裸 cargo t + tv（diff 触及 MIR/ABC/AV 与前端）；T-09 Spec/ledger/归档/清树 | findings: F-862-R1-01..08（OPEN）| evidence: 见下 | next: work（T-05/T-06 重开）`。
 
