@@ -1,6 +1,6 @@
 # av.collections/1 类型化集合与 Variant 载荷（PLAN-822）
 
-> Status: experimental（fixture-only 支持面；实现=`experimental/ac-av-probe/core` + `probe`）。
+> Status: experimental（执行域 fixture + **源码域已接通**（PLAN-864：`auto.source.collections.draft` 经共享 lowering 落本 profile，指令/布局/预算零改动；源码形态合同见 [auto-ac/source-collections-variants.md](../auto-ac/source-collections-variants.md)）；实现=`experimental/ac-av-probe/core` + `probe`）。
 
 第四个 AV profile `av.collections/1`：身份四元组 = AVAD wire **v3**（`AVAD` 家族）/ profile id **4** / producer `plan822/av-collections` / 语义版本 (1,1,1)（mir/abc/av 三轴独立）。支持 List/有限名义 Variant/owned Str 与 record 组合的 typed 元素存取，不复制协议/执行器，不依赖旧 core-i32 授信。
 
@@ -9,7 +9,14 @@
 - **List 元素域**：i32/bool/Str/record/variant（同 owner 名义类型）；禁 StrView/MutRef/Place/List（List 不嵌 List）、禁容器 record 字段。
 - **Variant payload 域**：Str/record/variant——**允许任意深度无环嵌套**（受共享预算与资源门约束，无语言深度上限）；禁 List payload、禁未用表项自环/间接环（MIR+ABC 双门拒）。
 - record 字段不含容器；Place 仅参照 List 元素（R3 起类型绑定）。
-- 首批入口为公开未信任 typed fixture（真 verify/ABC 授信后执行）；无 source 支持面。
+- 首批入口为公开未信任 typed fixture（真 verify/ABC 授信后执行）。
+- **PLAN-864 源码绑定**：真实 `.at` 源（List/Option/Result/enum/is/for-in/owned view）经
+  `auto.source.collections.draft` 前端 + `auto-mir-lower` collections 模式降级为**且仅为**本 profile
+  既有指令序列（无新 opcode；变体槽写走 VARIANT_SWITCH；unit 效果语句无槽；clear=尾删循环展开），
+  真三 gates 后执行；typed fixture 通过不冒领源码行——源码行以文件化 17 行
+  （`ac-av/collections-source-run-v1`，`test/cases/ace-m1/collections-source-864.suite.ad`）独立判定。
+  SEM-02 冻结：唯一索引陷阱码 `av.trap.list-index`（负下标/越界/空容器同码，先于 buffer 访问）；
+  旧 VM 负索引差异为 profile 差异，不静默统一。
 
 ## 指令面（opcode 0x1D..0x2E 共 18 条）
 

@@ -2,9 +2,9 @@
 status: accepted-direction
 describes: target-state-and-gap-matrix
 created_at: 2026-10-20
-updated_at: 2026-10-24
+updated_at: 2026-10-28
 implemented_by_plans: []
-planned_by: [PLAN-798, PLAN-828, PLAN-817, PLAN-818, PLAN-820, PLAN-821, PLAN-822, PLAN-823, PLAN-824, PLAN-825, PLAN-826, PLAN-827]
+planned_by: [PLAN-798, PLAN-828, PLAN-817, PLAN-818, PLAN-820, PLAN-821, PLAN-822, PLAN-823, PLAN-824, PLAN-825, PLAN-826, PLAN-827, PLAN-862, PLAN-863, PLAN-864, PLAN-865, PLAN-866, PLAN-868, PLAN-870, PLAN-871]
 ---
 
 # AV语言能力矩阵：源码、内核与替换差距
@@ -33,6 +33,8 @@ planned_by: [PLAN-798, PLAN-828, PLAN-817, PLAN-818, PLAN-820, PLAN-821, PLAN-82
 
 第4层的fixture不能代替第1层，第5层声明/签名不能代替executed，第6层“能启动”不能代替真正经AV运行。函数unit工件kind与语言Unit值/无返回函数是两个不同维度。
 
+**2026-10-28当前续接**：798/828及820–827有限合同基础已进入后继阶段，868已交付共享lowering。下面T表示typed层能力，现状须查current Spec，不再表示822–824仍未实施；它仍不等于source支持。862（r3，executing，入口前端部分）/863（输出）/864（集合与拥有型List）/865（闭包源码）/866（在线AV）和870/871（native扩面/覆盖退役）见[续接基线](ace-implementation-handoff.md)。新增计划认领不把任何源码缺口改为PASS。
+
 ## 2. 本波交付后的逐能力矩阵
 
 旧AVM需求证据来自[VM现状](../../specs/auto-lang/vm/overview.md)、[前端模块解析](../../specs/auto-lang/frontend/design/module-resolution.md)、[stdlib装配](../../specs/stdlib/design/assembly-manifest.md)、[源码域](../../specs/auto-hir/stage-contract.md)以及[23个现存程序目录](../../plans/reports/av-source-program-catalog-2026-10-20.md)。**有文件/expected不等于本轮已证明旧AVM可运行**；G0/827负责从实际入口、feature/平台和强oracle建立当前分母。
@@ -44,30 +46,30 @@ planned_by: [PLAN-798, PLAN-828, PLAN-817, PLAN-818, PLAN-820, PLAN-821, PLAN-82
 | C-03 | i64/u64/f32/f64精确数据位型 | 无新增源码承诺 | T：const/copy/call/return | — | 820 | 字面量/推导/转换/源码返回仍需接通；NaN移动保真≠算术 | G2 / R2-N | P0 |
 | C-04 | uint/byte及其他现存数值类型 | — | — | — | 无 | 逐类型从旧清单确认，不由u64支持推导全数值族 | G0/G2 / R2-N | P1 |
 | C-05 | 宽整数/浮点算术、位运算、Math | — | 仅i32子集 | — | 820只数据；825/826不扩算术 | AP-20和边界值需要新的typed操作、源推导和stdlib装配 | G2/G3 / R2-N | P0 |
-| C-06 | Unit值、无返回main、隐式尾表达式/顶层脚本 | — | 旧入口仍零参/i32 | — | 798不支持Unit值 | 与函数unit工件kind是两回事；AP-04等入口当前不闭合 | G2 / R2-E | P0 |
+| C-06 | Unit值、无返回main、隐式尾表达式/顶层脚本 | 862前端部分；全链未交付 | 新域尚待862完成 | — | 862 r3实施中；旧798不含Unit值 | 函数unit工件kind≠语言Unit；HIR/ABC/AV和恢复仍待闭环 | G2 / R2-E | P0 |
 | C-07 | let/var、遮蔽、标量赋值 | 限 | 限 | — | 798 | 完整源码语境与动态脚本模式仍需盘点 | G1/G2 | P0 |
 | C-08 | if/loop/break/continue/短路/递归 | 限 | 限 | — | 798 | 128构造预算/显式帧/fuel仍按profile，不等任意源码规模 | G1；G2增量扩面 | P0 |
-| C-09 | for-in、range、迭代器/yield | — | List访问不等通用迭代 | — | 822仅集合；generator另案 | AP-08/AP-13需迭代降级及挂起状态/清理 | G2/G5 / R2-L,R5-A | P0/P1 |
+| C-09 | for-in、range、迭代器/yield | 部分 864（仅 `for x in <List>`：len 前读一次、Copy 每轮物化/owned 投影上下文、迭代期结构修改编译拒；range/数组/迭代器/yield 不在本批） | List访问不等通用迭代 | — | 822仅集合；generator另案 | AP-08/AP-13需迭代降级及挂起状态/清理 | G2/G5 / R2-L,R5-A | P0/P1 |
 | C-10 | 直接函数、命名实参、求值顺序 | 限 | 限 | — | 798 | 默认/变参/高阶引用不由此自动支持 | G1/G2 | P0 |
 | C-11 | 默认/变参、函数值和高阶调用 | — | 823仅已声明闭包签名 | — | 823部分基础 | 完整调用语法、绑定、签名/返回和方法HOF接口 | G2 / R2-E,R2-L | P0 |
 | C-12 | 名义record、嵌套字段原位读写 | 限：现有record域 | 限：Copy/owned分阶段 | — | 820/821 | AP-02/AP-03仅域内；匿名对象/类/继承不是同一能力 | G2 / R2-D | P0 |
 | C-13 | char、UTF-8文本、Str/str | 限：现有text-record域 | 限：774拥有/借用规则 | — | 821 | 常规旧源码str字段与新Str/str资源合同需SEM-03 | G0/G2 / R2-D | P0 |
 | C-14 | tuple/解构/默认构造/空record | — | 仅目标设计，无明确本批全支持 | — | 820未承诺完整tuple | 按实际旧用例逐项建合同，源码空record保持现有拒绝 | G2 / R2-D | P1 |
-| C-15 | List<T>布局、Index/增删/清理 | — | T | — | 822 | AP-05/AP-08的源码推导、方法/迭代/HOF未全接通 | G2 / R2-L | P0 |
-| C-16 | Option/Result/有限enum载荷 | — | T | — | 822 | 源码声明、构造、类型推导、error propagation未闭合 | G2 / R2-L | P0 |
-| C-17 | is/match、guard与载荷解构 | — | T：受检分支投影 | — | 822 | AP-06多层模式、穷尽/绑定/失败诊断须真实源码验证 | G2 / R2-L | P0 |
-| C-18 | owned闭包、捕获、间接调用 | — | T：受限环境/调用 | — | 823 | AP-04/05需lambda源码/捕获分析及map/filter/reduce接线 | G2 / R2-L | P0 |
+| C-15 | List<T>布局、Index/增删/清理 | ✅ 864（auto.source.collections.draft：new/push/insert/get/set/remove/len/clear 源码面；L01–L07 真源绿；List<Str>/List<拥有型type>及L04/L05原源 owned view/remove 转移已交付） | T：822具名typed合同 | — | 822执行；864源码 | 必含List<Str>/List<拥有型type>及L04/L05原源；HOF库不由此自动支持 | G2 / R2-L | P0 |
+| C-16 | Option/Result/有限enum载荷 | ✅ 864（?T/Result<T,E>/enum 声明+构造+推断；V01–V07 真源绿；完整error propagation另验） | T：822具名typed合同 | — | 822执行；864源码 | 声明/构造/推导源码待864；完整error propagation另验 | G2 / R2-L | P0 |
+| C-17 | is/match、guard与载荷解构 | ✅ 864（is 语句穷尽分发+载荷绑定，guard/投影降为受检分支链；穷尽/重复/未知臂具名诊断；V01–V07 真源绿；guard 表达式与通配超集仍后续切片） | T：受检分支投影 | — | 822执行；864源码 | 模式/穷尽/绑定/失败诊断须真实源码验证 | G2 / R2-L | P0 |
+| C-18 | owned闭包、捕获、间接调用 | —（865已认领） | T：823受限环境/调用 | — | 823执行；865源码 | lambda/捕获/逃逸源码待865；map/filter/reduce另属库与方法能力包 | G2 / R2-L | P0 |
 | C-19 | 共享可变捕获、循环对象图、跨挂起借用 | — | 明确拒绝或尚无owner | — | 821–824首批排除 | 若旧消费者依赖则不能永久排除；须专门共享/生命周期设计 | G0/G5 / R5-O | P1 |
 | C-20 | 匿名对象、动态字段、Map/Set | — | Dyn不是Map/对象实现 | — | 824不交付Map/Set | AP-19/JSON对象读写、键相等/迭代顺序/缺字段语义 | G2/G3 / R3-C | P0 |
 | C-21 | 模块全局变量与初始化顺序 | — | 未交付global Place | — | Design44仅模型 | 多模块初始化/一次性/环、状态寿命与隔离 | G3 / R3-M | P0 |
 | C-22 | use/pub/re-export、pac/包/模块解析 | — | 798有限函数闭包非完整模块系统 | — | 796仅语义身份 | AP-07依赖闭包/名称冲突/缓存/stdlib选层，复用resolver与783 | G3 / R3-M | P0 |
 | C-23 | 用户泛型、spec/trait、有界派发 | — | 内建List实例化不等用户泛型 | — | 796有事实；822非完整泛型 | AP-17真实推导/实例化、约束/单态化和失败诊断 | G3 / R3-T | P0 |
-| C-24 | 方法/ext/接收者/动态分派 | 限：已有record域窄面 | 限：已解析直接调用 | — | 820/821部分基础 | 广泛dot/ext/重载/接口派发要源码→共享事实→MIR闭环 | G2/G3 / R3-T | P0 |
+| C-24 | 方法/ext/接收者/动态分派 | 限：旧record源码窄面 | AV/mn方法lowering仍有缺口 | — | 旧771；共享方法能力包待立项，871核覆盖 | 870不承诺该缺口；先补旧静态/只读方法对等再删旧native，完整dot/ext/重载另扩 | G2/G3 / R3-T | P0 |
 | C-25 | 字符串API、格式化、数字转换 | 限：774/782列明操作 | 限：该profile操作 | 无完整标准库 | 821非所有Str方法 | f-string/Unicode/转换/输出，AP-04/14/17共同前置 | G2/G3 / R2-E | P0 |
 | C-26 | ?、Err传播、try/catch、panic与资源清理 | — | trap与Result数据已分态 | — | 821/822仅基础 | AP-06/AP-18；显式错误通道/cleanup，不把trap自动当Err | G0/G2/G6 / R2-X,R6-F | P0 |
 | C-27 | Dyn/Any源码、动态类型检查 | — | T：递归白名单 | — | 824 | 显式Dyn不是Unknown兜底，更不是完整动态脚本/反射 | G2/G6 / R2-X,R6-F | P1 |
 | C-28 | 完整源码所有权/借用与返回来源 | 限：774/782支持面 | 限：根move/loan/guard | — | 821–824 | 部分move/共享/挂起另案，不能以enum载体宣称完整borrow checker | G2/G5 | P0 |
-| C-29 | print/stdin/stderr、普通CLI结果 | —：trace不是print | 仅测试trace | — | 798不提供普通IO | typed console provider、Unit/格式化和流/exit语义 | G2/G4 / R2-E,R4-P | P0 |
+| C-29 | print/stdin/stderr、普通CLI结果 | —（862入口/863输出已认领） | 测试trace不是print | — | 862/863草案与实施范围 | typed host-import/console、格式化与流断言由863；stdin/完整CLI另扩 | G2/G4 / R2-E,R4-P | P0 |
 | C-30 | FS/argv/env/time/process/权限 | — | 未交付host服务 | — | 测试shim不等标准库 | AP-10/11实际副作用、sandbox、取消/子进程清理与grants | G3/G4 / R3-H,R4-P | P0 |
 | C-31 | JSON/regex/hash/编码及常用库 | — | 824 portable≠Json API | — | 无本批实现承诺 | AP-09/19/20，738 actual manifest + typed provider executed证据 | G3/G4 / R3-C,R3-H | P0 |
 | C-32 | Future/await、generator挂起恢复 | — | 明确非目标 | — | 823同步环境不含async | AP-13/14：帧/环境跨挂起、取消与资源返回 | G5 / R5-A | P1 |
@@ -77,7 +79,7 @@ planned_by: [PLAN-798, PLAN-828, PLAN-817, PLAN-818, PLAN-820, PLAN-821, PLAN-82
 | C-36 | C/Rust/Python调用及反向回调 | — | 无通用adapter | — | 797仅有限原生ABI；824拒外部资源 | AP-17/18/21及保留消费者，typed外对象/线程/GIL/资源归属 | G6 / R6-F | P1/P2 |
 | C-37 | REPL/持久会话、debug/source map/ABT | — | 798有有限source映射 | — | 不等现有交互产品 | 符号/变量读写/断点/重启/会话隔离与旧bytecode工具迁移 | G6 / R6-I | P1 |
 | C-38 | 嵌入API、AutoGen模板、Man动态求值 | — | 无产品owner接线 | — | SDK/工具拆包非AV迁移 | 逐调用点审计并真实运行，保留错误/退出/资源语义 | G4/G6 / R4-P,R6-I | P1 |
-| C-39 | CTE/meta反射/类型生成 | —（817另有窄consumer） | 817仅i32/bool执行结果 | — | 817/796；824不扩其schema | 复合CTE/泛型实例化/生成声明与runtime反射分别专项 | 自举分支 / RB | P1/P2 |
+| C-39 | CTE/meta反射/类型生成 | —（817另有窄consumer） | 817仅i32/bool执行结果 | — | 817/796已有限交付；824不扩其schema | 复合CTE/泛型实例化/生成声明/runtime反射分别专项，不等AACE才做 | v0.6语言/语义扩面；AACE另在v0.7 | P1/P2 |
 | C-40 | native/JIT/OSR/deopt | — | 818仅有限标量native；AJ未交付 | — | 818；825/826不是JIT | 新数据native扩面另立；JIT/OSR不是AVM替换硬前置 | 可选性能分支 / RP | P2/P3 |
 | C-41 | 模块/数据持久化、跨进程与增量 | 限：实验profile | 限：783重验/lease/版本 | — | 798/820–824；825/826优化 | 整项目imports/stdlib/provider/配置与结果依赖闭包、真实编辑 | G1→G8逐阶段 | P0 |
 | C-42 | SDK/CLI/安装包、默认选择与可回滚迁移 | — | 内核通过不等产品 | — | 814–816不自动迁VM | 实际入口/平台/feature分SKU、先opt-in再默认、无静默回退 | G4/G7/G8 | P0/P1 |
@@ -112,6 +114,6 @@ R2-*等为路线工作包标识，尚非Plan编号/实施合同。不能借本�
 
 ## 5. 更新责任
 
-[827](../../plans/827-av-source-program-baseline.md)先建立程序/能力/入口清单、实际source runner与强oracle，G0/G1完成后将实证沉淀到拟议auto-av/language-support.md，后继Plan逐项更新。主检出Spec不在本次改写；Design43/44保持语义/数据合同来源，本表只管理交付缺口与迁移证据。
+[827](../../plans/archive/827-av-source-program-baseline.md)先建立程序/能力/入口清单、实际source runner与强oracle，G0/G1完成后将实证沉淀到拟议auto-av/language-support.md，后继Plan逐项更新。主检出Spec不在本次改写；Design43/44保持语义/数据合同来源，本表只管理交付缺口与迁移证据。
 
 对真实程序的原则：保留源码和依赖/资源字节，允许受控sandbox/输入/受支持入口参数；切源目录、删imports、换成等价MIR、把复杂分支剪掉都只能形成新变体ID，不能把原AP标为通过。

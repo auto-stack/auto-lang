@@ -83,6 +83,15 @@ B01/B04/B09/B13/B14 五源（852 `src` 与 825 fixture SHA-256 逐位同源）�
 - **五态词表（决策件 SD-01/02 落地）**：`ok*`（含 `ok-emit`/`ok-parse-reject`/`ok:…`）/ `ok+cert-gap`（a2r 金样轴绿、认证轴缺）/ `gap:<owner>`（应有未交付；owner=计划 ID 或具名能力包）/ `na:m1(NA-x)`（M1 不要求，须带规则 ID 与重新进入条件）/ `diff:accepted(R-x)`（已裁定旧侧差异，**不等于** ok）/ `diff:pending`（已执行有分歧、未裁定，阻塞）。`probe` 与 `wait:*` 不得作为长期状态。
 - **`na` 规则与反滥用**：NA-1 legacy/a2r 不判 typed fixture 入口；NA-2 无 Dyn API；NA-3 native 不判闭包/Dyn/在线重载/暂停恢复；**NA-4**（2026-10-28 用户裁定）入口/Unit 是 AV-only profile，native/legacy 不判（重新进入条件：有计划冻结 native/legacy 对该 profile 的支持时逐行改回 `gap:<plan>`）。每条 `na` 必须带规则 ID；新增须回决策件或同等决策；merge 报告单列 `na` 行数与规则分布。
 - **本轮新增 owner token**：`a2r-golden`（发射成功但无冻结金样）、`scenario-tooling`（无源码的 scenario 行观测通道未交付）、`av-text-move`/`av-text-nul`（owned 源面对 Str move / NUL 比较的缺口）、`av-mut-param`（AV mut 参数未交付）、`P864`（集合/变体源码，PLAN-864）。
+
+### PLAN-864 交付后的 L/V 重绑定（2026-10-29）
+
+L01–L07 / V01–V07 的 av 列已由 `gap:av-unsupported-list` / `gap:P864` 重绑为 `ok:P864-source`
+（`binding.tsv` 仅动 status/owner 列，12 列 schema 与 852 分母值列未动）：真实源码经
+`ac-av/collections-source-run-v1`（profile 4，指令面零改动）独立判定，typed fixture 通过不冒领源码行。
+L06 保持 trap 行（`av.trap.list-index`，SEM-02 冻结；legacy 差异为 profile 差异不冒绿）。
+追加变体 N01（List<Str>=51）/N02（for-in copy=42）/N03（for-in owned 投影=53）只存在于新 case 文件
+（`collections-source-864.suite.ad`，17 行），不扩缩 852 基套件分母。ac 列仍 `gap:mn-scalar-only`（owner=870 线）。
 - **实测口径**：24 `probe` + 27 `wait:*` 单元格逐格真实执行后定级（残留 0/0）；corpus 73 行（原 63 + U01–U10），实测 **clean = 20/73**；`probe`/`wait:*`/SKIP 均不计绿，`clean` 以脚本复算为准。决策件附录中无规则 ID 的 `na:m1` 行（C01/C02/I01–I11/G02–G08）在全表回填前仍需单独裁定。
 - 门：`powershell -File scripts/verify-av-862.ps1 -Scope <targeted|compat|entry|acceptance>`；旧 852 底座套件保持 97 检查绿（本计划未改 852 脚本、金样与 12 列 schema）。
 

@@ -21,3 +21,19 @@ av.collections/1 的 MIR 层合同：类型域、guard/payload 数据流格点�
 builder 输出为公开未信任输入：仅经真 `verify_mir` 授信后编码/准入/执行；programmatic builder 不冒称 Checked。签名等值在 link 期经共享 scratch 类型空间内容比较（容器型接口变化结构性可捕）。
 
 证据：`av_collections_822` MIR/ABC 反例族与 attachments/822 复审记录（R3-R9 类型/逃逸/预算/无环各轮）。
+
+## 源码 lowering 约束（PLAN-864）
+
+`auto.source.collections.draft` → 本 profile 的 lowering（`auto-mir-lower` collections 模式）**不新增指令**，
+全部展开为既有 822 指令序列：
+
+- `for-in` 降为显式索引循环（len 循环前读一次；`LIST_LEN` + `LIST_GET`；无迭代器对象）。
+- `is` 降为受检分支链：每臂 `VARIANT_GUARD` → `Branch` → 臂内 `VARIANT_PROJECT`（guard 事实格点的
+  must-fact 经分支边传播使正臂投影合法）；穷尽缺失在编译期拒。
+- 变体槽赋值/绑定经 `VARIANT_SWITCH`（非裸 Move——旧活臂恰释放一次、guard 失效）。
+- `clear()` 展开为尾删循环（`LIST_LEN`/`LIST_REMOVE`/`DROP`），无 LIST_CLEAR opcode。
+- owned 元素投影：标量终场 `LIST_FIELD_GET`；owned Str 终场 `LIST_REMOVE → exact-type FieldGet → VIEW →
+  STR_LEN → BorrowEnd → LIST_INSERT`（运行期 handle-share，无隐式深拷贝、无台账事件）。
+- unit 效果语句（push/insert/set/clear 语句形态）不产生结果槽（Unit 永不入 profile 4 类型表）。
+- 单元拆分（`split_units`）的类型闭包**必须含内嵌类型操作数**：Aggregate.record_ty、ListNew.list_ty、
+  VariantPack.variant_ty、DynIs/DynTake.ty——820 起潜伏的悬空索引缺陷由 864 源单元浮出并修复。
