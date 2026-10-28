@@ -81,3 +81,26 @@ graph LR
 ABI。装配合同入口见 [design/assembly-manifest.md](design/assembly-manifest.md)。
 D3a/D3b 边界：本期交付来源真实性与错误可见性；跨目标语义/取消/错误 ABI/
 资源 parity 属 D3b，不得由 signature_checked 推定。
+
+## 内建语义矩阵（PLAN-872 实测钉死）
+
+六族"同名双轨"内建（str.len/byte_len、Math、to_int/parse_int、Time、
+error-reply、nv_to_value）经用户 2026-10-28 裁定全部 **DISTINGUISH**：保留
+两侧、名字/文档/测试对齐、**零行为变更**（MERGE 未授权；RETIRE 候选须单独
+签核）。生效语义（实测锚=`scripts/builtin-binding-table.json` 复算守卫 +
+`plan872_builtin_semantics_tests` 区分性测试；详见归档 Plan 872 绑定表）：
+
+| 名字 | 生效语义 | 后端差异 |
+|---|---|---|
+| `s.length`（属性） | 字符数（PLAN-055 JS `.length`；nat#170 + engine 内联臂） | a2r=Rust `.len()` 字节；JS=UTF-16 码元（BMP 内同值） |
+| `Str.len(s)`/`s.len()` | UTF-8 **字节数**（nat#1500 纯 shim；CALL_SPEC 动态派发臂例外=字符数） | a2r=Rust `.len()` 同字节 |
+| `Str.byte_len`/`s.byte_len()` | 字节数（nat#1526；PLAN-781 文件偏移专用） | a2r=`str_byte_len` 同 |
+| `Math.*`（28 名） | 纯 shim 生效：IEEE 域外返 NaN/-inf；**整型实参不提升**（`sin(1)`=NaN、`sin(1.0)` 正常） | a2r=静态类型直调；JS=强制转换（无 NaN-on-int） |
+| `to_int`/`parse_int` | nv 0 兜底**裸 i32**（`"12x"`→0，非 Result；双名同挂 id 1516） | a2r=Rust `parse`（Result 语义） |
+| `Time.now*` | 纯 unwrap 版生效：epoch 值；时钟不可用=panic（分支不可构造，pending） | a2r-std 同 unwrap |
+
+error-reply ×10（server_dispatch/argbind/scope 的 `ApiReply::Full` 错误形态）
+为同构非逐字样板，body 受 `plan755_http_contract_tests` 契约钉住，不抽
+helper（收益≈0 且触碰契约面）；`nv_to_value` 双签名（native.rs 无 vm 版
+vs interop.rs 持 vm 版）按消费面并存（collections 写入 vs obj_* 字段写入）。
+

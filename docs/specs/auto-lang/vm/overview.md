@@ -103,6 +103,32 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
   几何/menu/scroll/window/palette 面。详见
   [terminal native 宿主能力（PLAN-808）](#terminal-native-宿主能力plan-808)。
 
+## 绑定序与生效实现（PLAN-872）
+
+六族同名双轨内建的绑定机制登记（语义矩阵见 stdlib/project.md；实测锚=
+`scripts/builtin-binding-table.json` 复算守卫测试）：
+
+1. **`production()` 绑定序六步**：`register_std_shims`（catalog：nv 实现 +
+   canonical 名）→ `register_stdlib_ffi`（手工）→ `register_interop_natives`
+   → **`build_from_inventory`**（`#[rust_fn]` 纯 shim；其 ID 经
+   `resolve_qualified` 命中 canonical `auto.*` 静态表——**与 catalog 同 ID
+   时本步后写覆盖先序**）→ `register_request_io_shims` → nv 覆盖块
+   （仅 1504/1505/1506/1516/1523 + `auto.json.parse` + web natives）。由此：
+   Math/Time 生效=**纯 shim**（nv tag 感知/`unwrap_or(0)` 版被遮蔽）；
+   `Str.len`（1500 字节）与 `.length`（170 字符）双名各自生效。
+2. **两套注册表与 peek/resolve 分歧**：codegen 期 `BIGVM_NATIVES`
+   （`peek_qualified` 纯读决策先查 canonical 静态表，`resolve_qualified`
+   查询即注册先查 path 静态表）——裸 registry 上 `Str.len` peek=170 /
+   resolve=1500，production 后稳定 1500；`NATIVE_ID_ENTRIES`（879 条）唯一
+   同名双 ID=`str.len:[170,1500]`（HashMap collect 后写胜出）。
+3. **机器可读生效面**：`scripts/builtin-binding-table.json`（fresh-registry
+   peek 视角 + production 稳态 interface 视角）+ 复算守卫测试
+   `plan872_binding_table_json_matches_regeneration`（逐字节比对，漂移即红）。
+4. **禁止未记载漂移**：任何改变同名生效实现的绑定序/注册变化须先更新绑定
+   表与守卫测试（`plan872_builtin_semantics_tests` 的槽位 pin/语义断言红=
+   漂移警报）；不禁止既有覆盖、不改注册优先级（PLAN-872 裁定：DISTINGUISH、
+   零行为变更）。
+
 ## Frame native 宿主能力装配（PLAN-779）
 
 frame native（9918/9919，`auto.frame.begin_ms/present_ms`）是 native/宿主解耦的首个 pilot（Design 37 §4 四层：定义/适配/实现/装配）。core shim 通过 `vm::host_capabilities::FrameProvider` 读取 begin_ms/present_ms，**不直接引用 UI 的 frame_bench 实现**；canonical 名称、固定 ID、int 单槽编码、i32 上界饱和（`.min(i32::MAX)`）及未捕获 0 语义保持。
