@@ -15,7 +15,7 @@ Checked HIR → Typed MIR → ABC decode/verify → 私有LoadedModule → Rust 
 - [入口/Unit 执行（av.entry-unit/1，PLAN-862）](entry-and-unit-profile.md)
 - [MIR](../auto-mir/core-i32.md) | [数据 MIR](../auto-mir/data-place-profile.md)
 
-798不是在线函数替换/完整AJ/发布器。实际增量边界以缓存合同为准。
+AV 侧在线函数替换已由 PLAN-866 交付（常驻运行+调用边界安全点+换解析恢复，见 [resident-online-reload](resident-online-reload.md)）；完整AJ/发布器与 native 在线装载（I08 native 列，owner=native loader 能力包）仍不在。实际增量边界以缓存合同为准。
 
 PLAN-820 交付独立 data profile `av.data/1`（AVAD wire v1/profile 2，语义
 版本 1/1/1 独立轴；core-i32 的 1/2/1 与 AVAB 字节语义不变）：宽标量数据+

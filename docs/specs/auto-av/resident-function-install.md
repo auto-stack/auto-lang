@@ -18,6 +18,19 @@
 - 来源投影：payload span 经帧执行槽投影映射（payload func 号不参与键控）；强制
   复制未改执行 payload 且实际使用时结构门必红（副本负控）。
 
+## 运行中安装（PLAN-866 常驻在线）
+
+- 运行中安装的准入点 = guest 调用边界安全点（见
+  [resident-online-reload](resident-online-reload.md)）：armed 段在下一
+  Call/CallClosure 派发前停车，commit 在该点发生，随后以新快照解析恢复——
+  在途调用链留旧代码至返回，安全点后新派发调用取新 revision。暂停/恢复
+  （两次顶层调用之间）语义不变，仍由本规范上文声明。
+- 在途被编辑函数（changed 函数在帧栈上）在安全点**延迟安装**：不 commit、
+  不 swap、候选留队可观察，新 body 只对下次顶层运行可见——本规范"新顶层
+  调用取新 snapshot"规则的常驻形态推论。
+- 迟到/外来候选在安全点由本规范的既有守卫（base_revision/session_id）拒绝，
+  运行不受扰；安装失败与 guest 失败分列。
+
 ## 安装事务与寿命
 
 - prepare 仅构造候选（PreparedEdit 自持候选 HIR/code/来源/绑定）；成功 commit 在

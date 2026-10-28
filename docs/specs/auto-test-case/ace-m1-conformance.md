@@ -46,6 +46,12 @@ acceptance scope 从 binding.tsv 报告，两轴结论分开：底座 PASS ≠ M
 同一冻结源（B09）上：av warm/hot/body 编辑（fact(5)→fact(6)=720）/跨进程编辑
 持久（内容寻址 store，cache_hit_abc 观测）；mn fresh/edit+重启（新 worker 进程，
 store 跨进程，cache_hit_coff）。native 在线 HMR（I08）不由本规范声明——需要
+
+常驻/在线行（PLAN-866，H01-H03）：`ac-av/resident-run-v1` recipe 以真实 worker
+进程+父侧判定执行常驻链（fuel 切片、调用边界安全点换版、在途留旧、延迟安装
+守卫）；H01 连续运行=2100、H02 在线换版=2608（46旧×7+254新×9，手算审计）、
+H03 双换版 churn=3070；wrong-oracle 负控判红。852 binding I08 的 AV 列由此
+关闭；I08 native 列（gap:ac-native-loader）与 I07 语义保持不变。
 native loader 能力包，重启 exe 不满足。
 
 ## 下游绑定（823~826 T-11）

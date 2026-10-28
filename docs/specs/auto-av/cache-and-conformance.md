@@ -124,3 +124,14 @@ owned/data 各 profile 的 schema-producer-语义身份互斥，交叉 owner 工
 - A09 单元键新增 `abc-codec` 维度（`abc_unit_key_with_codec`，取值 = wire schema）；AVAB 与 AVAC/1 两世代键空间不相交，跨世代查找为确定性 miss/rebuild（O(1) magic+version 世代闸门按策略判）。
 - `ModuleManifest` 新增 `abc_codec` 字段（serde 默认 = 旧 AVAB schema，旧 manifest 恢复行为不变；不入 fingerprint——codec 差异已由 payload_fp 区分）。restore 按 manifest codec 路由解码/准入，未知 codec 拒绝；恢复不继承授权，current grants 必检。
 - 新旧 wire 均不恢复 trusted；每一层 envelope→decode→verify 重验。cache 命中不恢复序列化执行索引或 PASS。
+
+## PLAN-866：在线重载的预算与计数口径
+
+- 在线换版不新增任何资源上限：沿用既有 AV 预算（执行分区 slot 8MiB/受管
+  32MiB/累计步数 1M/wall 按段 2s）与 825 账本扣除（新 resolution 的驻留索引
+  字节计入段预算）；旧代回收上界 = 828 内容史 HISTORY_CAP=32/函数 + max_frames
+  在途代码对象面，retired snapshot Weak 释放为 oracle。
+- 周转口径沿用 TestCase v2（P90≤2000ms 硬门，样本不缩）；常驻在线的生效点
+  计量 = 编辑入队 → 安全点生效（SafetyPointReport.visibility 样本）。结构
+  计数（未改函数生产=0、whole-module=0、chain_entries=1、安装集合、代际）
+  由父侧 judge 独立判定，不采信 worker 值言。
