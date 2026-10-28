@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-879
-status: execution_done
+status: reviewed
 feature_name: AutoGraphics纯源码迁入auto-ui与单一权威切换
 author: [Codex]
 created_at: 2026-10-29
@@ -166,6 +166,8 @@ work r1 证据摘要（命令/退出码/关键数字，原始输出在 plan-arti
 - **pending（不属work）**：T-06 独立 review 绑定 4adf2d03+f07b5ec8；merge-owned：冻结抽样/来源复用审计（T-07）、两仓落地切换（T-08）、知识/ledger/归档（T-09）、guard清理（T-10）。根 auto-lang crates 零改动，未跑根 cargo t/tf/tv/tu/docs_gen（Category-A/合同裁定）。
 
 2026-10-29 goal round 1：`stage: goal | plan_id: PLAN-879 | plan_revision: r1 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-879/{auto-lang,auto-ui} | commit: 4adf2d03(auto-ui) / f07b5ec8(auto-lang) | next: review`。用户 /goal 授权整链（work/review/有界修复/merge），本轮执行 work 阶段并到 execution_done；下一轮进 review。
+
+2026-10-29 review final pass：`stage: review | review_scope: final | reviewer_identity: 会话内独立子代理（agent_4cd3f45f，新建上下文非实现上下文，自跑全部命令；局限=同会话派生，已按工件重推导不采信执行摘要） | plan_id: PLAN-879 | plan_revision: 1 | outcome: pass | worktree: D:/autostack/.wt/lang-879/{auto-lang,auto-ui} | branch: plan-879-dev / codex/plan-879-dev | reviewed_commit: f07b5ec8 + 4adf2d03 | base_commit: 1cc68aba / 154a3965 | dependency: auto-down c3464d0a detached | spec_inputs: SD-01/02/03（未发布，deposit归merge） | acceptance_results: AC-01..AC-06 全 pass（695/702 blob恒等+7声明修改+686新增零未声明；快照681/681逐文件符；verify_plan879 --controls exit 0；consumer-B 26/26 无窗口测试复跑绿；PE reserve=33554432 实证；两锁字节恒等且 blob=合同pin；默认恰五包/根零diff/0引用；源树两目录仅存指引README、700D+2M、历史@1cc68aba可读、回退点154a3965未动） | pending_closeout_gates: T-07冻结抽样/来源复用审计、T-08两仓实际落地切换、T-09规范deposit/ledger/归档、T-10 wt-guard清理；全量AG里程碑档pending（2026-10-28裁定不阻合并）；根t/tf不适用（零改动） | findings: 无（O-1 aggregate口径两套自洽免行动：快照相对4c15c86f=复制步核验口径，身份内全路径5f825027=验证器重算口径；O-2 .cargo配置仅复述栈设置、linker/jobs/alias未复述=合同范围，消费构建/PE实测不依赖） | evidence: 子代理自跑记录+D:/autostack/plan-artifacts/plan-879/ | next: merge`。
 
 ## 10. 待澄清事项
 
