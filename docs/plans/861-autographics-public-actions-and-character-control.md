@@ -13,7 +13,7 @@ new_spec_components:
   - docs/specs/auto-graphics/game-actions-and-character2d.md
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 2
+current_step: 3
 total_steps: 9
 ---
 
@@ -127,7 +127,7 @@ T-04/05新增plan861 current identity/verifier，更新source/consumer选择；�
 |---|---|---|---|---|---|
 | T-01 | work | 860交付且go | 唯一树/实际提交、决策/资源/样本/SDK/分母及工具核对，补真实实施入口 | AC-01 | [✅] |
 | T-02 | work | T-01 | character-contract：公开profile/签名/角色solid配置/状态与token/资源上限/错误；必要时修订后再实施 | AC-02 | [✅] |
-| T-03 | work | T-02 | 新动作/2D受信Auto/API/公开来源准入、原Play适配与定向tests，V-01..04 | AC-02/03/04 | [ ] |
+| T-03 | work | T-02 | 新动作/2D受信Auto/API/公开来源准入、原Play适配与定向tests，V-01..04 | AC-02/03/04 | [✅] |
 | T-04 | work | T-03 | 新OS/GPU check/真实变异与恢复、Stop新Run/owner/current identity/consumer，V-04/05 | AC-01/05 | [ ] |
 | T-05 | work | T-04 | 用户源码/两布局/128预算/资源对照与定向收口，提交代码/SD/证据，不跑整档 | AC-01..05 | [ ] |
 | T-06 | review | T-05 | 独立最终review，核公开规则与实际Auto/OS/发布/状态；merge门pending | AC-06 | [ ] |
@@ -140,6 +140,10 @@ T-04/05新增plan861 current identity/verifier，更新source/consumer选择；�
 2026-10-27 new r1：stage=new；outcome=blocked（860未执行/未交付go）；next=860交付后T-01核证据，T-02冻结实际公开/资源合同再进入T-03。所有AC/V/T/SD未执行，profile名为建议，具体签名不冒称已冻结。未改变857合同/源码、未创建实现树或执行Cargo/native/性能。本草案只覆盖2D，不能据此认领3D角色或M2完成。
 
 2026-10-28 work T-01/T-02：用户授权实施861（860已归档交付go）。唯一树`D:/autostack/.wt/lang-861/auto-lang`、分支`plan-861-dev`自autographics-dev tip `7b4e89e6b`建立，`rev-parse --show-toplevel`/`--show-current`核过；主检出WIP仅docs/plan簿记面。**来源核验发现（已闭合，非阻塞）**：860计划记录的交付哈希（base `81b0974ac`/tip `7144526c3`）与本仓autographics-dev分支哈希不同（该线曾以等内容提交重写过一次，旧对象已不可达：`git cat-file 7b987ca8b`/`81b0974ac`均失败）；内容身份改以冻结收据闭环——`verify_plan860.py --controls` PASS（407文件与860冻结身份逐字节一致，含Cargo.lock=`2b131d3dd3`，绑定`base_commit 81b0974ac`+`sdk_commit 7b987ca8b`断言），零rebase声明与交付等价性由字节收据承担。SDK路线偏差（已闭合）：860的worktree清理使pinned SDK git对象不可达，`prepare_sdk.py`生成路径失效；改用860保留证据`D:/autostack/plan-artifacts/plan-860/consumer-package/.../.sdk-source`副本置入worktree后`prepare_sdk --verify-only` PASS（681文件/17 local，字节锁校验），SDK字节与860交付完全一致，记录于合同§10。decision=`research/game-runtime/decision.json` go（A=27cr推断组合、B=26cr融合支撑、tick CPU P50 ≤17.5ms vs 250ms界、工作集≤67MB、credits≤27/32、G2/G3路线+128负载全过）；`cargo check --locked` exit 0（RUSTC_WRAPPER= 空 + RUST_MIN_STACK=16777216，worktree根.cargo/config继承/STACK:33554432；直接设RUSTFLAGS会覆盖config并破坏sccache探测——实测留痕）。[character-contract r1](attachments/861/work/character-contract.md)已冻结：`autographics.character/1`独立命名域（behavior/6字符串与号均不占用，`_ag_version()=101`、profile 12）、装配=v5全链+`api/character2d_v1.at`追加、公开面`ag_char_bind/solid/move/grounded/support`+`ag_action_held/pressed`（动作0..3、OS键位A/D/←/→/Space/Enter、repeat无edge、焦点/暂停/故障清空、单一router）、公开采纳候选B（char_move=25cr=24+1，池32不变，A留作测试对照）、tick_begin只读强制（solid快照3×128 f32、外部移动fault 20/21）、character域fault 20..26、形状钉858半宽0.4/半高0.5、初始grounded由冻结中立下扫实测、.agscene格式零改动。executing 2/9；T-03未跑任何结果。
+
+2026-10-28 work T-03：`stage: work | plan_id: PLAN-861 | plan_revision: 1 | outcome: pass(定向面) | worktree_path: D:/autostack/.wt/lang-861/auto-lang | branch: plan-861-dev | base_commit: 7b4e89e6b | code_commit: 4a520aa0c+01da3d7df | dependency_revisions: SDK 7b987ca8b（保留副本验证）不变、两锁不变 | task_ids: T-03 | evidence: 交付=(1)`api/character2d_v1.at`受信单元——公开`ag_char_bind/solid/move/grounded/support`+`ag_action_held/pressed`（held/pressed位打包2参注入、tick_begin只读强制、freeze中立下扫初始化、fault 20..26、`ag_char_move`=25cr）；(2)`Api::CharacterV1`+装配（v5全链字节保持，装配测试扩展7组件）；(3)Play接线（character构造器、`_ag_char_map`稳定ID映射注入、dispatch折叠`_ag_char_input`、`char_key`仅Running积累edge、`char_held_restore`无沿恢复、neutral Step）；(4)单一router（viewport键位映射，character Run下legacy采样器不见游戏键）+面板/命令选择器。测试=character2d_api 10/10（V-01）、game_input 6/6（V-02）、character2d_host 5/5（V-03/04）、game_runtime_feasibility 20/20（860语料保持）+authoring lib 11/11=52/52绿。实现期发现：.at词法`hr-hl`无空格并成单标识符；0基索引哨兵两处；VM参数上限8（输入位打包2参）；fault 13为终态（后续读0）；无头capture恒呈现编辑视图（像素级oracle归T-04窗口探针）。blocking: 无 | next_responsible_role: T-04。
+
+2026-10-28 work T-04 进行中（部分交付，未完）：`stage: work | plan_id: PLAN-861 | code_commit: 8f008ecca+990d762cc+6c2bd03ec | task_ids: T-04 | evidence: (1)样例项目`samples/character2d/`（layout_a/b.agscene经scene/2生产导入路径验收——需显式parent+groups+固定资源清单；同源不同几何：B布局同输入坠坑y<-3、A贴地；main.at用户源持全部玩法参数、main-fast.at=speed5编辑态，tick60速度5.0 vs 4.0对照过）；(2)`tools/check_character2d.py`——正例3报告族（actions/host/layouts schema逐项+运动学+credits≤32+几何/速度oracle+checkpoint绑定）全过，--controls 6负控全拒（partial/zero-selected/oracle-edit/trace-divergence/wrong-exe/bound-runner-mismatch），报告经`runner_sha256`绑定retained runner；报告发射=测试内`CHARACTER2D_REPORT_DIR`门控（research/character2d-reports/）；(3)`tools/verify_plan861.py`+`research/plan861-identity.json` 282文件闭包（api/src/tests/samples/tools+包根、文本规范化、钉base 7b4e89e6b+SDK 7b987ca8b）--controls PASS（删除/未列/错哈希全拒后恢复）。**T-04余项**：OS窗口探针（V-05真实winit键盘→动作→Auto→GPU像素，经authoring App phase机+native_interaction::post模式）与fresh own-SDK consumer运行新公开脚本。T-05余项：预算采样矩阵（853同条件）与decision收口。merge-owned完整门pending不变。next_responsible_role: 继续 T-04 窗口探针。
 
 ## 10. 待澄清事项
 
