@@ -32,7 +32,7 @@ PLAN-878 交付的静态审计沉淀。对象为固定版本：AG `8b12632d7b5b1
 
 - Windows x64 单窗是唯一已验证运行面；本审计不构成任何浏览器/移动/其他桌面
   的可编译或可运行证据。
-- 未测假设显式清单（U-01..U-08 / H-01..H-05）：SDK 栈跨端编译性、wasm 的
+- 未测假设显式清单（U-01..U-08 / H-01..H-03）：SDK 栈跨端编译性、wasm 的
   `Instant`/64 位原子可用性、wgpu Web 后端对本管线兼容性、winit 移动生命周期、
   kira 移动音频会话、driver 测试面非桌面不可用等——全部见
   [dependency-map §7](../../reports/autographics-platform-audit-878/dependency-map.md)
