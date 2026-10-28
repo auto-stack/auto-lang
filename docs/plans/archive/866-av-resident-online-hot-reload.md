@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-866
-status: reviewed
+status: archived
 feature_name: AV常驻在线热重载（RF-H）
 author: [Codex]
 created_at: 2026-10-28
@@ -172,13 +172,17 @@ source(编辑) → 候选 prepare（复用828事务/精确失效）→ 候选就
 | T-04 | work | T-03 | 在线安装与在途保活/失败面；V-02/03/04 | AC-02/03/04 | [✅ 2026-10-29 core 安全点钩子 `resume_program_at_call_boundary`（Call/CallClosure 派发前停车+步数回退中性）+`resume_program_with_resolution`（换解析恢复，在途帧 pin 旧代码对象至返回）；resident `apply_pending/apply_prepared_at_safety_point`（边界 commit→swap；迟到/外来拒于 828 路径）；私有测试：V-02 生效迭代精确+切片粒度无关（2608=46×7+254×9，双粒度同界）、无换版恢复负控红、V-03 在途留旧+新 callee、V-04 迟到/外来拒可观察；commit `f300551d6`] |
 | T-05 | work | T-04 | 回收/预算/churn + 计量脚本与语料；V-05/06；执行V-07首例cache/文件化/周转/内存与兼容验证 | AC-05/06 | [✅ 2026-10-29 V-05 churn 8 换版 retired snapshot Weak 全释放+history≤32/函数；V-06 P90 30 样本 v2 口径（微秒级）+未改函数 stages=0+whole_module=0；H 面新 recipe `ac-av/resident-run-v1` 三缝（auto-test-case contract/父 judge+mod dispatch/worker serving，外部 recipe 补拒绝臂）+H01-H03 文件化语料（真实 worker+父侧判定，审计 oracle 2100/2608/3070）+wrong-oracle 负控红+I08 AV 列关闭（binding.tsv H 行）；V-07 兼容=ace_m1 5/5+既有族 19+13+12+14 绿+core 58/58+cache 维度引用 828/864 既有面（866 增量=在线 body-edit 已覆盖）；顺手修复 864 落地缺口（SourceProfile::Collections match，master 预存编译红）；verify-av-866 四 scope 接线；commit `9b2976679`] |
 | T-06 | review | T-05 | 独立最终review；merge 门 pending | AC-07 | [✅ 2026-10-29 独立上下文复审（general-purpose 子代理，冻结 HEAD `9b2976679`）结论 needs_fix：F-866-R1(HIGH) 在途被编辑祖先帧经新 view 取代码（Frame 仅存 func 索引不 pin 代码对象；实验终值 147≠合同 150）；F-866-R2(HIGH) 同根 slot 布局失配 panic（av.rs:1267 越界）；F-866-R3(MED) 缺祖先帧负控；F-866-R4(LOW) worker resident:swaps 计数非权威累计。PASS 项（同轮）：安全点停车语义（pc/steps 中性）、commit 时序/拒绝路径、真实计数、H oracle 手算 2608/3070 双锁定、fmt/warnings 与 master 逐位一致、binding/写面合规] |
-| T-07 | merge | T-06 pass | 冻结提交裸 `cargo t` + `tv` | AC-08 | [ ] |
-| T-08 | merge | T-07 | Spec/ledger/归档/guard 清理，I08 保持 gap 的事实登记 | AC-09 | [ ] |
-| T-09 | merge | T-08 | 交接 G5/G6 常驻会话与 native loader 需求 | AC-09 | [ ] |
+| T-07 | merge | T-06 pass | 冻结提交裸 `cargo t` + `tv` | AC-08 | [✅ 2026-10-29 修复提交 `1e69638dc`（rebase 后 `71ce9343a`，range-diff 逐提交 `=` 等价）裸 `cargo t` 3201/3201 绿（首次跑为全量构建竞争性 TIMEOUT 环境负载，重跑全绿 314s）+ `cargo tv` 163/163 绿（3.4s）] |
+| T-08 | merge | T-07 | Spec/ledger/归档/guard 清理，I08 保持 gap 的事实登记 | AC-09 | [✅ 2026-10-29 SD-01..SD-05 沉淀（新增 resident-online-reload.md+四处修改，`84ade56ea`）；ledger v126 guarded offline projection（4 items：P866-1/T/R/M，备份 .autoos/specs.json.bak-p866-merge，add-only 守卫+回读校验通过，`d3b09f559`）；ff-only land master tip `3b4080916`（分支剥离测试测量收据噪声后线性落地）；I08 av 列关闭/native 列 gap:ac-native-loader 保持（binding.tsv）] |
+| T-09 | merge | T-08 | 交接 G5/G6 常驻会话与 native loader 需求 | AC-09 | [✅ 2026-10-29 交接登记：①G5/G6 常驻会话产品形态必须消费 [resident-online-reload](../specs/auto-av/resident-online-reload.md) 的可见规则/安全点/回收合同，不得各自发明热重载定义；被编辑祖先帧的延迟安装语义（新 body 下次 run 可见）为产品会话设计的既定约束。②native 在线装载（I08 native 列 gap:ac-native-loader）owner=native loader 能力包，重启 exe 不满足在线替换——同一禁止替代负控口径适用于其验收] |
 
 ## 9. 复审记录
 
 `stage: work | plan_id: PLAN-866 | plan_revision: 2 | outcome: pass（execution_done，work-owned T-01..T-05 全绿；merge-owned 门禁 pending=冻结提交裸 cargo t + tv） | worktree: D:/autostack/.wt/lang-866/auto-lang | branch: plan-866-dev | base_commit: 1e4644d5f | code_commit: 9b2976679（前序 f300551d6/bd1d5a96b/28fbedaf5，merge master f58e48a9d） | dependency_revisions: D828/D862 已合入；D864 已归档 6273cd4a4（写面释放核验接受）；组内 auto-ui/auto-down 兄弟 detached（根 workspace 编译） | task_ids: T-01✅ T-02✅ T-03✅ T-04✅ T-05✅ | evidence: 私有 av_resident_866 12/12（V-01..V-06+负控）；core 58/58；既有族 19+13+12+14 绿；H harness 2/2；ace_m1 基线 5/5 不扰动；verify-av-866 targeted/resident OK | blockers: 无 | next_responsible_role: review（T-06）`
+
+`stage: merge | plan_id: PLAN-866 | plan_revision: 2 | outcome: pass（delivered） | checkpoints: prepared=冻结 delta+delivery 链（bd1d5a96b/28fbedaf5/f300551d6/9b2976679/1e69638dc/8cfc0d1c5） | landed=master tip `3b4080916` ff-only（rebase 映射 f300551d6→118730fdc、9b2976679→7565da683、1e69638dc→71ce9343a、8cfc0d1c5→84ade56ea，range-diff 全 `=`；测量收据噪声剥离提交 3b4080916） | ledger_refreshed=v126（guarded offline projection，无 store writer；P866-1 designs/P866-T tests/P866-R reviews/P866-M reports，file+tags 齐，回读校验过） | archived=docs/plans/archive/866-av-resident-online-hot-reload.md（本提交） | cleaned=待 guard 后执行（见下） | gates: t 3201/3201 + tv 163/163 绑 71ce9343a；I08 av 关闭/native gap 保持 | next: cleanup`
+
+`stage: goal | plan_id: PLAN-866 | plan_revision: 2 | round: 5 | from: merge | to: cleanup | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-866/auto-lang | commit: 3b4080916 | next: worktree cleanup + batch-regression due check`
 
 `stage: review | review_scope: final（repair re-review） | reviewer_identity: 同一独立复审代理（上下文延续，含上轮复现实验） | plan_id: PLAN-866 | plan_revision: 2 | outcome: pass | worktree: D:/autostack/.wt/lang-866/auto-lang | branch: plan-866-dev | reviewed_commit: 1e69638dc（修复冻结 HEAD） | base_commit: 1e4644d5f | dependency_revisions: 同前 | spec_inputs: 冻结合同 §2.3 + 新实现注记（延迟安装守卫） | acceptance_results: F-866-R1..R4 全部 closed（外部探针实证：编辑在途祖先帧 147→defer+旧值150+链尾commit+下次run140；布局变更 panic→defer+150+200）；AC-01..AC-06 全 pass；AC-07 pass | pending_closeout_gates: 冻结提交裸 cargo t + tv（merge-owned T-07）；Spec/ledger 沉淀（T-08） | findings: 新增非阻塞观察 N-1(LOW, worker apply 循环 deferred 重复消费，无正确性影响)/N-2(LOW, d_ 前缀构造约定无独立单测，负控兜底) → 已登记 KNOWN-DEBT | evidence: 守卫时序核验（边界后/commit 前/延迟路径 commit+swap 双零）、名字形态方向核验、双负控判别力核验（swap 实现三重判红）、私有 14/14+H 2/2 冻结 HEAD 重跑、fmt 零 diff、0 警告 | next: merge（T-07 门禁 → T-08 沉淀/归档 → T-09 交接）`
 
