@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-880
-status: reviewed
+status: archived
 feature_name: AutoGraphics Gallery公共3D角色与两维运行相机（GY-B）
 author: [Codex]
 created_at: 2026-10-29
@@ -147,10 +147,10 @@ OS自动化继续暂停。既有874/875真OS证据仅用于未改引擎/router�
 | T-03 | work | T-02通过 | 按项锁/三API、validate/launch/package/catalog/acceptance兼容与结构反例V-01/04 | AC-02/05 | [x] |
 | T-04 | work | T-03 | G07/G08工程/说明、仅验收public适配与真实Auto/无窗口图像、V-02/03 | AC-03/04 | [x] |
 | T-05 | work | T-04 | 两包离线A→B/坏包修复、旧项无窗口抽样、Ready依据/SD/提交/摘要 | AC-01..05 | [x] |
-| T-06 | review | T-05 | 独立同树核四新入口/共同工具兼容/来源/SD，不接管实现 | AC-06 | [ ] |
-| T-07 | merge | T-06 pass | 冻结受影响抽样/未变证据复用审计，失败回work受影响复审 | AC-07 | [ ] |
-| T-08 | merge | T-07 | 内容本地合ag-examples master，engine-lock两代并列、无远端发布 | AC-08 | [ ] |
-| T-09 | merge | T-08 | 主语言检出SD/overview/plans/ledger/索引与归档，同879串行 | AC-08 | [ ] |
+| T-06 | review | T-05 | 独立同树核四新入口/共同工具兼容/来源/SD，不接管实现 | AC-06 | [x] |
+| T-07 | merge | T-06 pass | 冻结受影响抽样/未变证据复用审计，失败回work受影响复审 | AC-07 | [x] |
+| T-08 | merge | T-07 | 内容本地合ag-examples master，engine-lock两代并列、无远端发布 | AC-08 | [x] |
+| T-09 | merge | T-08 | 主语言检出SD/overview/plans/ledger/索引与归档，同879串行 | AC-08 | [x] |
 | T-10 | merge | T-09 | wt-guard clean后清内容树/临时分支/空组目录，保必要本地产物/收据 | AC-08 | [ ] |
 
 ## 9. 复审记录
@@ -164,6 +164,8 @@ OS自动化继续暂停。既有874/875真OS证据仅用于未改引擎/router�
 2026-10-29 work T-03/T-04/T-05（execution_done 交接）：`stage: work | plan_id: PLAN-880 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-880/ag-examples | branch: codex/plan-880-dev | base_commit: 6a223d9b3637ee1ce9a00335c8ee4f46d3832b26 | code_commit: ba4cb7d（T-03 工具）+ 21ae99b（T-04 工程/适配）+ c36c412（T-05 身份修正） | dependency_revisions: AG=1cc68aba0（consumer-package 1385 文件含 .cargo/config.toml blob 992c9e1e）、runner=6c461c35125d75f957a79421ce53fb37ac2c6eef47e7d107f6fa791c350d6b59、identity manifest=6f100c8831fec918127b12a801a27042c445ca57e20c096fbc95132d4c0f44a6 | task_ids: T-03,T-04,T-05 | evidence: (T-03)gallery.py 按项锁路由/VALID_APIS+character3d-camera2d-camera3d/严格 acceptance 源绑定；结构测试 47 OK（新增 15 项：双锁路由、跨锁拒绝、strict 源漂移/空 oracle/陈记录、锁路径逃逸/绝对/未知 schema/坏身份、launch 跨锁引擎拒绝、独立包无根锁 validate、catalog 双引擎）；真仓 validate 回归 6/10/1 零破坏。(T-04)G07/G08 四子入口字节消费+README+catalog 8ID/14 入口/C07-C08；checks/gyb 无窗口适配（独立 workspace 由 verify_gyb.py 物化、显式 engine-root、64MiB 线程护栏）；**新鲜验收 32/32 oracle 绿**（G07：导入/真跑/贴地/冻结输入不动/speed4→5 敏感/对角 0.7071 归一/x 墙 5.498 接触包络/跳边沿一次；G08/2d：tick0 夹界(6,1)/follow∈[6,24]/同 tick 共发布/letterbox 115×380+alt 146.67/暂停不动/PNG 800×380；G08/3d：orbit 8-45-persp 源内读/独立 glam VP 恒等/同 tick 共发/yaw90 世界转 +x/像素随 orbit 变/暂停缩放丢弃/zoom 封顶/Stop 文档复原/重启原位/alt ortho 配置+VP/世界轴负控可区分）；PNG 落 out/gyb/artifacts（本地）。(T-05)**身份修正**：首构建 df0a8077 缺根 .cargo/config.toml（32MiB PE 栈）主线程 --inspect 溢出 → 补 blob 992c9e1e 重建 6c461c35、清单 1385 文件 ALL CHECKS PASS、验收重钉；8/8 单项包离线 A→B 重定位+tamper/repair 全绿（g07/g08 加零引擎源漂移负控）；引擎包重定位 A/B inspect 双绿；旧六项无窗口抽样=8 包门全 scene --inspect（861 runner 498ce814 原样）+内容字节未变复用 877 验收记录。**分母**：validate --all PASS 8 逻辑项/14 子入口/2 锁；未跑根 cargo t/tf/tv/tu/docs_gen（引擎源码零改动）；OS 自动化零调用；AG 全量套件=里程碑档 pending 归 merge 记录。门禁 pending（merge-owned）：受影响抽样/复用审计（T-07）。 | blockers: 无 | next_responsible_role: review（T-06 独立同树终审）。
 
 2026-10-29 review r1（final pass → reviewed）：`stage: review | review_scope: final | reviewer_identity: 独立子代理（未参与实现的独立上下文，同机同树只读；独立性=程序性的——全部门禁新鲜重执行、不信任执行方输出，单机环境因素共享） | plan_id: PLAN-880 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-880/ag-examples | branch: codex/plan-880-dev | reviewed_commit: c36c412 | base_commit: 6a223d9b3637ee1ce9a00335c8ee4f46d3832b26 | dependency_revisions: AG=1cc68aba0、runner=6c461c35125d75f957a79421ce53fb37ac2c6eef47e7d107f6fa791c350d6b59、manifest=6f100c8831fec918127b12a801a27042c445ca57e20c096fbc95132d4c0f44a6 | spec_inputs: docs/specs/auto-graphics/{gallery-basic-six.md 在库, gallery-character-and-cameras.md 待merge新增} + Plan SD-01/SD-02 delta 表核一致（六→八、旧pin字节不动、按项锁、C07/C08） | acceptance_results: AC-01..05 全 pass（独立重执行：manifest ALL CHECKS PASS、双 runner sha 三方匹配、跨锁 launch 双拒 rc=2、结构测试 47 OK/1 skipped、verify_gyb --check-only 32/32 新鲜匹配、12 源文件字节恒等、validate --all 8/14/2、verify_packages 8/8 PASS、OS 自动化 grep 干净、适配器 import 面严格公开子集、无同义反复 oracle）；AC-06 本审通过 | pending_closeout_gates: T-07 冻结抽样/复用审计、AG 全量套件里程碑档、批回归到期判定、语言仓 spec/ledger/归档（merge-owned，显式未跑） | findings: F-R1-01（minor/note-only：计划 T-03 证据写"新增15项"实为19个测试函数，47 OK 实质claim已核，merge 簿记时更正口径）；F-R2-01（minor/note-only：计划§6字面命令引用 checks/gyb/Cargo.toml，实际入口=tools/verify_gyb.py 物化 out/gyb/ws（与冻结合同§7一致），merge 文档引用实际入口）——均不阻断、无需返工 | evidence: 复审代理自跑命令与rc见其报告；worktree HEAD c36c412 状态clean | next: merge（T-07..T-10）。
+
+2026-10-29 merge（delivered）：`stage: merge | plan_id: PLAN-880 | plan_revision: 1 | outcome: pass | completion_kind: delivered | delivery_commit: ag-examples c36c412（master ff 6a223d9→c36c412，线性无合并提交；落位后主检出 validate --all PASS 8/14/2） | canonical_specs: [gallery-character-and-cameras.md](../../specs/auto-graphics/gallery-character-and-cameras.md)（SD-01 新增）+ [gallery-basic-six.md](../../specs/auto-graphics/gallery-basic-six.md)（SD-02 修改：旧六项保 pin/验收语义、按项锁规则、G07/G08 指针）+ overview/plans.md 回写 | ledger: guarded offline projection v124→v125（designs P880-GALLERY-GYB / tests P880-TESTS / reviews P880-REVIEW-FINAL / reports P880-MERGE，各带 file+tags；外科范围证明：既有条目零扰动、version 恰 +1）；spec-index.py 已跑 | T-07 冻结审计：worktree c36c412 clean 无漂移、ag-examples master 无移动、语言仓本计划触面=docs/plans/**（零 crates 代码）、批回归 880%5=0 到期记录在案、AG 全量套件=里程碑档 pending（2026-10-28 裁定，非合并门）、旧六项未变复用依据=8 包门全 scene inspect+字节基线 6a223d9 未动 | T-10 清理：wt-guard clean→worktree/分支/组目录移除、plan-artifacts 回收 target+.pdb 保 exe/证据（收据后补记） | landing-not-deployment：本计划零生产面产物（内容仓+docs），无重建/重启项 | blockers: 无 | next: 批回归到期执行（/auto-plan:regress 主检出单实例）。
 
 ## 10. 待澄清事项
 

@@ -18,7 +18,7 @@
 | auto-atom | active | 3 | [auto-atom/project.md](auto-atom/project.md) |
 | auto-test-case | active | 12 | [auto-test-case/project.md](auto-test-case/project.md) |
 | a2r-std | active | 7 | [a2r-std/project.md](a2r-std/project.md) |
-| stdlib | active | 8 | [stdlib/project.md](stdlib/project.md) |
+| stdlib | active | 15 | [stdlib/project.md](stdlib/project.md) |
 | aavm | experimental | 11 | [aavm/project.md](aavm/project.md) |
 | project-model | active（pilot） | 0 | [project-model/project.md](project-model/project.md) |
 
@@ -107,6 +107,13 @@
 | collections | hashmap（C 后端） | active |
 | may | 协程库绑定 | experimental（.at.skip，未启用） |
 | result | option/result（C 后端） | experimental（.at.skip，未启用） |
+| 名字 | 生效语义 | 后端差异 |
+| `s.length`（属性） | 字符数（PLAN-055 JS `.length`；nat#170 + engine 内联臂） | a2r=Rust `.len()` 字节；JS=UTF-16 码元（BMP 内同值） |
+| `Str.len(s)`/`s.len()` | UTF-8 **字节数**（nat#1500 纯 shim；CALL_SPEC 动态派发臂例外=字符数） | a2r=Rust `.len()` 同字节 |
+| `Str.byte_len`/`s.byte_len()` | 字节数（nat#1526；PLAN-781 文件偏移专用） | a2r=`str_byte_len` 同 |
+| `Math.*`（28 名） | 纯 shim 生效：IEEE 域外返 NaN/-inf；**整型实参不提升**（`sin(1)`=NaN、`sin(1.0)` 正常） | a2r=静态类型直调；JS=强制转换（无 NaN-on-int） |
+| `to_int`/`parse_int` | nv 0 兜底**裸 i32**（`"12x"`→0，非 Result；双名同挂 id 1516） | a2r=Rust `parse`（Result 语义） |
+| `Time.now*` | 纯 unwrap 版生效：epoch 值；时钟不可用=panic（分支不可构造，pending） | a2r-std 同 unwrap |
 
 </details>
 

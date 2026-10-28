@@ -1,9 +1,13 @@
 # AutoGraphics Gallery 基础六项（GY-A）
 
-Status: delivered（PLAN-877）。本文件记录仓外示例内容仓的公共消费知识：目录契约、
-固定引擎依赖、公开启动入口、单项包与实测边界。引擎能力本身的权威事实仍在各自
+Status: delivered（PLAN-877；GY-B 后继见 gallery-character-and-cameras）。
+本文件记录仓外示例内容仓中旧六项的公共消费知识：目录契约、固定引擎依赖、
+公开启动入口、单项包与实测边界。引擎能力本身的权威事实仍在各自
 Spec（scene-document/scene-hierarchy/scene-assets/behavior-api/segment-query/
 swept-aabb/game-actions-and-character2d 等），本文不扩大任何旧 profile。
+PLAN-880 起 ag-examples 目录含 8 逻辑项/14 子入口；新项（g07/g08）显式选择
+`engine-locks/plan875.json`，本文规则只覆盖旧六项，旧六项事实与验收语义保持
+不变（根 `engine-lock.json` 逐字节不动）。
 
 ## 交付形态
 
@@ -18,6 +22,9 @@ swept-aabb/game-actions-and-character2d 等），本文不扩大任何旧 profil
   `licenses/<sha256>.LICENSE` 在场、Ready 门（`previews/<slug>/
   acceptance.json`，runner SHA 绑定 + 逐 oracle pass）。未知字段/重复
   ID/缺文件/哈希漂移/坏 engine-lock 均拒绝（28 例结构负控）。
+  PLAN-880 起 `example.json` 的 `engine.lock` 按示例选择锁文件（旧六项
+  一律指根锁 `engine-lock.json`；选非根锁的示例进入严格 acceptance
+  模式——逐子入口消费源 sha256 绑定，源漂移即 Ready 失效）。
 - 状态语义：`ready`=验收完成（证据在案）；`blocked` 必须带 notes；
   编辑教程类（g04）category=`editor-tutorial`（能力类 E，不冒称公共
   Auto 脚本 API）；未列平台一律未测。
@@ -58,8 +65,9 @@ A→B 搬迁哈希恒等已实测。
   打开文件回到已存态时 Save 为无操作）——引擎探针语义，非内容缺陷。
 - g06 布局对照 = 场景几何文档差异 + 双探针绿；速度对照 = 探针位移
   1.333(speed4)/1.667(speed5)。探针输入深度不达两布局分歧点属预期。
-- 不含：G07..G12、874/875 新 API、正式游戏、浏览器在线引擎、远端发布、
-  资源商店/下载器/包管理器。
+- 不含：G09..G12、正式游戏、浏览器在线引擎、远端发布、
+  资源商店/下载器/包管理器。G07/G08（874/875 新 API 消费）由
+  [gallery-character-and-cameras](gallery-character-and-cameras.md) 权威记录。
 
 ## 验收测试政策（2026-10-28 用户裁定）
 
@@ -74,4 +82,6 @@ A→B 搬迁哈希恒等已实测。
 Provenance: [PLAN-877](../../plans/archive/877-autographics-gallery-catalog-and-basic-six.md)（归档），
 冻结合同 [attachments/877/work/gallery-contract.md](../../plans/attachments/877/work/gallery-contract.md)
 （§9 实施修订、§10 裁定）。源：ag-examples `6a223d9`；引擎消费 autographics-dev
-`8b12632d7`；SDK `7b987ca8`（860 保留副本）。G07+ 由后继计划消费。
+`8b12632d7`；SDK `7b987ca8`（860 保留副本）。按项锁与 G07/G08 由
+[PLAN-880](../../plans/archive/880-autographics-gallery-character-and-cameras.md) 交付；
+旧六项 pin/验收记录未动。
