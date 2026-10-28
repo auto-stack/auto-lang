@@ -39,6 +39,13 @@ pub enum Kw {
     Type,
     Static,
     Mut,
+    // Collections-surface keywords (PLAN-864): `enum` declarations, `is`
+    // dispatch and the `for x in <list>` connector. Consumed only by the
+    // collections source profile; every other profile keeps the historical
+    // `source.unsupported` at the same tokens.
+    Enum,
+    Is,
+    In,
 }
 
 impl Kw {
@@ -63,6 +70,9 @@ impl Kw {
             Kw::Type => "type",
             Kw::Static => "static",
             Kw::Mut => "mut",
+            Kw::Enum => "enum",
+            Kw::Is => "is",
+            Kw::In => "in",
         }
     }
 }
@@ -96,6 +106,10 @@ pub enum P {
     LeEq,
     GeEq,
     Dot,
+    /// PLAN-864: `?T` optional-type prefix (collections surface).
+    Question,
+    /// PLAN-864: `is` arm connector (collections surface).
+    Arrow,
 }
 
 impl P {
@@ -126,6 +140,8 @@ impl P {
             P::LeEq => "<=",
             P::GeEq => ">=",
             P::Dot => ".",
+            P::Question => "?",
+            P::Arrow => "->",
         }
     }
 }
@@ -230,6 +246,11 @@ pub fn keyword_of(name: &str) -> Option<Kw> {
         "type" => Kw::Type,
         "static" => Kw::Static,
         "mut" => Kw::Mut,
+        // PLAN-864: collections-surface keywords (recognized everywhere so
+        // "excluded surface" stays distinguishable; consumed only there).
+        "enum" => Kw::Enum,
+        "is" => Kw::Is,
+        "in" => Kw::In,
         _ => return None,
     })
 }
@@ -286,7 +307,7 @@ pub fn tokenize_with(src: &str, text: bool) -> Result<Vec<Token>, Diagnostic> {
                     line: lx.line,
                 });
             }
-            b'(' | b')' | b'{' | b'}' | b',' | b';' | b':' | b'[' | b']' => {
+            b'(' | b')' | b'{' | b'}' | b',' | b';' | b':' | b'[' | b']' | b'?' => {
                 let p = match c {
                     b'(' => P::LParen,
                     b')' => P::RParen,
@@ -297,6 +318,8 @@ pub fn tokenize_with(src: &str, text: bool) -> Result<Vec<Token>, Diagnostic> {
                     b':' => P::Colon,
                     b'[' => P::LBracket,
                     b']' => P::RBracket,
+                    // PLAN-864: the optional-type prefix (`?T`, collections).
+                    b'?' => P::Question,
                     _ => unreachable!(),
                 };
                 lx.push_punct(p, 1, &mut out);
@@ -342,6 +365,11 @@ pub fn tokenize_with(src: &str, text: bool) -> Result<Vec<Token>, Diagnostic> {
                 } else {
                     return Err(lx.err_lex("unknown character `|`"));
                 }
+            }
+            b'-' if lx.b.get(lx.pos + 1) == Some(&b'>') => {
+                // PLAN-864: the `is` arm connector lexes as one token so an
+                // arm arrow can never fold into minus/greater comparisons.
+                lx.push_punct(P::Arrow, 2, &mut out);
             }
             b'+' | b'*' | b'-' | b'/' | b'%' | b'.' => {
                 let p = match c {

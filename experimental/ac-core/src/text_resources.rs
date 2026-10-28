@@ -377,6 +377,19 @@ fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
             hir::ExprKind::ReadLocal { local } => scan.reads.push((id.0, local.0, e.span)),
             // PLAN-862: a unit value owns and reads nothing.
             hir::ExprKind::Unit => {}
+            // PLAN-864: collections-domain expressions never receive a text
+            // resource plan (verify_collections never calls this walk).
+            hir::ExprKind::ListNew { .. }
+            | hir::ExprKind::ListLen { .. }
+            | hir::ExprKind::ListPush { .. }
+            | hir::ExprKind::ListInsert { .. }
+            | hir::ExprKind::ListGet { .. }
+            | hir::ExprKind::ListSet { .. }
+            | hir::ExprKind::ListRemove { .. }
+            | hir::ExprKind::ListClear { .. }
+            | hir::ExprKind::VariantCtor { .. }
+            | hir::ExprKind::VariantGuardTest { .. }
+            | hir::ExprKind::VariantProject { .. } => {}
             // PLAN-782 combination kinds: under the text profile these
             // never appear (profile gate); the combination walk gives them
             // their ownership semantics. A `Move` wrapper is the transfer
@@ -1580,6 +1593,10 @@ impl<'a> ResourceWalk<'a> {
                     let is_break_term = matches!(stmt, hir::Stmt::Break { .. });
                     let frame = frames.last_mut().expect("resource walk frame");
                     match stmt {
+                        // PLAN-864: unit effect statements carry no owned
+                        // semantics; the text resource walk never sees them
+                        // (verify_collections produces no text plan).
+                        hir::Stmt::Eval { .. } => {}
                         hir::Stmt::Let { local, value } => {
                             let scan = scan_expr(m, self.body, value);
                             self.reject_conditional_moves(&scan);
@@ -2480,6 +2497,11 @@ fn place_final_vt(m: &hir::Module, root_vt: ValueType, path: &[u32]) -> ValueTyp
                 Some(hir::TypeKind::Char) => ValueType::Char,
                 Some(hir::TypeKind::Function(_)) => ValueType::Function,
                 Some(hir::TypeKind::Record(_)) => ValueType::Record(t.0),
+                // PLAN-864: totality only; the text resource walk never
+                // sees collections types.
+                Some(hir::TypeKind::List { .. }) | Some(hir::TypeKind::Variant { .. }) => {
+                    ValueType::Unit
+                }
                 None => ValueType::I32,
             },
         }

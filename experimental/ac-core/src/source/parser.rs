@@ -66,13 +66,14 @@ pub fn parse_program(src: &str) -> Result<Program, Diagnostic> {
 /// accepts the new operators, unary ops and the conditional `for` loop;
 /// the core surface keeps its historical accept/reject sets.
 pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, Diagnostic> {
-    let toks = super::lexer::tokenize_with(src, profile.is_text())?;
+    let toks = super::lexer::tokenize_with(src, profile.admits_text_literals())?;
     let mut p = Parser {
         src,
         toks,
         pos: 0,
         last_line: 1,
         surface: profile,
+        pending_is: Vec::new(),
     };
     p.items()
 }
@@ -162,6 +163,18 @@ enum BlockCont {
     /// handled by [`Parser::script_item`] directly instead of
     /// [`Parser::close_block_cont`].
     Script,
+    /// PLAN-864: one `is` arm body `{ .. }` closed — the arm completes
+    /// into the pending statement; the arm sequence (next header or the
+    /// statement's closing `}`) continues from here.
+    IsArm {
+        qual: Option<Ident>,
+        pattern: Ident,
+        binding: Option<Ident>,
+    },
+    /// PLAN-864: the `is` frame itself; closed after the LAST arm.
+    IsFinish { kw: Span, scrutinee: Ident },
+    /// PLAN-864: a `for x in <list> { .. }` body closed.
+    ForInBody { kw: Span, var: Ident, iter: Expr },
 }
 
 struct Parser<'s> {
@@ -172,6 +185,19 @@ struct Parser<'s> {
     last_line: usize,
     /// Which operator/loop surface this parse accepts.
     surface: SourceProfile,
+    /// PLAN-864: in-progress `is` statements (scrutinee, keyword span,
+    /// arms accumulated so far). Arm blocks close through the block
+    /// machine and append here; the frame's own `}` completes the
+    /// statement. Stack discipline mirrors the OpenBlock frames.
+    pending_is: Vec<PendingIs>,
+}
+
+/// One `is` statement between its header parse and its final `}`
+/// (PLAN-864).
+struct PendingIs {
+    kw: Span,
+    scrutinee: Ident,
+    arms: Vec<MatchArm>,
 }
 
 impl<'s> Parser<'s> {
@@ -454,6 +480,10 @@ impl<'s> Parser<'s> {
                 let span = self.peek().unwrap().span;
                 Err(self.unsupported("`type` is not part of this source profile", span))
             }
+            // PLAN-864: finite `enum` declarations (collections surface).
+            Some(Tok::Kw(Kw::Enum)) if self.surface.is_collections() => {
+                Ok(Item::Enum(self.enum_item()?))
+            }
             Some(Tok::Ident(name)) => {
                 if TOPLEVEL_UNSUPPORTED_WORDS.contains(&name.as_str()) {
                     let span = self.peek().unwrap().span;
@@ -731,6 +761,12 @@ impl<'s> Parser<'s> {
         }
         let rparen = self.expect_punct(P::RParen, "`)`")?;
         let ret = match self.peek().map(|t| t.tok.clone()) {
+            // PLAN-864: the collections type grammar (?T, List<T>,
+            // Result<T,E>, records, int/i32/bool/Str) is the whole surface.
+            Some(Tok::Punct(P::Question)) if self.surface.is_collections() => {
+                self.collections_type()?
+            }
+            Some(Tok::Ident(_)) if self.surface.is_collections() => self.collections_type()?,
             Some(Tok::Kw(Kw::Int)) => self.type_word(),
             Some(Tok::Kw(Kw::I32)) => self.type_word(),
             Some(Tok::Kw(Kw::Bool)) => self.type_word(),
@@ -931,6 +967,51 @@ impl<'s> Parser<'s> {
                 self.push_stmt(stack, Stmt::Loop { body: block, span })?;
                 Ok(None)
             }
+            // PLAN-864: a `for x in .. { .. }` body completes the statement.
+            BlockCont::ForInBody { kw, var, iter } => {
+                let span = kw.join(block.span);
+                self.push_stmt(
+                    stack,
+                    Stmt::ForIn {
+                        var,
+                        iter,
+                        body: block,
+                        span,
+                    },
+                )?;
+                Ok(None)
+            }
+            // PLAN-864: one arm body closed. The arm completes into the
+            // pending `is`; then either the next arm header opens another
+            // block or the statement's closing `}` finishes everything.
+            BlockCont::IsArm {
+                qual,
+                pattern,
+                binding,
+            } => {
+                let span = pattern.span.join(block.span);
+                {
+                    let pend = self
+                        .pending_is
+                        .last_mut()
+                        .expect("is-arm close with no pending `is`");
+                    pend.arms.push(MatchArm {
+                        qual,
+                        pattern,
+                        binding,
+                        body: block,
+                        span,
+                    });
+                }
+                self.continue_is_arms(stack)?;
+                Ok(None)
+            }
+            // PLAN-864: the `is` frame's own `}` is consumed by the arm
+            // sequence (see `continue_is_arms`), so this continuation never
+            // flows through the machine's close path.
+            BlockCont::IsFinish { .. } => {
+                unreachable!("the `is` frame closes inside the arm sequence")
+            }
             // The script frame is closed by end of file only.
             BlockCont::Script => unreachable!("the script frame is never closed by a brace"),
         }
@@ -995,6 +1076,38 @@ impl<'s> Parser<'s> {
                 });
                 Ok(())
             }
+            // PLAN-864: `for x in <list> { .. }` — bounded List iteration.
+            // The connector keyword (`in`) and the body-block continuation
+            // belong to the collections surface only; the scalar surface's
+            // conditional-for arm below is unreachable here.
+            Some(Tok::Kw(Kw::For)) if self.surface.is_collections() => {
+                let kw = self.bump();
+                let var = self.expect_ident("for binding name")?;
+                match self.peek().map(|t| t.tok.clone()) {
+                    Some(Tok::Kw(Kw::In)) => {
+                        self.pos += 1;
+                        self.last_line = self.toks[self.pos - 1].line;
+                    }
+                    _ => {
+                        return Err(self.syntax(format!(
+                            "expected `in` after the `for` binding, found {}",
+                            self.describe_cur()
+                        )))
+                    }
+                }
+                let iter = self.expr(false)?;
+                let lb = self.expect_punct(P::LBrace, "`{`")?;
+                stack.push(OpenBlock {
+                    lb,
+                    stmts: Vec::new(),
+                    cont: BlockCont::ForInBody {
+                        kw: kw.span,
+                        var,
+                        iter,
+                    },
+                });
+                Ok(())
+            }
             Some(Tok::Kw(Kw::For)) if self.surface.surface_is_scalar_or_wider() => {
                 // Conditional for (PLAN-767 §5.2.1): reuses the while's
                 // AST shape — the condition is re-evaluated before every
@@ -1009,6 +1122,24 @@ impl<'s> Parser<'s> {
                     cont: BlockCont::WhileBody { kw: kw.span, cond },
                 });
                 Ok(())
+            }
+            // PLAN-864: `is <local> { Arm(v)? -> { .. } ... }` — exhaustive
+            // variant dispatch. Arm bodies ride the block machine; the arm
+            // sequence and the statement's `}` are driven by
+            // `continue_is_arms`.
+            Some(Tok::Kw(Kw::Is)) if self.surface.is_collections() => {
+                let kw = self.bump();
+                let scrutinee = self.expect_ident("`is` scrutinee (a local)")?;
+                self.expect_punct(P::LBrace, "`{`")?;
+                self.pending_is.push(PendingIs {
+                    kw: kw.span,
+                    scrutinee: Ident {
+                        name: scrutinee.name.clone(),
+                        span: scrutinee.span,
+                    },
+                    arms: Vec::new(),
+                });
+                self.continue_is_arms(stack)
             }
             Some(Tok::Kw(Kw::For)) => {
                 // core surface: recognized keyword, excluded profile member
@@ -1039,8 +1170,13 @@ impl<'s> Parser<'s> {
                     Some(Tok::Punct(P::Assign)) | Some(Tok::Punct(P::Dot))
                 ) =>
             {
+                // Speculative: `a.b = v` is an assignment, `a.b(c)` / `a.b`
+                // continue as an expression (PLAN-864 method-call
+                // statements). Rewind when no `=` terminates the path.
+                let mark = self.pos;
                 let base = self.expect_ident("local name")?;
                 let mut path: Vec<Ident> = Vec::new();
+                let mut is_assign = true;
                 while matches!(
                     self.peek(),
                     Some(Token {
@@ -1056,6 +1192,31 @@ impl<'s> Parser<'s> {
                     }
                     self.pos += 1;
                     path.push(self.expect_ident("field name after `.`")?);
+                }
+                if !matches!(
+                    self.peek(),
+                    Some(Token {
+                        tok: Tok::Punct(P::Assign),
+                        ..
+                    })
+                ) {
+                    is_assign = false;
+                }
+                if !is_assign {
+                    self.pos = mark;
+                    let e = self.expr(false)?;
+                    if self.surface.is_entry_unit() {
+                        let span = e.span;
+                        return self.push_stmt(stack, Stmt::ExprStmt { value: e, span });
+                    }
+                    if self.surface.is_collections() {
+                        let span = e.span;
+                        return self.push_stmt(stack, Stmt::ExprStmt { value: e, span });
+                    }
+                    return Err(self.unsupported(
+                        "expression statements are not part of this source profile; calls are only allowed in initializers, assignments, returns and conditions",
+                        e.span,
+                    ));
                 }
                 let target = AssignTarget { base, path };
                 self.expect_punct(P::Assign, "`=`")?;
@@ -1079,6 +1240,15 @@ impl<'s> Parser<'s> {
                     // script tail can carry the result; RESOLVE owns the
                     // position rule (only the script's trailing statement
                     // is legal, everything else is `source.entry-tail`).
+                    let span = e.span;
+                    return self.push_stmt(stack, Stmt::ExprStmt { value: e, span });
+                }
+                if self.surface.is_collections() {
+                    // PLAN-864: an expression statement is parsed so the
+                    // unit-effect method calls (`xs.push(v)` & co.) have a
+                    // statement form; RESOLVE owns the type rule (only
+                    // unit-typed expressions discard —
+                    // `source.syntax` names anything else).
                     let span = e.span;
                     return self.push_stmt(stack, Stmt::ExprStmt { value: e, span });
                 }
@@ -1145,6 +1315,43 @@ impl<'s> Parser<'s> {
         }
     }
 
+    /// PLAN-864: whether a generic type argument list starting at token
+    /// `lt_pos` (the `<`) balances and is followed by `.` — the commit
+    /// condition for a receiver-position `Name<T>` expression. Purely a
+    /// lookahead over the token vector; consumes nothing.
+    fn generic_scan_commits(&self, lt_pos: usize) -> bool {
+        let mut depth: usize = 0;
+        let mut i = lt_pos;
+        while let Some(t) = self.toks.get(i) {
+            match &t.tok {
+                Tok::Punct(P::Lt) => {
+                    depth += 1;
+                    i += 1;
+                }
+                Tok::Punct(P::Gt) => {
+                    depth = depth.saturating_sub(1);
+                    i += 1;
+                    if depth == 0 {
+                        return matches!(
+                            self.toks.get(i).map(|t2| &t2.tok),
+                            Some(Tok::Punct(P::Dot))
+                        );
+                    }
+                }
+                Tok::Ident(_)
+                | Tok::Kw(Kw::Int)
+                | Tok::Kw(Kw::I32)
+                | Tok::Kw(Kw::Bool)
+                | Tok::Punct(P::Question)
+                | Tok::Punct(P::Comma) => {
+                    i += 1;
+                }
+                _ => return false,
+            }
+        }
+        false
+    }
+
     fn is_type_word(tok: &Tok) -> bool {
         match tok {
             Tok::Kw(Kw::Int) | Tok::Kw(Kw::I32) | Tok::Kw(Kw::Bool) => true,
@@ -1156,6 +1363,11 @@ impl<'s> Parser<'s> {
     /// Record-member field type (PLAN-771): a builtin word or a record
     /// type name (resolved in later stages; forward references legal).
     fn member_type(&mut self, fname: &Ident) -> Result<TypeAnn, Diagnostic> {
+        // PLAN-864: the collections field-type grammar (?T, List<T>,
+        // Result<T,E>, records, int/i32/bool/Str).
+        if self.surface.is_collections() {
+            return self.collections_type();
+        }
         match self.peek().map(|t| t.tok.clone()) {
             // Text type words in FIELD position of a non-text profile are a
             // controlled `source.unsupported` rejection — the same guard
@@ -1201,6 +1413,13 @@ impl<'s> Parser<'s> {
     /// Type annotation in parameter position: required, only the three
     /// profile words. Any other identifier is an excluded type surface.
     fn param_type(&mut self, pname: &Ident) -> Result<TypeAnn, Diagnostic> {
+        // PLAN-864: the collections parameter-type grammar. `List`-typed
+        // parameters PARSE so resolve can name the rejection precisely
+        // (`source.list-value-context`); the surface itself accepts the
+        // same grammar as fields.
+        if self.surface.is_collections() {
+            return self.collections_type();
+        }
         match self.peek().map(|t| t.tok.clone()) {
             Some(Tok::Ident(w))
                 if !self.surface.is_text() && (w == "str" || w == "Str" || w == "char") =>
@@ -1261,6 +1480,24 @@ impl<'s> Parser<'s> {
 
     /// Optional annotation in `let`/`var` declarations.
     fn decl_ann(&mut self) -> Result<Option<TypeAnn>, Diagnostic> {
+        // PLAN-864: the collections annotation grammar (?T, List<T>,
+        // Result<T,E>, records, int/i32/bool/Str); absent annotation falls
+        // through to inference.
+        if self.surface.is_collections() {
+            let starts_type = matches!(
+                self.peek().map(|t| &t.tok),
+                Some(Tok::Punct(P::Question))
+                    | Some(Tok::Kw(Kw::Int))
+                    | Some(Tok::Kw(Kw::I32))
+                    | Some(Tok::Kw(Kw::Bool))
+                    | Some(Tok::Ident(_))
+            );
+            return if starts_type {
+                Ok(Some(self.collections_type()?))
+            } else {
+                Ok(None)
+            };
+        }
         match self.peek().map(|t| t.tok.clone()) {
             Some(Tok::Ident(w))
                 if !self.surface.is_text() && (w == "str" || w == "Str" || w == "char") =>
@@ -1316,6 +1553,261 @@ impl<'s> Parser<'s> {
     }
 
     // -- statements ---------------------------------------------------------
+
+    /// Continue an `is` statement's arm sequence (PLAN-864): either another
+    /// `Arm(v)? -> { .. }` header opens an arm block, or the statement's
+    /// closing `}` completes the whole `is`.
+    fn continue_is_arms(&mut self, stack: &mut Vec<OpenBlock>) -> Result<(), Diagnostic> {
+        match self.peek().map(|t| t.tok.clone()) {
+            Some(Tok::Ident(_)) => {
+                let (qual, pattern, binding) = self.is_arm_pattern()?;
+                self.expect_punct(P::Arrow, "`->`")?;
+                let lb = self.expect_punct(P::LBrace, "`{`")?;
+                stack.push(OpenBlock {
+                    lb,
+                    stmts: Vec::new(),
+                    cont: BlockCont::IsArm {
+                        qual,
+                        pattern,
+                        binding,
+                    },
+                });
+                Ok(())
+            }
+            Some(Tok::Punct(P::RBrace)) => {
+                self.pos += 1;
+                self.last_line = self.toks[self.pos - 1].line;
+                let pend = self
+                    .pending_is
+                    .pop()
+                    .expect("is completion with no pending `is`");
+                let close = self.toks[self.pos - 1].span;
+                let span = pend.kw.join(close);
+                self.push_stmt(
+                    stack,
+                    Stmt::IsMatch {
+                        scrutinee: pend.scrutinee,
+                        arms: pend.arms,
+                        span,
+                    },
+                )
+            }
+            _ => Err(self.syntax(format!(
+                "expected another `is` arm or `}}`, found {}",
+                self.describe_cur()
+            ))),
+        }
+    }
+
+    /// One `is` arm pattern: `Name`, `Enum.Name` or `Name(v)` (PLAN-864).
+    fn is_arm_pattern(&mut self) -> Result<(Option<Ident>, Ident, Option<Ident>), Diagnostic> {
+        let mut qual: Option<Ident> = None;
+        let mut pattern = self.expect_ident("arm pattern name")?;
+        if matches!(
+            self.peek(),
+            Some(Token {
+                tok: Tok::Punct(P::Dot),
+                ..
+            })
+        ) {
+            self.pos += 1;
+            self.last_line = self.toks[self.pos - 1].line;
+            qual = Some(pattern);
+            pattern = self.expect_ident("arm name after `.`")?;
+        }
+        let binding = match self.peek().map(|t| t.tok.clone()) {
+            Some(Tok::Punct(P::LParen)) => {
+                self.pos += 1;
+                self.last_line = self.toks[self.pos - 1].line;
+                let b = self.expect_ident("arm payload binding")?;
+                self.expect_punct(P::RParen, "`)`")?;
+                Some(b)
+            }
+            _ => None,
+        };
+        Ok((qual, pattern, binding))
+    }
+
+    /// `enum Name { Arm(T)? ... }` (PLAN-864, collections surface): arms
+    /// are whitespace separated; `,`/`;` separators are tolerated. The
+    /// declaration order is the runtime discriminant order.
+    fn enum_item(&mut self) -> Result<EnumItem, Diagnostic> {
+        let kw = self.expect_kw(Kw::Enum, "`enum`")?;
+        let name = self.expect_ident("enum name")?;
+        self.expect_punct(P::LBrace, "`{`")?;
+        let mut arms: Vec<EnumArm> = Vec::new();
+        loop {
+            match self.peek().map(|t| t.tok.clone()) {
+                Some(Tok::Punct(P::RBrace)) => {
+                    self.pos += 1;
+                    self.last_line = self.toks[self.pos - 1].line;
+                    break;
+                }
+                Some(Tok::Ident(_)) => {
+                    let an = self.expect_ident("enum arm name")?;
+                    let payload = if matches!(
+                        self.peek(),
+                        Some(Token {
+                            tok: Tok::Punct(P::LParen),
+                            ..
+                        })
+                    ) {
+                        self.pos += 1;
+                        self.last_line = self.toks[self.pos - 1].line;
+                        let t = self.collections_type()?;
+                        self.expect_punct(P::RParen, "`)`")?;
+                        Some(t)
+                    } else {
+                        None
+                    };
+                    let arm_span = match &payload {
+                        Some(pl) => an.span.join(pl.span),
+                        None => an.span,
+                    };
+                    arms.push(EnumArm {
+                        name: an,
+                        payload,
+                        span: arm_span,
+                    });
+                    while matches!(
+                        self.peek(),
+                        Some(Token {
+                            tok: Tok::Punct(P::Comma) | Tok::Punct(P::Semi),
+                            ..
+                        })
+                    ) {
+                        self.pos += 1;
+                        self.last_line = self.toks[self.pos - 1].line;
+                    }
+                }
+                _ => {
+                    return Err(self.syntax(format!(
+                        "expected an enum arm or `}}`, found {}",
+                        self.describe_cur()
+                    )))
+                }
+            }
+        }
+        let close = self.toks[self.pos - 1].span;
+        Ok(EnumItem {
+            name,
+            arms,
+            span: kw.join(close),
+        })
+    }
+
+    // -- collections types (PLAN-864) ---------------------------------------
+
+    /// One collections-surface type: `?T` sugar, a builtin word (int/i32/
+    /// bool/Str), a nominal record name, or a parameterized nominal
+    /// `Name<T, ...>`. `str`/`char` stay named rejections (the collections
+    /// surface owns `Str` values only).
+    fn collections_type(&mut self) -> Result<TypeAnn, Diagnostic> {
+        if matches!(
+            self.peek(),
+            Some(Token {
+                tok: Tok::Punct(P::Question),
+                ..
+            })
+        ) {
+            let q = self.bump();
+            let inner = self.collections_type()?;
+            let span = q.span.join(inner.span);
+            return Ok(TypeAnn {
+                kind: TypeRef::Optional(Box::new(inner)),
+                span,
+            });
+        }
+        match self.peek().map(|t| t.tok.clone()) {
+            Some(Tok::Kw(Kw::Int)) | Some(Tok::Kw(Kw::I32)) | Some(Tok::Kw(Kw::Bool)) => {
+                Ok(self.type_word())
+            }
+            Some(Tok::Ident(w)) if w == "Str" => {
+                let t = self.bump();
+                Ok(TypeAnn {
+                    kind: TypeRef::Builtin(TypeWord::StrOwned),
+                    span: t.span,
+                })
+            }
+            Some(Tok::Ident(w)) if w == "str" || w == "char" => {
+                let t = self.peek().unwrap();
+                Err(self.unsupported(
+                    format!("type `{}` is not part of this source profile", w),
+                    t.span,
+                ))
+            }
+            Some(Tok::Ident(_)) => {
+                let t = self.bump();
+                let id = match &t.tok {
+                    Tok::Ident(n) => Ident {
+                        name: n.clone(),
+                        span: t.span,
+                    },
+                    _ => unreachable!(),
+                };
+                if matches!(
+                    self.peek(),
+                    Some(Token {
+                        tok: Tok::Punct(P::Lt),
+                        ..
+                    })
+                ) {
+                    let args = self.type_arg_list()?;
+                    let span = t.span.join(self.toks[self.pos - 1].span);
+                    Ok(TypeAnn {
+                        kind: TypeRef::Generic {
+                            name: id,
+                            args,
+                        },
+                        span,
+                    })
+                } else {
+                    Ok(TypeAnn {
+                        kind: TypeRef::Record(id),
+                        span: t.span,
+                    })
+                }
+            }
+            Some(Tok::Ident(t) | Tok::Reserved(t)) => {
+                let sp = self.peek().unwrap().span;
+                Err(self.unsupported(
+                    format!("type `{}` is not part of this source profile", t),
+                    sp,
+                ))
+            }
+            _ => Err(self.syntax(format!(
+                "expected a type, found {}",
+                self.describe_cur()
+            ))),
+        }
+    }
+
+    /// `<T0, T1, ...>` — the type-argument list of a parameterized nominal
+    /// type (PLAN-864). The closing `>` is consumed.
+    fn type_arg_list(&mut self) -> Result<Vec<TypeAnn>, Diagnostic> {
+        self.expect_punct(P::Lt, "`<`")?;
+        let mut args = Vec::new();
+        loop {
+            args.push(self.collections_type()?);
+            match self.peek().map(|t| t.tok.clone()) {
+                Some(Tok::Punct(P::Comma)) => {
+                    self.pos += 1;
+                    self.last_line = self.toks[self.pos - 1].line;
+                }
+                Some(Tok::Punct(P::Gt)) => {
+                    self.pos += 1;
+                    self.last_line = self.toks[self.pos - 1].line;
+                    return Ok(args);
+                }
+                _ => {
+                    return Err(self.syntax(format!(
+                        "expected `,` or `>` in type arguments, found {}",
+                        self.describe_cur()
+                    )))
+                }
+            }
+        }
+    }
 
     fn decl_stmt(&mut self) -> Result<Stmt, Diagnostic> {
         let kw_tok = self.bump();
@@ -1597,6 +2089,36 @@ impl<'s> Parser<'s> {
                     break 'outer;
                 }
                 Some(Token { tok, span, line }) => match tok {
+                    Tok::Ident(ref name)
+                        if self.surface.is_collections()
+                            && matches!(
+                                self.peek2().map(|t2| &t2.tok),
+                                Some(Tok::Punct(P::Lt))
+                            )
+                            && self.generic_scan_commits(self.pos + 1) =>
+                    {
+                        // PLAN-864: `List<T>` in receiver position
+                        // (`List<int>.new()`). The scan only commits when a
+                        // balanced `<Type...>` is followed by `.` — a plain
+                        // `a < b` comparison never enters this arm.
+                        let gname = Ident {
+                            name: name.clone(),
+                            span,
+                        };
+                        self.pos += 1; // the identifier
+                        self.last_line = self.toks[self.pos - 1].line;
+                        let args = self.type_arg_list()?;
+                        let gspan = gname.span.join(self.toks[self.pos - 1].span);
+                        // Falls through to the operator/postfix loop so a
+                        // `.new(...)` method call can chain onto the type.
+                        vals.push(Expr {
+                            span: gspan,
+                            kind: ExprKind::GenericType {
+                                name: gname,
+                                args,
+                            },
+                        });
+                    }
                     Tok::Int(digits) => {
                         self.pos += 1;
                         self.last_line = line;
@@ -2022,7 +2544,9 @@ impl<'s> Parser<'s> {
                             tok: Tok::Reserved(w),
                             span: mspan,
                             line: mline,
-                        }) if self.surface.is_text() && w == "move" => {
+                        }) if (self.surface.is_text() || self.surface.is_collections())
+                            && w == "move" =>
+                        {
                             self.pos += 1;
                             self.last_line = mline;
                             let recv = vals.pop().expect("dot receiver");

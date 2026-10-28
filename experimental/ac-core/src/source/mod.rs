@@ -24,10 +24,10 @@ pub mod typecheck;
 
 pub use adapter::{
     compile_entry_unit_source, compile_parts, compile_parts_with, compile_program_parts,
-    compile_record_source, compile_scalar_source, compile_source, compile_text_record_source,
-    compile_text_source, emit_function_body, prepare_candidate_document,
-    prepare_function_candidate, BodyEmitReceipt, CompiledSource, FnCandidate, SourceParts,
-    RUNTIME_TEXT_CAPABILITY,
+    compile_collections_source, compile_record_source, compile_scalar_source, compile_source,
+    compile_text_record_source, compile_text_source, emit_function_body,
+    prepare_candidate_document, prepare_function_candidate, BodyEmitReceipt, CompiledSource,
+    FnCandidate, SourceParts, RUNTIME_TEXT_CAPABILITY,
 };
 pub use parser::{parse_program, parse_program_with};
 pub use resolve::{
@@ -69,6 +69,14 @@ pub const TEXT_RECORD_SOURCE_PROFILE: &str = "auto.source.text-record.draft";
 /// result, and the entry uniqueness/diagnostic matrix frozen by the T-02
 /// `entry-contract.md`. Unit is a RESULT type only; no value-level Unit.
 pub const ENTRY_UNIT_SOURCE_PROFILE: &str = "auto.source.entry-unit.draft";
+/// The collections source profile (PLAN-864): the source-domain twin of
+/// `av.collections/1` — typed `List<T>` locals/methods, `?T`/`Result<T,E>`
+/// and finite `enum` variants with `is` dispatch, `for x in <list>`
+/// iteration, `Str` literals + `.len()`, owned records (non-container
+/// fields), record construction and `.move`/`.clone()`. The MIR lowering
+/// reuses the frozen 822 instruction set; profile 4 semantics are
+/// consumed unchanged.
+pub const COLLECTIONS_SOURCE_PROFILE: &str = "auto.source.collections.draft";
 
 /// The explicitly selected source profile of a compilation. Never inferred
 /// from file extensions or content.
@@ -80,6 +88,7 @@ pub enum SourceProfile {
     Record,
     TextRecord,
     EntryUnit,
+    Collections,
 }
 
 impl SourceProfile {
@@ -91,6 +100,7 @@ impl SourceProfile {
             SourceProfile::Record => RECORD_SOURCE_PROFILE,
             SourceProfile::TextRecord => TEXT_RECORD_SOURCE_PROFILE,
             SourceProfile::EntryUnit => ENTRY_UNIT_SOURCE_PROFILE,
+            SourceProfile::Collections => COLLECTIONS_SOURCE_PROFILE,
         }
     }
 
@@ -103,6 +113,7 @@ impl SourceProfile {
             SourceProfile::Record => crate::hir::HirDomain::Record,
             SourceProfile::TextRecord => crate::hir::HirDomain::TextRecord,
             SourceProfile::EntryUnit => crate::hir::HirDomain::EntryUnit,
+            SourceProfile::Collections => crate::hir::HirDomain::Collections,
         }
     }
 
@@ -116,7 +127,22 @@ impl SourceProfile {
                 | SourceProfile::Text
                 | SourceProfile::TextRecord
                 | SourceProfile::EntryUnit
+                | SourceProfile::Collections
         )
+    }
+
+    /// PLAN-864: whether the collections surface is accepted — List<T>/
+    /// Option/Result/enum types, `is` dispatch, `for-in` iteration, record
+    /// construction with owned fields, Str literals and the restricted
+    /// method surface.
+    pub fn is_collections(&self) -> bool {
+        matches!(self, SourceProfile::Collections)
+    }
+
+    /// PLAN-864: whether string literals lex on this surface (the text
+    /// profiles and the collections profile, which owns `Str` values).
+    pub fn admits_text_literals(&self) -> bool {
+        self.is_text() || self.is_collections()
     }
 
     /// Whether the text surface (str/Str/char, literals, text methods,
@@ -128,7 +154,10 @@ impl SourceProfile {
     /// Whether the record surface (type declarations, construction, field
     /// paths, methods, `mut` params — PLAN-771) is accepted.
     pub fn is_record(&self) -> bool {
-        matches!(self, SourceProfile::Record | SourceProfile::TextRecord)
+        matches!(
+            self,
+            SourceProfile::Record | SourceProfile::TextRecord | SourceProfile::Collections
+        )
     }
 
     /// PLAN-862: whether the ENTRY surface is accepted — `void` results,
@@ -151,6 +180,7 @@ impl SourceProfile {
                 | SourceProfile::Record
                 | SourceProfile::TextRecord
                 | SourceProfile::EntryUnit
+                | SourceProfile::Collections
         )
     }
 
@@ -162,6 +192,7 @@ impl SourceProfile {
             RECORD_SOURCE_PROFILE => Some(SourceProfile::Record),
             TEXT_RECORD_SOURCE_PROFILE => Some(SourceProfile::TextRecord),
             ENTRY_UNIT_SOURCE_PROFILE => Some(SourceProfile::EntryUnit),
+            COLLECTIONS_SOURCE_PROFILE => Some(SourceProfile::Collections),
             _ => None,
         }
     }

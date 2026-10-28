@@ -140,6 +140,28 @@ pub enum TypeKind {
     Char,
     Function(FnSig),
     Record(RecordShape),
+    /// Owned typed list `List<T>` (PLAN-864). `elem` is the element type;
+    /// the admissible element closure is the 822 element domain (int, bool,
+    /// Str, non-container record, nominal variant). Identity is structural
+    /// via the element type — lists are never nominal.
+    List {
+        elem: TypeUse,
+    },
+    /// Nominal variant (PLAN-864): `?T`/`Result<T,E>` and declared finite
+    /// `enum`s all bind to this one shape, mirroring `MirType::Variant`.
+    /// `id_text` carries the variant name; arms are declaration order and
+    /// the arm INDEX is the runtime discriminant. A payload `None` arm is
+    /// the no-payload case. Non-recursive by verifier rule.
+    Variant {
+        arms: Vec<VariantArmDecl>,
+    },
+}
+
+/// One arm of a [`TypeKind::Variant`], in declaration order (PLAN-864).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct VariantArmDecl {
+    pub name: String,
+    pub payload: Option<TypeUse>,
 }
 
 #[derive(Clone, Debug)]
@@ -559,6 +581,80 @@ pub enum ExprKind {
     Move {
         inner: ExprId,
     },
+    // -- PLAN-864 collections surface (source domain of av.collections/1) --
+    /// `List<T>.new()` — an empty list of the named list type. The
+    /// lowering fixes the initial capacity (4, the executor's first-grow
+    /// step); the ledger shows exactly one buffer allocation per `.new()`.
+    ListNew {
+        list: TypeId,
+    },
+    /// `xs.len()` — element count (result i32).
+    ListLen {
+        list: ExprId,
+    },
+    /// `xs.push(v)` (result unit, consumed only by `Stmt::Eval`). Copy
+    /// elements pass by value; owned elements require a move-source.
+    ListPush {
+        list: ExprId,
+        value: ExprId,
+    },
+    /// `xs.insert(i, v)` (result unit).
+    ListInsert {
+        list: ExprId,
+        index: ExprId,
+        value: ExprId,
+    },
+    /// `xs.get(i)` — copy OUT for Copy element types only (int/bool);
+    /// owned-element reads go through field views (`FieldGet` rooted at a
+    /// `ListGet`, fused by the lowering into LIST_FIELD_GET / view
+    /// sequences) or LIST_REMOVE.
+    ListGet {
+        list: ExprId,
+        index: ExprId,
+    },
+    /// `xs.set(i, v)` (result unit); the old element drops exactly once
+    /// at commit.
+    ListSet {
+        list: ExprId,
+        index: ExprId,
+        value: ExprId,
+    },
+    /// `xs.remove(i)` — element transfer out (owned) / copy out (Copy).
+    ListRemove {
+        list: ExprId,
+        index: ExprId,
+    },
+    /// `xs.clear()` (result unit): the lowering expands this into a
+    /// remove-from-tail loop (`LIST_LEN` + `LIST_REMOVE` + `DROP` per
+    /// owned element) — there is no LIST_CLEAR opcode in profile 4 and
+    /// none is added.
+    ListClear {
+        list: ExprId,
+    },
+    /// `Some(e)/None/Ok(e)/Err(e)/E.A/E.A(e)` — variant construction
+    /// (result = the nominal variant type). `disc` is the arm index;
+    /// a payload arm transfers its operand at commit.
+    VariantCtor {
+        variant: TypeId,
+        disc: u32,
+        payload: Option<ExprId>,
+    },
+    /// `is` dispatch test (result bool, PLAN-864): true iff the variant
+    /// local read in `root` currently holds arm `disc`. The root must be
+    /// a whole-local read of a variant type. The lowering emits
+    /// VARIANT_GUARD (a MUST guard fact, never a trap).
+    VariantGuardTest {
+        root: ExprId,
+        disc: u32,
+    },
+    /// `is` payload projection (result = the arm payload type): move-out
+    /// for owned payloads, copy for Copy payloads. Verify requires a live
+    /// guard fact for `disc` on the root — the resolve lowering of `is`
+    /// only projects inside the positively-guarded arm.
+    VariantProject {
+        root: ExprId,
+        disc: u32,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -631,6 +727,14 @@ pub enum Stmt {
     Drop {
         local: LocalId,
     },
+    /// PLAN-864: a unit-typed expression evaluated for effect only — the
+    /// statement form of `xs.push(v)` / `xs.insert(..)` / `xs.set(..)` /
+    /// `xs.clear()`. The result carries no slot (Unit is never a MIR slot
+    /// operand in this domain); the lowering evaluates the expression and
+    /// discards. Never legal where a value is consumed (verify rule).
+    Eval {
+        value: ExprId,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -692,6 +796,14 @@ pub enum HirDomain {
     /// function result, the entry matrix and the single-file script form.
     /// Unit is a RESULT-only type in this domain.
     EntryUnit,
+    /// `auto.hir.collections.draft / 1 / collections-draft` (PLAN-864): the
+    /// source-domain twin of `av.collections/1` — typed `List<T>` locals,
+    /// nominal `?T`/`Result<T,E>`/finite `enum` variants with payload
+    /// construction and `is` dispatch (resolve lowers to guard/project),
+    /// `for-in` iteration (resolve lowers to an index loop) and owned-type
+    /// element views under the 822 execution contract (no new MIR
+    /// instructions; profile id 4 is consumed unchanged).
+    Collections,
 }
 
 impl HirDomain {
@@ -703,6 +815,7 @@ impl HirDomain {
             HirDomain::Record => "record-i32-draft",
             HirDomain::TextRecord => "text-record-i32-draft",
             HirDomain::EntryUnit => "entry-unit-draft",
+            HirDomain::Collections => "collections-draft",
         }
     }
 
@@ -714,6 +827,7 @@ impl HirDomain {
             HirDomain::Record => "auto.hir.record.draft",
             HirDomain::TextRecord => "auto.hir.text-record.draft",
             HirDomain::EntryUnit => "auto.hir.entry-unit.draft",
+            HirDomain::Collections => "auto.hir.collections.draft",
         }
     }
 
@@ -743,6 +857,14 @@ impl PartialEq for TypeDef {
                     a.params == b.params && a.result == b.result
                 }
                 (TypeKind::Record(a), TypeKind::Record(b)) => a == b,
+                (
+                    TypeKind::List { elem: a },
+                    TypeKind::List { elem: b },
+                ) => a == b,
+                (
+                    TypeKind::Variant { arms: a },
+                    TypeKind::Variant { arms: b },
+                ) => a == b,
                 (a, b) => discriminant(a) == discriminant(b),
             }
     }
@@ -758,6 +880,8 @@ fn discriminant(k: &TypeKind) -> u8 {
         TypeKind::StrOwned => 4,
         TypeKind::Char => 5,
         TypeKind::Record(_) => 6,
+        TypeKind::List { .. } => 7,
+        TypeKind::Variant { .. } => 8,
     }
 }
 
