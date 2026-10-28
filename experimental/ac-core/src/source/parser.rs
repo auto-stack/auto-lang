@@ -1215,6 +1215,19 @@ impl<'s> Parser<'s> {
                 ))
             }
             Some(t) if Self::is_type_word(&t) => Ok(self.type_word()),
+            // PLAN-862 T-07 F-862-R1-02: `void` parses as a type word in
+            // parameter position of the entry-unit surface so the FROZEN
+            // placement rejection (`source.unit-placement`: Unit is a result
+            // type only) is what the caller observes, not a generic
+            // `source.unsupported`. No program becomes legal — resolve
+            // rejects it by name.
+            Some(Tok::Ident(ref w)) if self.surface.is_entry_unit() && w == "void" => {
+                let t = self.bump();
+                Ok(TypeAnn {
+                    kind: TypeRef::Builtin(TypeWord::Void),
+                    span: t.span,
+                })
+            }
             Some(Tok::Ident(_)) if self.surface.is_record() => {
                 let t = self.bump();
                 let id = match &t.tok {
@@ -1262,6 +1275,18 @@ impl<'s> Parser<'s> {
                 ))
             }
             Some(t) if Self::is_type_word(&t) => Ok(Some(self.type_word())),
+            // PLAN-862 T-07 F-862-R1-02: `void` parses as a type word in
+            // `let`/`var` position of the entry-unit surface so
+            // `source.unit-placement` ("Unit cannot be stored") is reachable
+            // and named, instead of a generic `source.unsupported` from the
+            // annotation guard below.
+            Some(Tok::Ident(ref w)) if self.surface.is_entry_unit() && w == "void" => {
+                let t = self.bump();
+                Ok(Some(TypeAnn {
+                    kind: TypeRef::Builtin(TypeWord::Void),
+                    span: t.span,
+                }))
+            }
             Some(Tok::Ident(_)) if self.surface.is_record() => {
                 let t = self.bump();
                 let id = match &t.tok {

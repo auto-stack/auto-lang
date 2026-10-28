@@ -247,11 +247,13 @@ switch ($Scope) {
         $steps = @(
             @{ name = 'contract decode (ac_case)'; dir = $RepoRoot; min = 1;
                args = @('test', '-p', 'auto-lang', '--lib', '--features', 'test-cases', '--', 'tests::ac_case_tests') },
+            @{ name = 'contract admission negatives'; dir = $RepoRoot; min = 23;
+               args = @('test', '-p', 'auto-test-case', '--test', 'contract_decode') },
             @{ name = 'parent judge (ac_av)'; dir = $RepoRoot; min = 4;
                args = @('test', '-p', 'auto-lang-core', '--lib', '--features', 'test-cases', '--', 'test_cases::ac_av') },
-            @{ name = 'ac-core entry matrix'; dir = (Join-Path $RepoRoot 'experimental/ac-core'); min = 20;
+            @{ name = 'ac-core entry matrix'; dir = (Join-Path $RepoRoot 'experimental/ac-core'); min = 26;
                args = @('test', '--test', 'entry_unit_862') },
-            @{ name = 'probe entry-unit round'; dir = (Join-Path $RepoRoot 'experimental/ac-av-probe'); min = 9;
+            @{ name = 'probe entry-unit round'; dir = (Join-Path $RepoRoot 'experimental/ac-av-probe'); min = 13;
                args = @('test', '--test', 'av_entry_862') }
         )
         foreach ($s in $steps) {

@@ -1,9 +1,27 @@
 //! Contract decode attack surface (V-01 core): strict schemas, unknown
 //! fields, illegal combinations, weak-oracle rejection, DAG wiring.
+//!
+//! PLAN-862 T-07 (F-862-R1-07): the AV entry-unit profile selector and the
+//! `av_channel` oracle are append-only contract additions; their admission
+//! negatives are pinned here so the rules cannot regress silently.
 
 use auto_test_case::admission::Limits;
 use auto_test_case::atom::parse_contract;
 use auto_test_case::contract::{decode_case, CASE_SCHEMA};
+
+/// One probe/run case around the given `av` binding (and optional extra
+/// expect fields), always the core recipe unless the caller overrides it.
+fn probe_case(recipe: &str, av: &str, expect: &str) -> String {
+    format!(
+        "case {{ schema: \"autolang.case/2\", id: \"f862.admission\", \
+         source: {{ text: \"fn main() int {{ return 0 }}\", syntax: \"auto\", path: \"main.at\" }}, \
+         entry: {{ mode: \"script\" }}, \
+         checks: [ {{ id: \"av\", adapter: \"probe\", action: \"run\", \
+         options: {{ recipe: \"{}\", av: {{ {} }}, steps: [ {{ op: \"run\" }} ] }}, \
+         expect: {{ {} }} }} ] }}",
+        recipe, av, expect
+    )
+}
 
 fn decode(
     src: &str,
@@ -348,4 +366,95 @@ fn module_name_must_be_a_single_path_component() {
             err
         );
     }
+}
+
+// ---- PLAN-862 T-07 F-862-R1-07: the entry-unit admission face ------------
+
+#[test]
+fn the_entry_unit_profile_and_channel_oracle_decode() {
+    // The positive shape the corpus uses (append-only additions).
+    let spec = decode(&probe_case(
+        "ac-av/core-run-v1",
+        "entry: \"d_main\", profile: \"entry-unit\"",
+        "completion: \"success\", av_channel: \"unit\"",
+    ))
+    .expect("the entry-unit binding and the channel oracle must decode");
+    let expect = &spec.checks[0].expect;
+    assert_eq!(expect.av_channel.as_deref(), Some("unit"));
+    assert_eq!(
+        spec.checks[0]
+            .options
+            .probe_av
+            .as_ref()
+            .unwrap()
+            .profile
+            .as_deref(),
+        Some("entry-unit")
+    );
+    // The scalar default stays absent (no implicit reinterpretation).
+    let spec = decode(&probe_case(
+        "ac-av/core-run-v1",
+        "entry: \"d_main\"",
+        "completion: \"success\", exit: 42",
+    ))
+    .expect("the historical scalar binding must keep decoding");
+    assert!(spec.checks[0]
+        .options
+        .probe_av
+        .as_ref()
+        .unwrap()
+        .profile
+        .is_none());
+}
+
+#[test]
+fn a_unit_channel_with_an_exit_oracle_is_rejected() {
+    // Unit has no i32 payload: an exit oracle beside it would re-collapse
+    // Unit into 0. The rule applies to exit 0 too (not just non-zero).
+    for exit in ["0", "1"] {
+        let expect = format!(
+            "completion: \"success\", exit: {}, av_channel: \"unit\"",
+            exit
+        );
+        let err = decode(&probe_case(
+            "ac-av/core-run-v1",
+            "entry: \"d_main\"",
+            &expect,
+        ))
+        .expect_err("a unit channel must not carry an exit oracle");
+        assert!(
+            err.message.contains("no i32 payload"),
+            "exit {}: {}",
+            exit,
+            err
+        );
+    }
+}
+
+#[test]
+fn an_unknown_profile_is_rejected() {
+    let err = decode(&probe_case(
+        "ac-av/core-run-v1",
+        "entry: \"d_main\", profile: \"scalarish\"",
+        "completion: \"success\"",
+    ))
+    .expect_err("an unknown profile must be an admission error");
+    assert!(err.message.contains("unknown av profile"), "{}", err);
+}
+
+#[test]
+fn the_entry_unit_profile_is_rejected_on_a_non_core_recipe() {
+    // The entry-unit front door rides ac-av/core-run-v1 only; attaching the
+    // selector to another AV recipe must never silently fall back.
+    let err = decode(&probe_case(
+        "ac-av/data-run-v1",
+        "entry: \"d_main\", profile: \"entry-unit\"",
+        "completion: \"success\"",
+    ))
+    .expect_err("the profile selector must be recipe-scoped");
+    assert!(
+        err.message.contains("belongs to ac-av/core-run-v1"),
+        "{}",
+        err
+    );
 }

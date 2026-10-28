@@ -22,6 +22,47 @@ fn entry_unit_driver() -> Driver {
     d
 }
 
+/// V-07 / AC-04 (T-07 F-862-R1-08): the memory leg the plan's T-02 §7 asks
+/// for — a REAL process-peak sample of one entry-unit request plus the same
+/// measurement on the scalar profile as the control. Windows-only because the
+/// sampler reads `PrivateUsage`; the bound is a coarse ceiling (well above the
+/// ~1 MiB frontend peak of a tiny source) so ordinary parallel test noise
+/// cannot turn it into a flake — the numbers themselves are the evidence.
+#[cfg(windows)]
+#[test]
+fn av_entry_862_request_peak_memory_is_sampled_against_the_scalar_control() {
+    fn measure(src: &str, entry_unit: bool) -> u64 {
+        let base = ac_artifact_probe::sysinfo::current_process_memory().private_bytes;
+        let sampler = auto_av_probe::mempeek::PeakSampler::start(1);
+        let mut d = Driver::ephemeral();
+        if entry_unit {
+            d.set_profile(RequestProfile::EntryUnit);
+        }
+        let r = d.request(src, "d_main", &[]);
+        assert!(r.ok(), "request rejected: {:?}", r.diag);
+        let peak = sampler.stop();
+        peak.saturating_sub(base)
+    }
+    // Two samples each (the first request pays one-time descriptor/registry
+    // initialisation), max taken so the comparison is warm-stable.
+    let unit_src = "fn main() void {\n    let a = 1\n}\n";
+    let scalar_src = "fn main() int {\n    return 1\n}\n";
+    let unit_delta = measure(unit_src, true).max(measure(unit_src, true));
+    let scalar_delta = measure(scalar_src, false).max(measure(scalar_src, false));
+    eprintln!(
+        "PLAN-862 V-07 memory: entry-unit request peak delta = {unit_delta} B; scalar control = {scalar_delta} B"
+    );
+    const COARSE_CEILING: u64 = 256 * 1024 * 1024;
+    assert!(
+        unit_delta < COARSE_CEILING,
+        "entry-unit request peak delta {unit_delta} B exceeded the coarse ceiling"
+    );
+    assert!(
+        scalar_delta < COARSE_CEILING,
+        "scalar control delta {scalar_delta} B exceeded the coarse ceiling"
+    );
+}
+
 /// V-02 / AC-01: `fn main() int` — the value channel.
 #[test]
 fn av_entry_862_int_entry_reports_the_value_channel() {
@@ -363,4 +404,101 @@ fn av_entry_862_body_edit_rebuilds_only_the_edited_unit() {
         r2.counters
     );
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A well-formed `av.entry-unit/1` module with an i32 entry — the fixture the
+/// two rejection tests below mutate (T-07 F-862-R1-02/F-862-R1-03).
+fn crafted_entry_unit_int_module() -> auto_av_core::mir::MirModule {
+    use auto_av_core::contract::MIR_ENTRY_UNIT_SCHEMA;
+    use auto_av_core::mir::{EntryKind, MirConst, MirModule, MirType, OwnerScope};
+
+    let owner = OwnerScope {
+        schema: MIR_ENTRY_UNIT_SCHEMA.to_string(),
+        module: "m862".to_string(),
+    };
+    let mut m = MirModule::new_entry_unit(owner);
+    let i32_ty = m.intern_type(MirType::I32);
+    let seven = m.intern_const(MirConst::I32(7));
+    let sig = m.intern_type(MirType::Fn(auto_av_core::mir::FnSig {
+        params: Vec::new(),
+        result: i32_ty,
+    }));
+    let f = auto_av_core::mir::MirFunction {
+        owner: m.owner.clone(),
+        name: "d_main".into(),
+        sig,
+        slots: vec![auto_av_core::mir::MirSlot {
+            kind: auto_av_core::mir::SlotKind::Local,
+            ty: i32_ty,
+            name: None,
+        }],
+        blocks: vec![auto_av_core::mir::MirBlock {
+            instrs: vec![auto_av_core::mir::MirInstr::Const {
+                dst: 0,
+                value: seven,
+            }],
+            term: auto_av_core::mir::Terminator::Return { value: 0 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: Vec::new(),
+        env: None,
+    };
+    m.funcs.push(f);
+    m.entry = 0;
+    m.entry_kind = Some(EntryKind::Int);
+    m
+}
+
+/// T-07 F-862-R1-02 (`mir.unit-placement`): a Unit-typed slot OUTSIDE the
+/// unit entry's return operand is a value of unit type and must be rejected
+/// — the MIR layer's half of the frozen "Unit is a result type only" rule.
+#[test]
+fn av_entry_862_unit_slot_outside_the_entry_result_is_rejected() {
+    let mut m = crafted_entry_unit_int_module();
+    let unit_ty = m.intern_type(auto_av_core::mir::MirType::Unit);
+    m.funcs[0].slots.push(auto_av_core::mir::MirSlot {
+        kind: auto_av_core::mir::SlotKind::Local,
+        ty: unit_ty,
+        name: None,
+    });
+    let err = auto_av_core::verify_mir(&m).expect_err("a unit local must be rejected");
+    assert_eq!(
+        err.code(),
+        "mir.unit-placement",
+        "the unit placement rule must name itself: {err:?}"
+    );
+}
+
+/// T-07 F-862-R1-03 (AC-03, second direction): an `AVAU` module is NOT
+/// admissible under the legacy `auto.mir.av-probe/1` owner identity — the
+/// wire family and the owner schema must both reject it, never reinterpret
+/// it as an av.core-i32 module.
+#[test]
+fn av_entry_862_entry_unit_wire_is_not_admitted_by_the_legacy_profile() {
+    let m = crafted_entry_unit_int_module();
+    let bytes = auto_av_core::encode_abc(&m)
+        .expect("the well-formed module encodes")
+        .to_flat();
+    let decoded = auto_av_core::decode_abc(&bytes).expect("the entry-unit wire decodes");
+    let err = auto_av_core::verify_abc(
+        decoded,
+        &auto_av_core::mir::OwnerScope {
+            schema: auto_av_core::contract::MIR_SCHEMA.to_string(),
+            module: "m862".to_string(),
+        },
+    )
+    .expect_err("the legacy profile must not admit an AVAU module");
+    // The entry-unit profile OWNS its owner-schema string, so a legacy owner
+    // scope is rejected at the MIR profile gate before any identity/closure
+    // step could reinterpret it. The point of the test is that the rejection
+    // happens at all and names itself.
+    match &err {
+        auto_av_core::AbcAdmissionError::Verify(v) => assert_eq!(
+            v.code(),
+            "mir.schema-profile",
+            "the profile gate must name itself: {v:?}"
+        ),
+        other => panic!("expected a profile/identity rejection, got {other:?}"),
+    }
 }

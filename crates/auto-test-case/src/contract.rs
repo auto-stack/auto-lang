@@ -2289,9 +2289,11 @@ fn decode_expect(
     // PLAN-862: the AV result-channel discriminant (probe recipes only). A
     // Unit success has NO i32 value, so `exit` alone cannot tell it from an
     // int entry returning 0; the channel name is the observable that does
-    // (entry-contract §4/§6). The consumer-side exit mapping that pairs with
-    // it is `0` (a Unit success is not an error), so a non-zero `exit`
-    // declared beside `unit` is contradictory and rejected here.
+    // (entry-contract §4/§6). The consumer-side exit mapping (unit → 0) is a
+    // SEPARATE contract and is never expressed as an AV value oracle, so any
+    // `exit` declared beside `unit` — including 0 — is contradictory and
+    // rejected here (an exit oracle would either be a type error or silently
+    // re-collapse Unit into zero).
     let av_channel = match f.sub("av_channel") {
         None => None,
         Some(cv) => {

@@ -207,6 +207,61 @@ fn void_is_not_part_of_the_other_profiles() {
     assert_eq!(err.code, "source.unsupported");
 }
 
+/// PLAN-862 T-07 F-862-R1-02: the frozen placement rule is REACHABLE. The
+/// entry-unit surface parses the `void` word in parameter/local position (so
+/// resolve can name the placement), while the scalar surface keeps rejecting
+/// the word outright — the specific diagnostic must not be shadowed by a
+/// generic `source.unsupported` on the profile that owns it.
+#[test]
+fn unit_in_a_parameter_or_local_is_named_source_unit_placement() {
+    let got = resolve_codes(
+        "fn helper(u void) int {\n    return 0\n}\n\nfn main() int {\n    return 0\n}\n",
+    );
+    assert!(
+        got.contains(&"source.unit-placement".to_string()),
+        "a unit parameter must be named, got {got:?}"
+    );
+    let got = resolve_codes("fn main() int {\n    let a void = 1\n    return 0\n}\n");
+    assert!(
+        got.contains(&"source.unit-placement".to_string()),
+        "a unit local must be named, got {got:?}"
+    );
+    // Zero drift: the same word stays excluded on the scalar surface.
+    let err = parse_program_with(
+        "fn helper(u void) int {\n    return 0\n}\n",
+        SourceProfile::Scalar,
+    )
+    .expect_err("the scalar surface has no `void` type word in parameter position");
+    assert_eq!(err.code, "source.unsupported");
+}
+
+/// PLAN-862 T-07 F-862-R1-03: the OLD-domain document must not be admitted by
+/// the new verifier entry — the identity gate (`verify.domain`) is the second
+/// direction of AC-03's "bidirectional rejection".
+#[test]
+fn a_scalar_document_is_rejected_by_the_entry_unit_verifier() {
+    let compiled = auto_ac_prototype::source::compile_scalar_source(
+        "fn main() int {\n    return 1\n}\n",
+        "cross.at",
+        &[],
+    )
+    .expect("the scalar document compiles");
+    let bundle =
+        auto_ac_prototype::bind_document(&compiled.atom_text).expect("the scalar document binds");
+    assert_eq!(
+        bundle.domain,
+        auto_ac_prototype::hir::HirDomain::Scalar,
+        "precondition: a scalar-identity document"
+    );
+    let err = auto_ac_prototype::verify::verify_entry_unit(bundle)
+        .expect_err("the entry-unit verifier must not admit a scalar document");
+    assert!(
+        err.iter().any(|d| d.code == "verify.domain"),
+        "expected verify.domain, got {:?}",
+        err.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn expression_statements_stay_rejected_on_the_scalar_surface() {
     let err = parse_program_with(

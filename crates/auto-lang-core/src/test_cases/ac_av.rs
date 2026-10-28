@@ -1644,7 +1644,11 @@ fn run_check_impl(
             .iter()
             .map(|(k, v)| (k.clone(), *v as u32))
             .collect(),
-        toolchain: probe_toolchain_axes(&exe_sha, family, entry_unit_profile.then_some(EXPECTED_AV_ENTRY_UNIT_CORE_VERSION)),
+        toolchain: probe_toolchain_axes(
+            &exe_sha,
+            family,
+            entry_unit_profile.then_some(EXPECTED_AV_ENTRY_UNIT_CORE_VERSION),
+        ),
         gaps: vec![],
     };
     let status = if mismatches.is_empty() {
