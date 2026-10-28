@@ -128,6 +128,10 @@ pub const AV_WORKER_PROTOCOL: &str = "avworker/1";
 /// bump without a mirror update fails loudly.
 pub const EXPECTED_AV_WORKER_VERSION: &str = "avworker/1.0";
 pub const EXPECTED_AV_CORE_VERSION: &str = "av.core-i32/1";
+/// PLAN-868: admission mirror of `auto_mir_lower::MIR_LOWERING_VERSION` —
+/// every av recipe family lowers HIR→MIR through the shared crate; a
+/// lowering contract bump without a mirror update fails the identity axis.
+pub const EXPECTED_MIR_LOWERING_VERSION: &str = "1";
 
 /// Current av toolchain identity (the axes stale adjudication binds probe
 /// rows of THIS recipe to).
@@ -142,6 +146,10 @@ pub fn current_toolchain_identity() -> std::collections::BTreeMap<String, String
     );
     m.insert("av-protocol".to_string(), AV_WORKER_PROTOCOL.to_string());
     m.insert("recipe".to_string(), AV_RECIPE.to_string());
+    m.insert(
+        "mir-lowering".to_string(),
+        EXPECTED_MIR_LOWERING_VERSION.to_string(),
+    );
     m
 }
 
@@ -157,6 +165,13 @@ fn probe_toolchain_axes(exe_sha: &str, family: RecipeFamily) -> Vec<(String, Str
         (
             "av-core-version".into(),
             family.expected_core_version().into(),
+        ),
+        // PLAN-868: the lowering contract identity shared by all av
+        // families — reported per row, mandatory (old reports lacking the
+        // axis adjudicate STALE by declaration).
+        (
+            "mir-lowering".into(),
+            EXPECTED_MIR_LOWERING_VERSION.into(),
         ),
     ];
     // PLAN-821 contract-decision §10: the owned tool-identity axis carries

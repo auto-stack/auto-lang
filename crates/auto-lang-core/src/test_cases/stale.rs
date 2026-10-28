@@ -376,12 +376,20 @@ pub fn check_with_families(
                             "cte-worker-version",
                             "cte-protocol",
                             "recipe",
+                            // PLAN-868: the cte av driver lowers through the
+                            // shared auto-mir-lower crate; the contract axis
+                            // is mandatory (missing = stale).
+                            "mir-lowering",
                         ],
                         Some(false) if av_probe_row => vec![
                             "av-worker-exe-sha256",
                             "av-worker-version",
                             "av-protocol",
                             "recipe",
+                            // PLAN-868: every av family lowers through the
+                            // shared auto-mir-lower crate; the contract axis
+                            // is mandatory (missing = stale).
+                            "mir-lowering",
                         ],
                         _ => {
                             // F-796-R4-04 + R6-04: probe rows bind to the sema

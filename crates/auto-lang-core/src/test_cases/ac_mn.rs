@@ -50,6 +50,10 @@ pub const MN_WORKER_PROTOCOL: &str = "mnworker/1";
 /// Mirrored worker identity expectations — admission constants; a worker
 /// bump without a mirror update fails loudly.
 pub const EXPECTED_MN_WORKER_VERSION: &str = "mnworker/1.0";
+/// PLAN-868: admission mirror of `auto_mir_lower::MIR_LOWERING_VERSION` —
+/// the mn pipeline lowers through the shared crate; a lowering contract
+/// bump without a mirror update fails the identity axis loudly.
+pub const EXPECTED_MIR_LOWERING_VERSION: &str = "1";
 
 pub fn current_toolchain_identity() -> std::collections::BTreeMap<String, String> {
     let mut m = std::collections::BTreeMap::new();
@@ -59,6 +63,10 @@ pub fn current_toolchain_identity() -> std::collections::BTreeMap<String, String
         }
     }
     m.insert("recipe".to_string(), MN_RECIPE.to_string());
+    m.insert(
+        "mir-lowering".to_string(),
+        EXPECTED_MIR_LOWERING_VERSION.to_string(),
+    );
     m
 }
 
@@ -1197,12 +1205,13 @@ pub fn run_check(
         "request_wall_ms": request_wall_ms,
         "toolchain": {
             "recipe": MN_RECIPE,
+            "mir-lowering": EXPECTED_MIR_LOWERING_VERSION,
             "mn-worker-exe-sha256": exe_sha,
         },
     });
     std::fs::write(
         artifact_dir.join("mn-probe-receipt.json"),
-        serde_json::to_string_pretty(&receipt).unwrap_or_default(),
+        serde_json::to_string_pretty(&receipt).unwrap_or_default()
     )
     .map_err(|e| format!("write receipt: {e}"))?;
 
@@ -1255,6 +1264,10 @@ pub fn run_check(
         toolchain: {
             vec![
                 ("recipe".to_string(), MN_RECIPE.to_string()),
+                (
+                    "mir-lowering".to_string(),
+                    EXPECTED_MIR_LOWERING_VERSION.to_string(),
+                ),
                 ("mn-worker-exe-sha256".to_string(), exe_sha),
             ]
         },
@@ -1862,12 +1875,13 @@ fn run_incremental(
         "request_wall_ms": request_wall_ms,
         "toolchain": {
             "recipe": MN_RECIPE,
+            "mir-lowering": EXPECTED_MIR_LOWERING_VERSION,
             "mn-worker-exe-sha256": exe_sha,
         },
     });
     std::fs::write(
         artifact_dir.join("mn-probe-receipt.json"),
-        serde_json::to_string_pretty(&receipt).unwrap_or_default(),
+        serde_json::to_string_pretty(&receipt).unwrap_or_default()
     )
     .map_err(|e| format!("write receipt: {e}"))?;
 
@@ -1894,6 +1908,10 @@ fn run_incremental(
             counters: vec![],
             toolchain: vec![
                 ("recipe".to_string(), MN_RECIPE.to_string()),
+                (
+                    "mir-lowering".to_string(),
+                    EXPECTED_MIR_LOWERING_VERSION.to_string(),
+                ),
                 ("mn-worker-exe-sha256".to_string(), exe_sha),
             ],
             gaps: vec![],

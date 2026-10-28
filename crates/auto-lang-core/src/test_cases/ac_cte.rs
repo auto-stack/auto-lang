@@ -151,6 +151,10 @@ fn locate_worker() -> Result<PathBuf, String> {
     Ok(exe)
 }
 
+/// PLAN-868: admission mirror of `auto_mir_lower::MIR_LOWERING_VERSION` —
+/// the cte av driver lowers HIR→MIR through the shared crate.
+pub const EXPECTED_MIR_LOWERING_VERSION: &str = "1";
+
 pub fn current_toolchain_identity() -> std::collections::BTreeMap<String, String> {
     let mut m = std::collections::BTreeMap::new();
     if let Ok(sha) = worker_binary().and_then(|p| worker_file_sha256(&p)) {
@@ -162,6 +166,10 @@ pub fn current_toolchain_identity() -> std::collections::BTreeMap<String, String
     );
     m.insert("cte-protocol".to_string(), CTE_WORKER_PROTOCOL.to_string());
     m.insert("recipe".to_string(), CTE_RECIPE.to_string());
+    m.insert(
+        "mir-lowering".to_string(),
+        EXPECTED_MIR_LOWERING_VERSION.to_string(),
+    );
     m
 }
 
@@ -173,6 +181,11 @@ pub fn probe_toolchain_axes(exe_sha: &str) -> Vec<(String, String)> {
         (
             "cte-worker-version".into(),
             EXPECTED_CTE_WORKER_VERSION.into(),
+        ),
+        // PLAN-868: mandatory lowering-contract axis (see ac_av).
+        (
+            "mir-lowering".into(),
+            EXPECTED_MIR_LOWERING_VERSION.into(),
         ),
     ]
 }
