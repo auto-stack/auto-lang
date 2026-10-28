@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-008]
 affects: [auto-graphics, auto-ui, repository-boundaries]
 depends_on: [PLAN-875, PLAN-878]
-current_step: 9
+current_step: 10
 total_steps: 10
 ---
 
@@ -143,7 +143,7 @@ merge先重核源tip与两仓基面/owner，短暂停写：①保存两repo可�
 | T-07 | merge | T-06 pass | 冻结抽样/来源/受影响对照及复用审计，失败回work受影响复审 | AC-07 | [x] |
 | T-08 | merge | T-07 | 两仓停写，目标prepared→源迁出→权威切换，失败按合同恢复 | AC-08 | [x] |
 | T-09 | merge | T-08 | 主语言检出知识/ledger/索引、目标文档归属/维护入口、Plan归档收据 | AC-08 | [x] |
-| T-10 | merge | T-09 | 两仓各wt-guard clean后清树/分支/空组目录；必要本地产物/恢复refs保全 | AC-08 | [ ] |
+| T-10 | merge | T-09 | 两仓各wt-guard clean后清树/分支/空组目录；必要本地产物/恢复refs保全 | AC-08 | [x] |
 
 ## 9. 复审记录
 
@@ -177,3 +177,9 @@ work r1 证据摘要（命令/退出码/关键数字，原始输出在 plan-arti
 无新增产品决策；用户本轮只要求规划，实施等待后续明确work指令。work须确认实际owner/短暂停写安排并复核auto-ui新base；如发生他线冲突或必要快照无法逐字证明，具体阻塞回new，不覆盖/强推。SDK快照681源文件允许随源码版本保全（每文件<5MB，非复审证据）；若盘点发现超大新增件，先按仓库门处理。迁仓仍不解决M1标签映射，也不放行UI融合/ACE或跨端。
 
 work r1 后新增：§10 前两项已由 work 消解——owner 已核（两分支均无他线占用、目标 pin 零漂移），快照已逐字证明（681/681）。目标 base 与规划 pin 一致（154a3965），无差异需复核。无新增待澄清。
+
+2026-10-29 merge 收尾（T-10 cleaned）+ goal close：`stage: merge | plan_id: PLAN-879 | outcome: pass | completion_kind: delivered`。**cleaned**：三树 wt-guard 全 clean（无 reparse point）→ worktree lang-879/{auto-lang,auto-ui,auto-down} 移除；plan-879-dev（tip f07b5ec8 经 merge-base --is-ancestor 证明在 autographics-dev，主检出在 master 故 -D，同 875 先例）与 codex/plan-879-dev（tip 4adf2d03 在 master，-d 即删）删除；auto-down 兄弟残余 gitdir 指针经 worktree prune 清除（其余 lang-864/872/os-051 注册属他线未触）；组目录 lang-879 移除。plan-artifacts/plan-879 回收：consumer-B target 树 4.6G（CACHEDIR.TAG 确认）+164 个 .pdb 删除；12 个测量/证据相关 .exe 锚保留于 exe-anchors/（4 二进制 root+deps 形态 + 4 测试二进制）；保留 consumer-A/B 源码包、blob 清单、ledger 脚本与 v122 备份、review 记录；现总量 875M。**landing**：auto-ui master=4adf2d03（ff-only）、autographics-dev=f07b5ec8（ff-only）、本仓 master=77f9301c7（deposit）。**批回归**：不到期（last_covered=875 当日、879%5=4）。**landing-not-deployment**：experimental+docs only，无生产二进制/web bundle/daemon 触面，无 stale 项。最终 10/10（T-01..T-05 work、T-06 review 独立上下文 pass、T-07..T-08 merge 落地、T-09 规范/ledger v123/归档、T-10 guard 清理）。
+
+2026-10-29 goal round 2：`stage: goal | plan_id: PLAN-879 | plan_revision: r1 | round: 2 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-879/{auto-lang,auto-ui} | commit: 4adf2d03/f07b5ec8 | next: merge`。独立子代理最终 review pass 后路由 merge。
+
+2026-10-29 goal round 3：`stage: goal | plan_id: PLAN-879 | plan_revision: r1 | round: 3 | from: merge | to: done | status: archived | outcome: pass | worktree: 已清理 | commit: 交付=4adf2d03(auto-ui master)+f07b5ec8(autographics-dev)；deposit=77f9301c7+收尾提交(本仓master) | next: done`。交付链闭合：merge pass、Specs/ledger v123/归档/清理全部实证；无 pending 门（批回归不到期；全量 AG 套件=里程碑档 pending 属既定裁定非本计划门）。
