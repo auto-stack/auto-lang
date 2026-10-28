@@ -1403,18 +1403,26 @@ fn decode_options(
                     for (i, item) in list.iter().enumerate() {
                         let ipath = format!("{}.steps[{}]", f.path, i);
                         let pairs = as_obj(item, &ipath)?;
-                        let sf = Fields::new(&ipath, pairs, &["op", "from", "to"])?;
+                        let sf = Fields::new(&ipath, pairs, &["op", "from", "to", "slices"])?;
                         let op = req_str(&sf, "op")?;
                         // PLAN-798: `run` joins the known op vocabulary
                         // (ac-av's only op); recipes never borrow each other's
                         // ops, and genuinely unknown ops keep the original
                         // unknown-op error.
-                        let known_op =
-                            matches!(op.as_str(), "query" | "edit-source" | "restart" | "run");
+                        let known_op = matches!(
+                            op.as_str(),
+                            "query"
+                                | "edit-source"
+                                | "restart"
+                                | "run"
+                                | "resident-slice"
+                                | "resident-apply"
+                                | "resident-finish"
+                        );
                         if !known_op {
                             return Err(err(
                             &sf.path_of("op"),
-                            format!("unknown probe op {:?} (supported: query, edit-source, restart, run)", op),
+                            format!("unknown probe op {:?} (supported: query, edit-source, restart, run, resident-slice, resident-apply, resident-finish)", op),
                         ));
                         }
                         let allowed = match recipe.as_str() {
@@ -1451,6 +1459,16 @@ fn decode_options(
                             "ac-av/dynamic-run-v1" => {
                                 matches!(op.as_str(), "run" | "edit-source")
                             }
+                            // PLAN-866: the resident-online recipe — slice /
+                            // apply-at-safety-point / finish plus the shared
+                            // discriminating edit vocabulary.
+                            "ac-av/resident-run-v1" => matches!(
+                                op.as_str(),
+                                "edit-source"
+                                    | "resident-slice"
+                                    | "resident-apply"
+                                    | "resident-finish"
+                            ),
                             // PLAN-818 T-06: runs + discriminating edits +
                             // restart session boundaries (`query` stays a
                             // sema/abi op — recipes never borrow ops).
@@ -1471,6 +1489,21 @@ fn decode_options(
                         let step = match op.as_str() {
                             "query" => ProbeStep::Query,
                             "run" => ProbeStep::Run,
+                            "resident-apply" => ProbeStep::ResidentApply,
+                            "resident-finish" => ProbeStep::ResidentFinish,
+                            "resident-slice" => {
+                                let raw = req_str(&sf, "slices")?;
+                                let slices = match raw.parse::<u32>() {
+                                    Ok(n) if (1..=65_536).contains(&n) => n,
+                                    _ => {
+                                        return Err(err(
+                                            &sf.path_of("slices"),
+                                            "resident-slice needs an integer 1..=65536",
+                                        ))
+                                    }
+                                };
+                                ProbeStep::ResidentSlice { slices }
+                            }
                             "edit-source" => {
                                 let from = req_str(&sf, "from")?;
                                 let to = req_str(&sf, "to")?;
@@ -1529,6 +1562,17 @@ fn decode_options(
                         if out.is_empty() {
                             return Err(err(&f.path_of("steps"), "steps must not be empty"));
                         }
+                    }
+                    // PLAN-866: the resident recipe's judged step is the
+                    // resident-finish (the chain's terminal outcome), never
+                    // a bare run.
+                    if recipe == "ac-av/resident-run-v1"
+                        && !matches!(out.last(), Some(ProbeStep::ResidentFinish))
+                    {
+                        return Err(err(
+                            &f.path_of("steps"),
+                            "ac-av/resident-run-v1 step sequences must end with a resident-finish step (the judged step)",
+                        ));
                     }
                     if recipe == "cte/scalar-query-v1"
                         && !matches!(out.last(), Some(ProbeStep::Query))
@@ -1642,6 +1686,9 @@ fn decode_options(
                         || recipe == "ac-av/closures-run-v1"
                         || recipe == "ac-av/dynamic-run-v1"
                         || recipe == "ac-av/compact-run-v1"
+                        // PLAN-866: the resident recipe requires the av
+                        // binding (entry) like its siblings.
+                        || recipe == "ac-av/resident-run-v1"
                     {
                         return Err(err(
                             &f.path_of("av"),
@@ -1660,6 +1707,9 @@ fn decode_options(
                         && recipe != "ac-av/closures-run-v1"
                         && recipe != "ac-av/dynamic-run-v1"
                         && recipe != "ac-av/compact-run-v1"
+                        // PLAN-866: the resident recipe takes the same av
+                        // binding shape as its siblings.
+                        && recipe != "ac-av/resident-run-v1"
                     {
                         return Err(err(
                             &f.path_of("av"),
@@ -1911,6 +1961,9 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     "ac-av/loaded-run-v1",
     // PLAN-823: the typed closures fixture uses the AV protocol.
     "ac-av/closures-run-v1",
+    // PLAN-866: the resident-online recipe — one continuously-running
+    // chain, edits at call-boundary safety points. Same seam contract.
+    "ac-av/resident-run-v1",
     // PLAN-824: the av.dynamic/1 dynamic recipe, same seam contract.
     "ac-av/dynamic-run-v1",
     // PLAN-826: the compact AVAC wire recipe (scalar profile over the new
@@ -1942,6 +1995,20 @@ pub enum ProbeStep {
     /// AV pipeline once and report the observed outcome (value / trap /
     /// diagnostic + counters) for parent-side judging.
     Run,
+    /// PLAN-866 ac-av/resident-run-v1: advance the resident chain by
+    /// `slices` fuel slices (each a fixed 64-step segment) — the chain is
+    /// NEVER restarted by slicing; report the cumulative ledger.
+    ResidentSlice {
+        slices: u32,
+    },
+    /// PLAN-866 ac-av/resident-run-v1: apply every queued edit candidate
+    /// at its call-boundary safety point (prepare → armed park → commit →
+    /// swap-resolution resume); report the install/refusal faces.
+    ResidentApply,
+    /// PLAN-866 ac-av/resident-run-v1: drive the resident chain to
+    /// completion and report the terminal outcome for parent-side
+    /// judging (the judged step of the recipe).
+    ResidentFinish,
 }
 
 /// ac-av/core-run-v1 binding (PLAN-798 T-07): the AV entry function and

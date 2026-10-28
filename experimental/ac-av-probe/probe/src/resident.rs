@@ -577,6 +577,11 @@ impl ResidentRunner {
         self.chain_entries
     }
 
+    /// The terminal guest outcome, once the chain finished.
+    pub fn outcome(&self) -> Option<&ExecOutcome> {
+        self.outcome.as_ref()
+    }
+
     /// Total wall time spent inside execution segments.
     pub fn wall_total(&self) -> Duration {
         self.wall_total

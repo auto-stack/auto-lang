@@ -84,6 +84,13 @@ pub const EXPECTED_AV_DYNAMIC_CORE_VERSION: &str = "av.dynamic/1";
 /// against the compact-codec counters, never the worker's word.
 pub const AV_COMPACT_RECIPE: &str = "ac-av/compact-run-v1";
 
+/// PLAN-866: the resident-online recipe (`av.core-i32/1` scalar profile) —
+/// ONE continuously-running guest chain driven by fuel slices, edits
+/// applied exactly at guest call-boundary safety points (prepare → armed
+/// park → commit → swap-resolution resume). Append-only registration;
+/// earlier recipe contracts untouched. Judged parent-side against the
+/// finish step's outcome plus the structural resident counters.
+pub const AV_RESIDENT_RECIPE: &str = "ac-av/resident-run-v1";
 /// PLAN-862: the entry-unit execution profile the core recipe serves when a
 /// check selects `av: { profile: "entry-unit" }`. It is the SAME worker and
 /// the SAME recipe seam — a different SOURCE front door (`auto.source.
@@ -101,6 +108,9 @@ pub enum RecipeFamily {
     /// PLAN-864: real `.at` sources through the collections frontend onto
     /// the frozen 822 execution (entry = the source function name).
     CollectionsSource,
+    /// PLAN-866: the resident-online recipe — one continuously-running
+    /// chain, edits at call-boundary safety points.
+    Resident,
     Loaded,
     Closures,
     Dynamic,
@@ -115,6 +125,7 @@ impl RecipeFamily {
             RecipeFamily::Owned => AV_OWNED_RECIPE,
             RecipeFamily::Collections => AV_COLLECTIONS_RECIPE,
             RecipeFamily::CollectionsSource => AV_COLLECTIONS_SOURCE_RECIPE,
+            RecipeFamily::Resident => AV_RESIDENT_RECIPE,
             RecipeFamily::Loaded => AV_LOADED_RECIPE,
             RecipeFamily::Closures => AV_CLOSURES_RECIPE,
             RecipeFamily::Dynamic => AV_DYNAMIC_RECIPE,
@@ -128,6 +139,9 @@ impl RecipeFamily {
             RecipeFamily::Owned => EXPECTED_AV_OWNED_CORE_VERSION,
             RecipeFamily::Collections => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
             RecipeFamily::CollectionsSource => EXPECTED_AV_COLLECTIONS_CORE_VERSION,
+            // PLAN-866: the resident recipe rides the scalar profile
+            // identity (the 828 session pipeline).
+            RecipeFamily::Resident => EXPECTED_AV_CORE_VERSION,
             RecipeFamily::Closures => EXPECTED_AV_CLOSURES_CORE_VERSION,
             RecipeFamily::Dynamic => EXPECTED_AV_DYNAMIC_CORE_VERSION,
             // PLAN-826: the compact wire is a WIRE generation of the same
@@ -1053,6 +1067,31 @@ const DYNAMIC_CASES: &[(&str, &str, &[usize], &[u64])] = &[
     ("take-probe", r#"{"bits":"7","kind":"i32"}"#, &[3], &[0]),
 ];
 
+/// PLAN-866: the resident-online recipe check — one continuously-running
+/// guest chain (fuel slices, never restarted), queued edits applied at
+/// call-boundary safety points; the judge binds the finish step's outcome
+/// to the case oracle AND asserts the structural resident faces from the
+/// reported counters (chain entries == 1; installed swaps; boundary
+/// steps; zero production work for unchanged functions).
+pub fn run_resident_check(
+    case: &ResolvedCase,
+    check: &CheckSpec,
+    oracle: &ResolvedOracle,
+    project_dir: &Path,
+    artifact_dir: &Path,
+    run_dir: &Path,
+) -> Result<Verdict, String> {
+    run_check_impl(
+        case,
+        check,
+        oracle,
+        project_dir,
+        artifact_dir,
+        run_dir,
+        RecipeFamily::Resident,
+    )
+}
+
 /// PLAN-864: the collections SOURCE recipe check — same request/judge
 /// shape as the other av families; the entry is the source function name
 /// and the worker compiles the real source through the collections
@@ -1184,10 +1223,22 @@ fn run_check_impl(
         family.expected_core_version()
     };
     // F798-R3-07 shape: leading edit-source allowed (measured window);
-    // the judged last step must be a run.
-    if !matches!(steps.last(), Some(auto_test_case::contract::ProbeStep::Run)) {
+    // the judged last step must be a run. PLAN-866: the resident recipe
+    // judges the resident-finish step instead.
+    let wants_run_tail = family != RecipeFamily::Resident;
+    let tail_ok = match steps.last() {
+        Some(auto_test_case::contract::ProbeStep::Run) => wants_run_tail,
+        Some(auto_test_case::contract::ProbeStep::ResidentFinish) => !wants_run_tail,
+        _ => false,
+    };
+    if !tail_ok {
         return Err(format!(
-            "{recipe} step sequences must end with a run step (contract violation)"
+            "{recipe} step sequences must end with a {} step (contract violation)",
+            if wants_run_tail {
+                "run"
+            } else {
+                "resident-finish"
+            }
         ));
     }
     let input_bytes = case
@@ -1218,6 +1269,15 @@ fn run_check_impl(
             }
             auto_test_case::contract::ProbeStep::EditSource { from, to } => {
                 serde_json::json!({ "op": "edit-source", "from": from, "to": to })
+            }
+            auto_test_case::contract::ProbeStep::ResidentSlice { slices } => {
+                serde_json::json!({ "op": "resident-slice", "slices": slices })
+            }
+            auto_test_case::contract::ProbeStep::ResidentApply => {
+                serde_json::json!({ "op": "resident-apply" })
+            }
+            auto_test_case::contract::ProbeStep::ResidentFinish => {
+                serde_json::json!({ "op": "resident-finish" })
             }
             _ => serde_json::json!({ "op": "run" }),
         })
@@ -1448,7 +1508,15 @@ fn run_check_impl(
             ));
             break 'admit;
         }
-        let last_run = ok.steps.iter().rev().find(|s| s.op == "run").cloned();
+        let last_run = if family == RecipeFamily::Resident {
+            ok.steps
+                .iter()
+                .rev()
+                .find(|s| s.op == "resident-finish")
+                .cloned()
+        } else {
+            ok.steps.iter().rev().find(|s| s.op == "run").cloned()
+        };
         match last_run {
             Some(s) => step_out = Some(s),
             _ => {
@@ -1473,6 +1541,27 @@ fn run_check_impl(
         for (i, (want, got)) in steps.iter().zip(ok.steps.iter()).enumerate() {
             let want_op = match want {
                 auto_test_case::contract::ProbeStep::Run => "run",
+                auto_test_case::contract::ProbeStep::ResidentSlice { .. } => {
+                    if got.outcome != "sliced" {
+                        infra_detail = Some(format!(
+                            "step {i}: resident-slice outcome `{}` is not `sliced`",
+                            got.outcome
+                        ));
+                        break 'admit;
+                    }
+                    "resident-slice"
+                }
+                auto_test_case::contract::ProbeStep::ResidentApply => {
+                    if got.outcome != "applied" {
+                        infra_detail = Some(format!(
+                            "step {i}: resident-apply outcome `{}` is not `applied`",
+                            got.outcome
+                        ));
+                        break 'admit;
+                    }
+                    "resident-apply"
+                }
+                auto_test_case::contract::ProbeStep::ResidentFinish => "resident-finish",
                 auto_test_case::contract::ProbeStep::EditSource { from, to } => {
                     let hits = current_source.matches(from.as_str()).count();
                     if hits != 1 {
@@ -1503,7 +1592,7 @@ fn run_check_impl(
                 ));
                 break 'admit;
             }
-            if want_op == "run" {
+            if want_op == "run" || want_op == "resident-finish" {
                 // A typed/owned fixture run's revision identity is the
                 // FIXTURE ENTRY (the frozen input that actually ran); a
                 // source run binds the current source revision
@@ -1631,6 +1720,9 @@ fn run_check_impl(
         }
         if family == RecipeFamily::Compact {
             judge_compact_runtime(&step, &mut mismatches);
+        }
+        if family == RecipeFamily::Resident {
+            judge_resident_faces(&step, &mut mismatches);
         }
     }
 
@@ -2400,6 +2492,54 @@ fn judge_compact_runtime(step: &StepOut, mismatches: &mut Vec<Mismatch>) {
             kind: "reference_pc_lookups".into(),
             expected: "0".into(),
             actual: observed("reference_pc_lookups").to_string(),
+            first_diff: None,
+        });
+    }
+}
+
+/// PLAN-866: the resident structural faces — judged from the worker's
+/// reported counters against the frozen contract, independent of the
+/// value oracle: the chain was NEVER restarted (exactly one chain entry),
+/// no whole-module recompute ran, and zero production stages moved for
+/// unchanged functions. A restart/pause-only implementation cannot
+/// satisfy these together with the value oracle.
+fn judge_resident_faces(step: &StepOut, mismatches: &mut Vec<Mismatch>) {
+    let chain_entries = step.counters.get("resident:chain_entries").copied();
+    match chain_entries {
+        Some(1) => {}
+        other => mismatches.push(Mismatch {
+            observation: "counters".into(),
+            kind: "resident-chain-entries".into(),
+            expected: "1 (the resident chain is never restarted)".into(),
+            actual: format!("{other:?}"),
+            first_diff: None,
+        }),
+    }
+    let unaffected = step
+        .counters
+        .get("resident:unaffected_stages")
+        .copied()
+        .unwrap_or(u64::MAX);
+    if unaffected != 0 {
+        mismatches.push(Mismatch {
+            observation: "counters".into(),
+            kind: "resident-unaffected-stages".into(),
+            expected: "0 (unchanged functions do zero production work)".into(),
+            actual: unaffected.to_string(),
+            first_diff: None,
+        });
+    }
+    let whole = step
+        .counters
+        .get("resident:whole_module_stages")
+        .copied()
+        .unwrap_or(u64::MAX);
+    if whole != 0 {
+        mismatches.push(Mismatch {
+            observation: "counters".into(),
+            kind: "resident-whole-module".into(),
+            expected: "0 (no whole-module recompute on the online path)".into(),
+            actual: whole.to_string(),
             first_diff: None,
         });
     }

@@ -45,6 +45,8 @@ mod av_dynamic_824_tests;
 #[cfg(feature = "test-cases")]
 mod av_owned_821_tests;
 #[cfg(feature = "test-cases")]
+mod av_resident_866_tests;
+#[cfg(feature = "test-cases")]
 mod av_runtime_825_tests;
 #[cfg(feature = "test-cases")]
 mod av_source_827_tests;

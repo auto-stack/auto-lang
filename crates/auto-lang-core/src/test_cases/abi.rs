@@ -856,6 +856,14 @@ pub fn run_check(
         let step_json = match st {
             ProbeStep::Query => serde_json::json!({"op": "query"}),
             ProbeStep::Run => return Err("abi/interop-v1 does not accept run steps".into()),
+            // PLAN-866: the resident ops belong to ac-av/resident-run-v1
+            // only (recipe-specific vocabulary; decode rejects them for
+            // every other recipe — this arm keeps the match exhaustive).
+            ProbeStep::ResidentSlice { .. }
+            | ProbeStep::ResidentApply
+            | ProbeStep::ResidentFinish => {
+                return Err("abi/interop-v1 does not accept resident steps".into())
+            }
             // SAFETY: edit-source continues above; restart is the only
             // other valid ABI step kind (AV run was rejected above)
             ProbeStep::EditSource { .. } => unreachable!("edit-source handled above"),
@@ -864,6 +872,11 @@ pub fn run_check(
         let step_tag = match st {
             ProbeStep::Query => "query",
             ProbeStep::Run => return Err("abi/interop-v1 does not accept run steps".into()),
+            ProbeStep::ResidentSlice { .. }
+            | ProbeStep::ResidentApply
+            | ProbeStep::ResidentFinish => {
+                return Err("abi/interop-v1 does not accept resident steps".into())
+            }
             ProbeStep::EditSource { .. } => unreachable!("edit-source handled above"),
             ProbeStep::Restart => "restart",
         };

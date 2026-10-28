@@ -840,6 +840,20 @@ fn dispatch_check(
                 run_dir,
             )
         }
+        // PLAN-866: the resident-online av recipe (append-only
+        // registration; prior recipe contracts untouched).
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref() == Some(ac_av::AV_RESIDENT_RECIPE) =>
+        {
+            ac_av::run_resident_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
         // PLAN-824: the dynamic-profile av recipe (append-only
         // registration; prior recipe contracts untouched; avworker/1
         // envelope domain — the recipe id itself discriminates).

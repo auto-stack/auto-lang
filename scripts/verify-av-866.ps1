@@ -9,12 +9,12 @@
 #              resume, effective-iteration oracle (V-02), in-flight old
 #              frames (V-03), stale/foreign refusals (V-04), bounded
 #              recycle churn + zero-rework + P90 visibility (V-05/V-06).
-#   compat     the affected-profile compatibility pass (V-07) over the
-#              post-864 merged base: H corpus rows registered and the
-#              legacy segment/resume families re-run. Not wired yet.
-#   acceptance the V-07 accounting (first file-backed case, cache
-#              fresh/hit/restart/body-edit, turnover/memory budget
-#              evidence). Not wired yet; merge-owned.
+#   compat     the affected-profile compatibility pass (V-07): the legacy
+#              segment/resume/contract families + core, then the ace-m1
+#              baseline denominator beside the new H rows.
+#   acceptance the H-corpus file-backed first case (H01-H03 through a real
+#              worker process, parent-side judgement) plus the wrong-oracle
+#              discrimination control. Merge owns the frozen-commit rerun.
 #
 # Exit codes: 0 = scope satisfied; 1 = verification failure; 2 = usage /
 # contract error; 3 = scope not wired yet.
@@ -83,9 +83,36 @@ switch ($Scope) {
         exit 0
     }
     'compat' {
-        NotWired("affected-profile compatibility (V-07) runs on the post-864 merged base with the H corpus rows registered")
+        # V-07 compatibility pass on the post-864 merged base: the legacy
+        # segment/resume/contract families + core, then the ace-m1 baseline
+        # (the existing denominator must stay green beside the new H rows).
+        Push-Location $probeDir
+        try {
+            cargo test -p auto-av-probe --test av_closures_823_incremental --test function_incremental_828_b2 --test function_incremental_828_contract --test av_entry_862
+            if ($LASTEXITCODE -ne 0) { Fail("legacy segment/resume/contract families exited $LASTEXITCODE") }
+            cargo test -p auto-av-core
+            if ($LASTEXITCODE -ne 0) { Fail("core exited $LASTEXITCODE") }
+        }
+        finally { Pop-Location }
+        Push-Location (Join-Path $RepoRoot 'crates/auto-lang/..')
+        try {
+            cargo test -p auto-lang --features test-cases --lib ace_m1 -- --test-threads=1
+            if ($LASTEXITCODE -ne 0) { Fail("ace-m1 baseline exited $LASTEXITCODE") }
+        }
+        finally { Pop-Location }
+        Write-Host "verify-av-866 [compat]: OK (legacy families + core + ace-m1 denominator green)" -ForegroundColor Green
+        exit 0
     }
     'acceptance' {
-        NotWired("V-05/V-06 accounting (Weak release, churn, old-gen cap, P90 reload visibility, zero rework) is finalized at the frozen review commit")
+        # The H-corpus file-backed first case (real worker process,
+        # parent-side judgement) + the discrimination control.
+        Push-Location (Join-Path $RepoRoot 'crates/auto-lang/..')
+        try {
+            cargo test -p auto-lang --features test-cases --lib av_resident_866
+            if ($LASTEXITCODE -ne 0) { Fail("resident-866 harness exited $LASTEXITCODE") }
+        }
+        finally { Pop-Location }
+        Write-Host "verify-av-866 [acceptance]: OK (H01-H03 file-backed corpus + wrong-oracle control green)" -ForegroundColor Green
+        exit 0
     }
 }

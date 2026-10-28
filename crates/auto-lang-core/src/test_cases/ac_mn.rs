@@ -869,6 +869,14 @@ pub fn run_check(
                     step_labels.push("restart".to_string());
                 }
                 auto_test_case::contract::ProbeStep::Run => step_labels.push("run".to_string()),
+                // PLAN-866: resident ops are ac-av/resident-run-v1 only.
+                auto_test_case::contract::ProbeStep::ResidentSlice { .. }
+                | auto_test_case::contract::ProbeStep::ResidentApply
+                | auto_test_case::contract::ProbeStep::ResidentFinish => {
+                    return Err(format!(
+                        "{MN_RECIPE} does not accept resident steps (decode contract violation)"
+                    ));
+                }
                 auto_test_case::contract::ProbeStep::Query => {
                     return Err(format!(
                         "{MN_RECIPE} does not take query steps (decode contract violation)"

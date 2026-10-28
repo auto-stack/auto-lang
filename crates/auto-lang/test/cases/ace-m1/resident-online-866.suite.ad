@@ -1,0 +1,9 @@
+# PLAN-866 resident ONLINE hot reload suite — one continuously-running
+# guest chain, edits installed at call-boundary safety points. Parent-side
+# judgement; the worker never sees an expectation.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-resident-866", include: [
+  "resident-online-866.case.ad",
+] }
+```

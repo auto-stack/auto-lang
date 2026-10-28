@@ -583,6 +583,8 @@ fn gc_loop(args: &[String]) -> ! {
 /// owned=av.owned/1 (PLAN-821).
 fn core_version_for(recipe: &str) -> &'static str {
     match recipe {
+        // PLAN-866: the resident recipe rides the scalar profile identity.
+        "ac-av/resident-run-v1" => "av.core-i32/1",
         "ac-av/data-run-v1" => auto_av_core::contract::AV_DATA_PROFILE,
         "ac-av/owned-run-v1" => auto_av_core::contract::AV_OWNED_PROFILE,
         "ac-av/collections-run-v1" => auto_av_core::contract::AV_COLLECTIONS_PROFILE,
@@ -651,6 +653,9 @@ fn case_serve() -> ! {
     // PLAN-864: the collections SOURCE recipe — real .at sources through
     // the collections frontend onto the frozen 822 execution.
     let collections_source_recipe = recipe == "ac-av/collections-source-run-v1";
+    // PLAN-866: the resident-online recipe — one continuously-running
+    // guest chain (fuel slices, edits at call-boundary safety points).
+    let resident_recipe = recipe == "ac-av/resident-run-v1";
     let loaded_recipe = recipe == "ac-av/loaded-run-v1";
     let closures_recipe = recipe == "ac-av/closures-run-v1";
     let closures_fixture_id = req["closures_fixture"].as_str().map(|s| s.to_string());
@@ -680,6 +685,7 @@ fn case_serve() -> ! {
         && !owned_recipe
         && !collections_recipe
         && !collections_source_recipe
+        && !resident_recipe
         && !loaded_recipe
         && !closures_recipe
         && !dynamic_recipe
@@ -693,9 +699,23 @@ fn case_serve() -> ! {
     // but must END with the judged run; edits apply to the materialized
     // source before any leading run executes.
     let steps_json = match req["steps"].as_array() {
-        Some(a) if !a.is_empty() && a[a.len() - 1]["op"].as_str() == Some("run") => a.clone(),
+        Some(a)
+            if !a.is_empty()
+                && (a[a.len() - 1]["op"].as_str() == Some("run")
+                    || (resident_recipe
+                        && a[a.len() - 1]["op"].as_str() == Some("resident-finish"))) =>
+        {
+            a.clone()
+        }
         _ => {
-            eprintln!("ac-av/core-run-v1 step sequences must end with a run step");
+            eprintln!(
+                "step sequences must end with a {} step",
+                if resident_recipe {
+                    "resident-finish"
+                } else {
+                    "run"
+                }
+            );
             exit(2);
         }
     };
@@ -773,7 +793,7 @@ fn case_serve() -> ! {
             exit(2);
         }
     };
-    let mut d = if data_recipe {
+    let mut d = if data_recipe || resident_recipe {
         None
     } else {
         let mut driver = auto_av_probe::driver::Driver::with_store(&store_dir, "autodown-case")
@@ -801,6 +821,32 @@ fn case_serve() -> ! {
     };
 
     let mut current_source = source;
+    // PLAN-866: the resident-online serving state — ONE chain (the 828
+    // session + the resident driver, frozen 64-step fuel slices), created
+    // lazily on the first resident step; the names of functions edited
+    // this session feed the structural zero-rework counter.
+    let mut resident: Option<auto_av_probe::resident::ResidentRunner> = None;
+    let mut resident_edited: Vec<String> = Vec::new();
+    let mut resident_apply_counters: std::collections::BTreeMap<String, u64> =
+        std::collections::BTreeMap::new();
+    fn resident_runner<'a>(
+        slot: &'a mut Option<auto_av_probe::resident::ResidentRunner>,
+        source: &str,
+        entry: &str,
+        caps: &[String],
+    ) -> Result<&'a mut auto_av_probe::resident::ResidentRunner, String> {
+        if slot.is_none() {
+            let session = auto_av_probe::session::warmup(source, entry, caps)?;
+            *slot = Some(auto_av_probe::resident::ResidentRunner::start(
+                session,
+                auto_av_probe::resident::ResidentConfig {
+                    slice_steps: 64,
+                    ..std::default::Default::default()
+                },
+            ));
+        }
+        Ok(slot.as_mut().expect("just ensured"))
+    }
     let mut step_outs: Vec<serde_json::Value> = Vec::new();
     for st in steps_json.iter() {
         let step_started = std::time::Instant::now();
@@ -808,6 +854,45 @@ fn case_serve() -> ! {
             Some("edit-source") => {
                 let from = st["from"].as_str().unwrap_or_default();
                 let to = st["to"].as_str().unwrap_or_default();
+                if resident_recipe {
+                    // PLAN-866: the edit is PREPARED AND QUEUED against the
+                    // live session (old-source byte coordinates of the
+                    // session's CURRENT source), never installed here —
+                    // installation happens at the next call-boundary safety
+                    // point via resident-apply.
+                    let r = match resident_runner(&mut resident, &current_source, &entry, &caps) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            eprintln!("resident warmup: {e}");
+                            exit(3);
+                        }
+                    };
+                    let session_src = r.session().src().to_string();
+                    let hits = session_src.matches(from).count();
+                    if hits != 1 {
+                        eprintln!("edit-source literal matched {hits} times in the session source");
+                        exit(2);
+                    }
+                    let pos = session_src.find(from).expect("unique match checked");
+                    match r.submit_edit(
+                        pos as u64,
+                        (pos + from.len()) as u64,
+                        to.as_bytes().to_vec(),
+                    ) {
+                        Ok(Ok(())) => {}
+                        Ok(Err(out)) => {
+                            eprintln!("resident prepare rejected: {:?}", out.non_fast_path_reason);
+                            exit(2);
+                        }
+                        Err(e) => {
+                            eprintln!("resident prepare: {e}");
+                            exit(2);
+                        }
+                    }
+                    if let Some(c) = r.pending().last() {
+                        resident_edited.push(c.changed_name().to_string());
+                    }
+                }
                 match replace_once(&current_source, from, to) {
                     Ok(next) => {
                         current_source = next;
@@ -824,6 +909,165 @@ fn case_serve() -> ! {
                         exit(2);
                     }
                 }
+            }
+            Some("resident-slice") => {
+                let slices = st["slices"].as_u64().unwrap_or(0);
+                if slices == 0 {
+                    eprintln!("resident-slice needs a positive `slices` count");
+                    exit(2);
+                }
+                let r = match resident_runner(&mut resident, &current_source, &entry, &caps) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("resident warmup: {e}");
+                        exit(3);
+                    }
+                };
+                for _ in 0..slices {
+                    r.slice();
+                }
+                let mut counters = std::collections::BTreeMap::new();
+                counters.insert(
+                    "resident:slices".to_string(),
+                    r.counters().get("resident:slices").copied().unwrap_or(0),
+                );
+                counters.insert("resident:guest_steps".to_string(), r.total_steps());
+                counters.insert("resident:chain_entries".to_string(), r.chain_entries());
+                step_outs.push(serde_json::json!({
+                    "op": "resident-slice",
+                    "outcome": "sliced",
+                    "value": null,
+                    "trap": null,
+                    "diag": null,
+                    "counters": counters,
+                    "source_hash": String::new(),
+                    "wall_ms": step_started.elapsed().as_secs_f64() * 1000.0,
+                }));
+            }
+            Some("resident-apply") => {
+                let r = match resident_runner(&mut resident, &current_source, &entry, &caps) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("resident warmup: {e}");
+                        exit(3);
+                    }
+                };
+                let queued = r.pending().len();
+                let mut installed = 0u64;
+                let mut refused = 0u64;
+                let mut boundary_steps = 0u64;
+                let mut visibility_us = 0u64;
+                for _ in 0..queued {
+                    let sp = r.apply_pending_at_safety_point();
+                    if sp.edit.ok {
+                        installed += 1;
+                        if let Some(b) = sp.steps_at_boundary {
+                            boundary_steps = b;
+                        }
+                        if let Some(v) = sp.visibility {
+                            visibility_us = visibility_us.max(v.as_micros() as u64);
+                        }
+                    } else {
+                        refused += 1;
+                    }
+                    if r.state() != auto_av_probe::resident::ResidentState::Running {
+                        break;
+                    }
+                }
+                let mut counters = std::collections::BTreeMap::new();
+                counters.insert("resident:installed".to_string(), installed);
+                counters.insert("resident:refused".to_string(), refused);
+                counters.insert("resident:boundary_steps".to_string(), boundary_steps);
+                counters.insert("resident:visibility_us".to_string(), visibility_us);
+                counters.insert(
+                    "resident:swaps".to_string(),
+                    r.live_old_generations() as u64 + installed,
+                );
+                counters.insert("resident:chain_entries".to_string(), r.chain_entries());
+                resident_apply_counters = counters.clone();
+                step_outs.push(serde_json::json!({
+                    "op": "resident-apply",
+                    "outcome": "applied",
+                    "value": null,
+                    "trap": null,
+                    "diag": null,
+                    "counters": counters,
+                    "source_hash": String::new(),
+                    "wall_ms": step_started.elapsed().as_secs_f64() * 1000.0,
+                }));
+            }
+            Some("resident-finish") => {
+                let r = match resident_runner(&mut resident, &current_source, &entry, &caps) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("resident warmup: {e}");
+                        exit(3);
+                    }
+                };
+                let mut guard = 0u64;
+                while r.state() == auto_av_probe::resident::ResidentState::Running {
+                    r.slice();
+                    guard += 1;
+                    if guard > 2_000_000 {
+                        eprintln!("resident-finish exceeded the slice guard");
+                        exit(3);
+                    }
+                }
+                let (outcome, value, trap) = match r.outcome() {
+                    Some(auto_av_core::contract::ExecOutcome::Success { value, .. }) => match value
+                    {
+                        auto_av_core::contract::Value::I32(v) => ("success", Some(*v), None),
+                        _ => {
+                            eprintln!("resident chain returned a non-i32 value");
+                            exit(3);
+                        }
+                    },
+                    Some(auto_av_core::contract::ExecOutcome::Trap { kind, .. }) => {
+                        ("trap", None, Some(format!("{kind:?}")))
+                    }
+                    Some(other) => {
+                        eprintln!("resident chain ended in {other:?}");
+                        exit(3);
+                    }
+                    None => {
+                        eprintln!("resident chain finished without an outcome");
+                        exit(3);
+                    }
+                };
+                // Structural faces judged parent-side: the no-restart
+                // ledger and the zero-rework proof (unchanged functions'
+                // production stages + whole-module zeros).
+                let mut counters = std::collections::BTreeMap::new();
+                counters.insert("resident:chain_entries".to_string(), r.chain_entries());
+                counters.insert("resident:guest_steps".to_string(), r.total_steps());
+                counters.insert("resident:slices".to_string(), r.slice_count());
+                for (k, v) in &resident_apply_counters {
+                    counters.insert(k.clone(), *v);
+                }
+                let unaffected: u64 = r
+                    .session()
+                    .function_names()
+                    .iter()
+                    .filter(|f| !resident_edited.contains(f))
+                    .map(|f| r.session().counters().stages_of(f).values().sum::<u64>())
+                    .sum();
+                counters.insert("resident:unaffected_stages".to_string(), unaffected);
+                let whole: u64 = r.session().counters().whole_module().values().sum();
+                counters.insert("resident:whole_module_stages".to_string(), whole);
+                let source_hash = format!(
+                    "{:016x}",
+                    auto_av_core::contract::fnv1a64(current_source.as_bytes())
+                );
+                step_outs.push(serde_json::json!({
+                    "op": "resident-finish",
+                    "outcome": outcome,
+                    "value": value,
+                    "trap": trap,
+                    "diag": null,
+                    "counters": counters,
+                    "source_hash": source_hash,
+                    "wall_ms": step_started.elapsed().as_secs_f64() * 1000.0,
+                }));
             }
             Some("run") => {
                 // PLAN-822 T-02: the collections-profile pipeline. A frozen

@@ -1,0 +1,81 @@
+# PLAN-866 resident ONLINE hot reload — one continuously-running guest
+# chain through `ac-av/resident-run-v1` (fuel slices, never restarted;
+# queued edits install exactly at guest call-boundary safety points).
+#
+# Every expectation is an INDEPENDENT hand-computed oracle over the exact
+# old/new round split the safety points induce (300 rounds total):
+#
+#   R01  continuity (no edit): 300 rounds x helper()=7      -> 2100
+#   R02  ONE online swap: arm after 640 fuel steps (10 x 64),
+#        helper 7 -> 9 at the next call boundary; the deterministic
+#        split is 46 old rounds x 7 + 254 new rounds x 9
+#        = 322 + 2286                                           -> 2608
+#   R03  TWO online swaps (churn): as R02, then 320 more fuel
+#        steps, helper 9 -> 11 at the next boundary; the audited
+#        split is 46 x 7 + 23 x 9 + 231 x 11
+#        = 322 + 207 + 2541                                     -> 3070
+#
+# The structural faces (chain_entries == 1, unaffected stages == 0,
+# whole-module == 0) are judged parent-side from the reported counters; a
+# restart/pause-only/label-only implementation cannot satisfy them
+# together with the value oracles.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.res-r01-av866"
+  tags: ["ace-m1", "resident", "value"]
+  links: ["PLAN-866"]
+  source: { file: "src/RES866A.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-res-r01-continuity", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resident-run-v1", av: { entry: "d_main" },
+                 steps: [{ op: "resident-slice", slices: "5" }, { op: "resident-finish" }] },
+      expect: { completion: "success", exit: 2100 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.res-r02-av866"
+  tags: ["ace-m1", "resident", "online"]
+  links: ["PLAN-866"]
+  source: { file: "src/RES866A.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-res-r02-online-swap", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resident-run-v1", av: { entry: "d_main" },
+                 steps: [{ op: "resident-slice", slices: "10" },
+                         { op: "edit-source", from: "return 7", to: "return 9" },
+                         { op: "resident-apply" },
+                         { op: "resident-finish" }] },
+      expect: { completion: "success", exit: 2608 } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.res-r03-av866"
+  tags: ["ace-m1", "resident", "online", "churn"]
+  links: ["PLAN-866"]
+  source: { file: "src/RES866A.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av-res-r03-churn-two-swaps", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/resident-run-v1", av: { entry: "d_main" },
+                 steps: [{ op: "resident-slice", slices: "10" },
+                         { op: "edit-source", from: "return 7", to: "return 9" },
+                         { op: "resident-apply" },
+                         { op: "resident-slice", slices: "5" },
+                         { op: "edit-source", from: "return 9", to: "return 11" },
+                         { op: "resident-apply" },
+                         { op: "resident-finish" }] },
+      expect: { completion: "success", exit: 3070 } }
+  ]
+}
+```

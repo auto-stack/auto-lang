@@ -912,6 +912,15 @@ pub fn run_check(
                 // Decode restricts `run` to the ac-av recipe; the sema
                 // adapter never receives it (defensive explicit arm).
                 ProbeStep::Run => serde_json::json!({"op": "run"}),
+                // PLAN-866: resident ops are ac-av/resident-run-v1 only
+                // (defensive explicit arm; decode rejects them earlier —
+                // a resident op can never legitimately reach the sema
+                // worker, which refuses the unknown op).
+                ProbeStep::ResidentSlice { .. }
+                | ProbeStep::ResidentApply
+                | ProbeStep::ResidentFinish => {
+                    serde_json::json!({"op": "resident-step-forbidden"})
+                }
             })
             .collect();
         let nonce = hex(&sha256(

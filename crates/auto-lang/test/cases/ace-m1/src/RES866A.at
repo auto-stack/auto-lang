@@ -1,0 +1,10 @@
+fn helper() int { return 7 }
+fn main() int {
+    var i = 0
+    var total = 0
+    for i < 300 {
+        total = total + helper()
+        i = i + 1
+    }
+    return total
+}
