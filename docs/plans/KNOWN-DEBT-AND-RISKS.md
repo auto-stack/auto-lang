@@ -3734,3 +3734,8 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 - Disposition needed (deliberate act, owning plans): either restore 3 test selections or lower the
   floor 3205→3202 with the reason recorded in the owning plan, then re-run
   `python scripts/run-full-regression.py tf --batch` for a fully-green batch receipt.
+
+## PLAN-866（2026-10-29 review pass 时登记，非阻塞）
+
+- **866-N1 (LOW)**：worker `resident-apply` 多候选循环遇 deferred 候选时重复消费队首同一候选至本步迭代耗尽（deferred 回插队首、链未推进恒 defer），后面的可安装候选顺延至下一次 apply 步。无正确性影响（不 commit/不 swap/候选不丢/理由可观察），H 语料不触发。改进方向：deferred 时 break 或 rotate 队列。
+- **866-N2 (LOW)**：resident 延迟守卫的名字比较耦合 `d_` def-id 前缀构造约定（`FunctionCode::name` def-id 域 → `strip_prefix("d_")` → 源名域），该构造规则无独立单测锁定；fail-open 方向已有祖先帧负控兜底（退化即红）。
