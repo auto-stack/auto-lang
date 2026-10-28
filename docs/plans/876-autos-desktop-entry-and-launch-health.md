@@ -5,9 +5,9 @@ feature_name: autos-desktop-entry-and-launch-health（桌面入口迁 auto-os + 
 author: [DeepSeek Harness session]
 created_at: 2026-10-28
 updated_at: 2026-10-28
-plan_revision: 1
-current_step: 8
-total_steps: 10
+plan_revision: 2
+current_step: 9
+total_steps: 11
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -199,6 +199,7 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 | SD-03 | modify | `docs/specs/auto-ui-compiler/project.md` | 改：`desktop_exe` "声明即信" → "声明即意图；运行时是否降级由宿主语义决定"（不收回扫描/注册行为） | 保留注册表职责，避免把运行时策略塞回 compiler | AC-06 |
 | SD-04 | modify | `docs/specs/repository-boundaries/project.md` | 改：三仓边界表补"桌面入口 = auto-os"一行与迁移实况指针 | 拆分后边界清单必须反映入口归属 | AC-01/AC-09 |
 | SD-05 | retire | `docs/specs/auto-lang/project.md`（若含 `examples/ui_desktop` 入口描述） | 删：语言仓桌面入口条目，留指针到 SD-01 | 旧入口退役后不得残留"仍可用"的描述 | AC-08 |
+| SD-06 | add | `docs/specs/repository-boundaries/project.md`（计划/债归属节） | 新：自 PLAN-876 起 auto-os 域的计划与债在 auto-os 仓登记（独立 `.next-id`），auto-lang 只留指针；跨仓正文放主改面仓 | 拆分后最后一处治理面（簿记归属）必须成文，否则后续计划仍回流语言仓 | AC-12 |
 
 无 Spec 影响的说明：本计划不改渲染/投影/MCP 协议语义，故不新增协议层条目。
 
@@ -242,6 +243,7 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 | AC-09 | `shell.desktop.icons` 中无落点 id = 0（或每个都有 manifest 落点），桌面不再出 "app not found" 通知 | work |
 | AC-10 | 本会话 5 类观察项各有归位：①入口 F-1..F-5（本计划）；②缺产物 F-6/F-7（本计划）；③空壳 apps F-9（健康面 + 文档）；④auto-term F-11（KNOWN-DEBT 指针更新）；⑤use-diag F-12（转派条目）。复审可逐条对账 | review |
 | AC-11 | 清理与归档：worktree 组按 wt-guard clean 后移除；spec delta 落地并 `python scripts/spec-index.py` 通过 | merge |
+| AC-12 | 计划/债归属成文：auto-os 域计划在 auto-os `docs/plans/` 取号（`.next-id` 052 起）与归档，auto-lang 只留指针；auto-os `AGENTS.md` §1 有生效规则、`docs/plans/autos-desktop-program.md` 有 PLAN-876 指针行、边界 spec 有归属节 | work |
 
 ## 8. 执行步骤
 
@@ -257,6 +259,7 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 | T-08 | work | T-04 | `auto-os/apps.manifest` 与桌面 storage：处置 `031-image-viewer`/`041-auto-edit`（清理或补落点，按 Q-5） | AC-09 | V-06 |
 | T-09 | review | T-01..T-08 | 独立复审：AC 逐条对代码/日志；遗漏与延后扫描；spec delta 终稿 | 复审记录 | AC-10 |
 | T-10 | merge | T-09 | 三仓合并、spec 落地、债表更新（P723-D1 指针、use-diag 转派）、worktree 清理归档 | 归档与收据 | AC-11 |
+| T-11 | work | — | auto-os `AGENTS.md` §1 生效规则 + `docs/plans/autos-desktop-program.md` 指针行 + auto-lang 边界 spec 归属节（SD-06） | 治理规则成文 | AC-12 |
 
 ### 执行证据（2026-10-28 work 轮；worktree 组 `.wt/lang-876/`）
 
@@ -272,6 +275,8 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 | T-08 | [x] | storage 备份 `.bak-p876-20261028-155847` 后清理 `031-image-viewer`/`041-auto-edit`；重启自检 `orphan_icons=0`，桌面无 "app not found"（截图 `autoui-screenshot-1793174401270.png`） |
 | SD-01..04 | [x] | 新增 `docs/specs/repository-boundaries/autos-desktop-entry.md`；`auto-ui-runtime`、`auto-ui-compiler`、`repository-boundaries` 三页追加 PLAN-876 节 |
 | SD-05 | [x] | `docs/specs/auto-lang/project.md` 检索 `ui_desktop|examples/` = 0 命中 → **无可退役描述**（no-op），非延后 |
+| T-11 | [x] | auto-os `AGENTS.md` §1 生效规则 + `docs/plans/autos-desktop-program.md` 指针行（`desktop-entry-ownership（auto-lang PLAN-876）`）+ auto-lang 边界 spec「计划与债的登记归属」节；提交 `b71cf9c` / `5c3b21f9a` |
+| SD-06 | [x] | 同 T-11 的边界 spec 节（auto-os 域计划/债在 auto-os 登记，auto-lang 只留指针） |
 
 提交（三仓同分支 `plan-876-dev`）：auto-os `f8860f2`、auto-ui `fa06499`、auto-lang `4628b3a5e` + spec `92db63f53`。
 基线：auto-lang `df54eb583`、auto-ui `7095f53`、auto-os `d585fae`。
@@ -280,9 +285,26 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 
 ## 9. 复审记录
 
+### 2026-10-28 revision 2（用户裁定：计划/债归属随拆分一同归位）
+
+- 触发：用户 2026-10-28「876 完成之后，auto-os（包括桌面）相关的计划就要在 auto-os
+  里独立管理，而不是在 auto-lang 里」。
+- 合同变更：新增 **AC-12**（归属成文）与 **SD-06**（边界 spec 归属节）、任务 **T-11**；
+  `plan_revision: 1 → 2`；其余目标/验收不变，T-01..T-08 已完成项沿用原证据。
+- 实施（work 同轮补齐）：auto-os `AGENTS.md` §1 写入生效规则（本仓域计划与债在本仓
+  `docs/plans/` 取号/归档，auto-lang 只留指针；跨仓正文放主改面仓）；auto-os
+  `docs/plans/autos-desktop-program.md` 增 PLAN-876 指针行（并注明其为最后一份
+  "入口迁移"形态的跨仓正文）；auto-lang `docs/specs/repository-boundaries/project.md`
+  增「计划与债的登记归属」节。
+- 依据：auto-os 早已有独立计划体系（`docs/plans/` + `.next-id`=052 + `new-plan.sh`
+  + `KNOWN-DEBT-AND-RISKS.md`），且 `autos-desktop-program.md` 自 Stage B P-5 起本就
+  「桌面域状态只记 auto-os 侧」——本裁定把**计划正文与债**也一并归位，消除最后一处回流。
+- 提交：auto-os `b71cf9c`、auto-lang `5c3b21f9a`。
+- `next`：final review（AC-10 + AC-12 一并核验）→ merge（AC-11）。
+
 ### 2026-10-28 /auto-plan:work 交接
 
-- `stage: work`；`PLAN-876`；`plan_revision: 1`；`outcome: pass`（T-09/T-10 review/merge-owned，未完成）。
+- `stage: work`；`PLAN-876`；`plan_revision: 2`；`outcome: pass`（T-09/T-10 review/merge-owned，未完成）。
 - `worktree_path`: `D:/autostack/.wt/lang-876/{auto-lang,auto-ui,auto-os,auto-down}`；`branch: plan-876-dev`（四仓同名）。
 - `base_commit`: auto-lang `df54eb583` / auto-ui `7095f53` / auto-os `d585fae`；`code_commit`: `4628b3a5e`+`92db63f53` / `fa06499` / `f8860f2`。
 - `task_ids`: T-01..T-08 (+SD-01..05) 完成；T-09/T-10 pending。
@@ -293,7 +315,7 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 
 ### 2026-10-28 /auto-plan:new 起草交接
 
-- `stage: new`；PLAN-876；`plan_revision: 1`。
+- `stage: new`；PLAN-876；`plan_revision: 2`。
 - `outcome: pass`（T-01..T-05、T-08 在既有授权内可执行；T-06/T-07 受 Q-1/Q-3 约束）。
 - `next: work`，起点 **T-01**；受约束项：T-06（Q-1）、T-07（Q-3）、T-08（Q-5 仅影响处置方式）。
 - 变更面：无（首版）。
