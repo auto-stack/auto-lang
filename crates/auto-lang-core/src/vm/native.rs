@@ -1698,6 +1698,11 @@ for_each_native!(gen_native_constants);
 
 // ============================================================================
 // Plan 240 VM-1: Math shims for f64 methods (sin/cos/tan/sqrt/pow etc.)
+//
+// PLAN-872 实测钉死：下列宏版 nv shim 经 `register_std_shims`（步骤 1）绑定
+// 后，被 `build_from_inventory` 的 ffi/stdlib/math.rs 纯 shim 在同 ID 上
+// **后写覆盖**（1700-1733 段）——稳态派发不经过本块（RETIRE 候选，须单独
+// 签核；绑定序先序事实保留，见 attachments/872/binding-table.md 族二）。
 // ============================================================================
 
 // Plan 437: f64 算术 shim 的 tag 驱动操作数弹出——调用方常以 f32 字面量/
@@ -1843,6 +1848,10 @@ fn pop_string_arg(task: &mut AutoTask, vm: &AutoVM) -> String {
 // 秒十进制字符串。下游 bench 毫秒差值在双轨语义下同形。
 
 /// `auto.time.now_ms() -> i64` — Unix epoch milliseconds.
+/// PLAN-872 实测钉死（族四）：本 nv 版经 catalog 绑定 id 1200 后，被
+/// `build_from_inventory` 的 sys_env.rs 纯 shim（`.unwrap()`）**后写覆盖**，
+/// 稳态派发不经过本函数（`unwrap_or(0)` 语义当前不在生效路径上；RETIRE
+/// 候选，须单独签核，attachments/872/binding-table.md 族四）。
 pub fn shim_time_now_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -2227,6 +2236,11 @@ fn heap_value(vm: &AutoVM, val: &auto_val::Value) -> auto_val::Value {
 /// VmRef / Int / String / Bool / Nil 五类，与 shim_list_push 的编码一致。
 /// Plan 403: string values now decode to Value::Str (actual bytes), not
 /// Value::Int(pool_index) — keeps List<Value> string elements round-tripping.
+/// PLAN-872（族六，DISTINGUISH）：与 interop.rs 的 `nv_to_value(vm, nv)` 是
+/// **双签名双语义**的并存版——本版无 vm 访问（string 退化为
+/// Value::Int(pool_index) 尽力解码、无 f32/f64 臂），消费面=collections
+/// 写入/比较；interop 版消费面=obj_* 字段写入（真 Str 字节+浮点臂）。
+/// 双侧均有活消费者，勿合并（attachments/872/binding-table.md 族六）。
 fn nv_to_value(nv: auto_val::NanoValue) -> auto_val::Value {
     if auto_val::is_future(nv) {
         // PLAN-776 R8-01：Future 句柄保真映射 Value::Future（句柄视图）。

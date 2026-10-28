@@ -1684,7 +1684,9 @@ mod plan781_byte_len_tests {
     fn plan781_str_byte_len_utf8_bytes() {
         assert_eq!(shim_str_byte_len(String::new()), 0);
         assert_eq!(shim_str_byte_len("abc".into()), 3);
-        // 与 str.len()（PLAN-055 字符语义）互补：中文 2 字符 = 6 字节。
+        // 与 `.length`（nat#170，PLAN-055 字符语义）互补：中文 2 字符 = 6
+        // 字节（PLAN-872 订正：字符语义的生效名是 `.length` 属性，
+        // `str.len()` 生效实现同为字节数，id 1500）。
         assert_eq!(shim_str_byte_len("中文".into()), 6);
         assert_eq!(shim_str_byte_len("a中b".into()), 5);
         // emoji 4 字节（代理对之外的合法 UTF-8 面）。

@@ -438,6 +438,10 @@ mod plan738_stdlib_assembly_tests;
 mod plan776_http_return_tests;
 // PLAN-755 T-01/T-03：HTTP 公共面契约覆盖走查 + CFFI merge 存活守卫
 mod plan755_http_contract_tests;
+// PLAN-872 T-01：六族 builtin 绑定面实测探针（证据生成器，--nocapture 转录进绑定表）。
+mod plan872_builtin_binding_probes;
+// PLAN-872 T-04：六族 DISTINGUISH 区分性测试（生效语义钉死 + 绑定槽位漂移反控）。
+mod plan872_builtin_semantics_tests;
 // PLAN-730: 服务端上传（平台探针 + parser/预算/存储矩阵 + http_e2e_plan730 双端）
 mod plan730_http_upload_tests;
 // PLAN-712 T-17 第二层：router.param 的 VM 取值链（push → sync → 页 Init）。

@@ -95,7 +95,13 @@ pub fn shim_env_home_dir() -> String {
     }
 }
 
-/// Get current time in milliseconds since Unix epoch
+/// Get current time in milliseconds since Unix epoch.
+/// PLAN-872 实测钉死（族四）：本纯 shim 经 inventory 绑定 id 1200，是
+/// `Time.now_ms` 的**生效实现**——`.unwrap()` 意味着时钟不可用
+/// （SystemTime Err）环境 panic；native.rs 的 nv 版（`unwrap_or(0)`，同槽
+/// 1200）被后写覆盖，稳态不在派发路径上（RETIRE 候选，单独签核）。
+/// a2r = a2r-std/src/time.rs 同为 unwrap（GOAL-003 一致口径；
+/// attachments/872/binding-table.md 族四）。
 #[auto_macros::rust_fn("Time.now_ms")]
 pub fn shim_time_now_ms() -> i64 {
     SystemTime::now()
@@ -104,7 +110,8 @@ pub fn shim_time_now_ms() -> i64 {
         .as_millis() as i64
 }
 
-/// Get current time in seconds since Unix epoch
+/// Get current time in seconds since Unix epoch（生效实现=本纯 shim，id 1201，
+/// unwrap/时钟不可用 panic；nv `unwrap_or(0)` 版被覆盖——PLAN-872 族四同上）。
 #[auto_macros::rust_fn("Time.now_sec")]
 pub fn shim_time_now_sec() -> i64 {
     SystemTime::now()
@@ -119,7 +126,8 @@ pub fn shim_time_sleep_ms(ms: i32) {
     std::thread::sleep(std::time::Duration::from_millis(ms as u64));
 }
 
-/// Get current timestamp as a string (seconds since epoch)
+/// Get current timestamp as a string (seconds since epoch)（生效实现=本纯
+/// shim，id 1205，unwrap 语义同上——PLAN-872 族四）。
 #[auto_macros::rust_fn("Time.now")]
 pub fn shim_time_now() -> String {
     SystemTime::now()

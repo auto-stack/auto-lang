@@ -1,7 +1,10 @@
 //! PLAN-843 结构拆分：strings_json 域实现（原样搬移，算法/行为零变化）。
 use super::*;
 
-/// Get string length in bytes
+/// Get string length in **UTF-8 bytes** (PLAN-872 实测钉死：本纯 shim 经
+/// inventory 绑定 id 1500，是 `Str.len(s)`/静态可解析 `s.len()` 的生效实现；
+/// 字符数语义在 `.length` 属性（nat#170，PLAN-055）与 CALL_SPEC 内联 "len"
+/// 臂——见 attachments/872/binding-table.md，勿混用)。
 #[auto_macros::rust_fn("Str.len")]
 pub fn shim_str_len(s: String) -> i32 {
     s.len() as i32
@@ -22,7 +25,9 @@ pub fn shim_str_is_digit(s: String) -> bool {
 }
 
 /// UTF-8 byte length. PLAN-781 阶段 E（T-24）：Reader 章 meta 索引的
-/// 字节偏移累计专用——`str.len()` 是 PLAN-055 的字符数语义、
+/// 字节偏移累计专用——PLAN-055 的**字符数**语义在 `.length` 属性
+/// （nat#170）与 CALL_SPEC 内联 "len" 臂，**不在** `str.len()`（其生效实现
+/// 是上方 id 1500 纯 shim，同为字节数；PLAN-872 实测订正本注释旧表述）、
 /// `str.bytes()` 返回 VM 列表在大文本（10MiB 书）不可用；Rust
 /// `String::len()` 即 UTF-8 字节数，与 `File.read_text_range`（nat#1016，
 /// PLAN-687）的字节偏移语义天然一致。

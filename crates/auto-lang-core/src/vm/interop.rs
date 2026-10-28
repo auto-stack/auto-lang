@@ -125,6 +125,11 @@ fn push_value(vm: &crate::vm::engine::AutoVM, task: &mut AutoTask, v: &auto_val:
 }
 
 /// 栈 nv → Value（Auto 臂 obj_set 的字段写入转换）。
+/// PLAN-872（族六，DISTINGUISH）：与 native.rs 的 `nv_to_value(nv)` 是
+/// **双签名双语义**的并存版——本版持 vm 访问（string 解码为真
+/// Value::Str 字节、含 f32/f64 臂），消费面=interop obj_* 字段写入；
+/// native 版消费面=collections 写入/比较。双侧均有活消费者，勿合并
+/// （attachments/872/binding-table.md 族六）。
 fn nv_to_value(vm: &crate::vm::engine::AutoVM, nv: NanoValue) -> auto_val::Value {
     use auto_val::Value;
     if auto_val::is_future(nv) {

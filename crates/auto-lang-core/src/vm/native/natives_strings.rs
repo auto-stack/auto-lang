@@ -184,8 +184,12 @@ pub fn shim_stringbuilder_build(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     Ok(())
 }
 
-/// Get the length of a string from the constant pool.
-/// Stack: str_idx (tagged) -> length (as i32)
+/// Get the length of a string — **char count** (PLAN-055 JS `.length` 语义)
+/// plus heap fallback. Stack: str_idx (tagged) -> length (as i32)
+/// PLAN-872 实测钉死：本 nv 版经 catalog 绑定 id 170，是 `.length` 属性形态
+/// 与 CALL_SPEC `auto.str.len` 的**生效实现**；静态可解析的 `s.len()`/
+/// `Str.len` 走 id 1500 纯 shim（**字节数**）——两个活名字，勿混
+/// （attachments/872/binding-table.md 族一）。
 pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // When compiler can't determine receiver type, it may call str.len on a List heap ID.
     // Detect this and dispatch to list.len instead.
@@ -304,9 +308,13 @@ pub fn shim_str_ends_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     Ok(())
 }
 
-/// str.to_int() / str.parse_int() — parse string to int, return Result<int>
-/// Stack: str -> CREATE_OK(int) or CREATE_ERR(str)
-/// Returns the value as CREATE_OK for proper .?() chaining
+/// str.to_int() / str.parse_int() — parse string to int.
+/// Stack: str -> i32
+/// PLAN-872 实测钉死：本 nv 版经 production() 覆盖块最后绑定 id 1516，
+/// 是 `Str.to_int`/`Str.parse_int` 双名的**生效实现**：`s.trim().parse::<i32>()
+/// .unwrap_or(0)` 压裸 i32（解析失败=0，**非 Result**；下方的纯
+/// `shim_str_parse_int`（Result<i64,String>，Err 语义）被本绑定遮蔽，
+/// 稳态无运行时消费者——RETIRE 候选见 attachments/872/binding-table.md）。
 pub fn shim_str_to_int_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
         let nv = crate::vm::native::pop_arg_nv(task);

@@ -1,4 +1,15 @@
 //! PLAN-843 结构拆分：math 域实现（原样搬移，算法/行为零变化）。
+//!
+//! PLAN-872 实测钉死：本文件 28 个纯 shim 经 `#[rust_fn]` inventory 在
+//! `production()` 步骤 4 绑定（canonical `auto.math.*` 命中 catalog 同 ID
+//! 1700-1733），**是 `Math.*` 的生效实现**——native.rs 的
+//! `math_unary_shim!`/`math_binary_shim!` nv 宏版（Plan 437 tag 感知弹参）
+//! 被同 ID 后写覆盖，稳态不在派发路径上（RETIRE 候选，单独签核）。
+//! 生效语义（VMConvertible 提取）：f64 参数**不吞 i32 tag**——
+//! `Math.sin(1)`（整型字面量）= NaN、`Math.sin(1.0)` 正常；域外值走 IEEE
+//! （`sqrt(-1)=NaN`、`ln(0)=-inf`）。跨后端：a2r = a2r-std/src/math.rs
+//! 静态类型直调；JS/Vue = Math.*（整型实参强制转换，与 VM 的 NaN-on-int
+//! 不同——见 attachments/872/binding-table.md 族二）。
 use super::*;
 
 #[auto_macros::rust_fn("Math.abs", "auto.math.abs")]
