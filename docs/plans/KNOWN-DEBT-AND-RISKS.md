@@ -3638,3 +3638,14 @@ ID，晚于最后批量收据（860，同日 09:33）——tf 非逐计划门禁
 `scripts/full-regression-retirements-844.json.txt`（orchestrator/closure 消费，850 文件
 不动）并闭包记 RETIRED；后续有意退役必选 ID 一律走该通道（新清单按计划号命名），
 避免批量间隙再藏同类脱同步。
+
+## PLAN-876 指针（2026-10-28）
+
+桌面入口迁 auto-os 后，该域的债与风险按 PLAN-876 裁定的归属登记在 auto-os
+`docs/plans/KNOWN-DEBT-AND-RISKS.md`（本文件只留指针）：
+
+- `OS876-APP-EXE`：4 个 app 声明 `desktop_exe` 但 clone 无产物（现降级解释态）。
+- `OS876-SUBMODULE`：24 个 app 子模块工作区被清空（已恢复；根因待查）。
+- `OS876-TERM-TICK`：auto-term `future_all/race` 复现——与本文件 **P723-D1**（L1224 旧记录）同源。
+- `OS876-USE-DIAG`：widgets-gallery `use { package ... }` 解析失败（P-15/plan 664 线转派）。
+- `OS876-DOC-SWEEP`：`apps/auto-syslog/README.md` 旧入口命令（app 仓内修）。

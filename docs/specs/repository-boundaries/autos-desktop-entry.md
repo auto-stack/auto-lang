@@ -37,8 +37,12 @@ boot 期一次只读自检，输出一行 `key=value`（脚本可 grep）+ 零�
 - 自检**不**写 storage、不改注册表、不构建产物；
 - `apps_empty` 的签名 = 目录存在但无 `pac.at` 且除 `.git` 外无内容（子模块未
   初始化 / 工作区被清空），有内容的非 app 目录不计入；
-- `orphan_icons` = `shell.desktop.icons` 中无注册表落点的 id 数（返回目录改名
-  不产生该计数——id 与目录解耦，`apps.manifest` 是唯一映射源）。
+- `skip=no_pac_at:N` = `apps.manifest` 的 repo 条目中 `pac.at` 缺席（即注册表
+  跳过面）的数量；解析失败等原因当前**不**单独统计（不虚构计数）；
+- `orphan_icons` = `shell.desktop.icons` 中**既无注册表落点、也不在
+  `apps.manifest`** 的 id 数——manifest 落点算已知，避免子模块未初始化时把
+  合法 id 误判为失效；且 `apps_empty > 0` 时**不**给"清理 storage"的建议
+  （那会丢桌面快捷方式）。
 
 ## 缺产物语义
 
@@ -46,11 +50,15 @@ boot 期一次只读自检，输出一行 `key=value`（脚本可 grep）+ 零�
 
 | manifest `launch` | 产物在场 | 产物缺失 |
 |---|---|---|
-| `"native"` | 原生 outproc | 严格失败（toast 含 `auto build -r rust` 提示） |
-| `"vm"` | 解释态 | 解释态 |
-| 缺席 | 原生 outproc | **降级解释态** + 一行 warn |
+| `"native"` | 原生 outproc | 严格失败（launch 错误含 `auto build -r rust` 提示） |
+| `"vm"` | 解释态 | 解释态（不打缺失告警） |
+| 缺席 | 原生 outproc | **降级解释态** + 一行 stderr warn |
 
-`auto` CLI 解析序：`AUTO_BIN`/`AUTO_CLI` → 自身目录及上两级 → `PATH`；缺失
-时 rqhost daemon 不孵化，但桌面正常进入并给可执行提示。
+降级的用户可见面当前是 stderr 一行（宿主无 toast 通道接入）；boot 自检的
+`declared_exe_missing=` 与 hint 是主要可见面。
+
+`auto` CLI 解析序：`AUTO_BIN`/`AUTO_CLI` → 自身目录及上三级 → `PATH`
+（Windows 候选名 `auto.exe`/`auto.cmd`）；缺失时 rqhost daemon 不孵化，但桌面
+正常进入并给可执行提示。
 
 来源：[PLAN-876](../../plans/876-autos-desktop-entry-and-launch-health.md)
