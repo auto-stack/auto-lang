@@ -636,7 +636,7 @@ impl OwnedFunctionSession {
         // interface facts supply the scaffold callees' param modes (the
         // t_MutRet wrapper ABI is not expressible in the document).
         let bundle = candidate.parts().bundle.clone();
-        let unit = crate::hir_adapter::lower_function_owned_unit_with_modes(
+        let unit = auto_mir_lower::lower_function_owned_unit_with_modes(
             &bundle,
             &def_id,
             &self.caps,
@@ -1001,7 +1001,7 @@ fn produce_unit_aside(
     revision: u64,
 ) -> Result<(String, Arc<FunctionCode>, Production), String> {
     let snap = fnv1a64(snapshot_src.as_bytes());
-    let unit = crate::hir_adapter::lower_function_owned_unit_with_modes(
+    let unit = auto_mir_lower::lower_function_owned_unit_with_modes(
         bundle,
         def_id,
         caps,

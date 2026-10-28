@@ -147,6 +147,7 @@ dependencies = [
  "ac-syntax-rt",
  "auto-ac-prototype",
  "auto-av-core",
+ "auto-mir-lower",
  "base64",
  "blake3",
  "rusqlite",
@@ -203,12 +204,21 @@ dependencies = [
  "auto-av-probe",
  "auto-cte-contract",
  "auto-cte-core",
+ "auto-mir-lower",
  "base64",
  "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "auto-mir-lower"
+version = "0.1.0"
+dependencies = [
+ "auto-ac-prototype",
+ "auto-av-core",
 ]
 
 [[package]]

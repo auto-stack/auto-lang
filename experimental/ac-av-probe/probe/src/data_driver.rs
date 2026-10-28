@@ -23,7 +23,7 @@ use auto_av_core::mir_verify::verify_mir;
 use std::path::Path;
 
 use crate::cache::{envelope_unwrap, envelope_wrap, EnvelopeIdentity, EnvelopeKind};
-use crate::hir_adapter::lower_checked_data;
+use auto_mir_lower::lower_checked_data;
 use ac_artifact_probe::identity::QueryKey;
 
 /// The data profile's ABC layer (A20): whole-module AVAD artifacts keyed on
@@ -152,8 +152,8 @@ pub fn request_data(
                 "lower: {} {}",
                 e.code(),
                 match e {
-                    crate::hir_adapter::AdapterError::Unsupported { message, .. }
-                    | crate::hir_adapter::AdapterError::Invalid { message, .. } => message,
+                    auto_mir_lower::AdapterError::Unsupported { message, .. }
+                    | auto_mir_lower::AdapterError::Invalid { message, .. } => message,
                 }
             )
         })?;

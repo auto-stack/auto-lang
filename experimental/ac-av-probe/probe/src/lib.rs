@@ -1,9 +1,11 @@
 //! auto-av-probe — PLAN-798 probe layer.
 //!
 //! Consumes the landed ac-core public API (Checked HIR front door, native
-//! reference) and the PLAN-783 ManagedStore; owns the HIR→MIR adapter, the
-//! per-function unit cache, the request driver with spans/observations and
-//! the bounded worker binary. Nothing here feeds product paths.
+//! reference) and the PLAN-783 ManagedStore; hosts the per-function unit
+//! cache, the request driver with spans/observations and the bounded worker
+//! binary. The HIR→MIR lowering itself lives in the shared `auto-mir-lower`
+//! crate since PLAN-868 — this probe is a consumer, not the provider.
+//! Nothing here feeds product paths.
 
 pub mod bench;
 pub mod cache;
@@ -21,7 +23,6 @@ pub mod formal_828;
 pub mod formal_campaign;
 pub mod formal_worker;
 pub mod function_queries;
-pub mod hir_adapter;
 pub mod load256;
 pub mod mempeek;
 pub mod native_admission;

@@ -24,7 +24,7 @@ fn admit_source() -> abc_verify::LoadedModule {
         &[TRACE_CAPABILITY.to_string()],
     )
     .expect("scalar source compiles");
-    let mir = auto_av_probe::hir_adapter::lower_checked(&compiled.checked, "d_main", 825)
+    let mir = auto_mir_lower::lower_checked(&compiled.checked, "d_main", 825)
         .expect("lower real HIR");
     assert_eq!(mir.profile, AV_PROFILE);
     auto_av_core::verify_mir(&mir).expect("MIR verifies");

@@ -205,7 +205,7 @@ fn fill_units(src: &str) -> Vec<auto_av_core::mir::MirModule> {
     let compiled =
         auto_ac_prototype::source::compile_scalar_source(src, "mn.at", &[]).expect("compile");
     let mir =
-        auto_av_probe::hir_adapter::lower_checked(&compiled.checked, "d_main", 0).expect("lower");
+        auto_mir_lower::lower_checked(&compiled.checked, "d_main", 0).expect("lower");
     let checked = auto_av_core::mir_verify::verify_mir(&mir).expect("verify");
     auto_av_probe::cache::split_units(checked.module()).expect("split")
 }

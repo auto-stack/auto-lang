@@ -14,7 +14,7 @@ use crate::cache::{
     manifest_key, merge_spans, open_store, payload_fingerprint, put_enveloped, sidecar_key,
     split_units, Counters, EnvelopeIdentity, ModuleManifest, SemaRefSer, UnitLink,
 };
-use crate::hir_adapter::{lower_checked, AdapterError};
+use auto_mir_lower::{lower_checked, AdapterError};
 use crate::observations::{Obs, SpanRec};
 use auto_ac_prototype::source::compile_scalar_source;
 use auto_ac_prototype::verify::CheckedModule;

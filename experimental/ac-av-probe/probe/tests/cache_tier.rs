@@ -563,7 +563,7 @@ fn av_cache_valid_payload_under_wrong_body_key_rejected() {
 
     // The `return 7` unit, stored under the ABC key the `return 9` body
     // requires (legacy UNBOUND envelope — exactly the review's shape).
-    let m7 = auto_av_probe::hir_adapter::lower_checked(&c7.checked, "d_main", 0).unwrap();
+    let m7 = auto_mir_lower::lower_checked(&c7.checked, "d_main", 0).unwrap();
     let mut u7 = cache::split_units(&m7).unwrap().remove(0);
     u7.funcs[0].spans.clear();
     u7.funcs[0].source_snapshot = 0;
@@ -909,7 +909,7 @@ fn av_cache_restore_unary_trap_requires_span() {
 fn av_cache_kindless_v1_wire_isolated() {
     let src = "fn main() int { return 7 }";
     let c = auto_ac_prototype::source::compile_scalar_source(src, "legacy.at", &[]).unwrap();
-    let m = auto_av_probe::hir_adapter::lower_checked(&c.checked, "d_main", 0).unwrap();
+    let m = auto_mir_lower::lower_checked(&c.checked, "d_main", 0).unwrap();
     // Forge a genuine /1 artifact: current encode, version field back to 1,
     // kind bit cleared, FNV trailer recomputed — the exact byte shape the
     // pre-R12 writer persisted for a unit.
@@ -1026,7 +1026,7 @@ fn av_cache_r15_consumption_invariants() {
             &trace_caps,
         )
         .unwrap();
-        let m = auto_av_probe::hir_adapter::lower_checked(&tc.checked, "d_main", 0).unwrap();
+        let m = auto_mir_lower::lower_checked(&tc.checked, "d_main", 0).unwrap();
         let mut u = cache::split_units(&m).unwrap().remove(0);
         u.funcs[0].spans.clear();
         u.funcs[0].source_snapshot = 0;
@@ -1088,7 +1088,7 @@ fn av_cache_r15_consumption_invariants() {
         let r2 = tmpdir(&format!("r15-kind-{layer}"));
         let c = auto_ac_prototype::source::compile_scalar_source(plain_src, "t.at", &trace_caps)
             .unwrap();
-        let m = auto_av_probe::hir_adapter::lower_checked(&c.checked, "d_main", 0).unwrap();
+        let m = auto_mir_lower::lower_checked(&c.checked, "d_main", 0).unwrap();
         let mut u = cache::split_units(&m).unwrap().remove(0);
         u.funcs[0].spans.clear();
         u.funcs[0].source_snapshot = 0;
@@ -1139,7 +1139,7 @@ fn av_cache_r15_consumption_invariants() {
         let owner2 = h.id_text.clone();
         let fp2 =
             auto_av_probe::semrefs::content_version_of(&cache::canonical_hir_function(h, body));
-        let m = auto_av_probe::hir_adapter::lower_checked(&c.checked, "d_main", 0).unwrap();
+        let m = auto_mir_lower::lower_checked(&c.checked, "d_main", 0).unwrap();
         let mut u = cache::split_units(&m).unwrap().remove(0);
         u.funcs[0].spans.clear();
         u.funcs[0].source_snapshot = 0;

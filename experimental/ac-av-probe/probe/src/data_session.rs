@@ -336,7 +336,7 @@ impl DataIncrementalSession {
                 .ok_or_else(|| format!("body of `{def}` out of range"))?
                 .clone(),
         );
-        let mir = crate::hir_adapter::lower_function_data_unit(
+        let mir = auto_mir_lower::lower_function_data_unit(
             bundle,
             def,
             &self.caps,
@@ -441,7 +441,7 @@ impl DataIncrementalSession {
         }
         if let Some(def) = self.control_reverify_def.take() {
             let bundle = self.bundle_for(&def);
-            let mir = crate::hir_adapter::lower_function_data_unit(
+            let mir = auto_mir_lower::lower_function_data_unit(
                 &bundle,
                 &def,
                 &self.caps,

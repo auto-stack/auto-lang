@@ -324,7 +324,7 @@ fn av_owned_821_v13_stale_caller_unit_link_refused() {
         let mut out = std::collections::BTreeMap::new();
         for d in &module.defs {
             if matches!(d.kind, auto_ac_prototype::hir::DefKind::Function { .. }) {
-                let u = auto_av_probe::hir_adapter::lower_function_owned_unit(
+                let u = auto_mir_lower::lower_function_owned_unit(
                     &bundle,
                     &d.id_text,
                     &[],

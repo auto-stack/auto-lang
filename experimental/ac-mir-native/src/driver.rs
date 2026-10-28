@@ -137,11 +137,11 @@ impl MnDriver {
         // ---- HIR → MIR (798 public adapter) + verify ---------------------
         let snapshot = auto_av_core::contract::fnv1a64(src.as_bytes());
         let module = obs.span("mir_lower", |o| {
-            auto_av_probe::hir_adapter::lower_checked(checked, entry, snapshot).map_err(|e| {
+            auto_mir_lower::lower_checked(checked, entry, snapshot).map_err(|e| {
                 o.counter("mir_reject", 1);
                 let msg = match &e {
-                    auto_av_probe::hir_adapter::AdapterError::Unsupported { message, .. }
-                    | auto_av_probe::hir_adapter::AdapterError::Invalid { message, .. } => {
+                    auto_mir_lower::AdapterError::Unsupported { message, .. }
+                    | auto_mir_lower::AdapterError::Invalid { message, .. } => {
                         message.clone()
                     }
                 };

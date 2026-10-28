@@ -12,7 +12,7 @@ fn admit(src: &str) -> auto_av_core::abc_verify::LoadedModule {
         &[TRACE_CAPABILITY.to_string()],
     )
     .expect("852 source compiles");
-    let mir = auto_av_probe::hir_adapter::lower_checked(&compiled.checked, "d_main", 825)
+    let mir = auto_mir_lower::lower_checked(&compiled.checked, "d_main", 825)
         .expect("lower 852 HIR");
     auto_av_core::verify_mir(&mir).expect("MIR verifies");
     let wire = auto_av_core::encode_abc(&mir)

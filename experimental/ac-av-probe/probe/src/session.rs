@@ -6,7 +6,7 @@
 //! local-rescan/graft (ac-syntax) → changed-decl detection → per-function
 //! frontend (real parser over the changed decl, unchanged decls carry only
 //! their O(1) signature stubs) → [`auto_ac_prototype::verify::verify_function`]
-//! → [`crate::hir_adapter::lower_function_unit`] → unit `verify_mir` → ABC
+//! → [`auto_mir_lower::lower_function_unit`] → unit `verify_mir` → ABC
 //! encode/decode/`verify_abc` → [`FunctionCode`] → snapshot re-link. Every
 //! stage bump is a per-function counter; unchanged functions keep their
 //! `Arc` HIR bodies and `Arc<FunctionCode>` — no re-read, re-decode,
@@ -29,7 +29,7 @@ use crate::fn_hir_codec::{
     rebind_fn_hir_body, FnHirArtifact,
 };
 use crate::function_queries::{BodyFactRead, FnEnv};
-use crate::hir_adapter::{lower_checked, lower_function_unit};
+use auto_mir_lower::{lower_checked, lower_function_unit};
 use crate::semrefs::content_version_of;
 use crate::wire::WireCodec;
 use ac_syntax_core_adapter::{project_decl_strict, project_strict, CoreKinds};

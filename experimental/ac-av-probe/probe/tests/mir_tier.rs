@@ -5,7 +5,7 @@
 use auto_av_core::contract::fnv1a64;
 use auto_av_core::mir::*;
 use auto_av_core::verify_mir;
-use auto_av_probe::hir_adapter::lower_checked;
+use auto_mir_lower::lower_checked;
 
 fn compile(src: &str) -> auto_ac_prototype::source::CompiledSource {
     auto_ac_prototype::source::compile_scalar_source(src, "t02.at", &[]).expect("frontend")

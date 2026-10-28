@@ -132,7 +132,7 @@ fn whole_module_units(
                 ds.first().map(|d| d.message.clone()).unwrap_or_default(),
             )
         })?;
-    let mir = auto_av_probe::hir_adapter::lower_checked(
+    let mir = auto_mir_lower::lower_checked(
         &compiled.checked,
         entry,
         auto_av_core::contract::fnv1a64(src.as_bytes()),

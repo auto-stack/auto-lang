@@ -8,7 +8,7 @@ use auto_av_core::{
     ExecLimits,
 };
 use auto_av_probe::driver::Driver;
-use auto_av_probe::hir_adapter::lower_checked;
+use auto_mir_lower::lower_checked;
 
 fn owner() -> OwnerScope {
     OwnerScope {
@@ -364,7 +364,7 @@ fn av_semantics_frame_budget_is_guest_not_host() {
 fn abc_kind_survives_roundtrip() {
     let src = "fn main() int { if false { return main() } else { return 42 } }";
     let c = auto_ac_prototype::source::compile_scalar_source(src, "kind.at", &[]).unwrap();
-    let m = auto_av_probe::hir_adapter::lower_checked(&c.checked, "d_main", 0).unwrap();
+    let m = auto_mir_lower::lower_checked(&c.checked, "d_main", 0).unwrap();
     assert!(!m.is_unit, "single-function whole module");
     let wire = encode_abc(&m).unwrap().to_flat();
     let decoded = decode_abc(&wire).unwrap();
@@ -408,7 +408,7 @@ fn abc_kind_survives_roundtrip() {
 fn abc_unit_credential_split_at_public_loader() {
     let src = "fn main() int { return 7 }";
     let c = auto_ac_prototype::source::compile_scalar_source(src, "unit-admit.at", &[]).unwrap();
-    let m = auto_av_probe::hir_adapter::lower_checked(&c.checked, "d_main", 0).unwrap();
+    let m = auto_mir_lower::lower_checked(&c.checked, "d_main", 0).unwrap();
     let cancel = CancelFlag::new(false);
     for (is_unit, executable_want) in [(true, false), (false, true)] {
         let mut k = m.clone();

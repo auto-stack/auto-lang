@@ -19,7 +19,7 @@ pub const MAX_CALL_WALL: std::time::Duration = MAX_AV_WALL;
 use auto_av_core::{
     abc_verify, decode_abc, encode_abc, execute, verify_mir, CancelFlag, ExecLimits,
 };
-use auto_av_probe::hir_adapter::lower_checked;
+use auto_mir_lower::lower_checked;
 use auto_av_probe::session::FunctionIncrementalSession;
 use auto_cte_contract::CteEngineId;
 use auto_cte_contract::{CteAdmissionError, CteCode, CteValue};

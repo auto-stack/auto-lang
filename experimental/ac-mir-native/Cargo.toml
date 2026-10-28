@@ -12,6 +12,7 @@ resolver = "2"
 auto-ac-prototype = { path = "../ac-core" }
 auto-av-core = { path = "../ac-av-probe/core" }
 auto-av-probe = { path = "../ac-av-probe/probe" }
+auto-mir-lower = { path = "../auto-mir-lower" }
 ac-artifact-probe = { path = "../ac-artifact-probe" }
 cranelift-codegen = "0.126"
 cranelift-frontend = "0.126"

@@ -1,0 +1,10 @@
+[package]
+name = "auto-mir-lower"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "PLAN-868: the single Checked HIR -> Typed MIR lowering shared by the av probe, mir-native and cte consumers. Depends only on ac-core (HIR types) and auto-av-core (MIR model) — no probe host types, no Cranelift, no serde."
+
+[dependencies]
+auto-ac-prototype = { path = "../ac-core" }
+auto-av-core = { path = "../ac-av-probe/core" }

@@ -223,7 +223,7 @@ fn two_units() -> Vec<auto_av_core::mir::MirModule> {
     let compiled =
         auto_ac_prototype::source::compile_scalar_source(src, "mn.at", &[]).expect("compile");
     let mir =
-        auto_av_probe::hir_adapter::lower_checked(&compiled.checked, "d_main", 0).expect("lower");
+        auto_mir_lower::lower_checked(&compiled.checked, "d_main", 0).expect("lower");
     let checked = auto_av_core::mir_verify::verify_mir(&mir).expect("verify");
     auto_av_probe::cache::split_units(checked.module()).expect("split")
 }
@@ -478,7 +478,7 @@ fn mir_native_cache_fingerprint_axes() {
     let src_edited = "fn helper(v int) int {\n    return v + 6\n}\n\nfn main() int {\n    return helper(37)\n}\n";
     let compiled = auto_ac_prototype::source::compile_scalar_source(src_edited, "mn.at", &[])
         .expect("compile");
-    let mir = auto_av_probe::hir_adapter::lower_checked(&compiled.checked, "d_main", 0).unwrap();
+    let mir = auto_mir_lower::lower_checked(&compiled.checked, "d_main", 0).unwrap();
     let checked = auto_av_core::mir_verify::verify_mir(&mir).unwrap();
     let units2 = auto_av_probe::cache::split_units(checked.module()).unwrap();
     let e_helper = units2

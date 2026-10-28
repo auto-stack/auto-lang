@@ -70,7 +70,7 @@ fn admit_owned_source(src: &str, entry: &str) -> abc_verify::LoadedModule {
         compiled.checked.domain(),
         auto_ac_prototype::hir::HirDomain::TextRecord
     );
-    let mir = auto_av_probe::hir_adapter::lower_checked_owned(&compiled.checked, entry, 0x821)
+    let mir = auto_mir_lower::lower_checked_owned(&compiled.checked, entry, 0x821)
         .expect("owned lowering");
     assert_eq!(mir.profile, AV_OWNED_PROFILE);
     mir_verify::verify_mir(&mir).expect("owned MIR verifies");
@@ -190,7 +190,7 @@ fn av_owned_821_first_case_same_store_restore() {
                 auto_ac_prototype::source::compile_text_record_source(FIRST_CASE, "p.at", &[])
                     .expect("compile");
             let mir =
-                auto_av_probe::hir_adapter::lower_checked_owned(&compiled.checked, "d_main", 0x821)
+                auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x821)
                     .expect("lower");
             auto_av_probe::owned_driver::types_fp_of(&mir)
         },

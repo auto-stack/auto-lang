@@ -100,7 +100,7 @@ fn first_case_wire() -> Vec<u8> {
         &[TRACE_CAPABILITY.to_string()],
     )
     .expect("scalar source compiles");
-    let mir = auto_av_probe::hir_adapter::lower_checked(&compiled.checked, "d_main", 826)
+    let mir = auto_mir_lower::lower_checked(&compiled.checked, "d_main", 826)
         .expect("lower real HIR");
     auto_av_core::verify_mir(&mir).expect("MIR verifies");
     encode_compact_abc(&mir).expect("compact encode")
@@ -362,7 +362,7 @@ fn main() int {
 ";
     let spin_compiled =
         auto_ac_prototype::source::compile_scalar_source(spin_src, "spin.at", &[]).expect("spin");
-    let spin_mir = auto_av_probe::hir_adapter::lower_checked(&spin_compiled.checked, "d_main", 826)
+    let spin_mir = auto_mir_lower::lower_checked(&spin_compiled.checked, "d_main", 826)
         .expect("spin lower");
     auto_av_core::verify_mir(&spin_mir).expect("spin verify");
     let spin_wire = encode_compact_abc(&spin_mir).expect("spin encode");

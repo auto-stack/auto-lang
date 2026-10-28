@@ -596,7 +596,7 @@ fn av_owned_821_r1_borrowed_record_source_paths() {
     for (src, want) in [(BORROWED_RECORD, 7i32), (BORROW_REUSE, 15)] {
         let compiled = auto_ac_prototype::source::compile_text_record_source(src, "r.at", &[])
             .expect("compiles");
-        let mir = auto_av_probe::hir_adapter::lower_checked_owned(&compiled.checked, "d_main", 0x1)
+        let mir = auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x1)
             .expect("lowers");
         let (out, trace) = admit_exec(&mir);
         assert_eq!(
@@ -613,7 +613,7 @@ fn av_owned_821_r1_borrowed_record_source_paths() {
     // Move-in control unchanged.
     let compiled = auto_ac_prototype::source::compile_text_record_source(MOVE_CONTROL, "r.at", &[])
         .expect("compiles");
-    let mir = auto_av_probe::hir_adapter::lower_checked_owned(&compiled.checked, "d_main", 0x1)
+    let mir = auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x1)
         .expect("lowers");
     let (out, _) = admit_exec(&mir);
     assert!(matches!(
@@ -631,7 +631,7 @@ fn av_owned_821_r1_borrowed_record_source_paths() {
         let compiled =
             auto_ac_prototype::source::compile_text_record_source(MUT_RECORD, "r.at", &[])
                 .expect("the frontend accepts mut params");
-        let mir = auto_av_probe::hir_adapter::lower_checked_owned(&compiled.checked, "d_main", 0x1)
+        let mir = auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x1)
             .expect("the owned lowering carries the write-back");
         let (out, trace) = admit_exec(&mir);
         assert!(matches!(
@@ -656,7 +656,7 @@ fn main() int {
 ";
         let compiled =
             auto_ac_prototype::source::compile_text_record_source(src, "r.at", &[]).unwrap();
-        let mir = auto_av_probe::hir_adapter::lower_checked_owned(&compiled.checked, "d_main", 0x1)
+        let mir = auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x1)
             .unwrap();
         let (out, _) = admit_exec(&mir);
         assert!(matches!(
@@ -723,7 +723,7 @@ fn main() int {
     for (src, want) in cases {
         let compiled =
             auto_ac_prototype::source::compile_text_record_source(src, "r3.at", &[]).unwrap();
-        let mir = auto_av_probe::hir_adapter::lower_checked_owned(&compiled.checked, "d_main", 0x1)
+        let mir = auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x1)
             .unwrap();
         let (out, trace) = admit_exec(&mir);
         assert!(
@@ -868,7 +868,7 @@ fn av_owned_821_r4_mut_loop_writeback() {
     let compiled =
         auto_ac_prototype::source::compile_text_record_source(src, "r4.at", &[]).unwrap();
     let mir =
-        auto_av_probe::hir_adapter::lower_checked_owned(&compiled.checked, "d_main", 0x1).unwrap();
+        auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x1).unwrap();
     let (out, trace) = admit_exec(&mir);
     assert!(
         matches!(

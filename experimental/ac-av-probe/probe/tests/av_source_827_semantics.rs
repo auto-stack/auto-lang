@@ -10,7 +10,7 @@ use auto_av_core::contract::{ExecOutcome, ResourceKind, TrapKind, ABC_SCHEMA, TR
 use auto_av_core::mir::OwnerScope;
 use auto_av_core::{decode_abc, encode_abc, execute, verify_abc};
 use auto_av_probe::driver::Driver;
-use auto_av_probe::hir_adapter::lower_checked;
+use auto_mir_lower::lower_checked;
 
 const AP01_ORIGINAL: &str = "../../ac-core/fixtures/scalar-source/valid/p-gcd-euclid.at";
 const AP22_ORIGINAL: &str = "../../ac-core/fixtures/scalar-source/valid/p-binop-args.at";

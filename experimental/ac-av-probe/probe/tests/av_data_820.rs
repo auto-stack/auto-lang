@@ -35,7 +35,7 @@ fn admit_record_source(src: &str, entry: &str) -> abc_verify::LoadedModule {
         compiled.checked.domain(),
         auto_ac_prototype::hir::HirDomain::Record
     );
-    let mir = auto_av_probe::hir_adapter::lower_checked_data(&compiled.checked, entry, 0x820)
+    let mir = auto_mir_lower::lower_checked_data(&compiled.checked, entry, 0x820)
         .expect("data lowering");
     assert_eq!(mir.profile, AV_DATA_PROFILE);
     mir_verify::verify_mir(&mir).expect("data MIR verifies");
@@ -125,7 +125,7 @@ fn main() int {
 ";
     let compiled =
         auto_ac_prototype::source::compile_record_source(src, "p.at", &[]).expect("compile");
-    let mir = auto_av_probe::hir_adapter::lower_checked_data(&compiled.checked, "d_main", 1)
+    let mir = auto_mir_lower::lower_checked_data(&compiled.checked, "d_main", 1)
         .expect("lower");
     let wire = encode_abc(&mir).expect("encode").to_flat();
     let decoded = decode_abc(&flat(&wire)).expect("decode");
@@ -829,7 +829,7 @@ fn av_data_820_store_restore_new_process() {
 fn types_fp_of_source(src: &str) -> String {
     let compiled =
         auto_ac_prototype::source::compile_record_source(src, "data.at", &[]).expect("compile");
-    let mir = auto_av_probe::hir_adapter::lower_checked_data(&compiled.checked, "d_main", 0)
+    let mir = auto_mir_lower::lower_checked_data(&compiled.checked, "d_main", 0)
         .expect("lower");
     auto_av_probe::data_driver::types_fp_of(&mir)
 }

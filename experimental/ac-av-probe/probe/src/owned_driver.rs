@@ -20,7 +20,7 @@ use auto_av_core::mir_verify::verify_mir;
 use std::path::Path;
 
 use crate::cache::{envelope_unwrap, envelope_wrap, EnvelopeIdentity, EnvelopeKind};
-use crate::hir_adapter::lower_checked_owned;
+use auto_mir_lower::lower_checked_owned;
 use ac_artifact_probe::identity::QueryKey;
 
 /// The owned profile's ABC layer (A21): whole-module AVAD v2 artifacts
@@ -154,8 +154,8 @@ pub fn request_owned(
                 "lower: {} {}",
                 e.code(),
                 match e {
-                    crate::hir_adapter::AdapterError::Unsupported { message, .. }
-                    | crate::hir_adapter::AdapterError::Invalid { message, .. } => message,
+                    auto_mir_lower::AdapterError::Unsupported { message, .. }
+                    | auto_mir_lower::AdapterError::Invalid { message, .. } => message,
                 }
             )
         })?;

@@ -52,7 +52,7 @@ fn owned_mir_of(src: &str) -> auto_av_core::mir::MirModule {
     let compiled =
         auto_ac_prototype::source::compile_text_record_source(src, "c.at", &[]).expect("compile");
     let snap = auto_av_core::contract::fnv1a64(src.as_bytes());
-    auto_av_probe::hir_adapter::lower_checked_owned(&compiled.checked, "d_main", snap)
+    auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", snap)
         .expect("lower")
 }
 
@@ -259,7 +259,7 @@ fn av_owned_821_v09_owned_bytes_rejected_by_old_consumers() {
             &[],
         )
         .expect("data source compiles");
-        let dm = auto_av_probe::hir_adapter::lower_checked_data(
+        let dm = auto_mir_lower::lower_checked_data(
             &compiled.checked,
             "d_main",
             auto_av_core::contract::fnv1a64(b"type P"),

@@ -10,6 +10,7 @@ auto-cte-contract = { path = "../contract" }
 auto-cte-core = { path = "../core" }
 auto-av-core = { path = "../../ac-av-probe/core" }
 auto-av-probe = { path = "../../ac-av-probe/probe" }
+auto-mir-lower = { path = "../../auto-mir-lower" }
 auto-ac-prototype = { path = "../../ac-core" }
 ac-sema-core = { path = "../../ac-semantics/core", features = ["core-ast"] }
 ac-sema-contract = { path = "../../ac-semantics/contract" }

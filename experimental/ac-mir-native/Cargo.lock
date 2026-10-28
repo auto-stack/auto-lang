@@ -23,6 +23,7 @@ dependencies = [
  "auto-ac-prototype",
  "auto-av-core",
  "auto-av-probe",
+ "auto-mir-lower",
  "base64",
  "blake3",
  "cranelift-codegen",
@@ -159,6 +160,7 @@ dependencies = [
  "ac-syntax-rt",
  "auto-ac-prototype",
  "auto-av-core",
+ "auto-mir-lower",
  "base64",
  "blake3",
  "rusqlite",
@@ -183,6 +185,14 @@ dependencies = [
  "shim-metadata",
  "syn 2.0.119",
  "thiserror",
+]
+
+[[package]]
+name = "auto-mir-lower"
+version = "0.1.0"
+dependencies = [
+ "auto-ac-prototype",
+ "auto-av-core",
 ]
 
 [[package]]

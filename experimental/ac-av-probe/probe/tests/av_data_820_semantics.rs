@@ -104,7 +104,7 @@ fn main() int {
         &["hir.test.trace.v1".to_string()],
     )
     .expect("compile");
-    let mir = auto_av_probe::hir_adapter::lower_checked_data(&compiled.checked, "d_main", 7)
+    let mir = auto_mir_lower::lower_checked_data(&compiled.checked, "d_main", 7)
         .expect("lower");
     mir_verify::verify_mir(&mir).expect("verify");
     let wire = encode_abc(&mir).expect("encode").to_flat();

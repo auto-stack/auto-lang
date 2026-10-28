@@ -123,7 +123,7 @@ fn source(src: &str) -> MirModule {
         &[TRACE_CAPABILITY.to_string()],
     )
     .expect("benchmark source compiles");
-    auto_av_probe::hir_adapter::lower_checked(&compiled.checked, "d_main", 825)
+    auto_mir_lower::lower_checked(&compiled.checked, "d_main", 825)
         .expect("benchmark HIR lowers")
 }
 

@@ -2,11 +2,12 @@
 name = "auto-av-probe"
 version = "0.1.0"
 edition = "2021"
-description = "PLAN-798 auto-av-probe: HIR adapter, managed cache units, native cross-check reference, driver/observations and the bounded worker for the ac-av vertical probe."
+description = "PLAN-798 auto-av-probe: managed cache units, native cross-check reference, driver/observations and the bounded worker for the ac-av vertical probe. HIR→MIR lowering is consumed from the shared auto-mir-lower crate (PLAN-868)."
 publish = false
 
 [dependencies]
 auto-av-core = { path = "../core" }
+auto-mir-lower = { path = "../../auto-mir-lower" }
 ac-sema-contract = { path = "../../ac-semantics/contract" }
 auto-ac-prototype = { path = "../../ac-core" }
 ac-artifact-probe = { path = "../../ac-artifact-probe" }
