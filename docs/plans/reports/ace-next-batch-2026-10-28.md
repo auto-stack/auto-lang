@@ -94,7 +94,7 @@ D868（lowering 出库，见 §2.1）
 |---|---|---|---|
 | **P0（已立项）** | **HIR→MIR lowering 出库为共享 crate** | [PLAN-868](../868-hir-mir-lowering-shared-crate.md) | 迁移的硬前置；纯搬移，不改语义；862–865 的 lowering 写面依赖它 |
 | **P0（已立项）** | AC 复合 native 扩面（record/text/text-record） | [PLAN-870](../870-ac-mn-record-text-native-expansion.md) | 迁移第二段；关 `lower.rs` 的 394（限 Char/Str）/462/484；只覆盖 AV 已交付面 |
-| P0 | M1 分母重绑定（T*/R*/L*/V* 行的 `wait:av:*-822` 现状核实）与 `na:m1` 口径落地 | 852 后继 | 822 未获授权新增 T-11，`wait:av-text-822`/`av-record-822`/`av-variants-822` 既未被关闭也未被重绑；**分类口径与 103 行逐行映射已提案**见[对等口径决策件](ace-m1-scope-decision-2026-10-28.md)（当前测算：50/103 行可判、53 行有 owner 或待裁定） |
+| P0 | M1 分母重绑定（T*/R*/L*/V* 行的 `wait:av:*-822` 现状核实）与 `na:m1` 口径落地 | **并入 [PLAN-862](862-av-source-entry-unit-and-tail-semantics.md) T-06**（用户 2026-10-28 裁定，不另立计划） | 分类口径、103 行逐行映射与 4 项裁定见[对等口径决策件](ace-m1-scope-decision-2026-10-28.md)；当前测算 50/103 可判、53 行有 owner、无待裁定项；实测数字以 862 T-06 为准 |
 | P0 | mn collections/variants + native typed entry（关 509 与 `mn-no-typed-entry`） | 818 后继 | 必须紧跟 864，否则 L/V 行在 mn 列永久 gap；**不在本轮迁移批次**（用户 2026-10-28 裁定） |
 | P0 | R2-N 数值源码与算术（i64/u64/f32/f64、位运算、Math） | 能力矩阵 C-03/C-04/C-05 | 与上一行的 typed 入口部分重叠，需合并排期；宽数值常量在 870 中仍受控拒绝 |
 | P0 | R3-M 多模块/use/pkg/全局初始化 | C-21/C-22 | AP-07；复用 resolver 与 783 store |

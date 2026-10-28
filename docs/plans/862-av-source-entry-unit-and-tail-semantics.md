@@ -5,7 +5,7 @@ feature_name: AV源码入口、Unit与尾值语义（R2-E/SEM-05）
 author: [Codex]
 created_at: 2026-10-28
 updated_at: 2026-10-28
-plan_revision: 1
+plan_revision: 2
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -16,7 +16,7 @@ touched_goals: [GOAL-002]   # 解释器/VM 快周转：热重载与真实源码�
 
 affects: [auto-av, auto-mir, auto-ac, auto-test-case]
 current_step: 0
-total_steps: 8
+total_steps: 9
 ---
 
 # [PLAN-862] AV源码入口、Unit与尾值语义
@@ -28,6 +28,7 @@ total_steps: 8
 - 交付新的具名源码 profile 与执行 profile，使真实Auto程序可以 `fn main() void`、隐式尾值、单文件脚本体进入AV执行，并把“guest返回值 / Unit / 语言trap / 资源失败 / infra”呈现为**互不替代的独立通道**。
 - 不改动 `auto.source.scalar-i32.draft` r1 与 `av.core-i32/1`（profile id 1 / AVAB 语义）的既有字节与语义；新域独立版本、双向拒绝。
 - 本Plan **不含** 控制台/print（PLAN-863）、集合（864）、闭包（865）、在线热重载（866）。
+- **并入项（2026-10-28 用户裁定）**：本Plan同时承担 **M1 分母重绑定**（把对账表里"从未真跑过"的格子实测定级），不另立计划。口径与 103 行逐行映射见[对等口径决策件](reports/ace-m1-scope-decision-2026-10-28.md)（已裁定：`na:m1` 三类接受、`diff:accepted` 四族接受、a2r 双轴拆分接受、a2r 名解析计真缺口）。
 
 本轮只起草合同：不建实施树、不跑构建/语料、不启动其他会话，也不改任何在途Plan的合同或进度。
 
@@ -36,7 +37,7 @@ total_steps: 8
 - 冻结一套**入口选择与结果通道**语义矩阵：合法入口形态、唯一性判定、尾值/显式return、Unit返回值表示、退出码映射、诊断码，全部可观察、可反证。
 - 让真实源码经 `词法/语法解析 → 绑定/推导 → Checked HIR → Typed MIR → ABC → 受检验证 → AV执行` 全链得到 typed 结果，不靠宿主硬编码按文件名/函数名挑结果。
 - 为紧随其后的 863/864/865 提供公共前门：它们都要求“真实程序能进入、能返回、能判定”，不再各自发明入口规则。
-- 保持 `D798`/`D828`/`D820`–`D826`/`D827`/`D852` 已交付合同不变；本Plan不改 852 分母既有行，只**追加**入口/Unit 相关case行。
+- 保持 `D798`/`D828`/`D820`–`D826`/`D827`/`D852` 已交付合同不变；本Plan对 852 分母的动作限于：**追加入口/Unit 新行** + **按已裁定口径重绑既有 `probe` 单元格**（不改任何 expected/oracle，不改 12 列 schema）。
 
 成功标准：入口与结果通道可用独立oracle区分（改结果必红、错入口必拒、错通道必分），旧 profile 字节/行为零漂移。
 
@@ -121,7 +122,22 @@ T-02 必须产出 `attachments/862/work/entry-contract.md`，逐项冻结（未�
 - **recipe 绑定**：入口/Unit 改变的是源码 profile 与 entry 类别。优先在既有 `ac-av/core-run-v1` 的 av binding **追加源 profile 选择字段**（append-only：旧 case 不写该字段时行为逐字节不变）；若该字段无法向后兼容，则按既有三缝新注册 `ac-av/entry-run-v1`（`REGISTERED_PROBE_RECIPES` + step 词表 / 父侧 `test_cases/mod.rs` 分派 / worker `case-serve` 域分支）。
 - **观察通道**：本Plan只用既有 `exit`（值通道）与 `probe`（结构化步骤面）；**不新增 stdout/stderr**（归 863），也不改 `channel_supported` 表。
 
-判定仍在父侧（worker 永不见 expected），`binding.tsv` 只追加行、不改 12 列 schema；新 case 与 oracle 由父侧独立裁决。
+判定仍在父侧（worker 永不见 expected），`binding.tsv` **只追加行或翻转状态列**、不改 12 列 schema；新 case 与 oracle 由父侧独立裁决。
+
+### 5.5 M1 分母重绑定（并入项，2026-10-28 用户裁定）
+
+**要解决的问题**：`binding.tsv` 里 24 个 `probe` 与 27 个 `wait:*` 从未真实执行过（`wait` 指向的 822 未获授权新增 T-11），所以"M1 干净行数"一直是估算。本Plan用**同一次语料运行**把它们定级。
+
+范围与边界：
+
+- **只定级，不补能力**：能跑的如实写 `ok`；仍缺能力的写 `gap:<owner>`（按决策件 §7 的 owner 表）；契约已备但尚未实跑的不许写 `ok`。
+- **不改 expected/oracle**：任何"跑出来跟冻结期望不一致"的结果 → 记录差异并停手，不许改期望凑绿（这是既有纪律）。
+- **不改 12 列 schema**：新 token（`ok+cert-gap`、`na:m1(rule)`、`diff:accepted(rule)`）写在状态列；`na` 必须带规则 ID（NA-1..3），新增 `na` 需决策依据。
+- **不加分母、不删分母**：只翻转既有单元格状态 + 追加本Plan的入口/Unit 行。
+- **前置**：`D868`（lowering 版本身份进报告，否则重绑定证据一落地就被下次迁移判 stale）；`wait:*` 的定级需要其指向能力已交付的，按实际交付判断（未交付就转 `gap:<owner>`，不硬跑）。
+- **产出**：`attachments/862/rebind/` 下次级证据摘要（命令、退出码、逐族结果、hash）+ `binding.tsv` 状态更新 + 一句结论："clean = N/103（实测）"。
+
+**不做的**：不把 `na` 当垃圾桶（决策件 §5 四条反滥用规则在 review 时逐条核）；不顺手修 a2r/旧引擎；不重跑已判 `ok` 的行去"求一致"。
 
 ### 规范增量
 
@@ -132,6 +148,7 @@ T-02 必须产出 `attachments/862/work/entry-contract.md`，逐项冻结（未�
 | SD-03 | modify | docs/specs/auto-av/project.md | 追加新 profile 条目，旧 profile 边界保持 | 模块可见 | AC-03 |
 | SD-04 | modify | docs/specs/auto-test-case/ace-m1-conformance.md | 追加入口/Unit case 行与判定轴，不改既有行语义 | 证据落点 | AC-05 |
 | SD-05 | modify | docs/specs/auto-mir/overview.md | 追加 unit 结果类型与 entry 类别的 MIR 侧约束 | IR 合同 | AC-02/03 |
+| SD-06 | modify | docs/specs/auto-test-case/ace-m1-conformance.md | 追加五态词表与 `na:m1`/`diff:accepted`/`ok+cert-gap` 判定（实现决策件 SD-01/02）；不改 12 列 schema | 重绑定需可判口径 | AC-06 |
 
 ## 6. 测试设计
 
@@ -144,6 +161,7 @@ T-02 必须产出 `attachments/862/work/entry-contract.md`，逐项冻结（未�
 | V-03 | AC-03 旧域保持 | 旧 scalar/core 语料重跑 + 新域文档喂旧 verify 入口、旧域文档喂新入口 | 旧 profile 字节/结果零漂移；双向 `verify.domain`/`verify.profile-op` 拒绝 | T-04 |
 | V-04 | AC-04 全链与恢复 | 真实 `.at` 文件 → 前端 → MIR → ABC → AV；新进程 decode/verify 后重跑；错 kind/双入口 wire 手术 | 入口 kind 与签名一致性在恢复后同判定；坏输入受控拒绝 | T-04；正式入口由 T-05 建立 |
 | V-05 | AC-05 语料绑定 | 852 语料追加入口/Unit 行 + 独立 oracle（手算/规格），父侧判定 | 改 expected 必红、SKIP 不计绿、分母不缩 | T-05 |
+| V-06 | AC-06 分母重绑定 | 24 个 `probe` + 27 个 `wait:*` 逐格实跑；`na`/`gap` 取值对照决策件规则 | 每格有真实执行证据或具名 owner；`na` 必带规则 ID；SKIP/未跑计入阻塞；`clean` 数字与实际逐格统计一致 | T-06；不改 expected |
 
 定向命令（T-05 建立后填写实际结果）：`cargo check -p auto-lang`；`experimental/ac-core` 与 `experimental/ac-av-probe` 两独立 workspace 的定向 `cargo test`；`powershell -File scripts/verify-av-862.ps1 -Scope <targeted|compat|entry|acceptance>`。完整 `cargo t`/`tv` 与 852 acceptance 全量属 merge 门，不在work阶段反复跑。
 
@@ -156,9 +174,10 @@ T-02 必须产出 `attachments/862/work/entry-contract.md`，逐项冻结（未�
 | AC-03 | work | 旧 profile 字节/语义零漂移，新域与旧域双向拒绝；V-03 |
 | AC-04 | work | 真实源码全链 + 新进程恢复后同判定 + 坏输入拒绝；V-04 |
 | AC-05 | work | 852 语料追加行与独立 oracle 落地，分母不缩、SKIP 不计绿；V-05 |
-| AC-06 | review | 独立核 work 的 AC/V/SD、入口冻结件与实际数据流、warnings/fmt；merge 门 pending |
-| AC-07 | merge | 冻结提交上跑裸 `cargo t` + 触面档（VM/编译器→`tv`）；失败不豁免 |
-| AC-08 | merge | Spec 沉淀（SD-01..05）、ledger、归档、worktree guard 清理实际完成 |
+| AC-06 | work | 24+27 个未跑格逐格定级：证据/owner 齐全，`na` 带规则 ID，`clean` 为实测且与逐格统计一致；V-06 |
+| AC-07 | review | 独立核 work 的 AC/V/SD、入口冻结件与实际数据流、`na` 反滥用四条、warnings/fmt；merge 门 pending |
+| AC-08 | merge | 冻结提交上跑裸 `cargo t` + 触面档（VM/编译器→`tv`）；失败不豁免 |
+| AC-09 | merge | Spec 沉淀（SD-01..06）、ledger、归档、worktree guard 清理实际完成 |
 
 ## 8. 执行步骤
 
@@ -169,13 +188,16 @@ T-02 必须产出 `attachments/862/work/entry-contract.md`，逐项冻结（未�
 | T-03 | work | T-02 | 实现源码域：lexer/parser/resolve/typecheck/adapter + descriptor + 正反诊断，定向测试 V-01 | AC-01 | [ ] |
 | T-04 | work | T-03 | 实现 MIR/ABC/AV：unit 类型、entry kind、结果通道、verifier 与恢复准入，测试 V-02/03/04 | AC-02/03/04 | [ ] |
 | T-05 | work | T-04 | 语料/脚本/绑定：追加 ace-m1 行、独立 oracle、`verify-av-862.ps1`，跑定向面并提交代码与证据 | AC-05 | [ ] |
-| T-06 | review | T-05 | 独立最终review，核 AC/V/SD 与实际入口；merge 门 pending | AC-06 | [ ] |
-| T-07 | merge | T-06 pass | 冻结提交上裸 `cargo t` + `tv`，失败归因不豁免 | AC-07 | [ ] |
-| T-08 | merge | T-07 | Spec/ledger 沉淀、归档、worktree guard clean 清树 | AC-08 | [ ] |
+| T-06 | work | T-05、D868 | M1 分母重绑定：实跑 24 个 `probe` + 27 个 `wait:*` 逐格定级、按决策件写状态、产出证据摘要与实测 `clean` 数；不改 expected/schema | AC-06 | [ ] |
+| T-07 | review | T-06 | 独立最终review，核 AC/V/SD 与实际入口、`na` 反滥用；merge 门 pending | AC-07 | [ ] |
+| T-08 | merge | T-07 pass | 冻结提交上裸 `cargo t` + `tv`，失败归因不豁免 | AC-08 | [ ] |
+| T-09 | merge | T-08 | Spec/ledger 沉淀、归档、worktree guard clean 清树 | AC-09 | [ ] |
 
 ## 9. 复审记录
 
 2026-10-28 new r1：`stage: new | plan_id: PLAN-862 | plan_revision: 1 | outcome: pass（可在既有授权内进入 work；T-02 若需改变已批准语义则回用户决定） | next: work T-01→T-02`。全部 AC/V/T 未执行；profile 号、schema 名、诊断码均为建议值，T-02 冻结后写回。本轮未建实施树、未跑任何构建/语料，未改在途Plan与既有Spec。批次排序依据见[后继批次规划](reports/ace-next-batch-2026-10-28.md)。
+
+2026-10-28 **r1→r2（并入 M1 分母重绑定）**：`stage: new | plan_id: PLAN-862 | plan_revision: 2 | outcome: pass | next: work T-01`。变更原因：用户 2026-10-28 裁定"M1 分母重绑定不另立计划，并入下一个要做的计划"；对账口径由[对等口径决策件](reports/ace-m1-scope-decision-2026-10-28.md)定稿（4/4 采纳推荐项）。合同变更：新增 §5.5 边界、SD-06、V-06、AC-06、T-06；因本Plan仍为 drafting、`current_step: 0`、无任何已执行证据，原 review/merge/归档任务与 AC 顺延为 T-07/T-08/T-09 与 AC-07/08/09（无历史证据被失效）。范围未扩大：仍不含 863–866 的能力，重绑定只翻转状态列、不改 expected/oracle/schema。
 
 ## 10. 待澄清事项
 

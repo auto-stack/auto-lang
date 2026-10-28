@@ -121,7 +121,7 @@
 | SD-02 | 同上（验收节） | acceptance scope 的计数改为**分轴**：clean / blocking-gap / na / accepted-diff / probe；`na` 单列且需规则分布 |
 | SD-03 | `docs/specs/auto-test-case/architecture.md` | 明确"a2r 认证轴独立于 M1 判据"，与 G08 对齐 |
 
-重绑定执行（不在本件范围）：一次真实重跑 → 把 27 个 `wait:*` 与 24 个 `probe`（换算后共 **53 个 `probe` 单元格**）逐格定级；建议作为**独立小计划**（Category A/B：只改 binding 状态与追加证据，不改 Rust 源码）。**在重绑定完成前，"clean 行数"只能当估算，不能当验收。**
+重绑定执行（不在本件范围）：一次真实重跑 → 把 27 个 `wait:*` 与 24 个 `probe`（换算后共 **53 个 `probe` 单元格**）逐格定级。**2026-10-28 用户裁定：不另立计划，并入 [PLAN-862](../862-av-source-entry-unit-and-tail-semantics.md) 的 T-06（§5.5）**，由该 Plan 的 merge 门一并收口。**在重绑定完成前，"clean 行数"只能当估算，不能当验收。**
 
 ## 9. 与在途/待立计划的映射
 
