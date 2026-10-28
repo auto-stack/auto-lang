@@ -134,6 +134,19 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
   gate 实跑其全程，断言唯一 [FAIL] 即该步、被标集恰为本计划域内 artifact
   且 ⊆782 允许清单（真实越界仍红）。
 
+## entry-unit 源码 profile（PLAN-862）
+
+- [source-entry-unit.md](source-entry-unit.md)：真实程序前门——`fn main() int`、
+  `fn main() void`（Unit 结果）与单文件脚本（顶层语句序列，尾值为结果）三形态
+  互斥；入口唯一性/零参/全路径返回/尾值规则全部具名拒绝；Unit 是**结果位专属**
+  类型（参数/局部写 `void` 命名 `source.unit-placement`，字段/place 由 HIR/MIR
+  层守护）。
+- 新域独立身份：源码 `auto.source.entry-unit.draft`、HIR
+  `auto.hir.entry-unit.draft/1/entry-unit-draft`；既有四 profile 的字节/语义与
+  `void`/表达式语句的拒绝面零漂移。Unit **没有 native lowering**——本 profile
+  仅由 AV 执行（[auto-av/entry-and-unit-profile.md](../auto-av/entry-and-unit-profile.md)），
+  其余消费者显式拒绝，不落半条链。
+
 ## 数据/资源合同（PLAN-774）
 
 - [data-resource-contract.md](data-resource-contract.md)：文本/标量聚合首批的

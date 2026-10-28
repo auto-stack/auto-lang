@@ -10,6 +10,12 @@ PLAN-824 增加 [av.dynamic/1 类型擦除 MIR](dynamic-cast-profile.md)，递�
 
 PLAN-823 增加 [av.closures/1 闭包捕获 MIR](closure-capture-profile.md)：闭包体自带 env 声明、捕获三态纪律与 link 期 env 等价检查。
 
+PLAN-862 增加 av.entry-unit/1 入口/Unit MIR（身份 `auto.mir.av-entry-unit/1`，
+旧 schema/语义版本不变）：`MirType::Unit` 零运行时宽度，只作 unit 入口的
+`sig.result` 与唯一 `Return` 操作数（`mir.unit-placement`）；模块头新增
+`EntryKind::{Int,Unit}` 并与入口签名**双向**校验（`mir.entry-kind`，kind 缺失
+拒绝）。执行侧通道语义见 [auto-av/entry-and-unit-profile.md](../auto-av/entry-and-unit-profile.md)。
+
 PLAN-868 起 HIR→Typed MIR lowering 的唯一实现出库为共享 crate
 `experimental/auto-mir-lower`（自 av-probe 字节级纯搬移，probe/mn/cte 三消费者共用，
 MIR 合同语义不变）；边界、依赖方向红线与 `MIR_LOWERING_VERSION` 版本身份见

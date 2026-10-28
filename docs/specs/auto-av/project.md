@@ -12,6 +12,7 @@ Checked HIR → Typed MIR → ABC decode/verify → 私有LoadedModule → Rust 
 - [缓存、资源与验收](cache-and-conformance.md)
 - [类型化集合与 Variant（av.collections/1，PLAN-822）](collections-variants.md)
 - [类型化闭包环境（av.closures/1，PLAN-823）](closure-environments.md)
+- [入口/Unit 执行（av.entry-unit/1，PLAN-862）](entry-and-unit-profile.md)
 - [MIR](../auto-mir/core-i32.md) | [数据 MIR](../auto-mir/data-place-profile.md)
 
 798不是在线函数替换/完整AJ/发布器。实际增量边界以缓存合同为准。
@@ -80,6 +81,13 @@ v4/5/16/0x2F-0x31）与交叉拒绝为现行合同，整合前旧登记为历史
 - 实际优化面：同一标量语义 profile 的第二 wire 世代，raw 体积全组更小（13 组实测 ratio 0.361–0.856；852 五源基线 917/1739=0.527；gzip 同算法同参数分列见 bench 口径）。密度目标 BIN=5B/COPY=3B/RETURN=2B/CONST=3B（section 差分实测）。
 - 未实现面如实登记：短立即数/slot 复用/指令融合/常量池重写未实现（未来采用需新 wire version 与独立语义/密度反控）；不承诺公共稳定 ABI；无 lazy trust/JIT。
 - data/owned/collections/closures/dynamic 仍为 legacy 受检参考路径（compat 回归 5+7+8 无扩面/退化）。
+
+## PLAN-862：av.entry-unit/1 入口/Unit 执行 profile
+
+- [entry-and-unit-profile.md](entry-and-unit-profile.md)：AV 的第七个独立执行 profile（profile id 7）——结果通道新增 **Unit 真值**（`Value::Unit`，零宽度，永不等于 `I32(0)`），wire 头部携带 `EntryKind::{Int,Unit}` 并双向校验（`mir.entry-kind`），Unit slot 只作 unit 入口的 return 操作数（`mir.unit-placement`）。
+- 身份三元组独立：MIR `auto.mir.av-entry-unit/1`、ABC `auto.abc.av-entry-unit/1`（新 magic `AVAU` v1、profile id 7）、producer `plan862/av-entry-unit`；AVAB/AVAD v1–v5 与之互不可读，旧 owner schema 被 `mir.schema-profile` 拒绝。
+- 恢复/缓存按 profile 独立命名空间；新进程 decode+verify 复现入口 kind 判定；命中路径 AV 仍执行；body-edit 只重建被改 unit；执行预算不提高、不新增分配通道。
+- 验收：probe `av_entry_862` 13 例 + 语料 U01–U10（`scripts/verify-av-862.ps1`），含 Unit≠0 正反两面与判别力反控。
 
 
 PLAN-868 起 probe 不再是 HIR→MIR lowering 的提供者：唯一实现出库至共享 crate

@@ -76,3 +76,12 @@ B01/B04/B09/B13/B14 五源（852 `src` 与 825 fixture SHA-256 逐位同源）�
 - 852 底座分母追加本计划实际支持起点：binding 表（`docs/plans/archive/826-av-compact-abc-format-and-size.md` 的 attachments/826/852-validation/binding.md）逐行映射 B01/B04/B09/B13/B14 双 wire 对拍与 I01/04–07/10–12 场景；`verify-av-826.ps1 -Scope baseline` 为正式入口。
 - 语义 ID → 真实起点 → V 子例 → 正式入口 → 独立 oracle → 证据逐行可核；optimized==reference 双路径冻结期望。
 - 范围外 gap 保留 owner：复合类型/字段布局源码编辑、source/native/AJ 面不冒领；typed fixture 不替代同源四路径。
+
+## PLAN-862：入口/Unit 语料与 M1 重绑定
+
+- **追加行（不改既有行语义）**：U01–U10（`crates/auto-lang/test/cases/ace-m1/entry-862/`，独立手算 oracle）经真实 `ac-av/core-run-v1` + `av: { profile: "entry-unit" }`（append-only 选择器）执行。判定轴新增 `av_channel: value|unit`：Unit 无 i32 载荷，只有通道名能把它与 `i32 0` 分开，因此 `unit` 与 `exit` 同格声明被拒（含 exit 0）。样例：U01/U03 值 42、U02/U04 Unit、U05 trap、U06–U10 五类入口诊断（missing/params/unit-return-value/entry-tail/entry-duplicate）。
+- **五态词表（决策件 SD-01/02 落地）**：`ok*`（含 `ok-emit`/`ok-parse-reject`/`ok:…`）/ `ok+cert-gap`（a2r 金样轴绿、认证轴缺）/ `gap:<owner>`（应有未交付；owner=计划 ID 或具名能力包）/ `na:m1(NA-x)`（M1 不要求，须带规则 ID 与重新进入条件）/ `diff:accepted(R-x)`（已裁定旧侧差异，**不等于** ok）/ `diff:pending`（已执行有分歧、未裁定，阻塞）。`probe` 与 `wait:*` 不得作为长期状态。
+- **`na` 规则与反滥用**：NA-1 legacy/a2r 不判 typed fixture 入口；NA-2 无 Dyn API；NA-3 native 不判闭包/Dyn/在线重载/暂停恢复；**NA-4**（2026-10-28 用户裁定）入口/Unit 是 AV-only profile，native/legacy 不判（重新进入条件：有计划冻结 native/legacy 对该 profile 的支持时逐行改回 `gap:<plan>`）。每条 `na` 必须带规则 ID；新增须回决策件或同等决策；merge 报告单列 `na` 行数与规则分布。
+- **本轮新增 owner token**：`a2r-golden`（发射成功但无冻结金样）、`scenario-tooling`（无源码的 scenario 行观测通道未交付）、`av-text-move`/`av-text-nul`（owned 源面对 Str move / NUL 比较的缺口）、`av-mut-param`（AV mut 参数未交付）、`P864`（集合/变体源码，PLAN-864）。
+- **实测口径**：24 `probe` + 27 `wait:*` 单元格逐格真实执行后定级（残留 0/0）；corpus 73 行（原 63 + U01–U10），实测 **clean = 20/73**；`probe`/`wait:*`/SKIP 均不计绿，`clean` 以脚本复算为准。决策件附录中无规则 ID 的 `na:m1` 行（C01/C02/I01–I11/G02–G08）在全表回填前仍需单独裁定。
+- 门：`powershell -File scripts/verify-av-862.ps1 -Scope <targeted|compat|entry|acceptance>`；旧 852 底座套件保持 97 检查绿（本计划未改 852 脚本、金样与 12 列 schema）。
