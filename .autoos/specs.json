@@ -5077,6 +5077,30 @@
             "sd:01-08"
           ],
           "content": "SD-01 add compact-abc-format.md；SD-02..08 modify cache-and-conformance/project/abc-core-i32/runtime-benchmark-method/resident-function-install/auto-test-case architecture+ace-m1-conformance；bench-r1 实测：13 负载双 wire ratio 0.361-0.856、四引擎冻结入口 tier 证据、turnaround 六场景 P95=847ms、V-10 负控拒绝伪数据（证据本地 attachments/826/bench-r1，摘要入 plan 文件）。"
+        },
+        {
+          "assignee": null,
+          "completed_at": null,
+          "content": "PLAN-860:r1 source lands only on autographics-dev; master holds reviewed canonical knowledge and the derived ledger. Evidence lives in D:/autostack/plan-artifacts/plan-860/ (sampling, controlled build, host reports, consumer package); archive is docs/plans/archive/860-autographics-game-runtime-feasibility.md.",
+          "created_at": "2026-10-28",
+          "depends_on": [],
+          "file": "docs/specs/auto-graphics/plans.md",
+          "id": "P860-MERGE",
+          "milestone": null,
+          "modified_at": "2026-10-28",
+          "module": "auto-graphics",
+          "priority": null,
+          "related": [],
+          "status": "verified",
+          "tags": [
+            "PLAN-860",
+            "r1",
+            "reviewed:7144526c300000000000000000000000000000000000000000000000000000000",
+            "source-commit:7144526c3f6543b339c8a71595eb9d9a7459cb28",
+            "source-sha256:6b956555e1d9f9bc8e716ef17951fa27d392c3e4623ad9dc52d3b2178d8a33ca"
+          ],
+          "test_file": null,
+          "title": "PLAN-860 game runtime consolidation"
         }
       ],
       "section_type": "Reports",
@@ -5084,7 +5108,7 @@
       "status": "empty",
       "content": "",
       "depends_on": [],
-      "last_modified": 1793073014,
+      "last_modified": "2026-10-28",
       "last_verified": null
     },
     {
@@ -17125,6 +17149,30 @@
             "delivered:2026-10-28"
           ],
           "content": "av.core-i32/1 同一标量语义 profile 的第二 wire 世代：magic AVAC/1、canonical ULEB128/u32（≤5B 最短编码）、12B 头+9B 目录+5 必需 section 连续覆盖到 EOF、BIN=5B/COPY=3B/RETURN=2B 密度；编码域不等于准入域（decode 只产未授信 MIR，verify_compact_abc 是 AVAC 唯一 LoadedProgram 准入）；双世代键空间隔离与 abc_codec manifest 路由；分配前预算与 format/resource/semantic 分态。"
+        },
+        {
+          "assignee": null,
+          "completed_at": null,
+          "content": "Real-Auto G2/G3 character-motion and runtime-budget probe under unchanged hard limits: candidate A public behavior/5 composition (grounded inference rule, 27 credits/step) and candidate B probe-only geometric final-support unit (skin 0.01, 26 credits/step, 2 scans/step) both satisfy the necessary semantics; decision go for PLAN-861 with recorded pricing decision points, limitations and resource bounds. Probe-only; no public API claim.",
+          "created_at": "2026-10-28",
+          "depends_on": [],
+          "file": "docs/specs/auto-graphics/game-runtime-feasibility.md",
+          "id": "P860-GAME-RUNTIME-FEASIBILITY",
+          "milestone": null,
+          "modified_at": "2026-10-28",
+          "module": "auto-graphics",
+          "priority": null,
+          "related": [],
+          "status": "verified",
+          "tags": [
+            "PLAN-860",
+            "r1",
+            "reviewed:7144526c300000000000000000000000000000000000000000000000000000000",
+            "source-commit:7144526c3f6543b339c8a71595eb9d9a7459cb28",
+            "source-sha256:6b956555e1d9f9bc8e716ef17951fa27d392c3e4623ad9dc52d3b2178d8a33ca"
+          ],
+          "test_file": null,
+          "title": "AutoGraphics game runtime feasibility (M2/S2 probe)"
         }
       ],
       "section_type": "Designs",
@@ -17132,7 +17180,7 @@
       "status": "empty",
       "content": "",
       "depends_on": [],
-      "last_modified": 1793073014,
+      "last_modified": "2026-10-28",
       "last_verified": null
     },
     {
@@ -21304,6 +21352,30 @@
             "commit:89574bb8d"
           ],
           "content": "probe av_wire_826_{first_case,targeted,security,compat,incremental,baseline} 六族 + parallel/826 同源壳 9/9 + recipe ac-av/compact-run-v1（工具身份轴 av-wire-codec）+ 父侧 judge_compact_runtime 计数器判真与 AV826_JUDGE_SABOTAGE 反控；scripts/verify-av-826.ps1 六 scope 聚合 acceptance（Assert-Selected 拒 0 例/ignored/缺失/重复）。"
+        },
+        {
+          "assignee": null,
+          "completed_at": null,
+          "content": "20 single-threaded tests bind the frozen probe contract: G2/G3 routes for both candidates with enemy/hazard/pit oracles, SC-01..10 semantics, four real source mutations red->green, 128-wide/deep nearest-blocker-last loads, budget/credit/fault classification, Host/Play/GPU publication bound bitwise to the Session trace, Stop pixel restore, 20 owner-release cycles and fresh-spawn negatives. Merge gates: producer full 351 passed, consumer full on the exported package.",
+          "created_at": "2026-10-28",
+          "depends_on": [],
+          "file": "docs/specs/auto-graphics/game-runtime-feasibility.md",
+          "id": "P860-TESTS",
+          "milestone": null,
+          "modified_at": "2026-10-28",
+          "module": "auto-graphics",
+          "priority": null,
+          "related": [],
+          "status": "verified",
+          "tags": [
+            "PLAN-860",
+            "r1",
+            "reviewed:7144526c300000000000000000000000000000000000000000000000000000000",
+            "source-commit:7144526c3f6543b339c8a71595eb9d9a7459cb28",
+            "test-file:experimental/autographics-auto-driver/tests/game_runtime_feasibility.rs"
+          ],
+          "test_file": null,
+          "title": "PLAN-860 game runtime feasibility verification"
         }
       ],
       "section_type": "Tests",
@@ -21311,7 +21383,7 @@
       "status": "empty",
       "content": "",
       "depends_on": [],
-      "last_modified": 1793073014,
+      "last_modified": "2026-10-28",
       "last_verified": null
     },
     {
@@ -28421,6 +28493,28 @@
             "commit:89574bb8d"
           ],
           "content": "交付 AVAC/1 紧凑 wire 世代（canonical specs：compact-abc-format.md 新建、cache/project/abc-core-i32/runtime-benchmark-method/resident-function-install/architecture/ace-m1 七处增量）；rebase 展平合入 master@89574bb8d（ff-only）；冻结门禁：裸 cargo t（jobs=6 等价，全并发下 worktree 冷 native 缓存饥饿已归因）3205/3205、cargo tv 163/163、parallel 壳 9/9、probe 六族 21/21、acceptance scope exit 0；T-07 final pass（F1 mut 警告修复后），reviewer=同会话声明局限。"
+        },
+        {
+          "assignee": null,
+          "completed_at": null,
+          "content": "Same-session final review (limitation declared) reconstructed from frozen artifacts: write-surface audit (no api/authoring/AGP/SDK/budget changes), 24 contract-conformance checks, rerun of all gates, 40-report sampling bound to a controlled-build receipt and an independent kinematic oracle. F-860-R1-01 (missing runner receipt) found and closed during review at 7144526c3; notes N-1 (MUT-3 contract text alignment) and N-2 (fault-cycle coverage boundary) recorded non-blocking.",
+          "created_at": "2026-10-28",
+          "depends_on": [],
+          "file": "docs/plans/archive/860-autographics-game-runtime-feasibility.md",
+          "id": "P860-REVIEW-R1",
+          "milestone": null,
+          "modified_at": "2026-10-28",
+          "module": "auto-graphics",
+          "priority": null,
+          "related": [],
+          "status": "verified",
+          "tags": [
+            "PLAN-860",
+            "r1",
+            "reviewed:7144526c300000000000000000000000000000000000000000000000000000000"
+          ],
+          "test_file": null,
+          "title": "PLAN-860 independent final R1 PASS"
         }
       ],
       "section_type": "Reviews",
@@ -28428,10 +28522,10 @@
       "status": "empty",
       "content": "",
       "depends_on": [],
-      "last_modified": 1793073014,
+      "last_modified": "2026-10-28",
       "last_verified": null
     }
   ],
   "project": "auto-lang",
-  "version": 111
+  "version": 112
 }
