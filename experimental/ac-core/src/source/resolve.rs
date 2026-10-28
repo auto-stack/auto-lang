@@ -32,6 +32,10 @@ pub enum VT {
     /// Nominal record type by index into [`ResolvedProgram::records`]
     /// (PLAN-771). Two records with identical shapes are distinct types.
     Rec(usize),
+    /// Unit (PLAN-862): the `void` RESULT type. Never a value type — no
+    /// `let`, param, field or expression may carry it; it exists so a
+    /// function (and therefore the entry) can declare "no value".
+    Unit,
 }
 
 impl VT {
@@ -43,6 +47,7 @@ impl VT {
             VT::StrOwned => "Str",
             VT::Char => "char",
             VT::Rec(_) => "record",
+            VT::Unit => "unit",
         }
     }
 
@@ -58,6 +63,7 @@ pub fn vt_of_word(w: TypeWord) -> VT {
         TypeWord::Str => VT::Str,
         TypeWord::StrOwned => VT::StrOwned,
         TypeWord::Char => VT::Char,
+        TypeWord::Void => VT::Unit,
     }
 }
 
@@ -359,6 +365,13 @@ pub enum RStmt {
     },
     Continue {
         target: Option<LoopRef>,
+        span: Span,
+    },
+    /// PLAN-862: an expression statement. Only legal as the SCRIPT's
+    /// trailing statement (the tail value); every other occurrence is
+    /// rejected by [`check_entry_matrix`] with `source.entry-tail`.
+    ExprStmt {
+        value: ResolvedExpr,
         span: Span,
     },
 }
@@ -670,6 +683,14 @@ fn resolve_detailed(
         ));
     }
 
+    // PLAN-862 entry matrix: the entry-unit profile has exactly one entry
+    // and a frozen accept/reject set (`entry-contract.md` §2). Runs after
+    // Pass 2 so a script's result type can be derived from its tail
+    // statement's RESOLVED type.
+    if surface.is_entry_unit() {
+        check_entry_matrix(&mut fns, &flat, &mut diags);
+    }
+
     if diags.is_empty() {
         Ok((
             fns,
@@ -685,8 +706,291 @@ fn resolve_detailed(
     }
 }
 
-/// PLAN-828 D-01: the RETAINED checked environment of one cold resolve —
-/// every function's resolved entry, the signature/record indexes, and
+/// PLAN-862 T-03: the entry matrix of the entry-unit profile
+/// (`attachments/862/work/entry-contract.md` §2). Frozen accept/reject set:
+///
+/// - exactly one entry candidate: `fn main() int`, `fn main() void`, or the
+///   synthetic script `main` built from a top-level statement sequence;
+/// - a declared `fn main` plus a script is `source.entry-ambiguous`; two
+///   `fn main`s are `source.entry-duplicate`; none is
+///   `source.entry-missing`;
+/// - the entry takes no parameters (`source.entry-params`);
+/// - a Unit entry may not `return <value>` (`source.unit-return-value`) —
+///   it ends by falling off the body;
+/// - an expression statement is legal ONLY as a script's trailing
+///   statement; everywhere else it is `source.entry-tail`, and a
+///   non-i32 tail is `source.entry-tail-type` (an `int` entry never gets an
+///   implicit tail return);
+/// - Unit is a RESULT-only type: a param/local of type `unit` is
+///   `source.unit-placement`.
+///
+/// The script's result type is WRITTEN BACK here (i32 tail → int entry, no
+/// tail → Unit entry); the downstream passes (typecheck/HIR/lowering) see
+/// the resolved result, never a placeholder.
+fn check_entry_matrix(fns: &mut [ResolvedFn], flat: &[&ast::FnItem], diags: &mut Vec<Diagnostic>) {
+    fn push(diags: &mut Vec<Diagnostic>, code: &str, msg: String, span: Span) {
+        diags.push(Diagnostic::new(Stage::Bind, code, msg, span));
+    }
+    let mains: Vec<usize> = (0..flat.len())
+        .filter(|&i| {
+            flat[i].receiver == ast::Receiver::Free
+                && !flat[i].script
+                && flat[i].name.name == "main"
+        })
+        .collect();
+    let scripts: Vec<usize> = (0..flat.len()).filter(|&i| flat[i].script).collect();
+
+    if !scripts.is_empty() && !mains.is_empty() {
+        push(
+            diags,
+            "source.entry-ambiguous",
+            "a top-level statement sequence (script) and a declared `fn main` cannot coexist in one module; keep exactly one entry form".to_string(),
+            flat[scripts[0]].name.span,
+        );
+    }
+    if mains.len() > 1 {
+        push(
+            diags,
+            "source.entry-duplicate",
+            format!(
+                "`fn main` is declared {} times; a module has exactly one entry",
+                mains.len()
+            ),
+            flat[mains[1]].name.span,
+        );
+    }
+    if mains.is_empty() && scripts.is_empty() {
+        push(
+            diags,
+            "source.entry-missing",
+            "the entry-unit profile requires exactly one entry: `fn main() int`, `fn main() void`, or a top-level statement sequence".to_string(),
+            Span { start: 0, end: 0 },
+        );
+    }
+
+    // -- script entry: result type derived from the tail statement --------
+    for &si in &scripts {
+        let f = &mut fns[si];
+        let n = f.body.stmts.len();
+        let mut tail_is_i32 = false;
+        for (i, stmt) in f.body.stmts.iter().enumerate() {
+            let RStmt::ExprStmt { value, span } = stmt else {
+                continue;
+            };
+            if i + 1 == n {
+                if value.vt == VT::I32 {
+                    tail_is_i32 = true;
+                } else {
+                    push(
+                        diags,
+                        "source.entry-tail-type",
+                        format!(
+                            "a script's trailing expression IS its result and must be `i32`, found `{}`",
+                            value.vt.as_str()
+                        ),
+                        *span,
+                    );
+                }
+            } else {
+                push(
+                    diags,
+                    "source.entry-tail",
+                    "only the script's TRAILING statement may be an expression; an earlier expression statement has no value consumer".to_string(),
+                    *span,
+                );
+            }
+        }
+        // an expression statement inside a nested arm is never the tail
+        for sp in nested_expr_stmts(&f.body) {
+            push(
+                diags,
+                "source.entry-tail",
+                "only the script's TRAILING statement may be an expression; a nested expression statement has no value consumer".to_string(),
+                sp,
+            );
+        }
+        f.result = if tail_is_i32 { VT::I32 } else { VT::Unit };
+    }
+
+    // -- declared entries: params and the result-kind channel -------------
+    for &mi in &mains {
+        let f = &fns[mi];
+        if !f.params.is_empty() {
+            push(
+                diags,
+                "source.entry-params",
+                format!(
+                    "the entry takes no parameters (found {}); argv-style entry arguments are not part of this profile",
+                    f.params.len()
+                ),
+                f.name_span,
+            );
+        }
+        match f.result {
+            VT::I32 => {
+                // an `int` entry never gets an implicit tail return
+                if let Some(sp) = first_expr_stmt(&f.body) {
+                    push(
+                        diags,
+                        "source.entry-tail",
+                        "an `int` entry returns through explicit `return`; a trailing expression is not an implicit return".to_string(),
+                        sp,
+                    );
+                }
+            }
+            VT::Unit => {}
+            other => push(
+                diags,
+                "source.entry-result",
+                format!(
+                    "the entry result must be `int`/`i32` or `void`, found `{}`",
+                    other.as_str()
+                ),
+                f.name_span,
+            ),
+        }
+    }
+
+    // -- the same rules for every other function --------------------------
+    for (i, f) in fns.iter().enumerate() {
+        // expression statements are a script-tail form only (declared
+        // entries were already reported above — do not double-report)
+        if !flat[i].script && !mains.contains(&i) {
+            if let Some(sp) = first_expr_stmt(&f.body) {
+                push(
+                    diags,
+                    "source.entry-tail",
+                    "an expression statement is only legal as a script's trailing statement"
+                        .to_string(),
+                    sp,
+                );
+            }
+        }
+        // Unit functions (entry or helper) have no value to return
+        if f.result == VT::Unit {
+            if let Some(sp) = first_return(&f.body) {
+                push(
+                    diags,
+                    "source.unit-return-value",
+                    format!(
+                        "`{}` declares no result (`void`); it has no value to return — end the body without `return`",
+                        f.name
+                    ),
+                    sp,
+                );
+            }
+        }
+        // Unit is a result-only type
+        for (pi, p) in f.params.iter().enumerate() {
+            if *p == VT::Unit {
+                push(
+                    diags,
+                    "source.unit-placement",
+                    format!(
+                        "parameter #{} of `{}` is `unit`; Unit is a RESULT type only",
+                        pi + 1,
+                        f.name
+                    ),
+                    f.name_span,
+                );
+            }
+        }
+        for l in &f.locals {
+            if l.vt == VT::Unit {
+                push(
+                    diags,
+                    "source.unit-placement",
+                    format!(
+                        "local `{}` of `{}` is `unit`; Unit is a RESULT type only",
+                        l.name, f.name
+                    ),
+                    l.span,
+                );
+            }
+        }
+    }
+}
+
+/// Iterative statement walk of one body in source order (nested arms
+/// expanded depth-first) — block nesting is unlimited, so no recursion.
+/// The index carried with each statement is its position within its OWN
+/// block; the caller that needs ROOT positions walks `root.stmts`
+/// directly instead of relying on this index.
+fn walk_stmts(root: &RBlock) -> Vec<&RStmt> {
+    let mut out: Vec<&RStmt> = Vec::new();
+    let mut stack: Vec<&RBlock> = vec![root];
+    while let Some(b) = stack.pop() {
+        for s in b.stmts.iter() {
+            out.push(s);
+            match s {
+                RStmt::If { els, then, .. } => {
+                    if let Some(e) = els {
+                        stack.push(e);
+                    }
+                    stack.push(then);
+                }
+                RStmt::While { body, .. } | RStmt::Loop { body, .. } => stack.push(body),
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
+/// Expression statements in NESTED blocks only (the script tail can only
+/// be a root statement).
+fn nested_expr_stmts(root: &RBlock) -> Vec<Span> {
+    let mut out: Vec<Span> = Vec::new();
+    let mut stack: Vec<&RBlock> = Vec::new();
+    for s in root.stmts.iter() {
+        match s {
+            RStmt::If { els, then, .. } => {
+                if let Some(e) = els {
+                    stack.push(e);
+                }
+                stack.push(then);
+            }
+            RStmt::While { body, .. } | RStmt::Loop { body, .. } => stack.push(body),
+            _ => {}
+        }
+    }
+    while let Some(b) = stack.pop() {
+        for s in b.stmts.iter() {
+            if let RStmt::ExprStmt { span, .. } = s {
+                out.push(*span);
+            }
+            match s {
+                RStmt::If { els, then, .. } => {
+                    if let Some(e) = els {
+                        stack.push(e);
+                    }
+                    stack.push(then);
+                }
+                RStmt::While { body, .. } | RStmt::Loop { body, .. } => stack.push(body),
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
+/// First `return` in the body (any depth), for the Unit-return rejection.
+fn first_return(root: &RBlock) -> Option<Span> {
+    walk_stmts(root).into_iter().find_map(|s| match s {
+        RStmt::Return { span, .. } => Some(*span),
+        _ => None,
+    })
+}
+
+/// First expression statement in the body (any depth, root included).
+fn first_expr_stmt(root: &RBlock) -> Option<Span> {
+    walk_stmts(root).into_iter().find_map(|s| match s {
+        RStmt::ExprStmt { span, .. } => Some(*span),
+        _ => None,
+    })
+}
+
+/// PLAN-828 D-01: the RETAINED checked environment of one cold resolve — every function's resolved entry, the signature/record indexes, and
 /// the profile/trace facts the resolver consulted. A later single-body
 /// re-check ([`recheck_function`]) grafts its result into `program.fns`
 /// by O(1) slot swap; unchanged entries are never re-walked. The fields
@@ -1488,6 +1792,14 @@ impl<'a> FnResolver<'a> {
                             },
                             span: *span,
                         });
+                }
+                Stmt::ExprStmt { value, span } => {
+                    let value = self.expr_iterative(value);
+                    stack
+                        .last_mut()
+                        .expect("resolve frame")
+                        .stmts
+                        .push(RStmt::ExprStmt { value, span: *span });
                 }
                 Stmt::If {
                     cond,

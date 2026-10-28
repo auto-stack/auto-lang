@@ -544,6 +544,15 @@ fn verify_profile(
         SourceProfile::Text => verify::verify_text(b),
         SourceProfile::Record => verify::verify_record(b),
         SourceProfile::TextRecord => verify::verify_text_record(b),
+        // PLAN-862 (T-03a): the entry-unit domain has no verifier entry
+        // yet — this contract test never feeds it, and a controlled
+        // rejection keeps the match honest instead of guessing a domain.
+        SourceProfile::EntryUnit => Err(vec![auto_ac_prototype::atom_text::Diagnostic::new(
+            auto_ac_prototype::atom_text::Stage::Verify,
+            "verify.domain",
+            "the entry-unit domain has no verifier entry yet (PLAN-862 T-03b)",
+            auto_ac_prototype::atom_text::Span { start: 0, end: 0 },
+        )]),
     }
 }
 

@@ -79,6 +79,20 @@ fn check(file: &Path) -> Result<String, (u8, Vec<auto_ac_prototype::atom_text::D
         auto_ac_prototype::hir::HirDomain::Text => verify::verify_text(bundle),
         auto_ac_prototype::hir::HirDomain::Record => verify::verify_record(bundle),
         auto_ac_prototype::hir::HirDomain::TextRecord => verify::verify_text_record(bundle),
+        // PLAN-862 (T-03a): the entry-unit domain has no verifier entry
+        // yet; a document claiming it is a controlled rejection, never a
+        // fallback onto another domain's rules.
+        auto_ac_prototype::hir::HirDomain::EntryUnit => {
+            return Err((
+                EXIT_PIPELINE,
+                vec![auto_ac_prototype::atom_text::Diagnostic::new(
+                    auto_ac_prototype::atom_text::Stage::Verify,
+                    "verify.domain",
+                    "the entry-unit HIR domain has no verifier entry yet (PLAN-862 T-03b)",
+                    auto_ac_prototype::atom_text::Span { start: 0, end: 0 },
+                )],
+            ));
+        }
     } {
         Ok(c) => c,
         Err(diags) => return Err((EXIT_PIPELINE, diags)),
@@ -246,6 +260,11 @@ fn check_source(
             &module_path,
             &args.capabilities,
         ),
+        SourceProfile::EntryUnit => auto_ac_prototype::source::compile_entry_unit_source(
+            &src,
+            &module_path,
+            &args.capabilities,
+        ),
     };
     match compile {
         Ok(c) => Ok(format!(
@@ -283,6 +302,11 @@ fn build_source(
         }
         SourceProfile::Record => compile_record_source(&src, &module_path, &args.capabilities),
         SourceProfile::TextRecord => auto_ac_prototype::source::compile_text_record_source(
+            &src,
+            &module_path,
+            &args.capabilities,
+        ),
+        SourceProfile::EntryUnit => auto_ac_prototype::source::compile_entry_unit_source(
             &src,
             &module_path,
             &args.capabilities,
@@ -425,6 +449,15 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
         // PLAN-782 T-05: the combination domain lowers through the merged
         // text lowerer (inline record aggregates + the text runtime)
         auto_ac_prototype::hir::HirDomain::TextRecord => verify::verify_text_record(bundle),
+        // PLAN-862 (T-03a): no entry-unit verifier entry yet.
+        auto_ac_prototype::hir::HirDomain::EntryUnit => {
+            return fail(vec![auto_ac_prototype::atom_text::Diagnostic::new(
+                auto_ac_prototype::atom_text::Stage::Verify,
+                "verify.domain",
+                "the entry-unit HIR domain has no verifier entry yet (PLAN-862 T-03b)",
+                auto_ac_prototype::atom_text::Span { start: 0, end: 0 },
+            )]);
+        }
     } {
         Ok(c) => c,
         Err(diags) => return fail(diags),

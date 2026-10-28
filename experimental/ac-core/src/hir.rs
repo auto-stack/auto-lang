@@ -678,6 +678,11 @@ pub enum HirDomain {
     /// owned `Str` fields inside nominal records under the 774
     /// data-resource contract.
     TextRecord,
+    /// `auto.hir.entry-unit.draft / 1 / entry-unit-draft` (PLAN-862): the
+    /// scalar compute surface plus the ENTRY surface — a Unit (`void`)
+    /// function result, the entry matrix and the single-file script form.
+    /// Unit is a RESULT-only type in this domain.
+    EntryUnit,
 }
 
 impl HirDomain {
@@ -688,6 +693,7 @@ impl HirDomain {
             HirDomain::Text => "text-i32-draft",
             HirDomain::Record => "record-i32-draft",
             HirDomain::TextRecord => "text-record-i32-draft",
+            HirDomain::EntryUnit => "entry-unit-draft",
         }
     }
 
@@ -698,6 +704,7 @@ impl HirDomain {
             HirDomain::Text => "auto.hir.text.draft",
             HirDomain::Record => "auto.hir.record.draft",
             HirDomain::TextRecord => "auto.hir.text-record.draft",
+            HirDomain::EntryUnit => "auto.hir.entry-unit.draft",
         }
     }
 

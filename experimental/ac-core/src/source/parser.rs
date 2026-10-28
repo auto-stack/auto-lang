@@ -156,6 +156,12 @@ enum BlockCont {
     LoopBody {
         kw: Span,
     },
+    /// PLAN-862: the synthetic script body (top-level statement
+    /// sequence). It is closed by END OF FILE, never by `}` — a `}` seen
+    /// while this frame is innermost is a syntax error, and the frame is
+    /// handled by [`Parser::script_item`] directly instead of
+    /// [`Parser::close_block_cont`].
+    Script,
 }
 
 struct Parser<'s> {
@@ -331,9 +337,104 @@ impl<'s> Parser<'s> {
             if self.peek().is_none() {
                 break;
             }
+            // PLAN-862 script form: in the entry-unit profile a top-level
+            // statement sequence after the declarations is the synthetic
+            // `main`. The sequence runs to end of file, so no item can
+            // follow it (`source.entry-order`).
+            if self.surface.is_entry_unit()
+                && !matches!(self.peek().map(|t| &t.tok), Some(Tok::Kw(Kw::Fn)))
+            {
+                let script = self.script_item()?;
+                items.push(Item::Fn(script));
+                break;
+            }
             items.push(self.item()?);
         }
         Ok(Program { items })
+    }
+
+    /// PLAN-862: parse the single-file script — a top-level statement
+    /// sequence that becomes the synthetic `main` item. Declarations must
+    /// precede it; `return` is rejected at this level
+    /// (`source.entry-top-return`) because a script's result is its tail
+    /// value, never an early exit.
+    fn script_item(&mut self) -> Result<FnItem, Diagnostic> {
+        let start = self
+            .peek()
+            .map(|t| t.span)
+            .unwrap_or(Span { start: 0, end: 0 });
+        let mut stack: Vec<OpenBlock> = vec![OpenBlock {
+            lb: start,
+            stmts: Vec::new(),
+            cont: BlockCont::Script,
+        }];
+        loop {
+            self.skip_semis();
+            match self.peek() {
+                None => {
+                    if stack.len() != 1 {
+                        return Err(self.syntax("expected `}` before end of file"));
+                    }
+                    let frame = stack.pop().expect("script frame");
+                    let end = self
+                        .toks
+                        .last()
+                        .map(|t| t.span)
+                        .unwrap_or(Span { start: 0, end: 0 });
+                    let span = start.join(end);
+                    return Ok(FnItem {
+                        name: Ident {
+                            name: "main".to_string(),
+                            span: start,
+                        },
+                        params: Vec::new(),
+                        // A script's result type is decided by resolve from
+                        // its tail statement; the parser records Unit as the
+                        // placeholder (no tail = Unit).
+                        ret: TypeAnn {
+                            kind: TypeRef::Builtin(TypeWord::Void),
+                            span: start,
+                        },
+                        body: Block {
+                            stmts: frame.stmts,
+                            span,
+                        },
+                        span,
+                        receiver: Receiver::Free,
+                        owner: None,
+                        script: true,
+                    });
+                }
+                Some(Token {
+                    tok: Tok::Punct(P::RBrace),
+                    ..
+                }) => {
+                    let rb = self.bump();
+                    let frame = stack.pop().expect("open block");
+                    if matches!(frame.cont, BlockCont::Script) {
+                        return Err(self.syntax("unexpected `}` at top level"));
+                    }
+                    let block = Block {
+                        stmts: frame.stmts,
+                        span: frame.lb.join(rb.span),
+                    };
+                    self.close_block_cont(&mut stack, frame.cont, block)?;
+                }
+                Some(Token {
+                    tok: Tok::Kw(Kw::Fn),
+                    ..
+                }) if stack.len() == 1 => {
+                    let sp = self.peek().unwrap().span;
+                    return Err(Diagnostic::new(
+                        Stage::Text,
+                        "source.entry-order",
+                        "declarations must precede the script statement sequence; a script runs to end of file",
+                        sp,
+                    ));
+                }
+                Some(_) => self.parse_stmt_head(&mut stack, true)?,
+            }
+        }
     }
 
     fn item(&mut self) -> Result<Item, Diagnostic> {
@@ -638,6 +739,16 @@ impl<'s> Parser<'s> {
             {
                 self.type_word()
             }
+            // PLAN-862: `void` is a RESULT type word; the entry-unit
+            // profile accepts it here and nowhere else (params/fields keep
+            // rejecting it).
+            Some(Tok::Ident(ref w)) if self.surface.is_entry_unit() && w == "void" => {
+                let t = self.bump();
+                TypeAnn {
+                    kind: TypeRef::Builtin(TypeWord::Void),
+                    span: t.span,
+                }
+            }
             Some(Tok::Ident(_)) if self.surface.is_record() => {
                 let t = self.bump();
                 let id = match &t.tok {
@@ -714,97 +825,125 @@ impl<'s> Parser<'s> {
                         stmts: frame.stmts,
                         span: frame.lb.join(rb.span),
                     };
-                    match frame.cont {
-                        BlockCont::FnBody {
-                            fn_kw,
-                            name,
-                            params,
-                            ret,
-                            receiver,
-                        } => {
-                            debug_assert!(stack.is_empty());
-                            let last = self.toks[self.pos - 1].span;
-                            return Ok(FnItem {
-                                span: fn_kw.join(last),
-                                name,
-                                params,
-                                ret,
-                                body: block,
-                                receiver,
-                                owner: None,
-                            });
-                        }
-                        BlockCont::IfThen { kw, cond } => {
-                            if matches!(
-                                self.peek(),
-                                Some(Token {
-                                    tok: Tok::Kw(Kw::Else),
-                                    ..
-                                })
-                            ) {
-                                self.pos += 1;
-                                self.last_line = self.toks[self.pos - 1].line;
-                                let lb = self.expect_punct(P::LBrace, "`{`")?;
-                                stack.push(OpenBlock {
-                                    lb,
-                                    stmts: Vec::new(),
-                                    cont: BlockCont::IfElse {
-                                        kw,
-                                        cond,
-                                        then: block,
-                                    },
-                                });
-                                continue;
-                            }
-                            let span = kw.join(block.span);
-                            self.push_stmt(
-                                &mut stack,
-                                Stmt::If {
-                                    cond,
-                                    then: block,
-                                    els: None,
-                                    span,
-                                },
-                            )?;
-                        }
-                        BlockCont::IfElse { kw, cond, then } => {
-                            let span = kw.join(then.span).join(block.span);
-                            self.push_stmt(
-                                &mut stack,
-                                Stmt::If {
-                                    cond,
-                                    then,
-                                    els: Some(block),
-                                    span,
-                                },
-                            )?;
-                        }
-                        BlockCont::WhileBody { kw, cond } => {
-                            let span = kw.join(block.span);
-                            self.push_stmt(
-                                &mut stack,
-                                Stmt::While {
-                                    cond,
-                                    body: block,
-                                    span,
-                                },
-                            )?;
-                        }
-                        BlockCont::LoopBody { kw } => {
-                            let span = kw.join(block.span);
-                            self.push_stmt(&mut stack, Stmt::Loop { body: block, span })?;
-                        }
+                    if let Some(item) = self.close_block_cont(&mut stack, frame.cont, block)? {
+                        debug_assert!(stack.is_empty());
+                        return Ok(item);
                     }
                 }
-                Some(_) => self.parse_stmt_head(&mut stack)?,
+                Some(_) => self.parse_stmt_head(&mut stack, false)?,
             }
+        }
+    }
+
+    /// Apply one closed block's continuation: either finish the enclosing
+    /// function item ([`BlockCont::FnBody`], returned to the caller) or
+    /// push the completed statement into the parent frame.
+    ///
+    /// Shared by the declared-function machine and the PLAN-862 script
+    /// machine so the if/else/while/loop closing rules live in ONE place.
+    fn close_block_cont(
+        &mut self,
+        stack: &mut Vec<OpenBlock>,
+        cont: BlockCont,
+        block: Block,
+    ) -> Result<Option<FnItem>, Diagnostic> {
+        match cont {
+            BlockCont::FnBody {
+                fn_kw,
+                name,
+                params,
+                ret,
+                receiver,
+            } => {
+                let last = self.toks[self.pos - 1].span;
+                Ok(Some(FnItem {
+                    span: fn_kw.join(last),
+                    name,
+                    params,
+                    ret,
+                    body: block,
+                    receiver,
+                    owner: None,
+                    script: false,
+                }))
+            }
+            BlockCont::IfThen { kw, cond } => {
+                if matches!(
+                    self.peek(),
+                    Some(Token {
+                        tok: Tok::Kw(Kw::Else),
+                        ..
+                    })
+                ) {
+                    self.pos += 1;
+                    self.last_line = self.toks[self.pos - 1].line;
+                    let lb = self.expect_punct(P::LBrace, "`{`")?;
+                    stack.push(OpenBlock {
+                        lb,
+                        stmts: Vec::new(),
+                        cont: BlockCont::IfElse {
+                            kw,
+                            cond,
+                            then: block,
+                        },
+                    });
+                    return Ok(None);
+                }
+                let span = kw.join(block.span);
+                self.push_stmt(
+                    stack,
+                    Stmt::If {
+                        cond,
+                        then: block,
+                        els: None,
+                        span,
+                    },
+                )?;
+                Ok(None)
+            }
+            BlockCont::IfElse { kw, cond, then } => {
+                let span = kw.join(then.span).join(block.span);
+                self.push_stmt(
+                    stack,
+                    Stmt::If {
+                        cond,
+                        then,
+                        els: Some(block),
+                        span,
+                    },
+                )?;
+                Ok(None)
+            }
+            BlockCont::WhileBody { kw, cond } => {
+                let span = kw.join(block.span);
+                self.push_stmt(
+                    stack,
+                    Stmt::While {
+                        cond,
+                        body: block,
+                        span,
+                    },
+                )?;
+                Ok(None)
+            }
+            BlockCont::LoopBody { kw } => {
+                let span = kw.join(block.span);
+                self.push_stmt(stack, Stmt::Loop { body: block, span })?;
+                Ok(None)
+            }
+            // The script frame is closed by end of file only.
+            BlockCont::Script => unreachable!("the script frame is never closed by a brace"),
         }
     }
 
     /// Parse one statement. Block-opening heads (`if`/`while`/`loop`) push
     /// an open-block frame and return; everything else completes and lands
     /// in the current block via [`Self::push_stmt`].
-    fn parse_stmt_head(&mut self, stack: &mut Vec<OpenBlock>) -> Result<(), Diagnostic> {
+    ///
+    /// `top` is true only for statements directly in the PLAN-862 script
+    /// root: a script's result is its tail value, so `return` is rejected
+    /// there (`source.entry-top-return`) instead of being an early exit.
+    fn parse_stmt_head(&mut self, stack: &mut Vec<OpenBlock>, top: bool) -> Result<(), Diagnostic> {
         match self.peek().map(|t| t.tok.clone()) {
             Some(Tok::Kw(Kw::Let)) | Some(Tok::Kw(Kw::Var)) => {
                 let s = self.decl_stmt()?;
@@ -812,6 +951,14 @@ impl<'s> Parser<'s> {
             }
             Some(Tok::Kw(Kw::Return)) => {
                 let kw = self.bump();
+                if top {
+                    return Err(Diagnostic::new(
+                        Stage::Text,
+                        "source.entry-top-return",
+                        "a script's result is its trailing expression; `return` is not part of the script form (use a declared `fn main` for an explicit exit)",
+                        kw.span,
+                    ));
+                }
                 let value = self.expr(false)?;
                 let span = kw.span.join(value.span);
                 self.push_stmt(stack, Stmt::Return { value, span })
@@ -926,9 +1073,17 @@ impl<'s> Parser<'s> {
             | Some(Tok::Kw(Kw::True))
             | Some(Tok::Kw(Kw::False))
             | Some(Tok::Int(_)) => {
+                let e = self.expr(false)?;
+                if self.surface.is_entry_unit() {
+                    // PLAN-862: an expression statement is parsed so the
+                    // script tail can carry the result; RESOLVE owns the
+                    // position rule (only the script's trailing statement
+                    // is legal, everything else is `source.entry-tail`).
+                    let span = e.span;
+                    return self.push_stmt(stack, Stmt::ExprStmt { value: e, span });
+                }
                 // N41: an expression statement (e.g. a bare call) — calls are
                 // only allowed where a value is consumed.
-                let e = self.expr(false)?;
                 Err(self.unsupported(
                     "expression statements are not part of this source profile; calls are only allowed in initializers, assignments, returns and conditions",
                     e.span,

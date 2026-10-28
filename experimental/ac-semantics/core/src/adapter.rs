@@ -117,6 +117,10 @@ fn vt_name(v: &auto_ac_prototype::source::resolve::VT) -> &'static str {
         VT::Bool => "bool",
         VT::Str | VT::StrOwned | VT::Char => "text",
         VT::Rec(_) => "record",
+        // PLAN-862: Unit is a result-only type; the semantic adapter has no
+        // unit value channel, so it is reported as its own name (never
+        // folded into "i32").
+        VT::Unit => "unit",
     }
 }
 
@@ -199,6 +203,9 @@ fn ann_of(a: &core_ast::TypeAnn) -> Result<Ann, String> {
             core_ast::TypeWord::Str | core_ast::TypeWord::StrOwned | core_ast::TypeWord::Char => {
                 Ann::Unsupported("text-annotation")
             }
+            // PLAN-862: the Unit result word is outside this adapter's
+            // annotation model (it is a RESULT type, not a value type).
+            core_ast::TypeWord::Void => Ann::Unsupported("unit-annotation"),
         }),
         core_ast::TypeRef::Record(ident) => Ok(Ann::Record(record_static(&ident.name)?)),
     }
@@ -316,6 +323,14 @@ fn project_stmt(s: &core_ast::Stmt) -> Result<InputStmt, String> {
         core_ast::Stmt::Continue { span: sp } => InputStmt::Continue {
             span: Span::new(sp.start as u32, sp.end as u32),
         },
+        // PLAN-862: an expression statement only exists as the entry-unit
+        // script tail, which has no projection into this restricted
+        // inference surface — a controlled rejection, never a silent drop.
+        core_ast::Stmt::ExprStmt { .. } => {
+            return Err(
+                "expression statement (entry-unit script tail) is outside this adapter".into(),
+            )
+        }
     })
 }
 

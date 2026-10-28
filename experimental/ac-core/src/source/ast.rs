@@ -33,6 +33,10 @@ pub enum TypeWord {
     StrOwned,
     /// `char` — Unicode scalar (PLAN-770).
     Char,
+    /// `void` — the Unit result type (PLAN-862, entry-unit profile only).
+    /// Legal in RESULT position of a function declaration; never a value
+    /// type (no locals, params, fields or expression types).
+    Void,
 }
 
 /// A type annotation. `int` and `i32` are synonyms inside this profile
@@ -100,6 +104,12 @@ pub struct FnItem {
     pub receiver: Receiver,
     /// Owning record name for methods.
     pub owner: Option<Ident>,
+    /// PLAN-862: this function is the SYNTHETIC entry built from a
+    /// single-file script (top-level statement sequence). The parser owns
+    /// the naming (`main`); resolve owns the result type (a trailing i32
+    /// expression statement types the script as `int`, otherwise Unit).
+    /// Never true for a declared `fn`.
+    pub script: bool,
 }
 
 /// One record field, in declaration order (= layout order, 774 D-05).
@@ -287,6 +297,15 @@ pub struct AssignTarget {
 
 #[derive(Clone, Debug)]
 pub enum Stmt {
+    /// PLAN-862: an expression evaluated for its value only where the
+    /// surface consumes it — the SINGLE legal position is the script's
+    /// trailing statement (the tail value). Resolve rejects every other
+    /// occurrence (`source.entry-tail`), so no discarded-value semantics
+    /// exists in this profile.
+    ExprStmt {
+        value: Expr,
+        span: Span,
+    },
     Let {
         kw: Span,
         name: Ident,

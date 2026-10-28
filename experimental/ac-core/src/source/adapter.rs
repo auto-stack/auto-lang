@@ -89,6 +89,30 @@ pub fn compile_scalar_source(
     })
 }
 
+/// Compile under the entry-unit source profile (PLAN-862, T-03a): the
+/// frontend half (parse → resolve → typecheck, including the frozen entry
+/// matrix) is implemented; the Atom/HIR emission for this profile is NOT
+/// (T-03b), so this entry returns the controlled `source.unsupported`
+/// gate rather than emitting another domain's document. Frontend-level
+/// consumers drive [`super::parse_program_with`] +
+/// [`super::resolve_with`] + [`super::typecheck_with`] directly.
+pub fn compile_entry_unit_source(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+) -> Result<CompiledSource, Vec<Diagnostic>> {
+    let parts = compile_parts_with(src, module_path, capabilities, SourceProfile::EntryUnit)?;
+    // Unreachable while the emit gate is in place; kept so the shape of
+    // this entry matches the other profiles when T-03b lands.
+    let checked = crate::verify::verify_scalar(parts.bundle)?;
+    Ok(CompiledSource {
+        profile: super::ENTRY_UNIT_SOURCE_PROFILE,
+        input_hash: parts.input_hash,
+        atom_text: parts.atom_text,
+        checked,
+    })
+}
+
 /// Compile under the text source profile (PLAN-770): parse/resolve/
 /// typecheck on the text surface, bind against the text descriptor and
 /// verify through the text entry (which also runs the resource walk and
@@ -293,6 +317,17 @@ pub fn emit_function_body(
         crate::hir::HirDomain::Text => crate::text_descriptor(),
         crate::hir::HirDomain::Record => crate::record_descriptor(),
         crate::hir::HirDomain::TextRecord => crate::text_record_descriptor(),
+        // PLAN-862 T-03a: the entry-unit HIR/emit half is not landed yet;
+        // the profile stops at the frontend with a controlled diagnostic
+        // (never a guess at another domain's descriptor).
+        crate::hir::HirDomain::EntryUnit => {
+            return Err(vec![Diagnostic::new(
+                Stage::Text,
+                "source.unsupported",
+                "the entry-unit profile has no HIR emitter yet (PLAN-862 T-03b): parsing, resolve and type checking are available, emission is not",
+                Span { start: 0, end: 0 },
+            )])
+        }
     };
     let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
         Ok(b) => b,
@@ -459,6 +494,9 @@ pub fn prepare_candidate_document(
     src: &str,
     module_path: &str,
 ) -> Result<FnCandidate, Vec<Diagnostic>> {
+    if let Some(ds) = entry_unit_emit_gate(env.profile) {
+        return Err(ds);
+    }
     // Bounded temporary graft (exclusive access): the re-check grafts the
     // candidate body and hands back the displaced CURRENT entry.
     let current = super::resolve::recheck_swap(env, item, fn_index)?;
@@ -525,6 +563,9 @@ fn compile_program_observed(
     profile: SourceProfile,
     mut observer: Option<&mut dyn SourceObserver>,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
+    if let Some(ds) = entry_unit_emit_gate(profile) {
+        return Err(ds);
+    }
     let resolved = match super::resolve_with(program, capabilities, profile) {
         Ok(r) => {
             if let Some(o) = observer.as_deref_mut() {
@@ -567,6 +608,17 @@ fn compile_program_observed(
         crate::hir::HirDomain::Text => crate::text_descriptor(),
         crate::hir::HirDomain::Record => crate::record_descriptor(),
         crate::hir::HirDomain::TextRecord => crate::text_record_descriptor(),
+        // PLAN-862 T-03a: the entry-unit HIR/emit half is not landed yet;
+        // the profile stops at the frontend with a controlled diagnostic
+        // (never a guess at another domain's descriptor).
+        crate::hir::HirDomain::EntryUnit => {
+            return Err(vec![Diagnostic::new(
+                Stage::Text,
+                "source.unsupported",
+                "the entry-unit profile has no HIR emitter yet (PLAN-862 T-03b): parsing, resolve and type checking are available, emission is not",
+                Span { start: 0, end: 0 },
+            )])
+        }
     };
     let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
         Ok(b) => b,
@@ -643,7 +695,9 @@ fn fnv1a_hex(bytes: &[u8]) -> String {
 }
 
 /// Atom type id of a value type (PLAN-771: record types are
-/// `t_rec_<name>`, nominal by declaration).
+/// `t_rec_<name>`, nominal by declaration; PLAN-862: Unit has no Atom type
+/// id because it is a RESULT-only type — reaching here with `VT::Unit`
+/// would mean a value of unit type, which the entry-unit profile rejects).
 fn ty_name(vt: VT, records: &[crate::source::resolve::ResolvedRecord]) -> String {
     match vt {
         VT::I32 => "t_i32".to_string(),
@@ -652,6 +706,10 @@ fn ty_name(vt: VT, records: &[crate::source::resolve::ResolvedRecord]) -> String
         VT::StrOwned => "t_Str".to_string(),
         VT::Char => "t_char".to_string(),
         VT::Rec(i) => format!("t_rec_{}", records[i].name),
+        // not reachable through a compiling entry-unit program (Unit is a
+        // result type); the Atom id keeps the name meaningful for any
+        // hand-built diagnostic path (T-03b wires the result-side emit).
+        VT::Unit => "t_unit".to_string(),
     }
 }
 
@@ -662,6 +720,23 @@ fn internal_diag(msg: String) -> Diagnostic {
         msg,
         Span { start: 0, end: 0 },
     )
+}
+
+/// PLAN-862 T-03a gate: the entry-unit frontend (parse → resolve →
+/// typecheck) is landed, the HIR/Atom emitter for that profile is NOT.
+/// Every emit-side entry therefore rejects the profile with a controlled
+/// diagnostic instead of pretending to emit another domain's document.
+/// T-03b replaces this gate with the real emitter.
+fn entry_unit_emit_gate(profile: SourceProfile) -> Option<Vec<Diagnostic>> {
+    if !profile.is_entry_unit() {
+        return None;
+    }
+    Some(vec![Diagnostic::new(
+        Stage::Text,
+        "source.unsupported",
+        "the entry-unit profile has no HIR emitter yet (PLAN-862 T-03b): parsing, name resolution and type checking are available; Atom emission, binding and verification are not",
+        Span { start: 0, end: 0 },
+    )])
 }
 
 // ---------------------------------------------------------------------------
@@ -1257,6 +1332,11 @@ impl PlanCtx<'_> {
                         },
                     });
                 }
+                // PLAN-862 T-03a: an expression statement exists only as
+                // the entry-unit SCRIPT tail, and that profile's emitter is
+                // gated off before planning — this arm is an exhaustiveness
+                // anchor, not a semantics (T-03b lowers the tail here).
+                RStmt::ExprStmt { .. } => {}
                 RStmt::Break { target, span } => {
                     let t = self.phantom_target(plan, home, *target, *span);
                     plan.blocks[home].stmts.push(SNode {
@@ -2013,6 +2093,8 @@ fn stmt_term_memo(s: &RStmt, terms: &BTreeMap<usize, Option<Term>>) -> Term {
     };
     match s {
         RStmt::Return { .. } => Term::Ret,
+        // PLAN-862: reachable only in the gated-off entry-unit emitter.
+        RStmt::ExprStmt { .. } => Term::No,
         RStmt::Break { target, .. } | RStmt::Continue { target, .. } => match target {
             Some(_) => Term::Div,
             None => Term::Stray,
@@ -2117,6 +2199,8 @@ fn stmt_span(s: &RStmt) -> Span {
         | RStmt::Loop { span, .. }
         | RStmt::Break { span, .. }
         | RStmt::Continue { span, .. } => *span,
+        // PLAN-862: the script tail's own span.
+        RStmt::ExprStmt { span, .. } => *span,
     }
 }
 
@@ -2263,6 +2347,8 @@ impl<'p> Emitter<'p> {
             crate::hir::HirDomain::TextRecord => {
                 ("auto.hir.text-record.draft", "text-record-i32-draft")
             }
+            // PLAN-862: the entry-unit emitter is gated off before render.
+            crate::hir::HirDomain::EntryUnit => ("auto.hir.entry-unit.draft", "entry-unit-draft"),
         };
         frag!(
             &format!(

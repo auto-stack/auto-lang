@@ -130,6 +130,10 @@ fn check_block(
                     }
                 }
             }
+            // PLAN-862: the script tail — its assertions live in resolve
+            // (position + i32-only); here it is just one more expression
+            // whose operators/arguments must typecheck.
+            RStmt::ExprStmt { value, .. } => check_expr(value, program, f, diags),
             RStmt::Return { value, .. } => {
                 check_expr(value, program, f, diags);
                 if value.vt != f.result {

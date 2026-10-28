@@ -286,6 +286,9 @@ fn project_fn(p: &GrammarProgram, cx: &mut Cx, node: u32) -> PResult<FnItem> {
         span: span_of(cx.tree, node),
         receiver: Receiver::Free,
         owner: None,
+        // a CST-projected declaration is never the PLAN-862 synthetic
+        // script item (the script form has no n keyword to project).
+        script: false,
     })
 }
 

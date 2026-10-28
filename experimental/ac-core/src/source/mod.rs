@@ -23,15 +23,16 @@ pub mod resolve;
 pub mod typecheck;
 
 pub use adapter::{
-    compile_parts, compile_parts_with, compile_program_parts, compile_record_source,
-    compile_scalar_source, compile_source, compile_text_record_source, compile_text_source,
-    emit_function_body, prepare_candidate_document, prepare_function_candidate, BodyEmitReceipt,
-    CompiledSource, FnCandidate, SourceParts, RUNTIME_TEXT_CAPABILITY,
+    compile_entry_unit_source, compile_parts, compile_parts_with, compile_program_parts,
+    compile_record_source, compile_scalar_source, compile_source, compile_text_record_source,
+    compile_text_source, emit_function_body, prepare_candidate_document,
+    prepare_function_candidate, BodyEmitReceipt, CompiledSource, FnCandidate, SourceParts,
+    RUNTIME_TEXT_CAPABILITY,
 };
 pub use parser::{parse_program, parse_program_with};
 pub use resolve::{
     env_fn_count, env_fn_names, env_note_cold_walks, recheck_function, resolve_env, resolve_with,
-    CheckedEnv,
+    CheckedEnv, ResolvedFn, ResolvedProgram, VT,
 };
 pub use typecheck::{check_body_in, typecheck_with};
 
@@ -61,6 +62,13 @@ pub const RECORD_SOURCE_PROFILE: &str = "auto.source.record.draft";
 /// fields, aggregate explicit `.move`/`.clone()`, field reads/replacement,
 /// plus the whole scalar/text operator and method surface.
 pub const TEXT_RECORD_SOURCE_PROFILE: &str = "auto.source.text-record.draft";
+/// The entry-unit source profile (PLAN-862, R2-E/SEM-05): the scalar
+/// operator surface plus the ENTRY surface — `fn main() int`,
+/// `fn main() void` (Unit result), a single-file top-level statement
+/// sequence (script) whose trailing i32 expression statement is the
+/// result, and the entry uniqueness/diagnostic matrix frozen by the T-02
+/// `entry-contract.md`. Unit is a RESULT type only; no value-level Unit.
+pub const ENTRY_UNIT_SOURCE_PROFILE: &str = "auto.source.entry-unit.draft";
 
 /// The explicitly selected source profile of a compilation. Never inferred
 /// from file extensions or content.
@@ -71,6 +79,7 @@ pub enum SourceProfile {
     Text,
     Record,
     TextRecord,
+    EntryUnit,
 }
 
 impl SourceProfile {
@@ -81,6 +90,7 @@ impl SourceProfile {
             SourceProfile::Text => TEXT_SOURCE_PROFILE,
             SourceProfile::Record => RECORD_SOURCE_PROFILE,
             SourceProfile::TextRecord => TEXT_RECORD_SOURCE_PROFILE,
+            SourceProfile::EntryUnit => ENTRY_UNIT_SOURCE_PROFILE,
         }
     }
 
@@ -92,6 +102,7 @@ impl SourceProfile {
             SourceProfile::Text => crate::hir::HirDomain::Text,
             SourceProfile::Record => crate::hir::HirDomain::Record,
             SourceProfile::TextRecord => crate::hir::HirDomain::TextRecord,
+            SourceProfile::EntryUnit => crate::hir::HirDomain::EntryUnit,
         }
     }
 
@@ -101,7 +112,10 @@ impl SourceProfile {
     pub fn is_scalar(&self) -> bool {
         matches!(
             self,
-            SourceProfile::Scalar | SourceProfile::Text | SourceProfile::TextRecord
+            SourceProfile::Scalar
+                | SourceProfile::Text
+                | SourceProfile::TextRecord
+                | SourceProfile::EntryUnit
         )
     }
 
@@ -117,17 +131,26 @@ impl SourceProfile {
         matches!(self, SourceProfile::Record | SourceProfile::TextRecord)
     }
 
+    /// PLAN-862: whether the ENTRY surface is accepted — `void` results,
+    /// the single-file script form, leading/trailing expression
+    /// statements and the entry uniqueness matrix.
+    pub fn is_entry_unit(&self) -> bool {
+        matches!(self, SourceProfile::EntryUnit)
+    }
+
     /// The widest operator surface this profile accepts: record builds on
     /// the scalar surface.
     pub fn surface_is_scalar_or_wider(&self) -> bool {
         // every NON-CORE profile builds on the scalar operator surface:
-        // scalar itself, text (PLAN-770) and record (PLAN-771)
+        // scalar itself, text (PLAN-770), record (PLAN-771) and the
+        // entry-unit surface (PLAN-862)
         matches!(
             self,
             SourceProfile::Scalar
                 | SourceProfile::Text
                 | SourceProfile::Record
                 | SourceProfile::TextRecord
+                | SourceProfile::EntryUnit
         )
     }
 
@@ -138,6 +161,7 @@ impl SourceProfile {
             TEXT_SOURCE_PROFILE => Some(SourceProfile::Text),
             RECORD_SOURCE_PROFILE => Some(SourceProfile::Record),
             TEXT_RECORD_SOURCE_PROFILE => Some(SourceProfile::TextRecord),
+            ENTRY_UNIT_SOURCE_PROFILE => Some(SourceProfile::EntryUnit),
             _ => None,
         }
     }

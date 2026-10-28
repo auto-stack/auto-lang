@@ -1409,6 +1409,9 @@ pub fn canonical_type_word(t: &auto_ac_prototype::source::ast::TypeAnn) -> Strin
         TypeRef::Builtin(TypeWord::Str) => "str".into(),
         TypeRef::Builtin(TypeWord::StrOwned) => "Str".into(),
         TypeRef::Builtin(TypeWord::Char) => "char".into(),
+        // PLAN-862: the Unit result word is canonical `unit` (entry-unit
+        // source profile only; the other profiles never parse it).
+        TypeRef::Builtin(TypeWord::Void) => "unit".into(),
         TypeRef::Record(id) => format!("rec:{}", id.name),
     }
 }
