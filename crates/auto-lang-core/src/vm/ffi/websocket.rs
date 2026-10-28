@@ -192,20 +192,12 @@ pub fn shim_ws_on_message(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 
     // Create an AsyncHttpStream iterator pointing to the existing stream_id.
     // The SSE/download message channel is already populated by the WS reader thread.
-    let async_iter = crate::vm::engine::AsyncStreamIterator {
-        stream_id,
-        done: false,
-    };
-    let iter_id = {
-        let next_id = vm
-            .iterator_id_gen
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        vm.iterators.insert(
-            next_id,
-            crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
-        );
-        next_id
-    };
+    let iter_id = vm.register_iterator(crate::vm::engine::Iterator::AsyncHttpStream(
+        crate::vm::engine::AsyncStreamIterator {
+            stream_id,
+            done: false,
+        },
+    ));
     task.ram.push_i32(iter_id as i32);
     Ok(())
 }

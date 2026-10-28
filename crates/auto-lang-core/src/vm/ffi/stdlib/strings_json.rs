@@ -116,24 +116,6 @@ pub fn shim_str_slice(s: String, start: i32, end: i32) -> String {
     s[lo..hi].to_string()
 }
 
-/// Check if string contains substring
-#[auto_macros::rust_fn("Str.contains")]
-pub fn shim_str_contains(s: String, needle: String) -> bool {
-    s.contains(&needle)
-}
-
-/// Check if string starts with prefix
-#[auto_macros::rust_fn("Str.starts_with")]
-pub fn shim_str_starts_with(s: String, prefix: String) -> bool {
-    s.starts_with(&prefix)
-}
-
-/// Check if string ends with suffix
-#[auto_macros::rust_fn("Str.ends_with")]
-pub fn shim_str_ends_with(s: String, suffix: String) -> bool {
-    s.ends_with(&suffix)
-}
-
 /// Trim whitespace from string
 #[auto_macros::rust_fn("Str.trim")]
 pub fn shim_str_trim(s: String) -> String {

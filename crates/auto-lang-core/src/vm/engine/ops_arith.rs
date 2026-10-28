@@ -929,28 +929,10 @@ impl AutoVM {
                     // into stack_snapshot (declaration order); the first
                     // next() seeds them below the generator frame.
                     let real_n_args = self.flash.read_u8(target + 1) as usize;
-                    let mut arg_nvs = Vec::with_capacity(real_n_args);
-                    for _ in 0..real_n_args {
-                        arg_nvs.push(task.ram.pop_nv());
-                    }
-                    arg_nvs.reverse();
-                    let gen_state = GeneratorState {
-                        task_id: None,
-                        func_addr: target as u32,
-                        n_args: real_n_args as u8,
-                        started: false,
-                        done: false,
-                        resume_ip: 0,
-                        resume_bp: 0,
-                        resume_sp: 0,
-                        stack_snapshot: arg_nvs,
-                    };
-                    let next_id = self
-                        .iterator_id_gen
-                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    self.iterators
-                        .insert(next_id, Iterator::Generator(gen_state));
-                    task.ram.push_i32(next_id as i32);
+                    let gen_state =
+                        self.new_generator_state(task, target as u32, real_n_args as u8);
+                    let iter_id = self.register_iterator(Iterator::Generator(gen_state));
+                    task.ram.push_i32(iter_id as i32);
                     return Ok(StepResult::Continue);
                 }
 

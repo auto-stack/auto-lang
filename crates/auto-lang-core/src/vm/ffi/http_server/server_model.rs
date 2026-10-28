@@ -330,7 +330,7 @@ pub enum ApiReply {
 }
 
 /// CORS + JSON content-type + 请求 id（task-lock 失败臂用）。
-pub(super) fn cors_json_headers(request_id: &str) -> Vec<(String, String)> {
+pub(crate) fn cors_json_headers(request_id: &str) -> Vec<(String, String)> {
     let mut headers = vec![("Content-Type".to_string(), "application/json".to_string())];
     headers.extend(cors_header_pairs());
     headers.push(("X-Request-Id".to_string(), request_id.to_string()));
@@ -418,7 +418,7 @@ pub(super) fn json_value_reply(
             );
             ApiReply::Full {
                 status,
-                headers: json_reply_headers(request_id),
+                headers: cors_json_headers(request_id),
                 body: ApiBody::Text(result_json.into_bytes()),
             }
         }
@@ -426,7 +426,7 @@ pub(super) fn json_value_reply(
         // 冒充成功；AC-03）。
         None => ApiReply::Full {
             status: 500,
-            headers: json_reply_headers(request_id),
+            headers: cors_json_headers(request_id),
             body: ApiBody::Text(br#"{"error":"response serialization failed"}"#.to_vec()),
         },
     }

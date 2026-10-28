@@ -634,30 +634,8 @@ impl AutoVM {
             // Plan 417-D2: mirror the CALL-opcode short-circuit — the caller
             // pre-pushed the n_args args onto task.ram; move them into the
             // generator state so the first next() seeds the generator frame.
-            let mut arg_nvs = Vec::with_capacity(n_args);
-            for _ in 0..n_args {
-                arg_nvs.push(task.ram.pop_nv());
-            }
-            arg_nvs.reverse();
-            let gen_state = GeneratorState {
-                task_id: None,
-                func_addr: addr as u32,
-                n_args: n_args as u8,
-                started: false,
-                done: false,
-                resume_ip: 0,
-                resume_bp: 0,
-                resume_sp: 0,
-                stack_snapshot: arg_nvs,
-            };
-            let iter_id = {
-                let next_id = self
-                    .iterator_id_gen
-                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                self.iterators
-                    .insert(next_id, Iterator::Generator(gen_state));
-                next_id
-            };
+            let gen_state = self.new_generator_state(task, addr as u32, n_args as u8);
+            let iter_id = self.register_iterator(Iterator::Generator(gen_state));
             // PLAN-776 R2-01：generator 真实 producer 在返回边界建立身份——
             // HTTP dispatch 消费面收 Sse 凭据对象（iterator 身份不靠声明或
             // 表命中猜测）；通用调用面（for-in 等）保持 int 语义。

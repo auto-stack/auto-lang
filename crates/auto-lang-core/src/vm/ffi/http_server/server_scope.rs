@@ -277,7 +277,7 @@ pub(super) fn abort_parked_request(vm: &std::rc::Rc<AutoVM>, p: &mut ParkedReque
     if let Some(tx) = p.reply_tx.take() {
         let _ = tx.send(ApiReply::Full {
             status: 503,
-            headers: json_reply_headers(&p.ctx.request_id),
+            headers: cors_json_headers(&p.ctx.request_id),
             body: ApiBody::Text(br#"{"error":"request cancelled"}"#.to_vec()),
         });
     }

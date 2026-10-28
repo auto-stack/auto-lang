@@ -758,6 +758,46 @@ fn nv_truthy(nv: auto_val::NanoValue) -> bool {
 }
 
 impl AutoVM {
+    /// PLAN-844 D-2：迭代器统一注册路径（fetch_add 发号 → 注册表插入）。
+    /// 此前该惯用法在 ffi/native 各处逐字复制（AsyncHttpStream 8 处、
+    /// List/Map/Filter/Enumerate/HttpStream 等）；发号与插入的顺序合同
+    /// （Relaxed 发号、插入后返回 id）在此单点保持。
+    pub(crate) fn register_iterator(&self, it: Iterator) -> u32 {
+        let id = self
+            .iterator_id_gen
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.iterators.insert(id, it);
+        id
+    }
+
+    /// PLAN-844 D-3：从 caller 栈弹出 `n_args` 个参数（声明序）构成全新
+    /// GeneratorState。Plan 417-D2 参数化 generator 合同：CREATE_GENERATOR
+    /// 操作码、CALL 短路臂与 call_fn_by_name 三处共享同一构造（此前三份
+    /// 逐字副本）。
+    pub(crate) fn new_generator_state(
+        &self,
+        task: &mut AutoTask,
+        func_addr: u32,
+        n_args: u8,
+    ) -> GeneratorState {
+        let mut arg_nvs = Vec::with_capacity(n_args as usize);
+        for _ in 0..n_args as usize {
+            arg_nvs.push(task.ram.pop_nv());
+        }
+        arg_nvs.reverse();
+        GeneratorState {
+            task_id: None,
+            func_addr,
+            n_args,
+            started: false,
+            done: false,
+            resume_ip: 0,
+            resume_bp: 0,
+            resume_sp: 0,
+            stack_snapshot: arg_nvs,
+        }
+    }
+
     pub fn new(flash: VirtualFlash, ram_size: usize) -> Self {
         Self::new_inner(flash, ram_size, true)
     }

@@ -3409,17 +3409,12 @@ pub fn shim_bus_subscribe(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         map.insert(stream_id, handle);
     }
 
-    let async_iter = crate::vm::engine::AsyncStreamIterator {
-        stream_id,
-        done: false,
-    };
-    let iter_id = vm
-        .iterator_id_gen
-        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    vm.iterators.insert(
-        iter_id,
-        crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
-    );
+    let iter_id = vm.register_iterator(crate::vm::engine::Iterator::AsyncHttpStream(
+        crate::vm::engine::AsyncStreamIterator {
+            stream_id,
+            done: false,
+        },
+    ));
     task.ram.push_i32(iter_id as i32);
     Ok(())
 }
@@ -5612,8 +5607,7 @@ fn shim_rust_stdlib_dispatch_inner(
             };
             // Collect all records into a List of record heap objects
             use crate::vm::types::ListData;
-            use std::sync::atomic::Ordering;
-            let mut outer_list: ListData<i32> = ListData::new();
+                    let mut outer_list: ListData<i32> = ListData::new();
             {
                 let mut guard = obj.write().unwrap();
                 if let Some(rust_obj) = guard
@@ -5641,12 +5635,12 @@ fn shim_rust_stdlib_dispatch_inner(
             }
             let list_id = vm.insert_heap_object(outer_list);
             // Create a List iterator for the for-loop
-            let iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
-            let iterator = crate::vm::engine::Iterator::List(crate::vm::engine::ListIterator {
-                list_id,
-                current_index: 0,
-            });
-            vm.iterators.insert(iterator_id, iterator);
+            let iterator_id = vm.register_iterator(crate::vm::engine::Iterator::List(
+                crate::vm::engine::ListIterator {
+                    list_id,
+                    current_index: 0,
+                },
+            ));
             task.ram.push_i32(iterator_id as i32);
         }
         ("StringRecord", "get") | ("List", "get") => {

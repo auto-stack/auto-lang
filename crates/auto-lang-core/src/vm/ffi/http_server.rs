@@ -3990,7 +3990,7 @@ pub(crate) fn resume_parked_request(
             match step {
                 MWResume::Missing => ParkedResume::Reply(ApiReply::Full {
                     status: 200,
-                    headers: json_reply_headers(&p.ctx.request_id),
+                    headers: cors_json_headers(&p.ctx.request_id),
                     body: ApiBody::Text(Vec::new()),
                 }),
                 MWResume::Parked(wait, seg) => {
@@ -4081,7 +4081,7 @@ pub(crate) fn resume_parked_request(
             match step {
                 HResume::Missing => ParkedResume::Reply(ApiReply::Full {
                     status: 200,
-                    headers: json_reply_headers(&p.ctx.request_id),
+                    headers: cors_json_headers(&p.ctx.request_id),
                     body: ApiBody::Text(Vec::new()),
                 }),
                 HResume::Parked(wait, seg) => {
@@ -4236,14 +4236,6 @@ pub(crate) fn drain_ready_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<Park
             i += 1;
         }
     }
-}
-
-/// Standard headers of a JSON `#[api]` reply (content-type + CORS + request id).
-fn json_reply_headers(request_id: &str) -> Vec<(String, String)> {
-    let mut headers = vec![("Content-Type".to_string(), "application/json".to_string())];
-    headers.extend(cors_header_pairs());
-    headers.push(("X-Request-Id".to_string(), request_id.to_string()));
-    headers
 }
 
 /// 测试访问器：next_sse_generator_value（私有 async）驱动。

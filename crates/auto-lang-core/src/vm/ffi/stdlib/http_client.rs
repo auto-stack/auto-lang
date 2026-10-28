@@ -1700,20 +1700,12 @@ pub fn shim_http_download_with_progress(task: &mut AutoTask, vm: &AutoVM) -> Res
         map.insert(stream_id, handle);
     }
 
-    let async_iter = crate::vm::engine::AsyncStreamIterator {
-        stream_id,
-        done: false,
-    };
-    let iter_id = {
-        let next_id = vm
-            .iterator_id_gen
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        vm.iterators.insert(
-            next_id,
-            crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
-        );
-        next_id
-    };
+    let iter_id = vm.register_iterator(crate::vm::engine::Iterator::AsyncHttpStream(
+        crate::vm::engine::AsyncStreamIterator {
+            stream_id,
+            done: false,
+        },
+    ));
     task.ram.push_i32(iter_id as i32);
     Ok(())
 }
@@ -1892,18 +1884,12 @@ pub fn shim_http_stream_close(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 pub fn shim_http_stream_iter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
-    let hs_iter = crate::vm::engine::HttpStreamIterator {
-        stream_handle: handle as u64,
-        done: false,
-    };
-    let iter_id = {
-        let next_id = vm
-            .iterator_id_gen
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        vm.iterators
-            .insert(next_id, crate::vm::engine::Iterator::HttpStream(hs_iter));
-        next_id
-    };
+    let iter_id = vm.register_iterator(crate::vm::engine::Iterator::HttpStream(
+        crate::vm::engine::HttpStreamIterator {
+            stream_handle: handle as u64,
+            done: false,
+        },
+    ));
     task.ram.push_i32(iter_id as i32);
     Ok(())
 }
@@ -1937,20 +1923,12 @@ pub fn shim_http_sse_get_stream(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     }
 
     // Create the VM-side iterator.
-    let async_iter = crate::vm::engine::AsyncStreamIterator {
-        stream_id,
-        done: false,
-    };
-    let iter_id = {
-        let next_id = vm
-            .iterator_id_gen
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        vm.iterators.insert(
-            next_id,
-            crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
-        );
-        next_id
-    };
+    let iter_id = vm.register_iterator(crate::vm::engine::Iterator::AsyncHttpStream(
+        crate::vm::engine::AsyncStreamIterator {
+            stream_id,
+            done: false,
+        },
+    ));
     task.ram.push_i32(iter_id as i32);
     Ok(())
 }

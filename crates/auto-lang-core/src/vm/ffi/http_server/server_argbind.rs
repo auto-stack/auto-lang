@@ -33,7 +33,7 @@ fn upload_receipt_reply(ctx: &DispatchCtx, receipt: a2r_std::http::UploadReceipt
         receipt.status,
         ctx.started.elapsed().as_millis()
     );
-    let mut headers = json_reply_headers(&ctx.request_id);
+    let mut headers = cors_json_headers(&ctx.request_id);
     headers[0].1 = "application/json".to_string();
     ApiReply::Full {
         status: receipt.status,
@@ -48,7 +48,7 @@ pub(super) fn upload_contract_mismatch_reply(ctx: &DispatchCtx, raw: u64) -> Api
         "[HTTP] {} {} [{}] → 500 (handler '{}' declares UploadReceipt but returned non-receipt value {})",
         ctx.req_method, ctx.req_path, ctx.request_id, ctx.route.fn_name, raw
     );
-    let mut headers = json_reply_headers(&ctx.request_id);
+    let mut headers = cors_json_headers(&ctx.request_id);
     headers[0].1 = "application/json".to_string();
     ApiReply::Full {
         status: 500,
@@ -63,7 +63,7 @@ pub(super) fn file_contract_mismatch_reply(ctx: &DispatchCtx, raw: u64) -> ApiRe
         "[HTTP] {} {} [{}] → 500 (handler '{}' declares FileResponse but returned non-descriptor value {})",
         ctx.req_method, ctx.req_path, ctx.request_id, ctx.route.fn_name, raw
     );
-    let mut headers = json_reply_headers(&ctx.request_id);
+    let mut headers = cors_json_headers(&ctx.request_id);
     let body = br#"{"error":"handler did not return a FileResponse descriptor"}"#.to_vec();
     headers[0].1 = "application/json".to_string();
     ApiReply::Full {

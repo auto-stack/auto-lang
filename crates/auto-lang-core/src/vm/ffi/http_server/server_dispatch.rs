@@ -363,7 +363,7 @@ pub fn dispatch_owner_request(
         }
         let _ = reply_tx.send(ApiReply::Full {
             status: 503,
-            headers: json_reply_headers(""),
+            headers: cors_json_headers(""),
             body: ApiBody::Text(br#"{"error":"request cancelled"}"#.to_vec()),
         });
         return;
@@ -411,7 +411,7 @@ pub(super) fn cancel_all_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<Parke
         if let Some(tx) = p.reply_tx.take() {
             let _ = tx.send(ApiReply::Full {
                 status: 503,
-                headers: json_reply_headers(&p.ctx.request_id),
+                headers: cors_json_headers(&p.ctx.request_id),
                 body: ApiBody::Text(br#"{"error":"server shutting down"}"#.to_vec()),
             });
         }
@@ -698,9 +698,7 @@ fn run_middleware_at(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx, index: usize) 
         }
         MWEnd::Response(resp) => {
             vm.remove_task(mw_task_id);
-            let mut headers = vec![("Content-Type".to_string(), "application/json".to_string())];
-            headers.extend(cors_header_pairs());
-            headers.push(("X-Request-Id".to_string(), ctx.request_id.clone()));
+            let headers = cors_json_headers(&ctx.request_id);
             MWStep::Reply(ApiReply::Full {
                 status: 200,
                 headers,
@@ -917,7 +915,7 @@ fn start_handler(
             // legacy contract：任务槽缺失 → 空体 200。
             let reply = ApiReply::Full {
                 status: 200,
-                headers: json_reply_headers(&ctx.request_id),
+                headers: cors_json_headers(&ctx.request_id),
                 body: ApiBody::Text(Vec::new()),
             };
             if let Some(tx) = reply_tx {
@@ -1232,7 +1230,7 @@ pub(super) fn handler_error_reply(ctx: &DispatchCtx, e: &crate::vm::engine::VMEr
         );
         return ApiReply::Full {
             status: 503,
-            headers: json_reply_headers(&ctx.request_id),
+            headers: cors_json_headers(&ctx.request_id),
             body: ApiBody::Text(br#"{"error":"request cancelled"}"#.to_vec()),
         };
     }
@@ -1250,7 +1248,7 @@ pub(super) fn handler_error_reply(ctx: &DispatchCtx, e: &crate::vm::engine::VMEr
     );
     ApiReply::Full {
         status: 500,
-        headers: json_reply_headers(&ctx.request_id),
+        headers: cors_json_headers(&ctx.request_id),
         body: ApiBody::Text(error_json.into_bytes()),
     }
 }
@@ -1327,7 +1325,7 @@ fn async_failure_reply(ctx: &DispatchCtx, detail: &str) -> ApiReply {
     );
     ApiReply::Full {
         status: 500,
-        headers: json_reply_headers(&ctx.request_id),
+        headers: cors_json_headers(&ctx.request_id),
         body: ApiBody::Text(body.into_bytes()),
     }
 }

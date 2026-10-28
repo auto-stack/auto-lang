@@ -1303,23 +1303,15 @@ pub fn shim_list_sort_by(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 /// Returns: iterator_id (u32 as i32)
 pub fn shim_list_iter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::engine::{Iterator, ListIterator};
-    use std::sync::atomic::Ordering;
 
     let list_id = crate::vm::native::pop_arg_i32(task) as u64;
 
     let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
-    // Allocate new iterator ID
-    let iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
-
-    // Create iterator state
-    let iterator = Iterator::List(ListIterator {
+    let iterator_id = vm.register_iterator(Iterator::List(ListIterator {
         list_id,
         current_index: 0,
-    });
-
-    // Store iterator
-    vm.iterators.insert(iterator_id, iterator);
+    }));
 
     // Return iterator_id
     task.ram.push_i32(iterator_id as i32);
@@ -1877,7 +1869,6 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// will currently return an error when next() is called.
 pub fn shim_iterator_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::engine::{Iterator, MapIterator};
-    use std::sync::atomic::Ordering;
 
     // Stack: func_addr, iterator_id
     // Pop in reverse order (stack is LIFO)
@@ -1896,17 +1887,10 @@ pub fn shim_iterator_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
         return Ok(());
     }
 
-    // Allocate new iterator ID for the map adapter
-    let new_iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
-
-    // Create map iterator
-    let iterator = Iterator::Map(MapIterator {
+    let new_iterator_id = vm.register_iterator(Iterator::Map(MapIterator {
         source_iterator_id,
         func_addr,
-    });
-
-    // Store iterator
-    vm.iterators.insert(new_iterator_id, iterator);
+    }));
 
     // Return new iterator_id（PLAN-776 R7-02：源为凭据时派生 id 同样包装）。
     push_derived_iterator(task, vm, new_iterator_id, from_credential)?;
@@ -1922,7 +1906,6 @@ pub fn shim_iterator_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 /// will currently return all elements without filtering.
 pub fn shim_iterator_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::engine::{FilterIterator, Iterator};
-    use std::sync::atomic::Ordering;
 
     // Stack: func_addr, iterator_id
     // Pop in reverse order (stack is LIFO)
@@ -1941,17 +1924,10 @@ pub fn shim_iterator_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         return Ok(());
     }
 
-    // Allocate new iterator ID for the filter adapter
-    let new_iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
-
-    // Create filter iterator
-    let iterator = Iterator::Filter(FilterIterator {
+    let new_iterator_id = vm.register_iterator(Iterator::Filter(FilterIterator {
         source_iterator_id,
         func_addr,
-    });
-
-    // Store iterator
-    vm.iterators.insert(new_iterator_id, iterator);
+    }));
 
     // Return new iterator_id（PLAN-776 R7-02：源为凭据时派生 id 同样包装）。
     push_derived_iterator(task, vm, new_iterator_id, from_credential)?;
@@ -1963,7 +1939,6 @@ pub fn shim_iterator_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Stack: iterator_id -> new_iterator_id
 pub fn shim_iterator_enumerate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::engine::{EnumerateIterator, Iterator};
-    use std::sync::atomic::Ordering;
 
     // PLAN-776 R7-02：凭据感知源。
     let (source_iterator_id, from_credential) = pop_iterator_receiver(task, vm);
@@ -1976,14 +1951,10 @@ pub fn shim_iterator_enumerate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         return Ok(());
     }
 
-    let new_iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
-
-    let iterator = Iterator::Enumerate(EnumerateIterator {
+    let new_iterator_id = vm.register_iterator(Iterator::Enumerate(EnumerateIterator {
         source_iterator_id,
         current_index: 0,
-    });
-
-    vm.iterators.insert(new_iterator_id, iterator);
+    }));
     // PLAN-776 R7-02：派生 iterator 身份——源为凭据时同样包装。
     push_derived_iterator(task, vm, new_iterator_id, from_credential)?;
     Ok(())

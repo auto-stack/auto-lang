@@ -634,30 +634,8 @@ impl AutoVM {
                 // first next() seeds the generator frame — previously
                 // they stayed on the caller stack and parameterized
                 // generators underflowed at RET with garbage params.
-                let mut arg_nvs = Vec::with_capacity(n_args as usize);
-                for _ in 0..n_args as usize {
-                    arg_nvs.push(task.ram.pop_nv());
-                }
-                arg_nvs.reverse();
-                let gen_state = GeneratorState {
-                    task_id: None,
-                    func_addr,
-                    n_args,
-                    started: false,
-                    done: false,
-                    resume_ip: 0,
-                    resume_bp: 0,
-                    resume_sp: 0,
-                    stack_snapshot: arg_nvs,
-                };
-                let iter_id = {
-                    let next_id = self
-                        .iterator_id_gen
-                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    self.iterators
-                        .insert(next_id, Iterator::Generator(gen_state));
-                    next_id
-                };
+                let gen_state = self.new_generator_state(task, func_addr, n_args);
+                let iter_id = self.register_iterator(Iterator::Generator(gen_state));
                 task.ram.push_i32(iter_id as i32);
             }
             OpCode::WRAP_SSE_RESOURCE => {

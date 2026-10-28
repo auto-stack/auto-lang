@@ -411,20 +411,12 @@ pub fn shim_io_lines(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         map.insert(stream_id, handle);
     }
 
-    let async_iter = crate::vm::engine::AsyncStreamIterator {
-        stream_id,
-        done: false,
-    };
-    let iter_id = {
-        let next_id = vm
-            .iterator_id_gen
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        vm.iterators.insert(
-            next_id,
-            crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
-        );
-        next_id
-    };
+    let iter_id = vm.register_iterator(crate::vm::engine::Iterator::AsyncHttpStream(
+        crate::vm::engine::AsyncStreamIterator {
+            stream_id,
+            done: false,
+        },
+    ));
     task.ram.push_i32(iter_id as i32);
     Ok(())
 }
@@ -482,20 +474,12 @@ pub fn shim_io_chunks(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         map.insert(stream_id, handle);
     }
 
-    let async_iter = crate::vm::engine::AsyncStreamIterator {
-        stream_id,
-        done: false,
-    };
-    let iter_id = {
-        let next_id = vm
-            .iterator_id_gen
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        vm.iterators.insert(
-            next_id,
-            crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
-        );
-        next_id
-    };
+    let iter_id = vm.register_iterator(crate::vm::engine::Iterator::AsyncHttpStream(
+        crate::vm::engine::AsyncStreamIterator {
+            stream_id,
+            done: false,
+        },
+    ));
     task.ram.push_i32(iter_id as i32);
     Ok(())
 }
@@ -556,20 +540,12 @@ pub fn shim_fs_entries(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
         map.insert(stream_id, handle);
     }
 
-    let async_iter = crate::vm::engine::AsyncStreamIterator {
-        stream_id,
-        done: false,
-    };
-    let iter_id = {
-        let next_id = vm
-            .iterator_id_gen
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        vm.iterators.insert(
-            next_id,
-            crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
-        );
-        next_id
-    };
+    let iter_id = vm.register_iterator(crate::vm::engine::Iterator::AsyncHttpStream(
+        crate::vm::engine::AsyncStreamIterator {
+            stream_id,
+            done: false,
+        },
+    ));
     task.ram.push_i32(iter_id as i32);
     Ok(())
 }
@@ -876,20 +852,12 @@ pub fn shim_io_scanner(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
         map.insert(stream_id, handle);
     }
 
-    let async_iter = crate::vm::engine::AsyncStreamIterator {
-        stream_id,
-        done: false,
-    };
-    let iter_id = {
-        let next_id = vm
-            .iterator_id_gen
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        vm.iterators.insert(
-            next_id,
-            crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
-        );
-        next_id
-    };
+    let iter_id = vm.register_iterator(crate::vm::engine::Iterator::AsyncHttpStream(
+        crate::vm::engine::AsyncStreamIterator {
+            stream_id,
+            done: false,
+        },
+    ));
     task.ram.push_i32(iter_id as i32);
     Ok(())
 }
