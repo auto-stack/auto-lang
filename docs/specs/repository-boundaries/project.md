@@ -93,3 +93,17 @@ iced 桌面入口自 auto-lang `examples/ui_desktop.rs` 迁入 auto-os 一等 bi
 （`host/desktop` → `ui-desktop.exe`），语言仓该 example 已删除；入口依赖闭包 =
 `auto-ui-runtime` + `auto-lang-core`，不含 `auto-lang` 编译器层。契约见
 [autos-desktop-entry](autos-desktop-entry.md)。本轮未 push、未改远端。
+
+## PLAN-876 计划与债的登记归属（2026-10-28 用户裁定）
+
+拆分的最后一处治理面是**计划簿记归属**：自 PLAN-876 起，以 auto-os 为主改面的
+工作（桌面入口/宿主、`shell/`、`apps/` 与 apps.manifest、AutoOS 装配与发行）在
+**auto-os 仓 `docs/plans/`** 取号登记（独立 `.next-id`，当前 052 起）与归档；其
+债/风险进 auto-os `docs/plans/KNOWN-DEBT-AND-RISKS.md`。auto-lang 仓
+`docs/plans/` 只为该域保留**指针行**，不再承接正文。跨仓计划正文放主改面所在仓，
+另一仓在计划/README 留指针与验收分工。
+
+PLAN-876 本身是**最后一份**该形态的例外：正文在 auto-lang（入口从语言仓迁出，
+改动首站是语言仓），auto-os 侧
+`docs/plans/autos-desktop-program.md` 留指针行 + `AGENTS.md` §1 记录生效规则。
+`autos-desktop-program.md` 的桌面域台账沿既有 Stage B P-5 裁定本就只记 auto-os 侧。
