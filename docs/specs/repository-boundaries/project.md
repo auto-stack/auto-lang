@@ -107,3 +107,18 @@ PLAN-876 本身是**最后一份**该形态的例外：正文在 auto-lang（入
 改动首站是语言仓），auto-os 侧
 `docs/plans/autos-desktop-program.md` 留指针行 + `AGENTS.md` §1 记录生效规则。
 `autos-desktop-program.md` 的桌面域台账沿既有 Stage B P-5 裁定本就只记 auto-os 侧。
+
+## 拆分后的常态（PLAN-869 SD-03）
+
+M2 收口后的常态治理 = 三件事（不再有"拆分期"特殊态）：
+
+1. **按 crate 检验清单**：`crate-inventory.md`（生成器
+   `scripts/crate-inventory.py` + 精选数据 + `--check` 差异检查即红）是三仓
+   workspace 成员的单一事实源；新成员入组必须同步精选数据。
+2. **批次减法**：按 net-slimming 口径与收据规则执行（A 达标/B 不反弹/分列/
+   2,000 下限/五面负控；结构性减法另加四要件+按批签核）。
+3. **结构立项**：热点（巨型文件/入口收敛）经结构立项包评审后立项执行，
+   不做即兴手术（PLAN-869 立项包见其归档计划）。
+
+80 万目标按 A 口径披露与推进；未达按 roadmap 报告实际规模与剩余项，
+不隐含无限减法承诺。
