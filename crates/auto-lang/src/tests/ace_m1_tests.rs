@@ -158,6 +158,84 @@ fn ace_m1_golden_drift_is_red() {
     );
 }
 
+/// PLAN-870 T-05: the T*/R* record/text rows REALLY bound on the ac-native
+/// (mn) path — every check green against the frozen oracle (the ac column
+/// of binding.tsv flips from `gap:mn-scalar-only` to graded results). T05
+/// is absent by the named upstream exclusion `gap:upstream-s-eq`.
+#[test]
+fn ace_m1_tr_native_suite_green() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let suite_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/cases/ace-m1");
+    let root = temp_root("tr-native");
+    let out = root.join("out");
+    let report = run_suite(
+        &suite_dir.join("ace-m1-tr-native.suite.ad"),
+        &out,
+        &Limits::defaults(),
+    )
+    .expect("ace-m1 tr-native suite runs");
+    let failing: Vec<String> = report
+        .results
+        .iter()
+        .filter(|r| r.status != Status::Pass)
+        .map(|r| {
+            format!(
+                "{}:{} = {:?} | {:?} | mismatches: {:?}",
+                r.case_id, r.check_id, r.status, r.detail, r.mismatches
+            )
+        })
+        .collect();
+    assert!(
+        failing.is_empty(),
+        "ace-m1 tr-native suite has non-PASS checks:
+{}",
+        failing.join("
+")
+    );
+    assert_eq!(
+        report.results.len(),
+        31,
+        "tr-native suite check count (14 two-leg + 3 mn-only rows); got: {:?}",
+        report
+            .results
+            .iter()
+            .map(|r| format!("{}:{}", r.case_id, r.check_id))
+            .collect::<Vec<_>>()
+    );
+    assert!(report.coverage_gaps.is_empty(), "no coverage gaps");
+}
+
+/// PLAN-870 V-06 counter-control: mutating one frozen exit expectation
+/// (T01 38 -> 39) must turn the gate RED — the wiring is a real judge.
+#[test]
+fn ace_m1_tr_native_negative_oracle_fails() {
+    let _guard = ACE_M1_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let suite_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/cases/ace-m1");
+    let root = temp_root("tr-native-neg");
+    let corpus = root.join("corpus");
+    copy_tree(&suite_dir, &corpus);
+    let case = corpus.join("t-r-native.case.ad");
+    let text = std::fs::read_to_string(&case).unwrap();
+    let mutated = text.replace(
+        "expect: { completion: \"success\", exit: 38 }",
+        "expect: { completion: \"success\", exit: 39 }",
+    );
+    assert_ne!(&mutated, &text, "mutation must change the expectation");
+    std::fs::write(&case, mutated).unwrap();
+    let report = run_suite(
+        &corpus.join("ace-m1-tr-native.suite.ad"),
+        &root.join("out"),
+        &Limits::defaults(),
+    )
+    .expect("mutated suite still runs");
+    let t01 = report
+        .results
+        .iter()
+        .find(|r| r.case_id == "ace.m1.t01" && r.check_id == "ac-native")
+        .expect("T01 ac-native check present");
+    assert_eq!(t01.status, Status::Fail, "mutated oracle must be RED");
+}
+
 /// PLAN-852 T-04: the explicit certification entry, driven directly. A fresh
 /// run into a temp certs dir certifies every ok-emit row (actual==golden,
 /// wrapper AND hand-written reference each print the fixed oracle through a

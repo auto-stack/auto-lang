@@ -1,0 +1,10 @@
+# PLAN-870 T-05 — the T*/R* record/text rows on the ac-native (mn) path.
+# APPEND-ONLY beside the 852 base suite (which is NOT extended — freeze
+# §5.6); every check is green by real execution against the frozen oracle.
+# T05 (view eq) is absent by named upstream exclusion `gap:upstream-s-eq`.
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ace-m1-tr-native", include: [
+  "t-r-native.case.ad",
+] }
+```

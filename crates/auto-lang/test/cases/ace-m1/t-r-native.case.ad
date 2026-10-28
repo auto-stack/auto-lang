@@ -1,0 +1,326 @@
+# PLAN-870 T-05 — the ACE-M1 T*/R* record/text rows bound for REAL on the
+# ac-native (mn) path (the ac column of binding.tsv flips from
+# `gap:mn-scalar-only` to graded results). Value/trap rows carry the mn leg
+# and — where PLAN-862's T-06 bound the AV result `ok` — the matching av
+# data/owned leg, both against the SAME frozen oracle (independent expected
+# column). Diagnostic rows carry the mn leg (the shared frontend/verify
+# stack rejects with the family code; the per-row SPECIFIC code is asserted
+# by mn's in-crate `data_owned_tier` against the same shared stack). Rows
+# whose av column stays a gap (T03/T05/R07/R08) wire no av leg. T05 wires
+# no leg at all — named upstream exclusion `gap:upstream-s-eq` (the shared
+# lowering's view-eq Bin path; KNOWN-DEBT, S owner). The 852 base suite is
+# NOT extended (freeze §5.6): this rides its own suite file.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t01"
+  tags: ["ace-m1", "four-path", "owned-text"]
+  links: ["PLAN-852", "PLAN-870"]
+  source: { file: "src/T01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 38 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 38 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t02"
+  tags: ["ace-m1", "four-path", "owned-text"]
+  links: ["PLAN-852", "PLAN-870"]
+  source: { file: "src/T02.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 27 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 27 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t03"
+  tags: ["ace-m1", "diagnostic", "owned-text"]
+  links: ["PLAN-852", "PLAN-870"]
+  source: { file: "src/T03.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "mn.unsupported.frontend" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t04"
+  tags: ["ace-m1", "four-path", "owned-text"]
+  links: ["PLAN-852", "PLAN-870"]
+  source: { file: "src/T04.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 128512 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 128512 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t06"
+  tags: ["ace-m1", "diagnostic", "owned-text"]
+  links: ["PLAN-852", "PLAN-870"]
+  source: { file: "src/T06.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "mn.unsupported.frontend" } } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "verify.borrow-escape" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t07"
+  tags: ["ace-m1", "diagnostic", "owned-text"]
+  links: ["PLAN-852", "PLAN-870"]
+  source: { file: "src/T07.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "mn.unsupported.frontend" } } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "text.invalid-scalar" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.t08"
+  tags: ["ace-m1", "four-path", "owned-text", "trap"]
+  links: ["PLAN-852", "PLAN-870"]
+  source: { file: "src/T08.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 70 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "run", code: "av.trap.str-index" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r01"
+  tags: ["ace-m1", "four-path", "record"]
+  links: ["PLAN-852", "PLAN-870"]
+  source: { file: "src/R01.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 19 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 19 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r02"
+  tags: ["ace-m1", "four-path", "record"]
+  links: ["PLAN-852", "PLAN-870"]
+  source: { file: "src/R02.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 9 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 9 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r03"
+  tags: ["ace-m1", "four-path", "record"]
+  links: ["PLAN-852", "PLAN-870"]
+  source: { file: "src/R03.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 23 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 23 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r04"
+  tags: ["ace-m1", "four-path", "owned-record"]
+  links: ["PLAN-852", "PLAN-870"]
+  source: { file: "src/R04.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 51 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 51 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r05"
+  tags: ["ace-m1", "four-path", "owned-record"]
+  links: ["PLAN-852", "PLAN-870"]
+  source: { file: "src/R05.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 42 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r06"
+  tags: ["ace-m1", "four-path", "record"]
+  links: ["PLAN-852", "PLAN-870"]
+  source: { file: "src/R06.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 21 } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/data-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 21 } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r07"
+  tags: ["ace-m1", "diagnostic", "record"]
+  links: ["PLAN-852", "PLAN-870"]
+  source: { file: "src/R07.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "typecheck", code: "mn.unsupported.adapter" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r08"
+  tags: ["ace-m1", "diagnostic", "record"]
+  links: ["PLAN-852", "PLAN-870"]
+  source: { file: "src/R08.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "typecheck", code: "mn.unsupported.adapter" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r09"
+  tags: ["ace-m1", "diagnostic", "record"]
+  links: ["PLAN-852", "PLAN-870"]
+  source: { file: "src/R09.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "mn.unsupported.frontend" } } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "source.type-mismatch" } } },
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "ace.m1.r10"
+  tags: ["ace-m1", "diagnostic", "owned-record"]
+  links: ["PLAN-852", "PLAN-870"]
+  source: { file: "src/R10.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "ac-native", adapter: "probe", action: "run",
+      options: { recipe: "ac/mir-native-scalar-v1", mn: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "mn.unsupported.frontend" } } },
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/owned-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: { stage: "parse", code: "verify.use-after-move" } } },
+  ]
+}
+```

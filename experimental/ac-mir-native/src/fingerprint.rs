@@ -36,7 +36,10 @@ fn shape(m: &MirModule, idx: TypeIdx) -> String {
             | MirType::Variant(_)
             | MirType::Place(_)
             | MirType::Closure(_)
-            | MirType::Dyn,
+            | MirType::Dyn
+            // PLAN-862's entry-unit Unit type: outside mn's three admitted
+            // profiles; a defensive distinct label keeps the render total.
+            | MirType::Unit,
         ) => "unsupported".into(),
         None => "missing".into(),
     }

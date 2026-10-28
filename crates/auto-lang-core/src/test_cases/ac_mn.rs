@@ -23,7 +23,7 @@
 //! Judgement faces:
 //! - `completion: "success"` + `exit: <i32>` — the real PE exit code
 //!   (a language trap IS exit 70, the frozen experiment contract);
-//! - `completion: { stage: "parse"|"verify", code }` — a diagnosed
+//! - `completion: { stage: "parse"|"typecheck", code }` — a diagnosed
 //!   pipeline rejection.
 
 use crate::test_cases::sema::containment;
@@ -1095,13 +1095,17 @@ pub fn run_check(
     // ---- parent-side judgement -----------------------------------------
     let observed = if let Some((code, message)) = &diag {
         // Map the mn.* / mir.* diagnostic onto the contract stages:
-        // frontend rejections parse; adapter/MIR admissions verify.
+        // frontend rejections parse; adapter/MIR admissions report at the
+        // probe adapter's post-frontend boundary face `typecheck` (the
+        // probe stage vocabulary admits parse/resolve/typecheck/run —
+        // PLAN-870 T-05 wiring; the underlying pipeline boundary stays
+        // named by the mn.* code itself).
         let stage = if code.starts_with("mn.unsupported.frontend")
             || code.starts_with("mn.unsupported.input")
         {
             Stage::Parse
         } else {
-            Stage::Verify
+            Stage::Typecheck
         };
         match &oracle.completion {
             Completion::Error {

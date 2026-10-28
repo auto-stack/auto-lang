@@ -151,7 +151,11 @@ pub fn emit_function(
                 | MirType::Variant(_)
                 | MirType::Place(_)
                 | MirType::Closure(_)
-                | MirType::Dyn,
+                | MirType::Dyn
+                // PLAN-862's entry-unit Unit type (av.entry-unit/1) is a
+                // fourth profile's value — a named rejection keeps mn's
+                // admitted set frozen at the three shared profiles.
+                | MirType::Unit,
             ) => {
                 return Err(format!(
                     "slot {si} type {} is outside the mn data/owned surface",
