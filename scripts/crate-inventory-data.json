@@ -1,0 +1,325 @@
+{
+ "schema": "crate-inventory-data/1",
+ "note": "PLAN-869 T-02 精选分析列（职责/重复实现/无消费者旧路径/文档与规范）。机读列（成员/依赖/规模/pub 数/档位）由 scripts/crate-inventory.py 自动采集；本文件只承载人工分析结论，缺成员即生成器红。死项计数绑定 lang-869 组基线（probe: attachments/869/probe/scan4.txt，真死判据=声明仅一次+三仓 .rs 全文零引用，宏注册面已排除）。",
+ "crates": {
+  "auto-lang/a2r-std": {
+   "duty": "a2r 转译 Rust 代码的运行时标准库（actor/task 容器与胶水）",
+   "duplicates": "—（844 已清偿死纯 shim 3 函数）",
+   "dead_paths": "零真死项（aavm/taa 语料依赖面，F-9 保留有证）",
+   "docs": "specs/a2r-std/"
+  },
+  "auto-lang/a2r-actor-tests": {
+   "duty": "Plan 387 行为等价测试：actor .at 转译→编译运行→对拍 VM actor 套件",
+   "duplicates": "—",
+   "dead_paths": "零真死项（stdlib_assembly/manifest 与 auto-lang tests 活跃消费）",
+   "docs": "specs/a2r-actor-tests/"
+  },
+  "auto-lang/shim-metadata": {
+   "duty": "编译产物元数据 shim（auto-cache 消费的最小元数据面）",
+   "duplicates": "—",
+   "dead_paths": "G 桶 1 生成文件；无真死项",
+   "docs": "specs/shim-metadata/"
+  },
+  "auto-lang/auto-atom": {
+   "duty": "静态 Atom 数据结构与解析器（Atom 语法层）",
+   "duplicates": "—",
+   "dead_paths": "零真死项",
+   "docs": "specs/auto-atom/"
+  },
+  "auto-lang/auto-test-case": {
+   "duty": "AutoDown TestCase 协议核心：profile/CaseIR/选择/比对/报告（Plan 768）",
+   "duplicates": "—",
+   "dead_paths": "零真死项",
+   "docs": "specs/auto-test-case/"
+  },
+  "auto-lang/auto-gen": {
+   "duty": "代码生成编排（JSON/C/Rust 等目标，基于 auto-gen-core）",
+   "duplicates": "—",
+   "dead_paths": "零真死项",
+   "docs": "specs/auto-gen/"
+  },
+  "auto-lang/auto-gen-core": {
+   "duty": "无解释器生成核心：守卫段/输出编排/通用错误/生成报告（PLAN-791）",
+   "duplicates": "—",
+   "dead_paths": "零真死项",
+   "docs": "specs/auto-gen-core/"
+  },
+  "auto-lang/auto-media-core": {
+   "duty": "媒体基础：渲染中立图像资产管线（注册/票据/缓存/调度/HTTP 规则）+ 本地媒体文件服务（PLAN-811 自 ui 提取）",
+   "duplicates": "—",
+   "dead_paths": "image_pipeline.rs 真死 pub 项（scan4：~9 项，约 221 行死质量）",
+   "docs": "specs/auto-media-core/"
+  },
+  "auto-lang/auto-lang": {
+   "duty": "组合根主 crate：CLI/编译入口/测试面（auto run/test 等），聚合 lang-core 与 ui 三包（PLAN-814 组合根）",
+   "duplicates": "lib.rs async run-glue 9 根（843 残项，T-05 立项审计）",
+   "dead_paths": "tests/ 白名单 T2 面 + api_gen.rs 真死项（scan4：~31 项）；ui_gen 已迁 auto-ui-compiler（867）",
+   "docs": "specs/auto-lang/"
+  },
+  "auto-lang/auto-lang-core": {
+   "duty": "纯语言 SDK 单源：scanner/parser/type/compile/VM/trans 核心（PLAN-814，禁 UI/Man 实现依赖）",
+   "duplicates": "三入口残留（stdlib.rs 5,679/http_server.rs 4,156/trans/rust.rs 5,960 生产行，843 超限残项）；call_inner 7,439 行 if 链（F-7，T-05 立项）",
+   "dead_paths": "implicit_union.rs 整模块（521 行，Plan 125 遗留，零消费）；vm/ffi/websocket.rs 整模块（238 行，Plan 350 遗留，零消费）；database/mod.rs 11 项（844 Scope 退役后残项）；compile.rs/types.rs/module_cache.rs/http_upload_service.rs/vm/engine.rs/vm/generic_registry.rs/ffi.rs 等真死项（scan4 非 ffi 合计 ~60 项；vm/engine 与 generic_registry 标注 871 相邻待其结论）",
+   "docs": "specs/language-sdk/ + specs/auto-vm/"
+  },
+  "auto-lang/auto-text-core": {
+   "duty": "文本基础：持久 rope/文件分页/快照/diff 引擎（PLAN-807 自 ui/code_editor 提取）",
+   "duplicates": "—",
+   "dead_paths": "零真死项",
+   "docs": "specs/auto-text-core/"
+  },
+  "auto-lang/auto-parser-api": {
+   "duty": "方言移植 API：轻量 CompilerSession/Scenario + ExternalDialect + 对象安全 ParseContext（PLAN-801 依赖倒置）",
+   "duplicates": "—",
+   "dead_paths": "零真死项",
+   "docs": "specs/auto-parser-api/"
+  },
+  "auto-lang/auto-ast": {
+   "duty": "AST 节点族与构造辅助（parser/编译器共享语法树）",
+   "duplicates": "—",
+   "dead_paths": "ast/atom_helpers.rs 9 真死构造器（int/uint/float/str/cstr/ident/bool/char/null_node，零消费）",
+   "docs": "specs/auto-ast/"
+  },
+  "auto-lang/auto-lex": {
+   "duty": "词法基础：Token/TokenKind/Pos + Lexer/LexerState（PLAN-789 提取）",
+   "duplicates": "—",
+   "dead_paths": "零真死项",
+   "docs": "specs/auto-lex/"
+  },
+  "auto-lang/auto-diagnostics": {
+   "duty": "诊断基础：AutoError 聚合 + 语法/类型/名称/运行时/comptime/警告族（PLAN-793 提取）",
+   "duplicates": "error-reply 采样族 ×10（844 残留候选→872 DISTINGUISH 裁定，零行为变更）",
+   "dead_paths": "零真死项",
+   "docs": "specs/auto-diagnostics/"
+  },
+  "auto-lang/auto-project-model": {
+   "duty": "pac.at 声明轻量静态项目模型（PLAN-780；无编译器/VM/UI 类型）",
+   "duplicates": "—",
+   "dead_paths": "零真死项",
+   "docs": "specs/project-model/"
+  },
+  "auto-lang/auto-macros": {
+   "duty": "过程/属性宏（rust_fn 内在函数注册、test-case 宏等）",
+   "duplicates": "—",
+   "dead_paths": "零真死项（宏展开式消费面，grep 不可见，任何减法须 cargo check+档位反例兜底）",
+   "docs": "specs/auto-macros/"
+  },
+  "auto-lang/auto-tool-execution": {
+   "duty": "工具执行宿主抽象（子进程/预算/超时执行面，I-TOOL 配套）",
+   "duplicates": "—",
+   "dead_paths": "零真死项",
+   "docs": "specs/tool-execution/"
+  },
+  "auto-lang/auto-terminal-core": {
+   "duty": "终端宿主域核心：cells/几何契约/autoterm_core.dll 服务/会话生命周期/轻端口（PLAN-808）",
+   "duplicates": "—",
+   "dead_paths": "零真死项",
+   "docs": "specs/auto-terminal-core/"
+  },
+  "auto-lang/auto-lsp": {
+   "duty": "AutoLang LSP 服务器（编辑器工具面）",
+   "duplicates": "—",
+   "dead_paths": "零真死项；外部消费者=auto-vscode（build-lsp.ps1/.sh + LSP 契约文档）——不可按无消费者退役",
+   "docs": "specs/auto-lsp/ + docs/lsp-api-contract.md"
+  },
+  "auto-lang/auto-val": {
+   "duty": "值/节点基础类型（Value/Node/Atom 载体，全生态地基）",
+   "duplicates": "nv_to_value 双签名（844 残留候选→872 DISTINGUISH）",
+   "dead_paths": "value.rs 16 真死项（with_value/PathComponent/empty_owned_str/into_data/from_data 等）；node.rs 12 真死项（is_arg/set_main_arg_unified/fill_node_body 等）",
+   "docs": "specs/auto-val/"
+  },
+  "auto-lang/auto-vm": {
+   "duty": "AV 解释器宿主薄层（VM 执行入口挂接）",
+   "duplicates": "—",
+   "dead_paths": "零真死项；871（旧 lowering 退役）相邻——处置权归 871，本批不动",
+   "docs": "specs/auto-vm/"
+  },
+  "auto-lang/auto-cache": {
+   "duty": "全局构建缓存（跨项目产物共享）",
+   "duplicates": "—",
+   "dead_paths": "零真死项",
+   "docs": "specs/auto-cache/"
+  },
+  "auto-lang/auto-playground": {
+   "duty": "Playground web API 服务器（lib-legacy 载荷宿主，PLAN-752 活跃）",
+   "duplicates": "—",
+   "dead_paths": "零真死项（F-9 保留有证：lib-legacy 活跃）",
+   "docs": "specs/auto-playground/"
+  },
+  "auto-lang/auto-bindgen": {
+   "duty": "C 头清单生成器（AutoLang C FFI，Plan 216）",
+   "duplicates": "—",
+   "dead_paths": "type_map.rs 2 真死映射函数（ctype_to_c_str/ctype_to_rust_str，近全死文件 49/57 行）",
+   "docs": "specs/auto-bindgen/"
+  },
+  "auto-lang/auto-cosmic-ports": {
+   "duty": "Plan 365：COSMIC 复刻系统端口接口（通知/电源）+ mock 框架",
+   "duplicates": "—",
+   "dead_paths": "零真死项；整族无 workspace 消费者但有活跃规范页与债务簿 509 条目（负控第五面不过）→ 结构性减法候选（待签核）",
+   "docs": "specs/auto-cosmic/"
+  },
+  "auto-lang/auto-cosmic-demo": {
+   "duty": "Plan 365：mock 端口驱动的时钟+电池小程序（验收样例）",
+   "duplicates": "—",
+   "dead_paths": "同上：cosmic 族结构性候选（待签核）",
+   "docs": "specs/auto-cosmic/"
+  },
+  "auto-lang/auto-cosmic-host-libcosmic": {
+   "duty": "Plan 365 W3：libcosmic 宿主后端（VTree→Element lowering，Linux；Windows headless 回退）——509 裁定后观察态",
+   "duplicates": "—",
+   "dead_paths": "同上：cosmic 族结构性候选（待签核；libcosmic 直渲路线经矩阵证伪出局）",
+   "docs": "specs/auto-cosmic/ + docs/plans/reports/509-smithay-route-verdict.md"
+  },
+  "auto-lang/auto-cosmic-ports-linux": {
+   "duty": "Plan 365 W4：Linux 真实适配（zbus/UPower/D-Bus）+ 跨平台回退",
+   "duplicates": "—",
+   "dead_paths": "同上：cosmic 族结构性候选（待签核）",
+   "docs": "specs/auto-cosmic/"
+  },
+  "auto-lang/auto-cosmic-host-smithay": {
+   "duty": "Plan 509 路线 B：Smithay 合成宿主（winit/nested 开发形态；Linux 门控，Windows stub）",
+   "duplicates": "—",
+   "dead_paths": "同上：cosmic 族结构性候选（待签核；Stage 2 live attach 见债务簿 509）",
+   "docs": "specs/auto-cosmic/"
+  },
+  "auto-lang/auto-tool-protocol": {
+   "duty": "I-TOOL 轻量工具协议：版本/能力/预算/错误/帧契约（PLAN-815 T-03）",
+   "duplicates": "—",
+   "dead_paths": "零真死项",
+   "docs": "specs/tool-protocol/"
+  },
+  "auto-lang/auto-api-gen": {
+   "duty": "API 服务端/客户端生成核心（PLAN-815 T-04，自 auto-man 提取的跨仓单源）",
+   "duplicates": "—（844 F-9 保留有证：auto-api-gen 跨仓单源）",
+   "dead_paths": "api_gen.rs ~31 真死项（scan4；最大文件 9,772 行）",
+   "docs": "specs/auto-api-gen/"
+  },
+  "auto-ui/auto-ui-compiler": {
+   "duty": "UI 编译器：AURA 分析/提取、design tokens 与 vue/jet/ark/rust 四生成器（PLAN-814 提取；生成产物 import 路径=代码输出契约）",
+   "duplicates": "—",
+   "dead_paths": "widget/registry.rs 7、aura/schema.rs 5、jet/project.rs 5、shared/tailwind.rs 5 及 12 个单死项文件（style/ts_adapter/ark 修饰与 state/bp/registry/jet 族/shared/registry/widget/spec/aura/element_coverage/import_policy）+ vue.rs with_uses_autodown（DEBTS 450 已记死代码）；lucide_generated 为 pub(super) 表+访问器（活）",
+   "docs": "specs/auto-ui-compiler/（867 迁移后 owner=auto-ui 仓）"
+  },
+  "auto-ui/auto-ui-dialect": {
+   "duty": "AutoLang UI 声明语法（msg/model）单源（PLAN-806；仅依赖 auto-parser-api 轻闭包）",
+   "duplicates": "—",
+   "dead_paths": "ast.rs 1、grammar/view.rs 1 真死项（mint_*/parse_* 族有同文件活调用者，非死）",
+   "docs": "specs/auto-ui-dialect/"
+  },
+  "auto-ui/auto-ui-runtime": {
+   "duty": "UI 运行时：VM 渲染轨/桌面宿主栈（iced renderer、桌面会话/协议、editor/terminal/media 部件、宿主适配与 provider）（PLAN-814 提取）",
+   "duplicates": "—",
+   "dead_paths": "10 个单死项文件（photo_service/vm_bridge/desktop_protocol host+sendinput+stage3/iced image_surface/native_dock win32/scroll state/terminal iced widget/code_editor highlight+render）；renderer.rs 42,337 行（F-5 最大文件，T-05 立项）",
+   "docs": "specs/auto-ui-runtime/"
+  },
+  "auto-ui/auto-ui-tools": {
+   "duty": "UI 工程工具包（PLAN-815）：auto-ui-tool 进程宿主（describe/validate_project）+ vue/rust 生成与构建/运行编排",
+   "duplicates": "—",
+   "dead_paths": "vue.rs 死质量 6,384（scan2 估计，含字符串花括号误报，逐项以 scan4/复核为准）；rust_ui.rs ~12 项",
+   "docs": "specs/auto-ui-tools/"
+  },
+  "auto-ui/shell-pack": {
+   "duty": "桌面 shell 应用包（auto-man CLI 消费的 shell 载荷单源）",
+   "duplicates": "—",
+   "dead_paths": "零真死项（auto-man crates/auto 活跃消费）",
+   "docs": "—（无独立 specs 页；README 内嵌）"
+  },
+  "auto-man/auto": {
+   "duty": "auto CLI（包管理/构建/运行入口；F-8 最大文件 main.rs 3,222 行，T-05 立项）",
+   "duplicates": "—",
+   "dead_paths": "tool_ui_ops.rs 等真死项（scan4 man 侧：~8 项）",
+   "docs": "specs/auto-man/（语言仓托管）"
+  },
+  "auto-man/auto-core@core-ws": {
+   "duty": "core 子 workspace 的 core-feature 构建视图（cargo tcore；与 crates/auto 共享同一 main.rs/源，非独立代码）",
+   "duplicates": "与 crates/auto 同源双 manifest（构建视图非代码重复）",
+   "dead_paths": "—（无独立 src）",
+   "docs": "specs/auto-cli/"
+  },
+  "auto-man/auto-man": {
+   "duty": "Man 库门面（模板/资产/工具链集成 API，兼容门面 F-9 保留有证）",
+   "duplicates": "—（844 已清偿 autoui-skill 目录逐字双份→单源）",
+   "dead_paths": "零真死项",
+   "docs": "specs/auto-man/"
+  },
+  "auto-man/auto-man-runtime": {
+   "duty": "Man 运行时适配（Git/FS 观察、builder 执行、生成请求编排）",
+   "duplicates": "—",
+   "dead_paths": "automan.rs 5 真死项（create_capp/create_lib/create_clib/pac_window_title/scenario_override）+ cache.rs/error.rs/builder ninja resolver 单死项",
+   "docs": "specs/auto-man/"
+  },
+  "auto-man/auto-man-core": {
+   "duty": "管理/构建规划规则核心（PLAN-809：pac.at 规范化/target 闭包/源选择/构建规划纯规则）",
+   "duplicates": "—",
+   "dead_paths": "零真死项",
+   "docs": "specs/auto-man-core/"
+  },
+  "auto-man/auto-package-lock": {
+   "duty": "pac.lock 核心：锁模型/TOML-JSON 编解码/依赖校验规则（PLAN-795 Target-free 提取）",
+   "duplicates": "—",
+   "dead_paths": "零真死项",
+   "docs": "specs/package-lock/"
+  },
+  "auto-man/auto-package-resolver": {
+   "duty": "已解析依赖视图与模块路径解析核心（PLAN-800 自 resolver.rs 提取）",
+   "duplicates": "—",
+   "dead_paths": "零真死项",
+   "docs": "specs/package-resolver/"
+  },
+  "auto-man/auto-toolchain-core": {
+   "duty": "工具链配置模型/旗标映射/命令模板核心（PLAN-805 自 builder/ninja 提取）",
+   "duplicates": "—",
+   "dead_paths": "零真死项",
+   "docs": "specs/auto-toolchain-core/"
+  },
+  "auto-man/auto-man-assets": {
+   "duty": "Man 模板与 builder 资产单源 + 纯脚手架路径规划（PLAN-803 无语言提取）",
+   "duplicates": "—",
+   "dead_paths": "零真死项（844 已退役拆仓残留资产 5 文件）",
+   "docs": "specs/auto-man-assets/"
+  },
+  "auto-man/auto-tool-client": {
+   "duty": "I-TOOL 客户端（auto CLI 调用 auto-ui-tool 进程的桥）",
+   "duplicates": "—",
+   "dead_paths": "lib.rs 1 真死项",
+   "docs": "specs/tool-protocol/"
+  }
+ },
+ "candidate_queue": [
+  {
+   "item": "auto-lang-core implicit_union.rs 整模块 + auto-lang lib.rs 再导出",
+   "kind": "无消费者退役（批2 实施项）",
+   "evidence": "scan4 真死（12 pub 项零消费）+ git grep 三仓全跟踪文件仅 lib.rs 接线与归档文档；连带 02-type-system.md 一句话同步"
+  },
+  {
+   "item": "auto-lang-core vm/ffi/websocket.rs 整模块",
+   "kind": "无消费者退役（批2 实施项）",
+   "evidence": "scan4 真死（WsConnection+4 shim 零注册零消费）；HTTP 侧 WebSocket（ApiReply::WebSocket，Design 33）是另一子系统不受影响"
+  },
+  {
+   "item": "auto-ui-compiler/auto-ui-runtime/auto-ui-dialect/auto-man/auto-lang-core(非 vm-engine/generic_registry) 真死 pub 项（scan4 清单）",
+   "kind": "无消费者退役（批2 实施项）",
+   "evidence": "scan4 真死判据（声明仅一次+三仓零引用）+ git grep 全类型负控；vm/ffi 宏注册族与 872/871 相邻面已排除"
+  },
+  {
+   "item": "auto-lang-core vm/engine.rs + vm/generic_registry.rs 真死项",
+   "kind": "延后（871 相邻）",
+   "evidence": "871 旧 lowering 退役将重构 VM 面；处置权归 871 结论"
+  },
+  {
+   "item": "auto-cosmic 五子 crate 整族（~1,047 P 行）",
+   "kind": "结构性减法（待用户按批签核，D-3 四要件）",
+   "evidence": "无 workspace 消费者，但 specs/auto-cosmic 标 active + 债务簿 509 条目 + 509 裁定报告=公开承诺面；替代路径=无（需先裁定 Smithay 线去留）"
+  },
+  {
+   "item": "语言三入口收敛（stdlib.rs/http_server.rs/trans/rust.rs 超 843 限）+ call_inner 拆分 + lib.rs async glue",
+   "kind": "结构立项（T-05 包，不在本批）",
+   "evidence": "F-7 规模证据；属拆分重构非死码"
+  },
+  {
+   "item": "UI renderer.rs 42,337 / vue.rs 34,451 / aura_view_builder.rs 28,044；Man auto/main.rs 3,222",
+   "kind": "结构立项（T-05 包，不在本批）",
+   "evidence": "F-5/F-8 规模证据；GPU 状态机/生成器巨型 match 需独立探针与审查面"
+  }
+ ]
+}

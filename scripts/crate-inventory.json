@@ -1,0 +1,1227 @@
+{
+ "crates": [
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879\uff08stdlib_assembly/manifest \u4e0e auto-lang tests \u6d3b\u8dc3\u6d88\u8d39\uff09",
+   "docs": "specs/a2r-actor-tests/",
+   "duplicates": "\u2014",
+   "duty": "Plan 387 \u884c\u4e3a\u7b49\u4ef7\u6d4b\u8bd5\uff1aactor .at \u8f6c\u8bd1\u2192\u7f16\u8bd1\u8fd0\u884c\u2192\u5bf9\u62cd VM actor \u5957\u4ef6",
+   "inline_test": 0,
+   "manifest_dir": "crates/a2r-actor-tests",
+   "name": "a2r-actor-tests",
+   "p_files": 1,
+   "p_total": 14,
+   "pub_items": 0,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-lang-core"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879\uff08aavm/taa \u8bed\u6599\u4f9d\u8d56\u9762\uff0cF-9 \u4fdd\u7559\u6709\u8bc1\uff09",
+   "docs": "specs/a2r-std/",
+   "duplicates": "\u2014\uff08844 \u5df2\u6e05\u507f\u6b7b\u7eaf shim 3 \u51fd\u6570\uff09",
+   "duty": "a2r \u8f6c\u8bd1 Rust \u4ee3\u7801\u7684\u8fd0\u884c\u65f6\u6807\u51c6\u5e93\uff08actor/task \u5bb9\u5668\u4e0e\u80f6\u6c34\uff09",
+   "inline_test": 2710,
+   "manifest_dir": "crates/a2r-std",
+   "name": "a2r-std",
+   "p_files": 21,
+   "p_total": 10978,
+   "pub_items": 426,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "api_gen.rs ~31 \u771f\u6b7b\u9879\uff08scan4\uff1b\u6700\u5927\u6587\u4ef6 9,772 \u884c\uff09",
+   "docs": "specs/auto-api-gen/",
+   "duplicates": "\u2014\uff08844 F-9 \u4fdd\u7559\u6709\u8bc1\uff1aauto-api-gen \u8de8\u4ed3\u5355\u6e90\uff09",
+   "duty": "API \u670d\u52a1\u7aef/\u5ba2\u6237\u7aef\u751f\u6210\u6838\u5fc3\uff08PLAN-815 T-04\uff0c\u81ea auto-man \u63d0\u53d6\u7684\u8de8\u4ed3\u5355\u6e90\uff09",
+   "inline_test": 1251,
+   "manifest_dir": "crates/auto-api-gen",
+   "name": "auto-api-gen",
+   "p_files": 5,
+   "p_total": 11774,
+   "pub_items": 225,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-lang-core",
+    "auto-project-model",
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "ast/atom_helpers.rs 9 \u771f\u6b7b\u6784\u9020\u5668\uff08int/uint/float/str/cstr/ident/bool/char/null_node\uff0c\u96f6\u6d88\u8d39\uff09",
+   "docs": "specs/auto-ast/",
+   "duplicates": "\u2014",
+   "duty": "AST \u8282\u70b9\u65cf\u4e0e\u6784\u9020\u8f85\u52a9\uff08parser/\u7f16\u8bd1\u5668\u5171\u4eab\u8bed\u6cd5\u6811\uff09",
+   "inline_test": 809,
+   "manifest_dir": "crates/auto-ast",
+   "name": "auto-ast",
+   "p_files": 34,
+   "p_total": 9038,
+   "pub_items": 244,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-lex",
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/auto-atom/",
+   "duplicates": "\u2014",
+   "duty": "\u9759\u6001 Atom \u6570\u636e\u7ed3\u6784\u4e0e\u89e3\u6790\u5668\uff08Atom \u8bed\u6cd5\u5c42\uff09",
+   "inline_test": 599,
+   "manifest_dir": "crates/auto-atom",
+   "name": "auto-atom",
+   "p_files": 4,
+   "p_total": 2006,
+   "pub_items": 36,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "type_map.rs 2 \u771f\u6b7b\u6620\u5c04\u51fd\u6570\uff08ctype_to_c_str/ctype_to_rust_str\uff0c\u8fd1\u5168\u6b7b\u6587\u4ef6 49/57 \u884c\uff09",
+   "docs": "specs/auto-bindgen/",
+   "duplicates": "\u2014",
+   "duty": "C \u5934\u6e05\u5355\u751f\u6210\u5668\uff08AutoLang C FFI\uff0cPlan 216\uff09",
+   "inline_test": 103,
+   "manifest_dir": "crates/auto-bindgen",
+   "name": "auto-bindgen",
+   "p_files": 5,
+   "p_total": 697,
+   "pub_items": 15,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/auto-cache/",
+   "duplicates": "\u2014",
+   "duty": "\u5168\u5c40\u6784\u5efa\u7f13\u5b58\uff08\u8de8\u9879\u76ee\u4ea7\u7269\u5171\u4eab\uff09",
+   "inline_test": 1341,
+   "manifest_dir": "crates/auto-cache",
+   "name": "auto-cache",
+   "p_files": 12,
+   "p_total": 5914,
+   "pub_items": 170,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "shim-metadata"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [
+    "auto-ui-runtime"
+   ],
+   "dead_paths": "\u540c\u4e0a\uff1acosmic \u65cf\u7ed3\u6784\u6027\u5019\u9009\uff08\u5f85\u7b7e\u6838\uff09",
+   "docs": "specs/auto-cosmic/",
+   "duplicates": "\u2014",
+   "duty": "Plan 365\uff1amock \u7aef\u53e3\u9a71\u52a8\u7684\u65f6\u949f+\u7535\u6c60\u5c0f\u7a0b\u5e8f\uff08\u9a8c\u6536\u6837\u4f8b\uff09",
+   "inline_test": 0,
+   "manifest_dir": "crates/auto-cosmic/demo",
+   "name": "auto-cosmic-demo",
+   "p_files": 1,
+   "p_total": 93,
+   "pub_items": 0,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-cosmic-ports",
+    "auto-lang-core",
+    "auto-ui-runtime"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [
+    "auto-ui-runtime"
+   ],
+   "dead_paths": "\u540c\u4e0a\uff1acosmic \u65cf\u7ed3\u6784\u6027\u5019\u9009\uff08\u5f85\u7b7e\u6838\uff1blibcosmic \u76f4\u6e32\u8def\u7ebf\u7ecf\u77e9\u9635\u8bc1\u4f2a\u51fa\u5c40\uff09",
+   "docs": "specs/auto-cosmic/ + docs/plans/reports/509-smithay-route-verdict.md",
+   "duplicates": "\u2014",
+   "duty": "Plan 365 W3\uff1alibcosmic \u5bbf\u4e3b\u540e\u7aef\uff08VTree\u2192Element lowering\uff0cLinux\uff1bWindows headless \u56de\u9000\uff09\u2014\u2014509 \u88c1\u5b9a\u540e\u89c2\u5bdf\u6001",
+   "inline_test": 30,
+   "manifest_dir": "crates/auto-cosmic/host-libcosmic",
+   "name": "auto-cosmic-host-libcosmic",
+   "p_files": 3,
+   "p_total": 219,
+   "pub_items": 5,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-cosmic-ports",
+    "auto-lang-core",
+    "auto-ui-runtime"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u540c\u4e0a\uff1acosmic \u65cf\u7ed3\u6784\u6027\u5019\u9009\uff08\u5f85\u7b7e\u6838\uff1bStage 2 live attach \u89c1\u503a\u52a1\u7c3f 509\uff09",
+   "docs": "specs/auto-cosmic/",
+   "duplicates": "\u2014",
+   "duty": "Plan 509 \u8def\u7ebf B\uff1aSmithay \u5408\u6210\u5bbf\u4e3b\uff08winit/nested \u5f00\u53d1\u5f62\u6001\uff1bLinux \u95e8\u63a7\uff0cWindows stub\uff09",
+   "inline_test": 0,
+   "manifest_dir": "crates/auto-cosmic/host-smithay",
+   "name": "auto-cosmic-host-smithay",
+   "p_files": 4,
+   "p_total": 222,
+   "pub_items": 5,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879\uff1b\u6574\u65cf\u65e0 workspace \u6d88\u8d39\u8005\u4f46\u6709\u6d3b\u8dc3\u89c4\u8303\u9875\u4e0e\u503a\u52a1\u7c3f 509 \u6761\u76ee\uff08\u8d1f\u63a7\u7b2c\u4e94\u9762\u4e0d\u8fc7\uff09\u2192 \u7ed3\u6784\u6027\u51cf\u6cd5\u5019\u9009\uff08\u5f85\u7b7e\u6838\uff09",
+   "docs": "specs/auto-cosmic/",
+   "duplicates": "\u2014",
+   "duty": "Plan 365\uff1aCOSMIC \u590d\u523b\u7cfb\u7edf\u7aef\u53e3\u63a5\u53e3\uff08\u901a\u77e5/\u7535\u6e90\uff09+ mock \u6846\u67b6",
+   "inline_test": 42,
+   "manifest_dir": "crates/auto-cosmic/ports",
+   "name": "auto-cosmic-ports",
+   "p_files": 2,
+   "p_total": 254,
+   "pub_items": 17,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u540c\u4e0a\uff1acosmic \u65cf\u7ed3\u6784\u6027\u5019\u9009\uff08\u5f85\u7b7e\u6838\uff09",
+   "docs": "specs/auto-cosmic/",
+   "duplicates": "\u2014",
+   "duty": "Plan 365 W4\uff1aLinux \u771f\u5b9e\u9002\u914d\uff08zbus/UPower/D-Bus\uff09+ \u8de8\u5e73\u53f0\u56de\u9000",
+   "inline_test": 34,
+   "manifest_dir": "crates/auto-cosmic/ports-linux",
+   "name": "auto-cosmic-ports-linux",
+   "p_files": 3,
+   "p_total": 259,
+   "pub_items": 9,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-cosmic-ports"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/auto-diagnostics/",
+   "duplicates": "error-reply \u91c7\u6837\u65cf \u00d710\uff08844 \u6b8b\u7559\u5019\u9009\u2192872 DISTINGUISH \u88c1\u5b9a\uff0c\u96f6\u884c\u4e3a\u53d8\u66f4\uff09",
+   "duty": "\u8bca\u65ad\u57fa\u7840\uff1aAutoError \u805a\u5408 + \u8bed\u6cd5/\u7c7b\u578b/\u540d\u79f0/\u8fd0\u884c\u65f6/comptime/\u8b66\u544a\u65cf\uff08PLAN-793 \u63d0\u53d6\uff09",
+   "inline_test": 0,
+   "manifest_dir": "crates/auto-diagnostics",
+   "name": "auto-diagnostics",
+   "p_files": 2,
+   "p_total": 1259,
+   "pub_items": 21,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-lex",
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/auto-gen/",
+   "duplicates": "\u2014",
+   "duty": "\u4ee3\u7801\u751f\u6210\u7f16\u6392\uff08JSON/C/Rust \u7b49\u76ee\u6807\uff0c\u57fa\u4e8e auto-gen-core\uff09",
+   "inline_test": 183,
+   "manifest_dir": "crates/auto-gen",
+   "name": "auto-gen",
+   "p_files": 6,
+   "p_total": 1569,
+   "pub_items": 63,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-gen-core",
+    "auto-lang-core",
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/auto-gen-core/",
+   "duplicates": "\u2014",
+   "duty": "\u65e0\u89e3\u91ca\u5668\u751f\u6210\u6838\u5fc3\uff1a\u5b88\u536b\u6bb5/\u8f93\u51fa\u7f16\u6392/\u901a\u7528\u9519\u8bef/\u751f\u6210\u62a5\u544a\uff08PLAN-791\uff09",
+   "inline_test": 358,
+   "manifest_dir": "crates/auto-gen-core",
+   "name": "auto-gen-core",
+   "p_files": 4,
+   "p_total": 870,
+   "pub_items": 23,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [
+    "auto-ui-compiler",
+    "auto-ui-dialect",
+    "auto-ui-runtime"
+   ],
+   "dead_paths": "tests/ \u767d\u540d\u5355 T2 \u9762 + api_gen.rs \u771f\u6b7b\u9879\uff08scan4\uff1a~31 \u9879\uff09\uff1bui_gen \u5df2\u8fc1 auto-ui-compiler\uff08867\uff09",
+   "docs": "specs/auto-lang/",
+   "duplicates": "lib.rs async run-glue 9 \u6839\uff08843 \u6b8b\u9879\uff0cT-05 \u7acb\u9879\u5ba1\u8ba1\uff09",
+   "duty": "\u7ec4\u5408\u6839\u4e3b crate\uff1aCLI/\u7f16\u8bd1\u5165\u53e3/\u6d4b\u8bd5\u9762\uff08auto run/test \u7b49\uff09\uff0c\u805a\u5408 lang-core \u4e0e ui \u4e09\u5305\uff08PLAN-814 \u7ec4\u5408\u6839\uff09",
+   "inline_test": 11815,
+   "manifest_dir": "crates/auto-lang",
+   "name": "auto-lang",
+   "p_files": 16,
+   "p_total": 7808,
+   "pub_items": 231,
+   "repo": "auto-lang",
+   "tiers": [
+    "lang-t(3192)",
+    "lang-tv(163)"
+   ],
+   "upstream_path_deps": [
+    "a2r-std",
+    "auto-ast",
+    "auto-atom",
+    "auto-bindgen",
+    "auto-cache",
+    "auto-diagnostics",
+    "auto-lang-core",
+    "auto-lex",
+    "auto-macros",
+    "auto-media-core",
+    "auto-parser-api",
+    "auto-terminal-core",
+    "auto-test-case",
+    "auto-text-core",
+    "auto-ui-compiler",
+    "auto-ui-dialect",
+    "auto-ui-runtime",
+    "auto-val",
+    "shim-metadata"
+   ],
+   "version": "0.2.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "implicit_union.rs \u6574\u6a21\u5757\uff08521 \u884c\uff0cPlan 125 \u9057\u7559\uff0c\u96f6\u6d88\u8d39\uff09\uff1bvm/ffi/websocket.rs \u6574\u6a21\u5757\uff08238 \u884c\uff0cPlan 350 \u9057\u7559\uff0c\u96f6\u6d88\u8d39\uff09\uff1bdatabase/mod.rs 11 \u9879\uff08844 Scope \u9000\u5f79\u540e\u6b8b\u9879\uff09\uff1bcompile.rs/types.rs/module_cache.rs/http_upload_service.rs/vm/engine.rs/vm/generic_registry.rs/ffi.rs \u7b49\u771f\u6b7b\u9879\uff08scan4 \u975e ffi \u5408\u8ba1 ~60 \u9879\uff1bvm/engine \u4e0e generic_registry \u6807\u6ce8 871 \u76f8\u90bb\u5f85\u5176\u7ed3\u8bba\uff09",
+   "docs": "specs/language-sdk/ + specs/auto-vm/",
+   "duplicates": "\u4e09\u5165\u53e3\u6b8b\u7559\uff08stdlib.rs 5,679/http_server.rs 4,156/trans/rust.rs 5,960 \u751f\u4ea7\u884c\uff0c843 \u8d85\u9650\u6b8b\u9879\uff09\uff1bcall_inner 7,439 \u884c if \u94fe\uff08F-7\uff0cT-05 \u7acb\u9879\uff09",
+   "duty": "\u7eaf\u8bed\u8a00 SDK \u5355\u6e90\uff1ascanner/parser/type/compile/VM/trans \u6838\u5fc3\uff08PLAN-814\uff0c\u7981 UI/Man \u5b9e\u73b0\u4f9d\u8d56\uff09",
+   "inline_test": 32856,
+   "manifest_dir": "crates/auto-lang-core",
+   "name": "auto-lang-core",
+   "p_files": 302,
+   "p_total": 251319,
+   "pub_items": 4751,
+   "repo": "auto-lang",
+   "tiers": [
+    "lang-t(3192)"
+   ],
+   "upstream_path_deps": [
+    "a2r-std",
+    "auto-ast",
+    "auto-atom",
+    "auto-bindgen",
+    "auto-cache",
+    "auto-diagnostics",
+    "auto-lex",
+    "auto-macros",
+    "auto-media-core",
+    "auto-parser-api",
+    "auto-terminal-core",
+    "auto-test-case",
+    "auto-text-core",
+    "auto-val",
+    "shim-metadata"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/auto-lex/",
+   "duplicates": "\u2014",
+   "duty": "\u8bcd\u6cd5\u57fa\u7840\uff1aToken/TokenKind/Pos + Lexer/LexerState\uff08PLAN-789 \u63d0\u53d6\uff09",
+   "inline_test": 654,
+   "manifest_dir": "crates/auto-lex",
+   "name": "auto-lex",
+   "p_files": 4,
+   "p_total": 2811,
+   "pub_items": 49,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [
+    "auto-ui-compiler"
+   ],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879\uff1b\u5916\u90e8\u6d88\u8d39\u8005=auto-vscode\uff08build-lsp.ps1/.sh + LSP \u5951\u7ea6\u6587\u6863\uff09\u2014\u2014\u4e0d\u53ef\u6309\u65e0\u6d88\u8d39\u8005\u9000\u5f79",
+   "docs": "specs/auto-lsp/ + docs/lsp-api-contract.md",
+   "duplicates": "\u2014",
+   "duty": "AutoLang LSP \u670d\u52a1\u5668\uff08\u7f16\u8f91\u5668\u5de5\u5177\u9762\uff09",
+   "inline_test": 259,
+   "manifest_dir": "crates/auto-lsp",
+   "name": "auto-lsp",
+   "p_files": 13,
+   "p_total": 4769,
+   "pub_items": 43,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-ast",
+    "auto-diagnostics",
+    "auto-lang",
+    "auto-lang-core",
+    "auto-ui-compiler",
+    "auto-val"
+   ],
+   "version": "0.3.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879\uff08\u5b8f\u5c55\u5f00\u5f0f\u6d88\u8d39\u9762\uff0cgrep \u4e0d\u53ef\u89c1\uff0c\u4efb\u4f55\u51cf\u6cd5\u987b cargo check+\u6863\u4f4d\u53cd\u4f8b\u515c\u5e95\uff09",
+   "docs": "specs/auto-macros/",
+   "duplicates": "\u2014",
+   "duty": "\u8fc7\u7a0b/\u5c5e\u6027\u5b8f\uff08rust_fn \u5185\u5728\u51fd\u6570\u6ce8\u518c\u3001test-case \u5b8f\u7b49\uff09",
+   "inline_test": 0,
+   "manifest_dir": "crates/auto-macros",
+   "name": "auto-macros",
+   "p_files": 2,
+   "p_total": 917,
+   "pub_items": 7,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-lang-core",
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "image_pipeline.rs \u771f\u6b7b pub \u9879\uff08scan4\uff1a~9 \u9879\uff0c\u7ea6 221 \u884c\u6b7b\u8d28\u91cf\uff09",
+   "docs": "specs/auto-media-core/",
+   "duplicates": "\u2014",
+   "duty": "\u5a92\u4f53\u57fa\u7840\uff1a\u6e32\u67d3\u4e2d\u7acb\u56fe\u50cf\u8d44\u4ea7\u7ba1\u7ebf\uff08\u6ce8\u518c/\u7968\u636e/\u7f13\u5b58/\u8c03\u5ea6/HTTP \u89c4\u5219\uff09+ \u672c\u5730\u5a92\u4f53\u6587\u4ef6\u670d\u52a1\uff08PLAN-811 \u81ea ui \u63d0\u53d6\uff09",
+   "inline_test": 1839,
+   "manifest_dir": "crates/auto-media-core",
+   "name": "auto-media-core",
+   "p_files": 3,
+   "p_total": 4677,
+   "pub_items": 148,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/auto-parser-api/",
+   "duplicates": "\u2014",
+   "duty": "\u65b9\u8a00\u79fb\u690d API\uff1a\u8f7b\u91cf CompilerSession/Scenario + ExternalDialect + \u5bf9\u8c61\u5b89\u5168 ParseContext\uff08PLAN-801 \u4f9d\u8d56\u5012\u7f6e\uff09",
+   "inline_test": 42,
+   "manifest_dir": "crates/auto-parser-api",
+   "name": "auto-parser-api",
+   "p_files": 5,
+   "p_total": 582,
+   "pub_items": 30,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-ast",
+    "auto-diagnostics",
+    "auto-lex"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879\uff08F-9 \u4fdd\u7559\u6709\u8bc1\uff1alib-legacy \u6d3b\u8dc3\uff09",
+   "docs": "specs/auto-playground/",
+   "duplicates": "\u2014",
+   "duty": "Playground web API \u670d\u52a1\u5668\uff08lib-legacy \u8f7d\u8377\u5bbf\u4e3b\uff0cPLAN-752 \u6d3b\u8dc3\uff09",
+   "inline_test": 254,
+   "manifest_dir": "crates/auto-playground",
+   "name": "auto-playground",
+   "p_files": 21,
+   "p_total": 4263,
+   "pub_items": 120,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-lang-core"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/project-model/",
+   "duplicates": "\u2014",
+   "duty": "pac.at \u58f0\u660e\u8f7b\u91cf\u9759\u6001\u9879\u76ee\u6a21\u578b\uff08PLAN-780\uff1b\u65e0\u7f16\u8bd1\u5668/VM/UI \u7c7b\u578b\uff09",
+   "inline_test": 122,
+   "manifest_dir": "crates/auto-project-model",
+   "name": "auto-project-model",
+   "p_files": 11,
+   "p_total": 6021,
+   "pub_items": 73,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-atom",
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/auto-terminal-core/",
+   "duplicates": "\u2014",
+   "duty": "\u7ec8\u7aef\u5bbf\u4e3b\u57df\u6838\u5fc3\uff1acells/\u51e0\u4f55\u5951\u7ea6/autoterm_core.dll \u670d\u52a1/\u4f1a\u8bdd\u751f\u547d\u5468\u671f/\u8f7b\u7aef\u53e3\uff08PLAN-808\uff09",
+   "inline_test": 252,
+   "manifest_dir": "crates/auto-terminal-core",
+   "name": "auto-terminal-core",
+   "p_files": 5,
+   "p_total": 1649,
+   "pub_items": 56,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/auto-test-case/",
+   "duplicates": "\u2014",
+   "duty": "AutoDown TestCase \u534f\u8bae\u6838\u5fc3\uff1aprofile/CaseIR/\u9009\u62e9/\u6bd4\u5bf9/\u62a5\u544a\uff08Plan 768\uff09",
+   "inline_test": 560,
+   "manifest_dir": "crates/auto-test-case",
+   "name": "auto-test-case",
+   "p_files": 12,
+   "p_total": 6282,
+   "pub_items": 154,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-atom",
+    "autodown-test-parser"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/auto-text-core/",
+   "duplicates": "\u2014",
+   "duty": "\u6587\u672c\u57fa\u7840\uff1a\u6301\u4e45 rope/\u6587\u4ef6\u5206\u9875/\u5feb\u7167/diff \u5f15\u64ce\uff08PLAN-807 \u81ea ui/code_editor \u63d0\u53d6\uff09",
+   "inline_test": 2189,
+   "manifest_dir": "crates/auto-text-core",
+   "name": "auto-text-core",
+   "p_files": 6,
+   "p_total": 5987,
+   "pub_items": 120,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/tool-execution/",
+   "duplicates": "\u2014",
+   "duty": "\u5de5\u5177\u6267\u884c\u5bbf\u4e3b\u62bd\u8c61\uff08\u5b50\u8fdb\u7a0b/\u9884\u7b97/\u8d85\u65f6\u6267\u884c\u9762\uff0cI-TOOL \u914d\u5957\uff09",
+   "inline_test": 287,
+   "manifest_dir": "crates/auto-tool-execution",
+   "name": "auto-tool-execution",
+   "p_files": 5,
+   "p_total": 2944,
+   "pub_items": 69,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/tool-protocol/",
+   "duplicates": "\u2014",
+   "duty": "I-TOOL \u8f7b\u91cf\u5de5\u5177\u534f\u8bae\uff1a\u7248\u672c/\u80fd\u529b/\u9884\u7b97/\u9519\u8bef/\u5e27\u5951\u7ea6\uff08PLAN-815 T-03\uff09",
+   "inline_test": 2,
+   "manifest_dir": "crates/auto-tool-protocol",
+   "name": "auto-tool-protocol",
+   "p_files": 9,
+   "p_total": 1581,
+   "pub_items": 69,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-project-model",
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "value.rs 16 \u771f\u6b7b\u9879\uff08with_value/PathComponent/empty_owned_str/into_data/from_data \u7b49\uff09\uff1bnode.rs 12 \u771f\u6b7b\u9879\uff08is_arg/set_main_arg_unified/fill_node_body \u7b49\uff09",
+   "docs": "specs/auto-val/",
+   "duplicates": "nv_to_value \u53cc\u7b7e\u540d\uff08844 \u6b8b\u7559\u5019\u9009\u2192872 DISTINGUISH\uff09",
+   "duty": "\u503c/\u8282\u70b9\u57fa\u7840\u7c7b\u578b\uff08Value/Node/Atom \u8f7d\u4f53\uff0c\u5168\u751f\u6001\u5730\u57fa\uff09",
+   "inline_test": 2719,
+   "manifest_dir": "crates/auto-val",
+   "name": "auto-val",
+   "p_files": 22,
+   "p_total": 9100,
+   "pub_items": 443,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879\uff1b871\uff08\u65e7 lowering \u9000\u5f79\uff09\u76f8\u90bb\u2014\u2014\u5904\u7f6e\u6743\u5f52 871\uff0c\u672c\u6279\u4e0d\u52a8",
+   "docs": "specs/auto-vm/",
+   "duplicates": "\u2014",
+   "duty": "AV \u89e3\u91ca\u5668\u5bbf\u4e3b\u8584\u5c42\uff08VM \u6267\u884c\u5165\u53e3\u6302\u63a5\uff09",
+   "inline_test": 0,
+   "manifest_dir": "crates/auto-vm",
+   "name": "auto-vm",
+   "p_files": 2,
+   "p_total": 207,
+   "pub_items": 0,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-lang-core"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "G \u6876 1 \u751f\u6210\u6587\u4ef6\uff1b\u65e0\u771f\u6b7b\u9879",
+   "docs": "specs/shim-metadata/",
+   "duplicates": "\u2014",
+   "duty": "\u7f16\u8bd1\u4ea7\u7269\u5143\u6570\u636e shim\uff08auto-cache \u6d88\u8d39\u7684\u6700\u5c0f\u5143\u6570\u636e\u9762\uff09",
+   "inline_test": 353,
+   "manifest_dir": "crates/shim-metadata",
+   "name": "shim-metadata",
+   "p_files": 7,
+   "p_total": 2737,
+   "pub_items": 49,
+   "repo": "auto-lang",
+   "tiers": [],
+   "upstream_path_deps": [],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [
+    "auto-atom",
+    "auto-lang-core",
+    "auto-parser-api",
+    "auto-val"
+   ],
+   "dead_paths": "widget/registry.rs 7\u3001aura/schema.rs 5\u3001jet/project.rs 5\u3001shared/tailwind.rs 5 \u53ca 12 \u4e2a\u5355\u6b7b\u9879\u6587\u4ef6\uff08style/ts_adapter/ark \u4fee\u9970\u4e0e state/bp/registry/jet \u65cf/shared/registry/widget/spec/aura/element_coverage/import_policy\uff09+ vue.rs with_uses_autodown\uff08DEBTS 450 \u5df2\u8bb0\u6b7b\u4ee3\u7801\uff09\uff1blucide_generated \u4e3a pub(super) \u8868+\u8bbf\u95ee\u5668\uff08\u6d3b\uff09",
+   "docs": "specs/auto-ui-compiler/\uff08867 \u8fc1\u79fb\u540e owner=auto-ui \u4ed3\uff09",
+   "duplicates": "\u2014",
+   "duty": "UI \u7f16\u8bd1\u5668\uff1aAURA \u5206\u6790/\u63d0\u53d6\u3001design tokens \u4e0e vue/jet/ark/rust \u56db\u751f\u6210\u5668\uff08PLAN-814 \u63d0\u53d6\uff1b\u751f\u6210\u4ea7\u7269 import \u8def\u5f84=\u4ee3\u7801\u8f93\u51fa\u5951\u7ea6\uff09",
+   "inline_test": 20662,
+   "manifest_dir": "crates/auto-ui-compiler",
+   "name": "auto-ui-compiler",
+   "p_files": 76,
+   "p_total": 105015,
+   "pub_items": 954,
+   "repo": "auto-ui",
+   "tiers": [
+    "ui-tu(863)"
+   ],
+   "upstream_path_deps": [
+    "auto-atom",
+    "auto-lang-core",
+    "auto-parser-api",
+    "auto-ui-dialect",
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [
+    "auto-ast",
+    "auto-lang-core",
+    "auto-parser-api",
+    "auto-val"
+   ],
+   "dead_paths": "ast.rs 1\u3001grammar/view.rs 1 \u771f\u6b7b\u9879\uff08mint_*/parse_* \u65cf\u6709\u540c\u6587\u4ef6\u6d3b\u8c03\u7528\u8005\uff0c\u975e\u6b7b\uff09",
+   "docs": "specs/auto-ui-dialect/",
+   "duplicates": "\u2014",
+   "duty": "AutoLang UI \u58f0\u660e\u8bed\u6cd5\uff08msg/model\uff09\u5355\u6e90\uff08PLAN-806\uff1b\u4ec5\u4f9d\u8d56 auto-parser-api \u8f7b\u95ed\u5305\uff09",
+   "inline_test": 3937,
+   "manifest_dir": "crates/auto-ui-dialect",
+   "name": "auto-ui-dialect",
+   "p_files": 18,
+   "p_total": 10547,
+   "pub_items": 158,
+   "repo": "auto-ui",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-ast",
+    "auto-lang-core",
+    "auto-parser-api",
+    "auto-val"
+   ],
+   "version": "0.2.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [
+    "a2r-std",
+    "auto-lang-core",
+    "auto-media-core",
+    "auto-parser-api",
+    "auto-terminal-core",
+    "auto-text-core",
+    "auto-val",
+    "autodown-core"
+   ],
+   "dead_paths": "10 \u4e2a\u5355\u6b7b\u9879\u6587\u4ef6\uff08photo_service/vm_bridge/desktop_protocol host+sendinput+stage3/iced image_surface/native_dock win32/scroll state/terminal iced widget/code_editor highlight+render\uff09\uff1brenderer.rs 42,337 \u884c\uff08F-5 \u6700\u5927\u6587\u4ef6\uff0cT-05 \u7acb\u9879\uff09",
+   "docs": "specs/auto-ui-runtime/",
+   "duplicates": "\u2014",
+   "duty": "UI \u8fd0\u884c\u65f6\uff1aVM \u6e32\u67d3\u8f68/\u684c\u9762\u5bbf\u4e3b\u6808\uff08iced renderer\u3001\u684c\u9762\u4f1a\u8bdd/\u534f\u8bae\u3001editor/terminal/media \u90e8\u4ef6\u3001\u5bbf\u4e3b\u9002\u914d\u4e0e provider\uff09\uff08PLAN-814 \u63d0\u53d6\uff09",
+   "inline_test": 86363,
+   "manifest_dir": "crates/auto-ui-runtime",
+   "name": "auto-ui-runtime",
+   "p_files": 246,
+   "p_total": 258248,
+   "pub_items": 3333,
+   "repo": "auto-ui",
+   "tiers": [
+    "ui-ti(28)",
+    "ui-tn(2)"
+   ],
+   "upstream_path_deps": [
+    "a2r-std",
+    "auto-lang-core",
+    "auto-media-core",
+    "auto-parser-api",
+    "auto-terminal-core",
+    "auto-text-core",
+    "auto-ui-compiler",
+    "auto-ui-dialect",
+    "auto-val",
+    "autodown-core"
+   ],
+   "version": "0.2.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [
+    "auto-api-gen",
+    "auto-lang-core",
+    "auto-project-model",
+    "auto-tool-execution",
+    "auto-tool-protocol",
+    "auto-val"
+   ],
+   "dead_paths": "vue.rs \u6b7b\u8d28\u91cf 6,384\uff08scan2 \u4f30\u8ba1\uff0c\u542b\u5b57\u7b26\u4e32\u82b1\u62ec\u53f7\u8bef\u62a5\uff0c\u9010\u9879\u4ee5 scan4/\u590d\u6838\u4e3a\u51c6\uff09\uff1brust_ui.rs ~12 \u9879",
+   "docs": "specs/auto-ui-tools/",
+   "duplicates": "\u2014",
+   "duty": "UI \u5de5\u7a0b\u5de5\u5177\u5305\uff08PLAN-815\uff09\uff1aauto-ui-tool \u8fdb\u7a0b\u5bbf\u4e3b\uff08describe/validate_project\uff09+ vue/rust \u751f\u6210\u4e0e\u6784\u5efa/\u8fd0\u884c\u7f16\u6392",
+   "inline_test": 7780,
+   "manifest_dir": "crates/auto-ui-tools",
+   "name": "auto-ui-tools",
+   "p_files": 28,
+   "p_total": 36828,
+   "pub_items": 350,
+   "repo": "auto-ui",
+   "tiers": [
+    "ui-ti(28)"
+   ],
+   "upstream_path_deps": [
+    "auto-api-gen",
+    "auto-lang-core",
+    "auto-project-model",
+    "auto-tool-execution",
+    "auto-tool-protocol",
+    "auto-ui-compiler",
+    "auto-ui-dialect",
+    "auto-ui-runtime",
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [
+    "auto-lang-core"
+   ],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879\uff08auto-man crates/auto \u6d3b\u8dc3\u6d88\u8d39\uff09",
+   "docs": "\u2014\uff08\u65e0\u72ec\u7acb specs \u9875\uff1bREADME \u5185\u5d4c\uff09",
+   "duplicates": "\u2014",
+   "duty": "\u684c\u9762 shell \u5e94\u7528\u5305\uff08auto-man CLI \u6d88\u8d39\u7684 shell \u8f7d\u8377\u5355\u6e90\uff09",
+   "inline_test": 2,
+   "manifest_dir": "crates/shell-pack",
+   "name": "shell-pack",
+   "p_files": 1,
+   "p_total": 224,
+   "pub_items": 17,
+   "repo": "auto-ui",
+   "tiers": [],
+   "upstream_path_deps": [
+    "auto-lang-core",
+    "auto-ui-runtime"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [
+    "auto-lang-core",
+    "auto-project-model",
+    "auto-tool-execution",
+    "auto-tool-protocol",
+    "auto-ui-compiler",
+    "auto-ui-runtime",
+    "auto-val",
+    "shell-pack"
+   ],
+   "dead_paths": "tool_ui_ops.rs \u7b49\u771f\u6b7b\u9879\uff08scan4 man \u4fa7\uff1a~8 \u9879\uff09",
+   "docs": "specs/auto-man/\uff08\u8bed\u8a00\u4ed3\u6258\u7ba1\uff09",
+   "duplicates": "\u2014",
+   "duty": "auto CLI\uff08\u5305\u7ba1\u7406/\u6784\u5efa/\u8fd0\u884c\u5165\u53e3\uff1bF-8 \u6700\u5927\u6587\u4ef6 main.rs 3,222 \u884c\uff0cT-05 \u7acb\u9879\uff09",
+   "inline_test": 438,
+   "manifest_dir": "crates/auto",
+   "name": "auto",
+   "p_files": 10,
+   "p_total": 6393,
+   "pub_items": 24,
+   "repo": "auto-man",
+   "tiers": [
+    "man-ti(43)"
+   ],
+   "upstream_path_deps": [
+    "auto-lang-core",
+    "auto-man-runtime",
+    "auto-project-model",
+    "auto-tool-client",
+    "auto-tool-execution",
+    "auto-tool-protocol",
+    "auto-ui-compiler",
+    "auto-ui-runtime",
+    "auto-val",
+    "shell-pack"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [
+    "auto-api-gen",
+    "auto-cache",
+    "auto-gen",
+    "auto-lang",
+    "auto-media-core",
+    "auto-project-model",
+    "auto-ui-compiler",
+    "auto-ui-tools",
+    "auto-val"
+   ],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/auto-man/",
+   "duplicates": "\u2014\uff08844 \u5df2\u6e05\u507f autoui-skill \u76ee\u5f55\u9010\u5b57\u53cc\u4efd\u2192\u5355\u6e90\uff09",
+   "duty": "Man \u5e93\u95e8\u9762\uff08\u6a21\u677f/\u8d44\u4ea7/\u5de5\u5177\u94fe\u96c6\u6210 API\uff0c\u517c\u5bb9\u95e8\u9762 F-9 \u4fdd\u7559\u6709\u8bc1\uff09",
+   "inline_test": 200,
+   "manifest_dir": "crates/auto-man",
+   "name": "auto-man",
+   "p_files": 3,
+   "p_total": 512,
+   "pub_items": 11,
+   "repo": "auto-man",
+   "tiers": [
+    "man-ti(43)"
+   ],
+   "upstream_path_deps": [
+    "auto-api-gen",
+    "auto-cache",
+    "auto-gen",
+    "auto-lang",
+    "auto-man-assets",
+    "auto-man-core",
+    "auto-man-runtime",
+    "auto-media-core",
+    "auto-package-lock",
+    "auto-package-resolver",
+    "auto-project-model",
+    "auto-toolchain-core",
+    "auto-ui-compiler",
+    "auto-ui-tools",
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879\uff08844 \u5df2\u9000\u5f79\u62c6\u4ed3\u6b8b\u7559\u8d44\u4ea7 5 \u6587\u4ef6\uff09",
+   "docs": "specs/auto-man-assets/",
+   "duplicates": "\u2014",
+   "duty": "Man \u6a21\u677f\u4e0e builder \u8d44\u4ea7\u5355\u6e90 + \u7eaf\u811a\u624b\u67b6\u8def\u5f84\u89c4\u5212\uff08PLAN-803 \u65e0\u8bed\u8a00\u63d0\u53d6\uff09",
+   "inline_test": 2,
+   "manifest_dir": "crates/auto-man-assets",
+   "name": "auto-man-assets",
+   "p_files": 2,
+   "p_total": 361,
+   "pub_items": 5,
+   "repo": "auto-man",
+   "tiers": [
+    "man-tc(252)"
+   ],
+   "upstream_path_deps": [],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [
+    "auto-atom",
+    "auto-project-model",
+    "auto-val"
+   ],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/auto-man-core/",
+   "duplicates": "\u2014",
+   "duty": "\u7ba1\u7406/\u6784\u5efa\u89c4\u5212\u89c4\u5219\u6838\u5fc3\uff08PLAN-809\uff1apac.at \u89c4\u8303\u5316/target \u95ed\u5305/\u6e90\u9009\u62e9/\u6784\u5efa\u89c4\u5212\u7eaf\u89c4\u5219\uff09",
+   "inline_test": 915,
+   "manifest_dir": "crates/auto-man-core",
+   "name": "auto-man-core",
+   "p_files": 14,
+   "p_total": 4004,
+   "pub_items": 137,
+   "repo": "auto-man",
+   "tiers": [
+    "man-tc(252)"
+   ],
+   "upstream_path_deps": [
+    "auto-atom",
+    "auto-project-model",
+    "auto-toolchain-core",
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [
+    "auto-api-gen",
+    "auto-cache",
+    "auto-gen",
+    "auto-lang-core",
+    "auto-project-model",
+    "auto-tool-execution",
+    "auto-val"
+   ],
+   "dead_paths": "automan.rs 5 \u771f\u6b7b\u9879\uff08create_capp/create_lib/create_clib/pac_window_title/scenario_override\uff09+ cache.rs/error.rs/builder ninja resolver \u5355\u6b7b\u9879",
+   "docs": "specs/auto-man/",
+   "duplicates": "\u2014",
+   "duty": "Man \u8fd0\u884c\u65f6\u9002\u914d\uff08Git/FS \u89c2\u5bdf\u3001builder \u6267\u884c\u3001\u751f\u6210\u8bf7\u6c42\u7f16\u6392\uff09",
+   "inline_test": 3080,
+   "manifest_dir": "crates/auto-man-runtime",
+   "name": "auto-man-runtime",
+   "p_files": 43,
+   "p_total": 14254,
+   "pub_items": 310,
+   "repo": "auto-man",
+   "tiers": [
+    "man-tc(252)",
+    "man-ti(43)"
+   ],
+   "upstream_path_deps": [
+    "auto-api-gen",
+    "auto-cache",
+    "auto-gen",
+    "auto-lang-core",
+    "auto-man-assets",
+    "auto-man-core",
+    "auto-package-lock",
+    "auto-package-resolver",
+    "auto-project-model",
+    "auto-tool-execution",
+    "auto-toolchain-core",
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [
+    "auto-val"
+   ],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/package-lock/",
+   "duplicates": "\u2014",
+   "duty": "pac.lock \u6838\u5fc3\uff1a\u9501\u6a21\u578b/TOML-JSON \u7f16\u89e3\u7801/\u4f9d\u8d56\u6821\u9a8c\u89c4\u5219\uff08PLAN-795 Target-free \u63d0\u53d6\uff09",
+   "inline_test": 222,
+   "manifest_dir": "crates/auto-package-lock",
+   "name": "auto-package-lock",
+   "p_files": 4,
+   "p_total": 505,
+   "pub_items": 18,
+   "repo": "auto-man",
+   "tiers": [
+    "man-tc(252)"
+   ],
+   "upstream_path_deps": [
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/package-resolver/",
+   "duplicates": "\u2014",
+   "duty": "\u5df2\u89e3\u6790\u4f9d\u8d56\u89c6\u56fe\u4e0e\u6a21\u5757\u8def\u5f84\u89e3\u6790\u6838\u5fc3\uff08PLAN-800 \u81ea resolver.rs \u63d0\u53d6\uff09",
+   "inline_test": 267,
+   "manifest_dir": "crates/auto-package-resolver",
+   "name": "auto-package-resolver",
+   "p_files": 1,
+   "p_total": 606,
+   "pub_items": 18,
+   "repo": "auto-man",
+   "tiers": [
+    "man-tc(252)"
+   ],
+   "upstream_path_deps": [],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [
+    "auto-project-model",
+    "auto-tool-execution",
+    "auto-tool-protocol"
+   ],
+   "dead_paths": "lib.rs 1 \u771f\u6b7b\u9879",
+   "docs": "specs/tool-protocol/",
+   "duplicates": "\u2014",
+   "duty": "I-TOOL \u5ba2\u6237\u7aef\uff08auto CLI \u8c03\u7528 auto-ui-tool \u8fdb\u7a0b\u7684\u6865\uff09",
+   "inline_test": 593,
+   "manifest_dir": "crates/auto-tool-client",
+   "name": "auto-tool-client",
+   "p_files": 2,
+   "p_total": 2817,
+   "pub_items": 43,
+   "repo": "auto-man",
+   "tiers": [
+    "man-tc(252)"
+   ],
+   "upstream_path_deps": [
+    "auto-project-model",
+    "auto-tool-execution",
+    "auto-tool-protocol"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [
+    "auto-val"
+   ],
+   "dead_paths": "\u96f6\u771f\u6b7b\u9879",
+   "docs": "specs/auto-toolchain-core/",
+   "duplicates": "\u2014",
+   "duty": "\u5de5\u5177\u94fe\u914d\u7f6e\u6a21\u578b/\u65d7\u6807\u6620\u5c04/\u547d\u4ee4\u6a21\u677f\u6838\u5fc3\uff08PLAN-805 \u81ea builder/ninja \u63d0\u53d6\uff09",
+   "inline_test": 417,
+   "manifest_dir": "crates/auto-toolchain-core",
+   "name": "auto-toolchain-core",
+   "p_files": 4,
+   "p_total": 1212,
+   "pub_items": 56,
+   "repo": "auto-man",
+   "tiers": [
+    "man-tc(252)"
+   ],
+   "upstream_path_deps": [
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  },
+  {
+   "cross_repo_deps": [
+    "auto-lang-core",
+    "auto-project-model",
+    "auto-tool-execution",
+    "auto-tool-protocol",
+    "auto-val"
+   ],
+   "dead_paths": "\u2014\uff08\u65e0\u72ec\u7acb src\uff09",
+   "docs": "specs/auto-cli/",
+   "duplicates": "\u4e0e crates/auto \u540c\u6e90\u53cc manifest\uff08\u6784\u5efa\u89c6\u56fe\u975e\u4ee3\u7801\u91cd\u590d\uff09",
+   "duty": "core \u5b50 workspace \u7684 core-feature \u6784\u5efa\u89c6\u56fe\uff08cargo tcore\uff1b\u4e0e crates/auto \u5171\u4eab\u540c\u4e00 main.rs/\u6e90\uff0c\u975e\u72ec\u7acb\u4ee3\u7801\uff09",
+   "inline_test": 0,
+   "manifest_dir": "crates/auto-core",
+   "name": "auto-core@core-ws",
+   "p_files": 0,
+   "p_total": 0,
+   "pub_items": 0,
+   "repo": "auto-man",
+   "shares_source": "crates/auto",
+   "tiers": [
+    "man-tcore(23)"
+   ],
+   "upstream_path_deps": [
+    "auto-lang-core",
+    "auto-man-runtime",
+    "auto-project-model",
+    "auto-tool-client",
+    "auto-tool-execution",
+    "auto-tool-protocol",
+    "auto-val"
+   ],
+   "version": "0.1.0",
+   "xt_files": 0
+  }
+ ],
+ "repos": {
+  "auto-lang": {
+   "commit": "a9c5af3899075ddd91c5b73f186c9dd874efc8cb",
+   "members": [
+    "a2r-actor-tests",
+    "a2r-std",
+    "auto-api-gen",
+    "auto-ast",
+    "auto-atom",
+    "auto-bindgen",
+    "auto-cache",
+    "auto-cosmic-demo",
+    "auto-cosmic-host-libcosmic",
+    "auto-cosmic-host-smithay",
+    "auto-cosmic-ports",
+    "auto-cosmic-ports-linux",
+    "auto-diagnostics",
+    "auto-gen",
+    "auto-gen-core",
+    "auto-lang",
+    "auto-lang-core",
+    "auto-lex",
+    "auto-lsp",
+    "auto-macros",
+    "auto-media-core",
+    "auto-parser-api",
+    "auto-playground",
+    "auto-project-model",
+    "auto-terminal-core",
+    "auto-test-case",
+    "auto-text-core",
+    "auto-tool-execution",
+    "auto-tool-protocol",
+    "auto-val",
+    "auto-vm",
+    "shim-metadata"
+   ],
+   "path": "D:\\autostack\\.wt\\lang-869\\auto-lang"
+  },
+  "auto-man": {
+   "commit": "873fa234f301cf248c2335e97c392255f1e6adec",
+   "members": [
+    "auto",
+    "auto-man",
+    "auto-man-assets",
+    "auto-man-core",
+    "auto-man-runtime",
+    "auto-package-lock",
+    "auto-package-resolver",
+    "auto-tool-client",
+    "auto-toolchain-core"
+   ],
+   "path": "D:\\autostack\\.wt\\lang-869\\auto-man"
+  },
+  "auto-ui": {
+   "commit": "f489c7bdd80450e7e2719a89ba05c770bf456d07",
+   "members": [
+    "auto-ui-compiler",
+    "auto-ui-dialect",
+    "auto-ui-runtime",
+    "auto-ui-tools",
+    "shell-pack"
+   ],
+   "path": "D:\\autostack\\.wt\\lang-869\\auto-ui"
+  }
+ },
+ "schema": "crate-inventory/1"
+}

@@ -181,6 +181,10 @@ test_temp.txt
 # PLAN-738：stdlib provider 声明目录（装配契约单源；include_str 进
 # stdlib_assembly::providers，fresh clone 缺件则 cross-check 测试必红）
 !stdlib/assembly-providers.json
+# PLAN-869 T-02：crate 检验清单机读产物与精选分析数据（*.json 母规则会
+# 吞掉；差异检查 --check 依赖两件入库后可复现）
+!scripts/crate-inventory.json
+!scripts/crate-inventory-data.json
 # PLAN-738 T-07：六核心 target×environment 能力矩阵（机器生成报告，t07
 # 测试落盘——AC-05 完整性证据随库走）
 !docs/plans/reports/738-stdlib-matrix.json
