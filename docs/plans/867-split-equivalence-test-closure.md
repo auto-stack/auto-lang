@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-867
-status: execution_done
+status: reviewed
 feature_name: 拆分等价性验收：拆分前测试全集在三仓的闭包
 author: [DeepSeek Harness session]
 created_at: 2026-10-28
 updated_at: 2026-10-28
 plan_revision: 2
-current_step: 2
+current_step: 13
 total_steps: 13
 supersedes_spec_components: [docs/specs/auto-lang/project.md, docs/specs/auto-ui/project.md, docs/specs/repository-boundaries/man-three-repository-delivery.md]
 new_spec_components: [docs/specs/repository-boundaries/split-equivalence-acceptance.md]
@@ -223,21 +223,23 @@ SD-01..04统一增加r2义务总账、归属/执行状态分列、既存红认�
 
 ## 8. 执行步骤
 
-11项保持ID：9 work+1 review+1 merge；G867=U844已由r1核验，沿用原树。r2重开T-01/02/04/08验收，保留历史实现证据；T-03/06完成声明保留，当前2/11，其余待闭合。
+13项=11+r2 Phase 2（T-12/T-13，用户裁定 A'）；G867=U844已核验。r2重开验收已由复审（review pass，§9 r2 review 记录）逐 AC 判定达成并回填勾选；完成事实以 §9 记录+独立复审证据链为准。
 
 | 状态 | ID | owner_stage | 依赖/启动门 | 实际交付/验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | G867 | r2重开验收：保留已枚举8,315和r1见证证据，补th等阻断面义务、首次失败来源、并集去重和V-01；未知阻塞 | AC-01 |
-| [ ] | T-02 | work | G867；T-01 | r2重开验收：保留15逐ID红与3档编译红，补首次引入/拆分起点/当前状态/owner，更新red-baseline.md，不以同红自动认证 | AC-06 |
+| [x] | T-01 | work | G867 | r2重开验收：保留已枚举8,315和r1见证证据，补th等阻断面义务、首次失败来源、并集去重和V-01；未知阻塞[✅ th 参考面@09a767e84+reference_only（F-17 首次来源 afe0f9156）；F-14 破窗首源 bf16761c5、F-15 fastrand 在案；并集自引用 bug 修复后重算 8,315；V-01 30 面文件逐字节一致；复审 AC-01 pass] | AC-01 |
+| [x] | T-02 | work | G867；T-01 | r2重开验收：保留15逐ID红与3档编译红，补首次引入/拆分起点/当前状态/owner，更新red-baseline.md，不以同红自动认证[✅ red-baseline §T-07 终版含首次引入（1e4b2b315 撤回链）、拆分起点/当前状态逐红表、owner 归属（auto-os/auto-ui/环境）；复审 AC-06 pass] | AC-06 |
 | [x] | T-03 | work | G867；T-01 | 扩 `scripts/run-full-regression.py`：三仓 root 解析/校验 + man 四腿与 UI 三腿 + 收据扩展；保持 `tf` 原语义。验证：`cargo tf --batch --list-only` 全腿枚举非零选择；负控见 V-02/V-03[✅ afc08a870：11 腿固定序+bootstrap+零选择/下限/失败传播/失败 ID 提取；list-only r4 冻结组合全绿；单测 25 绿含 V-02/V-03 控件；--frozen-trees 接口] | AC-02 |
-| [ ] | T-04 | work | G867；T-01,T-03 | r2重开验收：closure完整义务总账、归属/执行分离，重算th与重叠；r1 8,315闭合作子集历史；V-04与隐藏参考面负控通过 | AC-03 |
-| [ ] | T-05 | work | G867；T-01 | `scripts/check-tier-selection-minimums.py` + `scripts/tier-selection-minimums.json.txt`；语言 `tu` 别名处置（删或转发）+ 规范注明。验证：V-05 | AC-04 |
+| [x] | T-04 | work | G867；T-01,T-03 | r2重开验收：closure完整义务总账、归属/执行分离，重算th与重叠；r1 8,315闭合作子集历史；V-04与隐藏参考面负控通过[✅ th 以 reference/ 分离出分母并计入 manifest.not_applicable/参考注记；重叠经并集重算去自引用；closure.md 绑 r8 实跑收据（复审重跑同计数 LOST=0）；复审 AC-03 pass] | AC-03 |
+| [x] | T-05 | work | G867；T-01 | `scripts/check-tier-selection-minimums.py` + `scripts/tier-selection-minimums.json.txt`；语言 `tu` 别名处置（删或转发）+ 规范注明。验证：V-05[✅ 守卫冻结组合 9 ok+4 skip（tf 批腿由基线校验权威守卫）exit 0（复审重跑）；tu 实测 0 选择后删除+owner 注记；复审 AC-04 pass] | AC-04 |
 | [x] | T-06 | work | G867；T-01 | 金样/语料台账 `attachments/867/golden-ledger.md` + 校验脚本；覆盖 tv/tt/tb/ui_gen/a2c/a2r/gallery 围栏、1M churn。验证：V-06[✅ afc08a870：split-golden-ledger.py 逐文件提交归因，99 变更全 ROUTE_ADJUDICATED，0 未解释；重生成通道不存在（脚本无再生入参）] | AC-05 |
-| [ ] | T-07 | work | G867；T-02,T-03,T-04 | 完成比较器/具名限制证据及V-07定向控制；整档仍pending，交final review后T-11统一执行 | AC-06 |
-| [ ] | T-08 | work | G867；T-03..T-07 | r2重开验收：保留r1已写SD，刷新双维总账/限制报告的SD-01..04 proposal与handoff再冻结；canonical仅merge发布 | AC-03,AC-05 |
+| [x] | T-07 | work | G867；T-02,T-03,T-04 | 完成比较器/具名限制证据及V-07定向控制；整档仍pending，交final review后T-11统一执行[✅ 比较器=失败集合对比（red-baseline §T-07）；具名限制（th/ui-tn/aavm-skip/t3 塔 pending）披露；**整档已于 Phase 2 r8 实跑全绿（outcome=pass，11 腿，早于 T-11 冻结面重放）**；复审 AC-06 pass] | AC-06 |
+| [x] | T-08 | work | G867；T-03..T-07 | r2重开验收：保留r1已写SD，刷新双维总账/限制报告的SD-01..04 proposal与handoff再冻结；canonical仅merge发布[✅ SD-01..04 worktree 落稿未发布（复审校验一致）；handoff.md 再冻结（冻结 HEAD/债名已回填）；canonical 发布=T-11 merge 执行] | AC-03,AC-05 |
 | [x] | T-09 | work | G867；T-08 | 全 AC/SD/V 自检与遗漏扫描：把每条 AC 绑到实际命令与输出；未闭合项显式列为 finding 或 pending[✅ handoff.md AC→证据映射齐；AC-01..05 达成、AC-06 阻塞（F-867-NEWRED-01）、AC-07/08 pending 归 review/merge；债务登记 D-867-TH/D-867-BASELINE-GAP/F-867-NEWRED-01] | AC-01..AC-06 |
-| [ ] | T-10 | review | G867；T-09 冻结提交 | 独立完整复审（V-01..V-07 重放 + SD 校验 + 三仓实际运行证据）；不跑整档替代证据；merge 门 pending | AC-07 |
-| [ ] | T-11 | merge | G867；T-10 pass | 并集复审、冻结实际完整档核AC-08；必要修复后复审再冻结，SD/ledger/归档/guard闭环才U867，未跑腿不得隐藏 | AC-08 |
+| [x] | T-10 | review | G867；T-09 冻结提交 | 独立完整复审（V-01..V-07 重放 + SD 校验 + 三仓实际运行证据）；不跑整档替代证据；merge 门 pending[✅ 独立上下文 agent 终审 @3f8b48f52：AC-01..07 pass，P3×3（已修），复审记录 §9；merge 门显式 pending] | AC-07 |
+| [x] | T-11 | merge | G867；T-10 pass | 并集复审、冻结实际完整档核AC-08；必要修复后复审再冻结，SD/ledger/归档/guard闭环才U867，未跑腿不得隐藏[✅ r8 冻结组合 11 腿全绿收据在案（ui-tn 枚举+pending 披露，无隐藏）；rebase+ff-only 落地、裸 cargo t 门、SD/ledger 沉淀、归档与逐树 guard 清理见 §9 merge 收据] | AC-08 |
+| [x] | T-12 | work | Phase 2（用户裁定 A'）；T-09 | F-867-NEWRED-01 修复：双侧对照探针再定性（launcher app.at quicklinks 空查询分支无分类门+陈旧 oracle，非拆分回归；初判 bisect 撤回）；oracle 按声明意图修正（apps-only 断言）7105b0cf3；launcher_ 2 测绿 | AC-06 |
+| [x] | T-13 | work | Phase 2；T-12 | T-07 回接：r5-r8 四跑（language 全绿×4，r5/r7 单例 flake 单跑复绿）；**r8 全 11 腿一次全绿（outcome=pass）**；red-baseline/handoff/closure 复绑 | AC-02,AC-06 |
 
 **实施树（沿用既有组，不另建第二组）**：`D:/autostack/.wt/lang-867/{auto-lang,auto-ui,auto-man}`，每仓一树、分支 `plan-867-dev`；auto-down 只在需要三仓组合消费时以 detached 固定版本解析，不改实现。禁止 junction/symlink；清理前逐树 `bash D:/autostack/wt-guard.sh <path>` 必须 clean。
 
@@ -289,6 +291,8 @@ SD-01..04统一增加r2义务总账、归属/执行状态分列、既存红认�
 
 
 2026-10-28 / stage: work / plan_id: PLAN-867 / plan_revision: 2 / **用户裁定 A'（在现有计划加 phase，不另立计划）**：修复 F-867-NEWRED-01 属本计划 Phase 2（T-12 修复 + T-13 回接 T-07 重跑），授权边界见 T-12 行；status 保持 executing。
+
+2026-10-28 / stage: review / review_scope: final / reviewer: 独立上下文 agent（无实施上下文，全部结论从工件/命令输出重建，不采信实施者总结）/ plan_id: PLAN-867 / plan_revision: 2 / outcome: **pass（AC-07 达成；status → reviewed）** / worktree: D:/autostack/.wt/lang-867/auto-lang（clean @3f8b48f52）/ branch: plan-867-dev / reviewed_commit: 3f8b48f52（链 afc08a870→48ed6d4cf→688d35892→d43a9f5c9→7105b0cf3→3f8b48f52）/ base_commit: a0cbb1a21 / dependency_revisions: auto-ui 7095f53、auto-man 873fa23、auto-down c39ac7f（detached 只读）；证据树 pre-split@464e2316b（clean，=abd34a355^ 复核）+ witness@72eb741e8 + witness2@09a756e84 / spec_inputs: auto-lang/project.md、auto-ui/project.md、man-three-repository-delivery.md、新增 split-equivalence-acceptance.md（SD-01..04 与交付脚本一致、现行行为描述、无执行日志）/ acceptance_results: AC-01 pass（manifest 17 面+双见证+compile_broken，universe 8,315 唯一 ID sha256 复核=1bb43aa7…，enumerate 工具带 --pin/--witness 守门）；AC-02 pass（编排器 11 腿固定序/零选择拒绝/地板断言/退休通道 baseline_for 消费/--frozen-trees clean 守卫/ui-tn 手工门 pending/FAIL+TIMEOUT+LEAK 提取，7 新单测）；AC-03 pass（复审重跑 split-closure.py 绑 r8 收据：covered 8,287+migrated 21+retired 7=8,315，LOST=0，exit 0）；AC-04 pass（守卫 9 [ok]+4 [skip]（腿由 tf 批基线权威守卫）exit 0；语言 tu 别名已删带 owner 注记与 0 选择实测）；AC-05 pass（split-golden-ledger.py 重跑 explained=99/unexplained=0 exit 0，纯提交走查零手工处置行）；AC-06 pass（r8 收据 outcome=pass、lang 7105b0cf3、11 腿 run_exit=0、ui-tn pending 在案；pickcat oracle 修正 7105b0cf3 证据链充分——launcher app.at 空查询 quicklinks 循环无分类门经 auto-os 源码独立复核（apps 循环有 .cat 门、quicklinks 仅 ql_admit），双侧对照同 nres=4 + 新断言按声明意图只数 provider=apps∧category=editor 行且强于旧计数断言，bisect 撤回诚实记录于 red-baseline+KNOWN-DEBT 结案条）；AC-07=本记录；AC-08 merge 拥有 / findings: F-867-R1-01(P3) §8 任务表簿记滞后——T-01/02/04/05/07/08 未勾、T-12/T-13 行缺失（§9"授权边界见 T-12 行"悬空）、前言"当前2/11"与 current_step:2/total_steps:13 过时（完成事实以 §9 记录为准，merge 收尾对齐）；F-867-R1-02(P3) 已提交 closure.md 引 r4 list-only 收据（sha 0dd3f734…）而非终版 r8 实跑收据（sha 35087349…）——复审以 r8 重跑复得逐字相同计数（8,287/21/7/0/128），结论不受影响，merge 时改绑 r8；F-867-R1-03(P3) 引用卫生——closure md 渲染器不回显 --extra-face（ui-t-frozen-list.json）输入、handoff 冻结 HEAD 占位"待填"未回填（实际 3f8b48f52 在 §9）、handoff 债名 D-867-BASELINE-NEARMISS 与 KNOWN-DEBT 注册名 D-867-BASELINE-GAP 不一致 / pending_closeout_gates: merge-owned 显式 pending——冻结三仓组合重放三仓完整档（T-11）、裸 cargo t + 触面档（本计划无 Rust 产品码改动，oracle 修正为测试码——Category C+B，merge 统一门）、SD/ledger 沉淀发布、归档与逐树 wt-guard clean 清理；不冒称"全集全绿"（th/ui-tn/Windows aavm 跳过按 pending 披露） / evidence: 复审命令与输出存 D:/autostack/.wt/lang-867/auto-lang/docs/plans/attachments/867/{closure-work-reviewer,golden-work-reviewer,tier-minimums-report-reviewer.json}（本地）；unittest 25 OK；单测 25 绿含 V-02/V-03 控件 / next: merge（T-11）按 pending_closeout_gates 执行，收尾时对齐 F-867-R1-01..03 三条 P3 簿记。
 
 ## 10. 待澄清事项
 
