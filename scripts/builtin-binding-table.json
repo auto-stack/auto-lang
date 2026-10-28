@@ -1,0 +1,405 @@
+{
+  "plan": "PLAN-872",
+  "note": "six-family builtin binding table; see docs/plans/872-builtin-semantics-dual-track-ruling.md and attachments/872/binding-table.md. codegen_peek_id = fresh-registry pure decision view (peek side of the documented peek/resolve divergence); runtime_interface_id = production() steady-state CALL_SPEC view",
+  "generate": "cargo test -p auto-lang --lib plan872_binding_table_json -- --nocapture  (set AUTO_LANG_872_EMIT_TABLE=1 to rewrite after a deliberate binding change)",
+  "binding_order_production": "register_std_shims(catalog: nv impls + canonical names) -> register_stdlib_ffi(manual) -> register_interop_natives -> build_from_inventory(rust_fn pure shims; same-ID rebind overwrites catalog) -> register_request_io_shims -> nv override block(1504/1505/1506/1516/1523 + auto.json.parse + web natives)",
+  "registry_fingerprint": {
+    "native_id_entries": 879,
+    "dup_name_ids": {
+      "str.len": [
+        170,
+        1500
+      ]
+    }
+  },
+  "families_not_name_bound": {
+    "error_reply_x10": "ApiReply::Full error constructions in server_dispatch.rs/server_argbind.rs/server_scope.rs; body pinned by plan755_http_contract_tests",
+    "nv_to_value_dual": "native.rs nv_to_value(nv) vs interop.rs nv_to_value(vm,nv); internal Rust conversion, no builtin name"
+  },
+  "families": {
+    "str_len_byte_len_to_int_parse_int": [
+      {
+        "name": "Str.len",
+        "codegen_peek_id": 170,
+        "runtime_interface_id": 1500,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::strings_json::shim_str_len"
+      },
+      {
+        "name": "str.len",
+        "codegen_peek_id": 170,
+        "runtime_interface_id": 170,
+        "bound": true,
+        "last_writer_producer": "<no contract: bound via register()/override block>"
+      },
+      {
+        "name": "auto.str.len",
+        "codegen_peek_id": 170,
+        "runtime_interface_id": 170,
+        "bound": true,
+        "last_writer_producer": "<no contract: bound via register()/override block>"
+      },
+      {
+        "name": "auto.str.length",
+        "codegen_peek_id": 170,
+        "runtime_interface_id": null,
+        "bound": true,
+        "last_writer_producer": "<no contract: bound via register()/override block>"
+      },
+      {
+        "name": "String.len",
+        "codegen_peek_id": 170,
+        "runtime_interface_id": 170,
+        "bound": true,
+        "last_writer_producer": "<no contract: bound via register()/override block>"
+      },
+      {
+        "name": "Str.byte_len",
+        "codegen_peek_id": 1526,
+        "runtime_interface_id": 1526,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::strings_json::shim_str_byte_len"
+      },
+      {
+        "name": "auto.str.byte_len",
+        "codegen_peek_id": 1526,
+        "runtime_interface_id": 1526,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::strings_json::shim_str_byte_len"
+      },
+      {
+        "name": "Str.to_int",
+        "codegen_peek_id": 1516,
+        "runtime_interface_id": null,
+        "bound": true,
+        "last_writer_producer": "<no contract: bound via register()/override block>"
+      },
+      {
+        "name": "str.to_int",
+        "codegen_peek_id": 1516,
+        "runtime_interface_id": null,
+        "bound": true,
+        "last_writer_producer": "<no contract: bound via register()/override block>"
+      },
+      {
+        "name": "auto.str.to_int",
+        "codegen_peek_id": 1516,
+        "runtime_interface_id": null,
+        "bound": true,
+        "last_writer_producer": "<no contract: bound via register()/override block>"
+      },
+      {
+        "name": "Str.parse_int",
+        "codegen_peek_id": 1516,
+        "runtime_interface_id": 1516,
+        "bound": true,
+        "last_writer_producer": "<no contract: bound via register()/override block>"
+      },
+      {
+        "name": "auto.str.parse_int",
+        "codegen_peek_id": 1516,
+        "runtime_interface_id": 1516,
+        "bound": true,
+        "last_writer_producer": "<no contract: bound via register()/override block>"
+      }
+    ],
+    "math": [
+      {
+        "name": "Math.abs",
+        "codegen_peek_id": 1700,
+        "runtime_interface_id": 1700,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_abs"
+      },
+      {
+        "name": "auto.math.abs",
+        "codegen_peek_id": 1700,
+        "runtime_interface_id": 1700,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_abs"
+      },
+      {
+        "name": "Math.min",
+        "codegen_peek_id": 1701,
+        "runtime_interface_id": 1701,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_min"
+      },
+      {
+        "name": "Math.max",
+        "codegen_peek_id": 1702,
+        "runtime_interface_id": 1702,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_max"
+      },
+      {
+        "name": "Math.sqrt",
+        "codegen_peek_id": 1750,
+        "runtime_interface_id": 1750,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_sqrt"
+      },
+      {
+        "name": "auto.math.sqrt",
+        "codegen_peek_id": 1750,
+        "runtime_interface_id": 1750,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_sqrt"
+      },
+      {
+        "name": "Math.abs_f",
+        "codegen_peek_id": 1723,
+        "runtime_interface_id": 1723,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_abs_f"
+      },
+      {
+        "name": "auto.math.abs_f",
+        "codegen_peek_id": 1723,
+        "runtime_interface_id": 1723,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_abs_f"
+      },
+      {
+        "name": "Math.min_f",
+        "codegen_peek_id": 1714,
+        "runtime_interface_id": 1714,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_min_f"
+      },
+      {
+        "name": "Math.max_f",
+        "codegen_peek_id": 1715,
+        "runtime_interface_id": 1715,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_max_f"
+      },
+      {
+        "name": "Math.floor",
+        "codegen_peek_id": 1710,
+        "runtime_interface_id": 1710,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_floor"
+      },
+      {
+        "name": "Math.ceil",
+        "codegen_peek_id": 1711,
+        "runtime_interface_id": 1711,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_ceil"
+      },
+      {
+        "name": "Math.round",
+        "codegen_peek_id": 1712,
+        "runtime_interface_id": 1712,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_round"
+      },
+      {
+        "name": "Math.sin",
+        "codegen_peek_id": 1716,
+        "runtime_interface_id": 1716,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_sin"
+      },
+      {
+        "name": "auto.math.sin",
+        "codegen_peek_id": 1716,
+        "runtime_interface_id": 1716,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_sin"
+      },
+      {
+        "name": "Math.cos",
+        "codegen_peek_id": 1717,
+        "runtime_interface_id": 1717,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_cos"
+      },
+      {
+        "name": "Math.tan",
+        "codegen_peek_id": 1718,
+        "runtime_interface_id": 1718,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_tan"
+      },
+      {
+        "name": "Math.exp",
+        "codegen_peek_id": 1719,
+        "runtime_interface_id": 1719,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_exp"
+      },
+      {
+        "name": "Math.ln",
+        "codegen_peek_id": 1720,
+        "runtime_interface_id": 1720,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_ln"
+      },
+      {
+        "name": "Math.log2",
+        "codegen_peek_id": 1721,
+        "runtime_interface_id": 1721,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_log2"
+      },
+      {
+        "name": "Math.log10",
+        "codegen_peek_id": 1722,
+        "runtime_interface_id": 1722,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_log10"
+      },
+      {
+        "name": "Math.signum",
+        "codegen_peek_id": 1724,
+        "runtime_interface_id": 1724,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_signum"
+      },
+      {
+        "name": "Math.asin",
+        "codegen_peek_id": 1726,
+        "runtime_interface_id": 1726,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_asin"
+      },
+      {
+        "name": "Math.acos",
+        "codegen_peek_id": 1727,
+        "runtime_interface_id": 1727,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_acos"
+      },
+      {
+        "name": "Math.atan",
+        "codegen_peek_id": 1728,
+        "runtime_interface_id": 1728,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_atan"
+      },
+      {
+        "name": "Math.atan2",
+        "codegen_peek_id": 1729,
+        "runtime_interface_id": 1729,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_atan2"
+      },
+      {
+        "name": "Math.pow",
+        "codegen_peek_id": 1713,
+        "runtime_interface_id": 1713,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_pow"
+      },
+      {
+        "name": "Math.powi",
+        "codegen_peek_id": 1730,
+        "runtime_interface_id": 1730,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_powi"
+      },
+      {
+        "name": "Math.powf",
+        "codegen_peek_id": 1731,
+        "runtime_interface_id": 1731,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_powf"
+      },
+      {
+        "name": "Math.to_radians",
+        "codegen_peek_id": 1732,
+        "runtime_interface_id": 1732,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_to_radians"
+      },
+      {
+        "name": "Math.to_degrees",
+        "codegen_peek_id": 1733,
+        "runtime_interface_id": 1733,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_to_degrees"
+      },
+      {
+        "name": "Math.clamp",
+        "codegen_peek_id": 1725,
+        "runtime_interface_id": 1725,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::math::shim_math_clamp"
+      },
+      {
+        "name": "Math.trunc",
+        "codegen_peek_id": 1734,
+        "runtime_interface_id": 1734,
+        "bound": true,
+        "last_writer_producer": "<no contract: bound via register()/override block>"
+      },
+      {
+        "name": "Math.imul",
+        "codegen_peek_id": 1735,
+        "runtime_interface_id": 1735,
+        "bound": true,
+        "last_writer_producer": "<no contract: bound via register()/override block>"
+      }
+    ],
+    "time": [
+      {
+        "name": "Time.now",
+        "codegen_peek_id": 1205,
+        "runtime_interface_id": 1205,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::sys_env::shim_time_now"
+      },
+      {
+        "name": "Time.now_ms",
+        "codegen_peek_id": 1200,
+        "runtime_interface_id": 1200,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::sys_env::shim_time_now_ms"
+      },
+      {
+        "name": "Time.now_sec",
+        "codegen_peek_id": 1201,
+        "runtime_interface_id": 1201,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::sys_env::shim_time_now_sec"
+      },
+      {
+        "name": "Time.sleep_ms",
+        "codegen_peek_id": 1202,
+        "runtime_interface_id": 1202,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::sys_env::shim_time_sleep_ms"
+      },
+      {
+        "name": "auto.time.now",
+        "codegen_peek_id": 1205,
+        "runtime_interface_id": 1205,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::sys_env::shim_time_now"
+      },
+      {
+        "name": "auto.time.now_ms",
+        "codegen_peek_id": 1200,
+        "runtime_interface_id": 1200,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::sys_env::shim_time_now_ms"
+      },
+      {
+        "name": "auto.time.now_sec",
+        "codegen_peek_id": 1201,
+        "runtime_interface_id": 1201,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::sys_env::shim_time_now_sec"
+      },
+      {
+        "name": "auto.time.sleep_ms",
+        "codegen_peek_id": 1202,
+        "runtime_interface_id": 1202,
+        "bound": true,
+        "last_writer_producer": "auto_lang_core::vm::ffi::stdlib::sys_env::shim_time_sleep_ms"
+      }
+    ]
+  }
+}
