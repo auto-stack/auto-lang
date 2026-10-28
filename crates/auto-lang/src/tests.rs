@@ -39,6 +39,8 @@ mod av_closures_823_tests;
 #[cfg(feature = "test-cases")]
 mod av_collections_822_tests;
 #[cfg(feature = "test-cases")]
+mod av_collections_864_tests;
+#[cfg(feature = "test-cases")]
 mod av_dynamic_824_tests;
 #[cfg(feature = "test-cases")]
 mod av_owned_821_tests;

@@ -1438,6 +1438,11 @@ fn decode_options(
                             "ac-av/compact-run-v1" => {
                                 matches!(op.as_str(), "run" | "edit-source")
                             }
+                            // PLAN-864: the collections-source recipe shares
+                            // the av step vocabulary.
+                            "ac-av/collections-source-run-v1" => {
+                                matches!(op.as_str(), "run" | "edit-source")
+                            }
                             "ac-av/closures-run-v1" => {
                                 matches!(op.as_str(), "run" | "edit-source")
                             }
@@ -1500,6 +1505,7 @@ fn decode_options(
                         || recipe == "ac-av/data-run-v1"
                         || recipe == "ac-av/owned-run-v1"
                         || recipe == "ac-av/collections-run-v1"
+                        || recipe == "ac-av/collections-source-run-v1"
                         || recipe == "ac-av/loaded-run-v1"
                         || recipe == "ac-av/closures-run-v1"
                         || recipe == "ac-av/dynamic-run-v1"
@@ -1631,6 +1637,7 @@ fn decode_options(
                         || recipe == "ac-av/data-run-v1"
                         || recipe == "ac-av/owned-run-v1"
                         || recipe == "ac-av/collections-run-v1"
+                        || recipe == "ac-av/collections-source-run-v1"
                         || recipe == "ac-av/loaded-run-v1"
                         || recipe == "ac-av/closures-run-v1"
                         || recipe == "ac-av/dynamic-run-v1"
@@ -1648,6 +1655,7 @@ fn decode_options(
                         && recipe != "ac-av/data-run-v1"
                         && recipe != "ac-av/owned-run-v1"
                         && recipe != "ac-av/collections-run-v1"
+                        && recipe != "ac-av/collections-source-run-v1"
                         && recipe != "ac-av/loaded-run-v1"
                         && recipe != "ac-av/closures-run-v1"
                         && recipe != "ac-av/dynamic-run-v1"
@@ -1908,6 +1916,10 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // PLAN-826: the compact AVAC wire recipe (scalar profile over the new
     // wire generation), same seam contract.
     "ac-av/compact-run-v1",
+    // PLAN-864: the collections SOURCE recipe — real .at sources through
+    // the collections frontend onto the frozen 822 execution, same seam
+    // contract (append-only; the 822 fixture case files stay untouched).
+    "ac-av/collections-source-run-v1",
 ];
 /// Probe step-count cap (frozen with the seam; mirrors the syntax edit cap).
 pub const PROBE_MAX_STEPS: usize = 64;

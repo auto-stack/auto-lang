@@ -586,6 +586,9 @@ fn core_version_for(recipe: &str) -> &'static str {
         "ac-av/data-run-v1" => auto_av_core::contract::AV_DATA_PROFILE,
         "ac-av/owned-run-v1" => auto_av_core::contract::AV_OWNED_PROFILE,
         "ac-av/collections-run-v1" => auto_av_core::contract::AV_COLLECTIONS_PROFILE,
+        // PLAN-864: the collections SOURCE recipe rides the same profile-4
+        // core identity (the source frontend lowers onto it unchanged).
+        "ac-av/collections-source-run-v1" => auto_av_core::contract::AV_COLLECTIONS_PROFILE,
         "ac-av/closures-run-v1" => auto_av_core::contract::AV_CLOSURES_PROFILE,
         "ac-av/dynamic-run-v1" => auto_av_core::contract::AV_DYNAMIC_PROFILE,
         _ => auto_av_core::contract::AV_PROFILE,
@@ -645,6 +648,9 @@ fn case_serve() -> ! {
     // PLAN-822 T-02: the collections-profile recipe (avworker/1 envelope
     // domain; the recipe id is the discriminator).
     let collections_recipe = recipe == "ac-av/collections-run-v1";
+    // PLAN-864: the collections SOURCE recipe — real .at sources through
+    // the collections frontend onto the frozen 822 execution.
+    let collections_source_recipe = recipe == "ac-av/collections-source-run-v1";
     let loaded_recipe = recipe == "ac-av/loaded-run-v1";
     let closures_recipe = recipe == "ac-av/closures-run-v1";
     let closures_fixture_id = req["closures_fixture"].as_str().map(|s| s.to_string());
@@ -673,6 +679,7 @@ fn case_serve() -> ! {
         && !data_recipe
         && !owned_recipe
         && !collections_recipe
+        && !collections_source_recipe
         && !loaded_recipe
         && !closures_recipe
         && !dynamic_recipe
@@ -861,6 +868,77 @@ fn case_serve() -> ! {
                         Err(e) => {
                             eprintln!("dynamic fixture {fid}: {e}");
                             exit(2);
+                        }
+                    }
+                    continue;
+                }
+                if collections_source_recipe {
+                    // PLAN-864: real source -> collections frontend ->
+                    // shared lowering -> verify -> ABC admit -> AV. The
+                    // judged face is the standard run outcome (value /
+                    // trap / diag) — no fixture table.
+                    let started = std::time::Instant::now();
+                    let source_hash = current_source.clone();
+                    match auto_av_probe::collections_864_support::compile_and_execute(
+                        &current_source,
+                        &entry,
+                    ) {
+                        Ok(collections) => {
+                            step_outs.push(serde_json::json!({
+                                "op": "run",
+                                "outcome": "success",
+                                "value": collections.value,
+                                "collections": null,
+                                "trap": null,
+                                "diag": null,
+                                "source_hash": format!("{:016x}", auto_av_core::contract::fnv1a64(source_hash.as_bytes())),
+                                "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+                            }));
+                        }
+                        Err(e) if e.starts_with("trap: ") => {
+                            step_outs.push(serde_json::json!({
+                                "op": "run",
+                                "outcome": "trap",
+                                "value": null,
+                                "collections": null,
+                                "trap": e.trim_start_matches("trap: "),
+                                "diag": null,
+                                "source_hash": format!("{:016x}", auto_av_core::contract::fnv1a64(source_hash.as_bytes())),
+                                "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+                            }));
+                        }
+                        Err(e) => {
+                            // a compile-stage rejection surfaces as a
+                            // diagnostic completion (the parent judges the
+                            // stage/code axes against the case oracle)
+                            let (stage, code) = if let Some(rest) = e.strip_prefix("probe.at:") {
+                                let rest = rest.trim();
+                                // "L:C: error[stage/code]: msg"
+                                let code_part = rest
+                                    .split("error[")
+                                    .nth(1)
+                                    .and_then(|x| x.split(']').next())
+                                    .unwrap_or("");
+                                let stage = match code_part.split('/').next().unwrap_or("") {
+                                    "text" => "parse",
+                                    "bind" => "resolve",
+                                    "verify" => "typecheck",
+                                    _ => "typecheck",
+                                };
+                                (stage.to_string(), code_part.to_string())
+                            } else {
+                                ("run".to_string(), String::new())
+                            };
+                            step_outs.push(serde_json::json!({
+                                "op": "run",
+                                "outcome": "diag",
+                                "value": null,
+                                "collections": null,
+                                "trap": null,
+                                "diag": {"stage": stage, "code": code, "message": e},
+                                "source_hash": format!("{:016x}", auto_av_core::contract::fnv1a64(source_hash.as_bytes())),
+                                "wall_ms": started.elapsed().as_secs_f64() * 1000.0,
+                            }));
                         }
                     }
                     continue;
