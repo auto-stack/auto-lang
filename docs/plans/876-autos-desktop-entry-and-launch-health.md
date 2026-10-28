@@ -162,7 +162,7 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 | `registry` / `desktop_visible` | `app_registry` | 与 `[session] app registry: N entries` 同源，不另算一遍 |
 | `skip` | `apps.manifest` repo 条目的 `pac.at` 缺席数 | 形如 `skip=no_pac_at:3`（解析失败等不单独统计，不虚构计数） |
 | `declared_exe_missing` | 各 spec `desktop_exe` stat | 逗号分隔 app id（当前应为 4 个） |
-| `apps_empty` | `apps/*` 目录存在但无 `pac.at` 且无 `.git` | 空壳目录数（当前应为 0） |
+| `apps_empty` | `apps/*` 目录存在但无 `pac.at`，且除 `.git` 外无内容（子模块未初始化/工作区被清空） | 空壳目录数（populated=0；未初始化子模块树=24） |
 | `shell_pack` / `shell_pack_src` | `ui::shell::resolve_shell_pack_dir` | env/兄弟/内嵌 |
 | `storage` / `orphan_icons` | `AUTO_VM_STORAGE_FILE` + `shell.desktop.icons` | 文件路径 + **既无注册表落点也无 manifest 落点**的 id 数（`apps_empty>0` 时不给清理建议） |
 | `auto_cli` | PATH → 兄弟 → 主检出 | 路径或 `missing`（缺失即 rqhost 预判失败） |
@@ -174,7 +174,7 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 
 - 现状：`session.rs::outproc_native_exe` 返回 `spec.exe` 而不 stat（PLAN-694"声明即信"），
   缺失即 `Command::new` 失败 → toast 只有 os error。
-- 推荐规则（最小、可测、保住显式意图）：
+- 实现形态（as-built）：降级只打 stderr 一行（宿主当前没有 toast 通道；SD-01 已定版），boot 自检的 `declared_exe_missing=` 是主可见面。\n- 推荐规则（最小、可测、保住显式意图）：
   - `manifest.launch == "native"` → **严格**：产物缺失 = fail-fast，toast 带
     `auto build -r rust` 提示（声明者已表态要原生，不静默换形态）。
   - 其余（仅 `desktop_exe` 声明）→ **降级**：boot 期 warn + launch 落 in-proc，
