@@ -582,3 +582,231 @@ fn mn_data_owned_static_countercontrols() {
     let fp3 = ac_mn::fingerprint::unit_fingerprint(&unit_of(&m3)).unwrap();
     assert_ne!(fp1, fp3, "string const value moves the fingerprint");
 }
+
+/// F-870-R1-01: the MutRet wrapper write-back machine path (field move +
+/// write-through zeroing) — the corpus's only mut row (R07) is rejected by
+/// the shared stack, so the delivered surface is proven on a non-corpus
+/// source with an INDEPENDENTLY hand-computed oracle (r=2+5=7; a.n=7
+/// written back; a.body="q" len 1 → 7+7+1=15) across the legs that can
+/// run it (AV owned baseline + mn; the old 782 path via text-record).
+#[test]
+#[cfg(windows)]
+fn mn_owned_mut_writethrough_wrapper_three_paths() {
+    if !common::tools_available() {
+        eprintln!("infra-blocked: rust-lld/SDK unavailable — skipped");
+        return;
+    }
+    let src = "type Note { body Str; n int }\nfn bump(mut x Note, d int) int {\n    x.n = x.n + d\n    return x.n\n}\nfn main() int {\n    var a Note = Note { body: \"q\", n: 2 }\n    let r int = bump(a.mut, 5)\n    return r + a.n + a.body.len()\n}\n";
+    // AV leg (the semantic baseline).
+    let out = auto_av_probe::owned_driver::request_owned(None, "p870-mut", src, "d_main", &[])
+        .expect("av owned leg");
+    match out.av.clone().expect("outcome") {
+        ExecOutcome::Success {
+            value: auto_av_core::contract::Value::I32(v),
+            ..
+        } => assert_eq!(v, 15, "AV mut write-back value"),
+        other => panic!("AV expected value, got {other:?}"),
+    }
+    let arena = out.arena.expect("arena");
+    let av_allocs: Vec<(u64, u64)> = arena
+        .alloc_events()
+        .into_iter()
+        .map(|e| (e.id, e.bytes as u64))
+        .collect();
+    let av_frees: Vec<u64> = arena.free_events().into_iter().map(|e| e.id).collect();
+    // Old HIR-native reference leg.
+    let old = run_old(
+        &Case {
+            id: "MUT",
+            data: false,
+            want: Want::V(15),
+        },
+        src,
+    );
+    assert_eq!(old.exit_code, 15, "old-native mut write-back exit");
+    // mn leg.
+    let mn = common::run_mn(src, &[], "p870-mut");
+    assert!(mn.ok, "mn mut write-back failed: {:?}", mn.error);
+    assert_eq!(
+        mn.exit_code,
+        Some(15),
+        "mn mut write-back exit (stderr {:?})",
+        String::from_utf8_lossy(&mn.stderr)
+    );
+    // Ledger (three-tier): one "q" byte allocated, freed at main exit.
+    let (mn_allocs, mn_frees) = parse_events(&mn.stderr);
+    let mn_sizes: Vec<u64> = mn_allocs.iter().map(|(_, b)| *b).collect();
+    let av_sizes: Vec<u64> = av_allocs.iter().map(|(_, b)| *b).collect();
+    assert_eq!(
+        mn_sizes,
+        vec![1],
+        "mn alloc stream (stderr {:?})",
+        String::from_utf8_lossy(&mn.stderr)
+    );
+    assert_eq!(av_sizes, vec![1], "AV alloc stream");
+    assert_eq!(mn_frees.len(), 1, "the single buffer frees exactly once");
+    let _ = av_frees;
+}
+
+/// F-870-R1-02: the StrCmp and CharFromCodepoint machine faces have no
+/// runnable corpus row (T05 is the named upstream exclusion) — hand-built
+/// av.owned/1 units drive them through the REAL emit+link+run pipeline
+/// with hand-computed exits.
+#[test]
+#[cfg(windows)]
+fn mn_owned_strcmp_and_codepoint_machine_faces() {
+    if !common::tools_available() {
+        eprintln!("infra-blocked: rust-lld/SDK unavailable — skipped");
+        return;
+    }
+    use auto_av_core::mir::*;
+    let owner = || OwnerScope {
+        schema: "auto.mir.av-probe/1".into(),
+        module: "m_test".into(),
+    };
+    // (tag, (lhs const, rhs const), eq?, want) — StrCmp over static views.
+    let cmp_cases = [
+        ("cmp-eq-ab", ("A", "B"), true, 0),
+        ("cmp-ne-ab", ("A", "B"), false, 1),
+        ("cmp-eq-aa", ("A", "A"), true, 1),
+    ];
+    // The owned units reference the text runtime — locate it exactly the
+    // way the driver does.
+    let text_lib = auto_av_probe::native_reference::text_runtime_lib().expect("text runtime");
+    let support = std::path::PathBuf::from(&text_lib);
+    let run_cmp = |tag: &str, lhs: &str, rhs: &str, eq: bool| -> Option<i32> {
+        let mut m = MirModule::unit(owner());
+        m.profile = "av.owned/1".into();
+        let t_i32 = m.intern_type(MirType::I32);
+        let t_bool = m.intern_type(MirType::Bool);
+        let t_view = m.intern_type(MirType::StrView);
+        let c_l = m.intern_const(MirConst::Str(lhs.as_bytes().to_vec().into_boxed_slice()));
+        let c_r = m.intern_const(MirConst::Str(rhs.as_bytes().to_vec().into_boxed_slice()));
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: t_i32,
+        }));
+        m.funcs.push(MirFunction {
+            env: None,
+            source_snapshot: 0,
+            owner: m.owner.clone(),
+            name: "d_main".into(),
+            sig,
+            slots: vec![
+                MirSlot {
+                    kind: SlotKind::Temp,
+                    ty: t_view,
+                    name: None,
+                },
+                MirSlot {
+                    kind: SlotKind::Temp,
+                    ty: t_view,
+                    name: None,
+                },
+                MirSlot {
+                    kind: SlotKind::Temp,
+                    ty: t_bool,
+                    name: None,
+                },
+            ],
+            entry: 0,
+            blocks: vec![MirBlock {
+                instrs: vec![
+                    MirInstr::Const { dst: 0, value: c_l },
+                    MirInstr::Const { dst: 1, value: c_r },
+                    MirInstr::StrCmp {
+                        eq,
+                        dst: 2,
+                        lhs: 0,
+                        rhs: 1,
+                    },
+                ],
+                term: Terminator::Return { value: 2 },
+            }],
+            spans: vec![],
+        });
+        let obj = ac_mn::emit::emit_unit_coff(&m).expect("emit");
+        let wrapper = ac_mn::emit::emit_wrapper_coff(&obj.symbol).expect("wrapper");
+        let workdir =
+            std::env::temp_dir().join(format!("mn8-p870-r1-{}-{}", tag, std::process::id()));
+        let _ = std::fs::remove_dir_all(&workdir);
+        let run = ac_mn::link_driver::link_and_run(
+            &[ac_mn::link_driver::ObjectInput {
+                name: "d_main".into(),
+                bytes: obj.bytes,
+            }],
+            &wrapper,
+            ac_mn::config::START_SYMBOL,
+            &workdir,
+            &[support.clone()],
+            tag,
+        )
+        .expect("link+run");
+        let _ = std::fs::remove_dir_all(&workdir);
+        run.exit_code
+    };
+    for (tag, (l, r), eq, want) in cmp_cases {
+        let got = run_cmp(tag, l, r, eq);
+        assert_eq!(got, Some(want), "{tag}: StrCmp machine face");
+    }
+    // An invalid codepoint traps (av.trap.char-invalid family → exit 70):
+    // CharFromCodepoint over -1 never returns.
+    let mut m = MirModule::unit(owner());
+    m.profile = "av.owned/1".into();
+    let t_i32 = m.intern_type(MirType::I32);
+    let t_char = m.intern_type(MirType::Char);
+    let c_neg = m.intern_const(MirConst::I32(-1));
+    let sig = m.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: t_i32,
+    }));
+    m.funcs.push(MirFunction {
+        env: None,
+        source_snapshot: 0,
+        owner: m.owner.clone(),
+        name: "d_main".into(),
+        sig,
+        slots: vec![
+            MirSlot {
+                kind: SlotKind::Temp,
+                ty: t_i32,
+                name: None,
+            },
+            MirSlot {
+                kind: SlotKind::Temp,
+                ty: t_char,
+                name: None,
+            },
+        ],
+        entry: 0,
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::Const {
+                    dst: 0,
+                    value: c_neg,
+                },
+                MirInstr::CharFromCodepoint { dst: 1, code: 0 },
+            ],
+            term: Terminator::Return { value: 1 },
+        }],
+        spans: vec![],
+    });
+    let obj = ac_mn::emit::emit_unit_coff(&m).expect("emit");
+    let wrapper = ac_mn::emit::emit_wrapper_coff(&obj.symbol).expect("wrapper");
+    let workdir = std::env::temp_dir().join(format!("mn8-p870-r1-cpinval-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&workdir);
+    let run = ac_mn::link_driver::link_and_run(
+        &[ac_mn::link_driver::ObjectInput {
+            name: "d_main".into(),
+            bytes: obj.bytes,
+        }],
+        &wrapper,
+        ac_mn::config::START_SYMBOL,
+        &workdir,
+        &[support.clone()],
+        "cpinval",
+    )
+    .expect("link+run");
+    let _ = std::fs::remove_dir_all(&workdir);
+    assert_eq!(run.exit_code, Some(70), "invalid codepoint traps (exit 70)");
+}
