@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-876
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: autos-desktop-entry-and-launch-health（桌面入口迁 auto-os + 启动健康面）
 author: [DeepSeek Harness session]
 created_at: 2026-10-28
@@ -15,6 +15,7 @@ new_spec_components: [docs/specs/repository-boundaries/autos-desktop-entry.md]
 touched_goals: []             # 有意留空：不改 GOAL，只做归属与健康面
 affects: [repository-boundaries, auto-ui-runtime, auto-ui-compiler, auto-ui, auto-os]
 depends_on: [PLAN-831, PLAN-867]   # 拆分实况与三仓边界基线；不依赖其未完成项
+completion_kind: delivered
 ---
 
 # [PLAN-876] autos-desktop-entry-and-launch-health（桌面入口迁 auto-os + 启动健康面）
@@ -387,6 +388,25 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 
 - AC-10 的 5 类归位逐条对账结果；AC-06 两臂单测的实际断言文本。
 
+
+### 2026-10-28 /auto-plan:merge 收尾（AC-11）
+
+- `landed`：auto-os `main` ← `1f9bd87`（ff；含 051 launcher reconcile `7917c8d`）、
+  auto-ui `master` ← `f489c7b`（merge commit）、auto-lang `master` ← `015884d45`
+  （merge commit；`docs/plans/KNOWN-DEBT-AND-RISKS.md` 冲突按"HEAD 段 + 876 指针段"合并）。
+- `gate`（auto-lang master 冻结提交裸 `cargo t --no-fail-fast`）：
+  **3198 run / 3196 passed / 1 failed / 1 timed out**。
+  - 唯一 failed = `tests::plan503_tests::launcher_rewrite::launcher_pickcat_filters_results`
+    —— 既有红 **F-867-NEWRED-01**（master 自 `1e4b2b315` 起，本文件 §F-867 同条记录；
+    断言 `left: 4 / right: 1`），本计划未触及该测试文件（`git diff --name-only` 空）。
+  - 唯一 timed out = `tests::ffi_dual_tests::ffi_dual_018_dep_fields`（120s，全档并发负载下）；
+    隔离重跑 **PASS 2.3s** → 判负载 flake，非回归。
+- `ledger_refreshed`：`.autoos/specs.json` upsert 五条（architecture `P876-1`、
+  designs `P876-HEALTH-SURFACE`、tests `P876-TESTS`、reviews `P876-REVIEW-R1R3`、
+  reports `P876-MERGE`）；`python scripts/spec-index.py` → 62 projects
+  （`docs/specs/INDEX.md` 随提交）。
+- `archived`：本件 `git mv` → `docs/plans/archive/`，`status: archived`。
+- `cleaned`：见下条清理回执。
 ## 10. 待澄清事项
 
 | ID | 问题 | 推荐 | 影响 |
