@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-876
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: autos-desktop-entry-and-launch-health（桌面入口迁 auto-os + 启动健康面）
 author: [DeepSeek Harness session]
 created_at: 2026-10-28
 updated_at: 2026-10-28
 plan_revision: 3
-current_step: 11
+current_step: 12
 total_steps: 13
 
 # /auto-plan:review 结束时填写：
@@ -174,7 +174,8 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 
 - 现状：`session.rs::outproc_native_exe` 返回 `spec.exe` 而不 stat（PLAN-694"声明即信"），
   缺失即 `Command::new` 失败 → toast 只有 os error。
-- 实现形态（as-built）：降级只打 stderr 一行（宿主当前没有 toast 通道；SD-01 已定版），boot 自检的 `declared_exe_missing=` 是主可见面。\n- 推荐规则（最小、可测、保住显式意图）：
+- 实现形态（as-built）：降级只打 stderr 一行（宿主当前没有 toast 通道；SD-01 已定版），boot 自检的 `declared_exe_missing=` 是主可见面。
+- 推荐规则（最小、可测、保住显式意图）：
   - `manifest.launch == "native"` → **严格**：产物缺失 = fail-fast，toast 带
     `auto build -r rust` 提示（声明者已表态要原生，不静默换形态）。
   - 其余（仅 `desktop_exe` 声明）→ **降级**：boot 期 warn + launch 落 in-proc，
@@ -238,7 +239,7 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 | AC-04 | 无 `auto.exe` 时 boot 日志给出可执行提示（`cargo build -p auto`），桌面正常进入且不 panic；有 `auto.exe` 时出现 `rqhost daemon spawned` | work |
 | AC-05 | 夹具下 `[desktop-health]` 逐键正确：`apps_empty` / `declared_exe_missing` / `orphan_icons` / `auto_cli` 各自命中预期值，且 hint 可执行 | work |
 | AC-06 | 缺产物语义按 Q-1 裁定实现：非 strict 降级 in-proc 有 warn/toast；`launch:"native"` 严格 fail-fast 且提示含 `auto build -r rust`；单测覆盖两臂 | work |
-| AC-07 | auto-os 仓内**当前面**（非 archive/attachments/reports）`--example ui_desktop` 引用 = 0，唯余子模块内容（转派 `OS876-DOC-SWEEP`）；`desktop.ps1 -Track iced -DryRun` 打印 `-p os-desktop --bin ui-desktop` 与 `target/debug/ui-desktop.exe`；051 launcher 测试全绿 | work |
+| AC-07 | auto-os 仓内**当前面**（非 archive/attachments/reports）已无旧 example 形态入口命令（引用 = 0；历史/报告不改写）；`desktop.ps1 -Track iced -DryRun` 打印 `-p os-desktop --bin ui-desktop` 与 `target/debug/ui-desktop.exe`；051 launcher 测试全绿 | work |
 | AC-08 | auto-lang 仓无 `examples/ui_desktop.rs` 且无残留引用；`cargo check -p auto-lang --features ui-iced` 绿 | work |
 | AC-09 | `shell.desktop.icons` 中无落点 id = 0（或每个都有 manifest 落点），桌面不再出 "app not found" 通知 | work |
 | AC-10 | 本会话 5 类观察项各有归位：①入口 F-1..F-5（本计划）；②缺产物 F-6/F-7（本计划）；③空壳 apps F-9（健康面 + 文档）；④auto-term F-11（KNOWN-DEBT 指针更新）；⑤use-diag F-12（转派条目）。复审可逐条对账 | review |
@@ -286,6 +287,26 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 未执行：merge-owned 的裸 `cargo t`、spec 账本索引刷新、三仓合并与 worktree 清理。
 
 ## 9. 复审记录
+
+### 2026-10-28 再复审 R2（needs_fix）与终审 R3（pass）
+
+- R2（基线 auto-lang `3d1fa08b4` / auto-os `7917c8d` / auto-ui `07620a8`）：
+  F-04/05/06/07/09 关闭；新开 `F-876-R2-01`（`skip` 结构性恒 0——统计源
+  `manifest_repo_roots` 已过滤缺 pac.at 条目；同因 orphan 在同树解析下仍 24）、
+  `F-876-R2-02`（`apps/auto-syslog/README.md` 实为仓内跟踪文件，前一版"子模块不能
+  代提交"前提错误）、`F-876-R2-03`（051 launcher 要求 lang/ui/man 三兄弟，计划树缺
+  auto-man → 默认 DryRun exit 1）、`F-876-R2-04`（计划文本与 SD-01 互斥）。
+- R2 修复（auto-os `1f9bd87`）：`health.rs::manifest_state()` **直读 apps.manifest**
+  （known=全部 active id；skip=active repo 条目 pac.at 缺席数）+ 单测
+  `manifest_state_counts_missing_pac_at` 断言非零 skip；syslog README 改新入口并关闭
+  `OS876-DOC-SWEEP`；带三 root 的 DryRun exit 0 已入证；计划 §5.3/§5.4 文本对齐。
+  实测：同树解析 `skip=no_pac_at:26 apps_empty=24 orphan_icons=0`；populated
+  `registry=30/29 skip=0 orphan=0`；`cargo test -p os-desktop` 6 passed。
+- R3 终审：**`outcome: pass`**（AC-01..AC-10、AC-12 全 pass；AC-11 merge-owned
+  pending）。复审者独立复跑：`cargo test -p os-desktop` 6 passed、`cargo build
+  --locked` exit 0、launcher 13 passed、两态 boot 自洽；未发现新回归。
+- 遗留 P3（merge 记账，已在本轮修正）：债务文档自述句去字面量、§5.4 字面 `\n-`
+  拆真换行、AC-07 括注与"仓内 kind: local 且已修"事实对齐。
 
 ### 2026-10-28 /auto-plan:review 独立终审（review_scope: final）
 
