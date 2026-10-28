@@ -7,7 +7,7 @@ created_at: 2026-10-28
 updated_at: 2026-10-28
 plan_revision: 2
 current_step: 2
-total_steps: 11
+total_steps: 13
 supersedes_spec_components: [docs/specs/auto-lang/project.md, docs/specs/auto-ui/project.md, docs/specs/repository-boundaries/man-three-repository-delivery.md]
 new_spec_components: [docs/specs/repository-boundaries/split-equivalence-acceptance.md]
 touched_goals: []              # 有意留空：本计划不改任何 GOAL 的定义/达成状态，只冻结其回归基线（见 §5 规范增量末注）
@@ -275,11 +275,14 @@ SD-01..04统一增加r2义务总账、归属/执行状态分列、既存红认�
 - T-08：SD-01（auto-lang/project.md 三仓批语义+退休通道+tu 处置）、SD-02（auto-ui/project.md 三腿+地板判据）、SD-03（man spec 纳入跨仓门）、SD-04（新 split-equivalence-acceptance.md）草案已在 worktree 落稿。
 
 
-2026-10-28 / stage: work / plan_id: PLAN-867 / plan_revision: 1 / outcome: **blocked（F-867-NEWRED-01，待用户裁定修复路径）** / worktree_path: D:/autostack/.wt/lang-867/auto-lang / branch: plan-867-dev / base_commit: a0cbb1a21 / code_commit: afc08a870→688d35892（冻结）+ docs 终化提交 / dependency_revisions: auto-ui 7095f53、auto-man 873fa23、auto-down c39ac7f（detached 只读）/ task_ids: T-01..T-09 / evidence: attachments/867/{red-baseline,closure,golden-ledger,handoff}.md + scripts/pre-split-universe + r4 list-only 收据 + r2/r4 实跑收据 + t07-remaining-legs / blockers: F-867-NEWRED-01（AC-06 新增红=1） / next_responsible_role: 用户裁定 → 修复（fix 计划或授权扩scope）→ 重跑 T-07 冻结组合 → review
+2026-10-28 / stage: work / plan_id: PLAN-867 / plan_revision: 2 / outcome: **blocked（F-867-NEWRED-01，待用户裁定修复路径）** / worktree_path: D:/autostack/.wt/lang-867/auto-lang / branch: plan-867-dev / base_commit: a0cbb1a21 / code_commit: afc08a870→688d35892（冻结）+ docs 终化提交 / dependency_revisions: auto-ui 7095f53、auto-man 873fa23、auto-down c39ac7f（detached 只读）/ task_ids: T-01..T-09 / evidence: attachments/867/{red-baseline,closure,golden-ledger,handoff}.md + scripts/pre-split-universe + r4 list-only 收据 + r2/r4 实跑收据 + t07-remaining-legs / blockers: F-867-NEWRED-01（AC-06 新增红=1） / next_responsible_role: 用户裁定 → 修复（fix 计划或授权扩scope）→ 重跑 T-07 冻结组合 → review
 
 - AC-01..AC-05 达成；AC-06 判定=新增红 1（等价出口未达成）；AC-07/AC-08 pending（未送终审——开放合同内 finding 不交终审裁决）。
 - 阻塞项处置选项（供用户裁定）：A) 新建 fix 计划修复 app_registry/VM 列表读缺陷后回接 T-07 重跑（推荐——证据指向真缺陷）；B) 若裁定 1e4b2b315 语义为有意且 4 为正确计数，则需 PLAN-050 侧正式裁定+oracle 更新证据后再判（当前证据不支持：无数据源给出 4）；C) 接受阻塞记录、先审已完成面。
 - 其余异常均归因：clipboard 族=负载 flake（单跑绿）；tt 27 例 ac_*=冷缓存负载 flake（代表单跑绿）；r2 pickcat 绿=未解释异常（不推翻 6+ 次含隔离冷树的红）；r3 ffi_dual_018=负载超时。
+
+
+2026-10-28 / stage: work / plan_id: PLAN-867 / plan_revision: 2 / **用户裁定 A'（在现有计划加 phase，不另立计划）**：修复 F-867-NEWRED-01 属本计划 Phase 2（T-12 修复 + T-13 回接 T-07 重跑），授权边界见 T-12 行；status 保持 executing。
 
 ## 10. 待澄清事项
 
