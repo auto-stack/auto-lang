@@ -1,7 +1,7 @@
 # autoui-skill
 
 > **Status**: active
-> 路径：`crates/autoui-skill`（非 Rust crate，AI 技能包）  | 技术栈：Markdown 契约 + 模板
+> 路径：`../auto-man/crates/autoui-skill`（非 Rust crate，AI 技能包；**PLAN-844 D-5 单源化**：本仓 `crates/autoui-skill` 逐字副本已删除，唯一 owner 与模板消费者=auto-man 仓 `auto` CLI `include_str!`）  | 技术栈：Markdown 契约 + 模板
 
 面向 AI agent 的 **AutoUI 项目生成技能包**（SKILL.md 名为 `autoui`）：定义生成/修改
 AutoUI 项目的 generator contracts（C1–C9）、patterns、reference 与 templates。
