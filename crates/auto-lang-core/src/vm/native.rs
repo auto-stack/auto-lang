@@ -1774,7 +1774,10 @@ pub const NATIVE_STR_ENDS_WITH: u16 = 1506;
 pub const NATIVE_STR_TO_INT: u16 = 1516;
 pub const NATIVE_STR_TO_UINT: u16 = 1523;
 
-// Math functions registered in stdlib.rs via register_shim_by_name
+// Math ID 常量（PLAN-872 实测：这 7 名不再有任何 stdlib.rs 手工绑定——
+// 其唯一 impl 绑定=ffi/stdlib/math.rs 纯 shim 经 inventory（步骤 4）；
+// 常量保留供 ID 表/签名面引用。旧注释"registered in stdlib.rs via
+// register_shim_by_name"已过时（订正于 PLAN-872 T-03）。
 pub const NATIVE_MATH_ABS: u16 = 1700;
 pub const NATIVE_MATH_MIN: u16 = 1701;
 pub const NATIVE_MATH_MAX: u16 = 1702;
