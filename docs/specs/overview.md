@@ -72,13 +72,13 @@
 
 ### 孤儿与废弃（勿新增依赖，待处置）
 
-- `crates/auto-xml`：非 workspace 成员（Plan 325 注明已迁 ../auto-ai），Cargo.toml 仍用
-  workspace 依赖，单建必失败。
-- `crates/auto-lang-macros`：auto-macros 的逐字废弃副本，无人依赖。
-- `crates/ac-examples`：无 Cargo.toml 的遗留目录（仅 2 个 .at 测试脚本）。
-- 根 `auto-shell/`：仅剩 Cargo.lock（crate 已迁独立仓 D:/autostack/auto-shell）。
-- `packages/aavm/lib-legacy/`：自举库旧版封存。
-- `crates/Cargo.lock`：多余（workspace lock 应只在根）。
+> PLAN-844 T-05（2026-10-28）处置记录：`crates/auto-xml`、`crates/auto-lang-macros`、
+> `crates/ac-examples` 已删除（零消费者审定见
+> [844 合同基线](../plans/attachments/844/contract-baseline.md)§3）；根 `auto-shell/`
+> 与 `crates/Cargo.lock` 此前已消失，清单行一并移除。
+
+- `packages/aavm/lib-legacy/`：自举库旧版，**活跃载荷**——auto-playground
+  PLAN-752 以 `prepend_lib` 消费其 bootstrap（routes/run.rs），不是废码、勿删。
 
 ---
 

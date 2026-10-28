@@ -24,7 +24,7 @@ proc-macro DSL。对应 plan-report 01 的 plans 002–006、015、016。
 - `ToAutoValue` trait（auto-val/src/to_value.rs，~102 行）把 Rust 原生类型转为
   AutoLang 值，支撑宏内 `#{var}` 插值；无插值时宏直接把原始字符串交给 `AtomReader`，
   跳过逐 token 处理（plan-016）。
-- 宏实现在独立 `auto-lang-macros` crate，经主 crate re-export；用 AutoLang parser
+- 宏实现在独立 `auto-macros` crate（PLAN-814 后唯一 owner；旧 `auto-lang-macros` 副本已随 PLAN-844 删除），经主 crate re-export；用 AutoLang parser
   解析宏体，因此 parser 支持的语法在宏里自动可用（plan-016 的设计变更）。
 - 已知脆弱点：结构体构造器的 `call` vs `node` 判定在方法解析期拿不到 TypeDecl，
   回退为"首字母大写"启发式（plan-006）。

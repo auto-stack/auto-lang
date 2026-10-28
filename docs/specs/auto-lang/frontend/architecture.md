@@ -27,7 +27,7 @@ graph LR
   subgraph 外部依赖方
     RES["resolver.rs<br/>ModuleResolver / FilesystemResolver"]
     BE["后端：AutoVM / trans(c,rust,ts,python,javascript,gdscript) / aura·a2ui"]
-    MAC["auto-lang-macros crate<br/>value!/atom!/node!（经 AtomReader 复用 parser）"]
+    MAC["auto-macros crate<br/>value!/atom!/node!（经 AtomReader 复用 parser）"]
   end
 
   SRC --> US
@@ -93,7 +93,7 @@ graph LR
 
 - 日期：未标注（plan-016 标注"设计变更说明"）
 - 来源：plan-016
-- 决策：`value!`/`atom!`/`node!` 实现为独立 `auto-lang-macros` crate 的过程宏：把 TokenStream
+- 决策：`value!`/`atom!`/`node!` 实现为独立 `auto-macros` crate 的过程宏：把 TokenStream
   转字符串后经 `AtomReader` 走 AutoLang parser 解析；`#{var}` 插值经 `ToAutoValue` trait 转换。
 - 备选：`macro_rules!` 声明宏（pros：编译期展开、无运行时解析；cons：需为每种语法手写规则，
   无法自动覆盖 AutoLang 全语法）。
