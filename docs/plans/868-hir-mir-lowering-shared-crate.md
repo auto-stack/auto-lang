@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-868
-status: drafting
+status: execution_done
 feature_name: HIR→MIR lowering 出库为共享 crate
 author: [Codex]
 created_at: 2026-10-28
@@ -15,7 +15,7 @@ touched_goals: [GOAL-002]
 
 affects: [auto-mir, auto-av, auto-ac, auto-test-case]
 depends_on: []
-current_step: 0
+current_step: 5
 total_steps: 8
 ---
 
@@ -168,11 +168,11 @@ ac-core（AST/HIR/verify/descriptor）
 
 | ID | owner_stage | 依赖 | 实际位置/操作与结果 | AC | 状态 |
 |---|---|---|---|---|---|
-| T-01 | work | 无 | 核实切面：`hir_adapter` 与 probe 宿主类型的耦合、三消费者调用点、报告身份轴落点；产出 `attachments/868/work/baseline.md` | AC-01/02 | [ ] |
-| T-02 | work | T-01 | 冻结边界与身份：crate 名/路径、公开 API 清单、报告轴键名与取值、等价比对字段集、收据不动的声明 | AC-02/04 | [ ] |
-| T-03 | work | T-02 | 建 crate + 搬 lowering（纯搬移）+ 三消费者改指 + 删旧实现（编译通过） | AC-02 | [ ] |
-| T-04 | work | T-03 | 等价性运行与依赖守卫（V-01/02/03），记录搬前基线报告供比对 | AC-01/02/03 | [ ] |
-| T-05 | work | T-04 | 身份轴 + 反控注入 + 脚本 `verify-mir-lowering-868.ps1`（V-04/05），提交代码与证据 | AC-04/05 | [ ] |
+| T-01 | work | 无 | 核实切面：`hir_adapter` 与 probe 宿主类型的耦合、三消费者调用点、报告身份轴落点；产出 `attachments/868/work/baseline.md` | AC-01/02 | [x] 2026-10-28：`attachments/868/work/baseline.md`（work 树 452320fd5 实测）。核心事实：hir_adapter 零宿主耦合（仅 auto_ac_prototype+auto_av_core import，无 crate::/super::）→ 纯搬移成立，倒置预案不触发；接口面 9 个 pub 项；33 文件/61 引用点（probe src 9 / probe tests 17 / bins 2 / mn 4 / cte 1 / lib.rs 1）；身份轴落点 ac_av/ac_cte/ac_mn 的 identity+axes 函数与 stale.rs applicable 清单；ace 收据 schema 自包含不受轴影响；mn 无 stale 专属分支（落 sema fallback，T-04 实测） |
+| T-02 | work | T-01 | 冻结边界与身份：crate 名/路径、公开 API 清单、报告轴键名与取值、等价比对字段集、收据不动的声明 | AC-02/04 | [x] 2026-10-28：冻结于 `attachments/868/work/baseline.md` §8。crate=`experimental/auto-mir-lower`（lib `auto_mir_lower`）；API=9 项原样+`MIR_LOWERING_VERSION: &str = "1"`；轴键 `mir-lowering` 必报（三消费者 identity+报告）；stale applicable 仅 av/cte 分支追加；比对字段集=逐 result 的 case/check/adapter/action/tier/status/mismatches/detail/identity/artifacts(logical,sha256,bytes)/native{exit_code,cache_mode,cache_hits,counters,gaps}，剔除 duration_ms/stage_spans/native.toolchain/artifacts.stored；收据键集零改动 |
+| T-03 | work | T-02 | 建 crate + 搬 lowering（纯搬移）+ 三消费者改指 + 删旧实现（编译通过） | AC-02 | [x] 2026-10-28：commit `aaf22f279`（work 树 plan-868-dev）。git mv 100% rename（2627 行零改动）；`experimental/auto-mir-lower`（deps=ac-core+av-core）+ 根级 re-export；33 文件 61 引用全部改指（probe src `crate::hir_adapter::`→`auto_mir_lower::`、tests/bins/mn/cte 同构）+ lib.rs 模块删除 + 三 Cargo.toml 加依赖。编译：auto-mir-lower/ac-av-probe(ac-av-probe all-targets 8s)/ac-cte-probe 全绿；ac-mn lib+bins+触面测试绿（codegen_tier/transaction_tier 的 MirFunction.env 报错为 master 预存红：PLAN-823/824 加字段未更新 mn 测试夹具，两文件不在本 diff 内，记 KNOWN-DEBT） |
+| T-04 | work | T-03 | 等价性运行与依赖守卫（V-01/02/03），记录搬前基线报告供比对 | AC-01/02/03 | [x] 2026-10-28：搬前基线 11 族（ac-av/av-data-821~824/av-abc-825/826/av-source-827/ace-m1/ac-cte/ac-mn）151/151 PASS；搬后同 11 族 run exit 全 0，`compare-reports.py` 冻结字段集比对 **11/11 族逐 check 全等**（status/actual/identity/artifacts sha/native counters 除 ledger_peak_* 等，attachments/868/work/{baseline,post}-reports/，本地证据）。依赖守卫：av-core 依赖清单空；auto-mir-lower 仅 ac-core+av-core；experimental 全域 `pub fn lower_checked(` 定义唯一；根 workspace 零 experimental path 依赖；`cargo tree -i auto-mir-lower` 三消费者均解析且无反向边 |
+| T-05 | work | T-04 | 身份轴 + 反控注入 + 脚本 `verify-mir-lowering-868.ps1`（V-04/05），提交代码与证据 | AC-04/05 | [x] 2026-10-28：commit `89c551ee1`。轴：`EXPECTED_MIR_LOWERING_VERSION="1"` 镜像于 ac_av/ac_cte/ac_mn，入 identity/axes/双 mn 收据/NativeRecord；stale.rs av/cte applicable 追加。实测：新报告行轴含 `mir-lowering:1`（ac-av 18/18 绿）；旧（无轴）报告判 `native.mir-lowering missing (now 1)` STALE（7 行）；mn 收据带轴；ace 收据键集双消费者零改动。反控：注入 mark_a 1→3 于共享 crate → ac-mn 必红（run-first exit 期望 0 实得 1）、av 不敏感（marks 只进 trace 序，记入案）→ 还原必绿。脚本三档实测 PASS：deps（5 守卫）/identity（11 族重跑全绿+4 断言）/equivalence（对搬前基线 11/11 EQ）。scoped 定向测试（45 测批）45/45 绿 |
 | T-06 | review | T-05 | 独立最终review（重点：只搬不改、切面、轴语义）；merge 门 pending | AC-06 | [ ] |
 | T-07 | merge | T-06 pass | 冻结提交裸 `cargo t` + `tv` | AC-07 | [ ] |
 | T-08 | merge | T-07 | Spec/ledger/归档/guard；回写 862–865 写面并解除其 lowering 前置 | AC-08 | [ ] |
@@ -181,8 +181,24 @@ ac-core（AST/HIR/verify/descriptor）
 
 2026-10-28 new r1：`stage: new | plan_id: PLAN-868 | plan_revision: 1 | outcome: pass（无硬前置，可在授权下进入 work） | next: work T-01`。全部 AC/V/T 未执行；crate 名/报告轴键名/等价比对字段集由 T-02 冻结。本轮未建树、未跑构建、未改任何实现与其他在途 Plan（844/861/867 不受影响，且与本 Plan 无共享写面）。
 
+2026-10-28 work r1（execution_done 交接）：
+`stage: work | plan_id: PLAN-868 | plan_revision: 1 | outcome: pass（work-owned 全完成） |
+worktree: D:/autostack/.wt/lang-868/auto-lang | branch: plan-868-dev | base: 452320fd5 |
+code_commits: aaf22f279（T-03 纯搬移）+ 89c551ee1（T-05 轴+脚本） |
+dependency_revisions: auto-ui 7095f53（组内 detached 兄弟）、auto-down c3464d0（同）——仅构建解析用，非代码依赖 |
+task_ids: T-01..T-05 | evidence: 见 §8 各行 + attachments/868/work/baseline.md（§6/§8/§9 含 151/151 双腿、11/11 冻结字段集全等、反控红绿、三档 verify 脚本 PASS） |
+blockers: 无 | next_responsible_role: review（T-06）`
+
+- **AC-01/02/03/04/05 全部 work-owned 达成**，证据逐条在 §8 与 baseline.md。
+- **merge-owned 门禁 pending**（AC-07/08）：冻结提交裸 `cargo t` + `cargo tv`；SD-01..04 沉淀、ledger、归档、guard 清理、862–865 写面回写。
+- 发现并归因的三项**预存**问题（均非本 diff 引入，记 KNOWN-DEBT 候选，本 Plan 不修）：
+  1. stale.rs applicable 与 av 族报告轴脱节（`av-core-version` 等多轴漂移；data/owned 族与 mn 行落 sema fallback 分支；cte 报告行缺 native.toolchain）——搬前基线即全红，本 Plan 仅按声明追加 `mir-lowering`。
+  2. ac-mir-native `codegen_tier`/`transaction_tier` 构造 `MirFunction` 缺 `env` 字段（PLAN-823/824 加字段未同步 mn 测试夹具）——`cargo check --all-targets` 在 master 同样红。
+  3. `mir_native_rounds_failure_liveness_and_caps` 为 3 秒墙负载敏感 flake：本会话 57 测并发批 3 红、45 测同型批全绿（本树/基面 experimental/主检出三处对照）+ 隔离 2 绿 + 故障路径不经过搬移代码（协议前 hijack）；归因=并行重载下 3s 墙超时，与本 diff 无因果。
+- 测试运行记录（本次 work 全量）：三棵 experimental `cargo check`（触面）；11 族 suite×3 腿（搬前/搬后/轴后，各 151 checks 全 PASS）；verify 脚本 deps/identity/equivalence 三档；scoped 45 测批×3 树对照 + 57 测批 1 次（含上述 flake 归因）。统一回归门禁（裸 cargo t/tv）**pending，owner=merge**。
+
 ## 10. 待澄清事项
 
-- crate 名与位置：建议 `experimental/auto-mir-lower`；若要并入 `auto-av-core`，须先接受"执行核心依赖前端 HIR 类型"的代价（本Plan默认拒绝）。
-- 身份轴是**必报**还是**可选上报**：必报更严格但会令历史报告一律 STALE；可选上报噪声小但弱化判定。默认：必报（重构期一次性代价），T-02 可依实际报告量改判。
-- 若 T-01 发现 lowering 与 probe 会话类型深度耦合（需要较大倒置），本Plan是否仍坚持"纯搬移"——默认坚持；确实无法纯搬时，回 new 修订范围，不在实施中临时扩大。
+- ~~crate 名与位置~~：T-02 冻结 `experimental/auto-mir-lower`（已落地）。
+- ~~身份轴必报 vs 可选~~：T-02 冻结必报（已落地；旧报告 STALE 判定实测符合声明）。预存 stale applicable 脱节问题升 KNOWN-DEBT（见 §9），后续修复归 stale 机制维护计划。
+- ~~深度耦合倒置~~：T-01 证实零宿主耦合，纯搬移成立，无需倒置。

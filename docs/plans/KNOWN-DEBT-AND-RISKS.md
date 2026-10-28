@@ -1,3 +1,10 @@
+### Plan 868（2026-10-28，work 交接时发现的预存问题，非本 diff 引入）
+
+绑定 452320fd5（master 基面实测）+ aaf22f279/89c551ee1（plan-868-dev）。三项：
+1. **stale.rs applicable 与 av 族报告轴脱节**（P2）：av core 行报 `av-core-version present but not applicable`（PLAN-821+ 加轴未同步 applicable）；data/owned/collections/dynamic 族与 mn 行落 `_` sema fallback 分支（sema 轴全缺+本族轴"not applicable"）；cte 报告行整体缺 `native.toolchain`。搬前 fresh 报告自检即全红（baseline.md §9）。修复属 stale 机制维护计划；PLAN-868 仅按声明追加 `mir-lowering` 轴（av/cte applicable）。
+2. **ac-mir-native `codegen_tier`/`transaction_tier` 预存红**（P2）：PLAN-823/824 给 `MirFunction/MirImport` 加 `env` 字段未同步 mn 测试夹具构造，`cargo check --all-targets` 在 master 同红（本 Plan 验证时发现并归因，未修——不在纯搬移写面）。
+3. **`mir_native_rounds_failure_liveness_and_caps` 3 秒墙负载敏感 flake**（P3）：57 测并发批 3 红 vs 45 测同型批三树（本树/基面 experimental/主检出）全绿 + 隔离 2 绿 + 故障路径为协议前 hijack（不经过被搬移代码）。归因=重并行负载下 `AC_MN_ROUNDS_WALL_SECS=3` 超时；merge 裸 `cargo t` 若再现按此归因重跑单项即可。
+
 ### Plan 823 r8（2026-10-27，R2 needs_fix；部分原finding关闭）
 
 绑定0d5d58f6b93bbf3f7e687b103f4b19b7ae8fe6ef。F-823-R1-05（当前代码source campaign重放）/06（fmt）CLOSED，T09完成，进度executing3/11；真进程restore单项通过。F01 OPEN：ENV_GET→局部Move→Move capture仍过验/Success29，别名不变量未闭；F02 OPEN：case-serve正式closures recipe仍unknown/exit2，身份映射与父judge调用遗漏；F03资源/旧consumer兼容oracle仍partial；F04 OPEN：新增park30取消仍停在clone前（三alloc），未到env发布。新增F-823-R2-01 P1：未信任EnvGet dst=u32::MAX在新增别名预扫描panic；F-823-R2-02 P2：新增unused_mut警告。25定向通过不抵消反例。全部OPEN为合同内阻塞，不可债务延期后放行；整档/merge仍pending。[R2证据与关闭要求](attachments/823/review-r2/review.md)。
@@ -3609,3 +3616,25 @@ F-857-R1-01..05 OPEN，绑定 `ecf9939c5b2e369f9ce7d6ea25b0b66439bb7da6`：合�
   T-01 自设 ≤3000/3500 目标，职责实拆成立（见 handoff §4 残留口径）。
 - 844 真重复候选：HttpDefaults×server_model 应答构造族、engine 迭代器 7 型构造样板、native shim 与
   stdlib shim 的 str/math 域疑似双实现。
+
+## PLAN-867 登记债（2026-10-28，work 阶段冻结 afc08a870+fix）
+
+### D-867-TH — th 档（test-http-e2e）跨拆分双侧编译红（F-17）
+
+PLAN-814 T-02 大迁移（afe0f9156，2026-10-20）把 vm/ffi/http_server 迁入 auto-lang-core 后，
+其 `#[cfg(test)] pub(crate)` 项（spawn_outcome_reporter/stream_is_live 等）跨 crate 不可见，
+plan730/781 的 e2e 内联 mod（`#[cfg(feature="test-http-e2e")]` 门内）自该提交起编译红——
+钉定提交 464e2316b、见证树 72eb741e8、当前 master 三处同红；th 非任何批量/日常门成员，
+红从未被观测。PLAN-867 处置：th 面在最后可编译提交 09a756e84 枚举为参考面
+（`scripts/pre-split-universe/reference/`，144 selected），不入分母（拆分前后同态=既存红
+非拆分致丢失，无测试 ID 被拆分丢失）；当前侧源码仍在。修复路径（另立 L1）：把 cfg(test)
+辅助项改为 feature 门控 pub，或将两个 http e2e 测试文件迁入 auto-lang-core 同 crate。
+
+### D-867-BASELINE-GAP — 批量档间隙内的基线退休脱同步（F-16，已通道化）
+
+844 T-04 R-4/R-5/R-8/R-6（1159f058d，10-28 12:08）退役 850 冻结基线 7 个 language 必选
+ID，晚于最后批量收据（860，同日 09:33）——tf 非逐计划门禁，下一次 /auto-plan:regress 将
+在 language 腿基线校验红。PLAN-867 已建证据退休通道
+`scripts/full-regression-retirements-844.json.txt`（orchestrator/closure 消费，850 文件
+不动）并闭包记 RETIRED；后续有意退役必选 ID 一律走该通道（新清单按计划号命名），
+避免批量间隙再藏同类脱同步。
