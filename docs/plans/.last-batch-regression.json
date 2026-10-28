@@ -1,8 +1,8 @@
 {
-  "last_covered_plan_id": 859,
-  "timestamp": "2026-10-28T05:55:00+00:00",
-  "covered_commit": "32706fc10",
-  "covered_note": "Batch gate triggered by PLAN-825 (id%5==0) landing after the 858 receipt (due_check was blocked on foreign load); PLAN-826 landed meanwhile. First tf attempt exposed B826-BATCH-CFG-01: PLAN-825 commit 95fcf8df9 inserted mod av_runtime_825_tests between the test-cases cfg line and mod av_source_827_tests, stealing the gate (15 default-feature compile errors, E0432/E0433). Fixed by L0 fix-av827-cfg-gate@32706fc10 (one cfg line restored; default-feature --no-run green, av_source_827 8/8 scoped). Rerun all legs green.",
+  "last_covered_plan_id": 860,
+  "timestamp": "2026-10-28T09:33:00+00:00",
+  "covered_commit": "5613541d9",
+  "covered_note": "Batch gate triggered by PLAN-860 (id%5==0) landing on autographics-dev 7144526c3 after the 859 receipt. Window 32706fc10..5613541d9 is docs/bookkeeping only (PLAN-860 source lives in the experimental driver workspace, outside the root tiers); legs rerun to advance the due baseline. All green.",
   "legs": [
     "tf",
     "tt",
@@ -11,28 +11,23 @@
   "leg_results": {
     "tf": {
       "language": {
-        "run": 3212,
-        "passed": 3212,
-        "failed": 0,
-        "skipped": 500,
+        "selected": 3212,
         "exit": 0,
-        "evidence": "D:/autostack/full-regression-receipts/1793138975373088000/language-run.log"
+        "evidence": "D:/autostack/full-regression-receipts/1793150265605385200/language-run.log"
       },
       "ui-full": {
-        "run": 3117,
-        "passed": 3117,
-        "failed": 0,
-        "skipped": 18,
+        "selected": 3117,
         "exit": 0,
-        "evidence": "D:/autostack/full-regression-receipts/1793138975373088000/ui-full-run.log"
-      }
+        "evidence": "D:/autostack/full-regression-receipts/1793150265605385200/ui-full-build.log"
+      },
+      "receipt_dir": "D:/autostack/full-regression-receipts/1793150265605385200"
     },
     "tt": {
       "run": 3576,
       "passed": 3576,
       "failed": 0,
       "skipped": 921,
-      "test_seconds": 352.7,
+      "test_seconds": 337.8,
       "exit": 0
     },
     "tb": {
@@ -40,35 +35,19 @@
       "passed": 3102,
       "failed": 0,
       "skipped": 664,
-      "test_seconds": 33.9,
+      "test_seconds": 33.4,
       "exit": 0
     }
   },
   "verdict": "pass",
-  "new_reds": [
-    {
-      "id": "B826-BATCH-CFG-01",
-      "stage": "tf-language-compile",
-      "attributed_plan": 825,
-      "introduced_commit": "95fcf8df9",
-      "status": "fixed",
-      "fix": "L0 fix-av827-cfg-gate 32706fc10 restores #[cfg(feature=\"test-cases\")] on mod av_source_827_tests",
-      "error": "E0432/E0433 x15: av_source_827_tests lost its test-cases cfg gate when av_runtime_825_tests was inserted between the cfg line and the module declaration"
-    }
-  ],
-  "known_reds_seen": [
-    {
-      "id": "plan077-downcast-flake",
-      "stage": "tt-first-attempt",
-      "error": "benchmark_downcast_performance 19ns vs 10ns target under full-tier parallel load; single-threaded rerun green (0.11s); Plan-466 precedent 3896cf663 documents the 1ns margin / stable false positive under load"
-    }
-  ],
+  "new_reds": [],
+  "known_reds_seen": [],
   "single_instance": true,
   "last_due_check": {
-    "plan_id": 826,
-    "checked_at": "2026-10-28T05:10:00+00:00",
+    "plan_id": 860,
+    "checked_at": "2026-10-28T09:33:00+00:00",
     "due": true,
-    "reason": "PLAN-825 (id%5==0) landed after 858 receipt",
+    "reason": "PLAN-860 (id%5==0) landed after the 859 receipt",
     "resolved": "batch executed this receipt"
   }
 }
