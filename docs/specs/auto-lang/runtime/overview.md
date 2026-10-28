@@ -9,8 +9,10 @@
 - 应答 JSON 头构造三份 → `server_model::cors_json_headers` 单源（pub(crate)）。
 - 迭代器注册样板 14 处（13 处初审清单 + 复审 R1 发现的 natives_strings Str.bytes 位点） → `AutoVM::register_iterator`；Generator 构造三胞胎 →
   `AutoVM::new_generator_state`（engine.rs 单点）。
-- 死纯 shim（Str.contains/starts_with/ends_with，id 1504-1506）删除——production()
-  绑定序恒被 nv 版覆盖、VVM 入口只绑 catalog，两路径均不活。
+- 死纯 shim（Str.contains/starts_with/ends_with，id 1504-1506）函数删除——production()
+  绑定序恒被 nv 版覆盖、VVM 入口只绑 catalog，两路径均不活；其 inventory 注册附带的
+  `Str.X`/`auto.str.X` 名字解析（CALL_SPEC 路由依赖，PLAN-608 守护钉住）在
+  register_std_shims 显式恢复，函数面单源不变。
 - 保留有证：str.len 双版（chars vs bytes 两个活名字）、math/to_int 双轨（tag 感知/
   错误语义边界不同）、error-reply 采样族（plan755 字节级契约钉住，收益/风险比低）。
 

@@ -45,7 +45,7 @@ auto-lang→auto-ui 4 条（PLAN-814 组合根合同内）。
 
 ## PLAN-844 收据（2026-10-28，终值见 plan §9/handoff）
 
-- 生产净删：auto-lang NET-PROD 308,909 → 307,676（**−1,233**，R1 修复后终值；首轮记录 −1,225 系 fmt 归一化前读数，R1 复审更正）；auto-man 资产类 −5 文件
+- 生产净删：auto-lang NET-PROD 308,909 → 307,688（**−1,221** 终值；中间读数 −1,225/−1,233 分别为 fmt 前/R1 后、merge 门修复前，merge 门修复补 6 行显式名字注册）；auto-man 资产类 −5 文件
   （AT-O）；auto-ui 零触面。
 - 真重复清偿 5 族：应答 JSON 头三份→单源、迭代器注册样板 14 处→`register_iterator`、
   Generator 构造三胞胎→`new_generator_state`、死纯 shim 3 函数删除、autoui-skill 目录
