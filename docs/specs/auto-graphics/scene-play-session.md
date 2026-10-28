@@ -120,3 +120,18 @@ Provenance: [PLAN-855](../../plans/archive/855-autographics-authoring-responsibi
 ## Character action extension (PLAN-861)
 
 Character runs (profile 12) add a second input router: real winit keyboard events for A/D, arrows, Space and Enter feed a GameInput sampler only — the legacy x/y/toggle sampler never sees the same key event. OS auto-repeat never creates an edge; edges accumulate only while Running and collapse to one pending edge per action; Pause, Stop, Fault, focus loss, resize/DPI and a new Run clear held state and edges (resume needs a fresh press); a neutral Step dispatches an all-neutral snapshot. Play injects the per-dispatch snapshot (`_ag_char_input`) before the tick, builds the stable-document-id -> run-index map with the spatial configuration, and freezes configuration after `app_start` (character required, solids snapshotted, initial grounded measured by a neutral support scan). Tick-begin verifies solids against the freeze and the character against the controller's last publication, rejecting external moves at the next boundary. The original Starting/clock/Pause/Step/Stop/owner/last-good rules are unchanged.
+
+## PLAN-874 three-dimensional character routing (current)
+
+The single Play/Session, input router and whole-frame admission/publication
+stack is unchanged. A run selected as `autographics.character3d/1` binds the
+six-action snapshot through `_ag_char3_input` and the stable-id table through
+`_ag_char3_map`; the freeze hook runs after `app_start` and the three-axis
+read-only check runs before `app_update` at every tick. Only one router is
+active per run: mapped keys feed the 3D sampler, and the legacy x/y/toggle and
+2D character samplers never see them. Pause/Stop/Fault/blur/resize/DPI/new Run
+clear held state and edges; a neutral Step dispatches an all-neutral snapshot;
+Stop restores the editing view and a fresh Run starts from the document state
+with no inherited input or character state. The old `character/1` routing and
+frame contract are unchanged. The camera remains out of this slice: PLAN-875
+consumes the same dispatch and the user-source horizontal basis.

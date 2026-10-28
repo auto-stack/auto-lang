@@ -206,3 +206,27 @@ Provenance: [PLAN-855](../../plans/archive/855-autographics-authoring-responsibi
 Explicit `autographics.character/1` (assembly version marker 101, play profile 12; `autographics.behavior/6` stays unclaimed and rejected). Assembly appends one trusted unit after the unchanged v5 chain; the public surface is `ag_char_bind/ag_char_solid` (config, free, app_start only), `ag_char_move` (25 of the unchanged 32-credit per-callback pool: the v5 move's 24 plus one fused geometric final-support scan), `ag_char_grounded/ag_char_support` (token-bound, 0 reads the freeze-time neutral determination), `ag_action_held/ag_action_pressed` (MoveLeft/MoveRight/Jump/Restart, packed snapshot delivered per dispatch). Character shape is pinned to the 858 half extents 0.4/0.5; solids are read-only after the app_start freeze (tick-begin faults 20/21 reject bypass moves). The frozen `.agscene` format and profiles 1..5 keep byte-identical assemblies, admission and goldens. See [game-actions-and-character2d](game-actions-and-character2d.md).
 
 Provenance: [PLAN-861](../../plans/archive/861-autographics-public-actions-and-character-control.md). Source: autographics-dev at `0f53f05da` (landing, T-07..08); SDK `7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467` unchanged.
+
+## PLAN-874 current public three-dimensional character extension
+
+A new explicit profile `autographics.character3d/1` (assembly version 102, play
+profile 13) joins the source driver beside the unchanged `character/1`
+surface. It assembles the unchanged v5 transport/segment/sweep/motion chain plus
+new trusted unit `api/character3d_v1.at` (never the 2D unit); the selector is
+explicit (panel `API character3d/1`, command `behavior-api-character3d`,
+CLI `--behavior-api character3d`), and `autographics.behavior/6` remains
+unclaimed and rejected. Source identity is `plan874-identity.json` with
+`verify_plan874.py --controls` as the current generation (the PLAN-861
+generation is gated behind it). Samples `samples/character3d/` (two layouts,
+one user source, speed 4->5 edit) and `tools/check_character3d.py --controls`
+provide reproducible inputs.
+
+The user source owns gravity/speed/jump, the horizontal basis and gameplay; the
+trusted profile supplies only the bounded three-axis contact move, the fused
+vertical final-support determination and the six-action snapshot. Read-only
+enforcement covers all three axes. The public contract, faults, credits and the
+measured 100000-step envelope live in [game-character3d.md](game-character3d.md).
+
+Provenance: [PLAN-874](../../plans/874-autographics-public-character3d.md). Source
+integration remains autographics-dev; the runtime camera, dynamic instances and
+production I2/I3 remain pending.

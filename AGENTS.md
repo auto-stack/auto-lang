@@ -158,6 +158,20 @@ All AI coding assistants working in this repository must strictly adhere to the 
 | `cargo taa` | **仅** aavm 改动后（触发条件/作用域见上） | 3600（其中 aavm 21，XL 9 个 78-303s/个） | 182s（-j6 实测；564 组限流合入后 XL 串行将更长）。P574 后 Windows 本地：双重解释器 12 测试 cfg_attr 跳过（607 skipped），~24s，唯一余红=charts_gallery 预存 | XL 单测 0.8-1.2GB；并发受 jobs 限制 |
 | `cargo ta` | 终极全量（VM+aavm+trans+book+1M churn） | 4023 | 407s（-j6 实测） | 同上 |
 | `cargo th` | 改 HTTP 服务后（真 TCP，串行） | 20 | ~50s（本机实测 ≥3 环境相关红，归因见 plan 568 T7；fix-test-tiering 2026-09-30 后 back_proxy 固定端口族（39xx/40xx 撞 Hyper-V 保留段 WSAEACCES）已改 OS 临时分配清零，plan707 帧时序断言并行负载下偶发 flake 在案=4f123a50e） | 轻（真 TCP 端口） |
+#### AutoGraphics (experimental/) Test Tiering (2026-10-28 user ruling)
+
+- **每个计划只测自己的修改涉及到的用例（per-plan affected cases only）**：`experimental/autographics-*`
+  线的计划在 work/review/merge 阶段只跑该计划改动触面的测试文件与命名 case（如
+  `--test <新/受影响 test file>`、命名单测、新 checker 与其负控），**不为合并而跑全量 AG 套件**。
+- **全量 AG suite 属里程碑档**：等到里程碑时单独抽空执行（单独时段、单实例），不占用日常合并窗口；
+  2026-10-28 用户裁定“合并时跑全部 AG 测试套件约 40 分钟 computer use，期间用户无法用电脑”，
+  因此 merge 不再以全量套件作为合入门槛，改为记录“里程碑档 pending”并保留一次已跑过的全量结果作为参考。
+- 该线的定向面：新增/受影响的 `tests/*.rs`（单进程 `--test-threads=1`）、`verify_planNNN.py --controls`、
+  `check_*.py`（含 `--controls`）、owner/窗口探针的命名 case；根 crate 零改动时**不**跑根
+  `cargo t/tf/tv/tu/docs_gen`（沿用既有裁定）。
+- 已知环境边界：原生窗口类测试（`authoring_interaction`/`authoring_probe_exit` 等）在同机并发或反复
+  spawn 窗口时可能瞬时红/挂起，隔离重放绿时应按环境归因记录，不据此判代码失败。
+
 #### Heavy-Mem Test Tiering (Plan 564)
 
 - Per-test peak weights live in `.config/test-mem-weights.md` (single source of truth; measured by `python scripts/measure_test_mem.py <filter>`, nextest `--jobs=1` serial + per-process peak polling).
