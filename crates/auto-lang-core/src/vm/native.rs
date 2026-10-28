@@ -1664,6 +1664,18 @@ impl NativeInterface {
         }
 
         // --- Extra aliases (1-to-N mappings, not in catalog) ---
+        // PLAN-844 D-4：Str.contains/starts_with/ends_with 的纯 rust_fn shim
+        // 退役后，其 inventory 注册附带的三种名字形态（"Str.X" 直名与
+        // "auto.str.X" canonical/小写形态）失去唯一来源——PLAN-608 路由守护
+        // 要求 CALL_SPEC 对这些名恒 registry 命中（nv shim 经 production()
+        // 覆盖块绑定 id，函数面不变）；此处单点显式注册，取代偶发的
+        // inventory 副作用。
+        self.register_name("Str.contains", NATIVE_STR_CONTAINS);
+        self.register_name("auto.str.contains", NATIVE_STR_CONTAINS);
+        self.register_name("Str.starts_with", NATIVE_STR_STARTS_WITH);
+        self.register_name("auto.str.starts_with", NATIVE_STR_STARTS_WITH);
+        self.register_name("Str.ends_with", NATIVE_STR_ENDS_WITH);
+        self.register_name("auto.str.ends_with", NATIVE_STR_ENDS_WITH);
         self.register_name("Result.map_err", NATIVE_RESULT_MAP_ERR);
         self.register_name("Result.Ok.map_err", NATIVE_RESULT_MAP_ERR);
         self.register_name("Result.Err.map_err", NATIVE_RESULT_MAP_ERR);
