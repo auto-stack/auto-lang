@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-862
-status: execution_done
+status: executing
 feature_name: AV源码入口、Unit与尾值语义（R2-E/SEM-05）
 author: [Codex]
 created_at: 2026-10-28
@@ -18,7 +18,7 @@ new_spec_components:
 touched_goals: [GOAL-002]   # 解释器/VM 快周转：热重载与真实源码执行底座
 
 affects: [auto-av, auto-mir, auto-ac, auto-test-case]
-current_step: 6
+current_step: 4
 total_steps: 9
 ---
 
@@ -203,13 +203,31 @@ T-02 必须产出 `attachments/862/work/entry-contract.md`，逐项冻结（未�
 | T-02 | work | T-01 | 冻结 `entry-contract.md`：入口矩阵/Unit表示/结果通道/退出映射/profile 三元组；冲突项列用户决定；冻结fresh/hit/restart/body-edit、周转/内存口径与反控 | AC-01/02 | [x] |
 | T-03 | work | T-02、D868、S释放/接受 | 实现源码域：lexer/parser/resolve/typecheck/adapter + descriptor + 正反诊断，定向测试 V-01（**T-03a 前端半 + T-03b 发射/HIR 半均已交付**，见 §9） | AC-01 | [x] |
 | T-04 | work | T-03 | 实现共享lowering/MIR/ABC/AV：unit、entry kind、结果通道、恢复；V-02/03/04；核既有mn消费者受控拒绝新域、旧域保持，记录交接（**已交付**，见 §9） | AC-02/03/04 | [x] |
-| T-05 | work | T-04 | 语料/脚本/绑定：追加 ace-m1 行、独立 oracle、`verify-av-862.ps1`，跑定向面并提交代码及证据摘要（原始证据仅本地）；**已交付**（`entry-862/` 语料 + `scripts/verify-av-862.ps1` 四 Scope + binding U01–U10，见 §9） | AC-05 | [x] |
-| T-06 | work | T-05、D868 | M1 分母重绑定：实跑 24 个 `probe` + 27 个 `wait:*` 逐格定级、按决策件写状态、产出证据摘要与实测 `clean` 数；不改 expected/schema；执行V-07首例cache/文件化/周转/内存与兼容验证；**已交付**（probe/wait 24/27→0/0；实测 corpus clean=20/73；V-07 数字见 §9） | AC-06/04 | [x] |
+| T-05 | work | T-04 | 语料/脚本/绑定：追加 ace-m1 行、独立 oracle、`verify-av-862.ps1`，跑定向面并提交代码及证据摘要（原始证据仅本地）；**R1 重开**（T-07 needs_fix：F-862-R1-02/03/05/06/07 在其写面内；已交付部分见 §9 work 记录） | AC-05 | [ ] |
+| T-06 | work | T-05、D868 | M1 分母重绑定：实跑 24 个 `probe` + 27 个 `wait:*` 逐格定级、按决策件写状态、产出证据摘要与实测 `clean` 数；不改 expected/schema；执行V-07首例cache/文件化/周转/内存与兼容验证；**R1 重开**（F-862-R1-01 NA-4 文档化、F-862-R1-04 规范增量、F-862-R1-08 内存采样；已交付部分见 §9 work 记录） | AC-06/04 | [ ] |
 | T-07 | review | T-06 | 独立最终review，核 AC/V/SD 与实际入口、`na` 反滥用；merge 门 pending | AC-07 | [ ] |
 | T-08 | merge | T-07 pass | 冻结提交上裸 `cargo t` + `tv`，失败归因不豁免 | AC-08 | [ ] |
 | T-09 | merge | T-08 | Spec/ledger 沉淀、归档、worktree guard clean 清树 | AC-09 | [ ] |
 
 ## 9. 复审记录
+
+2026-10-28 **review T-07（final，needs_fix）**：`stage: review | review_scope: final | reviewer_identity/limitations: 本会话即 T-01..T-06 实施会话，无独立外部/异模型复审上下文；结论由冻结提交 diff、原始回执复算与独立探针重建，不采信 work 总结 | plan_id: PLAN-862 | plan_revision: 3 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-862/auto-lang | branch: plan-862-dev | reviewed_commit: 0e9c08189eeff8327f9b573b0620f84d4a12c1bd（树 clean） | base_commit: 13057957c6363c87f63bb2e2edc2d36ad3ad773a（master 复审时为 a27435014，merge 需调和） | dependency_revisions: auto-down c3464d0（只读）、auto-ui f489c7b（只读，本计划新增组内检出） | spec_inputs: 计划 sha256 332e7afa…、entry-contract b364c10b…、对等口径决策件 8ef5876d…、ace-m1-conformance 976dfd60…（本计划未改 docs/specs） | acceptance_results: AC-01 pass、AC-02 pass（resource/cancel/infra 腿见边界 B1）、AC-03 partial（F-03）、AC-04 partial（F-08）、AC-05 pass、AC-06 partial（F-01，NA-4 已由用户当轮裁定） | pending_closeout_gates: T-08 merge 裸 cargo t + tv（diff 触及 MIR/ABC/AV 与前端）；T-09 Spec/ledger/归档/清树 | findings: F-862-R1-01..08（OPEN）| evidence: 见下 | next: work（T-05/T-06 重开）`。
+
+- **独立复核（本轮实际执行，均在 reviewed_commit 上）**：① 逐行比对 `binding.tsv`：103 → 113 行、无删除、**expected 列 103 行零改动**、无 `src/*.at` 与既有 case 文件改动（仅 binding + 新目录）；② 独立复算五态：corpus 73 行、green 单元格 137、**clean = 20/73**（与 acceptance 打印一致，与"50/103"投影的差异=未执行格保留旧 token，见 work 记录）；③ 抽样对齐原始回执：T01/av-owned PASS、R04/av-owned PASS 且 av-data FAIL、V01/av-core `source.lex`、B17/ac `mn.unsupported.frontend`、B18/avm infra ERROR、R07/a2r emit 拒绝、E01/E02 无源码行（未跑）→ 与表内 token 一致；④ 在冻结提交上复跑判别力反控：`unit`→`value` 变异恰好红 U02/U04，entry suite 12/12；⑤ V-07 周转由 3 份原始报告重算 n=36/P90=362ms/median 225/max 619，三次均 12 PASS 0 SKIP；⑥ 合同负例探针（本地产物，未入库）：`av_channel:"unit"`+`exit:0` 在装载期被拒（文本与实现一致），但见 F-07；⑦ 触及 crate `cargo check` 无新增告警；`rustfmt --check` 见 F-06；无新增 `dbg!/println!/TODO`（worker 的 `eprintln!` 沿用既有协议错风格）；⑧ `docs/specs/**` 零改动；852 脚本零改动。
+- **F-862-R1-01（high，AC-06 / 反滥用规则 2、3）OPEN**：T-06 为 U01–U10 的 ac/avm/a2r 共 30 格新增 `na:m1(NA-4)`，而计划 §5.5 与决策件 §5 规则 2 都禁止计划自行新增 `na` 规则、规则 3 规定 na 增长无决策记录即 merge 门失败。**用户 2026-10-28 复审中裁定：批准 NA-4**（入口/Unit 为 AV-only profile，native/legacy 不要求判它；重新进入条件=有计划冻结 native/legacy 对该 profile 的支持时逐行改回 `gap:<plan>`）。修复：把该裁定写入 SD-06 正文与决策件附记（merge 沉淀时落 canonical），并在 T-09 的 852 acceptance 报告单列 `na` 分布；U 行 token 保持不变。
+- **F-862-R1-02（medium，AC-01/AC-02、SD-01/SD-05）OPEN**：冻结码 `source.unit-placement` **不可达**——参数/局部/字段位置的 `unit` 在 parser 即被 `source.unsupported` 拒绝（`is_type_word`/`type_word` 未含 unit，`member_type` 同），resolve 的两处 `source.unit-placement` 分支无输入可达；`verify.unit-placement`/`mir.unit-placement` 只在手工构造文档/MIR 时可达且**无测试**。T-03 §9 把"Unit 放置"列为已通过证据，与事实不符。复现：`fn helper(u unit) int { return 0 }` + `fn main() int { return 0 }` 与 `let a unit = 1`，经 entry-unit profile 实跑均返回 `source.unsupported`（本地产物 `tmp/862/probe/`）。修复二选一并记录：(a) 推荐——在 entry-unit 域让 `param_type/decl_ann/member_type/type_word` 接受 `unit` 类型词，使冻结码可达，并在 ac-core 补 3 条负例（param/local/field）；(b) 若维持 parser 拒绝，须把 SD-01 写成"结果位以外 `unit` = `source.unsupported`"并 retire `source.unit-placement`（合同修订，超出本计划授权，需回用户）。
+- **F-862-R1-03（medium，AC-03）OPEN**：双向身份拒绝只有单向证据——旧 profile 拒新语法有测试（`void_is_not_part_of_the_other_profiles`、`expression_statements_stay_rejected_on_the_scalar_surface`、U02 `/av-scalar-rejects`）✓；**新域侧**（旧 scalar HIR 文档喂 `verify_entry_unit`、AVAB/AVAD 字节喂 entry-unit decode）无直接测试，只有 entry-unit magic/kind 篡改测试。修复：加两条身份负例（domain 失配 + wire 家族失配）或引证并补齐既有位置。
+- **F-862-R1-04（medium，SD-04/SD-06）OPEN**：规范增量不完整——SD-06 未写 NA-4（用户已裁定）、未写本轮新增 owner token（`a2r-golden`/`scenario-tooling`/`av-text-move`/`av-text-nul`/`av-mut-param`/`P864`）与 `probe`/`wait:*` 清零口径；SD-01 未收录实现中新增但不在 T-02 §8 冻结清单的两个码（`source.entry-order`、`source.entry-result`）。按现 delta 沉淀会让 canonical spec 与 `binding.tsv` 不一致。
+- **F-862-R1-05（low）OPEN**：`crates/auto-test-case/src/contract.rs` `av_channel` 上方注释称"非零 `exit` 与 `unit` 同格矛盾"，实现拒绝**任何**与 `unit` 并存的 `exit`（含 0，已复现）。修复：改注释为"unit 没有 exit oracle"（保持严格性）。
+- **F-862-R1-06（low）OPEN**：`crates/auto-lang-core/src/test_cases/ac_av.rs` 两处 `probe_toolchain_axes(...)` 调用超宽，`rustfmt --check` 报 diff（其余触及文件干净）。修复：`cargo fmt` 后重跑 ac_av 定向测试。
+- **F-862-R1-07（low）OPEN**：新增准入负例无持久测试——`av_channel:"unit"`+`exit` 的装载期拒绝、未知 `profile`、非 core recipe 带 `profile`，本轮仅以临时探针验证。修复：落成合同层单测（3 条）。
+- **F-862-R1-08（medium，AC-04/V-07）OPEN**：V-07 内存腿只有模块预算计数（`peak_staging=6195B`/`peak_hot=2906B`/`slot=120B`），**未记录进程峰值样本与旧 profile 反控**；T-02 §7 口径要求"记录命令、样本与反控"。修复：用既有 `mempeek` 采样一次 entry-unit 请求的进程峰值并同命令采样 scalar 控制组，或按 (a) 记录明确的边界决定与理由。
+- **边界（非 finding，已核）**：
+  - B1：V-02 的 resource/cancel/infra 腿在本 profile **无新增触发面**（entry-unit 面为 scalar 子集，Unit 无分配载荷，probe 配方不暴露 limit/cancel 旋钮）；这些是 AV 执行器既有通道，由既有 core 测试守护，本计划只新增"int/Unit/trap 三态互不替代"的证据（含 Unit≠`I32(0)` 与 trap 测试）。
+  - B2：决策件附录对 C01/C02/I01–I11/G02–G08 写无规则 ID 的 `na:m1`，与其 §5 规则 1 冲突；全表词表回填须先裁定这些行的规则归属（候选 NA-5/NA-6）——记为待决策，本轮不做（避免制造违规 token）。故 M1 clean 以实测 20/73 记，不与 50/103 投影比较。
+  - B3：`ok:av-closures-823`/`ok:av-data-typed` 属 823/824 的历史 ok 前缀 token，acceptance 以 `^ok` 计入绿；本计划未改其语义。
+- **D-862-R1-01（debt，范围外，已登记 KNOWN-DEBT）**：PLAN-852 的 `scripts/verify-ace-m1-852.ps1` Load-Binding 用 `-split "`t", -1`，在 pwsh 7.6.9 下第三操作数按 options 解析，返回 1 段 → 其 `contract`/`acceptance` scope 无法运行（本计划未改该脚本，git diff 为空）。本计划 `verify-av-862.ps1` 已用 `.Split([char]9)` 覆盖同一完整性面（12 列/唯一 id/owner 注记/`na` 规则 ID）。852 已归档，修复需独立 L0 worktree。
+- **未复核（留给 merge/后续）**：整档 `cargo t`/`tv`（T-08）、Spec/ledger 沉淀与归档（T-09）、a2r 新金样、以及 decision-appendix 全表回填（B2）。
 
 2026-10-28 **work T-05 + T-06（语料/脚本/绑定 + M1 分母重绑定）**：`stage: work | plan_id: PLAN-862 | plan_revision: 3 | outcome: 完成（T-01..T-06 全部完成；T-07 review / T-08/T-09 merge 未开始） | worktree: D:/autostack/.wt/lang-862/auto-lang | branch: plan-862-dev | base: 13057957c | code_commit: 8cda9958a（T-05）+ ea644f8e8（T-06）+ 0e9c08189（验证脚本装载器修正），其上 327037b06 为 T-03b/T-04 | deps: auto-down detached c3464d0 只读；**新增组内只读兄弟检出** `D:/autostack/.wt/lang-862/auto-ui`（detached f489c7b，根 crate 路径依赖 `../../../auto-ui` 所需，非本计划写面，merge 清理时一并 guard/移除） | task_ids: T-05, T-06 | next: review T-07`。
 
