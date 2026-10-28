@@ -29,7 +29,6 @@ use crate::fn_hir_codec::{
     rebind_fn_hir_body, FnHirArtifact,
 };
 use crate::function_queries::{BodyFactRead, FnEnv};
-use auto_mir_lower::{lower_checked, lower_function_unit};
 use crate::semrefs::content_version_of;
 use crate::wire::WireCodec;
 use ac_syntax_core_adapter::{project_decl_strict, project_strict, CoreKinds};
@@ -54,6 +53,7 @@ use auto_av_core::function_code::FunctionCode;
 use auto_av_core::mir::MirModule;
 use auto_av_core::mir_verify::verify_mir;
 use auto_av_core::program_snapshot::ProgramSnapshot;
+use auto_mir_lower::{lower_checked, lower_function_unit};
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::rc::Rc;
@@ -248,7 +248,7 @@ pub struct EditOutcome {
 }
 
 impl EditOutcome {
-    fn rejected(revision: u64, reason: String, diagnostics: Vec<String>) -> Self {
+    pub(crate) fn rejected(revision: u64, reason: String, diagnostics: Vec<String>) -> Self {
         EditOutcome {
             ok: false,
             revision,

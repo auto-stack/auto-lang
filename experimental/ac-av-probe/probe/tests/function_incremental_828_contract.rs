@@ -540,6 +540,11 @@ fn verify_profile(
     use auto_ac_prototype::verify;
     match p {
         SourceProfile::Core => verify::verify(b),
+        // PLAN-866 compat repair (864 landing gap): the collections
+        // source profile landed in ac-core without this exhaustive-match
+        // update — this contract test never feeds it; route it to the
+        // real collections verifier to keep the match honest.
+        SourceProfile::Collections => verify::verify_collections(b),
         SourceProfile::Scalar => verify::verify_scalar(b),
         SourceProfile::Text => verify::verify_text(b),
         SourceProfile::Record => verify::verify_record(b),

@@ -16,9 +16,12 @@
 //!   early; rejected edits are observable reasons; a cancelled candidate
 //!   releases its never-installed code object (Weak oracle).
 
-use auto_av_core::av::{execute_program_steps, CancelFlag, ExecLimits, SteppedOutcome};
+use auto_av_core::av::{
+    execute_program_steps, resume_program, resume_program_at_call_boundary, CancelFlag, ExecLimits,
+    SteppedOutcome,
+};
 use auto_av_core::contract::{ExecOutcome, Value};
-use auto_av_probe::resident::{ResidentConfig, ResidentRunner, ResidentState};
+use auto_av_probe::resident::{ResidentCandidate, ResidentConfig, ResidentRunner, ResidentState};
 use auto_av_probe::session::warmup;
 
 /// Straight-line accumulation loop: deterministic value (500) and step
@@ -296,4 +299,397 @@ fn av_resident_866_candidate_queue_never_disturbs_the_run() {
     // Finish on the old version: 300 rounds x 7.
     let (out, _, _) = drive_to_completion(&mut r, 60_000);
     assert_eq!(success_value(&out), 300 * 7, "old version end to end");
+}
+
+// ---------------------------------------------------------------------------
+// Online reload (V-02..V-05): the safety-point machinery.
+// ---------------------------------------------------------------------------
+
+/// Helper body byte offset of the `7` in `return 7` (old-source coords).
+fn seven_at(src: &str) -> (u64, u64) {
+    let at = src.find("return 7").expect("helper body") + "return ".len();
+    (at as u64, (at + 1) as u64)
+}
+
+/// Run the CALLS scenario once: drive `arm_slices` slices, submit the
+/// helper 7->9 edit, apply it at the safety point, finish, and report
+/// (final value, boundary steps, retired snapshot alive at end).
+fn calls_scenario(slice_steps: u64, arm_slices: u64) -> (i32, u64, bool) {
+    let session = warmup(CALLS, "d_main", &[]).expect("warmup");
+    let mut r = ResidentRunner::start(
+        session,
+        ResidentConfig {
+            slice_steps,
+            ..ResidentConfig::default()
+        },
+    );
+    for _ in 0..arm_slices {
+        let report = r.slice();
+        assert_eq!(report.state, ResidentState::Running, "arm phase stays live");
+    }
+    let (s, e) = seven_at(CALLS);
+    assert!(matches!(r.submit_edit(s, e, b"9".to_vec()), Ok(Ok(()))));
+    let sp = r.apply_pending_at_safety_point();
+    assert!(sp.armed, "a live chain and a queued candidate must arm");
+    assert!(sp.reached_boundary, "armed segment must meet a helper call");
+    assert!(sp.edit.ok, "body edit must commit at the safety point");
+    assert!(
+        sp.edit.install_set.iter().any(|d| d.contains("helper")),
+        "install set targets helper: {:?}",
+        sp.edit.install_set
+    );
+    assert!(sp.visibility.is_some(), "visibility sample recorded");
+    // The retired snapshot Weak is handed out on the successful swap.
+    let retired = sp.retired_snapshot_weak.expect("swap retires a snapshot");
+    let (out, _, _) = drive_to_completion(&mut r, 60_000);
+    assert_eq!(r.chain_entries(), 1, "the swap never restarts the chain");
+    (
+        success_value(&out),
+        sp.steps_at_boundary.expect("boundary steps recorded"),
+        retired.upgrade().is_some(),
+    )
+}
+
+/// V-02: the online swap takes effect at an EXACT call boundary — the
+/// rounds after the safety point run the new body, the rounds before it
+/// ran the old one — and the effective point is INDEPENDENT of the host's
+/// fuel granularity (the same arm position lands the same boundary under
+/// any slicing, which a slice-boundary switcher cannot satisfy).
+#[test]
+fn av_resident_866_online_swap_effective_at_call_boundary() {
+    // Granularity A: 10 slices x 64 = 640 fuel steps to the arm.
+    let (va, boundary_a, retired_alive_a) = calls_scenario(64, 10);
+    // Granularity B: 20 slices x 32 = the SAME 640 arm position.
+    let (vb, boundary_b, retired_alive_b) = calls_scenario(32, 20);
+
+    // Both landed the same guest-semantic effective point.
+    assert_eq!(
+        boundary_a, boundary_b,
+        "effective point is guest-semantic, not host-fuel"
+    );
+    assert_eq!(va, vb, "final value is slice-granularity independent");
+
+    // Exact old/new split: va = 7*(m-1) + 9*(301-m) for a mid-run m —
+    // neither all-old (2100) nor all-new (2700), and the delta from
+    // all-old is an exact number of new calls.
+    assert_ne!(
+        va,
+        300 * 7,
+        "an all-old run means the swap never landed mid-chain"
+    );
+    assert_ne!(
+        va,
+        300 * 9,
+        "an all-new run means the chain restarted on the new body"
+    );
+    let delta = va - 300 * 7;
+    assert_eq!(delta % 2, 0, "each new call adds exactly +2");
+    let new_calls = (delta / 2) as i32;
+    assert!(
+        (1..300).contains(&new_calls),
+        "mid-run swap: {new_calls} new calls out of 300"
+    );
+
+    // The retired SNAPSHOT dies at/after the swap even while the chain
+    // keeps running: frames pin code objects, not whole snapshots.
+    assert!(
+        !retired_alive_a && !retired_alive_b,
+        "retired snapshot released after swap"
+    );
+}
+
+/// V-02 negative control at the core seam: committing at the safety point
+/// but resuming WITHOUT the swapped resolution is the pause-resume-only
+/// implementation — it must keep running the old body to the end.
+#[test]
+fn av_resident_866_no_swap_resume_stays_old() {
+    let mut session = warmup(CALLS, "d_main", &[]).expect("warmup");
+    let cancel = CancelFlag::new(false);
+    let limits = ExecLimits::default();
+    let snap = session.current();
+    let mut paused = match execute_program_steps(&snap, &limits, &cancel, 640) {
+        SteppedOutcome::Paused(p) => p,
+        _ => panic!("640 fuel must park the 300-round loop"),
+    };
+    let (s, e) = seven_at(CALLS);
+    let prepared = match session.prepare_edit(s, e, b"9".to_vec()).expect("prepare") {
+        Ok(p) => p,
+        Err(out) => panic!("body edit must prepare: {:?}", out.non_fast_path_reason),
+    };
+    // Park at the very same call boundary the honest driver would.
+    paused = match resume_program_at_call_boundary(paused, &cancel, Some(4_096)) {
+        SteppedOutcome::Paused(p) => p,
+        _ => panic!("armed segment must meet a helper call"),
+    };
+    let committed = session.commit(prepared);
+    assert!(committed.ok, "commit at the boundary succeeds");
+    // The dishonest variant: plain resume, no swapped resolution.
+    let out = match resume_program(paused, &cancel, None) {
+        SteppedOutcome::Finished(o, _) => o,
+        _ => panic!("plain resume must finish"),
+    };
+    assert_eq!(
+        success_value(&out),
+        300 * 7,
+        "no-swap resume keeps the old body"
+    );
+}
+
+/// V-03: an in-flight caller frame keeps its pinned old code across the
+/// swap — outer's loop logic stays the old generation while every helper
+/// dispatch after the safety point resolves new.
+const NESTED: &str = "fn helper() int { return 7 }\nfn outer() int {\n    var t = 0\n    var i = 0\n    for i < 300 {\n        t = t + helper()\n        i = i + 1\n    }\n    return t\n}\nfn main() int { return outer() }\n";
+
+#[test]
+fn av_resident_866_inflight_frame_stays_old_callee_resolves_new() {
+    let session = warmup(NESTED, "d_main", &[]).expect("warmup");
+    let mut r = ResidentRunner::start(
+        session,
+        ResidentConfig {
+            slice_steps: 64,
+            ..ResidentConfig::default()
+        },
+    );
+    // Drive into outer's loop: main -> outer (in flight) -> helper calls.
+    for _ in 0..10 {
+        assert_eq!(r.slice().state, ResidentState::Running);
+    }
+    let (s, e) = seven_at(NESTED);
+    assert!(matches!(r.submit_edit(s, e, b"9".to_vec()), Ok(Ok(()))));
+    let sp = r.apply_pending_at_safety_point();
+    assert!(sp.armed && sp.reached_boundary && sp.edit.ok);
+    // The caller chain (outer's frame) was NOT rebuilt: the swap only
+    // redirects resolution; one chain entry for the whole run.
+    assert_eq!(r.chain_entries(), 1);
+    let (out, _, _) = drive_to_completion(&mut r, 60_000);
+    let v = success_value(&out);
+    // outer (old code, in flight across the swap) accumulated rounds of
+    // helper: rounds before the boundary at 7, after at 9. An
+    // implementation that rebuilt the in-flight frame onto the new
+    // revision, or restarted it, cannot produce this exact split.
+    let delta = v - 300 * 7;
+    assert_eq!(delta % 2, 0);
+    let new_calls = (delta / 2) as i32;
+    assert!(
+        (1..300).contains(&new_calls),
+        "in-flight old caller + new callee split: got {new_calls}/300 new calls"
+    );
+}
+
+/// V-04: stale and foreign candidates are refused AT THE SAFETY POINT —
+/// the run keeps the current version and the refusal is observable.
+#[test]
+fn av_resident_866_stale_and_foreign_refused_at_safety_point() {
+    let session = warmup(CALLS, "d_main", &[]).expect("warmup");
+    let mut r = ResidentRunner::start(
+        session,
+        ResidentConfig {
+            slice_steps: 64,
+            ..ResidentConfig::default()
+        },
+    );
+    for _ in 0..10 {
+        assert_eq!(r.slice().state, ResidentState::Running);
+    }
+    // Two candidates prepared at the same base revision.
+    let (s, e) = seven_at(CALLS);
+    assert!(matches!(r.submit_edit(s, e, b"9".to_vec()), Ok(Ok(()))));
+    assert!(matches!(r.submit_edit(s, e, b"9".to_vec()), Ok(Ok(()))));
+
+    // First commits and swaps (revision advances).
+    let first = r.apply_pending_at_safety_point();
+    assert!(first.edit.ok, "first candidate installs");
+    let revision_after_first = r.session().revision();
+
+    // Second is stale now (same base revision as the first): refused at
+    // its safety point, run continues on the installed version.
+    let second = r.apply_pending_at_safety_point();
+    assert!(second.armed && second.reached_boundary);
+    assert!(!second.edit.ok, "stale candidate must be refused");
+    assert!(
+        second.edit.non_fast_path_reason.is_some() || !second.edit.diagnostics.is_empty(),
+        "refusal reason observable: {:?}",
+        second.edit.non_fast_path_reason
+    );
+    assert_eq!(r.session().revision(), revision_after_first);
+    assert!(second.retired_snapshot_weak.is_none(), "no swap on refusal");
+
+    // Foreign: a candidate minted by ANOTHER session, applied through
+    // the primitive — refused by the session's own commit.
+    let mut other = warmup(CALLS, "d_main", &[]).expect("other session");
+    let foreign_prepared = match other.prepare_edit(s, e, b"11".to_vec()).expect("prepare") {
+        Ok(p) => p,
+        Err(out) => {
+            panic!(
+                "foreign body edit must prepare: {:?}",
+                out.non_fast_path_reason
+            )
+        }
+    };
+    let foreign =
+        r.apply_prepared_at_safety_point(ResidentCandidate::wrap_prepared(foreign_prepared));
+    assert!(foreign.armed && foreign.reached_boundary);
+    assert!(!foreign.edit.ok, "cross-session candidate must be refused");
+    assert_eq!(
+        r.session().revision(),
+        revision_after_first,
+        "foreign never installs"
+    );
+
+    // Finish on the FIRST swap's version only: 7/9 split, no 11 ever.
+    let (out, _, _) = drive_to_completion(&mut r, 60_000);
+    let delta = success_value(&out) - 300 * 7;
+    assert_eq!(delta % 2, 0);
+    assert!(
+        (delta / 2) as i32 >= 1,
+        "the one committed swap did land mid-run"
+    );
+    assert!(
+        success_value(&out) <= 300 * 9,
+        "no round ever saw the refused 11"
+    );
+}
+
+/// V-05 (bounded recycle face): churn distinct helper bodies through the
+/// safety point; every retired snapshot is released, the live-old ledger
+/// stays empty, and the bounded history keeps the old-generation budget.
+#[test]
+fn av_resident_866_churn_retired_generations_release() {
+    let session = warmup(CALLS, "d_main", &[]).expect("warmup");
+    let mut r = ResidentRunner::start(
+        session,
+        ResidentConfig {
+            slice_steps: 128,
+            ..ResidentConfig::default()
+        },
+    );
+    assert_eq!(r.slice().state, ResidentState::Running);
+    let mut retired_weaks = Vec::new();
+    let swaps = 8u32;
+    for k in 0..swaps {
+        // Each edit is a DISTINCT body content (7 -> 9 -> 11 -> ...), so
+        // every commit mints a new generation (no content hits). The
+        // coordinates are computed on the session's CURRENT source —
+        // prior edits shifted the offsets (old-source byte semantics).
+        let from = (7 + 2 * k).to_string();
+        let to = (7 + 2 * (k + 1)).to_string();
+        let cur = r.session().src().to_string();
+        let needle = format!("return {from}");
+        let at = cur.find(&needle).expect("current helper body") + "return ".len();
+        let (s, e) = (at as u64, (at + from.len()) as u64);
+        assert!(
+            matches!(r.submit_edit(s, e, to.into_bytes()), Ok(Ok(()))),
+            "churn edit {k} prepares"
+        );
+        let sp = r.apply_pending_at_safety_point();
+        assert!(
+            sp.armed && sp.reached_boundary && sp.edit.ok,
+            "churn swap {k}"
+        );
+        if let Some(w) = sp.retired_snapshot_weak {
+            retired_weaks.push(w);
+        }
+        // V-06 structural face: a helper-only body edit must do ZERO
+        // production work for every other function, and no whole-module
+        // stage may ever move on the edit path.
+        assert!(
+            r.session()
+                .counters()
+                .stages_of("main")
+                .values()
+                .all(|v| *v == 0),
+            "unchanged main has zero production stages"
+        );
+        assert!(
+            r.session()
+                .counters()
+                .whole_module()
+                .values()
+                .all(|v| *v == 0),
+            "no whole-module recompute on the online path"
+        );
+        assert_eq!(
+            r.live_old_generations(),
+            0,
+            "retired snapshots release at swap"
+        );
+        // Keep the chain running between swaps.
+        if r.state() == ResidentState::Running {
+            assert_eq!(r.slice().state, ResidentState::Running);
+        }
+    }
+    assert_eq!(
+        r.counters().get("resident:swaps").copied().unwrap_or(0),
+        swaps as u64
+    );
+    assert!(retired_weaks.iter().all(|w| w.upgrade().is_none()));
+    // The bounded history keeps per-function old generations capped.
+    let fns = r.session().function_names().len() as u64;
+    assert!(
+        (r.session().history_len() as u64) <= 32 * fns,
+        "history bounded: {} entries for {fns} functions",
+        r.session().history_len()
+    );
+    let (out, _, _) = drive_to_completion(&mut r, 60_000);
+    // Rounds strictly increase per swap; the exact split is deterministic
+    // but granular — the invariant is the value lies strictly between the
+    // all-old and all-new extremes.
+    let v = success_value(&out);
+    assert!(v > 300 * 7, "at least one swap landed: {v}");
+    assert!(
+        v < 300 * (7 + 2 * swaps as i32),
+        "not all rounds ran the last body: {v}"
+    );
+}
+
+/// V-06: reload visibility by the TestCase v2 calibre — development-time
+/// effective samples, P90 <= 2000ms hard gate, P95/P99 diagnostics only,
+/// sample count never shrunk (30 planned, 30 recorded).
+#[test]
+fn av_resident_866_reload_visibility_p90_v2_calibre() {
+    const SAMPLES: usize = 30;
+    let session = warmup(CALLS, "d_main", &[]).expect("warmup");
+    let mut r = ResidentRunner::start(
+        session,
+        ResidentConfig {
+            slice_steps: 128,
+            ..ResidentConfig::default()
+        },
+    );
+    assert_eq!(r.slice().state, ResidentState::Running);
+    let mut samples: Vec<u128> = Vec::with_capacity(SAMPLES);
+    for k in 0..SAMPLES as u32 {
+        let from = (7 + 2 * k).to_string();
+        let to = (7 + 2 * (k + 1)).to_string();
+        let cur = r.session().src().to_string();
+        let needle = format!("return {from}");
+        let at = cur.find(&needle).expect("current helper body") + "return ".len();
+        let (s, e) = (at as u64, (at + from.len()) as u64);
+        assert!(matches!(r.submit_edit(s, e, to.into_bytes()), Ok(Ok(()))));
+        let sp = r.apply_pending_at_safety_point();
+        assert!(
+            sp.armed && sp.reached_boundary && sp.edit.ok,
+            "sample {k} swap"
+        );
+        samples.push(sp.visibility.expect("visibility sample").as_micros());
+        if r.state() == ResidentState::Running {
+            let _ = r.slice();
+        }
+    }
+    assert_eq!(samples.len(), SAMPLES, "sample count never shrinks");
+    samples.sort_unstable();
+    let at = |q: f64| samples[(((SAMPLES as f64) * q).ceil() as usize).min(SAMPLES - 1)];
+    let p90 = at(0.90);
+    let p95 = at(0.95);
+    let p99 = at(0.99);
+    // Development-time hard gate (TestCase v2): P90 <= 2000ms.
+    assert!(
+        p90 <= 2_000_000,
+        "P90 reload visibility {p90}us exceeds the 2000ms hard gate"
+    );
+    // Diagnostics only (not gates): P95/P99 recorded with the sample.
+    eprintln!(
+        "av_resident_866 reload visibility: n={} p90={}us p95={}us p99={}us",
+        SAMPLES, p90, p95, p99
+    );
 }

@@ -6,22 +6,20 @@
 //! resumes the paused chain, so guest-visible state (loop counters, step
 //! accounting, pinned code) carries across slices. The host does not pause
 //! the guest *because an edit arrived* — edits travel as prepared
-//! candidates and take effect only at the frozen safety points (guest call
-//! boundaries), which land with the core dispatch hook after the 864
-//! write-surface release (wave-handoff §5.0 write ordering; this module
-//! deliberately does not fork a private runtime to bypass that ordering).
+//! candidates and take effect exactly at the frozen safety points (guest
+//! call boundaries, via the core `resume_program_at_call_boundary` /
+//! `resume_program_with_resolution` pair): the armed segment keeps
+//! executing guest work until a real call boundary parks it, the 828
+//! commit publishes there, and the swap-resolution resume redirects every
+//! LATER call dispatch to the new revision while in-flight frames keep
+//! their pinned old code to return (no mixed chains).
 //!
-//! Phase 1 (parallel with PLAN-864, private module + private tests):
-//! continuous slice advance, cancel/stop, observation counters, and the
-//! candidate queue face — `prepare_edit` is host-side and never touches
-//! the running chain, so queueing/rejecting candidates is already
-//! observable without the safety-point hook.
-//!
-//! Negative-control contract (SD-01 禁止替代): a restart, a re-run, or a
-//! pause-that-secretly-restarts cannot pass the V-01 oracle — the honest
-//! driver's final value AND cumulative step count are identical under any
-//! slice granularity, while any restart-per-slice variant either exhausts
-//! the cumulative fuel or returns a partial-run value.
+//! Negative-control contract (SD-01 禁止替代): a restart, a re-run, a
+//! pause-that-secretly-restarts, a label-only bump, or a swap that never
+//! lands mid-chain cannot pass the V-01/V-02 oracles — the honest driver's
+//! final value and cumulative step ledger are identical under any slice
+//! granularity, while the effective-iteration math pins exactly which
+//! calls ran old and which ran new.
 
 use std::collections::BTreeMap;
 use std::sync::atomic::Ordering;
@@ -29,9 +27,11 @@ use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
 use auto_av_core::av::{
-    execute_program_steps, resume_program, CancelFlag, ExecLimits, PausedRun, SteppedOutcome,
+    execute_program_steps, resume_program, resume_program_at_call_boundary,
+    resume_program_with_resolution, CancelFlag, ExecLimits, PausedRun, SteppedOutcome,
 };
 use auto_av_core::contract::ExecOutcome;
+use auto_av_core::program_snapshot::ProgramSnapshot;
 
 use crate::session::{EditOutcome, FunctionIncrementalSession, PreparedEdit};
 
@@ -93,6 +93,18 @@ pub struct ResidentCandidate {
 }
 
 impl ResidentCandidate {
+    /// Wrap an externally prepared candidate (same-session prepare via
+    /// [`FunctionIncrementalSession::prepare_edit`]) for the resident
+    /// queue. A candidate minted by ANOTHER session wraps fine too — the
+    /// commit at the safety point refuses it (observable), which is
+    /// exactly the V-04 foreign control.
+    pub fn wrap_prepared(prepared: PreparedEdit) -> Self {
+        ResidentCandidate {
+            prepared,
+            submitted_at: Instant::now(),
+        }
+    }
+
     /// Source name of the function this candidate would install.
     pub fn changed_name(&self) -> &str {
         self.prepared.changed_name()
@@ -123,6 +135,36 @@ pub struct SliceReport {
     pub wall: Duration,
 }
 
+/// Report of one candidate application at a call-boundary safety point
+/// (PLAN-866 online reload): the guest-semantic effective point, the 828
+/// commit outcome, the reload-visibility measurement, and the bounded
+/// old-generation face.
+#[derive(Clone, Debug)]
+pub struct SafetyPointReport {
+    /// Whether the chain was armed to seek a safety point at all (false:
+    /// no live chain, no pending candidate, or the old-generation cap).
+    pub armed: bool,
+    /// Whether the armed segment parked at a real guest call boundary.
+    pub reached_boundary: bool,
+    /// The 828 commit outcome at the safety point (install set on
+    /// success; the observable refusal reason on stale/foreign/etc.).
+    pub edit: EditOutcome,
+    /// Chain steps at the safety point — the effective point in guest
+    /// terms, independent of host fuel slicing.
+    pub steps_at_boundary: Option<u64>,
+    /// Reload visibility: edit submission → effect at the safety point
+    /// (TestCase v2 measurement, one sample).
+    pub visibility: Option<Duration>,
+    /// The chain finished during this application (commit at chain end:
+    /// effective for future runs only).
+    pub chain_finished: bool,
+    /// Live retired generations still pinned after this application.
+    pub live_old_generations: usize,
+    /// Weak view of the retired snapshot on a successful swap — dies with
+    /// its last in-flight frame (V-05 release oracle).
+    pub retired_snapshot_weak: Option<Weak<ProgramSnapshot>>,
+}
+
 /// One continuously-running guest, driven by fuel slices.
 ///
 /// Owns the [`FunctionIncrementalSession`] for its whole lifetime: between
@@ -147,6 +189,9 @@ pub struct ResidentRunner {
     chain_entries: u64,
     wall_total: Duration,
     queue: Vec<ResidentCandidate>,
+    /// Weak views of snapshots retired by swaps (bounded-recycle ledger:
+    /// live entries are those still pinned by in-flight frames).
+    retired: Vec<Weak<ProgramSnapshot>>,
     counters: BTreeMap<String, u64>,
 }
 
@@ -168,6 +213,7 @@ impl ResidentRunner {
             chain_entries: 0,
             wall_total: Duration::ZERO,
             queue: Vec::new(),
+            retired: Vec::new(),
             counters: BTreeMap::new(),
         }
     }
@@ -327,6 +373,177 @@ impl ResidentRunner {
     /// Candidates currently waiting for a safety point.
     pub fn pending(&self) -> &[ResidentCandidate] {
         &self.queue
+    }
+
+    /// Apply the QUEUED head candidate at the next call-boundary safety
+    /// point (PLAN-866 online reload). One candidate per call; loop for a
+    /// queue drain. Never restarts the chain and never pauses it because
+    /// an edit arrived — the armed segment keeps executing guest work
+    /// until a real call boundary parks it.
+    pub fn apply_pending_at_safety_point(&mut self) -> SafetyPointReport {
+        let candidate = if self.queue.is_empty() {
+            return SafetyPointReport {
+                armed: false,
+                reached_boundary: false,
+                edit: EditOutcome::rejected(
+                    self.session.revision(),
+                    "no pending candidate".to_string(),
+                    Vec::new(),
+                ),
+                steps_at_boundary: None,
+                visibility: None,
+                chain_finished: false,
+                live_old_generations: self.live_old_generations(),
+                retired_snapshot_weak: None,
+            };
+        } else {
+            self.queue.remove(0)
+        };
+        self.apply_prepared_at_safety_point(candidate)
+    }
+
+    /// Apply ONE candidate at the next call-boundary safety point — the
+    /// primitive behind [`Self::apply_pending_at_safety_point`]. A foreign
+    /// session's candidate is refused by the session's own commit
+    /// (observable in `report.edit`); the run is never disturbed.
+    pub fn apply_prepared_at_safety_point(
+        &mut self,
+        candidate: ResidentCandidate,
+    ) -> SafetyPointReport {
+        let visibility_origin = candidate.submitted_at;
+        if self.state != ResidentState::Running || self.paused.is_none() {
+            // No live chain (never started or already terminal): the chain
+            // end is trivially "after all calls" — commit for future runs.
+            let edit = self.session.commit(candidate.prepared);
+            return SafetyPointReport {
+                armed: false,
+                reached_boundary: false,
+                edit,
+                steps_at_boundary: None,
+                visibility: Some(visibility_origin.elapsed()),
+                chain_finished: self.state == ResidentState::Finished,
+                live_old_generations: self.live_old_generations(),
+                retired_snapshot_weak: None,
+            };
+        }
+        if self.live_old_generations() >= MAX_RESIDENT_OLD_GENERATIONS {
+            // Bounded recycle (frozen §2.6): refuse to arm while the cap
+            // of simultaneously live retired generations is reached; the
+            // candidate stays queued and the run continues untouched.
+            self.queue.insert(0, candidate);
+            return SafetyPointReport {
+                armed: false,
+                reached_boundary: false,
+                edit: EditOutcome::rejected(
+                    self.session.revision(),
+                    format!(
+                        "old-generation cap {MAX_RESIDENT_OLD_GENERATIONS} reached; candidate held"
+                    ),
+                    Vec::new(),
+                ),
+                steps_at_boundary: None,
+                visibility: None,
+                chain_finished: false,
+                live_old_generations: self.live_old_generations(),
+                retired_snapshot_weak: None,
+            };
+        }
+        let paused = self.paused.take().expect("live chain checked above");
+        let armed =
+            resume_program_at_call_boundary(paused, &self.cancel, Some(self.config.slice_steps));
+        match armed {
+            SteppedOutcome::Paused(p) if p.at_call_boundary() => {
+                // The frozen safety point: one completed call. Commit HERE
+                // (828 single publication point), then swap resolution —
+                // in-flight frames keep their pinned old code to return.
+                self.total_steps = p.step_count();
+                let steps_at_boundary = p.step_count();
+                let retired_weak = Arc::downgrade(p.prog());
+                let visibility = Some(visibility_origin.elapsed());
+                let edit = self.session.commit(candidate.prepared);
+                let resumed = if edit.ok {
+                    let resolution = self.session.current();
+                    resume_program_with_resolution(p, &self.cancel, Some(0), &resolution)
+                } else {
+                    resume_program(p, &self.cancel, Some(0))
+                };
+                let mut chain_finished = false;
+                match resumed {
+                    SteppedOutcome::Paused(p) => {
+                        self.total_steps = self.total_steps.max(p.step_count());
+                        self.paused = Some(p);
+                    }
+                    SteppedOutcome::Finished(out, _) => {
+                        self.state = ResidentState::Finished;
+                        self.outcome = Some(out);
+                        chain_finished = true;
+                    }
+                }
+                if edit.ok {
+                    self.retired.push(retired_weak.clone());
+                    *self.counters.entry("resident:swaps".into()).or_insert(0) += 1;
+                }
+                SafetyPointReport {
+                    armed: true,
+                    reached_boundary: true,
+                    edit: edit.clone(),
+                    steps_at_boundary: Some(steps_at_boundary),
+                    visibility,
+                    chain_finished,
+                    live_old_generations: self.live_old_generations(),
+                    retired_snapshot_weak: if edit.ok { Some(retired_weak) } else { None },
+                }
+            }
+            SteppedOutcome::Paused(p) => {
+                // Fuel exhausted before any call boundary: the candidate
+                // is NOT consumed — still prepared, still valid; retry on
+                // a later slice. The chain keeps running untouched.
+                self.total_steps = self.total_steps.max(p.step_count());
+                self.paused = Some(p);
+                self.queue.insert(0, candidate);
+                SafetyPointReport {
+                    armed: true,
+                    reached_boundary: false,
+                    edit: EditOutcome::rejected(
+                        self.session.revision(),
+                        "no call boundary within the armed segment's fuel".to_string(),
+                        Vec::new(),
+                    ),
+                    steps_at_boundary: None,
+                    visibility: None,
+                    chain_finished: false,
+                    live_old_generations: self.live_old_generations(),
+                    retired_snapshot_weak: None,
+                }
+            }
+            SteppedOutcome::Finished(out, _) => {
+                // The chain completed without meeting another call: the
+                // chain end is the (trivial) safety point — commit there;
+                // the revision advances for FUTURE runs only.
+                self.state = ResidentState::Finished;
+                self.outcome = Some(out.clone());
+                let edit = self.session.commit(candidate.prepared);
+                SafetyPointReport {
+                    armed: true,
+                    reached_boundary: false,
+                    edit,
+                    steps_at_boundary: None,
+                    visibility: Some(visibility_origin.elapsed()),
+                    chain_finished: true,
+                    live_old_generations: self.live_old_generations(),
+                    retired_snapshot_weak: None,
+                }
+            }
+        }
+    }
+
+    /// Live retired generations: snapshots swapped out by this run that
+    /// still have an in-flight frame pinning them (Weak oracle count).
+    pub fn live_old_generations(&self) -> usize {
+        self.retired
+            .iter()
+            .filter(|w| w.upgrade().is_some())
+            .count()
     }
 
     /// Cancel every queued candidate through the session's own refuse

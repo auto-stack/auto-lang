@@ -294,9 +294,17 @@ fn execute_module_impl(
         st.trace.loaded_index_builds = loaded.builds();
         st.trace.loaded_index_reuses = loaded.reuses();
         st.trace.loaded_index_bytes = loaded.usage().1 as u64;
-        dispatch(&LoadedView(m, loaded), &limits, cancel, args, &mut st, None)
+        dispatch(
+            &LoadedView(m, loaded),
+            &limits,
+            cancel,
+            args,
+            &mut st,
+            None,
+            false,
+        )
     } else {
-        dispatch(&MergedView(m), &limits, cancel, args, &mut st, None)
+        dispatch(&MergedView(m), &limits, cancel, args, &mut st, None, false)
     }
     .expect("no budget: the loop always terminates with an outcome");
     if !st.frames.is_empty() {
@@ -389,7 +397,7 @@ fn execute_program_impl(
     } else {
         prog.reference_unit_view()
     };
-    let out = dispatch(&view, &limits, cancel, &[], &mut st, None)
+    let out = dispatch(&view, &limits, cancel, &[], &mut st, None, false)
         .expect("no budget: the loop always terminates with an outcome");
     if !st.frames.is_empty() {
         cleanup_owned_frames(&mut st);
@@ -406,6 +414,11 @@ pub struct PausedRun {
     prog: std::sync::Arc<crate::program_snapshot::ProgramSnapshot>,
     limits: ExecLimits,
     state: LoopState,
+    /// PLAN-866: this pause parked the chain exactly at a guest call
+    /// boundary (right before the next `Call`/`CallClosure` dispatch) —
+    /// the online-reload safety point, as opposed to a plain fuel
+    /// boundary.
+    at_call_boundary: bool,
 }
 
 impl PausedRun {
@@ -414,6 +427,20 @@ impl PausedRun {
     /// resume must not move it).
     pub fn step_count(&self) -> u64 {
         self.state.steps
+    }
+
+    /// Whether this pause is a PLAN-866 call-boundary safety point (true
+    /// only for pauses produced by `resume_program_at_call_boundary`).
+    pub fn at_call_boundary(&self) -> bool {
+        self.at_call_boundary
+    }
+
+    /// The pinned snapshot this chain currently executes against (its
+    /// resolution table). PLAN-866 release oracle: downgrade this before
+    /// a swapped resume to observe the retired generation die with its
+    /// last in-flight frame.
+    pub fn prog(&self) -> &std::sync::Arc<crate::program_snapshot::ProgramSnapshot> {
+        &self.prog
     }
 
     /// The current closure frame and its published environment, if live.
@@ -471,6 +498,7 @@ pub fn execute_program_steps(
         &[],
         &mut st,
         Some(max_steps),
+        false,
     ) {
         Some(out) => {
             if !st.frames.is_empty() {
@@ -483,6 +511,7 @@ pub fn execute_program_steps(
             prog: prog.clone(),
             limits: *limits,
             state: st,
+            at_call_boundary: false,
         }),
     }
 }
@@ -494,17 +523,76 @@ pub fn resume_program(
     cancel: &CancelFlag,
     max_steps: Option<u64>,
 ) -> SteppedOutcome {
+    resume_program_mode(paused, cancel, max_steps, ResumeMode::Plain)
+}
+
+/// Continue a paused run and park it right BEFORE the next guest call
+/// dispatch (`Call`/`CallClosure`) — the PLAN-866 safety point: one
+/// completed call boundary, independent of host fuel slicing. The
+/// returned pause reports [`PausedRun::at_call_boundary`]; a plain fuel
+/// pause inside this same segment does not. A chain that completes
+/// without meeting another call returns `Finished` (the caller commits
+/// at chain end — trivially "after all calls").
+pub fn resume_program_at_call_boundary(
+    paused: PausedRun,
+    cancel: &CancelFlag,
+    max_steps: Option<u64>,
+) -> SteppedOutcome {
+    resume_program_mode(paused, cancel, max_steps, ResumeMode::AtCallBoundary)
+}
+
+/// Continue a paused run with callee RESOLUTION redirected to
+/// `resolution` (PLAN-866 online swap): already-dispatched frames keep
+/// executing their pinned code objects — the old generation — to return,
+/// while every call dispatched from here on resolves through the NEW
+/// snapshot. The caller must guarantee the 828 outline-stable body-edit
+/// contract (unchanged declaration set and order), which keeps function
+/// slot indices comparable across the two snapshots; this segment's
+/// dispatch evidence is re-observed from the resolution snapshot it
+/// actually dispatches against.
+pub fn resume_program_with_resolution(
+    paused: PausedRun,
+    cancel: &CancelFlag,
+    max_steps: Option<u64>,
+    resolution: &std::sync::Arc<crate::program_snapshot::ProgramSnapshot>,
+) -> SteppedOutcome {
+    resume_program_mode(
+        paused,
+        cancel,
+        max_steps,
+        ResumeMode::Swapped(resolution.clone()),
+    )
+}
+
+enum ResumeMode {
+    Plain,
+    AtCallBoundary,
+    Swapped(std::sync::Arc<crate::program_snapshot::ProgramSnapshot>),
+}
+
+fn resume_program_mode(
+    paused: PausedRun,
+    cancel: &CancelFlag,
+    max_steps: Option<u64>,
+    mode: ResumeMode,
+) -> SteppedOutcome {
     let PausedRun {
-        prog,
+        mut prog,
         limits,
         mut state,
+        ..
     } = paused;
-    // The resumed segment keeps the ORIGINAL chain's dispatch evidence —
-    // the pinned snapshot it actually continues to execute — and takes
-    // its own sequence number (each entry-point execution is one).
+    if let ResumeMode::Swapped(resolution) = &mode {
+        prog = resolution.clone();
+    }
+    // The resumed segment keeps the chain's dispatch evidence — the
+    // pinned snapshot it actually continues to execute — and takes its
+    // own sequence number (each entry-point execution is one). A swapped
+    // segment re-observes from the RESOLUTION snapshot: it is the
+    // program this segment's callee dispatches resolve against.
     state.trace.execution_seq =
         EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-    if state.trace.dispatched.is_empty() {
+    if state.trace.dispatched.is_empty() || matches!(mode, ResumeMode::Swapped(_)) {
         state.trace.dispatched = observe_dispatched(&prog);
     }
     let dispatch_limits = match limits_with_loaded_index(&limits, prog.loaded_program().usage().0) {
@@ -517,6 +605,7 @@ pub fn resume_program(
             return SteppedOutcome::Finished(out, state.trace);
         }
     };
+    let stop_before_call = matches!(mode, ResumeMode::AtCallBoundary);
     match dispatch(
         &prog.unit_view(),
         &dispatch_limits,
@@ -524,6 +613,7 @@ pub fn resume_program(
         &[],
         &mut state,
         max_steps,
+        stop_before_call,
     ) {
         Some(out) => {
             if !state.frames.is_empty() {
@@ -536,6 +626,7 @@ pub fn resume_program(
             prog,
             limits,
             state,
+            at_call_boundary: stop_before_call,
         }),
     }
 }
@@ -1930,6 +2021,7 @@ fn dispatch<V: ModuleView>(
     args: &[Value],
     st: &mut LoopState,
     budget: Option<u64>,
+    stop_before_call: bool,
 ) -> Option<ExecOutcome> {
     let started = Instant::now();
     // B2-C04: the step budget is PER SEGMENT (this dispatch call's own
@@ -2131,6 +2223,18 @@ fn dispatch<V: ModuleView>(
         };
         if ip < block.instrs.len() {
             let instr = &block.instrs[ip];
+            // PLAN-866 safety point: park the chain right BEFORE the next
+            // guest call dispatch (direct or closure) — the frozen "one
+            // completed call" boundary. Step-neutral by construction:
+            // this iteration's step is rolled back and the re-entry
+            // (plain or swapped resolution) re-fetches the same call.
+            if stop_before_call
+                && (matches!(instr, MirInstr::Call { .. })
+                    || matches!(instr, MirInstr::CallClosure { .. }))
+            {
+                st.steps -= 1;
+                return None;
+            }
             {
                 let fr = st.frames.last_mut().expect("frame present");
                 fr.ip += 1;
@@ -5155,7 +5259,7 @@ mod tests {
                 let mut st = LoopState::default();
                 let view = MergedView(loaded.module());
                 loop {
-                    let out = dispatch(&view, &limits, &cancel, &[], &mut st, Some(1));
+                    let out = dispatch(&view, &limits, &cancel, &[], &mut st, Some(1), false);
                     assert!(out.is_none(), "must pause before {operation}");
                     if matches!(
                         st.frames.last().and_then(|f| f.slots.first()),
@@ -5168,7 +5272,8 @@ mod tests {
                 let mut foreign = LoopState::default();
                 let foreign_reference = if fault == "foreign-store" {
                     loop {
-                        let out = dispatch(&view, &limits, &cancel, &[], &mut foreign, Some(1));
+                        let out =
+                            dispatch(&view, &limits, &cancel, &[], &mut foreign, Some(1), false);
                         assert!(out.is_none(), "foreign execution must pause after creation");
                         if let Some(Value::Closure(reference)) =
                             foreign.frames.last().and_then(|f| f.slots.first())
@@ -5199,7 +5304,7 @@ mod tests {
                     }
                     _ => unreachable!(),
                 }
-                let out = dispatch(&view, &limits, &cancel, &[], &mut st, None).unwrap();
+                let out = dispatch(&view, &limits, &cancel, &[], &mut st, None, false).unwrap();
                 assert!(
                     matches!(
                         out,
@@ -5310,7 +5415,7 @@ mod tests {
         let cancel = CancelFlag::new(false);
         let limits = ExecLimits::default();
         loop {
-            let out = dispatch(&view, &limits, &cancel, &[], &mut st, Some(1));
+            let out = dispatch(&view, &limits, &cancel, &[], &mut st, Some(1), false);
             assert!(out.is_none(), "must pause before capture");
             if st.frames.last().map(|f| f.ip == 2).unwrap_or(false) {
                 break;
@@ -5333,7 +5438,7 @@ mod tests {
         assert!(projected > st.slot_bytes);
         let mut limited = limits;
         limited.max_slot_bytes = projected - 1;
-        let outcome = dispatch(&view, &limited, &cancel, &[], &mut st, None).unwrap();
+        let outcome = dispatch(&view, &limited, &cancel, &[], &mut st, None, false).unwrap();
         assert!(
             matches!(
                 outcome,
@@ -5471,7 +5576,7 @@ mod tests {
             let mut st = LoopState::default();
             let view = MergedView(loaded.module());
             loop {
-                let out = dispatch(&view, &limits, &cancel, &[], &mut st, Some(1));
+                let out = dispatch(&view, &limits, &cancel, &[], &mut st, Some(1), false);
                 assert!(out.is_none(), "must pause before the closure call");
                 if matches!(
                     st.frames.last().and_then(|f| f.slots.get(1)),
@@ -5487,7 +5592,7 @@ mod tests {
             } else {
                 frame.gens[0] = frame.gens[0].wrapping_add(1);
             }
-            let out = dispatch(&view, &limits, &cancel, &[], &mut st, None).unwrap();
+            let out = dispatch(&view, &limits, &cancel, &[], &mut st, None, false).unwrap();
             assert!(
                 matches!(
                     out,
@@ -5616,7 +5721,7 @@ mod tests {
         let cancel = CancelFlag::new(false);
         let limits = ExecLimits::default();
         loop {
-            let out = dispatch(&view, &limits, &cancel, &[], &mut st, Some(1));
+            let out = dispatch(&view, &limits, &cancel, &[], &mut st, Some(1), false);
             assert!(out.is_none(), "must pause in parent before nested capture");
             if st
                 .frames
@@ -5640,7 +5745,7 @@ mod tests {
             + closure_binding_bytes(1, 0);
         let mut limited = limits;
         limited.max_slot_bytes = projected - 1;
-        let outcome = dispatch(&view, &limited, &cancel, &[], &mut st, None).unwrap();
+        let outcome = dispatch(&view, &limited, &cancel, &[], &mut st, None, false).unwrap();
         assert!(
             matches!(
                 outcome,
