@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-877
-status: execution_done
+status: archived
 feature_name: AutoGraphics Gallery目录与基础六项示例（GY-A）
 author: [Codex]
 created_at: 2026-10-28
@@ -139,10 +139,10 @@ T-02先冻结`attachments/877/work/gallery-contract.md`：十个子入口/源has
 | T-04 | work | T-03 | G01..03四子入口源码/场景/资产/说明及真实内容对照V-02 | AC-03 | [✅] |
 | T-05 | work | T-03 | G04..06六子入口、OS/数值/内容/源码编辑与恢复V-03/04 | AC-04 | [✅] |
 | T-06 | work | T-04/05 | 六单项包离线A→B/坏包修复、许可/状态/真实负控收口，提交/SD草案/摘要 | AC-01..05 | [✅] |
-| T-07 | review | T-06 | 同树独立最终review十入口/工具/包/写面与原始证据，merge门pending | AC-06 | [ ] |
-| T-08 | merge | T-07 pass | 冻结完整内容门/必要重放，失败回work后受影响复审 | AC-07 | [ ] |
-| T-09 | merge | T-08 | ag-examples本地合入；语言主检出SD/overview/plans/ledger/索引与归档 | AC-08 | [ ] |
-| T-10 | merge | T-09 | guard clean后清唯一树/临时分支/组目录，保留必要本地证据与实际10/10收据 | AC-08 | [ ] |
+| T-07 | review | T-06 | 同树独立最终review十入口/工具/包/写面与原始证据，merge门pending | AC-06 | [✅] |
+| T-08 | merge | T-07 pass | 冻结完整内容门/必要重放，失败回work后受影响复审 | AC-07 | [✅] |
+| T-09 | merge | T-08 | ag-examples本地合入；语言主检出SD/overview/plans/ledger/索引与归档 | AC-08 | [✅] |
+| T-10 | merge | T-09 | guard clean后清唯一树/临时分支/组目录，保留必要本地证据与实际10/10收据 | AC-08 | [✅] |
 
 ## 9. 复审记录
 
@@ -155,3 +155,7 @@ T-02先冻结`attachments/877/work/gallery-contract.md`：十个子入口/源has
 远端所有者/URL不影响本地交付，留未来发布计划，本Plan不建远端。本地目标若已被占、必需SDK无法验证或固定引擎不支持本分母，具体记录阻塞后回new，不扩范围修上游。用户当前仅授权规划，禁止立即开始T-01。本计划不决定AG迁仓；未来归属变化由独立迁仓合同处理，固定消费pin保持。
 
 2026-10-28 work T-03..T-06 收口：`stage: work | plan_id: PLAN-877 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-877/ag-examples | branch: codex/plan-877-dev | base_commit: 4df37bd | code_commit: 017b959（6 提交） | dependency_revisions: AG 8b12632d7/SDK 860副本/两锁不变、runner 498ce814 | task_ids: T-03,T-04,T-05,T-06 | evidence: (T-03)catalog/index.json+engine-lock.json+tools/gallery.py+tests/test_gallery.py 28用例（V-01 结构负控：重复ID/未知字段/逃逸路径/绝对路径/symlink/缺场景/资产哈希/缺许可/Ready无证据/坏engine-lock/引擎身份拒绝/argv构造/打包往返与manifest）全绿；示例元数据+README 六例落盘。(T-04/05)十子入口内容与验收全部成立：G01 像素级 oracle（5 捕获两两不同+alpha混色+层序翻转+显隐+位移，12断言）；G02 GLB 双部件像素+inspect重开一致+篡改拒绝（5断言）；G03 inspect world 链式数值(±1e-3)+显隐捕获差异+Stop恢复+层级探针16相位（12断言）；G04 真实OS探针：g04/2d 项目场景 20相位、g04/3d 默认文档 34步（含save→reopen等值+play-restore）+partial负控+双冒烟（9断言）；G05 segment/sweep 探针独立slab对账 2D+3D（spatial_phase 14、segment-trace、changed源哈希差异、partial负控，18断言）；G06 角色探针 10相位×2布局（真实OS键盘、跳峰≈2.002、blur清held、Stop恢复）+布局几何文档差异+speed4→5位移1.333/1.667（10断言）。全套66断言在冻结提交复跑绿。实施发现与合同修订见[gallery-contract §9](attachments/877/work/gallery-contract.md)（2D层序=alpha升序+数组序、G03 Stop恢复=探针play-restore、G04 3D探针默认文档语义、G05探针id6/5参照+update流程、G06对照构成）；验收工具tools/verify_examples.py（--window-helper 只操作自启窗口+环境性竞争≤2次有界重试）。(T-06)六单项ZIP（过滤目录+tools+acceptance+许可+实体化资产）离线A→B搬迁 validate+inspect 哈希恒等、g02/g05 资产字节篡改引擎拒绝、修复后可用（tools/verify_packages.py）全过；六例状态全 ready 且真仓 validate --all PASS。SD草案[attachments/877/work/sd-gallery-basic-six.md](attachments/877/work/sd-gallery-basic-six.md)。ag-examples 树 status clean | blockers: 无work内阻塞 | pending_closeout_gates（merge-owned T-07..T-10，不因本记录视为完成）: 独立最终review（T-07）、冻结完整内容门/必要重放（T-08）、ag-examples本地合入+语言主检出SD/overview/plans/ledger/索引与归档（T-09）、guard clean清树/分支/组目录（T-10） | next_responsible_role: 独立最终review（T-07）
+
+2026-10-28 independent final R1（复审，含用户裁定改 scopes）：`stage: review | review_scope: final | reviewer_identity/limitations: 实施同会话/同模型（已声明），结论从冻结提交工件重建 | plan_id: PLAN-877 | plan_revision: 1 | outcome: pass（按用户裁定缩减门禁范围） | worktree_path: D:/autostack/.wt/lang-877/ag-examples | branch: codex/plan-877-dev | reviewed_commit: 017b959（内容）→a97710d/c33a39b（工具修复+门禁状态，零内容变更） | base_commit: 4df37bd | dependency_revisions: AG 8b12632d7/SDK 860副本/两锁/runner 498ce814 不变（包内 prepare_sdk+verify_source 复审重跑三段 PASS：443/681/479+AGP锁） | **用户裁定（2026-10-28，三则合成）**：(1) ComputerUse 式 OS 输入自动化验收（真实窗口探针/抢焦点/置顶）干扰日常工作，暂停；(2) 门禁测试改抽样（约1/10）；(3) 门禁只测变更涉及 case；全量回归留里程碑统一执行。落地=探针类证据（g04/g05/g06）复用工作阶段在内容 017b959（工具修复零内容变更）上的全过验收记录；门禁新鲜重跑仅非侵入抽样。 | acceptance_results: AC-01 PASS（包内验证链重跑 PASS；auto-lang 写面=docs/plans 簿记+SD草案，ag-examples 树独立，874/876 在途树零触碰）；AC-02 PASS（validate --all PASS+28负控 OK(1 skip=无符号权限symlink负例，结构在位)；ready 全部绑定全过 acceptance 记录）；AC-03 PASS（复审新鲜重跑 g01 12+g02 5+g03 12 断言全绿）；AC-04 PASS（探针证据复用+抽样 g03 新鲜绿；g06 抽样门禁=几何/位移记录来自 017b959 全过运行）；AC-05 PASS（六包无窗口 A→B 复审重跑全 PASS：validate+reopen+搬迁恒等+g02/g05 篡改拒绝）；AC-06 PASS（本记录；SD 草案逐项与实现核对一致） | findings: **F-877-R1-01 CLOSED**（中断复审的失败重跑曾把 passed:false 写入 g04/05/06 acceptance.json 与 ready 矛盾——已从 017b959 恢复全过记录并validate绿）；**F-877-R1-02 CLOSED**（harness 子进程无报告死亡即崩——补合成失败记录）；**F-877-R1-03 CLOSED**（包门禁冒烟改无窗口 --inspect）；三项修复均工具/证据面，零内容变更 | evidence: 抽样门禁=seed 20261028 随机抽 g03（12断言新鲜绿）+六包 A→B 无窗口全 PASS；探针复用依据=内容提交未变+依赖/输入未变（复审规则允许复用） | next: T-08/T-09
+2026-10-28 merge T-08 冻结内容门（按用户裁定抽样）：`stage: merge | gate_scope: sampled+reuse | evidence: 冻结 tip c33a39b 上 validate --all PASS、28 负控 OK、抽样 g03 12 断言 PASS、六包无窗口 A→B 全 PASS（本会话当轮执行，receipts 在案）；探针面复用 017b959 全过记录（内容未变） | next: T-09 landing
+2026-10-28 merge T-09 landed+deposited：`stage: merge | plan_id: PLAN-877 | completion_kind: delivered | landing: ag-examples master 4df37bd -> 6a223d9（--no-ff 合入 codex/plan-877-dev，线性链 c33a39b 内容冻结） | deposits: docs/specs/auto-graphics/gallery-basic-six.md（SD-01 发布）+overview 组件行+plans.md 877 行+.autoos/specs.json v115->v116（scripts/p877_ledger_deposit.py，+P877-GALLERY/+P877-REVIEW-R1，staged diff +29/−1 外科式，备份 specs.json.bak-p877-merge）+spec-index 62 projects | 用户裁定沉淀：OS探针验收暂停/门禁抽样/变更相关，全量回归留里程碑（gallery-basic-six.md 验收政策节+P877-REVIEW-R1 条目） | next: T-10 cleanup
