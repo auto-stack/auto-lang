@@ -92,6 +92,15 @@ PLAN-822 已交付执行侧 `av.collections/1`（profile id 4、AVAD v3）：受
 - 构造 `Some/None/Ok/Err`/Variant 载荷走 822 既有转移/清理语义，不在 lowering 引入额外 clone。
 - 与 820 的 record、821 的 owned 面组合的**受限**程度按 822 非目标明确写出（例如 List<owned record> 是否在首批）；不得用“组合未测”冒称支持。
 
+### 5.4 测试框架接入（既有 TestCase 协议，不新造框架）
+
+L/V 两族目前只有 **typed 语料**走协议（`ac-av/collections-run-v1` + `av.entry: "collections:<id>"`，实质期望在父侧 `COLLECTIONS_CASES` 冻结表）。本Plan把**同源真实源码**接入：
+
+- case 形态不变：在 `crates/auto-lang/test/cases/` 追加 source 行（复用 `ace-m1/src/L*.at`、`V*.at`），一份 source × 多 check（av 主判 + legacy/a2r 按实际适用性，ac-native 仍为 `gap:mn-scalar-only`）。
+- recipe：既有 `collections-run-v1` 的 entry 语义是 fixture id，**不改造它**。T-02 在两者间冻结：(a) 新注册 `ac-av/collections-source-run-v1`（三缝 append-only + worker 源码域分支，推荐）；(b) 若既有 av binding 已有可用的 source/profile 字段则追加该字段（要求旧 case 逐字节不变）。二者都不得让 case 命名可执行文件。
+- 期望落点：源码行的 `expect.exit` / 错误 `stage,code` 写在 case 文件；资源台账（alloc/free/live）若仍需父侧冻结表，按 822 `judge_*` 形状扩展，但“case 声明了什么就必须被判什么”，禁止声明后忽略。
+- `binding.tsv` 只改状态/owner 列（`gap:*`→实测或换 owner），不改 12 列 schema；852 base suite 不被悄悄扩缩。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |

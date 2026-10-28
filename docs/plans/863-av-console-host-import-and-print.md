@@ -102,6 +102,16 @@ T-02 产出 `attachments/863/work/host-console-contract.md`，冻结：
 - provider：console 有界缓冲 + 上限检查；写失败（宿主 I/O）为 infra，与语言结果分列。
 - store/恢复：host 声明与授权事实进入 envelope/身份轴；恢复后重新准入；授权撤回后旧产物不得继续执行该能力（沿用 [822 授权预检](../specs/auto-av/resident-function-install.md)形状）。
 
+### 5.4 测试框架接入（协议层的真实改动点）
+
+输出断言不是“给某个 case 加字段”那么简单：当前 `crates/auto-test-case/src/contract.rs::channel_supported` 对 `Adapter::Probe` 只开放 `probe` 与 `exit`，**declared-but-unobservable = admission ERROR**（不允许解析后忽略）。因此本Plan在协议侧必须显式做三件事（T-02 冻结、T-05 落地）：
+
+1. `channel_supported(Adapter::Probe, "stdout"|"stderr")` 置真，并在 `decode_expect` 的 probe 已知通道集追加同名项（旧 case 不声明即行为不变）。
+2. 父侧准入新增“捕获流”校验：按 case 声明做精确字节/上限比较，复用 `compare_stream_field` 同源入口（不另写比较器）；recipe 不产出而 case 声明 = ERROR，不静默当空。
+3. worker 只回传原始流字节与截断标记，**PASS 判定仍全在父侧**；超限是 resource/infra，不是“截断即通过”。
+
+recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-av/console-run-v1`（三缝 append-only，与既有 recipe 互不复用 id），worker 域分支承载 console provider；不用“给 core-run 偷偷塞宿主调用”的方式改动其已冻结语义。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |

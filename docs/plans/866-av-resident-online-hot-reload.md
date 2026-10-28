@@ -102,6 +102,14 @@ source(编辑) → 候选 prepare（复用828事务/精确失效）→ 候选就
 
 本Plan只证明**机制可用**（最小profile、单文件源、标量/入口语义）。UI/服务常驻会话（G5/G6）的真实产品形态另立计划，且必须消费本Plan的可见规则/回收合同，不得各自发明“热重载”定义。Design43 §6.1 的“数据与跨层寿命”“并发与发布一致性”两项在本Plan按标量范围交付，复合值/活对象迁移留后续。
 
+### 5.4 测试框架接入（既有 TestCase 协议，不新造框架）
+
+常驻/在线行仍走既有 suite + recipe 形态；**不新增观察通道**（沿用 `probe` 步骤面与 `exit`）。判定与接入约束：
+
+- “第 N 次迭代起生效”“在途链留旧代”以父侧 judge 报告的步骤序列/计数器为断言面，不得用自建脚本另判。
+- recipe 侧优先扩既有 `ac-av/core-run-v1` 的 av binding（追加 resident/在线步骤词汇，旧 case 不写即逐字节不变）；若需独立步骤语义，则新注册 `ac-av/resident-run-v1`（三缝 append-only）。**不得**以“重启 worker 再判”冒充在线。
+- 计量（P90/旧代峰值）与 852/825 同口径；样本数不缩、缺失即红。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |

@@ -95,6 +95,15 @@ PLAN-823 已交付执行侧 `av.closures/1`（profile id 6、AVAD v5、TY_CLOSUR
 - 逃逸/借用：保守拒绝优先；误拒是允许的（可后续放宽），误放是缺陷。
 - 会话：closures 源码会话消费 828 单元接口；env 漂移走精确失效（823 V-13 四子case 形状）。
 
+### 5.4 测试框架接入（既有 TestCase 协议，不新造框架）
+
+K 族目前走 typed fixture（`ac-av/closures-run-v1` + `av.entry: "closures:<id>"`，父侧 `CLOSURES_CASES`），而 852 把 K02/K05 的 legacy 侧登记为 `diff-legacy-grammar(parse)`。本Plan接入**真实源码**：
+
+- case 形态：追加 source 行（复用 `ace-m1/src/K0*.at`），av check 走源码入口（`d_main`）；legacy avm/a2r 的 `diff-*` 行**保持如实差异**，不因新源码路径可跑就改写为绿。
+- recipe：新注册 `ac-av/closures-source-run-v1`（三缝 append-only + worker 源码域分支），不改 `closures-run-v1` 的 fixture 语义。
+- 期望落点：`expect.exit` / 错误码进 case；env 漂移与寿命类断言（父侧表）沿用 823 `judge_*` 形状扩展，声明即判。
+- `binding.tsv` 只改状态/备注，schema 不变。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |

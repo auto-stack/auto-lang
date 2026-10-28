@@ -114,6 +114,15 @@ T-02 必须产出 `attachments/862/work/entry-contract.md`，逐项冻结（未�
 
 本Plan只发布“能被判定地进入与退出”。863 在其上加宿主导入（print），864/865 在其上加类型族语法。三者均消费本Plan的 `SourceProfile` 选择与结果通道，不另立入口规则；若 863 发现结果通道不足以承载 stdout 断言，只能扩**观察轴**，不得改本Plan已冻结的 guest 结果语义。
 
+### 5.4 测试框架接入（既有 TestCase 协议，不新造框架）
+
+语料仍是**文件化 case**：在 `crates/auto-lang/test/cases/` 追加（拟 `ace-m1` 新行 + 族 `av-entry-862`），保持“一份 source × 多 check”形态（同源可同时挂 ac-native / av / autovm / a2r）。协议侧只允许两处动作：
+
+- **recipe 绑定**：入口/Unit 改变的是源码 profile 与 entry 类别。优先在既有 `ac-av/core-run-v1` 的 av binding **追加源 profile 选择字段**（append-only：旧 case 不写该字段时行为逐字节不变）；若该字段无法向后兼容，则按既有三缝新注册 `ac-av/entry-run-v1`（`REGISTERED_PROBE_RECIPES` + step 词表 / 父侧 `test_cases/mod.rs` 分派 / worker `case-serve` 域分支）。
+- **观察通道**：本Plan只用既有 `exit`（值通道）与 `probe`（结构化步骤面）；**不新增 stdout/stderr**（归 863），也不改 `channel_supported` 表。
+
+判定仍在父侧（worker 永不见 expected），`binding.tsv` 只追加行、不改 12 列 schema；新 case 与 oracle 由父侧独立裁决。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
