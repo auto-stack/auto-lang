@@ -285,6 +285,7 @@ fn mir_native_codegen_bad_mir_admission_rejects_codegen_zero() {
             result: ti,
         }));
         let mk = |name: &str| MirFunction {
+            env: None,
             owner: owner(),
             name: name.to_string(),
             sig,
@@ -321,6 +322,7 @@ fn mir_native_codegen_bad_mir_admission_rejects_codegen_zero() {
             result: ti,
         }));
         m.funcs.push(MirFunction {
+            env: None,
             owner: owner(),
             name: "d_other".to_string(),
             sig,
@@ -353,6 +355,7 @@ fn mir_native_codegen_bad_mir_admission_rejects_codegen_zero() {
             result: ti,
         }));
         m.imports.push(MirImport {
+            env: None,
             symbol: "evil.native.ffi".to_string(),
             effect: Effect::Pure,
             sig,

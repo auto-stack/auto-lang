@@ -1006,6 +1006,7 @@ fn main() -> ExitCode {
                         (u.to_string(), f.to_string())
                     })
                     .collect();
+                let text_lib_sha = flag("--textlibsha");
                 ac_mn::worker::restore_run_by_key(
                     &PathBuf::from(store),
                     &owner_module,
@@ -1014,6 +1015,7 @@ fn main() -> ExitCode {
                     &link_inputs,
                     &PathBuf::from(workdir),
                     trace_lib.as_deref(),
+                    text_lib_sha.as_deref(),
                 )
             };
             match result {

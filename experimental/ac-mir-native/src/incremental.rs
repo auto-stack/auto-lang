@@ -120,6 +120,16 @@ fn av_resident_cv(av: &FunctionIncrementalSession, source_name: &str) -> Option<
     av.resident_content_version(source_name)
 }
 
+impl MnIncrementalSession {
+    /// The session's link support libraries. PLAN-870 boundary: the
+    /// incremental session remains scalar-profile (its 828 session and
+    /// frontend are scalar); owned-source incremental lands with the T-05
+    /// integration once D862/H release — not silently half-wired here.
+    fn support_libs(&self) -> Vec<PathBuf> {
+        self.tracelib.iter().cloned().collect()
+    }
+}
+
 fn whole_module_units(
     src: &str,
     entry: &str,
@@ -266,7 +276,7 @@ impl MnIncrementalSession {
             &wrapper,
             START_SYMBOL,
             &workdir,
-            self.tracelib.as_deref(),
+            &self.support_libs(),
             &format!("incremental round {}\n", self.round),
         )?;
         Ok(EditObservation {

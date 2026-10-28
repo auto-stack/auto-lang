@@ -51,6 +51,7 @@ fn minimal_unit(exit_const: i32) -> MirModule {
     }));
     let c = m.intern_const(MirConst::I32(exit_const));
     m.funcs.push(MirFunction {
+        env: None,
         owner,
         name: "d_main".to_string(),
         sig,
@@ -128,7 +129,7 @@ fn mir_native_transaction_link_failure_preserves_old_outputs() {
     let mut history: Vec<Vec<u8>> = Vec::new();
     for exit in [33i32, 44, 55] {
         let (objs, wrap) = real_objects(exit);
-        let run = link_and_run(&objs, &wrap, "ac_start", &w, None, "txn-round").expect("round");
+        let run = link_and_run(&objs, &wrap, "ac_start", &w, &[], "txn-round").expect("round");
         assert_eq!(run.exit_code, Some(exit));
         history.push(std::fs::read(exe_path_of(&w)).expect("exe bytes"));
     }
@@ -144,7 +145,7 @@ fn mir_native_transaction_link_failure_preserves_old_outputs() {
         name: objs[0].name.clone(),
         bytes: garbage,
     }];
-    let err = match link_and_run(&bad, &wrap, "ac_start", &w, None, "txn-round") {
+    let err = match link_and_run(&bad, &wrap, "ac_start", &w, &[], "txn-round") {
         Err(e) => e,
         Ok(r) => panic!("corrupted object must fail the link: {:?}", r.exit_code),
     };
@@ -181,7 +182,7 @@ fn mir_native_transaction_link_timeout_kills_tree_preserves_old() {
     let w = temp_root("timeout");
     // Baseline output with the REAL linker.
     let (objs, wrap) = real_objects(66);
-    let run = link_and_run(&objs, &wrap, "ac_start", &w, None, "txn-base").expect("base");
+    let run = link_and_run(&objs, &wrap, "ac_start", &w, &[], "txn-base").expect("base");
     assert_eq!(run.exit_code, Some(66));
     let old_bytes = std::fs::read(exe_path_of(&w)).unwrap();
 
@@ -199,7 +200,7 @@ fn mir_native_transaction_link_timeout_kills_tree_preserves_old() {
     std::env::set_var("MN818_TEST_LINK_WALL_MS", "3000");
     let (objs2, wrap2) = real_objects(88);
     let started = Instant::now();
-    let err = match link_and_run(&objs2, &wrap2, "ac_start", &w, None, "txn-timeout") {
+    let err = match link_and_run(&objs2, &wrap2, "ac_start", &w, &[], "txn-timeout") {
         Err(e) => e,
         Ok(r) => panic!("a sleeping linker must hit the deadline: {:?}", r.exit_code),
     };
@@ -236,7 +237,7 @@ fn mir_native_transaction_publish_io_failure_rolls_back_to_old() {
     }
     let w = temp_root("rollback");
     let (objs, wrap) = real_objects(88);
-    let run = link_and_run(&objs, &wrap, "ac_start", &w, None, "txn-base").expect("base");
+    let run = link_and_run(&objs, &wrap, "ac_start", &w, &[], "txn-base").expect("base");
     assert_eq!(run.exit_code, Some(88));
     let old_bytes = std::fs::read(exe_path_of(&w)).unwrap();
     // Block the receipt path with a directory, then attempt a new
@@ -246,7 +247,7 @@ fn mir_native_transaction_publish_io_failure_rolls_back_to_old() {
     std::fs::remove_file(&receipt).unwrap();
     std::fs::create_dir(&receipt).unwrap();
     let (objs2, wrap2) = real_objects(99);
-    let err = match link_and_run(&objs2, &wrap2, "ac_start", &w, None, "txn-io") {
+    let err = match link_and_run(&objs2, &wrap2, "ac_start", &w, &[], "txn-io") {
         Err(e) => e,
         Ok(r) => panic!("blocked receipt must fail the publish: {:?}", r.exit_code),
     };
@@ -283,7 +284,7 @@ fn mir_native_transaction_exe_target_blocked_by_directory() {
     std::fs::create_dir_all(&blocked).unwrap();
     std::fs::write(blocked.join("user-file.txt"), "user property").unwrap();
     let (objs, wrap) = real_objects(11);
-    let err = match link_and_run(&objs, &wrap, "ac_start", &w, None, "txn-dir") {
+    let err = match link_and_run(&objs, &wrap, "ac_start", &w, &[], "txn-dir") {
         Err(e) => e,
         Ok(r) => panic!(
             "a directory at the output path must fail: {:?}",
@@ -320,10 +321,10 @@ fn mir_native_transaction_legitimate_publish_updates_products() {
     }
     let w = temp_root("legit");
     let (objs, wrap) = real_objects(33);
-    link_and_run(&objs, &wrap, "ac_start", &w, None, "txn-round-one").expect("round 1");
+    link_and_run(&objs, &wrap, "ac_start", &w, &[], "txn-round-one").expect("round 1");
     assert_eq!(run_exe(&exe_path_of(&w)), 33);
     let (objs2, wrap2) = real_objects(77);
-    link_and_run(&objs2, &wrap2, "ac_start", &w, None, "txn-round-two").expect("round 2");
+    link_and_run(&objs2, &wrap2, "ac_start", &w, &[], "txn-round-two").expect("round 2");
     assert_eq!(run_exe(&exe_path_of(&w)), 77, "the new program runs");
     let receipt = std::fs::read_to_string(w.join(".mn-link.txt")).unwrap();
     assert!(

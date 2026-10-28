@@ -8,8 +8,8 @@ use crate::config::*;
 use crate::lower;
 use crate::symbols;
 use crate::MnError;
-use auto_av_core::contract::AV_PROFILE;
-use auto_av_core::mir::{MirModule, ScalarShape};
+use auto_av_core::contract::{AV_DATA_PROFILE, AV_OWNED_PROFILE, AV_PROFILE};
+use auto_av_core::mir::{MirModule, MirType};
 use cranelift_codegen::ir::{AbiParam, InstBuilder, Signature};
 use cranelift_codegen::isa::CallConv;
 use cranelift_codegen::settings::Configurable;
@@ -38,8 +38,11 @@ fn make_isa() -> Result<cranelift_codegen::isa::OwnedTargetIsa, MnError> {
         .map_err(|e| MnError::Backend(format!("isa finish: {e}")))
 }
 
-/// Cranelift signature of a MIR `MirType::Fn` under the private ABI:
-/// i32/bool both cross as I32 (bool keeps logical 0/1), Win x64 call conv.
+/// Cranelift signature of a MIR `MirType::Fn` under the private ABI
+/// (PLAN-870 freeze §3): i32/bool/char cross as I32 (bool keeps logical
+/// 0/1); Str/StrView cross as an (I64 ptr, I32 len) pair; Record and
+/// RecordView cross as one I64 address; a Record RESULT crosses through a
+/// trailing hidden `*mut` out parameter. Win x64 call conv.
 pub fn cranelift_sig_of(module: &MirModule, ty: u32) -> Result<Signature, MnError> {
     let Some(sig) = module.sig_of(ty) else {
         return Err(MnError::Unsupported(
@@ -47,36 +50,60 @@ pub fn cranelift_sig_of(module: &MirModule, ty: u32) -> Result<Signature, MnErro
             "type is not a function signature".to_string(),
         ));
     };
-    let mut params = Vec::with_capacity(sig.params.len());
+    let mut params = Vec::with_capacity(sig.params.len() + 1);
     for p in &sig.params {
-        match module.type_shape(*p) {
-            Some(ScalarShape::I32) | Some(ScalarShape::Bool) => {
+        match module.types.get(*p as usize) {
+            Some(MirType::I32) | Some(MirType::Bool) | Some(MirType::Char) => {
                 params.push(AbiParam::new(cranelift_codegen::ir::types::I32))
+            }
+            Some(MirType::Str) | Some(MirType::StrView) => {
+                params.push(AbiParam::new(cranelift_codegen::ir::types::I64));
+                params.push(AbiParam::new(cranelift_codegen::ir::types::I32));
+            }
+            Some(MirType::Record(_)) | Some(MirType::RecordView(_)) => {
+                params.push(AbiParam::new(cranelift_codegen::ir::types::I64));
             }
             None => {
                 return Err(MnError::Unsupported(
                     "param",
-                    "function-typed parameters are outside the private ABI".to_string(),
+                    "unknown parameter type is outside the private ABI".to_string(),
                 ))
             }
-            // PLAN-820 shared-core widening (av.data/1): the wide scalar and
-            // record shapes are outside mn's frozen scalar ABI — a
-            // controlled rejection, never implicit support (F820-R10-01
-            // class; 818 owner reviews semantics at its own merge).
+            // Function-typed, wide-numeric, and out-of-scope (R2-N /
+            // collections / closures / dynamic) parameter shapes stay a
+            // controlled rejection, never implicit support.
             Some(_) => {
                 return Err(MnError::Unsupported(
                     "param",
-                    "av.data/1 wide/record params are outside the mn scalar ABI".to_string(),
+                    "parameter type is outside the mn data/owned ABI".to_string(),
                 ))
             }
         }
     }
-    let ret = match module.type_shape(sig.result) {
-        Some(_) => vec![AbiParam::new(cranelift_codegen::ir::types::I32)],
+    let ret = match module.types.get(sig.result as usize) {
+        Some(MirType::I32) | Some(MirType::Bool) | Some(MirType::Char) => {
+            vec![AbiParam::new(cranelift_codegen::ir::types::I32)]
+        }
+        Some(MirType::Str) | Some(MirType::StrView) => vec![
+            AbiParam::new(cranelift_codegen::ir::types::I64),
+            AbiParam::new(cranelift_codegen::ir::types::I32),
+        ],
+        Some(MirType::Record(_)) | Some(MirType::RecordView(_)) => {
+            // Hidden out-aggregate parameter (782 ABI-E shape): the caller
+            // passes the destination aggregate's address; no return value.
+            params.push(AbiParam::new(cranelift_codegen::ir::types::I64));
+            vec![]
+        }
         None => {
             return Err(MnError::Unsupported(
                 "result",
-                "function-typed results are outside the private ABI".to_string(),
+                "unknown result type is outside the private ABI".to_string(),
+            ))
+        }
+        Some(_) => {
+            return Err(MnError::Unsupported(
+                "result",
+                "result type is outside the mn data/owned ABI".to_string(),
             ))
         }
     };
@@ -96,13 +123,22 @@ fn exit_sig() -> Signature {
 }
 
 /// Admission re-checks at the codegen door (contract §7.3): the input must
-/// be a single-function unit of the one profile with an admitted import
-/// surface. Rejected here with codegen count 0 — never NOP'd past.
+/// be a single-function unit of an ADMITTED profile with an admitted
+/// import surface. PLAN-870 widens the admitted set to the three shared
+/// MIR profiles (scalar + av.data/1 + av.owned/1); everything else stays a
+/// controlled rejection. Rejected here with codegen count 0 — never NOP'd
+/// past.
 pub fn admit_unit(unit: &MirModule) -> Result<(), MnError> {
-    if unit.profile != AV_PROFILE {
+    let admitted = unit.profile == AV_PROFILE
+        || unit.profile == AV_DATA_PROFILE
+        || unit.profile == AV_OWNED_PROFILE;
+    if !admitted {
         return Err(MnError::Unsupported(
             "profile",
-            format!("profile `{}` is not `{AV_PROFILE}`", unit.profile),
+            format!(
+                "profile `{}` is not one of `{AV_PROFILE}`/`{AV_DATA_PROFILE}`/`{AV_OWNED_PROFILE}`",
+                unit.profile
+            ),
         ));
     }
     if !unit.is_unit || unit.funcs.len() != 1 {
@@ -111,8 +147,76 @@ pub fn admit_unit(unit: &MirModule) -> Result<(), MnError> {
             "codegen consumes single-function units only".to_string(),
         ));
     }
+    // Defensive wide-scalar touch check (freeze §4): R2-N stays closed —
+    // any REACHED wide numeric type (slot, signature, or record field)
+    // rejects by name even though the type table itself may carry dead
+    // entries.
+    let mut seen = std::collections::BTreeSet::new();
+    let f = &unit.funcs[0];
+    let mut touched: Vec<u32> = vec![f.sig];
+    for s in &f.slots {
+        touched.push(s.ty);
+    }
+    for imp in &unit.imports {
+        touched.push(imp.sig);
+    }
+    for i in &f.blocks {
+        for ins in &i.instrs {
+            if let auto_av_core::mir::MirInstr::Aggregate { record_ty, .. } = ins {
+                touched.push(*record_ty);
+            }
+        }
+    }
+    while let Some(t) = touched.pop() {
+        if !seen.insert(t) {
+            continue;
+        }
+        match unit.types.get(t as usize) {
+            Some(MirType::I64) | Some(MirType::U64) | Some(MirType::F32) | Some(MirType::F64) => {
+                return Err(MnError::Unsupported(
+                    "type",
+                    format!("wide numeric type {t} is outside the mn surface (R2-N)"),
+                ));
+            }
+            Some(MirType::Record(r)) | Some(MirType::RecordView(r)) => {
+                for fd in &r.fields {
+                    touched.push(fd.ty);
+                }
+            }
+            Some(MirType::Fn(s)) => {
+                for p in &s.params {
+                    touched.push(*p);
+                }
+                touched.push(s.result);
+            }
+            _ => {}
+        }
+    }
     for imp in &unit.imports {
         symbols::import_symbol(&unit.owner, &imp.symbol)?;
+    }
+    // Touched wide CONSTANTS (freeze §4/§7): R2-N stays closed — a Const
+    // instruction referencing a wide numeric constant rejects by name
+    // (unreferenced dead table entries do not).
+    for i in &f.blocks {
+        for ins in &i.instrs {
+            if let auto_av_core::mir::MirInstr::Const { value, .. } = ins {
+                match unit.consts.get(*value as usize) {
+                    Some(auto_av_core::mir::MirConst::I64(_))
+                    | Some(auto_av_core::mir::MirConst::U64(_))
+                    | Some(auto_av_core::mir::MirConst::F32Bits(_))
+                    | Some(auto_av_core::mir::MirConst::F64Bits(_)) => {
+                        return Err(MnError::Unsupported(
+                            "const",
+                            format!(
+                                "constant {value} is a wide numeric value outside the mn surface (R2-N)"
+                            ),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+        }
     }
     Ok(())
 }

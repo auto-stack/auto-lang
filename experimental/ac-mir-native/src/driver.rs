@@ -11,9 +11,48 @@ use crate::observe::Obs;
 use crate::resources::Partition;
 use crate::{emit, MnError};
 use ac_artifact_probe::store::ManagedStore;
-use auto_ac_prototype::source::compile_scalar_source;
+use auto_av_core::mir::MirType;
 use auto_av_core::mir_verify::{verify_mir, MirVerifyError};
 use std::path::{Path, PathBuf};
+
+/// The narrowest source domain that admits a request (PLAN-870 freeze §4):
+/// scalar → record → text-record escalation picks the narrowest compiling
+/// profile, so B* sources keep their `av.core-i32/1` unit identity while
+/// T*/R* sources reach `av.owned/1`/`av.data/1` through the SAME shared
+/// frontend stack AV uses (diagnostics included).
+enum Domain {
+    Scalar(auto_ac_prototype::source::CompiledSource),
+    Data(auto_ac_prototype::source::CompiledSource),
+    Owned(auto_ac_prototype::source::CompiledSource),
+}
+
+/// A profile-surface rejection (`source.unsupported` out of the Text
+/// stage) — the only failure class that escalates to the next wider
+/// domain; every other diagnostic (parse, bind, verify) is terminal and
+/// reports from the domain that produced it, exactly like AV's explicit
+/// per-domain drivers.
+fn is_surface_rejection(ds: &[auto_ac_prototype::atom_text::Diagnostic]) -> bool {
+    ds.iter().all(|d| {
+        d.code == "source.unsupported" && d.stage == auto_ac_prototype::atom_text::Stage::Text
+    })
+}
+
+fn compile_escalating(
+    src: &str,
+    caps: &[String],
+) -> std::result::Result<Domain, Vec<auto_ac_prototype::atom_text::Diagnostic>> {
+    match auto_ac_prototype::source::compile_scalar_source(src, "mn.at", caps) {
+        Ok(c) => return Ok(Domain::Scalar(c)),
+        Err(ds) if is_surface_rejection(&ds) => {}
+        Err(ds) => return Err(ds),
+    }
+    match auto_ac_prototype::source::compile_record_source(src, "mn.at", caps) {
+        Ok(c) => return Ok(Domain::Data(c)),
+        Err(ds) if is_surface_rejection(&ds) => {}
+        Err(ds) => return Err(ds),
+    }
+    auto_ac_prototype::source::compile_text_record_source(src, "mn.at", caps).map(Domain::Owned)
+}
 
 pub struct MnDriver {
     store: Option<ManagedStore>,
@@ -122,28 +161,33 @@ impl MnDriver {
             ));
         }
         let compiled = obs.span("frontend", |o| {
-            compile_scalar_source(src, "mn.at", caps).map_err(|ds| {
+            compile_escalating(src, caps).map_err(|ds| {
                 o.counter("frontend_reject", 1);
                 MnError::Unsupported(
                     "frontend",
                     ds.first()
-                        .map(|d| d.message.clone())
+                        .map(|d| format!("{:?}/{}: {}", d.stage, d.code, d.message))
                         .unwrap_or_else(|| "frontend failed".into()),
                 )
             })
         })?;
-        let checked = &compiled.checked;
+        let needs_text_runtime = matches!(compiled, Domain::Owned(_));
 
         // ---- HIR → MIR (798 public adapter) + verify ---------------------
         let snapshot = auto_av_core::contract::fnv1a64(src.as_bytes());
         let module = obs.span("mir_lower", |o| {
-            auto_mir_lower::lower_checked(checked, entry, snapshot).map_err(|e| {
+            let r = match &compiled {
+                Domain::Scalar(c) => auto_mir_lower::lower_checked(&c.checked, entry, snapshot),
+                Domain::Data(c) => auto_mir_lower::lower_checked_data(&c.checked, entry, snapshot),
+                Domain::Owned(c) => {
+                    auto_mir_lower::lower_checked_owned(&c.checked, entry, snapshot)
+                }
+            };
+            r.map_err(|e| {
                 o.counter("mir_reject", 1);
                 let msg = match &e {
                     auto_mir_lower::AdapterError::Unsupported { message, .. }
-                    | auto_mir_lower::AdapterError::Invalid { message, .. } => {
-                        message.clone()
-                    }
+                    | auto_mir_lower::AdapterError::Invalid { message, .. } => message.clone(),
                 };
                 MnError::Unsupported("adapter", msg)
             })
@@ -291,9 +335,43 @@ impl MnDriver {
                 )
             })?;
         let entry_meta = CoffMeta::for_unit(entry_unit, cache::unit_fp(entry_unit))?;
+        // The frozen wrapper contract: the entry function is zero-param
+        // with an I32-family result (freeze §3). Anything else rejects by
+        // name before any object is emitted.
+        {
+            let sig = entry_unit.sig_of(entry_unit.funcs[0].sig).ok_or_else(|| {
+                MnError::Unsupported("entry", format!("entry `{entry}` has no signature"))
+            })?;
+            if !sig.params.is_empty()
+                || !matches!(
+                    entry_unit.types.get(sig.result as usize),
+                    Some(MirType::I32) | Some(MirType::Bool) | Some(MirType::Char)
+                )
+            {
+                return Err(MnError::Unsupported(
+                    "entry",
+                    "entry must be zero-param with an i32-family result (wrapper contract)"
+                        .to_string(),
+                ));
+            }
+        }
         let (lld_sha, sdk_tag, k32_sha) =
             obs.span("link_identity", |_| link_driver::link_identities())?;
         let trace_lib_sha = match trace_lib {
+            Some(p) => Some(link_driver::file_identity(p)?),
+            None => None,
+        };
+        // PLAN-870: the owned domain links the landed text runtime
+        // (ac.runtime.text.v1) — located/built through the shared probe
+        // seam, memoized per process; data/scalar domains never do.
+        let text_lib: Option<std::path::PathBuf> = if needs_text_runtime {
+            let lib =
+                auto_av_probe::native_reference::text_runtime_lib().map_err(MnError::Infra)?;
+            Some(lib)
+        } else {
+            None
+        };
+        let text_lib_sha = match &text_lib {
             Some(p) => Some(link_driver::file_identity(p)?),
             None => None,
         };
@@ -311,6 +389,7 @@ impl MnDriver {
             sdk_tag,
             kernel32_sha: k32_sha,
             trace_lib_sha,
+            text_lib_sha,
         };
         // Manifest render: index/codec staging for the closure record.
         obs.ledger
@@ -345,6 +424,13 @@ impl MnDriver {
             emit::emit_wrapper_coff(&entry_meta.symbol)
         })?;
         obs.ledger.charge(Partition::Staging, wrapper.len() as u64);
+        let mut support_libs: Vec<std::path::PathBuf> = Vec::new();
+        if let Some(t) = trace_lib {
+            support_libs.push(t.to_path_buf());
+        }
+        if let Some(t) = &text_lib {
+            support_libs.push(t.clone());
+        }
         let run = obs.span("link_run", |o| {
             o.counter("link_invocations", 1);
             o.counter("run_invocations", 1);
@@ -353,7 +439,7 @@ impl MnDriver {
                 &wrapper,
                 START_SYMBOL,
                 workdir,
-                trace_lib,
+                &support_libs,
                 &format!("manifest-fp {fp}\nunits {}\n", manifest.units.len()),
             )
         })?;

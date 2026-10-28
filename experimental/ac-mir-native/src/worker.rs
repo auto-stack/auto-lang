@@ -37,6 +37,7 @@ pub fn restore_run_by_key(
     link_inputs: &str,
     workdir: &Path,
     trace_lib: Option<&Path>,
+    text_lib_sha: Option<&str>,
 ) -> Result<RestoreRunOutcome, MnError> {
     let store =
         ManagedStore::open(store_root).map_err(|e| MnError::Infra(format!("store open: {e}")))?;
@@ -45,7 +46,7 @@ pub fn restore_run_by_key(
         module: owner_module.to_string(),
     };
     let Some(manifest) =
-        cache::get_link_manifest_for(&store, &owner, entry, unit_fps, link_inputs)?
+        cache::get_link_manifest_for(&store, &owner, entry, unit_fps, link_inputs, text_lib_sha)?
     else {
         return Err(MnError::Admit(
             "manifest",
@@ -137,12 +138,30 @@ fn run_manifest(
             )
         })?;
     let wrapper = emit::emit_wrapper_coff(&entry_unit.meta.symbol)?;
+    // PLAN-870: a manifest carrying the text-lib axis binds its identity —
+    // the located runtime must hash to the recorded value before it may
+    // join the link line.
+    let mut support_libs: Vec<PathBuf> = Vec::new();
+    if let Some(t) = trace_lib {
+        support_libs.push(t.to_path_buf());
+    }
+    if let Some(want) = &manifest.text_lib_sha {
+        let lib = auto_av_probe::native_reference::text_runtime_lib().map_err(MnError::Infra)?;
+        let got = link_driver::file_identity(&lib)?;
+        if got != *want {
+            return Err(MnError::Admit(
+                "textlib",
+                format!("located text runtime identity `{got}` != manifest `{want}`"),
+            ));
+        }
+        support_libs.push(lib);
+    }
     let run = link_driver::link_and_run(
         &objects,
         &wrapper,
         START_SYMBOL,
         workdir,
-        trace_lib,
+        &support_libs,
         &format!(
             "restored-manifest {}\nunits {}\n",
             manifest.fingerprint(),

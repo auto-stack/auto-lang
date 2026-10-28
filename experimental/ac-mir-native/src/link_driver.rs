@@ -220,7 +220,7 @@ pub fn link_and_run(
     entry_wrapper: &[u8],
     entry_symbol: &str,
     workdir: &Path,
-    trace_lib: Option<&Path>,
+    support_libs: &[PathBuf],
     link_receipt_extra: &str,
 ) -> Result<PeRun, MnError> {
     let total: usize = objects.iter().map(|o| o.bytes.len()).sum::<usize>() + entry_wrapper.len();
@@ -299,7 +299,9 @@ pub fn link_and_run(
     }
     cmd.arg(format!("/libpath:{}", sdk.display()));
     cmd.arg("kernel32.lib");
-    if let Some(lib) = trace_lib {
+    // PLAN-870: the link line carries every support library (the trace
+    // lib, the text runtime lib) in the given order.
+    for lib in support_libs {
         cmd.arg(lib.display().to_string());
     }
     let linked = match run_deadlined_captured(

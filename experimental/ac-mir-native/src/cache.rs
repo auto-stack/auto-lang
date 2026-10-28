@@ -390,6 +390,10 @@ pub struct LinkManifest {
     pub sdk_tag: String,
     pub kernel32_sha: String,
     pub trace_lib_sha: Option<String>,
+    /// PLAN-870: the text runtime library's file identity — present ONLY
+    /// when the link carried it (conditional axis: scalar/data manifests
+    /// render and key byte-identically to the pre-870 surface).
+    pub text_lib_sha: Option<String>,
 }
 
 impl LinkManifest {
@@ -442,7 +446,7 @@ impl LinkManifest {
     pub fn key(&self) -> QueryKey {
         let mut units = self.units.clone();
         units.sort_by(|a, b| a.meta.unit.cmp(&b.meta.unit));
-        QueryKey::new(
+        let mut key = QueryKey::new(
             &LINK_LAYER,
             vec![
                 ("producer".into(), PRODUCER_ID.into()),
@@ -472,7 +476,11 @@ impl LinkManifest {
                 ("abi".into(), self.abi.clone()),
                 ("entry-symbol".into(), self.entry_symbol.clone()),
             ],
-        )
+        );
+        if let Some(t) = &self.text_lib_sha {
+            key.components.push(("textlib".into(), t.clone()));
+        }
+        key
     }
 }
 
@@ -530,10 +538,11 @@ pub fn get_link_manifest_for(
     entry: &str,
     unit_fps: &[(String, String)],
     link_inputs: &str,
+    text_lib_sha: Option<&str>,
 ) -> Result<Option<LinkManifest>, MnError> {
     let mut sorted: Vec<_> = unit_fps.to_vec();
     sorted.sort_by(|a, b| a.0.cmp(&b.0));
-    let key = QueryKey::new(
+    let mut key = QueryKey::new(
         &LINK_LAYER,
         vec![
             ("producer".into(), PRODUCER_ID.into()),
@@ -552,6 +561,9 @@ pub fn get_link_manifest_for(
             ("entry-symbol".into(), START_SYMBOL.into()),
         ],
     );
+    if let Some(t) = text_lib_sha {
+        key.components.push(("textlib".into(), t.to_string()));
+    }
     let Some(man) = get_link_manifest(store, &key)? else {
         return Ok(None);
     };
@@ -589,6 +601,7 @@ pub fn parse_link_manifest(bytes: &[u8]) -> Result<LinkManifest, MnError> {
     let mut sdk_tag = String::new();
     let mut kernel32_sha = String::new();
     let mut trace_lib_sha = None;
+    let mut text_lib_sha = None;
     let mut units: Vec<LinkUnitEntry> = Vec::new();
     let mut cur: Option<LinkUnitEntry> = None;
     for line in lines {
@@ -680,6 +693,7 @@ pub fn parse_link_manifest(bytes: &[u8]) -> Result<LinkManifest, MnError> {
                     "sdk" => sdk_tag = unesc(lv),
                     "kernel32" => kernel32_sha = lv.to_string(),
                     "tracelib" => trace_lib_sha = (lv != "none").then(|| lv.to_string()),
+                    "textlib" => text_lib_sha = Some(lv.to_string()),
                     other => {
                         return Err(MnError::Admit(
                             "manifest",
@@ -719,6 +733,7 @@ pub fn parse_link_manifest(bytes: &[u8]) -> Result<LinkManifest, MnError> {
         sdk_tag,
         kernel32_sha,
         trace_lib_sha,
+        text_lib_sha,
     })
 }
 

@@ -15,6 +15,7 @@ pub mod driver;
 pub mod emit;
 pub mod fingerprint;
 pub mod incremental;
+pub mod layout;
 pub mod link_driver;
 pub mod lower;
 pub mod observe;

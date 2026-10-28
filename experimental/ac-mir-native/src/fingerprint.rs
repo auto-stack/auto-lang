@@ -10,16 +10,48 @@ use crate::MnError;
 use auto_av_core::contract::fnv1a64;
 use auto_av_core::mir::*;
 
-fn shape(m: &MirModule, idx: TypeIdx) -> &'static str {
-    match m.type_shape(idx) {
-        Some(ScalarShape::I32) => "i32",
-        Some(ScalarShape::Bool) => "bool",
-        None => "fn",
-        // PLAN-820 shared-core widening: wide/record shapes never enter an
-        // mn unit's fingerprint (rejected at admission) — a defensive
-        // non-panicking label keeps the match total.
-        Some(_) => "avdata",
+fn shape(m: &MirModule, idx: TypeIdx) -> String {
+    match m.types.get(idx as usize) {
+        Some(MirType::I32) => "i32".into(),
+        Some(MirType::Bool) => "bool".into(),
+        // PLAN-870 (freeze §6): the data/owned shapes render DISTINCT,
+        // nominal labels — the old defensive "fn"/"avdata" labels collided
+        // (a Record slot and an Fn param hashed identically), which would
+        // have made unit cache keys unsound for owned units.
+        Some(MirType::Char) => "char".into(),
+        Some(MirType::Str) => "str".into(),
+        Some(MirType::StrView) => "strview".into(),
+        Some(MirType::Fn(_)) => "fn".into(),
+        Some(MirType::MutRef) => "mutref".into(),
+        Some(MirType::Record(r)) => record_shape(m, r),
+        Some(MirType::RecordView(r)) => format!("view:{}", record_shape(m, r)),
+        // Wide numerics stay outside the mn surface; a defensive distinct
+        // label keeps the render total for rejected units.
+        Some(
+            MirType::I64
+            | MirType::U64
+            | MirType::F32
+            | MirType::F64
+            | MirType::List(_)
+            | MirType::Variant(_)
+            | MirType::Place(_)
+            | MirType::Closure(_)
+            | MirType::Dyn,
+        ) => "unsupported".into(),
+        None => "missing".into(),
     }
+}
+
+/// Nominal record shape: identity is (owner, name, ordered field shapes)
+/// — same-width different-name records never render alike (Design44).
+fn record_shape(m: &MirModule, r: &RecordTypeRef) -> String {
+    let fields = r
+        .fields
+        .iter()
+        .map(|f| format!("{}:{}", f.name, shape(m, f.ty)))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("rec({}|{}:{})", r.owner_module, r.name, fields)
 }
 
 fn sig_shape(m: &MirModule, idx: TypeIdx) -> String {
@@ -48,9 +80,13 @@ fn const_repr(c: &MirConst) -> String {
     match c {
         MirConst::I32(v) => format!("i32:{v}"),
         MirConst::Bool(b) => format!("bool:{}", if *b { 1 } else { 0 }),
-        // PLAN-820 shared-core widening (defensive total match; wide
-        // constants are rejected before fingerprinting).
-        other => format!("avdata:{:?}", std::mem::discriminant(other)),
+        // PLAN-870 (freeze §6): Char/Str consts render by VALUE — the old
+        // discriminant label made every string literal hash identically.
+        MirConst::Char(ch) => format!("char:{}", *ch as u32),
+        MirConst::Str(bytes) => format!("str:{}:{:016x}", bytes.len(), fnv1a64(bytes)),
+        // Wide numeric constants stay rejected before fingerprinting; the
+        // discriminant label remains a defensive total arm.
+        other => format!("wide:{:?}", std::mem::discriminant(other)),
     }
 }
 

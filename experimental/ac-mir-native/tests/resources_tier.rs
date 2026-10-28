@@ -204,8 +204,7 @@ fn fill_gen(k: usize, stmts: usize) -> String {
 fn fill_units(src: &str) -> Vec<auto_av_core::mir::MirModule> {
     let compiled =
         auto_ac_prototype::source::compile_scalar_source(src, "mn.at", &[]).expect("compile");
-    let mir =
-        auto_mir_lower::lower_checked(&compiled.checked, "d_main", 0).expect("lower");
+    let mir = auto_mir_lower::lower_checked(&compiled.checked, "d_main", 0).expect("lower");
     let checked = auto_av_core::mir_verify::verify_mir(&mir).expect("verify");
     auto_av_probe::cache::split_units(checked.module()).expect("split")
 }
@@ -643,7 +642,7 @@ fn mir_native_resources_over_cap_cleanup() {
         b"wrapper",
         ac_mn::config::START_SYMBOL,
         &workdir,
-        None,
+        &[],
         "cap probe",
     ) {
         Err(MnError::Resource(kind, msg)) => {

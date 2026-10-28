@@ -222,8 +222,7 @@ fn two_units() -> Vec<auto_av_core::mir::MirModule> {
     let src = "fn helper(v int) int {\n    return v + 5\n}\n\nfn main() int {\n    return helper(37)\n}\n";
     let compiled =
         auto_ac_prototype::source::compile_scalar_source(src, "mn.at", &[]).expect("compile");
-    let mir =
-        auto_mir_lower::lower_checked(&compiled.checked, "d_main", 0).expect("lower");
+    let mir = auto_mir_lower::lower_checked(&compiled.checked, "d_main", 0).expect("lower");
     let checked = auto_av_core::mir_verify::verify_mir(&mir).expect("verify");
     auto_av_probe::cache::split_units(checked.module()).expect("split")
 }
@@ -323,6 +322,7 @@ fn mir_native_cache_bad_admission_rejections() {
             .expect("crafted manifest put")
     };
     let base_man = |entry: LinkUnitEntry, target: &str| LinkManifest {
+        text_lib_sha: None,
         owner: meta_helper.owner.clone(),
         entry: "d_helper".to_string(),
         entry_symbol: meta_helper.symbol.clone(),
@@ -399,6 +399,7 @@ fn mir_native_cache_bad_admission_rejections() {
         let (id_main, _a) = put_unit_coff(&cstore, None, &meta_main, &coff_main.bytes).unwrap();
         let (id_h2, _b) = put_unit_coff(&cstore, None, &meta_helper, &coff.bytes).unwrap();
         let real_man = LinkManifest {
+            text_lib_sha: None,
             owner: meta_main.owner.clone(),
             entry: "d_main".to_string(),
             entry_symbol: meta_main.symbol.clone(),
