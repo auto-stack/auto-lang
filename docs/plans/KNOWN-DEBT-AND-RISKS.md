@@ -14,6 +14,22 @@
 
 - **D-862-R1-01（P2，预存缺陷）**：`scripts/verify-ace-m1-852.ps1` 的 `Load-Binding` 用 `$line -split "`t", -1`；PowerShell 的 `-split` 第三操作数是 options 而非 limit，pwsh 7.6.9 实测返回 1 段 → 852 的 `contract`/`acceptance` scope 直接红（"binding row has 1 columns"）。本计划未改该脚本（diff 为空），`verify-av-862.ps1` 已用 `.Split([char]9)` 覆盖同一完整性面（12 列/唯一 id/owner 注记/`na` 规则 ID）。852 已归档，修复需独立 L0 worktree；修好前不得把 852 scope 当作可运行的 M1 完整性门。
 - **待决策（P2，口径）**：对等口径决策件的附录把 C01/C02/I01–I11/G02–G08 写成**无规则 ID** 的 `na:m1`，与其 §5 规则 1（无规则 ID 即视为 `diff:pending`）冲突。全表五态词表回填须先裁定这些行的规则归属（候选 NA-5/NA-6）；在此之前 M1 clean 只能以实测口径（PLAN-862 T-06：20/73）记，不得引用 50/103 投影。
+### Plan 869（2026-10-28，work 交接；结构性候选待签核 + 防护面限制记录）
+
+- **P869-D1 结构性减法候选待用户签核**：auto-cosmic 五子整族（~1,047 P 行）无 workspace
+  消费者，但 specs/auto-cosmic 标 active + 债务簿 509 条目 + 509 裁定报告构成公开承诺面
+  （负控第五面不过）→ 按 D-3 四要件备齐证据（subtraction-freeze.md §4），**未实施，待
+  用户按批签核**；80 万 A 口径缺口 198,497 的进一步压缩大概率需要此类结构性批次。
+- **P869-D2 V-03 类1（cfg 门后消费者）无实际拦截案例**：批 2 实证拦截 2 类（websocket=
+  宏/注册面消费者；cosmic=文档承诺面），cfg 门控类无被拦实例（防护=scan4 全文扫描天然
+  覆盖门控区域 + rustfmt 全解析兜底语法损伤——cosmic linux.rs 事件实证后者；merge 整档
+  含 feature 面为最终兜底）。后续批次若引入 feature-gated 候选，须补该类定向负控。
+- **P869-D3 F-7 三入口记载部分过时**：http_server.rs 生产行 843 时点 4,156 → 批 2 后
+  实测 186（843 后生产已迁 http_server/* 子模块，入口仅装配壳）；stdlib.rs/trans/rust.rs
+  仍超 843 自设限（6,448/7,782）。已在结构立项包 S2 对账；843 残项清单应据此修偏。
+- **P869-D4 预存 fmt 漂移未清**（非本批引入）：lang a2r-actor-tests 等（pristine 即漂移）、
+  ui ~20 文件、man cmd_ui.rs 1 处；本批仅保证提交内文件 fmt-clean。全仓 fmt 收口建议
+  独立轻量计划（纯格式化，零语义）。
 
 ### Plan 868（2026-10-28，work 交接时发现的预存问题，非本 diff 引入）
 
