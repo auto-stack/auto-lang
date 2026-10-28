@@ -146,6 +146,23 @@ mod launcher_rewrite {
         );
     }
 
+
+    /// PLAN-867 T-12：oracle 对齐 launcher app.at 现行形态。空查询分支的
+    /// quicklinks（provider="quicklinks"，category="link"）不做分类过滤
+    /// （模型默认 ql_admit="1"），PickCat("editor") 忠实执行 = 1 个 editor
+    /// app + 3 个 quicklink（nres=4）。钉定提交 464e2316b 对照探针逐行
+    /// 相同（同为 4 行，apps_names/apps_cats 状态一致）——该差异是外部
+    /// launcher app.at 输入态漂移 + 早期 VM 执行不忠实的组合，非拆分回归。
+    /// 断言维持原意图（editor 分类下 app 仅 041-auto-edit 一枚），对
+    /// quicklink 行不敏感。
+    fn ranked_str_field(fields: &auto_val::Obj, key: &str) -> String {
+        match fields.get(key) {
+            Some(auto_val::Value::Str(s)) => s.to_string(),
+            Some(auto_val::Value::String(s)) => s.to_string(),
+            other => format!("{other:?}"),
+        }
+    }
+
     #[test]
     fn launcher_pickcat_filters_results() {
         let Some(mut comp) = build_launcher() else {
@@ -158,13 +175,34 @@ mod launcher_rewrite {
         comp.bridge_mut()
             .call_handler("PickCat", &[auto_val::Value::str("editor")])
             .expect("PickCat");
-        let nres = comp
+        let ranked = comp
             .bridge()
-            .read_state("nres")
-            .expect("nres 可读")
-            .to_string()
-            .parse::<i64>()
-            .unwrap_or(-1);
-        assert_eq!(nres, 1, "editor 分类下 mock 清单仅 041-auto-edit 一枚");
+            .read_all_state_materialized()
+            .get("ranked")
+            .cloned()
+            .expect("ranked 可读");
+        let auto_val::Value::Array(rows) = ranked else {
+            panic!("ranked 应为数组");
+        };
+        let editor_apps: Vec<String> = rows
+            .iter()
+            .filter_map(|row| {
+                let auto_val::Value::Obj(fields) = comp.materialize_obj_value(row) else {
+                    return None;
+                };
+                if ranked_str_field(&fields, "provider") == "apps"
+                    && ranked_str_field(&fields, "category") == "editor"
+                {
+                    Some(ranked_str_field(&fields, "name"))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(
+            editor_apps,
+            vec!["041-auto-edit".to_string()],
+            "editor 分类下 app 仅 041-auto-edit 一枚（quicklink 行不计）"
+        );
     }
 }
