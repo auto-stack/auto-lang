@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
-MINIMUMS = HERE / "scripts" / "tier-selection-minimums.json.txt.txt"
+MINIMUMS = HERE / "scripts" / "tier-selection-minimums.json.txt"
 
 
 def load():
