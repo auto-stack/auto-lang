@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-844
-status: drafting
+status: execution_done
 feature_name: 跨仓重复实现、废弃代码清理与净瘦身验收
 author: [Codex]
 created_at: 2026-10-24
-updated_at: 2026-10-24
+updated_at: 2026-10-28
 plan_revision: 1
-current_step: 0
+current_step: 9
 total_steps: 12
 supersedes_spec_components: [docs/specs/language-sdk/project.md, docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/types/overview.md, docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/trans/overview.md, docs/specs/auto-lang/runtime/overview.md, docs/specs/repository-boundaries/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/repository-boundaries/net-slimming.md]
@@ -113,15 +113,15 @@ work/review只必要check（真实SDK/被改包）、相关包/模块/fixture和
 
 | 状态 | ID | owner_stage | 依赖/启动门 | 实际交付/验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | G844完整核验 | 冻结三仓同口径净统计/候选真重复与无消费者清偿矩阵、语义/引用/cfg/公开支持与基线，确定实际可操作目标 | AC-01..05 |
-| [ ] | T-02 | work | G844；T-01 | 对核准通用纯工具/数据转换族抽唯一最小owner，切真实消费者并删原副本，合法/错误对照 | AC-01,03 |
-| [ ] | T-03 | work | G844；T-02 | 对核准VM/FFI/trans或UI/Man跨族重复逐项保持边界/状态语义清偿，不同语义保留有证，不建巨common | AC-01,03 |
-| [ ] | T-04 | work | G844；T-03 | 退役核准的旧registry/Scope/其他无消费者实现或必要迁调用，保活跃/公开稳定/动态注册能力 | AC-02,03 |
-| [ ] | T-05 | work | G844；T-04 | 清理核准遗留crate/废弃副本/无效入口与配置，完整cfg/脚本/直接manifest负控，保legacy历史与许可 | AC-02 |
-| [ ] | T-06 | work | G844；T-05 | 同步manifest/锁/alias/注册表/生成路径/资源/build输入与指纹、777/792，保持原测试ID覆盖 | AC-03,05 |
-| [ ] | T-07 | work | G844；T-06 | 重算三仓生产净删/重复族/模块/依赖与同环境成本，验证分类/搬移/新增helper负控V-04 | AC-04 |
-| [ ] | T-08 | work | G844；T-07 | V-01..05全部正反控与三仓真实消费者/外部fresh/locked/资源退出完成，清偿矩阵核销 | AC-01..05 |
-| [ ] | T-09 | work | G844；T-08 | 引用841/842/843实际交付逐项核M2有限退出、无目标内延期，SD-01..05及attachments/844/handoff.md冻结送审 | AC-04,05 |
+| [x] | T-01 | work | G844完整核验 | 冻结三仓同口径净统计/候选真重复与无消费者清偿矩阵、语义/引用/cfg/公开支持与基线，确定实际可操作目标 | AC-01..05 |[✅ 2026-10-28] G844 核验闭合（831/832/841/842/843 全 archived 终态，843 §9 merge 记录明示「U843 成立，G844 放行」）；基线固定 lang `bb85bf304`/ui `7095f536`/man `4cc912e9`；NET-PROD 基线 308,909/296,190/24,530；冻结 5 真重复族（D-1 应答头三份/D-2 迭代器注册样板/D-3 Generator 三胞胎/D-4 死纯 shim/D-5 autoui-skill 跨仓双份）+7 退役项（R-1..R-7）+保留有证清单（str.len/math 双轨/lib-legacy 活跃等）；[合同基线](attachments/844/contract-baseline.md)、度量脚本与基线数字（attachments/844/probe/，本地工件不入库） |
+| [x] | T-02 | work | G844；T-01 | 对核准通用纯工具/数据转换族抽唯一最小owner，切真实消费者并删原副本，合法/错误对照 | AC-01,03 | [✅ 2026-10-28] D-5：lang 删 autoui-skill 12 文件副本（bc61ac260），owner=auto-man（include_str! 唯一消费）；spec 指针更新；lang check -p auto-lang/-p auto-lsp 绿 + man check -p auto 绿（模板编译期校验） |
+| [x] | T-03 | work | G844；T-02 | 对核准VM/FFI/trans或UI/Man跨族重复逐项保持边界/状态语义清偿，不同语义保留有证，不建巨common | AC-01,03 | [✅ 2026-10-28] D-1..D-4（fd7467536，15 文件 +133/−280）：应答头单源/迭代器 13 处/Generator 三胞胎/死纯 shim×3；定向 iterator 12/12、generator 11/11、plan755 4/4、str_contains 2/2、cors 8/8 |
+| [x] | T-04 | work | G844；T-03 | 退役核准的旧registry/Scope/其他无消费者实现或必要迁调用，保活跃/公开稳定/动态注册能力 | AC-02,03 | [✅ 2026-10-28] R-4/R-5/R-6 + 手术中发现 R-8 StackedScope（a5aa62f71，−560 行）：registry.rs/legacy Scope+Database API+4 死面测试/StackedScope/Evaluator/elems_mut/set_scope；symbol_table 9/9、database 51/51、execution_engine 3/3、infer 126/126；E0432 负控过 |
+| [x] | T-05 | work | G844；T-04 | 清理核准遗留crate/废弃副本/无效入口与配置，完整cfg/脚本/直接manifest负控，保legacy历史与许可 | AC-02 | [✅ 2026-10-28] R-1/R-2/R-3 lang 侧（69bcb7701：auto-lang-macros/auto-xml/ac-examples 删除+overview 遗留清单同步+lib-legacy 活跃更正）+ R-7 man 侧（873fa23：fixture 残留+auto-up 资产）；两树 check 0 错 |
+| [x] | T-06 | work | G844；T-05 | 同步manifest/锁/alias/注册表/生成路径/资源/build输入与指纹、777/792，保持原测试ID覆盖 | AC-03,05 | [✅ 2026-10-28] 核验零额外改动：lock/注册名（Str.* 仅存 nv 版）/发行脚本/指纹清单零引用被删物，777 边不变、792 无触；rust_fn 153 为观察值非 pin；4 个死面测试随 API 退役（无覆盖损失） |
+| [x] | T-07 | work | G844；T-06 | 重算三仓生产净删/重复族/模块/依赖与同环境成本，验证分类/搬移/新增helper负控V-04 | AC-04 | [✅ 2026-10-28] 同口径复算：lang NET-PROD 308,909→307,684（净删 −1,225>0 且含 5 真重复族清偿）、man AT-O −5、ui 零变化；无搬移/helper 已入账/分类分列（V-04 负控自证） |
+| [x] | T-08 | work | G844；T-07 | V-01..05全部正反控与三仓真实消费者/外部fresh/locked/资源退出完成，清偿矩阵核销 | AC-01..05 | [✅ 2026-10-28] 正控：engine 55/55 + sdk-consumer 5/5 + three-repository-consumer 3/3（解析组内两写树）；负控：TypeRegistry/Scope 探针 E0432 删除可发现证明；清偿矩阵全核销（handoff §2/§3） |
+| [x] | T-09 | work | G844；T-08 | 引用841/842/843实际交付逐项核M2有限退出、无目标内延期，SD-01..05及attachments/844/handoff.md冻结送审 | AC-04,05 | [✅ 2026-10-28] M2 四项逐条引用真实收据（841 merge-r2/842 U842 全闭环/843 U843 放行/844 本 handoff）；SD-01..05 落地（ea3c1dbc7，含 net-slimming.md 新规约）；[handoff](attachments/844/handoff.md) 冻结送审 |
 | [ ] | T-10 | review | G844；T-09冻结提交 | 同组独立完整AC/SD/实际consumer/反例/来源与健康审查；不先跑整档，不将merge门当已通过 | AC-06 |
 | [ ] | T-11 | merge | G844；T-10 pass | 并集影响复审、冻结三仓适用门与有序实际合入/固定版本/来源读回；若改变输入重审影响面，暂不放行后继 | AC-07 |
 | [ ] | T-12 | merge | G844；T-11全部交付收据 | canonical/受管ledger/索引沉淀、归档与逐树fresh wt-guard clean清理，整Plan闭环构成U844才放行下一份；保历史/恢复/交付分支 | AC-07 |
@@ -131,6 +131,10 @@ G844未满足前禁止创建/认领以下组、分支或work agent。未来组`D
 ## 9. 复审记录
 
 2026-10-24 / stage: new / plan_id: PLAN-844 / revision: 1 / outcome: blocked（上游整Plan启动门未齐；文档合同预检通过）/ next: 等G844真实满足后读回规范/交付/归档版本，再work T-01 / changed: T-01..12、AC-01..07、SD-01..05、V-01..05。本Plan drafting 0/12，无实施/fixture/probe/测试已完成，未创建树或agent；[预检](attachments/m2-governance-batch-20261024/preflight.md)。
+
+2026-10-28 / stage: work / plan_id: PLAN-844 / plan_revision: 1 / outcome: T-01 pass（executing 1/12）/ worktree: 无（T-01 只读盘点+簿记，代码树按 §8 于 T-02 建组 `D:/autostack/.wt/lang-844/{auto-lang,auto-man}`，分支 `codex/plan-844-dev`；auto-ui 本轮零写面） / base: 三仓 master bb85bf304/7095f536/4cc912e9（主检出代码路径零 WIP 预检通过） / evidence: G844 闭合核验（5 上游 archived+843 放行记录）；三探查 agent（无消费者/跨仓同名/仓内重复族）+载荷性抽查（TypeRegistry 零消费、Parser.scope=ScopeManager 非 legacy Scope、API pin 钉 type_registry 非 Scope、lib-legacy playground 活跃消费 run.rs:21、autoui-skill diff -rq 零差异）；净统计口径=attachments/844/probe/measure.py（843 口径扩展：T2 白名单/生成标记/桶分类），基线数字 baseline-stats.txt；预计生产净删 ~1,700-1,900 行 + 5 真重复族清偿 / findings: 843 handoff 两处候选定位修正（HttpDefaults 非重复实在 stdlib.rs；error-reply 族 plan755 钉不动）；overview.md 遗留清单 2 项与事实不符（lib-legacy 活跃、auto-shell 已消失）待 T-05 修 / next: T-02 建组树实施（D-5 autoui-skill 单源化）。
+
+2026-10-28 / stage: work（T-02..T-09 完成，work 阶段收口）/ plan_id: PLAN-844 / plan_revision: 1 / outcome: **pass → execution_done 9/12** / worktree_path: D:/autostack/.wt/lang-844/{auto-lang,auto-man 写；auto-ui@7095f536、auto-down@c3464d0 只读兄弟} / branch: codex/plan-844-dev（两写仓同名）/ base_commit: lang fd64529df（度量锚 bb85bf304，区间纯 docs）、man 4cc912e9 / code_commit: lang **ea3c1dbc7**（bc61ac260/fd7467536/a5aa62f71/69bcb7701/ea3c1dbc7）、man **873fa23** / dependency_revisions: ui 7095f536、down c3464d0（组内 detached） / task_ids: T-01..T-09 / evidence: [handoff](attachments/844/handoff.md)（清偿矩阵核销/净统计/M2 四收据引用/待办归属）、[合同基线](attachments/844/contract-baseline.md)、度量与编辑脚本（attachments/844/probe/，本地）；净删 −1,225（NET-PROD 308,909→307,684）+5 真重复族+8 退役项+R-8 新发现；定向 10 族全绿 + sdk-consumer 5/5 + three-repo 3/3 + E0432 负控；fmt clean、check 三 crate 0 错 / findings: 无未闭环 finding；保留有证清单（lib-legacy 活跃/双轨语义边界/error-reply 超授权）在案非延期 / pending_closeout_gates: merge-owned 裸 cargo t + tv/tt 触面档（tb/tu 按 T-11 适用面判不适用即记录）+ tf 到期批量回归——按 2026-10-14 时序裁定归 merge，review 不先行整档 / next_responsible_role: review T-10（同组树冻结提交 lang ea3c1dbc7 / man 873fa23 上独立复审）。
 
 ## 10. 待澄清事项
 
