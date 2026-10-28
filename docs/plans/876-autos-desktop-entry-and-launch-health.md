@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-876
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: autos-desktop-entry-and-launch-health（桌面入口迁 auto-os + 启动健康面）
 author: [DeepSeek Harness session]
 created_at: 2026-10-28
 updated_at: 2026-10-28
 plan_revision: 1
-current_step: 0
+current_step: 8
 total_steps: 10
 
 # /auto-plan:review 结束时填写：
@@ -258,7 +258,38 @@ boot 期一次采样，单行 `key=value` 序列 + 一行 `hint=`（脚本可 gr
 | T-09 | review | T-01..T-08 | 独立复审：AC 逐条对代码/日志；遗漏与延后扫描；spec delta 终稿 | 复审记录 | AC-10 |
 | T-10 | merge | T-09 | 三仓合并、spec 落地、债表更新（P723-D1 指针、use-diag 转派）、worktree 清理归档 | 归档与收据 | AC-11 |
 
+### 执行证据（2026-10-28 work 轮；worktree 组 `.wt/lang-876/`）
+
+| 任务 | 结果 | 证据（命令 → 实际观察） |
+|---|---|---|
+| T-01 | [x] | `auto-os/Cargo.toml`（workspace member `host/desktop`）+ `.cargo/config.toml`（`/STACK:33554432`、`jobs=12`）+ `Cargo.lock` 入库；`cargo metadata --no-deps` 列出 `os-desktop` |
+| T-02 | [x] | `cargo build -p os-desktop --bin ui-desktop` → **exit 0**，`target/debug/ui-desktop.exe` 120.5MB；启动日志 `[ui-desktop] start pid=… apps_dir=…` |
+| T-03 | [x] | `rqhost::resolve_auto_cli`（`AUTO_BIN/AUTO_CLI` → 自身及上两级 → `PATH`）+ 可执行错误文案；无 `auto.exe` 时日志 = `未找到 auto 可执行文件…先 cargo build -p auto`，桌面正常进入 |
+| T-04 | [x] | `[desktop-health] apps_dir=… apps_dir_src=cli registry=30 desktop_visible=29 declared_exe_missing=028-launcher,038-minesweeper,037-klondike,036-tetris apps_empty=0 shell_pack=… shell_pack_src=resolved storage=… orphan_icons=2 auto_cli=missing` + 3 条 `hint=`；`cargo test -p os-desktop` → **3 passed**（空壳签名/行形态/全绿无 hint） |
+| T-05 | [x] | 10 个脚本（`desktop.ps1/sh` + 7 个 `smoke-*.sh`）改指 `-p os-desktop --bin ui-desktop` 与 `$OS_ROOT/target/debug/ui-desktop.exe`；auto-os 内 `--example ui_desktop` 计数 = **0** |
+| T-06 | [x] | `outproc_native_exe` 改为"声明且在场"；新增纯函数 `decide_native_launch`（Outproc/Inproc/StrictMissing）；`cargo test -p auto-ui-runtime --lib -- p876` = **1 passed**、`native_exe_discovery_order` = **1 passed**；实机 MCP `launch 038-minesweeper` → 解释态窗口打开（不再 `os error 3`），截图 `/.wt/lang-876/auto-os/tmp/autoui-screenshot-1793174241066.png` |
+| T-07 | [x] | `git rm crates/auto-lang/examples/ui_desktop.rs`；`cargo metadata` 的 auto-lang example 目标无 desktop 项；引用改指 = `t5_smoke.rs`、`acceptance_channel.py`（含 `AUTO_OS_ROOT` 解析）、`host-smithay/render_shell_frame.py`、`028-launcher` 两驱动 + SPEC、`capability-tests/README`、`docs/specs/auto-lang/ui/overview.md` |
+| T-08 | [x] | storage 备份 `.bak-p876-20261028-155847` 后清理 `031-image-viewer`/`041-auto-edit`；重启自检 `orphan_icons=0`，桌面无 "app not found"（截图 `autoui-screenshot-1793174401270.png`） |
+| SD-01..04 | [x] | 新增 `docs/specs/repository-boundaries/autos-desktop-entry.md`；`auto-ui-runtime`、`auto-ui-compiler`、`repository-boundaries` 三页追加 PLAN-876 节 |
+| SD-05 | [x] | `docs/specs/auto-lang/project.md` 检索 `ui_desktop|examples/` = 0 命中 → **无可退役描述**（no-op），非延后 |
+
+提交（三仓同分支 `plan-876-dev`）：auto-os `f8860f2`、auto-ui `fa06499`、auto-lang `4628b3a5e` + spec `92db63f53`。
+基线：auto-lang `df54eb583`、auto-ui `7095f53`、auto-os `d585fae`。
+运行态：新宿主（`ui-desktop.exe`，worktree 构建）当前在跑（PID 56788），registry 30 / faces 4 / orphan 0。
+未执行：merge-owned 的裸 `cargo t`、spec 账本索引刷新、三仓合并与 worktree 清理。
+
 ## 9. 复审记录
+
+### 2026-10-28 /auto-plan:work 交接
+
+- `stage: work`；`PLAN-876`；`plan_revision: 1`；`outcome: pass`（T-09/T-10 review/merge-owned，未完成）。
+- `worktree_path`: `D:/autostack/.wt/lang-876/{auto-lang,auto-ui,auto-os,auto-down}`；`branch: plan-876-dev`（四仓同名）。
+- `base_commit`: auto-lang `df54eb583` / auto-ui `7095f53` / auto-os `d585fae`；`code_commit`: `4628b3a5e`+`92db63f53` / `fa06499` / `f8860f2`。
+- `task_ids`: T-01..T-08 (+SD-01..05) 完成；T-09/T-10 pending。
+- `evidence`: 见上表（构建 exit 0、单元测试 3+1+1 passed、两轮实机日志与两张 MCP 截图）。
+- `blockers`: 无（Q-1/Q-3/Q-5 已按用户 2026-10-28 批准执行）。
+- `next_responsible_role`: **final review**（独立上下文）；其后 merge。
+- 未做门禁（merge-owned，如实 pending）：auto-lang 裸 `cargo t`；spec 账本 `python scripts/spec-index.py`；三仓合并与 `wt-guard` 清理。
 
 ### 2026-10-28 /auto-plan:new 起草交接
 
