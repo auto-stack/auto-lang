@@ -3638,3 +3638,17 @@ ID，晚于最后批量收据（860，同日 09:33）——tf 非逐计划门禁
 `scripts/full-regression-retirements-844.json.txt`（orchestrator/closure 消费，850 文件
 不动）并闭包记 RETIRED；后续有意退役必选 ID 一律走该通道（新清单按计划号命名），
 避免批量间隙再藏同类脱同步。
+
+### F-867-NEWRED-01 — launcher_pickcat 拆分窗口内确定性新增红（PLAN-867 T-07 阻塞，2026-10-28）
+
+`auto-lang tests::plan503_tests::launcher_rewrite::launcher_pickcat_filters_results` 在冻结
+组合（a0cbb1a21 系）三独立环境确定性红（nres=4 vs 断言 1）：lang-867 工作树、主检出
+master、隔离全新 probe 组均复现；bisect 首恶提交 **1e4b2b315**「fix(ui): preserve
+application identity across product directory renames」（AutoOS PLAN-050 稳定 ID；作者
+日期 10-22、经合并落入拆分落盘窗口）；对照实验：钉定旧树 464e2316b 今日同输入 PASS。
+机制界域：mock 清单 editor=1、真实 apps.manifest editor=0，实测 4 无合法数据源——尾四
+项块匹配形态指向 B12 族字符串列表索引边界缺陷（该族 loader 测试在 1e4b2b315 分支的
+solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义（app_registry 注入路径或 VM
+列表读），超出 PLAN-867「仅验证设施」授权——等价出口（新增红=0）在修复+重跑
+`tf --batch --frozen-trees` 前保持未达成。证据链：PLAN-867 attachments/867/red-baseline.md
+§T-07。
