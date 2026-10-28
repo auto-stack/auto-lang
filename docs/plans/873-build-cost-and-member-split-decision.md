@@ -6,7 +6,7 @@ author: [DeepSeek Harness session]
 created_at: 2026-10-28
 updated_at: 2026-10-29
 plan_revision: 3
-current_step: 1
+current_step: 2
 total_steps: 8
 supersedes_spec_components: [docs/specs/language-sdk/project.md]
 new_spec_components: [docs/specs/repository-boundaries/build-cost-baseline.md]
@@ -159,6 +159,7 @@ cargo / rustc / sccache（`--show-stats`）/ `cargo nextest`（list 与 run）/ 
 |---|---|---|---|---|---|
 | [✅] | T-01 | work | G873 | 冻结M873窗口、三仓输入/工具链、隔离target/cache、变体/复位/污染/预算协议；不清共享缓存（协议=[m873-protocol.md](attachments/873/m873-protocol.md) r1；组/pin/隔离目录已建，见§9 2026-10-29） | AC-01 |
 | [ ] | T-02 | work | G873；T-01；**W873（864/866/880 merged）**；M873每次入场 | L1与L3构建/链接/list/定向启动测量；完整档只读可比merge收据，无样本记限制，不新跑整档 | AC-02 |
+|   |   |   |   | ↳ [✅ 2026-10-29 W873成立（864/866/880均archive）后执行：re-pin（仅auto-lang a5d8a4fa8→a748017da，三仓Cargo.lock不变）；L1冷check中位 lang/-p auto-lang **80.0s**（4有效样本，污染风暴3样本拒收/存疑）、lang-core **55.5s**、ui workspace **84.2s**、man workspace **105.9s**（方差大下界90–95）；热重check全仓 **0.4–0.9s**；L3 no-run冷 lang **196.6/226.6s**、ui-runtime **276.7s**、man/auto **181.1s**；nextest list 1.2–2.9s（lang 511测/ui-runtime默认面1测/man 10测）；定向启动 lang 3.2s/ui 1.1s/man 1.4s；L4只读收据 880批量回归 tf 84.0s/tt 512.4s/tb 61.0s@03f851505（输入差866落地，按近似参考标注）。证据=.measure/logs/index.md+35样本log+污染记录；运行器 scripts/measure-build-cost-873.sh（commit 63cb3e1dd，plan-873-dev）] | AC-02 |
 | [ ] | T-03 | work | G873；T-02；M873每次入场 | ≥7真实函数体站点+无改动/mtime对照，编译调用/缓存观测，逐站复位hash和污染拒绝 | AC-03 |
 | [ ] | T-04 | work | G873；T-03 | 汇总表 + 三方案决策模型（收益/成本/触发条件） | AC-04 |
 | [ ] | T-05 | work | G873；T-04 | 结论页 + 若拆的范围草案；THR-D1 闭合或转阶段 | AC-05 |
@@ -171,6 +172,18 @@ cargo / rustc / sccache（`--show-stats`）/ `cargo nextest`（list 与 run）/ 
 **门禁与证据**：测量M873独占构建测试资源；无Rust交付改动，不跑Cargo整档/docs_gen。原始日志/探针/转储本地保留，md摘要含命令/退出码/数字/本地路径+hash；长期可复跑协议/工具需受管在scripts，不依赖attachments未入库脚本。
 
 ## 9. 复审记录
+
+2026-10-29 / stage: work / plan_id: PLAN-873 / plan_revision: 3 / outcome: T-02完成（W873成立后L1/L3/L4测量），T-03待续 / authorization: 用户goal指令（推进并等待864/866/880 merged后测量）：
+
+- **W873成立过程**：监视期间864/880由各自会话完成review+merge+archive（880另附批量回归收据三腿10263测全绿）；866会话一度停摆90分钟，本会话按/auto-plan:work范式完成接手评估（读合同/核对worktree状态）时会话自续（merge master→T-04→T-05→needs_fix修复→终审pass→merge门禁→archive a748017da），未实际冲突——本会话零写入866树。
+- **re-pin**（M873入场04:41）：仅auto-lang前进 a5d8a4fa8→a748017da（97文件+11226/-494=864/866落地+880/873簿记），**三仓Cargo.lock哈希均不变**（等待期零依赖变更，冷态第三方编译成本可比）；auto-ui/auto-man/auto-down原地不动。两份pin并存：T-01基线+measurement pin（.measure/pins/）。
+- **L1冷check**（空target、无wrapper、incr=0、≥3有效样本取中位）：lang/-p auto-lang **80.0s**（71.6/80.8/84.3/79.2）；lang/-p auto-lang-core **55.5s**（58.5/55.2/55.5）；ui/--workspace **84.2s**（85.9/80.3/84.2）；man/--workspace **105.9s**（90.2/95.1/131.7/109.9/105.9，方差大，下界90–95，多会话时段如实记录）。**热同输入重check**：0.4–0.9s（四组）。
+- **L3分层**：no-run冷（编译+链接）lang 196.6/226.6s、ui-runtime 276.7s、man/auto 181.1s；nextest list稳态1.2–2.9s（枚举数：lang默认面511、ui-runtime 1、man/auto 10）；定向单测真实启动lang 3.2s（S2=18s离群另记）/ui 1.1s/man 1.4s。两轮启动样本因测试名提取错误exit≠0（0.1–1.3s），已按有效名重跑覆盖，失败样本留档不计数。
+- **L4只读收据**：880批量回归@03f851505（本机主检出单实例）：tf-language 3202=**84.0s**、tt 3569=**512.4s**、tb 3092=**61.0s**；可比性限制=输入差866落地，按近似参考标注。未新跑任何整档。
+- **污染处置（M873 §6）**：04:52–05:09外来构建风暴（三主检出并发rustc/cargo，2.28GB rustc实证）→lang冷S4/S5拒收、S3存疑、man S1拒收；05:43长驻cargo run（auto-todo dev server）卡死双进程守卫→守卫适配为rustc-only并记录追记；补样后各组≥3有效。出场检查：四树clean+HEAD=pin、.measure 20.7G≤60G、共享sccache零接触（全程wrapper unset）。
+- **交付物**：运行器scripts/measure-build-cost-873.sh（63cb3e1dd@plan-873-dev，冷/热守卫+隔离target+证据日志头尾）；.measure/logs/35样本log+index.md+pollution记录+双pin。
+- 初步观察（待T-03/T-04建模确认）：单包冷check里依赖闭包占大头（core 55.5s vs lang 80.0s，根crate仅+25s）；热增量极小（<1s）；测试二进制no-run是check的2.5–3.5倍；man仓9成员已拆但workspace冷check反而最慢（105.9s）——对"member拆分收益"假设构成反向数据点，建模时须计入。
+- next: T-03（≥7真实函数体站点增量测量，M873新窗口）→T-04建模→T-05结论。
 
 2026-10-29 / stage: work / plan_id: PLAN-873 / plan_revision: 3 / outcome: T-01完成（准备阶段），测量待命W873 / authorization: 用户2026-10-29目标指令（先准备协议/固定版本/隔离目录；864/866/880 merged后再测量）：
 
