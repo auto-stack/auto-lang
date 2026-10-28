@@ -13,7 +13,7 @@ new_spec_components:
 touched_goals: [GOAL-008]
 affects: [auto-graphics, ag-examples]
 depends_on: [PLAN-861]
-current_step: 2
+current_step: 6
 total_steps: 10
 ---
 
@@ -135,10 +135,10 @@ T-02先冻结`attachments/877/work/gallery-contract.md`：十个子入口/源has
 |---|---|---|---|---|---|
 | T-01 | work | 861交付（已满足） | 核新仓归属/建立本地锚点与唯一ag-examples树；核AG/SDK/锁/并行目录边界 | AC-01 | [✅] |
 | T-02 | work | T-01 | 核冻结消费包/补齐来源与构建、gallery-contract/十入口/CLI/元数据/资源/内容expected先冻结；不可行回new | AC-01/02 | [✅] |
-| T-03 | work | T-02 | 新catalog/lock/gallery.py/结构负控/六包机制与说明，V-01/05 | AC-02/05 | [ ] |
-| T-04 | work | T-03 | G01..03四子入口源码/场景/资产/说明及真实内容对照V-02 | AC-03 | [ ] |
-| T-05 | work | T-03 | G04..06六子入口、OS/数值/内容/源码编辑与恢复V-03/04 | AC-04 | [ ] |
-| T-06 | work | T-04/05 | 六单项包离线A→B/坏包修复、许可/状态/真实负控收口，提交/SD草案/摘要 | AC-01..05 | [ ] |
+| T-03 | work | T-02 | 新catalog/lock/gallery.py/结构负控/六包机制与说明，V-01/05 | AC-02/05 | [✅] |
+| T-04 | work | T-03 | G01..03四子入口源码/场景/资产/说明及真实内容对照V-02 | AC-03 | [✅] |
+| T-05 | work | T-03 | G04..06六子入口、OS/数值/内容/源码编辑与恢复V-03/04 | AC-04 | [✅] |
+| T-06 | work | T-04/05 | 六单项包离线A→B/坏包修复、许可/状态/真实负控收口，提交/SD草案/摘要 | AC-01..05 | [✅] |
 | T-07 | review | T-06 | 同树独立最终review十入口/工具/包/写面与原始证据，merge门pending | AC-06 | [ ] |
 | T-08 | merge | T-07 pass | 冻结完整内容门/必要重放，失败回work后受影响复审 | AC-07 | [ ] |
 | T-09 | merge | T-08 | ag-examples本地合入；语言主检出SD/overview/plans/ledger/索引与归档 | AC-08 | [ ] |
@@ -153,3 +153,5 @@ T-02先冻结`attachments/877/work/gallery-contract.md`：十个子入口/源has
 ## 10. 待澄清事项
 
 远端所有者/URL不影响本地交付，留未来发布计划，本Plan不建远端。本地目标若已被占、必需SDK无法验证或固定引擎不支持本分母，具体记录阻塞后回new，不扩范围修上游。用户当前仅授权规划，禁止立即开始T-01。本计划不决定AG迁仓；未来归属变化由独立迁仓合同处理，固定消费pin保持。
+
+2026-10-28 work T-03..T-06 收口：`stage: work | plan_id: PLAN-877 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-877/ag-examples | branch: codex/plan-877-dev | base_commit: 4df37bd | code_commit: 017b959（6 提交） | dependency_revisions: AG 8b12632d7/SDK 860副本/两锁不变、runner 498ce814 | task_ids: T-03,T-04,T-05,T-06 | evidence: (T-03)catalog/index.json+engine-lock.json+tools/gallery.py+tests/test_gallery.py 28用例（V-01 结构负控：重复ID/未知字段/逃逸路径/绝对路径/symlink/缺场景/资产哈希/缺许可/Ready无证据/坏engine-lock/引擎身份拒绝/argv构造/打包往返与manifest）全绿；示例元数据+README 六例落盘。(T-04/05)十子入口内容与验收全部成立：G01 像素级 oracle（5 捕获两两不同+alpha混色+层序翻转+显隐+位移，12断言）；G02 GLB 双部件像素+inspect重开一致+篡改拒绝（5断言）；G03 inspect world 链式数值(±1e-3)+显隐捕获差异+Stop恢复+层级探针16相位（12断言）；G04 真实OS探针：g04/2d 项目场景 20相位、g04/3d 默认文档 34步（含save→reopen等值+play-restore）+partial负控+双冒烟（9断言）；G05 segment/sweep 探针独立slab对账 2D+3D（spatial_phase 14、segment-trace、changed源哈希差异、partial负控，18断言）；G06 角色探针 10相位×2布局（真实OS键盘、跳峰≈2.002、blur清held、Stop恢复）+布局几何文档差异+speed4→5位移1.333/1.667（10断言）。全套66断言在冻结提交复跑绿。实施发现与合同修订见[gallery-contract §9](attachments/877/work/gallery-contract.md)（2D层序=alpha升序+数组序、G03 Stop恢复=探针play-restore、G04 3D探针默认文档语义、G05探针id6/5参照+update流程、G06对照构成）；验收工具tools/verify_examples.py（--window-helper 只操作自启窗口+环境性竞争≤2次有界重试）。(T-06)六单项ZIP（过滤目录+tools+acceptance+许可+实体化资产）离线A→B搬迁 validate+inspect 哈希恒等、g02/g05 资产字节篡改引擎拒绝、修复后可用（tools/verify_packages.py）全过；六例状态全 ready 且真仓 validate --all PASS。SD草案[attachments/877/work/sd-gallery-basic-six.md](attachments/877/work/sd-gallery-basic-six.md)。ag-examples 树 status clean | blockers: 无work内阻塞 | pending_closeout_gates（merge-owned T-07..T-10，不因本记录视为完成）: 独立最终review（T-07）、冻结完整内容门/必要重放（T-08）、ag-examples本地合入+语言主检出SD/overview/plans/ledger/索引与归档（T-09）、guard clean清树/分支/组目录（T-10） | next_responsible_role: 独立最终review（T-07）
