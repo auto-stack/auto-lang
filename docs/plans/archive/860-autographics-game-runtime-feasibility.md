@@ -11,7 +11,7 @@ new_spec_components:
   - docs/specs/auto-graphics/game-runtime-feasibility.md
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 6
+current_step: 9
 total_steps: 9
 ---
 
@@ -125,7 +125,7 @@ T-03/04建立新工具约定`python tools/check_game_feasibility.py <fresh-outpu
 | T-06 | review | T-05 | 独立最终review含选择/否决理由；完整门pending | AC-06 | [✅] |
 | T-07 | merge | T-06 pass | 冻结完整两端/原新native-owner-content及输入/产物复用审计 | AC-07 | [ ] |
 | T-08 | merge | T-07 | 源码合autographics-dev，main沉淀SD/overview/plans/ADR/ledger/索引并归档 | AC-08 | [ ] |
-| T-09 | merge | T-08 | guard clean清树/临时分支，保留原始产物/实际9/9；给861真实提交和decision | AC-08 | [ ] |
+| T-09 | merge | T-08 | guard clean清树/临时分支，保留原始产物/实际9/9；给861真实提交和decision | AC-08 | [✅] |
 
 ## 9. 复审记录
 
@@ -143,4 +143,4 @@ T-03/04建立新工具约定`python tools/check_game_feasibility.py <fresh-outpu
 
 2026-10-28 merge T-07..08 delivered：`stage: merge | plan_id: PLAN-860 | plan_revision: 1 | completion_kind: delivered | reviewed_commit: 7144526c3 | delivery_commit: 7144526c3 | autographics-dev: 81b0974ac -> 7144526c3 (fetch ff-only，零 rebase，哈希与复审证据逐位一致) | gates: producer 全量 351/351 exit 0（plan-artifacts/plan-860/merge/producer-full.log）；consumer 全量 351/351 exit 0（merge/consumer-full.log）——首轮红两次均归因留痕：①consumer 导出缺 git 跟踪二进制/非身份夹具（two-parts.glb、authoring-probe/main.at、research 白名单 .txt；package_consumer 历史缺口，证据侧补齐逐字节一致副本）②play839-files-<pid> 临时目录跨运行残留+Windows PID 复用致 count==1 断言环境偶发，隔离重放 7/7 绿后清残留单次全绿；AGP 零改动无受影响面；root 工作区零改动无根档门 | canonical_spec: docs/specs/auto-graphics/game-runtime-feasibility.md + overview/plans 索引（503181cfe） | ledger: .autoos/specs.json v111->112，P860-GAME-RUNTIME-FEASIBILITY/P860-TESTS/P860-REVIEW-R1/P860-MERGE 四条目（file/tags 齐）；首次投影意外全文件重排（indent 1+CRLF/LF）当场发现并 amend 修正，最终提交 diff +99/−5 外科式（52f1184 主检出现 tip），通道=guarded offline projection（无 store writer 可达；备份 specs.json.bak-p860-merge） | archive: 本文件 status: archived | next: T-09 清理与到期判定`。
 
-2026-10-28 merge T-09 cleaned：`stage: merge | outcome: pass | completion_kind: delivered | production_artifacts: 本计划为 experimental/autographics 研究线，root 工作区零改动，无生产后端/发布包消费面，无 stale 产物义务（观察项） | batch_regression: 860%5==0 到期，交 /auto-plan:regress 在主检出单实例执行（另行运行） | cleanup: wt-guard clean 后移除 D:/autostack/.wt/lang-860/auto-lang 与 plan-860-dev 分支；plan-artifacts/plan-860 回收 target 树与 .pdb（保留 .exe/日志/收据/冻结源）`。
+2026-10-28 merge T-09 cleaned：`stage: merge | outcome: pass | completion_kind: delivered | production_artifacts: 本计划为 experimental/autographics 研究线，root 工作区零改动，无生产后端/发布包消费面，无 stale 产物义务（观察项） | batch_regression: 860%5==0 晚于 859 收据（last_covered=859 @2026-10-28T05:55Z）-> 到期，任务 9/9；清理实绩：wt-guard clean（无 reparse point）后 worktree 移除、plan-860-dev 删除（tip 7144526c3 经 --is-ancestor 验证已在 autographics-dev 后 -D）、组目录 lang-860 移除；plan-artifacts/plan-860 回收 4 棵 CACHEDIR 确认的 target 树与散落 .pdb，26610MB->398MB，保留 runners/（4276a91c/436d18b1 等锚点）与全部日志/收据/证明/冻结源`。
