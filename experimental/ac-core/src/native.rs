@@ -1378,16 +1378,16 @@ impl<'c> FuncEmitter<'c> {
                         // PLAN-864: collections expressions never reach the
                         // native backends (domain gate).
                         hir::ExprKind::ListNew { .. }
-                            | hir::ExprKind::ListLen { .. }
-                            | hir::ExprKind::ListPush { .. }
-                            | hir::ExprKind::ListInsert { .. }
-                            | hir::ExprKind::ListGet { .. }
-                            | hir::ExprKind::ListSet { .. }
-                            | hir::ExprKind::ListRemove { .. }
-                            | hir::ExprKind::ListClear { .. }
-                            | hir::ExprKind::VariantCtor { .. }
-                            | hir::ExprKind::VariantGuardTest { .. }
-                            | hir::ExprKind::VariantProject { .. } => {
+                        | hir::ExprKind::ListLen { .. }
+                        | hir::ExprKind::ListPush { .. }
+                        | hir::ExprKind::ListInsert { .. }
+                        | hir::ExprKind::ListGet { .. }
+                        | hir::ExprKind::ListSet { .. }
+                        | hir::ExprKind::ListRemove { .. }
+                        | hir::ExprKind::ListClear { .. }
+                        | hir::ExprKind::VariantCtor { .. }
+                        | hir::ExprKind::VariantGuardTest { .. }
+                        | hir::ExprKind::VariantProject { .. } => {
                             unreachable!(
                                 "PLAN-864: collections expressions have no native lowering (AV-only profile)"
                             )
@@ -3722,16 +3722,16 @@ impl<'c> TextEmitter<'c> {
                         // PLAN-864: collections expressions never reach the
                         // native backends (domain gate).
                         hir::ExprKind::ListNew { .. }
-                            | hir::ExprKind::ListLen { .. }
-                            | hir::ExprKind::ListPush { .. }
-                            | hir::ExprKind::ListInsert { .. }
-                            | hir::ExprKind::ListGet { .. }
-                            | hir::ExprKind::ListSet { .. }
-                            | hir::ExprKind::ListRemove { .. }
-                            | hir::ExprKind::ListClear { .. }
-                            | hir::ExprKind::VariantCtor { .. }
-                            | hir::ExprKind::VariantGuardTest { .. }
-                            | hir::ExprKind::VariantProject { .. } => {
+                        | hir::ExprKind::ListLen { .. }
+                        | hir::ExprKind::ListPush { .. }
+                        | hir::ExprKind::ListInsert { .. }
+                        | hir::ExprKind::ListGet { .. }
+                        | hir::ExprKind::ListSet { .. }
+                        | hir::ExprKind::ListRemove { .. }
+                        | hir::ExprKind::ListClear { .. }
+                        | hir::ExprKind::VariantCtor { .. }
+                        | hir::ExprKind::VariantGuardTest { .. }
+                        | hir::ExprKind::VariantProject { .. } => {
                             unreachable!(
                                 "PLAN-864: collections expressions have no native lowering (AV-only profile)"
                             )

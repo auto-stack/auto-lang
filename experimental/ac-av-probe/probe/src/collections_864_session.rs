@@ -9,8 +9,8 @@
 //! units through the full gate chain (decode + verify, never trust).
 
 use crate::collections_session::{ApplyOutcome, CollectionsUpdateSession};
-use auto_av_core::mir::MirModule;
 use auto_ac_prototype::source::compile_collections_source;
+use auto_av_core::mir::MirModule;
 use auto_mir_lower::lower_checked_collections;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -43,17 +43,13 @@ impl CollectionsSourceSession {
     /// Returns the per-function units keyed by the adapter's def id text
     /// (`d_<name>`) plus the whole-module unit (entry shape for the
     /// fresh-path execution).
-    pub fn compile_units(
-        src: &str,
-        entry: &str,
-    ) -> Result<BTreeMap<String, MirModule>, String> {
-        let compiled = compile_collections_source(src, "probe.at", &[])
-            .map_err(|ds| {
-                ds.iter()
-                    .map(|d| d.render("probe.at", src))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            })?;
+    pub fn compile_units(src: &str, entry: &str) -> Result<BTreeMap<String, MirModule>, String> {
+        let compiled = compile_collections_source(src, "probe.at", &[]).map_err(|ds| {
+            ds.iter()
+                .map(|d| d.render("probe.at", src))
+                .collect::<Vec<_>>()
+                .join("\n")
+        })?;
         // whole-module lower for the entry face + per-fn units via the
         // unit lowering seam (the same `lower_function_collections_unit`
         // shape the 828 snapshot link consumes).

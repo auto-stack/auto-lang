@@ -171,10 +171,12 @@ enum BlockCont {
         pattern: Ident,
         binding: Option<Ident>,
     },
-    /// PLAN-864: the `is` frame itself; closed after the LAST arm.
-    IsFinish { kw: Span, scrutinee: Ident },
     /// PLAN-864: a `for x in <list> { .. }` body closed.
-    ForInBody { kw: Span, var: Ident, iter: Expr },
+    ForInBody {
+        kw: Span,
+        var: Ident,
+        iter: Expr,
+    },
 }
 
 struct Parser<'s> {
@@ -1006,12 +1008,6 @@ impl<'s> Parser<'s> {
                 self.continue_is_arms(stack)?;
                 Ok(None)
             }
-            // PLAN-864: the `is` frame's own `}` is consumed by the arm
-            // sequence (see `continue_is_arms`), so this continuation never
-            // flows through the machine's close path.
-            BlockCont::IsFinish { .. } => {
-                unreachable!("the `is` frame closes inside the arm sequence")
-            }
             // The script frame is closed by end of file only.
             BlockCont::Script => unreachable!("the script frame is never closed by a brace"),
         }
@@ -1763,10 +1759,7 @@ impl<'s> Parser<'s> {
                     let args = self.type_arg_list()?;
                     let span = t.span.join(self.toks[self.pos - 1].span);
                     Ok(TypeAnn {
-                        kind: TypeRef::Generic {
-                            name: id,
-                            args,
-                        },
+                        kind: TypeRef::Generic { name: id, args },
                         span,
                     })
                 } else {
@@ -1776,17 +1769,7 @@ impl<'s> Parser<'s> {
                     })
                 }
             }
-            Some(Tok::Ident(t) | Tok::Reserved(t)) => {
-                let sp = self.peek().unwrap().span;
-                Err(self.unsupported(
-                    format!("type `{}` is not part of this source profile", t),
-                    sp,
-                ))
-            }
-            _ => Err(self.syntax(format!(
-                "expected a type, found {}",
-                self.describe_cur()
-            ))),
+            _ => Err(self.syntax(format!("expected a type, found {}", self.describe_cur()))),
         }
     }
 
@@ -2121,10 +2104,7 @@ impl<'s> Parser<'s> {
                         // `.new(...)` method call can chain onto the type.
                         vals.push(Expr {
                             span: gspan,
-                            kind: ExprKind::GenericType {
-                                name: gname,
-                                args,
-                            },
+                            kind: ExprKind::GenericType { name: gname, args },
                         });
                     }
                     Tok::Int(digits) => {

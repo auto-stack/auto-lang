@@ -432,8 +432,7 @@ impl Drop for ResolvedExpr {
                     stack.push(e);
                 }
             }
-            RExprKind::ListGet { list, index }
-            | RExprKind::ListRemove { list, index } => {
+            RExprKind::ListGet { list, index } | RExprKind::ListRemove { list, index } => {
                 for slot in [list.as_mut(), index.as_mut()] {
                     let e = std::mem::replace(slot, dummy());
                     stack.push(e);
@@ -453,8 +452,7 @@ impl Drop for ResolvedExpr {
                     stack.push(e);
                 }
             }
-            RExprKind::VariantCtor { payload, .. }
-            | RExprKind::CtorUnknown { payload, .. } => {
+            RExprKind::VariantCtor { payload, .. } | RExprKind::CtorUnknown { payload, .. } => {
                 if let Some(pl) = payload.as_mut() {
                     let e = std::mem::replace(pl.as_mut(), dummy());
                     stack.push(e);
@@ -636,7 +634,12 @@ impl CollTables {
         self.lists.len() - 1
     }
 
-    fn intern_variant(&mut self, name: &str, name_span: Span, arms: Vec<(String, Option<VT>)>) -> usize {
+    fn intern_variant(
+        &mut self,
+        name: &str,
+        name_span: Span,
+        arms: Vec<(String, Option<VT>)>,
+    ) -> usize {
         if let Some(&i) = self.variant_names.get(name) {
             return i;
         }
@@ -776,7 +779,15 @@ fn resolve_detailed(
     program: &ast::Program,
     capabilities: &[String],
     surface: SourceProfile,
-) -> Result<(Vec<ResolvedFn>, Vec<ResolvedRecord>, CollTables, DeclIndexes), Vec<Diagnostic>> {
+) -> Result<
+    (
+        Vec<ResolvedFn>,
+        Vec<ResolvedRecord>,
+        CollTables,
+        DeclIndexes,
+    ),
+    Vec<Diagnostic>,
+> {
     let trace_enabled = capabilities.iter().any(|c| c == TRACE_CAPABILITY);
     let mut diags = Vec::new();
     let mut coll = CollTables::default();
@@ -875,12 +886,9 @@ fn resolve_detailed(
                             ok = false;
                             continue;
                         }
-                        let payload = a
-                            .payload
-                            .as_ref()
-                            .map(|pt| {
-                                vt_of_ann_coll(pt, &rec_index, &mut coll, &mut diags, TypePos::Local)
-                            });
+                        let payload = a.payload.as_ref().map(|pt| {
+                            vt_of_ann_coll(pt, &rec_index, &mut coll, &mut diags, TypePos::Local)
+                        });
                         if let Some(VT::List(_)) = payload {
                             diags.push(Diagnostic::new(
                                 Stage::Bind,
@@ -1826,7 +1834,12 @@ fn vt_of_ann_coll(
     pos: TypePos,
 ) -> VT {
     let reject = |diags: &mut Vec<Diagnostic>, vt: VT, msg: String, span: Span| {
-        diags.push(Diagnostic::new(Stage::Bind, "source.list-value-context", msg, span));
+        diags.push(Diagnostic::new(
+            Stage::Bind,
+            "source.list-value-context",
+            msg,
+            span,
+        ));
         vt
     };
     match &ann.kind {
@@ -1854,87 +1867,123 @@ fn vt_of_ann_coll(
             }
             let inner_vt = vt_of_ann_coll(inner, rec_index, coll, diags, TypePos::Local);
             if matches!(inner_vt, VT::List(_)) {
-                return reject(diags, VT::I32, "List-typed payloads are not part of the 822 element domain".to_string(), inner.span);
+                return reject(
+                    diags,
+                    VT::I32,
+                    "List-typed payloads are not part of the 822 element domain".to_string(),
+                    inner.span,
+                );
             }
             let vi = coll.intern_variant(
                 "Option",
                 ann.span,
-                vec![("Some".to_string(), Some(inner_vt)), ("None".to_string(), None)],
+                vec![
+                    ("Some".to_string(), Some(inner_vt)),
+                    ("None".to_string(), None),
+                ],
             );
             VT::Variant(vi)
         }
-        ast::TypeRef::Generic { name, args } => {
-            match (name.name.as_str(), args.len()) {
-                ("List", 1) => {
-                    if matches!(pos, TypePos::Field | TypePos::Param | TypePos::Result) {
-                        return reject(
+        ast::TypeRef::Generic { name, args } => match (name.name.as_str(), args.len()) {
+            ("List", 1) => {
+                if matches!(pos, TypePos::Field | TypePos::Param | TypePos::Result) {
+                    return reject(
                             diags,
                             VT::I32,
                             "List-typed fields/parameters/results are not part of this source profile (v1 lists are function-local values)".to_string(),
                             ann.span,
                         );
-                    }
-                    let elem = vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::Local);
-                    match elem {
-                        VT::List(_) => reject(diags, VT::I32, "List does not nest List (822 element domain)".to_string(), args[0].span),
-                        VT::StrOwned | VT::I32 | VT::Bool | VT::Rec(_) | VT::Variant(_) => {
-                            VT::List(coll.intern_list(elem))
-                        }
-                        _ => reject(diags, VT::I32, format!("element type `{}` is not in the 822 element domain", elem.as_str()), args[0].span),
-                    }
                 }
-                ("Result", 2) => {
-                    if matches!(pos, TypePos::Field | TypePos::Param) {
-                        return reject(
-                            diags,
-                            VT::I32,
-                            "variant-typed fields/parameters are not part of this source profile".to_string(),
-                            ann.span,
-                        );
+                let elem = vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::Local);
+                match elem {
+                    VT::List(_) => reject(
+                        diags,
+                        VT::I32,
+                        "List does not nest List (822 element domain)".to_string(),
+                        args[0].span,
+                    ),
+                    VT::StrOwned | VT::I32 | VT::Bool | VT::Rec(_) | VT::Variant(_) => {
+                        VT::List(coll.intern_list(elem))
                     }
-                    let ok_vt = vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::Local);
-                    let err_vt = vt_of_ann_coll(&args[1], rec_index, coll, diags, TypePos::Local);
-                    for (a, label) in [(&args[0], "Ok"), (&args[1], "Err")] {
-                        if matches!(a.kind, ast::TypeRef::Builtin(TypeWord::Void))
-                            || matches!(vt_of_ann_coll(a, rec_index, coll, &mut Vec::new(), TypePos::Local), VT::Unit)
-                        {
-                            diags.push(Diagnostic::new(Stage::Bind, "source.type-mismatch", format!("`Result` payload `{label}` cannot be void"), a.span));
-                            return VT::I32;
-                        }
-                    }
-                    if matches!(ok_vt, VT::List(_)) || matches!(err_vt, VT::List(_)) {
-                        return reject(diags, VT::I32, "List-typed payloads are not part of the 822 element domain".to_string(), ann.span);
-                    }
-                    let vi = coll.intern_variant(
-                        "Result",
-                        ann.span,
-                        vec![
-                            ("Ok".to_string(), Some(ok_vt)),
-                            ("Err".to_string(), Some(err_vt)),
-                        ],
-                    );
-                    VT::Variant(vi)
-                }
-                ("Option", _) => {
-                    diags.push(Diagnostic::new(
-                        Stage::Bind,
-                        "source.syntax",
-                        "`Option` is written `?T` in this source profile".to_string(),
-                        name.span,
-                    ));
-                    VT::I32
-                }
-                (other, n) => {
-                    diags.push(Diagnostic::new(
-                        Stage::Bind,
-                        "source.undefined",
-                        format!("no parameterized type named `{}` taking {} type argument(s)", other, n),
-                        name.span,
-                    ));
-                    VT::I32
+                    _ => reject(
+                        diags,
+                        VT::I32,
+                        format!(
+                            "element type `{}` is not in the 822 element domain",
+                            elem.as_str()
+                        ),
+                        args[0].span,
+                    ),
                 }
             }
-        }
+            ("Result", 2) => {
+                if matches!(pos, TypePos::Field | TypePos::Param) {
+                    return reject(
+                        diags,
+                        VT::I32,
+                        "variant-typed fields/parameters are not part of this source profile"
+                            .to_string(),
+                        ann.span,
+                    );
+                }
+                let ok_vt = vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::Local);
+                let err_vt = vt_of_ann_coll(&args[1], rec_index, coll, diags, TypePos::Local);
+                for (a, label) in [(&args[0], "Ok"), (&args[1], "Err")] {
+                    if matches!(a.kind, ast::TypeRef::Builtin(TypeWord::Void))
+                        || matches!(
+                            vt_of_ann_coll(a, rec_index, coll, &mut Vec::new(), TypePos::Local),
+                            VT::Unit
+                        )
+                    {
+                        diags.push(Diagnostic::new(
+                            Stage::Bind,
+                            "source.type-mismatch",
+                            format!("`Result` payload `{label}` cannot be void"),
+                            a.span,
+                        ));
+                        return VT::I32;
+                    }
+                }
+                if matches!(ok_vt, VT::List(_)) || matches!(err_vt, VT::List(_)) {
+                    return reject(
+                        diags,
+                        VT::I32,
+                        "List-typed payloads are not part of the 822 element domain".to_string(),
+                        ann.span,
+                    );
+                }
+                let vi = coll.intern_variant(
+                    "Result",
+                    ann.span,
+                    vec![
+                        ("Ok".to_string(), Some(ok_vt)),
+                        ("Err".to_string(), Some(err_vt)),
+                    ],
+                );
+                VT::Variant(vi)
+            }
+            ("Option", _) => {
+                diags.push(Diagnostic::new(
+                    Stage::Bind,
+                    "source.syntax",
+                    "`Option` is written `?T` in this source profile".to_string(),
+                    name.span,
+                ));
+                VT::I32
+            }
+            (other, n) => {
+                diags.push(Diagnostic::new(
+                    Stage::Bind,
+                    "source.undefined",
+                    format!(
+                        "no parameterized type named `{}` taking {} type argument(s)",
+                        other, n
+                    ),
+                    name.span,
+                ));
+                VT::I32
+            }
+        },
     }
 }
 
@@ -2322,7 +2371,13 @@ impl<'a> FnResolver<'a> {
             );
             return RecvClass::Value;
         }
-        let elem = vt_of_ann_coll(&args[0], self.rec_index, self.coll, self.diags, TypePos::Local);
+        let elem = vt_of_ann_coll(
+            &args[0],
+            self.rec_index,
+            self.coll,
+            self.diags,
+            TypePos::Local,
+        );
         match elem {
             VT::List(_) => {
                 self.bind_err(
@@ -2393,9 +2448,7 @@ impl<'a> FnResolver<'a> {
             ("Some", Some(mut pl), expect) => {
                 if let Some(VT::Variant(vi)) = expect {
                     if self.coll.variants[vi].name == "Option" {
-                        if let Some(Some(pvt)) =
-                            self.coll.variants[vi].arms.get(0).map(|a| &a.1)
-                        {
+                        if let Some(Some(pvt)) = self.coll.variants[vi].arms.get(0).map(|a| &a.1) {
                             retag_literal(&mut pl, *pvt);
                         }
                     }
@@ -2430,7 +2483,11 @@ impl<'a> FnResolver<'a> {
                 }
             }
             ("Some", None, _) => {
-                self.bind_err("source.argument", "`Some` takes exactly one payload".to_string(), span);
+                self.bind_err(
+                    "source.argument",
+                    "`Some` takes exactly one payload".to_string(),
+                    span,
+                );
                 ResolvedExpr {
                     span,
                     vt: VT::I32,
@@ -2497,9 +2554,7 @@ impl<'a> FnResolver<'a> {
     /// resolves bottom-up unchanged.
     fn expr_with_expect(&mut self, v: &ast::Expr, expect: Option<VT>) -> ResolvedExpr {
         let ctor: Option<(&str, Option<&ast::Expr>)> = match &v.kind {
-            ExprKind::Var(id)
-                if id.name == "None" && self.ctor_name_is_free("None") =>
-            {
+            ExprKind::Var(id) if id.name == "None" && self.ctor_name_is_free("None") => {
                 Some(("None", None))
             }
             ExprKind::Call { callee, args }
@@ -2509,7 +2564,9 @@ impl<'a> FnResolver<'a> {
                     && self.ctor_name_is_free(&callee.name) =>
             {
                 match &args[0] {
-                    ast::Arg::Pos(e) | ast::Arg::MovePos(e) => Some((callee.name.as_str(), Some(e))),
+                    ast::Arg::Pos(e) | ast::Arg::MovePos(e) => {
+                        Some((callee.name.as_str(), Some(e)))
+                    }
                     _ => None,
                 }
             }
@@ -2526,7 +2583,12 @@ impl<'a> FnResolver<'a> {
 
     /// PLAN-864: an `is` arm pattern against the scrutinee's variant —
     /// bare `Arm` or qualified `Enum.Arm`; returns the discriminant.
-    fn is_arm_disc(&mut self, scrutinee_vt: VT, qual: Option<&ast::Ident>, pat: &ast::Ident) -> Option<(usize, u32)> {
+    fn is_arm_disc(
+        &mut self,
+        scrutinee_vt: VT,
+        qual: Option<&ast::Ident>,
+        pat: &ast::Ident,
+    ) -> Option<(usize, u32)> {
         let VT::Variant(vi) = scrutinee_vt else {
             return None;
         };
@@ -2660,18 +2722,13 @@ impl<'a> FnResolver<'a> {
                     },
                 )
             }
-            "len" if rargs.is_empty() => mk(
-                VT::I32,
-                RExprKind::ListLen { list },
-            ),
-            "clear" if rargs.is_empty() => mk(
-                VT::Unit,
-                RExprKind::ListClear { list },
-            ),
+            "len" if rargs.is_empty() => mk(VT::I32, RExprKind::ListLen { list }),
+            "clear" if rargs.is_empty() => mk(VT::Unit, RExprKind::ListClear { list }),
             "clone" if rargs.is_empty() => {
                 self.bind_err(
                     "source.unsupported",
-                    "list clone is not part of this source profile (elements clone explicitly)".to_string(),
+                    "list clone is not part of this source profile (elements clone explicitly)"
+                        .to_string(),
                     span,
                 );
                 mk(VT::I32, RExprKind::IntLit(0))
@@ -2705,9 +2762,7 @@ impl<'a> FnResolver<'a> {
                 // fields retag to the record's owned field types (AP-4 —
                 // the owning context constructs)
                 value.vt = *elem;
-                if let (RExprKind::CtorPos { args, .. }, VT::Rec(ri)) =
-                    (&mut value.kind, *elem)
-                {
+                if let (RExprKind::CtorPos { args, .. }, VT::Rec(ri)) = (&mut value.kind, *elem) {
                     for (ai, a) in args.iter_mut().enumerate() {
                         if let Some(fvt) = self.records.get(ri).and_then(|r| r.fields.get(ai)) {
                             retag_literal(&mut a.value, fvt.vt);
@@ -2729,7 +2784,8 @@ impl<'a> FnResolver<'a> {
             _ => {
                 self.bind_err(
                     "source.move-required",
-                    "an owned element value must be a whole-local `.move` or a fresh construction".to_string(),
+                    "an owned element value must be a whole-local `.move` or a fresh construction"
+                        .to_string(),
                     span,
                 );
             }
@@ -3069,10 +3125,7 @@ impl<'a> FnResolver<'a> {
                         .last_mut()
                         .expect("resolve frame")
                         .stmts
-                        .push(RStmt::Return {
-                            value,
-                            span: *span,
-                        });
+                        .push(RStmt::Return { value, span: *span });
                 }
                 Stmt::ExprStmt { value, span } => {
                     let value = self.expr_iterative(value);
@@ -3210,10 +3263,7 @@ impl<'a> FnResolver<'a> {
                             Some(_) => {
                                 self.bind_err(
                                     "source.pattern-duplicate",
-                                    format!(
-                                        "arm `{}` appears more than once",
-                                        arm.pattern.name
-                                    ),
+                                    format!("arm `{}` appears more than once", arm.pattern.name),
                                     arm.pattern.span,
                                 );
                                 ok = false;
@@ -3227,7 +3277,6 @@ impl<'a> FnResolver<'a> {
                         // payload; scope-isolated to the arm body
                         let payload_vt = self.coll.variants[vi].arms[disc as usize].1;
                         let pat_name = arm.pattern.name.clone();
-                        let pat_span = arm.pattern.span;
                         let bound: Option<(LocalRef, VT)> = match (&arm.binding, payload_vt) {
                             (Some(b), Some(pvt)) => {
                                 self.scopes.push(Scope {
@@ -3400,11 +3449,6 @@ impl<'a> FnResolver<'a> {
                         span: iter.span,
                         vt: VT::List(li),
                         kind: RExprKind::ReadLocal(xsl),
-                    };
-                    let i_read = ResolvedExpr {
-                        span: *span,
-                        vt: VT::I32,
-                        kind: RExprKind::ReadLocal(i_lref),
                     };
                     let n_read = ResolvedExpr {
                         span: *span,
@@ -4587,11 +4631,12 @@ impl<'a> FnResolver<'a> {
                                                             };
                                                             let owned_term =
                                                                 matches!(vt, VT::StrOwned);
-                                                            let mk = |kind: RExprKind| ResolvedExpr {
-                                                                span: node.span,
-                                                                vt,
-                                                                kind,
-                                                            };
+                                                            let mk =
+                                                                |kind: RExprKind| ResolvedExpr {
+                                                                    span: node.span,
+                                                                    vt,
+                                                                    kind,
+                                                                };
                                                             fused = Some(if owned_term {
                                                                 mk(RExprKind::ElemView {
                                                                     list: Box::new(xs_read),
@@ -4638,8 +4683,7 @@ impl<'a> FnResolver<'a> {
                         // generic type ctors (`List<T>.new()`) and qualified
                         // variant ctors (`E.A(e)`) carry a TYPE, not a value;
                         // their receiver slot stays empty.
-                        let recv_class = if let ExprKind::GenericType { name, args } = &recv.kind
-                        {
+                        let recv_class = if let ExprKind::GenericType { name, args } = &recv.kind {
                             self.classify_generic_recv(name, args)
                         } else if let ExprKind::Var(id) = &recv.kind {
                             if self.lookup(&id.name).is_none()
@@ -4688,8 +4732,9 @@ impl<'a> FnResolver<'a> {
                                                     let idx_slot = out.len();
                                                     out.push(dummy_resolved());
                                                     let idx_ast = match &ga[0] {
-                                                        ast::Arg::Pos(e)
-                                                        | ast::Arg::MovePos(e) => e,
+                                                        ast::Arg::Pos(e) | ast::Arg::MovePos(e) => {
+                                                            e
+                                                        }
                                                         _ => unreachable!(
                                                             "get takes one positional index"
                                                         ),
@@ -4698,11 +4743,7 @@ impl<'a> FnResolver<'a> {
                                                         node: idx_ast,
                                                         slot: idx_slot,
                                                     });
-                                                    RecvClass::ElemViewLen {
-                                                        xl,
-                                                        xvt,
-                                                        idx_slot,
-                                                    }
+                                                    RecvClass::ElemViewLen { xl, xvt, idx_slot }
                                                 } else {
                                                     RecvClass::Value
                                                 }
@@ -4979,11 +5020,7 @@ impl<'a> FnResolver<'a> {
                                 kind: RExprKind::ListNew { list: li },
                             };
                         }
-                        RecvClass::ElemViewLen {
-                            xl,
-                            xvt,
-                            idx_slot,
-                        } => {
+                        RecvClass::ElemViewLen { xl, xvt, idx_slot } => {
                             // PLAN-864: `xs.get(i).len()` on List<Str> — the
                             // receiver is a whole-element view ( ElemView );
                             // the lowering fuses remove/view/strlen/insert.

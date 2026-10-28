@@ -857,14 +857,8 @@ impl PartialEq for TypeDef {
                     a.params == b.params && a.result == b.result
                 }
                 (TypeKind::Record(a), TypeKind::Record(b)) => a == b,
-                (
-                    TypeKind::List { elem: a },
-                    TypeKind::List { elem: b },
-                ) => a == b,
-                (
-                    TypeKind::Variant { arms: a },
-                    TypeKind::Variant { arms: b },
-                ) => a == b,
+                (TypeKind::List { elem: a }, TypeKind::List { elem: b }) => a == b,
+                (TypeKind::Variant { arms: a }, TypeKind::Variant { arms: b }) => a == b,
                 (a, b) => discriminant(a) == discriminant(b),
             }
     }

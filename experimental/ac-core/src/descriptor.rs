@@ -1191,11 +1191,7 @@ impl<'d> Binder<'d> {
                     // identity. The element-closure rule (822 element
                     // domain) is a verify-level rejection.
                     let Some(f) = tfields.get("elem") else {
-                        self.error(
-                            "bind.type-shape",
-                            "a list type requires `elem`",
-                            kind_span,
-                        );
+                        self.error("bind.type-shape", "a list type requires `elem`", kind_span);
                         continue;
                     };
                     let Some(elem) = self.resolve_typeuse(&f.value, f.value_span, &tables.types)
@@ -1265,8 +1261,9 @@ impl<'d> Binder<'d> {
                                         }
                                     }
                                     match (aname, apayload) {
-                                        (Some(name), Some(payload)) => arms
-                                            .push(hir::VariantArmDecl { name, payload }),
+                                        (Some(name), Some(payload)) => {
+                                            arms.push(hir::VariantArmDecl { name, payload })
+                                        }
                                         _ => {
                                             ok = false;
                                         }
@@ -2653,17 +2650,9 @@ impl<'d> Binder<'d> {
                     None => return None,
                 };
                 if kind_word == "list_insert" {
-                    hir::ExprKind::ListInsert {
-                        list,
-                        index,
-                        value,
-                    }
+                    hir::ExprKind::ListInsert { list, index, value }
                 } else {
-                    hir::ExprKind::ListSet {
-                        list,
-                        index,
-                        value,
-                    }
+                    hir::ExprKind::ListSet { list, index, value }
                 }
             }
             "variant_ctor" => {
@@ -2681,16 +2670,20 @@ impl<'d> Binder<'d> {
                     l.to_u32()
                         .filter(|_| matches!(l.suffix.as_deref(), None | Some("u32")))
                 }) else {
-                    self.error("bind.type-shape", "variant_ctor disc must be u32", f.value_span);
+                    self.error(
+                        "bind.type-shape",
+                        "variant_ctor disc must be u32",
+                        f.value_span,
+                    );
                     return None;
                 };
                 let payload = match self.text_ref(&fields, "payload") {
-                    Some((pt, pspan)) => match
-                        self.resolve_in(&pt, pspan, "ExprRef", &body.exprs, expr_sibs)
-                    {
-                        Some(e) => Some(hir::ExprId(e)),
-                        None => return None,
-                    },
+                    Some((pt, pspan)) => {
+                        match self.resolve_in(&pt, pspan, "ExprRef", &body.exprs, expr_sibs) {
+                            Some(e) => Some(hir::ExprId(e)),
+                            None => return None,
+                        }
+                    }
                     None => None,
                 };
                 hir::ExprKind::VariantCtor {
@@ -3552,16 +3545,8 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
                 quote(&b.exprs[index.0 as usize].id_text)
             ));
         }
-        hir::ExprKind::ListInsert {
-            list,
-            index,
-            value,
-        }
-        | hir::ExprKind::ListSet {
-            list,
-            index,
-            value,
-        } => {
+        hir::ExprKind::ListInsert { list, index, value }
+        | hir::ExprKind::ListSet { list, index, value } => {
             body_fields.push(format!(
                 "list: {}",
                 quote(&b.exprs[list.0 as usize].id_text)

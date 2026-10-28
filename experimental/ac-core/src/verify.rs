@@ -210,8 +210,8 @@ pub fn verify_function(
         );
         // PLAN-864: the collections domain owns owned-`Str` values (the
         // `t_Str` table entry); `char`/borrowed `str` stay excluded.
-        let admitted = matches!(t.kind, hir::TypeKind::StrOwned)
-            && v.domain == HirDomain::Collections;
+        let admitted =
+            matches!(t.kind, hir::TypeKind::StrOwned) && v.domain == HirDomain::Collections;
         if text_kind && !admitted {
             v.error(
                 "verify.local-type",
@@ -1376,7 +1376,8 @@ impl Verifier {
                         if let Some(list_ty) = root_list_ty {
                             if owned_elem(m, &list_ty, self) {
                                 // terminal field type through the record table
-                                let term = Self::field_terminal(m, &body.exprs[cur as usize].ty, path);
+                                let term =
+                                    Self::field_terminal(m, &body.exprs[cur as usize].ty, path);
                                 let owned_term = match term {
                                     Some(hir::TypeUse::Builtin(hir::BuiltinType::StrOwned)) => true,
                                     Some(hir::TypeUse::Ref(t)) => self.type_reaches_str(m, t),
@@ -4383,20 +4384,13 @@ impl Verifier {
                     targets.push(list.0);
                     targets.push(value.0);
                 }
-                hir::ExprKind::ListGet { list, index } | hir::ExprKind::ListRemove { list, index } => {
+                hir::ExprKind::ListGet { list, index }
+                | hir::ExprKind::ListRemove { list, index } => {
                     targets.push(list.0);
                     targets.push(index.0);
                 }
-                hir::ExprKind::ListInsert {
-                    list,
-                    index,
-                    value,
-                }
-                | hir::ExprKind::ListSet {
-                    list,
-                    index,
-                    value,
-                } => {
+                hir::ExprKind::ListInsert { list, index, value }
+                | hir::ExprKind::ListSet { list, index, value } => {
                     targets.push(list.0);
                     targets.push(index.0);
                     targets.push(value.0);

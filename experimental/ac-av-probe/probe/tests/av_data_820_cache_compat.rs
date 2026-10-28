@@ -51,8 +51,7 @@ fn tmp_store(tag: &str) -> PathBuf {
 fn types_fp_of(src: &str) -> String {
     let compiled =
         auto_ac_prototype::source::compile_record_source(src, "c.at", &[]).expect("compile");
-    let mir = auto_mir_lower::lower_checked_data(&compiled.checked, "d_main", 0)
-        .expect("lower");
+    let mir = auto_mir_lower::lower_checked_data(&compiled.checked, "d_main", 0).expect("lower");
     auto_av_probe::data_driver::types_fp_of(&mir)
 }
 
@@ -132,8 +131,7 @@ fn av_data_820_cache_good_hash_bad_payload_rejected() {
     // Locate the artifact by layer+key via the data module key.
     let compiled = auto_ac_prototype::source::compile_record_source(SRC_A, "c.at", &[]).unwrap();
     let snap = auto_av_core::contract::fnv1a64(SRC_A.as_bytes());
-    let mir =
-        auto_mir_lower::lower_checked_data(&compiled.checked, "d_main", snap).unwrap();
+    let mir = auto_mir_lower::lower_checked_data(&compiled.checked, "d_main", snap).unwrap();
     let key = auto_av_probe::data_driver::data_module_key(&r.owner, "d_main", &mir);
     let art = store
         .get_artifact("A20", &key)

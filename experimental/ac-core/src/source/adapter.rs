@@ -711,8 +711,7 @@ fn ty_name(
         // nominal by name (the type-table entries render in plan_module).
         VT::List(i) => format!(
             "t_list_{}",
-            ty_name(lists[i], records, lists, variants)
-                .trim_start_matches("t_")
+            ty_name(lists[i], records, lists, variants).trim_start_matches("t_")
         ),
         VT::Variant(i) => format!("t_variant_{}", variants[i].name),
         // not reachable through a compiling entry-unit program (Unit is a
@@ -2107,16 +2106,8 @@ impl PlanCtx<'_> {
                 });
                 plan.exprs.len() - 1
             }
-            RExprKind::ListInsert {
-                list,
-                index,
-                value,
-            }
-            | RExprKind::ListSet {
-                list,
-                index,
-                value,
-            } => {
+            RExprKind::ListInsert { list, index, value }
+            | RExprKind::ListSet { list, index, value } => {
                 let l = self.plan_expr(plan, f, list);
                 let i = self.plan_expr(plan, f, index);
                 let v = self.plan_expr(plan, f, value);
@@ -2189,8 +2180,16 @@ impl PlanCtx<'_> {
                 });
                 plan.exprs.len() - 1
             }
-            RExprKind::VariantGuardTest { local, variant, disc }
-            | RExprKind::VariantProject { local, variant, disc } => {
+            RExprKind::VariantGuardTest {
+                local,
+                variant,
+                disc,
+            }
+            | RExprKind::VariantProject {
+                local,
+                variant,
+                disc,
+            } => {
                 let r = plan.exprs.len();
                 plan.exprs.push(ENode {
                     kind: EKind::Read(local.0),
@@ -2705,7 +2704,7 @@ impl<'p> Emitter<'p> {
         }
         // PLAN-864: List/Variant type-table entries (collections surface).
         if self.profile.is_collections() {
-            for (li, elem) in self.program.lists.iter().enumerate() {
+            for (_li, elem) in self.program.lists.iter().enumerate() {
                 let ename = ty_name(
                     *elem,
                     &self.program.records,
@@ -2713,7 +2712,11 @@ impl<'p> Emitter<'p> {
                     &self.program.variants,
                 );
                 frag!(
-                    &format!("type t_list_{} list {{ elem: {} }}", ename.trim_start_matches("t_"), ename),
+                    &format!(
+                        "type t_list_{} list {{ elem: {} }}",
+                        ename.trim_start_matches("t_"),
+                        ename
+                    ),
                     program_span
                 );
                 spans.types.push(program_span);
@@ -3228,10 +3231,7 @@ impl<'p> Emitter<'p> {
                             )
                         }
                         EKind::Move { inner } => {
-                            format!(
-                                "expr e{} move {{ type: {}; operand: e{} }}",
-                                ei, ty, inner
-                            )
+                            format!("expr e{} move {{ type: {}; operand: e{} }}", ei, ty, inner)
                         }
                         // -- PLAN-864 collections surface --
                         EKind::ListNew { list } => {
@@ -3242,10 +3242,7 @@ impl<'p> Emitter<'p> {
                             )
                         }
                         EKind::ListLen { list } => {
-                            format!(
-                                "expr e{} list_len {{ type: {}; list: e{} }}",
-                                ei, ty, list
-                            )
+                            format!("expr e{} list_len {{ type: {}; list: e{} }}", ei, ty, list)
                         }
                         EKind::ListClear { list } => {
                             format!(
@@ -3259,16 +3256,8 @@ impl<'p> Emitter<'p> {
                                 ei, ty, list, value
                             )
                         }
-                        EKind::ListInsert {
-                            list,
-                            index,
-                            value,
-                        }
-                        | EKind::ListSet {
-                            list,
-                            index,
-                            value,
-                        } => {
+                        EKind::ListInsert { list, index, value }
+                        | EKind::ListSet { list, index, value } => {
                             let word = match &e.kind {
                                 EKind::ListInsert { .. } => "list_insert",
                                 _ => "list_set",

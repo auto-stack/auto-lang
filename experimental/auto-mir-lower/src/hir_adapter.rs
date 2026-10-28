@@ -485,7 +485,10 @@ pub fn lower_function_collections_unit(
     if bundle.modules.len() != 1 {
         return Err(AdapterError::uns(
             "lower.modules",
-            format!("expected exactly one module, found {}", bundle.modules.len()),
+            format!(
+                "expected exactly one module, found {}",
+                bundle.modules.len()
+            ),
         ));
     }
     let module = &bundle.modules[0];
@@ -573,7 +576,13 @@ fn collections_fn_sig_for_def(
     let mut visiting = std::collections::BTreeSet::new();
     let mut params = Vec::with_capacity(sig.params.len());
     for p in &sig.params {
-        params.push(collections_type_idx_of(p, m, out, &mut memo, &mut visiting)?);
+        params.push(collections_type_idx_of(
+            p,
+            m,
+            out,
+            &mut memo,
+            &mut visiting,
+        )?);
     }
     let result = collections_type_idx_of(&sig.result, m, out, &mut memo, &mut visiting)?;
     let sig_ty = out.intern_type(MirType::Fn(FnSig { params, result }));
@@ -1346,10 +1355,7 @@ fn type_idx_of_use(
 /// wide-scalar syntax).
 /// PLAN-864: whether `eid` is a `ListGet` expression; returns its
 /// (list, index) operand ids for the fusion checks.
-fn list_get_root(
-    body: &hir::Body,
-    eid: hir::ExprId,
-) -> Option<hir::ExprKind> {
+fn list_get_root(body: &hir::Body, eid: hir::ExprId) -> Option<hir::ExprKind> {
     match &body.exprs.get(eid.0 as usize)?.kind {
         hir::ExprKind::ListGet { list, index } => Some(hir::ExprKind::ListGet {
             list: *list,
@@ -1683,7 +1689,9 @@ impl<'a> FnLower<'a> {
             .exprs
             .get(eid.0 as usize)
             .map(|e| e.ty)
-            .ok_or_else(|| AdapterError::inv("lower.expr-ref", format!("expr {} out of range", eid.0)))
+            .ok_or_else(|| {
+                AdapterError::inv("lower.expr-ref", format!("expr {} out of range", eid.0))
+            })
     }
 
     /// PLAN-864: whether this lowering targets the av.collections/1
@@ -1707,26 +1715,31 @@ impl<'a> FnLower<'a> {
         Ok(match elem {
             hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => true,
             hir::TypeUse::Builtin(_) => false,
-            hir::TypeUse::Ref(e) => match self.hir_module.types.get(e.0 as usize).map(|t| &t.kind)
-            {
-                Some(hir::TypeKind::Variant { .. }) => true,
-                Some(hir::TypeKind::Record(_)) => {
-                    hir_record_reaches_str(self.hir_module, *e)
+            hir::TypeUse::Ref(e) => {
+                match self.hir_module.types.get(e.0 as usize).map(|t| &t.kind) {
+                    Some(hir::TypeKind::Variant { .. }) => true,
+                    Some(hir::TypeKind::Record(_)) => hir_record_reaches_str(self.hir_module, *e),
+                    _ => false,
                 }
-                _ => false,
-            },
+            }
         })
     }
 
     /// PLAN-864: the MIR element type of a List-typed expression.
     fn elem_vt_of(&mut self, list_e: hir::ExprId) -> Result<TypeIdx, AdapterError> {
         let Some(hir::TypeUse::Ref(tid)) = Some(self.expr_ty_hir(list_e)?) else {
-            return Err(AdapterError::inv("lower.list-type", "list receiver is not a ref type".to_string()));
+            return Err(AdapterError::inv(
+                "lower.list-type",
+                "list receiver is not a ref type".to_string(),
+            ));
         };
         let Some(hir::TypeKind::List { elem }) =
             self.hir_module.types.get(tid.0 as usize).map(|t| &t.kind)
         else {
-            return Err(AdapterError::inv("lower.list-type", "receiver is not a list".to_string()));
+            return Err(AdapterError::inv(
+                "lower.list-type",
+                "receiver is not a list".to_string(),
+            ));
         };
         collections_type_idx_of(
             elem,
@@ -1746,9 +1759,7 @@ impl<'a> FnLower<'a> {
         operand: hir::ExprId,
     ) -> Result<Option<(hir::ExprId, hir::ExprId, Vec<hir::FieldId>)>, AdapterError> {
         match &self.body.exprs[operand.0 as usize].kind {
-            hir::ExprKind::ListGet { list, index } => {
-                Ok(Some((*list, *index, Vec::new())))
-            }
+            hir::ExprKind::ListGet { list, index } => Ok(Some((*list, *index, Vec::new()))),
             hir::ExprKind::FieldGet { base, path } => {
                 match &self.body.exprs[base.0 as usize].kind {
                     hir::ExprKind::ListGet { list, index } => {
@@ -2672,16 +2683,10 @@ impl<'a> FnLower<'a> {
                 self.emit(MirInstr::ListPush { root: l, value: v }, sp);
                 Ok(NO_SLOT)
             }
-            hir::ExprKind::ListInsert {
-                list,
-                index,
-                value,
-            }
-            | hir::ExprKind::ListSet {
-                list,
-                index,
-                value,
-            } if self.collections() => {
+            hir::ExprKind::ListInsert { list, index, value }
+            | hir::ExprKind::ListSet { list, index, value }
+                if self.collections() =>
+            {
                 let l = self.eval_expr(*list, depth + 1)?;
                 let i = self.eval_expr(*index, depth + 1)?;
                 let v = self.eval_expr(*value, depth + 1)?;
@@ -2690,9 +2695,23 @@ impl<'a> FnLower<'a> {
                     hir::ExprKind::ListInsert { .. }
                 );
                 if is_insert {
-                    self.emit(MirInstr::ListInsert { root: l, index: i, value: v }, sp);
+                    self.emit(
+                        MirInstr::ListInsert {
+                            root: l,
+                            index: i,
+                            value: v,
+                        },
+                        sp,
+                    );
                 } else {
-                    self.emit(MirInstr::ListSet { root: l, index: i, value: v }, sp);
+                    self.emit(
+                        MirInstr::ListSet {
+                            root: l,
+                            index: i,
+                            value: v,
+                        },
+                        sp,
+                    );
                 }
                 Ok(NO_SLOT)
             }
@@ -2708,14 +2727,28 @@ impl<'a> FnLower<'a> {
                 let l = self.eval_expr(*list, depth + 1)?;
                 let i = self.eval_expr(*index, depth + 1)?;
                 let dst = self.temp_ty(ty);
-                self.emit(MirInstr::ListGet { dst, base: l, index: i }, sp);
+                self.emit(
+                    MirInstr::ListGet {
+                        dst,
+                        base: l,
+                        index: i,
+                    },
+                    sp,
+                );
                 Ok(dst)
             }
             hir::ExprKind::ListRemove { list, index } if self.collections() => {
                 let l = self.eval_expr(*list, depth + 1)?;
                 let i = self.eval_expr(*index, depth + 1)?;
                 let dst = self.temp_ty(ty);
-                self.emit(MirInstr::ListRemove { dst, root: l, index: i }, sp);
+                self.emit(
+                    MirInstr::ListRemove {
+                        dst,
+                        root: l,
+                        index: i,
+                    },
+                    sp,
+                );
                 Ok(dst)
             }
             hir::ExprKind::ListClear { list } if self.collections() => {
@@ -2726,20 +2759,18 @@ impl<'a> FnLower<'a> {
                 // container at the exits.
                 let l = self.eval_expr(*list, depth + 1)?;
                 let elem_ty = match &self.body.exprs[list.0 as usize].ty {
-                    hir::TypeUse::Ref(tid) => match
-                        self.hir_module.types.get(tid.0 as usize).map(|t| &t.kind)
-                    {
-                        Some(hir::TypeKind::List { elem }) => Some(
-                            collections_type_idx_of(
+                    hir::TypeUse::Ref(tid) => {
+                        match self.hir_module.types.get(tid.0 as usize).map(|t| &t.kind) {
+                            Some(hir::TypeKind::List { elem }) => Some(collections_type_idx_of(
                                 elem,
                                 self.hir_module,
                                 self.out,
                                 &mut self.ty_memo.clone(),
                                 &mut self.ty_visiting.clone(),
-                            )?,
-                        ),
-                        _ => None,
-                    },
+                            )?),
+                            _ => None,
+                        }
+                    }
                     _ => None,
                 };
                 let owned_elem = self.hir_elem_owned(*list)?;
@@ -2755,19 +2786,58 @@ impl<'a> FnLower<'a> {
                 self.emit(MirInstr::ListLen { dst: n, src: l }, sp);
                 let zero = self.temp_ty(t_i32);
                 let c0 = self.out.intern_const(MirConst::I32(0));
-                self.emit(MirInstr::Const { dst: zero, value: c0 }, sp);
+                self.emit(
+                    MirInstr::Const {
+                        dst: zero,
+                        value: c0,
+                    },
+                    sp,
+                );
                 let c = self.temp_ty(t_bool);
-                self.emit(MirInstr::Bin { op: BinOp::GtI32, dst: c, lhs: n, rhs: zero }, sp);
-                self.set_term(Terminator::Branch { cond: c, then: body_b, else_: exit_b });
+                self.emit(
+                    MirInstr::Bin {
+                        op: BinOp::GtI32,
+                        dst: c,
+                        lhs: n,
+                        rhs: zero,
+                    },
+                    sp,
+                );
+                self.set_term(Terminator::Branch {
+                    cond: c,
+                    then: body_b,
+                    else_: exit_b,
+                });
                 self.cur = body_b;
                 self.terminated = false;
                 let one = self.temp_ty(t_i32);
                 let c1 = self.out.intern_const(MirConst::I32(1));
-                self.emit(MirInstr::Const { dst: one, value: c1 }, sp);
+                self.emit(
+                    MirInstr::Const {
+                        dst: one,
+                        value: c1,
+                    },
+                    sp,
+                );
                 let idx = self.temp_ty(t_i32);
-                self.emit(MirInstr::Bin { op: BinOp::SubI32, dst: idx, lhs: n, rhs: one }, sp);
+                self.emit(
+                    MirInstr::Bin {
+                        op: BinOp::SubI32,
+                        dst: idx,
+                        lhs: n,
+                        rhs: one,
+                    },
+                    sp,
+                );
                 let e = self.temp_ty(elem_ty.unwrap_or(t_i32));
-                self.emit(MirInstr::ListRemove { dst: e, root: l, index: idx }, sp);
+                self.emit(
+                    MirInstr::ListRemove {
+                        dst: e,
+                        root: l,
+                        index: idx,
+                    },
+                    sp,
+                );
                 if owned_elem {
                     self.emit(MirInstr::Drop { slot: e }, sp);
                 }
@@ -2801,13 +2871,27 @@ impl<'a> FnLower<'a> {
             hir::ExprKind::VariantGuardTest { root, disc } if self.collections() => {
                 let r = self.eval_expr(*root, depth + 1)?;
                 let dst = self.temp_ty(ty);
-                self.emit(MirInstr::VariantGuard { dst, src: r, disc: *disc }, sp);
+                self.emit(
+                    MirInstr::VariantGuard {
+                        dst,
+                        src: r,
+                        disc: *disc,
+                    },
+                    sp,
+                );
                 Ok(dst)
             }
             hir::ExprKind::VariantProject { root, disc } if self.collections() => {
                 let r = self.eval_expr(*root, depth + 1)?;
                 let dst = self.temp_ty(ty);
-                self.emit(MirInstr::VariantProject { dst, root: r, disc: *disc }, sp);
+                self.emit(
+                    MirInstr::VariantProject {
+                        dst,
+                        root: r,
+                        disc: *disc,
+                    },
+                    sp,
+                );
                 Ok(dst)
             }
             // TextLen over an owned-element projection: the fused view
@@ -2830,7 +2914,14 @@ impl<'a> FnLower<'a> {
                 // 1. move the element OUT (single extraction)
                 let evty = self.elem_vt_of(list_e)?;
                 let e = self.temp_ty(evty);
-                self.emit(MirInstr::ListRemove { dst: e, root: l, index: i }, sp);
+                self.emit(
+                    MirInstr::ListRemove {
+                        dst: e,
+                        root: l,
+                        index: i,
+                    },
+                    sp,
+                );
                 // 2. reach the terminal Str: a whole Str element is already
                 // a Str slot; a field rides the profile-4 FieldGet contract
                 // (exact-type dst — the runtime handle-SHARES the field, no
@@ -2842,19 +2933,39 @@ impl<'a> FnLower<'a> {
                     let str_ty = self.out.intern_type(MirType::Str);
                     let tmp = self.temp_ty(str_ty);
                     let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
-                    self.emit(MirInstr::FieldGet { dst: tmp, base: e, path: segs }, sp);
+                    self.emit(
+                        MirInstr::FieldGet {
+                            dst: tmp,
+                            base: e,
+                            path: segs,
+                        },
+                        sp,
+                    );
                     tmp
                 };
                 // 3. view + read
                 let v = self.temp_ty(view_ty);
-                self.emit(MirInstr::View { dst: v, src: str_slot }, sp);
+                self.emit(
+                    MirInstr::View {
+                        dst: v,
+                        src: str_slot,
+                    },
+                    sp,
+                );
                 let dst = self.temp_ty(ty);
                 self.emit(MirInstr::StrLen { dst, view: v }, sp);
                 // end the view BEFORE the restore — an insert of a value
                 // under an active borrow is a mut-conflict in the lattice.
                 self.emit(MirInstr::BorrowEnd { token: v }, sp);
                 // 4. restore the element exactly (same buffers; len back)
-                self.emit(MirInstr::ListInsert { root: l, index: i, value: e }, sp);
+                self.emit(
+                    MirInstr::ListInsert {
+                        root: l,
+                        index: i,
+                        value: e,
+                    },
+                    sp,
+                );
                 Ok(dst)
             }
             // FieldGet rooted at a ListGet over an OWNED list: the fused
@@ -2885,7 +2996,14 @@ impl<'a> FnLower<'a> {
                 let b = self.eval_expr(*base, depth + 1)?;
                 let dst = self.temp_ty(ty);
                 let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
-                self.emit(MirInstr::FieldGet { dst, base: b, path: segs }, sp);
+                self.emit(
+                    MirInstr::FieldGet {
+                        dst,
+                        base: b,
+                        path: segs,
+                    },
+                    sp,
+                );
                 Ok(dst)
             }
             hir::ExprKind::FieldGet { base, path } => {

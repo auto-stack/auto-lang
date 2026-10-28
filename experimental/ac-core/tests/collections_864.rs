@@ -40,7 +40,10 @@ fn try_compile(name: &str, src: &str) {
     match compile_collections_source(src, "probe.at", &[]) {
         Ok(c) => {
             assert_eq!(c.profile, SourceProfile::Collections.as_str());
-            println!("{name}: OK (bundle modules = {})", c.checked.bundle().modules.len());
+            println!(
+                "{name}: OK (bundle modules = {})",
+                c.checked.bundle().modules.len()
+            );
         }
         Err(diags) => {
             for d in &diags {

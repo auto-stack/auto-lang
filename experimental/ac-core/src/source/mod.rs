@@ -23,8 +23,8 @@ pub mod resolve;
 pub mod typecheck;
 
 pub use adapter::{
-    compile_entry_unit_source, compile_parts, compile_parts_with, compile_program_parts,
-    compile_collections_source, compile_record_source, compile_scalar_source, compile_source,
+    compile_collections_source, compile_entry_unit_source, compile_parts, compile_parts_with,
+    compile_program_parts, compile_record_source, compile_scalar_source, compile_source,
     compile_text_record_source, compile_text_source, emit_function_body,
     prepare_candidate_document, prepare_function_candidate, BodyEmitReceipt, CompiledSource,
     FnCandidate, SourceParts, RUNTIME_TEXT_CAPABILITY,

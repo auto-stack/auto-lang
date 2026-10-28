@@ -596,8 +596,8 @@ fn av_owned_821_r1_borrowed_record_source_paths() {
     for (src, want) in [(BORROWED_RECORD, 7i32), (BORROW_REUSE, 15)] {
         let compiled = auto_ac_prototype::source::compile_text_record_source(src, "r.at", &[])
             .expect("compiles");
-        let mir = auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x1)
-            .expect("lowers");
+        let mir =
+            auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x1).expect("lowers");
         let (out, trace) = admit_exec(&mir);
         assert_eq!(
             out,
@@ -613,8 +613,8 @@ fn av_owned_821_r1_borrowed_record_source_paths() {
     // Move-in control unchanged.
     let compiled = auto_ac_prototype::source::compile_text_record_source(MOVE_CONTROL, "r.at", &[])
         .expect("compiles");
-    let mir = auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x1)
-        .expect("lowers");
+    let mir =
+        auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x1).expect("lowers");
     let (out, _) = admit_exec(&mir);
     assert!(matches!(
         out,
@@ -656,8 +656,7 @@ fn main() int {
 ";
         let compiled =
             auto_ac_prototype::source::compile_text_record_source(src, "r.at", &[]).unwrap();
-        let mir = auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x1)
-            .unwrap();
+        let mir = auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x1).unwrap();
         let (out, _) = admit_exec(&mir);
         assert!(matches!(
             out,
@@ -723,8 +722,7 @@ fn main() int {
     for (src, want) in cases {
         let compiled =
             auto_ac_prototype::source::compile_text_record_source(src, "r3.at", &[]).unwrap();
-        let mir = auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x1)
-            .unwrap();
+        let mir = auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x1).unwrap();
         let (out, trace) = admit_exec(&mir);
         assert!(
             matches!(out, ExecOutcome::Success { value: Value::I32(v), .. } if v == *want),
@@ -867,8 +865,7 @@ fn av_owned_821_r4_mut_loop_writeback() {
     let src = "type Note { body Str; n int }\nfn set(mut p Note) int { p.n = p.n + 1; return p.n }\nfn main() int { var a Note = Note { body: \"A\", n: 7 }; var i int = 0; loop { if i >= 2 { break }; let n int = set(a.mut); i = i + 1 }; return a.n }\n";
     let compiled =
         auto_ac_prototype::source::compile_text_record_source(src, "r4.at", &[]).unwrap();
-    let mir =
-        auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x1).unwrap();
+    let mir = auto_mir_lower::lower_checked_owned(&compiled.checked, "d_main", 0x1).unwrap();
     let (out, trace) = admit_exec(&mir);
     assert!(
         matches!(
