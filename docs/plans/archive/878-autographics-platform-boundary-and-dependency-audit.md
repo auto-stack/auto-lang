@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-878
-status: reviewed
+status: archived
 feature_name: AutoGraphics跨端边界与依赖审计（XP-0）
 author: [Codex]
 created_at: 2026-10-28
