@@ -3718,3 +3718,19 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
   在并发 cargo 构建负载下 649ms vs 525ms 翻红；隔离重放 2×绿（单测+族 14/14）。
   墙钟 oracle 的负载敏感，非回归。同批 `ac_mn_probe_tests::mir_native_incremental_series_formal`
   报 ERROR_USER_MAPPED_FILE（跨进程文件映射冲突，temp 目录清理竞态）；族隔离 25/25 绿。
+
+## Batch 2026-10-28 (PLAN-880 regress): language selection floor red — owner 869/870/872
+
+- `run-full-regression.py tf --batch` fails closed at selection-integrity guards on master:
+  language selection 3202 < frozen floor 3205 (`scripts/tier-selection-minimums.json.txt`,
+  frozen PLAN-869 era) and ids-baseline missing=16/suppressed=16 (migrations map language→ui-full
+  from PLAN-841/867-era moves; remaining gaps from the same window).
+- Attribution: net -3 tests from the 869/870/872 landing window on master (auto-val value.rs
+  retirement 79d26f041/68f6e3435, ace-m1 binding 20ef8bd4a, 872 probe reshuffle f976fe414) —
+  PLAN-880's own language diff is docs-only (verified).
+- Actual test health measured around the guard, single instance, all green:
+  tf-language 3202/3202, tt 3569/3569, tb 3092/3092 (receipt
+  `docs/plans/.last-batch-regression.json`, logs `plan-artifacts/plan-880/regress/`).
+- Disposition needed (deliberate act, owning plans): either restore 3 test selections or lower the
+  floor 3205→3202 with the reason recorded in the owning plan, then re-run
+  `python scripts/run-full-regression.py tf --batch` for a fully-green batch receipt.

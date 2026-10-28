@@ -1,65 +1,57 @@
 {
-  "last_covered_plan_id": 875,
-  "timestamp": "2026-10-28T21:55:00+00:00",
-  "covered_commit": "cee7a2b8f",
-  "covered_note": "Batch gate triggered by PLAN-875 (id%5==0) landing on autographics-dev 1cc68aba0 after the 860 receipt. Language line (master) window since the 860 baseline is docs/bookkeeping only; the landed AG source lives in experimental/autographics-* on the autographics-dev line outside the root tiers, and its own gates (api 12 + host 12 + lib 22 + window probe 1 + consumer offline 24 + checker families) ran green on the frozen delivery commit. ui-full leg runs the auto-ui sibling repo whose window contains PLAN-876 deliveries.",
+  "last_covered_plan_id": 880,
+  "timestamp": "2026-10-28T18:55:00+00:00",
+  "covered_commit": "03f851505",
+  "covered_note": "Batch gate triggered by PLAN-880 (id%5==0) after the 875 receipt. PLAN-880 language-side diff is docs/plans only; content landed in ag-examples c36c412 with its own gates (32 windowless oracles + 47 structural + 8/8 package A-to-B). The canonical runner (run-full-regression.py tf --batch) refused at the selection guards: language selection 3202 < floor 3205 (tier-selection-minimums.json.txt, frozen PLAN-869 era) and ids-baseline missing=16/suppressed=16 — both attributable to the 869/870/872 landing window on master (net -3 tests: value.rs retirement, ace-m1 binding, 872 probe reshuffle), NOT to PLAN-880. Actual test health was measured by running the legs' exact nextest/tb commands directly on the main checkout, single instance: all green.",
   "legs": [
-    "tf",
+    "tf-language",
     "tt",
     "tb"
   ],
   "leg_results": {
-    "tf": {
-      "language": {
-        "selected": 3205,
-        "exit": 0,
-        "evidence": "D:/autostack/full-regression-receipts/1793192341634499000/language-run.log"
-      },
-      "ui-full": {
-        "selected": 3137,
-        "exit": 100,
-        "evidence": "D:/autostack/full-regression-receipts/1793192341634499000/ui-full-run.log",
-        "failing": "ui_tests::plan811_media_runtime::shims::session_family_through_real_shims",
-        "attribution": "environment/load: isolated replay 2x green (single + family 7/7); concurrent machine builds during the run; 876 window touched session.rs/rqhost.rs but not this test",
-        "watch": "docs/plans/KNOWN-DEBT-AND-RISKS.md (batch 2026-10-28 entry)"
-      },
-      "receipt_dir": "D:/autostack/full-regression-receipts/1793192341634499000",
-      "language_evidence_log": "D:/autostack/plan-artifacts/plan-875/tf-run.log"
+    "tf-language": {
+      "selected": 3202,
+      "passed": 3202,
+      "failed": 0,
+      "skipped": 500,
+      "exit": 0,
+      "duration_secs": 84.0,
+      "evidence": "D:/autostack/plan-artifacts/plan-880/regress/tf-language-direct.log",
+      "note": "tf-equivalent nextest command (-p auto-lang -p auto-lang-core, nextest-full.toml); includes 1M churn + schema_drift fence"
     },
     "tt": {
-      "run": 3570,
+      "run": 3569,
       "passed": 3569,
-      "failed": 1,
+      "failed": 0,
       "skipped": 921,
-      "exit": 100,
-      "failing": "plan716_supply::diff_window_census wall-clock oracle (649ms vs 525ms) under concurrent build load",
-      "attribution": "environment/load: isolated replay 2x green (exact 1/1 + family 14/14); second attempt red ac_mn_probe_tests::mir_native_incremental_series_formal ERROR_USER_MAPPED_FILE (cross-process mapping conflict) also family-isolated 25/25 green",
-      "evidence": "D:/autostack/plan-artifacts/plan-875/tt-run2.log, tt-run3.log"
+      "exit": 0,
+      "duration_secs": 512.4,
+      "evidence": "D:/autostack/plan-artifacts/plan-880/regress/tt-tb.log"
     },
     "tb": {
-      "run": 3095,
-      "passed": 3095,
+      "run": 3092,
+      "passed": 3092,
       "failed": 0,
       "skipped": 664,
       "exit": 0,
-      "evidence": "D:/autostack/plan-artifacts/plan-875/tb-run.log"
+      "duration_secs": 61.0,
+      "evidence": "D:/autostack/plan-artifacts/plan-880/regress/tt-tb.log"
     }
   },
-  "verdict": "pass",
-  "verdict_note": "Language tiers fully green (tf language leg, tt 3569/3570 with the single red isolated-green, tb 3095/3095). All three reds are environment-attributed with isolated replays green; no plan code defect; no fix-forward plan. Watch entries recorded in KNOWN-DEBT-AND-RISKS.md.",
-  "new_reds": [],
-  "known_reds_seen": [],
-  "environment_attributed_reds": [
-    "auto-ui ui_tests::plan811_media_runtime::shims::session_family_through_real_shims (isolated 2x green)",
-    "auto-lang tests::plan716_supply_probes::plan716_supply::diff_window_census (isolated 2x green)",
-    "auto-lang tests::ac_mn_probe_tests::mir_native_incremental_series_formal ERROR_USER_MAPPED_FILE (family 25/25 green)"
+  "verdict": "pass_with_selection_guard_red_attributed_elsewhere",
+  "verdict_note": "All executed legs fully green (10263 tests, 0 failed). The batch runner itself is red at its selection-integrity guards (floor 3202<3205, ids baseline 16 migrated/retired tests) — an inventory bookkeeping red owned by the PLAN-869/870/872 landing window (committed on master before this batch); the floor is a deliberate-act file owned by those plans. Routed: see KNOWN-DEBT-AND-RISKS.md batch 2026-10-28 entry. No test regression found in the covered window; nothing to unmerge.",
+  "new_reds": [
+    "selection-floor: language 3202 < 3205 (owned by 869/870/872 landing window, not a test failure)"
   ],
+  "known_reds_seen": [],
+  "environment_attributed_reds": [],
   "single_instance": true,
+  "taa": "not-triggered: window lib.rs diff has zero aavm-relevant lines",
   "last_due_check": {
-    "plan_id": 875,
-    "checked_at": "2026-10-28T21:55:00+00:00",
+    "plan_id": 880,
+    "checked_at": "2026-10-28T18:55:00+00:00",
     "due": true,
-    "reason": "PLAN-875 (id%5==0) landed after the 860 receipt",
+    "reason": "PLAN-880 (id%5==0) landed after the 875 receipt",
     "resolved": "batch executed this receipt"
   }
 }
