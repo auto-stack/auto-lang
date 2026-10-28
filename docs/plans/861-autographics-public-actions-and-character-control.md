@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-861
-status: executing
+status: execution_done
 feature_name: AutoGraphics公共动作输入与2D角色控制
 author: [Codex]
 created_at: 2026-10-27
@@ -13,7 +13,7 @@ new_spec_components:
   - docs/specs/auto-graphics/game-actions-and-character2d.md
 touched_goals: [GOAL-008]
 affects: [auto-graphics]
-current_step: 3
+current_step: 5
 total_steps: 9
 ---
 
@@ -128,8 +128,8 @@ T-04/05新增plan861 current identity/verifier，更新source/consumer选择；�
 | T-01 | work | 860交付且go | 唯一树/实际提交、决策/资源/样本/SDK/分母及工具核对，补真实实施入口 | AC-01 | [✅] |
 | T-02 | work | T-01 | character-contract：公开profile/签名/角色solid配置/状态与token/资源上限/错误；必要时修订后再实施 | AC-02 | [✅] |
 | T-03 | work | T-02 | 新动作/2D受信Auto/API/公开来源准入、原Play适配与定向tests，V-01..04 | AC-02/03/04 | [✅] |
-| T-04 | work | T-03 | 新OS/GPU check/真实变异与恢复、Stop新Run/owner/current identity/consumer，V-04/05 | AC-01/05 | [ ] |
-| T-05 | work | T-04 | 用户源码/两布局/128预算/资源对照与定向收口，提交代码/SD/证据，不跑整档 | AC-01..05 | [ ] |
+| T-04 | work | T-03 | 新OS/GPU check/真实变异与恢复、Stop新Run/owner/current identity/consumer，V-04/05 | AC-01/05 | [✅] |
+| T-05 | work | T-04 | 用户源码/两布局/128预算/资源对照与定向收口，提交代码/SD/证据，不跑整档 | AC-01..05 | [✅] |
 | T-06 | review | T-05 | 独立最终review，核公开规则与实际Auto/OS/发布/状态；merge门pending | AC-06 | [ ] |
 | T-07 | merge | T-06 pass | 冻结完整两端/原新native-owner-content和身份/复用审计 | AC-07 | [ ] |
 | T-08 | merge | T-07 | 源码合autographics-dev，main沉淀SD/overview/plans/ADR/ledger/索引并归档 | AC-08 | [ ] |
@@ -145,6 +145,7 @@ T-04/05新增plan861 current identity/verifier，更新source/consumer选择；�
 
 2026-10-28 work T-04 进行中（部分交付，未完）：`stage: work | plan_id: PLAN-861 | code_commit: 8f008ecca+990d762cc+6c2bd03ec | task_ids: T-04 | evidence: (1)样例项目`samples/character2d/`（layout_a/b.agscene经scene/2生产导入路径验收——需显式parent+groups+固定资源清单；同源不同几何：B布局同输入坠坑y<-3、A贴地；main.at用户源持全部玩法参数、main-fast.at=speed5编辑态，tick60速度5.0 vs 4.0对照过）；(2)`tools/check_character2d.py`——正例3报告族（actions/host/layouts schema逐项+运动学+credits≤32+几何/速度oracle+checkpoint绑定）全过，--controls 6负控全拒（partial/zero-selected/oracle-edit/trace-divergence/wrong-exe/bound-runner-mismatch），报告经`runner_sha256`绑定retained runner；报告发射=测试内`CHARACTER2D_REPORT_DIR`门控（research/character2d-reports/）；(3)`tools/verify_plan861.py`+`research/plan861-identity.json` 282文件闭包（api/src/tests/samples/tools+包根、文本规范化、钉base 7b4e89e6b+SDK 7b987ca8b）--controls PASS（删除/未列/错哈希全拒后恢复）。**T-04余项**：OS窗口探针（V-05真实winit键盘→动作→Auto→GPU像素，经authoring App phase机+native_interaction::post模式）与fresh own-SDK consumer运行新公开脚本。T-05余项：预算采样矩阵（853同条件）与decision收口。merge-owned完整门pending不变。next_responsible_role: 继续 T-04 窗口探针。
 2026-10-28 work T-04 第二批：`stage: work | code_commit: a073c058d（含identity重绑定） | task_ids: T-04 | evidence: (4)OS窗口探针交付——`authoring_probe/character2d.rs`相位机+bin接线（--character-check、--behavior-api character、finalize相位门10、报告字段），实测**passed=True**：真实OS窗口+真实posted winit键盘（D按住→x=1.333、Space点按→跳峰y=2.002≈0.5+8²/2g、blur自动暂停清held（resume后零漂移）、Stop恢复视图、resize/DPI合法初始化暂停经OS resume按钮恢复）；命令=`cargo run --bin autographics-authoring -- --character-check --open samples/character2d/layout_a.agscene --behavior <abs>/main.at --behavior-api character --report research/character2d/window-report.json`（报告本地保留，未入库=证据政策）；单一router真窗验证。identity重绑定283文件`verify_plan861 --controls` PASS；定向面复跑23/23绿。**T-04余项**：fresh own-SDK consumer运行新公开脚本；check工具window-report族扩展（收口项）。next_responsible_role: T-04 consumer → T-05 采样/decision收口。
+2026-10-28 work T-04/T-05 收口：`stage: work | plan_id: PLAN-861 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-861/auto-lang | branch: plan-861-dev | base_commit: 7b4e89e6b | code_commit: 31f3986c6（4a520aa0c..31f3986c6 共10提交） | dependency_revisions: SDK 7b987ca8b 不变、两锁不变 | task_ids: T-04,T-05 | evidence: (T-04尾)`package_consumer.py`计划列表纳入861（身份436→439文件，含research/game-runtime与character2d、prototype子目录、baseline/sdk-Cargo.lock）；**fresh own-SDK consumer离线实跑**：包内`verify_plan861` PASS（439哈希）+`cargo test --offline` 新公开脚本实际编译运行全绿（character2d_api 10/10+samples 1/1，日志D:/autostack/.wt/lang-861/consumer-test.log本地保留）；`verify_source.py`加861现行代际分支（verify_plan861为current，860退位gated）；check_character2d扩至**五族报告**（actions/host/layouts/sampling/window）+每族runner绑定多exe，6篡改负控全拒；窗口报告入检（started/d-down/moved-right/space-tap/jumped/blur-paused/blur-cleared/stopped/completed九事件，位移/跳峰/清空断言）。(T-05)采样矩阵=5新鲜进程×370测步（各弃30暖步）：tick CPU **P50中位1.075ms/P95中位1.902ms** vs 250ms回调限（≥100×余量）、credits≤31/32（`research/character2d-reports/character-sampling-report.json`）；**decision交付**`research/character2d/decision.json`（delivered：公开面/计费/实测/边界/后继入口）；**SD-01草案**`docs/specs/auto-graphics/game-actions-and-character2d.md`（worktree准备，merge发布）；SD-02/03落点=worktree docs/specs/auto-graphics/{auto-source-driver,scene-play-session}.md由merge按实际增量更新。用户源码对照（speed 4→5）与两布局（A贴地/B坠坑）已由character2d_samples锁定；128预算对照见character2d_host。最终worktree面：identity 439 --controls PASS+定向面25/25绿+checker五族全过 | blockers: 无work内阻塞 | pending_closeout_gates（merge-owned，不因本记录视为完成）: 冻结两端独立workspace完整`cargo test --locked`、AGP受影响面与原新native-owner-content复用审计、`/auto-plan:regress`批量档到期判定、spec沉淀（SD-01发布+SD-02/03增量）与ledger/归档/guard清理 | next_responsible_role: 独立最终review（T-06）。R-1窗口探针期间曾误在主检出根Cargo.toml加feature（python cwd重置所致）——当场上报并`git checkout --`恢复，主检出零残留（git diff核过）。
 
 ## 10. 待澄清事项
 
