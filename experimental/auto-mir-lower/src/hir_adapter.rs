@@ -72,18 +72,22 @@ pub fn lower_checked(
     entry_name: &str,
     source_snapshot: u64,
 ) -> Result<MirModule, AdapterError> {
-    match checked.domain() {
-        hir::HirDomain::Scalar | hir::HirDomain::Core => {}
+    // PLAN-862: the entry-unit domain lowers through THIS scalar path — the
+    // compute surface is identical, the additions are the Unit result type
+    // and the entry-kind declaration.
+    let entry_unit = match checked.domain() {
+        hir::HirDomain::Scalar | hir::HirDomain::Core => false,
+        hir::HirDomain::EntryUnit => true,
         other => {
             return Err(AdapterError::uns(
                 "lower.domain",
                 format!(
-                    "HIR domain `{}` is outside the av.core-i32/1 profile",
+                    "HIR domain `{}` is outside the av.core-i32/1 / av.entry-unit/1 profiles",
                     other.as_str()
                 ),
             ));
         }
-    }
+    };
     if checked.bundle().modules.len() != 1 {
         return Err(AdapterError::uns(
             "lower.modules",
@@ -95,10 +99,18 @@ pub fn lower_checked(
     }
     let module = &checked.bundle().modules[0];
     let owner = OwnerScope {
-        schema: auto_av_core::contract::MIR_SCHEMA.to_string(),
+        schema: if entry_unit {
+            auto_av_core::contract::MIR_ENTRY_UNIT_SCHEMA.to_string()
+        } else {
+            auto_av_core::contract::MIR_SCHEMA.to_string()
+        },
         module: module.id_text.clone(),
     };
-    let mut out = MirModule::new(owner);
+    let mut out = if entry_unit {
+        MirModule::new_entry_unit(owner)
+    } else {
+        MirModule::new(owner)
+    };
     out.capabilities = checked.required_capabilities().to_vec();
 
     // Pass 1: scan defs — intern imports and fix function indices before any
@@ -188,6 +200,25 @@ pub fn lower_checked(
         )
     })?;
     out.entry = entry;
+    // PLAN-862: the entry KIND is read off the entry function's verified
+    // signature (the source frontend already rejected every ambiguous
+    // form). The wire carries the kind and `verify_mir` re-checks it against
+    // this same signature — a hand-edited kind is a controlled rejection.
+    if entry_unit {
+        let entry_sig = out
+            .sig_of(out.funcs[entry as usize].sig)
+            .cloned()
+            .ok_or_else(|| {
+                AdapterError::inv(
+                    "lower.entry-sig",
+                    "the entry does not reference a function type".to_string(),
+                )
+            })?;
+        out.entry_kind = Some(match out.types.get(entry_sig.result as usize) {
+            Some(auto_av_core::mir::MirType::Unit) => auto_av_core::mir::EntryKind::Unit,
+            _ => auto_av_core::mir::EntryKind::Int,
+        });
+    }
     Ok(out)
 }
 
@@ -796,6 +827,12 @@ fn scalar_type_idx_of(
     m: &hir::Module,
     out: &mut MirModule,
 ) -> Result<TypeIdx, AdapterError> {
+    // PLAN-862: Unit is the entry-unit profile's zero-width RESULT type. It
+    // is NOT a scalar shape (it has no runtime width), so it maps before the
+    // scalar-shape lookup; the verifier owns its placement.
+    if matches!(u, hir::TypeUse::Builtin(hir::BuiltinType::Unit)) {
+        return Ok(out.intern_type(MirType::Unit));
+    }
     match scalar_shape_of_use(u, m)? {
         ScalarShape::I32 => Ok(out.intern_type(MirType::I32)),
         ScalarShape::Bool => Ok(out.intern_type(MirType::Bool)),
@@ -1099,6 +1136,12 @@ fn owned_type_idx_of(
             hir::BuiltinType::Char => Ok(out.intern_type(MirType::Char)),
             hir::BuiltinType::StrOwned => Ok(out.intern_type(MirType::Str)),
             hir::BuiltinType::StrSlice => Ok(out.intern_type(MirType::StrView)),
+            // PLAN-862: Unit is a RESULT type of the entry-unit profile,
+            // which this owned-profile lowering never sees (defense).
+            hir::BuiltinType::Unit => Err(AdapterError::uns(
+                "lower.type-use",
+                "the unit result type belongs to the av.entry-unit/1 profile".to_string(),
+            )),
         },
         hir::TypeUse::Ref(tid) => {
             if let Some(idx) = memo.get(tid) {
@@ -1494,6 +1537,12 @@ impl<'a> FnLower<'a> {
         let expr_kind = &self.body.exprs[eid.0 as usize].kind;
         match expr_kind {
             hir::ExprKind::ReadLocal { local } => Ok(self.slot_of_local[local.0 as usize]),
+            // PLAN-862: the unit value. Zero-width: the temp slot carries the
+            // Unit type and NO instruction initializes it (there is no data
+            // to write). `verify_mir` treats Unit slots as initialized by
+            // width and admits this slot only as the Unit entry's return
+            // operand.
+            hir::ExprKind::Unit => Ok(self.temp_ty(ty)),
             hir::ExprKind::Constant { value } => {
                 let dst = self.temp_ty(ty);
                 let c = self.const_i32(*value);
@@ -2178,6 +2227,8 @@ fn expr_kind_name(k: &hir::ExprKind) -> &'static str {
     match k {
         ReadLocal { .. } => "read-local",
         Constant { .. } => "constant",
+        // PLAN-862: the unit value.
+        Unit => "unit",
         Binary { .. } => "binary",
         Unary { .. } => "unary",
         Logical { .. } => "logical",

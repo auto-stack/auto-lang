@@ -146,6 +146,9 @@ pub fn fixture_module(f: &TypedFixture) -> MirModule {
 pub fn canonical_typed(value: &Value) -> Option<(&'static str, String)> {
     Some(match value {
         Value::I32(v) => ("i32", format!("{:x}", v)),
+        // PLAN-862: the unit result reports its own kind with an EMPTY bits
+        // field — distinguishable from i32:0 by construction.
+        Value::Unit => ("unit", String::new()),
         Value::Bool(v) => ("bool", if *v { "1".into() } else { "0".into() }),
         Value::I64(v) => ("i64", format!("{:016x}", v)),
         Value::U64(v) => ("u64", format!("{:016x}", v)),

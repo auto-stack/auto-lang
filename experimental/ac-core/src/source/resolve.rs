@@ -186,6 +186,10 @@ pub enum RExprKind {
     /// receiver). Never a value; the typecheck walk rejects strays.
     TypeWord(TypeWord),
     ReadLocal(LocalRef),
+    /// PLAN-862: the unit value — the operand of the synthesized return at
+    /// the end of a Unit function (and of a fall-off script). It carries no
+    /// payload and is never produced by user syntax.
+    Unit,
     CallFn {
         fn_index: usize,
         args: Vec<ResolvedArg>,
@@ -263,6 +267,8 @@ impl Drop for ResolvedExpr {
             }
         }
         let detach = |node: &mut ResolvedExpr, stack: &mut Vec<ResolvedExpr>| match &mut node.kind {
+            // PLAN-862: leaf, nothing to detach.
+            RExprKind::Unit => {}
             RExprKind::Binary { lhs, rhs, .. } => {
                 let l = std::mem::replace(lhs.as_mut(), dummy());
                 let r = std::mem::replace(rhs.as_mut(), dummy());
@@ -906,6 +912,41 @@ fn check_entry_matrix(fns: &mut [ResolvedFn], flat: &[&ast::FnItem], diags: &mut
                     ),
                     l.span,
                 );
+            }
+        }
+    }
+
+    // -- normalization (only when the matrix is clean) --------------------
+    // Every Unit function ends with an explicit `return unit` (the source
+    // form has no bare `return`), and a script whose tail IS its result gets
+    // that tail rewritten into the return it denotes. Downstream layers
+    // therefore see ONE shape: a body whose fall-off is a typed return.
+    if diags.is_empty() {
+        for (i, f) in fns.iter_mut().enumerate() {
+            let end_span = f.item_span;
+            if f.result == VT::Unit {
+                f.body.stmts.push(RStmt::Return {
+                    value: ResolvedExpr {
+                        kind: RExprKind::Unit,
+                        span: end_span,
+                        vt: VT::Unit,
+                    },
+                    span: end_span,
+                });
+            } else if flat[i].script {
+                if let Some(last) = f.body.stmts.last_mut() {
+                    let taken = std::mem::replace(
+                        last,
+                        RStmt::Break {
+                            target: None,
+                            span: end_span,
+                        },
+                    );
+                    *last = match taken {
+                        RStmt::ExprStmt { value, span } => RStmt::Return { value, span },
+                        other => other,
+                    };
+                }
             }
         }
     }

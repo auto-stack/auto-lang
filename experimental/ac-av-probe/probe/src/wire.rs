@@ -30,6 +30,13 @@ pub enum WireCodec {
     LegacyAbc,
     /// The compact AVAC wire (`auto.abc.av-compact-core-i32/1`, PLAN-826).
     CompactAbc,
+    /// PLAN-862: the entry-unit wire (`auto.abc.av-entry-unit/1`) — a NEW
+    /// `AVAU` magic family at wire version 1 / profile id 7. It rides the
+    /// same paged codec (the module's profile selects the family at encode)
+    /// but has its OWN generation gate and cache namespace: an AVAB/AVAD
+    /// payload is a deterministic stale miss, never an in-place
+    /// reinterpretation.
+    EntryUnitAbc,
 }
 
 impl WireCodec {
@@ -39,6 +46,7 @@ impl WireCodec {
         match self {
             WireCodec::LegacyAbc => ABC_SCHEMA,
             WireCodec::CompactAbc => COMPACT_ABC_SCHEMA,
+            WireCodec::EntryUnitAbc => auto_av_core::contract::ABC_ENTRY_UNIT_SCHEMA,
         }
     }
 
@@ -51,6 +59,8 @@ impl WireCodec {
         match schema {
             ABC_SCHEMA => Ok(WireCodec::LegacyAbc),
             COMPACT_ABC_SCHEMA => Ok(WireCodec::CompactAbc),
+            // PLAN-862: the entry-unit generation.
+            auto_av_core::contract::ABC_ENTRY_UNIT_SCHEMA => Ok(WireCodec::EntryUnitAbc),
             other => Err(format!(
                 "unknown abc wire codec `{other}` (admitted: `{ABC_SCHEMA}`, `{COMPACT_ABC_SCHEMA}`)"
             )),
@@ -61,6 +71,9 @@ impl WireCodec {
     pub fn encode(&self, module: &MirModule) -> Result<Vec<u8>, AbcDecodeError> {
         match self {
             WireCodec::LegacyAbc => encode_abc(module).map(|paged| paged.to_flat()),
+            // PLAN-862: the module's profile selects the AVAU family inside
+            // ncode_abc; this policy only owns the generation gate.
+            WireCodec::EntryUnitAbc => encode_abc(module).map(|paged| paged.to_flat()),
             WireCodec::CompactAbc => encode_compact_abc(module),
         }
     }
@@ -70,6 +83,14 @@ impl WireCodec {
     pub fn decode(&self, payload: &[u8]) -> Result<DecodedWire, AbcDecodeError> {
         match self {
             WireCodec::LegacyAbc => {
+                let decoded = decode_abc(payload)?;
+                Ok(DecodedWire {
+                    version: decoded.version,
+                    profile: decoded.profile,
+                    module: decoded.module,
+                })
+            }
+            WireCodec::EntryUnitAbc => {
                 let decoded = decode_abc(payload)?;
                 Ok(DecodedWire {
                     version: decoded.version,
@@ -100,6 +121,7 @@ impl WireCodec {
             WireCodec::CompactAbc => {
                 auto_av_core::verify_compact_abc_bytes(payload, expected_owner)
             }
+            WireCodec::EntryUnitAbc => auto_av_core::verify_abc_bytes(payload, expected_owner),
         }
     }
 
@@ -113,6 +135,14 @@ impl WireCodec {
     ) -> Result<LoadedModule, auto_av_core::AbcAdmissionError> {
         match self {
             WireCodec::LegacyAbc => auto_av_core::verify_abc(
+                auto_av_core::DecodedAbc {
+                    version: decoded.version,
+                    profile: decoded.profile,
+                    module: decoded.module,
+                },
+                expected_owner,
+            ),
+            WireCodec::EntryUnitAbc => auto_av_core::verify_abc(
                 auto_av_core::DecodedAbc {
                     version: decoded.version,
                     profile: decoded.profile,
@@ -145,6 +175,8 @@ impl WireCodec {
                 }
             }
             WireCodec::LegacyAbc => {}
+            // the paged generation carries function names itself.
+            WireCodec::EntryUnitAbc => {}
         }
     }
 
@@ -159,6 +191,14 @@ impl WireCodec {
                     && payload.starts_with(auto_av_core::abc::ABC_MAGIC)
                     && u16::from_le_bytes([payload[4], payload[5]])
                         == auto_av_core::abc::ABC_VERSION
+            }
+            // PLAN-862: the entry-unit family is current only when the
+            // payload carries ITS magic and wire version.
+            WireCodec::EntryUnitAbc => {
+                payload.len() >= 6
+                    && payload.starts_with(&auto_av_core::contract::ABC_ENTRY_UNIT_MAGIC)
+                    && u16::from_le_bytes([payload[4], payload[5]])
+                        == auto_av_core::contract::ABC_ENTRY_UNIT_VERSION
             }
             WireCodec::CompactAbc => {
                 payload.len() >= 6

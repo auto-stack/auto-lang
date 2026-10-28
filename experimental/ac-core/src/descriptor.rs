@@ -275,6 +275,12 @@ impl Descriptor {
             && self.profile == "text-record-i32-draft"
         {
             Some(hir::HirDomain::TextRecord)
+        } else if self.schema == "auto.hir.entry-unit.draft"
+            && self.revision == 1
+            && self.profile == "entry-unit-draft"
+        {
+            // PLAN-862: the entry/Unit domain (Unit result + script form).
+            Some(hir::HirDomain::EntryUnit)
         } else {
             None
         }
@@ -1876,6 +1882,9 @@ impl<'d> Binder<'d> {
                     }
                 }
             }
+            // PLAN-862: the unit value. Payload-free; the verifier owns the
+            // "type must be unit" and "result-position only" rules.
+            "unit" => hir::ExprKind::Unit,
             "binary" => {
                 let Some((op_word, ospan)) = self.text_ref(&fields, "op") else {
                     return None;
@@ -2670,6 +2679,14 @@ impl<'d> Binder<'d> {
             Value::Ident(word) if word == "bool" => {
                 Some(hir::TypeUse::Builtin(hir::BuiltinType::Bool))
             }
+            // PLAN-862: `unit` is the entry-unit domain's result word; under
+            // every other descriptor it stays a dangling reference exactly
+            // like the text words above (no cross-domain borrowing).
+            Value::Ident(word)
+                if word == "unit" && self.desc.domain() == Some(hir::HirDomain::EntryUnit) =>
+            {
+                Some(hir::TypeUse::Builtin(hir::BuiltinType::Unit))
+            }
             // The str/Str/char builtin type words exist only in the text
             // descriptors' vocabulary (PLAN-770 isolation; PLAN-782 extends
             // the set to the combination domain): binding them under the
@@ -2971,6 +2988,8 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
     let kind_word = match &e.kind {
         hir::ExprKind::ReadLocal { .. } => "read_local",
         hir::ExprKind::Constant { .. } => "constant",
+        // PLAN-862: the unit value (a Unit function's return operand).
+        hir::ExprKind::Unit => "unit",
         hir::ExprKind::Binary { .. } => "binary",
         hir::ExprKind::Unary { .. } => "unary",
         hir::ExprKind::Logical { .. } => "logical",
@@ -3005,6 +3024,8 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         hir::ExprKind::Constant { value } => {
             body_fields.push(format!("value: {}i32", value));
         }
+        // PLAN-862: the unit value carries no payload — only its type.
+        hir::ExprKind::Unit => {}
         hir::ExprKind::StrLit { value } => {
             body_fields.push(format!("text: {}", quote(value)));
         }

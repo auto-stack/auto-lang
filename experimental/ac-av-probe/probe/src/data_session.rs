@@ -1631,6 +1631,9 @@ fn builtin_tag(b: hir::BuiltinType) -> &'static str {
         hir::BuiltinType::StrSlice => "str",
         hir::BuiltinType::StrOwned => "Str",
         hir::BuiltinType::Char => "char",
+        // PLAN-862: the unit RESULT word (entry-unit profile only; this data
+        // session never feeds it — totality, not a widened surface).
+        hir::BuiltinType::Unit => "unit",
     }
 }
 

@@ -123,7 +123,14 @@ fn restore_and_run_inner(
     let codec = WireCodec::from_schema(&manifest.abc_codec)?;
     // Units: per-artifact envelope + decode + verify; sidecar re-binds spans.
     let owner_scope = OwnerScope {
-        schema: codec.owner_schema().to_string(),
+        // PLAN-862: admission re-stamps the MIR module owner, so the schema
+        // is the profile's MIR identity. The entry-unit family's MIR schema
+        // differs from its ABC schema; every earlier profile keeps the wire
+        // schema (their verifiers do not key on it).
+        schema: match codec {
+            WireCodec::EntryUnitAbc => auto_av_core::contract::MIR_ENTRY_UNIT_SCHEMA.to_string(),
+            other => other.owner_schema().to_string(),
+        },
         module: owner.to_string(),
     };
     let package = crate::semrefs::av_package();

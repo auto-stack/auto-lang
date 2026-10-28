@@ -276,6 +276,8 @@ impl FnHirEnc {
                         return Err("text builtin outside the scalar codec".into())
                     }
                     hir::BuiltinType::Char => return Err("char outside the scalar codec".into()),
+                    // PLAN-862: the unit RESULT word (entry-unit profile).
+                    hir::BuiltinType::Unit => "unit",
                 })?;
             }
             hir::TypeUse::Ref(t) => {
@@ -422,6 +424,8 @@ pub fn encode_fn_hir(a: &FnHirArtifact) -> Result<Vec<u8>, String> {
                     e.b(cb.moved);
                 }
             }
+            // PLAN-862: the unit value — tag 6, no payload (zero-width).
+            hir::ExprKind::Unit => e.out.push(6),
             other => {
                 return Err(format!(
                     "expr kind `{:?}` outside the scalar codec",
@@ -553,6 +557,8 @@ impl<'a> FnHirDec<'a> {
             0 => match self.s()?.as_str() {
                 "i32" => Ok(hir::TypeUse::Builtin(hir::BuiltinType::I32)),
                 "bool" => Ok(hir::TypeUse::Builtin(hir::BuiltinType::Bool)),
+                // PLAN-862: the unit RESULT word.
+                "unit" => Ok(hir::TypeUse::Builtin(hir::BuiltinType::Unit)),
                 _ => Err("unknown builtin type".into()),
             },
             1 => Ok(hir::TypeUse::Ref(hir::TypeId(
@@ -739,6 +745,8 @@ pub fn decode_fn_hir(bytes: &[u8]) -> Result<FnHirArtifact, String> {
                     bindings,
                 }
             }
+            // PLAN-862: the unit value (tag 6, no payload).
+            6 => hir::ExprKind::Unit,
             _ => return Err("unknown expr kind".into()),
         };
         let espan = d.span()?;

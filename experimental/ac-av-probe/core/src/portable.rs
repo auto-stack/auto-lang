@@ -248,6 +248,14 @@ pub fn freeze(v: &DynValue, opts: &TraversalOptions) -> Result<Vec<u8>, Portable
         let mut payload: Option<(usize, &[u8])> = None; // (prefix_len, bytes)
         let mut children: Vec<(Value, &DynType)> = Vec::new();
         match &val {
+            // PLAN-862: the unit value has no portable encoding — it is a
+            // zero-width result channel value, never a Dyn payload. A
+            // controlled rejection, not a silent zero.
+            Value::Unit => {
+                return Err(PortableError::Unsupported {
+                    category: "unit-value",
+                })
+            }
             Value::I32(x) => {
                 write_tydesc(&mut node, ty, 1, &mut t)?;
                 node.push(TAG_I32);

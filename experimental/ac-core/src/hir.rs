@@ -80,6 +80,10 @@ pub enum BuiltinType {
     /// Independent Unicode scalar type (`char`, PLAN-770). u32 scalar value
     /// carried on the I32 ABI channel; never implicitly int.
     Char,
+    /// Unit (`unit`, PLAN-862): the no-value RESULT type. It has no runtime
+    /// width and no operators; only a function result may name it, and only
+    /// the canonical [`ExprKind::Unit`] expression carries it.
+    Unit,
 }
 
 impl BuiltinType {
@@ -90,6 +94,7 @@ impl BuiltinType {
             BuiltinType::StrSlice => "str",
             BuiltinType::StrOwned => "Str",
             BuiltinType::Char => "char",
+            BuiltinType::Unit => "unit",
         }
     }
 }
@@ -415,6 +420,10 @@ pub enum ExprKind {
     Constant {
         value: i32,
     },
+    /// PLAN-862: the unit value — the canonical operand of a `return` in a
+    /// Unit function. It carries no payload, has no runtime width, and is
+    /// the ONLY expression whose type is `unit`.
+    Unit,
     Binary {
         op: BinOp,
         overflow: OverflowPolicy,

@@ -689,6 +689,100 @@ pub fn verify_text_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diag
     }
 }
 
+/// Verify a bound entry-unit bundle (`entry-unit-draft`, PLAN-862): the
+/// scalar compute surface plus the ENTRY surface — a `unit` (`void`)
+/// function RESULT and the unit value expression a Unit body returns.
+///
+/// Structural rules are the scalar domain's (a Unit domain must not borrow
+/// the text/record relaxations), and this entry adds the two placement
+/// rules the plan freezes:
+///
+/// - **result-only Unit** (`verify.unit-placement`): `unit` may appear as a
+///   function RESULT and nowhere else — never as a parameter, a local, a
+///   place, a record field or a named type entry;
+/// - **unit value pairing** (`verify.unit-expr`, in the expression walk):
+///   an `ExprKind::Unit` is only legal in this domain and only with declared
+///   type `unit`; a `return` operand must match its function's result, so a
+///   Unit body returns the unit value and an `int` body can never return it.
+pub fn verify_entry_unit(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
+    let checked = verify_domain(bundle, HirDomain::EntryUnit)?;
+    let mut diags = Vec::new();
+    for m in &checked.bundle.modules {
+        check_unit_placement(m, &mut diags);
+    }
+    if diags.is_empty() {
+        Ok(checked)
+    } else {
+        Err(diags)
+    }
+}
+
+/// PLAN-862 placement gate: Unit is a RESULT type only.
+fn check_unit_placement(m: &hir::Module, diags: &mut Vec<Diagnostic>) {
+    let is_unit = |u: &hir::TypeUse| matches!(u, hir::TypeUse::Builtin(hir::BuiltinType::Unit));
+    for t in &m.types {
+        match &t.kind {
+            hir::TypeKind::Function(sig) => {
+                for (i, p) in sig.params.iter().enumerate() {
+                    if is_unit(p) {
+                        diags.push(Diagnostic::new(
+                            Stage::Verify,
+                            "verify.unit-placement",
+                            format!(
+                                "parameter #{} of type `{}` is `unit`; Unit is a RESULT type only",
+                                i + 1,
+                                t.id_text
+                            ),
+                            t.span,
+                        ));
+                    }
+                }
+            }
+            hir::TypeKind::Record(shape) => {
+                for f in &shape.fields {
+                    if is_unit(&f.ty) {
+                        diags.push(Diagnostic::new(
+                            Stage::Verify,
+                            "verify.unit-placement",
+                            format!(
+                                "field `{}` of type `{}` is `unit`; Unit cannot be stored",
+                                f.name, t.id_text
+                            ),
+                            t.span,
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    for body in &m.bodies {
+        for l in &body.locals {
+            if is_unit(&l.ty) {
+                diags.push(Diagnostic::new(
+                    Stage::Verify,
+                    "verify.unit-placement",
+                    format!(
+                        "local `{}` is `unit`; Unit is a RESULT type only",
+                        l.id_text
+                    ),
+                    l.span,
+                ));
+            }
+        }
+        for p in &body.places {
+            if is_unit(&p.ty) {
+                diags.push(Diagnostic::new(
+                    Stage::Verify,
+                    "verify.unit-placement",
+                    format!("place `{}` is `unit`; Unit cannot be stored", p.id_text),
+                    p.span,
+                ));
+            }
+        }
+    }
+}
+
 fn verify_domain(bundle: hir::Bundle, expect: HirDomain) -> Result<CheckedModule, Vec<Diagnostic>> {
     if bundle.domain != expect {
         return Err(vec![Diagnostic::new(
@@ -803,6 +897,10 @@ pub(crate) enum ValueType {
     /// Records are nominal — two distinct `TypeId`s never unify even with
     /// identical field shapes.
     Record(u32),
+    /// Unit (PLAN-862): the no-value RESULT type. It types exactly one
+    /// expression (ExprKind::Unit) and never a local, place, parameter or
+    /// operator operand.
+    Unit,
 }
 
 pub(crate) fn vt_name(v: ValueType) -> &'static str {
@@ -814,6 +912,7 @@ pub(crate) fn vt_name(v: ValueType) -> &'static str {
         ValueType::StrOwned => "Str",
         ValueType::Char => "char",
         ValueType::Record(_) => "record",
+        ValueType::Unit => "unit",
     }
 }
 
@@ -1053,6 +1152,8 @@ impl Verifier {
                 hir::BuiltinType::StrSlice => ValueType::Str,
                 hir::BuiltinType::StrOwned => ValueType::StrOwned,
                 hir::BuiltinType::Char => ValueType::Char,
+                // PLAN-862: the unit RESULT type.
+                hir::BuiltinType::Unit => ValueType::Unit,
             },
             hir::TypeUse::Ref(tid) => type_map.get(&tid.0).copied().unwrap_or(ValueType::I32),
         }
@@ -1502,6 +1603,8 @@ impl Verifier {
                         hir::BuiltinType::StrSlice => ValueType::Str,
                         hir::BuiltinType::StrOwned => ValueType::StrOwned,
                         hir::BuiltinType::Char => ValueType::Char,
+                        // PLAN-862: unit is a RESULT type (totality).
+                        hir::BuiltinType::Unit => ValueType::Unit,
                     },
                     hir::TypeUse::Ref(tid) => {
                         match type_map.get(&tid.0) {
@@ -1711,6 +1814,9 @@ impl Verifier {
                             ValueType::I32
                         }
                     }
+                    // PLAN-862: Unit is never a field/place type, so a path
+                    // through it is a non-record path (report, don't guess).
+                    hir::BuiltinType::Unit => ValueType::Unit,
                 },
                 hir::TypeUse::Ref(t) => *type_map.get(&t.0)?,
             };
@@ -1763,6 +1869,8 @@ impl Verifier {
                         ValueType::I32
                     }
                 }
+                // PLAN-862: no place/final-value is ever Unit.
+                hir::BuiltinType::Unit => ValueType::Unit,
             },
             hir::TypeUse::Ref(t) => *type_map.get(&t.0)?,
         };
@@ -1864,6 +1972,8 @@ impl Verifier {
             let mut children: Vec<u32> = Vec::new();
             let mut is_call = false;
             match &e.kind {
+                // PLAN-862: the unit value has no operands.
+                hir::ExprKind::Unit => {}
                 hir::ExprKind::Call { eval_args, .. } => {
                     is_call = true;
                     children.extend(eval_args.iter().map(|a| a.0));
@@ -2189,6 +2299,8 @@ impl Verifier {
                 bad("type", type_index(&e.ty), n_types, e.span);
             }
             match &e.kind {
+                // PLAN-862: no references to bounds-check.
+                hir::ExprKind::Unit => {}
                 hir::ExprKind::ReadLocal { local } => {
                     if (local.0 as usize) >= n_locals {
                         bad("local", local.0, n_locals, e.span);
@@ -2491,6 +2603,8 @@ impl Verifier {
                 hir::TypeUse::Builtin(hir::BuiltinType::StrSlice) => ValueType::Str,
                 hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => ValueType::StrOwned,
                 hir::TypeUse::Builtin(hir::BuiltinType::Char) => ValueType::Char,
+                // PLAN-862: the unit RESULT type.
+                hir::TypeUse::Builtin(hir::BuiltinType::Unit) => ValueType::Unit,
                 hir::TypeUse::Ref(tid) => type_map.get(&tid.0).copied().unwrap_or(ValueType::I32),
             }
         };
@@ -2528,6 +2642,36 @@ impl Verifier {
                             }
                             tm.gray.remove(&id.0);
                             tm.memo.insert(id.0, lt);
+                        }
+                        // PLAN-862: the unit value. Legal ONLY in the
+                        // entry-unit domain, typed `unit` exactly, and (the
+                        // result-position rule) consumed only by a `return`
+                        // of a Unit function — checked where returns are
+                        // verified.
+                        hir::ExprKind::Unit => {
+                            if self.domain != HirDomain::EntryUnit {
+                                self.error(
+                                    "verify.unit-expr",
+                                    format!(
+                                        "the unit value `{}` exists only in the entry-unit profile (this bundle is `{}`)",
+                                        e.id_text,
+                                        self.domain.as_str()
+                                    ),
+                                    e.span,
+                                );
+                            } else if declared != ValueType::Unit {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "unit value `{}` must have type unit, found `{}`",
+                                        e.id_text,
+                                        vt_name(declared)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            tm.gray.remove(&id.0);
+                            tm.memo.insert(id.0, ValueType::Unit);
                         }
                         hir::ExprKind::Constant { .. } => {
                             if declared != ValueType::I32 {
@@ -2658,6 +2802,8 @@ impl Verifier {
                     let e = &body.exprs[id.0 as usize];
                     let declared = declared_of(e);
                     let computed = match &e.kind {
+                        // PLAN-862: leaf, already checked at Enter.
+                        hir::ExprKind::Unit => declared,
                         hir::ExprKind::Binary { op, lhs, rhs, .. } => {
                             let lt =
                                 operand_type(tm, *lhs, declared_of(&body.exprs[lhs.0 as usize]));
@@ -3395,6 +3541,19 @@ impl Verifier {
                             let bt =
                                 operand_type(tm, *base, declared_of(&body.exprs[base.0 as usize]));
                             match bt {
+                                // PLAN-862: a unit value can never be borrowed;
+                                // the mismatch below reports it (no record shape).
+                                ValueType::Unit => {
+                                    self.error(
+                                        "verify.type-mismatch",
+                                        format!(
+                                            "expr `{}`: a unit value has no view borrow",
+                                            e.id_text
+                                        ),
+                                        e.span,
+                                    );
+                                    ValueType::Unit
+                                }
                                 ValueType::Record(rec) => {
                                     if declared != ValueType::Record(rec) {
                                         self.error(
@@ -3598,6 +3757,9 @@ impl Verifier {
                                             hir::BuiltinType::StrSlice => ValueType::Str,
                                             hir::BuiltinType::StrOwned => ValueType::StrOwned,
                                             hir::BuiltinType::Char => ValueType::Char,
+                                            // PLAN-862: a record field is never
+                                            // unit (placement is rejected).
+                                            hir::BuiltinType::Unit => ValueType::Unit,
                                         },
                                         hir::TypeUse::Ref(t2) => match type_map.get(&t2.0) {
                                             Some(v) => *v,
@@ -4332,6 +4494,8 @@ impl Verifier {
             }
             let e = &body.exprs[id.0 as usize];
             match &e.kind {
+                // PLAN-862: the unit value reads no local.
+                hir::ExprKind::Unit => {}
                 hir::ExprKind::ReadLocal { local } => {
                     if !init.contains(local) {
                         let name = body

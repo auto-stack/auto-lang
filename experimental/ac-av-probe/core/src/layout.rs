@@ -42,6 +42,9 @@ pub fn scalar_layout(t: &MirType) -> Option<ScalarLayout> {
         // nested records keep 4 (the C-style max-align rule derives both).
         MirType::Char => ScalarLayout { size: 4, align: 4 },
         MirType::Str => ScalarLayout { size: 12, align: 8 },
+        // PLAN-862: Unit is ZERO-WIDTH (no storage); a slot of this type
+        // occupies nothing and never participates in aggregate layout.
+        MirType::Unit => ScalarLayout { size: 0, align: 1 },
         // PLAN-821 R1-F08: a borrowed record view is a place value - no
         // scalar layout (views are never stored in records).
         // PLAN-822: an owned list handle is logically {ptr u64, len u32,

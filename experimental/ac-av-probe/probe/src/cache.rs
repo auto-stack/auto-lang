@@ -987,6 +987,11 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
         // Carry the SOURCE profile (a collections/closures unit is not a
         // core-profile unit — the feature gates key on the string).
         unit.profile = m.profile.clone();
+        // PLAN-862: the entry KIND travels with the module header, so a
+        // per-function unit of the entry-unit family keeps it (only the
+        // entry's own unit needs it, but the field is a module-level fact
+        // and the ENTRY unit is exactly the one the driver executes).
+        unit.entry_kind = m.entry_kind;
         unit.capabilities = m.capabilities.clone();
         let mut ty_map: Vec<TypeIdx> = vec![u32::MAX; m.types.len()];
         let mut c_map: Vec<u32> = vec![u32::MAX; m.consts.len()];
@@ -1367,6 +1372,28 @@ pub fn assemble_closure(
         .position(|f| f.name == entry)
         .ok_or_else(|| format!("entry function `{}` not among units", entry))?;
     merged.entry = entry_idx as u32;
+    // PLAN-862: the closure carries the PROFILE and (for the entry-unit
+    // family) the entry KIND of the units it was assembled from — a closure
+    // re-encoded as a bare core module would either reject the Unit result
+    // type or silently claim the wrong wire family. The profile is a
+    // module-level fact of the units; a mixed-profile closure is an error,
+    // never a guess.
+    merged.profile = units
+        .first()
+        .map(|u| u.profile.clone())
+        .unwrap_or_else(|| merged.profile.clone());
+    if units.iter().any(|u| u.profile != merged.profile) {
+        return Err("closure units declare different profiles".to_string());
+    }
+    // PLAN-862: the owner SCHEMA follows the profile (`verify_mir` checks
+    // the pair); every earlier profile keeps MIR_SCHEMA.
+    if let Some(first) = units.first() {
+        merged.owner.schema = first.owner.schema.clone();
+        for f in merged.funcs.iter_mut() {
+            f.owner.schema = merged.owner.schema.clone();
+        }
+    }
+    merged.entry_kind = units.first().and_then(|u| u.entry_kind);
     Ok(merged)
 }
 
@@ -1392,7 +1419,9 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<TypeIdx> {
                 | MirType::StrView
                 | MirType::MutRef
                 // PLAN-824: the erased Dyn type interns atomically.
-                | MirType::Dyn => {
+                | MirType::Dyn
+                // PLAN-862: Unit is atomic (no type-table children).
+                | MirType::Unit => {
                     map[i] = merged.intern_type(t.clone());
                     progress = true;
                 }
@@ -1683,6 +1712,9 @@ pub fn render_unit_sig(unit: &MirModule) -> String {
             Some(MirType::Place(_)) => "place".to_string(),
             Some(MirType::Closure(_)) => "closure".to_string(),
             Some(MirType::Dyn) => "dyn".to_string(),
+            // PLAN-862: the unit RESULT renders as `unit` in the manifest
+            // signature — a restore-time claim of `i32` is a mismatch.
+            Some(MirType::Unit) => "unit".to_string(),
             None => "?".to_string(),
         }
     };

@@ -14,7 +14,6 @@ use crate::cache::{
     manifest_key, merge_spans, open_store, payload_fingerprint, put_enveloped, sidecar_key,
     split_units, Counters, EnvelopeIdentity, ModuleManifest, SemaRefSer, UnitLink,
 };
-use auto_mir_lower::{lower_checked, AdapterError};
 use crate::observations::{Obs, SpanRec};
 use auto_ac_prototype::source::compile_scalar_source;
 use auto_ac_prototype::verify::CheckedModule;
@@ -25,6 +24,7 @@ use auto_av_core::mir::{MirModule, OwnerScope, TraceEvent};
 use auto_av_core::{
     decode_abc, encode_abc, execute, verify_mir, CancelFlag, ExecLimits, LoadedModule,
 };
+use auto_mir_lower::{lower_checked, AdapterError};
 use serde::{Deserialize, Serialize};
 
 /// One diagnosed pipeline failure: stage + code + message.
@@ -88,6 +88,35 @@ impl RequestOutcome {
         }
     }
 
+    /// PLAN-862: the UNIT result channel. `Some(())` only for a Unit entry
+    /// that succeeded — an `i32 0` result is a DIFFERENT payload and never
+    /// satisfies this.
+    pub fn value_unit(&self) -> Option<()> {
+        match &self.av {
+            Some(ExecOutcome::Success {
+                value: Value::Unit, ..
+            }) => Some(()),
+            _ => None,
+        }
+    }
+
+    /// PLAN-862: the observed result channel, named (diagnostics must print
+    /// the channel, never just a number — that would fold Unit into 0).
+    pub fn channel(&self) -> &'static str {
+        match &self.av {
+            Some(ExecOutcome::Success { value, .. }) => match value {
+                Value::Unit => "unit",
+                Value::I32(_) => "value",
+                _ => "value-other",
+            },
+            Some(ExecOutcome::Trap { .. }) => "trap",
+            Some(ExecOutcome::Resource { .. }) => "resource",
+            Some(ExecOutcome::Cancelled) => "cancelled",
+            Some(ExecOutcome::Infra(_)) => "infra",
+            None => "none",
+        }
+    }
+
     pub fn ok(&self) -> bool {
         self.diag.is_none() && matches!(self.av, Some(ExecOutcome::Success { .. }))
     }
@@ -102,6 +131,20 @@ pub struct Driver {
     /// wire; the compact AVAC policy is opt-in per driver so every legacy
     /// consumer path is byte-identical until a caller switches.
     wire: crate::wire::WireCodec,
+    /// PLAN-862: which SOURCE profile this driver serves. `Scalar` keeps the
+    /// historical path byte-for-byte; `EntryUnit` compiles through the
+    /// entry-unit front door and rides the `AVAU` wire generation.
+    profile: RequestProfile,
+}
+
+/// PLAN-862: the request profile selector. One driver serves one profile at
+/// a time (the wire generation and the cache namespace follow it).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RequestProfile {
+    /// `auto.source.scalar-i32.draft` → `av.core-i32/1` (the delivered path).
+    Scalar,
+    /// `auto.source.entry-unit.draft` → `av.entry-unit/1` (PLAN-862).
+    EntryUnit,
 }
 
 impl Driver {
@@ -113,6 +156,7 @@ impl Driver {
             project: String::new(),
             owner_override: None,
             wire: crate::wire::WireCodec::LegacyAbc,
+            profile: RequestProfile::Scalar,
         }
     }
 
@@ -124,6 +168,7 @@ impl Driver {
             project: project.to_string(),
             owner_override: None,
             wire: crate::wire::WireCodec::LegacyAbc,
+            profile: RequestProfile::Scalar,
         })
     }
 
@@ -137,6 +182,25 @@ impl Driver {
     /// miss for this policy — never reinterpreted.
     pub fn set_wire_compact(&mut self) {
         self.wire = crate::wire::WireCodec::CompactAbc;
+    }
+
+    /// PLAN-862: serve the entry-unit profile. The wire generation follows
+    /// the profile (the AVAU family): cached AVAB/AVAD rows under the same
+    /// store are a deterministic stale miss, never reinterpreted.
+    pub fn set_profile(&mut self, profile: RequestProfile) {
+        self.profile = profile;
+        self.wire = match profile {
+            RequestProfile::Scalar => match self.wire {
+                crate::wire::WireCodec::CompactAbc => crate::wire::WireCodec::CompactAbc,
+                _ => crate::wire::WireCodec::LegacyAbc,
+            },
+            RequestProfile::EntryUnit => crate::wire::WireCodec::EntryUnitAbc,
+        };
+    }
+
+    /// The profile this driver currently serves.
+    pub fn profile(&self) -> RequestProfile {
+        self.profile
     }
 
     /// One full request. `entry` selects the zero-param i32 entry function.
@@ -195,8 +259,17 @@ impl Driver {
             return (Some(d), None, vec![], None);
         }
         // ---- frontend ---------------------------------------------------
+        // PLAN-862: the profile selects the front door. The scalar path is
+        // untouched; the entry-unit path compiles the same way plus the
+        // entry matrix / Unit result, into its own HIR domain.
         let compiled = obs.span("frontend", Some("request"), |o| {
-            compile_scalar_source(src, "probe.at", caps).map_err(|ds| {
+            let result = match self.profile {
+                RequestProfile::Scalar => compile_scalar_source(src, "probe.at", caps),
+                RequestProfile::EntryUnit => {
+                    auto_ac_prototype::source::compile_entry_unit_source(src, "probe.at", caps)
+                }
+            };
+            result.map_err(|ds| {
                 let d = ds.first().cloned();
                 o.counter("frontend_reject", 1);
                 StageDiag {
@@ -817,7 +890,17 @@ impl Driver {
         // Hits: decode + verify each restored unit (never trusted).
         let mut decoded_units: Vec<MirModule> = Vec::new();
         let owner_scope = OwnerScope {
-            schema: self.wire.owner_schema().to_string(),
+            // PLAN-862: admission re-stamps the MIR module owner, so the
+            // schema here is the MIR IDENTITY of the profile (the entry-unit
+            // family's MIR schema), not the ABC wire schema — `verify_mir`
+            // checks that pair. Every earlier profile keeps the wire schema
+            // (their verifiers do not key on it).
+            schema: match self.profile {
+                RequestProfile::EntryUnit => {
+                    auto_av_core::contract::MIR_ENTRY_UNIT_SCHEMA.to_string()
+                }
+                RequestProfile::Scalar => self.wire.owner_schema().to_string(),
+            },
             module: owner.clone(),
         };
         for info in infos.iter().filter(|i| i.abc_hit.is_some()) {

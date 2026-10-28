@@ -761,6 +761,11 @@ impl ModuleView for LoadedView<'_> {
 /// before any read).
 pub(crate) fn typed_zero(t: Option<&MirType>) -> Value {
     match t {
+        // PLAN-862: the unit value — a real value of the zero-width result
+        // type (NOT a placeholder for `I32(0)`). The verifier admits a Unit
+        // slot only as the Unit entry's return operand, so this is the value
+        // that entry's `Return` hands back.
+        Some(MirType::Unit) => Value::Unit,
         Some(MirType::Bool) => Value::Bool(false),
         Some(MirType::I64) => Value::I64(0),
         Some(MirType::U64) => Value::U64(0),

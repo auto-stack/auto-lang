@@ -95,6 +95,10 @@ impl Default for EnvLimits {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ValueKind {
     I32,
+    /// PLAN-862: the zero-width unit value (never captured — the
+    /// closure profile has no unit surface; the kind exists so the mirror
+    /// stays total over `Value`).
+    Unit,
     Bool,
     I64,
     U64,
@@ -116,6 +120,7 @@ impl ValueKind {
     fn name(self) -> &'static str {
         match self {
             ValueKind::I32 => "i32",
+            ValueKind::Unit => "unit",
             ValueKind::Bool => "bool",
             ValueKind::I64 => "i64",
             ValueKind::U64 => "u64",
@@ -138,6 +143,7 @@ impl ValueKind {
 fn value_kind(v: &Value) -> ValueKind {
     match v {
         Value::I32(_) => ValueKind::I32,
+        Value::Unit => ValueKind::Unit,
         Value::Bool(_) => ValueKind::Bool,
         Value::I64(_) => ValueKind::I64,
         Value::U64(_) => ValueKind::U64,

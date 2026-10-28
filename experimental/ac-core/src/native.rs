@@ -120,6 +120,10 @@ fn value_of_type_use(u: &hir::TypeUse, m: &hir::Module) -> Option<Vt> {
             hir::BuiltinType::StrSlice | hir::BuiltinType::StrOwned | hir::BuiltinType::Char => {
                 None
             }
+            // PLAN-862: Unit is a RESULT type with no native value
+            // representation (the AV profile owns it) — a controlled
+            // backend rejection, never a fabricated zero.
+            hir::BuiltinType::Unit => None,
         },
         hir::TypeUse::Ref(tid) => match &m.types.get(tid.0 as usize)?.kind {
             hir::TypeKind::I32 => Some(Vt::I32),
@@ -1362,6 +1366,15 @@ impl<'c> FuncEmitter<'c> {
                             let v = self.fb.ins().iconst(types::I32, *value as i64);
                             slots.insert(id.0, Val::V(v));
                         }
+                        // PLAN-862: the unit value has no native lowering —
+                        // the entry-unit profile is AV-only, so a verified
+                        // bundle of this domain never reaches this backend
+                        // (same exclusion style as the text `Drop` arm).
+                        hir::ExprKind::Unit => {
+                            unreachable!(
+                                "PLAN-862: unit value has no native lowering (AV-only profile)"
+                            )
+                        }
                         hir::ExprKind::ReadLocal { local } => {
                             let var = self.vars[&local.0];
                             let ptr = self.fb.use_var(var);
@@ -2037,6 +2050,8 @@ fn value_of_type_use_text(u: &hir::TypeUse, m: &hir::Module) -> Option<Vt2> {
             hir::BuiltinType::Char => Some(Vt2::Char),
             hir::BuiltinType::StrSlice => Some(Vt2::StrBorrow),
             hir::BuiltinType::StrOwned => Some(Vt2::StrOwn),
+            // PLAN-862: no native unit value (AV-only profile).
+            hir::BuiltinType::Unit => None,
         },
         hir::TypeUse::Ref(tid) => match &m.types.get(tid.0 as usize)?.kind {
             hir::TypeKind::I32 => Some(Vt2::I32),
@@ -3672,6 +3687,12 @@ impl<'c> TextEmitter<'c> {
                         hir::ExprKind::Constant { value } => {
                             let v = self.fb.ins().iconst(types::I32, *value as i64);
                             slots.insert(id.0, TVal::I(v));
+                        }
+                        // PLAN-862: no native unit value (AV-only profile).
+                        hir::ExprKind::Unit => {
+                            unreachable!(
+                                "PLAN-862: unit value has no native lowering (AV-only profile)"
+                            )
                         }
                         hir::ExprKind::ReadLocal { local } => {
                             if let Some(&(p, n)) = self.tvars.get(&local.0) {

@@ -1,0 +1,205 @@
+// entry-unit-draft descriptor (PLAN-862, R2-E/SEM-05).
+//
+// Machine-readable contract consumed by experimental/ac-core/src/descriptor.rs.
+// The scalar-i32 compute surface (PLAN-767) plus the ENTRY surface:
+// a Unit (`void`) function RESULT - the `unit` expression kind in this
+// schema is the literal unit value a unit-returning body returns - and the
+// entry matrix frozen by `docs/plans/attachments/862/work/entry-contract.md`
+// (one zero-parameter entry: `fn main() int`, `fn main() void`, or a
+// single-file script whose i32 tail is the result).
+//
+// Unit is a RESULT-only type here: it never types a local, a parameter or a
+// record field, and no operator accepts it. The root identity
+// (schema/revision/profile) must be echoed by every accepted HIR document;
+// unknown tags, fields, enum cases and capabilities are rejected. Documents
+// under the core-i32-draft / scalar-i32-draft identities keep using their own
+// schemas — the profiles stay isolated by descriptor, verifier entry and
+// canonical writer.
+
+descriptor(schema: "auto.hir.entry-unit.draft", revision: 1u32, profile: "entry-unit-draft") {
+
+    enums {
+        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, unit] }
+        enum TypeKind { cases: [i32, bool, function] }
+        enum BinOp { cases: [add_i32, sub_i32, mul_i32, div_i32, rem_i32, lt_i32, le_i32, gt_i32, ge_i32, eq, ne] }
+        enum UnaryOp { cases: [neg_i32, not_bool] }
+        enum LogicOp { cases: [and, or] }
+        enum OverflowPolicy { cases: [trap] }
+        enum LocalRole { cases: [param, binding] }
+        enum PlaceKind { cases: [local] }
+        enum AccessKind { cases: [mutable, readonly] }
+        enum EffectKind { cases: [observable, pure] }
+    }
+
+    nodes {
+        node hir {
+            slots: []
+            fields { schema: Text; revision: U32; profile: Text; requires: TextList }
+            inline: [module]
+        }
+
+        node module {
+            slots: [Id]
+            fields { path: Text }
+            containers {
+                types: [type]
+                declarations: [function, intrinsic]
+                bodies: [body]
+            }
+        }
+
+        node type {
+            slots: [Id, TypeKind]
+            fields { params: TypeUseList; result: TypeUse }
+        }
+
+        node function {
+            slots: [Id, TypeRef]
+            fields { name: Text; body: BodyRef }
+        }
+
+        node intrinsic {
+            slots: [Id, TypeRef]
+            fields { symbol: Text; effect: EffectKind }
+        }
+
+        node body {
+            slots: [Id]
+            fields { owner: DefRef; entry: BlockRef }
+            containers {
+                locals: [local]
+                places: [place]
+                expressions: [expr]
+                blocks: [block]
+            }
+        }
+
+        node local {
+            slots: [Id, TypeUse]
+            fields { name: Text; role: LocalRole; index: U32; mutable: Bool }
+        }
+
+        node place {
+            slots: [Id, PlaceKind]
+            fields { local: LocalRef; type: TypeUse; access: AccessKind }
+        }
+
+        node expr {
+            slots: [Id, ExprKind]
+            fields {
+                type: TypeUse
+                local: LocalRef
+                value: I32
+                op: BinOp
+                overflow: OverflowPolicy
+                lhs: ExprRef
+                rhs: ExprRef
+                operand: ExprRef
+                callee: DefRef
+                eval_args: ExprRefList
+                bindings: BindingList
+            }
+        }
+
+        node block {
+            slots: [Id]
+            statements: [let, return, if, loop, assign, break, continue]
+        }
+
+        node let { fields { local: LocalRef; value: ExprRef } }
+        node return { fields { value: ExprRef } }
+        node if { fields { cond: ExprRef; then: BlockRef; else: BlockRef } }
+        node loop { fields { id: LoopDecl; body: BlockRef } }
+        node assign { fields { place: PlaceRef; value: ExprRef } }
+        node break { fields { target: LoopRef } }
+        node continue { fields { target: LoopRef } }
+    }
+
+    branches {
+        branch(key: "hir") { require: [schema, revision, profile] }
+        branch(key: "type.i32") { forbid: [params, result] }
+        branch(key: "type.bool") { forbid: [params, result] }
+        branch(key: "type.function") { require: [params, result] }
+        branch(key: "function") { require: [name]; forbid: [symbol, effect] }
+        branch(key: "intrinsic") { require: [symbol, effect]; forbid: [name, body] }
+        branch(key: "body") { require: [owner, entry] }
+        branch(key: "local.param") { require: [name, role, index]; forbid: [mutable] }
+        branch(key: "local.binding") { require: [name, role]; forbid: [index] }
+        branch(key: "place.local") { require: [local, type, access] }
+        branch(key: "expr.read_local") {
+            require: [type, local]
+            forbid: [value, op, overflow, lhs, rhs, operand, callee, eval_args, bindings]
+        }
+        branch(key: "expr.constant") {
+            require: [type, value]
+            forbid: [local, op, overflow, lhs, rhs, operand, callee, eval_args, bindings]
+        }
+        branch(key: "expr.binary:add_i32") {
+            require: [type, op, overflow, lhs, rhs]
+            forbid: [local, value, operand, callee, eval_args, bindings]
+        }
+        branch(key: "expr.binary:sub_i32") {
+            require: [type, op, overflow, lhs, rhs]
+            forbid: [local, value, operand, callee, eval_args, bindings]
+        }
+        branch(key: "expr.binary:mul_i32") {
+            require: [type, op, overflow, lhs, rhs]
+            forbid: [local, value, operand, callee, eval_args, bindings]
+        }
+        branch(key: "expr.binary:div_i32") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, operand, callee, eval_args, bindings]
+        }
+        branch(key: "expr.binary:rem_i32") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, operand, callee, eval_args, bindings]
+        }
+        branch(key: "expr.binary:lt_i32") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, operand, callee, eval_args, bindings]
+        }
+        branch(key: "expr.binary:le_i32") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, operand, callee, eval_args, bindings]
+        }
+        branch(key: "expr.binary:gt_i32") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, operand, callee, eval_args, bindings]
+        }
+        branch(key: "expr.binary:ge_i32") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, operand, callee, eval_args, bindings]
+        }
+        branch(key: "expr.binary:eq") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, operand, callee, eval_args, bindings]
+        }
+        branch(key: "expr.binary:ne") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, operand, callee, eval_args, bindings]
+        }
+        branch(key: "expr.unary") {
+            require: [type, op, operand]
+            forbid: [local, value, overflow, lhs, rhs, callee, eval_args, bindings]
+        }
+        branch(key: "expr.logical") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, operand, callee, eval_args, bindings]
+        }
+        branch(key: "expr.call") {
+            require: [type, callee, eval_args, bindings]
+            forbid: [local, value, op, overflow, lhs, rhs, operand]
+        }
+        branch(key: "expr.unit") {
+            require: [type]
+            forbid: [local, value, op, overflow, lhs, rhs, operand, callee, eval_args, bindings]
+        }
+        branch(key: "let") { require: [local, value] }
+        branch(key: "return") { require: [value] }
+        branch(key: "if") { require: [cond, then] }
+        branch(key: "loop") { require: [id, body] }
+        branch(key: "assign") { require: [place, value] }
+        branch(key: "break") { require: [target] }
+        branch(key: "continue") { require: [target] }
+    }
+}

@@ -125,6 +125,7 @@ pub fn verify_mir_with_deadline(
         is_closures: module.is_closures_profile(),
         closure_bodies: std::collections::BTreeSet::new(),
         is_dynamic: module.is_dynamic_profile(),
+        is_entry_unit: module.is_entry_unit_profile(),
     };
     v.run()?;
     let stats = v.stats_snapshot();
@@ -163,6 +164,10 @@ struct Verifier<'a> {
     /// subsumes the collections surface and adds the checked-erasure Dyn
     /// surface.
     is_dynamic: bool,
+    /// Whether the module declares the `av.entry-unit/1` profile
+    /// (PLAN-862): the scalar feature surface plus the Unit RESULT channel
+    /// and the entry-kind contract.
+    is_entry_unit: bool,
 }
 
 impl<'a> Verifier<'a> {
@@ -206,18 +211,21 @@ impl<'a> Verifier<'a> {
             && self.module.profile != crate::contract::AV_COLLECTIONS_PROFILE
             && self.module.profile != crate::contract::AV_CLOSURES_PROFILE
             && self.module.profile != crate::contract::AV_DYNAMIC_PROFILE
+            // PLAN-862: the entry-unit profile (scalar surface + Unit result).
+            && self.module.profile != crate::contract::AV_ENTRY_UNIT_PROFILE
         {
             return Err(MirVerifyError::uns(
                 "mir.profile",
                 format!(
-                    "profile `{}` is not one of the supported profiles (`{}` / `{}` / `{}` / `{}` / `{}` / `{}`)",
+                    "profile `{}` is not one of the supported profiles (`{}` / `{}` / `{}` / `{}` / `{}` / `{}` / `{}`)",
                     self.module.profile,
                     crate::contract::AV_PROFILE,
                     crate::contract::AV_DATA_PROFILE,
                     crate::contract::AV_OWNED_PROFILE,
                     crate::contract::AV_COLLECTIONS_PROFILE,
                     crate::contract::AV_CLOSURES_PROFILE,
-                    crate::contract::AV_DYNAMIC_PROFILE
+                    crate::contract::AV_DYNAMIC_PROFILE,
+                    crate::contract::AV_ENTRY_UNIT_PROFILE
                 ),
             ));
         }
@@ -270,6 +278,17 @@ impl<'a> Verifier<'a> {
                     "dynamic-profile module owner schema `{}` is not `{}`",
                     self.module.owner.schema,
                     crate::contract::MIR_DYNAMIC_SCHEMA
+                ),
+            ));
+        }
+        if self.is_entry_unit && self.module.owner.schema != crate::contract::MIR_ENTRY_UNIT_SCHEMA
+        {
+            return Err(MirVerifyError::inv(
+                "mir.schema-profile",
+                format!(
+                    "entry-unit-profile module owner schema `{}` is not `{}`",
+                    self.module.owner.schema,
+                    crate::contract::MIR_ENTRY_UNIT_SCHEMA
                 ),
             ));
         }
@@ -423,6 +442,17 @@ impl<'a> Verifier<'a> {
                         format!(
                             "type #{ti} (Closure …) exists only in the `{}` profile",
                             crate::contract::AV_CLOSURES_PROFILE
+                        ),
+                    ));
+                }
+                // PLAN-862: the Unit RESULT type is entry-unit-only.
+                MirType::Unit if !self.is_entry_unit => {
+                    return Err(MirVerifyError::uns(
+                        "mir.profile-type",
+                        format!(
+                            "type #{} (Unit) exists only in the `{}` profile",
+                            ti,
+                            crate::contract::AV_ENTRY_UNIT_PROFILE
                         ),
                     ));
                 }
@@ -809,6 +839,47 @@ impl<'a> Verifier<'a> {
                         "dynamic-profile module entry params must be scalar/char; result may additionally be owned Str/record/Dyn"
                             .to_string(),
                     ));
+                }
+            } else if self.is_entry_unit {
+                // PLAN-862 entry contract (entry-contract.md §5): the entry
+                // is zero-param and its result follows the declared KIND:
+                // `Int` <=> i32, `Unit` <=> the Unit type. A kind-less
+                // module, a kind/signature mismatch in EITHER direction and
+                // a non-zero-param entry are all controlled rejections —
+                // the signature is never used to GUESS the kind.
+                if !entry_sig.params.is_empty() {
+                    return Err(MirVerifyError::inv(
+                        "mir.entry-sig",
+                        "the entry-unit profile's entry takes no parameters".to_string(),
+                    ));
+                }
+                let result_is_i32 =
+                    self.module.type_shape(entry_sig.result) == Some(ScalarShape::I32);
+                let result_is_unit = matches!(
+                    self.module.types.get(entry_sig.result as usize),
+                    Some(MirType::Unit)
+                );
+                match self.module.entry_kind {
+                    Some(crate::mir::EntryKind::Int) if result_is_i32 => {}
+                    Some(crate::mir::EntryKind::Unit) if result_is_unit => {}
+                    Some(crate::mir::EntryKind::Int) => {
+                        return Err(MirVerifyError::inv(
+                            "mir.entry-kind",
+                            "entry kind `int` requires an i32 entry result".to_string(),
+                        ));
+                    }
+                    Some(crate::mir::EntryKind::Unit) => {
+                        return Err(MirVerifyError::inv(
+                            "mir.entry-kind",
+                            "entry kind `unit` requires a Unit entry result".to_string(),
+                        ));
+                    }
+                    None => {
+                        return Err(MirVerifyError::inv(
+                            "mir.entry-kind",
+                            "the entry-unit profile requires a declared entry kind (kind-less modules are not admissible)".to_string(),
+                        ));
+                    }
                 }
             } else if !entry_sig.params.is_empty()
                 || self.module.type_shape(entry_sig.result) != Some(ScalarShape::I32)
@@ -1801,6 +1872,33 @@ impl<'a> Verifier<'a> {
                         si, f.name, s.ty
                     ),
                 ));
+            }
+            // PLAN-862 `mir.unit-placement`: a Unit-typed slot is ZERO-WIDTH
+            // and exists only as the return operand of the ENTRY function of
+            // a unit entry (the entry kind says the result is Unit). No
+            // other slot may be Unit — it would be a value of unit type.
+            if matches!(self.module.types.get(s.ty as usize), Some(MirType::Unit)) {
+                let entry_unit = self.is_entry_unit
+                    && self.module.entry_kind == Some(crate::mir::EntryKind::Unit)
+                    && _fi == self.module.entry;
+                if !entry_unit {
+                    return Err(MirVerifyError::inv(
+                        "mir.unit-placement",
+                        format!(
+                            "slot #{} of `{}` is `unit`; Unit is the entry result and its return operand only",
+                            si, f.name
+                        ),
+                    ));
+                }
+                if s.kind == SlotKind::Param {
+                    return Err(MirVerifyError::inv(
+                        "mir.unit-placement",
+                        format!(
+                            "slot #{} of `{}` is a `unit` PARAMETER; Unit is a result type",
+                            si, f.name
+                        ),
+                    ));
+                }
             }
         }
         // params first and in signature order
@@ -3804,6 +3902,16 @@ impl<'a> Verifier<'a> {
             // Reads must be initialized in `in ∪ defs-so-far`: walk instructions
             // in order, checking uses then applying the def.
             let mut live = new_in.clone();
+            // PLAN-862: Unit-typed slots are ZERO-WIDTH and carry no value
+            // to be initialized — the entry's unit return operand is exactly
+            // such a slot (its placement was checked in `check_function`).
+            // Treating them as always-defined is the width-zero rule, not a
+            // weakened initialization check: no data can be read out of one.
+            for (si, s) in f.slots.iter().enumerate() {
+                if matches!(self.module.types.get(s.ty as usize), Some(MirType::Unit)) {
+                    set_bit(&mut live, si);
+                }
+            }
             let mut fail: Option<(u32, u32)> = None;
             'blk: for (ii, instr) in f.blocks[b as usize].instrs.iter().enumerate() {
                 let flat = bases[b as usize] + ii as u32;

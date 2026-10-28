@@ -239,6 +239,9 @@ pub(crate) fn check_body(
             hir::TypeUse::Builtin(hir::BuiltinType::Char) => ValueType::Char,
             hir::TypeUse::Builtin(hir::BuiltinType::I32) => ValueType::I32,
             hir::TypeUse::Builtin(hir::BuiltinType::Bool) => ValueType::Bool,
+            // PLAN-862: Unit never types a local; projected only for
+            // totality (the entry-unit domain owns its own verifier).
+            hir::TypeUse::Builtin(hir::BuiltinType::Unit) => ValueType::Unit,
             hir::TypeUse::Ref(t) => type_map.get(&t.0).copied().unwrap_or(ValueType::I32),
         }
     };
@@ -306,6 +309,8 @@ fn fn_result_of(
             hir::TypeUse::Builtin(hir::BuiltinType::Char) => ValueType::Char,
             hir::TypeUse::Builtin(hir::BuiltinType::Bool) => ValueType::Bool,
             hir::TypeUse::Builtin(hir::BuiltinType::I32) => ValueType::I32,
+            // PLAN-862: a unit RESULT carries no resource obligation.
+            hir::TypeUse::Builtin(hir::BuiltinType::Unit) => ValueType::Unit,
             hir::TypeUse::Ref(t) => type_map.get(&t.0).copied().unwrap_or(ValueType::I32),
         },
         _ => ValueType::I32,
@@ -370,6 +375,8 @@ fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
         let e = &body.exprs[id.0 as usize];
         match &e.kind {
             hir::ExprKind::ReadLocal { local } => scan.reads.push((id.0, local.0, e.span)),
+            // PLAN-862: a unit value owns and reads nothing.
+            hir::ExprKind::Unit => {}
             // PLAN-782 combination kinds: under the text profile these
             // never appear (profile gate); the combination walk gives them
             // their ownership semantics. A `Move` wrapper is the transfer
@@ -2462,6 +2469,8 @@ fn place_final_vt(m: &hir::Module, root_vt: ValueType, path: &[u32]) -> ValueTyp
                 hir::BuiltinType::StrSlice => ValueType::Str,
                 hir::BuiltinType::StrOwned => ValueType::StrOwned,
                 hir::BuiltinType::Char => ValueType::Char,
+                // PLAN-862: totality only (Unit never types a place).
+                hir::BuiltinType::Unit => ValueType::Unit,
             },
             hir::TypeUse::Ref(t) => match m.types.get(t.0 as usize).map(|x| &x.kind) {
                 Some(hir::TypeKind::I32) => ValueType::I32,

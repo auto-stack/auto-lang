@@ -234,6 +234,7 @@ fn check_expr(
             | RExprKind::StrLit(_)
             | RExprKind::CharLit(_)
             | RExprKind::Method { .. }
+            | RExprKind::Unit
             | RExprKind::Move { .. } => {}
             RExprKind::TypeWord(_) => {
                 diags.push(Diagnostic::new(

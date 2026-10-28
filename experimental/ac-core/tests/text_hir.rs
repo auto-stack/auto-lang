@@ -80,6 +80,8 @@ fn text_identity_binds_and_verifies() {
             hir::TypeUse::Builtin(hir::BuiltinType::Char) => "char",
             hir::TypeUse::Builtin(hir::BuiltinType::I32) => "i32",
             hir::TypeUse::Builtin(hir::BuiltinType::Bool) => "bool",
+            // PLAN-862: the unit RESULT word never types a text local.
+            hir::TypeUse::Builtin(hir::BuiltinType::Unit) => "unit",
             hir::TypeUse::Ref(_) => "ref",
         })
         .collect();

@@ -155,6 +155,12 @@ pub fn record_descriptor() -> &'static descriptor::Descriptor {
     })
 }
 
+/// The versioned entry-unit descriptor this build accepts (PLAN-862): the
+/// scalar-i32 surface plus the ENTRY surface — a Unit (oid) function
+/// result and the unit value expression — under the frozen entry matrix
+/// (docs/plans/attachments/862/work/entry-contract.md).
+pub const ENTRY_UNIT_DESCRIPTOR_SCHEMA: &str = include_str!("../schema/entry-unit.atom");
+
 /// Parse and return the embedded text-record descriptor (PLAN-782).
 pub fn text_record_descriptor() -> &'static descriptor::Descriptor {
     use std::sync::OnceLock;
@@ -162,6 +168,16 @@ pub fn text_record_descriptor() -> &'static descriptor::Descriptor {
     DESC.get_or_init(|| {
         descriptor::Descriptor::parse(TEXT_RECORD_DESCRIPTOR_SCHEMA)
             .expect("embedded text-record-i32 descriptor must parse")
+    })
+}
+
+/// Parse and return the embedded entry-unit descriptor (PLAN-862).
+pub fn entry_unit_descriptor() -> &'static descriptor::Descriptor {
+    use std::sync::OnceLock;
+    static DESC: OnceLock<descriptor::Descriptor> = OnceLock::new();
+    DESC.get_or_init(|| {
+        descriptor::Descriptor::parse(ENTRY_UNIT_DESCRIPTOR_SCHEMA)
+            .expect("embedded entry-unit descriptor must parse")
     })
 }
 
@@ -181,6 +197,7 @@ pub fn bind_document(source: &str) -> Result<hir::Bundle, Vec<atom_text::Diagnos
         (text_descriptor(), "text"),
         (record_descriptor(), "record"),
         (text_record_descriptor(), "text-record"),
+        (entry_unit_descriptor(), "entry-unit"),
     ];
     let header = match descriptor::peek_identity(source) {
         Ok(h) => h,

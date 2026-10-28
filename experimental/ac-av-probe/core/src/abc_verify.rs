@@ -115,6 +115,13 @@ pub fn verify_abc(
                 crate::contract::ABC_PROFILE_DYNAMIC,
                 crate::contract::AV_DYNAMIC_SEMANTICS,
             )
+        } else if decoded.profile == crate::contract::ABC_PROFILE_ENTRY_UNIT {
+            // PLAN-862: the entry-unit generation (`AVAU` v1, id 7).
+            (
+                crate::contract::ABC_ENTRY_UNIT_VERSION,
+                crate::contract::ABC_PROFILE_ENTRY_UNIT,
+                crate::contract::AV_ENTRY_UNIT_SEMANTICS,
+            )
         } else {
             return Err(AbcAdmissionError::Identity(format!(
                 "decoded profile id {} is not an admitted profile",

@@ -104,7 +104,7 @@ pub fn compile_entry_unit_source(
     let parts = compile_parts_with(src, module_path, capabilities, SourceProfile::EntryUnit)?;
     // Unreachable while the emit gate is in place; kept so the shape of
     // this entry matches the other profiles when T-03b lands.
-    let checked = crate::verify::verify_scalar(parts.bundle)?;
+    let checked = crate::verify::verify_entry_unit(parts.bundle)?;
     Ok(CompiledSource {
         profile: super::ENTRY_UNIT_SOURCE_PROFILE,
         input_hash: parts.input_hash,
@@ -317,17 +317,7 @@ pub fn emit_function_body(
         crate::hir::HirDomain::Text => crate::text_descriptor(),
         crate::hir::HirDomain::Record => crate::record_descriptor(),
         crate::hir::HirDomain::TextRecord => crate::text_record_descriptor(),
-        // PLAN-862 T-03a: the entry-unit HIR/emit half is not landed yet;
-        // the profile stops at the frontend with a controlled diagnostic
-        // (never a guess at another domain's descriptor).
-        crate::hir::HirDomain::EntryUnit => {
-            return Err(vec![Diagnostic::new(
-                Stage::Text,
-                "source.unsupported",
-                "the entry-unit profile has no HIR emitter yet (PLAN-862 T-03b): parsing, resolve and type checking are available, emission is not",
-                Span { start: 0, end: 0 },
-            )])
-        }
+        crate::hir::HirDomain::EntryUnit => crate::entry_unit_descriptor(),
     };
     let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
         Ok(b) => b,
@@ -494,9 +484,6 @@ pub fn prepare_candidate_document(
     src: &str,
     module_path: &str,
 ) -> Result<FnCandidate, Vec<Diagnostic>> {
-    if let Some(ds) = entry_unit_emit_gate(env.profile) {
-        return Err(ds);
-    }
     // Bounded temporary graft (exclusive access): the re-check grafts the
     // candidate body and hands back the displaced CURRENT entry.
     let current = super::resolve::recheck_swap(env, item, fn_index)?;
@@ -563,9 +550,6 @@ fn compile_program_observed(
     profile: SourceProfile,
     mut observer: Option<&mut dyn SourceObserver>,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
-    if let Some(ds) = entry_unit_emit_gate(profile) {
-        return Err(ds);
-    }
     let resolved = match super::resolve_with(program, capabilities, profile) {
         Ok(r) => {
             if let Some(o) = observer.as_deref_mut() {
@@ -608,17 +592,7 @@ fn compile_program_observed(
         crate::hir::HirDomain::Text => crate::text_descriptor(),
         crate::hir::HirDomain::Record => crate::record_descriptor(),
         crate::hir::HirDomain::TextRecord => crate::text_record_descriptor(),
-        // PLAN-862 T-03a: the entry-unit HIR/emit half is not landed yet;
-        // the profile stops at the frontend with a controlled diagnostic
-        // (never a guess at another domain's descriptor).
-        crate::hir::HirDomain::EntryUnit => {
-            return Err(vec![Diagnostic::new(
-                Stage::Text,
-                "source.unsupported",
-                "the entry-unit profile has no HIR emitter yet (PLAN-862 T-03b): parsing, resolve and type checking are available, emission is not",
-                Span { start: 0, end: 0 },
-            )])
-        }
+        crate::hir::HirDomain::EntryUnit => crate::entry_unit_descriptor(),
     };
     let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
         Ok(b) => b,
@@ -709,7 +683,10 @@ fn ty_name(vt: VT, records: &[crate::source::resolve::ResolvedRecord]) -> String
         // not reachable through a compiling entry-unit program (Unit is a
         // result type); the Atom id keeps the name meaningful for any
         // hand-built diagnostic path (T-03b wires the result-side emit).
-        VT::Unit => "t_unit".to_string(),
+        // PLAN-862: `unit` is a BUILTIN TypeUse word in the entry-unit
+        // descriptor, so no named `t_unit` type entry exists — the bareword
+        // resolves to `BuiltinType::Unit` at bind time.
+        VT::Unit => "unit".to_string(),
     }
 }
 
@@ -722,23 +699,6 @@ fn internal_diag(msg: String) -> Diagnostic {
     )
 }
 
-/// PLAN-862 T-03a gate: the entry-unit frontend (parse → resolve →
-/// typecheck) is landed, the HIR/Atom emitter for that profile is NOT.
-/// Every emit-side entry therefore rejects the profile with a controlled
-/// diagnostic instead of pretending to emit another domain's document.
-/// T-03b replaces this gate with the real emitter.
-fn entry_unit_emit_gate(profile: SourceProfile) -> Option<Vec<Diagnostic>> {
-    if !profile.is_entry_unit() {
-        return None;
-    }
-    Some(vec![Diagnostic::new(
-        Stage::Text,
-        "source.unsupported",
-        "the entry-unit profile has no HIR emitter yet (PLAN-862 T-03b): parsing, name resolution and type checking are available; Atom emission, binding and verification are not",
-        Span { start: 0, end: 0 },
-    )])
-}
-
 // ---------------------------------------------------------------------------
 // Planning: assign ids and build the lowered body shapes
 // ---------------------------------------------------------------------------
@@ -746,6 +706,8 @@ fn entry_unit_emit_gate(profile: SourceProfile) -> Option<Vec<Diagnostic>> {
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum EKind {
     Const(i32),
+    /// PLAN-862: the unit value — a Unit body's return operand.
+    Unit,
     Read(usize),
     Bin(BinOp, usize, usize),
     /// Lazy boolean short-circuit (PLAN-767): `&&`/`||` surface Binary
@@ -1824,6 +1786,16 @@ impl PlanCtx<'_> {
                 });
                 plan.exprs.len() - 1
             }
+            // PLAN-862: the unit value (a Unit body's synthesized return
+            // operand). Payload-free: one node, type `unit`.
+            RExprKind::Unit => {
+                plan.exprs.push(ENode {
+                    kind: EKind::Unit,
+                    vt: VT::Unit,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
             RExprKind::StrLit(v) => {
                 plan.has_text_ops = true;
                 plan.exprs.push(ENode {
@@ -2285,6 +2257,17 @@ impl<'p> Emitter<'p> {
         ty_name(vt, &self.program.records)
     }
 
+    /// PLAN-862: a TypeUse reference as emitted text. Named types are the
+    /// quoted table ids (`"t_i32"`), the text builtins are barewords
+    /// (`str`/`Str`/`char`) and the unit result is the bareword `unit`
+    /// (there is no `t_unit` table entry: Unit is a builtin word).
+    fn ty_use_ref(&self, vt: VT) -> String {
+        match vt {
+            VT::Unit => "unit".to_string(),
+            other => format!("\"{}\"", self.ty_name(other)),
+        }
+    }
+
     fn esc(s: &str) -> String {
         let mut out = String::new();
         for c in s.chars() {
@@ -2455,11 +2438,7 @@ impl<'p> Emitter<'p> {
             }
         };
         for (fi, f) in self.program.fns.iter().enumerate() {
-            let params: Vec<String> = f
-                .params
-                .iter()
-                .map(|p| format!("\"{}\"", self.ty_name(*p)))
-                .collect();
+            let params: Vec<String> = f.params.iter().map(|p| self.ty_use_ref(*p)).collect();
             let tid = if f.receiver == crate::source::ast::Receiver::Free {
                 format!("t_f_{}", f.name)
             } else {
@@ -2468,10 +2447,10 @@ impl<'p> Emitter<'p> {
             let span = meta_span(fi);
             frag!(
                 &format!(
-                    "type {} function {{ params: [{}]; result: \"{}\" }}",
+                    "type {} function {{ params: [{}]; result: {} }}",
                     tid,
                     params.join(", "),
-                    self.ty_name(f.result)
+                    self.ty_use_ref(f.result)
                 ),
                 span
             );
@@ -2725,6 +2704,8 @@ impl<'p> Emitter<'p> {
                         EKind::Const(v) => {
                             format!("expr e{} constant {{ type: {}; value: {}i32 }}", ei, ty, v)
                         }
+                        // PLAN-862: the unit value carries only its type.
+                        EKind::Unit => format!("expr e{} unit {{ type: {} }}", ei, ty),
                         EKind::Read(l) => {
                             format!("expr e{} read_local {{ type: {}; local: l{} }}", ei, ty, l)
                         }

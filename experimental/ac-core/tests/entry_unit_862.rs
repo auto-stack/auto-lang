@@ -241,20 +241,84 @@ fn entry_unit_profile_identity_and_domain_are_distinct() {
     assert_ne!(SourceProfile::EntryUnit, SourceProfile::Scalar);
 }
 
-// -- the emit gate is explicit until T-03b --------------------------------
+// -- T-03b: full static pipeline (emit → bind → verify) -------------------
+
+fn compile(src: &str) -> auto_ac_prototype::source::CompiledSource {
+    compile_entry_unit_source(src, "entry-unit-862.at", &[])
+        .unwrap_or_else(|ds| panic!("compile failed: {:?}", codes_of(&ds)))
+}
+
+fn codes_of(ds: &[auto_ac_prototype::atom_text::Diagnostic]) -> Vec<String> {
+    ds.iter().map(|d| d.code.clone()).collect()
+}
 
 #[test]
-fn emission_is_a_controlled_rejection_not_a_silent_fallback() {
-    let err = compile_entry_unit_source(
-        "fn main() int {\n    return 0\n}\n",
-        "entry-unit-862.at",
-        &[],
-    )
-    .expect_err("the entry-unit emitter is not landed yet");
-    assert_eq!(err[0].code, "source.unsupported");
-    assert!(
-        err[0].message.contains("T-03b"),
-        "the rejection names the remaining work: {}",
-        err[0].message
+fn int_entry_compiles_through_the_new_domain() {
+    let c = compile("fn main() int {\n    return 0\n}\n");
+    assert_eq!(c.profile, "auto.source.entry-unit.draft");
+    assert_eq!(
+        c.checked.domain(),
+        auto_ac_prototype::hir::HirDomain::EntryUnit
     );
+    assert!(
+        c.atom_text.contains("auto.hir.entry-unit.draft"),
+        "the emitted document carries the new identity triple"
+    );
+    assert!(
+        c.atom_text.contains("entry-unit-draft"),
+        "the profile word is the new one"
+    );
+}
+
+#[test]
+fn unit_entry_compiles_and_returns_the_unit_value() {
+    let c = compile("fn main() void {\n    let a = 1\n}\n");
+    assert_eq!(
+        c.checked.domain(),
+        auto_ac_prototype::hir::HirDomain::EntryUnit
+    );
+    // the synthesized terminal return carries a `unit` expression
+    assert!(
+        c.atom_text.contains("unit {"),
+        "the unit value is emitted as its own expr kind:\n{}",
+        c.atom_text
+    );
+    assert!(
+        c.atom_text.contains("result: unit"),
+        "the function type result is the builtin unit word:\n{}",
+        c.atom_text
+    );
+}
+
+#[test]
+fn script_tail_compiles_as_the_entry_result() {
+    let c = compile("fn helper() int {\n    return 7\n}\n\nhelper()\n");
+    assert_eq!(
+        c.checked.domain(),
+        auto_ac_prototype::hir::HirDomain::EntryUnit
+    );
+    // `main` is a zero-param i32 function whose body returns the tail
+    let main_ty = c
+        .atom_text
+        .lines()
+        .find(|l| l.contains("t_f_main"))
+        .expect("main's function type is declared");
+    assert!(
+        main_ty.contains("params: []"),
+        "the script entry is zero-param: {main_ty}"
+    );
+    assert!(
+        main_ty.contains("t_i32"),
+        "an i32 tail makes the entry an int entry: {main_ty}"
+    );
+}
+
+#[test]
+fn entry_matrix_diagnostics_still_gate_the_emitter() {
+    let err = compile_entry_unit_source("fn helper() int {\n    return 1\n}\n", "x.at", &[])
+        .expect_err("no entry means no document");
+    assert_eq!(err[0].code, "source.entry-missing");
+    let err = compile_entry_unit_source("fn main() int {\n    1\n}\n", "x.at", &[])
+        .expect_err("an int entry has no tail return");
+    assert_eq!(err[0].code, "source.entry-tail");
 }

@@ -101,6 +101,12 @@ pub enum MirType {
     /// `Closure` slot. The captured env layout is bound per callee (the
     /// unique CREATE_CLOSURE site, contract-decision r2 §5).
     Closure(FnSig),
+    /// Unit (PLAN-862, wire tag 18 in the entry-unit family only): a
+    /// ZERO-WIDTH result type. Legal only as the entry function's result
+    /// and as the operand slot of that function's Return — the verifier
+    /// owns both rules. Never a parameter, local, place or operator
+    /// operand, and never comparable with I32.
+    Unit,
     /// The type-erased dynamic type (PLAN-824, wire tag 16): a slot of
     /// this type holds a `Value::Dyn` — a checked DynValue share whose
     /// runtime type is the erased source type. Only the dynamic profile
@@ -715,6 +721,27 @@ impl MirFunction {
     }
 }
 
+/// PLAN-862: the wire-visible entry KIND. It must agree with the entry
+/// function's signature (Int <=> result i32, Unit <=> result Unit); the
+/// verifier rejects a mismatch in BOTH directions and never guesses from
+/// the signature. The SOURCE form (a declared `fn main` vs a script) is not
+/// carried on the wire: a script with an i32 tail and `fn main() int` are
+/// the same program shape (entry-contract.md §9.1).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum EntryKind {
+    Int,
+    Unit,
+}
+
+impl EntryKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            EntryKind::Int => "int",
+            EntryKind::Unit => "unit",
+        }
+    }
+}
+
 /// An UNCHECKED MIR module (or single-function unit when `funcs.len() == 1`
 /// and `is_unit` is set — units address callees through imports only).
 #[derive(Clone, Debug)]
@@ -722,6 +749,10 @@ pub struct MirModule {
     pub profile: String,
     pub owner: OwnerScope,
     pub is_unit: bool,
+    /// PLAN-862: the entry kind, present only in the entry-unit profile
+    /// (every earlier profile derives its contract from profile and
+    /// leaves this None — their wire bytes are unchanged).
+    pub entry_kind: Option<EntryKind>,
     pub types: Vec<MirType>,
     pub consts: Vec<MirConst>,
     pub imports: Vec<MirImport>,
@@ -737,6 +768,7 @@ impl MirModule {
             profile: AV_PROFILE.to_string(),
             owner,
             is_unit: false,
+            entry_kind: None,
             types: Vec::new(),
             consts: Vec::new(),
             imports: Vec::new(),
@@ -813,6 +845,22 @@ impl MirModule {
         m
     }
 
+    /// An entry-unit-profile module (v.entry-unit/1, PLAN-862): the
+    /// scalar surface plus the Unit RESULT channel and the entry-kind
+    /// contract. ntry_kind is filled by the lowering from the entry
+    /// function's signature.
+    pub fn new_entry_unit(owner: OwnerScope) -> Self {
+        let mut m = MirModule::new(owner);
+        m.profile = crate::contract::AV_ENTRY_UNIT_PROFILE.to_string();
+        m.entry_kind = Some(EntryKind::Int);
+        m
+    }
+
+    /// Whether this module declares the entry-unit profile (PLAN-862).
+    pub fn is_entry_unit_profile(&self) -> bool {
+        self.profile == crate::contract::AV_ENTRY_UNIT_PROFILE
+    }
+
     /// Whether this module declares the data profile.
     pub fn is_data_profile(&self) -> bool {
         self.profile == crate::contract::AV_DATA_PROFILE
@@ -871,7 +919,8 @@ impl MirModule {
             MirType::U64 => Some(ScalarShape::U64),
             MirType::F32 => Some(ScalarShape::F32),
             MirType::F64 => Some(ScalarShape::F64),
-            MirType::Fn(_)
+            MirType::Unit
+            | MirType::Fn(_)
             | MirType::Record(_)
             | MirType::RecordView(_)
             | MirType::Char
@@ -1039,6 +1088,8 @@ impl MirModule {
                 | MirType::Char
                 | MirType::Str
                 | MirType::StrView
+                // PLAN-862: Unit is a zero-payload inline enum case.
+                | MirType::Unit
                 | MirType::MutRef => 0, // inline enum, table vec counted below
                 MirType::Fn(s) => s.params.len() * std::mem::size_of::<TypeIdx>() + VEC,
                 // PLAN-822: List carries one element index inline; Variant

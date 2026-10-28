@@ -66,6 +66,9 @@ pub fn canonical_owned(
 ) -> Option<serde_json::Value> {
     Some(match value {
         Value::I32(v) => serde_json::json!({ "kind": "i32", "bits": format!("{v:x}") }),
+        // PLAN-862: the unit value has no bits and no payload — its own
+        // canonical shape (never folded into i32:0).
+        Value::Unit => serde_json::json!({ "kind": "unit" }),
         Value::Bool(v) => serde_json::json!({
             "kind": "bool",
             "bits": if *v { "1" } else { "0" },

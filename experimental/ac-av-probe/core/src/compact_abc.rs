@@ -1149,6 +1149,8 @@ pub fn decode_compact_abc(bytes: &[u8]) -> Result<DecodedCompactAbc, AbcDecodeEr
         module: MirModule {
             profile: AV_PROFILE.to_string(),
             owner,
+            // the compact generation predates PLAN-862 (no entry kind).
+            entry_kind: None,
             is_unit,
             types,
             consts,

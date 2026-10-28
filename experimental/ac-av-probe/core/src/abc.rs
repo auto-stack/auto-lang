@@ -227,6 +227,8 @@ pub const TY_PLACE: u8 = 15;
 pub const TY_CLOSURE: u8 = 17;
 /// PLAN-824 dynamic-profile type tag (the opaque erased Dyn type).
 pub const TY_DYN: u8 = 16;
+/// PLAN-862: the zero-width Unit RESULT type (entry-unit family only).
+pub const TY_UNIT: u8 = 18;
 
 // const tags (data profile adds 2..5)
 pub const CONST_I32: u8 = 0;
@@ -262,6 +264,10 @@ pub enum WireFamily {
     /// PLAN-824: the dynamic profile rides the `AVAD` magic FAMILY at wire
     /// version 4 (v1/v2/v3/v4 are mutually unreadable generations; id 5).
     Dynamic,
+    /// PLAN-862: the entry-unit profile rides a NEW magic family (`AVAU`)
+    /// at wire version 1 / profile id 7. A separate family, not a version of
+    /// `AVAD`: neither generation can be read as the other.
+    EntryUnit,
 }
 
 impl WireFamily {
@@ -273,6 +279,8 @@ impl WireFamily {
             | WireFamily::Collections
             | WireFamily::Closures
             | WireFamily::Dynamic => crate::contract::ABC_DATA_MAGIC,
+            // PLAN-862: the entry-unit family has its own magic (`AVAU`).
+            WireFamily::EntryUnit => crate::contract::ABC_ENTRY_UNIT_MAGIC,
         }
     }
     fn version(&self) -> u16 {
@@ -283,6 +291,7 @@ impl WireFamily {
             WireFamily::Collections => crate::contract::ABC_COLLECTIONS_VERSION,
             WireFamily::Closures => crate::contract::ABC_CLOSURES_VERSION,
             WireFamily::Dynamic => crate::contract::ABC_DYNAMIC_VERSION,
+            WireFamily::EntryUnit => crate::contract::ABC_ENTRY_UNIT_VERSION,
         }
     }
     fn profile_id(&self) -> u16 {
@@ -293,6 +302,7 @@ impl WireFamily {
             WireFamily::Collections => crate::contract::ABC_PROFILE_COLLECTIONS,
             WireFamily::Closures => crate::contract::ABC_PROFILE_CLOSURES,
             WireFamily::Dynamic => crate::contract::ABC_PROFILE_DYNAMIC,
+            WireFamily::EntryUnit => crate::contract::ABC_PROFILE_ENTRY_UNIT,
         }
     }
     fn allows_data_tags(&self) -> bool {
@@ -325,6 +335,11 @@ impl WireFamily {
     }
     fn allows_dynamic_tags(&self) -> bool {
         matches!(self, WireFamily::Dynamic)
+    }
+    /// PLAN-862: the Unit type tag and the entry-kind header byte exist
+    /// only in the entry-unit family.
+    fn allows_unit_tags(&self) -> bool {
+        matches!(self, WireFamily::EntryUnit)
     }
 }
 
@@ -498,6 +513,7 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
         crate::contract::AV_COLLECTIONS_PROFILE => WireFamily::Collections,
         crate::contract::AV_CLOSURES_PROFILE => WireFamily::Closures,
         crate::contract::AV_DYNAMIC_PROFILE => WireFamily::Dynamic,
+        crate::contract::AV_ENTRY_UNIT_PROFILE => WireFamily::EntryUnit,
         other => {
             return Err(AbcDecodeError::fmt_err(
                 "abc.encode.profile",
@@ -524,6 +540,20 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
     }
     put_u16(&mut w, flags);
     put_u16(&mut w, 0); // reserved
+                        // PLAN-862: the entry-unit family carries its entry KIND in the header
+                        // (the earlier families have no such byte — their layout is unchanged).
+    if family.allows_unit_tags() {
+        let kind = match m.entry_kind {
+            Some(crate::mir::EntryKind::Int) => 0u8,
+            Some(crate::mir::EntryKind::Unit) => 1u8,
+            None => return Err(AbcDecodeError::fmt_err(
+                "abc.encode.entry-kind",
+                "the entry-unit family requires an entry kind; a kind-less module is not encodable"
+                    .to_string(),
+            )),
+        };
+        put_u8(&mut w, kind);
+    }
     put_u32(&mut w, m.types.len() as u32);
     put_u32(&mut w, m.consts.len() as u32);
     put_u32(&mut w, m.imports.len() as u32);
@@ -565,6 +595,16 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
             }
             // PLAN-823: the Closure tag carries its signature exactly like
             // Fn (the tag alone distinguishes the generations).
+            // PLAN-862: the zero-width Unit type, entry-unit family only.
+            MirType::Unit => {
+                if !family.allows_unit_tags() {
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.encode.profile",
+                        "Unit type in a non-entry-unit-profile module".to_string(),
+                    ));
+                }
+                put_u8(&mut w, TY_UNIT);
+            }
             MirType::Closure(sig) => {
                 if !family.allows_closures_tags() {
                     return Err(AbcDecodeError::fmt_err(
@@ -1783,6 +1823,9 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     let magic = c.take(4)?;
     let family = if magic == ABC_MAGIC {
         WireFamily::Core
+    } else if magic == crate::contract::ABC_ENTRY_UNIT_MAGIC {
+        // PLAN-862: a SEPARATE magic family (AVAU), not an AVAD version.
+        WireFamily::EntryUnit
     } else if magic == crate::contract::ABC_DATA_MAGIC {
         // Same magic family, DIFFERENT format generations: the version
         // field (below) selects v1=data / v2=owned / v3=collections /
@@ -1850,6 +1893,20 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             "abc.decode.reserved",
             "reserved field must be zero".to_string(),
         ));
+    }
+    // PLAN-862: the entry-unit family carries the entry KIND byte here.
+    let mut entry_kind: Option<crate::mir::EntryKind> = None;
+    if family.allows_unit_tags() {
+        entry_kind = match c.u8()? {
+            0 => Some(crate::mir::EntryKind::Int),
+            1 => Some(crate::mir::EntryKind::Unit),
+            other => {
+                return Err(AbcDecodeError::fmt_err(
+                    "abc.decode.entry-kind",
+                    format!("unknown entry kind {other} (this build accepts int/unit)"),
+                ))
+            }
+        };
     }
     let n_types = c.u32()? as usize;
     let n_consts = c.u32()? as usize;
@@ -1946,7 +2003,13 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             WireFamily::Collections => crate::contract::AV_COLLECTIONS_PROFILE.to_string(),
             WireFamily::Closures => crate::contract::AV_CLOSURES_PROFILE.to_string(),
             WireFamily::Dynamic => crate::contract::AV_DYNAMIC_PROFILE.to_string(),
+            // PLAN-862: the entry-unit family (new magic, wire v1).
+            WireFamily::EntryUnit => crate::contract::AV_ENTRY_UNIT_PROFILE.to_string(),
         },
+        // PLAN-862: filled from the wire header for the entry-unit family
+        // and None for every earlier generation (their bytes carry no
+        // kind; their contract is the profile itself).
+        entry_kind,
         owner: OwnerScope {
             schema: String::new(),
             module: String::new(),
@@ -2188,6 +2251,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             // runtime type lives in the value, not the type table).
             TY_DYN if family.allows_dynamic_tags() => {
                 module.types.push(MirType::Dyn);
+            }
+            // PLAN-862: the zero-width Unit RESULT type (no operands).
+            TY_UNIT if family.allows_unit_tags() => {
+                module.types.push(MirType::Unit);
             }
             other => {
                 return Err(AbcDecodeError::fmt_err(
@@ -2909,6 +2976,8 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             WireFamily::Collections => crate::contract::ABC_COLLECTIONS_SCHEMA.to_string(),
             WireFamily::Closures => crate::contract::ABC_CLOSURES_SCHEMA.to_string(),
             WireFamily::Dynamic => crate::contract::ABC_DYNAMIC_SCHEMA.to_string(),
+            // PLAN-862: the entry-unit family has its own schema identity.
+            WireFamily::EntryUnit => crate::contract::ABC_ENTRY_UNIT_SCHEMA.to_string(),
         },
         module: String::new(),
     };

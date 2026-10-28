@@ -166,6 +166,37 @@ pub const AV_DYNAMIC_SEMANTICS: AvSemanticsVersion = AvSemanticsVersion(1);
 /// rejection (`av.resource.list-elems`), never a syntax classification.
 pub const MAX_LIST_ELEMS: usize = 65_536;
 
+// ---------------------------------------------------------------------------
+// PLAN-862 `av.entry-unit/1` identities (entry-contract.md §1, frozen T-02)
+// ---------------------------------------------------------------------------
+
+/// Logical schema identity of the entry-unit-profile Typed MIR.
+pub const MIR_ENTRY_UNIT_SCHEMA: &str = "auto.mir.av-entry-unit/1";
+/// Wire schema identity of the entry-unit-profile ABC format. A NEW magic
+/// family (`AVAU`, wire version 1): neither the `AVAB` core family nor the
+/// `AVAD` v1..v5 generations can be read as it, and vice versa.
+pub const ABC_ENTRY_UNIT_SCHEMA: &str = "auto.abc.av-entry-unit/1";
+/// The entry-unit execution profile (PLAN-862): the scalar compute surface
+/// plus the Unit RESULT channel and the entry-kind contract. No text/record
+/// surface (those stay in their own profiles).
+pub const AV_ENTRY_UNIT_PROFILE: &str = "av.entry-unit/1";
+/// Producer identity for entry-unit-profile units in store envelopes/keys.
+pub const ENTRY_UNIT_PRODUCER_ID: &str = "plan862/av-entry-unit";
+/// Wire magic of the entry-unit-profile ABC format (`AVAU`).
+pub const ABC_ENTRY_UNIT_MAGIC: [u8; 4] = *b"AVAU";
+/// Wire version of the entry-unit-profile ABC format (v1 within the new
+/// family; profile id 7).
+pub const ABC_ENTRY_UNIT_VERSION: u16 = 1;
+/// Numeric profile id carried in the entry-unit wire header (1..6 are the
+/// core/data/owned/collections/dynamic/closures ids).
+pub const ABC_PROFILE_ENTRY_UNIT: u16 = 7;
+
+/// PLAN-862 entry-unit-profile semantic versions — an INDEPENDENT axis (all
+/// profiles' artifacts key separately; start at 1).
+pub const MIR_ENTRY_UNIT_SEMANTICS: MirSemanticsVersion = MirSemanticsVersion(1);
+pub const ABC_ENTRY_UNIT_SEMANTICS: AbcSemanticsVersion = AbcSemanticsVersion(1);
+pub const AV_ENTRY_UNIT_SEMANTICS: AvSemanticsVersion = AvSemanticsVersion(1);
+
 /// Per-record field-count guard (module table family; contract-decision §8).
 pub const MAX_RECORD_FIELDS: usize = 1024;
 /// Field-path depth guard for FIELD_GET/FIELD_SET (u16 domain, explicit cap).
@@ -276,6 +307,10 @@ pub const MAX_DECODED_MODULE_BYTES: usize = 16 * 1024 * 1024;
 #[derive(Clone, Debug)]
 pub enum Value {
     I32(i32),
+    /// PLAN-862: the unit value — a zero-width result with no payload. It is
+    /// NOT `I32(0)`: the two are different payloads and never compare equal,
+    /// never mix in operators and never substitute for each other.
+    Unit,
     Bool(bool),
     I64(i64),
     U64(u64),
@@ -629,6 +664,8 @@ impl Value {
     pub fn type_name(&self) -> &'static str {
         match self {
             Value::I32(_) => "i32",
+            // PLAN-862: the unit value is its own kind — never "i32".
+            Value::Unit => "unit",
             Value::Bool(_) => "bool",
             Value::I64(_) => "i64",
             Value::U64(_) => "u64",
