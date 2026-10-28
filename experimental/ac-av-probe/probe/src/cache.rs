@@ -865,6 +865,11 @@ pub fn canonical_hir_function(module: &hir::Module, body_id: hir::BodyId) -> Vec
                     c.w(" ret ");
                     c.w(&value.0.to_string());
                 }
+                // PLAN-864: unit-effect statement in the canonical dump.
+                hir::Stmt::Eval { value } => {
+                    c.w(" eval ");
+                    c.w(&value.0.to_string());
+                }
                 hir::Stmt::If { cond, then, els } => {
                     c.w(" if ");
                     c.w(&cond.0.to_string());

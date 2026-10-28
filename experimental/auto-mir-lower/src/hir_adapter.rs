@@ -358,6 +358,228 @@ pub fn lower_checked_data(
 /// 774/782 `verify.*` diagnostics at the front door — this adapter only
 /// consumes the checked module; `verify_mir` re-admits everything (typed
 /// fixtures share that single trust path).
+/// Sentinel slot for unit-typed expression results (PLAN-864): the
+/// collections surface's effect statements produce no value slot (Unit is
+/// never a profile-4 operand). Consumers never read this sentinel — HIR
+/// verify rejects unit values in every consuming position.
+pub const NO_SLOT: SlotId = u32::MAX;
+
+/// PLAN-864: the entry-unit surface's lowering for unit-typed bodies
+/// returns a Unit-typed temp; the collections surface never materializes
+/// one — `eval` statements discard. (Documented convention; no runtime
+/// unit slots exist in profile 4.)
+pub fn lower_checked_collections(
+    checked: &CheckedModule,
+    entry_name: &str,
+    source_snapshot: u64,
+) -> Result<MirModule, AdapterError> {
+    match checked.domain() {
+        hir::HirDomain::Collections => {}
+        other => {
+            return Err(AdapterError::uns(
+                "lower.domain",
+                format!(
+                    "HIR domain `{}` is outside the av.collections/1 profile (expected collections)",
+                    other.as_str()
+                ),
+            ));
+        }
+    }
+    if checked.bundle().modules.len() != 1 {
+        return Err(AdapterError::uns(
+            "lower.modules",
+            format!(
+                "expected exactly one module, found {}",
+                checked.bundle().modules.len()
+            ),
+        ));
+    }
+    let module = &checked.bundle().modules[0];
+    let owner = OwnerScope {
+        schema: auto_av_core::contract::MIR_COLLECTIONS_SCHEMA.to_string(),
+        module: module.id_text.clone(),
+    };
+    let mut out = MirModule::new_collections(owner);
+    out.capabilities = checked.required_capabilities().to_vec();
+
+    let mut def_map: BTreeMap<u32, CalleeRef> = BTreeMap::new();
+    let mut fn_order: Vec<(u32, hir::TypeId, hir::BodyId, String)> = Vec::new();
+    let mut next_fn_idx: u32 = 0;
+    for (di, d) in module.defs.iter().enumerate() {
+        match &d.kind {
+            hir::DefKind::Function { ty, body, .. } => {
+                def_map.insert(di as u32, CalleeRef::Func(next_fn_idx));
+                next_fn_idx += 1;
+                fn_order.push((di as u32, *ty, *body, d.id_text.clone()));
+            }
+            hir::DefKind::Method { .. } => {
+                return Err(AdapterError::uns(
+                    "lower.method",
+                    "type-bound methods are outside the av.collections/1 surface".to_string(),
+                ));
+            }
+            hir::DefKind::Intrinsic { .. } => {
+                return Err(AdapterError::uns(
+                    "lower.intrinsic",
+                    "intrinsics are outside the av.collections/1 surface".to_string(),
+                ));
+            }
+        }
+    }
+
+    let mut entry_idx: Option<u32> = None;
+    let entry_ids = [entry_name.to_string(), format!("d_{entry_name}")];
+    for (di, ty, body_id, name) in fn_order {
+        // Collections functions: zero-param i32 (the frozen entry contract);
+        // ordinary signatures map through the collections type tables.
+        let sig = collections_fn_sig_for_def(module, di, ty, &mut out)?;
+        if entry_ids.contains(&name) {
+            entry_idx = Some(out.funcs.len() as u32);
+        }
+        let mir_fn = lower_function(
+            module,
+            &mut out,
+            di,
+            body_id,
+            sig,
+            source_snapshot,
+            &def_map,
+            name.clone(),
+            false,
+            true,
+            &BTreeMap::new(),
+        )?;
+        out.funcs.push(mir_fn);
+    }
+    let entry = entry_idx.ok_or_else(|| {
+        AdapterError::inv(
+            "lower.entry",
+            format!("no function named `{}` in module", entry_name),
+        )
+    })?;
+    out.entry = entry;
+    Ok(out)
+}
+
+/// PLAN-864: lower ONE function of a checked collections bundle into a
+/// self-contained collections single-function unit (the 828-style session
+/// seam; callees ride `fn:<name>` imports exactly as the owned units do).
+pub fn lower_function_collections_unit(
+    bundle: &hir::Bundle,
+    def_id_text: &str,
+    capabilities: &[String],
+    source_snapshot: u64,
+) -> Result<MirModule, AdapterError> {
+    match bundle.domain {
+        hir::HirDomain::Collections => {}
+        other => {
+            return Err(AdapterError::uns(
+                "lower.domain",
+                format!(
+                    "HIR domain `{}` is outside the av.collections/1 profile",
+                    other.as_str()
+                ),
+            ));
+        }
+    }
+    if bundle.modules.len() != 1 {
+        return Err(AdapterError::uns(
+            "lower.modules",
+            format!("expected exactly one module, found {}", bundle.modules.len()),
+        ));
+    }
+    let module = &bundle.modules[0];
+    let owner = OwnerScope {
+        schema: auto_av_core::contract::MIR_COLLECTIONS_SCHEMA.to_string(),
+        module: module.id_text.clone(),
+    };
+    let mut out = MirModule::collections_unit(owner);
+    out.capabilities = capabilities.to_vec();
+
+    let mut def_map: BTreeMap<u32, CalleeRef> = BTreeMap::new();
+    let mut target: Option<(u32, hir::TypeId, hir::BodyId)> = None;
+    for (di, d) in module.defs.iter().enumerate() {
+        if let hir::DefKind::Function { ty, body, .. } = &d.kind {
+            if d.id_text == def_id_text {
+                def_map.insert(di as u32, CalleeRef::Import(next_import_dummy()));
+                target = Some((di as u32, *ty, *body));
+            } else {
+                let import_idx = out.imports.len() as u32;
+                let sig_ty = collections_fn_sig_for_def(module, di as u32, *ty, &mut out)?;
+                out.intern_import(MirImport {
+                    symbol: format!("fn:{}", d.id_text),
+                    effect: Effect::Pure,
+                    sig: sig_ty,
+                    env: None,
+                });
+                def_map.insert(di as u32, CalleeRef::Import(import_idx));
+            }
+        }
+    }
+    let Some((di, ty, body_id)) = target else {
+        return Err(AdapterError::inv(
+            "lower.entry",
+            format!("no function named `{}` in module", def_id_text),
+        ));
+    };
+    // The unit's import for the target itself resolves to func 0 after
+    // linking — units lower with the target as Import(fn:<name>) and the
+    // snapshot link binds it (F-828-R1-03).
+    let sig = collections_fn_sig_for_def(module, di, ty, &mut out)?;
+    let name = module.defs[di as usize].id_text.clone();
+    let mir_fn = lower_function(
+        module,
+        &mut out,
+        di,
+        body_id,
+        sig,
+        source_snapshot,
+        &def_map,
+        name,
+        false,
+        true,
+        &BTreeMap::new(),
+    )?;
+    out.funcs.push(mir_fn);
+    out.entry = 0;
+    Ok(out)
+}
+
+fn next_import_dummy() -> ImportIdx {
+    // placeholder index replaced by the real intern position below
+    u32::MAX
+}
+
+/// PLAN-864: function signature type under the collections type tables.
+fn collections_fn_sig_for_def(
+    m: &hir::Module,
+    def_index: u32,
+    ty: hir::TypeId,
+    out: &mut MirModule,
+) -> Result<TypeIdx, AdapterError> {
+    let Some(td) = m.types.get(ty.0 as usize) else {
+        return Err(AdapterError::inv(
+            "lower.type-ref",
+            format!("def {} signature type out of range", def_index),
+        ));
+    };
+    let hir::TypeKind::Function(sig) = &td.kind else {
+        return Err(AdapterError::inv(
+            "lower.type-ref",
+            format!("def {} signature is not a function type", def_index),
+        ));
+    };
+    let mut memo = BTreeMap::new();
+    let mut visiting = std::collections::BTreeSet::new();
+    let mut params = Vec::with_capacity(sig.params.len());
+    for p in &sig.params {
+        params.push(collections_type_idx_of(p, m, out, &mut memo, &mut visiting)?);
+    }
+    let result = collections_type_idx_of(&sig.result, m, out, &mut memo, &mut visiting)?;
+    let sig_ty = out.intern_type(MirType::Fn(FnSig { params, result }));
+    Ok(sig_ty)
+}
+
 pub fn lower_checked_owned(
     checked: &CheckedModule,
     entry_name: &str,
@@ -1122,6 +1344,167 @@ fn type_idx_of_use(
 /// kinds, never fields) maps onto the owned MIR kinds. Owned lowering
 /// never sees wide scalars from source (the text-record front door has no
 /// wide-scalar syntax).
+/// PLAN-864: whether `eid` is a `ListGet` expression; returns its
+/// (list, index) operand ids for the fusion checks.
+fn list_get_root(
+    body: &hir::Body,
+    eid: hir::ExprId,
+) -> Option<hir::ExprKind> {
+    match &body.exprs.get(eid.0 as usize)?.kind {
+        hir::ExprKind::ListGet { list, index } => Some(hir::ExprKind::ListGet {
+            list: *list,
+            index: *index,
+        }),
+        _ => None,
+    }
+}
+
+/// PLAN-864: transitive Str-reachability over the HIR type table (the
+/// source-level twin of `ownership::record_reaches_str`).
+fn hir_record_reaches_str(m: &hir::Module, root: hir::TypeId) -> bool {
+    let mut stack = vec![root.0];
+    let mut seen = std::collections::BTreeSet::new();
+    while let Some(i) = stack.pop() {
+        if !seen.insert(i) {
+            continue;
+        }
+        match m.types.get(i as usize).map(|t| &t.kind) {
+            Some(hir::TypeKind::StrOwned) | Some(hir::TypeKind::Str) => return true,
+            Some(hir::TypeKind::Record(shape)) => {
+                for f in &shape.fields {
+                    match f.ty {
+                        hir::TypeUse::Ref(t2) => stack.push(t2.0),
+                        hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => return true,
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// PLAN-864: the collections-profile type mapping — the owned surface
+/// plus List/Variant type-table entries (HIR TypeKind::List/Variant map to
+/// `MirType::List(ListTypeRef)` / `MirType::Variant(VariantTypeRef)` with
+/// nominal owner+name identity, exactly the 822 fixture shapes).
+fn collections_type_idx_of(
+    u: &hir::TypeUse,
+    m: &hir::Module,
+    out: &mut MirModule,
+    memo: &mut std::collections::BTreeMap<hir::TypeId, TypeIdx>,
+    visiting: &mut std::collections::BTreeSet<hir::TypeId>,
+) -> Result<TypeIdx, AdapterError> {
+    match u {
+        hir::TypeUse::Builtin(b) => match b {
+            hir::BuiltinType::I32 => Ok(out.intern_type(MirType::I32)),
+            hir::BuiltinType::Bool => Ok(out.intern_type(MirType::Bool)),
+            hir::BuiltinType::StrOwned => Ok(out.intern_type(MirType::Str)),
+            // PLAN-864: unit-typed expressions are intercepted before type
+            // mapping (the effect arms return NO_SLOT); reaching here means
+            // a unit value would materialize — an internal violation.
+            hir::BuiltinType::Unit => Err(AdapterError::inv(
+                "lower.type-use",
+                "a unit type would materialize in the collections profile (effect statements discard)".to_string(),
+            )),
+            other => Err(AdapterError::uns(
+                "lower.type-use",
+                format!("builtin type {other:?} is outside the av.collections/1 source surface"),
+            )),
+        },
+        hir::TypeUse::Ref(tid) => {
+            if let Some(idx) = memo.get(tid) {
+                return Ok(*idx);
+            }
+            if !visiting.insert(*tid) {
+                return Err(AdapterError::inv(
+                    "mir.type-cycle",
+                    format!("type id {} participates in a type cycle", tid.0),
+                ));
+            }
+            let td = m.types.get(tid.0 as usize).ok_or_else(|| {
+                AdapterError::inv("lower.type-ref", format!("type id {} out of range", tid.0))
+            })?;
+            let mapped = match &td.kind {
+                hir::TypeKind::I32 => Ok(out.intern_type(MirType::I32)),
+                hir::TypeKind::Bool => Ok(out.intern_type(MirType::Bool)),
+                hir::TypeKind::StrOwned => Ok(out.intern_type(MirType::Str)),
+                hir::TypeKind::Record(shape) => {
+                    let mut fields = Vec::with_capacity(shape.fields.len());
+                    let mut err = None;
+                    for f in &shape.fields {
+                        match collections_type_idx_of(&f.ty, m, out, memo, visiting) {
+                            Ok(t) => fields.push(MirFieldDef {
+                                name: f.name.clone(),
+                                ty: t,
+                            }),
+                            Err(e) => {
+                                err = Some(e);
+                                break;
+                            }
+                        }
+                    }
+                    err.map_or_else(
+                        || {
+                            Ok(out.intern_type(MirType::Record(RecordTypeRef {
+                                owner_module: m.id_text.clone(),
+                                name: td.id_text.clone(),
+                                fields,
+                            })))
+                        },
+                        Err,
+                    )
+                }
+                hir::TypeKind::List { elem } => {
+                    let e = collections_type_idx_of(elem, m, out, memo, visiting)?;
+                    Ok(out.intern_type(MirType::List(ListTypeRef { elem: e })))
+                }
+                hir::TypeKind::Variant { arms } => {
+                    let mut mir_arms = Vec::with_capacity(arms.len());
+                    let mut err = None;
+                    for a in arms {
+                        match &a.payload {
+                            Some(p) => match collections_type_idx_of(p, m, out, memo, visiting) {
+                                Ok(t) => mir_arms.push(VariantArm {
+                                    name: a.name.clone(),
+                                    payload: Some(t),
+                                }),
+                                Err(e) => {
+                                    err = Some(e);
+                                    break;
+                                }
+                            },
+                            None => mir_arms.push(VariantArm {
+                                name: a.name.clone(),
+                                payload: None,
+                            }),
+                        }
+                    }
+                    err.map_or_else(
+                        || {
+                            Ok(out.intern_type(MirType::Variant(VariantTypeRef {
+                                owner_module: m.id_text.clone(),
+                                name: td.id_text.clone(),
+                                arms: mir_arms,
+                            })))
+                        },
+                        Err,
+                    )
+                }
+                other => Err(AdapterError::uns(
+                    "lower.type-use",
+                    format!("type kind {:?} is outside the av.collections/1 source surface", other),
+                )),
+            };
+            visiting.remove(tid);
+            let idx = mapped?;
+            memo.insert(*tid, idx);
+            Ok(idx)
+        }
+    }
+}
+
 fn owned_type_idx_of(
     u: &hir::TypeUse,
     m: &hir::Module,
@@ -1272,6 +1655,7 @@ struct FnLower<'a> {
     mut_param_slots: Vec<SlotId>,
     /// R2-F08' call-site: (BorrowMut temp, borrowed local slot) pairs.
     mut_borrow_temps: Vec<(SlotId, SlotId)>,
+
     /// R3-F07 retained interface facts: param modes per def id for
     /// BODY-LESS scaffold defs (D828 single-function documents carry no
     /// body table for unchanged functions; the wrapper ABI needs the
@@ -1293,6 +1677,90 @@ struct FnLower<'a> {
 }
 
 impl<'a> FnLower<'a> {
+    /// The HIR TypeUse of an expression (declared type).
+    fn expr_ty_hir(&self, eid: hir::ExprId) -> Result<hir::TypeUse, AdapterError> {
+        self.body
+            .exprs
+            .get(eid.0 as usize)
+            .map(|e| e.ty)
+            .ok_or_else(|| AdapterError::inv("lower.expr-ref", format!("expr {} out of range", eid.0)))
+    }
+
+    /// PLAN-864: whether this lowering targets the av.collections/1
+    /// profile (the module profile is the flag — no signature threading).
+    fn collections(&self) -> bool {
+        self.out.is_collections_profile()
+    }
+
+    /// PLAN-864: HIR-level owned classification for a List element type
+    /// (mirrors verify's rule): Str / record-reaching-Str / Variant.
+    fn hir_elem_owned(&self, list_expr: hir::ExprId) -> Result<bool, AdapterError> {
+        let ty = self.expr_ty_hir(list_expr)?;
+        let Some(hir::TypeUse::Ref(tid)) = Some(ty) else {
+            return Ok(false);
+        };
+        let Some(hir::TypeKind::List { elem }) =
+            self.hir_module.types.get(tid.0 as usize).map(|t| &t.kind)
+        else {
+            return Ok(false);
+        };
+        Ok(match elem {
+            hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => true,
+            hir::TypeUse::Builtin(_) => false,
+            hir::TypeUse::Ref(e) => match self.hir_module.types.get(e.0 as usize).map(|t| &t.kind)
+            {
+                Some(hir::TypeKind::Variant { .. }) => true,
+                Some(hir::TypeKind::Record(_)) => {
+                    hir_record_reaches_str(self.hir_module, *e)
+                }
+                _ => false,
+            },
+        })
+    }
+
+    /// PLAN-864: the MIR element type of a List-typed expression.
+    fn elem_vt_of(&mut self, list_e: hir::ExprId) -> Result<TypeIdx, AdapterError> {
+        let Some(hir::TypeUse::Ref(tid)) = Some(self.expr_ty_hir(list_e)?) else {
+            return Err(AdapterError::inv("lower.list-type", "list receiver is not a ref type".to_string()));
+        };
+        let Some(hir::TypeKind::List { elem }) =
+            self.hir_module.types.get(tid.0 as usize).map(|t| &t.kind)
+        else {
+            return Err(AdapterError::inv("lower.list-type", "receiver is not a list".to_string()));
+        };
+        collections_type_idx_of(
+            elem,
+            self.hir_module,
+            self.out,
+            &mut self.ty_memo,
+            &mut self.ty_visiting,
+        )
+    }
+
+    /// PLAN-864: the (list, index, path) of a TextLen operand that is an
+    /// owned-element view shape — a bare `xs.get(i)` (whole Str element,
+    /// empty path) or `xs.get(i).f[.g]` (FieldGet rooted at a ListGet).
+    /// `None` for every other receiver (the owned text path handles it).
+    fn list_projection_root(
+        &self,
+        operand: hir::ExprId,
+    ) -> Result<Option<(hir::ExprId, hir::ExprId, Vec<hir::FieldId>)>, AdapterError> {
+        match &self.body.exprs[operand.0 as usize].kind {
+            hir::ExprKind::ListGet { list, index } => {
+                Ok(Some((*list, *index, Vec::new())))
+            }
+            hir::ExprKind::FieldGet { base, path } => {
+                match &self.body.exprs[base.0 as usize].kind {
+                    hir::ExprKind::ListGet { list, index } => {
+                        Ok(Some((*list, *index, path.clone())))
+                    }
+                    _ => Ok(None),
+                }
+            }
+            _ => Ok(None),
+        }
+    }
+
     fn new_block(&mut self) -> BlockId {
         self.blocks.push(MirBlock {
             instrs: vec![],
@@ -1484,7 +1952,10 @@ impl<'a> FnLower<'a> {
             AdapterError::inv("lower.expr-ref", format!("expr {} out of range", eid.0))
         })?;
         let (m, out) = (self.hir_module, &mut *self.out);
-        if self.owned {
+        let is_coll = out.is_collections_profile();
+        if is_coll {
+            collections_type_idx_of(&e.ty, m, out, &mut self.ty_memo, &mut self.ty_visiting)
+        } else if self.owned {
             owned_type_idx_of(&e.ty, m, out, &mut self.ty_memo, &mut self.ty_visiting)
         } else {
             type_idx_of_use(
@@ -1532,7 +2003,19 @@ impl<'a> FnLower<'a> {
                 ),
             ));
         }
-        let ty = self.expr_ty(eid)?;
+        // PLAN-864: unit-typed expressions (push/insert/set/clear) never
+        // map their type — Unit is not a profile-4 table entry and the
+        // effect arms return the NO_SLOT sentinel.
+        let is_unit_result = self.collections()
+            && matches!(
+                self.body.exprs[eid.0 as usize].ty,
+                hir::TypeUse::Builtin(hir::BuiltinType::Unit)
+            );
+        let ty = if is_unit_result {
+            self.t_i32
+        } else {
+            self.expr_ty(eid)?
+        };
         let sp = self.span(eid);
         let expr_kind = &self.body.exprs[eid.0 as usize].kind;
         match expr_kind {
@@ -1898,19 +2381,19 @@ impl<'a> FnLower<'a> {
                 self.emit(MirInstr::Const { dst, value: c }, sp);
                 Ok(dst)
             }
-            hir::ExprKind::TextLen { operand } if self.owned => {
+            hir::ExprKind::TextLen { operand } if self.owned && !self.collections() => {
                 let v = self.text_view_operand(operand, depth)?;
                 let dst = self.temp_ty(ty);
                 self.emit(MirInstr::StrLen { dst, view: v }, sp);
                 Ok(dst)
             }
-            hir::ExprKind::TextLenBytes { operand } if self.owned => {
+            hir::ExprKind::TextLenBytes { operand } if self.owned && !self.collections() => {
                 let v = self.text_view_operand(operand, depth)?;
                 let dst = self.temp_ty(ty);
                 self.emit(MirInstr::StrLenBytes { dst, view: v }, sp);
                 Ok(dst)
             }
-            hir::ExprKind::TextCharAt { operand, index } if self.owned => {
+            hir::ExprKind::TextCharAt { operand, index } if self.owned && !self.collections() => {
                 let v = self.text_view_operand(operand, depth)?;
                 let i = self.eval_expr(*index, depth + 1)?;
                 let dst = self.temp_ty(ty);
@@ -1928,7 +2411,7 @@ impl<'a> FnLower<'a> {
                 operand,
                 start,
                 end,
-            } if self.owned => {
+            } if self.owned && !self.collections() => {
                 let v = self.text_view_operand(operand, depth)?;
                 let a = self.eval_expr(*start, depth + 1)?;
                 let b = self.eval_expr(*end, depth + 1)?;
@@ -1944,7 +2427,7 @@ impl<'a> FnLower<'a> {
                 );
                 Ok(dst)
             }
-            hir::ExprKind::TextConcat { lhs, rhs } if self.owned => {
+            hir::ExprKind::TextConcat { lhs, rhs } if self.owned && !self.collections() => {
                 let l = self.eval_expr(*lhs, depth + 1)?;
                 let r = self.eval_expr(*rhs, depth + 1)?;
                 let dst = self.temp_ty(ty);
@@ -1958,7 +2441,7 @@ impl<'a> FnLower<'a> {
                 );
                 Ok(dst)
             }
-            hir::ExprKind::TextClone { operand } if self.owned => {
+            hir::ExprKind::TextClone { operand } if self.owned && !self.collections() => {
                 // Clone of an OWNED Str re-buffers; clone of a view is the
                 // owned copy of its range (770 AP-2 over both receivers).
                 let src_ty = self.expr_ty(*operand)?;
@@ -2099,7 +2582,15 @@ impl<'a> FnLower<'a> {
                         ))
                     }
                 };
-                let rec_ty = if self.owned {
+                let rec_ty = if self.collections() {
+                    collections_type_idx_of(
+                        &hir::TypeUse::Ref(*record),
+                        self.hir_module,
+                        self.out,
+                        &mut self.ty_memo,
+                        &mut self.ty_visiting,
+                    )?
+                } else if self.owned {
                     owned_type_idx_of(
                         &hir::TypeUse::Ref(*record),
                         self.hir_module,
@@ -2153,6 +2644,245 @@ impl<'a> FnLower<'a> {
                     },
                     sp,
                 );
+                Ok(dst)
+            }
+            // -- PLAN-864 collections surface ------------------------------
+            hir::ExprKind::ListNew { list } if self.collections() => {
+                let ty = self.expr_ty(eid)?;
+                let dst = self.temp_ty(ty);
+                self.emit(
+                    MirInstr::ListNew {
+                        dst,
+                        list_ty: ty,
+                        cap: 4,
+                    },
+                    sp,
+                );
+                Ok(dst)
+            }
+            hir::ExprKind::ListLen { list } if self.collections() => {
+                let l = self.eval_expr(*list, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                self.emit(MirInstr::ListLen { dst, src: l }, sp);
+                Ok(dst)
+            }
+            hir::ExprKind::ListPush { list, value } if self.collections() => {
+                let l = self.eval_expr(*list, depth + 1)?;
+                let v = self.eval_expr(*value, depth + 1)?;
+                self.emit(MirInstr::ListPush { root: l, value: v }, sp);
+                Ok(NO_SLOT)
+            }
+            hir::ExprKind::ListInsert {
+                list,
+                index,
+                value,
+            }
+            | hir::ExprKind::ListSet {
+                list,
+                index,
+                value,
+            } if self.collections() => {
+                let l = self.eval_expr(*list, depth + 1)?;
+                let i = self.eval_expr(*index, depth + 1)?;
+                let v = self.eval_expr(*value, depth + 1)?;
+                let is_insert = matches!(
+                    &self.body.exprs[eid.0 as usize].kind,
+                    hir::ExprKind::ListInsert { .. }
+                );
+                if is_insert {
+                    self.emit(MirInstr::ListInsert { root: l, index: i, value: v }, sp);
+                } else {
+                    self.emit(MirInstr::ListSet { root: l, index: i, value: v }, sp);
+                }
+                Ok(NO_SLOT)
+            }
+            hir::ExprKind::ListGet { list, index } if self.collections() => {
+                if self.hir_elem_owned(*list)? {
+                    // verify guarantees this never happens (view-escape);
+                    // keep the lowering total for programmatic bundles.
+                    return Err(AdapterError::inv(
+                        "lower.list-get-owned",
+                        "list_get over an owned-element list has no value lowering".to_string(),
+                    ));
+                }
+                let l = self.eval_expr(*list, depth + 1)?;
+                let i = self.eval_expr(*index, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                self.emit(MirInstr::ListGet { dst, base: l, index: i }, sp);
+                Ok(dst)
+            }
+            hir::ExprKind::ListRemove { list, index } if self.collections() => {
+                let l = self.eval_expr(*list, depth + 1)?;
+                let i = self.eval_expr(*index, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                self.emit(MirInstr::ListRemove { dst, root: l, index: i }, sp);
+                Ok(dst)
+            }
+            hir::ExprKind::ListClear { list } if self.collections() => {
+                // `xs.clear()` — remove-from-tail loop (no LIST_CLEAR opcode
+                // exists in profile 4 and none is added): per round, re-read
+                // len; when > 0, remove(len-1) and (for owned elements)
+                // drop the removed value. Frame teardown releases the empty
+                // container at the exits.
+                let l = self.eval_expr(*list, depth + 1)?;
+                let elem_ty = match &self.body.exprs[list.0 as usize].ty {
+                    hir::TypeUse::Ref(tid) => match
+                        self.hir_module.types.get(tid.0 as usize).map(|t| &t.kind)
+                    {
+                        Some(hir::TypeKind::List { elem }) => Some(
+                            collections_type_idx_of(
+                                elem,
+                                self.hir_module,
+                                self.out,
+                                &mut self.ty_memo.clone(),
+                                &mut self.ty_visiting.clone(),
+                            )?,
+                        ),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                let owned_elem = self.hir_elem_owned(*list)?;
+                let t_i32 = self.out.intern_type(MirType::I32);
+                let t_bool = self.out.intern_type(MirType::Bool);
+                let header = self.new_block();
+                let body_b = self.new_block();
+                let exit_b = self.new_block();
+                self.set_term(Terminator::Jump { target: header });
+                self.cur = header;
+                self.terminated = false;
+                let n = self.temp_ty(t_i32);
+                self.emit(MirInstr::ListLen { dst: n, src: l }, sp);
+                let zero = self.temp_ty(t_i32);
+                let c0 = self.out.intern_const(MirConst::I32(0));
+                self.emit(MirInstr::Const { dst: zero, value: c0 }, sp);
+                let c = self.temp_ty(t_bool);
+                self.emit(MirInstr::Bin { op: BinOp::GtI32, dst: c, lhs: n, rhs: zero }, sp);
+                self.set_term(Terminator::Branch { cond: c, then: body_b, else_: exit_b });
+                self.cur = body_b;
+                self.terminated = false;
+                let one = self.temp_ty(t_i32);
+                let c1 = self.out.intern_const(MirConst::I32(1));
+                self.emit(MirInstr::Const { dst: one, value: c1 }, sp);
+                let idx = self.temp_ty(t_i32);
+                self.emit(MirInstr::Bin { op: BinOp::SubI32, dst: idx, lhs: n, rhs: one }, sp);
+                let e = self.temp_ty(elem_ty.unwrap_or(t_i32));
+                self.emit(MirInstr::ListRemove { dst: e, root: l, index: idx }, sp);
+                if owned_elem {
+                    self.emit(MirInstr::Drop { slot: e }, sp);
+                }
+                self.set_term(Terminator::Jump { target: header });
+                self.cur = exit_b;
+                self.terminated = false;
+                Ok(NO_SLOT)
+            }
+            hir::ExprKind::VariantCtor {
+                variant,
+                disc,
+                payload,
+            } if self.collections() => {
+                let vt = self.expr_ty(eid)?;
+                let pl = match payload {
+                    Some(p) => Some(self.eval_expr(*p, depth + 1)?),
+                    None => None,
+                };
+                let dst = self.temp_ty(vt);
+                self.emit(
+                    MirInstr::VariantPack {
+                        dst,
+                        variant_ty: vt,
+                        disc: *disc,
+                        payload: pl,
+                    },
+                    sp,
+                );
+                Ok(dst)
+            }
+            hir::ExprKind::VariantGuardTest { root, disc } if self.collections() => {
+                let r = self.eval_expr(*root, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                self.emit(MirInstr::VariantGuard { dst, src: r, disc: *disc }, sp);
+                Ok(dst)
+            }
+            hir::ExprKind::VariantProject { root, disc } if self.collections() => {
+                let r = self.eval_expr(*root, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                self.emit(MirInstr::VariantProject { dst, root: r, disc: *disc }, sp);
+                Ok(dst)
+            }
+            // TextLen over an owned-element projection: the fused view
+            // sequence (contract C4) — remove → field view / element view →
+            // strlen → insert back. Plain receivers keep the owned path.
+            hir::ExprKind::TextLen { operand } if self.collections() => {
+                let proj = self.list_projection_root(*operand)?;
+                let Some((list_e, index_e, path)) = proj else {
+                    // plain receiver (a local Str / literal): owned path
+                    let v = self.text_view_operand(operand, depth)?;
+                    let dst = self.temp_ty(ty);
+                    self.emit(MirInstr::StrLen { dst, view: v }, sp);
+                    return Ok(dst);
+                };
+                let (l, i) = (
+                    self.eval_expr(list_e, depth + 1)?,
+                    self.eval_expr(index_e, depth + 1)?,
+                );
+                let view_ty = self.out.intern_type(MirType::StrView);
+                // 1. move the element OUT (single extraction)
+                let evty = self.elem_vt_of(list_e)?;
+                let e = self.temp_ty(evty);
+                self.emit(MirInstr::ListRemove { dst: e, root: l, index: i }, sp);
+                // 2. reach the terminal Str: a whole Str element is already
+                // a Str slot; a field rides the profile-4 FieldGet contract
+                // (exact-type dst — the runtime handle-SHARES the field, no
+                // deep copy, no ledger event; the temp share releases with
+                // the frame while the buffer stays owned by the element).
+                let str_slot = if path.is_empty() {
+                    e
+                } else {
+                    let str_ty = self.out.intern_type(MirType::Str);
+                    let tmp = self.temp_ty(str_ty);
+                    let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
+                    self.emit(MirInstr::FieldGet { dst: tmp, base: e, path: segs }, sp);
+                    tmp
+                };
+                // 3. view + read
+                let v = self.temp_ty(view_ty);
+                self.emit(MirInstr::View { dst: v, src: str_slot }, sp);
+                let dst = self.temp_ty(ty);
+                self.emit(MirInstr::StrLen { dst, view: v }, sp);
+                // 4. restore the element exactly (same buffers; len back)
+                self.emit(MirInstr::ListInsert { root: l, index: i, value: e }, sp);
+                Ok(dst)
+            }
+            // FieldGet rooted at a ListGet over an OWNED list: the fused
+            // LIST_FIELD_GET (scalar terminal — owned terminals only ride
+            // TextLen, verify-guaranteed).
+            hir::ExprKind::FieldGet { base, path } if self.collections() => {
+                if let Some(root @ hir::ExprKind::ListGet { list, index }) =
+                    list_get_root(self.body, *base)
+                {
+                    if self.hir_elem_owned(list)? {
+                        let l = self.eval_expr(list, depth + 1)?;
+                        let i = self.eval_expr(index, depth + 1)?;
+                        let dst = self.temp_ty(ty);
+                        let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
+                        self.emit(
+                            MirInstr::ListFieldGet {
+                                dst,
+                                base: l,
+                                index: i,
+                                path: segs,
+                            },
+                            sp,
+                        );
+                        let _ = root;
+                        return Ok(dst);
+                    }
+                }
+                let b = self.eval_expr(*base, depth + 1)?;
+                let dst = self.temp_ty(ty);
+                let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
+                self.emit(MirInstr::FieldGet { dst, base: b, path: segs }, sp);
                 Ok(dst)
             }
             hir::ExprKind::FieldGet { base, path } => {
@@ -2251,6 +2981,18 @@ fn expr_kind_name(k: &hir::ExprKind) -> &'static str {
         BorrowMut { .. } => "borrow-mut",
         RecordClone { .. } => "record-clone",
         Move { .. } => "move",
+        // PLAN-864 collections surface
+        ListNew { .. } => "list-new",
+        ListLen { .. } => "list-len",
+        ListPush { .. } => "list-push",
+        ListInsert { .. } => "list-insert",
+        ListGet { .. } => "list-get",
+        ListSet { .. } => "list-set",
+        ListRemove { .. } => "list-remove",
+        ListClear { .. } => "list-clear",
+        VariantCtor { .. } => "variant-ctor",
+        VariantGuardTest { .. } => "variant-guard-test",
+        VariantProject { .. } => "variant-project",
     }
 }
 
@@ -2282,7 +3024,9 @@ fn lower_function(
     let mut ty_memo = BTreeMap::new();
     let mut ty_visiting = std::collections::BTreeSet::new();
     for (li, l) in body.locals.iter().enumerate() {
-        let mut ty = if owned {
+        let mut ty = if out.is_collections_profile() {
+            collections_type_idx_of(&l.ty, hir_module, out, &mut ty_memo, &mut ty_visiting)?
+        } else if owned {
             owned_type_idx_of(&l.ty, hir_module, out, &mut ty_memo, &mut ty_visiting)?
         } else {
             type_idx_of_use(&l.ty, hir_module, out, data, &mut ty_memo, &mut ty_visiting)?
@@ -2410,6 +3154,31 @@ fn lower_function(
             lower.stmt_slot_watermark = lower.base_slots + lower.extra_slots.len() as u32;
             match stmt {
                 hir::Stmt::Let { local, value } => {
+                    // PLAN-864: a variant-typed binding whose initializer is
+                    // a constructor commits through VARIANT_SWITCH (the
+                    // 822 slot-write transaction), never a raw Move.
+                    if lower.collections() {
+                        if let hir::ExprKind::VariantCtor { disc, payload, .. } =
+                            &lower.body.exprs[value.0 as usize].kind
+                        {
+                            let dst = lower.slot_of_local[local.0 as usize];
+                            let pl = match payload {
+                                Some(p) => Some(lower.eval_expr(*p, 0)?),
+                                None => None,
+                            };
+                            let disc = *disc;
+                            lower.end_stmt_temp_views();
+                            lower.emit(
+                                MirInstr::VariantSwitch {
+                                    root: dst,
+                                    disc,
+                                    payload: pl,
+                                },
+                                lower.span(*value),
+                            );
+                            continue;
+                        }
+                    }
                     let v = lower.eval_expr(*value, 0)?;
                     lower.end_stmt_temp_views();
                     let dst = lower.slot_of_local[local.0 as usize];
@@ -2445,6 +3214,30 @@ fn lower_function(
                     match &p.kind {
                         hir::PlaceKind::Local => {
                             let dst = lower.slot_of_local[p.local.0 as usize];
+                            // PLAN-864: `r = Ok(42)` — variant slot writes
+                            // ride VARIANT_SWITCH (old live arm drops once,
+                            // guard facts die with the switch).
+                            if lower.collections() {
+                                if let hir::ExprKind::VariantCtor { disc, payload, .. } =
+                                    &lower.body.exprs[value.0 as usize].kind
+                                {
+                                    let pl = match payload {
+                                        Some(pp) => Some(lower.eval_expr(*pp, 0)?),
+                                        None => None,
+                                    };
+                                    let disc = *disc;
+                                    lower.end_stmt_temp_views();
+                                    lower.emit(
+                                        MirInstr::VariantSwitch {
+                                            root: dst,
+                                            disc,
+                                            payload: pl,
+                                        },
+                                        lower.span(*value),
+                                    );
+                                    continue;
+                                }
+                            }
                             let v = lower.eval_expr(*value, 0)?;
                             lower.end_stmt_temp_views();
                             let sp = lower.span(*value);
@@ -2621,6 +3414,14 @@ fn lower_function(
                 hir::Stmt::Drop { local: _ } => {
                     // Scalar locals own no resources; programmatic drops are
                     // no-ops in this profile (cleanup is compiler-scheduled).
+                }
+                hir::Stmt::Eval { value } => {
+                    // PLAN-864: a unit-effect statement (push/insert/set/
+                    // clear) — evaluate for effect; the unit result never
+                    // becomes a slot (NO_SLOT convention).
+                    let v = lower.eval_expr(*value, 0)?;
+                    debug_assert_eq!(v, NO_SLOT);
+                    lower.end_stmt_temp_views();
                 }
             }
         }
