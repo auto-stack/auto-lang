@@ -1417,16 +1417,59 @@ impl Verifier {
             for bl in &body.blocks {
                 for st in &bl.stmts {
                     if let hir::Stmt::Eval { value } = st {
-                        let vt = &body.exprs[value.0 as usize].ty;
-                        if !matches!(vt, hir::TypeUse::Builtin(hir::BuiltinType::Unit)) {
+                        let ve = &body.exprs[value.0 as usize];
+                        let unit = matches!(ve.ty, hir::TypeUse::Builtin(hir::BuiltinType::Unit));
+                        // PLAN-864: a discarded `remove` is legal when the
+                        // element is copyable (the temp releases with the
+                        // frame); discarding an OWNED element transfer is
+                        // rejected — bind it or drop it explicitly.
+                        let copy_remove = match &ve.kind {
+                            hir::ExprKind::ListGet { list, .. } => {
+                                // the fused shape keeps ListGet at HIR for
+                                // owned lists; a bare (unprojected) ListGet
+                                // over a COPY-element list is the remove
+                                // discard's... no — bare ListGet is not a
+                                // statement form. Only real removes count.
+                                let _ = list;
+                                false
+                            }
+                            hir::ExprKind::ListRemove { list, .. } => {
+                                let lt = &body.exprs[list.0 as usize].ty;
+                                !Self::list_elem_owned(m, lt, self)
+                            }
+                            _ => false,
+                        };
+                        if !unit && !copy_remove {
                             self.error(
                                 "verify.type-mismatch",
-                                "an expression statement discards only unit-typed calls (push/insert/set/clear)".to_string(),
+                                "an expression statement discards only unit-typed calls (push/insert/set/clear) or a copy-element `remove`".to_string(),
                                 bl.span,
                             );
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /// PLAN-864: whether a List type's element is owned (Str / record
+    /// reaching Str / variant).
+    fn list_elem_owned(m: &hir::Module, list_ty: &hir::TypeUse, v: &Verifier) -> bool {
+        let hir::TypeUse::Ref(tid) = list_ty else {
+            return false;
+        };
+        let Some(hir::TypeKind::List { elem }) = m.types.get(tid.0 as usize).map(|t| &t.kind)
+        else {
+            return false;
+        };
+        match elem {
+            hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => true,
+            hir::TypeUse::Builtin(_) => false,
+            hir::TypeUse::Ref(e) => {
+                matches!(
+                    m.types.get(e.0 as usize).map(|t| &t.kind),
+                    Some(hir::TypeKind::Variant { .. })
+                ) || v.type_reaches_str(m, *e)
             }
         }
     }
@@ -4336,12 +4379,7 @@ impl Verifier {
                 hir::ExprKind::ListLen { list } | hir::ExprKind::ListClear { list } => {
                     targets.push(list.0);
                 }
-                hir::ExprKind::ListPush { list, value }
-                | hir::ExprKind::ListSet {
-                    list,
-                    value,
-                    ..
-                } => {
+                hir::ExprKind::ListPush { list, value } => {
                     targets.push(list.0);
                     targets.push(value.0);
                 }
@@ -4350,6 +4388,11 @@ impl Verifier {
                     targets.push(index.0);
                 }
                 hir::ExprKind::ListInsert {
+                    list,
+                    index,
+                    value,
+                }
+                | hir::ExprKind::ListSet {
                     list,
                     index,
                     value,

@@ -1095,7 +1095,15 @@ impl<'s> Parser<'s> {
                         )))
                     }
                 }
-                let iter = self.expr(false)?;
+                // PLAN-864 contract C7: the iterator is a bare List local —
+                // parsed as an IDENT (never a general expression), which
+                // also keeps the body's `{` from parsing as a named
+                // constructor (`xs { .. }`).
+                let iter_name = self.expect_ident("for-in iterator (a List local)")?;
+                let iter = Expr {
+                    span: iter_name.span,
+                    kind: ExprKind::Var(iter_name),
+                };
                 let lb = self.expect_punct(P::LBrace, "`{`")?;
                 stack.push(OpenBlock {
                     lb,

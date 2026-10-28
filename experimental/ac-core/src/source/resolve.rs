@@ -1877,7 +1877,7 @@ fn vt_of_ann_coll(
                     let elem = vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::Local);
                     match elem {
                         VT::List(_) => reject(diags, VT::I32, "List does not nest List (822 element domain)".to_string(), args[0].span),
-                        VT::Str | VT::I32 | VT::Bool | VT::Rec(_) | VT::Variant(_) => {
+                        VT::StrOwned | VT::I32 | VT::Bool | VT::Rec(_) | VT::Variant(_) => {
                             VT::List(coll.intern_list(elem))
                         }
                         _ => reject(diags, VT::I32, format!("element type `{}` is not in the 822 element domain", elem.as_str()), args[0].span),
@@ -1968,6 +1968,13 @@ enum RecvClass {
     ListCtor(usize),
     /// `E.A` / `E.A(e)` — qualified variant construction.
     VariantArm { vi: usize, disc: u32 },
+    /// PLAN-864: `<list<Str>-local>.get(i).len()` — a whole-Str element
+    /// view consumed by len (contract C4).
+    ElemViewLen {
+        xl: LocalRef,
+        xvt: VT,
+        idx_slot: usize,
+    },
 }
 
 struct FnResolver<'a> {
@@ -2175,6 +2182,45 @@ impl<'a> FnResolver<'a> {
         None
     }
 
+    /// PLAN-864: the synthetic unreachable-path return filler of an
+    /// exhaustive `is` chain — typed from the function result (int 0 /
+    /// unit / empty Str). Exotic result types reject by name: a filler
+    /// value would need a payload we refuse to fabricate.
+    fn default_return_filler(&mut self, span: Span) -> ResolvedExpr {
+        match self.fn_result {
+            VT::I32 => ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::IntLit(0),
+            },
+            VT::Unit => ResolvedExpr {
+                span,
+                vt: VT::Unit,
+                kind: RExprKind::Unit,
+            },
+            VT::StrOwned => ResolvedExpr {
+                span,
+                vt: VT::StrOwned,
+                kind: RExprKind::StrLit(String::new()),
+            },
+            other => {
+                self.bind_err(
+                    "source.is-tail-return",
+                    format!(
+                        "an exhaustive `is` whose arms all return needs a fabricable filler for result type `{}` (supported: int/unit/Str)",
+                        other.as_str()
+                    ),
+                    span,
+                );
+                ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(0),
+                }
+            }
+        }
+    }
+
     /// PLAN-864: resolve a projection spine (outermost-first segment
     /// names) through the record table starting at `start_vt`; returns
     /// (declaration-index path, terminal type). Errors on non-record
@@ -2286,7 +2332,7 @@ impl<'a> FnResolver<'a> {
                 );
                 RecvClass::Value
             }
-            VT::I32 | VT::Bool | VT::Str | VT::Rec(_) | VT::Variant(_) => {
+            VT::I32 | VT::Bool | VT::StrOwned | VT::Rec(_) | VT::Variant(_) => {
                 RecvClass::ListCtor(self.coll.intern_list(elem))
             }
             other => {
@@ -2344,7 +2390,16 @@ impl<'a> FnResolver<'a> {
         span: Span,
     ) -> ResolvedExpr {
         match (cname, payload, expect) {
-            ("Some", Some(pl), expect) => {
+            ("Some", Some(mut pl), expect) => {
+                if let Some(VT::Variant(vi)) = expect {
+                    if self.coll.variants[vi].name == "Option" {
+                        if let Some(Some(pvt)) =
+                            self.coll.variants[vi].arms.get(0).map(|a| &a.1)
+                        {
+                            retag_literal(&mut pl, *pvt);
+                        }
+                    }
+                }
                 let t = pl.vt;
                 let vi = match expect {
                     Some(VT::Variant(vi)) if self.coll.variants[vi].name == "Option" => vi,
@@ -2393,10 +2448,15 @@ impl<'a> FnResolver<'a> {
                     },
                 }
             }
-            ("Ok" | "Err", Some(pl), Some(VT::Variant(vi)))
+            ("Ok" | "Err", Some(mut pl), Some(VT::Variant(vi)))
                 if self.coll.variants[vi].name == "Result" =>
             {
                 let disc = if cname == "Ok" { 0 } else { 1 };
+                if let Some(Some(pvt)) =
+                    self.coll.variants[vi].arms.get(disc as usize).map(|a| &a.1)
+                {
+                    retag_literal(&mut pl, *pvt);
+                }
                 if matches!(pl.vt, VT::List(_)) {
                     self.bind_err(
                         "source.list-value-context",
@@ -2640,10 +2700,22 @@ impl<'a> FnResolver<'a> {
         }
         match &value.kind {
             RExprKind::Move { .. } => {}
-            RExprKind::StrLit(_)
-            | RExprKind::CtorPos { .. }
-            | RExprKind::CtorNamed { .. }
-            | RExprKind::VariantCtor { .. } => {
+            RExprKind::CtorPos { .. } | RExprKind::CtorNamed { .. } => {
+                // a fresh rvalue transfers at commit; its Str-typed literal
+                // fields retag to the record's owned field types (AP-4 —
+                // the owning context constructs)
+                value.vt = *elem;
+                if let (RExprKind::CtorPos { args, .. }, VT::Rec(ri)) =
+                    (&mut value.kind, *elem)
+                {
+                    for (ai, a) in args.iter_mut().enumerate() {
+                        if let Some(fvt) = self.records.get(ri).and_then(|r| r.fields.get(ai)) {
+                            retag_literal(&mut a.value, fvt.vt);
+                        }
+                    }
+                }
+            }
+            RExprKind::StrLit(_) | RExprKind::VariantCtor { .. } => {
                 // a fresh rvalue transfers at commit
                 value.vt = *elem;
             }
@@ -3206,36 +3278,23 @@ impl<'a> FnResolver<'a> {
                         );
                         continue;
                     }
-                    // Build the chain so the LAST arm is the innermost
-                    // else (no empty else block): exhaustive dispatch makes
-                    // the two shapes equivalent, but this shape terminates
-                    // statically when every arm returns (the shared
-                    // no-return-path walk sees a full if/else spine).
-                    let mut resolved_rev: Vec<(u32, Option<(LocalRef, VT)>, RBlock)> =
-                        resolved.into_iter().rev().collect();
-                    let (last_disc, last_bind, mut last_body) =
-                        resolved_rev.remove(0);
-                    let mut last_stmts: Vec<RStmt> = Vec::new();
-                    if let Some((lref, pvt)) = last_bind {
-                        last_stmts.push(RStmt::Let {
-                            local: lref,
-                            value: ResolvedExpr {
-                                span: last_body.span,
-                                vt: pvt,
-                                kind: RExprKind::VariantProject {
-                                    local: sl,
-                                    variant: vi,
-                                    disc: last_disc,
-                                },
-                            },
-                            span: last_body.span,
-                        });
-                    }
-                    last_stmts.extend(std::mem::take(&mut last_body.stmts));
+                    // Build the chain with EVERY arm guarded (the last
+                    // arm too — a projection needs its live guard fact);
+                    // the innermost else is a synthetic `return <default>`
+                    // filler: statically unreachable (exhaustiveness is
+                    // compile-checked above), present so the shared
+                    // no-return-path walk sees a Returned spine. The filler
+                    // value is typed from the function result.
+                    let filler = self.default_return_filler(*span);
                     let mut current = Some(RBlock {
-                        stmts: last_stmts,
-                        span: last_body.span,
+                        stmts: vec![RStmt::Return {
+                            value: filler,
+                            span: *span,
+                        }],
+                        span: *span,
                     });
+                    let resolved_rev: Vec<(u32, Option<(LocalRef, VT)>, RBlock)> =
+                        resolved.into_iter().rev().collect();
                     for (disc, bind, mut body) in resolved_rev {
                         let mut then_stmts: Vec<RStmt> = Vec::new();
                         if let Some((lref, pvt)) = bind {
@@ -4603,8 +4662,71 @@ impl<'a> FnResolver<'a> {
                         } else {
                             RecvClass::Value
                         };
+                        // PLAN-864: `xs.get(i).len()` over a List<Str>
+                        // local — the get receiver is a whole-element view,
+                        // not a value.
+                        let recv_class = if matches!(recv_class, RecvClass::Value)
+                            && name.name == "len"
+                            && args.is_empty()
+                        {
+                            if let ExprKind::MethodCall {
+                                recv: gr,
+                                name: gn,
+                                args: ga,
+                            } = &recv.kind
+                            {
+                                if gn.name == "get"
+                                    && ga.len() == 1
+                                    && matches!(&ga[0], ast::Arg::Pos(_) | ast::Arg::MovePos(_))
+                                {
+                                    if let ExprKind::Var(id) = &gr.kind {
+                                        if let Some(xl) = self.lookup(&id.name) {
+                                            let xvt = self.locals[xl.0].vt;
+                                            if let VT::List(li) = xvt {
+                                                let elem = self.coll.lists[li];
+                                                if matches!(elem, VT::StrOwned) {
+                                                    let idx_slot = out.len();
+                                                    out.push(dummy_resolved());
+                                                    let idx_ast = match &ga[0] {
+                                                        ast::Arg::Pos(e)
+                                                        | ast::Arg::MovePos(e) => e,
+                                                        _ => unreachable!(
+                                                            "get takes one positional index"
+                                                        ),
+                                                    };
+                                                    stack.push(Task::Visit {
+                                                        node: idx_ast,
+                                                        slot: idx_slot,
+                                                    });
+                                                    RecvClass::ElemViewLen {
+                                                        xl,
+                                                        xvt,
+                                                        idx_slot,
+                                                    }
+                                                } else {
+                                                    RecvClass::Value
+                                                }
+                                            } else {
+                                                RecvClass::Value
+                                            }
+                                        } else {
+                                            RecvClass::Value
+                                        }
+                                    } else {
+                                        RecvClass::Value
+                                    }
+                                } else {
+                                    RecvClass::Value
+                                }
+                            } else {
+                                RecvClass::Value
+                            }
+                        } else {
+                            recv_class
+                        };
                         let recv_slot = match recv_class {
                             RecvClass::Value => Some(out.len()),
+                            RecvClass::ElemViewLen { .. } => None,
                             _ => None,
                         };
                         if recv_slot.is_some() {
@@ -4782,7 +4904,14 @@ impl<'a> FnResolver<'a> {
                             // member-type guard), so this rewrites nothing
                             // there.
                             let vt = match self.records[ri].fields[fi].vt {
-                                VT::StrOwned => VT::Str,
+                                // PLAN-782 5.2: a field read is a borrowing
+                                // view on the combination surface.
+                                // PLAN-864: the collections surface keeps
+                                // the DECLARED type — profile 4's FieldGet
+                                // contract is exact-type (the runtime
+                                // handle-shares, never deep-copies), so
+                                // `.len()` reads ride the owned value.
+                                VT::StrOwned if !self.profile.is_collections() => VT::Str,
                                 v => v,
                             };
                             out[dest] = ResolvedExpr {
@@ -4848,6 +4977,38 @@ impl<'a> FnResolver<'a> {
                                 span: node_span,
                                 vt: VT::List(li),
                                 kind: RExprKind::ListNew { list: li },
+                            };
+                        }
+                        RecvClass::ElemViewLen {
+                            xl,
+                            xvt,
+                            idx_slot,
+                        } => {
+                            // PLAN-864: `xs.get(i).len()` on List<Str> — the
+                            // receiver is a whole-element view ( ElemView );
+                            // the lowering fuses remove/view/strlen/insert.
+                            let idx = std::mem::replace(&mut out[idx_slot], dummy_resolved());
+                            out[dest] = ResolvedExpr {
+                                span: node_span,
+                                vt: VT::I32,
+                                kind: RExprKind::Method {
+                                    recv: Box::new(ResolvedExpr {
+                                        span: node_span,
+                                        vt: VT::StrOwned,
+                                        kind: RExprKind::ElemView {
+                                            list: Box::new(ResolvedExpr {
+                                                span: node_span,
+                                                vt: xvt,
+                                                kind: RExprKind::ReadLocal(xl),
+                                            }),
+                                            index: Box::new(idx),
+                                            path: Vec::new(),
+                                        },
+                                    }),
+                                    method: crate::source::resolve::BuiltinMethod::Len,
+                                    to: None,
+                                    args: Vec::new(),
+                                },
                             };
                         }
                         RecvClass::VariantArm { vi, disc } => {

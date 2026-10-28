@@ -2850,6 +2850,9 @@ impl<'a> FnLower<'a> {
                 self.emit(MirInstr::View { dst: v, src: str_slot }, sp);
                 let dst = self.temp_ty(ty);
                 self.emit(MirInstr::StrLen { dst, view: v }, sp);
+                // end the view BEFORE the restore — an insert of a value
+                // under an active borrow is a mut-conflict in the lattice.
+                self.emit(MirInstr::BorrowEnd { token: v }, sp);
                 // 4. restore the element exactly (same buffers; len back)
                 self.emit(MirInstr::ListInsert { root: l, index: i, value: e }, sp);
                 Ok(dst)
@@ -3419,8 +3422,10 @@ fn lower_function(
                     // PLAN-864: a unit-effect statement (push/insert/set/
                     // clear) — evaluate for effect; the unit result never
                     // becomes a slot (NO_SLOT convention).
-                    let v = lower.eval_expr(*value, 0)?;
-                    debug_assert_eq!(v, NO_SLOT);
+                    // The result slot (a discarded copy-element remove or a
+                    // unit sentinel) releases with the frame; owned
+                    // transfers are verify-rejected at the source.
+                    let _ = lower.eval_expr(*value, 0)?;
                     lower.end_stmt_temp_views();
                 }
             }

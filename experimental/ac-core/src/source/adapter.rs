@@ -1386,7 +1386,10 @@ impl PlanCtx<'_> {
                 // planning). PLAN-864: on the collections surface it is the
                 // unit-effect statement — the value is planned and emitted
                 // as an `eval` statement (unit result, no slot).
-                RStmt::ExprStmt { value, span } if value.vt == VT::Unit => {
+                RStmt::ExprStmt { value, span }
+                    if value.vt == VT::Unit
+                        || matches!(value.kind, RExprKind::ListRemove { .. }) =>
+                {
                     let v = self.plan_expr(plan, f, value);
                     plan.blocks[home].stmts.push(SNode {
                         kind: SKind::Eval { value: v },
