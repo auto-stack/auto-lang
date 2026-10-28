@@ -693,3 +693,127 @@ fn av_resident_866_reload_visibility_p90_v2_calibre() {
         SAMPLES, p90, p95, p99
     );
 }
+
+/// F-866-R1/R3 negative control (frozen contract §2.3): an edit whose
+/// changed function is ITSELF executing on the in-flight chain (here:
+/// main, the resident ancestor) must NOT install at the safety point —
+/// the old body runs to return and the new body takes effect only for
+/// the NEXT top-level run. An implementation that swaps the in-flight
+/// edited frame mid-invocation cannot produce the exact old-value
+/// completion below.
+#[test]
+fn av_resident_866_inflight_ancestor_defers_and_next_run_sees_new() {
+    let session = warmup(CALLS, "d_main", &[]).expect("warmup");
+    let revision0 = session.revision();
+    let mut r = ResidentRunner::start(
+        session,
+        ResidentConfig {
+            slice_steps: 64,
+            ..ResidentConfig::default()
+        },
+    );
+    for _ in 0..10 {
+        assert_eq!(r.slice().state, ResidentState::Running);
+    }
+    // Edit the IN-FLIGHT ancestor itself: main's loop bound.
+    let at = CALLS.find("i < 300").expect("main loop bound");
+    let (s, e) = (at as u64, (at + "i < 300".len()) as u64);
+    assert!(matches!(
+        r.submit_edit(s, e, b"i < 200".to_vec()),
+        Ok(Ok(()))
+    ));
+
+    let sp = r.apply_pending_at_safety_point();
+    assert!(
+        sp.armed && sp.reached_boundary,
+        "the boundary is still reached"
+    );
+    assert!(
+        sp.deferred_in_flight,
+        "in-flight changed function must defer"
+    );
+    assert!(!sp.edit.ok, "nothing installs at the safety point");
+    assert!(
+        sp.edit
+            .non_fast_path_reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("deferred"),
+        "deferral is observable: {:?}",
+        sp.edit.non_fast_path_reason
+    );
+    assert!(sp.retired_snapshot_weak.is_none(), "no swap on deferral");
+    assert_eq!(r.session().revision(), revision0, "revision unchanged");
+    assert_eq!(r.pending().len(), 1, "the candidate stays queued");
+    assert_eq!(r.chain_entries(), 1, "the chain is never restarted");
+
+    // The in-flight old body completes the WHOLE run: 300 rounds x 7.
+    let (out, _, _) = drive_to_completion(&mut r, 60_000);
+    assert_eq!(
+        success_value(&out),
+        300 * 7,
+        "the old body runs to return (a mid-invocation swap cannot give this)"
+    );
+
+    // After the chain ended, the held candidate commits for FUTURE runs.
+    let landed = r.apply_pending_at_safety_point();
+    assert!(
+        landed.edit.ok,
+        "the deferred candidate commits at chain end"
+    );
+    assert_eq!(r.session().revision(), revision0 + 1);
+    // The NEXT top-level run sees the new body: 200 rounds x 7.
+    let (next, _) = r.session().run(
+        &auto_av_core::av::ExecLimits::default(),
+        &auto_av_core::av::CancelFlag::new(false),
+    );
+    assert_eq!(
+        success_value(&next),
+        200 * 7,
+        "the new body is visible to the next run only"
+    );
+}
+
+/// F-866-R2 stopgap control: a slot-layout-changing body edit of the
+/// in-flight ancestor (accepted by the 828 prepare/commit pipeline) must
+/// defer — never panic — and the post-commit next run must execute the
+/// new layout correctly.
+#[test]
+fn av_resident_866_inflight_layout_change_never_panics() {
+    let session = warmup(CALLS, "d_main", &[]).expect("warmup");
+    let mut r = ResidentRunner::start(
+        session,
+        ResidentConfig {
+            slice_steps: 64,
+            ..ResidentConfig::default()
+        },
+    );
+    for _ in 0..10 {
+        assert_eq!(r.slice().state, ResidentState::Running);
+    }
+    let at = CALLS.find("total = total + helper()").expect("main body");
+    let from = "total = total + helper()";
+    let to = "total = total + helper() + 1";
+    let (s, e) = (at as u64, (at + from.len()) as u64);
+    assert!(matches!(
+        r.submit_edit(s, e, to.as_bytes().to_vec()),
+        Ok(Ok(()))
+    ));
+
+    let sp = r.apply_pending_at_safety_point();
+    assert!(
+        sp.deferred_in_flight,
+        "layout-changing ancestor edit defers"
+    );
+    // No panic through completion: the old layout runs to return.
+    let (out, _, _) = drive_to_completion(&mut r, 60_000);
+    assert_eq!(success_value(&out), 300 * 7);
+    // Commits after the chain; the next run runs the NEW layout cleanly.
+    let landed = r.apply_pending_at_safety_point();
+    assert!(landed.edit.ok);
+    let (next, _) = r.session().run(
+        &auto_av_core::av::ExecLimits::default(),
+        &auto_av_core::av::CancelFlag::new(false),
+    );
+    assert_eq!(success_value(&next), 300 * 7 + 300);
+}

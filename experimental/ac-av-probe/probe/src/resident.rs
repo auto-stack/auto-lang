@@ -160,6 +160,12 @@ pub struct SafetyPointReport {
     pub chain_finished: bool,
     /// Live retired generations still pinned after this application.
     pub live_old_generations: usize,
+    /// PLAN-866 §2.3 deferral guard fired: the candidate's changed
+    /// function is still executing on the in-flight chain, so NOTHING
+    /// committed or swapped at this safety point — the old body runs to
+    /// return, the new body takes effect for the NEXT run (the candidate
+    /// stays queued and consumable at/after chain end).
+    pub deferred_in_flight: bool,
     /// Weak view of the retired snapshot on a successful swap — dies with
     /// its last in-flight frame (V-05 release oracle).
     pub retired_snapshot_weak: Option<Weak<ProgramSnapshot>>,
@@ -394,6 +400,7 @@ impl ResidentRunner {
                 visibility: None,
                 chain_finished: false,
                 live_old_generations: self.live_old_generations(),
+                deferred_in_flight: false,
                 retired_snapshot_weak: None,
             };
         } else {
@@ -423,6 +430,7 @@ impl ResidentRunner {
                 visibility: Some(visibility_origin.elapsed()),
                 chain_finished: self.state == ResidentState::Finished,
                 live_old_generations: self.live_old_generations(),
+                deferred_in_flight: false,
                 retired_snapshot_weak: None,
             };
         }
@@ -445,6 +453,7 @@ impl ResidentRunner {
                 visibility: None,
                 chain_finished: false,
                 live_old_generations: self.live_old_generations(),
+                deferred_in_flight: false,
                 retired_snapshot_weak: None,
             };
         }
@@ -458,6 +467,51 @@ impl ResidentRunner {
                 // in-flight frames keep their pinned old code to return.
                 self.total_steps = p.step_count();
                 let steps_at_boundary = p.step_count();
+                // F-866-R1/R2 deferral guard (frozen contract §2.3): a
+                // revision whose CHANGED function is still executing on
+                // the in-flight chain must not install here — frames
+                // resolve code through the view, so an in-flight edited
+                // body would run the NEW code mid-invocation (R1) and a
+                // slot-layout change would corrupt its frame (R2 panic).
+                // The old body runs to return; the new one waits.
+                // `FunctionCode::name` is the def-id form (`d_main`);
+                // `changed_name` is the source outline name (`main`) —
+                // compare on the source-name form.
+                let inflight: std::collections::BTreeSet<String> = p
+                    .frame_funcs()
+                    .iter()
+                    .filter_map(|f| p.prog().code().get(*f as usize))
+                    .map(|c| c.name().strip_prefix("d_").unwrap_or(c.name()).to_string())
+                    .collect();
+                let changed_name = candidate.changed_name().to_string();
+                if inflight.contains(&changed_name) {
+                    self.paused = match resume_program(p, &self.cancel, Some(0)) {
+                        SteppedOutcome::Paused(p) => Some(p),
+                        SteppedOutcome::Finished(out, _) => {
+                            self.state = ResidentState::Finished;
+                            self.outcome = Some(out);
+                            None
+                        }
+                    };
+                    self.queue.insert(0, candidate);
+                    return SafetyPointReport {
+                        armed: true,
+                        reached_boundary: true,
+                        edit: EditOutcome::rejected(
+                            self.session.revision(),
+                            format!(
+                                "deferred: changed function `{changed_name}` is in flight — the old body runs to return; the new body takes effect for the next run (contract §2.3)"
+                            ),
+                            Vec::new(),
+                        ),
+                        steps_at_boundary: Some(steps_at_boundary),
+                        visibility: Some(visibility_origin.elapsed()),
+                        chain_finished: self.state == ResidentState::Finished,
+                        live_old_generations: self.live_old_generations(),
+                        retired_snapshot_weak: None,
+                        deferred_in_flight: true,
+                    };
+                }
                 let retired_weak = Arc::downgrade(p.prog());
                 let visibility = Some(visibility_origin.elapsed());
                 let edit = self.session.commit(candidate.prepared);
@@ -491,6 +545,7 @@ impl ResidentRunner {
                     visibility,
                     chain_finished,
                     live_old_generations: self.live_old_generations(),
+                    deferred_in_flight: false,
                     retired_snapshot_weak: if edit.ok { Some(retired_weak) } else { None },
                 }
             }
@@ -513,6 +568,7 @@ impl ResidentRunner {
                     visibility: None,
                     chain_finished: false,
                     live_old_generations: self.live_old_generations(),
+                    deferred_in_flight: false,
                     retired_snapshot_weak: None,
                 }
             }
@@ -531,6 +587,7 @@ impl ResidentRunner {
                     visibility: Some(visibility_origin.elapsed()),
                     chain_finished: true,
                     live_old_generations: self.live_old_generations(),
+                    deferred_in_flight: false,
                     retired_snapshot_weak: None,
                 }
             }

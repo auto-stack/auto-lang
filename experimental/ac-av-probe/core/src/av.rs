@@ -443,6 +443,15 @@ impl PausedRun {
         &self.prog
     }
 
+    /// The function-slot indices currently live on this chain's frame
+    /// stack (innermost last). PLAN-866 deferral guard: the host refuses
+    /// to swap a revision whose changed function is still executing —
+    /// its old body runs to return, the new one waits for the next run
+    /// (frozen contract §2.3).
+    pub fn frame_funcs(&self) -> Vec<u32> {
+        self.state.frames.iter().map(|f| f.func).collect()
+    }
+
     /// The current closure frame and its published environment, if live.
     pub fn active_closure_frame(&self) -> Option<(&str, u64)> {
         let frame = self.state.frames.last()?;

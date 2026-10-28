@@ -979,9 +979,11 @@ fn case_serve() -> ! {
                 counters.insert("resident:refused".to_string(), refused);
                 counters.insert("resident:boundary_steps".to_string(), boundary_steps);
                 counters.insert("resident:visibility_us".to_string(), visibility_us);
+                // F-866-R4: the authoritative CUMULATIVE swap ledger from
+                // the runner (this apply's contribution is `installed`).
                 counters.insert(
                     "resident:swaps".to_string(),
-                    r.live_old_generations() as u64 + installed,
+                    r.counters().get("resident:swaps").copied().unwrap_or(0),
                 );
                 counters.insert("resident:chain_entries".to_string(), r.chain_entries());
                 resident_apply_counters = counters.clone();
