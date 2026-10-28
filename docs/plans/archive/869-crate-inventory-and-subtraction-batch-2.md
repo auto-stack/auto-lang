@@ -262,6 +262,10 @@ depends_on: [PLAN-867]
 - 批量回归到期检查：869 % 5 ≠ 0；.last-batch-regression 回执 2026-10-28（<48h）→ **不到期**
 - 陈旧产物观察：本批为库/工具面，无运行中生产进程；release 二进制/web bundle 未随本批重建（下次发布构建自然吸收，非本批出口）
 
+2026-10-28 / stage: goal / plan_id: PLAN-869 / plan_revision: r4 / round: 3 / from: merge / to: done / status: archived / outcome: pass (delivered; merge-gate repairs F-869-M1/M2 re-verified with full tiers) / worktree: removed (lang-869 group cleaned) / commit: fee385de2 (lang) 154a396 (ui) e6cc06f (man), archive a81e1ceee / next: done
+- Done 审计：①三仓 ff-only 合入无 merge commit、master 尖=交付提交 ✓；②canonical（net-slimming 800k 节/crate-inventory 页/INDEX/project.md 常态节）+ ledger v122（外科投影+回读校验）✓；③计划已 git mv 至 docs/plans/archive/ 且 status: archived、簿记已提交 ✓；④四树 wt-guard clean 后移除、三分支删除、组目录空删 ✓；⑤主检出自有代码路径零 WIP（其余 docs 改动为他会话在途）✓；landing 检查=显式陈旧产物观察（库/工具面无运行进程）✓；批量回归 869%5≠0 且回执<48h → 不到期 ✓
+- 目标遗留（不阻塞）：auto-cosmic 结构性退役候选四要件已备（subtraction-freeze §4），待用户按批签核（D-3）；本目标授权范围（无消费者退役批）已全部完成
+
 ## 10. 待澄清事项
 
 | ID | 事项 | 影响 | 处置 |
