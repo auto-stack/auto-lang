@@ -15,10 +15,10 @@ pub enum Type {
     Double,
     Bool,
     Char,
-    Str,       // String literal value (matches Value::Str)
-    CStrLit,   // C-style string literal (null-terminated)
-    StrSlice,  // Borrowed string slice (Phase 3)
-    StrOwned,  // Owned, growable dynamic string (Plan 155)
+    Str,      // String literal value (matches Value::Str)
+    CStrLit,  // C-style string literal (null-terminated)
+    StrSlice, // Borrowed string slice (Phase 3)
+    StrOwned, // Owned, growable dynamic string (Plan 155)
     Array,
     Ptr,
     User(AutoStr),
@@ -81,23 +81,14 @@ impl TypeInfoStore {
         self.types.insert(name, info);
     }
 
-    pub fn lookup_method_for_value(&self, value: &Value, name: AutoStr) -> Option<ValueMethod> {
-        match value {
-            Value::Int(_) => self.lookup_method(Type::Int, name),
-            Value::Float(_) => self.lookup_method(Type::Float, name),
-            Value::Bool(_) => self.lookup_method(Type::Bool, name),
-            Value::Str(_) => self.lookup_method(Type::Str, name),
-            Value::String(_) => self.lookup_method(Type::StrOwned, name),
-            Value::StrSlice(_) => self.lookup_method(Type::StrSlice, name),
-            _ => self.lookup_method(Type::Any, name),
-        }
-    }
-
     pub fn lookup_method(&self, typ: Type, name: AutoStr) -> Option<ValueMethod> {
         let info = self.type_info(typ);
         info.methods.get(name.as_str()).cloned().or_else(|| {
             // try in any
-            self.type_info(Type::Any).methods.get(name.as_str()).cloned()
+            self.type_info(Type::Any)
+                .methods
+                .get(name.as_str())
+                .cloned()
         })
     }
 
@@ -209,7 +200,7 @@ fn type_info_char() -> TypeInfo {
 
 fn type_info_str_slice() -> TypeInfo {
     let mut methods: HashMap<AutoStr, ValueMethod> = HashMap::new();
-    methods.insert("len".into(), Value::v_len);  // Reuse str len method
+    methods.insert("len".into(), Value::v_len); // Reuse str len method
     TypeInfo {
         name: "str_slice".into(),
         methods,

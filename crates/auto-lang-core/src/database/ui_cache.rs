@@ -201,9 +201,6 @@ impl UICache {
     }
 
     /// Get artifacts for a source file
-    pub fn get_artifacts(&self, source_path: &Path) -> Option<&[UIArtifact]> {
-        self.artifacts.get(source_path).map(|v| v.as_slice())
-    }
 
     /// Update cache entry for a source file
     pub fn update(&mut self, source_path: PathBuf, hash: u64, artifacts: Vec<UIArtifact>) {
@@ -218,9 +215,6 @@ impl UICache {
     }
 
     /// Get all tracked source files
-    pub fn tracked_files(&self) -> impl Iterator<Item = &PathBuf> {
-        self.file_hashes.keys()
-    }
 
     /// Plan 015 P0#2: drop entries whose source .at no longer exists, so the
     /// saved cache only lists artifacts that are still live. Returns the

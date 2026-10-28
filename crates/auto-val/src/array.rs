@@ -1,7 +1,5 @@
 use crate::AutoStr;
 use crate::Value;
-use std::collections::BTreeSet;
-use std::collections::HashSet;
 use std::fmt::{self, Formatter};
 use std::ops::{Index, IndexMut};
 
@@ -69,17 +67,6 @@ impl Array {
         }
     }
 
-    pub fn from_set(values: HashSet<impl Into<Value>>) -> Self {
-        Array {
-            values: values.into_iter().map(|v| v.into()).collect(),
-        }
-    }
-
-    pub fn from_treeset(values: BTreeSet<impl Into<Value>>) -> Self {
-        Array {
-            values: values.into_iter().map(|v| v.into()).collect(),
-        }
-    }
     pub fn len(&self) -> usize {
         self.values.len()
     }
@@ -229,9 +216,7 @@ pub struct ArrayBuilder {
 impl ArrayBuilder {
     /// Create a new ArrayBuilder
     pub fn new() -> Self {
-        Self {
-            values: Vec::new(),
-        }
+        Self { values: Vec::new() }
     }
 
     /// Add a value to the array
@@ -305,12 +290,7 @@ mod tests {
 
     #[test]
     fn test_with_chain() {
-        let arr = Array::new()
-            .with(1)
-            .with(2)
-            .with(3)
-            .with(4)
-            .with(5);
+        let arr = Array::new().with(1).with(2).with(3).with(4).with(5);
 
         assert_eq!(arr.len(), 5);
         assert_eq!(arr.values[0], Value::Int(1));
@@ -359,11 +339,7 @@ mod tests {
 
     #[test]
     fn test_mixed_types() {
-        let arr = Array::new()
-            .with(42)
-            .with("hello")
-            .with(true)
-            .with(3.14f64);
+        let arr = Array::new().with(42).with("hello").with(true).with(3.14f64);
 
         assert_eq!(arr.len(), 4);
         assert_eq!(arr.values[0], Value::Int(42));
@@ -376,11 +352,7 @@ mod tests {
 
     #[test]
     fn test_builder_basic() {
-        let arr = Array::builder()
-            .value(1)
-            .value(2)
-            .value(3)
-            .build();
+        let arr = Array::builder().value(1).value(2).value(3).build();
 
         assert_eq!(arr.len(), 3);
         assert_eq!(arr.values[0], Value::Int(1));
@@ -390,10 +362,7 @@ mod tests {
 
     #[test]
     fn test_builder_value_if_true() {
-        let arr = Array::builder()
-            .value_if(true, 1)
-            .value_if(true, 2)
-            .build();
+        let arr = Array::builder().value_if(true, 1).value_if(true, 2).build();
 
         assert_eq!(arr.len(), 2);
         assert_eq!(arr.values[0], Value::Int(1));
@@ -412,9 +381,7 @@ mod tests {
 
     #[test]
     fn test_builder_values_batch() {
-        let arr = Array::builder()
-            .values([1, 2, 3, 4, 5])
-            .build();
+        let arr = Array::builder().values([1, 2, 3, 4, 5]).build();
 
         assert_eq!(arr.len(), 5);
         assert_eq!(arr.values[0], Value::Int(1));

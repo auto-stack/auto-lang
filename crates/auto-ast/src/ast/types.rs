@@ -375,14 +375,6 @@ impl Type {
             Type::Tuple(_) => false,
         }
     }
-
-    /// Check if this type is any kind of string (literal, slice, or owned)
-    pub fn is_any_string(&self) -> bool {
-        matches!(
-            self,
-            Type::StrFixed(_) | Type::CStrLit | Type::StrSlice | Type::StrOwned
-        )
-    }
 }
 
 /// Generic parameter - can be either a type parameter or const parameter (Plan 052)
@@ -835,12 +827,6 @@ impl Member {
             attrs: Vec::new(),
         }
     }
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TypeInst {
-    pub name: Name,
-    pub entries: Vec<Pair>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

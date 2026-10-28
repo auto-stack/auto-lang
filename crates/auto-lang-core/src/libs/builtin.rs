@@ -46,11 +46,6 @@ pub fn enable_ui_console() -> UiConsoleBuffer {
 }
 
 /// Disable UI console capture.
-pub fn disable_ui_console() {
-    UI_CONSOLE_BUFFER.with(|buf| {
-        *buf.borrow_mut() = None;
-    });
-}
 
 /// Enable test mode and return a buffer for capturing output
 // PLAN-814: 跨 crate 测试支持面

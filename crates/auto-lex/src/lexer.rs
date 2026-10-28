@@ -106,16 +106,6 @@ impl<'a> Lexer<'a> {
         false
     }
 
-    pub fn peek_non_whitespace(&mut self, c: char) -> bool {
-        let iter = self.chars.clone();
-        for i in iter {
-            if !i.is_whitespace() {
-                return c == i;
-            }
-        }
-        false
-    }
-
     pub fn with_equal(&mut self, kind1: TokenKind, kind2: TokenKind, c: char) -> Token {
         self.chars.next(); // skip c
         if self.peek('=') {
@@ -483,19 +473,6 @@ impl<'a> Lexer<'a> {
 
     /// Parse a backtick raw string: `...`
     /// No escape sequences are processed — everything between backticks is literal.
-    pub fn raw_str(&mut self) -> Token {
-        let mut text = String::new();
-        self.chars.next(); // skip opening `
-        while let Some(&c) = self.chars.peek() {
-            if c == '`' {
-                self.chars.next();
-                break;
-            }
-            text.push(c);
-            self.chars.next();
-        }
-        Token::str(self.pos(text.len()), text.into())
-    }
 
     /// Plan 168: Parse a triple-quoted multi-line string: """..."""
     /// The LAST three consecutive quotes close the string.

@@ -2610,22 +2610,6 @@ impl<'a> Parser<'a> {
 
     /// Skip balanced parentheses: (...)
     /// Plan 159 Phase 6B-2: Used for skipping attribute arguments like #[derive(Debug, Clone)]
-    pub fn skip_balanced_parens(&mut self) -> AutoResult<()> {
-        if !self.is_kind(TokenKind::LParen) {
-            return Ok(());
-        }
-        self.next(); // skip (
-        let mut depth = 1;
-        while depth > 0 && !self.is_kind(TokenKind::EOF) {
-            if self.is_kind(TokenKind::LParen) {
-                depth += 1;
-            } else if self.is_kind(TokenKind::RParen) {
-                depth -= 1;
-            }
-            self.next();
-        }
-        Ok(())
-    }
 
     pub fn skip_empty_lines(&mut self) -> usize {
         let mut count = 0;

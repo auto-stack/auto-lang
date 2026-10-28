@@ -21,10 +21,6 @@ pub struct PyKnowledge {
 }
 
 impl PyKnowledge {
-    pub fn item_module(&self, item: &str) -> Option<&String> {
-        self.py_items.get(item)
-    }
-
     /// 名字是否静态已知 py（导入项/裸模块/函数内 py-known 局部）。
     pub fn is_known(&self, fn_name: &str, ident: &str) -> bool {
         self.py_items.contains_key(ident)

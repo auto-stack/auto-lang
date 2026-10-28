@@ -304,13 +304,6 @@ pub enum CType {
 /// C value for FFI marshaling
 ///
 /// Represents a value that can be passed to/from C code
-#[derive(Debug, Clone, PartialEq)]
-pub enum CValue {
-    Int(i32),
-    Float(f32),
-    Str(String),
-    Void,
-}
 
 /// FFI function registry for managing multiple FFI bridges
 ///
@@ -401,7 +394,7 @@ pub fn register_extern_c_function(
 // Plan 092: Rust FFI Bridge with Sandbox Integration
 // =============================================================================
 
-use auto_cache::{CrateMetadata, CrateRegistry, Sandbox};
+use auto_cache::{CrateRegistry, Sandbox};
 
 /// Rust FFI Bridge with Sandbox integration
 ///
@@ -881,16 +874,6 @@ impl RustFfiBridge {
             signature.returns.push_return(result, task, vm);
             Ok(())
         }
-    }
-
-    /// Register crate metadata with the registry
-    pub fn register_crate(&mut self, metadata: &CrateMetadata) -> Result<(), VMError> {
-        if let Some(ref registry) = self.registry {
-            registry
-                .register(metadata)
-                .map_err(|e| VMError::FFI(format!("Registry error: {}", e)))?;
-        }
-        Ok(())
     }
 }
 

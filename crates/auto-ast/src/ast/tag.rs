@@ -28,15 +28,6 @@ impl Tag {
         }
     }
 
-    pub fn with_methods(name: Name, fields: Vec<TagField>, methods: Vec<super::Fn>) -> Self {
-        Self {
-            name,
-            generic_params: Vec::new(),
-            fields,
-            methods,
-        }
-    }
-
     pub fn enum_name(&self, field_name: &str) -> AutoStr {
         format!("{}_{}", self.name.to_uppercase(), field_name.to_uppercase()).into()
     }

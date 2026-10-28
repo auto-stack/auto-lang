@@ -521,12 +521,6 @@ impl Closure {
             is_move: false,
         }
     }
-
-    /// Plan 364 W5: builder for an explicit-move closure.
-    pub fn with_move(mut self) -> Self {
-        self.is_move = true;
-        self
-    }
 }
 
 impl fmt::Display for Closure {

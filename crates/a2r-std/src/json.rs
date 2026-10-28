@@ -10,10 +10,6 @@ pub fn encode<T: serde::Serialize>(value: &T) -> String {
     serde_json::to_string(value).unwrap_or_default()
 }
 
-pub fn encode_pretty(value: &Value) -> String {
-    serde_json::to_string_pretty(value).unwrap_or_default()
-}
-
 // ═══════════════════════════════════════════════════════════
 // Decoding
 // ═══════════════════════════════════════════════════════════

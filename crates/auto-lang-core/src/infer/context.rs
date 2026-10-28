@@ -136,9 +136,6 @@ impl InferenceContext {
     /// Plan 084: 设置/替换 TypeStore 引用
     ///
     /// 用于在创建上下文后切换到共享的 TypeStore。
-    pub fn set_type_store(&mut self, type_store: Arc<std::sync::RwLock<types::TypeStore>>) {
-        self.type_store = type_store;
-    }
 
     /// 查找变量的类型
     ///
@@ -369,9 +366,6 @@ impl InferenceContext {
     /// # 参数
     ///
     /// * `ret` - 返回类型
-    pub fn set_return_type(&mut self, ret: Type) {
-        self.current_ret = Some(ret);
-    }
 
     /// 获取当前函数的返回类型
     ///
@@ -396,9 +390,6 @@ impl InferenceContext {
     /// # 参数
     ///
     /// * `warning` - 类型警告
-    pub fn add_warning(&mut self, warning: Warning) {
-        self.warnings.push(warning);
-    }
 
     /// 检查是否有错误
     pub fn has_errors(&self) -> bool {

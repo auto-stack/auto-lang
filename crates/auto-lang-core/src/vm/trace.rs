@@ -69,13 +69,6 @@ impl TraceCollector {
     }
 
     /// Output records as JSONL (one JSON object per line)
-    pub fn to_jsonl(&self) -> String {
-        self.records
-            .iter()
-            .filter_map(|r| serde_json::to_string(r).ok())
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
 
     pub fn records(&self) -> &[TraceRecord] {
         &self.records

@@ -83,14 +83,6 @@ impl AutoInterpreter {
     }
 
     /// Create a stateless interpreter (each eval is independent)
-    pub fn new_stateless() -> Self {
-        Self {
-            vm: VmInterpreter::new(),
-            cache: HashMap::new(),
-            _persistent: false,
-            fstr_note: '$',
-        }
-    }
 
     /// Set the F-string note character for template evaluation
     ///

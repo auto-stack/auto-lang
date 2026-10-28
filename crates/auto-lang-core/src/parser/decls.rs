@@ -1804,45 +1804,6 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse a type alias statement: `type List<T> = List<T, DefaultStorage>;`
-    pub fn parse_type_alias(&mut self) -> AutoResult<Stmt> {
-        self.next(); // skip `type` keyword
-
-        let name = self.parse_name()?;
-
-        // Parse generic parameters (optional) - e.g., type List<T> = ...
-        let mut params = Vec::new();
-        if self.cur.kind == TokenKind::Lt {
-            self.next(); // Consume '<'
-
-            // Parse type parameter names (not full GenericParam, just identifiers)
-            let param_name = self.parse_name()?;
-            params.push(param_name);
-
-            while self.cur.kind == TokenKind::Comma {
-                self.next(); // Consume ','
-                let param_name = self.parse_name()?;
-                params.push(param_name);
-            }
-
-            self.expect(TokenKind::Gt)?; // Consume '>'
-        }
-
-        self.expect(TokenKind::Eq)?;
-
-        let target = self.parse_type()?;
-
-        self.expect(TokenKind::Semi)?;
-
-        // Note: For now, we don't store type aliases in scope.
-        // They'll be resolved during compilation/transpilation.
-        // TODO: Add type alias storage to Universe for resolution
-
-        Ok(Stmt::TypeAlias(TypeAlias {
-            name,
-            params,
-            target,
-        }))
-    }
 
     pub fn type_decl_stmt(&mut self) -> AutoResult<Stmt> {
         self.type_decl_stmt_with_annotation(false, false, Vec::new())

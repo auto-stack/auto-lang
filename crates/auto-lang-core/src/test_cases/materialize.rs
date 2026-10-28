@@ -286,15 +286,3 @@ fn sanitize(id: &str) -> String {
         })
         .collect()
 }
-
-/// Read-only guard evidence helper: hashes of a check outcome's identity.
-pub fn outcome_identity(r: &CheckOutcome) -> String {
-    format!(
-        "{}|{}|{}|{}|{}",
-        r.identity.suite,
-        r.identity.case_file,
-        r.identity.source,
-        r.identity.oracle,
-        r.identity.contract
-    )
-}

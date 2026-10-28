@@ -314,10 +314,6 @@ pub fn emit_event(fields: serde_json::Value) {
 }
 
 /// 测试复位（重装 sink；生产面进程内单实例无此路径）。
-#[cfg(test)]
-pub fn reset_log_sink_for_test() {
-    // OnceLock 无法清空——测试用独立容量探测通道替代（见 tests）。
-}
 
 /// sink 阻塞性负证：容量满后 emit 立即返回（不等待磁盘/不 panic）。
 #[cfg(test)]

@@ -233,13 +233,6 @@ pub enum Stmt {
 }
 
 impl Stmt {
-    pub fn as_fn(&self) -> Option<&Fn> {
-        match self {
-            Stmt::Fn(fn_decl) => Some(fn_decl),
-            _ => None,
-        }
-    }
-
     pub fn is_decl(&self) -> bool {
         match self {
             Stmt::Fn(_)

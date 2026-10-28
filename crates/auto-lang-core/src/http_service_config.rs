@@ -1237,11 +1237,6 @@ pub fn take_active_service_config() -> Option<Arc<HttpServiceConfig>> {
 
 /// 由环境注入的配置 JSON 读取（生成轨/子进程形态）：
 /// `AUTO_HTTP_SERVICE_JSON` 为完整配置文档；不存在 = legacy 面（返回 None）。
-pub fn service_config_json_from_env() -> Option<String> {
-    std::env::var("AUTO_HTTP_SERVICE_JSON")
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-}
 
 #[cfg(test)]
 mod tests {

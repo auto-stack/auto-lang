@@ -444,14 +444,6 @@ impl AdocBlock {
             code: code.into(),
         }
     }
-
-    /// Create a code block with language
-    pub fn code_with_lang(lang: impl Into<String>, code: impl Into<String>) -> Self {
-        AdocBlock::CodeBlock {
-            lang: Some(lang.into()),
-            code: code.into(),
-        }
-    }
 }
 
 impl AdocDocument {
@@ -469,9 +461,6 @@ impl AdocDocument {
     }
 
     /// Add a section to the document
-    pub fn add_section(&mut self, section: AdocSection) {
-        self.sections.push(section);
-    }
 
     /// Add a block to the preamble
     pub fn add_preamble(&mut self, block: AdocBlock) {

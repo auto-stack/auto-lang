@@ -202,14 +202,8 @@ pub async fn post_async(url: &str, body: &str) -> Response {
 }
 
 /// Async PUT。
-pub async fn put_async(url: &str, body: &str) -> Response {
-    verb_response(client::execute(verb_request("PUT", url, Some(body))).await)
-}
 
 /// Async DELETE。
-pub async fn delete_async(url: &str) -> Response {
-    verb_response(client::execute(verb_request("DELETE", url, None)).await)
-}
 
 /// Legacy `http.get_sync`（历史发射面引用）：返回 (status, body 文本)。
 pub fn get_sync(url: &str) -> (u32, String) {

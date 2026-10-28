@@ -152,24 +152,12 @@ pub fn upload_staged_count() -> usize {
 }
 
 /// 可用 active 许可数。
-pub fn upload_active_available() -> usize {
-    SERVICE.active.available_permits()
-}
 
 /// 可用 queue 许可数。
-pub fn upload_queue_available() -> usize {
-    SERVICE.queue.available_permits()
-}
 
 /// cleanup 失败累计（残留可观测性——不宣称零残留）。
-pub fn upload_residual_cleanup_failures() -> usize {
-    RESIDUAL_CLEANUP_FAILS.load(Ordering::SeqCst)
-}
 
 /// gate 后迟到取消计数（仲裁正确性探针）。
-pub fn upload_late_cancel_count() -> usize {
-    LATE_CANCELS.load(Ordering::SeqCst)
-}
 
 // ============================================================================
 // 预检：受信目录配置（同卷/嵌套/存在性——读取 body 之前全部拒绝）

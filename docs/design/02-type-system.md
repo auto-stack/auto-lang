@@ -11,8 +11,9 @@ implemented as **inline `<T: Spec>` syntax** (plan-061, `TypeParam.constraint`)
 — the earlier `#[with(...)]` annotation design was superseded, see the
 design section below for the historical rationale.
 
-**Planned**: Union types (implicit union synthesis exists in `implicit_union.rs`
-for actor routing; user-facing union type syntax not implemented).
+**Planned**: Union types (user-facing union type syntax not implemented; the
+Plan-125 implicit-union synthesis prototype `implicit_union.rs` had zero
+consumers and was retired by PLAN-869 batch-2).
 
 ## Design
 

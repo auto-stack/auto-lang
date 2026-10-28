@@ -67,14 +67,6 @@ impl FutureData {
             result: None,
         }
     }
-
-    pub fn with_value(id: usize, value: Value) -> Self {
-        Self {
-            id,
-            state: FutureState::Ready,
-            result: Some(Box::new(value)),
-        }
-    }
 }
 
 /// Actual value data (stored in Universe, separate from ID)
@@ -132,11 +124,6 @@ pub enum AccessError {
 }
 
 /// Component of a flattened access path for iterative processing
-#[derive(Debug, Clone)]
-pub enum PathComponent {
-    Field(AutoStr),
-    Index(usize),
-}
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct VmRef {
@@ -279,9 +266,6 @@ impl Value {
     }
 
     /// Create an empty owned string value
-    pub fn empty_owned_str() -> Self {
-        Value::String(Str::from_str(""))
-    }
 
     /// Create a StrSlice from a string slice
     ///
@@ -297,14 +281,8 @@ impl Value {
     /// # Safety
     ///
     /// Caller must ensure the AutoStr outlives the StrSlice
-    pub unsafe fn str_slice_from_auto_str(s: &AutoStr) -> Self {
-        Value::StrSlice(StrSlice::from_auto_str(s))
-    }
 
     /// Create an empty StrSlice
-    pub fn empty_str_slice() -> Self {
-        Value::StrSlice(StrSlice::empty())
-    }
 
     /// Create a C-compatible null-terminated string
     pub fn cstr(text: &str) -> Self {
@@ -312,21 +290,11 @@ impl Value {
     }
 
     /// Create a CStr from an AutoStr
-    pub fn cstr_from_astr(text: &AutoStr) -> Self {
-        Value::CStr(CStr::from_astr(text))
-    }
 
     /// Create an empty CStr
-    pub fn empty_cstr() -> Self {
-        Value::CStr(CStr::from_str(""))
-    }
 
     pub fn error(text: impl Into<AutoStr>) -> Self {
         Value::Error(text.into())
-    }
-
-    pub fn empty_array() -> Self {
-        Value::Array(Array::default())
     }
 
     pub fn array(items: impl Into<Array>) -> Self {
@@ -360,92 +328,6 @@ impl Value {
 
     pub fn is_error(&self) -> bool {
         matches!(self, Value::Error(_))
-    }
-
-    /// Convert Value to ValueData (for storage in Universe)
-    pub fn into_data(self) -> ValueData {
-        match self {
-            Value::Byte(v) => ValueData::Byte(v),
-            Value::Int(v) => ValueData::Int(v),
-            Value::Uint(v) => ValueData::Uint(v),
-            Value::USize(v) => ValueData::USize(v),
-            Value::I8(v) => ValueData::I8(v),
-            Value::U8(v) => ValueData::U8(v),
-            Value::I64(v) => ValueData::I64(v),
-            Value::Float(v) => ValueData::Float(v),
-            Value::Double(v) => ValueData::Double(v),
-            Value::Bool(v) => ValueData::Bool(v),
-            Value::Char(v) => ValueData::Char(v),
-            Value::Nil => ValueData::Nil,
-            Value::Str(v) => ValueData::Str(v),
-            Value::String(v) => ValueData::String(v),
-            Value::Array(v) => {
-                // Convert Array values to ValueIDs (simplified - allocates each)
-                // TODO: This is inefficient - needs batch allocation
-                let vids = v.iter().map(|_| ValueID(0)).collect();
-                ValueData::Array(vids)
-            }
-            Value::Obj(v) => {
-                // Convert Obj values to ValueIDs (simplified)
-                let fields = v.iter().map(|(k, _)| (k.clone(), ValueID(0))).collect();
-                ValueData::Obj(fields)
-            }
-            Value::Pair(_k, _v) => {
-                // TODO: Convert nested values
-                ValueData::Pair(Box::new(ValueID(0)), Box::new(ValueID(0)))
-            }
-            Value::Range(l, r) => ValueData::Range(l, r),
-            Value::RangeEq(l, r) => ValueData::RangeEq(l, r),
-            Value::StrSlice(v) => ValueData::StrSlice(v),
-            Value::CStr(v) => ValueData::CStr(v),
-            Value::Instance(v) => ValueData::Opaque(Box::new(Value::Instance(v))),
-            // Other variants not yet supported in ValueData
-            _ => ValueData::Nil,
-        }
-    }
-
-    /// Convert ValueData to Value (for reading from Universe)
-    /// Note: Nested ValueIDs remain as references, not fully resolved
-    pub fn from_data(data: ValueData) -> Self {
-        match data {
-            ValueData::Byte(v) => Value::Byte(v),
-            ValueData::Int(v) => Value::Int(v),
-            ValueData::Uint(v) => Value::Uint(v),
-            ValueData::USize(v) => Value::USize(v),
-            ValueData::I8(v) => Value::I8(v),
-            ValueData::U8(v) => Value::U8(v),
-            ValueData::I64(v) => Value::I64(v),
-            ValueData::Float(v) => Value::Float(v),
-            ValueData::Double(v) => Value::Double(v),
-            ValueData::Bool(v) => Value::Bool(v),
-            ValueData::Char(v) => Value::Char(v),
-            ValueData::Nil => Value::Nil,
-            ValueData::Str(v) => Value::Str(v),
-            ValueData::String(v) => Value::String(v),
-            ValueData::StrSlice(v) => Value::StrSlice(v),
-            ValueData::CStr(v) => Value::CStr(v),
-            ValueData::Array(vids) => {
-                // Convert ValueIDs to ValueRefs for later resolution
-                let values: Vec<Value> = vids.iter().map(|vid| Value::ValueRef(*vid)).collect();
-                Value::Array(values.into())
-            }
-            ValueData::Obj(fields) => {
-                // Convert ValueIDs to ValueRefs for later resolution
-                let mut obj = Obj::new();
-                for (k, vid) in fields.iter() {
-                    obj.set(k.clone(), Value::ValueRef(*vid));
-                }
-                Value::obj(obj)
-            }
-            ValueData::Pair(_l, _r) => {
-                // TODO: This needs proper resolution via Universe
-                Value::Pair(ValueKey::Int(0), Box::new(Value::Nil))
-            }
-            ValueData::Range(l, r) => Value::Range(l, r),
-            ValueData::RangeEq(l, r) => Value::RangeEq(l, r),
-            // Opaque values - unwrap and return the stored Value
-            ValueData::Opaque(v) => *v,
-        }
     }
 }
 
@@ -766,25 +648,10 @@ impl Value {
         }
     }
 
-    pub fn as_astr(&self) -> &AutoStr {
-        match self {
-            Value::Str(value) => value,
-            _ => &ASTR_EMPTY,
-        }
-    }
-
     pub fn as_bool(&self) -> bool {
         match self {
             Value::Bool(value) => *value,
             _ => false,
-        }
-    }
-
-    pub fn as_uint(&self) -> u32 {
-        match self {
-            Value::Uint(value) => *value,
-            Value::Int(value) => *value as u32,
-            _ => 0,
         }
     }
 

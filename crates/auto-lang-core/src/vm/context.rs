@@ -88,10 +88,8 @@ impl Default for VmContext {
 }
 
 /// VM function signature
-pub type NativeFn = fn(&mut VmContext, Value) -> Value;
 
 /// VM method signature
-pub type NativeMethod = fn(&mut VmContext, &mut Value, Vec<Value>) -> Value;
 
 #[cfg(test)]
 mod tests {

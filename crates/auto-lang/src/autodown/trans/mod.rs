@@ -79,7 +79,6 @@ pub trait AdocTranspiler {
 
 /// Common helpers for transpilers
 pub mod helpers {
-    use super::*;
 
     /// Escape HTML special characters
     pub fn escape_html(s: &str) -> String {
@@ -100,20 +99,6 @@ pub mod helpers {
             .replace('$', "\\$")
     }
 
-    /// Escape text for LaTeX
-    pub fn escape_latex(s: &str) -> String {
-        s.replace('\\', "\\textbackslash{}")
-            .replace('{', "\\{")
-            .replace('}', "\\}")
-            .replace('$', "\\$")
-            .replace('&', "\\&")
-            .replace('#', "\\#")
-            .replace('%', "\\%")
-            .replace('_', "\\_")
-            .replace('~', "\\textasciitilde{}")
-            .replace('^', "\\textasciicircum{}")
-    }
-
     /// Generate section ID from title
     pub fn section_id(title: &str) -> String {
         title
@@ -122,25 +107,5 @@ pub mod helpers {
             .replace(|c: char| !c.is_alphanumeric() && c != '-', "")
             .trim_matches('-')
             .to_string()
-    }
-
-    /// Format metadata as YAML
-    pub fn format_yaml_metadata(metadata: &AdocMetadata) -> String {
-        let mut yaml = String::from("---\n");
-
-        if let Some(author) = &metadata.author {
-            yaml.push_str(&format!("author: \"{}\"\n", author));
-        }
-
-        if let Some(date) = &metadata.date {
-            yaml.push_str(&format!("date: \"{}\"\n", date));
-        }
-
-        for (key, value) in &metadata.custom {
-            yaml.push_str(&format!("{}: \"{}\"\n", key, value));
-        }
-
-        yaml.push_str("---\n");
-        yaml
     }
 }

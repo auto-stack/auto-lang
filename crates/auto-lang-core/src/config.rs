@@ -117,20 +117,6 @@ impl AutoConfig {
         self.root.get_prop("version").to_astr()
     }
 
-    pub fn list_target_names(&self) -> Vec<AutoStr> {
-        self.root
-            .kids_iter()
-            .filter(|(_, kid)| matches!(kid, auto_val::Kid::Node(_)))
-            .map(|(_, kid)| {
-                if let auto_val::Kid::Node(n) = kid {
-                    n.title()
-                } else {
-                    unreachable!()
-                }
-            })
-            .collect()
-    }
-
     pub fn to_xml(&self) -> AutoStr {
         AutoStr::new()
     }

@@ -1655,9 +1655,6 @@ impl Codegen {
     ///
     /// Used to transfer type registry from Parser to Codegen.
     /// This ensures types registered during parsing are available for field lookup.
-    pub fn set_infer_ctx(&mut self, infer_ctx: InferenceContext) {
-        self.infer_ctx = infer_ctx;
-    }
 
     /// Check if a name is a registered type (type, enum, or spec)
     ///

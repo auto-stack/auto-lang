@@ -1383,16 +1383,6 @@ impl<'a> Parser<'a> {
         })
     }
 
-    #[allow(unused)]
-    pub fn is_key(expr: &Expr) -> bool {
-        match expr {
-            Expr::Ident(_) => true,
-            Expr::Int(_) => true,
-            Expr::Bool(_) => true,
-            _ => false,
-        }
-    }
-
     pub fn sep_obj(&mut self) -> AutoResult<()> {
         if self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Newline) {
             self.next();

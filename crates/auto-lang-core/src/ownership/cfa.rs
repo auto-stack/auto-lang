@@ -164,19 +164,6 @@ impl LastUseAnalyzer {
             .or_insert_with(HashSet::new)
             .insert(self.current_id);
     }
-
-    /// Check if an expression is a last use for a variable
-    pub fn is_last_use(&self, name: &Name, expr_id: ExprId) -> bool {
-        self.last_uses
-            .get(name)
-            .map(|uses| uses.contains(&expr_id))
-            .unwrap_or(false)
-    }
-
-    /// Get all variables that have last uses tracked
-    pub fn tracked_variables(&self) -> impl Iterator<Item = &Name> {
-        self.last_uses.keys()
-    }
 }
 
 impl Default for LastUseAnalyzer {

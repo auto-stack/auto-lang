@@ -327,11 +327,6 @@ impl ExecutionEngine {
     pub fn get_builtin(&self, name: &str) -> Option<&Value> {
         self.builtins.get(name)
     }
-
-    /// Insert a builtin function
-    pub fn insert_builtin(&mut self, name: AutoStr, value: Value) {
-        self.builtins.insert(name, value);
-    }
 }
 
 impl Default for ExecutionEngine {

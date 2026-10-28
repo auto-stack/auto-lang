@@ -19,11 +19,6 @@ impl SourceLocation {
             source_line: String::new(),
         }
     }
-
-    pub fn with_source_line(mut self, line: String) -> Self {
-        self.source_line = line;
-        self
-    }
 }
 
 impl std::fmt::Display for SourceLocation {

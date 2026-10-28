@@ -145,22 +145,6 @@ impl CrateRegistry {
     }
 
     /// Look up a specific version of a crate
-    pub fn lookup_version(&self, name: &str, version: &str) -> Result<Option<CrateMetadata>> {
-        let mut stmt = self.db.prepare(
-            r#"
-            SELECT name, version, rustc_version, target, dependencies, abi_hash, library_path, compiled_at, source
-            FROM crates WHERE name = ?1 AND version = ?2
-            "#
-        )?;
-
-        let mut rows = stmt.query(rusqlite::params![name, version])?;
-
-        if let Some(row) = rows.next()? {
-            Ok(Some(self.row_to_metadata(row)?))
-        } else {
-            Ok(None)
-        }
-    }
 
     /// Get all registered crates
     pub fn list_all(&self) -> Result<Vec<CrateMetadata>> {
@@ -187,9 +171,27 @@ impl CrateRegistry {
 
         let mut crates = Vec::new();
         for row in rows {
-            let (name, version, rustc_version, target, deps_json, abi_hash, library_path, compiled_at, source_int) = row?;
+            let (
+                name,
+                version,
+                rustc_version,
+                target,
+                deps_json,
+                abi_hash,
+                library_path,
+                compiled_at,
+                source_int,
+            ) = row?;
             let meta = self.parse_metadata(
-                name, version, rustc_version, target, deps_json, abi_hash, library_path, compiled_at, source_int
+                name,
+                version,
+                rustc_version,
+                target,
+                deps_json,
+                abi_hash,
+                library_path,
+                compiled_at,
+                source_int,
             )?;
             crates.push(meta);
         }
@@ -215,7 +217,8 @@ impl CrateRegistry {
             return Ok(());
         }
 
-        let meta = self.lookup(name)?
+        let meta = self
+            .lookup(name)?
             .ok_or_else(|| RegistryError::NotFound(name.to_string()))?;
 
         visited.insert(name.to_string());
@@ -243,7 +246,9 @@ impl CrateRegistry {
 
     /// Get the number of registered crates
     pub fn count(&self) -> Result<usize> {
-        let count: i64 = self.db.query_row("SELECT COUNT(*) FROM crates", [], |row| row.get(0))?;
+        let count: i64 = self
+            .db
+            .query_row("SELECT COUNT(*) FROM crates", [], |row| row.get(0))?;
         Ok(count as usize)
     }
 
@@ -270,7 +275,15 @@ impl CrateRegistry {
         let source_int: i32 = row.get(8)?;
 
         self.parse_metadata(
-            name, version, rustc_version, target, deps_json, abi_hash, library_path, compiled_at, source_int
+            name,
+            version,
+            rustc_version,
+            target,
+            deps_json,
+            abi_hash,
+            library_path,
+            compiled_at,
+            source_int,
         )
     }
 
@@ -364,8 +377,12 @@ mod tests {
     fn test_list_all() {
         let (_temp, registry) = create_test_registry();
 
-        registry.register(&create_test_metadata("serde", "1.0.0")).unwrap();
-        registry.register(&create_test_metadata("tokio", "1.0.0")).unwrap();
+        registry
+            .register(&create_test_metadata("serde", "1.0.0"))
+            .unwrap();
+        registry
+            .register(&create_test_metadata("tokio", "1.0.0"))
+            .unwrap();
 
         let crates = registry.list_all().unwrap();
         assert_eq!(crates.len(), 2);
@@ -375,7 +392,9 @@ mod tests {
     fn test_remove() {
         let (_temp, registry) = create_test_registry();
 
-        registry.register(&create_test_metadata("serde", "1.0.0")).unwrap();
+        registry
+            .register(&create_test_metadata("serde", "1.0.0"))
+            .unwrap();
         assert!(registry.contains("serde").unwrap());
 
         let removed = registry.remove("serde").unwrap();
@@ -389,17 +408,23 @@ mod tests {
 
         assert_eq!(registry.count().unwrap(), 0);
 
-        registry.register(&create_test_metadata("serde", "1.0.0")).unwrap();
+        registry
+            .register(&create_test_metadata("serde", "1.0.0"))
+            .unwrap();
         assert_eq!(registry.count().unwrap(), 1);
 
-        registry.register(&create_test_metadata("tokio", "1.0.0")).unwrap();
+        registry
+            .register(&create_test_metadata("tokio", "1.0.0"))
+            .unwrap();
         assert_eq!(registry.count().unwrap(), 2);
     }
 
     #[test]
     fn test_in_memory() {
         let registry = CrateRegistry::in_memory().unwrap();
-        registry.register(&create_test_metadata("test", "1.0.0")).unwrap();
+        registry
+            .register(&create_test_metadata("test", "1.0.0"))
+            .unwrap();
         assert!(registry.contains("test").unwrap());
     }
 }

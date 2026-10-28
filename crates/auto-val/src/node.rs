@@ -1,5 +1,5 @@
 use crate::kids::{Kid, Kids};
-use crate::meta::{Arg, Args, MetaID};
+use crate::meta::{Arg, Args};
 use crate::obj::Obj;
 use crate::pair::ValueKey;
 use crate::types::Type;
@@ -314,14 +314,8 @@ impl Node {
     }
 
     /// Check if a key is an arg (in first num_args positions)
-    pub fn is_arg(&self, key: &str) -> bool {
-        self.args_iter().any(|(k, _)| k.to_astr() == key)
-    }
 
     /// Check if a key is a body prop (after first num_args positions)
-    pub fn is_body_prop(&self, key: &str) -> bool {
-        self.body_props_iter().any(|(k, _)| k.to_astr() == key)
-    }
 
     /// Get an arg by key
     pub fn get_arg(&self, key: &str) -> Option<Value> {
@@ -331,21 +325,10 @@ impl Node {
     }
 
     /// Get a body prop by key
-    pub fn get_body_prop(&self, key: &str) -> Option<Value> {
-        self.body_props_iter()
-            .find(|(k, _)| k.to_astr() == key)
-            .map(|(_, v)| v.clone())
-    }
 
     /// Get all arg keys
-    pub fn arg_keys(&self) -> Vec<ValueKey> {
-        self.args_iter().map(|(k, _)| k.clone()).collect()
-    }
 
     /// Get all body prop keys
-    pub fn body_prop_keys(&self) -> Vec<ValueKey> {
-        self.body_props_iter().map(|(k, _)| k.clone()).collect()
-    }
 
     /// Add an arg to the unified props system
     pub fn add_arg_unified(&mut self, key: impl Into<ValueKey>, value: impl Into<Value>) {
@@ -365,17 +348,6 @@ impl Node {
     }
 
     /// Set main argument (updates or creates first arg)
-    pub fn set_main_arg_unified(&mut self, arg: impl Into<Value>) {
-        if self.num_args == 0 {
-            // Create first arg with empty key
-            self.add_arg_unified("", arg);
-        } else {
-            // Update first arg
-            if let Some((key, _)) = self.props.iter().next() {
-                self.props.set(key.clone(), arg.into());
-            }
-        }
-    }
 
     // ========== Unified Kids API ==========
 
@@ -405,24 +377,12 @@ impl Node {
     }
 
     /// Add a lazy kid (MetaID reference)
-    pub fn add_lazy_kid(&mut self, key: impl Into<ValueKey>, meta: MetaID) {
-        self.kids.add_lazy(key, meta);
-    }
 
     /// Remove a kid by key
-    pub fn remove_kid(&mut self, key: &ValueKey) -> Option<Kid> {
-        self.kids.remove(key)
-    }
 
     /// Get lazy reference (body_ref equivalent)
-    pub fn get_kids_ref(&self) -> Option<&MetaID> {
-        self.kids.get_lazy_ref()
-    }
 
     /// Set lazy reference (body_ref equivalent)
-    pub fn set_kids_ref(&mut self, meta: MetaID) {
-        self.kids.set_lazy_ref(meta);
-    }
 
     pub fn nodes(&self, name: &str) -> Vec<&Node> {
         self.kids
@@ -454,7 +414,9 @@ impl Node {
         for (_, kid) in self.kids.iter() {
             if let Kid::Node(node) = kid {
                 let name = node.name.clone();
-                kids.entry(name).or_insert_with(Vec::new).push(node.as_ref());
+                kids.entry(name)
+                    .or_insert_with(Vec::new)
+                    .push(node.as_ref());
             }
         }
         kids
@@ -475,12 +437,6 @@ impl Node {
             }
         }
         vec
-    }
-
-    pub fn fill_node_body(&mut self) -> &mut Self {
-        // This method is deprecated - kids are now populated directly
-        // Keeping for API compatibility but it's a no-op
-        self
     }
 
     // ========== Chainable Builder Methods ==========
@@ -725,7 +681,10 @@ impl NodeBuilder {
     }
 
     /// Add properties to the node in a batch operation
-    pub fn props(mut self, props: impl IntoIterator<Item = (impl Into<ValueKey>, impl Into<Value>)>) -> Self {
+    pub fn props(
+        mut self,
+        props: impl IntoIterator<Item = (impl Into<ValueKey>, impl Into<Value>)>,
+    ) -> Self {
         for (key, value) in props {
             self.props.push((key.into(), value.into()));
         }
@@ -733,7 +692,12 @@ impl NodeBuilder {
     }
 
     /// Conditionally add a property based on a runtime condition
-    pub fn prop_if(mut self, condition: bool, key: impl Into<ValueKey>, value: impl Into<Value>) -> Self {
+    pub fn prop_if(
+        mut self,
+        condition: bool,
+        key: impl Into<ValueKey>,
+        value: impl Into<Value>,
+    ) -> Self {
         if condition {
             self.props.push((key.into(), value.into()));
         }
@@ -763,14 +727,6 @@ impl NodeBuilder {
     }
 
     /// Add an indexed child node
-    pub fn child_kid(mut self, index: i32, node: Node) -> Self {
-        let mut id = node.id().to_string();
-        id.insert_str(0, &format!("{}.", index));
-        let mut node = node;
-        node.id = id.into();
-        self.kids.push(node);
-        self
-    }
 
     /// Set the node's text content
     pub fn text(mut self, text: impl Into<AutoStr>) -> Self {
@@ -780,7 +736,8 @@ impl NodeBuilder {
 
     /// Add a positional argument
     pub fn arg(mut self, value: impl Into<Value>) -> Self {
-        self.args.push((ValueKey::Str(AutoStr::default()), value.into()));
+        self.args
+            .push((ValueKey::Str(AutoStr::default()), value.into()));
         self
     }
 
@@ -791,7 +748,10 @@ impl NodeBuilder {
     }
 
     /// Add arguments in a batch operation
-    pub fn args(mut self, args: impl IntoIterator<Item = (impl Into<ValueKey>, impl Into<Value>)>) -> Self {
+    pub fn args(
+        mut self,
+        args: impl IntoIterator<Item = (impl Into<ValueKey>, impl Into<Value>)>,
+    ) -> Self {
         for (key, value) in args {
             self.args.push((key.into(), value.into()));
         }
@@ -1291,10 +1251,7 @@ mod tests {
 
     #[test]
     fn test_with_obj() {
-        let obj = Obj::new()
-            .with("a", 1)
-            .with("b", 2)
-            .with("c", 3);
+        let obj = Obj::new().with("a", 1).with("b", 2).with("c", 3);
         let node = Node::new("test").with_obj(obj);
 
         assert_eq!(node.get_prop_of("a"), Value::Int(1));
@@ -1477,9 +1434,7 @@ mod tests {
 
     #[test]
     fn test_builder_with_id() {
-        let node = Node::builder("db")
-            .id("my_db")
-            .build();
+        let node = Node::builder("db").id("my_db").build();
 
         assert_eq!(node.name, "db");
         assert_eq!(node.id, "my_db");
@@ -1568,18 +1523,14 @@ mod tests {
 
     #[test]
     fn test_builder_text() {
-        let node = Node::builder("paragraph")
-            .text("Hello, world!")
-            .build();
+        let node = Node::builder("paragraph").text("Hello, world!").build();
 
         assert_eq!(node.text, AutoStr::from("Hello, world!"));
     }
 
     #[test]
     fn test_builder_arg() {
-        let node = Node::builder("db")
-            .arg("my_database")
-            .build();
+        let node = Node::builder("db").arg("my_database").build();
 
         assert_eq!(node.main_arg().to_astr(), AutoStr::from("my_database"));
     }
@@ -1614,7 +1565,10 @@ mod tests {
         assert_eq!(node.get_prop_of("version"), Value::Str("1.0".into()));
         let db_nodes = node.get_nodes("database");
         assert_eq!(db_nodes.len(), 1);
-        assert_eq!(db_nodes[0].get_prop_of("host"), Value::Str("localhost".into()));
+        assert_eq!(
+            db_nodes[0].get_prop_of("host"),
+            Value::Str("localhost".into())
+        );
         assert_eq!(db_nodes[0].get_prop_of("ssl"), Value::Bool(true));
         assert!(!db_nodes[0].has_nodes("pool")); // pool not added because enable_pool is false
     }
@@ -1649,10 +1603,16 @@ mod tests {
 
         let db_nodes = node.get_nodes("database");
         assert_eq!(db_nodes.len(), 1);
-        assert_eq!(db_nodes[0].get_prop_of("host"), Value::Str("localhost".into()));
+        assert_eq!(
+            db_nodes[0].get_prop_of("host"),
+            Value::Str("localhost".into())
+        );
 
         let redis_nodes = node.get_nodes("redis");
         assert_eq!(redis_nodes.len(), 1);
-        assert_eq!(redis_nodes[0].get_prop_of("host"), Value::Str("127.0.0.1".into()));
+        assert_eq!(
+            redis_nodes[0].get_prop_of("host"),
+            Value::Str("127.0.0.1".into())
+        );
     }
 }

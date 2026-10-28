@@ -548,13 +548,6 @@ impl QueryEngine {
             total_size_bytes,
         }
     }
-
-    /// Get the underlying database as Arc<RwLock<Database>> (for sharing)
-    ///
-    /// **Plan 065 Phase 3**: Returns Arc<RwLock<Database>> instead of Arc<Database>
-    pub fn database_arc(&self) -> Arc<RwLock<Database>> {
-        Arc::clone(&self.db)
-    }
 }
 
 /// Cache statistics

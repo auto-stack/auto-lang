@@ -59,11 +59,6 @@ impl OwnershipTier {
     pub fn is_borrow(self) -> bool {
         matches!(self, OwnershipTier::BorrowView | OwnershipTier::BorrowMut)
     }
-
-    /// True if this tier is a smart-pointer fallback (Tier 3 or 4).
-    pub fn is_smart_pointer(self) -> bool {
-        matches!(self, OwnershipTier::RcRefCell | OwnershipTier::ArcMutex)
-    }
 }
 
 impl fmt::Display for OwnershipTier {

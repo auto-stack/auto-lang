@@ -271,9 +271,6 @@ impl ModuleCache {
     ///
     /// 如果接口哈希未变，说明 API 未变更，可以安全使用缓存。
     /// 如果接口哈希变更，说明 API 可能已变更，需要重新编译依赖方。
-    pub fn is_interface_valid(&self, other: &ModuleCache) -> bool {
-        self.interface_hash == other.interface_hash && self.interface_hash != 0
-    }
 
     /// 添加依赖
     pub fn add_dependency(&mut self, dep: impl Into<String>) {
@@ -444,23 +441,10 @@ impl AutoCache {
     }
 
     /// 获取所有缓存的模块路径
-    pub fn cached_modules(&self) -> Vec<&String> {
-        self.modules.keys().collect()
-    }
 
     /// 验证所有缓存，移除无效的
     ///
     /// 返回移除的缓存数量
-    pub fn validate_and_clean(&mut self) -> usize {
-        let mut removed = 0;
-        for entries in self.modules.values_mut() {
-            let before = entries.len();
-            entries.retain(|cache| cache.is_valid());
-            removed += before - entries.len();
-        }
-        self.modules.retain(|_, v| !v.is_empty());
-        removed
-    }
 
     /// 获取模块的依赖
     pub fn get_dependencies(&self, module_path: &str) -> Option<&Vec<String>> {
@@ -471,23 +455,6 @@ impl AutoCache {
     }
 
     /// 检查模块及其所有依赖是否有效
-    pub fn is_valid_with_deps(&self, module_path: &str) -> bool {
-        if !self.is_cached_and_valid(module_path) {
-            return false;
-        }
-
-        if let Some(caches) = self.modules.get(module_path) {
-            if let Some(cache) = caches.first() {
-                for dep in &cache.dependencies {
-                    if !self.is_cached_and_valid(dep) {
-                        return false;
-                    }
-                }
-            }
-        }
-
-        true
-    }
 
     /// 获取缓存统计信息
     pub fn stats(&self) -> CacheStats {

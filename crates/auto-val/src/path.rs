@@ -64,7 +64,8 @@ impl AutoPath {
     }
 
     pub fn filename(&self) -> AutoStr {
-        self.path.file_name()
+        self.path
+            .file_name()
             .and_then(|n| n.to_str())
             .map(|n| n.into())
             .unwrap_or_default()
@@ -201,35 +202,7 @@ impl AutoPath {
 }
 
 /// File system operations
-impl AutoPath {
-    pub fn clean_with_parents(&mut self) -> AutoResult<()> {
-        // 0. check wether the directory is sub folder of working directory
-        let cwd = AutoPath::from(std::env::current_dir()?).abs();
-        let abs_path = self.abs();
-        if !abs_path.starts_with(cwd.as_str()) {
-            return Err(format!(
-                "Path {} is not a subdirectory of working directory {}",
-                abs_path, cwd
-            )
-            .into());
-        }
-        // 1. remove directory at the path
-        println!("removing ... {}", self.path().display());
-        std::fs::remove_dir_all(self.path())?;
-        // 2. recursively check parents: if empty, remove directory
-        let mut parent = self.parent();
-        while parent.to_astr() != "." && parent.unified() != cwd {
-            if parent.is_empty()? {
-                println!("removing ... {}", parent.path().display());
-                std::fs::remove_dir_all(parent.path())?;
-                parent = parent.parent();
-            } else {
-                break;
-            }
-        }
-        Ok(())
-    }
-}
+impl AutoPath {}
 
 impl From<PathBuf> for AutoPath {
     fn from(path: PathBuf) -> Self {

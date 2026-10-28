@@ -10,7 +10,7 @@
 // This module provides bridge functions to connect AutoCache with
 // the existing AIE Database and CompileSession infrastructure.
 
-use crate::fingerprint::{Fingerprint, CompilationTarget};
+use crate::fingerprint::{CompilationTarget, Fingerprint};
 
 /// AIE Bridge for integrating with existing AIE infrastructure
 ///
@@ -56,7 +56,7 @@ impl AieBridge {
         target: &CompilationTarget,
         dependency_hashes: &[[u8; 32]],
     ) -> Fingerprint {
-        let content_hash = interface_hash;  // Reuse AIE's L3 hash
+        let content_hash = interface_hash; // Reuse AIE's L3 hash
         let context_hash = Fingerprint::compute_context_hash(target);
         let dependency_hash = Self::compute_dep_hash_from_aie(dependency_hashes);
 
@@ -81,7 +81,7 @@ impl AieBridge {
 
         // Sort for determinism
         let mut sorted = dep_hashes.to_vec();
-        sorted.sort();  // [u8; 32] implements Ord lexicographically
+        sorted.sort(); // [u8; 32] implements Ord lexicographically
 
         // Hash each dependency
         for dep_hash in sorted {
@@ -110,32 +110,6 @@ impl AieBridge {
     ) -> String {
         let fp = Self::fingerprint_from_aie(interface_hash, target, &[]);
         format!("{}:{}", module_name, fp.target_hash())
-    }
-
-    /// Extract interface hash from AIE Database (stub)
-    ///
-    /// In Phase 3, this will connect to actual AIE Database.
-    /// For now, it's a placeholder showing the integration point.
-    ///
-    /// # Future Implementation
-    /// ```ignore
-    /// pub fn get_interface_hash(
-    ///     db: &Database,
-    ///     frag_id: &FragId
-    /// ) -> Option<[u8; 32]> {
-    ///     // Get L3 hash from AIE Database
-    ///     let hash = db.get_fragment_iface_hash(frag_id)?;
-    ///
-    ///     // Convert u64 to [u8; 32] by zero-padding
-    ///     let mut bytes = [0u8; 32];
-    ///     bytes[0..8].copy_from_slice(&hash.to_le_bytes());
-    ///
-    ///     Some(bytes)
-    /// }
-    /// ```
-    pub fn get_interface_hash_stub(_frag_id: &str) -> Option<[u8; 32]> {
-        // TODO: Phase 3 - Connect to AIE Database
-        None
     }
 }
 
@@ -183,9 +157,7 @@ impl HashUtils {
 
     /// Convert hash array to hex string
     pub fn array_to_hex(bytes: &[u8; 32]) -> String {
-        bytes.iter()
-            .map(|b| format!("{:02x}", b))
-            .collect()
+        bytes.iter().map(|b| format!("{:02x}", b)).collect()
     }
 }
 
@@ -199,11 +171,7 @@ mod tests {
         let target = CompilationTarget::current();
         let dep_hashes = vec![[1u8; 32], [2u8; 32]];
 
-        let fp = AieBridge::fingerprint_from_aie(
-            interface_hash,
-            &target,
-            &dep_hashes,
-        );
+        let fp = AieBridge::fingerprint_from_aie(interface_hash, &target, &dep_hashes);
 
         assert_eq!(fp.content_hash, interface_hash);
         assert_ne!(fp.context_hash, [0u8; 32]);
@@ -215,11 +183,7 @@ mod tests {
         let interface_hash = [123u8; 32];
         let target = CompilationTarget::current();
 
-        let key = AieBridge::cache_key_from_module(
-            "std:io",
-            interface_hash,
-            &target,
-        );
+        let key = AieBridge::cache_key_from_module("std:io", interface_hash, &target);
 
         assert!(key.starts_with("std:io:"));
         assert!(key.contains("std:io:"));

@@ -16,7 +16,7 @@
 
 use crate::ast::{Fn, Type};
 use crate::scope::{Sid, SymbolTable, SID_PATH_GLOBAL};
-use crate::symbols::{CodePak, SymbolLocation};
+use crate::symbols::SymbolLocation;
 use auto_val::{AutoStr, TypeInfoStore};
 use dashmap::DashMap;
 use std::collections::HashMap;
@@ -310,7 +310,6 @@ pub struct Database {
     cur_spot: Sid,
 
     // Code packages (for transpilation to C/Rust/Python/JS)
-    code_paks: HashMap<Sid, CodePak>,
 
     // =========================================================================
     // PHASE 066: ARTIFACT TRACKING (for incremental transpilation)
@@ -365,7 +364,6 @@ impl Database {
             specs: HashMap::new(),
             lambda_counter: 0,
             cur_spot: SID_PATH_GLOBAL.clone(),
-            code_paks: HashMap::new(),
             // Phase 066: Artifact tracking
             artifacts: HashMap::new(),
         }
@@ -511,10 +509,6 @@ impl Database {
     }
 
     /// Get all files explicitly marked as dirty (does not check hash-based dirty)
-    #[allow(dead_code)]
-    pub fn get_marked_dirty_files(&self) -> Vec<FileId> {
-        self.dirty_files.iter().copied().collect()
-    }
 
     /// Clear dirty flag for a file
     pub fn clear_dirty_flag(&mut self, file_id: FileId) {
@@ -798,14 +792,8 @@ impl Database {
     }
 
     /// Get all symbol locations (for LSP workspace symbols)
-    pub fn get_all_symbol_locations(&self) -> &HashMap<SymbolId, SymbolLocation> {
-        &self.symbol_locations
-    }
 
     /// Clear all symbol locations (when re-parsing a file)
-    pub fn clear_symbol_locations(&mut self) {
-        self.symbol_locations.clear();
-    }
 
     // =========================================================================
     // Type Cache (Layer 2: Cache)
@@ -827,9 +815,6 @@ impl Database {
     }
 
     /// Clear entire type cache
-    pub fn clear_all_types(&self) {
-        self.types.clear();
-    }
 
     // =========================================================================
     // Bytecode Cache (Layer 2: Cache)
@@ -851,9 +836,6 @@ impl Database {
     }
 
     /// Clear entire bytecode cache
-    pub fn clear_all_bytecodes(&self) {
-        self.bytecodes.clear();
-    }
 
     // =========================================================================
     // Dependency Graph Access
@@ -912,9 +894,6 @@ impl Database {
     }
 
     /// Get the type info store (mutable)
-    pub fn type_info_store_mut(&mut self) -> &mut TypeInfoStore {
-        &mut self.type_info_store
-    }
 
     // -------------------------------------------------------------------------
     // Type Alias Management
@@ -955,9 +934,6 @@ impl Database {
     }
 
     /// Get all specs
-    pub fn get_all_specs(&self) -> &HashMap<AutoStr, Rc<crate::ast::SpecDecl>> {
-        &self.specs
-    }
 
     // -------------------------------------------------------------------------
     // Lambda Counter Management
@@ -993,24 +969,12 @@ impl Database {
     // -------------------------------------------------------------------------
 
     /// Get a code package by scope ID
-    pub fn get_code_pak(&self, sid: &Sid) -> Option<&CodePak> {
-        self.code_paks.get(sid)
-    }
 
     /// Insert a code package
-    pub fn insert_code_pak(&mut self, sid: Sid, pak: CodePak) {
-        self.code_paks.insert(sid, pak);
-    }
 
     /// Remove a code package
-    pub fn remove_code_pak(&mut self, sid: &Sid) -> Option<CodePak> {
-        self.code_paks.remove(sid)
-    }
 
     /// Get all code packages
-    pub fn get_all_code_paks(&self) -> &HashMap<Sid, CodePak> {
-        &self.code_paks
-    }
 
     // =========================================================================
     // Query Methods (Phase 2: Incremental Compilation)

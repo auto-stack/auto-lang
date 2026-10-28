@@ -49,7 +49,6 @@ pub mod atom;
 pub mod atom_error;
 pub mod database;
 pub mod dialect;
-pub mod implicit_union;
 pub mod indexer;
 pub mod infer;
 pub mod ownership;

@@ -117,15 +117,6 @@ impl SpecMethod {
             body: None,
         }
     }
-
-    pub fn with_body(name: Name, params: Vec<Param>, ret: Type, body: crate::ast::Expr) -> Self {
-        Self {
-            name,
-            params,
-            ret,
-            body: Some(Box::new(body)),
-        }
-    }
 }
 
 impl fmt::Display for SpecDecl {

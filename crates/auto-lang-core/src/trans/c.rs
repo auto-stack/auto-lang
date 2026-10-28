@@ -126,10 +126,6 @@ impl CTrans {
         }
     }
 
-    pub fn set_stayle(&mut self, style: CStyle) {
-        self.style = style;
-    }
-
     pub fn db(&self) -> Option<&Arc<RwLock<Database>>> {
         self.db.as_ref()
     }
@@ -213,62 +209,6 @@ impl CTrans {
 
     /// Incremental transpilation (Phase 066)
     /// Only transpiles dirty fragments, caches results in Database
-    pub fn trans_incremental_c(
-        &mut self,
-        session: &mut crate::compile::CompileSession,
-        file_id: crate::database::FileId,
-    ) -> AutoResult<std::collections::HashMap<crate::database::FragId, (String, String)>> {
-        use std::collections::HashMap;
-
-        let db = session.db();
-
-        // Get dirty fragments for the file
-        let dirty_frags = {
-            let db_read = db.read().unwrap();
-            let all_frags = db_read.get_fragments_by_file(file_id);
-            all_frags
-                .into_iter()
-                .filter(|frag| db_read.is_fragment_dirty(frag))
-                .collect::<Vec<_>>()
-        };
-
-        let mut results = HashMap::new();
-
-        for frag_id in dirty_frags {
-            let frag_ast = {
-                let db_read = db.read().unwrap();
-                db_read.get_fragment(&frag_id)
-            };
-
-            if let Some(fn_ast) = frag_ast {
-                // Transpile the function (both .c source and .h header)
-                let mut sink = Sink::new(AutoStr::from(format!("{:?}", frag_id)));
-                self.fn_decl(&fn_ast, &mut sink)?;
-
-                let source = String::from_utf8(sink.done()?.to_vec())
-                    .map_err(|e| format!("Invalid UTF-8: {}", e))?;
-                let header = String::from_utf8(sink.header)
-                    .map_err(|e| format!("Invalid UTF-8 in header: {}", e))?;
-
-                results.insert(frag_id.clone(), (source, header));
-
-                // Store artifacts in Database
-                db.write()
-                    .unwrap()
-                    .insert_artifact(crate::database::Artifact {
-                        frag_id: frag_id.clone(),
-                        artifact_type: crate::database::ArtifactType::CSource,
-                        path: std::path::PathBuf::from(format!("{:?}_source.c", frag_id)),
-                        content_hash: 0, // TODO: compute actual hash
-                    });
-
-                // Mark as transpiled
-                db.write().unwrap().mark_transpiled(&frag_id);
-            }
-        }
-
-        Ok(results)
-    }
 
     fn indent(&mut self) {
         self.indent += 1;
@@ -4624,12 +4564,6 @@ pub fn transpile_part(code: &str) -> AutoResult<AutoStr> {
     let mut out = Sink::new(AutoStr::from(""));
     transpiler.code(ast, &mut out)?;
     Ok(String::from_utf8(out.body).unwrap().into())
-}
-
-pub struct CCode {
-    pub includes: Vec<u8>,
-    pub source: Vec<u8>,
-    pub header: Vec<u8>,
 }
 
 // Transpile the code into a whole C program

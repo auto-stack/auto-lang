@@ -184,13 +184,6 @@ impl Obj {
         self.get_array_or(name, &ARRAY_EMPTY)
     }
 
-    pub fn get_array_of_str(&self, name: &str) -> Vec<AutoStr> {
-        self.get_array_of(name)
-            .iter()
-            .map(|v| v.to_astr())
-            .collect()
-    }
-
     pub fn merge(&mut self, other: &Obj) {
         for (key, value) in &other.values {
             self.set(key.clone(), value.clone());
@@ -270,15 +263,6 @@ impl Obj {
     ///     .with("age", 30)
     ///     .with("city", "Boston");
     /// ```
-    pub fn with_pairs(
-        mut self,
-        pairs: impl IntoIterator<Item = (impl Into<ValueKey>, impl Into<Value>)>,
-    ) -> Self {
-        for (key, value) in pairs {
-            self.set(key, value);
-        }
-        self
-    }
 
     /// Create object from key-value pairs iterator (convenience method)
     ///
@@ -291,7 +275,9 @@ impl Obj {
     ///     .with("name", "Alice")
     ///     .with("age", 30);
     /// ```
-    pub fn from_pairs(pairs: impl IntoIterator<Item = (impl Into<ValueKey>, impl Into<Value>)>) -> Self {
+    pub fn from_pairs(
+        pairs: impl IntoIterator<Item = (impl Into<ValueKey>, impl Into<Value>)>,
+    ) -> Self {
         let mut obj = Self::new();
         for (key, value) in pairs {
             obj.set(key, value);
@@ -358,9 +344,7 @@ pub struct ObjBuilder {
 impl ObjBuilder {
     /// Create a new ObjBuilder
     pub fn new() -> Self {
-        Self {
-            pairs: Vec::new(),
-        }
+        Self { pairs: Vec::new() }
     }
 
     /// Add a key-value pair to the object
@@ -370,7 +354,10 @@ impl ObjBuilder {
     }
 
     /// Add key-value pairs to the object in a batch operation
-    pub fn pairs(mut self, pairs: impl IntoIterator<Item = (impl Into<ValueKey>, impl Into<Value>)>) -> Self {
+    pub fn pairs(
+        mut self,
+        pairs: impl IntoIterator<Item = (impl Into<ValueKey>, impl Into<Value>)>,
+    ) -> Self {
         for (key, value) in pairs {
             self.pairs.push((key.into(), value.into()));
         }
@@ -378,7 +365,12 @@ impl ObjBuilder {
     }
 
     /// Conditionally add a key-value pair based on a runtime condition
-    pub fn pair_if(mut self, condition: bool, key: impl Into<ValueKey>, value: impl Into<Value>) -> Self {
+    pub fn pair_if(
+        mut self,
+        condition: bool,
+        key: impl Into<ValueKey>,
+        value: impl Into<Value>,
+    ) -> Self {
         if condition {
             self.pairs.push((key.into(), value.into()));
         }
@@ -437,9 +429,7 @@ mod tests {
 
     #[test]
     fn test_with_pairs() {
-        let obj = Obj::new()
-            .with("name", "Alice")
-            .with("age", 30);
+        let obj = Obj::new().with("name", "Alice").with("age", 30);
 
         assert_eq!(obj.len(), 2);
         assert_eq!(obj.get_str_of("name"), "Alice");
@@ -497,10 +487,7 @@ mod tests {
 
     #[test]
     fn test_builder_basic() {
-        let obj = Obj::builder()
-            .pair("name", "Alice")
-            .pair("age", 30)
-            .build();
+        let obj = Obj::builder().pair("name", "Alice").pair("age", 30).build();
 
         assert_eq!(obj.len(), 2);
         assert_eq!(obj.get_str_of("name"), "Alice");

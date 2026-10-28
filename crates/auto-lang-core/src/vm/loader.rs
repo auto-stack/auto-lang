@@ -101,15 +101,6 @@ impl VMLoader {
     }
 
     /// Create a loader with pre-configured native interface
-    pub fn with_native_interface(
-        package: CompiledPackage,
-        native_interface: NativeInterface,
-    ) -> Self {
-        Self {
-            package,
-            native_interface,
-        }
-    }
 
     /// Get a reference to the native interface for registration
     pub fn native_interface(&mut self) -> &mut NativeInterface {

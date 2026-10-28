@@ -2021,24 +2021,6 @@ fn pop_axis_arg(task: &mut AutoTask, vm: &AutoVM) -> crate::vm::host_capabilitie
 /// Generic print that handles any value type.
 /// If the value is a tagged string index (negative), prints the string.
 /// Otherwise prints as an integer.
-pub fn shim_print(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    {
-        let nv = crate::vm::native::pop_arg_nv(task);
-
-        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
-        if auto_val::is_string(nv) {
-            let str_index = auto_val::decode_string(nv);
-            if let Some(bytes) = vm.get_string(str_index) {
-                vm_print(vm, &String::from_utf8_lossy(&bytes));
-            } else {
-                vm_print(vm, &format!("<invalid string index: {}>", str_index));
-            }
-        } else {
-            vm_print(vm, &auto_val::decode_i32(nv).to_string());
-        }
-    }
-    Ok(())
-}
 
 /// Format a RustStdlibObject for display.
 pub fn format_rust_stdlib_obj(obj: &RustStdlibObject) -> String {

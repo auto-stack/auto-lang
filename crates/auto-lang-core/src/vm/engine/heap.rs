@@ -257,9 +257,6 @@ impl AutoVM {
     /// folded `nodes`, H3b folded `objects`/`arrays` into `heap_objects` — so
     /// all VM object ids resolve in the single registry and the old id-segment
     /// routing collapses to a plain `get_heap_object`.
-    pub fn get_any_object(&self, id: u64) -> Option<Arc<RwLock<dyn HeapObject>>> {
-        self.get_heap_object(id)
-    }
 
     /// Plan 390 §15 H2: rehydrate the `__variant` name of a structured message
     /// held as a `Value::VmRef`. WithBindings variant constructors

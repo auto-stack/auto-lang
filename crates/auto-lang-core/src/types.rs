@@ -381,9 +381,6 @@ impl TypeStore {
     }
 
     /// Plan 190: Check if a type name was imported via use.rust
-    pub fn is_rust_type(&self, name: &str) -> bool {
-        self.rust_types.contains(name)
-    }
 
     /// Plan 190: Get the full Rust path for a use.rust imported type
     pub fn get_rust_type_path(&self, name: &str) -> Option<String> {
@@ -401,9 +398,6 @@ impl TypeStore {
     }
 
     /// 查找函数声明
-    pub fn lookup_fn_decl(&self, name: &Name) -> Option<&Fn> {
-        self.fn_decls.get(name)
-    }
 
     /// 查找函数声明（字符串参数）
     pub fn lookup_fn_decl_str(&self, name: &str) -> Option<&Fn> {
@@ -442,9 +436,6 @@ impl TypeStore {
     }
 
     /// 查找 Enum 声明
-    pub fn lookup_enum_decl(&self, name: &AutoStr) -> Option<Rc<EnumDecl>> {
-        self.enum_decls.get(name).cloned()
-    }
 
     /// 查找 Enum 声明（字符串参数）
     pub fn lookup_enum_decl_str(&self, name: &str) -> Option<Rc<EnumDecl>> {
@@ -452,9 +443,6 @@ impl TypeStore {
     }
 
     /// 检查名称是否为 Enum 类型
-    pub fn is_enum(&self, name: &str) -> bool {
-        self.enum_decls.contains_key(&AutoStr::from(name))
-    }
 
     /// 获取 Enum 变体的值
     pub fn get_enum_variant_value(&self, enum_name: &str, variant_name: &str) -> Option<i32> {
@@ -609,9 +597,6 @@ impl TypeStore {
     }
 
     /// 列出所有泛型模板
-    pub fn list_generic_templates(&self) -> Vec<String> {
-        self.generic_templates.keys().cloned().collect()
-    }
 
     /// Plan 085: 合并另一个 TypeStore 的内容
     ///

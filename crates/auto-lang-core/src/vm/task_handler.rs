@@ -238,9 +238,6 @@ impl TaskHandlerTable {
     }
 
     /// Get handler by bytecode offset
-    pub fn get_handler_by_offset(&self, offset: u32) -> Option<&TaskHandler> {
-        self.handlers.iter().find(|h| h.body_offset == offset)
-    }
 
     /// Get all handlers
     pub fn get_handlers(&self) -> &[TaskHandler] {

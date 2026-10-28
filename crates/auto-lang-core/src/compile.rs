@@ -513,9 +513,6 @@ impl CompileSession {
 
     /// Plan 550 T10: 登记 `#[script]` 文件级 pragma（parser 解析后回填）。
     /// W0 仅作生产者门控的豁免标志；.as 模式管线归 W1。
-    pub fn mark_script(&mut self) {
-        self.script_marked = true;
-    }
 
     /// Plan 555 T02: 回填解析后的脚本方言模式（扩展名+pragma 矩阵产物），
     /// 并保持 550 的 script_marked 派生兼容。
@@ -573,10 +570,6 @@ impl CompileSession {
         std::mem::take(&mut self.compiled_modules)
     }
 
-    pub fn cached_module_count(&self) -> usize {
-        self.auto_cache.len()
-    }
-
     /// Get reference to the database (for sharing with Evaler)
 
     pub fn db(&self) -> Arc<RwLock<Database>> {
@@ -614,10 +607,6 @@ impl CompileSession {
     ///
 
     /// **Plan 065 Phase 3**: Returns None if QueryEngine hasn't been created yet
-
-    pub fn get_query_engine(&self) -> Option<&crate::query::QueryEngine> {
-        self.query_engine.as_ref()
-    }
 
     /// Plan 085: 棰勫鐞?use 璇彞
 
@@ -1265,10 +1254,6 @@ impl CompileSession {
     ///
 
     /// Returns the names of all crates declared via `dep` statements.
-
-    pub fn get_declared_crates(&self) -> &HashSet<String> {
-        &self.declared_crates
-    }
 
     /// Plan 085: 鍔犺浇妯″潡鍒?type_store
 
@@ -2493,14 +2478,6 @@ pub fn compile_once(source: &str, path: &str) -> AutoResult<CompileSession> {
 }
 
 /// Compile a file in a single call (convenience function)
-
-pub fn compile_file_once(path: &str) -> AutoResult<CompileSession> {
-    let mut session = CompileSession::new();
-
-    session.compile_file(path)?;
-
-    Ok(session)
-}
 
 // =============================================================================
 

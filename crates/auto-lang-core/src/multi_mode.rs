@@ -188,9 +188,6 @@ impl MultiModeCompiler {
     }
 
     /// Get all compiled outputs
-    pub fn get_all_outputs(&self) -> &HashMap<String, CompiledOutput> {
-        &self.compiled
-    }
 
     /// Clear the compilation cache
     pub fn clear_cache(&mut self) {

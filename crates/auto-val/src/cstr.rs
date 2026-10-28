@@ -43,9 +43,6 @@ impl CStr {
     /// # Safety
     ///
     /// The bytes must be null-terminated and valid UTF-8
-    pub unsafe fn from_bytes_unchecked(bytes: Vec<u8>) -> Self {
-        CStr { data: bytes }
-    }
 
     /// Create a CStr from a C string pointer
     ///
@@ -93,12 +90,6 @@ impl CStr {
     }
 
     /// Get as Rust CStr (for std::ffi compatibility)
-    pub fn as_cstr(&self) -> &std::ffi::CStr {
-        unsafe {
-            // Safety: data is always null-terminated and valid UTF-8
-            std::ffi::CStr::from_bytes_with_nul_unchecked(&self.data)
-        }
-    }
 
     /// Get as Rust string slice
     pub fn as_str(&self) -> &str {
@@ -111,14 +102,6 @@ impl CStr {
     /// Convert to AutoStr
     pub fn to_astr(&self) -> AutoStr {
         self.as_str().into()
-    }
-
-    /// Create a CStr from an OwnedStr
-    pub fn from_owned_str(s: &crate::owned_str::Str) -> Self {
-        let bytes = s.data();
-        let mut data = bytes.to_vec();
-        data.push(0); // Add null terminator
-        CStr { data }
     }
 }
 

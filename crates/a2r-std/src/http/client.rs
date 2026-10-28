@@ -224,19 +224,10 @@ impl KernelInstance {
     }
 
     /// 传输活跃许可探针（PLAN-727 资源报告）。
-    pub fn transfer_active_available(&self) -> usize {
-        self.transfer_active.available_permits()
-    }
 
     /// 传输队列许可探针。
-    pub fn transfer_queue_available(&self) -> usize {
-        self.transfer_queue.available_permits()
-    }
 
     /// 受限文件操作许可探针。
-    pub fn fs_ops_available(&self) -> usize {
-        self.fs_ops.available_permits()
-    }
 
     /// 在 async 上下文执行一个请求（见模块级拓扑）。
     ///

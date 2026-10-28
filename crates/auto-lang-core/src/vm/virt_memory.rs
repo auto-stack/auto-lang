@@ -18,21 +18,7 @@ pub struct Word {
     pub i: i32,
 }
 
-impl Word {
-    pub fn with_i32(val: i32) -> Self {
-        Self { i: val }
-    }
-
-    pub fn with_u32(val: u32) -> Self {
-        Self { i: val as i32 }
-    }
-
-    pub fn with_f32(val: f32) -> Self {
-        Self {
-            i: unsafe { f32::to_bits(val).cast_signed() },
-        }
-    }
-}
+impl Word {}
 
 /// Simulates MCU Flash (Code Space)
 /// Contains bytecode and constant data

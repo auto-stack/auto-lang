@@ -76,16 +76,8 @@ impl Args {
         }
     }
 
-    pub fn add_name(&mut self, name: impl Into<AutoStr>) {
-        self.args.push(Arg::Name(name.into()));
-    }
-
     pub fn add_pos(&mut self, value: impl Into<Value>) {
         self.args.push(Arg::Pos(value.into()));
-    }
-
-    pub fn add_pair(&mut self, name: &str, value: Value) {
-        self.args.push(Arg::Pair(name.into(), value));
     }
 
     pub fn is_empty(&self) -> bool {

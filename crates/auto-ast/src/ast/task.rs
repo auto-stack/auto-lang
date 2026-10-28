@@ -236,9 +236,6 @@ impl TaskOnBlock {
     }
 
     /// Set the context parameter name
-    pub fn set_context_param(&mut self, name: Name) {
-        self.context_param = Some(name);
-    }
 
     /// Check if this on block has a context parameter
     pub fn has_context(&self) -> bool {

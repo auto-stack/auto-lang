@@ -142,7 +142,6 @@ pub use crate::infer::InferenceContext;
 pub use crate::type_registry::SharedTypeRegistry;
 pub use auto_lang_core::execution_engine;
 pub use auto_lang_core::hash;
-pub use auto_lang_core::implicit_union; // Plan 125 Phase 3.3: Implicit union generator
 pub use auto_lang_core::indexer;
 pub use auto_lang_core::infer;
 pub use auto_lang_core::libs;
@@ -197,12 +196,8 @@ pub use interpreter::AutoInterpreter;
 
 use crate::compile::CompileSession;
 pub use crate::symbols::SymbolLocation;
-use crate::trans::c::CTrans;
-use crate::{trans::Sink, trans::Trans};
-use auto_val::{AutoPath, Obj};
-use std::cell::RefCell;
+use auto_val::Obj;
 use std::path::Path;
-use std::rc::Rc;
 
 use crate::error::AutoResult;
 
@@ -447,17 +442,6 @@ pub fn run_with_session(session: &mut CompileSession, code: &str) -> AutoResult<
 /// String representation of the result, or error message
 ///
 /// **Plan 091**: Now uses AutoVM internally. The scope parameter is deprecated.
-#[allow(deprecated)]
-pub fn run_with_session_and_scope(
-    session: &mut CompileSession,
-    // _scope: Shared<Universe>,  // Plan 091: removed
-    code: &str,
-) -> AutoResult<String> {
-    // Plan 091: Use AutoVM instead of deprecated Interpreter
-    // Note: The scope parameter is deprecated and ignored
-    // AutoVM uses its own state management
-    run_with_session(session, code)
-}
 
 pub fn run_file(path: &str) -> AutoResult<String> {
     // PLAN-816 T-05：单源在 SDK（auto_lang_core::script_entry）；本包为兼容转发。
@@ -517,63 +501,8 @@ pub fn debug_file_agent(path: &str) -> AutoResult<String> {
 // PLAN-816 T-05：私有 helper `debug_autovm_agent` 单源迁 auto_lang_core::script_entry（本包公开入口委托）。
 
 /// Transpile AutoLang file to C (legacy implementation)
-#[deprecated(since = "0.1.0", note = "use trans_c instead")]
-pub fn trans_c_legacy(path: &str) -> AutoResult<String> {
-    let code = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file: {}", e))
-        .unwrap();
-
-    let cname = path.replace(".at", ".c");
-
-    let fname = AutoPath::new(path).filename();
-
-    // Plan 091: Universe removed
-    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
-    let mut parser = Parser::from(code.as_str());
-    let ast = parser.parse()?;
-    let mut sink = Sink::new(fname);
-    let mut trans = CTrans::new(cname.clone().into());
-    // Plan 091: set_scope removed
-    trans.trans(ast, &mut sink)?;
-
-    // convert sink to .c/.h files
-    std::fs::write(&cname, sink.done()?)?;
-    // write the header file
-    let h_path = path.replace(".at", ".h");
-    std::fs::write(Path::new(h_path.as_str()), sink.header)?;
-
-    Ok(format!("[trans] {} -> {}", path, cname))
-}
 
 /// Transpile AutoLang file to Rust (legacy implementation)
-#[deprecated(
-    since = "0.10.0",
-    note = "Use trans_rust() or trans_rust_with_session() instead"
-)]
-pub fn trans_rust_legacy(path: &str) -> AutoResult<String> {
-    let code = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file: {}", e))
-        .unwrap();
-
-    // Plan 204 Phase 6A: Use .a2r.rs suffix to avoid overwriting .rs files
-    let rsname = path.replace(".at", ".a2r.rs");
-    let fname = AutoPath::new(path).filename();
-
-    // Plan 091: Universe removed
-    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
-    let mut parser = Parser::from(code.as_str());
-    parser.set_dest(crate::parser::CompileDest::TransRust);
-    let ast = parser.parse().map_err(|e| e.to_string())?;
-    let mut sink = Sink::new(fname.clone());
-    let mut trans = crate::trans::rust::RustTrans::new(fname);
-    // Plan 091: set_scope removed
-    trans.trans(ast, &mut sink)?;
-
-    // Write Rust file
-    std::fs::write(&rsname, sink.done()?)?;
-
-    Ok(format!("[trans] {} -> {}", path, rsname))
-}
 
 // =============================================================================
 // Phase 066: Incremental Transpilation API (with CompileSession)

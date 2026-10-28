@@ -107,10 +107,6 @@ impl TypeScriptTrans {
     }
 
     /// Set the runtime import path
-    pub fn with_runtime_path(mut self, path: impl Into<String>) -> Self {
-        self.runtime_path = path.into();
-        self
-    }
 
     /// Whether a top-level declaration should be emitted with `export`.
     /// `use` imports, `ext` prototype assignments, stores, and trivia are

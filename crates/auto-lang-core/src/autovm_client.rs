@@ -269,9 +269,6 @@ impl AutovmClient {
     }
 
     /// Connect pipe-only (error if no daemon running).
-    pub fn connect_pipe_only(pipe_name: &str) -> Result<AutovmPipeClient, String> {
-        AutovmPipeClient::connect(pipe_name)
-    }
 
     pub fn new_session(&mut self) -> Result<String, String> {
         match self {

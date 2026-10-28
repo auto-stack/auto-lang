@@ -421,48 +421,6 @@ pub fn discover_a2r_tests(test_dir: &Path, suite_name: &str) -> Vec<A2rTestCase>
 }
 
 /// Format file-based test results in cargo test style.
-pub fn format_file_test_report(reports: &[FileTestReport], elapsed: u128) -> String {
-    let mut output = String::new();
-
-    for report in reports {
-        match &report.outcome {
-            TestOutcome::Passed => {
-                output.push_str(&format!("test {} ... ok\n", report.name));
-            }
-            TestOutcome::Failed(msg) => {
-                output.push_str(&format!("test {} ... FAILED\n", report.name));
-                output.push_str(&format!("    {}\n", msg));
-            }
-        }
-    }
-
-    let passed = reports
-        .iter()
-        .filter(|r| matches!(r.outcome, TestOutcome::Passed))
-        .count();
-    let failed = reports
-        .iter()
-        .filter(|r| matches!(r.outcome, TestOutcome::Failed(_)))
-        .count();
-
-    if failed > 0 {
-        output.push_str("\nfailures:\n");
-        for report in reports {
-            if let TestOutcome::Failed(msg) = &report.outcome {
-                output.push_str(&format!("    {}: {}\n", report.name, msg));
-            }
-        }
-        output.push('\n');
-    }
-
-    let secs = elapsed as f64 / 1000.0;
-    output.push_str(&format!(
-        "file test result: {} passed, {} failed, finished in {:.3}s\n",
-        passed, failed, secs,
-    ));
-
-    output
-}
 
 // =============================================================================
 // Plan 263 Phase 3: A2C transpiler file-based test support

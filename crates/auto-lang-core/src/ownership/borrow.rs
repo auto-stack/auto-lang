@@ -10,7 +10,7 @@
 //! 5. Borrows cannot outlive the data they reference
 
 use crate::ast::Expr;
-use crate::ownership::lifetime::{Lifetime, LifetimeContext};
+use crate::ownership::lifetime::Lifetime;
 use auto_val::Op;
 use miette::{self, Diagnostic, SourceSpan};
 use std::fmt;
@@ -293,8 +293,6 @@ impl Borrow {
 pub struct BorrowChecker {
     /// Active borrows
     borrows: Vec<Borrow>,
-    /// Lifetime context for region-based overlap detection
-    lifetime_ctx: LifetimeContext,
 }
 
 impl BorrowChecker {
@@ -302,7 +300,6 @@ impl BorrowChecker {
     pub fn new() -> Self {
         Self {
             borrows: Vec::new(),
-            lifetime_ctx: LifetimeContext::new(),
         }
     }
 
@@ -310,9 +307,6 @@ impl BorrowChecker {
     ///
     /// This allows external code to register lifetime regions for
     /// precise overlap detection.
-    pub fn lifetime_context(&mut self) -> &mut LifetimeContext {
-        &mut self.lifetime_ctx
-    }
 
     /// Check if a borrow is valid
     ///

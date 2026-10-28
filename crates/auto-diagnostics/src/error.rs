@@ -875,19 +875,6 @@ impl NameError {
             suggested,
         }
     }
-
-    /// Get the suggestion text for display
-    pub fn get_suggestion_text(&self) -> Option<String> {
-        match self {
-            NameError::UndefinedVariable { suggested, .. } => {
-                suggested.as_ref().map(|s| format!("Did you mean '{}'?", s))
-            }
-            NameError::UndefinedFunction { suggested, .. } => {
-                suggested.as_ref().map(|s| format!("Did you mean '{}'?", s))
-            }
-            _ => None,
-        }
-    }
 }
 
 // ============================================================================

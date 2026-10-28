@@ -96,24 +96,15 @@ impl ApiAnnotationParser {
 /// API extractor from AST
 ///
 /// Walks through AST statements and extracts functions with `#[api]` annotations
-pub struct ApiExtractor {
-    /// Whether to include functions without explicit `#[api]` annotation
-    include_all_public: bool,
-}
+pub struct ApiExtractor {}
 
 impl ApiExtractor {
     /// Create new API extractor
     pub fn new() -> Self {
-        Self {
-            include_all_public: false,
-        }
+        Self {}
     }
 
     /// Configure to include all public functions as APIs
-    pub fn with_include_all_public(mut self, include: bool) -> Self {
-        self.include_all_public = include;
-        self
-    }
 
     /// Extract API module from AST statements
     pub fn extract(&self, module_name: &str, stmts: &[Stmt]) -> ApiModule {

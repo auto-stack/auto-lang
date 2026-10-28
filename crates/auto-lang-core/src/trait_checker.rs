@@ -247,38 +247,6 @@ impl TraitChecker {
     /// # Returns
     /// * `Ok(())` if the type implements all its specs
     /// * `Err(Vec<AutoError>)` with a list of conformance errors
-    pub fn check_all_specs<F>(type_decl: &TypeDecl, get_spec: F) -> Result<(), Vec<AutoError>>
-    where
-        F: Fn(&str) -> Option<Rc<SpecDecl>>,
-    {
-        let mut all_errors = Vec::new();
-
-        for spec_name in &type_decl.specs {
-            if let Some(spec_decl) = get_spec(spec_name.as_str()) {
-                if let Err(errors) = Self::check_conformance(type_decl, &spec_decl) {
-                    all_errors.extend(errors);
-                }
-            } else {
-                // Spec not found - this is an error but not a conformance error
-                all_errors.push(
-                    SyntaxError::Generic {
-                        message: format!(
-                            "Type '{}' declares spec '{}' but spec is not defined",
-                            type_decl.name, spec_name
-                        ),
-                        span: Self::empty_span(),
-                    }
-                    .into(),
-                );
-            }
-        }
-
-        if all_errors.is_empty() {
-            Ok(())
-        } else {
-            Err(all_errors)
-        }
-    }
 
     /// Plan 057: Check if a type implements all its declared generic specs
     ///

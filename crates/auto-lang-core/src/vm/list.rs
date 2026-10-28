@@ -9,9 +9,6 @@ use auto_val::{Instance, Obj, Type, Value};
 
 /// Create a new empty List
 /// Syntax: List.new()
-pub fn list_new_static(ctx: &mut VmContext, _arg: Value) -> Value {
-    list_new(ctx, Value::USize(0))
-}
 
 /// Create a new List with optional initial elements
 /// Syntax: List.new() or List.new(1, 2, 3)

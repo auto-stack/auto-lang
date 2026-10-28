@@ -23,8 +23,8 @@
 //! host owns the iced::Application subscription/update loop, routing messages
 //! back to the Auto `Component::on()`.
 
-use auto_ui_runtime::ui::{Component, VNodeKind, VTree};
 use auto_ui_runtime::ui::vnode_converter::view_to_vtree;
+use auto_ui_runtime::ui::{Component, VNodeKind, VTree};
 
 /// Run a `Component` under the libcosmic host (Linux only).
 ///
@@ -103,26 +103,12 @@ fn vtree_coverage_report(vtree: &VTree) -> String {
         };
         *counts.entry(name).or_insert(0) += 1;
     }
-    let mut pairs: Vec<String> = counts
-        .iter()
-        .map(|(k, v)| format!("{}×{}", v, k))
-        .collect();
+    let mut pairs: Vec<String> = counts.iter().map(|(k, v)| format!("{}×{}", v, k)).collect();
     pairs.sort();
     pairs.join(", ")
 }
 
-/// Lower a `VTree` to libcosmic `Element`s.
-///
-/// This is the core W3 lowering function. It walks the VTree arena and
-/// produces the corresponding libcosmic widget for each `VNodeKind`. Each
-/// variant maps to a `cosmic::widget::*` constructor.
-///
-/// **Requires `libcosmic`** — the function body is gated behind a feature
-/// so the file compiles without it. The mapping table above documents the
-/// full plan.
-// TODO(libcosmic): implement with `#[cfg(feature = "libcosmic")]` once the
-// dep is wired. Signature sketch:
-//   fn vtree_to_element<M: Clone + std::fmt::Debug + Send>(
-//       vtree: &VTree,
-//       node_id: VNodeId,
-//   ) -> cosmic::Element<M>
+// TODO(libcosmic): implement `vtree_to_element` with
+// `#[cfg(feature = "libcosmic")]` once the dep is wired — the core W3
+// lowering (VTree arena walk -> cosmic::widget::* constructors); mapping
+// table documented above.

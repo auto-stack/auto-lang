@@ -106,8 +106,7 @@ impl Str {
         let bytes = utf8.as_ref();
 
         // Validate UTF-8
-        std::str::from_utf8(bytes)
-            .map_err(|_| StrError::InvalidUtf8)?;
+        std::str::from_utf8(bytes).map_err(|_| StrError::InvalidUtf8)?;
 
         // Ensure capacity
         let new_len = self.len + bytes.len();
@@ -123,10 +122,6 @@ impl Str {
     }
 
     /// Append a Rust string
-    pub fn append_str(&mut self, s: &str) {
-        self.data.extend_from_slice(s.as_bytes());
-        self.len = self.data.len();
-    }
 
     /// Push a single byte onto the string
     pub fn push(&mut self, byte: u8) {

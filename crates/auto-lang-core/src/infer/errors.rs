@@ -36,7 +36,6 @@ use std::fmt::Write;
 pub const MAX_TYPE_ERRORS: usize = 50;
 
 /// Maximum number of suggestions to show for a single error
-pub const MAX_SUGGESTIONS: usize = 3;
 
 //===========================================================================
 // Error Recovery
@@ -54,23 +53,6 @@ pub fn should_continue(error_count: usize) -> bool {
 ///
 /// Combines multiple type errors into a single diagnostic message,
 /// showing the count and listing each error with context.
-pub fn format_multiple_errors(errors: &[TypeError]) -> String {
-    let mut msg = String::new();
-
-    writeln!(
-        msg,
-        "found {} type error{}:",
-        errors.len(),
-        if errors.len() != 1 { "s" } else { "" }
-    )
-    .ok();
-
-    for (i, error) in errors.iter().enumerate() {
-        writeln!(msg, "  {}. {}", i + 1, error).ok();
-    }
-
-    msg
-}
 
 /// Format error with suggestions
 ///
@@ -319,9 +301,6 @@ pub fn unused_variable_warning(name: &Name, span: miette::SourceSpan) -> Warning
 /// Create a dead code warning
 ///
 /// Generates a warning when code is unreachable (e.g., after return).
-pub fn dead_code_warning(span: miette::SourceSpan) -> Warning {
-    Warning::DeadCode { span }
-}
 
 //===========================================================================
 // Tests

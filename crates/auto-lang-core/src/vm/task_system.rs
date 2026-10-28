@@ -501,9 +501,6 @@ impl TaskRegistry {
     }
 
     /// Get all singleton handles
-    pub fn get_all_singletons(&self) -> Vec<TaskHandle> {
-        self.singletons.iter().map(|h| h.clone()).collect()
-    }
 
     /// Execute all stop hooks in LIFO order
     ///

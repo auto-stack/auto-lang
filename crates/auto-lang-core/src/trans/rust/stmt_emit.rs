@@ -187,9 +187,6 @@ impl RustTrans {
     }
 
     /// Plan 400 Phase 2: read-only access to accumulated uses.
-    pub fn uses_ref(&self) -> &HashSet<AutoStr> {
-        &self.uses
-    }
 
     /// Mutable access to the fn_ret_types cache (for cross-module / sibling
     /// pre-population from the CLI single-file path).

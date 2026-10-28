@@ -9,7 +9,6 @@ use crate::test_cases::run_suite;
 use auto_test_case::admission::Limits;
 use std::path::{Path, PathBuf};
 
-pub(crate) static AV_SOURCE_827_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn temp_root(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("atc-av-src-827-{}-{}", tag, std::process::id()));

@@ -32,14 +32,6 @@ impl LinearAllocator {
     /// In a strict linear model (like a stack), we can only free the most recently allocated object.
     /// If AutoLang relies on RAII, it usually implies scoping.
     /// For simulation, we might provide a `reset` to a previous benchmark/watermark.
-    pub fn free_top(&mut self, size: usize) {
-        if size <= self.top {
-            self.top -= size;
-        } else {
-            // Error or clamp?
-            self.top = 0;
-        }
-    }
 
     pub fn read_bytes(&self, ptr: u32, size: usize) -> &[u8] {
         let start = ptr as usize;

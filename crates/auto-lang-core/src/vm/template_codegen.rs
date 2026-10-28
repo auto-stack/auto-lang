@@ -36,8 +36,6 @@ pub struct TemplateCodegen {
     base: Codegen,
     /// Separator between statements (newline by default)
     separator: String,
-    /// Filter nil values from output
-    filter_nil: bool,
 }
 
 impl TemplateCodegen {
@@ -46,7 +44,6 @@ impl TemplateCodegen {
         Self {
             base: Codegen::new(),
             separator: "\n".to_string(),
-            filter_nil: true,
         }
     }
 
@@ -57,10 +54,6 @@ impl TemplateCodegen {
     }
 
     /// Enable/disable nil filtering
-    pub fn with_nil_filtering(mut self, filter: bool) -> Self {
-        self.filter_nil = filter;
-        self
-    }
 
     /// Compile template file to bytecode
     ///

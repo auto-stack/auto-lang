@@ -203,9 +203,6 @@ impl AutoVMNativeRegistry {
 
     /// Register only the return type for a native function (without registering an ID).
     /// Used when the ID is already registered elsewhere (e.g., in qualified_registry).
-    pub fn register_return_type(&mut self, name: &str, ret_type: NativeRetType) {
-        self.return_types.insert(name.to_string(), ret_type);
-    }
 
     /// 纯读探测(2026-08-25 半解耦):查注册表与静态固定 ID 表,**不写入**。
     ///

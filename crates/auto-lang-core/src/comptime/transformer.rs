@@ -45,13 +45,6 @@ impl CTEE {
     }
 
     /// Create CTEE for a specific target platform
-    pub fn with_target(os: &str, arch: &str) -> Self {
-        let mut ctee = Self::new();
-        ctee.target_os = os.to_string();
-        ctee.target_arch = arch.to_string();
-        ctee.init_builtins();
-        ctee
-    }
 
     /// Initialize built-in compile-time constants
     fn init_builtins(&mut self) {
@@ -73,9 +66,6 @@ impl CTEE {
     }
 
     /// Set a custom compile-time constant
-    pub fn set_builtin(&mut self, name: String, value: Value) {
-        self.builtins.insert(name, value);
-    }
 
     /// Transform AST by evaluating all comptime constructs
     pub fn transform(&mut self, code: &mut Code) -> AutoResult<()> {

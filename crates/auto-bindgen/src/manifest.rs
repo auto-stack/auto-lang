@@ -21,7 +21,6 @@ pub const ABI_SYSTEM: &str = "system";
 /// (D form: libloading runtime resolution). Other backends ignore it (VM
 /// always loads at runtime; a2c calls directly).
 pub const LINK_STATIC: &str = "static";
-pub const LINK_DYNAMIC: &str = "dynamic";
 
 fn default_abi() -> String {
     ABI_C.to_string()
@@ -146,7 +145,10 @@ mod tests {
                         params: vec![CTypeDesc::UInt],
                     },
                 },
-                CParam { name: "add".into(), ty: CTypeDesc::Int },
+                CParam {
+                    name: "add".into(),
+                    ty: CTypeDesc::Int,
+                },
             ],
             return_type: CTypeDesc::Int,
             variadic: false,

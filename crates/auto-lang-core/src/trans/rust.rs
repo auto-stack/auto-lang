@@ -99,8 +99,6 @@ pub struct RustTrans {
     // Phase 066: Migrating to Database-based architecture
     db: Option<Arc<RwLock<Database>>>, // New (Phase 066)
 
-    edition: RustEdition,
-
     // Transpiler internal state (not from Database or Universe)
     _current_fn: Option<AutoStr>,
     _current_scope: Option<crate::scope::Sid>,
@@ -504,7 +502,6 @@ impl RustTrans {
             uses: HashSet::new(),
             dep_crates: HashSet::new(),
             db: None,
-            edition: RustEdition::E2021,
             _current_fn: None,
             _current_scope: None,
             needs_err_trait: false,
@@ -615,7 +612,6 @@ impl RustTrans {
             uses: HashSet::new(),
             dep_crates: HashSet::new(),
             db: Some(db),
-            edition: RustEdition::E2021,
             _current_fn: None,
             _current_scope: None,
             needs_err_trait: false,
@@ -783,10 +779,6 @@ impl RustTrans {
         self.shared_type_store = store;
     }
 
-    pub fn set_edition(&mut self, edition: RustEdition) {
-        self.edition = edition;
-    }
-
     /// Extract the type name from a constructor expression.
     fn extract_tag_or_ctor_type(expr: &Expr) -> Option<AutoStr> {
         match expr {
@@ -811,9 +803,6 @@ impl RustTrans {
     // =========================================================================
 
     /// Register a global variable (top-level var declaration)
-    pub fn register_global_var(&mut self, name: AutoStr) {
-        self.global_vars.insert(name);
-    }
 
     /// PLAN-018: register with declared type(全局 List 接收者识别)。
     pub fn register_global_var_typed(&mut self, name: AutoStr, ty: Type) {
@@ -2575,33 +2564,6 @@ impl RustTrans {
     /// arguments (e.g. the `child` in `Kid.Node(child)`), so a later auto-clone
     /// at a call site can deref a Box<T> before cloning. Recurses into nested
     /// calls so multi-field variants are covered too.
-    fn collect_pattern_idents(expr: &Expr, out: &mut HashSet<AutoStr>) {
-        match expr {
-            Expr::Call(call) => {
-                for arg in &call.args.args {
-                    if let Arg::Pos(e) = arg {
-                        Self::collect_pattern_idents(e, out);
-                    }
-                }
-            }
-            Expr::Ident(name) => {
-                out.insert(name.clone());
-            }
-            // Plan 013 (B16): `Type.Variant(binding)` patterns parse as
-            // Cover(Tag(TagCover { bindings })). Collect those bindings — they
-            // bind to Box<T> for bridge-crate variants like Kid.Node(child).
-            Expr::Cover(cover) => {
-                if let crate::ast::Cover::Tag(tc) = cover {
-                    for b in &tc.bindings {
-                        if b != "_" {
-                            out.insert(b.clone());
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
 
     /// Plan 163: Check if an expression contains await
     fn expr_has_await(expr: &Expr) -> bool {
