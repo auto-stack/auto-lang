@@ -55,6 +55,7 @@ class Controls(unittest.TestCase):
                          mock.patch.object(full, "validate_layout"), \
                          mock.patch.object(full, "require_main"), \
                          mock.patch.object(full, "identity", return_value={"head": "frozen"}), \
+                         mock.patch.object(full, "tier_minimums", return_value={}), \
                          mock.patch.object(full.subprocess, "Popen", Listed), \
                          mock.patch.object(full, "command", return_value=0):
                         result = full.main([formal, *(["--batch"] if formal == "tf" else []), "--output", str(directory / "out")])
@@ -96,7 +97,7 @@ class Controls(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "language SDK owner mismatch"):
                 full.validate_layout(lang, ui)
 
-    def run_queue_control(self, child_code, scope_empty=False):
+    def run_queue_control(self, child_code, scope_empty=False, man_zero=False, minimums=None):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
             # Reuse real inventories while substituting only process execution.
@@ -105,6 +106,12 @@ class Controls(unittest.TestCase):
             }}}}
             class Listed:
                 def __init__(self, cmd, **kwargs):
+                    if "--list" in cmd and cmd[1:2] == ["test"]:  # libtest listing (ui-tu/ui-tn)
+                        kwargs["stdout"].write("ui_gen::sample: test\nui_gen::ignored_one: ignore\n")
+                        return
+                    if man_zero and "--workspace" in cmd:  # man-t face emptied
+                        json.dump({"rust-suites": {}}, kwargs["stdout"])
+                        return
                     json.dump(data, kwargs["stdout"])
                 def wait(self, **kwargs):
                     return 0
@@ -113,6 +120,7 @@ class Controls(unittest.TestCase):
                  mock.patch.object(full, "validate_layout"), \
                  mock.patch.object(full, "require_main"), \
                  mock.patch.object(full, "identity", return_value={"head": "frozen"}), \
+                 mock.patch.object(full, "tier_minimums", return_value=minimums or {}), \
                  mock.patch.object(full.subprocess, "Popen", Listed), \
                  mock.patch.object(full, "validate_ids", return_value=[]), \
                  mock.patch.object(full, "command", return_value=child_code) as child:
@@ -123,16 +131,26 @@ class Controls(unittest.TestCase):
                 self.assertEqual(receipt["outcome"], "fail")
                 self.assertEqual(len(receipt["results"]), 2)
                 self.assertIn("zero selected", receipt["error"])
-                child.assert_not_called()
-                return
+                return receipt
+            if man_zero or minimums:
+                return receipt
             self.assertEqual(result, 1 if child_code else 0)
             self.assertEqual(receipt["outcome"], "fail" if child_code else "pass")
-            self.assertEqual(len(receipt["results"]), 1 if child_code else 4)
+            if not child_code:
+                # language, ui-full, tt, tb + man-t/tcore/tc/ti + ui-tu/ti/tn (PLAN-867)
+                self.assertEqual([row["leg"] for row in receipt["results"]],
+                                 ["language", "ui-full", "tt", "tb", "man-t", "man-tcore",
+                                  "man-tc", "man-ti", "ui-tu", "ui-ti", "ui-tn"])
+                self.assertIn("manual native gate", receipt["results"][-1].get("skip", ""))
             self.assertEqual(receipt["results"][0]["run_exit"], child_code)
-            self.assertEqual(child.call_count, 1 if child_code else 4)
+            # bootstrap 2 + language/ui-full/tt/tb 4 + man 4 + ui-tu 1 + ui-ti 1 (ui-tn manual pending)
+            self.assertEqual(child.call_count, 1 if child_code else 12)
+            return receipt
 
     def test_first_child_failure_is_receipted_and_stops_queue(self):
-        self.run_queue_control(7)
+        receipt = self.run_queue_control(7)
+        self.assertEqual(len(receipt["results"]), 1)
+        self.assertIn("tests failed", receipt["error"])
 
     def test_all_four_children_success_is_green(self):
         self.run_queue_control(0)
@@ -300,6 +318,67 @@ class Controls(unittest.TestCase):
             self.assertIn(owner, ui)
         self.assertIn("auto-ui-compiler/ui", ui)
         self.assertIn("language/.config/nextest-full.toml", [str(v).replace('\\', '/') for v in ui])
+
+    def test_batch_extra_legs_fixed_order_and_kinds(self):
+        rows = full.batch_extra_legs(Path("language"), Path("ui"), Path("man"))
+        self.assertEqual([row["leg"] for row in rows], ["man-t", "man-tcore", "man-tc", "man-ti", "ui-tu", "ui-ti", "ui-tn"])
+        self.assertEqual([row["kind"] for row in rows], ["nextest", "nextest", "nextest", "nextest", "libtest", "nextest", "libtest"])
+        self.assertTrue(rows[-1]["manual"])
+        self.assertIn("--manifest-path", " ".join(rows[1]["options"]))
+        self.assertIn("core/Cargo.toml", rows[1]["options"])
+        self.assertEqual(rows[4]["package"], "auto-ui-compiler")
+        self.assertEqual(rows[6]["package"], "auto-ui-runtime")
+
+    def test_zero_selection_in_man_leg_is_not_green(self):
+        receipt = self.run_queue_control(0, man_zero=True)
+        self.assertEqual(receipt["outcome"], "fail")
+        self.assertIn("zero selected", receipt["error"])
+        failed = [row["leg"] for row in receipt["results"] if row["leg"] == "man-t"]
+        self.assertEqual(failed, ["man-t"])
+
+    def test_minimum_selection_floor_is_enforced_in_batch(self):
+        receipt = self.run_queue_control(0, minimums={"man-t": {"minimum": 281}})
+        self.assertEqual(receipt["outcome"], "fail")
+        self.assertIn("selection below frozen minimum", receipt["error"])
+
+    def test_frozen_trees_rejects_code_wip_and_accepts_clean(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = Path(tmp)
+            (tree / "Cargo.toml").write_text("")
+            git = mock.patch.object(full.subprocess, "check_output")
+            with git as check:
+                check.return_value = b"crates/wip.rs"
+                with self.assertRaisesRegex(ValueError, "code/configuration WIP"):
+                    full.require_clean_tree("language", tree)
+                check.return_value = b""
+                full.require_clean_tree("language", tree)
+
+    def test_libtest_selection_counts_ignored_not_selected(self):
+        text = "ui_gen::a: test\nui_gen::b: test\nui_gen::c: ignore\n"
+        ids, selected = full.libtest_selection(text, "auto-ui-compiler")
+        self.assertEqual(ids, {"auto-ui-compiler\tui_gen::a", "auto-ui-compiler\tui_gen::b", "auto-ui-compiler\tui_gen::c"})
+        self.assertEqual(selected, {"auto-ui-compiler\tui_gen::a", "auto-ui-compiler\tui_gen::b"})
+        with self.assertRaises(ValueError):
+            full.libtest_selection("", "auto-ui-compiler")
+
+    def test_failed_ids_extracted_from_nextest_and_libtest_logs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            nextest_log = Path(tmp) / "nextest.log"
+            nextest_log.write_text("        FAIL [ 1.23s] auto-lang ui::tests::broken\n   Abort", encoding="utf-8")
+            self.assertEqual(full.failed_from_log(nextest_log), ["auto-lang\tui::tests::broken"])
+            libtest_log = Path(tmp) / "libtest.log"
+            libtest_log.write_text("test ui_gen::vue::tests::bad ... FAILED\n1 passed", encoding="utf-8")
+            self.assertEqual(full.failed_from_log(libtest_log, "auto-ui-compiler"),
+                             ["auto-ui-compiler\tui_gen::vue::tests::bad"])
+            self.assertEqual(full.failed_from_log(Path(tmp) / "missing.log"), [])
+
+    def test_frozen_trees_flag_requires_batch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(full, "root", return_value=Path(tmp)), \
+                 mock.patch.object(full, "machine_gate", contextlib.nullcontext), \
+                 mock.patch.object(full, "validate_layout"):
+                with self.assertRaises(SystemExit):
+                    full.main(["tf", "--frozen-trees", "--list-only", "--output", str(Path(tmp) / "out")])
 
 
 if __name__ == "__main__":

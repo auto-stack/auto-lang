@@ -1,0 +1,14 @@
+{
+  "schema": "test-id-retirements/1",
+  "plan": 844,
+  "note": "PLAN-844 T-04 retired zero-consumer legacy surfaces after the last batch receipt (860, 2026-10-28 09:33) had already advanced the due baseline; commit 1159f058d landed 12:08 the same day. The 850 frozen baseline files remain untouched acceptance inputs; this file is the formal, evidence-cited retirement channel the orchestrator applies on top (mirroring the 841 migration ledger). Recorded and reconciled by PLAN-867 T-04 closure (RETIRED class).",
+  "retirements": [
+    {"id": "auto-lang-core\tdatabase::tests::test_scope_management", "owner": "language", "evidence": "844 T-04 R-4 (Scope retirement), commit 1159f058d"},
+    {"id": "auto-lang-core\tdatabase::tests::test_scope_to_symbol_table_migration", "owner": "language", "evidence": "844 T-04 R-4 (Scope retirement), commit 1159f058d"},
+    {"id": "auto-lang-core\tdatabase::tests::test_symbol_table_and_scope_coexistence", "owner": "language", "evidence": "844 T-04 R-4 (Scope retirement), commit 1159f058d"},
+    {"id": "auto-lang-core\tinfer::registry::tests::test_type_registry_get_template", "owner": "language", "evidence": "844 T-04 R-4 (TypeRegistry retirement), commit 1159f058d"},
+    {"id": "auto-lang-core\tinfer::registry::tests::test_type_registry_new", "owner": "language", "evidence": "844 T-04 R-4 (TypeRegistry retirement), commit 1159f058d"},
+    {"id": "auto-lang-core\tinfer::registry::tests::test_type_registry_register_and_lookup", "owner": "language", "evidence": "844 T-04 R-4 (TypeRegistry retirement), commit 1159f058d"},
+    {"id": "auto-lang-core\tscope::tests::test_symbol_table_from_scope", "owner": "language", "evidence": "844 T-04 R-4 (StackedScope/Scope retirement), commit 1159f058d"}
+  ]
+}

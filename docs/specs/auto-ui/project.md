@@ -19,6 +19,8 @@ UI 仓自持 t / tu（单进程 ui_gen 档）/ ti（集成档）/ tn（native �
 
 完整批量面由语言仓 `cargo tf`（`scripts/run-full-regression.py`）串行调度两个实际 workspace。UI 子门显式选择 compiler/dialect/runtime 三包 lib、compiler/ui feature，并使用语言仓原 `nextest-full.toml`，包含 ui_gen 全族；UI 日常 t 不能替代这个完整面。迁仓前 3,091 个唯一 UI 测试 ID 与当前选择逐项核对，固定清单与可执行选择守卫在语言仓 `scripts/full-regression-*-{ids,selected}.txt`。各语言 feature 档分别持有完整基线，不能与 tf 基集相交而丢失特有项。新增 ID 单列；删除、ignore 或 profile 排除原必选 ID 会使完整门失败。（PLAN-850）
 
+PLAN-867 扩展：`tf --batch` 在上述两腿后继续本仓三腿——ui-tu（单进程 libtest，与 `cargo tu` 同形）、ui-ti（五集成目标 nextest）、ui-tn（native 手工门：批内只枚举不运行，`AUTO_UI_TN_RUN=1` 显式触发，记 pending 不记 pass）。机器判据：三腿零选择即整门非零；每腿选择数对照语言仓 `scripts/tier-selection-minimums.json.txt` 冻结地板（ui-tu 863、ui-ti 28、ui-tn 2）；ui-full 必含 ui_gen 全族（850 冻结基线校验）。日常 t 的 ui_gen 排除与 tu 的 owner 关系不变；拆分等价闭包（分母/四类处置/红集对齐）见 [repository-boundaries/split-equivalence-acceptance.md](../repository-boundaries/split-equivalence-acceptance.md)。
+
 ## 边界
 
 - jet/ark 真实构建验证面：经用户 2026-10-24 裁定（r3）转后续环境门控渠道（KNOWN-DEBT 承接）；生成面全 profile 真实生成在合同内。

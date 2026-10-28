@@ -154,7 +154,7 @@ All AI coding assistants working in this repository must strictly adhere to the 
 | `cargo tv` | 改 VM/编译器后定向语料回归——filter 档（profile tv）与 t/tf 同二进制零重编（**不含 aavm**；PLAN-700） | 162 | 3.95s（2026-09-24 实测） | 同日常档 |
 | `cargo tt` | 改 transpiler 后 | 3786（trans 增量 ~360） | 43s（冷编译另计 ~1min） | 轻池 |
 | `cargo tb` | 改 book/文档后 | 3494（book 增量 69，单测 <0.4s——旧"5-7s/测"注释已过时） | 24s | 轻池 |
-| `cargo tu` | 改 UI 代码生成后（`ui_gen/**`：vue/jet/ark/rust 四生成器；fix-ui-tier 2026-09-30 从日常档析出） | 863（内联，2 ignored；2026-10-11 实测） | **测试段 0.85s**（单进程 libtest 实测 2026-09-30；warm 全档含 nextest→libtest 零重编切换 ~29s 内）；a2vue desktop 金样预存红已清（2026-10-11 fix-a2vue-desktop-golden 再基线：09-22 pin 同步 e85143621 带入深/浅主题菜单项后金样漏再生——4f123a50e 四红末枚）；bp root_resolution env 竞争已清（2026-10-11 fix-bp-root-env-lock：BLUEPRINTS_ROOT_TEST_SERIALIZER 全触点串行+poison 接管+panic 恢复回归，镜像 F-759-R2；reader=scan_tests×4+plan640/643/649/657 同锁；附带修 plan643 t01/t02 共享 pid scratch 互删 os error 32——裸单进程预存 flake，标准档不可见） | 轻池（无重内存/无全局态；tu 档内**禁止 env set_var 类进程级全局测试**——plan646 改 builder 前车之鉴） |
+| `cargo tu`（语言仓已删，owner=auto-ui 仓 `tu`；PLAN-867 T-05/D-2：语言侧别名 0 选择实测后删除；语言仓 tf --batch 的 ui-tu 腿覆盖） | 改 UI 代码生成后（`ui_gen/**`：vue/jet/ark/rust 四生成器） | 863（auto-ui 仓实测，0 ignored；2026-10-28 PLAN-867 冻结组合实测） | **测试段 0.85s**（单进程 libtest 实测 2026-09-30；warm 全档含 nextest→libtest 零重编切换 ~29s 内）；a2vue desktop 金样预存红已清（2026-10-11 fix-a2vue-desktop-golden 再基线：09-22 pin 同步 e85143621 带入深/浅主题菜单项后金样漏再生——4f123a50e 四红末枚）；bp root_resolution env 竞争已清（2026-10-11 fix-bp-root-env-lock：BLUEPRINTS_ROOT_TEST_SERIALIZER 全触点串行+poison 接管+panic 恢复回归，镜像 F-759-R2；reader=scan_tests×4+plan640/643/649/657 同锁；附带修 plan643 t01/t02 共享 pid scratch 互删 os error 32——裸单进程预存 flake，标准档不可见） | 轻池（无重内存/无全局态；tu 档内**禁止 env set_var 类进程级全局测试**——plan646 改 builder 前车之鉴） |
 | `cargo taa` | **仅** aavm 改动后（触发条件/作用域见上） | 3600（其中 aavm 21，XL 9 个 78-303s/个） | 182s（-j6 实测；564 组限流合入后 XL 串行将更长）。P574 后 Windows 本地：双重解释器 12 测试 cfg_attr 跳过（607 skipped），~24s，唯一余红=charts_gallery 预存 | XL 单测 0.8-1.2GB；并发受 jobs 限制 |
 | `cargo ta` | 终极全量（VM+aavm+trans+book+1M churn） | 4023 | 407s（-j6 实测） | 同上 |
 | `cargo th` | 改 HTTP 服务后（真 TCP，串行） | 20 | ~50s（本机实测 ≥3 环境相关红，归因见 plan 568 T7；fix-test-tiering 2026-09-30 后 back_proxy 固定端口族（39xx/40xx 撞 Hyper-V 保留段 WSAEACCES）已改 OS 临时分配清零，plan707 帧时序断言并行负载下偶发 flake 在案=4f123a50e） | 轻（真 TCP 端口） |
@@ -185,7 +185,7 @@ All AI coding assistants working in this repository must strictly adhere to the 
 - `cargo tv` - 语料筛选档（nextest `--profile tv` 筛语料三族，与 t/tf 同二进制零重编，PLAN-700）——纯 .at 语料 golden，**不含 aavm**（aavm 在 `taa` 档）
 - `cargo tt` - Transpiler tests (`--features test-trans`)
 - `cargo tb` - Book listing tests (`--features test-book`)
-- `cargo tu` - UI codegen tier (vue/jet/ark/rust generator inline tests; **bare cargo test = single process on purpose** so the ~1.2s WidgetRegistry setup is paid once per tier, not per nextest process; fix-ui-tier 2026-09-30, daily tier excludes `ui_gen::`)
+- `cargo tu` - (language repo alias removed PLAN-867 T-05: it selected 0 tests since ui_gen moved to auto-ui-compiler; owner = auto-ui repo `cargo tu`, covered in the language tf --batch by the ui-tu leg)
 - `cargo taa` - AAVM/AA2R self-hosting tier (`--features test-aavm`, PLAN-700 起独立空 feature)——**仅 aavm 改动后使用**，裸跑=全集兜底、追加滤串缩小作用域（如 `cargo taa aavm2_m5`）；触发条件/作用域映射/资源表见 §AAVM/AA2R Test Tier
 - `cargo ta` - All test suites combined (`--features test-aavm,test-trans,test-book`; full scale)
 - `cargo t3` - Milestone tier (大版本升级专用,Plan 532;频率最稀少档):全量

@@ -1,13 +1,30 @@
-# Cross-workspace full regression (PLAN-850)
+# Cross-workspace full regression (PLAN-850, three-repository batch since PLAN-867)
 
 Run `cargo tf --batch` on the main language checkout, alone. This runs language
-full, UI full, language tt and language tb in that order. A failed child stops
+full, UI full, language tt and language tb in that order — and since PLAN-867
+the three-repository batch continues with the Man legs (man-t, man-tcore,
+man-tc, man-ti, with the same te-child/auto-ui-tool bootstrap as
+`scripts/cross-repo-tiers.py`) and the UI sub-tier legs (ui-tu single-process
+libtest, ui-ti integration, ui-tn enumerated-but-manual). A failed child stops
 the queue and leaves a failed receipt. `cargo tf` selects the two full owners;
 `cargo taa`, `cargo ta` and `cargo t3` preserve their original language features
 and full/milestone configuration. Explicit substring filters select a scoped
 run; its receipt cannot certify full coverage. Existing `--no-fail-fast` callers
 remain supported. Other nextest flags must be passed through a future explicitly
-reviewed interface rather than silently changing a formal gate.
+reviewed interface rather than silently changing a formal gate. PLAN-867 adds
+one such interface: `--frozen-trees`, which permits an unfiltered batch against
+a clean frozen three-repository worktree group (all three trees must have no
+code/configuration WIP; HEADs and lock hashes are receipt-bound either way).
+ui-tn never runs inside the batch unless `AUTO_UI_TN_RUN=1` — it stays a manual
+native gate recorded as pending, never as passed.
+
+The 850 semantics are unchanged: zero-selection legs fail the gate; every leg's
+selection count is asserted against the frozen floors in
+`scripts/tier-selection-minimums.json.txt` (the same data file
+`scripts/check-tier-selection-minimums.py` uses for the standalone guard);
+baseline validation for the legacy legs remains authoritative. Failed-ID lists
+are extracted from the child logs (nextest `FAIL [time] binary name` lines /
+libtest `test ... FAILED` lines) into the receipt.
 
 Work/review use `cargo tf --list-only` (optionally `--batch`): build and inspect
 real nextest JSON, never run a whole test tier. The UI child uses the original
@@ -32,6 +49,22 @@ Each language feature tier (tt/tb/taa/ta/t3) has its own complete `ids` and
 tf base. Those snapshots come from the already-frozen real JSON listings;
 explicit scoped runs may narrow selected tests but must still enumerate the
 complete compiled identity set.
+
+PLAN-867 adds the evidence-cited retirement channel
+`scripts/full-regression-retirements-844.json.txt`: the 850 baseline files stay
+untouched acceptance inputs, and retired required IDs are removed through this
+manifest instead (PLAN-844 T-04 retired zero-consumer legacy surfaces after the
+last batch receipt had already been written; the retirement is adjudicated
+there and reconciled as RETIRED in the PLAN-867 closure). Regenerating the
+baseline files to accept a deletion remains forbidden.
+
+The pre-split denominator and its reconciliation live in
+`scripts/pre-split-universe/` (enumerated by
+`scripts/enumerate-pre-split-universe.py` at commit 464e2316b = abd34a355^,
+with last-compiling-witness runs for the faces PLAN-818 T-02 accidentally left
+ungated — see its manifest) and `scripts/split-closure.py` /
+`scripts/split-golden-ledger.py` produce the closure and golden-input ledger
+committed as `docs/plans/attachments/867/{closure,golden-ledger}.md`.
 
 The wrapper retains the existing target directories and worker discovery. An
 explicit invalid root fails; metadata checks that the selected UI owner is the

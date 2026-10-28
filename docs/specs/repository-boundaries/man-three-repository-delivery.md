@@ -26,6 +26,7 @@
 - I-TOOL v1 与 I-PROJECT/AST/Value/协议类型单源；选项经广播核对、落点核实和 StrictGuard 三层守门。
 - `--format json`/`--ai` 单 JSON；正常退出 0，错误具名非零。service≠serve/req/mcp；VM 线程亲和、Rust owned tree、watch/reader 真停保持。
 - Man 根 full workspace=9 package，根 Cargo.lock；Core 另有独立 workspace/lock/target。`cargo t`=full workspace lib+auto bin，`tc`=管理 Core，`tcore`=Core bin+非 UI driver，`ti`=集成目标。`cross-repo-tiers.py` 串行编排 lang/Man/UI，man-tcore 前在 lang 构建 te-child，man-ti 前分别在 UI/lang 构建 auto-ui-tool/te-child，并注入 owner 路径；测试 ID 逐项对拍而非仅比总数。
+- **PLAN-867 SD-03：Man 四档纳入跨仓完整门**——语言仓 `cargo tf --batch`（`scripts/run-full-regression.py`）在 language/ui-full/tt/tb 后按固定序执行 man-t → man-tcore → man-tc → man-ti（同一 te-child/auto-ui-tool bootstrap 与 owner 注入；--frozen-trees 允许干净冻结三仓组）。收据绑三仓 HEAD/锁哈希/diff 与每腿选择数、失败 ID 列表；零选择或低于 `scripts/tier-selection-minimums.json.txt` 冻结地板（man-t 281 / tcore 23 / tc 252 / ti 43）即整门非零。拆分等价闭包口径见 [split-equivalence-acceptance.md](split-equivalence-acceptance.md)。
 
 ## 安装、切换与恢复
 

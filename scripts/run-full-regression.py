@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
-"""PLAN-850: serial full regression across the language and UI owners.
+"""PLAN-850/867: serial full regression across the language, UI and Man owners.
 
 cargo tf/taa/ta/t3 enter here. `--list-only` builds and validates selection;
-it never runs tests. `--batch` appends the existing language tt/tb gates.
+it never runs tests. `--batch` appends the existing language tt/tb gates and,
+since PLAN-867, the three-repository batch: man t/tcore/tc/ti legs plus the
+UI tu/ti/tn legs, in the fixed order language → ui-full → tt → tb → man-t →
+man-tcore → man-tc → man-ti → ui-tu → ui-ti → ui-tn. Unfiltered `--batch`
+runs default to the frozen main checkouts; `--frozen-trees` is the explicitly
+reviewed interface (PLAN-867 T-07/T-11) that permits a clean, frozen
+three-repository worktree group instead. ui-tn is a manual native gate: its
+selection is enumerated, its run stays pending unless AUTO_UI_TN_RUN=1.
 """
 from __future__ import annotations
 
@@ -12,6 +19,7 @@ import ctypes
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -19,6 +27,20 @@ import time
 
 HERE = Path(__file__).resolve().parent.parent
 UI_PACKAGES = ("auto-ui-compiler", "auto-ui-dialect", "auto-ui-runtime")
+MAN_SEVEN = ("auto-man-runtime", "auto-man-core", "auto-package-lock", "auto-package-resolver",
+             "auto-toolchain-core", "auto-man-assets", "auto-tool-client")
+MAN_TI_TESTS = ("plan816_cli_driver", "cmd_ui", "autodesk_client_smoke")
+MAN_TI_RUNTIME_TESTS = ("plan816_t03_non_ui_service", "plan816_t03_ui_default_fallback",
+                        "plan816_t03_ui_inject_explicit_first")
+MAN_TI_COMPAT_TESTS = ("plan803_asset_facade_tests", "plan805_toolchain_parity", "plan805_type_identity",
+                       "plan809_management_core", "plan811_media_consumers", "plan815_t04_compat",
+                       "plan816_t03_create_jet_default", "plan816_t03_legacy_util_paths",
+                       "plan816_t03_sidecar_request", "plan816_t03_ui_inject_compat")
+UI_TI_TESTS = ("legacy_build_semantics", "lifecycle", "resources_manifest", "tool_process",
+               "osconfig_integration")
+MINIMUMS_PATH = HERE / "scripts" / "tier-selection-minimums.json.txt.txt"
+NEXTEST_FAIL = re.compile(r"^\s*FAIL\s+\[[^\]]*\](?:\s+\(\s*\d+/\d+\))?\s+(\S+)\s+(\S+)", re.MULTILINE)
+LIBTEST_FAIL = re.compile(r"^test\s+(\S+)\s+\.\.\.\s+FAILED", re.MULTILINE)
 
 
 def identity(path):
@@ -29,7 +51,7 @@ def identity(path):
             "lock_sha256": hashlib.sha256((path / "Cargo.lock").read_bytes()).hexdigest()}
 
 
-def validate_layout(lang, ui):
+def validate_layout(lang, ui, man=None):
     metadata = json.loads(subprocess.check_output(["cargo", "metadata", "--no-deps", "--format-version", "1"], cwd=lang))
     package = next(p for p in metadata["packages"] if p["name"] == "auto-lang")
     for dependency in package["dependencies"]:
@@ -44,6 +66,30 @@ def validate_layout(lang, ui):
             expected = language_packages.get(dependency["name"])
             if expected is not None and dependency.get("path") and Path(dependency["path"]).resolve() != expected:
                 raise ValueError(f"language SDK owner mismatch in {package['name']}: {dependency['name']}")
+    if man is None:
+        return
+    # PLAN-867: the Man workspace consumes lang/ui by path; its members must
+    # resolve those dependencies to exactly the roots driven by this queue.
+    man_metadata = json.loads(subprocess.check_output(["cargo", "metadata", "--no-deps", "--format-version", "1"], cwd=man))
+    man_packages = {p["name"]: Path(p["manifest_path"]).parent.resolve() for p in man_metadata["packages"]}
+    for package in man_metadata["packages"]:
+        for dependency in package["dependencies"]:
+            target = language_packages.get(dependency["name"])
+            if target is None and dependency["name"] in UI_PACKAGES:
+                for ui_package in ui_metadata["packages"]:
+                    if ui_package["name"] == dependency["name"]:
+                        target = Path(ui_package["manifest_path"]).parent.resolve()
+            if target is not None and dependency.get("path") and Path(dependency["path"]).resolve() != target:
+                raise ValueError(f"cross-repository owner mismatch in {package['name']}: "
+                                 f"{dependency['name']} resolves to {dependency['path']}, expected {target}")
+    for required in ("auto", *MAN_SEVEN):
+        if required not in man_packages:
+            raise ValueError(f"missing man workspace package: {required}")
+
+
+def dirty_code_paths(path):
+    return subprocess.check_output(["git", "-C", str(path), "diff", "--name-only", "HEAD", "--",
+                                    "crates", "test", "experimental", "scripts", ".cargo", ".config", "Cargo.toml", "Cargo.lock"])
 
 
 def require_main(lang):
@@ -54,10 +100,13 @@ def require_main(lang):
     branch = subprocess.check_output(["git", "-C", str(lang), "branch", "--show-current"], text=True).strip()
     if branch != "master":
         raise ValueError("full regression requires the frozen master checkout")
-    dirty = subprocess.check_output(["git", "-C", str(lang), "diff", "--name-only", "HEAD", "--",
-                                     "crates", "test", "experimental", "scripts", ".cargo", ".config", "Cargo.toml", "Cargo.lock"])
-    if dirty.strip():
+    if dirty_code_paths(lang).strip():
         raise ValueError("main checkout has code/configuration WIP; route it to its owning worktree before full regression")
+
+
+def require_clean_tree(name, path):
+    if dirty_code_paths(path).strip():
+        raise ValueError(f"frozen tree {name} has code/configuration WIP: {path}")
 
 
 @contextlib.contextmanager
@@ -156,10 +205,10 @@ def reap(proc):
     proc.wait(timeout=10)
 
 
-def command(cmd, cwd, log, timeout):
+def command(cmd, cwd, log, timeout, env=None):
     with log.open("w", encoding="utf-8") as output:
         proc = subprocess.Popen(cmd, cwd=cwd, stdout=output, stderr=subprocess.STDOUT,
-                                start_new_session=os.name != "nt")
+                                env=env, start_new_session=os.name != "nt")
         try:
             return proc.wait(timeout=timeout)
         except (subprocess.TimeoutExpired, KeyboardInterrupt):
@@ -179,6 +228,35 @@ def selection(data, allow_empty=False):
     if not selected and not allow_empty:
         raise ValueError("zero selected tests")
     return ids, selected
+
+
+def libtest_selection(text, package, allow_empty=False):
+    """libtest `-- --list` output → (ids, selected) in the same tab identity form."""
+    ids, selected = set(), set()
+    for line in text.splitlines():
+        line = line.rstrip()
+        if line.endswith(": test"):
+            identity = package + "\t" + line[: -len(": test")].strip()
+            ids.add(identity)
+            selected.add(identity)
+        elif line.endswith(": ignore"):
+            ids.add(package + "\t" + line[: -len(": ignore")].strip())
+    if not selected and not ids and not allow_empty:
+        raise ValueError("zero selected tests")
+    return ids, selected
+
+
+def failed_from_log(path, package=None):
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    failed = set()
+    for match in NEXTEST_FAIL.finditer(text):
+        failed.add(match.group(1) + "\t" + match.group(2))
+    for match in LIBTEST_FAIL.finditer(text):
+        failed.add((package + "\t" + match.group(1)) if package else match.group(1))
+    return sorted(failed)
 
 
 def validate_ids(ids, selected, expected, required_selected):
@@ -205,6 +283,22 @@ def migrations():
     return rows
 
 
+def retirements():
+    """PLAN-844 evidence-cited retirement channel: the frozen 850 baseline files
+    stay untouched; retired required IDs are removed here instead (867 T-04)."""
+    path = HERE / "scripts/full-regression-retirements-844.json.txt"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    if doc.get("schema") != "test-id-retirements/1" or doc.get("plan") != 844:
+        raise ValueError("unsupported test retirement manifest")
+    rows = doc["retirements"]
+    if len({row["id"] for row in rows}) != len(rows):
+        raise ValueError("duplicate test retirement identity")
+    for row in rows:
+        if not row.get("evidence") or "\t" not in row["id"]:
+            raise ValueError("incomplete test retirement")
+    return rows
+
+
 def raw_baseline(owner):
     base = HERE / "scripts" / f"full-regression-{owner}"
     return (set(base.with_name(base.name + "-ids.txt").read_text(encoding="utf-8").splitlines()),
@@ -214,6 +308,9 @@ def raw_baseline(owner):
 def baseline_for(tier, label):
     owner = "ui" if label == "ui-full" else label if label in ("tt", "tb") else "language" if tier == "tf" else tier
     expected, required = raw_baseline(owner)
+    retired = {row["id"] for row in retirements()}
+    expected -= retired
+    required -= retired
     records = migrations()
     source = "ui-full" if label == "ui-full" else "language"
     for row in records:
@@ -234,6 +331,23 @@ def baseline_for(tier, label):
                 if row["old"] in language_required:
                     required.add(row["new"])
     return expected, required
+
+
+def tier_minimums():
+    if not MINIMUMS_PATH.is_file():
+        raise ValueError(f"missing tier selection minimums: {MINIMUMS_PATH}")
+    doc = json.loads(MINIMUMS_PATH.read_text(encoding="utf-8"))
+    if doc.get("schema") != "tier-selection-minimums/1":
+        raise ValueError("unsupported tier selection minimums manifest")
+    return doc["legs"]
+
+
+def check_minimum(legs, label, count):
+    entry = legs.get(label)
+    if not entry:
+        return
+    if count < entry["minimum"]:
+        raise ValueError(f"{label}: selection below frozen minimum ({count} < {entry['minimum']})")
 
 
 def legs(tier, lang, ui, batch=False):
@@ -261,6 +375,72 @@ def legs(tier, lang, ui, batch=False):
     return result
 
 
+def batch_extra_legs(lang, ui, man):
+    """PLAN-867 three-repository batch legs, fixed order after tt/tb.
+
+    nextest legs use `cargo nextest list/run <options>`; libtest legs use bare
+    `cargo test` (single-process WidgetRegistry semantics for ui-tu) and list
+    via `-- --list`. ui-tn is the manual native gate: enumerate only.
+    """
+    man_tc = [arg for package in MAN_SEVEN for arg in ("-p", package)]
+    man_ti = [arg for test in MAN_TI_TESTS for arg in ("-p", "auto", "--test", test)]
+    man_ti += [arg for test in MAN_TI_RUNTIME_TESTS for arg in ("-p", "auto-man-runtime", "--test", test)]
+    man_ti += [arg for test in MAN_TI_COMPAT_TESTS for arg in ("-p", "auto-man", "--test", test)]
+    ui_ti = ["-p", "auto-ui-tools", "-p", "auto-ui-runtime"]
+    ui_ti += [arg for test in UI_TI_TESTS for arg in ("--test", test)]
+    return [
+        {"leg": "man-t", "repo": "man", "cwd": man, "kind": "nextest",
+         "options": ["--workspace", "--lib", "--bin", "auto"]},
+        {"leg": "man-tcore", "repo": "man", "cwd": man, "kind": "nextest",
+         "options": ["--manifest-path", "core/Cargo.toml", "--workspace",
+                     "--no-default-features", "--features", "core"]},
+        {"leg": "man-tc", "repo": "man", "cwd": man, "kind": "nextest",
+         "options": [*man_tc, "--lib"]},
+        {"leg": "man-ti", "repo": "man", "cwd": man, "kind": "nextest",
+         "options": man_ti},
+        {"leg": "ui-tu", "repo": "ui", "cwd": ui, "kind": "libtest", "package": "auto-ui-compiler",
+         "list": ["test", "-p", "auto-ui-compiler", "--lib", "ui_gen::", "--", "--list"],
+         "run": ["test", "-p", "auto-ui-compiler", "--lib", "ui_gen::"]},
+        {"leg": "ui-ti", "repo": "ui", "cwd": ui, "kind": "nextest",
+         "options": ui_ti},
+        {"leg": "ui-tn", "repo": "ui", "cwd": ui, "kind": "libtest", "package": "auto-ui-runtime",
+         "manual": True,
+         "list": ["test", "-p", "auto-ui-runtime", "--features", "native-dnd,test-native-dock",
+                  "--test", "native_dnd_e2e", "--", "--list"],
+         "run": ["test", "-p", "auto-ui-runtime", "--features", "native-dnd,test-native-dock",
+                 "--test", "native_dnd_e2e"]},
+    ]
+
+
+def man_bootstrap(legs_spec, lang, ui, out, timeout, env):
+    """Same bootstrap contract as scripts/cross-repo-tiers.py: te-child and
+    auto-ui-tool are real cross-repository binaries Man integration tests spawn."""
+    commands = []
+    if any(leg["leg"] == "man-ti" for leg in legs_spec):
+        commands.append((ui, ["cargo", "build", "--locked", "-p", "auto-ui-tools"]))
+    if any(leg["leg"] in ("man-ti", "man-tcore") for leg in legs_spec):
+        commands.append((lang, ["cargo", "build", "--locked", "-p", "auto-tool-execution", "--bin", "te-child"]))
+    results = []
+    for index, (cwd, cmd) in enumerate(commands):
+        code = command(cmd, cwd, out / f"bootstrap-{index}.log", timeout)
+        results.append({"command": cmd, "cwd": str(cwd), "exit": code})
+        if code:
+            raise ValueError(f"man bootstrap failed ({code}): {cmd}")
+    return results
+
+
+def child_env(lang, ui, man):
+    result = os.environ.copy()
+    for name, path in (("auto-lang", lang), ("auto-ui", ui), ("auto-man", man)):
+        result[name.upper().replace("-", "_") + "_ROOT"] = str(path)
+    exe = ".exe" if os.name == "nt" else ""
+    result.setdefault("AUTO_UI_TOOL_BIN", str(ui / "target/debug" / f"auto-ui-tool{exe}"))
+    te_child = str(lang / "target/debug" / f"te-child{exe}")
+    result.setdefault("AUTO_TE_CHILD_BIN", te_child)
+    result.setdefault("TE_CHILD_BIN", te_child)
+    return result
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tier", choices=("tf", "taa", "ta", "t3"))
@@ -268,24 +448,37 @@ def main(argv=None):
     parser.add_argument("--no-fail-fast", action="store_true", help="accepted for compatibility; children always collect failures")
     parser.add_argument("--list-only", action="store_true")
     parser.add_argument("--batch", action="store_true")
+    parser.add_argument("--frozen-trees", action="store_true",
+                        help="PLAN-867: run the unfiltered batch against a clean frozen worktree group instead of the main checkout")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--timeout", type=float, default=14400, help="whole child deadline; test deadlines remain unchanged")
     args = parser.parse_args(argv)
     if args.timeout <= 0 or (args.batch and (args.tier != "tf" or args.filters)):
         parser.error("positive deadline required; --batch is only valid with unfiltered tf")
+    if args.frozen_trees and not args.batch:
+        parser.error("--frozen-trees applies to the three-repository batch only")
     out = (args.output or HERE.parent / "full-regression-receipts" / str(time.time_ns())).resolve()
     out.mkdir(parents=True, exist_ok=False)
-    receipt = {"tier": args.tier, "filters": args.filters, "list_only": args.list_only, "results": [], "outcome": "fail"}
+    receipt = {"tier": args.tier, "filters": args.filters, "list_only": args.list_only,
+               "frozen_trees": args.frozen_trees, "results": [], "outcome": "fail"}
     try:
         with machine_gate():
             lang, ui = root("auto-lang"), root("auto-ui")
-            validate_layout(lang, ui)
+            man = root("auto-man") if args.batch else None
+            validate_layout(lang, ui, man)
             if not args.list_only and not args.filters:
-                require_main(lang)
-            receipt["roots"] = {"language": str(lang), "ui": str(ui)}
+                if args.frozen_trees:
+                    for name, path in (("language", lang), ("ui", ui), ("man", man)):
+                        require_clean_tree(name, path)
+                else:
+                    require_main(lang)
+            receipt["roots"] = {"language": str(lang), "ui": str(ui), **({"man": str(man)} if man else {})}
             receipt["test_migrations"] = migrations()
             before = {"language": identity(lang), "ui": identity(ui)}
+            if man is not None:
+                before["man"] = identity(man)
             receipt["identities"] = before
+            minimums = tier_minimums() if args.batch else {}
             total_selected = 0
             for label, cwd, options in legs(args.tier, lang, ui, args.batch):
                 options += args.filters
@@ -306,6 +499,7 @@ def main(argv=None):
                 ids, selected = selection(json.loads(listing.read_text(encoding="utf-8")), allow_empty=bool(args.filters))
                 total_selected += len(selected)
                 record.update(ids=len(ids), selected=len(selected))
+                check_minimum(minimums, label, len(selected))
                 expected, required = baseline_for(args.tier, label)
                 record["added"] = validate_ids(ids, selected, expected, set() if args.filters else required)
                 if not selected:
@@ -319,10 +513,78 @@ def main(argv=None):
                                        out / (label + "-run.log"), args.timeout)
                     record["run_exit"] = code
                     if code:
+                        record["failed"] = failed_from_log(out / (label + "-run.log"))
                         raise ValueError(f"{label}: tests failed ({code}); stopping")
+            if args.batch:
+                legs_spec = batch_extra_legs(lang, ui, man)
+                env = child_env(lang, ui, man)
+                if not args.list_only:
+                    receipt["man_bootstrap"] = man_bootstrap(legs_spec, lang, ui, out, args.timeout, env)
+                for spec in legs_spec:
+                    label = spec["leg"]
+                    record = {"leg": label, "cwd": str(spec["cwd"]), "kind": spec["kind"]}
+                    receipt["results"].append(record)
+                    if spec["kind"] == "nextest":
+                        options = spec["options"]
+                        record["options"] = options
+                        listing = out / (label + "-list.json")
+                        with listing.open("w", encoding="utf-8") as stdout, (out / (label + "-build.log")).open("w", encoding="utf-8") as stderr:
+                            proc = subprocess.Popen(["cargo", "nextest", "list", *options, "--message-format", "json"],
+                                                    cwd=spec["cwd"], env=env, stdout=stdout, stderr=stderr,
+                                                    start_new_session=os.name != "nt")
+                            try:
+                                code = proc.wait(timeout=args.timeout)
+                            except (subprocess.TimeoutExpired, KeyboardInterrupt):
+                                reap(proc)
+                                raise
+                        record["list_exit"] = code
+                        if code:
+                            raise ValueError(f"{label}: listing failed ({code})")
+                        ids, selected = selection(json.loads(listing.read_text(encoding="utf-8")))
+                        total_selected += len(selected)
+                        record.update(ids=len(ids), selected=len(selected))
+                        check_minimum(minimums, label, len(selected))
+                        if not args.list_only:
+                            code = command(["cargo", "nextest", "run", *options, "--no-fail-fast"], spec["cwd"],
+                                           out / (label + "-run.log"), args.timeout, env)
+                            record["run_exit"] = code
+                            if code:
+                                record["failed"] = failed_from_log(out / (label + "-run.log"))
+                                raise ValueError(f"{label}: tests failed ({code}); stopping")
+                    else:
+                        record["command"] = ["cargo", *spec["list"]]
+                        record["package"] = spec["package"]
+                        listing = out / (label + "-list.txt")
+                        with listing.open("w", encoding="utf-8") as stdout, (out / (label + "-build.log")).open("w", encoding="utf-8") as stderr:
+                            proc = subprocess.Popen(["cargo", *spec["list"]], cwd=spec["cwd"], env=env,
+                                                    stdout=stdout, stderr=stderr, start_new_session=os.name != "nt")
+                            try:
+                                code = proc.wait(timeout=args.timeout)
+                            except (subprocess.TimeoutExpired, KeyboardInterrupt):
+                                reap(proc)
+                                raise
+                        record["list_exit"] = code
+                        if code:
+                            raise ValueError(f"{label}: listing failed ({code})")
+                        ids, selected = libtest_selection(listing.read_text(encoding="utf-8"), spec["package"])
+                        total_selected += len(selected)
+                        record.update(ids=len(ids), selected=len(selected), ignored=len(ids) - len(selected))
+                        check_minimum(minimums, label, len(selected))
+                        if not args.list_only and not (spec.get("manual") and not os.environ.get("AUTO_UI_TN_RUN")):
+                            code = command(["cargo", *spec["run"]], spec["cwd"], out / (label + "-run.log"),
+                                           args.timeout, env)
+                            record["run_exit"] = code
+                            if code:
+                                record["failed"] = failed_from_log(out / (label + "-run.log"), spec["package"])
+                                raise ValueError(f"{label}: tests failed ({code}); stopping")
+                        elif spec.get("manual"):
+                            record["skip"] = "manual native gate; run explicitly with AUTO_UI_TN_RUN=1 (recorded pending, not passed)"
             if not total_selected:
                 raise ValueError("zero selected tests across all owners")
-            if before != {"language": identity(lang), "ui": identity(ui)}:
+            after = {"language": identity(lang), "ui": identity(ui)}
+            if man is not None:
+                after["man"] = identity(man)
+            if before != after:
                 raise ValueError("code, configuration or dependency changed during regression")
             receipt["outcome"] = "pass"
             return 0
