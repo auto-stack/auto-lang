@@ -1,3 +1,13 @@
+### Plan 870（2026-10-28，work T-01..T-04 交接登记）
+
+绑定 plan-870-dev（base 9e847acf7）。三项移交 S owner（862 线）+ 两项本批裁定：
+
+- **上游 S 缺口（移交 862/auto-mir-lower）**：视图 `==`/`!=` 在 `hir_adapter.rs` 走通用 Bin 路径，StrCmp 守卫（lhs `type_of_expr`==StrView）未触发，最小源 `fn main() int { let a str = "A"; if a == "A" { return 1 } return 2 }` 在 verify 即 `mir.bin-type` 红。ACE-M1 T05 行据此具名排除（`gap:upstream-s-eq`）；mn 的 StrCmp/非法码点机器面在 R1 终审判定为零运行时覆盖（F-870-R1-02，修复中——手写 MIR 单元直发实跑）；S 修复后 T-05 差分门另补源级行。
+- **split_units 指令内嵌类型索引不重映射（移交 S/probe）**：unit 内 `Aggregate.record_ty` 等仍持全模块索引（实证 R01：unit 表长 3、record_ty=3 悬空）。mn 侧以 verify 保证的 dst 槽类型等价解析（`lower.rs::resolve_record_ty`）；建议 S 侧在 split_units 重映射并补 fingerprint 渲染。
+- **AV clone 行 exit 内释放序为宿主实现细节（口径裁定）**：探针实证双裸 Str/双独立 record 为 sweep 内降序，clone 派生行（R04）部分释放在宿主 Rc drop 时点混合发火——静态调度不可复现。870 台账差分口径冻结为三级（alloc bytes 序精确 / free 多重集+单次性 / 指令点释放精确；exit 内部序仅非 clone 行逐序），见 freeze §5 与 coverage §4.6；T-05 差分门继承。
+- **D-868-DEBT-02 关闭**：Plan 868 登记的 ac-mn 测试夹具预存红（env/source_snapshot 字段、link_and_run 旧签名）本批已机械修复（N 写面内，`cargo check --all-targets` 零警告）。
+- **resources_tier `transient_spike_sampler_and_raw_gate` 环境红（归因关闭）**：并发批与隔离复跑同红（ticks=4，assert ≥5），测试 0.07s 即完成——4×~15.6ms≈窗口时长，Windows 默认计时器分辨率把 sampler 的 5ms `thread::sleep` 量化到 ~15.6ms；该断言隐含依赖某外部进程把系统计时器抬到 1ms。该测仅用 resources.rs sampler+mempeek+裸分配（本 diff 零触及），823 后 ac-mn 测试不可编译以来未实际运行过，非本批回归。修复建议（后续 L0）：sampler 改 spin-loop/等待句柄或断言按实测量子归一。
+
 ### Plan 862（2026-10-28，T-07 review；范围外债务 + 待决策口径）
 
 绑定 T-07 reviewed_commit `0e9c08189`（plan-862-dev）。两项，均**不在** PLAN-862 合同写面内：
@@ -3681,3 +3691,14 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 环境态不稳定窗口的误判，以双侧对照为准。**新增红=0，等价出口达成**。oracle 已按声明
 意图修正（apps-only 断言，7105b0cf3）。遗留观察（auto-os 产品侧，非本仓）：launcher
 分类过滤下 quicklinks 是否应出列——mock ql_admit 默认放行使任意分类都附 3 个链接。
+
+## 批回归环境敏感观察（2026-10-28，PLAN-875 merge 到期批）
+
+- `auto-ui` ui-full leg：`plan811_media_runtime::shims::session_family_through_real_shims` —
+  跨线程 populate 轮询（2s 截止，names 非空即断言内容）在并行负载下可观察到部分填充
+  （只见 alpha-2x1.png 不见 rgb-1x1.png）。隔离重放 2×绿（单测+族 7/7）；PLAN-876 窗口
+  改 session.rs/rqhost.rs 未触该测试。负载敏感竞态，非代码回归；后续批再遇先隔离重放。
+- `auto-lang` tt：`plan716_supply::diff_window_census` 墙钟性能 oracle（窗口不得劣于全量）
+  在并发 cargo 构建负载下 649ms vs 525ms 翻红；隔离重放 2×绿（单测+族 14/14）。
+  墙钟 oracle 的负载敏感，非回归。同批 `ac_mn_probe_tests::mir_native_incremental_series_formal`
+  报 ERROR_USER_MAPPED_FILE（跨进程文件映射冲突，temp 目录清理竞态）；族隔离 25/25 绿。

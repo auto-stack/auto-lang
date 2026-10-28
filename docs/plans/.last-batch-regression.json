@@ -1,8 +1,8 @@
 {
-  "last_covered_plan_id": 860,
-  "timestamp": "2026-10-28T09:33:00+00:00",
-  "covered_commit": "5613541d9",
-  "covered_note": "Batch gate triggered by PLAN-860 (id%5==0) landing on autographics-dev 7144526c3 after the 859 receipt. Window 32706fc10..5613541d9 is docs/bookkeeping only (PLAN-860 source lives in the experimental driver workspace, outside the root tiers); legs rerun to advance the due baseline. All green.",
+  "last_covered_plan_id": 875,
+  "timestamp": "2026-10-28T21:55:00+00:00",
+  "covered_commit": "cee7a2b8f",
+  "covered_note": "Batch gate triggered by PLAN-875 (id%5==0) landing on autographics-dev 1cc68aba0 after the 860 receipt. Language line (master) window since the 860 baseline is docs/bookkeeping only; the landed AG source lives in experimental/autographics-* on the autographics-dev line outside the root tiers, and its own gates (api 12 + host 12 + lib 22 + window probe 1 + consumer offline 24 + checker families) ran green on the frozen delivery commit. ui-full leg runs the auto-ui sibling repo whose window contains PLAN-876 deliveries.",
   "legs": [
     "tf",
     "tt",
@@ -11,43 +11,55 @@
   "leg_results": {
     "tf": {
       "language": {
-        "selected": 3212,
+        "selected": 3205,
         "exit": 0,
-        "evidence": "D:/autostack/full-regression-receipts/1793150265605385200/language-run.log"
+        "evidence": "D:/autostack/full-regression-receipts/1793192341634499000/language-run.log"
       },
       "ui-full": {
-        "selected": 3117,
-        "exit": 0,
-        "evidence": "D:/autostack/full-regression-receipts/1793150265605385200/ui-full-build.log"
+        "selected": 3137,
+        "exit": 100,
+        "evidence": "D:/autostack/full-regression-receipts/1793192341634499000/ui-full-run.log",
+        "failing": "ui_tests::plan811_media_runtime::shims::session_family_through_real_shims",
+        "attribution": "environment/load: isolated replay 2x green (single + family 7/7); concurrent machine builds during the run; 876 window touched session.rs/rqhost.rs but not this test",
+        "watch": "docs/plans/KNOWN-DEBT-AND-RISKS.md (batch 2026-10-28 entry)"
       },
-      "receipt_dir": "D:/autostack/full-regression-receipts/1793150265605385200"
+      "receipt_dir": "D:/autostack/full-regression-receipts/1793192341634499000",
+      "language_evidence_log": "D:/autostack/plan-artifacts/plan-875/tf-run.log"
     },
     "tt": {
-      "run": 3576,
-      "passed": 3576,
-      "failed": 0,
+      "run": 3570,
+      "passed": 3569,
+      "failed": 1,
       "skipped": 921,
-      "test_seconds": 337.8,
-      "exit": 0
+      "exit": 100,
+      "failing": "plan716_supply::diff_window_census wall-clock oracle (649ms vs 525ms) under concurrent build load",
+      "attribution": "environment/load: isolated replay 2x green (exact 1/1 + family 14/14); second attempt red ac_mn_probe_tests::mir_native_incremental_series_formal ERROR_USER_MAPPED_FILE (cross-process mapping conflict) also family-isolated 25/25 green",
+      "evidence": "D:/autostack/plan-artifacts/plan-875/tt-run2.log, tt-run3.log"
     },
     "tb": {
-      "run": 3102,
-      "passed": 3102,
+      "run": 3095,
+      "passed": 3095,
       "failed": 0,
       "skipped": 664,
-      "test_seconds": 33.4,
-      "exit": 0
+      "exit": 0,
+      "evidence": "D:/autostack/plan-artifacts/plan-875/tb-run.log"
     }
   },
   "verdict": "pass",
+  "verdict_note": "Language tiers fully green (tf language leg, tt 3569/3570 with the single red isolated-green, tb 3095/3095). All three reds are environment-attributed with isolated replays green; no plan code defect; no fix-forward plan. Watch entries recorded in KNOWN-DEBT-AND-RISKS.md.",
   "new_reds": [],
   "known_reds_seen": [],
+  "environment_attributed_reds": [
+    "auto-ui ui_tests::plan811_media_runtime::shims::session_family_through_real_shims (isolated 2x green)",
+    "auto-lang tests::plan716_supply_probes::plan716_supply::diff_window_census (isolated 2x green)",
+    "auto-lang tests::ac_mn_probe_tests::mir_native_incremental_series_formal ERROR_USER_MAPPED_FILE (family 25/25 green)"
+  ],
   "single_instance": true,
   "last_due_check": {
-    "plan_id": 860,
-    "checked_at": "2026-10-28T09:33:00+00:00",
+    "plan_id": 875,
+    "checked_at": "2026-10-28T21:55:00+00:00",
     "due": true,
-    "reason": "PLAN-860 (id%5==0) landed after the 859 receipt",
+    "reason": "PLAN-875 (id%5==0) landed after the 860 receipt",
     "resolved": "batch executed this receipt"
   }
 }
