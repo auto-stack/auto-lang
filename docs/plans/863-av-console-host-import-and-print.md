@@ -76,7 +76,7 @@ total_steps: 8
 
 ### 5.1 前置与写面
 
-硬前置：`D862`（入口/Unit/结果通道）。若 862 未交付，本Plan保持 drafting（不消费 WIP）。写面见 §3；另：`crates/auto-lang/src/tests/ace_m1_tests.rs` 的追加断言、`docs/specs/auto-test-case/architecture.md`（仅追加断言轴章节，不改既有 infra 规则）。
+硬前置：`D862`（入口/Unit/结果通道）与 **`D868`（lowering 出库）**——`print`/`eprint` 的源码 lowering 落在共享 crate。两者未交付时保持 drafting（只做只读核查，不消费 WIP）。写面见 §3；另：`crates/auto-lang/src/tests/ace_m1_tests.rs` 的追加断言、`docs/specs/auto-test-case/architecture.md`（仅追加断言轴章节，不改既有 infra 规则）。
 
 ### 5.2 合同冻结（T-02 决策件）
 

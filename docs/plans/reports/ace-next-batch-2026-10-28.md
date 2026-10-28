@@ -39,12 +39,27 @@
 依赖图：
 
 ```text
-D862 ──┬─→ 863 ─┐
-       ├─→ 864 ─→ 865
-       └─→ 866 （可与其他并行；与 864/865 无共享写面冲突，仅共用 probe/hir_adapter 缝，按单写窗口交接）
+D868（lowering 出库，见 §2.1）
+   └─→ 862 ──┬─→ 863
+             ├─→ 864 ─→ 865
+             └─→ 866（可与 863/864/865 并行；不触 lowering）
 ```
 
-单写纪律：864/865 会同时触及 `probe/src/hir_adapter.rs` 与 `ac-core/src/source/**`；866 触及 `core/src/program_snapshot.rs`/`session.rs`/`driver.rs`。共享核心仍按[共同合同](ace-execution-order-and-incremental-compatibility-2026-10-20.md)单写交接：先合入者冻结基面并记录释放，后到者核验接收；不持窗等上游、不消费 WIP。
+单写纪律：864/865 会同时触及 lowering 与 `ac-core/src/source/**`（D868 之后 lowering 位于共享 crate，见 §2.1）；866 触及 `core/src/program_snapshot.rs`/`session.rs`/`driver.rs`。共享核心仍按[共同合同](ace-execution-order-and-incremental-compatibility-2026-10-20.md)单写交接：先合入者冻结基面并记录释放，后到者核验接收；不持窗等上游、不消费 WIP。
+
+### 2.1 迁移前置：PLAN-868（HIR→MIR lowering 出库）
+
+2026-10-28 用户确认迁移方向（旧的 HIR 直达改为 HIR→MIR，使 MIR→Native 共享），并要求先单独建立 lowering 出库计划 → [PLAN-868](../868-hir-mir-lowering-shared-crate.md)。
+
+**排序事实**：868 不是 862–866 的**语义**前置（866 完全不触 lowering），但它是 862/863/864/865 的**写面**前置——这四份都要改 `HIR→MIR` lowering，而该实现当前住在测试宿主 `experimental/ac-av-probe/probe/src/hir_adapter.rs`，且被 `ac-mir-native`、`ac-cte-probe` 跨 crate 依赖。先做功能再搬移 = "改完再搬"，会产生跨计划 merge 冲突与证据重绑定。因此本批实际顺序改为：
+
+```text
+868（纯搬移 + 依赖倒置 + lowering 版本身份）
+  → 862（入口/Unit） → 863（console） → 864（集合/变体） → 865（闭包）
+  → 866（在线重载，随时可并行）
+```
+
+868 期间的证据影响：**收据不动**（`ace.m1.cert/1` 键集不变，852 双消费者校验不受影响）；**报告**新增 lowering 版本轴，旧报告按既有 stale 语义判 STALE 属预期。
 
 ## 3. 需要用户裁定或后续Plan认领的项
 
@@ -59,10 +74,13 @@ D862 ──┬─→ 863 ─┐
 
 | 优先 | 切片 | 归口 | 说明 |
 |---|---|---|---|
-| P0 | AC 复合 native 扩面（record/text/List/enum/Dyn 的 mn 路径） | 818 后继 / `gap:ac-composite-native`、`gap:mn-scalar-only` | **M1 四路径全绿的实际阻塞**；本批只在 AV 扩源码，不声称四路径齐全 |
+| **P0（已立项）** | **HIR→MIR lowering 出库为共享 crate** | [PLAN-868](../868-hir-mir-lowering-shared-crate.md) | 迁移的硬前置；纯搬移，不改语义；862–865 的 lowering 写面依赖它 |
+| P0 | AC 复合 native 扩面（record/text，关 `outside the mn scalar surface` 三处） | 818 后继 / `gap:ac-composite-native`、`gap:mn-scalar-only` | **M1 四路径全绿的实际阻塞**；迁移批次第二份（拟 869），只做 record/text/text-record |
 | P0 | M1 分母重绑定（T*/R*/L*/V* 行的 `wait:av-*-822` 现状核实） | 852 后继 | 822 未获授权新增 T-11，`wait:av-text-822`/`av-record-822`/`av-variants-822` 既未被关闭也未被重绑；须按 D820/D821/D822 实际交付重新评估，属证据/绑定工作（不改 Rust 源码时按 Category A 处理） |
-| P0 | R2-N 数值源码与算术（i64/u64/f32/f64、位运算、Math） | 能力矩阵 C-03/C-04/C-05 | 同时关闭 `gap:mn-no-typed-entry`（native typed 入口） |
+| P0 | mn collections/variants + native typed entry（关 509 与 `mn-no-typed-entry`） | 818 后继 | 必须紧跟 864，否则 L/V 行在 mn 列永久 gap |
+| P0 | R2-N 数值源码与算术（i64/u64/f32/f64、位运算、Math） | 能力矩阵 C-03/C-04/C-05 | 与上一行的 typed 入口部分重叠，需合并排期 |
 | P0 | R3-M 多模块/use/pkg/全局初始化 | C-21/C-22 | AP-07；复用 resolver 与 783 store |
+| P1 | 消费面切换 + 旧 HIR 直达 lowering 退役（按 profile 逐个切，旧实现删除） | Design43 §2 迁移终点 | 迁移批次第三份（拟 870）；前置=record/text 差分门全绿 |
 | P1 | R3-T 用户泛型/spec/方法派发 | C-23/C-24 | 864 只做内建实例化，不等同用户泛型 |
 | P1 | R3-H stdlib 与 typed host（FS/argv/env/进程/权限） | C-30 | 直接复用 863 的宿主导入形状 |
 | P1 | R3-C JSON/Map/Set/匿名对象 | C-20/C-31 | `av.dynamic` 不是 Map 实现 |

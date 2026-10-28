@@ -80,7 +80,7 @@ SEM-05 的冲突（[能力矩阵 §3](../design/strategy/av-language-capability-
 
 ### 5.1 前置、入口与写面
 
-硬前置：`D798`、`D828`、`D852`（已具备）；本Plan不等待 863–866。写面：
+硬前置：`D798`、`D828`、`D852`（已具备）、**`D868`（HIR→MIR lowering 出库）**——本Plan要改 MIR 入口/Unit 的 lowering，必须落在共享 crate 而非 probe 宿主；`D868` 未交付前只做只读核查与合同冻结（T-02 可先做）。本Plan不等待 863–866。写面：
 
 - `experimental/ac-core/src/source/{ast,lexer,parser,resolve,typecheck,adapter}.rs` + `src/{hir,descriptor,verify}.rs` + 新 schema `*.atom`（新域）。
 - `experimental/ac-av-probe/core/src/{mir,mir_verify,abc,abc_verify,av,contract}.rs` + `probe/src/{hir_adapter,session,driver,formal_worker}.rs`。

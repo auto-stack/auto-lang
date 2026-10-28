@@ -71,7 +71,7 @@ PLAN-823 已交付执行侧 `av.closures/1`（profile id 6、AVAD v5、TY_CLOSUR
 
 ### 5.1 前置与写面
 
-硬前置：`D862`（入口）、`D864`（集合源码，供捕获 owned 值与 HOF 后续切片）、`D823`（已具备）。写面见 §3。
+硬前置：`D862`（入口）、`D864`（集合源码，供捕获 owned 值与 HOF 后续切片）、`D823`（已具备）、**`D868`（HIR→MIR lowering 出库）**——闭包捕获/lowering 落共享 crate。写面见 §3。
 
 ### 5.2 源码语义冻结（T-02）
 
