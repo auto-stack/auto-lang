@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-864
-status: reviewed
+status: archived
 feature_name: AV集合与变体源码闭环（R2-L 前半）
 author: [Codex]
 created_at: 2026-10-28
@@ -186,6 +186,10 @@ L/V 两族目前只有 **typed 语料**走协议（`ac-av/collections-run-v1` + 
 2026-10-29 独立最终 review（T-06/AC-06，独立上下文于同一树，非二次检出）：**PASS** @ `38dc10e33`（复审后修复提交 `938a2ac7f`）。八项核对全过并逐项引用 file:line 证据：(1) AC-01 真源正向全绿且 14 个 852 源字节未动（diff 空），oracle 手算一致（L02=42/L03=0/V03=3/N01=51/N03=53）；(2) AC-02 单陷阱码 av.trap.list-index 冻结面无新编译期下标校验，12 具名拒绝逐项断言；(3) AC-03 profile-4 零漂移——core/{mir,mir_verify,abc,av,contract,ownership}.rs diff=0，lowering 新增行仅既有 822 指令（无隐藏 clone；clear=尾删循环展开）；(4) AC-04 会话计数器实证（fresh=2/body-edit=1+carry=1/hit=0+2/接口编辑精确失效），split_units 修复为真悬空类型索引修复且旧 profile 零漂移（822 三元组 3/3）；(5) H 面 append-only（0 删行；av-data/822 diff 空；binding.tsv 仅 status/owner 列、分母值列未动）；(6) 健康零新警告、无调试残留；(7) 写面披露（9 个文件在收据字面清单外，均为新 HIR 变体的编译必需穷尽臂/身份注册，旧行为保守）记录为 P2；(8) Spec delta 与实现一致且分支未动 docs/specs。acceptance 门由复审者重跑 GREEN。发现：P1×1（pattern-scrutinee 缺负例）已在修复提交闭合（13 具名拒绝全测）；P2×5（session 族入 verify 脚本——已闭合；fn_hir_codec tag-11 decode 不对称——latent 且响亮失败，记 866 后继；SD-05 目标不在 frontmatter——merge 沉淀时补；corpus 注释——已清；SEM-02 负下标无字面源码行——结构性覆盖充分，不阻塞）。merge-owned 门禁 pending：裸 `cargo t` + `cargo tv` 于冻结提交。
 
 `stage: goal | plan_id: PLAN-864 | plan_revision: r2 | round: 2 | from: work | to: review | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-864/auto-lang | commit: 38dc10e33 (review) / 938a2ac7f (repairs) | next: merge`
+
+`stage: goal | plan_id: PLAN-864 | plan_revision: r2 | round: 3 | from: review | to: merge | status: archived | outcome: pass | delivery: merge commit on master (feat(auto-av): collections/variants SOURCE closure) | specs: docs/specs/auto-ac/source-collections-variants.md (new) + collections-variants.md + collection-place-profile.md + ace-m1-conformance.md + capability-matrix C-15/16/17 delivered & C-09 partial | ledger: .autoos/specs.json PLAN-864 upsert | merge gates: cargo t 3186/3186 + tv 163/163 green | cleanup: worktree guarded+removed | next: done`
+
+2026-10-29 merge 收据：T-07 门禁（裸 cargo t 3186/3186、tv 163/163）于冻结提交通过；首次跑出的 cte worker 超时/失败归因为 pre-existing worker-build 竞态（master 同样复现 pass/fail 交替），非本计划回归（ac-sema-core 投影适配器已补受控臂并复绿）。T-08 Spec 沉淀 SD-01..SD-05 + ledger upsert + spec-index 刷新。T-09 交接：865（闭包源码）基面=collections 源前端已就绪（is 链降级/generic 接收器分类/ProjectionView 融合可复用；闭包 opcode 0x32..0x34 在 core 已存在）；866（在线重载）基面=CollectionsSourceSession 计数器/carry 语义 + fn_hir_codec tag-11 decode 不对称待补（latent，响亮失败，P2 记录在案）。
 
 2026-10-28 r1→r2（用户授权修订波次/写面，864纳入拥有型List、871补旧能力与删除门）：仅修订执行合同，不实施。原status/current_step/total_steps、任务勾选与历史记录保留；D868合同和进度不变。V-08补交接/消费者兼容与首例cache、文件化测试、周转及内存核验；详细依据与静态预检见[波次合同](reports/ace-wave-handoff-2026-10-28.md)和[修订收据](attachments/ace-wave-20261028/revision-summary.md)。本记录只说明文档修订，未执行AC、性能测试或独立实现review，merge-owned门禁仍待实施后完成。
 
