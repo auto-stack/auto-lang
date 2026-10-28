@@ -1,9 +1,17 @@
 # auto-graphics — integration contract
 
-> Current status (PLAN-834): I1's original real Auto Breakout + Squash denominator is delivered experimentally on autographics-dev. Earlier PLAN-829/830/833 pending statements below record their historical stage. I2 production AutoUI/RQHost migration, I3 Forge/distribution and Shader/CAP remain pending. Master carries knowledge only; graphics source does not enter master.
+> Current status (PLAN-879): AutoGraphics experimental sources moved to the auto-ui repository at
+> `experimental/autographics-{prototype,auto-driver}/` (single development authority; landing commit
+> `4adf2d037a1804741adc9c5a012f08cfa566439d`) — see [source-repository-and-sdk.md](source-repository-and-sdk.md)
+> for the content mapping, frozen SDK snapshot/cold prepare, and switch/recovery contract.
+> `autographics-dev` keeps history + ownership guides only (frozen 875 source `1cc68aba`).
+> I1's original real Auto Breakout + Squash denominator and all later experimental lines remain delivered
+> in that source. Earlier PLAN-829/830/833 pending statements below record their historical stage.
+> I2 production AutoUI/RQHost migration, I3 Forge/distribution and Shader/CAP remain pending.
+> Master carries knowledge only; graphics source does not enter master.
 
-> Status: experimental（PLAN-829 交接合同；代码在 `autographics-dev` 分支，
-> 见 [project.md](project.md)）。**两道合成检测门必须并列保留，不可互替**
+> Status: experimental（PLAN-829 交接合同；代码自 PLAN-879 起在 **auto-ui 仓**
+> `experimental/`，见 [source-repository-and-sdk.md](source-repository-and-sdk.md)）。**两道合成检测门必须并列保留，不可互替**
 > （R5-03/R18 裁定，见 IH-01）。
 
 ## Verified（PLAN-829，probe 证据）

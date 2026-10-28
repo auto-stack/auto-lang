@@ -1,11 +1,20 @@
 # Auto source driver (PLAN-833)
 
-> Current status (PLAN-834): I1's original real Auto Breakout + Squash denominator is delivered experimentally on autographics-dev. Earlier PLAN-829/830/833 pending statements below record their historical stage. I2 production AutoUI/RQHost migration, I3 Forge/distribution and Shader/CAP remain pending. Master carries knowledge only; graphics source does not enter master.
+> Current status (PLAN-879): AutoGraphics experimental sources moved to the auto-ui repository at
+> `experimental/autographics-{prototype,auto-driver}/` (single development authority; landing commit
+> `4adf2d037a1804741adc9c5a012f08cfa566439d`) — see [source-repository-and-sdk.md](source-repository-and-sdk.md)
+> for the content mapping, frozen SDK snapshot/cold prepare, and switch/recovery contract.
+> `autographics-dev` keeps history + ownership guides only (frozen 875 source `1cc68aba`).
+> I1's original real Auto Breakout + Squash denominator and all later experimental lines remain delivered
+> in that source. Earlier PLAN-829/830/833 pending statements below record their historical stage.
+> I2 production AutoUI/RQHost migration, I3 Forge/distribution and Shader/CAP remain pending.
+> Master carries knowledge only; graphics source does not enter master.
 
-Status: experimental delivered on autographics-dev; independent R2 pass and frozen T-10 gates passed. Production migration remains pending.
-Source workspace: `experimental/autographics-auto-driver`, bin `autographics-auto-driver`.
-Frozen graphics upstream: `764e87559cff016d9e0d6b2141e5f1f9903398c5`.
-Frozen SDK upstream: `9576b4dad5ceb8b201adedd46f9689f25c2dd5f9`.
+Status: experimental delivered (833–875 lines; historically on autographics-dev, moved to auto-ui by PLAN-879); independent R2 pass and frozen T-10 gates passed. Production migration remains pending.
+Source workspace: auto-ui repo `experimental/autographics-auto-driver`, bin `autographics-auto-driver` (ownership guides + full history remain on autographics-dev).
+Frozen graphics upstream (833 era): `764e87559cff016d9e0d6b2141e5f1f9903398c5`.
+Frozen SDK upstream (833 era): `9576b4dad5ceb8b201adedd46f9689f25c2dd5f9`.
+Current SDK (since PLAN-846): logical pin `7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467` (Git object unreachable); preserved since PLAN-879 as the versioned snapshot `sdk/frozen/` (681 files, locked by `research/source-lock.json`), cold-prepared via `python tools/prepare_sdk.py --from-snapshot` with no producer repo/network. Current source identity: `research/plan879-identity.json` (old auto-lang blob → new path mapping), verified by `tools/verify_plan879.py --controls`. See [source-repository-and-sdk.md](source-repository-and-sdk.md).
 
 ## Actual execution and ownership
 

@@ -13,6 +13,12 @@ auto-ui 仓持有 UI 生产实现五包：auto-ui-dialect / auto-ui-compiler / a
 - 开发解析：三仓同级 path 组（组内兄弟相对 path + 受管锁）；发行消费使用登记固定源码/内容寻址包，禁隐式主检出回退。
 - 最终版本由三仓固定 commit 与发行源码清单共同标识，不以 path 依赖或包版本 0.1.0 代替源码身份。
 
+## AutoGraphics 实验所有权（PLAN-879，SD-03）
+
+- 自 2026-10-29（落地 `4adf2d037a1804741adc9c5a012f08cfa566439d`）本仓持有 AutoGraphics 两个**独立实验 workspace**：`experimental/autographics-prototype/` 与 `experimental/autographics-auto-driver/`（单一开发权威；内容映射/旧 SDK 快照/冷准备/恢复见 [../auto-graphics/source-repository-and-sdk.md](../auto-graphics/source-repository-and-sdk.md)）。
+- 二者**不加入** `crates/*` 默认成员：默认五包/根 manifest/根 Cargo.lock 零改动（`cargo metadata --locked --offline --no-deps` 实测恰五包），默认闭包无 AG 或 SDK 快照依赖边；AG 各 workspace 自带 `.cargo/config.toml` 栈配置，不继承本仓生产配置。
+- 这是实验源码归仓，**不是** UI 生产融合：生产 AutoUI/RQHost 集成（I2）、Forge/发行（I3）仍按原成熟度门另议，不因迁仓放行。
+
 ## 测试与档位（SD-05 汇总）
 
 UI 仓自持 t / tu（单进程 ui_gen 档）/ ti（集成档）/ tn（native 手工门）档位与 `.config/nextest.toml`；测试 ID 与语言仓基线对拍零丢失（tu 863 唯一恒等）。blueprints 单源居语言仓 packages/blueprints（编译期兜底=组内兄弟探测，独立 clone 生成工程不在无兄弟布局支持矩阵内）。

@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-879
-status: reviewed
+status: archived
 feature_name: AutoGraphics纯源码迁入auto-ui与单一权威切换
 author: [Codex]
 created_at: 2026-10-29
@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-008]
 affects: [auto-graphics, auto-ui, repository-boundaries]
 depends_on: [PLAN-875, PLAN-878]
-current_step: 5
+current_step: 9
 total_steps: 10
 ---
 
@@ -139,10 +139,10 @@ merge先重核源tip与两仓基面/owner，短暂停写：①保存两repo可�
 | T-03 | work | T-02通过 | 两树候选导入、快照保全与prepare/路径工具/new identity适配、V-01/02 | AC-01/02 | [x] |
 | T-04 | work | T-03 | 新源导出fresh consumer、A→B冷准备/独立构建/公开源码无窗口对照V-03 | AC-02/03 | [x] |
 | T-05 | work | T-04 | UI默认隔离、源迁出指引候选/恢复演练、定向/fmt/两树提交/SD摘要 | AC-01..05 | [x] |
-| T-06 | review | T-05 | 独立上下文逐项复核两冻结提交/清单/路径/失败恢复/SD | AC-06 | [ ] |
-| T-07 | merge | T-06 pass | 冻结抽样/来源/受影响对照及复用审计，失败回work受影响复审 | AC-07 | [ ] |
-| T-08 | merge | T-07 | 两仓停写，目标prepared→源迁出→权威切换，失败按合同恢复 | AC-08 | [ ] |
-| T-09 | merge | T-08 | 主语言检出知识/ledger/索引、目标文档归属/维护入口、Plan归档收据 | AC-08 | [ ] |
+| T-06 | review | T-05 | 独立上下文逐项复核两冻结提交/清单/路径/失败恢复/SD | AC-06 | [x] |
+| T-07 | merge | T-06 pass | 冻结抽样/来源/受影响对照及复用审计，失败回work受影响复审 | AC-07 | [x] |
+| T-08 | merge | T-07 | 两仓停写，目标prepared→源迁出→权威切换，失败按合同恢复 | AC-08 | [x] |
+| T-09 | merge | T-08 | 主语言检出知识/ledger/索引、目标文档归属/维护入口、Plan归档收据 | AC-08 | [x] |
 | T-10 | merge | T-09 | 两仓各wt-guard clean后清树/分支/空组目录；必要本地产物/恢复refs保全 | AC-08 | [ ] |
 
 ## 9. 复审记录
@@ -166,6 +166,9 @@ work r1 证据摘要（命令/退出码/关键数字，原始输出在 plan-arti
 - **pending（不属work）**：T-06 独立 review 绑定 4adf2d03+f07b5ec8；merge-owned：冻结抽样/来源复用审计（T-07）、两仓落地切换（T-08）、知识/ledger/归档（T-09）、guard清理（T-10）。根 auto-lang crates 零改动，未跑根 cargo t/tf/tv/tu/docs_gen（Category-A/合同裁定）。
 
 2026-10-29 goal round 1：`stage: goal | plan_id: PLAN-879 | plan_revision: r1 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-879/{auto-lang,auto-ui} | commit: 4adf2d03(auto-ui) / f07b5ec8(auto-lang) | next: review`。用户 /goal 授权整链（work/review/有界修复/merge），本轮执行 work 阶段并到 execution_done；下一轮进 review。
+2026-10-29 merge T-07/T-08：`stage: merge | plan_id: PLAN-879:r1 | outcome: pass | completion_kind: delivered | reviewed_commit: 4adf2d03(auto-ui)+f07b5ec8(auto-lang) | delivery_commit: 4adf2d03(auto-ui master)+f07b5ec8(autographics-dev) | landing: ①冻结审计 PASS（两候选HEAD/干净树/基座未动/两锁blob=合同pin 47176cc0+bc7287b5/双ff证明；唯一脏项=未跟踪__pycache__运行中间物非评审内容）；②auto-ui master 154a3965→4adf2d03 `--ff-only`（无merge commit；落地后烟测=cargo metadata 恰五包）→prepared；③确认消费证据（V-03绑4adf2d03内容）后 autographics-dev 1cc68aba→f07b5ec8 `git push .` ff-only（两目录仅存指引README；语言master零触）→单一权威=auto-ui。恢复锚=154a3965/1cc68aba 均为祖先永久保留；全程无强推/无历史改写/未触他线worktree | gates(T-07): 根auto-lang crates零改动→裸cargo t/tf/tv/tu/docs_gen按合同§6不适用；AG受影响面=26无窗口测试+controls+隔离检查已在冻结提交上绿；全量AG套件=里程碑档pending（2026-10-28裁定不阻合并）；批回归：.last-batch-regression.json last_covered=875（2026-10-28T21:55Z，本日），879%5=4≠0且<48h → 不到期 | next: T-09 deposit/archive → T-10 cleanup`。
+
+2026-10-29 merge T-09：`canonical_spec: docs/specs/auto-graphics/source-repository-and-sdk.md（新，SD-01，落地commit见master）+ project/prototype-profile/integration-contract/auto-source-driver 四文件 879 横幅与落点更新（SD-02）+ auto-ui/project.md 所有权节（SD-03）+ overview/plans 索引 + INDEX.md（spec-index.py 再生）+ design/autographics/repository-move-and-integration-gates.md 状态行 | ledger: .autoos/specs.json v122→v123（guarded offline projection，store writer 不可达——HTTP探针无响应，沿875/878先例；字节级备份 plan-artifacts/plan-879/specs.backup.v122.json；脚本化surgical编辑；scope守卫=未触item字节恒等+节序不变+顶层字段恒等；schema六节+新item七字段完整；读回验证；+designs P879-SOURCE-REPO/+reviews P879-REVIEW-FINAL/+reports P879-MERGE/五既有item注记） | archive: 本文件→docs/plans/archive/879-autographics-source-move-to-auto-ui.md status: archived | landing-not-deployment: 仅 experimental/（auto-ui）+docs/（auto-lang）触面，生产二进制/web bundle/daemon 零接触 → 显式观察项：无生产面产物需要重建 | next: T-10 cleanup`。
 
 2026-10-29 review final pass：`stage: review | review_scope: final | reviewer_identity: 会话内独立子代理（agent_4cd3f45f，新建上下文非实现上下文，自跑全部命令；局限=同会话派生，已按工件重推导不采信执行摘要） | plan_id: PLAN-879 | plan_revision: 1 | outcome: pass | worktree: D:/autostack/.wt/lang-879/{auto-lang,auto-ui} | branch: plan-879-dev / codex/plan-879-dev | reviewed_commit: f07b5ec8 + 4adf2d03 | base_commit: 1cc68aba / 154a3965 | dependency: auto-down c3464d0a detached | spec_inputs: SD-01/02/03（未发布，deposit归merge） | acceptance_results: AC-01..AC-06 全 pass（695/702 blob恒等+7声明修改+686新增零未声明；快照681/681逐文件符；verify_plan879 --controls exit 0；consumer-B 26/26 无窗口测试复跑绿；PE reserve=33554432 实证；两锁字节恒等且 blob=合同pin；默认恰五包/根零diff/0引用；源树两目录仅存指引README、700D+2M、历史@1cc68aba可读、回退点154a3965未动） | pending_closeout_gates: T-07冻结抽样/来源复用审计、T-08两仓实际落地切换、T-09规范deposit/ledger/归档、T-10 wt-guard清理；全量AG里程碑档pending（2026-10-28裁定不阻合并）；根t/tf不适用（零改动） | findings: 无（O-1 aggregate口径两套自洽免行动：快照相对4c15c86f=复制步核验口径，身份内全路径5f825027=验证器重算口径；O-2 .cargo配置仅复述栈设置、linker/jobs/alias未复述=合同范围，消费构建/PE实测不依赖） | evidence: 子代理自跑记录+D:/autostack/plan-artifacts/plan-879/ | next: merge`。
 

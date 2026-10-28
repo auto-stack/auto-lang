@@ -1,6 +1,6 @@
 # AutoGraphics 模块现状
 
-实验源码位于 autographics-dev，master仅保存知识。
+实验源码自 PLAN-879（2026-10-29）起位于 **auto-ui 仓** `experimental/autographics-{prototype,auto-driver}/`（单一权威；autographics-dev 仅保历史与指引），master 仅保存知识；见 [source-repository-and-sdk](source-repository-and-sdk.md)。
 
 - [project](project.md)：独立wgpu/Iced原型与机器profile。
 - [surface-composition](surface-composition.md) / [nested-input](nested-input.md)：830组合、输入和资源合同，两道合成门并列保留。

@@ -1,10 +1,22 @@
 # auto-graphics
 
-> Current status (PLAN-834): I1's original real Auto Breakout + Squash denominator is delivered experimentally on autographics-dev. Earlier PLAN-829/830/833 pending statements below record their historical stage. I2 production AutoUI/RQHost migration, I3 Forge/distribution and Shader/CAP remain pending. Master carries knowledge only; graphics source does not enter master.
+> Current status (PLAN-879): AutoGraphics experimental sources moved to the auto-ui repository at
+> `experimental/autographics-{prototype,auto-driver}/` (single development authority; landing commit
+> `4adf2d037a1804741adc9c5a012f08cfa566439d`) — see [source-repository-and-sdk.md](source-repository-and-sdk.md)
+> for the content mapping, frozen SDK snapshot/cold prepare, and switch/recovery contract.
+> `autographics-dev` keeps history + ownership guides only (frozen 875 source `1cc68aba`).
+> I1's original real Auto Breakout + Squash denominator and all later experimental lines remain delivered
+> in that source. Earlier PLAN-829/830/833 pending statements below record their historical stage.
+> I2 production AutoUI/RQHost migration, I3 Forge/distribution and Shader/CAP remain pending.
+> Master carries knowledge only; graphics source does not enter master.
 
 > **Status**: experimental
 > 路径：`experimental/autographics-prototype/`（独立 Cargo workspace，自有 manifest/lock/资产；bin `graphics-probe` / `iced_spike`） | 技术栈：Rust + wgpu 27.0.1 + winit 0.30.13 + iced/iced_wgpu 0.14 + kira 0.9.6 + gltf 1.4.1 + fontdue
 > **代码位置（2026-10-22 用户裁定）**：原型代码在 `autographics-dev` 集成分支（PLAN-829 落点 merge `ab56c32ec`，AGP 子树与复审冻结提交 `ddbde3e62857` 逐字节一致），**不合入 master**——待 814/815/816 系列（及后续）迁移工作全部完成后再议合回 master。master 侧仅沉淀本知识文档。后续 AutoGraphics 计划（830+）沿用同一集成分支承接模式（各自 plan 分支审毕后并入 `autographics-dev`）。
+
+> **PLAN-879 更新（supersede 落点）**：AG 两 workspace 源码已迁 **auto-ui 仓** `experimental/`，
+> `autographics-dev` 仅保历史与指引（迁移后 `f07b5ec8`）；"不合入 master"原则不变。见顶部与
+> [source-repository-and-sdk.md](source-repository-and-sdk.md)。
 
 Module identity：实验性 wgpu 图形/游戏研究（AGP）。独立 workspace，不属生产 UI 栈， 不替代任何现行默认实现。
 
