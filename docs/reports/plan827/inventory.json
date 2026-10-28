@@ -6713,7 +6713,7 @@
       "path": "",
       "sha256": "",
       "status": "declared",
-      "owner": "862 r3实施中；旧798不含Unit值",
+      "owner": "798不支持Unit值",
       "note": "gate=G2 / R2-E; Unit值、无返回main、隐式尾表达式/顶层脚本"
     },
     {
@@ -6794,7 +6794,7 @@
       "path": "",
       "sha256": "",
       "status": "declared",
-      "owner": "822执行；864源码",
+      "owner": "822",
       "note": "gate=G2 / R2-L; List<T>布局、Index/增删/清理"
     },
     {
@@ -6803,7 +6803,7 @@
       "path": "",
       "sha256": "",
       "status": "declared",
-      "owner": "822执行；864源码",
+      "owner": "822",
       "note": "gate=G2 / R2-L; Option/Result/有限enum载荷"
     },
     {
@@ -6812,7 +6812,7 @@
       "path": "",
       "sha256": "",
       "status": "declared",
-      "owner": "822执行；864源码",
+      "owner": "822",
       "note": "gate=G2 / R2-L; is/match、guard与载荷解构"
     },
     {
@@ -6821,7 +6821,7 @@
       "path": "",
       "sha256": "",
       "status": "declared",
-      "owner": "823执行；865源码",
+      "owner": "823",
       "note": "gate=G2 / R2-L; owned闭包、捕获、间接调用"
     },
     {
@@ -6875,7 +6875,7 @@
       "path": "",
       "sha256": "",
       "status": "declared",
-      "owner": "旧771；共享方法能力包待立项，871核覆盖",
+      "owner": "820/821部分基础",
       "note": "gate=G2/G3 / R3-T; 方法/ext/接收者/动态分派"
     },
     {
@@ -6920,7 +6920,7 @@
       "path": "",
       "sha256": "",
       "status": "declared",
-      "owner": "862/863草案与实施范围",
+      "owner": "798不提供普通IO",
       "note": "gate=G2/G4 / R2-E,R4-P; print/stdin/stderr、普通CLI结果"
     },
     {
@@ -7010,8 +7010,8 @@
       "path": "",
       "sha256": "",
       "status": "declared",
-      "owner": "817/796已有限交付；824不扩其schema",
-      "note": "gate=v0.6语言/语义扩面；AACE另在v0.7; CTE/meta反射/类型生成"
+      "owner": "817/796；824不扩其schema",
+      "note": "gate=自举分支 / RB; CTE/meta反射/类型生成"
     },
     {
       "id": "C-40",
