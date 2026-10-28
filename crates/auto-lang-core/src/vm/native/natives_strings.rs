@@ -491,7 +491,6 @@ pub fn shim_str_upper(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_str_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::engine::{Iterator, ListIterator};
     use crate::vm::types::ListData;
-    use std::sync::atomic::Ordering;
 
     let str_idx = task.ram.pop_str_idx() as u32;
 
@@ -509,13 +508,10 @@ pub fn shim_str_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     }
     let list_id = vm.insert_heap_object(list_data);
 
-    // Create iterator
-    let iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
-    let iterator = Iterator::List(ListIterator {
+    let iterator_id = vm.register_iterator(Iterator::List(ListIterator {
         list_id,
         current_index: 0,
-    });
-    vm.iterators.insert(iterator_id, iterator);
+    }));
 
     task.ram.push_i32(iterator_id as i32);
     Ok(())

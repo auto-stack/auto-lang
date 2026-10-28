@@ -7,7 +7,7 @@
 - legacy `Scope`/Database scope API/`SymbolTable::from_scope` 桥/`StackedScope` 退役
   （零消费者审定；活跃面 Sid/ScopeKind/SymbolTable/Meta 保留）。
 - 应答 JSON 头构造三份 → `server_model::cors_json_headers` 单源（pub(crate)）。
-- 迭代器注册样板 13 处 → `AutoVM::register_iterator`；Generator 构造三胞胎 →
+- 迭代器注册样板 14 处（13 处初审清单 + 复审 R1 发现的 natives_strings Str.bytes 位点） → `AutoVM::register_iterator`；Generator 构造三胞胎 →
   `AutoVM::new_generator_state`（engine.rs 单点）。
 - 死纯 shim（Str.contains/starts_with/ends_with，id 1504-1506）删除——production()
   绑定序恒被 nv 版覆盖、VVM 入口只绑 catalog，两路径均不活。

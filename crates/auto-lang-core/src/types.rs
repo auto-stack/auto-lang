@@ -10,7 +10,7 @@
 //! 在重构之前，类型声明信息分散在多个位置：
 //! - Parser 有 `type_registry: Option<SharedTypeRegistry>`（用于 REPL）
 //! - Codegen 有 `types: HashMap<String, TypeInfo>` 和 `generic_registry: GenericRegistry`
-//! - InferenceContext 有 `type_registry: TypeRegistry`
+//! - InferenceContext 曾有 `type_registry: TypeRegistry`（该旧注册表已随 PLAN-844 退役删除）
 //!
 //! 这导致：
 //! 1. 数据重复（类型声明在多处存储）

@@ -334,7 +334,7 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         // ========== Dot expression (Plan 056: Phase 1 + Plan 089) ==========
         Expr::Dot(object, field) => {
             // Dot expression: object.field or Type.method
-            // Phase 089: Add field type lookup using TypeRegistry
+            // Phase 089: Add field type lookup using the type store
 
             let object_ty = infer_expr(ctx, object);
 
@@ -359,7 +359,7 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
 
                 // Generic instance (e.g., List<int>, Pair<T, U>)
                 Type::GenericInstance(inst) => {
-                    // Look up the base type declaration from TypeRegistry
+                    // Look up the base type declaration from the type store
                     if let Some(base_decl) = ctx.lookup_type_decl(&inst.base_name) {
                         // Search for field in base type's members
                         for member in &base_decl.members {

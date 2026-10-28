@@ -49,7 +49,7 @@ use crate::parser::Parser;
 use crate::types::TypeStore;
 // Plan 091: Universe removed
 use crate::{AutoError, AutoResult, Rc};
-use auto_val::{shared, Shared};
+use auto_val::shared;
 use auto_val::{AutoStr, Op};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;

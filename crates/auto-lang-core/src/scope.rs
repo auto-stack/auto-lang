@@ -1,7 +1,6 @@
 use crate::ast;
-use auto_val::{Value, ValueID};
 use ecow::EcoString as AutoStr;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::LazyLock;
