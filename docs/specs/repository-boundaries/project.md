@@ -86,3 +86,10 @@ auto-ui 主检出带未提交 `M Cargo.lock`（原始字节已保全）；auto-m
 - 迁移：9 个管理/CLI package 与 6 个外部 consumer 迁入既有 auto-man 仓；语言仓原件实际删除，根 workspace 41→32。中立协议/执行/SDK 与 UI 实现未复制到 Man；旧 auto-up/automan 不挂入新 workspace。
 - 来源：185 项导入对账=173 same/10 manifest/1 hygiene/1 source-path rewrite，另补 wizard/pac 语料与媒体 fixture；无缺失或异常漂移。24/122/4 测试 ID 与迁移前逐字一致，集成目标 3/3/10。
 - 组合与切换：目标 Man 提交先经独立发行验收，再切语言消费者；三仓组合/恢复见 [man-three-repository-delivery](man-three-repository-delivery.md)。未 push、更名或 registry 发布。
+
+## PLAN-876 入口归属（as-built）
+
+iced 桌面入口自 auto-lang `examples/ui_desktop.rs` 迁入 auto-os 一等 bin
+（`host/desktop` → `ui-desktop.exe`），语言仓该 example 已删除；入口依赖闭包 =
+`auto-ui-runtime` + `auto-lang-core`，不含 `auto-lang` 编译器层。契约见
+[autos-desktop-entry](autos-desktop-entry.md)。本轮未 push、未改远端。
