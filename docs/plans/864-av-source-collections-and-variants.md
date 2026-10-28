@@ -1,21 +1,27 @@
 ---
 plan_id: PLAN-864
-status: drafting
+status: execution_done
 feature_name: AV集合与变体源码闭环（R2-L 前半）
 author: [Codex]
 created_at: 2026-10-28
 updated_at: 2026-10-28
-plan_revision: 1
+plan_revision: 2
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
+supersedes_spec_components:
+  - docs/specs/auto-av/collections-variants.md
+  - docs/specs/auto-mir/collection-place-profile.md
+  - docs/specs/auto-test-case/ace-m1-conformance.md
 new_spec_components:
   - docs/specs/auto-ac/source-collections-variants.md
 touched_goals: [GOAL-002]
 
 affects: [auto-av, auto-mir, auto-ac, auto-test-case]
-current_step: 0
+current_step: 5
 total_steps: 9
+
+# /auto-plan:work 结束时填写：
+work_status: execution_done
 ---
 
 # [PLAN-864] AV集合与变体源码闭环（R2-L 前半）
@@ -30,8 +36,8 @@ PLAN-822 已交付执行侧 `av.collections/1`（profile id 4、AVAD v3）：受
 
 ## 1. 目标
 
-- 新源码 profile 支持：`List<T>` 构造/`push`/`get`/`set`/`len`/`clear`（与 822 typed 面一致的子集）、`?T`/`Some`/`None`、`Result`、有限 `enum` 声明与带载荷构造、`is` 分支与载荷绑定、`for x in <List>` 迭代。
-- 把 852 语料 L/V 行从 `gap:av-unsupported-list` / `wait:av-variants-822` 变为**真实源码执行**或带 owner 的诚实拒绝；不允许把 typed fixture 通过当成源码行关闭。
+- 新源码 profile 支持：标量`List`、`List<Str>`及`List<非递归拥有型type>`（含`Str`字段）；构造/`push`/`insert`/`get`/`set`/`remove`/`len`/`clear`，`?T`/`Some`/`None`、`Result`、有限 `enum` 声明与带载荷构造、`is` 分支与载荷绑定、`for x in <List>` 迭代。
+- 把852原L/V承诺正例变为真实源码执行；L06等原负例按冻结诊断/trap判定。拥有型L04/L05必须成功，不以带owner的拒绝替代。超出明确子集的输入才具名拒绝，不把typed fixture通过当作源码行关闭。
 - 冻结 **SEM-02**（List 负下标/越界/空容器语义）与集合/变体的错误边界（trap vs Result vs 资源失败），并写入 Spec。
 - 源码编辑走既有 828 函数级增量会话形状（未改函数身份/生产工作=0），不新造平行会话。
 
@@ -48,7 +54,7 @@ PLAN-822 已交付执行侧 `av.collections/1`（profile id 4、AVAD v3）：受
 ## 3. 技术栈
 
 - 源码：`experimental/ac-core/src/source/{lexer,parser,resolve,typecheck,adapter,ast}.rs`、`src/{hir,descriptor,verify}.rs`。
-- lowering/执行：`experimental/ac-av-probe/core/src/{mir,mir_verify,abc,abc_verify,av}.rs`、`probe/src/{hir_adapter,collections_session,session}.rs`。
+- lowering/会话写面：`experimental/auto-mir-lower/src/**`、`experimental/ac-av-probe/probe/src/{collections_session,session}.rs`；只读消费`core/src/{mir,mir_verify,abc,abc_verify,av}.rs`的822合同。若发现执行核心旧合同缺陷，登记原owner独立修复/交接，不在此暗改语义。
 - 语料/判定：`crates/auto-lang/test/cases/ace-m1/{src/L*.at,src/V*.at,binding.tsv}`、`crates/auto-lang/src/tests/ace_m1_tests.rs`、`scripts/verify-ace-m1-852.ps1`。
 - 拟建 `scripts/verify-av-864.ps1`（Scope=targeted/compat/source/acceptance），测试前缀 `av_collections_864`；当前不存在。
 
@@ -64,7 +70,17 @@ PLAN-822 已交付执行侧 `av.collections/1`（profile id 4、AVAD v3）：受
 - SEM-02：旧 VM 保留 List 负索引（null-family），822 负下标先拒 → 必须显式冻结，不能拿两种语义直接对拍。
 - 827/852 纪律：typed fixture 通过不等于源码支持；改源/删 import 只能作为新变体 ID，不能把原 AP 标绿。
 
+本次授权与输入：用户明确要求修订波次/实际写面、补871旧能力覆盖及删除门、让864支持List与拥有型type元素；允许动作仅计划/设计/战略文档修订，不实施代码、不调整预算、不改868。基面路径、内容SHA-256、旧稿快照及静态预检见[修订收据](attachments/ace-wave-20261028/revision-summary.md)；观察到的current Spec/调用点与未来拟建入口分开记录。
+
 ## 5. 详细设计
+
+### 5.0 波次、实际写面与交接（本次修订）
+
+按[波次交接合同](reports/ace-wave-handoff-2026-10-28.md)§1–2执行：S为共享source/HIR/lowering/MIR/ABC/AV及会话接口，N为ac-mn，H为公共driver/SDK适配/测试注册与binding；分别单写，跨窗同时取窗。共享lowering的未来写面为D868后的`experimental/auto-mir-lower/src/**`，旧`probe/src/hir_adapter.rs`仅作搬前调查，不能再落新实现。T-02及接线前核验实际已合入revision、Spec/API/版本、owner释放与消费者兼容证据并记录接受；review/repair未完不交WIP。
+
+第2波占S（前端/HIR/共享lowering及collections源码会话），H绑定另串行交接；已交付822 MIR/ABC/AV合同只读消费，不改opcode/layout/资源语义。866可并行做私有resident模块，默认本Plan先释放S再由866接会话/runtime公共接口；这不增加866对D864的语义依赖。871如需删除ac-core必须另取S，不能与本Plan同时写该公共合同。
+
+首例即按既有文件化AutoDown/TestCase、cache fresh/hit/restart/body-edit、未改函数生产工作=0与现行P90≤2000ms口径验证；亚秒目标及P95/P99另列，不能伪称当前硬门已是亚秒。内存/资源峰值、live/回收及cache容量在T-02沿上游预算交集冻结，记录命令、样本和反控，不擅自提高上限。共享核心/SDK/测试迁移先确认拆分owner实际位置与释放；产品默认入口、旧AutoVM/a2r和868合同/进度不在本次修订写面。
 
 ### 5.1 前置与写面
 
@@ -76,13 +92,13 @@ PLAN-822 已交付执行侧 `av.collections/1`（profile id 4、AVAD v3）：受
 
 | 决策项 | 要求 |
 |---|---|
-| 支持子集 | 声明/构造/方法/模式/迭代的**精确**清单；超出子集给 `source.unsupported`，不得静默降级为 typed fixture |
+| 支持子集 | 必含标量List、List<Str>、List<非递归拥有型type>（含Str字段）、既有Option/Result/有限Variant；逐项列源码形态。排除record容器字段、嵌套List、借用str元素、循环图及任意用户泛型；合法承诺输入不得以unsupported替代 |
 | 推导 | `List<int>.new()`/`let xs = …` 的推断规则；`?T` 与 `Result` 的构造/返回；元素类型不隐式转换 |
-| 方法签名 | `push/get/set/len/clear`（及 822 已交付面的必要项）逐条：参数、返回、越界/失败形态 |
+| 方法签名 | 构造/push/insert/get/set/remove/len/clear逐条冻结参数、返回、失败；复用822合法指令或已证明等价序列，不新造opcode语义。get按Copy或受检只读view/Index Place；remove转移拥有权 |
 | SEM-02 | 负下标明确拒绝（沿 822）并具名诊断；越界 trap 码固定；空 List 的 `get` 语义与 `len` 边界写死；旧 VM 差异登记为 profile 差异，不静默统一 |
 | 模式 | `is` 分支穷尽性判定、载荷绑定形式、guard 是否在首批；失败诊断码；不得走“首个匹配即成功” |
-| 迭代 | `for x in xs` 的求值次数/顺序、集合在迭代中被修改的规则（拒绝或冻结快照，二选一并反控） |
-| 资源 | 元素转移/清理与 822 的 once-release 合同一致；禁止以深拷贝冒充；失败路径必须清理 |
+| 迭代 | for-in求值次数/顺序固定；拥有型元素用不逃逸的受检只读view，不隐式move/clone；迭代中结构修改首版拒绝并反控，不做快照副本 |
+| 资源 | push/insert/set的prepare→commit、remove转移、显式clone及全出口once-release沿822；失败前容器与未提交输入拥有权不变，禁止隐式深clone。T-02冻结预算交集与峰值测量 |
 | 增量 | 哪些编辑走单函数道、哪些触发精确失效（容器接口变化 vs body 变化），与 822/828 同判据 |
 
 ### 5.3 lowering 与执行接缝
@@ -90,7 +106,7 @@ PLAN-822 已交付执行侧 `av.collections/1`（profile id 4、AVAD v3）：受
 - `for-in` → 索引循环（不新增迭代器对象）；边界条件使用 List 长度读取一次或每轮读取必须固定并测。
 - `is` → 受检分支 + 载荷投影（822 已有 checked branch projection）；穷尽性缺失在编译期拒。
 - 构造 `Some/None/Ok/Err`/Variant 载荷走 822 既有转移/清理语义，不在 lowering 引入额外 clone。
-- 与 820 的 record、821 的 owned 面组合的**受限**程度按 822 非目标明确写出（例如 List<owned record> 是否在首批）；不得用“组合未测”冒称支持。
+- 与820/821组合的List<Str>/List<拥有型type>已由用户确认纳入；822排除的是record容器字段及嵌套List，并非拥有元素本身。L04/L05原源中的Item(name Str, code int)、push(x.move)、get字段投影、remove返回拥有值必须真实成立；不能改源为标量或fixture。
 
 ### 5.4 测试框架接入（既有 TestCase 协议，不新造框架）
 
@@ -98,28 +114,31 @@ L/V 两族目前只有 **typed 语料**走协议（`ac-av/collections-run-v1` + 
 
 - case 形态不变：在 `crates/auto-lang/test/cases/` 追加 source 行（复用 `ace-m1/src/L*.at`、`V*.at`），一份 source × 多 check（av 主判 + legacy/a2r 按实际适用性，ac-native 仍为 `gap:mn-scalar-only`）。
 - recipe：既有 `collections-run-v1` 的 entry 语义是 fixture id，**不改造它**。T-02 在两者间冻结：(a) 新注册 `ac-av/collections-source-run-v1`（三缝 append-only + worker 源码域分支，推荐）；(b) 若既有 av binding 已有可用的 source/profile 字段则追加该字段（要求旧 case 逐字节不变）。二者都不得让 case 命名可执行文件。
-- 期望落点：源码行的 `expect.exit` / 错误 `stage,code` 写在 case 文件；资源台账（alloc/free/live）若仍需父侧冻结表，按 822 `judge_*` 形状扩展，但“case 声明了什么就必须被判什么”，禁止声明后忽略。
+- 期望落点：源码行的`expect.exit`/错误`stage,code`写在case文件（L06保留边界trap负例，不能冒作正例）；资源台账（alloc/free/live）若仍需父侧冻结表，按 822 `judge_*` 形状扩展，但“case 声明了什么就必须被判什么”，禁止声明后忽略。
 - `binding.tsv` 只改状态/owner 列（`gap:*`→实测或换 owner），不改 12 列 schema；852 base suite 不被悄悄扩缩。
 
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-01 | add | docs/specs/auto-ac/source-collections-variants.md | 无 → 源码域：子集/推导/方法/模式/迭代/诊断/SEM-02 | 源码闭环 | AC-01/02 |
+| SD-01 | add | docs/specs/auto-ac/source-collections-variants.md | 无 → 标量/Str/拥有型type的List源码、转移/只读view/显式clone/失败清理、模式/迭代/SEM-02 | 源码闭环 | AC-01/02/03/04 |
 | SD-02 | modify | docs/specs/auto-av/collections-variants.md | 追加 source 绑定与实测覆盖，typed-only 边界改写 | 事实纠正 | AC-02/05 |
 | SD-03 | modify | docs/specs/auto-mir/collection-place-profile.md | 追加 source lowering 约束（for-in/is 不新增指令） | IR 合同 | AC-02/03 |
 | SD-04 | modify | docs/specs/auto-test-case/ace-m1-conformance.md | L/V 行重绑定与实测映射 | 证据落点 | AC-05 |
-| SD-05 | modify | docs/specs/av-language-capability-matrix.md（design/strategy） | C-15/16/17/C-09 源码列按实测更新 | 路线事实 | AC-05 |
+| SD-05 | modify | docs/design/strategy/av-language-capability-matrix.md | C-15/16/17/C-09 源码列按实测更新 | 路线事实 | AC-05 |
 
 ## 6. 测试设计
 
 | V | AC/不变量 | 实际/拟建入口 | 可区分错误实现的oracle | work任务/边界 |
 |---|---|---|---|---|
-| V-01 | AC-01 源码面 | L01–L07/V01–V07 原 `.at` 全量；构造/方法/模式/迭代正例 | 手算 exit 值与 852 冻结 expected 一致；源不改写 | T-03 |
+| V-01 | AC-01 源码面 | L01–L07/V01–V07原源逐行分类；正例构造/方法/模式/迭代；L06等冻结负例另判 | 正例手算值与852 expected一致，L04/L05必须42；负例保持原trap/诊断，源不改写 | T-03/04 |
 | V-02 | AC-02 边界与SEM-02 | 负下标、越界、空容器、非穷尽 `is`、错型构造、迭代中修改 | 各自具名诊断/trap 码；把负下标当合法必红 | T-03/04 |
 | V-03 | AC-03 资源 | 元素转移/失败路径清理事件（alloc/free 台账，once release） | 台账精确；多释放/漏释放/深拷贝冒充必红 | T-04 |
 | V-04 | AC-04 增量 | 单函数 body 编辑、元素类型/接口编辑、强制整备反控 | 未改函数生产阶段=0/身份不变；退化必红 | T-04 |
 | V-05 | AC-05 语料绑定 | 852 binding 行更新 + 独立 oracle + SKIP 审计 | 分母不缩；`wait:` 走完关闭或留 owner；改 expected 必红 | T-05 |
+| V-06 | AC-01/03 拥有型List | 原L04 get借用字段、L05 remove转移；新增List<Str>源码变体：push hello、push 中、remove(0)，返回removed.len()*10+xs.get(0).len() | 原L04/L05=42；新变体=51（Unicode标量），独立手算；禁止替换原case，隐式复制拥有权必红 | T-03/04/05 |
+| V-07 | AC-03/04 拥有资源与增量 | 拥有元素insert/set/remove/clear、显式clone后独立修改；分配失败前后/迭代结构修改/视图逃逸；fresh/hit/restart/body与元素接口编辑 | 失败不丢原拥有权、once-release精确；无隐式clone；非法借用具名拒绝；恢复重验、未改函数工作=0、内存回落及预算交集成立 | T-04/05 |
+| V-08 | AC-04/AC-06 写面/兼容 | T-02及公共接线交接摘要；已交付消费者并集与窗口清单 | 真实D门/释放/接受齐全；缺交接或消费WIP不准接线；受影响profile兼容验证及首例cache/周转/内存证据齐全 | T-02冻结；最终work任务执行；review复核 |
 
 定向命令：两独立 workspace 定向 `cargo test`；`powershell -File scripts/verify-av-864.ps1 -Scope <targeted|compat|source|acceptance>`；完整档归 merge。
 
@@ -127,12 +146,12 @@ L/V 两族目前只有 **typed 语料**走协议（`ac-av/collections-run-v1` + 
 
 | ID | owner_stage | 可观察通过条件 |
 |---|---|---|
-| AC-01 | work | 源码子集按冻结件成立：L/V 原源全部真实执行或诚实拒绝（带 owner）；V-01 |
+| AC-01 | work | 承诺源码正例全成功，包含List<Str>及List<拥有型type>和L04/L05原源；原负例如L06按冻结trap/诊断成立，不以owner拒绝替代合法输入；V-01/06 |
 | AC-02 | work | SEM-02 与边界/诊断矩阵成立，无静默降级；V-02 |
-| AC-03 | work | 资源台账精确、失败路径清理正确；V-03 |
-| AC-04 | work | 源码编辑走 828 增量形状，未改函数零重做，退化反控必红；V-04 |
+| AC-03 | work | 拥有元素get受检view/remove转移/显式clone/失败原子性与once-release、峰值/live/清理按预算成立；V-03/06/07 |
+| AC-04 | work | 源码编辑走828增量，fresh/hit/restart重准入、未改函数零重做；拥有元素接口编辑精确失效，周转/内存样本齐全，退化反控必红；V-04/07/08 |
 | AC-05 | work | 852 binding/独立 oracle/分母审计落地，typed 通过不冒领源码行；V-05 |
-| AC-06 | review | 独立核 AC/V/SD、lowering 是否私加拷贝、profile 4 语义零漂移、warnings/fmt |
+| AC-06 | review | 独立核 AC/V/SD、lowering 是否私加拷贝、profile 4 语义零漂移、warnings/fmt；核V-08交接与首例指标 |
 | AC-07 | merge | 冻结提交裸 `cargo t` + `tv`（改 VM/编译器触面）通过 |
 | AC-08 | merge | Spec 沉淀、矩阵更新、ledger、归档、guard 清理完成 |
 
@@ -140,24 +159,38 @@ L/V 两族目前只有 **typed 语料**走协议（`ac-av/collections-run-v1` + 
 
 | ID | owner_stage | 依赖 | 实际位置/操作与结果 | AC | 状态 |
 |---|---|---|---|---|---|
-| T-01 | work | D862、D822 | 核实 822 typed 面与源码前门拒绝点、L/V 源文件实际语法、828 会话接口；产出 baseline | AC-01/02 | [ ] |
-| T-02 | work | T-01 | 冻结源码子集/SEM-02/资源/增量判据合同 | AC-01..05 | [ ] |
-| T-03 | work | T-02 | 前端：语法/推导/诊断/descriptor；V-01/02 部分 | AC-01/02 | [ ] |
-| T-04 | work | T-03 | lowering（for-in/is/构造）+ 会话扩展 + 资源/增量测试；V-02/03/04 | AC-02/03/04 | [ ] |
-| T-05 | work | T-04 | 语料绑定/oracle/脚本与矩阵更新；V-05，提交代码与证据 | AC-05 | [ ] |
+| T-01 | work | D862、D822、D828、D868 | 核822类型/Place/资源合同，L04/L05拥有型原源及其余L/V正负例，确认List<Str>/List<拥有型type>为已批准必含范围；产出baseline | AC-01/02/03 | [✅] |
+| T-02 | work | T-01 | 冻结源码/资源合同与有界全链可行性探针（L04/L05、List<Str>、失效view/失败清理），先接受S/H交接；T-03首例完成探针后再扩面，失败返回本步调整策略，不缩支持面；冻结方法/view/SEM-02/增量；继承822值数据8MiB/受管32MiB/worker增量128MiB与MAX_LIST_ELEMS=65536并取其他上游预算交集；不得排除拥有型List或擅自放宽上限；冻结fresh/hit/restart/body-edit、周转/内存口径与反控 | AC-01..05 | [✅] |
+| T-03 | work | T-02 | 先以原L04/L05及List<Str>打通最小源码→共享lowering→既有822执行的全链可行性探针并核资源门，通过后扩前端语法/推导/诊断/descriptor；V-01/02/06，未取S窗不接线 | AC-01/02 | [✅] |
+| T-04 | work | T-03、S释放/接受 | 共享lowering的for-in/is/构造与拥有List方法 + 会话；复用822执行语义；V-02/03/04/06/07 | AC-01/02/03/04 | [✅] |
+| T-05 | work | T-04、H释放/接受 | 原L04/L05及新增List<Str>变体文件化绑定/oracle/资源与增量反控；V-05/06/07；提交代码及证据摘要，原始证据本地保留；执行V-08首例cache/文件化/周转/内存与兼容验证 | AC-01/03/04/05 | [✅] |
 | T-06 | review | T-05 | 独立最终review；merge 门 pending | AC-06 | [ ] |
 | T-07 | merge | T-06 pass | 冻结提交裸 `cargo t` + `tv` | AC-07 | [ ] |
 | T-08 | merge | T-07 | Spec/矩阵/ledger/归档/guard | AC-08 | [ ] |
-| T-09 | merge | T-08 | 交接 865（闭包/HOF）与 866（在线重载）实际基面与限制 | AC-08 | [ ] |
+| T-09 | merge | T-08 | 交接 865（闭包源码）与 866（在线重载）实际基面与限制 | AC-08 | [ ] |
 
 ## 9. 复审记录
+
+`stage: work | plan_id: PLAN-864 | plan_revision: 2 | outcome: pass | worktree: D:/autostack/.wt/lang-864/auto-lang | branch: plan-864-dev | base_commit: 08ea8b35d | code_commit: 38dc10e33..work-head | dependency_revisions: auto-down@c3464d0 (detached sibling), auto-ui@154a396 (detached sibling) | task_ids: T-01..T-05 | evidence: 见下 | blockers: 无（merge-owned 门禁 pending：裸 cargo t + tv 于冻结提交） | next_responsible_role: review`
+
+2026-10-29 work T-01..T-05 完成（S窗按波次合同队首 862→864 取得；863/865/866/871 均 drafting 无争用）。逐任务证据：
+
+- **T-01 基线**：822 合同审计（mir.rs 指令面/mir_verify 类型与 lattice/av.rs 执行与 LIFO 清理/SEM-02 单陷阱码 av.trap.list-index；入口约定零参 i32）+ L/V 语料逐行核读；确认 List<Str>/List<拥有型type> 为已批准必含。合同冻结件 [collections-source-contract.md](attachments/864/work/collections-source-contract.md)（C1..C10）。
+- **T-02/T-03 可行性**：前端垂直切片（lexer `?`/`->`、?T/List<T>/Result<T,E> 文法、enum/is/for-in 语句、泛型接收器、List 方法面、ElemView/ListFieldGet 融合、is→guard链/for-in→索引循环 resolve 降级、descriptor schema collections.atom、verify_collections 含 view-escape/scrutinee/穷尽规则）— `cargo test --manifest-path experimental/ac-core/Cargo.toml --test collections_864`（L01/L04/V01 真源编译+验证 3/3）。
+- **T-04 lowering+会话**：`lower_checked_collections`/`lower_function_collections_unit` 全部落 822 既有指令（无新 opcode；clear=尾删循环展开；变体槽写走 VARIANT_SWITCH；unit 效果语句无槽 NO_SLOT 约定）；owned 元素投影融合（标量场 ListFieldGet；Str 场 remove→exact-type FieldGet(handle-share)→View→StrLen→BorrowEnd→insert-back）。split_units 修复内嵌类型操作数闭包（Aggregate/ListNew/VariantPack/Dyn*）。会话=CollectionsSourceSession（822 CollectionsUpdateSession 同型扩源，未新造平行会话）：内容 fp 选择重降级，未改函数走 carry 且 production counters=0（计数器实证，非推断）。
+- **T-05 文件化+指标**：recipe `ac-av/collections-source-run-v1`（contract.rs 三缝 append-only 注册+mod.rs 派发+RecipeFamily::CollectionsSource+worker 源码分支）；17 行文件化套件（L01–L07/V01–V07 按 852 冻结分母值 + L06 SEM-02 trap 行 + 追加 N01 List<Str>=51/N02 for-in copy=42/N03 for-in owned 投影=53，新源文件追加不改原行）；binding.tsv 14 行重绑 ok:P864-source（仅 status/owner 列）；`scripts/verify-av-864.ps1`（targeted/source/compat/acceptance）。**acceptance GREEN**：定向族 38 测试（3 前端编译+12 负例诊断+4 全链+16 语料+3 会话）、17/17 文件化行经真 worker 全绿、852 基套件 97 检查零漂移。**V-08 首例指标**：17 行 × 3 次 auto-case 真实运行，P90=362ms ≤ 2000ms 现行开发硬门（中位 218ms，max 432ms；含 worker spawn+全链）；未改函数生产工作=0 由会话计数器实证（body-edit 精确重降 1 单元/carry 1；纯 hit 0 重降/2 carry）；once-release：全部正例 live_after=0。
+- **负例矩阵（AC-02）**：12 个具名拒绝（pattern-non-exhaustive/duplicate/unknown-arm、view-escape、iterate-mutate、move-required、list-value-context×3、type-ambiguous、borrowed-str、record-methods）逐项测试通过。
+
+写面纪律：S 窗（ac-core source/hir/descriptor/verify + auto-mir-lower + probe session/driver/worker 接口）+ H 窗（contract.rs/ac_av.rs/mod.rs 派发/ace_m1_cases/binding.tsv）+ probe cache.rs split_units 修复（共享单元缝的内嵌类型操作数闭包，820 起潜伏，collections 源单元浮出；822 三元组回归绿）。probe crate 的 pre-existing fmt 债（data_driver/session/owned_driver/bench bins/820 测试文件的纯格式化行合并）未触碰语义。已交付 822 消费面零改动（fixture case 文件逐字节未动，822 三元组回归绿）。merge-owned 门禁 pending：裸 `cargo t` + `cargo tv`（VM/编译器触面）于冻结提交执行。`stage: goal | plan_id: PLAN-864 | plan_revision: r2 | round: 1 | from: drafting | to: work | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-864/auto-lang | commit: 见上 | next: review`
+
+2026-10-28 r1→r2（用户授权修订波次/写面，864纳入拥有型List、871补旧能力与删除门）：仅修订执行合同，不实施。原status/current_step/total_steps、任务勾选与历史记录保留；D868合同和进度不变。V-08补交接/消费者兼容与首例cache、文件化测试、周转及内存核验；详细依据与静态预检见[波次合同](reports/ace-wave-handoff-2026-10-28.md)和[修订收据](attachments/ace-wave-20261028/revision-summary.md)。本记录只说明文档修订，未执行AC、性能测试或独立实现review，merge-owned门禁仍待实施后完成。
 
 2026-10-28 new r1：`stage: new | plan_id: PLAN-864 | plan_revision: 1 | outcome: pass（等 D862，合同可预检） | next: D862 后 work T-01`。全部 AC/V/T 未执行；子集清单、诊断码、SEM-02 具体形态待 T-02 冻结；未建树、未跑构建、未改在途Plan。批次排序依据见[后继批次规划](reports/ace-next-batch-2026-10-28.md)。
 
 ## 10. 待澄清事项
 
-- `List<owned record>`/`List<Str>` 是否进入首批：822 非目标含“record 容器字段/List 嵌 List”，本Plan默认**不含**，仅标量元素 + 已交付面；若用户要求同时覆盖 owned 元素，需在 T-02 前明确扩大范围与资源预算。
-- 迭代中修改集合的语义（拒绝 vs 冻结快照）需用户或语言owner裁定；本Plan默认**拒绝**并给具名诊断（保守），如要允许快照语义须另立合同。
+- 已裁定：List<Str>与List<拥有型type>进入首批，含Str字段的非递归type；T-02只细化既有822合同下的源码表示、诊断和预算，不再作为是否纳入的开放问题。
+- 首版迭代中结构修改明确拒绝；拥有元素采用受检只读view。以后若要放宽快照/写迭代语义另立合同，不阻塞本Plan按现有范围推进。
 - `for-in` 是否同时支持 range（`0..n`）/数组/Tuple：默认只 `List`，其余留 R2-L 后续切片。
 
 2026-10-28 D868 前置解除：PLAN-868 已交付落 master（delivery 7754c4e4c）——HIR→MIR lowering 唯一实现为 `experimental/auto-mir-lower/src/**`（纯搬移等价已证，旧 `probe/src/hir_adapter.rs` 已删除），本计划 D868 硬前置视为满足；lowering 相关 T 任务的写面以该 crate 为准（边界合同见 [docs/specs/auto-mir/hir-lowering-boundary.md](../specs/auto-mir/hir-lowering-boundary.md)）。
