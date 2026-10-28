@@ -3664,3 +3664,13 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 - `OS876-TERM-TICK`：auto-term `future_all/race` 复现——与本文件 **P723-D1**（L1224 旧记录）同源。
 - `OS876-USE-DIAG`：widgets-gallery `use { package ... }` 解析失败（P-15/plan 664 线转派）。
 - `OS876-DOC-SWEEP`：已 closed（2026-10-28，syslog README 为仓内跟踪文件，已改）。
+
+### F-867-NEWRED-01 结案（2026-10-28 晚，PLAN-867 T-12 双侧对照再定性）
+
+上条初判被推翻：双侧同法探针（钉定 464e2316b vs 冻结 7105b0cf3 前身）转储完全一致——
+模型状态正确（apps_cats editor 仅 idx11、recent=[]）、ranked 4 行逐行相同（1 editor app
++ 3 quicklinks）。机制=launcher app.at 空查询分支 quicklinks 循环无分类过滤（ql_admit
+默认 "1"），PickCat(editor) 忠实执行 nres=4；早期"钉定 PASS"与 bisect(1e4b2b315) 均为
+环境态不稳定窗口的误判，以双侧对照为准。**新增红=0，等价出口达成**。oracle 已按声明
+意图修正（apps-only 断言，7105b0cf3）。遗留观察（auto-os 产品侧，非本仓）：launcher
+分类过滤下 quicklinks 是否应出列——mock ql_admit 默认放行使任意分类都附 3 个链接。

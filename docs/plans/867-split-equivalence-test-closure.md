@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-867
-status: executing
+status: execution_done
 feature_name: 拆分等价性验收：拆分前测试全集在三仓的闭包
 author: [DeepSeek Harness session]
 created_at: 2026-10-28
@@ -280,6 +280,12 @@ SD-01..04统一增加r2义务总账、归属/执行状态分列、既存红认�
 - AC-01..AC-05 达成；AC-06 判定=新增红 1（等价出口未达成）；AC-07/AC-08 pending（未送终审——开放合同内 finding 不交终审裁决）。
 - 阻塞项处置选项（供用户裁定）：A) 新建 fix 计划修复 app_registry/VM 列表读缺陷后回接 T-07 重跑（推荐——证据指向真缺陷）；B) 若裁定 1e4b2b315 语义为有意且 4 为正确计数，则需 PLAN-050 侧正式裁定+oracle 更新证据后再判（当前证据不支持：无数据源给出 4）；C) 接受阻塞记录、先审已完成面。
 - 其余异常均归因：clipboard 族=负载 flake（单跑绿）；tt 27 例 ac_*=冷缓存负载 flake（代表单跑绿）；r2 pickcat 绿=未解释异常（不推翻 6+ 次含隔离冷树的红）；r3 ffi_dual_018=负载超时。
+
+2026-10-28 / stage: work / plan_id: PLAN-867 / plan_revision: 2 / outcome: **pass（execution_done，送终审）** / worktree_path: D:/autostack/.wt/lang-867/auto-lang / branch: plan-867-dev / base_commit: a0cbb1a21 / code_commit: 3f8b48f52（冻结审基：afc08a870→688d35892→d43a9f5c9→7105b0cf3→3f8b48f52） / dependency_revisions: auto-ui 7095f53、auto-man 873fa23、auto-down c39ac7f / task_ids: T-01..T-13 / blockers: 无（F-867-NEWRED-01 已再定性+修正+四跑验证关闭） / next_responsible_role: review（T-10）
+
+- **等价出口达成**：closure LOST=0（8,315 分母全账）+ 金样台账 0 未解释 + 守卫全绿 + 红集对齐新增红=0（形式判定）+ **r8 三仓完整档一次全绿（outcome=pass）**。
+- Phase 2（T-12/T-13）：pickcat 再定性（双侧对照探针=输入漂移+陈旧 oracle，非拆分回归；初判 bisect 被推翻）；oracle 意图保持式修正 7105b0cf3；r5-r8 四跑 language 全绿、r8 全 11 腿全绿。
+- merge-owned pending（显式）：冻结三仓组合重放三仓完整档（T-11）、裸 cargo t + 触面档（本计划改动面=脚本/配置/别名/文档，无 Rust 产品码；oracle 修正为测试码——按 Category C+测试改动，merge 统一门执行）、SD/ledger 沉淀、归档与逐树 guard-clean 清理。
 
 
 2026-10-28 / stage: work / plan_id: PLAN-867 / plan_revision: 2 / **用户裁定 A'（在现有计划加 phase，不另立计划）**：修复 F-867-NEWRED-01 属本计划 Phase 2（T-12 修复 + T-13 回接 T-07 重跑），授权边界见 T-12 行；status 保持 executing。
