@@ -13,7 +13,7 @@ new_spec_components:
 touched_goals: [GOAL-008]
 affects: [auto-graphics, ag-examples]
 depends_on: [PLAN-874, PLAN-875, PLAN-877]
-current_step: 0
+current_step: 2
 total_steps: 10
 ---
 
@@ -142,8 +142,8 @@ OS自动化继续暂停。既有874/875真OS证据仅用于未改引擎/router�
 
 | ID | owner_stage | 依赖 | 实际操作与产出 | AC | 状态 |
 |---|---|---|---|---|---|
-| T-01 | work | 用户启动；874/875/877已交付 | 核既有repo/owner/唯一树、旧十入口/根锁指纹、新875输入/SDK准备边界 | AC-01/02 | [ ] |
-| T-02 | work | T-01 | gallery-contract先冻结四入口/锁/CLI/补齐包/新runner/无窗口整路径可行性/OS证据边界；不足回new | AC-01..05 | [ ] |
+| T-01 | work | 用户启动；874/875/877已交付 | 核既有repo/owner/唯一树、旧十入口/根锁指纹、新875输入/SDK准备边界 | AC-01/02 | [x] |
+| T-02 | work | T-01 | gallery-contract先冻结四入口/锁/CLI/补齐包/新runner/无窗口整路径可行性/OS证据边界；不足回new | AC-01..05 | [x] |
 | T-03 | work | T-02通过 | 按项锁/三API、validate/launch/package/catalog/acceptance兼容与结构反例V-01/04 | AC-02/05 | [ ] |
 | T-04 | work | T-03 | G07/G08工程/说明、仅验收public适配与真实Auto/无窗口图像、V-02/03 | AC-03/04 | [ ] |
 | T-05 | work | T-04 | 两包离线A→B/坏包修复、旧项无窗口抽样、Ready依据/SD/提交/摘要 | AC-01..05 | [ ] |
@@ -158,6 +158,8 @@ OS自动化继续暂停。既有874/875真OS证据仅用于未改引擎/router�
 2026-10-29 new r1：`stage: new | plan_id: PLAN-880 | plan_revision: 1 | outcome: pass | next: 用户启动work后T-01→T-02`。874/875/877前置已交付，879非前置；T-02首门核实当前包缺identity的补齐、按项锁细节与新仓外无窗口验收的整路径可行性。旧OS证据是否适用于原字节样板须逐项映射；不能用未测覆盖换Ready。仅规划，无ag-examples写入/建树/编译/窗口/GPU/新agent/远端操作，全部AC/V/T/SD未执行。
 
 2026-10-29 new文档预检：0..10节、10个唯一T、8个唯一AC、5个V、stage/依赖与SD覆盖已核；两Plan及四份路线文档共90个本地链接可解析、879/880编号各唯一、中央next-id=881。这是合同结构/来源/并行写面自查，不是独立final review或实现验收。旧SDK681文件与875固定source-lock逐项hash一致，仅作规划输入；无Cargo/OS/GPU运行。
+
+2026-10-29 work T-01/T-02：`stage: work | plan_id: PLAN-880 | plan_revision: 1 | outcome: pass(T-01/T-02) | worktree_path: D:/autostack/.wt/lang-880/ag-examples | branch: codex/plan-880-dev | base_commit: 6a223d9b3637ee1ce9a00335c8ee4f46d3832b26（ag-examples master，clean） | dependency_revisions: AG=git 1cc68aba012f76951af2556763a5fb21be6a6c8b（autographics-dev 历史可达）→ 导出 consumer-package 1384文件（内容703+SDK681）+ plan880-consumer-identity.json 逐文件来源清单 ALL CHECKS PASS；SDK .sdk-source=plan-875保留包副本 prepare_sdk --verify-only PASS（681文件/17包/UI-Man旧包不存在）；两Cargo.lock blob=47176cc0/bc7287b5 与根锁一致 | task_ids: T-01,T-02 | evidence: (T-01)根锁指纹与计划§4逐字节一致；**身份偏差裁定**：875保留包12文件（api/runtime_camera2d_v1.at、authoring host/cli/probes族、tests/runtime_camera_api.rs、tools/{check_runtime_camera,package_consumer,verify_source}.py）为无Git来源第三态（≠身份≠git@1cc68aba0≠auto-ui@4adf2d0，保留包=R1前工作树快照）→ 按"无来源件不可借用"880全量消费git@1cc68aba0态，12件不消费、27个motion-evidence取git新态，代价由T-02探针+T-04全验收新鲜闭合。(T-02)[合同冻结](attachments/880/work/gallery-contract.md)：四入口源hash（10文件sha256）、每项锁schema（engine-locks/plan875.json + example.json engine.lock按项指向；根861锁逐字节不动）、真实CLI、runner=df0a8077eebf03bc29729cd786af0829fea20679a2a0d8b6a94fe1ac28af0130（debug 86,127,616字节，--locked --offline实测exit 0）、离线栈（registry缓存=明确前置）、负控矩阵、证据复用清单。**无窗口整路径先验VIABLE**：wholepath-probe 13/13 PASS exit 0——公共loader→真实Auto→Host发布→rt.capture无窗口GPU PNG全通；G07两布局真跑（a贴地z=-4.0、b坠坑y=-5.5、speed4→5位移比1.25）、G08/2d夹界(6,1)/follow∈[6,24]/双letterbox bar 115×380/PNG 800×380、G08/3d orbit dist8/pitch45°/perspective/相机相对位移；栈护栏=64MiB线程（875既有）、camera pitch单位=度。探针源码/输出本地：plan-artifacts/plan-880/wholepath-probe*/ | blockers: 无work内阻塞 | next_responsible_role: T-03（按项锁/三API工具升级+V-01/04结构反例）。
 
 ## 10. 待澄清事项
 
