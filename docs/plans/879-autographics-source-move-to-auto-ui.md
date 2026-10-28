@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-879
-status: drafting
+status: execution_done
 feature_name: AutoGraphics纯源码迁入auto-ui与单一权威切换
 author: [Codex]
 created_at: 2026-10-29
@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-008]
 affects: [auto-graphics, auto-ui, repository-boundaries]
 depends_on: [PLAN-875, PLAN-878]
-current_step: 0
+current_step: 5
 total_steps: 10
 ---
 
@@ -134,11 +134,11 @@ merge先重核源tip与两仓基面/owner，短暂停写：①保存两repo可�
 
 | ID | owner_stage | 依赖 | 实际操作与产出 | AC | 状态 |
 |---|---|---|---|---|---|
-| T-01 | work | 875/878已交付，用户启动 | 两仓owner/base/唯一树、停写窗口候选、默认闭包与SDK输入核验 | AC-01/04 | [ ] |
-| T-02 | work | T-01 | move-contract/全清单/来源/切换恢复与无窗口整路径可行性先冻结；不可行回new | AC-01..05 | [ ] |
-| T-03 | work | T-02通过 | 两树候选导入、快照保全与prepare/路径工具/new identity适配、V-01/02 | AC-01/02 | [ ] |
-| T-04 | work | T-03 | 新源导出fresh consumer、A→B冷准备/独立构建/公开源码无窗口对照V-03 | AC-02/03 | [ ] |
-| T-05 | work | T-04 | UI默认隔离、源迁出指引候选/恢复演练、定向/fmt/两树提交/SD摘要 | AC-01..05 | [ ] |
+| T-01 | work | 875/878已交付，用户启动 | 两仓owner/base/唯一树、停写窗口候选、默认闭包与SDK输入核验 | AC-01/04 | [x] |
+| T-02 | work | T-01 | move-contract/全清单/来源/切换恢复与无窗口整路径可行性先冻结；不可行回new | AC-01..05 | [x] |
+| T-03 | work | T-02通过 | 两树候选导入、快照保全与prepare/路径工具/new identity适配、V-01/02 | AC-01/02 | [x] |
+| T-04 | work | T-03 | 新源导出fresh consumer、A→B冷准备/独立构建/公开源码无窗口对照V-03 | AC-02/03 | [x] |
+| T-05 | work | T-04 | UI默认隔离、源迁出指引候选/恢复演练、定向/fmt/两树提交/SD摘要 | AC-01..05 | [x] |
 | T-06 | review | T-05 | 独立上下文逐项复核两冻结提交/清单/路径/失败恢复/SD | AC-06 | [ ] |
 | T-07 | merge | T-06 pass | 冻结抽样/来源/受影响对照及复用审计，失败回work受影响复审 | AC-07 | [ ] |
 | T-08 | merge | T-07 | 两仓停写，目标prepared→源迁出→权威切换，失败按合同恢复 | AC-08 | [ ] |
@@ -151,6 +151,24 @@ merge先重核源tip与两仓基面/owner，短暂停写：①保存两repo可�
 
 2026-10-29 new文档预检：0..10节、10个唯一T、8个唯一AC、5个V、stage/依赖与SD覆盖已核；两Plan及四份路线文档共90个本地链接可解析、879/880编号各唯一、中央next-id=881。这是合同结构/来源/并行写面自查，不是独立final review或实现验收。旧SDK681文件与875固定source-lock逐项hash一致，仅作规划输入；无Cargo/OS/GPU运行。
 
+2026-10-29 work r1 pass：`stage: work | plan_id: PLAN-879 | plan_revision: 1 | outcome: pass | worktree: D:/autostack/.wt/lang-879/{auto-lang,auto-ui,auto-down} | branch: plan-879-dev / codex/plan-879-dev | base: 1cc68aba(源) / 154a3965(目标，与规划pin零漂移) | code_commit: 4adf2d037a1804741adc9c5a012f08cfa566439d(auto-ui候选) + f07b5ec8adc96c3a183882365920a34b570d07b2(语言侧迁出指引候选) | dependency: auto-down c3464d0a detached 兄弟（组内cargo解析，PLAN-726 T-04惯例） | task_ids: T-01..T-05 | evidence: docs/plans/attachments/879/work/move-contract.md（冻结合同）+ 本地 D:/autostack/plan-artifacts/plan-879/ | blockers: 无 | next: review（T-06 绑定两冻结提交）`。
+
+work r1 证据摘要（命令/退出码/关键数字，原始输出在 plan-artifacts/plan-879/）：
+- **T-01**：autographics-dev=1cc68aba 无worktree占用零漂移；auto-ui master=154a3965 clean，closure blob 三件与规划一致（6d528f03/a1060a44/a7dd2c11）；保留副本对 source-lock 逐文件 sha256 **681/681 一致、0缺0多0错、无链接**，字节 13,681,490、最大 1,528,601（<5MB）；702 迁移文件最大 1,465,711B；17本地包/29边为 source-lock+baseline 记录值（V-03 实测复核）。
+- **T-02**：move-contract 冻结（§3 全量处置：702 恒等迁移、未跟踪产物不迁移、C 新增/D 修改逐项理由、§5 V-01..05 实际命令与 26 个无窗口测试 ID、§6 切换/恢复顺序）。
+- **T-03/V-01**：两树建成（auto-lang 树自 1cc68aba 建 plan-879-dev，非 master；auto-ui 树自 154a3965 建 codex/plan-879-dev）；git archive 导出 702 文件；快照复制后 681/681 原地核验（aggregate 4c15c86f…）；对**已提交候选树**逐 blob 对照：**695/702 恒等 + 7 个声明修改（.gitattributes/.gitignore/两README/prepare_sdk/verify_source/package_consumer）+ 686 新增（681快照+2配置+gen/verify+identity）**，零未声明差异（plan-artifacts/plan-879/{old-blobs-z,committed-blobs-z}.txt）。167 个被 driver .gitignore 规则命中的历史被跟踪文件按迁移程序一次性 `git add -f` 入库（记录于合同§3处置A）。sdk/frozen 加 `-text` 属性保证字节往返（681 blob 全部与工作副本字节相等实测）。
+- **T-03/V-02**：`gen_plan879_identity.py`→**1387 文件身份（702迁移+4声明新增+681快照）**；`verify_plan879.py --controls` **PASS**（删源件/篡改快照字节/篡改工具/未列新增/错identity哈希/错aggregate 六控全拒、还原绿；702 blob 全绑定；快照681对source-lock全符）；`prepare_sdk.py --from-snapshot` 冷准备 **PASS**（A删生成SDK后重建，`--verify-only` PASS）。
+- **T-04/V-03**：package_consumer 导出 consumer-A（2069文件，verify_source 全链绿）；A→B 整体复制；B 删SDK→`--from-snapshot` 冷准备绿→`verify_source` 绿（**17本地包/29边/forbidden=0/AGP锁保留**，target不逃逸内建断言过）；`cargo build --locked --offline --bin autographics-authoring` **exit 0**（1m23s；auto-lang-core 146条警告为冻结SDK既有内容非本次引入）；PE `SizeOfStackReserve=33554432`（32MiB 主线程栈实测自随迁 .cargo/config.toml，零环境变量——修复旧导出缺口）；4 个无窗口测试档 **26/26 PASS**（`--test-threads=1`：behavior_source_identity 1、character3d_samples 1、runtime_camera_api 12、runtime_camera_host 12，含 character3d 位置/坠落分异、runtime相机 clamp/letterbox/投影/同tick/20轮寿命 oracle——与 875 冻结断言一致）。
+- **T-05/V-04**：auto-ui 根 `cargo metadata --locked --offline --no-deps` = **恰五包**（compiler/dialect/runtime/tools/shell-pack）；`git diff 154a3965..HEAD -- Cargo.toml Cargo.lock crates/ .cargo/ .config/` **零diff**；默认侧 experimental 引用 **0**；默认源码零改动故不跑抽样 check（合同"仅必要时"）。
+- **T-05/V-05**（候选演练）：旧权威在位（autographics-dev@1cc68aba 树 702 文件可读）；回退点=auto-ui master 154a3965 未动；本线仅新建 plan-879-dev/codex/plan-879-dev 两ref，他线 worktree（lang-864/872/os-051）未触；新包重建成功=B 实证。当前即"目标prepared、源未落地"演练态：旧权威继续可用成立。
+- **fmt**：driver/prototype `cargo fmt -- --check` 双 **exit 0**。Python 工具全链实跑无语法/运行错误。
+- **SD 确认**：SD-01/02/03 与实际一致（新来源身份/快照/冷准备=SD-01；源归属改 auto-ui experimental、实验生产分离保持=SD-02；auto-ui 默认五包不变+独立AG实验所有权=SD-03）；规范正文deposit归 merge（T-09 主检出）。
+- **pending（不属work）**：T-06 独立 review 绑定 4adf2d03+f07b5ec8；merge-owned：冻结抽样/来源复用审计（T-07）、两仓落地切换（T-08）、知识/ledger/归档（T-09）、guard清理（T-10）。根 auto-lang crates 零改动，未跑根 cargo t/tf/tv/tu/docs_gen（Category-A/合同裁定）。
+
+2026-10-29 goal round 1：`stage: goal | plan_id: PLAN-879 | plan_revision: r1 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-879/{auto-lang,auto-ui} | commit: 4adf2d03(auto-ui) / f07b5ec8(auto-lang) | next: review`。用户 /goal 授权整链（work/review/有界修复/merge），本轮执行 work 阶段并到 execution_done；下一轮进 review。
+
 ## 10. 待澄清事项
 
 无新增产品决策；用户本轮只要求规划，实施等待后续明确work指令。work须确认实际owner/短暂停写安排并复核auto-ui新base；如发生他线冲突或必要快照无法逐字证明，具体阻塞回new，不覆盖/强推。SDK快照681源文件允许随源码版本保全（每文件<5MB，非复审证据）；若盘点发现超大新增件，先按仓库门处理。迁仓仍不解决M1标签映射，也不放行UI融合/ACE或跨端。
+
+work r1 后新增：§10 前两项已由 work 消解——owner 已核（两分支均无他线占用、目标 pin 零漂移），快照已逐字证明（681/681）。目标 base 与规划 pin 一致（154a3965），无差异需复核。无新增待澄清。
