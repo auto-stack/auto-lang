@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-862
-status: reviewed
+status: archived
 feature_name: AV源码入口、Unit与尾值语义（R2-E/SEM-05）
 author: [Codex]
 created_at: 2026-10-28
@@ -26,12 +26,12 @@ total_steps: 9
 
 ## 0. 变更摘要
 
-本Plan是M1核心骨架成型后的第一批源码扩面切片之一，领取[AV源码与替换路线](../design/strategy/av-source-programs-and-avm-replacement-roadmap.md) **R2-E**中“入口/Unit/尾值/退出通道”部分（`G2a` 前门），并冻结能力矩阵的 **SEM-05**：
+本Plan是M1核心骨架成型后的第一批源码扩面切片之一，领取[AV源码与替换路线](../../design/strategy/av-source-programs-and-avm-replacement-roadmap.md) **R2-E**中“入口/Unit/尾值/退出通道”部分（`G2a` 前门），并冻结能力矩阵的 **SEM-05**：
 
 - 交付新的具名源码 profile 与执行 profile，使真实Auto程序可以 `fn main() void`、隐式尾值、单文件脚本体进入AV执行，并把“guest返回值 / Unit / 语言trap / 资源失败 / infra”呈现为**互不替代的独立通道**。
 - 不改动 `auto.source.scalar-i32.draft` r1 与 `av.core-i32/1`（profile id 1 / AVAB 语义）的既有字节与语义；新域独立版本、双向拒绝。
 - 本Plan **不含** 控制台/print（PLAN-863）、集合（864）、闭包（865）、在线热重载（866）。
-- **并入项（2026-10-28 用户裁定）**：本Plan同时承担 **M1 分母重绑定**（把对账表里"从未真跑过"的格子实测定级），不另立计划。口径与 103 行逐行映射见[对等口径决策件](reports/ace-m1-scope-decision-2026-10-28.md)（已裁定：`na:m1` 三类接受、`diff:accepted` 四族接受、a2r 双轴拆分接受、a2r 名解析计真缺口）。
+- **并入项（2026-10-28 用户裁定）**：本Plan同时承担 **M1 分母重绑定**（把对账表里"从未真跑过"的格子实测定级），不另立计划。口径与 103 行逐行映射见[对等口径决策件](../reports/ace-m1-scope-decision-2026-10-28.md)（已裁定：`na:m1` 三类接受、`diff:accepted` 四族接受、a2r 双轴拆分接受、a2r 名解析计真缺口）。
 
 本轮只起草合同：不建实施树、不跑构建/语料、不启动其他会话，也不改任何在途Plan的合同或进度。
 
@@ -46,7 +46,7 @@ total_steps: 9
 
 ## 2. 架构方案
 
-按[Design43 §2/§4/§12.1](../design/43-ac-av-typed-mir-and-abc.md)的三层表示（Typed MIR → portable ABC → 私有LoadedProgram）扩一个**独立profile**，而不是在冻结 profile 上加字段：
+按[Design43 §2/§4/§12.1](../../design/43-ac-av-typed-mir-and-abc.md)的三层表示（Typed MIR → portable ABC → 私有LoadedProgram）扩一个**独立profile**，而不是在冻结 profile 上加字段：
 
 | 层 | 本Plan动作 | 不变的边界 |
 |---|---|---|
@@ -57,7 +57,7 @@ total_steps: 9
 | AV 执行 | 结果通道：`Success{int}` / `Success{unit}` / `Trap` / `Resource` / `Cancelled` / `Infra` 保持现有枚举语义，只新增合法载荷形态 | 现有 `ExecOutcome` 分类不被“Unit当0”或“trap当Err”替代 |
 | 消费者 | 既有 828 会话/受检安装/缓存接口复用，不新造平行会话 | `resident-function-install` 的安装/寿命规则 |
 
-入口属于**模块级语义**：单函数不等于 unit，kind/entry/imports 的往返与准入必须由 wire 与 verifier 一致复核（[Design43 §12.1](../design/43-ac-av-typed-mir-and-abc.md)）。因此本Plan的 profile 扩展必须同时给出：类别字段、签名等价、拒绝码，以及在恢复路径（新进程/重验）中的同判定。
+入口属于**模块级语义**：单函数不等于 unit，kind/entry/imports 的往返与准入必须由 wire 与 verifier 一致复核（[Design43 §12.1](../../design/43-ac-av-typed-mir-and-abc.md)）。因此本Plan的 profile 扩展必须同时给出：类别字段、签名等价、拒绝码，以及在恢复路径（新进程/重验）中的同判定。
 
 ## 3. 技术栈
 
@@ -70,23 +70,23 @@ total_steps: 9
 
 ## 4. 需求分析与背景调查
 
-用户 2026-10-28 授权：以 Design43 与ACE路线文档为基准，为826之后的ACE路线规划后继计划；本轮只规划，不实施、不建树、不跑门禁。已读并作为依据的文档：Design43、Design44、[ACE总入口 §0/§0.4](../design/strategy/auto-native-backend-evolution.md)、[AV源码与替换路线](../design/strategy/av-source-programs-and-avm-replacement-roadmap.md)（G0–G8、R2-*）、[能力矩阵](../design/strategy/av-language-capability-matrix.md)（C-06/C-29/SEM-05）、[版本/里程碑合同](reports/ace-milestones-version-boundary-2026-10-24.md)（M1–M4）、[852底座与能力验证合同](reports/ace-852-baseline-and-capability-validation-2026-10-26.md)。
+用户 2026-10-28 授权：以 Design43 与ACE路线文档为基准，为826之后的ACE路线规划后继计划；本轮只规划，不实施、不建树、不跑门禁。已读并作为依据的文档：Design43、Design44、[ACE总入口 §0/§0.4](../../design/strategy/auto-native-backend-evolution.md)、[AV源码与替换路线](../../design/strategy/av-source-programs-and-avm-replacement-roadmap.md)（G0–G8、R2-*）、[能力矩阵](../../design/strategy/av-language-capability-matrix.md)（C-06/C-29/SEM-05）、[版本/里程碑合同](../reports/ace-milestones-version-boundary-2026-10-24.md)（M1–M4）、[852底座与能力验证合同](../reports/ace-852-baseline-and-capability-validation-2026-10-26.md)。
 
 现状事实（以current Spec与代码位置为据，非运行结果）：
 
-- 源码侧已有四个具名 profile：`auto.source.{core-i32,scalar-i32,text,record,text-record}.draft`（[project](../specs/auto-ac/project.md)、[source-scalar-i32](../specs/auto-ac/source-scalar-i32.md)、[source-record](../specs/auto-ac/source-record.md)、[source-text](../specs/auto-ac/source-text.md)、[source-text-record](../specs/auto-ac/source-text-record.md)）。入口契约是**零参数、返回 i32 的已声明函数**（[auto-ac/project](../specs/auto-ac/project.md) 入口节），**没有 Unit 值、没有隐式尾返回、没有顶层脚本**（能力矩阵 C-06，852 binding `gap:mn-scalar-only` 与 G2a 缺口行）。
-- AV 侧入口/结果同样是标量：`ExecOutcome::Success{value}` 承载值，`Trap/Resource/Cancelled/Infra` 分态；`av.core-i32/1` 的 AVAB 语义、`av.data|owned|collections|dynamic|closures` 的 AVAD v1–v5 均按各自 profile 冻结（[auto-av/project](../specs/auto-av/project.md)）。
-- 852 已交付四路径一致性语料与父侧判定（[ace-m1-conformance](../specs/auto-test-case/ace-m1-conformance.md)）。T*/R*/L*/V*/K* 行的源码层缺口带owner登记，其中**入口/输出形态**属于横向前门，不是某个类型族的私有缺口。
+- 源码侧已有四个具名 profile：`auto.source.{core-i32,scalar-i32,text,record,text-record}.draft`（[project](../../specs/auto-ac/project.md)、[source-scalar-i32](../../specs/auto-ac/source-scalar-i32.md)、[source-record](../../specs/auto-ac/source-record.md)、[source-text](../../specs/auto-ac/source-text.md)、[source-text-record](../../specs/auto-ac/source-text-record.md)）。入口契约是**零参数、返回 i32 的已声明函数**（[auto-ac/project](../../specs/auto-ac/project.md) 入口节），**没有 Unit 值、没有隐式尾返回、没有顶层脚本**（能力矩阵 C-06，852 binding `gap:mn-scalar-only` 与 G2a 缺口行）。
+- AV 侧入口/结果同样是标量：`ExecOutcome::Success{value}` 承载值，`Trap/Resource/Cancelled/Infra` 分态；`av.core-i32/1` 的 AVAB 语义、`av.data|owned|collections|dynamic|closures` 的 AVAD v1–v5 均按各自 profile 冻结（[auto-av/project](../../specs/auto-av/project.md)）。
+- 852 已交付四路径一致性语料与父侧判定（[ace-m1-conformance](../../specs/auto-test-case/ace-m1-conformance.md)）。T*/R*/L*/V*/K* 行的源码层缺口带owner登记，其中**入口/输出形态**属于横向前门，不是某个类型族的私有缺口。
 
-SEM-05 的冲突（[能力矩阵 §3](../design/strategy/av-language-capability-matrix.md)）：旧源码有顶层脚本/Unit main/尾值和显示格式；新profile是零参 i32 + 显式 return。两者不能由一个“差不多”的映射合并——入口选择、脚本执行顺序、Unit/guest结果/OS exit/显示必须分别冻结，且不得按文件名挑结果（`SEM-05`）。本Plan只冻结**入口与结果通道**；显示/格式化属 863。
+SEM-05 的冲突（[能力矩阵 §3](../../design/strategy/av-language-capability-matrix.md)）：旧源码有顶层脚本/Unit main/尾值和显示格式；新profile是零参 i32 + 显式 return。两者不能由一个“差不多”的映射合并——入口选择、脚本执行顺序、Unit/guest结果/OS exit/显示必须分别冻结，且不得按文件名挑结果（`SEM-05`）。本Plan只冻结**入口与结果通道**；显示/格式化属 863。
 
-本次授权与输入：用户明确要求修订波次/实际写面、补871旧能力覆盖及删除门、让864支持List与拥有型type元素；允许动作仅计划/设计/战略文档修订，不实施代码、不调整预算、不改868。基面路径、内容SHA-256、旧稿快照及静态预检见[修订收据](attachments/ace-wave-20261028/revision-summary.md)；观察到的current Spec/调用点与未来拟建入口分开记录。
+本次授权与输入：用户明确要求修订波次/实际写面、补871旧能力覆盖及删除门、让864支持List与拥有型type元素；允许动作仅计划/设计/战略文档修订，不实施代码、不调整预算、不改868。基面路径、内容SHA-256、旧稿快照及静态预检见[修订收据](../attachments/ace-wave-20261028/revision-summary.md)；观察到的current Spec/调用点与未来拟建入口分开记录。
 
 ## 5. 详细设计
 
 ### 5.0 波次、实际写面与交接（本次修订）
 
-按[波次交接合同](reports/ace-wave-handoff-2026-10-28.md)§1–2执行：S为共享source/HIR/lowering/MIR/ABC/AV及会话接口，N为ac-mn，H为公共driver/SDK适配/测试注册与binding；分别单写，跨窗同时取窗。共享lowering的未来写面为D868后的`experimental/auto-mir-lower/src/**`，旧`probe/src/hir_adapter.rs`仅作搬前调查，不能再落新实现。T-02及接线前核验实际已合入revision、Spec/API/版本、owner释放与消费者兼容证据并记录接受；review/repair未完不交WIP。
+按[波次交接合同](../reports/ace-wave-handoff-2026-10-28.md)§1–2执行：S为共享source/HIR/lowering/MIR/ABC/AV及会话接口，N为ac-mn，H为公共driver/SDK适配/测试注册与binding；分别单写，跨窗同时取窗。共享lowering的未来写面为D868后的`experimental/auto-mir-lower/src/**`，旧`probe/src/hir_adapter.rs`仅作搬前调查，不能再落新实现。T-02及接线前核验实际已合入revision、Spec/API/版本、owner释放与消费者兼容证据并记录接受；review/repair未完不交WIP。
 
 第1波本Plan占S并按需占H；D868前T-01/T-02仅只读调查/合同准备，T-03代码实施必须等D868与S释放。870 T-01..04可在N并行；本Plan先完成Unit/入口与分母重绑定交付，释放H后870 T-05再接公共差分驱动/binding。新增MIR类型必须同步检查既有mn消费者：不支持的新profile受控拒绝，旧profile仍可编译/执行，不把编译适配当native Unit能力。
 
@@ -206,10 +206,21 @@ T-02 必须产出 `attachments/862/work/entry-contract.md`，逐项冻结（未�
 | T-05 | work | T-04 | 语料/脚本/绑定：追加 ace-m1 行、独立 oracle、`verify-av-862.ps1`，跑定向面并提交代码及证据摘要（原始证据仅本地）；**T-07 R1 已修**（F-862-R1-02/03/05/06/07；修复轮 `e062edf4e`，关闭证据见 §9） | AC-05 | [x] |
 | T-06 | work | T-05、D868 | M1 分母重绑定：实跑 24 个 `probe` + 27 个 `wait:*` 逐格定级、按决策件写状态、产出证据摘要与实测 `clean` 数；不改 expected/schema；执行V-07首例cache/文件化/周转/内存与兼容验证；**T-07 R1 已修**（F-862-R1-01/04/08；NA-4 已入 SD-06+决策件 §12，内存腿已实测） | AC-06/04 | [x] |
 | T-07 | review | T-06 | 独立最终review，核 AC/V/SD 与实际入口、`na` 反滥用；merge 门 pending | AC-07 | [ ] |
-| T-08 | merge | T-07 pass | 冻结提交上裸 `cargo t` + `tv`，失败归因不豁免 | AC-08 | [ ] |
-| T-09 | merge | T-08 | Spec/ledger 沉淀、归档、worktree guard clean 清树 | AC-09 | [ ] |
+| T-08 | merge | T-07 pass | 冻结提交上裸 `cargo t` + `tv`，失败归因不豁免；**已执行**（`0e62d8c4c` 重基基线）：`cargo t --no-fail-fast` **3199/3199**、`cargo tv` **163/163**；fail-fast 轮的唯一红为 867 预存红 `launcher_pickcat`（master 已由 867 T-12 修复）+ 4 个并行负载超时（隔离全绿），最终全量无红 | AC-08 | [x] |
+| T-09 | merge | T-08 | Spec/ledger 沉淀、归档、worktree guard clean 清树；**归档/ledger 已完成**（ledger v119 `61a5b904f`），cleanup 收尾中 | AC-09 | [ ] |
 
 ## 9. 复审记录
+
+2026-10-28 **merge T-08/T-09（delivered；cleanup 收尾中）**：`stage: merge | plan_id: PLAN-862 | plan_revision: 3 | outcome: pass | delivery_commit: 0e62d8c4cd33dd5b29a074690107601dc57dbe07 | base_commit: 13057957c6363c87f63bb2e2edc2d36ad3ad773a | rebase_map: d116ac82e→2a7bf0352→0e62d8c4c（reviewed e062edf4e→9d7604858→e9bca9472；两跳 git range-diff 均全等） | dependency_revisions: auto-down c3464d0、auto-ui f489c7b（只读，未写） | ledger: v118→v119（guarded offline projection；备份 tmp/862/specs.before.json，sha256 5005dfd5700e5d3e77df507448c2eae84d78910f431a8cb2b7b1393c01cd0e76） | archive: docs/plans/archive/862-av-source-entry-unit-and-tail-semantics.md | next: 无（archived 终态）`。
+
+- **prepared**：冻结基线 `reviewed e9bca9472`（= e062edf4e 重基后）→ 规范增量按 SD-01..06 落在 worktree（5 个 docs/specs 目标：新增 `auto-ac/source-entry-unit.md`、`auto-av/entry-and-unit-profile.md`；改 auto-ac/auto-av/auto-mir/auto-test-case 的 project/overview/plans 索引），形成 docs-only 后继 `0e62d8c4c`；`docs/specs/INDEX.md` 由 `scripts/spec-index.py` 复算为无变化（内容逐行相同）。实现/依赖未变（`git diff e062edf4e..0e62d8c4c --name-only` 仅 docs/specs）。
+- **landed**：master `git merge --ff-only plan-862-dev` → tip **0e62d8c4c**（无 merge commit）。期间其他会话两次推进 master（867/878：仅 docs/specs + `.autoos/specs.json` + docs，**零代码文件**，`git diff 8ae51d6af 51415cd8e --name-only | grep -v ^docs/` 仅 `.autoos/specs.json`），故两跳重基不改变代码基线；两跳 `git range-diff` 全等（7/7 提交 `=`）。
+- **merge 门（在重基后冻结基线上实跑）**：`cargo t --no-fail-fast` → **3199/3199 passed, 0 failed**（此前 fail-fast 轮出现的 1 红 = 867 的 `plan503_tests::launcher_rewrite::launcher_pickcat_filters_results`（F-867-NEWRED-01，master 上已由 867 T-12 `ec1d19a10` 修复）与 4 个 120s 超时（ac_cte_probe 3 + ac_av_probe 1；隔离重跑 5/5 与 1/1 全绿 = 并行负载超时，非回归），最终全量轮无红）；`cargo tv` → **163/163 passed**。基线身份：代码树 = 8ae51d6af + 本计划 7 提交（878 仅文档/ledger，不改代码）。
+- **ledger_refreshed**：`D:/autostack/auto-lang/.autoos/specs.json` v118→**v119**；guarded offline projection（Regime B；先备份、后手术式插入、读回校验）：designs +2（`P862-DESIGN-SOURCE-ENTRY-UNIT`、`P862-DESIGN-ENTRY-UNIT-PROFILE`）、tests +1（`P862-TESTS`）、reviews +1（`P862-REVIEW-R2`）、reports +1（`P862-MERGE`）；并按"复用既有当前知识项"更新 `P852-DESIGN-CONFORMANCE` 内容（不复制目标文件）；读回校验：version 118→119、section id 不变、无重复/缺失 id、其余条目逐项 byte-identical；`git diff --numstat` = 130 insertions / 2 deletions；提交 `61a5b904f`，投影后文件 sha256 `17cec18aa1685a5bd36a6a7d0c73b6e76837a560dd74c403f83fcad0cac4923f`。**通道说明**：本会话无 spec 工具/HTTP store（Regime B），且在 worktree 内改 ledger 会以 v115 旧基覆盖 878 的 v118 投影，故投影在主检出 master 上以单通道执行并记录（备份 `tmp/862/specs.before.json`，sha256 见下）。
+- **archived**：计划移入 `docs/plans/archive/`，frontmatter `status: archived`；链接按 archive 位置重写（`../`→`../../`、`x/`→`../x/`）并在真实父目录逐条校验；T-01..T-08 勾闭、T-09 本提交完成归档、cleanup 待收尾。
+- **production artifacts**：本计划改动全在 `experimental/**`（ac-core/ac-av-probe/auto-mir-lower 等独立 workspace）与 `auto-test-case`+`auto-lang-core` 的 test-cases 门内测试面（`test_cases::ac_av`）——产品 `auto` 默认二进制、UI bundle 与 release 产物不链接这些路径，**无生产制品需要重建**；`target/debug/auto.exe` 语义不受影响。
+- **batch regression due check**：`.last-batch-regression.json` 覆盖 860/`covered_commit 5613541d9`/2026-10-28T09:33Z；本计划 id%5=2 非触发；其后归档的 867/876/877/878 均非 5 倍数（865 未落地），收据龄 ~3h < 48h → **不 due**，未跑 regress。
+- **遗留**：D-862-R1-01（852 验证脚本装载器预存缺陷，`KNOWN-DEBT-AND-RISKS.md`）、决策件附录无规则 ID `na:m1` 行的全表回填待裁定（B2）、a2r 新金样（a2r 线）——均已在计划内登记，不阻塞本次交付。
 
 2026-10-28 **re-review T-07（R2，final pass）**：`stage: review | review_scope: final（re-review） | reviewer_identity/limitations: 同一实施会话复审，无独立外部/异模型上下文；结论由修复 diff（e062edf4e）、关闭行与在冻结提交上重跑的门重建 | plan_id: PLAN-862 | plan_revision: 3 | outcome: pass | worktree_path: D:/autostack/.wt/lang-862/auto-lang | branch: plan-862-dev | reviewed_commit: e062edf4e53db111a08fb2a3a511acaf5299996b（树 clean） | base_commit: 13057957c6363c87f63bb2e2edc2d36ad3ad773a | dependency_revisions: auto-down c3464d0、auto-ui f489c7b（只读） | spec_inputs: 计划 R1 基线 sha256 332e7afa…（R2 仅改 §5 SD-01/04/05/06 文本与 §9 记录，随本轮簿记提交冻结）、决策件新增 §12、entry-contract b364c10b…、ace-m1-conformance 976dfd60…（仍未改 canonical specs） | acceptance_results: AC-01 pass、AC-02 pass、AC-03 pass（双向身份拒绝已测）、AC-04 pass（内存腿已实测）、AC-05 pass、AC-06 pass（NA-4 已裁定并落 SD-06/决策件） | pending_closeout_gates: T-08 merge 裸 cargo t + tv（diff 触及前端/MIR/ABC/AV）；T-09 Spec/ledger/归档/清树；na 分布须在 852/862 acceptance 报告单列 | findings: F-862-R1-01..08 全部 CLOSED（无新增 finding） | next: merge T-08`。
 
@@ -222,7 +233,7 @@ T-02 必须产出 `attachments/862/work/entry-contract.md`，逐项冻结（未�
 
 | Finding | 修复（文件） | 关闭证据（命令 → 结果） |
 |---|---|---|
-| F-01 NA-4 未裁定 | 用户 2026-10-28 复审中批准；写入 SD-06 与[决策件 §12](reports/ace-m1-scope-decision-2026-10-28.md)（适用/依据/重新进入条件/防扩散三条） | 文档一致性复核；`-Scope acceptance` 的 `na` 分布仍 `NA-4=30` |
+| F-01 NA-4 未裁定 | 用户 2026-10-28 复审中批准；写入 SD-06 与[决策件 §12](../reports/ace-m1-scope-decision-2026-10-28.md)（适用/依据/重新进入条件/防扩散三条） | 文档一致性复核；`-Scope acceptance` 的 `na` 分布仍 `NA-4=30` |
 | F-02 `source.unit-placement` 不可达 | `experimental/ac-core/src/source/parser.rs`：entry-unit 域 `param_type`/`decl_ann` 接受 `void` 词（scalar 等仍 `source.unsupported`）；字段条款（entry-unit 面无 `type` 声明）由 HIR/MIR 层守护，MIR 侧补负例 | `entry_unit_862` **26 passed**（param/local 两条新负例 + `verify.domain` 跨域一条）；`av_entry_862` **13 passed**（`mir.unit-placement` 新负例） |
 | F-03 AC-03 第二方向 | 新增两条身份负例：scalar 文档 → `verify_entry_unit` = `verify.domain`；`AVAU` 字节 + legacy owner schema = `mir.schema-profile`（受控拒绝，非重解释） | 同上（26 / 13 全绿） |
 | F-04 规范增量不完整 | 计划 §5 SD-01/04/05/06 增补：`source.entry-order`/`source.entry-result`、Unit 三层放置可达性、U01–U10 与 `av_channel` 轴、`mir.unit-placement`/`mir.entry-kind`、NA-4、六个新 owner token、`probe`/`wait:*` 清零与实测 clean | 计划 §5 表已更新（merge 沉淀） |
@@ -258,7 +269,7 @@ T-02 必须产出 `attachments/862/work/entry-contract.md`，逐项冻结（未�
 - **T-05 交付**：合同层 append-only 两项——`ProbeAvSpec.profile`（值仅 `entry-unit`，缺省=scalar 逐字节不变）与 `ExpectSpec.av_channel`（`value`/`unit`；`unit` 与 `exit` 同格声明被拒，禁止把 Unit 折成 0），`ResolvedOracle` 同步参与 oracle 身份；worker 接受 `profile` 并上报 `channel` 与 `av.entry-unit/1` 身份；父侧判定绑定 expected core 版本（`av.entry-unit/1` vs `av.core-i32/1`）、receipt/toolchain 增 `av-profile=7`+`av-source-profile=entry-unit`、scalar 行禁止携带该轴。语料：`crates/auto-lang/test/cases/ace-m1/entry-862/`（U01–U10 + suite，独立手算 oracle：42/unit/42/unit/trap/5 类入口诊断）；脚本 `scripts/verify-av-862.ps1`（`targeted`/`compat`/`entry`/`acceptance`，targeted 对零用例过滤设下限）。**顺带修正**：真实语料暴露重复 `main` 先撞通用 `source.duplicate`，按 T-02 §2.2 在 entry-unit 域让位给 `source.entry-duplicate`（其他名字/profile 规则不变）。
 - **T-05 验证（本提交上，原始证据本地）**：`-Scope entry` → **12/12 绿**（逐行断言 channel/exit/toolchain 三元组；判别力反控：把 U02/U04 的 `unit` 期望改成 `value` 后**恰好这两行红**）；`-Scope compat` → 旧 852 base suite **97 绿（26 a2r）**、每个 probe 检查仍报 `av.core-i32/1`（零漂移）；`-Scope targeted` → 合同解码 13、父侧判定 9、ac-core 入口矩阵 24、probe 首例 10，全绿（每步都有"过滤零用例即失败"的下限）。
 - **T-06 交付**：24 `probe` + 27 `wait:*` 逐格真实执行（28 个有源码的行 × 四路径 + record/text-record 两个 AV recipe；期望全部取冻结 oracle，诊断/陷阱格用哨兵码读回实际码；**未改 expected/oracle/case 源**），结果写回 `binding.tsv` 单元格与证据注记（35 行改动 + 新增 U01–U10 行）。**probe 24→0、wait:* 27→0**；corpus 实测 **clean = 20/73**。关键翻转：T01/T02/T04/T06/T07/T08 与 R01–R06/R09/R10 的 av 列由未跑变为 `ok`（record/text 源码经 `ac-av/data|owned-run-v1` 真跑：38/27/128512/借用逃逸拒绝/非法标量拒绝/越界 trap；19/9/23/51/42/21/名义错型拒绝/move 后读拒绝）；V01–V07 归 `gap:P864`；R07 `gap:av-mut-param`、R08 `gap:av-lower-method`（真实执行复证）；9 个 a2r 格实测"发射成功但无冻结金样"→ `gap:a2r-golden`（R07 为 `gap:a2r-untyped-emit`）；B17–B19 的 ac 三格与 B18 avm 为 `diff:pending`（新引擎/旧引擎与 oracle 的真差异，未套旧侧裁定），B17/B19 avm 按 R-C 落 `diff:accepted(R-C)`；无源码的 scenario 行（E01/E02/R01/R04/R06/I04/I09）记 `gap:scenario-tooling`（trace/events/layout 观测通道未交付）。
-- **T-06 V-07 计量**：文件化 TestCase 12 检查 ×3 轮全绿；fresh `cache_hit_abc=0/cache_miss_abc=1/mir_units_persisted=1/av_execute=1`；hit（同 store）`cache_hit_abc≥1/mir_build=0` 且 AV 仍执行；restart 真新进程 decode+verify+重跑 Unit 通道不变；body-edit 新增测试 `av_entry_862_body_edit_rebuilds_only_the_edited_unit`（值 7→8、未改 callee 命中、`cache_miss_abc=1`）；周转 36 个端到端样本 **P90=362ms**（median 225 / max 619，硬门 ≤2000ms）；内存记模块预算 `peak_staging=6195B/peak_hot=2906B/slot=120B`，**进程峰值采样未重跑**（沿用 825/828 预算门，本 profile 不新增分配通道）。证据摘要（本文件随提交入库）：[t05-t06-evidence.md](attachments/862/work/t05-t06-evidence.md)。
+- **T-06 V-07 计量**：文件化 TestCase 12 检查 ×3 轮全绿；fresh `cache_hit_abc=0/cache_miss_abc=1/mir_units_persisted=1/av_execute=1`；hit（同 store）`cache_hit_abc≥1/mir_build=0` 且 AV 仍执行；restart 真新进程 decode+verify+重跑 Unit 通道不变；body-edit 新增测试 `av_entry_862_body_edit_rebuilds_only_the_edited_unit`（值 7→8、未改 callee 命中、`cache_miss_abc=1`）；周转 36 个端到端样本 **P90=362ms**（median 225 / max 619，硬门 ≤2000ms）；内存记模块预算 `peak_staging=6195B/peak_hot=2906B/slot=120B`，**进程峰值采样未重跑**（沿用 825/828 预算门，本 profile 不新增分配通道）。证据摘要（本文件随提交入库）：[t05-t06-evidence.md](../attachments/862/work/t05-t06-evidence.md)。
 - **两项须 review 裁定的口径**：① U 行的三条非 AV 路径记 `na:m1(NA-4)`——NA-4 是本计划为"AV-only 入口 profile"新增的规则（决策件只冻结了 NA-1..NA-3），按反滥用规则 2 需 review 明确接受，否则 U 行只能记 gap（会虚增 M1 负债）；② 决策件附录对 C01/C02/I01–I11/G02–G08 写无规则 ID 的 `na:m1`，与其自身 §5 规则 1 冲突，故本轮**未做全表词表回填**（回填须先裁定这些行的规则归属）。因此实测 clean=20/73 低于决策件的 50/103 投影：差异是记账口径（未执行格保留 `emit-ok-run-unverified`/`diff-legacy-*`/`snapshot-only-cert-gap`/`n/a` 等旧 token），不是执行退化。
 - **未执行**：整档 `cargo t`/`tv`/`tu`（merge 门 T-08）、`docs_gen`、Spec 沉淀与归档（T-09）、a2r 新金样冻结（归 a2r 线）。
 - **交接注意**：主检出仍带其他会话的未提交 docs WIP（代码零 WIP，仅 §§簿记编辑）；本计划的簿记提交需与其他 WIP 分开暂存。实施树 clean（两提交后无未跟踪业务文件；`tmp/862/**` 为本地证据，未入库）。
@@ -283,11 +294,11 @@ T-02 必须产出 `attachments/862/work/entry-contract.md`，逐项冻结（未�
 
 `stage: new | plan_id: PLAN-862 | plan_revision: 3 | outcome: pass（修订草案静态预检；实施仍等真实D门/写面释放） | next: T-01/T-02只读准备，D868后T-03`
 
-2026-10-28 r2→r3（用户授权修订波次/写面，864纳入拥有型List、871补旧能力与删除门）：仅修订执行合同，不实施。原status/current_step/total_steps、任务勾选与历史记录保留；D868合同和进度不变。V-07补交接/消费者兼容与首例cache、文件化测试、周转及内存核验；详细依据与静态预检见[波次合同](reports/ace-wave-handoff-2026-10-28.md)和[修订收据](attachments/ace-wave-20261028/revision-summary.md)。本记录只说明文档修订，未执行AC、性能测试或独立实现review，merge-owned门禁仍待实施后完成。
+2026-10-28 r2→r3（用户授权修订波次/写面，864纳入拥有型List、871补旧能力与删除门）：仅修订执行合同，不实施。原status/current_step/total_steps、任务勾选与历史记录保留；D868合同和进度不变。V-07补交接/消费者兼容与首例cache、文件化测试、周转及内存核验；详细依据与静态预检见[波次合同](../reports/ace-wave-handoff-2026-10-28.md)和[修订收据](../attachments/ace-wave-20261028/revision-summary.md)。本记录只说明文档修订，未执行AC、性能测试或独立实现review，merge-owned门禁仍待实施后完成。
 
-2026-10-28 new r1：`stage: new | plan_id: PLAN-862 | plan_revision: 1 | outcome: pass（可在既有授权内进入 work；T-02 若需改变已批准语义则回用户决定） | next: work T-01→T-02`。全部 AC/V/T 未执行；profile 号、schema 名、诊断码均为建议值，T-02 冻结后写回。本轮未建实施树、未跑任何构建/语料，未改在途Plan与既有Spec。批次排序依据见[后继批次规划](reports/ace-next-batch-2026-10-28.md)。
+2026-10-28 new r1：`stage: new | plan_id: PLAN-862 | plan_revision: 1 | outcome: pass（可在既有授权内进入 work；T-02 若需改变已批准语义则回用户决定） | next: work T-01→T-02`。全部 AC/V/T 未执行；profile 号、schema 名、诊断码均为建议值，T-02 冻结后写回。本轮未建实施树、未跑任何构建/语料，未改在途Plan与既有Spec。批次排序依据见[后继批次规划](../reports/ace-next-batch-2026-10-28.md)。
 
-2026-10-28 **r1→r2（并入 M1 分母重绑定）**：`stage: new | plan_id: PLAN-862 | plan_revision: 2 | outcome: pass | next: work T-01`。变更原因：用户 2026-10-28 裁定"M1 分母重绑定不另立计划，并入下一个要做的计划"；对账口径由[对等口径决策件](reports/ace-m1-scope-decision-2026-10-28.md)定稿（4/4 采纳推荐项）。合同变更：新增 §5.5 边界、SD-06、V-06、AC-06、T-06；因本Plan仍为 drafting、`current_step: 0`、无任何已执行证据，原 review/merge/归档任务与 AC 顺延为 T-07/T-08/T-09 与 AC-07/08/09（无历史证据被失效）。范围未扩大：仍不含 863–866 的能力，重绑定只翻转状态列、不改 expected/oracle/schema。
+2026-10-28 **r1→r2（并入 M1 分母重绑定）**：`stage: new | plan_id: PLAN-862 | plan_revision: 2 | outcome: pass | next: work T-01`。变更原因：用户 2026-10-28 裁定"M1 分母重绑定不另立计划，并入下一个要做的计划"；对账口径由[对等口径决策件](../reports/ace-m1-scope-decision-2026-10-28.md)定稿（4/4 采纳推荐项）。合同变更：新增 §5.5 边界、SD-06、V-06、AC-06、T-06；因本Plan仍为 drafting、`current_step: 0`、无任何已执行证据，原 review/merge/归档任务与 AC 顺延为 T-07/T-08/T-09 与 AC-07/08/09（无历史证据被失效）。范围未扩大：仍不含 863–866 的能力，重绑定只翻转状态列、不改 expected/oracle/schema。
 
 ## 10. 待澄清事项
 
@@ -295,4 +306,4 @@ T-02 必须产出 `attachments/862/work/entry-contract.md`，逐项冻结（未�
 - 显示/格式化（旧源码的打印格式）是否需要在 863 之前先定；本Plan默认把全部显示面推给 863。
 - 是否要求本 profile 同时进入 AC native 路径（`gap:ac-composite-native`/`mn` 一侧）。默认**不要求**：native 复合扩面另立计划，本Plan只交付 AV 通道。
 
-2026-10-28 D868 前置解除：PLAN-868 已交付落 master（delivery 7754c4e4c）——HIR→MIR lowering 唯一实现为 `experimental/auto-mir-lower/src/**`（纯搬移等价已证，旧 `probe/src/hir_adapter.rs` 已删除），本计划 D868 硬前置视为满足；lowering 相关 T 任务的写面以该 crate 为准（边界合同见 [docs/specs/auto-mir/hir-lowering-boundary.md](../specs/auto-mir/hir-lowering-boundary.md)）。
+2026-10-28 D868 前置解除：PLAN-868 已交付落 master（delivery 7754c4e4c）——HIR→MIR lowering 唯一实现为 `experimental/auto-mir-lower/src/**`（纯搬移等价已证，旧 `probe/src/hir_adapter.rs` 已删除），本计划 D868 硬前置视为满足；lowering 相关 T 任务的写面以该 crate 为准（边界合同见 [docs/specs/auto-mir/hir-lowering-boundary.md](../../specs/auto-mir/hir-lowering-boundary.md)）。
