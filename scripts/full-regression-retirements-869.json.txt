@@ -1,0 +1,23 @@
+{
+  "schema": "test-id-retirements/1",
+  "plan": 869,
+  "note": "PLAN-869 batch-2 zero-consumer retirement. The whole-module retirement of crates/auto-lang-core/src/implicit_union.rs (lang 70bff36fb) removed its inline test module with the module itself; no other test id disappeared (lang-t selection 3198 -> 3182 exactly -16, ui-tu 863 and man-t 281 unchanged at their floors). Mirrors the 844 retirement channel; recorded and reconciled against the PLAN-867 closure ledger (RETIRED class, appended rows).",
+  "retirements": [
+    {"id": "auto-lang-core\timplicit_union::tests::test_implicit_union_new", "owner": "language", "evidence": "869 T-04 implicit_union.rs whole-module retirement (zero consumers, scan4 + five-face negative controls), commit 70bff36fb"},
+    {"id": "auto-lang-core\timplicit_union::tests::test_add_literal_string", "owner": "language", "evidence": "869 T-04 implicit_union.rs whole-module retirement, commit 70bff36fb"},
+    {"id": "auto-lang-core\timplicit_union::tests::test_add_literal_dedup", "owner": "language", "evidence": "869 T-04 implicit_union.rs whole-module retirement, commit 70bff36fb"},
+    {"id": "auto-lang-core\timplicit_union::tests::test_add_type_binding", "owner": "language", "evidence": "869 T-04 implicit_union.rs whole-module retirement, commit 70bff36fb"},
+    {"id": "auto-lang-core\timplicit_union::tests::test_literal_to_variant_name_string", "owner": "language", "evidence": "869 T-04 implicit_union.rs whole-module retirement, commit 70bff36fb"},
+    {"id": "auto-lang-core\timplicit_union::tests::test_literal_to_variant_name_int", "owner": "language", "evidence": "869 T-04 implicit_union.rs whole-module retirement, commit 70bff36fb"},
+    {"id": "auto-lang-core\timplicit_union::tests::test_literal_to_variant_name_bool", "owner": "language", "evidence": "869 T-04 implicit_union.rs whole-module retirement, commit 70bff36fb"},
+    {"id": "auto-lang-core\timplicit_union::tests::test_type_binding_to_variant_name", "owner": "language", "evidence": "869 T-04 implicit_union.rs whole-module retirement, commit 70bff36fb"},
+    {"id": "auto-lang-core\timplicit_union::tests::test_generate_rust_enum", "owner": "language", "evidence": "869 T-04 implicit_union.rs whole-module retirement, commit 70bff36fb"},
+    {"id": "auto-lang-core\timplicit_union::tests::test_generate_rust_enum_int", "owner": "language", "evidence": "869 T-04 implicit_union.rs whole-module retirement, commit 70bff36fb"},
+    {"id": "auto-lang-core\timplicit_union::tests::test_to_pascal_case", "owner": "language", "evidence": "869 T-04 implicit_union.rs whole-module retirement, commit 70bff36fb"},
+    {"id": "auto-lang-core\timplicit_union::tests::test_type_to_rust_type", "owner": "language", "evidence": "869 T-04 implicit_union.rs whole-module retirement, commit 70bff36fb"},
+    {"id": "auto-lang-core\timplicit_union::tests::test_from_on_block", "owner": "language", "evidence": "869 T-04 implicit_union.rs whole-module retirement, commit 70bff36fb"},
+    {"id": "auto-lang-core\timplicit_union::tests::test_generate_c_enum", "owner": "language", "evidence": "869 T-04 implicit_union.rs whole-module retirement, commit 70bff36fb"},
+    {"id": "auto-lang-core\timplicit_union::tests::test_variant_count", "owner": "language", "evidence": "869 T-04 implicit_union.rs whole-module retirement, commit 70bff36fb"},
+    {"id": "auto-lang-core\timplicit_union::tests::test_empty_union", "owner": "language", "evidence": "869 T-04 implicit_union.rs whole-module retirement, commit 70bff36fb"}
+  ]
+}
