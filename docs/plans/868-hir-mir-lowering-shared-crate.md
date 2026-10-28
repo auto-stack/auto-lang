@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-868
-status: execution_done
+status: executing
 feature_name: HIR→MIR lowering 出库为共享 crate
 author: [Codex]
 created_at: 2026-10-28
@@ -15,7 +15,7 @@ touched_goals: [GOAL-002]
 
 affects: [auto-mir, auto-av, auto-ac, auto-test-case]
 depends_on: []
-current_step: 5
+current_step: 4
 total_steps: 8
 ---
 
@@ -172,7 +172,7 @@ ac-core（AST/HIR/verify/descriptor）
 | T-02 | work | T-01 | 冻结边界与身份：crate 名/路径、公开 API 清单、报告轴键名与取值、等价比对字段集、收据不动的声明 | AC-02/04 | [x] 2026-10-28：冻结于 `attachments/868/work/baseline.md` §8。crate=`experimental/auto-mir-lower`（lib `auto_mir_lower`）；API=9 项原样+`MIR_LOWERING_VERSION: &str = "1"`；轴键 `mir-lowering` 必报（三消费者 identity+报告）；stale applicable 仅 av/cte 分支追加；比对字段集=逐 result 的 case/check/adapter/action/tier/status/mismatches/detail/identity/artifacts(logical,sha256,bytes)/native{exit_code,cache_mode,cache_hits,counters,gaps}，剔除 duration_ms/stage_spans/native.toolchain/artifacts.stored；收据键集零改动 |
 | T-03 | work | T-02 | 建 crate + 搬 lowering（纯搬移）+ 三消费者改指 + 删旧实现（编译通过） | AC-02 | [x] 2026-10-28：commit `aaf22f279`（work 树 plan-868-dev）。git mv 100% rename（2627 行零改动）；`experimental/auto-mir-lower`（deps=ac-core+av-core）+ 根级 re-export；33 文件 61 引用全部改指（probe src `crate::hir_adapter::`→`auto_mir_lower::`、tests/bins/mn/cte 同构）+ lib.rs 模块删除 + 三 Cargo.toml 加依赖。编译：auto-mir-lower/ac-av-probe(ac-av-probe all-targets 8s)/ac-cte-probe 全绿；ac-mn lib+bins+触面测试绿（codegen_tier/transaction_tier 的 MirFunction.env 报错为 master 预存红：PLAN-823/824 加字段未更新 mn 测试夹具，两文件不在本 diff 内，记 KNOWN-DEBT） |
 | T-04 | work | T-03 | 等价性运行与依赖守卫（V-01/02/03），记录搬前基线报告供比对 | AC-01/02/03 | [x] 2026-10-28：搬前基线 11 族（ac-av/av-data-821~824/av-abc-825/826/av-source-827/ace-m1/ac-cte/ac-mn）151/151 PASS；搬后同 11 族 run exit 全 0，`compare-reports.py` 冻结字段集比对 **11/11 族逐 check 全等**（status/actual/identity/artifacts sha/native counters 除 ledger_peak_* 等，attachments/868/work/{baseline,post}-reports/，本地证据）。依赖守卫：av-core 依赖清单空；auto-mir-lower 仅 ac-core+av-core；experimental 全域 `pub fn lower_checked(` 定义唯一；根 workspace 零 experimental path 依赖；`cargo tree -i auto-mir-lower` 三消费者均解析且无反向边 |
-| T-05 | work | T-04 | 身份轴 + 反控注入 + 脚本 `verify-mir-lowering-868.ps1`（V-04/05），提交代码与证据 | AC-04/05 | [x] 2026-10-28：commit `89c551ee1`。轴：`EXPECTED_MIR_LOWERING_VERSION="1"` 镜像于 ac_av/ac_cte/ac_mn，入 identity/axes/双 mn 收据/NativeRecord；stale.rs av/cte applicable 追加。实测：新报告行轴含 `mir-lowering:1`（ac-av 18/18 绿）；旧（无轴）报告判 `native.mir-lowering missing (now 1)` STALE（7 行）；mn 收据带轴；ace 收据键集双消费者零改动。反控：注入 mark_a 1→3 于共享 crate → ac-mn 必红（run-first exit 期望 0 实得 1）、av 不敏感（marks 只进 trace 序，记入案）→ 还原必绿。脚本三档实测 PASS：deps（5 守卫）/identity（11 族重跑全绿+4 断言）/equivalence（对搬前基线 11/11 EQ）。scoped 定向测试（45 测批）45/45 绿 |
+| T-05 | work | T-04 | 身份轴 + 反控注入 + 脚本 `verify-mir-lowering-868.ps1`（V-04/05），提交代码与证据 | AC-04/05 | [ ] **R1 重开**（原 [x] 证据：commit `89c551ee1`，轴/反控/脚本三档 PASS——`EXPECTED_MIR_LOWERING_VERSION="1"` 镜像于三族入 identity/axes/双 mn 收据/NativeRecord，stale applicable 追加；新报告行轴含 mir-lowering:1（ac-av 18/18）；旧报告判 `native.mir-lowering missing (now 1)` STALE×7 行；反控注入 mark_a 1→3 → ac-mn 必红（exit 期望 0 实得 1）→还原必绿；verify 三档 PASS；45 测批绿）。重开原因 F-868-R1-01：新增轴元组 4 处 rustfmt 偏差（ac_av.rs:169、ac_cte.rs:183、ac_mn.rs:1211/1881；基面三文件 fmt-clean），修复后重审 |
 | T-06 | review | T-05 | 独立最终review（重点：只搬不改、切面、轴语义）；merge 门 pending | AC-06 | [ ] |
 | T-07 | merge | T-06 pass | 冻结提交裸 `cargo t` + `tv` | AC-07 | [ ] |
 | T-08 | merge | T-07 | Spec/ledger/归档/guard；回写 862–865 写面并解除其 lowering 前置 | AC-08 | [ ] |
@@ -196,6 +196,11 @@ blockers: 无 | next_responsible_role: review（T-06）`
   2. ac-mir-native `codegen_tier`/`transaction_tier` 构造 `MirFunction` 缺 `env` 字段（PLAN-823/824 加字段未同步 mn 测试夹具）——`cargo check --all-targets` 在 master 同样红。
   3. `mir_native_rounds_failure_liveness_and_caps` 为 3 秒墙负载敏感 flake：本会话 57 测并发批 3 红、45 测同型批全绿（本树/基面 experimental/主检出三处对照）+ 隔离 2 绿 + 故障路径不经过搬移代码（协议前 hijack）；归因=并行重载下 3s 墙超时，与本 diff 无因果。
 - 测试运行记录（本次 work 全量）：三棵 experimental `cargo check`（触面）；11 族 suite×3 腿（搬前/搬后/轴后，各 151 checks 全 PASS）；verify 脚本 deps/identity/equivalence 三档；scoped 45 测批×3 树对照 + 57 测批 1 次（含上述 flake 归因）。统一回归门禁（裸 cargo t/tv）**pending，owner=merge**。
+
+2026-10-28 review R1（final，needs_fix）：
+`stage: review | review_scope: final | reviewer: 与实施同会话/同上下文（无独立复审上下文；已按技能要求从工件重建结论——blob/diff 级核验 + 复审自有命令重跑行为证据，不采信执行摘要） | plan_id: PLAN-868 | plan_revision: 1 | outcome: needs_fix | worktree: D:/autostack/.wt/lang-868/auto-lang | branch: plan-868-dev | reviewed_commit: 89c551ee1 | base_commit: 452320fd5 | dependency_revisions: auto-ui 7095f53 / auto-down c3464d0（组内 detached 兄弟，构建解析用） | spec_inputs: docs/specs/goals.md（GOAL-002 实存）、docs/specs/{auto-mir/overview.md,auto-av/project.md,auto-test-case/architecture.md}（SD-02..04 目标文件实存；SD-01 目标 hir-lowering-boundary.md 由 merge 新建） | acceptance_results: AC-01 pass（工件复数：11 族 pre/post summary 逐族一致、总 151；复审另以 compare 脚本口径复核）/AC-02 pass（blob 2aaf3df7 两路径同 hash=字节级纯搬移；experimental 全域 lower_checked 定义唯一；probe 无 shim；cargo tree 三消费者）/AC-03 pass（av-core deps 空、根 workspace 零 experimental 引用，复审自跑守卫复现）/AC-04 pass（复审自有新跑：ac-av 18/18+18 轴行值1、ac-mn 3/3+收据带轴；旧报告 stale exit1 且 `mir-lowering missing`×7 行；ace 收据键集文件不在 diff 内）/AC-05 pass（反控工件：inject-red mn.first.trace exit mismatch 实录 + restored 3/3）/AC-06 needs_fix（"只搬不改"diff 级核实：非机械行仅 Cargo.lock/描述/边界文档；唯一缺口=fmt）| pending_closeout_gates: 裸 cargo t + tv（merge-owned）；SD-01..04 沉淀、ledger、归档、862–865 写面回写（merge-owned） | findings: **F-868-R1-01 P3**——4 处 rustfmt 偏差（ac_av.rs:169、ac_cte.rs:183、ac_mn.rs:1211/1881 的新增轴元组多行写法；基面三文件 fmt-clean，属本 diff 新引入）。修复=按 rustfmt 折为单行元组并 fmt 全查；受影响检查=rustfmt --check ×4 文件 + cargo check -p auto-lang-core --features test-cases + 修复提交 diff 须纯格式（格式修复不动语义，既有等价/轴证据在纯格式 diff 下保持有效，无需重跑）| evidence: attachments/868/work/review-r1/（复审自有 run：ac-av/ac-mn 报告+stale-old.txt）+ 上述各项命令实录 | next: work 修复 F-868-R1-01（同树），随后 R2 重审（仅受影响面）`
+
+R1 附注（非阻塞改进候选，不构成本轮 finding）：`verify-mir-lowering-868.ps1` identity 档将轴值 `"1"` 硬编码为断言字面量——版本 bump 时该档会 fail-loud 强制同步（可接受），后续可改为读 `auto-mir-lower/src/lib.rs` 常量为唯一事实源。
 
 ## 10. 待澄清事项
 
