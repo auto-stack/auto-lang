@@ -159,3 +159,5 @@ L/V 两族目前只有 **typed 语料**走协议（`ac-av/collections-run-v1` + 
 - `List<owned record>`/`List<Str>` 是否进入首批：822 非目标含“record 容器字段/List 嵌 List”，本Plan默认**不含**，仅标量元素 + 已交付面；若用户要求同时覆盖 owned 元素，需在 T-02 前明确扩大范围与资源预算。
 - 迭代中修改集合的语义（拒绝 vs 冻结快照）需用户或语言owner裁定；本Plan默认**拒绝**并给具名诊断（保守），如要允许快照语义须另立合同。
 - `for-in` 是否同时支持 range（`0..n`）/数组/Tuple：默认只 `List`，其余留 R2-L 后续切片。
+
+2026-10-28 D868 前置解除：PLAN-868 已交付落 master（delivery 7754c4e4c）——HIR→MIR lowering 唯一实现为 `experimental/auto-mir-lower/src/**`（纯搬移等价已证，旧 `probe/src/hir_adapter.rs` 已删除），本计划 D868 硬前置视为满足；lowering 相关 T 任务的写面以该 crate 为准（边界合同见 [docs/specs/auto-mir/hir-lowering-boundary.md](../specs/auto-mir/hir-lowering-boundary.md)）。

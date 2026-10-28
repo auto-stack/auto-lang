@@ -204,3 +204,5 @@ T-02 必须产出 `attachments/862/work/entry-contract.md`，逐项冻结（未�
 - SEM-05 三形态（int main / Unit main / 顶层脚本）是否**同时**进入首批，还是先交付前两种、脚本形态另立切片。若用户要求脚本形态同批，须确认“脚本执行顺序与副作用可见点”的oracle由谁裁定。
 - 显示/格式化（旧源码的打印格式）是否需要在 863 之前先定；本Plan默认把全部显示面推给 863。
 - 是否要求本 profile 同时进入 AC native 路径（`gap:ac-composite-native`/`mn` 一侧）。默认**不要求**：native 复合扩面另立计划，本Plan只交付 AV 通道。
+
+2026-10-28 D868 前置解除：PLAN-868 已交付落 master（delivery 7754c4e4c）——HIR→MIR lowering 唯一实现为 `experimental/auto-mir-lower/src/**`（纯搬移等价已证，旧 `probe/src/hir_adapter.rs` 已删除），本计划 D868 硬前置视为满足；lowering 相关 T 任务的写面以该 crate 为准（边界合同见 [docs/specs/auto-mir/hir-lowering-boundary.md](../specs/auto-mir/hir-lowering-boundary.md)）。

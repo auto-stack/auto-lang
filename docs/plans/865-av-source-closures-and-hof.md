@@ -162,3 +162,5 @@ K 族目前走 typed fixture（`ac-av/closures-run-v1` + `av.entry: "closures:<i
 - `map/filter/reduce` 等 HOF 是否属于本切片：默认**不属于**。它们需要 List 方法派发/库装配的语义裁定（822 方法面未含），硬塞会把“库能力”伪装成“闭包语法”。建议后续以 R3-H/stdlib 切片认领，并在此之前不做半成品。
 - 共享可变捕获（C-19）若旧消费者实际依赖，不能永久排除：本Plan只登记为 unsupported + owner，须在 R5-O 设计后决定。
 - 闭包能否作为 `record` 字段/List 元素：默认不含（组合面另立），如首批需要须扩 T-02 与资源预算。
+
+2026-10-28 D868 前置解除：PLAN-868 已交付落 master（delivery 7754c4e4c）——HIR→MIR lowering 唯一实现为 `experimental/auto-mir-lower/src/**`（纯搬移等价已证，旧 `probe/src/hir_adapter.rs` 已删除），本计划 D868 硬前置视为满足；lowering 相关 T 任务的写面以该 crate 为准（边界合同见 [docs/specs/auto-mir/hir-lowering-boundary.md](../specs/auto-mir/hir-lowering-boundary.md)）。

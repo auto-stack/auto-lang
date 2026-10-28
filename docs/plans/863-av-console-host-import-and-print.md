@@ -169,3 +169,5 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 - 首批是否同时交付 stderr（`eprint`）与 stdout，还是只 stdout。默认两者同批（同一派发形状，边际成本小），如用户要求收窄可只留 stdout。
 - `print` 是否作为**关键字**还是**预导入符号**（可被用户函数遮蔽/拒绝遮蔽）。默认：保留字不可作名字，且不允许用户重定义（与既有“用户函数不能被 intrinsic 劫持”规则一致，T-01 核实）。
 - 输出上限的具体数值（每行/总字节）需 T-02 按 852/825/826 既有资源预算口径给出，不由本草案编造。
+
+2026-10-28 D868 前置解除：PLAN-868 已交付落 master（delivery 7754c4e4c）——HIR→MIR lowering 唯一实现为 `experimental/auto-mir-lower/src/**`（纯搬移等价已证，旧 `probe/src/hir_adapter.rs` 已删除），本计划 D868 硬前置视为满足；lowering 相关 T 任务的写面以该 crate 为准（边界合同见 [docs/specs/auto-mir/hir-lowering-boundary.md](../specs/auto-mir/hir-lowering-boundary.md)）。
