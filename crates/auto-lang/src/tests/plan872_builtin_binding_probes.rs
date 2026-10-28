@@ -390,8 +390,10 @@ fn plan872_probe_behavior_time() {
     println!("{out}");
 }
 
-/// String.len（171）相邻行复核：peek 实测 170（canonical 归一先命中
-/// auto.str.len 静态表），行为按 170 字符数——登记进绑定表订正。
+/// String.len（171）相邻行复核：行为按 resolve 槽 171（shim_string_len
+/// 常量池臂=**字节数**，实测 "中文"→6）；peek=170 与 interface.resolve=170
+/// 是另两个视角（canonical 归一先命中 auto.str.len 静态表）——三视角
+/// 分歧登记进绑定表 §1。
 #[test]
 fn plan872_probe_string_len_adjacent() {
     let mut out = String::new();
