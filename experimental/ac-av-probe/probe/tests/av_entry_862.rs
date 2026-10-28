@@ -316,3 +316,51 @@ fn av_entry_862_store_round_keeps_the_unit_channel() {
     assert!(*r2.counters.get("cache_hit_abc").unwrap_or(&0) >= 1);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// V-07/AC-04 (body-edit): editing ONE function body on the entry-unit
+/// generation must rebuild only that unit — the unchanged callee stays a
+/// store hit, the edited entry is the single miss, and the re-judged run
+/// reflects the edit (an incremental path that quietly kept the old body
+/// would return 7 instead of 8).
+#[test]
+fn av_entry_862_body_edit_rebuilds_only_the_edited_unit() {
+    let root = std::env::temp_dir().join(format!("av862-edit-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let mut d = Driver::with_store(&root, "av862").expect("store");
+    d.set_profile(RequestProfile::EntryUnit);
+    let s1 = "fn helper() int {\n    return 7\n}\n\nfn main() int {\n    return helper()\n}\n";
+    let r1 = d.request(s1, "d_main", &[]);
+    assert!(r1.ok(), "fresh request: {:?}", r1.diag);
+    assert_eq!(r1.value_i32(), Some(7));
+    assert_eq!(
+        *r1.counters.get("cache_hit_abc").unwrap_or(&0),
+        0,
+        "a fresh store has no hits"
+    );
+    assert!(
+        *r1.counters.get("cache_miss_abc").unwrap_or(&0) >= 1,
+        "the fresh request produces at least one unit"
+    );
+
+    // Only `main`'s body changes; `helper` is byte-identical.
+    let s2 = "fn helper() int {\n    return 7\n}\n\nfn main() int {\n    return helper() + 1\n}\n";
+    let r2 = d.request(s2, "d_main", &[]);
+    assert!(r2.ok(), "edited request: {:?}", r2.diag);
+    assert_eq!(
+        r2.value_i32(),
+        Some(8),
+        "the edited body must be the one that runs"
+    );
+    assert!(
+        *r2.counters.get("cache_hit_abc").unwrap_or(&0) >= 1,
+        "the unchanged callee unit is a cache hit, counters: {:?}",
+        r2.counters
+    );
+    assert_eq!(
+        *r2.counters.get("cache_miss_abc").unwrap_or(&0),
+        1,
+        "only the edited unit is produced, counters: {:?}",
+        r2.counters
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
