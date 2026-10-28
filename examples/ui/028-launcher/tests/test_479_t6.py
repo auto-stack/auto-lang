@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Plan 479 T6: live acceptance driver for notification center (S6) + notify verb.
 
-Starts (or attaches to) ui_desktop with the in-process MCP HTTP server, then
+Starts (or attaches to) the auto-os desktop host (ui-desktop) with the in-process MCP HTTP server, then
 archives screenshots to docs/plans/reports/assets/479-t6/.
 
 Injection channels (472/478 先例):
@@ -14,7 +14,7 @@ Injection channels (472/478 先例):
 
 Usage:
     MCP_PORT=9478 python test_479_t6.py            # attach to running desktop
-    AUTO_BIN=... python test_479_t6.py --launch    # spawn ui_desktop first
+    AUTO_BIN=... python test_479_t6.py --launch    # spawn the auto-os desktop host (ui-desktop) first
 """
 import json
 import os
@@ -30,7 +30,7 @@ SAVE_DIR = os.environ.get(
 )
 DESKTOP_EXE = os.environ.get(
     "DESKTOP_EXE",
-    os.path.join("target", "debug", "examples", "ui_desktop.exe"),
+    os.path.join(os.environ.get("AUTO_OS_ROOT", "D:/autostack/auto-os"), "target", "debug", "ui-desktop.exe"),
 )
 STORAGE = os.environ.get(
     "AUTO_VM_STORAGE_FILE", os.path.join("tmp", "479-t6-storage.json")

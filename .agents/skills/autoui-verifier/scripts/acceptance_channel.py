@@ -16,7 +16,8 @@ Scenarios:
 Usage:
     python acceptance_channel.py --scenario drill [--out-dir <dir>]
 Prerequisites:
-    cargo build --features ui-iced --example ui_desktop
+    # PLAN-876：桌面入口迁 auto-os（不再是 auto-lang 的 example）
+    (cd <auto-os> && cargo build -p os-desktop --bin ui-desktop)
 """
 
 import argparse
@@ -30,10 +31,28 @@ import urllib.request
 import urllib.error
 
 REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-DESKTOP_EXE = os.environ.get(
-    "DESKTOP_EXE",
-    os.path.join(REPO_ROOT, "target", "debug", "examples", "ui_desktop.exe"),
-)
+
+
+def _default_desktop_exe() -> str:
+    """PLAN-876：解析 auto-os 检出的 `ui-desktop.exe`。
+
+    解析序：`AUTO_OS_ROOT` env → 兄弟 `../auto-os` → 主检出 `D:/autostack/auto-os`。
+    与旧 example 路径（`target/debug/examples/ui_desktop.exe`）不同，入口二进制
+    现在由 auto-os 自己的 workspace 产出。
+    """
+    roots = []
+    if os.environ.get("AUTO_OS_ROOT"):
+        roots.append(os.environ["AUTO_OS_ROOT"])
+    roots.append(os.path.normpath(os.path.join(REPO_ROOT, "..", "auto-os")))
+    roots.append("D:/autostack/auto-os")
+    for root in roots:
+        exe = os.path.join(root, "target", "debug", "ui-desktop.exe")
+        if os.path.isfile(exe):
+            return exe
+    return os.path.join(roots[0], "target", "debug", "ui-desktop.exe")
+
+
+DESKTOP_EXE = os.environ.get("DESKTOP_EXE") or _default_desktop_exe()
 
 
 def pick_free_port() -> int:
@@ -87,7 +106,7 @@ class DesktopSession:
         env["AUTO_VM_STORAGE_FILE"] = self.storage
         self.proc = subprocess.Popen(
             [DESKTOP_EXE, "--apps-dir", os.path.join(REPO_ROOT, "examples", "ui")],
-            cwd=REPO_ROOT,
+            cwd=os.path.dirname(os.path.dirname(os.path.dirname(DESKTOP_EXE))),
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -99,7 +118,7 @@ class DesktopSession:
         deadline = time.time() + timeout_s
         while time.time() < deadline:
             if self.proc.poll() is not None:
-                raise RuntimeError("ui_desktop exited during boot")
+                raise RuntimeError(f"desktop host exited during boot: {DESKTOP_EXE}")
             try:
                 self.mcp.call("autoui_check")
                 return
@@ -412,7 +431,7 @@ def main():
     if not os.path.isfile(DESKTOP_EXE):
         raise SystemExit(
             f"desktop host not built: {DESKTOP_EXE}\n"
-            "  build once: cargo build --features ui-iced --example ui_desktop"
+            "  build once: (cd <auto-os> && cargo build -p os-desktop --bin ui-desktop)"
         )
     out_dir = args.out_dir or os.path.join(
         REPO_ROOT, "docs", "plans", "reports", "assets", "505", args.scenario

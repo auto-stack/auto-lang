@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Plan 478 T6: live acceptance driver for switcher overlay + workspace pager.
 
-Starts (or attaches to) ui_desktop with the in-process MCP HTTP server, then
+Starts (or attaches to) the auto-os desktop host (ui-desktop) with the in-process MCP HTTP server, then
 drives the 478 acceptance flows and archives screenshots to
 docs/plans/reports/assets/478-t6/.
 
@@ -15,7 +15,7 @@ Two injection channels exist (472 T5 先例):
 
 Usage:
     MCP_PORT=9478 python test_478_t6.py            # attach to running desktop
-    AUTO_BIN=... python test_478_t6.py --launch    # spawn ui_desktop first
+    AUTO_BIN=... python test_478_t6.py --launch    # spawn the auto-os desktop host (ui-desktop) first
 """
 import json
 import os
@@ -30,7 +30,7 @@ SAVE_DIR = os.environ.get(
 )
 DESKTOP_EXE = os.environ.get(
     "DESKTOP_EXE",
-    os.path.join("target", "debug", "examples", "ui_desktop.exe"),
+    os.path.join(os.environ.get("AUTO_OS_ROOT", "D:/autostack/auto-os"), "target", "debug", "ui-desktop.exe"),
 )
 
 

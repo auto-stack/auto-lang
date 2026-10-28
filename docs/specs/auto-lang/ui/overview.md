@@ -1086,7 +1086,8 @@ inproc VM App（ui_desktop 宿主 `launch_app`）拉起零宿主退出是桌面�
 边界经 13 轮复现矩阵 + WER 零应用崩溃记录排除。
 
 - **观测面（契约）**：宿主进程必须留足迹——`[ui-desktop] start/alive
-  (30s)/exit` 三行 + panic 钩子带 backtrace（`examples/ui_desktop.rs`；
+  (30s)/exit` 三行 + panic 钩子带 backtrace（PLAN-876 起入口在 auto-os
+  `host/desktop/src/main.rs`；原文案指 `examples/ui_desktop.rs`，已退役；
   CLI 桌面路径同形制 = rust_ui.rs X9 足迹桩）。死亡判位表：exit 行在
   场=正常；心跳截断无 exit 无 WER=外力/机器灾难（对时 System 6008）；
   心跳截断 + WER Event 1000=内部崩溃（backtrace/WER dump 归因）。

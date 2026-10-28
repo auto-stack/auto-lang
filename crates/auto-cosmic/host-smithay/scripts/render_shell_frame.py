@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Plan 509 Step 5 driver: shell first-frame PNG via the production chain.
 
-Boots the real iced desktop host (`ui_desktop` example, Plan 505 acceptance
+Boots the real iced desktop host (auto-os `ui-desktop` bin, Plan 876 acceptance
 channel) in the current environment (WSL2/WSLg for Stage 1), waits for the
 desktop shell surface (dock + wallpaper) to settle, then requests a baseline
 screenshot through the in-process MCP server. The produced PNG is moved to
@@ -36,9 +36,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--desktop-exe",
-        default=os.path.join("target-509", "debug", "examples", "ui_desktop"),
-        help="ui_desktop binary (build first: cargo build -p auto-lang "
-        "--features ui-iced --example ui_desktop)",
+        default=os.path.join(os.environ.get("AUTO_OS_ROOT", "D:/autostack/auto-os"), "target", "debug", "ui-desktop"),
+        help="auto-os desktop host binary (build first: cd <auto-os> && cargo build -p os-desktop --bin ui-desktop)",
     )
     parser.add_argument(
         "--out",

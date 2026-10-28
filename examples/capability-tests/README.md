@@ -60,7 +60,7 @@ ui-gallery both scan `examples/ui/` only, so probes living here are invisible
 to both (by design). p507/p515 are still consumed by the queue e2e suite via
 `crates/auto-lang/src/ui/desktop_protocol/stage3.rs` (`example_source`
 resolves `examples/ui` → this directory); 459-dual-app remains embedded by
-`crates/auto-lang/examples/ui_desktop.rs` / `ui_dual_app.rs` via `include_str!`.
+`crates/auto-lang/examples/ui_dual_app.rs` via `include_str!`（`ui_desktop` 入口已迁 auto-os `host/desktop`，PLAN-876）。
 
 | Probe | Role | Origin |
 |---|---|---|
