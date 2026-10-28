@@ -345,9 +345,9 @@ switch ($Scope) {
         Write-Host "ENTRY/UNIT PROFILE (AC-01/02/03/04): verified by the entry + compat + targeted scopes above."
         Write-Host "M1 REBIND ACCOUNTING (AC-05/06): clean rows = $clean / $corpusCount (measured from binding.tsv)."
         Write-Host "  blocking rows: $blocking; unexecuted `probe` cells: $probeCells; `wait:*` cells: $waitCells."
-        Write-Host "  na rule distribution: $(if ($naRules.Count -eq 0) { 'none' } else { ($naRules.Keys | Sort-Object | ForEach-Object { "NA-$_=$($naRules[$_])" }) -join ', ' })"
+        Write-Host "  na rule distribution: $(if ($naRules.Count -eq 0) { 'none' } else { ($naRules.Keys | Sort-Object | ForEach-Object { "$_=$($naRules[$_])" }) -join ', ' })"
         Write-Host "This scope does NOT claim 'M1 green': remaining cells are owned by their registered plans"
-        Write-Host "(decimal: every `probe`/`wait` cell must be reclassified by a REAL run, never assumed)."
+        Write-Host "(rule: every probe/wait cell must be reclassified by a REAL run, never assumed)."
         exit 0
     }
 }
