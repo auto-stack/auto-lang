@@ -54,6 +54,42 @@ fn compile_escalating(
     auto_ac_prototype::source::compile_text_record_source(src, "mn.at", caps).map(Domain::Owned)
 }
 
+impl Domain {
+    fn arm(&self) -> Arm {
+        match self {
+            Domain::Scalar(_) => Arm::Scalar,
+            Domain::Data(_) => Arm::Data,
+            Domain::Owned(_) => Arm::Owned,
+        }
+    }
+    fn checked(&self) -> &auto_ac_prototype::verify::CheckedModule {
+        match self {
+            Domain::Scalar(c) | Domain::Data(c) | Domain::Owned(c) => &c.checked,
+        }
+    }
+}
+
+/// Which shared-lowering arm a module's HIR domain selects (PLAN-871): the
+/// backend entry reuses the same arm the escalating source front door
+/// picked — Core/Scalar ride `lower_checked`, Record `lower_checked_data`,
+/// Text/TextRecord `lower_checked_owned`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Arm {
+    Scalar,
+    Data,
+    Owned,
+}
+
+fn arm_of_domain(d: auto_ac_prototype::hir::HirDomain) -> Option<Arm> {
+    use auto_ac_prototype::hir::HirDomain;
+    Some(match d {
+        HirDomain::Core | HirDomain::Scalar => Arm::Scalar,
+        HirDomain::Record => Arm::Data,
+        HirDomain::Text | HirDomain::TextRecord => Arm::Owned,
+        _ => return None,
+    })
+}
+
 pub struct MnDriver {
     store: Option<ManagedStore>,
     project: Option<String>,
@@ -83,6 +119,39 @@ pub struct MnRequest {
     /// A10' artifact id when a store was attached (worker handoff).
     pub manifest_artifact_id: Option<String>,
     pub workdir: Option<PathBuf>,
+}
+
+impl MnRequest {
+    fn of(
+        result: Result<(Option<i32>, Vec<u8>, Vec<u8>, String, Option<String>), MnError>,
+        obs: Obs,
+        workdir: &Path,
+    ) -> MnRequest {
+        match result {
+            Ok((exit, stdout, stderr, fp, art_id)) => MnRequest {
+                ok: true,
+                error: None,
+                exit_code: exit,
+                stdout,
+                stderr,
+                obs,
+                manifest_fp: Some(fp),
+                manifest_artifact_id: art_id,
+                workdir: Some(workdir.to_path_buf()),
+            },
+            Err(e) => MnRequest {
+                ok: false,
+                error: Some(e),
+                exit_code: None,
+                stdout: vec![],
+                stderr: vec![],
+                obs,
+                manifest_fp: None,
+                manifest_artifact_id: None,
+                workdir: Some(workdir.to_path_buf()),
+            },
+        }
+    }
 }
 
 impl MnDriver {
@@ -117,71 +186,89 @@ impl MnDriver {
         trace_lib: Option<&Path>,
     ) -> MnRequest {
         let mut obs = Obs::default();
-        match self.request_inner(src, entry, caps, workdir, trace_lib, &mut obs) {
-            Ok((exit, stdout, stderr, fp, art_id)) => MnRequest {
-                ok: true,
-                error: None,
-                exit_code: exit,
-                stdout,
-                stderr,
-                obs,
-                manifest_fp: Some(fp),
-                manifest_artifact_id: art_id,
-                workdir: Some(workdir.to_path_buf()),
-            },
-            Err(e) => MnRequest {
-                ok: false,
-                error: Some(e),
-                exit_code: None,
-                stdout: vec![],
-                stderr: vec![],
-                obs,
-                manifest_fp: None,
-                manifest_artifact_id: None,
-                workdir: Some(workdir.to_path_buf()),
-            },
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn request_inner(
-        &mut self,
-        src: &str,
-        entry: &str,
-        caps: &[String],
-        workdir: &Path,
-        trace_lib: Option<&Path>,
-        obs: &mut Obs,
-    ) -> Result<(Option<i32>, Vec<u8>, Vec<u8>, String, Option<String>), MnError> {
-        // ---- front-door admission + frontend (798 delivered surfaces) ---
-        if src.len() > MAX_INPUT_BYTES {
-            return Err(MnError::Unsupported(
+        let result = if src.len() > MAX_INPUT_BYTES {
+            Err(MnError::Unsupported(
                 "input-size",
                 format!("source is {} bytes, above the frozen input cap", src.len()),
-            ));
-        }
-        let compiled = obs.span("frontend", |o| {
-            compile_escalating(src, caps).map_err(|ds| {
-                o.counter("frontend_reject", 1);
-                MnError::Unsupported(
-                    "frontend",
-                    ds.first()
-                        .map(|d| format!("{:?}/{}: {}", d.stage, d.code, d.message))
-                        .unwrap_or_else(|| "frontend failed".into()),
+            ))
+        } else {
+            let compiled = obs.span("frontend", |o| {
+                compile_escalating(src, caps).map_err(|ds| {
+                    o.counter("frontend_reject", 1);
+                    MnError::Unsupported(
+                        "frontend",
+                        ds.first()
+                            .map(|d| format!("{:?}/{}: {}", d.stage, d.code, d.message))
+                            .unwrap_or_else(|| "frontend failed".into()),
+                    )
+                })
+            });
+            compiled.and_then(|compiled| {
+                let snapshot = auto_av_core::contract::fnv1a64(src.as_bytes());
+                self.run_arm(
+                    compiled.arm(),
+                    compiled.checked(),
+                    entry,
+                    workdir,
+                    trace_lib,
+                    snapshot,
+                    &mut obs,
                 )
             })
-        })?;
-        let needs_text_runtime = matches!(compiled, Domain::Owned(_));
+        };
+        MnRequest::of(result, obs, workdir)
+    }
+
+    /// PLAN-871 backend entry: run the SAME mn pipeline from a
+    /// pre-checked module (the caller owns the frontend — the ac-case
+    /// worker's direct/backend arms, the ac-native CLI and the shadow gate
+    /// all arrive here with their own Checked HIR). `snapshot` is the
+    /// caller's content identity (source bytes or canonical atom text).
+    pub fn request_checked(
+        &mut self,
+        checked: &auto_ac_prototype::verify::CheckedModule,
+        entry: &str,
+        workdir: &Path,
+        trace_lib: Option<&Path>,
+        snapshot: u64,
+    ) -> MnRequest {
+        let mut obs = Obs::default();
+        let arm = arm_of_domain(checked.bundle().domain);
+        let result = match arm {
+            Some(arm) => self.run_arm(arm, checked, entry, workdir, trace_lib, snapshot, &mut obs),
+            None => Err(MnError::Unsupported(
+                "domain",
+                format!(
+                    "HIR domain `{}` is outside the mn lowering arms",
+                    checked.bundle().domain.as_str()
+                ),
+            )),
+        };
+        MnRequest::of(result, obs, workdir)
+    }
+
+    /// The backend pipeline shared by the source front door and
+    /// [`MnDriver::request_checked`]: lower arm → MIR verify → split →
+    /// A09' cache → A10' manifest → wrapper + real link + run.
+    #[allow(clippy::too_many_arguments)]
+    fn run_arm(
+        &mut self,
+        arm: Arm,
+        checked: &auto_ac_prototype::verify::CheckedModule,
+        entry: &str,
+        workdir: &Path,
+        trace_lib: Option<&Path>,
+        snapshot: u64,
+        obs: &mut Obs,
+    ) -> Result<(Option<i32>, Vec<u8>, Vec<u8>, String, Option<String>), MnError> {
+        let needs_text_runtime = matches!(arm, Arm::Owned);
 
         // ---- HIR → MIR (798 public adapter) + verify ---------------------
-        let snapshot = auto_av_core::contract::fnv1a64(src.as_bytes());
         let module = obs.span("mir_lower", |o| {
-            let r = match &compiled {
-                Domain::Scalar(c) => auto_mir_lower::lower_checked(&c.checked, entry, snapshot),
-                Domain::Data(c) => auto_mir_lower::lower_checked_data(&c.checked, entry, snapshot),
-                Domain::Owned(c) => {
-                    auto_mir_lower::lower_checked_owned(&c.checked, entry, snapshot)
-                }
+            let r = match arm {
+                Arm::Scalar => auto_mir_lower::lower_checked(checked, entry, snapshot),
+                Arm::Data => auto_mir_lower::lower_checked_data(checked, entry, snapshot),
+                Arm::Owned => auto_mir_lower::lower_checked_owned(checked, entry, snapshot),
             };
             r.map_err(|e| {
                 o.counter("mir_reject", 1);
