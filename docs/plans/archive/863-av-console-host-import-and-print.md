@@ -21,7 +21,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 
 affects: [auto-av, auto-mir, auto-ac, auto-test-case]
-current_step: 7
+current_step: 8
 total_steps: 8
 ---
 
@@ -166,7 +166,7 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 | T-05 | work | T-04 | R1-04 与 parent 原证据保留；486fe3e7e 恢复身份链 readiness，候选 SD-01/06 与 prepared canonical 反映 tag/stale 规则；prepared ledger 源 hash 刷新仍为 merge-owned pending | AC-05 | [x] |
 | T-06 | review | T-05 | R3 final pass 486fe3e7e，F-M1（含 stale consumer）关闭；R1-01..04 原证据保持；同会话 artifact-based review，无独立模型/会话；merge 门 pending | AC-06 | [x] |
 | T-07 | merge | T-06 pass | gate freeze 4c3ed9d81：裸 cargo t 3209/3209（425.635s）+tv 163/163（5.079s），均exit0；delivery2d5f3d842与gate的代码/配置/输入 diff=0，详见merge-r2.md | AC-07 | [x] |
-| T-08 | merge | T-07 | Spec/ledger/归档/guard 清树 | AC-08 | [ ] |
+| T-08 | merge | T-07 | canonical SD-01..06/ledger144读回、archive commit184a52ef7、三个worktree fresh guard clean后移除、临时分支与空组清理；证据/9 exe保留，清理后再跑15/15 PASS；最终收据见merge-r2.md | AC-08 | [x] |
 
 ## 9. 复审记录
 
@@ -287,6 +287,15 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 - raw证据已保留到 **D:/autostack/plan-artifacts/plan-863/evidence/**（原目录层级完整），exe anchors到bin/，main-input smoke到landing-smoke/。raw从未暂存。copied evidence/merge 下：cargo-t-final.log SHA256 `cef3b79e19d902966eadf9d18505415d730b9cec5dd318062470bf8f06bb18d9`；cargo-tv-final.log `fb22e126f0c6c70d4c5732a21a087f433abb19443e2a6faf4e580e0d550ecd95`；landing-smoke.log `d941281302d02bb187a408bc8b43d765ec85c41112d238ffe550f5fb5f58b418`；range-diff-concurrent.log `b2bf4e4aff0f5befe6931cc7c184646135831dcba7b7f73bf4a6bb0509dacdc6`。门禁20项cold timeout与M1 fail原日志保留，不改写成pass。
 - pinned依赖auto-ui2349/auto-downc346仍clean；main UI已到c681，但与pin的Cargo.toml/Cargo.lock/crates/.cargo diff=0（仅docs/experimental AG更新），消费者输入等价；down仍同rev。主检出其它会话tracked docs WIP hash与before一致，untracked资料保留；仅本任务路径clean，不宣称全仓无foreign WIP。标准main release auto.exe/auto-case.exe与Vue dist入口实测不存在；实验profile不切默认，未重启产品进程，已重建probe/parent并验证实际main源码语料。
 - Git-for-Windows bash 的 wt-guard clean 已核（系统WSL bash不识Windows路径后改用正确执行器，未绕过）；马上归档后将再跑三个tree fresh guard并移除，只删本组空目录。当前T-01..07完成（7/8），T-08 cleanup pending，cleanup完成后回填8/8。批量回归receipt覆盖887、时间2026-10-29T15:53:56Z不足48h，863不新增receipt后整五计划，batch **not due**，不运行tf、不修改该receipt。
+
+2026-10-30 merge R2 final：`stage: merge | plan_id: PLAN-863 | plan_revision: 1 | outcome: pass | completion_kind: delivered | checkpoints: prepared,landed,ledger_refreshed,archived,cleaned | reviewed_commit: 486fe3e7e1bcd25744745a1f009d429226199e36 | delivery_commit: 2d5f3d842a73157afdc96ba6cd005e77201bcaf8 | archive_commit: 184a52ef7108b33ea9b7c0286edd3c85e532a851 | archive_path: docs/plans/archive/863-av-console-host-import-and-print.md | cleanup: complete | pending_merge_owned_gates: none | next: done`。
+
+- 实际归档已提交184a52ef7，再验frontmatter=archived/completion_kind=delivered、7/8当时仅清理pending、13条相对链接均解析；清理实成后本次回填T-08，**8/8**。三个tree各自root/clean状态验证、fresh wt-guard=clean后由所属仓的git worktree remove移除；plan-863-dev已确认全部落main再-d；三个自建codex/863备份分支清理，本组lang-863空目录已删。首条批量清理被自动审批拦截（未执行且未给具体原因），随后按更明确的单路径核验/guard/命令逐个完成，未绕过guard或触碰其它组。
+- D:/autostack/.wt/lang-863及其三个tree、临时分支均确认不存在；worktree内root/experimental cargo target缓存随移除回收。外部D:/autostack/plan-artifacts/plan-863扫描 **0 target目录/0 PDB**，无需额外删中间物；9个exe输出和全部raw证据保留。原gate日志在copied evidence中SHA256复核匹配，main ledger仍144且7项来源file/hash有效；default branch包含delivery及并发AG交付，任务相关路径无WIP；其它会话六个tracked文档的before哈希全匹配，其余untracked资料原样保留。
+- **清理后**改用保留的 `bin/auto-case.exe` + `bin/av_probe_worker.exe` 执行main上的相同console suite，**15/15 PASS / exit0**，证明不依赖已删除worktree，非新增30条覆盖。`D:/autostack/plan-artifacts/plan-863/post-cleanup-smoke.log` SHA256 `d941281302d02bb187a408bc8b43d765ec85c41112d238ffe550f5fb5f58b418`；report保留在post-cleanup-smoke/。release/default Vue产物缺席观察与不切产品默认边界仍如收据所记；不声称重建或部署产品。
+- AC-01..08全部完成；R1四项与M1（含同因stale consumer）均已实现/定向验证/最终复审关闭，t3209+tv163最终门禁均通过、main实际15语料smoke通过、知识/ledger/归档/guard清理均已实核。D-863-NB-01属合同外peer gap继续显式保留；无未完成的本计划必需项或merge-owned gate。
+
+2026-10-30 goal round 11：`stage: goal | plan_id: PLAN-863 | plan_revision: 1 | round: 11 | from: merge | to: done | status: archived | outcome: pass | worktree: removed | commit: 2d5f3d842a73157afdc96ba6cd005e77201bcaf8 | next: done`。上一轮progress；本轮完成最终门禁、并发文档/ledger对账、线性落地、规范沉淀、实际归档/guard清树与清理后smoke，目标交付达成。
 
 ## spec-sync 回写记录
 
