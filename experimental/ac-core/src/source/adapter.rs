@@ -407,7 +407,7 @@ pub struct FnCandidate {
     base_generation: u64,
     fn_index: usize,
     slot_name: String,
-    entry: ResolvedFn,
+    state: super::resolve::BodyState,
     parts: SourceParts,
     receipt: BodyEmitReceipt,
 }
@@ -445,15 +445,13 @@ impl FnCandidate {
         self.receipt
     }
 
-    /// Commit — the SINGLE publication point: validate closed → owner →
-    /// base → slot, then install THIS candidate's entry and bump the
-    /// environment generation. A closed environment, a foreign
+    /// Validate closed → owner → base → slot without publishing anything.
+    /// A closed environment, a foreign
     /// environment (identity, not name+slot), an expired base (a newer
     /// commit was published since prepare) or a slot that no longer holds
     /// this function is a controlled rejection that modifies nothing.
-    /// The session calls this at its one commit point, together with the
-    /// root/source/revision publication.
-    pub fn commit(self, env: &mut super::resolve::CheckedEnv) -> Result<(), Vec<Diagnostic>> {
+    /// Commit repeats these same checks at its single publication point.
+    pub fn validate(&self, env: &super::resolve::CheckedEnv) -> Result<(), Vec<Diagnostic>> {
         if env.closed {
             return Err(vec![Diagnostic::new(
                 Stage::Bind,
@@ -497,7 +495,15 @@ impl FnCandidate {
                 Span { start: 0, end: 0 },
             )]);
         }
-        env.program.fns[self.fn_index] = self.entry;
+        Ok(())
+    }
+
+    /// Publish after the same owner/base/slot checks. A native consumer may
+    /// validate before its fallible link/run, retain exclusive environment
+    /// access, and call commit only after its product transaction succeeds.
+    pub fn commit(self, env: &mut super::resolve::CheckedEnv) -> Result<(), Vec<Diagnostic>> {
+        self.validate(env)?;
+        self.state.swap_into(env, self.fn_index);
         env.generation += 1;
         Ok(())
     }
@@ -532,19 +538,19 @@ pub fn prepare_candidate_document(
         Ok((parts, receipt)) => {
             // Restore current and take the candidate BEFORE returning —
             // publication happens only at FnCandidate::commit.
-            let entry = std::mem::replace(&mut env.program.fns[fn_index], current);
+            let state = current.swap_into(env, fn_index);
             Ok(FnCandidate {
                 env_id: env.id,
                 base_generation: env.generation,
                 fn_index,
                 slot_name: item.name.name.clone(),
-                entry,
+                state,
                 parts,
                 receipt,
             })
         }
         Err(ds) => {
-            env.program.fns[fn_index] = current;
+            current.swap_into(env, fn_index);
             Err(ds)
         }
     }

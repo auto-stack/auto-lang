@@ -1591,6 +1591,9 @@ impl CheckedEnv {
     pub fn close(&mut self) {
         self.program.fns = Vec::new();
         self.program.records = Vec::new();
+        self.program.lists = Vec::new();
+        self.program.variants = Vec::new();
+        self.program.function_types = Vec::new();
         self.closed = true;
     }
 
@@ -1658,6 +1661,38 @@ pub fn env_fn_names(env: &CheckedEnv) -> Vec<&str> {
     env.program.fns.iter().map(|f| f.name.as_str()).collect()
 }
 
+/// Cold directory for a retained source consumer. Later body edits update the
+/// consumer's byte ranges without walking unchanged resolved bodies.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FunctionRegion {
+    pub index: usize,
+    pub name: String,
+    pub item: Span,
+    pub body: Span,
+}
+pub fn env_fn_regions(env: &CheckedEnv) -> Vec<FunctionRegion> {
+    env.program
+        .fns
+        .iter()
+        .enumerate()
+        .map(|(index, f)| FunctionRegion {
+            index,
+            name: f.name.clone(),
+            item: f.item_span,
+            body: f.body.span,
+        })
+        .collect()
+}
+/// Diagnostic producer identity of the actual retained statement allocation.
+/// A same-content freshly resolved body has a different live allocation; this
+/// number is never used as a cache key or a verification credential.
+pub fn env_fn_body_identity(env: &CheckedEnv, index: usize) -> Option<usize> {
+    env.program
+        .fns
+        .get(index)
+        .map(|f| f.body.stmts.as_ptr() as usize)
+}
+
 /// PLAN-828 D-01: record the COLD baseline walks (the whole-module
 /// resolve + typecheck each walked every function once). Called by the
 /// consumer that ran the cold typecheck pass.
@@ -1703,11 +1738,36 @@ pub fn recheck_function(
 /// bounded TEMPORARY graft and restores current before returning, so it
 /// publishes nothing — only the external publication entries
 /// ([`recheck_function`], `FnCandidate::commit`) advance the base.
+/// The body's interned types are part of its transaction. A new List/Option
+/// may refer to a newly appended pool index; publishing or cancelling only the
+/// resolved function would leave that reference bound to the wrong table.
+pub(crate) struct BodyState {
+    pub entry: ResolvedFn,
+    pools: Option<BodyTypePools>,
+}
+struct BodyTypePools {
+    lists: Vec<VT>,
+    variants: Vec<ResolvedVariant>,
+    function_types: Vec<ClosureFnType>,
+}
+impl BodyState {
+    /// Move the complete state into one slot and return the displaced state.
+    /// Unchanged function entries and their body allocations are never visited.
+    pub(crate) fn swap_into(mut self, env: &mut CheckedEnv, index: usize) -> Self {
+        std::mem::swap(&mut self.entry, &mut env.program.fns[index]);
+        if let Some(pools) = &mut self.pools {
+            std::mem::swap(&mut pools.lists, &mut env.program.lists);
+            std::mem::swap(&mut pools.variants, &mut env.program.variants);
+            std::mem::swap(&mut pools.function_types, &mut env.program.function_types);
+        }
+        self
+    }
+}
 pub(crate) fn recheck_swap(
     env: &mut CheckedEnv,
     item: &ast::FnItem,
     fn_index: usize,
-) -> Result<ResolvedFn, Vec<Diagnostic>> {
+) -> Result<BodyState, Vec<Diagnostic>> {
     if env.closed {
         return Err(vec![Diagnostic::new(
             Stage::Bind,
@@ -1826,8 +1886,8 @@ pub(crate) fn recheck_swap(
     // method name is ambiguous against a same-named free function.
     crate::body_work::record_resolve(&sig_key);
     // PLAN-864: rebuild the collections tables from the retained program
-    // (the same lists/variants the cold pass interned); new interning
-    // inside the rechecked body is rejected by the drift guards below it.
+    // (the same lists/variants the cold pass interned). New body-local types
+    // join the same transaction as the body; declaration indices stay stable.
     let mut coll = CollTables::default();
     coll.lists = env.program.lists.clone();
     coll.function_types = env.program.function_types.clone();
@@ -1862,11 +1922,22 @@ pub(crate) fn recheck_swap(
     // Graft, then typecheck the ONE body against the grafted environment
     // (self-recursion sees the new entry); restore the old entry on
     // failure so a rejected body never pollutes the environment.
-    let previous = std::mem::replace(&mut env.program.fns[fn_index], resolved);
+    let mut previous = BodyState {
+        entry: resolved,
+        pools: None,
+    };
+    if env.profile == SourceProfile::Collections {
+        previous.pools = Some(BodyTypePools {
+            lists: coll.lists,
+            variants: coll.variants,
+            function_types: coll.function_types,
+        });
+    }
+    let previous = previous.swap_into(env, fn_index);
     env.check_walks += 1;
     let check_diags = super::typecheck::check_body_in(&env.program, fn_index);
     if !check_diags.is_empty() {
-        env.program.fns[fn_index] = previous;
+        previous.swap_into(env, fn_index);
         return Err(check_diags);
     }
     Ok(previous)

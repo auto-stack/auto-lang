@@ -32,10 +32,10 @@ pub use adapter::{
     prepare_function_candidate, BodyEmitReceipt, CompiledSource, FnCandidate, SourceParts,
     RUNTIME_TEXT_CAPABILITY,
 };
-pub use parser::{parse_program, parse_program_with};
+pub use parser::{parse_function_fragment, parse_program, parse_program_with};
 pub use resolve::{
-    env_fn_count, env_fn_names, env_note_cold_walks, recheck_function, resolve_env, resolve_with,
-    CheckedEnv, ResolvedFn, ResolvedProgram, VT,
+    env_fn_body_identity, env_fn_count, env_fn_names, env_fn_regions, env_note_cold_walks,
+    recheck_function, resolve_env, resolve_with, CheckedEnv, ResolvedFn, ResolvedProgram, VT,
 };
 pub use typecheck::{check_body_in, typecheck_with};
 

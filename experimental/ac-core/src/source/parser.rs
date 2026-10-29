@@ -58,6 +58,47 @@ const TOPLEVEL_UNSUPPORTED_WORDS: &[&str] = &[
 const I32_MIN_MAG: u128 = 2147483648;
 const I32_MAX: u128 = 2147483647;
 
+/// Optional producer-side syntax evidence. Kept separate from the four-field
+/// 828 BodyWork contract, so earlier consumers keep their exact observation API.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SyntaxWork {
+    pub tokenized_ranges: Vec<Span>,
+    pub parsed_functions: std::collections::BTreeMap<String, u64>,
+}
+thread_local! {
+    static SYNTAX_WORK:std::cell::RefCell<Option<SyntaxWork>>=std::cell::RefCell::new(None);
+}
+pub fn capture_syntax_work<T>(f: impl FnOnce() -> T) -> (T, SyntaxWork) {
+    struct Restore(Option<SyntaxWork>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            SYNTAX_WORK.with(|slot| *slot.borrow_mut() = self.0.take());
+        }
+    }
+    let previous = SYNTAX_WORK.with(|slot| slot.borrow_mut().replace(SyntaxWork::default()));
+    let restore = Restore(previous);
+    let result = f();
+    let work = SYNTAX_WORK
+        .with(|slot| slot.borrow_mut().take())
+        .unwrap_or_default();
+    drop(restore);
+    (result, work)
+}
+fn note_tokenize(span: Span) {
+    SYNTAX_WORK.with(|slot| {
+        if let Some(work) = slot.borrow_mut().as_mut() {
+            work.tokenized_ranges.push(span);
+        }
+    });
+}
+fn note_parse(name: &str) {
+    SYNTAX_WORK.with(|slot| {
+        if let Some(work) = slot.borrow_mut().as_mut() {
+            *work.parsed_functions.entry(name.into()).or_default() += 1;
+        }
+    });
+}
+
 pub fn parse_program(src: &str) -> Result<Program, Diagnostic> {
     parse_program_with(src, SourceProfile::Core)
 }
@@ -66,9 +107,14 @@ pub fn parse_program(src: &str) -> Result<Program, Diagnostic> {
 /// accepts the new operators, unary ops and the conditional `for` loop;
 /// the core surface keeps its historical accept/reject sets.
 pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, Diagnostic> {
+    note_tokenize(Span {
+        start: 0,
+        end: src.len(),
+    });
     let toks = super::lexer::tokenize_with(src, profile.admits_text_literals())?;
     let mut p = Parser {
         src,
+        end: src.len(),
         toks,
         pos: 0,
         last_line: 1,
@@ -76,6 +122,73 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
         pending_is: Vec::new(),
     };
     p.items()
+}
+
+/// Parse exactly one free-function fragment with the same lexer/parser and
+/// absolute source spans. Only the granted range is tokenized; untouched
+/// functions and the prefix are never lexed or parsed. Relative token lines
+/// retain the same newline comparisons; diagnostics use absolute byte spans.
+pub fn parse_function_fragment(
+    src: &str,
+    range: std::ops::Range<usize>,
+    profile: SourceProfile,
+) -> Result<FnItem, Diagnostic> {
+    let fragment = src.get(range.clone()).ok_or_else(|| {
+        Diagnostic::new(
+            Stage::Text,
+            "source.incremental-fragment",
+            "fragment range must be ordered, in bounds and on UTF-8 boundaries",
+            Span { start: 0, end: 0 },
+        )
+    })?;
+    note_tokenize(Span {
+        start: range.start,
+        end: range.end,
+    });
+    let mut toks = super::lexer::tokenize_with(fragment, profile.admits_text_literals()).map_err(
+        |mut error| {
+            error.span.start += range.start;
+            error.span.end += range.start;
+            error
+        },
+    )?;
+    for token in &mut toks {
+        token.span.start += range.start;
+        token.span.end += range.start;
+    }
+    let mut parser = Parser {
+        src,
+        end: range.end,
+        toks,
+        pos: 0,
+        last_line: 1,
+        surface: profile,
+        pending_is: Vec::new(),
+    };
+    let mut program = parser.items()?;
+    if program.items.len() != 1 {
+        return Err(parser.err(
+            "source.incremental-fragment",
+            "a fragment must contain exactly one free function",
+            Span {
+                start: range.start,
+                end: range.end,
+            },
+        ));
+    }
+    match program.items.remove(0) {
+        Item::Fn(function) if function.receiver == Receiver::Free && !function.script => {
+            Ok(function)
+        }
+        _ => Err(parser.err(
+            "source.incremental-fragment",
+            "a fragment must contain one declared free function",
+            Span {
+                start: range.start,
+                end: range.end,
+            },
+        )),
+    }
 }
 
 // Expression-parser frame types (module scope; PLAN-745 R5-QA-01).
@@ -183,6 +296,7 @@ enum BlockCont {
 
 struct Parser<'s> {
     src: &'s str,
+    end: usize,
     toks: Vec<Token>,
     pos: usize,
     /// Line of the most recently consumed token.
@@ -228,8 +342,8 @@ impl<'s> Parser<'s> {
 
     fn eof_span(&self) -> Span {
         Span {
-            start: self.src.len(),
-            end: self.src.len(),
+            start: self.end,
+            end: self.end,
         }
     }
 
@@ -874,6 +988,7 @@ impl<'s> Parser<'s> {
         ret: TypeAnn,
         receiver: Receiver,
     ) -> Result<FnItem, Diagnostic> {
+        note_parse(&name.name);
         let lb = self.expect_punct(P::LBrace, "`{`")?;
         let mut stack: Vec<OpenBlock> = vec![OpenBlock {
             lb,
