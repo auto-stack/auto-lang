@@ -1399,6 +1399,12 @@ impl DataIncrementalSession {
     pub fn fn_order(&self) -> &[String] {
         &self.fn_order
     }
+
+    /// The current linked snapshot (PLAN-881 V-12: an external observer
+    /// can PIN the old revision's executable program across an edit).
+    pub fn snapshot_arc(&self) -> Arc<ProgramSnapshot> {
+        self.snapshot.clone()
+    }
 }
 
 // ----------------------------------------------------------------------
@@ -1593,7 +1599,7 @@ fn segment_map(outline: &[OutlineEntry], src: &str, fns_only: bool) -> BTreeMap<
 /// Replace byte ranges with equal-length line-comment filler (newlines
 /// preserved): the document keeps every byte offset, so the un-masked
 /// function parses at its ABSOLUTE source position.
-fn masked_document(src: &str, ranges: &[(usize, usize)]) -> String {
+pub(crate) fn masked_document(src: &str, ranges: &[(usize, usize)]) -> String {
     let bytes = src.as_bytes();
     let mut sorted: Vec<(usize, usize)> = ranges.to_vec();
     sorted.sort();
@@ -1611,7 +1617,7 @@ fn masked_document(src: &str, ranges: &[(usize, usize)]) -> String {
     String::from_utf8(out).expect("newline-preserving ASCII mask keeps UTF-8 valid")
 }
 
-fn mask_fill(seg: &[u8]) -> Vec<u8> {
+pub(crate) fn mask_fill(seg: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(seg.len());
     for (i, line) in seg.split(|&b| b == b'\n').enumerate() {
         if i > 0 {

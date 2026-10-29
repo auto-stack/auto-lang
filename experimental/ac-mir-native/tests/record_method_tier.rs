@@ -136,6 +136,39 @@ fn main() int {
     assert_eq!(r.exit_code, Some(135), "P-05 = 135 (stderr {:?})", String::from_utf8_lossy(&r.stderr));
 }
 
+/// V-12 (mn leg): old/new products coexist by content — a method body
+/// edit flips the exit, and the ORIGINAL source still resolves to its
+/// OWN cached product (the store keys by content fingerprint, never by
+/// position).
+#[test]
+fn mn_method_v12_old_and_new_products() {
+    if !tools_available() {
+        eprintln!("skip: link tools unavailable");
+        return;
+    }
+    let root = std::env::temp_dir().join(format!("mn881-v12-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let mut d = ac_mn::driver::MnDriver::with_store(&root, "v12").expect("store");
+    let run = |d: &mut ac_mn::driver::MnDriver, src: &str, tag: &str| {
+        let wd = root.join(tag);
+        let r = d.request(src, "d_main", &[], &wd, None);
+        r
+    };
+    let r1 = run(&mut d, R08, "r1");
+    assert!(r1.ok && r1.exit_code == Some(42), "first run 42: {:?}", r1.error);
+    let edited = R08.replace(
+        "fn read() int { return .value }",
+        "fn read() int { return .value + 1 }",
+    );
+    let r2 = run(&mut d, &edited, "r2");
+    assert!(r2.ok && r2.exit_code == Some(43), "edited run 43: {:?}", r2.error);
+    // The ORIGINAL source re-runs to 42 — its cached products survived
+    // the edit round untouched (no positional keying, no overwrite).
+    let r3 = run(&mut d, R08, "r3");
+    assert!(r3.ok && r3.exit_code == Some(42), "original re-runs 42: {:?}", r3.error);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// V-03 through mn: the 782 Token microprogram (methods + clone + moves).
 #[test]
 fn mn_method_token_microprogram() {

@@ -96,12 +96,32 @@ struct RevisionIdentity {
     bodies: BTreeMap<String, u64>,
 }
 
-/// One top-level free-function declaration (warm-up parse coordinates).
+/// One fn-axis declaration (warm-up parse coordinates): a free function
+/// or — PLAN-881 — a TYPE-BOUND METHOD (its `owner` names the record; the
+/// span covers the receiver keyword through the body's closing brace, so
+/// a `static fn` method's span starts at `static`).
 #[derive(Clone, Debug)]
 struct FnDecl {
     name: String,
+    /// Some(record) for methods.
+    owner: Option<String>,
+    /// For methods: the owner TYPE SHELL region [shell_lo, shell_hi) —
+    /// the owner keyword + FIELDS ONLY (siblings excluded) — wraps the
+    /// single-method parse document.
+    shell_lo: Option<u64>,
+    shell_hi: Option<u64>,
     lo: u64,
     hi: u64,
+}
+
+impl FnDecl {
+    /// The HIR def id of this slot (the emitter's flat-fi convention).
+    fn def_id(&self, slot: usize) -> String {
+        match &self.owner {
+            None => format!("d_{}", self.name),
+            Some(_) => format!("d_f{slot}_{}", self.name),
+        }
+    }
 }
 
 /// The retained-environment facts a whole-module round refreshes.
@@ -222,7 +242,9 @@ fn identity_of(checked: &auto_ac_prototype::verify::CheckedModule) -> RevisionId
     let type_ctx = fnv1a64(strip_spans(&format!("{:?}", m.types)).as_bytes());
     let mut bodies = BTreeMap::new();
     for d in &m.defs {
-        if let hir::DefKind::Function { ty, body, .. } = &d.kind {
+        if let hir::DefKind::Function { ty, body, .. } | hir::DefKind::Method { ty, body, .. } =
+            &d.kind
+        {
             // `body` is a BodyId INDEX — the CONTENT lives in the bodies
             // table; the fingerprint hashes the span-free content.
             let content = m
@@ -246,7 +268,9 @@ fn body_fp_of(module: &hir::Module, def_id: &str) -> Option<u64> {
         if d.id_text != def_id {
             continue;
         }
-        if let hir::DefKind::Function { ty, body, .. } = &d.kind {
+        if let hir::DefKind::Function { ty, body, .. } | hir::DefKind::Method { ty, body, .. } =
+            &d.kind
+        {
             let content = module
                 .bodies
                 .get(body.0 as usize)
@@ -288,20 +312,37 @@ fn decl_facts_of(
 ) -> EnvFacts {
     let mut decl_fns = Vec::new();
     let mut decl_types = Vec::new();
+    // PLAN-881: methods are fn-axis citizens — a method body edit takes
+    // the single-body channel like a free function's; a type contributes
+    // a SHELL span (header+fields, methods excluded) so a method edit
+    // never meets the type declaration.
     let mut fast_path_ok = true;
     for item in &program.items {
         match item {
             Item::Fn(f) => decl_fns.push(FnDecl {
                 name: f.name.name.clone(),
+                owner: None,
+                shell_lo: None,
+                shell_hi: None,
                 lo: f.span.start as u64,
                 hi: f.span.end as u64,
             }),
             Item::Type(t) => {
-                decl_types.push((t.span.start as u64, t.span.end as u64));
-                if !t.methods.is_empty() {
-                    // Methods ride the type item's span — their body edits
-                    // cannot take the free-function fast path.
-                    fast_path_ok = false;
+                let shell_end = t
+                    .methods
+                    .first()
+                    .map(|m| m.span.start as u64)
+                    .unwrap_or(t.span.end as u64);
+                decl_types.push((t.span.start as u64, shell_end));
+                for m in &t.methods {
+                    decl_fns.push(FnDecl {
+                        name: m.name.name.clone(),
+                        owner: Some(t.name.name.clone()),
+                        shell_lo: Some(t.span.start as u64),
+                        shell_hi: Some(shell_end),
+                        lo: m.span.start as u64,
+                        hi: m.span.end as u64,
+                    });
                 }
             }
             // PLAN-864: enum declarations occupy top-level spans too.
@@ -321,11 +362,13 @@ fn decl_facts_of(
     if env_names != decl_names {
         fast_path_ok = false;
     }
-    // Retained interface facts: every def's param modes.
+    // Retained interface facts: every def's param modes (methods too —
+    // their scaffold sigs need the t_MutRet wrapper facts exactly like a
+    // free function's).
     let mut sig_mode_overrides = BTreeMap::new();
     let mut def_ids = Vec::new();
     for d in &bundle_module.defs {
-        if let hir::DefKind::Function { body, .. } = &d.kind {
+        if let hir::DefKind::Function { body, .. } | hir::DefKind::Method { body, .. } = &d.kind {
             def_ids.push(d.id_text.clone());
             if let Some(b) = bundle_module.bodies.get(body.0 as usize) {
                 sig_mode_overrides.insert(
@@ -589,14 +632,65 @@ impl OwnedFunctionSession {
         let slice = &next_src[decl.lo as usize..new_hi as usize];
         // ONE fn-item parse — the ONLY parse of this edit (production:
         // parse +1 for the edited unit, ZERO for the unchanged ones).
-        let parsed = parse_program_with(slice, SourceProfile::TextRecord).map_err(|d| {
+        // PLAN-881: a METHOD's slice parses inside a synthetic owner type
+        // shell — the receiver/owner facts come from the parse, exactly
+        // the source grammar produces them.
+        // PLAN-881: a METHOD parses inside a MASKED FULL document —
+        // every other fn-axis declaration (free functions and sibling
+        // methods) becomes an equal-length comment block, the owner
+        // type's shell and the edited method keep their ABSOLUTE byte
+        // positions, so the item's spans anchor the real source and the
+        // emission's re-anchoring validates against the same-length doc.
+        let parse_doc: String = if decl.owner.is_some() {
+            // Declarations AFTER the edited one shift by the edit's delta
+            // (the retained coordinates are pre-edit); before it they are
+            // exact. The edited declaration itself is the target — never
+            // masked.
+            let mask: Vec<(usize, usize)> = self
+                .decl_fns
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i != decl_idx)
+                .map(|(_, d)| {
+                    if d.lo >= decl.hi {
+                        ((d.lo as i64 + delta) as usize, (d.hi as i64 + delta) as usize)
+                    } else {
+                        (d.lo as usize, d.hi as usize)
+                    }
+                })
+                .collect();
+            crate::data_session::masked_document(next_src, &mask)
+        } else {
+            slice.to_string()
+        };
+        let parsed = parse_program_with(&parse_doc, SourceProfile::TextRecord).map_err(|d| {
             SingleBodyError::Reject(format!(
                 "parse {}@slice: {} {}",
                 decl.name, d.code, d.message
             ))
         })?;
-        let item: FnItem = match parsed.items.as_slice() {
-            [Item::Fn(f)] => f.clone(),
+        #[allow(clippy::type_complexity)]
+        let item: FnItem = match (&decl.owner, parsed.items.as_slice()) {
+            (None, [Item::Fn(f)]) => f.clone(),
+            (Some(owner), items) => {
+                let mut found: Option<FnItem> = None;
+                for it in items {
+                    if let Item::Type(t) = it {
+                        if t.name.name == *owner && t.methods.len() == 1 {
+                            found = Some(t.methods[0].clone());
+                        }
+                    }
+                }
+                match found {
+                    Some(f) => f,
+                    None => {
+                        return Err(SingleBodyError::Reject(format!(
+                            "single-body channel: the masked document does not hold exactly `{}` on `{}`",
+                            decl.name, owner
+                        )))
+                    }
+                }
+            }
             _ => {
                 return Err(SingleBodyError::Reject(format!(
                     "single-body channel: the edited slice of `{}` is not exactly one function",
@@ -614,8 +708,10 @@ impl OwnedFunctionSession {
         // (resolve + typecheck of ONE body) + single-body emission. The
         // environment's current entry is restored before returning; the
         // candidate owns the new entry (published only at commit).
+        // The emission's span re-anchoring runs against the PARSE DOC
+        // (the method's spans live inside the wrapped shell document).
         let candidate =
-            prepare_candidate_document(&mut self.env, &item, decl_idx, slice, "session.at")
+            prepare_candidate_document(&mut self.env, &item, decl_idx, &parse_doc, "session.at")
                 .map_err(|ds| {
                     if ds.iter().any(|d| d.code == "source.incremental") {
                         SingleBodyError::Fallback
@@ -635,7 +731,7 @@ impl OwnedFunctionSession {
                 "internal: single-body receipt {receipt:?} does not attest one real body"
             )));
         }
-        let def_id = format!("d_{}", decl.name);
+        let def_id = decl.def_id(decl_idx);
         // Per-unit production from the CANDIDATE document; the retained
         // interface facts supply the scaffold callees' param modes (the
         // t_MutRet wrapper ABI is not expressible in the document).
