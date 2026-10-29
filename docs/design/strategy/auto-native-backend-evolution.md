@@ -2,6 +2,10 @@
 
 > **PLAN-858 口径更新（2026-10-27）**：本文历史 ACE P95<1s 目标在开发初期由用户调整为 P90≤2000ms；原正式样本和正确性、结构、资源约束保持，架构基本成形后以实测另定长期目标。其他 P95 数值作为历史或诊断保留，不再作为 ACE 开发期交付硬门。当前规则见 [TestCase v2 周转口径](../../specs/auto-test-case/profile-v2-native.md)。
 
+> 2026-10-24用户裁定：v0.6先完善Rust版ACE语言引擎，按M1–M4推进并复刻现有AutoVM/A2X全部示例；Auto版AACE实施延后到v0.7。本文旧“本版AAC自举/小子集满足即可提前自举”排期由[新版本合同](../../plans/reports/ace-milestones-version-boundary-2026-10-24.md)取代，技术验证与既有Plan范围保持。
+
+> 2026-10-21 版本范围更新：按[月度滚动规划](../../roadmap.md)，v0.6 仅保留工程重构、ACE、AutoGraphics/Forge 雏形与 Linux 四条主线。本文下方旧 v0.6/v0.7 版次和日历按历史排期读取；其余目标进入[远期 TODO](../../roadmap-future.md)，不自动承诺 v0.7 全部交付。技术合同与已批准在途 Plan 的范围/验收保持，四线所需局部能力随所属主线验收。
+
 ## 0. 总入口与后续规划导航（2026-10-20）
 
 **本文是ACE（Auto Compile & Execution）架构及AAC/AAV后续规划的统一阅读入口。** ACE统一编译、解释、JIT、源码转译与增量/cache/热重载，AC/AV/AJ保留组件职责。历史“AC/AV/AJ总路线”即本入口，文件路径保持。技术合同按主题落在下列设计中；本文维护职责、阶段和引用，不复制各篇的完整合同，也不作为已实现能力清单。
@@ -13,10 +17,17 @@
 | 当前这一波完成后能运行多少语言、还缺什么？ | [AV能力矩阵](av-language-capability-matrix.md) | 区分源码/内核/库/产品层，记录语义迁移差异；目标表不等于已通过 |
 | 下一阶段先做什么、怎样运行真实程序并替换旧AVM？ | [AV源码与替换路线](av-source-programs-and-avm-replacement-roadmap.md) | G0–G8、优先级、候选工作包、产品入口和验收；G7按入口切默认，G8才是全部退役 |
 | 用哪些真实程序证明进展？ | [AP程序目录](../../plans/reports/av-source-program-catalog-2026-10-20.md) | 23个初始样本及oracle缺口，不是全部产品/语言库存，也不是运行通过记录 |
-| 第一项源码验收计划是什么？ | [Plan827草案](../../plans/827-av-source-program-baseline.md) | G0/G1，依D798；后续工作包尚未分配ID，不因导航而获执行授权 |
+| 第一项源码验收计划是什么？ | [Plan827归档基线](../../plans/archive/827-av-source-program-baseline.md) | G0/G1有限scalar源码已交付；后续862–866/870/871等见续接基线，不能沿用初稿“均未分配ID” |
+| 828之后如何排期、哪些可以并行？ | [执行顺序与交接合同（2026-10-21更新）](../../plans/reports/ace-execution-order-and-incremental-compatibility-2026-10-20.md) | 优先817/818、827及820功能线；825/826择机插入，公共核心单写，独立消费层可并行 |
 | 语法、全局cache、ABI和元编程的共同约束在哪里？ | [Design39语法/增量](../39-ac-incremental-syntax-and-language-platform.md)、[40产物/cache](../40-compiler-artifacts-and-cache-lifecycle.md)、[41 ABI](../41-interface-metadata-and-foreign-abi.md)、[42语义/CTE](../42-semantic-metadata-inference-and-comptime.md) | 按涉及的接缝读取，不另建重复类型系统、store或解释器 |
-| AAC/AAV与native路线如何衔接？ | [AC子集](auto-ac-subset-and-target.md)、[HIR](auto-hir-design.md)、[AAC主体/代际合同](auto-acc-bootstrap-contract.md)及本文§1–7 | 自举、语言覆盖、产品替换和机器码后端更换分别验收 |
+| Auto/Atom如何成为通用parser generator及语言工具平台？ | [Design39长期定位与路线](../39-ac-incremental-syntax-and-language-platform.md#language-tool-infrastructure) | CST/AST/HIR、生成器与小运行库、ABC/A2X插件和auto-edit/语义LSP分层；787有限实验与完整目标区分，本次仅设计 |
+| AACE与Rust版ACE如何分版？ | [版本/里程碑合同](../../plans/reports/ace-milestones-version-boundary-2026-10-24.md)、[主体/代际合同](auto-acc-bootstrap-contract.md)、本文§0.7 | v0.6先Rust版全示例成熟度与迁移，v0.7再实施AACE；自举、产品替换和后端更换分别验收 |
 | 现在实际已交付什么？ | [Spec总览](../../specs/overview.md)、[Spec索引](../../specs/INDEX.md)，按任务进入auto-ac/auto-hir/auto-semantics/auto-lang/vm/stdlib等模块 | current Spec为现状知识；代码/测试核实观察，Plan与收据确认具体交付。auto-av等拟议Spec必须先确认存在，不把计划中的路径当已交付 |
+| M1还缺什么、哪些M2能力已推进、865/863之后怎样收口？ | [2026-10-29 M1/M2收口对账](../../plans/reports/ace-m1-m2-closure-roadmap-2026-10-29.md) | 按缺口族列能力/判定owner、已立项/待立项与关闭条件；当前登记116行，旧gap不等净能力缺口；不是新验收通过记录 |
+
+**当前续接（2026-10-29）**：先读[ACE决策与实现续接基线](ace-implementation-handoff.md)和[M1/M2缺口/收口表](../../plans/reports/ace-m1-m2-closure-roadmap-2026-10-29.md)，再核[公共写面合同](../../plans/reports/ace-wave-handoff-2026-10-28.md)。862/864/866/868/870/871/881已交付；865 executing r2、2/9，863 drafting r2，889新立draft r1。当前处于M1共同子集收口与M2源码扩面交叉阶段；865/863完成只结束这一批，不自动等于M1全绿或M2完整。可复制[续接prompt](../../plans/reports/ace-next-session-prompt-2026-10-28.md)恢复上下文，状态/实际D门须执行时刷新，不自动授权施工。
+
+**D871后更新**：871已交付87dd2b6ad并清理（5af8e0cbe）；native第二阶段按[拆包决定](../../plans/reports/ace-native-phase2-split-decision-2026-10-29.md)分为[889集合/变体源码闭环](../../plans/889-native-collections-variants-source-closure.md)和未编号typed-entry后继包。889 N主体可与865准备并行，集合真单体前端须取S，公共SDK/注册/binding取H，不以原下层carry证明全链增量。当前仅规划，未创建889实施树；新包不把宽位型算术、native闭包/Dyn/loader或整个M1收口塞入本期。
 
 ### 后续Agent的规划读取步骤
 
@@ -52,31 +63,81 @@ block级编译复用、后续入口采用新版与活帧中途迁移分别验收
 
 当前就保留逻辑身份/版本、增量依赖、编译—装载—候选安装—执行及generation/lease生命周期接缝，完整热重载能力可分期实施。798既有正式P95门和实际热重载非目标保持，不因本澄清新增实施phase，也不以跨进程恢复代替持续存活VM的在线更新证明。
 
-2026-10-20进一步明确的函数级首版必须是**源码编辑到执行安装的全链路增量**：签名与真实依赖事实不变时，仅变更函数重做语义/HIR/MIR/ABC和受检安装，其他函数IR/已加载代码保持同一身份；整模块重算后命中某层cache不算完成。具体结构/双门验收见[Design43 §6.4](../43-ac-av-typed-mir-and-abc.md#64-真正函数级增量的全链路合同2026-10-20)与[828](../../plans/828-av-function-incremental-session.md)。798 r6保留基础合同并准确标注边界，828在D798后交付完整切片，不反向阻塞798；825的运行优化、826格式和827源码入口都不能替代该切片。完整目标在828验收前未交付，P95仍为稳定会话编辑至当前结果<1s，首启动单列。
+2026-10-20进一步明确的函数级首版必须是**源码编辑到执行安装的全链路增量**：签名与真实依赖事实不变时，仅变更函数重做语义/HIR/MIR/ABC和受检安装，其他函数IR/已加载代码保持同一身份；整模块重算后命中某层cache不算完成。具体结构/双门验收见[Design43 §6.4](../43-ac-av-typed-mir-and-abc.md#64-真正函数级增量的全链路合同2026-10-20)与[828](../../plans/archive/828-av-function-incremental-session.md)。798 r6保留基础合同并准确标注边界，828在D798后交付完整切片，不反向阻塞798；825的运行优化、826格式和827源码入口都不能替代该切片。完整目标在828验收前未交付，P95仍为稳定会话编辑至当前结果<1s，首启动单列。
 
-## v0.6 路线阶段合同（2026-10-16 文档整理）
+### 0.4 近期执行批次与核心骨架里程碑（2026-10-21）
 
-**2026-10-20当前ACE执行顺序**：798先按自身合同完成验收/门禁/合入，随后优先828的全链路函数增量，再进行817/818及820–827的共享核心实施/集成。后继原前置保留；只读调查/合同准备可先，已有在途准备不丢弃。每个后继必须重放828 source基线并验证自身新增能力不引入整模块热重编/重载，配置结构+时间双门和强制退化反控；具体责任以[统一合同](../../plans/reports/ace-execution-order-and-incremental-compatibility-2026-10-20.md)和[Design43 §6.5](../43-ac-av-typed-mir-and-abc.md#65-执行优先级与后继增量兼容2026-10-20用户裁定)为准。此顺序取代旧候选排期，不豁免798任何开放项，不宣称828或后继已实现。
+2026-10-26实际依赖审计后，优先功能/源码路线保持，正式数据集成为820→821→822→{823，824}；824的白名单不消费823闭包，移除D823。823/824可在D821/D828上先做各自T-10私有同源模块，T-02均等D822；825/826可在D798/D828上并行做派生PC表/codec，826正式路由/LoadedProgram/AV仍等D825。优化集成依实测择机，不抢功能/源码前门。D-N始终要求真实交付，独立模块或局部review通过不解锁对应正式集成门，见[依赖审计](../../plans/reports/ace-parallel-dependency-audit-2026-10-26.md)。
+
+817/818/827可并行实现各自独立消费层；共享source/HIR/语义、MIR/ABC/AV及测试注册默认单写。先满足真实D门，再核已交付基面/Spec/API版本、前owner的合入/兼容证据与窗口释放，后owner记录接受；不持窗等上游、不复制WIP、不要求在途消费者追逐新profile。不同worktree不改变公共合同互斥；拆分按实际迁移owner交接，不增加等待整批的门。各Plan T-01/T-02准备/刷新交接映射，既有兼容/coverage及review/merge核交接记录，具体以共同合同为准。
+
+823 closures、824 dynamic/portable、825 loaded_program、826 compact_abc私有新源及各自parallel/<id>测试壳登记后可并行编译同一生产代码；不注册公共类型/opcode/lib，不复制IR/VM，不占公共核心窗。前项review/repair期间继续这些独立任务，公共定义未合入不交下游；实际mir/ownership/codec/verifier/dispatch及公共注册由单一核心owner串行接入。最后集成者重核已交付profile/消费者并集，闭包未交付与已交付时的Dyn拒绝分别按实际类型可达性验证，不留future缺口。
+
+798、828、817/818及820–827全部实际交付后，ACE可达到**首版核心骨架基本成型**：共享受检IR/ABC/AV、函数级增量与统一cache生命周期、有限CTE/native消费者、数据/所有权与装载/编码内核、真实scalar源码验收形成可验证基础。它们的profile各自有限；typed fixture不等于完整源码支持，824冻结不自动让817/818支持复合值，独立通过不代表任意组合贯通。
+
+后续仍按源码/stdlib与编译器主体的真实缺口安排泛型/元编程/反射、复合CTE/native、宿主和产品入口、自举等切片。完整AJ/优化JIT、通用增量发布器、block级增量和任意活对象/活帧迁移另立范围；旧AVM切默认/退役按G7/G8。这是核心里程碑，不等于完整ACE产品、AAC/AAV或本版全部完成。
+
+#### 0.4.1 2026-10-29后继波次、M1收口与M2扩面（当前交接）
+
+862入口/Unit、864集合变体原源、866真实AV在线更新、868单源lowering、870 mn data/owned、871旧native迁移退役及881 static/view方法与真方法增量已交付，均只认各自有限合同。S公共队列由**865闭包源码→863宿主输出**接续；新889真实集合函数增量拟在865释放后取S短窗，未就绪让863先行，不新增语义依赖。889的N主体可与865/863准备并行，带位宽typed entry另包未取号；H的SDK/driver/注册/binding必须与实际owner短窗串行。实际owner/立项状态见[当前对账](../../plans/reports/ace-m1-m2-closure-roadmap-2026-10-29.md)，[旧波次合同](../../plans/reports/ace-wave-handoff-2026-10-28.md)保留单写/交接纪律，不据历史快照重复启动。
+
+864原L04/L05及List<Str>/拥有型type为实际交付范围；881方法producer已实交，不再记“待立项”。871已按旧core/scalar/text/record/text-record的G-COV/G-DELETE及消费者/cache合同交付，保留text_resources.rs的verify分析；不是旧AutoVM/A2X产品退役。未由方法包覆盖的文本/资源/诊断缺口不随D881或D871自动归绿。
+
+**865/863之后的M1出口**：先以当前登记/正式suite复算，再冻结原源文本、诊断、场景观测/资源代际、a2r解析/发射/金样及适用性回填的剩余工作包。116条binding原始gap混有已批准NA/旧差异和待接线证据，不是116项都需新能力，也不能沿用50/103等旧比例。当前无新的全分母acceptance收据；M1签章须所有适用格真执行、阻塞gap/probe/wait/pending清零、NA/accepted-diff有规则、a2r金样与认证分轴，以及原增量/恢复/资源/开发期P90≤2000ms门。887只承担其测试治理和首批消费，不能自动替代完整M1验收。
+
+M2已推进入口、集合/变体/is/有限for-in、record/text方法与拥有值源码；闭包/host-import由865/863继续推进。宽数值源码/算术、模块/全局/stdlib/HOF、泛型/meta/反射、复合CTE与必要FFI仍须按真实缺口另立包；不是typed能力自动扩面。M1收口与M2/M3扩面可交叉，完整AJ/发布器/block增量不成为全部旧能力兼容的自动前置；M4产品全示例/入口切换另验。
+
+各阶段从首例接文件化AutoDown、cache恢复重验/增量结构、现行P90≤2000ms和内存/资源预算；亚秒长期目标不伪称已达标。SDK/公共测试写面需拆分owner实际交接；旧产品默认、M1已批准NA/accepted-diff和a2r金样/cert双轴不因排波而变化。Rust版ACE v0.6成熟度、AACE v0.7边界保持。
+
+### 0.5 基础图形之后的跨生态 CAP（2026-10-22）
+
+后续统一机制为 **Context-Aware Programming System（CAP System）**：函数/语言特性 effect 推导、场景约束求解、合法实现选择、stdlib/包依赖裁剪。完整合同见[Design46](../46-context-profile-capability-cross-ecosystem.md)，定位与阶段见[跨生态战略](cross-ecosystem-programming-strategy.md)。现有 HIR/MIR 格式/执行 profile 与拟议场景 profile 身份分开，不能把当前有界能力门等同完整 CAP。
+
+CAP 复用 ACE 的共享语义、Checked HIR、适用 Typed MIR/ABC 与各 backend lowering，以及函数依赖/cache/受检安装。effect 摘要变化即使签名不变，也应使真实依赖的 caller/根准入失效；target/profile/backend/variant 与数值策略参与产物身份。GPU stage/地址空间/barrier/uniformity 需要受检扩展，不假设当前标量 MIR 已能承载全部 device 语义；A2X 保持 HIR 结构化入口。
+
+实现顺序为**新版 ACE 架构完成 → 基础 AutoGraphics 建立 → CAP 实现 → 跨生态扩面**。ACE核心骨架成型与新版架构实际完成分别认领，CAP进入门在后续Plan绑定冻结交付范围；不要求先完成无限扩展的AJ/自主后端/所有加速器。当前仅记录元信息与依赖接缝，不为798/828、817/818或820–827新增求解器/包系统任务，也不改变§0.4排期。基础图形可独立并行，完整CAP仍等两项交付门。
+
+AutoShader的近期边界见[最小设计草案](autoshader-minimal-language-and-renderer-interface.md)：现在只设计，未来从ACE受检HIR/来源与具体类型支持lower到WGSL，经局部adapter接现有renderer。无需完整CAP全部扩面后才验证最小切片，也不假设当前标量MIR已支持GPU；基础图形可先用手写WGSL。830 r2只补资源/布局和交接，不向当前ACE Plan新增实现任务。
+
+### 0.6 Auto语言工具基础设施（2026-10-22）
+
+长期以[Design39](../39-ac-incremental-syntax-and-language-platform.md#language-tool-infrastructure)的Auto/Atom语言包统一grammar、树Schema、结构查询和可选语义模块，服务Auto编译器、auto-edit及其他编码工具。Grammar编译器承担解析算法，ACE编译生成器与Auto扩展代码并复用共同artifact/query、cache和生命周期；CST/语言专用AST不直接等同Checked AutoHIR。源码转译保持受检HIR入口，适用MIR/ABC/AV承载可执行扩展，不为parser产品另建语义系统、VM或私有store。
+
+部署按需求分别验证小型原生运行库及绑定、ABC/AV插件、Python/C/Rust等A2X代码输出。生成器不随每个解析器发行，纯数据grammar不要求完整ACE；ABC插件须有宿主适配、能力/资源准入与代际合同，不能直接等同WASM或宣称任意IDE即装即用。完整CAP/AJ不是所有切片的统一前置，所需实际profile/API由后续Plan冻结。
+
+[P1–P4路线](../39-ac-incremental-syntax-and-language-platform.md#language-tool-roadmap)为已有语法底座的Auto/编辑消费→差异语言与通用模型验证→ACE部署/插件→可选语义服务/LSP。787已交付有限实验，完整通用产品进入远期池；本次不创建实施Plan、不改变§0.4或798/828、817/818、820–827的执行顺序/验收，不新增v0.6完整生成器或Rust LSP门槛。auto-edit保持轻量消费，重型语义服务按需外置。
+
+### 0.7 Rust版ACE与AACE的版本边界（2026-10-24）
+
+用户已提高v0.6成熟度要求：M1核心框架成立，M2现有语言能力完整，M3 Auto/C/Rust/Python混合生态可用，M4产品迁移与旧框架替换；四项均为Rust版ACE，不是Auto主体自举。M2/M3交叉推进，基础FFI/必要宿主随语言扩面提前；M4按入口持续验证后收口。全示例按源码/依赖/资源/后端/平台/feature建立分母和独立oracle，不以typed fixture、改写示例、skip或隐式旧引擎fallback冒认兼容。
+
+**AACE是Auto语言实现的ACE主体，明确延后至v0.7**；AAC（旧称ACC）/AAV是其组件子线。先完成Rust版ACE现有AutoVM/A2X全示例及成熟度验收，再实施主体迁移，不再因编译器源码小子集可用就提前并行。v0.6只保留将来Auto实现可消费的接口/格式，Rust版作为后续对拍基准。主体/宿主桥与代际范围由v0.7 Plan冻结，不把包装Rust前端或迁CLI当自举。
+
+完整AJ/优化JIT、OSR/deopt、自主后端等不因兼容成熟度提高自动成为前置；所有现有Plan保持任务/进度/预算，后续按M2–M4缺口另拆Plan，既定D门与核心单写规则保持。完整合同与未达目标的处理见[版本合同](../../plans/reports/ace-milestones-version-boundary-2026-10-24.md)。
+
+## v0.6 路线阶段合同（2026-10-24分版更新）
+
+**2026-10-26历史排期（本批已进入后继波次，当前见§0.4.1及续接基线）**：798/828基础后，优先功能/源码；正式数据集成820→821→822→{823，824}，优化集成825→826择机。四个T-10私有模块可按§0.4与[统一交接合同](../../plans/reports/ace-execution-order-and-incremental-compatibility-2026-10-20.md)并行，公共核心/注册仍单写；原进度/预算和全链路增量/P95/内存/反控门保持，不能用模块绿代替首例或完整Plan验收。
 
 本节补充阶段目标/验收/拆分边界，不扩大已批准 Plan，也不将实验通过写成正式交付。总体承诺与候选阶段见[路线矩阵](../../roadmap-v0.6.md#7-v06路线阶段与拆分边界矩阵2026-10-16)。
 
 | 子线 | v0.6 目标 | 验收与证据 |
 |---|---|---|
-| Rust AC→Auto AAC（ACC） | 已确认主打：Windows x64/Cranelift 的约定主体原生自举 | 源码主体/宿主桥/语言支持三清单固定；真实 Gen1→Gen2→Gen3 构建、执行约定语料并比较可解释的产物/行为；不以 Auto CLI 包裹 Rust 前端代替主体迁移。合同继承 auto-acc-bootstrap-contract |
+| Rust版ACE成熟度；AACE移至v0.7 | 本版M1–M4、现有AutoVM/A2X全示例与对应消费路径真实兼容；先不实施Auto主体迁移 | 冻结示例/目标/依赖/宿主分母与强oracle，源码/语义/运行/转译、资源和迁移证据；v0.7另验主体/宿主桥与Gen1→Gen2→Gen3，不以Rust包装冒充AACE |
 | 语义 meta/推导/实例化/双期反射 | 保留Design42本版元编程目标，按支持矩阵逐项推进 | 796有限探针及后续语言扩面分别验收；正反例、求值顺序、类型/声明身份、来源与失效可检查；编译期查询和runtime反射访问分别用真实消费者证明，不以描述所有类型证明已执行所有类型 |
 | Typed MIR/ABC/Rust AV→CTE | 已确认进入本版；先建立执行子集，再接真实编译期执行 | 798 的 Checked HIR→MIR→ABC→AV 与 native/独立 expected 对拍、恢复重验和资源拒绝；后续 CTE 需实际影响编译结果，验证权限/确定性/预算/依赖变化，不能用测试模型冒充 AV 执行 |
-| 增量/cache/语法服务 | 从首例纳入，不在末期补性能 | 冷/热、进程重启/跨工程、源码/依赖/配置改变真实命中和失效；首条用例纳入 AutoDown；亚秒指标按相应 Plan 代表负载 P95<1000ms 验证，记录完整请求而非只计编译阶段 |
+| 增量/cache/语法服务 | 从首例纳入，不在末期补性能 | 冷/热、进程重启/跨工程、源码/依赖/配置改变真实命中和失效；首条用例纳入 AutoDown；沿PLAN-858/current Spec的开发期正式样本P90≤2000ms验收，长期亚秒及P95/P99分列；保留代表负载、样本、结构和内存门，记录完整请求而非只计编译阶段 |
 | 发布/重载/分层 AJ | 现有 native 支持面逐步落实增量发布；完整 AJ 后续专项 | 发布固定完整输入/闭包，真实链接运行，冷函数与缺 cache 不漏编；重载独立验证旧代存活/一致切换/失败回退。完整热点调度、OSR/deopt 和性能优化不自动纳入有限 AV 探针 |
 
-依赖顺序：已有 AC/profile/store→796语义、797 ABI、798 MIR/AV 的独立阶段；其集成按各 Plan 的 D-788/D-796 等门等待真实合入，再扩 CTE/语言能力/主体迁移。797/798不是互相全局前置，既有合同不因本文改变。Plan 状态以 frontmatter、实际代码及复审/merge 收据为准。
+依赖顺序：已有AC/profile/store→796语义、797 ABI、798 MIR/AV独立阶段；按各Plan真实D门接CTE/语言/宿主与消费者扩面，再完成Rust版M4，v0.7才实施AACE主体迁移。797/798不是互相全局前置，既有合同不因本文改变；状态以当前Plan/Spec及review/merge收据为准。
 
 拆分边界：实验核心保持独立 workspace、公开数据合同与受管 store，不引入旧 auto-lang AST/Value/UI/man 私有依赖。788 的正式 runner/adapter、任何生产前端或 VM 接线仍有协调面，不能声称整条线零影响。解析器/语义/IR可以独立推进；将旧 A2X/AutoUI 全迁移至新 IR 另立验收，不强加为自举前置。
-待决：完整自举主体/语言支持清单、CTE 扩面及发布/重载的具体 profile，随专项 Plan 冻结；本轮不选下一项实施优先级。
+待决：完整自举主体/语言支持清单、CTE扩面及发布/重载的具体profile，随专项Plan冻结；近期批次优先级已由§0.4及2026-10-21共同排期明确，不据此扩张各Plan范围或自动启动实现。
 
 > 更新：2026-10-16（AC/AV/AJ统一服务、分层执行、增量发布及近期/后续实施边界）。具体接口、优化集与选型探针按专项 Plan 验证。
 > 记录目标架构，不表示全部能力已实现。AC 指 Rust 实现的首版原生编译器；
 > ACC 指 Auto 实现的编译器主体，现有 roadmap 的 AAC 与之指同一条自举路线，命名另行统一。
-> 2026-10-16后续用户确认：v0.6正确性优先，最小Typed MIR与新ABC/Rust AV基础进入本版，AV支撑CTE；AAC/AAV在所需能力齐备后迁移。延期到v0.7的是性能优化及按需SSA/自主低层后端，不再是MIR整体。共同合同见[Design43](../43-ac-av-typed-mir-and-abc.md)，不回溯扩大在途Plan。
+> 历史技术方向（2026-10-16）：最小Typed MIR、新ABC/Rust AV与CTE进入v0.6，语言级优化/SSA/自主低层后端按收益分期；其中AAC/AAV原排期已由§0.7的“v0.7 AACE、先Rust版成熟度”取代。技术层次见[Design43](../43-ac-av-typed-mir-and-abc.md)，不回溯扩大在途Plan。
 
 关联：[AC 子集与目标代码](auto-ac-subset-and-target.md)、[HIR](auto-hir-design.md)、
 [Native ABI](auto-native-abi-rfc.md)、[v0.6 roadmap](../../roadmap-v0.6.md)、
@@ -108,7 +169,7 @@ AC负责语义/CTE、提前编译及发布驱动，AV负责新ABC解释执行，
 
 | 路线 | 核查结果与工程判断 | 定位 |
 |---|---|---|
-| Cranelift | Rust 库、AOT/JIT；ObjectModule 有 COFF 路径，Windows unwind 有专门约定；实际 target/调用/链接须探针 | v0.6 AC 与 ACC 的主后端 |
+| Cranelift | Rust 库、AOT/JIT；ObjectModule 有 COFF 路径，Windows unwind 有专门约定；实际 target/调用/链接须探针 | v0.6 Rust AC主后端；v0.7 AACE可按显式桥接继续复用 |
 | Zig | 自主后端/快速编译/增量更新值得参考；代码生成入口依赖 Air/Zcu/InternPool，抽取为 Auto 库需要适配 | 架构与目标代码生成参考 |
 | QBE | 简单 SSA IL、优化/寄存器分配、输出汇编交给系统工具；官网 AMD64 平台列 Linux/macOS | 自主低层 IR 与轻量后端参考；不能直接承诺 Windows 主线适用 |
 | MIR（vnmakarov 项目） | 主线为轻量 JIT；README 保障平台不列 Windows，未核实可直接承担我们的 COFF AOT | 未来 JIT/热点编译研究参考；不是 Rust 的 MIR |
@@ -120,7 +181,7 @@ Rust 原型先用 Cranelift，版本/API/SDK 由实测锁定；若必须能力�
 无需现在完整 clone Zig；深读时可使用独立参考目录、固定提交，不引入产品依赖。
 Zig 已迁至 Codeberg，旧 GitHub 仓不再镜像；0.15.1 发布说明仅作历史演进案例。
 
-## 3. v0.6：正确性、自举与可持续开发基础
+## 3. v0.6：Rust版ACE正确性、兼容成熟度与可持续开发基础
 
 ~~~text
 Auto source → resolve/typecheck → Typed/Checked HIR

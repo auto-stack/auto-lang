@@ -1,5 +1,7 @@
 # AutoDown / Typst 排版：v0.6 阶段设计
 
+> 2026-10-21 版本范围更新：按[月度滚动规划](../../roadmap.md)，v0.6 仅保留工程重构、ACE、AutoGraphics/Forge 雏形与 Linux 四条主线。本文下方旧 v0.6/v0.7 版次和日历按历史排期读取；其余目标进入[远期 TODO](../../roadmap-future.md)，不自动承诺 v0.7 全部交付。技术合同与已批准在途 Plan 的范围/验收保持，四线所需局部能力随所属主线验收。
+
 > 2026-10-16；目标态草案，未实施、未测试 Typst。来源为 AutoOS《AutoDown支持Typst布局》；复用 [AutoDown 统一文档引擎](../../../../auto-down/docs/designs/09-unified-document-engine.md)，互操作继承[Design41](../41-interface-metadata-and-foreign-abi.md)。
 
 ## 1. 定位与复用边界

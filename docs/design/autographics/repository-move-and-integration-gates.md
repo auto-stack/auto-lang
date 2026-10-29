@@ -1,8 +1,12 @@
 # AutoGraphics源码归仓与AutoUI/ACE融合的分离门
 
-日期：2026-10-29；状态：**879 已实施交付**（2026-10-29 单一权威已切 auto-ui `experimental/`，autographics-dev 保历史+指引；见 [source-repository-and-sdk spec](../../specs/auto-graphics/source-repository-and-sdk.md) 与[归档 Plan](../../plans/archive/879-autographics-source-move-to-auto-ui.md)）；本页转为决策/背景记录，下方建议章节已完成历史使命。归属[Design45](../45-autographics-wgpu-engine-and-game-prototypes.md)及[M2战略](../strategy/autographics-m2-v06.md)。下文10-28建议背景保留；当前执行合同以879为准，不改变已交付功能合同。
+> **2026-10-29最新拆分**：用户批准[auto-ui/002](../../../../auto-ui/docs/plans/002-autographics-trigger-events-and-round-restart.md)仅引擎，G11完整移交[ag-examples/001](../../../../ag-examples/docs/plans/001-autographics-gallery-runtime-objects.md)，硬等002实际交付。两份仅修合同、暂不实施；旧883混合分工为历史。
 
-新增实证：875源为`1cc68aba0`，auto-ui现观察master=`154a3965`；878静态评估不等于新目标构建验证。旧SDK Git对象不可达，879拟以受检681文件源快照版本保全，保持生成`.sdk-source`消费路径；两AG锁/独立workspace及默认UI隔离不变。按最新测试裁定只验受影响面，完整AG留里程碑，不恢复OS抢焦点自动化；下文“完整门”须依此解释。与880的875固定消费线并行，正式切权威前仍为auto-lang/autographics-dev。
+> **计划管理归属更正（2026-10-29）**：AG引擎计划在auto-ui/docs/plans，Gallery独立内容计划在ag-examples/docs/plans；跨仓计划由主责任仓持一份合同。882/883已迁至auto-ui（drafting r2），880最新收据已交付归档并迁至ag-examples。auto-lang原位置只留定位指引，历史Specs/设计本次未批量迁移；下文早期“中央Plan仍在语言仓”表述已由本条取代。
+
+日期：2026-10-29；状态：[879纯迁仓](../../plans/archive/879-autographics-source-move-to-auto-ui.md)已交付，当前AG单一源码权威为auto-ui/experimental（4adf2d03）；语言autographics-dev=f07b5ec8仅历史/归属指引。实际映射/SDK保全/冷准备/隔离以[canonical Spec](../../specs/auto-graphics/source-repository-and-sdk.md)为准。下文10-28候选讨论保留历史，不再表示迁仓尚未执行。
+
+后续新AG引擎能力在auto-ui实现，中央Plan/知识暂留语言仓；[882对象](../../../../auto-ui/docs/plans/001-autographics-runtime-object-lifecycle.md)→[883触发/新局](../../../../auto-ui/docs/plans/002-autographics-trigger-events-and-round-restart.md)已规划，880独立内容树继续消费旧875。默认生产UI/声明树/HIR/ACE融合、SDK替换与切默认/退役仍各有独立门，纯迁仓不放行它们。
 
 ## 1. 已观察的现状
 

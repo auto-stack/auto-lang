@@ -78,6 +78,12 @@ MIR的Atom/Batom Schema/profile与公共HIR及ABC执行格式分别版本化，�
 
 2026-10-16统一执行补充：AC提前编译、AJ快速/优化编译共用MIR编译服务，AV执行ABC；AJ不要求从ABC逆向恢复HIR。前端和语义产物在配置相容时跨执行模式共享，原生码按target/ABI/优化与调用策略分域。源码转译仍从Typed HIR保留结构；增量单元、优化单元和装载单元分离，发布从冻结快照/完整闭包复用有效产物。完整分层调度/OSR/deopt可后续实现，合同见[Design43](../43-ac-av-typed-mir-and-abc.md)。
 
+### 3.2 与语言工具基础设施的关系（2026-10-22）
+
+[Design39](../39-ac-incremental-syntax-and-language-platform.md#language-tool-infrastructure)将Auto/Atom语法包、增量CST、语言专用AST与可选语义服务定位为长期语言工具基础设施。Atom统一数据表达与Schema/工具生成方式，各层保留独立语义与版本：Auto AST经名字/类型/资源检查进入Checked AutoHIR；外语AST需语言专用语义模型及显式映射，不能直接授予Auto HIR凭证。
+
+解析器/scanner/分析扩展自身用Auto实现时，其代码经ACE的受检HIR及适用MIR/ABC/native或A2X路径编译。这与“解析结果是什么语言的树”是两件事：用Auto实现Rust解析器，不会把Rust程序自动编译为Auto。树以紧凑存储、Atom借用视图/typed accessor服务auto-edit与其他工具；不要求各层复制完整动态树。完整语言工具路线与部署支持按Design39及专项Plan推进，本次不扩大现状HIR profile。
+
 ## 4. 核心模块与引用身份
 
 概念模块包含模块/导入身份、声明表、语言类型表、常量表、函数体和源码来源表。
@@ -198,7 +204,7 @@ Atom LocalRef 只是承载方式；HIR 仍要校验引用目标的类别和 owne
 
 本稿未裁定：完整所有权/借用语义、动态值运行时、泛型/接口的具体实现阶段、
 异常与清理模型、native 后端具体版本/物理 ABI，以及 AAC 主体所需完整语言子集。
-v0.6 的 AC/ACC 主路径已定为 Cranelift，目标 conformance 与桥接细节仍需实测。
+v0.6 Rust AC主路径使用Cranelift，目标conformance仍按实际Plan验证；2026-10-24分版后，Auto实现的AACE（含AAC/旧称ACC主体）改为v0.7目标，先满足Rust版ACE全示例成熟度。后端桥可复用既有方向，但不在v0.6提前实施主体迁移，见[版本合同](../../plans/reports/ace-milestones-version-boundary-2026-10-24.md)。
 首个平台已由 [Native ABI RFC](auto-native-abi-rfc.md) 明确为 Windows 11 x86-64；
 子集与目标代码的分期建议见 [AC 子集与目标代码](auto-ac-subset-and-target.md)。
 这些应在相应 profile 执行前解决，不能被“Atom 足够表达”掩盖。

@@ -1,7 +1,9 @@
 # 知识底座、论文助手与学习：v0.6 阶段设计
 
+> 2026-10-21 版本范围更新：按[月度滚动规划](../../roadmap.md)，v0.6 仅保留工程重构、ACE、AutoGraphics/Forge 雏形与 Linux 四条主线。本文下方旧 v0.6/v0.7 版次和日历按历史排期读取；其余目标进入[远期 TODO](../../roadmap-future.md)，不自动承诺 v0.7 全部交付。技术合同与已批准在途 Plan 的范围/验收保持，四线所需局部能力随所属主线验收。
+
 > 2026-10-16；目标态草案，未实施。完整跨应用知识管理仍属 v0.7 主线；本版只选择有限原型，不默认同时实现本文全部候选。
-> 继承[roadmap §1.1](../../roadmap-v0.6.md#11-知识管理的版本分期2026-10-03-用户确认)；复用 [AutoDown 架构](../../../../auto-down/docs/designs/03-architecture.md)、[统一文档引擎](../../../../auto-down/docs/designs/09-unified-document-engine.md)、[Jade 架构](../../../../jade-edit/docs/ARCHITECTURE.md)。外仓文件是本地参考，不是本文的交付物。
+> 继承[原规划 §1.1（历史）](../../roadmap-v0.6-baseline-v2.md#11-知识管理的版本分期2026-10-03-用户确认)；复用 [AutoDown 架构](../../../../auto-down/docs/designs/03-architecture.md)、[统一文档引擎](../../../../auto-down/docs/designs/09-unified-document-engine.md)、[Jade 架构](../../../../jade-edit/docs/ARCHITECTURE.md)。外仓文件是本地参考，不是本文的交付物。
 
 ## 1. 定位与现状边界
 

@@ -2,11 +2,13 @@
 status: proposed
 describes: target-state
 created_at: 2026-10-16
-updated_at: 2026-10-16
+updated_at: 2026-10-28
 implemented_by_plans: []
 ---
 
 # Design 42：语义元信息、类型推导、反射与编译期执行
+
+> **2026-10-28续接基线**：796已交付有限不可变meta/推导查询，817已交付真实AV标量CTE与A05冻结cache（见[auto-semantics](../specs/auto-semantics/project.md)、[auto-cte](../specs/auto-cte/project.md)）；完整泛型、类型/声明生成、双期反射尚需逐项扩面。helper body/类型查询/target/权限等完整输入不变才可跳过AV执行，不只比较CTE调用点源码。 统一进度快照与未完工作见[ACE续接基线](strategy/ace-implementation-handoff.md)，后续按current Spec/Plan及merge收据重核；本注不扩大原Plan验收。
 
 用户要求：v0.6应规划完整meta信息及编译期/运行期反射；类型推导独立详细设计；元信息、类型、泛型实例化和AV编译期结果从第一天纳入增量与全局cache。本文确立架构边界及后续实施要求，具体语法、Schema字段/编号、首批反射API与支持矩阵仍需正式Plan冻结；不声明已实现、不修改787执行合同或现行Spec。
 

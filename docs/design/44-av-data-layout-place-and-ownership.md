@@ -2,7 +2,7 @@
 status: accepted-direction
 describes: target-state
 created_at: 2026-10-20
-updated_at: 2026-10-20
+updated_at: 2026-10-28
 implemented_by_plans: []
 planned_by: [PLAN-820, PLAN-821, PLAN-822, PLAN-823, PLAN-824, PLAN-825, PLAN-826]
 ---
@@ -11,9 +11,11 @@ planned_by: [PLAN-820, PLAN-821, PLAN-822, PLAN-823, PLAN-824, PLAN-825, PLAN-82
 
 # Design 44：AV 数据表示、类型布局、Place 与所有权
 
+> **2026-10-28续接基线**：820–824具名typed数据/所有权/集合/闭包/Dyn合同及825/826有限执行/编码优化已有current Spec，不能把下文初稿计划修订号读成当前在途状态。864/865承担集合/闭包源码接线，864必须含List<Str>/List<拥有型type>；CTE/native扩面仍需自己的消费者证据。 统一进度快照与未完工作见[ACE续接基线](strategy/ace-implementation-handoff.md)，后续按current Spec/Plan及merge收据重核；本注不扩大原Plan验收。
+
 ## 1. 决策、范围与现状
 
-2026-10-20执行顺序补记：798实际交付后优先828，全链路函数增量完成后再实施本数据扩展链；原820→821→822→823→824前置仍有效。各Plan新增work-owned兼容项，保留函数级IR/已加载代码身份、实际依赖失效、snapshot/旧值-layout-drop保活和结构+P95双门，不因扩类型退回整模块热重算/重载。见[Design43 §6.5](43-ac-av-typed-mir-and-abc.md#65-执行优先级与后继增量兼容2026-10-20用户裁定)及[统一合同](../plans/reports/ace-execution-order-and-incremental-compatibility-2026-10-20.md)。本轮只修改规划，未改变已实现状态。
+2026-10-26顺序更新：D828及全链路增量义务保持，正式数据集成为820→821→822→{823，824}，私有同源模块按§12可先并行；原823→824整计划前置取消。各Plan继续保留函数IR/已加载代码身份、真实依赖失效、snapshot/旧值-layout-drop保活及结构+P95双门，不因扩类型退回整模块重算/重载。见[Design43 §6.5](43-ac-av-typed-mir-and-abc.md#65-执行优先级与后继增量兼容2026-10-20用户裁定)、[实际审计](../plans/reports/ace-parallel-dependency-audit-2026-10-26.md)及[统一合同](../plans/reports/ace-execution-order-and-incremental-compatibility-2026-10-20.md)。本轮仅修订规划，不认领实施通过。
 
 用户于2026-10-20认可“静态数据类型化、动态数据独立Variant、首版不使用NaN-boxing”的方向，并授权正式设计及拆分后续计划，明确先不写代码。本文衔接[Design43](43-ac-av-typed-mir-and-abc.md) §3–4，描述AC/AAC系列的新版AV；不是旧AutoVM/AAVM的改造或重命名。架构方向已确认，具体API/编码/布局通过各Plan的有界首例冻结，不凭本文宣称已实现。
 
@@ -25,7 +27,7 @@ planned_by: [PLAN-820, PLAN-821, PLAN-822, PLAN-823, PLAN-824, PLAN-825, PLAN-82
 | [HIR阶段合同](../specs/auto-hir/stage-contract.md) | Checked凭证由对应域verify创建；HIR保留语义和来源，不泄漏native布局 |
 | [774数据资源合同](../specs/auto-ac/data-resource-contract.md)、[782组合域](../specs/auto-ac/source-text-record.md) | AC已有借/拥有文本、char、嵌套record、根move/clone及有限所有权；不能从旧AVM另取冲突语义 |
 | [796](../specs/auto-semantics/project.md) | 名义身份/签名/meta是语义事实；AV执行布局是下游投影，不另建推导权威 |
-| [817](../plans/817-av-cte-query-frozen-cache.md)、[818](../plans/818-ac-shared-mir-native-parity.md) | 在途且限i32/bool；本设计不自动扩CTE/native面，不把新AV类型当其支持类型 |
+| [817](../plans/archive/817-av-cte-query-frozen-cache.md)、[818](../plans/archive/818-ac-shared-mir-native-parity.md) | 均已归档且仍限i32/bool；本设计不自动扩CTE/native面，不把新AV类型当其支持类型 |
 | [旧VM安全边界](../specs/auto-lang/vm/design/memory-safety-boundary.md) | 旧闭包帧、裸ID与RC影子问题是迁移反例来源；不是新AV语义或可继承安全证明 |
 
 逐文件SHA-256与调查提交见[planning-inputs.json.txt](../plans/attachments/av-data-20261020/planning-inputs.json.txt)。工作启动时重取实际合入的Spec/API，不照在途树复制实现。
@@ -198,19 +200,21 @@ freeze把活数据转成portable值图：稳定类型ref/声明revision、字段
 
 ## 12. 实施拆分、依赖与单写面
 
+2026-10-26实际依赖审计：优先功能/源码路线与D828保持，正式集成改为820→821→822→{823，824}；824白名单不消费闭包，不再以D823为前置。823/824的T-10可基于D821先开发私有同源模块，825/826可基于D798/D828并行开发派生表/codec；实际派发、准入、公共类型与注册仍单写，826正式集成仍等D825。具体输入/符号、阶段门与病例责任见[审计合同](../plans/reports/ace-parallel-dependency-audit-2026-10-26.md)，不改822在途合同和任何已交付验收。
+
 | Plan | 独立交付与边界 | 依赖 |
 |---|---|---|
-| [820 类型化数据与布局](../plans/820-av-typed-data-layout.md) | 新data profile、宽标量存取/纯值record、类型化字段Place与ABC布局准入；不做资源 | D-798 |
-| [821 Place与拥有型访问](../plans/821-av-place-owned-access.md) | 沿774/782的Str/char、owned record、reservation、move/borrow/replace/drop与全出口清理 | D-820 |
-| [822 类型化集合与Variant](../plans/822-av-typed-collections-variants.md) | List<T>、Option/Result/有限enum、Index/branch Place、失败提交与元素清理 | D-821 |
-| [823 owned闭包捕获](../plans/823-av-owned-closure-captures.md) | typed环境、逃逸move/clone、同步非逃逸借用、frame/env有效期；无async/shared | D-822 |
-| [824 Dyn与冻结边界](../plans/824-av-dynamic-values-freeze.md) | 独立Dyn、受检类型擦除/恢复、portable树冻结及typed宿主准入；不接完整CTE/FFI | D-823 |
-| [825 装载表示与执行效率](../plans/825-av-loaded-program-runtime-efficiency.md) | 可选：标量LoadedProgram、O(1)PC、安全帧/参数策略、WASM/V8执行测量 | D-798；共享核心空闲窗口 |
-| [826 紧凑ABC与体积](../plans/826-av-compact-abc-format-and-size.md) | 可选：新wire、section/body边界、密度与大小/装载测量 | D-825；共享核心空闲窗口 |
+| [820 类型化数据与布局](../plans/archive/820-av-typed-data-layout.md) | 新data profile、宽标量存取/纯值record、类型化字段Place与ABC布局准入；不做资源 | D-798 |
+| [821 Place与拥有型访问](../plans/archive/821-av-place-owned-access.md) | 沿774/782的Str/char、owned record、reservation、move/borrow/replace/drop与全出口清理 | D-820 |
+| [822 类型化集合与Variant](../plans/archive/822-av-typed-collections-variants.md) | List<T>、Option/Result/有限enum、Index/branch Place、失败提交与元素清理 | D-821 |
+| [823 owned闭包捕获](../plans/archive/823-av-owned-closure-captures.md) | typed环境、逃逸move/clone、同步非逃逸借用、frame/env有效期；无async/shared | T-10模块D821/D828；正式集成D822/D828 |
+| [824 Dyn与冻结边界](../plans/archive/824-av-dynamic-values-freeze.md) | 独立Dyn、受检类型擦除/恢复、portable树冻结及typed宿主准入；Fn/闭包拒绝，不消费823 | 正式集成D822/D828；T-10模块D821/D828 |
+| [825 装载表示与执行效率](../plans/archive/825-av-loaded-program-runtime-efficiency.md) | 可选：标量LoadedProgram、O(1)PC、安全帧/参数策略、WASM/V8执行测量 | T-10模块D798/D828；正式集成另需核心窗口 |
+| [826 紧凑ABC与体积](../plans/archive/826-av-compact-abc-format-and-size.md) | 可选：新wire、section/body边界、密度与大小/装载测量 | T-10模块D798/D828；正式集成D825/D828及核心窗口 |
 
-D-N表示N最终独立review、冻结合入门禁、实际合入、Spec/merge收据齐全，不是分支能编译或状态标签变化。后续Plan的T-01可只读准备，依赖实现/构建必须等D；五计划实施串行，各一树，不在798在途树实施或从其分支摘抄未交付代码。
+D-N表示最终独立review、冻结门禁、合入、Spec/merge收据齐全，不是分支可编译或状态标签。823 T-02仍等D822，825 T-02仍取核心窗，826 T-02仍等D825；各自T-10按已交付基面只做无公共写面的同源模块，不等待其他模块全部review完。各一树，不消费在途实现；公共核心集成按窗口串行，不再把五个整Plan强制排成单链。
 
-共享核心首选扩展已交付的`experimental/ac-av-probe/core`，不复制VM或建第二MIR。819已被其他归档计划占用，本批通过中央脚本领取820–824。817/818在途期间无共享写入：各Plan T-01登记其API消费；若会修改其依赖的公共定义，等owner交接/实际合入再做最小兼容更新，不能要求其追逐新profile。已有scalar仅获得编译兼容与同面回归，不扩验收语义。
+共享核心首选扩展已交付的`experimental/ac-av-probe/core`，不复制VM或建第二MIR。819已被其他归档计划占用，本批通过中央脚本领取820–824。817/818/827独立消费稳定API期间不独占整个核心；若公共定义仍有在途写者，则该面不能由数据线同时修改，先等owner交接/实际合入，而非要求817/818全部结束。各Plan T-01/T-02登记基面/Spec/API版本、具体写面、owner/消费者与窗口接受；交接记录含合入提交、兼容证据、限制、释放及下一owner。默认公共核心一个窗口，公共注册追加也串行；持窗不等上游，不要求消费者追逐新profile。已有scalar仅获得编译兼容与同面回归，不扩验收语义。
 
 原生新数据lowering、CTE复合结果消费、生产SDK接线、完整数值运算、共享/weak图、async和实际热重载分别列为**后续未交付能力**，不作为本五计划的隐含交付。824portable新schema不等于817已能消费复合值。
 
@@ -295,4 +299,4 @@ AV是ACE的解释执行组件。后续函数内block/语义区域方向见[Desig
 
 后续R2-*..R6工作包按同一Type/Place/owner/预算合同扩source与consumer，已有生命周期正确性不能在源码adapter、host callback、async/共享扩面中绕过。新的挂起/共享/外对象必须先有明确设计和独立验收，不拿823同步环境或824portable树替代。完整应用另立版本化profile/预算，不反向豁免本批cap或冒称所有应用都受实验8MiB限制。
 
-新增[827源程序验收基线](../plans/827-av-source-program-baseline.md)在D798后首先验证现存scalar文件、实际AV管线/恢复/父侧oracle；不修改820–826当前revision/任务，也不要求798为其额外交付产品CLI。本文与Design43现有正确性/单写依赖继续有效，本轮未实施任何代码。
+新增[827源程序验收基线](../plans/archive/827-av-source-program-baseline.md)在D798后首先验证现存scalar文件、实际AV管线/恢复/父侧oracle；不修改820–826当前revision/任务，也不要求798为其额外交付产品CLI。本文与Design43现有正确性/单写依赖继续有效，本轮未实施任何代码。

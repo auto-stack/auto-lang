@@ -11,9 +11,11 @@
 
 ## 0. 定位与不变式
 
+**2026-10-24分版裁定**：AACE指Auto语言实现的ACE主体，AAC（旧称ACC）/AAV为其中组件子线；实施延后至v0.7。v0.6先提高Rust版ACE成熟度，复刻现有AutoVM/A2X全部示例并完成对应成熟度/迁移验收，再启动AACE，不按compiler-source-demand小子集满足就提前实施。本契约的阶段/主体/宿主桥和代际判据保留，旧v0.6自举排期不再生效；v0.7具体范围另在Roadmap/Plan冻结，见[版本合同](../../plans/reports/ace-milestones-version-boundary-2026-10-24.md)。
+
 2026-10-16元编程与meta补充见[Design42](../42-semantic-metadata-inference-and-comptime.md)：v0.6规划完整语义meta、编译期与runtime反射；类型推导/实例化/AV驱动CTE由语义查询统一调度，CT冻结结果与类型事实进入A05/A06及统一cache。按[Design43](../43-ac-av-typed-mir-and-abc.md)，支持本版元编程的checked HIR→Typed MIR→新ABC→Rust AV子集与全量旧AVM迁移分开；有限泛型不能仅凭内建List证明，实际支持/生成类型等矩阵仍由专项Plan冻结。旧库存清单是历史取证，不因新目标自动改成implemented。
 
-2026-10-16后续分期：v0.6引入最小Typed MIR作为AC/AV共同执行语义层，先有Rust AV执行子集再接CTE，随后按自举所需能力迁移AAC/AAV；不是先完成全部AC再补新VM。既有S2–S6/profile交付事实不改，MIR接线及新的CheckedMIR验证门另立Plan，不直接扩张现有CheckedModule保证。v0.7按收益补语言级优化/SSA/自主低层后端，不要求v0.6通用优化框架；不得省略资源lowering或持久恢复重验。
+2026-10-16的MIR/AV/CTE技术次序保留：v0.6以Typed MIR作为AC/AV共同执行语义层，Rust AV支撑CTE并扩面；既有S2–S6/profile事实不改，新的CheckedMIR门按实际Plan认领，不扩张现有CheckedModule保证。原“随后按自举小子集迁移AAC/AAV”的排期由2026-10-24新门替代。v0.7明确推进AACE，语言级优化/SSA/自主后端按收益另选，不要求与自举同版全交付；不得省略资源lowering或持久恢复重验。
 
 ACC = Auto 实现的编译器主体。本契约给"源码 adapter、运行时、ABI、ACC 迁移"四类后续工作
 提供共同的前置边界。四条不变式贯穿全文：

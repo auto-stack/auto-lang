@@ -1,5 +1,7 @@
 # Design 35：AutoDown 统一文件用例与多后端验证协议
 
+> **2026-10-28续接基线**：788/852已交付有限文件化测试/四路径语料基础；a2r日常比较真实转译产物与金样，编译运行认证是独立过程，不在每个日常用例重编Rust。完整语言/消费者覆盖按各能力Plan推进，不能沿用初稿“runner未实施”判断当前支持。 统一进度快照与未完工作见[ACE续接基线](strategy/ace-implementation-handoff.md)，后续按current Spec/Plan及merge收据重核；本注不扩大原Plan验收。
+
 > **PLAN-858 口径更新（2026-10-27）**：本文历史 ACE P95<1s 目标在开发初期由用户调整为 P90≤2000ms；原正式样本和正确性、结构、资源约束保持，架构基本成形后以实测另定长期目标。其他 P95 数值作为历史或诊断保留，不再作为 ACE 开发期交付硬门。当前规则见 [TestCase v2 周转口径](../specs/auto-test-case/profile-v2-native.md)。
 
 - 状态：设计草案，待审定；本文没有实施 runner 或迁移既有用例。
@@ -9,6 +11,8 @@
 - 关联：[现有转译测试约定](../specs/auto-lang/trans/design/test-convention.md)、[AAVM 语料](../specs/aavm/design/corpus.md)、[parity 现状](../specs/parity/project.md)、[AC 子集路线](strategy/auto-ac-subset-and-target.md)、[ACC 自举合同](strategy/auto-acc-bootstrap-contract.md)、[计划 767](../plans/767-ac-scalar-ops-short-circuit.md)。
 
 ## 1. 结论与边界
+
+> 2026-10-29新增target-state专题：[模块选测与ACE成组执行](testing/module-selection-and-ace-batching.md)，正式草案[PLAN-888](../plans/888-module-test-selection-and-ace-batch-pilot.md)。建议U887后优先有限推进，不等全部搬迁；以通用模块映射/关联选测和ACE AV标量批处理实测为首批。仅规划，不实施；原子义务、父侧裁判、旧性能/发布门保持，不把887的机制级负结果写成已加速，也不把3000→300启动组当作覆盖减少。
 
 2026-10-16推进要求：773已交付A阶段协议与AVM/a2r-emit只读试点，事实以auto-test-case Spec为准。B阶段AC source/HIR/native与真实编译执行作为紧邻优先计划，不等完整AC/v0.7；syntax/增量观测按adapter支持表显式扩展，不向现行v1偷塞被忽略字段。新增能力从首例用AutoDown声明source/oracle，保留内省Rust测试及原CLI/发布门禁。fresh/缓存比较、产物来源、失效、required检查非零执行须可观测；格式统一不等于native支持。正在执行的787保留合同，跨计划测试接线另定界，不覆盖在途实现。
 

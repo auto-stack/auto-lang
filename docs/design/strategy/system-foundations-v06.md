@@ -1,5 +1,7 @@
 # 应用通信、AutoAI 与 DevTools：v0.6 阶段与拆分接缝
 
+> 2026-10-21 版本范围更新：按[月度滚动规划](../../roadmap.md)，v0.6 仅保留工程重构、ACE、AutoGraphics/Forge 雏形与 Linux 四条主线。本文下方旧 v0.6/v0.7 版次和日历按历史排期读取；其余目标进入[远期 TODO](../../roadmap-future.md)，不自动承诺 v0.7 全部交付。技术合同与已批准在途 Plan 的范围/验收保持，四线所需局部能力随所属主线验收。
+
 > 2026-10-16；本仓的跨路线规划补充，未实施。不复制或取代 auto-os 所有的协议 RFC；后续实施由所属仓维护。
 > 权威设计输入：[通信 RFC](../../../../auto-os/docs/design/strategy/auto-app-communication-v0.6.md)、[DevTools RFC](../../../../auto-os/docs/design/strategy/system-devtools-v0.6.md)、[F0–F5 分期](../../../../auto-os/docs/design/strategy/v0.6-foundations-roadmap.md)；本轮只读这些外仓文件。
 

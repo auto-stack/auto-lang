@@ -2,16 +2,19 @@
 status: proposed
 describes: target-state
 created_at: 2026-10-15
-updated_at: 2026-10-16
+updated_at: 2026-10-28
 implemented_by_plans: []
 ---
 
 > **PLAN-858 口径更新（2026-10-27）**：本文历史 ACE P95<1s 目标在开发初期由用户调整为 P90≤2000ms；原正式样本和正确性、结构、资源约束保持，架构基本成形后以实测另定长期目标。其他 P95 数值作为历史或诊断保留，不再作为 ACE 开发期交付硬门。当前规则见 [TestCase v2 周转口径](../specs/auto-test-case/profile-v2-native.md)。
 
-# Design 39：AC/ACC 增量前端、热重载与通用语言解析平台
+# Design 39：Auto 语言工具基础设施、增量前端与通用解析平台
+
+> **2026-10-28续接基线**：787为已归档的有限Atom语法/增量词法与CST实验，现有ac-core源码前端仍有具名受限支持域，不能据此宣称完整Auto/第三方语言生成器已替换全部前端。保留生成表/专用代码/受检插件、不可变分页树及typed view的选择，不强迫解析热路径解释动态Atom树。 统一进度快照与未完工作见[ACE续接基线](strategy/ace-implementation-handoff.md)，后续按current Spec/Plan及merge收据重核；本注不扩大原Plan验收。
 
 > 用户需求（2026-10-15）：增量编译、热重载和插件系统从 AC/ACC 架构起点融入；未来将解析能力复用为 Auto 版 tree-sitter，以 Atom/Batom 配置语法，服务 IDE/LSP、第三方语言快速扫描和符号/签名元信息获取。进一步明确最终目标为亚秒级开发周转与尽量少的内存；大型仓库及依赖的完整AST/CST不得以全部常驻为前提，各阶段中间产物须纳入跨工程全局cache，采用磁盘持久化与有界内存工作集。
-> 本稿记录已提出的产品约束和建议架构。具体算法、公开接口、产品名、仓库归属、基准硬件/负载、内存字节预算与排期尚未冻结；亚秒周转是产品目标，尚无达成证据。不声明已有通用生成器/分页增量树/原生热重载实现，不分配正式 Plan，不修改 PLAN-782 合同或实现。
+> 2026-10-22长期定位补充：以 Auto/Atom 定义语言包，复用 HIR 数据契约与 ACE 编译执行服务，建设服务 Auto 编译器、auto-edit 和其他编码工具的**Auto 语言工具基础设施**。本次只完善设计与路线，不创建实施 Plan、不启动实现、不改变产品默认入口。
+> 本稿记录已提出的产品约束和建议架构。具体算法、公开接口、产品名、仓库归属、基准硬件/负载、内存字节预算与排期尚未冻结；亚秒周转是产品目标，尚无达成证据。不声明已有完整通用生成器/生产语法服务或任意插件热重载；PLAN-787的有限实验交付见§2更新。具体实施另经Plan冻结，本次不修改现行Spec、既有Plan合同或实现。
 
 关联：[Design 36](36-ac-data-resource-expansion.md)、[后端演进](strategy/auto-native-backend-evolution.md)、[Native ABI RFC](strategy/auto-native-abi-rfc.md)、[ACC 主体合同](strategy/auto-acc-bootstrap-contract.md)、[Atom Schema](strategy/atom-schema-dsl-design.md)、[AutoCache现状](../specs/auto-cache/project.md)、[全局cache历史设计](raw/auto-cache.md)、[旧 AIE](09-compiler.md)、[开发工具](14-developer-tools.md)、[方言拆分](32-autoui-repo-extraction.md)、[模块治理](37-v06-modularization-and-repo-boundaries.md)。
 
@@ -27,11 +30,27 @@ AST/CST本身就是可持久化的编译中间产物，与语义查询、HIR和�
 
 各层具体数据、Schema/引用身份、存放与自动回收统一见 [Design40：编译中间产物与cache生命周期](40-compiler-artifacts-and-cache-lifecycle.md)。required-data强边与失效/provenance指纹分别处理，避免成品保留导致所有历史上游永不释放；用户交付物与runtime live代际也不能按普通cache淘汰。下一契约探针同时消费两份设计。
 
+<a id="language-tool-infrastructure"></a>
+
+### 1.1 长期定位：Auto 语言工具基础设施（2026-10-22）
+
+长期将通用解析平台建设为Auto编译体系的重要成员：同一语言包连接语法定义、树模型、结构查询、可选语义分析和工具部署，供Auto编译器、auto-edit、CLI、Agent编码工具及其他IDE按需消费。Tree-sitter替代是其中的语法产品目标；语言包的复用、统一数据契约和ACE产物生命周期构成更长期的基础设施价值。产品名、公开包名与仓库拆分尚未冻结。
+
+| 关联层 | 在本体系中的职责 | 边界 |
+|---|---|---|
+| Auto / Atom / Schema / Batom | Auto提供声明DSL及可选规则生成代码；Atom承载规范化Grammar、语言专用树与元信息，Schema定义各自数据合同；Batom是候选二进制载体 | 数据格式相同不等于语义相同，也不要求热路径分配通用动态对象；具体二进制布局仍须验证 |
+| HIR | Auto解析结果经语义检查进入Checked AutoHIR；解析器/scanner/分析器自身的Auto实现也经受检HIR进入后端 | 外语AST不因采用Atom就成为Auto HIR；语言语义与格式验证各有责任 |
+| ACE（AC / AV / AJ、A2X、CTE） | 为生成器及Auto扩展代码提供编译、受限执行、转译和共同artifact/query、cache、版本及生命周期服务 | 生成期工具与部署期小运行库分离；纯数据语法运行不要求携带完整ACE/编译器/JIT |
+| auto-edit | 通过snapshot/edit/position适配共享语法树，按需获得高亮、折叠、大纲、结构选择和轻量符号索引，后续可支持有预览的结构编辑 | 维持轻量文本工作台定位；完整LSP/语义引擎作为可选服务，不默认内置或后台全仓分析 |
+| 其他IDE / LSP / 编码工具 | 通过库API、宿主适配器或LSP协议复用语言包与分析服务 | 宿主UI、文件/工程配置和协议转换归适配层；接入仍需兼容验证 |
+
+Auto具备将DSL、结构化数据与多后端连接起来的条件，但解析速度、内存、错误恢复和增量正确性须独立验证。Tree-sitter通常生成C解析器，由Rust/Python等绑定访问内存CST；`grammar.json`及`node-types.json`不是运行时语法树格式。因此不以“Atom替代JSON”或语言绑定数量作为性能/能力领先的证据。
+
 ## 2. 本地事实与缺口
 
-2026-10-16交付要求：首条正式集成完整编译管线，即使只是hello-world，也须消费统一store、阶段依赖/配置失效、fresh等价、重启/跨工程命中和有界生命周期。语法增量不证明语义/对象增量；787只验其语法合同，后续source→HIR→native接线从第一例落实这些要求。AutoDown尽早接入，门槛见后端战略§3.1；不把新增native/测试adapter工作偷偷塞入已executing的787。
+2026-10-16交付要求：首条正式集成完整编译管线，即使只是hello-world，也须消费统一store、阶段依赖/配置失效、fresh等价、重启/跨工程命中和有界生命周期。语法增量不证明语义/对象增量；787只验其语法合同，后续source→HIR→native接线从第一例落实这些要求。AutoDown尽早接入，门槛见后端战略§3.1；787的有限语法合同不因本设计追加native/测试adapter任务；其现状见下方2026-10-22补充。
 
-以下为 2026-10-15 源码/文档只读观察，非性能或运行验收：
+以下表格保留2026-10-15源码/文档只读观察，属于历史基线，不能覆盖本节2026-10-22的现状补充；本次未重新执行性能或运行验收：
 
 | 入口 | 观察 | 对设计的影响 |
 |---|---|---|
@@ -43,7 +62,11 @@ AST/CST本身就是可持久化的编译中间产物，与语义查询、HIR和�
 | Native ABI RFC §1/§7/§8 | 已确认静态/动态模块及插件热重载范围，设计了宿主常驻服务、代际与安全回收 | 新前端需要模块/接口身份和重载边界；不在 lexer 内实现 DLL 装载 |
 | 743 inventory；packages/aavm/lib/{token,lexer,parser}.at | token/扫描核心适配，Pratt 核心复用但 S-expr 输出重写 | 复用词法判据、优先级与测试；不能照搬单游标可变状态和 dump 产物作为新公共接口 |
 
-当前 PLAN-782 复审/修复继续按原合同收口。此设计不向该计划追加入参快照、CST、查询引擎、热重载或生成器验收，也不以本稿认定其任何 finding 已闭合。
+2026-10-22现状补充：按[current auto-syntax Spec](../specs/auto-syntax/project.md)，PLAN-787已交付独立实验workspace `experimental/ac-syntax/`，包括Atom配置编译、有限双profile、增量词法/无损CST、core投影与artifact adapter。规则程序限定ordered-choice + Pratt，配置静态读取且不执行宿主代码；不支持任意CFG/GLR/regex、动态scanner插件、正式Batom、完整LSP或生产parser切换。不能把这些已交付能力继续统一写成“未实施”，也不能据此认领完整通用生成器。本文`implemented_by_plans: []`表示长期整体设计尚无完整实施归属，不否认787的局部交付。
+
+HIR的现状以[auto-hir Spec](../specs/auto-hir/project.md)为准：已有Schema-bound Atom→绑定/语义校验→CheckedModule的有界profile；完整语言、任意外语前端和所有部署目标尚不能由此推定。ACE整体方向与实施分工见[Design43](43-ac-av-typed-mir-and-abc.md)及[总路线](strategy/auto-native-backend-evolution.md)。
+
+既有Plan按各自实际状态与合同推进；原782/787相关约束作为来源保留，本次不追加验收、不重新打开归档计划、不认定任何finding已闭合。
 
 ## 3. 推荐分层与依赖方向
 
@@ -76,6 +99,20 @@ Source snapshots / edit deltas / position maps
 所有阶段通过统一artifact/query store读写，不各自建立私有的全依赖内存数据库。磁盘产物、内存已解码对象与各工程的编辑overlay/配置是不同生命周期：共享不可变内容；工程会话只保存overlay、根引用和配置，语义配置不同则保留不同结果而不复制无关源码/语法数据。
 
 Auto 语法与 IDE 使用同一权威语法定义/规则和适配层。手写 Pratt 可以先作为 Auto 插件或兼容实现；通用生成器不要求所有语言采用 Pratt，也不将上下文语义查询塞进通用 parser。若暂时保留双实现，明确唯一规范源、差分语料和退役条件，不能长期人工维护两份不同 Auto 语法。
+
+### 3.1 统一Atom表示下的CST、AST与HIR
+
+```text
+源语言文本 → 无损CST ──→ 结构查询 → auto-edit / CLI / Agent工具
+                 └─→ 语言专用AST/typed view
+                         ├─ Auto语义分析 → Checked AutoHIR → ACE后端
+                         └─ 外语语义分析/官方工具adapter → 语言专用语义模型
+                                                           └─ 可选LSP服务
+```
+
+CST、AST、语义模型和HIR可采用Atom家族的数据合同，但分别持有Schema/版本、引用作用域、来源与有效性。CST保存token/trivia、原始拼写、error/missing与snapshot；AST提供语言专用结构；Checked HIR必须另经名字、类型、控制流/资源等验证。语法容错结果不直接进入受检执行，Schema验证也不授予Checked凭证。外语向Auto HIR/Foreign IR的转换仅在显式语义映射及支持子集内成立。
+
+逻辑Atom API、借用视图和生成的强类型访问器与§5.2的紧凑分页存储分开。AST可作为CST投影按需建立，语义事实按查询/ID关联，避免每个消费者常驻复制完整树；共享格式不要求每层共享同一内存对象或同一套节点种类。
 
 ## 4. lexer/parser 现在必须考虑的接口
 
@@ -211,6 +248,21 @@ parser 只负责给出模块/声明/导入/属性及可重载边界所需的结�
 
 必须从一开始分开 module_identity、interface_descriptor、artifact_identity、state_schema、runtime_requirements。内存/对象/回调/外来deleter依赖旧代代码时旧代仍须pin；重载失败不发布半套入口，新代准备失败保持旧代服务，旧代有在途调用不得卸载。
 
+### 6.1 ACE语言包的生成、部署与宿主边界
+
+语言包的概念内容为grammar、scanner、树Schema、queries及可选semantic模块，附语言/包版本、内容身份、依赖、导出能力、宿主API与运行时要求。此处定义职责，不冻结新manifest、CLI、ABC ABI或文件后缀。
+
+| 阶段/部署方式 | 目标能力 | 必须核实的合同 |
+|---|---|---|
+| 生成期 | 规范化Grammar经专用grammar compiler生成规则程序/解析表或代码；Auto实现的scanner、查询及分析扩展经ACE编译 | grammar compiler负责算法/歧义/恢复策略；ACE负责其Auto代码语义和后端，二者不互相替代；生成期CTE依赖/权限/预算按Design42/43 |
+| 小型嵌入运行库 | 编译好的规则程序/解析表加syntax runtime；原生库可经C ABI及Rust/Python等绑定使用 | 不携带生成器或完整编译器；树/位置接口、资源与字符串/句柄寿命按具体ABI验证 |
+| ABC / AV插件 | 可执行scanner/query/semantic模块通过宿主导入服务和ABC/AV部署，探索接近WASM的可移植插件体验 | 仅在实际支持profile内；加载验证、导入授权、内存/指令预算、取消与故障处理另行验收；ABC不等同WASM，也不保证现有IDE直接加载 |
+| A2X源码交付 | 按需要将解析器及其运行支持的Auto实现转译为Python/C/Rust等目标代码 | 明确解析表与runtime依赖、目标支持子集、行为/恢复一致性及性能；多后端并不自动证明各目标完整可用 |
+
+宿主适配器负责编辑快照、位置编码、任务调度/取消、结果发布、UI及可选LSP传输。纯数据grammar没有必要获得任意代码执行权；可执行扩展仅使用显式宿主导入，不继承完整编译器或IDE权限。按需加载及资源预算与未来CAP场景约束对接，运行时隔离仍须加载器/宿主落实，见[Design46](46-context-profile-capability-cross-ecosystem.md)。
+
+插件换代必须区分grammar/tree Schema、scanner状态、分析配置和宿主API版本：旧树/查询/任务持有旧代lease，状态不兼容时失效或明确重建；取消、失败及迟到结果不覆盖新snapshot。语言包在线换版、卸载、树状态迁移与原生业务模块重载分别验收，不因ACE有热重载设计就认领全部已完成。部署拓扑不要求完整AJ、所有后端或完整CAP先行完成；所需实际能力由对应Plan绑定。
+
 ## 7. Atom/Batom grammar 产品边界
 
 用户确认以Atom/Batom承载语法配置。两者是同一grammar模型的文本/二进制表示，不是两份独立语义。grammar schema、parser artifact、公共syntax-tree schema、结构query规则和metadata schema分别版本化；Atom Schema描述数据合法性，不会自行产生任意源语言的parser。
@@ -220,6 +272,24 @@ parser 只负责给出模块/声明/导入/属性及可重载边界所需的结�
 算法先进行有界对比探针：确定性LR/有界GLR、PEG等与Auto手写Pratt adapter的适配；评估左递归、歧义、恢复、incremental复用和scanner状态。本文不冻结选型，也不承诺任意语言或线性最坏性能。初期选两种差异明确的语言/profile作验收，再扩面；不承诺兼容tree-sitter grammar.js、查询语法或二进制ABI。
 
 产品需提供独立库API及可批处理CLI。LSP宿主可复用语法诊断、outline、结构高亮/folding、候选symbols；完整definition/rename/type-aware completion依赖语言语义服务或既有官方LSP。
+
+### 7.1 Auto DSL与规范化Grammar双层
+
+底层以静态、可验证、可版本化的Atom Grammar为规范模型；上层采用Auto声明DSL及按需增加的符号语法糖，归一化到同一模型。规范化结果应可检查、可诊断并记录来源；不在本文冻结新语法，也不把Atom Schema本身等同源语言parser generator。
+
+规则模板/组合函数可由Auto生成。需要执行生成代码时，经ACE受检片段与受限CTE产生冻结Grammar，记录实际代码、配置及外部输入依赖；解析阶段消费已生成产物，无需重复运行生成脚本。现有787仍走静态配置读取，不能因本设计声称已具备这条CTE链。
+
+上下文scanner作为显式扩展，其输入、推进、可恢复完整状态及版本进入增量合同。规则、树Schema和query可共同打包但分别版本化；grammar生成成功不代表所有查询有效或某语言语义分析已经具备。是否增加GLR/PEG等算法、怎样迁移现有ordered-choice/Pratt子集，由后续对比探针决定，不预先废弃787。
+
+### 7.2 auto-edit及其他编码工具的消费方式
+
+auto-edit以源码snapshot、编辑delta与位置映射调用syntax服务；高亮、折叠、大纲和结构选择共享当前修订的树与query结果。大文件/后台任务按活动范围、预算和取消策略工作，不要求打开文件即建立全仓AST/语义数据库。结构搜索与Agent代码变换复用节点范围和来源；实际写回需要基于目标snapshot的编辑、冲突检测、预览/撤销及重新解析，不能把读取语法树等同安全重构已交付。
+
+其[现行北极星战略v2](../../../auto-edit/docs/strategy/002-north-star-v2.md)将auto-edit定位为被Agent驱动、可嵌入的轻量文本工作台，保留Tree-sitter高亮/轻量索引方向，排除默认内置重型语言服务。本设计是未来共享底座与替代候选，不修改该仓战略、计划或默认后端；替换必须在该仓另经真实消费者、语言覆盖和性能/兼容验收。后续Auto编写的编码工具可消费同一语言包，而不各自维护grammar、树协议及私有缓存。
+
+语法能力与语义服务分层选择：grammar + queries可提供语法诊断、outline、高亮/folding及候选symbols；准确definition/rename/type-aware completion需语言专用解析、宏/条件配置与类型分析，或按需调用既有官方工具。LSP作为服务协议适配，内部Atom模型不替代其外部传输合同。
+
+Rust语言包与轻量Rust服务作为长期候选：先证明约定语法/查询功能和资源收益；追求rust-analyzer同等功能时，须显式覆盖宏、cfg、crate graph、名字解析、泛型/trait与类型推导等语义及工程集成。“更轻巧/更好”按相同功能覆盖、设备/项目/配置的启动、编辑P95/P99、峰值/稳态内存与准确性测量；减少功能所得数字不能冒称同等能力领先。既有rust-analyzer可作为可选语义后端，不要求先完全复刻才复用语法层。
 
 ## 8. 第三方语言 symbol/signature 的信任分层
 
@@ -233,11 +303,13 @@ parser 只负责给出模块/声明/导入/属性及可重载边界所需的结�
 
 C header/SDK、Rust shim与Auto声明汇入统一接口描述及target语义的具体边界见 [Design41](41-interface-metadata-and-foreign-abi.md)。通用parser负责候选结构/索引，foreign语义frontend和adapter负责预处理、布局/调用与生命周期；Import provider不等于物理ABI。相关元信息/绑定/生成库与Design40共用缓存，不能每次import重复分析完整SDK。
 
-## 9. 后续计划顺序建议（未分配编号）
+## 9. 后续工作包与长期推进路线（未分配新编号）
+
+以下A–H为原架构分解，不能再整体当作尚未开始的任务清单或今日执行顺序。规划前先核现行Spec及归档/活动Plan，复用787等已有交付；长期推进顺序按§9.1，近期ACE实施仍以总路线为准。
 
 | 工作包 | 可独立验收成果 | 前置与时序 |
 |---|---|---|
-| A. 前端与全局cache共享契约及全路径探针 | snapshot/edit/分页CST/AST/位置/恢复/grammar代际、阶段key与依赖、AutoCache集成/跨session共享、模块身份；两语法例+Auto、多项目/超内存工作集与端到端延迟探针 | 建议作为下一项架构准备计划；可先规划，涉及782实现接口待其fresh收口基线；数据库/树分页与语法引擎一起评审 |
+| A. 前端与全局cache共享契约及全路径探针 | snapshot/edit/分页CST/AST/位置/恢复/grammar代际、阶段key与依赖、AutoCache集成/跨session共享、模块身份；两语法例+Auto、多项目/超内存工作集与端到端延迟探针 | 先对照787及现行store/语法Spec确认已交付合同和剩余缺口；数据库/树分页与语法引擎共同评审，不重新执行旧基线任务 |
 | B. enum/is + TokenKind | Auto语言枚举与native分派；语法与语言无关token ID分层，不把通用树kind硬绑Auto enum | 可与A共同规划；无需等待完整parser-generator交付，不向782追加任务 |
 | C. 集合/模块和首个ACC lexer | List<Token>、use、拥有文本适配与真实扫描对拍 | 依赖语言能力；迁移前消费A合同，旧核心按§4.3适配 |
 | D. 通用grammar compiler/runtime MVP | Atom/Batom grammar→parser产物→容错CST/增量edit、结构查询及两个语言profile | 依赖A算法探针；独立产品工作包，不塞进enum计划 |
@@ -247,6 +319,21 @@ C header/SDK、Rust shim与Auto声明汇入统一接口描述及target语义的�
 | H. 全阶段cache与共享会话实现 | 持久artifact/query store、字节预算页cache、跨session协调/single-flight、崩溃/GC恢复与依赖元信息 | 消费A及已有AutoCache；与D/E/F按接口分步接入，非全局常驻AST数据库 |
 
 各包大小/拆分由正式auto-plan:new取材后确定。上述是架构分解，不是已批准的实施计划、预算或时间表。需要新架构合同，但不先重写全部旧编译器，不要求先完成整个通用产品才继续自举。
+
+<a id="language-tool-roadmap"></a>
+
+### 9.1 从已有语法底座到语言工具平台
+
+| 阶段 | 目标成果 | 进入与退出依据 |
+|---|---|---|
+| P1. Auto与真实编辑消费 | 复用787与ACE语法底座，使Auto编译/auto-edit适配消费同一权威规则；验证当前修订的容错树、位置、高亮/outline及活动范围增量 | 先核已有Auto语法支持、编辑snapshot/delta/位置接口与消费者预算；实际接线须单独Plan及所属仓验收，不能认领现已切换 |
+| P2. 通用语言包与算法验证 | 选择一种与Auto结构差异明确的源语言，验证Grammar/Schema/query模型、上下文scanner及增量；对比确定性LR/有界GLR/PEG与现有Pratt/ordered-choice的适用面 | 首批可只选公开支持子集；第二profile不得仅凭interface-mini就认领完整Python/Rust等语言；冻结语料/错误恢复/一致性和资源基线后再扩面 |
+| P3. ACE编译部署与宿主插件 | 依据实际需求分别交付小型原生运行库/绑定、ABC/AV可执行扩展及A2X代码输出，接入auto-edit或另一真实宿主 | 使用实际支持HIR/MIR/ABC/ABI及生命周期API，按具体部署拓扑验兼容、资源、失败/取消和代际；三条交付分别认领，不要求一次全部实现 |
+| P4. 可选语义服务与LSP | 在语法层之上扩展语言专用增量语义、按需外部工具adapter和LSP；选择轻量Rust服务等具体候选 | 逐项冻结功能覆盖、语义/工程配置、准确性及同条件性能基准；不将完整多语言语义或rust-analyzer替代自动列为前期交付 |
+
+阶段按真实依赖选择，允许独立消费层在稳定接口上准备；不要求通用生成器、全部语义或完整ACE先齐备才服务Auto。各阶段持续复用Design40的artifact/query、预算、lease与GC，以及Design43的受检编译执行服务。通用syntax runtime保持可独立部署，不反向依赖Auto语义checker。
+
+当前仅确认长期定位、分层和候选顺序，不分配实现Plan、不调整已有Plan优先级或验收、不更改auto-edit路线。v0.6仍为现有四条主线；ACE主线已约定的语法/增量合同继续执行，完整parser generator、多语言包、插件产品和语义LSP进入[远期候选池](../roadmap-future.md)，不预设v0.7或交付月份。
 
 ## 10. 关键验收反例
 
@@ -262,7 +349,12 @@ C header/SDK、Rust shim与Auto声明汇入统一接口描述及target语义的�
 - 编辑开头使后续绝对offset改变、跨块词法状态/大声明、查询已淘汰节点：验证位置正确和必要块复用，无悬空指针/旧revision授信；handle允许重新取页而非永久pin整棵树。
 - 在blob准备/索引发布/并发读取/GC时杀生产者、移除或破坏缓存块：无半提交成功、读者安全，受控重算且语义/诊断不变；可证明预算内恢复，不全库重建。
 
-## 11. 外部一手参考（2026-10-15 核对）
+- 同一语言包分别采用原生库、ABC/AV或A2X部署：仅在各自公开支持域内对拍树、诊断、scanner恢复与query结果；不能将绑定可调用当作纯目标语言实现，或将某一拓扑通过记为全部通过。
+- DSL/生成helper或受控CTE输入改变：规范化Grammar及其下游精确失效；静态数据grammar不执行任意宿主代码；生成器不随小运行库无条件发行。
+- auto-edit快速连续编辑、取消/关闭文档、插件换代及结构变换预览后源码变化：过期高亮/诊断不发布；旧查询/树持有者释放前不卸载代码；写回冲突可检测，按预算释放资源。
+- 相同Atom节点形状但语言/Schema/语义状态不同：拒绝直接当作Checked HIR或可调用FFI；Rust宏/cfg/trait未知时，语法候选不伪装为精确语义结果。
+
+## 11. 外部一手参考（2026-10-15、2026-10-22核对）
 
 - [Tree-sitter定位](https://tree-sitter.github.io/tree-sitter/)：parser generator + incremental parsing library，输出具体语法树并在语法错误下保持可用结果。
 - [Grammar DSL](https://tree-sitter.github.io/tree-sitter/creating-parsers/2-the-grammar-dsl.html)：terminal、优先级、冲突、字段等是grammar模型内容，不能只提供正则列表。
@@ -270,8 +362,21 @@ C header/SDK、Rust shim与Auto声明汇入统一接口描述及target语义的�
 - [External scanners](https://tree-sitter.github.io/tree-sitter/creating-parsers/4-external-scanners.html)：缩进/heredoc等需自定义扫描；完整scanner状态序列化/恢复是编辑正确性的组成部分。
 - [Queries](https://tree-sitter.github.io/tree-sitter/using-parsers/queries/1-syntax.html)：CST结构匹配提供结构消费接口，不能代替语言语义分析。
 
+- [Tree-sitter Generate](https://tree-sitter.github.io/tree-sitter/cli/generate.html)：生成C解析器，`grammar.json`/`node-types.json`描述规则与节点类型；[Basic Parsing](https://tree-sitter.github.io/tree-sitter/using-parsers/2-basic-parsing.html)提供内存树节点API，不能把这些JSON文件等同运行时CST。
+- [rust-analyzer Architecture](https://rust-analyzer.github.io/book/contributing/architecture.html)：语法树与名字解析、宏展开、类型推导和IDE/LSP层分别承担职责，支持同等功能比较时须覆盖对应语义成本。
+
 这些是设计参考，未在本仓做性能比较、生成器选型或兼容性验收；本稿不搬入第三方产品依赖。
 
 ## 12. 待冻结决定
 
 grammar算法与支持子集、分页CST布局/树复用、位置API与边界整数宽度、grammar/scanner/query版本政策、声明ID匹配、分阶段cache/query schema与AutoCache兼容方式、共享服务/映射模式、可持久语义表示、插件边界、首批语言与外语meta来源、产品名/仓库归属、参考设备/负载与内存字节预算，均由A及对应专项探针产出后评审。亚秒开发周转、全局磁盘cache与有界内存工作集是已确认目标；不能把具体预算未定当作重新回到整库AST常驻的理由。
+
+2026-10-22补充待冻结项：Auto声明DSL语法糖及规范化/CTE边界、各语言树Schema与HIR/Foreign IR映射、语言包内容/宿主API版本、原生库与绑定/ABC/A2X的实际支持域、auto-edit消费适配和替换条件、可选语义服务范围及公平对比基线。长期定位已经明确，具体实现仍在相应Plan中选取；本次不因列出这些事项而启动探针或代码实现。
+
+## 13. 后续消费者：Schema 统一 UI/2D/3D 声明（2026-10-24）
+
+用户确认的目标与分期见 [Design45 §11](45-autographics-wgpu-engine-and-game-prototypes.md#11-目标态schema-统一-ui2d-与-3d-声明语义2026-10-24)，状态/设计与重载见 [Design47 §17](47-autoui-state-design-and-feature-architecture.md#17-schema-统一声明841与ace热重载的衔接2026-10-24)。Schema节点/字段/内容规则及语法映射进入具名领域前端，Core表达式/函数复用语言服务；领域检查/lowering与运行时行为均有独立owner，Schema形状不作为Checked语义凭证。
+
+后继生产模型消费841正式交付端口，841原迁移/启动合同不扩大。2026-10-26排期按[Design45 §12](45-autographics-wgpu-engine-and-game-prototypes.md#autographics-stage-851)：当前独立分支完成851后先总结/优化，再讨论下一轮独立能力；AutoUI融合与ACE适配等ACE开发完成后再讨论，取代此前按局部profile提前接线的安排。长期以Atom＋Schema定义的新版HIR承载普通Auto、AutoUI/图形、AutoShell方言。未来首个正式接入仍验真实局部重算/代码与安装复用、Schema/规则/ABI失效、fresh等价、恢复和有界资源；Stop/Run不推迟增量合同，语法增量、编译增量、保状态HMR分别举证。
+
+本次仅登记消费者与设计边界，未修改本章既有Plan或语法服务支持面；840/845保持原范围，无新Plan/实施、性能或HMR验收发生。

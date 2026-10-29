@@ -1,7 +1,7 @@
 # 第三代互联网战略（AutoGraphics 与产品创造入口）
 
-> **2026-10-16 当前方向**：复用[AutoGraphics/AutoForge 阶段设计](autographics-forge-v06.md)。近期以自有场景/组合语义和底层库原型验证为候选，Godot/Bevy为参考或可选实验后端；不再将 fork Godot/静态缝合性能实测设为所有图形路线的强制前置。下面2026-09-06内容保留为历史论证，性能优劣和库特性未在本轮重新实测。
-> v0.6 候选终点为独立2D/3D及多Surface技术原型，真实AutoUI融合和AutoForge创造demo依各自前置追加；承载游戏先做规则/内容原型。完整引擎/游戏/XR产品化未自动进入本版。验收、失败判据、待决选型和拆分边界统一维护在上述专题，避免两份并行合同。
+> **2026-10-21 当前方向**：首版 AutoGraphics 明确采用 **wgpu**，与 AutoUI/Iced 的 wgpu 路径共享图形基础；在其上建立自有场景/组合及图形、游戏能力。Godot/Bevy 是架构、功能和游戏示例的参照，不再作为首版整体引擎选型候选。技术与示例路线见[AutoGraphics/AutoForge 专题](autographics-forge-v06.md)。
+> 按[月度 v0.6 Roadmap](../../roadmap-v0.6.md)，本版目标包含真实 UI/2D/3D 组合、Forge 雏形与首批代表性游戏示例所需能力；具体样本由 Plan 冻结。自研国风承载游戏、完整引擎/游戏/XR 产品化留在[远期 TODO](../../roadmap-future.md)。下面 2026-09-06 的 Godot 发射/fork/静态缝合与季度排期均为历史论证，不是当前路线前置；旧资产继续保留。
 
 **日期**: 2026-09-06
 **状态**: Draft（骨架，待扩充；原文件名 godot-metaverse-strategy.md，随市场更名而改）

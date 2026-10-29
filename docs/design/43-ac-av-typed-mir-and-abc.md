@@ -2,13 +2,15 @@
 status: accepted-direction
 describes: target-state
 created_at: 2026-10-16
-updated_at: 2026-10-20
+updated_at: 2026-10-28
 implemented_by_plans: []
 ---
 
 > **PLAN-858 口径更新（2026-10-27）**：本文历史 ACE P95<1s 目标在开发初期由用户调整为 P90≤2000ms；原正式样本和正确性、结构、资源约束保持，架构基本成形后以实测另定长期目标。其他 P95 数值作为历史或诊断保留，不再作为 ACE 开发期交付硬门。当前规则见 [TestCase v2 周转口径](../specs/auto-test-case/profile-v2-native.md)。
 
 # Design 43：ACE统一架构、Typed MIR、ABC、CTE与增量发布
+
+> **2026-10-28续接基线**：798/828、817/818和820–827已有有限合同基础；868已归档交付，共享HIR→MIR唯一实现为experimental/auto-mir-lower。870的native data/owned扩面与871五域切换/退役尚待实施；862正在补入口/Unit全链，前端部分通过不等于全链交付。Typed MIR不再整体延期v0.7；A2X仍以结构化HIR为主入口，完整AJ/发布器不塞入本批。 统一进度快照与未完工作见[ACE续接基线](strategy/ace-implementation-handoff.md)，后续按current Spec/Plan及merge收据重核；本注不扩大原Plan验收。
 
 规划导航：[ACE总路线 §0](strategy/auto-native-backend-evolution.md)汇总共同设计、AV能力矩阵、真实程序替换路线及Plan入口，并规定后续规划的现状/依赖核验步骤。继续规划可只指定该总入口；本文负责统一技术合同。
 
@@ -23,6 +25,7 @@ implemented_by_plans: []
 | 名称 | 职责与阶段 | 不等同于 |
 |---|---|---|
 | ACE | Auto Compile & Execution；统一编译与执行架构，包括转译及共同增量/cache/热重载服务 | 三套独立工具的统称、或已全部交付的单一可执行程序 |
+| AACE | Auto语言实现的ACE主体；2026-10-24确认延后至v0.7，在Rust版ACE全示例成熟度门后实施 | v0.6的小子集自举、或仅包装Rust引擎的CLI |
 | AC / `ac` | 编译入口/驱动，负责前端、语义/CTE调度、提前编译及发布；参照实现先用Rust，当前原生后端为Cranelift | 必须随每个应用携带的完整编译器 |
 | AV / `av` | 新架构Auto VM；先用Rust实现ABC解释执行，衔接模块/宿主与执行状态服务 | 旧AVM的改名或旧字节码兼容承诺 |
 | AJ | Auto JIT，按需快速编译与优化编译，复用AC的编译核心和产物服务 | 独立维护另一套语义/优化器，或已发布的`aj`命令 |
@@ -32,7 +35,7 @@ implemented_by_plans: []
 
 AV是长期产品名，不使用navm，也不在Auto迁移后改回avm。AAC/AAV表示实现阶段/主体；产品职责为AC/AV/AJ。正式CLI安装与包名兼容需要实施Plan处理，本文不改现有命令。
 
-先建立基础AC和共享语义合同；在接入真实CTE之前，设计最小Typed MIR与新ABC，实现Rust AV的必要子集；再接语义查询→AV→冻结结果的闭环。AC与AV按依赖并行扩面，达到自举主体所需语言/库/运行时能力后，再实施AAC和AAV。无需等完整插件平台、JIT或所有生态功能完成才允许自举；AAV具体版本承诺另列支持矩阵，不凭名称宣布v0.6全量交付。
+先建立基础AC和共享语义合同、最小Typed MIR/新ABC/Rust AV，再接语义查询→AV→冻结结果，随后按依赖扩语言/FFI与产品消费。**2026-10-24用户明确：v0.6提高Rust版ACE成熟度，以复刻现有AutoVM/A2X全部示例和M1–M4验收为目标；v0.7再实施Auto版AACE（含约定AAC/AAV主体）**。不再以编译器源码的小子集可用作为提前迁移依据；当前保留Auto可消费的公共格式与接口，不启动主体重写。完整优化JIT/OSR等不因兼容目标提高而自动成为自举前置，具体主体/宿主桥/代际范围在v0.7冻结，见[版本合同](../plans/reports/ace-milestones-version-boundary-2026-10-24.md)。
 
 ## 2. 共同管线与各层职责
 
@@ -57,7 +60,7 @@ source/CST/AST → resolve / infer / instantiate ↔ CTE request
 
 MIR是编译器内部合同，但拥有可版本化Schema/缓存表示，不代表向第三方发布永远稳定的公共ABI。它不含CLIF私有对象、宿主指针或ABC物理指令编号。A2X按目标需要复用部分语义lowering，不强迫所有源码转译先失去结构再恢复循环。
 
-已有Checked HIR→Cranelift实验管线按原profile继续工作。未来共享MIR接线应另立迁移Plan，以native/AV对拍验证后逐步替换；设计更新不使既有成果失效，也不把旧直达路径冒称已采用MIR。**2026-10-28 迁移合同已建立**：收敛路径、模块边界、布局/ABI、身份/cache 与逐 profile 切换/退役判据见 [Design49](49-native-single-mir-lowering.md)；实施链为 [868](../plans/868-hir-mir-lowering-shared-crate.md)→[870](../plans/870-ac-mn-record-text-native-expansion.md)→[871](../plans/871-ac-native-switch-and-old-lowering-retirement.md)，在 871 完成前本条“旧直达路径”仍是事实。
+已有Checked HIR→Cranelift实验管线按原profile继续工作。未来共享MIR接线应另立迁移Plan，以native/AV对拍验证后逐步替换；设计更新不使既有成果失效，也不把旧直达路径冒称已采用MIR。**2026-10-28 迁移合同已建立**：收敛路径、模块边界、布局/ABI、身份/cache 与逐 profile 切换/退役判据见 [Design49](49-native-single-mir-lowering.md)；实施链为 [868](../plans/archive/868-hir-mir-lowering-shared-crate.md)→[870](../plans/870-ac-mn-record-text-native-expansion.md)→[871](../plans/871-ac-native-switch-and-old-lowering-retirement.md)，在 871 完成前本条“旧直达路径”仍是事实。
 
 ## 3. 最小MIR：正确性先于优化
 
@@ -143,7 +146,7 @@ CTE与runtime共享AV执行语义，但权限、限额和可用导入不同。�
 
 798当前只实现有限执行/信任合同和函数持久产物复用：前端整模块检查与Atom往返，缺一个单元仍整模块MIR lower/verify/split，命中单元重新decode/verify后组装完整LoadedModule。874.6ms是该流程的本轮warm P95，不是单函数成本；sig 51.1ms是前端错误早退。已读源码及证据见[核查报告](../plans/attachments/798/function-incremental-audit-20261020/report.md)。
 
-最小闭环由[828](../plans/828-av-function-incremental-session.md)完整承接，D798实际交付后实施，不反向阻塞798；798 r6须在coverage/拟Spec准确说明边界。828不得再把任一中间层的增量推给无人负责的后续计划。现有语法787、共享身份796和store783优先复用；当前CheckedModule/LoadedModule的整模块信任边界需要安全的函数单元/上下文凭证，不能改为信任cache或翻unit标记。825/826在828后按原依赖先后交付，按实际基面消费与串行写入，保持已交付的函数复用/安装接口，不形成反向依赖。
+最小闭环由[828](../plans/archive/828-av-function-incremental-session.md)完整承接，D798实际交付后实施，不反向阻塞798；798 r6须在coverage/拟Spec准确说明边界。828不得再把任一中间层的增量推给无人负责的后续计划。现有语法787、共享身份796和store783优先复用；当前CheckedModule/LoadedModule的整模块信任边界需要安全的函数单元/上下文凭证，不能改为信任cache或翻unit标记。825/826在828后按原依赖先后交付，按实际基面消费与串行写入，保持已交付的函数复用/安装接口，不形成反向依赖。
 
 | 结构 | 最小必须交付的行为 |
 |---|---|
@@ -160,7 +163,13 @@ CTE与runtime共享AV执行语义，但权限、限额和可用导入不同。�
 
 ### 6.5 执行优先级与后继增量兼容（2026-10-20用户裁定）
 
-明确顺序为 **798实际完成/合入 → 优先828 → 后继ACE扩展**。817/818的既有合同准备和在途树保留，820–827可提前只读调查；新增共享核心实施/集成在D828后串行进行。D828指独立最终review、冻结门禁、实际合入、Spec/merge收据齐全，不能从在途实现取捷径。原820→821→822→823→824、825→826等前置继续有效；798和828都不反向等待本批后继。该排期取代此前825/826可先于828的候选安排。
+2026-10-26依赖审计细化现有优先级：正式数据集成链为**820→821→822→{823，824}**，824不消费闭包，不再等D823。823/824的T-10可在D821/D828上做私有同源模块；825/826的T-10可基于D798/D828分别做PC表/codec。823/824 T-02仍等D822，826 T-02正式装载/路由/执行仍等D825。817/818/827独立consumer保持并行，功能/源码核心窗口仍优先，优化择机；各Plan原P95/内存/AutoDown/精确增量不变。依据与可编译接缝、写面、适用拒绝责任见[823–826实际审计](../plans/reports/ace-parallel-dependency-audit-2026-10-26.md)。
+
+D828指当前revision独立最终review、冻结门禁、实际合入、Spec/merge收据齐全，T-01或局部review通过不解锁后继。D828前仅只读准备，已有817/818树与818首例提交保留；818在D828后刷新并重验，不再保留是否绕过该门的待裁定选择。798和828都不反向等待后继。该排期细化2026-10-20顺序，取代825/826优先于828或默认优先于820功能线的候选排序。
+
+单写按实际公共source/HIR/语义、MIR/InstructionSpec、ABC/verifier、loader/dispatch/snapshot及测试注册界定，默认共享核心一个窗口；独立consumer不占核心窗。前owner给出冻结/合入提交、版本及消费者兼容结果、限制与释放记录，后owner先核已交付基面/Spec和API并接受交接。无界面隔离证据不并发改公共合同，不持窗等上游，不从WIP抄接口；拆分按实际owner交接而非等待整批。细则与各Plan工作/复审/merge责任见共同合同。
+
+独立源文件closures、dynamic/portable、loaded_program、compact_abc可由各Plan独立harness编译同一生产源；不注册公共枚举/指令/模块，不复制IR/VM或构造私有信任凭证。review/repair期间其他Plan继续T-10，不以冻结代替上游交付。新模块最终仍经原T-02完整首例及正式准入，模块绿不等于整Plan绿；最后集成者负责已交付消费者并集，core/注册接线只在D门和窗口接受后进行。
 
 所有后继须保留§6.4全链路机制，在各自Plan §§5–8配置work-owned AC/V/SD/任务及真实反控；最终review以其完成为前置。共同验收包括D828完整source编辑基线、各自新增能力的两函数局部更新、依赖事实变化的精确失效和强制whole重算/重装载必红。新类型仅有HIR/MIR入口时诚实标其覆盖起点，现有scalar完整链不能退化。函数identity/IR/代码代际和实际生产工作量是结构门，不靠hash相同/cache hit/更快的全模块处理代替。
 
@@ -269,7 +278,7 @@ A2X复用结构化HIR及来源/依赖，可将区域复用结果装配成合法�
 
 用户认可静态数据类型化、动态数据独立Variant、首版不使用NaN-boxing，正式合同见[Design44](44-av-data-layout-place-and-ownership.md)：语义类型/执行布局/存储分层、原位Place、初始化/访问权限、move/borrow/replace/drop、句柄代际、全出口清理及portable冻结。布局是语义事实的下游投影，AV内部表示不等于797 native ABI；安全参考实现可保留enum，不为8B槽提前引入unsafe union。
 
-后续实施草案按依赖串行：[820类型化布局](../plans/820-av-typed-data-layout.md) → [821拥有型Place](../plans/821-av-place-owned-access.md) → [822集合/Variant](../plans/822-av-typed-collections-variants.md) → [823闭包环境](../plans/823-av-owned-closure-captures.md) → [824 Dyn/冻结](../plans/824-av-dynamic-values-freeze.md)。D-798实际交付是依赖实现前门；本轮只写设计与计划，不执行代码；采纳ABC评审后798修订至r3补充正确性验收，817/818的revision和支持面不变。817复合CTE消费、818新数据native lowering、完整数值运算/共享图/async/生产接线仍须单独计划，不能由五份草案冒领实现。
+当前正式集成依赖：[820布局](../plans/archive/820-av-typed-data-layout.md)→[821 owned Place](../plans/archive/821-av-place-owned-access.md)→[822集合/Variant](../plans/archive/822-av-typed-collections-variants.md)，其后[823闭包](../plans/archive/823-av-owned-closure-captures.md)与[824 Dyn/冻结](../plans/archive/824-av-dynamic-values-freeze.md)从D822分别接入。821已交付的静态类型/借用边界不等于运行期旧帧/跨store/generation守卫；823新环境访问、824新typed host各自设计与实证。新私有模块T-10可先并行，但不碰在途822共享核心或复制WIP。复合CTE/native、完整算术/共享图/async/产品接线另按Plan认领，不由本批冒领。
 
 
 ## 12. ABC评审采纳与实施责任
@@ -310,7 +319,7 @@ unit/完整module类别、entry签名、imports闭包和执行资格属于语义
 | A10 指令合同 | 820建表、821–824扩展 | 不要求798先造框架 |
 | A11 公平对标 | 825执行、826体积 | 原编辑P95合同不变 |
 
-功能链仍为D798→820→821→822→823→824，可选优化链D798→825→826。共享核心按单写窗口串行：可先825/826再820，也可在功能计划实际交付后交接；不新增环依赖，不让825提前支持owned。只读准备可并行。
+功能正式集成链为D798/D828→820→821→822→{823，824}，优化正式集成链为D798/D828→825→826。两条链的T-10私有模块开发可重叠，公共核心仍单写；825/826集成按实测择机，不抢功能/源码前门，不新增反向依赖或提前承诺owned优化。详见§6.5两阶段合同。
 
 ### 12.4 WASM/V8比较口径
 
@@ -331,12 +340,12 @@ unit/完整module类别、entry签名、imports闭包和执行资格属于语义
 | 820 | D798及D828排期门 | 类型等价、派生Copy/drop/layout、指令表与纯值Place |
 | 821 | D820 | init/owner/loan合流、全出口清理、借用返回与事务 |
 | 822 | D821 | Index/guard失效、集合/Variant提交与清理 |
-| 823 | D822 | capture prepare/commit、环境状态、间接调用与逃逸 |
-| 824 | D823 | 递归Dyn白名单、owned树恢复及权限 |
-| 825 | D798及D828排期门 | 标量私有执行层、PC索引和安全调用策略、真实分层基准 |
-| 826 | D825 | 新wire、section/版本路由、编码域与准入域边界 |
+| 823 | T-10：D821/D828；T-02：D822/D828 | 同源owned环境先行；真实capture/间接调用集成，824已交付时补Closure拒绝并集 |
+| 824 | T-10：D821/D828；T-02：D822/D828；不等D823 | 递归白名单/树恢复/权限；真实Closure拒绝由最后集成者负责 |
+| 825 | T-10/T-02均D798/D828，实际派发另需核心窗 | 私有PC表先行；真实装载/三入口派发与基准不由表构建代替 |
+| 826 | T-10：D798/D828；T-02：D825/D828 | 独立wire codec先行；正式版本路由/准入/loaded执行仍等D825 |
 
-817/818消费D798的标量语义及D828已交付函数查询/代码会话接缝；它们不是820–826的硬前置。814–816仅就实际迁移的接口/注册owner交接，不新增等待整批结束的门。代码窗口是互斥资源而非反向依赖：先满足硬前置、同步已交付基面，再取得窗口；持有窗口时不能等待另一owner/未合入上游，必须释放并重新排期。可执行拓扑序包含798→828→825→826→820→821→822→823→824，以及798→828→820→825→826→821→822→823→824；798只等待现有依赖，不等待本批任何后继。
+817/818消费D798的标量语义及D828已交付函数查询/代码会话接缝；它们不是820–826或827的硬前置。814–816仅就实际迁移的接口/注册owner交接，不新增等待整批结束的门。代码窗口是互斥资源而非反向依赖：先满足硬前置、同步已交付基面，再取得窗口；持有窗口时不能等待另一owner/未合入上游，必须释放并重新排期。2026-10-21优先推进817/818与827独立消费层，同时向820功能链交接核心窗口；可按证据在D820后插入825→826再继续821，或稍后插入，不强制每批都先做优化。798/828不等待本批任何后继。
 
 兼容基线是启动时已合入的(profile, wire/schema, semantic-version, producer)矩阵，D798旧语义不被放宽；826只按显式版本路由及旧cache策略改变wire支持。后到的820–824保留该矩阵，不再要求把826已批准迁移的字节当原版本读取。仍有已交付消费者需要的旧decoder/路由必须保留或完成最小显式迁移并重放其原支持面，不能以“新格式”删除消费者能力。
 
@@ -350,6 +359,6 @@ unit/完整module类别、entry签名、imports闭包和执行资格属于语义
 
 本设计的执行内核合同继续有效；其交付不等于完整语言支持或产品替换。逐能力/逐层缺口见[AV语言能力矩阵](strategy/av-language-capability-matrix.md)，从真实原始Auto程序到默认迁移/退役的G0–G8、优先级和门槛见[专项路线](strategy/av-source-programs-and-avm-replacement-roadmap.md)，种子程序见[AP目录](../plans/reports/av-source-program-catalog-2026-10-20.md)。
 
-新增[827](../plans/827-av-source-program-baseline.md)仅承接G0证据清单与G1原始scalar源文件闭环，实际构建/执行等D798；不等待820–826全完工，也不反向阻塞798。820–824安全数据链与825/826性能链保持原依赖/验收，后续按程序需求补源码/标准库/consumer计划，不把新增全语言范围塞入当前Plan。817/818仍限其已批准scalar面。
+新增[827](../plans/archive/827-av-source-program-baseline.md)仅承接G0证据清单与G1原始scalar源文件闭环，实际构建/执行等D798；不等待820–826全完工，也不反向阻塞798。820–824安全数据链与825/826性能链保持原依赖/验收，后续按程序需求补源码/标准库/consumer计划，不把新增全语言范围塞入当前Plan。817/818仍限其已批准scalar面。
 
 wrapping/trap、负索引、str字段、捕获/alias、Unit入口与错误通道的迁移差异列为SEM-01..08，由源码/语言owner给具体材料与profile决定；本次不批准语义改变。G7只表示特定SKU默认AV，G8才表示所有决定保留的入口不再需要旧AVM；旧ABC兼容、公开API和fallback须有明确策略。完整退役/AAC自举没有由此自动变成v0.6硬门或固定日期承诺。本轮仅文档，未执行程序或改变默认。

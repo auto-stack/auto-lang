@@ -7,6 +7,13 @@
 | 文档 | 原号 | 主题 | 关联计划 |
 |---|---|---|---|
 | [app-presentation-host](app-presentation-host.md) | — | App 声明 Region/Section/Scene，Feature 多出口按目标装配；灵活布局、面板/整页栏目、overlay/通知、状态恢复与双端合同 | 设计草案（2026-10-14；Design 38 前置，未实施） |
+| [editing-feature-syntax](editing-feature-syntax.md) | — | auto-edit 嵌入语法草案：open/bind/split 常见组合简写、bound surfaces/actions、双实例隔离、文档/视图共享、菜单与快捷键路由；保留显式层 | Draft v0.2（2026-10-28；Design 47 细化，仅设计） |
+| [design-system-abstractions](../../../../auto-ui/docs/design/autoui/design-system-abstractions.md) | — | 样式高阶抽象：typed 值/组合、组件设计合同与多部件 recipe、Theme/DesignContext/Design Pack、Figma token 与组件映射双链；含官方机制比较 | 专题讨论稿 v0.1（2026-10-29；Design 47 §7 深化，未实施） |
+| [button-design-syntax](../../../../auto-ui/docs/design/autoui/button-design-syntax.md) | — | Button 端到端语法：视觉接口、typed recipe、Theme/schema、Design Pack；简洁默认、运行期切包、局部角色/配方覆盖、多状态组合与旧 profile 边界 | Draft v0.1（2026-10-29；仅设计，未实施） |
+| [design-data-model](../../../../auto-ui/docs/design/autoui/design-data-model.md) | — | 树状主题/语义样式/组件配置；数据优先、组件 Schema 校验、标准状态规则、普通 Auto 模块与引用；比较并收敛公开样式语言的复杂度 | 讨论稿 v0.3（2026-10-29；方向已确认，具体协议未冻结/实施） |
+| [button-theme-atom](../../../../auto-ui/docs/design/autoui/button-theme-atom.md) | — | Button 的 Auto 树状主题：use 导入、token 点引用、主题族/模式、widget 局部 .Design 事件、父子继承与切换事务 | 设计草案 v0.2（2026-10-29；仅设计，未实施） |
+| [theme-conventions-and-pilot](../../../../auto-ui/docs/design/autoui/theme-conventions-and-pilot.md) | — | 公共/Feature/app token、extend、模式差异；官方主题系列、首批真实 demo 与 examples 全量逐项迁移、AutoOS 承接 | 迁移路线 v0.2；auto-ui/PLAN-007 r3 drafting（2026-10-29；未实施） |
+| [theme-migration-inventory](../../../../auto-ui/docs/design/autoui/theme-migration-inventory.md) | — | examples/ui 37目录的旧语义/固定色候选初步盘点与逐项状态；AutoOS 独立来源边界 | 只读快照（2026-10-29；不等于运行验收） |
 | [shared-store](shared-store.md) | 18 | Rung 4 跨 widget/跨路由共享状态 | 351/370 |
 | [theming-and-dark-mode](theming-and-dark-mode.md) | 19 | 深浅色模式与主题色配置——**值层已被 [Design 29](../29-autoui-style-theme-system.md) 取代**（词汇表/正交维度仍有效，头部有取代注记） | 458 |
 | [examples-app-track](examples-app-track.md) | 21 | examples/ui 应用轨道与 AutoOS 默认应用矩阵 | 401–441 |

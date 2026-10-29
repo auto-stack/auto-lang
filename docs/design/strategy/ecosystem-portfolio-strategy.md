@@ -1,5 +1,7 @@
 # 生态版图总战略（Ecosystem Portfolio Strategy）
 
+> 2026-10-21 版本范围更新：按[月度滚动规划](../../roadmap.md)，v0.6 仅保留工程重构、ACE、AutoGraphics/Forge 雏形与 Linux 四条主线。本文下方旧 v0.6/v0.7 版次和日历按历史排期读取；其余目标进入[远期 TODO](../../roadmap-future.md)，不自动承诺 v0.7 全部交付。技术合同与已批准在途 Plan 的范围/验收保持，四线所需局部能力随所属主线验收。
+
 ## v0.6 当前路线入口（2026-10-16）
 
 本文件保留2026-09-06市场论证与历史优先级；当前阶段目标、约束和未决范围以[roadmap §7 总体矩阵](../../roadmap-v0.6.md#7-v06路线阶段与拆分边界矩阵2026-10-16)及其专项文档为准，下面旧“近期动作”不能直接当作今日调度。
@@ -9,6 +11,14 @@
 - 第三代互联网的近期图形候选转为AutoGraphics语义/组合与底层库探针，AutoForge保留新的产品创造定位，不等同旧Forge Agent或立即重写Godot。
 - 知识/论文/学习、Typst排版和输入法的有限原型已各有阶段设计；Linux/鸿蒙、Python、安装与应用既有版本目标保留，不能因原型矩阵降低。
 - 本轮只做文档归并，不新增全部候选为发布门禁，不决定下一条独立路线，不重排既有批准Plan或触发历史“不做/重启”项目。
+
+## 跨生态编程方向补充（2026-10-22）
+
+Auto 的生态定位扩展为 CPU、MCU、GPU shader/compute 及未来 accelerator 共用语言与场景能力约束，覆盖 system、desktop、realtime、deterministic 等要求。对外理念推荐“面向场景编程（Context-Aware Programming）”，对内机制采用“Context-Aware Programming System（CAP System）”；异构编程描述多设备架构成果。详见[跨生态战略](cross-ecosystem-programming-strategy.md)与[Design46](../46-context-profile-capability-cross-ecosystem.md)。
+
+动静结合继续作为设计优势；开发工具可热重载/交互，不代表 MCU、system 或 GPU 程序必须采用动态类型/GC，也不要求设备原生运行完整VM。各域的开发验证、部署与数值/资源证据分别冻结。能力推导和弹性标准库/包系统组织多生态复用，禁止通过静默删代码掩盖场景冲突。
+
+**新版ACE架构完成、基础AutoGraphics建立之后启动完整CAP实现**；图形独立研究可先行，AutoShader/可组合Shader Components为后续纵向作品候选。MCU/a2c及AI/accelerator扩面仍按实际前置和既有重启条件，不自动改写旧项目状态或v0.6四条主线。
 
 **日期**: 2026-09-06
 **状态**: Draft（伞形纲领；各分战略为骨架，"待扩充"节为后续填充区）

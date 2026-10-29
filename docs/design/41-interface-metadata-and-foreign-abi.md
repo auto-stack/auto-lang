@@ -2,11 +2,13 @@
 status: proposed
 describes: target-state
 created_at: 2026-10-15
-updated_at: 2026-10-16
+updated_at: 2026-10-28
 implemented_by_plans: []
 ---
 
 # Design 41：统一接口元数据、Foreign Interface IR 与跨 ABI 架构
+
+> **2026-10-28续接基线**：797已交付Windows x64的autoabi.win-x64.v0.1-candidate及Auto/C有限双向互调，现状见[auto-abi](../specs/auto-abi/project.md)。这不是全类型/跨平台ABI定稿，也不含完整C importer、Rust shim/Python生态、动态loader和回调热卸载；必要FFI可与语言扩面交叉推进。 统一进度快照与未完工作见[ACE续接基线](strategy/ace-implementation-handoff.md)，后续按current Spec/Plan及merge收据重核；本注不扩大原Plan验收。
 
 > 需求：AC/ACC 的编译/ABI架构须包含C生态，并为未来经FFI+ABI消费Rust生态预留通用接口；与增量、插件、热重载及全局cache一体设计。
 > 本稿整合2026-10-15用户提供的 [A2C讨论](https://chatgpt.com/share/6ad0577b-5c00-83ea-9684-e64956b98cb1)。来源核对/采纳与修正见 [审计记录](../reports/20261015-c-foreign-abi-discussion-audit.md)。技术建议仍为draft；不声明新语法/布局/loader已实现，不分配Plan，不扩大782或旧后端验收。
