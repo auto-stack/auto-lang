@@ -75,6 +75,14 @@ fn av_closures_865_runs_zero_multi_and_direct_lambda_calls() {
 }
 
 #[test]
+fn av_closures_865_passes_closure_to_function_typed_parameter() {
+    run_source(
+        "fn apply(f fn(int) -> int, value int) int { return f(value) } fn make(move s Str) fn(int) -> int { return move (n int) => { return s.len() + n } } fn main() int { let s Str = \"hello\"; let f = make(s.move); return apply(f, 37) }",
+        42,
+    );
+}
+
+#[test]
 fn av_closures_865_k02_k05_run_owned_return_and_clone_source() {
     run_source(
         "fn make(move s Str) fn(int) int { return move (n int) => { return s.len() + n } } fn main() int { let s Str = \"hello\"; let f = make(s.move); return f(37) }",
