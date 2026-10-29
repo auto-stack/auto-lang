@@ -7,7 +7,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "test-governance"))
 from module_catalog import SCHEMA, discover, select, source_identity, validate, verify_selection
 from build_modules import make_catalog, navigation
-from run_selected import exact_filter
+from run_selected import exact_filter, validate_python_result
 
 
 def catalog():
@@ -24,6 +24,47 @@ def catalog():
 
 
 class ModuleSelection(unittest.TestCase):
+    def test_python_exit_zero_cannot_hide_lost_or_skipped_case(self):
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/"run.log"
+            good = {"schema":"python-unittest-result/1","selected":["one","two"],
+                    "executed":2,"skipped":[],"errors":[],"failures":[]}
+            path.write_text(json.dumps(good)+"\n")
+            validate_python_result(path,["one","two"])
+            for field,value in [("selected",["one"]),("executed",1),("skipped",[["two","condition"]])]:
+                bad = {**good,field:value}
+                path.write_text(json.dumps(bad)+"\n")
+                with self.assertRaises(ValueError):
+                    validate_python_result(path,["one","two"])
+
+    def test_cargo_runtime_edges_and_module_edges_form_one_checked_closure(self):
+        c = catalog()
+        for m in c["modules"]:
+            m["owner_package"] = m["id"]
+        c["impact_graph"] = {"schema":"test-impact-graph/1", "nodes":{
+            n:{"source_paths":["pkg/"+n]} for n in ("lexer","parser","integration")},
+            "edges":[["parser","integration"]]}
+        r = select(c, changes=["pkg/parser/source.rs"])
+        self.assertEqual(r["modules"], ["integration", "parser"])
+        verify_selection(c,r,{"code":"source"})
+        r["modules"].remove("integration")
+        r["obligations"] = [c["modules"][1]["obligations"][0]]
+        with self.assertRaises(ValueError):
+            verify_selection(c,r,{"code":"source"})
+
+    def test_python_enumeration_remains_distinct_and_rejects_zero_or_duplicates(self):
+        doc = {"schema":"python-unittest-discovery/1", "tests":[{"id":"module.Case.test_a","ignored":False}]}
+        rows = discover(doc,"python")
+        self.assertEqual(rows[0]["id"],"python|unittest|module.Case.test_a")
+        doc["tests"].append(doc["tests"][0])
+        with self.assertRaises(ValueError):
+            discover(doc,"python")
+        doc["tests"] = []
+        with self.assertRaises(ValueError):
+            discover(doc,"python")
+
     def test_reference_document_is_input_but_plan_receipt_is_bookkeeping(self):
         import tempfile
         from unittest.mock import patch
