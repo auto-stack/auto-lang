@@ -58,6 +58,14 @@ repo_args() { # 各仓 check 入口（与 T-02 L1 入口一致）
   esac
 }
 
+repo_test_args() { # 各仓测试二进制入口（与 T-02 L3 no-run 入口一致）
+  case "$1" in
+    LANG) echo "test -p auto-lang --no-run" ;;
+    UI)   echo "test -p auto-ui-runtime --no-run" ;;
+    MAN)  echo "test -p auto --no-run" ;;
+  esac
+}
+
 die() { echo "FATAL: $*" >&2; exit 1; }
 
 foreign_rustc() { # 输出当前 rustc.exe 进程列表（无则空）
@@ -189,10 +197,49 @@ cmd_site() {
   echo "== site $sid done, tree clean @${pin_head:0:9} =="
 }
 
+# L2e: 编辑→测试二进制重链（THR-D1 后半句实测；与 T-02 L3 冷 no-run 互补，同为协议 L3 入口）
+# 用法: sitebuild <site-id> [N] —— 每样本 = 探针编辑 → cargo test --no-run（计时）→ 复位+核hash → restore no-run（记录）
+cmd_sitebuild() {
+  local sid="$1" n="${2:-3}"
+  local row; row="$(site_table | grep -m1 "^$sid|")" || die "unknown site $sid"
+  local repo_key filerel anchor
+  repo_key="$(echo "$row" | cut -d'|' -f2)"
+  filerel="$(echo "$row" | cut -d'|' -f4)"
+  anchor="$(echo "$row" | cut -d'|' -f5-)"
+  local rv; rv="$(resolve_repo "$repo_key")"; local repo="${rv%%|*}" target="${rv#*|}"
+  local tcase; tcase=$(repo_test_args "$repo_key")
+  local pin_head; pin_head=$(git -C "$repo" rev-parse HEAD)
+  assert_clean_tree "$repo" "$pin_head"
+  local pin_sha; pin_sha="$(sha_of "$repo/$filerel")"
+  echo "== sitebuild $sid: $tcase pin_sha=${pin_sha:0:12} =="
+  local k
+  for k in $(seq 1 "$n"); do
+    awk -v anchor="$anchor" -v probe="$PROBE" '
+      !ins && index($0, anchor) {
+        print
+        ind = $0; sub(/[^ ].*/, "", ind)
+        print ind "    " probe
+        ins = 1; next
+      } { print }' "$repo/$filerel" > "$repo/$filerel.m873tmp"
+    mv "$repo/$filerel.m873tmp" "$repo/$filerel"
+    local diffstat; diffstat=$(git -C "$repo" diff --numstat)
+    [ "$diffstat" = "1	0	$filerel" ] || { git -C "$repo" checkout -- "$filerel"; die "probe diff unexpected: $diffstat"; }
+    run_check "L2e-$sid-norun-S$k" "$repo" "$target" "body-norun" "$filerel" $tcase || { git -C "$repo" checkout -- "$filerel"; die "norun sample failed"; }
+    git -C "$repo" checkout -- "$filerel"
+    local s_reset; s_reset="$(sha_of "$repo/$filerel")"
+    [ "$s_reset" = "$pin_sha" ] || die "reset sha mismatch"
+    assert_clean_tree "$repo" "$pin_head"
+    run_check "L2e-$sid-norun-restore-S$k" "$repo" "$target" "restore-norun" "$filerel" $tcase || die "restore norun failed"
+  done
+  assert_clean_tree "$repo" "$pin_head"
+  echo "== sitebuild $sid done, tree clean @${pin_head:0:9} =="
+}
+
 case "${1:-}" in
   transition) shift; cmd_transition "$@" ;;
   baseline)   shift; cmd_baseline "$@" ;;
   site)       shift; cmd_site "$@" ;;
+  sitebuild)  shift; cmd_sitebuild "$@" ;;
   list)       site_table ;;
   *) sed -n '2,14p' "$0"; exit 64 ;;
 esac
