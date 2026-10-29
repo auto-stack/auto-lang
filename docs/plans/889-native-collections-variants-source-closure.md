@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-mir, auto-av, auto-test-case]
 depends_on: [PLAN-864, PLAN-871, PLAN-881, PLAN-822, PLAN-828]
-current_step: 1
+current_step: 2
 total_steps: 10
 ---
 
@@ -189,7 +189,7 @@ T-02/S只重放受影响新定向测试、原864相邻具名用例及必要check
 | ID | owner_stage | 前置/窗口 | 位置、操作、关闭证据 | AC | 状态 |
 |---|---|---|---|---|---|
 | T-01 | work | 后续明确执行授权；只读准备可提前 | 核D864/D871/D881与现行S/N/H owner、源码/MIR指令/类型/模式闭包、native缺口及资源runtime；逐14原源/补例/oracle/父侧入口映射，记录标量MN会话与集合whole-recompile差额 | AC-01/02/03/06 | [x] |
-| T-02 | work | T-01；先接受已释放S最小子集并提交，再N；H不写 | 按§6执行入口先修命名enum规范支持域误拒及兄弟上下文/无环/拒绝控制，保源码容器clone拒绝；再冻结类型表示/内部ABI/runtime/context清理、预算/样本、typed排除和trap观测，跑最小source→唯一shared lower→真实PE全链资源probe及失败反控。S子门通过不能单独勾本步；固定codegen/cache/runtime升版与891交接边界，失败回本步不缩合法域 | AC-01/02/04/06 | [ ] |
+| T-02 | work | T-01；先接受已释放S最小子集并提交，再N；H不写 | 按§6执行入口先修命名enum规范支持域误拒及兄弟上下文/无环/拒绝控制，保源码容器clone拒绝；再冻结类型表示/内部ABI/runtime/context清理、预算/样本、typed排除和trap观测，跑最小source→唯一shared lower→真实PE全链资源probe及失败反控。S子门通过不能单独勾本步；固定codegen/cache/runtime升版与891交接边界，失败回本步不缩合法域 | AC-01/02/04/06 | [x] |
 | T-03 | work | T-02资源全链probe通过；N/必要S窗 | 实现N内容器/变体runtime与clone/drop/故障/预算/跨帧清理helper，文本复用及总账；V-03..05；新runtime位置/导出/库合同实测 | AC-02/04/06 | [ ] |
 | T-04 | work | T-03；N | emit/lower/layout/driver/CLI/worker typed准入、Variant调用返回、CLIF/COFF与runtime依赖；新profile选择/缓存/恢复/原子发布；原L/V与List<Variant>、V-01/02/07..09定向 | AC-01/02/04/06 | [ ] |
 | T-05 | work | T-04；S及必要N同时释放接受，默认865后 | 补集合单体前端/环境/候选/坐标与native增量消费者，扩现有828路径；先一次真单体probe再扩V-06/07；不以CollectionSourceSession下层carry代前端0工作 | AC-03/04/06 | [ ] |
@@ -297,6 +297,20 @@ stage: goal | plan_id: PLAN-889 | plan_revision: r2 | round: 5 | from: work | to
 stage: work | plan_id: PLAN-889 | plan_revision: r2 | outcome: progress（布局/观测通过，完整负载揭示cold frontend128MiB红，下一动作已由证据改变） | worktree_path: D:/autostack/.wt/lang-889/auto-lang | branch: plan-889-dev | base_commit: e0b29ff7a | code_commit: 5ec76de04 | dependency_revisions: auto-down=c3464d0a | task_ids: T-02 | evidence: baseline/t02-final-targeted.log; baseline/workload-release-memory-stages.log; runtime/collections/CONTRACT.md | blockers: none requiring user decision | next_responsible_role: work（重核S窗，保留环境/单体冷生产峰值反例修复）
 
 stage: goal | plan_id: PLAN-889 | plan_revision: r2 | round: 6 | from: work | to: work | status: executing | outcome: pass（新实现/反控与冷峰归因有进展，T-02资源门未过） | worktree: D:/autostack/.wt/lang-889/auto-lang | commit: 5ec76de04 | next: work
+
+2026-10-30 T-02/S有界前端接受：前轮冷态frontend实际峰214061056B反例后，重核888最新26b05c7ed的提交diff，source/resolve.rs、source/adapter.rs、verify.rs、auto-mir-lower/src/hir_adapter.rs无其修改（仅lower crate Cargo.lock别项），865/863已交付、main代码零WIP。接受S最小子集：CheckedEnv新增调用同一typecheck_with的冷typecheck入口；verify_function扩Collections且复用同一collections规则的指定body检查、完整名义声明context身份（旧core/scalar指纹不改）；必要既有emit_function_body/recheck_swap的Collections缺口与其定向测试。N新冷producer只复用parse_program_with→resolve_env→同一typecheck→emit_function_body→共享verify_function→既有lower_function_collections_unit→verify_mir，逐体释放Atom/bundle，不创建第二前端/lowerer，不伪造whole credential；scaffold仍body-less、不能获whole-module credential。提交后记录精确释放；H仍未取窗。功能/资源合同不变，完整345483B/116函数负载与128MiB门不缩。
+
+### 2026-10-30 work 第7轮检查点A：T-02完整首例/资源机制通过
+
+- 继续`/auto-plan:work`，上轮为progress，权威树入树5ec76de04、clean；main代码零WIP；888更新至26b05c7ed，所需S源码无其提交改动，本轮S接受记录见前条。无agent/其他聊天通信。S提交`b5302262e`、N提交`30a77778c`后树clean，T-02勾选，2/10；本轮继续T-03，不表示work阶段或交付完成。
+- S：CheckedEnv.typecheck_all调用同一typecheck，不再先做整模块Atom；verify_function增加Collections，选定body仍跑同一结构/类型/控制流/collections view规则，scaffold不获whole credential。新context coll1按完整名义类型/字段/臂/引用图与声明绑定，不递归、不按深度截断；旧core/scalar指纹原样。原合法单体body与whole语义相等、只plan/bind一体；view-escape、坏引用、未读record字段/variant臂接口变化、关闭/错误源码反控4/4。先前不够精准的“删len”变异只触发eval-position，改成真实ListGet→clone→len后精确view-escape，未通过放宽oracle掩盖。
+- S共享lower：新递归源证明per-function Collections自调用曾把u32::MAX dummy当导入索引而panic，保红日志；改为真实self import。只收集目标body实际callee，未用接口不进入unit，改变未引用函数签名后main的实际COFF逐字相同。AV新前置7/7含真实递归/clone/View单位链接执行42，旧scalar828函数合同4/4；MIR/AV opcode/wire无新语义，旧有效单元仍合法，新单元只省去无关imports并修原拒/崩溃路径。S当前子集提交后释放，后续T-05修改按符号再核窗，不占整个S。
+- N冷态producer复用parse_program_with→resolve_env→typecheck_all→既有emit_function_body→同一verify_function→lower_function_collections_unit→verify_mir/admit。一次仅一真实body的Atom/bundle/credential，保留env及MIR单位；不复制前端/lower，不把scaffold伪装whole CheckedModule。超过原4MiB input cap在任何body work前拒绝。bounded路径逐原17源（含L06精确trap21）、List<Variant>/嵌套/Option补源与跨帧资源trap、Str调用返回、RecordView调用、非首递归实际PE全部符合独立oracle；不是formal SDK/recipe已接入。
+- 冷峰反例关闭：未缩`collections_workload`345483B/116函数/hash/独立1786。release全新测试进程exact首例，真实source→116 COFF→PE1786与资源父侧校验，private baseline1372160B、peak36524032B、delta35151872B，tree37277696B、ticks174/child32，≤128MiB。2017ms仅一可行性样本，不能宣称P90通过；T-06各30正式样本与512真churn、完整计时/失败计量保持。旧整模块frontend峰214061056B保留为反控，T-04必须选bounded路径，不允许silent fallback。
+- 执行32MiB交集补齐：真实arena commit页+注册Frame头/stack Cell存储共用生产上限，heap-cell帧分配前保留32B头，失败退还；summary新增registered_bytes/managed_commit_peak。真实PE反控requested bytes仍容纳但32MiB页+80B帧将超限，拒于commit前；32MiB-4096页+80B成功、peak33550416B且返回余额0；还覆盖失败Nth/空帧。代码spill/原生栈slack/PE映像归单独OS process128MiB观测，容器元数据/descriptor words/文本ledger/clone work均在实际arena页内。编译侧16/24/8MiB正式分区ledger与driver/发布数据由T-04/06验，当前OS峰绿不冒充各分区证明。
+- 定向affected命令`cargo test --locked --manifest-path experimental/ac-mir-native/Cargo.toml --test collections_resources_tier --test collections_source_tier --test collections_typed_tier --test collections_frontend_tier --test collections_observation_tier -- --test-threads=1` exit0，12/7/3/3/1（6.01/8.12/0.67/23.50/0.50s）；随后新增调用/自调用/未用签名/input cap控制按具名重放。source core旧864正3/负13、新S4+前置8全过；AV7与scalar828合同4全过。fmt/diff-check通过，无新增N warning（旧shell_lo/hi已知）；未跑根t/tv/tf/docs_gen，未写H/canonical/ledger或关闭M1 gap。
+- 冻结合同=`runtime/collections/CONTRACT.md`：Cell16/Frame32/Node144（Win64 reprC）、runtime/call ABI2、layout/codegen/profile/recipe身份、descriptor/kind/成员校验、帧链清理与状态码、各预算分区/首例反控、样本窗口及891后继交接条件。T-02最小source+typed+runtime三起点全链可行且失败反控通过，T-03继续完整clone/set/switch/drop/故障覆盖；T-04正式cache/SDK/CLI/worker、T-05真实body编辑/候选/坐标、T-06正式资源/时延/父suite与复审/merge门均未完成。
+- 本地证据根仍`D:/autostack/.wt/lang-889/auto-lang/docs/plans/attachments/889/baseline/`：bounded-cold-release-current.log SHA256 `3163cbeb9fba22aff3c178943a544d3d65dae508f0e6e463296eb20b164b0650`；t02-bounded-affected.log `78f6def7381e77b12b3feb29b4be7ada35b7c473a2195eb86b85bcf5415316b2`；bounded-source-compat.log `407ad8580bcadb13cb66fa09f27be474709a055be2044e3ea278090a04615b83`；collection-unit-final-compat.log `0142efe391e9c91109a4dca83dff5ffd75dbed8c543c8ffa3eb0cb400cd31a1b`；bounded-scalar-function-compat.log `1d0e5fd1376b4bafccdf2a9bb89fa0c857677c2ded2adeba9f4e3598e1834e39`；bounded-unused-signature-control.log `84622eb3eb8531814dd7c786a4a7d75ea917f8a90799629e3e3e4f621926563e`。raw不入库，code checkpoints b5302262e/30a77778c；dependency auto-down=c3464d0a，next owner work/T-03。
 
 ## 10. 待澄清事项
 
