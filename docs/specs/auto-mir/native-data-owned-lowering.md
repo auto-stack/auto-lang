@@ -81,3 +81,13 @@ closures/dynamic 族指令沿既有具名拒绝（2026-10-28 用户裁定：迁�
 mut 回写三路 + StrCmp/码点机器面 + 拒面/静态反控）；
 `crates/auto-lang/test/cases/ace-m1/ace-m1-tr-native.suite.ad`（31 检查 +
 负 oracle）。
+
+## 方法消费适配（PLAN-881）
+
+- 方法经共享 lowering 进入 mn 链（escalating frontend → lower → verify →
+  split → CLIF/COFF → PE），mn 无 Method 感知；R08=42/Token=57/P-02=75/
+  P-05=135 原生实测，产物按内容指纹共存（编辑往返 42→43→42）。
+- 必要适配：layout 的 `path_offset`/`path_ty`/`record_layout` 接受
+  **RecordView 基座**（view receiver 的字段路径；布局等于底层 record）。
+- 非方法 gap（文本 view eq/ne 的 gap:upstream-s-eq 等）独立保留，owner
+  不变；不冒领 D871 的全局覆盖。

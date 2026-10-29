@@ -117,3 +117,12 @@ L06 保持 trap 行（`av.trap.list-index`，SEM-02 冻结；legacy 差异为 pr
   拒绝=typecheck+`mn.unsupported.adapter`（管线边界由 mn.* 码命名）；
   诊断行**具体码**由 mn 内 crate 差分层对同栈断言（强 oracle）。
 - V-06 反控：期望变异必红（T01 38→39 负 oracle 测试）。
+
+## 方法行关闭（PLAN-881）
+
+- R08 ac/av 列翻 ok:P881（method-881 suite + t-r-native 值行：mn+av worker
+  真进程 = 42）；R07 顺带关闭（av.data/1 mut 写回 ABI，42 实测；legacy diff
+  与 a2r 列不动）。
+- 新 method-881 suite（9 值行×mn+av 双腿：42/0/57/75/135/42/52/84/42 +
+  4 诊断行）挂自身 suite 文件（852 base 冻结不扩）；V-08 反控：M03 oracle
+  75→76 变异必红且仅红 m03。分母/a2r 轴不改。

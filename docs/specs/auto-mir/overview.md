@@ -20,3 +20,8 @@ PLAN-868 起 HIR→Typed MIR lowering 的唯一实现出库为共享 crate
 `experimental/auto-mir-lower`（自 av-probe 字节级纯搬移，probe/mn/cte 三消费者共用，
 MIR 合同语义不变）；边界、依赖方向红线与 `MIR_LOWERING_VERSION` 版本身份见
 [hir-lowering-boundary](hir-lowering-boundary.md)。
+
+PLAN-881 增加 [record/text-record 方法共享 lowering](record-method-lowering.md)：
+static/view 方法降为普通 MIR 函数（owner 基 `m.<Owner>.<name>` 单元身份），
+av.data/1 增按值 mut-record 写回 ABI（`t_MutRet`），copyable `.mut` 为 Copy
+表示；`MIR_LOWERING_VERSION` 升 "2"（三消费者镜像同步）。

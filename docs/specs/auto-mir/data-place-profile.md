@@ -37,3 +37,14 @@ V-01/02/04/11；core MIR/verifier 测试与 semantics 族（13/13）。
   entry（沿既有约束）。
 - mn 单元身份/cache：A09' 键轴不变；fp 渲染对 record 以名义身份
   （owner|name:字段形状）入指纹（PLAN-870 修复了旧判别式标签碰撞）。
+
+## 方法与 mut 写回（PLAN-881）
+
+- `DefKind::Method`（static/view）经共享 lowering 降为普通 MIR 函数
+  （`m.<Owner>.<name>` 单元身份）；未调用方法不再拒整模块。细节合同见
+  [record-method-lowering](record-method-lowering.md)。
+- **mut-record 写回 ABI（新增）**：mut record 参数包装结果为
+  `t_MutRet_<fn>`（f0=源结果，wb*=终值），借用临时与写回均为 Copy（纯值
+  语义；排他为源级 verify.mut-conflict）。此前 av.data/1 拒 BorrowMut 的
+  面由本 ABI 取代（820 冻结面扩容，R07=42 实测关闭）。其余排除（collections
+  mut 实例方法等）保留。

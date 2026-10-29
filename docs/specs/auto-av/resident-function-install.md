@@ -186,3 +186,19 @@ r9 口径：10 样本至少 9 次 ≤2000ms，全部正确性门必过）为常�
 - 828 增量接口（warmup/restore/persist/edit）带显式 wire 策略：`warmup_with_codec`/`restore_with_codec`/`warmup_persisted_with_codec`；默认 legacy 行为逐字节不变。
 - compact 行落 codec 维度命名空间：同策略温重启 `restore_units_admitted`=全量，跨代冷回退确定性 miss。
 - 未改函数零生产工作/对象/代际恒等在 compact wire 下保持（V-12 四子例实测：builds=1/reuses=2、六阶段计数全零、签名变更精确失效、强制整备无法冒领 reuse）。
+
+## 方法单体前端与会话（PLAN-881）
+
+- 方法为 data/owned 会话一级单元公民：outline 方法条目 + 类型壳/方法轴分离
+  （方法体编辑不触发整 type）；owner 基单元键 `m.<Rec>.<name>` 贯穿
+  居民集/依赖事实/签名事实/计数；bind 计量按 owner 限定键确定性重映射。
+- 方法 body 编辑走真单体前端：等长遮罩文档解析保绝对字节坐标（编辑点后
+  声明按 delta 平移；owner 类型壳字段真实保留），recheck 按保留条目
+  receiver/owner 取 `{Owner}::{name}` sigs 键，候选事务原子发布；owned 会话
+  decl_facts 不再因方法关闭快道，identity/body_fp/def_ids/模式事实纳入
+  `Method`。
+- body-less 方法 scaffold：schema method 声明 body 可选（binder sentinel；
+  整模块 verify 仍要求实体）——828 D-01 约定扩展至方法。Static 方法 AST
+  span 自 `static` 关键字起（遮罩不悬空）。
+- 方法快照寿命=pin 语义（旧 snapshot Arc 仍执行旧码）；866 在线机制不退化
+  （14/14）；不冒领复合方法在线 HMR（866 域）。

@@ -44,8 +44,11 @@ PLAN-868 冻结的 HIR→Typed MIR lowering 模块边界：唯一实现位置、
 
 ## 版本身份（MIR_LOWERING_VERSION 与 mir-lowering 轴）
 
-- `auto_mir_lower::MIR_LOWERING_VERSION`（初值 `"1"`）= lowering **契约**版本：仅当
+- `auto_mir_lower::MIR_LOWERING_VERSION` = lowering **契约**版本：仅当
   lowering 语义变化（映射规则/准入域/错误分类）时升版；纯重构与消费侧搬移不升。
+  当前 `"2"`（PLAN-881：record/text-record 方法准入扩面 + av.data/1 按值
+  mut-record 写回 ABI + copyable `.mut` Copy 表示；三消费者镜像同步为 "2"，
+  旧语义 cache/报告身份失效）。初值 `"1"`（PLAN-868）。
 - 报告身份轴 `mir-lowering`（**必报**）：三消费者经测试侧镜像 admission 常量
   `EXPECTED_MIR_LOWERING_VERSION`（ac_av/ac_cte/ac_mn 各持，与
   `EXPECTED_AV_WORKER_VERSION` 同模式）写入 `current_toolchain_identity` 与报告/收据

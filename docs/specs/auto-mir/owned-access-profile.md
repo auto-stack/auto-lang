@@ -60,3 +60,13 @@ corpus `av-owned-mut-writeback`（exit 808）。
 - ACE-M1 T*/R* 的 ac 列已实测判级（ok/gap:mn-text-move/
   gap:mn-mut-param/gap:mn-lower-method——与 av 列判定逻辑逐行镜像，
   见 [ace-m1-conformance](../auto-test-case/ace-m1-conformance.md)）。
+
+## 方法与 copyable 写回（PLAN-881）
+
+- text-record 方法经共享 lowering 降为普通 MIR 函数
+  （`m.<Owner>.<name>`）；显式 mut/move 参数不退化（模式提取覆盖
+  `Method`，t_MutRet 包装名随 owner 基 MIR 名）。合同见
+  [record-method-lowering](record-method-lowering.md)。
+- copyable record 的 `.mut`（av.owned/1）：借用临时与写回为 **Copy**（此
+  前 Move 表示被 mir.ownership-required 拒）；资源 record（可达 Str）保持
+  Move 传递对不变。
