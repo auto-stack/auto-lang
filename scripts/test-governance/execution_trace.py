@@ -46,7 +46,7 @@ def validate_bindings(rows,traces):
             errors.append(f'{name}: original comparison did not complete successfully')
         if any(metadata.get(key)!=binding[key] for key in ('id','source_sha256','oracle_sha256')):
             errors.append(f'{name}: original input/oracle binding differs')
-    if expected and observed.keys()-expected.keys():errors.append('unexpected cache invocation outside the module')
+    if observed.keys()-expected.keys():errors.append('unexpected cache invocation outside the bound module inputs')
     from collections import Counter
     from wrapper_bindings import normalize
     families={'legacy-golden-a2r','legacy-golden-a2c','legacy-golden-a2ts',

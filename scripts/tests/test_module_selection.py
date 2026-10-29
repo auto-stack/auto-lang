@@ -167,6 +167,7 @@ catch {Write-Output $_;exit 1}
         self.assertTrue(validate_bindings(rows,traces)['valid'])
         traces['invocations'][0]['metadata']['oracle_sha256']='wrong'
         self.assertFalse(validate_bindings(rows,traces)['valid'])
+        self.assertFalse(validate_bindings([],traces)['valid'])
 
     def test_registered_nested_rust_namespace_maps_to_deepest_actual_source(self):
         import tempfile
