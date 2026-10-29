@@ -283,19 +283,27 @@ def migrations():
     return rows
 
 
+RETIREMENT_PATHS = (HERE / "scripts/full-regression-retirements-844.json.txt",
+                    HERE / "scripts/full-regression-retirements-869.json.txt")
+
+
 def retirements():
-    """PLAN-844 evidence-cited retirement channel: the frozen 850 baseline files
-    stay untouched; retired required IDs are removed here instead (867 T-04)."""
-    path = HERE / "scripts/full-regression-retirements-844.json.txt"
-    doc = json.loads(path.read_text(encoding="utf-8"))
-    if doc.get("schema") != "test-id-retirements/1" or doc.get("plan") != 844:
-        raise ValueError("unsupported test retirement manifest")
-    rows = doc["retirements"]
-    if len({row["id"] for row in rows}) != len(rows):
-        raise ValueError("duplicate test retirement identity")
-    for row in rows:
-        if not row.get("evidence") or "\t" not in row["id"]:
-            raise ValueError("incomplete test retirement")
+    """844/869 evidence-cited retirement channels (PLAN-887 T-03 reconciled the
+    869 batch-2 disconnect): the frozen 850 baseline files stay untouched;
+    retired required IDs are removed here instead (867 T-04 + 869 T-04)."""
+    rows = []
+    seen = set()
+    for path in RETIREMENT_PATHS:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        if doc.get("schema") != "test-id-retirements/1" or doc.get("plan") not in (844, 869):
+            raise ValueError(f"unsupported test retirement manifest: {path.name}")
+        for row in doc["retirements"]:
+            if not row.get("evidence") or "\t" not in row["id"]:
+                raise ValueError(f"incomplete test retirement: {path.name}")
+            if row["id"] in seen:
+                raise ValueError(f"duplicate test retirement identity across manifests: {row['id']}")
+            seen.add(row["id"])
+        rows.extend(doc["retirements"])
     return rows
 
 
