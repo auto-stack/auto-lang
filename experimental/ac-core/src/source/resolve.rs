@@ -833,6 +833,43 @@ struct DeclIndexes {
     trace_enabled: bool,
 }
 
+/// Reject cyclic payload graphs without recursing through user type depth.
+/// Edges include synthesized Option/Result payloads, not only declared enums.
+fn reject_variant_cycles(coll: &CollTables, diags: &mut Vec<Diagnostic>) {
+    let count = coll.variants.len();
+    let mut pending = vec![0usize; count];
+    let mut parents = vec![Vec::new(); count];
+    for (index, variant) in coll.variants.iter().enumerate() {
+        for (_, payload) in &variant.arms {
+            if let Some(VT::Variant(child)) = payload {
+                pending[index] += 1;
+                parents[*child].push(index);
+            }
+        }
+    }
+    let mut ready: Vec<_> = pending
+        .iter()
+        .enumerate()
+        .filter_map(|(i, degree)| (*degree == 0).then_some(i))
+        .collect();
+    while let Some(child) = ready.pop() {
+        for &parent in &parents[child] {
+            pending[parent] -= 1;
+            if pending[parent] == 0 {
+                ready.push(parent);
+            }
+        }
+    }
+    if let Some(index) = pending.iter().position(|degree| *degree != 0) {
+        let variant = &coll.variants[index];
+        diags.push(Diagnostic::new(
+            Stage::Bind, "source.type-mismatch",
+            format!("variant `{}` has a recursive payload graph; this profile requires acyclic variants", variant.name),
+            variant.name_span,
+        ));
+    }
+}
+
 /// The declaration passes + per-function resolve shared by the
 /// whole-module entry ([`resolve_with`]) and the retained-environment
 /// cold entry ([`resolve_env`]).
@@ -879,6 +916,30 @@ fn resolve_detailed(
             });
         }
     }
+    // PLAN-889: resolve nominal variant references through the same type
+    // table in every annotation position. Register names before payloads,
+    // so acyclic forward references do not depend on declaration order.
+    // The completed graph is checked below before any body is resolved.
+    let mut enum_indices = BTreeMap::new();
+    if is_coll {
+        for (item_index, item) in program.items.iter().enumerate() {
+            if let ast::Item::Enum(e) = item {
+                if rec_index.contains_key(&e.name.name)
+                    || coll.variant_by_name(&e.name.name).is_some()
+                {
+                    diags.push(Diagnostic::new(
+                        Stage::Bind,
+                        "source.duplicate",
+                        format!("type `{}` is declared more than once", e.name.name),
+                        e.name.span,
+                    ));
+                    continue;
+                }
+                let index = coll.intern_variant(&e.name.name, e.name.span, Vec::new());
+                enum_indices.insert(item_index, index);
+            }
+        }
+    }
     // Fill field shapes (all record names are known now).
     for item in &program.items {
         if let ast::Item::Type(t) = item {
@@ -912,24 +973,15 @@ fn resolve_detailed(
         }
     }
 
-    // Pass 0b (PLAN-864): declared `enum`s pre-register as nominal
-    // variants — arm payloads may reference records declared earlier.
+    // Fill the already registered nominal variant payloads.
     // Collections `type` blocks declare fields only (no methods).
     if is_coll {
-        for item in &program.items {
+        for (item_index, item) in program.items.iter().enumerate() {
             match item {
                 ast::Item::Enum(e) => {
-                    if rec_index.contains_key(&e.name.name)
-                        || coll.variant_by_name(&e.name.name).is_some()
-                    {
-                        diags.push(Diagnostic::new(
-                            Stage::Bind,
-                            "source.duplicate",
-                            format!("type `{}` is declared more than once", e.name.name),
-                            e.name.span,
-                        ));
+                    let Some(&enum_index) = enum_indices.get(&item_index) else {
                         continue;
-                    }
+                    };
                     let mut seen: BTreeSet<&str> = BTreeSet::new();
                     let mut arms: Vec<(String, Option<VT>)> = Vec::new();
                     let mut ok = true;
@@ -981,11 +1033,8 @@ fn resolve_detailed(
                         }
                         arms.push((a.name.name.clone(), payload));
                     }
-                    // Non-recursive: no arm payload may transitively reach
-                    // this enum itself (payloads resolve BEFORE the enum
-                    // name registers — a self-reference is an unknown type).
                     let _ = ok;
-                    coll.intern_variant(&e.name.name, e.name.span, arms);
+                    coll.variants[enum_index].arms = arms;
                 }
                 ast::Item::Type(t) => {
                     if !t.methods.is_empty() {
@@ -1004,6 +1053,11 @@ fn resolve_detailed(
                 }
                 _ => {}
             }
+        }
+        reject_variant_cycles(&coll, &mut diags);
+        // A cycle must not reach ownership/type construction or emission.
+        if !diags.is_empty() {
+            return Err(diags);
         }
     }
 
@@ -1988,6 +2042,18 @@ fn vt_of_ann_coll(
         ast::TypeRef::Builtin(w) => vt_of_word(*w),
         ast::TypeRef::Record(id) => match rec_index.get(&id.name) {
             Some(&i) => VT::Rec(i),
+            None if coll.variant_by_name(&id.name).is_some() => {
+                if matches!(pos, TypePos::Field | TypePos::Param) {
+                    return reject(
+                        diags,
+                        VT::I32,
+                        "variant-typed fields/parameters are not part of this source profile"
+                            .to_string(),
+                        ann.span,
+                    );
+                }
+                VT::Variant(coll.variant_by_name(&id.name).expect("checked name"))
+            }
             None => {
                 diags.push(Diagnostic::new(
                     Stage::Bind,
