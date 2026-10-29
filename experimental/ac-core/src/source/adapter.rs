@@ -2824,6 +2824,11 @@ impl<'p> Emitter<'p> {
         let is_record_profile = self.profile.is_record();
         if is_record_profile {
             for rec in &self.program.records {
+                let span = if self.scope.is_some() && self.profile == SourceProfile::Collections {
+                    Span { start: 0, end: 0 }
+                } else {
+                    rec.name_span
+                };
                 let fields: Vec<String> = rec
                     .fields
                     .iter()
@@ -2846,9 +2851,9 @@ impl<'p> Emitter<'p> {
                         rec.name,
                         fields.join(", ")
                     ),
-                    rec.name_span
+                    span
                 );
-                spans.types.push(rec.name_span);
+                spans.types.push(span);
                 nl!(12);
             }
         }
@@ -2873,6 +2878,15 @@ impl<'p> Emitter<'p> {
                 nl!(12);
             }
             for v in &self.program.variants {
+                // Interned body-local Option/Result entries can outlive the
+                // source revision that created their name_span. In a scoped
+                // collections document these declarations are inert interface
+                // metadata, just like the other functions' signature scaffolds.
+                let span = if self.scope.is_some() && self.profile == SourceProfile::Collections {
+                    Span { start: 0, end: 0 }
+                } else {
+                    v.name_span
+                };
                 let arms: Vec<String> = v
                     .arms
                     .iter()
@@ -2896,9 +2910,9 @@ impl<'p> Emitter<'p> {
                         v.name,
                         arms.join(", ")
                     ),
-                    v.name_span
+                    span
                 );
-                spans.types.push(v.name_span);
+                spans.types.push(span);
                 nl!(12);
             }
         }

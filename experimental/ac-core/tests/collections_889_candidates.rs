@@ -95,6 +95,34 @@ fn collection_fragment_uses_only_granted_utf8_range_and_absolute_coordinates() {
 }
 
 #[test]
+fn collection_scoped_nominal_metadata_does_not_reuse_old_utf8_source_anchors() {
+    let original =
+        format!("{NEW}\ntype Item {{ name Str; code int }}\nenum Token {{ Data(Item)\nEnd }}");
+    let mut env = environment(&original);
+    let rewritten = original.replace("var xs", "// 中文🙂\n var xs");
+    ac::compile_collections_source(&rewritten, "p889.at", &[]).unwrap();
+    let main = ac::env_fn_body_identity(&env, 1).unwrap();
+    let candidate =
+        ac::prepare_candidate_document(&mut env, &first(&rewritten), 0, &rewritten, "p889.at")
+            .unwrap();
+    verify::verify_function(candidate.parts().bundle.clone(), 0).unwrap();
+    for ty in &candidate.parts().bundle.modules[0].types {
+        if matches!(
+            ty.kind,
+            auto_ac_prototype::hir::TypeKind::Record(_)
+                | auto_ac_prototype::hir::TypeKind::Variant { .. }
+        ) {
+            assert_eq!(
+                ty.span,
+                auto_ac_prototype::atom_text::Span { start: 0, end: 0 }
+            );
+        }
+    }
+    candidate.commit(&mut env).unwrap();
+    assert_eq!(ac::env_fn_body_identity(&env, 1), Some(main));
+}
+
+#[test]
 fn collection_failed_foreign_stale_candidates_keep_current_body_types_and_identity() {
     let mut env = environment(OLD);
     let main = ac::env_fn_body_identity(&env, 1).unwrap();
