@@ -267,3 +267,5 @@ examples/rust-workspace/testt1/
 !scripts/test-governance/catalog/
 !scripts/test-governance/catalog/*.json
 !crates/auto-lang/test/cases/governance-888/batch-allowlist.json
+
+!scripts/test-governance/input-contract.json

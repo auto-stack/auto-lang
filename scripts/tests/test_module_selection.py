@@ -24,6 +24,114 @@ def catalog():
 
 
 class ModuleSelection(unittest.TestCase):
+    def test_rust_helper_edges_ignore_doc_guest_literals_and_nested_comments(self):
+        from impact_graph import rust_reference_code,rust_references
+        source='''// vm_file_tests::pilot_aggregate_vm
+        /* outer /* nested */ vm_file_tests::ignored */
+        fn read<'a>(value: &'a str) {
+            let guest = r##"vm_file_tests::fake // not a comment"##;
+            let quoted = "vm_file_tests::fake";
+            let ch = '/';
+            crate::tests::test_cases_tests::run_pilot_for_aggregate("vm");
+        }'''
+        actual=rust_reference_code(source)
+        self.assertNotIn('vm_file_tests',actual)
+        self.assertIn("fn read<'a>(value: &'a str)",actual)
+        self.assertIn('crate::tests::test_cases_tests::run_pilot_for_aggregate',actual)
+        references=rust_references(source)
+        self.assertIn('test_cases_tests',references)
+        self.assertNotIn('vm_file_tests',references)
+        self.assertIn('vm_file_tests',rust_references('use super::{vm_file_tests as cache};'))
+
+    def test_wrapper_exit_zero_cannot_replace_bound_child_execution(self):
+        from execution_trace import validate_bindings
+        binding={'kind':'vm-cache','id':'case','source_sha256':'source','oracle_sha256':'oracle'}
+        rows=[{'test':'registered_wrapper','legacy_input':binding}]
+        traces={'invocations':[]}
+        self.assertFalse(validate_bindings(rows,traces)['valid'])
+        traces['invocations']=[{'rust_test':'registered_wrapper','complete':True,
+            'metadata':{'family':'legacy-vm-cache',**binding},'observation':{'status':'PASS'}}]
+        self.assertTrue(validate_bindings(rows,traces)['valid'])
+        traces['invocations'][0]['metadata']['oracle_sha256']='wrong'
+        self.assertFalse(validate_bindings(rows,traces)['valid'])
+
+    def test_registered_nested_rust_namespace_maps_to_deepest_actual_source(self):
+        import tempfile
+        from impact_graph import rust_source
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            source=root/'crate/src/parser/tests.rs';source.parent.mkdir(parents=True);source.write_text('')
+            (root/'crate/src/parser.rs').write_text('')
+            row={'package_path':'crate','binary':'crate','test':'parser::tests::check_type'}
+            self.assertEqual(rust_source(root,row),(source,'parser::tests::'))
+
+    def test_input_oracle_keeps_producer_order_and_detects_real_sidecar_change(self):
+        import hashlib,json,tempfile
+        from unittest.mock import patch
+        import input_inventory
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            source=root/'case.at';source.write_bytes(b'1+2')
+            expected=root/'case.expected.result';expected.write_bytes(b'3')
+            wrapper=root/'crates/auto-lang/src/tests/vm_file_tests.rs';wrapper.parent.mkdir(parents=True)
+            wrapper.write_bytes(b'wrapper')
+            def sha(data):return hashlib.sha256(data).hexdigest()
+            oracle={'stdout':None,'result':'3','error_presence':False}
+            case={'id':'case','source_path':'case.at','source_sha256':sha(b'1+2'),'oracle':oracle,
+                  'oracle_sha256':sha(json.dumps(oracle,separators=(',',':')).encode())}
+            input_id={'kind':'vm-cache','id':'case','source_sha256':case['source_sha256'],'oracle_sha256':case['oracle_sha256']}
+            c={'input_inventory':{'legacy-inputs':{'cases':[{'family':'vm','id':'case'}]},
+                'vm-cache-inputs':{'cases':[case],'wrapper_source_sha256':sha(b'wrapper'),
+                    'declared_wrapper_bindings':[{'test':'test_case','cache_id':'case','registered':True,'runtime_ignored':False}]}},
+               'obligations':[{'recipe':'language','binary':'auto-lang','test':'test_case','ignored':False,
+                               'legacy_input':input_id,'input_paths':['case.at','case.expected.result']}]}
+            contract=root/'scripts/test-governance/input-contract.json';contract.parent.mkdir(parents=True)
+            contract.write_text(json.dumps({'schema':'test-input-universe/1','vm_cache_ids':['case'],'legacy_ids':[['vm','case']]}))
+            with patch.object(input_inventory,'ROOT',root):
+                input_inventory.verify_inputs(c)
+                expected.write_bytes(b'4')
+                with self.assertRaisesRegex(ValueError,'oracle hash'):input_inventory.verify_inputs(c)
+                expected.write_bytes(b'3')
+                c['obligations'][0]['input_paths'].pop()
+                with self.assertRaisesRegex(ValueError,'consumer edge'):input_inventory.verify_inputs(c)
+
+    def test_windows_long_command_refused_before_workload_spawn(self):
+        import os
+        if os.name!='nt':self.skipTest('Windows argv boundary')
+        from run_selected import command
+        from unittest.mock import patch
+        with patch('native_meter.measure') as meter:
+            with self.assertRaisesRegex(ValueError,'argv budget'):
+                command(Path.cwd(),['python','x'*24001],Path('unused.log'),1,{})
+            meter.assert_not_called()
+
+    def test_child_trace_keeps_negative_not_run_and_incomplete_without_inference(self):
+        from execution_trace import collect
+        import json,tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            event={"schema":"test-execution-trace/1","module":"m","invocation":"1-0",
+                   "phase":"start","rust_test":"wrapper","data":{"family":"suite"}}
+            (root/'start.json').write_text(json.dumps(event))
+            result=collect(root,'m')
+            self.assertEqual(result['incomplete'],1)
+            self.assertEqual(result['invocations'][0]['observation']['status'],'ERROR')
+            event.update(phase='finish',data={'results':[{'status':'FAIL'},{'status':'NOT_RUN'}]})
+            (root/'finish.json').write_text(json.dumps(event))
+            result=collect(root,'m')
+            self.assertEqual(result['incomplete'],0)
+            self.assertEqual([r['status'] for r in result['invocations'][0]['observation']['results']],['FAIL','NOT_RUN'])
+            with self.assertRaises(ValueError):collect(root,'other-module')
+            (root/'duplicate.json').write_text(json.dumps(event))
+            with self.assertRaises(ValueError):collect(root,'m')
+
+    def test_public_module_command_has_no_implicit_all(self):
+        import subprocess
+        process=subprocess.run([sys.executable,str(Path(__file__).resolve().parents[1]/'test-governance/module_command.py')],
+                               capture_output=True,text=True)
+        self.assertEqual(process.returncode,2)
+        self.assertIn('name at least one module',process.stderr)
+
     def test_worker_tools_keep_regular_and_batch_features_separate(self):
         from prepare_tools import recipe_tools
         recipe={"tools":["av","ac"],"tool_overrides":[{"binary":"b","test_prefix":"batch::","tools":["batch-av"]}]}
@@ -215,6 +323,8 @@ class ModuleSelection(unittest.TestCase):
                          "(binary_id(=a::b) and test(=tests::f))")
         with self.assertRaises(ValueError):
             exact_filter([{"binary": "a", "test": "f) or all()"}])
+        self.assertEqual(exact_filter([{'binary':'probe::bin/worker','test':'query::test熔断'}]),
+                         '(binary_id(=probe::bin/worker) and test(=query::test熔断))')
 
     def test_valid_partition_and_multiple_module_union(self):
         c = catalog()

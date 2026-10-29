@@ -54,6 +54,8 @@ jobs = 12
 # Windows: C:\Python314\python.exe | Linux: /usr/bin/python3
 
 [alias]
+# PLAN-888: explicit disjoint module IDs; no implicit all-tests default.
+tm = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tm"
 # Plan 481 merge 注:三件套集成测试(schema_drift/docs_gen/component_registry,
 # 合计 <1s)纳入日常与全量档——cargo tf 只跑 --lib 的盲区已连续让 473/482/
 # 481 三次把 schema 红合入 master(围栏快速失败逐层遮蔽,review 手跑才发现)。

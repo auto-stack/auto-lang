@@ -25,7 +25,10 @@ class NativeMeter(unittest.TestCase):
         self.assertGreaterEqual(outer["workload_cpu_ms"], 140)
 
     def test_counts_child_cpu_not_only_parent_sleep(self):
-        spin = "import time; end=time.process_time()+0.20\nwhile time.process_time()<end: pass"
+        # Keep the signal above interpreter/helper startup variance. The
+        # original 200ms signal produced a valid 109ms paired delta under
+        # nested Jobs; 600ms strengthens both absolute and paired controls.
+        spin = "import time; end=time.process_time()+0.60\nwhile time.process_time()<end: pass"
         parent = "import subprocess,sys; subprocess.run([sys.executable,'-c'," + repr(spin) + "],check=True,creationflags=0x08000000)"
         result = measure([sys.executable, "-c", parent])
         self.assertEqual(result["exit"], 0)
@@ -33,13 +36,14 @@ class NativeMeter(unittest.TestCase):
         # Windows may also account console/runtime helper processes. Preserve
         # the native total rather than pretending every process is a worker.
         self.assertGreaterEqual(result["job_processes"], 2)
-        self.assertGreaterEqual(result["workload_cpu_ms"], 180)
+        self.assertGreaterEqual(result["workload_cpu_ms"], 580)
         self.assertGreater(result["peak_job_bytes"], 0)
         self.assertGreaterEqual(result["total_cpu_ms"], result["workload_cpu_ms"])
-        sleeping = parent.replace(repr(spin), repr("import time; time.sleep(0.20)"))
+        sleeping = parent.replace(repr(spin), repr("import time; time.sleep(0.60)"))
         control = measure([sys.executable, "-c", sleeping])
         self.assertIsNone(control["error"])
-        self.assertGreater(result["workload_cpu_ms"]-control["workload_cpu_ms"], 140)
+        self.assertGreater(result["workload_cpu_ms"]-control["workload_cpu_ms"], 420,
+                           f"spin={result}; sleep={control}")
 
     def test_deadline_reaps_descendant_holding_pipe(self):
         code = "import subprocess,sys,time; child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(20)'],creationflags=0x08000000); print(child.pid,flush=True); time.sleep(20)"
