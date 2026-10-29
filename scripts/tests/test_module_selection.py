@@ -25,6 +25,44 @@ def catalog():
 
 
 class ModuleSelection(unittest.TestCase):
+    def test_golden_wrapper_requires_every_original_child_and_exact_file_identity(self):
+        from execution_trace import validate_bindings
+        child={'family':'legacy-golden-a2r','id':'original','source':{'path':'Cargo.toml','sha256':'source'},'oracles':[]}
+        rows=[{'test':'wrapper','legacy_children':[child]}]
+        event={'rust_test':'wrapper','metadata':copy.deepcopy(child),'complete':True,'observation':{'status':'PASS'}}
+        self.assertTrue(validate_bindings(rows,{'invocations':[event]})['valid'])
+        for mutation in ('missing','duplicate','source','test','incomplete','failed'):
+            values=[copy.deepcopy(event)]
+            if mutation=='missing':values=[]
+            if mutation=='duplicate':values*=2
+            if mutation=='source':values[0]['metadata']['source']['sha256']='wrong'
+            if mutation=='test':values[0]['rust_test']='other'
+            if mutation=='incomplete':values[0]['complete']=False
+            if mutation=='failed':values[0]['observation']['status']='FAIL'
+            with self.subTest(mutation=mutation):self.assertFalse(validate_bindings(rows,{'invocations':values})['valid'])
+
+    def test_refresh_cannot_erase_frozen_vm_or_golden_wrapper_associations(self):
+        import hashlib
+        from unittest import mock
+        from wrapper_bindings import apply,associations
+        root=Path(__file__).resolve().parents[2]
+        source={'path':'Cargo.toml','sha256':hashlib.sha256((root/'Cargo.toml').read_bytes()).hexdigest()}
+        legacy={'wrapper_inventory':{'sources':[source],'bindings':[{'test':'wrapper','children':[
+            {'family':'legacy-golden-a2r','id':'original','source':source,'oracles':[]}]}],'unresolved':[]}}
+        vm={'declared_wrapper_bindings':[{'test':'vm_wrapper','cache_id':'original_vm'}]}
+        value={'input_inventory':{'legacy-inputs':legacy,'vm-cache-inputs':vm},'obligations':[
+            {'recipe':'language','binary':'auto-lang','test':'wrapper','ignored':False}]}
+        contract={'schema':'test-legacy-wrapper-associations/1','required':associations(legacy,vm)}
+        with mock.patch('wrapper_bindings.load',return_value=contract):
+            apply(value);apply(value,verify=True)
+            for mutation in ('golden','vm','row','fingerprint'):
+                changed=copy.deepcopy(value)
+                if mutation=='golden':changed['input_inventory']['legacy-inputs']['wrapper_inventory']['bindings']=[]
+                if mutation=='vm':changed['input_inventory']['vm-cache-inputs']['declared_wrapper_bindings']=[]
+                if mutation=='row':changed['obligations'][0]['legacy_children']=[]
+                if mutation=='fingerprint':changed['input_inventory']['legacy-inputs']['wrapper_inventory']['sources'][0]['sha256']='wrong'
+                with self.subTest(mutation=mutation),self.assertRaises(ValueError):apply(changed,verify=True)
+
     def test_milestone_keeps_original_tower_config_and_driver_budget(self):
         from run_selected import execution_settings
         recipe={'args':['--lib','--config-file','.config/nextest-full.toml']}
@@ -155,14 +193,18 @@ catch {Write-Output $_;exit 1}
             case={'id':'case','source_path':'case.at','source_sha256':sha(b'1+2'),'oracle':oracle,
                   'oracle_sha256':sha(json.dumps(oracle,separators=(',',':')).encode())}
             input_id={'kind':'vm-cache','id':'case','source_sha256':case['source_sha256'],'oracle_sha256':case['oracle_sha256']}
-            c={'input_inventory':{'legacy-inputs':{'cases':[{'family':'vm','id':'case'}]},
+            c={'input_inventory':{'legacy-inputs':{'cases':[{'family':'vm','id':'case'}],
+                    'wrapper_inventory':{'sources':[],'bindings':[],'unresolved':[]}},
                 'vm-cache-inputs':{'cases':[case],'wrapper_source_sha256':sha(b'wrapper'),
                     'declared_wrapper_bindings':[{'test':'test_case','cache_id':'case','registered':True,'runtime_ignored':False}]}},
                'obligations':[{'recipe':'language','binary':'auto-lang','test':'test_case','ignored':False,
                                'legacy_input':input_id,'input_paths':['case.at','case.expected.result']}]}
             contract=root/'scripts/test-governance/input-contract.json';contract.parent.mkdir(parents=True)
             contract.write_text(json.dumps({'schema':'test-input-universe/1','vm_cache_ids':['case'],'legacy_ids':[['vm','case']]}))
-            with patch.object(input_inventory,'ROOT',root):
+            (contract.parent/'legacy-wrapper-contract.json').write_text(json.dumps({
+                'schema':'test-legacy-wrapper-associations/1',
+                'required':[{'kind':'vm-cache','test':'test_case','id':'case'}]}))
+            with patch.object(input_inventory,'ROOT',root),patch('wrapper_bindings.ROOT',root):
                 input_inventory.verify_inputs(c)
                 expected.write_bytes(b'4')
                 with self.assertRaisesRegex(ValueError,'oracle hash'):input_inventory.verify_inputs(c)

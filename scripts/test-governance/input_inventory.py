@@ -75,12 +75,16 @@ def attach_inputs(catalog,receipt,directory):
             row["input_paths"]=[path.as_posix(),*[(path.parent/(stem+suffix)).as_posix()
                 for suffix in (".expected.out",".expected.result",".expected.error") if (ROOT/path.parent/(stem+suffix)).is_file()]]
     catalog["input_inventory"]=inputs
+    from wrapper_bindings import apply
+    apply(catalog)
 
 
 def verify_inputs(catalog):
     # Reconstruct bindings from the source-bound discovered metadata so a
     # selection cannot silently remove a wrapper's child identity.
     inputs=catalog["input_inventory"]
+    from wrapper_bindings import apply
+    apply(catalog,verify=True)
     contract=load(ROOT/'scripts/test-governance/input-contract.json')
     if contract.get('schema')!='test-input-universe/1':raise ValueError('unsupported input universe')
     vm=inputs["vm-cache-inputs"]

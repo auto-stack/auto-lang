@@ -111,3 +111,11 @@ pub fn legacy_files(
         "source":file_identity(&directory.join(format!("{stem}.at"))),
         "oracles":oracle_suffixes.iter().map(|suffix|file_identity(&directory.join(format!("{stem}{suffix}")))).collect::<Vec<_>>()})
 }
+
+pub fn legacy_error_identity(manifest: &str, case: &str, expected: &str) -> serde_json::Value {
+    use auto_test_case::sha256::{hex, sha256};
+    let mut value = legacy_files(manifest, "a2r", case, &[]);
+    value["family"] = serde_json::json!("legacy-a2r-error");
+    value["expected_error_substring_sha256"] = serde_json::json!(hex(&sha256(expected.as_bytes())));
+    value
+}

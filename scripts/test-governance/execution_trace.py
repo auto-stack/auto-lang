@@ -47,4 +47,22 @@ def validate_bindings(rows,traces):
         if any(metadata.get(key)!=binding[key] for key in ('id','source_sha256','oracle_sha256')):
             errors.append(f'{name}: original input/oracle binding differs')
     if expected and observed.keys()-expected.keys():errors.append('unexpected cache invocation outside the module')
-    return {'valid':not errors,'errors':errors,'required_bound_invocations':len(expected)}
+    from collections import Counter
+    from wrapper_bindings import normalize
+    families={'legacy-golden-a2r','legacy-golden-a2c','legacy-golden-a2ts',
+              'legacy-golden-cookbook','legacy-cookbook-vm','legacy-a2r-error'}
+    declared={r['test']:r.get('legacy_children',[]) for r in rows}
+    observed_children={}
+    for event in traces['invocations']:
+        if event['metadata'].get('family') not in families:continue
+        name=event['rust_test']
+        if not event['complete'] or event['observation'].get('status') not in ('PASS','ERROR'):
+            errors.append(f'{name}: original external-input comparison incomplete')
+        observed_children.setdefault(name,[]).append(normalize(event['metadata']))
+    def identities(values):return Counter(json.dumps(v,sort_keys=True,ensure_ascii=False) for v in values)
+    for name,children in declared.items():
+        if identities(children)!=identities(observed_children.get(name,[])):
+            errors.append(f'{name}: original external-input invocations lost/extra/duplicated/changed')
+    if observed_children.keys()-declared.keys():errors.append('external-input invocation outside selected module')
+    return {'valid':not errors,'errors':errors,'required_bound_invocations':len(expected),
+            'required_legacy_children':sum(len(v) for v in declared.values())}

@@ -1,6 +1,6 @@
 # 不相交叶模块与影响选测
 
-> PLAN-888 r2；实现准备中，成本与最终交付以计划验收收据为准。
+> PLAN-888 r2；成本与交付状态以计划验收/归档收据为准。
 
 ## 身份与目录
 
@@ -9,7 +9,11 @@ workspace、正式TestCase suite及本仓Python治理控制；外仓UI/Man仅保
 `scripts/test-governance/modules.json` 索引其内容哈希分片，每条运行身份恰属一叶，分区并集
 守恒。recipe/后端/profile/oracle/平台条件不同的身份不可误去重。
 
-原聚合输入另绑定原source/oracle及真实消费记录，包装exit0不能替代子项完成。未注册AST声明
+原聚合输入另绑定原source/oracle及真实消费记录，包装exit0不能替代子项完成。
+VM缓存及A2R/C/TS/Cookbook包装由真实Rust AST识别原helper调用，当前1,066条原包装/输入
+关联由legacy-wrapper-contract.json冻结；刷新不得同时抹去关联。声明、当前注册、原ignore和
+实际完成分开。消费端要求每个适用绑定的原始终态记录、身份/内容指纹和条数，缺失/重复/
+错源/未完成失败；原诊断断言保留，诊断子项只在原assert成功后完成收据。未注册AST声明
 与已注册运行身份分开；原ignored/milestone/手动条件明确NOT_APPLICABLE，不充PASS。
 
 ## 命令和影响闭包

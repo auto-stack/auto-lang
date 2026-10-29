@@ -370,6 +370,14 @@ fn test_cookbook_deep(case: &str) {
 /// like direct self-reference that must be rejected). Asserts the error
 /// message contains the given substring.
 fn test_a2r_expect_error(case: &str, error_substring: &str) {
+    #[cfg(feature = "test-cases")]
+    let trace = crate::test_cases::execution_trace::Invocation::start(|| {
+        crate::test_cases::execution_trace::legacy_error_identity(
+            env!("CARGO_MANIFEST_DIR"),
+            case,
+            error_substring,
+        )
+    });
     let dir_name = case.rsplit('/').next().unwrap_or(case);
     let parts: Vec<&str> = dir_name.split("_").collect();
     let name = parts[1..].join("_");
@@ -392,6 +400,10 @@ fn test_a2r_expect_error(case: &str, error_substring: &str) {
         error_substring,
         err_msg
     );
+    #[cfg(feature = "test-cases")]
+    if let Some(trace) = trace {
+        trace.finish(serde_json::json!({"status":"PASS"}));
+    }
 }
 
 /// Plan 383: 命名函数引用作为实参传递时，a2r 应输出干净的 `handler` 而非

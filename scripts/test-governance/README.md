@@ -32,7 +32,9 @@ python scripts/test-governance/measure_modules.py --selection <selection.json> -
 至少三次完整warm，P90目标60秒；预构建/冷态/整命令分列。可拆超标继续拆，不可拆原正式
 采样/规模/生命周期oracle具名登记慢模块，原断言和样本不减。原始日志/JSON留计划本地附件，
 只提交审查摘要及长期工具/配置。目录由真实运行时发现产生；过期时tm自动刷新，不能手改
-分片或通过重生 `legacy-contract.json` 接受漏项。
+分片或通过重生 `legacy-contract.json` / `legacy-wrapper-contract.json` 接受漏项。
+旧金样和VM缓存的原包装/输入关联有独立冻结守卫，执行须保留每项原始终态与源/期望身份；
+原包装退出成功或刷新目录都不能抹去缺失的子项。
 
 批量性能见 `measure_pilot.py` 与冻结 `measurement-contract.json`。`test-case-pilot` 的固定
 15例白名单默认B k=10，原单例重放默认A；其他recipe继续独立，C仅显式D3观察。

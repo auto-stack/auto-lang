@@ -7,6 +7,9 @@ use auto_test_case::discovery::{load_suite, CASE_FENCE_LANGUAGE};
 use auto_test_case::ir::{resolve_case, resolve_oracle};
 use auto_test_case::suite::apply_defaults;
 
+#[path = "inventory_wrappers.rs"]
+mod wrappers;
+
 /// Production file discoverers shared with entry.rs and sys_env.rs. Discovery
 /// never claims that a Rust wrapper selected or executed the returned cases.
 pub fn legacy_inventory(test_root: &Path) -> Result<serde_json::Value, String> {
@@ -66,7 +69,7 @@ pub fn legacy_inventory(test_root: &Path) -> Result<serde_json::Value, String> {
     }
     Ok(
         serde_json::json!({"schema":"test-legacy-inventory/1","scope":"discovery","executed":0,
-                         "root":test_root,"cases":rows}),
+                         "root":test_root,"cases":rows,"wrapper_inventory":wrappers::discover(test_root)?}),
     )
 }
 

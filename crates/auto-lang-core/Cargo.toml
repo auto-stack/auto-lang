@@ -100,7 +100,7 @@ hyper-util = { version = "0.1", features = ["tokio", "server-auto", "server-grac
 socket2 = "0.5"
 pyo3 = { version = "0.29", optional = true, features = ["auto-initialize"] }
 trans = "0.4.0"
-syn = { version = "2", features = ["full", "parsing", "printing"] }
+syn = { version = "2", features = ["full", "parsing", "printing", "visit"] }
 fastrand = "2.4.1"
 stacker = "0.1.25"
 tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["connect", "handshake"] }
