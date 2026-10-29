@@ -672,7 +672,7 @@ fn mn_owned_strcmp_and_codepoint_machine_faces() {
     ];
     // The owned units reference the text runtime — locate it exactly the
     // way the driver does.
-    let text_lib = auto_av_probe::native_reference::text_runtime_lib().expect("text runtime");
+    let text_lib = auto_av_probe::text_runtime::text_runtime_lib().expect("text runtime");
     let support = std::path::PathBuf::from(&text_lib);
     let run_cmp = |tag: &str, lhs: &str, rhs: &str, eq: bool| -> Option<i32> {
         let mut m = MirModule::unit(owner());

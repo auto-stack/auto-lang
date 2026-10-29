@@ -550,7 +550,7 @@ impl MnDriver {
             match text_override {
                 Some(p) => Some(p.to_path_buf()),
                 None => Some(
-                    auto_av_probe::native_reference::text_runtime_lib().map_err(MnError::Infra)?,
+                    auto_av_probe::text_runtime::text_runtime_lib().map_err(MnError::Infra)?,
                 ),
             }
         } else {

@@ -146,7 +146,7 @@ fn run_manifest(
         support_libs.push(t.to_path_buf());
     }
     if let Some(want) = &manifest.text_lib_sha {
-        let lib = auto_av_probe::native_reference::text_runtime_lib().map_err(MnError::Infra)?;
+        let lib = auto_av_probe::text_runtime::text_runtime_lib().map_err(MnError::Infra)?;
         let got = link_driver::file_identity(&lib)?;
         if got != *want {
             return Err(MnError::Admit(

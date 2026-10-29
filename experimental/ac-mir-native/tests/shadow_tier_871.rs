@@ -206,7 +206,7 @@ fn shadow_row(r: &Row, want_override: Option<i32>) -> Result<(), String> {
     };
     let support = if needs_text_runtime {
         Some(
-            auto_av_probe::native_reference::text_runtime_lib()
+            auto_av_probe::text_runtime::text_runtime_lib()
                 .map_err(|e| format!("{}: text runtime: {e}", r.id))?,
         )
     } else {
