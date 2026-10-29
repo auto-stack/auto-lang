@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-mir, auto-av, auto-test-case]
 depends_on: [PLAN-864, PLAN-871, PLAN-881, PLAN-822, PLAN-828]
-current_step: 4
+current_step: 5
 total_steps: 10
 ---
 
@@ -192,7 +192,7 @@ T-02/S只重放受影响新定向测试、原864相邻具名用例及必要check
 | T-02 | work | T-01；先接受已释放S最小子集并提交，再N；H不写 | 按§6执行入口先修命名enum规范支持域误拒及兄弟上下文/无环/拒绝控制，保源码容器clone拒绝；再冻结类型表示/内部ABI/runtime/context清理、预算/样本、typed排除和trap观测，跑最小source→唯一shared lower→真实PE全链资源probe及失败反控。S子门通过不能单独勾本步；固定codegen/cache/runtime升版与891交接边界，失败回本步不缩合法域 | AC-01/02/04/06 | [x] |
 | T-03 | work | T-02资源全链probe通过；N/必要S窗 | 实现N内容器/变体runtime与clone/drop/故障/预算/跨帧清理helper，文本复用及总账；V-03..05；新runtime位置/导出/库合同实测 | AC-02/04/06 | [x] |
 | T-04 | work | T-03；N | emit/lower/layout/driver/CLI/worker typed准入、Variant调用返回、CLIF/COFF与runtime依赖；新profile选择/缓存/恢复/原子发布；原L/V与List<Variant>、V-01/02/07..09定向 | AC-01/02/04/06 | [x] |
-| T-05 | work | T-04；S及必要N同时释放接受，默认865后 | 补集合单体前端/环境/候选/坐标与native增量消费者，扩现有828路径；先一次真单体probe再扩V-06/07；不以CollectionSourceSession下层carry代前端0工作 | AC-03/04/06 | [ ] |
+| T-05 | work | T-04；S及必要N同时释放接受，默认865后 | 补集合单体前端/环境/候选/坐标与native增量消费者，扩现有828路径；先一次真单体probe再扩V-06/07；不以CollectionSourceSession下层carry代前端0工作 | AC-03/04/06 | [x] |
 | T-06 | work | T-05；H与必要N/S释放接受 | 新recipe/SDK/suite/原binding实测，V-01..11与source/native/资源/恢复/性能/负控；受影响消费者兼容，提交实现及SD草案/证据摘要，给后继typed包N接口清单 | AC-01..06 | [ ] |
 | T-07 | review | T-06 | 独立final review绑定Plan/代码/依赖，merge-owned门pending | AC-07 | [ ] |
 | T-08 | merge | T-07 pass | 冻结提交裸t+必要tv/experimental定向门；归因、修复重审/重冻；批量tf到期按主检出单实例 | AC-08 | [ ] |
@@ -354,3 +354,14 @@ stage: goal | plan_id: PLAN-889 | plan_revision: r2 | round: 6 | from: work | to
 - 支持面已选864完整合法源码与其MIR闭包，不留“是否包含List<Str>/拥有record/Variant”的开放裁定。T-02选择等价native表示/allocator/helper机制；若预算内无法实现，给最小反例与方案needs_replan，不自行缩范围或加语言深度限制。
 - 865/863/887已交付；T-02/S开写接受与T-05后续S、T-06/888 H逐符号交接、SDK路径、runtime支持库兼容与trap有界观测仍归相应任务核验。提前准备不取得公共H写权，不自动联系其他会话；当前不阻塞独立T-02/S/N。
 - typed entry另立891仅规划，其范围/结果通道由该计划冻结；本包保持W01–05等拒绝/原gap，不因它未实施阻塞本包交付，不自动启动或修改其合同。
+
+
+2026-10-30 T-05/N实际交付 `43ae3d854`（S前置 `3d8a3d0b3/2e18c8d62/6de639fa9`）：
+- `CollectionsIncrementalSession` 使用同一保留CheckedEnv、fragment parser、828候选池事务、borrowed function verifier与共享单函数lower；body 42→43→42、连续UTF8变长、声明臂顺序失效均经真实PE验证。未改115函数实际source-body/MIR/COFF Rc地址保持，实际parse/resolve/typecheck/plan/bind/lower工作0；历史仅COFF命中，目标MIR/坐标重新生产。显式声明/config失效道如实全前端，仅不兼容native身份重产。
+- 源/环境/坐标/manifest/root/旧PE/receipt发布事务覆盖取消、foreign/stale、错源、真实坏链接、执行Resource22与5s外部截止；失败原始PE字节保留，外部kill不冒充清理成功。实际whole frontend、whole lower与同字节新COFF对象三反控均红。恢复manifest /3绑定source页和每单元mint/current坐标，重新ABC/native准入，不序列化credential。
+- 当前不可变MIR的私有live admission凭证消除同请求重复深验；等价测试验证COFF/fp/meta逐字节不变，裸不可信restore仍重验。cold MIR共享有界256KiB carrier页，独立单元ABC精确hash、边界/跨页/缺页/错offset/换页反控9类，required闭包去重；纯body新单元独立落盘，原单元producer不重建。旧五profile collector分支、key/ABI未变；8项old cache兼容通过。
+- 定向命令均 `cargo test --release --manifest-path experimental/ac-mir-native/Cargo.toml`：`--test collections_incremental_tier -- --test-threads=1 --nocapture` 6/6；`--test collections_driver_tier` 7/7；`--lib packed_mir_tests` 1/1（9反控）；`--lib checked_unit_tests` 2/2；`--test cache_tier` 8/8；必要check与所改文件rustfmt/diff-check exit0。仅AV既有shell_lo/shell_hi dead_code诊断，N无新增warning。未跑根整档。
+- 冻结116函数/345483B原负载probe：cold1991ms、body558/430ms；worker private baseline2342912、peak29978624、delta27635712B；named ledger峰mir4073520/staging2121404/io5581512，总11498891B。**这是单次机制probe，不是正式P90、完整编译分区物理归因或30×5/512churn验收**，这些仍归T-06。首次release因OS112磁盘满失败，raw保留；空间恢复后重编通过，未删除缓存（删除操作被自动审批拒绝 blocked by policy，工具未给具体理由；已改安全继续路径）。
+- raw根为权威树 `docs/plans/attachments/889/baseline/`，本地不入库：t05-packed-incremental.log SHA256 a949d5ee3eb5ee9eaa5949eb260730637ad24ae2415e356063f8c72a28fccff5；t05-packed-controls.log c489ca1fc42f4ed89deddf1bb6fdc3a0049b65627618cbbe2adec42ce640d411；t05-final-driver-replay.log af3b828e51ec09ae2b363a444ca2b804c221f524a241073ddc72a21e7123dde7；t05-final-live-admission.log 6ee70cb629d3a0726aadd6aebcc153aa061df5ca86847a89657f3cbabf54f319。T-05窗口实施已提交，S无继续写权；N在T-06继续自有消费者接线，未最终review/merge。
+
+2026-10-30 T-06/H最小无重叠接受：重核888权威树HEAD `9b25d91a7`、tracked/untracked代码clean，实际diff从889基面只涉及ac_av父侧/批量工具、inventory/execution_trace及mod.rs的run_suite_selected包装；不涉及ac_mn.rs、contract.rs、ace_m1_tests.rs，mod.rs的MN recipe dispatch符号亦无改动。按§5.1实际逐文件/符号差额接受 `ac_mn.rs` 新recipe参数化/新worker入口/父侧新观察准入、`contract.rs`新recipe及mn binding、`mod.rs`仅MN dispatch分支、`ace_m1_tests.rs`新增889具名SDK验收与原binding新suite；不取888的run_suite_selected、ac_av、inventory/trace/helper批量符号。旧五域/旧MN recipe及协议默认保持。根不引入实验依赖、无新runner/filter守卫。前owner已交付865/871为基面祖先；888所改符号不在本次接受集合，双方未提交WIP不互相消费。H尚未实现/释放，本记录不构成验收。
