@@ -22,6 +22,10 @@ fn collection_single_body_matches_whole_and_does_not_claim_whole_credential() {
     let m = &parts.bundle.modules[0];
     let def = m.defs.iter().position(|d| d.id_text == "d_main").unwrap();
     let function = verify::verify_function(parts.bundle.clone(), def).unwrap();
+    let borrowed = verify::verify_function_ref(&parts.bundle, def).unwrap();
+    assert_eq!(borrowed.body(), function.body());
+    assert_eq!(borrowed.context_revision(), function.context_revision());
+    assert_eq!(borrowed.def_id_text(), function.def_id_text());
     assert_eq!(function.domain(), hir::HirDomain::Collections);
     let whole = ac::compile_collections_source(source, "p889.at", &[]).unwrap();
     let wm = &whole.checked.bundle().modules[0];
@@ -96,6 +100,37 @@ fn collection_function_keeps_view_escape_and_reference_bounds_checks() {
         .unwrap_err()
         .iter()
         .any(|d| d.code == "verify.bad-reference"));
+}
+
+#[test]
+fn collection_borrowed_verification_keeps_live_context_and_owned_credential_contract() {
+    let source="type Item { code int }\nfn main() int { var xs=List<int>.new()\n xs.push(42)\n return xs.get(0) }";
+    let env = env(source);
+    let (parts, _) = ac::emit_function_body(&env, 0, source, "p889.at").unwrap();
+    let old = verify::verify_function_ref(&parts.bundle, 0).unwrap();
+    let mut changed = parts.bundle.clone();
+    if let hir::TypeKind::Record(record) = &mut changed.modules[0]
+        .types
+        .iter_mut()
+        .find(|t| matches!(t.kind, hir::TypeKind::Record(_)))
+        .unwrap()
+        .kind
+    {
+        record.fields[0].name.push('X');
+    }
+    let fresh = verify::verify_function_ref(&changed, 0).unwrap();
+    assert_ne!(fresh.context_revision(), old.context_revision());
+    changed.modules[0].bodies[0].owner = hir::DefId(999);
+    let borrowed = verify::verify_function_ref(&changed, 0).unwrap_err();
+    let owned = verify::verify_function(changed, 0).unwrap_err();
+    assert!(borrowed.iter().any(|d| d.code == "verify.owner-mismatch"));
+    assert_eq!(format!("{borrowed:?}"), format!("{owned:?}"));
+    assert_eq!(
+        old.body(),
+        verify::verify_function_ref(&parts.bundle, 0)
+            .unwrap()
+            .body()
+    );
 }
 #[test]
 fn collection_context_binds_unread_record_and_variant_declarations() {

@@ -171,6 +171,16 @@ pub fn verify_function(
     bundle: hir::Bundle,
     def_index: usize,
 ) -> Result<CheckedFunction, Vec<Diagnostic>> {
+    verify_function_ref(&bundle, def_index)
+}
+
+/// The same complete function/context verification over a borrowed bundle.
+/// The returned credential still owns its checked body and declaration; no
+/// mutable reference or serialized verification authority escapes this call.
+pub fn verify_function_ref(
+    bundle: &hir::Bundle,
+    def_index: usize,
+) -> Result<CheckedFunction, Vec<Diagnostic>> {
     if !matches!(
         bundle.domain,
         HirDomain::Scalar | HirDomain::Core | HirDomain::Collections
