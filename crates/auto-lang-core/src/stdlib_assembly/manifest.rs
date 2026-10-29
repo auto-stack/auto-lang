@@ -425,6 +425,19 @@ pub fn provider_inputs(target: AssemblyTarget) -> Vec<ProviderInput> {
                 "trans/rust/call_emit/call_value_ctors.rs",
                 include_str!("../trans/rust/call_emit/call_value_ctors.rs"),
             ),
+            // PLAN-884 T-06：主题算法模块入 Vm provider 输入。
+            (
+                "trans/rust/ast_scans.rs",
+                include_str!("../trans/rust/ast_scans.rs"),
+            ),
+            (
+                "trans/rust/merged_fixes.rs",
+                include_str!("../trans/rust/merged_fixes.rs"),
+            ),
+            (
+                "trans/rust/post_fixes.rs",
+                include_str!("../trans/rust/post_fixes.rs"),
+            ),
             (
                 "trans/rust/decl_emit.rs",
                 include_str!("../trans/rust/decl_emit.rs"),

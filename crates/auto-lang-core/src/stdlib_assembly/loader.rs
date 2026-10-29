@@ -173,6 +173,10 @@ pub fn stdlib_assembly_fingerprint(
     mix(fnv1a64(include_str!(
         "../trans/rust/call_emit/call_value_ctors.rs"
     )));
+    // PLAN-884 T-06：主题算法模块入指纹闭包。
+    mix(fnv1a64(include_str!("../trans/rust/ast_scans.rs")));
+    mix(fnv1a64(include_str!("../trans/rust/merged_fixes.rs")));
+    mix(fnv1a64(include_str!("../trans/rust/post_fixes.rs")));
     mix(match target {
         super::model::AssemblyTarget::Vm => 1,
         super::model::AssemblyTarget::Rust => 2,

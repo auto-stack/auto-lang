@@ -7,6 +7,10 @@ mod call_dot_methods;
 mod call_generic_fallback;
 mod call_macro_shapes;
 mod call_module_methods;
+pub(crate) use call_module_methods::{
+    emit_http_verb_call, expr_root_is_builder_var, expr_root_is_http_request,
+    for_range_is_http_stream,
+};
 mod call_tag_ctor;
 mod call_task;
 mod call_value_ctors;

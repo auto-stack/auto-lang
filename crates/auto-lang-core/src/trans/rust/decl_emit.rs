@@ -2233,4 +2233,205 @@ impl RustTrans {
         self.inside_pub_type = false;
         Ok(())
     }
+    // ---- PLAN-884 T-06：自 rust.rs 原样迁入 ----
+
+    // **Phase 6: Generic Programming**
+    // Type alias declaration
+    pub(super) fn type_alias_decl(
+        &mut self,
+        type_alias: &TypeAlias,
+        sink: &mut Sink,
+    ) -> AutoResult<()> {
+        // Generate type alias: type List<T> = List<T, Heap>;
+        // In Rust: type List<T> = List<T, Heap>;
+        write!(sink.body, "type {}", type_alias.name)?;
+
+        // Type parameters
+        if !type_alias.params.is_empty() {
+            write!(sink.body, "<")?;
+            for (i, param) in type_alias.params.iter().enumerate() {
+                write!(sink.body, "{}", param)?;
+                if i < type_alias.params.len() - 1 {
+                    write!(sink.body, ", ")?;
+                }
+            }
+            write!(sink.body, ">")?;
+        }
+
+        // For the target type, if it's a GenericInstance with Unknown args,
+        // we need to use the type parameter names instead of "Unknown"
+        if let Type::GenericInstance(inst) = &type_alias.target {
+            write!(sink.body, " = {}<", inst.base_name)?;
+            // Use type parameters if available, otherwise use Unknown count
+            let args: Vec<String> = if !type_alias.params.is_empty() {
+                type_alias.params.iter().map(|p| p.to_string()).collect()
+            } else {
+                inst.args
+                    .iter()
+                    .map(|t| match t {
+                        Type::Unknown => "_".to_string(),
+                        _ => self.rust_type_name(t),
+                    })
+                    .collect()
+            };
+            write!(sink.body, "{}>;", args.join(", "))?;
+        } else {
+            write!(sink.body, " = {};", self.rust_type_name(&type_alias.target))?;
+        }
+        sink.body.write(b"\n")?;
+
+        Ok(())
+    }
+
+    /// Convert a Heterogeneous EnumDecl to a Tag for reusing tag code generation.
+    #[allow(dead_code)]
+    fn enum_decl_to_tag(enum_decl: &EnumDecl) -> Tag {
+        let fields: Vec<TagField> = enum_decl
+            .items
+            .iter()
+            .map(|item| TagField {
+                name: item.name.clone().into(),
+                ty: item.payload_type.clone().unwrap_or(Type::Void),
+            })
+            .collect();
+        let (generic_params, methods) = match &enum_decl.kind {
+            EnumKind::Heterogeneous {
+                generic_params,
+                methods,
+            } => (generic_params.clone(), methods.clone()),
+            _ => (vec![], vec![]),
+        };
+        Tag {
+            name: enum_decl.name.clone().into(),
+            generic_params,
+            fields,
+            methods,
+        }
+    }
+
+    // **Phase 1.2: Union Types (test: 013_union)**
+    pub(super) fn union_decl(&mut self, union: &Union, sink: &mut Sink) -> AutoResult<()> {
+        // Cache union type name so construction and field-access sites can be
+        // rewritten to safe accessor methods (Plan 310 Phase 0.2).
+        // In Rust, union field access/construct is unsafe; we wrap it.
+        self.union_types.insert(union.name.clone());
+
+        // Generate union definition
+        writeln!(sink.body, "union {} {{", union.name)?;
+        self.indent();
+
+        for field in &union.fields {
+            self.print_indent(&mut sink.body)?;
+            writeln!(
+                sink.body,
+                "{}: {},",
+                field.name,
+                self.rust_type_name(&field.ty)
+            )?;
+        }
+
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "}}")?;
+
+        // Plan 310 Phase 0.2: Generate safe accessor methods for each field.
+        // Union field construction (`Union { f: v }`) and read (`u.f`) require
+        // `unsafe` in Rust. We expose `new_<f>(v)` constructors and `<f>()`
+        // readers so generated code stays in safe Rust.
+        write!(sink.body, "impl {} {{", union.name)?;
+        sink.body.write(b"\n")?;
+        self.indent();
+        for field in &union.fields {
+            let fname = field.name.as_str();
+            let fty = self.rust_type_name(&field.ty);
+            // Constructor: fn new_<f>(v: T) -> Self { unsafe { Self { f: v } } }
+            self.print_indent(&mut sink.body)?;
+            writeln!(
+                sink.body,
+                "pub fn new_{}(value: {}) -> Self {{ unsafe {{ Self {{ {}: value }} }} }}",
+                fname, fty, fname
+            )?;
+            // Reader: fn <f>(&self) -> T { unsafe { self.f } }
+            // For non-Copy field types (e.g. String) reading is unsafe-by-copy;
+            // we only emit readers for Copy-like field types to avoid footguns.
+            if Self::is_copy_type(&field.ty) {
+                self.print_indent(&mut sink.body)?;
+                writeln!(
+                    sink.body,
+                    "pub fn {}(&self) -> {} {{ unsafe {{ self.{} }} }}",
+                    fname, fty, fname
+                )?;
+            }
+        }
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "}}")?;
+
+        Ok(())
+    }
+
+    // **Phase 1.3: Tag Types (test: 014_tag)**
+    pub(super) fn tag_decl(&mut self, tag: &Tag, sink: &mut Sink) -> AutoResult<()> {
+        // Cache tag type name for tag construction detection
+        self.tag_types.insert(tag.name.clone());
+
+        // Generate enum definition for tag
+        // AutoLang tags are algebraic data types that map to Rust enums
+        write!(sink.body, "enum {}", tag.name)?;
+
+        // Add generic parameters if present
+        if !tag.generic_params.is_empty() {
+            write!(sink.body, "<")?;
+            for (i, param) in tag.generic_params.iter().enumerate() {
+                if i > 0 {
+                    write!(sink.body, ", ")?;
+                }
+                match param {
+                    GenericParam::Type(tp) => {
+                        write!(sink.body, "{}", tp.name)?;
+                        // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                        if !tp.constraint.is_empty() {
+                            write!(sink.body, ": ")?;
+                            for (ci, ct) in tp.constraint.iter().enumerate() {
+                                if ci > 0 {
+                                    write!(sink.body, " + ")?;
+                                }
+                                write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                            }
+                        }
+                    }
+                    GenericParam::Const(cp) => {
+                        write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
+                    }
+                }
+            }
+            write!(sink.body, ">")?;
+        }
+
+        writeln!(sink.body, " {{")?;
+        self.indent();
+
+        for field in &tag.fields {
+            self.print_indent(&mut sink.body)?;
+            writeln!(
+                sink.body,
+                "{}({}),",
+                field.name,
+                self.rust_type_name(&field.ty)
+            )?;
+        }
+
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "}}")?;
+        sink.body.write(b"\n")?;
+
+        // TODO: Generate impl block for tag methods (if any)
+        for method in &tag.methods {
+            // Tag methods will be added here
+            let _ = method;
+        }
+
+        Ok(())
+    }
 }

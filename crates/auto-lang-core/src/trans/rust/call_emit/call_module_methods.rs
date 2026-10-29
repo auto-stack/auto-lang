@@ -2122,3 +2122,128 @@ impl RustTrans {
         Ok(CallShape::Miss)
     }
 }
+
+// ---- PLAN-884 T-06：自 rust.rs 原样迁入 ----
+
+/// PLAN-724 T-06：HTTP 普通动词/流生产者的统一发射——async 上下文发
+/// `a2r_std::http::<verb>_async(args).await`（内核 async 面），同步上下文发
+/// `a2r_std::http::<verb>(args)`（同步桥接面）。实参按 str 形发射。
+pub(crate) fn emit_http_verb_call(
+    tr: &mut RustTrans,
+    out: &mut impl std::io::Write,
+    verb: &str,
+    call: &crate::ast::Call,
+) -> AutoResult<()> {
+    if tr.in_async_ctx.get() {
+        write!(out, "a2r_std::http::{}_async(", verb)?;
+        for (i, arg) in call.args.args.iter().enumerate() {
+            if i > 0 {
+                write!(out, ", ")?;
+            }
+            if let crate::ast::Arg::Pos(expr) = arg {
+                tr.expr_as_str(expr, out)?;
+            }
+        }
+        write!(out, ").await")?;
+    } else {
+        write!(out, "a2r_std::http::{}(", verb)?;
+        for (i, arg) in call.args.args.iter().enumerate() {
+            if i > 0 {
+                write!(out, ", ")?;
+            }
+            if let crate::ast::Arg::Pos(expr) = arg {
+                tr.expr_as_str(expr, out)?;
+            }
+        }
+        write!(out, ")")?;
+    }
+    Ok(())
+}
+
+/// PLAN-724 T-06：链根是否 builder（builder 变量或 http.request(...)）——
+/// `let b2 = b.header(..)` 形态的重绑定保持 builder 分型。
+pub(crate) fn expr_root_is_builder_var(tr: &RustTrans, e: &Expr) -> bool {
+    let mut cur = e;
+    loop {
+        match cur {
+            Expr::Dot(base, _) => cur = base.as_ref(),
+            Expr::Ident(name) => return tr.http_builder_vars.contains(name),
+            Expr::Call(call) => {
+                return match call.name.as_ref() {
+                    Expr::Dot(obj, m) => {
+                        matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "http")
+                            && m.as_str() == "request"
+                    }
+                    Expr::Ident(n) => n.as_str() == "request",
+                    _ => false,
+                };
+            }
+            _ => return false,
+        }
+    }
+}
+
+/// PLAN-724 T-06：表达式根是否 http.request(...)（链式 builder 的 send 分派）。
+pub(crate) fn expr_root_is_http_request(e: &Expr) -> bool {
+    let mut cur = e;
+    loop {
+        match cur {
+            Expr::Dot(base, _) => cur = base.as_ref(),
+            Expr::Call(call) => {
+                return match call.name.as_ref() {
+                    Expr::Dot(obj, m) => {
+                        matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "http")
+                            && m.as_str() == "request"
+                    }
+                    Expr::Ident(n) => n.as_str() == "request",
+                    _ => false,
+                };
+            }
+            _ => return false,
+        }
+    }
+}
+
+/// PLAN-724 T-06：for-in 的可迭代是否 HTTP 流消费面（`s.iter()` /
+/// `stream_iter(s)` / 直接流生产调用）。
+pub(crate) fn for_range_is_http_stream(tr: &RustTrans, range: &Expr) -> Option<bool> {
+    // Some(is_async) = 命中流消费面并给出 async 分型。
+    if let Expr::Call(call) = range {
+        match call.name.as_ref() {
+            Expr::Dot(obj, m) if m.as_str() == "iter" => {
+                if let Expr::Ident(name) = obj.as_ref() {
+                    if tr.http_stream_async_vars.contains(name) {
+                        return Some(true);
+                    }
+                    if tr.http_stream_vars.contains(name) {
+                        return Some(false);
+                    }
+                }
+                None
+            }
+            Expr::Ident(fname) if fname.as_str() == "stream_iter" => {
+                if let Some(crate::ast::Arg::Pos(Expr::Ident(name))) = call.args.args.first() {
+                    if tr.http_stream_async_vars.contains(name) {
+                        return Some(true);
+                    }
+                    if tr.http_stream_vars.contains(name) {
+                        return Some(false);
+                    }
+                }
+                None
+            }
+            Expr::Dot(obj, m)
+                if matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "http")
+                    && matches!(
+                        m.as_str(),
+                        "get_stream" | "post_stream" | "post_stream_with_headers"
+                    ) =>
+            {
+                Some(tr.in_async_ctx.get())
+            }
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
