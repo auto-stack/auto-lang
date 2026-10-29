@@ -372,12 +372,41 @@ pub unsafe extern "system" fn mn_coll_frame_leave(f: *mut Frame) -> i32 {
     if state().frame != f {
         return INVALID;
     }
-    for i in (0..(*f).count).rev() {
+    let heap_flag = 1usize << (usize::BITS - 1);
+    let count = (*f).count & !heap_flag;
+    for i in (0..count).rev() {
         clear((*f).cells.add(i));
+    }
+    if (*f).count & heap_flag != 0 {
+        free((*f).cells.cast());
     }
     state().frame = (*f).prev;
     uncharge((*f).charge, 0);
     0
+}
+
+/// Generated functions allocate their slot area under the managed budget,
+/// rather than overflowing the native stack before a budget check can run.
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_frame_open(f: *mut Frame, count: u64) -> *mut Cell {
+    let Some(bytes) = (count as usize).checked_mul(16) else {
+        return null_mut();
+    };
+    let Some(total) = bytes.checked_add(core::mem::size_of::<Frame>()) else {
+        return null_mut();
+    };
+    if precheck(total, 0).is_err() {
+        return null_mut();
+    }
+    let Ok(cells) = allocate(bytes) else {
+        return null_mut();
+    };
+    if mn_coll_frame_enter(f, cells.cast(), count) != 0 {
+        free(cells);
+        return null_mut();
+    }
+    (*f).count |= 1usize << (usize::BITS - 1);
+    cells.cast()
 }
 #[no_mangle]
 pub unsafe extern "system" fn mn_coll_move(dst: *mut Cell, src: *mut Cell) -> i32 {
@@ -554,10 +583,30 @@ pub unsafe extern "system" fn mn_coll_list_get(dst: *mut Cell, bits: u64, index:
             return Err(INDEX);
         }
         let c = read((*p).data.cast::<Cell>().add(index as usize));
-        if c.owned != 0 {
-            return Err(INVALID);
-        }
+        // The verified caller only requests Copy elements. A pure record is
+        // physically an immutable node, so its value copy retains that node.
+        retain(c)?;
         commit(dst, c);
+        Ok(())
+    })())
+}
+
+/// Transient projection base, valid only while the verified list root lives.
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_list_peek(dst: *mut Cell, bits: u64, index: i32) -> i32 {
+    status((|| {
+        let p = of_kind(bits, LIST)?;
+        if index < 0 || index as usize >= (*p).len {
+            return Err(INDEX);
+        }
+        let c = read((*p).data.cast::<Cell>().add(index as usize));
+        commit(
+            dst,
+            Cell {
+                bits: c.bits,
+                owned: 0,
+            },
+        );
         Ok(())
     })())
 }

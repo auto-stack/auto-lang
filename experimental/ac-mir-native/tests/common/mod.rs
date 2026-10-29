@@ -2,6 +2,8 @@
 
 #![allow(dead_code)]
 
+pub mod collections;
+
 use ac_mn::driver::{MnDriver, MnRequest};
 
 pub fn tools_available() -> bool {

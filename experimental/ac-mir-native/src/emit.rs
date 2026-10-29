@@ -25,7 +25,7 @@ fn triple() -> Result<Triple, MnError> {
         .map_err(|e| MnError::Infra(format!("frozen target triple rejected: {e:?}")))
 }
 
-fn make_isa() -> Result<cranelift_codegen::isa::OwnedTargetIsa, MnError> {
+pub(crate) fn make_isa() -> Result<cranelift_codegen::isa::OwnedTargetIsa, MnError> {
     let mut b = cranelift_codegen::settings::builder();
     b.set("opt_level", "none")
         .and_then(|_| b.set("is_pic", "false"))

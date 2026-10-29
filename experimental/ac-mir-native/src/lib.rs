@@ -12,6 +12,7 @@
 pub mod backend;
 pub mod cache;
 pub mod config;
+pub mod collections_lower;
 pub mod driver;
 pub mod emit;
 pub mod entry;

@@ -1,8 +1,11 @@
 # Native collections runtime: T-02 draft
 
-This is a **runtime-only feasibility implementation**, not the frozen full
-PLAN-889 contract. Source -> shared MIR -> CLIF/COFF consumption is pending.
-The product driver, profiles, cache keys and recipes are unchanged.
+This is a **T-02 feasibility implementation**, not the frozen full PLAN-889
+contract. The private `collections_lower` entry now consumes shared verified
+MIR, emits native arithmetic/control/calls and direct container primitive calls,
+then COFF/PE. The original17 source faces, owned combinations and typed clone
+probes have actual native results. Product driver/cache/worker/recipe integration
+is still pending; do not close formal M1 bindings based only on this private entry.
 
 The private draft ABI is `mn.collections.runtime/1`, Win64. A machine Cell is
 16 bytes: scalar bits or a node address, then a 64-bit destructor-right flag.
@@ -17,7 +20,11 @@ required to have been statically verified acyclic. Clone uses an allocated,
 charged explicit work stack; destruction uses an intrusive work stack without
 allocation. Registry membership precedes claimed node dereferences.
 
-Generated stack frames register their actual Cell storage. Fatal exits sweep
+Generated stack frames register their actual Cell storage. The MIR emitter
+allocates its slot storage under the runtime budget (`frame_open`), avoiding
+an unchecked large automatic array on the native stack. The frame header is
+32 bytes; its private count high bit records heap-owned slots. Low-level ABI
+probes can still register bounded stack Cell arrays (`frame_enter`). Fatal exits sweep
 the whole registered call chain before exit70, while return70 remains an
 ordinary value. Runtime-only PE probes already distinguish those outcomes,
 failure-before-commit, text clone failure, partial clone rollback, a deliberate
@@ -31,13 +38,16 @@ libraries is unnecessary. Do not permit duplicate symbols with linker flags.
 
 Open before T-02 can pass or the layout/ABI can be frozen:
 
-- Source/MIR native emission and the original L04/L05/ListStr/ListVariant/
-  cross-function source probes, plus trusted type/layout admission. Current
-  low-level probes explicitly do not prove these paths.
+- Complete source-produced closure/signature and nominal descriptor admission,
+  and its production/cache/worker use. The new emitter re-verifies units and
+  has an explicit instruction/type whitelist; its verified-whole-module split
+  proves original L/V and supplemental paths but is not arbitrary typed support.
 - Nominal type/layout descriptor binding and the complete source-produced
   instruction/signature closure, including copyable record semantics and
-  borrowed projection lifetime. Current generic unsafe helper callers are
-  trusted native probe code, not an exposed typed language interface.
+  borrowed projection lifetime across all supported paths. Current generic
+  unsafe helper callers are verified generated code or explicit native probe
+  code, not an exposed language FFI. Copyable records use immutable retained
+  nodes; resource reads share without buffer allocation; explicit clone deep-copies.
 - Full metadata accounting: the current `managed` counter charges node/array/
   registered-slot/clone-work **requested bytes** and text-buffer bytes, but
   does not include the text shim's retained ledger capacity, object/linker
