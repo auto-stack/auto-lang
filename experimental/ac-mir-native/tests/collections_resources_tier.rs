@@ -89,9 +89,27 @@ fn zero_live(stderr: &[u8]) {
         "arena_commit",
         "arena_invalid",
         "text_metadata",
+        "registered_bytes",
     ] {
         assert!(text.contains(&format!("MN-COLL {field}=0\n")), "{text}");
     }
+}
+
+#[test]
+fn runtime_managed_pages_and_actual_frame_storage_share_one_ceiling() {
+    let run = runtime_probe("frame-budget", Some("mn_probe_frames"));
+    assert_eq!(
+        run.exit_code,
+        Some(42),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    zero_live(&run.stderr);
+    let observation = ac_mn::collections_observe::decode(run.exit_code, &run.stderr).unwrap();
+    assert_eq!(
+        observation.resources["managed_commit_peak"],
+        (32 << 20) - 4096 + 80
+    );
 }
 
 #[test]

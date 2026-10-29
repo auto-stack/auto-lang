@@ -60,6 +60,8 @@ pub fn decode(exit: Option<i32>, stderr: &[u8]) -> Result<Observation, MnError> 
         "arena_peak",
         "arena_invalid",
         "text_metadata",
+        "registered_bytes",
+        "managed_commit_peak",
         "process_private_base",
         "process_private_end",
         "process_commit_peak",
@@ -138,6 +140,7 @@ pub fn decode(exit: Option<i32>, stderr: &[u8]) -> Result<Observation, MnError> 
         "arena_commit",
         "arena_invalid",
         "text_metadata",
+        "registered_bytes",
     ] {
         if resources[key] != 0 {
             return Err(MnError::Resource(
@@ -160,6 +163,7 @@ pub fn decode(exit: Option<i32>, stderr: &[u8]) -> Result<Observation, MnError> 
     }
     if resources["peak"] > 32 << 20
         || resources["arena_peak"] > 32 << 20
+        || resources["managed_commit_peak"] > 32 << 20
         || summary["peak"] > 8 << 20
     {
         return Err(MnError::Resource(

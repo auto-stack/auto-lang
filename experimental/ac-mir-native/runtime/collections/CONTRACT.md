@@ -1,13 +1,13 @@
-# Native collections runtime: T-02 draft
+# Native collections runtime: T-02 feasibility contract
 
-This is a **T-02 feasibility implementation**, not the frozen full PLAN-889
-contract. The private `collections_lower` entry now consumes shared verified
+The T-02 source/machine/resource first chain is implemented and verified; this
+is not a claim of full PLAN-889 delivery. The private `collections_lower` consumes shared verified
 MIR, emits native arithmetic/control/calls and direct container primitive calls,
 then COFF/PE. The original17 source faces, owned combinations and typed clone
 probes have actual native results. Product driver/cache/worker/recipe integration
 is still pending; do not close formal M1 bindings based only on this private entry.
 
-The private draft ABI is `mn.collections.runtime/2`, with generated call ABI
+The private feasibility ABI is `mn.collections.runtime/2`, with generated call ABI
 `mn.collections.cell/2`, Win64. A machine Cell is
 16 bytes: scalar bits or a node address, then a 64-bit destructor-right flag.
 Native generated arithmetic/control flow will operate directly on scalar bits;
@@ -38,7 +38,7 @@ old staticlib separately. Its additive host hooks default to the original
 process heap when not explicitly installed. Linking both whole
 libraries is unnecessary. Do not permit duplicate symbols with linker flags.
 
-Open before T-02 can pass or the layout/ABI can be frozen:
+Remaining delivery work, owned by T-03..06 and not closed by the first chain:
 
 - The production/cache/worker use of the source-produced closure. The emitter re-verifies units and
   has an explicit instruction/type whitelist; its verified-whole-module split
@@ -48,16 +48,16 @@ Open before T-02 can pass or the layout/ABI can be frozen:
   unsafe helper callers are verified generated code or explicit native probe
   code, not an exposed language FFI. Copyable records use immutable retained
   nodes; resource reads share without buffer allocation; explicit clone deep-copies.
-- Compiler/worker private peak/delta and partition observations. A cold whole
+- Formal compiler partition/worker samples and product integration. A cold whole
   frontend probe of the frozen345483-byte/116-function load has a release
   OS peak commit214061056B, despite its post-frontend live private23490560B.
-  This is over128MiB, so T-02 is still pending; do not shrink the load or call
-  endpoint memory a peak. The next mechanism to prove is bounded cold per-body
-  production against the retained environment already required by T-05.
-- Combined frame-registration/native-stack boundary accounting, and linker/
-  object metadata. The arena alone is not the complete execution or worker gate.
-- Remaining helper deadline/cancellation integration and boundary controls,
-  runtime content/build/dependency binding and bounded parent trap admission.
+  This rejected prototype remains a control. The bounded producer below resolves
+  this first-case peak without shrinking the load; T-04 must select it, with no
+  silent whole-module collections fallback.
+- Linker/object metadata and formal16/24/8MiB compiler partition observations;
+  the worker OS peak alone cannot prove each partition.
+- Remaining helper deadline/cancellation integration and full mutation controls,
+  runtime content/build/dependency and parent observation integration in the driver.
 - All formal performance/resource measurements and formal driver integration.
 
 Implemented layout candidate `mn.collections.layout/1` uses canonical BLAKE3
@@ -112,6 +112,22 @@ Compiler managed16/24/8MiB (total48), worker delta128, PE delta128 and guest8/
 execution32MiB remain separate gates; cold results cannot be replaced by warm
 baselines. Current single feasibility timings are not formal samples or PASS.
 
+Bounded cold producer `collections_frontend::cold` parses/resolves/typechecks
+once into the existing CheckedEnv, then uses the existing emit_function_body,
+Collections function verification and shared per-function lowerer. Exactly one
+real body is planned/bound at a time; other declarations are body-less scaffolds.
+The whole-module credential still rejects such a document. A collection-specific
+context identity binds the complete nominal declaration graph without depth
+cutoffs; scalar/core context keys stay unchanged. Body-less scaffolds are not
+new executable semantics. Current116-function release feasibility sample has
+private baseline1372160B, sampled peak36524032B/delta35151872B, real PE1786,
+and total wall2017ms including library preparation. This closes the cold peak
+counterexample, not formal P90/partition gates. T-05 still must implement and
+verify real edits/atomic candidates; cold per-body production alone is not an
+incremental session. Units import only actual callees; recursive self calls use
+a real self import, not the old invalid sentinel. An unrelated signature edit
+leaves main's actual COFF bytes identical.
+
 The runtime now installs an exclusive allocator/poll hook before its first
 allocation. A VirtualAlloc arena reserves32MiB of address space and commits at
 most32MiB of private pages. Allocator headers, alignment, free fragments, text
@@ -119,8 +135,14 @@ ledger capacity and buffers, nodes, arrays, heap slots and clone work all live
 in these pages. Tail release decommits pages. A failed allocation cannot grow
 commit beyond the limit. Arena live/commit/peak/invalid and text metadata are
 reported separately from requested-byte counters. The32B automatic Frame
-headers, native stack and PE image are outside that arena; they remain part of
-the required whole-process observation. Runtime global state has one execution
+headers and registered stack Cell storage share the same32MiB ceiling with
+actual arena pages; `registered_bytes` and `managed_commit_peak` report this
+combined domain. Heap-cell frames reserve their header before allocation; failed
+allocation releases the reservation. A real32MiB page request that fits requested
+bytes but would exceed the combined domain is rejected before commit, while
+32MiB-4096 pages with80B of real registered storage succeeds and releases to0.
+Native code spills, stack slack and PE image remain in the separate OS process
+observation. Runtime global state has one execution
 thread; the small-stack probe transfers execution to its sole worker thread.
 
 Hook installation refuses live text buffers or retained metadata from a prior
@@ -140,4 +162,5 @@ Real PE probes cover initial/growing text-ledger allocation failure, physical
 quota refusal with fragment reuse/coalescing, exact8MiB guest and65536 list
 boundaries plus one, text/list clone cancellation rollback and allocator
 takeover refusal. Existing partial-clone/deep-stack/caller-trap/leak controls
-remain in place. Keep full T-02 pending until the other open items above close.
+remain in place. These first-case mechanisms do not close the remaining formal
+delivery work listed above.

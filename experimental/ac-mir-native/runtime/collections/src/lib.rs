@@ -453,18 +453,29 @@ pub unsafe extern "system" fn mn_coll_frame_enter(
     count: u64,
 ) -> i32 {
     physical::begin();
+    enter_frame(f, cells, count, false)
+}
+unsafe fn enter_frame(f: *mut Frame, cells: *mut Cell, count: u64, heap_reserved: bool) -> i32 {
     status((|| {
         let bytes = (count as usize)
             .checked_mul(16)
             .and_then(|n| n.checked_add(core::mem::size_of::<Frame>()))
             .ok_or(RESOURCE)?;
         precheck(bytes, 0)?;
+        if !heap_reserved && !arena::hold_external(bytes) {
+            return Err(RESOURCE);
+        }
         write(
             f,
             Frame {
                 prev: state().frame,
                 cells,
-                count: count as usize,
+                count: count as usize
+                    | if heap_reserved {
+                        1usize << (usize::BITS - 1)
+                    } else {
+                        0
+                    },
                 charge: bytes,
             },
         );
@@ -486,6 +497,11 @@ pub unsafe extern "system" fn mn_coll_frame_leave(f: *mut Frame) -> i32 {
     if (*f).count & heap_flag != 0 {
         free((*f).cells.cast());
     }
+    arena::release_external(if (*f).count & heap_flag != 0 {
+        core::mem::size_of::<Frame>()
+    } else {
+        (*f).charge
+    });
     state().frame = (*f).prev;
     uncharge((*f).charge, 0);
     if state().frame.is_null() {
@@ -508,14 +524,19 @@ pub unsafe extern "system" fn mn_coll_frame_open(f: *mut Frame, count: u64) -> *
     if precheck(total, 0).is_err() {
         return null_mut();
     }
-    let Ok(cells) = allocate(bytes) else {
-        return null_mut();
-    };
-    if mn_coll_frame_enter(f, cells.cast(), count) != 0 {
-        free(cells);
+    let header = core::mem::size_of::<Frame>();
+    if !arena::hold_external(header) {
         return null_mut();
     }
-    (*f).count |= 1usize << (usize::BITS - 1);
+    let Ok(cells) = allocate(bytes) else {
+        arena::release_external(header);
+        return null_mut();
+    };
+    if enter_frame(f, cells.cast(), count, true) != 0 {
+        free(cells);
+        arena::release_external(header);
+        return null_mut();
+    }
     cells.cast()
 }
 #[no_mangle]
@@ -1035,6 +1056,8 @@ pub extern "system" fn mn_coll_summary() {
     line(b"MN-COLL arena_commit=", arena::committed() as u64);
     line(b"MN-COLL arena_peak=", arena::peak() as u64);
     line(b"MN-COLL arena_invalid=", arena::invalid());
+    line(b"MN-COLL registered_bytes=", arena::registered() as u64);
+    line(b"MN-COLL managed_commit_peak=", arena::domain_peak() as u64);
     line(
         b"MN-COLL text_metadata=",
         ac_text_runtime::ac_rt_metadata_bytes() as u64,

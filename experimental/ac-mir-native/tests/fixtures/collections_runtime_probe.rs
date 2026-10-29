@@ -12,6 +12,7 @@ extern "system" {
     fn ExitProcess(code: u32) -> !;
     fn mn_coll_frame_enter(frame: *mut u64, cells: *mut Cell, count: u64) -> i32;
     fn mn_coll_frame_leave(frame: *mut u64) -> i32;
+    fn mn_coll_frame_open(frame: *mut u64, count: u64) -> *mut Cell;
     fn mn_coll_literal(dst: *mut Cell, bytes: *const u8, len: i32) -> i32;
     fn mn_coll_move(dst: *mut Cell, src: *mut Cell) -> i32;
     fn mn_coll_record_new(dst: *mut Cell, fields: u64) -> i32;
@@ -109,6 +110,44 @@ unsafe fn callee() -> ! {
 
 #[no_mangle]
 pub unsafe extern "system" fn ac_start() -> ! {
+    if cfg!(mn_probe_frames) {
+        let mut outer = [0u64; 4];
+        let mut inner = [0u64; 4];
+        let mut cells = [EMPTY; 1];
+        ok(mn_coll_frame_enter(
+            outer.as_mut_ptr(),
+            cells.as_mut_ptr(),
+            1,
+        ));
+        let before = mn_coll_live_bytes();
+        // Requested bytes fit, but32MiB of pages plus real frame headers do not.
+        check(
+            mn_coll_frame_open(inner.as_mut_ptr(), (32 << 20) / 16 - 6).is_null(),
+            145,
+        );
+        check(
+            mn_coll_live_bytes() == before && mn_coll_arena_committed() == 0,
+            146,
+        );
+        mn_coll_fail_nth(1);
+        check(mn_coll_frame_open(inner.as_mut_ptr(), 4).is_null(), 147);
+        check(mn_coll_live_bytes() == before, 148);
+        mn_coll_fail_nth(0);
+        let large = mn_coll_frame_open(inner.as_mut_ptr(), ((32 << 20) - 4096) / 16 - 4);
+        check(!large.is_null(), 149);
+        check(mn_coll_arena_committed() == (32 << 20) - 4096, 150);
+        ok(mn_coll_frame_leave(inner.as_mut_ptr()));
+        check(
+            mn_coll_live_bytes() == before && mn_coll_arena_committed() == 0,
+            151,
+        );
+        let empty = mn_coll_frame_open(inner.as_mut_ptr(), 0);
+        check(!empty.is_null(), 152);
+        ok(mn_coll_frame_leave(inner.as_mut_ptr()));
+        ok(mn_coll_frame_leave(outer.as_mut_ptr()));
+        mn_coll_summary();
+        ExitProcess(42);
+    }
     if cfg!(mn_probe_allocator_switch) {
         let mut cells = [EMPTY; 1];
         let mut frame = [0u64; 4];

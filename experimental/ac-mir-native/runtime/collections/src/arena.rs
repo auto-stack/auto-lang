@@ -26,6 +26,8 @@ struct Arena {
     live: usize,
     invalid: u64,
     limit: usize,
+    external: usize,
+    domain_peak: usize,
 }
 static mut ARENA: Arena = Arena {
     base: null_mut(),
@@ -37,6 +39,8 @@ static mut ARENA: Arena = Arena {
     live: 0,
     invalid: 0,
     limit: LIMIT,
+    external: 0,
+    domain_peak: 0,
 };
 fn arena() -> &'static mut Arena {
     unsafe { &mut *core::ptr::addr_of_mut!(ARENA) }
@@ -52,6 +56,7 @@ unsafe fn remove_free(block: *mut Block) {
     }
 }
 pub unsafe fn allocate(bytes: usize) -> *mut u8 {
+    let limit = arena().limit.min(LIMIT - arena().external);
     let Some(size) = bytes
         .max(1)
         .checked_add(HEADER)
@@ -60,7 +65,7 @@ pub unsafe fn allocate(bytes: usize) -> *mut u8 {
     else {
         return null_mut();
     };
-    if size > arena().limit {
+    if size > limit {
         return null_mut();
     }
     if arena().base.is_null() {
@@ -100,15 +105,11 @@ pub unsafe fn allocate(bytes: usize) -> *mut u8 {
         (*block).available = 0;
         (*block).next_free = null_mut();
     } else {
-        let Some(end) = arena()
-            .used
-            .checked_add(size)
-            .filter(|n| *n <= arena().limit)
-        else {
+        let Some(end) = arena().used.checked_add(size).filter(|n| *n <= limit) else {
             return null_mut();
         };
         let commit = (end + PAGE - 1) & !(PAGE - 1);
-        if commit > arena().limit {
+        if commit > limit {
             return null_mut();
         }
         if commit > arena().committed {
@@ -123,6 +124,7 @@ pub unsafe fn allocate(bytes: usize) -> *mut u8 {
             }
             arena().committed = commit;
             arena().peak = arena().peak.max(commit);
+            arena().domain_peak = arena().domain_peak.max(commit + arena().external);
         }
         block = arena().base.add(arena().used).cast();
         write(
@@ -216,6 +218,32 @@ pub fn live() -> usize {
 }
 pub fn invalid() -> u64 {
     arena().invalid
+}
+/// Registered real frame/stack-cell storage shares the production managed
+/// ceiling with actual arena pages. Probe arena-only limits remain independent.
+pub fn hold_external(bytes: usize) -> bool {
+    let Some(next) = arena().external.checked_add(bytes).filter(|n| {
+        n.checked_add(arena().committed)
+            .is_some_and(|total| total <= LIMIT)
+    }) else {
+        return false;
+    };
+    arena().external = next;
+    arena().domain_peak = arena().domain_peak.max(next + arena().committed);
+    true
+}
+pub fn release_external(bytes: usize) {
+    if bytes > arena().external {
+        arena().invalid += 1;
+    } else {
+        arena().external -= bytes;
+    }
+}
+pub fn registered() -> usize {
+    arena().external
+}
+pub fn domain_peak() -> usize {
+    arena().domain_peak
 }
 /// Probe seam only tightens the fixed production ceiling; an active domain
 /// cannot set a ceiling below pages that are already committed.

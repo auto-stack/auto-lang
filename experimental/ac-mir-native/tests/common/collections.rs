@@ -81,6 +81,21 @@ pub fn run_module_with_units(
         m.types[signature.result as usize],
         auto_av_core::mir::MirType::I32 | auto_av_core::mir::MirType::Bool
     ));
+    let mut units = auto_av_probe::cache::split_units(&m).unwrap();
+    memory("split");
+    for unit in &mut units {
+        rewrite(unit);
+        auto_av_core::verify_mir(unit).unwrap();
+    }
+    run_units(&units, &entry.name, tag, source)
+}
+
+pub fn run_units(
+    units: &[auto_av_core::mir::MirModule],
+    entry: &str,
+    tag: &str,
+    source: Option<&str>,
+) -> ac_mn::link_driver::PeRun {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -90,14 +105,8 @@ pub fn run_module_with_units(
         std::process::id()
     ));
     std::fs::create_dir_all(&work).unwrap();
-    let mut units = auto_av_probe::cache::split_units(&m).unwrap();
-    memory("split");
-    for unit in &mut units {
-        rewrite(unit);
-        auto_av_core::verify_mir(unit).unwrap();
-    }
     let mut objects = Vec::new();
-    for unit in &units {
+    for unit in units {
         let object = ac_mn::collections_lower::emit_unit_coff(unit)
             .unwrap_or_else(|e| panic!("{tag}/{}: emit {e}", unit.funcs[0].name));
         std::fs::write(
@@ -110,8 +119,8 @@ pub fn run_module_with_units(
             bytes: object.bytes,
         });
     }
-    memory("emit");
-    let symbol = ac_mn::symbols::function_symbol(&m.owner, &entry.name);
+    memory_stage(tag, "emit");
+    let symbol = ac_mn::symbols::function_symbol(&units[0].owner, entry);
     let wrapper = ac_mn::collections_lower::emit_wrapper_coff(&symbol).unwrap();
     let run = ac_mn::link_driver::link_and_run(
         &objects,
