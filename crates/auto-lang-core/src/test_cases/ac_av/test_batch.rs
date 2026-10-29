@@ -10,6 +10,8 @@ use std::sync::{
 const SCHEMA: &str = "avworker-test-batch/1";
 const FRAME_CAP: usize = 4 << 20;
 
+pub mod pilot;
+
 pub struct Item<'a> {
     pub case: &'a ResolvedCase,
     pub check: &'a CheckSpec,

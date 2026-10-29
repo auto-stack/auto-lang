@@ -5,7 +5,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "test-governance"))
-from module_catalog import SCHEMA, discover, select, validate, verify_selection
+from module_catalog import SCHEMA, discover, select, source_identity, validate, verify_selection
 from build_modules import make_catalog, navigation
 from run_selected import exact_filter
 
@@ -24,6 +24,25 @@ def catalog():
 
 
 class ModuleSelection(unittest.TestCase):
+    def test_reference_document_is_input_but_plan_receipt_is_bookkeeping(self):
+        import tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "auto-lang"
+            (root / "docs/plans").mkdir(parents=True)
+            reference = root / "docs/reference.txt"
+            receipt = root / "docs/plans/progress.md"
+            reference.write_text("original")
+            receipt.write_text("pending")
+            def git(*args, **kwargs):
+                return "head" if kwargs.get("text") else b"docs/reference.txt\0docs/plans/progress.md\0"
+            with patch("module_catalog.subprocess.check_output", side_effect=git):
+                before = source_identity(root)
+                receipt.write_text("complete")
+                self.assertEqual(source_identity(root)["code"], before["code"])
+                reference.write_text("changed fixture")
+                self.assertNotEqual(source_identity(root)["code"], before["code"])
+
     def test_plan_number_is_provenance_not_module_ownership(self):
         self.assertEqual(navigation({"test": "tests::plan781_budget_http_tests::a",
                                      "binary": "auto-lang"}), "budget-http")

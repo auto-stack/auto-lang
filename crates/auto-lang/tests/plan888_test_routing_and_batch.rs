@@ -100,129 +100,15 @@ fn inventory_binds_changed_source_without_following_its_oracle() {
 mod batch {
     use super::*;
     use auto_lang::test_cases::ac_av::{self, test_batch};
-    use auto_test_case::contract::{CheckSpec, PayloadSpec};
-    use auto_test_case::discovery::{load_suite, LoadedSuite};
-    use auto_test_case::ir::{resolve_case, resolve_oracle, ResolvedCase, ResolvedOracle};
     use auto_test_case::report::Status;
-    use auto_test_case::suite::apply_defaults;
+    use auto_test_case::{contract::PayloadSpec, ir::resolve_case};
 
-    struct Bound {
-        case: ResolvedCase,
-        check: CheckSpec,
-        oracle: ResolvedOracle,
-        root: PathBuf,
-    }
-
-    fn bind(suite: &LoadedSuite, case_id: &str, check_id: &str, root: PathBuf) -> Bound {
-        let (file, spec) = suite
-            .cases
-            .iter()
-            .flat_map(|f| f.specs.iter().map(move |s| (f, s)))
-            .find(|(_, s)| s.id == case_id)
-            .expect("original case identity");
-        let case = resolve_case(
-            spec.clone(),
-            &file.doc,
-            &suite.fixture_base,
-            &Limits::defaults(),
-        )
-        .unwrap();
-        let declared = spec
-            .checks
-            .iter()
-            .find(|c| c.id == check_id)
-            .expect("original check identity");
-        let (check, _) = apply_defaults(declared, &suite.suite.defaults);
-        let oracle =
-            resolve_oracle(case_id, &check, &suite.fixture_base, &Limits::defaults()).unwrap();
-        Bound {
-            case,
-            check,
-            oracle,
-            root,
-        }
-    }
-
+    use test_batch::pilot::Bound;
     fn pilot(tag: &str) -> Vec<Bound> {
-        let root = std::env::temp_dir().join(format!("plan888-batch-{}-{tag}", std::process::id()));
-        if root.exists() {
-            std::fs::remove_dir_all(&root).unwrap();
-        }
-        std::fs::create_dir_all(&root).unwrap();
-        let corpus = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/cases/ace-m1");
-        let suite = load_suite(&corpus.join("ace-m1-base.suite.ad"), &Limits::defaults()).unwrap();
-        assert!(suite.errors.is_empty());
-        let binding = std::fs::read_to_string(corpus.join("binding.tsv")).unwrap();
-        let mut result = Vec::new();
-        for n in 1..=12 {
-            let case_id = format!("ace.m1.b{n:02}");
-            let mut item = if matches!(n, 8 | 11) {
-                // These sources have existing binding-table AV obligations but
-                // no green four-path suite row (legacy differs). Create a new
-                // AV-only consumer using the ORIGINAL source and binding oracle.
-                let mut item = bind(&suite, "ace.m1.b01", "av", root.join(format!("b{n:02}")));
-                let original_id = format!("B{n:02}");
-                let row: Vec<_> = binding
-                    .lines()
-                    .find(|l| l.starts_with(&format!("{original_id}\tcorpus\t")))
-                    .expect("original binding row")
-                    .split('\t')
-                    .collect();
-                assert_eq!(row[6], "ok", "AV obligation already registered");
-                let expected: i32 = row[4].parse().unwrap();
-                let file = &suite.cases[0];
-                let mut spec = item.case.spec.clone();
-                spec.id = format!("ace.m1.binding.b{n:02}");
-                spec.source.payload = PayloadSpec::File(format!("src/{original_id}.at"));
-                item.case = resolve_case(spec, &file.doc, &suite.fixture_base, &Limits::defaults())
-                    .unwrap();
-                item.check.expect.exit = Some(expected);
-                item.oracle = resolve_oracle(
-                    &item.case.spec.id,
-                    &item.check,
-                    &suite.fixture_base,
-                    &Limits::defaults(),
-                )
-                .unwrap();
-                item
-            } else {
-                bind(&suite, &case_id, "av", root.join(format!("b{n:02}")))
-            };
-            item.case.spec.checks = vec![item.check.clone()];
-            result.push(item);
-        }
-        let suite =
-            load_suite(&fixture().join("first-wave.suite.ad"), &Limits::defaults()).unwrap();
-        for name in ["arithmetic", "unary", "group"] {
-            result.push(bind(
-                &suite,
-                &format!("gov.d.{name}"),
-                "av-scalar-control",
-                root.join(name),
-            ));
-        }
-        assert_eq!(result.len(), 15);
-        result
+        test_batch::pilot::load(tag).unwrap()
     }
-
-    fn items<'a>(values: &'a [Bound], label: &str) -> Vec<test_batch::Item<'a>> {
-        // Each mode has a separate parent artifact/store directory.
-        for value in values {
-            std::fs::create_dir_all(value.root.join(label)).unwrap();
-        }
-        // Root itself is unique per pilot/mode. Callers pass a fresh pilot to
-        // each mode, so the borrowed paths need no temporary allocation here.
-        values
-            .iter()
-            .map(|v| test_batch::Item {
-                case: &v.case,
-                check: &v.check,
-                oracle: &v.oracle,
-                project_dir: &v.root,
-                artifact_dir: &v.root,
-                run_dir: &v.root,
-            })
-            .collect()
+    fn items<'a>(values: &'a [Bound], _label: &str) -> Vec<test_batch::Item<'a>> {
+        test_batch::pilot::items(values)
     }
 
     #[test]
@@ -279,9 +165,11 @@ mod batch {
     #[test]
     fn batch_wrong_oracles_are_individual_failures_and_safe_tail_still_runs() {
         let mut values = pilot("wrong-oracles");
-        values[0].oracle.exit = Some(999);
-        values[2].oracle.exit = Some(998);
-        let borrowed = items(&values[..3], "group");
+        // Original D expectations are 3, -6, 9. Break two parent oracles,
+        // including the prescribed 3 -> 4 counter-control.
+        values[12].oracle.exit = Some(4);
+        values[14].oracle.exit = Some(10);
+        let borrowed = items(&values[12..15], "group");
         let report = test_batch::run_group(&borrowed, std::time::Duration::from_secs(60)).unwrap();
         assert!(
             report.error.is_none(),
@@ -296,7 +184,9 @@ mod batch {
         for index in [0, 2] {
             let verdict = report.items[index].verdict.as_ref().unwrap();
             assert!(verdict.mismatches.iter().any(|m| m.observation == "exit"));
-            assert!(report.items[index].id.contains(&values[index].case.spec.id));
+            assert!(report.items[index]
+                .id
+                .contains(&values[index + 12].case.spec.id));
         }
     }
 
@@ -481,7 +371,7 @@ mod batch {
     #[test]
     fn batch_reverse_and_fixed_shuffle_keep_per_case_values_and_fresh_stores() {
         for order in [vec![2, 1, 0], vec![1, 0, 2]] {
-            let values = pilot(&format!("order-{order:?}"));
+            let values = pilot("reordered");
             let borrowed = items(&values[..3], "group");
             let reordered: Vec<_> = order
                 .iter()
