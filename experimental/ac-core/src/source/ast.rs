@@ -275,6 +275,11 @@ pub enum ExprKind {
         callee: Ident,
         args: Vec<Arg>,
     },
+    /// An indirect call through a function-typed expression.
+    CallValue {
+        callee: Box<Expr>,
+        args: Vec<Arg>,
+    },
     Binary {
         op: BinOp,
         lhs: Box<Expr>,
@@ -488,6 +493,17 @@ impl Drop for Expr {
                     }
                 }
                 ExprKind::Call { args, .. } => {
+                    for a in args.iter_mut() {
+                        let e = match a {
+                            Arg::Pos(e) | Arg::MovePos(e) => std::mem::replace(e, dummy()),
+                            Arg::Named { value, .. } => std::mem::replace(value, dummy()),
+                        };
+                        stack.push(e);
+                    }
+                }
+                ExprKind::CallValue { callee, args } => {
+                    let e = std::mem::replace(callee.as_mut(), dummy());
+                    stack.push(e);
                     for a in args.iter_mut() {
                         let e = match a {
                             Arg::Pos(e) | Arg::MovePos(e) => std::mem::replace(e, dummy()),

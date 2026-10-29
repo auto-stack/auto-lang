@@ -3776,6 +3776,18 @@ impl<'a> FnResolver<'a> {
                     kind: RExprKind::IntLit(0),
                 }
             }
+            ExprKind::CallValue { .. } => {
+                self.bind_err(
+                    "source.unsupported",
+                    "indirect closure calls have not passed closure lowering in this source profile",
+                    e.span,
+                );
+                ResolvedExpr {
+                    span: e.span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(0),
+                }
+            }
             ExprKind::IntLit(v) => ResolvedExpr {
                 span: e.span,
                 vt: VT::I32,

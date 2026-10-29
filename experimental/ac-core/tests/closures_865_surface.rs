@@ -46,7 +46,7 @@ fn closures_865_resolves_and_emits_higher_order_function_types() {
 
 #[test]
 fn closures_865_parses_move_expression_and_zero_arg_block_lambdas() {
-    let source = "fn main() int { let add = move (n int) => n + 1; let answer = () => { return 42 }; return add(3) }";
+    let source = "fn main() int { let add = move (n int) => n + 1; let answer = () => { return 42 }; let direct = ((n int) => n + 1)(3); return add(3) }";
     let program =
         parse_program_with(source, SourceProfile::Closures).expect("lambda syntax parses");
     let Item::Fn(main) = &program.items[0] else {
@@ -81,4 +81,9 @@ fn closures_865_parses_move_expression_and_zero_arg_block_lambdas() {
     assert!(!move_capture);
     assert!(params.is_empty());
     assert!(matches!(body.as_ref(), ClosureBody::Block(_)));
+
+    let Stmt::Let { value, .. } = &main.body.stmts[2] else {
+        panic!("expected direct lambda call binding");
+    };
+    assert!(matches!(value.kind, ExprKind::CallValue { .. }));
 }

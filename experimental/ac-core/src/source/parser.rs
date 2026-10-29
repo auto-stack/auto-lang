@@ -99,6 +99,8 @@ struct CallFrame {
     /// record methods alike); `None` for free calls — the close emits a
     /// plain Call.
     method_recv: Option<Box<Expr>>,
+    /// Present for a postfix call through a computed closure expression.
+    callee_expr: Option<Box<Expr>>,
     callee: Ident,
     args: Vec<Arg>,
     mark: usize,
@@ -2529,6 +2531,7 @@ impl<'s> Parser<'s> {
                                 mark: vals.len(),
                                 pending_name: None,
                                 method_recv: Some(Box::new(recv)),
+                                callee_expr: None,
                             })));
                             self.take_named_label(&mut frames)?;
                             continue 'outer;
@@ -2636,6 +2639,7 @@ impl<'s> Parser<'s> {
                                 frames.push(Frame::Call(Box::new(CallFrame {
                                     callee,
                                     method_recv: None,
+                                    callee_expr: None,
                                     args: Vec::new(),
                                     mark: vals.len(),
                                     pending_name: None,
@@ -2800,6 +2804,7 @@ impl<'s> Parser<'s> {
                                     mark: vals.len(),
                                     pending_name: None,
                                     method_recv: Some(Box::new(recv)),
+                                    callee_expr: None,
                                 })));
                                 self.take_named_label(&mut frames)?;
                                 continue 'outer;
@@ -2997,6 +3002,7 @@ impl<'s> Parser<'s> {
                                 frames.push(Frame::Call(Box::new(CallFrame {
                                     callee,
                                     method_recv: Some(Box::new(recv)),
+                                    callee_expr: None,
                                     args: Vec::new(),
                                     mark: vals.len(),
                                     pending_name: None,
@@ -3051,6 +3057,39 @@ impl<'s> Parser<'s> {
                     }
                     Tok::Punct(P::LParen) => {
                         // `(` in operator position after a complete value
+                        if self.surface.is_closures()
+                            && !vals.is_empty()
+                            && (Self::in_bracket(&frames) || tok.line == self.last_line)
+                        {
+                            let callee = vals.pop().expect("indirect-call callee");
+                            let callee_ident = Ident {
+                                name: "<closure>".to_string(),
+                                span: callee.span,
+                            };
+                            self.pos += 1;
+                            self.last_line = tok.line;
+                            if matches!(self.peek().map(|t| &t.tok), Some(Tok::Punct(P::RParen))) {
+                                let close = self.bump();
+                                vals.push(Expr {
+                                    span: callee.span.join(close.span),
+                                    kind: ExprKind::CallValue {
+                                        callee: Box::new(callee),
+                                        args: Vec::new(),
+                                    },
+                                });
+                                continue;
+                            }
+                            frames.push(Frame::Call(Box::new(CallFrame {
+                                method_recv: None,
+                                callee_expr: Some(Box::new(callee)),
+                                callee: callee_ident,
+                                args: Vec::new(),
+                                mark: vals.len(),
+                                pending_name: None,
+                            })));
+                            self.take_named_label(&mut frames)?;
+                            continue 'outer;
+                        }
                         return Err(self
                             .syntax(format!("expected operator, found {}", self.describe_cur())));
                     }
@@ -3142,37 +3181,47 @@ impl<'s> Parser<'s> {
                                 };
                                 self.pos += 1;
                                 self.last_line = tok.line;
-                                match cf.method_recv {
-                                    Some(recv) if self.surface.is_record() => {
-                                        let span = cf.callee.span.join(tok.span);
-                                        vals.push(Expr {
-                                            span: recv.span.join(span),
-                                            kind: ExprKind::MethodCall {
-                                                recv,
-                                                name: cf.callee,
-                                                args: cf.args,
-                                            },
-                                        });
-                                    }
-                                    Some(recv) => {
-                                        let span = recv.span.join(tok.span);
-                                        vals.push(Expr {
-                                            span,
-                                            kind: ExprKind::Method {
-                                                recv,
-                                                name: cf.callee,
-                                                args: cf.args,
-                                            },
-                                        });
-                                    }
-                                    None => {
-                                        vals.push(Expr {
-                                            span: cf.callee.span.join(tok.span),
-                                            kind: ExprKind::Call {
-                                                callee: cf.callee,
-                                                args: cf.args,
-                                            },
-                                        });
+                                if let Some(callee) = cf.callee_expr {
+                                    vals.push(Expr {
+                                        span: callee.span.join(tok.span),
+                                        kind: ExprKind::CallValue {
+                                            callee,
+                                            args: cf.args,
+                                        },
+                                    });
+                                } else {
+                                    match cf.method_recv {
+                                        Some(recv) if self.surface.is_record() => {
+                                            let span = cf.callee.span.join(tok.span);
+                                            vals.push(Expr {
+                                                span: recv.span.join(span),
+                                                kind: ExprKind::MethodCall {
+                                                    recv,
+                                                    name: cf.callee,
+                                                    args: cf.args,
+                                                },
+                                            });
+                                        }
+                                        Some(recv) => {
+                                            let span = recv.span.join(tok.span);
+                                            vals.push(Expr {
+                                                span,
+                                                kind: ExprKind::Method {
+                                                    recv,
+                                                    name: cf.callee,
+                                                    args: cf.args,
+                                                },
+                                            });
+                                        }
+                                        None => {
+                                            vals.push(Expr {
+                                                span: cf.callee.span.join(tok.span),
+                                                kind: ExprKind::Call {
+                                                    callee: cf.callee,
+                                                    args: cf.args,
+                                                },
+                                            });
+                                        }
                                     }
                                 }
                                 // continue: operator or another `)` may follow
