@@ -203,7 +203,7 @@ SD均为proposal，work不发布canonical；review核其是现行交付描述，
 
 ## 8. 执行步骤
 
-10项=8 work＋1 review＋1 merge；全部目前未执行。G884对所有行有效，源码/注册/fixture写入须T-02完成X884。每个探针属于本Plan，不另开编号。
+10项=8 work＋1 review＋1 merge，**已全部完成**（T-01..T-08 work、T-09 review、T-10 merge；终态 `archived`）。G884对所有行有效，源码/注册/fixture写入由 T-02 完成 X884。每个探针属于本Plan，不另开编号。表中 T-03..T-06 的提交号为首轮 rebase 前哈希，最终映射见 §9 merge 收据 `landed` 行。
 
 | 状态 | ID | owner_stage | 依赖 | 路径/交付/验证 | AC |
 |---|---|---|---|---|---|
@@ -215,7 +215,7 @@ SD均为proposal，work不发布canonical；review核其是现行交付描述，
 | [x] | T-06 | work | T-05 | ✅ rust.rs 7783→~4290行（编排留驻）：post_fixes(27 fix+derive mask)/ast_scans(扫描族+共用收集器)/merged_fixes(merged后处理+regex包)/decl_emit(4遗留发射器)/http helper→call族；收集器去重=spec_params逐字同+str_params仅注释差→单份，param_types**语义分叉**（merged多merge-mut收集）保持双份入KNOWN-DEBT；HTTP壳T-01审计核销零迁移。指纹闭包增补（守卫红→绿）。验证 a2r 405/405+全定向族绿+警告=基线131 | AC-05 |
 | [x] | T-07 | work | T-06 | ✅ SDK consumer 5/5、三仓 consumer 3/3（auto-man钉e6cc06f）、verify-deps.sh PASS；上层路径消费者 plan705:19/707_cancel:5/442:5/046:11 绿（再导出面保持）；测试ID零改名（plan716扫描面扩展有注记）；ACE在途863/865/871 drafting/881已归档均零R域交集 | AC-06, AC-07 |
 | [x] | T-08 | work | T-07 | ✅ 全AC/V自检+KNOWN-DEBT 4条登记+SD-01..06 proposal 就绪（merge落地）；冻结提交=工作树clean；diff无新增调试输出；触面新增警告0（总量=基线131）；merge-owned门 pending（裸t+tv+tt+integration 显式门） | AC-01..AC-07 |
-| [ ] | T-09 | review | T-08；同树冻结 | 独立上下文复审所有AC/SD/V和X884；仅相关定向反例/必要check，不以整档替代；findings回work同树修复并重绑 | AC-08 |
+| [x] | T-09 | review | T-08；同树冻结 | ✅ 独立上下文终审在冻结 `8796cf8b6` pass（AC-01..07 逐项、V-01..11、SD/SD 目标核读、X884/兄弟钉复核）；findings R884-F1（MINOR，净变化数字）/F2（INFO，行数）/F3（INFO，entry.rs 指纹边界为预存）已落正；merge-owned 门显式 pending 移交 T-10。另：实施期 T-03..T-06 提交号见上注 | AC-08 |
 | [x] | T-10 | merge | T-09 pass | ✅ 最终冻结 `fa0282c85`（两轮 rebase：a74fea967→219fd5258，12e8050a9→1c2e1149e→fa0282c85；range-diff 5/5、6/6 全等）；并集核验=881/002（d9718cc63..a74fea967）零文件交集、886（a74fea967..12e8050a9，仅 vm/codegen.rs+docs）零交集；裸 t 3204/3204 + tv 163/163 + tt 3575/3575 + integration 11/11 + guard 1/1 + SDK consumer 5/5 + 三仓 consumer 3/3 + verify-deps PASS；ff-only 落地（无 merge commit）→ master tip=fa0282c85；ledger v131→v132（4 条，guarded offline projection）；canonical SD-01..06 已随交付合入并读回；归档+索引再生+源读回+guard/清树完成；限制清单见 §9 merge 收据 | AC-09 |
 
 **未来实施树**：`D:/autostack/.wt/lang-884/auto-lang`、分支`plan-884-dev`，唯一语言写树。按需要同组UI/Man/down为固定SHA detached只读树，不借他方WIP或隐式主检出；不创建junction/symlink。实际base/HEAD/锁/根路径写回T-01；code/check/build/test全部在权威树。计划簿记留主检出，review暂停写入且仍用同树。新跨仓产品改动超本Plan边界，先具体needs_replan，不自行把只读依赖改为写仓。
@@ -273,3 +273,13 @@ stage: goal | plan_id: PLAN-884 | plan_revision: r1 | round: 2 | from: review | 
 | SD-04 (modify) | `docs/specs/auto-lang/trans/overview.md` | 结构节改写（编排 4293 + 9 主题、收集器去重与 884-N1）+ 新增 "`call_inner` 形状族派发（PLAN-884）"（22 族/CallShape/首匹配序/call 事务序/死码保留） |
 | SD-05 (modify) | `docs/specs/auto-lang/vm/overview.md`；`docs/specs/stdlib/project.md` | vm：核心结构 13 域、872 绑定序新增第 5 条（19 个域 helper 有序、指纹双清单+守卫）；stdlib：新增 "装配 owner 与指纹输入（PLAN-884）" |
 | SD-06 (modify) | `docs/specs/language-sdk/project.md` | 结构半部条目改写为 as-built（四类职责单源 + structure-closure 链接）；模块 `plans.md` 追加 884 行（language-sdk / runtime / trans / vm / stdlib） |
+
+### cleaned（2026-10-29）
+
+- **worktree**：`D:/autostack/.wt/lang-884/auto-lang` — `wt-guard.sh` 输出 **clean**（无任何 reparse point）→ `git worktree remove` 成功；分支 `plan-884-dev`（was `fa0282c85`）`git branch -d` 删除；落地前提核验 `git log master..plan-884-dev` = 空（全部 6 提交已在 master 线性链上，交付提交 `fa0282c85` 为 master 祖先）。
+- **兄弟只读树**：`auto-man`(e6cc06f) / `auto-ui`(d5c7b86) / `auto-down`(c3464d0) 各自 `wt-guard.sh` clean 后经**各自仓** `git worktree remove`（未直接删目录，全程未创建任何 junction/symlink）；四仓 `worktree list` 中 lang-884 条目=0；组目录 `D:/autostack/.wt/lang-884` 已空并删除。
+- **构建中间产物**：`D:/autostack/plan-artifacts/plan-884/` **不存在**（本 Plan 未产出该目录），故无 target 树/.pdb 需回收；worktree 内 `target/` 与 `experimental/ac-av-probe/target`（含冷建的 `av_probe_worker.exe`）随树删除，无需保留 .exe（非 hash 锚定证据）。
+- **本地证据留存（不入库）**：`docs/plans/attachments/884/`——t01 审计 5 件、t10 门日志 9 件（gates / rerun / idle / final / explicit / explicit-final / master-baseline-t / cte-isolation / ace-isolation）、测试改写的易变报告备份 `volatile-*.json` 20 件。按证据政策仅本地保留，`git add` 仅放行 md 摘要，本次未提交任何 attachments。
+- **批量回归到期检查**：`docs/plans/.last-batch-regression.json` = `last_covered_plan_id 880` / `2026-10-28T18:55Z`；其后落地计划 881/884/886 均非 %5，回执年龄约 13h < 48h → **不到期**（`cargo tf` 本次不执行，留待到期由 `/auto-plan:regress` 主检出单实例执行）。
+- **部署/产物检查**：本仓无后端 release 二进制与 web bundle；`auto` CLI 已归 auto-man 仓（本仓无该 package，故 `cargo build -p auto` 不适用，CLAUDE.md 该条对本仓已失效）。受影响产物=测试二进制与 consumer fixture，已在落地提交 `fa0282c85` 上重建并复验（t/tv/tt + integration + 两 consumer + verify-deps）。
+- **终态**：master `4a50d90c1`（本 Plan 交付 `fa0282c85`、ledger `624644107`、归档簿记），Plan 相关路径 `git status` clean；历史线性（无 merge commit）；本 Plan 状态 `archived`（终态，不再回到 work/review）。
