@@ -16,14 +16,33 @@
 - 保留有证：str.len 双版（chars vs bytes 两个活名字）、math/to_int 双轨（tag 感知/
   错误语义边界不同）、error-reply 采样族（plan755 字节级契约钉住，收益/风险比低）。
 
-## 结构（PLAN-843 结构半部，2026-10-28）
+## 结构（PLAN-843 结构半部 2026-10-28；PLAN-884 运行桥接收口）
 
 FFI/服务/根 lib 职责分界：`vm/ffi/stdlib.rs` 收敛注册/派发入口 + `stdlib/{file_io,http_client,
-crash_trace,strings_json,math,image,sqlite,sys_env}` 域族；`vm/ffi/http_server.rs` 服务装配 +
+crash_trace,strings_json,math,image,sqlite,sys_env,request_root,storage,exit_audit,http_async,
+rust_stdlib_dispatch}` 域族；`vm/ffi/http_server.rs` 服务装配 +
 `http_server/{server_route,server_model,server_dispatch,server_scope,server_argbind}`；crate 根
-`lib.rs`（879 生产行）仅组合与再导出，`entry.rs` 承载 run* 执行入口族、`flags.rs` 承载进程级
-全局旗标（crate 根路径经 pub use 恒等）。guard 生命周期（RequestFileRootGuard/HttpBaseEnvGuard）、
-TCP ready/端口策略与退出清理语义不变；stdlib_assembly 源码指纹输入清单覆盖全部族文件。
+`lib.rs`（879 生产行）仅组合与再导出，`entry.rs` 承载 run* 执行入口族、`entry/run_bridge.rs`
+承载运行桥接单源、`flags.rs` 承载进程级全局旗标（crate 根路径经 pub use 恒等）。guard 生命周期
+（RequestFileRootGuard/HttpBaseEnvGuard）、TCP ready/端口策略与退出清理语义不变；
+stdlib_assembly 源码指纹输入清单覆盖全部族文件（含 884 新增 5 域，漏列由常驻守卫钉为红）。
+
+### run 入口桥接合同（PLAN-884）
+
+同一机制只有一份：`entry/run_bridge.rs::run_on_dedicated_thread(code, capture, path, deadline,
+input)` 服务 `run_with_capture_and_(path_)bytecode[_with_meta/_with_deadline/_with_input]`、
+`run_autovm`、`run_autovm_capture` 全部同构变体——capture/path/deadline/input 是**显式策略
+参数**，不在 helper 内硬编码。两条**刻意不合并**的策略：① `run`/`run_with_capture` 的
+`ExecutionEngine` 选择器（含弃用告警副作用，在上层组合根）；② `run_with_capture_and_path_staged`
+的 typed-trap 通道（返回 `StagedRunFailure`、不走 `join_execution`）。
+
+保持项：owned clone → spawn 专用线程（栈=`vm_thread_stack_size()`：`RUST_MIN_STACK>=4MiB` 沿用，
+否则 16MiB）→ 线程内 LocalSet 驱动，`!Send` VM 不出线程；spawn 失败保持
+`.expect("Failed to spawn execution thread")`（真 panic）；join panic 保持
+`Err(Msg("execution thread panicked"))`；`LAST_RUN_TRAP_CODE` 在 worker 闭包内 join 前 take
+（线程亡于 join），panic/基础设施失败的 `run_trap_code` 恒 `None`；不吞错、不把 deadline 变为
+成功、不新增即时取消；正常与异常退出都恢复请求本地 root/输入。合同全文见
+[language-sdk/structure-closure.md](../../language-sdk/structure-closure.md) §2。
 
 ## 职责
 

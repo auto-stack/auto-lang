@@ -7,12 +7,35 @@
 `RustTrans::set_scope` no-op 退役（deprecated Phase 066；JavaScript/Python 对应物此前已删，
 零调用者）。
 
-## 结构（PLAN-843 结构半部，2026-10-28）
+## 结构（PLAN-844，2026-10-28；PLAN-884 收口补齐）
 
-`trans/rust.rs`（5960 生产行）为组合入口；发射算法按职责归 `trans/rust/{expr_emit,stmt_emit,
-decl_emit,ty,call_emit,project_fixups}`；`auto_cabi_kit` 系 emit_cabi_kit 内嵌模板串（随
-call_emit 原样）；`call_inner` 特型派发 if 链单体保全（844 候选）。同算法复用、Sink 产物
-逐字节可比；无跨目标共享大杂包。源码 pin 型断言随 owner 迁移扫描面（plan716 先例）。
+`trans/rust.rs`（编排约 4293 行）为组合入口：`RustTrans` 类型/构造、`Trans::trans` 阶段序
+（header→prescan→类型推断→Phase2 拆分+全局注册→Phase3 decl 发射→Phase4 main 合成→prelude/
+导入注入）、单文件链、project/merged 驱动与查表。发射与后处理算法按职责归 9 个主题模块：
+`{expr_emit,stmt_emit,decl_emit,ty,call_emit,project_fixups}`（843 期）+
+`{post_fixes(27 个后处理 fix 体+derive mask),ast_scans(扫描族+共用收集器),merged_fixes(merged
+后处理+regex 包)}`（884 期）；`auto_cabi_kit` 系 emit_cabi_kit 内嵌模板串（随 call_emit 原样）。
+同算法复用、Sink 产物逐字节可比；无跨目标共享大杂包。源码 pin 型断言随 owner 迁移扫描面
+（plan716 先例）。收集器去重：`collect_fn_spec_params`/`collect_fn_str_params` 单份共用，
+`collect_fn_param_types` 因 merged 版多收 merge-mut 标志而保持双份（884-N1 在册）。
+
+## `call_inner` 形状族派发（PLAN-884）
+
+- 原顺序 if-let 链（25 段）经**逐块 early-return 审计**后按调用形状拆为 **22 个顶层阶段**，
+  实现分居 `call_emit/{call_bare_builtins,call_value_ctors,call_macro_shapes,call_task,
+  call_tag_ctor,call_bina_methods,call_dot_methods,call_module_methods,call_generic_fallback}.rs`；
+  `call_emit.rs` 只留派发序、`call` 外层与 cabi kit。
+- 族 helper 返回 `CallShape::{Miss, Handled}`：`Miss`=形状不属本族（落穿下一族），
+  `Handled`=已发射（立即返回），失败走 `Err`；末族无条件终止（无总 miss）。禁用 `Ok(())`
+  混表"未命中/已发射"，禁止已发射后继续走通用 fallback。
+- **首匹配序不可重排**（15 组重叠载荷对：Value ctor、`.send`、`env.get` 字节差异、
+  `str.from_uint`/`fs.metadata`、`set`/`contains`/`len` 四路、json len 的 Bina 无 cast vs
+  Dot 有 cast、http post 四形等）；漂移判据只有 a2r golden 与形状反例，不允许改 golden 迁就。
+- `call` 外层事务序保持：临时 `Vec` → UTF-8 校验 → `serialize_positional_args` →
+  `collect_core_reference`（发射后仍可 `Err` 的诚实拒绝门）→ 单次 `out.write_all`；
+  失败时已产生的写入/副作用位置不变。
+- 审计确认不可达的三处块逐字保留（884-N4），不按行数删除；派发语义改变须重做不可达性审计。
+- 结构合同与规模事实见 [language-sdk/structure-closure.md](../../language-sdk/structure-closure.md)。
 
 ## 职责
 

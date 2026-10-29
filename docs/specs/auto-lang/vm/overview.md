@@ -16,14 +16,18 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
 ## 现状
 
 - CALL_SPEC 内联数学分发已 nanbox 对齐（plan-474，plan011④ 根因）：一元分支接收者/结果按 NanoValue 透传（原 read_i32/push_i32/pop_i32 i32 化石把裸 f64 读成低 32 位、TAG_F32 读成 payload 位型），二元分支原地调用（rust_fn 宏逆序弹参，CALL_SPEC `[recv, arg0..argN-1]` 布局天然对齐）；回归载具 `tests/vm_json_float_read_tests.rs`（脚本/位级/widget handler 三层）。
-- 核心结构（PLAN-843 结构半部，2026-10-28）：入口仅组合/派发——`engine.rs` 2131 生产行 +
-  `{heap,values,futures_timers,tasks}` 状态族 + `ops_{construct,collections,arith,calls,flow}`
-  opcode 尾递归派发段；`codegen.rs` 1274 + `{stmt_emit,expr_emit,ty_conv,fn_emit,vars}` 发射族 +
-  `expr_*` 8 段表达式派发链；`native.rs` 2367 + `natives_*` 12 域（pub use 门面保
-  `crate::vm::native::X` 路径与 for_each_native! 宏展开）；`ffi/stdlib.rs`/`ffi/http_server.rs`
-  分 8/5 域族。巨型单体（run_one_instruction/compile_expr_inner）=连续臂切片尾递归链，臂体
-  逐字保留；状态 owner（AutoVM/NativeInterface/TypeStore）与公开 API 面不变，详见
-  [language-sdk/architecture.md](../../language-sdk/architecture.md)。
+- 核心结构（PLAN-843 结构半部，2026-10-28；PLAN-884 收口补齐）：入口仅组合/派发——`engine.rs`
+  2131 生产行 + `{heap,values,futures_timers,tasks}` 状态族 +
+  `ops_{construct,collections,arith,calls,flow}` opcode 尾递归派发段；`codegen.rs` 1274 +
+  `{stmt_emit,expr_emit,ty_conv,fn_emit,vars}` 发射族 + `expr_*` 8 段表达式派发链；
+  `native.rs` 2367 + `natives_*` 12 域（pub use 门面保 `crate::vm::native::X` 路径与
+  for_each_native! 宏展开）；`ffi/stdlib.rs` 装配壳 2278 行 + 13 域族（843 的 8 域 +
+  884 的 request_root/storage/exit_audit/http_async/rust_stdlib_dispatch）；
+  `ffi/http_server.rs` 服务装配 + 5 域族（884 审计：壳为合法核心，无仓内调用方引用旧内联
+  路由/派发，只核销不迁文件）。巨型单体（run_one_instruction/compile_expr_inner）=连续臂切片
+  尾递归链，臂体逐字保留；状态 owner（AutoVM/NativeInterface/TypeStore）与公开 API 面不变，详见
+  [language-sdk/architecture.md](../../language-sdk/architecture.md) 与
+  [structure-closure.md](../../language-sdk/structure-closure.md)。
 - 值表示为 NaN-boxing u64（`NanoValue`，plan-221 引入、plan-298 移除非 nanbox 路径）；design/05 的"32 位栈槽"描述已在 PLAN-546（2026-09-07）修正为 NaN-boxed 64 位。
 - 泛型走单态化 + 类型擦除存储（plan-076/087），堆对象统一进 `heap_objects` 注册表（plan-077，旧 list 注册表已在 Phase 6 移除）。
 - 并发为 Tokio M:N 调度 + actor 消息（plan-121/127）；plan-317 四相位异步机制
@@ -128,6 +132,13 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
    表与守卫测试（`plan872_builtin_semantics_tests` 的槽位 pin/语义断言红=
    漂移警报）；不禁止既有覆盖、不改注册优先级（PLAN-872 裁定：DISTINGUISH、
    零行为变更）。
+5. **注册面的结构（PLAN-884）**：`register_stdlib_ffi` 内部按域拆为 **19 个域 helper 的有序
+   调用**（连续切片，调用序=原语句序），helper 实现在各 `vm/ffi/stdlib/<domain>.rs`；
+   壳只保留 Native ID 常量带、状态声明、轻包装、组合与被审计的跨域尾段。装配**语义**未变：
+   六步序、同 ID 后写覆盖、`math/time/str` 生效实现与 `str.len:[170,1500]` 双轨全部保持。
+   域文件清单必须同时进入 `stdlib_assembly` 的 loader 指纹链与 `manifest::provider_inputs(Vm)`，
+   漏列由常驻守卫 `plan884_provider_input_coverage` 带名拦红（详见
+   [structure-closure.md](../../language-sdk/structure-closure.md) §3）。
 
 ## Frame native 宿主能力装配（PLAN-779）
 

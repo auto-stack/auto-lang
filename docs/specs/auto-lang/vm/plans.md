@@ -142,3 +142,7 @@ plan-report 07 文中的 plan 链接指向 `docs/plans/`，实际文件均已移
 | 813 | tapl-runnable-examples | ✅（reviewed→archived） | [archive](../../../plans/archive/813-tapl-runnable-examples.md) | TAPL 书例所需的 AutoVM 输入、math/net/hash/regex 运行路径定向验证及目录执行回归 |
 
 | 846 | f64非有限编码纠正 | delivered | [PLAN-846](../../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md) | NaN不别名tag/零，负Inf分类纠正，有限数/±0/Inf/tag位型保留 |
+
+## PLAN-884
+
+| 884 | language-structure-closure（运行桥接/stdlib 装配/Rust 转译职责） | ✅（reviewed→archived） | archive/884-language-structure-closure-without-crate-split.md | stdlib 装配壳 2278 行 + 13 域族，register_stdlib_ffi=19 个域 helper 有序调用；872 六族生效绑定零变化；域文件入 loader 指纹链与 manifest provider 输入（新增常驻守卫）；http_server 壳经审计只核销不迁文件 |

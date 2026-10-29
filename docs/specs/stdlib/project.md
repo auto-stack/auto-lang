@@ -72,6 +72,23 @@ graph LR
   凭据（按值身份、生产点授予、消费恰一份协议、TAG_FUTURE 载荷；
   PLAN-776）。
 
+## 装配 owner 与指纹输入（PLAN-884）
+
+- **装配入口只装配**：`crates/auto-lang-core/src/vm/ffi/stdlib.rs`（壳约 2278 行）持有 Native ID
+  常量带、状态声明、轻包装、受审计的组合调用与跨域测试；真实 shim/算法/域全局归
+  `vm/ffi/stdlib/<domain>.rs`（13 域：file_io/http_client/crash_trace/strings_json/math/image/
+  sqlite/sys_env + request_root/storage/exit_audit/http_async/rust_stdlib_dispatch）。
+  `register_stdlib_ffi` 只剩 **19 个域 helper 的有序调用**（调用序=原语句序）。
+- **装配序保持**：`production()` 六步（catalog → 手工 → interop → inventory 覆写 → request I/O
+  → 具名 override/契约）与"同 ID 后写覆盖"的既有裁定不变；872 六族生效绑定零变化
+  （见下节内建语义矩阵，守卫=`plan872_builtin_semantics_tests` + 绑定表 JSON 复算）。
+- **源码指纹闭包**：任何迁移/新增域文件必须同时进入
+  `stdlib_assembly::loader::stdlib_assembly_fingerprint` 链与 `manifest::provider_inputs(Vm)`
+  输入清单；漏列=内容静默不入指纹（假绿）。常驻守卫
+  `stdlib_assembly::manifest` 的 `plan884_provider_input_coverage`：域目录 `.rs` 集合 ⊆ provider
+  输入，漏列带名红。指纹**值**变化合法（plan738 只钉确定性与敏感性）。合同全文见
+  [language-sdk/structure-closure.md](../language-sdk/structure-closure.md) §3。
+
 ## 能力矩阵与验证等级（PLAN-738）
 
 能力矩阵以 manifest 实测为准：支持集须 signature_checked + 必要 exec

@@ -62,3 +62,7 @@
 | 675 | routes-in-embed（back-proxy 侧） | ✅（reviewed→archived） | archive/ | 路径/query 参数按 #[api] 签名类型绑定（669 push_typed_string_arg 共用+ApiParamSig session 自持+坏值 400 同 http_server 语义）+lazy 按需装载（目录表/ensure_session 锁内防重/degraded 503/remove_app 自愈重载）；详档见 vm/back-proxy.md（PLAN-669/675 节） |
 | 673 | editor-kernel-rope-delta-chunk（back 分块读） | ✅（reviewed→archived） | archive/ | File.read_text_range(path,offset,limit) nat#1016 分块读双轨（stdlib #[vm] 声明轨+a2r-std fs.rs 逐字节镜像，14 例对拍 harness read_text_range_parity；成功/EOF/错误形 total=-1/char 边界回退/短读≠EOF 语义成文 SD-02）+aavm 双臂（engine.at:1016 臂+codegen.at 发射臂+bin prelude 编译态直通）+fixture 058 十打印边界矩阵；ts_adapter/vue client M1 不发射（消费方该轨需要时另立计划）；详档 design/autoui/editor-kernel.md §5 |
 | 696 | stdlib-http-server-runtime-hardening | ✅（reviewed→archived） | archive/ | VM HTTP 按 Content-Length 读满 body、限定大小/超时；LocalSet + Rc 保持 !Send AutoVM owner；SSE 让出调度并在断连时取消 producer；生成 Axum、a2r-std client 与 VM/native 路径边界成文；详档 `design/networking-stdlib.md`、stdlib `design/backend-assembly.md` 与 `design/http-server.md` |
+
+## PLAN-884
+
+| 884 | language-structure-closure（运行桥接/stdlib 装配/Rust 转译职责） | ✅（reviewed→archived） | archive/884-language-structure-closure-without-crate-split.md | run 入口族运行桥接下沉 entry/run_bridge（同构单源，capture/path/deadline/input 显式参数）；G4 选择器与 G5 staged typed-trap 通道保持独立；栈/spawn panic/join panic/请求 root 恢复合同不变 |

@@ -76,3 +76,7 @@
 | 729 | http-file-response-lowering | ✅（reviewed→archived） | archive/ | FileResponse a2r 降级（构造同形发射/类型全限定映射/api_gen 文件分支与诊断不落模板/golden 32_plan729）；详档见 [http-file-response-lowering](design/http-file-response-lowering.md) |
 - PLAN-730 [http-server-upload-ingress](../../../plans/730-http-server-upload-ingress.md)——上传 typed lowering → [design/http-upload-lowering.md](design/http-upload-lowering.md)
 - PLAN-773 [autodown-testcase-protocol-pilot](../../../plans/773-autodown-testcase-protocol-pilot.md)——TestCase 协议 A 阶段（trans 侧）：a2r/emit 检查合同化（emit≠compile，只判发射 bytes）+ 引用式 pilot 21 case + 旧金样原位不动双轨 → [design/test-convention.md](design/test-convention.md) 双轨只读 pilot 节
+
+## PLAN-884
+
+| 884 | language-structure-closure（运行桥接/stdlib 装配/Rust 转译职责） | ✅（reviewed→archived） | archive/884-language-structure-closure-without-crate-split.md | call_inner 逐块审计后按形状拆 22 族（call_emit/* 9 文件）+ CallShape{Miss,Handled} 三态；call 外层事务序与首匹配序保持；rust.rs 编排 4293 行 + 9 主题模块（新增 post_fixes/ast_scans/merged_fixes） |

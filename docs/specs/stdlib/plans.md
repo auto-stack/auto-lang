@@ -16,3 +16,7 @@
 | 813 | tapl-runnable-examples | ✅（reviewed→archived） | [archive](../../plans/archive/813-tapl-runnable-examples.md) | TAPL 全书示例运行审计、网页 Run/输入/测试修复；数学 helper name/arity parity 与 a2r f64 行为证据边界明确 |
 
 - [PLAN-840 Phase 4](../../plans/archive/840-autographics-public-behavior-api-and-user-scripts.md)：SSE pull / 嵌套 generator 推进前释放任务表分片 guard，固定冲突、原 park 及值/EOF/回收控制；合同见 [http-stream-lifecycle](design/http-stream-lifecycle.md)。
+
+## PLAN-884
+
+| 884 | language-structure-closure（运行桥接/stdlib 装配/Rust 转译职责） | ✅（reviewed→archived） | archive/884-language-structure-closure-without-crate-split.md | 装配 owner 与指纹输入成文：壳只装配/域文件持算法、19 个有序注册 helper、迁移源必须入 loader+manifest 双清单（守卫 plan884_provider_input_coverage），872 绑定与六族语义不变 |
