@@ -1,3 +1,7 @@
+### Plan 863（2026-10-30，final review R1，84f1d2054）
+
+- **F-863-R1-01..04（P2，合同内阻塞，非 debt 豁免）**：公开 owned lowering 绕过 console 固定 main；复用 capture 的 memory-only 超限误报 ConsoleOutput；portable reference snapshot 与函数 sidecar 来源不一致仍可 persist/restore；SD-01/02 候选规则两处过度声称。完整复现/值/关闭 oracle 见 [review-r1](attachments/863/review-r1.md)。Plan 已回 executing，修复 owner=863 work；关闭前不得合入。
+- **D-863-NB-01（覆盖边界，非本计划必需的跨端交付）**：新增 O01–O15 的 AV 真实输出三轴已覆盖；native 明确拒绝 profile8（gap:ac-console-profile）；legacy/a2r 的同一新 profile 精确 parity 未执行（gap:console-profile-parity），owner=各 backend 后续扩面/验证立项，尚无交付承诺。保留 gap，不转 na，不据 AV 行宣称 whole-M1 绿。
 ### Plan 870（2026-10-28，work T-01..T-04 交接登记）
 
 绑定 plan-870-dev（base 9e847acf7）。三项移交 S owner（862 线）+ 两项本批裁定：
