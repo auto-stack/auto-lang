@@ -11,3 +11,7 @@
 编号纠正：auto-ui本仓001/002分别来源旧882/883；ag-examples的旧880为legacy历史，本仓新号从001起。
 
 本仓编号修正已提交：`auto-ui@a9e8d7070ddefcf485bc6bbc664516a1c081dabe`，当前为001/002（下一个003）。
+
+用户批准职责拆分：原混合引擎责任见[auto-ui/002](../../../auto-ui/docs/plans/002-autographics-trigger-events-and-round-restart.md)，G11内容责任见[ag-examples/001](../../../ag-examples/docs/plans/001-autographics-gallery-runtime-objects.md)，后者硬等前者实际交付。
+
+本次拆分已提交：`auto-ui@7b6430337b83d8741bc29609269c4cf0b27ecd44`（002引擎r4）、`ag-examples@9c9143dc0971637f71ff5a2ff4634f088b84feb9`（001 G11 r1）；暂不实施。
