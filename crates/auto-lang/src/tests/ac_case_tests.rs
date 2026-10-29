@@ -580,6 +580,47 @@ fn r1_runner_report_v2_legal_json_schema_and_native_axes() {
         "matching axes stay fresh: {:?}",
         verdicts
     );
+    // PLAN-863: the backend axis is recomputed per row, rather than taken
+    // from the shared worker/toolchain map (which has no profile).
+    let mut shared = same.clone();
+    shared.remove("ac-native-backend");
+    let verdicts = crate::test_cases::stale::check_with_native(
+        &root.join("t04ac.suite.ad"),
+        &v,
+        Some(shared.clone()),
+    )
+    .unwrap();
+    assert!(
+        verdicts
+            .iter()
+            .all(|x| matches!(x, crate::test_cases::stale::RowVerdict::Fresh { .. })),
+        "row backend must be recomputed: {verdicts:?}"
+    );
+    // A persisted v2 tag becomes stale even if a caller's shared map also
+    // carries that obsolete tag. It must not override the current row fact.
+    let old_tag = "mn:msvc-x64/priv-i32-bool-v1+mir-v2";
+    let mut old = v.clone();
+    let backend = old["results"][0]["native"]["toolchain"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|pair| pair[0] == "ac-native-backend")
+        .unwrap();
+    backend[1] = serde_json::json!(old_tag);
+    shared.insert("ac-native-backend".into(), old_tag.into());
+    let verdicts = crate::test_cases::stale::check_with_native(
+        &root.join("t04ac.suite.ad"),
+        &old,
+        Some(shared),
+    )
+    .unwrap();
+    assert!(
+        verdicts.iter().any(|x| matches!(x,
+            crate::test_cases::stale::RowVerdict::Stale { drifted_axes, .. }
+            if drifted_axes.iter().any(|a| a.starts_with("native.ac-native-backend "))
+        )),
+        "obsolete row backend must drift: {verdicts:?}"
+    );
     let mut drifted = same.clone();
     drifted.insert("worker-exe-sha256".into(), "differentworkerhash0000".into());
     let verdicts = crate::test_cases::stale::check_with_native(
@@ -604,15 +645,19 @@ fn r1_backend_axis_mirror_matches_the_real_worker() {
     // reproduce the worker's tag for every served value, and the RETIRED
     // legacy value must (a) be refused by the worker and (b) never match a
     // persisted tag (legacy-era reports go stale).
-    for envv in [None, Some("mn")] {
-        let tag = crate::test_cases::ac::probe_backend_tag("core", envv)
-            .unwrap_or_else(|e| panic!("probe {envv:?}: {e}"));
-        assert_eq!(
-            tag,
-            crate::test_cases::ac::backend_tag_for_env(envv, "core"),
-            "env {envv:?}"
-        );
-        assert!(tag.starts_with("mn:"));
+    // ac-case-worker serves core/scalar; the other shared-MIR source
+    // profiles belong to the separate MN consumer, not this request seam.
+    for profile in ["core", "scalar"] {
+        for envv in [None, Some("mn")] {
+            let tag = crate::test_cases::ac::probe_backend_tag(profile, envv)
+                .unwrap_or_else(|e| panic!("probe {profile}/{envv:?}: {e}"));
+            assert_eq!(
+                tag,
+                crate::test_cases::ac::backend_tag_for_env(envv, profile),
+                "profile {profile}, env {envv:?}"
+            );
+            assert!(tag.starts_with("mn:"));
+        }
     }
     for envv in [Some("legacy"), Some("core=legacy")] {
         let err = crate::test_cases::ac::probe_backend_tag("core", envv)
@@ -630,8 +675,10 @@ fn r1_backend_axis_mirror_matches_the_real_worker() {
         .expect("sibling profile stays served");
     assert!(scalar.starts_with("mn:"));
     // A malformed value is still an explicit error marker.
-    assert!(crate::test_cases::ac::backend_tag_for_env(Some("core=clif"), "core")
-        .starts_with("invalid:"));
+    assert!(
+        crate::test_cases::ac::backend_tag_for_env(Some("core=clif"), "core")
+            .starts_with("invalid:")
+    );
 }
 
 #[test]

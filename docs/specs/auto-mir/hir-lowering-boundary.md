@@ -60,6 +60,11 @@ PLAN-868 冻结的 HIR→Typed MIR lowering 模块边界：唯一实现位置、
   （Rust `validate_receipt` + `verify-ace-m1-852.ps1`）校验不变。
 - cache/store 键不含该轴（搬移不改输出）；lowering 语义真变时另立版本迁移。
 
+PLAN-863 的 ac/run backend-tag 版本直接复用 MN 父侧 admission mirror，避免第四个独立
+字面量遗漏。native stale 检查按每行/profile 重新计算当前 backend 身份并据此比较；共享
+toolchain map 未带或带有旧 backend tag 均不得覆盖该当前事实。版本 2 的旧后端报告判
+stale，身份匹配的当前报告保持 fresh；不扩 native console 支持，也不改变后端选择语法。
+
 ## 已知边界（非本合同义务，记录在案）
 
 stale.rs applicable 清单与 av 族报告轴的预存脱节（`av-core-version` 多轴漂移、

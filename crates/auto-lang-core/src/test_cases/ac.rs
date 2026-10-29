@@ -1221,7 +1221,9 @@ fn trace_marks_lib() -> Result<PathBuf, String> {
 /// integration suite pins the mirror against the REAL worker axis on both
 /// backends, so a drift cannot pass silently.
 pub const AC_MN_ABI: &str = "msvc-x64/priv-i32-bool-v1";
-pub const AC_MIR_LOWERING_VERSION: &str = "2";
+// AC native and MIR-native reports describe the same lowering producer.
+// Reuse the admission mirror instead of maintaining a fourth literal.
+pub const AC_MIR_LOWERING_VERSION: &str = super::ac_mn::EXPECTED_MIR_LOWERING_VERSION;
 pub const AC_LEGACY_BACKEND_TAG: &str = "cranelift-0.126/lower_object";
 /// PLAN-871 T-06: the tag the retired legacy backend resolves to. It matches
 /// no persisted row (the backend no longer exists), so legacy-era reports go

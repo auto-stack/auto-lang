@@ -1,6 +1,6 @@
 # Typed host imports and console (PLAN-863)
 
-The experimental whole-module execution profile is `av.host-console/1`, numeric profile **8**; MIR schema `auto.mir.av-host-console/1`, ABC schema `auto.abc.av-host-console/1`, magic **AVHC**, wire **1**. Its HIR/source domain is host-console. Old AVAD, AVAU and scalar contracts remain separate. Shared HIR→MIR lowering contract is **3**, with AV/CTE/MN parent identity mirrors at 3.
+The experimental whole-module execution profile is `av.host-console/1`, numeric profile **8**; MIR schema `auto.mir.av-host-console/1`, ABC schema `auto.abc.av-host-console/1`, magic **AVHC**, wire **1**. Its HIR/source domain is host-console. Old AVAD, AVAU and scalar contracts remain separate. Shared HIR→MIR lowering contract is **3**, with AV/CTE/MN parent identity mirrors at 3. The ac/run backend tag reuses the MN admission mirror; stale comparison uses the current per-row backend identity rather than a caller's shared tag.
 
 `MirHostImport` is a separate module table, carrying category, symbol, exact signature, required capability and maximum call bytes. `HostCall` (opcode `0x35`) refers to that table and a typed input slot. It is an effect instruction with no manufactured integer result. Guest/import calls keep their prior semantics. Console function-unit modules are rejected (`mir.host-unit`); this profile introduces no resident/incremental console linker.
 

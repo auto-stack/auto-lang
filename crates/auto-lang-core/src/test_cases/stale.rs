@@ -454,7 +454,7 @@ pub fn check_with_families(
                     applicable.push("support-lib-trace-marks-sha256");
                 }
                 for k in &applicable {
-                    match current.get(*k) {
+                    match current_row.get(*k) {
                         None => drifted.push(format!(
                             "native.{} not recomputable now — cannot confirm the row",
                             k
