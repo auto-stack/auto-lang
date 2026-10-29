@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-886
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-handler-poison-alignment
 author: [ZCode]
 created_at: 2026-10-29
 updated_at: 2026-10-29
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: [docs/specs/auto-vm/project.md, docs/specs/auto-ui-runtime/project.md]
+supersedes_spec_components: [docs/specs/auto-lang/vm/architecture.md, docs/specs/auto-ui-runtime/project.md]
 new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
@@ -76,7 +76,7 @@ total_steps: 5
 
 - [x] AC-01: reader 实证——`auto run -r vm --no-merge` 启动日志零 poison 丢弃，reading 页 Init 正常装载内容。（证据：问题修复 @268c7d4 后原生驱动 16/16；含两面构建复跑归 landing）
 - [ ] AC-02: 诊断面可见性——负控下 `[SYNTH-FAIL]` 与 enrich 后的 `[CODEGEN]` poison 行必须出现在 stderr。**降格记录**：不设最小 `.at` 复现语料/自动化单测（缺陷不在判定面，语料无法独立触发；auto-ui 进程内测试无法捕获自身 stderr，需子进程 harness，列入诊断面测试基建债务）；负控为 merge/landing 门（review 显式 pending）。
-- [ ] AC-03: 既有测试零回归——merge 前裸 `cargo t`（merge 档），auto-ui 侧 `cargo check -p auto-ui-runtime` 已 exit 0。
+- [x] AC-03: 既有测试零回归——merge 前裸 `cargo t`（merge 档），auto-ui 侧 `cargo check -p auto-ui-runtime` 已 exit 0。 【2026-10-29 复审实测】同选择集 3203 run / 3202 passed / 1 failed（`plan707` 预存 flake，单跑 ×2 PASS）；标准 120s 终止窗下的超时族经归因为冷 worker 构建，见复审记录。
 
 ## 执行步骤
 
@@ -97,6 +97,26 @@ total_steps: 5
 - verification: `cargo check -p auto-lang-core`（lang-886 worktree）exit 0；`cargo check -p auto-ui-runtime`（与提交内容逐字节一致的树）exit 0，仅仓内既有 warning；裸 `cargo t` 留 merge 档。
 - next: review（review_scope=final；独立核对两仓 diff 与「非编译器缺陷」结论、AC-01 证据链，AC-02/AC-03 的 merge-owned 门记 pending）
 
+### 2026-10-29 独立最终复审（review_scope=final；r1）
+
+- stage: review | review_scope: final | reviewer_identity/limitations: 实现会话内独立复审上下文（沿 r3/r5/r7 先例，无另一会话/agent 可用）——裁决由工件重建：重读两仓 diff、**独立重验根因链**（不采信实现侧叙述）、自跑门禁 | plan_id: PLAN-886 | reviewed_plan_revision: 1 | outcome: **pass**（AC-02 负控为 merge/landing 门，显式 pending）
+- diff_audit（只审实际 diff，不采信勾选）:
+  - auto-lang `3cee0fa10`：单块 33+/2-，仅在 `finish()` 毒化丢弃点构造展示字符串；`poisoned_fn_exports` 判定、`exports.remove`、reloc/字节布局零改动；`rustfmt --check` clean。
+  - auto-ui `66062bb`：+15/+6；`record_synth_failure` 增 stderr 行（`log::warn` 与 `SYNTH_FAILURES` 记录保留）；新增 `pub(crate) drain_synth_failures`；两处构造（`new_with_children`/`new_from_decls`）各一行调用；派发/降档/状态语义零改动；`rustfmt --check` clean。
+  - 卫生核验：三处散落诊断面已收拢；`vm_bridge` 的 `[SYNTH-DIAG]` 逐链接导出 dump（开发探针）**未入库**；`stmt_emit.rs` 的 `AUTO_CODEGEN_TRACE` 探针已回退（其中一处硬编码 app 的 fn 名）。仓内无残留 debug 打印。
+- claim_reverification（独立重验，不采信 work 叙述）:
+  - `let` 不可变确为硬错误：`auto tmp/let-reassign.at`（新构建 `auto 0.1.0+v0.0.20-118-ge6cc06f`）→ `Cannot reassign to immutable variable 'pr' (declared with 'let')`，exit 1。✓
+  - 缺陷形态：`git show 34c6850:src/front/pages/reading_page.at` 含 `let pr` 且其后 `pr = null`；`268c7d4` 为单行 `let pr`→`var pr`。✓
+  - 因果链时序（boot 日志对，均为诊断面入库前二进制，仅作时序、不作 AC-02 证据）：13:15 运行（`nativewm-b332da06`）出现 `[CODEGEN] dropping poisoned export 'handler_reading_page_Init'`；14:06 运行（`nativewm-800c9781`）出现 `handler_reading_page_Init` 正常 park/resume（Init 已触发）。✓
+  - 撤销"模块名 `reading` 触发"：改名提交 `99de4fb` 早于 13:15 的 poison 丢弃，命名不是判别条件。✓
+- gates（归因逐项记录）:
+  - auto-lang `cargo check -p auto-lang-core` exit 0；`rustfmt --check` clean。
+  - **裸 `cargo t` 归因**：①标准 120s 终止窗（terminate-after 2）下 920/3203 处首个 TIMEOUT 即取消整跑——超时族=ac_av/ac_cte/ac_mn/ace_m1 的"真 worker 构建"套件（worktree 无 warm worker 缓存）；②**同选择集**、仅把终止窗抬到 600s（terminate-after 10）+ `--no-fail-fast`：**3203 run / 3202 passed / 1 failed**，唯一红=`plan707_spike_cancel_gap_active_job_future_not_stopped`（AGENTS §1 已登记的**预存 flake**；随后单跑 ×2 均 PASS：2.05s / 2.03s）。③`ace_m1_base_suite_green` 在同 worktree 的 libtest（无终止窗）33.9s PASS，在 main 检出 45.0s PASS。结论：**本 diff 零回归**，120s 终止窗 + 冷 worker 缓存解释全部红。
+  - auto-ui `cargo check -p auto-ui-runtime` exit 0（与提交内容逐字节一致的树；仅仓内既有 215 warning）。auto-ui 全档不在本计划门（改动=纯诊断输出）。
+- ac_results: **AC-01 pass**（因果链 + reader 原生驱动 16/16 @117 构建；含两面构建复跑归 landing）；**AC-02 merge-owned pending**（负控需含两面的重建 CLI）；**AC-03 pass**（见 gates 归因）。
+- spec_delta: supersedes=`docs/specs/auto-lang/vm/architecture.md`（新增 ADR-25：毒化导出丢弃点可判读事实 + 判定正确的定案）、`docs/specs/auto-ui-runtime/project.md`（新增 PLAN-886 [SYNTH-FAIL] 可见性面节）；new=[]。
+- pending_merge_owned: ①auto-ui（fix-synth-surface）+ auto-lang（plan-886-dev）合并与计划归档；②auto-man CLI 重建（含两面）→ **AC-02 负控实测**；③canonical spec 沉淀 + `.autoos/specs.json` 刷新；④worktree/分支/组清理（wt-guard 先行）。
+- next: merge
 
 ## 待澄清事项
 
