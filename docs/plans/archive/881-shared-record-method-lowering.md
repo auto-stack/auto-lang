@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-29
 updated_at: 2026-10-29
 plan_revision: 2
-current_step: 8
+current_step: 9
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-mir/hir-lowering-boundary.md
@@ -195,11 +195,13 @@ V-10中的旧native runtime注入复用782的--rt-fail-nth-alloc/--rt-set-budget
 | T-06 | review | T-05 | 独立final review绑定修订/代码/依赖，非本轮静态预检 | AC-06 | [x] 2026-10-29 final review pass（见§9回执；F-1/F-2修复后新冻结ebfee1546复验） |
 | T-07 | merge | T-06 pass | 冻结提交裸cargo t+tv及触面定向档；tf主检出到期单实例 | AC-07 | [x] 2026-10-29 裸cargo t 3203/3203 passed（390s；run2两红归因：plan707预存flake@AGENTS在案、隔离绿；av stale并行竞争慢超时、隔离14.9s绿——run3收敛全绿零红）；cargo tv 163/163；experimental定向档：semantics14/owned6/perf1/incremental14/mn7/ace2全绿绑3b043fca7链 |
 | T-08 | merge | T-07 | SD/索引/ledger、方法证据交871、公共写面交下owner、归档与revision收据 | AC-08 | [x] 2026-10-29 SD-01..06 canonical落地（record-method-lowering.md新增+六文件修改+overview/plans索引，提交1647990ad→rebase 3b043fca7）；ledger守卫离线投影v128→129（designs/reviews/reports/tests四项，surgical校验+读回，无store writer可达，提交db0773130）；871交接=attachments/881/g-cov-871-handoff.md（两域逐行+5残留producer+不宣称清单）；ff-only落地master db0773130（range-diff 6/6全等）；主检出冒烟绿（ace方法套件2/2真进程） |
-| T-09 | merge | T-08 | wt-guard确认clean后移除树/分支/无兄弟组，回写9/9与终态 | AC-08 | [ ] |
+| T-09 | merge | T-08 | wt-guard确认clean后移除树/分支/无兄弟组，回写9/9与终态 | AC-08 | [x] 2026-10-29 三树（auto-lang/auto-ui/auto-down）wt-guard全clean→移除+plan-881-dev分支删除+组目录rmdir；plan-artifacts/plan-881不存在（无回收项）；worktree内target随树删除；tf批量档未到期（收据last_covered=880@18h前<48h、881%5=1、lang侧无885落地） |
 
 原始源码/输出/JSON/截图只本地保留attachments，禁止add/commit/push；Markdown摘要记录命令/退出码/数字/路径和hash。不建junction/symlink，不纳入其他会话改动。
 
 ## 9. 复审记录
+
+2026-10-29 `stage: merge | plan_id: PLAN-881 | plan_revision: 2 | outcome: pass（cleaned 收尾） | cleaned: wt-guard三树clean→worktree remove×3+branch -d+组目录移除（验证：git worktree list仅余lang-884/os-051他计划树）；plan-artifacts无881目录；终态9/9 | archived_at: d98c335b1 | goal链收尾: drafting→executing→execution_done→reviewed→archived 全程单goal授权，无未决阻塞 | tf: 未到期（判定依据如上） | next: 终态（archived）`
 
 2026-10-29 `stage: merge | plan_id: PLAN-881 | plan_revision: 2 | outcome: pass | prepared: reviewed ebfee1546+r2、canonical delta SD-01..06、交付链rebase后3b043fca7（range-diff 6/6=全等，旧→新映射7dfccbf47→88f02d904前置三同/080278878→88f02d904/ebfee1546→e74c05356/1647990ad→3b043fca7） | landed: master tip=db0773130（ff-only，无merge commit；冒烟=主检出ace方法套件2/2） | ledger_refreshed: .autoos/specs.json v128→129（Regime B守卫离线投影——HTTP 127.0.0.1:8080/3000不可达；备份+surgical四项+schema六节校验+读回；ids: P881-METHOD-LOWER/P881-REVIEW-FINAL/P881-DEPOSIT/P881-TESTS均带file+tags） | archived: docs/plans/archive/881-shared-record-method-lowering.md（本收据后git mv） | stale-artifact观察: 主检出target/二进制先于landing（冒烟已重建lib/测试二进制；生产面无常驻服务——auto-lang无daemon/web bundle义务） | tf批量档: 881%5≠0；到期判定见cleaned后检查 | evidence: 门禁/套件/投影命令与数字俱上 | next: T-09 cleanup`
 
