@@ -1,7 +1,10 @@
 //! PLAN-865 T-03: the closure source surface has its own descriptor and
 //! verifier identity while retaining the accepted collections subset.
 
-use auto_ac_prototype::source::{compile_closures_source, compile_collections_source};
+use auto_ac_prototype::source::ast::{ClosureBody, ExprKind, Item, Stmt};
+use auto_ac_prototype::source::{
+    compile_closures_source, compile_collections_source, parse_program_with, SourceProfile,
+};
 use auto_ac_prototype::{closures_descriptor, collections_descriptor, hir::HirDomain};
 
 const SIMPLE: &str = "fn main() int { return 42 }";
@@ -39,4 +42,43 @@ fn closures_865_resolves_and_emits_higher_order_function_types() {
     let legacy = compile_collections_source(source, "collections-types.at", &[])
         .expect_err("the collections profile does not accept function types");
     assert_eq!(legacy[0].code, "source.syntax");
+}
+
+#[test]
+fn closures_865_parses_move_expression_and_zero_arg_block_lambdas() {
+    let source = "fn main() int { let add = move (n int) => n + 1; let answer = () => { return 42 }; return add(3) }";
+    let program =
+        parse_program_with(source, SourceProfile::Closures).expect("lambda syntax parses");
+    let Item::Fn(main) = &program.items[0] else {
+        panic!("expected main function");
+    };
+    let Stmt::Let { value, .. } = &main.body.stmts[0] else {
+        panic!("expected first lambda binding");
+    };
+    let ExprKind::Closure {
+        move_capture,
+        params,
+        body,
+    } = &value.kind
+    else {
+        panic!("expected move closure");
+    };
+    assert!(*move_capture);
+    assert_eq!(params.len(), 1);
+    assert!(matches!(body.as_ref(), ClosureBody::Expr(_)));
+
+    let Stmt::Let { value, .. } = &main.body.stmts[1] else {
+        panic!("expected second lambda binding");
+    };
+    let ExprKind::Closure {
+        move_capture,
+        params,
+        body,
+    } = &value.kind
+    else {
+        panic!("expected block closure");
+    };
+    assert!(!move_capture);
+    assert!(params.is_empty());
+    assert!(matches!(body.as_ref(), ClosureBody::Block(_)));
 }

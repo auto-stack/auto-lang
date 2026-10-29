@@ -2120,6 +2120,95 @@ impl<'s> Parser<'s> {
         Ok(())
     }
 
+    /// Commit a parenthesized token sequence to lambda syntax only when its
+    /// matching `)` is immediately followed by `=>`. Function types inside
+    /// parameter annotations may add nested parentheses.
+    fn closure_header_ahead(&self, open: usize) -> bool {
+        if !matches!(
+            self.toks.get(open).map(|t| &t.tok),
+            Some(Tok::Punct(P::LParen))
+        ) {
+            return false;
+        }
+        let mut depth = 0usize;
+        for (index, token) in self.toks.iter().enumerate().skip(open) {
+            match token.tok {
+                Tok::Punct(P::LParen) => depth += 1,
+                Tok::Punct(P::RParen) => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        return matches!(
+                            self.toks.get(index + 1).map(|t| &t.tok),
+                            Some(Tok::Punct(P::FatArrow))
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    /// Parse one closure after the header lookahead has committed. The
+    /// block-body path reuses the existing iterative function-body machine,
+    /// preserving the ordinary statement grammar and diagnostics.
+    fn closure_expr(&mut self, move_capture: bool) -> Result<Expr, Diagnostic> {
+        let start = if move_capture {
+            let token = self.bump();
+            token.span
+        } else {
+            self.peek().map(|t| t.span).unwrap_or(self.eof_span())
+        };
+        let open = self.expect_punct(P::LParen, "`(`")?;
+        let mut params = Vec::new();
+        if !matches!(self.peek().map(|t| &t.tok), Some(Tok::Punct(P::RParen))) {
+            loop {
+                let name = self.expect_ident("lambda parameter")?;
+                let ty = self.param_type(&name)?;
+                let span = name.span.join(ty.span);
+                params.push(Param {
+                    name,
+                    ty,
+                    mode: ParamMode::Default,
+                    span,
+                });
+                match self.peek().map(|t| &t.tok) {
+                    Some(Tok::Punct(P::Comma)) => self.pos += 1,
+                    Some(Tok::Punct(P::RParen)) => break,
+                    _ => return Err(self.syntax("expected `,` or `)` in lambda parameters")),
+                }
+            }
+        }
+        self.expect_punct(P::RParen, "`)`")?;
+        let arrow = self.expect_punct(P::FatArrow, "`=>`")?;
+        let (params, body, end) =
+            if matches!(self.peek().map(|t| &t.tok), Some(Tok::Punct(P::LBrace))) {
+                let fake_name = Ident {
+                    name: "__closure".to_string(),
+                    span: open,
+                };
+                let fake_ret = TypeAnn {
+                    kind: TypeRef::Builtin(TypeWord::Int),
+                    span: arrow,
+                };
+                let item = self.body_machine(open, fake_name, params, fake_ret, Receiver::Free)?;
+                let end = item.body.span;
+                (item.params, ClosureBody::Block(item.body), end)
+            } else {
+                let value = self.expr(true)?;
+                let end = value.span;
+                (params, ClosureBody::Expr(value), end)
+            };
+        Ok(Expr {
+            span: start.join(end),
+            kind: ExprKind::Closure {
+                move_capture,
+                params,
+                body: Box::new(body),
+            },
+        })
+    }
+
     fn expr(&mut self, _bracketed: bool) -> Result<Expr, Diagnostic> {
         let mut frames: Vec<Frame> = Vec::new();
         let mut vals: Vec<Expr> = Vec::new();
@@ -2338,6 +2427,14 @@ impl<'s> Parser<'s> {
                             span,
                         ));
                     }
+                    Tok::Reserved(ref word)
+                        if self.surface.is_closures()
+                            && word == "move"
+                            && self.closure_header_ahead(self.pos + 1) =>
+                    {
+                        let closure = self.closure_expr(true)?;
+                        vals.push(closure);
+                    }
                     Tok::Reserved(word) => {
                         return Err(self.unsupported(
                             format!("keyword `{}` is not part of this source profile", word),
@@ -2355,10 +2452,14 @@ impl<'s> Parser<'s> {
                         ));
                     }
                     Tok::Punct(P::LParen) => {
-                        self.pos += 1;
-                        self.last_line = line;
-                        frames.push(Frame::Op(OpFrame::Paren));
-                        continue 'outer;
+                        if self.surface.is_closures() && self.closure_header_ahead(self.pos) {
+                            vals.push(self.closure_expr(false)?);
+                        } else {
+                            self.pos += 1;
+                            self.last_line = line;
+                            frames.push(Frame::Op(OpFrame::Paren));
+                            continue 'outer;
+                        }
                     }
                     Tok::Punct(P::Dot) if self.surface.is_record() => {
                         // PLAN-771: leading `.name` — implicit `self` in

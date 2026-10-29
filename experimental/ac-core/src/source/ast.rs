@@ -316,6 +316,21 @@ pub enum ExprKind {
         name: Ident,
         args: Vec<TypeAnn>,
     },
+    /// PLAN-865 lambda expression. Capture analysis runs in resolve and
+    /// records the ordered environment before HIR emission.
+    Closure {
+        move_capture: bool,
+        params: Vec<Param>,
+        body: Box<ClosureBody>,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub enum ClosureBody {
+    /// `(x int) => x + 1` synthesizes the expression's value as its result.
+    Expr(Expr),
+    /// `(x int) => { return x }` follows ordinary function return rules.
+    Block(Block),
 }
 
 /// One `name: value` entry of a named constructor.
@@ -499,6 +514,12 @@ impl Drop for Expr {
                 ExprKind::CtorNamed { fields, .. } => {
                     for f in fields.iter_mut() {
                         let e = std::mem::replace(&mut f.value, dummy());
+                        stack.push(e);
+                    }
+                }
+                ExprKind::Closure { body, .. } => {
+                    if let ClosureBody::Expr(expr) = body.as_mut() {
+                        let e = std::mem::replace(expr, dummy());
                         stack.push(e);
                     }
                 }

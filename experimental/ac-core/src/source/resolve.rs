@@ -3764,6 +3764,18 @@ impl<'a> FnResolver<'a> {
                     kind: RExprKind::IntLit(0),
                 }
             }
+            ExprKind::Closure { .. } => {
+                self.bind_err(
+                    "source.unsupported",
+                    "closure expression has not passed capture analysis in this source profile",
+                    e.span,
+                );
+                ResolvedExpr {
+                    span: e.span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(0),
+                }
+            }
             ExprKind::IntLit(v) => ResolvedExpr {
                 span: e.span,
                 vt: VT::I32,
