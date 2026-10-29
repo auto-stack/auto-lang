@@ -182,3 +182,10 @@ iced 桌面入口迁 auto-os（`host/desktop`，bin `ui-desktop`），本 crate 
 降级解释态并 warn）——旧"声明即信直接 spawn"会把缺失变成 `os error 3`。boot
 自检键集与边界见 [repository-boundaries/autos-desktop-entry](../repository-boundaries/autos-desktop-entry.md)。
 来源：[PLAN-876](../../plans/876-autos-desktop-entry-and-launch-health.md)
+
+## PLAN-886：[SYNTH-FAIL] 合成失败可见性面
+
+`ui::handler_codegen::record_synth_failure` 除 `log::warn` 与线程本地 `SYNTH_FAILURES` 记录外，恒向 stderr 输出一行 `[SYNTH-FAIL] handler synthesis failed: <原因>`；两处 `VmBridge` 构造（`new_with_children`、`new_from_decls`）在合成后调用 `drain_synth_failures(&widget_name)` 输出 `[SYNTH-FAIL] <widget>: <原因>`，保证两条合成路径都被覆盖。结构化消费者仍走 `take_synth_failures()`。
+
+依据：宿主 CLI（auto-man）不安装 logger，逐 handler 容错的合成失败在运行期唯一现象是 "handler not found"；reader READER-001 N-r8-2（`let` 重赋值使整页 Init 丢失）因此多轮不可见。诊断面只加可见性，不改失败记录/派发/降档语义。编译器侧对应落点事实见 [auto-lang/vm/architecture.md](../auto-lang/vm/architecture.md) ADR-25。
+来源：[PLAN-886](../../plans/archive/886-vm-handler-poison-alignment.md)（delivery `66062bb`，auto-ui master `31e4bd2`）

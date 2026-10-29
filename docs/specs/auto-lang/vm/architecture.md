@@ -163,3 +163,12 @@ graph TD
 ADR-06 clarification: non-NaN f64 values remain directly stored, including raw negative infinity. encode_f64 places all NaNs outside the negative tagged namespace by normalizing their sign; other type tags remain unchanged. Native negative NaN must remain nonfinite through float slots and be rejected by finite consumers, never become integer/tagged zero. The representation stays one64-bit slot with the same public signatures.
 
 Provenance: [PLAN-846](../../../plans/archive/846-autographics-spatial-queries-and-trigger-interactions.md), [final affected review](../../../plans/attachments/846/review-r6/review.md). SDK/root and graphics delivery identities are recorded in the Plan consolidation receipt; production I2/I3 remain pending.
+
+## ADR-25: 毒化导出的可判读性与判定正确性（PLAN-886）
+
+- 日期 / 来源：2026-10-29 / PLAN-886（auto-reader READER-001 N-r8-2 追因，delivery `3cee0fa10`）
+- 决策：`Codegen::finish()` 丢弃毒化导出（`poisoned_fn_exports` = 非特殊命名导出且 `code[addr] != FN_PROLOG`）时，消息必须自证落点事实——`entry` 地址、该字节 opcode、`code_len`、`entry±4` 字节窗口（`*` 标 entry）——且不得假设"上游已有 handler 错误行"（消费者可在自有记录里保存失败）。判定条件、丢弃行为、字节布局与 reloc 计算零变化。
+- 定案：该判定**正确**。实测链：app 侧对 `let` 变量重赋值（严格不可变语义下编译失败）使整个 handler 未产出 prolog，导出停在"已记录、未插 prolog"的半成品落点；若不丢弃，运行期从指令中间进入会栈失衡（Plan 423 P5 事故）。曾怀疑的"FN_PROLOG 插入/重排位移错位"不成立——同模块其余导出落点合规，毒化只因该 fn 未编译完成。
+- 后果：VM 轨 handler 丢失的运行期诊断从"零信息"变为"落点事实 + 消费者侧线索"；消费者侧对应可见性面见 [auto-ui-runtime/project.md](../../auto-ui-runtime/project.md) 的 PLAN-886 `[SYNTH-FAIL]` 节。
+- 状态：active
+- Provenance: [PLAN-886](../../../plans/archive/886-vm-handler-poison-alignment.md)
