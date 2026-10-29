@@ -5,9 +5,9 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "test-governance"))
-from module_catalog import SCHEMA, discover, select, source_identity, validate, verify_selection
+from module_catalog import SCHEMA, discover, load, select, source_identity, validate, verify_selection, write_catalog
 from build_modules import make_catalog, navigation
-from run_selected import exact_filter, validate_python_result
+from run_selected import applicability, exact_filter, summary, validate_case_result, validate_python_result
 
 
 def catalog():
@@ -24,6 +24,98 @@ def catalog():
 
 
 class ModuleSelection(unittest.TestCase):
+    def test_worker_tools_keep_regular_and_batch_features_separate(self):
+        from prepare_tools import recipe_tools
+        recipe={"tools":["av","ac"],"tool_overrides":[{"binary":"b","test_prefix":"batch::","tools":["batch-av"]}]}
+        batch={"binary":"b","test":"batch::real"}
+        normal={"binary":"b","test":"ordinary"}
+        self.assertEqual(recipe_tools(recipe,[normal]),["ac","av"])
+        self.assertEqual(recipe_tools(recipe,[batch]),["batch-av"])
+        with self.assertRaises(ValueError):recipe_tools(recipe,[batch,normal])
+
+    def test_original_conditions_exclude_bodies_without_claiming_green(self):
+        row={"id":"r|b|tower","conditions":[{"kind":"milestone","required_env":{"T3_MILESTONE":"1"}}]}
+        self.assertEqual(len(applicability([row],{})),1)
+        self.assertEqual(applicability([row],{"T3_MILESTONE":"1"}),[])
+        self.assertEqual(len(applicability([{"id":"r|b|ignored","ignored":True}],{})),1)
+        with self.assertRaises(ValueError):applicability([row,{"id":"r|b|ordinary"}],{})
+        excluded={"exit":None,"outcome":"NOT_APPLICABLE"}
+        result=summary([{"exit":0,"outcome":"PASS"},excluded],2)
+        self.assertTrue(result["gate_passed"])
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["excluded_modules"],1)
+        self.assertFalse(summary([excluded],1)["gate_passed"])
+        self.assertFalse(summary([{"exit":0,"outcome":"PASS"}],2)["gate_passed"])
+
+    def test_shards_preserve_partition_and_reject_edited_source(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            c=catalog()
+            for m in c["modules"]:m["recipe"]="r"
+            path=Path(directory)/"modules.json"
+            write_catalog(path,c)
+            rebuilt=load(path)
+            validate(rebuilt)
+            self.assertEqual({r["id"] for r in rebuilt["obligations"]},{r["id"] for r in c["obligations"]})
+            shard=next((Path(directory)/"catalog").iterdir())
+            shard.write_text("{}")
+            with self.assertRaises(ValueError):load(path)
+
+    def test_case_meta_oracle_preserves_failed_status_and_rejects_infra_or_missing(self):
+        import json
+        import tempfile
+        row={"case_id":"red","check_id":"bad-golden","expected_status":"FAIL",
+             "source_sha256":"source","oracle_sha256":"oracle"}
+        result={"case":"red","check":"bad-golden","status":"FAIL","mismatches":[{"observation":"artifact"}],
+                "identity":{"source":"source","oracle":"oracle"}}
+        report={"schema":"test-case-module-result/1","scope":"case","selected_gate_exit":1,
+                "selected_report":{"results":[result],"load_errors":[],"coverage_gaps":[]},
+                "unselected":[{"status":"NOT_RUN"}]}
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"report.json"
+            path.write_text(json.dumps(report))
+            checked=validate_case_result(path,[row],1)
+            self.assertTrue(checked["assertions_satisfied"])
+            self.assertEqual(checked["checks"][0]["raw_status"],"FAIL")
+            for axis in ("infra","identity","scope","missing"):
+                bad=copy.deepcopy(report)
+                if axis=="infra":bad["selected_report"]["results"][0]["status"]="ERROR"
+                if axis=="identity":bad["selected_report"]["results"][0]["identity"]["oracle"]="other"
+                if axis=="scope":bad["unselected"][0]["status"]="PASS"
+                if axis=="missing":bad["selected_report"]["results"]=[]
+                path.write_text(json.dumps(bad))
+                try:checked=validate_case_result(path,[row],2 if axis=="infra" else 1)
+                except ValueError:continue
+                self.assertFalse(checked["assertions_satisfied"],axis)
+
+    def test_legacy_membership_and_conditions_are_separate_complete_leaves(self):
+        import sys
+        names=("topic::normal","topic::slow","topic::tower","topic::ignored")
+        cases={n:{"ignored":n.endswith("ignored"),"filter-match":{"status":"matches"}} for n in names}
+        doc={"rust-suites":{"binary":{"status":"listed","testcases":cases}}}
+        legacy={"schema":"test-legacy-membership/1","platform":sys.platform,
+                "tiers":["t","tf","ta","t3"],"extra_conditions":[],"rows":[
+                    {"binary":"binary","test":n,"ignored":n.endswith("ignored"),
+                     "selected_in":(["t","tf","ta","t3"] if n.endswith("normal")
+                        else ["tf","ta","t3"] if n.endswith("slow")
+                        else ["t3"] if n.endswith("tower") else [])}
+                    for n in names]}
+        c=make_catalog({"language":{}},{"language":doc},legacy=legacy)
+        validate(c)
+        self.assertEqual(len(c["modules"]),4)
+        self.assertEqual(len(c["legacy_map"]["t"]),1)
+        self.assertEqual(len(c["legacy_map"]["t3"]),3)
+        ignored=next(m for m in c["modules"] if any(x["kind"]=="ignored" for x in m["conditions"]))
+        self.assertFalse(ignored["legacy_tiers"])
+        tower=next(m for m in c["modules"] if m["legacy_tiers"]==["t3"])
+        self.assertEqual(tower["conditions"][0]["required_env"],{"T3_MILESTONE":"1"})
+        for mutation in ("missing","new-ignore"):
+            changed=copy.deepcopy(doc)
+            if mutation=="missing": del changed["rust-suites"]["binary"]["testcases"][names[0]]
+            else: changed["rust-suites"]["binary"]["testcases"][names[0]]["ignored"]=True
+            with self.assertRaises(ValueError):
+                make_catalog({"language":{}},{"language":changed},legacy=legacy)
+
     def test_python_exit_zero_cannot_hide_lost_or_skipped_case(self):
         import json
         import tempfile

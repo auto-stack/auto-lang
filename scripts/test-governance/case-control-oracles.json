@@ -1,0 +1,8 @@
+{
+  "schema": "test-case-meta-oracles/1",
+  "overrides": [
+    {"suite": "ac-native", "case": "ac.src.wrong-stage-build-red", "check": "bld-red", "expected_status": "FAIL", "evidence": "crates/auto-lang/src/tests/ac_case_tests.rs:684; original ac-native corpus meta-oracle"},
+    {"suite": "ac-native", "case": "ac.red.build-golden-fail-product-still-runs", "check": "bld-bad-golden", "expected_status": "FAIL", "evidence": "crates/auto-lang/src/tests/ac_case_tests.rs:684; preserve failed producer and passing product consumer"},
+    {"suite": "ac-native", "case": "ac.red.wrong-exit-fails", "check": "run-wrong-exit", "expected_status": "FAIL", "evidence": "crates/auto-lang/src/tests/ac_case_tests.rs:684; wrong expected exit must remain a mismatch"}
+  ]
+}
