@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-886
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-handler-poison-alignment
 author: [ZCode]
 created_at: 2026-10-29
@@ -117,6 +117,24 @@ total_steps: 5
 - spec_delta: supersedes=`docs/specs/auto-lang/vm/architecture.md`（新增 ADR-25：毒化导出丢弃点可判读事实 + 判定正确的定案）、`docs/specs/auto-ui-runtime/project.md`（新增 PLAN-886 [SYNTH-FAIL] 可见性面节）；new=[]。
 - pending_merge_owned: ①auto-ui（fix-synth-surface）+ auto-lang（plan-886-dev）合并与计划归档；②auto-man CLI 重建（含两面）→ **AC-02 负控实测**；③canonical spec 沉淀 + `.autoos/specs.json` 刷新；④worktree/分支/组清理（wt-guard 先行）。
 - next: merge
+
+### 2026-10-29 merge / landing 收尾回执（r1）
+
+- stage: merge | plan_id: PLAN-886 | plan_revision: r1 | outcome: **archived（delivered）**
+- landed:
+  - auto-lang master：`2813400f6`（merge master → plan-886-dev，`--ff-only` 落 main）→ canonical delta `cea54d1fd`（ADR-25 + auto-ui-runtime `[SYNTH-FAIL]` 节）→ ledger `741259beb`（v131，P886-M / P886-1）。
+  - auto-ui master：`31e4bd2`（merge master → fix-synth-surface，ff 落 master；含 `66062bb` 诊断面）。
+  - 归档：`docs/plans/archive/886-vm-handler-poison-alignment.md`，`status: archived`。
+- landing check（重建消除陈旧产物）：
+  - `auto`（auto-man）：`cargo build -p auto` exit 0；version `0.1.0+v0.0.20-118-ge6cc06f`，SHA256=`C049ABE3385D3E3634301A5DD1EE843E41A4CAACD2DE4214EA8D942EAB43D72E`；二进制含 `[SYNTH-FAIL]`(3) 与 `is not FN_PROLOG`(1)、旧文本 `see earlier handler errors`(0)。
+  - `auto-ui-tool`（VM 轨真正执行合成的进程）：`cargo build -p auto-ui-tools --bin auto-ui-tool` exit 0；SHA256=`C1F54640120A19A9054ABD4B7C732B07F37F687D501A1891A59427DD368E1651`；同样含两面。
+  - **重要发现（已并入文档）**：`-r vm` 的 UI handler 合成在 **tool 进程**内完成（`DiscoverySpec::auto_ui_tool` 解析 `auto-ui/target/debug`），只重建 `auto.exe` 不够——首次负控因此读到旧 tool（04:47 构建）的旧 poison 文本并判 FAIL；重建 tool 后 AC-02 转 PASS。
+- **AC-02 负控实测（pass）**：把 auto-reader `reading_page.at` 临时换成修复前形态（`let pr` + `pr = null`），`auto run -r vm --no-merge` 启动，stderr 同现（数据目录 `C:\Users\zhaop\AppData\Local\Temp\reader001-review-886neg-vpiqkp7f`）：
+  - `[SYNTH-FAIL] handler synthesis failed: reading_page..Init: Cannot reassign to immutable variable 'pr' (declared with 'let')`
+  - `[CODEGEN] dropping poisoned export 'handler_reading_page_Init': entry 4041 is not FN_PROLOG (byte 0x20, code_len 7045, window 4041±4 = [0fc5:0x01 | 0fc6:0x60 | 0fc7:0x00 | 0fc8:0x00 | 0fc9:0x20* | 0fca:0x80 | 0fcb:0x2d | 0fcc:0xbc]) — the fn did not compile to completion. If no error appeared above, the failure was recorded only in the consumer's own list (auto-ui surfaces it as [SYNTH-FAIL] on stderr).`
+  - 观测：同一失败在 record 点（无组件名）与 drain 点（带 `App:` 前缀）各输出一行 `[SYNTH-FAIL]`——刻意保留（组件未被桥接时 record 点仍可见），代价=两行同源；文件恢复后 `git status --porcelain` 为空（零残留）。
+- cleaned：wt-guard 先行后移除 `D:/autostack/.wt/lang-886/auto-lang`（plan-886-dev）、`D:/autostack/.wt/lang-886/auto-ui`（detached 诊断兄弟，WIP 已摘出并清零）、`D:/autostack/.wt/fix-synth-surface/auto-ui`（fix-synth-surface）；删分支；组目录移除。
+- residual：无功能残留。AC-02 的自动化断言仍缺（负控为人工/驱动协议），已登记为诊断面测试基建债务。
 
 ## 待澄清事项
 
