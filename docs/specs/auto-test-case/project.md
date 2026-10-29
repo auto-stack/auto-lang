@@ -70,3 +70,15 @@ typed stages/exit/原始 bytes 流/预算硬 cap/部分产物边界/783 cache �
 > docs/plans/788-autodown-ac-native-turnaround.md（B 阶段）；
 > 合同细则见 [profile-v1.md](profile-v1.md) / [profile-v2-native.md](profile-v2-native.md)，
 > 结构与依赖约束见 [architecture.md](architecture.md)。
+
+## 治理交付（PLAN-887，2026-10-29）
+
+- 状态校正：runner 退役通道现加载 844+869 双清单（此前仅 844）；language 完整档 floor =
+  3189（3205 − 869 退役 16，逐 ID 理由落档）；语料三族（vm_file_tests/cookbook/conformance）经
+  tv 档白名单枚举，聚合包装不冒充子 case 绿。
+- 受管治理工具：scripts/test-governance/（inventory/check_inventory/measure-first-wave/
+  coverage-matrix）+ scripts/tests/test_test_governance.py；正式 integration
+  plan887_test_governance（显式 --test 接线，不可被裸 --lib 漏掉）。
+- 剩余缺口（具名）：B17-B19 pending 语义裁定（language 语义 owner）、ui-tn 手工 pending/
+  Windows 限制（不扩豁免）、D 组 hit/edit/restart 生命周期扩展（不在首批）、	f --batch
+  完整批次由 merge 验收（候选 runner）。

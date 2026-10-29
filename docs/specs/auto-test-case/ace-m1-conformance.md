@@ -126,3 +126,17 @@ L06 保持 trap 行（`av.trap.list-index`，SEM-02 冻结；legacy 差异为 pr
 - 新 method-881 suite（9 值行×mn+av 双腿：42/0/57/75/135/42/52/84/42 +
   4 诊断行）挂自身 suite 文件（852 base 冻结不扩）；V-08 反控：M03 oracle
   75→76 变异必红且仅红 m03。分母/a2r 轴不改。
+
+## PLAN-887 首批消费与新增来源（governance-887）
+
+- 原 required 分母/词表/oracle 不变；887 不重生成、不改 binding/expected/证书。
+- 30 复用义务（B01..B20 + U01..U10）经原交付 suite（ce-m1-base.suite.ad、
+  ntry-862/entry-unit-862.suite.ad）原样判定，零复制、身份保持；B08/B11 旧侧差异保留
+  （oracle 7 不追随旧 VM 10/-7）。
+- 3 新增 D 组消费（crates/auto-lang/test/cases/governance-887/，id gov.d.*）：原 vm corpus
+  表达式（m/01_basics/{002_arithmetic,006_unary,007_group}/*.at，pilot ID
+  lang.basic.arithmetic/unary/group）以**入口包装**消费——裸表达式被正式入口拒绝
+  （diag source.syntax），故原表达式字节逐字嵌入 n main() int { return <expr> }，case 头记录
+  原路径 + 原 sha（=pilot legacy_source_sha256）+ wrapper sha + 嵌入行 + 独立 oracle（3/-6/9）。
+  不冒称原字节四路径或裸脚本支持；原 vm 源零改动。
+- 适用起点：entry-unit 为 NA-4 AV-only profile（native/legacy 不要求判 U 行与 D 行）。

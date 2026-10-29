@@ -271,3 +271,14 @@ toolchain 轴 `backend`，父侧绑定为报告轴 **`ac-native-backend`**：
 - 反控：worker 真实轴与父侧镜像逐字相等（`r1_backend_axis_mirror_matches_the_real_worker`，
   子进程 env 隔离）；legacy 请求被 worker/`ac-native` 显式拒绝。
 
+## 治理层边界与已验证失效轴（PLAN-887）
+
+- 写面 owner：runner/迁移/退役/floor/scripts/test-governance/** = 测试治理写面（887）；
+  experimental/ac-*、auto-mir-lower、native worker/缓存/资源合同 = **S/N 域排除写入**；
+  产品代码（entry/stdlib/trans/公开 SDK）= 只读。协议语义（avworker/1 case-serve、单一裁判、
+  进程隔离、不缓存 PASS、deadline/资源合同）不变。
+- 已验证失效轴（T-05 负结果）：session-less case-serve 强制 per-request 全新 store（nonce+
+  删除）→ 内容缓存跨请求不可能命中；session-serve（828 增量协议）与 case-serve 包络不兼容，
+  且 worker 域 887 排除 → 不借"会话复用"宣称提速，新计划先核此轴。
+- 套件自包含：suite.include 与 case source 的 virtual path 拒绝 ..（admission），跨目录引用
+  须以原 suite 独立运行或受管复制+身份记录实现。
