@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-885
-status: executing
+status: reviewed
 feature_name: blog-generated-rust-backend-parity
 author: [Codex]
 created_at: 2026-10-29
 updated_at: 2026-10-29
 plan_revision: 1
-current_step: 5
+current_step: 6
 total_steps: 7
 depends_on: []
 supersedes_spec_components: ["docs/specs/auto-api-gen/project.md"]
@@ -100,7 +100,7 @@ T-02将每个实际根因约简为编译可执行fixture；失败输入不能只
   - **G4 模块类型路径**（E0308 types:: vs works::/drafts::×4→0）：`api_gen.rs promote_api_types_in_companion` 把伴生模块中与 api 同形同名的 struct 提升为 `pub use crate::types::X;`（字段一致才替换，吞掉上方 derive/doc 属性行避免 E0774）。
 - [x] T-04（owner_stage=work；依赖T-03；AC-02/03）：受影响定向检查及L-01..03；不得用生成文本assert替代实际编译执行。证据：`cargo test -p auto-api-gen` 65 passed / 1 failed（`test_plan734_tauri_fixture_matches_generator` 为主检出既有红——tauri generator 格式漂移 `echo,` vs `echo,\n`，主检出 87dd2b6ad 同样失败，与本次修改无关，不在本计划触面）；`cargo test -p auto-lang-core trans::rust` ok。worktree 全量 `--lib` 12 failed 与主检出基线 12 failed 逐项一致（http_file_service/http_upload_service/http_server 定时/断连类 + stdlib_assembly 2项，均为既有红，本计划生成链触面外，按 885 §5 原范围归因不统称跳过——本计划不声称关闭它们）。真实 Blog 消费者 L-01/L-04：worktree 生成器（`AUTO_LANG_ROOT` 指向 worktree + 临时驱动 gen-driver）冷生成完整 Blog → `cargo build` **exit 0**（59 errors→0）；运行 exe → HTTP 全链路：POST /api/drafts 中文/引号/换行创建（rev=1，created_at=1793266510 有效 epoch）、GET /api/drafts 精确回读（title/rev 与 create 一致）、PUT 条件 rev 保存（rev=2）、陈旧 rev=1 写冲突拒绝（conflict=true）、GET 打开回读、重启后数据保留。E0433/E0061/E0277/E0599/全部 E0308 关闭。原始运行日志 attachments/885/back-run-*.log（不入库）。
 - [x] T-05（owner_stage=work；依赖T-04；AC-04）：完整Blog消费者L-04闭环并准备SD-01，提交实现/摘要，输出可消费回执，转execution_done；原生UI不在本计划。证据：提交 `f5e2d1a90`；SD-01 实际增量已落地两份 spec（本计划 review 回补）：`docs/specs/auto-api-gen/project.md` 增「Rust 服务生成运行时契约（PLAN-885 实测固化）」节（runtime 路径/back 导入解析/伴生类型提升/参数形状/消费者验证边界），`docs/specs/a2r-std/project.md` 增「str 模块契约」节（str_find 字符偏移/i64 返回/双参三参签名/不得与字节 len 混用）。**可消费回执（给 BLOG-004 T-02）**：auto-lang worktree 分支 `plan-885-dev`，实现提交 `f5e2d1a9053a2a3c0d8a252486c853a83209fd0e`，base `9352685a5`（master）；修复面=crates/{a2r-std,auto-api-gen,auto-lang-core}（trans/rust 发射器、内嵌 facade、生成器后处理）；Blog 用 worktree 生成器冷生成 → cargo build exit 0 → HTTP 草稿创建/列表/保存/冲突/重启全链路通过；runtime 层（time 导出、str_find 签名/字符偏移、parse unwrap）在独立 a2r-std 与内嵌 facade 双端同步。CLI 需以本 worktree auto-lang 重建（auto-man 链接主检出；重建后 C049ABE hash 变化，BLOG-004 消费新 CLI）——属 auto-man 构建动作，不在语言仓伪造第二份编排器。
-- [ ] T-06（owner_stage=review；依赖T-05；AC-05）：同一实现树暂停写入，最终review根因/兄弟控制及SD-01，不通过则回work。
+- [x] T-06（owner_stage=review；依赖T-05；AC-05）：同一实现树暂停写入，最终review根因/兄弟控制及SD-01，不通过则回work。证据：§9 review 回执（final pass，reviewed_commit f5e2d1a90，base 9352685a5；AC-01..04 全部 pass；SD-01 增量已回补两份 spec；无阻断项，已知边界登记）。
 - [ ] T-07（owner_stage=merge；依赖T-06；AC-06）：统一门、交付与Spec/ledger/归档/guard清理后向BLOG-004登记精确依赖版本，不仅写“框架已修”。
 
 ## 9. 复审记录
