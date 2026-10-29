@@ -131,12 +131,17 @@ try {
         $total = 0
         foreach ($m in $ms) { $total += [int]$m.Groups[1].Value }
         if ($total -le 0) { throw "no tests counted; raw output in core-test.txt" }
-        # the T-05 faces must be present in the run (binary headers appear
-        # per integration test in cargo's output)
-        foreach ($bin in @('text_native.rs', 'text_resources.rs', 'text_hir.rs', 'text_source.rs', 'text_binding.rs', 'scalar_native.rs', 'source_native.rs', 'native_execution.rs')) {
+        # PLAN-871 T-06 mapping: the PE/CLI suites of the retired HIR→CLIF
+        # lowering (text_native / text_resources / scalar_native /
+        # source_native / native_execution) are gone. The retained text faces
+        # below are the frontend/verify/binding surface; the text-run oracles
+        # (len/slice/char_at/Unicode/traps) are replayed by the `ac-native`
+        # text rows in `ac-mir-native/tests/shadow_tier_871.rs` and
+        # `tests/gap_closure_871.rs`.
+        foreach ($bin in @('text_hir.rs', 'text_source.rs', 'text_binding.rs')) {
             if ($t -notmatch [regex]::Escape($bin)) { throw "test binary $bin missing from the ac-core run" }
         }
-        $script:ReceiptLines.Add("ac-core test: ok ($total tests; text_native/text_resources present; every PE under the contained executor)")
+        $script:ReceiptLines.Add("ac-core test: ok ($total tests; text frontend/verify/binding faces present post-retirement)")
     }
 
     Invoke-Step 'cargo fmt --check (ac-core)' {

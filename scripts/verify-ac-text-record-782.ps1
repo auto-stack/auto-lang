@@ -824,9 +824,27 @@ try {
             -not ($allowed770 | Where-Object { $p -match $_ })
         })
         $allowed782 = @('^experimental/ac-core/', '^scripts/verify-ac-text-record-782\.ps1$', '^docs/reports/782-text-record/', '^docs/plans/782-ac-text-record-owned\.md$')
+        # PLAN-871: when this gate is executed as a DIFFERENTIAL old gate in
+        # the successor plan's tree, that plan's own artifacts are expected
+        # changed files. The opt-in is explicit (env), so 782's own delivery
+        # audit is unchanged when the variable is absent.
+        $allowedForeign = @()
+        if ($env:AUTO_LANG_PLAN_TREE -eq '871') {
+            $allowedForeign = @(
+                '^experimental/ac-core/', '^experimental/ac-mir-native/', '^experimental/ac-case-worker/',
+                '^experimental/ac-av-probe/', '^experimental/ac-cte-probe/', '^experimental/ac-artifact-probe/',
+                '^experimental/auto-mir-lower/', '^experimental/ac-syntax/',
+                '^crates/auto-lang-core/', '^crates/auto-lang/', '^scripts/verify-ac-871',
+                '^scripts/verify-ac-74[15]', '^scripts/verify-ac-source-745', '^scripts/verify-ac-scalar-767',
+                '^scripts/verify-ac-record-771', '^scripts/verify-ac-text-record-782', '^scripts/verify-ac-text-770',
+                '^scripts/verify-mir-lowering-868', '^docs/plans/attachments/871/', '^docs/plans/871-'
+            )
+        }
         $outside = @($illegal | Where-Object {
             $p = $_ -replace '\\', '/'
-            -not ($allowed782 | Where-Object { $p -match $_ })
+            $keep = -not ($allowed782 | Where-Object { $p -match $_ }) -and
+                    -not ($allowedForeign | Where-Object { $p -match $_ })
+            $keep
         })
         if ($outside.Count -gt 0) { throw "genuine out-of-scope changes flagged by the 770 gate predicate:`n$($outside -join "`n")" }
         $script:ReceiptLines.Add("old gate 770: attributed pass (all substantive steps green; scope step failed on exactly this plan's $($illegal.Count) in-scope artifacts - composition re-based onto the 782 allow-list)")
