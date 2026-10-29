@@ -331,3 +331,293 @@ fn sources_byte_identical_to_pilot_records() {
         .join("002_arithmetic/arithmetic.at")
         .exists());
 }
+
+/// V-04 control 1: a required source that is missing must be a contract
+/// error (exit 2), never a green or a silent skip.
+#[test]
+fn v04_missing_source_rejected() {
+    let dir = temp_dir("v04-missing");
+    let case = dir.join("c.case.ad");
+    std::fs::write(
+        &case,
+        "```test-case\ncase { schema: \"autolang.case/2\" id: \"v04.missing\" \
+         tags: [\"plan887\"] links: [\"PLAN-887\"] \
+         source: { file: \"no-such-source.at\", syntax: \"auto\", path: \"main.at\" } \
+         entry: { mode: \"program\" } \
+         checks: [ { id: \"av\", adapter: \"probe\", action: \"run\", \
+         options: { recipe: \"ac-av/core-run-v1\", av: { entry: \"d_main\" }, steps: [{ op: \"run\" }] }, \
+         expect: { completion: \"success\", exit: 0 } } ] }\n```\n",
+    )
+    .unwrap();
+    let suite = dir.join("s.suite.ad");
+    std::fs::write(
+        &suite,
+        "```test-suite\nsuite { schema: \"autolang.suite/2\", id: \"v04-missing\", include: [\"c.case.ad\"] }\n```\n",
+    )
+    .unwrap();
+    let run = auto_case(&[
+        "run",
+        "--suite",
+        suite.to_str().unwrap(),
+        "--out",
+        temp_dir("v04-missing-out").to_str().unwrap(),
+    ]);
+    assert_eq!(
+        run.status.code(),
+        Some(2),
+        "missing source must be a contract error:\n{}",
+        String::from_utf8_lossy(&run.stdout)
+    );
+}
+
+/// V-04 control 1: duplicate case identity must be a contract error.
+#[test]
+fn v04_duplicate_case_id_rejected() {
+    let dir = temp_dir("v04-dup");
+    for n in ["a", "b"] {
+        std::fs::write(dir.join(format!("{n}.at")), b"fn main() int { return 1 }\n").unwrap();
+        std::fs::write(
+            dir.join(format!("{n}.case.ad")),
+            format!(
+                "```test-case\ncase {{ schema: \"autolang.case/2\" id: \"v04.same\" \
+                 tags: [\"plan887\"] links: [\"PLAN-887\"] \
+                 source: {{ file: \"{n}.at\", syntax: \"auto\", path: \"main.at\" }} \
+                 entry: {{ mode: \"program\" }} \
+                 checks: [ {{ id: \"av\", adapter: \"probe\", action: \"run\", \
+                 options: {{ recipe: \"ac-av/core-run-v1\", av: {{ entry: \"d_main\" }}, steps: [{{ op: \"run\" }}] }}, \
+                 expect: {{ completion: \"success\", exit: 0 }} }} ] }}\n```\n"
+            ),
+        )
+        .unwrap();
+    }
+    let suite = dir.join("s.suite.ad");
+    std::fs::write(
+        &suite,
+        "```test-suite\nsuite { schema: \"autolang.suite/2\", id: \"v04-dup\", include: [\"a.case.ad\", \"b.case.ad\"] }\n```\n",
+    )
+    .unwrap();
+    let run = auto_case(&[
+        "run",
+        "--suite",
+        suite.to_str().unwrap(),
+        "--out",
+        temp_dir("v04-dup-out").to_str().unwrap(),
+    ]);
+    assert_eq!(
+        run.status.code(),
+        Some(2),
+        "duplicate case id must be a contract error:\n{}",
+        String::from_utf8_lossy(&run.stdout)
+    );
+}
+
+/// V-04 control 2: two LEGAL checks on the same source with distinct valid
+/// oracles are two obligations — both preserved in the receipt.
+#[test]
+fn v04_legal_same_source_dual_obligation() {
+    let dir = temp_dir("v04-dual");
+    std::fs::write(dir.join("seven.at"), b"fn main() int { return 7 }\n").unwrap();
+    let case = dir.join("c.case.ad");
+    std::fs::write(
+        &case,
+        "```test-case\ncase { schema: \"autolang.case/2\" id: \"v04.dual\" \
+         tags: [\"plan887\"] links: [\"PLAN-887\"] \
+         source: { file: \"seven.at\", syntax: \"auto\", path: \"main.at\" } \
+         entry: { mode: \"program\" } \
+         checks: [ \
+         { id: \"av\", adapter: \"probe\", action: \"run\", \
+         options: { recipe: \"ac-av/core-run-v1\", av: { entry: \"d_main\", profile: \"entry-unit\" }, steps: [{ op: \"run\" }] }, \
+         expect: { completion: \"success\", av_channel: \"value\", exit: 7 } }, \
+         { id: \"av-scalar\", adapter: \"probe\", action: \"run\", \
+         options: { recipe: \"ac-av/core-run-v1\", av: { entry: \"d_main\" }, steps: [{ op: \"run\" }] }, \
+         expect: { completion: \"success\", exit: 7 } } ] }\n```\n",
+    )
+    .unwrap();
+    let suite = dir.join("s.suite.ad");
+    std::fs::write(
+        &suite,
+        "```test-suite\nsuite { schema: \"autolang.suite/2\", id: \"v04-dual\", include: [\"c.case.ad\"] }\n```\n",
+    )
+    .unwrap();
+    let out = temp_dir("v04-dual-out");
+    let json_out = out.join("report.json");
+    let run = auto_case(&[
+        "run",
+        "--suite",
+        suite.to_str().unwrap(),
+        "--out",
+        out.to_str().unwrap(),
+        "--json-out",
+        json_out.to_str().unwrap(),
+    ]);
+    assert!(
+        run.status.success(),
+        "dual-obligation run must pass:\n{}",
+        String::from_utf8_lossy(&run.stdout)
+    );
+    let report: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&json_out).expect("report"))
+            .expect("report json");
+    assert_eq!(
+        report["results"].as_array().map(|a| a.len()).unwrap_or(0),
+        2,
+        "two legal checks on the same source must stay two obligations"
+    );
+}
+
+/// V-05 control 3/4: a typed language diagnostic judged by stage+code is a
+/// legitimate positive control; a WRONG code on the same input must be red.
+#[test]
+fn v05_typed_diagnostic_positive_and_wrong_code_red() {
+    let dir = temp_dir("v05");
+    // Unit-entry source: the scalar profile must reject it with
+    // source.unsupported (typed parse-stage diagnostic — U02 precedent).
+    std::fs::write(dir.join("unit.at"), b"let a = 1\nlet b = a + 1\n").unwrap();
+    let pos = dir.join("pos.case.ad");
+    std::fs::write(
+        &pos,
+        "```test-case\ncase { schema: \"autolang.case/2\" id: \"v05.pos\" \
+         tags: [\"plan887\"] links: [\"PLAN-887\"] \
+         source: { file: \"unit.at\", syntax: \"auto\", path: \"main.at\" } \
+         entry: { mode: \"program\" } \
+         checks: [ { id: \"av-scalar-rejects\", adapter: \"probe\", action: \"run\", \
+         options: { recipe: \"ac-av/core-run-v1\", av: { entry: \"d_main\" }, steps: [{ op: \"run\" }] }, \
+         expect: { completion: { stage: \"parse\", code: \"source.unsupported\" } } } ] }\n```\n",
+    )
+    .unwrap();
+    let pos_suite = dir.join("pos.suite.ad");
+    std::fs::write(
+        &pos_suite,
+        "```test-suite\nsuite { schema: \"autolang.suite/2\", id: \"v05-pos\", include: [\"pos.case.ad\"] }\n```\n",
+    )
+    .unwrap();
+    let pos_run = auto_case(&[
+        "run",
+        "--suite",
+        pos_suite.to_str().unwrap(),
+        "--out",
+        temp_dir("v05-pos-out").to_str().unwrap(),
+    ]);
+    assert!(
+        pos_run.status.success(),
+        "typed-diagnostic positive control must pass:\n{}",
+        String::from_utf8_lossy(&pos_run.stdout)
+    );
+    // Wrong code: expect a DIFFERENT diagnostic on the same input -> red.
+    let neg = dir.join("neg.case.ad");
+    std::fs::write(
+        &neg,
+        "```test-case\ncase { schema: \"autolang.case/2\" id: \"v05.neg\" \
+         tags: [\"plan887\"] links: [\"PLAN-887\"] \
+         source: { file: \"unit.at\", syntax: \"auto\", path: \"main.at\" } \
+         entry: { mode: \"program\" } \
+         checks: [ { id: \"av-scalar-rejects\", adapter: \"probe\", action: \"run\", \
+         options: { recipe: \"ac-av/core-run-v1\", av: { entry: \"d_main\" }, steps: [{ op: \"run\" }] }, \
+         expect: { completion: { stage: \"parse\", code: \"source.undefined\" } } } ] }\n```\n",
+    )
+    .unwrap();
+    let neg_suite = dir.join("neg.suite.ad");
+    std::fs::write(
+        &neg_suite,
+        "```test-suite\nsuite { schema: \"autolang.suite/2\", id: \"v05-neg\", include: [\"neg.case.ad\"] }\n```\n",
+    )
+    .unwrap();
+    let neg_run = auto_case(&[
+        "run",
+        "--suite",
+        neg_suite.to_str().unwrap(),
+        "--out",
+        temp_dir("v05-neg-out").to_str().unwrap(),
+    ]);
+    assert_eq!(
+        neg_run.status.code(),
+        Some(1),
+        "wrong diagnostic code must be red (exit 1):\n{}",
+        String::from_utf8_lossy(&neg_run.stdout)
+    );
+}
+
+/// V-07 control 7: subset selection — the receipt carries the selected
+/// case's checks as PASS and marks every unselected check NOT_RUN (named
+/// "not selected"); an outer NOT_RUN is never green (exit 1).
+#[test]
+fn v07_subset_selection_only() {
+    let out = temp_dir("v07-subset");
+    let json_out = out.join("report.json");
+    let run = auto_case(&[
+        "run",
+        "--suite",
+        SUITE,
+        "--case",
+        "gov.d.arithmetic",
+        "--out",
+        out.to_str().unwrap(),
+        "--json-out",
+        json_out.to_str().unwrap(),
+    ]);
+    assert_eq!(
+        run.status.code(),
+        Some(1),
+        "subset run with unselected checks must exit 1 (NOT_RUN, never green):\n{}",
+        String::from_utf8_lossy(&run.stdout)
+    );
+    let report: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&json_out).expect("report"))
+            .expect("report json");
+    let results = report["results"].as_array().expect("results");
+    let passed: Vec<_> = results.iter().filter(|r| r["status"] == "PASS").collect();
+    assert_eq!(passed.len(), 2, "exactly the selected case's checks pass");
+    for r in passed {
+        assert_eq!(r["case"], "gov.d.arithmetic");
+    }
+    let not_run: Vec<_> = results
+        .iter()
+        .filter(|r| r["status"] == "NOT_RUN")
+        .collect();
+    assert_eq!(not_run.len(), 4, "unselected checks are explicitly NOT_RUN");
+    for r in not_run {
+        let detail = r["detail"].as_str().unwrap_or("");
+        assert!(
+            detail.contains("not selected"),
+            "NOT_RUN must name the selection: {detail}"
+        );
+    }
+}
+
+/// V-07 control 7: emit-only checks are reported as emit (never as run);
+/// a green emit does not claim execution. Asserted over the original M1
+/// suite run (a2r-snapshot checks carry declared artifact oracles).
+#[test]
+fn v07_emit_not_run() {
+    let out = temp_dir("v07-emit");
+    let json_out = out.join("report.json");
+    let run = auto_case(&[
+        "run",
+        "--suite",
+        M1_BASE_SUITE,
+        "--out",
+        out.to_str().unwrap(),
+        "--json-out",
+        json_out.to_str().unwrap(),
+    ]);
+    assert!(
+        run.status.success(),
+        "M1 emit-bearing run must pass:\n{}",
+        String::from_utf8_lossy(&run.stdout)
+    );
+    let report: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&json_out).expect("report"))
+            .expect("report json");
+    let results = report["results"].as_array().expect("results");
+    let emit: Vec<_> = results.iter().filter(|r| r["action"] == "emit").collect();
+    assert!(!emit.is_empty(), "the M1 suite must carry a2r emit checks");
+    for r in emit {
+        assert_eq!(r["status"], "PASS");
+        assert_ne!(r["action"], "run", "emit must never claim run");
+    }
+    let run_actions: Vec<_> = results.iter().filter(|r| r["action"] == "run").collect();
+    assert!(
+        !run_actions.is_empty(),
+        "the M1 suite must carry real run checks"
+    );
+}
