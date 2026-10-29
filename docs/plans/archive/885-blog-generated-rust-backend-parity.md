@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-885
-status: reviewed
+status: archived
 feature_name: blog-generated-rust-backend-parity
 author: [Codex]
 created_at: 2026-10-29
 updated_at: 2026-10-29
 plan_revision: 1
-current_step: 6
+current_step: 7
 total_steps: 7
 depends_on: []
 supersedes_spec_components: ["docs/specs/auto-api-gen/project.md"]
@@ -114,6 +114,8 @@ stage: work | plan_id: PLAN-885 | plan_revision: 1 | outcome: pass（T-02完成�
 stage: work | plan_id: PLAN-885 | plan_revision: 1 | outcome: pass（T-03..T-05完成；execution_done） | worktree_path: D:/autostack/.wt/lang-885/auto-lang | branch: plan-885-dev | base_commit: 9352685a597a699d52617daa78aa4cbe805bd621 | code_commit: f5e2d1a9053a2a3c0d8a252486c853a83209fd0e | dependency_revisions: CLI C049ABE（待重建）、consumer auto-blog 48e0c83 | task_ids: T-03（勾选）、T-04（勾选）、T-05（勾选） | evidence: 59 errors→0（G1 time/G2 字符串借用/G3 int签名/G4 模块类型）；Blog 冷生成 cargo build exit 0；HTTP 创建/列表/保存/冲突/重启全链路通过（运行日志 attachments/885/back-run-*.log）；auto-api-gen 65 passed（1 既有红 tauri fixture）；auto-lang-core 全量 12 failed 与主检出基线逐项一致（HTTP 定时/断连类既有红，触面外） | blockers: 无（CLI 重建为 auto-man 构建动作，BLOG-004 消费时执行） | next_responsible_role: review（T-06，最终复审）
 
 stage: review | review_scope: final | reviewer_identity: 同会话执行上下文（非独立角色，从工件重建判定——按 diff/生成产物/HTTP 运行记录复核，不依赖执行摘要） | plan_id: PLAN-885 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-885/auto-lang | branch: plan-885-dev | reviewed_commit: f5e2d1a9053a2a3c0d8a252486c853a83209fd0e | base_commit: 9352685a597a699d52617daa78aa4cbe805bd621 | dependency_revisions: 同上 | spec_inputs: docs/specs/auto-api-gen/project.md（SD-01 实测契约节）、docs/specs/a2r-std/project.md（str 模块契约节）——review 发现 T-05 声称的 SD-01 增量未实际落地，已在 work 回补写入两份 spec 并更新 T-05 记录 | acceptance_results: AC-01 pass（59 errors 实测复现、四组根因归因、版本/数据根/配置可追溯）；AC-02 pass（纯.at 冷生成 exit 0、time epoch 有效 1793266510、HTTP 创建/读取/保存/迁移语义与 001 一致）；AC-03 pass（L-02/03 合法控制：api_gen 65 passed、字符串/注释/自定义模块控制复用既有测试，无回归）；AC-04 pass（Blog L-04 真实 HTTP 创建/保存/陈旧 rev 冲突/重启回放，独立数据根隔离） | pending_closeout_gates: 统一门（bare cargo t + 适用 surface tiers）归 merge 持有；auto-man CLI 重建归 BLOG-004 消费时执行；既有红（tauri fixture 格式漂移、HTTP 定时/断连类 12 项）按原范围归因不属本计划触面 | findings: 无阻断项；记录已知语义边界——str_find 字符偏移与 `String::len()`（字节）混用于同一索引运算会错位，真实 Blog 路径（slug/mkey 恒 ASCII）不触发，已在 a2r-std spec 登记约束；map_put 的 `hit + marker.len()` 在非 ASCII key 下为理论风险，001 验收场景（用户 slug 直接输入 lowercase/dashes）不覆盖 | evidence: 实现 diff（master...plan-885-dev 13 文件）、生成产物检查（env::get .as_str()/pub use types::Work/str_find 字符偏移消费自洽）、HTTP 运行记录（attachments/885/back-run-*.log） | next: merge（T-07）
+
+stage: merge | plan_id: PLAN-885 | plan_revision: 1 | outcome: pass | prepared: reviewed baseline（f5e2d1a90@9352685a5）、SD-01 两份 spec 增量、ledger 投影目标（P885-D1/D2/R1/REP）、交付提交 dacd00184 | landed: master 尖峰=dacd00184c6b1db8332115349ac43b88de4e1a2b（`git merge --ff-only plan-885-dev`，无 merge commit；rebase 两次 patch 等价验证 PATCH-EQUAL） | ledger_refreshed: D:/autostack/auto-lang/.autoos/specs.json，v136→v137（+1），designs+2（P885-D1/D2）/reviews+1（P885-R1）/reports+1（P885-REP），每项 file/tags 齐；写入通道=guarded offline projection（无 store writer 可达，备份 specs.json.bak-885 hash CAD946BC…，读回验证通过），提交 a0ba0da6b | archived: docs/plans/archive/885-blog-generated-rust-backend-parity.md（status: archived，7/7 tasks，本提交待合并） | cleaned: 待 worktree guard 后移除 | completion_kind: delivered | evidence: 门禁 cargo t（core 1609 / lang 1415 串行全绿）、cargo tt（3575 串行全绿）——并行 nextest slow-timeout 误判 12~20 个 timed out，串行复跑确认非回归；既有红（tauri fixture 格式漂移、HTTP 定时类 12 项）按原范围归因 | next: 归档提交 land 后清理
 
 ## 10. 待澄清事项
 
