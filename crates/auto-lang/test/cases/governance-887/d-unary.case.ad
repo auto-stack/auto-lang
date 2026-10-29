@@ -1,0 +1,26 @@
+# PLAN-887 D-unary: ACE real-source consumption of the ORIGINAL vm corpus
+# bytes `-2 * 3` (crates/auto-lang/test/vm/01_basics/006_unary/unary.at;
+# pilot ID lang.basic.unary; legacy oracle -6).
+#
+# sha256(c85ac4c786ef797783df4b2c58840ad717b70022fe78ff4f7753826ea929e405)
+# matches pilot legacy_source_sha256 — byte-identical, no copy, no wrapper.
+# Script-tail entry profile; old-side scalar control on the same bytes.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "gov.d.unary"
+  tags: ["governance-887", "first-wave", "d-group", "ace-consumption"]
+  links: ["PLAN-887"]
+  source: { file: "../vm/01_basics/006_unary/unary.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", profile: "entry-unit" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", av_channel: "value", exit: -6 } },
+    { id: "av-scalar-control", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: -6 } }
+  ]
+}
+```

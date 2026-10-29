@@ -1,0 +1,29 @@
+# PLAN-887 D-arithmetic: ACE real-source consumption of the ORIGINAL vm
+# corpus bytes `1 + 2` (crates/auto-lang/test/vm/01_basics/002_arithmetic/
+# arithmetic.at; pilot ID lang.basic.arithmetic; legacy oracle 3).
+#
+# sha256(cb898749d76e51fdaf6c6636920ccdb4f415fc1cffd1e2497636b38cc2469807)
+# matches pilot legacy_source_sha256 — byte-identical, no copy, no wrapper:
+# the delivered script-tail entry profile consumes the expression as the
+# tail value (U03 precedent, PLAN-862). The av-scalar-control check keeps
+# the old-side applicability on the SAME bytes. Native/legacy paths are not
+# required to judge this row (entry-unit NA-4 profile).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "gov.d.arithmetic"
+  tags: ["governance-887", "first-wave", "d-group", "ace-consumption"]
+  links: ["PLAN-887"]
+  source: { file: "../vm/01_basics/002_arithmetic/arithmetic.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", profile: "entry-unit" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", av_channel: "value", exit: 3 } },
+    { id: "av-scalar-control", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 3 } }
+  ]
+}
+```

@@ -1,0 +1,28 @@
+# PLAN-887 first-wave suite — 30 reuse + 3 new-consumption obligations.
+#
+# A+B (20): M1 B01..B20 via the delivered ace-m1 case files (b-scalar for
+#   B01..B12 except B08/B11, legacy-composite for B08/B11 difference rows,
+#   b-traps for B13..B15/B20, b-diags for B16..B19). Sources/oracles are the
+#   ORIGINAL ace-m1 src/*.at + oracle/*.rs — nothing copied, identity kept.
+#   B08/B11 old-side difference (legacy computes 10/-7 vs frozen oracle 7)
+#   is preserved; the oracle is never changed to follow the old VM.
+# C (10): entry-862 U01..U10 via the delivered entry-unit-862.case.ad
+#   (NA-4 AV-only profile — native/legacy paths are not required to judge it).
+# D (3, new): governance-887/d-{arithmetic,unary,group}.case.ad consume the
+#   ORIGINAL vm corpus sources (vm/01_basics/{002_arithmetic,006_unary,
+#   007_group}/*.at, pilot IDs lang.basic.arithmetic/unary/group) through the
+#   delivered script-tail entry profile. Source bytes untouched; sha256 in the
+#   case files matches pilot legacy_source_sha256 (cb898749…/c85ac4c7…/5a7e0aea…).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "governance-887-first-wave", include: [
+  "../ace-m1/b-scalar.case.ad",
+  "../ace-m1/legacy-composite.case.ad",
+  "../ace-m1/b-traps.case.ad",
+  "../ace-m1/b-diags.case.ad",
+  "../ace-m1/entry-862/entry-unit-862.case.ad",
+  "d-arithmetic.case.ad",
+  "d-unary.case.ad",
+  "d-group.case.ad",
+] }
+```

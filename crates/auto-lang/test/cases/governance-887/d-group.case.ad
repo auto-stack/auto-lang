@@ -1,0 +1,26 @@
+# PLAN-887 D-group: ACE real-source consumption of the ORIGINAL vm corpus
+# bytes `(1 + 2) * 3` (crates/auto-lang/test/vm/01_basics/007_group/group.at;
+# pilot ID lang.basic.group; legacy oracle 9).
+#
+# sha256(5a7e0aea55b602ab4ec4826bec6026efb6a4a22891a6a1176b8a58b31eb56ed2)
+# matches pilot legacy_source_sha256 — byte-identical, no copy, no wrapper.
+# Script-tail entry profile; old-side scalar control on the same bytes.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "gov.d.group"
+  tags: ["governance-887", "first-wave", "d-group", "ace-consumption"]
+  links: ["PLAN-887"]
+  source: { file: "../vm/01_basics/007_group/group.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "av", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main", profile: "entry-unit" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", av_channel: "value", exit: 9 } },
+    { id: "av-scalar-control", adapter: "probe", action: "run",
+      options: { recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] },
+      expect: { completion: "success", exit: 9 } }
+  ]
+}
+```
