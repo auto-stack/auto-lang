@@ -74,7 +74,7 @@ v1 的五种文档类型（project.md / overview.md / architecture.md / design\<
 ```
 /auto-plan:new ─→ /auto-plan:work ─→ /auto-plan:review ─→ /auto-plan:merge
    drafting         executing          execution_done        reviewed → archived
-   读 overview.md    worktree 隔离       全量测试门禁           账本沉淀 + module 回写 + 归档
+   读 overview.md    worktree 隔离       逐项验收审查           账本沉淀 + module 回写 + 归档
    取材背景         plan 作执行合同      遗漏/延后/workaround   current spec/ADR → catalog → archive
 ```
 
@@ -82,8 +82,9 @@ v1 的五种文档类型（project.md / overview.md / architecture.md / design\<
 - **work**：一切实现修改在 `D:/autostack/.wt/lang-<NNN>/auto-lang` sibling-group worktree
   （一 plan 一 worktree 全生命周期，禁止 junction/symlink）；
   `[✅]` 簿记写主检出的 plan 文件；scoped 测试；多阶段计划按阶段 fold + re-sync；
-  fold 前全量门禁 `cargo tf`（+tv/tt/tb 按触碰面）。
-- **review**：重跑验收（不信勾选框）；全量套件仅在此（与 fold 前）运行；填
+  最终审查通过后，merge 在冻结提交执行受影响完整模块及消费者/集成/必要慢模块并集；
+  不叠跑旧裸 t/触面档。周期 `tf --batch` 仍按原到期条件在主检出单实例执行显式模块调度。
+- **review**：逐项核验验收（不信勾选框），只跑必要反例/受影响模块，不触发周期全集；填
   `supersedes_spec_components` / `new_spec_components` / `touched_goals`。
 - **merge**：gate（必须 reviewed）→ fold worktree → current-state Spec/ADR 蒸馏 →
   specs.json 兼容 upsert → 索引再生 → 归档。Plan 正文不复制进 current-state Spec。
