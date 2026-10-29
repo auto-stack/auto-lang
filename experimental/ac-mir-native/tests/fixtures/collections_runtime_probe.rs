@@ -28,6 +28,13 @@ extern "system" {
     fn mn_coll_fail_nth(n: u64);
     fn ac_rt_fail_nth_alloc(n: i32);
     fn mn_coll_set_budget(n: u64);
+    fn mn_coll_arena_limit(n: u64) -> i32;
+    fn mn_coll_arena_committed() -> u64;
+    fn mn_coll_cancel_after_work(n: u64);
+    fn mn_coll_drop(cell: *mut Cell);
+    fn ac_rt_fail_ledger_nth(n: i32);
+    fn ac_rt_own_free(bytes: *mut u8);
+    fn ac_rt_release_idle_metadata() -> i32;
     fn mn_coll_live_nodes() -> u64;
     fn mn_coll_live_bytes() -> u64;
     fn mn_coll_summary();
@@ -102,6 +109,190 @@ unsafe fn callee() -> ! {
 
 #[no_mangle]
 pub unsafe extern "system" fn ac_start() -> ! {
+    if cfg!(mn_probe_allocator_switch) {
+        let mut cells = [EMPTY; 1];
+        let mut frame = [0u64; 4];
+        ok(mn_coll_frame_enter(
+            frame.as_mut_ptr(),
+            cells.as_mut_ptr(),
+            1,
+        ));
+        let mut length = 0;
+        let old = ac_rt_own_from_lit(b"old-heap".as_ptr(), 8, &mut length);
+        check(!old.is_null() && length == 8, 140);
+        check(mn_coll_literal(&mut cells[0], b"x".as_ptr(), 1) == -23, 141);
+        ac_rt_own_free(old);
+        // Idle retained metadata still belongs to the original allocator.
+        check(mn_coll_literal(&mut cells[0], b"x".as_ptr(), 1) == -23, 142);
+        ok(ac_rt_release_idle_metadata());
+        ok(mn_coll_literal(&mut cells[0], b"x".as_ptr(), 1));
+        ok(mn_coll_frame_leave(frame.as_mut_ptr()));
+        mn_coll_summary();
+        ExitProcess(42);
+    }
+    if cfg!(mn_probe_guest) {
+        static TEXT: [u8; 8 << 20] = [b'x'; 8 << 20];
+        let mut cells = [EMPTY; 2];
+        let mut frame = [0u64; 4];
+        ok(mn_coll_frame_enter(
+            frame.as_mut_ptr(),
+            cells.as_mut_ptr(),
+            2,
+        ));
+        let before = mn_coll_live_bytes();
+        check(
+            mn_coll_literal(&mut cells[0], TEXT.as_ptr(), (TEXT.len() + 1) as i32) == -22,
+            136,
+        );
+        check(cells[0].owned == 0 && mn_coll_live_bytes() == before, 137);
+        ok(mn_coll_literal(
+            &mut cells[0],
+            TEXT.as_ptr(),
+            TEXT.len() as i32,
+        ));
+        let before = mn_coll_live_bytes();
+        cells[1].bits = 70;
+        check(mn_coll_clone(&mut cells[1], &cells[0]) == -22, 138);
+        check(
+            cells[1].bits == 70 && cells[1].owned == 0 && mn_coll_live_bytes() == before,
+            139,
+        );
+        ok(mn_coll_frame_leave(frame.as_mut_ptr()));
+        mn_coll_summary();
+        ExitProcess(42);
+    }
+    if cfg!(mn_probe_arena) {
+        let mut cells = [EMPTY; 5];
+        let mut frame = [0u64; 4];
+        ok(mn_coll_frame_enter(
+            frame.as_mut_ptr(),
+            cells.as_mut_ptr(),
+            5,
+        ));
+        ok(mn_coll_arena_limit(4096));
+        check(mn_coll_arena_limit(8192) == -23, 143); // cannot reopen a tightened ceiling
+        ok(mn_coll_list_new(&mut cells[0], 80));
+        ok(mn_coll_list_new(&mut cells[1], 80));
+        ok(mn_coll_list_new(&mut cells[2], 16));
+        check(mn_coll_arena_limit(0) == -23, 144); // cannot erase live committed charge
+        let before = mn_coll_live_bytes();
+        check(mn_coll_list_new(&mut cells[3], 256) == -22, 120);
+        check(
+            mn_coll_live_bytes() == before
+                && cells[3].owned == 0
+                && mn_coll_arena_committed() == 4096,
+            121,
+        );
+        mn_coll_drop(&mut cells[0]);
+        ok(mn_coll_list_new(&mut cells[3], 70)); // reuse a non-tail fragment
+        mn_coll_drop(&mut cells[1]);
+        mn_coll_drop(&mut cells[3]); // coalesce preceding and following blocks
+        ok(mn_coll_list_new(&mut cells[4], 150));
+        ok(mn_coll_frame_leave(frame.as_mut_ptr()));
+        check(mn_coll_arena_committed() == 0, 122);
+        mn_coll_summary();
+        ExitProcess(42);
+    }
+    if cfg!(mn_probe_cancel) || cfg!(mn_probe_metadata) || cfg!(mn_probe_limits) {
+        let mut cells = [EMPTY; 20];
+        let mut frame = [0u64; 4];
+        ok(mn_coll_frame_enter(
+            frame.as_mut_ptr(),
+            cells.as_mut_ptr(),
+            20,
+        ));
+        if cfg!(mn_probe_metadata) {
+            let baseline = mn_coll_live_bytes();
+            ac_rt_fail_ledger_nth(1);
+            check(mn_coll_literal(&mut cells[0], b"x".as_ptr(), 1) == -22, 123);
+            check(mn_coll_live_bytes() == baseline && cells[0].owned == 0, 124);
+            ac_rt_fail_ledger_nth(3); // initial success is ordinal2, grow is ordinal3
+            for i in 0..16 {
+                ok(mn_coll_literal(cells.as_mut_ptr().add(i), b"x".as_ptr(), 1));
+            }
+            let before = mn_coll_live_bytes();
+            cells[16].bits = 70;
+            check(
+                mn_coll_literal(&mut cells[16], b"y".as_ptr(), 1) == -22,
+                125,
+            );
+            check(
+                cells[16].bits == 70 && cells[16].owned == 0 && mn_coll_live_bytes() == before,
+                126,
+            );
+            ac_rt_fail_ledger_nth(0);
+            ok(mn_coll_literal(&mut cells[16], b"z".as_ptr(), 1));
+        } else if cfg!(mn_probe_cancel) {
+            static TEXT: [u8; 32768] = [b'x'; 32768];
+            ok(mn_coll_literal(
+                &mut cells[0],
+                TEXT.as_ptr(),
+                TEXT.len() as i32,
+            ));
+            cells[1].bits = 70;
+            let original = cells[0].bits;
+            let before = mn_coll_live_bytes();
+            mn_coll_cancel_after_work(8192);
+            check(mn_coll_clone(&mut cells[1], &cells[0]) == -26, 127);
+            check(
+                cells[0].bits == original
+                    && cells[1].bits == 70
+                    && cells[1].owned == 0
+                    && mn_coll_live_bytes() == before,
+                128,
+            );
+            mn_coll_cancel_after_work(u64::MAX);
+            ok(mn_coll_list_new(&mut cells[2], 128));
+            for i in 0..128 {
+                cells[3].bits = i;
+                ok(mn_coll_list_insert(cells[2].bits, i as i32, &mut cells[3]));
+            }
+            let before = mn_coll_live_bytes();
+            mn_coll_cancel_after_work(20);
+            check(mn_coll_clone(&mut cells[1], &cells[2]) == -26, 129);
+            check(
+                cells[1].bits == 70
+                    && cells[1].owned == 0
+                    && mn_coll_list_len(cells[2].bits) == 128
+                    && mn_coll_live_bytes() == before,
+                130,
+            );
+            mn_coll_cancel_after_work(0);
+            let value = cells[3].bits;
+            check(
+                mn_coll_list_insert(cells[2].bits, 0, &mut cells[3]) == -26,
+                131,
+            );
+            check(
+                cells[3].bits == value && mn_coll_list_len(cells[2].bits) == 128,
+                132,
+            );
+            mn_coll_cancel_after_work(u64::MAX);
+            ok(mn_coll_clone(&mut cells[1], &cells[0]));
+        } else {
+            ok(mn_coll_list_new(&mut cells[0], 65536));
+            check(mn_coll_list_new(&mut cells[1], 65537) == -22, 133);
+            for i in 0..65536 {
+                cells[2].bits = i;
+                ok(mn_coll_list_insert(cells[0].bits, i as i32, &mut cells[2]));
+            }
+            let before = mn_coll_live_bytes();
+            cells[2].bits = 70;
+            check(
+                mn_coll_list_insert(cells[0].bits, 65536, &mut cells[2]) == -22,
+                134,
+            );
+            check(
+                cells[2].bits == 70
+                    && mn_coll_live_bytes() == before
+                    && mn_coll_list_len(cells[0].bits) == 65536,
+                135,
+            );
+        }
+        ok(mn_coll_frame_leave(frame.as_mut_ptr()));
+        mn_coll_summary();
+        ExitProcess(42);
+    }
     if cfg!(mn_probe_deep) {
         // STACK_SIZE_PARAM_IS_A_RESERVATION: actual 64KiB reservation,
         // not just a commitment inside the default megabyte reservation.

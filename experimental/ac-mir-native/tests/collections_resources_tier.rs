@@ -83,6 +83,96 @@ fn runtime_probe(tag: &str, config: Option<&str>) -> ac_mn::link_driver::PeRun {
 
 fn zero_live(stderr: &[u8]) {
     balance(stderr).unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(stderr)));
+    let text = String::from_utf8_lossy(stderr);
+    for field in [
+        "arena_live",
+        "arena_commit",
+        "arena_invalid",
+        "text_metadata",
+    ] {
+        assert!(text.contains(&format!("MN-COLL {field}=0\n")), "{text}");
+    }
+}
+
+#[test]
+fn runtime_allocator_takeover_refuses_live_and_retained_old_heap_storage() {
+    let run = runtime_probe("allocator-switch", Some("mn_probe_allocator_switch"));
+    assert_eq!(
+        run.exit_code,
+        Some(42),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    zero_live(&run.stderr);
+}
+
+#[test]
+fn runtime_guest_exact_eight_mib_and_plus_one_rejection() {
+    let run = runtime_probe("guest-limits", Some("mn_probe_guest"));
+    assert_eq!(
+        run.exit_code,
+        Some(42),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    zero_live(&run.stderr);
+    let text = String::from_utf8_lossy(&run.stderr);
+    let peak: u64 = text
+        .lines()
+        .find_map(|line| line.strip_prefix("MN-COLL arena_peak="))
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!(peak > 8 << 20 && peak <= 32 << 20, "{text}");
+}
+
+#[test]
+fn runtime_physical_quota_fragment_reuse_and_coalescing() {
+    let run = runtime_probe("arena-quota", Some("mn_probe_arena"));
+    assert_eq!(
+        run.exit_code,
+        Some(42),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    zero_live(&run.stderr);
+    assert!(String::from_utf8_lossy(&run.stderr).contains("MN-COLL arena_peak=4096\n"));
+}
+
+#[test]
+fn runtime_cancellation_rolls_back_text_chunks_and_partial_list_clone() {
+    let run = runtime_probe("cancel", Some("mn_probe_cancel"));
+    assert_eq!(
+        run.exit_code,
+        Some(42),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    zero_live(&run.stderr);
+}
+
+#[test]
+fn runtime_text_metadata_initial_and_growth_failure_are_atomic() {
+    let run = runtime_probe("metadata", Some("mn_probe_metadata"));
+    assert_eq!(
+        run.exit_code,
+        Some(42),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    zero_live(&run.stderr);
+}
+
+#[test]
+fn runtime_list_exact_limit_and_plus_one_rejection() {
+    let run = runtime_probe("list-limits", Some("mn_probe_limits"));
+    assert_eq!(
+        run.exit_code,
+        Some(42),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    zero_live(&run.stderr);
 }
 
 fn balance(stderr: &[u8]) -> Result<(), String> {

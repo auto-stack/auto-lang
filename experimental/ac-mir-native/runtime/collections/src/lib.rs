@@ -8,13 +8,11 @@
 // Embed the delivered text implementation and its single panic handler in
 // this static library. Linking two independent no_std panic handlers conflicts.
 extern crate ac_text_runtime;
+mod arena;
 
 use core::ptr::{null_mut, read, write};
 
 extern "system" {
-    fn GetProcessHeap() -> isize;
-    fn HeapAlloc(heap: isize, flags: u32, bytes: usize) -> *mut u8;
-    fn HeapFree(heap: isize, flags: u32, ptr: *mut u8) -> i32;
     fn GetStdHandle(which: i32) -> isize;
     fn WriteFile(h: isize, p: *const u8, n: u32, done: *mut u32, over: *mut u8) -> i32;
     fn ExitProcess(code: u32) -> !;
@@ -34,6 +32,59 @@ pub const RESOURCE: i32 = -22;
 pub const INVALID: i32 = -23;
 pub const VARIANT: i32 = -24;
 pub const INJECTED: i32 = -25;
+pub const CANCELLED: i32 = -26;
+static mut INSTALLED: bool = false;
+static mut WORK: u64 = 0;
+static mut CANCEL_AFTER: u64 = u64::MAX;
+
+unsafe extern "system" fn text_alloc(bytes: usize) -> *mut core::ffi::c_void {
+    arena::allocate(bytes).cast()
+}
+unsafe extern "system" fn text_free(p: *mut core::ffi::c_void) -> i32 {
+    arena::release(p.cast()) as i32
+}
+unsafe extern "system" fn poll(work: u64) -> i32 {
+    WORK = WORK.saturating_add(work);
+    if WORK > CANCEL_AFTER {
+        CANCELLED
+    } else {
+        0
+    }
+}
+fn ensure_allocator() -> Result<(), i32> {
+    unsafe {
+        if !INSTALLED {
+            if ac_text_runtime::ac_rt_install_allocator(
+                Some(text_alloc),
+                Some(text_free),
+                Some(poll),
+            ) != 0
+            {
+                return Err(INVALID);
+            }
+            INSTALLED = true;
+        }
+    }
+    Ok(())
+}
+/// Deterministic private cancellation seam; cleanup itself never polls.
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_cancel_after_work(work: u64) {
+    WORK = 0;
+    CANCEL_AFTER = work;
+}
+#[no_mangle]
+pub extern "system" fn mn_coll_arena_limit(bytes: u64) -> i32 {
+    if arena::tighten_limit(bytes as usize) {
+        0
+    } else {
+        INVALID
+    }
+}
+#[no_mangle]
+pub extern "system" fn mn_coll_arena_committed() -> u64 {
+    arena::committed() as u64
+}
 
 /// Fixed machine cell: native scalar bits or an owning/borrowed node address.
 /// `owned` is a destructor right, not a language type tag or an instruction.
@@ -135,11 +186,12 @@ fn uncharge(bytes: usize, guest: usize) {
     s.guest -= guest;
 }
 fn allocate(bytes: usize) -> Result<*mut u8, i32> {
+    ensure_allocator()?;
     state().attempts += 1;
     if state().fail_nth != 0 && state().attempts == state().fail_nth {
         return Err(INJECTED);
     }
-    let p = unsafe { HeapAlloc(GetProcessHeap(), 8, bytes.max(1)) };
+    let p = unsafe { arena::allocate(bytes) };
     if p.is_null() {
         Err(RESOURCE)
     } else {
@@ -148,7 +200,7 @@ fn allocate(bytes: usize) -> Result<*mut u8, i32> {
 }
 unsafe fn free(p: *mut u8) -> bool {
     if !p.is_null() {
-        if HeapFree(GetProcessHeap(), 0, p) == 0 {
+        if !arena::release(p) {
             state().invalid += 1;
             return false;
         }
@@ -382,6 +434,10 @@ pub unsafe extern "system" fn mn_coll_frame_leave(f: *mut Frame) -> i32 {
     }
     state().frame = (*f).prev;
     uncharge((*f).charge, 0);
+    if state().frame.is_null() {
+        // Refused while a leaked text owner exists; parent observations catch it.
+        ac_text_runtime::ac_rt_release_idle_metadata();
+    }
     0
 }
 
@@ -447,7 +503,11 @@ pub unsafe extern "system" fn mn_coll_literal(dst: *mut Cell, bytes: *const u8, 
         let data = ac_rt_own_from_lit(bytes, len, &mut actual);
         if actual < 0 {
             release(owner(p));
-            return Err(RESOURCE);
+            return Err(if actual == ac_text_runtime::ERR_CANCELLED {
+                CANCELLED
+            } else {
+                RESOURCE
+            });
         }
         (*p).data = data;
         (*p).len = actual as usize;
@@ -540,6 +600,12 @@ pub unsafe extern "system" fn mn_coll_list_insert(bits: u64, index: i32, src: *m
         } else if input.owned != 0 {
             return Err(INVALID);
         }
+        // Admission of bounded data work precedes mutation, keeping cancellation
+        // atomic even when capacity growth and a shift are both required.
+        let work = (*p).len - index as usize + 1 + if (*p).len == (*p).cap { (*p).len } else { 0 };
+        if poll(work as u64) != 0 {
+            return Err(CANCELLED);
+        }
         if (*p).len == (*p).cap {
             let cap = (*p)
                 .cap
@@ -617,6 +683,9 @@ pub unsafe extern "system" fn mn_coll_list_remove(dst: *mut Cell, bits: u64, ind
         if index < 0 || index as usize >= (*p).len {
             return Err(INDEX);
         }
+        if poll(((*p).len - index as usize) as u64) != 0 {
+            return Err(CANCELLED);
+        }
         let data = (*p).data.cast::<Cell>();
         let c = read(data.add(index as usize));
         for i in index as usize + 1..(*p).len {
@@ -668,6 +737,9 @@ pub unsafe extern "system" fn mn_coll_variant_pack(
 /// Clone only one node's storage. Child owning cells start empty until the
 /// explicit work stack attaches their clones; every partial tree is droppable.
 unsafe fn clone_shallow(source: *mut Node) -> Result<*mut Node, i32> {
+    if poll(1) != 0 {
+        return Err(CANCELLED);
+    }
     let dest = new_node((*source).kind, (*source).cap, (*source).guest)?;
     (*dest).len = (*source).len;
     (*dest).disc = (*source).disc;
@@ -677,7 +749,11 @@ unsafe fn clone_shallow(source: *mut Node) -> Result<*mut Node, i32> {
         let data = ac_rt_own_clone((*source).data, (*source).len as i32, &mut length);
         if length < 0 {
             release(owner(dest));
-            return Err(RESOURCE);
+            return Err(if length == ac_text_runtime::ERR_CANCELLED {
+                CANCELLED
+            } else {
+                RESOURCE
+            });
         }
         (*dest).data = data;
     }
@@ -752,6 +828,9 @@ pub unsafe extern "system" fn mn_coll_clone(dst: *mut Cell, src: *const Cell) ->
         let result = (|| {
             push_clone_work(&mut stack, root, output)?;
             while !stack.is_null() {
+                if poll(1) != 0 {
+                    return Err(CANCELLED);
+                }
                 let w = stack;
                 if (*w).index == child_count((*w).source) {
                     pop_clone_work(&mut stack);
@@ -890,6 +969,14 @@ pub extern "system" fn mn_coll_summary() {
     line(b"MN-COLL allocs=", state().allocs);
     line(b"MN-COLL frees=", state().frees);
     line(b"MN-COLL invalid=", state().invalid);
+    line(b"MN-COLL arena_live=", arena::live() as u64);
+    line(b"MN-COLL arena_commit=", arena::committed() as u64);
+    line(b"MN-COLL arena_peak=", arena::peak() as u64);
+    line(b"MN-COLL arena_invalid=", arena::invalid());
+    line(
+        b"MN-COLL text_metadata=",
+        ac_text_runtime::ac_rt_metadata_bytes() as u64,
+    );
     unsafe {
         ac_rt_summary();
     }

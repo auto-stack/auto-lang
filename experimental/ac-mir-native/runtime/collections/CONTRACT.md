@@ -33,7 +33,8 @@ native stack. This depth is a witness, not an admission limit.
 
 The collections staticlib depends on the delivered text shim's **rlib** output
 and embeds its functions and single panic handler. The shim still produces its
-old staticlib separately; its source/exports are unchanged. Linking both whole
+old staticlib separately. Its additive host hooks default to the original
+process heap when not explicitly installed. Linking both whole
 libraries is unnecessary. Do not permit duplicate symbols with linker flags.
 
 Open before T-02 can pass or the layout/ABI can be frozen:
@@ -48,17 +49,39 @@ Open before T-02 can pass or the layout/ABI can be frozen:
   unsafe helper callers are verified generated code or explicit native probe
   code, not an exposed language FFI. Copyable records use immutable retained
   nodes; resource reads share without buffer allocation; explicit clone deep-copies.
-- Full metadata accounting: the current `managed` counter charges node/array/
-  registered-slot/clone-work **requested bytes** and text-buffer bytes, but
-  does not include the text shim's retained ledger capacity, object/linker
-  descriptor storage, heap overhead or observed process private bytes. Thus
-  zero managed/node balance is a release observation for these allocations,
-  not proof of the Plan's physical32MiB/128MiB gates. Keep those gates pending.
-- Data-proportional work/cancellation polling, all requested boundary controls,
+- Process private peak/delta, object/linker descriptor storage and compiler
+  partitions still need their separate observations; the bounded runtime arena
+  below is not evidence of the whole-process128MiB gate.
+- Remaining helper deadline/cancellation integration and boundary controls,
   runtime content/build/dependency binding and bounded parent trap admission.
 - Performance workload/sample/timing freeze and all formal measurements.
 
-The code has prechecks for guest8MiB, registered requested managed32MiB,
-list65536 and injected allocation failures. These partial checks must not be
-reported as the complete resource contract. Separate source/typed/runtime,
-logical events/requested bytes and physical observations in every report.
+The runtime now installs an exclusive allocator/poll hook before its first
+allocation. A VirtualAlloc arena reserves32MiB of address space and commits at
+most32MiB of private pages. Allocator headers, alignment, free fragments, text
+ledger capacity and buffers, nodes, arrays, heap slots and clone work all live
+in these pages. Tail release decommits pages. A failed allocation cannot grow
+commit beyond the limit. Arena live/commit/peak/invalid and text metadata are
+reported separately from requested-byte counters. The32B automatic Frame
+headers, native stack and PE image are outside that arena; they remain part of
+the required whole-process observation. Runtime global state has one execution
+thread; the small-stack probe transfers execution to its sole worker thread.
+
+Hook installation refuses live text buffers or retained metadata from a prior
+allocator. Idle metadata can be explicitly released through its current
+allocator before takeover. Old consumers do not install hooks or change their
+retention behavior. Native last-frame cleanup releases the idle ledger; zero
+container and text balances additionally require arena live/commit/metadata0.
+
+Clone polls at every node/child and each4096-byte text copy chunk. Cancellation
+returns -26, preserving source and destination and dropping the partial clone.
+List shift/growth work is admitted proportionally before mutation. This is a
+private cooperative seam, not a claim that an externally killed PE runs cleanup;
+parent timeout/crash remains infrastructure failure. Destruction never polls
+or allocates, so a cancelled request can finish its release sweep.
+
+Real PE probes cover initial/growing text-ledger allocation failure, physical
+quota refusal with fragment reuse/coalescing, exact8MiB guest and65536 list
+boundaries plus one, text/list clone cancellation rollback and allocator
+takeover refusal. Existing partial-clone/deep-stack/caller-trap/leak controls
+remain in place. Keep full T-02 pending until the other open items above close.

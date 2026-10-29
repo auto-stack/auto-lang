@@ -94,6 +94,10 @@ pub fn assert_balanced(stderr: &[u8]) {
         "MN-COLL bytes=0\n",
         "MN-COLL guest=0\n",
         "MN-COLL invalid=0\n",
+        "MN-COLL arena_live=0\n",
+        "MN-COLL arena_commit=0\n",
+        "MN-COLL arena_invalid=0\n",
+        "MN-COLL text_metadata=0\n",
     ] {
         assert!(text.contains(item), "missing {item}: {text}");
     }
