@@ -345,6 +345,10 @@ stage: goal | plan_id: PLAN-889 | plan_revision: r2 | round: 6 | from: work | to
 
 2026-10-30 T-05/S坐标子修复交还：提交`2e18c8d62`仅adapter scoped Collections nominal声明span与具名回归；其他域不变，N会话仍有未提交实现继续本步。新源4/4、原单体4/4；再加真实record+enum声明的具名控制1/1；N当前真实首例与4项增量控制通过（7.79s），包括UTF-8变长/回退、source/MIR/COFF main身份、候选取消/坏链接/stale/foreign、声明臂序变化只重产make/main而保untouched MIR/code、实际whole frontend/whole lower/同内容新code对象三种退化反控报红。T-05尚缺完整持久化坐标/恢复、资源/截止与完整采样消费者，未勾。证据baseline/t05-source-coordinates.log SHA256 `c07987e5e09e77d6352a056596b78ca58f8cc29e4c6e605fddd1fd50a26ae7bc`，t05-source-nominal-anchor-control.log `0355643f9e8602cdd1e5e46d5e3a60eed41b58875ef560ff1762dfadfd61a05d`，当前t05-native-incremental-controls.log `487f29c15a587ffd6811d329e82df8e57ff6558edf5f23539abe426723a9b0d9`。首次UTF-8红见本轮原始工具返回（source.internal: Span 71..75 not UTF-8 boundaries）；同名native控制日志已被修后重放覆盖，不能把该文件称为原红文件。S最小窗再次释放，继续N；raw不入库。
 
+2026-10-30 T-05/S借用验证最小窗接受：完整116函数resident probe现冷态2.8s单样本（仍非P90通过），计时揭示函数验证调用为保留同一bundle而先clone整个声明目录。N已用不可变进程内MIR准入消除重复深验并逐字COFF/fp/meta等价；持久化仍从wire重验。重新核888/890无verify.rs WIP，顺序接受`ac-core/src/verify.rs::verify_function`新增只读borrow入口及同一实现委托、相同错误/credential控制；只避免调用方复制bundle，不缓存/跳过验证、不改旧四字段BodyWork/旧域身份或验证规则。N冷态/单体消费者改调用借用入口；本最小S窗完成即提交释放，预算/样本/门不变。
+
+2026-10-30 T-05/S借用入口交还：`6de639fa9`只新增verify_function_ref并让旧owning入口委托同一原验证体；返回仍是owned CheckedFunction，无规则/身份/BodyWork变更。新集合5/5（两入口credential/body/context等价、当前上下文变化与坏owner相同拒绝）、原scalar828事务8/8通过；N消费者的调用切换仍在本Plan N WIP内。证据baseline/t05-borrowed-verifier-controls.log SHA256 `fece1e7b6b736d726becf713ecc153c26b49696852cd84d342fc1bc46e463939`，t05-borrowed-verifier-scalar-compat.log `dc4267d2ebaa4ac9be17ec5d4212b8cdbc184afae46e694ecc855f855184e141`。S最小窗释放；T-05/T-06及正式P90/物理分区门仍pending。
+
 ## 10. 待澄清事项
 
 - 支持面已选864完整合法源码与其MIR闭包，不留“是否包含List<Str>/拥有record/Variant”的开放裁定。T-02选择等价native表示/allocator/helper机制；若预算内无法实现，给最小反例与方案needs_replan，不自行缩范围或加语言深度限制。
