@@ -95,8 +95,7 @@ pub fn record_layout(
     while let Some(cur) = pending.last().copied() {
         // PLAN-881: the entry type may be a RecordView (a view base); its
         // layout equals the underlying record's.
-        let Some(MirType::Record(cr) | MirType::RecordView(cr)) = m.types.get(cur as usize)
-        else {
+        let Some(MirType::Record(cr) | MirType::RecordView(cr)) = m.types.get(cur as usize) else {
             return Err(MnError::Unsupported(
                 "layout",
                 format!("type {cur} is not a record but entered record layout"),

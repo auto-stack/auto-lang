@@ -187,6 +187,13 @@ fn cte_adapter_bogus_worker_is_error_not_green() {
 #[test]
 fn cte_adapter_stale_identity_order_independent_and_drift_red() {
     use crate::test_cases::{ac_av, ac_cte, stale};
+    // PLAN-881 review F-2: this test hashes the cte worker binary TWICE
+    // (report axes, then stale::check's current axes) while the
+    // bogus-worker test mutates AC_CTE_CASE_WORKER mid-flight — an
+    // unlocked parallel run hashed cmd.exe (15cd209c) once and the real
+    // exe (2c79bac2) the second time, a deterministic false drift. The
+    // file's own lock discipline applies here too.
+    let _guard = CTE_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let root = temp_root("stale-mixed");
     let deck = std::fs::read_to_string(
         suite_dir_path().join("cte").join("first-sum42.atomdata"),

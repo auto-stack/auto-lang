@@ -63,19 +63,17 @@ fn mn_method_r08_differential() {
         } => v,
         other => panic!("av outcome: {other:?}"),
     };
-    let workdir =
-        std::env::temp_dir().join(format!("mn881-old-{}", std::process::id()));
+    let workdir = std::env::temp_dir().join(format!("mn881-old-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&workdir);
-    let old = auto_av_probe::native_reference::build_and_run_record(
-        R08,
-        &[],
-        "d_main",
-        &workdir,
-        None,
-    )
-    .expect("old-native record build+run");
+    let old =
+        auto_av_probe::native_reference::build_and_run_record(R08, &[], "d_main", &workdir, None)
+            .expect("old-native record build+run");
     let _ = std::fs::remove_dir_all(&workdir);
-    assert_eq!(old.exit_code, 42, "old-native exit (stderr {:?})", old.stderr);
+    assert_eq!(
+        old.exit_code, 42,
+        "old-native exit (stderr {:?})",
+        old.stderr
+    );
     assert_eq!((mn_v, av_v), (42, 42), "three legs agree on 42");
 }
 
@@ -102,7 +100,12 @@ fn main() int {
 ";
     let r = run_mn(src, &[], "p02-mn");
     assert!(r.ok, "mn failed: {:?}", r.error);
-    assert_eq!(r.exit_code, Some(75), "P-02 = 75 (stderr {:?})", String::from_utf8_lossy(&r.stderr));
+    assert_eq!(
+        r.exit_code,
+        Some(75),
+        "P-02 = 75 (stderr {:?})",
+        String::from_utf8_lossy(&r.stderr)
+    );
 }
 
 /// V-09 P-05 through mn: TWO mut params — wb binds exactly a/b natively.
@@ -133,7 +136,12 @@ fn main() int {
 ";
     let r = run_mn(src, &[], "p05-mn");
     assert!(r.ok, "mn failed: {:?}", r.error);
-    assert_eq!(r.exit_code, Some(135), "P-05 = 135 (stderr {:?})", String::from_utf8_lossy(&r.stderr));
+    assert_eq!(
+        r.exit_code,
+        Some(135),
+        "P-05 = 135 (stderr {:?})",
+        String::from_utf8_lossy(&r.stderr)
+    );
 }
 
 /// V-12 (mn leg): old/new products coexist by content — a method body
@@ -155,17 +163,29 @@ fn mn_method_v12_old_and_new_products() {
         r
     };
     let r1 = run(&mut d, R08, "r1");
-    assert!(r1.ok && r1.exit_code == Some(42), "first run 42: {:?}", r1.error);
+    assert!(
+        r1.ok && r1.exit_code == Some(42),
+        "first run 42: {:?}",
+        r1.error
+    );
     let edited = R08.replace(
         "fn read() int { return .value }",
         "fn read() int { return .value + 1 }",
     );
     let r2 = run(&mut d, &edited, "r2");
-    assert!(r2.ok && r2.exit_code == Some(43), "edited run 43: {:?}", r2.error);
+    assert!(
+        r2.ok && r2.exit_code == Some(43),
+        "edited run 43: {:?}",
+        r2.error
+    );
     // The ORIGINAL source re-runs to 42 — its cached products survived
     // the edit round untouched (no positional keying, no overwrite).
     let r3 = run(&mut d, R08, "r3");
-    assert!(r3.ok && r3.exit_code == Some(42), "original re-runs 42: {:?}", r3.error);
+    assert!(
+        r3.ok && r3.exit_code == Some(42),
+        "original re-runs 42: {:?}",
+        r3.error
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -203,7 +223,12 @@ fn main() int {
 "#;
     let r = run_mn(src, &[], "tok-mn");
     assert!(r.ok, "mn failed: {:?}", r.error);
-    assert_eq!(r.exit_code, Some(57), "Token = 57 (stderr {:?})", String::from_utf8_lossy(&r.stderr));
+    assert_eq!(
+        r.exit_code,
+        Some(57),
+        "Token = 57 (stderr {:?})",
+        String::from_utf8_lossy(&r.stderr)
+    );
 }
 
 /// Owned-profile methods through mn: static construction with a moved

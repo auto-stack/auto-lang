@@ -80,7 +80,12 @@ fn method_mir_name(
     let rec_name = module
         .types
         .get(record.0 as usize)
-        .map(|t| t.id_text.strip_prefix("t_rec_").unwrap_or(&t.id_text).to_string())
+        .map(|t| {
+            t.id_text
+                .strip_prefix("t_rec_")
+                .unwrap_or(&t.id_text)
+                .to_string()
+        })
         .ok_or_else(|| {
             AdapterError::inv(
                 "lower.method-owner",
@@ -2396,22 +2401,22 @@ impl<'a> FnLower<'a> {
                 if let CalleeRef::Import(imp) = callee_ref {
                     let symbol = self.out.imports[imp as usize].symbol.clone();
                     if !symbol.starts_with("fn:") {
-                    // Test marks: trace event + frozen i32 result.
-                    let dst = self.temp_ty(self.t_i32);
-                    let (event, value) = match symbol.as_str() {
-                        "hir.test.mark_a" => (TraceEvent::MarkA, 1i32),
-                        "hir.test.mark_b" => (TraceEvent::MarkB, 2),
-                        other => {
-                            return Err(AdapterError::uns(
-                                "lower.intrinsic",
-                                format!("intrinsic `{}` is not in the av profile", other),
-                            ));
-                        }
-                    };
-                    self.emit(MirInstr::Trace { event }, sp);
-                    let c = self.const_i32(value);
-                    self.emit(MirInstr::Const { dst, value: c }, sp);
-                    return Ok(dst);
+                        // Test marks: trace event + frozen i32 result.
+                        let dst = self.temp_ty(self.t_i32);
+                        let (event, value) = match symbol.as_str() {
+                            "hir.test.mark_a" => (TraceEvent::MarkA, 1i32),
+                            "hir.test.mark_b" => (TraceEvent::MarkB, 2),
+                            other => {
+                                return Err(AdapterError::uns(
+                                    "lower.intrinsic",
+                                    format!("intrinsic `{}` is not in the av profile", other),
+                                ));
+                            }
+                        };
+                        self.emit(MirInstr::Trace { event }, sp);
+                        let c = self.const_i32(value);
+                        self.emit(MirInstr::Const { dst, value: c }, sp);
+                        return Ok(dst);
                     }
                     // Unit lowering (PLAN-828 T-04): a cross-function
                     // callee is a `fn:<name>` unit import call — the same
