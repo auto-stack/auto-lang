@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-863
-status: execution_done
+status: reviewed
 feature_name: AV类型化宿主导入与控制台输出（R2-E/print）
 author: [Codex]
 created_at: 2026-10-28
@@ -12,13 +12,14 @@ supersedes_spec_components:
   - docs/specs/auto-test-case/architecture.md
   - docs/specs/auto-test-case/ace-m1-conformance.md
   - docs/specs/auto-av/project.md
+  - docs/specs/auto-mir/hir-lowering-boundary.md
 new_spec_components:
   - docs/specs/auto-av/host-import-and-console.md
   - docs/specs/auto-ac/source-console-output.md
 touched_goals: [GOAL-002]
 
 affects: [auto-av, auto-mir, auto-ac, auto-test-case]
-current_step: 5
+current_step: 6
 total_steps: 8
 ---
 
@@ -125,6 +126,7 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 | SD-03 | modify | docs/specs/auto-test-case/architecture.md | 追加输出断言轴（stdout/stderr 精确字节+上限），infra 规则不变 | 可判决 | AC-05 |
 | SD-04 | modify | docs/specs/auto-test-case/ace-m1-conformance.md | 追加 console 行与轴映射 | 证据落点 | AC-05 |
 | SD-05 | modify | docs/specs/auto-av/project.md | 追加新 profile 与旧 profile 边界 | 模块可见 | AC-03 |
+| SD-06 | modify | docs/specs/auto-mir/hir-lowering-boundary.md | current lowering version 2→3，记录 863 HostConsole/host table/call 与三消费者镜像；公开面追加 lower_checked_console，保留历史 2/881 与 1/868 | SD-01 已实现版本的 canonical 同步；R2 知识增量最终化，非合同扩面 | AC-06/08 |
 
 ## 6. 测试设计
 
@@ -160,7 +162,7 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 | T-03 | work | T-02 | 源码/HIR 新域、print/eprint 类型化声明/能力/诊断、借用文本、入口效果语句；b8f133cfa；8 新测 + 69 兼容定向测试通过。V-01 精确运行字节待 T-04 | AC-01 | [x] |
 | T-04 | work | T-03 | 563eec65e + 6583d21ad 基础实现；3ff90f15e 修复 F-863-R1-01/02/03；20 runtime + 1 artifact 身份测试通过，含修复前失败反控；见 repair-r1-summary.md | AC-02/03/04 | [x] |
 | T-05 | work | T-04 | 84f1d2054 父侧/语料证据保持有效；3ff90f15e 修正 F-863-R1-04 候选 SD-01/02，保留 R1 parent 11/11 与 AC-05 证据；无合同内遗留 | AC-05 | [x] |
-| T-06 | review | T-05 | 独立最终review；merge 门 pending | AC-06 | [ ] |
+| T-06 | review | T-05 | R2 final pass，3ff90f15e；同会话 artifact-based review（无独立模型/会话），F01..04 关闭；merge 门 pending；见 review-r2.md | AC-06 | [x] |
 | T-07 | merge | T-06 pass | 冻结提交裸 `cargo t` + `tv` | AC-07 | [ ] |
 | T-08 | merge | T-07 | Spec/ledger/归档/guard 清树 | AC-08 | [ ] |
 
@@ -235,6 +237,15 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 - AC-06/T-06 待独立 artifact-based 最终复审；AC-07 merge-owned 裸 `cargo t` + `tv` **pending**；AC-08 canonical Specs/ledger/归档/guard 清理 **pending**。未运行 t/tv/tf/docs_gen；未改 canonical Specs/ledger、未合入。主检出其他会话文档 WIP 原样保留。
 
 2026-10-30 goal round 6：`stage: goal | plan_id: PLAN-863 | plan_revision: 1 | round: 6 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-863/auto-lang | commit: 3ff90f15eb51401aab2b84dfcb9ee1e0b21953fd | next: review`。R1 四项工作侧修复已提交、已定向验证；下一轮复审冻结提交，目标 active。
+
+2026-10-30 final review R2：`stage: review | review_scope: final | reviewer_identity: Codex（同实施会话 artifact-based review，无独立模型/会话上下文，未指定其他 final reviewer） | plan_id: PLAN-863 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-863/auto-lang | branch: plan-863-dev | reviewed_commit: 3ff90f15eb51401aab2b84dfcb9ee1e0b21953fd | base_commit: eda05a86f2f6bd29d3b70479917360d64a908a66 | dependency_revisions: auto-ui 2349d0ec99b3aa21c3f64975965bc105bf6e469c; auto-down c3464d0a0d36e4f8a7988b0c0c26448fc52361b4（clean detached） | findings: R1-01..04 closed; no new blocking findings | next: merge`。
+
+- 完整闭环/AC/V/SD/复用边界见 [R2 审查报告](attachments/863/review-r2.md)。原始公开 API 探针复查：console/owned helper 皆 lower.entry，main 皆 7\n/I32(42)；retained memory-only→SlotBytes 且 root/dispatch=0；reference snapshot 改值后的 load/persist/run 与**修复前已写入的 forged store restore**皆 host.identity/零输出。Unit-tail→Unit/1\n、return-effect→source.unit-return-value、no-host generic→I32(42)；旧 owned slice→世界\n/I32(7)。三项永久回归定向复跑各 1 pass / 0 ignored，exit0；逐函数 sidecar 篡改、四准入边界及合法控制均实核。44 个 Rust 文件 rustfmt + 全 diff-check exit0，无新增告警/延期/workaround。
+- 实施入/出 HEAD 同为 3ff90f15e 且 clean；代码、依赖、配置、原始语料身份稳定，复用 repair 20 runtime+1 artifact 和 R1 未受影响 source/parent/compat 证据；未重跑整档。canonical 6 输入 SHA256 与 R1 一致。候选 SD-01..05 hash 仍 `a449f02667884c8ceae3324e4bbb1052480692dc415c484a1ad2c982699af813`；R2 报告补充明确的 SD-06 canonical lowering version 2→3 同步文字与 supersedes 路径（原 SD-01 已描述/实现的版本，不改语义合同）。未发布 canonical Specs/ledger。
+- 本地 raw prefix `D:/autostack/.wt/lang-863/auto-lang/docs/plans/attachments/863/review-r2/`：`public-replay.log` SHA256 `12bcb8fbec07cc61881680835ced0fda1f1564a349144fc96b6327ff4b33f005`；`entry.log` `ec591afa0d4f905dd048622c3cef583df57c54abd2007f8333703e5e3aaea5c9`；`budget.log` `0f5e150f3a7a02cd27581cdaf5f12cdc4626437de8f556efb54591b89f545448`；`snapshot.log` `c8386f19c3a086269ea99997e602d114853e8b7ab25e4da051e82e98fb9cbcd3`。命令/探针 hash 与实际值已保存在报告；所有 raw 仅本地忽略，未入库。
+- AC-01..06 pass，T-01..06 完成（current_step=6/8）；AC-07 裸 cargo t + cargo tv **merge-owned pending**；AC-08 Spec/ledger/archive/guard/landing **merge-owned pending**。未跑 t/tv/tf/docs_gen；门禁成功前不得合入或宣称交付。D-863-NB-01 保留显式 peer parity gap，不替代任何合同内要求。
+
+2026-10-30 goal round 7：`stage: goal | plan_id: PLAN-863 | plan_revision: 1 | round: 7 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-863/auto-lang | commit: 3ff90f15eb51401aab2b84dfcb9ee1e0b21953fd | next: merge`。上一轮 progress；本轮四 finding 关闭与最终审查 pass，final review 累计 2（1 fail/1 pass），repair cycle 1，目标 active。
 
 ## 10. 待澄清事项
 
