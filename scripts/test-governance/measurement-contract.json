@@ -1,0 +1,28 @@
+{
+  "schema": "test-pilot-measurement-contract/1",
+  "plan": 888,
+  "rounds": 10,
+  "warmup_rounds": 1,
+  "parallelism": [1, 2],
+  "invocation_repeats": 3,
+  "variant_order_seed": 888,
+  "order_policy": "Each round includes baseline and candidates; fixed-seed candidate rotation with alternating forward/reverse rounds. Never collect all baseline rounds before candidate rounds.",
+  "cohorts": [
+    {"id": "a15", "mode": "independent", "set": "pilot15", "group_size": 1, "logical_checks": 45, "worker_starts": 45, "compile_calls": 45, "vm_calls": 45},
+    {"id": "b15-k1", "mode": "group", "set": "pilot15", "group_size": 1, "logical_checks": 45, "worker_starts": 45, "compile_calls": 45, "vm_calls": 45},
+    {"id": "b15-k3", "mode": "group", "set": "pilot15", "group_size": 3, "logical_checks": 45, "worker_starts": 15, "compile_calls": 45, "vm_calls": 45},
+    {"id": "b15-k10", "mode": "group", "set": "pilot15", "group_size": 10, "logical_checks": 45, "worker_starts": 6, "compile_calls": 45, "vm_calls": 45},
+    {"id": "a-d3", "mode": "independent", "set": "d3", "group_size": 1, "logical_checks": 9, "worker_starts": 9, "compile_calls": 9, "vm_calls": 9},
+    {"id": "b-d3-k1", "mode": "group", "set": "d3", "group_size": 1, "logical_checks": 9, "worker_starts": 9, "compile_calls": 9, "vm_calls": 9},
+    {"id": "b-d3-k3", "mode": "group", "set": "d3", "group_size": 3, "logical_checks": 9, "worker_starts": 3, "compile_calls": 9, "vm_calls": 9},
+    {"id": "b-d3-k10", "mode": "group", "set": "d3", "group_size": 10, "logical_checks": 9, "worker_starts": 3, "compile_calls": 9, "vm_calls": 9},
+    {"id": "c-d3", "mode": "combined", "set": "d3", "group_size": 3, "logical_checks": 9, "worker_starts": 3, "compile_calls": 3, "vm_calls": 3}
+  ],
+  "required_observations": ["job_parent_and_descendant_cpu_ms", "meter_cpu_ms", "total_cpu_ms", "whole_command_wall_ms", "peak_process_bytes", "peak_job_bytes", "actual_spawn_pids", "actual_compile_calls", "actual_vm_calls", "prepare_ms", "transport_ms", "admission_compare_receipt_ms", "cleanup_ms", "worker_stage_spans"],
+  "quantiles": "nearest-rank ceil(p*N), ascending; P50 and P90",
+  "noise": "max(1 millisecond, twice baseline median absolute deviation), evaluated separately for wall and total CPU",
+  "promotion": {"minimum_p50_improvement": 0.10, "other_p50_max_degradation": 0.05, "wall_p90_max_degradation": 0.05, "difference_must_exceed_noise": true, "preserve_existing_memory_and_guest_limits": true, "all_conservation_isolation_and_replay_controls_required": true},
+  "invalid_round_policy": "Keep every planned outcome. Missing/error samples invalidate completion. External interference is recorded; only a whole round may be repeated with its original retained. Tool/input mutation invalidates the candidate binding.",
+  "candidate_binding": "Hash both prebuilt executables, original inputs/oracles, source/configuration/locks and measurement producer before and after sampling. A and B use the same worker binary. No builds or competing test jobs during the authorized measurement window.",
+  "c_scope": "Separate av.owned/1 record-field observation over unchanged D3 expressions, using no persistence. Compare only to matching D3 workloads and retain every original scalar check. C never satisfies A/B promotion or four-path conformance."
+}
