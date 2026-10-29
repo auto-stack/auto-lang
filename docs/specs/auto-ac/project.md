@@ -233,3 +233,7 @@ AC（计算核心 profile）原生 AOT 闭环：Checked HIR → **共享 Typed M
   profile/producer 不因 818 扩面，不回溯宣布生产默认迁移。
 - 既有生产入口（ac-core 前端/旧 CLI/旧 native emitter）保持不动；旧
   HIR→native 参照路径保留。
+
+## 源码闭包域（PLAN-865）
+
+auto.source.closures.draft 是显式选择的实验性源码 profile，使用独立 HIR 域和 descriptor。它基于集合与入口/Unit 源码面，增加函数类型、lambda、有序捕获分析和间接调用。源码编译经既有 HIR→MIR 路径，进入 av.closures/1 session；不增加 native closure ABI，也不改变默认源码 profile。详见[source-closures.md](source-closures.md)。

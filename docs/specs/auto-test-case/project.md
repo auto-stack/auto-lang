@@ -23,6 +23,10 @@ TestCase 协议核心（`autolang.case/1` / `autolang.suite/1` / `autolang.test-
 
 ## 模块清单
 
+### PLAN-865：源码闭包绑定
+
+ACE M1 闭包源码套件以 append-only 文件方式消费未改动的 K01–K06 .at 输入。ac-av/closures-source-run-v1 显式选择源码闭包 profile 并进入既有 AV 闭包 session；父侧独立检查值、编译期诊断、缓存生命周期和资源释放。852 base suite、typed closures-run-v1 与 legacy AVM/a2r grammar-difference 状态保持原义，见 [ace-m1-conformance.md](ace-m1-conformance.md)。
+
 ### PLAN-852 ace-m1 语料与认证（正式资产，非本 crate）
 
 - 语料/分母登记：`crates/auto-lang/test/cases/ace-m1/`（binding.tsv 103 行 =

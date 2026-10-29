@@ -51,14 +51,14 @@ planned_by: [PLAN-798, PLAN-828, PLAN-817, PLAN-818, PLAN-820, PLAN-821, PLAN-82
 | C-08 | if/loop/break/continue/短路/递归 | 限 | 限 | — | 798 | 128构造预算/显式帧/fuel仍按profile，不等任意源码规模 | G1；G2增量扩面 | P0 |
 | C-09 | for-in、range、迭代器/yield | 部分 864（仅 `for x in <List>`：len 前读一次、Copy 每轮物化/owned 投影上下文、迭代期结构修改编译拒；range/数组/迭代器/yield 不在本批） | List访问不等通用迭代 | — | 822仅集合；generator另案 | AP-08/AP-13需迭代降级及挂起状态/清理 | G2/G5 / R2-L,R5-A | P0/P1 |
 | C-10 | 直接函数、命名实参、求值顺序 | 限 | 限 | — | 798 | 默认/变参/高阶引用不由此自动支持 | G1/G2 | P0 |
-| C-11 | 默认/变参、函数值和高阶调用 | — | 823仅已声明闭包签名 | — | 823部分基础 | 完整调用语法、绑定、签名/返回和方法HOF接口 | G2 / R2-E,R2-L | P0 |
+| C-11 | 默认/变参、函数值和高阶调用 | 865有限源码面：函数类型、闭包作参数/返回、间接调用 | 823闭包签名/调用；865 source→既有 MIR/ABC/AV | — | 823执行；865源码 | 默认/变长参数、命名函数项值、方法/集合HOF仍缺 | G2 / R2-E,R2-L | P0 |
 | C-12 | 名义record、嵌套字段原位读写 | 限：现有record域 | 限：Copy/owned分阶段 | — | 820/821 | AP-02/AP-03仅域内；匿名对象/类/继承不是同一能力 | G2 / R2-D | P0 |
 | C-13 | char、UTF-8文本、Str/str | 限：现有text-record域 | 限：774拥有/借用规则 | — | 821 | 常规旧源码str字段与新Str/str资源合同需SEM-03 | G0/G2 / R2-D | P0 |
 | C-14 | tuple/解构/默认构造/空record | — | 仅目标设计，无明确本批全支持 | — | 820未承诺完整tuple | 按实际旧用例逐项建合同，源码空record保持现有拒绝 | G2 / R2-D | P1 |
 | C-15 | List<T>布局、Index/增删/清理 | ✅ 864（auto.source.collections.draft：new/push/insert/get/set/remove/len/clear 源码面；L01–L07 真源绿；List<Str>/List<拥有型type>及L04/L05原源 owned view/remove 转移已交付） | T：822具名typed合同 | — | 822执行；864源码 | native集合仍待D871后新包；HOF库/嵌套List/record容器字段不由此支持 | G2 / R2-L | P0 |
 | C-16 | Option/Result/有限enum载荷 | ✅ 864（?T/Result<T,E>/enum 声明+构造+推断；V01–V07 真源绿；完整error propagation另验） | T：822具名typed合同 | — | 822执行；864源码 | AV原源已交付；native变体和完整error propagation另验 | G2 / R2-L | P0 |
 | C-17 | is/match、guard与载荷解构 | ✅ 864（is 语句穷尽分发+载荷绑定，guard/投影降为受检分支链；穷尽/重复/未知臂具名诊断；V01–V07 真源绿；guard 表达式与通配超集仍后续切片） | T：受检分支投影 | — | 822执行；864源码 | 非完整guard表达式/通配/复杂解构；native投影随后继变体包验证 | G2 / R2-L | P0 |
-| C-18 | owned闭包、捕获、间接调用 | —（865已认领） | T：823受限环境/调用 | — | 823执行；865源码 | lambda/捕获/逃逸源码待865；map/filter/reduce另属库与方法能力包 | G2 / R2-L | P0 |
+| C-18 | owned闭包、捕获、间接调用 | ✅ 865有限源码profile（K01/K02/K03/K05执行；K04具名拒绝；K06保留R5-O） | 823 av.closures/1；865 source→existing MIR/ABC/AV | — | 823执行；865源码 | 共享可变捕获/循环环境、闭包字段/List元素、async/线程/native ABI；map/filter/reduce另属库与方法能力包 | G2 / R2-L | P0 |
 | C-19 | 共享可变捕获、循环对象图、跨挂起借用 | — | 明确拒绝或尚无owner | — | 821–824首批排除 | 若旧消费者依赖则不能永久排除；须专门共享/生命周期设计 | G0/G5 / R5-O | P1 |
 | C-20 | 匿名对象、动态字段、Map/Set | — | Dyn不是Map/对象实现 | — | 824不交付Map/Set | AP-19/JSON对象读写、键相等/迭代顺序/缺字段语义 | G2/G3 / R3-C | P0 |
 | C-21 | 模块全局变量与初始化顺序 | — | 未交付global Place | — | Design44仅模型 | 多模块初始化/一次性/环、状态寿命与隔离 | G3 / R3-M | P0 |

@@ -10,6 +10,8 @@ PLAN-824 增加 [av.dynamic/1 类型擦除 MIR](dynamic-cast-profile.md)，递�
 
 PLAN-823 增加 [av.closures/1 闭包捕获 MIR](closure-capture-profile.md)：闭包体自带 env 声明、捕获三态纪律与 link 期 env 等价检查。
 
+PLAN-865 将显式[源码闭包 profile](../auto-ac/source-closures.md)接入既有闭包 MIR：源码分析在 lowering 前确定捕获顺序与模式；CREATE_CLOSURE、CALL_CLOSURE、CalleeRef、env 声明和链接检查保持不变。
+
 PLAN-862 增加 av.entry-unit/1 入口/Unit MIR（身份 `auto.mir.av-entry-unit/1`，
 旧 schema/语义版本不变）：`MirType::Unit` 零运行时宽度，只作 unit 入口的
 `sig.result` 与唯一 `Return` 操作数（`mir.unit-placement`）；模块头新增

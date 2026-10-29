@@ -1,6 +1,6 @@
 # 类型化闭包环境与捕获生命周期（av.closures/1）
 
-> 实验性 typed profile；来源 PLAN-823。实现 `experimental/ac-av-probe/core/src/{closures,av,mir_verify,ownership}.rs`，不改变旧 AutoVM、默认 CLI/UI/CTE 或源码闭包语法面。
+> 实验性 typed 执行 profile；来源 PLAN-823。PLAN-865 另接入下述显式源码 producer；不改变本文件冻结的 AVAD 身份或运行时合同。
 
 ## 身份与 wire
 
@@ -14,7 +14,15 @@
 
 ## 失败分态与预算
 
-构造/克隆/记账的分配失败为 Infra（attempt 计数），越界/失效句柄/错型/代际为运行期受控拒绝并断言危险目标操作计数 0；OOM/预算/取消/infra 与 invalid/unsupported/trap 分态。env 字节计入 slot_bytes 单行（值数据 8MiB 口径），worker 峰值由父侧采样硬门。支持面限 typed fixture / MIR→ABC→AV 与新进程恢复入口；不交付源码闭包前端/推导、native ABI、async/生成器、共享 RC、跨线程。
+构造/克隆/记账的分配失败为 Infra（attempt 计数），越界/失效句柄/错型/代际为运行期受控拒绝并断言危险目标操作计数 0；OOM/预算/取消/infra 与 invalid/unsupported/trap 分态。env 字节计入 slot_bytes 单行（值数据 8MiB 口径），worker 峰值由父侧采样硬门。typed fixture、MIR→ABC→AV 与新进程恢复入口保持支持；PLAN-865 增加编译源码并接入同一 closures session 的 producer。
+
+## 源码绑定（PLAN-865）
+
+显式 auto.source.closures.draft profile 见[源码闭包规范](../auto-ac/source-closures.md)。它在集合源码面上加入函数类型、lambda、捕获分析和间接调用，并降到现有 av.closures/1 环境与调用合同；不新增 AVAD 版本、profile id、类型 tag 或闭包 opcode。
+
+源码分析在 lowering 前生成有序 Move/Borrow 捕获模式。Copy 捕获仍复制；拥有值需由 move lambda 转入环境；借用仅限可静态证明同步且不逃逸的 Str，映射为 StrView。源码 f.clone() 使用既有闭包深复制路径，生成独立 env 与句柄，不改变捕获列表或顺序。env 声明与 fn: 链接期精确相等检查保持原合同。借用逃逸、共享可变捕获和不支持的捕获类型在源码编译阶段拒绝。
+
+K01、K02、K03、K05 已经由源码编译进入现有闭包 session 执行。K04 仍是借用逃逸编译期拒绝；K06 以 source.closure-shared-mutable 拒绝并保留 R5-O owner，本次不关闭 C-19。命名函数项值、闭包字段/List 元素、async、持久化、跨线程、native closure ABI 与集合方法 HOF 仍在本 profile 之外。
 
 ## 缓存与恢复
 

@@ -3746,3 +3746,8 @@ solo 检出下静默 SKIP，故其交付时未观测）。修复属产品语义�
 - **884-N2 (LOW)**：`vm/native.rs:1700-1706` PLAN-872 注释（"catalog math shims are overwritten by ffi/stdlib/math.rs"）描述的是**前史**——现行 native_catalog.rs 生成的 catalog 条目已直接绑定与 inventory 相同的纯 shim（fn 身份收敛），装配序 catalog↔inventory 互换实测行为中性（NC-2a/b 反控实录）。注释应更新为 fn 同一性事实，防后来者按旧注释推断序载荷。
 - **884-N3 (LOW)**：`vm/ffi/stdlib.rs` 壳仍驻留混合域测试模块 `mod tests`（~600行，storage/http/task/str/ID-range 跨域断言）与 musk extern 注册尾段（~90行，跨模块 extern 族装配，`use crate::vm::ffi::musk_response_ctor::*` 就地）——T-04 有界决策：跨域测试支持与跨模块装配留在组合点，不强行归属单域。
 - **884-N4 (INFO)**：`trans/rust/call_emit/` 主题拆分保留三处**审计定死码**逐字不删（B18 Bina 方法翻译实效死——parser 发 Dot 形；B20 Pattern B Dot 形死——B19 无条件终止；B23 module.Type 构造死——同因），按"不可达/尚无 oracle 块不能静默丢失"保持；若未来 call_inner 派发序重构须重新定可达性。
+
+## PLAN-865 (2026-10-29 final review, non-blocking scope edges)
+
+- **865-N1 (INFO)**: PLAN-865 deliberately rejects shared-mutable and recursive captures, and keeps async/cross-thread/persistent closure behavior outside r2. C-19 remains open if existing consumers need shared mutation; K06 records `gap:R5-O` and the capability matrix assigns that decision to R5-O. This does not block r2, whose contract requires named rejection. R5-O must inventory existing consumers and record the support contract or an evidence-based continued exclusion.
+- **865-N2 (INFO)**: Collection-method HOF APIs such as `map/filter/reduce` remain outside r2 because they require library/method dispatch; §10 points to a future R3-H/stdlib slice. Defaults, variadics, and named function-item values also remain outside this closure delivery per C-11/C-18. Future planning must define those interfaces and their source-to-runtime acceptance oracles; closure parameter/return support does not imply their delivery.

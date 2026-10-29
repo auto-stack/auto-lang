@@ -4,6 +4,7 @@
 
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |------|------|------|------|-----------|
+| 865 | AV闭包源码语法与间接调用 | reviewed；merge gates pending | [计划](../../plans/archive/865-av-source-closures-and-hof.md) | 追加 K01–K06 源码 suite，recipe ac-av/closures-source-run-v1；legacy 差异与 base suite 不变；[ace-m1-conformance.md](ace-m1-conformance.md) |
 | 858 | ACE 开发期周转口径与 feature 边界 | 已复审（r4） | [858](../../plans/archive/858-autographics-m2-game-samples-and-api-gaps.md) | 当前 ACE 周转门 P90≤2000ms、真实样本和非时延约束保持；历史 P95 数据不改写，长期目标待架构成形后实测。 |
 | 824 | AV动态Variant与可移植冻结 | ✅ delivered（R3 最终 PASS） | [计划](../../plans/archive/824-av-dynamic-values-freeze.md) | 动态 recipe、父侧 oracle 与 typed M1 绑定；[architecture.md](architecture.md) |
 | 821 | av-owned recipe（ac-av/owned-run-v1） | ✅（delivered，R6 最终 PASS） | [计划](../../plans/archive/821-av-place-owned-access.md) | owned recipe 三缝注册+sabotage 双面+故障三态+corpus 借入/mut 写回正控；见 [architecture.md](architecture.md) PLAN-821 节 |

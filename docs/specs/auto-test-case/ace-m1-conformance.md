@@ -102,6 +102,23 @@ L06 保持 trap 行（`av.trap.list-index`，SEM-02 冻结；legacy 差异为 pr
 - 门：`powershell -File scripts/verify-av-862.ps1 -Scope <targeted|compat|entry|acceptance>`；旧 852 底座套件保持 97 检查绿（本计划未改 852 脚本、金样与 12 列 schema）。
 
 
+## PLAN-865：源码闭包绑定
+
+新增 `closures-source-865.case.ad` 与独立 suite，recipe 为 `ac-av/closures-source-run-v1`。它将未修改的 K01–K06 `.at` 原文件绑定到显式 `auto.source.closures.draft` profile 和既有 823 闭包 session。852 base suite 与 typed `ac-av/closures-run-v1` 的语义不变。
+
+| Case | 源码行为 | AV source 绑定 |
+|---|---|---|
+| K01 | Move lambda 的 Copy 捕获返回 42 | fresh 与 restart session 执行；另检查 body-edit 生命周期。 |
+| K02 | 拥有型 `Str` 捕获经返回闭包逃逸并返回 42 | 真实经源码编译、lowering、闭包链接和 AV 调用执行。 |
+| K03 | 同步非逃逸 `Str` 借用返回 42 | 实际执行；父侧检查 session 释放余额。 |
+| K04 | 返回借用捕获闭包 | 编译期以 `source.closure-borrow-escape` 拒绝。 |
+| K05 | 显式 clone 的拥有型闭包返回 42 | 实际执行；clone 独立性反例返回 11，若环境别名会返回 12。 |
+| K06 | 共享可变捕获环境 | 编译期以 `source.closure-shared-mutable` 拒绝；C-19 仍为 `gap:R5-O`。 |
+
+源码 AV 绑定关闭 K02/K05 的 `823-future-source` 缺口，但不修改 legacy AVM/a2r 的 `diff-legacy-grammar(parse)` 单元格。case suite 独立核对结果或诊断码，并检查闭包 session 的 live 值、分配/释放计数；SKIP 不计覆盖。
+
+V-06 记录 20 个样本：P90 355.1596 ms、最大峰值 1,015,808 bytes、hot set 4,483 bytes，符合现行 P90 ≤ 2000 ms 门和继承资源预算。fresh/restart/body-edit 明细留在 PLAN-865 review receipt；本地测量源及其 hash 继续仅保存在 Plan 收据，不复制进规范。
+
 ## PLAN-870：T*/R* 行 ac-native 实测绑定
 
 - 新增独立 suite `ace-m1-tr-native.suite.ad`（17 case/31 检查；**852 base
