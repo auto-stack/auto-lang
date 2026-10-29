@@ -17,7 +17,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 affects: [auto-ac, auto-mir, auto-av, auto-test-case]
 depends_on: [PLAN-864, PLAN-871, PLAN-881, PLAN-822, PLAN-828]
-current_step: 3
+current_step: 4
 total_steps: 10
 ---
 
@@ -191,7 +191,7 @@ T-02/S只重放受影响新定向测试、原864相邻具名用例及必要check
 | T-01 | work | 后续明确执行授权；只读准备可提前 | 核D864/D871/D881与现行S/N/H owner、源码/MIR指令/类型/模式闭包、native缺口及资源runtime；逐14原源/补例/oracle/父侧入口映射，记录标量MN会话与集合whole-recompile差额 | AC-01/02/03/06 | [x] |
 | T-02 | work | T-01；先接受已释放S最小子集并提交，再N；H不写 | 按§6执行入口先修命名enum规范支持域误拒及兄弟上下文/无环/拒绝控制，保源码容器clone拒绝；再冻结类型表示/内部ABI/runtime/context清理、预算/样本、typed排除和trap观测，跑最小source→唯一shared lower→真实PE全链资源probe及失败反控。S子门通过不能单独勾本步；固定codegen/cache/runtime升版与891交接边界，失败回本步不缩合法域 | AC-01/02/04/06 | [x] |
 | T-03 | work | T-02资源全链probe通过；N/必要S窗 | 实现N内容器/变体runtime与clone/drop/故障/预算/跨帧清理helper，文本复用及总账；V-03..05；新runtime位置/导出/库合同实测 | AC-02/04/06 | [x] |
-| T-04 | work | T-03；N | emit/lower/layout/driver/CLI/worker typed准入、Variant调用返回、CLIF/COFF与runtime依赖；新profile选择/缓存/恢复/原子发布；原L/V与List<Variant>、V-01/02/07..09定向 | AC-01/02/04/06 | [ ] |
+| T-04 | work | T-03；N | emit/lower/layout/driver/CLI/worker typed准入、Variant调用返回、CLIF/COFF与runtime依赖；新profile选择/缓存/恢复/原子发布；原L/V与List<Variant>、V-01/02/07..09定向 | AC-01/02/04/06 | [x] |
 | T-05 | work | T-04；S及必要N同时释放接受，默认865后 | 补集合单体前端/环境/候选/坐标与native增量消费者，扩现有828路径；先一次真单体probe再扩V-06/07；不以CollectionSourceSession下层carry代前端0工作 | AC-03/04/06 | [ ] |
 | T-06 | work | T-05；H与必要N/S释放接受 | 新recipe/SDK/suite/原binding实测，V-01..11与source/native/资源/恢复/性能/负控；受影响消费者兼容，提交实现及SD草案/证据摘要，给后继typed包N接口清单 | AC-01..06 | [ ] |
 | T-07 | review | T-06 | 独立final review绑定Plan/代码/依赖，merge-owned门pending | AC-07 | [ ] |
@@ -320,6 +320,19 @@ stage: goal | plan_id: PLAN-889 | plan_revision: r2 | round: 6 | from: work | to
 - 原L04/L05真实源补资源时点oracle：投影/临时remove-view-insert、remove转移，各恰1个文本buffer、alloc/free1/1且无CLONE；5个具名原owned首例合组仍exit0。已有T-02资源12项（含深4096/64KiB reserved栈、partial clone、metadata/页/guest/list边界、协作取消、跨caller trap及遗漏释放负控）生产代码未改变，证据复用；T-03只加这两类定向反例，未重跑整档。
 - runtime/collections/CONTRACT.md补typed与runtime/source三起点分账及owner替换/活动臂语义；代码/导出/文本rlib静态库和单panic/no-CRT链接已实测，Cell/Frame/Node及combined32MiB预算不变。正式worker恢复/发布、配置、runtime hash/build依赖绑定及T-06整套正式测量仍待办；未关闭M1 gap、未写canonical/ledger，fmt/diff-check通过，无新warning。
 - 本地证据根`D:/autostack/.wt/lang-889/auto-lang/docs/plans/attachments/889/baseline/`：t03-clone-mutations.log SHA256 `a2b1a795c2d835214abf876f8b8a6cf871b395de411955d09712a055a2f180ba`；t03-switch-atomic.log `28efa8c9a2308d8a5f3f424ff1662e5d1c0e6df7547168d4e785c9bba1e34a29`；t03-owned-projection-events.log `cc43095c3df7ffa1c1bba58b985e3f557812adcdb1baec3cc6ca3d1d46cab601`。命令分别`cargo test --locked --manifest-path experimental/ac-mir-native/Cargo.toml --test collections_typed_tier -- --test-threads=1`，以及resources/source档对应两个具名case的`--exact --test-threads=1`；exit均0。raw仅本地，不入库；dependency auto-down=c3464d0a。
+
+### 2026-10-30 work 第7轮检查点C：T-04正式native驱动/恢复/CLI
+
+- N提交`70fc03d2b`，权威树clean，4/10；T-04通过定向门，work阶段继续T-05，不是交付或final review。仍无H写入、canonical/ledger修改、根整档测试或远端push。auto-down=c3464d0a不变。
+- 同一MnDriver抽取并复用A09 lookup/admit/emit；新`build_collections/request_collections`显式选择有界cold前端，完整callee签名/owner和零参int/bool入口在对象生产之前检查；无整模块frontend回退。新`build-source --source-profile collections`与原profile常量可选，legacy仍明确拒绝；五旧域的表/指纹/manifest字节身份与路径保持，新增独立集合profile/ABI/recipe身份。原始HIR build仍限原五域；typed容器clone走既有受检MIR→native专用入口，不冒领带位宽typed entry。
+- 新单元指纹以BLAKE3绑定完整实际内容、名义类型/字段/臂/参数模式与import签名，忽略span/snapshot/table编号；实际codegen源码/依赖锁另入producer轴。runtime ABI2、库实际内容hash、runtime/text源码/锁、rustc身份/选项/环境与Cargo配置绑定build key；配置wrapper的可执行文件内容亦绑定。全部准备在调用内计时，匹配stamp避开cargo但重查当前内容；未认证/陈旧派生库先删确切输出再实际build，不用mtime将未知库盖章。override同尺寸改一byte仍具名拒绝。新profile每次重hash linker/kernel32，不借旧path/len memo冒称当前身份。
+- 新A08/A10集合清单分页持久化runtime+MIR+COFF完整required闭包；不序列化verified credential。restore先比schema/profile/ABI/target/codegen/runtime/tool，再经共享`verify_abc_bytes`重入MIR深验、重新计算全部COFF元数据与布局、重验COFF内容和实际continuation页、完整callee/entry，随后真实link/run。初次直接decode_abc的传输owner schema与MIR schema不同，实测拒绝后改用既有共享wire准入，不放宽MIR schema检查。新by-id页读取先查询chunk地址再调用现有bounded/CAS-gated读，防超页先分配；集合COFF给头预留4096B，单payload≤256KiB，旧五域分页格式不改。
+- 新进程`mn-worker collections-restore-run`结构上不做unit codegen，独立协议名`mncollections-restore/1`，实际新进程结果42、2单位重验、unit emit0。reuse/fresh/read-only同一缓存机制；只读恢复与source缺失重算都实际执行，block数/roots不变。命中时补齐后续COFF页required引用，三页真实可链接COFF控制从cache命中→manifest→restart再执行42，漏声明页/超页受拒。23项伪造schema/profile/ABI/target/producer/owner/entry/runtime/选项/MIR/COFF/页/tool控制全部在link/codegen前拒绝，旧PE与root保持。
+- 新候选manifest先非root落盘，独立目录link并按runtime观测执行，成功后才root/publish；index trap21仍是合法语言结果，普通return70不算trap。预算22/无效值23/注入25/取消26分别具名分类、失败不发布。旧PE/receipt/root在语法、类型、入口、实际MAX_LIST+1资源失败及收据目的目录占用时保持；新增实故障缝在新PE已放置后令第二placement失败，原两个文件逐字恢复，无旧文件时两个新目的路径均消失。重启后从本profile清单重建当前发布集合，成功后释放旧根，保持旧五域根独立。
+- 新driver档7/7，23.75s，覆盖原L01..L07/V01..V07、LSTR864/FIN864A/B、List<Variant>/嵌套/Option、Variant helper调用返回、CLI/native产物、跨进程恢复、只读缺失、发布资源失败与负控。旧cache tier/CLI871/first_case分别全过（旧五域真build/run、legacy拒绝）；新跨单元错签名/entry歧义1/1，发布中途回滚1/1，旧backend控制6/6；未引用函数签名改变后main实际COFF、单元指纹及完整meta相等。曾两项新测试fixture误用match语法/附加非法COFF尾部，分别改成既有is语法/合法扩充COFF字符串表；原红保留，不改生产语义绕过。fmt/diff-check通过，新N零warning（AV shell_lo/hi baseline不变）。
+- 本地证据根`D:/autostack/.wt/lang-889/auto-lang/docs/plans/attachments/889/baseline/`：t04-driver-final.log SHA256 `19e8984d85bda00a8eaa20d683c089e87860d2db3fb6f225d03e3d3e9a8a35d2`；t04-driver-compat.log `0e7cee84450ca4dadc4628e2bf4c6232c51c84dab7a57c975b7a5486dae6b2f2`；t04-publication-rollback.log `a4d35e9d31bb7bbc7175468acfc78fbcfecb489a91f6ac08cf00cc4d0a56bffa`；t04-closure-admission.log `665074b86ecc9d333cf8e6c43892ebb6204117e625278b2724faf6734a7e3556`；t04-unit-binding-control.log `31ce542d643129ee489bf21d6c03d86de93a8cd20a3bedeba1e4a89a46990902`。命令为manifest experimental/ac-mir-native/Cargo.toml下对应`--test collections_driver_tier`或`--test cli_871 --test cache_tier --test first_case`，lib控制按模块过滤；exit均0且非零选择。raw仅本地，正式H/SDK与编译分区/30×各场景P90/512 churn仍归T-06，真实单体源候选/坐标归T-05。
+
+2026-10-30 T-05/S窗重新接受：main代码零WIP，888已更新至a436985c5，新增提交与WIP仍不触及ac-core/source、verify_function、共享hir_adapter及集合session；890 afea065b2亦无这些S改动。前S子集已在b5302262e提交释放，本次仅接受`ac-core/src/source/{resolve,adapter,parser,mod,ast}.rs`中CheckedEnv/recheck_swap/FnCandidate/prepare_candidate_document及必要单函数fragment解析、坐标与容量观察接口，`auto-mir-lower/src/hir_adapter.rs::lower_function_collections_unit`必要缺口和新定向测试；N消费者本Plan保有。优先扩同一828生产接口，不复制frontend/lower，不写现有AV executor/worker或H、不消费他方WIP。新intern List/Option等body局部类型池需与body一起候选提交/恢复，不能漏池引用后以whole回退隐藏；纯body无变化函数必须实际各生产阶段0工作并保对象身份。接口/声明编辑走显式受检失效路径；提交后记录精确S释放。无用户决策阻塞，不请求重复执行许可。
 
 ## 10. 待澄清事项
 
