@@ -63,6 +63,7 @@ Provenance: [PLAN-861](../../plans/archive/861-autographics-public-actions-and-c
 
 - [Gallery basic six (out-of-repo examples)](gallery-basic-six.md): the local `ag-examples` catalog contract — six logical IDs / ten subentries, fixed frozen engine dependency via engine-lock, public-CLI-only launches, self-contained per-example packages with offline relocation, and the measured 2D composition-order semantics (PLAN-877).
 - [Gallery character and cameras (GY-B)](gallery-character-and-cameras.md): G07 3D character on a fixed basis and G08 runtime cameras — per-item engine locks (plan875.json pinning AG 1cc68aba0 / runner 6c461c35), byte-identical sample consumption, the windowless checks/gyb acceptance adapter (32 oracles), strict source-bound acceptance records, and engine-package relocation (PLAN-880).
+- [Gallery sprites and frame animation (G09)](gallery-sprites-and-frame-animation.md): two self-contained scene/5 PNG examples using the public `sprites2d` API, pinned PLAN-004 consumer identity, CC0 source recipes, strict source/license binding, and offline A→B runtime acceptance (ag-examples PLAN-002); G10/G12 and the full Gallery milestone remain pending.
 
 - [Platform boundary audit (XP-0)](platform-boundary-audit.md): the frozen-version static cross-platform boundary and dependency audit — per-file shared/host/adapter classification of the AG workspaces, the ungated SDK host stack, unresolved edges and non-support statements; audit knowledge only, no new platform capability (PLAN-878).
 
