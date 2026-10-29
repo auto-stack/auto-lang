@@ -145,6 +145,34 @@ pub fn stdlib_assembly_fingerprint(
         "../vm/ffi/stdlib/rust_stdlib_dispatch.rs"
     )));
     mix(fnv1a64(include_str!("../vm/native_catalog.rs")));
+    // PLAN-884 T-05：call_inner 主题拆分文件入指纹闭包。
+    mix(fnv1a64(include_str!(
+        "../trans/rust/call_emit/call_bare_builtins.rs"
+    )));
+    mix(fnv1a64(include_str!(
+        "../trans/rust/call_emit/call_bina_methods.rs"
+    )));
+    mix(fnv1a64(include_str!(
+        "../trans/rust/call_emit/call_dot_methods.rs"
+    )));
+    mix(fnv1a64(include_str!(
+        "../trans/rust/call_emit/call_generic_fallback.rs"
+    )));
+    mix(fnv1a64(include_str!(
+        "../trans/rust/call_emit/call_macro_shapes.rs"
+    )));
+    mix(fnv1a64(include_str!(
+        "../trans/rust/call_emit/call_module_methods.rs"
+    )));
+    mix(fnv1a64(include_str!(
+        "../trans/rust/call_emit/call_tag_ctor.rs"
+    )));
+    mix(fnv1a64(include_str!(
+        "../trans/rust/call_emit/call_task.rs"
+    )));
+    mix(fnv1a64(include_str!(
+        "../trans/rust/call_emit/call_value_ctors.rs"
+    )));
     mix(match target {
         super::model::AssemblyTarget::Vm => 1,
         super::model::AssemblyTarget::Rust => 2,

@@ -467,6 +467,35 @@ widget App {{
         tr.push_str(include_str!(
             "../../../auto-lang-core/src/trans/rust/call_emit.rs"
         ));
+        // PLAN-884 T-05：call_inner 族拆分后扫描面随 owner 迁移扩展到族文件
+        // （plan843 先例同律：断言语义不变，只跟 owner 走）。
+        tr.push_str(include_str!(
+            "../../../auto-lang-core/src/trans/rust/call_emit/call_bare_builtins.rs"
+        ));
+        tr.push_str(include_str!(
+            "../../../auto-lang-core/src/trans/rust/call_emit/call_value_ctors.rs"
+        ));
+        tr.push_str(include_str!(
+            "../../../auto-lang-core/src/trans/rust/call_emit/call_macro_shapes.rs"
+        ));
+        tr.push_str(include_str!(
+            "../../../auto-lang-core/src/trans/rust/call_emit/call_task.rs"
+        ));
+        tr.push_str(include_str!(
+            "../../../auto-lang-core/src/trans/rust/call_emit/call_module_methods.rs"
+        ));
+        tr.push_str(include_str!(
+            "../../../auto-lang-core/src/trans/rust/call_emit/call_bina_methods.rs"
+        ));
+        tr.push_str(include_str!(
+            "../../../auto-lang-core/src/trans/rust/call_emit/call_dot_methods.rs"
+        ));
+        tr.push_str(include_str!(
+            "../../../auto-lang-core/src/trans/rust/call_emit/call_tag_ctor.rs"
+        ));
+        tr.push_str(include_str!(
+            "../../../auto-lang-core/src/trans/rust/call_emit/call_generic_fallback.rs"
+        ));
         assert!(tr.contains("diff_files_window"), "trans 裸名臂在册");
         // ui_gen handler 直调臂。
         let ug = // PLAN-814 T-03：rust 生成器迁 auto-ui-compiler；指纹探针引同仓单源。

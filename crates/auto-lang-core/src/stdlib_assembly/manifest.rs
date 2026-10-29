@@ -388,6 +388,43 @@ pub fn provider_inputs(target: AssemblyTarget) -> Vec<ProviderInput> {
                 "trans/rust/call_emit.rs",
                 include_str!("../trans/rust/call_emit.rs"),
             ),
+            // PLAN-884 T-05：call_inner 主题拆分文件入 Vm provider 输入。
+            (
+                "trans/rust/call_emit/call_bare_builtins.rs",
+                include_str!("../trans/rust/call_emit/call_bare_builtins.rs"),
+            ),
+            (
+                "trans/rust/call_emit/call_bina_methods.rs",
+                include_str!("../trans/rust/call_emit/call_bina_methods.rs"),
+            ),
+            (
+                "trans/rust/call_emit/call_dot_methods.rs",
+                include_str!("../trans/rust/call_emit/call_dot_methods.rs"),
+            ),
+            (
+                "trans/rust/call_emit/call_generic_fallback.rs",
+                include_str!("../trans/rust/call_emit/call_generic_fallback.rs"),
+            ),
+            (
+                "trans/rust/call_emit/call_macro_shapes.rs",
+                include_str!("../trans/rust/call_emit/call_macro_shapes.rs"),
+            ),
+            (
+                "trans/rust/call_emit/call_module_methods.rs",
+                include_str!("../trans/rust/call_emit/call_module_methods.rs"),
+            ),
+            (
+                "trans/rust/call_emit/call_tag_ctor.rs",
+                include_str!("../trans/rust/call_emit/call_tag_ctor.rs"),
+            ),
+            (
+                "trans/rust/call_emit/call_task.rs",
+                include_str!("../trans/rust/call_emit/call_task.rs"),
+            ),
+            (
+                "trans/rust/call_emit/call_value_ctors.rs",
+                include_str!("../trans/rust/call_emit/call_value_ctors.rs"),
+            ),
             (
                 "trans/rust/decl_emit.rs",
                 include_str!("../trans/rust/decl_emit.rs"),
@@ -562,13 +599,22 @@ mod plan884_provider_input_coverage {
             "trans/rust",
         ] {
             let path = std::path::Path::new(manifest_dir).join("src").join(dir);
-            for entry in std::fs::read_dir(&path).expect("read domain dir") {
-                let entry = entry.expect("entry");
-                let p = entry.path();
-                if p.extension().and_then(|e| e.to_str()) == Some("rs") {
-                    let rel = format!("{}/{}", dir, p.file_name().unwrap().to_string_lossy());
-                    if !covered.contains(&rel) {
-                        missing.push(rel);
+            let mut stack = vec![(path, dir.to_string())];
+            while let Some((p, rel_dir)) = stack.pop() {
+                for entry in std::fs::read_dir(&p).expect("read domain dir") {
+                    let entry = entry.expect("entry");
+                    let ep = entry.path();
+                    if ep.is_dir() {
+                        let sub = ep.file_name().unwrap().to_string_lossy().to_string();
+                        stack.push((ep, format!("{rel_dir}/{sub}")));
+                        continue;
+                    }
+                    if ep.extension().and_then(|e| e.to_str()) == Some("rs") {
+                        let rel =
+                            format!("{}/{}", rel_dir, ep.file_name().unwrap().to_string_lossy());
+                        if !covered.contains(&rel) {
+                            missing.push(rel);
+                        }
                     }
                 }
             }
