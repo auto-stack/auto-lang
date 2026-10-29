@@ -14,7 +14,7 @@ Status: experimental delivered (833–875 lines; historically on autographics-de
 Source workspace: auto-ui repo `experimental/autographics-auto-driver`, bin `autographics-auto-driver` (ownership guides + full history remain on autographics-dev).
 Frozen graphics upstream (833 era): `764e87559cff016d9e0d6b2141e5f1f9903398c5`.
 Frozen SDK upstream (833 era): `9576b4dad5ceb8b201adedd46f9689f25c2dd5f9`.
-Current SDK (since PLAN-846): logical pin `7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467` (Git object unreachable); preserved since PLAN-879 as the versioned snapshot `sdk/frozen/` (681 files, locked by `research/source-lock.json`), cold-prepared via `python tools/prepare_sdk.py --from-snapshot` with no producer repo/network. Current source identity: `research/plan879-identity.json` (old auto-lang blob → new path mapping), verified by `tools/verify_plan879.py --controls`. See [source-repository-and-sdk.md](source-repository-and-sdk.md).
+Current SDK (since PLAN-846): logical pin `7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467` (Git object unreachable); preserved since PLAN-879 as the versioned snapshot `sdk/frozen/` (681 files, locked by `research/source-lock.json`), cold-prepared via `python tools/prepare_sdk.py --from-snapshot` with no producer repo/network. Current source identity (since auto-ui PLAN-001): `research/plan001-identity.json` (1401 hashes; runtime-objects closure), verified by `tools/verify_plan001.py --controls`, selected first by `tools/verify_source.py` and `tools/package_consumer.py`; the PLAN-879 migration identity (`plan879-identity.json` / `verify_plan879.py`, old auto-lang blob → new path mapping) remains as the historical mapping gated behind the current generation. See [source-repository-and-sdk.md](source-repository-and-sdk.md).
 
 ## Actual execution and ownership
 
@@ -249,3 +249,23 @@ commands `behavior-api-camera2d`/`behavior-api-camera3d` and CLI
 `--behavior-api camera2d|camera3d` select them. Consumers bound by
 [verify_plan875.py] and the camera contract in
 [runtime-game-cameras.md](runtime-game-cameras.md).
+
+## PLAN-001 increment: runtime object identities
+
+Two combined public identities join the selector beside the unchanged
+behavior/1..5, character/1, character3d/1 and both camera profiles (their
+assemblies and outputs stay byte-identical; unknown behavior/6 is still
+rejected): `autographics.objects2d/1` (number 105, profile 16) and
+`autographics.objects3d/1` (number 106, profile 17), selected by
+`--behavior-api objects2d|objects3d` with the public `--open/--behavior`
+root entry. Source identity moves up one generation to `plan001-identity.json`
+(1401 hashes, `verify_plan001.py --controls`); the SDK pin `7b987ca8` and the
+frozen snapshot cold prepare are unchanged, and the fresh own-SDK consumer
+export (`package_consumer.py`) selects the new identity first. Samples
+`samples/runtime-objects/{two,three}` (main + parameter-edited twins) are the
+public root-entry inputs. See [runtime-objects.md](runtime-objects.md).
+
+Provenance: auto-ui PLAN-001 (r4), archived at
+`auto-ui/docs/plans/archived/001-autographics-runtime-object-lifecycle.md`;
+delivery `537122b` on auto-ui master; independent final review pass bound to
+that commit.

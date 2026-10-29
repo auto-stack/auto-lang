@@ -145,3 +145,23 @@ not decouple the in-flight camera echo from its candidate. Failure keeps the
 last-good frame+camera pair under the existing Fault/VM-close rules; Stop
 restores the editing view without static mesh re-upload; Pause/Step/Resume
 follow the camera contract in [runtime-game-cameras.md](runtime-game-cameras.md).
+
+## PLAN-001 increment: finite run-object instances ride the same frame transaction
+
+With an objects profile the admitted instance table rides the same Play frame
+as the character and camera: the fixed 52-value objects block (4 header ints,
+8 canonical rows) is admitted against the previous frame's per-slot generation
+high-water in the same `admit`, prepared, accepted and published as one
+transaction. A rejected candidate (bad row, template, generation sequence,
+count or run/tick) discards the whole tick and keeps the last-good
+frame+instances pair under the unchanged Fault/VM-close rules; Stop releases
+the instance table with the VM owner and a fresh Run starts empty. The block
+queries are re-queued by `queries()` every tick, so the frame length contract
+stays exact. Editing remains fully isolated: instances never touch the
+Document, dirty tracking or Undo/Redo, and Stop restores the editing view
+without static mesh re-upload. See [runtime-objects.md](runtime-objects.md).
+
+Provenance: auto-ui PLAN-001 (r4), archived at
+`auto-ui/docs/plans/archived/001-autographics-runtime-object-lifecycle.md`;
+delivery `537122b` on auto-ui master; independent final review pass bound to
+that commit.
