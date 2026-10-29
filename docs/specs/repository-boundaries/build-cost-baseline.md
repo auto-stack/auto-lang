@@ -44,11 +44,15 @@
 | lang-codegen（core `vm/codegen/expr_ops.rs`） | 0.7 | 6.0 | **6.9** | 6.9 | 同上 |
 | lang-engine（core `vm/engine/ops_arith.rs`） | 0.7 | 6.0 | **6.9** | 7.0 | 同上 |
 | lang-trans（core `trans/python.rs`） | 0.7 | 5.9 | **6.9** | 6.9 | 同上 |
-| ui-compiler（`ui_gen/api.rs`） | 0.7 | 4.0* | **4.6** | 4.7 | compiler+runtime+tools+shell-pack（4 crate 仓内） |
+| ui-compiler（`ui_gen/api.rs`） | 0.7 | 3.8* | **4.6** | 4.7 | compiler+runtime+tools+shell-pack（4 crate 仓内） |
 | ui-runtime（`ui/iced/renderer.rs`，42,337 行） | 0.7 | 2.8 | **4.6** | 4.6 | runtime+tools+shell-pack（3 crate） |
 | man-auto（`crates/auto/cmd_bp.rs`） | 0.7 | 1.2* | **1.2** | 1.2 | auto（1 crate，CLI 叶子） |
 
 \* 干净样本中位（ui-compiler 3.8/3.8/4.2，man 1.1/1.2）；首批样本的跨仓 mtime 级联见 §2.5。
+统计披露（终审 F-2/F-3）：ui-compiler mtime 干净中位为 **3.8**（原记 4.0 系均值误入）；O5 级联剔除后三格
+（man-auto mtime、L2e ui-runtime/man no-run）仅剩 2 个干净样本，低于协议 ≥3 有效样本，按 n=2 中位披露；
+极差/中位 >10% 的组（ui-compiler-restore 4.6–6.1、man-restore 1.2–1.4、L1 lang 冷组 71.6–84.3）归因为
+负载方差/多会话时段（T-02 污染风暴与下界记录在案），中位数稳健，不改变任何结论方向。
 
 ### 2.3 L2e 编辑→测试二进制（T-03，中位秒）
 
@@ -63,7 +67,9 @@
 
 ### 2.4 L3/L4（T-02 收录）
 
-- nextest list 稳态 1.2–2.9s（lang 默认面 511 测 / ui-runtime 1 测 / man-auto 10 测）；定向单测真实启动 1.1–3.2s。
+- nextest list 稳态 1.2–2.9s；枚举数（2026-10-29 终审 F-1 修正为日志实数，原记 511/1/10 为 T-02 提取错误）：
+  lang `-p auto-lang` **1559** 测/22 二进制、ui `-p auto-ui-runtime` **1889** 测/2 二进制、man `-p auto` **34** 测/4 二进制；
+  定向单测真实启动 1.1–3.2s。
 - L4 只读收据（880 批量回归 @`03f851505`，本机主检出单实例，sccache 常态）：tf-language 3202=**84.0s**、tt 3569=**512.4s**、
   tb 3092=**61.0s**；输入差 866 落地，按近似参考标注。未新跑任何整档。
 
