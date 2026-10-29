@@ -36,9 +36,12 @@ function Run-Workspace-Tests([string]$TestBin, [string]$Label) {
 function Run-Runner-Tests([string]$Filter, [string]$Label) {
     Write-Host "== $Label (main workspace nextest filter: $Filter)"
     Push-Location $repo
-    # `cargo t` carries the workspace alias's features/config; -E passes
-    # the nextest filter expression through.
-    & cargo t -E $Filter 2>&1 | Tee-Object -Variable out | Write-Host
+    . (Join-Path $repo 'scripts/test-governance/invoke-modules.ps1')
+    if($Filter -notmatch '^test\((.*)\)$'){throw 'Unsupported historical filter; supply an explicit test-name pattern'}
+    $pattern=$Matches[1]
+    if($pattern.StartsWith('/') -and $pattern.EndsWith('/')){$pattern=$pattern.Substring(1,$pattern.Length-2)}
+    Invoke-ScopedTestModules -Repo $repo -TestRegex @($pattern) -Output (Join-Path $reportDir ($Label+'-modules'))
+    $out=@('Complete module union executed')
     $code = $LASTEXITCODE
     Pop-Location
     if ($code -ne 0) {

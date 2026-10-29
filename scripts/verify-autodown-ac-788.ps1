@@ -8,7 +8,7 @@
 #   -Scope selftest   : parser unit tests over canned outputs, including the
 #                       prose-substitution and prefix-substitution negatives
 #   -Scope closeout   : merge-owned full surfaces on the frozen commit; the
-#                       root cargo t/tv/tt families run under NEXTTEST and are
+#                       affected root module union is receipt-bound and is
 #                       verified against nextest's actual output format
 # Usage: powershell -NoProfile -File scripts\verify-autodown-ac-788.ps1 [-Scope acceptance|selftest|closeout]
 
@@ -497,7 +497,7 @@ if ($Scope -eq "acceptance") {
 }
 
 # closeout (merge-owned): frozen-commit full surfaces. The root aliases
-# (t/tv/tt) run under NEXTEST — verified per its real output format; the
+# are replaced by one complete affected module union; the
 # remaining families are libtest multi-binary runs.
 # R10 merge-scope correction: the full single-process libtest family ran
 # env-dependent plan738/746/748/749 suites that the daily tier excludes BY
@@ -505,9 +505,12 @@ if ($Scope -eq "acceptance") {
 # nextest tiers + independent suites. The plan's own integration target
 # runs scoped and serial here; the lib face is the bare-t family below.
 Run-CargoFamily "auto-lang plan788_r3_ (integration, serial)" @("test", "-p", "auto-lang", "--features", "test-cases", "--test", "plan788_r3_", "--", "--test-threads=1") @("turnaround_native_six_scenarios_p95_gates", "turnaround_syntax_gate_and_revision_stream") 2
-Run-NextestTier "root cargo t (nextest)" @("t") @("nextest","list","-p","auto-lang","--lib","--test","schema_drift","--test","docs_gen","--test","component_registry_test","--features","ui-iced,test-cases","--message-format","json")
-Run-NextestTier "root cargo tv (nextest)" @("tv") @("nextest","list","-p","auto-lang","--lib","--profile","tv","--features","test-cases","--message-format","json")
-Run-NextestTier "root cargo tt (nextest)" @("tt") @("nextest","list","-p","auto-lang","--lib","--features","test-trans,test-cases","--message-format","json")
+. (Join-Path $root 'scripts/test-governance/invoke-modules.ps1')
+$moduleOutput=Join-Path $root ('target/modules-788-closeout-'+[guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $moduleOutput -Force | Out-Null
+$moduleChanges=Join-Path $moduleOutput 'closeout-module-paths.txt'
+@('crates/auto-lang-core/src/test_cases/ac.rs','experimental/ac-case-worker/','experimental/ac-artifact-probe/') | Set-Content -LiteralPath $moduleChanges -Encoding utf8
+Invoke-ScopedTestModules -Repo $root -ChangesFile $moduleChanges -Output (Join-Path $moduleOutput 'execution')
 Run-CargoFamily "worker full (release)" @("test", "--manifest-path", "experimental/ac-case-worker/Cargo.toml", "--release") @() 1
 # gc_budget_churn_512 is the probe's OWN design ignore: its closeout
 # contract executes it explicitly with --ignored (documented in the test).

@@ -35,6 +35,21 @@ class PilotRoundAccounting(unittest.TestCase):
 @unittest.skipUnless(os.name == 'nt' and EXE.is_file() and WORKER.is_file(),
                      'requires Windows and the explicitly built test-case-batch pilot/worker')
 class PilotCLI(unittest.TestCase):
+    def test_default_promotes_only_fixed_allowlist_and_single_case_stays_independent(self):
+        result=self.call('--parallelism','2')
+        self.assertEqual(result.returncode,0,result.stderr)
+        report=json.loads(result.stdout)
+        self.assertEqual((report['mode'],report['group_size']),('group',10))
+        self.assertEqual(sum(g['worker_starts'] for g in report['groups']),2)
+        rows=[r for g in report['groups'] for r in g['items']]
+        self.assertEqual(len(rows),15)
+        self.assertTrue(all(r['status']=='PASS' for r in rows))
+        single=self.call('--case',rows[0]['case'])
+        self.assertEqual(single.returncode,0,single.stderr)
+        replay=json.loads(single.stdout)
+        self.assertEqual(replay['mode'],'independent')
+        self.assertEqual(sum(len(g['items']) for g in replay['groups']),1)
+
     def test_formal_measurement_validator_rejects_missing_spawns_calls_and_checks(self):
         import sys,copy
         sys.path.insert(0,str(ROOT/'scripts/test-governance'))

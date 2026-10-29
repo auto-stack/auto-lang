@@ -67,97 +67,53 @@ All AI coding assistants working in this repository must strictly adhere to the 
   期间有意义；摘要（结论/命令/退出码/关键数字/本地路径+内容哈希）写入 plan 文件即可。
   已 push 的存量证据不动；未 push 的存量证据在全部在途 worktree 合并后做历史过滤再
   push。auto-plan-* 技能已同步此政策（auto-musk 源 b98aacd）。
-- **Fast Iteration during Development**:
-  - During development, **DO NOT run full test suites repeatedly**. Use fast syntax/type checks:
-    - Fast type check: `cargo check -p auto-lang`
-    - Scoped single-module test (optional): `cargo t <module_name>` (e.g. `cargo t iced`)
-  - **测试时序（2026-10-14 用户裁定，含 needs_fix 修复）**：先完成全部 findings 的修复，
-    仅做相关反例/模块测试及必要的 `cargo check`；提交修复、最终代码与验收审查通过后，
-    由 merge 阶段在冻结提交上统一执行裸 `cargo t` + 必要触面档，再合入。
-    开发提交、internal review、单条 finding 修复或再次送审均不得触发整档 `t/tv/tt/tb/tu/taa`。
-    验收所需的定向测试仍须执行；不得把它们后置来掩盖未完成的修复。
-    最终 review 的 pass 只表示代码/验收/规范审查通过，须显式记录 merge-owned 门禁 pending；
-    这些门禁通过前不得合入或宣称交付完成。门禁失败需归因；修复改变代码后，复审受影响
-    内容，再在新冻结提交上执行受影响门禁。复用证据须确认代码、依赖、测试配置与输入未变。
-  - Reuse standardized automation scripts from `.agents/skills/autoui-verifier/scripts/` (`test_vm_mcp.py`, `test_vue_playwright.mjs`) instead of writing ad-hoc scripts.
-- **Change-Scoped Verification Gate (按改动范围分级测试门禁)**:
-  - **Category A: Pure Verification / Asset / Doc-Only Tasks (纯验证/示例资产/计划跟踪)**:
-    - 若未修改 `crates/` 下的 Rust 源码（仅截图、更新 `docs/plans/` 矩阵或修改测试脚本），**严禁运行 `cargo t` 和 `docs_gen`**。仅完成目标验证即可直接合入。
-  - **Category B: Scoped Rust Code Changes (局部 Rust 模块改动)**:
-    - 快速语法/类型检查：`cargo check -p auto-lang`
-    - 开发迭代：`cargo t <module_name>`（如 `cargo t iced` 或 `cargo t ui`）
-    - **合入门禁 = 分级门禁（fix-test-tiering；2026-10-14 后置裁定）**：最终审查通过后、合入前在 plan
-      worktree 跑**裸 `cargo t`**（全日常面）+ 触面档：VM/编译器→`cargo tv`、trans→
-      `cargo tt`、book→`cargo tb`、**UI 代码生成（`ui_gen/**` 四生成器）→`cargo tu`**、
-      碰 aavm 触发路径→按 §AAVM/AA2R 作用域映射跑 `taa`。
-      **`cargo tf` 不再是 per-plan 复审门禁**——已改判为**批量回归档**：merge 收尾时
-      到期判定（计划号 %5 落地，或 >48h 且期间有合并——L0 `fix-*` 计入；收据
-      `docs/plans/.last-batch-regression.json`，缺失即到期）后由 `/auto-plan:regress`
-      技能在**主检出单实例**执行（Plan 466 全量语义保留：1M churn + 语料族 + 画廊围栏）。
-      依据：tf 是机器独占负载（内嵌 cargo build + ~800s 零缓存围栏 + 全池测试进程），
-      多 agent 并行 worktree 各跑 tf 必然资源互毁（2026-09-30 实录）。
-    - **`cargo tu` = UI 生成档（fix-ui-tier 2026-09-30）**：`ui_gen::` 整族已从日常档
-      default-filter 移除（854 例 × 每进程 ~1.2s 注册表构建税曾占日常档 6250/7900 测试秒）；
-      tu 刻意用**单进程 libtest**——`WidgetRegistry::with_defaults()` 的 OnceLock 在单进程内
-      全档只建一次。纯函数代码生成测试无进程级全局态/重内存，单进程安全；tu 无 nextest
-      slow-timeout 保护，新加入的 ui_gen 测试须自带截止时间（网络/等待类不得入此族）。
-      tf 批量档对 ui_gen 仍全覆盖（nextest-full 不排除）。
-    - **并行纪律**：多 agent 并行时，worktree 内只跑 `cargo check` / scoped `t` / `tv`
-      级负载；全量档（`tf`/`ta`/`taa`/`t3`）一律主检出单实例串行。
-      重型测试族（画廊围栏 / 1M churn）自 PLAN-726 T-02 起带**机器级单实例闸门**
-      （`heavy_gate.rs::machine_gate`，锁 `D:/autostack/.locks/<family>.lock`）：
-      多跑并发时第二实例秒级确定性红（含持锁者 PID/cwd 提示），不再互毁挂死；
-      持锁进程死亡的陈锁自动接管。aavm XL/LG 族经 2026-10-02 裁定豁免
-      （aavm/aa2r 拟退役短期不跑；恢复运行时补接线即可）。
-    - **AAVM 专项（Plan 568）**：改 VM/编译器在最终审查通过后、合入前统一跑 `cargo tv`（PLAN-700 语料三族，
-      与 t/tf 同二进制零重编），全量收口归批量回归档；aavm 无实用面，不需要关心是否被
-      改坏，守护=本地 `taa`/`ta`（PLAN-763 已移除旧 CI）。只有 diff 触及 aavm 代码（`packages/aavm/lib/*.at`、`test/vm/aavm2/**`、
-      `test/parity/**`、aavm2 测试基建）才跑 `cargo taa`，且按 §AAVM/AA2R Test Tier 作用域
-      映射缩小范围，不全量跑。
-  - **Category C: Docs / Schema Changes (文档与元数据改动)**:
-    - **仅当**修改了文档生成器、Schema 定义文件或语法参考时，才运行 `cargo test -p auto-lang --test docs_gen`。
-  - **AutoUI 跨端验证（双端模式）**:
-    - Vue 模式：`auto run`
-    - VM 模式：`auto run -r vm`
-    - 自动化双端一致性：调用 `autoui-verifier` 技能 (`.agents/skills/autoui-verifier`)。
+### 模块选测与验证门（PLAN-888 r2）
 
-#### AAVM/AA2R Test Tier (Plan 568)
+- 本节替代旧的“裸 cargo t + tv/tt/tb/taa 触面档”逐档叠跑规则。测试义务按
+  `scripts/test-governance/modules.json` 及其内容哈希分片划分为不相交叶模块；每条原子
+  运行身份唯一归属，源码、期望、profile、平台/ignored/里程碑条件不因拆分削弱。
+- 公开入口：`cargo tm --list`；`cargo tm <module-id> [module-id ...]`；
+  `cargo tm --changes <逐行变更路径文件> --select-only --out <本地目录>`。
+  去掉 `--select-only` 执行所选完整模块及直接/传递消费者与集成闭包的去重并集。
+  无参数不运行；未知触面保守扩大，过期目录重新发现，非空零选择/漏项/重复/漏消费者失败。
+- **开发迭代**：在计划 worktree 完成全部相关修复，运行有意义的反例及受影响模块，必要时
+  `cargo check -p auto-lang`。不为单个 finding、提交或再次送审重复运行周期性全集。
+- **合入门**：最终代码/验收/规范审查通过后，在冻结提交执行受影响完整模块并集，包含
+  消费者、integration 和必要慢模块。明确列出选择文件、源/依赖/配置身份与执行收据。
+  不再隐式叠跑旧 t/tv/tt/tb/taa。目录/runner 等横切迁移自身可能触及全部本仓模块，
+  必须据实际影响验证，不能只测 runner 自身就撤旧门。
+- **时间口径**：常规叶模块至少三次完整 warm，nearest-rank P90 目标≤60秒；模块墙钟
+  包括运行时发现、执行、原比较器和清理，预构建/冷态/整条命令总时长另列。可拆的超标
+  聚合继续拆，单条不可分割的正式性能采样/规模/生命周期 oracle 登记具名慢模块，仍由
+  触面计划执行。不得减样本/改金样/删除断言/60秒强杀或 SKIP 冒绿。
+- **条件与结果**：原 ignored/平台/手动/里程碑条件明确报告 NOT_APPLICABLE；发现、选择、
+  编译、实际执行和通过分别统计。原聚合包装 exit0 不代替内部原子比较。既存红保留原始
+  结果并具名归因，不用重放绿覆盖首次失败。未执行条件不认证为全环境绿。
+- **纯文档/资产/核查**：只做目标验证；不无故运行 Rust 测试或 docs_gen。
+  文档生成器/Schema/语法参考变动才触发 docs_gen 对应模块。测试工具变动执行其真实消费者。
+- **外仓 owner**：语言仓没有 cargo tu；UI 生成/运行/原生窗口由 auto-ui 对应入口维护，
+  Man 由 auto-man 维护；按真实跨仓触面选择，不因本仓测试重划运行无关 UI/Man/AG 全套。
+- **旧入口兼容**：t/tv/tt/tb/th 截至2026-11-30只作显式过渡导航，映射冻结旧身份到完整
+  叶模块；附加滤串选择完整模块，不在模块内抽样。tf/taa/ta/t3 经 module-aware 周期驱动，
+  旧列表仅守恒审计、不重复执行语言档。新计划和新脚本使用 tm 的明确模块/变更清单。
+  不要求新增名为“全部测试”的入口；任何未来 all 只是显式模块并集。
+- **周期批次**：保留计划号%5落地、或>48h且期间有合并（含L0）、缺收据即到期的条件；
+  `docs/plans/.last-batch-regression.json` 为收据。到期由 auto-plan-regress 在主检出单实例
+  执行 `cargo tf --batch`，语言侧消费 `periodic-module-schedule.json` 的显式 recipe 清单，
+  输出实际叶模块选择并只执行一次去重并集；UI/Man 原 owner 腿保持。它不是每计划第二道全局门。
+- **并行与重型纪律**：普通定向验证保留原 nextest 隔离、资源组和截止；HTTP 族串行。
+  画廊围栏/1M churn 保留 `heavy_gate.rs` 机器单实例锁，第二实例确定性拒绝。
+  正式性能测量与周期批次串行；M888 专用全叶成本属于授权测量，不是开发提交反复跑全集。
+  不停止他方进程；观察到外部构建/测试污染时保留原结果并按合同整轮重测。
+- **AAVM**：仅真实改动 `packages/aavm/lib/*.at`、`test/vm/aavm2/**`、`test/parity/**`、
+  aavm2 harness 或 lib.rs 中 aavm 源绑定时，选对应 AAVM 完整模块及消费者；一般 VM/编译器
+  改动不凭名称反射性选 AAVM。上游共享变化会扩大闭包，必要时包含整个管线。
+  双重解释器路径 Windows 原12条ignore及其栈边界裁定保持；重型对拍用转译+编译+运行形态，
+  不新增进程内双解释重负载。T3_MILESTONE 条件原样保留，不能把未触发的秒退当里程碑通过。
+- **B/C试点**：test-case-batch 默认关闭，只允许固定15例白名单；测试专用 pilot 默认
+  B k=10，单case重放默认 A。其他 recipe、负诊断、资源/会话/FFI/性能硬门继续原独立路径。
+  C 只观察原D3的owned-record组合结果，不替代四路径或原单文件义务。原 guest/采样预算不变。
 
-**概念**："改 VM/编译器后的回归"（`cargo tv`，纯 .at 语料 golden）与"AAVM 自举展示"（`cargo taa`）是两个独立概念。AAVM（packages/aavm/lib/*.at 自举 + a2r.at 发射对齐）目前无实用面，平时改 VM/编译器**不需要**测 aavm（守护=`cargo ta` 全量档 + fold 前裸 `taa`；PLAN-763 删除未维护的 vm-files-ci.yml）。
-
-**双重解释器路径裁定（2026-09-06 用户，Plan 574 落地）**：avm+aavm / avm+aa2r 进程内双重解释路径（宿主 VM `run_with_capture` 拼 470KB lib 形态）**非真实需求**（2×2 对称性产物）；其进程内执行栈需求随 lib 规模增长，已越过 `run_autovm_capture` 硬编码 4MB 执行线程栈（探针定量 4MB 爆/5MB 过，RUST_MIN_STACK 护栏被显式 stack_size 绕过），与用例规模无关。12 个该路径语料测试已 `#[cfg_attr(windows, ignore)]`（Linux/CI 保留全量）。**新计划/新能力验收避免该路径重型化**——重型对拍一律走转译+编译+运行形态（⑤腿 compile corpus / at_mode / gen2 管道）；规约注记见 `docs/specs/aavm/project.md` 验证矩阵节，对账表 `docs/reports/p574-coverage-map.md`。
-
-**触发条件（只有这些路径的改动才跑 `taa`）**：`packages/aavm/lib/*.at`、`test/vm/aavm2/**`、`test/parity/**`、`crates/auto-lang/src/tests/aavm2_*.rs` / `aavm_runner_tests.rs`、`lib.rs` 的 `aavm2_lib_source`/`AUTO_LIB_FILES*`。其余改动零触发。
-
-**作用域映射（改什么 → 跑哪个闸门；耗时为 2026-09-05 实测）**：
-
-| 改动位置 | 跑什么 | 耗时 |
-|---|---|---|
-| `corpus_m1/**` | `cargo taa aavm2_m1` | 31s |
-| `corpus_m2/**` | `cargo taa aavm2_m2` | 172s |
-| `corpus_m3/**` | `cargo taa aavm2_m3` | 47s |
-| `corpus_m4/**` | `cargo taa aavm2_m4` | ~315s |
-| `corpus_use/**` | `cargo taa aavm2_m4 aavm2_m5` | ~127s |
-| `corpus_a2r/**` | `cargo taa aavm2_a2r` | ~185s |
-| `packages/aavm/lib/engine.at`（终段执行器） | `cargo taa aavm2_m5` | ~350s |
-| `packages/aavm/lib/a2r.at`（终段发射器） | `cargo taa aavm2_a2r aavm_at_mode` | ~260s |
-| `packages/aavm/lib/{token,lexer,parser,typeinfo,codegen}.at`（上游共享） | 全管线级联，直接裸 `cargo taa` | ~10min 量级 |
-
-最终审查通过后、fold 前，无论改了什么 aavm 文件，一律裸 `cargo taa` 全量兜底；修复迭代仅跑作用域内定向检查。闸门粒度=测试目录级（单语料文件由所属闸门整体覆盖）。compile 腿（`compile_corpus`/`compile_use_corpus`）现场 cargo build 产物按内容 hash 缓存，二次运行秒级。
-
-**全档资源表**（测试数/耗时/内存；"待实测"由 Plan 568 T7 回填）：
-
-| 档位 | 适用场景 | 测试数 | 实测耗时 | 内存 |
-|---|---|---|---|---|
-| `cargo t` | 日常快速回归 + **per-plan 合入门禁（最终审查通过后）**（1M churn + 语料族 + 画廊围栏 + ui_gen 排除，PLAN-700/fix-tiering 系） | 4976（2026-10-02 实测选择面；含 PLAN-726 闸门单测 5） | **54.1s**（PLAN-726 merge 实测 2026-10-02，轻度竞争；e4 红已清偿[PLAN-724 T-02]——62s 旧值含其 30s 长尾；余量含预存红族红时长：plan606 10.2s/schema_fence 10.5s/plan707 flake 5.1s，14 预存红族见 §1 非目标/批量回执） | 轻池 <50MB/测 |
-| `cargo tf` | **批量回归档**（`/auto-plan:regress` 触发，主检出单实例；含 1M churn + 语料族 + 画廊围栏，PLAN-700；fix-test-tiering 2026-09-30 起**非 per-plan 门禁**） | 5689（2026-09-24 实测） | 77.2s（Plan 564）+语料段 ~4s（tv 同源实测）；画廊围栏冷态 ~800s 另计（每进程全量重编，无跨进程缓存）；围栏与 1M churn 自 PLAN-726 带机器级单实例闸门（并发第二实例秒级红，见 §2 并行纪律） | ≤2GB 预算 |
-| `cargo tv` | 改 VM/编译器后定向语料回归——filter 档（profile tv）与 t/tf 同二进制零重编（**不含 aavm**；PLAN-700） | 162 | 3.95s（2026-09-24 实测） | 同日常档 |
-| `cargo tt` | 改 transpiler 后 | 3786（trans 增量 ~360） | 43s（冷编译另计 ~1min） | 轻池 |
-| `cargo tb` | 改 book/文档后 | 3494（book 增量 69，单测 <0.4s——旧"5-7s/测"注释已过时） | 24s | 轻池 |
-| `cargo tu`（语言仓已删，owner=auto-ui 仓 `tu`；PLAN-867 T-05/D-2：语言侧别名 0 选择实测后删除；语言仓 tf --batch 的 ui-tu 腿覆盖） | 改 UI 代码生成后（`ui_gen/**`：vue/jet/ark/rust 四生成器） | 863（auto-ui 仓实测，0 ignored；2026-10-28 PLAN-867 冻结组合实测） | **测试段 0.85s**（单进程 libtest 实测 2026-09-30；warm 全档含 nextest→libtest 零重编切换 ~29s 内）；a2vue desktop 金样预存红已清（2026-10-11 fix-a2vue-desktop-golden 再基线：09-22 pin 同步 e85143621 带入深/浅主题菜单项后金样漏再生——4f123a50e 四红末枚）；bp root_resolution env 竞争已清（2026-10-11 fix-bp-root-env-lock：BLUEPRINTS_ROOT_TEST_SERIALIZER 全触点串行+poison 接管+panic 恢复回归，镜像 F-759-R2；reader=scan_tests×4+plan640/643/649/657 同锁；附带修 plan643 t01/t02 共享 pid scratch 互删 os error 32——裸单进程预存 flake，标准档不可见） | 轻池（无重内存/无全局态；tu 档内**禁止 env set_var 类进程级全局测试**——plan646 改 builder 前车之鉴） |
-| `cargo taa` | **仅** aavm 改动后（触发条件/作用域见上） | 3600（其中 aavm 21，XL 9 个 78-303s/个） | 182s（-j6 实测；564 组限流合入后 XL 串行将更长）。P574 后 Windows 本地：双重解释器 12 测试 cfg_attr 跳过（607 skipped），~24s，唯一余红=charts_gallery 预存 | XL 单测 0.8-1.2GB；并发受 jobs 限制 |
-| `cargo ta` | 终极全量（VM+aavm+trans+book+1M churn） | 4023 | 407s（-j6 实测） | 同上 |
-| `cargo th` | 改 HTTP 服务后（真 TCP，串行） | 20 | ~50s（本机实测 ≥3 环境相关红，归因见 plan 568 T7；fix-test-tiering 2026-09-30 后 back_proxy 固定端口族（39xx/40xx 撞 Hyper-V 保留段 WSAEACCES）已改 OS 临时分配清零，plan707 帧时序断言并行负载下偶发 flake 在案=4f123a50e） | 轻（真 TCP 端口） |
 #### AutoGraphics (experimental/) Test Tiering (2026-10-28 user ruling)
 
 - **每个计划只测自己的修改涉及到的用例（per-plan affected cases only）**：`experimental/autographics-*`
@@ -178,21 +134,6 @@ All AI coding assistants working in this repository must strictly adhere to the 
 - Tiers: XL ≥800MB, LG 300-800MB, MD 100-300MB. nextest `[test-groups]` in `.config/nextest.toml` + `nextest-full.toml` + `nextest-t3.toml` enforce xl/lg/md = 1/1/2 threads. Since Plan 568's feature split, aavm heavy tests run under `taa`/`ta` (full config) and `t3` — the daily tier never includes them (structural exclusion via `test-aavm` feature); groups in the daily config remain as a guard for ad-hoc `cargo nextest run --features test-aavm` without `--config-file`.
 - XL/LG tests carry an in-body `heavy_gate` guard (`crates/auto-lang/src/tests/heavy_gate.rs`): under bare `cargo test` (no `NEXTEST` env) they SKIP instantly — the 2026-09-05 incident (bare run, 12 threads, 9.78GB peak) cannot recur. SKIP guidance is visible with `--nocapture`; force-run with `AUTO_LANG_HEAVY_MEM=1`.
 - Registering a new heavy test (3 steps): measure → classify in the weights file → add to nextest overrides (all three configs) + wire `heavy_gate` at the test's first line.
-
-#### Cargo Test Aliases Reference (from `.cargo/config.toml`)
-- `cargo t`  - Fast daily tests (~3200 unit tests via nextest in parallel; 1M churn + corpus tiers + gallery fence excluded, Plan 466/PLAN-700/fix-test-tiering)
-- `cargo tf` - Full-scale daily tests (all tests incl. 1M churn + corpus tiers) — batch regression tier: `/auto-plan:regress` on the main checkout, single instance, NOT a per-plan review gate (Plan 466 semantics; fix-test-tiering 2026-09-30)
-- `cargo tv` - 语料筛选档（nextest `--profile tv` 筛语料三族，与 t/tf 同二进制零重编，PLAN-700）——纯 .at 语料 golden，**不含 aavm**（aavm 在 `taa` 档）
-- `cargo tt` - Transpiler tests (`--features test-trans`)
-- `cargo tb` - Book listing tests (`--features test-book`)
-- `cargo tu` - (language repo alias removed PLAN-867 T-05: it selected 0 tests since ui_gen moved to auto-ui-compiler; owner = auto-ui repo `cargo tu`, covered in the language tf --batch by the ui-tu leg)
-- `cargo taa` - AAVM/AA2R self-hosting tier (`--features test-aavm`, PLAN-700 起独立空 feature)——**仅 aavm 改动后使用**，裸跑=全集兜底、追加滤串缩小作用域（如 `cargo taa aavm2_m5`）；触发条件/作用域映射/资源表见 §AAVM/AA2R Test Tier
-- `cargo ta` - All test suites combined (`--features test-aavm,test-trans,test-book`; full scale)
-- `cargo t3` - Milestone tier (大版本升级专用,Plan 532;频率最稀少档):全量
-  (ta 语义含 1M churn)+ 嵌套塔解释栈零漂移最终验收。塔测试体内
-  `T3_MILESTONE` env 自守门(未设秒退,防裸 cargo test / tf / ta 误触发
-  小时级运行),完整里程碑形态:`T3_MILESTONE=1 cargo t3`
-
 
 ---
 

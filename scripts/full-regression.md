@@ -1,22 +1,19 @@
-# Cross-workspace full regression (PLAN-850, three-repository batch since PLAN-867)
+# 模块周期回归（PLAN-888）
 
-Run `cargo tf --batch` on the main language checkout, alone. This runs language
-full, UI full, language tt and language tb in that order — and since PLAN-867
-the three-repository batch continues with the Man legs (man-t, man-tcore,
-man-tc, man-ti, with the same te-child/auto-ui-tool bootstrap as
-`scripts/cross-repo-tiers.py`) and the UI sub-tier legs (ui-tu single-process
-libtest, ui-ti integration, ui-tn enumerated-but-manual). A failed child stops
-the queue and leaves a failed receipt. `cargo tf` selects the two full owners;
-`cargo taa`, `cargo ta` and `cargo t3` preserve their original language features
-and full/milestone configuration. Explicit substring filters select a scoped
-run; its receipt cannot certify full coverage. Existing `--no-fail-fast` callers
-remain supported. Other nextest flags must be passed through a future explicitly
-reviewed interface rather than silently changing a formal gate. PLAN-867 adds
-one such interface: `--frozen-trees`, which permits an unfiltered batch against
-a clean frozen three-repository worktree group (all three trees must have no
-code/configuration WIP; HEADs and lock hashes are receipt-bound either way).
-ui-tn never runs inside the batch unless `AUTO_UI_TN_RUN=1` — it stays a manual
-native gate recorded as pending, never as passed.
+计划合入门使用 cargo tm 的受影响完整模块及消费者/集成并集，不叠跑旧t/tv/tt。
+周期触发条件和主检出单实例纪律保留，cargo tf --batch 消费显式periodic-module-schedule.json
+清单，输出真实叶选择并只执行一次语言模块并集；UI/Man仍走原owner队列。
+旧language/tt/tb列表只核历史守恒，不再逐档重复执行。tf/taa/ta/t3非batch为显式旧身份兼容导航，
+滤串选完整叶。无参数cargo tm不会隐式运行全部；新模块用法见[test-governance/README.md](test-governance/README.md)。
+
+work/review只做相关反例/模块与必要发现，不因提交运行周期全集。最终代码审查通过后由merge
+执行冻结模块门；本次迁移横切影响必须真实证明义务守恒与执行。超60秒可拆叶继续拆，
+不可拆的原采样/规模/生命周期逐ID列慢模块，原条件和限制保留。单实例、根目录/依赖身份、
+故障停止、原报告保护/恢复、原UI/Man手工条件均继续生效。
+
+## 850/867历史基线与owner协议（非当前语言执行顺序）
+
+以下保留冻结身份、退役/迁移通道及历史来源；其中language/tt/tb执行顺序已由上面的模块并集替代。
 
 The 850 semantics are unchanged: zero-selection legs fail the gate; every leg's
 selection count is asserted against the frozen floors in

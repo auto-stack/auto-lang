@@ -1,35 +1,10 @@
-# Plan 289: Cargo aliases for faster test workflows
-# Usage:
-#   cargo t          - fast daily tests (no heavy test groups; 1M churn test
-#                      excluded via .config/nextest.toml default-filter, Plan 466)
-#   cargo tf         - full-scale daily tests (all tests incl. 1M churn, via
-#                      .config/nextest-full.toml) — batch regression tier:
-#                      /auto-plan:regress on the main checkout, single
-#                      instance; NOT a per-plan review gate (Plan 466
-#                      semantics; fix-test-tiering 2026-09-30)
-#   cargo tv         - corpus filter tier (pure .at corpus goldens via nextest
-#                      profile tv default-filter; SAME binary as t/tf - zero
-#                      recompile, PLAN-700;
-#                      NO aavm since Plan 568 - aavm moved to its own taa tier)
-#   cargo tt         - transpiler tests
-#   cargo tb         - book listing tests (fast now: <0.4s each, Plan 568 measure)
-#   cargo tu         - (removed PLAN-867 T-05) ui_gen tier owner = auto-ui repo
-#                      `cargo tu`; language-side alias selected 0 tests since
-#                      PLAN-814 moved ui_gen out — dead green channel deleted
-#   cargo taa        - AAVM/AA2R self-hosting tier (packages/aavm/lib + aavm2 + a2r).
-#                      Run ONLY when aavm code changed - trigger conditions &
-#                      scope map in AGENTS.md. Bare = full set; append a filter
-#                      to scope down (e.g. cargo taa aavm2_m5)
-#   cargo ta         - all tests (VM + aavm + trans + book; full scale)
-#   cargo th         - HTTP e2e tests (real TCP servers; serial only)
-#   cargo t3         - milestone tier (大版本升级专用,Plan 532):全量 + 嵌套塔
-#                      最终验收。塔测试体 env 自守门:须 T3_MILESTONE=1 前缀
-#                      (裸 cargo test / tf / ta 均不会误触发小时级运行)
-#
-# Requires: cargo install cargo-nextest
-
-# Note: Examples and integration tests are disabled by default (build-examples feature).
-# Only lib + lib test are compiled, so no memory pressure from parallel linkers.
+# PLAN-888: use cargo tm <module-id> [module-id ...] or --changes <paths-file>.
+# Leaves are disjoint. Execution includes complete affected leaves and consumer
+# closure, with no implicit all-tests command. Use cargo tm --list to inspect.
+# t/tv/tt/tb/th are explicit legacy navigation until 2026-11-30; their filters
+# select whole modules, not individual bodies. tf/taa/ta/t3 retain periodic /
+# milestone scheduling and owner references through the module-aware driver.
+# UI tu belongs to auto-ui; there is no language-side tu alias.
 
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld.exe"
@@ -54,67 +29,15 @@ jobs = 12
 # Windows: C:\Python314\python.exe | Linux: /usr/bin/python3
 
 [alias]
-# PLAN-888: explicit disjoint module IDs; no implicit all-tests default.
 tm = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tm"
-# Plan 481 merge 注:三件套集成测试(schema_drift/docs_gen/component_registry,
-# 合计 <1s)纳入日常与全量档——cargo tf 只跑 --lib 的盲区已连续让 473/482/
-# 481 三次把 schema 红合入 master(围栏快速失败逐层遮蔽,review 手跑才发现)。
-# Plan 507 T9:日常档携带 --features ui-iced——desktop_protocol 套件(queue 臂
-# 金样/覆盖/降级)进日常,nextest 单调用无法混 feature 集,故整档带上(实测
-# 4304/4304 绿,45.9s;500 复审实证的 tf ui-iced 盲区由此收口)。覆盖率数字:
-# cargo nextest run -p auto-lang --test schema_drift queue_coverage --success-output immediate
-# (2026-09-22 注:ui-iced 已入 auto-lang default feature——本行显式 flag 冗余
-# 但保留作文档;全部档位见 tf 注的新裁定。)
-# PLAN-814: 迁包选择面机制——别名扩多 -p（包前缀 feature：裸 --features 在
-# 多 -p 下要求所选包都有该 feature，会红；前缀式已实证可单调用混选）。
-# auto-lang-core 的迁移族（首例 use_scanner::tests 27 测）由此保持日常档选中。
-# PLAN-814 T-04：ui/ 运行族（iced ~2000 测）随迁 auto-ui-runtime——别名同步
-# 扩包防静默丢面（九档完整映射文档=T-07；feature 经 auto-lang 默认转发统一）。
-t = "nextest run -p auto-lang -p auto-lang-core --lib --test schema_drift --test docs_gen --test component_registry_test --features auto-lang/ui-iced,auto-lang/test-cases"
-# Plan 466: full 档 = 全部测试含 1M 大档 churn(批量回归专用——fix-test-tiering
-# 2026-09-30 起不再作 per-plan review 门禁,由 auto-plan-regress 技能主检出
-# 单实例触发;复审门禁=裸 cargo t + 触面档,见 AGENTS.md Category B)
-# (2026-09-22 用户裁定:全档统一 feature 集——ui-iced 入 auto-lang default,
-# tf/tv/tt/tb/taa/ta/t3 与裸 cargo check/test 经 cargo 默认机制天然同源,
-# 档间切换零整库冷重编。Plan 507"tf 不带 ui-iced 复审档语义不动"保守残留
-# 作废,desktop_protocol 面进 tf;复审清单不再须另跑 ui-iced 补档。)
-# (Plan 531 注:tf 亦不含 test-trans(tt 档)——a2r/cookbook 文本金样 28 件曾
-# 因此脱离门禁烂了一年(444/514/523 三期累积);复审清单同样须另跑 cargo tt)
+t = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tm --legacy-tier t"
+tv = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tm --legacy-tier tv"
+tt = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tm --legacy-tier tt"
+tb = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tm --legacy-tier tb"
+th = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tm --legacy-tier th"
 tf = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- tf"
-# Plan 568: tv = 纯 .at 语料 golden 档(改 VM/编译器后的回归)。AAVM/AA2R
-# 自举测试已迁出(test-aavm feature)——"改 VM/编译器的回归"与"AAVM 展示"
-# 不是同一概念,aavm 无实用面,反射性 tv 不再触发三重解释/现场 cargo build
-# 重测试(实测 21 测 Σ≈1163s、单测峰值 0.8-1.2GB)。aavm 系守护=taa+ta（PLAN-763 删除旧 CI）。
-# PLAN-700: tv 降为纯 nextest filter 档(--profile tv,default-filter 筛
-# 语料三族,定义见 .config/nextest.toml [profile.tv]),与 t/tf 同一测试
-# 二进制——三档切换零重编。不用 -E 内联表达式:cargo 在 Windows 下对
-# alias 实参不做引号剥离,带空格的 filterset 传不进去(实测两形态皆败)。
-tv = "nextest run -p auto-lang --lib --profile tv --features test-cases"
-tt = "nextest run -p auto-lang -p auto-lang-core --lib --features auto-lang/test-trans,auto-lang/test-cases"
-tb = "nextest run -p auto-lang -p auto-lang-core --lib --features auto-lang/test-book"
-# PLAN-867 T-05/D-2：语言仓 `tu` 别名已删除。ui_gen 模块随 PLAN-814 T-03 迁
-# auto-ui-compiler 后，本别名实际选择 0 个测试（2026-10-28 实测
-# `cargo test -p auto-lang --lib --features auto-lang/ui-iced ui_gen:: -- --list`
-# = 0 tests）——"能跑但空"的档位是假绿通道。ui_gen 档 owner = auto-ui 仓
-# `cargo tu`（单进程 libtest 语义不变）；本仓三仓完整档经 `tf --batch` 的
-# ui-tu 腿覆盖（scripts/run-full-regression.py，PLAN-867）。
-# Plan 568: AAVM/AA2R 专属档(独立空 feature,PLAN-700 起不再 imply 语料档;
-# full 配置含 1M churn 与
-# 全部重测试,无 XL 排除——裸跑=aavm 全集兜底,附带日常面)。仅当改动触及
-# aavm 代码时使用(触发条件与作用域映射见 AGENTS.md);追加滤串缩小作用域
-# (同 cargo t <module> 习惯),如 cargo taa aavm2_m5 只跑 M5。刻意不带固定
-# 尾滤串:nextest 位置滤串是 OR 语义,固定串会废掉作用域缩小。
 taa = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- taa"
 ta = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- ta"
-# Plan 317 §11 Phase 11: HTTP e2e tests (real TCP servers; serial only).
-# nextest runs each test in its own process, which is ideal here — each test's
-# detached server thread is reaped on process exit, giving full isolation.
-th = "nextest run -p auto-lang --lib --features test-http-e2e http_e2e"
-# Plan 532: milestone tier——大版本升级最终验收(频率最稀少档)。全量
-# (ta 语义,含 1M churn)+ 嵌套塔解释栈零漂移验收。塔测试体内 env
-# 自守门(T3_MILESTONE=1 才真正运行,否则秒退),default/full 两档
-# filter 亦显式排除——三重防误触发。运行形态(大版本时人工执行):
-#   T3_MILESTONE=1 cargo t3
 t3 = "run --quiet --manifest-path scripts/full-regression-driver/Cargo.toml -- t3"
 
 # Plan 423 P5: VM 行为测试(015-notes 组件 build/dispatch 等)的 Rust 递归

@@ -162,11 +162,11 @@ if (-not $SkipMainGates) {
     Invoke-Step 'cargo check -p auto-lang' {
         Invoke-Captured 'cargo' @('check', '-p', 'auto-lang') $RepoRoot -TimeoutSec 2400 | Out-Null
     }
-    Invoke-Step 'cargo t (daily tier)' {
-        Invoke-Captured 'cargo' @('t') $RepoRoot -TimeoutSec 3600 | Out-Null
-    }
-    Invoke-Step 'cargo tv (corpus tier)' {
-        Invoke-Captured 'cargo' @('tv') $RepoRoot -TimeoutSec 1800 | Out-Null
+    Invoke-Step 'affected module union' {
+        . (Join-Path $RepoRoot 'scripts/test-governance/invoke-modules.ps1')
+        $changes=Join-Path $ReceiptsDir 'affected-paths.txt'
+        'experimental/ac-mir-native/' | Set-Content -LiteralPath $changes -Encoding utf8
+        Invoke-ScopedTestModules -Repo $RepoRoot -ChangesFile $changes -Output (Join-Path $ReceiptsDir 'modules')
     }
 }
 

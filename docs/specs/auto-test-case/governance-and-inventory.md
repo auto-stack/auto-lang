@@ -41,3 +41,7 @@
 入口形态×生命周期轴；首批义务全部强 oracle + 真实起点 + 执行状态；未覆盖格具名 owner/原因
 （B17-B19 pending 语义裁定、NA-4、D 生命周期扩展、UI/Man 域）。弱判差额不批改 golden、不复制
 裁判；oracle 永不追随旧 VM（B08/B11 差异行保留）。
+
+## PLAN-888 唯一叶与真实消费
+
+旧九档身份冻结到不相交叶模块，ACE十workspace/正式suite/Python控制纳入本仓目录；外仓owner保留引用。分片内容哈希、实际Cargo及runtime/helper消费者图、原source/oracle/条件/输入守恒共同校验。运行时再次核对选择和实际原子完成记录，聚合包装成功不能替代内部比较；条件不适用和原始失败不冒绿。计划门与周期清单、成本和慢模块遵循[模块选测](module-selection.md)，B/C试点依据[批量合同](batch-execution.md)。887历史收据与原M1分母保持。

@@ -143,14 +143,26 @@ class Controls(unittest.TestCase):
                                   "man-tc", "man-ti", "ui-tu", "ui-ti", "ui-tn"])
                 self.assertIn("manual native gate", receipt["results"][-1].get("skip", ""))
             self.assertEqual(receipt["results"][0]["run_exit"], child_code)
-            # bootstrap 2 + language/ui-full/tt/tb 4 + man 4 + ui-tu 1 + ui-ti 1 (ui-tn manual pending)
-            self.assertEqual(child.call_count, 1 if child_code else 12)
+            # bootstrap 2 + language module union/ui-full 2 + man 4 + ui-tu/ti 2.
+            # tt/tb are audited but executed only inside the deduplicated union.
+            self.assertEqual(child.call_count, 1 if child_code else 10)
             return receipt
 
     def test_first_child_failure_is_receipted_and_stops_queue(self):
         receipt = self.run_queue_control(7)
         self.assertEqual(len(receipt["results"]), 1)
         self.assertIn("tests failed", receipt["error"])
+
+    def test_module_queue_uses_one_explicit_schedule_and_keeps_scoped_compatibility(self):
+        lang=Path('language');out=Path('receipt')
+        batch=full.module_queue_command(lang,'tf',[],True,out,False)
+        self.assertIn('--schedule',batch)
+        self.assertNotIn('--legacy-tier',batch)
+        self.assertTrue(any(str(x).endswith('periodic-module-schedule.json') for x in batch))
+        scoped=full.module_queue_command(lang,'taa',['aavm2_m5'],False,out,True)
+        self.assertIn('--legacy-tier',scoped)
+        self.assertIn('aavm2_m5',scoped)
+        self.assertIn('--select-only',scoped)
 
     def test_all_four_children_success_is_green(self):
         self.run_queue_control(0)

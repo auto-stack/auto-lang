@@ -295,6 +295,10 @@ Report/stale axes bind worker SHA/version, protocol, recipe, core version, `mir-
 
 来源：[PLAN-863](../../plans/archive/863-av-console-host-import-and-print.md)。
 
+## PLAN-888 测试专用批量与模块执行
+
+原协议和父侧唯一裁判保持；新test-case-batch默认关闭，B逐项复用原编译/VM/准入并隔离状态，C只观察原D3 owned-record。进程先纳入Job再运行，准备至清理在原截止内，原guest/采样预算不变。详见[批量试点](batch-execution.md)。新模块runner消费唯一叶、原子身份和实际消费者闭包，原比较器为单源，见[模块选测](module-selection.md)。
+
 ## 2026-10-30 / PLAN-889：共享集合语义与原生资源消费
 
 决策：复用同一source/HIR/共享MIR与候选协议，显式collections profile进入原生Cell/容器原语；

@@ -203,7 +203,9 @@ function Run-Probe-Tests([string]$TestBin, [string]$Label, [string[]]$RequiredId
 function Run-Runner-Tests([string]$Filter, [string]$Label, [string[]]$RequiredIds = @()) {
     Write-Host "== $Label (main workspace, filter: $Filter)"
     Push-Location $repo
-    & cargo t $Filter 2>&1 | Tee-Object -Variable out | Write-Host
+    . (Join-Path $repo 'scripts/test-governance/invoke-modules.ps1')
+    Invoke-ScopedTestModules -Repo $repo -TestNames @($Filter) -Output (Join-Path $reportDir ($Label+'-modules')) -RequiredIds $RequiredIds
+    $out=@('Original identities checked in module execution receipt')
     $code = $LASTEXITCODE
     Pop-Location
     $out | Out-File (Join-Path $reportDir "$Label.log") -Encoding utf8
@@ -211,7 +213,7 @@ function Run-Runner-Tests([string]$Filter, [string]$Label, [string[]]$RequiredId
         Write-Host "FAILED: $Label (exit $code)"
         exit 1
     }
-    Assert-Selected ($out -join "`n") $Label $RequiredIds
+    # Required IDs were checked against the actual module receipt.
 }
 
 function Not-Wired([string]$Scope, [string]$Owner) {

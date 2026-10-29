@@ -166,6 +166,10 @@ AV bindings are `ok:av-host-console-source-863` only after real parent-side exec
 
 来源：[PLAN-863](../../plans/archive/863-av-console-host-import-and-print.md)。
 
+## PLAN-888 成组试点边界
+
+首批B保留原十个可用M1 AV标量绑定，另B08/B11以原绑定来源作独立AV消费，加原D3共15例；这不把B08/B11原其他路径diff标成绿。重复invocation、运行group和C的三个字段都不增加M1覆盖分母。原源码/期望与四路径差异/gap保持，单case可独立重放。C仅原D3 owned-record观察，不替代四路径或原单文件义务。见[批量试点](batch-execution.md)。
+
 
 ## PLAN-889：14个集合/变体native源码格
 

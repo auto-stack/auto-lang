@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
-"""PLAN-850/867: serial full regression across the language, UI and Man owners.
+"""PLAN-888 module-aware periodic queue with preserved external owners.
 
-cargo tf/taa/ta/t3 enter here. `--list-only` builds and validates selection;
-it never runs tests. `--batch` appends the existing language tt/tb gates and,
-since PLAN-867, the three-repository batch: man t/tcore/tc/ti legs plus the
-UI tu/ti/tn legs, in the fixed order language → ui-full → tt → tb → man-t →
-man-tcore → man-tc → man-ti → ui-tu → ui-ti → ui-tn. Unfiltered `--batch`
-runs default to the frozen main checkouts; `--frozen-trees` is the explicitly
-reviewed interface (PLAN-867 T-07/T-11) that permits a clean, frozen
-three-repository worktree group instead. ui-tn is a manual native gate: its
-selection is enumerated, its run stays pending unless AUTO_UI_TN_RUN=1.
+Language executes one complete leaf union. Existing language/tt/tb listings
+remain conservation audits, not repeated execution tiers. --batch uses the
+explicit recipe schedule; UI/Man retain their owner legs and manual conditions.
+Unfiltered periodic runs require frozen main checkouts, or the reviewed
+--frozen-trees batch interface. --list-only selects without executing bodies.
 """
 from __future__ import annotations
 
@@ -449,6 +445,18 @@ def child_env(lang, ui, man):
     return result
 
 
+def module_queue_command(lang,tier,filters,batch,output,list_only):
+    """One language module union; UI/Man retain their own owner runners."""
+    command=[sys.executable,str(lang/'scripts/test-governance/module_command.py')]
+    if batch:
+        command += ['--schedule',str(lang/'scripts/test-governance/periodic-module-schedule.json')]
+    else:
+        command += ['--legacy-tier',tier,*filters]
+    command += ['--out',str(output)]
+    if list_only:command.append('--select-only')
+    return command
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tier", choices=("tf", "taa", "ta", "t3"))
@@ -513,7 +521,24 @@ def main(argv=None):
                 if not selected:
                     record["skip"] = "explicit scope matches no tests in this owner"
                     continue
+                if label=='language':
+                    record['module_command']=module_queue_command(lang,args.tier,args.filters,args.batch,
+                        out/'language-modules',args.list_only)
+                    module_reports=out/'language-module-reports'
+                    module_reports.mkdir(exist_ok=True)
+                    with preserve_reports(lang,module_reports) if not args.list_only else contextlib.nullcontext():
+                        # The full driver owns the machine mutex. The nested
+                        # leaf runner does not acquire it or re-run old tiers.
+                        module_code=command(record['module_command'],lang,out/'language-module-run.log',args.timeout)
+                    record['module_exit']=module_code
+                    if module_code:
+                        record['run_exit']=module_code
+                        raise ValueError(f'language: module tests failed ({module_code}); stopping')
                 if not args.list_only:
+                    if label in ('language','tt','tb'):
+                        record['run_exit']=0
+                        record['execution']='one complete module union at language-modules; legacy list is conservation audit only'
+                        continue
                     report_dir = out / (label + "-reports")
                     report_dir.mkdir()
                     with preserve_reports(lang, report_dir):

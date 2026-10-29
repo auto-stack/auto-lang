@@ -1,5 +1,6 @@
 """Counterexamples for partition and complete-module selection boundaries."""
 import copy
+import os
 from pathlib import Path
 import sys
 import unittest
@@ -24,6 +25,68 @@ def catalog():
 
 
 class ModuleSelection(unittest.TestCase):
+    @unittest.skipUnless(os.name=='nt','PowerShell consumer is Windows-only')
+    def test_powershell_consumer_rejects_prose_missing_id_and_failed_body(self):
+        import json,subprocess,tempfile
+        root=Path(__file__).resolve().parents[2]
+        script='''param($Helper,$Data,$OutputRoot)
+$script:fixture=Get-Content -LiteralPath $Data -Raw
+function global:cargo {
+ param([Parameter(ValueFromRemainingArguments=$true)][string[]]$CargoArgs)
+ $index=[Array]::IndexOf($CargoArgs,'--out')
+ $directory=Join-Path $CargoArgs[$index+1] 'execution'
+ New-Item -ItemType Directory -Path $directory -Force | Out-Null
+ if($script:fixture -ne 'null'){Set-Content -LiteralPath (Join-Path $directory 'results.json') -Value $script:fixture}
+ $global:LASTEXITCODE=0
+ Write-Output 'required_original PASS (prose is not evidence)'
+}
+. $Helper
+try {Invoke-ScopedTestModules -Repo (Get-Location).Path -TestNames @('required_original') -Output $OutputRoot -RequiredIds @('required_original');exit 0}
+catch {Write-Output $_;exit 1}
+'''
+        valid={'scope':'module','complete':True,'gate_passed':True,'results':[
+            {'outcome':'PASS','exit':0,'applicable':['r|unittest|test_controls.Consumer.required_original']}]}
+        with tempfile.TemporaryDirectory() as directory:
+            base=Path(directory);path=base/'control.ps1';path.write_text(script)
+            for mutation in ('valid','missing-id','failed-body','missing-receipt','only-not-applicable'):
+                value=copy.deepcopy(valid)
+                if mutation=='missing-id':value['results'][0]['applicable']=['r|binary|other']
+                if mutation=='failed-body':value['results'][0]['exit']=1
+                if mutation=='only-not-applicable':value['results'][0]['outcome']='NOT_APPLICABLE'
+                if mutation=='missing-receipt':value=None
+                data=base/(mutation+'.json');data.write_text(json.dumps(value))
+                result=subprocess.run(['powershell','-NoProfile','-File',str(path),
+                    '-Helper',str(root/'scripts/test-governance/invoke-modules.ps1'),
+                    '-Data',str(data),'-OutputRoot',str(base/mutation)],capture_output=True,text=True,timeout=20)
+                with self.subTest(mutation=mutation):self.assertEqual(result.returncode==0,mutation=='valid',result.stdout+result.stderr)
+
+    def test_legacy_navigation_selects_whole_leaves_and_schedule_cannot_drop_recipe(self):
+        import tempfile
+        from module_command import legacy_seed_modules,schedule_seed_modules
+        from module_catalog import write
+        value=catalog();value['legacy_map']={'t':['lexer','parser'],'tv':['parser']}
+        for module in value['modules']:module['recipe']='r'
+        self.assertEqual(legacy_seed_modules(value,['t','tv']),['lexer','parser'])
+        seeds=legacy_seed_modules(value,['t'],['lex'])
+        self.assertEqual(seeds,['lexer'])
+        self.assertEqual(select(value,seeds)['modules'],['integration','lexer','parser'])
+        for tiers,filters in ((['t'],['missing']),(['unknown'],[]),(['t','t'],[])):
+            with self.assertRaises(ValueError):legacy_seed_modules(value,tiers,filters)
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'schedule.json'
+            write(path,{'schema':'test-periodic-module-schedule/1','recipes':['r']})
+            self.assertEqual(schedule_seed_modules(value,path),['integration','lexer','parser'])
+            value['recipes']['new-owner']={}
+            with self.assertRaises(ValueError):schedule_seed_modules(value,path)
+
+    def test_test_navigation_never_filters_the_selected_module_body(self):
+        from module_command import test_seed_modules
+        value=catalog()
+        self.assertEqual(test_seed_modules(value,['lex'],[]),['lexer'])
+        self.assertEqual(test_seed_modules(value,[],['lex|parse']),['lexer','parser'])
+        self.assertEqual(select(value,test_seed_modules(value,['lex'],[]))['modules'],['integration','lexer','parser'])
+        with self.assertRaises(ValueError):test_seed_modules(value,['absent'],[])
+
     def test_rust_helper_edges_ignore_doc_guest_literals_and_nested_comments(self):
         from impact_graph import rust_reference_code,rust_references
         source='''// vm_file_tests::pilot_aggregate_vm

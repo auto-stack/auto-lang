@@ -374,7 +374,7 @@ if ($Scope -eq 'acceptance') {
 }
 else {
     # --- closeout: merge-owned gate INVENTORY -------------------------
-    Add-Result 'M-01' 'PENDING' 'root bare cargo t on the frozen commit (merge window, single instance)'
+    Add-Result 'M-01' 'PENDING' 'affected complete module union on the frozen commit, including consumers/integration and required slow modules (merge-owned)'
     Add-Result 'M-02' 'PENDING' 'surface tiers per final diff (tv/tt as applicable; T-06 protocol changes trigger the 788-affected suite)'
     Add-Result 'M-03' 'PENDING' 'independent sema full suite on the frozen commit'
     Add-Result 'M-04' 'PENDING' 'tf batch regression due-check (docs/plans/.last-batch-regression.json; /auto-plan:regress on main checkout)'

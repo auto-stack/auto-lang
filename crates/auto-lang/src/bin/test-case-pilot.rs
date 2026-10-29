@@ -98,7 +98,15 @@ mod enabled {
                 return Err(format!("unknown or duplicate flag {}", pair[0]));
             }
         }
-        let mode = *flags.get("--mode").unwrap_or(&"independent");
+        // Promotion is limited to this fixed, proven pilot allowlist. A
+        // single-case invocation remains the original independent replay.
+        let mode = *flags
+            .get("--mode")
+            .unwrap_or(&if flags.contains_key("--case") {
+                "independent"
+            } else {
+                "group"
+            });
         if !["independent", "group", "combined"].contains(&mode) {
             return Err("mode must be independent, group or combined".into());
         }
@@ -125,7 +133,7 @@ mod enabled {
                 .map(|s| s.parse::<usize>().map_err(|e| e.to_string()))
                 .unwrap_or(Ok(default))
         };
-        let k = number("--group-size", 3)?;
+        let k = number("--group-size", 10)?;
         let repeats = number("--repeat", 1)?;
         let parallelism = number("--parallelism", 1)?;
         if !(1..=10).contains(&k) || !(1..=10).contains(&repeats) || !(1..=2).contains(&parallelism)
