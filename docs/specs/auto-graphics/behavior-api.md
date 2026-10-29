@@ -208,3 +208,28 @@ delivery `e0fce13810f9e1af28182950d62cfce8722aa30a` on auto-ui master (identical
 `experimental/**` tree, fully equal range-diff from reviewed `0e6e361`),
 independent final review pass; SDK pin `7b987ca8b12f2eec3c076a1bfbf3ff4663aa8467`
 and both Cargo.lock files unchanged.
+## Node animation3d/1
+
+`autographics.node_animation3d/1` is version110/profile21; CLI selection is
+`node-animation3d`. It extends the frozen triggers3d composition with the
+finite visual setter and a profile-local `ag_actions_snapshot() int`.
+Both operations cost1 from the unchanged32-credit budget. Old14 profile
+assembly bytes and old per-key getter prices remain unchanged.
+
+The snapshot packs six held bits and six unread pressed bits as
+`held + 64*pressed` (0..4095). Bits0..5 are Left,Right,Forward,Back,Jump,Restart.
+A successful read consumes all currently unread pressed bits and preserves
+held. It shares the exact consume-once state with `ag_action_pressed`:
+previously consumed bits are absent and later getters cannot replay them.
+app_start/fresh Run and neutral Step see neutral input; Pause follows the
+existing input-clearing route. There is no extra Host input wire, retained
+cross-tick snapshot or Host gameplay. Auto decodes the finite packet.
+
+`ag_visual_pose(kind,entity,clip,phase,looping,yaw)` uses static stable IDs or
+full object tokens, original clip ordinals, explicit phase seconds and
+visual-only yaw radians. Wire/identity, deterministic sampling, exact
+resource and lifecycle rules are specified in
+[Finite node animation and visual facing](node-animation-and-facing.md).
+Old behavior profiles reject an admitted animated payload instead of
+silently discarding its tracks. The profile does not combine2D sprite APIs
+with3D animation in one Run; the old sprite profile remains supported.

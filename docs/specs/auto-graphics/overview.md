@@ -72,3 +72,5 @@ Provenance: [PLAN-878](../../plans/archive/878-autographics-platform-boundary-an
 - [Finite textured model resources](textured-model-resources.md): auto-ui PLAN-005 delivers bounded opaque GLB/PNG closures, UV0 transforms/sampling, double-sided colour/shadow and portable scene6 with unchanged asset budgets; node associations remain available for006.
 
 - [Gallery textured models and UV (G10a)](gallery-textured-models.md): fixed PLAN-005 consumer, original Kenney closures and CC0 numerical UV fixture, visible public depth/hidden states, strict per-item source/license/SDK binding and genuine offline A→B; inventory11/19, G10b/G12/full Gallery pending (ag-examples PLAN-003).
+
+- [Finite node animation and visual facing](node-animation-and-facing.md): auto-ui PLAN-006:r2 adds original no-skin TRS clips and Auto-owned visual yaw on profile110/21, full-declaration admission, same-tick color/shadow/physics isolation, bounded owners and a portable bound scene. Input snapshot and visual setter each cost1 in the unchanged32-credit envelope; full games/G10b/Gallery/AG milestone remain pending.

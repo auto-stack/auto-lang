@@ -150,3 +150,7 @@ Provenance: [PLAN-849](../../plans/archive/849-autographics-swept-aabb-and-stop-
 PLAN-851 adds explicit behavior/5/profile11 bounded Auto move-and-slide, one typed cast/sweep/motion latest slot and portable Maze2D/Corridor3D. Original128nodes/two-contact cap/CPU/32credits/SDK/resource boundaries and old game/graphics denominator remain. [Bounded-motion profile](bounded-motion-profile.md) defines the current contract. Source remains autographics-dev; production I2/I3 and general character physics remain pending.
 
 Provenance: [PLAN-851](../../plans/archive/851-autographics-bounded-move-and-slide.md), [independent final review](../../plans/attachments/851/review-r4/review.md), [frozen merge receipt](../../plans/attachments/851/merge-r4/receipt.md). Source stays on autographics-dev; production I2/I3 remain pending.
+
+## auto-ui PLAN-006 finite animation update
+
+The experimental source now supplies [finite node animation and visual facing](node-animation-and-facing.md), profile110/21 with unchanged32-credit and resource limits. Auto owns action/phase/yaw; original no-skin clips, full-declaration admission and same-frame color/shadow are delivered in auto-ui. This does not complete the G3 games, Gallery/G10b, production I2/I3 or the full AG milestone.

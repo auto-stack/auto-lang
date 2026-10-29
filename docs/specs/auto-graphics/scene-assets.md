@@ -152,3 +152,26 @@ support, URI/extension admission, sampling normalization, closure keys,
 double-sided lighting/shadow, resource owners and retained006 node association.
 
 Provenance: [auto-ui PLAN-005 r3](../../../../auto-ui/docs/plans/archived/005-autographics-textured-models-and-uv.md), independent final R3 pass reviewed `74378791b353cd285168fa43fb7fe4b27cd208fe`; delivery `351919c76b4ef1d940fc7b8120254e321c41cba2` (fully equal rebase, unchanged experimental tree). Frozen SDK and both Cargo locks unchanged. Full AG milestone remains pending.
+
+## Explicit animated model closures
+
+The new `import-animated` action admits finite no-skin node TRS animation in
+the opaque textured or untextured GLB domain. Ordinary import keeps its
+previous static domain and refuses animations. The original root bytes,
+node/primitive association, image dependencies and source URI strings are
+unchanged. A schema6 model closure marks `node_animation:true` and hashes
+the same compact tuple as textured/1 with domain
+`autographics.node_animation3d/1`. Default false is omitted and retains the
+old `autographics.textured/1` identity exactly. The flag cannot downgrade an
+animated payload into a static profile, even with a recomputed closure ID.
+
+SaveAs and pending-save Verify retain/recheck original accepted GLB and PNG
+bytes and the complete edge metadata. Cold reopen reconstructs all declared
+clips from the same immutable closure; a bound Auto script is content
+addressed and relocatable with the project. Raw/current/history/dependency
+and decoded union accounting, no-overwrite installation and entry-last
+transaction rules are inherited. Animation payload and conservative pose
+reservation stay inside the existing64MiB CPU total. See
+[Finite node animation and visual facing](node-animation-and-facing.md)
+for support, limits and publication rules; this does not add skin/morph,
+animation blending, a new collision domain or a complete game.
