@@ -185,7 +185,8 @@ cargo / rustc / sccache（`--show-stats`）/ `cargo nextest`（list 与 run）/ 
 - **回归门禁归属**：AGENTS Category A（未改 crates/ 下 Rust 源码——diff 仅 scripts/shell+docs/specs/ledger）→ 裸 cargo t/docs_gen 按规禁跑，终审双轮确认无 Cargo 门禁到期；批量回归到期判定=**未到期**（收据 .last-batch-regression.json last_covered_plan_id=880 @2026-10-28T18:55Z≈6.5h 前 <48h；873%5=3 非 %5==0；其后无 %5==0 合并与 L0 fix-* 合并）。
 - **落地产物观察（landing≠deployment 豁免核验）**：本计划零代码/零配置/零生成物变更——backend release 二进制、依赖仓 release、gen/front/vue/dist 均不受影响，无 stale 产物需要重建/重启。
 - **archived**：本文件 git mv 至 docs/plans/archive/，status: archived，current_step=8/8；KNOWN-DEBT THR-D1 行闭合改写（已测+已决：暂不拆，A1 跟进项独立签核）；language-sdk/plans.md 登记 873 行。
-- **cleaned**：见下方追记。
+- **cleaned**：四树 wt-guard 全 clean（auto-lang/auto-ui/auto-man/auto-down）后移除 worktree 与分支（lang plan-873-dev=54f4ae6e9 已合入；ui/man plan-873-dev=各自 master；另删 lang 侧 rebase 前备份分支）；证据保全=D:/autostack/plan-artifacts/plan-873/（measure-logs 155 文件 34M + measure-pins 双 pin）；.measure 专属 target/cache（~48G）回收；组目录 .wt/lang-873 已移除；plan-artifacts 下无其他 873 中间物（测量均在 .measure，无 .pdb/.exe 产物）。
+- **U873**：决策依据充分（协议/三仓基线/模型/触发条件/范围草案，终审独立复算+抽点复现）；THR-D1 闭合；两个未编号结构工作包的设计输入=build-cost-baseline.md §3.3 触发条件 + §4.3 范围草案（设计冻结前核 pin/inventory 差额，§4.1 适用版本门）。
 
 `stage: goal | plan_id: PLAN-873 | plan_revision: r3 | round: 4 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: 54f4ae6e9 | next: done`
 
