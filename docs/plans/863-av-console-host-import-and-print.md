@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-863
-status: drafting
+status: executing
 feature_name: AV类型化宿主导入与控制台输出（R2-E/print）
 author: [Codex]
 created_at: 2026-10-28
-updated_at: 2026-10-28
+updated_at: 2026-10-30
 plan_revision: 1
 
 # /auto-plan:review 结束时填写：
@@ -15,7 +15,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 
 affects: [auto-av, auto-mir, auto-ac, auto-test-case]
-current_step: 0
+current_step: 2
 total_steps: 8
 ---
 
@@ -64,7 +64,7 @@ total_steps: 8
 
 ## 4. 需求分析与背景调查
 
-用户 2026-10-28 授权同上（只规划）。事实基础：
+用户 2026-10-28 授权同上（只规划）；2026-10-30 `/goal 完成计划863` 授权本计划执行、独立复审、合同内有界修复、合入、Spec/ledger 沉淀、归档与 guard 清树，后续阶段继承授权。事实基础：
 
 - [auto-av/project](../specs/auto-av/project.md)：798 交付 Checked HIR→Typed MIR→ABC→私有 LoadedProgram→Rust AV；ABC 有 `MirImport{env,symbol}`，仅用于闭包单元链接（[resident-function-install](../specs/auto-av/resident-function-install.md)：`fn:<name>` 绑定/import 闭包门）。
 - `experimental/ac-av-probe/core/src/av.rs` 的 `CalleeRef::Import(_)` 在派发路径返回不可执行（注释：pending unit linkage / unresolved import = infra），`abc_verify.rs` 明确“no Call may target an import”。→ 宿主导入是**新类别**，不是现有字段的复用。
@@ -151,8 +151,8 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 
 | ID | owner_stage | 依赖 | 实际位置/操作与结果 | AC | 状态 |
 |---|---|---|---|---|---|
-| T-01 | work | D862 | 核实 ABC/MIR import 现状、AV 派发缝、test-case 观察轴能力；产出 `attachments/863/work/baseline.md` | AC-01/02 | [ ] |
-| T-02 | work | T-01 | 冻结合同（§5.2 全表）与版本三元组 | AC-01..05 | [ ] |
+| T-01 | work | D862 | 核实 ABC/MIR import、AV 派发、test-case 父侧路径；`attachments/863/work/baseline.md`，提交 b1d8b68b2 | AC-01/02 | [x] |
+| T-02 | work | T-01 | `attachments/863/work/host-console-contract.md` 冻结 §5.2 与三元组、预算、V-01..05 关闭条件；提交 b1d8b68b2；语义实现未执行 | AC-01..05 | [x] |
 | T-03 | work | T-02 | 源码前端 print/eprint + 诊断；V-01 | AC-01 | [ ] |
 | T-04 | work | T-03 | ABC host-import section + verifier + AV 派发 + provider；V-02/03/04 | AC-02/03/04 | [ ] |
 | T-05 | work | T-04 | 观察轴 + 语料/oracle/脚本；V-05，提交代码/证据 | AC-05 | [ ] |
@@ -163,6 +163,14 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 ## 9. 复审记录
 
 2026-10-28 new r1：`stage: new | plan_id: PLAN-863 | plan_revision: 1 | outcome: pass（等待 D862 实施前置，合同可预检） | next: D862 交付后 work T-01`。全部 AC/V/T 未执行；profile 号/符号名/能力名/上限值均为建议值，T-02 冻结。未建树、未跑构建、未改在途Plan。批次排序依据见[后继批次规划](reports/ace-next-batch-2026-10-28.md)。
+
+2026-10-30 work（T-01/T-02 完成，实施仍在执行）：`stage: work | plan_id: PLAN-863 | plan_revision: 1 | outcome: progress（非 work pass，不进入 execution_done） | worktree_path: D:/autostack/.wt/lang-863/auto-lang | branch: plan-863-dev | base_commit: eda05a86f2f6bd29d3b70479917360d64a908a66 | code_commit: b1d8b68b2（仅基线与合同文档） | dependency_revisions: D862 delivery 0e62d8c4c、D868 delivery 7754c4e4c，均已在 master 历史 | task_ids: T-01,T-02 | blockers: none | next_responsible_role: work T-03`。
+
+- 授权：用户 `/goal 完成计划863`，目标工具已有同名 active goal，沿用而未新建；全链授权见 §4。
+- 主检出仅有其它会话文档 WIP（design/plan/report），无代码 WIP；保持原样，禁止纳入 863 提交。
+- 唯一树已创建并核实 `git rev-parse --show-toplevel` 与 `git branch --show-current`；实现未写入主检出。
+- 静态核查：旧 import 无宿主派发；EntryUnit 不接纳 text，需新增独立源码/HIR 域；profile id 8 未分配；父侧真实实现为 `crates/auto-lang-core/src/test_cases/ac_av.rs`，共享比较器 `ac.rs::compare_stream_field`，流上限 1MiB。旧 `probe/src/hir_adapter.rs` 已删除，lowering 写面改用 `experimental/auto-mir-lower/src/hir_adapter.rs`。
+- T-02 采用 §10 默认项：stdout/stderr 同批、print/eprint 为新 profile 保留字；每调用 64KiB（含 LF）、整次运行双流合计 1MiB（含 LF），不超过父侧既有每流 1MiB 边界。完整合同在 worktree 的 `docs/plans/attachments/863/work/host-console-contract.md`，随 b1d8b68b2 可恢复。尚未执行语义测试；AC-01..08 均未宣称通过；T-03..08 未完成。
 
 ## 10. 待澄清事项
 
