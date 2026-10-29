@@ -55,6 +55,83 @@ pub const ERR_INVALID_SCALAR: i32 = -8;
 pub const ERR_RANGE_REVERSED: i32 = -9;
 pub const ERR_RANGE_OOB: i32 = -10;
 pub const ERR_INDEX_OOB: i32 = -11;
+pub const ERR_CANCELLED: i32 = -12;
+
+pub type AllocHook = unsafe extern "system" fn(usize) -> *mut core::ffi::c_void;
+pub type FreeHook = unsafe extern "system" fn(*mut core::ffi::c_void) -> i32;
+pub type PollHook = unsafe extern "system" fn(u64) -> i32;
+static mut ALLOC_HOOK: Option<AllocHook> = None;
+static mut FREE_HOOK: Option<FreeHook> = None;
+static mut POLL_HOOK: Option<PollHook> = None;
+
+/// Private host seam: install only before any buffer or retained ledger exists.
+/// Existing callers retain the original process-heap implementation by default.
+#[no_mangle]
+pub extern "system" fn ac_rt_install_allocator(
+    alloc: Option<AllocHook>,
+    free: Option<FreeHook>,
+    poll: Option<PollHook>,
+) -> i32 {
+    if alloc.is_none() != free.is_none() || c().live != 0 || led_state().1 != 0 {
+        return ERR_SHIM;
+    }
+    unsafe {
+        ALLOC_HOOK = alloc;
+        FREE_HOOK = free;
+        POLL_HOOK = poll;
+    }
+    0
+}
+unsafe fn memory_alloc(bytes: usize) -> *mut core::ffi::c_void {
+    match ALLOC_HOOK {
+        Some(f) => f(bytes),
+        None => HeapAlloc(process_heap(), 0, bytes),
+    }
+}
+unsafe fn memory_free(ptr: *mut core::ffi::c_void) -> i32 {
+    match FREE_HOOK {
+        Some(f) => f(ptr),
+        None => HeapFree(process_heap(), 0, ptr),
+    }
+}
+#[no_mangle]
+pub extern "system" fn ac_rt_metadata_bytes() -> usize {
+    led_state().1 * core::mem::size_of::<LedgerEntry>()
+}
+#[no_mangle]
+pub extern "system" fn ac_rt_release_idle_metadata() -> i32 {
+    let (base, _, len) = led_state();
+    if len != 0 || c().live != 0 {
+        return ERR_SHIM;
+    }
+    unsafe {
+        if !base.is_null() && memory_free(base.cast()) == 0 {
+            c().invalid_frees += 1;
+            return ERR_SHIM;
+        }
+        LEDGER = core::ptr::null_mut();
+        LED_CAP = 0;
+    }
+    0
+}
+/// Poll per bounded byte chunk; cancellation owns and rolls back the new buffer.
+unsafe fn copy_poll(dst: *mut u8, src: *const u8, len: usize) -> bool {
+    let mut start = 0;
+    while start < len {
+        let end = (start + 4096).min(len);
+        if let Some(poll) = POLL_HOOK {
+            if poll((end - start) as u64) != 0 {
+                owned_free(dst);
+                return false;
+            }
+        }
+        for i in start..end {
+            write_volatile(dst.add(i), read_volatile(src.add(i)));
+        }
+        start = end;
+    }
+    true
+}
 
 // ---------------------------------------------------------------------------
 // counters + fault injection state (single-threaded PE state)
@@ -166,7 +243,7 @@ fn ledger_insert(ptr: *mut u8, len: u32, id: u32) -> bool {
             if c0.fail_ledger_nth != 0 && c0.ledger_seq == c0.fail_ledger_nth {
                 return false; // injected metadata failure (first or growth)
             }
-            let fresh = HeapAlloc(process_heap(), 0, nbytes) as *mut LedgerEntry;
+            let fresh = memory_alloc(nbytes) as *mut LedgerEntry;
             if fresh.is_null() {
                 return false; // real metadata allocation failure
             }
@@ -174,7 +251,7 @@ fn ledger_insert(ptr: *mut u8, len: u32, id: u32) -> bool {
                 write_volatile(fresh.add(i) as *mut LedgerEntry, read_volatile(base.add(i)));
             }
             if !base.is_null() {
-                let freed = HeapFree(process_heap(), 0, base as *mut core::ffi::c_void);
+                let freed = memory_free(base as *mut core::ffi::c_void);
                 if freed == 0 {
                     // the old table release failed: surface through the
                     // invalid-release counter (wired; not injectable)
@@ -237,7 +314,7 @@ fn try_alloc(len: u32) -> Result<(*mut u8, u32), i32> {
     if c.fail_nth != 0 && c.seq == c.fail_nth {
         return Err(ERR_ENV_OOM);
     }
-    let p = unsafe { HeapAlloc(process_heap(), 0, len as usize) } as *mut u8;
+    let p = unsafe { memory_alloc(len as usize) } as *mut u8;
     if p.is_null() {
         return Err(ERR_ENV_OOM);
     }
@@ -246,7 +323,7 @@ fn try_alloc(len: u32) -> Result<(*mut u8, u32), i32> {
     if !ledger_insert(p, len, id) {
         // ledger failure: roll the user buffer back so accounting stays
         // complete; a refused rollback surfaces through invalid_frees
-        let freed = unsafe { HeapFree(process_heap(), 0, p as *mut core::ffi::c_void) };
+        let freed = unsafe { memory_free(p as *mut core::ffi::c_void) };
         if freed == 0 {
             c.invalid_frees += 1;
             trace_line(|l| {
@@ -284,7 +361,7 @@ fn owned_free(ptr: *mut u8) {
         });
         return;
     };
-    let ok = unsafe { HeapFree(process_heap(), 0, ptr as *mut core::ffi::c_void) };
+    let ok = unsafe { memory_free(ptr as *mut core::ffi::c_void) };
     if ok == 0 {
         // OS refused the release: the entry was already removed; the
         // accounting treats this as an invalid release attempt.
@@ -528,9 +605,10 @@ pub extern "system" fn ac_rt_own_clone(src: *const u8, len: i32, out_len: *mut i
             core::ptr::null_mut()
         }
         Ok((p, id)) => {
-            for i in 0..len as usize {
-                let byte = unsafe { read_volatile(src.add(i)) };
-                unsafe { write_volatile(p.add(i), byte) };
+            if !unsafe { copy_poll(p, src, len as usize) } {
+                rt_fail(ERR_CANCELLED);
+                unsafe { write_volatile(out_len, ERR_CANCELLED) };
+                return core::ptr::null_mut();
             }
             trace_line(|l| {
                 l.s("CLONE id=");
@@ -627,9 +705,10 @@ pub extern "system" fn ac_rt_own_from_lit(
             core::ptr::null_mut()
         }
         Ok((p, id)) => {
-            for i in 0..lit_len as usize {
-                let byte = unsafe { read_volatile(lit_ptr.add(i)) };
-                unsafe { write_volatile(p.add(i), byte) };
+            if !unsafe { copy_poll(p, lit_ptr, lit_len as usize) } {
+                rt_fail(ERR_CANCELLED);
+                unsafe { write_volatile(out_len, ERR_CANCELLED) };
+                return core::ptr::null_mut();
             }
             trace_line(|l| {
                 l.s("LIT id=");
