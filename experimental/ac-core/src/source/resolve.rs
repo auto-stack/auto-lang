@@ -2069,8 +2069,11 @@ struct ViewBinding {
 enum RecvClass {
     /// A value receiver (record instance / list / variant-free text).
     Value,
-    /// A bare record type name selecting a static method.
-    Static,
+    /// A bare record type name selecting a static method — carries the
+    /// OWNING record index (PLAN-881: two records declaring same-named
+    /// static methods must dispatch to their own owner, never the first
+    /// declaring record).
+    Static(usize),
     /// `List<T>.new()` — the interned list type.
     ListCtor(usize),
     /// `E.A` / `E.A(e)` — qualified variant construction.
@@ -4002,6 +4005,7 @@ impl<'a> FnResolver<'a> {
     fn method_call_out(
         &mut self,
         recv: Option<Box<ResolvedExpr>>,
+        static_rec: Option<usize>,
         name: &ast::Ident,
         mut rargs: Vec<ResolvedArg>,
         span: Span,
@@ -4047,14 +4051,16 @@ impl<'a> FnResolver<'a> {
             return self.instance_or_static(Some(rrecv), ri, name, rargs, span);
         }
         // static: no receiver expression was evaluated — the type name was
-        // consumed at classification time; recover it from the fn index of
-        // any record declaring `name` as static is ambiguous, so static
-        // calls carry the type via the classification path instead: this
-        // arm only fires for a `None` slot that was classified static.
-        // The classification stored nothing, so treat as unreachable-safe:
-        // look the method up across all records (single definition per
-        // name+static in well-formed modules; duplicates were reported).
-        for rec in self.records.iter() {
+        // consumed at classification time and the classification carries
+        // the OWNING record (PLAN-881: same-named statics on two records
+        // dispatch to their own owner; the old across-all-records scan
+        // cross-wired to the first declarer).
+        let recs: Vec<usize> = match static_rec {
+            Some(ri) => vec![ri],
+            None => (0..self.records.len()).collect(),
+        };
+        for ri in recs {
+            let rec = &self.records[ri];
             if let Some(m) = rec
                 .methods
                 .iter()
@@ -4747,7 +4753,7 @@ impl<'a> FnResolver<'a> {
                             if self.lookup(&id.name).is_none()
                                 && self.rec_index.contains_key(&id.name)
                             {
-                                RecvClass::Static
+                                RecvClass::Static(self.rec_index[&id.name])
                             } else if self.lookup(&id.name).is_none()
                                 && self.profile.is_collections()
                             {
@@ -5066,8 +5072,12 @@ impl<'a> FnResolver<'a> {
                         }
                     };
                     match recv_kind {
-                        RecvClass::Value | RecvClass::Static => {
-                            out[dest] = self.method_call_out(rrecv, &name, rargs, node_span);
+                        RecvClass::Value => {
+                            out[dest] = self.method_call_out(rrecv, None, &name, rargs, node_span);
+                        }
+                        RecvClass::Static(ri) => {
+                            out[dest] =
+                                self.method_call_out(rrecv, Some(ri), &name, rargs, node_span);
                         }
                         RecvClass::ListCtor(li) => {
                             // PLAN-864: `List<T>.new()` — no receiver value;

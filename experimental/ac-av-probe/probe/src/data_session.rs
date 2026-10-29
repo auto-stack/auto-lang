@@ -233,6 +233,11 @@ pub struct DataIncrementalSession {
     /// (unchanged) def through the real metering entry — the gate must
     /// redden. Consumed once.
     control_reverify_def: Option<String>,
+    /// PLAN-881 V-09: retained per-def param-mode facts (keyed by HIR def
+    /// id) — a single-def candidate document's BODY-LESS scaffolds cannot
+    /// express mut-record modes in their type section; the unit lowering
+    /// needs them to wrap sibling import signatures correctly.
+    sig_mode_overrides: BTreeMap<String, Vec<hir::ParamMode>>,
 }
 
 impl DataIncrementalSession {
@@ -288,6 +293,7 @@ impl DataIncrementalSession {
                 "environment slots {env_names:?} != source fn order {order_names:?}"
             ));
         }
+        let modes = sig_mode_overrides_of(&bundle);
         let mut sess = DataIncrementalSession {
             src: src.to_string(),
             entry: entry.to_string(),
@@ -305,6 +311,7 @@ impl DataIncrementalSession {
             cold_body_work: cold_work,
             control_disk_read: None,
             control_reverify_def: None,
+            sig_mode_overrides: modes,
         };
         for def in sess.fn_order.clone() {
             sess.install_cold_unit(&def)?;
@@ -357,11 +364,12 @@ impl DataIncrementalSession {
                 .ok_or_else(|| format!("body of `{def}` out of range"))?
                 .clone(),
         );
-        let mir = auto_mir_lower::lower_function_data_unit(
+        let mir = auto_mir_lower::lower_function_data_unit_with_modes(
             bundle,
             &hir_def,
             &self.caps,
             fnv1a64(src_for_hash.as_bytes()),
+            &self.sig_mode_overrides,
         )
         .map_err(|e| format!("lower {def}: {}", e.code()))?;
         verify_mir(&mir).map_err(|e| format!("verify {def}: {:?}", e))?;
@@ -1055,6 +1063,7 @@ impl DataIncrementalSession {
         self.code = new_code;
         self.revision += 1;
         self.snapshot = new_snap;
+        self.sig_mode_overrides = sig_mode_overrides_of(&self.bundle);
         for def in &affected {
             if self.code.contains_key(def) {
                 *self.counters.entry(format!("lower:{def}")).or_insert(0) += 1;
@@ -1478,6 +1487,32 @@ fn work_name_of_key(key: &str) -> String {
     } else {
         key.strip_prefix("d_").unwrap_or(key).to_string()
     }
+}
+
+/// PLAN-881 V-09: every def's param-mode facts off a bundle that carries
+/// bodies (the warmup/rebuild whole-module bundle).
+fn sig_mode_overrides_of(bundle: &hir::Bundle) -> BTreeMap<String, Vec<hir::ParamMode>> {
+    let mut out = BTreeMap::new();
+    let Some(m) = bundle.modules.first() else {
+        return out;
+    };
+    for d in &m.defs {
+        let body = match &d.kind {
+            hir::DefKind::Function { body, .. } | hir::DefKind::Method { body, .. } => *body,
+            _ => continue,
+        };
+        if let Some(b) = m.bodies.get(body.0 as usize) {
+            out.insert(
+                d.id_text.clone(),
+                b.locals
+                    .iter()
+                    .filter(|l| l.role == hir::LocalRole::Param)
+                    .map(|l| l.param_mode)
+                    .collect(),
+            );
+        }
+    }
+    out
 }
 
 fn outline_of(

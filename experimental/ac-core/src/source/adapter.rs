@@ -2250,7 +2250,19 @@ impl PlanCtx<'_> {
                 if let Some(c) = callee {
                     for (idx, a) in args.iter().enumerate() {
                         if let Some(pos) = param_position(idx, a, c) {
-                            bindings.push(((pos + recv_shift) as u32, (idx + recv_shift) as u32));
+                            // PLAN-881: POSITIONAL arguments index the
+                            // WRITTEN params (`param_position` returns the
+                            // source index) and need the receiver shift;
+                            // NAMED arguments look the receiver-INCLUSIVE
+                            // param-name table up (a view method's names
+                            // lead with `self`), so the shift is already
+                            // in the position — applying it twice bound
+                            // one-past-the-end params.
+                            let param = match &a.name {
+                                None => pos + recv_shift,
+                                Some(_) => pos,
+                            };
+                            bindings.push((param as u32, (idx + recv_shift) as u32));
                             moved.push(a.moved);
                         }
                     }

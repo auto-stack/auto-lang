@@ -79,6 +79,100 @@ fn mn_method_r08_differential() {
     assert_eq!((mn_v, av_v), (42, 42), "three legs agree on 42");
 }
 
+/// V-09 P-02 through mn: view receiver + explicit mut record param —
+/// the by-value t_MutRet write-back ABI compiles and runs natively.
+#[test]
+fn mn_method_p02_view_receiver_mut_param() {
+    if !tools_available() {
+        eprintln!("skip: link tools unavailable");
+        return;
+    }
+    let src = "type P { v int
+    fn mix(mut q P, d int) int { q.v = q.v + d; return .v * 10 + q.v }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    var p = P.mk(7)
+    var q = P.mk(2)
+    let r = p.mix(q.mut, 3)
+    if p.v != 7 { return 90 + p.v }
+    if q.v != 5 { return 80 + q.v }
+    return r
+}
+";
+    let r = run_mn(src, &[], "p02-mn");
+    assert!(r.ok, "mn failed: {:?}", r.error);
+    assert_eq!(r.exit_code, Some(75), "P-02 = 75 (stderr {:?})", String::from_utf8_lossy(&r.stderr));
+}
+
+/// V-09 P-05 through mn: TWO mut params — wb binds exactly a/b natively.
+#[test]
+fn mn_method_p05_two_muts_wb_exact() {
+    if !tools_available() {
+        eprintln!("skip: link tools unavailable");
+        return;
+    }
+    let src = "type P { v int
+    static fn mixed(ro P, mut a P, k int, mut b P) int {
+        a.v = a.v + k;
+        b.v = b.v + 2 * k;
+        return ro.v * 100 + a.v * 10 + b.v
+    }
+    static fn mk(n int) P { return P { v: n } }
+}
+fn main() int {
+    var ro = P.mk(1)
+    var a = P.mk(2)
+    var b = P.mk(3)
+    let r = P.mixed(ro, a.mut, 1, b.mut)
+    let diff = ro.v * 100 + a.v * 10 + b.v - r
+    if diff != 0 { return 60 }
+    if ro.v != 1 { return 70 + ro.v }
+    return r
+}
+";
+    let r = run_mn(src, &[], "p05-mn");
+    assert!(r.ok, "mn failed: {:?}", r.error);
+    assert_eq!(r.exit_code, Some(135), "P-05 = 135 (stderr {:?})", String::from_utf8_lossy(&r.stderr));
+}
+
+/// V-03 through mn: the 782 Token microprogram (methods + clone + moves).
+#[test]
+fn mn_method_token_microprogram() {
+    if !tools_available() {
+        eprintln!("skip: link tools unavailable");
+        return;
+    }
+    let src = r#"type Token {
+    text Str
+    kind int
+    line int
+    at int
+    len int
+    fn is_ident() bool { return .kind == 1 }
+    static fn ident(move text Str, line int, at int) Token {
+        let n int = text.len()
+        return Token { text: text.move, kind: 1, line: line, at: at, len: n }
+    }
+}
+fn weigh(move t Token) int { return t.len + t.line + t.at }
+fn main() int {
+    let s Str = "keyword"
+    let a Token = Token.ident(s.move, 3, 12)
+    if a.is_ident() == false { return 100 }
+    if a.len != 7 { return 101 }
+    var b Token = a.clone()
+    b.at = 40
+    if a.at != 12 { return 102 }
+    let w int = weigh(b.move)
+    return w + a.text.len()
+}
+"#;
+    let r = run_mn(src, &[], "tok-mn");
+    assert!(r.ok, "mn failed: {:?}", r.error);
+    assert_eq!(r.exit_code, Some(57), "Token = 57 (stderr {:?})", String::from_utf8_lossy(&r.stderr));
+}
+
 /// Owned-profile methods through mn: static construction with a moved
 /// `Str` + view receiver field read. Hand-audited: 'A中' = 4 UTF-8 bytes,
 /// 4 * 4 + 5 = 21.
