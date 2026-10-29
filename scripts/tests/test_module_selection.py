@@ -5,7 +5,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "test-governance"))
-from module_catalog import SCHEMA, select, validate, verify_selection
+from module_catalog import SCHEMA, discover, select, validate, verify_selection
 from build_modules import make_catalog, navigation
 from run_selected import exact_filter
 
@@ -44,6 +44,19 @@ class ModuleSelection(unittest.TestCase):
                          {"rust-suites": {"binary": {"status": "skipped"}}}):
             with self.assertRaises(ValueError):
                 make_catalog({"r": {}}, {"r": document})
+
+    def test_runtime_subset_may_filter_unselected_binary_but_not_empty_everything(self):
+        doc = {"rust-suites": {
+            "excluded": {"status": "skipped"},
+            "selected": {"status": "listed", "testcases": {"f": {
+                "ignored": False, "filter-match": {"status": "matches"}}}}}}
+        with self.assertRaises(ValueError):
+            discover(doc, "r")
+        self.assertEqual([r["id"] for r in discover(doc, "r", allow_filtered_skipped=True)],
+                         ["r|selected|f"])
+        with self.assertRaises(ValueError):
+            discover({"rust-suites": {"excluded": {"status": "skipped"}}}, "r",
+                     allow_filtered_skipped=True)
 
     def test_filter_uses_exact_operator_and_rejects_injection(self):
         self.assertEqual(exact_filter([{"binary": "a::b", "test": "tests::f"}]),
