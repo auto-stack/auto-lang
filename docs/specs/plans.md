@@ -13,3 +13,11 @@
 | 781 | reader-runtime-prerequisites | reviewed → archived | [781](../plans/archive/781-reader-runtime-prerequisites.md) | 原生验收通道/子内容锚点/HTTP 预算与取消（阶段 D/E：R01-R08 闭合、E01 根修、type_of/byte_len 原语、结构 pane 链解析） |
 | 761 | root-directory-cleanup | reviewed → archived | [761](../plans/archive/761-root-directory-cleanup.md) | 根 Git 树 53→30；测试统一 test、工具/部署统一 scripts；保留本机设置与历史验收资产 |
 | 763 | consolidate-root-packages | reviewed → archived | [763](../plans/archive/763-consolidate-root-packages.md) | 根 Git 树 30→24；五目录归并、八个未维护 Actions 删除，保留资产/命名空间/本地门禁 |
+
+
+### ag-examples PLAN-004 — G10 original node animation and facing
+
+Delivered content a27979788ca835f85e19b1778d9653e83573c3d6, independent final R2.
+Current contract: [Gallery textured models and node animation](auto-graphics/gallery-textured-models.md).
+Archive and cleanup receipts: [ag-examples PLAN-004](../../../ag-examples/docs/plans/archived/004-autographics-gallery-node-animation-and-facing.md).
+Both entries consume fixed006; inventory11/20; G12/full Gallery/full AG pending.

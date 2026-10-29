@@ -154,3 +154,12 @@ Provenance: [PLAN-851](../../plans/archive/851-autographics-bounded-move-and-sli
 ## auto-ui PLAN-006 finite animation update
 
 The experimental source now supplies [finite node animation and visual facing](node-animation-and-facing.md), profile110/21 with unchanged32-credit and resource limits. Auto owns action/phase/yaw; original no-skin clips, full-declaration admission and same-frame color/shadow are delivered in auto-ui. This does not complete the G3 games, Gallery/G10b, production I2/I3 or the full AG milestone.
+
+## ag-examples PLAN-004 delivered G10 animation content
+
+[Current G10 content contract](gallery-textured-models.md) now covers two entries,
+textures/UV and original four-clip node animation/facing, both fixed to the actual
+PLAN-006 engine delivery. Auto computes phase and camera-relative input/facing;
+strict source/license/runner readiness and one offline package apply. Inventory
+is11 logical items/20 entries. The former PLAN-003/005 one-entry proof remains
+historical; G12/full Gallery/full AG, games and production I2/I3 remain pending.
