@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-863
-status: executing
+status: execution_done
 feature_name: AV类型化宿主导入与控制台输出（R2-E/print）
 author: [Codex]
 created_at: 2026-10-28
@@ -8,14 +8,17 @@ updated_at: 2026-10-30
 plan_revision: 1
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
+supersedes_spec_components:
+  - docs/specs/auto-test-case/architecture.md
+  - docs/specs/auto-test-case/ace-m1-conformance.md
+  - docs/specs/auto-av/project.md
 new_spec_components:
   - docs/specs/auto-av/host-import-and-console.md
   - docs/specs/auto-ac/source-console-output.md
 touched_goals: [GOAL-002]
 
 affects: [auto-av, auto-mir, auto-ac, auto-test-case]
-current_step: 4
+current_step: 5
 total_steps: 8
 ---
 
@@ -59,7 +62,7 @@ total_steps: 8
 - 消费者：`experimental/ac-av-probe/probe/src/{hir_adapter,session,driver,formal_worker}.rs`、新 `console_host.rs`（拟建）。
 - T-04 实际消费者边界：共享 lowering 为 `experimental/auto-mir-lower/src/hir_adapter.rs`；whole-module console 宿主/持久化入口为 `probe/src/console_host.rs`，不启用旧 session import。`experimental/ac-mir-native/src/{fingerprint,lower}.rs` 仅补共享 enum 的受控拒绝臂（不增加 native console 支持）；shared lowering version=3，对应父侧 `crates/auto-lang-core/src/test_cases/{ac_av,ac_mn,ac_cte}.rs` 三处身份镜像同升。
 - 观察协议：`docs/specs/auto-test-case/architecture.md` 已规定父侧 stdout 读取带界与 stderr 排空/杀树；本Plan在此之上定义**断言轴**，不改既有 infra 行为。语料：`crates/auto-lang/test/cases/ace-m1/`。
-- 拟建脚本 `scripts/verify-av-863.ps1`（Scope=targeted/compat/console/acceptance），测试前缀 `av_console_863`；当前不存在、未运行。
+- 已实现并实跑 `scripts/verify-av-863.ps1`（Scope=targeted/compat/console/acceptance），测试前缀 `av_console_863`；最终证据与命令见 T-05 交接摘要。
 
 唯一实施树 `D:/autostack/.wt/lang-863/auto-lang`，分支 `plan-863-dev`。
 
@@ -156,7 +159,7 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 | T-02 | work | T-01 | `attachments/863/work/host-console-contract.md` 冻结 §5.2 与三元组、预算、V-01..05 关闭条件；提交 b1d8b68b2；语义实现未执行 | AC-01..05 | [x] |
 | T-03 | work | T-02 | 源码/HIR 新域、print/eprint 类型化声明/能力/诊断、借用文本、入口效果语句；b8f133cfa；8 新测 + 69 兼容定向测试通过。V-01 精确运行字节待 T-04 | AC-01 | [x] |
 | T-04 | work | T-03 | 563eec65e + 6583d21ad：独立 host table/HostCall/AVHC、准入、current grants、内存/燃料/深度/输出预算、取消/IO/重入拒绝、managed-store 新进程恢复；17 新测与 55 兼容/消费者定向检查通过，摘要 runtime-summary.md | AC-02/03/04 | [x] |
-| T-05 | work | T-04 | 观察轴 + 语料/oracle/脚本；V-05，提交代码/证据 | AC-05 | [ ] |
+| T-05 | work | T-04 | 84f1d2054：独立 console recipe/父侧双流字节+结果准入与判决/stale 轴，O01–O15 手算语料及 852 binding，四 scope 脚本均实跑；负控/NUL/资源前缀/SKIP，见 parent-summary.md | AC-05 | [x] |
 | T-06 | review | T-05 | 独立最终review；merge 门 pending | AC-06 | [ ] |
 | T-07 | merge | T-06 pass | 冻结提交裸 `cargo t` + `tv` | AC-07 | [ ] |
 | T-08 | merge | T-07 | Spec/ledger/归档/guard 清树 | AC-08 | [ ] |
@@ -195,6 +198,19 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 - AC-01（运行字节）与 AC-02..04 已有直接 work 证据；AC-05 尚未交付。未跑整档 t/tv/tf/docs_gen，未进入 final review/merge。
 
 2026-10-30 goal round 3 checkpoint：`stage: goal | plan_id: PLAN-863 | plan_revision: 1 | round: 3 | from: work | to: work | status: executing | outcome: pass（仅 T-04 runtime 检查点；非 work-complete） | worktree: D:/autostack/.wt/lang-863/auto-lang | commit: f5874901b79764b7ea93f8e82a23f573d346e4b6 | next: work T-05`。上一轮为 progress（源码/HIR 实现）；本轮为 progress（AV/portable/授权/预算/恢复实现及真实反控证据）。实施树 clean，无用户决策阻塞；继续新 recipe、父侧 stdout/stderr/exit 观察轴、语料与脚本。
+
+2026-10-30 work T-05 最终交接：`stage: work | plan_id: PLAN-863 | plan_revision: 1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-863/auto-lang | branch: plan-863-dev | base_commit: eda05a86f2f6bd29d3b70479917360d64a908a66 | code_commit: 84f1d20546bfc683b9abbbecf22e6006be3b9145 | task_ids: T-05（T-01..05 全部 work-complete） | blockers: none | next_responsible_role: final review T-06`。
+
+- AC-01..04：前序 frontend/runtime 摘要与本轮 8 源码 + 18 runtime 定向复跑；AC-05：真实父侧新 console **15/15 PASS**、旧 scalar/data **18/18 PASS**、旧 entry/Unit **12/12 PASS**；contract **25**、parent admission **2**、parent integration **5** 全通过。均 exit 0，不把跨命令重复语料累计成独立测试数。
+- 父侧独立断言 stdout/stderr 精确 bytes 与 exit/Unit/trap；必需双流+结果/错误 oracle，缺轴直接 admission ERROR，错任一轴 FAIL。required capture 字段、schema/lowering、canonical base64、present/nontruncated、双流合计 1MiB、互斥结果面均受检；resource/cancelled/infra 是 ERROR，保留真实 raw prefix。新 recipe 限 d_main/单 run/无 session/profile override；lower helper 入口绕过负控已补。
+- V-05 含真实 wrong-stdout/wrong-stderr/wrong-exit、missing-axis、actual SKIP、NUL 字节差异、超限前 prefix、report Fresh 与改 profile→Stale；worker 不接收 oracle/PASS。O01..O15 新 AV 列按实测置 `ok:av-host-console-source-863`；peer native/legacy/a2r 的新 profile parity 保留显式 gap，不新增 na，不改旧 oracle/分母，不宣称 M1 完整绿。
+- 可复现命令：预建 `cargo build --manifest-path experimental/ac-av-probe/Cargo.toml -p auto-av-probe --bin av_probe_worker`；`cargo build -p auto-lang --no-default-features --features test-cases --bin auto-case`；设 `AC_AV_CASE_WORKER=D:/autostack/.wt/lang-863/auto-lang/experimental/ac-av-probe/target/debug/av_probe_worker.exe` 后执行 `./scripts/verify-av-863.ps1 -Scope acceptance -OutDir docs/plans/attachments/863/work/final-acceptance`，targeted/compat/console/acceptance 均 PASS。暂存时清理新 case EOF 空行并统一新语料 LF 后，重跑 `-Scope console -OutDir docs/plans/attachments/863/work/final-acceptance/console`，15 PASS + 5 parent tests，exit 0；旧输入/实现未变，旧兼容证据复用。
+- 本轮根 `cargo check -p auto-test-case`、`cargo check -p auto-lang-core --features test-cases` 通过；修改 Rust 文件 rustfmt、最终 staged diff-check、提交钩子通过。根 core 149 / CLI 3 / UI compiler 39 及 probe 既有告警归 baseline；新增实现零新增告警。未混入全仓 warning/fmt 清理。
+- 根 path 依赖只读 sibling：auto-ui `2349d0ec99b3aa21c3f64975965bc105bf6e469c`、auto-down `c3464d0a0d36e4f8a7988b0c0c26448fc52361b4`，路径分别为 `D:/autostack/.wt/lang-863/auto-ui`、`.../auto-down`，均 clean detached、零实现改动，收尾 guard 清理。主检出其他文档 WIP、888 等在途树均未触碰。
+- 已提交摘要：`D:/autostack/.wt/lang-863/auto-lang/docs/plans/attachments/863/work/parent-summary.md`，SHA256 `be7707111a9466cd0e217521cd4bf517926dec3acb9517327c99551a6dfd8cf2`；候选 SD-01..05 全文 `proposed-spec-delta.md`，SHA256 `7ca3d8ea44b91be90125ad8785908eaf71fe28227516b2133610bbf3546d3787`。原始日志/报告仅本地忽略，不入库：同目录 `final-acceptance-summary.log` SHA256 `593fe36fec36ca28ae3b9d66e08d99e61fdbe73a87afe5f71081a4ff718bb8cd`；最终 LF 语料报告 `final-acceptance/console/console/report.json` SHA256 `3029507d10cec2be6d56f53455f42a79f3647b934996bf9ee7e4a1fa3298a7e3`；其他逐文件 hash 见摘要。
+- readiness：work-owned AC-01..05 完成；无已知 open in-contract finding、必需覆盖缺口或待决合同项。AC-06 独立最终代码/验收/Spec 审查待执行；merge-owned AC-07 裸 `cargo t` + `cargo tv` **pending**；AC-08 canonical Specs/ledger/归档/guard 清树 **pending**。本轮未执行 t/tv/tf/docs_gen，不宣称交付。
+
+2026-10-30 goal round 4：`stage: goal | plan_id: PLAN-863 | plan_revision: 1 | round: 4 | from: work | to: review | status: execution_done | outcome: pass（work 阶段） | worktree: D:/autostack/.wt/lang-863/auto-lang | commit: 84f1d20546bfc683b9abbbecf22e6006be3b9145 | next: final review T-06`。实施树 clean，所有授权 work 任务已提交；目标保持 active，待复审与合入交付。
 
 ## 10. 待澄清事项
 
