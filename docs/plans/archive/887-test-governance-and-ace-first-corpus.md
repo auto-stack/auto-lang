@@ -222,6 +222,40 @@ stage: work | plan_id: PLAN-887 | plan_revision: 2 | outcome: **pass → executi
 
 stage: goal | plan_id: PLAN-887 | plan_revision: r2 | round: 2 | from: work | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-887/auto-lang | commit: e47ffb2e3 | next: merge
 
+2026-10-29 / stage: merge / plan_id: PLAN-887 / plan_revision: 2 / receipt: **PLAN-887:r2** / outcome: **pass**
+
+| checkpoint | evidence |
+|---|---|
+| prepared | reviewed r2 @ e47ffb2e3（+簿记修正 a0ccfb812）；SD-01..04 冻结于复审；交付=文档后代 + tb floor 逐 ID 修正（2b3a63ac8）→ rebase 后 dd916c184 |
+| landed | 并集：master 自 69d90c52f 推进至 5af8e0cbe（871 交付 87dd2b6ad + ledger v135 等 11 提交）；rebase plan-887-dev onto 5af8e0cbe，architecture.md 冲突（871 SD-04 vs 887 SD-02 双方追加章节）保留双方解决；`git merge --ff-only plan-887-dev` → **master tip = dd916c184**（无 merge commit）；canonical 读回：governance-and-inventory.md 在位、architecture.md 含 871+887 两节、project/plans/ace-m1 更新在位 |
+| gates（merge-owned，绑定 dd916c184 + rebase 后并集） | 裸 `cargo t` **3204/3204**（381s）、`cargo tv` **163/163**、`cargo tt` **3575/3575**（497s）、显式 `plan887_test_governance` **12/12**、协议 `discovery_suite 4/4 + contract_decode 23/23 + contract_v2 20/20`；并集后重验（rebase 后 rebuild mn/av worker）：integration 12/12、协议 47/47、check_inventory conserved:true。**冻结三仓批次**（`python scripts/run-full-regression.py tf --batch --frozen-trees`，候选 runner，机器级单实例，8 轮）：language 3203/3203 全绿（每轮）、ui-full 3119/3119 全绿、tt 3575 于 batch8 全绿、tb floor 经逐 ID 对账修正（3095→3076：−16 869 退役 −3 窗口）后守恒；**环境归因（非回归，计划 §6 明示模式）**：plan705 two_parked / plan707 cancel-gap（KNOWN-DEBT 偶发时序族）、ace_m1_base×2 / mir_native_rounds / ffi_dual_018（并行池 120s 墙）——**逐条隔离复放全绿**（0.83s/2.0s/21s/27s/1.84s），未改任何原始退出码、无 golden/ignore 修改 |
+| ledger_refreshed | `.autoos/specs.json` **v135→v136**（commit d6403bb4c）。4 条：designs/P887-GOVERNANCE（file=docs/specs/auto-test-case/governance-and-inventory.md）、tests/P887-TESTS（file=crates/auto-lang/tests/plan887_test_governance.rs）、reviews/P887-REVIEW-FINAL、reports/P887-DEPOSIT（file=归档 Plan）；每条带 file+tags（PLAN-887/r2/delivery:auto-lang:dd916c184/reviewed:e47ffb2e3/guarded-offline-projection）。**通道=guarded offline projection**（store writer 不可达）：字节级备份 .bak-p887-merge(2388368B)、程序化 RMW、+66/−1 行（4 条+version）、读回六节 id/字段/file+tags 校验通过 |
+| archived | 本文件 @ docs/plans/archive/887-test-governance-and-ace-first-corpus.md，`status: archived`、10/10；索引 `python scripts/spec-index.py` 再生（62 projects，内容无变化）；spec-lint 唯一 ERROR=`design: 缺 project.md` 为预存 |
+| 交付限制 | 见文末（性能 AC-05 依 r2 修订以机制级负证据关闭；B17-B19 pending、ui-tn 手工、D 生命周期扩展具名保留） |
+| cleaned | 见文末 cleaned 收据 |
+
+**环境归因明细（8 轮批次）**：attempt1 ui-full 构建被杀（负载）→ 手动列出 3137 通过；attempt2/6 plan707 cancel-gap FAIL（隔离复放绿）；attempt3 plan705 two_parked FAIL（隔离绿）；attempt4 worker 族 120s 墙（ace_m1×2/mir_native_rounds，隔离绿）；attempt5 tb floor 3093<3095 → **逐 ID 修正 floor**；attempt7 tt 进程被杀 −1（内存压力）；attempt8 tt 全绿、tb ffi_dual_018 120s 墙（隔离绿 1.84s）。无代码回归；批次用于到期判定的收据证据齐。
+
+**交付限制与后继指针**：AC-05 依用户裁定（r2）以机制级负证据关闭（C1 store 复用不可达：worker session-less 强制 per-request 全新 store；C2 域外+协议不兼容）；B17-B19 pending 语义差异=language 语义裁定（非 887 债）；ui-tn 手工 pending/Windows 限制沿现行政策保留；D 组 hit/edit/restart 生命周期扩展不在首批（矩阵具名格）；tf 到期判定按 .last-batch-regression.json 规则由 /auto-plan:regress 主检出单实例执行（887 非 %5 且收据 <48h 不到期）。871 已于本 Plan merge 前落地（并集已重验）。
+
+## spec-sync 回写记录
+
+| SD | 落地文件 | 内容 |
+|---|---|---|
+| SD-01 (add) | `docs/specs/auto-test-case/governance-and-inventory.md` | 盘点闭包/子 case 身份/迁移退役通道/守恒校验/floor 派生/成本口径/已验证失效轴/覆盖矩阵 |
+| SD-02 (modify) | `docs/specs/auto-test-case/architecture.md` | 治理层边界与已验证失效轴（PLAN-887 节；与 871 SD-04 节共存）；套件自包含规则 |
+| SD-03 (modify) | `docs/specs/auto-test-case/ace-m1-conformance.md` | 首批消费与新增来源（30 复用+D wrapper 映射/哈希/行号/oracle，不冒称） |
+| SD-04 (modify) | `docs/specs/auto-test-case/project.md`；`docs/specs/auto-test-case/plans.md` | 治理交付/状态校正/剩余缺口；plans 索引 887 行 |
+
+### cleaned（2026-10-29）
+
+- **worktree**：`D:/autostack/.wt/lang-887/auto-lang` — wt-guard.sh 输出 clean → `git worktree remove`；分支 `plan-887-dev`（was dd916c184）`git branch -d` 删除；落地前提 `git log master..plan-887-dev` = 空（rebase 后全部在 master 线性链）。
+- **兄弟只读树**：auto-down(c3464d0a)/auto-ui(b00fd302a)/auto-man(e6cc06f) 各自 wt-guard clean 后经各自仓 `git worktree remove`；组目录 `D:/autostack/.wt/lang-887` 删除。
+- **构建中间产物**：`D:/autostack/plan-artifacts/plan-887/` 中 cargo target 树与 .pdb 删除（保留 .exe 与证据 json/log/收据）。
+- **易变报告**：cargo t/tt 重写 docs/reports/plan{796,818,827}/*.json 已 git checkout 还原（884 先例，未入库）。
+- **部署/产物**：本仓无后端 release 二进制与 web bundle；部署面=测试二进制与 consumer fixtures（已在交付提交重建复验）。生产侧 stale-artifact 观察：无（auto-lang 无运行 daemon/前端产物）。
+- **批量回归到期**：.last-batch-regression.json = last_covered 880；887 非 %5、收据年龄 <48h → 不到期，不留 /auto-plan:regress 交接。
+
 ## 10. 待澄清事项
 
 | ID | 事项 | 归属/关闭方式 |
