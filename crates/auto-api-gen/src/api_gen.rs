@@ -543,22 +543,27 @@ fn generate_vue_api(
 /// Plan musk-022 CRUD 智能扩展: transpile db.at to a db.rs module via a2r.
 /// Reuses the Tauri-backend precedent (tauri_backend::transpile_at_to_rust).
 pub fn transpile_db_to_rs(content: &str) -> AutoResult<String> {
-    transpile_back_module_to_rs_with_proofs("db", content).map(|(code, _)| code)
+    transpile_back_module_to_rs_with_proofs("db", content, None).map(|(code, _)| code)
 }
 
 /// PLAN-681 T-01: transpile a `src/back/*.at` module to Rust (companion
 /// modules like fsys.at share db.at's 16MB-stack transpile pipeline; the
 /// module name feeds the transpiler's module-id slot and error strings).
 pub fn transpile_back_module_to_rs(module_name: &str, content: &str) -> AutoResult<String> {
-    transpile_back_module_to_rs_with_proofs(module_name, content).map(|(code, _)| code)
+    transpile_back_module_to_rs_with_proofs(module_name, content, None).map(|(code, _)| code)
 }
 
 /// PLAN-738 T-11：back 模块转译携带引用闭包证明。生成服务的 back 产物经
 /// `qualify_a2r_std` 链接 `auto_lang::` 内嵌镜像——核心 producer 引用按
 /// Embedded 运行形态收集（原实现用 Standalone 默认并丢弃证明）。
+/// PLAN-885 G2：`source_dir` 传入 back 目录，使 register_import_signatures
+/// 能解析 `use works: …` 导入的函数签名/字段类型（此前只查 CWD，导入
+/// 函数 fn_ret_types 缺失 → `join_path(Env.get(..), ..)` 等 &str 形参
+/// 调用漏 .as_str() → E0308）。
 pub(crate) fn transpile_back_module_to_rs_with_proofs(
     module_name: &str,
     content: &str,
+    source_dir: Option<std::path::PathBuf>,
 ) -> AutoResult<(
     String,
     Vec<auto_lang_core::stdlib_assembly::reference::ReferenceProof>,
@@ -579,7 +584,7 @@ pub(crate) fn transpile_back_module_to_rs_with_proofs(
                 AutoStr::from(module.as_str()),
                 &content,
                 None,
-                None,
+                source_dir.clone(),
                 Some(auto_lang_core::stdlib_assembly::host::RustRuntime::Embedded),
                 true,
             )
@@ -766,6 +771,112 @@ pub fn post_process_companion_rs(code: String) -> String {
     code = code.replace("use crate::api::", "use crate::types::");
     code = strip_collection_new(&code);
     code
+}
+
+/// PLAN-885 G4: 伴生模块中与 api 同形同名的 struct 提升为公共 types 引用。
+/// `db.rs` 经 `use api: … Work, SaveResult` → `use crate::types::…` 使用公共
+/// 类型，而伴生模块（works/drafts）自行定义了同形 `Work`/`SaveResult` ——
+/// 生成后出现 `types::Work` vs `works::Work` 两个不同类型（E0308）。
+/// 字段完全一致时，把伴生模块的 struct 定义替换为 `pub use crate::types::X;`
+/// （类型统一为公共面，db 包装与伴生返回同一 Rust 类型）。
+fn promote_api_types_in_companion(code: &str, api_types: &[auto_lang_core::api::ApiType]) -> String {
+    use std::collections::HashSet;
+    // api 类型名 → 字段名（按顺序）映射。
+    let api_fields: HashSet<(&str, Vec<String>)> = api_types
+        .iter()
+        .map(|t| (t.name.as_str(), t.fields.iter().map(|f| f.name.clone()).collect()))
+        .collect();
+    if api_fields.is_empty() {
+        return code.to_string();
+    }
+    let mut out = String::with_capacity(code.len());
+    let mut rest = code;
+    loop {
+        // 找下一个 `pub struct NAME {` 块起点（含前一行的 derive 注解）。
+        let Some(marker_start) = rest.find("pub struct ") else {
+            out.push_str(rest);
+            break;
+        };
+        // 保留 marker 之前的文本。
+        out.push_str(&rest[..marker_start]);
+        let after_marker = &rest[marker_start + "pub struct ".len()..];
+        let Some(name_end) = after_marker.find(|c: char| c.is_whitespace() || c == '{') else {
+            out.push_str(&rest[marker_start..]);
+            break;
+        };
+        let type_name = &after_marker[..name_end];
+        let Some(open_idx) = after_marker.find('{') else {
+            out.push_str(&rest[marker_start..]);
+            break;
+        };
+        let block_start = marker_start;
+        let body_start = marker_start + "pub struct ".len() + open_idx + 1;
+        // 括号平衡扫描块尾。
+        let mut depth = 1usize;
+        let mut i = body_start;
+        while i < rest.len() {
+            match rest.as_bytes()[i] {
+                b'{' => depth += 1,
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        if depth != 0 {
+            out.push_str(&rest[block_start..]);
+            break;
+        }
+        let block_text = &rest[block_start..=i];
+        // 提取字段名（`    pub name: Ty,` 行）。
+        let fields: Vec<String> = block_text
+            .lines()
+            .filter_map(|l| {
+                let t = l.trim_start();
+                t.strip_prefix("pub ").and_then(|r| {
+                    r.find(':')
+                        .map(|c| r[..c].trim().to_string())
+                        .filter(|f| !f.is_empty())
+                })
+            })
+            .collect();
+        let matches_api = api_fields
+            .iter()
+            .any(|(name, api_fs)| *name == type_name && *api_fs == fields);
+        if matches_api {
+            // 整块（含其上方连续的属性/doc 注释行）替换为 pub use。
+            // 伴生模块对同名类型常带 `#[derive(...)]`/`/// …` 属性，pub use
+            // 不能承接 derive（E0774）——向上吞掉从块起点到上一个空行/非
+            // 属性行的所有连续 `#[…]`/`///` 行。注意 out 以 `\n` 结尾，
+            // rfind 需先跳过结尾换行。
+            loop {
+                let end = out.trim_end_matches('\n').len();
+                if end == 0 {
+                    break;
+                }
+                let Some(dl) = out[..end].rfind('\n') else {
+                    break;
+                };
+                let tail = &out[dl + 1..end];
+                let trimmed = tail.trim_start();
+                if trimmed.starts_with("#[") || trimmed.starts_with("///") {
+                    out.truncate(dl);
+                } else {
+                    break;
+                }
+            }
+            out.push_str(&format!("pub use crate::types::{};\n", type_name));
+        } else {
+            out.push_str(block_text);
+            out.push('\n');
+        }
+        rest = &rest[i + 1..];
+    }
+    out
 }
 
 pub fn post_process_db_rs(mut code: String) -> String {
@@ -1141,9 +1252,11 @@ fn generate_rust_server(
             ) else {
                 continue;
             };
-            match transpile_back_module_to_rs(&stem, &content) {
-                Ok(rs) => {
+            let back_dir = root_dir.join("src").join("back");
+            match transpile_back_module_to_rs_with_proofs(&stem, &content, Some(back_dir.clone())) {
+                Ok((rs, _)) => {
                     let rs = post_process_companion_rs(rs);
+                    let rs = promote_api_types_in_companion(&rs, &api_module.types);
                     if let Err(e) = std::fs::write(src_dir.join(format!("{}.rs", stem)), &rs) {
                         eprintln!("  ⚠ Failed to write {}.rs: {}", stem, e);
                         continue;
@@ -1284,9 +1397,11 @@ fn generate_rust_server(
             ) else {
                 continue;
             };
-            match transpile_back_module_to_rs(&stem, &content) {
-                Ok(rs) => {
+            let back_dir = root_dir.join("src").join("back");
+            match transpile_back_module_to_rs_with_proofs(&stem, &content, Some(back_dir.clone())) {
+                Ok((rs, _)) => {
                     let rs = post_process_companion_rs(rs);
+                    let rs = promote_api_types_in_companion(&rs, &api_module.types);
                     if let Err(e) = std::fs::write(src_dir.join(format!("{}.rs", stem)), &rs) {
                         eprintln!("  ⚠ Failed to write {}.rs: {}", stem, e);
                         continue;
@@ -2172,7 +2287,7 @@ fn generated_api_assembly(
         }
     }
     for (name, text) in &back_modules {
-        let (_, proofs) = transpile_back_module_to_rs_with_proofs(name, text)
+        let (_, proofs) = transpile_back_module_to_rs_with_proofs(name, text, Some(back_dir.clone()))
             .map_err(|e| format!("API assembly rejected back module {name}: {e}"))?;
         references.extend(proofs);
     }

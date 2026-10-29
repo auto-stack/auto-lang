@@ -873,6 +873,35 @@ impl RustTrans {
         }
     }
 
+    /// PLAN-885 G2: `c >= "0"` — `c` is an owned String (from a single-char
+    /// slice/char iteration), `"0"` a &str literal. Rust has no `String`
+    /// PartialOrd with `&str` (E0277). When exactly one side of a comparison
+    /// is a known str variable (String) and the other is a str literal,
+    /// borrow the variable side with `.as_str()`.
+    fn bina_str_literal_borrow(&self, lhs: &Expr, rhs: &Expr) -> (bool, bool) {
+        let is_str_var = |e: &Expr| match e {
+            Expr::Ident(n) => self
+                .local_var_types
+                .get(n.as_str())
+                .map(|t| {
+                    matches!(
+                        t,
+                        Type::StrOwned | Type::StrFixed(_) | Type::CStrLit | Type::StrSlice
+                    )
+                })
+                .unwrap_or(false),
+            _ => false,
+        };
+        let is_str_lit = |e: &Expr| matches!(e, Expr::Str(_) | Expr::CStr(_));
+        match (is_str_var(lhs), is_str_lit(rhs)) {
+            (true, true) => (true, false),
+            _ => match (is_str_lit(lhs), is_str_var(rhs)) {
+                (true, true) => (false, true),
+                _ => (false, false),
+            },
+        }
+    }
+
     /// Escape Rust reserved keywords used as identifiers.
     /// Only applies to variable/parameter binding contexts, NOT type names or module paths.
     /// Plan 391 §7 follow-up: extract a dotted path from a chain of
@@ -1808,6 +1837,13 @@ impl RustTrans {
                         }
                         // Plan 433 A1: int vs char-literal mix → cast char side to i64
                         let (char_l, char_r) = self.bina_char_cast(lhs, rhs);
+                        // PLAN-885 G2: `c >= "0"` — owned String vs str literal
+                        // (E0277 String<&str). Borrow the String side.
+                        let (str_borrow_l, str_borrow_r) = if is_cmp {
+                            self.bina_str_literal_borrow(lhs, rhs)
+                        } else {
+                            (false, false)
+                        };
                         if char_l {
                             write!(out, "(")?;
                         }
@@ -1815,6 +1851,9 @@ impl RustTrans {
                             write!(out, "(")?;
                         }
                         self.expr(lhs, out)?;
+                        if str_borrow_l {
+                            write!(out, ".as_str()")?;
+                        }
                         if lhs_paren {
                             write!(out, ")")?;
                         }
@@ -1840,6 +1879,9 @@ impl RustTrans {
                             write!(out, "(")?;
                         }
                         self.expr(rhs, out)?;
+                        if str_borrow_r {
+                            write!(out, ".as_str()")?;
+                        }
                         if rhs_paren {
                             write!(out, ")")?;
                         }

@@ -1434,10 +1434,16 @@ impl RustTrans {
             Ok(d) => d,
             Err(_) => return,
         };
-        let candidates = [
-            cwd.join("auto").join(format!("{}.at", mod_name)),
-            cwd.join(format!("{}.at", mod_name)),
-        ];
+        // PLAN-885 G2: prefer the transpiled file's own directory (back/
+        // modules resolve sibling imports like `use works: …`); fall back to
+        // CWD for legacy single-file entry points.
+        let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+        if let Some(dir) = self.source_dir.clone() {
+            candidates.push(dir.join(format!("{}.at", mod_name)));
+            candidates.push(dir.join("auto").join(format!("{}.at", mod_name)));
+        }
+        candidates.push(cwd.join("auto").join(format!("{}.at", mod_name)));
+        candidates.push(cwd.join(format!("{}.at", mod_name)));
         let source = candidates
             .iter()
             .find_map(|p| std::fs::read_to_string(p).ok());

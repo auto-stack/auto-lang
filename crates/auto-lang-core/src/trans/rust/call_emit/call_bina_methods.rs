@@ -246,21 +246,26 @@ impl RustTrans {
                             return Ok(CallShape::Handled);
                         }
                         "find" => {
-                            // s.find(needle, start_pos?) -> a2r_std::str_find(s, needle, start_pos?)
+                            // s.find(needle, start_pos?) -> a2r_std::str_find(s, needle)
+                            //                        or   a2r_std::str_find_from(s, needle, start_pos)
                             // Returns i32 (-1 if not found), matching Auto semantics
                             // Plan 016 Phase A A4 cat 7: borrow lhs (e.g. self.buf)
                             // via as_str to avoid moving a &mut self field (E0507).
                             // str_find accepts AsRef<str> so &str/&String both work.
+                            // PLAN-885 G3: signature aligned with the standalone
+                            // crate — 2-arg str_find and 3-arg str_find_from; the
+                            // old 3-arg str_find emission caused E0061.
                             self.a2r_std_used.set(true);
-                            write!(out, "a2r_std::str_find(")?;
+                            let multi = call.args.args.len() >= 2;
+                            if multi {
+                                write!(out, "a2r_std::str_find_from(")?;
+                            } else {
+                                write!(out, "a2r_std::str_find(")?;
+                            }
                             self.expr_as_str(lhs, out)?;
                             for arg in &call.args.args {
                                 write!(out, ", ")?;
                                 self.arg(arg, out)?;
-                            }
-                            // Default start_pos = 0 if not provided
-                            if call.args.args.len() < 2 {
-                                write!(out, ", 0")?;
                             }
                             write!(out, ")")?;
                             return Ok(CallShape::Handled);

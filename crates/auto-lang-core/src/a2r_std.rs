@@ -516,16 +516,38 @@ pub fn str_new(s: &str, _capacity: usize) -> String {
     s.to_string()
 }
 
-/// Find substring in string, starting from position.
-/// Returns -1 if not found (matches Auto semantics, not Rust's Option).
-/// In AutoLang: s.find(needle, start_pos)
-pub fn str_find<S: AsRef<str>>(s: S, needle: &str, start: i32) -> i32 {
+/// Find substring in string, returning -1 if not found (matches Auto
+/// semantics, not Rust's Option). Two-argument form `s.find(needle)` —
+/// signature aligned with the standalone crate `a2r_std::str_find`
+/// (PLAN-885 G3: embedded facade previously required 3 args while the
+/// call_dot emitter emitted 2, causing E0061 on generated backends).
+/// PLAN-885 G2: returns a **char** offset, matching the a2r `.slice(j, j+1)`
+/// emission (`chars().take().skip()`, char semantics) — see standalone crate.
+/// In AutoLang: s.find(needle)
+pub fn str_find<S: AsRef<str>, P: AsRef<str>>(s: S, needle: P) -> i64 {
     let s = s.as_ref();
-    if start < 0 || start as usize > s.len() {
-        return -1;
+    let p = needle.as_ref();
+    match s.find(p) {
+        Some(byte_idx) => s[..byte_idx].chars().count() as i64,
+        None => -1,
     }
-    match s[start as usize..].find(needle) {
-        Some(idx) => (start as usize + idx) as i32,
+}
+
+/// Find substring in string starting from position, returning -1 if not
+/// found. Three-argument form `s.find(needle, start)` — aligned with
+/// `a2r_std::str_find_from` in the standalone crate. `start` is a char offset.
+/// In AutoLang: s.find(needle, start_pos)
+pub fn str_find_from<S: AsRef<str>, P: AsRef<str>>(s: S, needle: P, start: i32) -> i64 {
+    let start = start.max(0) as usize;
+    let s = s.as_ref();
+    let p = needle.as_ref();
+    let byte_start = s
+        .char_indices()
+        .nth(start)
+        .map(|(i, _)| i)
+        .unwrap_or(s.len());
+    match s[byte_start..].find(p) {
+        Some(byte_idx) => start as i64 + s[byte_start..][..byte_idx].chars().count() as i64,
         None => -1,
     }
 }
@@ -592,6 +614,12 @@ pub fn value_len(val: &serde_json::Value) -> i32 {
 // PLAN-714 r3 R3-T1: json! 宏再导出——发射臂发 a2r_std::json!({...})
 // 构造 struct-literal 实参（宏与 json 模块分属不同命名空间，无碰撞）。
 pub use serde_json::json;
+
+// PLAN-885 G1: time 模块转发——生成代码经 qualify_a2r_std 通用改写为
+// `auto_lang_core::a2r_std::time::now_sec()/now_ms()`；独立 a2r-std crate
+// 已实现（epoch i64，与 VM 轨 native.rs/sys_env.rs 同源）。内嵌 facade
+// 缺该模块导致生成后端 E0433（001 记录的 time 路径缺口）。
+pub use ::a2r_std::time;
 
 // PLAN-714 r3 R3-T1: `.at` 裸 `list` 动态型的 a2r 形（Vec<Value>——
 // glob 导入下裸名直接解析；VM list 动态语义的 serde 对应面）。

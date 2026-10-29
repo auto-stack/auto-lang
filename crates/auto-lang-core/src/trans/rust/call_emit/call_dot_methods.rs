@@ -501,8 +501,11 @@ impl RustTrans {
                         self.expr(object, out)?;
                         write!(out, ")")?;
                     } else {
+                        // PLAN-885 G3: `.parse::<i64>().ok()` yields Option<i64>
+                        // but Auto `parse()` is `int` (i64 in a2r) — unwrap_or(0)
+                        // fixes E0308 `expected i64, found Option<i64>`.
                         self.expr(object, out)?;
-                        write!(out, ".parse::<i64>().ok()")?;
+                        write!(out, ".parse::<i64>().unwrap_or(0)")?;
                     }
                     return Ok(CallShape::Handled);
                 }

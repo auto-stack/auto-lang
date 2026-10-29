@@ -424,7 +424,8 @@ impl RustTrans {
                     }
                 } else if is_str_param
                     && matches!(arg, Arg::Pos(Expr::Call(c))
-                        if matches!(c.name.as_ref(), Expr::Dot(_, m) if m.as_str() == "str")
+                        if matches!(c.name.as_ref(), Expr::Dot(_, m)
+                            if matches!(m.as_str(), "str" | "to_string"))
                             && c.args.args.is_empty())
                 {
                     // Plan 447 ③-前置(②列基线修复): Auto's universal

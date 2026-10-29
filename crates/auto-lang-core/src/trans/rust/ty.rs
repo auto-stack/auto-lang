@@ -1124,6 +1124,16 @@ impl RustTrans {
                             }
                         }
                         "get" => {
+                            // PLAN-885 G2: `Env.get(key)` / `env.get(key)` 是
+                            // stdlib 模块函数（返回 String），不是 List 读取 ——
+                            // 走模块函数分支（下方 `_ =>`）前先归一化 Env 别名。
+                            // 此前 "get" 只按 List 推断，模块 get 落到 Unknown，
+                            // &str 形参调用漏 .as_str() → E0308。
+                            if matches!(obj.as_ref(), Expr::Ident(n)
+                                if matches!(n.as_str(), "env" | "Env"))
+                            {
+                                return Type::StrOwned;
+                            }
                             if let Type::List(elem) = self.infer_type_from_expr(obj) {
                                 return *elem;
                             }
@@ -1131,7 +1141,16 @@ impl RustTrans {
                         // stdlib module functions that return String
                         _ => {
                             if let Expr::Ident(module) = obj.as_ref() {
-                                match (module.as_str(), method.as_str()) {
+                                // PLAN-885 G2: 与 call_module_methods 的
+                                // `"env" | "Env"` 别名归一化一致 —— 否则
+                                // `join_path(Env.get("HOME"), …)` 的实参
+                                // Env.get 推断 Unknown, &str 形参调用漏
+                                // .as_str() → E0308。
+                                let module = match module.as_str() {
+                                    "Env" => "env",
+                                    other => other,
+                                };
+                                match (module, method.as_str()) {
                                     ("json", "as_string")
                                     | ("json", "get_str")
                                     | ("json", "to_string")

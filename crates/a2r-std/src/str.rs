@@ -38,24 +38,40 @@ pub fn replace_first(s: &str, from: &str, to: &str) -> String {
 /// Find the index of a substring, returns -1 if not found.
 /// Accepts `String` or `&str` for both args (the transpiled call site may pass
 /// an owned `String` field, e.g. `self.buf`).
-pub fn str_find<S: AsRef<str>, P: AsRef<str>>(s: S, pattern: P) -> i32 {
-    s.as_ref()
-        .find(pattern.as_ref())
-        .map(|p| p as i32)
-        .unwrap_or(-1)
+/// PLAN-885 G3/G2: returns `i64` — `.at int` maps to Rust `i64` (ty.rs Plan 399
+/// Phase 11.1); the historical `i32` return caused E0308 on generated
+/// backends (`let hit: i64 = str_find(...)`).
+/// PLAN-885 G2: returns a **char** offset (not byte) — the a2r emitter renders
+/// `.slice(j, j+1)` as `chars().take(j+1).skip(j)` (char semantics), so a byte
+/// offset from `str::find` desynchronizes on multi-byte UTF-8 (list/JSON
+/// field extraction read wrong characters). The VM pairs byte `find` with byte
+/// `slice`; the transpiled side pairs char `find` with char `slice`.
+pub fn str_find<S: AsRef<str>, P: AsRef<str>>(s: S, pattern: P) -> i64 {
+    let s = s.as_ref();
+    let p = pattern.as_ref();
+    match s.find(p) {
+        Some(byte_idx) => s[..byte_idx].chars().count() as i64,
+        None => -1,
+    }
 }
 
-/// Find the index of a substring starting from position, returns -1 if not found
-pub fn str_find_from<S: AsRef<str>, P: AsRef<str>>(s: S, pattern: P, start: i32) -> i32 {
+/// Find the index of a substring starting from position, returns -1 if not found.
+/// `start` is a char offset (matching the char-slice semantics above).
+pub fn str_find_from<S: AsRef<str>, P: AsRef<str>>(s: S, pattern: P, start: i32) -> i64 {
     let start = start.max(0) as usize;
     let s = s.as_ref();
-    if start >= s.len() {
-        return -1;
+    let p = pattern.as_ref();
+    let byte_start = s
+        .char_indices()
+        .nth(start)
+        .map(|(i, _)| i)
+        .unwrap_or(s.len());
+    match s[byte_start..].find(p) {
+        Some(byte_idx) => {
+            start as i64 + s[byte_start..][..byte_idx].chars().count() as i64
+        }
+        None => -1,
     }
-    s[start..]
-        .find(pattern.as_ref())
-        .map(|p| (start + p) as i32)
-        .unwrap_or(-1)
 }
 
 /// Extract a substring from start index with given length
