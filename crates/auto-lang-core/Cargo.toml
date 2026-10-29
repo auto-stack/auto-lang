@@ -24,6 +24,8 @@ python = ["dep:pyo3"]
 streaming-http = ["dep:tokio-util"]
 mem-profile = []
 test-cases = ["dep:auto-test-case"]
+# PLAN-888: cross-crate e2e harness helpers, absent from product builds.
+test-http-e2e = []
 
 [dependencies]
 # PLAN-814 T-02 前端门面组闭包（ast/token/error/session/lexer 直连外部轻

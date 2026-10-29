@@ -334,7 +334,7 @@ fn http_e2e_plan707_stream_explicit_close_two_rounds_baseline() {
         crate::vm::ffi::stdlib::shim_http_get_stream(&mut task, &vm).expect("open");
         let id = task.ram.pop_i32() as u64;
         assert!(
-            crate::vm::ffi::http_stream::stream_is_live(id),
+            crate::vm::ffi::http_stream::stream_is_live_for_test(id),
             "round {round} 应存活"
         );
         task.ram.push_i32(id as i32);

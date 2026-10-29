@@ -271,6 +271,12 @@ pub fn stream_queue_len_for_test(stream_id: u64) -> usize {
 }
 
 /// 流 id 是否存活（for-in 惰性消费的判定门——未知 id 不进流路径）。
+#[cfg(feature = "test-http-e2e")]
+#[doc(hidden)]
+pub fn stream_is_live_for_test(stream_id: u64) -> bool {
+    stream_is_live(stream_id)
+}
+
 pub(crate) fn stream_is_live(stream_id: u64) -> bool {
     STREAMS
         .lock()

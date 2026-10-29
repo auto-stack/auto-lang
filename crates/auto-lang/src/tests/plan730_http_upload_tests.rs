@@ -261,7 +261,7 @@ mod http_e2e {
         crate::vm::ffi::stdlib::clear_http_routes();
         std::env::set_var("AUTO_HTTP_PORT", port.to_string());
         let code = code.to_string();
-        let outcome_rx = crate::vm::ffi::http_server::spawn_outcome_reporter(
+        let outcome_rx = crate::vm::ffi::http_server::spawn_outcome_reporter_for_test(
             8 * 1024 * 1024,
             "crate::run",
             move || crate::run(&code),
