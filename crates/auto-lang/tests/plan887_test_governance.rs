@@ -120,7 +120,7 @@ fn first_wave_suite_runs_green_with_d_values() {
         !results.is_empty(),
         "zero dynamic checks is a contract error"
     );
-    for (case, check, expect) in [
+    for (case, check, _expect) in [
         ("gov.d.arithmetic", "av", 3),
         ("gov.d.arithmetic", "av-scalar-control", 3),
         ("gov.d.unary", "av", -6),
