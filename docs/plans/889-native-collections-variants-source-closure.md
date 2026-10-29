@@ -5,7 +5,7 @@ feature_name: native集合与变体源码闭环（共享MIR、拥有值与真实
 author: [Codex]
 created_at: 2026-10-29
 updated_at: 2026-10-30
-plan_revision: 1
+plan_revision: 2
 supersedes_spec_components:
   - docs/specs/auto-mir/native-data-owned-lowering.md
   - docs/specs/auto-ac/native-backend-and-retirement.md
@@ -27,7 +27,7 @@ total_steps: 10
 
 将864已有的集合/变体合法源码，经同一Checked HIR→共享collections MIR→mn CLIF/COFF→真实PE执行；关闭M1原L01–L07/V01–V07共14个native源码格。维持零参i32入口/结果，继承822集合与资源语义；同时补集合源码的真实单函数增量，而非整模块重算后报告carry。
 
-[拆包决定](reports/ace-native-phase2-split-decision-2026-10-29.md)：native集合/变体与带位宽typed entry拆为两个计划，先本包；后继typed entry不取号、不自动启动，不构成本包D门。List和Variant共享布局/资源闭包，合法List<Variant>必须本包支持，故不再拆成两半。本轮仅立项，全部验收/命令/探针未执行。
+[拆包决定](reports/ace-native-phase2-split-decision-2026-10-29.md)：native集合/变体与带位宽typed entry拆为两个计划，先本包；后继typed entry现已另立891（仅规划，不构成本包D门，也不授权本包启动它）。List和Variant共享布局/资源闭包，合法List<Variant>必须本包支持，故不再拆成两半。r2据T-01反例调整T-02顺序：先修规范已承诺的命名enum类型查找，再做N全链资源probe；区分源码clone拒绝与typed容器clone验收，不缩减G/AC。当前只有T-01基线证据，native执行/资源验收未完成。
 
 ## 1. 目标
 
@@ -36,7 +36,7 @@ total_steps: 10
 - G3：沿871唯一路径，native运行时只实现机器布局/容器原语，不执行MIR/ABC、调用AV或恢复旧HIR→CLIF。正式入口与cache/COFF恢复确实执行native产物。
 - G4：source body编辑只重做改变函数的前端/共享lower/MIR/代码生产；未改函数保producer/code身份；依赖/接口改变正确失效，候选失败保旧，恢复重验。
 
-非目标：W01–W05宽位型/typed entry、宽数值算术、native闭包/Dyn/loader/HMR、完整typed Place API、List参数/返回或容器record字段、嵌套List、用户泛型/trait/HOF库、Unit入口、产品默认引擎/旧AutoVM/A2X退役、全M1验收。不修改AV profile4的opcode/wire/执行语义，不改变864源码支持/拒绝集合。
+非目标：W01–W05宽位型/typed entry、宽数值算术、native闭包/Dyn/loader/HMR、完整typed Place API、List参数/返回或容器record字段、嵌套List、用户泛型/trait/HOF库、Unit入口、产品默认引擎/旧AutoVM/A2X退役、全M1验收。不修改AV profile4的opcode/wire/执行语义，不改变864约定的源码支持/拒绝集合；T-01发现的List<命名enum>误拒须修到既有约定，不以当前缺陷取代规范。容器本体List.clone/Variant.clone源码方法仍拒绝，V-03容器clone走受检typed MIR/runtime；不能由Spec含混的“owned局部.clone”表述推导新源码方法授权。
 
 ## 2. 架构方案
 
@@ -53,18 +53,18 @@ source→既有compile_collections_source/CheckedModule→auto-mir-lower::{lower
 | N准入/机器布局 | experimental/ac-mir-native/src/{emit,lower,layout,driver,symbols,config}.rs；admit_unit/cranelift_sig_of/SlotRep/Domain/Arm/arm_of_domain |
 | N单元/cache/发布 | experimental/ac-mir-native/src/{incremental,cache,link_driver,resources,observe}.rs；COFF/meta/LinkManifest/runtime哈希、reuse/fresh/read-only与原子发布 |
 | N独立runtime（拟新增） | experimental/ac-mir-native/runtime/collections/独立静态库及src/collections_runtime.rs定位/版本门；可用等价类型专用helper，T-02冻结目录/导出面。现有experimental/ac-core/runtime/text/shim只证明文本buffer，不能冒称已有容器runtime |
-| S真实函数增量 | experimental/ac-core/src/source/{parser,resolve,typecheck,adapter}.rs及body_work；experimental/auto-mir-lower/src/hir_adapter.rs；experimental/ac-av-probe/probe/src/{collections_864_session,collections_session,fn_hir_codec,cache}.rs（按实际最小写集） |
+| S支持域前置与真实函数增量 | experimental/ac-core/src/source/{parser,resolve,typecheck,adapter}.rs及其中body工作观察接口（非独立body_work.rs）；resolve::{vt_of_ann_coll,classify_generic_recv,CollTables}的命名enum查找/上下文限制；experimental/auto-mir-lower/src/hir_adapter.rs；experimental/ac-av-probe/probe/src/{collections_864_session,collections_session,fn_hir_codec,cache}.rs（按实际最小写集） |
 | H正式消费 | crates/auto-lang-core/src/test_cases/ac_mn.rs及必要ac_av身份；crates/auto-test-case/src/contract.rs现有recipe/解码缝；crates/auto-lang/src/tests/ace_m1_tests.rs；ace-m1的binding/新case与公共worker注册 |
 | 拟新增验证 | ac-mir-native/tests/{collections_source_tier,collections_resources_tier,collections_incremental_tier}.rs；scripts/verify-native-collections-889.ps1；ace-m1/native-collections-889.{suite,case}.ad（当前不存在） |
 
-拟实施树D:/autostack/.wt/lang-889/auto-lang，分支plan-889-dev，一Plan一权威树。当前不建树；实施/独立review/修复均同树顺序执行。根workspace不新增实验栈依赖，auto-av-core零依赖边界不变。
+权威实施树D:/autostack/.wt/lang-889/auto-lang，分支plan-889-dev，base=e0b29ff7a，当前实现提交69d7b6b26；一Plan一权威树，实施/独立review/修复均同树顺序执行。根workspace不新增实验栈依赖，auto-av-core零依赖边界不变。
 
 ## 4. 需求分析与背景调查
 
 2026-10-30 执行授权：用户 /goal 完成计划889 授权本合同 work→独立review→有界修复→merge/规范/归档/guard清理全链。沿用当前active goal，不重复创建。保留他方文档/号源WIP；本次只提交889合同，.next-id当前891包含888/889/890累计取号，不夹带提交或回退。
 
 
-授权：用户2026-10-29要求“规划下一个计划，先判断一个还是两个”；仅规划，未授权本轮施工、运行探针、建树/agent/其他聊天通信。按AGENTS在master中央取号889；保留其他会话未提交文档与号源WIP，不夹带提交。future work需用户明确指定执行本合同。
+历史规划授权：用户2026-10-29要求“规划下一个计划，先判断一个还是两个”，当日仅规划；2026-10-30执行授权已如上记录并继承到本次有界r2修订。按AGENTS在master中央取号889；保留其他会话未提交文档与号源WIP，不夹带提交。不自动创建agent或联系其他聊天。
 
 已读AGENTS.md、Spec总览及auto-mir的native-data-owned-lowering/collection-place-profile、auto-av/collections-variants、auto-ac/source-collections-variants/native-backend-and-retirement，Design43/44/49既有架构（Design49问题表的旧双lowering快照已经被871终态取代）。读取master=5af8e0cbe，D871=87dd2b6ad及5af8e0cbe清理收据已入master；D864=6273cd4a4、D881=db0773130均具交付。输入hash与拆分依据见拆包报告。
 
@@ -76,20 +76,26 @@ source→既有compile_collections_source/CheckedModule→auto-mir-lower::{lower
 | collections_864_session::edit总是compile_units；其内整源编译+whole lower+split | 原Spec的下层carry不等全链增量；必须补前端保留环境/单体生产及原子候选，不可直接套scalar MN会话后自称完成 |
 | split_units已有容器类型闭包修复；MN_INCREMENTAL仍绑scalar FunctionIncrementalSession | 复用受检单元/缓存设施，扩实际消费者，不能新造第二份语义；接口/模式/类型依赖与恢复覆盖必须实测 |
 | 871已删除旧native | 本包只做AV/native两腿+独立oracle；历史旧腿不重建，不用同一mn入口当“三路独立对拍” |
+| T-01实跑List<Token>（拥有Item载荷）在vt_of_ann_coll误走record-only查找，尚未进入shared MIR | 在T-02接受已释放的S最小写面，修命名enum局部/载荷/返回及List元素查找，保上下文排除；先AV对独立oracle，再N同源。既有17行与源码哈希不动 |
+| T-01源码List.clone显式unsupported、Variant.clone无方法；typed profile已有Clone | V-03原有source/typed分账落到具体入口：合法Str.clone走source；List/Variant本体clone走未信任typed builder→verify_mir→mn与runtime，source拒绝作兼容负控。原T-01两个“源码clone成功”假设作废，不删除容器clone资源义务 |
+
+r2输入身份：canonical `docs/specs/auto-ac/source-collections-variants.md` SHA256 `a82dafa63e2a2426c4d4c2716a1bca64c4adee9385207b7fc9c6fdeb080cfdcd`；权威树 `experimental/ac-core/src/source/resolve.rs` SHA256 `4c7f8ca56f116a7076dbebdb00a1f9a2e690123f81fa7b04b5fb93ad863b25ae`。T-01的可重放源码、现行路径、基面反例与raw hash见[执行入口r1](attachments/889/execution-entry-r1.md)；这些是修订依据，不是native通过证据。
 
 ## 5. 详细设计
 
 ### 5.1 分阶段交接与并行
 
-- D864/D871/D881/D822/D828是语义/产物前置；**D865/D863不是本包语义依赖**。T-01只读及登记N私有测试可先准备；T-02 N内探针、T-03/04 N主体可在不改S/H定义前与865并行，须核N当前owner/新runtime独占路径。
-- T-05补真实源码增量涉及S。默认865释放后→889 S短窗→863；这是新规划插窗，未获任何释放。未就绪就让863先走，后续释放点再接，不持N等S、不消费865 WIP。需要提前改text shim/公开前端定义时同样先拿S，不复制旧前端/运行时。
-- T-06公共H须与865/863及887/888逐文件交接。规划终检时865已executing r2/2-of-9，887 reviewed/9-of-10但U887未确认，888 drafting等U887；不依据状态头、append-only或不同worktree推断无冲突。本Plan不改runner/filter/选择守卫，不要求U887/U888作整包前置。
+- D864/D871/D881/D822/D828是语义/产物前置；**D865/D863不是本包语义依赖**。T-01已实核前置交付祖先。T-02先S支持域前置再N私有资源probe；T-03/04在T-02实际probe通过后实施，不能跳过其所有权/资源证据。
+- 865交付5fa3133fa、863交付2d5f3d842并已移除其语言树，旧“865→889→863”规划插窗已过时。T-02可在重新核S owner后接受`resolve.rs::vt_of_ann_coll/CollTables/相关调用方`与新定向测试最小子集，修规范支持域的前置误拒；先真实提交/记录释放，再进入N全链。T-05另核parser/adapter/共享lower/session所需S子集，不凭T-02接受记录占有整个S。不消费他方WIP，不复制旧前端/运行时；若触及text shim须另登记该文件/符号。
+- T-06公共H仍须与888逐文件/符号交接；T-01核888已提交diff涉及ac_av父侧、worker/helper/driver/lib及发现/执行器，不涉及本包N私有或ac-core/source。865/863/887已交付不等于888已释放；新891仅规划且N默认889→891，无权覆盖889。不得依据append-only或不同worktree推断无冲突。本Plan不改runner/filter/选择守卫，不要求U888作整包前置。
 - 交接记录至少含前owner/Plan修订、具体释放文件/符号、delivery、Spec/profile/schema/API/lowering/ABI/runtime/cache身份、已交付消费者兼容/限制、后owner接受。跨S/N/H任务同时拿所需窗；阶段完成必须真实提交/释放，不能一个窗口内等另一个。若后继typed entry取N，刷新本包阶段/正式交付版本后单写，不能并改emit/config/cache。
 
 ### 5.2 支持与准入合同
 
 - 逐项沿864：List<int/bool/Str/record/variant>，record字段int/bool/Str/record且无环、无容器字段；Option/Result/有限enum带copyable或owned载荷（V01/02已有i32载荷，不因822概述漏列而拒绝）；Variant可无环嵌套，无擅增深度上限。List函数局部、不嵌List，source str/char/Unit值与方法/闭包等沿原拒绝域。
 - 承诺操作=864产生的ListNew/Push/Insert/Get/Set/Remove/Len、ListFieldGet及其FieldGet/View/BorrowEnd组合，clear尾删循环、VariantPack/Guard/Project/Switch、聚合/Move/Clone/Drop、普通调用/控制流和既有Str.len；T-01/02从正式源码/共享lowering枚举实际指令闭包。ListCap/Disc/FieldSet等实际需要者可同门实现，不宣传未验typed面。
+- 命名enum在局部/结果/容器载荷/List元素位置与同域Option/Result一致保有名义身份，不能fallback为I32；未知名字、错误元素型、重复/递归声明须具名拒绝。修复不得顺带放行Variant参数/record字段等当前源码上下文排除；本合同“参数/返回中合法Variant”以该源码域合法位置为限，typed签名的机器承载和拒绝另行准入。T-02以嵌套无环Variant合法控制与自环/间接环反控检查共享查找分支，保持无新增深度上限；声明顺序相关机制在T-02按同一支持域修复，不靠全表默认I32填洞。
+- 显式clone按输入起点分账：合法源码Str.clone（及确实通过原前端的owned局部）走同源AV/native；List/Variant本体clone走V-03受检typed资源probe，覆盖独立副本/原根存活/深度/部分失败，不能只调用runtime绕过verify/codegen。源码List.clone/Variant.clone继续具名拒绝并留兼容控制，不声称本包新增这些方法。
 - 先共享verify_mir和单位/布局准入再codegen；owner、元素/臂型、guard/payload-moved、嵌套/循环/坏引用不能因本包绕过。允许的源码拒绝仍在原阶段具名，后端未支持的typed输入codegen=0。
 - CLI/SDK优先新增显式collections profile/recipe选择，不把真实type/verify错误当升级信号。自动选择如果保留，只对原Text阶段source.unsupported继续；旧core/scalar/text/record/text-record身份/支持集及retired:legacy拒绝不变。
 
@@ -127,19 +133,19 @@ H选择器拟为ac/mir-native-collections-v1（新recipe，T-02按真实合同�
 | SD-02 | modify | docs/specs/auto-mir/native-data-owned-lowering.md | 一律拒collections→按本包子集准入；旧域及wide拒绝保持 | 不误称全profile | AC-01/02/06 |
 | SD-03 | modify | docs/specs/auto-ac/native-backend-and-retirement.md | 五旧域终态→追加collections原生消费者/CLI/产物身份，legacy仍退役 | 不恢复旧lowering | AC-04/06 |
 | SD-04 | modify | docs/specs/auto-test-case/ace-m1-conformance.md | L/V ac gap→原源实测绑定，新增suite来源/资源/恢复负控；W仍gap | 分母守恒 | AC-01/05 |
-| SD-05 | modify | docs/specs/auto-av/resident-function-install.md；docs/specs/auto-ac/source-collections-variants.md | 原collections后段carry→补真实单体前端/源坐标/候选/单位消费的实际证据与限制 | 明确M-前端差额，不能把低层carry冒领全链 | AC-03/04 |
+| SD-05 | modify | docs/specs/auto-av/resident-function-install.md；docs/specs/auto-ac/source-collections-variants.md | 原collections后段carry→补真实单体前端/源坐标/候选/单位消费的实际证据与限制；修命名enum支持域误拒并明确源码与typed容器clone边界 | 明确M-前端差额，不能把低层carry冒领全链；纠正源码支持表含混，不扩源码clone方法 | AC-01/02/03/04/06 |
 
 merge按实际delta更新overview/plans/索引/ledger；本轮不改canonical。
 
 ## 6. 测试设计
 
-全部为未来work，计划没有新运行证据。真实路径：source→共享前端/lower→verify_mir→split_units→emit/link→PE；AV走collections_864_support::compile_and_execute/原正式recipe。source原例查crates/auto-lang/test/cases/ace-m1/src，资源/增量可复用822/864既有probe案例作为独立语义期望，不能运行AV后复制其输出为新golden。
+T-01仅完成17原源AV与native准入差额实核（证据在§9），本节其余为待执行work，不冒充native验收。真实路径：source→共享前端/lower→verify_mir→split_units→emit/link→PE；AV走collections_864_support::compile_and_execute/原正式recipe。source原例查crates/auto-lang/test/cases/ace-m1/src，资源/增量可复用822/864既有probe案例作为独立语义期望，不能运行AV后复制其输出为新golden。
 
 | V | AC/不变量 | 输入/入口 | 区分错误实现的oracle/证据 | work任务/边界 |
 |---|---|---|---|---|
 | V-01 | AC-01 14原源码 | L01..L07/V01..V07原字节，经新SDK及直接mn PE；同源AV | L01/02/04/05/07=42，L03=0，L06=list-index trap；V03=3，其他V=42；正常return70控制不能满足L06。原L04/L05不是改写标量/typed fixture | T-02首例/T-04/06；父侧oracle |
-| V-02 | AC-01/02 组合域 | 864 Str变体hello/中移出len；原for-in；新增List<Variant>含owned record与嵌套Variant，跨函数返回Variant/Result | Str变体51，原copy/owned for-in=42/53；新enum Some(Item("中",41))经List remove/is→name.len()+code=42；载荷正确且无隐式clone，inactive臂不能读 | T-02冻结补源/T-04/06；不支持嵌List/容器字段 |
-| V-03 | AC-02 显式clone/转移 | clone拥有List/Variant后独立set/remove/switch/drop，原根继续读取；move后读取/重复投影负例 | 原/副本内容独立，clone确有独立文本buffer；move无新文本alloc且旧根不可再用；每buffer/元素/活动臂释放恰一次 | T-03/04/06；source与辅助typed资源探针分列 |
+| V-02 | AC-01/02 组合域 | 864 Str变体hello/中移出len；原for-in；新增List<Variant>含owned record与嵌套Variant，跨函数返回Variant/Result | Str变体51，原copy/owned for-in=42/53；V-02a复用T-01`list-variant-owned`精确源，Token.Data(Item("中",41))经List remove/is→name.len()+code=42，须先AV后native各自对oracle；V-02b无环嵌套命名Variant及同结构Option/Result控制；载荷正确且无隐式clone，inactive臂不能读 | T-02先S反例修复/冻结补源，再N；T-04/06。不得改原14源；不支持嵌List/容器字段 |
+| V-03 | AC-02 显式clone/转移 | V-03a合法源码Str.clone对照；V-03b受检typed MIR Clone拥有List/Variant后独立set/remove/switch/drop，原根继续读取；move后读取/重复投影负例 | 原/副本内容独立，clone确有独立文本buffer；move无新文本alloc且旧根不可再用；每buffer/元素/活动臂释放恰一次。V-03c源码List.clone/Variant.clone维持具名拒绝，不把其前端红当native缺口 | T-02冻结入口；T-03/04/06。source/typed/runtime三起点分列，typed必须verify_mir→mn emit/link→PE，不能runtime直调替代机器链 |
 | V-04 | AC-02 失败原子性 | push/insert/set扩容边界及clone中段Nth失败/元数据失败，预算0/上界/越界；旧目标已有内容；runtime直接受控探针与PE | 失败发生在commit前，原len/cap/元素与未提交输入责任保持；部分新缓冲回滚；双free/无主引用为0；分配拒绝、畸形、trap、timeout类别分明。PE fatal后不能用OS回收证明成功清理 | T-02先probe/T-03/06；故障缝不进入源语言 |
 | V-05 | AC-02 生命周期/深度 | caller保List/Variant，callee trap；临时owned字段读取remove/view/insert；无环嵌套Variant clone/drop | 正常与本集合profile错误出口按冻结责任无泄漏；投影零隐式clone/额外资源事件；以822既有小栈/深链证人形状设计runtime级探针，T-02冻结可执行规模，不能以新增语言深度上限规避 | T-02/03/06；全路径显式栈，非只测最后drop |
 | V-06 | AC-03 全链增量 | helper→main集合源；body 42→43→42、连续变长/UTF-8、接口/臂布局编辑；失败候选 | 纯body道每个实际生产阶段仅变更函数增量，main/其他函数工作0与producer/code身份保持；接口失效集正确；失败保旧source/坐标/manifest并可运行；强制whole compile/lower、同内容新对象反控红 | T-05/06；计数不能只来自下层carry |
@@ -150,6 +156,15 @@ merge按实际delta更新overview/plans/索引/ledger；本轮不改canonical。
 | V-11 | AC-04/06 首例性能/内存 | T-02先冻结代表owned集合/变体多函数负载、样本/冷热/机器条件，fresh/hit/restart/edit及churn | P90≤2000ms（沿858 N-floor(N/10)排序位、原正式样本不减），P95/P99另报；guest8MiB/managed32MiB、MAX_LIST65536/超一边界，编译侧48MiB及worker128MiB真实峰值/回落成立；缺样本/失败不补成绿 | T-02口径/T-06实测，helper准备/构建不移出计时窗 |
 
 首例probe至少含原L04/L05、List<Str>51、List<Variant>42、跨函数V02/V03与有资源caller的失败清理。T-02先核资源/表示全链可行后才扩面；T-05扩增量前再证明一次真实单体源码body生产/原子发布。没有机制就回T-02/needs_replan，不能缩掉拥有元素/变体组合。
+
+T-02 r2执行入口（不增加AC、不拆走原必需项）：
+
+| 子门 / owner | 基面/实际路径与状态责任 | 具体区分证据 / 关闭条件 |
+|---|---|---|
+| T-02/S前置，work | 权威树69d7b6b26；865/863已交付，开写前重核`ac-core/src/source/resolve.rs`及测试文件无他方占有；只改同一SourceProfile::Collections生产链，不另造前端 | 原T-01`list-variant-owned`source.undefined反例→修后完整frontend/CheckedHIR/shared lower/verify/ABC/AV=42；新`experimental/ac-core/tests/collections_889_prerequisites.rs`与`experimental/ac-av-probe/probe/tests/av_collections_889_prerequisites.rs`（拟新增）检查命名enum注解/载荷/返回、嵌套无环及未知/错型/递归/上下文排除；原17源hash不变。兼容保留源码容器clone拒绝。先提交S修复及实际释放清单；此子门绿不等T-02完成 |
+| T-02/N首例，work | 接收已提交S前置，source→唯一shared lower→verify_mir→unit→CLIF/COFF→runtime→PE；runtime仅布局/原语，不解释指令。所需S/N同时就绪，H不取写权 | 原L04/L05=42、LSTR864=51、List<Variant>=42、跨函数V02/V03=42/3、有资源caller+callee trap清理及故障反控。显式记录source/typed/runtime起点；容器clone的typed输入先verify再真实emit/run。ABI/布局/清理、预算物理边界、样本/计时与trap70辨别以实际probe结果冻结；全部最小链和失败反控通过后才勾T-02、进入T-03 |
+
+T-02/S只重放受影响新定向测试、原864相邻具名用例及必要check；不得以计划修订为由运行t/tv/tf等整档。T-01基线是可复用未改源历史证据，修复后重新执行其受影响源路径并保留红/绿分账。本文“拟新增”的测试/机制尚不存在，不能作为已通过依据。
 
 角色未指定；正常独立final review从提交与工件重建全部AC/V/SD，实施自检不替代独立验收，不自动创建agent/chat。review期间实施停写同树，修复回同树；pass记录merge-owned pending。原始探针/日志/JSON/截图仅本地attachments，Markdown摘要记录命令/退出码/数字/路径/hash，禁止add/commit/push非md证据。
 
@@ -174,7 +189,7 @@ merge按实际delta更新overview/plans/索引/ledger；本轮不改canonical。
 | ID | owner_stage | 前置/窗口 | 位置、操作、关闭证据 | AC | 状态 |
 |---|---|---|---|---|---|
 | T-01 | work | 后续明确执行授权；只读准备可提前 | 核D864/D871/D881与现行S/N/H owner、源码/MIR指令/类型/模式闭包、native缺口及资源runtime；逐14原源/补例/oracle/父侧入口映射，记录标量MN会话与集合whole-recompile差额 | AC-01/02/03/06 | [x] |
-| T-02 | work | T-01；N释放、私有probe不改S/H | 冻结类型表示/内部ABI/runtime/context清理、预算/样本、typed排除和trap观测；先最小source→现有shared lower→真实PE全链资源probe及失败反控。若必须写S先登记交接再继续，失败回本步不缩合法域；固定codegen/cache/runtime升版与后继typed包边界 | AC-01/02/04/06 | [ ] |
+| T-02 | work | T-01；先接受已释放S最小子集并提交，再N；H不写 | 按§6执行入口先修命名enum规范支持域误拒及兄弟上下文/无环/拒绝控制，保源码容器clone拒绝；再冻结类型表示/内部ABI/runtime/context清理、预算/样本、typed排除和trap观测，跑最小source→唯一shared lower→真实PE全链资源probe及失败反控。S子门通过不能单独勾本步；固定codegen/cache/runtime升版与891交接边界，失败回本步不缩合法域 | AC-01/02/04/06 | [ ] |
 | T-03 | work | T-02资源全链probe通过；N/必要S窗 | 实现N内容器/变体runtime与clone/drop/故障/预算/跨帧清理helper，文本复用及总账；V-03..05；新runtime位置/导出/库合同实测 | AC-02/04/06 | [ ] |
 | T-04 | work | T-03；N | emit/lower/layout/driver/CLI/worker typed准入、Variant调用返回、CLIF/COFF与runtime依赖；新profile选择/缓存/恢复/原子发布；原L/V与List<Variant>、V-01/02/07..09定向 | AC-01/02/04/06 | [ ] |
 | T-05 | work | T-04；S及必要N同时释放接受，默认865后 | 补集合单体前端/环境/候选/坐标与native增量消费者，扩现有828路径；先一次真单体probe再扩V-06/07；不以CollectionSourceSession下层carry代前端0工作 | AC-03/04/06 | [ ] |
@@ -203,8 +218,20 @@ stage: work | plan_id: PLAN-889 | plan_revision: r1 | outcome: needs_replan | wo
 
 stage: goal | plan_id: PLAN-889 | plan_revision: r1 | round: 1 | from: work | to: new | status: executing | outcome: needs_replan | worktree: D:/autostack/.wt/lang-889/auto-lang | commit: 69d7b6b26 | next: new
 
+### 2026-10-30 new 第2轮：有界r2修订，回到work
+
+- 上轮分类progress：T-01实际oracle/准入/反例改变下一步、工具与入口提交69d7b6b26；不是状态重述。本轮按needs_replan加载auto-plan-new，重核主检出无代码WIP、889同一权威树clean且HEAD69d7b6b26；未建第二树/agent、未联系其他聊天、未改他方计划或WIP。
+- r1→r2只调整T-02设计顺序/入口与source-typed分账：规范原已承诺List<variant>，`vt_of_ann_coll`仅查record表是上游前置缺陷，T-02先接受865/863已交付后的S最小子集、修源域并提交，再N真实资源probe。必要相邻命名/嵌套/上下文反控列入同一步；不是以失败原例缩支持面。S子门不单独计T-02完成，原全链资源可行性门不后移。
+- 原V-03允许source/typed资源探针分列，现在显式绑定：源码合法Str.clone保持原路径；容器本体List/Variant Clone以受检typed MIR→mn→PE与runtime分层验证，源码List.clone/Variant.clone既有拒绝保留。两个T-01“源码clone成功”假设已作废，不删除容器clone、深度、失败原子性、独立buffer与once-release验收。SD-05补明确Spec表含混的修正来源。
+- 目标G1..4、AC-01..09、阈值（P90/样本/预算）、仓库/授权、14原源及17基线oracle不变；无新增用户决策。当前1/10，仅T-01完成。历史规划“本轮仅立项/不建树/865→889→863/后继未取号”等已由现状替换，原规划和r1记录保留在§9与Git历史；891另立但未授权施工，N仍889先行，不自动启动后继。
+- 静态依据：source Spec SHA256 a82dafa63e2a2426c4d4c2716a1bca64c4adee9385207b7fc9c6fdeb080cfdcd；权威树resolve.rs SHA256 4c7f8ca56f116a7076dbebdb00a1f9a2e690123f81fa7b04b5fb93ad863b25ae；旧Enum登记在payload解析后、Optional/Result已拒Field/Param，r2要求兄弟路径一致保限制。未编译/运行新探针或写实现/canonical/ledger；仅计划修订与静态一致性校验。
+
+stage: new | plan_id: PLAN-889 | plan_revision: r2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-889/auto-lang | branch: plan-889-dev | base_commit: e0b29ff7a | code_commit: 69d7b6b26 | changed: T-02 order/entry, V-02/V-03 supplemental binding, SD-05 wording; AC unchanged | pending_decisions: none | next: work（T-02/S前置→N首例，S开写前重核接受清单）
+
+stage: goal | plan_id: PLAN-889 | plan_revision: r2 | round: 2 | from: new | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-889/auto-lang | commit: 69d7b6b26 | next: work
+
 ## 10. 待澄清事项
 
 - 支持面已选864完整合法源码与其MIR闭包，不留“是否包含List<Str>/拥有record/Variant”的开放裁定。T-02选择等价native表示/allocator/helper机制；若预算内无法实现，给最小反例与方案needs_replan，不自行缩范围或加语言深度限制。
-- 实际865/863/887/888窗口、SDK路径、runtime支持库兼容与trap有界观测由T-01/02核验；提前准备不取得公共写权，不自动联系其他会话。
-- typed entry另一个有界Plan的范围/结果通道在其正式立项时冻结；本包保持W01–05等拒绝/原gap，不预占编号，不因它未实施阻塞本包交付。
+- 865/863/887已交付；T-02/S开写接受与T-05后续S、T-06/888 H逐符号交接、SDK路径、runtime支持库兼容与trap有界观测仍归相应任务核验。提前准备不取得公共H写权，不自动联系其他会话；当前不阻塞独立T-02/S/N。
+- typed entry另立891仅规划，其范围/结果通道由该计划冻结；本包保持W01–05等拒绝/原gap，不因它未实施阻塞本包交付，不自动启动或修改其合同。
