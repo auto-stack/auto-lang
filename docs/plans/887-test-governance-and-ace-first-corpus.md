@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-887
-status: execution_done
+status: reviewed
 feature_name: 测试治理与ACE首批消费（守恒、提速与补覆盖）
 author: [Codex]
 created_at: 2026-10-29
@@ -13,7 +13,7 @@ touched_goals: []
 
 affects: [auto-test-case, test-infrastructure, repository-boundaries]
 depends_on: [PLAN-884]
-current_step: 8
+current_step: 9
 total_steps: 10
 ---
 
@@ -201,8 +201,8 @@ SD均为proposal，work不发布canonical；review核最终事实，merge沉淀�
 | [x] | T-04 | work | T-03；对应H窗 | ✅ first-wave suite（准入契约自包含修正）+ D组三 wrapper 源（原表达式字节嵌入 main，原路径/原sha= pilot记录/wrapper sha/嵌入行/独立oracle 映射记录）+ plan887_test_governance integration 6/6（D suite 真实 worker 执行 av exit 3/-6/9+scalar 全 PASS；30 复用经原 ace-m1-base + entry-862 suite 实测全绿；V-08 错 oracle→exit1 红/合法→绿；V-06 warm 重判+stale 拒+身份变更重判；原 vm 源逐字节未动）；worker 预构建+env 覆盖（AC_AV/AC_MN_CASE_WORKER）消除构建墙；fmt clean；commit 8c5a11a00/33ed3d2db | AC-03, AC-04 |
 | [x] | T-05 | work | T-04；测量窗口 | ✅ 定向测量入口 scripts/test-governance/measure-first-wave.py；BASE 10 样本全绿 P50=1583.8/P90=1855.9（单 out 目录 warm 协议）；C1 store 内容身份复用实测 cache_hit 恒 0（worker session-less 强制 per-request 全新 store 并删除，av_probe_worker.rs:774-778）无收益已回滚；C2 worker 会话复用域外（experimental/ac-*=S/N 排除）+ session-serve 协议不兼容；机制级负证据落 attachments/887/t05-perf-negative.md，依用户裁定（plan_revision 2）关闭 AC-05/G4 | AC-05, AC-06 |
 | [x] | T-06 | work | T-05 | ✅ V-04..V-08 八类长期控制落地 integration（plan887_test_governance 12/12 ok）：缺失源/重复ID→exit2、同源双 oracle 两义务保留、typed 诊断正控+错 code 红、warm 重判+stale 拒+身份变更重判、subset NOT_RUN 显式+emit 不冒运行、D 错值红/原值绿；覆盖矩阵（scripts/test-governance/coverage-matrix.json，-f 入库）+弱判差额记录（B08/B11 差异保留、B17-B19 pending、D 包装 provenance）；不批改 golden 不复制裁判；附件 t06-controls-coverage.md（commit 82cb1fdbd） | AC-02, AC-04 |
-| [x] | T-07 | work | T-06 | ✅ V-01 关闭（inventory missing=0/unresolved=0，check conserved:true；四项 UNRESOLVED 逐一解决/具名保留；独立 workspace 202 测试文件/11 bins 枚举登记）；V-10 协议零漂移（discovery_suite 4/4+contract_decode 23/23+contract_v2 20/20）+固定 consumer 原样消费+new integration 显式接线；并集=23 文件全在 887 写面、与 885/871/886 零交集；fmt clean+测试目标 0 新增 warning；附件 t07-closure-wiring.md（commit 6d6a9d7d9） | AC-01..AC-06 |
-| [x] | T-08 | work | T-07 | ✅ 全 AC/V 自检（AC-01..07 逐项证据映射，见 attachments/887/t08-ac-selfcheck.md）；未执行/既存红/债分列（merge-owned 批次/手工 ui-tn/既有红登记、B17-B19=语言裁定非 887 债）；SD-01..04 proposal 冻结（sd-proposals.md）；X887 回交（产品/experimental/UI/Man 零写入，diff 23 文件全在 887 写面）；成本与首批报告冻结；最终 commit 后 tree clean 可送审（commit 46d8c1c93） | AC-07 |
+| [x] | T-07 | work | T-06 | ✅ V-01 关闭（inventory missing=0/unresolved=0，check conserved:true；四项 UNRESOLVED 逐一解决/具名保留；独立 workspace 202 测试文件/11 bins 枚举登记）；V-10 协议零漂移（discovery_suite 4/4+contract_decode 23/23+contract_v2 20/20）+固定 consumer 原样消费+new integration 显式接线；并集=26 文件全在 887 写面、与 885/871/886 零交集；fmt clean+测试目标 0 新增 warning；附件 t07-closure-wiring.md（commit 7aae86117） | AC-01..AC-06 |
+| [x] | T-08 | work | T-07 | ✅ 全 AC/V 自检（AC-01..07 逐项证据映射，见 attachments/887/t08-ac-selfcheck.md）；未执行/既存红/债分列（merge-owned 批次/手工 ui-tn/既有红登记、B17-B19=语言裁定非 887 债）；SD-01..04 proposal 冻结（sd-proposals.md）；X887 回交（产品/experimental/UI/Man 零写入，diff 26 文件全在 887 写面）；成本与首批报告冻结；最终 commit 后 tree clean 可送审（commit e47ffb2e3） | AC-07 |
 | [ ] | T-09 | review | T-08；冻结SHA | 同树独立审AC/SD/V/profile/选择账目，相关反例/必要check；findings同树修复重审，不触整档 | AC-08 |
 | [ ] | T-10 | merge | T-09 pass；输入/机器窗口 | 并集核验→§6冻结触面及候选runner的一次正式冻结三仓批次→实际合入/证据适用读回→Spec/ledger/index→归档→fresh guard clean/remove/分支清理；输出限制/消费版本 | AC-09 |
 
@@ -217,6 +217,10 @@ stage: goal | plan_id: PLAN-887 | plan_revision: r1 | round: 1 | from: drafting 
 2026-10-29 / stage: revision（bounded，用户裁定） / plan_id: PLAN-887 / plan_revision: 1→2 / outcome: pass / scope: 仅 AC-05/G4/V-09 与 D-03 处置 / authorization: 用户明确裁定"修订 AC-05 为机制级证据+负结果记录" / delta: AC-05 与 V-09 增加"未达成须诚实负结果记录+根因+授权面内不可达论证亦可关闭"；G4 增加"或给出阈值不可达的机制级证据"；D-03 关闭 / next: work 继续（T-05 依修订关闭，T-06 起）
 
 stage: work | plan_id: PLAN-887 | plan_revision: 2 | outcome: **pass → execution_done** | worktree: D:/autostack/.wt/lang-887/auto-lang | branch: plan-887-dev | base: 69d90c52f | code_commits: 5c4df00fa (T-01) → d4c98643b (T-02) → 72d357e49 (T-03) → 8c5a11a00/33ed3d2db/20598655a (T-04) → e200e85b1 (T-05 负证据) → 82cb1fdbd (T-06) → 7aae86117 (T-07) → e47ffb2e3 (T-08) | dependency_revisions: auto-down c3464d0a / auto-ui b00fd302a / auto-man e6cc06f（detached 只读兄弟） | task_ids: T-01..T-08 | evidence: T-01 闭包冻结+X887；T-02 设计冻结；T-03 runner 844+869、validate_ids PASS（missing=0/suppressed=0）、floor 3189、控制测试 9/9+既有 25/25；T-04 first-wave D suite 6/6 真实 worker（3/-6/9）+30 复用原 suite 全绿+integration 12/12（V-03/06/08）；T-05 负证据（BASE 10 样本 P50=1583.8、C1 cache_hit=0、C2 域外）；T-06 V-04..V-08 控制+coverage-matrix；T-07 协议 47/47 零漂移+并集 0 交集+fmt/warning 0 新增；T-08 AC-01..07 自检+SD 冻结+X887 回交 | blockers: 无（r2 修订经用户裁定） | merge-owned pending: 冻结提交裸 cargo t + tv + tt + plan887_test_governance 显式门 + 协议触面 + tf --batch 冻结三仓批次（候选 runner 验收）+ canonical/ledger/索引 + 归档 + guard/清树 | next_responsible_role: review（T-09，独立上下文同树冻结 SHA 复审）
+
+2026-10-29 / stage: review / review_scope: final / reviewer: 独立 agent 上下文（general-1，同树冻结只读核验，turnCount 46）/ plan_id: PLAN-887 / plan_revision: 2 / outcome: **pass** / reviewed_commit: e47ffb2e3（修正附件后 a0ccfb812 仅簿记）/ base_commit: 69d90c52f / acceptance_results: AC-01..07 全 pass（逐项实证：check_inventory conserved:true/missing=0、retirements 844+869、floor 3189 理由落档、wrapper 原表达式字节+原 sha+oracle 对上、原 vm 源零改动、integration 12/12 复跑×2、协议 47/47、rustfmt exit 0、测试目标 0 新增 warning、SD/X887 与交付一致） / findings: R887-F1 LOW（diff 文件数 23→26 计数笔误→已落正）、R887-F2 LOW（§8 T-07/T-08 哈希笔误→已落正）、R887-F3 INFO（lib 基线 131/整包 fmt 预存漂移均非 887）、R887-F4 INFO（V-06 warm-oracle 轴由 v06+v08 联合覆盖；worker 身份轴由协议测试覆盖）/ pending_closeout_gates: 裸 cargo t+tv+tt、plan887_test_governance 显式门、协议触面、tf --batch --frozen-trees 三仓冻结批次（候选 runner 验收）、SD-01..04 canonical/ledger/index、归档+guard 清理 / next: merge（T-10）
+
+stage: goal | plan_id: PLAN-887 | plan_revision: r2 | round: 2 | from: work | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-887/auto-lang | commit: e47ffb2e3 | next: merge
 
 ## 10. 待澄清事项
 
