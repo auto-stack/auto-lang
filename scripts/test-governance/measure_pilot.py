@@ -87,7 +87,7 @@ def percentile(values,p):
 
 def comparisons(samples,contract):
     result=[]
-    good=[s for s in samples if s['series']=='measurement' and s['valid']]
+    good=[s for s in samples if s['series']=='measurement' and s['valid'] and s.get('round_accepted') is True]
     for parallelism in contract['parallelism']:
         for candidate in contract['cohorts']:
             if candidate['id'].startswith('a'):continue
@@ -130,6 +130,25 @@ def busy_processes():
     value=json.loads(text);return value if isinstance(value,list) else [value]
 
 
+def settle_round(attempt_samples,cohorts,interference):
+    """Accept the whole predeclared round or discard all its numerical samples."""
+    accepted=not interference and len(attempt_samples)==len(cohorts) and all(s['valid'] for s in attempt_samples)
+    for sample in attempt_samples:sample['round_accepted']=accepted
+    return accepted
+
+
+def wait_for_quiet(document,path,timeout=600):
+    deadline=time.monotonic()+timeout
+    while True:
+        busy=busy_processes()
+        if not busy:return
+        document.setdefault('quiet_waits',[]).append({'time':time.time(),'processes':busy})
+        write(path,document)
+        if time.monotonic()>=deadline:raise ValueError('external workload did not release measurement window within 600s')
+        print(f'waiting for external workload: {busy}',flush=True)
+        time.sleep(min(30,max(0,deadline-time.monotonic())))
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--pilot',type=Path,required=True);parser.add_argument('--worker',type=Path,required=True)
@@ -158,31 +177,44 @@ def main():
                 order=list(contract['cohorts'])
                 random.Random(contract['variant_order_seed']+parallelism*100+round_index).shuffle(order)
                 if round_index%2:order.reverse()
-                for cohort in order:
-                    busy=busy_processes()
-                    if busy:
-                        document['interference']=busy;write(args.output/'campaign.json',document)
-                        raise ValueError('authorized measurement window has another build/test workload; campaign incomplete')
-                    command=[str(args.pilot),'--mode',cohort['mode'],'--set',cohort['set'],'--group-size',str(cohort['group_size']),
-                        '--repeat',str(contract['invocation_repeats']),'--parallelism',str(parallelism)]
-                    meter=measure(command,cwd=ROOT,env=env,timeout=cohort['worker_starts']*60+10)
-                    index=len(samples);raw=meter.pop('stdout');stderr=meter.pop('stderr')
-                    (args.output/f'{index:03}-stdout.json').write_bytes(raw);(args.output/f'{index:03}-stderr.log').write_bytes(stderr)
-                    sample={'series':series,'round':round_index,'cohort':cohort['id'],'parallelism':parallelism,
-                        'meter':meter,'valid':False,'stdout_sha256':hashlib.sha256(raw).hexdigest()}
-                    try:
-                        sample['observations']=validate_report(json.loads(raw),cohort,parallelism,contract,meter)
+                for attempt in range(1,4):
+                    wait_for_quiet(document,args.output/'campaign.json')
+                    attempt_samples=[];interference=[]
+                    for cohort in order:
                         interference=busy_processes()
-                        if interference:raise ValueError(f'external workload after sample: {interference}')
-                        sample['valid']=True
-                    except (ValueError,KeyError,TypeError) as error:sample['error']=str(error)
-                    samples.append(sample);write(args.output/'campaign.json',document)
-                    print(f'{series} round={round_index} p={parallelism} {cohort["id"]}: valid={sample["valid"]} wall={meter["wall_ms"]:.2f}ms CPU={meter["total_cpu_ms"]:.2f}ms',flush=True)
-                    if not sample['valid']:raise ValueError('sample invalid; retain failed campaign and repair before a new frozen campaign')
+                        if interference:break
+                        command=[str(args.pilot),'--mode',cohort['mode'],'--set',cohort['set'],'--group-size',str(cohort['group_size']),
+                            '--repeat',str(contract['invocation_repeats']),'--parallelism',str(parallelism)]
+                        meter=measure(command,cwd=ROOT,env=env,timeout=cohort['worker_starts']*60+10)
+                        index=len(samples);raw=meter.pop('stdout');stderr=meter.pop('stderr')
+                        (args.output/f'{index:03}-stdout.json').write_bytes(raw);(args.output/f'{index:03}-stderr.log').write_bytes(stderr)
+                        sample={'series':series,'round':round_index,'attempt':attempt,'round_accepted':False,
+                            'cohort':cohort['id'],'parallelism':parallelism,'meter':meter,'valid':False,
+                            'stdout_sha256':hashlib.sha256(raw).hexdigest()}
+                        try:
+                            sample['observations']=validate_report(json.loads(raw),cohort,parallelism,contract,meter)
+                            sample['valid']=True
+                        except (ValueError,KeyError,TypeError) as error:sample['error']=str(error)
+                        samples.append(sample);attempt_samples.append(sample)
+                        write(args.output/'campaign.json',document)
+                        print(f'{series} round={round_index} attempt={attempt} p={parallelism} {cohort["id"]}: valid={sample["valid"]} wall={meter["wall_ms"]:.2f}ms CPU={meter["total_cpu_ms"]:.2f}ms',flush=True)
+                        # Mechanical/oracle failures always stop; interference cannot excuse them.
+                        if not sample['valid']:raise ValueError('mechanical sample failure; repair before a new frozen campaign')
+                        interference=busy_processes()
+                        if interference:break
+                    accepted=settle_round(attempt_samples,order,interference)
+                    document.setdefault('round_attempts',[]).append({'series':series,'round':round_index,
+                        'parallelism':parallelism,'attempt':attempt,'accepted':accepted,
+                        'sample_count':len(attempt_samples),'external_workload':interference,
+                        'unrun_cohorts':[c['id'] for c in order[len(attempt_samples):]]})
+                    write(args.output/'campaign.json',document)
+                    if accepted:break
+                    print(f'whole round discarded due to observed external workload: {interference}',flush=True)
+                else:raise ValueError('external interference exhausted three whole-round attempts; campaign incomplete')
         after=binding(args.pilot,args.worker)
         if after!=before:raise ValueError('candidate/input/configuration changed during campaign')
     document['binding_after']=after
-    document['complete']=not args.smoke and len(samples)==document['planned_measurements']+document['planned_warmups']
+    document['complete']=not args.smoke and sum(s.get('round_accepted') is True for s in samples)==document['planned_measurements']+document['planned_warmups']
     document['comparisons']=comparisons(samples,contract) if document['complete'] else []
     document['promotion']='pending all compatibility/isolation controls and parallelism-consistent decision; numeric gates alone do not promote'
     write(args.output/'campaign.json',document)

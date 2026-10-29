@@ -11,6 +11,27 @@ WORKER = Path(os.environ.get('AC_AV_CASE_WORKER',
               ROOT / 'experimental/ac-av-probe/target/debug/av_probe_worker.exe'))
 
 
+class PilotRoundAccounting(unittest.TestCase):
+    def test_interference_discards_entire_round_and_missing_cohort_never_counts(self):
+        import sys
+        sys.path.insert(0,str(ROOT/'scripts/test-governance'))
+        from measure_pilot import settle_round,comparisons
+        cohorts=[{'id':'a'},{'id':'b'}]
+        prior=[{'valid':True},{'valid':True}]
+        self.assertFalse(settle_round(prior,cohorts,[{'Id':123}]))
+        self.assertTrue(all(s['round_accepted'] is False for s in prior))
+        partial=[{'valid':True}]
+        self.assertFalse(settle_round(partial,cohorts,[]))
+        final=[{'valid':True},{'valid':True}]
+        self.assertTrue(settle_round(final,cohorts,[]))
+        self.assertTrue(all(s['round_accepted'] for s in final))
+        # Fast discarded samples must not fill the required formal denominator.
+        contract={'parallelism':[1],'rounds':10,'cohorts':[{'id':'b','set':'pilot15','mode':'group'}]}
+        samples=[dict(series='measurement',valid=True,round_accepted=False,parallelism=1,cohort=c)
+                 for c in ('a15','b') for _ in range(10)]
+        self.assertEqual(comparisons(samples,contract),[])
+
+
 @unittest.skipUnless(os.name == 'nt' and EXE.is_file() and WORKER.is_file(),
                      'requires Windows and the explicitly built test-case-batch pilot/worker')
 class PilotCLI(unittest.TestCase):
