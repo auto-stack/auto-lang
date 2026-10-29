@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-863
-status: reviewed
+status: executing
 feature_name: AV类型化宿主导入与控制台输出（R2-E/print）
 author: [Codex]
 created_at: 2026-10-28
@@ -19,7 +19,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 
 affects: [auto-av, auto-mir, auto-ac, auto-test-case]
-current_step: 6
+current_step: 3
 total_steps: 8
 ---
 
@@ -160,9 +160,9 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 | T-01 | work | D862 | 核实 ABC/MIR import、AV 派发、test-case 父侧路径；`attachments/863/work/baseline.md`，提交 b1d8b68b2 | AC-01/02 | [x] |
 | T-02 | work | T-01 | `attachments/863/work/host-console-contract.md` 冻结 §5.2 与三元组、预算、V-01..05 关闭条件；提交 b1d8b68b2；语义实现未执行 | AC-01..05 | [x] |
 | T-03 | work | T-02 | 源码/HIR 新域、print/eprint 类型化声明/能力/诊断、借用文本、入口效果语句；b8f133cfa；8 新测 + 69 兼容定向测试通过。V-01 精确运行字节待 T-04 | AC-01 | [x] |
-| T-04 | work | T-03 | 563eec65e + 6583d21ad 基础实现；3ff90f15e 修复 F-863-R1-01/02/03；20 runtime + 1 artifact 身份测试通过，含修复前失败反控；见 repair-r1-summary.md | AC-02/03/04 | [x] |
-| T-05 | work | T-04 | 84f1d2054 父侧/语料证据保持有效；3ff90f15e 修正 F-863-R1-04 候选 SD-01/02，保留 R1 parent 11/11 与 AC-05 证据；无合同内遗留 | AC-05 | [x] |
-| T-06 | review | T-05 | R2 final pass，3ff90f15e；同会话 artifact-based review（无独立模型/会话），F01..04 关闭；merge 门 pending；见 review-r2.md | AC-06 | [x] |
+| T-04 | work | T-03 | 3ff90f15e 已关闭 R1-01..03，20 runtime + 1 artifact 证据保留；merge R1 新发现 F-863-M1：第四个 parent ac/run backend tag lowering mirror 仍 2（worker=3），须定向修复 | AC-02/03/04 | [ ] |
+| T-05 | work | T-04 | R1-04 候选文字修复与 parent 11/11 等原通过证据保留；依赖 T-04 身份同步重开，F-M1 关闭后恢复 readiness | AC-05 | [ ] |
+| T-06 | review | T-05 | R2 historical pass 3ff90f15e，F01..04 保持关闭；新 F-M1 修复提交必须再次 affected final review，旧 pass 不覆盖新改动 | AC-06 | [ ] |
 | T-07 | merge | T-06 pass | 冻结提交裸 `cargo t` + `tv` | AC-07 | [ ] |
 | T-08 | merge | T-07 | Spec/ledger/归档/guard 清树 | AC-08 | [ ] |
 
@@ -246,6 +246,16 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 - AC-01..06 pass，T-01..06 完成（current_step=6/8）；AC-07 裸 cargo t + cargo tv **merge-owned pending**；AC-08 Spec/ledger/archive/guard/landing **merge-owned pending**。未跑 t/tv/tf/docs_gen；门禁成功前不得合入或宣称交付。D-863-NB-01 保留显式 peer parity gap，不替代任何合同内要求。
 
 2026-10-30 goal round 7：`stage: goal | plan_id: PLAN-863 | plan_revision: 1 | round: 7 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-863/auto-lang | commit: 3ff90f15eb51401aab2b84dfcb9ee1e0b21953fd | next: merge`。上一轮 progress；本轮四 finding 关闭与最终审查 pass，final review 累计 2（1 fail/1 pass），repair cycle 1，目标 active。
+
+2026-10-30 merge R1：`stage: merge | plan_id: PLAN-863 | plan_revision: 1 | outcome: needs_fix | checkpoint: prepared only | worktree_path: D:/autostack/.wt/lang-863/auto-lang | branch: plan-863-dev | reviewed_commit: 3ff90f15eb51401aab2b84dfcb9ee1e0b21953fd | equivalent_rebased_commit: a07da2b6b305b90e1ed97b16dc79b092a35ca9da | prepared_commit: 3a409abe2d2ee8035255be7333048f9a133e00fb | delivery_commit: none | next: work F-863-M1`。
+
+- 完整 checkpoint、8 对 rebase 全等映射、ledger guard/IDs、真实门禁与可复现 finding 见 [merge R1 收据](attachments/863/merge-r1.md)。SD-01..06/模块导航与 ledger v142→143 仅准备在 worktree 的 docs-only descendant，**未落主线/未发布**；合入/归档/清树均未发生。`git range-diff` 全 `=`；实现 tree clean。
+- 裸 `cargo t` exit100：118/3209 实跑，98 passed、20 cold-build TIMEOUT、673 skipped，余3091 fail-fast未跑；顺序预建 native/CTE/MN worker 后，原 20 个定向回放最终为 **19 passed / 1 failed / 0 TIMEOUT**（exit100）。ABI cold build 的混合 recipe 100.002s 后通过。早期进度行不等于最终判决；门禁未通过，不豁免。
+- **F-863-M1（P2，合同内身份镜像遗漏）**：`crates/auto-lang-core/src/test_cases/ac.rs:1224` 的 `AC_MIR_LOWERING_VERSION="2"` 遗漏同步；真实 worker backend tag `mn:msvc-x64/priv-i32-bool-v1+mir-v3`，parent `...+mir-v2`。既有永久 `r1_backend_axis_mirror_matches_the_real_worker` line610 实红。三处 ac_av/ac_cte/ac_mn 的 expected mirror 已=3，但 ac/run 的独立纯父侧 backend tag 是第四触点。修复需关闭所有同因 tag/stale 路径，保留 worker 真实 tag、legacy 拒绝及 scoped/malformed 控制。T-04/05/06 重开，current_step=3/8；R1 原四 finding 与不受影响证据保留。未改 AC/预算/范围，非 needs_replan。
+- 本地 `.../attachments/863/merge/` 日志 hashes：`cargo-t.log` `915d51c123b6b6bca2e97afc6c84bfcac5676e0b18aad5a3a8609005a1738fdc`；`timeout-replay.log` `0c45321df2b3116a52efec871aba092dfd9600a7a432fd5e0e648c4285b295ef`；其它 prebuild/range-diff/hash 与命令见收据。所有非md raw仍忽略未暂存。主检出 unrelated docs WIP 保留；3 个 exe anchor 已存 `D:/autostack/plan-artifacts/plan-863/bin/`，不构成交付/清理。
+- 下一 work 仅定向修复/测试/提交，affected final review 后才再次执行 merge-owned t/tv。`cargo tv` 未运行；无任何整档测试 pass 及合入授权推定。canonical/ledger prepared commit 需按新代码核对后复用，不得重复投影或覆盖其它工作。
+
+2026-10-30 goal round 8：`stage: goal | plan_id: PLAN-863 | plan_revision: 1 | round: 8 | from: merge | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-863/auto-lang | commit: 3a409abe2d2ee8035255be7333048f9a133e00fb | next: work`。上一轮 progress；本轮完成 rebase/知识准备并发现真实门禁回归，目标 active、无外部阻塞。原 final review 累计2（1 fail/1 pass），新 merge finding 归第二次有界修复；未再次花费 final review 周期。
 
 ## 10. 待澄清事项
 

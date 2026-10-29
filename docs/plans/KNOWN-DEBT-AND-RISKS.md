@@ -1,5 +1,7 @@
 ### Plan 863（2026-10-30，final review R1，84f1d2054）
 
+- **F-863-M1（P2，merge R1 新发现的合同内阻塞）**：lowering=3 后 ac/run 纯父侧 backend tag mirror 仍=2，`r1_backend_axis_mirror_matches_the_real_worker` 真实失败（worker mir-v3 / parent mir-v2）；其余19个冷构建超时重放通过。见 [merge R1](attachments/863/merge-r1.md)。Plan 回 executing，owner=863 work；定向修复 + affected final review 后重新跑合入门禁，不得作为 cold-build/debt 豁免。原 R1 四 finding 已关闭不重开。
+
 - **F-863-R1-01..04（P2，合同内阻塞，非 debt 豁免）**：公开 owned lowering 绕过 console 固定 main；复用 capture 的 memory-only 超限误报 ConsoleOutput；portable reference snapshot 与函数 sidecar 来源不一致仍可 persist/restore；SD-01/02 候选规则两处过度声称。完整复现/值/关闭 oracle 见 [review-r1](attachments/863/review-r1.md)。Plan 已回 executing，修复 owner=863 work；关闭前不得合入。
 - **2026-10-30 R2 关闭记录**：上述 F01..04 已由 `3ff90f15e` 修复并经 [final review R2](attachments/863/review-r2.md) 判 pass（同会话 artifact-based review，无独立模型/会话）。公开 API 原反例、逐函数 snapshot/四 artifact 边界、独立 quota 控制已核；无合同内遗留。Plan=reviewed，`cargo t`+`tv` 与沉淀/归档/guard 清理仍归 merge，门禁通过前不得合入。下列跨端 gap 继续保留。
 - **D-863-NB-01（覆盖边界，非本计划必需的跨端交付）**：新增 O01–O15 的 AV 真实输出三轴已覆盖；native 明确拒绝 profile8（gap:ac-console-profile）；legacy/a2r 的同一新 profile 精确 parity 未执行（gap:console-profile-parity），owner=各 backend 后续扩面/验证立项，尚无交付承诺。保留 gap，不转 na，不据 AV 行宣称 whole-M1 绿。
