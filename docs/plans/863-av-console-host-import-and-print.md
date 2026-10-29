@@ -15,7 +15,7 @@ new_spec_components:
 touched_goals: [GOAL-002]
 
 affects: [auto-av, auto-mir, auto-ac, auto-test-case]
-current_step: 3
+current_step: 4
 total_steps: 8
 ---
 
@@ -57,6 +57,7 @@ total_steps: 8
 - 源码：`experimental/ac-core/src/source/*`、`src/{hir,descriptor,verify}.rs`。
 - MIR/ABC/AV：`experimental/ac-av-probe/core/src/{mir,mir_verify,abc,abc_verify,av,contract}.rs`。
 - 消费者：`experimental/ac-av-probe/probe/src/{hir_adapter,session,driver,formal_worker}.rs`、新 `console_host.rs`（拟建）。
+- T-04 实际消费者边界：共享 lowering 为 `experimental/auto-mir-lower/src/hir_adapter.rs`；whole-module console 宿主/持久化入口为 `probe/src/console_host.rs`，不启用旧 session import。`experimental/ac-mir-native/src/{fingerprint,lower}.rs` 仅补共享 enum 的受控拒绝臂（不增加 native console 支持）；shared lowering version=3，对应父侧 `crates/auto-lang-core/src/test_cases/{ac_av,ac_mn,ac_cte}.rs` 三处身份镜像同升。
 - 观察协议：`docs/specs/auto-test-case/architecture.md` 已规定父侧 stdout 读取带界与 stderr 排空/杀树；本Plan在此之上定义**断言轴**，不改既有 infra 行为。语料：`crates/auto-lang/test/cases/ace-m1/`。
 - 拟建脚本 `scripts/verify-av-863.ps1`（Scope=targeted/compat/console/acceptance），测试前缀 `av_console_863`；当前不存在、未运行。
 
@@ -116,7 +117,7 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-01 | add | docs/specs/auto-av/host-import-and-console.md | 无 → 宿主导入类别/能力/预算/派发/错误/恢复 | 首个宿主能力 | AC-02/03/04 |
+| SD-01 | add | docs/specs/auto-av/host-import-and-console.md | 无 → AVHC/1、profile 8、HOST 声明节/0x35 HostCall；console/1 类型化符号/能力/64KiB+1MiB 预算/派发/具名错误/同步重入拒绝/重新授权恢复；whole-module surface，console function-unit 受控拒绝 mir.host-unit；旧 profile 不变 | 首个宿主能力 | AC-02/03/04 |
 | SD-02 | add | docs/specs/auto-ac/source-console-output.md | 无 → print/eprint 语法、格式化、诊断 | 真实程序可输出 | AC-01 |
 | SD-03 | modify | docs/specs/auto-test-case/architecture.md | 追加输出断言轴（stdout/stderr 精确字节+上限），infra 规则不变 | 可判决 | AC-05 |
 | SD-04 | modify | docs/specs/auto-test-case/ace-m1-conformance.md | 追加 console 行与轴映射 | 证据落点 | AC-05 |
@@ -154,7 +155,7 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 | T-01 | work | D862 | 核实 ABC/MIR import、AV 派发、test-case 父侧路径；`attachments/863/work/baseline.md`，提交 b1d8b68b2 | AC-01/02 | [x] |
 | T-02 | work | T-01 | `attachments/863/work/host-console-contract.md` 冻结 §5.2 与三元组、预算、V-01..05 关闭条件；提交 b1d8b68b2；语义实现未执行 | AC-01..05 | [x] |
 | T-03 | work | T-02 | 源码/HIR 新域、print/eprint 类型化声明/能力/诊断、借用文本、入口效果语句；b8f133cfa；8 新测 + 69 兼容定向测试通过。V-01 精确运行字节待 T-04 | AC-01 | [x] |
-| T-04 | work | T-03 | ABC host-import section + verifier + AV 派发 + provider；V-02/03/04 | AC-02/03/04 | [ ] |
+| T-04 | work | T-03 | 563eec65e + 6583d21ad：独立 host table/HostCall/AVHC、准入、current grants、内存/燃料/深度/输出预算、取消/IO/重入拒绝、managed-store 新进程恢复；17 新测与 55 兼容/消费者定向检查通过，摘要 runtime-summary.md | AC-02/03/04 | [x] |
 | T-05 | work | T-04 | 观察轴 + 语料/oracle/脚本；V-05，提交代码/证据 | AC-05 | [ ] |
 | T-06 | review | T-05 | 独立最终review；merge 门 pending | AC-06 | [ ] |
 | T-07 | merge | T-06 pass | 冻结提交裸 `cargo t` + `tv` | AC-07 | [ ] |
@@ -183,6 +184,17 @@ recipe 侧：`print`/`eprint` 是新增宿主导入类别，优先新注册 `ac-
 - 本地摘要（已提交的 md）`D:/autostack/.wt/lang-863/auto-lang/docs/plans/attachments/863/work/frontend-summary.md`，SHA256 `d526fbfb30bc614b3534e1ee81c351b08bb98bf944701634d07c945c0d4a6023`。AC-01 的精确运行输出仍待 T-04；AC-02..05 实现未完成。未运行整档 t/tv/tf/docs_gen，未送审或合入。
 
 2026-10-30 goal round 2 checkpoint：`stage: goal | plan_id: PLAN-863 | plan_revision: 1 | round: 2 | from: work | to: work | status: executing | outcome: pass（仅 T-03 源码/HIR 检查点；非 work-complete） | worktree: D:/autostack/.wt/lang-863/auto-lang | commit: 2f309713b942c942983b443c8775cbbc6ed12cff | next: work T-04`。上一轮为 progress（T-01/T-02 文档提交）；本轮为 progress（源码/HIR 实现提交与 77 项定向测试证据）。实施树 clean，授权不变，无待用户决策。
+
+2026-10-30 work T-04：`stage: work | plan_id: PLAN-863 | plan_revision: 1 | outcome: progress（非 work-complete） | worktree_path: D:/autostack/.wt/lang-863/auto-lang | branch: plan-863-dev | base_commit: eda05a86f | code_commit: 6583d21ad（其前实施 563eec65e） | checkpoint_commit: f5874901b79764b7ea93f8e82a23f573d346e4b6 | task_ids: T-04 | blockers: none | next_responsible_role: work T-05`。
+
+- 真实路径：新源码/HIR 域→共享 `lower_checked_console`→独立 `MirHostImport`+`HostCall`→verifier→AVHC/1（profile 8、HOST section、opcode 0x35）→decode/deep admission→每次执行 current grants→AV→有界 `ConsoleCapture`。未复用或放宽 guest import，未把 print 伪装成 trace/guest 返回整数。provider/native 地址、句柄与 grant credential 不进入 portable 内容。
+- V-01..04：独立精确字节 oracle（i32 MIN/负数/0、bool、UTF-8/NUL/换行、char、Str/str）、guest 调用顺序/文本投影/既有副作用保留；11 类真实 wire 声明/引用/类型变异；未授权（含不可达声明）零派发、泛用 executor 无 provider 拒绝；64KiB/call 与 1MiB 双流合计的等界/越界；fuel/depth/memory 与输出上限分辨；host 内置取消/IO 失败、guest owner 正常释放；同步重入所有 guest dispatch 拒绝并能正常恢复后续执行；managed-store 新进程恢复及同一 loaded credential 撤权后零输出/派发。
+- 最终 console 定向集 **17/17 passed**，exit 0；本轮另有 **55** 个受影响 core/entry/data/owned/compact/native/指令合同检查通过（计数与命令逐项见摘要，不重复计入调试重跑）。已有 `av_data_820_semantics` 指令表已知版本 pin 从 52 正常推进至 53，先观测红后补 HOST_CALL 行覆盖。共享 lowering 变更引起全局身份从 2→3，三个父侧镜像同步；父侧真实 worker/断言集成及根类型检查由 T-05 一并完成。
+- whole-module AVHC artifact 是本次新增执行面；`mir.host-unit` 显式拒绝未引入的 console function-unit linking，既有 session/closure 语义不变；native 仅为共享 enum 扩展补受控拒绝，非支持扩面。此为实际 producer/consumer 路径澄清，未缩减 AC 或把要求延后。
+- 证据摘要：`D:/autostack/.wt/lang-863/auto-lang/docs/plans/attachments/863/work/runtime-summary.md`（随 f5874901b 固定）；原始日志同目录 `runtime-verification.log` **本地保留未提交**，SHA256 `b923bcb7c2547e9eac42623a1c8d5cb98ab166bc161be5de141cba52ed8a8cc2`。probe 既有 4 处告警已逐项记为 baseline，无新增告警；core/lowering 类型检查、所改文件 rustfmt 与 diff-check 通过。
+- AC-01（运行字节）与 AC-02..04 已有直接 work 证据；AC-05 尚未交付。未跑整档 t/tv/tf/docs_gen，未进入 final review/merge。
+
+2026-10-30 goal round 3 checkpoint：`stage: goal | plan_id: PLAN-863 | plan_revision: 1 | round: 3 | from: work | to: work | status: executing | outcome: pass（仅 T-04 runtime 检查点；非 work-complete） | worktree: D:/autostack/.wt/lang-863/auto-lang | commit: f5874901b79764b7ea93f8e82a23f573d346e4b6 | next: work T-05`。上一轮为 progress（源码/HIR 实现）；本轮为 progress（AV/portable/授权/预算/恢复实现及真实反控证据）。实施树 clean，无用户决策阻塞；继续新 recipe、父侧 stdout/stderr/exit 观察轴、语料与脚本。
 
 ## 10. 待澄清事项
 
