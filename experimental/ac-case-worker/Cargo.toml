@@ -17,6 +17,9 @@ publish = false
 [dependencies]
 auto-ac-prototype = { path = "../ac-core" }
 ac-artifact-probe = { path = "../ac-artifact-probe" }
+# PLAN-871 T-04: the shared-MIR backend (driver-layer switch point only —
+# ac-core never depends on it, so the crate graph stays acyclic).
+ac-mn = { path = "../ac-mir-native" }
 ac-syntax-rt = { path = "../ac-syntax/runtime" }
 ac-syntax-grammar = { path = "../ac-syntax/grammar" }
 serde = { version = "1", features = ["derive"] }

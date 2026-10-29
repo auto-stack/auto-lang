@@ -11,6 +11,7 @@ use crate::observe::Obs;
 use crate::resources::Partition;
 use crate::{emit, MnError};
 use ac_artifact_probe::store::ManagedStore;
+use auto_ac_prototype::link::CaptureCaps;
 use auto_av_core::mir::MirType;
 use auto_av_core::mir_verify::{verify_mir, MirVerifyError};
 use std::path::{Path, PathBuf};
@@ -247,9 +248,9 @@ impl MnDriver {
         MnRequest::of(result, obs, workdir)
     }
 
-    /// The backend pipeline shared by the source front door and
-    /// [`MnDriver::request_checked`]: lower arm → MIR verify → split →
-    /// A09' cache → A10' manifest → wrapper + real link + run.
+    /// Build + contained run (the source front door and the shadow gate):
+    /// [`MnDriver::build_arm`] then the same contained executor the link
+    /// driver uses — a run failure is INFRA, the published evidence stays.
     #[allow(clippy::too_many_arguments)]
     fn run_arm(
         &mut self,
@@ -261,7 +262,53 @@ impl MnDriver {
         snapshot: u64,
         obs: &mut Obs,
     ) -> Result<(Option<i32>, Vec<u8>, Vec<u8>, String, Option<String>), MnError> {
+        let build = self.build_arm(arm, checked, entry, workdir, trace_lib, None, snapshot, obs)?;
+        let run = obs.span("run", |o| {
+            o.counter("run_invocations", 1);
+            link_driver::run_pe(
+                &build.exe_path,
+                RUN_BUDGET,
+                CaptureCaps {
+                    stdout_max: STREAM_CAP,
+                    stderr_max: STREAM_CAP,
+                },
+            )
+        })?;
+        obs.counter("mn_runs", 1);
+        Ok((
+            run.exit_code,
+            run.stdout,
+            run.stderr,
+            build.manifest_fp,
+            build.manifest_artifact_id,
+        ))
+    }
+
+    /// The backend pipeline shared by the source front door and
+    /// [`MnDriver::request_checked`]: lower arm → MIR verify → split →
+    /// A09' cache → A10' manifest → wrapper + real link (no run).
+    #[allow(clippy::too_many_arguments)]
+    fn build_arm(
+        &mut self,
+        arm: Arm,
+        checked: &auto_ac_prototype::verify::CheckedModule,
+        entry: &str,
+        workdir: &Path,
+        trace_lib: Option<&Path>,
+        support_override: Option<&Path>,
+        snapshot: u64,
+        obs: &mut Obs,
+    ) -> Result<MnBuild, MnError> {
         let needs_text_runtime = matches!(arm, Arm::Owned);
+        // An explicit `--support-lib` means the DOMAIN runtime library on
+        // owned (text/text-record) rows and the trace support library on
+        // every other arm — the same split the retiring CLI had (PLAN-871
+        // T-02 F4 item 4). Text runtime stays auto-located when absent.
+        let (trace_lib, text_override) = if needs_text_runtime {
+            (trace_lib, support_override)
+        } else {
+            (support_override.or(trace_lib), None)
+        };
 
         // ---- HIR → MIR (798 public adapter) + verify ---------------------
         let module = obs.span("mir_lower", |o| {
@@ -452,9 +499,12 @@ impl MnDriver {
         // (ac.runtime.text.v1) — located/built through the shared probe
         // seam, memoized per process; data/scalar domains never do.
         let text_lib: Option<std::path::PathBuf> = if needs_text_runtime {
-            let lib =
-                auto_av_probe::native_reference::text_runtime_lib().map_err(MnError::Infra)?;
-            Some(lib)
+            match text_override {
+                Some(p) => Some(p.to_path_buf()),
+                None => Some(
+                    auto_av_probe::native_reference::text_runtime_lib().map_err(MnError::Infra)?,
+                ),
+            }
         } else {
             None
         };
@@ -505,7 +555,7 @@ impl MnDriver {
             manifest_artifact_id = Some(id);
         }
 
-        // ---- wrapper + real multi-object link + real run ------------------
+        // ---- wrapper + real multi-object link -----------------------------
         let wrapper = obs.span("codegen", |o| {
             o.counter("codegen_emit_wrappers", 1);
             emit::emit_wrapper_coff(&entry_meta.symbol)
@@ -518,10 +568,9 @@ impl MnDriver {
         if let Some(t) = &text_lib {
             support_libs.push(t.clone());
         }
-        let run = obs.span("link_run", |o| {
+        let linked = obs.span("link", |o| {
             o.counter("link_invocations", 1);
-            o.counter("run_invocations", 1);
-            link_driver::link_and_run(
+            link_driver::link_only(
                 &objects,
                 &wrapper,
                 START_SYMBOL,
@@ -530,7 +579,6 @@ impl MnDriver {
                 &format!("manifest-fp {fp}\nunits {}\n", manifest.units.len()),
             )
         })?;
-        obs.counter("mn_runs", 1);
         // Ledger peaks enter the observable trace (T-05 evidence).
         let peaks = obs.ledger.peaks();
         let peak_total = obs.ledger.peak_total();
@@ -538,12 +586,86 @@ impl MnDriver {
             obs.counter(&format!("ledger_peak_{name}"), peaks[i] as u64);
         }
         obs.counter("ledger_peak_total", peak_total as u64);
-        Ok((
-            run.exit_code,
-            run.stdout,
-            run.stderr,
-            fp,
+        Ok(MnBuild {
+            exe_path: linked.exe_path,
+            receipt_path: linked.receipt_path,
+            manifest_fp: fp,
             manifest_artifact_id,
-        ))
+            // Linked units, not manifest entries: an ephemeral (no-store)
+            // build has no A10 unit rows yet every unit was still linked.
+            units: objects.len(),
+            unit_sha256: objects
+                .iter()
+                .map(|o| (o.name.clone(), sha256_hex(&o.bytes)))
+                .collect(),
+            obs: obs.clone(),
+        })
     }
+
+    /// Build-only entry: lower through the shared MIR chain, emit per-unit
+    /// COFFs, link for real, publish exe + link receipt — and STOP. The
+    /// caller keeps execution (its budgets, caps and containment), which is
+    /// why the worker's run leg and `ac-native build` can both use this.
+    pub fn build_checked(
+        &mut self,
+        checked: &auto_ac_prototype::verify::CheckedModule,
+        entry: &str,
+        workdir: &Path,
+        trace_lib: Option<&Path>,
+        support_override: Option<&Path>,
+        snapshot: u64,
+    ) -> Result<MnBuild, MnError> {
+        let mut obs = Obs::default();
+        let arm = arm_of_domain(checked.bundle().domain).ok_or_else(|| {
+            MnError::Unsupported(
+                "domain",
+                format!(
+                    "HIR domain `{}` is outside the mn lowering arms",
+                    checked.bundle().domain.as_str()
+                ),
+            )
+        })?;
+        self.build_arm(
+            arm,
+            checked,
+            entry,
+            workdir,
+            trace_lib,
+            support_override,
+            snapshot,
+            &mut obs,
+        )
+    }
+}
+
+/// The committed products of one mn build: the exe, its link receipt and
+/// the A10' manifest identity (fingerprint + optional store artifact id).
+pub struct MnBuild {
+    pub exe_path: std::path::PathBuf,
+    pub receipt_path: std::path::PathBuf,
+    pub manifest_fp: String,
+    pub manifest_artifact_id: Option<String>,
+    pub units: usize,
+    /// (unit name, SHA-256 of its COFF bytes) — the receipt's per-unit
+    /// identity needs (PLAN-871 T-02 F4 item 2). SHA-256 here, not the
+    /// internal blake3 key: the receipt is an external document.
+    pub unit_sha256: Vec<(String, String)>,
+    /// The build's own observation (spans/counters/ledger peaks) so a
+    /// driver-layer consumer (ac-case worker, CLI receipts) reports mn's
+    /// real counters instead of inventing them.
+    pub obs: Obs,
+}
+
+/// Content identity seed for a lowering request (FNV-1a 64), shared with
+/// the source front door so callers that only hold canonical HIR bytes
+/// derive the SAME kind of snapshot.
+pub fn content_snapshot(bytes: &[u8]) -> u64 {
+    auto_av_core::contract::fnv1a64(bytes)
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(bytes);
+    format!("{:x}", h.finalize())
 }

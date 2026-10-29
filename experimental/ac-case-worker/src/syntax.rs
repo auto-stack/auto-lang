@@ -293,6 +293,8 @@ fn exec_inner(
             ac_core_version: String::new(),
             worker_version: String::new(),
             worker_exe_sha256: crate::exec::worker_exe_sha256_public(),
+            // Syntax parse/edit never lowers — no native backend ran.
+            backend: String::new(),
         },
         cache: Some(crate::protocol::CacheOut {
             mode: format!("syntax:{}:revision-{}", grammar, revision),

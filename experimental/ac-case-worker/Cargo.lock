@@ -20,6 +20,7 @@ name = "ac-case-worker"
 version = "0.1.0"
 dependencies = [
  "ac-artifact-probe",
+ "ac-mn",
  "ac-syntax-grammar",
  "ac-syntax-rt",
  "auto-ac-prototype",
@@ -27,6 +28,45 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "ac-mn"
+version = "0.1.0"
+dependencies = [
+ "ac-artifact-probe",
+ "auto-ac-prototype",
+ "auto-av-core",
+ "auto-av-probe",
+ "auto-mir-lower",
+ "base64",
+ "blake3",
+ "cranelift-codegen",
+ "cranelift-frontend",
+ "cranelift-module",
+ "cranelift-object",
+ "serde",
+ "serde_json",
+ "sha2",
+ "target-lexicon",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "ac-sema-contract"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+]
+
+[[package]]
+name = "ac-syntax-core-adapter"
+version = "0.1.0"
+dependencies = [
+ "ac-artifact-probe",
+ "ac-syntax-grammar",
+ "ac-syntax-rt",
+ "auto-ac-prototype",
 ]
 
 [[package]]
@@ -122,6 +162,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "auto-av-core"
+version = "0.1.0"
+
+[[package]]
+name = "auto-av-probe"
+version = "0.1.0"
+dependencies = [
+ "ac-artifact-probe",
+ "ac-sema-contract",
+ "ac-syntax-core-adapter",
+ "ac-syntax-grammar",
+ "ac-syntax-rt",
+ "auto-ac-prototype",
+ "auto-av-core",
+ "auto-mir-lower",
+ "base64",
+ "blake3",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "auto-cache"
 version = "0.1.0"
 dependencies = [
@@ -137,6 +201,14 @@ dependencies = [
  "shim-metadata",
  "syn 2.0.119",
  "thiserror",
+]
+
+[[package]]
+name = "auto-mir-lower"
+version = "0.1.0"
+dependencies = [
+ "auto-ac-prototype",
+ "auto-av-core",
 ]
 
 [[package]]

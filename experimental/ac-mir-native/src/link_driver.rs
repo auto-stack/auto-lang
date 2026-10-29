@@ -223,6 +223,45 @@ pub fn link_and_run(
     support_libs: &[PathBuf],
     link_receipt_extra: &str,
 ) -> Result<PeRun, MnError> {
+    let linked = link_only(
+        objects,
+        entry_wrapper,
+        entry_symbol,
+        workdir,
+        support_libs,
+        link_receipt_extra,
+    )?;
+    run_pe(
+        &linked.exe_path,
+        RUN_BUDGET,
+        CaptureCaps {
+            stdout_max: STREAM_CAP,
+            stderr_max: STREAM_CAP,
+        },
+    )
+}
+
+/// The committed products of a successful [`link_only`] call: the published
+/// exe and the link receipt next to it. Staged inputs are already
+/// reclaimed — these are the only files this call leaves behind.
+pub struct PeLink {
+    pub exe_path: PathBuf,
+    pub receipt_path: PathBuf,
+}
+
+/// Link WITHOUT running (PLAN-871 T-04): the same stage/commit/rollback
+/// discipline as [`link_and_run`], stopping after the receipt is published.
+/// Consumers that must stay in charge of execution (the ac-case worker's
+/// budgeted/capped run leg, the `ac-native build` CLI) use this; a run
+/// failure therefore can never look like a build failure.
+pub fn link_only(
+    objects: &[ObjectInput],
+    entry_wrapper: &[u8],
+    entry_symbol: &str,
+    workdir: &Path,
+    support_libs: &[PathBuf],
+    link_receipt_extra: &str,
+) -> Result<PeLink, MnError> {
     let total: usize = objects.iter().map(|o| o.bytes.len()).sum::<usize>() + entry_wrapper.len();
     if total > MAX_LINK_INPUT_BYTES {
         return Err(MnError::Resource(
@@ -407,16 +446,19 @@ pub fn link_and_run(
     }
     owned.clear();
 
-    // ---- run: contained; a run failure keeps the published evidence ----
-    let mut run_cmd = Command::new(&exe_path);
-    let run = match run_deadlined_captured(
-        &mut run_cmd,
-        RUN_BUDGET,
-        CaptureCaps {
-            stdout_max: STREAM_CAP,
-            stderr_max: STREAM_CAP,
-        },
-    ) {
+    Ok(PeLink {
+        exe_path,
+        receipt_path,
+    })
+}
+
+/// Contained run of an already-published PE (PLAN-871 T-04): single
+/// deadline, kill-on-close job, capped raw capture — the ONLY way this
+/// crate executes a product binary. A crash/timeout is INFRA, never a
+/// language trap, and the published evidence from the link stays put.
+pub fn run_pe(exe_path: &Path, budget: Duration, caps: CaptureCaps) -> Result<PeRun, MnError> {
+    let mut run_cmd = Command::new(exe_path);
+    let run = match run_deadlined_captured(&mut run_cmd, budget, caps) {
         Ok(r) => r,
         // A native crash/timeout is INFRA, never a language trap.
         Err(e) => return Err(MnError::Infra(format!("run {}: {e:?}", exe_path.display()))),
@@ -425,6 +467,6 @@ pub fn link_and_run(
         exit_code: run.exit_code,
         stdout: run.stdout,
         stderr: run.stderr,
-        exe_path,
+        exe_path: exe_path.to_path_buf(),
     })
 }

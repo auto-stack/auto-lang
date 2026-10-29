@@ -214,7 +214,15 @@ fn native_cache_trace_records_stage_spans() {
     // (parse/resolve/typecheck/emit/bind from the observer), not a merged
     // "frontend" blob.
     for expect in [
-        "parse", "resolve", "typecheck", "emit", "bind", "verify", "lower", "link", "run",
+        "parse",
+        "resolve",
+        "typecheck",
+        "emit",
+        "bind",
+        "verify",
+        "lower",
+        "link",
+        "run",
         "total",
     ] {
         assert!(

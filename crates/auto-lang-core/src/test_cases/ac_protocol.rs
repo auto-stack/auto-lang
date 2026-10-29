@@ -115,6 +115,12 @@ pub struct ToolchainOut {
     pub worker_version: String,
     #[serde(default)]
     pub worker_exe_sha256: String,
+    /// PLAN-871 T-04: the backend the request actually ran on
+    /// (`cranelift-0.126/lower_object` | `mn:<abi>+mir-v<ver>`, empty for a
+    /// pre-871 worker). Admission-only here; the report axis lands with the
+    /// T-05 identity work.
+    #[serde(default)]
+    pub backend: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -692,7 +692,14 @@ pub fn run_check(
         }
     }
     if !diags {
-        if let Err(e) = require_products(check, &seen_logical) {
+        // PLAN-871 T-04: the required build products depend on the backend
+        // the worker actually ran (it reports that axis per request). The
+        // shared-MIR backend links a MULTI-UNIT closure — there is no single
+        // `app.obj` (the same reason the `ac-native` CLI no longer emits
+        // `<stem>.obj`), so `app.exe` is the build product on both backends
+        // and the legacy `app.obj` is required only on the legacy one.
+        let backend = ok["toolchain"]["backend"].as_str().unwrap_or("");
+        if let Err(e) = require_products(check, &seen_logical, backend) {
             return Ok(Verdict::error(e));
         }
     }
@@ -1300,14 +1307,25 @@ fn resolve_sdk_um_dir() -> Option<PathBuf> {
 
 /// R2 F04: required products are a SUCCESS-shape contract — only a
 /// diagnostics-free response must carry them; language failures carry none.
+/// PLAN-871 T-04: the set is backend-aware (mn links a multi-unit closure
+/// and has no single `app.obj`), driven by the reported `backend` axis.
 fn require_products(
     check: &CheckSpec,
     seen_logical: &std::collections::BTreeSet<String>,
+    backend: &str,
 ) -> Result<(), String> {
     let has = |l: &str| seen_logical.contains(l);
+    let mn_backend = backend.starts_with("mn:");
     match (check.adapter, check.action) {
         (_, auto_test_case::contract::Action::Build) => {
-            if !has("app.obj") || !has("app.exe") {
+            if !has("app.exe") {
+                return Err(if mn_backend {
+                    "shared-MIR build response must carry app.exe".to_string()
+                } else {
+                    "build response must carry both app.obj and app.exe".to_string()
+                });
+            }
+            if !mn_backend && !has("app.obj") {
                 return Err("build response must carry both app.obj and app.exe".to_string());
             }
         }

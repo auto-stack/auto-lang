@@ -20,6 +20,7 @@ cranelift-module = "0.126"
 cranelift-object = "0.126"
 target-lexicon = "0.13"
 blake3 = "1"
+sha2 = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
@@ -27,6 +28,10 @@ base64 = "0.22"
 [[bin]]
 name = "mn-worker"
 path = "src/bin/mn-worker.rs"
+
+[[bin]]
+name = "ac-native"
+path = "src/bin/ac-native.rs"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

@@ -9,10 +9,12 @@
 //! Nothing here feeds product paths; the private test ABI is NOT the
 //! public AutoABI of PLAN-797.
 
+pub mod backend;
 pub mod cache;
 pub mod config;
 pub mod driver;
 pub mod emit;
+pub mod entry;
 pub mod fingerprint;
 pub mod incremental;
 pub mod layout;

@@ -42,6 +42,19 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
         _ => SourceProfile::Core,
     };
 
+    // PLAN-871 T-04: the driver-layer backend switch (freeze F1). Resolved
+    // per request from AC_NATIVE_BACKEND (never memoized), so a long-lived
+    // worker honors a profile-level rollback on the very next request. A
+    // malformed value is an explicit admission refusal — never a silent
+    // fallback to the other backend.
+    let switch_profile = match profile {
+        SourceProfile::Scalar => ac_mn::backend::Profile::Scalar,
+        _ => ac_mn::backend::Profile::Core,
+    };
+    let backend = ac_mn::backend::resolve(switch_profile)
+        .map_err(|e| WorkerError::admission("request.backend", e.0))?;
+    let backend_tag = backend.tag();
+
     // Cache participation (T-05): auto-source build/run requests route
     // through the 783 driver (single pipeline, real hits/misses); the run
     // leg stays HERE so per-request budgets, stream caps and raw bytes hold
@@ -71,11 +84,19 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
             "cache fresh/read-only requires auto-source ac/build|run store participation",
         ));
     }
+    // PLAN-871 T-04: build/run on the shared-MIR backend never touches the
+    // retiring lowering nor the 783 legacy vertical — the mn driver owns
+    // its own A09'/A10' cache (backend identity is structural in its keys),
+    // and this worker keeps the run leg (budgets/caps/raw bytes).
+    if backend == ac_mn::backend::Backend::Mn && matches!(req.kind.as_str(), "build" | "run") {
+        return exec_mn(req, profile, cache_mode, &backend_tag);
+    }
+
     let via_driver = req.store_root.is_some()
         && matches!(req.kind.as_str(), "build" | "run")
         && matches!(req.input, InputSpec::Source { .. });
     if via_driver {
-        return exec_via_driver(req, profile, cache_mode);
+        return exec_via_driver(req, profile, cache_mode, &backend_tag);
     }
 
     // ---- frontend + verify (check/build/run all need a Checked module) --
@@ -93,7 +114,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
                 artifacts: vec![],
                 run: None,
                 trace,
-                toolchain: toolchain_identity(),
+                toolchain: toolchain_identity(&backend_tag),
                 cache: None,
                 metric_gaps: metric_gaps(),
             });
@@ -110,7 +131,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
             artifacts: vec![],
             run: None,
             trace,
-            toolchain: toolchain_identity(),
+            toolchain: toolchain_identity(&backend_tag),
             cache: None,
             metric_gaps: metric_gaps(),
         });
@@ -135,7 +156,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
             artifacts: vec![hir_artifact],
             run: None,
             trace,
-            toolchain: toolchain_identity(),
+            toolchain: toolchain_identity(&backend_tag),
             cache: None,
             metric_gaps: metric_gaps(),
         });
@@ -158,7 +179,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
                 artifacts: vec![hir_artifact],
                 run: None,
                 trace,
-                toolchain: toolchain_identity(),
+                toolchain: toolchain_identity(&backend_tag),
                 cache: None,
                 metric_gaps: metric_gaps(),
             });
@@ -179,7 +200,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
                 artifacts: vec![hir_artifact],
                 run: None,
                 trace,
-                toolchain: toolchain_identity(),
+                toolchain: toolchain_identity(&backend_tag),
                 cache: None,
                 metric_gaps: metric_gaps(),
             });
@@ -217,6 +238,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
         ac_core_version: auto_ac_prototype::VERSION.to_string(),
         worker_version: env!("CARGO_PKG_VERSION").to_string(),
         worker_exe_sha256: worker_exe_sha256(),
+        backend: backend_tag.to_string(),
     };
     let obj_path = scratch.join("app.obj");
     let tmp_obj = scratch.join("app.obj.tmp-788");
@@ -441,7 +463,9 @@ fn run_product(req: &WorkerRequest, exe_path: &str) -> Result<OkOut, WorkerError
                 wall_ms: ms(started),
             },
         ],
-        toolchain: toolchain_identity(),
+        // A product run consumes an ALREADY-BUILT exe: this worker did not
+        // run a backend, so the axis stays empty (never claim mn/legacy).
+        toolchain: toolchain_identity(""),
         cache: None,
         metric_gaps: metric_gaps(),
     })
@@ -589,6 +613,7 @@ fn exec_via_driver(
     req: &WorkerRequest,
     profile: SourceProfile,
     cache_mode: &str,
+    backend_tag: &str,
 ) -> Result<OkOut, WorkerError> {
     use ac_artifact_probe::driver::{vertical_observed, DriverCacheMode, VerticalCfg};
     let started = Instant::now();
@@ -816,8 +841,207 @@ fn exec_via_driver(
         artifacts,
         run,
         trace,
-        toolchain: driver_toolchain(&lld, &lld_bytes, &sdk),
+        toolchain: driver_toolchain(&lld, &lld_bytes, &sdk, backend_tag),
         cache: Some(cache),
+        metric_gaps: metric_gaps(),
+    })
+}
+
+/// PLAN-871 T-04: build/run on the SHARED-MIR native backend (`ac-mn`).
+///
+/// The worker keeps everything that is its contract — frontend observation,
+/// capability backstop, budgets, contained run, artifact manifests — and
+/// delegates only the lowering/emission/link closure to the mn driver. A
+/// store root selects the mn A09'/A10' cache (its keys carry the backend
+/// identity structurally); `read-only` forbids codegen so a miss is a
+/// controlled refusal instead of a silent rebuild.
+fn exec_mn(
+    req: &WorkerRequest,
+    profile: SourceProfile,
+    cache_mode: &str,
+    backend_tag: &str,
+) -> Result<OkOut, WorkerError> {
+    let started = Instant::now();
+    let mut trace: Vec<SpanOut> = Vec::new();
+    let (checked, hir_bytes, failure_diags) = frontend(req, profile, &mut trace)?;
+    let checked = match checked {
+        Some(c) => c,
+        None => {
+            check_total(&started, req)?;
+            return Ok(OkOut {
+                diagnostics: failure_diags,
+                hir_b64: None,
+                artifacts: vec![],
+                run: None,
+                trace,
+                toolchain: toolchain_identity(backend_tag),
+                cache: None,
+                metric_gaps: metric_gaps(),
+            });
+        }
+    };
+
+    // The verified capability backstop is frontend/verify-level and thus
+    // backend-independent — both backends enforce the same set.
+    if let Err(ds) = native::capabilities_check(&checked, &req.capabilities) {
+        check_total(&started, req)?;
+        return Ok(OkOut {
+            diagnostics: diags_mapped(&ds, "capability"),
+            hir_b64: None,
+            artifacts: vec![],
+            run: None,
+            trace,
+            toolchain: toolchain_identity(backend_tag),
+            cache: None,
+            metric_gaps: metric_gaps(),
+        });
+    }
+
+    let scratch = Path::new(&req.scratch);
+    let hir_path = scratch.join("hir.atom");
+    std::fs::write(&hir_path, &hir_bytes)
+        .map_err(|e| infra("request.scratch", format!("write hir.atom: {}", e)))?;
+    let hir_artifact = artifact("hir", "hir.atom", &hir_path)?;
+
+    // Entry selection owns the same typed refusals the legacy path has
+    // (`entry.not-found` / `entry.ambiguous` at the backend stage).
+    let (entry_id, _entry_symbol) = match ac_mn::entry::resolve(&checked, &req.entry) {
+        Ok(e) => e,
+        Err(ds) => {
+            check_total(&started, req)?;
+            return Ok(OkOut {
+                diagnostics: diags_mapped(&ds, "backend"),
+                hir_b64: Some(b64(&hir_bytes)),
+                artifacts: vec![hir_artifact],
+                run: None,
+                trace,
+                toolchain: toolchain_identity(backend_tag),
+                cache: None,
+                metric_gaps: metric_gaps(),
+            });
+        }
+    };
+
+    // ---- backend: the mn driver (store-backed when the request asks) ----
+    let mut driver = match req.store_root.as_deref() {
+        Some(root) => {
+            let project = req.project.clone().unwrap_or_else(|| "ac-case".into());
+            ac_mn::driver::MnDriver::with_store(Path::new(root), &project)
+                .map_err(|e| infra("store.open", format!("{}", e)))?
+        }
+        None => ac_mn::driver::MnDriver::ephemeral(),
+    };
+    if cache_mode == "read-only" {
+        driver.forbid_codegen = true;
+    }
+    let workdir = scratch.join("mn");
+    let snapshot = ac_mn::driver::content_snapshot(&hir_bytes);
+    let backend_start = Instant::now();
+    let built = match driver.build_checked(
+        &checked,
+        &entry_id,
+        &workdir,
+        req.support_lib.as_ref().map(Path::new),
+        None,
+        snapshot,
+    ) {
+        Ok(b) => b,
+        Err(e) => {
+            return match e {
+                // Infra/tool failure: never a language observation.
+                ac_mn::MnError::Infra(m) => Err(infra("backend.mn", m)),
+                ref err @ (ac_mn::MnError::Unsupported(_, _)
+                | ac_mn::MnError::Admit(_, _)
+                | ac_mn::MnError::Backend(_)
+                | ac_mn::MnError::Resource(_, _)) => {
+                    check_total(&started, req)?;
+                    Ok(OkOut {
+                        diagnostics: vec![DiagOut {
+                            stage: "backend".into(),
+                            code: err.code(),
+                            message: err.message(),
+                            span_start: 0,
+                            span_end: 0,
+                        }],
+                        hir_b64: Some(b64(&hir_bytes)),
+                        artifacts: vec![hir_artifact],
+                        run: None,
+                        trace,
+                        toolchain: toolchain_identity(backend_tag),
+                        cache: None,
+                        metric_gaps: metric_gaps(),
+                    })
+                }
+            };
+        }
+    };
+    trace.push(SpanOut {
+        stage: "backend".into(),
+        wall_ms: backend_start.elapsed().as_millis() as u64,
+    });
+    check_build(&started, req)?;
+
+    let exe_artifact = artifact("exe", "app.exe", &built.exe_path)?;
+
+    // ---- run: the worker's contained, budgeted executor ------------------
+    let mut run = None;
+    if req.kind == "run" {
+        let run_start = Instant::now();
+        let run_budget = remaining_run_budget(req, started);
+        let mut cmd = std::process::Command::new(&built.exe_path);
+        let captured = link::run_deadlined_captured(
+            &mut cmd,
+            run_budget,
+            link::CaptureCaps {
+                stdout_max: MAX_STDOUT_BYTES,
+                stderr_max: MAX_STDERR_BYTES,
+            },
+        )
+        .map_err(|e| map_run_err(e, run_budget))?;
+        trace.push(SpanOut {
+            stage: "run".into(),
+            wall_ms: ms(run_start),
+        });
+        run = Some(RunOut {
+            exit_code: captured.exit_code,
+            stdout_b64: b64(&captured.stdout),
+            stderr_b64: b64(&captured.stderr),
+        });
+    }
+    trace.push(SpanOut {
+        stage: "done".into(),
+        wall_ms: ms(started),
+    });
+    check_total(&started, req)?;
+
+    // ---- toolchain identity: the REAL linker/SDK the mn link consumed ---
+    let lld = link::find_rust_lld().map_err(|d| infra("tool.missing", d.message))?;
+    let sdk = link::find_sdk_um_dir().map_err(|d| infra("tool.missing", d.message))?;
+    let lld_bytes =
+        std::fs::read(&lld).map_err(|e| infra("tool.missing", format!("read lld: {}", e)))?;
+
+    let cache = req.store_root.as_ref().map(|_| CacheOut {
+        mode: cache_mode.to_string(),
+        // Hit rows are added with the T-05 identity work; the counters are
+        // the mn store's own observation (codegen_emit_units == 0 proves a
+        // hit path did not recompile).
+        hits: vec![("summary".into(), built.units.to_string())],
+        counters: built
+            .obs
+            .counters
+            .iter()
+            .map(|(k, v)| (k.clone(), u32::try_from(*v).unwrap_or(u32::MAX)))
+            .collect(),
+    });
+
+    Ok(OkOut {
+        diagnostics: vec![],
+        hir_b64: Some(b64(&hir_bytes)),
+        artifacts: vec![hir_artifact, exe_artifact],
+        run,
+        trace,
+        toolchain: driver_toolchain(&lld, &lld_bytes, &sdk, backend_tag),
+        cache,
         metric_gaps: metric_gaps(),
     })
 }
@@ -858,7 +1082,12 @@ fn typed_replay(
                 artifacts: vec![],
                 run: None,
                 trace,
-                toolchain: driver_toolchain(lld, lld_bytes, sdk),
+                toolchain: driver_toolchain(
+                    lld,
+                    lld_bytes,
+                    sdk,
+                    &ac_mn::backend::Backend::Legacy.tag(),
+                ),
                 cache: None,
                 metric_gaps: metric_gaps(),
             });
@@ -884,7 +1113,12 @@ fn typed_replay(
                 artifacts: vec![],
                 run: None,
                 trace,
-                toolchain: driver_toolchain(lld, lld_bytes, sdk),
+                toolchain: driver_toolchain(
+                    lld,
+                    lld_bytes,
+                    sdk,
+                    &ac_mn::backend::Backend::Legacy.tag(),
+                ),
                 cache: None,
                 metric_gaps: metric_gaps(),
             });
@@ -908,7 +1142,12 @@ fn typed_replay(
                     artifacts: vec![],
                     run: None,
                     trace,
-                    toolchain: driver_toolchain(lld, lld_bytes, sdk),
+                    toolchain: driver_toolchain(
+                        lld,
+                        lld_bytes,
+                        sdk,
+                        &ac_mn::backend::Backend::Legacy.tag(),
+                    ),
                     cache: None,
                     metric_gaps: metric_gaps(),
                 });
@@ -927,7 +1166,12 @@ fn typed_replay(
                     artifacts: vec![],
                     run: None,
                     trace,
-                    toolchain: driver_toolchain(lld, lld_bytes, sdk),
+                    toolchain: driver_toolchain(
+                        lld,
+                        lld_bytes,
+                        sdk,
+                        &ac_mn::backend::Backend::Legacy.tag(),
+                    ),
                     cache: None,
                     metric_gaps: metric_gaps(),
                 });
@@ -972,6 +1216,7 @@ fn driver_toolchain(
     lld: &std::path::Path,
     lld_bytes: &[u8],
     sdk: &std::path::Path,
+    backend: &str,
 ) -> ToolchainOut {
     ToolchainOut {
         lld_path: lld.display().to_string(),
@@ -981,6 +1226,7 @@ fn driver_toolchain(
         ac_core_version: auto_ac_prototype::VERSION.to_string(),
         worker_version: env!("CARGO_PKG_VERSION").to_string(),
         worker_exe_sha256: worker_exe_sha256(),
+        backend: backend.to_string(),
     }
 }
 
@@ -1051,7 +1297,7 @@ fn diag_out(d: &Diagnostic, stage: String) -> DiagOut {
     }
 }
 
-fn toolchain_identity() -> ToolchainOut {
+fn toolchain_identity(backend: &str) -> ToolchainOut {
     // Display fields are filled opportunistically (discovery is only run
     // on paths that link); the IDENTITY axis (worker exe hash) is always
     // present so every native row carries the same verifiable set.
@@ -1063,6 +1309,7 @@ fn toolchain_identity() -> ToolchainOut {
         ac_core_version: auto_ac_prototype::VERSION.to_string(),
         worker_version: env!("CARGO_PKG_VERSION").to_string(),
         worker_exe_sha256: worker_exe_sha256(),
+        backend: backend.to_string(),
     }
 }
 

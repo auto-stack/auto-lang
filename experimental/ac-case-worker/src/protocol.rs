@@ -379,6 +379,14 @@ pub struct ToolchainOut {
     /// native records and the stale checker re-verifies.
     #[serde(default)]
     pub worker_exe_sha256: String,
+    /// PLAN-871 T-04: the native backend this request actually ran on —
+    /// `cranelift-0.126/lower_object` (legacy) or
+    /// `mn:<mn-abi>+mir-v<lowering-version>` (shared MIR). Per-request
+    /// value (the AC_NATIVE_BACKEND switch is read on every request), so
+    /// one worker process can serve both backends. Empty only for responses
+    /// from a pre-871 worker.
+    #[serde(default)]
+    pub backend: String,
 }
 
 /// Cache observation for the report record (T-05): mode, driver hit/miss
